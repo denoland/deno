@@ -1,14 +1,19 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 // @ts-check
 /// <reference path="../../core/internal.d.ts" />
 /// <reference path="../../core/lib.deno_core.d.ts" />
 /// <reference path="../webidl/internal.d.ts" />
 
-const core = globalThis.Deno.core;
-const ops = core.ops;
-import * as webidl from "ext:deno_webidl/00_webidl.js";
-const primordials = globalThis.__bootstrap.primordials;
+import { primordials } from "ext:core/mod.js";
+import {
+  op_url_get_serialization,
+  op_url_parse,
+  op_url_parse_search_params,
+  op_url_parse_with_base,
+  op_url_reparse,
+  op_url_stringify_search_params,
+} from "ext:core/ops";
 const {
   ArrayIsArray,
   ArrayPrototypeMap,
@@ -17,6 +22,7 @@ const {
   ArrayPrototypeSort,
   ArrayPrototypeSplice,
   ObjectKeys,
+  ObjectPrototypeIsPrototypeOf,
   SafeArrayIterator,
   StringPrototypeSlice,
   StringPrototypeStartsWith,
@@ -26,6 +32,9 @@ const {
   TypeError,
   Uint32Array,
 } = primordials;
+
+import * as webidl from "ext:deno_webidl/00_webidl.js";
+import { createFilteredInspectProxy } from "ext:deno_console/01_console.js";
 
 const _list = Symbol("list");
 const _urlObject = Symbol("url object");
@@ -49,7 +58,7 @@ const SET_USERNAME = 8;
  * @returns {string}
  */
 function opUrlReparse(href, setter, value) {
-  const status = ops.op_url_reparse(
+  const status = op_url_reparse(
     href,
     setter,
     value,
@@ -65,9 +74,9 @@ function opUrlReparse(href, setter, value) {
  */
 function opUrlParse(href, maybeBase) {
   if (maybeBase === undefined) {
-    return ops.op_url_parse(href, componentsBuf);
+    return op_url_parse(href, componentsBuf);
   }
-  return ops.op_url_parse_with_base(
+  return op_url_parse_with_base(
     href,
     maybeBase,
     componentsBuf,
@@ -84,7 +93,7 @@ function getSerialization(status, href, maybeBase) {
   if (status === 0) {
     return href;
   } else if (status === 1) {
-    return ops.op_url_get_serialization();
+    return op_url_get_serialization();
   } else {
     throw new TypeError(
       `Invalid URL: '${href}'` +
@@ -122,7 +131,7 @@ class URLSearchParams {
       if (init[0] == "?") {
         init = StringPrototypeSlice(init, 1);
       }
-      this[_list] = ops.op_url_parse_search_params(init);
+      this[_list] = op_url_parse_search_params(init);
     } else if (ArrayIsArray(init)) {
       // Overload: sequence<sequence<USVString>>
       this[_list] = ArrayPrototypeMap(init, (pair, i) => {
@@ -130,7 +139,7 @@ class URLSearchParams {
           throw new TypeError(
             `${prefix}: Item ${
               i + 0
-            } in the parameter list does have length 2 exactly.`,
+            } in the parameter list does have length 2 exactly`,
           );
         }
         return [pair[0], pair[1]];
@@ -313,7 +322,7 @@ class URLSearchParams {
    */
   toString() {
     webidl.assertBranded(this, URLSearchParamsPrototype);
-    return ops.op_url_stringify_search_params(this[_list]);
+    return op_url_stringify_search_params(this[_list]);
   }
 
   get size() {
@@ -324,7 +333,7 @@ class URLSearchParams {
 
 webidl.mixinPairIterable("URLSearchParams", URLSearchParams, _list, 0, 1);
 
-webidl.configurePrototype(URLSearchParams);
+webidl.configureInterface(URLSearchParams);
 const URLSearchParamsPrototype = URLSearchParams.prototype;
 
 webidl.converters["URLSearchParams"] = webidl.createInterfaceConverter(
@@ -342,17 +351,29 @@ function trim(s) {
 // Represents a "no port" value. A port in URL cannot be greater than 2^16 - 1
 const NO_PORT = 65536;
 
+const skipInit = Symbol();
 const componentsBuf = new Uint32Array(8);
+
 class URL {
+  /** @type {URLSearchParams|null} */
   #queryObject = null;
+  /** @type {string} */
   #serialization;
+  /** @type {number} */
   #schemeEnd;
+  /** @type {number} */
   #usernameEnd;
+  /** @type {number} */
   #hostStart;
+  /** @type {number} */
   #hostEnd;
+  /** @type {number} */
   #port;
+  /** @type {number} */
   #pathStart;
+  /** @type {number} */
   #queryStart;
+  /** @type {number} */
   #fragmentStart;
 
   [_updateUrlSearch](value) {
@@ -369,14 +390,18 @@ class URL {
    * @param {string} [base]
    */
   constructor(url, base = undefined) {
+    // skip initialization for URL.parse
+    if (url === skipInit) {
+      return;
+    }
     const prefix = "Failed to construct 'URL'";
     webidl.requiredArguments(arguments.length, 1, prefix);
     url = webidl.converters.DOMString(url, prefix, "Argument 1");
     if (base !== undefined) {
       base = webidl.converters.DOMString(base, prefix, "Argument 2");
     }
-    this[webidl.brand] = webidl.brand;
     const status = opUrlParse(url, base);
+    this[webidl.brand] = webidl.brand;
     this.#serialization = getSerialization(status, url, base);
     this.#updateComponents();
   }
@@ -385,8 +410,32 @@ class URL {
    * @param {string} url
    * @param {string} [base]
    */
+  static parse(url, base = undefined) {
+    const prefix = "Failed to execute 'URL.parse'";
+    webidl.requiredArguments(arguments.length, 1, prefix);
+    url = webidl.converters.DOMString(url, prefix, "Argument 1");
+    if (base !== undefined) {
+      base = webidl.converters.DOMString(base, prefix, "Argument 2");
+    }
+    const status = opUrlParse(url, base);
+    if (status !== 0 && status !== 1) {
+      return null;
+    }
+    // If initialized with webidl.createBranded, private properties are not be accessible,
+    // so it is passed through the constructor
+    const self = new this(skipInit);
+    self[webidl.brand] = webidl.brand;
+    self.#serialization = getSerialization(status, url, base);
+    self.#updateComponents();
+    return self;
+  }
+
+  /**
+   * @param {string} url
+   * @param {string} [base]
+   */
   static canParse(url, base = undefined) {
-    const prefix = "Failed to call 'URL.canParse'";
+    const prefix = "Failed to execute 'URL.canParse'";
     webidl.requiredArguments(arguments.length, 1, prefix);
     url = webidl.converters.DOMString(url, prefix, "Argument 1");
     if (base !== undefined) {
@@ -410,26 +459,32 @@ class URL {
   }
 
   [SymbolFor("Deno.privateCustomInspect")](inspect, inspectOptions) {
-    const object = {
-      href: this.href,
-      origin: this.origin,
-      protocol: this.protocol,
-      username: this.username,
-      password: this.password,
-      host: this.host,
-      hostname: this.hostname,
-      port: this.port,
-      pathname: this.pathname,
-      hash: this.hash,
-      search: this.search,
-    };
-    return `${this.constructor.name} ${inspect(object, inspectOptions)}`;
+    return inspect(
+      createFilteredInspectProxy({
+        object: this,
+        evaluate: ObjectPrototypeIsPrototypeOf(URLPrototype, this),
+        keys: [
+          "href",
+          "origin",
+          "protocol",
+          "username",
+          "password",
+          "host",
+          "hostname",
+          "port",
+          "pathname",
+          "hash",
+          "search",
+        ],
+      }),
+      inspectOptions,
+    );
   }
 
   #updateSearchParams() {
     if (this.#queryObject !== null) {
       const params = this.#queryObject[_list];
-      const newParams = ops.op_url_parse_search_params(
+      const newParams = op_url_parse_search_params(
         StringPrototypeSlice(this.search, 1),
       );
       ArrayPrototypeSplice(
@@ -784,7 +839,7 @@ class URL {
     }
   }
 
-  /** @return {string} */
+  /** @return {URLSearchParams} */
   get searchParams() {
     if (this.#queryObject == null) {
       this.#queryObject = new URLSearchParams(this.search);
@@ -806,7 +861,7 @@ class URL {
   }
 }
 
-webidl.configurePrototype(URL);
+webidl.configureInterface(URL);
 const URLPrototype = URL.prototype;
 
 /**
@@ -816,7 +871,7 @@ const URLPrototype = URL.prototype;
  * @returns {[string, string][]}
  */
 function parseUrlEncoded(bytes) {
-  return ops.op_url_parse_search_params(null, bytes);
+  return op_url_parse_search_params(null, bytes);
 }
 
 webidl

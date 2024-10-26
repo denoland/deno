@@ -1,0 +1,6 @@
+Hello world!
+globalThis.addEventListener("unhandledrejection");
+Added catch handler to the promise
+Web rejectionhandled
+Node rejectionHandled
+Success

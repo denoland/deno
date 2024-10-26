@@ -1,0 +1,13 @@
+{
+  "name": "@denotest/node-lifecycle-scripts",
+  "version": "1.0.0",
+  "scripts": {
+    "preinstall": "echo preinstall && node preinstall.js && node --require ./helper.js preinstall.js",
+    "install": "echo install && cli-esm 'hello from install script'",
+    "postinstall": "echo postinstall && npx cowsay postinstall"
+  },
+  "exports": "./index.js",
+  "dependencies": {
+    "@denotest/bin": "1.0.0"
+  }
+}

@@ -1,4 +1,4 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 // TODO(petamoriken): enable prefer-primordials for node polyfills
 // deno-lint-ignore-file ban-types prefer-primordials
@@ -17,6 +17,9 @@ import {
   ERR_MISSING_ARGS,
 } from "ext:deno_node/internal/errors.ts";
 import { isDeepEqual } from "ext:deno_node/internal/util/comparisons.ts";
+import { primordials } from "ext:core/mod.js";
+
+const { ObjectPrototypeIsPrototypeOf } = primordials;
 
 function innerFail(obj: {
   actual?: unknown;
@@ -743,9 +746,12 @@ function validateThrownError(
     message = error;
     error = undefined;
   }
+  if (error?.prototype !== undefined && e instanceof error) {
+    return true;
+  }
   if (
-    error instanceof Function && error.prototype !== undefined &&
-    error.prototype instanceof Error
+    typeof error === "function" &&
+    (error === Error || ObjectPrototypeIsPrototypeOf(Error, error))
   ) {
     // error is a constructor
     if (e instanceof error) {

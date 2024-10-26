@@ -1,4 +1,4 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 /// e.g. `is_builtin_node_module("assert")`
 pub fn is_builtin_node_module(module_name: &str) -> bool {
@@ -45,6 +45,7 @@ generate_builtin_node_module_lists! {
   "http",
   "http2",
   "https",
+  "inspector",
   "module",
   "net",
   "os",
@@ -57,6 +58,7 @@ generate_builtin_node_module_lists! {
   "querystring",
   "repl",
   "readline",
+  "readline/promises",
   "stream",
   "stream/consumers",
   "stream/promises",
@@ -73,6 +75,7 @@ generate_builtin_node_module_lists! {
   "util/types",
   "v8",
   "vm",
+  "wasi",
   "worker_threads",
   "zlib",
 }

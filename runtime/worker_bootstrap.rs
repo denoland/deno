@@ -1,4 +1,4 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 use deno_core::v8;
 use deno_core::ModuleSpecifier;
@@ -6,7 +6,59 @@ use serde::Serialize;
 use std::cell::RefCell;
 use std::thread;
 
-use crate::colors;
+use deno_terminal::colors;
+
+/// The execution mode for this worker. Some modes may have implicit behaviour.
+#[derive(Copy, Clone)]
+pub enum WorkerExecutionMode {
+  /// No special behaviour.
+  None,
+
+  /// Running in a worker.
+  Worker,
+  /// `deno run`
+  Run,
+  /// `deno repl`
+  Repl,
+  /// `deno eval`
+  Eval,
+  /// `deno test`
+  Test,
+  /// `deno bench`
+  Bench,
+  /// `deno serve`
+  Serve {
+    is_main: bool,
+    worker_count: Option<usize>,
+  },
+  /// `deno jupyter`
+  Jupyter,
+}
+
+impl WorkerExecutionMode {
+  pub fn discriminant(&self) -> u8 {
+    match self {
+      WorkerExecutionMode::None => 0,
+      WorkerExecutionMode::Worker => 1,
+      WorkerExecutionMode::Run => 2,
+      WorkerExecutionMode::Repl => 3,
+      WorkerExecutionMode::Eval => 4,
+      WorkerExecutionMode::Test => 5,
+      WorkerExecutionMode::Bench => 6,
+      WorkerExecutionMode::Serve { .. } => 7,
+      WorkerExecutionMode::Jupyter => 8,
+    }
+  }
+  pub fn serve_info(&self) -> (Option<bool>, Option<usize>) {
+    match *self {
+      WorkerExecutionMode::Serve {
+        is_main,
+        worker_count,
+      } => (Some(is_main), worker_count),
+      _ => (None, None),
+    }
+  }
+}
 
 /// The log level to use when printing diagnostic log messages, warnings,
 /// or errors in the worker.
@@ -40,25 +92,32 @@ impl From<log::Level> for WorkerLogLevel {
 /// Common bootstrap options for MainWorker & WebWorker
 #[derive(Clone)]
 pub struct BootstrapOptions {
+  pub deno_version: String,
   /// Sets `Deno.args` in JS runtime.
   pub args: Vec<String>,
   pub cpu_count: usize,
   pub log_level: WorkerLogLevel,
+  pub enable_op_summary_metrics: bool,
   pub enable_testing_features: bool,
   pub locale: String,
   pub location: Option<ModuleSpecifier>,
   /// Sets `Deno.noColor` in JS runtime.
   pub no_color: bool,
-  pub is_tty: bool,
-  /// Sets `Deno.version.deno` in JS runtime.
-  pub runtime_version: String,
-  /// Sets `Deno.version.typescript` in JS runtime.
-  pub ts_version: String,
-  pub unstable: bool,
+  pub is_stdout_tty: bool,
+  pub is_stderr_tty: bool,
+  pub color_level: deno_terminal::colors::ColorLevel,
+  // --unstable-* flags
+  pub unstable_features: Vec<i32>,
   pub user_agent: String,
   pub inspect: bool,
   pub has_node_modules_dir: bool,
-  pub maybe_binary_npm_command_name: Option<String>,
+  pub argv0: Option<String>,
+  pub node_debug: Option<String>,
+  pub node_ipc_fd: Option<i64>,
+  pub mode: WorkerExecutionMode,
+  // Used by `deno serve`
+  pub serve_port: Option<u16>,
+  pub serve_host: Option<String>,
 }
 
 impl Default for BootstrapOptions {
@@ -67,25 +126,32 @@ impl Default for BootstrapOptions {
       .map(|p| p.get())
       .unwrap_or(1);
 
-    let runtime_version = env!("CARGO_PKG_VERSION").into();
+    let runtime_version = env!("CARGO_PKG_VERSION");
     let user_agent = format!("Deno/{runtime_version}");
 
     Self {
-      runtime_version,
+      deno_version: runtime_version.to_string(),
       user_agent,
       cpu_count,
       no_color: !colors::use_color(),
-      is_tty: colors::is_tty(),
+      is_stdout_tty: deno_terminal::is_stdout_tty(),
+      is_stderr_tty: deno_terminal::is_stderr_tty(),
+      color_level: colors::get_color_level(),
+      enable_op_summary_metrics: Default::default(),
       enable_testing_features: Default::default(),
       log_level: Default::default(),
-      ts_version: Default::default(),
       locale: "en".to_string(),
       location: Default::default(),
-      unstable: Default::default(),
+      unstable_features: Default::default(),
       inspect: Default::default(),
       args: Default::default(),
       has_node_modules_dir: Default::default(),
-      maybe_binary_npm_command_name: None,
+      argv0: None,
+      node_debug: None,
+      node_ipc_fd: None,
+      mode: WorkerExecutionMode::None,
+      serve_port: Default::default(),
+      serve_host: Default::default(),
     }
   }
 }
@@ -101,42 +167,32 @@ impl Default for BootstrapOptions {
 /// Keep this in sync with `99_main.js`.
 #[derive(Serialize)]
 struct BootstrapV8<'a>(
-  // args
-  &'a Vec<String>,
-  // cpu_count
-  i32,
-  // log_level
-  i32,
-  // runtime_version
-  &'a str,
-  // locale
+  // deno version
   &'a str,
   // location
   Option<&'a str>,
-  // no_color
-  bool,
-  // is_tty
-  bool,
-  // ts_version
-  &'a str,
-  // unstable
-  bool,
-  // process_id
-  i32,
-  // env!("TARGET")
-  &'a str,
-  // v8_version
-  &'a str,
-  // user_agent
-  &'a str,
+  // granular unstable flags
+  &'a [i32],
   // inspect
   bool,
   // enable_testing_features
   bool,
   // has_node_modules_dir
   bool,
-  // maybe_binary_npm_command_name
+  // argv0
   Option<&'a str>,
+  // node_debug
+  Option<&'a str>,
+  // mode
+  i32,
+  // serve port
+  u16,
+  // serve host
+  Option<&'a str>,
+  // serve is main
+  Option<bool>,
+  // serve worker count
+  Option<usize>,
 );
 
 impl BootstrapOptions {
@@ -148,25 +204,21 @@ impl BootstrapOptions {
     let scope = RefCell::new(scope);
     let ser = deno_core::serde_v8::Serializer::new(&scope);
 
+    let (serve_is_main, serve_worker_count) = self.mode.serve_info();
     let bootstrap = BootstrapV8(
-      &self.args,
-      self.cpu_count as _,
-      self.log_level as _,
-      &self.runtime_version,
-      &self.locale,
+      &self.deno_version,
       self.location.as_ref().map(|l| l.as_str()),
-      self.no_color,
-      self.is_tty,
-      &self.ts_version,
-      self.unstable,
-      std::process::id() as _,
-      env!("TARGET"),
-      deno_core::v8_version(),
-      &self.user_agent,
+      self.unstable_features.as_ref(),
       self.inspect,
       self.enable_testing_features,
       self.has_node_modules_dir,
-      self.maybe_binary_npm_command_name.as_deref(),
+      self.argv0.as_deref(),
+      self.node_debug.as_deref(),
+      self.mode.discriminant() as _,
+      self.serve_port.unwrap_or_default(),
+      self.serve_host.as_deref(),
+      serve_is_main,
+      serve_worker_count,
     );
 
     bootstrap.serialize(ser).unwrap()

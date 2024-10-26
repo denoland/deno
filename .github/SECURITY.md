@@ -9,11 +9,13 @@ we use to work with the security research community to address runtime security.
 
 ## Reporting a vulnerability
 
-Please email findings to security@deno.com. We strive to resolve all problems as
-quickly as possible, and are more than happy to play an active role in
-publication of writeups after the problem is resolved.
+Please open a new
+[Security advisory](https://github.com/denoland/deno/security/advisories/new)
+with your findings. We strive to resolve all problems as quickly as possible,
+and are more than happy to play an active role in publication of writeups after
+the problem is resolved.
 
-Try to include as much information as possible in the initial email, so we can
+Try to include as much information as possible in the initial report, so we can
 quickly address the issue.
 
 **Please do not open security issues in the public issue tracker.**

@@ -1,4 +1,4 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 // @ts-check
 /// <reference path="../webidl/internal.d.ts" />
@@ -11,7 +11,29 @@
 /// <reference path="./lib.deno_fetch.d.ts" />
 /// <reference lib="esnext" />
 
-const core = globalThis.Deno.core;
+import { core, primordials } from "ext:core/mod.js";
+const {
+  isAnyArrayBuffer,
+  isArrayBuffer,
+} = core;
+const {
+  ArrayBufferIsView,
+  ArrayPrototypeMap,
+  DataViewPrototypeGetBuffer,
+  DataViewPrototypeGetByteLength,
+  DataViewPrototypeGetByteOffset,
+  JSONParse,
+  ObjectDefineProperties,
+  ObjectPrototypeIsPrototypeOf,
+  TypedArrayPrototypeGetBuffer,
+  TypedArrayPrototypeGetByteLength,
+  TypedArrayPrototypeGetByteOffset,
+  TypedArrayPrototypeGetSymbolToStringTag,
+  TypedArrayPrototypeSlice,
+  TypeError,
+  Uint8Array,
+} = primordials;
+
 import * as webidl from "ext:deno_webidl/00_webidl.js";
 import {
   parseUrlEncoded,
@@ -36,27 +58,6 @@ import {
   readableStreamTee,
   readableStreamThrowIfErrored,
 } from "ext:deno_web/06_streams.js";
-const primordials = globalThis.__bootstrap.primordials;
-const {
-  ArrayBufferPrototype,
-  ArrayBufferIsView,
-  ArrayPrototypeMap,
-  DataViewPrototypeGetBuffer,
-  DataViewPrototypeGetByteLength,
-  DataViewPrototypeGetByteOffset,
-  JSONParse,
-  ObjectDefineProperties,
-  ObjectPrototypeIsPrototypeOf,
-  // TODO(lucacasonato): add SharedArrayBuffer to primordials
-  // SharedArrayBufferPrototype
-  TypedArrayPrototypeGetBuffer,
-  TypedArrayPrototypeGetByteLength,
-  TypedArrayPrototypeGetByteOffset,
-  TypedArrayPrototypeGetSymbolToStringTag,
-  TypedArrayPrototypeSlice,
-  TypeError,
-  Uint8Array,
-} = primordials;
 
 /**
  * @param {Uint8Array | string} chunk
@@ -150,7 +151,7 @@ class InnerBody {
    * @returns {Promise<Uint8Array>}
    */
   consume() {
-    if (this.unusable()) throw new TypeError("Body already consumed.");
+    if (this.unusable()) throw new TypeError("Body already consumed");
     if (
       ObjectPrototypeIsPrototypeOf(
         ReadableStreamPrototype,
@@ -195,10 +196,23 @@ class InnerBody {
    * @returns {InnerBody}
    */
   clone() {
-    const { 0: out1, 1: out2 } = readableStreamTee(this.stream, true);
-    this.streamOrStatic = out1;
-    const second = new InnerBody(out2);
-    second.source = core.deserialize(core.serialize(this.source));
+    let second;
+    if (
+      !ObjectPrototypeIsPrototypeOf(
+        ReadableStreamPrototype,
+        this.streamOrStatic,
+      ) && !this.streamOrStatic.consumed
+    ) {
+      second = new InnerBody({
+        body: this.streamOrStatic.body,
+        consumed: false,
+      });
+    } else {
+      const { 0: out1, 1: out2 } = readableStreamTee(this.stream, true);
+      this.streamOrStatic = out1;
+      second = new InnerBody(out2);
+    }
+    second.source = this.source;
     second.length = this.length;
     return second;
   }
@@ -249,6 +263,7 @@ function mixinBody(prototype, bodySymbol, mimeTypeSymbol) {
   /** @type {PropertyDescriptorMap} */
   const mixin = {
     body: {
+      __proto__: null,
       /**
        * @returns {ReadableStream<Uint8Array> | null}
        */
@@ -264,6 +279,7 @@ function mixinBody(prototype, bodySymbol, mimeTypeSymbol) {
       enumerable: true,
     },
     bodyUsed: {
+      __proto__: null,
       /**
        * @returns {boolean}
        */
@@ -278,6 +294,7 @@ function mixinBody(prototype, bodySymbol, mimeTypeSymbol) {
       enumerable: true,
     },
     arrayBuffer: {
+      __proto__: null,
       /** @returns {Promise<ArrayBuffer>} */
       value: function arrayBuffer() {
         return consumeBody(this, "ArrayBuffer");
@@ -287,6 +304,7 @@ function mixinBody(prototype, bodySymbol, mimeTypeSymbol) {
       enumerable: true,
     },
     blob: {
+      __proto__: null,
       /** @returns {Promise<Blob>} */
       value: function blob() {
         return consumeBody(this, "Blob");
@@ -295,7 +313,18 @@ function mixinBody(prototype, bodySymbol, mimeTypeSymbol) {
       configurable: true,
       enumerable: true,
     },
+    bytes: {
+      __proto__: null,
+      /** @returns {Promise<Uint8Array>} */
+      value: function bytes() {
+        return consumeBody(this, "bytes");
+      },
+      writable: true,
+      configurable: true,
+      enumerable: true,
+    },
     formData: {
+      __proto__: null,
       /** @returns {Promise<FormData>} */
       value: function formData() {
         return consumeBody(this, "FormData");
@@ -305,6 +334,7 @@ function mixinBody(prototype, bodySymbol, mimeTypeSymbol) {
       enumerable: true,
     },
     json: {
+      __proto__: null,
       /** @returns {Promise<any>} */
       value: function json() {
         return consumeBody(this, "JSON");
@@ -314,6 +344,7 @@ function mixinBody(prototype, bodySymbol, mimeTypeSymbol) {
       enumerable: true,
     },
     text: {
+      __proto__: null,
       /** @returns {Promise<string>} */
       value: function text() {
         return consumeBody(this, "text");
@@ -329,7 +360,7 @@ function mixinBody(prototype, bodySymbol, mimeTypeSymbol) {
 /**
  * https://fetch.spec.whatwg.org/#concept-body-package-data
  * @param {Uint8Array | string} bytes
- * @param {"ArrayBuffer" | "Blob" | "FormData" | "JSON" | "text"} type
+ * @param {"ArrayBuffer" | "Blob" | "FormData" | "JSON" | "text" | "bytes"} type
  * @param {MimeType | null} [mimeType]
  */
 function packageData(bytes, type, mimeType) {
@@ -340,6 +371,8 @@ function packageData(bytes, type, mimeType) {
       return new Blob([bytes], {
         type: mimeType !== null ? mimesniff.serializeMimeType(mimeType) : "",
       });
+    case "bytes":
+      return chunkToU8(bytes);
     case "FormData": {
       if (mimeType !== null) {
         const essence = mimesniff.essence(mimeType);
@@ -347,7 +380,7 @@ function packageData(bytes, type, mimeType) {
           const boundary = mimeType.parameters.get("boundary");
           if (boundary === null) {
             throw new TypeError(
-              "Missing boundary parameter in mime type of multipart formdata.",
+              "Cannot turn into form data: missing boundary parameter in mime type of multipart form data",
             );
           }
           return parseFormData(chunkToU8(bytes), boundary);
@@ -413,7 +446,7 @@ function extractBody(object) {
       );
     }
     source = TypedArrayPrototypeSlice(object);
-  } else if (ObjectPrototypeIsPrototypeOf(ArrayBufferPrototype, object)) {
+  } else if (isArrayBuffer(object)) {
     source = TypedArrayPrototypeSlice(new Uint8Array(object));
   } else if (ObjectPrototypeIsPrototypeOf(FormDataPrototype, object)) {
     const res = formDataToBlob(object);
@@ -462,11 +495,7 @@ webidl.converters["BodyInit_DOMString"] = (V, prefix, context, opts) => {
     return webidl.converters["URLSearchParams"](V, prefix, context, opts);
   }
   if (typeof V === "object") {
-    if (
-      ObjectPrototypeIsPrototypeOf(ArrayBufferPrototype, V) ||
-      // deno-lint-ignore prefer-primordials
-      ObjectPrototypeIsPrototypeOf(SharedArrayBuffer.prototype, V)
-    ) {
+    if (isAnyArrayBuffer(V)) {
       return webidl.converters["ArrayBuffer"](V, prefix, context, opts);
     }
     if (ArrayBufferIsView(V)) {

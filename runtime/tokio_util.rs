@@ -1,4 +1,4 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 use std::fmt::Debug;
 use std::str::FromStr;
 
@@ -43,7 +43,15 @@ pub fn create_basic_runtime() -> tokio::runtime::Runtime {
     // parallel for deno fmt.
     // The default value is 512, which is an unhelpfully large thread pool. We
     // don't ever want to have more than a couple dozen threads.
-    .max_blocking_threads(32)
+    .max_blocking_threads(if cfg!(windows) {
+      // on windows, tokio uses blocking tasks for child process IO, make sure
+      // we have enough available threads for other tasks to run
+      4 * std::thread::available_parallelism()
+        .map(|n| n.get())
+        .unwrap_or(8)
+    } else {
+      32
+    })
     .build()
     .unwrap()
 }
@@ -81,8 +89,9 @@ where
       let handle = tokio::runtime::Handle::current();
       let runtime_monitor = RuntimeMonitor::new(&handle);
       tokio::spawn(async move {
+        #[allow(clippy::print_stderr)]
         for interval in runtime_monitor.intervals() {
-          println!("{:#?}", interval);
+          eprintln!("{:#?}", interval);
           // wait 500ms
           tokio::time::sleep(std::time::Duration::from_millis(
             metrics_interval,
@@ -99,7 +108,13 @@ where
   #[cfg(not(tokio_unstable))]
   let join_handle = rt.spawn(future);
 
-  rt.block_on(join_handle).unwrap().into_inner()
+  let r = rt.block_on(join_handle).unwrap().into_inner();
+  // Forcefully shutdown the runtime - we're done executing JS code at this
+  // point, but there might be outstanding blocking tasks that were created and
+  // latered "unrefed". They won't terminate on their own, so we're forcing
+  // termination of Tokio runtime at this point.
+  rt.shutdown_background();
+  r
 }
 
 #[inline(always)]

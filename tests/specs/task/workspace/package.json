@@ -1,0 +1,6 @@
+{
+  "scripts": {
+    "pkg-json-root": "echo pkg-json $PWD",
+    "pkg-json-root-2": "echo hi"
+  }
+}

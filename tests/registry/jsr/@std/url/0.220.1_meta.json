@@ -1,0 +1,10 @@
+{
+  "exports": {
+    ".": "./mod.ts",
+    "./basename": "./basename.ts",
+    "./dirname": "./dirname.ts",
+    "./extname": "./extname.ts",
+    "./join": "./join.ts",
+    "./normalize": "./normalize.ts"
+  }
+}

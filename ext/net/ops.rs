@@ -1,14 +1,12 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 use crate::io::TcpStreamResource;
+use crate::raw::NetworkListenerResource;
 use crate::resolve_addr::resolve_addr;
 use crate::resolve_addr::resolve_addr_sync;
+use crate::tcp::TcpListener;
 use crate::NetPermissions;
-use deno_core::error::bad_resource;
-use deno_core::error::custom_error;
-use deno_core::error::generic_error;
-use deno_core::error::AnyError;
-use deno_core::op;
+use deno_core::op2;
 use deno_core::CancelFuture;
 
 use deno_core::AsyncRefCell;
@@ -33,7 +31,6 @@ use std::net::Ipv6Addr;
 use std::net::SocketAddr;
 use std::rc::Rc;
 use std::str::FromStr;
-use tokio::net::TcpListener;
 use tokio::net::TcpStream;
 use tokio::net::UdpSocket;
 use trust_dns_proto::rr::rdata::caa::Value;
@@ -42,6 +39,7 @@ use trust_dns_proto::rr::record_type::RecordType;
 use trust_dns_resolver::config::NameServerConfigGroup;
 use trust_dns_resolver::config::ResolverConfig;
 use trust_dns_resolver::config::ResolverOpts;
+use trust_dns_resolver::error::ResolveError;
 use trust_dns_resolver::error::ResolveErrorKind;
 use trust_dns_resolver::system_conf;
 use trust_dns_resolver::AsyncResolver;
@@ -67,28 +65,86 @@ impl From<SocketAddr> for IpAddr {
   }
 }
 
-pub(crate) fn accept_err(e: std::io::Error) -> AnyError {
-  // FIXME(bartlomieju): compatibility with current JS implementation
+#[derive(Debug, thiserror::Error)]
+pub enum NetError {
+  #[error("Listener has been closed")]
+  ListenerClosed,
+  #[error("Listener already in use")]
+  ListenerBusy,
+  #[error("Socket has been closed")]
+  SocketClosed,
+  #[error("Socket has been closed")]
+  SocketClosedNotConnected,
+  #[error("Socket already in use")]
+  SocketBusy,
+  #[error("{0}")]
+  Io(#[from] std::io::Error),
+  #[error("Another accept task is ongoing")]
+  AcceptTaskOngoing,
+  #[error("{0}")]
+  Permission(deno_core::error::AnyError),
+  #[error("{0}")]
+  Resource(deno_core::error::AnyError),
+  #[error("No resolved address found")]
+  NoResolvedAddress,
+  #[error("{0}")]
+  AddrParse(#[from] std::net::AddrParseError),
+  #[error("{0}")]
+  Map(crate::io::MapError),
+  #[error("{0}")]
+  Canceled(#[from] deno_core::Canceled),
+  #[error("{0}")]
+  DnsNotFound(ResolveError),
+  #[error("{0}")]
+  DnsNotConnected(ResolveError),
+  #[error("{0}")]
+  DnsTimedOut(ResolveError),
+  #[error("{0}")]
+  Dns(#[from] ResolveError),
+  #[error("Provided record type is not supported")]
+  UnsupportedRecordType,
+  #[error("File name or path {0:?} is not valid UTF-8")]
+  InvalidUtf8(std::ffi::OsString),
+  #[error("unexpected key type")]
+  UnexpectedKeyType,
+  #[error("Invalid hostname: '{0}'")]
+  InvalidHostname(String), // TypeError
+  #[error("TCP stream is currently in use")]
+  TcpStreamBusy,
+  #[error("{0}")]
+  Rustls(#[from] deno_tls::rustls::Error),
+  #[error("{0}")]
+  Tls(#[from] deno_tls::TlsError),
+  #[error("Error creating TLS certificate: Deno.listenTls requires a key")]
+  ListenTlsRequiresKey, // InvalidData
+  #[error("{0}")]
+  RootCertStore(deno_core::anyhow::Error),
+  #[error("{0}")]
+  Reunite(tokio::net::tcp::ReuniteError),
+}
+
+pub(crate) fn accept_err(e: std::io::Error) -> NetError {
   if let std::io::ErrorKind::Interrupted = e.kind() {
-    bad_resource("Listener has been closed")
+    NetError::ListenerClosed
   } else {
-    e.into()
+    NetError::Io(e)
   }
 }
 
-#[op]
-async fn op_net_accept_tcp(
+#[op2(async)]
+#[serde]
+pub async fn op_net_accept_tcp(
   state: Rc<RefCell<OpState>>,
-  rid: ResourceId,
-) -> Result<(ResourceId, IpAddr, IpAddr), AnyError> {
+  #[smi] rid: ResourceId,
+) -> Result<(ResourceId, IpAddr, IpAddr), NetError> {
   let resource = state
     .borrow()
     .resource_table
-    .get::<TcpListenerResource>(rid)
-    .map_err(|_| bad_resource("Listener has been closed"))?;
+    .get::<NetworkListenerResource<TcpListener>>(rid)
+    .map_err(|_| NetError::ListenerClosed)?;
   let listener = RcRef::map(&resource, |r| &r.listener)
     .try_borrow_mut()
-    .ok_or_else(|| custom_error("Busy", "Another accept task is ongoing"))?;
+    .ok_or_else(|| NetError::AcceptTaskOngoing)?;
   let cancel = RcRef::map(resource, |r| &r.cancel);
   let (tcp_stream, _socket_addr) = listener
     .accept()
@@ -105,17 +161,18 @@ async fn op_net_accept_tcp(
   Ok((rid, IpAddr::from(local_addr), IpAddr::from(remote_addr)))
 }
 
-#[op]
-async fn op_net_recv_udp(
+#[op2(async)]
+#[serde]
+pub async fn op_net_recv_udp(
   state: Rc<RefCell<OpState>>,
-  rid: ResourceId,
-  mut buf: JsBuffer,
-) -> Result<(usize, IpAddr), AnyError> {
+  #[smi] rid: ResourceId,
+  #[buffer] mut buf: JsBuffer,
+) -> Result<(usize, IpAddr), NetError> {
   let resource = state
     .borrow_mut()
     .resource_table
     .get::<UdpSocketResource>(rid)
-    .map_err(|_| bad_resource("Socket has been closed"))?;
+    .map_err(|_| NetError::SocketClosed)?;
   let socket = RcRef::map(&resource, |r| &r.socket).borrow().await;
   let cancel_handle = RcRef::map(&resource, |r| &r.cancel);
   let (nread, remote_addr) = socket
@@ -125,51 +182,54 @@ async fn op_net_recv_udp(
   Ok((nread, IpAddr::from(remote_addr)))
 }
 
-#[op]
-async fn op_net_send_udp<NP>(
+#[op2(async)]
+#[number]
+pub async fn op_net_send_udp<NP>(
   state: Rc<RefCell<OpState>>,
-  rid: ResourceId,
-  addr: IpAddr,
-  zero_copy: JsBuffer,
-) -> Result<usize, AnyError>
+  #[smi] rid: ResourceId,
+  #[serde] addr: IpAddr,
+  #[buffer] zero_copy: JsBuffer,
+) -> Result<usize, NetError>
 where
   NP: NetPermissions + 'static,
 {
   {
     let mut s = state.borrow_mut();
-    s.borrow_mut::<NP>().check_net(
-      &(&addr.hostname, Some(addr.port)),
-      "Deno.DatagramConn.send()",
-    )?;
+    s.borrow_mut::<NP>()
+      .check_net(
+        &(&addr.hostname, Some(addr.port)),
+        "Deno.DatagramConn.send()",
+      )
+      .map_err(NetError::Permission)?;
   }
   let addr = resolve_addr(&addr.hostname, addr.port)
     .await?
     .next()
-    .ok_or_else(|| generic_error("No resolved address found"))?;
+    .ok_or(NetError::NoResolvedAddress)?;
 
   let resource = state
     .borrow_mut()
     .resource_table
     .get::<UdpSocketResource>(rid)
-    .map_err(|_| bad_resource("Socket has been closed"))?;
+    .map_err(|_| NetError::SocketClosed)?;
   let socket = RcRef::map(&resource, |r| &r.socket).borrow().await;
   let nwritten = socket.send_to(&zero_copy, &addr).await?;
 
   Ok(nwritten)
 }
 
-#[op]
-async fn op_net_join_multi_v4_udp(
+#[op2(async)]
+pub async fn op_net_join_multi_v4_udp(
   state: Rc<RefCell<OpState>>,
-  rid: ResourceId,
-  address: String,
-  multi_interface: String,
-) -> Result<(), AnyError> {
+  #[smi] rid: ResourceId,
+  #[string] address: String,
+  #[string] multi_interface: String,
+) -> Result<(), NetError> {
   let resource = state
     .borrow_mut()
     .resource_table
     .get::<UdpSocketResource>(rid)
-    .map_err(|_| bad_resource("Socket has been closed"))?;
+    .map_err(|_| NetError::SocketClosed)?;
   let socket = RcRef::map(&resource, |r| &r.socket).borrow().await;
 
   let addr = Ipv4Addr::from_str(address.as_str())?;
@@ -180,18 +240,18 @@ async fn op_net_join_multi_v4_udp(
   Ok(())
 }
 
-#[op]
-async fn op_net_join_multi_v6_udp(
+#[op2(async)]
+pub async fn op_net_join_multi_v6_udp(
   state: Rc<RefCell<OpState>>,
-  rid: ResourceId,
-  address: String,
-  multi_interface: u32,
-) -> Result<(), AnyError> {
+  #[smi] rid: ResourceId,
+  #[string] address: String,
+  #[smi] multi_interface: u32,
+) -> Result<(), NetError> {
   let resource = state
     .borrow_mut()
     .resource_table
     .get::<UdpSocketResource>(rid)
-    .map_err(|_| bad_resource("Socket has been closed"))?;
+    .map_err(|_| NetError::SocketClosed)?;
   let socket = RcRef::map(&resource, |r| &r.socket).borrow().await;
 
   let addr = Ipv6Addr::from_str(address.as_str())?;
@@ -201,18 +261,18 @@ async fn op_net_join_multi_v6_udp(
   Ok(())
 }
 
-#[op]
-async fn op_net_leave_multi_v4_udp(
+#[op2(async)]
+pub async fn op_net_leave_multi_v4_udp(
   state: Rc<RefCell<OpState>>,
-  rid: ResourceId,
-  address: String,
-  multi_interface: String,
-) -> Result<(), AnyError> {
+  #[smi] rid: ResourceId,
+  #[string] address: String,
+  #[string] multi_interface: String,
+) -> Result<(), NetError> {
   let resource = state
     .borrow_mut()
     .resource_table
     .get::<UdpSocketResource>(rid)
-    .map_err(|_| bad_resource("Socket has been closed"))?;
+    .map_err(|_| NetError::SocketClosed)?;
   let socket = RcRef::map(&resource, |r| &r.socket).borrow().await;
 
   let addr = Ipv4Addr::from_str(address.as_str())?;
@@ -223,18 +283,18 @@ async fn op_net_leave_multi_v4_udp(
   Ok(())
 }
 
-#[op]
-async fn op_net_leave_multi_v6_udp(
+#[op2(async)]
+pub async fn op_net_leave_multi_v6_udp(
   state: Rc<RefCell<OpState>>,
-  rid: ResourceId,
-  address: String,
-  multi_interface: u32,
-) -> Result<(), AnyError> {
+  #[smi] rid: ResourceId,
+  #[string] address: String,
+  #[smi] multi_interface: u32,
+) -> Result<(), NetError> {
   let resource = state
     .borrow_mut()
     .resource_table
     .get::<UdpSocketResource>(rid)
-    .map_err(|_| bad_resource("Socket has been closed"))?;
+    .map_err(|_| NetError::SocketClosed)?;
   let socket = RcRef::map(&resource, |r| &r.socket).borrow().await;
 
   let addr = Ipv6Addr::from_str(address.as_str())?;
@@ -244,22 +304,22 @@ async fn op_net_leave_multi_v6_udp(
   Ok(())
 }
 
-#[op]
-async fn op_net_set_multi_loopback_udp(
+#[op2(async)]
+pub async fn op_net_set_multi_loopback_udp(
   state: Rc<RefCell<OpState>>,
-  rid: ResourceId,
+  #[smi] rid: ResourceId,
   is_v4_membership: bool,
   loopback: bool,
-) -> Result<(), AnyError> {
+) -> Result<(), NetError> {
   let resource = state
     .borrow_mut()
     .resource_table
     .get::<UdpSocketResource>(rid)
-    .map_err(|_| bad_resource("Socket has been closed"))?;
+    .map_err(|_| NetError::SocketClosed)?;
   let socket = RcRef::map(&resource, |r| &r.socket).borrow().await;
 
   if is_v4_membership {
-    socket.set_multicast_loop_v4(loopback)?
+    socket.set_multicast_loop_v4(loopback)?;
   } else {
     socket.set_multicast_loop_v6(loopback)?;
   }
@@ -267,17 +327,17 @@ async fn op_net_set_multi_loopback_udp(
   Ok(())
 }
 
-#[op]
-async fn op_net_set_multi_ttl_udp(
+#[op2(async)]
+pub async fn op_net_set_multi_ttl_udp(
   state: Rc<RefCell<OpState>>,
-  rid: ResourceId,
-  ttl: u32,
-) -> Result<(), AnyError> {
+  #[smi] rid: ResourceId,
+  #[smi] ttl: u32,
+) -> Result<(), NetError> {
   let resource = state
     .borrow_mut()
     .resource_table
     .get::<UdpSocketResource>(rid)
-    .map_err(|_| bad_resource("Socket has been closed"))?;
+    .map_err(|_| NetError::SocketClosed)?;
   let socket = RcRef::map(&resource, |r| &r.socket).borrow().await;
 
   socket.set_multicast_ttl_v4(ttl)?;
@@ -285,11 +345,23 @@ async fn op_net_set_multi_ttl_udp(
   Ok(())
 }
 
-#[op]
+#[op2(async)]
+#[serde]
 pub async fn op_net_connect_tcp<NP>(
   state: Rc<RefCell<OpState>>,
+  #[serde] addr: IpAddr,
+) -> Result<(ResourceId, IpAddr, IpAddr), NetError>
+where
+  NP: NetPermissions + 'static,
+{
+  op_net_connect_tcp_inner::<NP>(state, addr).await
+}
+
+#[inline]
+pub async fn op_net_connect_tcp_inner<NP>(
+  state: Rc<RefCell<OpState>>,
   addr: IpAddr,
-) -> Result<(ResourceId, IpAddr, IpAddr), AnyError>
+) -> Result<(ResourceId, IpAddr, IpAddr), NetError>
 where
   NP: NetPermissions + 'static,
 {
@@ -297,13 +369,14 @@ where
     let mut state_ = state.borrow_mut();
     state_
       .borrow_mut::<NP>()
-      .check_net(&(&addr.hostname, Some(addr.port)), "Deno.connect()")?;
+      .check_net(&(&addr.hostname, Some(addr.port)), "Deno.connect()")
+      .map_err(NetError::Permission)?;
   }
 
   let addr = resolve_addr(&addr.hostname, addr.port)
     .await?
     .next()
-    .ok_or_else(|| generic_error("No resolved address found"))?;
+    .ok_or_else(|| NetError::NoResolvedAddress)?;
   let tcp_stream = TcpStream::connect(&addr).await?;
   let local_addr = tcp_stream.local_addr()?;
   let remote_addr = tcp_stream.peer_addr()?;
@@ -314,21 +387,6 @@ where
     .add(TcpStreamResource::new(tcp_stream.into_split()));
 
   Ok((rid, IpAddr::from(local_addr), IpAddr::from(remote_addr)))
-}
-
-pub struct TcpListenerResource {
-  pub listener: AsyncRefCell<TcpListener>,
-  pub cancel: CancelHandle,
-}
-
-impl Resource for TcpListenerResource {
-  fn name(&self) -> Cow<str> {
-    "tcpListener".into()
-  }
-
-  fn close(self: Rc<Self>) {
-    self.cancel.cancel();
-  }
 }
 
 struct UdpSocketResource {
@@ -346,12 +404,14 @@ impl Resource for UdpSocketResource {
   }
 }
 
-#[op]
-fn op_net_listen_tcp<NP>(
+#[op2]
+#[serde]
+pub fn op_net_listen_tcp<NP>(
   state: &mut OpState,
-  addr: IpAddr,
+  #[serde] addr: IpAddr,
   reuse_port: bool,
-) -> Result<(ResourceId, IpAddr), AnyError>
+  load_balanced: bool,
+) -> Result<(ResourceId, IpAddr), NetError>
 where
   NP: NetPermissions + 'static,
 {
@@ -360,33 +420,19 @@ where
   }
   state
     .borrow_mut::<NP>()
-    .check_net(&(&addr.hostname, Some(addr.port)), "Deno.listen()")?;
+    .check_net(&(&addr.hostname, Some(addr.port)), "Deno.listen()")
+    .map_err(NetError::Permission)?;
   let addr = resolve_addr_sync(&addr.hostname, addr.port)?
     .next()
-    .ok_or_else(|| generic_error("No resolved address found"))?;
-  let domain = if addr.is_ipv4() {
-    Domain::IPV4
+    .ok_or_else(|| NetError::NoResolvedAddress)?;
+
+  let listener = if load_balanced {
+    TcpListener::bind_load_balanced(addr)
   } else {
-    Domain::IPV6
-  };
-  let socket = Socket::new(domain, Type::STREAM, None)?;
-  #[cfg(not(windows))]
-  socket.set_reuse_address(true)?;
-  if reuse_port {
-    #[cfg(target_os = "linux")]
-    socket.set_reuse_port(true)?;
-  }
-  let socket_addr = socket2::SockAddr::from(addr);
-  socket.bind(&socket_addr)?;
-  socket.listen(128)?;
-  socket.set_nonblocking(true)?;
-  let std_listener: std::net::TcpListener = socket.into();
-  let listener = TcpListener::from_std(std_listener)?;
+    TcpListener::bind_direct(addr, reuse_port)
+  }?;
   let local_addr = listener.local_addr()?;
-  let listener_resource = TcpListenerResource {
-    listener: AsyncRefCell::new(listener),
-    cancel: Default::default(),
-  };
+  let listener_resource = NetworkListenerResource::new(listener);
   let rid = state.resource_table.add(listener_resource);
 
   Ok((rid, IpAddr::from(local_addr)))
@@ -397,16 +443,17 @@ fn net_listen_udp<NP>(
   addr: IpAddr,
   reuse_address: bool,
   loopback: bool,
-) -> Result<(ResourceId, IpAddr), AnyError>
+) -> Result<(ResourceId, IpAddr), NetError>
 where
   NP: NetPermissions + 'static,
 {
   state
     .borrow_mut::<NP>()
-    .check_net(&(&addr.hostname, Some(addr.port)), "Deno.listenDatagram()")?;
+    .check_net(&(&addr.hostname, Some(addr.port)), "Deno.listenDatagram()")
+    .map_err(NetError::Permission)?;
   let addr = resolve_addr_sync(&addr.hostname, addr.port)?
     .next()
-    .ok_or_else(|| generic_error("No resolved address found"))?;
+    .ok_or_else(|| NetError::NoResolvedAddress)?;
 
   let domain = if addr.is_ipv4() {
     Domain::IPV4
@@ -424,7 +471,11 @@ where
     // are different from the BSDs: it _shares_ the port rather than steal it
     // from the current listener. While useful, it's not something we can
     // emulate on other platforms so we don't enable it.
-    #[cfg(any(target_os = "windows", target_os = "linux"))]
+    #[cfg(any(
+      target_os = "windows",
+      target_os = "android",
+      target_os = "linux"
+    ))]
     socket_tmp.set_reuse_address(true)?;
     #[cfg(all(unix, not(target_os = "linux")))]
     socket_tmp.set_reuse_port(true)?;
@@ -455,13 +506,14 @@ where
   Ok((rid, IpAddr::from(local_addr)))
 }
 
-#[op]
-fn op_net_listen_udp<NP>(
+#[op2]
+#[serde]
+pub fn op_net_listen_udp<NP>(
   state: &mut OpState,
-  addr: IpAddr,
+  #[serde] addr: IpAddr,
   reuse_address: bool,
   loopback: bool,
-) -> Result<(ResourceId, IpAddr), AnyError>
+) -> Result<(ResourceId, IpAddr), NetError>
 where
   NP: NetPermissions + 'static,
 {
@@ -469,13 +521,14 @@ where
   net_listen_udp::<NP>(state, addr, reuse_address, loopback)
 }
 
-#[op]
-fn op_node_unstable_net_listen_udp<NP>(
+#[op2]
+#[serde]
+pub fn op_node_unstable_net_listen_udp<NP>(
   state: &mut OpState,
-  addr: IpAddr,
+  #[serde] addr: IpAddr,
   reuse_address: bool,
   loopback: bool,
-) -> Result<(ResourceId, IpAddr), AnyError>
+) -> Result<(ResourceId, IpAddr), NetError>
 where
   NP: NetPermissions + 'static,
 {
@@ -553,11 +606,12 @@ pub struct NameServer {
   port: u16,
 }
 
-#[op]
+#[op2(async)]
+#[serde]
 pub async fn op_dns_resolve<NP>(
   state: Rc<RefCell<OpState>>,
-  args: ResolveAddrArgs,
-) -> Result<Vec<DnsReturnRecord>, AnyError>
+  #[serde] args: ResolveAddrArgs,
+) -> Result<Vec<DnsReturnRecord>, NetError>
 where
   NP: NetPermissions + 'static,
 {
@@ -593,11 +647,13 @@ where
       let socker_addr = &ns.socket_addr;
       let ip = socker_addr.ip().to_string();
       let port = socker_addr.port();
-      perm.check_net(&(ip, Some(port)), "Deno.resolveDns()")?;
+      perm
+        .check_net(&(ip, Some(port)), "Deno.resolveDns()")
+        .map_err(NetError::Permission)?;
     }
   }
 
-  let resolver = AsyncResolver::tokio(config, opts)?;
+  let resolver = AsyncResolver::tokio(config, opts);
 
   let lookup_fut = resolver.lookup(query, record_type);
 
@@ -613,7 +669,9 @@ where
     let lookup_rv = lookup_fut.or_cancel(cancel_handle).await;
 
     if let Some(cancel_rid) = cancel_rid {
-      state.borrow_mut().resource_table.close(cancel_rid).ok();
+      if let Ok(res) = state.borrow_mut().resource_table.take_any(cancel_rid) {
+        res.close();
+      }
     };
 
     lookup_rv?
@@ -622,51 +680,68 @@ where
   };
 
   lookup
-    .map_err(|e| {
-      let message = format!("{e}");
-      match e.kind() {
-        ResolveErrorKind::NoRecordsFound { .. } => {
-          custom_error("NotFound", message)
-        }
-        ResolveErrorKind::Message("No connections available") => {
-          custom_error("NotConnected", message)
-        }
-        ResolveErrorKind::Timeout => custom_error("TimedOut", message),
-        _ => generic_error(message),
+    .map_err(|e| match e.kind() {
+      ResolveErrorKind::NoRecordsFound { .. } => NetError::DnsNotFound(e),
+      ResolveErrorKind::Message("No connections available") => {
+        NetError::DnsNotConnected(e)
       }
+      ResolveErrorKind::Timeout => NetError::DnsTimedOut(e),
+      _ => NetError::Dns(e),
     })?
     .iter()
     .filter_map(|rdata| rdata_to_return_record(record_type)(rdata).transpose())
-    .collect::<Result<Vec<DnsReturnRecord>, AnyError>>()
+    .collect::<Result<Vec<DnsReturnRecord>, NetError>>()
 }
 
-#[op]
+#[op2(fast)]
 pub fn op_set_nodelay(
+  state: &mut OpState,
+  #[smi] rid: ResourceId,
+  nodelay: bool,
+) -> Result<(), NetError> {
+  op_set_nodelay_inner(state, rid, nodelay)
+}
+
+#[inline]
+pub fn op_set_nodelay_inner(
   state: &mut OpState,
   rid: ResourceId,
   nodelay: bool,
-) -> Result<(), AnyError> {
-  let resource: Rc<TcpStreamResource> =
-    state.resource_table.get::<TcpStreamResource>(rid)?;
-  resource.set_nodelay(nodelay)
+) -> Result<(), NetError> {
+  let resource: Rc<TcpStreamResource> = state
+    .resource_table
+    .get::<TcpStreamResource>(rid)
+    .map_err(NetError::Resource)?;
+  resource.set_nodelay(nodelay).map_err(NetError::Map)
 }
 
-#[op]
+#[op2(fast)]
 pub fn op_set_keepalive(
+  state: &mut OpState,
+  #[smi] rid: ResourceId,
+  keepalive: bool,
+) -> Result<(), NetError> {
+  op_set_keepalive_inner(state, rid, keepalive)
+}
+
+#[inline]
+pub fn op_set_keepalive_inner(
   state: &mut OpState,
   rid: ResourceId,
   keepalive: bool,
-) -> Result<(), AnyError> {
-  let resource: Rc<TcpStreamResource> =
-    state.resource_table.get::<TcpStreamResource>(rid)?;
-  resource.set_keepalive(keepalive)
+) -> Result<(), NetError> {
+  let resource: Rc<TcpStreamResource> = state
+    .resource_table
+    .get::<TcpStreamResource>(rid)
+    .map_err(NetError::Resource)?;
+  resource.set_keepalive(keepalive).map_err(NetError::Map)
 }
 
 fn rdata_to_return_record(
   ty: RecordType,
-) -> impl Fn(&RData) -> Result<Option<DnsReturnRecord>, AnyError> {
+) -> impl Fn(&RData) -> Result<Option<DnsReturnRecord>, NetError> {
   use RecordType::*;
-  move |r: &RData| -> Result<Option<DnsReturnRecord>, AnyError> {
+  move |r: &RData| -> Result<Option<DnsReturnRecord>, NetError> {
     let record = match ty {
       A => r.as_a().map(ToString::to_string).map(DnsReturnRecord::A),
       AAAA => r
@@ -747,12 +822,7 @@ fn rdata_to_return_record(
           .collect();
         DnsReturnRecord::Txt(texts)
       }),
-      _ => {
-        return Err(custom_error(
-          "NotSupported",
-          "Provided record type is not supported",
-        ))
-      }
+      _ => return Err(NetError::UnsupportedRecordType),
     };
     Ok(record)
   }
@@ -761,19 +831,26 @@ fn rdata_to_return_record(
 #[cfg(test)]
 mod tests {
   use super::*;
-  use crate::UnstableChecker;
   use deno_core::futures::FutureExt;
   use deno_core::JsRuntime;
   use deno_core::RuntimeOptions;
   use socket2::SockRef;
   use std::net::Ipv4Addr;
   use std::net::Ipv6Addr;
+  use std::net::ToSocketAddrs;
   use std::path::Path;
+  use std::path::PathBuf;
   use std::sync::Arc;
   use std::sync::Mutex;
+  use trust_dns_proto::rr::rdata::a::A;
+  use trust_dns_proto::rr::rdata::aaaa::AAAA;
   use trust_dns_proto::rr::rdata::caa::KeyValue;
   use trust_dns_proto::rr::rdata::caa::CAA;
   use trust_dns_proto::rr::rdata::mx::MX;
+  use trust_dns_proto::rr::rdata::name::ANAME;
+  use trust_dns_proto::rr::rdata::name::CNAME;
+  use trust_dns_proto::rr::rdata::name::NS;
+  use trust_dns_proto::rr::rdata::name::PTR;
   use trust_dns_proto::rr::rdata::naptr::NAPTR;
   use trust_dns_proto::rr::rdata::srv::SRV;
   use trust_dns_proto::rr::rdata::txt::TXT;
@@ -784,7 +861,7 @@ mod tests {
   #[test]
   fn rdata_to_return_record_a() {
     let func = rdata_to_return_record(RecordType::A);
-    let rdata = RData::A(Ipv4Addr::new(127, 0, 0, 1));
+    let rdata = RData::A(A(Ipv4Addr::new(127, 0, 0, 1)));
     assert_eq!(
       func(&rdata).unwrap(),
       Some(DnsReturnRecord::A("127.0.0.1".to_string()))
@@ -794,7 +871,7 @@ mod tests {
   #[test]
   fn rdata_to_return_record_aaaa() {
     let func = rdata_to_return_record(RecordType::AAAA);
-    let rdata = RData::AAAA(Ipv6Addr::new(0, 0, 0, 0, 0, 0, 0, 1));
+    let rdata = RData::AAAA(AAAA(Ipv6Addr::new(0, 0, 0, 0, 0, 0, 0, 1)));
     assert_eq!(
       func(&rdata).unwrap(),
       Some(DnsReturnRecord::Aaaa("::1".to_string()))
@@ -804,7 +881,7 @@ mod tests {
   #[test]
   fn rdata_to_return_record_aname() {
     let func = rdata_to_return_record(RecordType::ANAME);
-    let rdata = RData::ANAME(Name::new());
+    let rdata = RData::ANAME(ANAME(Name::new()));
     assert_eq!(
       func(&rdata).unwrap(),
       Some(DnsReturnRecord::Aname("".to_string()))
@@ -832,7 +909,7 @@ mod tests {
   #[test]
   fn rdata_to_return_record_cname() {
     let func = rdata_to_return_record(RecordType::CNAME);
-    let rdata = RData::CNAME(Name::new());
+    let rdata = RData::CNAME(CNAME(Name::new()));
     assert_eq!(
       func(&rdata).unwrap(),
       Some(DnsReturnRecord::Cname("".to_string()))
@@ -879,7 +956,7 @@ mod tests {
   #[test]
   fn rdata_to_return_record_ns() {
     let func = rdata_to_return_record(RecordType::NS);
-    let rdata = RData::NS(Name::new());
+    let rdata = RData::NS(NS(Name::new()));
     assert_eq!(
       func(&rdata).unwrap(),
       Some(DnsReturnRecord::Ns("".to_string()))
@@ -889,7 +966,7 @@ mod tests {
   #[test]
   fn rdata_to_return_record_ptr() {
     let func = rdata_to_return_record(RecordType::PTR);
-    let rdata = RData::PTR(Name::new());
+    let rdata = RData::PTR(PTR(Name::new()));
     assert_eq!(
       func(&rdata).unwrap(),
       Some(DnsReturnRecord::Ptr("".to_string()))
@@ -964,31 +1041,39 @@ mod tests {
       &mut self,
       _host: &(T, Option<u16>),
       _api_name: &str,
-    ) -> Result<(), AnyError> {
+    ) -> Result<(), deno_core::error::AnyError> {
       Ok(())
     }
 
     fn check_read(
       &mut self,
-      _p: &Path,
+      p: &str,
       _api_name: &str,
-    ) -> Result<(), AnyError> {
-      Ok(())
+    ) -> Result<PathBuf, deno_core::error::AnyError> {
+      Ok(PathBuf::from(p))
     }
 
     fn check_write(
       &mut self,
-      _p: &Path,
+      p: &str,
       _api_name: &str,
-    ) -> Result<(), AnyError> {
-      Ok(())
+    ) -> Result<PathBuf, deno_core::error::AnyError> {
+      Ok(PathBuf::from(p))
+    }
+
+    fn check_write_path<'a>(
+      &mut self,
+      p: &'a Path,
+      _api_name: &str,
+    ) -> Result<Cow<'a, Path>, deno_core::error::AnyError> {
+      Ok(Cow::Borrowed(p))
     }
   }
 
   #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
   async fn tcp_set_no_delay() {
     let set_nodelay = Box::new(|state: &mut OpState, rid| {
-      op_set_nodelay::call(state, rid, true).unwrap();
+      op_set_nodelay_inner(state, rid, true).unwrap();
     });
     let test_fn = Box::new(|socket: SockRef| {
       assert!(socket.nodelay().unwrap());
@@ -1000,7 +1085,7 @@ mod tests {
   #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
   async fn tcp_set_keepalive() {
     let set_keepalive = Box::new(|state: &mut OpState, rid| {
-      op_set_keepalive::call(state, rid, true).unwrap();
+      op_set_keepalive_inner(state, rid, true).unwrap();
     });
     let test_fn = Box::new(|socket: SockRef| {
       assert!(!socket.nodelay().unwrap());
@@ -1017,7 +1102,8 @@ mod tests {
   ) {
     let sockets = Arc::new(Mutex::new(vec![]));
     let clone_addr = addr.clone();
-    let listener = TcpListener::bind(addr).await.unwrap();
+    let addr = addr.to_socket_addrs().unwrap().next().unwrap();
+    let listener = TcpListener::bind_direct(addr, false).unwrap();
     let accept_fut = listener.accept().boxed_local();
     let store_fut = async move {
       let socket = accept_fut.await.unwrap();
@@ -1029,12 +1115,12 @@ mod tests {
       test_ext,
       state = |state| {
         state.put(TestPermission {});
-        state.put(UnstableChecker { unstable: true });
       }
     );
 
     let mut runtime = JsRuntime::new(RuntimeOptions {
       extensions: vec![test_ext::init_ops()],
+      feature_checker: Some(Arc::new(Default::default())),
       ..Default::default()
     });
 
@@ -1047,7 +1133,7 @@ mod tests {
     };
 
     let mut connect_fut =
-      op_net_connect_tcp::<TestPermission>::call(conn_state, ip_addr)
+      op_net_connect_tcp_inner::<TestPermission>(conn_state, ip_addr)
         .boxed_local();
     let mut rid = None;
 
@@ -1061,7 +1147,7 @@ mod tests {
         let vals = result.unwrap();
         rid = rid.or(Some(vals.0));
       }
-    };
+    }
     let rid = rid.unwrap();
 
     let state = runtime.op_state();

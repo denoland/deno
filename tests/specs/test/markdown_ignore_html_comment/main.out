@@ -1,0 +1,5 @@
+Check [WILDCARD]/main.md$34-37.ts
+error: TS2322 [ERROR]: Type 'number' is not assignable to type 'string'.
+    const a: string = 42;
+          ^
+    at [WILDCARD]/main.md$34-37.ts:2:11

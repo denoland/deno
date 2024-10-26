@@ -1,0 +1,21 @@
+{
+  "version": "4",
+  "specifiers": {
+    "jsr:@denotest/add@1": "1.0.0",
+    "jsr:@denotest/subtract@1": "1.0.0"
+  },
+  "jsr": {
+    "@denotest/add@1.0.0": {
+      "integrity": "[WILDLINE]"
+    },
+    "@denotest/subtract@1.0.0": {
+      "integrity": "[WILDLINE]"
+    }
+  },
+  "workspace": {
+    "dependencies": [
+      "jsr:@denotest/add@1",
+      "jsr:@denotest/subtract@1"
+    ]
+  }
+}

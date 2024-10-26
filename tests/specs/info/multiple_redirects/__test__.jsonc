@@ -1,0 +1,4 @@
+{
+  "args": "info --allow-import --json main.ts",
+  "output": "main.out"
+}

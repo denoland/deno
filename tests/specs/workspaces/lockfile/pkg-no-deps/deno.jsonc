@@ -1,0 +1,7 @@
+{
+  // this package shouldn't be included in the lockfile members
+  // because it has no dependencies
+  "name": "@scope/pkg2",
+  "version": "1.0.0",
+  "exports": "./mod.ts"
+}

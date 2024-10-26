@@ -1,8 +1,8 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
-pub use deno_core::normalize_path;
+use deno_path_util::normalize_path;
 use std::path::Path;
 use std::path::PathBuf;
 

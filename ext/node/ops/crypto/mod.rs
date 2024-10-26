@@ -1,73 +1,87 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 use deno_core::error::generic_error;
 use deno_core::error::type_error;
 use deno_core::error::AnyError;
-use deno_core::op;
-use deno_core::serde_v8;
+use deno_core::op2;
 use deno_core::unsync::spawn_blocking;
 use deno_core::JsBuffer;
 use deno_core::OpState;
-use deno_core::ResourceId;
 use deno_core::StringOrBuffer;
 use deno_core::ToJsBuffer;
+use elliptic_curve::sec1::ToEncodedPoint;
 use hkdf::Hkdf;
+use keys::AsymmetricPrivateKey;
+use keys::AsymmetricPublicKey;
+use keys::EcPrivateKey;
+use keys::EcPublicKey;
+use keys::KeyObjectHandle;
 use num_bigint::BigInt;
 use num_bigint_dig::BigUint;
-use num_traits::FromPrimitive;
 use rand::distributions::Distribution;
 use rand::distributions::Uniform;
-use rand::thread_rng;
 use rand::Rng;
+use ring::signature::Ed25519KeyPair;
 use std::future::Future;
 use std::rc::Rc;
 
 use p224::NistP224;
 use p256::NistP256;
 use p384::NistP384;
-use rsa::padding::PaddingScheme;
 use rsa::pkcs8::DecodePrivateKey;
 use rsa::pkcs8::DecodePublicKey;
-use rsa::PublicKey;
+use rsa::Oaep;
+use rsa::Pkcs1v15Encrypt;
 use rsa::RsaPrivateKey;
 use rsa::RsaPublicKey;
-use secp256k1::ecdh::SharedSecret;
-use secp256k1::Secp256k1;
-use secp256k1::SecretKey;
 
 mod cipher;
 mod dh;
 mod digest;
+pub mod keys;
+mod md5_sha1;
+mod pkcs3;
 mod primes;
+mod sign;
 pub mod x509;
 
-#[op]
-pub fn op_node_check_prime(num: serde_v8::BigInt, checks: usize) -> bool {
-  primes::is_probably_prime(&num, checks)
+use self::digest::match_fixed_digest_with_eager_block_buffer;
+
+#[op2(fast)]
+pub fn op_node_check_prime(
+  #[bigint] num: i64,
+  #[number] checks: usize,
+) -> bool {
+  primes::is_probably_prime(&BigInt::from(num), checks)
 }
 
-#[op]
+#[op2]
 pub fn op_node_check_prime_bytes(
-  bytes: &[u8],
-  checks: usize,
+  #[anybuffer] bytes: &[u8],
+  #[number] checks: usize,
 ) -> Result<bool, AnyError> {
   let candidate = BigInt::from_bytes_be(num_bigint::Sign::Plus, bytes);
   Ok(primes::is_probably_prime(&candidate, checks))
 }
 
-#[op]
+#[op2(async)]
 pub async fn op_node_check_prime_async(
-  num: serde_v8::BigInt,
-  checks: usize,
+  #[bigint] num: i64,
+  #[number] checks: usize,
 ) -> Result<bool, AnyError> {
   // TODO(@littledivy): use rayon for CPU-bound tasks
-  Ok(spawn_blocking(move || primes::is_probably_prime(&num, checks)).await?)
+  Ok(
+    spawn_blocking(move || {
+      primes::is_probably_prime(&BigInt::from(num), checks)
+    })
+    .await?,
+  )
 }
 
-#[op]
+#[op2(async)]
 pub fn op_node_check_prime_bytes_async(
-  bytes: &[u8],
-  checks: usize,
-) -> Result<impl Future<Output = Result<bool, AnyError>> + 'static, AnyError> {
+  #[anybuffer] bytes: &[u8],
+  #[number] checks: usize,
+) -> Result<impl Future<Output = Result<bool, AnyError>>, AnyError> {
   let candidate = BigInt::from_bytes_be(num_bigint::Sign::Plus, bytes);
   // TODO(@littledivy): use rayon for CPU-bound tasks
   Ok(async move {
@@ -78,82 +92,69 @@ pub fn op_node_check_prime_bytes_async(
   })
 }
 
-#[op(fast)]
-pub fn op_node_create_hash(state: &mut OpState, algorithm: &str) -> u32 {
-  state
-    .resource_table
-    .add(match digest::Context::new(algorithm) {
-      Ok(context) => context,
-      Err(_) => return 0,
-    })
+#[op2]
+#[cppgc]
+pub fn op_node_create_hash(
+  #[string] algorithm: &str,
+  output_length: Option<u32>,
+) -> Result<digest::Hasher, AnyError> {
+  digest::Hasher::new(algorithm, output_length.map(|l| l as usize))
 }
 
-#[op(fast)]
+#[op2]
+#[serde]
 pub fn op_node_get_hashes() -> Vec<&'static str> {
   digest::Hash::get_hashes()
 }
 
-#[op(fast)]
-pub fn op_node_hash_update(state: &mut OpState, rid: u32, data: &[u8]) -> bool {
-  let context = match state.resource_table.get::<digest::Context>(rid) {
-    Ok(context) => context,
-    _ => return false,
-  };
-  context.update(data);
-  true
-}
-
-#[op(fast)]
-pub fn op_node_hash_update_str(
-  state: &mut OpState,
-  rid: u32,
-  data: &str,
+#[op2(fast)]
+pub fn op_node_hash_update(
+  #[cppgc] hasher: &digest::Hasher,
+  #[buffer] data: &[u8],
 ) -> bool {
-  let context = match state.resource_table.get::<digest::Context>(rid) {
-    Ok(context) => context,
-    _ => return false,
-  };
-  context.update(data.as_bytes());
-  true
+  hasher.update(data)
 }
 
-#[op]
+#[op2(fast)]
+pub fn op_node_hash_update_str(
+  #[cppgc] hasher: &digest::Hasher,
+  #[string] data: &str,
+) -> bool {
+  hasher.update(data.as_bytes())
+}
+
+#[op2]
+#[buffer]
 pub fn op_node_hash_digest(
-  state: &mut OpState,
-  rid: ResourceId,
-) -> Result<ToJsBuffer, AnyError> {
-  let context = state.resource_table.take::<digest::Context>(rid)?;
-  let context = Rc::try_unwrap(context)
-    .map_err(|_| type_error("Hash context is already in use"))?;
-  Ok(context.digest()?.into())
+  #[cppgc] hasher: &digest::Hasher,
+) -> Option<Box<[u8]>> {
+  hasher.digest()
 }
 
-#[op]
+#[op2]
+#[string]
 pub fn op_node_hash_digest_hex(
-  state: &mut OpState,
-  rid: ResourceId,
-) -> Result<String, AnyError> {
-  let context = state.resource_table.take::<digest::Context>(rid)?;
-  let context = Rc::try_unwrap(context)
-    .map_err(|_| type_error("Hash context is already in use"))?;
-  let digest = context.digest()?;
-  Ok(hex::encode(digest))
+  #[cppgc] hasher: &digest::Hasher,
+) -> Option<String> {
+  let digest = hasher.digest()?;
+  Some(faster_hex::hex_string(&digest))
 }
 
-#[op]
+#[op2]
+#[cppgc]
 pub fn op_node_hash_clone(
-  state: &mut OpState,
-  rid: ResourceId,
-) -> Result<ResourceId, AnyError> {
-  let context = state.resource_table.get::<digest::Context>(rid)?;
-  Ok(state.resource_table.add(context.as_ref().clone()))
+  #[cppgc] hasher: &digest::Hasher,
+  output_length: Option<u32>,
+) -> Result<Option<digest::Hasher>, AnyError> {
+  hasher.clone_inner(output_length.map(|l| l as usize))
 }
 
-#[op]
+#[op2]
+#[serde]
 pub fn op_node_private_encrypt(
-  key: StringOrBuffer,
-  msg: StringOrBuffer,
-  padding: u32,
+  #[serde] key: StringOrBuffer,
+  #[serde] msg: StringOrBuffer,
+  #[smi] padding: u32,
 ) -> Result<ToJsBuffer, AnyError> {
   let key = RsaPrivateKey::from_pkcs8_pem((&key).try_into()?)?;
 
@@ -161,86 +162,89 @@ pub fn op_node_private_encrypt(
   match padding {
     1 => Ok(
       key
-        .encrypt(&mut rng, PaddingScheme::new_pkcs1v15_encrypt(), &msg)?
+        .as_ref()
+        .encrypt(&mut rng, Pkcs1v15Encrypt, &msg)?
         .into(),
     ),
     4 => Ok(
       key
-        .encrypt(&mut rng, PaddingScheme::new_oaep::<sha1::Sha1>(), &msg)?
+        .as_ref()
+        .encrypt(&mut rng, Oaep::new::<sha1::Sha1>(), &msg)?
         .into(),
     ),
     _ => Err(type_error("Unknown padding")),
   }
 }
 
-#[op]
+#[op2]
+#[serde]
 pub fn op_node_private_decrypt(
-  key: StringOrBuffer,
-  msg: StringOrBuffer,
-  padding: u32,
+  #[serde] key: StringOrBuffer,
+  #[serde] msg: StringOrBuffer,
+  #[smi] padding: u32,
 ) -> Result<ToJsBuffer, AnyError> {
   let key = RsaPrivateKey::from_pkcs8_pem((&key).try_into()?)?;
 
   match padding {
-    1 => Ok(
-      key
-        .decrypt(PaddingScheme::new_pkcs1v15_encrypt(), &msg)?
-        .into(),
-    ),
-    4 => Ok(
-      key
-        .decrypt(PaddingScheme::new_oaep::<sha1::Sha1>(), &msg)?
-        .into(),
-    ),
+    1 => Ok(key.decrypt(Pkcs1v15Encrypt, &msg)?.into()),
+    4 => Ok(key.decrypt(Oaep::new::<sha1::Sha1>(), &msg)?.into()),
     _ => Err(type_error("Unknown padding")),
   }
 }
 
-#[op]
+#[op2]
+#[serde]
 pub fn op_node_public_encrypt(
-  key: StringOrBuffer,
-  msg: StringOrBuffer,
-  padding: u32,
+  #[serde] key: StringOrBuffer,
+  #[serde] msg: StringOrBuffer,
+  #[smi] padding: u32,
 ) -> Result<ToJsBuffer, AnyError> {
   let key = RsaPublicKey::from_public_key_pem((&key).try_into()?)?;
 
   let mut rng = rand::thread_rng();
   match padding {
-    1 => Ok(
-      key
-        .encrypt(&mut rng, PaddingScheme::new_pkcs1v15_encrypt(), &msg)?
-        .into(),
-    ),
+    1 => Ok(key.encrypt(&mut rng, Pkcs1v15Encrypt, &msg)?.into()),
     4 => Ok(
       key
-        .encrypt(&mut rng, PaddingScheme::new_oaep::<sha1::Sha1>(), &msg)?
+        .encrypt(&mut rng, Oaep::new::<sha1::Sha1>(), &msg)?
         .into(),
     ),
     _ => Err(type_error("Unknown padding")),
   }
 }
 
-#[op(fast)]
+#[op2(fast)]
+#[smi]
 pub fn op_node_create_cipheriv(
   state: &mut OpState,
-  algorithm: &str,
-  key: &[u8],
-  iv: &[u8],
-) -> u32 {
-  state.resource_table.add(
-    match cipher::CipherContext::new(algorithm, key, iv) {
-      Ok(context) => context,
-      Err(_) => return 0,
-    },
-  )
+  #[string] algorithm: &str,
+  #[buffer] key: &[u8],
+  #[buffer] iv: &[u8],
+) -> Result<u32, AnyError> {
+  let context = cipher::CipherContext::new(algorithm, key, iv)?;
+  Ok(state.resource_table.add(context))
 }
 
-#[op(fast)]
+#[op2(fast)]
+pub fn op_node_cipheriv_set_aad(
+  state: &mut OpState,
+  #[smi] rid: u32,
+  #[buffer] aad: &[u8],
+) -> bool {
+  let context = match state.resource_table.get::<cipher::CipherContext>(rid) {
+    Ok(context) => context,
+    Err(_) => return false,
+  };
+  context.set_aad(aad);
+  true
+}
+
+#[op2(fast)]
 pub fn op_node_cipheriv_encrypt(
   state: &mut OpState,
-  rid: u32,
-  input: &[u8],
-  output: &mut [u8],
+  #[smi] rid: u32,
+  #[buffer] input: &[u8],
+  #[buffer] output: &mut [u8],
 ) -> bool {
   let context = match state.resource_table.get::<cipher::CipherContext>(rid) {
     Ok(context) => context,
@@ -250,40 +254,65 @@ pub fn op_node_cipheriv_encrypt(
   true
 }
 
-#[op]
+#[op2]
+#[serde]
 pub fn op_node_cipheriv_final(
   state: &mut OpState,
-  rid: u32,
-  input: &[u8],
-  output: &mut [u8],
-) -> Result<(), AnyError> {
+  #[smi] rid: u32,
+  auto_pad: bool,
+  #[buffer] input: &[u8],
+  #[anybuffer] output: &mut [u8],
+) -> Result<Option<Vec<u8>>, AnyError> {
   let context = state.resource_table.take::<cipher::CipherContext>(rid)?;
   let context = Rc::try_unwrap(context)
     .map_err(|_| type_error("Cipher context is already in use"))?;
-  context.r#final(input, output)
+  context.r#final(auto_pad, input, output)
 }
 
-#[op(fast)]
+#[op2]
+#[buffer]
+pub fn op_node_cipheriv_take(
+  state: &mut OpState,
+  #[smi] rid: u32,
+) -> Result<Option<Vec<u8>>, AnyError> {
+  let context = state.resource_table.take::<cipher::CipherContext>(rid)?;
+  let context = Rc::try_unwrap(context)
+    .map_err(|_| type_error("Cipher context is already in use"))?;
+  Ok(context.take_tag())
+}
+
+#[op2(fast)]
+#[smi]
 pub fn op_node_create_decipheriv(
   state: &mut OpState,
-  algorithm: &str,
-  key: &[u8],
-  iv: &[u8],
-) -> u32 {
-  state.resource_table.add(
-    match cipher::DecipherContext::new(algorithm, key, iv) {
-      Ok(context) => context,
-      Err(_) => return 0,
-    },
-  )
+  #[string] algorithm: &str,
+  #[buffer] key: &[u8],
+  #[buffer] iv: &[u8],
+) -> Result<u32, AnyError> {
+  let context = cipher::DecipherContext::new(algorithm, key, iv)?;
+  Ok(state.resource_table.add(context))
 }
 
-#[op(fast)]
+#[op2(fast)]
+pub fn op_node_decipheriv_set_aad(
+  state: &mut OpState,
+  #[smi] rid: u32,
+  #[buffer] aad: &[u8],
+) -> bool {
+  let context = match state.resource_table.get::<cipher::DecipherContext>(rid) {
+    Ok(context) => context,
+    Err(_) => return false,
+  };
+  context.set_aad(aad);
+  true
+}
+
+#[op2(fast)]
 pub fn op_node_decipheriv_decrypt(
   state: &mut OpState,
-  rid: u32,
-  input: &[u8],
-  output: &mut [u8],
+  #[smi] rid: u32,
+  #[buffer] input: &[u8],
+  #[buffer] output: &mut [u8],
 ) -> bool {
   let context = match state.resource_table.get::<cipher::DecipherContext>(rid) {
     Ok(context) => context,
@@ -293,175 +322,108 @@ pub fn op_node_decipheriv_decrypt(
   true
 }
 
-#[op]
+#[op2(fast)]
+pub fn op_node_decipheriv_take(
+  state: &mut OpState,
+  #[smi] rid: u32,
+) -> Result<(), AnyError> {
+  let context = state.resource_table.take::<cipher::DecipherContext>(rid)?;
+  Rc::try_unwrap(context)
+    .map_err(|_| type_error("Cipher context is already in use"))?;
+  Ok(())
+}
+
+#[op2]
 pub fn op_node_decipheriv_final(
   state: &mut OpState,
-  rid: u32,
-  input: &[u8],
-  output: &mut [u8],
+  #[smi] rid: u32,
+  auto_pad: bool,
+  #[buffer] input: &[u8],
+  #[anybuffer] output: &mut [u8],
+  #[buffer] auth_tag: &[u8],
 ) -> Result<(), AnyError> {
   let context = state.resource_table.take::<cipher::DecipherContext>(rid)?;
   let context = Rc::try_unwrap(context)
     .map_err(|_| type_error("Cipher context is already in use"))?;
-  context.r#final(input, output)
+  context.r#final(auto_pad, input, output, auth_tag)
 }
 
-#[op]
+#[op2]
+#[buffer]
 pub fn op_node_sign(
-  digest: &[u8],
-  digest_type: &str,
-  key: StringOrBuffer,
-  key_type: &str,
-  key_format: &str,
-) -> Result<ToJsBuffer, AnyError> {
-  match key_type {
-    "rsa" => {
-      use rsa::pkcs1v15::SigningKey;
-      use signature::hazmat::PrehashSigner;
-      let key = match key_format {
-        "pem" => RsaPrivateKey::from_pkcs8_pem((&key).try_into()?)
-          .map_err(|_| type_error("Invalid RSA private key"))?,
-        // TODO(kt3k): Support der and jwk formats
-        _ => {
-          return Err(type_error(format!(
-            "Unsupported key format: {}",
-            key_format
-          )))
-        }
-      };
-      Ok(
-        match digest_type {
-          "sha224" => {
-            let signing_key = SigningKey::<sha2::Sha224>::new_with_prefix(key);
-            signing_key.sign_prehash(digest)?.to_vec()
-          }
-          "sha256" => {
-            let signing_key = SigningKey::<sha2::Sha256>::new_with_prefix(key);
-            signing_key.sign_prehash(digest)?.to_vec()
-          }
-          "sha384" => {
-            let signing_key = SigningKey::<sha2::Sha384>::new_with_prefix(key);
-            signing_key.sign_prehash(digest)?.to_vec()
-          }
-          "sha512" => {
-            let signing_key = SigningKey::<sha2::Sha512>::new_with_prefix(key);
-            signing_key.sign_prehash(digest)?.to_vec()
-          }
-          _ => {
-            return Err(type_error(format!(
-              "Unknown digest algorithm: {}",
-              digest_type
-            )))
-          }
-        }
-        .into(),
-      )
-    }
-    _ => Err(type_error(format!(
-      "Signing with {} keys is not supported yet",
-      key_type
-    ))),
-  }
+  #[cppgc] handle: &KeyObjectHandle,
+  #[buffer] digest: &[u8],
+  #[string] digest_type: &str,
+  #[smi] pss_salt_length: Option<u32>,
+  #[smi] dsa_signature_encoding: u32,
+) -> Result<Box<[u8]>, AnyError> {
+  handle.sign_prehashed(
+    digest_type,
+    digest,
+    pss_salt_length,
+    dsa_signature_encoding,
+  )
 }
 
-#[op]
-fn op_node_verify(
-  digest: &[u8],
-  digest_type: &str,
-  key: StringOrBuffer,
-  key_type: &str,
-  key_format: &str,
-  signature: &[u8],
+#[op2]
+pub fn op_node_verify(
+  #[cppgc] handle: &KeyObjectHandle,
+  #[buffer] digest: &[u8],
+  #[string] digest_type: &str,
+  #[buffer] signature: &[u8],
+  #[smi] pss_salt_length: Option<u32>,
+  #[smi] dsa_signature_encoding: u32,
 ) -> Result<bool, AnyError> {
-  match key_type {
-    "rsa" => {
-      use rsa::pkcs1v15::VerifyingKey;
-      use signature::hazmat::PrehashVerifier;
-      let key = match key_format {
-        "pem" => RsaPublicKey::from_public_key_pem((&key).try_into()?)
-          .map_err(|_| type_error("Invalid RSA public key"))?,
-        // TODO(kt3k): Support der and jwk formats
-        _ => {
-          return Err(type_error(format!(
-            "Unsupported key format: {}",
-            key_format
-          )))
-        }
-      };
-      Ok(match digest_type {
-        "sha224" => VerifyingKey::<sha2::Sha224>::new_with_prefix(key)
-          .verify_prehash(digest, &signature.to_vec().try_into()?)
-          .is_ok(),
-        "sha256" => VerifyingKey::<sha2::Sha256>::new_with_prefix(key)
-          .verify_prehash(digest, &signature.to_vec().try_into()?)
-          .is_ok(),
-        "sha384" => VerifyingKey::<sha2::Sha384>::new_with_prefix(key)
-          .verify_prehash(digest, &signature.to_vec().try_into()?)
-          .is_ok(),
-        "sha512" => VerifyingKey::<sha2::Sha512>::new_with_prefix(key)
-          .verify_prehash(digest, &signature.to_vec().try_into()?)
-          .is_ok(),
-        _ => {
-          return Err(type_error(format!(
-            "Unknown digest algorithm: {}",
-            digest_type
-          )))
-        }
-      })
-    }
-    _ => Err(type_error(format!(
-      "Verifying with {} keys is not supported yet",
-      key_type
-    ))),
-  }
+  handle.verify_prehashed(
+    digest_type,
+    digest,
+    signature,
+    pss_salt_length,
+    dsa_signature_encoding,
+  )
 }
 
 fn pbkdf2_sync(
   password: &[u8],
   salt: &[u8],
   iterations: u32,
-  digest: &str,
+  algorithm_name: &str,
   derived_key: &mut [u8],
 ) -> Result<(), AnyError> {
-  macro_rules! pbkdf2_hmac {
-    ($digest:ty) => {{
-      pbkdf2::pbkdf2_hmac::<$digest>(password, salt, iterations, derived_key)
-    }};
-  }
-
-  match digest {
-    "md4" => pbkdf2_hmac!(md4::Md4),
-    "md5" => pbkdf2_hmac!(md5::Md5),
-    "ripemd160" => pbkdf2_hmac!(ripemd::Ripemd160),
-    "sha1" => pbkdf2_hmac!(sha1::Sha1),
-    "sha224" => pbkdf2_hmac!(sha2::Sha224),
-    "sha256" => pbkdf2_hmac!(sha2::Sha256),
-    "sha384" => pbkdf2_hmac!(sha2::Sha384),
-    "sha512" => pbkdf2_hmac!(sha2::Sha512),
-    _ => return Err(type_error("Unknown digest")),
-  }
-
-  Ok(())
+  match_fixed_digest_with_eager_block_buffer!(
+    algorithm_name,
+    fn <D>() {
+      pbkdf2::pbkdf2_hmac::<D>(password, salt, iterations, derived_key);
+      Ok(())
+    },
+    _ => {
+      Err(type_error(format!(
+        "unsupported digest: {}",
+        algorithm_name
+      )))
+    }
+  )
 }
 
-#[op]
+#[op2]
 pub fn op_node_pbkdf2(
-  password: StringOrBuffer,
-  salt: StringOrBuffer,
-  iterations: u32,
-  digest: &str,
-  derived_key: &mut [u8],
+  #[serde] password: StringOrBuffer,
+  #[serde] salt: StringOrBuffer,
+  #[smi] iterations: u32,
+  #[string] digest: &str,
+  #[buffer] derived_key: &mut [u8],
 ) -> bool {
   pbkdf2_sync(&password, &salt, iterations, digest, derived_key).is_ok()
 }
 
-#[op]
+#[op2(async)]
+#[serde]
 pub async fn op_node_pbkdf2_async(
-  password: StringOrBuffer,
-  salt: StringOrBuffer,
-  iterations: u32,
-  digest: String,
-  keylen: usize,
+  #[serde] password: StringOrBuffer,
+  #[serde] salt: StringOrBuffer,
+  #[smi] iterations: u32,
+  #[string] digest: String,
+  #[number] keylen: usize,
 ) -> Result<ToJsBuffer, AnyError> {
   spawn_blocking(move || {
     let mut derived_key = vec![0; keylen];
@@ -471,13 +433,14 @@ pub async fn op_node_pbkdf2_async(
   .await?
 }
 
-#[op]
-pub fn op_node_generate_secret(buf: &mut [u8]) {
+#[op2(fast)]
+pub fn op_node_fill_random(#[buffer] buf: &mut [u8]) {
   rand::thread_rng().fill(buf);
 }
 
-#[op]
-pub async fn op_node_generate_secret_async(len: i32) -> ToJsBuffer {
+#[op2(async)]
+#[serde]
+pub async fn op_node_fill_random_async(#[smi] len: i32) -> ToJsBuffer {
   spawn_blocking(move || {
     let mut buf = vec![0u8; len as usize];
     rand::thread_rng().fill(&mut buf[..]);
@@ -488,327 +451,64 @@ pub async fn op_node_generate_secret_async(len: i32) -> ToJsBuffer {
 }
 
 fn hkdf_sync(
-  hash: &str,
-  ikm: &[u8],
+  digest_algorithm: &str,
+  handle: &KeyObjectHandle,
   salt: &[u8],
   info: &[u8],
   okm: &mut [u8],
 ) -> Result<(), AnyError> {
-  macro_rules! hkdf {
-    ($hash:ty) => {{
-      let hk = Hkdf::<$hash>::new(Some(salt), ikm);
+  let Some(ikm) = handle.as_secret_key() else {
+    return Err(type_error("expected secret key"));
+  };
+
+  match_fixed_digest_with_eager_block_buffer!(
+    digest_algorithm,
+    fn <D>() {
+      let hk = Hkdf::<D>::new(Some(salt), ikm);
       hk.expand(info, okm)
-        .map_err(|_| type_error("HKDF-Expand failed"))?;
-    }};
-  }
-
-  match hash {
-    "md4" => hkdf!(md4::Md4),
-    "md5" => hkdf!(md5::Md5),
-    "ripemd160" => hkdf!(ripemd::Ripemd160),
-    "sha1" => hkdf!(sha1::Sha1),
-    "sha224" => hkdf!(sha2::Sha224),
-    "sha256" => hkdf!(sha2::Sha256),
-    "sha384" => hkdf!(sha2::Sha384),
-    "sha512" => hkdf!(sha2::Sha512),
-    _ => return Err(type_error("Unknown digest")),
-  }
-
-  Ok(())
+        .map_err(|_| type_error("HKDF-Expand failed"))
+    },
+    _ => {
+      Err(type_error(format!("Unsupported digest: {}", digest_algorithm)))
+    }
+  )
 }
 
-#[op]
+#[op2(fast)]
 pub fn op_node_hkdf(
-  hash: &str,
-  ikm: &[u8],
-  salt: &[u8],
-  info: &[u8],
-  okm: &mut [u8],
+  #[string] digest_algorithm: &str,
+  #[cppgc] handle: &KeyObjectHandle,
+  #[buffer] salt: &[u8],
+  #[buffer] info: &[u8],
+  #[buffer] okm: &mut [u8],
 ) -> Result<(), AnyError> {
-  hkdf_sync(hash, ikm, salt, info, okm)
+  hkdf_sync(digest_algorithm, handle, salt, info, okm)
 }
 
-#[op]
+#[op2(async)]
+#[serde]
 pub async fn op_node_hkdf_async(
-  hash: String,
-  ikm: JsBuffer,
-  salt: JsBuffer,
-  info: JsBuffer,
-  okm_len: usize,
+  #[string] digest_algorithm: String,
+  #[cppgc] handle: &KeyObjectHandle,
+  #[buffer] salt: JsBuffer,
+  #[buffer] info: JsBuffer,
+  #[number] okm_len: usize,
 ) -> Result<ToJsBuffer, AnyError> {
+  let handle = handle.clone();
   spawn_blocking(move || {
     let mut okm = vec![0u8; okm_len];
-    hkdf_sync(&hash, &ikm, &salt, &info, &mut okm)?;
+    hkdf_sync(&digest_algorithm, &handle, &salt, &info, &mut okm)?;
     Ok(okm.into())
   })
   .await?
 }
 
-use rsa::pkcs1::EncodeRsaPrivateKey;
-use rsa::pkcs1::EncodeRsaPublicKey;
-
-use self::primes::Prime;
-
-fn generate_rsa(
-  modulus_length: usize,
-  public_exponent: usize,
-) -> Result<(ToJsBuffer, ToJsBuffer), AnyError> {
-  let mut rng = rand::thread_rng();
-  let private_key = RsaPrivateKey::new_with_exp(
-    &mut rng,
-    modulus_length,
-    &rsa::BigUint::from_usize(public_exponent).unwrap(),
-  )?;
-  let public_key = private_key.to_public_key();
-  let private_key_der = private_key.to_pkcs1_der()?.as_bytes().to_vec();
-  let public_key_der = public_key.to_pkcs1_der()?.to_vec();
-
-  Ok((private_key_der.into(), public_key_der.into()))
-}
-
-#[op]
-pub fn op_node_generate_rsa(
-  modulus_length: usize,
-  public_exponent: usize,
-) -> Result<(ToJsBuffer, ToJsBuffer), AnyError> {
-  generate_rsa(modulus_length, public_exponent)
-}
-
-#[op]
-pub async fn op_node_generate_rsa_async(
-  modulus_length: usize,
-  public_exponent: usize,
-) -> Result<(ToJsBuffer, ToJsBuffer), AnyError> {
-  spawn_blocking(move || generate_rsa(modulus_length, public_exponent)).await?
-}
-
-fn dsa_generate(
-  modulus_length: usize,
-  divisor_length: usize,
-) -> Result<(ToJsBuffer, ToJsBuffer), AnyError> {
-  let mut rng = rand::thread_rng();
-  use dsa::pkcs8::EncodePrivateKey;
-  use dsa::pkcs8::EncodePublicKey;
-  use dsa::Components;
-  use dsa::KeySize;
-  use dsa::SigningKey;
-
-  let key_size = match (modulus_length, divisor_length) {
-    #[allow(deprecated)]
-    (1024, 160) => KeySize::DSA_1024_160,
-    (2048, 224) => KeySize::DSA_2048_224,
-    (2048, 256) => KeySize::DSA_2048_256,
-    (3072, 256) => KeySize::DSA_3072_256,
-    _ => return Err(type_error("Invalid modulus_length or divisor_length")),
-  };
-  let components = Components::generate(&mut rng, key_size);
-  let signing_key = SigningKey::generate(&mut rng, components);
-  let verifying_key = signing_key.verifying_key();
-
-  Ok((
-    signing_key
-      .to_pkcs8_der()
-      .map_err(|_| type_error("Not valid pkcs8"))?
-      .as_bytes()
-      .to_vec()
-      .into(),
-    verifying_key
-      .to_public_key_der()
-      .map_err(|_| type_error("Not valid spki"))?
-      .to_vec()
-      .into(),
-  ))
-}
-
-#[op]
-pub fn op_node_dsa_generate(
-  modulus_length: usize,
-  divisor_length: usize,
-) -> Result<(ToJsBuffer, ToJsBuffer), AnyError> {
-  dsa_generate(modulus_length, divisor_length)
-}
-
-#[op]
-pub async fn op_node_dsa_generate_async(
-  modulus_length: usize,
-  divisor_length: usize,
-) -> Result<(ToJsBuffer, ToJsBuffer), AnyError> {
-  spawn_blocking(move || dsa_generate(modulus_length, divisor_length)).await?
-}
-
-fn ec_generate(
-  named_curve: &str,
-) -> Result<(ToJsBuffer, ToJsBuffer), AnyError> {
-  use ring::signature::EcdsaKeyPair;
-  use ring::signature::KeyPair;
-
-  let curve = match named_curve {
-    "P-256" => &ring::signature::ECDSA_P256_SHA256_FIXED_SIGNING,
-    "P-384" => &ring::signature::ECDSA_P384_SHA384_FIXED_SIGNING,
-    _ => return Err(type_error("Unsupported named curve")),
-  };
-
-  let rng = ring::rand::SystemRandom::new();
-
-  let pkcs8 = EcdsaKeyPair::generate_pkcs8(curve, &rng)
-    .map_err(|_| type_error("Failed to generate EC key"))?;
-
-  let public_key = EcdsaKeyPair::from_pkcs8(curve, pkcs8.as_ref())
-    .map_err(|_| type_error("Failed to generate EC key"))?
-    .public_key()
-    .as_ref()
-    .to_vec();
-  Ok((pkcs8.as_ref().to_vec().into(), public_key.into()))
-}
-
-#[op]
-pub fn op_node_ec_generate(
-  named_curve: &str,
-) -> Result<(ToJsBuffer, ToJsBuffer), AnyError> {
-  ec_generate(named_curve)
-}
-
-#[op]
-pub async fn op_node_ec_generate_async(
-  named_curve: String,
-) -> Result<(ToJsBuffer, ToJsBuffer), AnyError> {
-  spawn_blocking(move || ec_generate(&named_curve)).await?
-}
-
-fn ed25519_generate() -> Result<(ToJsBuffer, ToJsBuffer), AnyError> {
-  use ring::signature::Ed25519KeyPair;
-  use ring::signature::KeyPair;
-
-  let mut rng = thread_rng();
-  let mut seed = vec![0u8; 32];
-  rng.fill(seed.as_mut_slice());
-
-  let pair = Ed25519KeyPair::from_seed_unchecked(&seed)
-    .map_err(|_| type_error("Failed to generate Ed25519 key"))?;
-
-  let public_key = pair.public_key().as_ref().to_vec();
-  Ok((seed.into(), public_key.into()))
-}
-
-#[op]
-pub fn op_node_ed25519_generate() -> Result<(ToJsBuffer, ToJsBuffer), AnyError>
-{
-  ed25519_generate()
-}
-
-#[op]
-pub async fn op_node_ed25519_generate_async(
-) -> Result<(ToJsBuffer, ToJsBuffer), AnyError> {
-  spawn_blocking(ed25519_generate).await?
-}
-
-fn x25519_generate() -> Result<(ToJsBuffer, ToJsBuffer), AnyError> {
-  // u-coordinate of the base point.
-  const X25519_BASEPOINT_BYTES: [u8; 32] = [
-    9, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-    0, 0, 0, 0, 0, 0, 0,
-  ];
-
-  let mut pkey = [0; 32];
-
-  let mut rng = thread_rng();
-  rng.fill(pkey.as_mut_slice());
-
-  let pkey_copy = pkey.to_vec();
-  // https://www.rfc-editor.org/rfc/rfc7748#section-6.1
-  // pubkey = x25519(a, 9) which is constant-time Montgomery ladder.
-  //   https://eprint.iacr.org/2014/140.pdf page 4
-  //   https://eprint.iacr.org/2017/212.pdf algorithm 8
-  // pubkey is in LE order.
-  let pubkey = x25519_dalek::x25519(pkey, X25519_BASEPOINT_BYTES);
-
-  Ok((pkey_copy.into(), pubkey.to_vec().into()))
-}
-
-#[op]
-pub fn op_node_x25519_generate() -> Result<(ToJsBuffer, ToJsBuffer), AnyError> {
-  x25519_generate()
-}
-
-#[op]
-pub async fn op_node_x25519_generate_async(
-) -> Result<(ToJsBuffer, ToJsBuffer), AnyError> {
-  spawn_blocking(x25519_generate).await?
-}
-
-fn dh_generate_group(
-  group_name: &str,
-) -> Result<(ToJsBuffer, ToJsBuffer), AnyError> {
-  let dh = match group_name {
-    "modp5" => dh::DiffieHellman::group::<dh::Modp1536>(),
-    "modp14" => dh::DiffieHellman::group::<dh::Modp2048>(),
-    "modp15" => dh::DiffieHellman::group::<dh::Modp3072>(),
-    "modp16" => dh::DiffieHellman::group::<dh::Modp4096>(),
-    "modp17" => dh::DiffieHellman::group::<dh::Modp6144>(),
-    "modp18" => dh::DiffieHellman::group::<dh::Modp8192>(),
-    _ => return Err(type_error("Unsupported group name")),
-  };
-
-  Ok((
-    dh.private_key.into_vec().into(),
-    dh.public_key.into_vec().into(),
-  ))
-}
-
-#[op]
-pub fn op_node_dh_generate_group(
-  group_name: &str,
-) -> Result<(ToJsBuffer, ToJsBuffer), AnyError> {
-  dh_generate_group(group_name)
-}
-
-#[op]
-pub async fn op_node_dh_generate_group_async(
-  group_name: String,
-) -> Result<(ToJsBuffer, ToJsBuffer), AnyError> {
-  spawn_blocking(move || dh_generate_group(&group_name)).await?
-}
-
-fn dh_generate(
-  prime: Option<&[u8]>,
-  prime_len: usize,
-  generator: usize,
-) -> Result<(ToJsBuffer, ToJsBuffer), AnyError> {
-  let prime = prime
-    .map(|p| p.into())
-    .unwrap_or_else(|| Prime::generate(prime_len));
-  let dh = dh::DiffieHellman::new(prime, generator);
-
-  Ok((
-    dh.private_key.into_vec().into(),
-    dh.public_key.into_vec().into(),
-  ))
-}
-
-#[op]
-pub fn op_node_dh_generate(
-  prime: Option<&[u8]>,
-  prime_len: usize,
-  generator: usize,
-) -> Result<(ToJsBuffer, ToJsBuffer), AnyError> {
-  dh_generate(prime, prime_len, generator)
-}
-
-// TODO(lev): This duplication should be avoided.
-#[op]
-pub fn op_node_dh_generate2(
-  prime: JsBuffer,
-  prime_len: usize,
-  generator: usize,
-) -> Result<(ToJsBuffer, ToJsBuffer), AnyError> {
-  dh_generate(Some(prime).as_deref(), prime_len, generator)
-}
-
-#[op]
+#[op2]
+#[serde]
 pub fn op_node_dh_compute_secret(
-  prime: JsBuffer,
-  private_key: JsBuffer,
-  their_public_key: JsBuffer,
+  #[buffer] prime: JsBuffer,
+  #[buffer] private_key: JsBuffer,
+  #[buffer] their_public_key: JsBuffer,
 ) -> Result<ToJsBuffer, AnyError> {
   let pubkey: BigUint = BigUint::from_bytes_be(their_public_key.as_ref());
   let privkey: BigUint = BigUint::from_bytes_be(private_key.as_ref());
@@ -818,18 +518,12 @@ pub fn op_node_dh_compute_secret(
   Ok(shared_secret.to_bytes_be().into())
 }
 
-#[op]
-pub async fn op_node_dh_generate_async(
-  prime: Option<JsBuffer>,
-  prime_len: usize,
-  generator: usize,
-) -> Result<(ToJsBuffer, ToJsBuffer), AnyError> {
-  spawn_blocking(move || dh_generate(prime.as_deref(), prime_len, generator))
-    .await?
-}
-
-#[op]
-pub fn op_node_random_int(min: i32, max: i32) -> Result<i32, AnyError> {
+#[op2(fast)]
+#[smi]
+pub fn op_node_random_int(
+  #[smi] min: i32,
+  #[smi] max: i32,
+) -> Result<i32, AnyError> {
   let mut rng = rand::thread_rng();
   // Uniform distribution is required to avoid Modulo Bias
   // https://en.wikipedia.org/wiki/Fisher–Yates_shuffle#Modulo_bias
@@ -868,16 +562,17 @@ fn scrypt(
   }
 }
 
-#[op]
+#[allow(clippy::too_many_arguments)]
+#[op2]
 pub fn op_node_scrypt_sync(
-  password: StringOrBuffer,
-  salt: StringOrBuffer,
-  keylen: u32,
-  cost: u32,
-  block_size: u32,
-  parallelization: u32,
-  maxmem: u32,
-  output_buffer: &mut [u8],
+  #[serde] password: StringOrBuffer,
+  #[serde] salt: StringOrBuffer,
+  #[smi] keylen: u32,
+  #[smi] cost: u32,
+  #[smi] block_size: u32,
+  #[smi] parallelization: u32,
+  #[smi] maxmem: u32,
+  #[anybuffer] output_buffer: &mut [u8],
 ) -> Result<(), AnyError> {
   scrypt(
     password,
@@ -891,15 +586,16 @@ pub fn op_node_scrypt_sync(
   )
 }
 
-#[op]
+#[op2(async)]
+#[serde]
 pub async fn op_node_scrypt_async(
-  password: StringOrBuffer,
-  salt: StringOrBuffer,
-  keylen: u32,
-  cost: u32,
-  block_size: u32,
-  parallelization: u32,
-  maxmem: u32,
+  #[serde] password: StringOrBuffer,
+  #[serde] salt: StringOrBuffer,
+  #[smi] keylen: u32,
+  #[smi] cost: u32,
+  #[smi] block_size: u32,
+  #[smi] parallelization: u32,
+  #[smi] maxmem: u32,
 ) -> Result<ToJsBuffer, AnyError> {
   spawn_blocking(move || {
     let mut output_buffer = vec![0u8; keylen as usize];
@@ -924,66 +620,147 @@ pub async fn op_node_scrypt_async(
   .await?
 }
 
-#[op]
-pub fn op_node_ecdh_generate_keys(
-  curve: &str,
-  pubbuf: &mut [u8],
-  privbuf: &mut [u8],
-) -> Result<ResourceId, AnyError> {
-  let mut rng = rand::thread_rng();
+#[op2]
+#[buffer]
+pub fn op_node_ecdh_encode_pubkey(
+  #[string] curve: &str,
+  #[buffer] pubkey: &[u8],
+  compress: bool,
+) -> Result<Vec<u8>, AnyError> {
+  use elliptic_curve::sec1::FromEncodedPoint;
+
   match curve {
     "secp256k1" => {
-      let secp = Secp256k1::new();
-      let (privkey, pubkey) = secp.generate_keypair(&mut rng);
-      pubbuf.copy_from_slice(&pubkey.serialize_uncompressed());
-      privbuf.copy_from_slice(&privkey.secret_bytes());
+      let pubkey =
+        elliptic_curve::PublicKey::<k256::Secp256k1>::from_encoded_point(
+          &elliptic_curve::sec1::EncodedPoint::<k256::Secp256k1>::from_bytes(
+            pubkey,
+          )?,
+        );
+      // CtOption does not expose its variants.
+      if pubkey.is_none().into() {
+        return Err(type_error("Invalid public key"));
+      }
 
-      Ok(0)
+      let pubkey = pubkey.unwrap();
+
+      Ok(pubkey.to_encoded_point(compress).as_ref().to_vec())
+    }
+    "prime256v1" | "secp256r1" => {
+      let pubkey = elliptic_curve::PublicKey::<NistP256>::from_encoded_point(
+        &elliptic_curve::sec1::EncodedPoint::<NistP256>::from_bytes(pubkey)?,
+      );
+      // CtOption does not expose its variants.
+      if pubkey.is_none().into() {
+        return Err(type_error("Invalid public key"));
+      }
+
+      let pubkey = pubkey.unwrap();
+
+      Ok(pubkey.to_encoded_point(compress).as_ref().to_vec())
+    }
+    "secp384r1" => {
+      let pubkey = elliptic_curve::PublicKey::<NistP384>::from_encoded_point(
+        &elliptic_curve::sec1::EncodedPoint::<NistP384>::from_bytes(pubkey)?,
+      );
+      // CtOption does not expose its variants.
+      if pubkey.is_none().into() {
+        return Err(type_error("Invalid public key"));
+      }
+
+      let pubkey = pubkey.unwrap();
+
+      Ok(pubkey.to_encoded_point(compress).as_ref().to_vec())
+    }
+    "secp224r1" => {
+      let pubkey = elliptic_curve::PublicKey::<NistP224>::from_encoded_point(
+        &elliptic_curve::sec1::EncodedPoint::<NistP224>::from_bytes(pubkey)?,
+      );
+      // CtOption does not expose its variants.
+      if pubkey.is_none().into() {
+        return Err(type_error("Invalid public key"));
+      }
+
+      let pubkey = pubkey.unwrap();
+
+      Ok(pubkey.to_encoded_point(compress).as_ref().to_vec())
+    }
+    &_ => Err(type_error("Unsupported curve")),
+  }
+}
+
+#[op2(fast)]
+pub fn op_node_ecdh_generate_keys(
+  #[string] curve: &str,
+  #[buffer] pubbuf: &mut [u8],
+  #[buffer] privbuf: &mut [u8],
+  #[string] format: &str,
+) -> Result<(), AnyError> {
+  let mut rng = rand::thread_rng();
+  let compress = format == "compressed";
+  match curve {
+    "secp256k1" => {
+      let privkey =
+        elliptic_curve::SecretKey::<k256::Secp256k1>::random(&mut rng);
+      let pubkey = privkey.public_key();
+      pubbuf.copy_from_slice(pubkey.to_encoded_point(compress).as_ref());
+      privbuf.copy_from_slice(privkey.to_nonzero_scalar().to_bytes().as_ref());
+
+      Ok(())
     }
     "prime256v1" | "secp256r1" => {
       let privkey = elliptic_curve::SecretKey::<NistP256>::random(&mut rng);
       let pubkey = privkey.public_key();
-      pubbuf.copy_from_slice(pubkey.to_sec1_bytes().as_ref());
+      pubbuf.copy_from_slice(pubkey.to_encoded_point(compress).as_ref());
       privbuf.copy_from_slice(privkey.to_nonzero_scalar().to_bytes().as_ref());
-      Ok(0)
+
+      Ok(())
     }
     "secp384r1" => {
       let privkey = elliptic_curve::SecretKey::<NistP384>::random(&mut rng);
       let pubkey = privkey.public_key();
-      pubbuf.copy_from_slice(pubkey.to_sec1_bytes().as_ref());
+      pubbuf.copy_from_slice(pubkey.to_encoded_point(compress).as_ref());
       privbuf.copy_from_slice(privkey.to_nonzero_scalar().to_bytes().as_ref());
-      Ok(0)
+
+      Ok(())
     }
     "secp224r1" => {
       let privkey = elliptic_curve::SecretKey::<NistP224>::random(&mut rng);
       let pubkey = privkey.public_key();
-      pubbuf.copy_from_slice(pubkey.to_sec1_bytes().as_ref());
+      pubbuf.copy_from_slice(pubkey.to_encoded_point(compress).as_ref());
       privbuf.copy_from_slice(privkey.to_nonzero_scalar().to_bytes().as_ref());
-      Ok(0)
+
+      Ok(())
     }
-    &_ => todo!(),
+    &_ => Err(type_error(format!("Unsupported curve: {}", curve))),
   }
 }
 
-#[op]
+#[op2]
 pub fn op_node_ecdh_compute_secret(
-  curve: &str,
-  this_priv: Option<JsBuffer>,
-  their_pub: &mut [u8],
-  secret: &mut [u8],
+  #[string] curve: &str,
+  #[buffer] this_priv: Option<JsBuffer>,
+  #[buffer] their_pub: &mut [u8],
+  #[buffer] secret: &mut [u8],
 ) -> Result<(), AnyError> {
   match curve {
     "secp256k1" => {
-      let this_secret_key = SecretKey::from_slice(
-        this_priv.expect("no private key provided?").as_ref(),
-      )
-      .unwrap();
       let their_public_key =
-        secp256k1::PublicKey::from_slice(their_pub).unwrap();
-      let shared_secret =
-        SharedSecret::new(&their_public_key, &this_secret_key);
+        elliptic_curve::PublicKey::<k256::Secp256k1>::from_sec1_bytes(
+          their_pub,
+        )
+        .expect("bad public key");
+      let this_private_key =
+        elliptic_curve::SecretKey::<k256::Secp256k1>::from_slice(
+          &this_priv.expect("must supply private key"),
+        )
+        .expect("bad private key");
+      let shared_secret = elliptic_curve::ecdh::diffie_hellman(
+        this_private_key.to_nonzero_scalar(),
+        their_public_key.as_affine(),
+      );
+      secret.copy_from_slice(shared_secret.raw_secret_bytes());
 
-      secret.copy_from_slice(&shared_secret.secret_bytes());
       Ok(())
     }
     "prime256v1" | "secp256r1" => {
@@ -1038,20 +815,19 @@ pub fn op_node_ecdh_compute_secret(
   }
 }
 
-#[op]
+#[op2(fast)]
 pub fn op_node_ecdh_compute_public_key(
-  curve: &str,
-  privkey: &[u8],
-  pubkey: &mut [u8],
+  #[string] curve: &str,
+  #[buffer] privkey: &[u8],
+  #[buffer] pubkey: &mut [u8],
 ) -> Result<(), AnyError> {
   match curve {
     "secp256k1" => {
-      let secp = Secp256k1::new();
-      let secret_key = SecretKey::from_slice(privkey).unwrap();
-      let public_key =
-        secp256k1::PublicKey::from_secret_key(&secp, &secret_key);
-
-      pubkey.copy_from_slice(&public_key.serialize_uncompressed());
+      let this_private_key =
+        elliptic_curve::SecretKey::<k256::Secp256k1>::from_slice(privkey)
+          .expect("bad private key");
+      let public_key = this_private_key.public_key();
+      pubkey.copy_from_slice(public_key.to_sec1_bytes().as_ref());
 
       Ok(())
     }
@@ -1088,14 +864,144 @@ fn gen_prime(size: usize) -> ToJsBuffer {
   primes::Prime::generate(size).0.to_bytes_be().into()
 }
 
-#[op]
-pub fn op_node_gen_prime(size: usize) -> ToJsBuffer {
+#[op2]
+#[serde]
+pub fn op_node_gen_prime(#[number] size: usize) -> ToJsBuffer {
   gen_prime(size)
 }
 
-#[op]
+#[op2(async)]
+#[serde]
 pub async fn op_node_gen_prime_async(
-  size: usize,
+  #[number] size: usize,
 ) -> Result<ToJsBuffer, AnyError> {
   Ok(spawn_blocking(move || gen_prime(size)).await?)
+}
+
+#[op2]
+#[buffer]
+pub fn op_node_diffie_hellman(
+  #[cppgc] private: &KeyObjectHandle,
+  #[cppgc] public: &KeyObjectHandle,
+) -> Result<Box<[u8]>, AnyError> {
+  let private = private
+    .as_private_key()
+    .ok_or_else(|| type_error("Expected private key"))?;
+  let public = public
+    .as_public_key()
+    .ok_or_else(|| type_error("Expected public key"))?;
+
+  let res = match (private, &*public) {
+    (
+      AsymmetricPrivateKey::Ec(EcPrivateKey::P224(private)),
+      AsymmetricPublicKey::Ec(EcPublicKey::P224(public)),
+    ) => p224::ecdh::diffie_hellman(
+      private.to_nonzero_scalar(),
+      public.as_affine(),
+    )
+    .raw_secret_bytes()
+    .to_vec()
+    .into_boxed_slice(),
+    (
+      AsymmetricPrivateKey::Ec(EcPrivateKey::P256(private)),
+      AsymmetricPublicKey::Ec(EcPublicKey::P256(public)),
+    ) => p256::ecdh::diffie_hellman(
+      private.to_nonzero_scalar(),
+      public.as_affine(),
+    )
+    .raw_secret_bytes()
+    .to_vec()
+    .into_boxed_slice(),
+    (
+      AsymmetricPrivateKey::Ec(EcPrivateKey::P384(private)),
+      AsymmetricPublicKey::Ec(EcPublicKey::P384(public)),
+    ) => p384::ecdh::diffie_hellman(
+      private.to_nonzero_scalar(),
+      public.as_affine(),
+    )
+    .raw_secret_bytes()
+    .to_vec()
+    .into_boxed_slice(),
+    (
+      AsymmetricPrivateKey::X25519(private),
+      AsymmetricPublicKey::X25519(public),
+    ) => private
+      .diffie_hellman(public)
+      .to_bytes()
+      .into_iter()
+      .collect(),
+    (AsymmetricPrivateKey::Dh(private), AsymmetricPublicKey::Dh(public)) => {
+      if private.params.prime != public.params.prime
+        || private.params.base != public.params.base
+      {
+        return Err(type_error("DH parameters mismatch"));
+      }
+
+      // OSIP - Octet-String-to-Integer primitive
+      let public_key = public.key.clone().into_vec();
+      let pubkey = BigUint::from_bytes_be(&public_key);
+
+      // Exponentiation (z = y^x mod p)
+      let prime = BigUint::from_bytes_be(private.params.prime.as_bytes());
+      let private_key = private.key.clone().into_vec();
+      let private_key = BigUint::from_bytes_be(&private_key);
+      let shared_secret = pubkey.modpow(&private_key, &prime);
+
+      shared_secret.to_bytes_be().into()
+    }
+    _ => {
+      return Err(type_error(
+        "Unsupported key type for diffie hellman, or key type  mismatch",
+      ))
+    }
+  };
+
+  Ok(res)
+}
+
+#[op2(fast)]
+pub fn op_node_sign_ed25519(
+  #[cppgc] key: &KeyObjectHandle,
+  #[buffer] data: &[u8],
+  #[buffer] signature: &mut [u8],
+) -> Result<(), AnyError> {
+  let private = key
+    .as_private_key()
+    .ok_or_else(|| type_error("Expected private key"))?;
+
+  let ed25519 = match private {
+    AsymmetricPrivateKey::Ed25519(private) => private,
+    _ => return Err(type_error("Expected Ed25519 private key")),
+  };
+
+  let pair = Ed25519KeyPair::from_seed_unchecked(ed25519.as_bytes().as_slice())
+    .map_err(|_| type_error("Invalid Ed25519 private key"))?;
+  signature.copy_from_slice(pair.sign(data).as_ref());
+
+  Ok(())
+}
+
+#[op2(fast)]
+pub fn op_node_verify_ed25519(
+  #[cppgc] key: &KeyObjectHandle,
+  #[buffer] data: &[u8],
+  #[buffer] signature: &[u8],
+) -> Result<bool, AnyError> {
+  let public = key
+    .as_public_key()
+    .ok_or_else(|| type_error("Expected public key"))?;
+
+  let ed25519 = match &*public {
+    AsymmetricPublicKey::Ed25519(public) => public,
+    _ => return Err(type_error("Expected Ed25519 public key")),
+  };
+
+  let verified = ring::signature::UnparsedPublicKey::new(
+    &ring::signature::ED25519,
+    ed25519.as_bytes().as_slice(),
+  )
+  .verify(data, signature)
+  .is_ok();
+
+  Ok(verified)
 }

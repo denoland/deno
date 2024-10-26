@@ -1,0 +1,6 @@
+local: [WILDCARD]test.ts
+type: TypeScript
+dependencies: 7 unique
+size: [WILDCARD]
+
+[WILDCARD]

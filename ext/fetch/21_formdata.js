@@ -1,4 +1,4 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 // @ts-check
 /// <reference path="../webidl/internal.d.ts" />
@@ -9,7 +9,7 @@
 /// <reference path="./lib.deno_fetch.d.ts" />
 /// <reference lib="esnext" />
 
-const core = globalThis.Deno.core;
+import { core, primordials } from "ext:core/mod.js";
 import * as webidl from "ext:deno_webidl/00_webidl.js";
 import {
   Blob,
@@ -17,7 +17,6 @@ import {
   File,
   FilePrototype,
 } from "ext:deno_web/09_file.js";
-const primordials = globalThis.__bootstrap.primordials;
 const {
   ArrayPrototypePush,
   ArrayPrototypeSlice,
@@ -26,10 +25,12 @@ const {
   MapPrototypeSet,
   MathRandom,
   ObjectFreeze,
+  ObjectFromEntries,
   ObjectPrototypeIsPrototypeOf,
   SafeMap,
   SafeRegExp,
   Symbol,
+  SymbolFor,
   StringFromCharCode,
   StringPrototypeCharCodeAt,
   StringPrototypeTrim,
@@ -262,11 +263,21 @@ class FormData {
       ArrayPrototypePush(list, entry);
     }
   }
+
+  [SymbolFor("Deno.privateCustomInspect")](inspect, inspectOptions) {
+    if (ObjectPrototypeIsPrototypeOf(FormDataPrototype, this)) {
+      return `${this.constructor.name} ${
+        inspect(ObjectFromEntries(this), inspectOptions)
+      }`;
+    } else {
+      return `${this.constructor.name} ${inspect({}, inspectOptions)}`;
+    }
+  }
 }
 
 webidl.mixinPairIterable("FormData", FormData, entryList, "name", "value");
 
-webidl.configurePrototype(FormData);
+webidl.configureInterface(FormData);
 const FormDataPrototype = FormData.prototype;
 
 const ESCAPE_FILENAME_PATTERN = new SafeRegExp(/\r?\n|\r/g);
@@ -385,7 +396,9 @@ class MultipartParser {
    */
   constructor(body, boundary) {
     if (!boundary) {
-      throw new TypeError("multipart/form-data must provide a boundary");
+      throw new TypeError(
+        "Cannot construct MultipartParser: multipart/form-data must provide a boundary",
+      );
     }
 
     this.boundary = `--${boundary}`;
@@ -434,7 +447,7 @@ class MultipartParser {
       ) {
         return new FormData();
       }
-      throw new TypeError("Unable to parse body as form data.");
+      throw new TypeError("Unable to parse body as form data");
     }
 
     const formData = new FormData();
@@ -448,25 +461,24 @@ class MultipartParser {
       const prevByte = this.body[i - 1];
       const isNewLine = byte === LF && prevByte === CR;
 
-      if (state === 1 || state === 2 || state == 3) {
+      if (state === 1) {
         headerText += StringFromCharCode(byte);
       }
+
       if (state === 0 && isNewLine) {
         state = 1;
-      } else if (state === 1 && isNewLine) {
-        state = 2;
-        const headersDone = this.body[i + 1] === CR &&
-          this.body[i + 2] === LF;
-
-        if (headersDone) {
-          state = 3;
+      } else if (
+        state === 1
+      ) {
+        if (
+          isNewLine && this.body[i + 1] === CR &&
+          this.body[i + 2] === LF
+        ) {
+          // end of the headers section
+          state = 2;
+          fileStart = i + 3; // After \r\n
         }
-      } else if (state === 2 && isNewLine) {
-        state = 3;
-      } else if (state === 3 && isNewLine) {
-        state = 4;
-        fileStart = i + 1;
-      } else if (state === 4) {
+      } else if (state === 2) {
         if (this.boundaryChars[boundaryIndex] !== byte) {
           boundaryIndex = 0;
         } else {
@@ -487,7 +499,7 @@ class MultipartParser {
           const latin1Filename = MapPrototypeGet(disposition, "filename");
           const latin1Name = MapPrototypeGet(disposition, "name");
 
-          state = 5;
+          state = 3;
           // Reset
           boundaryIndex = 0;
           headerText = "";
@@ -510,7 +522,7 @@ class MultipartParser {
             formData.append(name, core.decode(content));
           }
         }
-      } else if (state === 5 && isNewLine) {
+      } else if (state === 3 && isNewLine) {
         state = 1;
       }
     }

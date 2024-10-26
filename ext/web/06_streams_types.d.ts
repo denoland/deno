@@ -1,4 +1,4 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 // ** Internal Interfaces **
 
@@ -30,6 +30,7 @@ interface PullIntoDescriptor {
   byteOffset: number;
   byteLength: number;
   bytesFilled: number;
+  minimumFill: number;
   elementSize: number;
   // deno-lint-ignore no-explicit-any
   viewConstructor: any;
@@ -70,5 +71,10 @@ interface ReadableStreamGenericReader<T> {
 declare function queueMicrotask(callback: VoidFunction): void;
 
 declare namespace Deno {
-  function inspect(value: unknown, options?: Record<string, unknown>): string;
+  export function inspect(
+    value: unknown,
+    options?: Record<string, unknown>,
+  ): string;
+
+  export {}; // only export exports
 }

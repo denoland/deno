@@ -1,20 +1,15 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 use ring::digest::Context;
 use ring::digest::SHA256;
 
+/// Generate a SHA256 checksum of a slice of byte-slice-like things.
 pub fn gen(v: &[impl AsRef<[u8]>]) -> String {
   let mut ctx = Context::new(&SHA256);
   for src in v {
     ctx.update(src.as_ref());
   }
-  let digest = ctx.finish();
-  let out: Vec<String> = digest
-    .as_ref()
-    .iter()
-    .map(|byte| format!("{byte:02x}"))
-    .collect();
-  out.join("")
+  faster_hex::hex_string(ctx.finish().as_ref())
 }
 
 #[cfg(test)]

@@ -1,51 +1,64 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::fmt;
 use std::fmt::Write;
+use std::sync::Arc;
 
 use deno_ast::ModuleSpecifier;
+use deno_core::anyhow::bail;
 use deno_core::error::AnyError;
 use deno_core::resolve_url_or_path;
 use deno_core::serde_json;
-use deno_core::serde_json::json;
+use deno_core::url;
 use deno_graph::Dependency;
 use deno_graph::GraphKind;
 use deno_graph::Module;
 use deno_graph::ModuleError;
 use deno_graph::ModuleGraph;
-use deno_graph::ModuleGraphError;
 use deno_graph::Resolution;
+use deno_npm::npm_rc::ResolvedNpmRc;
 use deno_npm::resolution::NpmResolutionSnapshot;
 use deno_npm::NpmPackageId;
 use deno_npm::NpmResolutionPackage;
-use deno_runtime::colors;
 use deno_semver::npm::NpmPackageNvReference;
 use deno_semver::npm::NpmPackageReqReference;
 use deno_semver::package::PackageNv;
+use deno_terminal::colors;
 
 use crate::args::Flags;
 use crate::args::InfoFlags;
 use crate::display;
 use crate::factory::CliFactory;
-use crate::graph_util::graph_lock_or_exit;
+use crate::graph_util::graph_exit_integrity_errors;
 use crate::npm::CliNpmResolver;
+use crate::npm::ManagedCliNpmResolver;
 use crate::util::checksum;
 
-pub async fn info(flags: Flags, info_flags: InfoFlags) -> Result<(), AnyError> {
-  let factory = CliFactory::from_flags(flags).await?;
-  let cli_options = factory.cli_options();
+const JSON_SCHEMA_VERSION: u8 = 1;
+
+pub async fn info(
+  flags: Arc<Flags>,
+  info_flags: InfoFlags,
+) -> Result<(), AnyError> {
+  let factory = CliFactory::from_flags(flags);
+  let cli_options = factory.cli_options()?;
   if let Some(specifier) = info_flags.file {
     let module_graph_builder = factory.module_graph_builder().await?;
+    let module_graph_creator = factory.module_graph_creator().await?;
     let npm_resolver = factory.npm_resolver().await?;
-    let maybe_lockfile = factory.maybe_lockfile();
-    let maybe_imports_map = factory.maybe_import_map().await?;
+    let maybe_lockfile = cli_options.maybe_lockfile();
+    let npmrc = cli_options.npmrc();
+    let resolver = factory.workspace_resolver().await?;
 
-    let maybe_import_specifier = if let Some(imports_map) = maybe_imports_map {
-      if let Ok(imports_specifier) =
-        imports_map.resolve(&specifier, imports_map.base_url())
-      {
+    let cwd_url =
+      url::Url::from_directory_path(cli_options.initial_cwd()).unwrap();
+
+    let maybe_import_specifier = if let Some(import_map) =
+      resolver.maybe_import_map()
+    {
+      if let Ok(imports_specifier) = import_map.resolve(&specifier, &cwd_url) {
         Some(imports_specifier)
       } else {
         None
@@ -61,21 +74,31 @@ pub async fn info(flags: Flags, info_flags: InfoFlags) -> Result<(), AnyError> {
 
     let mut loader = module_graph_builder.create_graph_loader();
     loader.enable_loading_cache_info(); // for displaying the cache information
-    let graph = module_graph_builder
+    let graph = module_graph_creator
       .create_graph_with_loader(GraphKind::All, vec![specifier], &mut loader)
       .await?;
 
-    if let Some(lockfile) = maybe_lockfile {
-      graph_lock_or_exit(&graph, &mut lockfile.lock());
+    // write out the lockfile if there is one
+    if let Some(lockfile) = &maybe_lockfile {
+      graph_exit_integrity_errors(&graph);
+      lockfile.write_if_changed()?;
     }
 
     if info_flags.json {
-      let mut json_graph = json!(graph);
-      add_npm_packages_to_json(&mut json_graph, npm_resolver);
+      let mut json_graph = serde_json::json!(graph);
+      if let Some(output) = json_graph.as_object_mut() {
+        output.shift_insert(
+          0,
+          "version".to_string(),
+          JSON_SCHEMA_VERSION.into(),
+        );
+      }
+
+      add_npm_packages_to_json(&mut json_graph, npm_resolver.as_ref(), npmrc);
       display::write_json_to_stdout(&json_graph)?;
     } else {
       let mut output = String::new();
-      GraphDisplayContext::write(&graph, npm_resolver, &mut output)?;
+      GraphDisplayContext::write(&graph, npm_resolver.as_ref(), &mut output)?;
       display::write_to_stdout_ignore_sigpipe(output.as_bytes())?;
     }
   } else {
@@ -89,6 +112,7 @@ pub async fn info(flags: Flags, info_flags: InfoFlags) -> Result<(), AnyError> {
   Ok(())
 }
 
+#[allow(clippy::print_stdout)]
 fn print_cache_info(
   factory: &CliFactory,
   json: bool,
@@ -97,7 +121,7 @@ fn print_cache_info(
   let dir = factory.deno_dir()?;
   #[allow(deprecated)]
   let modules_cache = factory.global_http_cache()?.get_global_cache_location();
-  let npm_cache = factory.npm_cache()?.as_readonly().get_cache_location();
+  let npm_cache = factory.deno_dir()?.npm_folder_path();
   let typescript_cache = &dir.gen_cache.location;
   let registry_cache = dir.registries_folder_path();
   let mut origin_dir = dir.origin_data_folder_path();
@@ -111,7 +135,8 @@ fn print_cache_info(
   let local_storage_dir = origin_dir.join("local_storage");
 
   if json {
-    let mut output = json!({
+    let mut json_output = serde_json::json!({
+      "version": JSON_SCHEMA_VERSION,
       "denoDir": deno_dir,
       "modulesCache": modules_cache,
       "npmCache": npm_cache,
@@ -121,10 +146,10 @@ fn print_cache_info(
     });
 
     if location.is_some() {
-      output["localStorage"] = serde_json::to_value(local_storage_dir)?;
+      json_output["localStorage"] = serde_json::to_value(local_storage_dir)?;
     }
 
-    display::write_json_to_stdout(&output)
+    display::write_json_to_stdout(&json_output)
   } else {
     println!("{} {}", colors::bold("DENO_DIR location:"), deno_dir);
     println!(
@@ -165,52 +190,40 @@ fn print_cache_info(
 
 fn add_npm_packages_to_json(
   json: &mut serde_json::Value,
-  npm_resolver: &CliNpmResolver,
+  npm_resolver: &dyn CliNpmResolver,
+  npmrc: &ResolvedNpmRc,
 ) {
+  let Some(npm_resolver) = npm_resolver.as_managed() else {
+    return; // does not include byonm to deno info's output
+  };
+
   // ideally deno_graph could handle this, but for now we just modify the json here
   let snapshot = npm_resolver.snapshot();
   let json = json.as_object_mut().unwrap();
   let modules = json.get_mut("modules").and_then(|m| m.as_array_mut());
   if let Some(modules) = modules {
-    if modules.len() == 1
-      && modules[0].get("kind").and_then(|k| k.as_str()) == Some("npm")
-    {
-      // If there is only one module and it's "external", then that means
-      // someone provided an npm specifier as a cli argument. In this case,
-      // we want to show which npm package the cli argument resolved to.
-      let module = &mut modules[0];
-      let maybe_package = module
-        .get("specifier")
-        .and_then(|k| k.as_str())
-        .and_then(|specifier| NpmPackageNvReference::from_str(specifier).ok())
-        .and_then(|package_ref| {
-          snapshot
-            .resolve_package_from_deno_module(package_ref.nv())
-            .ok()
-        });
-      if let Some(pkg) = maybe_package {
-        if let Some(module) = module.as_object_mut() {
-          module
-            .insert("npmPackage".to_string(), pkg.id.as_serialized().into());
-        }
-      }
-    } else {
-      // Filter out npm package references from the modules and instead
-      // have them only listed as dependencies. This is done because various
-      // npm specifiers modules in the graph are really just unresolved
-      // references. So there could be listed multiple npm specifiers
-      // that would resolve to a single npm package.
-      for i in (0..modules.len()).rev() {
-        if matches!(
-          modules[i].get("kind").and_then(|k| k.as_str()),
-          Some("npm") | Some("external")
-        ) {
-          modules.remove(i);
-        }
-      }
-    }
-
     for module in modules.iter_mut() {
+      if matches!(module.get("kind").and_then(|k| k.as_str()), Some("npm")) {
+        // If there is only one module and it's "external", then that means
+        // someone provided an npm specifier as a cli argument. In this case,
+        // we want to show which npm package the cli argument resolved to.
+        let maybe_package = module
+          .get("specifier")
+          .and_then(|k| k.as_str())
+          .and_then(|specifier| NpmPackageNvReference::from_str(specifier).ok())
+          .and_then(|package_ref| {
+            snapshot
+              .resolve_package_from_deno_module(package_ref.nv())
+              .ok()
+          });
+        if let Some(pkg) = maybe_package {
+          if let Some(module) = module.as_object_mut() {
+            module
+              .insert("npmPackage".to_string(), pkg.id.as_serialized().into());
+          }
+        }
+      }
+
       let dependencies = module
         .get_mut("dependencies")
         .and_then(|d| d.as_array_mut());
@@ -242,7 +255,7 @@ fn add_npm_packages_to_json(
   let mut json_packages = serde_json::Map::with_capacity(sorted_packages.len());
   for pkg in sorted_packages {
     let mut kv = serde_json::Map::new();
-    kv.insert("name".to_string(), pkg.id.nv.name.to_string().into());
+    kv.insert("name".to_string(), pkg.id.nv.name.clone().into());
     kv.insert("version".to_string(), pkg.id.nv.version.to_string().into());
     let mut deps = pkg.dependencies.values().collect::<Vec<_>>();
     deps.sort();
@@ -251,6 +264,8 @@ fn add_npm_packages_to_json(
       .map(|id| serde_json::Value::String(id.as_serialized()))
       .collect::<Vec<_>>();
     kv.insert("dependencies".to_string(), deps.into());
+    let registry_url = npmrc.get_registry_url(&pkg.id.nv.name);
+    kv.insert("registryUrl".to_string(), registry_url.to_string().into());
 
     json_packages.insert(pkg.id.as_serialized(), kv.into());
   }
@@ -279,7 +294,7 @@ fn print_tree_node<TWrite: Write>(
   fn print_children<TWrite: Write>(
     writer: &mut TWrite,
     prefix: &str,
-    children: &Vec<TreeNode>,
+    children: &[TreeNode],
   ) -> fmt::Result {
     const SIBLING_CONNECTOR: char = '├';
     const LAST_SIBLING_CONNECTOR: char = '└';
@@ -339,7 +354,7 @@ struct NpmInfo {
 impl NpmInfo {
   pub fn build<'a>(
     graph: &'a ModuleGraph,
-    npm_resolver: &'a CliNpmResolver,
+    npm_resolver: &'a ManagedCliNpmResolver,
     npm_snapshot: &'a NpmResolutionSnapshot,
   ) -> Self {
     let mut info = NpmInfo::default();
@@ -365,7 +380,7 @@ impl NpmInfo {
   fn fill_package_info<'a>(
     &mut self,
     package: &NpmResolutionPackage,
-    npm_resolver: &'a CliNpmResolver,
+    npm_resolver: &'a ManagedCliNpmResolver,
     npm_snapshot: &'a NpmResolutionSnapshot,
   ) {
     self.packages.insert(package.id.clone(), package.clone());
@@ -399,11 +414,16 @@ struct GraphDisplayContext<'a> {
 impl<'a> GraphDisplayContext<'a> {
   pub fn write<TWrite: Write>(
     graph: &'a ModuleGraph,
-    npm_resolver: &'a CliNpmResolver,
+    npm_resolver: &'a dyn CliNpmResolver,
     writer: &mut TWrite,
-  ) -> fmt::Result {
-    let npm_snapshot = npm_resolver.snapshot();
-    let npm_info = NpmInfo::build(graph, npm_resolver, &npm_snapshot);
+  ) -> Result<(), AnyError> {
+    let npm_info = match npm_resolver.as_managed() {
+      Some(npm_resolver) => {
+        let npm_snapshot = npm_resolver.snapshot();
+        NpmInfo::build(graph, npm_resolver, &npm_snapshot)
+      }
+      None => NpmInfo::default(),
+    };
     Self {
       graph,
       npm_info,
@@ -412,20 +432,19 @@ impl<'a> GraphDisplayContext<'a> {
     .into_writer(writer)
   }
 
-  fn into_writer<TWrite: Write>(mut self, writer: &mut TWrite) -> fmt::Result {
+  fn into_writer<TWrite: Write>(
+    mut self,
+    writer: &mut TWrite,
+  ) -> Result<(), AnyError> {
     if self.graph.roots.is_empty() || self.graph.roots.len() > 1 {
-      return writeln!(
-        writer,
-        "{} displaying graphs that have multiple roots is not supported.",
-        colors::red("error:")
-      );
+      bail!("displaying graphs that have multiple roots is not supported.");
     }
 
     let root_specifier = self.graph.resolve(&self.graph.roots[0]);
-    match self.graph.try_get(&root_specifier) {
+    match self.graph.try_get(root_specifier) {
       Ok(Some(root)) => {
         let maybe_cache_info = match root {
-          Module::Esm(module) => module.maybe_cache_info.as_ref(),
+          Module::Js(module) => module.maybe_cache_info.as_ref(),
           Module::Json(module) => module.maybe_cache_info.as_ref(),
           Module::Node(_) | Module::Npm(_) | Module::External(_) => None,
         };
@@ -438,24 +457,8 @@ impl<'a> GraphDisplayContext<'a> {
               local.to_string_lossy()
             )?;
           }
-          if let Some(emit) = &cache_info.emit {
-            writeln!(
-              writer,
-              "{} {}",
-              colors::bold("emit:"),
-              emit.to_string_lossy()
-            )?;
-          }
-          if let Some(map) = &cache_info.map {
-            writeln!(
-              writer,
-              "{} {}",
-              colors::bold("map:"),
-              map.to_string_lossy()
-            )?;
-          }
         }
-        if let Some(module) = root.esm() {
+        if let Some(module) = root.js() {
           writeln!(writer, "{} {}", colors::bold("type:"), module.media_type)?;
         }
         let total_modules_size = self
@@ -463,7 +466,7 @@ impl<'a> GraphDisplayContext<'a> {
           .modules()
           .map(|m| {
             let size = match m {
-              Module::Esm(module) => module.size(),
+              Module::Js(module) => module.size(),
               Module::Json(module) => module.size(),
               Module::Node(_) | Module::Npm(_) | Module::External(_) => 0,
             };
@@ -498,23 +501,14 @@ impl<'a> GraphDisplayContext<'a> {
         Ok(())
       }
       Err(err) => {
-        if let ModuleGraphError::ModuleError(ModuleError::Missing(_, _)) = *err
-        {
-          writeln!(
-            writer,
-            "{} module could not be found",
-            colors::red("error:")
-          )
+        if let ModuleError::Missing(_, _) = *err {
+          bail!("module could not be found");
         } else {
-          writeln!(writer, "{} {:#}", colors::red("error:"), err)
+          bail!("{:#}", err);
         }
       }
       Ok(None) => {
-        writeln!(
-          writer,
-          "{} an internal error occurred",
-          colors::red("error:")
-        )
+        bail!("an internal error occurred");
       }
     }
   }
@@ -571,7 +565,7 @@ impl<'a> GraphDisplayContext<'a> {
           self.npm_info.package_sizes.get(&package.id).copied()
         }
         Specifier(_) => match module {
-          Module::Esm(module) => Some(module.size() as u64),
+          Module::Js(module) => Some(module.size() as u64),
           Module::Json(module) => Some(module.size() as u64),
           Module::Node(_) | Module::Npm(_) | Module::External(_) => None,
         },
@@ -587,7 +581,7 @@ impl<'a> GraphDisplayContext<'a> {
           tree_node.children.extend(self.build_npm_deps(package));
         }
         Specifier(_) => {
-          if let Some(module) = module.esm() {
+          if let Some(module) = module.js() {
             if let Some(types_dep) = &module.maybe_types_dependency {
               if let Some(child) =
                 self.build_resolved_info(&types_dep.dependency, true)
@@ -638,33 +632,41 @@ impl<'a> GraphDisplayContext<'a> {
 
   fn build_error_info(
     &mut self,
-    err: &ModuleGraphError,
+    err: &ModuleError,
     specifier: &ModuleSpecifier,
   ) -> TreeNode {
     self.seen.insert(specifier.to_string());
     match err {
-      ModuleGraphError::ModuleError(err) => match err {
-        ModuleError::InvalidTypeAssertion { .. } => {
-          self.build_error_msg(specifier, "(invalid import assertion)")
-        }
-        ModuleError::LoadingErr(_, _, _) => {
-          self.build_error_msg(specifier, "(loading error)")
-        }
-        ModuleError::ParseErr(_, _) => {
-          self.build_error_msg(specifier, "(parsing error)")
-        }
-        ModuleError::UnsupportedImportAssertionType { .. } => {
-          self.build_error_msg(specifier, "(unsupported import assertion)")
-        }
-        ModuleError::UnsupportedMediaType { .. } => {
-          self.build_error_msg(specifier, "(unsupported)")
-        }
-        ModuleError::Missing(_, _) | ModuleError::MissingDynamic(_, _) => {
-          self.build_error_msg(specifier, "(missing)")
-        }
-      },
-      ModuleGraphError::ResolutionError(_) => {
-        self.build_error_msg(specifier, "(resolution error)")
+      ModuleError::InvalidTypeAssertion { .. } => {
+        self.build_error_msg(specifier, "(invalid import attribute)")
+      }
+      ModuleError::LoadingErr(_, _, err) => {
+        use deno_graph::ModuleLoadError::*;
+        let message = match err {
+          HttpsChecksumIntegrity(_) => "(checksum integrity error)",
+          Decode(_) => "(loading decode error)",
+          Loader(err) => match deno_core::error::get_custom_error_class(err) {
+            Some("NotCapable") => "(not capable, requires --allow-import)",
+            _ => "(loading error)",
+          },
+          Jsr(_) => "(loading error)",
+          NodeUnknownBuiltinModule(_) => "(unknown node built-in error)",
+          Npm(_) => "(npm loading error)",
+          TooManyRedirects => "(too many redirects error)",
+        };
+        self.build_error_msg(specifier, message.as_ref())
+      }
+      ModuleError::ParseErr(_, _) => {
+        self.build_error_msg(specifier, "(parsing error)")
+      }
+      ModuleError::UnsupportedImportAttributeType { .. } => {
+        self.build_error_msg(specifier, "(unsupported import attribute)")
+      }
+      ModuleError::UnsupportedMediaType { .. } => {
+        self.build_error_msg(specifier, "(unsupported)")
+      }
+      ModuleError::Missing(_, _) | ModuleError::MissingDynamic(_, _) => {
+        self.build_error_msg(specifier, "(missing)")
       }
     }
   }
@@ -690,9 +692,9 @@ impl<'a> GraphDisplayContext<'a> {
       Resolution::Ok(resolved) => {
         let specifier = &resolved.specifier;
         let resolved_specifier = self.graph.resolve(specifier);
-        Some(match self.graph.try_get(&resolved_specifier) {
+        Some(match self.graph.try_get(resolved_specifier) {
           Ok(Some(module)) => self.build_module_info(module, type_dep),
-          Err(err) => self.build_error_info(err, &resolved_specifier),
+          Err(err) => self.build_error_info(err, resolved_specifier),
           Ok(None) => TreeNode::from_text(format!(
             "{} {}",
             colors::red(specifier),

@@ -1,25 +1,21 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
-use super::utils::into_string;
-use crate::permissions::PermissionsContainer;
 use crate::worker::ExitCode;
-use deno_core::error::type_error;
-use deno_core::error::AnyError;
-use deno_core::op;
-use deno_core::url::Url;
+use deno_core::op2;
 use deno_core::v8;
-use deno_core::Op;
 use deno_core::OpState;
 use deno_node::NODE_ENV_VAR_ALLOWLIST;
+use deno_path_util::normalize_path;
+use deno_permissions::PermissionsContainer;
 use serde::Serialize;
 use std::collections::HashMap;
 use std::env;
 
 mod sys_info;
 
-deno_core::ops!(
-  deno_ops,
-  [
+deno_core::extension!(
+  deno_os,
+  ops = [
     op_env,
     op_exec_path,
     op_exit,
@@ -31,18 +27,13 @@ deno_core::ops!(
     op_network_interfaces,
     op_os_release,
     op_os_uptime,
-    op_node_unstable_os_uptime,
     op_set_env,
     op_set_exit_code,
+    op_get_exit_code,
     op_system_memory_info,
     op_uid,
     op_runtime_memory_usage,
-  ]
-);
-
-deno_core::extension!(
-  deno_os,
-  ops_fn = deno_ops,
+  ],
   options = {
     exit_code: ExitCode,
   },
@@ -53,77 +44,120 @@ deno_core::extension!(
 
 deno_core::extension!(
   deno_os_worker,
-  ops_fn = deno_ops,
+  ops = [
+    op_env,
+    op_exec_path,
+    op_exit,
+    op_delete_env,
+    op_get_env,
+    op_gid,
+    op_hostname,
+    op_loadavg,
+    op_network_interfaces,
+    op_os_release,
+    op_os_uptime,
+    op_set_env,
+    op_set_exit_code,
+    op_get_exit_code,
+    op_system_memory_info,
+    op_uid,
+    op_runtime_memory_usage,
+  ],
   middleware = |op| match op.name {
-    "op_exit" | "op_set_exit_code" =>
-      op.with_implementation_from(&deno_core::op_void_sync::DECL),
+    "op_exit" | "op_set_exit_code" | "op_get_exit_code" =>
+      op.with_implementation_from(&deno_core::op_void_sync()),
     _ => op,
   },
 );
 
-#[op]
-fn op_exec_path(state: &mut OpState) -> Result<String, AnyError> {
+#[derive(Debug, thiserror::Error)]
+pub enum OsError {
+  #[error(transparent)]
+  Permission(deno_core::error::AnyError),
+  #[error("File name or path {0:?} is not valid UTF-8")]
+  InvalidUtf8(std::ffi::OsString),
+  #[error("Key is an empty string.")]
+  EnvEmptyKey,
+  #[error("Key contains invalid characters: {0:?}")]
+  EnvInvalidKey(String),
+  #[error("Value contains invalid characters: {0:?}")]
+  EnvInvalidValue(String),
+  #[error(transparent)]
+  Var(#[from] env::VarError),
+  #[error("{0}")]
+  Io(#[from] std::io::Error),
+}
+
+#[op2]
+#[string]
+fn op_exec_path(state: &mut OpState) -> Result<String, OsError> {
   let current_exe = env::current_exe().unwrap();
   state
     .borrow_mut::<PermissionsContainer>()
-    .check_read_blind(&current_exe, "exec_path", "Deno.execPath()")?;
-  // Now apply URL parser to current exe to get fully resolved path, otherwise
-  // we might get `./` and `../` bits in `exec_path`
-  let exe_url = Url::from_file_path(current_exe).unwrap();
-  let path = exe_url.to_file_path().unwrap();
+    .check_read_blind(&current_exe, "exec_path", "Deno.execPath()")
+    .map_err(OsError::Permission)?;
+  // normalize path so it doesn't include '.' or '..' components
+  let path = normalize_path(current_exe);
 
-  into_string(path.into_os_string())
+  path
+    .into_os_string()
+    .into_string()
+    .map_err(OsError::InvalidUtf8)
 }
 
-#[op]
+#[op2(fast)]
 fn op_set_env(
   state: &mut OpState,
-  key: &str,
-  value: &str,
-) -> Result<(), AnyError> {
-  state.borrow_mut::<PermissionsContainer>().check_env(key)?;
+  #[string] key: &str,
+  #[string] value: &str,
+) -> Result<(), OsError> {
+  state
+    .borrow_mut::<PermissionsContainer>()
+    .check_env(key)
+    .map_err(OsError::Permission)?;
   if key.is_empty() {
-    return Err(type_error("Key is an empty string."));
+    return Err(OsError::EnvEmptyKey);
   }
   if key.contains(&['=', '\0'] as &[char]) {
-    return Err(type_error(format!(
-      "Key contains invalid characters: {key:?}"
-    )));
+    return Err(OsError::EnvInvalidKey(key.to_string()));
   }
   if value.contains('\0') {
-    return Err(type_error(format!(
-      "Value contains invalid characters: {value:?}"
-    )));
+    return Err(OsError::EnvInvalidValue(value.to_string()));
   }
   env::set_var(key, value);
   Ok(())
 }
 
-#[op]
-fn op_env(state: &mut OpState) -> Result<HashMap<String, String>, AnyError> {
+#[op2]
+#[serde]
+fn op_env(
+  state: &mut OpState,
+) -> Result<HashMap<String, String>, deno_core::error::AnyError> {
   state.borrow_mut::<PermissionsContainer>().check_env_all()?;
   Ok(env::vars().collect())
 }
 
-#[op]
+#[op2]
+#[string]
 fn op_get_env(
   state: &mut OpState,
-  key: String,
-) -> Result<Option<String>, AnyError> {
+  #[string] key: String,
+) -> Result<Option<String>, OsError> {
   let skip_permission_check = NODE_ENV_VAR_ALLOWLIST.contains(&key);
 
   if !skip_permission_check {
-    state.borrow_mut::<PermissionsContainer>().check_env(&key)?;
+    state
+      .borrow_mut::<PermissionsContainer>()
+      .check_env(&key)
+      .map_err(OsError::Permission)?;
   }
 
   if key.is_empty() {
-    return Err(type_error("Key is an empty string."));
+    return Err(OsError::EnvEmptyKey);
   }
 
   if key.contains(&['=', '\0'] as &[char]) {
-    return Err(type_error(format!(
-      "Key contains invalid characters: {key:?}"
-    )));
+    return Err(OsError::EnvInvalidKey(key.to_string()));
   }
 
   let r = match env::var(key) {
@@ -133,58 +167,81 @@ fn op_get_env(
   Ok(r)
 }
 
-#[op]
-fn op_delete_env(state: &mut OpState, key: String) -> Result<(), AnyError> {
-  state.borrow_mut::<PermissionsContainer>().check_env(&key)?;
+#[op2(fast)]
+fn op_delete_env(
+  state: &mut OpState,
+  #[string] key: String,
+) -> Result<(), OsError> {
+  state
+    .borrow_mut::<PermissionsContainer>()
+    .check_env(&key)
+    .map_err(OsError::Permission)?;
   if key.is_empty() || key.contains(&['=', '\0'] as &[char]) {
-    return Err(type_error("Key contains invalid characters."));
+    return Err(OsError::EnvInvalidKey(key.to_string()));
   }
   env::remove_var(key);
   Ok(())
 }
 
-#[op]
-fn op_set_exit_code(state: &mut OpState, code: i32) {
+#[op2(fast)]
+fn op_set_exit_code(state: &mut OpState, #[smi] code: i32) {
   state.borrow_mut::<ExitCode>().set(code);
 }
 
-#[op]
+#[op2(fast)]
+#[smi]
+fn op_get_exit_code(state: &mut OpState) -> i32 {
+  state.borrow_mut::<ExitCode>().get()
+}
+
+#[op2(fast)]
 fn op_exit(state: &mut OpState) {
   let code = state.borrow::<ExitCode>().get();
   std::process::exit(code)
 }
 
-#[op]
-fn op_loadavg(state: &mut OpState) -> Result<(f64, f64, f64), AnyError> {
+#[op2]
+#[serde]
+fn op_loadavg(
+  state: &mut OpState,
+) -> Result<(f64, f64, f64), deno_core::error::AnyError> {
   state
     .borrow_mut::<PermissionsContainer>()
     .check_sys("loadavg", "Deno.loadavg()")?;
   Ok(sys_info::loadavg())
 }
 
-#[op]
-fn op_hostname(state: &mut OpState) -> Result<String, AnyError> {
+#[op2]
+#[string]
+fn op_hostname(
+  state: &mut OpState,
+) -> Result<String, deno_core::error::AnyError> {
   state
     .borrow_mut::<PermissionsContainer>()
     .check_sys("hostname", "Deno.hostname()")?;
   Ok(sys_info::hostname())
 }
 
-#[op]
-fn op_os_release(state: &mut OpState) -> Result<String, AnyError> {
+#[op2]
+#[string]
+fn op_os_release(
+  state: &mut OpState,
+) -> Result<String, deno_core::error::AnyError> {
   state
     .borrow_mut::<PermissionsContainer>()
     .check_sys("osRelease", "Deno.osRelease()")?;
   Ok(sys_info::os_release())
 }
 
-#[op]
+#[op2]
+#[serde]
 fn op_network_interfaces(
   state: &mut OpState,
-) -> Result<Vec<NetworkInterface>, AnyError> {
+) -> Result<Vec<NetworkInterface>, OsError> {
   state
     .borrow_mut::<PermissionsContainer>()
-    .check_sys("networkInterfaces", "Deno.networkInterfaces()")?;
+    .check_sys("networkInterfaces", "Deno.networkInterfaces()")
+    .map_err(OsError::Permission)?;
   Ok(netif::up()?.map(NetworkInterface::from).collect())
 }
 
@@ -229,10 +286,11 @@ impl From<netif::Interface> for NetworkInterface {
   }
 }
 
-#[op]
+#[op2]
+#[serde]
 fn op_system_memory_info(
   state: &mut OpState,
-) -> Result<Option<sys_info::MemInfo>, AnyError> {
+) -> Result<Option<sys_info::MemInfo>, deno_core::error::AnyError> {
   state
     .borrow_mut::<PermissionsContainer>()
     .check_sys("systemMemoryInfo", "Deno.systemMemoryInfo()")?;
@@ -240,8 +298,11 @@ fn op_system_memory_info(
 }
 
 #[cfg(not(windows))]
-#[op]
-fn op_gid(state: &mut OpState) -> Result<Option<u32>, AnyError> {
+#[op2]
+#[smi]
+fn op_gid(
+  state: &mut OpState,
+) -> Result<Option<u32>, deno_core::error::AnyError> {
   state
     .borrow_mut::<PermissionsContainer>()
     .check_sys("gid", "Deno.gid()")?;
@@ -253,8 +314,11 @@ fn op_gid(state: &mut OpState) -> Result<Option<u32>, AnyError> {
 }
 
 #[cfg(windows)]
-#[op]
-fn op_gid(state: &mut OpState) -> Result<Option<u32>, AnyError> {
+#[op2]
+#[smi]
+fn op_gid(
+  state: &mut OpState,
+) -> Result<Option<u32>, deno_core::error::AnyError> {
   state
     .borrow_mut::<PermissionsContainer>()
     .check_sys("gid", "Deno.gid()")?;
@@ -262,8 +326,11 @@ fn op_gid(state: &mut OpState) -> Result<Option<u32>, AnyError> {
 }
 
 #[cfg(not(windows))]
-#[op]
-fn op_uid(state: &mut OpState) -> Result<Option<u32>, AnyError> {
+#[op2]
+#[smi]
+fn op_uid(
+  state: &mut OpState,
+) -> Result<Option<u32>, deno_core::error::AnyError> {
   state
     .borrow_mut::<PermissionsContainer>()
     .check_sys("uid", "Deno.uid()")?;
@@ -275,8 +342,11 @@ fn op_uid(state: &mut OpState) -> Result<Option<u32>, AnyError> {
 }
 
 #[cfg(windows)]
-#[op]
-fn op_uid(state: &mut OpState) -> Result<Option<u32>, AnyError> {
+#[op2]
+#[smi]
+fn op_uid(
+  state: &mut OpState,
+) -> Result<Option<u32>, deno_core::error::AnyError> {
   state
     .borrow_mut::<PermissionsContainer>()
     .check_sys("uid", "Deno.uid()")?;
@@ -293,7 +363,8 @@ struct MemoryUsage {
   external: usize,
 }
 
-#[op(v8)]
+#[op2]
+#[serde]
 fn op_runtime_memory_usage(scope: &mut v8::HandleScope) -> MemoryUsage {
   let mut s = v8::HeapStatistics::default();
   scope.get_heap_statistics(&mut s);
@@ -305,7 +376,7 @@ fn op_runtime_memory_usage(scope: &mut v8::HandleScope) -> MemoryUsage {
   }
 }
 
-#[cfg(target_os = "linux")]
+#[cfg(any(target_os = "android", target_os = "linux"))]
 fn rss() -> usize {
   // Inspired by https://github.com/Arc-blroth/memory-stats/blob/5364d0d09143de2a470d33161b2330914228fde9/src/linux.rs
 
@@ -453,19 +524,17 @@ fn rss() -> usize {
   }
 }
 
-fn os_uptime(state: &mut OpState) -> Result<u64, AnyError> {
+fn os_uptime(state: &mut OpState) -> Result<u64, deno_core::error::AnyError> {
   state
     .borrow_mut::<PermissionsContainer>()
     .check_sys("osUptime", "Deno.osUptime()")?;
   Ok(sys_info::os_uptime())
 }
 
-#[op]
-fn op_os_uptime(state: &mut OpState) -> Result<u64, AnyError> {
-  os_uptime(state)
-}
-
-#[op]
-fn op_node_unstable_os_uptime(state: &mut OpState) -> Result<u64, AnyError> {
+#[op2(fast)]
+#[number]
+fn op_os_uptime(
+  state: &mut OpState,
+) -> Result<u64, deno_core::error::AnyError> {
   os_uptime(state)
 }

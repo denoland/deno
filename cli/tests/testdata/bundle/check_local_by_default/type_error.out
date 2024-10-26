@@ -1,4 +1,0 @@
-error: TS2322 [ERROR]: Type '12' is not assignable to type '"b"'.
-const b: "b" = 12;
-      ^
-    at [WILDCARD]bundle/check_local_by_default/type_error.ts:3:7

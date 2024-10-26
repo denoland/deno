@@ -1,0 +1,17 @@
+{
+  "tempDir": true,
+  "steps": [{
+    "args": "lint --rules-tags=recommended,jsr",
+    "output": "lint.out",
+    "exitCode": 1
+  }, {
+    "args": "lint --fix --rules-tags=recommended,jsr",
+    "output": "lint_fixed.out"
+  }, {
+    "args": "lint --rules-tags=recommended,jsr",
+    "output": "lint_fixed.out"
+  }, {
+    "args": "run --allow-read --quiet http://localhost:4545/cat.ts a.ts",
+    "output": "a_fixed.out"
+  }]
+}

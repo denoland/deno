@@ -1,3 +1,0 @@
-error: package '@denotest/esm-basic' did not have a bin property in its package.json
-
-Fallback failed: Cannot find module 'file:///[WILDCARD]/non-existent.js'

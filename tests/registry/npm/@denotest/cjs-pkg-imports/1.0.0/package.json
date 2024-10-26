@@ -1,0 +1,13 @@
+{
+  "name": "@denotest/cjs-pkg-imports",
+  "version": "1.0.0",
+  "imports": {
+    "#crypto": {
+      "node": "./sub/dist/crypto.js",
+      "default": "./sub/dist/crypto.mjs"
+    },
+    "#number": {
+      "node": "./number.js"
+    }
+  }
+}

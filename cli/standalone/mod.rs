@@ -1,87 +1,114 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
-use crate::args::get_root_cert_store;
-use crate::args::npm_pkg_req_ref_to_binary_command;
-use crate::args::CaData;
-use crate::args::CacheSetting;
-use crate::args::PackageJsonDepsProvider;
-use crate::args::StorageKeyResolver;
-use crate::cache::Caches;
-use crate::cache::DenoDirProvider;
-use crate::cache::NodeAnalysisCache;
-use crate::file_fetcher::get_source_from_data_url;
-use crate::http_util::HttpClient;
-use crate::module_loader::CjsResolutionStore;
-use crate::module_loader::NpmModuleLoader;
-use crate::node::CliCjsCodeAnalyzer;
-use crate::npm::create_npm_fs_resolver;
-use crate::npm::CliNpmRegistryApi;
-use crate::npm::CliNpmResolver;
-use crate::npm::NpmCache;
-use crate::npm::NpmCacheDir;
-use crate::npm::NpmResolution;
-use crate::resolver::MappedSpecifierResolver;
-use crate::util::progress_bar::ProgressBar;
-use crate::util::progress_bar::ProgressBarStyle;
-use crate::util::v8::construct_v8_flags;
-use crate::worker::CliMainWorkerFactory;
-use crate::worker::CliMainWorkerOptions;
-use crate::worker::ModuleLoaderFactory;
+// Allow unused code warnings because we share
+// code between the two bin targets.
+#![allow(dead_code)]
+#![allow(unused_imports)]
+
+use binary::StandaloneData;
+use binary::StandaloneModules;
 use deno_ast::MediaType;
+use deno_cache_dir::npm::NpmCacheDir;
+use deno_config::workspace::MappedResolution;
+use deno_config::workspace::MappedResolutionError;
+use deno_config::workspace::ResolverWorkspaceJsrPackage;
+use deno_config::workspace::WorkspaceResolver;
 use deno_core::anyhow::Context;
 use deno_core::error::generic_error;
 use deno_core::error::type_error;
 use deno_core::error::AnyError;
 use deno_core::futures::FutureExt;
 use deno_core::v8_set_flags;
+use deno_core::FeatureChecker;
 use deno_core::ModuleLoader;
+use deno_core::ModuleSourceCode;
 use deno_core::ModuleSpecifier;
 use deno_core::ModuleType;
+use deno_core::RequestedModuleType;
 use deno_core::ResolutionKind;
-use deno_npm::NpmSystemInfo;
+use deno_npm::npm_rc::ResolvedNpmRc;
+use deno_package_json::PackageJsonDepValue;
 use deno_runtime::deno_fs;
-use deno_runtime::deno_node::analyze::NodeCodeTranslator;
+use deno_runtime::deno_node::create_host_defined_options;
 use deno_runtime::deno_node::NodeResolver;
+use deno_runtime::deno_permissions::Permissions;
+use deno_runtime::deno_permissions::PermissionsContainer;
 use deno_runtime::deno_tls::rustls::RootCertStore;
 use deno_runtime::deno_tls::RootCertStoreProvider;
-use deno_runtime::permissions::Permissions;
-use deno_runtime::permissions::PermissionsContainer;
+use deno_runtime::deno_web::BlobStore;
+use deno_runtime::permissions::RuntimePermissionDescriptorParser;
+use deno_runtime::WorkerExecutionMode;
 use deno_runtime::WorkerLogLevel;
 use deno_semver::npm::NpmPackageReqReference;
 use import_map::parse_from_json;
-use std::pin::Pin;
+use node_resolver::analyze::NodeCodeTranslator;
+use node_resolver::NodeResolutionMode;
+use std::borrow::Cow;
 use std::rc::Rc;
 use std::sync::Arc;
 
-mod binary;
+use crate::args::create_default_npmrc;
+use crate::args::get_root_cert_store;
+use crate::args::npm_pkg_req_ref_to_binary_command;
+use crate::args::CaData;
+use crate::args::CacheSetting;
+use crate::args::NpmInstallDepsProvider;
+use crate::args::StorageKeyResolver;
+use crate::cache::Caches;
+use crate::cache::DenoCacheEnvFsAdapter;
+use crate::cache::DenoDirProvider;
+use crate::cache::NodeAnalysisCache;
+use crate::cache::RealDenoCacheEnv;
+use crate::http_util::HttpClientProvider;
+use crate::node::CliCjsCodeAnalyzer;
+use crate::npm::create_cli_npm_resolver;
+use crate::npm::CliByonmNpmResolverCreateOptions;
+use crate::npm::CliNpmResolverCreateOptions;
+use crate::npm::CliNpmResolverManagedCreateOptions;
+use crate::npm::CliNpmResolverManagedSnapshotOption;
+use crate::resolver::CjsResolutionStore;
+use crate::resolver::CliDenoResolverFs;
+use crate::resolver::CliNodeResolver;
+use crate::resolver::NpmModuleLoader;
+use crate::util::progress_bar::ProgressBar;
+use crate::util::progress_bar::ProgressBarStyle;
+use crate::util::v8::construct_v8_flags;
+use crate::worker::CliMainWorkerFactory;
+use crate::worker::CliMainWorkerOptions;
+use crate::worker::ModuleLoaderAndSourceMapGetter;
+use crate::worker::ModuleLoaderFactory;
+
+pub mod binary;
 mod file_system;
+mod serialization;
 mod virtual_fs;
 
 pub use binary::extract_standalone;
 pub use binary::is_standalone_binary;
 pub use binary::DenoCompileBinaryWriter;
 
-use self::binary::load_npm_vfs;
 use self::binary::Metadata;
 use self::file_system::DenoCompileFileSystem;
 
 struct SharedModuleLoaderState {
-  eszip: eszip::EszipV2,
-  mapped_specifier_resolver: MappedSpecifierResolver,
+  modules: StandaloneModules,
+  workspace_resolver: WorkspaceResolver,
+  node_resolver: Arc<CliNodeResolver>,
   npm_module_loader: Arc<NpmModuleLoader>,
 }
 
 #[derive(Clone)]
 struct EmbeddedModuleLoader {
   shared: Arc<SharedModuleLoaderState>,
-  root_permissions: PermissionsContainer,
-  dynamic_permissions: PermissionsContainer,
 }
+
+pub const MODULE_NOT_FOUND: &str = "Module not found";
+pub const UNSUPPORTED_SCHEME: &str = "Unsupported scheme";
 
 impl ModuleLoader for EmbeddedModuleLoader {
   fn resolve(
     &self,
-    specifier: &str,
+    raw_specifier: &str,
     referrer: &str,
     kind: ResolutionKind,
   ) -> Result<ModuleSpecifier, AnyError> {
@@ -100,41 +127,138 @@ impl ModuleLoader for EmbeddedModuleLoader {
       })?
     };
 
-    let permissions = if matches!(kind, ResolutionKind::DynamicImport) {
-      &self.dynamic_permissions
+    if self.shared.node_resolver.in_npm_package(&referrer) {
+      return Ok(
+        self
+          .shared
+          .node_resolver
+          .resolve(raw_specifier, &referrer, NodeResolutionMode::Execution)?
+          .into_url(),
+      );
+    }
+
+    let mapped_resolution = self
+      .shared
+      .workspace_resolver
+      .resolve(raw_specifier, &referrer);
+
+    match mapped_resolution {
+      Ok(MappedResolution::WorkspaceJsrPackage { specifier, .. }) => {
+        Ok(specifier)
+      }
+      Ok(MappedResolution::WorkspaceNpmPackage {
+        target_pkg_json: pkg_json,
+        sub_path,
+        ..
+      }) => Ok(
+        self
+          .shared
+          .node_resolver
+          .resolve_package_sub_path_from_deno_module(
+            pkg_json.dir_path(),
+            sub_path.as_deref(),
+            Some(&referrer),
+            NodeResolutionMode::Execution,
+          )?
+          .into_url(),
+      ),
+      Ok(MappedResolution::PackageJson {
+        dep_result,
+        sub_path,
+        alias,
+        ..
+      }) => match dep_result.as_ref().map_err(|e| AnyError::from(e.clone()))? {
+        PackageJsonDepValue::Req(req) => self
+          .shared
+          .node_resolver
+          .resolve_req_with_sub_path(
+            req,
+            sub_path.as_deref(),
+            &referrer,
+            NodeResolutionMode::Execution,
+          )
+          .map(|res| res.into_url()),
+        PackageJsonDepValue::Workspace(version_req) => {
+          let pkg_folder = self
+            .shared
+            .workspace_resolver
+            .resolve_workspace_pkg_json_folder_for_pkg_json_dep(
+              alias,
+              version_req,
+            )?;
+          Ok(
+            self
+              .shared
+              .node_resolver
+              .resolve_package_sub_path_from_deno_module(
+                pkg_folder,
+                sub_path.as_deref(),
+                Some(&referrer),
+                NodeResolutionMode::Execution,
+              )?
+              .into_url(),
+          )
+        }
+      },
+      Ok(MappedResolution::Normal { specifier, .. })
+      | Ok(MappedResolution::ImportMap { specifier, .. }) => {
+        if let Ok(reference) =
+          NpmPackageReqReference::from_specifier(&specifier)
+        {
+          return self
+            .shared
+            .node_resolver
+            .resolve_req_reference(
+              &reference,
+              &referrer,
+              NodeResolutionMode::Execution,
+            )
+            .map(|res| res.into_url());
+        }
+
+        if specifier.scheme() == "jsr" {
+          if let Some(specifier) =
+            self.shared.modules.resolve_specifier(&specifier)?
+          {
+            return Ok(specifier.clone());
+          }
+        }
+
+        Ok(
+          self
+            .shared
+            .node_resolver
+            .handle_if_in_node_modules(&specifier)?
+            .unwrap_or(specifier),
+        )
+      }
+      Err(err)
+        if err.is_unmapped_bare_specifier() && referrer.scheme() == "file" =>
+      {
+        let maybe_res = self.shared.node_resolver.resolve_if_for_npm_pkg(
+          raw_specifier,
+          &referrer,
+          NodeResolutionMode::Execution,
+        )?;
+        if let Some(res) = maybe_res {
+          return Ok(res.into_url());
+        }
+        Err(err.into())
+      }
+      Err(err) => Err(err.into()),
+    }
+  }
+
+  fn get_host_defined_options<'s>(
+    &self,
+    scope: &mut deno_core::v8::HandleScope<'s>,
+    name: &str,
+  ) -> Option<deno_core::v8::Local<'s, deno_core::v8::Data>> {
+    let name = deno_core::ModuleSpecifier::parse(name).ok()?;
+    if self.shared.node_resolver.in_npm_package(&name) {
+      Some(create_host_defined_options(scope))
     } else {
-      &self.root_permissions
-    };
-    if let Some(result) = self
-      .shared
-      .npm_module_loader
-      .resolve_if_in_npm_package(specifier, &referrer, permissions)
-    {
-      return result;
-    }
-
-    let maybe_mapped = self
-      .shared
-      .mapped_specifier_resolver
-      .resolve(specifier, &referrer)?
-      .into_specifier();
-
-    // npm specifier
-    let specifier_text = maybe_mapped
-      .as_ref()
-      .map(|r| r.as_str())
-      .unwrap_or(specifier);
-    if let Ok(reference) = NpmPackageReqReference::from_str(specifier_text) {
-      return self
-        .shared
-        .npm_module_loader
-        .resolve_req_reference(&reference, permissions);
-    }
-
-    match maybe_mapped {
-      Some(resolved) => Ok(resolved),
-      None => deno_core::resolve_import(specifier, referrer.as_str())
-        .map_err(|err| err.into()),
+      None
     }
   }
 
@@ -142,93 +266,77 @@ impl ModuleLoader for EmbeddedModuleLoader {
     &self,
     original_specifier: &ModuleSpecifier,
     maybe_referrer: Option<&ModuleSpecifier>,
-    is_dynamic: bool,
-  ) -> Pin<Box<deno_core::ModuleSourceFuture>> {
-    let is_data_uri = get_source_from_data_url(original_specifier).ok();
-    if let Some((source, _)) = is_data_uri {
-      return Box::pin(deno_core::futures::future::ready(Ok(
+    _is_dynamic: bool,
+    _requested_module_type: RequestedModuleType,
+  ) -> deno_core::ModuleLoadResponse {
+    if original_specifier.scheme() == "data" {
+      let data_url_text =
+        match deno_graph::source::RawDataUrl::parse(original_specifier)
+          .and_then(|url| url.decode())
+        {
+          Ok(response) => response,
+          Err(err) => {
+            return deno_core::ModuleLoadResponse::Sync(Err(type_error(
+              format!("{:#}", err),
+            )));
+          }
+        };
+      return deno_core::ModuleLoadResponse::Sync(Ok(
         deno_core::ModuleSource::new(
           deno_core::ModuleType::JavaScript,
-          source.into(),
+          ModuleSourceCode::String(data_url_text.into()),
           original_specifier,
+          None,
         ),
-      )));
+      ));
     }
 
-    let permissions = if is_dynamic {
-      &self.dynamic_permissions
-    } else {
-      &self.root_permissions
-    };
-    if let Some(result) =
-      self.shared.npm_module_loader.load_sync_if_in_npm_package(
-        original_specifier,
-        maybe_referrer,
-        permissions,
-      )
-    {
-      return match result {
-        Ok(code_source) => Box::pin(deno_core::futures::future::ready(Ok(
-          deno_core::ModuleSource::new_with_redirect(
+    if self.shared.node_resolver.in_npm_package(original_specifier) {
+      let npm_module_loader = self.shared.npm_module_loader.clone();
+      let original_specifier = original_specifier.clone();
+      let maybe_referrer = maybe_referrer.cloned();
+      return deno_core::ModuleLoadResponse::Async(
+        async move {
+          let code_source = npm_module_loader
+            .load(&original_specifier, maybe_referrer.as_ref())
+            .await?;
+          Ok(deno_core::ModuleSource::new_with_redirect(
             match code_source.media_type {
               MediaType::Json => ModuleType::Json,
               _ => ModuleType::JavaScript,
             },
             code_source.code,
-            original_specifier,
+            &original_specifier,
             &code_source.found_url,
+            None,
+          ))
+        }
+        .boxed_local(),
+      );
+    }
+
+    match self.shared.modules.read(original_specifier) {
+      Ok(Some(module)) => {
+        let (module_specifier, module_type, module_source) =
+          module.into_for_v8();
+        deno_core::ModuleLoadResponse::Sync(Ok(
+          deno_core::ModuleSource::new_with_redirect(
+            module_type,
+            module_source,
+            original_specifier,
+            module_specifier,
+            None,
           ),
-        ))),
-        Err(err) => Box::pin(deno_core::futures::future::ready(Err(err))),
-      };
+        ))
+      }
+      Ok(None) => deno_core::ModuleLoadResponse::Sync(Err(type_error(
+        format!("{MODULE_NOT_FOUND}: {}", original_specifier),
+      ))),
+      Err(err) => deno_core::ModuleLoadResponse::Sync(Err(type_error(
+        format!("{:?}", err),
+      ))),
     }
-
-    let Some(module) =
-      self.shared.eszip.get_module(original_specifier.as_str())
-    else {
-      return Box::pin(deno_core::futures::future::ready(Err(type_error(
-        format!("Module not found: {}", original_specifier),
-      ))));
-    };
-    let original_specifier = original_specifier.clone();
-    let found_specifier =
-      ModuleSpecifier::parse(&module.specifier).expect("invalid url in eszip");
-
-    async move {
-      let code = module.source().await.ok_or_else(|| {
-        type_error(format!("Module not found: {}", original_specifier))
-      })?;
-      let code = arc_u8_to_arc_str(code)
-        .map_err(|_| type_error("Module source is not utf-8"))?;
-      Ok(deno_core::ModuleSource::new_with_redirect(
-        match module.kind {
-          eszip::ModuleKind::JavaScript => ModuleType::JavaScript,
-          eszip::ModuleKind::Json => ModuleType::Json,
-          eszip::ModuleKind::Jsonc => {
-            return Err(type_error("jsonc modules not supported"))
-          }
-          eszip::ModuleKind::OpaqueData => {
-            unreachable!();
-          }
-        },
-        code.into(),
-        &original_specifier,
-        &found_specifier,
-      ))
-    }
-    .boxed_local()
   }
-}
-
-fn arc_u8_to_arc_str(
-  arc_u8: Arc<[u8]>,
-) -> Result<Arc<str>, std::str::Utf8Error> {
-  // Check that the string is valid UTF-8.
-  std::str::from_utf8(&arc_u8)?;
-  // SAFETY: the string is valid UTF-8, and the layout Arc<[u8]> is the same as
-  // Arc<str>. This is proven by the From<Arc<str>> impl for Arc<[u8]> from the
-  // standard library.
-  Ok(unsafe { std::mem::transmute(arc_u8) })
 }
 
 struct StandaloneModuleLoaderFactory {
@@ -238,32 +346,25 @@ struct StandaloneModuleLoaderFactory {
 impl ModuleLoaderFactory for StandaloneModuleLoaderFactory {
   fn create_for_main(
     &self,
-    root_permissions: PermissionsContainer,
-    dynamic_permissions: PermissionsContainer,
-  ) -> Rc<dyn ModuleLoader> {
-    Rc::new(EmbeddedModuleLoader {
-      shared: self.shared.clone(),
-      root_permissions,
-      dynamic_permissions,
-    })
+    _root_permissions: PermissionsContainer,
+  ) -> ModuleLoaderAndSourceMapGetter {
+    ModuleLoaderAndSourceMapGetter {
+      module_loader: Rc::new(EmbeddedModuleLoader {
+        shared: self.shared.clone(),
+      }),
+    }
   }
 
   fn create_for_worker(
     &self,
-    root_permissions: PermissionsContainer,
-    dynamic_permissions: PermissionsContainer,
-  ) -> Rc<dyn ModuleLoader> {
-    Rc::new(EmbeddedModuleLoader {
-      shared: self.shared.clone(),
-      root_permissions,
-      dynamic_permissions,
-    })
-  }
-
-  fn create_source_map_getter(
-    &self,
-  ) -> Option<Box<dyn deno_core::SourceMapGetter>> {
-    None
+    _parent_permissions: PermissionsContainer,
+    _permissions: PermissionsContainer,
+  ) -> ModuleLoaderAndSourceMapGetter {
+    ModuleLoaderAndSourceMapGetter {
+      module_loader: Rc::new(EmbeddedModuleLoader {
+        shared: self.shared.clone(),
+      }),
+    }
   }
 }
 
@@ -282,14 +383,15 @@ impl RootCertStoreProvider for StandaloneRootCertStoreProvider {
   }
 }
 
-pub async fn run(
-  mut eszip: eszip::EszipV2,
-  metadata: Metadata,
-) -> Result<(), AnyError> {
-  let main_module = &metadata.entrypoint;
-  let current_exe_path = std::env::current_exe().unwrap();
-  let current_exe_name =
-    current_exe_path.file_name().unwrap().to_string_lossy();
+pub async fn run(data: StandaloneData) -> Result<i32, AnyError> {
+  let StandaloneData {
+    fs,
+    metadata,
+    modules,
+    npm_snapshot,
+    root_path,
+    vfs,
+  } = data;
   let deno_dir_provider = Arc::new(DenoDirProvider::new(None));
   let root_cert_store_provider = Arc::new(StandaloneRootCertStoreProvider {
     ca_stores: metadata.ca_stores,
@@ -297,176 +399,272 @@ pub async fn run(
     cell: Default::default(),
   });
   let progress_bar = ProgressBar::new(ProgressBarStyle::TextOnly);
-  let http_client = Arc::new(HttpClient::new(
+  let http_client_provider = Arc::new(HttpClientProvider::new(
     Some(root_cert_store_provider.clone()),
     metadata.unsafely_ignore_certificate_errors.clone(),
   ));
   // use a dummy npm registry url
   let npm_registry_url = ModuleSpecifier::parse("https://localhost/").unwrap();
-  let root_path = std::env::temp_dir()
-    .join(format!("deno-compile-{}", current_exe_name))
-    .join("node_modules");
-  let npm_cache_dir = NpmCacheDir::new(root_path.clone());
-  let (fs, vfs_root, node_modules_path, snapshot) = if let Some(snapshot) =
-    eszip.take_npm_snapshot()
-  {
-    let vfs_root_dir_path = if metadata.node_modules_dir {
-      root_path
-    } else {
-      npm_cache_dir.registry_folder(&npm_registry_url)
-    };
-    let vfs = load_npm_vfs(vfs_root_dir_path.clone())
-      .context("Failed to load npm vfs.")?;
-    let node_modules_path = if metadata.node_modules_dir {
-      Some(vfs.root().to_path_buf())
-    } else {
-      None
-    };
-    (
-      Arc::new(DenoCompileFileSystem::new(vfs)) as Arc<dyn deno_fs::FileSystem>,
-      Some(vfs_root_dir_path),
-      node_modules_path,
-      Some(snapshot),
-    )
-  } else {
-    (
-      Arc::new(deno_fs::RealFs) as Arc<dyn deno_fs::FileSystem>,
-      None,
-      None,
-      None,
-    )
+  let root_dir_url =
+    Arc::new(ModuleSpecifier::from_directory_path(&root_path).unwrap());
+  let main_module = root_dir_url.join(&metadata.entrypoint_key).unwrap();
+  let npm_global_cache_dir = root_path.join(".deno_compile_node_modules");
+  let cache_setting = CacheSetting::Only;
+  let npm_resolver = match metadata.node_modules {
+    Some(binary::NodeModules::Managed { node_modules_dir }) => {
+      let snapshot = npm_snapshot.unwrap();
+      let maybe_node_modules_path = node_modules_dir
+        .map(|node_modules_dir| root_path.join(node_modules_dir));
+      create_cli_npm_resolver(CliNpmResolverCreateOptions::Managed(
+        CliNpmResolverManagedCreateOptions {
+          snapshot: CliNpmResolverManagedSnapshotOption::Specified(Some(
+            snapshot,
+          )),
+          maybe_lockfile: None,
+          fs: fs.clone(),
+          http_client_provider: http_client_provider.clone(),
+          npm_global_cache_dir,
+          cache_setting,
+          text_only_progress_bar: progress_bar,
+          maybe_node_modules_path,
+          npm_system_info: Default::default(),
+          npm_install_deps_provider: Arc::new(
+            // this is only used for installing packages, which isn't necessary with deno compile
+            NpmInstallDepsProvider::empty(),
+          ),
+          // create an npmrc that uses the fake npm_registry_url to resolve packages
+          npmrc: Arc::new(ResolvedNpmRc {
+            default_config: deno_npm::npm_rc::RegistryConfigWithUrl {
+              registry_url: npm_registry_url.clone(),
+              config: Default::default(),
+            },
+            scopes: Default::default(),
+            registry_configs: Default::default(),
+          }),
+          lifecycle_scripts: Default::default(),
+        },
+      ))
+      .await?
+    }
+    Some(binary::NodeModules::Byonm {
+      root_node_modules_dir,
+    }) => {
+      let root_node_modules_dir =
+        root_node_modules_dir.map(|p| vfs.root().join(p));
+      create_cli_npm_resolver(CliNpmResolverCreateOptions::Byonm(
+        CliByonmNpmResolverCreateOptions {
+          fs: CliDenoResolverFs(fs.clone()),
+          root_node_modules_dir,
+        },
+      ))
+      .await?
+    }
+    None => {
+      create_cli_npm_resolver(CliNpmResolverCreateOptions::Managed(
+        CliNpmResolverManagedCreateOptions {
+          snapshot: CliNpmResolverManagedSnapshotOption::Specified(None),
+          maybe_lockfile: None,
+          fs: fs.clone(),
+          http_client_provider: http_client_provider.clone(),
+          npm_global_cache_dir,
+          cache_setting,
+          text_only_progress_bar: progress_bar,
+          maybe_node_modules_path: None,
+          npm_system_info: Default::default(),
+          npm_install_deps_provider: Arc::new(
+            // this is only used for installing packages, which isn't necessary with deno compile
+            NpmInstallDepsProvider::empty(),
+          ),
+          // Packages from different registries are already inlined in the binary,
+          // so no need to create actual `.npmrc` configuration.
+          npmrc: create_default_npmrc(),
+          lifecycle_scripts: Default::default(),
+        },
+      ))
+      .await?
+    }
   };
 
-  let npm_cache = Arc::new(NpmCache::new(
-    npm_cache_dir,
-    CacheSetting::Only,
-    fs.clone(),
-    http_client.clone(),
-    progress_bar.clone(),
+  let has_node_modules_dir = npm_resolver.root_node_modules_path().is_some();
+  let node_resolver = Arc::new(NodeResolver::new(
+    deno_runtime::deno_node::DenoFsNodeResolverEnv::new(fs.clone()),
+    npm_resolver.clone().into_npm_resolver(),
   ));
-  let npm_api = Arc::new(CliNpmRegistryApi::new(
-    npm_registry_url.clone(),
-    npm_cache.clone(),
-    http_client.clone(),
-    progress_bar.clone(),
-  ));
-  let npm_resolution = Arc::new(NpmResolution::from_serialized(
-    npm_api.clone(),
-    snapshot,
-    None,
-  ));
-  let has_node_modules_dir = node_modules_path.is_some();
-  let npm_fs_resolver = create_npm_fs_resolver(
-    fs.clone(),
-    npm_cache,
-    &progress_bar,
-    npm_registry_url,
-    npm_resolution.clone(),
-    node_modules_path,
-    NpmSystemInfo::default(),
-  );
-  let npm_resolver = Arc::new(CliNpmResolver::new(
-    fs.clone(),
-    npm_resolution.clone(),
-    npm_fs_resolver,
-    None,
-  ));
-  let node_resolver =
-    Arc::new(NodeResolver::new(fs.clone(), npm_resolver.clone()));
   let cjs_resolutions = Arc::new(CjsResolutionStore::default());
   let cache_db = Caches::new(deno_dir_provider.clone());
   let node_analysis_cache = NodeAnalysisCache::new(cache_db.node_analysis_db());
-  let cjs_esm_code_analyzer =
-    CliCjsCodeAnalyzer::new(node_analysis_cache, fs.clone());
-  let node_code_translator = Arc::new(NodeCodeTranslator::new(
-    cjs_esm_code_analyzer,
+  let cli_node_resolver = Arc::new(CliNodeResolver::new(
+    cjs_resolutions.clone(),
     fs.clone(),
     node_resolver.clone(),
     npm_resolver.clone(),
   ));
-  let package_json_deps_provider = Arc::new(PackageJsonDepsProvider::new(
-    metadata
-      .package_json_deps
-      .map(|serialized| serialized.into_deps()),
+  let cjs_esm_code_analyzer = CliCjsCodeAnalyzer::new(
+    node_analysis_cache,
+    fs.clone(),
+    cli_node_resolver.clone(),
+    None,
+  );
+  let node_code_translator = Arc::new(NodeCodeTranslator::new(
+    cjs_esm_code_analyzer,
+    deno_runtime::deno_node::DenoFsNodeResolverEnv::new(fs.clone()),
+    node_resolver.clone(),
+    npm_resolver.clone().into_npm_resolver(),
   ));
-  let maybe_import_map = metadata.maybe_import_map.map(|(base, source)| {
-    Arc::new(parse_from_json(&base, &source).unwrap().import_map)
-  });
+  let workspace_resolver = {
+    let import_map = match metadata.workspace_resolver.import_map {
+      Some(import_map) => Some(
+        import_map::parse_from_json_with_options(
+          root_dir_url.join(&import_map.specifier).unwrap(),
+          &import_map.json,
+          import_map::ImportMapOptions {
+            address_hook: None,
+            expand_imports: true,
+          },
+        )?
+        .import_map,
+      ),
+      None => None,
+    };
+    let pkg_jsons = metadata
+      .workspace_resolver
+      .package_jsons
+      .into_iter()
+      .map(|(relative_path, json)| {
+        let path = root_dir_url
+          .join(&relative_path)
+          .unwrap()
+          .to_file_path()
+          .unwrap();
+        let pkg_json =
+          deno_package_json::PackageJson::load_from_value(path, json);
+        Arc::new(pkg_json)
+      })
+      .collect();
+    WorkspaceResolver::new_raw(
+      root_dir_url.clone(),
+      import_map,
+      metadata
+        .workspace_resolver
+        .jsr_pkgs
+        .iter()
+        .map(|pkg| ResolverWorkspaceJsrPackage {
+          is_patch: false, // only used for enhancing the diagnostic, which isn't shown in deno compile
+          base: root_dir_url.join(&pkg.relative_base).unwrap(),
+          name: pkg.name.clone(),
+          version: pkg.version.clone(),
+          exports: pkg.exports.clone(),
+        })
+        .collect(),
+      pkg_jsons,
+      metadata.workspace_resolver.pkg_json_resolution,
+    )
+  };
   let module_loader_factory = StandaloneModuleLoaderFactory {
     shared: Arc::new(SharedModuleLoaderState {
-      eszip,
-      mapped_specifier_resolver: MappedSpecifierResolver::new(
-        maybe_import_map.clone(),
-        package_json_deps_provider.clone(),
-      ),
+      modules,
+      workspace_resolver,
+      node_resolver: cli_node_resolver.clone(),
       npm_module_loader: Arc::new(NpmModuleLoader::new(
-        cjs_resolutions,
+        cjs_resolutions.clone(),
         node_code_translator,
         fs.clone(),
-        node_resolver.clone(),
+        cli_node_resolver,
       )),
     }),
   };
 
   let permissions = {
-    let mut permissions = metadata.permissions;
-    // if running with an npm vfs, grant read access to it
-    if let Some(vfs_root) = vfs_root {
-      match &mut permissions.allow_read {
-        Some(vec) if vec.is_empty() => {
-          // do nothing, already granted
-        }
-        Some(vec) => {
-          vec.push(vfs_root);
-        }
-        None => {
-          permissions.allow_read = Some(vec![vfs_root]);
-        }
+    let mut permissions =
+      metadata.permissions.to_options(/* cli_arg_urls */ &[]);
+    // grant read access to the vfs
+    match &mut permissions.allow_read {
+      Some(vec) if vec.is_empty() => {
+        // do nothing, already granted
+      }
+      Some(vec) => {
+        vec.push(root_path.to_string_lossy().to_string());
+      }
+      None => {
+        permissions.allow_read =
+          Some(vec![root_path.to_string_lossy().to_string()]);
       }
     }
 
-    PermissionsContainer::new(Permissions::from_options(&permissions)?)
+    let desc_parser =
+      Arc::new(RuntimePermissionDescriptorParser::new(fs.clone()));
+    let permissions =
+      Permissions::from_options(desc_parser.as_ref(), &permissions)?;
+    PermissionsContainer::new(desc_parser, permissions)
   };
+  let feature_checker = Arc::new({
+    let mut checker = FeatureChecker::default();
+    checker.set_exit_cb(Box::new(crate::unstable_exit_cb));
+    for feature in metadata.unstable_config.features {
+      // `metadata` is valid for the whole lifetime of the program, so we
+      // can leak the string here.
+      checker.enable_feature(feature.leak());
+    }
+    checker
+  });
   let worker_factory = CliMainWorkerFactory::new(
-    StorageKeyResolver::empty(),
-    npm_resolver.clone(),
-    node_resolver,
-    Default::default(),
-    Box::new(module_loader_factory),
-    root_cert_store_provider,
+    Arc::new(BlobStore::default()),
+    cjs_resolutions,
+    // Code cache is not supported for standalone binary yet.
+    None,
+    feature_checker,
     fs,
     None,
     None,
+    None,
+    Box::new(module_loader_factory),
+    node_resolver,
+    npm_resolver,
+    root_cert_store_provider,
+    permissions,
+    StorageKeyResolver::empty(),
+    crate::args::DenoSubcommand::Run(Default::default()),
     CliMainWorkerOptions {
       argv: metadata.argv,
       log_level: WorkerLogLevel::Info,
-      coverage_dir: None,
+      enable_op_summary_metrics: false,
       enable_testing_features: false,
       has_node_modules_dir,
+      hmr: false,
       inspect_brk: false,
       inspect_wait: false,
+      strace_ops: None,
       is_inspecting: false,
       is_npm_main: main_module.scheme() == "npm",
+      skip_op_registration: true,
       location: metadata.location,
-      maybe_binary_npm_command_name: NpmPackageReqReference::from_specifier(
-        main_module,
-      )
-      .ok()
-      .map(|req_ref| npm_pkg_req_ref_to_binary_command(&req_ref)),
+      argv0: NpmPackageReqReference::from_specifier(&main_module)
+        .ok()
+        .map(|req_ref| npm_pkg_req_ref_to_binary_command(&req_ref))
+        .or(std::env::args().next()),
+      node_debug: std::env::var("NODE_DEBUG").ok(),
       origin_data_folder_path: None,
       seed: metadata.seed,
       unsafely_ignore_certificate_errors: metadata
         .unsafely_ignore_certificate_errors,
-      unstable: metadata.unstable,
+      create_hmr_runner: None,
+      create_coverage_collector: None,
+      node_ipc: None,
+      serve_port: None,
+      serve_host: None,
+      unstable_detect_cjs: metadata.unstable_config.detect_cjs,
     },
   );
 
+  // Initialize v8 once from the main thread.
   v8_set_flags(construct_v8_flags(&[], &metadata.v8_flags, vec![]));
+  // TODO(bartlomieju): remove last argument once Deploy no longer needs it
+  deno_core::JsRuntime::init_platform(None, true);
 
   let mut worker = worker_factory
-    .create_main_worker(main_module.clone(), permissions)
+    .create_main_worker(WorkerExecutionMode::Run, main_module)
     .await?;
 
   let exit_code = worker.run().await?;
-  std::process::exit(exit_code)
+  Ok(exit_code)
 }

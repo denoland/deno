@@ -1,0 +1,9 @@
+Available tasks:
+- lint
+    // this task has documentation
+    // 
+    // in the form of comments
+    deno lint
+- fmt
+    // block comments are fine too
+    deno fmt

@@ -29,7 +29,7 @@ git checkout v3.9.7
 git checkout -b branch_v3.9.7
 git cherry pick <previous-release-branch-commit-we-did>
 npm install
-gulp local
+npx hereby
 rsync built/local/typescript.js ~/src/deno/cli/tsc/00_typescript.js
 rsync --exclude=protocol.d.ts --exclude=tsserverlibrary.d.ts --exclude=typescriptServices.d.ts built/local/*.d.ts ~/src/deno/cli/tsc/dts/
 ```

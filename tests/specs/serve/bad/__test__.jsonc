@@ -1,0 +1,5 @@
+{
+  "args": "serve --port 12345 main.ts",
+  "output": "main.out",
+  "tempDir": true
+}

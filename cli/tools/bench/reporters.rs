@@ -1,6 +1,9 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 use serde::Serialize;
+
+use crate::tools::test::TestFailureFormatOptions;
+use crate::version;
 
 use super::*;
 
@@ -12,10 +15,14 @@ pub trait BenchReporter {
   fn report_wait(&mut self, desc: &BenchDescription);
   fn report_output(&mut self, output: &str);
   fn report_result(&mut self, desc: &BenchDescription, result: &BenchResult);
+  fn report_uncaught_error(&mut self, origin: &str, error: Box<JsError>);
 }
+
+const JSON_SCHEMA_VERSION: u8 = 1;
 
 #[derive(Debug, Serialize)]
 struct JsonReporterOutput {
+  version: u8,
   runtime: String,
   cpu: String,
   benches: Vec<JsonReporterBench>,
@@ -24,7 +31,12 @@ struct JsonReporterOutput {
 impl Default for JsonReporterOutput {
   fn default() -> Self {
     Self {
-      runtime: format!("{} {}", get_user_agent(), env!("TARGET")),
+      version: JSON_SCHEMA_VERSION,
+      runtime: format!(
+        "{} {}",
+        version::DENO_VERSION_INFO.user_agent,
+        env!("TARGET")
+      ),
       cpu: mitata::cpu::name(),
       benches: vec![],
     }
@@ -49,6 +61,7 @@ impl JsonReporter {
   }
 }
 
+#[allow(clippy::print_stdout)]
 impl BenchReporter for JsonReporter {
   fn report_group_summary(&mut self) {}
   #[cold]
@@ -57,7 +70,7 @@ impl BenchReporter for JsonReporter {
   fn report_end(&mut self, _report: &BenchReport) {
     match write_json_to_stdout(self) {
       Ok(_) => (),
-      Err(e) => println!("{e}"),
+      Err(e) => println!("{}", e),
     }
   }
 
@@ -91,12 +104,13 @@ impl BenchReporter for JsonReporter {
       });
     }
   }
+
+  fn report_uncaught_error(&mut self, _origin: &str, _error: Box<JsError>) {}
 }
 
 pub struct ConsoleReporter {
   name: String,
   show_output: bool,
-  has_ungrouped: bool,
   group: Option<String>,
   baseline: bool,
   group_measurements: Vec<(BenchDescription, BenchStats)>,
@@ -111,12 +125,12 @@ impl ConsoleReporter {
       options: None,
       baseline: false,
       name: String::new(),
-      has_ungrouped: false,
       group_measurements: Vec::new(),
     }
   }
 }
 
+#[allow(clippy::print_stdout)]
 impl BenchReporter for ConsoleReporter {
   #[cold]
   fn report_plan(&mut self, plan: &BenchPlan) {
@@ -137,18 +151,20 @@ impl BenchReporter for ConsoleReporter {
     let options = self.options.as_mut().unwrap();
 
     options.percentiles = true;
-    options.colors = colors::use_color();
 
     if FIRST_PLAN
       .compare_exchange(true, false, Ordering::SeqCst, Ordering::SeqCst)
       .is_ok()
     {
-      println!("{}", colors::gray(format!("cpu: {}", mitata::cpu::name())));
+      println!(
+        "{}",
+        colors::gray(format!("    CPU | {}", mitata::cpu::name()))
+      );
       println!(
         "{}\n",
         colors::gray(format!(
-          "runtime: deno {} ({})",
-          crate::version::deno(),
+          "Runtime | Deno {} ({})",
+          crate::version::DENO_VERSION_INFO.deno,
           env!("TARGET")
         ))
       );
@@ -157,7 +173,7 @@ impl BenchReporter for ConsoleReporter {
     }
 
     println!(
-      "{}\n{}\n{}",
+      "{}\n\n{}\n{}",
       colors::gray(&plan.origin),
       mitata::reporter::header(options),
       mitata::reporter::br(options)
@@ -167,29 +183,15 @@ impl BenchReporter for ConsoleReporter {
   fn report_register(&mut self, _desc: &BenchDescription) {}
 
   fn report_wait(&mut self, desc: &BenchDescription) {
-    self.name = desc.name.clone();
+    self.name.clone_from(&desc.name);
 
     match &desc.group {
-      None => {
-        self.has_ungrouped = true;
-      }
+      None => {}
 
       Some(group) => {
-        if self.group.is_none()
-          && self.has_ungrouped
-          && self.group_measurements.is_empty()
-        {
-          println!();
-        }
-
         if self.group.is_none() || group != self.group.as_ref().unwrap() {
           self.report_group_summary();
-        }
-
-        if (self.group.is_none() && self.has_ungrouped)
-          || (self.group.is_some() && self.group_measurements.is_empty())
-        {
-          println!();
+          println!("{} {}", colors::gray("group"), colors::green(group));
         }
 
         self.group = Some(group.clone());
@@ -209,7 +211,6 @@ impl BenchReporter for ConsoleReporter {
     }
 
     let options = self.options.as_ref().unwrap();
-
     match result {
       BenchResult::Ok(stats) => {
         let mut desc = desc.clone();
@@ -237,7 +238,7 @@ impl BenchReporter for ConsoleReporter {
         );
 
         if !stats.high_precision && stats.used_explicit_timers {
-          println!("{}", colors::yellow(format!("Warning: start() and end() calls in \"{}\" are ignored because it averages less\nthan 0.01s per iteration. Remove them for better results.", &desc.name)));
+          println!("{}", colors::yellow(format!("Warning: start() and end() calls in \"{}\" are ignored because it averages less\nthan 10µs per iteration. Remove them for better results.", &desc.name)));
         }
 
         self.group_measurements.push((desc, stats.clone()));
@@ -250,7 +251,10 @@ impl BenchReporter for ConsoleReporter {
             &desc.name,
             &mitata::reporter::Error {
               stack: None,
-              message: format_test_error(js_error),
+              message: format_test_error(
+                js_error,
+                &TestFailureFormatOptions::default()
+              ),
             },
             options
           )
@@ -260,10 +264,9 @@ impl BenchReporter for ConsoleReporter {
   }
 
   fn report_group_summary(&mut self) {
-    let options = match self.options.as_ref() {
-      None => return,
-      Some(options) => options,
-    };
+    if self.options.is_none() {
+      return;
+    }
 
     if 2 <= self.group_measurements.len()
       && (self.group.is_some() || (self.group.is_none() && self.baseline))
@@ -289,10 +292,10 @@ impl BenchReporter for ConsoleReporter {
               },
             })
             .collect::<Vec<mitata::reporter::GroupBenchmark>>(),
-          options
         )
       );
     }
+    println!();
 
     self.baseline = false;
     self.group_measurements.clear();
@@ -300,5 +303,16 @@ impl BenchReporter for ConsoleReporter {
 
   fn report_end(&mut self, _: &BenchReport) {
     self.report_group_summary();
+  }
+
+  fn report_uncaught_error(&mut self, _origin: &str, error: Box<JsError>) {
+    println!(
+      "{}: {}",
+      colors::red_bold("error"),
+      format_test_error(&error, &TestFailureFormatOptions::default())
+    );
+    println!("This error was not caught from a benchmark and caused the bench runner to fail on the referenced module.");
+    println!("It most likely originated from a dangling promise, event/timeout handler or top-level code.");
+    println!();
   }
 }

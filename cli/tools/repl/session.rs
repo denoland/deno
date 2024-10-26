@@ -1,35 +1,81 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
-use std::cell::RefCell;
-use std::rc::Rc;
 use std::sync::Arc;
 
 use crate::args::CliOptions;
+use crate::cdp;
 use crate::colors;
 use crate::lsp::ReplLanguageServer;
 use crate::npm::CliNpmResolver;
 use crate::resolver::CliGraphResolver;
+use crate::tools::test::report_tests;
+use crate::tools::test::reporters::PrettyTestReporter;
+use crate::tools::test::reporters::TestReporter;
+use crate::tools::test::run_tests_for_worker;
+use crate::tools::test::send_test_event;
+use crate::tools::test::worker_has_tests;
+use crate::tools::test::TestEvent;
+use crate::tools::test::TestEventReceiver;
+use crate::tools::test::TestFailureFormatOptions;
 
+use deno_ast::diagnostics::Diagnostic;
 use deno_ast::swc::ast as swc_ast;
+use deno_ast::swc::common::comments::CommentKind;
 use deno_ast::swc::visit::noop_visit_type;
 use deno_ast::swc::visit::Visit;
 use deno_ast::swc::visit::VisitWith;
-use deno_ast::DiagnosticsError;
 use deno_ast::ImportsNotUsedAsValues;
 use deno_ast::ModuleSpecifier;
+use deno_ast::ParseDiagnosticsError;
+use deno_ast::ParsedSource;
+use deno_ast::SourcePos;
+use deno_ast::SourceRangedForSpanned;
+use deno_ast::SourceTextInfo;
+use deno_core::error::generic_error;
 use deno_core::error::AnyError;
 use deno_core::futures::channel::mpsc::UnboundedReceiver;
 use deno_core::futures::FutureExt;
 use deno_core::futures::StreamExt;
 use deno_core::serde_json;
 use deno_core::serde_json::Value;
+use deno_core::unsync::spawn;
+use deno_core::url::Url;
 use deno_core::LocalInspectorSession;
+use deno_core::PollEventLoopOptions;
+use deno_graph::source::ResolutionMode;
 use deno_graph::source::Resolver;
+use deno_graph::Position;
+use deno_graph::PositionRange;
+use deno_graph::SpecifierWithRange;
 use deno_runtime::worker::MainWorker;
 use deno_semver::npm::NpmPackageReqReference;
 use once_cell::sync::Lazy;
+use regex::Match;
+use regex::Regex;
+use tokio::sync::Mutex;
 
-use super::cdp;
+fn comment_source_to_position_range(
+  comment_start: SourcePos,
+  m: &Match,
+  text_info: &SourceTextInfo,
+  is_jsx_import_source: bool,
+) -> PositionRange {
+  // the comment text starts after the double slash or slash star, so add 2
+  let comment_start = comment_start + 2;
+  // -1 and +1 to include the quotes, but not for jsx import sources because
+  // they don't have quotes
+  let padding = if is_jsx_import_source { 0 } else { 1 };
+  PositionRange {
+    start: Position::from_source_pos(
+      comment_start + m.start() - padding,
+      text_info,
+    ),
+    end: Position::from_source_pos(
+      comment_start + m.end() + padding,
+      text_info,
+    ),
+  }
+}
 
 /// We store functions used in the repl on this object because
 /// the user might modify the `Deno` global or delete it outright.
@@ -54,6 +100,9 @@ Object.defineProperty(globalThis, "{0}", {{
     lastThrownError: undefined,
     inspectArgs: Deno[Deno.internal].inspectArgs,
     noColor: Deno.noColor,
+    get closed() {{
+      return typeof globalThis.closed === 'undefined' ? false : globalThis.closed;
+    }}
   }},
 }});
 Object.defineProperty(globalThis, "_", {{
@@ -116,37 +165,54 @@ pub fn result_to_evaluation_output(
   }
 }
 
-struct TsEvaluateResponse {
-  ts_code: String,
-  value: cdp::EvaluateResponse,
+#[derive(Debug)]
+pub struct TsEvaluateResponse {
+  pub ts_code: String,
+  pub value: cdp::EvaluateResponse,
+}
+
+struct ReplJsxState {
+  factory: String,
+  frag_factory: String,
+  import_source: Option<String>,
 }
 
 pub struct ReplSession {
-  npm_resolver: Arc<CliNpmResolver>,
+  npm_resolver: Arc<dyn CliNpmResolver>,
   resolver: Arc<CliGraphResolver>,
   pub worker: MainWorker,
   session: LocalInspectorSession,
   pub context_id: u64,
   pub language_server: ReplLanguageServer,
-  pub notifications: Rc<RefCell<UnboundedReceiver<Value>>>,
+  pub notifications: Arc<Mutex<UnboundedReceiver<Value>>>,
   referrer: ModuleSpecifier,
+  main_module: ModuleSpecifier,
+  test_reporter_factory: Box<dyn Fn() -> Box<dyn TestReporter>>,
+  /// This is only optional because it's temporarily taken when evaluating.
+  test_event_receiver: Option<TestEventReceiver>,
+  jsx: ReplJsxState,
+  experimental_decorators: bool,
 }
 
 impl ReplSession {
   pub async fn initialize(
     cli_options: &CliOptions,
-    npm_resolver: Arc<CliNpmResolver>,
+    npm_resolver: Arc<dyn CliNpmResolver>,
     resolver: Arc<CliGraphResolver>,
     mut worker: MainWorker,
+    main_module: ModuleSpecifier,
+    test_event_receiver: TestEventReceiver,
   ) -> Result<Self, AnyError> {
     let language_server = ReplLanguageServer::new_initialized().await?;
-    let mut session = worker.create_inspector_session().await;
+    let mut session = worker.create_inspector_session();
 
     worker
-      .with_event_loop(
+      .js_runtime
+      .with_event_loop_future(
         session
           .post_message::<()>("Runtime.enable", None)
           .boxed_local(),
+        PollEventLoopOptions::default(),
       )
       .await?;
 
@@ -158,18 +224,20 @@ impl ReplSession {
 
     loop {
       let notification = notification_rx.next().await.unwrap();
-      let method = notification.get("method").unwrap().as_str().unwrap();
-      let params = notification.get("params").unwrap();
-      if method == "Runtime.executionContextCreated" {
-        let context = params.get("context").unwrap();
-        assert!(context
-          .get("auxData")
-          .unwrap()
+      let notification =
+        serde_json::from_value::<cdp::Notification>(notification)?;
+      if notification.method == "Runtime.executionContextCreated" {
+        let execution_context_created = serde_json::from_value::<
+          cdp::ExecutionContextCreated,
+        >(notification.params)?;
+        assert!(execution_context_created
+          .context
+          .aux_data
           .get("isDefault")
           .unwrap()
           .as_bool()
           .unwrap());
-        context_id = context.get("id").unwrap().as_u64().unwrap();
+        context_id = execution_context_created.context.id;
         break;
       }
     }
@@ -179,6 +247,20 @@ impl ReplSession {
       deno_core::resolve_path("./$deno$repl.ts", cli_options.initial_cwd())
         .unwrap();
 
+    let cwd_url =
+      Url::from_directory_path(cli_options.initial_cwd()).map_err(|_| {
+        generic_error(format!(
+          "Unable to construct URL from the path of cwd: {}",
+          cli_options.initial_cwd().to_string_lossy(),
+        ))
+      })?;
+    let ts_config_for_emit = cli_options
+      .resolve_ts_config_for_emit(deno_config::deno_json::TsConfigType::Emit)?;
+    let (transpile_options, _) =
+      crate::args::ts_config_to_transpile_and_emit_options(
+        ts_config_for_emit.ts_config,
+      )?;
+    let experimental_decorators = transpile_options.use_ts_decorators;
     let mut repl_session = ReplSession {
       npm_resolver,
       resolver,
@@ -187,7 +269,25 @@ impl ReplSession {
       context_id,
       language_server,
       referrer,
-      notifications: Rc::new(RefCell::new(notification_rx)),
+      notifications: Arc::new(Mutex::new(notification_rx)),
+      test_reporter_factory: Box::new(move || {
+        Box::new(PrettyTestReporter::new(
+          false,
+          true,
+          false,
+          true,
+          cwd_url.clone(),
+          TestFailureFormatOptions::default(),
+        ))
+      }),
+      main_module,
+      test_event_receiver: Some(test_event_receiver),
+      jsx: ReplJsxState {
+        factory: "React.createElement".to_string(),
+        frag_factory: "React.Fragment".to_string(),
+        import_source: None,
+      },
+      experimental_decorators,
     };
 
     // inject prelude
@@ -196,9 +296,17 @@ impl ReplSession {
     Ok(repl_session)
   }
 
+  pub fn set_test_reporter_factory(
+    &mut self,
+    f: Box<dyn Fn() -> Box<dyn TestReporter>>,
+  ) {
+    self.test_reporter_factory = f;
+  }
+
   pub async fn closing(&mut self) -> Result<bool, AnyError> {
+    let expression = format!(r#"{}.closed"#, *REPL_INTERNALS_NAME);
     let closed = self
-      .evaluate_expression("(this.closed)")
+      .evaluate_expression(&expression)
       .await?
       .result
       .value
@@ -216,7 +324,17 @@ impl ReplSession {
   ) -> Result<Value, AnyError> {
     self
       .worker
-      .with_event_loop(self.session.post_message(method, params).boxed_local())
+      .js_runtime
+      .with_event_loop_future(
+        self.session.post_message(method, params).boxed_local(),
+        PollEventLoopOptions {
+          // NOTE(bartlomieju): this is an important bit; we don't want to pump V8
+          // message loop here, so that GC won't run. Otherwise, the resulting
+          // object might be GC'ed before we have a chance to inspect it.
+          pump_v8_message_loop: false,
+          ..Default::default()
+        },
+      )
       .await
   }
 
@@ -228,7 +346,7 @@ impl ReplSession {
     &mut self,
     line: &str,
   ) -> EvaluationOutput {
-    fn format_diagnostic(diagnostic: &deno_ast::Diagnostic) -> String {
+    fn format_diagnostic(diagnostic: &deno_ast::ParseDiagnostic) -> String {
       let display_position = diagnostic.display_position();
       format!(
         "{}: {} at {}:{}",
@@ -281,11 +399,11 @@ impl ReplSession {
         }
         Err(err) => {
           // handle a parsing diagnostic
-          match err.downcast_ref::<deno_ast::Diagnostic>() {
+          match err.downcast_ref::<deno_ast::ParseDiagnostic>() {
             Some(diagnostic) => {
               Ok(EvaluationOutput::Error(format_diagnostic(diagnostic)))
             }
-            None => match err.downcast_ref::<DiagnosticsError>() {
+            None => match err.downcast_ref::<ParseDiagnosticsError>() {
               Some(diagnostics) => Ok(EvaluationOutput::Error(
                 diagnostics
                   .0
@@ -305,7 +423,7 @@ impl ReplSession {
     result_to_evaluation_output(result)
   }
 
-  async fn evaluate_line_with_object_wrapping(
+  pub async fn evaluate_line_with_object_wrapping(
     &mut self,
     line: &str,
   ) -> Result<TsEvaluateResponse, AnyError> {
@@ -324,7 +442,7 @@ impl ReplSession {
 
     // If that fails, we retry it without wrapping in parens letting the error bubble up to the
     // user if it is still an error.
-    if wrapped_line != line
+    let result = if wrapped_line != line
       && (evaluate_response.is_err()
         || evaluate_response
           .as_ref()
@@ -336,7 +454,30 @@ impl ReplSession {
       self.evaluate_ts_expression(line).await
     } else {
       evaluate_response
+    };
+
+    if worker_has_tests(&mut self.worker) {
+      let report_tests_handle = spawn(report_tests(
+        self.test_event_receiver.take().unwrap(),
+        (self.test_reporter_factory)(),
+      ));
+      run_tests_for_worker(
+        &mut self.worker,
+        &self.main_module,
+        &Default::default(),
+        &Default::default(),
+      )
+      .await
+      .unwrap();
+      send_test_event(
+        &self.worker.js_runtime.op_state(),
+        TestEvent::ForceEndReport,
+      )
+      .unwrap();
+      self.test_event_receiver = Some(report_tests_handle.await.unwrap().1);
     }
+
+    result
   }
 
   async fn set_last_thrown_error(
@@ -395,29 +536,24 @@ impl ReplSession {
     Ok(())
   }
 
-  pub async fn get_eval_value(
+  pub async fn call_function_on_args(
     &mut self,
-    evaluate_result: &cdp::RemoteObject,
-  ) -> Result<String, AnyError> {
-    // TODO(caspervonb) we should investigate using previews here but to keep things
-    // consistent with the previous implementation we just get the preview result from
-    // Deno.inspectArgs.
+    function_declaration: String,
+    args: &[cdp::RemoteObject],
+  ) -> Result<cdp::CallFunctionOnResponse, AnyError> {
+    let arguments: Option<Vec<cdp::CallArgument>> = if args.is_empty() {
+      None
+    } else {
+      Some(args.iter().map(|a| a.into()).collect())
+    };
+
     let inspect_response = self
       .post_message_with_event_loop(
         "Runtime.callFunctionOn",
         Some(cdp::CallFunctionOnArgs {
-          function_declaration: format!(
-            r#"function (object) {{
-          try {{
-            return {0}.inspectArgs(["%o", object], {{ colors: !{0}.noColor }});
-          }} catch (err) {{
-            return {0}.inspectArgs(["%o", err]);
-          }}
-        }}"#,
-            *REPL_INTERNALS_NAME
-          ),
+          function_declaration,
           object_id: None,
-          arguments: Some(vec![evaluate_result.into()]),
+          arguments,
           silent: None,
           return_by_value: None,
           generate_preview: None,
@@ -432,6 +568,31 @@ impl ReplSession {
 
     let response: cdp::CallFunctionOnResponse =
       serde_json::from_value(inspect_response)?;
+    Ok(response)
+  }
+
+  pub async fn get_eval_value(
+    &mut self,
+    evaluate_result: &cdp::RemoteObject,
+  ) -> Result<String, AnyError> {
+    // TODO(caspervonb) we should investigate using previews here but to keep things
+    // consistent with the previous implementation we just get the preview result from
+    // Deno.inspectArgs.
+    let response = self
+      .call_function_on_args(
+        format!(
+          r#"function (object) {{
+          try {{
+            return {0}.inspectArgs(["%o", object], {{ colors: !{0}.noColor }});
+          }} catch (err) {{
+            return {0}.inspectArgs(["%o", err]);
+          }}
+        }}"#,
+          *REPL_INTERNALS_NAME
+        ),
+        &[evaluate_result.clone()],
+      )
+      .await?;
     let value = response.result.value.unwrap();
     let s = value.as_str().unwrap();
 
@@ -442,39 +603,59 @@ impl ReplSession {
     &mut self,
     expression: &str,
   ) -> Result<TsEvaluateResponse, AnyError> {
-    let parsed_module = deno_ast::parse_module(deno_ast::ParseParams {
-      specifier: "repl.ts".to_string(),
-      text_info: deno_ast::SourceTextInfo::from_string(expression.to_string()),
-      media_type: deno_ast::MediaType::TypeScript,
-      capture_tokens: false,
-      maybe_syntax: None,
-      scope_analysis: false,
-    })?;
+    let parsed_source =
+      match parse_source_as(expression.to_string(), deno_ast::MediaType::Tsx) {
+        Ok(parsed) => parsed,
+        Err(err) => {
+          if let Ok(parsed) = parse_source_as(
+            expression.to_string(),
+            deno_ast::MediaType::TypeScript,
+          ) {
+            parsed
+          } else {
+            return Err(err);
+          }
+        }
+      };
 
     self
-      .check_for_npm_or_node_imports(&parsed_module.program())
+      .check_for_npm_or_node_imports(&parsed_source.program())
       .await?;
 
-    let transpiled_src = parsed_module
-      .transpile(&deno_ast::EmitOptions {
-        emit_metadata: false,
-        source_map: false,
-        inline_source_map: false,
-        inline_sources: false,
-        imports_not_used_as_values: ImportsNotUsedAsValues::Preserve,
-        // JSX is not supported in the REPL
-        transform_jsx: false,
-        jsx_automatic: false,
-        jsx_development: false,
-        jsx_factory: "React.createElement".into(),
-        jsx_fragment_factory: "React.Fragment".into(),
-        jsx_import_source: None,
-        var_decl_imports: true,
-      })?
+    self.analyze_and_handle_jsx(&parsed_source);
+
+    let transpiled_src = parsed_source
+      .transpile(
+        &deno_ast::TranspileOptions {
+          use_ts_decorators: self.experimental_decorators,
+          use_decorators_proposal: !self.experimental_decorators,
+          emit_metadata: false,
+          imports_not_used_as_values: ImportsNotUsedAsValues::Preserve,
+          transform_jsx: true,
+          precompile_jsx: false,
+          precompile_jsx_skip_elements: None,
+          precompile_jsx_dynamic_props: None,
+          jsx_automatic: self.jsx.import_source.is_some(),
+          jsx_development: false,
+          jsx_factory: self.jsx.factory.clone(),
+          jsx_fragment_factory: self.jsx.frag_factory.clone(),
+          jsx_import_source: self.jsx.import_source.clone(),
+          var_decl_imports: true,
+        },
+        &deno_ast::EmitOptions {
+          source_map: deno_ast::SourceMapOption::None,
+          source_map_base: None,
+          source_map_file: None,
+          inline_sources: false,
+          remove_comments: false,
+        },
+      )?
+      .into_source()
+      .into_string()?
       .text;
 
     let value = self
-      .evaluate_expression(&format!("'use strict'; void 0;\n{transpiled_src}"))
+      .evaluate_expression(&format!("'use strict'; void 0;{transpiled_src}"))
       .await?;
 
     Ok(TsEvaluateResponse {
@@ -483,20 +664,51 @@ impl ReplSession {
     })
   }
 
+  fn analyze_and_handle_jsx(&mut self, parsed_source: &ParsedSource) {
+    let Some(analyzed_pragmas) = analyze_jsx_pragmas(parsed_source) else {
+      return;
+    };
+
+    if !analyzed_pragmas.has_any() {
+      return;
+    }
+
+    if let Some(jsx) = analyzed_pragmas.jsx {
+      self.jsx.factory = jsx.text;
+      self.jsx.import_source = None;
+    }
+    if let Some(jsx_frag) = analyzed_pragmas.jsx_fragment {
+      self.jsx.frag_factory = jsx_frag.text;
+      self.jsx.import_source = None;
+    }
+    if let Some(jsx_import_source) = analyzed_pragmas.jsx_import_source {
+      self.jsx.import_source = Some(jsx_import_source.text);
+    }
+  }
+
   async fn check_for_npm_or_node_imports(
     &mut self,
     program: &swc_ast::Program,
   ) -> Result<(), AnyError> {
+    let Some(npm_resolver) = self.npm_resolver.as_managed() else {
+      return Ok(()); // don't auto-install for byonm
+    };
+
     let mut collector = ImportCollector::new();
     program.visit_with(&mut collector);
 
+    let referrer_range = deno_graph::Range {
+      specifier: self.referrer.clone(),
+      start: deno_graph::Position::zeroed(),
+      end: deno_graph::Position::zeroed(),
+    };
     let resolved_imports = collector
       .imports
       .iter()
       .flat_map(|i| {
         self
           .resolver
-          .resolve(i, &self.referrer)
+          .resolve(i, &referrer_range, ResolutionMode::Execution)
           .ok()
           .or_else(|| ModuleSpecifier::parse(i).ok())
       })
@@ -510,14 +722,11 @@ impl ReplSession {
     let has_node_specifier =
       resolved_imports.iter().any(|url| url.scheme() == "node");
     if !npm_imports.is_empty() || has_node_specifier {
-      self.npm_resolver.add_package_reqs(&npm_imports).await?;
+      npm_resolver.add_package_reqs(&npm_imports).await?;
 
       // prevent messages in the repl about @types/node not being cached
       if has_node_specifier {
-        self
-          .npm_resolver
-          .inject_synthetic_types_node_package()
-          .await?;
+        npm_resolver.inject_synthetic_types_node_package().await?;
       }
     }
     Ok(())
@@ -603,4 +812,122 @@ impl Visit for ImportCollector {
       _ => {}
     }
   }
+}
+
+fn parse_source_as(
+  source: String,
+  media_type: deno_ast::MediaType,
+) -> Result<deno_ast::ParsedSource, AnyError> {
+  let specifier = if media_type == deno_ast::MediaType::Tsx {
+    ModuleSpecifier::parse("file:///repl.tsx").unwrap()
+  } else {
+    ModuleSpecifier::parse("file:///repl.ts").unwrap()
+  };
+
+  let parsed = deno_ast::parse_module(deno_ast::ParseParams {
+    specifier,
+    text: source.into(),
+    media_type,
+    capture_tokens: true,
+    maybe_syntax: None,
+    scope_analysis: false,
+  })?;
+
+  Ok(parsed)
+}
+
+// TODO(bartlomieju): remove these and use regexes from `deno_graph`
+/// Matches the `@jsxImportSource` pragma.
+static JSX_IMPORT_SOURCE_RE: Lazy<Regex> =
+  Lazy::new(|| Regex::new(r"(?i)^[\s*]*@jsxImportSource\s+(\S+)").unwrap());
+/// Matches the `@jsx` pragma.
+static JSX_RE: Lazy<Regex> =
+  Lazy::new(|| Regex::new(r"(?i)^[\s*]*@jsx\s+(\S+)").unwrap());
+/// Matches the `@jsxFrag` pragma.
+static JSX_FRAG_RE: Lazy<Regex> =
+  Lazy::new(|| Regex::new(r"(?i)^[\s*]*@jsxFrag\s+(\S+)").unwrap());
+
+#[derive(Default, Debug)]
+struct AnalyzedJsxPragmas {
+  /// Information about `@jsxImportSource` pragma.
+  jsx_import_source: Option<SpecifierWithRange>,
+
+  /// Matches the `@jsx` pragma.
+  jsx: Option<SpecifierWithRange>,
+
+  /// Matches the `@jsxFrag` pragma.
+  jsx_fragment: Option<SpecifierWithRange>,
+}
+
+impl AnalyzedJsxPragmas {
+  fn has_any(&self) -> bool {
+    self.jsx_import_source.is_some()
+      || self.jsx.is_some()
+      || self.jsx_fragment.is_some()
+  }
+}
+
+/// Analyze provided source and return information about carious pragmas
+/// used to configure the JSX transforms.
+fn analyze_jsx_pragmas(
+  parsed_source: &ParsedSource,
+) -> Option<AnalyzedJsxPragmas> {
+  if !matches!(
+    parsed_source.media_type(),
+    deno_ast::MediaType::Jsx | deno_ast::MediaType::Tsx
+  ) {
+    return None;
+  }
+
+  let mut analyzed_pragmas = AnalyzedJsxPragmas::default();
+
+  for c in parsed_source.get_leading_comments()?.iter() {
+    if c.kind != CommentKind::Block {
+      continue; // invalid
+    }
+
+    if let Some(captures) = JSX_IMPORT_SOURCE_RE.captures(&c.text) {
+      if let Some(m) = captures.get(1) {
+        analyzed_pragmas.jsx_import_source = Some(SpecifierWithRange {
+          text: m.as_str().to_string(),
+          range: comment_source_to_position_range(
+            c.start(),
+            &m,
+            parsed_source.text_info_lazy(),
+            true,
+          ),
+        });
+      }
+    }
+
+    if let Some(captures) = JSX_RE.captures(&c.text) {
+      if let Some(m) = captures.get(1) {
+        analyzed_pragmas.jsx = Some(SpecifierWithRange {
+          text: m.as_str().to_string(),
+          range: comment_source_to_position_range(
+            c.start(),
+            &m,
+            parsed_source.text_info_lazy(),
+            false,
+          ),
+        });
+      }
+    }
+
+    if let Some(captures) = JSX_FRAG_RE.captures(&c.text) {
+      if let Some(m) = captures.get(1) {
+        analyzed_pragmas.jsx_fragment = Some(SpecifierWithRange {
+          text: m.as_str().to_string(),
+          range: comment_source_to_position_range(
+            c.start(),
+            &m,
+            parsed_source.text_info_lazy(),
+            false,
+          ),
+        });
+      }
+    }
+  }
+
+  Some(analyzed_pragmas)
 }

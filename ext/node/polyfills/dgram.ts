@@ -1,4 +1,4 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 // Copyright Joyent, Inc. and other Node contributors.
 //
 // Permission is hereby granted, free of charge, to any person obtaining a
@@ -531,15 +531,16 @@ export class Socket extends EventEmitter {
     healthCheck(this);
     stopReceiving(this);
 
-    state.handle!.close();
+    state.handle!.close(() => {
+      // Deviates from the Node implementation to avoid leaking the timer ops at 'close' event
+      defaultTriggerAsyncIdScope(
+        this[asyncIdSymbol],
+        nextTick,
+        socketCloseNT,
+        this,
+      );
+    });
     state.handle = null;
-
-    defaultTriggerAsyncIdScope(
-      this[asyncIdSymbol],
-      nextTick,
-      socketCloseNT,
-      this,
-    );
 
     return this;
   }

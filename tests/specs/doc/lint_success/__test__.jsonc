@@ -1,0 +1,4 @@
+{
+  "args": "doc --lint lint_success.ts",
+  "output": "lint_success.out"
+}

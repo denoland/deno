@@ -1,0 +1,28 @@
+{
+  "name": "escalade",
+  "dist-tags": {
+    "latest": "3.1.1"
+  },
+  "versions": {
+    "3.1.1": {
+      "name": "escalade",
+      "version": "3.1.1",
+      "devDependencies": {
+        "bundt": "1.1.1",
+        "esm": "3.2.25",
+        "uvu": "0.3.3"
+      },
+      "dist": {
+        "integrity": "sha512-k0er2gUkLf8O0zKJiAhmkTnJlTvINGv7ygDNPbeIsX/TJjGJZHuh9B2UxbsaEkmlEo9MfhrSzmhIlhRlI2GXnw==",
+        "shasum": "d8cfdc7000965c5a0174b4a82eaa5c0552742e40",
+        "tarball": "http://localhost:4260/escalade/escalade-3.1.1.tgz",
+        "fileCount": 9,
+        "unpackedSize": 11434
+      },
+      "engines": {
+        "node": ">=6"
+      }
+    }
+  },
+  "modified": "2022-05-01T11:56:42.212Z"
+}

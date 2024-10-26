@@ -1,5 +1,0 @@
-Download http://localhost:4545/subdir/mod2.ts
-Download http://localhost:4545/subdir/print_hello.ts
-error: The source code is invalid, as it does not match the expected hash in the lock file.
-  Specifier: http://localhost:4545/subdir/print_hello.ts
-  Lock file: [WILDCARD]auto_discover_lockfile[WILDCARD]deno.lock

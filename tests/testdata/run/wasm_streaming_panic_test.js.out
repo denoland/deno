@@ -1,0 +1,2 @@
+error: Uncaught (in promise) TypeError: Invalid WebAssembly content type
+    at handleWasmStreaming (ext:deno_fetch/26_fetch.js:[WILDCARD])

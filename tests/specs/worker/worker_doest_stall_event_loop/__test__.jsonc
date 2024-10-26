@@ -1,0 +1,5 @@
+{
+  "args": "run --quiet -A worker_doest_stall_event_loop.ts",
+  "output": "worker_doest_stall_event_loop.ts.out",
+  "exitCode": 0
+}

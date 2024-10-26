@@ -1,0 +1,5 @@
+{
+  "args": "publish --allow-slow-types --token 'sadfasdf'",
+  "output": "allow_slow_types.out",
+  "exitCode": 0
+}

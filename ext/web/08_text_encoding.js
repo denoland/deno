@@ -1,4 +1,4 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 // @ts-check
 /// <reference path="../../core/lib.deno_core.d.ts" />
@@ -9,30 +9,42 @@
 /// <reference path="../web/lib.deno_web.d.ts" />
 /// <reference lib="esnext" />
 
-const core = globalThis.Deno.core;
-const ops = core.ops;
-import * as webidl from "ext:deno_webidl/00_webidl.js";
-const primordials = globalThis.__bootstrap.primordials;
+import { core, primordials } from "ext:core/mod.js";
+const {
+  isDataView,
+  isSharedArrayBuffer,
+  isTypedArray,
+} = core;
+import {
+  op_encoding_decode,
+  op_encoding_decode_single,
+  op_encoding_decode_utf8,
+  op_encoding_encode_into,
+  op_encoding_new_decoder,
+  op_encoding_normalize_label,
+} from "ext:core/ops";
 const {
   DataViewPrototypeGetBuffer,
   DataViewPrototypeGetByteLength,
   DataViewPrototypeGetByteOffset,
+  ObjectPrototypeIsPrototypeOf,
   PromiseReject,
   PromiseResolve,
   // TODO(lucacasonato): add SharedArrayBuffer to primordials
-  // SharedArrayBufferPrototype
+  // SharedArrayBufferPrototype,
   StringPrototypeCharCodeAt,
   StringPrototypeSlice,
-  TypedArrayPrototypeSubarray,
+  SymbolFor,
   TypedArrayPrototypeGetBuffer,
   TypedArrayPrototypeGetByteLength,
   TypedArrayPrototypeGetByteOffset,
-  TypedArrayPrototypeGetSymbolToStringTag,
-  Uint8Array,
-  ObjectPrototypeIsPrototypeOf,
-  ArrayBufferIsView,
+  TypedArrayPrototypeSubarray,
   Uint32Array,
+  Uint8Array,
 } = primordials;
+
+import * as webidl from "ext:deno_webidl/00_webidl.js";
+import { createFilteredInspectProxy } from "ext:deno_console/01_console.js";
 
 class TextDecoder {
   /** @type {string} */
@@ -44,14 +56,14 @@ class TextDecoder {
   /** @type {boolean} */
   #utf8SinglePass;
 
-  /** @type {number | null} */
-  #rid = null;
+  /** @type {object | null} */
+  #handle = null;
 
   /**
    * @param {string} label
    * @param {TextDecoderOptions} options
    */
-  constructor(label = "utf-8", options = {}) {
+  constructor(label = "utf-8", options = { __proto__: null }) {
     const prefix = "Failed to construct 'TextDecoder'";
     label = webidl.converters.DOMString(label, prefix, "Argument 1");
     options = webidl.converters.TextDecoderOptions(
@@ -59,7 +71,7 @@ class TextDecoder {
       prefix,
       "Argument 2",
     );
-    const encoding = ops.op_encoding_normalize_label(label);
+    const encoding = op_encoding_normalize_label(label);
     this.#encoding = encoding;
     this.#fatal = options.fatal;
     this.#ignoreBOM = options.ignoreBOM;
@@ -110,64 +122,50 @@ class TextDecoder {
     try {
       /** @type {ArrayBufferLike} */
       let buffer = input;
-      if (ArrayBufferIsView(input)) {
-        if (TypedArrayPrototypeGetSymbolToStringTag(input) !== undefined) {
-          // TypedArray
-          buffer = TypedArrayPrototypeGetBuffer(
-            /** @type {Uint8Array} */ (input),
-          );
-        } else {
-          // DataView
-          buffer = DataViewPrototypeGetBuffer(/** @type {DataView} */ (input));
-        }
+      if (isTypedArray(input)) {
+        buffer = TypedArrayPrototypeGetBuffer(
+          /** @type {Uint8Array} */ (input),
+        );
+      } else if (isDataView(input)) {
+        buffer = DataViewPrototypeGetBuffer(/** @type {DataView} */ (input));
       }
 
       // Note from spec: implementations are strongly encouraged to use an implementation strategy that avoids this copy.
       // When doing so they will have to make sure that changes to input do not affect future calls to decode().
-      if (
-        ObjectPrototypeIsPrototypeOf(
-          // deno-lint-ignore prefer-primordials
-          SharedArrayBuffer.prototype,
-          buffer,
-        )
-      ) {
+      if (isSharedArrayBuffer(buffer)) {
         // We clone the data into a non-shared ArrayBuffer so we can pass it
         // to Rust.
         // `input` is now a Uint8Array, and calling the TypedArray constructor
         // with a TypedArray argument copies the data.
-        if (ArrayBufferIsView(input)) {
-          if (TypedArrayPrototypeGetSymbolToStringTag(input) !== undefined) {
-            // TypedArray
-            input = new Uint8Array(
-              buffer,
-              TypedArrayPrototypeGetByteOffset(
-                /** @type {Uint8Array} */ (input),
-              ),
-              TypedArrayPrototypeGetByteLength(
-                /** @type {Uint8Array} */ (input),
-              ),
-            );
-          } else {
-            // DataView
-            input = new Uint8Array(
-              buffer,
-              DataViewPrototypeGetByteOffset(/** @type {DataView} */ (input)),
-              DataViewPrototypeGetByteLength(/** @type {DataView} */ (input)),
-            );
-          }
+        if (isTypedArray(input)) {
+          input = new Uint8Array(
+            buffer,
+            TypedArrayPrototypeGetByteOffset(
+              /** @type {Uint8Array} */ (input),
+            ),
+            TypedArrayPrototypeGetByteLength(
+              /** @type {Uint8Array} */ (input),
+            ),
+          );
+        } else if (isDataView(input)) {
+          input = new Uint8Array(
+            buffer,
+            DataViewPrototypeGetByteOffset(/** @type {DataView} */ (input)),
+            DataViewPrototypeGetByteLength(/** @type {DataView} */ (input)),
+          );
         } else {
           input = new Uint8Array(buffer);
         }
       }
 
       // Fast path for single pass encoding.
-      if (!stream && this.#rid === null) {
+      if (!stream && this.#handle === null) {
         // Fast path for utf8 single pass encoding.
         if (this.#utf8SinglePass) {
-          return ops.op_encoding_decode_utf8(input, this.#ignoreBOM);
+          return op_encoding_decode_utf8(input, this.#ignoreBOM);
         }
 
-        return ops.op_encoding_decode_single(
+        return op_encoding_decode_single(
           input,
           this.#encoding,
           this.#fatal,
@@ -175,24 +173,38 @@ class TextDecoder {
         );
       }
 
-      if (this.#rid === null) {
-        this.#rid = ops.op_encoding_new_decoder(
+      if (this.#handle === null) {
+        this.#handle = op_encoding_new_decoder(
           this.#encoding,
           this.#fatal,
           this.#ignoreBOM,
         );
       }
-      return ops.op_encoding_decode(input, this.#rid, stream);
+      return op_encoding_decode(input, this.#handle, stream);
     } finally {
-      if (!stream && this.#rid !== null) {
-        core.close(this.#rid);
-        this.#rid = null;
+      if (!stream && this.#handle !== null) {
+        this.#handle = null;
       }
     }
   }
+
+  [SymbolFor("Deno.privateCustomInspect")](inspect, inspectOptions) {
+    return inspect(
+      createFilteredInspectProxy({
+        object: this,
+        evaluate: ObjectPrototypeIsPrototypeOf(TextDecoderPrototype, this),
+        keys: [
+          "encoding",
+          "fatal",
+          "ignoreBOM",
+        ],
+      }),
+      inspectOptions,
+    );
+  }
 }
 
-webidl.configurePrototype(TextDecoder);
+webidl.configureInterface(TextDecoder);
 const TextDecoderPrototype = TextDecoder.prototype;
 
 class TextEncoder {
@@ -241,17 +253,28 @@ class TextEncoder {
         allowShared: true,
       },
     );
-    ops.op_encoding_encode_into(source, destination, encodeIntoBuf);
+    op_encoding_encode_into(source, destination, encodeIntoBuf);
     return {
       read: encodeIntoBuf[0],
       written: encodeIntoBuf[1],
     };
   }
+
+  [SymbolFor("Deno.privateCustomInspect")](inspect, inspectOptions) {
+    return inspect(
+      createFilteredInspectProxy({
+        object: this,
+        evaluate: ObjectPrototypeIsPrototypeOf(TextEncoderPrototype, this),
+        keys: ["encoding"],
+      }),
+      inspectOptions,
+    );
+  }
 }
 
 const encodeIntoBuf = new Uint32Array(2);
 
-webidl.configurePrototype(TextEncoder);
+webidl.configureInterface(TextEncoder);
 const TextEncoderPrototype = TextEncoder.prototype;
 
 class TextDecoderStream {
@@ -264,7 +287,7 @@ class TextDecoderStream {
    * @param {string} label
    * @param {TextDecoderOptions} options
    */
-  constructor(label = "utf-8", options = {}) {
+  constructor(label = "utf-8", options = { __proto__: null }) {
     const prefix = "Failed to construct 'TextDecoderStream'";
     label = webidl.converters.DOMString(label, prefix, "Argument 1");
     options = webidl.converters.TextDecoderOptions(
@@ -296,6 +319,14 @@ class TextDecoderStream {
           if (final) {
             controller.enqueue(final);
           }
+          return PromiseResolve();
+        } catch (err) {
+          return PromiseReject(err);
+        }
+      },
+      cancel: (_reason) => {
+        try {
+          const _ = this.#decoder.decode();
           return PromiseResolve();
         } catch (err) {
           return PromiseReject(err);
@@ -334,9 +365,29 @@ class TextDecoderStream {
     webidl.assertBranded(this, TextDecoderStreamPrototype);
     return this.#transform.writable;
   }
+
+  [SymbolFor("Deno.privateCustomInspect")](inspect, inspectOptions) {
+    return inspect(
+      createFilteredInspectProxy({
+        object: this,
+        evaluate: ObjectPrototypeIsPrototypeOf(
+          TextDecoderStreamPrototype,
+          this,
+        ),
+        keys: [
+          "encoding",
+          "fatal",
+          "ignoreBOM",
+          "readable",
+          "writable",
+        ],
+      }),
+      inspectOptions,
+    );
+  }
 }
 
-webidl.configurePrototype(TextDecoderStream);
+webidl.configureInterface(TextDecoderStream);
 const TextDecoderStreamPrototype = TextDecoderStream.prototype;
 
 class TextEncoderStream {
@@ -407,9 +458,27 @@ class TextEncoderStream {
     webidl.assertBranded(this, TextEncoderStreamPrototype);
     return this.#transform.writable;
   }
+
+  [SymbolFor("Deno.privateCustomInspect")](inspect, inspectOptions) {
+    return inspect(
+      createFilteredInspectProxy({
+        object: this,
+        evaluate: ObjectPrototypeIsPrototypeOf(
+          TextEncoderStreamPrototype,
+          this,
+        ),
+        keys: [
+          "encoding",
+          "readable",
+          "writable",
+        ],
+      }),
+      inspectOptions,
+    );
+  }
 }
 
-webidl.configurePrototype(TextEncoderStream);
+webidl.configureInterface(TextEncoderStream);
 const TextEncoderStreamPrototype = TextEncoderStream.prototype;
 
 webidl.converters.TextDecoderOptions = webidl.createDictionaryConverter(

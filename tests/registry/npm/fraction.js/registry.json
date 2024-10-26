@@ -1,0 +1,33 @@
+{
+  "name": "fraction.js",
+  "dist-tags": {
+    "latest": "4.2.0"
+  },
+  "versions": {
+    "4.2.0": {
+      "name": "fraction.js",
+      "version": "4.2.0",
+      "devDependencies": {
+        "mocha": "*"
+      },
+      "directories": {
+        "example": "examples"
+      },
+      "dist": {
+        "integrity": "sha512-MhLuK+2gUcnZe8ZHlaaINnQLl0xRIGRfcGk2yl8xoQAfHrSsL3rYu6FCmBdkdbhc9EPlwyGHewaRsvwRMJtAlA==",
+        "shasum": "448e5109a313a3527f5a3ab2119ec4cf0e0e2950",
+        "tarball": "http://localhost:4260/fraction.js/fraction.js-4.2.0.tgz",
+        "fileCount": 7,
+        "unpackedSize": 67397
+      },
+      "engines": {
+        "node": "*"
+      },
+      "funding": {
+        "type": "patreon",
+        "url": "https://www.patreon.com/infusion"
+      }
+    }
+  },
+  "modified": "2022-06-18T03:25:30.477Z"
+}

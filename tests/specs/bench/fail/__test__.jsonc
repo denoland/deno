@@ -1,0 +1,5 @@
+{
+  "args": "bench fail.ts",
+  "output": "fail.out",
+  "exitCode": 1
+}

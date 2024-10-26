@@ -1,0 +1,6 @@
+[WILDCARD]sub_dir
+{
+  [WILDCARD]
+  isDirectory: true,
+  [WILDCARD]
+}

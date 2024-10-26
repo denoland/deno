@@ -1,0 +1,17 @@
+{
+  "tempDir": true,
+  "steps": [
+    {
+      "if": "unix",
+      "cwd": "./test-pipe",
+      "commandName": "cargo",
+      "args": "build",
+      "output": "[WILDCARD]"
+    },
+    {
+      "if": "unix",
+      "args": "run -A main.ts",
+      "output": "main.out"
+    }
+  ]
+}

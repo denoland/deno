@@ -1,32 +1,26 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
+use crate::tools::test::TestContainer;
 use crate::tools::test::TestDescription;
 use crate::tools::test::TestEvent;
 use crate::tools::test::TestEventSender;
+use crate::tools::test::TestFailure;
 use crate::tools::test::TestLocation;
 use crate::tools::test::TestStepDescription;
+use crate::tools::test::TestStepResult;
 
 use deno_core::error::generic_error;
+use deno_core::error::type_error;
 use deno_core::error::AnyError;
-use deno_core::op;
-use deno_core::serde_v8;
+use deno_core::op2;
 use deno_core::v8;
 use deno_core::ModuleSpecifier;
 use deno_core::OpState;
-use deno_runtime::permissions::create_child_permissions;
-use deno_runtime::permissions::ChildPermissionsArg;
-use deno_runtime::permissions::PermissionsContainer;
-use serde::Deserialize;
-use serde::Deserializer;
-use serde::Serialize;
+use deno_runtime::deno_permissions::ChildPermissionsArg;
+use deno_runtime::deno_permissions::PermissionsContainer;
 use std::sync::atomic::AtomicUsize;
 use std::sync::atomic::Ordering;
 use uuid::Uuid;
-
-#[derive(Default)]
-pub(crate) struct TestContainer(
-  pub Vec<(TestDescription, v8::Global<v8::Function>)>,
-);
 
 deno_core::extension!(deno_test,
   ops = [
@@ -34,7 +28,11 @@ deno_core::extension!(deno_test,
     op_restore_test_permissions,
     op_register_test,
     op_register_test_step,
-    op_dispatch_test_event,
+    op_test_get_origin,
+    op_test_event_step_wait,
+    op_test_event_step_result_ok,
+    op_test_event_step_result_ignored,
+    op_test_event_step_result_failed,
   ],
   options = {
     sender: TestEventSender,
@@ -48,18 +46,15 @@ deno_core::extension!(deno_test,
 #[derive(Clone)]
 struct PermissionsHolder(Uuid, PermissionsContainer);
 
-#[op]
+#[op2]
+#[serde]
 pub fn op_pledge_test_permissions(
   state: &mut OpState,
-  args: ChildPermissionsArg,
+  #[serde] args: ChildPermissionsArg,
 ) -> Result<Uuid, AnyError> {
   let token = Uuid::new_v4();
   let parent_permissions = state.borrow_mut::<PermissionsContainer>();
-  let worker_permissions = {
-    let mut parent_permissions = parent_permissions.0.lock();
-    let perms = create_child_permissions(&mut parent_permissions, args)?;
-    PermissionsContainer::new(perms)
-  };
+  let worker_permissions = parent_permissions.create_child_permissions(args)?;
   let parent_permissions = parent_permissions.clone();
 
   if state.try_take::<PermissionsHolder>().is_some() {
@@ -73,10 +68,10 @@ pub fn op_pledge_test_permissions(
   Ok(token)
 }
 
-#[op]
+#[op2]
 pub fn op_restore_test_permissions(
   state: &mut OpState,
-  token: Uuid,
+  #[serde] token: Uuid,
 ) -> Result<(), AnyError> {
   if let Some(permissions_holder) = state.try_take::<PermissionsHolder>() {
     if token != permissions_holder.0 {
@@ -91,111 +86,135 @@ pub fn op_restore_test_permissions(
   }
 }
 
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct TestInfo<'s> {
-  #[serde(rename = "fn")]
-  function: serde_v8::Value<'s>,
-  name: String,
-  #[serde(default)]
-  ignore: bool,
-  #[serde(default)]
-  only: bool,
-  location: TestLocation,
-}
-
-#[derive(Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
-struct TestRegisterResult {
-  id: usize,
-  origin: String,
-}
-
 static NEXT_ID: AtomicUsize = AtomicUsize::new(0);
 
-#[op(v8)]
-fn op_register_test<'a>(
-  scope: &mut v8::HandleScope<'a>,
+#[allow(clippy::too_many_arguments)]
+#[op2]
+fn op_register_test(
   state: &mut OpState,
-  info: TestInfo<'a>,
-) -> Result<TestRegisterResult, AnyError> {
+  #[global] function: v8::Global<v8::Function>,
+  #[string] name: String,
+  ignore: bool,
+  only: bool,
+  sanitize_ops: bool,
+  sanitize_resources: bool,
+  #[string] file_name: String,
+  #[smi] line_number: u32,
+  #[smi] column_number: u32,
+  #[buffer] ret_buf: &mut [u8],
+) -> Result<(), AnyError> {
+  if ret_buf.len() != 4 {
+    return Err(type_error(format!(
+      "Invalid ret_buf length: {}",
+      ret_buf.len()
+    )));
+  }
   let id = NEXT_ID.fetch_add(1, Ordering::SeqCst);
   let origin = state.borrow::<ModuleSpecifier>().to_string();
   let description = TestDescription {
     id,
-    name: info.name,
-    ignore: info.ignore,
-    only: info.only,
+    name,
+    ignore,
+    only,
+    sanitize_ops,
+    sanitize_resources,
     origin: origin.clone(),
-    location: info.location,
+    location: TestLocation {
+      file_name,
+      line_number,
+      column_number,
+    },
   };
-  let function: v8::Local<v8::Function> = info.function.v8_value.try_into()?;
-  let function = v8::Global::new(scope, function);
-  state
-    .borrow_mut::<TestContainer>()
-    .0
-    .push((description.clone(), function));
-  let mut sender = state.borrow::<TestEventSender>().clone();
-  sender.send(TestEvent::Register(description)).ok();
-  Ok(TestRegisterResult { id, origin })
+  let container = state.borrow_mut::<TestContainer>();
+  container.register(description, function);
+  ret_buf.copy_from_slice(&(id as u32).to_le_bytes());
+  Ok(())
 }
 
-fn deserialize_parent<'de, D>(deserializer: D) -> Result<usize, D::Error>
-where
-  D: Deserializer<'de>,
-{
-  #[derive(Deserialize)]
-  struct Parent {
-    id: usize,
-  }
-  Ok(Parent::deserialize(deserializer)?.id)
+#[op2]
+#[string]
+fn op_test_get_origin(state: &mut OpState) -> String {
+  state.borrow::<ModuleSpecifier>().to_string()
 }
 
-#[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct TestStepInfo {
-  name: String,
-  location: TestLocation,
-  level: usize,
-  #[serde(rename = "parent")]
-  #[serde(deserialize_with = "deserialize_parent")]
-  parent_id: usize,
-  root_id: usize,
-  root_name: String,
-}
-
-#[op]
+#[op2(fast)]
+#[smi]
+#[allow(clippy::too_many_arguments)]
 fn op_register_test_step(
   state: &mut OpState,
-  info: TestStepInfo,
-) -> Result<TestRegisterResult, AnyError> {
+  #[string] name: String,
+  #[string] file_name: String,
+  #[smi] line_number: u32,
+  #[smi] column_number: u32,
+  #[smi] level: usize,
+  #[smi] parent_id: usize,
+  #[smi] root_id: usize,
+  #[string] root_name: String,
+) -> Result<usize, AnyError> {
   let id = NEXT_ID.fetch_add(1, Ordering::SeqCst);
   let origin = state.borrow::<ModuleSpecifier>().to_string();
   let description = TestStepDescription {
     id,
-    name: info.name,
+    name,
     origin: origin.clone(),
-    location: info.location,
-    level: info.level,
-    parent_id: info.parent_id,
-    root_id: info.root_id,
-    root_name: info.root_name,
+    location: TestLocation {
+      file_name,
+      line_number,
+      column_number,
+    },
+    level,
+    parent_id,
+    root_id,
+    root_name,
   };
-  let mut sender = state.borrow::<TestEventSender>().clone();
+  let sender = state.borrow_mut::<TestEventSender>();
   sender.send(TestEvent::StepRegister(description)).ok();
-  Ok(TestRegisterResult { id, origin })
+  Ok(id)
 }
 
-#[op]
-fn op_dispatch_test_event(
+#[op2(fast)]
+fn op_test_event_step_wait(state: &mut OpState, #[smi] id: usize) {
+  let sender = state.borrow_mut::<TestEventSender>();
+  sender.send(TestEvent::StepWait(id)).ok();
+}
+
+#[op2(fast)]
+fn op_test_event_step_result_ok(
   state: &mut OpState,
-  event: TestEvent,
-) -> Result<(), AnyError> {
-  assert!(
-    matches!(event, TestEvent::StepWait(_) | TestEvent::StepResult(..)),
-    "Only step wait/result events are expected from JS."
-  );
-  let mut sender = state.borrow::<TestEventSender>().clone();
-  sender.send(event).ok();
-  Ok(())
+  #[smi] id: usize,
+  #[smi] duration: u64,
+) {
+  let sender = state.borrow_mut::<TestEventSender>();
+  sender
+    .send(TestEvent::StepResult(id, TestStepResult::Ok, duration))
+    .ok();
+}
+
+#[op2(fast)]
+fn op_test_event_step_result_ignored(
+  state: &mut OpState,
+  #[smi] id: usize,
+  #[smi] duration: u64,
+) {
+  let sender = state.borrow_mut::<TestEventSender>();
+  sender
+    .send(TestEvent::StepResult(id, TestStepResult::Ignored, duration))
+    .ok();
+}
+
+#[op2]
+fn op_test_event_step_result_failed(
+  state: &mut OpState,
+  #[smi] id: usize,
+  #[serde] failure: TestFailure,
+  #[smi] duration: u64,
+) {
+  let sender = state.borrow_mut::<TestEventSender>();
+  sender
+    .send(TestEvent::StepResult(
+      id,
+      TestStepResult::Failed(failure),
+      duration,
+    ))
+    .ok();
 }

@@ -1,0 +1,23 @@
+Check file:///[WILDLINE]/package-a/mod.test.ts
+Check file:///[WILDLINE]/package-b/mod.test.ts
+running 1 test from ./package-a/mod.test.ts
+add ... ok ([WILDLINE])
+running 2 tests from ./package-b/mod.test.ts
+addOne ... ok ([WILDLINE])
+fail ... FAILED ([WILDLINE])
+
+ ERRORS 
+
+fail => ./package-b/mod.test.ts:9:6
+error: Error: failed
+  throw new Error("failed");
+        ^
+    at file:///[WILDLINE]/package-b/mod.test.ts:10:9
+
+ FAILURES 
+
+fail => ./package-b/mod.test.ts:9:6
+
+FAILED | 2 passed | 1 failed ([WILDLINE])
+
+error: Test failed

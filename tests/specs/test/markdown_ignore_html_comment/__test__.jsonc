@@ -1,0 +1,5 @@
+{
+  "args": "test --doc --allow-all main.md",
+  "exitCode": 1,
+  "output": "main.out"
+}

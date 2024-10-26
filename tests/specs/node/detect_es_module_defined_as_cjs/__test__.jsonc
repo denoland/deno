@@ -1,0 +1,10 @@
+{
+  "steps": [{
+    "args": "run main.ts",
+    "output": "main.out"
+  }, {
+    // ensure it works with cache
+    "args": "run main.ts",
+    "output": "main.out"
+  }]
+}

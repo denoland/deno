@@ -1,0 +1,8 @@
+{
+  "exports": {
+    ".": "./mod.ts",
+    "./assert": "./assert.ts",
+    "./assert-equals": "./assert_equals.ts",
+    "./fail": "./fail.ts"
+  }
+}

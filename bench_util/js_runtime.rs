@@ -1,8 +1,9 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 use bencher::Bencher;
 use deno_core::v8;
 use deno_core::Extension;
 use deno_core::JsRuntime;
+use deno_core::PollEventLoopOptions;
 use deno_core::RuntimeOptions;
 
 use crate::profiling::is_profiling;
@@ -115,6 +116,9 @@ pub fn bench_js_async_with(
 }
 
 async fn inner_async(src: &'static str, runtime: &mut JsRuntime) {
-  runtime.execute_script_static("inner_loop", src).unwrap();
-  runtime.run_event_loop(false).await.unwrap();
+  runtime.execute_script("inner_loop", src).unwrap();
+  runtime
+    .run_event_loop(PollEventLoopOptions::default())
+    .await
+    .unwrap();
 }

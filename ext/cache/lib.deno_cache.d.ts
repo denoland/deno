@@ -1,15 +1,15 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 // deno-lint-ignore-file no-var
 
 /// <reference no-default-lib="true" />
 /// <reference lib="esnext" />
 
-/** @category Cache API */
+/** @category Cache */
 declare var caches: CacheStorage;
 
-/** @category Cache API */
-declare interface CacheStorage {
+/** @category Cache */
+interface CacheStorage {
   /** Open a cache storage for the provided name. */
   open(cacheName: string): Promise<Cache>;
   /** Check if cache already exists for the provided name. */
@@ -18,8 +18,8 @@ declare interface CacheStorage {
   delete(cacheName: string): Promise<boolean>;
 }
 
-/** @category Cache API */
-declare interface Cache {
+/** @category Cache */
+interface Cache {
   /**
    * Put the provided request/response into the cache.
    *
@@ -52,20 +52,20 @@ declare interface Cache {
   ): Promise<boolean>;
 }
 
-/** @category Cache API */
+/** @category Cache */
 declare var Cache: {
   readonly prototype: Cache;
   new (): never;
 };
 
-/** @category Cache API */
+/** @category Cache */
 declare var CacheStorage: {
   readonly prototype: CacheStorage;
   new (): never;
 };
 
-/** @category Cache API */
-declare interface CacheQueryOptions {
+/** @category Cache */
+interface CacheQueryOptions {
   ignoreMethod?: boolean;
   ignoreSearch?: boolean;
   ignoreVary?: boolean;

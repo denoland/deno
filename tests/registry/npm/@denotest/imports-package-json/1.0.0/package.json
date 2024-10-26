@@ -1,0 +1,21 @@
+{
+  "name": "imports-package-json",
+  "type": "module",
+  "version": "1.0.0",
+  "description": "",
+  "license": "ISC",
+  "author": "",
+  "exports": {
+    ".": "./main.js",
+    "./import-not-defined": "./import_not_defined.js",
+    "./sub-path-import-not-defined": "./sub_path/import_not_defined.js"
+  },
+  "imports": {
+    "#hi": "./hi.js",
+    "#fs": "fs",
+    "#path": "node:path",
+    "#fs2": {
+      "node": "fs"
+    }
+  }
+}

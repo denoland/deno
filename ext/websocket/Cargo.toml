@@ -1,8 +1,8 @@
-# Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+# Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 [package]
 name = "deno_websocket"
-version = "0.122.0"
+version = "0.179.0"
 authors.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -17,11 +17,16 @@ path = "lib.rs"
 bytes.workspace = true
 deno_core.workspace = true
 deno_net.workspace = true
+deno_permissions.workspace = true
 deno_tls.workspace = true
-fastwebsockets = { workspace = true, features = ["upgrade"] }
+fastwebsockets.workspace = true
+h2.workspace = true
 http.workspace = true
-hyper = { workspace = true, features = ["backports"] }
+http-body-util.workspace = true
+hyper.workspace = true
+hyper-util.workspace = true
 once_cell.workspace = true
+rustls-tokio-stream.workspace = true
 serde.workspace = true
+thiserror.workspace = true
 tokio.workspace = true
-tokio-rustls.workspace = true

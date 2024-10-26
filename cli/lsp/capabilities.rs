@@ -1,4 +1,4 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 //!
 //! Provides information about what capabilities that are supported by the
@@ -53,9 +53,10 @@ pub fn server_capabilities(
     )),
     hover_provider: Some(HoverProviderCapability::Simple(true)),
     completion_provider: Some(CompletionOptions {
+      // Don't include "," here as it leads to confusing completion
+      // behavior with function arguments. See https://github.com/denoland/deno/issues/20160
       all_commit_characters: Some(vec![
         ".".to_string(),
-        ",".to_string(),
         ";".to_string(),
         "(".to_string(),
       ]),
@@ -117,7 +118,13 @@ pub fn server_capabilities(
     rename_provider: Some(OneOf::Left(true)),
     document_link_provider: None,
     color_provider: None,
-    execute_command_provider: None,
+    execute_command_provider: Some(ExecuteCommandOptions {
+      commands: vec![
+        "deno.cache".to_string(),
+        "deno.reloadImportRegistries".to_string(),
+      ],
+      ..Default::default()
+    }),
     call_hierarchy_provider: Some(CallHierarchyServerCapability::Simple(true)),
     semantic_tokens_provider: Some(
       SemanticTokensServerCapabilities::SemanticTokensOptions(
@@ -140,9 +147,14 @@ pub fn server_capabilities(
     moniker_provider: None,
     experimental: Some(json!({
       "denoConfigTasks": true,
-      "testingApi":true,
+      "testingApi": true,
+      "didRefreshDenoConfigurationTreeNotifications": true,
     })),
     inlay_hint_provider: Some(OneOf::Left(true)),
     position_encoding: None,
+    diagnostic_provider: None,
+    inline_value_provider: None,
+    inline_completion_provider: None,
+    notebook_document_sync: None,
   }
 }

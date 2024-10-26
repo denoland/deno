@@ -1,0 +1,5 @@
+{
+  "args": "bench --quiet no_prompt_by_default.ts",
+  "output": "no_prompt_by_default.out",
+  "exitCode": 1
+}

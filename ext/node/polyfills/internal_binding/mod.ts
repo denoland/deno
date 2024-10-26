@@ -1,4 +1,4 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 // TODO(petamoriken): enable prefer-primordials for node polyfills
 // deno-lint-ignore-file prefer-primordials
@@ -17,6 +17,7 @@ import * as types from "ext:deno_node/internal_binding/types.ts";
 import * as udpWrap from "ext:deno_node/internal_binding/udp_wrap.ts";
 import * as util from "ext:deno_node/internal_binding/util.ts";
 import * as uv from "ext:deno_node/internal_binding/uv.ts";
+import * as httpParser from "ext:deno_node/internal_binding/http_parser.ts";
 
 const modules = {
   "async_wrap": asyncWrap,
@@ -32,7 +33,7 @@ const modules = {
   "fs_dir": {},
   "fs_event_wrap": {},
   "heap_utils": {},
-  "http_parser": {},
+  "http_parser": httpParser,
   icu: {},
   inspector: {},
   "js_stream": {},

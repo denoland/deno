@@ -1,14 +1,5 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
-use deno_core::anyhow::Context;
-use deno_core::error::AnyError;
-pub use deno_core::normalize_path;
-use deno_core::unsync::spawn_blocking;
-use deno_core::ModuleSpecifier;
-use deno_runtime::deno_crypto::rand;
-use deno_runtime::deno_node::PathClean;
-use std::borrow::Cow;
-use std::env::current_dir;
 use std::fs::OpenOptions;
 use std::io::Error;
 use std::io::ErrorKind;
@@ -17,14 +8,23 @@ use std::path::Path;
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
-use walkdir::WalkDir;
 
-use crate::args::FilesConfig;
+use deno_config::glob::FileCollector;
+use deno_config::glob::FilePatterns;
+use deno_config::glob::PathOrPattern;
+use deno_config::glob::PathOrPatternSet;
+use deno_config::glob::WalkEntry;
+use deno_core::anyhow::anyhow;
+use deno_core::anyhow::Context;
+use deno_core::error::AnyError;
+use deno_core::unsync::spawn_blocking;
+use deno_core::ModuleSpecifier;
+use deno_runtime::deno_fs::FileSystem;
+
+use crate::util::path::get_atomic_file_path;
 use crate::util::progress_bar::ProgressBar;
 use crate::util::progress_bar::ProgressBarStyle;
 use crate::util::progress_bar::ProgressMessagePrompt;
-
-use super::path::specifier_to_file_path;
 
 /// Writes the file to the file system at a temporary path, then
 /// renames it to the destination in a single sys call in order
@@ -32,52 +32,183 @@ use super::path::specifier_to_file_path;
 ///
 /// This also handles creating the directory if a NotFound error
 /// occurs.
-pub fn atomic_write_file<T: AsRef<[u8]>>(
+pub fn atomic_write_file_with_retries<T: AsRef<[u8]>>(
   file_path: &Path,
   data: T,
   mode: u32,
 ) -> std::io::Result<()> {
+  struct RealAtomicWriteFileFs {
+    mode: u32,
+  }
+
+  impl AtomicWriteFileFs for RealAtomicWriteFileFs {
+    fn write_file(&self, path: &Path, bytes: &[u8]) -> std::io::Result<()> {
+      write_file(path, bytes, self.mode)
+    }
+    fn rename_file(&self, from: &Path, to: &Path) -> std::io::Result<()> {
+      std::fs::rename(from, to)
+    }
+    fn remove_file(&self, path: &Path) -> std::io::Result<()> {
+      std::fs::remove_file(path)
+    }
+    fn create_dir_all(&self, dir_path: &Path) -> std::io::Result<()> {
+      std::fs::create_dir_all(dir_path)
+    }
+    fn path_exists(&self, path: &Path) -> bool {
+      path.exists()
+    }
+  }
+
+  atomic_write_file_with_retries_and_fs(
+    &RealAtomicWriteFileFs { mode },
+    file_path,
+    data.as_ref(),
+  )
+}
+
+pub trait AtomicWriteFileFs {
+  fn write_file(&self, path: &Path, bytes: &[u8]) -> std::io::Result<()>;
+  fn rename_file(&self, from: &Path, to: &Path) -> std::io::Result<()>;
+  fn remove_file(&self, path: &Path) -> std::io::Result<()>;
+  fn create_dir_all(&self, dir_path: &Path) -> std::io::Result<()>;
+  fn path_exists(&self, path: &Path) -> bool;
+}
+
+pub struct AtomicWriteFileFsAdapter<'a> {
+  pub fs: &'a dyn FileSystem,
+  pub write_mode: u32,
+}
+
+impl<'a> AtomicWriteFileFs for AtomicWriteFileFsAdapter<'a> {
+  fn write_file(&self, path: &Path, bytes: &[u8]) -> std::io::Result<()> {
+    self
+      .fs
+      .write_file_sync(
+        path,
+        deno_runtime::deno_fs::OpenOptions::write(
+          true,
+          false,
+          false,
+          Some(self.write_mode),
+        ),
+        None,
+        bytes,
+      )
+      .map_err(|e| e.into_io_error())
+  }
+
+  fn rename_file(&self, from: &Path, to: &Path) -> std::io::Result<()> {
+    self.fs.rename_sync(from, to).map_err(|e| e.into_io_error())
+  }
+
+  fn remove_file(&self, path: &Path) -> std::io::Result<()> {
+    self
+      .fs
+      .remove_sync(path, false)
+      .map_err(|e| e.into_io_error())
+  }
+
+  fn create_dir_all(&self, dir_path: &Path) -> std::io::Result<()> {
+    self
+      .fs
+      .mkdir_sync(dir_path, /* recursive */ true, None)
+      .map_err(|e| e.into_io_error())
+  }
+
+  fn path_exists(&self, path: &Path) -> bool {
+    self.fs.exists_sync(path)
+  }
+}
+
+pub fn atomic_write_file_with_retries_and_fs<T: AsRef<[u8]>>(
+  fs: &impl AtomicWriteFileFs,
+  file_path: &Path,
+  data: T,
+) -> std::io::Result<()> {
+  let mut count = 0;
+  loop {
+    match atomic_write_file(fs, file_path, data.as_ref()) {
+      Ok(()) => return Ok(()),
+      Err(err) => {
+        if count >= 5 {
+          // too many retries, return the error
+          return Err(err);
+        }
+        count += 1;
+        let sleep_ms = std::cmp::min(50, 10 * count);
+        std::thread::sleep(std::time::Duration::from_millis(sleep_ms));
+      }
+    }
+  }
+}
+
+/// Writes the file to the file system at a temporary path, then
+/// renames it to the destination in a single sys call in order
+/// to never leave the file system in a corrupted state.
+///
+/// This also handles creating the directory if a NotFound error
+/// occurs.
+fn atomic_write_file(
+  fs: &impl AtomicWriteFileFs,
+  file_path: &Path,
+  data: &[u8],
+) -> std::io::Result<()> {
   fn atomic_write_file_raw(
+    fs: &impl AtomicWriteFileFs,
     temp_file_path: &Path,
     file_path: &Path,
     data: &[u8],
-    mode: u32,
   ) -> std::io::Result<()> {
-    write_file(temp_file_path, data, mode)?;
-    std::fs::rename(temp_file_path, file_path)?;
-    Ok(())
+    fs.write_file(temp_file_path, data)?;
+    fs.rename_file(temp_file_path, file_path)
+      .inspect_err(|_err| {
+        // clean up the created temp file on error
+        let _ = fs.remove_file(temp_file_path);
+      })
   }
 
-  fn add_file_context(file_path: &Path, err: Error) -> Error {
-    Error::new(
-      err.kind(),
-      format!("{:#} (for '{}')", err, file_path.display()),
-    )
+  let temp_file_path = get_atomic_file_path(file_path);
+
+  if let Err(write_err) =
+    atomic_write_file_raw(fs, &temp_file_path, file_path, data)
+  {
+    if write_err.kind() == ErrorKind::NotFound {
+      let parent_dir_path = file_path.parent().unwrap();
+      match fs.create_dir_all(parent_dir_path) {
+        Ok(()) => {
+          return atomic_write_file_raw(fs, &temp_file_path, file_path, data)
+            .map_err(|err| add_file_context_to_err(file_path, err));
+        }
+        Err(create_err) => {
+          if !fs.path_exists(parent_dir_path) {
+            return Err(Error::new(
+              create_err.kind(),
+              format!(
+                "{:#} (for '{}')\nCheck the permission of the directory.",
+                create_err,
+                parent_dir_path.display()
+              ),
+            ));
+          }
+        }
+      }
+    }
+    return Err(add_file_context_to_err(file_path, write_err));
   }
+  Ok(())
+}
 
-  fn inner(file_path: &Path, data: &[u8], mode: u32) -> std::io::Result<()> {
-    let temp_file_path = {
-      let rand: String = (0..4)
-        .map(|_| format!("{:02x}", rand::random::<u8>()))
-        .collect();
-      let extension = format!("{rand}.tmp");
-      file_path.with_extension(extension)
-    };
-
-    if let Err(write_err) =
-      atomic_write_file_raw(&temp_file_path, file_path, data, mode)
-    {
-      if write_err.kind() == ErrorKind::NotFound {
+/// Creates a std::fs::File handling if the parent does not exist.
+pub fn create_file(file_path: &Path) -> std::io::Result<std::fs::File> {
+  match std::fs::File::create(file_path) {
+    Ok(file) => Ok(file),
+    Err(err) => {
+      if err.kind() == ErrorKind::NotFound {
         let parent_dir_path = file_path.parent().unwrap();
         match std::fs::create_dir_all(parent_dir_path) {
           Ok(()) => {
-            return atomic_write_file_raw(
-              &temp_file_path,
-              file_path,
-              data,
-              mode,
-            )
-            .map_err(|err| add_file_context(file_path, err));
+            return std::fs::File::create(file_path)
+              .map_err(|err| add_file_context_to_err(file_path, err));
           }
           Err(create_err) => {
             if !parent_dir_path.exists() {
@@ -93,12 +224,16 @@ pub fn atomic_write_file<T: AsRef<[u8]>>(
           }
         }
       }
-      return Err(add_file_context(file_path, write_err));
+      Err(add_file_context_to_err(file_path, err))
     }
-    Ok(())
   }
+}
 
-  inner(file_path, data.as_ref(), mode)
+fn add_file_context_to_err(file_path: &Path, err: Error) -> Error {
+  Error::new(
+    err.kind(),
+    format!("{:#} (for '{}')", err, file_path.display()),
+  )
 }
 
 pub fn write_file<T: AsRef<[u8]>>(
@@ -142,7 +277,7 @@ pub fn write_file_2<T: AsRef<[u8]>>(
 
 /// Similar to `std::fs::canonicalize()` but strips UNC prefixes on Windows.
 pub fn canonicalize_path(path: &Path) -> Result<PathBuf, Error> {
-  Ok(deno_core::strip_unc_prefix(path.canonicalize()?))
+  Ok(deno_path_util::strip_unc_prefix(path.canonicalize()?))
 }
 
 /// Canonicalizes a path which might be non-existent by going up the
@@ -154,201 +289,71 @@ pub fn canonicalize_path(path: &Path) -> Result<PathBuf, Error> {
 pub fn canonicalize_path_maybe_not_exists(
   path: &Path,
 ) -> Result<PathBuf, Error> {
-  canonicalize_path_maybe_not_exists_with_fs(path, canonicalize_path)
+  deno_path_util::canonicalize_path_maybe_not_exists(path, &canonicalize_path)
 }
 
 pub fn canonicalize_path_maybe_not_exists_with_fs(
   path: &Path,
-  canonicalize: impl Fn(&Path) -> Result<PathBuf, Error>,
+  fs: &dyn FileSystem,
 ) -> Result<PathBuf, Error> {
-  let path = path.to_path_buf().clean();
-  let mut path = path.as_path();
-  let mut names_stack = Vec::new();
-  loop {
-    match canonicalize(path) {
-      Ok(mut canonicalized_path) => {
-        for name in names_stack.into_iter().rev() {
-          canonicalized_path = canonicalized_path.join(name);
-        }
-        return Ok(canonicalized_path);
-      }
-      Err(err) if err.kind() == ErrorKind::NotFound => {
-        names_stack.push(path.file_name().unwrap());
-        path = path.parent().unwrap();
-      }
-      Err(err) => return Err(err),
-    }
-  }
-}
-
-pub fn resolve_from_cwd(path: &Path) -> Result<PathBuf, AnyError> {
-  let resolved_path = if path.is_absolute() {
-    path.to_owned()
-  } else {
-    let cwd =
-      current_dir().context("Failed to get current working directory")?;
-    cwd.join(path)
-  };
-
-  Ok(normalize_path(resolved_path))
-}
-
-/// Collects file paths that satisfy the given predicate, by recursively walking `files`.
-/// If the walker visits a path that is listed in `ignore`, it skips descending into the directory.
-pub struct FileCollector<TFilter: Fn(&Path) -> bool> {
-  canonicalized_ignore: Vec<PathBuf>,
-  file_filter: TFilter,
-  ignore_git_folder: bool,
-  ignore_node_modules: bool,
-  ignore_vendor_folder: bool,
-}
-
-impl<TFilter: Fn(&Path) -> bool> FileCollector<TFilter> {
-  pub fn new(file_filter: TFilter) -> Self {
-    Self {
-      canonicalized_ignore: Default::default(),
-      file_filter,
-      ignore_git_folder: false,
-      ignore_node_modules: false,
-      ignore_vendor_folder: false,
-    }
-  }
-
-  pub fn add_ignore_paths(mut self, paths: &[PathBuf]) -> Self {
-    // retain only the paths which exist and ignore the rest
-    self
-      .canonicalized_ignore
-      .extend(paths.iter().filter_map(|i| canonicalize_path(i).ok()));
-    self
-  }
-
-  pub fn ignore_node_modules(mut self) -> Self {
-    self.ignore_node_modules = true;
-    self
-  }
-
-  pub fn ignore_vendor_folder(mut self) -> Self {
-    self.ignore_vendor_folder = true;
-    self
-  }
-
-  pub fn ignore_git_folder(mut self) -> Self {
-    self.ignore_git_folder = true;
-    self
-  }
-
-  pub fn collect_files(
-    &self,
-    files: &[PathBuf],
-  ) -> Result<Vec<PathBuf>, AnyError> {
-    let mut target_files = Vec::new();
-    let files = if files.is_empty() {
-      // collect files in the current directory when empty
-      Cow::Owned(vec![PathBuf::from(".")])
-    } else {
-      Cow::Borrowed(files)
-    };
-    for file in files.iter() {
-      if let Ok(file) = canonicalize_path(file) {
-        // use an iterator like this in order to minimize the number of file system operations
-        let mut iterator = WalkDir::new(&file).into_iter();
-        loop {
-          let e = match iterator.next() {
-            None => break,
-            Some(Err(_)) => continue,
-            Some(Ok(entry)) => entry,
-          };
-          let file_type = e.file_type();
-          let is_dir = file_type.is_dir();
-          if let Ok(c) = canonicalize_path(e.path()) {
-            if self.canonicalized_ignore.iter().any(|i| c.starts_with(i)) {
-              if is_dir {
-                iterator.skip_current_dir();
-              }
-            } else if is_dir {
-              let should_ignore_dir = c
-                .file_name()
-                .map(|dir_name| {
-                  let dir_name = dir_name.to_string_lossy().to_lowercase();
-                  let is_ignored_file = match dir_name.as_str() {
-                    "node_modules" => self.ignore_node_modules,
-                    "vendor" => self.ignore_vendor_folder,
-                    ".git" => self.ignore_git_folder,
-                    _ => false,
-                  };
-                  // allow the user to opt out of ignoring by explicitly specifying the dir
-                  file != c && is_ignored_file
-                })
-                .unwrap_or(false);
-              if should_ignore_dir {
-                iterator.skip_current_dir();
-              }
-            } else if (self.file_filter)(e.path()) {
-              target_files.push(c);
-            }
-          } else if is_dir {
-            // failed canonicalizing, so skip it
-            iterator.skip_current_dir();
-          }
-        }
-      }
-    }
-    Ok(target_files)
-  }
+  deno_path_util::canonicalize_path_maybe_not_exists(path, &|path| {
+    fs.realpath_sync(path).map_err(|err| err.into_io_error())
+  })
 }
 
 /// Collects module specifiers that satisfy the given predicate as a file path, by recursively walking `include`.
 /// Specifiers that start with http and https are left intact.
 /// Note: This ignores all .git and node_modules folders.
 pub fn collect_specifiers(
-  files: &FilesConfig,
-  predicate: impl Fn(&Path) -> bool,
+  mut files: FilePatterns,
+  vendor_folder: Option<PathBuf>,
+  predicate: impl Fn(WalkEntry) -> bool,
 ) -> Result<Vec<ModuleSpecifier>, AnyError> {
   let mut prepared = vec![];
-  let file_collector = FileCollector::new(predicate)
-    .add_ignore_paths(&files.exclude)
+
+  // break out the remote specifiers
+  if let Some(include_mut) = &mut files.include {
+    let includes = std::mem::take(include_mut);
+    let path_or_patterns = includes.into_path_or_patterns();
+    let mut result = Vec::with_capacity(path_or_patterns.len());
+    for path_or_pattern in path_or_patterns {
+      match path_or_pattern {
+        PathOrPattern::Path(path) => {
+          if path.is_dir() {
+            result.push(PathOrPattern::Path(path));
+          } else if !files.exclude.matches_path(&path) {
+            let url = specifier_from_file_path(&path)?;
+            prepared.push(url);
+          }
+        }
+        PathOrPattern::NegatedPath(path) => {
+          // add it back
+          result.push(PathOrPattern::NegatedPath(path));
+        }
+        PathOrPattern::RemoteUrl(remote_url) => {
+          prepared.push(remote_url);
+        }
+        PathOrPattern::Pattern(pattern) => {
+          // add it back
+          result.push(PathOrPattern::Pattern(pattern));
+        }
+      }
+    }
+    *include_mut = PathOrPatternSet::new(result);
+  }
+
+  let collected_files = FileCollector::new(predicate)
     .ignore_git_folder()
     .ignore_node_modules()
-    .ignore_vendor_folder();
+    .set_vendor_folder(vendor_folder)
+    .collect_file_patterns(&deno_config::fs::RealDenoConfigFs, files)?;
+  let mut collected_files_as_urls = collected_files
+    .iter()
+    .map(|f| specifier_from_file_path(f).unwrap())
+    .collect::<Vec<ModuleSpecifier>>();
 
-  let root_path = current_dir()?;
-  let include_files = if files.include.is_empty() {
-    // collect files in the current directory when empty
-    Cow::Owned(vec![root_path.clone()])
-  } else {
-    Cow::Borrowed(&files.include)
-  };
-  for path in include_files.iter() {
-    let path = path.to_string_lossy();
-    let lowercase_path = path.to_lowercase();
-    if lowercase_path.starts_with("http://")
-      || lowercase_path.starts_with("https://")
-    {
-      let url = ModuleSpecifier::parse(&path)?;
-      prepared.push(url);
-      continue;
-    }
-
-    let p = if lowercase_path.starts_with("file://") {
-      specifier_to_file_path(&ModuleSpecifier::parse(&path)?)?
-    } else {
-      root_path.join(path.as_ref())
-    };
-    let p = normalize_path(p);
-    if p.is_dir() {
-      let test_files = file_collector.collect_files(&[p])?;
-      let mut test_files_as_urls = test_files
-        .iter()
-        .map(|f| ModuleSpecifier::from_file_path(f).unwrap())
-        .collect::<Vec<ModuleSpecifier>>();
-
-      test_files_as_urls.sort();
-      prepared.extend(test_files_as_urls);
-    } else {
-      let url = ModuleSpecifier::from_file_path(p).unwrap();
-      prepared.push(url);
-    }
-  }
+  collected_files_as_urls.sort();
+  prepared.extend(collected_files_as_urls);
 
   Ok(prepared)
 }
@@ -361,6 +366,74 @@ pub async fn remove_dir_all_if_exists(path: &Path) -> std::io::Result<()> {
     Err(err) if err.kind() == std::io::ErrorKind::NotFound => Ok(()),
     _ => result,
   }
+}
+
+mod clone_dir_imp {
+
+  #[cfg(target_vendor = "apple")]
+  mod apple {
+    use super::super::copy_dir_recursive;
+    use deno_core::error::AnyError;
+    use std::os::unix::ffi::OsStrExt;
+    use std::path::Path;
+    fn clonefile(from: &Path, to: &Path) -> std::io::Result<()> {
+      let from = std::ffi::CString::new(from.as_os_str().as_bytes())?;
+      let to = std::ffi::CString::new(to.as_os_str().as_bytes())?;
+      // SAFETY: `from` and `to` are valid C strings.
+      let ret = unsafe { libc::clonefile(from.as_ptr(), to.as_ptr(), 0) };
+      if ret != 0 {
+        return Err(std::io::Error::last_os_error());
+      }
+      Ok(())
+    }
+
+    pub fn clone_dir_recursive(from: &Path, to: &Path) -> Result<(), AnyError> {
+      if let Some(parent) = to.parent() {
+        std::fs::create_dir_all(parent)?;
+      }
+      // Try to clone the whole directory
+      if let Err(err) = clonefile(from, to) {
+        if err.kind() != std::io::ErrorKind::AlreadyExists {
+          log::warn!(
+            "Failed to clone dir {:?} to {:?} via clonefile: {}",
+            from,
+            to,
+            err
+          );
+        }
+        // clonefile won't overwrite existing files, so if the dir exists
+        // we need to handle it recursively.
+        copy_dir_recursive(from, to)?;
+      }
+
+      Ok(())
+    }
+  }
+
+  #[cfg(target_vendor = "apple")]
+  pub(super) use apple::clone_dir_recursive;
+
+  #[cfg(not(target_vendor = "apple"))]
+  pub(super) fn clone_dir_recursive(
+    from: &std::path::Path,
+    to: &std::path::Path,
+  ) -> Result<(), deno_core::error::AnyError> {
+    if let Err(e) = super::hard_link_dir_recursive(from, to) {
+      log::debug!("Failed to hard link dir {:?} to {:?}: {}", from, to, e);
+      super::copy_dir_recursive(from, to)?;
+    }
+
+    Ok(())
+  }
+}
+
+/// Clones a directory to another directory. The exact method
+/// is not guaranteed - it may be a hardlink, copy, or other platform-specific
+/// operation.
+///
+/// Note: Does not handle symlinks.
+pub fn clone_dir_recursive(from: &Path, to: &Path) -> Result<(), AnyError> {
+  clone_dir_imp::clone_dir_recursive(from, to)
 }
 
 /// Copies a directory to another directory.
@@ -470,10 +543,10 @@ pub fn hard_link_dir_recursive(from: &Path, to: &Path) -> Result<(), AnyError> {
   Ok(())
 }
 
-pub fn symlink_dir(oldpath: &Path, newpath: &Path) -> Result<(), AnyError> {
-  let err_mapper = |err: Error| {
+pub fn symlink_dir(oldpath: &Path, newpath: &Path) -> Result<(), Error> {
+  let err_mapper = |err: Error, kind: Option<ErrorKind>| {
     Error::new(
-      err.kind(),
+      kind.unwrap_or_else(|| err.kind()),
       format!(
         "{}, symlink '{}' -> '{}'",
         err,
@@ -485,12 +558,19 @@ pub fn symlink_dir(oldpath: &Path, newpath: &Path) -> Result<(), AnyError> {
   #[cfg(unix)]
   {
     use std::os::unix::fs::symlink;
-    symlink(oldpath, newpath).map_err(err_mapper)?;
+    symlink(oldpath, newpath).map_err(|e| err_mapper(e, None))?;
   }
   #[cfg(not(unix))]
   {
     use std::os::windows::fs::symlink_dir;
-    symlink_dir(oldpath, newpath).map_err(err_mapper)?;
+    symlink_dir(oldpath, newpath).map_err(|err| {
+      if let Some(code) = err.raw_os_error() {
+        if code as u32 == winapi::shared::winerror::ERROR_PRIVILEGE_NOT_HELD {
+          return err_mapper(err, Some(ErrorKind::PermissionDenied));
+        }
+      }
+      err_mapper(err, None)
+    })?;
   }
   Ok(())
 }
@@ -539,7 +619,9 @@ impl Drop for LaxSingleProcessFsFlagInner {
 /// This should only be used in places where it's ideal for multiple
 /// processes to not update something on the file system at the same time,
 /// but it's not that big of a deal.
-pub struct LaxSingleProcessFsFlag(Option<LaxSingleProcessFsFlagInner>);
+pub struct LaxSingleProcessFsFlag(
+  #[allow(dead_code)] Option<LaxSingleProcessFsFlagInner>,
+);
 
 impl LaxSingleProcessFsFlag {
   pub async fn lock(file_path: PathBuf, long_wait_message: &str) -> Self {
@@ -551,6 +633,7 @@ impl LaxSingleProcessFsFlag {
       .read(true)
       .write(true)
       .create(true)
+      .truncate(false)
       .open(&file_path);
 
     match open_result {
@@ -662,33 +745,23 @@ impl LaxSingleProcessFsFlag {
   }
 }
 
+pub fn specifier_from_file_path(
+  path: &Path,
+) -> Result<ModuleSpecifier, AnyError> {
+  ModuleSpecifier::from_file_path(path)
+    .map_err(|_| anyhow!("Invalid file path '{}'", path.display()))
+}
+
 #[cfg(test)]
 mod tests {
   use super::*;
   use deno_core::futures;
   use deno_core::parking_lot::Mutex;
+  use deno_path_util::normalize_path;
   use pretty_assertions::assert_eq;
   use test_util::PathRef;
   use test_util::TempDir;
   use tokio::sync::Notify;
-
-  #[test]
-  fn resolve_from_cwd_child() {
-    let cwd = current_dir().unwrap();
-    assert_eq!(resolve_from_cwd(Path::new("a")).unwrap(), cwd.join("a"));
-  }
-
-  #[test]
-  fn resolve_from_cwd_dot() {
-    let cwd = current_dir().unwrap();
-    assert_eq!(resolve_from_cwd(Path::new(".")).unwrap(), cwd);
-  }
-
-  #[test]
-  fn resolve_from_cwd_parent() {
-    let cwd = current_dir().unwrap();
-    assert_eq!(resolve_from_cwd(Path::new("a/..")).unwrap(), cwd);
-  }
 
   #[test]
   fn test_normalize_path() {
@@ -705,145 +778,6 @@ mod tests {
         PathBuf::from("C:\\a\\c")
       );
     }
-  }
-
-  #[test]
-  fn resolve_from_cwd_absolute() {
-    let expected = Path::new("a");
-    let cwd = current_dir().unwrap();
-    let absolute_expected = cwd.join(expected);
-    assert_eq!(resolve_from_cwd(expected).unwrap(), absolute_expected);
-  }
-
-  #[test]
-  fn test_collect_files() {
-    fn create_files(dir_path: &PathRef, files: &[&str]) {
-      dir_path.create_dir_all();
-      for f in files {
-        dir_path.join(f).write("");
-      }
-    }
-
-    // dir.ts
-    // ├── a.ts
-    // ├── b.js
-    // ├── child
-    // |   ├── git
-    // |   |   └── git.js
-    // |   ├── node_modules
-    // |   |   └── node_modules.js
-    // |   ├── vendor
-    // |   |   └── vendor.js
-    // │   ├── e.mjs
-    // │   ├── f.mjsx
-    // │   ├── .foo.TS
-    // │   └── README.md
-    // ├── c.tsx
-    // ├── d.jsx
-    // └── ignore
-    //     ├── g.d.ts
-    //     └── .gitignore
-
-    let t = TempDir::new();
-
-    let root_dir_path = t.path().join("dir.ts");
-    let root_dir_files = ["a.ts", "b.js", "c.tsx", "d.jsx"];
-    create_files(&root_dir_path, &root_dir_files);
-
-    let child_dir_path = root_dir_path.join("child");
-    let child_dir_files = ["e.mjs", "f.mjsx", ".foo.TS", "README.md"];
-    create_files(&child_dir_path, &child_dir_files);
-
-    t.create_dir_all("dir.ts/child/node_modules");
-    t.write("dir.ts/child/node_modules/node_modules.js", "");
-    t.create_dir_all("dir.ts/child/.git");
-    t.write("dir.ts/child/.git/git.js", "");
-    t.create_dir_all("dir.ts/child/vendor");
-    t.write("dir.ts/child/vendor/vendor.js", "");
-
-    let ignore_dir_path = root_dir_path.join("ignore");
-    let ignore_dir_files = ["g.d.ts", ".gitignore"];
-    create_files(&ignore_dir_path, &ignore_dir_files);
-
-    let file_collector = FileCollector::new(|path| {
-      // exclude dotfiles
-      path
-        .file_name()
-        .and_then(|f| f.to_str())
-        .map(|f| !f.starts_with('.'))
-        .unwrap_or(false)
-    })
-    .add_ignore_paths(&[ignore_dir_path.to_path_buf()]);
-
-    let result = file_collector
-      .collect_files(&[root_dir_path.to_path_buf()])
-      .unwrap();
-    let expected = [
-      "README.md",
-      "a.ts",
-      "b.js",
-      "c.tsx",
-      "d.jsx",
-      "e.mjs",
-      "f.mjsx",
-      "git.js",
-      "node_modules.js",
-      "vendor.js",
-    ];
-    let mut file_names = result
-      .into_iter()
-      .map(|r| r.file_name().unwrap().to_string_lossy().to_string())
-      .collect::<Vec<_>>();
-    file_names.sort();
-    assert_eq!(file_names, expected);
-
-    // test ignoring the .git and node_modules folder
-    let file_collector = file_collector
-      .ignore_git_folder()
-      .ignore_node_modules()
-      .ignore_vendor_folder();
-    let result = file_collector
-      .collect_files(&[root_dir_path.to_path_buf()])
-      .unwrap();
-    let expected = [
-      "README.md",
-      "a.ts",
-      "b.js",
-      "c.tsx",
-      "d.jsx",
-      "e.mjs",
-      "f.mjsx",
-    ];
-    let mut file_names = result
-      .into_iter()
-      .map(|r| r.file_name().unwrap().to_string_lossy().to_string())
-      .collect::<Vec<_>>();
-    file_names.sort();
-    assert_eq!(file_names, expected);
-
-    // test opting out of ignoring by specifying the dir
-    let result = file_collector
-      .collect_files(&[
-        root_dir_path.to_path_buf(),
-        root_dir_path.to_path_buf().join("child/node_modules/"),
-      ])
-      .unwrap();
-    let expected = [
-      "README.md",
-      "a.ts",
-      "b.js",
-      "c.tsx",
-      "d.jsx",
-      "e.mjs",
-      "f.mjsx",
-      "node_modules.js",
-    ];
-    let mut file_names = result
-      .into_iter()
-      .map(|r| r.file_name().unwrap().to_string_lossy().to_string())
-      .collect::<Vec<_>>();
-    file_names.sort();
-    assert_eq!(file_names, expected);
   }
 
   #[test]
@@ -883,9 +817,9 @@ mod tests {
     let ignore_dir_files = ["g.d.ts", ".gitignore"];
     create_files(&ignore_dir_path, &ignore_dir_files);
 
-    let predicate = |path: &Path| {
+    let predicate = |e: WalkEntry| {
       // exclude dotfiles
-      path
+      e.path
         .file_name()
         .and_then(|f| f.to_str())
         .map(|f| !f.starts_with('.'))
@@ -893,38 +827,50 @@ mod tests {
     };
 
     let result = collect_specifiers(
-      &FilesConfig {
-        include: vec![
-          PathBuf::from("http://localhost:8080"),
-          root_dir_path.to_path_buf(),
-          PathBuf::from("https://localhost:8080".to_string()),
-        ],
-        exclude: vec![ignore_dir_path.to_path_buf()],
+      FilePatterns {
+        base: root_dir_path.to_path_buf(),
+        include: Some(
+          PathOrPatternSet::from_include_relative_path_or_patterns(
+            root_dir_path.as_path(),
+            &[
+              "http://localhost:8080".to_string(),
+              "./".to_string(),
+              "https://localhost:8080".to_string(),
+            ],
+          )
+          .unwrap(),
+        ),
+        exclude: PathOrPatternSet::new(vec![PathOrPattern::Path(
+          ignore_dir_path.to_path_buf(),
+        )]),
       },
+      None,
       predicate,
     )
     .unwrap();
 
-    let root_dir_url =
-      ModuleSpecifier::from_file_path(root_dir_path.canonicalize())
-        .unwrap()
-        .to_string();
-    let expected: Vec<ModuleSpecifier> = [
-      "http://localhost:8080",
-      &format!("{root_dir_url}/a.ts"),
-      &format!("{root_dir_url}/b.js"),
-      &format!("{root_dir_url}/c.tsx"),
-      &format!("{root_dir_url}/child/README.md"),
-      &format!("{root_dir_url}/child/e.mjs"),
-      &format!("{root_dir_url}/child/f.mjsx"),
-      &format!("{root_dir_url}/d.jsx"),
-      "https://localhost:8080",
-    ]
-    .iter()
-    .map(|f| ModuleSpecifier::parse(f).unwrap())
-    .collect::<Vec<_>>();
+    let root_dir_url = ModuleSpecifier::from_file_path(&root_dir_path)
+      .unwrap()
+      .to_string();
+    let expected = vec![
+      "http://localhost:8080/".to_string(),
+      "https://localhost:8080/".to_string(),
+      format!("{root_dir_url}/a.ts"),
+      format!("{root_dir_url}/b.js"),
+      format!("{root_dir_url}/c.tsx"),
+      format!("{root_dir_url}/child/README.md"),
+      format!("{root_dir_url}/child/e.mjs"),
+      format!("{root_dir_url}/child/f.mjsx"),
+      format!("{root_dir_url}/d.jsx"),
+    ];
 
-    assert_eq!(result, expected);
+    assert_eq!(
+      result
+        .into_iter()
+        .map(|s| s.to_string())
+        .collect::<Vec<_>>(),
+      expected
+    );
 
     let scheme = if cfg!(target_os = "windows") {
       "file:///"
@@ -932,28 +878,36 @@ mod tests {
       "file://"
     };
     let result = collect_specifiers(
-      &FilesConfig {
-        include: vec![PathBuf::from(format!(
-          "{}{}",
-          scheme,
-          root_dir_path.join("child").to_string().replace('\\', "/")
-        ))],
-        exclude: vec![],
+      FilePatterns {
+        base: root_dir_path.to_path_buf(),
+        include: Some(PathOrPatternSet::new(vec![PathOrPattern::new(
+          &format!(
+            "{}{}",
+            scheme,
+            root_dir_path.join("child").to_string().replace('\\', "/")
+          ),
+        )
+        .unwrap()])),
+        exclude: Default::default(),
       },
+      None,
       predicate,
     )
     .unwrap();
 
-    let expected: Vec<ModuleSpecifier> = [
-      &format!("{root_dir_url}/child/README.md"),
-      &format!("{root_dir_url}/child/e.mjs"),
-      &format!("{root_dir_url}/child/f.mjsx"),
-    ]
-    .iter()
-    .map(|f| ModuleSpecifier::parse(f).unwrap())
-    .collect::<Vec<_>>();
+    let expected = vec![
+      format!("{root_dir_url}/child/README.md"),
+      format!("{root_dir_url}/child/e.mjs"),
+      format!("{root_dir_url}/child/f.mjsx"),
+    ];
 
-    assert_eq!(result, expected);
+    assert_eq!(
+      result
+        .into_iter()
+        .map(|s| s.to_string())
+        .collect::<Vec<_>>(),
+      expected
+    );
   }
 
   #[tokio::test]

@@ -1,14 +1,28 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 // Copyright Joyent, Inc. and Node.js contributors. All rights reserved. MIT license.
 
 // TODO(petamoriken): enable prefer-primordials for node polyfills
-// deno-lint-ignore-file camelcase prefer-primordials
+// deno-lint-ignore-file prefer-primordials
+
+import { primordials } from "ext:core/mod.js";
+import {
+  op_node_check_prime,
+  op_node_check_prime_async,
+  op_node_check_prime_bytes,
+  op_node_check_prime_bytes_async,
+  op_node_gen_prime,
+  op_node_gen_prime_async,
+} from "ext:core/ops";
+const {
+  StringPrototypePadStart,
+  StringPrototypeToString,
+} = primordials;
 
 import { notImplemented } from "ext:deno_node/_utils.ts";
 import randomBytes from "ext:deno_node/internal/crypto/_randomBytes.ts";
 import randomFill, {
   randomFillSync,
-} from "ext:deno_node/internal/crypto/_randomFill.ts";
+} from "ext:deno_node/internal/crypto/_randomFill.mjs";
 import randomInt from "ext:deno_node/internal/crypto/_randomInt.ts";
 import {
   validateBoolean,
@@ -29,16 +43,8 @@ export { default as randomBytes } from "ext:deno_node/internal/crypto/_randomByt
 export {
   default as randomFill,
   randomFillSync,
-} from "ext:deno_node/internal/crypto/_randomFill.ts";
+} from "ext:deno_node/internal/crypto/_randomFill.mjs";
 export { default as randomInt } from "ext:deno_node/internal/crypto/_randomInt.ts";
-
-const { core } = globalThis.__bootstrap;
-const { ops } = core;
-const {
-  op_node_gen_prime_async,
-  op_node_check_prime_bytes_async,
-  op_node_check_prime_async,
-} = Deno.core.ensureFastOps();
 
 export type LargeNumberLike =
   | ArrayBufferView
@@ -126,7 +132,7 @@ export function checkPrimeSync(
   validateInt32(checks, "options.checks", 0);
 
   if (typeof candidate === "bigint") {
-    return ops.op_node_check_prime(candidate, checks);
+    return op_node_check_prime(candidate, checks);
   } else if (!isAnyArrayBuffer(candidate) && !isArrayBufferView(candidate)) {
     throw new ERR_INVALID_ARG_TYPE(
       "candidate",
@@ -141,7 +147,7 @@ export function checkPrimeSync(
     );
   }
 
-  return ops.op_node_check_prime_bytes(candidate, checks);
+  return op_node_check_prime_bytes(candidate, checks);
 }
 
 export interface GeneratePrimeOptions {
@@ -183,7 +189,7 @@ export function generatePrimeSync(
     bigint,
   } = validateRandomPrimeJob(size, options);
 
-  const prime = ops.op_node_gen_prime(size);
+  const prime = op_node_gen_prime(size);
   if (bigint) return arrayBufferToUnsignedBigInt(prime.buffer);
   return prime.buffer;
 }
@@ -286,8 +292,8 @@ function unsignedBigIntToBuffer(bigint: bigint, name: string) {
     throw new ERR_OUT_OF_RANGE(name, ">= 0", bigint);
   }
 
-  const hex = bigint.toString(16);
-  const padded = hex.padStart(hex.length + (hex.length % 2), 0);
+  const hex = StringPrototypeToString(bigint, 16);
+  const padded = StringPrototypePadStart(hex, hex.length + (hex.length % 2), 0);
   return Buffer.from(padded, "hex");
 }
 

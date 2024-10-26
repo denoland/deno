@@ -1,10 +1,11 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 use std::path::Path;
 use std::path::PathBuf;
 use std::rc::Rc;
 use std::sync::Arc;
 
+use deno_runtime::deno_fs::AccessCheckCb;
 use deno_runtime::deno_fs::FileSystem;
 use deno_runtime::deno_fs::FsDirEntry;
 use deno_runtime::deno_fs::FsFileType;
@@ -21,8 +22,8 @@ use super::virtual_fs::FileBackedVfs;
 pub struct DenoCompileFileSystem(Arc<FileBackedVfs>);
 
 impl DenoCompileFileSystem {
-  pub fn new(vfs: FileBackedVfs) -> Self {
-    Self(Arc::new(vfs))
+  pub fn new(vfs: Arc<FileBackedVfs>) -> Self {
+    Self(vfs)
   }
 
   fn error_if_in_vfs(&self, path: &Path) -> FsResult<()> {
@@ -47,6 +48,7 @@ impl DenoCompileFileSystem {
         create_new: false,
         mode: None,
       },
+      None,
       &old_file_bytes,
     )
   }
@@ -75,22 +77,24 @@ impl FileSystem for DenoCompileFileSystem {
     &self,
     path: &Path,
     options: OpenOptions,
+    access_check: Option<AccessCheckCb>,
   ) -> FsResult<Rc<dyn File>> {
     if self.0.is_path_within(path) {
       Ok(self.0.open_file(path)?)
     } else {
-      RealFs.open_sync(path, options)
+      RealFs.open_sync(path, options, access_check)
     }
   }
-  async fn open_async(
-    &self,
+  async fn open_async<'a>(
+    &'a self,
     path: PathBuf,
     options: OpenOptions,
+    access_check: Option<AccessCheckCb<'a>>,
   ) -> FsResult<Rc<dyn File>> {
     if self.0.is_path_within(&path) {
       Ok(self.0.open_file(&path)?)
     } else {
-      RealFs.open_async(path, options).await
+      RealFs.open_async(path, options, access_check).await
     }
   }
 
@@ -98,7 +102,7 @@ impl FileSystem for DenoCompileFileSystem {
     &self,
     path: &Path,
     recursive: bool,
-    mode: u32,
+    mode: Option<u32>,
   ) -> FsResult<()> {
     self.error_if_in_vfs(path)?;
     RealFs.mkdir_sync(path, recursive, mode)
@@ -107,7 +111,7 @@ impl FileSystem for DenoCompileFileSystem {
     &self,
     path: PathBuf,
     recursive: bool,
-    mode: u32,
+    mode: Option<u32>,
   ) -> FsResult<()> {
     self.error_if_in_vfs(&path)?;
     RealFs.mkdir_async(path, recursive, mode).await
@@ -139,6 +143,26 @@ impl FileSystem for DenoCompileFileSystem {
   ) -> FsResult<()> {
     self.error_if_in_vfs(&path)?;
     RealFs.chown_async(path, uid, gid).await
+  }
+
+  fn lchown_sync(
+    &self,
+    path: &Path,
+    uid: Option<u32>,
+    gid: Option<u32>,
+  ) -> FsResult<()> {
+    self.error_if_in_vfs(path)?;
+    RealFs.lchown_sync(path, uid, gid)
+  }
+
+  async fn lchown_async(
+    &self,
+    path: PathBuf,
+    uid: Option<u32>,
+    gid: Option<u32>,
+  ) -> FsResult<()> {
+    self.error_if_in_vfs(&path)?;
+    RealFs.lchown_async(path, uid, gid).await
   }
 
   fn remove_sync(&self, path: &Path, recursive: bool) -> FsResult<()> {
@@ -173,6 +197,17 @@ impl FileSystem for DenoCompileFileSystem {
     } else {
       RealFs.copy_file_async(oldpath, newpath).await
     }
+  }
+
+  fn cp_sync(&self, from: &Path, to: &Path) -> FsResult<()> {
+    self.error_if_in_vfs(to)?;
+
+    RealFs.cp_sync(from, to)
+  }
+  async fn cp_async(&self, from: PathBuf, to: PathBuf) -> FsResult<()> {
+    self.error_if_in_vfs(&to)?;
+
+    RealFs.cp_async(from, to).await
   }
 
   fn stat_sync(&self, path: &Path) -> FsResult<FsStat> {
@@ -332,6 +367,31 @@ impl FileSystem for DenoCompileFileSystem {
     self.error_if_in_vfs(&path)?;
     RealFs
       .utime_async(path, atime_secs, atime_nanos, mtime_secs, mtime_nanos)
+      .await
+  }
+
+  fn lutime_sync(
+    &self,
+    path: &Path,
+    atime_secs: i64,
+    atime_nanos: u32,
+    mtime_secs: i64,
+    mtime_nanos: u32,
+  ) -> FsResult<()> {
+    self.error_if_in_vfs(path)?;
+    RealFs.lutime_sync(path, atime_secs, atime_nanos, mtime_secs, mtime_nanos)
+  }
+  async fn lutime_async(
+    &self,
+    path: PathBuf,
+    atime_secs: i64,
+    atime_nanos: u32,
+    mtime_secs: i64,
+    mtime_nanos: u32,
+  ) -> FsResult<()> {
+    self.error_if_in_vfs(&path)?;
+    RealFs
+      .lutime_async(path, atime_secs, atime_nanos, mtime_secs, mtime_nanos)
       .await
   }
 }

@@ -1,0 +1,32 @@
+{
+  "name": "normalize-range",
+  "dist-tags": {
+    "latest": "0.1.2"
+  },
+  "versions": {
+    "0.1.2": {
+      "name": "normalize-range",
+      "version": "0.1.2",
+      "devDependencies": {
+        "almost-equal": "^1.0.0",
+        "codeclimate-test-reporter": "^0.1.0",
+        "coveralls": "^2.11.2",
+        "istanbul": "^0.3.17",
+        "jscs": "^2.1.1",
+        "jshint": "^2.8.0",
+        "jshint-stylish": "^2.0.1",
+        "mocha": "^2.2.5",
+        "stringify-pi": "0.0.3"
+      },
+      "dist": {
+        "shasum": "2d10c06bdfd312ea9777695a4d28439456b75942",
+        "tarball": "http://localhost:4260/normalize-range/normalize-range-0.1.2.tgz",
+        "integrity": "sha512-bdok/XvKII3nUpklnV6P2hxtMNrCboOjAcyBuQnWEhO665FwrSNRxU+AqpsyvO6LgGYPspN+lu5CLtw4jPRKNA=="
+      },
+      "engines": {
+        "node": ">=0.10.0"
+      }
+    }
+  },
+  "modified": "2022-06-22T05:32:01.991Z"
+}

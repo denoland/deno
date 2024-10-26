@@ -1,4 +1,4 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 // This module implements 'child_process' module of Node.JS API.
 // ref: https://nodejs.org/api/child_process.html
@@ -6,18 +6,37 @@
 // TODO(petamoriken): enable prefer-primordials for node polyfills
 // deno-lint-ignore-file prefer-primordials
 
+import { core, internals } from "ext:core/mod.js";
+import {
+  op_node_ipc_read,
+  op_node_ipc_ref,
+  op_node_ipc_unref,
+  op_node_ipc_write,
+} from "ext:core/ops";
+import {
+  ArrayIsArray,
+  ArrayPrototypeFilter,
+  ArrayPrototypeJoin,
+  ArrayPrototypePush,
+  ArrayPrototypeSlice,
+  ArrayPrototypeSort,
+  ArrayPrototypeUnshift,
+  ObjectHasOwn,
+  StringPrototypeStartsWith,
+  StringPrototypeToUpperCase,
+} from "ext:deno_node/internal/primordials.mjs";
 import { assert } from "ext:deno_node/_util/asserts.ts";
 import { EventEmitter } from "node:events";
 import { os } from "ext:deno_node/internal_binding/constants.ts";
-import { notImplemented, warnNotImplemented } from "ext:deno_node/_utils.ts";
+import { notImplemented } from "ext:deno_node/_utils.ts";
 import { Readable, Stream, Writable } from "node:stream";
-import { deferred } from "ext:deno_node/_util/async.ts";
 import { isWindows } from "ext:deno_node/_util/os.ts";
 import { nextTick } from "ext:deno_node/_next_tick.ts";
 import {
   AbortError,
   ERR_INVALID_ARG_TYPE,
   ERR_INVALID_ARG_VALUE,
+  ERR_IPC_CHANNEL_CLOSED,
   ERR_UNKNOWN_SIGNAL,
 } from "ext:deno_node/internal/errors.ts";
 import { Buffer } from "node:buffer";
@@ -30,20 +49,19 @@ import {
   validateObject,
   validateString,
 } from "ext:deno_node/internal/validators.mjs";
-import {
-  ArrayIsArray,
-  ArrayPrototypeFilter,
-  ArrayPrototypeJoin,
-  ArrayPrototypePush,
-  ArrayPrototypeSlice,
-  ArrayPrototypeSort,
-  ArrayPrototypeUnshift,
-  ObjectHasOwn,
-  StringPrototypeToUpperCase,
-} from "ext:deno_node/internal/primordials.mjs";
 import { kEmptyObject } from "ext:deno_node/internal/util.mjs";
 import { getValidatedPath } from "ext:deno_node/internal/fs/utils.mjs";
 import process from "node:process";
+import { StringPrototypeSlice } from "ext:deno_node/internal/primordials.mjs";
+import { StreamBase } from "ext:deno_node/internal_binding/stream_wrap.ts";
+import { Pipe, socketType } from "ext:deno_node/internal_binding/pipe_wrap.ts";
+import { Socket } from "node:net";
+import {
+  kDetached,
+  kExtraStdio,
+  kIpc,
+  kNeedsNpmProcessState,
+} from "ext:runtime/40_process.js";
 
 export function mapValues<T, O>(
   record: Readonly<Record<string, T>>,
@@ -53,6 +71,13 @@ export function mapValues<T, O>(
   const entries = Object.entries(record);
 
   for (const [key, value] of entries) {
+    if (typeof value === "undefined") {
+      continue;
+    }
+    if (value === null) {
+      continue;
+    }
+
     const mappedValue = transformer(value);
 
     ret[key] = mappedValue;
@@ -86,6 +111,61 @@ export function stdioStringToArray(
   if (channel) options.push(channel);
 
   return options;
+}
+
+const kClosesNeeded = Symbol("_closesNeeded");
+const kClosesReceived = Symbol("_closesReceived");
+const kCanDisconnect = Symbol("_canDisconnect");
+
+// We only want to emit a close event for the child process when all of
+// the writable streams have closed. The value of `child[kClosesNeeded]` should be 1 +
+// the number of opened writable streams (note this excludes `stdin`).
+function maybeClose(child: ChildProcess) {
+  child[kClosesReceived]++;
+  if (child[kClosesNeeded] === child[kClosesReceived]) {
+    child.emit("close", child.exitCode, child.signalCode);
+  }
+}
+
+function flushStdio(subprocess: ChildProcess) {
+  const stdio = subprocess.stdio;
+
+  if (stdio == null) return;
+
+  for (let i = 0; i < stdio.length; i++) {
+    const stream = stdio[i];
+    if (!stream || !stream.readable) {
+      continue;
+    }
+    stream.resume();
+  }
+}
+
+// Wraps a resource in a class that implements
+// StreamBase, so it can be used with node streams
+class StreamResource implements StreamBase {
+  #rid: number;
+  constructor(rid: number) {
+    this.#rid = rid;
+  }
+  close(): void {
+    core.close(this.#rid);
+  }
+  async read(p: Uint8Array): Promise<number | null> {
+    const readPromise = core.read(this.#rid, p);
+    core.unrefOpPromise(readPromise);
+    const nread = await readPromise;
+    return nread > 0 ? nread : null;
+  }
+  ref(): void {
+    return;
+  }
+  unref(): void {
+    return;
+  }
+  write(p: Uint8Array): Promise<number> {
+    return core.write(this.#rid, p);
+  }
 }
 
 export class ChildProcess extends EventEmitter {
@@ -143,8 +223,13 @@ export class ChildProcess extends EventEmitter {
     null,
   ];
 
+  disconnect?: () => void;
+
   #process!: Deno.ChildProcess;
-  #spawned = deferred<void>();
+  #spawned = Promise.withResolvers<void>();
+  [kClosesNeeded] = 1;
+  [kClosesReceived] = 0;
+  [kCanDisconnect] = false;
 
   constructor(
     command: string,
@@ -160,13 +245,15 @@ export class ChildProcess extends EventEmitter {
       shell = false,
       signal,
       windowsVerbatimArguments = false,
+      detached,
     } = options || {};
+    const normalizedStdio = normalizeStdioOption(stdio);
     const [
       stdin = "pipe",
       stdout = "pipe",
       stderr = "pipe",
-      _channel, // TODO(kt3k): handle this correctly
-    ] = normalizeStdioOption(stdio);
+      ...extraStdio
+    ] = normalizedStdio;
     const [cmd, cmdArgs] = buildCommand(
       command,
       args || [],
@@ -174,6 +261,17 @@ export class ChildProcess extends EventEmitter {
     );
     this.spawnfile = cmd;
     this.spawnargs = [cmd, ...cmdArgs];
+
+    const ipc = normalizedStdio.indexOf("ipc");
+
+    const extraStdioOffset = 3; // stdin, stdout, stderr
+
+    const extraStdioNormalized: DenoStdio[] = [];
+    for (let i = 0; i < extraStdio.length; i++) {
+      const fd = i + extraStdioOffset;
+      if (fd === ipc) extraStdioNormalized.push("null");
+      extraStdioNormalized.push(toDenoStdio(extraStdio[i]));
+    }
 
     const stringEnv = mapValues(env, (value) => value.toString());
     try {
@@ -185,6 +283,11 @@ export class ChildProcess extends EventEmitter {
         stdout: toDenoStdio(stdout),
         stderr: toDenoStdio(stderr),
         windowsRawArguments: windowsVerbatimArguments,
+        [kIpc]: ipc, // internal
+        [kExtraStdio]: extraStdioNormalized,
+        [kDetached]: detached,
+        // deno-lint-ignore no-explicit-any
+        [kNeedsNpmProcessState]: (options ?? {} as any)[kNeedsNpmProcessState],
       }).spawn();
       this.pid = this.#process.pid;
 
@@ -205,17 +308,50 @@ export class ChildProcess extends EventEmitter {
 
       if (stdout === "pipe") {
         assert(this.#process.stdout);
+        this[kClosesNeeded]++;
         this.stdout = Readable.fromWeb(this.#process.stdout);
+        this.stdout.on("close", () => {
+          maybeClose(this);
+        });
       }
 
       if (stderr === "pipe") {
         assert(this.#process.stderr);
+        this[kClosesNeeded]++;
         this.stderr = Readable.fromWeb(this.#process.stderr);
+        this.stderr.on("close", () => {
+          maybeClose(this);
+        });
       }
 
       this.stdio[0] = this.stdin;
       this.stdio[1] = this.stdout;
       this.stdio[2] = this.stderr;
+
+      if (ipc >= 0) {
+        this.stdio[ipc] = null;
+      }
+
+      const pipeRids = internals.getExtraPipeRids(this.#process);
+      for (let i = 0; i < pipeRids.length; i++) {
+        const rid: number | null = pipeRids[i];
+        const fd = i + extraStdioOffset;
+        if (rid) {
+          this[kClosesNeeded]++;
+          this.stdio[fd] = new Socket(
+            {
+              handle: new Pipe(
+                socketType.IPC,
+                new StreamResource(rid),
+              ),
+              // deno-lint-ignore no-explicit-any
+            } as any,
+          );
+          this.stdio[fd]?.on("close", () => {
+            maybeClose(this);
+          });
+        }
+      }
 
       nextTick(() => {
         this.emit("spawn");
@@ -243,21 +379,35 @@ export class ChildProcess extends EventEmitter {
         }
       }
 
+      const pipeRid = internals.getIpcPipeRid(this.#process);
+      if (typeof pipeRid == "number") {
+        setupChannel(this, pipeRid);
+        this[kClosesNeeded]++;
+        this.on("disconnect", () => {
+          maybeClose(this);
+        });
+      }
+
       (async () => {
         const status = await this.#process.status;
         this.exitCode = status.code;
-        this.#spawned.then(async () => {
+        this.#spawned.promise.then(async () => {
           const exitCode = this.signalCode == null ? this.exitCode : null;
           const signalCode = this.signalCode == null ? null : this.signalCode;
           // The 'exit' and 'close' events must be emitted after the 'spawn' event.
           this.emit("exit", exitCode, signalCode);
           await this.#_waitForChildStreamsToClose();
           this.#closePipes();
-          this.emit("close", exitCode, signalCode);
+          maybeClose(this);
+          nextTick(flushStdio, this);
         });
       })();
     } catch (err) {
-      this.#_handleError(err);
+      let e = err;
+      if (e instanceof Deno.errors.NotFound) {
+        e = _createSpawnSyncError("ENOENT", command, args);
+      }
+      this.#_handleError(e);
     }
   }
 
@@ -280,6 +430,12 @@ export class ChildProcess extends EventEmitter {
         throw err;
       }
     }
+
+    /* Cancel any pending IPC I/O */
+    if (this[kCanDisconnect]) {
+      this.disconnect?.();
+    }
+
     this.killed = true;
     this.signalCode = denoSignal;
     return this.killed;
@@ -291,10 +447,6 @@ export class ChildProcess extends EventEmitter {
 
   unref() {
     this.#process.unref();
-  }
-
-  disconnect() {
-    warnNotImplemented("ChildProcess.prototype.disconnect");
   }
 
   async #_waitForChildStreamsToClose() {
@@ -334,17 +486,25 @@ export class ChildProcess extends EventEmitter {
   }
 }
 
-const supportedNodeStdioTypes: NodeStdio[] = ["pipe", "ignore", "inherit"];
+const supportedNodeStdioTypes: NodeStdio[] = [
+  "pipe",
+  "ignore",
+  "inherit",
+  "ipc",
+];
 function toDenoStdio(
   pipe: NodeStdio | number | Stream | null | undefined,
 ): DenoStdio {
   if (pipe instanceof Stream) {
     return "inherit";
   }
+  if (typeof pipe === "number") {
+    /* Assume it's a rid returned by fs APIs */
+    return pipe;
+  }
 
   if (
-    !supportedNodeStdioTypes.includes(pipe as NodeStdio) ||
-    typeof pipe === "number"
+    !supportedNodeStdioTypes.includes(pipe as NodeStdio)
   ) {
     notImplemented(`toDenoStdio pipe=${typeof pipe} (${pipe})`);
   }
@@ -357,6 +517,8 @@ function toDenoStdio(
       return "null";
     case "inherit":
       return "inherit";
+    case "ipc":
+      return "ipc_for_internal_use";
     default:
       notImplemented(`toDenoStdio pipe=${typeof pipe} (${pipe})`);
   }
@@ -401,7 +563,7 @@ export interface ChildProcessOptions {
   stdio?: Array<NodeStdio | number | Stream | null | undefined> | NodeStdio;
 
   /**
-   * NOTE: This option is not yet implemented.
+   * Whether to spawn the process in a detached state.
    */
   detached?: boolean;
 
@@ -475,9 +637,18 @@ function normalizeStdioOption(
   if (Array.isArray(stdio)) {
     // `[0, 1, 2]` is equivalent to `"inherit"`
     if (
-      stdio.length === 3 && stdio[0] === 0 && stdio[1] === 1 && stdio[2] === 2
+      stdio.length === 3 &&
+      (stdio[0] === 0 && stdio[1] === 1 && stdio[2] === 2)
     ) {
       return ["inherit", "inherit", "inherit"];
+    }
+
+    // `[null, null, null]` is equivalent to `"pipe"
+    if (
+      stdio.length === 3 &&
+        stdio[0] === null || stdio[1] === null || stdio[2] === null
+    ) {
+      return ["pipe", "pipe", "pipe"];
     }
 
     // At least 3 stdio must be created to match node
@@ -681,22 +852,22 @@ function waitForReadableToClose(readable: Readable) {
 }
 
 function waitForStreamToClose(stream: Stream) {
-  const promise = deferred<void>();
+  const deferred = Promise.withResolvers<void>();
   const cleanup = () => {
     stream.removeListener("close", onClose);
     stream.removeListener("error", onError);
   };
   const onClose = () => {
     cleanup();
-    promise.resolve();
+    deferred.resolve();
   };
   const onError = (err: Error) => {
     cleanup();
-    promise.reject(err);
+    deferred.reject(err);
   };
   stream.once("close", onClose);
   stream.once("error", onError);
-  return promise;
+  return deferred.promise;
 }
 
 /**
@@ -828,7 +999,12 @@ export function spawnSync(
     maxBuffer,
     windowsVerbatimArguments = false,
   } = options;
-  const normalizedStdio = normalizeStdioOption(stdio);
+  const [
+    stdin_ = "pipe",
+    stdout_ = "pipe",
+    stderr_ = "pipe",
+    _channel, // TODO(kt3k): handle this correctly
+  ] = normalizeStdioOption(stdio);
   [command, args] = buildCommand(command, args ?? [], shell);
 
   const result: SpawnSyncResult = {};
@@ -836,15 +1012,16 @@ export function spawnSync(
     const output = new Deno.Command(command, {
       args,
       cwd,
-      env,
-      stdout: toDenoStdio(normalizedStdio[1]),
-      stderr: toDenoStdio(normalizedStdio[2]),
+      env: mapValues(env, (value) => value.toString()),
+      stdout: toDenoStdio(stdout_),
+      stderr: toDenoStdio(stderr_),
+      stdin: stdin_ == "inherit" ? "inherit" : "null",
       uid,
       gid,
       windowsRawArguments: windowsVerbatimArguments,
     }).outputSync();
 
-    const status = output.signal ? null : 0;
+    const status = output.signal ? null : output.code;
     let stdout = parseSpawnSyncOutputStreams(output, "stdout");
     let stderr = parseSpawnSyncOutputStreams(output, "stderr");
 
@@ -931,8 +1108,8 @@ const kNodeFlagsMap = new Map([
   ["--v8-pool-size", kLongArg],
 ]);
 const kDenoSubcommands = new Set([
+  "add",
   "bench",
-  "bundle",
   "cache",
   "check",
   "compile",
@@ -947,6 +1124,7 @@ const kDenoSubcommands = new Set([
   "install",
   "lint",
   "lsp",
+  "publish",
   "repl",
   "run",
   "tasks",
@@ -993,6 +1171,12 @@ function toDenoArgs(args: string[]): string[] {
     let isLongWithValue = false;
     let flagValue;
 
+    if (flag === "--v8-options") {
+      // If --v8-options is passed, it should be replaced with --v8-flags="--help".
+      denoArgs.push("--v8-flags=--help");
+      continue;
+    }
+
     if (flagInfo === undefined) {
       // If the flag was not found, it's either not a known flag or it's a long
       // flag containing an '='.
@@ -1007,8 +1191,12 @@ function toDenoArgs(args: string[]): string[] {
     }
 
     if (flagInfo === undefined) {
-      // Not a known flag that expects a value. Just copy it to the output.
-      denoArgs.push(arg);
+      if (arg === "--no-warnings") {
+        denoArgs.push("--quiet");
+      } else {
+        // Not a known flag that expects a value. Just copy it to the output.
+        denoArgs.push(arg);
+      }
       continue;
     }
 
@@ -1040,11 +1228,234 @@ function toDenoArgs(args: string[]): string[] {
 
   if (useRunArgs) {
     // -A is not ideal, but needed to propagate permissions.
-    // --unstable is needed for Node compat.
-    denoArgs.unshift("run", "-A", "--unstable");
+    denoArgs.unshift("run", "-A");
   }
 
   return denoArgs;
+}
+
+const kControlDisconnect = Symbol("kControlDisconnect");
+const kPendingMessages = Symbol("kPendingMessages");
+
+// controls refcounting for the IPC channel
+class Control extends EventEmitter {
+  #channel: number;
+  #refs: number = 0;
+  #refExplicitlySet = false;
+  #connected = true;
+  [kPendingMessages] = [];
+  constructor(channel: number) {
+    super();
+    this.#channel = channel;
+  }
+
+  #ref() {
+    if (this.#connected) {
+      op_node_ipc_ref(this.#channel);
+    }
+  }
+
+  #unref() {
+    if (this.#connected) {
+      op_node_ipc_unref(this.#channel);
+    }
+  }
+
+  [kControlDisconnect]() {
+    this.#unref();
+    this.#connected = false;
+  }
+
+  refCounted() {
+    if (++this.#refs === 1 && !this.#refExplicitlySet) {
+      this.#ref();
+    }
+  }
+
+  unrefCounted() {
+    if (--this.#refs === 0 && !this.#refExplicitlySet) {
+      this.#unref();
+      this.emit("unref");
+    }
+  }
+
+  ref() {
+    this.#refExplicitlySet = true;
+    this.#ref();
+  }
+
+  unref() {
+    this.#refExplicitlySet = false;
+    this.#unref();
+  }
+}
+
+type InternalMessage = {
+  cmd: `NODE_${string}`;
+};
+
+// deno-lint-ignore no-explicit-any
+function isInternal(msg: any): msg is InternalMessage {
+  if (msg && typeof msg === "object") {
+    const cmd = msg["cmd"];
+    if (typeof cmd === "string") {
+      return StringPrototypeStartsWith(cmd, "NODE_");
+    }
+  }
+  return false;
+}
+
+function internalCmdName(msg: InternalMessage): string {
+  return StringPrototypeSlice(msg.cmd, 5);
+}
+
+// deno-lint-ignore no-explicit-any
+export function setupChannel(target: any, ipc: number) {
+  const control = new Control(ipc);
+  target.channel = control;
+
+  async function readLoop() {
+    try {
+      while (true) {
+        if (!target.connected || target.killed) {
+          return;
+        }
+        const prom = op_node_ipc_read(ipc);
+        // there will always be a pending read promise,
+        // but it shouldn't keep the event loop from exiting
+        core.unrefOpPromise(prom);
+        const msg = await prom;
+        if (isInternal(msg)) {
+          const cmd = internalCmdName(msg);
+          if (cmd === "CLOSE") {
+            // Channel closed.
+            target.disconnect();
+            return;
+          } else {
+            // TODO(nathanwhit): once we add support for sending
+            // handles, if we want to support deno-node IPC interop,
+            // we'll need to handle the NODE_HANDLE_* messages here.
+            continue;
+          }
+        }
+
+        nextTick(handleMessage, msg);
+      }
+    } catch (err) {
+      if (
+        err instanceof Deno.errors.Interrupted ||
+        err instanceof Deno.errors.BadResource
+      ) {
+        return;
+      }
+    }
+  }
+
+  function handleMessage(msg) {
+    if (!target.channel) {
+      return;
+    }
+    if (target.listenerCount("message") !== 0) {
+      target.emit("message", msg);
+      return;
+    }
+
+    ArrayPrototypePush(target.channel[kPendingMessages], msg);
+  }
+
+  target.on("newListener", () => {
+    nextTick(() => {
+      if (!target.channel || !target.listenerCount("message")) {
+        return;
+      }
+      for (const msg of target.channel[kPendingMessages]) {
+        target.emit("message", msg);
+      }
+      target.channel[kPendingMessages] = [];
+    });
+  });
+
+  target.send = function (message, handle, options, callback) {
+    if (typeof handle === "function") {
+      callback = handle;
+      handle = undefined;
+      options = undefined;
+    } else if (typeof options === "function") {
+      callback = options;
+      options = undefined;
+    } else if (options !== undefined) {
+      validateObject(options, "options");
+    }
+
+    options = { swallowErrors: false, ...options };
+
+    if (message === undefined) {
+      throw new TypeError("ERR_MISSING_ARGS", "message");
+    }
+
+    if (handle !== undefined) {
+      notImplemented("ChildProcess.send with handle");
+    }
+
+    if (!target.connected) {
+      const err = new ERR_IPC_CHANNEL_CLOSED();
+      if (typeof callback === "function") {
+        nextTick(callback, err);
+      } else {
+        nextTick(() => target.emit("error", err));
+      }
+      return false;
+    }
+
+    // signals whether the queue is within the limit.
+    // if false, the sender should slow down.
+    // this acts as a backpressure mechanism.
+    const queueOk = [true];
+    control.refCounted();
+    op_node_ipc_write(ipc, message, queueOk)
+      .then(() => {
+        control.unrefCounted();
+        if (callback) {
+          nextTick(callback, null);
+        }
+      }, (err: Error) => {
+        control.unrefCounted();
+        if (err instanceof Deno.errors.Interrupted) {
+          // Channel closed on us mid-write.
+        } else {
+          if (typeof callback === "function") {
+            nextTick(callback, err);
+          } else {
+            nextTick(() => target.emit("error", err));
+          }
+        }
+      });
+    return queueOk[0];
+  };
+
+  target.connected = true;
+
+  target.disconnect = function () {
+    if (!target.connected) {
+      target.emit("error", new Error("IPC channel is already disconnected"));
+      return;
+    }
+
+    target.connected = false;
+    target[kCanDisconnect] = false;
+    control[kControlDisconnect]();
+    nextTick(() => {
+      target.channel = null;
+      core.close(ipc);
+      target.emit("disconnect");
+    });
+  };
+  target[kCanDisconnect] = true;
+
+  // Start reading messages from the channel.
+  readLoop();
+
+  return control;
 }
 
 export default {
@@ -1052,4 +1463,5 @@ export default {
   normalizeSpawnArguments,
   stdioStringToArray,
   spawnSync,
+  setupChannel,
 };

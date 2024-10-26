@@ -1,6 +1,6 @@
 // Copyright the Browserify authors. MIT License.
 // Ported from https://github.com/browserify/path-browserify/
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 // TODO(petamoriken): enable prefer-primordials for node polyfills
 // deno-lint-ignore-file prefer-primordials
@@ -106,13 +106,17 @@ export function normalizeString(
   return res;
 }
 
+function formatExt(ext) {
+  return ext ? `${ext[0] === "." ? "" : "."}${ext}` : "";
+}
+
 export function _format(
   sep: string,
   pathObject: FormatInputPathObject,
 ): string {
   const dir: string | undefined = pathObject.dir || pathObject.root;
   const base: string = pathObject.base ||
-    (pathObject.name || "") + (pathObject.ext || "");
+    (pathObject.name || "") + formatExt(pathObject.ext);
   if (!dir) return base;
   if (dir === pathObject.root) return dir + base;
   return dir + sep + base;

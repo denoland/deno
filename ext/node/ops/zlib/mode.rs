@@ -1,21 +1,8 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
-use libz_sys as sys;
-
-#[derive(Debug)]
-pub enum Error {
-  BadArgument,
-}
-
-impl std::fmt::Display for Error {
-  fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-    match self {
-      Error::BadArgument => write!(f, "bad argument"),
-    }
-  }
-}
-
-impl std::error::Error for Error {}
+#[derive(Debug, thiserror::Error)]
+#[error("bad argument")]
+pub struct ModeError;
 
 macro_rules! repr_i32 {
     ($(#[$meta:meta])* $vis:vis enum $name:ident {
@@ -27,12 +14,12 @@ macro_rules! repr_i32 {
       }
 
       impl core::convert::TryFrom<i32> for $name {
-        type Error = Error;
+        type Error = ModeError;
 
         fn try_from(v: i32) -> Result<Self, Self::Error> {
           match v {
             $(x if x == $name::$vname as i32 => Ok($name::$vname),)*
-            _ => Err(Error::BadArgument),
+            _ => Err(ModeError),
           }
         }
       }
@@ -60,12 +47,12 @@ repr_i32! {
   #[derive(Clone, Copy, Debug, PartialEq, Default)]
   pub enum Flush {
     #[default]
-    None = sys::Z_NO_FLUSH,
-    Partial = sys::Z_PARTIAL_FLUSH,
-    Sync = sys::Z_SYNC_FLUSH,
-    Full = sys::Z_FULL_FLUSH,
-    Finish = sys::Z_FINISH,
-    Block = sys::Z_BLOCK,
-    Trees = sys::Z_TREES,
+    None = zlib::Z_NO_FLUSH,
+    Partial = zlib::Z_PARTIAL_FLUSH,
+    Sync = zlib::Z_SYNC_FLUSH,
+    Full = zlib::Z_FULL_FLUSH,
+    Finish = zlib::Z_FINISH,
+    Block = zlib::Z_BLOCK,
+    Trees = zlib::Z_TREES,
   }
 }

@@ -1,4 +1,4 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 // @ts-check
 /// <reference path="../../core/lib.deno_core.d.ts" />
@@ -6,31 +6,46 @@
 /// <reference path="./internal.d.ts" />
 /// <reference path="./lib.deno_web.d.ts" />
 
-const core = globalThis.Deno.core;
-const { InterruptedPrototype, ops } = core;
+import { core, primordials } from "ext:core/mod.js";
+import {
+  op_message_port_create_entangled,
+  op_message_port_post_message,
+  op_message_port_recv_message,
+} from "ext:core/ops";
+const {
+  ArrayBufferPrototypeGetByteLength,
+  ArrayPrototypeFilter,
+  ArrayPrototypeIncludes,
+  ArrayPrototypePush,
+  ObjectPrototypeIsPrototypeOf,
+  ObjectDefineProperty,
+  Symbol,
+  SymbolFor,
+  SymbolIterator,
+  PromiseResolve,
+  SafeArrayIterator,
+  TypeError,
+} = primordials;
+const {
+  InterruptedPrototype,
+  isArrayBuffer,
+} = core;
 import * as webidl from "ext:deno_webidl/00_webidl.js";
+import { createFilteredInspectProxy } from "ext:deno_console/01_console.js";
 import {
   defineEventHandler,
   EventTarget,
   MessageEvent,
   setEventTargetData,
   setIsTrusted,
-} from "ext:deno_web/02_event.js";
-import DOMException from "ext:deno_web/01_dom_exception.js";
-const primordials = globalThis.__bootstrap.primordials;
-const {
-  ArrayBufferPrototype,
-  ArrayBufferPrototypeGetByteLength,
-  ArrayPrototypeFilter,
-  ArrayPrototypeIncludes,
-  ArrayPrototypePush,
-  ObjectPrototypeIsPrototypeOf,
-  ObjectSetPrototypeOf,
-  Symbol,
-  SymbolFor,
-  SymbolIterator,
-  TypeError,
-} = primordials;
+} from "./02_event.js";
+import { isDetachedBuffer } from "./06_streams.js";
+import { DOMException } from "./01_dom_exception.js";
+
+// counter of how many message ports are actively refed
+// either due to the existence of "message" event listeners or
+// explicit calls to ref/unref (in the case of node message ports)
+let refedMessagePortsCount = 0;
 
 class MessageChannel {
   /** @type {MessagePort} */
@@ -57,40 +72,94 @@ class MessageChannel {
     return this.#port2;
   }
 
-  [SymbolFor("Deno.inspect")](inspect) {
-    return `MessageChannel ${
-      inspect({ port1: this.port1, port2: this.port2 })
-    }`;
+  [SymbolFor("Deno.privateCustomInspect")](inspect, inspectOptions) {
+    return inspect(
+      createFilteredInspectProxy({
+        object: this,
+        evaluate: ObjectPrototypeIsPrototypeOf(MessageChannelPrototype, this),
+        keys: [
+          "port1",
+          "port2",
+        ],
+      }),
+      inspectOptions,
+    );
   }
 }
 
-webidl.configurePrototype(MessageChannel);
+webidl.configureInterface(MessageChannel);
 const MessageChannelPrototype = MessageChannel.prototype;
 
 const _id = Symbol("id");
+const MessagePortIdSymbol = _id;
+const MessagePortReceiveMessageOnPortSymbol = Symbol(
+  "MessagePortReceiveMessageOnPort",
+);
 const _enabled = Symbol("enabled");
+const _refed = Symbol("refed");
+const _messageEventListenerCount = Symbol("messageEventListenerCount");
+const nodeWorkerThreadCloseCb = Symbol("nodeWorkerThreadCloseCb");
+const nodeWorkerThreadCloseCbInvoked = Symbol("nodeWorkerThreadCloseCbInvoked");
+export const refMessagePort = Symbol("refMessagePort");
+/** It is used by 99_main.js and worker_threads to
+ * unref/ref on the global pollForMessages promise. */
+export const unrefPollForMessages = Symbol("unrefPollForMessages");
 
 /**
  * @param {number} id
  * @returns {MessagePort}
  */
 function createMessagePort(id) {
-  const port = core.createHostObject();
-  ObjectSetPrototypeOf(port, MessagePortPrototype);
-  port[webidl.brand] = webidl.brand;
+  const port = webidl.createBranded(MessagePort);
+  port[core.hostObjectBrand] = core.hostObjectBrand;
   setEventTargetData(port);
   port[_id] = id;
+  port[_enabled] = false;
+  port[_messageEventListenerCount] = 0;
+  port[_refed] = false;
   return port;
 }
+
+function nodeWorkerThreadMaybeInvokeCloseCb(port) {
+  if (
+    typeof port[nodeWorkerThreadCloseCb] == "function" &&
+    !port[nodeWorkerThreadCloseCbInvoked]
+  ) {
+    port[nodeWorkerThreadCloseCb]();
+    port[nodeWorkerThreadCloseCbInvoked] = true;
+  }
+}
+
+const _isRefed = Symbol("isRefed");
+const _dataPromise = Symbol("dataPromise");
 
 class MessagePort extends EventTarget {
   /** @type {number | null} */
   [_id] = null;
   /** @type {boolean} */
   [_enabled] = false;
+  [_refed] = false;
+  /** @type {Promise<any> | undefined} */
+  [_dataPromise] = undefined;
+  [_messageEventListenerCount] = 0;
 
   constructor() {
     super();
+    ObjectDefineProperty(this, MessagePortReceiveMessageOnPortSymbol, {
+      __proto__: null,
+      value: false,
+      enumerable: false,
+    });
+    ObjectDefineProperty(this, nodeWorkerThreadCloseCb, {
+      __proto__: null,
+      value: null,
+      enumerable: false,
+    });
+    ObjectDefineProperty(this, nodeWorkerThreadCloseCbInvoked, {
+      __proto__: null,
+      value: false,
+      enumerable: false,
+    });
     webidl.illegalConstructor();
   }
 
@@ -98,7 +167,7 @@ class MessagePort extends EventTarget {
    * @param {any} message
    * @param {object[] | StructuredSerializeOptions} transferOrOptions
    */
-  postMessage(message, transferOrOptions = {}) {
+  postMessage(message, transferOrOptions = { __proto__: null }) {
     webidl.assertBranded(this, MessagePortPrototype);
     const prefix = "Failed to execute 'postMessage' on 'MessagePort'";
     webidl.requiredArguments(arguments.length, 1, prefix);
@@ -128,7 +197,7 @@ class MessagePort extends EventTarget {
     }
     const data = serializeJsMessageData(message, transfer);
     if (this[_id] === null) return;
-    ops.op_message_port_post_message(this[_id], data);
+    op_message_port_post_message(this[_id], data);
   }
 
   start() {
@@ -140,15 +209,28 @@ class MessagePort extends EventTarget {
         if (this[_id] === null) break;
         let data;
         try {
-          data = await core.opAsync(
-            "op_message_port_recv_message",
+          this[_dataPromise] = op_message_port_recv_message(
             this[_id],
           );
+          if (
+            typeof this[nodeWorkerThreadCloseCb] === "function" &&
+            !this[_refed]
+          ) {
+            core.unrefOpPromise(this[_dataPromise]);
+          }
+          data = await this[_dataPromise];
+          this[_dataPromise] = undefined;
         } catch (err) {
-          if (ObjectPrototypeIsPrototypeOf(InterruptedPrototype, err)) break;
+          if (ObjectPrototypeIsPrototypeOf(InterruptedPrototype, err)) {
+            break;
+          }
+          nodeWorkerThreadMaybeInvokeCloseCb(this);
           throw err;
         }
-        if (data === null) break;
+        if (data === null) {
+          nodeWorkerThreadMaybeInvokeCloseCb(this);
+          break;
+        }
         let message, transferables;
         try {
           const v = deserializeJsMessageData(data);
@@ -174,28 +256,97 @@ class MessagePort extends EventTarget {
     })();
   }
 
+  [refMessagePort](ref) {
+    if (ref) {
+      if (!this[_refed]) {
+        refedMessagePortsCount++;
+        if (
+          this[_dataPromise]
+        ) {
+          core.refOpPromise(this[_dataPromise]);
+        }
+        this[_refed] = true;
+      }
+    } else if (!ref) {
+      if (this[_refed]) {
+        refedMessagePortsCount--;
+        if (
+          this[_dataPromise]
+        ) {
+          core.unrefOpPromise(this[_dataPromise]);
+        }
+        this[_refed] = false;
+      }
+    }
+  }
+
   close() {
     webidl.assertBranded(this, MessagePortPrototype);
     if (this[_id] !== null) {
       core.close(this[_id]);
       this[_id] = null;
+      nodeWorkerThreadMaybeInvokeCloseCb(this);
     }
+  }
+
+  removeEventListener(...args) {
+    if (args[0] == "message") {
+      if (--this[_messageEventListenerCount] === 0 && this[_refed]) {
+        refedMessagePortsCount--;
+        this[_refed] = false;
+      }
+    }
+    super.removeEventListener(...new SafeArrayIterator(args));
+  }
+
+  addEventListener(...args) {
+    if (args[0] == "message") {
+      if (++this[_messageEventListenerCount] === 1 && !this[_refed]) {
+        refedMessagePortsCount++;
+        this[_refed] = true;
+      }
+    }
+    super.addEventListener(...new SafeArrayIterator(args));
+  }
+
+  [SymbolFor("Deno.privateCustomInspect")](inspect, inspectOptions) {
+    return inspect(
+      createFilteredInspectProxy({
+        object: this,
+        evaluate: ObjectPrototypeIsPrototypeOf(MessagePortPrototype, this),
+        keys: [
+          "onmessage",
+          "onmessageerror",
+        ],
+      }),
+      inspectOptions,
+    );
   }
 }
 
 defineEventHandler(MessagePort.prototype, "message", function (self) {
-  self.start();
+  if (self[nodeWorkerThreadCloseCb]) {
+    (async () => {
+      // delay `start()` until he end of this event loop turn, to give `receiveMessageOnPort`
+      // a chance to receive a message first. this is primarily to resolve an issue with
+      // a pattern used in `npm:piscina` that results in an indefinite hang
+      await PromiseResolve();
+      self.start();
+    })();
+  } else {
+    self.start();
+  }
 });
 defineEventHandler(MessagePort.prototype, "messageerror");
 
-webidl.configurePrototype(MessagePort);
+webidl.configureInterface(MessagePort);
 const MessagePortPrototype = MessagePort.prototype;
 
 /**
  * @returns {[number, number]}
  */
 function opCreateEntangledMessagePort() {
-  return ops.op_message_port_create_entangled();
+  return op_message_port_create_entangled();
 }
 
 /**
@@ -205,34 +356,39 @@ function opCreateEntangledMessagePort() {
 function deserializeJsMessageData(messageData) {
   /** @type {object[]} */
   const transferables = [];
-  const hostObjects = [];
   const arrayBufferIdsInTransferables = [];
   const transferredArrayBuffers = [];
+  let options;
 
-  for (let i = 0; i < messageData.transferables.length; ++i) {
-    const transferable = messageData.transferables[i];
-    switch (transferable.kind) {
-      case "messagePort": {
-        const port = createMessagePort(transferable.data);
-        ArrayPrototypePush(transferables, port);
-        ArrayPrototypePush(hostObjects, port);
-        break;
+  if (messageData.transferables.length > 0) {
+    const hostObjects = [];
+    for (let i = 0; i < messageData.transferables.length; ++i) {
+      const transferable = messageData.transferables[i];
+      switch (transferable.kind) {
+        case "messagePort": {
+          const port = createMessagePort(transferable.data);
+          ArrayPrototypePush(transferables, port);
+          ArrayPrototypePush(hostObjects, port);
+          break;
+        }
+        case "arrayBuffer": {
+          ArrayPrototypePush(transferredArrayBuffers, transferable.data);
+          const index = ArrayPrototypePush(transferables, null);
+          ArrayPrototypePush(arrayBufferIdsInTransferables, index);
+          break;
+        }
+        default:
+          throw new TypeError("Unreachable");
       }
-      case "arrayBuffer": {
-        ArrayPrototypePush(transferredArrayBuffers, transferable.data);
-        const index = ArrayPrototypePush(transferables, null);
-        ArrayPrototypePush(arrayBufferIdsInTransferables, index);
-        break;
-      }
-      default:
-        throw new TypeError("Unreachable");
     }
+
+    options = {
+      hostObjects,
+      transferredArrayBuffers,
+    };
   }
 
-  const data = core.deserialize(messageData.data, {
-    hostObjects,
-    transferredArrayBuffers,
-  });
+  const data = core.deserialize(messageData.data, options);
 
   for (let i = 0; i < arrayBufferIdsInTransferables.length; ++i) {
     const id = arrayBufferIdsInTransferables[i];
@@ -248,31 +404,36 @@ function deserializeJsMessageData(messageData) {
  * @returns {messagePort.MessageData}
  */
 function serializeJsMessageData(data, transferables) {
+  let options;
   const transferredArrayBuffers = [];
-  for (let i = 0, j = 0; i < transferables.length; i++) {
-    const ab = transferables[i];
-    if (ObjectPrototypeIsPrototypeOf(ArrayBufferPrototype, ab)) {
-      if (
-        ArrayBufferPrototypeGetByteLength(ab) === 0 &&
-        ops.op_arraybuffer_was_detached(ab)
-      ) {
-        throw new DOMException(
-          `ArrayBuffer at index ${j} is already detached`,
-          "DataCloneError",
-        );
+  if (transferables.length > 0) {
+    const hostObjects = [];
+    for (let i = 0, j = 0; i < transferables.length; i++) {
+      const t = transferables[i];
+      if (isArrayBuffer(t)) {
+        if (
+          ArrayBufferPrototypeGetByteLength(t) === 0 &&
+          isDetachedBuffer(t)
+        ) {
+          throw new DOMException(
+            `ArrayBuffer at index ${j} is already detached`,
+            "DataCloneError",
+          );
+        }
+        j++;
+        ArrayPrototypePush(transferredArrayBuffers, t);
+      } else if (ObjectPrototypeIsPrototypeOf(MessagePortPrototype, t)) {
+        ArrayPrototypePush(hostObjects, t);
       }
-      j++;
-      ArrayPrototypePush(transferredArrayBuffers, ab);
     }
+
+    options = {
+      hostObjects,
+      transferredArrayBuffers,
+    };
   }
 
-  const serializedData = core.serialize(data, {
-    hostObjects: ArrayPrototypeFilter(
-      transferables,
-      (a) => ObjectPrototypeIsPrototypeOf(MessagePortPrototype, a),
-    ),
-    transferredArrayBuffers,
-  }, (err) => {
+  const serializedData = core.serialize(data, options, (err) => {
     throw new DOMException(err, "DataCloneError");
   });
 
@@ -296,9 +457,7 @@ function serializeJsMessageData(data, transferables) {
         kind: "messagePort",
         data: id,
       });
-    } else if (
-      ObjectPrototypeIsPrototypeOf(ArrayBufferPrototype, transferable)
-    ) {
+    } else if (isArrayBuffer(transferable)) {
       ArrayPrototypePush(serializedTransferables, {
         kind: "arrayBuffer",
         data: transferredArrayBuffers[arrayBufferI],
@@ -345,7 +504,11 @@ export {
   deserializeJsMessageData,
   MessageChannel,
   MessagePort,
+  MessagePortIdSymbol,
   MessagePortPrototype,
+  MessagePortReceiveMessageOnPortSymbol,
+  nodeWorkerThreadCloseCb,
+  refedMessagePortsCount,
   serializeJsMessageData,
   structuredClone,
 };

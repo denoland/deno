@@ -1,8 +1,8 @@
-# Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+# Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 [package]
 name = "deno_http"
-version = "0.112.0"
+version = "0.172.0"
 authors.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -11,7 +11,6 @@ repository.workspace = true
 description = "HTTP server implementation for Deno"
 
 [features]
-"__zombie_http_tracking" = []
 "__http_tracing" = []
 
 [lib]
@@ -25,27 +24,29 @@ harness = false
 async-compression = { version = "0.4", features = ["tokio", "brotli", "gzip"] }
 async-trait.workspace = true
 base64.workspace = true
-brotli = "3.3.4"
+brotli.workspace = true
 bytes.workspace = true
 cache_control.workspace = true
 deno_core.workspace = true
 deno_net.workspace = true
 deno_websocket.workspace = true
 flate2.workspace = true
-fly-accept-encoding = "0.2.0"
 http.workspace = true
+http_v02.workspace = true
 httparse.workspace = true
-hyper = { workspace = true, features = ["server", "stream", "http1", "http2", "runtime"] }
-hyper1 = { package = "hyper", features = ["full"], version = "=1.0.0-rc.4" }
+hyper.workspace = true
+hyper-util.workspace = true
+hyper_v014 = { workspace = true, features = ["server", "stream", "http1", "http2", "runtime"] }
+itertools = "0.10"
 memmem.workspace = true
 mime = "0.3.16"
 once_cell.workspace = true
 percent-encoding.workspace = true
-phf = { version = "0.10", features = ["macros"] }
+phf.workspace = true
 pin-project.workspace = true
 ring.workspace = true
+scopeguard.workspace = true
 serde.workspace = true
-slab.workspace = true
 smallvec.workspace = true
 thiserror.workspace = true
 tokio.workspace = true
@@ -53,4 +54,5 @@ tokio-util = { workspace = true, features = ["io"] }
 
 [dev-dependencies]
 bencher.workspace = true
+http-body-util.workspace = true
 rand.workspace = true

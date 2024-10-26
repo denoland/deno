@@ -1,0 +1,4 @@
+{
+  "args": "run --allow-read --allow-env --check=all main.ts",
+  "output": "main.out"
+}

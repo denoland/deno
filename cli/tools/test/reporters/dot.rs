@@ -1,4 +1,4 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 use super::common;
 use super::fmt::to_relative_path_or_remote_url;
@@ -9,10 +9,15 @@ pub struct DotTestReporter {
   width: usize,
   cwd: Url,
   summary: TestSummary,
+  failure_format_options: TestFailureFormatOptions,
 }
 
+#[allow(clippy::print_stdout)]
 impl DotTestReporter {
-  pub fn new() -> DotTestReporter {
+  pub fn new(
+    cwd: Url,
+    failure_format_options: TestFailureFormatOptions,
+  ) -> DotTestReporter {
     let console_width = if let Some(size) = crate::util::console::console_size()
     {
       size.cols as usize
@@ -23,8 +28,9 @@ impl DotTestReporter {
     DotTestReporter {
       n: 0,
       width: console_width,
-      cwd: Url::from_directory_path(std::env::current_dir().unwrap()).unwrap(),
+      cwd,
       summary: TestSummary::new(),
+      failure_format_options,
     }
   }
 
@@ -80,6 +86,7 @@ fn fmt_cancelled() -> String {
   colors::gray("!").to_string()
 }
 
+#[allow(clippy::print_stdout)]
 impl TestReporter for DotTestReporter {
   fn report_register(&mut self, _description: &TestDescription) {}
 
@@ -93,6 +100,7 @@ impl TestReporter for DotTestReporter {
     std::io::stdout().flush().unwrap();
   }
 
+  fn report_slow(&mut self, _description: &TestDescription, _elapsed: u64) {}
   fn report_output(&mut self, _output: &[u8]) {}
 
   fn report_result(
@@ -113,7 +121,7 @@ impl TestReporter for DotTestReporter {
         self
           .summary
           .failures
-          .push((description.clone(), failure.clone()));
+          .push((description.into(), failure.clone()));
       }
       TestResult::Cancelled => {
         self.summary.failed += 1;
@@ -162,11 +170,9 @@ impl TestReporter for DotTestReporter {
       TestStepResult::Failed(failure) => {
         self.summary.failed_steps += 1;
         self.summary.failures.push((
-          TestDescription {
+          TestFailureDescription {
             id: desc.id,
             name: common::format_test_step_ancestry(desc, tests, test_steps),
-            ignore: false,
-            only: false,
             origin: desc.origin.clone(),
             location: desc.location.clone(),
           },
@@ -184,7 +190,14 @@ impl TestReporter for DotTestReporter {
     _tests: &IndexMap<usize, TestDescription>,
     _test_steps: &IndexMap<usize, TestStepDescription>,
   ) {
-    common::report_summary(&self.cwd, &self.summary, elapsed);
+    common::report_summary(
+      &mut std::io::stdout(),
+      &self.cwd,
+      &self.summary,
+      elapsed,
+      &self.failure_format_options,
+    );
+    println!();
   }
 
   fn report_sigint(
@@ -193,8 +206,16 @@ impl TestReporter for DotTestReporter {
     tests: &IndexMap<usize, TestDescription>,
     test_steps: &IndexMap<usize, TestStepDescription>,
   ) {
-    common::report_sigint(&self.cwd, tests_pending, tests, test_steps);
+    common::report_sigint(
+      &mut std::io::stdout(),
+      &self.cwd,
+      tests_pending,
+      tests,
+      test_steps,
+    );
   }
+
+  fn report_completed(&mut self) {}
 
   fn flush_report(
     &mut self,

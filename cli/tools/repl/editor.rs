@@ -1,5 +1,6 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
+use crate::cdp;
 use crate::colors;
 use deno_ast::swc::parser::error::SyntaxError;
 use deno_ast::swc::parser::token::BinOpToken;
@@ -37,7 +38,6 @@ use std::sync::atomic::AtomicBool;
 use std::sync::atomic::Ordering::Relaxed;
 use std::sync::Arc;
 
-use super::cdp;
 use super::channel::RustylineSyncMessageSender;
 use super::session::REPL_INTERNALS_NAME;
 
@@ -341,7 +341,7 @@ impl Highlighter for EditorHelper {
     }
   }
 
-  fn highlight_char(&self, line: &str, _: usize) -> bool {
+  fn highlight_char(&self, line: &str, _: usize, _: bool) -> bool {
     !line.is_empty()
   }
 
@@ -374,32 +374,35 @@ impl Highlighter for EditorHelper {
               }
               Word::Keyword(_) => colors::cyan(&line[range]).to_string(),
               Word::Ident(ident) => {
-                if ident == *"undefined" {
-                  colors::gray(&line[range]).to_string()
-                } else if ident == *"Infinity" || ident == *"NaN" {
-                  colors::yellow(&line[range]).to_string()
-                } else if ident == *"async" || ident == *"of" {
-                  colors::cyan(&line[range]).to_string()
-                } else {
-                  let next = lexed_items.peek().map(|item| &item.inner);
-                  if matches!(
-                    next,
-                    Some(deno_ast::TokenOrComment::Token(Token::LParen))
-                  ) {
-                    // We're looking for something that looks like a function
-                    // We use a simple heuristic: 'ident' followed by 'LParen'
-                    colors::intense_blue(&line[range]).to_string()
-                  } else if ident == *"from"
-                    && matches!(
+                match ident.as_ref() {
+                  "undefined" => colors::gray(&line[range]).to_string(),
+                  "Infinity" | "NaN" => {
+                    colors::yellow(&line[range]).to_string()
+                  }
+                  "async" | "of" => colors::cyan(&line[range]).to_string(),
+                  _ => {
+                    let next = lexed_items.peek().map(|item| &item.inner);
+                    if matches!(
                       next,
-                      Some(deno_ast::TokenOrComment::Token(Token::Str { .. }))
-                    )
-                  {
-                    // When ident 'from' is followed by a string literal, highlight it
-                    // E.g. "export * from 'something'" or "import a from 'something'"
-                    colors::cyan(&line[range]).to_string()
-                  } else {
-                    line[range].to_string()
+                      Some(deno_ast::TokenOrComment::Token(Token::LParen))
+                    ) {
+                      // We're looking for something that looks like a function
+                      // We use a simple heuristic: 'ident' followed by 'LParen'
+                      colors::intense_blue(&line[range]).to_string()
+                    } else if ident.as_ref() == "from"
+                      && matches!(
+                        next,
+                        Some(deno_ast::TokenOrComment::Token(
+                          Token::Str { .. }
+                        ))
+                      )
+                    {
+                      // When ident 'from' is followed by a string literal, highlight it
+                      // E.g. "export * from 'something'" or "import a from 'something'"
+                      colors::cyan(&line[range]).to_string()
+                    } else {
+                      line[range].to_string()
+                    }
                   }
                 }
               }
@@ -419,7 +422,7 @@ impl Highlighter for EditorHelper {
 
 #[derive(Clone)]
 pub struct ReplEditor {
-  inner: Arc<Mutex<Editor<EditorHelper>>>,
+  inner: Arc<Mutex<Editor<EditorHelper, rustyline::history::FileHistory>>>,
   history_file_path: Option<PathBuf>,
   errored_on_history_save: Arc<AtomicBool>,
   should_exit_on_interrupt: Arc<AtomicBool>,
@@ -479,7 +482,7 @@ impl ReplEditor {
   }
 
   pub fn update_history(&self, entry: String) {
-    self.inner.lock().add_history_entry(entry);
+    let _ = self.inner.lock().add_history_entry(entry);
     if let Some(history_file_path) = &self.history_file_path {
       if let Err(e) = self.inner.lock().append_history(history_file_path) {
         if self.errored_on_history_save.load(Relaxed) {
@@ -487,7 +490,7 @@ impl ReplEditor {
         }
 
         self.errored_on_history_save.store(true, Relaxed);
-        eprintln!("Unable to save history file: {e}");
+        log::warn!("Unable to save history file: {}", e);
       }
     }
   }
@@ -521,7 +524,7 @@ impl ConditionalEventHandler for ReverseSearchHistoryEventHandler {
 /// A custom tab key event handler
 /// It uses a heuristic to determine if the user is requesting completion or if they want to insert an actual tab
 /// The heuristic goes like this:
-///   - If the last character before the cursor is whitespace, the the user wants to insert a tab
+///   - If the last character before the cursor is whitespace, the user wants to insert a tab
 ///   - Else the user is requesting completion
 struct TabEventHandler;
 impl ConditionalEventHandler for TabEventHandler {

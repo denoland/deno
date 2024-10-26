@@ -1,0 +1,8 @@
+{
+  "lock": false,
+  "compilerOptions": {
+    "types": [
+      "https://localhost@4545/non-existent/@types/react@18.0.28"
+    ]
+  }
+}

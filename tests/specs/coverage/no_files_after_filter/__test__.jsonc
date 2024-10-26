@@ -1,0 +1,15 @@
+{
+  "tempDir": true,
+  "steps": [
+    {
+      "args": "test --coverage test.ts",
+      "output": "test_coverage.out",
+      "exitCode": 0
+    },
+    {
+      "args": "coverage ./coverage",
+      "output": "no_files_in_report.out",
+      "exitCode": 1
+    }
+  ]
+}

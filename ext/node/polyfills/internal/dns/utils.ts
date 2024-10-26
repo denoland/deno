@@ -1,4 +1,4 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 // Copyright Joyent, Inc. and other Node contributors.
 //
 // Permission is hereby granted, free of charge, to any person obtaining a
@@ -416,20 +416,10 @@ export function emitInvalidHostnameWarning(hostname: string) {
   );
 }
 
-let dnsOrder = getOptionValue("--dns-result-order") || "ipv4first";
+let dnsOrder = getOptionValue("--dns-result-order") || "verbatim";
 
 export function getDefaultVerbatim() {
-  switch (dnsOrder) {
-    case "verbatim": {
-      return true;
-    }
-    case "ipv4first": {
-      return false;
-    }
-    default: {
-      return false;
-    }
-  }
+  return dnsOrder !== "ipv4first";
 }
 
 /**

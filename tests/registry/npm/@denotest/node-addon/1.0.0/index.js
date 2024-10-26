@@ -1,0 +1,1 @@
+module.exports.hello = require('./build/Release/node_addon').hello;

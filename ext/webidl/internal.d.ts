@@ -1,5 +1,5 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
-// deno-lint-ignore-file no-explicit-any ban-types
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// deno-lint-ignore-file no-explicit-any
 
 /// <reference no-default-lib="true" />
 /// <reference lib="esnext" />
@@ -543,7 +543,7 @@ declare module "ext:deno_webidl/00_webidl.js" {
   /**
    * Configure prototype properties enumerability / writability / configurability.
    */
-  function configurePrototype(prototype: any);
+  function configureInterface(prototype: any);
 
   /**
    * Get the WebIDL / ES type of a value.

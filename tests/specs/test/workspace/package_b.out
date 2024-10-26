@@ -1,0 +1,20 @@
+Check file:///[WILDLINE]/package-b/mod.test.ts
+running 2 tests from ./mod.test.ts
+addOne ... ok ([WILDLINE])
+fail ... FAILED ([WILDLINE])
+
+ ERRORS 
+
+fail => ./mod.test.ts:9:6
+error: Error: failed
+  throw new Error("failed");
+        ^
+    at file:///[WILDLINE]/package-b/mod.test.ts:10:9
+
+ FAILURES 
+
+fail => ./mod.test.ts:9:6
+
+FAILED | 1 passed | 1 failed ([WILDLINE])
+
+error: Test failed

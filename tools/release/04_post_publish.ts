@@ -1,5 +1,5 @@
 #!/usr/bin/env -S deno run -A --lock=tools/deno.lock.json
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 import { DenoWorkspace } from "./deno_workspace.ts";
 import { $, createOctoKit, getGitHubRepository } from "./deps.ts";
 
@@ -66,18 +66,26 @@ async function forwardReleaseCommitToMain() {
   await repo.gitPush("origin", newBranchName);
 
   $.logStep(`Opening PR...`);
-  const openedPr = await createOctoKit().request(
-    "POST /repos/{owner}/{repo}/pulls",
-    {
-      ...getGitHubRepository(),
-      base: "main",
-      head: newBranchName,
-      draft: true,
-      title: `chore: forward v${cliCrate.version} release commit to main`,
-      body: getPrBody(),
-    },
-  );
-  $.log(`Opened PR at ${openedPr.data.url}`);
+
+  try {
+    const openedPr = await createOctoKit().request(
+      "POST /repos/{owner}/{repo}/pulls",
+      {
+        ...getGitHubRepository(),
+        base: "main",
+        head: newBranchName,
+        draft: true,
+        title: `chore: forward v${cliCrate.version} release commit to main`,
+        body: getPrBody(),
+      },
+    );
+    $.log(`Opened PR at ${openedPr.data.url}`);
+  } catch (err) {
+    $.logError(
+      `Failed to open PR. Please open one manually: https://github.com/denoland/deno/pull/new/${newBranchName}`,
+      err,
+    );
+  }
 
   function getPrBody() {
     let text = "";

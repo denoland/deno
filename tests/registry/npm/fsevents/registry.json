@@ -1,0 +1,64 @@
+{
+  "name": "fsevents",
+  "description": "Native Access to MacOS FSEvents",
+  "dist-tags": {
+    "latest": "2.3.3"
+  },
+  "versions": {
+    "2.3.3": {
+      "name": "fsevents",
+      "version": "2.3.3",
+      "description": "Native Access to MacOS FSEvents",
+      "main": "fsevents.js",
+      "types": "fsevents.d.ts",
+      "os": [
+        "darwin"
+      ],
+      "engines": {
+        "node": "^8.16.0 || ^10.6.0 || >=11.0.0"
+      },
+      "scripts": {
+        "clean": "node-gyp clean && rm -f fsevents.node",
+        "build": "node-gyp clean && rm -f fsevents.node && node-gyp rebuild && node-gyp clean",
+        "test": "/bin/bash ./test.sh 2>/dev/null",
+        "prepublishOnly": "npm run build",
+        "install": "node-gyp rebuild"
+      },
+      "repository": {
+        "type": "git",
+        "url": "git+https://github.com/fsevents/fsevents.git"
+      },
+      "license": "MIT",
+      "bugs": {
+        "url": "https://github.com/fsevents/fsevents/issues"
+      },
+      "devDependencies": {
+        "node-gyp": "^9.4.0"
+      },
+      "gypfile": true,
+      "gitHead": "2db891e51aa0f2975c5eaaf6aa30f13d720a830a",
+      "_id": "fsevents@2.3.3",
+      "_nodeVersion": "18.17.1",
+      "_npmVersion": "9.6.7",
+      "dist": {
+        "integrity": "sha512-5xoDfX+fL7faATnagmWPpbFtwh/R77WmMMqqHGS65C3vvB0YHrgF+B1YmZ3441tMj5n63k0212XNoJwzlhffQw==",
+        "shasum": "cac6407785d03675a2a5e1a5305c697b347d90d6",
+        "tarball": "http://localhost:4260/fsevents/fsevents-2.3.3.tgz",
+        "fileCount": 6,
+        "unpackedSize": 173224
+      },
+      "directories": {},
+      "_hasShrinkwrap": false
+    }
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/fsevents/fsevents.git"
+  },
+  "readmeFilename": "README.md",
+  "homepage": "https://github.com/fsevents/fsevents",
+  "bugs": {
+    "url": "https://github.com/fsevents/fsevents/issues"
+  },
+  "license": "MIT"
+}

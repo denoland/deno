@@ -1,0 +1,7 @@
+{
+  "name": "@denotest/basic",
+  "version": "1.0.0",
+  "type": "module",
+  "main": "main.mjs",
+  "types": "main.d.mts"
+}

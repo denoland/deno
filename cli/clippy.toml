@@ -1,0 +1,9 @@
+disallowed-methods = [
+  { path = "reqwest::Client::new", reason = "create an HttpClient via an HttpClientProvider instead" },
+]
+disallowed-types = [
+  { path = "reqwest::Client", reason = "use crate::http_util::HttpClient instead" },
+]
+ignore-interior-mutability = [
+  "lsp_types::Uri",
+]

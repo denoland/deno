@@ -1,8 +1,15 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
-const core = globalThis.Deno.core;
-const ops = core.ops;
-const primordials = globalThis.__bootstrap.primordials;
+import { core, internals, primordials } from "ext:core/mod.js";
+import {
+  op_kill,
+  op_run,
+  op_run_status,
+  op_spawn_child,
+  op_spawn_kill,
+  op_spawn_sync,
+  op_spawn_wait,
+} from "ext:core/ops";
 const {
   ArrayPrototypeMap,
   ArrayPrototypeSlice,
@@ -13,12 +20,17 @@ const {
   ObjectPrototypeIsPrototypeOf,
   PromisePrototypeThen,
   SafePromiseAll,
-  SymbolFor,
   Symbol,
+  SymbolFor,
 } = primordials;
+
 import { FsFile } from "ext:deno_fs/30_fs.js";
 import { readAll } from "ext:deno_io/12_io.js";
-import { assert, pathFromURL } from "ext:deno_web/00_infra.js";
+import {
+  assert,
+  pathFromURL,
+  SymbolAsyncDispose,
+} from "ext:deno_web/00_infra.js";
 import * as abortSignal from "ext:deno_web/03_abort_signal.js";
 import {
   readableStreamCollectIntoUint8Array,
@@ -30,7 +42,7 @@ import {
 } from "ext:deno_web/06_streams.js";
 
 function opKill(pid, signo, apiName) {
-  ops.op_kill(pid, signo, apiName);
+  op_kill(pid, signo, apiName);
 }
 
 function kill(pid, signo = "SIGTERM") {
@@ -38,12 +50,12 @@ function kill(pid, signo = "SIGTERM") {
 }
 
 function opRunStatus(rid) {
-  return core.opAsync("op_run_status", rid);
+  return op_run_status(rid);
 }
 
 function opRun(request) {
   assert(request.cmd.length > 0);
-  return ops.op_run(request);
+  return op_run(request);
 }
 
 async function runStatus(rid) {
@@ -65,15 +77,21 @@ class Process {
     this.pid = res.pid;
 
     if (res.stdinRid && res.stdinRid > 0) {
-      this.stdin = new FsFile(res.stdinRid);
+      this.stdin = new FsFile(res.stdinRid, SymbolFor("Deno.internal.FsFile"));
     }
 
     if (res.stdoutRid && res.stdoutRid > 0) {
-      this.stdout = new FsFile(res.stdoutRid);
+      this.stdout = new FsFile(
+        res.stdoutRid,
+        SymbolFor("Deno.internal.FsFile"),
+      );
     }
 
     if (res.stderrRid && res.stderrRid > 0) {
-      this.stderr = new FsFile(res.stderrRid);
+      this.stderr = new FsFile(
+        res.stderrRid,
+        SymbolFor("Deno.internal.FsFile"),
+      );
     }
   }
 
@@ -83,7 +101,7 @@ class Process {
 
   async output() {
     if (!this.stdout) {
-      throw new TypeError("stdout was not piped");
+      throw new TypeError("Cannot collect output: 'stdout' is not piped");
     }
     try {
       return await readAll(this.stdout);
@@ -94,7 +112,7 @@ class Process {
 
   async stderrOutput() {
     if (!this.stderr) {
-      throw new TypeError("stderr was not piped");
+      throw new TypeError("Cannot collect output: 'stderr' is not piped");
     }
     try {
       return await readAll(this.stderr);
@@ -112,13 +130,12 @@ class Process {
   }
 }
 
+// Note: This function was soft-removed in Deno 2. Its types have been removed,
+// but its implementation has been kept to avoid breaking changes.
 function run({
   cmd,
   cwd = undefined,
-  clearEnv = false,
-  env = {},
-  gid = undefined,
-  uid = undefined,
+  env = { __proto__: null },
   stdout = "inherit",
   stderr = "inherit",
   stdin = "inherit",
@@ -132,10 +149,7 @@ function run({
   const res = opRun({
     cmd: ArrayPrototypeMap(cmd, String),
     cwd,
-    clearEnv,
     env: ObjectEntries(env),
-    gid,
-    uid,
     stdin,
     stdout,
     stderr,
@@ -143,23 +157,31 @@ function run({
   return new Process(res);
 }
 
-const illegalConstructorKey = Symbol("illegalConstructorKey");
-const promiseIdSymbol = SymbolFor("Deno.core.internalPromiseId");
+export const kExtraStdio = Symbol("extraStdio");
+export const kIpc = Symbol("ipc");
+export const kDetached = Symbol("detached");
+export const kNeedsNpmProcessState = Symbol("needsNpmProcessState");
 
-function spawnChildInner(opFn, command, apiName, {
+const illegalConstructorKey = Symbol("illegalConstructorKey");
+
+function spawnChildInner(command, apiName, {
   args = [],
   cwd = undefined,
   clearEnv = false,
-  env = {},
+  env = { __proto__: null },
   uid = undefined,
   gid = undefined,
+  signal = undefined,
   stdin = "null",
   stdout = "piped",
   stderr = "piped",
-  signal = undefined,
   windowsRawArguments = false,
-} = {}) {
-  const child = opFn({
+  [kDetached]: detached = false,
+  [kExtraStdio]: extraStdio = [],
+  [kIpc]: ipc = -1,
+  [kNeedsNpmProcessState]: needsNpmProcessState = false,
+} = { __proto__: null }) {
+  const child = op_spawn_child({
     cmd: pathFromURL(command),
     args: ArrayPrototypeMap(args, String),
     cwd: pathFromURL(cwd),
@@ -171,6 +193,10 @@ function spawnChildInner(opFn, command, apiName, {
     stdout,
     stderr,
     windowsRawArguments,
+    ipc,
+    extraStdio,
+    detached,
+    needsNpmProcessState,
   }, apiName);
   return new ChildProcess(illegalConstructorKey, {
     ...child,
@@ -178,9 +204,8 @@ function spawnChildInner(opFn, command, apiName, {
   });
 }
 
-function spawnChild(command, options = {}) {
+function spawnChild(command, options = { __proto__: null }) {
   return spawnChildInner(
-    ops.op_spawn_child,
     command,
     "Deno.Command().spawn()",
     options,
@@ -197,11 +222,19 @@ function collectOutput(readableStream) {
   return readableStreamCollectIntoUint8Array(readableStream);
 }
 
+const _ipcPipeRid = Symbol("[[ipcPipeRid]]");
+const _extraPipeRids = Symbol("[[_extraPipeRids]]");
+
+internals.getIpcPipeRid = (process) => process[_ipcPipeRid];
+internals.getExtraPipeRids = (process) => process[_extraPipeRids];
+
 class ChildProcess {
   #rid;
-  #waitPromiseId;
+  #waitPromise;
   #waitComplete = false;
-  #unrefed = false;
+
+  [_ipcPipeRid];
+  [_extraPipeRids];
 
   #pid;
   get pid() {
@@ -211,25 +244,23 @@ class ChildProcess {
   #stdin = null;
   get stdin() {
     if (this.#stdin == null) {
-      throw new TypeError("stdin is not piped");
+      throw new TypeError("Cannot get 'stdin': 'stdin' is not piped");
     }
     return this.#stdin;
   }
 
-  #stdoutRid;
   #stdout = null;
   get stdout() {
     if (this.#stdout == null) {
-      throw new TypeError("stdout is not piped");
+      throw new TypeError("Cannot get 'stdout': 'stdout' is not piped");
     }
     return this.#stdout;
   }
 
-  #stderrRid;
   #stderr = null;
   get stderr() {
     if (this.#stderr == null) {
-      throw new TypeError("stderr is not piped");
+      throw new TypeError("Cannot get 'stderr': 'stderr' is not piped");
     }
     return this.#stderr;
   }
@@ -241,33 +272,35 @@ class ChildProcess {
     stdinRid,
     stdoutRid,
     stderrRid,
+    ipcPipeRid, // internal
+    extraPipeRids,
   } = null) {
     if (key !== illegalConstructorKey) {
-      throw new TypeError("Illegal constructor.");
+      throw new TypeError("Illegal constructor");
     }
 
     this.#rid = rid;
     this.#pid = pid;
+    this[_ipcPipeRid] = ipcPipeRid;
+    this[_extraPipeRids] = extraPipeRids;
 
     if (stdinRid !== null) {
       this.#stdin = writableStreamForRid(stdinRid);
     }
 
     if (stdoutRid !== null) {
-      this.#stdoutRid = stdoutRid;
       this.#stdout = readableStreamForRidUnrefable(stdoutRid);
     }
 
     if (stderrRid !== null) {
-      this.#stderrRid = stderrRid;
       this.#stderr = readableStreamForRidUnrefable(stderrRid);
     }
 
     const onAbort = () => this.kill("SIGTERM");
     signal?.[abortSignal.add](onAbort);
 
-    const waitPromise = core.opAsync("op_spawn_wait", this.#rid);
-    this.#waitPromiseId = waitPromise[promiseIdSymbol];
+    const waitPromise = op_spawn_wait(this.#rid);
+    this.#waitPromise = waitPromise;
     this.#status = PromisePrototypeThen(waitPromise, (res) => {
       signal?.[abortSignal.remove](onAbort);
       this.#waitComplete = true;
@@ -283,12 +316,12 @@ class ChildProcess {
   async output() {
     if (this.#stdout?.locked) {
       throw new TypeError(
-        "Can't collect output because stdout is locked",
+        "Cannot collect output: 'stdout' is locked",
       );
     }
     if (this.#stderr?.locked) {
       throw new TypeError(
-        "Can't collect output because stderr is locked",
+        "Cannot collect output: 'stderr' is locked",
       );
     }
 
@@ -304,13 +337,13 @@ class ChildProcess {
       signal: status.signal,
       get stdout() {
         if (stdout == null) {
-          throw new TypeError("stdout is not piped");
+          throw new TypeError("Cannot get 'stdout': 'stdout' is not piped");
         }
         return stdout;
       },
       get stderr() {
         if (stderr == null) {
-          throw new TypeError("stderr is not piped");
+          throw new TypeError("Cannot get 'stderr': 'stderr' is not piped");
         }
         return stderr;
       },
@@ -319,21 +352,28 @@ class ChildProcess {
 
   kill(signo = "SIGTERM") {
     if (this.#waitComplete) {
-      throw new TypeError("Child process has already terminated.");
+      throw new TypeError("Child process has already terminated");
     }
-    ops.op_spawn_kill(this.#rid, signo);
+    op_spawn_kill(this.#rid, signo);
+  }
+
+  async [SymbolAsyncDispose]() {
+    try {
+      op_spawn_kill(this.#rid, "SIGTERM");
+    } catch {
+      // ignore errors from killing the process (such as ESRCH or BadResource)
+    }
+    await this.#status;
   }
 
   ref() {
-    this.#unrefed = false;
-    core.refOp(this.#waitPromiseId);
+    core.refOpPromise(this.#waitPromise);
     if (this.#stdout) readableStreamForRidUnrefableRef(this.#stdout);
     if (this.#stderr) readableStreamForRidUnrefableRef(this.#stderr);
   }
 
   unref() {
-    this.#unrefed = true;
-    core.unrefOp(this.#waitPromiseId);
+    core.unrefOpPromise(this.#waitPromise);
     if (this.#stdout) readableStreamForRidUnrefableUnref(this.#stdout);
     if (this.#stderr) readableStreamForRidUnrefableUnref(this.#stderr);
   }
@@ -346,7 +386,6 @@ function spawn(command, options) {
     );
   }
   return spawnChildInner(
-    ops.op_spawn_child,
     command,
     "Deno.Command().output()",
     options,
@@ -358,20 +397,20 @@ function spawnSync(command, {
   args = [],
   cwd = undefined,
   clearEnv = false,
-  env = {},
+  env = { __proto__: null },
   uid = undefined,
   gid = undefined,
   stdin = "null",
   stdout = "piped",
   stderr = "piped",
   windowsRawArguments = false,
-} = {}) {
+} = { __proto__: null }) {
   if (stdin === "piped") {
     throw new TypeError(
       "Piped stdin is not supported for this function, use 'Deno.Command().spawn()' instead",
     );
   }
-  const result = ops.op_spawn_sync({
+  const result = op_spawn_sync({
     cmd: pathFromURL(command),
     args: ArrayPrototypeMap(args, String),
     cwd: pathFromURL(cwd),
@@ -383,6 +422,9 @@ function spawnSync(command, {
     stdout,
     stderr,
     windowsRawArguments,
+    extraStdio: [],
+    detached: false,
+    needsNpmProcessState: false,
   });
   return {
     success: result.status.success,
@@ -390,13 +432,13 @@ function spawnSync(command, {
     signal: result.status.signal,
     get stdout() {
       if (result.stdout == null) {
-        throw new TypeError("stdout is not piped");
+        throw new TypeError("Cannot get 'stdout': 'stdout' is not piped");
       }
       return result.stdout;
     },
     get stderr() {
       if (result.stderr == null) {
-        throw new TypeError("stderr is not piped");
+        throw new TypeError("Cannot get 'stderr': 'stderr' is not piped");
       }
       return result.stderr;
     },
@@ -432,6 +474,7 @@ class Command {
 
   spawn() {
     const options = {
+      __proto__: null,
       ...(this.#options ?? {}),
       stdout: this.#options?.stdout ?? "inherit",
       stderr: this.#options?.stderr ?? "inherit",

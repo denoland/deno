@@ -1,0 +1,7 @@
+{
+  "name": "@denotest/dep-cannot-parse",
+  "version": "1.0.0",
+  "dependencies": {
+    "@denotest/esm-basic": "unknown-scheme:unknown"
+  }
+}

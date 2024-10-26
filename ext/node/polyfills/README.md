@@ -101,7 +101,8 @@ const leftPad = require("left-pad");
 
 ### Setting up the test runner and running tests
 
-See [tools/node_compat/README.md](../../../tools/node_compat/README.md).
+See
+[tests/node_compat/runner/README.md](../../../tests/node_compat/runner/README.md).
 
 ### Best practices
 
@@ -160,4 +161,4 @@ It's not as clean, but prevents the callback being called twice.
 
 Node compatibility can be measured by how many native Node tests pass. If you'd
 like to know what you can work on, check out the list of Node tests remaining
-[here](../../../tools/node_compat/TODO.md).
+[here](../../../tests/node_compat/runner/TODO.md).

@@ -1,12 +1,12 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 // deno-lint-ignore-file no-explicit-any no-var
 
 /// <reference no-default-lib="true" />
 /// <reference lib="esnext" />
 
-/** @category DOM APIs */
-declare interface DomIterable<K, V> {
+/** @category Platform */
+interface DomIterable<K, V> {
   keys(): IterableIterator<K>;
   values(): IterableIterator<V>;
   entries(): IterableIterator<[K, V]>;
@@ -17,17 +17,17 @@ declare interface DomIterable<K, V> {
   ): void;
 }
 
-/** @category Fetch API */
-declare type FormDataEntryValue = File | string;
+/** @category Fetch */
+type FormDataEntryValue = File | string;
 
 /** Provides a way to easily construct a set of key/value pairs representing
  * form fields and their values, which can then be easily sent using the
  * XMLHttpRequest.send() method. It uses the same format a form would use if the
  * encoding type were set to "multipart/form-data".
  *
- * @category Fetch API
+ * @category Fetch
  */
-declare interface FormData extends DomIterable<string, FormDataEntryValue> {
+interface FormData extends DomIterable<string, FormDataEntryValue> {
   append(name: string, value: string | Blob, fileName?: string): void;
   delete(name: string): void;
   get(name: string): FormDataEntryValue | null;
@@ -36,14 +36,14 @@ declare interface FormData extends DomIterable<string, FormDataEntryValue> {
   set(name: string, value: string | Blob, fileName?: string): void;
 }
 
-/** @category Fetch API */
+/** @category Fetch */
 declare var FormData: {
   readonly prototype: FormData;
   new (): FormData;
 };
 
-/** @category Fetch API */
-declare interface Body {
+/** @category Fetch */
+interface Body {
   /** A simple getter used to expose a `ReadableStream` of the body contents. */
   readonly body: ReadableStream<Uint8Array> | null;
   /** Stores a `Boolean` that declares whether the body has been used in a
@@ -59,6 +59,10 @@ declare interface Body {
    */
   blob(): Promise<Blob>;
   /** Takes a `Response` stream and reads it to completion. It returns a promise
+   * that resolves with a `Uint8Array`.
+   */
+  bytes(): Promise<Uint8Array>;
+  /** Takes a `Response` stream and reads it to completion. It returns a promise
    * that resolves with a `FormData` object.
    */
   formData(): Promise<FormData>;
@@ -72,8 +76,8 @@ declare interface Body {
   text(): Promise<string>;
 }
 
-/** @category Fetch API */
-declare type HeadersInit = Iterable<string[]> | Record<string, string>;
+/** @category Fetch */
+type HeadersInit = Iterable<string[]> | Record<string, string>;
 
 /** This Fetch API interface allows you to perform various actions on HTTP
  * request and response headers. These actions include retrieving, setting,
@@ -83,9 +87,9 @@ declare type HeadersInit = Iterable<string[]> | Record<string, string>;
  * methods of this interface, header names are matched by case-insensitive byte
  * sequence.
  *
- * @category Fetch API
+ * @category Fetch
  */
-declare interface Headers extends DomIterable<string, string> {
+interface Headers extends DomIterable<string, string> {
   /** Appends a new value onto an existing header inside a `Headers` object, or
    * adds the header if it does not already exist.
    */
@@ -118,31 +122,31 @@ declare interface Headers extends DomIterable<string, string> {
  * methods of this interface, header names are matched by case-insensitive byte
  * sequence.
  *
- * @category Fetch API
+ * @category Fetch
  */
 declare var Headers: {
   readonly prototype: Headers;
   new (init?: HeadersInit): Headers;
 };
 
-/** @category Fetch API */
-declare type RequestInfo = Request | string;
-/** @category Fetch API */
-declare type RequestCache =
+/** @category Fetch */
+type RequestInfo = Request | string;
+/** @category Fetch */
+type RequestCache =
   | "default"
   | "force-cache"
   | "no-cache"
   | "no-store"
   | "only-if-cached"
   | "reload";
-/** @category Fetch API */
-declare type RequestCredentials = "include" | "omit" | "same-origin";
-/** @category Fetch API */
-declare type RequestMode = "cors" | "navigate" | "no-cors" | "same-origin";
-/** @category Fetch API */
-declare type RequestRedirect = "error" | "follow" | "manual";
-/** @category Fetch API */
-declare type ReferrerPolicy =
+/** @category Fetch */
+type RequestCredentials = "include" | "omit" | "same-origin";
+/** @category Fetch */
+type RequestMode = "cors" | "navigate" | "no-cors" | "same-origin";
+/** @category Fetch */
+type RequestRedirect = "error" | "follow" | "manual";
+/** @category Fetch */
+type ReferrerPolicy =
   | ""
   | "no-referrer"
   | "no-referrer-when-downgrade"
@@ -152,16 +156,16 @@ declare type ReferrerPolicy =
   | "strict-origin"
   | "strict-origin-when-cross-origin"
   | "unsafe-url";
-/** @category Fetch API */
-declare type BodyInit =
+/** @category Fetch */
+type BodyInit =
   | Blob
   | BufferSource
   | FormData
   | URLSearchParams
   | ReadableStream<Uint8Array>
   | string;
-/** @category Fetch API */
-declare type RequestDestination =
+/** @category Fetch */
+type RequestDestination =
   | ""
   | "audio"
   | "audioworklet"
@@ -181,8 +185,8 @@ declare type RequestDestination =
   | "worker"
   | "xslt";
 
-/** @category Fetch API */
-declare interface RequestInit {
+/** @category Fetch */
+interface RequestInit {
   /**
    * A BodyInit object or null to set request's body.
    */
@@ -248,9 +252,9 @@ declare interface RequestInit {
 
 /** This Fetch API interface represents a resource request.
  *
- * @category Fetch API
+ * @category Fetch
  */
-declare interface Request extends Body {
+interface Request extends Body {
   /**
    * Returns the cache mode associated with request, which is a string
    * indicating how the request will interact with the browser's cache when
@@ -338,22 +342,22 @@ declare interface Request extends Body {
 
 /** This Fetch API interface represents a resource request.
  *
- * @category Fetch API
+ * @category Fetch
  */
 declare var Request: {
   readonly prototype: Request;
   new (input: RequestInfo | URL, init?: RequestInit): Request;
 };
 
-/** @category Fetch API */
-declare interface ResponseInit {
+/** @category Fetch */
+interface ResponseInit {
   headers?: HeadersInit;
   status?: number;
   statusText?: string;
 }
 
-/** @category Fetch API */
-declare type ResponseType =
+/** @category Fetch */
+type ResponseType =
   | "basic"
   | "cors"
   | "default"
@@ -363,9 +367,9 @@ declare type ResponseType =
 
 /** This Fetch API interface represents the response to a request.
  *
- * @category Fetch API
+ * @category Fetch
  */
-declare interface Response extends Body {
+interface Response extends Body {
   readonly headers: Headers;
   readonly ok: boolean;
   readonly redirected: boolean;
@@ -378,7 +382,7 @@ declare interface Response extends Body {
 
 /** This Fetch API interface represents the response to a request.
  *
- * @category Fetch API
+ * @category Fetch
  */
 declare var Response: {
   readonly prototype: Response;
@@ -399,9 +403,94 @@ declare var Response: {
  * ```
  *
  * @tags allow-net, allow-read
- * @category Fetch API
+ * @category Fetch
  */
 declare function fetch(
   input: URL | Request | string,
   init?: RequestInit,
 ): Promise<Response>;
+
+/**
+ * @category Fetch
+ */
+interface EventSourceInit {
+  withCredentials?: boolean;
+}
+
+/**
+ * @category Fetch
+ */
+interface EventSourceEventMap {
+  "error": Event;
+  "message": MessageEvent;
+  "open": Event;
+}
+
+/**
+ * @category Fetch
+ */
+interface EventSource extends EventTarget {
+  onerror: ((this: EventSource, ev: Event) => any) | null;
+  onmessage: ((this: EventSource, ev: MessageEvent) => any) | null;
+  onopen: ((this: EventSource, ev: Event) => any) | null;
+  /**
+   * Returns the state of this EventSource object's connection. It can have the values described below.
+   */
+  readonly readyState: number;
+  /**
+   * Returns the URL providing the event stream.
+   */
+  readonly url: string;
+  /**
+   * Returns true if the credentials mode for connection requests to the URL providing the event stream is set to "include", and false otherwise.
+   */
+  readonly withCredentials: boolean;
+  /**
+   * Aborts any instances of the fetch algorithm started for this EventSource object, and sets the readyState attribute to CLOSED.
+   */
+  close(): void;
+  readonly CONNECTING: 0;
+  readonly OPEN: 1;
+  readonly CLOSED: 2;
+  addEventListener<K extends keyof EventSourceEventMap>(
+    type: K,
+    listener: (this: EventSource, ev: EventSourceEventMap[K]) => any,
+    options?: boolean | AddEventListenerOptions,
+  ): void;
+  addEventListener(
+    type: string,
+    listener: (this: EventSource, event: MessageEvent) => any,
+    options?: boolean | AddEventListenerOptions,
+  ): void;
+  addEventListener(
+    type: string,
+    listener: EventListenerOrEventListenerObject,
+    options?: boolean | AddEventListenerOptions,
+  ): void;
+  removeEventListener<K extends keyof EventSourceEventMap>(
+    type: K,
+    listener: (this: EventSource, ev: EventSourceEventMap[K]) => any,
+    options?: boolean | EventListenerOptions,
+  ): void;
+  removeEventListener(
+    type: string,
+    listener: (this: EventSource, event: MessageEvent) => any,
+    options?: boolean | EventListenerOptions,
+  ): void;
+  removeEventListener(
+    type: string,
+    listener: EventListenerOrEventListenerObject,
+    options?: boolean | EventListenerOptions,
+  ): void;
+}
+
+/**
+ * @category Fetch
+ */
+declare var EventSource: {
+  prototype: EventSource;
+  new (url: string | URL, eventSourceInitDict?: EventSourceInit): EventSource;
+  readonly CONNECTING: 0;
+  readonly OPEN: 1;
+  readonly CLOSED: 2;
+};

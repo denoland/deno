@@ -1,9 +1,23 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
+use crate::args::jsr_url;
+use crate::args::CacheSetting;
 use crate::errors::get_error_class_name;
+use crate::file_fetcher::FetchNoFollowOptions;
+use crate::file_fetcher::FetchOptions;
+use crate::file_fetcher::FetchPermissionsOptionRef;
 use crate::file_fetcher::FileFetcher;
-use crate::util::fs::atomic_write_file;
+use crate::file_fetcher::FileOrRedirect;
+use crate::npm::CliNpmResolver;
+use crate::resolver::CliNodeResolver;
+use crate::util::fs::atomic_write_file_with_retries;
+use crate::util::fs::atomic_write_file_with_retries_and_fs;
+use crate::util::fs::AtomicWriteFileFsAdapter;
+use crate::util::path::specifier_has_extension;
+use crate::util::text_encoding::arc_str_to_bytes;
+use crate::util::text_encoding::from_utf8_lossy_owned;
 
+use deno_ast::MediaType;
 use deno_core::futures;
 use deno_core::futures::FutureExt;
 use deno_core::ModuleSpecifier;
@@ -11,7 +25,7 @@ use deno_graph::source::CacheInfo;
 use deno_graph::source::LoadFuture;
 use deno_graph::source::LoadResponse;
 use deno_graph::source::Loader;
-use deno_runtime::permissions::PermissionsContainer;
+use deno_runtime::deno_permissions::PermissionsContainer;
 use std::collections::HashMap;
 use std::path::Path;
 use std::path::PathBuf;
@@ -21,23 +35,33 @@ use std::time::SystemTime;
 mod cache_db;
 mod caches;
 mod check;
+mod code_cache;
 mod common;
 mod deno_dir;
 mod disk_cache;
 mod emit;
+mod fast_check;
 mod incremental;
+mod module_info;
 mod node;
 mod parsed_source;
 
+pub use cache_db::CacheDBHash;
 pub use caches::Caches;
 pub use check::TypeCheckCache;
+pub use code_cache::CodeCache;
 pub use common::FastInsecureHasher;
+pub use deno_dir::dirs::home_dir;
 pub use deno_dir::DenoDir;
 pub use deno_dir::DenoDirProvider;
 pub use disk_cache::DiskCache;
 pub use emit::EmitCache;
+pub use fast_check::FastCheckCache;
 pub use incremental::IncrementalCache;
+pub use module_info::ModuleInfoCache;
 pub use node::NodeAnalysisCache;
+pub use parsed_source::EsmOrCjsChecker;
+pub use parsed_source::LazyGraphSourceParser;
 pub use parsed_source::ParsedSourceCache;
 
 /// Permissions used to save a file in the disk caches.
@@ -47,12 +71,8 @@ pub const CACHE_PERM: u32 = 0o644;
 pub struct RealDenoCacheEnv;
 
 impl deno_cache_dir::DenoCacheEnv for RealDenoCacheEnv {
-  fn read_file_bytes(&self, path: &Path) -> std::io::Result<Option<Vec<u8>>> {
-    match std::fs::read(path) {
-      Ok(s) => Ok(Some(s)),
-      Err(err) if err.kind() == std::io::ErrorKind::NotFound => Ok(None),
-      Err(err) => Err(err),
-    }
+  fn read_file_bytes(&self, path: &Path) -> std::io::Result<Vec<u8>> {
+    std::fs::read(path)
   }
 
   fn atomic_write_file(
@@ -60,7 +80,15 @@ impl deno_cache_dir::DenoCacheEnv for RealDenoCacheEnv {
     path: &Path,
     bytes: &[u8],
   ) -> std::io::Result<()> {
-    atomic_write_file(path, bytes, CACHE_PERM)
+    atomic_write_file_with_retries(path, bytes, CACHE_PERM)
+  }
+
+  fn canonicalize_path(&self, path: &Path) -> std::io::Result<PathBuf> {
+    crate::util::fs::canonicalize_path(path)
+  }
+
+  fn create_dir_all(&self, path: &Path) -> std::io::Result<()> {
+    std::fs::create_dir_all(path)
   }
 
   fn modified(&self, path: &Path) -> std::io::Result<Option<SystemTime>> {
@@ -82,42 +110,118 @@ impl deno_cache_dir::DenoCacheEnv for RealDenoCacheEnv {
   }
 }
 
+#[derive(Debug, Clone)]
+pub struct DenoCacheEnvFsAdapter<'a>(
+  pub &'a dyn deno_runtime::deno_fs::FileSystem,
+);
+
+impl<'a> deno_cache_dir::DenoCacheEnv for DenoCacheEnvFsAdapter<'a> {
+  fn read_file_bytes(&self, path: &Path) -> std::io::Result<Vec<u8>> {
+    self
+      .0
+      .read_file_sync(path, None)
+      .map_err(|err| err.into_io_error())
+  }
+
+  fn atomic_write_file(
+    &self,
+    path: &Path,
+    bytes: &[u8],
+  ) -> std::io::Result<()> {
+    atomic_write_file_with_retries_and_fs(
+      &AtomicWriteFileFsAdapter {
+        fs: self.0,
+        write_mode: CACHE_PERM,
+      },
+      path,
+      bytes,
+    )
+  }
+
+  fn canonicalize_path(&self, path: &Path) -> std::io::Result<PathBuf> {
+    self.0.realpath_sync(path).map_err(|e| e.into_io_error())
+  }
+
+  fn create_dir_all(&self, path: &Path) -> std::io::Result<()> {
+    self
+      .0
+      .mkdir_sync(path, true, None)
+      .map_err(|e| e.into_io_error())
+  }
+
+  fn modified(&self, path: &Path) -> std::io::Result<Option<SystemTime>> {
+    self
+      .0
+      .stat_sync(path)
+      .map(|stat| {
+        stat
+          .mtime
+          .map(|ts| SystemTime::UNIX_EPOCH + std::time::Duration::from_secs(ts))
+      })
+      .map_err(|e| e.into_io_error())
+  }
+
+  fn is_file(&self, path: &Path) -> bool {
+    self.0.is_file_sync(path)
+  }
+
+  fn time_now(&self) -> SystemTime {
+    SystemTime::now()
+  }
+}
+
 pub type GlobalHttpCache = deno_cache_dir::GlobalHttpCache<RealDenoCacheEnv>;
 pub type LocalHttpCache = deno_cache_dir::LocalHttpCache<RealDenoCacheEnv>;
 pub type LocalLspHttpCache =
   deno_cache_dir::LocalLspHttpCache<RealDenoCacheEnv>;
-pub use deno_cache_dir::CachedUrlMetadata;
 pub use deno_cache_dir::HttpCache;
+
+pub struct FetchCacherOptions {
+  pub file_header_overrides: HashMap<ModuleSpecifier, HashMap<String, String>>,
+  pub permissions: PermissionsContainer,
+  /// If we're publishing for `deno publish`.
+  pub is_deno_publish: bool,
+  pub unstable_detect_cjs: bool,
+}
 
 /// A "wrapper" for the FileFetcher and DiskCache for the Deno CLI that provides
 /// a concise interface to the DENO_DIR when building module graphs.
 pub struct FetchCacher {
-  emit_cache: EmitCache,
+  pub file_header_overrides: HashMap<ModuleSpecifier, HashMap<String, String>>,
+  esm_or_cjs_checker: Arc<EsmOrCjsChecker>,
   file_fetcher: Arc<FileFetcher>,
-  file_header_overrides: HashMap<ModuleSpecifier, HashMap<String, String>>,
   global_http_cache: Arc<GlobalHttpCache>,
+  node_resolver: Arc<CliNodeResolver>,
+  npm_resolver: Arc<dyn CliNpmResolver>,
+  module_info_cache: Arc<ModuleInfoCache>,
   permissions: PermissionsContainer,
+  is_deno_publish: bool,
+  unstable_detect_cjs: bool,
   cache_info_enabled: bool,
-  maybe_local_node_modules_url: Option<ModuleSpecifier>,
 }
 
 impl FetchCacher {
   pub fn new(
-    emit_cache: EmitCache,
+    esm_or_cjs_checker: Arc<EsmOrCjsChecker>,
     file_fetcher: Arc<FileFetcher>,
-    file_header_overrides: HashMap<ModuleSpecifier, HashMap<String, String>>,
     global_http_cache: Arc<GlobalHttpCache>,
-    permissions: PermissionsContainer,
-    maybe_local_node_modules_url: Option<ModuleSpecifier>,
+    node_resolver: Arc<CliNodeResolver>,
+    npm_resolver: Arc<dyn CliNpmResolver>,
+    module_info_cache: Arc<ModuleInfoCache>,
+    options: FetchCacherOptions,
   ) -> Self {
     Self {
-      emit_cache,
       file_fetcher,
-      file_header_overrides,
+      esm_or_cjs_checker,
       global_http_cache,
-      permissions,
+      node_resolver,
+      npm_resolver,
+      module_info_cache,
+      file_header_overrides: options.file_header_overrides,
+      permissions: options.permissions,
+      is_deno_publish: options.is_deno_publish,
+      unstable_detect_cjs: options.unstable_detect_cjs,
       cache_info_enabled: false,
-      maybe_local_node_modules_url,
     }
   }
 
@@ -127,15 +231,7 @@ impl FetchCacher {
     self.cache_info_enabled = true;
   }
 
-  // DEPRECATED: Where the file is stored and how it's stored should be an implementation
-  // detail of the cache.
-  //
-  // todo(dsheret): remove once implementing
-  //  * https://github.com/denoland/deno/issues/17707
-  //  * https://github.com/denoland/deno/issues/17703
-  #[deprecated(
-    note = "There should not be a way to do this because the file may not be cached at a local path in the future."
-  )]
+  /// Only use this for `deno info`.
   fn get_local_path(&self, specifier: &ModuleSpecifier) -> Option<PathBuf> {
     // TODO(@kitsonk) fix when deno_graph does not query cache for synthetic
     // modules
@@ -162,78 +258,198 @@ impl Loader for FetchCacher {
     #[allow(deprecated)]
     let local = self.get_local_path(specifier)?;
     if local.is_file() {
-      let emit = self
-        .emit_cache
-        .get_emit_filepath(specifier)
-        .filter(|p| p.is_file());
-      Some(CacheInfo {
-        local: Some(local),
-        emit,
-        map: None,
-      })
+      Some(CacheInfo { local: Some(local) })
     } else {
       None
     }
   }
 
   fn load(
-    &mut self,
+    &self,
     specifier: &ModuleSpecifier,
-    _is_dynamic: bool,
+    options: deno_graph::source::LoadOptions,
   ) -> LoadFuture {
-    if let Some(node_modules_url) = self.maybe_local_node_modules_url.as_ref() {
-      // The specifier might be in a completely different symlinked tree than
-      // what the resolved node_modules_url is in (ex. `/my-project-1/node_modules`
-      // symlinked to `/my-project-2/node_modules`), so first check if the path
-      // is in a node_modules dir to avoid needlessly canonicalizing, then compare
-      // against the canonicalized specifier.
+    use deno_graph::source::CacheSetting as LoaderCacheSetting;
+
+    if specifier.scheme() == "file" {
       if specifier.path().contains("/node_modules/") {
+        // The specifier might be in a completely different symlinked tree than
+        // what the node_modules url is in (ex. `/my-project-1/node_modules`
+        // symlinked to `/my-project-2/node_modules`), so first we checked if the path
+        // is in a node_modules dir to avoid needlessly canonicalizing, then now compare
+        // against the canonicalized specifier.
         let specifier =
           crate::node::resolve_specifier_into_node_modules(specifier);
-        if specifier.as_str().starts_with(node_modules_url.as_str()) {
+        if self.npm_resolver.in_npm_package(&specifier) {
           return Box::pin(futures::future::ready(Ok(Some(
             LoadResponse::External { specifier },
           ))));
         }
       }
+
+      // make local CJS modules external to the graph
+      if specifier_has_extension(specifier, "cjs") {
+        return Box::pin(futures::future::ready(Ok(Some(
+          LoadResponse::External {
+            specifier: specifier.clone(),
+          },
+        ))));
+      }
+
+      if self.unstable_detect_cjs && specifier_has_extension(specifier, "js") {
+        if let Ok(Some(pkg_json)) =
+          self.node_resolver.get_closest_package_json(specifier)
+        {
+          if pkg_json.typ == "commonjs" {
+            if let Ok(path) = specifier.to_file_path() {
+              if let Ok(bytes) = std::fs::read(&path) {
+                let text: Arc<str> = from_utf8_lossy_owned(bytes).into();
+                let is_es_module = match self.esm_or_cjs_checker.is_esm(
+                  specifier,
+                  text.clone(),
+                  MediaType::JavaScript,
+                ) {
+                  Ok(value) => value,
+                  Err(err) => {
+                    return Box::pin(futures::future::ready(Err(err.into())));
+                  }
+                };
+                if !is_es_module {
+                  self.node_resolver.mark_cjs_resolution(specifier.clone());
+                  return Box::pin(futures::future::ready(Ok(Some(
+                    LoadResponse::External {
+                      specifier: specifier.clone(),
+                    },
+                  ))));
+                } else {
+                  return Box::pin(futures::future::ready(Ok(Some(
+                    LoadResponse::Module {
+                      specifier: specifier.clone(),
+                      content: arc_str_to_bytes(text),
+                      maybe_headers: None,
+                    },
+                  ))));
+                }
+              }
+            }
+          }
+        }
+      }
     }
 
-    let permissions = self.permissions.clone();
+    if self.is_deno_publish
+      && matches!(specifier.scheme(), "http" | "https")
+      && !specifier.as_str().starts_with(jsr_url().as_str())
+    {
+      // mark non-JSR remote modules as external so we don't need --allow-import
+      // permissions as these will error out later when publishing
+      return Box::pin(futures::future::ready(Ok(Some(
+        LoadResponse::External {
+          specifier: specifier.clone(),
+        },
+      ))));
+    }
+
     let file_fetcher = self.file_fetcher.clone();
     let file_header_overrides = self.file_header_overrides.clone();
+    let permissions = self.permissions.clone();
     let specifier = specifier.clone();
+    let is_statically_analyzable = !options.was_dynamic_root;
 
     async move {
+      let maybe_cache_setting = match options.cache_setting {
+        LoaderCacheSetting::Use => None,
+        LoaderCacheSetting::Reload => {
+          if matches!(file_fetcher.cache_setting(), CacheSetting::Only) {
+            return Err(deno_core::anyhow::anyhow!(
+              "Could not resolve version constraint using only cached data. Try running again without --cached-only"
+            ));
+          }
+          Some(CacheSetting::ReloadAll)
+        }
+        LoaderCacheSetting::Only => Some(CacheSetting::Only),
+      };
       file_fetcher
-        .fetch(&specifier, permissions)
+        .fetch_no_follow_with_options(FetchNoFollowOptions {
+          fetch_options: FetchOptions {
+            specifier: &specifier,
+            permissions: if is_statically_analyzable {
+              FetchPermissionsOptionRef::StaticContainer(&permissions)
+            } else {
+              FetchPermissionsOptionRef::DynamicContainer(&permissions)
+            },
+            maybe_auth: None,
+            maybe_accept: None,
+            maybe_cache_setting: maybe_cache_setting.as_ref(),
+          },
+          maybe_checksum: options.maybe_checksum.as_ref(),
+        })
         .await
-        .map(|file| {
-          let maybe_headers =
-            match (file.maybe_headers, file_header_overrides.get(&specifier)) {
-              (Some(headers), Some(overrides)) => {
-                Some(headers.into_iter().chain(overrides.clone()).collect())
-              }
-              (Some(headers), None) => Some(headers),
-              (None, Some(overrides)) => Some(overrides.clone()),
-              (None, None) => None,
-            };
-          Ok(Some(LoadResponse::Module {
-            specifier: file.specifier,
-            maybe_headers,
-            content: file.source,
-          }))
+        .map(|file_or_redirect| {
+          match file_or_redirect {
+            FileOrRedirect::File(file) => {
+              let maybe_headers =
+              match (file.maybe_headers, file_header_overrides.get(&specifier)) {
+                (Some(headers), Some(overrides)) => {
+                  Some(headers.into_iter().chain(overrides.clone()).collect())
+                }
+                (Some(headers), None) => Some(headers),
+                (None, Some(overrides)) => Some(overrides.clone()),
+                (None, None) => None,
+              };
+            Ok(Some(LoadResponse::Module {
+              specifier: file.specifier,
+              maybe_headers,
+              content: file.source,
+            }))
+            },
+            FileOrRedirect::Redirect(redirect_specifier) => {
+              Ok(Some(LoadResponse::Redirect {
+                specifier: redirect_specifier,
+              }))
+            },
+          }
         })
         .unwrap_or_else(|err| {
-          if let Some(err) = err.downcast_ref::<std::io::Error>() {
-            if err.kind() == std::io::ErrorKind::NotFound {
+          if let Some(io_err) = err.downcast_ref::<std::io::Error>() {
+            if io_err.kind() == std::io::ErrorKind::NotFound {
               return Ok(None);
+            } else {
+              return Err(err);
             }
-          } else if get_error_class_name(&err) == "NotFound" {
-            return Ok(None);
           }
-          Err(err)
+          let error_class_name = get_error_class_name(&err);
+          match error_class_name {
+            "NotFound" => Ok(None),
+            "NotCached" if options.cache_setting == LoaderCacheSetting::Only => Ok(None),
+            _ => Err(err),
+          }
         })
     }
-    .boxed()
+    .boxed_local()
+  }
+
+  fn cache_module_info(
+    &self,
+    specifier: &ModuleSpecifier,
+    media_type: MediaType,
+    source: &Arc<[u8]>,
+    module_info: &deno_graph::ModuleInfo,
+  ) {
+    log::debug!("Caching module info for {}", specifier);
+    let source_hash = CacheDBHash::from_source(source);
+    let result = self.module_info_cache.set_module_info(
+      specifier,
+      media_type,
+      source_hash,
+      module_info,
+    );
+    if let Err(err) = result {
+      log::debug!(
+        "Error saving module cache info for {}. {:#}",
+        specifier,
+        err
+      );
+    }
   }
 }

@@ -1,4 +1,4 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 // @ts-check
 /// <reference path="../webidl/internal.d.ts" />
@@ -10,7 +10,7 @@
 /// <reference path="./lib.deno_fetch.d.ts" />
 /// <reference lib="esnext" />
 
-const core = globalThis.Deno.core;
+import { core, primordials } from "ext:core/mod.js";
 import * as webidl from "ext:deno_webidl/00_webidl.js";
 import { createFilteredInspectProxy } from "ext:deno_console/01_console.js";
 import {
@@ -30,7 +30,6 @@ import {
   headerListFromHeaders,
   headersFromHeaderList,
 } from "ext:deno_fetch/20_headers.js";
-const primordials = globalThis.__bootstrap.primordials;
 const {
   ArrayPrototypeMap,
   ArrayPrototypePush,
@@ -60,6 +59,16 @@ const _response = Symbol("response");
 const _headers = Symbol("headers");
 const _mimeType = Symbol("mime type");
 const _body = Symbol("body");
+const _brand = webidl.brand;
+
+// it's slightly faster to cache these
+const webidlConvertersBodyInitDomString =
+  webidl.converters["BodyInit_DOMString?"];
+const webidlConvertersUSVString = webidl.converters["USVString"];
+const webidlConvertersUnsignedShort = webidl.converters["unsigned short"];
+const webidlConvertersAny = webidl.converters["any"];
+const webidlConvertersByteString = webidl.converters["ByteString"];
+const webidlConvertersHeadersInit = webidl.converters["HeadersInit"];
 
 /**
  * @typedef InnerResponse
@@ -172,7 +181,7 @@ function initializeAResponse(response, init, bodyWithType) {
   // 1.
   if ((init.status < 200 || init.status > 599) && init.status != 101) {
     throw new RangeError(
-      `The status provided (${init.status}) is not equal to 101 and outside the range [200, 599].`,
+      `The status provided (${init.status}) is not equal to 101 and outside the range [200, 599]`,
     );
   }
 
@@ -181,7 +190,9 @@ function initializeAResponse(response, init, bodyWithType) {
     init.statusText &&
     RegExpPrototypeExec(REASON_PHRASE_RE, init.statusText) === null
   ) {
-    throw new TypeError("Status text is not valid.");
+    throw new TypeError(
+      `Invalid status text: "${init.statusText}"`,
+    );
   }
 
   // 3.
@@ -256,14 +267,14 @@ class Response {
    * @returns {Response}
    */
   static redirect(url, status = 302) {
-    const prefix = "Failed to call 'Response.redirect'";
-    url = webidl.converters["USVString"](url, prefix, "Argument 1");
-    status = webidl.converters["unsigned short"](status, prefix, "Argument 2");
+    const prefix = "Failed to execute 'Response.redirect'";
+    url = webidlConvertersUSVString(url, prefix, "Argument 1");
+    status = webidlConvertersUnsignedShort(status, prefix, "Argument 2");
 
     const baseURL = getLocationHref();
     const parsedURL = new URL(url, baseURL);
     if (!redirectStatus(status)) {
-      throw new RangeError("Invalid redirect status code.");
+      throw new RangeError(`Invalid redirect status code: ${status}`);
     }
     const inner = newInnerResponse(status);
     inner.type = "default";
@@ -282,10 +293,10 @@ class Response {
    * @param {ResponseInit} init
    * @returns {Response}
    */
-  static json(data = undefined, init = {}) {
-    const prefix = "Failed to call 'Response.json'";
-    data = webidl.converters.any(data);
-    init = webidl.converters["ResponseInit_fast"](init, prefix, "Argument 2");
+  static json(data = undefined, init = { __proto__: null }) {
+    const prefix = "Failed to execute 'Response.json'";
+    data = webidlConvertersAny(data);
+    init = webidlConvertersResponseInitFast(init, prefix, "Argument 2");
 
     const str = serializeJSValueToJSONString(data);
     const res = extractBody(str);
@@ -305,9 +316,14 @@ class Response {
    * @param {ResponseInit} init
    */
   constructor(body = null, init = undefined) {
+    if (body === _brand) {
+      this[_brand] = _brand;
+      return;
+    }
+
     const prefix = "Failed to construct 'Response'";
-    body = webidl.converters["BodyInit_DOMString?"](body, prefix, "Argument 1");
-    init = webidl.converters["ResponseInit_fast"](init, prefix, "Argument 2");
+    body = webidlConvertersBodyInitDomString(body, prefix, "Argument 1");
+    init = webidlConvertersResponseInitFast(init, prefix, "Argument 2");
 
     this[_response] = newInnerResponse();
     this[_headers] = headersFromHeaderList(
@@ -320,7 +336,7 @@ class Response {
       bodyWithType = extractBody(body);
     }
     initializeAResponse(this, init, bodyWithType);
-    this[webidl.brand] = webidl.brand;
+    this[_brand] = _brand;
   }
 
   /**
@@ -390,7 +406,7 @@ class Response {
   clone() {
     webidl.assertBranded(this, ResponsePrototype);
     if (this[_body] && this[_body].unusable()) {
-      throw new TypeError("Body is unusable.");
+      throw new TypeError("Body is unusable");
     }
     const second = webidl.createBranded(Response);
     const newRes = cloneInnerResponse(this[_response]);
@@ -402,29 +418,32 @@ class Response {
     return second;
   }
 
-  [SymbolFor("Deno.customInspect")](inspect) {
-    return inspect(createFilteredInspectProxy({
-      object: this,
-      evaluate: ObjectPrototypeIsPrototypeOf(ResponsePrototype, this),
-      keys: [
-        "body",
-        "bodyUsed",
-        "headers",
-        "ok",
-        "redirected",
-        "status",
-        "statusText",
-        "url",
-      ],
-    }));
+  [SymbolFor("Deno.privateCustomInspect")](inspect, inspectOptions) {
+    return inspect(
+      createFilteredInspectProxy({
+        object: this,
+        evaluate: ObjectPrototypeIsPrototypeOf(ResponsePrototype, this),
+        keys: [
+          "body",
+          "bodyUsed",
+          "headers",
+          "ok",
+          "redirected",
+          "status",
+          "statusText",
+          "url",
+        ],
+      }),
+      inspectOptions,
+    );
   }
 }
 
-webidl.configurePrototype(Response);
+webidl.configureInterface(Response);
 ObjectDefineProperties(Response, {
-  json: { enumerable: true },
-  redirect: { enumerable: true },
-  error: { enumerable: true },
+  json: { __proto__: null, enumerable: true },
+  redirect: { __proto__: null, enumerable: true },
+  error: { __proto__: null, enumerable: true },
 });
 const ResponsePrototype = Response.prototype;
 mixinBody(ResponsePrototype, _body, _mimeType);
@@ -433,47 +452,49 @@ webidl.converters["Response"] = webidl.createInterfaceConverter(
   "Response",
   ResponsePrototype,
 );
-webidl.converters["ResponseInit"] = webidl.createDictionaryConverter(
-  "ResponseInit",
-  [{
-    key: "status",
-    defaultValue: 200,
-    converter: webidl.converters["unsigned short"],
-  }, {
-    key: "statusText",
-    defaultValue: "",
-    converter: webidl.converters["ByteString"],
-  }, {
-    key: "headers",
-    converter: webidl.converters["HeadersInit"],
-  }],
-);
-webidl.converters["ResponseInit_fast"] = function (
-  init,
-  prefix,
-  context,
-  opts,
-) {
-  if (init === undefined || init === null) {
-    return { status: 200, statusText: "", headers: undefined };
-  }
-  // Fast path, if not a proxy
-  if (typeof init === "object" && !core.isProxy(init)) {
-    // Not a proxy fast path
-    const status = init.status !== undefined
-      ? webidl.converters["unsigned short"](init.status)
-      : 200;
-    const statusText = init.statusText !== undefined
-      ? webidl.converters["ByteString"](init.statusText)
-      : "";
-    const headers = init.headers !== undefined
-      ? webidl.converters["HeadersInit"](init.headers)
-      : undefined;
-    return { status, statusText, headers };
-  }
-  // Slow default path
-  return webidl.converters["ResponseInit"](init, prefix, context, opts);
-};
+const webidlConvertersResponseInit = webidl.converters["ResponseInit"] = webidl
+  .createDictionaryConverter(
+    "ResponseInit",
+    [{
+      key: "status",
+      defaultValue: 200,
+      converter: webidlConvertersUnsignedShort,
+    }, {
+      key: "statusText",
+      defaultValue: "",
+      converter: webidlConvertersByteString,
+    }, {
+      key: "headers",
+      converter: webidlConvertersHeadersInit,
+    }],
+  );
+const webidlConvertersResponseInitFast = webidl
+  .converters["ResponseInit_fast"] = function (
+    init,
+    prefix,
+    context,
+    opts,
+  ) {
+    if (init === undefined || init === null) {
+      return { status: 200, statusText: "", headers: undefined };
+    }
+    // Fast path, if not a proxy
+    if (typeof init === "object" && !core.isProxy(init)) {
+      // Not a proxy fast path
+      const status = init.status !== undefined
+        ? webidlConvertersUnsignedShort(init.status)
+        : 200;
+      const statusText = init.statusText !== undefined
+        ? webidlConvertersByteString(init.statusText)
+        : "";
+      const headers = init.headers !== undefined
+        ? webidlConvertersHeadersInit(init.headers)
+        : undefined;
+      return { status, statusText, headers };
+    }
+    // Slow default path
+    return webidlConvertersResponseInit(init, prefix, context, opts);
+  };
 
 /**
  * @param {Response} response
@@ -489,7 +510,7 @@ function toInnerResponse(response) {
  * @returns {Response}
  */
 function fromInnerResponse(inner, guard) {
-  const response = webidl.createBranded(Response);
+  const response = new Response(_brand);
   response[_response] = inner;
   response[_headers] = headersFromHeaderList(inner.headerList, guard);
   return response;

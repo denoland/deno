@@ -1,7 +1,9 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
-const primordials = globalThis.__bootstrap.primordials;
-const { ObjectFreeze } = primordials;
+import { primordials } from "ext:core/mod.js";
+const {
+  ObjectFreeze,
+} = primordials;
 
 interface Version {
   deno: string;

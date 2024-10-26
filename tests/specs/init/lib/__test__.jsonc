@@ -1,0 +1,16 @@
+{
+  "tempDir": true,
+  "steps": [{
+    "args": "init --lib project",
+    "output": "init.out"
+  }, {
+    "cwd": "project",
+    "args": "test",
+    "output": "test.out"
+  }, {
+    "cwd": "project",
+    "args": "publish --dry-run",
+    "output": "dry_publish.out",
+    "exitCode": 1
+  }]
+}

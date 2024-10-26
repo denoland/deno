@@ -1,4 +1,4 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 use super::*;
 
@@ -28,6 +28,12 @@ impl TestReporter for CompoundTestReporter {
   fn report_wait(&mut self, description: &TestDescription) {
     for reporter in &mut self.test_reporters {
       reporter.report_wait(description);
+    }
+  }
+
+  fn report_slow(&mut self, description: &TestDescription, elapsed: u64) {
+    for reporter in &mut self.test_reporters {
+      reporter.report_slow(description, elapsed);
     }
   }
 
@@ -98,6 +104,12 @@ impl TestReporter for CompoundTestReporter {
   ) {
     for reporter in &mut self.test_reporters {
       reporter.report_sigint(tests_pending, tests, test_steps);
+    }
+  }
+
+  fn report_completed(&mut self) {
+    for reporter in &mut self.test_reporters {
+      reporter.report_completed();
     }
   }
 

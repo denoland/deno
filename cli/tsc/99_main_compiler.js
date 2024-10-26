@@ -1,4 +1,4 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 // @ts-check
 /// <reference path="./compiler.d.ts" />
@@ -32,29 +32,15 @@ delete Object.prototype.__proto__;
   /** @type {ReadonlySet<string>} */
   const unstableDenoProps = new Set([
     "AtomicOperation",
-    "CreateHttpClientOptions",
     "DatagramConn",
-    "HttpClient",
     "Kv",
     "KvListIterator",
     "KvU64",
-    "UnsafeCallback",
-    "UnsafePointer",
-    "UnsafePointerView",
-    "UnsafeFnPointer",
     "UnixConnectOptions",
     "UnixListenOptions",
-    "createHttpClient",
-    "dlopen",
-    "flock",
-    "flockSync",
-    "funlock",
-    "funlockSync",
     "listen",
     "listenDatagram",
     "openKv",
-    "upgradeHttp",
-    "umask",
   ]);
   const unstableMsgSuggestion =
     "If not, try changing the 'lib' compiler option to include 'deno.unstable' " +
@@ -131,29 +117,15 @@ delete Object.prototype.__proto__;
     }
   }
 
-  class SpecifierIsCjsCache {
-    /** @type {Set<string>} */
-    #cache = new Set();
-
-    /** @param {[string, ts.Extension]} param */
-    add([specifier, ext]) {
-      if (ext === ".cjs" || ext === ".d.cts" || ext === ".cts") {
-        this.#cache.add(specifier);
-      }
-    }
-
-    /** @param specifier {string} */
-    has(specifier) {
-      return this.#cache.has(specifier);
-    }
-  }
-
   // In the case of the LSP, this will only ever contain the assets.
   /** @type {Map<string, ts.SourceFile>} */
   const sourceFileCache = new Map();
 
-  /** @type {string[]=} */
-  let scriptFileNamesCache;
+  /** @type {Map<string, string>} */
+  const sourceTextCache = new Map();
+
+  /** @type {Map<string, number>} */
+  const sourceRefCounts = new Map();
 
   /** @type {Map<string, string>} */
   const scriptVersionCache = new Map();
@@ -161,7 +133,27 @@ delete Object.prototype.__proto__;
   /** @type {Map<string, boolean>} */
   const isNodeSourceFileCache = new Map();
 
-  const isCjsCache = new SpecifierIsCjsCache();
+  /** @type {Map<string, boolean>} */
+  const isCjsCache = new Map();
+
+  // Maps asset specifiers to the first scope that the asset was loaded into.
+  /** @type {Map<string, string | null>} */
+  const assetScopes = new Map();
+
+  /** @type {number | null} */
+  let projectVersionCache = null;
+
+  /** @type {string | null} */
+  let lastRequestMethod = null;
+
+  /** @type {string | null} */
+  let lastRequestScope = null;
+
+  const ChangeKind = {
+    Opened: 0,
+    Modified: 1,
+    Closed: 2,
+  };
 
   /**
    * @param {ts.CompilerOptions | ts.MinimalResolutionCacheHost} settingsOrHost
@@ -223,9 +215,11 @@ delete Object.prototype.__proto__;
           scriptSnapshot,
           {
             ...getCreateSourceFileOptions(sourceFileOptions),
-            impliedNodeFormat: isCjsCache.has(fileName)
+            impliedNodeFormat: (isCjsCache.get(fileName) ?? false)
               ? ts.ModuleKind.CommonJS
               : ts.ModuleKind.ESNext,
+            // in the lsp we want to be able to show documentation
+            jsDocParsingMode: ts.JSDocParsingMode.ParseAll,
           },
           version,
           true,
@@ -233,6 +227,8 @@ delete Object.prototype.__proto__;
         );
         documentRegistrySourceFileCache.set(mapKey, sourceFile);
       }
+      const sourceRefCount = sourceRefCounts.get(fileName) ?? 0;
+      sourceRefCounts.set(fileName, sourceRefCount + 1);
       return sourceFile;
     },
 
@@ -291,6 +287,7 @@ delete Object.prototype.__proto__;
             /** @type {ts.IScriptSnapshot} */ (sourceFile.scriptSnapShot),
           ),
         );
+        documentRegistrySourceFileCache.set(mapKey, sourceFile);
       }
       return sourceFile;
     },
@@ -315,8 +312,20 @@ delete Object.prototype.__proto__;
     },
 
     releaseDocumentWithKey(path, key, _scriptKind, _impliedNodeFormat) {
-      const mapKey = path + key;
-      documentRegistrySourceFileCache.delete(mapKey);
+      const sourceRefCount = sourceRefCounts.get(path) ?? 1;
+      if (sourceRefCount <= 1) {
+        sourceRefCounts.delete(path);
+        // We call `cleanupSemanticCache` for other purposes, don't bust the
+        // source cache in this case.
+        if (lastRequestMethod != "cleanupSemanticCache") {
+          const mapKey = path + key;
+          documentRegistrySourceFileCache.delete(mapKey);
+          sourceTextCache.delete(path);
+          ops.op_release(path);
+        }
+      } else {
+        sourceRefCounts.set(path, sourceRefCount - 1);
+      }
     },
 
     reportStats() {
@@ -353,7 +362,7 @@ delete Object.prototype.__proto__;
       case 2339: {
         const property = getProperty();
         if (property && unstableDenoProps.has(property)) {
-          return `${msg} 'Deno.${property}' is an unstable API. Did you forget to run with the '--unstable' flag? ${unstableMsgSuggestion}`;
+          return `${msg} 'Deno.${property}' is an unstable API. ${unstableMsgSuggestion}`;
         }
         return msg;
       }
@@ -362,7 +371,7 @@ delete Object.prototype.__proto__;
         if (property && unstableDenoProps.has(property)) {
           const suggestion = getMsgSuggestion();
           if (suggestion) {
-            return `${msg} 'Deno.${property}' is an unstable API. Did you forget to run with the '--unstable' flag, or did you mean '${suggestion}'? ${unstableMsgSuggestion}`;
+            return `${msg} 'Deno.${property}' is an unstable API. Did you mean '${suggestion}'? ${unstableMsgSuggestion}`;
           }
         }
         return msg;
@@ -448,11 +457,13 @@ delete Object.prototype.__proto__;
     // anything. We prefer to treat these as modules with no exports.
     2306,
     // TS2688: Cannot find type definition file for '...'.
-    // We ignore because type defintion files can end with '.ts'.
+    // We ignore because type definition files can end with '.ts'.
     2688,
     // TS2792: Cannot find module. Did you mean to set the 'moduleResolution'
     // option to 'node', or to add aliases to the 'paths' option?
     2792,
+    // TS2307: Cannot find module '{0}' or its corresponding type declarations.
+    2307,
     // TS5009: Cannot find the common subdirectory path for the input files.
     5009,
     // TS5055: Cannot write file
@@ -485,26 +496,13 @@ delete Object.prototype.__proto__;
   class OperationCanceledError extends Error {
   }
 
-  // todo(dsherret): we should investigate if throttling is really necessary
   /**
-   * Inspired by ThrottledCancellationToken in ts server.
-   *
-   * We don't want to continually call back into Rust and so
-   * we throttle cancellation checks to only occur once
-   * in a while.
+   * This implementation calls into Rust to check if Tokio's cancellation token
+   * has already been canceled.
    * @implements {ts.CancellationToken}
    */
-  class ThrottledCancellationToken {
-    #lastCheckTimeMs = 0;
-
+  class CancellationToken {
     isCancellationRequested() {
-      const timeMs = Date.now();
-      // TypeScript uses 20ms
-      if ((timeMs - this.#lastCheckTimeMs) < 20) {
-        return false;
-      }
-
-      this.#lastCheckTimeMs = timeMs;
       return ops.op_is_cancelled();
     }
 
@@ -515,11 +513,19 @@ delete Object.prototype.__proto__;
     }
   }
 
-  /** @type {ts.CompilerOptions} */
-  let compilationSettings = {};
+  /** @typedef {{
+   *    ls: ts.LanguageService & { [k:string]: any },
+   *    compilerOptions: ts.CompilerOptions,
+   *  }} LanguageServiceEntry */
+  /** @type {{ unscoped: LanguageServiceEntry, byScope: Map<string, LanguageServiceEntry> }} */
+  const languageServiceEntries = {
+    // @ts-ignore Will be set later.
+    unscoped: null,
+    byScope: new Map(),
+  };
 
-  /** @type {ts.LanguageService} */
-  let languageService;
+  /** @type {{ unscoped: string[], byScope: Map<string, string[]> } | null} */
+  let scriptNamesCache = null;
 
   /** An object literal of the incremental compiler host, which provides the
    * specific "bindings" to the Deno environment that tsc needs to work.
@@ -530,6 +536,7 @@ delete Object.prototype.__proto__;
       if (logDebug) {
         debug(`host.fileExists("${specifier}")`);
       }
+      // TODO(bartlomieju): is this assumption still valid?
       // this is used by typescript to find the libs path
       // so we can completely ignore it
       return false;
@@ -538,23 +545,62 @@ delete Object.prototype.__proto__;
       if (logDebug) {
         debug(`host.readFile("${specifier}")`);
       }
-      return ops.op_load({ specifier }).data;
+      return ops.op_load(specifier)?.data;
     },
     getCancellationToken() {
       // createLanguageService will call this immediately and cache it
-      return new ThrottledCancellationToken();
+      return new CancellationToken();
+    },
+    getProjectVersion() {
+      if (
+        projectVersionCache
+      ) {
+        debug(`getProjectVersion cache hit : ${projectVersionCache}`);
+        return projectVersionCache;
+      }
+      const projectVersion = ops.op_project_version();
+      projectVersionCache = projectVersion;
+      debug(`getProjectVersion cache miss : ${projectVersionCache}`);
+      return projectVersion;
+    },
+    // @ts-ignore Undocumented method.
+    getModuleSpecifierCache() {
+      return moduleSpecifierCache;
+    },
+    // @ts-ignore Undocumented method.
+    getCachedExportInfoMap() {
+      return exportMapCache;
+    },
+    getGlobalTypingsCacheLocation() {
+      return undefined;
+    },
+    // @ts-ignore Undocumented method.
+    toPath(fileName) {
+      // @ts-ignore Undocumented function.
+      ts.toPath(
+        fileName,
+        this.getCurrentDirectory(),
+        this.getCanonicalFileName.bind(this),
+      );
+    },
+    // @ts-ignore Undocumented method.
+    watchNodeModulesForPackageJsonChanges() {
+      return { close() {} };
     },
     getSourceFile(
       specifier,
       languageVersion,
       _onError,
+      // this is not used by the lsp because source
+      // files are created in the document registry
       _shouldCreateNewSourceFile,
     ) {
-      const createOptions = getCreateSourceFileOptions(languageVersion);
       if (logDebug) {
         debug(
           `host.getSourceFile("${specifier}", ${
-            ts.ScriptTarget[createOptions.languageVersion]
+            ts.ScriptTarget[
+              getCreateSourceFileOptions(languageVersion).languageVersion
+            ]
           })`,
         );
       }
@@ -567,28 +613,38 @@ delete Object.prototype.__proto__;
         return sourceFile;
       }
 
-      /** @type {{ data: string; scriptKind: ts.ScriptKind; version: string; }} */
-      const { data, scriptKind, version } = ops.op_load(
-        { specifier },
-      );
+      /** @type {{ data: string; scriptKind: ts.ScriptKind; version: string; isCjs: boolean }} */
+      const fileInfo = ops.op_load(specifier);
+      if (!fileInfo) {
+        return undefined;
+      }
+      const { data, scriptKind, version, isCjs } = fileInfo;
       assert(
         data != null,
         `"data" is unexpectedly null for "${specifier}".`,
       );
+
+      isCjsCache.set(specifier, isCjs);
+
       sourceFile = ts.createSourceFile(
         specifier,
         data,
         {
-          ...createOptions,
-          impliedNodeFormat: isCjsCache.has(specifier)
+          ...getCreateSourceFileOptions(languageVersion),
+          impliedNodeFormat: isCjs
             ? ts.ModuleKind.CommonJS
             : ts.ModuleKind.ESNext,
+          // no need to parse docs for `deno check`
+          jsDocParsingMode: ts.JSDocParsingMode.ParseForTypeErrors,
         },
         false,
         scriptKind,
       );
       sourceFile.moduleName = specifier;
       sourceFile.version = version;
+      if (specifier.startsWith(ASSETS_URL_PREFIX)) {
+        sourceFile.version = "1";
+      }
       sourceFileCache.set(specifier, sourceFile);
       scriptVersionCache.set(specifier, version);
       return sourceFile;
@@ -604,7 +660,8 @@ delete Object.prototype.__proto__;
         debug(`host.writeFile("${fileName}")`);
       }
       return ops.op_emit(
-        { fileName, data },
+        data,
+        fileName,
       );
     },
     getCurrentDirectory() {
@@ -640,12 +697,12 @@ delete Object.prototype.__proto__;
           : arg;
         if (fileReference.fileName.startsWith("npm:")) {
           /** @type {[string, ts.Extension] | undefined} */
-          const resolved = ops.op_resolve({
-            specifiers: [fileReference.fileName],
-            base: containingFilePath,
-          })?.[0];
+          const resolved = ops.op_resolve(
+            containingFilePath,
+            isCjsCache.get(containingFilePath) ?? false,
+            [fileReference.fileName],
+          )?.[0];
           if (resolved) {
-            isCjsCache.add(resolved);
             return {
               primary: true,
               resolvedFileName: resolved[0],
@@ -673,19 +730,15 @@ delete Object.prototype.__proto__;
         debug(`  specifiers: ${specifiers.join(", ")}`);
       }
       /** @type {Array<[string, ts.Extension] | undefined>} */
-      const resolved = ops.op_resolve({
-        specifiers,
+      const resolved = ops.op_resolve(
         base,
-      });
+        isCjsCache.get(base) ?? false,
+        specifiers,
+      );
       if (resolved) {
         const result = resolved.map((item) => {
           if (item) {
-            isCjsCache.add(item);
             const [resolvedFileName, extension] = item;
-            if (resolvedFileName.startsWith("node:")) {
-              // probably means the user doesn't have @types/node, so resolve to undefined
-              return undefined;
-            }
             return {
               resolvedFileName,
               extension,
@@ -709,33 +762,38 @@ delete Object.prototype.__proto__;
       if (logDebug) {
         debug("host.getCompilationSettings()");
       }
-      return compilationSettings;
+      return (lastRequestScope
+        ? languageServiceEntries.byScope.get(lastRequestScope)?.compilerOptions
+        : null) ?? languageServiceEntries.unscoped.compilerOptions;
     },
     getScriptFileNames() {
       if (logDebug) {
         debug("host.getScriptFileNames()");
       }
-      // tsc requests the script file names multiple times even though it can't
-      // possibly have changed, so we will memoize it on a per request basis.
-      if (scriptFileNamesCache) {
-        return scriptFileNamesCache;
+      if (!scriptNamesCache) {
+        const { unscoped, byScope } = ops.op_script_names();
+        scriptNamesCache = {
+          unscoped,
+          byScope: new Map(Object.entries(byScope)),
+        };
       }
-      return scriptFileNamesCache = ops.op_script_names();
+      return (lastRequestScope
+        ? scriptNamesCache.byScope.get(lastRequestScope)
+        : null) ?? scriptNamesCache.unscoped;
     },
     getScriptVersion(specifier) {
       if (logDebug) {
         debug(`host.getScriptVersion("${specifier}")`);
       }
-      const sourceFile = sourceFileCache.get(specifier);
-      if (sourceFile) {
-        return sourceFile.version ?? "1";
+      if (specifier.startsWith(ASSETS_URL_PREFIX)) {
+        return "1";
       }
       // tsc requests the script version multiple times even though it can't
       // possibly have changed, so we will memoize it on a per request basis.
       if (scriptVersionCache.has(specifier)) {
         return scriptVersionCache.get(specifier);
       }
-      const scriptVersion = ops.op_script_version({ specifier });
+      const scriptVersion = ops.op_script_version(specifier);
       scriptVersionCache.set(specifier, scriptVersion);
       return scriptVersion;
     },
@@ -745,30 +803,33 @@ delete Object.prototype.__proto__;
       }
       const sourceFile = sourceFileCache.get(specifier);
       if (sourceFile) {
-        return {
-          getText(start, end) {
-            return sourceFile.text.substring(start, end);
-          },
-          getLength() {
-            return sourceFile.text.length;
-          },
-          getChangeRange() {
-            return undefined;
-          },
-        };
+        if (!assetScopes.has(specifier)) {
+          assetScopes.set(specifier, lastRequestScope);
+        }
+        // This case only occurs for assets.
+        return ts.ScriptSnapshot.fromString(sourceFile.text);
       }
-
-      const fileInfo = ops.op_load(
-        { specifier },
-      );
-      if (fileInfo) {
+      let sourceText = sourceTextCache.get(specifier);
+      if (sourceText == undefined) {
+        /** @type {{ data: string, version: string, isCjs: boolean }} */
+        const fileInfo = ops.op_load(specifier);
+        if (!fileInfo) {
+          return undefined;
+        }
+        isCjsCache.set(specifier, fileInfo.isCjs);
+        sourceTextCache.set(specifier, fileInfo.data);
         scriptVersionCache.set(specifier, fileInfo.version);
-        return ts.ScriptSnapshot.fromString(fileInfo.data);
-      } else {
-        return undefined;
+        sourceText = fileInfo.data;
       }
+      return ts.ScriptSnapshot.fromString(sourceText);
     },
   };
+
+  // @ts-ignore Undocumented function.
+  const moduleSpecifierCache = ts.server.createModuleSpecifierCache(host);
+
+  // @ts-ignore Undocumented function.
+  const exportMapCache = ts.createCacheableExportInfoMap(host);
 
   // override the npm install @types package diagnostics to be deno specific
   ts.setLocalizedDiagnosticMessages((() => {
@@ -862,12 +923,45 @@ delete Object.prototype.__proto__;
     }
   }
 
+  /** @param {Record<string, unknown>} config */
+  function normalizeConfig(config) {
+    // the typescript compiler doesn't know about the precompile
+    // transform at the moment, so just tell it we're using react-jsx
+    if (config.jsx === "precompile") {
+      config.jsx = "react-jsx";
+    }
+    if (config.jsxPrecompileSkipElements) {
+      delete config.jsxPrecompileSkipElements;
+    }
+    return config;
+  }
+
+  /** @param {Record<string, unknown>} config */
+  function lspTsConfigToCompilerOptions(config) {
+    const normalizedConfig = normalizeConfig(config);
+    const { options, errors } = ts
+      .convertCompilerOptionsFromJson(normalizedConfig, "");
+    Object.assign(options, {
+      allowNonTsExtensions: true,
+      allowImportingTsExtensions: true,
+      module: ts.ModuleKind.NodeNext,
+      moduleResolution: ts.ModuleResolutionKind.NodeNext,
+    });
+    if (errors.length > 0 && logDebug) {
+      debug(ts.formatDiagnostics(errors, host));
+    }
+    return options;
+  }
+
   /** The API that is called by Rust when executing a request.
    * @param {Request} request
    */
   function exec({ config, debug: debugFlag, rootNames, localOnly }) {
     setLogDebug(debugFlag, "TS");
     performanceStart();
+
+    config = normalizeConfig(config);
+
     if (logDebug) {
       debug(">>> exec start", { rootNames });
       debug(config);
@@ -931,7 +1025,7 @@ delete Object.prototype.__proto__;
         : ts.sortAndDeduplicateDiagnostics(
           checkFiles.map((s) => program.getSemanticDiagnostics(s)).flat(),
         )),
-    ].filter((diagnostic) => !IGNORED_DIAGNOSTICS.includes(diagnostic.code));
+    ].filter(filterMapDiagnostic);
 
     // emit the tsbuildinfo file
     // @ts-ignore: emitBuildInfo is not exposed (https://github.com/microsoft/TypeScript/issues/49871)
@@ -944,6 +1038,36 @@ delete Object.prototype.__proto__;
       stats: performanceEnd(),
     });
     debug("<<< exec stop");
+  }
+
+  /** @param {ts.Diagnostic} diagnostic */
+  function filterMapDiagnostic(diagnostic) {
+    if (IGNORED_DIAGNOSTICS.includes(diagnostic.code)) {
+      return false;
+    }
+    // make the diagnostic for using an `export =` in an es module a warning
+    if (diagnostic.code === 1203) {
+      diagnostic.category = ts.DiagnosticCategory.Warning;
+      if (typeof diagnostic.messageText === "string") {
+        const message =
+          " This will start erroring in a future version of Deno 2 " +
+          "in order to align with TypeScript.";
+        // seems typescript shares objects, so check if it's already been set
+        if (!diagnostic.messageText.endsWith(message)) {
+          diagnostic.messageText += message;
+        }
+      }
+    }
+    return true;
+  }
+
+  /**
+   * @param {any} e
+   * @returns {e is (OperationCanceledError | ts.OperationCanceledException)}
+   */
+  function isCancellationError(e) {
+    return e instanceof OperationCanceledError ||
+      e instanceof ts.OperationCanceledException;
   }
 
   function getAssets() {
@@ -961,429 +1085,275 @@ delete Object.prototype.__proto__;
   }
 
   /**
-   * @param {number} id
+   * @param {number} _id
    * @param {any} data
+   * @param {string | null} error
    */
-  function respond(id, data = null) {
-    ops.op_respond({ id, data });
+  // TODO(bartlomieju): this feels needlessly generic, both type checking
+  // and language server use it with inefficient serialization. Id is not used
+  // anyway...
+  function respond(_id, data = null, error = null) {
+    if (error) {
+      ops.op_respond(
+        "error",
+        error,
+      );
+    } else {
+      ops.op_respond(JSON.stringify(data), "");
+    }
+  }
+
+  /** @typedef {[[string, number][], number, [string, any][]] } PendingChange */
+  /**
+   * @template T
+   * @typedef {T | null} Option<T> */
+
+  /** @returns {Promise<[number, string, any[], string | null, Option<PendingChange>] | null>} */
+  async function pollRequests() {
+    return await ops.op_poll_requests();
+  }
+
+  let hasStarted = false;
+
+  /** @param {boolean} enableDebugLogging */
+  async function serverMainLoop(enableDebugLogging) {
+    if (hasStarted) {
+      throw new Error("The language server has already been initialized.");
+    }
+    hasStarted = true;
+    languageServiceEntries.unscoped = {
+      ls: ts.createLanguageService(
+        host,
+        documentRegistry,
+      ),
+      compilerOptions: lspTsConfigToCompilerOptions({
+        "allowJs": true,
+        "esModuleInterop": true,
+        "experimentalDecorators": false,
+        "isolatedModules": true,
+        "lib": ["deno.ns", "deno.window", "deno.unstable"],
+        "module": "NodeNext",
+        "moduleResolution": "NodeNext",
+        "moduleDetection": "force",
+        "noEmit": true,
+        "noImplicitOverride": true,
+        "resolveJsonModule": true,
+        "strict": true,
+        "target": "esnext",
+        "useDefineForClassFields": true,
+        "jsx": "react",
+        "jsxFactory": "React.createElement",
+        "jsxFragmentFactory": "React.Fragment",
+      }),
+    };
+    setLogDebug(enableDebugLogging, "TSLS");
+    debug("serverInit()");
+
+    while (true) {
+      const request = await pollRequests();
+      if (request === null) {
+        break;
+      }
+      try {
+        serverRequest(
+          request[0],
+          request[1],
+          request[2],
+          request[3],
+          request[4],
+        );
+      } catch (err) {
+        error(`Internal error occurred processing request: ${err}`);
+      }
+    }
   }
 
   /**
-   * @param {LanguageServerRequest} request
+   * @param {any} error
+   * @param {any[] | null} args
    */
-  function serverRequest({ id, ...request }) {
+  function formatErrorWithArgs(error, args) {
+    let errorString = "stack" in error
+      ? error.stack.toString()
+      : error.toString();
+    if (args) {
+      errorString += `\nFor request: [${
+        args.map((v) => JSON.stringify(v)).join(", ")
+      }]`;
+    }
+    return errorString;
+  }
+
+  /**
+   * @param {number} id
+   * @param {string} method
+   * @param {any[]} args
+   * @param {string | null} scope
+   * @param {PendingChange | null} maybeChange
+   */
+  function serverRequest(id, method, args, scope, maybeChange) {
     if (logDebug) {
-      debug(`serverRequest()`, { id, ...request });
+      debug(`serverRequest()`, id, method, args, scope, maybeChange);
+    }
+    if (maybeChange !== null) {
+      const changedScripts = maybeChange[0];
+      const newProjectVersion = maybeChange[1];
+      const newConfigsByScope = maybeChange[2];
+      if (newConfigsByScope) {
+        isNodeSourceFileCache.clear();
+        assetScopes.clear();
+        /** @type { typeof languageServiceEntries.byScope } */
+        const newByScope = new Map();
+        for (const [scope, config] of newConfigsByScope) {
+          lastRequestScope = scope;
+          const oldEntry = languageServiceEntries.byScope.get(scope);
+          const ls = oldEntry
+            ? oldEntry.ls
+            : ts.createLanguageService(host, documentRegistry);
+          const compilerOptions = lspTsConfigToCompilerOptions(config);
+          newByScope.set(scope, { ls, compilerOptions });
+          languageServiceEntries.byScope.delete(scope);
+        }
+        for (const oldEntry of languageServiceEntries.byScope.values()) {
+          oldEntry.ls.dispose();
+        }
+        languageServiceEntries.byScope = newByScope;
+      }
+
+      projectVersionCache = newProjectVersion;
+
+      let opened = false;
+      let closed = false;
+      for (const { 0: script, 1: changeKind } of changedScripts) {
+        if (changeKind === ChangeKind.Opened) {
+          opened = true;
+        } else if (changeKind === ChangeKind.Closed) {
+          closed = true;
+        }
+        scriptVersionCache.delete(script);
+        sourceTextCache.delete(script);
+      }
+
+      if (newConfigsByScope || opened || closed) {
+        scriptNamesCache = null;
+      }
     }
 
-    // reset all memoized source files names
-    scriptFileNamesCache = undefined;
-    // evict all memoized source file versions
-    scriptVersionCache.clear();
-    switch (request.method) {
-      case "restart": {
-        serverRestart();
-        return respond(id, true);
-      }
-      case "configure": {
-        const { options, errors } = ts
-          .convertCompilerOptionsFromJson(request.compilerOptions, "");
-        Object.assign(options, {
-          allowNonTsExtensions: true,
-          allowImportingTsExtensions: true,
-        });
-        if (errors.length > 0 && logDebug) {
-          debug(ts.formatDiagnostics(errors, host));
-        }
-        compilationSettings = options;
-        return respond(id, true);
-      }
-      case "findRenameLocations": {
-        return respond(
-          id,
-          languageService.findRenameLocations(
-            request.specifier,
-            request.position,
-            request.findInStrings,
-            request.findInComments,
-            request.providePrefixAndSuffixTextForRename,
-          ),
-        );
-      }
-      case "getAssets": {
-        return respond(id, getAssets());
-      }
-      case "getApplicableRefactors": {
-        return respond(
-          id,
-          languageService.getApplicableRefactors(
-            request.specifier,
-            request.range,
-            {
-              quotePreference: "double",
-              allowTextChangesInNewFiles: true,
-              provideRefactorNotApplicableReason: true,
-            },
-            undefined,
-            request.kind,
-          ),
-        );
-      }
-      case "getEditsForRefactor": {
-        return respond(
-          id,
-          languageService.getEditsForRefactor(
-            request.specifier,
-            {
-              ...request.formatCodeSettings,
-              indentStyle: ts.IndentStyle.Smart,
-              insertSpaceBeforeAndAfterBinaryOperators: true,
-              insertSpaceAfterCommaDelimiter: true,
-            },
-            request.range,
-            request.refactorName,
-            request.actionName,
-            {
-              quotePreference: "double",
-            },
-          ),
-        );
-      }
-      case "getEditsForFileRename": {
-        return respond(
-          id,
-          languageService.getEditsForFileRename(
-            request.oldSpecifier,
-            request.newSpecifier,
-            request.formatCodeSettings,
-            request.preferences,
-          ),
-        );
-      }
-      case "getCodeFixes": {
-        return respond(
-          id,
-          languageService.getCodeFixesAtPosition(
-            request.specifier,
-            request.startPosition,
-            request.endPosition,
-            request.errorCodes.map((v) => Number(v)),
-            {
-              ...request.formatCodeSettings,
-              indentStyle: ts.IndentStyle.Block,
-            },
-            {
-              quotePreference: "double",
-            },
-          ),
-        );
-      }
-      case "getCombinedCodeFix": {
-        return respond(
-          id,
-          languageService.getCombinedCodeFix(
-            {
-              type: "file",
-              fileName: request.specifier,
-            },
-            request.fixId,
-            {
-              ...request.formatCodeSettings,
-              indentStyle: ts.IndentStyle.Block,
-            },
-            {
-              quotePreference: "double",
-            },
-          ),
-        );
-      }
-      case "getCompletionDetails": {
-        if (logDebug) {
-          debug("request", request);
-        }
-        return respond(
-          id,
-          languageService.getCompletionEntryDetails(
-            request.args.specifier,
-            request.args.position,
-            request.args.name,
-            request.args.formatCodeSettings ?? {},
-            request.args.source,
-            request.args.preferences,
-            request.args.data,
-          ),
-        );
-      }
-      case "getCompletions": {
-        return respond(
-          id,
-          languageService.getCompletionsAtPosition(
-            request.specifier,
-            request.position,
-            request.preferences,
-            request.formatCodeSettings,
-          ),
-        );
-      }
-      case "getDefinition": {
-        return respond(
-          id,
-          languageService.getDefinitionAndBoundSpan(
-            request.specifier,
-            request.position,
-          ),
-        );
-      }
-      case "getDiagnostics": {
-        try {
-          /** @type {Record<string, any[]>} */
-          const diagnosticMap = {};
-          for (const specifier of request.specifiers) {
-            diagnosticMap[specifier] = fromTypeScriptDiagnostics([
-              ...languageService.getSemanticDiagnostics(specifier),
-              ...languageService.getSuggestionDiagnostics(specifier),
-              ...languageService.getSyntacticDiagnostics(specifier),
-            ].filter(({ code }) => !IGNORED_DIAGNOSTICS.includes(code)));
-          }
-          return respond(id, diagnosticMap);
-        } catch (e) {
-          if (
-            !(e instanceof OperationCanceledError ||
-              e instanceof ts.OperationCanceledException)
-          ) {
-            if ("stack" in e) {
-              error(e.stack);
-            } else {
-              error(e);
-            }
-          }
-          return respond(id, {});
-        }
-      }
-      case "getDocumentHighlights": {
-        return respond(
-          id,
-          languageService.getDocumentHighlights(
-            request.specifier,
-            request.position,
-            request.filesToSearch,
-          ),
-        );
-      }
-      case "getEncodedSemanticClassifications": {
-        return respond(
-          id,
-          languageService.getEncodedSemanticClassifications(
-            request.specifier,
-            request.span,
-            ts.SemanticClassificationFormat.TwentyTwenty,
-          ),
-        );
-      }
-      case "getImplementation": {
-        return respond(
-          id,
-          languageService.getImplementationAtPosition(
-            request.specifier,
-            request.position,
-          ),
-        );
-      }
-      case "getNavigateToItems": {
-        return respond(
-          id,
-          languageService.getNavigateToItems(
-            request.search,
-            request.maxResultCount,
-            request.fileName,
-          ),
-        );
-      }
-      case "getNavigationTree": {
-        return respond(
-          id,
-          languageService.getNavigationTree(request.specifier),
-        );
-      }
-      case "getOutliningSpans": {
-        return respond(
-          id,
-          languageService.getOutliningSpans(
-            request.specifier,
-          ),
-        );
-      }
-      case "getQuickInfo": {
-        return respond(
-          id,
-          languageService.getQuickInfoAtPosition(
-            request.specifier,
-            request.position,
-          ),
-        );
-      }
-      case "findReferences": {
-        return respond(
-          id,
-          languageService.findReferences(
-            request.specifier,
-            request.position,
-          ),
-        );
-      }
-      case "getSignatureHelpItems": {
-        return respond(
-          id,
-          languageService.getSignatureHelpItems(
-            request.specifier,
-            request.position,
-            request.options,
-          ),
-        );
-      }
-      case "getSmartSelectionRange": {
-        return respond(
-          id,
-          languageService.getSmartSelectionRange(
-            request.specifier,
-            request.position,
-          ),
-        );
-      }
-      case "getSupportedCodeFixes": {
+    // For requests pertaining to an asset document, we make it so that the
+    // passed scope is just its own specifier. We map it to an actual scope here
+    // based on the first scope that the asset was loaded into.
+    if (scope?.startsWith(ASSETS_URL_PREFIX)) {
+      scope = assetScopes.get(scope) ?? null;
+    }
+    lastRequestMethod = method;
+    lastRequestScope = scope;
+    const ls = (scope ? languageServiceEntries.byScope.get(scope)?.ls : null) ??
+      languageServiceEntries.unscoped.ls;
+    switch (method) {
+      case "$getSupportedCodeFixes": {
         return respond(
           id,
           ts.getSupportedCodeFixes(),
         );
       }
-      case "getTypeDefinition": {
-        return respond(
-          id,
-          languageService.getTypeDefinitionAtPosition(
-            request.specifier,
-            request.position,
-          ),
-        );
+      case "$getAssets": {
+        return respond(id, getAssets());
       }
-      case "prepareCallHierarchy": {
-        return respond(
-          id,
-          languageService.prepareCallHierarchy(
-            request.specifier,
-            request.position,
-          ),
-        );
+      case "$getDiagnostics": {
+        const projectVersion = args[1];
+        // there's a possibility that we receive a change notification
+        // but the diagnostic server queues a `$getDiagnostics` request
+        // with a stale project version. in that case, treat it as cancelled
+        // (it's about to be invalidated anyway).
+        if (projectVersionCache && projectVersion !== projectVersionCache) {
+          return respond(id, {});
+        }
+        try {
+          /** @type {Record<string, any[]>} */
+          const diagnosticMap = {};
+          for (const specifier of args[0]) {
+            diagnosticMap[specifier] = fromTypeScriptDiagnostics([
+              ...ls.getSemanticDiagnostics(specifier),
+              ...ls.getSuggestionDiagnostics(specifier),
+              ...ls.getSyntacticDiagnostics(specifier),
+            ].filter(filterMapDiagnostic));
+          }
+          return respond(id, diagnosticMap);
+        } catch (e) {
+          if (
+            !isCancellationError(e)
+          ) {
+            return respond(
+              id,
+              {},
+              formatErrorWithArgs(e, [id, method, args, scope, maybeChange]),
+            );
+          }
+          return respond(id, {});
+        }
       }
-      case "provideCallHierarchyIncomingCalls": {
-        return respond(
-          id,
-          languageService.provideCallHierarchyIncomingCalls(
-            request.specifier,
-            request.position,
-          ),
-        );
-      }
-      case "provideCallHierarchyOutgoingCalls": {
-        return respond(
-          id,
-          languageService.provideCallHierarchyOutgoingCalls(
-            request.specifier,
-            request.position,
-          ),
-        );
-      }
-      case "provideInlayHints":
-        return respond(
-          id,
-          languageService.provideInlayHints(
-            request.specifier,
-            request.span,
-            request.preferences,
-          ),
-        );
       default:
+        if (typeof ls[method] === "function") {
+          // The `getCompletionEntryDetails()` method returns null if the
+          // `source` is `null` for whatever reason. It must be `undefined`.
+          if (method == "getCompletionEntryDetails") {
+            args[4] ??= undefined;
+          }
+          try {
+            return respond(id, ls[method](...args));
+          } catch (e) {
+            if (!isCancellationError(e)) {
+              return respond(
+                id,
+                null,
+                formatErrorWithArgs(e, [id, method, args, scope, maybeChange]),
+              );
+            }
+            return respond(id);
+          }
+        }
         throw new TypeError(
           // @ts-ignore exhausted case statement sets type to never
-          `Invalid request method for request: "${request.method}" (${id})`,
+          `Invalid request method for request: "${method}" (${id})`,
         );
     }
-  }
-
-  /** @param {{ debug: boolean; }} init */
-  function serverInit({ debug: debugFlag }) {
-    if (hasStarted) {
-      throw new Error("The language server has already been initialized.");
-    }
-    hasStarted = true;
-    languageService = ts.createLanguageService(host, documentRegistry);
-    setLogDebug(debugFlag, "TSLS");
-    debug("serverInit()");
-  }
-
-  function serverRestart() {
-    languageService = ts.createLanguageService(host, documentRegistry);
-    isNodeSourceFileCache.clear();
-    debug("serverRestart()");
-  }
-
-  let hasStarted = false;
-
-  /** Startup the runtime environment, setting various flags.
-   * @param {{ debugFlag?: boolean; legacyFlag?: boolean; }} msg
-   */
-  function startup({ debugFlag = false }) {
-    if (hasStarted) {
-      throw new Error("The compiler runtime already started.");
-    }
-    hasStarted = true;
-    setLogDebug(!!debugFlag, "TS");
   }
 
   // A build time only op that provides some setup information that is used to
   // ensure the snapshot is setup properly.
   /** @type {{ buildSpecifier: string; libs: string[]; nodeBuiltInModuleNames: string[] }} */
-  const { buildSpecifier, libs, nodeBuiltInModuleNames } = ops.op_build_info();
-
-  ts.deno.setNodeBuiltInModuleNames(nodeBuiltInModuleNames);
+  const { buildSpecifier, libs } = ops.op_build_info();
 
   // list of globals that should be kept in Node's globalThis
   ts.deno.setNodeOnlyGlobalNames([
-    // when bumping the @types/node version we should check if
-    // anything needs to be updated here
-    "NodeRequire",
-    "RequireResolve",
-    "RequireResolve",
-    "process",
-    "console",
-    "__filename",
     "__dirname",
-    "require",
-    "module",
+    "__filename",
+    "Buffer",
+    "BufferConstructor",
+    "BufferEncoding",
+    "clearImmediate",
+    "clearInterval",
+    "clearTimeout",
+    "console",
+    "Console",
+    "ErrorConstructor",
     "exports",
     "gc",
-    "BufferEncoding",
-    "BufferConstructor",
-    "WithImplicitCoercion",
-    "Buffer",
-    "Console",
-    "ImportMeta",
-    "setTimeout",
-    "setInterval",
-    "setImmediate",
     "Global",
-    "AbortController",
-    "AbortSignal",
-    "Blob",
-    "BroadcastChannel",
-    "MessageChannel",
-    "MessagePort",
-    "Event",
-    "EventTarget",
-    "performance",
-    "TextDecoder",
-    "TextEncoder",
-    "URL",
-    "URLSearchParams",
+    "ImportMeta",
+    "localStorage",
+    "module",
+    "NodeModule",
+    "NodeRequire",
+    "process",
+    "queueMicrotask",
+    "RequestInit",
+    "require",
+    "ResponseInit",
+    "sessionStorage",
+    "setImmediate",
+    "setInterval",
+    "setTimeout",
   ]);
 
   for (const lib of libs) {
@@ -1401,6 +1371,7 @@ delete Object.prototype.__proto__;
         `${ASSETS_URL_PREFIX}${specifier}`,
         ts.ScriptTarget.ESNext,
       ),
+      `failed to load '${ASSETS_URL_PREFIX}${specifier}'`,
     );
   }
   // this helps ensure as much as possible is in memory that is re-usable
@@ -1411,7 +1382,10 @@ delete Object.prototype.__proto__;
     options: SNAPSHOT_COMPILE_OPTIONS,
     host,
   });
-  assert(ts.getPreEmitDiagnostics(TS_SNAPSHOT_PROGRAM).length === 0);
+  assert(
+    ts.getPreEmitDiagnostics(TS_SNAPSHOT_PROGRAM).length === 0,
+    "lib.d.ts files have errors",
+  );
 
   // remove this now that we don't need it anymore for warming up tsc
   sourceFileCache.delete(buildSpecifier);
@@ -1420,12 +1394,10 @@ delete Object.prototype.__proto__;
   // checking TypeScript.
   /** @type {any} */
   const global = globalThis;
-  global.startup = startup;
   global.exec = exec;
   global.getAssets = getAssets;
 
   // exposes the functions that are called when the compiler is used as a
   // language service.
-  global.serverInit = serverInit;
-  global.serverRequest = serverRequest;
+  global.serverMainLoop = serverMainLoop;
 })(this);

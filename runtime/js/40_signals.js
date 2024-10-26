@@ -1,34 +1,32 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
-const core = globalThis.Deno.core;
-const ops = core.ops;
-const primordials = globalThis.__bootstrap.primordials;
+import { core, primordials } from "ext:core/mod.js";
+import { op_signal_bind, op_signal_poll, op_signal_unbind } from "ext:core/ops";
 const {
   SafeSet,
   SafeSetIterator,
   SetPrototypeAdd,
   SetPrototypeDelete,
-  SymbolFor,
   TypeError,
 } = primordials;
 
 function bindSignal(signo) {
-  return ops.op_signal_bind(signo);
+  return op_signal_bind(signo);
 }
 
 function pollSignal(rid) {
-  const promise = core.opAsync("op_signal_poll", rid);
-  core.unrefOp(promise[SymbolFor("Deno.core.internalPromiseId")]);
+  const promise = op_signal_poll(rid);
+  core.unrefOpPromise(promise);
   return promise;
 }
 
 function unbindSignal(rid) {
-  ops.op_signal_unbind(rid);
+  op_signal_unbind(rid);
 }
 
 // Stores signal listeners and resource data. This has type of
 // `Record<string, { rid: number | undefined, listeners: Set<() => void> }`
-const signalData = {};
+const signalData = { __proto__: null };
 
 /** Gets the signal handlers and resource data of the given signal */
 function getSignalData(signo) {

@@ -1,0 +1,9 @@
+{
+  "tempDir": true,
+  "steps": [
+    {
+      "args": "add npm:@denotest/unstable",
+      "output": "add.out"
+    }
+  ]
+}

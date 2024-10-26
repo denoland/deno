@@ -1,4 +1,7 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+
+#![allow(clippy::print_stdout)]
+#![allow(clippy::print_stderr)]
 
 use deno_core::error::AnyError;
 use deno_core::serde_json;
@@ -14,9 +17,6 @@ use std::process::Stdio;
 use std::time::SystemTime;
 use test_util::PathRef;
 
-include!("../util/time.rs");
-
-mod http;
 mod lsp;
 
 fn read_json(filename: &Path) -> Result<Value> {
@@ -37,7 +37,7 @@ const EXEC_TIME_BENCHMARKS: &[(&str, &[&str], Option<i32>)] = &[
   // invalidating that cache.
   (
     "cold_hello",
-    &["run", "--reload", "cli/tests/testdata/run/002_hello.ts"],
+    &["run", "--reload", "tests/testdata/run/002_hello.ts"],
     None,
   ),
   (
@@ -45,23 +45,19 @@ const EXEC_TIME_BENCHMARKS: &[(&str, &[&str], Option<i32>)] = &[
     &[
       "run",
       "--reload",
-      "cli/tests/testdata/run/003_relative_import.ts",
+      "tests/testdata/run/003_relative_import.ts",
     ],
     None,
   ),
-  (
-    "hello",
-    &["run", "cli/tests/testdata/run/002_hello.ts"],
-    None,
-  ),
+  ("hello", &["run", "tests/testdata/run/002_hello.ts"], None),
   (
     "relative_import",
-    &["run", "cli/tests/testdata/run/003_relative_import.ts"],
+    &["run", "tests/testdata/run/003_relative_import.ts"],
     None,
   ),
   (
     "error_001",
-    &["run", "cli/tests/testdata/run/error_001.ts"],
+    &["run", "tests/testdata/run/error_001.ts"],
     Some(1),
   ),
   (
@@ -70,7 +66,7 @@ const EXEC_TIME_BENCHMARKS: &[(&str, &[&str], Option<i32>)] = &[
       "run",
       "--reload",
       "--no-check",
-      "cli/tests/testdata/run/002_hello.ts",
+      "tests/testdata/run/002_hello.ts",
     ],
     None,
   ),
@@ -79,7 +75,7 @@ const EXEC_TIME_BENCHMARKS: &[(&str, &[&str], Option<i32>)] = &[
     &[
       "run",
       "--allow-read",
-      "cli/tests/testdata/workers/bench_startup.ts",
+      "tests/testdata/workers/bench_startup.ts",
     ],
     None,
   ),
@@ -88,7 +84,7 @@ const EXEC_TIME_BENCHMARKS: &[(&str, &[&str], Option<i32>)] = &[
     &[
       "run",
       "--allow-read",
-      "cli/tests/testdata/workers/bench_round_robin.ts",
+      "tests/testdata/workers/bench_round_robin.ts",
     ],
     None,
   ),
@@ -97,31 +93,28 @@ const EXEC_TIME_BENCHMARKS: &[(&str, &[&str], Option<i32>)] = &[
     &[
       "run",
       "--allow-read",
-      "cli/tests/testdata/workers/bench_large_message.ts",
+      "tests/testdata/workers/bench_large_message.ts",
     ],
     None,
   ),
   (
     "text_decoder",
-    &["run", "cli/tests/testdata/benches/text_decoder_perf.js"],
+    &["run", "tests/testdata/benches/text_decoder_perf.js"],
     None,
   ),
   (
     "text_encoder",
-    &["run", "cli/tests/testdata/benches/text_encoder_perf.js"],
+    &["run", "tests/testdata/benches/text_encoder_perf.js"],
     None,
   ),
   (
     "text_encoder_into",
-    &[
-      "run",
-      "cli/tests/testdata/benches/text_encoder_into_perf.js",
-    ],
+    &["run", "tests/testdata/benches/text_encoder_into_perf.js"],
     None,
   ),
   (
     "response_string",
-    &["run", "cli/tests/testdata/benches/response_string_perf.js"],
+    &["run", "tests/testdata/benches/response_string_perf.js"],
     None,
   ),
   (
@@ -130,7 +123,9 @@ const EXEC_TIME_BENCHMARKS: &[(&str, &[&str], Option<i32>)] = &[
       "check",
       "--reload",
       "--unstable",
-      "test_util/std/examples/chat/server_test.ts",
+      "--config",
+      "tests/config/deno.json",
+      "tests/util/std/http/file_server_test.ts",
     ],
     None,
   ),
@@ -141,26 +136,9 @@ const EXEC_TIME_BENCHMARKS: &[(&str, &[&str], Option<i32>)] = &[
       "--reload",
       "--no-check",
       "--unstable",
-      "test_util/std/examples/chat/server_test.ts",
-    ],
-    None,
-  ),
-  (
-    "bundle",
-    &[
-      "bundle",
-      "--unstable",
-      "test_util/std/examples/chat/server_test.ts",
-    ],
-    None,
-  ),
-  (
-    "bundle_no_check",
-    &[
-      "bundle",
-      "--no-check",
-      "--unstable",
-      "test_util/std/examples/chat/server_test.ts",
+      "--config",
+      "tests/config/deno.json",
+      "tests/util/std/http/file_server_test.ts",
     ],
     None,
   ),
@@ -312,38 +290,6 @@ fn get_binary_sizes(target_dir: &Path) -> Result<HashMap<String, i64>> {
   Ok(sizes)
 }
 
-const BUNDLES: &[(&str, &str)] = &[
-  ("file_server", "./test_util/std/http/file_server.ts"),
-  ("gist", "./test_util/std/examples/gist.ts"),
-];
-fn bundle_benchmark(deno_exe: &Path) -> Result<HashMap<String, i64>> {
-  let mut sizes = HashMap::<String, i64>::new();
-
-  for (name, url) in BUNDLES {
-    let path = format!("{name}.bundle.js");
-    test_util::run(
-      &[
-        deno_exe.to_str().unwrap(),
-        "bundle",
-        "--unstable",
-        url,
-        &path,
-      ],
-      None,
-      None,
-      None,
-      true,
-    );
-
-    let file = PathBuf::from(path);
-    assert!(file.is_file());
-    sizes.insert(name.to_string(), file.metadata()?.len() as i64);
-    let _ = fs::remove_file(file);
-  }
-
-  Ok(sizes)
-}
-
 fn run_max_mem_benchmark(deno_exe: &Path) -> Result<HashMap<String, i64>> {
   let mut results = HashMap::<String, i64>::new();
 
@@ -398,9 +344,11 @@ struct BenchResult {
   binary_size: HashMap<String, i64>,
   bundle_size: HashMap<String, i64>,
   cargo_deps: usize,
+  // TODO(bartlomieju): remove
   max_latency: HashMap<String, f64>,
   max_memory: HashMap<String, i64>,
   lsp_exec_time: HashMap<String, i64>,
+  // TODO(bartlomieju): remove
   req_per_sec: HashMap<String, i64>,
   syscall_count: HashMap<String, i64>,
   thread_count: HashMap<String, i64>,
@@ -411,12 +359,10 @@ async fn main() -> Result<()> {
   let mut args = env::args();
 
   let mut benchmarks = vec![
-    "bundle",
     "exec_time",
     "binary_size",
     "cargo_deps",
     "lsp",
-    "http",
     "strace",
     "mem_usage",
   ];
@@ -438,11 +384,16 @@ async fn main() -> Result<()> {
   println!("Starting Deno benchmark");
 
   let target_dir = test_util::target_dir();
-  let deno_exe = test_util::deno_exe_path().to_path_buf();
+  let deno_exe = if let Ok(p) = std::env::var("DENO_BENCH_EXE") {
+    PathBuf::from(p)
+  } else {
+    test_util::deno_exe_path().to_path_buf()
+  };
   env::set_current_dir(test_util::root_path())?;
 
   let mut new_data = BenchResult {
-    created_at: utc_now().to_rfc3339_opts(chrono::SecondsFormat::Secs, true),
+    created_at: chrono::Utc::now()
+      .to_rfc3339_opts(chrono::SecondsFormat::Secs, true),
     sha1: test_util::run_collect(
       &["git", "rev-parse", "HEAD"],
       None,
@@ -455,11 +406,6 @@ async fn main() -> Result<()> {
     .to_string(),
     ..Default::default()
   };
-
-  if benchmarks.contains(&"bundle") {
-    let bundle_size = bundle_benchmark(&deno_exe)?;
-    new_data.bundle_size = bundle_size;
-  }
 
   if benchmarks.contains(&"exec_time") {
     let exec_times = run_exec_time(&deno_exe, &target_dir)?;
@@ -479,21 +425,6 @@ async fn main() -> Result<()> {
   if benchmarks.contains(&"lsp") {
     let lsp_exec_times = lsp::benchmarks(&deno_exe);
     new_data.lsp_exec_time = lsp_exec_times;
-  }
-
-  if benchmarks.contains(&"http") && cfg!(not(target_os = "windows")) {
-    let stats = http::benchmark(target_dir.as_path())?;
-    let req_per_sec = stats
-      .iter()
-      .map(|(name, result)| (name.clone(), result.requests as i64))
-      .collect();
-    new_data.req_per_sec = req_per_sec;
-    let max_latency = stats
-      .iter()
-      .map(|(name, result)| (name.clone(), result.latency))
-      .collect();
-
-    new_data.max_latency = max_latency;
   }
 
   if cfg!(target_os = "linux") && benchmarks.contains(&"strace") {

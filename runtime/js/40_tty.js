@@ -1,20 +1,24 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
-const core = globalThis.Deno.core;
-const ops = core.ops;
-const primordials = globalThis.__bootstrap.primordials;
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+import { core, primordials } from "ext:core/mod.js";
+import { op_console_size } from "ext:core/ops";
 const {
   Uint32Array,
 } = primordials;
+const {
+  isTerminal,
+} = core;
 
 const size = new Uint32Array(2);
 
 function consoleSize() {
-  ops.op_console_size(size);
+  op_console_size(size);
   return { columns: size[0], rows: size[1] };
 }
 
+// Note: This function was soft-removed in Deno 2. Its types have been removed,
+// but its implementation has been kept to avoid breaking changes.
 function isatty(rid) {
-  return ops.op_isatty(rid);
+  return isTerminal(rid);
 }
 
 export { consoleSize, isatty };

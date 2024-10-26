@@ -1,0 +1,4 @@
+
+openssl req -x509 -newkey rsa:2048 -nodes -keyout example2_prikey.pem -out example2_cert.der -subj "/C=US/ST=State/L=Locality/O=Organization/CN=example2.com" -outform der
+
+openssl pkey -in example2_prikey.pem -out example2_prikey.der -outform der

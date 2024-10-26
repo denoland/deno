@@ -1,4 +1,4 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 // Adapted from https://github.com/jsdom/webidl-conversions.
 // Copyright Domenic Denicola. Licensed under BSD-2-Clause License.
@@ -6,10 +6,14 @@
 
 /// <reference path="../../core/internal.d.ts" />
 
-const core = globalThis.Deno.core;
-const primordials = globalThis.__bootstrap.primordials;
+import { core, primordials } from "ext:core/mod.js";
 const {
-  ArrayBufferPrototype,
+  isArrayBuffer,
+  isDataView,
+  isSharedArrayBuffer,
+  isTypedArray,
+} = core;
+const {
   ArrayBufferIsView,
   ArrayPrototypeForEach,
   ArrayPrototypePush,
@@ -25,7 +29,6 @@ const {
   Int16Array,
   Int32Array,
   Int8Array,
-  isNaN,
   MathFloor,
   MathFround,
   MathMax,
@@ -36,9 +39,7 @@ const {
   Number,
   NumberIsFinite,
   NumberIsNaN,
-  // deno-lint-ignore camelcase
   NumberMAX_SAFE_INTEGER,
-  // deno-lint-ignore camelcase
   NumberMIN_SAFE_INTEGER,
   ObjectAssign,
   ObjectCreate,
@@ -70,10 +71,10 @@ const {
   SetPrototypeDelete,
   SetPrototypeAdd,
   // TODO(lucacasonato): add SharedArrayBuffer to primordials
-  // SharedArrayBufferPrototype
+  // SharedArrayBufferPrototype,
   String,
-  StringFromCodePoint,
   StringPrototypeCharCodeAt,
+  StringPrototypeToWellFormed,
   Symbol,
   SymbolIterator,
   SymbolToStringTag,
@@ -94,7 +95,7 @@ function makeException(ErrorType, message, prefix, context) {
 
 function toNumber(value) {
   if (typeof value === "bigint") {
-    throw TypeError("Cannot convert a BigInt value to a number");
+    throw new TypeError("Cannot convert a BigInt value to a number");
   }
   return Number(value);
 }
@@ -191,7 +192,12 @@ function createIntegerConversion(bitLength, typeOpts) {
   const twoToTheBitLength = MathPow(2, bitLength);
   const twoToOneLessThanTheBitLength = MathPow(2, bitLength - 1);
 
-  return (V, prefix = undefined, context = undefined, opts = {}) => {
+  return (
+    V,
+    prefix = undefined,
+    context = undefined,
+    opts = { __proto__: null },
+  ) => {
     let x = toNumber(V);
     x = censorNegativeZero(x);
 
@@ -250,7 +256,12 @@ function createLongLongConversion(bitLength, { unsigned }) {
   const lowerBound = unsigned ? 0 : NumberMIN_SAFE_INTEGER;
   const asBigIntN = unsigned ? BigIntAsUintN : BigIntAsIntN;
 
-  return (V, prefix = undefined, context = undefined, opts = {}) => {
+  return (
+    V,
+    prefix = undefined,
+    context = undefined,
+    opts = { __proto__: null },
+  ) => {
     let x = toNumber(V);
     x = censorNegativeZero(x);
 
@@ -353,7 +364,7 @@ converters.float = (V, prefix, context, _opts) => {
 converters["unrestricted float"] = (V, _prefix, _context, _opts) => {
   const x = toNumber(V);
 
-  if (isNaN(x)) {
+  if (NumberIsNaN(x)) {
     return x;
   }
 
@@ -385,7 +396,12 @@ converters["unrestricted double"] = (V, _prefix, _context, _opts) => {
   return x;
 };
 
-converters.DOMString = function (V, prefix, context, opts = {}) {
+converters.DOMString = function (
+  V,
+  prefix,
+  context,
+  opts = { __proto__: null },
+) {
   if (typeof V === "string") {
     return V;
   } else if (V === null && opts.treatNullAsEmptyString) {
@@ -427,29 +443,7 @@ converters.ByteString = (V, prefix, context, opts) => {
 
 converters.USVString = (V, prefix, context, opts) => {
   const S = converters.DOMString(V, prefix, context, opts);
-  const n = S.length;
-  let U = "";
-  for (let i = 0; i < n; ++i) {
-    const c = StringPrototypeCharCodeAt(S, i);
-    if (c < 0xd800 || c > 0xdfff) {
-      U += StringFromCodePoint(c);
-    } else if (0xdc00 <= c && c <= 0xdfff) {
-      U += StringFromCodePoint(0xfffd);
-    } else if (i === n - 1) {
-      U += StringFromCodePoint(0xfffd);
-    } else {
-      const d = StringPrototypeCharCodeAt(S, i + 1);
-      if (0xdc00 <= d && d <= 0xdfff) {
-        const a = c & 0x3ff;
-        const b = d & 0x3ff;
-        U += StringFromCodePoint((2 << 15) + (2 << 9) * a + b);
-        ++i;
-      } else {
-        U += StringFromCodePoint(0xfffd);
-      }
-    }
-  }
-  return U;
+  return StringPrototypeToWellFormed(S);
 };
 
 converters.object = (V, prefix, context, _opts) => {
@@ -481,27 +475,13 @@ function convertCallbackFunction(V, prefix, context, _opts) {
   return V;
 }
 
-function isDataView(V) {
-  return ArrayBufferIsView(V) &&
-    TypedArrayPrototypeGetSymbolToStringTag(V) === undefined;
-}
-
-function isNonSharedArrayBuffer(V) {
-  return ObjectPrototypeIsPrototypeOf(ArrayBufferPrototype, V);
-}
-
-function isSharedArrayBuffer(V) {
-  // deno-lint-ignore prefer-primordials
-  return ObjectPrototypeIsPrototypeOf(SharedArrayBuffer.prototype, V);
-}
-
 converters.ArrayBuffer = (
   V,
   prefix = undefined,
   context = undefined,
-  opts = {},
+  opts = { __proto__: null },
 ) => {
-  if (!isNonSharedArrayBuffer(V)) {
+  if (!isArrayBuffer(V)) {
     if (opts.allowShared && !isSharedArrayBuffer(V)) {
       throw makeException(
         TypeError,
@@ -525,7 +505,7 @@ converters.DataView = (
   V,
   prefix = undefined,
   context = undefined,
-  opts = {},
+  opts = { __proto__: null },
 ) => {
   if (!isDataView(V)) {
     throw makeException(
@@ -536,7 +516,10 @@ converters.DataView = (
     );
   }
 
-  if (!opts.allowShared && isSharedArrayBuffer(DataViewPrototypeGetBuffer(V))) {
+  if (
+    !opts.allowShared &&
+    isSharedArrayBuffer(DataViewPrototypeGetBuffer(V))
+  ) {
     throw makeException(
       TypeError,
       "is backed by a SharedArrayBuffer, which is not allowed",
@@ -557,6 +540,8 @@ ArrayPrototypeForEach(
     Uint16Array,
     Uint32Array,
     Uint8ClampedArray,
+    // TODO(petamoriken): add Float16Array converter
+    // Float16Array,
     Float32Array,
     Float64Array,
   ],
@@ -569,7 +554,7 @@ ArrayPrototypeForEach(
       V,
       prefix = undefined,
       context = undefined,
-      opts = {},
+      opts = { __proto__: null },
     ) => {
       if (TypedArrayPrototypeGetSymbolToStringTag(V) !== name) {
         throw makeException(
@@ -602,7 +587,7 @@ converters.ArrayBufferView = (
   V,
   prefix = undefined,
   context = undefined,
-  opts = {},
+  opts = { __proto__: null },
 ) => {
   if (!ArrayBufferIsView(V)) {
     throw makeException(
@@ -613,7 +598,7 @@ converters.ArrayBufferView = (
     );
   }
   let buffer;
-  if (TypedArrayPrototypeGetSymbolToStringTag(V) !== undefined) {
+  if (isTypedArray(V)) {
     buffer = TypedArrayPrototypeGetBuffer(V);
   } else {
     buffer = DataViewPrototypeGetBuffer(V);
@@ -634,11 +619,11 @@ converters.BufferSource = (
   V,
   prefix = undefined,
   context = undefined,
-  opts = {},
+  opts = { __proto__: null },
 ) => {
   if (ArrayBufferIsView(V)) {
     let buffer;
-    if (TypedArrayPrototypeGetSymbolToStringTag(V) !== undefined) {
+    if (isTypedArray(V)) {
       buffer = TypedArrayPrototypeGetBuffer(V);
     } else {
       buffer = DataViewPrototypeGetBuffer(V);
@@ -655,7 +640,7 @@ converters.BufferSource = (
     return V;
   }
 
-  if (!opts.allowShared && !isNonSharedArrayBuffer(V)) {
+  if (!opts.allowShared && !isArrayBuffer(V)) {
     throw makeException(
       TypeError,
       "is not an ArrayBuffer or a view on one",
@@ -666,7 +651,7 @@ converters.BufferSource = (
   if (
     opts.allowShared &&
     !isSharedArrayBuffer(V) &&
-    !isNonSharedArrayBuffer(V)
+    !isArrayBuffer(V)
   ) {
     throw makeException(
       TypeError,
@@ -727,7 +712,7 @@ function requiredArguments(length, required, prefix) {
   if (length < required) {
     const errMsg = `${prefix ? prefix + ": " : ""}${required} argument${
       required === 1 ? "" : "s"
-    } required, but only ${length} present.`;
+    } required, but only ${length} present`;
     throw new TypeError(errMsg);
   }
 }
@@ -752,7 +737,7 @@ function createDictionaryConverter(name, ...dictionaries) {
     return a.key < b.key ? -1 : 1;
   });
 
-  const defaultValues = {};
+  const defaultValues = { __proto__: null };
   for (let i = 0; i < allMembers.length; ++i) {
     const member = allMembers[i];
     if (ReflectHas(member, "defaultValue")) {
@@ -768,6 +753,7 @@ function createDictionaryConverter(name, ...dictionaries) {
         defaultValues[member.key] = member.converter(idlMemberValue, {});
       } else {
         ObjectDefineProperty(defaultValues, member.key, {
+          __proto__: null,
           get() {
             return member.converter(idlMemberValue, member.defaultValue);
           },
@@ -777,7 +763,12 @@ function createDictionaryConverter(name, ...dictionaries) {
     }
   }
 
-  return function (V, prefix = undefined, context = undefined, opts = {}) {
+  return function (
+    V,
+    prefix = undefined,
+    context = undefined,
+    opts = { __proto__: null },
+  ) {
     const typeV = type(V);
     switch (typeV) {
       case "Undefined":
@@ -827,7 +818,7 @@ function createDictionaryConverter(name, ...dictionaries) {
       } else if (member.required) {
         throw makeException(
           TypeError,
-          `can not be converted to '${name}' because '${key}' is required in '${name}'.`,
+          `can not be converted to '${name}' because '${key}' is required in '${name}'`,
           prefix,
           context,
         );
@@ -842,14 +833,19 @@ function createDictionaryConverter(name, ...dictionaries) {
 function createEnumConverter(name, values) {
   const E = new SafeSet(values);
 
-  return function (V, prefix = undefined, _context = undefined, _opts = {}) {
+  return function (
+    V,
+    prefix = undefined,
+    _context = undefined,
+    _opts = { __proto__: null },
+  ) {
     const S = String(V);
 
     if (!E.has(S)) {
       throw new TypeError(
         `${
           prefix ? prefix + ": " : ""
-        }The provided value '${S}' is not a valid enum value of type ${name}.`,
+        }The provided value '${S}' is not a valid enum value of type ${name}`,
       );
     }
 
@@ -858,7 +854,12 @@ function createEnumConverter(name, values) {
 }
 
 function createNullableConverter(converter) {
-  return (V, prefix = undefined, context = undefined, opts = {}) => {
+  return (
+    V,
+    prefix = undefined,
+    context = undefined,
+    opts = { __proto__: null },
+  ) => {
     // FIXME: If Type(V) is not Object, and the conversion to an IDL value is
     // being performed due to V being assigned to an attribute whose type is a
     // nullable callback function that is annotated with
@@ -872,7 +873,12 @@ function createNullableConverter(converter) {
 
 // https://heycam.github.io/webidl/#es-sequence
 function createSequenceConverter(converter) {
-  return function (V, prefix = undefined, context = undefined, opts = {}) {
+  return function (
+    V,
+    prefix = undefined,
+    context = undefined,
+    opts = { __proto__: null },
+  ) {
     if (type(V) !== "Object") {
       throw makeException(
         TypeError,
@@ -919,12 +925,12 @@ function createRecordConverter(keyConverter, valueConverter) {
     if (type(V) !== "Object") {
       throw makeException(
         TypeError,
-        "can not be converted to dictionary.",
+        "can not be converted to dictionary",
         prefix,
         context,
       );
     }
-    const result = {};
+    const result = { __proto__: null };
     // Fast path for common case (not a Proxy)
     if (!core.isProxy(V)) {
       for (const key in V) {
@@ -990,7 +996,7 @@ function createInterfaceConverter(name, prototype) {
     if (!ObjectPrototypeIsPrototypeOf(prototype, V) || V[brand] !== brand) {
       throw makeException(
         TypeError,
-        `is not of type ${name}.`,
+        `is not of type ${name}`,
         prefix,
         context,
       );
@@ -1071,6 +1077,7 @@ function mixinPairIterable(name, prototype, dataSymbol, keyKey, valueKey) {
   function createDefaultIterator(target, kind) {
     const iterator = ObjectCreate(iteratorPrototype);
     ObjectDefineProperty(iterator, _iteratorInternal, {
+      __proto__: null,
       value: { target, kind, index: 0 },
       configurable: true,
     });
@@ -1140,36 +1147,45 @@ function mixinPairIterable(name, prototype, dataSymbol, keyKey, valueKey) {
   return ObjectDefineProperties(prototype.prototype, properties);
 }
 
-function configurePrototype(prototype) {
-  const descriptors = ObjectGetOwnPropertyDescriptors(prototype.prototype);
+function configureInterface(interface_) {
+  configureProperties(interface_);
+  configureProperties(interface_.prototype);
+  ObjectDefineProperty(interface_.prototype, SymbolToStringTag, {
+    __proto__: null,
+    value: interface_.name,
+    enumerable: false,
+    configurable: true,
+    writable: false,
+  });
+}
+
+function configureProperties(obj) {
+  const descriptors = ObjectGetOwnPropertyDescriptors(obj);
   for (const key in descriptors) {
     if (!ObjectHasOwn(descriptors, key)) {
       continue;
     }
     if (key === "constructor") continue;
+    if (key === "prototype") continue;
     const descriptor = descriptors[key];
     if (
       ReflectHas(descriptor, "value") &&
       typeof descriptor.value === "function"
     ) {
-      ObjectDefineProperty(prototype.prototype, key, {
+      ObjectDefineProperty(obj, key, {
+        __proto__: null,
         enumerable: true,
         writable: true,
         configurable: true,
       });
     } else if (ReflectHas(descriptor, "get")) {
-      ObjectDefineProperty(prototype.prototype, key, {
+      ObjectDefineProperty(obj, key, {
+        __proto__: null,
         enumerable: true,
         configurable: true,
       });
     }
   }
-  ObjectDefineProperty(prototype.prototype, SymbolToStringTag, {
-    value: prototype.name,
-    enumerable: false,
-    configurable: true,
-    writable: false,
-  });
 }
 
 const setlikeInner = Symbol("[[set]]");
@@ -1178,6 +1194,7 @@ const setlikeInner = Symbol("[[set]]");
 function setlike(obj, objPrototype, readonly) {
   ObjectDefineProperties(obj, {
     size: {
+      __proto__: null,
       configurable: true,
       enumerable: true,
       get() {
@@ -1186,6 +1203,7 @@ function setlike(obj, objPrototype, readonly) {
       },
     },
     [SymbolIterator]: {
+      __proto__: null,
       configurable: true,
       enumerable: false,
       writable: true,
@@ -1195,6 +1213,7 @@ function setlike(obj, objPrototype, readonly) {
       },
     },
     entries: {
+      __proto__: null,
       configurable: true,
       enumerable: true,
       writable: true,
@@ -1204,6 +1223,7 @@ function setlike(obj, objPrototype, readonly) {
       },
     },
     keys: {
+      __proto__: null,
       configurable: true,
       enumerable: true,
       writable: true,
@@ -1213,6 +1233,7 @@ function setlike(obj, objPrototype, readonly) {
       },
     },
     values: {
+      __proto__: null,
       configurable: true,
       enumerable: true,
       writable: true,
@@ -1222,6 +1243,7 @@ function setlike(obj, objPrototype, readonly) {
       },
     },
     forEach: {
+      __proto__: null,
       configurable: true,
       enumerable: true,
       writable: true,
@@ -1231,6 +1253,7 @@ function setlike(obj, objPrototype, readonly) {
       },
     },
     has: {
+      __proto__: null,
       configurable: true,
       enumerable: true,
       writable: true,
@@ -1244,6 +1267,7 @@ function setlike(obj, objPrototype, readonly) {
   if (!readonly) {
     ObjectDefineProperties(obj, {
       add: {
+        __proto__: null,
         configurable: true,
         enumerable: true,
         writable: true,
@@ -1253,6 +1277,7 @@ function setlike(obj, objPrototype, readonly) {
         },
       },
       delete: {
+        __proto__: null,
         configurable: true,
         enumerable: true,
         writable: true,
@@ -1262,6 +1287,7 @@ function setlike(obj, objPrototype, readonly) {
         },
       },
       clear: {
+        __proto__: null,
         configurable: true,
         enumerable: true,
         writable: true,
@@ -1277,7 +1303,7 @@ function setlike(obj, objPrototype, readonly) {
 export {
   assertBranded,
   brand,
-  configurePrototype,
+  configureInterface,
   converters,
   createBranded,
   createDictionaryConverter,

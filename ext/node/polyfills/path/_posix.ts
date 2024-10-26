@@ -1,6 +1,6 @@
 // Copyright the Browserify authors. MIT License.
 // Ported from https://github.com/browserify/path-browserify/
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 // TODO(petamoriken): enable prefer-primordials for node polyfills
 // deno-lint-ignore-file prefer-primordials
@@ -478,6 +478,9 @@ export function parse(path: string): ParsedPath {
 
   return ret;
 }
+
+export const _makeLong = toNamespacedPath;
+
 export default {
   basename,
   delimiter,
@@ -492,4 +495,5 @@ export default {
   resolve,
   sep,
   toNamespacedPath,
+  _makeLong,
 };

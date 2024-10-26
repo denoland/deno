@@ -1,7 +1,6 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
-use deno_core::error::AnyError;
-use deno_core::op;
+use deno_core::op2;
 use deno_core::unsync::spawn_blocking;
 use deno_core::ToJsBuffer;
 use elliptic_curve::rand_core::OsRng;
@@ -15,6 +14,26 @@ use rsa::RsaPrivateKey;
 use serde::Deserialize;
 
 use crate::shared::*;
+
+#[derive(Debug, thiserror::Error)]
+pub enum GenerateKeyError {
+  #[error(transparent)]
+  General(#[from] SharedError),
+  #[error("Bad public exponent")]
+  BadPublicExponent,
+  #[error("Invalid HMAC key length")]
+  InvalidHMACKeyLength,
+  #[error("Failed to serialize RSA key")]
+  FailedRSAKeySerialization,
+  #[error("Invalid AES key length")]
+  InvalidAESKeyLength,
+  #[error("Failed to generate RSA key")]
+  FailedRSAKeyGeneration,
+  #[error("Failed to generate EC key")]
+  FailedECKeyGeneration,
+  #[error("Failed to generate key")]
+  FailedKeyGeneration,
+}
 
 // Allowlist for RSA public exponents.
 static PUB_EXPONENT_1: Lazy<BigUint> =
@@ -42,10 +61,11 @@ pub enum GenerateKeyOptions {
   },
 }
 
-#[op]
+#[op2(async)]
+#[serde]
 pub async fn op_crypto_generate_key(
-  opts: GenerateKeyOptions,
-) -> Result<ToJsBuffer, AnyError> {
+  #[serde] opts: GenerateKeyOptions,
+) -> Result<ToJsBuffer, GenerateKeyError> {
   let fun = || match opts {
     GenerateKeyOptions::Rsa {
       modulus_length,
@@ -64,50 +84,58 @@ pub async fn op_crypto_generate_key(
 fn generate_key_rsa(
   modulus_length: u32,
   public_exponent: &[u8],
-) -> Result<Vec<u8>, AnyError> {
+) -> Result<Vec<u8>, GenerateKeyError> {
   let exponent = BigUint::from_bytes_be(public_exponent);
   if exponent != *PUB_EXPONENT_1 && exponent != *PUB_EXPONENT_2 {
-    return Err(operation_error("Bad public exponent"));
+    return Err(GenerateKeyError::BadPublicExponent);
   }
 
   let mut rng = OsRng;
 
   let private_key =
     RsaPrivateKey::new_with_exp(&mut rng, modulus_length as usize, &exponent)
-      .map_err(|_| operation_error("Failed to generate RSA key"))?;
+      .map_err(|_| GenerateKeyError::FailedRSAKeyGeneration)?;
 
   let private_key = private_key
     .to_pkcs1_der()
-    .map_err(|_| operation_error("Failed to serialize RSA key"))?;
+    .map_err(|_| GenerateKeyError::FailedRSAKeySerialization)?;
 
   Ok(private_key.as_bytes().to_vec())
 }
 
-fn generate_key_ec(named_curve: EcNamedCurve) -> Result<Vec<u8>, AnyError> {
+fn generate_key_ec_p521() -> Vec<u8> {
+  let mut rng = OsRng;
+  let key = p521::SecretKey::random(&mut rng);
+  key.to_nonzero_scalar().to_bytes().to_vec()
+}
+
+fn generate_key_ec(
+  named_curve: EcNamedCurve,
+) -> Result<Vec<u8>, GenerateKeyError> {
   let curve = match named_curve {
     EcNamedCurve::P256 => &ring::signature::ECDSA_P256_SHA256_FIXED_SIGNING,
     EcNamedCurve::P384 => &ring::signature::ECDSA_P384_SHA384_FIXED_SIGNING,
-    _ => return Err(not_supported_error("Unsupported named curve")),
+    EcNamedCurve::P521 => return Ok(generate_key_ec_p521()),
   };
 
   let rng = ring::rand::SystemRandom::new();
 
   let pkcs8 = EcdsaKeyPair::generate_pkcs8(curve, &rng)
-    .map_err(|_| operation_error("Failed to generate EC key"))?;
+    .map_err(|_| GenerateKeyError::FailedECKeyGeneration)?;
 
   Ok(pkcs8.as_ref().to_vec())
 }
 
-fn generate_key_aes(length: usize) -> Result<Vec<u8>, AnyError> {
+fn generate_key_aes(length: usize) -> Result<Vec<u8>, GenerateKeyError> {
   if length % 8 != 0 || length > 256 {
-    return Err(operation_error("Invalid AES key length"));
+    return Err(GenerateKeyError::InvalidAESKeyLength);
   }
 
   let mut key = vec![0u8; length / 8];
   let rng = ring::rand::SystemRandom::new();
   rng
     .fill(&mut key)
-    .map_err(|_| operation_error("Failed to generate key"))?;
+    .map_err(|_| GenerateKeyError::FailedKeyGeneration)?;
 
   Ok(key)
 }
@@ -115,7 +143,7 @@ fn generate_key_aes(length: usize) -> Result<Vec<u8>, AnyError> {
 fn generate_key_hmac(
   hash: ShaHash,
   length: Option<usize>,
-) -> Result<Vec<u8>, AnyError> {
+) -> Result<Vec<u8>, GenerateKeyError> {
   let hash = match hash {
     ShaHash::Sha1 => &ring::hmac::HMAC_SHA1_FOR_LEGACY_USE_ONLY,
     ShaHash::Sha256 => &ring::hmac::HMAC_SHA256,
@@ -125,24 +153,24 @@ fn generate_key_hmac(
 
   let length = if let Some(length) = length {
     if length % 8 != 0 {
-      return Err(operation_error("Invalid HMAC key length"));
+      return Err(GenerateKeyError::InvalidHMACKeyLength);
     }
 
     let length = length / 8;
     if length > ring::digest::MAX_BLOCK_LEN {
-      return Err(operation_error("Invalid HMAC key length"));
+      return Err(GenerateKeyError::InvalidHMACKeyLength);
     }
 
     length
   } else {
-    hash.digest_algorithm().block_len
+    hash.digest_algorithm().block_len()
   };
 
   let rng = ring::rand::SystemRandom::new();
   let mut key = vec![0u8; length];
   rng
     .fill(&mut key)
-    .map_err(|_| operation_error("Failed to generate key"))?;
+    .map_err(|_| GenerateKeyError::FailedKeyGeneration)?;
 
   Ok(key)
 }

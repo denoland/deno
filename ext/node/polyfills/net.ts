@@ -1,4 +1,4 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 // Copyright Joyent, Inc. and other Node contributors.
 //
 // Permission is hereby granted, free of charge, to any person obtaining a
@@ -24,6 +24,8 @@
 // deno-lint-ignore-file prefer-primordials
 
 import { notImplemented } from "ext:deno_node/_utils.ts";
+import { BlockList, SocketAddress } from "ext:deno_node/internal/blocklist.mjs";
+
 import { EventEmitter } from "node:events";
 import {
   isIP,
@@ -949,7 +951,6 @@ export class Socket extends Duplex {
    */
   override pause(): this {
     if (
-      this[kBuffer] &&
       !this.connecting &&
       this._handle &&
       this._handle.reading
@@ -1870,23 +1871,13 @@ function _setupListenHandle(
 
     // Try to bind to the unspecified IPv6 address, see if IPv6 is available
     if (!address && typeof fd !== "number") {
-      // TODO(@bartlomieju): differs from Node which tries to bind to IPv6 first
-      // when no address is provided.
-      //
-      // Forcing IPv4 as a workaround for Deno not aligning with Node on
-      // implicit binding on Windows.
-      //
-      // REF: https://github.com/denoland/deno/issues/10762
-      // rval = _createServerHandle(DEFAULT_IPV6_ADDR, port, 6, fd, flags);
-
-      // if (typeof rval === "number") {
-      //   rval = null;
-      address = DEFAULT_IPV4_ADDR;
-      addressType = 4;
-      // } else {
-      //   address = DEFAULT_IPV6_ADDR;
-      //   addressType = 6;
-      // }
+      if (isWindows) {
+        address = DEFAULT_IPV4_ADDR;
+        addressType = 4;
+      } else {
+        address = DEFAULT_IPV6_ADDR;
+        addressType = 6;
+      }
     }
 
     if (rval === null) {
@@ -2472,7 +2463,7 @@ export function createServer(
   return new Server(options, connectionListener);
 }
 
-export { isIP, isIPv4, isIPv6 };
+export { BlockList, isIP, isIPv4, isIPv6, SocketAddress };
 
 export default {
   _createServerHandle,
@@ -2480,6 +2471,8 @@ export default {
   isIP,
   isIPv4,
   isIPv6,
+  BlockList,
+  SocketAddress,
   connect,
   createConnection,
   createServer,

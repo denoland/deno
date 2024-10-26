@@ -1,10 +1,11 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
-const core = globalThis.Deno.core;
-const ops = core.ops;
-import { pathFromURL } from "ext:deno_web/00_infra.js";
-import { Event, EventTarget } from "ext:deno_web/02_event.js";
-const primordials = globalThis.__bootstrap.primordials;
+import { primordials } from "ext:core/mod.js";
+import {
+  op_query_permission,
+  op_request_permission,
+  op_revoke_permission,
+} from "ext:core/ops";
 const {
   ArrayIsArray,
   ArrayPrototypeIncludes,
@@ -24,6 +25,9 @@ const {
   TypeError,
 } = primordials;
 
+import { pathFromURL } from "ext:deno_web/00_infra.js";
+import { Event, EventTarget } from "ext:deno_web/02_event.js";
+
 const illegalConstructorKey = Symbol("illegalConstructorKey");
 
 /**
@@ -33,7 +37,7 @@ const illegalConstructorKey = Symbol("illegalConstructorKey");
  * @property {boolean} partial
  */
 
-/** @type {ReadonlyArray<"read" | "write" | "net" | "env" | "sys" | "run" | "ffi" | "hrtime">} */
+/** @type {ReadonlyArray<"read" | "write" | "net" | "env" | "sys" | "run" | "ffi">} */
 const permissionNames = [
   "read",
   "write",
@@ -42,7 +46,6 @@ const permissionNames = [
   "sys",
   "run",
   "ffi",
-  "hrtime",
 ];
 
 /**
@@ -50,7 +53,7 @@ const permissionNames = [
  * @returns {Deno.PermissionState}
  */
 function opQuery(desc) {
-  return ops.op_query_permission(desc);
+  return op_query_permission(desc);
 }
 
 /**
@@ -58,7 +61,7 @@ function opQuery(desc) {
  * @returns {Deno.PermissionState}
  */
 function opRevoke(desc) {
-  return ops.op_revoke_permission(desc);
+  return op_revoke_permission(desc);
 }
 
 /**
@@ -66,7 +69,7 @@ function opRevoke(desc) {
  * @returns {Deno.PermissionState}
  */
 function opRequest(desc) {
-  return ops.op_request_permission(desc);
+  return op_request_permission(desc);
 }
 
 class PermissionStatus extends EventTarget {
@@ -92,7 +95,7 @@ class PermissionStatus extends EventTarget {
    */
   constructor(status = null, key = null) {
     if (key != illegalConstructorKey) {
-      throw new TypeError("Illegal constructor.");
+      throw new TypeError("Illegal constructor");
     }
     super();
     this.#status = status;
@@ -111,10 +114,10 @@ class PermissionStatus extends EventTarget {
     return dispatched;
   }
 
-  [SymbolFor("Deno.privateCustomInspect")](inspect) {
+  [SymbolFor("Deno.privateCustomInspect")](inspect, inspectOptions) {
     const object = { state: this.state, onchange: this.onchange };
     if (this.partial) object.partial = this.partial;
-    return `${this.constructor.name} ${inspect(object)}`;
+    return `${this.constructor.name} ${inspect(object, inspectOptions)}`;
   }
 }
 
@@ -191,7 +194,7 @@ function formDescriptor(desc) {
 class Permissions {
   constructor(key = null) {
     if (key != illegalConstructorKey) {
-      throw new TypeError("Illegal constructor.");
+      throw new TypeError("Illegal constructor");
     }
   }
 
@@ -206,7 +209,7 @@ class Permissions {
   querySync(desc) {
     if (!isValidDescriptor(desc)) {
       throw new TypeError(
-        `The provided value "${desc?.name}" is not a valid permission name.`,
+        `The provided value "${desc?.name}" is not a valid permission name`,
       );
     }
 
@@ -227,7 +230,7 @@ class Permissions {
   revokeSync(desc) {
     if (!isValidDescriptor(desc)) {
       throw new TypeError(
-        `The provided value "${desc?.name}" is not a valid permission name.`,
+        `The provided value "${desc?.name}" is not a valid permission name`,
       );
     }
 
@@ -264,9 +267,15 @@ const permissions = new Permissions(illegalConstructorKey);
 /** Converts all file URLs in FS allowlists to paths. */
 function serializePermissions(permissions) {
   if (typeof permissions == "object" && permissions != null) {
-    const serializedPermissions = {};
+    const serializedPermissions = { __proto__: null };
     for (
-      const key of new SafeArrayIterator(["read", "write", "run", "ffi"])
+      const key of new SafeArrayIterator([
+        "read",
+        "write",
+        "run",
+        "ffi",
+        "import",
+      ])
     ) {
       if (ArrayIsArray(permissions[key])) {
         serializedPermissions[key] = ArrayPrototypeMap(
@@ -278,7 +287,7 @@ function serializePermissions(permissions) {
       }
     }
     for (
-      const key of new SafeArrayIterator(["env", "hrtime", "net", "sys"])
+      const key of new SafeArrayIterator(["env", "net", "sys"])
     ) {
       if (ArrayIsArray(permissions[key])) {
         serializedPermissions[key] = ArrayPrototypeSlice(permissions[key]);

@@ -1,31 +1,28 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 use crate::args::CliOptions;
-use crate::args::FilesConfig;
 use crate::args::Flags;
 use crate::args::TestFlags;
 use crate::args::TestReporterConfig;
 use crate::colors;
 use crate::display;
 use crate::factory::CliFactory;
-use crate::factory::CliFactoryBuilder;
 use crate::file_fetcher::File;
 use crate::file_fetcher::FileFetcher;
-use crate::graph_util::graph_valid_with_cli_options;
 use crate::graph_util::has_graph_root_local_dependent_changed;
-use crate::module_loader::ModuleLoadPreparer;
 use crate::ops;
-use crate::util::checksum;
+use crate::util::extract::extract_doc_tests;
 use crate::util::file_watcher;
 use crate::util::fs::collect_specifiers;
 use crate::util::path::get_extension;
-use crate::util::path::is_supported_ext;
-use crate::util::path::mapped_specifier_for_tsc;
+use crate::util::path::is_script_ext;
+use crate::util::path::matches_pattern_or_exact_path;
 use crate::worker::CliMainWorkerFactory;
+use crate::worker::CoverageCollector;
 
-use deno_ast::swc::common::comments::CommentKind;
 use deno_ast::MediaType;
-use deno_ast::SourceRangedForSpanned;
+use deno_config::glob::FilePatterns;
+use deno_config::glob::WalkEntry;
 use deno_core::anyhow;
 use deno_core::anyhow::bail;
 use deno_core::anyhow::Context as _;
@@ -34,23 +31,32 @@ use deno_core::error::AnyError;
 use deno_core::error::JsError;
 use deno_core::futures::future;
 use deno_core::futures::stream;
-use deno_core::futures::task::noop_waker;
 use deno_core::futures::FutureExt;
 use deno_core::futures::StreamExt;
 use deno_core::located_script_name;
-use deno_core::parking_lot::Mutex;
 use deno_core::serde_v8;
+use deno_core::stats::RuntimeActivity;
+use deno_core::stats::RuntimeActivityDiff;
+use deno_core::stats::RuntimeActivityStats;
+use deno_core::stats::RuntimeActivityStatsFactory;
+use deno_core::stats::RuntimeActivityStatsFilter;
+use deno_core::stats::RuntimeActivityType;
 use deno_core::unsync::spawn;
 use deno_core::unsync::spawn_blocking;
 use deno_core::url::Url;
 use deno_core::v8;
 use deno_core::ModuleSpecifier;
+use deno_core::OpState;
+use deno_core::PollEventLoopOptions;
 use deno_runtime::deno_io::Stdio;
 use deno_runtime::deno_io::StdioPipe;
+use deno_runtime::deno_permissions::Permissions;
+use deno_runtime::deno_permissions::PermissionsContainer;
 use deno_runtime::fmt_errors::format_js_error;
-use deno_runtime::permissions::Permissions;
-use deno_runtime::permissions::PermissionsContainer;
+use deno_runtime::permissions::RuntimePermissionDescriptorParser;
 use deno_runtime::tokio_util::create_and_run_current_thread;
+use deno_runtime::worker::MainWorker;
+use deno_runtime::WorkerExecutionMode;
 use indexmap::IndexMap;
 use indexmap::IndexSet;
 use log::Level;
@@ -59,12 +65,15 @@ use rand::seq::SliceRandom;
 use rand::SeedableRng;
 use regex::Regex;
 use serde::Deserialize;
+use std::borrow::Cow;
+use std::cell::RefCell;
 use std::collections::BTreeMap;
 use std::collections::BTreeSet;
 use std::collections::HashMap;
 use std::collections::HashSet;
+use std::env;
 use std::fmt::Write as _;
-use std::io::Read;
+use std::future::poll_fn;
 use std::io::Write;
 use std::num::NonZeroUsize;
 use std::path::Path;
@@ -72,18 +81,21 @@ use std::sync::atomic::AtomicBool;
 use std::sync::atomic::AtomicUsize;
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
-use std::task::Context;
+use std::task::Poll;
 use std::time::Duration;
 use std::time::Instant;
-use std::time::SystemTime;
 use tokio::signal;
-use tokio::sync::mpsc::unbounded_channel;
-use tokio::sync::mpsc::UnboundedSender;
-use tokio::sync::mpsc::WeakUnboundedSender;
 
+mod channel;
 pub mod fmt;
-mod reporters;
+pub mod reporters;
 
+pub use channel::create_single_test_event_channel;
+pub use channel::create_test_event_channel;
+pub use channel::TestEventReceiver;
+pub use channel::TestEventSender;
+pub use channel::TestEventWorkerSender;
+use fmt::format_sanitizer_diff;
 pub use fmt::format_test_error;
 use reporters::CompoundTestReporter;
 use reporters::DotTestReporter;
@@ -91,6 +103,38 @@ use reporters::JunitTestReporter;
 use reporters::PrettyTestReporter;
 use reporters::TapTestReporter;
 use reporters::TestReporter;
+
+/// How many times we're allowed to spin the event loop before considering something a leak.
+const MAX_SANITIZER_LOOP_SPINS: usize = 16;
+
+#[derive(Default)]
+struct TopLevelSanitizerStats {
+  map: HashMap<(RuntimeActivityType, Cow<'static, str>), usize>,
+}
+
+fn get_sanitizer_item(
+  activity: RuntimeActivity,
+) -> (RuntimeActivityType, Cow<'static, str>) {
+  let activity_type = activity.activity();
+  match activity {
+    RuntimeActivity::AsyncOp(_, _, name) => (activity_type, name.into()),
+    RuntimeActivity::Resource(_, _, name) => (activity_type, name.into()),
+    RuntimeActivity::Interval(_, _) => (activity_type, "".into()),
+    RuntimeActivity::Timer(_, _) => (activity_type, "".into()),
+  }
+}
+
+fn get_sanitizer_item_ref(
+  activity: &RuntimeActivity,
+) -> (RuntimeActivityType, Cow<str>) {
+  let activity_type = activity.activity();
+  match activity {
+    RuntimeActivity::AsyncOp(_, _, name) => (activity_type, (*name).into()),
+    RuntimeActivity::Resource(_, _, name) => (activity_type, name.into()),
+    RuntimeActivity::Interval(_, _) => (activity_type, "".into()),
+    RuntimeActivity::Timer(_, _) => (activity_type, "".into()),
+  }
+}
 
 /// The test mode is used to determine how a specifier is to be tested.
 #[derive(Debug, Clone, Eq, PartialEq)]
@@ -102,6 +146,20 @@ pub enum TestMode {
   Executable,
   /// Test as both documentation and an executable module.
   Both,
+}
+
+impl TestMode {
+  /// Returns `true` if the test mode indicates that code snippet extraction is
+  /// needed.
+  fn needs_test_extraction(&self) -> bool {
+    matches!(self, Self::Documentation | Self::Both)
+  }
+
+  /// Returns `true` if the test mode indicates that the test should be
+  /// type-checked and run.
+  fn needs_test_run(&self) -> bool {
+    matches!(self, Self::Executable | Self::Both)
+  }
 }
 
 #[derive(Clone, Debug, Default)]
@@ -163,6 +221,51 @@ pub struct TestLocation {
   pub column_number: u32,
 }
 
+#[derive(Default)]
+pub(crate) struct TestContainer(
+  TestDescriptions,
+  Vec<v8::Global<v8::Function>>,
+);
+
+impl TestContainer {
+  pub fn register(
+    &mut self,
+    description: TestDescription,
+    function: v8::Global<v8::Function>,
+  ) {
+    self.0.tests.insert(description.id, description);
+    self.1.push(function)
+  }
+
+  pub fn is_empty(&self) -> bool {
+    self.1.is_empty()
+  }
+}
+
+#[derive(Default, Debug)]
+pub struct TestDescriptions {
+  tests: IndexMap<usize, TestDescription>,
+}
+
+impl TestDescriptions {
+  pub fn len(&self) -> usize {
+    self.tests.len()
+  }
+
+  pub fn is_empty(&self) -> bool {
+    self.tests.is_empty()
+  }
+}
+
+impl<'a> IntoIterator for &'a TestDescriptions {
+  type Item = <&'a IndexMap<usize, TestDescription> as IntoIterator>::Item;
+  type IntoIter =
+    <&'a IndexMap<usize, TestDescription> as IntoIterator>::IntoIter;
+  fn into_iter(self) -> Self::IntoIter {
+    (&self.tests).into_iter()
+  }
+}
+
 #[derive(Debug, Clone, PartialEq, Deserialize, Eq, Hash)]
 #[serde(rename_all = "camelCase")]
 pub struct TestDescription {
@@ -172,19 +275,34 @@ pub struct TestDescription {
   pub only: bool,
   pub origin: String,
   pub location: TestLocation,
+  pub sanitize_ops: bool,
+  pub sanitize_resources: bool,
 }
 
-impl TestDescription {
-  pub fn static_id(&self) -> String {
-    checksum::gen(&[self.location.file_name.as_bytes(), self.name.as_bytes()])
+/// May represent a failure of a test or test step.
+#[derive(Debug, Clone, PartialEq, Deserialize, Eq, Hash)]
+#[serde(rename_all = "camelCase")]
+pub struct TestFailureDescription {
+  pub id: usize,
+  pub name: String,
+  pub origin: String,
+  pub location: TestLocation,
+}
+
+impl From<&TestDescription> for TestFailureDescription {
+  fn from(value: &TestDescription) -> Self {
+    Self {
+      id: value.id,
+      name: value.name.clone(),
+      origin: value.origin.clone(),
+      location: value.location.clone(),
+    }
   }
 }
 
-#[derive(Debug, Clone, Eq, PartialEq, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub enum TestOutput {
-  String(String),
-  Bytes(Vec<u8>),
+#[derive(Debug, Default, Clone, PartialEq)]
+pub struct TestFailureFormatOptions {
+  pub hide_stacktraces: bool,
 }
 
 #[allow(clippy::derive_partial_eq_without_eq)]
@@ -194,58 +312,83 @@ pub enum TestFailure {
   JsError(Box<JsError>),
   FailedSteps(usize),
   IncompleteSteps,
-  LeakedOps(Vec<String>, bool), // Details, isOpCallTracingEnabled
-  LeakedResources(Vec<String>), // Details
+  Leaked(Vec<String>, Vec<String>), // Details, trailer notes
   // The rest are for steps only.
   Incomplete,
   OverlapsWithSanitizers(IndexSet<String>), // Long names of overlapped tests
   HasSanitizersAndOverlaps(IndexSet<String>), // Long names of overlapped tests
 }
 
-impl ToString for TestFailure {
-  fn to_string(&self) -> String {
+impl TestFailure {
+  pub fn format(
+    &self,
+    options: &TestFailureFormatOptions,
+  ) -> Cow<'static, str> {
     match self {
-      TestFailure::JsError(js_error) => format_test_error(js_error),
-      TestFailure::FailedSteps(1) => "1 test step failed.".to_string(),
-      TestFailure::FailedSteps(n) => format!("{} test steps failed.", n),
-      TestFailure::IncompleteSteps => "Completed while steps were still running. Ensure all steps are awaited with `await t.step(...)`.".to_string(),
-      TestFailure::Incomplete => "Didn't complete before parent. Await step with `await t.step(...)`.".to_string(),
-      TestFailure::LeakedOps(details, is_op_call_tracing_enabled) => {
-        let mut string = "Leaking async ops:".to_string();
-        for detail in details {
-          string.push_str(&format!("\n  - {}", detail));
-        }
-        if !is_op_call_tracing_enabled {
-          string.push_str("\nTo get more details where ops were leaked, run again with --trace-ops flag.");
-        }
-        string
+      TestFailure::JsError(js_error) => {
+        Cow::Owned(format_test_error(js_error, options))
       }
-      TestFailure::LeakedResources(details) => {
-        let mut string = "Leaking resources:".to_string();
+      TestFailure::FailedSteps(1) => Cow::Borrowed("1 test step failed."),
+      TestFailure::FailedSteps(n) => {
+        Cow::Owned(format!("{} test steps failed.", n))
+      }
+      TestFailure::IncompleteSteps => {
+        Cow::Borrowed("Completed while steps were still running. Ensure all steps are awaited with `await t.step(...)`.")
+      }
+      TestFailure::Incomplete => {
+        Cow::Borrowed("Didn't complete before parent. Await step with `await t.step(...)`.")
+      }
+      TestFailure::Leaked(details, trailer_notes) => {
+        let mut f = String::new();
+        write!(f, "Leaks detected:").unwrap();
         for detail in details {
-          string.push_str(&format!("\n  - {}", detail));
+          write!(f, "\n  - {}", detail).unwrap();
         }
-        string
+        for trailer in trailer_notes {
+          write!(f, "\n{}", trailer).unwrap();
+        }
+        Cow::Owned(f)
       }
       TestFailure::OverlapsWithSanitizers(long_names) => {
-        let mut string = "Started test step while another test step with sanitizers was running:".to_string();
+        let mut f = String::new();
+        write!(f, "Started test step while another test step with sanitizers was running:").unwrap();
         for long_name in long_names {
-          string.push_str(&format!("\n  * {}", long_name));
+          write!(f, "\n  * {}", long_name).unwrap();
         }
-        string
+        Cow::Owned(f)
       }
       TestFailure::HasSanitizersAndOverlaps(long_names) => {
-        let mut string = "Started test step with sanitizers while another test step was running:".to_string();
+        let mut f = String::new();
+        write!(f, "Started test step with sanitizers while another test step was running:").unwrap();
         for long_name in long_names {
-          string.push_str(&format!("\n  * {}", long_name));
+          write!(f, "\n  * {}", long_name).unwrap();
         }
-        string
+        Cow::Owned(f)
       }
     }
   }
-}
 
-impl TestFailure {
+  pub fn overview(&self) -> String {
+    match self {
+      TestFailure::JsError(js_error) => js_error.exception_message.clone(),
+      TestFailure::FailedSteps(1) => "1 test step failed".to_string(),
+      TestFailure::FailedSteps(n) => format!("{n} test steps failed"),
+      TestFailure::IncompleteSteps => {
+        "Completed while steps were still running".to_string()
+      }
+      TestFailure::Incomplete => "Didn't complete before parent".to_string(),
+      TestFailure::Leaked(_, _) => "Leaks detected".to_string(),
+      TestFailure::OverlapsWithSanitizers(_) => {
+        "Started test step while another test step with sanitizers was running"
+          .to_string()
+      }
+      TestFailure::HasSanitizersAndOverlaps(_) => {
+        "Started test step with sanitizers while another test step was running"
+          .to_string()
+      }
+    }
+  }
+
   fn format_label(&self) -> String {
     match self {
       TestFailure::Incomplete => colors::gray("INCOMPLETE").to_string(),
@@ -315,19 +458,49 @@ pub struct TestPlan {
   pub used_only: bool,
 }
 
-#[derive(Debug, Clone, Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Deserialize)]
+pub enum TestStdioStream {
+  Stdout,
+  Stderr,
+}
+
+#[derive(Debug)]
 pub enum TestEvent {
-  Register(TestDescription),
+  Register(Arc<TestDescriptions>),
   Plan(TestPlan),
   Wait(usize),
   Output(Vec<u8>),
+  Slow(usize, u64),
   Result(usize, TestResult, u64),
   UncaughtError(String, Box<JsError>),
   StepRegister(TestStepDescription),
   StepWait(usize),
   StepResult(usize, TestStepResult, u64),
+  /// Indicates that this worker has completed running tests.
+  Completed,
+  /// Indicates that the user has cancelled the test run with Ctrl+C and
+  /// the run should be aborted.
   Sigint,
+  /// Used by the REPL to force a report to end without closing the worker
+  /// or receiver.
+  ForceEndReport,
+}
+
+impl TestEvent {
+  // Certain messages require us to ensure that all output has been drained to ensure proper
+  // interleaving of output messages.
+  pub fn requires_stdio_sync(&self) -> bool {
+    matches!(
+      self,
+      TestEvent::Plan(..)
+        | TestEvent::Result(..)
+        | TestEvent::StepWait(..)
+        | TestEvent::StepResult(..)
+        | TestEvent::UncaughtError(..)
+        | TestEvent::ForceEndReport
+        | TestEvent::Completed
+    )
+  }
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -341,25 +514,28 @@ pub struct TestSummary {
   pub ignored_steps: usize,
   pub filtered_out: usize,
   pub measured: usize,
-  pub failures: Vec<(TestDescription, TestFailure)>,
+  pub failures: Vec<(TestFailureDescription, TestFailure)>,
   pub uncaught_errors: Vec<(String, Box<JsError>)>,
 }
 
 #[derive(Debug, Clone)]
 struct TestSpecifiersOptions {
+  cwd: Url,
   concurrent_jobs: NonZeroUsize,
   fail_fast: Option<NonZeroUsize>,
   log_level: Option<log::Level>,
+  filter: bool,
   specifier: TestSpecifierOptions,
   reporter: TestReporterConfig,
   junit_path: Option<String>,
+  hide_stacktraces: bool,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Default, Clone)]
 pub struct TestSpecifierOptions {
   pub shuffle: Option<u64>,
   pub filter: TestFilter,
-  pub trace_ops: bool,
+  pub trace_leaks: bool,
 }
 
 impl TestSummary {
@@ -386,146 +562,438 @@ impl TestSummary {
 
 fn get_test_reporter(options: &TestSpecifiersOptions) -> Box<dyn TestReporter> {
   let parallel = options.concurrent_jobs.get() > 1;
+  let failure_format_options = TestFailureFormatOptions {
+    hide_stacktraces: options.hide_stacktraces,
+  };
   let reporter: Box<dyn TestReporter> = match &options.reporter {
-    TestReporterConfig::Dot => Box::new(DotTestReporter::new()),
+    TestReporterConfig::Dot => Box::new(DotTestReporter::new(
+      options.cwd.clone(),
+      failure_format_options,
+    )),
     TestReporterConfig::Pretty => Box::new(PrettyTestReporter::new(
       parallel,
       options.log_level != Some(Level::Error),
+      options.filter,
+      false,
+      options.cwd.clone(),
+      failure_format_options,
     )),
-    TestReporterConfig::Junit => {
-      Box::new(JunitTestReporter::new("-".to_string()))
-    }
+    TestReporterConfig::Junit => Box::new(JunitTestReporter::new(
+      options.cwd.clone(),
+      "-".to_string(),
+      failure_format_options,
+    )),
     TestReporterConfig::Tap => Box::new(TapTestReporter::new(
+      options.cwd.clone(),
       options.concurrent_jobs > NonZeroUsize::new(1).unwrap(),
+      failure_format_options,
     )),
   };
 
   if let Some(junit_path) = &options.junit_path {
-    let junit = Box::new(JunitTestReporter::new(junit_path.to_string()));
+    let junit = Box::new(JunitTestReporter::new(
+      options.cwd.clone(),
+      junit_path.to_string(),
+      TestFailureFormatOptions {
+        hide_stacktraces: options.hide_stacktraces,
+      },
+    ));
     return Box::new(CompoundTestReporter::new(vec![reporter, junit]));
   }
 
   reporter
 }
 
+async fn configure_main_worker(
+  worker_factory: Arc<CliMainWorkerFactory>,
+  specifier: &Url,
+  permissions_container: PermissionsContainer,
+  worker_sender: TestEventWorkerSender,
+  options: &TestSpecifierOptions,
+) -> Result<(Option<Box<dyn CoverageCollector>>, MainWorker), anyhow::Error> {
+  let mut worker = worker_factory
+    .create_custom_worker(
+      WorkerExecutionMode::Test,
+      specifier.clone(),
+      permissions_container,
+      vec![ops::testing::deno_test::init_ops(worker_sender.sender)],
+      Stdio {
+        stdin: StdioPipe::inherit(),
+        stdout: StdioPipe::file(worker_sender.stdout),
+        stderr: StdioPipe::file(worker_sender.stderr),
+      },
+    )
+    .await?;
+  let coverage_collector = worker.maybe_setup_coverage_collector().await?;
+  if options.trace_leaks {
+    worker.execute_script_static(
+      located_script_name!(),
+      "Deno[Deno.internal].core.setLeakTracingEnabled(true);",
+    )?;
+  }
+  let res = worker.execute_side_module_possibly_with_npm().await;
+  let mut worker = worker.into_main_worker();
+  match res {
+    Ok(()) => Ok(()),
+    Err(error) => {
+      // TODO(mmastrac): It would be nice to avoid having this error pattern repeated
+      if error.is::<JsError>() {
+        send_test_event(
+          &worker.js_runtime.op_state(),
+          TestEvent::UncaughtError(
+            specifier.to_string(),
+            Box::new(error.downcast::<JsError>().unwrap()),
+          ),
+        )?;
+        Ok(())
+      } else {
+        Err(error)
+      }
+    }
+  }?;
+  Ok((coverage_collector, worker))
+}
+
 /// Test a single specifier as documentation containing test programs, an executable test module or
 /// both.
 pub async fn test_specifier(
   worker_factory: Arc<CliMainWorkerFactory>,
-  permissions: Permissions,
+  permissions_container: PermissionsContainer,
   specifier: ModuleSpecifier,
-  mut sender: TestEventSender,
+  worker_sender: TestEventWorkerSender,
   fail_fast_tracker: FailFastTracker,
   options: TestSpecifierOptions,
 ) -> Result<(), AnyError> {
   if fail_fast_tracker.should_stop() {
     return Ok(());
   }
-  let stdout = StdioPipe::File(sender.stdout());
-  let stderr = StdioPipe::File(sender.stderr());
-  let mut worker = worker_factory
-    .create_custom_worker(
-      specifier.clone(),
-      PermissionsContainer::new(permissions),
-      vec![ops::testing::deno_test::init_ops(sender.clone())],
-      Stdio {
-        stdin: StdioPipe::Inherit,
-        stdout,
-        stderr,
-      },
-    )
-    .await?;
+  let (coverage_collector, mut worker) = configure_main_worker(
+    worker_factory,
+    &specifier,
+    permissions_container,
+    worker_sender,
+    &options,
+  )
+  .await?;
 
-  let mut coverage_collector = worker.maybe_setup_coverage_collector().await?;
-
-  // We execute the main module as a side module so that import.meta.main is not set.
-  match worker.execute_side_module_possibly_with_npm().await {
-    Ok(()) => {}
+  match test_specifier_inner(
+    &mut worker,
+    coverage_collector,
+    specifier.clone(),
+    fail_fast_tracker,
+    options,
+  )
+  .await
+  {
+    Ok(()) => Ok(()),
     Err(error) => {
+      // TODO(mmastrac): It would be nice to avoid having this error pattern repeated
       if error.is::<JsError>() {
-        sender.send(TestEvent::UncaughtError(
-          specifier.to_string(),
-          Box::new(error.downcast::<JsError>().unwrap()),
-        ))?;
-        return Ok(());
+        send_test_event(
+          &worker.js_runtime.op_state(),
+          TestEvent::UncaughtError(
+            specifier.to_string(),
+            Box::new(error.downcast::<JsError>().unwrap()),
+          ),
+        )?;
+        Ok(())
       } else {
-        return Err(error);
+        Err(error)
       }
     }
   }
+}
 
-  let mut worker = worker.into_main_worker();
-  if options.trace_ops {
-    worker.js_runtime.execute_script_static(
-      located_script_name!(),
-      "Deno[Deno.internal].core.enableOpCallTracing();",
-    )?;
+/// Test a single specifier as documentation containing test programs, an executable test module or
+/// both.
+#[allow(clippy::too_many_arguments)]
+async fn test_specifier_inner(
+  worker: &mut MainWorker,
+  mut coverage_collector: Option<Box<dyn CoverageCollector>>,
+  specifier: ModuleSpecifier,
+  fail_fast_tracker: FailFastTracker,
+  options: TestSpecifierOptions,
+) -> Result<(), AnyError> {
+  // Ensure that there are no pending exceptions before we start running tests
+  worker.run_up_to_duration(Duration::from_millis(0)).await?;
+
+  worker.dispatch_load_event()?;
+
+  run_tests_for_worker(worker, &specifier, &options, &fail_fast_tracker)
+    .await?;
+
+  // Ignore `defaultPrevented` of the `beforeunload` event. We don't allow the
+  // event loop to continue beyond what's needed to await results.
+  worker.dispatch_beforeunload_event()?;
+  worker.dispatch_unload_event()?;
+
+  // Ensure all output has been flushed
+  _ = worker
+    .js_runtime
+    .op_state()
+    .borrow_mut()
+    .borrow_mut::<TestEventSender>()
+    .flush();
+
+  // Ensure the worker has settled so we can catch any remaining unhandled rejections. We don't
+  // want to wait forever here.
+  worker.run_up_to_duration(Duration::from_millis(0)).await?;
+
+  if let Some(coverage_collector) = &mut coverage_collector {
+    worker
+      .js_runtime
+      .with_event_loop_future(
+        coverage_collector.stop_collecting().boxed_local(),
+        PollEventLoopOptions::default(),
+      )
+      .await?;
   }
-  worker.dispatch_load_event(located_script_name!())?;
+  Ok(())
+}
 
-  let tests = {
-    let state_rc = worker.js_runtime.op_state();
-    let mut state = state_rc.borrow_mut();
-    std::mem::take(&mut state.borrow_mut::<ops::testing::TestContainer>().0)
-  };
+pub fn worker_has_tests(worker: &mut MainWorker) -> bool {
+  let state_rc = worker.js_runtime.op_state();
+  let state = state_rc.borrow();
+  !state.borrow::<TestContainer>().is_empty()
+}
+
+/// Yields to tokio to allow async work to process, and then polls
+/// the event loop once.
+#[must_use = "The event loop result should be checked"]
+pub async fn poll_event_loop(worker: &mut MainWorker) -> Result<(), AnyError> {
+  // Allow any ops that to do work in the tokio event loop to do so
+  tokio::task::yield_now().await;
+  // Spin the event loop once
+  poll_fn(|cx| {
+    if let Poll::Ready(Err(err)) = worker
+      .js_runtime
+      .poll_event_loop(cx, PollEventLoopOptions::default())
+    {
+      return Poll::Ready(Err(err));
+    }
+    Poll::Ready(Ok(()))
+  })
+  .await
+}
+
+pub fn send_test_event(
+  op_state: &RefCell<OpState>,
+  event: TestEvent,
+) -> Result<(), AnyError> {
+  Ok(
+    op_state
+      .borrow_mut()
+      .borrow_mut::<TestEventSender>()
+      .send(event)?,
+  )
+}
+
+pub async fn run_tests_for_worker(
+  worker: &mut MainWorker,
+  specifier: &ModuleSpecifier,
+  options: &TestSpecifierOptions,
+  fail_fast_tracker: &FailFastTracker,
+) -> Result<(), AnyError> {
+  let state_rc = worker.js_runtime.op_state();
+  // Take whatever tests have been registered
+  let TestContainer(tests, test_functions) =
+    std::mem::take(&mut *state_rc.borrow_mut().borrow_mut::<TestContainer>());
+
+  let tests: Arc<TestDescriptions> = tests.into();
+  send_test_event(&state_rc, TestEvent::Register(tests.clone()))?;
+  let res = run_tests_for_worker_inner(
+    worker,
+    specifier,
+    tests,
+    test_functions,
+    options,
+    fail_fast_tracker,
+  )
+  .await;
+
+  _ = send_test_event(&state_rc, TestEvent::Completed);
+  res
+}
+
+async fn run_tests_for_worker_inner(
+  worker: &mut MainWorker,
+  specifier: &ModuleSpecifier,
+  tests: Arc<TestDescriptions>,
+  test_functions: Vec<v8::Global<v8::Function>>,
+  options: &TestSpecifierOptions,
+  fail_fast_tracker: &FailFastTracker,
+) -> Result<(), AnyError> {
   let unfiltered = tests.len();
-  let (only, no_only): (Vec<_>, Vec<_>) =
-    tests.into_iter().partition(|(d, _)| d.only);
-  let used_only = !only.is_empty();
-  let tests = if used_only { only } else { no_only };
-  let mut tests = tests
-    .into_iter()
-    .filter(|(d, _)| options.filter.includes(&d.name))
-    .collect::<Vec<_>>();
-  if let Some(seed) = options.shuffle {
-    tests.shuffle(&mut SmallRng::seed_from_u64(seed));
+  let state_rc = worker.js_runtime.op_state();
+
+  // Build the test plan in a single pass
+  let mut tests_to_run = Vec::with_capacity(tests.len());
+  let mut used_only = false;
+  for ((_, d), f) in tests.tests.iter().zip(test_functions) {
+    if !options.filter.includes(&d.name) {
+      continue;
+    }
+
+    // If we've seen an "only: true" test, the remaining tests must be "only: true" to be added
+    if used_only && !d.only {
+      continue;
+    }
+
+    // If this is the first "only: true" test we've seen, clear the other tests since they were
+    // only: false.
+    if d.only && !used_only {
+      used_only = true;
+      tests_to_run.clear();
+    }
+    tests_to_run.push((d, f));
   }
-  sender.send(TestEvent::Plan(TestPlan {
-    origin: specifier.to_string(),
-    total: tests.len(),
-    filtered_out: unfiltered - tests.len(),
-    used_only,
-  }))?;
+
+  if let Some(seed) = options.shuffle {
+    tests_to_run.shuffle(&mut SmallRng::seed_from_u64(seed));
+  }
+
+  send_test_event(
+    &state_rc,
+    TestEvent::Plan(TestPlan {
+      origin: specifier.to_string(),
+      total: tests_to_run.len(),
+      filtered_out: unfiltered - tests_to_run.len(),
+      used_only,
+    }),
+  )?;
+
   let mut had_uncaught_error = false;
-  for (desc, function) in tests {
+  let stats = worker.js_runtime.runtime_activity_stats_factory();
+  let ops = worker.js_runtime.op_names();
+
+  // These particular ops may start and stop independently of tests, so we just filter them out
+  // completely.
+  let op_id_host_recv_message = ops
+    .iter()
+    .position(|op| *op == "op_host_recv_message")
+    .unwrap();
+  let op_id_host_recv_ctrl = ops
+    .iter()
+    .position(|op| *op == "op_host_recv_ctrl")
+    .unwrap();
+
+  // For consistency between tests with and without sanitizers, we _always_ include
+  // the actual sanitizer capture before and after a test, but a test that ignores resource
+  // or op sanitization simply doesn't throw if one of these constraints is violated.
+  let mut filter = RuntimeActivityStatsFilter::default();
+  filter = filter.with_resources();
+  filter = filter.with_ops();
+  filter = filter.with_timers();
+  filter = filter.omit_op(op_id_host_recv_ctrl as _);
+  filter = filter.omit_op(op_id_host_recv_message as _);
+
+  // Count the top-level stats so we can filter them out if they complete and restart within
+  // a test.
+  let top_level_stats = stats.clone().capture(&filter);
+  let mut top_level = TopLevelSanitizerStats::default();
+  for activity in top_level_stats.dump().active {
+    top_level
+      .map
+      .entry(get_sanitizer_item(activity))
+      .and_modify(|n| *n += 1)
+      .or_insert(1);
+  }
+
+  for (desc, function) in tests_to_run.into_iter() {
     if fail_fast_tracker.should_stop() {
       break;
     }
+
+    // Each test needs a fresh reqwest connection pool to avoid inter-test weirdness with connections
+    // failing. If we don't do this, a connection to a test server we just tore down might be re-used in
+    // the next test.
+    // TODO(mmastrac): this should be some sort of callback that we can implement for any subsystem
+    worker
+      .js_runtime
+      .op_state()
+      .borrow_mut()
+      .try_take::<deno_runtime::deno_fetch::Client>();
+
     if desc.ignore {
-      sender.send(TestEvent::Result(desc.id, TestResult::Ignored, 0))?;
+      send_test_event(
+        &state_rc,
+        TestEvent::Result(desc.id, TestResult::Ignored, 0),
+      )?;
       continue;
     }
     if had_uncaught_error {
-      sender.send(TestEvent::Result(desc.id, TestResult::Cancelled, 0))?;
+      send_test_event(
+        &state_rc,
+        TestEvent::Result(desc.id, TestResult::Cancelled, 0),
+      )?;
       continue;
     }
-    sender.send(TestEvent::Wait(desc.id))?;
+    send_test_event(&state_rc, TestEvent::Wait(desc.id))?;
 
-    // TODO(bartlomieju): this is a nasty (beautiful) hack, that was required
-    // when switching `JsRuntime` from `FuturesUnordered` to `JoinSet`. With
-    // `JoinSet` all pending ops are immediately polled and that caused a problem
-    // when some async ops were fired and canceled before running tests (giving
-    // false positives in the ops sanitizer). We should probably rewrite sanitizers
-    // to be done in Rust instead of in JS (40_testing.js).
-    {
-      // Poll event loop once, this will allow all ops that are already resolved,
-      // but haven't responded to settle.
-      let waker = noop_waker();
-      let mut cx = Context::from_waker(&waker);
-      let _ = worker.js_runtime.poll_event_loop(&mut cx, false);
-    }
+    // Poll event loop once, to allow all ops that are already resolved, but haven't
+    // responded to settle.
+    // TODO(mmastrac): we should provide an API to poll the event loop until no further
+    // progress is made.
+    poll_event_loop(worker).await?;
 
-    let earlier = SystemTime::now();
-    let result = match worker.js_runtime.call_and_await(&function).await {
+    // We always capture stats, regardless of sanitization state
+    let before = stats.clone().capture(&filter);
+
+    let earlier = Instant::now();
+    let call = worker.js_runtime.call(&function);
+
+    let slow_state_rc = state_rc.clone();
+    let slow_test_id = desc.id;
+    let slow_test_warning = spawn(async move {
+      // The slow test warning should pop up every DENO_SLOW_TEST_TIMEOUT*(2**n) seconds,
+      // with a duration that is doubling each time. So for a warning time of 60s,
+      // we should get a warning at 60s, 120s, 240s, etc.
+      let base_timeout = env::var("DENO_SLOW_TEST_TIMEOUT").unwrap_or_default();
+      let base_timeout = base_timeout.parse().unwrap_or(60).max(1);
+      let mut multiplier = 1;
+      let mut elapsed = 0;
+      loop {
+        tokio::time::sleep(Duration::from_secs(
+          base_timeout * (multiplier - elapsed),
+        ))
+        .await;
+        if send_test_event(
+          &slow_state_rc,
+          TestEvent::Slow(
+            slow_test_id,
+            Duration::from_secs(base_timeout * multiplier).as_millis() as _,
+          ),
+        )
+        .is_err()
+        {
+          break;
+        }
+        multiplier *= 2;
+        elapsed += 1;
+      }
+    });
+
+    let result = worker
+      .js_runtime
+      .with_event_loop_promise(call, PollEventLoopOptions::default())
+      .await;
+    slow_test_warning.abort();
+    let result = match result {
       Ok(r) => r,
       Err(error) => {
         if error.is::<JsError>() {
-          sender.send(TestEvent::UncaughtError(
-            specifier.to_string(),
-            Box::new(error.downcast::<JsError>().unwrap()),
-          ))?;
+          send_test_event(
+            &state_rc,
+            TestEvent::UncaughtError(
+              specifier.to_string(),
+              Box::new(error.downcast::<JsError>().unwrap()),
+            ),
+          )?;
           fail_fast_tracker.add_failure();
-          sender.send(TestEvent::Result(desc.id, TestResult::Cancelled, 0))?;
+          send_test_event(
+            &state_rc,
+            TestEvent::Result(desc.id, TestResult::Cancelled, 0),
+          )?;
           had_uncaught_error = true;
           continue;
         } else {
@@ -533,272 +1001,188 @@ pub async fn test_specifier(
         }
       }
     };
-    let scope = &mut worker.js_runtime.handle_scope();
-    let result = v8::Local::new(scope, result);
-    let result = serde_v8::from_v8::<TestResult>(scope, result)?;
+
+    // Check the result before we check for leaks
+    let result = {
+      let scope = &mut worker.js_runtime.handle_scope();
+      let result = v8::Local::new(scope, result);
+      serde_v8::from_v8::<TestResult>(scope, result)?
+    };
     if matches!(result, TestResult::Failed(_)) {
       fail_fast_tracker.add_failure();
-    }
-    let elapsed = SystemTime::now().duration_since(earlier)?.as_millis();
-    sender.send(TestEvent::Result(desc.id, result, elapsed as u64))?;
-  }
-
-  // Ignore `defaultPrevented` of the `beforeunload` event. We don't allow the
-  // event loop to continue beyond what's needed to await results.
-  worker.dispatch_beforeunload_event(located_script_name!())?;
-  worker.dispatch_unload_event(located_script_name!())?;
-
-  if let Some(coverage_collector) = coverage_collector.as_mut() {
-    worker
-      .with_event_loop(coverage_collector.stop_collecting().boxed_local())
-      .await?;
-  }
-  Ok(())
-}
-
-fn extract_files_from_regex_blocks(
-  specifier: &ModuleSpecifier,
-  source: &str,
-  media_type: MediaType,
-  file_line_index: usize,
-  blocks_regex: &Regex,
-  lines_regex: &Regex,
-) -> Result<Vec<File>, AnyError> {
-  let files = blocks_regex
-    .captures_iter(source)
-    .filter_map(|block| {
-      block.get(1)?;
-
-      let maybe_attributes: Option<Vec<_>> = block
-        .get(1)
-        .map(|attributes| attributes.as_str().split(' ').collect());
-
-      let file_media_type = if let Some(attributes) = maybe_attributes {
-        if attributes.contains(&"ignore") {
-          return None;
-        }
-
-        match attributes.first() {
-          Some(&"js") => MediaType::JavaScript,
-          Some(&"javascript") => MediaType::JavaScript,
-          Some(&"mjs") => MediaType::Mjs,
-          Some(&"cjs") => MediaType::Cjs,
-          Some(&"jsx") => MediaType::Jsx,
-          Some(&"ts") => MediaType::TypeScript,
-          Some(&"typescript") => MediaType::TypeScript,
-          Some(&"mts") => MediaType::Mts,
-          Some(&"cts") => MediaType::Cts,
-          Some(&"tsx") => MediaType::Tsx,
-          _ => MediaType::Unknown,
-        }
-      } else {
-        media_type
-      };
-
-      if file_media_type == MediaType::Unknown {
-        return None;
-      }
-
-      let line_offset = source[0..block.get(0).unwrap().start()]
-        .chars()
-        .filter(|c| *c == '\n')
-        .count();
-
-      let line_count = block.get(0).unwrap().as_str().split('\n').count();
-
-      let body = block.get(2).unwrap();
-      let text = body.as_str();
-
-      // TODO(caspervonb) generate an inline source map
-      let mut file_source = String::new();
-      for line in lines_regex.captures_iter(text) {
-        let text = line.get(1).unwrap();
-        writeln!(file_source, "{}", text.as_str()).unwrap();
-      }
-
-      let file_specifier = ModuleSpecifier::parse(&format!(
-        "{}${}-{}",
-        specifier,
-        file_line_index + line_offset + 1,
-        file_line_index + line_offset + line_count + 1,
-      ))
-      .unwrap();
-      let file_specifier =
-        mapped_specifier_for_tsc(&file_specifier, file_media_type)
-          .map(|s| ModuleSpecifier::parse(&s).unwrap())
-          .unwrap_or(file_specifier);
-
-      Some(File {
-        maybe_types: None,
-        media_type: file_media_type,
-        source: file_source.into(),
-        specifier: file_specifier,
-        maybe_headers: None,
-      })
-    })
-    .collect();
-
-  Ok(files)
-}
-
-fn extract_files_from_source_comments(
-  specifier: &ModuleSpecifier,
-  source: Arc<str>,
-  media_type: MediaType,
-) -> Result<Vec<File>, AnyError> {
-  let parsed_source = deno_ast::parse_module(deno_ast::ParseParams {
-    specifier: specifier.to_string(),
-    text_info: deno_ast::SourceTextInfo::new(source),
-    media_type,
-    capture_tokens: false,
-    maybe_syntax: None,
-    scope_analysis: false,
-  })?;
-  let comments = parsed_source.comments().get_vec();
-  let blocks_regex = lazy_regex::regex!(r"```([^\r\n]*)\r?\n([\S\s]*?)```");
-  let lines_regex = lazy_regex::regex!(r"(?:\* ?)(?:\# ?)?(.*)");
-
-  let files = comments
-    .iter()
-    .filter(|comment| {
-      if comment.kind != CommentKind::Block || !comment.text.starts_with('*') {
-        return false;
-      }
-
-      true
-    })
-    .flat_map(|comment| {
-      extract_files_from_regex_blocks(
-        specifier,
-        &comment.text,
-        media_type,
-        parsed_source.text_info().line_index(comment.start()),
-        blocks_regex,
-        lines_regex,
-      )
-    })
-    .flatten()
-    .collect();
-
-  Ok(files)
-}
-
-fn extract_files_from_fenced_blocks(
-  specifier: &ModuleSpecifier,
-  source: &str,
-  media_type: MediaType,
-) -> Result<Vec<File>, AnyError> {
-  // The pattern matches code blocks as well as anything in HTML comment syntax,
-  // but it stores the latter without any capturing groups. This way, a simple
-  // check can be done to see if a block is inside a comment (and skip typechecking)
-  // or not by checking for the presence of capturing groups in the matches.
-  let blocks_regex =
-    lazy_regex::regex!(r"(?s)<!--.*?-->|```([^\r\n]*)\r?\n([\S\s]*?)```");
-  let lines_regex = lazy_regex::regex!(r"(?:\# ?)?(.*)");
-
-  extract_files_from_regex_blocks(
-    specifier,
-    source,
-    media_type,
-    /* file line index */ 0,
-    blocks_regex,
-    lines_regex,
-  )
-}
-
-async fn fetch_inline_files(
-  file_fetcher: &FileFetcher,
-  specifiers: Vec<ModuleSpecifier>,
-) -> Result<Vec<File>, AnyError> {
-  let mut files = Vec::new();
-  for specifier in specifiers {
-    let fetch_permissions = PermissionsContainer::allow_all();
-    let file = file_fetcher.fetch(&specifier, fetch_permissions).await?;
-
-    let inline_files = if file.media_type == MediaType::Unknown {
-      extract_files_from_fenced_blocks(
-        &file.specifier,
-        &file.source,
-        file.media_type,
-      )
-    } else {
-      extract_files_from_source_comments(
-        &file.specifier,
-        file.source,
-        file.media_type,
-      )
-    };
-
-    files.extend(inline_files?);
-  }
-
-  Ok(files)
-}
-
-/// Type check a collection of module and document specifiers.
-pub async fn check_specifiers(
-  cli_options: &CliOptions,
-  file_fetcher: &FileFetcher,
-  module_load_preparer: &ModuleLoadPreparer,
-  specifiers: Vec<(ModuleSpecifier, TestMode)>,
-) -> Result<(), AnyError> {
-  let lib = cli_options.ts_type_lib_window();
-  let inline_files = fetch_inline_files(
-    file_fetcher,
-    specifiers
-      .iter()
-      .filter_map(|(specifier, mode)| {
-        if *mode != TestMode::Executable {
-          Some(specifier.clone())
-        } else {
-          None
-        }
-      })
-      .collect(),
-  )
-  .await?;
-
-  if !inline_files.is_empty() {
-    let specifiers = inline_files
-      .iter()
-      .map(|file| file.specifier.clone())
-      .collect();
-
-    for file in inline_files {
-      file_fetcher.insert_cached(file);
+      let elapsed = earlier.elapsed().as_millis();
+      send_test_event(
+        &state_rc,
+        TestEvent::Result(desc.id, result, elapsed as u64),
+      )?;
+      continue;
     }
 
-    module_load_preparer
-      .prepare_module_load(
-        specifiers,
-        false,
-        lib,
-        PermissionsContainer::new(Permissions::allow_all()),
-      )
-      .await?;
-  }
-
-  let module_specifiers = specifiers
-    .into_iter()
-    .filter_map(|(specifier, mode)| {
-      if mode != TestMode::Documentation {
-        Some(specifier)
-      } else {
-        None
-      }
-    })
-    .collect();
-
-  module_load_preparer
-    .prepare_module_load(
-      module_specifiers,
-      false,
-      lib,
-      PermissionsContainer::allow_all(),
+    // Await activity stabilization
+    if let Some(diff) = wait_for_activity_to_stabilize(
+      worker,
+      &stats,
+      &filter,
+      &top_level,
+      before,
+      desc.sanitize_ops,
+      desc.sanitize_resources,
     )
-    .await?;
+    .await?
+    {
+      let (formatted, trailer_notes) = format_sanitizer_diff(diff);
+      if !formatted.is_empty() {
+        let failure = TestFailure::Leaked(formatted, trailer_notes);
+        fail_fast_tracker.add_failure();
+        let elapsed = earlier.elapsed().as_millis();
+        send_test_event(
+          &state_rc,
+          TestEvent::Result(
+            desc.id,
+            TestResult::Failed(failure),
+            elapsed as u64,
+          ),
+        )?;
+        continue;
+      }
+    }
 
+    let elapsed = earlier.elapsed().as_millis();
+    send_test_event(
+      &state_rc,
+      TestEvent::Result(desc.id, result, elapsed as u64),
+    )?;
+  }
   Ok(())
+}
+
+/// The sanitizer must ignore ops, resources and timers that were started at the top-level, but
+/// completed and restarted, replacing themselves with the same "thing". For example, if you run a
+/// `Deno.serve` server at the top level and make fetch requests to it during the test, those ops
+/// should not count as completed during the test because they are immediately replaced.
+fn is_empty(
+  top_level: &TopLevelSanitizerStats,
+  diff: &RuntimeActivityDiff,
+) -> bool {
+  // If the diff is empty, return empty
+  if diff.is_empty() {
+    return true;
+  }
+
+  // If the # of appeared != # of disappeared, we can exit fast with not empty
+  if diff.appeared.len() != diff.disappeared.len() {
+    return false;
+  }
+
+  // If there are no top-level ops and !diff.is_empty(), we can exit fast with not empty
+  if top_level.map.is_empty() {
+    return false;
+  }
+
+  // Otherwise we need to calculate replacement for top-level stats. Sanitizers will not fire
+  // if an op, resource or timer is replaced and has a corresponding top-level op.
+  let mut map = HashMap::new();
+  for item in &diff.appeared {
+    let item = get_sanitizer_item_ref(item);
+    let Some(n1) = top_level.map.get(&item) else {
+      return false;
+    };
+    let n2 = map.entry(item).and_modify(|n| *n += 1).or_insert(1);
+    // If more ops appeared than were created at the top-level, return false
+    if *n2 > *n1 {
+      return false;
+    }
+  }
+
+  // We know that we replaced no more things than were created at the top-level. So now we just want
+  // to make sure that whatever thing was created has a corresponding disappearance record.
+  for item in &diff.disappeared {
+    let item = get_sanitizer_item_ref(item);
+    // If more things of this type disappeared than appeared, return false
+    let Some(n1) = map.get_mut(&item) else {
+      return false;
+    };
+    *n1 -= 1;
+    if *n1 == 0 {
+      map.remove(&item);
+    }
+  }
+
+  // If everything is accounted for, we are empty
+  map.is_empty()
+}
+
+async fn wait_for_activity_to_stabilize(
+  worker: &mut MainWorker,
+  stats: &RuntimeActivityStatsFactory,
+  filter: &RuntimeActivityStatsFilter,
+  top_level: &TopLevelSanitizerStats,
+  before: RuntimeActivityStats,
+  sanitize_ops: bool,
+  sanitize_resources: bool,
+) -> Result<Option<RuntimeActivityDiff>, AnyError> {
+  // First, check to see if there's any diff at all. If not, just continue.
+  let after = stats.clone().capture(filter);
+  let mut diff = RuntimeActivityStats::diff(&before, &after);
+  if is_empty(top_level, &diff) {
+    // No activity, so we return early
+    return Ok(None);
+  }
+
+  // We allow for up to MAX_SANITIZER_LOOP_SPINS to get to a point where there is no difference.
+  // TODO(mmastrac): We could be much smarter about this if we had the concept of "progress" in
+  // an event loop tick. Ideally we'd be able to tell if we were spinning and doing nothing, or
+  // spinning and resolving ops.
+  for _ in 0..MAX_SANITIZER_LOOP_SPINS {
+    // There was a diff, so let the event loop run once
+    poll_event_loop(worker).await?;
+
+    let after = stats.clone().capture(filter);
+    diff = RuntimeActivityStats::diff(&before, &after);
+    if is_empty(top_level, &diff) {
+      return Ok(None);
+    }
+  }
+
+  if !sanitize_ops {
+    diff
+      .appeared
+      .retain(|activity| !matches!(activity, RuntimeActivity::AsyncOp(..)));
+    diff
+      .disappeared
+      .retain(|activity| !matches!(activity, RuntimeActivity::AsyncOp(..)));
+  }
+  if !sanitize_resources {
+    diff
+      .appeared
+      .retain(|activity| !matches!(activity, RuntimeActivity::Resource(..)));
+    diff
+      .disappeared
+      .retain(|activity| !matches!(activity, RuntimeActivity::Resource(..)));
+  }
+
+  // Since we don't have an option to disable timer sanitization, we use sanitize_ops == false &&
+  // sanitize_resources == false to disable those.
+  if !sanitize_ops && !sanitize_resources {
+    diff.appeared.retain(|activity| {
+      !matches!(
+        activity,
+        RuntimeActivity::Timer(..) | RuntimeActivity::Interval(..)
+      )
+    });
+    diff.disappeared.retain(|activity| {
+      !matches!(
+        activity,
+        RuntimeActivity::Timer(..) | RuntimeActivity::Interval(..)
+      )
+    });
+  }
+
+  Ok(if is_empty(top_level, &diff) {
+    None
+  } else {
+    Some(diff)
+  })
 }
 
 static HAS_TEST_RUN_SIGINT_HANDLER: AtomicBool = AtomicBool::new(false);
@@ -807,6 +1191,7 @@ static HAS_TEST_RUN_SIGINT_HANDLER: AtomicBool = AtomicBool::new(false);
 async fn test_specifiers(
   worker_factory: Arc<CliMainWorkerFactory>,
   permissions: &Permissions,
+  permission_desc_parser: &Arc<RuntimePermissionDescriptorParser>,
   specifiers: Vec<ModuleSpecifier>,
   options: TestSpecifiersOptions,
 ) -> Result<(), AnyError> {
@@ -820,30 +1205,33 @@ async fn test_specifiers(
     specifiers
   };
 
-  let (sender, mut receiver) = unbounded_channel::<TestEvent>();
-  let sender = TestEventSender::new(sender);
+  let (test_event_sender_factory, receiver) = create_test_event_channel();
   let concurrent_jobs = options.concurrent_jobs;
 
-  let sender_ = sender.downgrade();
+  let mut cancel_sender = test_event_sender_factory.weak_sender();
   let sigint_handler_handle = spawn(async move {
     signal::ctrl_c().await.unwrap();
-    sender_.upgrade().map(|s| s.send(TestEvent::Sigint).ok());
+    cancel_sender.send(TestEvent::Sigint).ok();
   });
   HAS_TEST_RUN_SIGINT_HANDLER.store(true, Ordering::Relaxed);
-  let mut reporter = get_test_reporter(&options);
+  let reporter = get_test_reporter(&options);
+  let fail_fast_tracker = FailFastTracker::new(options.fail_fast);
 
   let join_handles = specifiers.into_iter().map(move |specifier| {
     let worker_factory = worker_factory.clone();
-    let permissions = permissions.clone();
-    let sender = sender.clone();
-    let fail_fast_tracker = FailFastTracker::new(options.fail_fast);
+    let permissions_container = PermissionsContainer::new(
+      permission_desc_parser.clone(),
+      permissions.clone(),
+    );
+    let worker_sender = test_event_sender_factory.worker();
+    let fail_fast_tracker = fail_fast_tracker.clone();
     let specifier_options = options.specifier.clone();
     spawn_blocking(move || {
       create_and_run_current_thread(test_specifier(
         worker_factory,
-        permissions,
+        permissions_container,
         specifier,
-        sender.clone(),
+        worker_sender,
         fail_fast_tracker,
         specifier_options,
       ))
@@ -854,147 +1242,187 @@ async fn test_specifiers(
     .buffer_unordered(concurrent_jobs.get())
     .collect::<Vec<Result<Result<(), AnyError>, tokio::task::JoinError>>>();
 
-  let handler = {
-    spawn(async move {
-      let earlier = Instant::now();
-      let mut tests = IndexMap::new();
-      let mut test_steps = IndexMap::new();
-      let mut tests_started = HashSet::new();
-      let mut tests_with_result = HashSet::new();
-      let mut used_only = false;
-      let mut failed = false;
-
-      while let Some(event) = receiver.recv().await {
-        match event {
-          TestEvent::Register(description) => {
-            reporter.report_register(&description);
-            tests.insert(description.id, description);
-          }
-
-          TestEvent::Plan(plan) => {
-            if plan.used_only {
-              used_only = true;
-            }
-
-            reporter.report_plan(&plan);
-          }
-
-          TestEvent::Wait(id) => {
-            if tests_started.insert(id) {
-              reporter.report_wait(tests.get(&id).unwrap());
-            }
-          }
-
-          TestEvent::Output(output) => {
-            reporter.report_output(&output);
-          }
-
-          TestEvent::Result(id, result, elapsed) => {
-            if tests_with_result.insert(id) {
-              match result {
-                TestResult::Failed(_) | TestResult::Cancelled => {
-                  failed = true;
-                }
-                _ => (),
-              }
-              reporter.report_result(tests.get(&id).unwrap(), &result, elapsed);
-            }
-          }
-
-          TestEvent::UncaughtError(origin, error) => {
-            failed = true;
-            reporter.report_uncaught_error(&origin, error);
-          }
-
-          TestEvent::StepRegister(description) => {
-            reporter.report_step_register(&description);
-            test_steps.insert(description.id, description);
-          }
-
-          TestEvent::StepWait(id) => {
-            if tests_started.insert(id) {
-              reporter.report_step_wait(test_steps.get(&id).unwrap());
-            }
-          }
-
-          TestEvent::StepResult(id, result, duration) => {
-            if tests_with_result.insert(id) {
-              reporter.report_step_result(
-                test_steps.get(&id).unwrap(),
-                &result,
-                duration,
-                &tests,
-                &test_steps,
-              );
-            }
-          }
-
-          TestEvent::Sigint => {
-            let elapsed = Instant::now().duration_since(earlier);
-            reporter.report_sigint(
-              &tests_started
-                .difference(&tests_with_result)
-                .copied()
-                .collect(),
-              &tests,
-              &test_steps,
-            );
-            if let Err(err) =
-              reporter.flush_report(&elapsed, &tests, &test_steps)
-            {
-              eprint!("Test reporter failed to flush: {}", err)
-            }
-            std::process::exit(130);
-          }
-        }
-      }
-
-      sigint_handler_handle.abort();
-      HAS_TEST_RUN_SIGINT_HANDLER.store(false, Ordering::Relaxed);
-
-      let elapsed = Instant::now().duration_since(earlier);
-      reporter.report_summary(&elapsed, &tests, &test_steps);
-      if let Err(err) = reporter.flush_report(&elapsed, &tests, &test_steps) {
-        return Err(generic_error(format!(
-          "Test reporter failed to flush: {}",
-          err
-        )));
-      }
-
-      if used_only {
-        return Err(generic_error(
-          "Test failed because the \"only\" option was used",
-        ));
-      }
-
-      if failed {
-        return Err(generic_error("Test failed"));
-      }
-
-      Ok(())
-    })
-  };
+  let handler = spawn(async move { report_tests(receiver, reporter).await.0 });
 
   let (join_results, result) = future::join(join_stream, handler).await;
-
-  // propagate any errors
+  sigint_handler_handle.abort();
+  HAS_TEST_RUN_SIGINT_HANDLER.store(false, Ordering::Relaxed);
   for join_result in join_results {
     join_result??;
   }
-
   result??;
 
   Ok(())
 }
 
+/// Gives receiver back in case it was ended with `TestEvent::ForceEndReport`.
+pub async fn report_tests(
+  mut receiver: TestEventReceiver,
+  mut reporter: Box<dyn TestReporter>,
+) -> (Result<(), AnyError>, TestEventReceiver) {
+  let mut tests = IndexMap::new();
+  let mut test_steps = IndexMap::new();
+  let mut tests_started = HashSet::new();
+  let mut tests_with_result = HashSet::new();
+  let mut start_time = None;
+  let mut had_plan = false;
+  let mut used_only = false;
+  let mut failed = false;
+
+  while let Some((_, event)) = receiver.recv().await {
+    match event {
+      TestEvent::Register(description) => {
+        for (_, description) in description.into_iter() {
+          reporter.report_register(description);
+          // TODO(mmastrac): We shouldn't need to clone here -- we can reuse the descriptions everywhere
+          tests.insert(description.id, description.clone());
+        }
+      }
+      TestEvent::Plan(plan) => {
+        if !had_plan {
+          start_time = Some(Instant::now());
+          had_plan = true;
+        }
+        if plan.used_only {
+          used_only = true;
+        }
+        reporter.report_plan(&plan);
+      }
+      TestEvent::Wait(id) => {
+        if tests_started.insert(id) {
+          reporter.report_wait(tests.get(&id).unwrap());
+        }
+      }
+      TestEvent::Output(output) => {
+        reporter.report_output(&output);
+      }
+      TestEvent::Slow(id, elapsed) => {
+        reporter.report_slow(tests.get(&id).unwrap(), elapsed);
+      }
+      TestEvent::Result(id, result, elapsed) => {
+        if tests_with_result.insert(id) {
+          match result {
+            TestResult::Failed(_) | TestResult::Cancelled => {
+              failed = true;
+            }
+            _ => (),
+          }
+          reporter.report_result(tests.get(&id).unwrap(), &result, elapsed);
+        }
+      }
+      TestEvent::UncaughtError(origin, error) => {
+        failed = true;
+        reporter.report_uncaught_error(&origin, error);
+      }
+      TestEvent::StepRegister(description) => {
+        reporter.report_step_register(&description);
+        test_steps.insert(description.id, description);
+      }
+      TestEvent::StepWait(id) => {
+        if tests_started.insert(id) {
+          reporter.report_step_wait(test_steps.get(&id).unwrap());
+        }
+      }
+      TestEvent::StepResult(id, result, duration) => {
+        if tests_with_result.insert(id) {
+          reporter.report_step_result(
+            test_steps.get(&id).unwrap(),
+            &result,
+            duration,
+            &tests,
+            &test_steps,
+          );
+        }
+      }
+      TestEvent::ForceEndReport => {
+        break;
+      }
+      TestEvent::Completed => {
+        reporter.report_completed();
+      }
+      TestEvent::Sigint => {
+        let elapsed = start_time
+          .map(|t| Instant::now().duration_since(t))
+          .unwrap_or_default();
+        reporter.report_sigint(
+          &tests_started
+            .difference(&tests_with_result)
+            .copied()
+            .collect(),
+          &tests,
+          &test_steps,
+        );
+
+        #[allow(clippy::print_stderr)]
+        if let Err(err) = reporter.flush_report(&elapsed, &tests, &test_steps) {
+          eprint!("Test reporter failed to flush: {}", err)
+        }
+        std::process::exit(130);
+      }
+    }
+  }
+
+  let elapsed = start_time
+    .map(|t| Instant::now().duration_since(t))
+    .unwrap_or_default();
+  reporter.report_summary(&elapsed, &tests, &test_steps);
+  if let Err(err) = reporter.flush_report(&elapsed, &tests, &test_steps) {
+    return (
+      Err(generic_error(format!(
+        "Test reporter failed to flush: {}",
+        err
+      ))),
+      receiver,
+    );
+  }
+
+  if used_only {
+    return (
+      Err(generic_error(
+        "Test failed because the \"only\" option was used",
+      )),
+      receiver,
+    );
+  }
+
+  if failed {
+    return (Err(generic_error("Test failed")), receiver);
+  }
+
+  (Ok(()), receiver)
+}
+
+fn is_supported_test_path_predicate(entry: WalkEntry) -> bool {
+  if !is_script_ext(entry.path) {
+    false
+  } else if has_supported_test_path_name(entry.path) {
+    true
+  } else if let Some(include) = &entry.patterns.include {
+    // allow someone to explicitly specify a path
+    matches_pattern_or_exact_path(include, entry.path)
+  } else {
+    false
+  }
+}
+
 /// Checks if the path has a basename and extension Deno supports for tests.
 pub(crate) fn is_supported_test_path(path: &Path) -> bool {
+  has_supported_test_path_name(path) && is_script_ext(path)
+}
+
+fn has_supported_test_path_name(path: &Path) -> bool {
   if let Some(name) = path.file_stem() {
     let basename = name.to_string_lossy();
-    (basename.ends_with("_test")
+    if basename.ends_with("_test")
       || basename.ends_with(".test")
-      || basename == "test")
-      && is_supported_ext(path)
+      || basename == "test"
+    {
+      return true;
+    }
+
+    path
+      .components()
+      .any(|seg| seg.as_os_str().to_str() == Some("__tests__"))
   } else {
     false
   }
@@ -1029,32 +1457,42 @@ fn is_supported_test_ext(path: &Path) -> bool {
 /// input order.
 ///
 /// - Specifiers matching the `is_supported_test_ext` predicate are marked as
-/// `TestMode::Documentation`.
+///   `TestMode::Documentation`.
 /// - Specifiers matching the `is_supported_test_path` are marked as `TestMode::Executable`.
 /// - Specifiers matching both predicates are marked as `TestMode::Both`
 fn collect_specifiers_with_test_mode(
-  files: &FilesConfig,
+  cli_options: &CliOptions,
+  files: FilePatterns,
   include_inline: &bool,
 ) -> Result<Vec<(ModuleSpecifier, TestMode)>, AnyError> {
-  let module_specifiers = collect_specifiers(files, is_supported_test_path)?;
+  // todo(dsherret): there's no need to collect twice as it's slow
+  let vendor_folder = cli_options.vendor_dir_path();
+  let module_specifiers = collect_specifiers(
+    files.clone(),
+    vendor_folder.map(ToOwned::to_owned),
+    is_supported_test_path_predicate,
+  )?;
 
   if *include_inline {
-    return collect_specifiers(files, is_supported_test_ext).map(
-      |specifiers| {
-        specifiers
-          .into_iter()
-          .map(|specifier| {
-            let mode = if module_specifiers.contains(&specifier) {
-              TestMode::Both
-            } else {
-              TestMode::Documentation
-            };
+    return collect_specifiers(
+      files,
+      vendor_folder.map(ToOwned::to_owned),
+      |e| is_supported_test_ext(e.path),
+    )
+    .map(|specifiers| {
+      specifiers
+        .into_iter()
+        .map(|specifier| {
+          let mode = if module_specifiers.contains(&specifier) {
+            TestMode::Both
+          } else {
+            TestMode::Documentation
+          };
 
-            (specifier, mode)
-          })
-          .collect()
-      },
-    );
+          (specifier, mode)
+        })
+        .collect()
+    });
   }
 
   let specifiers_with_mode = module_specifiers
@@ -1074,20 +1512,25 @@ fn collect_specifiers_with_test_mode(
 /// cannot be run, and therefore need to be marked as `TestMode::Documentation`
 /// as well.
 async fn fetch_specifiers_with_test_mode(
+  cli_options: &CliOptions,
   file_fetcher: &FileFetcher,
-  files: &FilesConfig,
+  member_patterns: impl Iterator<Item = FilePatterns>,
   doc: &bool,
 ) -> Result<Vec<(ModuleSpecifier, TestMode)>, AnyError> {
-  let mut specifiers_with_mode = collect_specifiers_with_test_mode(files, doc)?;
+  let mut specifiers_with_mode = member_patterns
+    .map(|files| {
+      collect_specifiers_with_test_mode(cli_options, files.clone(), doc)
+    })
+    .collect::<Result<Vec<_>, _>>()?
+    .into_iter()
+    .flatten()
+    .collect::<Vec<_>>();
 
   for (specifier, mode) in &mut specifiers_with_mode {
-    let file = file_fetcher
-      .fetch(specifier, PermissionsContainer::allow_all())
-      .await?;
+    let file = file_fetcher.fetch_bypass_permissions(specifier).await?;
 
-    if file.media_type == MediaType::Unknown
-      || file.media_type == MediaType::Dts
-    {
+    let (media_type, _) = file.resolve_media_type_and_charset();
+    if matches!(media_type, MediaType::Unknown | MediaType::Dts) {
       *mode = TestMode::Documentation
     }
   }
@@ -1096,67 +1539,89 @@ async fn fetch_specifiers_with_test_mode(
 }
 
 pub async fn run_tests(
-  flags: Flags,
+  flags: Arc<Flags>,
   test_flags: TestFlags,
 ) -> Result<(), AnyError> {
-  let factory = CliFactory::from_flags(flags).await?;
-  let cli_options = factory.cli_options();
-  let test_options = cli_options.resolve_test_options(test_flags)?;
+  let factory = CliFactory::from_flags(flags);
+  let cli_options = factory.cli_options()?;
+  let workspace_test_options =
+    cli_options.resolve_workspace_test_options(&test_flags);
   let file_fetcher = factory.file_fetcher()?;
-  let module_load_preparer = factory.module_load_preparer().await?;
   // Various test files should not share the same permissions in terms of
   // `PermissionsContainer` - otherwise granting/revoking permissions in one
   // file would have impact on other files, which is undesirable.
-  let permissions =
-    Permissions::from_options(&cli_options.permissions_options())?;
+  let permission_desc_parser = factory.permission_desc_parser()?;
+  let permissions = Permissions::from_options(
+    permission_desc_parser.as_ref(),
+    &cli_options.permissions_options(),
+  )?;
   let log_level = cli_options.log_level();
 
+  let members_with_test_options =
+    cli_options.resolve_test_options_for_members(&test_flags)?;
   let specifiers_with_mode = fetch_specifiers_with_test_mode(
+    cli_options,
     file_fetcher,
-    &test_options.files,
-    &test_options.doc,
+    members_with_test_options.into_iter().map(|(_, v)| v.files),
+    &workspace_test_options.doc,
   )
   .await?;
 
-  if !test_options.allow_none && specifiers_with_mode.is_empty() {
+  if !workspace_test_options.permit_no_files && specifiers_with_mode.is_empty()
+  {
     return Err(generic_error("No test modules found"));
   }
 
-  check_specifiers(
-    cli_options,
-    file_fetcher,
-    module_load_preparer,
-    specifiers_with_mode.clone(),
-  )
-  .await?;
+  let doc_tests = get_doc_tests(&specifiers_with_mode, file_fetcher).await?;
+  let specifiers_for_typecheck_and_test =
+    get_target_specifiers(specifiers_with_mode, &doc_tests);
+  for doc_test in doc_tests {
+    file_fetcher.insert_memory_files(doc_test);
+  }
 
-  if test_options.no_run {
+  let main_graph_container = factory.main_module_graph_container().await?;
+
+  // Typecheck
+  main_graph_container
+    .check_specifiers(
+      &specifiers_for_typecheck_and_test,
+      cli_options.ext_flag().as_ref(),
+    )
+    .await?;
+
+  if workspace_test_options.no_run {
     return Ok(());
   }
 
   let worker_factory =
     Arc::new(factory.create_cli_main_worker_factory().await?);
 
+  // Run tests
   test_specifiers(
     worker_factory,
     &permissions,
-    specifiers_with_mode
-      .into_iter()
-      .filter_map(|(s, m)| match m {
-        TestMode::Documentation => None,
-        _ => Some(s),
-      })
-      .collect(),
+    permission_desc_parser,
+    specifiers_for_typecheck_and_test,
     TestSpecifiersOptions {
-      concurrent_jobs: test_options.concurrent_jobs,
-      fail_fast: test_options.fail_fast,
+      cwd: Url::from_directory_path(cli_options.initial_cwd()).map_err(
+        |_| {
+          generic_error(format!(
+            "Unable to construct URL from the path of cwd: {}",
+            cli_options.initial_cwd().to_string_lossy(),
+          ))
+        },
+      )?,
+      concurrent_jobs: workspace_test_options.concurrent_jobs,
+      fail_fast: workspace_test_options.fail_fast,
       log_level,
-      reporter: test_options.reporter,
-      junit_path: test_options.junit_path,
+      filter: workspace_test_options.filter.is_some(),
+      reporter: workspace_test_options.reporter,
+      junit_path: workspace_test_options.junit_path,
+      hide_stacktraces: workspace_test_options.hide_stacktraces,
       specifier: TestSpecifierOptions {
-        filter: TestFilter::from_flag(&test_options.filter),
-        shuffle: test_options.shuffle,
-        trace_ops: test_options.trace_ops,
+        filter: TestFilter::from_flag(&workspace_test_options.filter),
+        shuffle: workspace_test_options.shuffle,
+        trace_leaks: workspace_test_options.trace_leaks,
       },
     },
   )
@@ -1166,7 +1631,7 @@ pub async fn run_tests(
 }
 
 pub async fn run_tests_with_watch(
-  flags: Flags,
+  flags: Arc<Flags>,
   test_flags: TestFlags,
 ) -> Result<(), AnyError> {
   // On top of the sigint handlers which are added and unbound for each test
@@ -1184,59 +1649,86 @@ pub async fn run_tests_with_watch(
 
   file_watcher::watch_func(
     flags,
-    file_watcher::PrintConfig {
-      job_name: "Test".to_string(),
-      clear_screen: test_flags
+    file_watcher::PrintConfig::new(
+      "Test",
+      test_flags
         .watch
         .as_ref()
         .map(|w| !w.no_clear_screen)
         .unwrap_or(true),
-    },
-    move |flags, sender, changed_paths| {
+    ),
+    move |flags, watcher_communicator, changed_paths| {
       let test_flags = test_flags.clone();
       Ok(async move {
-        let factory = CliFactoryBuilder::new()
-          .with_watcher(sender.clone())
-          .build_from_flags(flags)
-          .await?;
-        let cli_options = factory.cli_options();
-        let test_options = cli_options.resolve_test_options(test_flags)?;
+        let factory = CliFactory::from_flags_for_watcher(
+          flags,
+          watcher_communicator.clone(),
+        );
+        let cli_options = factory.cli_options()?;
+        let workspace_test_options =
+          cli_options.resolve_workspace_test_options(&test_flags);
 
-        let _ = sender.send(cli_options.watch_paths());
-        let _ = sender.send(test_options.files.include.clone());
-
+        let _ = watcher_communicator.watch_paths(cli_options.watch_paths());
         let graph_kind = cli_options.type_check_mode().as_graph_kind();
         let log_level = cli_options.log_level();
         let cli_options = cli_options.clone();
-        let module_graph_builder = factory.module_graph_builder().await?;
+        let module_graph_creator = factory.module_graph_creator().await?;
         let file_fetcher = factory.file_fetcher()?;
-        let test_modules = if test_options.doc {
-          collect_specifiers(&test_options.files, is_supported_test_ext)
-        } else {
-          collect_specifiers(&test_options.files, is_supported_test_path)
-        }?;
-        let permissions =
-          Permissions::from_options(&cli_options.permissions_options())?;
+        let members_with_test_options =
+          cli_options.resolve_test_options_for_members(&test_flags)?;
+        let watch_paths = members_with_test_options
+          .iter()
+          .filter_map(|(_, test_options)| {
+            test_options
+              .files
+              .include
+              .as_ref()
+              .map(|set| set.base_paths())
+          })
+          .flatten()
+          .collect::<Vec<_>>();
+        let _ = watcher_communicator.watch_paths(watch_paths);
+        let test_modules = members_with_test_options
+          .iter()
+          .map(|(_, test_options)| {
+            collect_specifiers(
+              test_options.files.clone(),
+              cli_options.vendor_dir_path().map(ToOwned::to_owned),
+              if workspace_test_options.doc {
+                Box::new(|e: WalkEntry| is_supported_test_ext(e.path))
+                  as Box<dyn Fn(WalkEntry) -> bool>
+              } else {
+                Box::new(is_supported_test_path_predicate)
+              },
+            )
+          })
+          .collect::<Result<Vec<_>, _>>()?
+          .into_iter()
+          .flatten()
+          .collect::<Vec<_>>();
 
-        let graph = module_graph_builder
-          .create_graph(graph_kind, test_modules.clone())
+        let permission_desc_parser = factory.permission_desc_parser()?;
+        let permissions = Permissions::from_options(
+          permission_desc_parser.as_ref(),
+          &cli_options.permissions_options(),
+        )?;
+        let graph = module_graph_creator
+          .create_graph(graph_kind, test_modules)
           .await?;
-        graph_valid_with_cli_options(&graph, &test_modules, &cli_options)?;
+        module_graph_creator.graph_valid(&graph)?;
+        let test_modules = &graph.roots;
 
         let test_modules_to_reload = if let Some(changed_paths) = changed_paths
         {
-          let changed_specifiers = changed_paths
-            .into_iter()
-            .filter_map(|p| ModuleSpecifier::from_file_path(p).ok())
-            .collect::<HashSet<_>>();
-          let mut result = Vec::new();
+          let mut result = IndexSet::with_capacity(test_modules.len());
+          let changed_paths = changed_paths.into_iter().collect::<HashSet<_>>();
           for test_module_specifier in test_modules {
             if has_graph_root_local_dependent_changed(
               &graph,
-              &test_module_specifier,
-              &changed_specifiers,
+              test_module_specifier,
+              &changed_paths,
             ) {
-              result.push(test_module_specifier.clone());
+              result.insert(test_module_specifier.clone());
             }
           }
           result
@@ -1244,51 +1736,68 @@ pub async fn run_tests_with_watch(
           test_modules.clone()
         };
 
-        let worker_factory =
-          Arc::new(factory.create_cli_main_worker_factory().await?);
-        let module_load_preparer = factory.module_load_preparer().await?;
         let specifiers_with_mode = fetch_specifiers_with_test_mode(
+          &cli_options,
           file_fetcher,
-          &test_options.files,
-          &test_options.doc,
+          members_with_test_options.into_iter().map(|(_, v)| v.files),
+          &workspace_test_options.doc,
         )
         .await?
         .into_iter()
         .filter(|(specifier, _)| test_modules_to_reload.contains(specifier))
         .collect::<Vec<(ModuleSpecifier, TestMode)>>();
 
-        check_specifiers(
-          &cli_options,
-          file_fetcher,
-          module_load_preparer,
-          specifiers_with_mode.clone(),
-        )
-        .await?;
+        let doc_tests =
+          get_doc_tests(&specifiers_with_mode, file_fetcher).await?;
+        let specifiers_for_typecheck_and_test =
+          get_target_specifiers(specifiers_with_mode, &doc_tests);
+        for doc_test in doc_tests {
+          file_fetcher.insert_memory_files(doc_test);
+        }
 
-        if test_options.no_run {
+        let main_graph_container =
+          factory.main_module_graph_container().await?;
+
+        // Typecheck
+        main_graph_container
+          .check_specifiers(
+            &specifiers_for_typecheck_and_test,
+            cli_options.ext_flag().as_ref(),
+          )
+          .await?;
+
+        if workspace_test_options.no_run {
           return Ok(());
         }
+
+        let worker_factory =
+          Arc::new(factory.create_cli_main_worker_factory().await?);
 
         test_specifiers(
           worker_factory,
           &permissions,
-          specifiers_with_mode
-            .into_iter()
-            .filter_map(|(s, m)| match m {
-              TestMode::Documentation => None,
-              _ => Some(s),
-            })
-            .collect(),
+          permission_desc_parser,
+          specifiers_for_typecheck_and_test,
           TestSpecifiersOptions {
-            concurrent_jobs: test_options.concurrent_jobs,
-            fail_fast: test_options.fail_fast,
+            cwd: Url::from_directory_path(cli_options.initial_cwd()).map_err(
+              |_| {
+                generic_error(format!(
+                  "Unable to construct URL from the path of cwd: {}",
+                  cli_options.initial_cwd().to_string_lossy(),
+                ))
+              },
+            )?,
+            concurrent_jobs: workspace_test_options.concurrent_jobs,
+            fail_fast: workspace_test_options.fail_fast,
             log_level,
-            reporter: test_options.reporter,
-            junit_path: test_options.junit_path,
+            filter: workspace_test_options.filter.is_some(),
+            reporter: workspace_test_options.reporter,
+            junit_path: workspace_test_options.junit_path,
+            hide_stacktraces: workspace_test_options.hide_stacktraces,
             specifier: TestSpecifierOptions {
-              filter: TestFilter::from_flag(&test_options.filter),
-              shuffle: test_options.shuffle,
-              trace_ops: test_options.trace_ops,
+              filter: TestFilter::from_flag(&workspace_test_options.filter),
+              shuffle: workspace_test_options.shuffle,
+              trace_leaks: workspace_test_options.trace_leaks,
             },
           },
         )
@@ -1303,9 +1812,41 @@ pub async fn run_tests_with_watch(
   Ok(())
 }
 
+/// Extracts doc tests from files specified by the given specifiers.
+async fn get_doc_tests(
+  specifiers_with_mode: &[(Url, TestMode)],
+  file_fetcher: &FileFetcher,
+) -> Result<Vec<File>, AnyError> {
+  let specifiers_needing_extraction = specifiers_with_mode
+    .iter()
+    .filter(|(_, mode)| mode.needs_test_extraction())
+    .map(|(s, _)| s);
+
+  let mut doc_tests = Vec::new();
+  for s in specifiers_needing_extraction {
+    let file = file_fetcher.fetch_bypass_permissions(s).await?;
+    doc_tests.extend(extract_doc_tests(file)?);
+  }
+
+  Ok(doc_tests)
+}
+
+/// Get a list of specifiers that we need to perform typecheck and run tests on.
+/// The result includes "pseudo specifiers" for doc tests.
+fn get_target_specifiers(
+  specifiers_with_mode: Vec<(Url, TestMode)>,
+  doc_tests: &[File],
+) -> Vec<Url> {
+  specifiers_with_mode
+    .into_iter()
+    .filter_map(|(s, mode)| mode.needs_test_run().then_some(s))
+    .chain(doc_tests.iter().map(|d| d.specifier.clone()))
+    .collect()
+}
+
 /// Tracks failures for the `--fail-fast` argument in
 /// order to tell when to stop running tests.
-#[derive(Clone)]
+#[derive(Clone, Default)]
 pub struct FailFastTracker {
   max_count: Option<usize>,
   failure_count: Arc<AtomicUsize>,
@@ -1337,158 +1878,6 @@ impl FailFastTracker {
       false
     }
   }
-}
-
-#[derive(Clone)]
-pub struct TestEventSender {
-  sender: UnboundedSender<TestEvent>,
-  stdout_writer: TestOutputPipe,
-  stderr_writer: TestOutputPipe,
-}
-
-impl TestEventSender {
-  pub fn new(sender: UnboundedSender<TestEvent>) -> Self {
-    Self {
-      stdout_writer: TestOutputPipe::new(sender.clone()),
-      stderr_writer: TestOutputPipe::new(sender.clone()),
-      sender,
-    }
-  }
-
-  pub fn stdout(&self) -> std::fs::File {
-    self.stdout_writer.as_file()
-  }
-
-  pub fn stderr(&self) -> std::fs::File {
-    self.stderr_writer.as_file()
-  }
-
-  pub fn send(&mut self, message: TestEvent) -> Result<(), AnyError> {
-    // for any event that finishes collecting output, we need to
-    // ensure that the collected stdout and stderr pipes are flushed
-    if matches!(
-      message,
-      TestEvent::Result(_, _, _)
-        | TestEvent::StepWait(_)
-        | TestEvent::StepResult(_, _, _)
-        | TestEvent::UncaughtError(_, _)
-    ) {
-      self.flush_stdout_and_stderr()?;
-    }
-
-    self.sender.send(message)?;
-    Ok(())
-  }
-
-  fn downgrade(&self) -> WeakUnboundedSender<TestEvent> {
-    self.sender.downgrade()
-  }
-
-  fn flush_stdout_and_stderr(&mut self) -> Result<(), AnyError> {
-    self.stdout_writer.flush()?;
-    self.stderr_writer.flush()?;
-
-    Ok(())
-  }
-}
-
-// use a string that if it ends up in the output won't affect how things are displayed
-const ZERO_WIDTH_SPACE: &str = "\u{200B}";
-
-struct TestOutputPipe {
-  writer: os_pipe::PipeWriter,
-  state: Arc<Mutex<Option<std::sync::mpsc::Sender<()>>>>,
-}
-
-impl Clone for TestOutputPipe {
-  fn clone(&self) -> Self {
-    Self {
-      writer: self.writer.try_clone().unwrap(),
-      state: self.state.clone(),
-    }
-  }
-}
-
-impl TestOutputPipe {
-  pub fn new(sender: UnboundedSender<TestEvent>) -> Self {
-    let (reader, writer) = os_pipe::pipe().unwrap();
-    let state = Arc::new(Mutex::new(None));
-
-    start_output_redirect_thread(reader, sender, state.clone());
-
-    Self { writer, state }
-  }
-
-  pub fn flush(&mut self) -> Result<(), AnyError> {
-    // We want to wake up the other thread and have it respond back
-    // that it's done clearing out its pipe before returning.
-    let (sender, receiver) = std::sync::mpsc::channel();
-    if let Some(sender) = self.state.lock().replace(sender) {
-      let _ = sender.send(()); // just in case
-    }
-    // Bit of a hack to send a zero width space in order to wake
-    // the thread up. It seems that sending zero bytes here does
-    // not work on windows.
-    self.writer.write_all(ZERO_WIDTH_SPACE.as_bytes())?;
-    self.writer.flush()?;
-    // ignore the error as it might have been picked up and closed
-    let _ = receiver.recv();
-
-    Ok(())
-  }
-
-  pub fn as_file(&self) -> std::fs::File {
-    pipe_writer_to_file(self.writer.try_clone().unwrap())
-  }
-}
-
-#[cfg(windows)]
-fn pipe_writer_to_file(writer: os_pipe::PipeWriter) -> std::fs::File {
-  use std::os::windows::prelude::FromRawHandle;
-  use std::os::windows::prelude::IntoRawHandle;
-  // SAFETY: Requires consuming ownership of the provided handle
-  unsafe { std::fs::File::from_raw_handle(writer.into_raw_handle()) }
-}
-
-#[cfg(unix)]
-fn pipe_writer_to_file(writer: os_pipe::PipeWriter) -> std::fs::File {
-  use std::os::unix::io::FromRawFd;
-  use std::os::unix::io::IntoRawFd;
-  // SAFETY: Requires consuming ownership of the provided handle
-  unsafe { std::fs::File::from_raw_fd(writer.into_raw_fd()) }
-}
-
-fn start_output_redirect_thread(
-  mut pipe_reader: os_pipe::PipeReader,
-  sender: UnboundedSender<TestEvent>,
-  flush_state: Arc<Mutex<Option<std::sync::mpsc::Sender<()>>>>,
-) {
-  spawn_blocking(move || loop {
-    let mut buffer = [0; 512];
-    let size = match pipe_reader.read(&mut buffer) {
-      Ok(0) | Err(_) => break,
-      Ok(size) => size,
-    };
-    let oneshot_sender = flush_state.lock().take();
-    let mut data = &buffer[0..size];
-    if data.ends_with(ZERO_WIDTH_SPACE.as_bytes()) {
-      data = &data[0..data.len() - ZERO_WIDTH_SPACE.len()];
-    }
-
-    if !data.is_empty()
-      && sender
-        .send(TestEvent::Output(buffer[0..size].to_vec()))
-        .is_err()
-    {
-      break;
-    }
-
-    // Always respond back if this was set. Ideally we would also check to
-    // ensure the pipe reader is empty before sending back this response.
-    if let Some(sender) = oneshot_sender {
-      let _ignore = sender.send(());
-    }
-  });
 }
 
 #[cfg(test)]
@@ -1548,6 +1937,18 @@ mod inner_test {
     assert!(is_supported_test_path(Path::new("foo/bar/test.jsx")));
     assert!(is_supported_test_path(Path::new("foo/bar/test.ts")));
     assert!(is_supported_test_path(Path::new("foo/bar/test.tsx")));
+    assert!(is_supported_test_path(Path::new(
+      "foo/bar/__tests__/foo.js"
+    )));
+    assert!(is_supported_test_path(Path::new(
+      "foo/bar/__tests__/foo.jsx"
+    )));
+    assert!(is_supported_test_path(Path::new(
+      "foo/bar/__tests__/foo.ts"
+    )));
+    assert!(is_supported_test_path(Path::new(
+      "foo/bar/__tests__/foo.tsx"
+    )));
     assert!(!is_supported_test_path(Path::new("README.md")));
     assert!(!is_supported_test_path(Path::new("lib/typescript.d.ts")));
     assert!(!is_supported_test_path(Path::new("notatest.js")));

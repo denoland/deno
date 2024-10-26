@@ -1,15 +1,23 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 use crate::args::resolve_no_prompt;
+use crate::args::AddFlags;
 use crate::args::CaData;
+use crate::args::ConfigFlag;
 use crate::args::Flags;
 use crate::args::InstallFlags;
+use crate::args::InstallFlagsGlobal;
+use crate::args::InstallFlagsLocal;
+use crate::args::InstallKind;
 use crate::args::TypeCheckMode;
+use crate::args::UninstallFlags;
+use crate::args::UninstallKind;
 use crate::factory::CliFactory;
-use crate::http_util::HttpClient;
+use crate::graph_container::ModuleGraphContainer;
+use crate::http_util::HttpClientProvider;
 use crate::util::fs::canonicalize_path_maybe_not_exists;
 
-use deno_config::ConfigFlag;
+use deno_core::anyhow::bail;
 use deno_core::anyhow::Context;
 use deno_core::error::generic_error;
 use deno_core::error::AnyError;
@@ -30,9 +38,10 @@ use std::path::PathBuf;
 
 #[cfg(not(windows))]
 use std::os::unix::fs::PermissionsExt;
+use std::sync::Arc;
 
 static EXEC_NAME_RE: Lazy<Regex> = Lazy::new(|| {
-  RegexBuilder::new(r"^[a-z][\w-]*$")
+  RegexBuilder::new(r"^[a-z0-9][\w-]*$")
     .case_insensitive(true)
     .build()
     .expect("invalid regex")
@@ -127,15 +136,21 @@ fn get_installer_root() -> Result<PathBuf, io::Error> {
   Ok(home_path)
 }
 
-pub async fn infer_name_from_url(url: &Url) -> Option<String> {
+pub async fn infer_name_from_url(
+  http_client_provider: &HttpClientProvider,
+  url: &Url,
+) -> Option<String> {
   // If there's an absolute url with no path, eg. https://my-cli.com
   // perform a request, and see if it redirects another file instead.
   let mut url = url.clone();
 
   if url.path() == "/" {
-    let client = HttpClient::new(None, None);
-    if let Ok(res) = client.get_redirected_response(url.clone()).await {
-      url = res.url().clone();
+    if let Ok(client) = http_client_provider.get_or_create() {
+      if let Ok(redirected_url) =
+        client.get_redirected_url(url.clone(), None).await
+      {
+        url = redirected_url;
+      }
     }
   }
 
@@ -152,14 +167,21 @@ pub async fn infer_name_from_url(url: &Url) -> Option<String> {
     return None;
   }
 
-  let path = PathBuf::from(url.path());
-  let mut stem = match path.file_stem() {
-    Some(stem) => stem.to_string_lossy().to_string(),
-    None => return None,
+  let percent_decode = percent_encoding::percent_decode(url.path().as_bytes());
+  #[cfg(unix)]
+  let path = {
+    use std::os::unix::prelude::OsStringExt;
+    PathBuf::from(std::ffi::OsString::from_vec(
+      percent_decode.collect::<Vec<u8>>(),
+    ))
   };
-  if stem == "main" || stem == "mod" || stem == "index" || stem == "cli" {
+  #[cfg(windows)]
+  let path = PathBuf::from(percent_decode.decode_utf8_lossy().as_ref());
+
+  let mut stem = path.file_stem()?.to_string_lossy();
+  if matches!(stem.as_ref(), "main" | "mod" | "index" | "cli") {
     if let Some(parent_name) = path.parent().and_then(|p| p.file_name()) {
-      stem = parent_name.to_string_lossy().to_string();
+      stem = parent_name.to_string_lossy();
     }
   }
 
@@ -168,17 +190,28 @@ pub async fn infer_name_from_url(url: &Url) -> Option<String> {
   // a version number.
   match stem.find('@') {
     Some(at_index) if at_index > 0 => {
-      stem = stem.split_at(at_index).0.to_string();
+      stem = stem.split_at(at_index).0.to_string().into();
     }
     _ => {}
   }
 
-  Some(stem)
+  Some(stem.to_string())
 }
 
-pub fn uninstall(name: String, root: Option<PathBuf>) -> Result<(), AnyError> {
-  let root = if let Some(root) = root {
-    canonicalize_path_maybe_not_exists(&root)?
+pub async fn uninstall(
+  flags: Arc<Flags>,
+  uninstall_flags: UninstallFlags,
+) -> Result<(), AnyError> {
+  let uninstall_flags = match uninstall_flags.kind {
+    UninstallKind::Global(flags) => flags,
+    UninstallKind::Local(remove_flags) => {
+      return super::registry::remove(flags, remove_flags).await;
+    }
+  };
+
+  let cwd = std::env::current_dir().context("Unable to get CWD")?;
+  let root = if let Some(root) = uninstall_flags.root {
+    canonicalize_path_maybe_not_exists(&cwd.join(root))?
   } else {
     get_installer_root()?
   };
@@ -191,7 +224,7 @@ pub fn uninstall(name: String, root: Option<PathBuf>) -> Result<(), AnyError> {
     }
   }
 
-  let file_path = installation_dir.join(&name);
+  let file_path = installation_dir.join(&uninstall_flags.name);
 
   let mut removed = false;
 
@@ -211,7 +244,10 @@ pub fn uninstall(name: String, root: Option<PathBuf>) -> Result<(), AnyError> {
   }
 
   if !removed {
-    return Err(generic_error(format!("No installation found for {name}")));
+    return Err(generic_error(format!(
+      "No installation found for {}",
+      uninstall_flags.name
+    )));
   }
 
   // There might be some extra files to delete
@@ -225,31 +261,118 @@ pub fn uninstall(name: String, root: Option<PathBuf>) -> Result<(), AnyError> {
     }
   }
 
-  log::info!("✅ Successfully uninstalled {}", name);
+  log::info!("✅ Successfully uninstalled {}", uninstall_flags.name);
+  Ok(())
+}
+
+pub(crate) async fn install_from_entrypoints(
+  flags: Arc<Flags>,
+  entrypoints: &[String],
+) -> Result<(), AnyError> {
+  let factory = CliFactory::from_flags(flags.clone());
+  let emitter = factory.emitter()?;
+  let main_graph_container = factory.main_module_graph_container().await?;
+  main_graph_container
+    .load_and_type_check_files(entrypoints)
+    .await?;
+  emitter
+    .cache_module_emits(&main_graph_container.graph())
+    .await
+}
+
+async fn install_local(
+  flags: Arc<Flags>,
+  install_flags: InstallFlagsLocal,
+) -> Result<(), AnyError> {
+  match install_flags {
+    InstallFlagsLocal::Add(add_flags) => {
+      super::registry::add(
+        flags,
+        add_flags,
+        super::registry::AddCommandName::Install,
+      )
+      .await
+    }
+    InstallFlagsLocal::Entrypoints(entrypoints) => {
+      install_from_entrypoints(flags, &entrypoints).await
+    }
+    InstallFlagsLocal::TopLevel => {
+      let factory = CliFactory::from_flags(flags);
+      // surface any errors in the package.json
+      if let Some(npm_resolver) = factory.npm_resolver().await?.as_managed() {
+        npm_resolver.ensure_no_pkg_json_dep_errors()?;
+      }
+      crate::tools::registry::cache_top_level_deps(&factory, None).await?;
+
+      if let Some(lockfile) = factory.cli_options()?.maybe_lockfile() {
+        lockfile.write_if_changed()?;
+      }
+
+      Ok(())
+    }
+  }
+}
+
+fn check_if_installs_a_single_package_globally(
+  maybe_add_flags: Option<&AddFlags>,
+) -> Result<(), AnyError> {
+  let Some(add_flags) = maybe_add_flags else {
+    return Ok(());
+  };
+  if add_flags.packages.len() != 1 {
+    return Ok(());
+  }
+  let Ok(url) = Url::parse(&add_flags.packages[0]) else {
+    return Ok(());
+  };
+  if matches!(url.scheme(), "http" | "https") {
+    bail!("Failed to install \"{}\" specifier. If you are trying to install {} globally, run again with `-g` flag:\n  deno install -g {}", url.scheme(), url.as_str(), url.as_str());
+  }
   Ok(())
 }
 
 pub async fn install_command(
-  flags: Flags,
+  flags: Arc<Flags>,
   install_flags: InstallFlags,
 ) -> Result<(), AnyError> {
+  match install_flags.kind {
+    InstallKind::Global(global_flags) => {
+      install_global(flags, global_flags).await
+    }
+    InstallKind::Local(local_flags) => {
+      if let InstallFlagsLocal::Add(add_flags) = &local_flags {
+        check_if_installs_a_single_package_globally(Some(add_flags))?;
+      }
+      install_local(flags, local_flags).await
+    }
+  }
+}
+
+async fn install_global(
+  flags: Arc<Flags>,
+  install_flags_global: InstallFlagsGlobal,
+) -> Result<(), AnyError> {
   // ensure the module is cached
-  CliFactory::from_flags(flags.clone())
+  let factory = CliFactory::from_flags(flags.clone());
+  factory
+    .main_module_graph_container()
     .await?
-    .module_load_preparer()
-    .await?
-    .load_and_type_check_files(&[install_flags.module_url.clone()])
+    .load_and_type_check_files(&[install_flags_global.module_url.clone()])
     .await?;
+  let http_client = factory.http_client_provider();
 
   // create the install shim
-  create_install_shim(flags, install_flags).await
+  create_install_shim(http_client, &flags, install_flags_global).await
 }
 
 async fn create_install_shim(
-  flags: Flags,
-  install_flags: InstallFlags,
+  http_client_provider: &HttpClientProvider,
+  flags: &Flags,
+  install_flags_global: InstallFlagsGlobal,
 ) -> Result<(), AnyError> {
-  let shim_data = resolve_shim_data(&flags, &install_flags).await?;
+  let shim_data =
+    resolve_shim_data(http_client_provider, flags, &install_flags_global)
+      .await?;
 
   // ensure directory exists
   if let Ok(metadata) = fs::metadata(&shim_data.installation_dir) {
@@ -260,7 +383,7 @@ async fn create_install_shim(
     fs::create_dir_all(&shim_data.installation_dir)?;
   };
 
-  if shim_data.file_path.exists() && !install_flags.force {
+  if shim_data.file_path.exists() && !install_flags_global.force {
     return Err(generic_error(
       "Existing installation found. Aborting (Use -f to overwrite).",
     ));
@@ -300,24 +423,25 @@ struct ShimData {
 }
 
 async fn resolve_shim_data(
+  http_client_provider: &HttpClientProvider,
   flags: &Flags,
-  install_flags: &InstallFlags,
+  install_flags_global: &InstallFlagsGlobal,
 ) -> Result<ShimData, AnyError> {
-  let root = if let Some(root) = &install_flags.root {
-    canonicalize_path_maybe_not_exists(root)?
+  let cwd = std::env::current_dir().context("Unable to get CWD")?;
+  let root = if let Some(root) = &install_flags_global.root {
+    canonicalize_path_maybe_not_exists(&cwd.join(root))?
   } else {
     get_installer_root()?
   };
   let installation_dir = root.join("bin");
 
   // Check if module_url is remote
-  let cwd = std::env::current_dir().context("Unable to get CWD")?;
-  let module_url = resolve_url_or_path(&install_flags.module_url, &cwd)?;
+  let module_url = resolve_url_or_path(&install_flags_global.module_url, &cwd)?;
 
-  let name = if install_flags.name.is_some() {
-    install_flags.name.clone()
+  let name = if install_flags_global.name.is_some() {
+    install_flags_global.name.clone()
   } else {
-    infer_name_from_url(&module_url).await
+    infer_name_from_url(http_client_provider, &module_url).await
   };
 
   let name = match name {
@@ -370,8 +494,8 @@ async fn resolve_shim_data(
     TypeCheckMode::Local => executable_args.push("--check".to_string()),
   }
 
-  if flags.unstable {
-    executable_args.push("--unstable".to_string());
+  for feature in &flags.unstable_config.features {
+    executable_args.push(format!("--unstable-{}", feature));
   }
 
   if flags.no_remote {
@@ -382,15 +506,15 @@ async fn resolve_shim_data(
     executable_args.push("--no-npm".to_string());
   }
 
-  if flags.lock_write {
-    executable_args.push("--lock-write".to_string());
-  }
-
   if flags.cached_only {
     executable_args.push("--cached-only".to_string());
   }
 
-  if resolve_no_prompt(flags) {
+  if flags.frozen_lockfile.unwrap_or(false) {
+    executable_args.push("--frozen".to_string());
+  }
+
+  if resolve_no_prompt(&flags.permissions) {
     executable_args.push("--no-prompt".to_string());
   }
 
@@ -444,7 +568,7 @@ async fn resolve_shim_data(
       extra_files.push((
         copy_path,
         fs::read_to_string(lock_path)
-          .with_context(|| format!("error reading {}", lock_path.display()))?,
+          .with_context(|| format!("error reading {}", lock_path))?,
       ));
     } else {
       // Provide an empty lockfile so that this overwrites any existing lockfile
@@ -454,7 +578,7 @@ async fn resolve_shim_data(
   }
 
   executable_args.push(module_url.to_string());
-  executable_args.extend_from_slice(&install_flags.args);
+  executable_args.extend_from_slice(&install_flags_global.args);
 
   Ok(ShimData {
     name,
@@ -491,16 +615,21 @@ fn is_in_path(dir: &Path) -> bool {
 mod tests {
   use super::*;
 
+  use crate::args::ConfigFlag;
+  use crate::args::PermissionFlags;
+  use crate::args::UninstallFlagsGlobal;
+  use crate::args::UnstableConfig;
   use crate::util::fs::canonicalize_path;
-  use deno_config::ConfigFlag;
   use std::process::Command;
   use test_util::testdata_path;
   use test_util::TempDir;
 
   #[tokio::test]
   async fn install_infer_name_from_url() {
+    let http_client = HttpClientProvider::new(None, None);
     assert_eq!(
       infer_name_from_url(
+        &http_client,
         &Url::parse("https://example.com/abc/server.ts").unwrap()
       )
       .await,
@@ -508,6 +637,7 @@ mod tests {
     );
     assert_eq!(
       infer_name_from_url(
+        &http_client,
         &Url::parse("https://example.com/abc/main.ts").unwrap()
       )
       .await,
@@ -515,6 +645,7 @@ mod tests {
     );
     assert_eq!(
       infer_name_from_url(
+        &http_client,
         &Url::parse("https://example.com/abc/mod.ts").unwrap()
       )
       .await,
@@ -522,6 +653,15 @@ mod tests {
     );
     assert_eq!(
       infer_name_from_url(
+        &http_client,
+        &Url::parse("https://example.com/ab%20c/mod.ts").unwrap()
+      )
+      .await,
+      Some("ab c".to_string())
+    );
+    assert_eq!(
+      infer_name_from_url(
+        &http_client,
         &Url::parse("https://example.com/abc/index.ts").unwrap()
       )
       .await,
@@ -529,38 +669,67 @@ mod tests {
     );
     assert_eq!(
       infer_name_from_url(
+        &http_client,
         &Url::parse("https://example.com/abc/cli.ts").unwrap()
       )
       .await,
       Some("abc".to_string())
     );
     assert_eq!(
-      infer_name_from_url(&Url::parse("https://example.com/main.ts").unwrap())
-        .await,
+      infer_name_from_url(
+        &http_client,
+        &Url::parse("https://example.com/main.ts").unwrap()
+      )
+      .await,
       Some("main".to_string())
     );
     assert_eq!(
-      infer_name_from_url(&Url::parse("https://example.com").unwrap()).await,
-      None
-    );
-    assert_eq!(
-      infer_name_from_url(&Url::parse("file:///abc/server.ts").unwrap()).await,
-      Some("server".to_string())
-    );
-    assert_eq!(
-      infer_name_from_url(&Url::parse("file:///abc/main.ts").unwrap()).await,
-      Some("abc".to_string())
-    );
-    assert_eq!(
-      infer_name_from_url(&Url::parse("file:///main.ts").unwrap()).await,
-      Some("main".to_string())
-    );
-    assert_eq!(
-      infer_name_from_url(&Url::parse("file:///").unwrap()).await,
+      infer_name_from_url(
+        &http_client,
+        &Url::parse("https://example.com").unwrap()
+      )
+      .await,
       None
     );
     assert_eq!(
       infer_name_from_url(
+        &http_client,
+        &Url::parse("file:///abc/server.ts").unwrap()
+      )
+      .await,
+      Some("server".to_string())
+    );
+    assert_eq!(
+      infer_name_from_url(
+        &http_client,
+        &Url::parse("file:///abc/main.ts").unwrap()
+      )
+      .await,
+      Some("abc".to_string())
+    );
+    assert_eq!(
+      infer_name_from_url(
+        &http_client,
+        &Url::parse("file:///ab%20c/main.ts").unwrap()
+      )
+      .await,
+      Some("ab c".to_string())
+    );
+    assert_eq!(
+      infer_name_from_url(
+        &http_client,
+        &Url::parse("file:///main.ts").unwrap()
+      )
+      .await,
+      Some("main".to_string())
+    );
+    assert_eq!(
+      infer_name_from_url(&http_client, &Url::parse("file:///").unwrap()).await,
+      None
+    );
+    assert_eq!(
+      infer_name_from_url(
+        &http_client,
         &Url::parse("https://example.com/abc@0.1.0").unwrap()
       )
       .await,
@@ -568,6 +737,7 @@ mod tests {
     );
     assert_eq!(
       infer_name_from_url(
+        &http_client,
         &Url::parse("https://example.com/abc@0.1.0/main.ts").unwrap()
       )
       .await,
@@ -575,47 +745,71 @@ mod tests {
     );
     assert_eq!(
       infer_name_from_url(
+        &http_client,
         &Url::parse("https://example.com/abc@def@ghi").unwrap()
       )
       .await,
       Some("abc".to_string())
     );
     assert_eq!(
-      infer_name_from_url(&Url::parse("https://example.com/@abc.ts").unwrap())
-        .await,
+      infer_name_from_url(
+        &http_client,
+        &Url::parse("https://example.com/@abc.ts").unwrap()
+      )
+      .await,
       Some("@abc".to_string())
     );
     assert_eq!(
       infer_name_from_url(
+        &http_client,
         &Url::parse("https://example.com/@abc/mod.ts").unwrap()
       )
       .await,
       Some("@abc".to_string())
     );
     assert_eq!(
-      infer_name_from_url(&Url::parse("file:///@abc.ts").unwrap()).await,
+      infer_name_from_url(
+        &http_client,
+        &Url::parse("file:///@abc.ts").unwrap()
+      )
+      .await,
       Some("@abc".to_string())
     );
     assert_eq!(
-      infer_name_from_url(&Url::parse("file:///@abc/cli.ts").unwrap()).await,
+      infer_name_from_url(
+        &http_client,
+        &Url::parse("file:///@abc/cli.ts").unwrap()
+      )
+      .await,
       Some("@abc".to_string())
     );
     assert_eq!(
-      infer_name_from_url(&Url::parse("npm:cowsay@1.2/cowthink").unwrap())
-        .await,
+      infer_name_from_url(
+        &http_client,
+        &Url::parse("npm:cowsay@1.2/cowthink").unwrap()
+      )
+      .await,
       Some("cowthink".to_string())
     );
     assert_eq!(
-      infer_name_from_url(&Url::parse("npm:cowsay@1.2/cowthink/test").unwrap())
+      infer_name_from_url(
+        &http_client,
+        &Url::parse("npm:cowsay@1.2/cowthink/test").unwrap()
+      )
+      .await,
+      Some("cowsay".to_string())
+    );
+    assert_eq!(
+      infer_name_from_url(&http_client, &Url::parse("npm:cowsay@1.2").unwrap())
         .await,
       Some("cowsay".to_string())
     );
     assert_eq!(
-      infer_name_from_url(&Url::parse("npm:cowsay@1.2").unwrap()).await,
-      Some("cowsay".to_string())
-    );
-    assert_eq!(
-      infer_name_from_url(&Url::parse("npm:@types/node@1.2").unwrap()).await,
+      infer_name_from_url(
+        &http_client,
+        &Url::parse("npm:@types/node@1.2").unwrap()
+      )
+      .await,
       None
     );
   }
@@ -627,15 +821,13 @@ mod tests {
     std::fs::create_dir(&bin_dir).unwrap();
 
     create_install_shim(
-      Flags {
-        unstable: true,
-        ..Flags::default()
-      },
-      InstallFlags {
+      &HttpClientProvider::new(None, None),
+      &Flags::default(),
+      InstallFlagsGlobal {
         module_url: "http://localhost:4545/echo_server.ts".to_string(),
         args: vec![],
         name: Some("echo_test".to_string()),
-        root: Some(temp_dir.path().to_path_buf()),
+        root: Some(temp_dir.path().to_string()),
         force: false,
       },
     )
@@ -652,24 +844,24 @@ mod tests {
     let content = fs::read_to_string(file_path).unwrap();
     if cfg!(windows) {
       assert!(content.contains(
-        r#""run" "--unstable" "--no-config" "http://localhost:4545/echo_server.ts""#
+        r#""run" "--no-config" "http://localhost:4545/echo_server.ts""#
       ));
     } else {
-      assert!(content.contains(
-        r#"run --unstable --no-config 'http://localhost:4545/echo_server.ts'"#
-      ));
+      assert!(content
+        .contains(r#"run --no-config 'http://localhost:4545/echo_server.ts'"#));
     }
   }
 
   #[tokio::test]
   async fn install_inferred_name() {
     let shim_data = resolve_shim_data(
+      &HttpClientProvider::new(None, None),
       &Flags::default(),
-      &InstallFlags {
+      &InstallFlagsGlobal {
         module_url: "http://localhost:4545/echo_server.ts".to_string(),
         args: vec![],
         name: None,
-        root: Some(env::temp_dir()),
+        root: Some(env::temp_dir().to_string_lossy().to_string()),
         force: false,
       },
     )
@@ -684,14 +876,73 @@ mod tests {
   }
 
   #[tokio::test]
+  async fn install_unstable_legacy() {
+    let shim_data = resolve_shim_data(
+      &HttpClientProvider::new(None, None),
+      &Default::default(),
+      &InstallFlagsGlobal {
+        module_url: "http://localhost:4545/echo_server.ts".to_string(),
+        args: vec![],
+        name: None,
+        root: Some(env::temp_dir().to_string_lossy().to_string()),
+        force: false,
+      },
+    )
+    .await
+    .unwrap();
+
+    assert_eq!(shim_data.name, "echo_server");
+    assert_eq!(
+      shim_data.args,
+      vec!["run", "--no-config", "http://localhost:4545/echo_server.ts",]
+    );
+  }
+
+  #[tokio::test]
+  async fn install_unstable_features() {
+    let shim_data = resolve_shim_data(
+      &HttpClientProvider::new(None, None),
+      &Flags {
+        unstable_config: UnstableConfig {
+          features: vec!["kv".to_string(), "cron".to_string()],
+          ..Default::default()
+        },
+        ..Default::default()
+      },
+      &InstallFlagsGlobal {
+        module_url: "http://localhost:4545/echo_server.ts".to_string(),
+        args: vec![],
+        name: None,
+        root: Some(env::temp_dir().to_string_lossy().to_string()),
+        force: false,
+      },
+    )
+    .await
+    .unwrap();
+
+    assert_eq!(shim_data.name, "echo_server");
+    assert_eq!(
+      shim_data.args,
+      vec![
+        "run",
+        "--unstable-kv",
+        "--unstable-cron",
+        "--no-config",
+        "http://localhost:4545/echo_server.ts",
+      ]
+    );
+  }
+
+  #[tokio::test]
   async fn install_inferred_name_from_parent() {
     let shim_data = resolve_shim_data(
+      &HttpClientProvider::new(None, None),
       &Flags::default(),
-      &InstallFlags {
+      &InstallFlagsGlobal {
         module_url: "http://localhost:4545/subdir/main.ts".to_string(),
         args: vec![],
         name: None,
-        root: Some(env::temp_dir()),
+        root: Some(env::temp_dir().to_string_lossy().to_string()),
         force: false,
       },
     )
@@ -709,13 +960,14 @@ mod tests {
   async fn install_inferred_name_after_redirect_for_no_path_url() {
     let _http_server_guard = test_util::http_server();
     let shim_data = resolve_shim_data(
+      &HttpClientProvider::new(None, None),
       &Flags::default(),
-      &InstallFlags {
+      &InstallFlagsGlobal {
         module_url: "http://localhost:4550/?redirect_to=/subdir/redirects/a.ts"
           .to_string(),
         args: vec![],
         name: None,
-        root: Some(env::temp_dir()),
+        root: Some(env::temp_dir().to_string_lossy().to_string()),
         force: false,
       },
     )
@@ -736,12 +988,13 @@ mod tests {
   #[tokio::test]
   async fn install_custom_dir_option() {
     let shim_data = resolve_shim_data(
+      &HttpClientProvider::new(None, None),
       &Flags::default(),
-      &InstallFlags {
+      &InstallFlagsGlobal {
         module_url: "http://localhost:4545/echo_server.ts".to_string(),
         args: vec![],
         name: Some("echo_test".to_string()),
-        root: Some(env::temp_dir()),
+        root: Some(env::temp_dir().to_string_lossy().to_string()),
         force: false,
       },
     )
@@ -758,18 +1011,22 @@ mod tests {
   #[tokio::test]
   async fn install_with_flags() {
     let shim_data = resolve_shim_data(
+      &HttpClientProvider::new(None, None),
       &Flags {
-        allow_net: Some(vec![]),
-        allow_read: Some(vec![]),
+        permissions: PermissionFlags {
+          allow_net: Some(vec![]),
+          allow_read: Some(vec![]),
+          ..Default::default()
+        },
         type_check_mode: TypeCheckMode::None,
         log_level: Some(Level::Error),
         ..Flags::default()
       },
-      &InstallFlags {
+      &InstallFlagsGlobal {
         module_url: "http://localhost:4545/echo_server.ts".to_string(),
         args: vec!["--foobar".to_string()],
         name: Some("echo_test".to_string()),
-        root: Some(env::temp_dir()),
+        root: Some(env::temp_dir().to_string_lossy().to_string()),
         force: false,
       },
     )
@@ -794,15 +1051,19 @@ mod tests {
   #[tokio::test]
   async fn install_prompt() {
     let shim_data = resolve_shim_data(
+      &HttpClientProvider::new(None, None),
       &Flags {
-        no_prompt: true,
+        permissions: PermissionFlags {
+          no_prompt: true,
+          ..Default::default()
+        },
         ..Flags::default()
       },
-      &InstallFlags {
+      &InstallFlagsGlobal {
         module_url: "http://localhost:4545/echo_server.ts".to_string(),
         args: vec![],
         name: Some("echo_test".to_string()),
-        root: Some(env::temp_dir()),
+        root: Some(env::temp_dir().to_string_lossy().to_string()),
         force: false,
       },
     )
@@ -823,15 +1084,19 @@ mod tests {
   #[tokio::test]
   async fn install_allow_all() {
     let shim_data = resolve_shim_data(
+      &HttpClientProvider::new(None, None),
       &Flags {
-        allow_all: true,
+        permissions: PermissionFlags {
+          allow_all: true,
+          ..Default::default()
+        },
         ..Flags::default()
       },
-      &InstallFlags {
+      &InstallFlagsGlobal {
         module_url: "http://localhost:4545/echo_server.ts".to_string(),
         args: vec![],
         name: Some("echo_test".to_string()),
-        root: Some(env::temp_dir()),
+        root: Some(env::temp_dir().to_string_lossy().to_string()),
         force: false,
       },
     )
@@ -853,15 +1118,19 @@ mod tests {
   async fn install_npm_lockfile_default() {
     let temp_dir = canonicalize_path(&env::temp_dir()).unwrap();
     let shim_data = resolve_shim_data(
+      &HttpClientProvider::new(None, None),
       &Flags {
-        allow_all: true,
+        permissions: PermissionFlags {
+          allow_all: true,
+          ..Default::default()
+        },
         ..Flags::default()
       },
-      &InstallFlags {
+      &InstallFlagsGlobal {
         module_url: "npm:cowsay".to_string(),
         args: vec![],
         name: None,
-        root: Some(temp_dir.clone()),
+        root: Some(temp_dir.to_string_lossy().to_string()),
         force: false,
       },
     )
@@ -886,16 +1155,20 @@ mod tests {
   #[tokio::test]
   async fn install_npm_no_lock() {
     let shim_data = resolve_shim_data(
+      &HttpClientProvider::new(None, None),
       &Flags {
-        allow_all: true,
+        permissions: PermissionFlags {
+          allow_all: true,
+          ..Default::default()
+        },
         no_lock: true,
         ..Flags::default()
       },
-      &InstallFlags {
+      &InstallFlagsGlobal {
         module_url: "npm:cowsay".to_string(),
         args: vec![],
         name: None,
-        root: Some(env::temp_dir()),
+        root: Some(env::temp_dir().to_string_lossy().to_string()),
         force: false,
       },
     )
@@ -925,12 +1198,13 @@ mod tests {
     let local_module_str = local_module.to_string_lossy();
 
     create_install_shim(
-      Flags::default(),
-      InstallFlags {
+      &HttpClientProvider::new(None, None),
+      &Flags::default(),
+      InstallFlagsGlobal {
         module_url: local_module_str.to_string(),
         args: vec![],
         name: Some("echo_test".to_string()),
-        root: Some(temp_dir.path().to_path_buf()),
+        root: Some(temp_dir.path().to_string()),
         force: false,
       },
     )
@@ -954,12 +1228,13 @@ mod tests {
     std::fs::create_dir(&bin_dir).unwrap();
 
     create_install_shim(
-      Flags::default(),
-      InstallFlags {
+      &HttpClientProvider::new(None, None),
+      &Flags::default(),
+      InstallFlagsGlobal {
         module_url: "http://localhost:4545/echo_server.ts".to_string(),
         args: vec![],
         name: Some("echo_test".to_string()),
-        root: Some(temp_dir.path().to_path_buf()),
+        root: Some(temp_dir.path().to_string()),
         force: false,
       },
     )
@@ -974,12 +1249,13 @@ mod tests {
 
     // No force. Install failed.
     let no_force_result = create_install_shim(
-      Flags::default(),
-      InstallFlags {
+      &HttpClientProvider::new(None, None),
+      &Flags::default(),
+      InstallFlagsGlobal {
         module_url: "http://localhost:4545/cat.ts".to_string(), // using a different URL
         args: vec![],
         name: Some("echo_test".to_string()),
-        root: Some(temp_dir.path().to_path_buf()),
+        root: Some(temp_dir.path().to_string()),
         force: false,
       },
     )
@@ -995,12 +1271,13 @@ mod tests {
 
     // Force. Install success.
     let force_result = create_install_shim(
-      Flags::default(),
-      InstallFlags {
+      &HttpClientProvider::new(None, None),
+      &Flags::default(),
+      InstallFlagsGlobal {
         module_url: "http://localhost:4545/cat.ts".to_string(), // using a different URL
         args: vec![],
         name: Some("echo_test".to_string()),
-        root: Some(temp_dir.path().to_path_buf()),
+        root: Some(temp_dir.path().to_string()),
         force: true,
       },
     )
@@ -1022,15 +1299,16 @@ mod tests {
     assert!(result.is_ok());
 
     let result = create_install_shim(
-      Flags {
+      &HttpClientProvider::new(None, None),
+      &Flags {
         config_flag: ConfigFlag::Path(config_file_path.to_string()),
         ..Flags::default()
       },
-      InstallFlags {
+      InstallFlagsGlobal {
         module_url: "http://localhost:4545/cat.ts".to_string(),
         args: vec![],
         name: Some("echo_test".to_string()),
-        root: Some(temp_dir.path().to_path_buf()),
+        root: Some(temp_dir.path().to_string()),
         force: true,
       },
     )
@@ -1054,12 +1332,13 @@ mod tests {
     std::fs::create_dir(&bin_dir).unwrap();
 
     create_install_shim(
-      Flags::default(),
-      InstallFlags {
+      &HttpClientProvider::new(None, None),
+      &Flags::default(),
+      InstallFlagsGlobal {
         module_url: "http://localhost:4545/echo_server.ts".to_string(),
         args: vec!["\"".to_string()],
         name: Some("echo_test".to_string()),
-        root: Some(temp_dir.path().to_path_buf()),
+        root: Some(temp_dir.path().to_string()),
         force: false,
       },
     )
@@ -1094,12 +1373,13 @@ mod tests {
     std::fs::write(&local_module, "// Some JavaScript I guess").unwrap();
 
     create_install_shim(
-      Flags::default(),
-      InstallFlags {
+      &HttpClientProvider::new(None, None),
+      &Flags::default(),
+      InstallFlagsGlobal {
         module_url: local_module_str.to_string(),
         args: vec![],
         name: Some("echo_test".to_string()),
-        root: Some(temp_dir.path().to_path_buf()),
+        root: Some(temp_dir.path().to_string()),
         force: false,
       },
     )
@@ -1135,15 +1415,16 @@ mod tests {
     assert!(result.is_ok());
 
     let result = create_install_shim(
-      Flags {
+      &HttpClientProvider::new(None, None),
+      &Flags {
         import_map_path: Some(import_map_path.to_string()),
         ..Flags::default()
       },
-      InstallFlags {
+      InstallFlagsGlobal {
         module_url: "http://localhost:4545/cat.ts".to_string(),
         args: vec![],
         name: Some("echo_test".to_string()),
-        root: Some(temp_dir.path().to_path_buf()),
+        root: Some(temp_dir.path().to_string()),
         force: true,
       },
     )
@@ -1180,12 +1461,13 @@ mod tests {
     assert!(file_module_string.starts_with("file:///"));
 
     let result = create_install_shim(
-      Flags::default(),
-      InstallFlags {
+      &HttpClientProvider::new(None, None),
+      &Flags::default(),
+      InstallFlagsGlobal {
         module_url: file_module_string.to_string(),
         args: vec![],
         name: Some("echo_test".to_string()),
-        root: Some(temp_dir.path().to_path_buf()),
+        root: Some(temp_dir.path().to_string()),
         force: true,
       },
     )
@@ -1209,8 +1491,8 @@ mod tests {
     assert!(content.contains(&expected_string));
   }
 
-  #[test]
-  fn uninstall_basic() {
+  #[tokio::test]
+  async fn uninstall_basic() {
     let temp_dir = TempDir::new();
     let bin_dir = temp_dir.path().join("bin");
     std::fs::create_dir(&bin_dir).unwrap();
@@ -1237,8 +1519,17 @@ mod tests {
       File::create(file_path).unwrap();
     }
 
-    uninstall("echo_test".to_string(), Some(temp_dir.path().to_path_buf()))
-      .unwrap();
+    uninstall(
+      Default::default(),
+      UninstallFlags {
+        kind: UninstallKind::Global(UninstallFlagsGlobal {
+          name: "echo_test".to_string(),
+          root: Some(temp_dir.path().to_string()),
+        }),
+      },
+    )
+    .await
+    .unwrap();
 
     assert!(!file_path.exists());
     assert!(!file_path.with_extension("tsconfig.json").exists());

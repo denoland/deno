@@ -1,0 +1,14 @@
+{
+  "tempDir": true,
+  "steps": [{
+    "args": [
+      "eval",
+      "Deno.writeTextFileSync('.gitignore', 'deno.jsonc')"
+    ],
+    "output": "[WILDCARD]"
+  }, {
+    "args": "publish --dry-run",
+    "output": "mod.out",
+    "exitCode": 0
+  }]
+}

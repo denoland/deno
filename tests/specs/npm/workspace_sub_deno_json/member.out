@@ -1,0 +1,6 @@
+Warning "nodeModulesDir" field can only be specified in the workspace root deno.json file.
+    at file:///[WILDLINE]/member_with_deno_json/deno.jsonc
+Download http://localhost:4260/chalk
+Download http://localhost:4260/chalk/chalk-5.0.1.tgz
+Initialize chalk@5.0.1
+true

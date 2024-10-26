@@ -1,0 +1,20 @@
+Checking for slow types in the public API...
+warning[unsupported-javascript-entrypoint]: used a JavaScript module without type declarations as an entrypoint
+ --> [WILDCARD]mod.js
+  = hint: add a type declaration (d.ts) for the JavaScript module, or rewrite it to TypeScript
+
+  info: JavaScript files with no corresponding declaration require type inference to be type checked
+  info: fast check avoids type inference, so JavaScript entrypoints should be avoided
+  docs: https://jsr.io/go/slow-type-unsupported-javascript-entrypoint
+
+warning[unsupported-javascript-entrypoint]: used a JavaScript module without type declarations as an entrypoint
+ --> [WILDCARD]other.js
+  = hint: add a type declaration (d.ts) for the JavaScript module, or rewrite it to TypeScript
+
+  info: JavaScript files with no corresponding declaration require type inference to be type checked
+  info: fast check avoids type inference, so JavaScript entrypoints should be avoided
+  docs: https://jsr.io/go/slow-type-unsupported-javascript-entrypoint
+
+Publishing @foo/bar@1.0.0 ...
+Successfully published @foo/bar@1.0.0
+Visit http://127.0.0.1:4250/@foo/bar@1.0.0 for details

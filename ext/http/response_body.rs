@@ -1,13 +1,12 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
-use std::cell::RefCell;
-use std::future::Future;
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 use std::io::Write;
 use std::pin::Pin;
 use std::rc::Rc;
-use std::task::Waker;
 
+use brotli::enc::encode::BrotliEncoderOperation;
 use brotli::enc::encode::BrotliEncoderParameter;
-use brotli::ffi::compressor::BrotliEncoderState;
+use brotli::enc::encode::BrotliEncoderStateStruct;
+use brotli::writer::StandardAlloc;
 use bytes::Bytes;
 use bytes::BytesMut;
 use deno_core::error::AnyError;
@@ -17,17 +16,13 @@ use deno_core::AsyncResult;
 use deno_core::BufView;
 use deno_core::Resource;
 use flate2::write::GzEncoder;
-use http::HeaderMap;
-use hyper1::body::Body;
-use hyper1::body::Frame;
-use hyper1::body::SizeHint;
+use hyper::body::Frame;
+use hyper::body::SizeHint;
 use pin_project::pin_project;
-
-use crate::slab::HttpRequestBodyAutocloser;
 
 /// Simplification for nested types we use for our streams. We provide a way to convert from
 /// this type into Hyper's body [`Frame`].
-enum ResponseStreamResult {
+pub enum ResponseStreamResult {
   /// Stream is over.
   EndOfStream,
   /// Stream provided non-empty data.
@@ -36,10 +31,6 @@ enum ResponseStreamResult {
   /// not register a waker and should be called again at the lowest level of this code. Generally this
   /// will only be returned from compression streams that require additional buffering.
   NoData,
-  /// Stream provided trailers.
-  // TODO(mmastrac): We are threading trailers through the response system to eventually support Grpc.
-  #[allow(unused)]
-  Trailers(HeaderMap),
   /// Stream failed.
   Error(AnyError),
 }
@@ -50,59 +41,13 @@ impl From<ResponseStreamResult> for Option<Result<Frame<BufView>, AnyError>> {
       ResponseStreamResult::EndOfStream => None,
       ResponseStreamResult::NonEmptyBuf(buf) => Some(Ok(Frame::data(buf))),
       ResponseStreamResult::Error(err) => Some(Err(err)),
-      ResponseStreamResult::Trailers(map) => Some(Ok(Frame::trailers(map))),
       // This result should be handled by retrying
       ResponseStreamResult::NoData => unimplemented!(),
     }
   }
 }
 
-#[derive(Clone, Debug, Default)]
-pub struct CompletionHandle {
-  inner: Rc<RefCell<CompletionHandleInner>>,
-}
-
-#[derive(Debug, Default)]
-struct CompletionHandleInner {
-  complete: bool,
-  success: bool,
-  waker: Option<Waker>,
-}
-
-impl CompletionHandle {
-  pub fn complete(&self, success: bool) {
-    let mut mut_self = self.inner.borrow_mut();
-    mut_self.complete = true;
-    mut_self.success = success;
-    if let Some(waker) = mut_self.waker.take() {
-      drop(mut_self);
-      waker.wake();
-    }
-  }
-
-  pub fn is_completed(&self) -> bool {
-    self.inner.borrow().complete
-  }
-}
-
-impl Future for CompletionHandle {
-  type Output = bool;
-
-  fn poll(
-    self: Pin<&mut Self>,
-    cx: &mut std::task::Context<'_>,
-  ) -> std::task::Poll<Self::Output> {
-    let mut mut_self = self.inner.borrow_mut();
-    if mut_self.complete {
-      return std::task::Poll::Ready(mut_self.success);
-    }
-
-    mut_self.waker = Some(cx.waker().clone());
-    std::task::Poll::Pending
-  }
-}
-
-trait PollFrame: Unpin {
+pub trait PollFrame: Unpin {
   fn poll_frame(
     self: Pin<&mut Self>,
     cx: &mut std::task::Context<'_>,
@@ -125,6 +70,16 @@ pub enum ResponseStream {
   TestChannel(tokio::sync::mpsc::Receiver<BufView>),
 }
 
+impl ResponseStream {
+  pub fn abort(self) {
+    match self {
+      ResponseStream::Resource(resource) => resource.stm.close(),
+      #[cfg(test)]
+      ResponseStream::TestChannel(..) => {}
+    }
+  }
+}
+
 #[derive(Default)]
 pub enum ResponseBytesInner {
   /// An empty stream.
@@ -137,9 +92,9 @@ pub enum ResponseBytesInner {
   /// An uncompressed stream.
   UncompressedStream(ResponseStream),
   /// A GZip stream.
-  GZipStream(GZipResponseStream),
+  GZipStream(Box<GZipResponseStream>),
   /// A Brotli stream.
-  BrotliStream(BrotliResponseStream),
+  BrotliStream(Box<BrotliResponseStream>),
 }
 
 impl std::fmt::Debug for ResponseBytesInner {
@@ -155,48 +110,16 @@ impl std::fmt::Debug for ResponseBytesInner {
   }
 }
 
-/// This represents the union of possible response types in Deno with the stream-style [`Body`] interface
-/// required by hyper. As the API requires information about request completion (including a success/fail
-/// flag), we include a very lightweight [`CompletionHandle`] for interested parties to listen on.
-#[derive(Default)]
-pub struct ResponseBytes {
-  inner: ResponseBytesInner,
-  completion_handle: CompletionHandle,
-  headers: Rc<RefCell<Option<HeaderMap>>>,
-  res: Option<HttpRequestBodyAutocloser>,
-}
-
-impl ResponseBytes {
-  pub fn initialize(
-    &mut self,
-    inner: ResponseBytesInner,
-    req_body_resource: Option<HttpRequestBodyAutocloser>,
-  ) {
-    debug_assert!(matches!(self.inner, ResponseBytesInner::Empty));
-    self.inner = inner;
-    self.res = req_body_resource;
-  }
-
-  pub fn completion_handle(&self) -> CompletionHandle {
-    self.completion_handle.clone()
-  }
-
-  pub fn trailers(&self) -> Rc<RefCell<Option<HeaderMap>>> {
-    self.headers.clone()
-  }
-
-  fn complete(&mut self, success: bool) -> ResponseBytesInner {
-    if matches!(self.inner, ResponseBytesInner::Done) {
-      return ResponseBytesInner::Done;
-    }
-
-    let current = std::mem::replace(&mut self.inner, ResponseBytesInner::Done);
-    self.completion_handle.complete(success);
-    current
-  }
-}
-
 impl ResponseBytesInner {
+  pub fn abort(self) {
+    match self {
+      Self::Done | Self::Empty | Self::Bytes(..) => {}
+      Self::BrotliStream(stm) => stm.abort(),
+      Self::GZipStream(stm) => stm.abort(),
+      Self::UncompressedStream(stm) => stm.abort(),
+    }
+  }
+
   pub fn size_hint(&self) -> SizeHint {
     match self {
       Self::Done => SizeHint::with_exact(0),
@@ -210,9 +133,11 @@ impl ResponseBytesInner {
 
   fn from_stream(compression: Compression, stream: ResponseStream) -> Self {
     match compression {
-      Compression::GZip => Self::GZipStream(GZipResponseStream::new(stream)),
+      Compression::GZip => {
+        Self::GZipStream(Box::new(GZipResponseStream::new(stream)))
+      }
       Compression::Brotli => {
-        Self::BrotliStream(BrotliResponseStream::new(stream))
+        Self::BrotliStream(Box::new(BrotliResponseStream::new(stream)))
       }
       _ => Self::UncompressedStream(stream),
     }
@@ -271,74 +196,10 @@ impl ResponseBytesInner {
       _ => Self::Bytes(BufView::from(vec)),
     }
   }
-}
 
-impl Body for ResponseBytes {
-  type Data = BufView;
-  type Error = AnyError;
-
-  fn poll_frame(
-    mut self: Pin<&mut Self>,
-    cx: &mut std::task::Context<'_>,
-  ) -> std::task::Poll<Option<Result<Frame<Self::Data>, Self::Error>>> {
-    let res = loop {
-      let res = match &mut self.inner {
-        ResponseBytesInner::Done | ResponseBytesInner::Empty => {
-          if let Some(trailers) = self.headers.borrow_mut().take() {
-            return std::task::Poll::Ready(Some(Ok(Frame::trailers(trailers))));
-          }
-          unreachable!()
-        }
-        ResponseBytesInner::Bytes(..) => {
-          let ResponseBytesInner::Bytes(data) = self.complete(true) else {
-            unreachable!();
-          };
-          return std::task::Poll::Ready(Some(Ok(Frame::data(data))));
-        }
-        ResponseBytesInner::UncompressedStream(stm) => {
-          ready!(Pin::new(stm).poll_frame(cx))
-        }
-        ResponseBytesInner::GZipStream(stm) => {
-          ready!(Pin::new(stm).poll_frame(cx))
-        }
-        ResponseBytesInner::BrotliStream(stm) => {
-          ready!(Pin::new(stm).poll_frame(cx))
-        }
-      };
-      // This is where we retry the NoData response
-      if matches!(res, ResponseStreamResult::NoData) {
-        continue;
-      }
-      break res;
-    };
-
-    if matches!(res, ResponseStreamResult::EndOfStream) {
-      if let Some(trailers) = self.headers.borrow_mut().take() {
-        return std::task::Poll::Ready(Some(Ok(Frame::trailers(trailers))));
-      }
-      self.complete(true);
-    }
-    std::task::Poll::Ready(res.into())
-  }
-
-  fn is_end_stream(&self) -> bool {
-    matches!(
-      self.inner,
-      ResponseBytesInner::Done | ResponseBytesInner::Empty
-    ) && self.headers.borrow_mut().is_none()
-  }
-
-  fn size_hint(&self) -> SizeHint {
-    // The size hint currently only used in the case where it is exact bounds in hyper, but we'll pass it through
-    // anyways just in case hyper needs it.
-    self.inner.size_hint()
-  }
-}
-
-impl Drop for ResponseBytes {
-  fn drop(&mut self) {
-    // We won't actually poll_frame for Empty responses so this is where we return success
-    self.complete(matches!(self.inner, ResponseBytesInner::Empty));
+  /// Did we complete this response successfully?
+  pub fn is_complete(&self) -> bool {
+    matches!(self, ResponseBytesInner::Done | ResponseBytesInner::Empty)
   }
 }
 
@@ -463,6 +324,10 @@ impl GZipResponseStream {
       underlying,
     }
   }
+
+  pub fn abort(self) {
+    self.underlying.abort()
+  }
 }
 
 /// This is a minimal GZip header suitable for serving data from a webserver. We don't need to provide
@@ -525,9 +390,7 @@ impl PollFrame for GZipResponseStream {
     let start_out = stm.total_out();
     let res = match frame {
       // Short-circuit these and just return
-      x @ (ResponseStreamResult::NoData
-      | ResponseStreamResult::Error(..)
-      | ResponseStreamResult::Trailers(..)) => {
+      x @ (ResponseStreamResult::NoData | ResponseStreamResult::Error(..)) => {
         return std::task::Poll::Ready(x)
       }
       ResponseStreamResult::EndOfStream => {
@@ -535,7 +398,7 @@ impl PollFrame for GZipResponseStream {
         stm.compress(&[], &mut buf, flate2::FlushCompress::Finish)
       }
       ResponseStreamResult::NonEmptyBuf(mut input) => {
-        let res = stm.compress(&input, &mut buf, flate2::FlushCompress::None);
+        let res = stm.compress(&input, &mut buf, flate2::FlushCompress::Sync);
         let len_in = (stm.total_in() - start_in) as usize;
         debug_assert!(len_in <= input.len());
         this.crc.update(&input[..len_in]);
@@ -589,61 +452,31 @@ enum BrotliState {
   EndOfStream,
 }
 
-struct BrotliEncoderStateWrapper {
-  stm: *mut BrotliEncoderState,
-}
-
 #[pin_project]
 pub struct BrotliResponseStream {
   state: BrotliState,
-  stm: BrotliEncoderStateWrapper,
-  current_cursor: usize,
-  output_written_so_far: usize,
+  stm: BrotliEncoderStateStruct<StandardAlloc>,
   #[pin]
   underlying: ResponseStream,
 }
 
-impl Drop for BrotliEncoderStateWrapper {
-  fn drop(&mut self) {
-    // SAFETY: since we are dropping, we can be sure that this instance will not
-    // be used again.
-    unsafe {
-      brotli::ffi::compressor::BrotliEncoderDestroyInstance(self.stm);
-    }
-  }
-}
-
 impl BrotliResponseStream {
   pub fn new(underlying: ResponseStream) -> Self {
-    // SAFETY: creating an FFI instance should be OK with these args.
-    let stm = unsafe {
-      let stm = brotli::ffi::compressor::BrotliEncoderCreateInstance(
-        None,
-        None,
-        std::ptr::null_mut(),
-      );
-      // Quality level 6 is based on google's nginx default value for on-the-fly compression
-      // https://github.com/google/ngx_brotli#brotli_comp_level
-      // lgwin 22 is equivalent to brotli window size of (2**22)-16 bytes (~4MB)
-      brotli::ffi::compressor::BrotliEncoderSetParameter(
-        stm,
-        BrotliEncoderParameter::BROTLI_PARAM_QUALITY,
-        6,
-      );
-      brotli::ffi::compressor::BrotliEncoderSetParameter(
-        stm,
-        BrotliEncoderParameter::BROTLI_PARAM_LGWIN,
-        22,
-      );
-      BrotliEncoderStateWrapper { stm }
-    };
+    let mut stm = BrotliEncoderStateStruct::new(StandardAlloc::default());
+    // Quality level 6 is based on google's nginx default value for on-the-fly compression
+    // https://github.com/google/ngx_brotli#brotli_comp_level
+    // lgwin 22 is equivalent to brotli window size of (2**22)-16 bytes (~4MB)
+    stm.set_parameter(BrotliEncoderParameter::BROTLI_PARAM_QUALITY, 6);
+    stm.set_parameter(BrotliEncoderParameter::BROTLI_PARAM_LGWIN, 22);
     Self {
       stm,
-      output_written_so_far: 0,
-      current_cursor: 0,
       state: BrotliState::Streaming,
       underlying,
     }
+  }
+
+  pub fn abort(self) {
+    self.underlying.abort()
   }
 }
 
@@ -683,71 +516,46 @@ impl PollFrame for BrotliResponseStream {
 
     let res = match frame {
       ResponseStreamResult::NonEmptyBuf(buf) => {
-        let mut output_written = 0;
-        let mut total_output_written = 0;
-        let mut input_size = buf.len();
-        let input_buffer = buf.as_ref();
-        let mut len = max_compressed_size(input_size);
-        let mut output_buffer = vec![0u8; len];
-        let mut ob_ptr = output_buffer.as_mut_ptr();
+        let mut output_buffer = vec![0; max_compressed_size(buf.len())];
+        let mut output_offset = 0;
 
-        // SAFETY: these are okay arguments to these FFI calls.
-        unsafe {
-          brotli::ffi::compressor::BrotliEncoderCompressStream(
-            this.stm.stm,
-            brotli::ffi::compressor::BrotliEncoderOperation::BROTLI_OPERATION_PROCESS,
-            &mut input_size,
-            &input_buffer.as_ptr() as *const *const u8 as *mut *const u8,
-            &mut len,
-            &mut ob_ptr,
-            &mut output_written,
-          );
-          total_output_written += output_written;
-          output_written = 0;
+        this.stm.compress_stream(
+          BrotliEncoderOperation::BROTLI_OPERATION_FLUSH,
+          &mut buf.len(),
+          &buf,
+          &mut 0,
+          &mut output_buffer.len(),
+          &mut output_buffer,
+          &mut output_offset,
+          &mut None,
+          &mut |_, _, _, _| (),
+        );
 
-          brotli::ffi::compressor::BrotliEncoderCompressStream(
-            this.stm.stm,
-            brotli::ffi::compressor::BrotliEncoderOperation::BROTLI_OPERATION_FLUSH,
-            &mut input_size,
-            &input_buffer.as_ptr() as *const *const u8 as *mut *const u8,
-            &mut len,
-            &mut ob_ptr,
-            &mut output_written,
-          );
-          total_output_written += output_written;
-        };
-
-        output_buffer
-          .truncate(total_output_written - this.output_written_so_far);
-        this.output_written_so_far = total_output_written;
+        output_buffer.truncate(output_offset);
         ResponseStreamResult::NonEmptyBuf(BufView::from(output_buffer))
       }
       ResponseStreamResult::EndOfStream => {
-        let mut len = 1024usize;
-        let mut output_buffer = vec![0u8; len];
-        let mut input_size = 0;
-        let mut output_written = 0;
-        let ob_ptr = output_buffer.as_mut_ptr();
+        let mut output_buffer = vec![0; 1024];
+        let mut output_offset = 0;
 
-        // SAFETY: these are okay arguments to these FFI calls.
-        unsafe {
-          brotli::ffi::compressor::BrotliEncoderCompressStream(
-            this.stm.stm,
-            brotli::ffi::compressor::BrotliEncoderOperation::BROTLI_OPERATION_FINISH,
-            &mut input_size,
-            std::ptr::null_mut(),
-            &mut len,
-            &ob_ptr as *const *mut u8 as *mut *mut u8,
-            &mut output_written,
-          );
-        };
+        this.stm.compress_stream(
+          BrotliEncoderOperation::BROTLI_OPERATION_FINISH,
+          &mut 0,
+          &[],
+          &mut 0,
+          &mut output_buffer.len(),
+          &mut output_buffer,
+          &mut output_offset,
+          &mut None,
+          &mut |_, _, _, _| (),
+        );
 
-        if output_written == 0 {
+        if output_offset == 0 {
           this.state = BrotliState::EndOfStream;
           ResponseStreamResult::EndOfStream
         } else {
           this.state = BrotliState::Flushing;
-          output_buffer.truncate(output_written - this.output_written_so_far);
+          output_buffer.truncate(output_offset);
           ResponseStreamResult::NonEmptyBuf(BufView::from(output_buffer))
         }
       }
@@ -762,6 +570,7 @@ impl PollFrame for BrotliResponseStream {
   }
 }
 
+#[allow(clippy::print_stderr)]
 #[cfg(test)]
 mod tests {
   use super::*;

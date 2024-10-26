@@ -1,21 +1,19 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 import { EventEmitter } from "ext:deno_node/_events.d.ts";
 import { Buffer } from "node:buffer";
 
-/** One of:
- * | "ascii"
- * | "utf8"
- * | "utf-8"
- * | "utf16le"
- * | "ucs2"
- * | "ucs-2"
- * | "base64"
- * | "base64url"
- * | "latin1"
- * | "binary"
- * | "hex";
- */
-export type BufferEncoding = string;
+export type BufferEncoding =
+  | "ascii"
+  | "utf8"
+  | "utf-8"
+  | "utf16le"
+  | "ucs2"
+  | "ucs-2"
+  | "base64"
+  | "base64url"
+  | "latin1"
+  | "binary"
+  | "hex";
 
 export interface Buffered {
   chunk: Buffer;

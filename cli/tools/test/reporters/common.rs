@@ -1,4 +1,4 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 use super::fmt::format_test_error;
 use super::fmt::to_relative_path_or_remote_url;
@@ -33,7 +33,10 @@ pub(super) fn format_test_step_ancestry(
   result
 }
 
-pub fn format_test_for_summary(cwd: &Url, desc: &TestDescription) -> String {
+pub fn format_test_for_summary(
+  cwd: &Url,
+  desc: &TestFailureDescription,
+) -> String {
   format!(
     "{} {}",
     &desc.name,
@@ -66,6 +69,7 @@ pub fn format_test_step_for_summary(
 }
 
 pub(super) fn report_sigint(
+  writer: &mut dyn std::io::Write,
   cwd: &Url,
   tests_pending: &HashSet<usize>,
   tests: &IndexMap<usize, TestDescription>,
@@ -77,33 +81,40 @@ pub(super) fn report_sigint(
   let mut formatted_pending = BTreeSet::new();
   for id in tests_pending {
     if let Some(desc) = tests.get(id) {
-      formatted_pending.insert(format_test_for_summary(cwd, desc));
+      formatted_pending.insert(format_test_for_summary(cwd, &desc.into()));
     }
     if let Some(desc) = test_steps.get(id) {
       formatted_pending
         .insert(format_test_step_for_summary(cwd, desc, tests, test_steps));
     }
   }
-  println!(
+  writeln!(
+    writer,
     "\n{} The following tests were pending:\n",
     colors::intense_blue("SIGINT")
-  );
+  )
+  .unwrap();
   for entry in formatted_pending {
-    println!("{}", entry);
+    writeln!(writer, "{}", entry).unwrap();
   }
-  println!();
+  writeln!(writer).unwrap();
 }
 
 pub(super) fn report_summary(
+  writer: &mut dyn std::io::Write,
   cwd: &Url,
   summary: &TestSummary,
   elapsed: &Duration,
+  options: &TestFailureFormatOptions,
 ) {
   if !summary.failures.is_empty() || !summary.uncaught_errors.is_empty() {
     #[allow(clippy::type_complexity)] // Type alias doesn't look better here
     let mut failures_by_origin: BTreeMap<
       String,
-      (Vec<(&TestDescription, &TestFailure)>, Option<&JsError>),
+      (
+        Vec<(&TestFailureDescription, &TestFailure)>,
+        Option<&JsError>,
+      ),
     > = BTreeMap::default();
     let mut failure_titles = vec![];
     for (description, failure) in &summary.failures {
@@ -120,14 +131,20 @@ pub(super) fn report_summary(
     }
 
     // note: the trailing whitespace is intentional to get a red background
-    println!("\n{}\n", colors::white_bold_on_red(" ERRORS "));
+    writeln!(writer, "\n{}\n", colors::white_bold_on_red(" ERRORS ")).unwrap();
     for (origin, (failures, uncaught_error)) in failures_by_origin {
       for (description, failure) in failures {
         if !failure.hide_in_summary() {
           let failure_title = format_test_for_summary(cwd, description);
-          println!("{}", &failure_title);
-          println!("{}: {}", colors::red_bold("error"), failure.to_string());
-          println!();
+          writeln!(writer, "{}", &failure_title).unwrap();
+          writeln!(
+            writer,
+            "{}: {}",
+            colors::red_bold("error"),
+            failure.format(options)
+          )
+          .unwrap();
+          writeln!(writer).unwrap();
           failure_titles.push(failure_title);
         }
       }
@@ -136,22 +153,24 @@ pub(super) fn report_summary(
           "{} (uncaught error)",
           to_relative_path_or_remote_url(cwd, &origin)
         );
-        println!("{}", &failure_title);
-        println!(
+        writeln!(writer, "{}", &failure_title).unwrap();
+        writeln!(
+          writer,
           "{}: {}",
           colors::red_bold("error"),
-          format_test_error(js_error)
-        );
-        println!("This error was not caught from a test and caused the test runner to fail on the referenced module.");
-        println!("It most likely originated from a dangling promise, event/timeout handler or top-level code.");
-        println!();
+          format_test_error(js_error, options)
+        )
+        .unwrap();
+        writeln!(writer, "This error was not caught from a test and caused the test runner to fail on the referenced module.").unwrap();
+        writeln!(writer, "It most likely originated from a dangling promise, event/timeout handler or top-level code.").unwrap();
+        writeln!(writer).unwrap();
         failure_titles.push(failure_title);
       }
     }
     // note: the trailing whitespace is intentional to get a red background
-    println!("{}\n", colors::white_bold_on_red(" FAILURES "));
+    writeln!(writer, "{}\n", colors::white_bold_on_red(" FAILURES ")).unwrap();
     for failure_title in failure_titles {
-      println!("{failure_title}");
+      writeln!(writer, "{failure_title}").unwrap();
     }
   }
 
@@ -201,10 +220,12 @@ pub(super) fn report_summary(
     write!(summary_result, " | {} filtered out", summary.filtered_out).unwrap()
   };
 
-  println!(
-    "\n{} | {} {}\n",
+  writeln!(
+    writer,
+    "\n{} | {} {}",
     status,
     summary_result,
     colors::gray(format!("({})", display::human_elapsed(elapsed.as_millis()))),
-  );
+  )
+  .unwrap();
 }

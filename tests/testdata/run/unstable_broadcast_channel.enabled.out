@@ -1,0 +1,2 @@
+main [class BroadcastChannel extends EventTarget]
+worker [class BroadcastChannel extends EventTarget]

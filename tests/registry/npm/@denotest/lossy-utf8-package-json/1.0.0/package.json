@@ -1,0 +1,7 @@
+{
+  "name": "@denotest/lossy-utf8-package-json",
+  "version": "1.0.0",
+  "type": "module",
+  "dependencies": {},
+  "files": ["þþÿÿ"]
+}

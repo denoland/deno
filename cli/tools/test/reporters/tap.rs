@@ -1,4 +1,4 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 use deno_core::serde_json::json;
 use deno_core::serde_json::{self};
@@ -20,18 +20,25 @@ pub struct TapTestReporter {
   n: usize,
   step_n: usize,
   step_results: HashMap<usize, Vec<(TestStepDescription, TestStepResult)>>,
+  failure_format_options: TestFailureFormatOptions,
 }
 
+#[allow(clippy::print_stdout)]
 impl TapTestReporter {
-  pub fn new(is_concurrent: bool) -> TapTestReporter {
+  pub fn new(
+    cwd: Url,
+    is_concurrent: bool,
+    failure_format_options: TestFailureFormatOptions,
+  ) -> TapTestReporter {
     TapTestReporter {
-      cwd: Url::from_directory_path(std::env::current_dir().unwrap()).unwrap(),
+      cwd,
       is_concurrent,
       header: false,
       planned: 0,
       n: 0,
       step_n: 0,
       step_results: HashMap::new(),
+      failure_format_options,
     }
   }
 
@@ -44,6 +51,7 @@ impl TapTestReporter {
   }
 
   fn print_diagnostic(
+    &self,
     indent: usize,
     failure: &TestFailure,
     location: DiagnosticLocation,
@@ -55,7 +63,7 @@ impl TapTestReporter {
     // YAML is a superset of JSON, so we can avoid a YAML dependency here.
     // This makes the output less readable though.
     let diagnostic = serde_json::to_string(&json!({
-      "message": failure.to_string(),
+      "message": failure.format(&self.failure_format_options),
       "severity": "fail".to_string(),
       "at": location,
     }))
@@ -101,7 +109,7 @@ impl TapTestReporter {
     Self::print_line(4, status, self.step_n, &desc.name, directive);
 
     if let TestStepResult::Failed(failure) = result {
-      Self::print_diagnostic(
+      self.print_diagnostic(
         4,
         failure,
         DiagnosticLocation {
@@ -113,6 +121,7 @@ impl TapTestReporter {
   }
 }
 
+#[allow(clippy::print_stdout)]
 impl TestReporter for TapTestReporter {
   fn report_register(&mut self, _description: &TestDescription) {}
 
@@ -138,6 +147,7 @@ impl TestReporter for TapTestReporter {
     std::io::stdout().flush().unwrap();
   }
 
+  fn report_slow(&mut self, _description: &TestDescription, _elapsed: u64) {}
   fn report_output(&mut self, _output: &[u8]) {}
 
   fn report_result(
@@ -168,7 +178,7 @@ impl TestReporter for TapTestReporter {
     Self::print_line(0, status, self.n, &description.name, directive);
 
     if let TestResult::Failed(failure) = result {
-      Self::print_diagnostic(
+      self.print_diagnostic(
         0,
         failure,
         DiagnosticLocation {
@@ -227,8 +237,16 @@ impl TestReporter for TapTestReporter {
     test_steps: &IndexMap<usize, TestStepDescription>,
   ) {
     println!("Bail out! SIGINT received.");
-    common::report_sigint(&self.cwd, tests_pending, tests, test_steps);
+    common::report_sigint(
+      &mut std::io::stdout(),
+      &self.cwd,
+      tests_pending,
+      tests,
+      test_steps,
+    );
   }
+
+  fn report_completed(&mut self) {}
 
   fn flush_report(
     &mut self,

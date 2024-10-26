@@ -1,4 +1,4 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 use num_bigint::BigInt;
 use num_bigint_dig::RandPrime;
@@ -8,6 +8,7 @@ use num_traits::Zero;
 use rand::Rng;
 use std::ops::Deref;
 
+#[derive(Clone)]
 pub struct Prime(pub num_bigint_dig::BigUint);
 
 impl Prime {

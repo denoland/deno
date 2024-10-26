@@ -1,0 +1,13 @@
+{
+  "tempDir": true,
+  "steps": [{
+    "args": "run --quiet package-a/mod.ts",
+    "output": "3\n"
+  }, {
+    "args": "run --allow-write=. --allow-read=. modify_vendor.ts",
+    "output": "[WILDLINE]"
+  }, {
+    "args": "run --quiet package-a/mod.ts",
+    "output": "4\n"
+  }]
+}

@@ -1,6 +1,9 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 mod fs_fetch_handler;
+mod proxy;
+#[cfg(test)]
+mod tests;
 
 use std::borrow::Cow;
 use std::cell::RefCell;
@@ -11,23 +14,21 @@ use std::path::PathBuf;
 use std::pin::Pin;
 use std::rc::Rc;
 use std::sync::Arc;
+use std::task::Context;
+use std::task::Poll;
 
-use deno_core::anyhow::Error;
-use deno_core::error::type_error;
-use deno_core::error::AnyError;
 use deno_core::futures::stream::Peekable;
 use deno_core::futures::Future;
 use deno_core::futures::FutureExt;
 use deno_core::futures::Stream;
 use deno_core::futures::StreamExt;
-use deno_core::op;
-use deno_core::BufView;
-use deno_core::WriteOutcome;
-
-use deno_core::unsync::spawn;
+use deno_core::futures::TryFutureExt;
+use deno_core::op2;
+use deno_core::url;
 use deno_core::url::Url;
 use deno_core::AsyncRefCell;
 use deno_core::AsyncResult;
+use deno_core::BufView;
 use deno_core::ByteString;
 use deno_core::CancelFuture;
 use deno_core::CancelHandle;
@@ -41,32 +42,39 @@ use deno_core::ResourceId;
 use deno_tls::rustls::RootCertStore;
 use deno_tls::Proxy;
 use deno_tls::RootCertStoreProvider;
+use deno_tls::TlsKey;
+use deno_tls::TlsKeys;
+use deno_tls::TlsKeysHolder;
 
+use bytes::Bytes;
 use data_url::DataUrl;
+use http::header::HeaderName;
+use http::header::HeaderValue;
+use http::header::ACCEPT;
+use http::header::ACCEPT_ENCODING;
+use http::header::AUTHORIZATION;
 use http::header::CONTENT_LENGTH;
+use http::header::HOST;
+use http::header::PROXY_AUTHORIZATION;
+use http::header::RANGE;
+use http::header::USER_AGENT;
+use http::Extensions;
+use http::Method;
 use http::Uri;
-use reqwest::header::HeaderMap;
-use reqwest::header::HeaderName;
-use reqwest::header::HeaderValue;
-use reqwest::header::ACCEPT_ENCODING;
-use reqwest::header::HOST;
-use reqwest::header::RANGE;
-use reqwest::header::USER_AGENT;
-use reqwest::redirect::Policy;
-use reqwest::Body;
-use reqwest::Client;
-use reqwest::Method;
-use reqwest::RequestBuilder;
-use reqwest::Response;
+use http_body_util::BodyExt;
+use hyper::body::Frame;
+use hyper_util::client::legacy::connect::HttpConnector;
+use hyper_util::client::legacy::connect::HttpInfo;
+use hyper_util::rt::TokioExecutor;
+use hyper_util::rt::TokioTimer;
 use serde::Deserialize;
 use serde::Serialize;
-use tokio::io::AsyncReadExt;
-use tokio::io::AsyncWriteExt;
-use tokio::sync::mpsc;
+use tower::ServiceExt;
+use tower_http::decompression::Decompression;
 
-// Re-export reqwest and data_url
+// Re-export data_url
 pub use data_url;
-pub use reqwest;
+pub use proxy::basic_auth;
 
 pub use fs_fetch_handler::FsFetchHandler;
 
@@ -75,15 +83,19 @@ pub struct Options {
   pub user_agent: String,
   pub root_cert_store_provider: Option<Arc<dyn RootCertStoreProvider>>,
   pub proxy: Option<Proxy>,
-  pub request_builder_hook:
-    Option<fn(RequestBuilder) -> Result<RequestBuilder, AnyError>>,
+  #[allow(clippy::type_complexity)]
+  pub request_builder_hook: Option<
+    fn(&mut http::Request<ReqBody>) -> Result<(), deno_core::error::AnyError>,
+  >,
   pub unsafely_ignore_certificate_errors: Option<Vec<String>>,
-  pub client_cert_chain_and_key: Option<(String, String)>,
+  pub client_cert_chain_and_key: TlsKeys,
   pub file_fetch_handler: Rc<dyn FetchHandler>,
 }
 
 impl Options {
-  pub fn root_cert_store(&self) -> Result<Option<RootCertStore>, AnyError> {
+  pub fn root_cert_store(
+    &self,
+  ) -> Result<Option<RootCertStore>, deno_core::error::AnyError> {
     Ok(match &self.root_cert_store_provider {
       Some(provider) => Some(provider.get_or_try_init()?.clone()),
       None => None,
@@ -99,7 +111,7 @@ impl Default for Options {
       proxy: None,
       request_builder_hook: None,
       unsafely_ignore_certificate_errors: None,
-      client_cert_chain_and_key: None,
+      client_cert_chain_and_key: TlsKeys::Null,
       file_fetch_handler: Rc::new(DefaultFileFetchHandler),
     }
   }
@@ -111,7 +123,7 @@ deno_core::extension!(deno_fetch,
   ops = [
     op_fetch<FP>,
     op_fetch_send,
-    op_fetch_response_upgrade,
+    op_utf8_to_byte_string,
     op_fetch_custom_client<FP>,
   ],
   esm = [
@@ -121,7 +133,8 @@ deno_core::extension!(deno_fetch,
     "22_http_client.js",
     "23_request.js",
     "23_response.js",
-    "26_fetch.js"
+    "26_fetch.js",
+    "27_eventsource.js"
   ],
   options = {
     options: Options,
@@ -130,6 +143,51 @@ deno_core::extension!(deno_fetch,
     state.put::<Options>(options.options);
   },
 );
+
+#[derive(Debug, thiserror::Error)]
+pub enum FetchError {
+  #[error(transparent)]
+  Resource(deno_core::error::AnyError),
+  #[error(transparent)]
+  Permission(deno_core::error::AnyError),
+  #[error("NetworkError when attempting to fetch resource")]
+  NetworkError,
+  #[error("Fetching files only supports the GET method: received {0}")]
+  FsNotGet(Method),
+  #[error("Invalid URL {0}")]
+  InvalidUrl(Url),
+  #[error(transparent)]
+  InvalidHeaderName(#[from] http::header::InvalidHeaderName),
+  #[error(transparent)]
+  InvalidHeaderValue(#[from] http::header::InvalidHeaderValue),
+  #[error("{0:?}")]
+  DataUrl(data_url::DataUrlError),
+  #[error("{0:?}")]
+  Base64(data_url::forgiving_base64::InvalidBase64),
+  #[error("Blob for the given URL not found.")]
+  BlobNotFound,
+  #[error("Url scheme '{0}' not supported")]
+  SchemeNotSupported(String),
+  #[error("Request was cancelled")]
+  RequestCanceled,
+  #[error(transparent)]
+  Http(#[from] http::Error),
+  #[error(transparent)]
+  ClientCreate(#[from] HttpClientCreateError),
+  #[error(transparent)]
+  Url(#[from] url::ParseError),
+  #[error(transparent)]
+  Method(#[from] http::method::InvalidMethod),
+  #[error(transparent)]
+  ClientSend(#[from] ClientSendError),
+  #[error(transparent)]
+  RequestBuilderHook(deno_core::error::AnyError),
+  #[error(transparent)]
+  Io(#[from] std::io::Error),
+  // Only used for node upgrade
+  #[error(transparent)]
+  Hyper(#[from] hyper::Error),
+}
 
 pub type CancelableResponseFuture =
   Pin<Box<dyn Future<Output = CancelableResponseResult>>>;
@@ -141,7 +199,7 @@ pub trait FetchHandler: dyn_clone::DynClone {
   fn fetch_file(
     &self,
     state: &mut OpState,
-    url: Url,
+    url: &Url,
   ) -> (CancelableResponseFuture, Option<Rc<CancelHandle>>);
 }
 
@@ -155,24 +213,11 @@ impl FetchHandler for DefaultFileFetchHandler {
   fn fetch_file(
     &self,
     _state: &mut OpState,
-    _url: Url,
+    _url: &Url,
   ) -> (CancelableResponseFuture, Option<Rc<CancelHandle>>) {
-    let fut = async move {
-      Ok(Err(type_error(
-        "NetworkError when attempting to fetch resource.",
-      )))
-    };
+    let fut = async move { Ok(Err(FetchError::NetworkError)) };
     (Box::pin(fut), None)
   }
-}
-
-pub trait FetchPermissions {
-  fn check_net_url(
-    &mut self,
-    _url: &Url,
-    api_name: &str,
-  ) -> Result<(), AnyError>;
-  fn check_read(&mut self, _p: &Path, api_name: &str) -> Result<(), AnyError>;
 }
 
 pub fn get_declaration() -> PathBuf {
@@ -182,223 +227,364 @@ pub fn get_declaration() -> PathBuf {
 #[serde(rename_all = "camelCase")]
 pub struct FetchReturn {
   pub request_rid: ResourceId,
-  pub request_body_rid: Option<ResourceId>,
   pub cancel_handle_rid: Option<ResourceId>,
 }
 
 pub fn get_or_create_client_from_state(
   state: &mut OpState,
-) -> Result<reqwest::Client, AnyError> {
-  if let Some(client) = state.try_borrow::<reqwest::Client>() {
+) -> Result<Client, HttpClientCreateError> {
+  if let Some(client) = state.try_borrow::<Client>() {
     Ok(client.clone())
   } else {
     let options = state.borrow::<Options>();
-    let client = create_http_client(
-      &options.user_agent,
-      CreateHttpClientOptions {
-        root_cert_store: options.root_cert_store()?,
-        ca_certs: vec![],
-        proxy: options.proxy.clone(),
-        unsafely_ignore_certificate_errors: options
-          .unsafely_ignore_certificate_errors
-          .clone(),
-        client_cert_chain_and_key: options.client_cert_chain_and_key.clone(),
-        pool_max_idle_per_host: None,
-        pool_idle_timeout: None,
-        http1: true,
-        http2: true,
-      },
-    )?;
-    state.put::<reqwest::Client>(client.clone());
+    let client = create_client_from_options(options)?;
+    state.put::<Client>(client.clone());
     Ok(client)
   }
 }
 
-#[op]
+pub fn create_client_from_options(
+  options: &Options,
+) -> Result<Client, HttpClientCreateError> {
+  create_http_client(
+    &options.user_agent,
+    CreateHttpClientOptions {
+      root_cert_store: options
+        .root_cert_store()
+        .map_err(HttpClientCreateError::RootCertStore)?,
+      ca_certs: vec![],
+      proxy: options.proxy.clone(),
+      unsafely_ignore_certificate_errors: options
+        .unsafely_ignore_certificate_errors
+        .clone(),
+      client_cert_chain_and_key: options
+        .client_cert_chain_and_key
+        .clone()
+        .try_into()
+        .unwrap_or_default(),
+      pool_max_idle_per_host: None,
+      pool_idle_timeout: None,
+      http1: true,
+      http2: true,
+    },
+  )
+}
+
+#[allow(clippy::type_complexity)]
+pub struct ResourceToBodyAdapter(
+  Rc<dyn Resource>,
+  Option<
+    Pin<Box<dyn Future<Output = Result<BufView, deno_core::error::AnyError>>>>,
+  >,
+);
+
+impl ResourceToBodyAdapter {
+  pub fn new(resource: Rc<dyn Resource>) -> Self {
+    let future = resource.clone().read(64 * 1024);
+    Self(resource, Some(future))
+  }
+}
+
+// SAFETY: we only use this on a single-threaded executor
+unsafe impl Send for ResourceToBodyAdapter {}
+// SAFETY: we only use this on a single-threaded executor
+unsafe impl Sync for ResourceToBodyAdapter {}
+
+impl Stream for ResourceToBodyAdapter {
+  type Item = Result<Bytes, deno_core::error::AnyError>;
+
+  fn poll_next(
+    self: Pin<&mut Self>,
+    cx: &mut Context<'_>,
+  ) -> Poll<Option<Self::Item>> {
+    let this = self.get_mut();
+    if let Some(mut fut) = this.1.take() {
+      match fut.poll_unpin(cx) {
+        Poll::Pending => {
+          this.1 = Some(fut);
+          Poll::Pending
+        }
+        Poll::Ready(res) => match res {
+          Ok(buf) if buf.is_empty() => Poll::Ready(None),
+          Ok(buf) => {
+            this.1 = Some(this.0.clone().read(64 * 1024));
+            Poll::Ready(Some(Ok(buf.to_vec().into())))
+          }
+          Err(err) => Poll::Ready(Some(Err(err))),
+        },
+      }
+    } else {
+      Poll::Ready(None)
+    }
+  }
+}
+
+impl hyper::body::Body for ResourceToBodyAdapter {
+  type Data = Bytes;
+  type Error = deno_core::error::AnyError;
+
+  fn poll_frame(
+    self: Pin<&mut Self>,
+    cx: &mut Context<'_>,
+  ) -> Poll<Option<Result<Frame<Self::Data>, Self::Error>>> {
+    match self.poll_next(cx) {
+      Poll::Ready(Some(res)) => Poll::Ready(Some(res.map(Frame::data))),
+      Poll::Ready(None) => Poll::Ready(None),
+      Poll::Pending => Poll::Pending,
+    }
+  }
+}
+
+impl Drop for ResourceToBodyAdapter {
+  fn drop(&mut self) {
+    self.0.clone().close()
+  }
+}
+
+pub trait FetchPermissions {
+  fn check_net_url(
+    &mut self,
+    url: &Url,
+    api_name: &str,
+  ) -> Result<(), deno_core::error::AnyError>;
+  #[must_use = "the resolved return value to mitigate time-of-check to time-of-use issues"]
+  fn check_read<'a>(
+    &mut self,
+    p: &'a Path,
+    api_name: &str,
+  ) -> Result<Cow<'a, Path>, deno_core::error::AnyError>;
+}
+
+impl FetchPermissions for deno_permissions::PermissionsContainer {
+  #[inline(always)]
+  fn check_net_url(
+    &mut self,
+    url: &Url,
+    api_name: &str,
+  ) -> Result<(), deno_core::error::AnyError> {
+    deno_permissions::PermissionsContainer::check_net_url(self, url, api_name)
+  }
+
+  #[inline(always)]
+  fn check_read<'a>(
+    &mut self,
+    path: &'a Path,
+    api_name: &str,
+  ) -> Result<Cow<'a, Path>, deno_core::error::AnyError> {
+    deno_permissions::PermissionsContainer::check_read_path(
+      self,
+      path,
+      Some(api_name),
+    )
+  }
+}
+
+#[op2]
+#[serde]
+#[allow(clippy::too_many_arguments)]
 pub fn op_fetch<FP>(
   state: &mut OpState,
-  method: ByteString,
-  url: String,
-  headers: Vec<(ByteString, ByteString)>,
-  client_rid: Option<u32>,
+  #[serde] method: ByteString,
+  #[string] url: String,
+  #[serde] headers: Vec<(ByteString, ByteString)>,
+  #[smi] client_rid: Option<u32>,
   has_body: bool,
-  body_length: Option<u64>,
-  data: Option<JsBuffer>,
-) -> Result<FetchReturn, AnyError>
+  #[buffer] data: Option<JsBuffer>,
+  #[smi] resource: Option<ResourceId>,
+) -> Result<FetchReturn, FetchError>
 where
   FP: FetchPermissions + 'static,
 {
   let (client, allow_host) = if let Some(rid) = client_rid {
-    let r = state.resource_table.get::<HttpClientResource>(rid)?;
+    let r = state
+      .resource_table
+      .get::<HttpClientResource>(rid)
+      .map_err(FetchError::Resource)?;
     (r.client.clone(), r.allow_host)
   } else {
     (get_or_create_client_from_state(state)?, false)
   };
 
   let method = Method::from_bytes(&method)?;
-  let url = Url::parse(&url)?;
+  let mut url = Url::parse(&url)?;
 
   // Check scheme before asking for net permission
   let scheme = url.scheme();
-  let (request_rid, request_body_rid, cancel_handle_rid) = match scheme {
+  let (request_rid, cancel_handle_rid) = match scheme {
     "file" => {
-      let path = url.to_file_path().map_err(|_| {
-        type_error("NetworkError when attempting to fetch resource.")
-      })?;
+      let path = url.to_file_path().map_err(|_| FetchError::NetworkError)?;
       let permissions = state.borrow_mut::<FP>();
-      permissions.check_read(&path, "fetch()")?;
+      let path = permissions
+        .check_read(&path, "fetch()")
+        .map_err(FetchError::Permission)?;
+      let url = match path {
+        Cow::Owned(path) => Url::from_file_path(path).unwrap(),
+        Cow::Borrowed(_) => url,
+      };
 
       if method != Method::GET {
-        return Err(type_error(format!(
-          "Fetching files only supports the GET method. Received {method}."
-        )));
+        return Err(FetchError::FsNotGet(method));
       }
 
       let Options {
         file_fetch_handler, ..
       } = state.borrow_mut::<Options>();
       let file_fetch_handler = file_fetch_handler.clone();
-      let (request, maybe_cancel_handle) =
-        file_fetch_handler.fetch_file(state, url);
-      let request_rid = state.resource_table.add(FetchRequestResource(request));
+      let (future, maybe_cancel_handle) =
+        file_fetch_handler.fetch_file(state, &url);
+      let request_rid = state
+        .resource_table
+        .add(FetchRequestResource { future, url });
       let maybe_cancel_handle_rid = maybe_cancel_handle
         .map(|ch| state.resource_table.add(FetchCancelHandle(ch)));
 
-      (request_rid, None, maybe_cancel_handle_rid)
+      (request_rid, maybe_cancel_handle_rid)
     }
     "http" | "https" => {
       let permissions = state.borrow_mut::<FP>();
-      permissions.check_net_url(&url, "fetch()")?;
+      permissions
+        .check_net_url(&url, "fetch()")
+        .map_err(FetchError::Resource)?;
 
-      // Make sure that we have a valid URI early, as reqwest's `RequestBuilder::send`
-      // internally uses `expect_uri`, which panics instead of returning a usable `Result`.
-      if url.as_str().parse::<Uri>().is_err() {
-        return Err(type_error("Invalid URL"));
-      }
+      let maybe_authority = extract_authority(&mut url);
+      let uri = url
+        .as_str()
+        .parse::<Uri>()
+        .map_err(|_| FetchError::InvalidUrl(url.clone()))?;
 
-      let mut request = client.request(method.clone(), url);
-
-      let request_body_rid = if has_body {
-        match data {
-          None => {
-            // If no body is passed, we return a writer for streaming the body.
-            let (tx, stream) = tokio::sync::mpsc::channel(1);
-
-            // If the size of the body is known, we include a content-length
-            // header explicitly.
-            if let Some(body_size) = body_length {
-              request =
-                request.header(CONTENT_LENGTH, HeaderValue::from(body_size))
-            }
-
-            request = request.body(Body::wrap_stream(FetchBodyStream(stream)));
-
-            let request_body_rid =
-              state.resource_table.add(FetchRequestBodyResource {
-                body: AsyncRefCell::new(Some(tx)),
-                cancel: CancelHandle::default(),
-              });
-
-            Some(request_body_rid)
-          }
-          Some(data) => {
+      let mut con_len = None;
+      let body = if has_body {
+        match (data, resource) {
+          (Some(data), _) => {
             // If a body is passed, we use it, and don't return a body for streaming.
-            request = request.body(data.to_vec());
-            None
+            con_len = Some(data.len() as u64);
+
+            http_body_util::Full::new(data.to_vec().into())
+              .map_err(|never| match never {})
+              .boxed()
           }
+          (_, Some(resource)) => {
+            let resource = state
+              .resource_table
+              .take_any(resource)
+              .map_err(FetchError::Resource)?;
+            match resource.size_hint() {
+              (body_size, Some(n)) if body_size == n && body_size > 0 => {
+                con_len = Some(body_size);
+              }
+              _ => {}
+            }
+            ReqBody::new(ResourceToBodyAdapter::new(resource))
+          }
+          (None, None) => unreachable!(),
         }
       } else {
         // POST and PUT requests should always have a 0 length content-length,
         // if there is no body. https://fetch.spec.whatwg.org/#http-network-or-cache-fetch
         if matches!(method, Method::POST | Method::PUT) {
-          request = request.header(CONTENT_LENGTH, HeaderValue::from(0));
+          con_len = Some(0);
         }
-        None
+        http_body_util::Empty::new()
+          .map_err(|never| match never {})
+          .boxed()
       };
 
-      let mut header_map = HeaderMap::new();
+      let mut request = http::Request::new(body);
+      *request.method_mut() = method.clone();
+      *request.uri_mut() = uri.clone();
+
+      if let Some((username, password)) = maybe_authority {
+        request.headers_mut().insert(
+          AUTHORIZATION,
+          proxy::basic_auth(&username, password.as_deref()),
+        );
+      }
+      if let Some(len) = con_len {
+        request.headers_mut().insert(CONTENT_LENGTH, len.into());
+      }
+
       for (key, value) in headers {
-        let name = HeaderName::from_bytes(&key)
-          .map_err(|err| type_error(err.to_string()))?;
-        let v = HeaderValue::from_bytes(&value)
-          .map_err(|err| type_error(err.to_string()))?;
+        let name = HeaderName::from_bytes(&key)?;
+        let v = HeaderValue::from_bytes(&value)?;
 
         if (name != HOST || allow_host) && name != CONTENT_LENGTH {
-          header_map.append(name, v);
+          request.headers_mut().append(name, v);
         }
       }
 
-      if header_map.contains_key(RANGE) {
+      if request.headers().contains_key(RANGE) {
         // https://fetch.spec.whatwg.org/#http-network-or-cache-fetch step 18
         // If httpRequest’s header list contains `Range`, then append (`Accept-Encoding`, `identity`)
-        header_map
+        request
+          .headers_mut()
           .insert(ACCEPT_ENCODING, HeaderValue::from_static("identity"));
       }
-      request = request.headers(header_map);
 
       let options = state.borrow::<Options>();
       if let Some(request_builder_hook) = options.request_builder_hook {
-        request = request_builder_hook(request)
-          .map_err(|err| type_error(err.to_string()))?;
+        request_builder_hook(&mut request)
+          .map_err(FetchError::RequestBuilderHook)?;
       }
 
       let cancel_handle = CancelHandle::new_rc();
       let cancel_handle_ = cancel_handle.clone();
 
       let fut = async move {
-        request
-          .send()
+        client
+          .send(request)
+          .map_err(Into::into)
           .or_cancel(cancel_handle_)
           .await
-          .map(|res| res.map_err(|err| type_error(err.to_string())))
       };
 
-      let request_rid = state
-        .resource_table
-        .add(FetchRequestResource(Box::pin(fut)));
+      let request_rid = state.resource_table.add(FetchRequestResource {
+        future: Box::pin(fut),
+        url,
+      });
 
       let cancel_handle_rid =
         state.resource_table.add(FetchCancelHandle(cancel_handle));
 
-      (request_rid, request_body_rid, Some(cancel_handle_rid))
+      (request_rid, Some(cancel_handle_rid))
     }
     "data" => {
-      let data_url = DataUrl::process(url.as_str())
-        .map_err(|e| type_error(format!("{e:?}")))?;
+      let data_url =
+        DataUrl::process(url.as_str()).map_err(FetchError::DataUrl)?;
 
-      let (body, _) = data_url
-        .decode_to_vec()
-        .map_err(|e| type_error(format!("{e:?}")))?;
+      let (body, _) = data_url.decode_to_vec().map_err(FetchError::Base64)?;
+      let body = http_body_util::Full::new(body.into())
+        .map_err(|never| match never {})
+        .boxed();
 
       let response = http::Response::builder()
         .status(http::StatusCode::OK)
         .header(http::header::CONTENT_TYPE, data_url.mime_type().to_string())
-        .body(reqwest::Body::from(body))?;
+        .body(body)?;
 
-      let fut = async move { Ok(Ok(Response::from(response))) };
+      let fut = async move { Ok(Ok(response)) };
 
-      let request_rid = state
-        .resource_table
-        .add(FetchRequestResource(Box::pin(fut)));
+      let request_rid = state.resource_table.add(FetchRequestResource {
+        future: Box::pin(fut),
+        url,
+      });
 
-      (request_rid, None, None)
+      (request_rid, None)
     }
     "blob" => {
       // Blob URL resolution happens in the JS side of fetch. If we got here is
       // because the URL isn't an object URL.
-      return Err(type_error("Blob for the given URL not found."));
+      return Err(FetchError::BlobNotFound);
     }
-    _ => return Err(type_error(format!("scheme '{scheme}' not supported"))),
+    _ => return Err(FetchError::SchemeNotSupported(scheme.to_string())),
   };
 
   Ok(FetchReturn {
     request_rid,
-    request_body_rid,
     cancel_handle_rid,
   })
 }
 
-#[derive(Serialize)]
+#[derive(Default, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct FetchResponse {
   pub status: u16,
@@ -409,37 +595,67 @@ pub struct FetchResponse {
   pub content_length: Option<u64>,
   pub remote_addr_ip: Option<String>,
   pub remote_addr_port: Option<u16>,
+  /// This field is populated if some error occurred which needs to be
+  /// reconstructed in the JS side to set the error _cause_.
+  /// In the tuple, the first element is an error message and the second one is
+  /// an error cause.
+  pub error: Option<(String, String)>,
 }
 
-#[op]
+#[op2(async)]
+#[serde]
 pub async fn op_fetch_send(
   state: Rc<RefCell<OpState>>,
-  rid: ResourceId,
-) -> Result<FetchResponse, AnyError> {
+  #[smi] rid: ResourceId,
+) -> Result<FetchResponse, FetchError> {
   let request = state
     .borrow_mut()
     .resource_table
-    .take::<FetchRequestResource>(rid)?;
+    .take::<FetchRequestResource>(rid)
+    .map_err(FetchError::Resource)?;
 
   let request = Rc::try_unwrap(request)
     .ok()
     .expect("multiple op_fetch_send ongoing");
 
-  let res = match request.0.await {
+  let res = match request.future.await {
     Ok(Ok(res)) => res,
-    Ok(Err(err)) => return Err(type_error(err.to_string())),
-    Err(_) => return Err(type_error("request was cancelled")),
+    Ok(Err(err)) => {
+      // We're going to try and rescue the error cause from a stream and return it from this fetch.
+      // If any error in the chain is a hyper body error, return that as a special result we can use to
+      // reconstruct an error chain (eg: `new TypeError(..., { cause: new Error(...) })`).
+      // TODO(mmastrac): it would be a lot easier if we just passed a v8::Global through here instead
+
+      if let FetchError::ClientSend(err_src) = &err {
+        if let Some(client_err) = std::error::Error::source(&err_src.source) {
+          if let Some(err_src) = client_err.downcast_ref::<hyper::Error>() {
+            if let Some(err_src) = std::error::Error::source(err_src) {
+              return Ok(FetchResponse {
+                error: Some((err.to_string(), err_src.to_string())),
+                ..Default::default()
+              });
+            }
+          }
+        }
+      }
+
+      return Err(err);
+    }
+    Err(_) => return Err(FetchError::RequestCanceled),
   };
 
   let status = res.status();
-  let url = res.url().to_string();
+  let url = request.url.into();
   let mut res_headers = Vec::new();
   for (key, val) in res.headers().iter() {
     res_headers.push((key.as_str().into(), val.as_bytes().into()));
   }
 
-  let content_length = res.content_length();
-  let remote_addr = res.remote_addr();
+  let content_length = hyper::body::Body::size_hint(res.body()).exact();
+  let remote_addr = res
+    .extensions()
+    .get::<hyper_util::client::legacy::connect::HttpInfo>()
+    .map(|info| info.remote_addr());
   let (remote_addr_ip, remote_addr_port) = if let Some(addr) = remote_addr {
     (Some(addr.ip().to_string()), Some(addr.port()))
   } else {
@@ -460,120 +676,17 @@ pub async fn op_fetch_send(
     content_length,
     remote_addr_ip,
     remote_addr_port,
+    error: None,
   })
 }
 
-#[op]
-pub async fn op_fetch_response_upgrade(
-  state: Rc<RefCell<OpState>>,
-  rid: ResourceId,
-) -> Result<ResourceId, AnyError> {
-  let raw_response = state
-    .borrow_mut()
-    .resource_table
-    .take::<FetchResponseResource>(rid)?;
-  let raw_response = Rc::try_unwrap(raw_response)
-    .expect("Someone is holding onto FetchResponseResource");
+type CancelableResponseResult =
+  Result<Result<http::Response<ResBody>, FetchError>, Canceled>;
 
-  let (read, write) = tokio::io::duplex(1024);
-  let (read_rx, write_tx) = tokio::io::split(read);
-  let (mut write_rx, mut read_tx) = tokio::io::split(write);
-  let upgraded = raw_response.upgrade().await?;
-  {
-    // Stage 3: Pump the data
-    let (mut upgraded_rx, mut upgraded_tx) = tokio::io::split(upgraded);
-
-    spawn(async move {
-      let mut buf = [0; 1024];
-      loop {
-        let read = upgraded_rx.read(&mut buf).await?;
-        if read == 0 {
-          break;
-        }
-        read_tx.write_all(&buf[..read]).await?;
-      }
-      Ok::<_, AnyError>(())
-    });
-    spawn(async move {
-      let mut buf = [0; 1024];
-      loop {
-        let read = write_rx.read(&mut buf).await?;
-        if read == 0 {
-          break;
-        }
-        upgraded_tx.write_all(&buf[..read]).await?;
-      }
-      Ok::<_, AnyError>(())
-    });
-  }
-
-  Ok(
-    state
-      .borrow_mut()
-      .resource_table
-      .add(UpgradeStream::new(read_rx, write_tx)),
-  )
+pub struct FetchRequestResource {
+  pub future: Pin<Box<dyn Future<Output = CancelableResponseResult>>>,
+  pub url: Url,
 }
-
-struct UpgradeStream {
-  read: AsyncRefCell<tokio::io::ReadHalf<tokio::io::DuplexStream>>,
-  write: AsyncRefCell<tokio::io::WriteHalf<tokio::io::DuplexStream>>,
-  cancel_handle: CancelHandle,
-}
-
-impl UpgradeStream {
-  pub fn new(
-    read: tokio::io::ReadHalf<tokio::io::DuplexStream>,
-    write: tokio::io::WriteHalf<tokio::io::DuplexStream>,
-  ) -> Self {
-    Self {
-      read: AsyncRefCell::new(read),
-      write: AsyncRefCell::new(write),
-      cancel_handle: CancelHandle::new(),
-    }
-  }
-
-  async fn read(self: Rc<Self>, buf: &mut [u8]) -> Result<usize, AnyError> {
-    let cancel_handle = RcRef::map(self.clone(), |this| &this.cancel_handle);
-    async {
-      let read = RcRef::map(self, |this| &this.read);
-      let mut read = read.borrow_mut().await;
-      Ok(Pin::new(&mut *read).read(buf).await?)
-    }
-    .try_or_cancel(cancel_handle)
-    .await
-  }
-
-  async fn write(self: Rc<Self>, buf: &[u8]) -> Result<usize, AnyError> {
-    let cancel_handle = RcRef::map(self.clone(), |this| &this.cancel_handle);
-    async {
-      let write = RcRef::map(self, |this| &this.write);
-      let mut write = write.borrow_mut().await;
-      Ok(Pin::new(&mut *write).write(buf).await?)
-    }
-    .try_or_cancel(cancel_handle)
-    .await
-  }
-}
-
-impl Resource for UpgradeStream {
-  fn name(&self) -> Cow<str> {
-    "fetchUpgradedStream".into()
-  }
-
-  deno_core::impl_readable_byob!();
-  deno_core::impl_writable!();
-
-  fn close(self: Rc<Self>) {
-    self.cancel_handle.cancel();
-  }
-}
-
-type CancelableResponseResult = Result<Result<Response, AnyError>, Canceled>;
-
-pub struct FetchRequestResource(
-  pub Pin<Box<dyn Future<Output = CancelableResponseResult>>>,
-);
 
 impl Resource for FetchRequestResource {
   fn name(&self) -> Cow<str> {
@@ -593,79 +706,11 @@ impl Resource for FetchCancelHandle {
   }
 }
 
-/// Wraps a [`mpsc::Receiver`] in a [`Stream`] that can be used as a Hyper [`Body`].
-pub struct FetchBodyStream(pub mpsc::Receiver<Result<bytes::Bytes, Error>>);
-
-impl Stream for FetchBodyStream {
-  type Item = Result<bytes::Bytes, Error>;
-  fn poll_next(
-    mut self: Pin<&mut Self>,
-    cx: &mut std::task::Context<'_>,
-  ) -> std::task::Poll<Option<Self::Item>> {
-    self.0.poll_recv(cx)
-  }
-}
-
-pub struct FetchRequestBodyResource {
-  pub body: AsyncRefCell<Option<mpsc::Sender<Result<bytes::Bytes, Error>>>>,
-  pub cancel: CancelHandle,
-}
-
-impl Resource for FetchRequestBodyResource {
-  fn name(&self) -> Cow<str> {
-    "fetchRequestBody".into()
-  }
-
-  fn write(self: Rc<Self>, buf: BufView) -> AsyncResult<WriteOutcome> {
-    Box::pin(async move {
-      let bytes: bytes::Bytes = buf.into();
-      let nwritten = bytes.len();
-      let body = RcRef::map(&self, |r| &r.body).borrow_mut().await;
-      let body = (*body).as_ref();
-      let cancel = RcRef::map(self, |r| &r.cancel);
-      let body = body.ok_or(type_error(
-        "request body receiver not connected (request closed)",
-      ))?;
-      body.send(Ok(bytes)).or_cancel(cancel).await?.map_err(|_| {
-        type_error("request body receiver not connected (request closed)")
-      })?;
-      Ok(WriteOutcome::Full { nwritten })
-    })
-  }
-
-  fn write_error(self: Rc<Self>, error: Error) -> AsyncResult<()> {
-    async move {
-      let body = RcRef::map(&self, |r| &r.body).borrow_mut().await;
-      let body = (*body).as_ref();
-      let cancel = RcRef::map(self, |r| &r.cancel);
-      let body = body.ok_or(type_error(
-        "request body receiver not connected (request closed)",
-      ))?;
-      body.send(Err(error)).or_cancel(cancel).await??;
-      Ok(())
-    }
-    .boxed_local()
-  }
-
-  fn shutdown(self: Rc<Self>) -> AsyncResult<()> {
-    async move {
-      let mut body = RcRef::map(&self, |r| &r.body).borrow_mut().await;
-      body.take();
-      Ok(())
-    }
-    .boxed_local()
-  }
-
-  fn close(self: Rc<Self>) {
-    self.cancel.cancel();
-  }
-}
-
 type BytesStream =
   Pin<Box<dyn Stream<Item = Result<bytes::Bytes, std::io::Error>> + Unpin>>;
 
 pub enum FetchResponseReader {
-  Start(Response),
+  Start(http::Response<ResBody>),
   BodyReader(Peekable<BytesStream>),
 }
 
@@ -683,7 +728,7 @@ pub struct FetchResponseResource {
 }
 
 impl FetchResponseResource {
-  pub fn new(response: Response, size: Option<u64>) -> Self {
+  pub fn new(response: http::Response<ResBody>, size: Option<u64>) -> Self {
     Self {
       response_reader: AsyncRefCell::new(FetchResponseReader::Start(response)),
       cancel: CancelHandle::default(),
@@ -691,10 +736,10 @@ impl FetchResponseResource {
     }
   }
 
-  pub async fn upgrade(self) -> Result<reqwest::Upgraded, AnyError> {
+  pub async fn upgrade(self) -> Result<hyper::upgrade::Upgraded, hyper::Error> {
     let reader = self.response_reader.into_inner();
     match reader {
-      FetchResponseReader::Start(resp) => Ok(resp.upgrade().await?),
+      FetchResponseReader::Start(resp) => Ok(hyper::upgrade::on(resp).await?),
       _ => unreachable!(),
     }
   }
@@ -718,11 +763,12 @@ impl Resource for FetchResponseResource {
 
         match std::mem::take(&mut *reader) {
           FetchResponseReader::Start(resp) => {
-            let stream: BytesStream = Box::pin(resp.bytes_stream().map(|r| {
-              r.map_err(|err| {
-                std::io::Error::new(std::io::ErrorKind::Other, err)
-              })
-            }));
+            let stream: BytesStream =
+              Box::pin(resp.into_body().into_data_stream().map(|r| {
+                r.map_err(|err| {
+                  std::io::Error::new(std::io::ErrorKind::Other, err)
+                })
+              }));
             *reader = FetchResponseReader::BodyReader(stream.peekable());
           }
           FetchResponseReader::BodyReader(_) => unreachable!(),
@@ -745,7 +791,9 @@ impl Resource for FetchResponseResource {
             // safely call `await` on it without creating a race condition.
             Some(_) => match reader.as_mut().next().await.unwrap() {
               Ok(chunk) => assert!(chunk.is_empty()),
-              Err(err) => break Err(type_error(err.to_string())),
+              Err(err) => {
+                break Err(deno_core::error::type_error(err.to_string()))
+              }
             },
             None => break Ok(BufView::empty()),
           }
@@ -783,22 +831,13 @@ impl HttpClientResource {
   }
 }
 
-#[derive(Deserialize, Debug, Clone)]
-#[serde(rename_all = "camelCase")]
-pub enum PoolIdleTimeout {
-  State(bool),
-  Specify(u64),
-}
-
 #[derive(Deserialize, Debug)]
 #[serde(rename_all = "camelCase")]
 pub struct CreateHttpClientArgs {
   ca_certs: Vec<String>,
   proxy: Option<Proxy>,
-  cert_chain: Option<String>,
-  private_key: Option<String>,
   pool_max_idle_per_host: Option<usize>,
-  pool_idle_timeout: Option<PoolIdleTimeout>,
+  pool_idle_timeout: Option<serde_json::Value>,
   #[serde(default = "default_true")]
   http1: bool,
   #[serde(default = "default_true")]
@@ -811,34 +850,23 @@ fn default_true() -> bool {
   true
 }
 
-#[op]
+#[op2]
+#[smi]
 pub fn op_fetch_custom_client<FP>(
   state: &mut OpState,
-  args: CreateHttpClientArgs,
-) -> Result<ResourceId, AnyError>
+  #[serde] args: CreateHttpClientArgs,
+  #[cppgc] tls_keys: &TlsKeysHolder,
+) -> Result<ResourceId, FetchError>
 where
   FP: FetchPermissions + 'static,
 {
   if let Some(proxy) = args.proxy.clone() {
     let permissions = state.borrow_mut::<FP>();
     let url = Url::parse(&proxy.url)?;
-    permissions.check_net_url(&url, "Deno.createHttpClient()")?;
+    permissions
+      .check_net_url(&url, "Deno.createHttpClient()")
+      .map_err(FetchError::Permission)?;
   }
-
-  let client_cert_chain_and_key = {
-    if args.cert_chain.is_some() || args.private_key.is_some() {
-      let cert_chain = args
-        .cert_chain
-        .ok_or_else(|| type_error("No certificate chain provided"))?;
-      let private_key = args
-        .private_key
-        .ok_or_else(|| type_error("No private key provided"))?;
-
-      Some((cert_chain, private_key))
-    } else {
-      None
-    }
-  };
 
   let options = state.borrow::<Options>();
   let ca_certs = args
@@ -850,19 +878,24 @@ where
   let client = create_http_client(
     &options.user_agent,
     CreateHttpClientOptions {
-      root_cert_store: options.root_cert_store()?,
+      root_cert_store: options
+        .root_cert_store()
+        .map_err(HttpClientCreateError::RootCertStore)?,
       ca_certs,
       proxy: args.proxy,
       unsafely_ignore_certificate_errors: options
         .unsafely_ignore_certificate_errors
         .clone(),
-      client_cert_chain_and_key,
+      client_cert_chain_and_key: tls_keys.take().try_into().unwrap(),
       pool_max_idle_per_host: args.pool_max_idle_per_host,
       pool_idle_timeout: args.pool_idle_timeout.and_then(
         |timeout| match timeout {
-          PoolIdleTimeout::State(true) => None,
-          PoolIdleTimeout::State(false) => Some(None),
-          PoolIdleTimeout::Specify(specify) => Some(Some(specify)),
+          serde_json::Value::Bool(true) => None,
+          serde_json::Value::Bool(false) => Some(None),
+          serde_json::Value::Number(specify) => {
+            Some(Some(specify.as_u64().unwrap_or_default()))
+          }
+          _ => Some(None),
         },
       ),
       http1: args.http1,
@@ -882,7 +915,7 @@ pub struct CreateHttpClientOptions {
   pub ca_certs: Vec<Vec<u8>>,
   pub proxy: Option<Proxy>,
   pub unsafely_ignore_certificate_errors: Option<Vec<String>>,
-  pub client_cert_chain_and_key: Option<(String, String)>,
+  pub client_cert_chain_and_key: Option<TlsKey>,
   pub pool_max_idle_per_host: Option<usize>,
   pub pool_idle_timeout: Option<Option<u64>>,
   pub http1: bool,
@@ -905,18 +938,38 @@ impl Default for CreateHttpClientOptions {
   }
 }
 
-/// Create new instance of async reqwest::Client. This client supports
+#[derive(Debug, thiserror::Error)]
+pub enum HttpClientCreateError {
+  #[error(transparent)]
+  Tls(deno_tls::TlsError),
+  #[error("Illegal characters in User-Agent: received {0}")]
+  InvalidUserAgent(String),
+  #[error("invalid proxy url")]
+  InvalidProxyUrl,
+  #[error("Cannot create Http Client: either `http1` or `http2` needs to be set to true")]
+  HttpVersionSelectionInvalid,
+  #[error(transparent)]
+  RootCertStore(deno_core::error::AnyError),
+}
+
+/// Create new instance of async Client. This client supports
 /// proxies and doesn't follow redirects.
 pub fn create_http_client(
   user_agent: &str,
   options: CreateHttpClientOptions,
-) -> Result<Client, AnyError> {
+) -> Result<Client, HttpClientCreateError> {
   let mut tls_config = deno_tls::create_client_config(
     options.root_cert_store,
     options.ca_certs,
     options.unsafely_ignore_certificate_errors,
-    options.client_cert_chain_and_key,
-  )?;
+    options.client_cert_chain_and_key.into(),
+    deno_tls::SocketUse::Http,
+  )
+  .map_err(HttpClientCreateError::Tls)?;
+
+  // Proxy TLS should not send ALPN
+  tls_config.alpn_protocols.clear();
+  let proxy_tls_config = Arc::from(tls_config.clone());
 
   let mut alpn_protocols = vec![];
   if options.http2 {
@@ -926,41 +979,200 @@ pub fn create_http_client(
     alpn_protocols.push("http/1.1".into());
   }
   tls_config.alpn_protocols = alpn_protocols;
+  let tls_config = Arc::from(tls_config);
 
-  let mut headers = HeaderMap::new();
-  headers.insert(USER_AGENT, user_agent.parse().unwrap());
-  let mut builder = Client::builder()
-    .redirect(Policy::none())
-    .default_headers(headers)
-    .use_preconfigured_tls(tls_config);
+  let mut http_connector = HttpConnector::new();
+  http_connector.enforce_http(false);
 
+  let user_agent = user_agent.parse::<HeaderValue>().map_err(|_| {
+    HttpClientCreateError::InvalidUserAgent(user_agent.to_string())
+  })?;
+
+  let mut builder =
+    hyper_util::client::legacy::Builder::new(TokioExecutor::new());
+  builder.timer(TokioTimer::new());
+  builder.pool_timer(TokioTimer::new());
+
+  let mut proxies = proxy::from_env();
   if let Some(proxy) = options.proxy {
-    let mut reqwest_proxy = reqwest::Proxy::all(&proxy.url)?;
+    let mut intercept = proxy::Intercept::all(&proxy.url)
+      .ok_or_else(|| HttpClientCreateError::InvalidProxyUrl)?;
     if let Some(basic_auth) = &proxy.basic_auth {
-      reqwest_proxy =
-        reqwest_proxy.basic_auth(&basic_auth.username, &basic_auth.password);
+      intercept.set_auth(&basic_auth.username, &basic_auth.password);
     }
-    builder = builder.proxy(reqwest_proxy);
+    proxies.prepend(intercept);
   }
+  let proxies = Arc::new(proxies);
+  let connector = proxy::ProxyConnector {
+    http: http_connector,
+    proxies: proxies.clone(),
+    tls: tls_config,
+    tls_proxy: proxy_tls_config,
+    user_agent: Some(user_agent.clone()),
+  };
 
   if let Some(pool_max_idle_per_host) = options.pool_max_idle_per_host {
-    builder = builder.pool_max_idle_per_host(pool_max_idle_per_host);
+    builder.pool_max_idle_per_host(pool_max_idle_per_host);
   }
 
   if let Some(pool_idle_timeout) = options.pool_idle_timeout {
-    builder = builder.pool_idle_timeout(
+    builder.pool_idle_timeout(
       pool_idle_timeout.map(std::time::Duration::from_millis),
     );
   }
 
   match (options.http1, options.http2) {
-    (true, false) => builder = builder.http1_only(),
-    (false, true) => builder = builder.http2_prior_knowledge(),
+    (true, false) => {} // noop, handled by ALPN above
+    (false, true) => {
+      builder.http2_only(true);
+    }
     (true, true) => {}
     (false, false) => {
-      return Err(type_error("Either `http1` or `http2` needs to be true"))
+      return Err(HttpClientCreateError::HttpVersionSelectionInvalid)
     }
   }
 
-  builder.build().map_err(|e| e.into())
+  let pooled_client = builder.build(connector);
+  let decompress = Decompression::new(pooled_client).gzip(true).br(true);
+
+  Ok(Client {
+    inner: decompress,
+    proxies,
+    user_agent,
+  })
+}
+
+#[op2]
+#[serde]
+pub fn op_utf8_to_byte_string(#[string] input: String) -> ByteString {
+  input.into()
+}
+
+#[derive(Clone, Debug)]
+pub struct Client {
+  inner: Decompression<hyper_util::client::legacy::Client<Connector, ReqBody>>,
+  // Used to check whether to include a proxy-authorization header
+  proxies: Arc<proxy::Proxies>,
+  user_agent: HeaderValue,
+}
+
+type Connector = proxy::ProxyConnector<HttpConnector>;
+
+// clippy is wrong here
+#[allow(clippy::declare_interior_mutable_const)]
+const STAR_STAR: HeaderValue = HeaderValue::from_static("*/*");
+
+#[derive(Debug)]
+pub struct ClientSendError {
+  uri: Uri,
+  pub source: hyper_util::client::legacy::Error,
+}
+
+impl ClientSendError {
+  pub fn is_connect_error(&self) -> bool {
+    self.source.is_connect()
+  }
+
+  fn http_info(&self) -> Option<HttpInfo> {
+    let mut exts = Extensions::new();
+    self.source.connect_info()?.get_extras(&mut exts);
+    exts.remove::<HttpInfo>()
+  }
+}
+
+impl std::fmt::Display for ClientSendError {
+  fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+    // NOTE: we can use `std::error::Report` instead once it's stabilized.
+    let detail = error_reporter::Report::new(&self.source);
+
+    match self.http_info() {
+      Some(http_info) => {
+        write!(
+          f,
+          "error sending request from {src} for {uri} ({dst}): {detail}",
+          src = http_info.local_addr(),
+          uri = self.uri,
+          dst = http_info.remote_addr(),
+          detail = detail,
+        )
+      }
+      None => {
+        write!(
+          f,
+          "error sending request for url ({uri}): {detail}",
+          uri = self.uri,
+          detail = detail,
+        )
+      }
+    }
+  }
+}
+
+impl std::error::Error for ClientSendError {
+  fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+    Some(&self.source)
+  }
+}
+
+impl Client {
+  pub async fn send(
+    self,
+    mut req: http::Request<ReqBody>,
+  ) -> Result<http::Response<ResBody>, ClientSendError> {
+    req
+      .headers_mut()
+      .entry(USER_AGENT)
+      .or_insert_with(|| self.user_agent.clone());
+
+    req.headers_mut().entry(ACCEPT).or_insert(STAR_STAR);
+
+    if let Some(auth) = self.proxies.http_forward_auth(req.uri()) {
+      req.headers_mut().insert(PROXY_AUTHORIZATION, auth.clone());
+    }
+
+    let uri = req.uri().clone();
+
+    let resp = self
+      .inner
+      .oneshot(req)
+      .await
+      .map_err(|e| ClientSendError { uri, source: e })?;
+    Ok(resp.map(|b| b.map_err(|e| deno_core::anyhow::anyhow!(e)).boxed()))
+  }
+}
+
+pub type ReqBody =
+  http_body_util::combinators::BoxBody<Bytes, deno_core::error::AnyError>;
+pub type ResBody =
+  http_body_util::combinators::BoxBody<Bytes, deno_core::error::AnyError>;
+
+/// Copied from https://github.com/seanmonstar/reqwest/blob/b9d62a0323d96f11672a61a17bf8849baec00275/src/async_impl/request.rs#L572
+/// Check the request URL for a "username:password" type authority, and if
+/// found, remove it from the URL and return it.
+pub fn extract_authority(url: &mut Url) -> Option<(String, Option<String>)> {
+  use percent_encoding::percent_decode;
+
+  if url.has_authority() {
+    let username: String = percent_decode(url.username().as_bytes())
+      .decode_utf8()
+      .ok()?
+      .into();
+    let password = url.password().and_then(|pass| {
+      percent_decode(pass.as_bytes())
+        .decode_utf8()
+        .ok()
+        .map(String::from)
+    });
+    if !username.is_empty() || password.is_some() {
+      url
+        .set_username("")
+        .expect("has_authority means set_username shouldn't fail");
+      url
+        .set_password(None)
+        .expect("has_authority means set_password shouldn't fail");
+      return Some((username, password));
+    }
+  }
+
+  None
 }

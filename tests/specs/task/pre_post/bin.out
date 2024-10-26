@@ -1,0 +1,6 @@
+Task pretest echo 'pretest'
+pretest
+Task test echo 'test'
+test
+Task posttest echo 'posttest'
+posttest

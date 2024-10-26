@@ -1,12 +1,12 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 // deno-lint-ignore-file no-explicit-any no-var
 
 /// <reference no-default-lib="true" />
 /// <reference lib="esnext" />
 
-/** @category Web APIs */
-declare interface URLSearchParams {
+/** @category URL */
+interface URLSearchParams {
   /** Appends a specified key/value pair as a new search parameter.
    *
    * ```ts
@@ -157,7 +157,7 @@ declare interface URLSearchParams {
   size: number;
 }
 
-/** @category Web APIs */
+/** @category URL */
 declare var URLSearchParams: {
   readonly prototype: URLSearchParams;
   new (
@@ -168,9 +168,9 @@ declare var URLSearchParams: {
 /** The URL interface represents an object providing static methods used for
  * creating object URLs.
  *
- * @category Web APIs
+ * @category URL
  */
-declare interface URL {
+interface URL {
   hash: string;
   host: string;
   hostname: string;
@@ -190,18 +190,19 @@ declare interface URL {
 /** The URL interface represents an object providing static methods used for
  * creating object URLs.
  *
- * @category Web APIs
+ * @category URL
  */
 declare var URL: {
   readonly prototype: URL;
   new (url: string | URL, base?: string | URL): URL;
+  parse(url: string | URL, base?: string | URL): URL | null;
   canParse(url: string | URL, base?: string | URL): boolean;
   createObjectURL(blob: Blob): string;
   revokeObjectURL(url: string): void;
 };
 
-/** @category Web APIs */
-declare interface URLPatternInit {
+/** @category URL */
+interface URLPatternInit {
   protocol?: string;
   username?: string;
   password?: string;
@@ -213,20 +214,20 @@ declare interface URLPatternInit {
   baseURL?: string;
 }
 
-/** @category Web APIs */
-declare type URLPatternInput = string | URLPatternInit;
+/** @category URL */
+type URLPatternInput = string | URLPatternInit;
 
-/** @category Web APIs */
-declare interface URLPatternComponentResult {
+/** @category URL */
+interface URLPatternComponentResult {
   input: string;
   groups: Record<string, string | undefined>;
 }
 
 /** `URLPatternResult` is the object returned from `URLPattern.exec`.
  *
- * @category Web APIs
+ * @category URL
  */
-declare interface URLPatternResult {
+interface URLPatternResult {
   /** The inputs provided when matching. */
   inputs: [URLPatternInit] | [URLPatternInit, string];
 
@@ -246,6 +247,20 @@ declare interface URLPatternResult {
   search: URLPatternComponentResult;
   /** The matched result for the `hash` matcher. */
   hash: URLPatternComponentResult;
+}
+
+/**
+ * Options for the {@linkcode URLPattern} constructor.
+ *
+ * @category URL
+ */
+interface URLPatternOptions {
+  /**
+   * Enables case-insensitive matching.
+   *
+   * @default {false}
+   */
+  ignoreCase: boolean;
 }
 
 /**
@@ -276,9 +291,9 @@ declare interface URLPatternResult {
  * console.log(pattern.test("https://blog.example.com/article/123")); // true
  * ```
  *
- * @category Web APIs
+ * @category URL
  */
-declare interface URLPattern {
+interface URLPattern {
   /**
    * Test if the given input matches the stored pattern.
    *
@@ -342,6 +357,9 @@ declare interface URLPattern {
   readonly search: string;
   /** The pattern string for the `hash`. */
   readonly hash: string;
+
+  /** Whether or not any of the specified groups use regexp groups. */
+  readonly hasRegExpGroups: boolean;
 }
 
 /**
@@ -372,9 +390,14 @@ declare interface URLPattern {
  * console.log(pattern.test("https://blog.example.com/article/123")); // true
  * ```
  *
- * @category Web APIs
+ * @category URL
  */
 declare var URLPattern: {
   readonly prototype: URLPattern;
-  new (input: URLPatternInput, baseURL?: string): URLPattern;
+  new (
+    input: URLPatternInput,
+    baseURL: string,
+    options?: URLPatternOptions,
+  ): URLPattern;
+  new (input?: URLPatternInput, options?: URLPatternOptions): URLPattern;
 };

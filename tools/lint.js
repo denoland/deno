@@ -1,28 +1,42 @@
-#!/usr/bin/env -S deno run --unstable --allow-write --allow-read --allow-run --allow-net
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+#!/usr/bin/env -S deno run --allow-all --config=tests/config/deno.json
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+
+// deno-lint-ignore-file no-console
+
 import { buildMode, getPrebuilt, getSources, join, ROOT_PATH } from "./util.js";
 import { checkCopyright } from "./copyright_checker.js";
+import * as ciFile from "../.github/workflows/ci.generate.ts";
 
-let didLint = false;
+const promises = [];
 
-if (Deno.args.includes("--js")) {
-  await dlint();
-  await dlintPreferPrimordials();
-  didLint = true;
+let js = Deno.args.includes("--js");
+let rs = Deno.args.includes("--rs");
+if (!js && !rs) {
+  js = true;
+  rs = true;
 }
 
-if (Deno.args.includes("--rs")) {
-  await clippy();
-  didLint = true;
+if (rs) {
+  promises.push(clippy());
 }
 
-if (!didLint) {
-  await Promise.all([
-    dlint(),
-    dlintPreferPrimordials(),
-    checkCopyright(),
-    clippy(),
-  ]);
+if (js) {
+  promises.push(dlint());
+  promises.push(dlintPreferPrimordials());
+  promises.push(ensureCiYmlUpToDate());
+  promises.push(ensureNoNewITests());
+
+  if (rs) {
+    promises.push(checkCopyright());
+  }
+}
+
+const results = await Promise.allSettled(promises);
+for (const result of results) {
+  if (result.status === "rejected") {
+    console.error(result.reason);
+    Deno.exit(1);
+  }
 }
 
 async function dlint() {
@@ -33,25 +47,21 @@ async function dlint() {
     "*.js",
     "*.ts",
     ":!:.github/mtime_cache/action.js",
-    ":!:cli/tests/testdata/swc_syntax_error.ts",
-    ":!:cli/tests/testdata/error_008_checkjs.js",
     ":!:cli/bench/testdata/npm/*",
     ":!:cli/bench/testdata/express-router.js",
     ":!:cli/bench/testdata/react-dom.js",
     ":!:cli/compilers/wasm_wrap.js",
     ":!:cli/tsc/dts/**",
-    ":!:cli/tests/testdata/encoding/**",
-    ":!:cli/tests/testdata/error_syntax.js",
-    ":!:cli/tests/testdata/file_extensions/ts_with_js_extension.js",
-    ":!:cli/tests/testdata/fmt/**",
-    ":!:cli/tests/testdata/npm/**",
-    ":!:cli/tests/testdata/lint/**",
-    ":!:cli/tests/testdata/run/**",
-    ":!:cli/tests/testdata/tsc/**",
-    ":!:cli/tests/testdata/test/glob/**",
     ":!:cli/tsc/*typescript.js",
     ":!:cli/tsc/compiler.d.ts",
-    ":!:test_util/wpt/**",
+    ":!:runtime/examples/",
+    ":!:target/",
+    ":!:tests/registry/**",
+    ":!:tests/specs/**",
+    ":!:tests/testdata/**",
+    ":!:tests/unit_node/testdata/**",
+    ":!:tests/wpt/suite/**",
+    ":!:tests/wpt/runner/**",
   ]);
 
   if (!sourceFiles.length) {
@@ -78,7 +88,12 @@ async function dlint() {
       }),
     );
   }
-  await Promise.all(pending);
+  const results = await Promise.allSettled(pending);
+  for (const result of results) {
+    if (result.status === "rejected") {
+      throw new Error(result.reason);
+    }
+  }
 }
 
 // `prefer-primordials` has to apply only to files related to bootstrapping,
@@ -88,13 +103,11 @@ async function dlintPreferPrimordials() {
   const execPath = await getPrebuilt("dlint");
   const sourceFiles = await getSources(ROOT_PATH, [
     "runtime/**/*.js",
+    "runtime/**/*.ts",
     "ext/**/*.js",
+    "ext/**/*.ts",
+    ":!:ext/**/*.d.ts",
     "ext/node/polyfills/*.mjs",
-    "ext/node/polyfills/*.ts",
-    ":!:ext/node/polyfills/*.d.ts",
-    "core/*.js",
-    ":!:core/*_test.js",
-    ":!:core/examples/**",
   ]);
 
   if (!sourceFiles.length) {
@@ -148,6 +161,14 @@ async function clippy() {
       "--",
       "-D",
       "warnings",
+      "--deny",
+      "clippy::unused_async",
+      // generally prefer the `log` crate, but ignore
+      // these print_* rules if necessary
+      "--deny",
+      "clippy::print_stderr",
+      "--deny",
+      "clippy::print_stdout",
     ],
     stdout: "inherit",
     stderr: "inherit",
@@ -156,5 +177,74 @@ async function clippy() {
 
   if (code > 0) {
     throw new Error("clippy failed");
+  }
+}
+
+async function ensureCiYmlUpToDate() {
+  const expectedCiFileText = ciFile.generate();
+  const actualCiFileText = await Deno.readTextFile(ciFile.CI_YML_URL);
+  if (expectedCiFileText !== actualCiFileText) {
+    throw new Error(
+      "./.github/workflows/ci.yml is out of date. Run: ./.github/workflows/ci.generate.ts",
+    );
+  }
+}
+
+async function ensureNoNewITests() {
+  // Note: Only decrease these numbers. Never increase them!!
+  // This is to help ensure we slowly deprecate these tests and
+  // replace them with spec tests.
+  const iTestCounts = {
+    "bench_tests.rs": 0,
+    "cache_tests.rs": 0,
+    "cert_tests.rs": 0,
+    "check_tests.rs": 2,
+    "compile_tests.rs": 0,
+    "coverage_tests.rs": 0,
+    "eval_tests.rs": 0,
+    "flags_tests.rs": 0,
+    "fmt_tests.rs": 16,
+    "init_tests.rs": 0,
+    "inspector_tests.rs": 0,
+    "install_tests.rs": 0,
+    "jsr_tests.rs": 0,
+    "js_unit_tests.rs": 0,
+    "jupyter_tests.rs": 0,
+    // Read the comment above. Please don't increase these numbers!
+    "lsp_tests.rs": 0,
+    "node_compat_tests.rs": 0,
+    "node_unit_tests.rs": 2,
+    "npm_tests.rs": 5,
+    "pm_tests.rs": 0,
+    "publish_tests.rs": 0,
+    "repl_tests.rs": 0,
+    "run_tests.rs": 331,
+    "shared_library_tests.rs": 0,
+    "task_tests.rs": 2,
+    "test_tests.rs": 0,
+    "upgrade_tests.rs": 0,
+    "vendor_tests.rs": 1,
+    "watcher_tests.rs": 0,
+    "worker_tests.rs": 0,
+  };
+  const integrationDir = join(ROOT_PATH, "tests", "integration");
+  for await (const entry of Deno.readDir(integrationDir)) {
+    if (!entry.name.endsWith("_tests.rs")) {
+      continue;
+    }
+    const fileText = await Deno.readTextFile(join(integrationDir, entry.name));
+    const actualCount = fileText.match(/itest\!/g)?.length ?? 0;
+    const expectedCount = iTestCounts[entry.name] ?? 0;
+    // console.log(`"${entry.name}": ${actualCount},`);
+    if (actualCount > expectedCount) {
+      throw new Error(
+        `New itest added to ${entry.name}! The itest macro is deprecated. Please move your new test to ~/tests/specs.`,
+      );
+    } else if (actualCount < expectedCount) {
+      throw new Error(
+        `Thanks for removing an itest in ${entry.name}. ` +
+          `Please update the count in tools/lint.js for this file to ${actualCount}.`,
+      );
+    }
   }
 }

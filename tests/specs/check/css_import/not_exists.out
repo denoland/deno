@@ -1,0 +1,2 @@
+error: Module not found "file:///[WILDLINE]/not_exists.css".
+    at file:///[WILDLINE]/not_exists.ts:1:8

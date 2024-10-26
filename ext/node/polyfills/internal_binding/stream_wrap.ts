@@ -1,4 +1,4 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 // Copyright Joyent, Inc. and other Node contributors.
 //
 // Permission is hereby granted, free of charge, to any person obtaining a
@@ -30,24 +30,26 @@
 // TODO(petamoriken): enable prefer-primordials for node polyfills
 // deno-lint-ignore-file prefer-primordials
 
+import { core } from "ext:core/mod.js";
+const { internalRidSymbol } = core;
+import { op_can_write_vectored, op_raw_write_vectored } from "ext:core/ops";
+
 import { TextEncoder } from "ext:deno_web/08_text_encoding.js";
 import { Buffer } from "node:buffer";
 import { notImplemented } from "ext:deno_node/_utils.ts";
 import { HandleWrap } from "ext:deno_node/internal_binding/handle_wrap.ts";
+import { ownerSymbol } from "ext:deno_node/internal/async_hooks.ts";
 import {
   AsyncWrap,
   providerType,
 } from "ext:deno_node/internal_binding/async_wrap.ts";
 import { codeMap } from "ext:deno_node/internal_binding/uv.ts";
 
-const core = globalThis.Deno.core;
-const { ops } = core;
-
-interface Reader {
+export interface Reader {
   read(p: Uint8Array): Promise<number | null>;
 }
 
-interface Writer {
+export interface Writer {
   write(p: Uint8Array): Promise<number>;
 }
 
@@ -55,7 +57,12 @@ export interface Closer {
   close(): void;
 }
 
-type Ref = { ref(): void; unref(): void };
+export interface Ref {
+  ref(): void;
+  unref(): void;
+}
+
+export interface StreamBase extends Reader, Writer, Closer, Ref {}
 
 const enum StreamBaseStateFields {
   kReadBytesOrError,
@@ -114,6 +121,7 @@ export class LibuvStreamWrap extends HandleWrap {
   writeQueueSize = 0;
   bytesRead = 0;
   bytesWritten = 0;
+  #buf = new Uint8Array(SUGGESTED_SIZE);
 
   onread!: (_arrayBuffer: Uint8Array, _nread: number) => Uint8Array | undefined;
 
@@ -199,17 +207,17 @@ export class LibuvStreamWrap extends HandleWrap {
     allBuffers: boolean,
   ): number {
     const supportsWritev = this.provider === providerType.TCPSERVERWRAP;
-    const rid = this[kStreamBaseField]!.rid;
+    const rid = this[kStreamBaseField]![internalRidSymbol];
     // Fast case optimization: two chunks, and all buffers.
     if (
       chunks.length === 2 && allBuffers && supportsWritev &&
-      ops.op_can_write_vectored(rid)
+      op_can_write_vectored(rid)
     ) {
       // String chunks.
       if (typeof chunks[0] === "string") chunks[0] = Buffer.from(chunks[0]);
       if (typeof chunks[1] === "string") chunks[1] = Buffer.from(chunks[1]);
 
-      ops.op_raw_write_vectored(
+      op_raw_write_vectored(
         rid,
         chunks[0],
         chunks[1],
@@ -311,61 +319,56 @@ export class LibuvStreamWrap extends HandleWrap {
 
   /** Internal method for reading from the attached stream. */
   async #read() {
-    const isOwnedBuf = bufLocked;
-    let buf = bufLocked ? new Uint8Array(SUGGESTED_SIZE) : BUF;
-    bufLocked = true;
+    let buf = this.#buf;
+    let nread: number | null;
+    const ridBefore = this[kStreamBaseField]![internalRidSymbol];
     try {
-      let nread: number | null;
-      const ridBefore = this[kStreamBaseField]!.rid;
-      try {
-        nread = await this[kStreamBaseField]!.read(buf);
-      } catch (e) {
-        // Try to read again if the underlying stream resource
-        // changed. This can happen during TLS upgrades (eg. STARTTLS)
-        if (ridBefore != this[kStreamBaseField]!.rid) {
-          return this.#read();
-        }
-
-        if (
-          e instanceof Deno.errors.Interrupted ||
-          e instanceof Deno.errors.BadResource
-        ) {
-          nread = codeMap.get("EOF")!;
-        } else if (
-          e instanceof Deno.errors.ConnectionReset ||
-          e instanceof Deno.errors.ConnectionAborted
-        ) {
-          nread = codeMap.get("ECONNRESET")!;
-        } else {
-          nread = codeMap.get("UNKNOWN")!;
-        }
-
-        buf = new Uint8Array(0);
+      nread = await this[kStreamBaseField]!.read(buf);
+    } catch (e) {
+      // Try to read again if the underlying stream resource
+      // changed. This can happen during TLS upgrades (eg. STARTTLS)
+      if (
+        ridBefore != this[kStreamBaseField]![internalRidSymbol]
+      ) {
+        return this.#read();
       }
 
-      nread ??= codeMap.get("EOF")!;
-
-      streamBaseState[kReadBytesOrError] = nread;
-
-      if (nread > 0) {
-        this.bytesRead += nread;
+      if (
+        e instanceof Deno.errors.Interrupted ||
+        e instanceof Deno.errors.BadResource
+      ) {
+        nread = codeMap.get("EOF")!;
+      } else if (
+        e instanceof Deno.errors.ConnectionReset ||
+        e instanceof Deno.errors.ConnectionAborted
+      ) {
+        nread = codeMap.get("ECONNRESET")!;
+      } else {
+        this[ownerSymbol].destroy(e);
+        return;
       }
+    }
 
-      buf = isOwnedBuf ? buf.subarray(0, nread) : buf.slice(0, nread);
+    nread ??= codeMap.get("EOF")!;
 
-      streamBaseState[kArrayBufferOffset] = 0;
+    streamBaseState[kReadBytesOrError] = nread;
 
-      try {
-        this.onread!(buf, nread);
-      } catch {
-        // swallow callback errors.
-      }
+    if (nread > 0) {
+      this.bytesRead += nread;
+    }
 
-      if (nread >= 0 && this.#reading) {
-        this.#read();
-      }
-    } finally {
-      bufLocked = false;
+    buf = buf.slice(0, nread);
+
+    streamBaseState[kArrayBufferOffset] = 0;
+
+    try {
+      this.onread!(buf, nread);
+    } catch {
+      // swallow callback errors.
+    }
+
+    if (nread >= 0 && this.#reading) {
+      this.#read();
     }
   }
 
@@ -377,7 +380,7 @@ export class LibuvStreamWrap extends HandleWrap {
   async #write(req: WriteWrap<LibuvStreamWrap>, data: Uint8Array) {
     const { byteLength } = data;
 
-    const ridBefore = this[kStreamBaseField]!.rid;
+    const ridBefore = this[kStreamBaseField]![internalRidSymbol];
 
     let nwritten = 0;
     try {
@@ -390,7 +393,9 @@ export class LibuvStreamWrap extends HandleWrap {
     } catch (e) {
       // Try to read again if the underlying stream resource
       // changed. This can happen during TLS upgrades (eg. STARTTLS)
-      if (ridBefore != this[kStreamBaseField]!.rid) {
+      if (
+        ridBefore != this[kStreamBaseField]![internalRidSymbol]
+      ) {
         return this.#write(req, data.subarray(nwritten));
       }
 
@@ -427,8 +432,3 @@ export class LibuvStreamWrap extends HandleWrap {
     return;
   }
 }
-
-// Used in #read above
-const BUF = new Uint8Array(SUGGESTED_SIZE);
-// We need to ensure that only one inflight read request uses the cached buffer above
-let bufLocked = false;

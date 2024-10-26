@@ -1,0 +1,5 @@
+{
+  "args": "bench --no-check no_check.ts",
+  "output": "no_check.out",
+  "exitCode": 1
+}

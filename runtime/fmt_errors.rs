@@ -1,32 +1,11 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 //! This mod provides DenoError to unify errors across Deno.
-use crate::colors::cyan;
-use crate::colors::italic_bold;
-use crate::colors::red;
-use crate::colors::yellow;
-use deno_core::error::format_file_name;
+use color_print::cformat;
+use color_print::cstr;
+use deno_core::error::format_frame;
 use deno_core::error::JsError;
-use deno_core::error::JsStackFrame;
+use deno_terminal::colors;
 use std::fmt::Write as _;
-
-/// Compares all properties of JsError, except for JsError::cause.
-/// This function is used to detect that 2 JsError objects in a JsError::cause
-/// chain are identical, ie. there is a recursive cause.
-/// 01_console.js, which also detects recursive causes, can use JS object
-/// comparisons to compare errors. We don't have access to JS object identity in
-/// format_js_error().
-fn errors_are_equal_without_cause(a: &JsError, b: &JsError) -> bool {
-  a.name == b.name
-    && a.message == b.message
-    && a.stack == b.stack
-    // `a.cause == b.cause` omitted, because it is absent in recursive errors,
-    // despite the error being identical to a previously seen one.
-    && a.exception_message == b.exception_message
-    && a.frames == b.frames
-    && a.source_line == b.source_line
-    && a.source_line_frame_index == b.source_line_frame_index
-    && a.aggregated == b.aggregated
-}
 
 #[derive(Debug, Clone)]
 struct ErrorReference<'a> {
@@ -40,96 +19,78 @@ struct IndexedErrorReference<'a> {
   index: usize,
 }
 
-// Keep in sync with `/core/error.js`.
-pub fn format_location(frame: &JsStackFrame) -> String {
-  let _internal = frame
-    .file_name
-    .as_ref()
-    .map(|f| f.starts_with("ext:"))
-    .unwrap_or(false);
-  if frame.is_native {
-    return cyan("native").to_string();
-  }
-  let mut result = String::new();
-  let file_name = frame.file_name.clone().unwrap_or_default();
-  if !file_name.is_empty() {
-    result += &cyan(&format_file_name(&file_name)).to_string();
-  } else {
-    if frame.is_eval {
-      result +=
-        &(cyan(&frame.eval_origin.as_ref().unwrap()).to_string() + ", ");
-    }
-    result += &cyan("<anonymous>").to_string();
-  }
-  if let Some(line_number) = frame.line_number {
-    write!(result, ":{}", yellow(&line_number.to_string())).unwrap();
-    if let Some(column_number) = frame.column_number {
-      write!(result, ":{}", yellow(&column_number.to_string())).unwrap();
-    }
-  }
-  result
+#[derive(Debug)]
+enum FixSuggestionKind {
+  Info,
+  Hint,
+  Docs,
 }
 
-fn format_frame(frame: &JsStackFrame) -> String {
-  let _internal = frame
-    .file_name
-    .as_ref()
-    .map(|f| f.starts_with("ext:"))
-    .unwrap_or(false);
-  let is_method_call =
-    !(frame.is_top_level.unwrap_or_default() || frame.is_constructor);
-  let mut result = String::new();
-  if frame.is_async {
-    result += "async ";
-  }
-  if frame.is_promise_all {
-    result += &italic_bold(&format!(
-      "Promise.all (index {})",
-      frame.promise_index.unwrap_or_default()
-    ))
-    .to_string();
-    return result;
-  }
-  if is_method_call {
-    let mut formatted_method = String::new();
-    if let Some(function_name) = &frame.function_name {
-      if let Some(type_name) = &frame.type_name {
-        if !function_name.starts_with(type_name) {
-          write!(formatted_method, "{type_name}.").unwrap();
-        }
-      }
-      formatted_method += function_name;
-      if let Some(method_name) = &frame.method_name {
-        if !function_name.ends_with(method_name) {
-          write!(formatted_method, " [as {method_name}]").unwrap();
-        }
-      }
-    } else {
-      if let Some(type_name) = &frame.type_name {
-        write!(formatted_method, "{type_name}.").unwrap();
-      }
-      if let Some(method_name) = &frame.method_name {
-        formatted_method += method_name
-      } else {
-        formatted_method += "<anonymous>";
-      }
+#[derive(Debug)]
+enum FixSuggestionMessage<'a> {
+  Single(&'a str),
+  Multiline(&'a [&'a str]),
+}
+
+#[derive(Debug)]
+pub struct FixSuggestion<'a> {
+  kind: FixSuggestionKind,
+  message: FixSuggestionMessage<'a>,
+}
+
+impl<'a> FixSuggestion<'a> {
+  pub fn info(message: &'a str) -> Self {
+    Self {
+      kind: FixSuggestionKind::Info,
+      message: FixSuggestionMessage::Single(message),
     }
-    result += &italic_bold(&formatted_method).to_string();
-  } else if frame.is_constructor {
-    result += "new ";
-    if let Some(function_name) = &frame.function_name {
-      write!(result, "{}", italic_bold(&function_name)).unwrap();
-    } else {
-      result += &cyan("<anonymous>").to_string();
-    }
-  } else if let Some(function_name) = &frame.function_name {
-    result += &italic_bold(&function_name).to_string();
-  } else {
-    result += &format_location(frame);
-    return result;
   }
-  write!(result, " ({})", format_location(frame)).unwrap();
-  result
+
+  pub fn info_multiline(messages: &'a [&'a str]) -> Self {
+    Self {
+      kind: FixSuggestionKind::Info,
+      message: FixSuggestionMessage::Multiline(messages),
+    }
+  }
+
+  pub fn hint(message: &'a str) -> Self {
+    Self {
+      kind: FixSuggestionKind::Hint,
+      message: FixSuggestionMessage::Single(message),
+    }
+  }
+
+  pub fn hint_multiline(messages: &'a [&'a str]) -> Self {
+    Self {
+      kind: FixSuggestionKind::Hint,
+      message: FixSuggestionMessage::Multiline(messages),
+    }
+  }
+
+  pub fn docs(url: &'a str) -> Self {
+    Self {
+      kind: FixSuggestionKind::Docs,
+      message: FixSuggestionMessage::Single(url),
+    }
+  }
+}
+
+struct AnsiColors;
+
+impl deno_core::error::ErrorFormat for AnsiColors {
+  fn fmt_element(
+    element: deno_core::error::ErrorElement,
+    s: &str,
+  ) -> std::borrow::Cow<'_, str> {
+    use deno_core::error::ErrorElement::*;
+    match element {
+      Anonymous | NativeFrame | FileName | EvalOrigin => {
+        colors::cyan(s).to_string().into()
+      }
+      LineNumber | ColumnNumber => colors::yellow(s).to_string().into(),
+      FunctionName | PromiseAll => colors::italic_bold(s).to_string().into(),
+    }
+  }
 }
 
 /// Take an optional source line and associated information to format it into
@@ -160,7 +121,7 @@ fn format_maybe_source_line(
   if column_number as usize > source_line.len() {
     return format!(
       "\n{} Couldn't format source line: Column {} is out of bounds (source may have changed at runtime)",
-      yellow("Warning"), column_number,
+      colors::yellow("Warning"), column_number,
     );
   }
 
@@ -173,9 +134,9 @@ fn format_maybe_source_line(
   }
   s.push('^');
   let color_underline = if is_error {
-    red(&s).to_string()
+    colors::red(&s).to_string()
   } else {
-    cyan(&s).to_string()
+    colors::cyan(&s).to_string()
   };
 
   let indent = format!("{:indent$}", "", indent = level);
@@ -191,10 +152,7 @@ fn find_recursive_cause(js_error: &JsError) -> Option<ErrorReference> {
   while let Some(cause) = &current_error.cause {
     history.push(current_error);
 
-    if let Some(seen) = history
-      .iter()
-      .find(|&el| errors_are_equal_without_cause(el, cause.as_ref()))
-    {
+    if let Some(seen) = history.iter().find(|&el| cause.is_same_error(el)) {
       return Some(ErrorReference {
         from: current_error,
         to: seen,
@@ -226,6 +184,7 @@ fn format_aggregated_error(
         index: nested_circular_reference_index,
       }),
       false,
+      vec![],
     );
 
     for line in error_string.trim_start_matches("Uncaught ").lines() {
@@ -240,14 +199,16 @@ fn format_js_error_inner(
   js_error: &JsError,
   circular: Option<IndexedErrorReference>,
   include_source_code: bool,
+  suggestions: Vec<FixSuggestion>,
 ) -> String {
   let mut s = String::new();
 
   s.push_str(&js_error.exception_message);
 
   if let Some(circular) = &circular {
-    if errors_are_equal_without_cause(js_error, circular.reference.to) {
-      write!(s, " {}", cyan(format!("<ref *{}>", circular.index))).unwrap();
+    if js_error.is_same_error(circular.reference.to) {
+      write!(s, " {}", colors::cyan(format!("<ref *{}>", circular.index)))
+        .unwrap();
     }
   }
 
@@ -276,20 +237,19 @@ fn format_js_error_inner(
     0,
   ));
   for frame in &js_error.frames {
-    write!(s, "\n    at {}", format_frame(frame)).unwrap();
+    write!(s, "\n    at {}", format_frame::<AnsiColors>(frame)).unwrap();
   }
   if let Some(cause) = &js_error.cause {
     let is_caused_by_circular = circular
       .as_ref()
-      .map(|circular| {
-        errors_are_equal_without_cause(circular.reference.from, js_error)
-      })
+      .map(|circular| js_error.is_same_error(circular.reference.from))
       .unwrap_or(false);
 
     let error_string = if is_caused_by_circular {
-      cyan(format!("[Circular *{}]", circular.unwrap().index)).to_string()
+      colors::cyan(format!("[Circular *{}]", circular.unwrap().index))
+        .to_string()
     } else {
-      format_js_error_inner(cause, circular, false)
+      format_js_error_inner(cause, circular, false, vec![])
     };
 
     write!(
@@ -299,7 +259,154 @@ fn format_js_error_inner(
     )
     .unwrap();
   }
+  if !suggestions.is_empty() {
+    write!(s, "\n\n").unwrap();
+    for (index, suggestion) in suggestions.iter().enumerate() {
+      write!(s, "    ").unwrap();
+      match suggestion.kind {
+        FixSuggestionKind::Hint => {
+          write!(s, "{} ", colors::cyan("hint:")).unwrap()
+        }
+        FixSuggestionKind::Info => {
+          write!(s, "{} ", colors::yellow("info:")).unwrap()
+        }
+        FixSuggestionKind::Docs => {
+          write!(s, "{} ", colors::green("docs:")).unwrap()
+        }
+      };
+      match suggestion.message {
+        FixSuggestionMessage::Single(msg) => {
+          if matches!(suggestion.kind, FixSuggestionKind::Docs) {
+            write!(s, "{}", cformat!("<u>{}</>", msg)).unwrap();
+          } else {
+            write!(s, "{}", msg).unwrap();
+          }
+        }
+        FixSuggestionMessage::Multiline(messages) => {
+          for (idx, message) in messages.iter().enumerate() {
+            if idx != 0 {
+              writeln!(s).unwrap();
+              write!(s, "          ").unwrap();
+            }
+            write!(s, "{}", message).unwrap();
+          }
+        }
+      }
+
+      if index != (suggestions.len() - 1) {
+        writeln!(s).unwrap();
+      }
+    }
+  }
+
   s
+}
+
+fn get_suggestions_for_terminal_errors(e: &JsError) -> Vec<FixSuggestion> {
+  if let Some(msg) = &e.message {
+    if msg.contains("module is not defined")
+      || msg.contains("exports is not defined")
+      || msg.contains("require is not defined")
+    {
+      return vec![
+        FixSuggestion::info_multiline(&[
+          cstr!("Deno supports CommonJS modules in <u>.cjs</> files, or when there's a <u>package.json</>"),
+          cstr!("with <i>\"type\": \"commonjs\"</> option and <i>--unstable-detect-cjs</> flag is used.")
+        ]),
+        FixSuggestion::hint_multiline(&[
+          "Rewrite this module to ESM,",
+          cstr!("or change the file extension to <u>.cjs</u>,"),
+          cstr!("or add <u>package.json</> next to the file with <i>\"type\": \"commonjs\"</> option"),
+          cstr!("and pass <i>--unstable-detect-cjs</> flag."),
+        ]),
+        FixSuggestion::docs("https://docs.deno.com/go/commonjs"),
+      ];
+    } else if msg.contains("openKv is not a function") {
+      return vec![
+        FixSuggestion::info("Deno.openKv() is an unstable API."),
+        FixSuggestion::hint(
+          "Run again with `--unstable-kv` flag to enable this API.",
+        ),
+      ];
+    } else if msg.contains("cron is not a function") {
+      return vec![
+        FixSuggestion::info("Deno.cron() is an unstable API."),
+        FixSuggestion::hint(
+          "Run again with `--unstable-cron` flag to enable this API.",
+        ),
+      ];
+    } else if msg.contains("WebSocketStream is not defined") {
+      return vec![
+        FixSuggestion::info("new WebSocketStream() is an unstable API."),
+        FixSuggestion::hint(
+          "Run again with `--unstable-net` flag to enable this API.",
+        ),
+      ];
+    } else if msg.contains("Temporal is not defined") {
+      return vec![
+        FixSuggestion::info("Temporal is an unstable API."),
+        FixSuggestion::hint(
+          "Run again with `--unstable-temporal` flag to enable this API.",
+        ),
+      ];
+    } else if msg.contains("BroadcastChannel is not defined") {
+      return vec![
+        FixSuggestion::info("BroadcastChannel is an unstable API."),
+        FixSuggestion::hint(
+          "Run again with `--unstable-broadcast-channel` flag to enable this API.",
+        ),
+      ];
+    } else if msg.contains("window is not defined") {
+      return vec![
+        FixSuggestion::info("window global is not available in Deno 2."),
+        FixSuggestion::hint("Replace `window` with `globalThis`."),
+      ];
+    } else if msg.contains("UnsafeWindowSurface is not a constructor") {
+      return vec![
+        FixSuggestion::info("Deno.UnsafeWindowSurface is an unstable API."),
+        FixSuggestion::hint(
+          "Run again with `--unstable-webgpu` flag to enable this API.",
+        ),
+      ];
+    // Try to capture errors like:
+    // ```
+    // Uncaught Error: Cannot find module '../build/Release/canvas.node'
+    // Require stack:
+    // - /.../deno/npm/registry.npmjs.org/canvas/2.11.2/lib/bindings.js
+    // - /.../.cache/deno/npm/registry.npmjs.org/canvas/2.11.2/lib/canvas.js
+    // ```
+    } else if msg.contains("Cannot find module")
+      && msg.contains("Require stack")
+      && msg.contains(".node'")
+    {
+      return vec![
+        FixSuggestion::info_multiline(
+          &[
+            "Trying to execute an npm package using Node-API addons,",
+            "these packages require local `node_modules` directory to be present."
+          ]
+        ),
+        FixSuggestion::hint_multiline(
+          &[
+            "Add `\"nodeModulesDir\": \"auto\" option to `deno.json`, and then run",
+            "`deno install --allow-scripts=npm:<package> --entrypoint <script>` to setup `node_modules` directory."
+          ]
+        )
+      ];
+    } else if msg.contains("document is not defined") {
+      return vec![
+        FixSuggestion::info(cstr!(
+          "<u>document</> global is not available in Deno."
+        )),
+        FixSuggestion::hint_multiline(&[
+          cstr!("Use a library like <u>happy-dom</>, <u>deno_dom</>, <u>linkedom</> or <u>JSDom</>"),
+          cstr!("and setup the <u>document</> global according to the library documentation."),
+        ]),
+      ];
+    }
+  }
+
+  vec![]
 }
 
 /// Format a [`JsError`] for terminal output.
@@ -309,8 +416,8 @@ pub fn format_js_error(js_error: &JsError) -> String {
       reference,
       index: 1,
     });
-
-  format_js_error_inner(js_error, circular, true)
+  let suggestions = get_suggestions_for_terminal_errors(js_error);
+  format_js_error_inner(js_error, circular, true, suggestions)
 }
 
 #[cfg(test)]

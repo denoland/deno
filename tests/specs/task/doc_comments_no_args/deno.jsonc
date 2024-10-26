@@ -1,0 +1,12 @@
+{
+  "tasks": {
+    // this task has documentation
+    //
+    // in the form of comments
+    "lint": "deno lint",
+    /*
+    * block comments are fine too
+    */
+    "fmt": "deno fmt"
+  }
+}

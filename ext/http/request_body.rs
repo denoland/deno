@@ -1,45 +1,52 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 use bytes::Bytes;
-use deno_core::error::AnyError;
 use deno_core::futures::stream::Peekable;
 use deno_core::futures::Stream;
 use deno_core::futures::StreamExt;
+use deno_core::futures::TryFutureExt;
 use deno_core::AsyncRefCell;
 use deno_core::AsyncResult;
 use deno_core::BufView;
 use deno_core::RcRef;
 use deno_core::Resource;
-use hyper1::body::Body;
-use hyper1::body::Incoming;
-use hyper1::body::SizeHint;
+use hyper::body::Body;
+use hyper::body::Incoming;
+use hyper::body::SizeHint;
 use std::borrow::Cow;
 use std::pin::Pin;
 use std::rc::Rc;
+use std::task::ready;
+use std::task::Poll;
 
 /// Converts a hyper incoming body stream into a stream of [`Bytes`] that we can use to read in V8.
 struct ReadFuture(Incoming);
 
 impl Stream for ReadFuture {
-  type Item = Result<Bytes, AnyError>;
+  type Item = Result<Bytes, hyper::Error>;
 
   fn poll_next(
     self: Pin<&mut Self>,
     cx: &mut std::task::Context<'_>,
-  ) -> std::task::Poll<Option<Self::Item>> {
-    let res = Pin::new(&mut self.get_mut().0).poll_frame(cx);
-    match res {
-      std::task::Poll::Ready(Some(Ok(frame))) => {
-        if let Ok(data) = frame.into_data() {
-          // Ensure that we never yield an empty frame
-          if !data.is_empty() {
-            return std::task::Poll::Ready(Some(Ok(data)));
+  ) -> Poll<Option<Self::Item>> {
+    // Loop until we receive a non-empty frame from Hyper
+    let this = self.get_mut();
+    loop {
+      let res = ready!(Pin::new(&mut this.0).poll_frame(cx));
+      break match res {
+        Some(Ok(frame)) => {
+          if let Ok(data) = frame.into_data() {
+            // Ensure that we never yield an empty frame
+            if !data.is_empty() {
+              break Poll::Ready(Some(Ok(data)));
+            }
           }
+          // Loop again so we don't lose the waker
+          continue;
         }
-      }
-      std::task::Poll::Ready(None) => return std::task::Poll::Ready(None),
-      _ => {}
+        Some(Err(e)) => Poll::Ready(Some(Err(e))),
+        None => Poll::Ready(None),
+      };
     }
-    std::task::Poll::Pending
   }
 }
 
@@ -51,7 +58,7 @@ impl HttpRequestBody {
     Self(AsyncRefCell::new(ReadFuture(body).peekable()), size_hint)
   }
 
-  async fn read(self: Rc<Self>, limit: usize) -> Result<BufView, AnyError> {
+  async fn read(self: Rc<Self>, limit: usize) -> Result<BufView, hyper::Error> {
     let peekable = RcRef::map(self, |this| &this.0);
     let mut peekable = peekable.borrow_mut().await;
     match Pin::new(&mut *peekable).peek_mut().await {
@@ -75,7 +82,7 @@ impl Resource for HttpRequestBody {
   }
 
   fn read(self: Rc<Self>, limit: usize) -> AsyncResult<BufView> {
-    Box::pin(HttpRequestBody::read(self, limit))
+    Box::pin(HttpRequestBody::read(self, limit).map_err(Into::into))
   }
 
   fn size_hint(&self) -> (u64, Option<u64>) {

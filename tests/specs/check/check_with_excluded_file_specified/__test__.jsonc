@@ -1,0 +1,4 @@
+{
+  "args": "check lib/types.d.ts",
+  "output": "check.out"
+}

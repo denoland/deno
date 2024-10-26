@@ -1,0 +1,5 @@
+hello from foo node module
+[WILDCARD]import_common_js
+cjsModule.cwd() [WILDCARD]import_common_js
+foobar
+cjsModule.foobar() undefined

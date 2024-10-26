@@ -1,0 +1,26 @@
+{
+  "tests": {
+    "root_fmt": {
+      "tempDir": true,
+      "args": "fmt",
+      "output": "root_fmt.out"
+    },
+    "root_check": {
+      "args": "fmt --check",
+      "exitCode": 1,
+      "output": "root_check.out"
+    },
+    "sub_dir_fmt": {
+      "tempDir": true,
+      "args": "fmt",
+      "cwd": "a",
+      "output": "a_fmt.out"
+    },
+    "subdir_check": {
+      "args": "fmt --check",
+      "cwd": "a",
+      "exitCode": 1,
+      "output": "a_check.out"
+    }
+  }
+}

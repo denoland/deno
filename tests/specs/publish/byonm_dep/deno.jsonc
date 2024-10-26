@@ -1,0 +1,11 @@
+{
+  "name": "@scope/package",
+  "version": "0.0.0",
+  "exports": "./mod.ts",
+  "publish": {
+    // this was previously causing issues because it would cause
+    // external modules in the node_modules directory to be ignored
+    "include": ["LICENSE", "mod.ts"]
+  },
+  "unstable": ["byonm", "sloppy-imports"]
+}

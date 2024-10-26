@@ -1,4 +1,0 @@
-[WILDCARD]
-error: Expected a JavaScript or TypeScript module, but identified a Json module. Consider importing Json modules with an import assertion with the type of "json".
-  Specifier: [WILDCARD]/data.json
-    at [WILDCARD]static_error.ts:1:18

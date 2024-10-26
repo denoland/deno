@@ -1,4 +1,4 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 // TODO(petamoriken): enable prefer-primordials for node polyfills
 // deno-lint-ignore-file prefer-primordials
@@ -53,8 +53,9 @@ export function copyFile(
     }, (e) => {
       if (e instanceof Deno.errors.NotFound) {
         Deno.copyFile(srcStr, destStr).then(() => cb(null), cb);
+      } else {
+        cb(e);
       }
-      cb(e);
     });
   } else {
     Deno.copyFile(srcStr, destStr).then(() => cb(null), cb);
@@ -83,8 +84,9 @@ export function copyFileSync(
     } catch (e) {
       if (e instanceof Deno.errors.NotFound) {
         Deno.copyFileSync(srcStr, destStr);
+      } else {
+        throw e;
       }
-      throw e;
     }
   } else {
     Deno.copyFileSync(srcStr, destStr);

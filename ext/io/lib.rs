@@ -1,8 +1,8 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
-use deno_core::error::AnyError;
-use deno_core::op;
+use deno_core::op2;
 use deno_core::unsync::spawn_blocking;
+use deno_core::unsync::TaskQueue;
 use deno_core::AsyncMutFuture;
 use deno_core::AsyncRefCell;
 use deno_core::AsyncResult;
@@ -10,13 +10,11 @@ use deno_core::BufMutView;
 use deno_core::BufView;
 use deno_core::CancelHandle;
 use deno_core::CancelTryFuture;
-use deno_core::Op;
 use deno_core::OpState;
 use deno_core::RcRef;
 use deno_core::Resource;
 use deno_core::ResourceHandle;
 use deno_core::ResourceHandleFd;
-use deno_core::TaskQueue;
 use fs::FileResource;
 use fs::FsError;
 use fs::FsResult;
@@ -26,6 +24,7 @@ use once_cell::sync::Lazy;
 use std::borrow::Cow;
 use std::cell::RefCell;
 use std::fs::File as StdFile;
+use std::future::Future;
 use std::io;
 use std::io::ErrorKind;
 use std::io::Read;
@@ -48,7 +47,140 @@ use winapi::um::processenv::GetStdHandle;
 #[cfg(windows)]
 use winapi::um::winbase;
 
+use deno_core::futures::TryFutureExt;
+#[cfg(windows)]
+use parking_lot::Condvar;
+#[cfg(windows)]
+use parking_lot::Mutex;
+#[cfg(windows)]
+use std::sync::Arc;
+
 pub mod fs;
+mod pipe;
+#[cfg(windows)]
+mod winpipe;
+
+mod bi_pipe;
+
+pub use pipe::pipe;
+pub use pipe::AsyncPipeRead;
+pub use pipe::AsyncPipeWrite;
+pub use pipe::PipeRead;
+pub use pipe::PipeWrite;
+pub use pipe::RawPipeHandle;
+
+pub use bi_pipe::bi_pipe_pair_raw;
+pub use bi_pipe::BiPipe;
+pub use bi_pipe::BiPipeRead;
+pub use bi_pipe::BiPipeResource;
+pub use bi_pipe::BiPipeWrite;
+pub use bi_pipe::RawBiPipeHandle;
+
+/// Abstraction over `AsRawFd` (unix) and `AsRawHandle` (windows)
+pub trait AsRawIoHandle {
+  fn as_raw_io_handle(&self) -> RawIoHandle;
+}
+
+#[cfg(unix)]
+impl<T> AsRawIoHandle for T
+where
+  T: std::os::unix::io::AsRawFd,
+{
+  fn as_raw_io_handle(&self) -> RawIoHandle {
+    self.as_raw_fd()
+  }
+}
+
+#[cfg(windows)]
+impl<T> AsRawIoHandle for T
+where
+  T: std::os::windows::io::AsRawHandle,
+{
+  fn as_raw_io_handle(&self) -> RawIoHandle {
+    self.as_raw_handle()
+  }
+}
+
+/// Abstraction over `IntoRawFd` (unix) and `IntoRawHandle` (windows)
+pub trait IntoRawIoHandle {
+  fn into_raw_io_handle(self) -> RawIoHandle;
+}
+
+#[cfg(unix)]
+impl<T> IntoRawIoHandle for T
+where
+  T: std::os::unix::io::IntoRawFd,
+{
+  fn into_raw_io_handle(self) -> RawIoHandle {
+    self.into_raw_fd()
+  }
+}
+
+#[cfg(windows)]
+impl<T> IntoRawIoHandle for T
+where
+  T: std::os::windows::io::IntoRawHandle,
+{
+  fn into_raw_io_handle(self) -> RawIoHandle {
+    self.into_raw_handle()
+  }
+}
+
+/// Abstraction over `FromRawFd` (unix) and `FromRawHandle` (windows)
+pub trait FromRawIoHandle: Sized {
+  /// Constructs a type from a raw io handle (fd/HANDLE).
+  ///
+  /// # Safety
+  ///
+  /// Refer to the standard library docs ([unix](https://doc.rust-lang.org/stable/std/os/windows/io/trait.FromRawHandle.html#tymethod.from_raw_handle)) ([windows](https://doc.rust-lang.org/stable/std/os/fd/trait.FromRawFd.html#tymethod.from_raw_fd))
+  ///
+  unsafe fn from_raw_io_handle(handle: RawIoHandle) -> Self;
+}
+
+#[cfg(unix)]
+impl<T> FromRawIoHandle for T
+where
+  T: std::os::unix::io::FromRawFd,
+{
+  unsafe fn from_raw_io_handle(fd: RawIoHandle) -> T {
+    // SAFETY: upheld by caller
+    unsafe { T::from_raw_fd(fd) }
+  }
+}
+
+#[cfg(windows)]
+impl<T> FromRawIoHandle for T
+where
+  T: std::os::windows::io::FromRawHandle,
+{
+  unsafe fn from_raw_io_handle(fd: RawIoHandle) -> T {
+    // SAFETY: upheld by caller
+    unsafe { T::from_raw_handle(fd) }
+  }
+}
+
+#[cfg(unix)]
+pub type RawIoHandle = std::os::fd::RawFd;
+
+#[cfg(windows)]
+pub type RawIoHandle = std::os::windows::io::RawHandle;
+
+pub fn close_raw_handle(handle: RawIoHandle) {
+  #[cfg(unix)]
+  {
+    // SAFETY: libc call
+    unsafe {
+      libc::close(handle);
+    }
+  }
+  #[cfg(windows)]
+  {
+    // SAFETY: win32 call
+    unsafe {
+      windows_sys::Win32::Foundation::CloseHandle(handle as _);
+    }
+  }
+}
 
 // Store the stdio fd/handles in global statics in order to keep them
 // alive for the duration of the application since the last handle/fd
@@ -92,44 +224,53 @@ deno_core::extension!(deno_io,
     stdio: Option<Stdio>,
   },
   middleware = |op| match op.name {
-    "op_print" => op_print::DECL,
+    "op_print" => op_print(),
     _ => op,
   },
   state = |state, options| {
     if let Some(stdio) = options.stdio {
+      #[cfg(windows)]
+      let stdin_state = {
+        let st = Arc::new(Mutex::new(WinTtyState::default()));
+        state.put(st.clone());
+        st
+      };
+      #[cfg(unix)]
+      let stdin_state = ();
+
       let t = &mut state.resource_table;
 
       let rid = t.add(fs::FileResource::new(
-        Rc::new(match stdio.stdin {
-          StdioPipe::Inherit => StdFileResourceInner::new(
-            StdFileResourceKind::Stdin,
+        Rc::new(match stdio.stdin.pipe {
+          StdioPipeInner::Inherit => StdFileResourceInner::new(
+            StdFileResourceKind::Stdin(stdin_state),
             STDIN_HANDLE.try_clone().unwrap(),
           ),
-          StdioPipe::File(pipe) => StdFileResourceInner::file(pipe),
+          StdioPipeInner::File(pipe) => StdFileResourceInner::file(pipe),
         }),
         "stdin".to_string(),
       ));
       assert_eq!(rid, 0, "stdin must have ResourceId 0");
 
       let rid = t.add(FileResource::new(
-        Rc::new(match stdio.stdout {
-          StdioPipe::Inherit => StdFileResourceInner::new(
+        Rc::new(match stdio.stdout.pipe {
+          StdioPipeInner::Inherit => StdFileResourceInner::new(
             StdFileResourceKind::Stdout,
             STDOUT_HANDLE.try_clone().unwrap(),
           ),
-          StdioPipe::File(pipe) => StdFileResourceInner::file(pipe),
+          StdioPipeInner::File(pipe) => StdFileResourceInner::file(pipe),
         }),
         "stdout".to_string(),
       ));
       assert_eq!(rid, 1, "stdout must have ResourceId 1");
 
       let rid = t.add(FileResource::new(
-        Rc::new(match stdio.stderr {
-          StdioPipe::Inherit => StdFileResourceInner::new(
+        Rc::new(match stdio.stderr.pipe {
+          StdioPipeInner::Inherit => StdFileResourceInner::new(
             StdFileResourceKind::Stderr,
             STDERR_HANDLE.try_clone().unwrap(),
           ),
-          StdioPipe::File(pipe) => StdFileResourceInner::file(pipe),
+          StdioPipeInner::File(pipe) => StdFileResourceInner::file(pipe),
         }),
         "stderr".to_string(),
       ));
@@ -138,22 +279,41 @@ deno_core::extension!(deno_io,
   },
 );
 
-pub enum StdioPipe {
+#[derive(Default)]
+pub struct StdioPipe {
+  pipe: StdioPipeInner,
+}
+
+impl StdioPipe {
+  pub const fn inherit() -> Self {
+    StdioPipe {
+      pipe: StdioPipeInner::Inherit,
+    }
+  }
+
+  pub fn file(f: impl Into<StdFile>) -> Self {
+    StdioPipe {
+      pipe: StdioPipeInner::File(f.into()),
+    }
+  }
+}
+
+#[derive(Default)]
+enum StdioPipeInner {
+  #[default]
   Inherit,
   File(StdFile),
 }
 
-impl Default for StdioPipe {
-  fn default() -> Self {
-    Self::Inherit
-  }
-}
-
 impl Clone for StdioPipe {
   fn clone(&self) -> Self {
-    match self {
-      StdioPipe::Inherit => StdioPipe::Inherit,
-      StdioPipe::File(pipe) => StdioPipe::File(pipe.try_clone().unwrap()),
+    match &self.pipe {
+      StdioPipeInner::Inherit => Self {
+        pipe: StdioPipeInner::Inherit,
+      },
+      StdioPipeInner::File(pipe) => Self {
+        pipe: StdioPipeInner::File(pipe.try_clone().unwrap()),
+      },
     }
   }
 }
@@ -188,13 +348,13 @@ where
     RcRef::map(self, |r| &r.stream).borrow_mut()
   }
 
-  async fn write(self: Rc<Self>, data: &[u8]) -> Result<usize, AnyError> {
+  async fn write(self: Rc<Self>, data: &[u8]) -> Result<usize, io::Error> {
     let mut stream = self.borrow_mut().await;
     let nwritten = stream.write(data).await?;
     Ok(nwritten)
   }
 
-  async fn shutdown(self: Rc<Self>) -> Result<(), AnyError> {
+  async fn shutdown(self: Rc<Self>) -> Result<(), io::Error> {
     let mut stream = self.borrow_mut().await;
     stream.shutdown().await?;
     Ok(())
@@ -236,7 +396,7 @@ where
     self.cancel_handle.cancel()
   }
 
-  async fn read(self: Rc<Self>, data: &mut [u8]) -> Result<usize, AnyError> {
+  async fn read(self: Rc<Self>, data: &mut [u8]) -> Result<usize, io::Error> {
     let mut rd = self.borrow_mut().await;
     let nread = rd.read(data).try_or_cancel(self.cancel_handle()).await?;
     Ok(nread)
@@ -257,7 +417,7 @@ impl Resource for ChildStdinResource {
   deno_core::impl_writable!();
 
   fn shutdown(self: Rc<Self>) -> AsyncResult<()> {
-    Box::pin(self.shutdown())
+    Box::pin(self.shutdown().map_err(|e| e.into()))
   }
 }
 
@@ -289,14 +449,27 @@ impl Resource for ChildStderrResource {
   }
 }
 
-#[derive(Clone, Copy)]
+#[cfg(windows)]
+#[derive(Default)]
+pub struct WinTtyState {
+  pub cancelled: bool,
+  pub reading: bool,
+  pub screen_buffer_info:
+    Option<winapi::um::wincon::CONSOLE_SCREEN_BUFFER_INFO>,
+  pub cvar: Arc<Condvar>,
+}
+
+#[derive(Clone)]
 enum StdFileResourceKind {
   File,
   // For stdout and stderr, we sometimes instead use std::io::stdout() directly,
   // because we get some Windows specific functionality for free by using Rust
   // std's wrappers. So we take a bit of a complexity hit in order to not
   // have to duplicate the functionality in Rust's std/src/sys/windows/stdio.rs
-  Stdin,
+  #[cfg(windows)]
+  Stdin(Arc<Mutex<WinTtyState>>),
+  #[cfg(not(windows))]
+  Stdin(()),
   Stdout,
   Stderr,
 }
@@ -309,7 +482,7 @@ pub struct StdFileResourceInner {
   cell: RefCell<Option<StdFile>>,
   // Used to keep async actions in order and only allow one
   // to occur at a time
-  cell_async_task_queue: TaskQueue,
+  cell_async_task_queue: Rc<TaskQueue>,
   handle: ResourceHandleFd,
 }
 
@@ -339,48 +512,138 @@ impl StdFileResourceInner {
     }
   }
 
-  async fn with_inner_blocking_task<F, R: 'static + Send>(&self, action: F) -> R
+  fn with_inner_blocking_task<F, R: 'static + Send>(
+    &self,
+    action: F,
+  ) -> impl Future<Output = R> + '_
   where
     F: FnOnce(&mut StdFile) -> R + Send + 'static,
   {
     // we want to restrict this to one async action at a time
-    let _permit = self.cell_async_task_queue.acquire().await;
-    // we take the value out of the cell, use it on a blocking task,
-    // then put it back into the cell when we're done
-    let mut did_take = false;
-    let mut cell_value = {
-      let mut cell = self.cell.borrow_mut();
-      match cell.as_mut().unwrap().try_clone().ok() {
-        Some(value) => value,
-        None => {
-          did_take = true;
-          cell.take().unwrap()
+    let acquire_fut = self.cell_async_task_queue.acquire();
+    async move {
+      let permit = acquire_fut.await;
+      // we take the value out of the cell, use it on a blocking task,
+      // then put it back into the cell when we're done
+      let mut did_take = false;
+      let mut cell_value = {
+        let mut cell = self.cell.borrow_mut();
+        match cell.as_mut().unwrap().try_clone().ok() {
+          Some(value) => value,
+          None => {
+            did_take = true;
+            cell.take().unwrap()
+          }
         }
+      };
+      let (cell_value, result) = spawn_blocking(move || {
+        let result = action(&mut cell_value);
+        (cell_value, result)
+      })
+      .await
+      .unwrap();
+
+      if did_take {
+        // put it back
+        self.cell.borrow_mut().replace(cell_value);
       }
-    };
-    let (cell_value, result) = spawn_blocking(move || {
-      let result = action(&mut cell_value);
-      (cell_value, result)
-    })
-    .await
-    .unwrap();
 
-    if did_take {
-      // put it back
-      self.cell.borrow_mut().replace(cell_value);
+      drop(permit); // explicit for clarity
+      result
     }
-
-    result
   }
 
-  async fn with_blocking_task<F, R: 'static + Send>(&self, action: F) -> R
+  fn with_blocking_task<F, R: 'static + Send>(
+    &self,
+    action: F,
+  ) -> impl Future<Output = R>
   where
     F: FnOnce() -> R + Send + 'static,
   {
     // we want to restrict this to one async action at a time
-    let _permit = self.cell_async_task_queue.acquire().await;
+    let acquire_fut = self.cell_async_task_queue.acquire();
+    async move {
+      let _permit = acquire_fut.await;
+      spawn_blocking(action).await.unwrap()
+    }
+  }
 
-    spawn_blocking(action).await.unwrap()
+  #[cfg(windows)]
+  async fn handle_stdin_read(
+    &self,
+    state: Arc<Mutex<WinTtyState>>,
+    mut buf: BufMutView,
+  ) -> FsResult<(usize, BufMutView)> {
+    loop {
+      let state = state.clone();
+
+      let fut = self.with_inner_blocking_task(move |file| {
+        /* Start reading, and set the reading flag to true */
+        state.lock().reading = true;
+        let nread = match file.read(&mut buf) {
+          Ok(nread) => nread,
+          Err(e) => return Err((e.into(), buf)),
+        };
+
+        let mut state = state.lock();
+        state.reading = false;
+
+        /* If we canceled the read by sending a VK_RETURN event, restore
+        the screen state to undo the visual effect of the VK_RETURN event */
+        if state.cancelled {
+          if let Some(screen_buffer_info) = state.screen_buffer_info {
+            // SAFETY: WinAPI calls to open conout$ and restore visual state.
+            unsafe {
+              let handle = winapi::um::fileapi::CreateFileW(
+                "conout$"
+                  .encode_utf16()
+                  .chain(Some(0))
+                  .collect::<Vec<_>>()
+                  .as_ptr(),
+                winapi::um::winnt::GENERIC_READ
+                  | winapi::um::winnt::GENERIC_WRITE,
+                winapi::um::winnt::FILE_SHARE_READ
+                  | winapi::um::winnt::FILE_SHARE_WRITE,
+                std::ptr::null_mut(),
+                winapi::um::fileapi::OPEN_EXISTING,
+                0,
+                std::ptr::null_mut(),
+              );
+
+              let mut pos = screen_buffer_info.dwCursorPosition;
+              /* If the cursor was at the bottom line of the screen buffer, the
+              VK_RETURN would have caused the buffer contents to scroll up by
+              one line. The right position to reset the cursor to is therefore one
+              line higher */
+              if pos.Y == screen_buffer_info.dwSize.Y - 1 {
+                pos.Y -= 1;
+              }
+
+              winapi::um::wincon::SetConsoleCursorPosition(handle, pos);
+              winapi::um::handleapi::CloseHandle(handle);
+            }
+          }
+
+          /* Reset the cancelled flag */
+          state.cancelled = false;
+
+          /* Unblock the main thread */
+          state.cvar.notify_one();
+
+          return Err((FsError::FileBusy, buf));
+        }
+
+        Ok((nread, buf))
+      });
+
+      match fut.await {
+        Err((FsError::FileBusy, b)) => {
+          buf = b;
+          continue;
+        }
+        other => return other.map_err(|(e, _)| e),
+      }
+    }
   }
 }
 
@@ -395,7 +658,7 @@ impl crate::fs::File for StdFileResourceInner {
     // std/src/sys/windows/stdio.rs in Rust's source code).
     match self.kind {
       StdFileResourceKind::File => self.with_sync(|file| Ok(file.write(buf)?)),
-      StdFileResourceKind::Stdin => {
+      StdFileResourceKind::Stdin(_) => {
         Err(Into::<std::io::Error>::into(ErrorKind::Unsupported).into())
       }
       StdFileResourceKind::Stdout => {
@@ -417,7 +680,7 @@ impl crate::fs::File for StdFileResourceInner {
 
   fn read_sync(self: Rc<Self>, buf: &mut [u8]) -> FsResult<usize> {
     match self.kind {
-      StdFileResourceKind::File | StdFileResourceKind::Stdin => {
+      StdFileResourceKind::File | StdFileResourceKind::Stdin(_) => {
         self.with_sync(|file| Ok(file.read(buf)?))
       }
       StdFileResourceKind::Stdout | StdFileResourceKind::Stderr => {
@@ -431,7 +694,7 @@ impl crate::fs::File for StdFileResourceInner {
       StdFileResourceKind::File => {
         self.with_sync(|file| Ok(file.write_all(buf)?))
       }
-      StdFileResourceKind::Stdin => {
+      StdFileResourceKind::Stdin(_) => {
         Err(Into::<std::io::Error>::into(ErrorKind::Unsupported).into())
       }
       StdFileResourceKind::Stdout => {
@@ -457,7 +720,7 @@ impl crate::fs::File for StdFileResourceInner {
           .with_inner_blocking_task(move |file| Ok(file.write_all(&buf)?))
           .await
       }
-      StdFileResourceKind::Stdin => {
+      StdFileResourceKind::Stdin(_) => {
         Err(Into::<std::io::Error>::into(ErrorKind::Unsupported).into())
       }
       StdFileResourceKind::Stdout => {
@@ -498,7 +761,7 @@ impl crate::fs::File for StdFileResourceInner {
           })
           .await
       }
-      StdFileResourceKind::Stdin => {
+      StdFileResourceKind::Stdin(_) => {
         Err(Into::<std::io::Error>::into(ErrorKind::Unsupported).into())
       }
       StdFileResourceKind::Stdout => {
@@ -528,7 +791,7 @@ impl crate::fs::File for StdFileResourceInner {
 
   fn read_all_sync(self: Rc<Self>) -> FsResult<Vec<u8>> {
     match self.kind {
-      StdFileResourceKind::File | StdFileResourceKind::Stdin => {
+      StdFileResourceKind::File | StdFileResourceKind::Stdin(_) => {
         let mut buf = Vec::new();
         self.with_sync(|file| Ok(file.read_to_end(&mut buf)?))?;
         Ok(buf)
@@ -540,7 +803,7 @@ impl crate::fs::File for StdFileResourceInner {
   }
   async fn read_all_async(self: Rc<Self>) -> FsResult<Vec<u8>> {
     match self.kind {
-      StdFileResourceKind::File | StdFileResourceKind::Stdin => {
+      StdFileResourceKind::File | StdFileResourceKind::Stdin(_) => {
         self
           .with_inner_blocking_task(|file| {
             let mut buf = Vec::new();
@@ -696,19 +959,28 @@ impl crate::fs::File for StdFileResourceInner {
     self: Rc<Self>,
     mut buf: BufMutView,
   ) -> FsResult<(usize, BufMutView)> {
-    self
-      .with_inner_blocking_task(|file| {
-        let nread = file.read(&mut buf)?;
-        Ok((nread, buf))
-      })
-      .await
+    match &self.kind {
+      /* On Windows, we need to handle special read cancellation logic for stdin */
+      #[cfg(windows)]
+      StdFileResourceKind::Stdin(state) => {
+        self.handle_stdin_read(state.clone(), buf).await
+      }
+      _ => {
+        self
+          .with_inner_blocking_task(|file| {
+            let nread = file.read(&mut buf)?;
+            Ok((nread, buf))
+          })
+          .await
+      }
+    }
   }
 
   fn try_clone_inner(self: Rc<Self>) -> FsResult<Rc<dyn fs::File>> {
     let inner: &Option<_> = &self.cell.borrow();
     match inner {
       Some(inner) => Ok(Rc::new(StdFileResourceInner {
-        kind: self.kind,
+        kind: self.kind.clone(),
         cell: RefCell::new(Some(inner.try_clone()?)),
         cell_async_task_queue: Default::default(),
         handle: self.handle,
@@ -733,12 +1005,12 @@ impl crate::fs::File for StdFileResourceInner {
 }
 
 // override op_print to use the stdout and stderr in the resource table
-#[op]
+#[op2(fast)]
 pub fn op_print(
   state: &mut OpState,
-  msg: &str,
+  #[string] msg: &str,
   is_err: bool,
-) -> Result<(), AnyError> {
+) -> Result<(), deno_core::error::AnyError> {
   let rid = if is_err { 2 } else { 1 };
   FileResource::with_file(state, rid, move |file| {
     Ok(file.write_all_sync(msg.as_bytes())?)

@@ -1,4 +1,4 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 // Copyright Joyent and Node contributors. All rights reserved. MIT license.
 
 // TODO(petamoriken): enable prefer-primordials for node polyfills
@@ -12,7 +12,7 @@ let debugImpls: Record<string, (...args: unknown[]) => void>;
 let testEnabled: (str: string) => boolean;
 
 // `debugEnv` is initial value of process.env.NODE_DEBUG
-function initializeDebugEnv(debugEnv: string) {
+export function initializeDebugEnv(debugEnv: string) {
   debugImpls = Object.create(null);
   if (debugEnv) {
     // This is run before any user code, it's OK not to use primordials.
@@ -30,6 +30,7 @@ function initializeDebugEnv(debugEnv: string) {
 // NODE_DEBUG=http or NODE_DEBUG=http2.
 function emitWarningIfNeeded(set: string) {
   if ("HTTP" === set || "HTTP2" === set) {
+    // deno-lint-ignore no-console
     console.warn(
       "Setting the NODE_DEBUG environment variable " +
         "to '" + set.toLowerCase() + "' can expose sensitive " +
@@ -50,6 +51,7 @@ function debuglogImpl(
       emitWarningIfNeeded(set);
       debugImpls[set] = function debug(...args: unknown[]) {
         const msg = args.map((arg) => inspect(arg)).join(" ");
+        // deno-lint-ignore no-console
         console.error("%s %s: %s", set, String(Deno.pid), msg);
       };
     } else {
@@ -105,21 +107,5 @@ export function debuglog(
 
   return logger;
 }
-
-let debugEnv;
-/* TODO(kt3k): enable initializing debugEnv.
-It's not possible to access env var when snapshotting.
-
-try {
-  debugEnv = Deno.env.get("NODE_DEBUG") ?? "";
-} catch (error) {
-  if (error instanceof Deno.errors.PermissionDenied) {
-    debugEnv = "";
-  } else {
-    throw error;
-  }
-}
-*/
-initializeDebugEnv(debugEnv);
 
 export default { debuglog };

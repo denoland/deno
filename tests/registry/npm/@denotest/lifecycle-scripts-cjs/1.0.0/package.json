@@ -1,0 +1,11 @@
+{
+  "name": "@denotest/lifecycle-scripts-cjs",
+  "version": "1.0.0",
+  "scripts": {
+    "preinstall": "echo preinstall && node preinstall.js",
+    "install": "echo install && cli-cjs 'hello from install script'"
+  },
+  "dependencies": {
+    "@denotest/bin": "1.0.0"
+  }
+}
