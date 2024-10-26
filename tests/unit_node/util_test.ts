@@ -330,3 +330,31 @@ Deno.test("[util] debuglog() and debug()", () => {
   assertEquals(util.debuglog, util.debug);
   assertEquals(utilDefault.debuglog, utilDefault.debug);
 });
+
+Deno.test("[util] aborted()", async () => {
+  const abortController = new AbortController();
+  let done = false;
+  const promise = util.aborted(
+    // deno-lint-ignore no-explicit-any
+    abortController.signal as any,
+    abortController.signal,
+  );
+  promise.then(() => {
+    done = true;
+  });
+  await new Promise((r) => setTimeout(r, 100));
+  assertEquals(done, false);
+  abortController.abort();
+  await promise;
+  assertEquals(done, true);
+});
+
+Deno.test("[util] styleText()", () => {
+  const redText = util.styleText("red", "error");
+  assertEquals(redText, "\x1B[31merror\x1B[39m");
+});
+
+Deno.test("[util] styleText() with array of formats", () => {
+  const colored = util.styleText(["red", "green"], "error");
+  assertEquals(colored, "\x1b[32m\x1b[31merror\x1b[39m\x1b[39m");
+});

@@ -1,17 +1,18 @@
 [WILDCARD]/bench/group_baseline.ts
-benchmark           time (avg)        iter/s             (min … max)       p75       p99      p995
--------------------------------------------------------------------- -----------------------------
-noop [WILDCARD] [WILDCARD]/iter[WILDCARD]([WILDCARD] … [WILDCARD]) [WILDCARD]
-noop2 [WILDCARD] [WILDCARD]/iter[WILDCARD]([WILDCARD] … [WILDCARD]) [WILDCARD]
+
+benchmark        time/iter (avg)        iter/s      (min … max)           p75      p99     p995
+---------------- ----------------------------- --------------------- --------------------------
+noop [WILDCARD] [WILDCARD] [WILDCARD] ([WILDCARD] … [WILDCARD]) [WILDCARD]
+noop2 [WILDCARD] [WILDCARD] [WILDCARD] ([WILDCARD] … [WILDCARD]) [WILDCARD]
 
 summary
   noo[WILDCARD]
    [WILDCARD]x [WILDCARD] than noo[WILDCARD]
 
 group url
-noop3 [WILDCARD] [WILDCARD]/iter[WILDCARD]([WILDCARD] … [WILDCARD]) [WILDCARD]
-parse url 2x [WILDCARD] [WILDCARD]/iter[WILDCARD]([WILDCARD] … [WILDCARD]) [WILDCARD]
-parse url 200x [WILDCARD] [WILDCARD]/iter[WILDCARD]([WILDCARD] … [WILDCARD]) [WILDCARD]
+noop3 [WILDCARD] [WILDCARD] [WILDCARD] ([WILDCARD] … [WILDCARD]) [WILDCARD]
+parse url 2x [WILDCARD] [WILDCARD] [WILDCARD] ([WILDCARD] … [WILDCARD]) [WILDCARD]
+parse url 200x [WILDCARD] [WILDCARD] [WILDCARD] ([WILDCARD] … [WILDCARD]) [WILDCARD]
 
 summary
   parse url 2x

@@ -78,7 +78,7 @@ export function execCode3(cmd: string, args: string[]) {
 }
 
 export function execCode2(code: string) {
-  return execCode3(Deno.execPath(), ["eval", "--unstable", "--no-check", code]);
+  return execCode3(Deno.execPath(), ["eval", code]);
 }
 
 export function tmpUnixSocketPath(): string {

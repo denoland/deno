@@ -311,11 +311,11 @@ Deno.test(async function timeoutCallbackThis() {
   };
   setTimeout(obj.foo, 1);
   await promise;
-  assertEquals(capturedThis, window);
+  assertEquals(capturedThis, globalThis);
 });
 
 Deno.test(async function timeoutBindThis() {
-  const thisCheckPassed = [null, undefined, window, globalThis];
+  const thisCheckPassed = [null, undefined, globalThis];
 
   const thisCheckFailed = [
     0,

@@ -1,5 +1,5 @@
 {
-  "version": "3",
+  "version": "4",
   "remote": {
     "http://localhost:4545/subdir/mt_application_ecmascript.j2.js": "3a3e002e2f92dc8f045bd4a7c66b4791453ad0417b038dd2b2d9d0f277c44f18",
     "http://localhost:4545/subdir/mt_application_x_javascript.j4.js": "3a3e002e2f92dc8f045bd4a7c66b4791453ad0417b038dd2b2d9d0f277c44f18",

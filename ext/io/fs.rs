@@ -1,15 +1,12 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 use std::borrow::Cow;
+use std::fmt::Formatter;
 use std::io;
 use std::rc::Rc;
 use std::time::SystemTime;
 use std::time::UNIX_EPOCH;
 
-use deno_core::error::custom_error;
-use deno_core::error::not_supported;
-use deno_core::error::resource_unavailable;
-use deno_core::error::AnyError;
 use deno_core::BufMutView;
 use deno_core::BufView;
 use deno_core::OpState;
@@ -22,8 +19,23 @@ pub enum FsError {
   Io(io::Error),
   FileBusy,
   NotSupported,
-  PermissionDenied(&'static str),
+  NotCapable(&'static str),
 }
+
+impl std::fmt::Display for FsError {
+  fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+    match self {
+      FsError::Io(err) => std::fmt::Display::fmt(err, f),
+      FsError::FileBusy => f.write_str("file busy"),
+      FsError::NotSupported => f.write_str("not supported"),
+      FsError::NotCapable(err) => {
+        f.write_str(&format!("requires {err} access"))
+      }
+    }
+  }
+}
+
+impl std::error::Error for FsError {}
 
 impl FsError {
   pub fn kind(&self) -> io::ErrorKind {
@@ -31,7 +43,7 @@ impl FsError {
       Self::Io(err) => err.kind(),
       Self::FileBusy => io::ErrorKind::Other,
       Self::NotSupported => io::ErrorKind::Other,
-      Self::PermissionDenied(_) => io::ErrorKind::PermissionDenied,
+      Self::NotCapable(_) => io::ErrorKind::Other,
     }
   }
 
@@ -40,7 +52,7 @@ impl FsError {
       FsError::Io(err) => err,
       FsError::FileBusy => io::Error::new(self.kind(), "file busy"),
       FsError::NotSupported => io::Error::new(self.kind(), "not supported"),
-      FsError::PermissionDenied(err) => {
+      FsError::NotCapable(err) => {
         io::Error::new(self.kind(), format!("requires {err} access"))
       }
     }
@@ -56,19 +68,6 @@ impl From<io::Error> for FsError {
 impl From<io::ErrorKind> for FsError {
   fn from(err: io::ErrorKind) -> Self {
     Self::Io(err.into())
-  }
-}
-
-impl From<FsError> for AnyError {
-  fn from(err: FsError) -> Self {
-    match err {
-      FsError::Io(err) => AnyError::from(err),
-      FsError::FileBusy => resource_unavailable(),
-      FsError::NotSupported => not_supported(),
-      FsError::PermissionDenied(err) => {
-        custom_error("PermissionDenied", format!("permission denied: {err}"))
-      }
-    }
   }
 }
 
@@ -266,9 +265,9 @@ impl FileResource {
     state: &OpState,
     rid: ResourceId,
     f: F,
-  ) -> Result<R, AnyError>
+  ) -> Result<R, deno_core::error::AnyError>
   where
-    F: FnOnce(Rc<FileResource>) -> Result<R, AnyError>,
+    F: FnOnce(Rc<FileResource>) -> Result<R, deno_core::error::AnyError>,
   {
     let resource = state.resource_table.get::<FileResource>(rid)?;
     f(resource)
@@ -277,7 +276,7 @@ impl FileResource {
   pub fn get_file(
     state: &OpState,
     rid: ResourceId,
-  ) -> Result<Rc<dyn File>, AnyError> {
+  ) -> Result<Rc<dyn File>, deno_core::error::AnyError> {
     let resource = state.resource_table.get::<FileResource>(rid)?;
     Ok(resource.file())
   }
@@ -286,9 +285,9 @@ impl FileResource {
     state: &OpState,
     rid: ResourceId,
     f: F,
-  ) -> Result<R, AnyError>
+  ) -> Result<R, deno_core::error::AnyError>
   where
-    F: FnOnce(Rc<dyn File>) -> Result<R, AnyError>,
+    F: FnOnce(Rc<dyn File>) -> Result<R, deno_core::error::AnyError>,
   {
     Self::with_resource(state, rid, |r| f(r.file.clone()))
   }
@@ -303,10 +302,7 @@ impl deno_core::Resource for FileResource {
     Cow::Borrowed(&self.name)
   }
 
-  fn read(
-    self: Rc<Self>,
-    limit: usize,
-  ) -> deno_core::AsyncResult<deno_core::BufView> {
+  fn read(self: Rc<Self>, limit: usize) -> deno_core::AsyncResult<BufView> {
     Box::pin(async move {
       self
         .file
@@ -319,8 +315,8 @@ impl deno_core::Resource for FileResource {
 
   fn read_byob(
     self: Rc<Self>,
-    buf: deno_core::BufMutView,
-  ) -> deno_core::AsyncResult<(usize, deno_core::BufMutView)> {
+    buf: BufMutView,
+  ) -> deno_core::AsyncResult<(usize, BufMutView)> {
     Box::pin(async move {
       self
         .file
@@ -333,17 +329,14 @@ impl deno_core::Resource for FileResource {
 
   fn write(
     self: Rc<Self>,
-    buf: deno_core::BufView,
+    buf: BufView,
   ) -> deno_core::AsyncResult<deno_core::WriteOutcome> {
     Box::pin(async move {
       self.file.clone().write(buf).await.map_err(|err| err.into())
     })
   }
 
-  fn write_all(
-    self: Rc<Self>,
-    buf: deno_core::BufView,
-  ) -> deno_core::AsyncResult<()> {
+  fn write_all(self: Rc<Self>, buf: BufView) -> deno_core::AsyncResult<()> {
     Box::pin(async move {
       self
         .file

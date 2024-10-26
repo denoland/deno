@@ -1,0 +1,5 @@
+Add jsr:@std/testing@1.0.0
+[UNORDERED_START]
+Download http://127.0.0.1:4250/@std/testing/1.0.0/bdd.ts
+Download http://127.0.0.1:4250/@std/testing/1.0.0/types.ts
+[UNORDERED_END]

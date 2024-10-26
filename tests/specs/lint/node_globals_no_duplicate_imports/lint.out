@@ -1,9 +1,9 @@
 error[no-node-globals]: NodeJS globals are not available in Deno
  --> [WILDCARD]main.ts:3:14
   | 
-3 | const _foo = process.env.FOO;
-  |              ^^^^^^^
-  = hint: Add `import process from "node:process";`
+3 | const _foo = setImmediate;
+  |              ^^^^^^^^^^^^
+  = hint: Add `import { setImmediate } from "node:timers";`
 
   docs: https://lint.deno.land/rules/no-node-globals
 
@@ -11,9 +11,9 @@ error[no-node-globals]: NodeJS globals are not available in Deno
 error[no-node-globals]: NodeJS globals are not available in Deno
  --> [WILDCARD]main.ts:7:14
   | 
-7 | const _bar = process.env.BAR;
-  |              ^^^^^^^
-  = hint: Add `import process from "node:process";`
+7 | const _bar = setImmediate;
+  |              ^^^^^^^^^^^^
+  = hint: Add `import { setImmediate } from "node:timers";`
 
   docs: https://lint.deno.land/rules/no-node-globals
 

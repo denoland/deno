@@ -1,13 +1,13 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
-use crate::args::CliOptions;
-use crate::args::Flags;
-use crate::args::TaskFlags;
-use crate::colors;
-use crate::factory::CliFactory;
-use crate::npm::CliNpmResolver;
-use crate::task_runner;
-use crate::util::fs::canonicalize_path;
+use std::borrow::Cow;
+use std::collections::HashMap;
+use std::collections::HashSet;
+use std::path::Path;
+use std::path::PathBuf;
+use std::rc::Rc;
+use std::sync::Arc;
+
 use deno_config::deno_json::Task;
 use deno_config::workspace::TaskOrScript;
 use deno_config::workspace::WorkspaceDirectory;
@@ -16,15 +16,17 @@ use deno_core::anyhow::anyhow;
 use deno_core::anyhow::bail;
 use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
-use deno_core::normalize_path;
+use deno_path_util::normalize_path;
 use deno_task_shell::ShellCommand;
-use std::borrow::Cow;
-use std::collections::HashMap;
-use std::collections::HashSet;
-use std::path::Path;
-use std::path::PathBuf;
-use std::rc::Rc;
-use std::sync::Arc;
+
+use crate::args::CliOptions;
+use crate::args::Flags;
+use crate::args::TaskFlags;
+use crate::colors;
+use crate::factory::CliFactory;
+use crate::npm::CliNpmResolver;
+use crate::task_runner;
+use crate::util::fs::canonicalize_path;
 
 pub async fn execute_script(
   flags: Arc<Flags>,
@@ -34,19 +36,7 @@ pub async fn execute_script(
   let cli_options = factory.cli_options()?;
   let start_dir = &cli_options.start_dir;
   if !start_dir.has_deno_or_pkg_json() {
-    if task_flags.is_run {
-      bail!(
-        r#"deno run couldn't find deno.json(c).
-If you meant to run a script, specify it, e.g., `deno run ./script.ts`.
-To run a task, ensure the config file exists.
-Examples:
-- Script: `deno run ./script.ts`
-- Task: `deno run dev`
-See https://docs.deno.com/go/config"#
-      )
-    } else {
-      bail!("deno task couldn't find deno.json(c). See https://docs.deno.com/go/config")
-    }
+    bail!("deno task couldn't find deno.json(c). See https://docs.deno.com/go/config")
   }
   let force_use_pkg_json =
     std::env::var_os(crate::task_runner::USE_PKG_JSON_HIDDEN_ENV_VAR_NAME)
@@ -73,7 +63,7 @@ See https://docs.deno.com/go/config"#
         &cli_options.start_dir,
         &tasks_config,
       )?;
-      return Ok(1);
+      return Ok(0);
     }
   };
 
@@ -106,12 +96,9 @@ See https://docs.deno.com/go/config"#
         .await
       }
       TaskOrScript::Script(scripts, _script) => {
-        // ensure the npm packages are installed if using a node_modules
-        // directory and managed resolver
-        if cli_options.has_node_modules_dir() {
-          if let Some(npm_resolver) = npm_resolver.as_managed() {
-            npm_resolver.ensure_top_level_package_json_install().await?;
-          }
+        // ensure the npm packages are installed if using a managed resolver
+        if let Some(npm_resolver) = npm_resolver.as_managed() {
+          npm_resolver.ensure_top_level_package_json_install().await?;
         }
 
         let cwd = match task_flags.cwd {
@@ -195,19 +182,21 @@ async fn run_task(opts: RunTaskOptions<'_>) -> Result<i32, AnyError> {
     &task_runner::get_script_with_args(script, cli_options.argv()),
   );
 
-  task_runner::run_task(task_runner::RunTaskOptions {
-    task_name,
-    script,
-    cwd,
-    env_vars,
-    custom_commands,
-    init_cwd: opts.cli_options.initial_cwd(),
-    argv: cli_options.argv(),
-    root_node_modules_dir: npm_resolver
-      .root_node_modules_path()
-      .map(|p| p.as_path()),
-  })
-  .await
+  Ok(
+    task_runner::run_task(task_runner::RunTaskOptions {
+      task_name,
+      script,
+      cwd,
+      env_vars,
+      custom_commands,
+      init_cwd: opts.cli_options.initial_cwd(),
+      argv: cli_options.argv(),
+      root_node_modules_dir: npm_resolver.root_node_modules_path(),
+      stdio: None,
+    })
+    .await?
+    .exit_code,
+  )
 }
 
 fn output_task(task_name: &str, script: &str) {

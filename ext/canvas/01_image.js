@@ -307,7 +307,9 @@ function processImage(input, width, height, sx, sy, sw, sh, options) {
   }
 
   if (options.colorSpaceConversion === "none") {
-    throw new TypeError("options.colorSpaceConversion 'none' is not supported");
+    throw new TypeError(
+      "Cannot create image: invalid colorSpaceConversion option, 'none' is not supported",
+    );
   }
 
   /*

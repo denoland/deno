@@ -1,6 +1,6 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
-import events, { EventEmitter } from "node:events";
+import events, { addAbortListener, EventEmitter } from "node:events";
 
 EventEmitter.captureRejections = true;
 
@@ -33,4 +33,14 @@ Deno.test("eventemitter async resource", () => {
   const foo = new Foo();
   // @ts-ignore: @types/node is outdated
   foo.emit("bar");
+});
+
+Deno.test("addAbortListener", async () => {
+  const { promise, resolve } = Promise.withResolvers<void>();
+  const abortController = new AbortController();
+  addAbortListener(abortController.signal, () => {
+    resolve();
+  });
+  abortController.abort();
+  await promise;
 });

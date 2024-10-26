@@ -1,0 +1,8 @@
+error: Uncaught (in promise) ReferenceError: document is not defined
+document.querySelector("div");
+^
+    at [WILDCARD]document.js:1:1
+
+    info: document global is not available in Deno.
+    hint: Use a library like happy-dom, deno_dom, linkedom or JSDom
+          and setup the document global according to the library documentation.

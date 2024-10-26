@@ -1,11 +1,9 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 use crate::io::UnixStreamResource;
+use crate::ops::NetError;
 use crate::raw::NetworkListenerResource;
 use crate::NetPermissions;
-use deno_core::error::bad_resource;
-use deno_core::error::custom_error;
-use deno_core::error::AnyError;
 use deno_core::op2;
 use deno_core::AsyncRefCell;
 use deno_core::CancelHandle;
@@ -26,11 +24,8 @@ use tokio::net::UnixListener;
 pub use tokio::net::UnixStream;
 
 /// A utility function to map OsStrings to Strings
-pub fn into_string(s: std::ffi::OsString) -> Result<String, AnyError> {
-  s.into_string().map_err(|s| {
-    let message = format!("File name or path {s:?} is not valid UTF-8");
-    custom_error("InvalidData", message)
-  })
+pub fn into_string(s: std::ffi::OsString) -> Result<String, NetError> {
+  s.into_string().map_err(NetError::InvalidUtf8)
 }
 
 pub struct UnixDatagramResource {
@@ -63,15 +58,15 @@ pub struct UnixListenArgs {
 pub async fn op_net_accept_unix(
   state: Rc<RefCell<OpState>>,
   #[smi] rid: ResourceId,
-) -> Result<(ResourceId, Option<String>, Option<String>), AnyError> {
+) -> Result<(ResourceId, Option<String>, Option<String>), NetError> {
   let resource = state
     .borrow()
     .resource_table
     .get::<NetworkListenerResource<UnixListener>>(rid)
-    .map_err(|_| bad_resource("Listener has been closed"))?;
+    .map_err(|_| NetError::ListenerClosed)?;
   let listener = RcRef::map(&resource, |r| &r.listener)
     .try_borrow_mut()
-    .ok_or_else(|| custom_error("Busy", "Listener already in use"))?;
+    .ok_or(NetError::ListenerBusy)?;
   let cancel = RcRef::map(resource, |r| &r.cancel);
   let (unix_stream, _socket_addr) = listener
     .accept()
@@ -94,22 +89,24 @@ pub async fn op_net_accept_unix(
 #[serde]
 pub async fn op_net_connect_unix<NP>(
   state: Rc<RefCell<OpState>>,
-  #[string] path: String,
-) -> Result<(ResourceId, Option<String>, Option<String>), AnyError>
+  #[string] address_path: String,
+) -> Result<(ResourceId, Option<String>, Option<String>), NetError>
 where
   NP: NetPermissions + 'static,
 {
-  let address_path = Path::new(&path);
-  {
+  let address_path = {
     let mut state_ = state.borrow_mut();
-    state_
+    let address_path = state_
       .borrow_mut::<NP>()
-      .check_read(address_path, "Deno.connect()")?;
-    state_
+      .check_read(&address_path, "Deno.connect()")
+      .map_err(NetError::Permission)?;
+    _ = state_
       .borrow_mut::<NP>()
-      .check_write(address_path, "Deno.connect()")?;
-  }
-  let unix_stream = UnixStream::connect(Path::new(&path)).await?;
+      .check_write_path(&address_path, "Deno.connect()")
+      .map_err(NetError::Permission)?;
+    address_path
+  };
+  let unix_stream = UnixStream::connect(&address_path).await?;
   let local_addr = unix_stream.local_addr()?;
   let remote_addr = unix_stream.peer_addr()?;
   let local_addr_path = local_addr.as_pathname().map(pathstring).transpose()?;
@@ -127,15 +124,15 @@ pub async fn op_net_recv_unixpacket(
   state: Rc<RefCell<OpState>>,
   #[smi] rid: ResourceId,
   #[buffer] mut buf: JsBuffer,
-) -> Result<(usize, Option<String>), AnyError> {
+) -> Result<(usize, Option<String>), NetError> {
   let resource = state
     .borrow()
     .resource_table
     .get::<UnixDatagramResource>(rid)
-    .map_err(|_| bad_resource("Socket has been closed"))?;
+    .map_err(|_| NetError::SocketClosed)?;
   let socket = RcRef::map(&resource, |r| &r.socket)
     .try_borrow_mut()
-    .ok_or_else(|| custom_error("Busy", "Socket already in use"))?;
+    .ok_or(NetError::SocketBusy)?;
   let cancel = RcRef::map(resource, |r| &r.cancel);
   let (nread, remote_addr) =
     socket.recv_from(&mut buf).try_or_cancel(cancel).await?;
@@ -148,27 +145,27 @@ pub async fn op_net_recv_unixpacket(
 pub async fn op_net_send_unixpacket<NP>(
   state: Rc<RefCell<OpState>>,
   #[smi] rid: ResourceId,
-  #[string] path: String,
+  #[string] address_path: String,
   #[buffer] zero_copy: JsBuffer,
-) -> Result<usize, AnyError>
+) -> Result<usize, NetError>
 where
   NP: NetPermissions + 'static,
 {
-  let address_path = Path::new(&path);
-  {
+  let address_path = {
     let mut s = state.borrow_mut();
     s.borrow_mut::<NP>()
-      .check_write(address_path, "Deno.DatagramConn.send()")?;
-  }
+      .check_write(&address_path, "Deno.DatagramConn.send()")
+      .map_err(NetError::Permission)?
+  };
 
   let resource = state
     .borrow()
     .resource_table
     .get::<UnixDatagramResource>(rid)
-    .map_err(|_| custom_error("NotConnected", "Socket has been closed"))?;
+    .map_err(|_| NetError::SocketClosedNotConnected)?;
   let socket = RcRef::map(&resource, |r| &r.socket)
     .try_borrow_mut()
-    .ok_or_else(|| custom_error("Busy", "Socket already in use"))?;
+    .ok_or(NetError::SocketBusy)?;
   let nwritten = socket.send_to(&zero_copy, address_path).await?;
 
   Ok(nwritten)
@@ -178,17 +175,20 @@ where
 #[serde]
 pub fn op_net_listen_unix<NP>(
   state: &mut OpState,
-  #[string] path: String,
+  #[string] address_path: String,
   #[string] api_name: String,
-) -> Result<(ResourceId, Option<String>), AnyError>
+) -> Result<(ResourceId, Option<String>), NetError>
 where
   NP: NetPermissions + 'static,
 {
-  let address_path = Path::new(&path);
   let permissions = state.borrow_mut::<NP>();
   let api_call_expr = format!("{}()", api_name);
-  permissions.check_read(address_path, &api_call_expr)?;
-  permissions.check_write(address_path, &api_call_expr)?;
+  let address_path = permissions
+    .check_read(&address_path, &api_call_expr)
+    .map_err(NetError::Permission)?;
+  _ = permissions
+    .check_write_path(&address_path, &api_call_expr)
+    .map_err(NetError::Permission)?;
   let listener = UnixListener::bind(address_path)?;
   let local_addr = listener.local_addr()?;
   let pathname = local_addr.as_pathname().map(pathstring).transpose()?;
@@ -199,15 +199,18 @@ where
 
 pub fn net_listen_unixpacket<NP>(
   state: &mut OpState,
-  path: String,
-) -> Result<(ResourceId, Option<String>), AnyError>
+  address_path: String,
+) -> Result<(ResourceId, Option<String>), NetError>
 where
   NP: NetPermissions + 'static,
 {
-  let address_path = Path::new(&path);
   let permissions = state.borrow_mut::<NP>();
-  permissions.check_read(address_path, "Deno.listenDatagram()")?;
-  permissions.check_write(address_path, "Deno.listenDatagram()")?;
+  let address_path = permissions
+    .check_read(&address_path, "Deno.listenDatagram()")
+    .map_err(NetError::Permission)?;
+  _ = permissions
+    .check_write_path(&address_path, "Deno.listenDatagram()")
+    .map_err(NetError::Permission)?;
   let socket = UnixDatagram::bind(address_path)?;
   let local_addr = socket.local_addr()?;
   let pathname = local_addr.as_pathname().map(pathstring).transpose()?;
@@ -224,7 +227,7 @@ where
 pub fn op_net_listen_unixpacket<NP>(
   state: &mut OpState,
   #[string] path: String,
-) -> Result<(ResourceId, Option<String>), AnyError>
+) -> Result<(ResourceId, Option<String>), NetError>
 where
   NP: NetPermissions + 'static,
 {
@@ -237,13 +240,13 @@ where
 pub fn op_node_unstable_net_listen_unixpacket<NP>(
   state: &mut OpState,
   #[string] path: String,
-) -> Result<(ResourceId, Option<String>), AnyError>
+) -> Result<(ResourceId, Option<String>), NetError>
 where
   NP: NetPermissions + 'static,
 {
   net_listen_unixpacket::<NP>(state, path)
 }
 
-pub fn pathstring(pathname: &Path) -> Result<String, AnyError> {
+pub fn pathstring(pathname: &Path) -> Result<String, NetError> {
   into_string(pathname.into())
 }

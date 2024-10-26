@@ -1,28 +1,5 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
-use crate::args::create_default_npmrc;
-use crate::args::CacheSetting;
-use crate::args::CliLockfile;
-use crate::args::PackageJsonInstallDepsProvider;
-use crate::graph_util::CliJsrUrlProvider;
-use crate::http_util::HttpClientProvider;
-use crate::lsp::config::Config;
-use crate::lsp::config::ConfigData;
-use crate::lsp::logging::lsp_warn;
-use crate::npm::create_cli_npm_resolver_for_lsp;
-use crate::npm::CliNpmResolver;
-use crate::npm::CliNpmResolverByonmCreateOptions;
-use crate::npm::CliNpmResolverCreateOptions;
-use crate::npm::CliNpmResolverManagedCreateOptions;
-use crate::npm::CliNpmResolverManagedSnapshotOption;
-use crate::npm::ManagedCliNpmResolver;
-use crate::resolver::CjsResolutionStore;
-use crate::resolver::CliGraphResolver;
-use crate::resolver::CliGraphResolverOptions;
-use crate::resolver::CliNodeResolver;
-use crate::resolver::WorkerCliNpmGraphResolver;
-use crate::util::progress_bar::ProgressBar;
-use crate::util::progress_bar::ProgressBarStyle;
 use dashmap::DashMap;
 use deno_ast::MediaType;
 use deno_cache_dir::HttpCache;
@@ -33,10 +10,10 @@ use deno_graph::source::Resolver;
 use deno_graph::GraphImport;
 use deno_graph::ModuleSpecifier;
 use deno_npm::NpmSystemInfo;
+use deno_path_util::url_to_file_path;
 use deno_runtime::deno_fs;
 use deno_runtime::deno_node::NodeResolver;
 use deno_runtime::deno_node::PackageJson;
-use deno_runtime::fs_util::specifier_to_file_path;
 use deno_semver::jsr::JsrPackageReqReference;
 use deno_semver::npm::NpmPackageReqReference;
 use deno_semver::package::PackageNv;
@@ -55,6 +32,30 @@ use std::sync::Arc;
 
 use super::cache::LspCache;
 use super::jsr::JsrCacheResolver;
+use crate::args::create_default_npmrc;
+use crate::args::CacheSetting;
+use crate::args::CliLockfile;
+use crate::args::NpmInstallDepsProvider;
+use crate::graph_util::CliJsrUrlProvider;
+use crate::http_util::HttpClientProvider;
+use crate::lsp::config::Config;
+use crate::lsp::config::ConfigData;
+use crate::lsp::logging::lsp_warn;
+use crate::npm::create_cli_npm_resolver_for_lsp;
+use crate::npm::CliByonmNpmResolverCreateOptions;
+use crate::npm::CliNpmResolver;
+use crate::npm::CliNpmResolverCreateOptions;
+use crate::npm::CliNpmResolverManagedCreateOptions;
+use crate::npm::CliNpmResolverManagedSnapshotOption;
+use crate::npm::ManagedCliNpmResolver;
+use crate::resolver::CjsResolutionStore;
+use crate::resolver::CliDenoResolverFs;
+use crate::resolver::CliGraphResolver;
+use crate::resolver::CliGraphResolverOptions;
+use crate::resolver::CliNodeResolver;
+use crate::resolver::WorkerCliNpmGraphResolver;
+use crate::util::progress_bar::ProgressBar;
+use crate::util::progress_bar::ProgressBarStyle;
 
 #[derive(Debug, Clone)]
 struct LspScopeResolver {
@@ -327,11 +328,11 @@ impl LspResolver {
   ) -> Option<(ModuleSpecifier, MediaType)> {
     let resolver = self.get_scope_resolver(file_referrer);
     let node_resolver = resolver.node_resolver.as_ref()?;
-    Some(NodeResolution::into_specifier_and_media_type(
+    Some(NodeResolution::into_specifier_and_media_type(Some(
       node_resolver
         .resolve_req_reference(req_ref, referrer, NodeResolutionMode::Types)
-        .ok(),
-    ))
+        .ok()?,
+    )))
   }
 
   pub fn in_node_modules(&self, specifier: &ModuleSpecifier) -> bool {
@@ -370,6 +371,26 @@ impl LspResolver {
       .url_to_node_resolution(specifier.clone())
       .ok()?;
     Some(NodeResolution::into_specifier_and_media_type(Some(resolution)).1)
+  }
+
+  pub fn is_bare_package_json_dep(
+    &self,
+    specifier_text: &str,
+    referrer: &ModuleSpecifier,
+  ) -> bool {
+    let resolver = self.get_scope_resolver(Some(referrer));
+    let Some(node_resolver) = resolver.node_resolver.as_ref() else {
+      return false;
+    };
+    node_resolver
+      .resolve_if_for_npm_pkg(
+        specifier_text,
+        referrer,
+        NodeResolutionMode::Types,
+      )
+      .ok()
+      .flatten()
+      .is_some()
   }
 
   pub fn get_closest_package_json(
@@ -439,11 +460,11 @@ async fn create_npm_resolver(
 ) -> Option<Arc<dyn CliNpmResolver>> {
   let enable_byonm = config_data.map(|d| d.byonm).unwrap_or(false);
   let options = if enable_byonm {
-    CliNpmResolverCreateOptions::Byonm(CliNpmResolverByonmCreateOptions {
-      fs: Arc::new(deno_fs::RealFs),
+    CliNpmResolverCreateOptions::Byonm(CliByonmNpmResolverCreateOptions {
+      fs: CliDenoResolverFs(Arc::new(deno_fs::RealFs)),
       root_node_modules_dir: config_data.and_then(|config_data| {
         config_data.node_modules_dir.clone().or_else(|| {
-          specifier_to_file_path(&config_data.scope)
+          url_to_file_path(&config_data.scope)
             .ok()
             .map(|p| p.join("node_modules/"))
         })
@@ -474,9 +495,7 @@ async fn create_npm_resolver(
       maybe_node_modules_path: config_data
         .and_then(|d| d.node_modules_dir.clone()),
       // only used for top level install, so we can ignore this
-      package_json_deps_provider: Arc::new(
-        PackageJsonInstallDepsProvider::empty(),
-      ),
+      npm_install_deps_provider: Arc::new(NpmInstallDepsProvider::empty()),
       npmrc: config_data
         .and_then(|d| d.npmrc.clone())
         .unwrap_or_else(create_default_npmrc),

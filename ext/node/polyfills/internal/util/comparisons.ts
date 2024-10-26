@@ -432,7 +432,7 @@ function isEqualBoxedPrimitive(a: any, b: any): boolean {
   }
   // assert.fail(`Unknown boxed type ${val1}`);
   // return false;
-  throw Error(`Unknown boxed type`);
+  throw new Error(`Unknown boxed type`);
 }
 
 function getEnumerables(val: any, keys: any) {

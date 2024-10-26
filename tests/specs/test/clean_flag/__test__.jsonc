@@ -1,5 +1,5 @@
 {
-  "args": "run -A --config ../../../config/deno.json main.js",
+  "args": "run -A --config deno.json main.js",
   "exitCode": 0,
   "output": "main.out"
 }

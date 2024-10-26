@@ -1,1 +1,77 @@
-{"_id":"cpu-features","_rev":"4-bd65eea705b9b0cfa253e3922239cbaf","name":"cpu-features","dist-tags":{"latest":"0.0.4"},"versions":{"0.0.1":{"name":"cpu-features","version":"0.0.1","author":{"name":"Brian White","email":"mscdex@mscdex.net"},"description":"A simple binding to Google's cpu_features library for obtaining information about installed CPU(s)","main":"./lib/index","dependencies":{"nan":"^2.13.2"},"scripts":{"install":"node-gyp rebuild","test":"node test/test.js"},"engines":{"node":">=8.0.0"},"keywords":["cpu","detect","detection","features"],"licenses":[{"type":"MIT","url":"https://github.com/mscdex/cpu-features/raw/master/LICENSE"}],"repository":{"type":"git","url":"git+https://github.com/mscdex/cpu-features.git"},"_resolved":"","_integrity":"","_from":"https://github.com/mscdex/cpu-features/tarball/v0.0.1","gypfile":true,"bugs":{"url":"https://github.com/mscdex/cpu-features/issues"},"homepage":"https://github.com/mscdex/cpu-features#readme","_id":"cpu-features@0.0.1","_npmVersion":"6.4.1","_nodeVersion":"10.15.0","_npmUser":{"name":"mscdex","email":"mscdex@mscdex.net"},"dist":{"integrity":"sha512-+J2ZbKzcQGI6C++KJx8klaGMrkzzC7zxb/k4dMyK56P67cA4Kei5OyquiAEh7TBJ/ZDe+yN8HX6H5h45icMEPg==","shasum":"2c30f907fc4c0543a793f66cc6b289d30031d964","tarball":"http://localhost:4260/cpu-features/cpu-features-0.0.1.tgz","fileCount":59,"unpackedSize":169295,"npm-signature":"-----BEGIN PGP SIGNATURE-----\r\nVersion: OpenPGP.js v3.0.4\r\nComment: https://openpgpjs.org\r\n\r\nwsFcBAEBCAAQBQJcz7NXCRA9TVsSAnZWagAAIWcQAKPMETDu+3HpvCQgRARo\nhacZ6Rsoj/rRDQalznRA3RUrTAt584qfd2EgbhGR8O4ntcgBzEhyuMIoKmI/\npajlNYgAbDtjkky7HhXMXPyYEWKwUCPTJy1egyM+vxDBqWVmwJJEkSOlW3Er\nCR1LlaQiOuBWse2HW3e947n6mGBpzB7Cru/iUi8/u/QlnA7Mh6JrXbtA6QDk\nheMB0jangW5ZaVZEaAWOfoVl1ao3IFPfxouuKZaGU4MLuO6+Is+UKOg52MMQ\n2wXfNkuLH66sRH9aPN2LI5vR76H8rfcPOLxRn/KdMFgrrtH856PumUu7e/q3\n0RtwiOmvUBWVODseevGGE8bHw4YozfvPU7EqTTtU6ywZzuJuaLDBmHIZoU9g\np3jINbjKVkuCHCFFyk+doxL+KTA29LCCsWwZIv3NMAoKgwO6wypZhFWKWWEE\nGIN6LkKhYF9IPNkutbeRxBOD74OW8SAmEx1ywVisw+/lZOt+500YeUxF0lzJ\nNLxrkpU2inB6JL48mvwQtriKf3yqHglG1SA14VYwBAnEdTHejjU8UrwkFHc0\ntYyklRbph2dUNxNxMdsJYFBpA4W+vmJ+cX3XIN5UoTXLMyWFQw19udDkNY66\n05+JFZl5Q4dF3zVQ5QApFsi+FUc6zw0JVboT00OqnZpcY1nYeIFdCyqACLqk\n/udB\r\n=9exu\r\n-----END PGP SIGNATURE-----\r\n","signatures":[{"keyid":"SHA256:jl3bwswu80PjjokCgh0o2w5c2U4LhQAE57gj9cz1kzA","sig":"MEUCIQDopu6WLZ1lIJiOBjpagpbKLQ/yhK6sXcbeTpc87lC+KgIgTuBqUYy/tM6Eag6egaiWqn389ZXm3L3mTWG8Z7XyDNo="}]},"maintainers":[{"name":"mscdex","email":"mscdex@mscdex.net"}],"directories":{},"_npmOperationalInternal":{"host":"s3://npm-registry-packages","tmp":"tmp/cpu-features_0.0.1_1557115735080_0.37914412253938345"},"_hasShrinkwrap":false},"0.0.2":{"name":"cpu-features","version":"0.0.2","author":{"name":"Brian White","email":"mscdex@mscdex.net"},"description":"A simple binding to Google's cpu_features library for obtaining information about installed CPU(s)","main":"./lib/index","dependencies":{"nan":"^2.14.1"},"scripts":{"install":"node-gyp rebuild","test":"node test/test.js"},"engines":{"node":">=8.0.0"},"keywords":["cpu","detect","detection","features"],"licenses":[{"type":"MIT","url":"https://github.com/mscdex/cpu-features/raw/master/LICENSE"}],"repository":{"type":"git","url":"git+https://github.com/mscdex/cpu-features.git"},"_resolved":"","_integrity":"","_from":"https://github.com/mscdex/cpu-features/tarball/v0.0.2","gypfile":true,"bugs":{"url":"https://github.com/mscdex/cpu-features/issues"},"homepage":"https://github.com/mscdex/cpu-features#readme","_id":"cpu-features@0.0.2","_nodeVersion":"10.19.0","_npmVersion":"6.13.4","dist":{"integrity":"sha512-/2yieBqvMcRj8McNzkycjW2v3OIUOibBfd2dLEJ0nWts8NobAxwiyw9phVNS6oDL8x8tz9F7uNVFEVpJncQpeA==","shasum":"9f636156f1155fd04bdbaa028bb3c2fbef3cea7a","tarball":"http://localhost:4260/cpu-features/cpu-features-0.0.2.tgz","fileCount":82,"unpackedSize":322149,"npm-signature":"-----BEGIN PGP SIGNATURE-----\r\nVersion: OpenPGP.js v3.0.13\r\nComment: https://openpgpjs.org\r\n\r\nwsFcBAEBCAAQBQJfdTeiCRA9TVsSAnZWagAAzlIP/34vjFIGczGYmqbG/T2o\nie0/YwMxRIyEitRbioObl68UP64egDWSr18iYs4aoZ3jlQ2oSgnghYbWpsHr\nT6Ayqke5Owdlm46Kn+ADWknw6/J2DH/MUiXruyvZcpPyBiM3V7uw6/wlD8AF\nHWjuzvnPNYejN6ZBK5ffcsifWVqooT1WOthfXzZs+TeP4oKJzkTf3EfJIycA\nEEuUfBrQSBt0SDkSyakJbuPb1NtGAEyjREhSv9TTFJ2kCT116HzdADHBjpXm\nVg6Xp0yXqCV/9DhczjWZQD0GbvkBcFciRJbq0/5Q2Fb/Ke5jxvdJV+PuAOPM\nrN6/m3Df8nYI8ZCtjiGMZz1/BB1sDfHgryUMq6GMcLQxGMagnKXgsN8hcEGD\nEhNQqALfrlbfkGpjHWT7YNxfzlVkngQ6Reu9GqCIlP+HFf8PKNDCK4Apy1eX\nxqlHjw3lDRJPGdIL+lxGcTPQb8/rMMKOxXIblIj6/KVRMff+n4H1hz4oOCYV\n918hm9FjdlR3d6ewkQtQCfX/4X9R1nFg0woAEywRRZMfHAlaai9VwiJ81NZW\nP4qmzNgpTvcvb/xPFZpG+bwXK/h+2EJqTF6NW5i6cursS/q7YS22d4adIDnK\nUaKReeu4Dive5ZZSG3pd/1SsnUggz+p2r9EGt9YgAc6w87tVKa30YXYsRRRh\nuc2v\r\n=DEHt\r\n-----END PGP SIGNATURE-----\r\n","signatures":[{"keyid":"SHA256:jl3bwswu80PjjokCgh0o2w5c2U4LhQAE57gj9cz1kzA","sig":"MEQCIG2GZW63E3AbT8QQBQ4kSg4VzlLB7v7HuS5RU33s3iW0AiAl4ELL5jJS7uMJpKQGSSgl3RHdwERmXZk+oFUMhlI9Yw=="}]},"maintainers":[{"name":"mscdex","email":"mscdex@mscdex.net"}],"_npmUser":{"name":"mscdex","email":"mscdex@mscdex.net"},"directories":{},"_npmOperationalInternal":{"host":"s3://npm-registry-packages","tmp":"tmp/cpu-features_0.0.2_1601517473720_0.8384534238979948"},"_hasShrinkwrap":false},"0.0.3":{"name":"cpu-features","version":"0.0.3","author":{"name":"Brian White","email":"mscdex@mscdex.net"},"description":"A simple binding to Google's cpu_features library for obtaining information about installed CPU(s)","main":"./lib/index","dependencies":{"buildcheck":"0.0.3","nan":"^2.15.0"},"devDependencies":{"@mscdex/eslint-config":"^1.1.0","eslint":"^7.0.0"},"scripts":{"install":"node buildcheck.js > buildcheck.gypi && node-gyp rebuild","test":"node test/test.js","lint":"eslint --cache --report-unused-disable-directives --ext=.js .eslintrc.js lib test","lint:fix":"npm run lint -- --fix"},"engines":{"node":">=10.0.0"},"keywords":["cpu","detect","detection","features"],"licenses":[{"type":"MIT","url":"https://github.com/mscdex/cpu-features/raw/master/LICENSE"}],"repository":{"type":"git","url":"git+https://github.com/mscdex/cpu-features.git"},"_resolved":"","_integrity":"","_from":"https://github.com/mscdex/cpu-features/tarball/v0.0.3","bugs":{"url":"https://github.com/mscdex/cpu-features/issues"},"homepage":"https://github.com/mscdex/cpu-features#readme","_id":"cpu-features@0.0.3","_nodeVersion":"10.22.1","_npmVersion":"6.14.6","dist":{"integrity":"sha512-p6C/uud4F4bDyCz9+BNU22KdV1AGxPK6L9rQG9x3x4SSzdMPyBPErP7Rxn8avT2ex1M2g5Rpjz5Us/ri/766Qg==","shasum":"2acee87f762d11d5197babb34629293007a09edd","tarball":"http://localhost:4260/cpu-features/cpu-features-0.0.3.tgz","fileCount":124,"unpackedSize":441011,"npm-signature":"-----BEGIN PGP SIGNATURE-----\r\nVersion: OpenPGP.js v4.10.10\r\nComment: https://openpgpjs.org\r\n\r\nwsFzBAEBCAAGBQJiO/UiACEJED1NWxICdlZqFiEECWMYAoorWMhJKdjhPU1b\r\nEgJ2VmqPRg/8DC45g1ZpQR9pXoPwJY80AyTjIGO+0OEYA/nyAotAIzV3hQYJ\r\nUXb+dUfSi64qQ5nOIoSP0rB2SxwjJF7xnPBOeOTq2TwSw3iC10VAHuWE2sEK\r\nRd0wzvoBGzawYbat3bbhp1CB4GVVxr1YzUcCIHGdn985bZhM2GOBJl/aTzJ1\r\nE88I0uxfKZrc9QyY+44sL08ng5sr4mMZrx8/kxRKxDcf/mQtM9oFanxi1lnI\r\nl/SsiLV+fZQYZc6ReqwoLAWYoZFCc3lEoaktk953TZ9A2mIolSnvB7SPv8C8\r\npHu96lTLARvh1o5Wkbozk5ygv6Zs7CuoYWu7nDpEhDqNF32ZFlG4vsRRSt0C\r\nAiwRrzDPrrUbngC43u3mnqEByOFMYDfhZsk50FDNyFfuHzRVakjn7EDR0lQi\r\ngm9jrtBZiS06RuLdk1vvW9zSrhaPcygqX8jy6ZRrMgXD3IJSx+25kOFwrbKz\r\nnz34H5pWjVqVqToejYAeJHVGFVqYmqpNkd4FW5cOZ6pVGIfwSmvqMb7fOjyJ\r\n1oKBm32DtHZ0Wwknli9ElaZbl1tU1RJuzIHI6g+Vam51up8q7s/D817r3TRm\r\n/LWZt+5BzgZ8jExg7oIJpqhs8/r0a/FVPnTvqrNEIyC60Eaf5oj6tsNvA3ue\r\nOpqT8yipLB674kav5RPJJU58nDSLQVlb+MU=\r\n=mfxx\r\n-----END PGP SIGNATURE-----\r\n","signatures":[{"keyid":"SHA256:jl3bwswu80PjjokCgh0o2w5c2U4LhQAE57gj9cz1kzA","sig":"MEYCIQD+yNXZXVVGI03MY6xqU2bBywT2SvLrzQbazDu7BjhG5gIhALbKXI8LphHODBnPdJKAlM5FpjrJHaNdkllUFfvzBmxf"}]},"_npmUser":{"name":"mscdex","email":"mscdex@mscdex.net"},"directories":{},"maintainers":[{"name":"mscdex","email":"mscdex@mscdex.net"}],"_npmOperationalInternal":{"host":"s3://npm-registry-packages","tmp":"tmp/cpu-features_0.0.3_1648096545894_0.799682132092455"},"_hasShrinkwrap":false},"0.0.4":{"name":"cpu-features","version":"0.0.4","author":{"name":"Brian White","email":"mscdex@mscdex.net"},"description":"A simple binding to Google's cpu_features library for obtaining information about installed CPU(s)","main":"./lib/index","dependencies":{"buildcheck":"0.0.3","nan":"^2.15.0"},"devDependencies":{"@mscdex/eslint-config":"^1.1.0","eslint":"^7.0.0"},"scripts":{"install":"node buildcheck.js > buildcheck.gypi && node-gyp rebuild","test":"node test/test.js","lint":"eslint --cache --report-unused-disable-directives --ext=.js .eslintrc.js lib test","lint:fix":"npm run lint -- --fix"},"engines":{"node":">=10.0.0"},"keywords":["cpu","detect","detection","features"],"licenses":[{"type":"MIT","url":"https://github.com/mscdex/cpu-features/raw/master/LICENSE"}],"repository":{"type":"git","url":"git+https://github.com/mscdex/cpu-features.git"},"_resolved":"","_integrity":"","_from":"https://github.com/mscdex/cpu-features/tarball/v0.0.4","bugs":{"url":"https://github.com/mscdex/cpu-features/issues"},"homepage":"https://github.com/mscdex/cpu-features#readme","_id":"cpu-features@0.0.4","_nodeVersion":"10.22.1","_npmVersion":"6.14.6","dist":{"integrity":"sha512-fKiZ/zp1mUwQbnzb9IghXtHtDoTMtNeb8oYGx6kX2SYfhnG0HNdBEBIzB9b5KlXu5DQPhfy3mInbBxFcgwAr3A==","shasum":"0023475bb4f4c525869c162e4108099e35bf19d8","tarball":"http://localhost:4260/cpu-features/cpu-features-0.0.4.tgz","fileCount":124,"unpackedSize":441166,"signatures":[{"keyid":"SHA256:jl3bwswu80PjjokCgh0o2w5c2U4LhQAE57gj9cz1kzA","sig":"MEYCIQDSoV5qJZIAzWTYCD64r4fVmVBgeFomwHHNYtaKRCEvKwIhAKRJESSPM24XRXra2se6hwBay/LKhu6xjQNB0xaAxOBc"}],"npm-signature":"-----BEGIN PGP SIGNATURE-----\r\nVersion: OpenPGP.js v4.10.10\r\nComment: https://openpgpjs.org\r\n\r\nwsFzBAEBCAAGBQJiRx9JACEJED1NWxICdlZqFiEECWMYAoorWMhJKdjhPU1b\r\nEgJ2Vmp+5w/+KuurV/OwC51tg6PDWX8G3ii9UOqdhwAyZNLPH7Mwje02Lkak\r\nWYTr4fyEYajXSM5xCi3btEdK4npEX9bfUVpwh/OOBPJ9vHg0lcF6oFpl0d3K\r\ngXO36F6oI+qsTE6QVDgyv8ugQtSEjGkcyI9wiwJfWxODxDCZzl54Ai4MCla1\r\nLnDuISklJAJTwGFiMFwsNKicys4l8nqYdJUL5TL92+WTDBI07aqHEBagJzfH\r\novlDbQUHrKO5dXn0tGLrwQUQ4gmwak2vMID007PiAAW7XZD3QPrsq5mAqXCp\r\nQVU3/a5Zf+ApDRl0wSHbLU8SMqU+M3tCUS/Nn7vCzUYXPE+urFS/vM+y/KHS\r\n/zYvVDq6Lh/x72pThqIdDM9ieVThZUzeQRkcnK8JKCJjh3e8hUNu5zoSk0KX\r\ndxhSL4L22jZaBNY9+YzCxKS9iTrSiE1i9NOOzuBQ1qezF840RrJJrqRnMWq3\r\nf1WRU8CeUhZv6xgz9xaDWrLHAygAOlh6LNJj3Olshi0QGwfk6RCRodjZhlpV\r\nj92Z3J4pKauQcvXDfJRroeyg8JgB79UHhrauekUs/ExEYwmg5lAuRaYJp4vG\r\nSXR0q3bJsRxAtVriNaqd6zyEGiVPAuf2J2uVT6/GW0pg58ma0W/Xp0XBYjnE\r\npzj6Ywk2ciP+lL854X5noeBnTxcCBWCcRhk=\r\n=W+qc\r\n-----END PGP SIGNATURE-----\r\n"},"_npmUser":{"name":"mscdex","email":"mscdex@mscdex.net"},"directories":{},"maintainers":[{"name":"mscdex","email":"mscdex@mscdex.net"}],"_npmOperationalInternal":{"host":"s3://npm-registry-packages","tmp":"tmp/cpu-features_0.0.4_1648828233511_0.03928920551027515"},"_hasShrinkwrap":false}},"time":{"created":"2019-05-06T04:08:55.080Z","0.0.1":"2019-05-06T04:08:55.293Z","modified":"2022-04-27T18:46:38.753Z","0.0.2":"2020-10-01T01:57:53.912Z","0.0.3":"2022-03-24T04:35:46.066Z","0.0.4":"2022-04-01T15:50:33.682Z"},"maintainers":[{"name":"mscdex","email":"mscdex@mscdex.net"}],"description":"A simple binding to Google's cpu_features library for obtaining information about installed CPU(s)","homepage":"https://github.com/mscdex/cpu-features#readme","keywords":["cpu","detect","detection","features"],"repository":{"type":"git","url":"git+https://github.com/mscdex/cpu-features.git"},"author":{"name":"Brian White","email":"mscdex@mscdex.net"},"bugs":{"url":"https://github.com/mscdex/cpu-features/issues"},"readme":"\nDescription\n===========\n\nA simple [node.js](https://nodejs.org) binding to [cpu_features](https://github.com/google/cpu_features) for obtaining information about installed CPU(s).\n\n\nRequirements\n============\n\n* [node.js](http://nodejs.org/) -- v10.0.0 or newer\n* An appropriate build environment -- see [node-gyp's documentation](https://github.com/nodejs/node-gyp/blob/master/README.md)\n\n\nInstall\n=======\n\n    npm install cpu-features\n\n\nExample\n=======\n\n```js\n  // Generally it's a good idea to just call this once and\n  // reuse the result since `cpu-features` does not cache\n  // the result itself.\n  const features = require('cpu-features')();\n\n  console.log(features);\n  // example output:\n  // { arch: 'x86',\n  //   brand: 'Intel(R) Core(TM) i7-3770K CPU @ 3.50GHz',\n  //   family: 6,\n  //   model: 58,\n  //   stepping: 9,\n  //   uarch: 'INTEL_IVB',\n  //   flags:\n  //    { fpu: true,\n  //      tsc: true,\n  //      cx8: true,\n  //      clfsh: true,\n  //      mmx: true,\n  //      aes: true,\n  //      erms: true,\n  //      f16c: true,\n  //      sse: true,\n  //      sse2: true,\n  //      sse3: true,\n  //      ssse3: true,\n  //      sse4_1: true,\n  //      sse4_2: true,\n  //      avx: true,\n  //      pclmulqdq: true,\n  //      cx16: true,\n  //      popcnt: true,\n  //      rdrnd: true,\n  //      ss: true } }\n```\n","readmeFilename":"README.md"}
+{
+  "name": "cpu-features",
+  "dist-tags": {
+    "latest": "0.0.4"
+  },
+  "versions": {
+    "0.0.4": {
+      "name": "cpu-features",
+      "version": "0.0.4",
+      "author": {
+        "name": "Brian White",
+        "email": "mscdex@mscdex.net"
+      },
+      "description": "A simple binding to Google's cpu_features library for obtaining information about installed CPU(s)",
+      "main": "./lib/index",
+      "dependencies": {
+        "buildcheck": "0.0.3",
+        "nan": "^2.15.0"
+      },
+      "devDependencies": {
+        "@mscdex/eslint-config": "^1.1.0",
+        "eslint": "^7.0.0"
+      },
+      "scripts": {
+        "install": "node buildcheck.js > buildcheck.gypi && node-gyp rebuild",
+        "test": "node test/test.js",
+        "lint": "eslint --cache --report-unused-disable-directives --ext=.js .eslintrc.js lib test",
+        "lint:fix": "npm run lint -- --fix"
+      },
+      "engines": {
+        "node": ">=10.0.0"
+      },
+      "licenses": [
+        {
+          "type": "MIT",
+          "url": "https://github.com/mscdex/cpu-features/raw/master/LICENSE"
+        }
+      ],
+      "repository": {
+        "type": "git",
+        "url": "git+https://github.com/mscdex/cpu-features.git"
+      },
+      "_resolved": "",
+      "_integrity": "",
+      "_from": "https://github.com/mscdex/cpu-features/tarball/v0.0.4",
+      "bugs": {
+        "url": "https://github.com/mscdex/cpu-features/issues"
+      },
+      "_id": "cpu-features@0.0.4",
+      "_nodeVersion": "10.22.1",
+      "_npmVersion": "6.14.6",
+      "dist": {
+        "integrity": "sha512-fKiZ/zp1mUwQbnzb9IghXtHtDoTMtNeb8oYGx6kX2SYfhnG0HNdBEBIzB9b5KlXu5DQPhfy3mInbBxFcgwAr3A==",
+        "shasum": "0023475bb4f4c525869c162e4108099e35bf19d8",
+        "tarball": "http://localhost:4260/cpu-features/cpu-features-0.0.4.tgz",
+        "fileCount": 124,
+        "unpackedSize": 441166
+      },
+      "directories": {},
+      "_hasShrinkwrap": false
+    }
+  },
+  "description": "A simple binding to Google's cpu_features library for obtaining information about installed CPU(s)",
+  "homepage": "https://github.com/mscdex/cpu-features#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/mscdex/cpu-features.git"
+  },
+  "author": {
+    "name": "Brian White",
+    "email": "mscdex@mscdex.net"
+  },
+  "bugs": {
+    "url": "https://github.com/mscdex/cpu-features/issues"
+  },
+  "readmeFilename": "README.md"
+}

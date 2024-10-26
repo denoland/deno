@@ -1,0 +1,4 @@
+{
+  "args": "eval --quiet --ext=ts console.log((123)as(number))",
+  "output": "main.out"
+}

@@ -33,6 +33,7 @@ pub mod fs_util;
 pub mod inspector_server;
 pub mod js;
 pub mod ops;
+pub mod permissions;
 pub mod snapshot;
 pub mod tokio_util;
 pub mod web_worker;
@@ -44,76 +45,93 @@ pub use worker_bootstrap::WorkerExecutionMode;
 pub use worker_bootstrap::WorkerLogLevel;
 
 mod shared;
-pub use shared::import_assertion_callback;
 pub use shared::runtime;
 
-// NOTE(bartlomieju): keep IDs in sync with `runtime/90_deno_ns.js` (search for `unstableFeatures`)
-pub static UNSTABLE_GRANULAR_FLAGS: &[(
-  // flag name
-  &str,
-  // help text
-  &str,
+pub struct UnstableGranularFlag {
+  pub name: &'static str,
+  pub help_text: &'static str,
+  pub show_in_help: bool,
   // id to enable it in runtime/99_main.js
-  i32,
-)] = &[
-  (
-    deno_broadcast_channel::UNSTABLE_FEATURE_NAME,
-    "Enable unstable `BroadcastChannel` API",
-    1,
-  ),
-  (
-    deno_cron::UNSTABLE_FEATURE_NAME,
-    "Enable unstable Deno.cron API",
-    2,
-  ),
-  (
-    deno_ffi::UNSTABLE_FEATURE_NAME,
-    "Enable unstable FFI APIs",
-    3,
-  ),
-  (
-    deno_fs::UNSTABLE_FEATURE_NAME,
-    "Enable unstable file system APIs",
-    4,
-  ),
-  (
-    ops::http::UNSTABLE_FEATURE_NAME,
-    "Enable unstable HTTP APIs",
-    5,
-  ),
-  (
-    deno_kv::UNSTABLE_FEATURE_NAME,
-    "Enable unstable Key-Value store APIs",
-    6,
-  ),
-  (
-    deno_net::UNSTABLE_FEATURE_NAME,
-    "Enable unstable net APIs",
-    7,
-  ),
-  (
-    ops::process::UNSTABLE_FEATURE_NAME,
-    "Enable unstable process APIs",
-    8,
-  ),
-  ("temporal", "Enable unstable Temporal API", 9),
-  (
-    "unsafe-proto",
-    "Enable unsafe __proto__ support. This is a security risk.",
+  pub id: i32,
+}
+
+// NOTE(bartlomieju): keep IDs in sync with `runtime/90_deno_ns.js` (search for `unstableFeatures`)
+pub static UNSTABLE_GRANULAR_FLAGS: &[UnstableGranularFlag] = &[
+  UnstableGranularFlag {
+    name: deno_broadcast_channel::UNSTABLE_FEATURE_NAME,
+    help_text: "Enable unstable `BroadcastChannel` API",
+    show_in_help: true,
+    id: 1,
+  },
+  UnstableGranularFlag {
+    name: deno_cron::UNSTABLE_FEATURE_NAME,
+    help_text: "Enable unstable Deno.cron API",
+    show_in_help: true,
+    id: 2,
+  },
+  UnstableGranularFlag {
+    name: deno_ffi::UNSTABLE_FEATURE_NAME,
+    help_text: "Enable unstable FFI APIs",
+    show_in_help: false,
+    id: 3,
+  },
+  UnstableGranularFlag {
+    name: deno_fs::UNSTABLE_FEATURE_NAME,
+    help_text: "Enable unstable file system APIs",
+    show_in_help: false,
+    id: 4,
+  },
+  UnstableGranularFlag {
+    name: ops::http::UNSTABLE_FEATURE_NAME,
+    help_text: "Enable unstable HTTP APIs",
+    show_in_help: false,
+    id: 5,
+  },
+  UnstableGranularFlag {
+    name: deno_kv::UNSTABLE_FEATURE_NAME,
+    help_text: "Enable unstable Key-Value store APIs",
+    show_in_help: true,
+    id: 6,
+  },
+  UnstableGranularFlag {
+    name: deno_net::UNSTABLE_FEATURE_NAME,
+    help_text: "Enable unstable net APIs",
+    show_in_help: true,
+    id: 7,
+  },
+  // TODO(bartlomieju): consider removing it
+  UnstableGranularFlag {
+    name: ops::process::UNSTABLE_FEATURE_NAME,
+    help_text: "Enable unstable process APIs",
+    show_in_help: false,
+    id: 8,
+  },
+  UnstableGranularFlag {
+    name: "temporal",
+    help_text: "Enable unstable Temporal API",
+    show_in_help: true,
+    id: 9,
+  },
+  UnstableGranularFlag {
+    name: "unsafe-proto",
+    help_text: "Enable unsafe __proto__ support. This is a security risk.",
+    show_in_help: true,
     // This number is used directly in the JS code. Search
     // for "unstableIds" to see where it's used.
-    10,
-  ),
-  (
-    deno_webgpu::UNSTABLE_FEATURE_NAME,
-    "Enable unstable `WebGPU` API",
-    11,
-  ),
-  (
-    ops::worker_host::UNSTABLE_FEATURE_NAME,
-    "Enable unstable Web Worker APIs",
-    12,
-  ),
+    id: 10,
+  },
+  UnstableGranularFlag {
+    name: deno_webgpu::UNSTABLE_FEATURE_NAME,
+    help_text: "Enable unstable `WebGPU` APIs",
+    show_in_help: true,
+    id: 11,
+  },
+  UnstableGranularFlag {
+    name: ops::worker_host::UNSTABLE_FEATURE_NAME,
+    help_text: "Enable unstable Web Worker APIs",
+    show_in_help: true,
+    id: 12,
+  },
 ];
 
 #[cfg(test)]
@@ -124,7 +142,7 @@ mod test {
   fn unstable_granular_flag_names_sorted() {
     let flags = UNSTABLE_GRANULAR_FLAGS
       .iter()
-      .map(|(name, _, _)| name.to_string())
+      .map(|granular_flag| granular_flag.name.to_string())
       .collect::<Vec<_>>();
     let mut sorted_flags = flags.clone();
     sorted_flags.sort();

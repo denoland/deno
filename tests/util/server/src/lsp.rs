@@ -21,7 +21,6 @@ use lsp_types::FoldingRangeClientCapabilities;
 use lsp_types::InitializeParams;
 use lsp_types::TextDocumentClientCapabilities;
 use lsp_types::TextDocumentSyncClientCapabilities;
-use lsp_types::Url;
 use lsp_types::WorkspaceClientCapabilities;
 use once_cell::sync::Lazy;
 use parking_lot::Condvar;
@@ -47,10 +46,12 @@ use std::process::ChildStdin;
 use std::process::ChildStdout;
 use std::process::Command;
 use std::process::Stdio;
+use std::str::FromStr;
 use std::sync::mpsc;
 use std::sync::Arc;
 use std::time::Duration;
 use std::time::Instant;
+use url::Url;
 
 static CONTENT_TYPE_REG: Lazy<Regex> =
   lazy_regex::lazy_regex!(r"(?i)^content-length:\s+(\d+)");
@@ -156,6 +157,7 @@ impl LspStdoutReader {
     self.pending_messages.0.lock().len()
   }
 
+  #[allow(clippy::print_stderr)]
   pub fn output_pending_messages(&self) {
     let messages = self.pending_messages.0.lock();
     eprintln!("{:?}", messages);
@@ -234,7 +236,6 @@ impl InitializeParamsBuilder {
           name: "test-harness".to_string(),
           version: Some("1.0.0".to_string()),
         }),
-        root_uri: None,
         initialization_options: Some(config_as_options),
         capabilities: ClientCapabilities {
           text_document: Some(TextDocumentClientCapabilities {
@@ -289,8 +290,10 @@ impl InitializeParamsBuilder {
     }
   }
 
+  #[allow(deprecated)]
   pub fn set_maybe_root_uri(&mut self, value: Option<Url>) -> &mut Self {
-    self.params.root_uri = value;
+    self.params.root_uri =
+      value.map(|v| lsp::Uri::from_str(v.as_str()).unwrap());
     self
   }
 
@@ -303,34 +306,6 @@ impl InitializeParamsBuilder {
     folders: Vec<lsp_types::WorkspaceFolder>,
   ) -> &mut Self {
     self.params.workspace_folders = Some(folders);
-    self
-  }
-
-  pub fn enable_inlay_hints(&mut self) -> &mut Self {
-    let options = self.initialization_options_mut();
-    options.insert(
-      "inlayHints".to_string(),
-      json!({
-        "parameterNames": {
-          "enabled": "all"
-        },
-        "parameterTypes": {
-          "enabled": true
-        },
-        "variableTypes": {
-          "enabled": true
-        },
-        "propertyDeclarationTypes": {
-          "enabled": true
-        },
-        "functionLikeReturnTypes": {
-          "enabled": true
-        },
-        "enumMemberValues": {
-          "enabled": true
-        }
-      }),
-    );
     self
   }
 
@@ -599,6 +574,7 @@ impl LspClientBuilder {
         for line in stderr.lines() {
           match line {
             Ok(line) => {
+              #[allow(clippy::print_stderr)]
               if print_stderr {
                 eprintln!("{}", line);
               }
@@ -613,7 +589,10 @@ impl LspClientBuilder {
                       continue;
                     }
                     Err(err) => {
-                      eprintln!("failed to parse perf record: {:#}", err);
+                      #[allow(clippy::print_stderr)]
+                      {
+                        eprintln!("failed to parse perf record: {:#}", err);
+                      }
                     }
                   }
                 }
@@ -808,11 +787,14 @@ impl LspClient {
       std::thread::sleep(Duration::from_millis(20));
     }
 
-    eprintln!("==== STDERR OUTPUT ====");
-    for line in found_lines {
-      eprintln!("{}", line)
+    #[allow(clippy::print_stderr)]
+    {
+      eprintln!("==== STDERR OUTPUT ====");
+      for line in found_lines {
+        eprintln!("{}", line)
+      }
+      eprintln!("== END STDERR OUTPUT ==");
     }
-    eprintln!("== END STDERR OUTPUT ==");
 
     panic!("Timed out waiting on condition.")
   }
@@ -871,7 +853,7 @@ impl LspClient {
     mut config: Value,
   ) {
     let mut builder = InitializeParamsBuilder::new(config.clone());
-    builder.set_root_uri(self.root_dir.uri_dir());
+    builder.set_root_uri(self.root_dir.url_dir());
     do_build(&mut builder);
     let params: InitializeParams = builder.build();
     // `config` must be updated to account for the builder changes.
@@ -1234,7 +1216,7 @@ impl CollectedDiagnostics {
     self
       .all_messages()
       .iter()
-      .filter(|p| p.uri == *specifier)
+      .filter(|p| p.uri.as_str() == specifier.as_str())
       .flat_map(|p| p.diagnostics.iter())
       .cloned()
       .collect()
@@ -1272,7 +1254,7 @@ impl CollectedDiagnostics {
       .all_messages()
       .iter()
       .find(|p| {
-        p.uri == specifier
+        p.uri.as_str() == specifier.as_str()
           && p
             .diagnostics
             .iter()
@@ -1301,8 +1283,13 @@ impl SourceFile {
     let lang = match path.as_path().extension().unwrap().to_str().unwrap() {
       "js" => "javascript",
       "ts" | "d.ts" => "typescript",
+      "jsx" => "javascriptreact",
+      "tsx" => "typescriptreact",
       "json" => "json",
       "md" => "markdown",
+      "html" => "html",
+      "css" => "css",
+      "yaml" => "yaml",
       other => panic!("unsupported file extension: {other}"),
     };
     Self {
@@ -1321,7 +1308,11 @@ impl SourceFile {
     range_of_nth(n, text, &self.src)
   }
 
-  pub fn uri(&self) -> lsp::Url {
+  pub fn url(&self) -> Url {
+    self.path.url_file()
+  }
+
+  pub fn uri(&self) -> lsp::Uri {
     self.path.uri_file()
   }
 

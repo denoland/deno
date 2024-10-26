@@ -1,7 +1,4 @@
 {
-  "envs": {
-    "DENO_FUTURE": "1"
-  },
   "tempDir": true,
   "steps": [{
     "args": "install",

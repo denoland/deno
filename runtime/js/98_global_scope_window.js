@@ -60,6 +60,7 @@ const language = memoizeLazy(() => op_bootstrap_language());
 
 ObjectDefineProperties(Navigator.prototype, {
   gpu: {
+    __proto__: null,
     configurable: true,
     enumerable: true,
     get() {
@@ -69,6 +70,7 @@ ObjectDefineProperties(Navigator.prototype, {
     },
   },
   hardwareConcurrency: {
+    __proto__: null,
     configurable: true,
     enumerable: true,
     get() {
@@ -77,6 +79,7 @@ ObjectDefineProperties(Navigator.prototype, {
     },
   },
   userAgent: {
+    __proto__: null,
     configurable: true,
     enumerable: true,
     get() {
@@ -85,6 +88,7 @@ ObjectDefineProperties(Navigator.prototype, {
     },
   },
   language: {
+    __proto__: null,
     configurable: true,
     enumerable: true,
     get() {
@@ -93,6 +97,7 @@ ObjectDefineProperties(Navigator.prototype, {
     },
   },
   languages: {
+    __proto__: null,
     configurable: true,
     enumerable: true,
     get() {
@@ -107,7 +112,6 @@ const mainRuntimeGlobalProperties = {
   Location: location.locationConstructorDescriptor,
   location: location.locationDescriptor,
   Window: globalInterfaces.windowConstructorDescriptor,
-  window: core.propGetterOnly(() => globalThis),
   self: core.propGetterOnly(() => globalThis),
   Navigator: core.propNonEnumerable(Navigator),
   navigator: core.propGetterOnly(() => navigator),

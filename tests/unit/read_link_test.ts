@@ -39,7 +39,7 @@ Deno.test(
 Deno.test({ permissions: { read: false } }, function readLinkSyncPerm() {
   assertThrows(() => {
     Deno.readLinkSync("/symlink");
-  }, Deno.errors.PermissionDenied);
+  }, Deno.errors.NotCapable);
 });
 
 Deno.test({ permissions: { read: true } }, function readLinkSyncNotFound() {
@@ -85,7 +85,7 @@ Deno.test(
 Deno.test({ permissions: { read: false } }, async function readLinkPerm() {
   await assertRejects(async () => {
     await Deno.readLink("/symlink");
-  }, Deno.errors.PermissionDenied);
+  }, Deno.errors.NotCapable);
 });
 
 Deno.test({ permissions: { read: true } }, async function readLinkNotFound() {

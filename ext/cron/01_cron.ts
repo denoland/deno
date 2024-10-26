@@ -41,7 +41,9 @@ export function formatToCronSchedule(
       } else if (end === undefined && every !== undefined) {
         return "*/" + every;
       } else {
-        throw new TypeError("Invalid cron schedule");
+        throw new TypeError(
+          `Invalid cron schedule: start=${start}, end=${end}, every=${every}`,
+        );
       }
     } else {
       if (typeof exact === "number") {
@@ -103,10 +105,14 @@ function cron(
   handler2?: () => Promise<void> | void,
 ) {
   if (name === undefined) {
-    throw new TypeError("Deno.cron requires a unique name");
+    throw new TypeError(
+      "Cannot create cron job, a unique name is required: received 'undefined'",
+    );
   }
   if (schedule === undefined) {
-    throw new TypeError("Deno.cron requires a valid schedule");
+    throw new TypeError(
+      "Cannot create cron job, a schedule is required: received 'undefined'",
+    );
   }
 
   schedule = parseScheduleToString(schedule);
@@ -119,13 +125,15 @@ function cron(
   if (typeof handlerOrOptions1 === "function") {
     handler = handlerOrOptions1;
     if (handler2 !== undefined) {
-      throw new TypeError("Deno.cron requires a single handler");
+      throw new TypeError(
+        "Cannot create cron job, a single handler is required: two handlers were specified",
+      );
     }
   } else if (typeof handler2 === "function") {
     handler = handler2;
     options = handlerOrOptions1;
   } else {
-    throw new TypeError("Deno.cron requires a handler");
+    throw new TypeError("Cannot create cron job: a handler is required");
   }
 
   const rid = op_cron_create(

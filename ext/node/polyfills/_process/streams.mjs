@@ -63,24 +63,41 @@ export function createWritableStdioStream(writer, name, warmup = false) {
   stream.destroySoon = stream.destroy;
   stream._isStdio = true;
   stream.once("close", () => writer?.close());
+
+  // We cannot call `writer?.isTerminal()` eagerly here
+  let getIsTTY = () => writer?.isTerminal();
+  const getColumns = () =>
+    stream._columns ||
+    (writer?.isTerminal() ? Deno.consoleSize?.().columns : undefined);
+
   ObjectDefineProperties(stream, {
     columns: {
+      __proto__: null,
       enumerable: true,
       configurable: true,
-      get: () =>
-        writer?.isTerminal() ? Deno.consoleSize?.().columns : undefined,
+      get: () => getColumns(),
+      set: (value) => {
+        stream._columns = value;
+      },
     },
     rows: {
+      __proto__: null,
       enumerable: true,
       configurable: true,
       get: () => writer?.isTerminal() ? Deno.consoleSize?.().rows : undefined,
     },
     isTTY: {
+      __proto__: null,
       enumerable: true,
       configurable: true,
-      get: () => writer?.isTerminal(),
+      // Allow users to overwrite it
+      get: () => getIsTTY(),
+      set: (value) => {
+        getIsTTY = () => value;
+      },
     },
     getWindowSize: {
+      __proto__: null,
       enumerable: true,
       configurable: true,
       value: () =>
@@ -203,6 +220,7 @@ export const initStdin = (warmup = false) => {
   stdin.on("close", () => io.stdin?.close());
   stdin.fd = io.stdin ? io.STDIN_RID : -1;
   ObjectDefineProperty(stdin, "isTTY", {
+    __proto__: null,
     enumerable: true,
     configurable: true,
     get() {
@@ -216,6 +234,7 @@ export const initStdin = (warmup = false) => {
     return stdin;
   };
   ObjectDefineProperty(stdin, "isRaw", {
+    __proto__: null,
     enumerable: true,
     configurable: true,
     get() {

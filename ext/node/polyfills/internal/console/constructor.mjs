@@ -667,10 +667,15 @@ Console.prototype.dirxml = Console.prototype.log;
 Console.prototype.error = Console.prototype.warn;
 Console.prototype.groupCollapsed = Console.prototype.group;
 
+export function bindStreamsLazy(console, object) {
+  Console.prototype[kBindStreamsLazy].call(console, object);
+}
+
 export { Console, formatTime, kBindProperties, kBindStreamsLazy };
 export default {
   Console,
   kBindStreamsLazy,
   kBindProperties,
   formatTime,
+  bindStreamsLazy,
 };

@@ -20,7 +20,7 @@ fn install_basic() {
 
   let output = context
     .new_command()
-    .args("install --check --name echo_test http://localhost:4545/echo.ts")
+    .args("install --check --name echo_test -g http://localhost:4545/echo.ts")
     .envs([
       ("HOME", temp_dir_str.as_str()),
       ("USERPROFILE", temp_dir_str.as_str()),
@@ -30,10 +30,7 @@ fn install_basic() {
 
   output.assert_exit_code(0);
   let output_text = output.combined_output();
-  assert_contains!(
-    output_text,
-    "`deno install` behavior will change in Deno 2. To preserve the current behavior use the `-g` or `--global` flag."
-  );
+  assert_contains!(output_text, "✅ Successfully installed echo_test");
 
   // no lockfile should be created locally
   assert!(!temp_dir.path().join("deno.lock").exists());
@@ -65,7 +62,7 @@ fn install_basic() {
   // now uninstall
   context
     .new_command()
-    .args("uninstall echo_test")
+    .args("uninstall -g echo_test")
     .envs([
       ("HOME", temp_dir_str.as_str()),
       ("USERPROFILE", temp_dir_str.as_str()),
@@ -142,7 +139,7 @@ fn install_basic_global() {
   // now uninstall
   context
     .new_command()
-    .args("uninstall echo_test")
+    .args("uninstall -g echo_test")
     .envs([
       ("HOME", temp_dir_str.as_str()),
       ("USERPROFILE", temp_dir_str.as_str()),
@@ -167,7 +164,7 @@ fn install_custom_dir_env_var() {
   context
     .new_command()
     .current_dir(util::root_path()) // different cwd
-    .args("install --check --name echo_test http://localhost:4545/echo.ts")
+    .args("install --check --name echo_test -g http://localhost:4545/echo.ts")
     .envs([
       ("HOME", temp_dir_str.as_str()),
       ("USERPROFILE", temp_dir_str.as_str()),
@@ -210,6 +207,7 @@ fn installer_test_local_module_run() {
     .current_dir(util::root_path())
     .args_vec([
       "install",
+      "-g",
       "--name",
       "echo_test",
       "--root",
@@ -254,7 +252,7 @@ fn installer_test_remote_module_run() {
   let bin_dir = root_dir.join("bin");
   context
     .new_command()
-    .args("install --name echo_test --root ./root http://localhost:4545/echo.ts hello")
+    .args("install --name echo_test --root ./root -g http://localhost:4545/echo.ts hello")
     .run()
     .skip_output_check()
     .assert_exit_code(0);
@@ -276,7 +274,7 @@ fn installer_test_remote_module_run() {
   // now uninstall with the relative path
   context
     .new_command()
-    .args("uninstall --root ./root echo_test")
+    .args("uninstall -g --root ./root echo_test")
     .run()
     .skip_output_check()
     .assert_exit_code(0);
@@ -296,7 +294,7 @@ fn check_local_by_default() {
   let script_path_str = script_path.to_string_lossy().to_string();
   context
     .new_command()
-    .args_vec(["install", script_path_str.as_str()])
+    .args_vec(["install", "-g", "--allow-import", script_path_str.as_str()])
     .envs([
       ("HOME", temp_dir_str.as_str()),
       ("USERPROFILE", temp_dir_str.as_str()),
@@ -320,7 +318,7 @@ fn check_local_by_default2() {
   let script_path_str = script_path.to_string_lossy().to_string();
   context
     .new_command()
-    .args_vec(["install", script_path_str.as_str()])
+    .args_vec(["install", "-g", "--allow-import", script_path_str.as_str()])
     .envs([
       ("HOME", temp_dir_str.as_str()),
       ("NO_COLOR", "1"),

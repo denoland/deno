@@ -1,4 +1,3 @@
-// deno-lint-ignore-file no-window-prefix
 import { assert } from "@std/assert";
 import "./nest_imported.ts";
 
@@ -7,7 +6,7 @@ const handler = (e: Event) => {
   console.log(`got ${e.type} event in event handler (imported)`);
 };
 
-window.addEventListener("load", handler);
-window.addEventListener("beforeunload", handler);
-window.addEventListener("unload", handler);
+globalThis.addEventListener("load", handler);
+globalThis.addEventListener("beforeunload", handler);
+globalThis.addEventListener("unload", handler);
 console.log("log from imported script");

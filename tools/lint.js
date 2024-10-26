@@ -1,4 +1,4 @@
-#!/usr/bin/env -S deno run --allow-write --allow-read --allow-run --allow-net --config=tests/config/deno.json
+#!/usr/bin/env -S deno run --allow-all --config=tests/config/deno.json
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 // deno-lint-ignore-file no-console
@@ -88,7 +88,12 @@ async function dlint() {
       }),
     );
   }
-  await Promise.allSettled(pending);
+  const results = await Promise.allSettled(pending);
+  for (const result of results) {
+    if (result.status === "rejected") {
+      throw new Error(result.reason);
+    }
+  }
 }
 
 // `prefer-primordials` has to apply only to files related to bootstrapping,
@@ -191,40 +196,36 @@ async function ensureNoNewITests() {
   // replace them with spec tests.
   const iTestCounts = {
     "bench_tests.rs": 0,
-    "bundle_tests.rs": 11,
     "cache_tests.rs": 0,
     "cert_tests.rs": 0,
-    "check_tests.rs": 23,
+    "check_tests.rs": 2,
     "compile_tests.rs": 0,
     "coverage_tests.rs": 0,
-    "doc_tests.rs": 15,
-    "eval_tests.rs": 9,
+    "eval_tests.rs": 0,
     "flags_tests.rs": 0,
-    "fmt_tests.rs": 17,
-    "info_tests.rs": 18,
+    "fmt_tests.rs": 16,
     "init_tests.rs": 0,
     "inspector_tests.rs": 0,
     "install_tests.rs": 0,
     "jsr_tests.rs": 0,
     "js_unit_tests.rs": 0,
     "jupyter_tests.rs": 0,
-    "lint_tests.rs": 18,
     // Read the comment above. Please don't increase these numbers!
     "lsp_tests.rs": 0,
-    "node_compat_tests.rs": 4,
+    "node_compat_tests.rs": 0,
     "node_unit_tests.rs": 2,
-    "npm_tests.rs": 93,
+    "npm_tests.rs": 5,
     "pm_tests.rs": 0,
     "publish_tests.rs": 0,
     "repl_tests.rs": 0,
-    "run_tests.rs": 360,
+    "run_tests.rs": 331,
     "shared_library_tests.rs": 0,
-    "task_tests.rs": 30,
-    "test_tests.rs": 77,
+    "task_tests.rs": 2,
+    "test_tests.rs": 0,
     "upgrade_tests.rs": 0,
     "vendor_tests.rs": 1,
     "watcher_tests.rs": 0,
-    "worker_tests.rs": 18,
+    "worker_tests.rs": 0,
   };
   const integrationDir = join(ROOT_PATH, "tests", "integration");
   for await (const entry of Deno.readDir(integrationDir)) {

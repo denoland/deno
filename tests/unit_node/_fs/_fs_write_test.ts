@@ -10,6 +10,9 @@ const decoder = new TextDecoder("utf-8");
 
 Deno.test({
   name: "Data is written to the file with the correct length",
+  // TODO(bartlomieju): this test is broken in Deno 2, because `file.rid` is undefined.
+  // The fs APIs should be rewritten to use actual FDs, not RIDs
+  ignore: true,
   async fn() {
     const tempFile: string = await Deno.makeTempFile();
     using file = await Deno.open(tempFile, {
@@ -19,6 +22,7 @@ Deno.test({
     });
     const buffer = Buffer.from("hello world");
     const bytesWrite = await new Promise((resolve, reject) => {
+      // @ts-ignore (iuioiua) `file.rid` should no longer be needed once FDs are used
       write(file.rid, buffer, 0, 5, (err: unknown, nwritten: number) => {
         if (err) return reject(err);
         resolve(nwritten);
@@ -35,6 +39,9 @@ Deno.test({
 
 Deno.test({
   name: "Data is written synchronously to the file with the correct length",
+  // TODO(bartlomieju): this test is broken in Deno 2, because `file.rid` is undefined.
+  // The fs APIs should be rewritten to use actual FDs, not RIDs
+  ignore: true,
   fn() {
     const tempFile: string = Deno.makeTempFileSync();
     using file = Deno.openSync(tempFile, {
@@ -43,6 +50,7 @@ Deno.test({
       read: true,
     });
     const buffer = Buffer.from("hello world");
+    // @ts-ignore (iuioiua) `file.rid` should no longer be needed once FDs are used
     const bytesWrite = writeSync(file.rid, buffer, 0, 5);
 
     const data = Deno.readFileSync(tempFile);
@@ -55,6 +63,9 @@ Deno.test({
 
 Deno.test({
   name: "Data is padded if position > length",
+  // TODO(bartlomieju): this test is broken in Deno 2, because `file.rid` is undefined.
+  // The fs APIs should be rewritten to use actual FDs, not RIDs
+  ignore: true,
   async fn() {
     const tempFile: string = Deno.makeTempFileSync();
 
@@ -66,6 +77,7 @@ Deno.test({
 
     const str = "hello world";
     const buffer = Buffer.from(str);
+    // @ts-ignore (iuioiua) `file.rid` should no longer be needed once FDs are used
     const bytesWritten = writeSync(file.rid, buffer, 0, str.length, 4);
 
     const data = Deno.readFileSync(tempFile);
@@ -79,6 +91,9 @@ Deno.test({
 
 Deno.test({
   name: "write with offset TypedArray buffers",
+  // TODO(bartlomieju): this test is broken in Deno 2, because `file.rid` is undefined.
+  // The fs APIs should be rewritten to use actual FDs, not RIDs
+  ignore: true,
   async fn() {
     const tempFile: string = Deno.makeTempFileSync();
     using file = Deno.openSync(tempFile, {
@@ -110,6 +125,7 @@ Deno.test({
           for (let i = 0; i < bytes.length; i++) {
             buffer[offset + i] = i;
           }
+          // @ts-ignore (iuioiua) `file.rid` should no longer be needed once FDs are used
           let nWritten = writeSync(file.rid, buffer, offset, bytes.length, 0);
 
           let data = Deno.readFileSync(tempFile);
@@ -119,6 +135,7 @@ Deno.test({
           assertEquals(data, new Uint8Array(bytes));
           nWritten = await new Promise((resolve, reject) =>
             write(
+              // @ts-ignore (iuioiua) `file.rid` should no longer be needed once FDs are used
               file.rid,
               buffer,
               offset,

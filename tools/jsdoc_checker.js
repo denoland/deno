@@ -17,11 +17,11 @@ const libs = [
   join(ROOT_PATH, "cli/tsc/dts/lib.deno.ns.d.ts"),
   join(ROOT_PATH, "cli/tsc/dts/lib.deno.shared_globals.d.ts"),
   join(ROOT_PATH, "cli/tsc/dts/lib.deno.window.d.ts"),
+  join(ROOT_PATH, "cli/tsc/dts/lib.deno_webgpu.d.ts"),
 ];
 
 const unstableLibs = [
   join(ROOT_PATH, "ext/broadcast_channel/lib.deno_broadcast_channel.d.ts"),
-  join(ROOT_PATH, "cli/tsc/dts/lib.deno_webgpu.d.ts"),
   join(ROOT_PATH, "cli/tsc/dts/lib.deno.unstable.d.ts"),
 ];
 
@@ -45,33 +45,39 @@ for (const file of project.getSourceFiles()) {
     }
 
     const parent = node.getFirstAncestorByKind(ts.SyntaxKind.ModuleDeclaration);
+    const isInterfaceOrType =
+      node.getKind() === ts.SyntaxKind.InterfaceDeclaration ||
+      node.getKind() === ts.SyntaxKind.TypeAliasDeclaration;
 
     if (parent) {
       if (!node.isExported()) {
-        errors.push(getErrorPrefix(node) + "export keyword");
+        errors.push(getMissingErrorPrefix(node) + "export keyword");
         continue;
       }
-    } else if (!node.hasDeclareKeyword()) {
-      errors.push(getErrorPrefix(node) + "declare keyword");
+    } else if (!isInterfaceOrType && !node.hasDeclareKeyword()) {
+      errors.push(getMissingErrorPrefix(node) + "declare keyword");
+      continue;
+    } else if (isInterfaceOrType && node.hasDeclareKeyword()) {
+      errors.push(getErrorPrefix(node) + "has incorrect declare keyword");
       continue;
     }
 
     const jsDoc = node.getFirstChildIfKind(ts.SyntaxKind.JSDoc);
     if (!jsDoc) {
-      errors.push(getErrorPrefix(node) + "JSDoc comment");
+      errors.push(getMissingErrorPrefix(node) + "JSDoc comment");
       continue;
     }
 
     const tags = jsDoc.getTags();
 
     if (!tags.find((tag) => tag.getTagName() === "category")) {
-      errors.push(getErrorPrefix(node) + "JSDoc @category tag");
+      errors.push(getMissingErrorPrefix(node) + "JSDoc @category tag");
       continue;
     }
 
     if (unstableFiles.includes(file)) {
       if (!tags.find((tag) => tag.getTagName() === "experimental")) {
-        errors.push(getErrorPrefix(node) + "JSDoc @experimental tag");
+        errors.push(getMissingErrorPrefix(node) + "JSDoc @experimental tag");
       }
     }
   }
@@ -81,6 +87,10 @@ if (errors.length > 0) {
   throw new AggregateError(errors);
 }
 
+function getMissingErrorPrefix(node) {
+  return getErrorPrefix(node) + `is missing a `;
+}
+
 function getErrorPrefix(node) {
-  return `Symbol at file://${node.getSourceFile().getFilePath()}:${node.getStartLineNumber()} is missing a `;
+  return `Symbol at file://${node.getSourceFile().getFilePath()}:${node.getStartLineNumber()} `;
 }

@@ -1,24 +1,21 @@
 {
-  "version": "3",
-  "packages": {
-    "specifiers": {
-      "jsr:@std/assert@^1.0.0": "jsr:@std/assert@1.0.0",
-      "jsr:@std/http@^1.0.0": "jsr:@std/http@1.0.0"
+  "version": "4",
+  "specifiers": {
+    "jsr:@std/assert@1": "1.0.0",
+    "jsr:@std/http@1": "1.0.0"
+  },
+  "jsr": {
+    "@std/assert@1.0.0": {
+      "integrity": "[WILDLINE]"
     },
-    "jsr": {
-      "@std/assert@1.0.0": {
-        "integrity": "[WILDLINE]"
-      },
-      "@std/http@1.0.0": {
-        "integrity": "[WILDLINE]"
-      }
+    "@std/http@1.0.0": {
+      "integrity": "[WILDLINE]"
     }
   },
-  "remote": {},
   "workspace": {
     "dependencies": [
-      "jsr:@std/assert@^1.0.0",
-      "jsr:@std/http@^1.0.0"
+      "jsr:@std/assert@1",
+      "jsr:@std/http@1"
     ]
   }
 }

@@ -1,0 +1,5 @@
+{
+  "name": "@denotest/type-commonjs",
+  "version": "1.0.0",
+  "type": "commonjs"
+}

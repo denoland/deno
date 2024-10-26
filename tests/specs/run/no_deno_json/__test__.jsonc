@@ -29,15 +29,33 @@
       "cwd": "code"
     },
     "auto_discovered": {
-      // auto-discovered node_modules relative package.json
-      "args": "run -A main.js",
-      "output": "code/sub_dir/main.out",
-      "cwd": "code/sub_dir"
+      "steps": [
+        {
+          "args": "install",
+          "output": "code/install.out",
+          "cwd": "code"
+        },
+        {
+          // auto-discovered node_modules relative package.json
+          "args": "run -A main.js",
+          "output": "code/sub_dir/main.out",
+          "cwd": "code/sub_dir"
+        }
+      ]
     },
     "auto_discovered_arg": {
-      // auto-discovered for local script arg
-      "args": "run -L debug -A code/main.ts", // notice this is not in the sub dir
-      "output": "main.out"
+      "steps": [
+        {
+          "args": "install",
+          "output": "code/install.out",
+          "cwd": "code"
+        },
+        {
+          // auto-discovered for local script arg
+          "args": "run -L debug -A code/main.ts", // notice this is not in the sub dir
+          "output": "main.out"
+        }
+      ]
     }
   }
 }

@@ -1,12 +1,12 @@
 {
   "tests": {
     "error_bad_checksum": {
-      "args": "run --config=config_file_lock_path.json http://localhost:4545/run/019_media_types.ts",
+      "args": "run --allow-import --config=config_file_lock_path.json http://localhost:4545/run/019_media_types.ts",
       "output": "config_file_lock_path.out",
       "exitCode": 10
     },
     "lock_flag_override": {
-      "args": "run --lock=run/lock_check_ok2.json --config=config_file_lock_path.json http://localhost:4545/run/019_media_types.ts",
+      "args": "run --allow-import --lock=run/lock_check_ok2.json --config=config_file_lock_path.json http://localhost:4545/run/019_media_types.ts",
       "output": "019_media_types.ts.out"
     }
   }
