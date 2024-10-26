@@ -3,10 +3,14 @@
 // deno-lint-ignore-file no-console
 
 import EventEmitter from "node:events";
-import http, { type RequestOptions, type ServerResponse } from "node:http";
+import http, {
+  IncomingMessage,
+  type RequestOptions,
+  ServerResponse,
+} from "node:http";
 import url from "node:url";
 import https from "node:https";
-import net from "node:net";
+import net, { Socket } from "node:net";
 import fs from "node:fs";
 import { text } from "node:stream/consumers";
 
@@ -318,10 +322,14 @@ Deno.test("[node/http] IncomingRequest socket has remoteAddress + remotePort", a
     // deno-lint-ignore no-explicit-any
     const port = (server.address() as any).port;
     const res = await fetch(
-      `http://127.0.0.1:${port}/`,
+      `http://localhost:${port}/`,
     );
     await res.arrayBuffer();
-    assertEquals(remoteAddress, "127.0.0.1");
+    if (Deno.build.os === "windows") {
+      assertEquals(remoteAddress, "127.0.0.1");
+    } else {
+      assertEquals(remoteAddress, "::1");
+    }
     assertEquals(typeof remotePort, "number");
     server.close(() => resolve());
   });
@@ -1143,6 +1151,34 @@ Deno.test("[node/http] ServerResponse appendHeader set-cookie", async () => {
   await promise;
 });
 
+Deno.test("[node/http] ServerResponse header names case insensitive", async () => {
+  const { promise, resolve } = Promise.withResolvers<void>();
+  const server = http.createServer((_req, res) => {
+    res.setHeader("Content-Length", "12345");
+    res.removeHeader("content-length");
+    assertEquals(res.getHeader("Content-Length"), undefined);
+    assert(!res.hasHeader("Content-Length"));
+    res.appendHeader("content-length", "12345");
+    res.removeHeader("Content-Length");
+    assertEquals(res.getHeader("content-length"), undefined);
+    assert(!res.hasHeader("content-length"));
+    res.end("Hello World");
+  });
+
+  server.listen(async () => {
+    const { port } = server.address() as { port: number };
+    const res = await fetch(`http://localhost:${port}`);
+    assertEquals(res.headers.get("Content-Length"), null);
+    assertEquals(res.headers.get("content-length"), null);
+    assertEquals(await res.text(), "Hello World");
+    server.close(() => {
+      resolve();
+    });
+  });
+
+  await promise;
+});
+
 Deno.test("[node/http] IncomingMessage override", () => {
   const req = new http.IncomingMessage(new net.Socket());
   // https://github.com/dougmoscrop/serverless-http/blob/3aaa6d0fe241109a8752efb011c242d249f32368/lib/request.js#L20-L30
@@ -1671,4 +1707,76 @@ Deno.test("[node/http] upgraded socket closes when the server closed without clo
 
   await clientSocketClosed.promise;
   await serverProcessClosed.promise;
+});
+
+// deno-lint-ignore require-await
+Deno.test("[node/http] ServerResponse.call()", async () => {
+  function Wrapper(this: unknown, req: IncomingMessage) {
+    ServerResponse.call(this, req);
+  }
+  Object.setPrototypeOf(Wrapper.prototype, ServerResponse.prototype);
+
+  // deno-lint-ignore no-explicit-any
+  const wrapper = new (Wrapper as any)(new IncomingMessage(new Socket()));
+
+  assert(wrapper instanceof ServerResponse);
+});
+
+Deno.test("[node/http] ServerResponse _header", async () => {
+  const { promise, resolve } = Promise.withResolvers<void>();
+  const server = http.createServer((_req, res) => {
+    assert(Object.hasOwn(res, "_header"));
+    res.end();
+  });
+
+  server.listen(async () => {
+    const { port } = server.address() as { port: number };
+    const res = await fetch(`http://localhost:${port}`);
+    await res.body?.cancel();
+    server.close(() => {
+      resolve();
+    });
+  });
+
+  await promise;
+});
+
+Deno.test("[node/http] ServerResponse connection", async () => {
+  const { promise, resolve } = Promise.withResolvers<void>();
+  const server = http.createServer((_req, res) => {
+    assert(Object.hasOwn(res, "connection"));
+    assert(res.connection instanceof Socket);
+    res.end();
+  });
+
+  server.listen(async () => {
+    const { port } = server.address() as { port: number };
+    const res = await fetch(`http://localhost:${port}`);
+    await res.body?.cancel();
+    server.close(() => {
+      resolve();
+    });
+  });
+
+  await promise;
+});
+
+Deno.test("[node/http] ServerResponse socket", async () => {
+  const { promise, resolve } = Promise.withResolvers<void>();
+  const server = http.createServer((_req, res) => {
+    assert(Object.hasOwn(res, "socket"));
+    assert(res.socket instanceof Socket);
+    res.end();
+  });
+
+  server.listen(async () => {
+    const { port } = server.address() as { port: number };
+    const res = await fetch(`http://localhost:${port}`);
+    await res.body?.cancel();
+    server.close(() => {
+      resolve();
+    });
+  });
+
+  await promise;
 });

@@ -1,5 +1,6 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
+use std::borrow::Cow;
 use std::path::Path;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -20,6 +21,7 @@ use deno_npm::resolution::ValidSerializedNpmResolutionSnapshot;
 use deno_npm::NpmPackageId;
 use deno_npm::NpmResolutionPackage;
 use deno_npm::NpmSystemInfo;
+use deno_runtime::colors;
 use deno_runtime::deno_fs::FileSystem;
 use deno_runtime::deno_node::NodePermissions;
 use deno_runtime::deno_node::NodeRequireResolver;
@@ -51,8 +53,9 @@ use self::resolvers::NpmPackageFsResolver;
 
 use super::CliNpmResolver;
 use super::InnerCliNpmResolverRef;
+use super::ResolvePkgFolderFromDenoReqError;
 
-mod cache;
+pub mod cache;
 mod registry;
 mod resolution;
 mod resolvers;
@@ -477,6 +480,25 @@ impl ManagedCliNpmResolver {
     self.resolution.resolve_pkg_id_from_pkg_req(req)
   }
 
+  pub fn ensure_no_pkg_json_dep_errors(&self) -> Result<(), AnyError> {
+    for err in self.npm_install_deps_provider.pkg_json_dep_errors() {
+      match err {
+        deno_package_json::PackageJsonDepValueParseError::VersionReq(_) => {
+          return Err(
+            AnyError::from(err.clone())
+              .context("Failed to install from package.json"),
+          );
+        }
+        deno_package_json::PackageJsonDepValueParseError::Unsupported {
+          ..
+        } => {
+          log::warn!("{} {} in package.json", colors::yellow("Warning"), err)
+        }
+      }
+    }
+    Ok(())
+  }
+
   /// Ensures that the top level `package.json` dependencies are installed.
   /// This may set up the `node_modules` directory.
   ///
@@ -488,6 +510,7 @@ impl ManagedCliNpmResolver {
     if !self.top_level_install_flag.raise() {
       return Ok(false); // already did this
     }
+
     let pkg_json_remote_pkgs = self.npm_install_deps_provider.remote_pkgs();
     if pkg_json_remote_pkgs.is_empty() {
       return Ok(false);
@@ -571,11 +594,11 @@ impl NpmResolver for ManagedCliNpmResolver {
 }
 
 impl NodeRequireResolver for ManagedCliNpmResolver {
-  fn ensure_read_permission(
+  fn ensure_read_permission<'a>(
     &self,
     permissions: &mut dyn NodePermissions,
-    path: &Path,
-  ) -> Result<(), AnyError> {
+    path: &'a Path,
+  ) -> Result<Cow<'a, Path>, AnyError> {
     self.fs_resolver.ensure_read_permission(permissions, path)
   }
 }
@@ -649,9 +672,13 @@ impl CliNpmResolver for ManagedCliNpmResolver {
     &self,
     req: &PackageReq,
     _referrer: &ModuleSpecifier,
-  ) -> Result<PathBuf, AnyError> {
-    let pkg_id = self.resolve_pkg_id_from_pkg_req(req)?;
-    self.resolve_pkg_folder_from_pkg_id(&pkg_id)
+  ) -> Result<PathBuf, ResolvePkgFolderFromDenoReqError> {
+    let pkg_id = self
+      .resolve_pkg_id_from_pkg_req(req)
+      .map_err(|err| ResolvePkgFolderFromDenoReqError::Managed(err.into()))?;
+    self
+      .resolve_pkg_folder_from_pkg_id(&pkg_id)
+      .map_err(ResolvePkgFolderFromDenoReqError::Managed)
   }
 
   fn check_state_hash(&self) -> Option<u64> {

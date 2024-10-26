@@ -1,6 +1,5 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
-use deno_core::error::AnyError;
 use deno_core::op2;
 use deno_core::unsync::spawn_blocking;
 use deno_core::unsync::TaskQueue;
@@ -48,6 +47,7 @@ use winapi::um::processenv::GetStdHandle;
 #[cfg(windows)]
 use winapi::um::winbase;
 
+use deno_core::futures::TryFutureExt;
 #[cfg(windows)]
 use parking_lot::Condvar;
 #[cfg(windows)]
@@ -348,13 +348,13 @@ where
     RcRef::map(self, |r| &r.stream).borrow_mut()
   }
 
-  async fn write(self: Rc<Self>, data: &[u8]) -> Result<usize, AnyError> {
+  async fn write(self: Rc<Self>, data: &[u8]) -> Result<usize, io::Error> {
     let mut stream = self.borrow_mut().await;
     let nwritten = stream.write(data).await?;
     Ok(nwritten)
   }
 
-  async fn shutdown(self: Rc<Self>) -> Result<(), AnyError> {
+  async fn shutdown(self: Rc<Self>) -> Result<(), io::Error> {
     let mut stream = self.borrow_mut().await;
     stream.shutdown().await?;
     Ok(())
@@ -396,7 +396,7 @@ where
     self.cancel_handle.cancel()
   }
 
-  async fn read(self: Rc<Self>, data: &mut [u8]) -> Result<usize, AnyError> {
+  async fn read(self: Rc<Self>, data: &mut [u8]) -> Result<usize, io::Error> {
     let mut rd = self.borrow_mut().await;
     let nread = rd.read(data).try_or_cancel(self.cancel_handle()).await?;
     Ok(nread)
@@ -417,7 +417,7 @@ impl Resource for ChildStdinResource {
   deno_core::impl_writable!();
 
   fn shutdown(self: Rc<Self>) -> AsyncResult<()> {
-    Box::pin(self.shutdown())
+    Box::pin(self.shutdown().map_err(|e| e.into()))
   }
 }
 
@@ -1010,7 +1010,7 @@ pub fn op_print(
   state: &mut OpState,
   #[string] msg: &str,
   is_err: bool,
-) -> Result<(), AnyError> {
+) -> Result<(), deno_core::error::AnyError> {
   let rid = if is_err { 2 } else { 1 };
   FileResource::with_file(state, rid, move |file| {
     Ok(file.write_all_sync(msg.as_bytes())?)

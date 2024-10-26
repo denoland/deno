@@ -331,15 +331,23 @@ impl<TGraphContainer: ModuleGraphContainer>
     maybe_referrer: Option<&ModuleSpecifier>,
     requested_module_type: RequestedModuleType,
   ) -> Result<ModuleSource, AnyError> {
-    let code_source = if let Some(result) = self
-      .shared
-      .npm_module_loader
-      .load_if_in_npm_package(specifier, maybe_referrer)
-      .await
-    {
-      result?
-    } else {
-      self.load_prepared_module(specifier, maybe_referrer).await?
+    let code_source = match self.load_prepared_module(specifier).await? {
+      Some(code_source) => code_source,
+      None => {
+        if self.shared.npm_module_loader.if_in_npm_package(specifier) {
+          self
+            .shared
+            .npm_module_loader
+            .load(specifier, maybe_referrer)
+            .await?
+        } else {
+          let mut msg = format!("Loading unprepared module: {specifier}");
+          if let Some(referrer) = maybe_referrer {
+            msg = format!("{}, imported from: {}", msg, referrer.as_str());
+          }
+          return Err(anyhow!(msg));
+        }
+      }
     };
     let code = if self.shared.is_inspecting {
       // we need the code with the source map in order for
@@ -514,17 +522,12 @@ impl<TGraphContainer: ModuleGraphContainer>
   async fn load_prepared_module(
     &self,
     specifier: &ModuleSpecifier,
-    maybe_referrer: Option<&ModuleSpecifier>,
-  ) -> Result<ModuleCodeStringSource, AnyError> {
+  ) -> Result<Option<ModuleCodeStringSource>, AnyError> {
     // Note: keep this in sync with the sync version below
     let graph = self.graph_container.graph();
-    match self.load_prepared_module_or_defer_emit(
-      &graph,
-      specifier,
-      maybe_referrer,
-    ) {
-      Ok(CodeOrDeferredEmit::Code(code_source)) => Ok(code_source),
-      Ok(CodeOrDeferredEmit::DeferredEmit {
+    match self.load_prepared_module_or_defer_emit(&graph, specifier)? {
+      Some(CodeOrDeferredEmit::Code(code_source)) => Ok(Some(code_source)),
+      Some(CodeOrDeferredEmit::DeferredEmit {
         specifier,
         media_type,
         source,
@@ -537,30 +540,26 @@ impl<TGraphContainer: ModuleGraphContainer>
         // at this point, we no longer need the parsed source in memory, so free it
         self.parsed_source_cache.free(specifier);
 
-        Ok(ModuleCodeStringSource {
-          code: ModuleSourceCode::Bytes(transpile_result),
+        Ok(Some(ModuleCodeStringSource {
+          // note: it's faster to provide a string if we know it's a string
+          code: ModuleSourceCode::String(transpile_result.into()),
           found_url: specifier.clone(),
           media_type,
-        })
+        }))
       }
-      Err(err) => Err(err),
+      None => Ok(None),
     }
   }
 
   fn load_prepared_module_sync(
     &self,
     specifier: &ModuleSpecifier,
-    maybe_referrer: Option<&ModuleSpecifier>,
-  ) -> Result<ModuleCodeStringSource, AnyError> {
+  ) -> Result<Option<ModuleCodeStringSource>, AnyError> {
     // Note: keep this in sync with the async version above
     let graph = self.graph_container.graph();
-    match self.load_prepared_module_or_defer_emit(
-      &graph,
-      specifier,
-      maybe_referrer,
-    ) {
-      Ok(CodeOrDeferredEmit::Code(code_source)) => Ok(code_source),
-      Ok(CodeOrDeferredEmit::DeferredEmit {
+    match self.load_prepared_module_or_defer_emit(&graph, specifier)? {
+      Some(CodeOrDeferredEmit::Code(code_source)) => Ok(Some(code_source)),
+      Some(CodeOrDeferredEmit::DeferredEmit {
         specifier,
         media_type,
         source,
@@ -572,13 +571,14 @@ impl<TGraphContainer: ModuleGraphContainer>
         // at this point, we no longer need the parsed source in memory, so free it
         self.parsed_source_cache.free(specifier);
 
-        Ok(ModuleCodeStringSource {
-          code: ModuleSourceCode::Bytes(transpile_result),
+        Ok(Some(ModuleCodeStringSource {
+          // note: it's faster to provide a string if we know it's a string
+          code: ModuleSourceCode::String(transpile_result.into()),
           found_url: specifier.clone(),
           media_type,
-        })
+        }))
       }
-      Err(err) => Err(err),
+      None => Ok(None),
     }
   }
 
@@ -586,8 +586,7 @@ impl<TGraphContainer: ModuleGraphContainer>
     &self,
     graph: &'graph ModuleGraph,
     specifier: &ModuleSpecifier,
-    maybe_referrer: Option<&ModuleSpecifier>,
-  ) -> Result<CodeOrDeferredEmit<'graph>, AnyError> {
+  ) -> Result<Option<CodeOrDeferredEmit<'graph>>, AnyError> {
     if specifier.scheme() == "node" {
       // Node built-in modules should be handled internally.
       unreachable!("Deno bug. {} was misconfigured internally.", specifier);
@@ -599,11 +598,11 @@ impl<TGraphContainer: ModuleGraphContainer>
         media_type,
         specifier,
         ..
-      })) => Ok(CodeOrDeferredEmit::Code(ModuleCodeStringSource {
+      })) => Ok(Some(CodeOrDeferredEmit::Code(ModuleCodeStringSource {
         code: ModuleSourceCode::String(source.clone().into()),
         found_url: specifier.clone(),
         media_type: *media_type,
-      })),
+      }))),
       Some(deno_graph::Module::Js(JsModule {
         source,
         media_type,
@@ -624,11 +623,11 @@ impl<TGraphContainer: ModuleGraphContainer>
           | MediaType::Cts
           | MediaType::Jsx
           | MediaType::Tsx => {
-            return Ok(CodeOrDeferredEmit::DeferredEmit {
+            return Ok(Some(CodeOrDeferredEmit::DeferredEmit {
               specifier,
               media_type: *media_type,
               source,
-            });
+            }));
           }
           MediaType::TsBuildInfo | MediaType::Wasm | MediaType::SourceMap => {
             panic!("Unexpected media type {media_type} for {specifier}")
@@ -638,24 +637,18 @@ impl<TGraphContainer: ModuleGraphContainer>
         // at this point, we no longer need the parsed source in memory, so free it
         self.parsed_source_cache.free(specifier);
 
-        Ok(CodeOrDeferredEmit::Code(ModuleCodeStringSource {
+        Ok(Some(CodeOrDeferredEmit::Code(ModuleCodeStringSource {
           code: ModuleSourceCode::String(code),
           found_url: specifier.clone(),
           media_type: *media_type,
-        }))
+        })))
       }
       Some(
         deno_graph::Module::External(_)
         | deno_graph::Module::Node(_)
         | deno_graph::Module::Npm(_),
       )
-      | None => {
-        let mut msg = format!("Loading unprepared module: {specifier}");
-        if let Some(referrer) = maybe_referrer {
-          msg = format!("{}, imported from: {}", msg, referrer.as_str());
-        }
-        Err(anyhow!(msg))
-      }
+      | None => Ok(None),
     }
   }
 }
@@ -828,7 +821,7 @@ impl<TGraphContainer: ModuleGraphContainer> ModuleLoader
       "wasm" | "file" | "http" | "https" | "data" | "blob" => (),
       _ => return None,
     }
-    let source = self.0.load_prepared_module_sync(&specifier, None).ok()?;
+    let source = self.0.load_prepared_module_sync(&specifier).ok()??;
     source_map_from_code(source.code.as_bytes())
   }
 
