@@ -12,6 +12,18 @@
     "broken": {
       "args": "fmt broken.html",
       "output": "broken.out"
+    },
+    "style_attribute": {
+      "steps": [
+        { "args": "fmt style.html", "output": "[WILDCARD]style.html\nChecked 1 file\n" },
+        { 
+          "args": [
+            "eval",
+            "console.log(Deno.readTextFileSync('style.html').trim())"
+          ], 
+          "output": "style.out" 
+        }
+      ]
     }
   }
 }

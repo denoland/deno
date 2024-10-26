@@ -1,0 +1,5 @@
+<ul
+  style="display: grid; grid-template-columns: 50% 50%; justify-items: stretch; padding: 0"
+>
+  <li>1</li>
+</ul>

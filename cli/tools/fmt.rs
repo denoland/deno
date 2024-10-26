@@ -385,6 +385,9 @@ pub fn format_html(
           let mut malva_config = get_resolved_malva_config(fmt_options);
           malva_config.layout.print_width = hints.print_width;
           if hints.attr {
+            // If styles are inside the attribute, force them to bo on a single line to match
+            // what pretties does.
+            malva_config.layout.print_width = usize::MAX;
             malva_config.language.quotes =
               if let Some(true) = fmt_options.single_quote {
                 malva::config::Quotes::AlwaysDouble
