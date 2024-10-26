@@ -93,9 +93,10 @@ extern "C" fn test_async_work(
     baton_ptr,
     &mut async_work,
   ));
-  let mut baton = unsafe { Box::from_raw(baton_ptr as *mut Baton) };
-  baton.task = async_work;
-  Box::into_raw(baton);
+  unsafe {
+    let baton = &mut *(baton_ptr as *mut Baton);
+    baton.task = async_work;
+  }
   assert_napi_ok!(napi_queue_async_work(env, async_work));
 
   ptr::null_mut()

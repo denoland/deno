@@ -5,7 +5,7 @@ import { stringify } from "jsr:@std/yaml@^0.221/stringify";
 // Bump this number when you want to purge the cache.
 // Note: the tools/release/01_bump_crate_versions.ts script will update this version
 // automatically via regex, so ensure that this line maintains this format.
-const cacheVersion = 22;
+const cacheVersion = 23;
 
 const ubuntuX86Runner = "ubuntu-22.04";
 const ubuntuX86XlRunner = "ubuntu-22.04-xl";
@@ -59,7 +59,7 @@ const prCacheKeyPrefix =
   `${cacheVersion}-cargo-target-\${{ matrix.os }}-\${{ matrix.arch }}-\${{ matrix.profile }}-\${{ matrix.job }}-`;
 
 // Note that you may need to add more version to the `apt-get remove` line below if you change this
-const llvmVersion = 18;
+const llvmVersion = 19;
 const installPkgsCommand =
   `sudo apt-get install --no-install-recommends clang-${llvmVersion} lld-${llvmVersion} clang-tools-${llvmVersion} clang-format-${llvmVersion} clang-tidy-${llvmVersion}`;
 const sysRootStep = {
@@ -71,7 +71,7 @@ export DEBIAN_FRONTEND=noninteractive
 sudo apt-get -qq remove --purge -y man-db  > /dev/null 2> /dev/null
 # Remove older clang before we install
 sudo apt-get -qq remove \
-  'clang-12*' 'clang-13*' 'clang-14*' 'clang-15*' 'clang-16*' 'llvm-12*' 'llvm-13*' 'llvm-14*' 'llvm-15*' 'llvm-16*' 'lld-12*' 'lld-13*' 'lld-14*' 'lld-15*' 'lld-16*' > /dev/null 2> /dev/null
+  'clang-12*' 'clang-13*' 'clang-14*' 'clang-15*' 'clang-16*' 'llvm-12*' 'llvm-13*' 'llvm-14*' 'llvm-15*' 'llvm-16*' 'llvm-17*' 'llvm-18*' 'lld-12*' 'lld-13*' 'lld-14*' 'lld-15*' 'lld-16*' 'lld-17*' 'lld-18*' > /dev/null 2> /dev/null
 
 # Install clang-XXX, lld-XXX, and debootstrap.
 echo "deb http://apt.llvm.org/jammy/ llvm-toolchain-jammy-${llvmVersion} main" |
@@ -100,10 +100,14 @@ echo "Done."
 # Configure the build environment. Both Rust and Clang will produce
 # llvm bitcode only, so we can use lld's incremental LTO support.
 
-# Load the sysroot's env vars
-echo "sysroot env:"
-cat /sysroot/.env
-. /sysroot/.env
+export RUSTFLAGS="$RUSTFLAGS -C link-arg=--sysroot=/sysroot"
+export CFLAGS="$CFLAGS --sysroot=/sysroot"
+
+sudo ln -s /sysroot/usr/share/gdb/auto-load/usr/lib/$(uname -m)-linux-gnu /sysroot/usr/share/gdb/auto-load/usr/lib/$(uname -m)-unknown-linux-gnu
+sudo ln -s /sysroot/usr/include/$(uname -m)-linux-gnu /sysroot/usr/include/$(uname -m)-unknown-linux-gnu
+sudo ln -s /sysroot/usr/lib/gcc/$(uname -m)-linux-gnu /sysroot/usr/lib/gcc/$(uname -m)-unknown-linux-gnu
+sudo ln -s /sysroot/usr/lib/$(uname -m)-linux-gnu /sysroot/usr/lib/$(uname -m)-unknown-linux-gnu
+sudo ln -s /sysroot/lib/$(uname -m)-linux-gnu /sysroot/lib/$(uname -m)-unknown-linux-gnu
 
 # Important notes:
 #   1. -ldl seems to be required to avoid a failure in FFI tests. This flag seems
