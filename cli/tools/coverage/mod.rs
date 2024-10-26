@@ -196,16 +196,16 @@ pub struct CoverageReport {
 
 fn generate_coverage_report(
   script_coverage: &cdp::ScriptCoverage,
-  script_source: String,
+  script_runtime_source: String,
   maybe_source_map: &Option<Vec<u8>>,
   output: &Option<PathBuf>,
 ) -> CoverageReport {
   let maybe_source_map = maybe_source_map
     .as_ref()
     .map(|source_map| SourceMap::from_slice(source_map).unwrap());
-  let text_lines = TextLines::new(&script_source);
+  let text_lines = TextLines::new(&script_runtime_source);
 
-  let comment_ranges = deno_ast::lex(&script_source, MediaType::JavaScript)
+  let comment_ranges = deno_ast::lex(&script_runtime_source, MediaType::JavaScript)
     .into_iter()
     .filter(|item| {
       matches!(item.inner, deno_ast::TokenOrComment::Comment { .. })
@@ -286,7 +286,7 @@ fn generate_coverage_report(
     let line_end_char_offset = text_lines.char_index(line_end_byte_offset);
     let ignore = comment_ranges.iter().any(|range| {
       range.start <= line_start_byte_offset && range.end >= line_end_byte_offset
-    }) || script_source
+    }) || script_runtime_source
       [line_start_byte_offset..line_end_byte_offset]
       .trim()
       .is_empty();
