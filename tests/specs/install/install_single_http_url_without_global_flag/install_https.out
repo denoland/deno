@@ -1,0 +1,2 @@
+error: Failed to install "https" specifier. If you are trying to install https://example.com/ globally, run again with `-g` flag:
+  deno install -g https://example.com/

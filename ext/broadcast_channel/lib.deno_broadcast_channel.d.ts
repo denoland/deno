@@ -9,7 +9,7 @@
  * @category Messaging
  * @experimental
  */
-declare interface BroadcastChannelEventMap {
+interface BroadcastChannelEventMap {
   "message": MessageEvent;
   "messageerror": MessageEvent;
 }
@@ -18,7 +18,7 @@ declare interface BroadcastChannelEventMap {
  * @category Messaging
  * @experimental
  */
-declare interface BroadcastChannel extends EventTarget {
+interface BroadcastChannel extends EventTarget {
   /**
    * Returns the channel name (as passed to the constructor).
    */

@@ -7,25 +7,15 @@ use crate::cache::LocalLspHttpCache;
 use crate::lsp::config::Config;
 use crate::lsp::logging::lsp_log;
 use crate::lsp::logging::lsp_warn;
-use deno_runtime::fs_util::specifier_to_file_path;
 
 use deno_core::url::Url;
 use deno_core::ModuleSpecifier;
+use deno_path_util::url_to_file_path;
 use std::collections::BTreeMap;
 use std::fs;
 use std::path::Path;
 use std::sync::Arc;
 use std::time::SystemTime;
-
-/// In the LSP, we disallow the cache from automatically copying from
-/// the global cache to the local cache for technical reasons.
-///
-/// 1. We need to verify the checksums from the lockfile are correct when
-///    moving from the global to the local cache.
-/// 2. We need to verify the checksums for JSR https specifiers match what
-///    is found in the package's manifest.
-pub const LSP_DISALLOW_GLOBAL_TO_LOCAL_COPY: deno_cache_dir::GlobalToLocalCopy =
-  deno_cache_dir::GlobalToLocalCopy::Disallow;
 
 pub fn calculate_fs_version(
   cache: &LspCache,
@@ -34,7 +24,7 @@ pub fn calculate_fs_version(
 ) -> Option<String> {
   match specifier.scheme() {
     "npm" | "node" | "data" | "blob" => None,
-    "file" => specifier_to_file_path(specifier)
+    "file" => url_to_file_path(specifier)
       .ok()
       .and_then(|path| calculate_fs_version_at_path(&path)),
     _ => calculate_fs_version_in_cache(cache, specifier, file_referrer),
@@ -92,7 +82,7 @@ impl Default for LspCache {
 impl LspCache {
   pub fn new(global_cache_url: Option<Url>) -> Self {
     let global_cache_path = global_cache_url.and_then(|s| {
-      specifier_to_file_path(&s)
+      url_to_file_path(&s)
         .inspect(|p| {
           lsp_log!("Resolved global cache path: \"{}\"", p.to_string_lossy());
         })
@@ -104,7 +94,7 @@ impl LspCache {
     let deno_dir = DenoDir::new(global_cache_path)
       .expect("should be infallible with absolute custom root");
     let global = Arc::new(GlobalHttpCache::new(
-      deno_dir.deps_folder_path(),
+      deno_dir.remote_folder_path(),
       crate::cache::RealDenoCacheEnv,
     ));
     Self {
@@ -175,7 +165,7 @@ impl LspCache {
     &self,
     specifier: &ModuleSpecifier,
   ) -> Option<ModuleSpecifier> {
-    let path = specifier_to_file_path(specifier).ok()?;
+    let path = url_to_file_path(specifier).ok()?;
     let vendor = self
       .vendors_by_scope
       .iter()
@@ -186,7 +176,7 @@ impl LspCache {
   }
 
   pub fn is_valid_file_referrer(&self, specifier: &ModuleSpecifier) -> bool {
-    if let Ok(path) = specifier_to_file_path(specifier) {
+    if let Ok(path) = url_to_file_path(specifier) {
       if !path.starts_with(&self.deno_dir().root) {
         return true;
       }

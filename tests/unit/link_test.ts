@@ -87,7 +87,7 @@ Deno.test(
   function linkSyncReadPerm() {
     assertThrows(() => {
       Deno.linkSync("oldbaddir", "newbaddir");
-    }, Deno.errors.PermissionDenied);
+    }, Deno.errors.NotCapable);
   },
 );
 
@@ -96,7 +96,7 @@ Deno.test(
   function linkSyncWritePerm() {
     assertThrows(() => {
       Deno.linkSync("oldbaddir", "newbaddir");
-    }, Deno.errors.PermissionDenied);
+    }, Deno.errors.NotCapable);
   },
 );
 
@@ -181,7 +181,7 @@ Deno.test(
   async function linkReadPerm() {
     await assertRejects(async () => {
       await Deno.link("oldbaddir", "newbaddir");
-    }, Deno.errors.PermissionDenied);
+    }, Deno.errors.NotCapable);
   },
 );
 
@@ -190,6 +190,6 @@ Deno.test(
   async function linkWritePerm() {
     await assertRejects(async () => {
       await Deno.link("oldbaddir", "newbaddir");
-    }, Deno.errors.PermissionDenied);
+    }, Deno.errors.NotCapable);
   },
 );

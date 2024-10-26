@@ -1,20 +1,15 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
-import { promisify } from "node:util";
 import timers from "node:timers";
 
-export const setTimeout = promisify(timers.setTimeout),
-  setImmediate = promisify(timers.setImmediate),
-  setInterval = promisify(timers.setInterval);
+export const setTimeout = timers.promises.setTimeout;
+export const setImmediate = timers.promises.setImmediate;
+export const setInterval = timers.promises.setInterval;
 
-export const scheduler = {
-  async wait(delay: number, options?: { signal?: AbortSignal }): Promise<void> {
-    return await setTimeout(delay, undefined, options);
-  },
-  yield: setImmediate,
-};
+export const scheduler = timers.promises.scheduler;
 
 export default {
   setTimeout,
   setImmediate,
   setInterval,
+  scheduler,
 };

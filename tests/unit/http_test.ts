@@ -1,8 +1,9 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// @ts-nocheck `Deno.serveHttp()` was soft-removed in Deno 2.
 
 // deno-lint-ignore-file no-deprecated-deno-api
 
-import { Buffer, BufReader, BufWriter } from "@std/io";
+import { Buffer, BufReader, BufWriter, type Reader } from "@std/io";
 import { TextProtoReader } from "../testdata/run/textproto.ts";
 import {
   assert,
@@ -51,7 +52,8 @@ async function writeRequestAndReadResponse(conn: Deno.Conn): Promise<string> {
 }
 
 Deno.test({ permissions: { net: true } }, async function httpServerBasic() {
-  let httpConn: Deno.HttpConn;
+  // deno-lint-ignore no-explicit-any
+  let httpConn: any;
   const promise = (async () => {
     const listener = Deno.listen({ port: listenPort });
     const conn = await listener.accept();
@@ -146,7 +148,8 @@ Deno.test(
 Deno.test(
   { permissions: { net: true } },
   async function httpServerGetRequestBody() {
-    let httpConn: Deno.HttpConn;
+    // deno-lint-ignore no-explicit-any
+    let httpConn: any;
     const promise = (async () => {
       const listener = Deno.listen({ port: listenPort });
       const conn = await listener.accept();
@@ -187,7 +190,8 @@ Deno.test(
     writer.write(new TextEncoder().encode("world"));
     writer.close();
 
-    let httpConn: Deno.HttpConn;
+    // deno-lint-ignore no-explicit-any
+    let httpConn: any;
     const listener = Deno.listen({ port: listenPort });
     const promise = (async () => {
       const conn = await listener.accept();
@@ -250,7 +254,8 @@ Deno.test(
 Deno.test(
   { permissions: { net: true } },
   async function httpServerStreamDuplex() {
-    let httpConn: Deno.HttpConn;
+    // deno-lint-ignore no-explicit-any
+    let httpConn: any;
     const listener = Deno.listen({ port: listenPort });
     const promise = (async () => {
       const conn = await listener.accept();
@@ -363,7 +368,8 @@ Deno.test(
 Deno.test(
   { permissions: { net: true } },
   async function httpServerRegressionHang() {
-    let httpConn: Deno.HttpConn;
+    // deno-lint-ignore no-explicit-any
+    let httpConn: any;
     const listener = Deno.listen({ port: listenPort });
     const promise = (async () => {
       const conn = await listener.accept();
@@ -482,7 +488,8 @@ Deno.test(
 Deno.test(
   { permissions: { net: true } },
   async function httpServerEmptyBlobResponse() {
-    let httpConn: Deno.HttpConn;
+    // deno-lint-ignore no-explicit-any
+    let httpConn: any;
     const listener = Deno.listen({ port: listenPort });
     const promise = (async () => {
       const conn = await listener.accept();
@@ -505,7 +512,8 @@ Deno.test(
 Deno.test(
   { permissions: { net: true } },
   async function httpServerNextRequestResolvesOnClose() {
-    const httpConnList: Deno.HttpConn[] = [];
+    // deno-lint-ignore no-explicit-any
+    const httpConnList: any[] = [];
 
     async function serve(l: Deno.Listener) {
       for await (const conn of l) {
@@ -544,7 +552,8 @@ Deno.test(
       return new Response(s).body!;
     }
 
-    const httpConns: Deno.HttpConn[] = [];
+    // deno-lint-ignore no-explicit-any
+    const httpConns: any[] = [];
     const promise = (async () => {
       let count = 0;
       const listener = Deno.listen({ port: listenPort });
@@ -648,7 +657,8 @@ Deno.test(
       }).pipeThrough(new TextEncoderStream());
     }
 
-    let httpConn: Deno.HttpConn;
+    // deno-lint-ignore no-explicit-any
+    let httpConn: any;
     const listener = Deno.listen({ port: listenPort });
     const finished = (async () => {
       const conn = await listener.accept();
@@ -675,7 +685,8 @@ Deno.test(
 Deno.test(
   { permissions: { net: true } },
   async function httpRequestLatin1Headers() {
-    let httpConn: Deno.HttpConn;
+    // deno-lint-ignore no-explicit-any
+    let httpConn: any;
     const promise = (async () => {
       const listener = Deno.listen({ port: listenPort });
       const conn = await listener.accept();
@@ -724,7 +735,8 @@ Deno.test(
 Deno.test(
   { permissions: { net: true } },
   async function httpServerRequestWithoutPath() {
-    let httpConn: Deno.HttpConn;
+    // deno-lint-ignore no-explicit-any
+    let httpConn: any;
     const listener = Deno.listen({ port: listenPort });
     const promise = (async () => {
       const conn = await listener.accept();
@@ -896,7 +908,8 @@ Deno.test(function httpUpgradeWebSocketWithoutUpgradeHeader() {
 Deno.test(
   { permissions: { net: true } },
   async function httpCookieConcatenation() {
-    let httpConn: Deno.HttpConn;
+    // deno-lint-ignore no-explicit-any
+    let httpConn: any;
     const promise = (async () => {
       const listener = Deno.listen({ port: listenPort });
       const conn = await listener.accept();
@@ -955,7 +968,8 @@ Deno.test(
     using file = await Deno.open(tmpFile, { write: true, read: true });
     await file.write(new Uint8Array(70 * 1024).fill(1)); // 70kb sent in 64kb + 6kb chunks
 
-    let httpConn: Deno.HttpConn;
+    // deno-lint-ignore no-explicit-any
+    let httpConn: any;
     const listener = Deno.listen({ port: listenPort });
     const promise = (async () => {
       const conn = await listener.accept();
@@ -1094,7 +1108,8 @@ Deno.test(
   { permissions: { net: true } },
   async function httpServerDoesntLeakResources2() {
     let listener: Deno.Listener;
-    let httpConn: Deno.HttpConn;
+    // deno-lint-ignore no-explicit-any
+    let httpConn: any;
 
     const promise = (async () => {
       listener = Deno.listen({ port: listenPort });
@@ -1161,7 +1176,8 @@ Deno.test(
     const hostname = "localhost";
     const port = listenPort;
 
-    let httpConn: Deno.HttpConn;
+    // deno-lint-ignore no-explicit-any
+    let httpConn: any;
     const listener = Deno.listen({ hostname, port });
     async function server() {
       const tcpConn = await listener.accept();
@@ -1248,7 +1264,8 @@ Deno.test(
     const hostname = "localhost";
     const port = listenPort;
 
-    let httpConn: Deno.HttpConn;
+    // deno-lint-ignore no-explicit-any
+    let httpConn: any;
     const listener = Deno.listen({ hostname, port });
     async function server() {
       const tcpConn = await listener.accept();
@@ -1279,7 +1296,8 @@ Deno.test(
 Deno.test(
   { permissions: { net: true } },
   async function httpServerRespondNonAsciiUint8Array() {
-    let httpConn: Deno.HttpConn;
+    // deno-lint-ignore no-explicit-any
+    let httpConn: any;
     const listener = Deno.listen({ port: listenPort });
     const promise = (async () => {
       const conn = await listener.accept();
@@ -1318,7 +1336,8 @@ Deno.test(
   async function httpServerOnUnixSocket() {
     const filePath = tmpUnixSocketPath();
 
-    let httpConn: Deno.HttpConn;
+    // deno-lint-ignore no-explicit-any
+    let httpConn: any;
     const promise = (async () => {
       const listener = Deno.listen({ path: filePath, transport: "unix" });
       const conn = await listener.accept();
@@ -1367,7 +1386,8 @@ Deno.test({
 
     const data = { hello: "deno", now: "with", compressed: "body" };
 
-    let httpConn: Deno.HttpConn;
+    // deno-lint-ignore no-explicit-any
+    let httpConn: any;
     async function server() {
       const tcpConn = await listener.accept();
       httpConn = Deno.serveHttp(tcpConn);
@@ -1419,7 +1439,8 @@ Deno.test({
 
     const data = { hello: "deno", now: "with", compressed: "body" };
 
-    let httpConn: Deno.HttpConn;
+    // deno-lint-ignore no-explicit-any
+    let httpConn: any;
     async function server() {
       const tcpConn = await listener.accept();
       httpConn = Deno.serveHttp(tcpConn);
@@ -1473,7 +1494,8 @@ Deno.test({
     const hostname = "localhost";
     const port = listenPort;
 
-    let httpConn: Deno.HttpConn;
+    // deno-lint-ignore no-explicit-any
+    let httpConn: any;
     async function server() {
       const listener = Deno.listen({ hostname, port });
       const tcpConn = await listener.accept();
@@ -1526,7 +1548,8 @@ Deno.test({
     const hostname = "localhost";
     const port = listenPort;
 
-    let httpConn: Deno.HttpConn;
+    // deno-lint-ignore no-explicit-any
+    let httpConn: any;
     async function server() {
       const listener = Deno.listen({ hostname, port });
       const tcpConn = await listener.accept();
@@ -1582,7 +1605,8 @@ Deno.test({
     const hostname = "localhost";
     const port = listenPort;
 
-    let httpConn: Deno.HttpConn;
+    // deno-lint-ignore no-explicit-any
+    let httpConn: any;
     async function server() {
       const listener = Deno.listen({ hostname, port });
       const tcpConn = await listener.accept();
@@ -1635,7 +1659,8 @@ Deno.test({
     const hostname = "localhost";
     const port = listenPort;
 
-    let httpConn: Deno.HttpConn;
+    // deno-lint-ignore no-explicit-any
+    let httpConn: any;
     async function server() {
       const listener = Deno.listen({ hostname, port });
       const tcpConn = await listener.accept();
@@ -1695,7 +1720,8 @@ Deno.test({
     const hostname = "localhost";
     const port = listenPort;
 
-    let httpConn: Deno.HttpConn;
+    // deno-lint-ignore no-explicit-any
+    let httpConn: any;
     async function server() {
       const listener = Deno.listen({ hostname, port });
       const tcpConn = await listener.accept();
@@ -1754,7 +1780,8 @@ Deno.test({
     const hostname = "localhost";
     const port = listenPort;
 
-    let httpConn: Deno.HttpConn;
+    // deno-lint-ignore no-explicit-any
+    let httpConn: any;
     async function server() {
       const listener = Deno.listen({ hostname, port });
       const tcpConn = await listener.accept();
@@ -1810,7 +1837,8 @@ Deno.test({
     const hostname = "localhost";
     const port = listenPort;
 
-    let httpConn: Deno.HttpConn;
+    // deno-lint-ignore no-explicit-any
+    let httpConn: any;
     async function server() {
       const listener = Deno.listen({ hostname, port });
       const tcpConn = await listener.accept();
@@ -1871,7 +1899,8 @@ Deno.test({
 
     const data = { hello: "deno", now: "with", compressed: "body" };
 
-    let httpConn: Deno.HttpConn;
+    // deno-lint-ignore no-explicit-any
+    let httpConn: any;
     async function server() {
       const tcpConn = await listener.accept();
       httpConn = Deno.serveHttp(tcpConn);
@@ -1933,7 +1962,8 @@ Deno.test({
 
     const data = { hello: "deno", now: "with", compressed: "body" };
 
-    let httpConn: Deno.HttpConn;
+    // deno-lint-ignore no-explicit-any
+    let httpConn: any;
     async function server() {
       const tcpConn = await listener.accept();
       httpConn = Deno.serveHttp(tcpConn);
@@ -1995,7 +2025,8 @@ Deno.test({
     const port = listenPort;
     let contentLength: string;
 
-    let httpConn: Deno.HttpConn;
+    // deno-lint-ignore no-explicit-any
+    let httpConn: any;
     async function server() {
       const listener = Deno.listen({ hostname, port });
       const tcpConn = await listener.accept();
@@ -2061,7 +2092,8 @@ Deno.test({
     const port = listenPort;
     let contentLength: string;
 
-    let httpConn: Deno.HttpConn;
+    // deno-lint-ignore no-explicit-any
+    let httpConn: any;
     async function server() {
       const listener = Deno.listen({ hostname, port });
       const tcpConn = await listener.accept();
@@ -2087,7 +2119,6 @@ Deno.test({
     async function client() {
       const url = `http://${hostname}:${port}/`;
       const cmd = [
-        "curl",
         "-i",
         "--request",
         "GET",
@@ -2097,16 +2128,17 @@ Deno.test({
         "--header",
         "Accept-Encoding: deflate, gzip",
       ];
-      const proc = Deno.run({ cmd, stdout: "piped", stderr: "null" });
-      const status = await proc.status();
-      assert(status.success);
-      const output = decoder.decode(await proc.output());
+      const { success, stdout } = await new Deno.Command("curl", {
+        args: cmd,
+        stderr: "null",
+      }).output();
+      assert(success);
+      const output = decoder.decode(stdout);
       assert(output.includes("vary: Accept-Encoding\r\n"));
       assert(output.includes("content-encoding: gzip\r\n"));
       // Ensure the content-length header is updated.
       assert(!output.includes(`content-length: ${contentLength}\r\n`));
       assert(output.includes("content-length: "));
-      proc.close();
     }
 
     await Promise.all([server(), client()]);
@@ -2122,7 +2154,8 @@ Deno.test({
     const port = listenPort;
     let contentLength: string;
 
-    let httpConn: Deno.HttpConn;
+    // deno-lint-ignore no-explicit-any
+    let httpConn: any;
     async function server() {
       const listener = Deno.listen({ hostname, port });
       const tcpConn = await listener.accept();
@@ -2149,7 +2182,6 @@ Deno.test({
     async function client() {
       const url = `http://${hostname}:${port}/`;
       const cmd = [
-        "curl",
         "-i",
         "--request",
         "GET",
@@ -2159,13 +2191,15 @@ Deno.test({
         "--header",
         "Accept-Encoding: deflate, gzip",
       ];
-      const proc = Deno.run({ cmd, stdout: "piped", stderr: "null" });
-      const status = await proc.status();
-      assert(status.success);
-      const output = decoder.decode(await proc.output());
+      const { success, stdout } = await new Deno.Command("curl", {
+        args: cmd,
+        stderr: "null",
+        stdout: "piped",
+      }).output();
+      assert(success);
+      const output = decoder.decode(stdout);
       assert(output.includes("vary: Accept-Encoding\r\n"));
       assert(output.includes("content-encoding: arbitrary\r\n"));
-      proc.close();
     }
 
     await Promise.all([server(), client()]);
@@ -2181,7 +2215,8 @@ Deno.test(
     const body = "aa\n" + "deno.land large body\n".repeat(TLS_PACKET_SIZE) +
       "zz";
 
-    let httpConn: Deno.HttpConn;
+    // deno-lint-ignore no-explicit-any
+    let httpConn: any;
     const promise = (async () => {
       const listener = Deno.listen({ port: listenPort });
       const conn = await listener.accept();
@@ -2228,7 +2263,8 @@ Deno.test(
     }
     writer.close();
 
-    let httpConn: Deno.HttpConn;
+    // deno-lint-ignore no-explicit-any
+    let httpConn: any;
     const promise = (async () => {
       const listener = Deno.listen({ port: listenPort });
       const conn = await listener.accept();
@@ -2269,7 +2305,7 @@ Deno.test(
 
     const buf = new Uint8Array(128);
     const readPromise = serverConn.read(buf);
-    assertThrows(() => Deno.serveHttp(serverConn), Deno.errors.BadResource);
+    assertThrows(() => Deno.serveHttp(serverConn), Deno.errors.Busy);
 
     clientConn.close();
     listener.close();
@@ -2302,7 +2338,7 @@ Deno.test(
 
     const buf = new Uint8Array(128);
     const readPromise = serverConn.read(buf);
-    assertThrows(() => Deno.serveHttp(serverConn), Deno.errors.BadResource);
+    assertThrows(() => Deno.serveHttp(serverConn), Deno.errors.Busy);
 
     clientConn.close();
     listener.close();
@@ -2326,7 +2362,7 @@ Deno.test(
 
     const buf = new Uint8Array(128);
     const readPromise = serverConn.read(buf);
-    assertThrows(() => Deno.serveHttp(serverConn), Deno.errors.BadResource);
+    assertThrows(() => Deno.serveHttp(serverConn), Deno.errors.Busy);
 
     clientConn.close();
     listener.close();
@@ -2338,7 +2374,8 @@ Deno.test(
   { permissions: { net: true } },
   async function httpServerRequestResponseClone() {
     const body = "deno".repeat(64 * 1024);
-    let httpConn: Deno.HttpConn;
+    // deno-lint-ignore no-explicit-any
+    let httpConn: any;
     const listener = Deno.listen({ port: listenPort });
     const promise = (async () => {
       const conn = await listener.accept();
@@ -2402,7 +2439,8 @@ Deno.test({
     const listener = Deno.listen({ hostname, port });
     const listener2 = Deno.listen({ hostname, port: port2 });
 
-    let httpConn: Deno.HttpConn;
+    // deno-lint-ignore no-explicit-any
+    let httpConn: any;
     async function server() {
       const tcpConn = await listener.accept();
       httpConn = Deno.serveHttp(tcpConn);
@@ -2419,7 +2457,8 @@ Deno.test({
     const writer = ts.writable.getWriter();
     writer.write(encoder.encode("hello"));
 
-    let httpConn2: Deno.HttpConn;
+    // deno-lint-ignore no-explicit-any
+    let httpConn2: any;
     async function server2() {
       const tcpConn = await listener2.accept();
       httpConn2 = Deno.serveHttp(tcpConn);
@@ -2498,7 +2537,8 @@ Deno.test("case insensitive comma value finder", async (t) => {
 async function httpServerWithErrorBody(
   listener: Deno.Listener,
   compression: boolean,
-): Promise<Deno.HttpConn> {
+  // deno-lint-ignore no-explicit-any
+): Promise<any> {
   const conn = await listener.accept();
   listener.close();
   const httpConn = Deno.serveHttp(conn);
@@ -2626,7 +2666,8 @@ Deno.test({
   name: "request signal is aborted when response errors",
   permissions: { net: true },
   async fn() {
-    let httpConn: Deno.HttpConn;
+    // deno-lint-ignore no-explicit-any
+    let httpConn: any;
     const promise = (async () => {
       const listener = Deno.listen({ port: listenPort });
       const conn = await listener.accept();
@@ -2681,7 +2722,8 @@ Deno.test("proxy with fetch", async () => {
     return new Response("Hello world");
   });
 
-  let httpConn: Deno.HttpConn;
+  // deno-lint-ignore no-explicit-any
+  let httpConn: any;
   async function handleHttp(conn: Deno.Conn) {
     httpConn = Deno.serveHttp(conn);
     for await (const e of httpConn) {
@@ -2728,7 +2770,7 @@ Deno.test("proxy with fetch", async () => {
   httpConn!.close();
 });
 
-function chunkedBodyReader(h: Headers, r: BufReader): Deno.Reader {
+function chunkedBodyReader(h: Headers, r: BufReader): Reader {
   // Based on https://tools.ietf.org/html/rfc2616#section-19.4.6
   const tp = new TextProtoReader(r);
   let finished = false;

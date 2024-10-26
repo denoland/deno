@@ -6,7 +6,7 @@
 /// <reference lib="esnext" />
 
 /** @category Platform */
-declare interface DOMException extends Error {
+interface DOMException extends Error {
   readonly name: string;
   readonly message: string;
   /** @deprecated */
@@ -70,7 +70,7 @@ declare var DOMException: {
 };
 
 /** @category Events */
-declare interface EventInit {
+interface EventInit {
   bubbles?: boolean;
   cancelable?: boolean;
   composed?: boolean;
@@ -80,7 +80,7 @@ declare interface EventInit {
  *
  * @category Events
  */
-declare interface Event {
+interface Event {
   /** Returns true or false depending on how event was initialized. True if
    * event goes through its target's ancestors in reverse tree order, and
    * false otherwise. */
@@ -163,7 +163,7 @@ declare var Event: {
  *
  * @category Events
  */
-declare interface EventTarget {
+interface EventTarget {
   /** Appends an event listener for events whose type attribute value is type.
    * The callback argument sets the callback that will be invoked when the event
    * is dispatched.
@@ -217,34 +217,34 @@ declare var EventTarget: {
 };
 
 /** @category Events */
-declare interface EventListener {
+interface EventListener {
   (evt: Event): void;
 }
 
 /** @category Events */
-declare interface EventListenerObject {
+interface EventListenerObject {
   handleEvent(evt: Event): void;
 }
 
 /** @category Events */
-declare type EventListenerOrEventListenerObject =
+type EventListenerOrEventListenerObject =
   | EventListener
   | EventListenerObject;
 
 /** @category Events */
-declare interface AddEventListenerOptions extends EventListenerOptions {
+interface AddEventListenerOptions extends EventListenerOptions {
   once?: boolean;
   passive?: boolean;
   signal?: AbortSignal;
 }
 
 /** @category Events */
-declare interface EventListenerOptions {
+interface EventListenerOptions {
   capture?: boolean;
 }
 
 /** @category Events */
-declare interface ProgressEventInit extends EventInit {
+interface ProgressEventInit extends EventInit {
   lengthComputable?: boolean;
   loaded?: number;
   total?: number;
@@ -256,8 +256,7 @@ declare interface ProgressEventInit extends EventInit {
  *
  * @category Events
  */
-declare interface ProgressEvent<T extends EventTarget = EventTarget>
-  extends Event {
+interface ProgressEvent<T extends EventTarget = EventTarget> extends Event {
   readonly lengthComputable: boolean;
   readonly loaded: number;
   readonly target: T | null;
@@ -296,13 +295,13 @@ declare function atob(s: string): string;
 declare function btoa(s: string): string;
 
 /** @category Encoding */
-declare interface TextDecoderOptions {
+interface TextDecoderOptions {
   fatal?: boolean;
   ignoreBOM?: boolean;
 }
 
 /** @category Encoding */
-declare interface TextDecodeOptions {
+interface TextDecodeOptions {
   stream?: boolean;
 }
 
@@ -320,7 +319,7 @@ declare interface TextDecodeOptions {
  *
  * @category Encoding
  */
-declare interface TextDecoder extends TextDecoderCommon {
+interface TextDecoder extends TextDecoderCommon {
   /** Turns binary data, often in the form of a Uint8Array, into a string given
    * the encoding.
    */
@@ -334,7 +333,7 @@ declare var TextDecoder: {
 };
 
 /** @category Encoding */
-declare interface TextDecoderCommon {
+interface TextDecoderCommon {
   /** Returns encoding's name, lowercased. */
   readonly encoding: string;
   /** Returns true if error mode is "fatal", otherwise false. */
@@ -344,13 +343,13 @@ declare interface TextDecoderCommon {
 }
 
 /** @category Encoding */
-declare interface TextEncoderEncodeIntoResult {
+interface TextEncoderEncodeIntoResult {
   read: number;
   written: number;
 }
 
 /** @category Encoding */
-declare interface TextEncoder extends TextEncoderCommon {
+interface TextEncoder extends TextEncoderCommon {
   /** Returns the result of running UTF-8's encoder. */
   encode(input?: string): Uint8Array;
   encodeInto(input: string, dest: Uint8Array): TextEncoderEncodeIntoResult;
@@ -369,7 +368,7 @@ declare interface TextEncoder extends TextEncoderCommon {
  *
  * @category Encoding
  */
-declare interface TextEncoder extends TextEncoderCommon {
+interface TextEncoder extends TextEncoderCommon {
   /** Turns a string into binary data (in the form of a Uint8Array) using UTF-8 encoding. */
   encode(input?: string): Uint8Array;
 
@@ -384,14 +383,13 @@ declare var TextEncoder: {
 };
 
 /** @category Encoding */
-declare interface TextEncoderCommon {
+interface TextEncoderCommon {
   /** Returns "utf-8". */
   readonly encoding: string;
 }
 
 /** @category Encoding */
-declare interface TextDecoderStream
-  extends GenericTransformStream, TextDecoderCommon {
+interface TextDecoderStream extends GenericTransformStream, TextDecoderCommon {
   readonly readable: ReadableStream<string>;
   readonly writable: WritableStream<BufferSource>;
 }
@@ -403,8 +401,7 @@ declare var TextDecoderStream: {
 };
 
 /** @category Encoding */
-declare interface TextEncoderStream
-  extends GenericTransformStream, TextEncoderCommon {
+interface TextEncoderStream extends GenericTransformStream, TextEncoderCommon {
   readonly readable: ReadableStream<Uint8Array>;
   readonly writable: WritableStream<string>;
 }
@@ -420,7 +417,7 @@ declare var TextEncoderStream: {
  *
  * @category Platform
  */
-declare interface AbortController {
+interface AbortController {
   /** Returns the AbortSignal object associated with this object. */
   readonly signal: AbortSignal;
   /** Invoking this method will set this object's AbortSignal's aborted flag and
@@ -439,7 +436,7 @@ declare var AbortController: {
 };
 
 /** @category Platform */
-declare interface AbortSignalEventMap {
+interface AbortSignalEventMap {
   abort: Event;
 }
 
@@ -448,7 +445,7 @@ declare interface AbortSignalEventMap {
  *
  * @category Platform
  */
-declare interface AbortSignal extends EventTarget {
+interface AbortSignal extends EventTarget {
   /** Returns true if this AbortSignal's AbortController has signaled to abort,
    * and false otherwise. */
   readonly aborted: boolean;
@@ -490,7 +487,7 @@ declare var AbortSignal: {
 };
 
 /** @category File */
-declare interface FileReaderEventMap {
+interface FileReaderEventMap {
   "abort": ProgressEvent<FileReader>;
   "error": ProgressEvent<FileReader>;
   "load": ProgressEvent<FileReader>;
@@ -505,7 +502,7 @@ declare interface FileReaderEventMap {
  *
  * @category File
  */
-declare interface FileReader extends EventTarget {
+interface FileReader extends EventTarget {
   readonly error: DOMException | null;
   onabort: ((this: FileReader, ev: ProgressEvent<FileReader>) => any) | null;
   onerror: ((this: FileReader, ev: ProgressEvent<FileReader>) => any) | null;
@@ -561,13 +558,13 @@ declare var FileReader: {
 };
 
 /** @category File */
-declare type BlobPart = BufferSource | Blob | string;
+type BlobPart = BufferSource | Blob | string;
 
 /** @category File */
-declare type EndingType = "transparent" | "native";
+type EndingType = "transparent" | "native";
 
 /** @category File */
-declare interface BlobPropertyBag {
+interface BlobPropertyBag {
   type?: string;
   endings?: EndingType;
 }
@@ -579,7 +576,7 @@ declare interface BlobPropertyBag {
  *
  * @category File
  */
-declare interface Blob {
+interface Blob {
   readonly size: number;
   readonly type: string;
   arrayBuffer(): Promise<ArrayBuffer>;
@@ -602,7 +599,7 @@ declare var Blob: {
 };
 
 /** @category File */
-declare interface FilePropertyBag extends BlobPropertyBag {
+interface FilePropertyBag extends BlobPropertyBag {
   lastModified?: number;
 }
 
@@ -611,7 +608,7 @@ declare interface FilePropertyBag extends BlobPropertyBag {
  *
  * @category File
  */
-declare interface File extends Blob {
+interface File extends Blob {
   readonly lastModified: number;
   readonly name: string;
   readonly webkitRelativePath: string;
@@ -628,40 +625,40 @@ declare var File: {
 };
 
 /** @category Streams */
-declare type ReadableStreamReader<T> =
+type ReadableStreamReader<T> =
   | ReadableStreamDefaultReader<T>
   | ReadableStreamBYOBReader;
 
 /** @category Streams */
-declare type ReadableStreamController<T> =
+type ReadableStreamController<T> =
   | ReadableStreamDefaultController<T>
   | ReadableByteStreamController;
 
 /** @category Streams */
-declare interface ReadableStreamGenericReader {
+interface ReadableStreamGenericReader {
   readonly closed: Promise<undefined>;
   cancel(reason?: any): Promise<void>;
 }
 
 /** @category Streams */
-declare interface ReadableStreamReadDoneResult<T> {
+interface ReadableStreamReadDoneResult<T> {
   done: true;
   value?: T;
 }
 
 /** @category Streams */
-declare interface ReadableStreamReadValueResult<T> {
+interface ReadableStreamReadValueResult<T> {
   done: false;
   value: T;
 }
 
 /** @category Streams */
-declare type ReadableStreamReadResult<T> =
+type ReadableStreamReadResult<T> =
   | ReadableStreamReadValueResult<T>
   | ReadableStreamReadDoneResult<T>;
 
 /** @category Streams */
-declare interface ReadableStreamDefaultReader<R = any>
+interface ReadableStreamDefaultReader<R = any>
   extends ReadableStreamGenericReader {
   read(): Promise<ReadableStreamReadResult<R>>;
   releaseLock(): void;
@@ -674,12 +671,12 @@ declare var ReadableStreamDefaultReader: {
 };
 
 /** @category Streams */
-declare interface ReadableStreamBYOBReaderReadOptions {
+interface ReadableStreamBYOBReaderReadOptions {
   min?: number;
 }
 
 /** @category Streams */
-declare interface ReadableStreamBYOBReader extends ReadableStreamGenericReader {
+interface ReadableStreamBYOBReader extends ReadableStreamGenericReader {
   read<T extends ArrayBufferView>(
     view: T,
     options?: ReadableStreamBYOBReaderReadOptions,
@@ -694,7 +691,7 @@ declare var ReadableStreamBYOBReader: {
 };
 
 /** @category Streams */
-declare interface ReadableStreamBYOBRequest {
+interface ReadableStreamBYOBRequest {
   readonly view: ArrayBufferView | null;
   respond(bytesWritten: number): void;
   respondWithNewView(view: ArrayBufferView): void;
@@ -706,17 +703,8 @@ declare var ReadableStreamBYOBRequest: {
   new (): never;
 };
 
-// TODO(petamoriken): Will be removed in v2.0.
-/**
- * @deprecated use `UnderlyingByteSource["pull"]` instead.
- * @category Streams
- */
-declare interface ReadableByteStreamControllerCallback {
-  (controller: ReadableByteStreamController): void | PromiseLike<void>;
-}
-
 /** @category Streams */
-declare interface UnderlyingByteSource {
+interface UnderlyingByteSource {
   autoAllocateChunkSize?: number;
   cancel?: UnderlyingSourceCancelCallback;
   pull?: (controller: ReadableByteStreamController) => void | PromiseLike<void>;
@@ -725,7 +713,7 @@ declare interface UnderlyingByteSource {
 }
 
 /** @category Streams */
-declare interface UnderlyingDefaultSource<R = any> {
+interface UnderlyingDefaultSource<R = any> {
   cancel?: UnderlyingSourceCancelCallback;
   pull?: (
     controller: ReadableStreamDefaultController<R>,
@@ -735,7 +723,7 @@ declare interface UnderlyingDefaultSource<R = any> {
 }
 
 /** @category Streams */
-declare interface UnderlyingSink<W = any> {
+interface UnderlyingSink<W = any> {
   abort?: UnderlyingSinkAbortCallback;
   close?: UnderlyingSinkCloseCallback;
   start?: UnderlyingSinkStartCallback;
@@ -744,10 +732,10 @@ declare interface UnderlyingSink<W = any> {
 }
 
 /** @category Streams */
-declare type ReadableStreamType = "bytes";
+type ReadableStreamType = "bytes";
 
 /** @category Streams */
-declare interface UnderlyingSource<R = any> {
+interface UnderlyingSource<R = any> {
   autoAllocateChunkSize?: number;
   cancel?: UnderlyingSourceCancelCallback;
   pull?: UnderlyingSourcePullCallback<R>;
@@ -755,39 +743,23 @@ declare interface UnderlyingSource<R = any> {
   type?: ReadableStreamType;
 }
 
-// TODO(petamoriken): Will be removed in v2.0.
-/**
- * @deprecated use `UnderlyingSourceCancelCallback` instead.
- * @category Streams
- */
-declare type ReadableStreamErrorCallback = UnderlyingSourceCancelCallback;
-
 /** @category Streams */
-declare interface UnderlyingSourceCancelCallback {
+interface UnderlyingSourceCancelCallback {
   (reason?: any): void | PromiseLike<void>;
 }
 
 /** @category Streams */
-declare interface UnderlyingSourcePullCallback<R> {
+interface UnderlyingSourcePullCallback<R> {
   (controller: ReadableStreamController<R>): void | PromiseLike<void>;
 }
 
 /** @category Streams */
-declare interface UnderlyingSourceStartCallback<R> {
+interface UnderlyingSourceStartCallback<R> {
   (controller: ReadableStreamController<R>): any;
 }
 
-// TODO(petamoriken): Will be removed in v2.0.
-/**
- * @deprecated use `(controller: ReadableStreamDefaultController<R>) => void | PromiseLike<void>` type instead.
- * @category Streams
- */
-declare type ReadableStreamDefaultControllerCallback<R> = (
-  controller: ReadableStreamDefaultController<R>,
-) => void | PromiseLike<void>;
-
 /** @category Streams */
-declare interface ReadableStreamDefaultController<R = any> {
+interface ReadableStreamDefaultController<R = any> {
   readonly desiredSize: number | null;
   close(): void;
   enqueue(chunk?: R): void;
@@ -801,7 +773,7 @@ declare var ReadableStreamDefaultController: {
 };
 
 /** @category Streams */
-declare interface ReadableByteStreamController {
+interface ReadableByteStreamController {
   readonly byobRequest: ReadableStreamBYOBRequest | null;
   readonly desiredSize: number | null;
   close(): void;
@@ -815,35 +787,21 @@ declare var ReadableByteStreamController: {
   new (): never;
 };
 
-// TODO(petamoriken): Will be removed in v2.0.
-/**
- * @deprecated use `StreamPipeOptions` instead.
- * @category Streams
- */
-declare type PipeOptions = StreamPipeOptions;
-
 /** @category Streams */
-declare interface StreamPipeOptions {
+interface StreamPipeOptions {
   preventAbort?: boolean;
   preventCancel?: boolean;
   preventClose?: boolean;
   signal?: AbortSignal;
 }
 
-// TODO(petamoriken): Will be removed in v2.0.
-/**
- * @deprecated use `QueuingStrategySize` instead.
- * @category Streams
- */
-declare type QueuingStrategySizeCallback<T = any> = QueuingStrategySize<T>;
-
 /** @category Streams */
-declare interface QueuingStrategySize<T = any> {
+interface QueuingStrategySize<T = any> {
   (chunk: T): number;
 }
 
 /** @category Streams */
-declare interface QueuingStrategy<T = any> {
+interface QueuingStrategy<T = any> {
   highWaterMark?: number;
   size?: QueuingStrategySize<T>;
 }
@@ -853,7 +811,7 @@ declare interface QueuingStrategy<T = any> {
  *
  * @category Streams
  */
-declare interface CountQueuingStrategy extends QueuingStrategy {
+interface CountQueuingStrategy extends QueuingStrategy {
   readonly highWaterMark: number;
   readonly size: QueuingStrategySize;
 }
@@ -865,8 +823,7 @@ declare var CountQueuingStrategy: {
 };
 
 /** @category Streams */
-declare interface ByteLengthQueuingStrategy
-  extends QueuingStrategy<ArrayBufferView> {
+interface ByteLengthQueuingStrategy extends QueuingStrategy<ArrayBufferView> {
   readonly highWaterMark: number;
   readonly size: QueuingStrategySize<ArrayBufferView>;
 }
@@ -878,7 +835,7 @@ declare var ByteLengthQueuingStrategy: {
 };
 
 /** @category Streams */
-declare interface QueuingStrategyInit {
+interface QueuingStrategyInit {
   highWaterMark: number;
 }
 
@@ -888,7 +845,7 @@ declare interface QueuingStrategyInit {
  *
  * @category Streams
  */
-declare interface ReadableStream<R = any> {
+interface ReadableStream<R = any> {
   readonly locked: boolean;
   cancel(reason?: any): Promise<void>;
   getReader(options: { mode: "byob" }): ReadableStreamBYOBReader;
@@ -930,75 +887,44 @@ declare var ReadableStream: {
 };
 
 /** @category Streams */
-declare interface ReadableStreamIteratorOptions {
+interface ReadableStreamIteratorOptions {
   preventCancel?: boolean;
 }
 
 /** @category Streams */
-declare type ReadableStreamReaderMode = "byob";
+type ReadableStreamReaderMode = "byob";
 
 /** @category Streams */
-declare interface ReadableStreamGetReaderOptions {
+interface ReadableStreamGetReaderOptions {
   mode?: ReadableStreamReaderMode;
 }
 
 /** @category Streams */
-declare interface ReadableWritablePair<R = any, W = any> {
+interface ReadableWritablePair<R = any, W = any> {
   readable: ReadableStream<R>;
   writable: WritableStream<W>;
 }
 
-// TODO(petamoriken): Will be removed in v2.0.
-/**
- * @deprecated use `UnderlyingSinkCloseCallback` instead.
- * @category Streams
- */
-declare type WritableStreamDefaultControllerCloseCallback =
-  UnderlyingSinkCloseCallback;
-
 /** @category Streams */
-declare interface UnderlyingSinkCloseCallback {
+interface UnderlyingSinkCloseCallback {
   (): void | PromiseLike<void>;
 }
 
-// TODO(petamoriken): Will be removed in v2.0.
-/**
- * @deprecated use `UnderlyingSinkStartCallback` instead.
- * @category Streams
- */
-declare type WritableStreamDefaultControllerStartCallback =
-  UnderlyingSinkStartCallback;
-
 /** @category Streams */
-declare interface UnderlyingSinkStartCallback {
+interface UnderlyingSinkStartCallback {
   (controller: WritableStreamDefaultController): any;
 }
 
-// TODO(petamoriken): Will be removed in v2.0.
-/**
- * @deprecated use `UnderlyingSinkWriteCallback` instead.
- * @category Streams
- */
-declare type WritableStreamDefaultControllerWriteCallback<W> =
-  UnderlyingSinkWriteCallback<W>;
-
 /** @category Streams */
-declare interface UnderlyingSinkWriteCallback<W> {
+interface UnderlyingSinkWriteCallback<W> {
   (
     chunk: W,
     controller: WritableStreamDefaultController,
   ): void | PromiseLike<void>;
 }
 
-// TODO(petamoriken): Will be removed in v2.0.
-/**
- * @deprecated use `UnderlyingSinkAbortCallback` instead.
- * @category Streams
- */
-declare type WritableStreamErrorCallback = UnderlyingSinkAbortCallback;
-
 /** @category Streams */
-declare interface UnderlyingSinkAbortCallback {
+interface UnderlyingSinkAbortCallback {
   (reason?: any): void | PromiseLike<void>;
 }
 
@@ -1008,7 +934,7 @@ declare interface UnderlyingSinkAbortCallback {
  *
  * @category Streams
  */
-declare interface WritableStream<W = any> {
+interface WritableStream<W = any> {
   readonly locked: boolean;
   abort(reason?: any): Promise<void>;
   close(): Promise<void>;
@@ -1031,7 +957,7 @@ declare var WritableStream: {
  *
  * @category Streams
  */
-declare interface WritableStreamDefaultController {
+interface WritableStreamDefaultController {
   readonly signal: AbortSignal;
   error(e?: any): void;
 }
@@ -1049,7 +975,7 @@ declare var WritableStreamDefaultController: {
  *
  * @category Streams
  */
-declare interface WritableStreamDefaultWriter<W = any> {
+interface WritableStreamDefaultWriter<W = any> {
   readonly closed: Promise<undefined>;
   readonly desiredSize: number | null;
   readonly ready: Promise<undefined>;
@@ -1066,7 +992,7 @@ declare var WritableStreamDefaultWriter: {
 };
 
 /** @category Streams */
-declare interface TransformStream<I = any, O = any> {
+interface TransformStream<I = any, O = any> {
   readonly readable: ReadableStream<O>;
   readonly writable: WritableStream<I>;
 }
@@ -1082,7 +1008,7 @@ declare var TransformStream: {
 };
 
 /** @category Streams */
-declare interface TransformStreamDefaultController<O = any> {
+interface TransformStreamDefaultController<O = any> {
   readonly desiredSize: number | null;
   enqueue(chunk?: O): void;
   error(reason?: any): void;
@@ -1096,7 +1022,7 @@ declare var TransformStreamDefaultController: {
 };
 
 /** @category Streams */
-declare interface Transformer<I = any, O = any> {
+interface Transformer<I = any, O = any> {
   flush?: TransformerFlushCallback<O>;
   readableType?: undefined;
   start?: TransformerStartCallback<O>;
@@ -1105,34 +1031,18 @@ declare interface Transformer<I = any, O = any> {
   writableType?: undefined;
 }
 
-// TODO(petamoriken): Will be removed in v2.0.
-/**
- * @deprecated use `TransformerFlushCallback` instead.
- * @category Streams
- */
-declare type TransformStreamDefaultControllerCallback<O> =
-  TransformerFlushCallback<O>;
-
 /** @category Streams */
-declare interface TransformerFlushCallback<O> {
+interface TransformerFlushCallback<O> {
   (controller: TransformStreamDefaultController<O>): void | PromiseLike<void>;
 }
 
 /** @category Streams */
-declare interface TransformerStartCallback<O> {
+interface TransformerStartCallback<O> {
   (controller: TransformStreamDefaultController<O>): any;
 }
 
-// TODO(petamoriken): Will be removed in v2.0.
-/**
- * @deprecated use `TransformerTransformCallback` instead.
- * @category Streams
- */
-declare type TransformStreamDefaultControllerTransformCallback<I, O> =
-  TransformerTransformCallback<I, O>;
-
 /** @category Streams */
-declare interface TransformerTransformCallback<I, O> {
+interface TransformerTransformCallback<I, O> {
   (
     chunk: I,
     controller: TransformStreamDefaultController<O>,
@@ -1140,21 +1050,21 @@ declare interface TransformerTransformCallback<I, O> {
 }
 
 /** @category Streams */
-declare interface TransformerCancelCallback {
+interface TransformerCancelCallback {
   (reason: any): void | PromiseLike<void>;
 }
 
 /** @category Streams */
-declare interface GenericTransformStream {
+interface GenericTransformStream {
   readonly readable: ReadableStream;
   readonly writable: WritableStream;
 }
 
 /** @category Events */
-declare type MessageEventSource = Window | MessagePort;
+type MessageEventSource = Window | MessagePort;
 
 /** @category Events */
-declare interface MessageEventInit<T = any> extends EventInit {
+interface MessageEventInit<T = any> extends EventInit {
   data?: T;
   lastEventId?: string;
   origin?: string;
@@ -1163,7 +1073,7 @@ declare interface MessageEventInit<T = any> extends EventInit {
 }
 
 /** @category Events */
-declare interface MessageEvent<T = any> extends Event {
+interface MessageEvent<T = any> extends Event {
   /**
    * Returns the data of the message.
    */
@@ -1201,17 +1111,10 @@ declare var MessageEvent: {
 };
 
 /** @category Events */
-declare type Transferable = MessagePort | ArrayBuffer;
-
-// TODO(petamoriken): Will be removed in v2.0.
-/**
- * @deprecated use `StructuredSerializeOptions` instead.
- * @category Events
- */
-declare type PostMessageOptions = StructuredSerializeOptions;
+type Transferable = MessagePort | ArrayBuffer;
 
 /** @category Platform */
-declare interface StructuredSerializeOptions {
+interface StructuredSerializeOptions {
   transfer?: Transferable[];
 }
 
@@ -1221,7 +1124,7 @@ declare interface StructuredSerializeOptions {
  *
  * @category Messaging
  */
-declare interface MessageChannel {
+interface MessageChannel {
   readonly port1: MessagePort;
   readonly port2: MessagePort;
 }
@@ -1238,7 +1141,7 @@ declare var MessageChannel: {
 };
 
 /** @category Messaging */
-declare interface MessagePortEventMap {
+interface MessagePortEventMap {
   "message": MessageEvent;
   "messageerror": MessageEvent;
 }
@@ -1249,7 +1152,7 @@ declare interface MessagePortEventMap {
  *
  * @category Messaging
  */
-declare interface MessagePort extends EventTarget {
+interface MessagePort extends EventTarget {
   onmessage: ((this: MessagePort, ev: MessageEvent) => any) | null;
   onmessageerror: ((this: MessagePort, ev: MessageEvent) => any) | null;
   /**
@@ -1348,13 +1251,13 @@ declare function structuredClone<T = any>(
  *
  * @category Streams
  */
-declare interface CompressionStream extends GenericTransformStream {
+interface CompressionStream extends GenericTransformStream {
   readonly readable: ReadableStream<Uint8Array>;
   readonly writable: WritableStream<BufferSource>;
 }
 
 /** @category Streams */
-declare type CompressionFormat = "deflate" | "deflate-raw" | "gzip";
+type CompressionFormat = "deflate" | "deflate-raw" | "gzip";
 
 /**
  * An API for compressing a stream of data.
@@ -1395,7 +1298,7 @@ declare var CompressionStream: {
  *
  * @category Streams
  */
-declare interface DecompressionStream extends GenericTransformStream {
+interface DecompressionStream extends GenericTransformStream {
   readonly readable: ReadableStream<Uint8Array>;
   readonly writable: WritableStream<BufferSource>;
 }
@@ -1449,15 +1352,15 @@ declare function reportError(
 ): void;
 
 /** @category Platform */
-declare type PredefinedColorSpace = "srgb" | "display-p3";
+type PredefinedColorSpace = "srgb" | "display-p3";
 
 /** @category Platform */
-declare interface ImageDataSettings {
+interface ImageDataSettings {
   readonly colorSpace?: PredefinedColorSpace;
 }
 
 /** @category Platform */
-declare interface ImageData {
+interface ImageData {
   readonly colorSpace: PredefinedColorSpace;
   readonly data: Uint8ClampedArray;
   readonly height: number;

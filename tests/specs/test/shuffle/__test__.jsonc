@@ -1,0 +1,5 @@
+{
+  "args": "test --shuffle shuffle",
+  "output": "[WILDCARD]",
+  "exitCode": 0
+}

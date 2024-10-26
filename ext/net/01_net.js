@@ -1,6 +1,6 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
-import { core, internals, primordials } from "ext:core/mod.js";
+import { core, primordials } from "ext:core/mod.js";
 const {
   BadResourcePrototype,
   InterruptedPrototype,
@@ -33,9 +33,12 @@ const UDP_DGRAM_MAXSIZE = 65507;
 const {
   Error,
   Number,
+  NumberIsNaN,
+  NumberIsInteger,
   ObjectPrototypeIsPrototypeOf,
   ObjectDefineProperty,
   PromiseResolve,
+  RangeError,
   SafeSet,
   SetPrototypeAdd,
   SetPrototypeDelete,
@@ -58,10 +61,6 @@ import { SymbolDispose } from "ext:deno_web/00_infra.js";
 
 async function write(rid, data) {
   return await core.write(rid, data);
-}
-
-function shutdown(rid) {
-  return core.shutdown(rid);
 }
 
 async function resolveDns(query, recordType, options) {
@@ -102,28 +101,14 @@ class Conn {
   #writable;
 
   constructor(rid, remoteAddr, localAddr) {
-    if (internals.future) {
-      ObjectDefineProperty(this, "rid", {
-        enumerable: false,
-        value: undefined,
-      });
-    }
     ObjectDefineProperty(this, internalRidSymbol, {
+      __proto__: null,
       enumerable: false,
       value: rid,
     });
     this.#rid = rid;
     this.#remoteAddr = remoteAddr;
     this.#localAddr = localAddr;
-  }
-
-  get rid() {
-    internals.warnOnDeprecatedApi(
-      "Deno.Conn.rid",
-      new Error().stack,
-      "Use `Deno.Conn` instance methods instead.",
-    );
-    return this.#rid;
   }
 
   get remoteAddr() {
@@ -161,7 +146,7 @@ class Conn {
   }
 
   closeWrite() {
-    return shutdown(this.#rid);
+    return core.shutdown(this.#rid);
   }
 
   get readable() {
@@ -209,25 +194,31 @@ class Conn {
   }
 }
 
+class UpgradedConn extends Conn {
+  #rid = 0;
+
+  constructor(rid, remoteAddr, localAddr) {
+    super(rid, remoteAddr, localAddr);
+    ObjectDefineProperty(this, internalRidSymbol, {
+      __proto__: null,
+      enumerable: false,
+      value: rid,
+    });
+    this.#rid = rid;
+  }
+}
+
 class TcpConn extends Conn {
   #rid = 0;
 
   constructor(rid, remoteAddr, localAddr) {
     super(rid, remoteAddr, localAddr);
     ObjectDefineProperty(this, internalRidSymbol, {
+      __proto__: null,
       enumerable: false,
       value: rid,
     });
     this.#rid = rid;
-  }
-
-  get rid() {
-    internals.warnOnDeprecatedApi(
-      "Deno.TcpConn.rid",
-      new Error().stack,
-      "Use `Deno.TcpConn` instance methods instead.",
-    );
-    return this.#rid;
   }
 
   setNoDelay(noDelay = true) {
@@ -245,19 +236,11 @@ class UnixConn extends Conn {
   constructor(rid, remoteAddr, localAddr) {
     super(rid, remoteAddr, localAddr);
     ObjectDefineProperty(this, internalRidSymbol, {
+      __proto__: null,
       enumerable: false,
       value: rid,
     });
     this.#rid = rid;
-  }
-
-  get rid() {
-    internals.warnOnDeprecatedApi(
-      "Deno.UnixConn.rid",
-      new Error().stack,
-      "Use `Deno.UnixConn` instance methods instead.",
-    );
-    return this.#rid;
   }
 }
 
@@ -268,27 +251,13 @@ class Listener {
   #promise = null;
 
   constructor(rid, addr) {
-    if (internals.future) {
-      ObjectDefineProperty(this, "rid", {
-        enumerable: false,
-        value: undefined,
-      });
-    }
     ObjectDefineProperty(this, internalRidSymbol, {
+      __proto__: null,
       enumerable: false,
       value: rid,
     });
     this.#rid = rid;
     this.#addr = addr;
-  }
-
-  get rid() {
-    internals.warnOnDeprecatedApi(
-      "Deno.Listener.rid",
-      new Error().stack,
-      "Use `Deno.Listener` instance methods instead.",
-    );
-    return this.#rid;
   }
 
   get addr() {
@@ -531,10 +500,11 @@ const listenOptionApiName = Symbol("listenOptionApiName");
 function listen(args) {
   switch (args.transport ?? "tcp") {
     case "tcp": {
+      const port = validatePort(args.port);
       const { 0: rid, 1: addr } = op_net_listen_tcp(
         {
           hostname: args.hostname ?? "0.0.0.0",
-          port: Number(args.port),
+          port,
         },
         args.reusePort,
         args.loadBalanced ?? false,
@@ -558,14 +528,33 @@ function listen(args) {
   }
 }
 
+function validatePort(maybePort) {
+  if (typeof maybePort !== "number" && typeof maybePort !== "string") {
+    throw new TypeError(`Invalid port (expected number): ${maybePort}`);
+  }
+  if (maybePort === "") throw new TypeError("Invalid port: ''");
+  const port = Number(maybePort);
+  if (!NumberIsInteger(port)) {
+    if (NumberIsNaN(port) && !NumberIsNaN(maybePort)) {
+      throw new TypeError(`Invalid port: '${maybePort}'`);
+    } else {
+      throw new TypeError(`Invalid port: ${maybePort}`);
+    }
+  } else if (port < 0 || port > 65535) {
+    throw new RangeError(`Invalid port (out of range): ${maybePort}`);
+  }
+  return port;
+}
+
 function createListenDatagram(udpOpFn, unixOpFn) {
   return function listenDatagram(args) {
     switch (args.transport) {
       case "udp": {
+        const port = validatePort(args.port);
         const { 0: rid, 1: addr } = udpOpFn(
           {
             hostname: args.hostname ?? "127.0.0.1",
-            port: args.port,
+            port,
           },
           args.reuseAddress ?? false,
           args.loopback ?? false,
@@ -590,10 +579,11 @@ function createListenDatagram(udpOpFn, unixOpFn) {
 async function connect(args) {
   switch (args.transport ?? "tcp") {
     case "tcp": {
+      const port = validatePort(args.port);
       const { 0: rid, 1: localAddr, 2: remoteAddr } = await op_net_connect_tcp(
         {
           hostname: args.hostname ?? "127.0.0.1",
-          port: args.port,
+          port,
         },
       );
       localAddr.transport = "tcp";
@@ -623,7 +613,8 @@ export {
   Listener,
   listenOptionApiName,
   resolveDns,
-  shutdown,
   TcpConn,
   UnixConn,
+  UpgradedConn,
+  validatePort,
 };

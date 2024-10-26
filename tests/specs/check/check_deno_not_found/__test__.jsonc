@@ -1,0 +1,5 @@
+{
+  "args": "check --quiet deno_not_found/main.ts",
+  "output": "deno_not_found/main.out",
+  "exitCode": 1
+}

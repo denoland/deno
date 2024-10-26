@@ -6,7 +6,6 @@
 import { Buffer } from "node:buffer";
 import { ERR_INVALID_ARG_TYPE } from "ext:deno_node/internal/errors.ts";
 import * as io from "ext:deno_io/12_io.js";
-import * as fs from "ext:deno_fs/30_fs.js";
 import { ReadOptions } from "ext:deno_node/_fs/_fs_common.ts";
 import {
   arrayBufferViewToUint8Array,
@@ -18,6 +17,7 @@ import {
   validateInteger,
 } from "ext:deno_node/internal/validators.mjs";
 import { isArrayBufferView } from "ext:deno_node/internal/util/types.ts";
+import { op_fs_seek_async, op_fs_seek_sync } from "ext:core/ops";
 
 type readSyncOptions = {
   offset: number;
@@ -119,15 +119,19 @@ export function read(
     try {
       let nread: number | null;
       if (typeof position === "number" && position >= 0) {
-        const currentPosition = await fs.seek(fd, 0, io.SeekMode.Current);
+        const currentPosition = await op_fs_seek_async(
+          fd,
+          0,
+          io.SeekMode.Current,
+        );
         // We use sync calls below to avoid being affected by others during
         // these calls.
-        fs.seekSync(fd, position, io.SeekMode.Start);
+        op_fs_seek_sync(fd, position, io.SeekMode.Start);
         nread = io.readSync(
           fd,
           arrayBufferViewToUint8Array(buffer).subarray(offset, offset + length),
         );
-        fs.seekSync(fd, currentPosition, io.SeekMode.Start);
+        op_fs_seek_sync(fd, currentPosition, io.SeekMode.Start);
       } else {
         nread = await io.read(
           fd,
@@ -169,7 +173,7 @@ export function readSync(
   validateBuffer(buffer);
 
   if (length == null) {
-    length = 0;
+    length = buffer.byteLength;
   }
 
   if (typeof offsetOrOpt === "number") {
@@ -191,8 +195,8 @@ export function readSync(
 
   let currentPosition = 0;
   if (typeof position === "number" && position >= 0) {
-    currentPosition = fs.seekSync(fd, 0, io.SeekMode.Current);
-    fs.seekSync(fd, position, io.SeekMode.Start);
+    currentPosition = op_fs_seek_sync(fd, 0, io.SeekMode.Current);
+    op_fs_seek_sync(fd, position, io.SeekMode.Start);
   }
 
   const numberOfBytesRead = io.readSync(
@@ -201,7 +205,7 @@ export function readSync(
   );
 
   if (typeof position === "number" && position >= 0) {
-    fs.seekSync(fd, currentPosition, io.SeekMode.Start);
+    op_fs_seek_sync(fd, currentPosition, io.SeekMode.Start);
   }
 
   return numberOfBytesRead ?? 0;

@@ -18,8 +18,11 @@ pub trait BenchReporter {
   fn report_uncaught_error(&mut self, origin: &str, error: Box<JsError>);
 }
 
+const JSON_SCHEMA_VERSION: u8 = 1;
+
 #[derive(Debug, Serialize)]
 struct JsonReporterOutput {
+  version: u8,
   runtime: String,
   cpu: String,
   benches: Vec<JsonReporterBench>,
@@ -28,6 +31,7 @@ struct JsonReporterOutput {
 impl Default for JsonReporterOutput {
   fn default() -> Self {
     Self {
+      version: JSON_SCHEMA_VERSION,
       runtime: format!(
         "{} {}",
         version::DENO_VERSION_INFO.user_agent,
@@ -152,11 +156,14 @@ impl BenchReporter for ConsoleReporter {
       .compare_exchange(true, false, Ordering::SeqCst, Ordering::SeqCst)
       .is_ok()
     {
-      println!("{}", colors::gray(format!("cpu: {}", mitata::cpu::name())));
+      println!(
+        "{}",
+        colors::gray(format!("    CPU | {}", mitata::cpu::name()))
+      );
       println!(
         "{}\n",
         colors::gray(format!(
-          "runtime: deno {} ({})",
+          "Runtime | Deno {} ({})",
           crate::version::DENO_VERSION_INFO.deno,
           env!("TARGET")
         ))
@@ -166,7 +173,7 @@ impl BenchReporter for ConsoleReporter {
     }
 
     println!(
-      "{}\n{}\n{}",
+      "{}\n\n{}\n{}",
       colors::gray(&plan.origin),
       mitata::reporter::header(options),
       mitata::reporter::br(options)

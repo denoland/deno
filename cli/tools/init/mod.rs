@@ -37,7 +37,7 @@ const routes: Route[] = [
   },
   {
     pattern: new URLPattern({ pathname: "/static/*" }),
-    handler: (req) => serveDir(req, { urlRoot: "./" }),
+    handler: (req) => serveDir(req),
   },
 ];
 
@@ -52,7 +52,6 @@ export default {
     return handler(req);
   },
 } satisfies Deno.ServeDefaultExport;
- 
 "#,
     )?;
     create_file(
@@ -80,10 +79,20 @@ Deno.test(async function serverFetchUsers() {
 });
 
 Deno.test(async function serverFetchStatic() {
-  const req = new Request("https://deno.land/static/main.ts");
+  const req = new Request("https://deno.land/static/hello.js");
   const res = await server.fetch(req);
-  assertEquals(res.headers.get("content-type"), "text/plain;charset=UTF-8");
+  assertEquals(await res.text(), 'console.log("Hello, world!");\n');
+  assertEquals(res.headers.get("content-type"), "text/javascript; charset=UTF-8");
 });
+"#,
+    )?;
+
+    let static_dir = dir.join("static");
+    std::fs::create_dir_all(&static_dir)?;
+    create_file(
+      &static_dir,
+      "hello.js",
+      r#"console.log("Hello, world!");
 "#,
     )?;
 
@@ -203,7 +212,7 @@ Deno.test(function addTest() {
     info!("  deno task dev");
     info!("");
     info!("  {}", colors::gray("# Run the tests"));
-    info!("  deno -R test");
+    info!("  deno test -R");
   } else if init_flags.lib {
     info!("  {}", colors::gray("# Run the tests"));
     info!("  deno test");

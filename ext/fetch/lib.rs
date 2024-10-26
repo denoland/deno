@@ -17,10 +17,6 @@ use std::sync::Arc;
 use std::task::Context;
 use std::task::Poll;
 
-use deno_core::anyhow::anyhow;
-use deno_core::anyhow::Error;
-use deno_core::error::type_error;
-use deno_core::error::AnyError;
 use deno_core::futures::stream::Peekable;
 use deno_core::futures::Future;
 use deno_core::futures::FutureExt;
@@ -28,7 +24,7 @@ use deno_core::futures::Stream;
 use deno_core::futures::StreamExt;
 use deno_core::futures::TryFutureExt;
 use deno_core::op2;
-use deno_core::unsync::spawn;
+use deno_core::url;
 use deno_core::url::Url;
 use deno_core::AsyncRefCell;
 use deno_core::AsyncResult;
@@ -70,12 +66,9 @@ use hyper::body::Frame;
 use hyper_util::client::legacy::connect::HttpConnector;
 use hyper_util::client::legacy::connect::HttpInfo;
 use hyper_util::rt::TokioExecutor;
-use hyper_util::rt::TokioIo;
 use hyper_util::rt::TokioTimer;
 use serde::Deserialize;
 use serde::Serialize;
-use tokio::io::AsyncReadExt;
-use tokio::io::AsyncWriteExt;
 use tower::ServiceExt;
 use tower_http::decompression::Decompression;
 
@@ -91,15 +84,18 @@ pub struct Options {
   pub root_cert_store_provider: Option<Arc<dyn RootCertStoreProvider>>,
   pub proxy: Option<Proxy>,
   #[allow(clippy::type_complexity)]
-  pub request_builder_hook:
-    Option<fn(&mut http::Request<ReqBody>) -> Result<(), AnyError>>,
+  pub request_builder_hook: Option<
+    fn(&mut http::Request<ReqBody>) -> Result<(), deno_core::error::AnyError>,
+  >,
   pub unsafely_ignore_certificate_errors: Option<Vec<String>>,
   pub client_cert_chain_and_key: TlsKeys,
   pub file_fetch_handler: Rc<dyn FetchHandler>,
 }
 
 impl Options {
-  pub fn root_cert_store(&self) -> Result<Option<RootCertStore>, AnyError> {
+  pub fn root_cert_store(
+    &self,
+  ) -> Result<Option<RootCertStore>, deno_core::error::AnyError> {
     Ok(match &self.root_cert_store_provider {
       Some(provider) => Some(provider.get_or_try_init()?.clone()),
       None => None,
@@ -127,7 +123,6 @@ deno_core::extension!(deno_fetch,
   ops = [
     op_fetch<FP>,
     op_fetch_send,
-    op_fetch_response_upgrade,
     op_utf8_to_byte_string,
     op_fetch_custom_client<FP>,
   ],
@@ -148,6 +143,51 @@ deno_core::extension!(deno_fetch,
     state.put::<Options>(options.options);
   },
 );
+
+#[derive(Debug, thiserror::Error)]
+pub enum FetchError {
+  #[error(transparent)]
+  Resource(deno_core::error::AnyError),
+  #[error(transparent)]
+  Permission(deno_core::error::AnyError),
+  #[error("NetworkError when attempting to fetch resource")]
+  NetworkError,
+  #[error("Fetching files only supports the GET method: received {0}")]
+  FsNotGet(Method),
+  #[error("Invalid URL {0}")]
+  InvalidUrl(Url),
+  #[error(transparent)]
+  InvalidHeaderName(#[from] http::header::InvalidHeaderName),
+  #[error(transparent)]
+  InvalidHeaderValue(#[from] http::header::InvalidHeaderValue),
+  #[error("{0:?}")]
+  DataUrl(data_url::DataUrlError),
+  #[error("{0:?}")]
+  Base64(data_url::forgiving_base64::InvalidBase64),
+  #[error("Blob for the given URL not found.")]
+  BlobNotFound,
+  #[error("Url scheme '{0}' not supported")]
+  SchemeNotSupported(String),
+  #[error("Request was cancelled")]
+  RequestCanceled,
+  #[error(transparent)]
+  Http(#[from] http::Error),
+  #[error(transparent)]
+  ClientCreate(#[from] HttpClientCreateError),
+  #[error(transparent)]
+  Url(#[from] url::ParseError),
+  #[error(transparent)]
+  Method(#[from] http::method::InvalidMethod),
+  #[error(transparent)]
+  ClientSend(#[from] ClientSendError),
+  #[error(transparent)]
+  RequestBuilderHook(deno_core::error::AnyError),
+  #[error(transparent)]
+  Io(#[from] std::io::Error),
+  // Only used for node upgrade
+  #[error(transparent)]
+  Hyper(#[from] hyper::Error),
+}
 
 pub type CancelableResponseFuture =
   Pin<Box<dyn Future<Output = CancelableResponseResult>>>;
@@ -175,11 +215,7 @@ impl FetchHandler for DefaultFileFetchHandler {
     _state: &mut OpState,
     _url: &Url,
   ) -> (CancelableResponseFuture, Option<Rc<CancelHandle>>) {
-    let fut = async move {
-      Ok(Err(type_error(
-        "NetworkError when attempting to fetch resource.",
-      )))
-    };
+    let fut = async move { Ok(Err(FetchError::NetworkError)) };
     (Box::pin(fut), None)
   }
 }
@@ -196,7 +232,7 @@ pub struct FetchReturn {
 
 pub fn get_or_create_client_from_state(
   state: &mut OpState,
-) -> Result<Client, AnyError> {
+) -> Result<Client, HttpClientCreateError> {
   if let Some(client) = state.try_borrow::<Client>() {
     Ok(client.clone())
   } else {
@@ -209,11 +245,13 @@ pub fn get_or_create_client_from_state(
 
 pub fn create_client_from_options(
   options: &Options,
-) -> Result<Client, AnyError> {
+) -> Result<Client, HttpClientCreateError> {
   create_http_client(
     &options.user_agent,
     CreateHttpClientOptions {
-      root_cert_store: options.root_cert_store()?,
+      root_cert_store: options
+        .root_cert_store()
+        .map_err(HttpClientCreateError::RootCertStore)?,
       ca_certs: vec![],
       proxy: options.proxy.clone(),
       unsafely_ignore_certificate_errors: options
@@ -235,7 +273,9 @@ pub fn create_client_from_options(
 #[allow(clippy::type_complexity)]
 pub struct ResourceToBodyAdapter(
   Rc<dyn Resource>,
-  Option<Pin<Box<dyn Future<Output = Result<BufView, Error>>>>>,
+  Option<
+    Pin<Box<dyn Future<Output = Result<BufView, deno_core::error::AnyError>>>>,
+  >,
 );
 
 impl ResourceToBodyAdapter {
@@ -251,7 +291,7 @@ unsafe impl Send for ResourceToBodyAdapter {}
 unsafe impl Sync for ResourceToBodyAdapter {}
 
 impl Stream for ResourceToBodyAdapter {
-  type Item = Result<Bytes, Error>;
+  type Item = Result<Bytes, deno_core::error::AnyError>;
 
   fn poll_next(
     self: Pin<&mut Self>,
@@ -281,7 +321,7 @@ impl Stream for ResourceToBodyAdapter {
 
 impl hyper::body::Body for ResourceToBodyAdapter {
   type Data = Bytes;
-  type Error = Error;
+  type Error = deno_core::error::AnyError;
 
   fn poll_frame(
     self: Pin<&mut Self>,
@@ -304,10 +344,15 @@ impl Drop for ResourceToBodyAdapter {
 pub trait FetchPermissions {
   fn check_net_url(
     &mut self,
-    _url: &Url,
+    url: &Url,
     api_name: &str,
-  ) -> Result<(), AnyError>;
-  fn check_read(&mut self, _p: &Path, api_name: &str) -> Result<(), AnyError>;
+  ) -> Result<(), deno_core::error::AnyError>;
+  #[must_use = "the resolved return value to mitigate time-of-check to time-of-use issues"]
+  fn check_read<'a>(
+    &mut self,
+    p: &'a Path,
+    api_name: &str,
+  ) -> Result<Cow<'a, Path>, deno_core::error::AnyError>;
 }
 
 impl FetchPermissions for deno_permissions::PermissionsContainer {
@@ -316,17 +361,21 @@ impl FetchPermissions for deno_permissions::PermissionsContainer {
     &mut self,
     url: &Url,
     api_name: &str,
-  ) -> Result<(), AnyError> {
+  ) -> Result<(), deno_core::error::AnyError> {
     deno_permissions::PermissionsContainer::check_net_url(self, url, api_name)
   }
 
   #[inline(always)]
-  fn check_read(
+  fn check_read<'a>(
     &mut self,
-    path: &Path,
+    path: &'a Path,
     api_name: &str,
-  ) -> Result<(), AnyError> {
-    deno_permissions::PermissionsContainer::check_read(self, path, api_name)
+  ) -> Result<Cow<'a, Path>, deno_core::error::AnyError> {
+    deno_permissions::PermissionsContainer::check_read_path(
+      self,
+      path,
+      Some(api_name),
+    )
   }
 }
 
@@ -342,12 +391,15 @@ pub fn op_fetch<FP>(
   has_body: bool,
   #[buffer] data: Option<JsBuffer>,
   #[smi] resource: Option<ResourceId>,
-) -> Result<FetchReturn, AnyError>
+) -> Result<FetchReturn, FetchError>
 where
   FP: FetchPermissions + 'static,
 {
   let (client, allow_host) = if let Some(rid) = client_rid {
-    let r = state.resource_table.get::<HttpClientResource>(rid)?;
+    let r = state
+      .resource_table
+      .get::<HttpClientResource>(rid)
+      .map_err(FetchError::Resource)?;
     (r.client.clone(), r.allow_host)
   } else {
     (get_or_create_client_from_state(state)?, false)
@@ -360,16 +412,18 @@ where
   let scheme = url.scheme();
   let (request_rid, cancel_handle_rid) = match scheme {
     "file" => {
-      let path = url.to_file_path().map_err(|_| {
-        type_error("NetworkError when attempting to fetch resource.")
-      })?;
+      let path = url.to_file_path().map_err(|_| FetchError::NetworkError)?;
       let permissions = state.borrow_mut::<FP>();
-      permissions.check_read(&path, "fetch()")?;
+      let path = permissions
+        .check_read(&path, "fetch()")
+        .map_err(FetchError::Permission)?;
+      let url = match path {
+        Cow::Owned(path) => Url::from_file_path(path).unwrap(),
+        Cow::Borrowed(_) => url,
+      };
 
       if method != Method::GET {
-        return Err(type_error(format!(
-          "Fetching files only supports the GET method. Received {method}."
-        )));
+        return Err(FetchError::FsNotGet(method));
       }
 
       let Options {
@@ -388,13 +442,15 @@ where
     }
     "http" | "https" => {
       let permissions = state.borrow_mut::<FP>();
-      permissions.check_net_url(&url, "fetch()")?;
+      permissions
+        .check_net_url(&url, "fetch()")
+        .map_err(FetchError::Resource)?;
 
       let maybe_authority = extract_authority(&mut url);
       let uri = url
         .as_str()
         .parse::<Uri>()
-        .map_err(|_| type_error("Invalid URL"))?;
+        .map_err(|_| FetchError::InvalidUrl(url.clone()))?;
 
       let mut con_len = None;
       let body = if has_body {
@@ -408,7 +464,10 @@ where
               .boxed()
           }
           (_, Some(resource)) => {
-            let resource = state.resource_table.take_any(resource)?;
+            let resource = state
+              .resource_table
+              .take_any(resource)
+              .map_err(FetchError::Resource)?;
             match resource.size_hint() {
               (body_size, Some(n)) if body_size == n && body_size > 0 => {
                 con_len = Some(body_size);
@@ -445,10 +504,8 @@ where
       }
 
       for (key, value) in headers {
-        let name = HeaderName::from_bytes(&key)
-          .map_err(|err| type_error(err.to_string()))?;
-        let v = HeaderValue::from_bytes(&value)
-          .map_err(|err| type_error(err.to_string()))?;
+        let name = HeaderName::from_bytes(&key)?;
+        let v = HeaderValue::from_bytes(&value)?;
 
         if (name != HOST || allow_host) && name != CONTENT_LENGTH {
           request.headers_mut().append(name, v);
@@ -466,20 +523,18 @@ where
       let options = state.borrow::<Options>();
       if let Some(request_builder_hook) = options.request_builder_hook {
         request_builder_hook(&mut request)
-          .map_err(|err| type_error(err.to_string()))?;
+          .map_err(FetchError::RequestBuilderHook)?;
       }
 
       let cancel_handle = CancelHandle::new_rc();
       let cancel_handle_ = cancel_handle.clone();
 
-      let fut = {
-        async move {
-          client
-            .send(request)
-            .map_err(Into::into)
-            .or_cancel(cancel_handle_)
-            .await
-        }
+      let fut = async move {
+        client
+          .send(request)
+          .map_err(Into::into)
+          .or_cancel(cancel_handle_)
+          .await
       };
 
       let request_rid = state.resource_table.add(FetchRequestResource {
@@ -493,12 +548,10 @@ where
       (request_rid, Some(cancel_handle_rid))
     }
     "data" => {
-      let data_url = DataUrl::process(url.as_str())
-        .map_err(|e| type_error(format!("{e:?}")))?;
+      let data_url =
+        DataUrl::process(url.as_str()).map_err(FetchError::DataUrl)?;
 
-      let (body, _) = data_url
-        .decode_to_vec()
-        .map_err(|e| type_error(format!("{e:?}")))?;
+      let (body, _) = data_url.decode_to_vec().map_err(FetchError::Base64)?;
       let body = http_body_util::Full::new(body.into())
         .map_err(|never| match never {})
         .boxed();
@@ -520,9 +573,9 @@ where
     "blob" => {
       // Blob URL resolution happens in the JS side of fetch. If we got here is
       // because the URL isn't an object URL.
-      return Err(type_error("Blob for the given URL not found."));
+      return Err(FetchError::BlobNotFound);
     }
-    _ => return Err(type_error(format!("scheme '{scheme}' not supported"))),
+    _ => return Err(FetchError::SchemeNotSupported(scheme.to_string())),
   };
 
   Ok(FetchReturn {
@@ -554,11 +607,12 @@ pub struct FetchResponse {
 pub async fn op_fetch_send(
   state: Rc<RefCell<OpState>>,
   #[smi] rid: ResourceId,
-) -> Result<FetchResponse, AnyError> {
+) -> Result<FetchResponse, FetchError> {
   let request = state
     .borrow_mut()
     .resource_table
-    .take::<FetchRequestResource>(rid)?;
+    .take::<FetchRequestResource>(rid)
+    .map_err(FetchError::Resource)?;
 
   let request = Rc::try_unwrap(request)
     .ok()
@@ -571,22 +625,23 @@ pub async fn op_fetch_send(
       // If any error in the chain is a hyper body error, return that as a special result we can use to
       // reconstruct an error chain (eg: `new TypeError(..., { cause: new Error(...) })`).
       // TODO(mmastrac): it would be a lot easier if we just passed a v8::Global through here instead
-      let mut err_ref: &dyn std::error::Error = err.as_ref();
-      while let Some(err_src) = std::error::Error::source(err_ref) {
-        if let Some(err_src) = err_src.downcast_ref::<hyper::Error>() {
-          if let Some(err_src) = std::error::Error::source(err_src) {
-            return Ok(FetchResponse {
-              error: Some((err.to_string(), err_src.to_string())),
-              ..Default::default()
-            });
+
+      if let FetchError::ClientSend(err_src) = &err {
+        if let Some(client_err) = std::error::Error::source(&err_src.source) {
+          if let Some(err_src) = client_err.downcast_ref::<hyper::Error>() {
+            if let Some(err_src) = std::error::Error::source(err_src) {
+              return Ok(FetchResponse {
+                error: Some((err.to_string(), err_src.to_string())),
+                ..Default::default()
+              });
+            }
           }
         }
-        err_ref = err_src;
       }
 
-      return Err(type_error(err.to_string()));
+      return Err(err);
     }
-    Err(_) => return Err(type_error("request was cancelled")),
+    Err(_) => return Err(FetchError::RequestCanceled),
   };
 
   let status = res.status();
@@ -625,116 +680,8 @@ pub async fn op_fetch_send(
   })
 }
 
-#[op2(async)]
-#[smi]
-pub async fn op_fetch_response_upgrade(
-  state: Rc<RefCell<OpState>>,
-  #[smi] rid: ResourceId,
-) -> Result<ResourceId, AnyError> {
-  let raw_response = state
-    .borrow_mut()
-    .resource_table
-    .take::<FetchResponseResource>(rid)?;
-  let raw_response = Rc::try_unwrap(raw_response)
-    .expect("Someone is holding onto FetchResponseResource");
-
-  let (read, write) = tokio::io::duplex(1024);
-  let (read_rx, write_tx) = tokio::io::split(read);
-  let (mut write_rx, mut read_tx) = tokio::io::split(write);
-  let upgraded = raw_response.upgrade().await?;
-  {
-    // Stage 3: Pump the data
-    let (mut upgraded_rx, mut upgraded_tx) =
-      tokio::io::split(TokioIo::new(upgraded));
-
-    spawn(async move {
-      let mut buf = [0; 1024];
-      loop {
-        let read = upgraded_rx.read(&mut buf).await?;
-        if read == 0 {
-          break;
-        }
-        read_tx.write_all(&buf[..read]).await?;
-      }
-      Ok::<_, AnyError>(())
-    });
-    spawn(async move {
-      let mut buf = [0; 1024];
-      loop {
-        let read = write_rx.read(&mut buf).await?;
-        if read == 0 {
-          break;
-        }
-        upgraded_tx.write_all(&buf[..read]).await?;
-      }
-      Ok::<_, AnyError>(())
-    });
-  }
-
-  Ok(
-    state
-      .borrow_mut()
-      .resource_table
-      .add(UpgradeStream::new(read_rx, write_tx)),
-  )
-}
-
-struct UpgradeStream {
-  read: AsyncRefCell<tokio::io::ReadHalf<tokio::io::DuplexStream>>,
-  write: AsyncRefCell<tokio::io::WriteHalf<tokio::io::DuplexStream>>,
-  cancel_handle: CancelHandle,
-}
-
-impl UpgradeStream {
-  pub fn new(
-    read: tokio::io::ReadHalf<tokio::io::DuplexStream>,
-    write: tokio::io::WriteHalf<tokio::io::DuplexStream>,
-  ) -> Self {
-    Self {
-      read: AsyncRefCell::new(read),
-      write: AsyncRefCell::new(write),
-      cancel_handle: CancelHandle::new(),
-    }
-  }
-
-  async fn read(self: Rc<Self>, buf: &mut [u8]) -> Result<usize, AnyError> {
-    let cancel_handle = RcRef::map(self.clone(), |this| &this.cancel_handle);
-    async {
-      let read = RcRef::map(self, |this| &this.read);
-      let mut read = read.borrow_mut().await;
-      Ok(Pin::new(&mut *read).read(buf).await?)
-    }
-    .try_or_cancel(cancel_handle)
-    .await
-  }
-
-  async fn write(self: Rc<Self>, buf: &[u8]) -> Result<usize, AnyError> {
-    let cancel_handle = RcRef::map(self.clone(), |this| &this.cancel_handle);
-    async {
-      let write = RcRef::map(self, |this| &this.write);
-      let mut write = write.borrow_mut().await;
-      Ok(Pin::new(&mut *write).write(buf).await?)
-    }
-    .try_or_cancel(cancel_handle)
-    .await
-  }
-}
-
-impl Resource for UpgradeStream {
-  fn name(&self) -> Cow<str> {
-    "fetchUpgradedStream".into()
-  }
-
-  deno_core::impl_readable_byob!();
-  deno_core::impl_writable!();
-
-  fn close(self: Rc<Self>) {
-    self.cancel_handle.cancel();
-  }
-}
-
 type CancelableResponseResult =
-  Result<Result<http::Response<ResBody>, AnyError>, Canceled>;
+  Result<Result<http::Response<ResBody>, FetchError>, Canceled>;
 
 pub struct FetchRequestResource {
   pub future: Pin<Box<dyn Future<Output = CancelableResponseResult>>>,
@@ -789,7 +736,7 @@ impl FetchResponseResource {
     }
   }
 
-  pub async fn upgrade(self) -> Result<hyper::upgrade::Upgraded, AnyError> {
+  pub async fn upgrade(self) -> Result<hyper::upgrade::Upgraded, hyper::Error> {
     let reader = self.response_reader.into_inner();
     match reader {
       FetchResponseReader::Start(resp) => Ok(hyper::upgrade::on(resp).await?),
@@ -844,7 +791,9 @@ impl Resource for FetchResponseResource {
             // safely call `await` on it without creating a race condition.
             Some(_) => match reader.as_mut().next().await.unwrap() {
               Ok(chunk) => assert!(chunk.is_empty()),
-              Err(err) => break Err(type_error(err.to_string())),
+              Err(err) => {
+                break Err(deno_core::error::type_error(err.to_string()))
+              }
             },
             None => break Ok(BufView::empty()),
           }
@@ -907,14 +856,16 @@ pub fn op_fetch_custom_client<FP>(
   state: &mut OpState,
   #[serde] args: CreateHttpClientArgs,
   #[cppgc] tls_keys: &TlsKeysHolder,
-) -> Result<ResourceId, AnyError>
+) -> Result<ResourceId, FetchError>
 where
   FP: FetchPermissions + 'static,
 {
   if let Some(proxy) = args.proxy.clone() {
     let permissions = state.borrow_mut::<FP>();
     let url = Url::parse(&proxy.url)?;
-    permissions.check_net_url(&url, "Deno.createHttpClient()")?;
+    permissions
+      .check_net_url(&url, "Deno.createHttpClient()")
+      .map_err(FetchError::Permission)?;
   }
 
   let options = state.borrow::<Options>();
@@ -927,7 +878,9 @@ where
   let client = create_http_client(
     &options.user_agent,
     CreateHttpClientOptions {
-      root_cert_store: options.root_cert_store()?,
+      root_cert_store: options
+        .root_cert_store()
+        .map_err(HttpClientCreateError::RootCertStore)?,
       ca_certs,
       proxy: args.proxy,
       unsafely_ignore_certificate_errors: options
@@ -985,19 +938,34 @@ impl Default for CreateHttpClientOptions {
   }
 }
 
+#[derive(Debug, thiserror::Error)]
+pub enum HttpClientCreateError {
+  #[error(transparent)]
+  Tls(deno_tls::TlsError),
+  #[error("Illegal characters in User-Agent: received {0}")]
+  InvalidUserAgent(String),
+  #[error("invalid proxy url")]
+  InvalidProxyUrl,
+  #[error("Cannot create Http Client: either `http1` or `http2` needs to be set to true")]
+  HttpVersionSelectionInvalid,
+  #[error(transparent)]
+  RootCertStore(deno_core::error::AnyError),
+}
+
 /// Create new instance of async Client. This client supports
 /// proxies and doesn't follow redirects.
 pub fn create_http_client(
   user_agent: &str,
   options: CreateHttpClientOptions,
-) -> Result<Client, AnyError> {
+) -> Result<Client, HttpClientCreateError> {
   let mut tls_config = deno_tls::create_client_config(
     options.root_cert_store,
     options.ca_certs,
     options.unsafely_ignore_certificate_errors,
     options.client_cert_chain_and_key.into(),
     deno_tls::SocketUse::Http,
-  )?;
+  )
+  .map_err(HttpClientCreateError::Tls)?;
 
   // Proxy TLS should not send ALPN
   tls_config.alpn_protocols.clear();
@@ -1016,9 +984,9 @@ pub fn create_http_client(
   let mut http_connector = HttpConnector::new();
   http_connector.enforce_http(false);
 
-  let user_agent = user_agent
-    .parse::<HeaderValue>()
-    .map_err(|_| type_error("illegal characters in User-Agent"))?;
+  let user_agent = user_agent.parse::<HeaderValue>().map_err(|_| {
+    HttpClientCreateError::InvalidUserAgent(user_agent.to_string())
+  })?;
 
   let mut builder =
     hyper_util::client::legacy::Builder::new(TokioExecutor::new());
@@ -1028,7 +996,7 @@ pub fn create_http_client(
   let mut proxies = proxy::from_env();
   if let Some(proxy) = options.proxy {
     let mut intercept = proxy::Intercept::all(&proxy.url)
-      .ok_or_else(|| type_error("invalid proxy url"))?;
+      .ok_or_else(|| HttpClientCreateError::InvalidProxyUrl)?;
     if let Some(basic_auth) = &proxy.basic_auth {
       intercept.set_auth(&basic_auth.username, &basic_auth.password);
     }
@@ -1060,7 +1028,7 @@ pub fn create_http_client(
     }
     (true, true) => {}
     (false, false) => {
-      return Err(type_error("Either `http1` or `http2` needs to be true"))
+      return Err(HttpClientCreateError::HttpVersionSelectionInvalid)
     }
   }
 
@@ -1076,10 +1044,8 @@ pub fn create_http_client(
 
 #[op2]
 #[serde]
-pub fn op_utf8_to_byte_string(
-  #[string] input: String,
-) -> Result<ByteString, AnyError> {
-  Ok(input.into())
+pub fn op_utf8_to_byte_string(#[string] input: String) -> ByteString {
+  input.into()
 }
 
 #[derive(Clone, Debug)]
@@ -1099,7 +1065,7 @@ const STAR_STAR: HeaderValue = HeaderValue::from_static("*/*");
 #[derive(Debug)]
 pub struct ClientSendError {
   uri: Uri,
-  source: hyper_util::client::legacy::Error,
+  pub source: hyper_util::client::legacy::Error,
 }
 
 impl ClientSendError {
@@ -1171,12 +1137,14 @@ impl Client {
       .oneshot(req)
       .await
       .map_err(|e| ClientSendError { uri, source: e })?;
-    Ok(resp.map(|b| b.map_err(|e| anyhow!(e)).boxed()))
+    Ok(resp.map(|b| b.map_err(|e| deno_core::anyhow::anyhow!(e)).boxed()))
   }
 }
 
-pub type ReqBody = http_body_util::combinators::BoxBody<Bytes, Error>;
-pub type ResBody = http_body_util::combinators::BoxBody<Bytes, Error>;
+pub type ReqBody =
+  http_body_util::combinators::BoxBody<Bytes, deno_core::error::AnyError>;
+pub type ResBody =
+  http_body_util::combinators::BoxBody<Bytes, deno_core::error::AnyError>;
 
 /// Copied from https://github.com/seanmonstar/reqwest/blob/b9d62a0323d96f11672a61a17bf8849baec00275/src/async_impl/request.rs#L572
 /// Check the request URL for a "username:password" type authority, and if

@@ -139,16 +139,32 @@ Deno.test({
 Deno.test({
   name: "createCipheriv - input encoding",
   fn() {
-    const cipher = crypto.createCipheriv(
-      "aes-128-cbc",
-      new Uint8Array(16),
-      new Uint8Array(16),
-    );
-    assertEquals(
-      cipher.update("hello, world! hello, world!", "utf-8", "hex"),
-      "ca7df4d74f51b77a7440ead38343ab0f",
-    );
-    assertEquals(cipher.final("hex"), "d0da733dec1fa61125c80a6f97e6166e");
+    {
+      const cipher = crypto.createCipheriv(
+        "aes-128-cbc",
+        new Uint8Array(16),
+        new Uint8Array(16),
+      );
+      assertEquals(
+        cipher.update("hello, world! hello, world!", "utf-8", "hex"),
+        "ca7df4d74f51b77a7440ead38343ab0f",
+      );
+      assertEquals(cipher.final("hex"), "d0da733dec1fa61125c80a6f97e6166e");
+    }
+
+    {
+      const cipher = crypto.createCipheriv(
+        "aes-128-cbc",
+        new Uint8Array(16),
+        new Uint8Array(16),
+      );
+      // update with string without input encoding
+      assertEquals(
+        cipher.update("hello, world! hello, world!").toString("hex"),
+        "ca7df4d74f51b77a7440ead38343ab0f",
+      );
+      assertEquals(cipher.final("hex"), "d0da733dec1fa61125c80a6f97e6166e");
+    }
   },
 });
 
@@ -246,6 +262,44 @@ Deno.test({
 });
 
 Deno.test({
+  name: "createCipheriv - invalid inputs",
+  fn() {
+    assertThrows(
+      () =>
+        crypto.createCipheriv("aes256", new Uint8Array(31), new Uint8Array(16)),
+      RangeError,
+      "Invalid key length",
+    );
+    assertThrows(
+      () =>
+        crypto.createCipheriv(
+          "aes-256-cbc",
+          new Uint8Array(31),
+          new Uint8Array(16),
+        ),
+      RangeError,
+      "Invalid key length",
+    );
+    assertThrows(
+      () =>
+        crypto.createCipheriv("aes256", new Uint8Array(32), new Uint8Array(15)),
+      TypeError,
+      "Invalid initialization vector",
+    );
+    assertThrows(
+      () =>
+        crypto.createCipheriv(
+          "aes-256-cbc",
+          new Uint8Array(32),
+          new Uint8Array(15),
+        ),
+      TypeError,
+      "Invalid initialization vector",
+    );
+  },
+});
+
+Deno.test({
   name: "createDecipheriv - invalid algorithm",
   fn() {
     assertThrows(
@@ -253,6 +307,52 @@ Deno.test({
         crypto.createDecipheriv("foo", new Uint8Array(16), new Uint8Array(16)),
       TypeError,
       "Unknown cipher",
+    );
+  },
+});
+
+Deno.test({
+  name: "createDecipheriv - invalid inputs",
+  fn() {
+    assertThrows(
+      () =>
+        crypto.createDecipheriv(
+          "aes256",
+          new Uint8Array(31),
+          new Uint8Array(16),
+        ),
+      RangeError,
+      "Invalid key length",
+    );
+    assertThrows(
+      () =>
+        crypto.createDecipheriv(
+          "aes-256-cbc",
+          new Uint8Array(31),
+          new Uint8Array(16),
+        ),
+      RangeError,
+      "Invalid key length",
+    );
+    assertThrows(
+      () =>
+        crypto.createDecipheriv(
+          "aes256",
+          new Uint8Array(32),
+          new Uint8Array(15),
+        ),
+      TypeError,
+      "Invalid initialization vector",
+    );
+    assertThrows(
+      () =>
+        crypto.createDecipheriv(
+          "aes-256-cbc",
+          new Uint8Array(32),
+          new Uint8Array(15),
+        ),
+      TypeError,
+      "Invalid initialization vector",
     );
   },
 });
@@ -276,5 +376,43 @@ Deno.test({
     assertEquals(info2.name, "aes-128-cbc");
     assertEquals(info2.keyLength, 16);
     assertEquals(info2.ivLength, 16);
+  },
+});
+
+Deno.test({
+  name:
+    "createDecipheriv - handling of the last chunk when auto padding enabled/disabled",
+  fn() {
+    const algorithm = "aes-256-cbc";
+    const key = Buffer.from(
+      "84dcdd964968734fdf0de4a2cba471c2e0a753930b841c014b1e77f456b5797b",
+      "hex",
+    );
+    const val = Buffer.from(
+      "feabbdf66e2c71cc780d0cd2765dcce283e8ae7e58fcc1a9acafc678581e0e06",
+      "hex",
+    );
+    const iv = Buffer.alloc(16, 0);
+
+    {
+      const decipher = crypto.createDecipheriv(algorithm, key, iv);
+      decipher.setAutoPadding(false);
+      assertEquals(
+        decipher.update(val, undefined, "hex"),
+        "ed2c908f26571bf8e50d60b77fb9c25f95b933b59111543c6fac41ad6b47e681",
+      );
+      assertEquals(decipher.final("hex"), "");
+    }
+
+    {
+      const decipher = crypto.createDecipheriv(algorithm, key, iv);
+      assertEquals(
+        decipher.update(val, undefined, "hex"),
+        "ed2c908f26571bf8e50d60b77fb9c25f",
+      );
+      assertThrows(() => {
+        decipher.final();
+      });
+    }
   },
 });

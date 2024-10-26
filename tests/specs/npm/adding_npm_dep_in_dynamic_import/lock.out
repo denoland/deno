@@ -1,20 +1,15 @@
 {
-  "version": "3",
-  "packages": {
-    "specifiers": {
-      "npm:@denotest/add": "npm:@denotest/add@1.0.0",
-      "npm:@denotest/subtract": "npm:@denotest/subtract@1.0.0"
-    },
-    "npm": {
-      "@denotest/add@1.0.0": {
-        "integrity": "[WILDLINE]",
-        "dependencies": {}
-      },
-      "@denotest/subtract@1.0.0": {
-        "integrity": "[WILDLINE]",
-        "dependencies": {}
-      }
-    }
+  "version": "4",
+  "specifiers": {
+    "npm:@denotest/add@*": "1.0.0",
+    "npm:@denotest/subtract@*": "1.0.0"
   },
-  "remote": {}
+  "npm": {
+    "@denotest/add@1.0.0": {
+      "integrity": "[WILDLINE]"
+    },
+    "@denotest/subtract@1.0.0": {
+      "integrity": "[WILDLINE]"
+    }
+  }
 }

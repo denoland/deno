@@ -1,0 +1,5 @@
+{
+  "args": "test --filter=foo filter",
+  "exitCode": 0,
+  "output": "main.out"
+}

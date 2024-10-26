@@ -3,7 +3,7 @@
   "steps": [
     {
       "args": "run main.ts",
-      "output": "error.out",
+      "output": "main.out",
       "exitCode": 1
     },
     {

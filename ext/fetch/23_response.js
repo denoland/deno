@@ -61,6 +61,15 @@ const _mimeType = Symbol("mime type");
 const _body = Symbol("body");
 const _brand = webidl.brand;
 
+// it's slightly faster to cache these
+const webidlConvertersBodyInitDomString =
+  webidl.converters["BodyInit_DOMString?"];
+const webidlConvertersUSVString = webidl.converters["USVString"];
+const webidlConvertersUnsignedShort = webidl.converters["unsigned short"];
+const webidlConvertersAny = webidl.converters["any"];
+const webidlConvertersByteString = webidl.converters["ByteString"];
+const webidlConvertersHeadersInit = webidl.converters["HeadersInit"];
+
 /**
  * @typedef InnerResponse
  * @property {"basic" | "cors" | "default" | "error" | "opaque" | "opaqueredirect"} type
@@ -172,7 +181,7 @@ function initializeAResponse(response, init, bodyWithType) {
   // 1.
   if ((init.status < 200 || init.status > 599) && init.status != 101) {
     throw new RangeError(
-      `The status provided (${init.status}) is not equal to 101 and outside the range [200, 599].`,
+      `The status provided (${init.status}) is not equal to 101 and outside the range [200, 599]`,
     );
   }
 
@@ -181,7 +190,9 @@ function initializeAResponse(response, init, bodyWithType) {
     init.statusText &&
     RegExpPrototypeExec(REASON_PHRASE_RE, init.statusText) === null
   ) {
-    throw new TypeError("Status text is not valid.");
+    throw new TypeError(
+      `Invalid status text: "${init.statusText}"`,
+    );
   }
 
   // 3.
@@ -257,13 +268,13 @@ class Response {
    */
   static redirect(url, status = 302) {
     const prefix = "Failed to execute 'Response.redirect'";
-    url = webidl.converters["USVString"](url, prefix, "Argument 1");
-    status = webidl.converters["unsigned short"](status, prefix, "Argument 2");
+    url = webidlConvertersUSVString(url, prefix, "Argument 1");
+    status = webidlConvertersUnsignedShort(status, prefix, "Argument 2");
 
     const baseURL = getLocationHref();
     const parsedURL = new URL(url, baseURL);
     if (!redirectStatus(status)) {
-      throw new RangeError("Invalid redirect status code.");
+      throw new RangeError(`Invalid redirect status code: ${status}`);
     }
     const inner = newInnerResponse(status);
     inner.type = "default";
@@ -284,8 +295,8 @@ class Response {
    */
   static json(data = undefined, init = { __proto__: null }) {
     const prefix = "Failed to execute 'Response.json'";
-    data = webidl.converters.any(data);
-    init = webidl.converters["ResponseInit_fast"](init, prefix, "Argument 2");
+    data = webidlConvertersAny(data);
+    init = webidlConvertersResponseInitFast(init, prefix, "Argument 2");
 
     const str = serializeJSValueToJSONString(data);
     const res = extractBody(str);
@@ -311,8 +322,8 @@ class Response {
     }
 
     const prefix = "Failed to construct 'Response'";
-    body = webidl.converters["BodyInit_DOMString?"](body, prefix, "Argument 1");
-    init = webidl.converters["ResponseInit_fast"](init, prefix, "Argument 2");
+    body = webidlConvertersBodyInitDomString(body, prefix, "Argument 1");
+    init = webidlConvertersResponseInitFast(init, prefix, "Argument 2");
 
     this[_response] = newInnerResponse();
     this[_headers] = headersFromHeaderList(
@@ -395,7 +406,7 @@ class Response {
   clone() {
     webidl.assertBranded(this, ResponsePrototype);
     if (this[_body] && this[_body].unusable()) {
-      throw new TypeError("Body is unusable.");
+      throw new TypeError("Body is unusable");
     }
     const second = webidl.createBranded(Response);
     const newRes = cloneInnerResponse(this[_response]);
@@ -430,9 +441,9 @@ class Response {
 
 webidl.configureInterface(Response);
 ObjectDefineProperties(Response, {
-  json: { enumerable: true },
-  redirect: { enumerable: true },
-  error: { enumerable: true },
+  json: { __proto__: null, enumerable: true },
+  redirect: { __proto__: null, enumerable: true },
+  error: { __proto__: null, enumerable: true },
 });
 const ResponsePrototype = Response.prototype;
 mixinBody(ResponsePrototype, _body, _mimeType);
@@ -441,47 +452,49 @@ webidl.converters["Response"] = webidl.createInterfaceConverter(
   "Response",
   ResponsePrototype,
 );
-webidl.converters["ResponseInit"] = webidl.createDictionaryConverter(
-  "ResponseInit",
-  [{
-    key: "status",
-    defaultValue: 200,
-    converter: webidl.converters["unsigned short"],
-  }, {
-    key: "statusText",
-    defaultValue: "",
-    converter: webidl.converters["ByteString"],
-  }, {
-    key: "headers",
-    converter: webidl.converters["HeadersInit"],
-  }],
-);
-webidl.converters["ResponseInit_fast"] = function (
-  init,
-  prefix,
-  context,
-  opts,
-) {
-  if (init === undefined || init === null) {
-    return { status: 200, statusText: "", headers: undefined };
-  }
-  // Fast path, if not a proxy
-  if (typeof init === "object" && !core.isProxy(init)) {
-    // Not a proxy fast path
-    const status = init.status !== undefined
-      ? webidl.converters["unsigned short"](init.status)
-      : 200;
-    const statusText = init.statusText !== undefined
-      ? webidl.converters["ByteString"](init.statusText)
-      : "";
-    const headers = init.headers !== undefined
-      ? webidl.converters["HeadersInit"](init.headers)
-      : undefined;
-    return { status, statusText, headers };
-  }
-  // Slow default path
-  return webidl.converters["ResponseInit"](init, prefix, context, opts);
-};
+const webidlConvertersResponseInit = webidl.converters["ResponseInit"] = webidl
+  .createDictionaryConverter(
+    "ResponseInit",
+    [{
+      key: "status",
+      defaultValue: 200,
+      converter: webidlConvertersUnsignedShort,
+    }, {
+      key: "statusText",
+      defaultValue: "",
+      converter: webidlConvertersByteString,
+    }, {
+      key: "headers",
+      converter: webidlConvertersHeadersInit,
+    }],
+  );
+const webidlConvertersResponseInitFast = webidl
+  .converters["ResponseInit_fast"] = function (
+    init,
+    prefix,
+    context,
+    opts,
+  ) {
+    if (init === undefined || init === null) {
+      return { status: 200, statusText: "", headers: undefined };
+    }
+    // Fast path, if not a proxy
+    if (typeof init === "object" && !core.isProxy(init)) {
+      // Not a proxy fast path
+      const status = init.status !== undefined
+        ? webidlConvertersUnsignedShort(init.status)
+        : 200;
+      const statusText = init.statusText !== undefined
+        ? webidlConvertersByteString(init.statusText)
+        : "";
+      const headers = init.headers !== undefined
+        ? webidlConvertersHeadersInit(init.headers)
+        : undefined;
+      return { status, statusText, headers };
+    }
+    // Slow default path
+    return webidlConvertersResponseInit(init, prefix, context, opts);
+  };
 
 /**
  * @param {Response} response

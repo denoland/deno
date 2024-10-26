@@ -78,6 +78,5 @@ Following ops are provided, which can be accessed through `Deno.ops`:
 
 - op_fetch
 - op_fetch_send
-- op_fetch_response_upgrade
 - op_utf8_to_byte_string
 - op_fetch_custom_client

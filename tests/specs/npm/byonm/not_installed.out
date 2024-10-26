@@ -1,2 +1,2 @@
-error: Could not find "chalk" in a node_modules folder. Deno expects the node_modules/ directory to be up to date. Did you forget to run `npm install`?
+error: Could not find "chalk" in a node_modules folder. Deno expects the node_modules/ directory to be up to date. Did you forget to run `deno install`?
     at file:///[WILDCARD]/not_installed.ts:1:19

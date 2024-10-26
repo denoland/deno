@@ -1,0 +1,4 @@
+{
+  "args": "eval --quiet import('http://localhost:4545/subdir/type_error.ts').then(console.log);",
+  "output": "main.out"
+}

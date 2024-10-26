@@ -1,1 +1,99 @@
-{"_id":"has-property-descriptors","name":"has-property-descriptors","dist-tags":{"latest":"1.0.0"},"versions":{"1.0.0":{"name":"has-property-descriptors","version":"1.0.0","description":"Does the environment have full property descriptor support? Handles IE 8's broken defineProperty/gOPD.","main":"index.js","exports":{".":"./index.js","./package.json":"./package.json"},"sideEffects":false,"scripts":{"prepublishOnly":"safe-publish-latest","prepublish":"not-in-publish || npm run prepublishOnly","pretest":"npm run lint","prelint":"evalmd README.md","lint":"eslint --ext=js,mjs .","tests-only":"nyc tape 'test/**/*.js'","test":"npm run tests-only","posttest":"aud --production","version":"auto-changelog && git add CHANGELOG.md","postversion":"auto-changelog && git add CHANGELOG.md && git commit --no-edit --amend && git tag -f \"v$(node -e \"console.log(require('./package.json').version)\")\""},"repository":{"type":"git","url":"git+https://github.com/inspect-js/has-property-descriptors.git"},"keywords":["property","descriptors","has","environment","env","defineProperty","getOwnPropertyDescriptor"],"author":{"name":"Jordan Harband","email":"ljharb@gmail.com"},"funding":{"url":"https://github.com/sponsors/ljharb"},"license":"MIT","bugs":{"url":"https://github.com/inspect-js/has-property-descriptors/issues"},"homepage":"https://github.com/inspect-js/has-property-descriptors#readme","devDependencies":{"@ljharb/eslint-config":"^21.0.0","aud":"^2.0.0","auto-changelog":"^2.4.0","eslint":"=8.8.0","in-publish":"^2.0.1","evalmd":"^0.0.19","nyc":"^10.3.2","safe-publish-latest":"^2.0.0","tape":"^5.5.3"},"dependencies":{"get-intrinsic":"^1.1.1"},"testling":{"files":"test/index.js"},"auto-changelog":{"output":"CHANGELOG.md","template":"keepachangelog","unreleased":false,"commitLimit":false,"backfillLimit":false,"hideCredit":true},"gitHead":"3771c8b4f20e963d3a64b101b3233c20791c32ae","_id":"has-property-descriptors@1.0.0","_nodeVersion":"17.9.0","_npmVersion":"8.3.1","dist":{"integrity":"sha512-62DVLZGoiEBDHQyqG4w9xCuZ7eJEwNmJRWw2VY84Oedb7WFcA27fiEVe8oUQx9hAUJ4ekurquucTGwsyO1XGdQ==","shasum":"610708600606d36961ed04c196193b6a607fa861","tarball":"http://localhost:4260/has-property-descriptors/has-property-descriptors-1.0.0.tgz","fileCount":9,"unpackedSize":9308,"signatures":[{"keyid":"SHA256:jl3bwswu80PjjokCgh0o2w5c2U4LhQAE57gj9cz1kzA","sig":"MEQCIGu4gOEZPx0AUfM6YuqldUOElOureYihKd6CDr1Dpv9gAiBYuTEkAw8K4moKvJ7BXTohQQAJNKNWCnAJlOEyg06yYg=="}],"npm-signature":"-----BEGIN PGP SIGNATURE-----\r\nVersion: OpenPGP.js v4.10.10\r\nComment: https://openpgpjs.org\r\n\r\nwsFzBAEBCAAGBQJiWQgoACEJED1NWxICdlZqFiEECWMYAoorWMhJKdjhPU1b\r\nEgJ2VmpuEhAAlWpOnMjEOy8ZCmrOUmE82lejonXdgy/c0+t609UYz2VO0nKr\r\n0RqhNm3xSvSU/0wMa1LOKb0rcNnRNk9YFffxDMWi6xE84n7jjWbf1vcZ1xEb\r\nFLb5T7MGEveF6lNeeMLOZPJVyQ3WDEwio5meyayWVRzEBrJq5yT+e5/hgFwz\r\nLDxMfil2CosRkDeqr+YHJC5s57qcTOkM0SKLv7pfvtVymnFPuVjTkZfwb26g\r\nwRu7oVkZFjIBf6bG0wCxj9fMCMsHpKI27rU9O3K+U0DCJLtSG92bTyvDJ0ig\r\nNLBiX5zwelnLHUEGmvIwt3/V2ZxFvK5Soymnk4COvCI3QgJkGAKoBJDgsLmP\r\nDcvHe5NEidZqvh/8kfiqwHqQ0tAUImPGQoQ3j+Sx6oN3+q+6d9RWkUyfv69I\r\n0268s/Mf2Rf7Ow0PbgkQn3qq/dxR/PvPKDSTz53gpmiDd79Hqjv9KTNTawBG\r\nHF/Nga5rVOUZHQgvhaOoXrGDsIVLfKeda+UrFwKHN4zkbvO58LaBoIMjHKz3\r\nLB8Qddh4Cqm4QdK6fBgmrDyCI79AIICCeETfQCGU/gitLcS0mQTCIHFSdwtR\r\nwt0t85krp1lpjhKA8HfHgwj5Ky9A/KdFPI1DrbbqjJiRCAnsSJzdJuw0eXcn\r\nUai87G82D9Q2HmEpEgBhWKsa8PQU4pO18E0=\r\n=iq2o\r\n-----END PGP SIGNATURE-----\r\n"},"_npmUser":{"name":"ljharb","email":"ljharb@gmail.com"},"directories":{},"maintainers":[{"name":"ljharb","email":"ljharb@gmail.com"}],"_npmOperationalInternal":{"host":"s3://npm-registry-packages","tmp":"tmp/has-property-descriptors_1.0.0_1650001960160_0.19595316522875494"},"_hasShrinkwrap":false}},"time":{"created":"2022-04-15T05:52:40.160Z","1.0.0":"2022-04-15T05:52:40.310Z","modified":"2022-04-15T05:52:40.433Z"},"maintainers":[{"name":"ljharb","email":"ljharb@gmail.com"}],"description":"Does the environment have full property descriptor support? Handles IE 8's broken defineProperty/gOPD.","homepage":"https://github.com/inspect-js/has-property-descriptors#readme","keywords":["property","descriptors","has","environment","env","defineProperty","getOwnPropertyDescriptor"],"repository":{"type":"git","url":"git+https://github.com/inspect-js/has-property-descriptors.git"},"author":{"name":"Jordan Harband","email":"ljharb@gmail.com"},"bugs":{"url":"https://github.com/inspect-js/has-property-descriptors/issues"},"license":"MIT","readme":"# has-property-descriptors <sup>[![Version Badge][npm-version-svg]][package-url]</sup>\n\n[![github actions][actions-image]][actions-url]\n[![coverage][codecov-image]][codecov-url]\n[![dependency status][deps-svg]][deps-url]\n[![dev dependency status][dev-deps-svg]][dev-deps-url]\n[![License][license-image]][license-url]\n[![Downloads][downloads-image]][downloads-url]\n\n[![npm badge][npm-badge-png]][package-url]\n\nDoes the environment have full property descriptor support? Handles IE 8's broken defineProperty/gOPD.\n\n## Example\n\n```js\nvar hasPropertyDescriptors = require('has-property-descriptors');\nvar assert = require('assert');\n\nassert.equal(hasPropertyDescriptors(), true); // will be `false` in IE 6-8, and ES5 engines\n\n// Arrays can not have their length `[[Defined]]` in some engines\nassert.equal(hasPropertyDescriptors.hasArrayLengthDefineBug(), false); // will be `true` in Firefox 4-22, and node v0.6\n```\n\n## Tests\nSimply clone the repo, `npm install`, and run `npm test`\n\n[package-url]: https://npmjs.org/package/has-property-descriptors\n[npm-version-svg]: https://versionbadg.es/inspect-js/has-property-descriptors.svg\n[deps-svg]: https://david-dm.org/inspect-js/has-property-descriptors.svg\n[deps-url]: https://david-dm.org/inspect-js/has-property-descriptors\n[dev-deps-svg]: https://david-dm.org/inspect-js/has-property-descriptors/dev-status.svg\n[dev-deps-url]: https://david-dm.org/inspect-js/has-property-descriptors#info=devDependencies\n[npm-badge-png]: https://nodei.co/npm/has-property-descriptors.png?downloads=true&stars=true\n[license-image]: https://img.shields.io/npm/l/has-property-descriptors.svg\n[license-url]: LICENSE\n[downloads-image]: https://img.shields.io/npm/dm/has-property-descriptors.svg\n[downloads-url]: https://npm-stat.com/charts.html?package=has-property-descriptors\n[codecov-image]: https://codecov.io/gh/inspect-js/has-property-descriptors/branch/main/graphs/badge.svg\n[codecov-url]: https://app.codecov.io/gh/inspect-js/has-property-descriptors/\n[actions-image]: https://img.shields.io/endpoint?url=https://github-actions-badge-u3jn4tfpocch.runkit.sh/inspect-js/has-property-descriptors\n[actions-url]: https://github.com/inspect-js/has-property-descriptors/actions\n","readmeFilename":"README.md"}
+{
+  "name": "has-property-descriptors",
+  "dist-tags": {
+    "latest": "1.0.0"
+  },
+  "versions": {
+    "1.0.0": {
+      "name": "has-property-descriptors",
+      "version": "1.0.0",
+      "description": "Does the environment have full property descriptor support? Handles IE 8's broken defineProperty/gOPD.",
+      "main": "index.js",
+      "exports": {
+        ".": "./index.js",
+        "./package.json": "./package.json"
+      },
+      "sideEffects": false,
+      "scripts": {
+        "prepublishOnly": "safe-publish-latest",
+        "prepublish": "not-in-publish || npm run prepublishOnly",
+        "pretest": "npm run lint",
+        "prelint": "evalmd README.md",
+        "lint": "eslint --ext=js,mjs .",
+        "tests-only": "nyc tape 'test/**/*.js'",
+        "test": "npm run tests-only",
+        "posttest": "aud --production",
+        "version": "auto-changelog && git add CHANGELOG.md",
+        "postversion": "auto-changelog && git add CHANGELOG.md && git commit --no-edit --amend && git tag -f \"v$(node -e \"console.log(require('./package.json').version)\")\""
+      },
+      "repository": {
+        "type": "git",
+        "url": "git+https://github.com/inspect-js/has-property-descriptors.git"
+      },
+      "author": {
+        "name": "Jordan Harband",
+        "email": "ljharb@gmail.com"
+      },
+      "funding": {
+        "url": "https://github.com/sponsors/ljharb"
+      },
+      "license": "MIT",
+      "bugs": {
+        "url": "https://github.com/inspect-js/has-property-descriptors/issues"
+      },
+      "devDependencies": {
+        "@ljharb/eslint-config": "^21.0.0",
+        "aud": "^2.0.0",
+        "auto-changelog": "^2.4.0",
+        "eslint": "=8.8.0",
+        "in-publish": "^2.0.1",
+        "evalmd": "^0.0.19",
+        "nyc": "^10.3.2",
+        "safe-publish-latest": "^2.0.0",
+        "tape": "^5.5.3"
+      },
+      "dependencies": {
+        "get-intrinsic": "^1.1.1"
+      },
+      "testling": {
+        "files": "test/index.js"
+      },
+      "auto-changelog": {
+        "output": "CHANGELOG.md",
+        "template": "keepachangelog",
+        "unreleased": false,
+        "commitLimit": false,
+        "backfillLimit": false,
+        "hideCredit": true
+      },
+      "gitHead": "3771c8b4f20e963d3a64b101b3233c20791c32ae",
+      "_id": "has-property-descriptors@1.0.0",
+      "_nodeVersion": "17.9.0",
+      "_npmVersion": "8.3.1",
+      "dist": {
+        "integrity": "sha512-62DVLZGoiEBDHQyqG4w9xCuZ7eJEwNmJRWw2VY84Oedb7WFcA27fiEVe8oUQx9hAUJ4ekurquucTGwsyO1XGdQ==",
+        "shasum": "610708600606d36961ed04c196193b6a607fa861",
+        "tarball": "http://localhost:4260/has-property-descriptors/has-property-descriptors-1.0.0.tgz",
+        "fileCount": 9,
+        "unpackedSize": 9308
+      },
+      "directories": {},
+      "_hasShrinkwrap": false
+    }
+  },
+  "description": "Does the environment have full property descriptor support? Handles IE 8's broken defineProperty/gOPD.",
+  "homepage": "https://github.com/inspect-js/has-property-descriptors#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/inspect-js/has-property-descriptors.git"
+  },
+  "author": {
+    "name": "Jordan Harband",
+    "email": "ljharb@gmail.com"
+  },
+  "bugs": {
+    "url": "https://github.com/inspect-js/has-property-descriptors/issues"
+  },
+  "license": "MIT",
+  "readmeFilename": "README.md"
+}

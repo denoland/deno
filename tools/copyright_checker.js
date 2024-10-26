@@ -1,6 +1,8 @@
 #!/usr/bin/env -S deno run --allow-read=. --allow-run=git --config=tests/config/deno.json
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
+// deno-lint-ignore-file no-console
+
 import { getSources, ROOT_PATH } from "./util.js";
 
 const copyrightYear = 2024;

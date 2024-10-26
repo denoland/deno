@@ -78,6 +78,7 @@ impl DiagnosticLogger {
         logger.write_all(text.as_ref().as_bytes()).unwrap();
         logger.write_all(b"\n").unwrap();
       }
+      #[allow(clippy::print_stderr)]
       None => eprintln!("{}", text.as_ref()),
     }
   }
@@ -205,11 +206,6 @@ impl TestContextBuilder {
     // The `denort` binary is in the same artifact directory as the `deno` binary.
     let denort_bin = denort_exe_path();
     self = self.env("DENORT_BIN", denort_bin.to_string());
-    self
-  }
-
-  pub fn add_future_env_vars(mut self) -> Self {
-    self = self.env("DENO_FUTURE", "1");
     self
   }
 

@@ -1,87 +1,79 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 // deno-lint-ignore-file
-// Only for testing types. Invoke with `deno cache`
+// Only for testing types. Invoke with `deno install --entrypoint`
 
-const remote = Deno.dlopen(
-  "dummy_lib.so",
-  {
-    method1: { parameters: ["usize", "bool"], result: "void" },
-    method2: { parameters: [], result: "void" },
-    method3: { parameters: ["usize"], result: "void" },
-    method4: { parameters: ["isize"], result: "void" },
-    method5: { parameters: ["u8"], result: "void" },
-    method6: { parameters: ["u16"], result: "void" },
-    method7: { parameters: ["u32"], result: "void" },
-    method8: { parameters: ["u64"], result: "void" },
-    method9: { parameters: ["i8"], result: "void" },
-    method10: { parameters: ["i16"], result: "void" },
-    method11: { parameters: ["i32"], result: "void" },
-    method12: { parameters: ["i64"], result: "void" },
-    method13: { parameters: ["f32"], result: "void" },
-    method14: { parameters: ["f64"], result: "void" },
-    method15: { parameters: ["pointer"], result: "void" },
-    method16: { parameters: [], result: "usize" },
-    method17: { parameters: [], result: "usize", nonblocking: true },
-    method18: { parameters: [], result: "pointer" },
-    method19: { parameters: [], result: "pointer", nonblocking: true },
-    method20: {
-      parameters: ["pointer"],
-      result: "void",
-    },
-    method21: {
-      parameters: [
-        "pointer",
-      ],
-      result: "void",
-    },
-    method22: {
-      parameters: ["pointer"],
-      result: "void",
-    },
-    method23: {
-      parameters: ["buffer"],
-      result: "void",
-    },
-    method24: {
-      parameters: ["bool"],
-      result: "bool",
-    },
-    method25: {
-      parameters: [],
-      result: "void",
-      optional: true,
-    },
-    static1: { type: "usize" },
-    static2: { type: "pointer" },
-    static3: { type: "usize" },
-    static4: { type: "isize" },
-    static5: { type: "u8" },
-    static6: { type: "u16" },
-    static7: { type: "u32" },
-    static8: { type: "u64" },
-    static9: { type: "i8" },
-    static10: { type: "i16" },
-    static11: { type: "i32" },
-    static12: { type: "i64" },
-    static13: { type: "f32" },
-    static14: { type: "f64" },
-    static15: { type: "bool" },
-    static16: {
-      type: "bool",
-      optional: true,
-    },
+const remote = Deno.dlopen("dummy_lib.so", {
+  method1: { parameters: ["usize", "bool"], result: "void" },
+  method2: { parameters: [], result: "void" },
+  method3: { parameters: ["usize"], result: "void" },
+  method4: { parameters: ["isize"], result: "void" },
+  method5: { parameters: ["u8"], result: "void" },
+  method6: { parameters: ["u16"], result: "void" },
+  method7: { parameters: ["u32"], result: "void" },
+  method8: { parameters: ["u64"], result: "void" },
+  method9: { parameters: ["i8"], result: "void" },
+  method10: { parameters: ["i16"], result: "void" },
+  method11: { parameters: ["i32"], result: "void" },
+  method12: { parameters: ["i64"], result: "void" },
+  method13: { parameters: ["f32"], result: "void" },
+  method14: { parameters: ["f64"], result: "void" },
+  method15: { parameters: ["pointer"], result: "void" },
+  method16: { parameters: [], result: "usize" },
+  method17: { parameters: [], result: "usize", nonblocking: true },
+  method18: { parameters: [], result: "pointer" },
+  method19: { parameters: [], result: "pointer", nonblocking: true },
+  method20: {
+    parameters: ["pointer"],
+    result: "void",
   },
-);
+  method21: {
+    parameters: ["pointer"],
+    result: "void",
+  },
+  method22: {
+    parameters: ["pointer"],
+    result: "void",
+  },
+  method23: {
+    parameters: ["buffer"],
+    result: "void",
+  },
+  method24: {
+    parameters: ["bool"],
+    result: "bool",
+  },
+  method25: {
+    parameters: [],
+    result: "void",
+    optional: true,
+  },
+  static1: { type: "usize" },
+  static2: { type: "pointer" },
+  static3: { type: "usize" },
+  static4: { type: "isize" },
+  static5: { type: "u8" },
+  static6: { type: "u16" },
+  static7: { type: "u32" },
+  static8: { type: "u64" },
+  static9: { type: "i8" },
+  static10: { type: "i16" },
+  static11: { type: "i32" },
+  static12: { type: "i64" },
+  static13: { type: "f32" },
+  static14: { type: "f64" },
+  static15: { type: "bool" },
+  static16: {
+    type: "bool",
+    optional: true,
+  },
+});
 
-Deno.dlopen(
-  "dummy_lib_2.so",
-  {
-    wrong_method1: {
-      parameters: [],
-      result: "function",
-    },
+Deno.dlopen("dummy_lib_2.so", {
+  wrong_method1: {
+    parameters: [],
+    result: "function",
   },
-);
+});
 
 // @ts-expect-error: Invalid argument
 remote.symbols.method1(0);
@@ -173,7 +165,7 @@ result4.then((_0: Deno.BufferSource) => {});
 result4.then((_1: null | Deno.UnsafePointer) => {});
 
 const fnptr = new Deno.UnsafeFnPointer(
-  {} as Deno.PointerObject,
+  {} as Deno.PointerObject<Deno.ForeignFunction<["u32", "pointer"], "void">>,
   {
     parameters: ["u32", "pointer"],
     result: "void",
@@ -340,16 +332,18 @@ const static16_right: boolean | null = remote.symbols.static16;
 
 // Adapted from https://stackoverflow.com/a/53808212/10873797
 type Equal<T, U> = (<G>() => G extends T ? 1 : 2) extends
-  (<G>() => G extends U ? 1 : 2) ? true
+  <G>() => G extends U ? 1 : 2 ? true
   : false;
 
 type AssertEqual<
   Expected extends $,
   Got extends $$,
   $ = [Equal<Got, Expected>] extends [true] ? Expected
-    : ([Expected] extends [Got] ? never : Got),
+    : [Expected] extends [Got] ? never
+    : Got,
   $$ = [Equal<Expected, Got>] extends [true] ? Got
-    : ([Got] extends [Expected] ? never : Got),
+    : [Got] extends [Expected] ? never
+    : Got,
 > = never;
 
 type AssertNotEqual<
@@ -372,9 +366,7 @@ type MyFunctionDefinition = Deno.UnsafeCallbackDefinition<
   [typeof foo, "u32"],
   typeof myPointer
 >;
-const myFunction = "function" as Deno.NativeTypedFunction<
-  MyFunctionDefinition
->;
+const myFunction = "function" as Deno.NativeTypedFunction<MyFunctionDefinition>;
 
 type __Tests__ = [
   empty: AssertEqual<
@@ -396,14 +388,12 @@ type __Tests__ = [
       };
       close(): void;
     },
-    Deno.DynamicLibrary<
-      {
-        pushBuf: {
-          parameters: ["buffer", "pointer", "function"];
-          result: "void";
-        };
-      }
-    >
+    Deno.DynamicLibrary<{
+      pushBuf: {
+        parameters: ["buffer", "pointer", "function"];
+        result: "void";
+      };
+    }>
   >,
   higher_order_returns: AssertEqual<
     {
@@ -416,27 +406,23 @@ type __Tests__ = [
       };
       close(): void;
     },
-    Deno.DynamicLibrary<
-      {
-        pushBuf: {
-          parameters: ["buffer", "pointer", "function"];
-          result: "pointer";
-        };
-      }
-    >
+    Deno.DynamicLibrary<{
+      pushBuf: {
+        parameters: ["buffer", "pointer", "function"];
+        result: "pointer";
+      };
+    }>
   >,
   non_exact_params: AssertEqual<
     {
       symbols: {
-        foo: (
-          ...args: (number | Deno.PointerValue | null)[]
-        ) => bigint;
+        foo: (...args: (number | Deno.PointerValue | null)[]) => bigint;
       };
       close(): void;
     },
-    Deno.DynamicLibrary<
-      { foo: { parameters: ("i32" | "pointer")[]; result: "u64" } }
-    >
+    Deno.DynamicLibrary<{
+      foo: { parameters: ("i32" | "pointer")[]; result: "u64" };
+    }>
   >,
   non_exact_params_empty: AssertEqual<
     {
@@ -445,9 +431,7 @@ type __Tests__ = [
       };
       close(): void;
     },
-    Deno.DynamicLibrary<
-      { foo: { parameters: []; result: "i32" } }
-    >
+    Deno.DynamicLibrary<{ foo: { parameters: []; result: "i32" } }>
   >,
   non_exact_params_empty: AssertNotEqual<
     {
@@ -456,9 +440,7 @@ type __Tests__ = [
       };
       close(): void;
     },
-    Deno.DynamicLibrary<
-      { foo: { parameters: []; result: "i32" } }
-    >
+    Deno.DynamicLibrary<{ foo: { parameters: []; result: "i32" } }>
   >,
   enum_param: AssertEqual<
     {
@@ -467,9 +449,7 @@ type __Tests__ = [
       };
       close(): void;
     },
-    Deno.DynamicLibrary<
-      { foo: { parameters: [typeof foo]; result: "void" } }
-    >
+    Deno.DynamicLibrary<{ foo: { parameters: [typeof foo]; result: "void" } }>
   >,
   enum_return: AssertEqual<
     {
@@ -478,9 +458,7 @@ type __Tests__ = [
       };
       close(): void;
     },
-    Deno.DynamicLibrary<
-      { foo: { parameters: []; result: typeof foo } }
-    >
+    Deno.DynamicLibrary<{ foo: { parameters: []; result: typeof foo } }>
   >,
   typed_pointer_param: AssertEqual<
     {
@@ -489,9 +467,9 @@ type __Tests__ = [
       };
       close(): void;
     },
-    Deno.DynamicLibrary<
-      { foo: { parameters: [typeof myPointer]; result: "void" } }
-    >
+    Deno.DynamicLibrary<{
+      foo: { parameters: [typeof myPointer]; result: "void" };
+    }>
   >,
   typed_pointer_return: AssertEqual<
     {
@@ -500,9 +478,7 @@ type __Tests__ = [
       };
       close(): void;
     },
-    Deno.DynamicLibrary<
-      { foo: { parameters: []; result: typeof myPointer } }
-    >
+    Deno.DynamicLibrary<{ foo: { parameters: []; result: typeof myPointer } }>
   >,
   typed_function_param: AssertEqual<
     {
@@ -511,9 +487,9 @@ type __Tests__ = [
       };
       close(): void;
     },
-    Deno.DynamicLibrary<
-      { foo: { parameters: [typeof myFunction]; result: "void" } }
-    >
+    Deno.DynamicLibrary<{
+      foo: { parameters: [typeof myFunction]; result: "void" };
+    }>
   >,
   typed_function_return: AssertEqual<
     {
@@ -522,8 +498,6 @@ type __Tests__ = [
       };
       close(): void;
     },
-    Deno.DynamicLibrary<
-      { foo: { parameters: []; result: typeof myFunction } }
-    >
+    Deno.DynamicLibrary<{ foo: { parameters: []; result: typeof myFunction } }>
   >,
 ];

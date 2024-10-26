@@ -1,0 +1,9 @@
+{
+  "tempDir": true,
+  "steps": [
+    {
+      "args": "info --quiet main.ts",
+      "output": "info.out"
+    }
+  ]
+}

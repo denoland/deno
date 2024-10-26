@@ -8,6 +8,7 @@ use deno_core::anyhow::bail;
 use deno_core::error::AnyError;
 use deno_core::serde_json::json;
 use deno_core::unsync::spawn;
+use lsp_types::Uri;
 use tower_lsp::lsp_types as lsp;
 use tower_lsp::lsp_types::ConfigurationItem;
 
@@ -17,7 +18,6 @@ use super::config::WorkspaceSettings;
 use super::config::SETTINGS_SECTION;
 use super::lsp_custom;
 use super::testing::lsp_custom as testing_lsp_custom;
-use super::urls::LspClientUrl;
 
 #[derive(Debug)]
 pub enum TestingNotification {
@@ -52,14 +52,11 @@ impl Client {
 
   pub async fn publish_diagnostics(
     &self,
-    uri: LspClientUrl,
+    uri: Uri,
     diags: Vec<lsp::Diagnostic>,
     version: Option<i32>,
   ) {
-    self
-      .0
-      .publish_diagnostics(uri.into_url(), diags, version)
-      .await;
+    self.0.publish_diagnostics(uri, diags, version).await;
   }
 
   pub fn send_registry_state_notification(
@@ -92,6 +89,19 @@ impl Client {
     let client = self.0.clone();
     spawn(async move {
       client.send_test_notification(params).await;
+    });
+  }
+
+  pub fn send_did_refresh_deno_configuration_tree_notification(
+    &self,
+    params: lsp_custom::DidRefreshDenoConfigurationTreeNotificationParams,
+  ) {
+    // do on a task in case the caller currently is in the lsp lock
+    let client = self.0.clone();
+    spawn(async move {
+      client
+        .send_did_refresh_deno_configuration_tree_notification(params)
+        .await;
     });
   }
 
@@ -149,7 +159,7 @@ impl OutsideLockClient {
 
   pub async fn workspace_configuration(
     &self,
-    scopes: Vec<Option<lsp::Url>>,
+    scopes: Vec<Option<lsp::Uri>>,
   ) -> Result<Vec<WorkspaceSettings>, AnyError> {
     self.0.workspace_configuration(scopes).await
   }
@@ -159,7 +169,7 @@ impl OutsideLockClient {
 trait ClientTrait: Send + Sync {
   async fn publish_diagnostics(
     &self,
-    uri: lsp::Url,
+    uri: lsp::Uri,
     diagnostics: Vec<lsp::Diagnostic>,
     version: Option<i32>,
   );
@@ -172,6 +182,10 @@ trait ClientTrait: Send + Sync {
     params: lsp_custom::DiagnosticBatchNotificationParams,
   );
   async fn send_test_notification(&self, params: TestingNotification);
+  async fn send_did_refresh_deno_configuration_tree_notification(
+    &self,
+    params: lsp_custom::DidRefreshDenoConfigurationTreeNotificationParams,
+  );
   async fn send_did_change_deno_configuration_notification(
     &self,
     params: lsp_custom::DidChangeDenoConfigurationNotificationParams,
@@ -182,7 +196,7 @@ trait ClientTrait: Send + Sync {
   );
   async fn workspace_configuration(
     &self,
-    scopes: Vec<Option<lsp::Url>>,
+    scopes: Vec<Option<lsp::Uri>>,
   ) -> Result<Vec<WorkspaceSettings>, AnyError>;
   async fn show_message(&self, message_type: lsp::MessageType, text: String);
   async fn register_capability(
@@ -198,7 +212,7 @@ struct TowerClient(tower_lsp::Client);
 impl ClientTrait for TowerClient {
   async fn publish_diagnostics(
     &self,
-    uri: lsp::Url,
+    uri: lsp::Uri,
     diagnostics: Vec<lsp::Diagnostic>,
     version: Option<i32>,
   ) {
@@ -252,6 +266,18 @@ impl ClientTrait for TowerClient {
     }
   }
 
+  async fn send_did_refresh_deno_configuration_tree_notification(
+    &self,
+    params: lsp_custom::DidRefreshDenoConfigurationTreeNotificationParams,
+  ) {
+    self
+      .0
+      .send_notification::<lsp_custom::DidRefreshDenoConfigurationTreeNotification>(
+        params,
+      )
+      .await
+  }
+
   async fn send_did_change_deno_configuration_notification(
     &self,
     params: lsp_custom::DidChangeDenoConfigurationNotificationParams,
@@ -276,7 +302,7 @@ impl ClientTrait for TowerClient {
 
   async fn workspace_configuration(
     &self,
-    scopes: Vec<Option<lsp::Url>>,
+    scopes: Vec<Option<lsp::Uri>>,
   ) -> Result<Vec<WorkspaceSettings>, AnyError> {
     let config_response = self
       .0
@@ -349,7 +375,7 @@ struct ReplClient;
 impl ClientTrait for ReplClient {
   async fn publish_diagnostics(
     &self,
-    _uri: lsp::Url,
+    _uri: lsp::Uri,
     _diagnostics: Vec<lsp::Diagnostic>,
     _version: Option<i32>,
   ) {
@@ -369,6 +395,12 @@ impl ClientTrait for ReplClient {
 
   async fn send_test_notification(&self, _params: TestingNotification) {}
 
+  async fn send_did_refresh_deno_configuration_tree_notification(
+    &self,
+    _params: lsp_custom::DidRefreshDenoConfigurationTreeNotificationParams,
+  ) {
+  }
+
   async fn send_did_change_deno_configuration_notification(
     &self,
     _params: lsp_custom::DidChangeDenoConfigurationNotificationParams,
@@ -383,7 +415,7 @@ impl ClientTrait for ReplClient {
 
   async fn workspace_configuration(
     &self,
-    scopes: Vec<Option<lsp::Url>>,
+    scopes: Vec<Option<lsp::Uri>>,
   ) -> Result<Vec<WorkspaceSettings>, AnyError> {
     Ok(vec![get_repl_workspace_settings(); scopes.len()])
   }

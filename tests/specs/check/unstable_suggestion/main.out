@@ -1,10 +1,5 @@
 Check file:///[WILDLINE]main.ts
-error: TS2551 [ERROR]: Property 'dlopen' does not exist on type 'typeof Deno'. Did you mean 'open'? 'Deno.dlopen' is an unstable API. Did you mean 'open'? If not, try changing the 'lib' compiler option to include 'deno.unstable' or add a triple-slash directive to the top of your entrypoint (main file): /// <reference lib="deno.unstable" />
-Deno.dlopen("path/to/lib", {});
-     ~~~~~~
+error: TS2339 [ERROR]: Property 'listenDatagram' does not exist on type 'typeof Deno'. 'Deno.listenDatagram' is an unstable API. If not, try changing the 'lib' compiler option to include 'deno.unstable' or add a triple-slash directive to the top of your entrypoint (main file): /// <reference lib="deno.unstable" />
+Deno.listenDatagram({
+     ~~~~~~~~~~~~~~
     at file:///[WILDLINE]/main.ts:5:6
-
-    'open' is declared here.
-      export function open(
-                      ~~~~
-        at asset:///lib.deno.ns.d.ts:[WILDLINE]

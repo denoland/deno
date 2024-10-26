@@ -1,0 +1,5 @@
+{
+  "tempDir": true,
+  "args": "run --allow-read --node-modules-dir=auto npm:@denotest/bin/cli-esm dev --help",
+  "output": "run_existing_npm_package_with_subpath/main.out"
+}

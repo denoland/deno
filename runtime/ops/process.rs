@@ -1,9 +1,5 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
-use super::check_unstable;
-use deno_core::anyhow::Context;
-use deno_core::error::type_error;
-use deno_core::error::AnyError;
 use deno_core::op2;
 use deno_core::serde_json;
 use deno_core::AsyncMutFuture;
@@ -17,11 +13,18 @@ use deno_io::fs::FileResource;
 use deno_io::ChildStderrResource;
 use deno_io::ChildStdinResource;
 use deno_io::ChildStdoutResource;
+use deno_io::IntoRawIoHandle;
 use deno_permissions::PermissionsContainer;
+use deno_permissions::RunQueryDescriptor;
 use serde::Deserialize;
 use serde::Serialize;
 use std::borrow::Cow;
 use std::cell::RefCell;
+use std::collections::HashMap;
+use std::ffi::OsString;
+use std::io::Write;
+use std::path::Path;
+use std::path::PathBuf;
 use std::process::ExitStatus;
 use std::rc::Rc;
 use tokio::process::Command;
@@ -29,6 +32,7 @@ use tokio::process::Command;
 #[cfg(windows)]
 use std::os::windows::process::CommandExt;
 
+use crate::ops::signal::SignalError;
 #[cfg(unix)]
 use std::os::unix::prelude::ExitStatusExt;
 #[cfg(unix)]
@@ -99,11 +103,12 @@ impl StdioOrRid {
   pub fn as_stdio(
     &self,
     state: &mut OpState,
-  ) -> Result<std::process::Stdio, AnyError> {
+  ) -> Result<std::process::Stdio, ProcessError> {
     match &self {
       StdioOrRid::Stdio(val) => Ok(val.as_stdio()),
       StdioOrRid::Rid(rid) => {
         FileResource::with_file(state, *rid, |file| Ok(file.as_stdio()?))
+          .map_err(ProcessError::Resource)
       }
     }
   }
@@ -113,6 +118,27 @@ impl StdioOrRid {
   }
 }
 
+#[allow(clippy::disallowed_types)]
+pub type NpmProcessStateProviderRc =
+  deno_fs::sync::MaybeArc<dyn NpmProcessStateProvider>;
+
+pub trait NpmProcessStateProvider:
+  std::fmt::Debug + deno_fs::sync::MaybeSend + deno_fs::sync::MaybeSync
+{
+  /// Gets a string containing the serialized npm state of the process.
+  ///
+  /// This will be set on the `DENO_DONT_USE_INTERNAL_NODE_COMPAT_STATE` environment
+  /// variable when doing a `child_process.fork`. The implementor can then check this environment
+  /// variable on startup to repopulate the internal npm state.
+  fn get_npm_process_state(&self) -> String {
+    // This method is only used in the CLI.
+    String::new()
+  }
+}
+
+#[derive(Debug)]
+pub struct EmptyNpmProcessStateProvider;
+impl NpmProcessStateProvider for EmptyNpmProcessStateProvider {}
 deno_core::extension!(
   deno_process,
   ops = [
@@ -124,6 +150,10 @@ deno_core::extension!(
     deprecated::op_run_status,
     deprecated::op_kill,
   ],
+  options = { get_npm_process_state: Option<NpmProcessStateProviderRc>  },
+  state = |state, options| {
+    state.put::<NpmProcessStateProviderRc>(options.get_npm_process_state.unwrap_or(deno_fs::sync::MaybeArc::new(EmptyNpmProcessStateProvider)));
+  },
 );
 
 /// Second member stores the pid separately from the RefCell. It's needed for
@@ -156,6 +186,41 @@ pub struct SpawnArgs {
   stdio: ChildStdio,
 
   extra_stdio: Vec<Stdio>,
+  detached: bool,
+  needs_npm_process_state: bool,
+}
+
+#[derive(Debug, thiserror::Error)]
+pub enum ProcessError {
+  #[error("Failed to spawn '{command}': {error}")]
+  SpawnFailed {
+    command: String,
+    #[source]
+    error: Box<ProcessError>,
+  },
+  #[error("{0}")]
+  Io(#[from] std::io::Error),
+  #[cfg(unix)]
+  #[error(transparent)]
+  Nix(nix::Error),
+  #[error("failed resolving cwd: {0}")]
+  FailedResolvingCwd(#[source] std::io::Error),
+  #[error(transparent)]
+  Permission(deno_core::error::AnyError),
+  #[error(transparent)]
+  Resource(deno_core::error::AnyError),
+  #[error(transparent)]
+  BorrowMut(std::cell::BorrowMutError),
+  #[error(transparent)]
+  Which(which::Error),
+  #[error("Child process has already terminated.")]
+  ChildProcessAlreadyTerminated,
+  #[error("Invalid pid")]
+  InvalidPid,
+  #[error(transparent)]
+  Signal(#[from] SignalError),
+  #[error("Missing cmd")]
+  MissingCmd, // only for Deno.run
 }
 
 #[derive(Deserialize)]
@@ -175,7 +240,7 @@ pub struct ChildStatus {
 }
 
 impl TryFrom<ExitStatus> for ChildStatus {
-  type Error = AnyError;
+  type Error = SignalError;
 
   fn try_from(status: ExitStatus) -> Result<Self, Self::Error> {
     let code = status.code();
@@ -224,37 +289,98 @@ type CreateCommand = (
   Vec<deno_io::RawBiPipeHandle>,
 );
 
+pub fn npm_process_state_tempfile(
+  contents: &[u8],
+) -> Result<deno_io::RawIoHandle, std::io::Error> {
+  let mut temp_file = tempfile::tempfile()?;
+  temp_file.write_all(contents)?;
+  let handle = temp_file.into_raw_io_handle();
+  #[cfg(windows)]
+  {
+    use windows_sys::Win32::Foundation::HANDLE_FLAG_INHERIT;
+    // make the handle inheritable
+    // SAFETY: winapi call, handle is valid
+    unsafe {
+      windows_sys::Win32::Foundation::SetHandleInformation(
+        handle as _,
+        HANDLE_FLAG_INHERIT,
+        HANDLE_FLAG_INHERIT,
+      );
+    }
+    Ok(handle)
+  }
+  #[cfg(unix)]
+  {
+    // SAFETY: libc call, fd is valid
+    let inheritable = unsafe {
+      // duplicate the FD to get a new one that doesn't have the CLOEXEC flag set
+      // so it can be inherited by the child process
+      libc::dup(handle)
+    };
+    // SAFETY: libc call, fd is valid
+    unsafe {
+      // close the old one
+      libc::close(handle);
+    }
+    Ok(inheritable)
+  }
+}
+
+pub const NPM_RESOLUTION_STATE_FD_ENV_VAR_NAME: &str =
+  "DENO_DONT_USE_INTERNAL_NODE_COMPAT_STATE_FD";
+
 fn create_command(
   state: &mut OpState,
   mut args: SpawnArgs,
   api_name: &str,
-) -> Result<CreateCommand, AnyError> {
-  state
-    .borrow_mut::<PermissionsContainer>()
-    .check_run(&args.cmd, api_name)?;
+) -> Result<CreateCommand, ProcessError> {
+  let maybe_npm_process_state = if args.needs_npm_process_state {
+    let provider = state.borrow::<NpmProcessStateProviderRc>();
+    let process_state = provider.get_npm_process_state();
+    let fd = npm_process_state_tempfile(process_state.as_bytes())?;
+    args.env.push((
+      NPM_RESOLUTION_STATE_FD_ENV_VAR_NAME.to_string(),
+      (fd as usize).to_string(),
+    ));
+    Some(fd)
+  } else {
+    None
+  };
 
-  let mut command = std::process::Command::new(args.cmd);
+  let (cmd, run_env) = compute_run_cmd_and_check_permissions(
+    &args.cmd,
+    args.cwd.as_deref(),
+    &args.env,
+    args.clear_env,
+    state,
+    api_name,
+  )?;
+  let mut command = std::process::Command::new(cmd);
 
   #[cfg(windows)]
-  if args.windows_raw_arguments {
-    for arg in args.args.iter() {
-      command.raw_arg(arg);
+  {
+    if args.detached {
+      // TODO(nathanwhit): Currently this causes the process to hang
+      // until the detached process exits (so never). It repros with just the
+      // rust std library, so it's either a bug or requires more control than we have.
+      // To be resolved at the same time as additional stdio support.
+      log::warn!("detached processes are not currently supported on Windows");
     }
-  } else {
-    command.args(args.args);
+    if args.windows_raw_arguments {
+      for arg in args.args.iter() {
+        command.raw_arg(arg);
+      }
+    } else {
+      command.args(args.args);
+    }
   }
 
   #[cfg(not(windows))]
   command.args(args.args);
 
-  if let Some(cwd) = args.cwd {
-    command.current_dir(cwd);
-  }
-
-  if args.clear_env {
-    command.env_clear();
-  }
-  command.envs(args.env);
+  command.current_dir(run_env.cwd);
+  command.env_clear();
+  command.envs(run_env.envs);
 
   #[cfg(unix)]
   if let Some(gid) = args.gid {
@@ -288,6 +414,9 @@ fn create_command(
     let mut fds_to_dup = Vec::new();
     let mut fds_to_close = Vec::new();
     let mut ipc_rid = None;
+    if let Some(fd) = maybe_npm_process_state {
+      fds_to_close.push(fd);
+    }
     if let Some(ipc) = args.ipc {
       if ipc >= 0 {
         let (ipc_fd1, ipc_fd2) = deno_io::bi_pipe_pair_raw()?;
@@ -334,7 +463,11 @@ fn create_command(
       }
     }
 
+    let detached = args.detached;
     command.pre_exec(move || {
+      if detached {
+        libc::setsid();
+      }
       for &(src, dst) in &fds_to_dup {
         if src >= 0 && dst >= 0 {
           let _fd = libc::dup2(src, dst);
@@ -352,6 +485,9 @@ fn create_command(
   {
     let mut ipc_rid = None;
     let mut handles_to_close = Vec::with_capacity(1);
+    if let Some(handle) = maybe_npm_process_state {
+      handles_to_close.push(handle);
+    }
     if let Some(ipc) = args.ipc {
       if ipc >= 0 {
         let (hd1, hd2) = deno_io::bi_pipe_pair_raw()?;
@@ -400,12 +536,15 @@ fn spawn_child(
   command: std::process::Command,
   ipc_pipe_rid: Option<ResourceId>,
   extra_pipe_rids: Vec<Option<ResourceId>>,
-) -> Result<Child, AnyError> {
+  detached: bool,
+) -> Result<Child, ProcessError> {
   let mut command = tokio::process::Command::from(command);
   // TODO(@crowlkats): allow detaching processes.
   //  currently deno will orphan a process when exiting with an error or Deno.exit()
   // We want to kill child when it's closed
-  command.kill_on_drop(true);
+  if !detached {
+    command.kill_on_drop(true);
+  }
 
   let mut child = match command.spawn() {
     Ok(child) => child,
@@ -447,10 +586,10 @@ fn spawn_child(
         }
       }
 
-      return Err(AnyError::from(err).context(format!(
-        "Failed to spawn '{}'",
-        command.get_program().to_string_lossy()
-      )));
+      return Err(ProcessError::SpawnFailed {
+        command: command.get_program().to_string_lossy().to_string(),
+        error: Box::new(err.into()),
+      });
     }
   };
 
@@ -486,21 +625,169 @@ fn spawn_child(
   })
 }
 
-fn close_raw_handle(handle: deno_io::RawBiPipeHandle) {
-  #[cfg(unix)]
-  {
-    // SAFETY: libc call
-    unsafe {
-      libc::close(handle);
+fn compute_run_cmd_and_check_permissions(
+  arg_cmd: &str,
+  arg_cwd: Option<&str>,
+  arg_envs: &[(String, String)],
+  arg_clear_env: bool,
+  state: &mut OpState,
+  api_name: &str,
+) -> Result<(PathBuf, RunEnv), ProcessError> {
+  let run_env =
+    compute_run_env(arg_cwd, arg_envs, arg_clear_env).map_err(|e| {
+      ProcessError::SpawnFailed {
+        command: arg_cmd.to_string(),
+        error: Box::new(e),
+      }
+    })?;
+  let cmd =
+    resolve_cmd(arg_cmd, &run_env).map_err(|e| ProcessError::SpawnFailed {
+      command: arg_cmd.to_string(),
+      error: Box::new(e),
+    })?;
+  check_run_permission(
+    state,
+    &RunQueryDescriptor::Path {
+      requested: arg_cmd.to_string(),
+      resolved: cmd.clone(),
+    },
+    &run_env,
+    api_name,
+  )
+  .map_err(ProcessError::Permission)?;
+  Ok((cmd, run_env))
+}
+
+struct RunEnv {
+  envs: HashMap<OsString, OsString>,
+  cwd: PathBuf,
+}
+
+/// Computes the current environment, which will then be used to inform
+/// permissions and finally spawning. This is very important to compute
+/// ahead of time so that the environment used to verify permissions is
+/// the same environment used to spawn the sub command. This protects against
+/// someone doing timing attacks by changing the environment on a worker.
+fn compute_run_env(
+  arg_cwd: Option<&str>,
+  arg_envs: &[(String, String)],
+  arg_clear_env: bool,
+) -> Result<RunEnv, ProcessError> {
+  #[allow(clippy::disallowed_methods)]
+  let cwd =
+    std::env::current_dir().map_err(ProcessError::FailedResolvingCwd)?;
+  let cwd = arg_cwd
+    .map(|cwd_arg| resolve_path(cwd_arg, &cwd))
+    .unwrap_or(cwd);
+  let envs = if arg_clear_env {
+    arg_envs
+      .iter()
+      .map(|(k, v)| (OsString::from(k), OsString::from(v)))
+      .collect()
+  } else {
+    let mut envs = std::env::vars_os()
+      .map(|(k, v)| {
+        (
+          if cfg!(windows) {
+            k.to_ascii_uppercase()
+          } else {
+            k
+          },
+          v,
+        )
+      })
+      .collect::<HashMap<_, _>>();
+    for (key, value) in arg_envs {
+      envs.insert(
+        OsString::from(if cfg!(windows) {
+          key.to_ascii_uppercase()
+        } else {
+          key.clone()
+        }),
+        OsString::from(value.clone()),
+      );
     }
-  }
+    envs
+  };
+  Ok(RunEnv { envs, cwd })
+}
+
+fn resolve_cmd(cmd: &str, env: &RunEnv) -> Result<PathBuf, ProcessError> {
+  let is_path = cmd.contains('/');
   #[cfg(windows)]
-  {
-    // SAFETY: win32 call
-    unsafe {
-      windows_sys::Win32::Foundation::CloseHandle(handle as _);
+  let is_path = is_path || cmd.contains('\\') || Path::new(&cmd).is_absolute();
+  if is_path {
+    Ok(resolve_path(cmd, &env.cwd))
+  } else {
+    let path = env.envs.get(&OsString::from("PATH"));
+    match which::which_in(cmd, path, &env.cwd) {
+      Ok(cmd) => Ok(cmd),
+      Err(which::Error::CannotFindBinaryPath) => {
+        Err(std::io::Error::from(std::io::ErrorKind::NotFound).into())
+      }
+      Err(err) => Err(ProcessError::Which(err)),
     }
   }
+}
+
+fn resolve_path(path: &str, cwd: &Path) -> PathBuf {
+  deno_path_util::normalize_path(cwd.join(path))
+}
+
+fn check_run_permission(
+  state: &mut OpState,
+  cmd: &RunQueryDescriptor,
+  run_env: &RunEnv,
+  api_name: &str,
+) -> Result<(), deno_core::error::AnyError> {
+  let permissions = state.borrow_mut::<PermissionsContainer>();
+  if !permissions.query_run_all(api_name) {
+    // error the same on all platforms
+    let env_var_names = get_requires_allow_all_env_vars(run_env);
+    if !env_var_names.is_empty() {
+      // we don't allow users to launch subprocesses with any LD_ or DYLD_*
+      // env vars set because this allows executing code (ex. LD_PRELOAD)
+      return Err(deno_core::error::custom_error(
+        "NotCapable",
+        format!(
+          "Requires --allow-all permissions to spawn subprocess with {} environment variable{}.",
+          env_var_names.join(", "),
+          if env_var_names.len() != 1 { "s" } else { "" }
+        )
+      ));
+    }
+    permissions.check_run(cmd, api_name)?;
+  }
+  Ok(())
+}
+
+fn get_requires_allow_all_env_vars(env: &RunEnv) -> Vec<&str> {
+  fn requires_allow_all(key: &str) -> bool {
+    let key = key.trim();
+    // we could be more targted here, but there are quite a lot of
+    // LD_* and DYLD_* env variables
+    key.starts_with("LD_") || key.starts_with("DYLD_")
+  }
+
+  fn is_empty(value: &OsString) -> bool {
+    value.is_empty()
+      || value.to_str().map(|v| v.trim().is_empty()).unwrap_or(false)
+  }
+
+  let mut found_envs = env
+    .envs
+    .iter()
+    .filter_map(|(k, v)| {
+      let key = k.to_str()?;
+      if requires_allow_all(key) && !is_empty(v) {
+        Some(key)
+      } else {
+        None
+      }
+    })
+    .collect::<Vec<_>>();
+  found_envs.sort();
+  found_envs
 }
 
 #[op2]
@@ -509,12 +796,13 @@ fn op_spawn_child(
   state: &mut OpState,
   #[serde] args: SpawnArgs,
   #[string] api_name: String,
-) -> Result<Child, AnyError> {
+) -> Result<Child, ProcessError> {
+  let detached = args.detached;
   let (command, pipe_rid, extra_pipe_rids, handles_to_close) =
     create_command(state, args, &api_name)?;
-  let child = spawn_child(state, command, pipe_rid, extra_pipe_rids);
+  let child = spawn_child(state, command, pipe_rid, extra_pipe_rids, detached);
   for handle in handles_to_close {
-    close_raw_handle(handle);
+    deno_io::close_raw_handle(handle);
   }
   child
 }
@@ -525,16 +813,23 @@ fn op_spawn_child(
 async fn op_spawn_wait(
   state: Rc<RefCell<OpState>>,
   #[smi] rid: ResourceId,
-) -> Result<ChildStatus, AnyError> {
+) -> Result<ChildStatus, ProcessError> {
   let resource = state
     .borrow_mut()
     .resource_table
-    .get::<ChildResource>(rid)?;
-  let result = resource.0.try_borrow_mut()?.wait().await?.try_into();
+    .get::<ChildResource>(rid)
+    .map_err(ProcessError::Resource)?;
+  let result = resource
+    .0
+    .try_borrow_mut()
+    .map_err(ProcessError::BorrowMut)?
+    .wait()
+    .await?
+    .try_into()?;
   if let Ok(resource) = state.borrow_mut().resource_table.take_any(rid) {
     resource.close();
   }
-  result
+  Ok(result)
 }
 
 #[op2]
@@ -542,16 +837,14 @@ async fn op_spawn_wait(
 fn op_spawn_sync(
   state: &mut OpState,
   #[serde] args: SpawnArgs,
-) -> Result<SpawnOutput, AnyError> {
+) -> Result<SpawnOutput, ProcessError> {
   let stdout = matches!(args.stdio.stdout, StdioOrRid::Stdio(Stdio::Piped));
   let stderr = matches!(args.stdio.stderr, StdioOrRid::Stdio(Stdio::Piped));
   let (mut command, _, _, _) =
     create_command(state, args, "Deno.Command().outputSync()")?;
-  let output = command.output().with_context(|| {
-    format!(
-      "Failed to spawn '{}'",
-      command.get_program().to_string_lossy()
-    )
+  let output = command.output().map_err(|e| ProcessError::SpawnFailed {
+    command: command.get_program().to_string_lossy().to_string(),
+    error: Box::new(e.into()),
   })?;
 
   Ok(SpawnOutput {
@@ -574,12 +867,12 @@ fn op_spawn_kill(
   state: &mut OpState,
   #[smi] rid: ResourceId,
   #[string] signal: String,
-) -> Result<(), AnyError> {
+) -> Result<(), ProcessError> {
   if let Ok(child_resource) = state.resource_table.get::<ChildResource>(rid) {
     deprecated::kill(child_resource.1 as i32, &signal)?;
     return Ok(());
   }
-  Err(type_error("Child process has already terminated."))
+  Err(ProcessError::ChildProcessAlreadyTerminated)
 }
 
 mod deprecated {
@@ -590,12 +883,7 @@ mod deprecated {
   pub struct RunArgs {
     cmd: Vec<String>,
     cwd: Option<String>,
-    clear_env: bool,
     env: Vec<(String, String)>,
-    #[cfg(unix)]
-    gid: Option<u32>,
-    #[cfg(unix)]
-    uid: Option<u32>,
     stdin: StdioOrRid,
     stdout: StdioOrRid,
     stderr: StdioOrRid,
@@ -633,39 +921,29 @@ mod deprecated {
   pub fn op_run(
     state: &mut OpState,
     #[serde] run_args: RunArgs,
-  ) -> Result<RunInfo, AnyError> {
+  ) -> Result<RunInfo, ProcessError> {
     let args = run_args.cmd;
-    state
-      .borrow_mut::<PermissionsContainer>()
-      .check_run(&args[0], "Deno.run()")?;
-    let env = run_args.env;
-    let cwd = run_args.cwd;
+    let cmd = args.first().ok_or(ProcessError::MissingCmd)?;
+    let (cmd, run_env) = compute_run_cmd_and_check_permissions(
+      cmd,
+      run_args.cwd.as_deref(),
+      &run_args.env,
+      /* clear env */ false,
+      state,
+      "Deno.run()",
+    )?;
 
-    let mut c = Command::new(args.first().unwrap());
-    (1..args.len()).for_each(|i| {
-      let arg = args.get(i).unwrap();
+    let mut c = Command::new(cmd);
+    for arg in args.iter().skip(1) {
       c.arg(arg);
-    });
-    cwd.map(|d| c.current_dir(d));
-
-    if run_args.clear_env {
-      super::check_unstable(state, UNSTABLE_FEATURE_NAME, "Deno.run.clearEnv");
-      c.env_clear();
     }
-    for (key, value) in &env {
+    c.current_dir(run_env.cwd);
+
+    c.env_clear();
+    for (key, value) in run_env.envs {
       c.env(key, value);
     }
 
-    #[cfg(unix)]
-    if let Some(gid) = run_args.gid {
-      super::check_unstable(state, UNSTABLE_FEATURE_NAME, "Deno.run.gid");
-      c.gid(gid);
-    }
-    #[cfg(unix)]
-    if let Some(uid) = run_args.uid {
-      super::check_unstable(state, UNSTABLE_FEATURE_NAME, "Deno.run.uid");
-      c.uid(uid);
-    }
     #[cfg(unix)]
     // TODO(bartlomieju):
     #[allow(clippy::undocumented_unsafe_blocks)]
@@ -757,11 +1035,12 @@ mod deprecated {
   pub async fn op_run_status(
     state: Rc<RefCell<OpState>>,
     #[smi] rid: ResourceId,
-  ) -> Result<ProcessStatus, AnyError> {
+  ) -> Result<ProcessStatus, ProcessError> {
     let resource = state
       .borrow_mut()
       .resource_table
-      .get::<ChildResource>(rid)?;
+      .get::<ChildResource>(rid)
+      .map_err(ProcessError::Resource)?;
     let mut child = resource.borrow_mut().await;
     let run_status = child.wait().await?;
     let code = run_status.code();
@@ -784,17 +1063,17 @@ mod deprecated {
   }
 
   #[cfg(unix)]
-  pub fn kill(pid: i32, signal: &str) -> Result<(), AnyError> {
+  pub fn kill(pid: i32, signal: &str) -> Result<(), ProcessError> {
     let signo = super::super::signal::signal_str_to_int(signal)?;
     use nix::sys::signal::kill as unix_kill;
     use nix::sys::signal::Signal;
     use nix::unistd::Pid;
-    let sig = Signal::try_from(signo)?;
-    unix_kill(Pid::from_raw(pid), Option::Some(sig)).map_err(AnyError::from)
+    let sig = Signal::try_from(signo).map_err(ProcessError::Nix)?;
+    unix_kill(Pid::from_raw(pid), Some(sig)).map_err(ProcessError::Nix)
   }
 
   #[cfg(not(unix))]
-  pub fn kill(pid: i32, signal: &str) -> Result<(), AnyError> {
+  pub fn kill(pid: i32, signal: &str) -> Result<(), ProcessError> {
     use std::io::Error;
     use std::io::ErrorKind::NotFound;
     use winapi::shared::minwindef::DWORD;
@@ -808,9 +1087,9 @@ mod deprecated {
     use winapi::um::winnt::PROCESS_TERMINATE;
 
     if !matches!(signal, "SIGKILL" | "SIGTERM") {
-      Err(type_error(format!("Invalid signal: {signal}")))
+      Err(SignalError::InvalidSignalStr(signal.to_string()).into())
     } else if pid <= 0 {
-      Err(type_error("Invalid pid"))
+      Err(ProcessError::InvalidPid)
     } else {
       let handle =
         // SAFETY: winapi call
@@ -844,11 +1123,11 @@ mod deprecated {
     #[smi] pid: i32,
     #[string] signal: String,
     #[string] api_name: String,
-  ) -> Result<(), AnyError> {
+  ) -> Result<(), ProcessError> {
     state
       .borrow_mut::<PermissionsContainer>()
-      .check_run_all(&api_name)?;
-    kill(pid, &signal)?;
-    Ok(())
+      .check_run_all(&api_name)
+      .map_err(ProcessError::Permission)?;
+    kill(pid, &signal)
   }
 }

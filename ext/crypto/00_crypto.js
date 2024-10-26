@@ -18,21 +18,27 @@ import {
   op_crypto_decrypt,
   op_crypto_derive_bits,
   op_crypto_derive_bits_x25519,
+  op_crypto_derive_bits_x448,
   op_crypto_encrypt,
   op_crypto_export_key,
   op_crypto_export_pkcs8_ed25519,
   op_crypto_export_pkcs8_x25519,
+  op_crypto_export_pkcs8_x448,
   op_crypto_export_spki_ed25519,
   op_crypto_export_spki_x25519,
+  op_crypto_export_spki_x448,
   op_crypto_generate_ed25519_keypair,
   op_crypto_generate_key,
   op_crypto_generate_x25519_keypair,
+  op_crypto_generate_x448_keypair,
   op_crypto_get_random_values,
   op_crypto_import_key,
   op_crypto_import_pkcs8_ed25519,
   op_crypto_import_pkcs8_x25519,
+  op_crypto_import_pkcs8_x448,
   op_crypto_import_spki_ed25519,
   op_crypto_import_spki_x25519,
+  op_crypto_import_spki_x448,
   op_crypto_jwk_x_ed25519,
   op_crypto_random_uuid,
   op_crypto_sign_ed25519,
@@ -134,6 +140,7 @@ const supportedAlgorithms = {
     "AES-KW": "AesKeyGenParams",
     "HMAC": "HmacKeyGenParams",
     "X25519": null,
+    "X448": null,
     "Ed25519": null,
   },
   "sign": {
@@ -165,12 +172,14 @@ const supportedAlgorithms = {
     "AES-KW": null,
     "Ed25519": null,
     "X25519": null,
+    "X448": null,
   },
   "deriveBits": {
     "HKDF": "HkdfParams",
     "PBKDF2": "Pbkdf2Params",
     "ECDH": "EcdhKeyDeriveParams",
     "X25519": "EcdhKeyDeriveParams",
+    "X448": "EcdhKeyDeriveParams",
   },
   "encrypt": {
     "RSA-OAEP": "RsaOaepParams",
@@ -292,7 +301,7 @@ function normalizeAlgorithm(algorithm, op) {
       normalizedAlgorithm[member] = normalizeAlgorithm(idlValue, "digest");
     } else if (idlType === "AlgorithmIdentifier") {
       // TODO(lucacasonato): implement
-      throw new TypeError("unimplemented");
+      throw new TypeError("Unimplemented");
     }
   }
 
@@ -443,7 +452,7 @@ function getKeyLength(algorithm) {
       // 1.
       if (!ArrayPrototypeIncludes([128, 192, 256], algorithm.length)) {
         throw new DOMException(
-          "length must be 128, 192, or 256",
+          `Length must be 128, 192, or 256: received ${algorithm.length}`,
           "OperationError",
         );
       }
@@ -470,14 +479,14 @@ function getKeyLength(algorithm) {
             break;
           default:
             throw new DOMException(
-              "Unrecognized hash algorithm",
+              `Unrecognized hash algorithm: ${algorithm.hash.name}`,
               "NotSupportedError",
             );
         }
       } else if (algorithm.length !== 0) {
         length = algorithm.length;
       } else {
-        throw new TypeError("Invalid length.");
+        throw new TypeError(`Invalid length: ${algorithm.length}`);
       }
 
       // 2.
@@ -492,7 +501,7 @@ function getKeyLength(algorithm) {
       return null;
     }
     default:
-      throw new TypeError("unreachable");
+      throw new TypeError("Unreachable");
   }
 }
 
@@ -556,7 +565,7 @@ class SubtleCrypto {
     // 8.
     if (normalizedAlgorithm.name !== key[_algorithm].name) {
       throw new DOMException(
-        "Encryption algorithm doesn't match key algorithm.",
+        `Encryption algorithm '${normalizedAlgorithm.name}' does not match key algorithm`,
         "InvalidAccessError",
       );
     }
@@ -564,7 +573,7 @@ class SubtleCrypto {
     // 9.
     if (!ArrayPrototypeIncludes(key[_usages], "encrypt")) {
       throw new DOMException(
-        "Key does not support the 'encrypt' operation.",
+        "Key does not support the 'encrypt' operation",
         "InvalidAccessError",
       );
     }
@@ -599,7 +608,7 @@ class SubtleCrypto {
     // 8.
     if (normalizedAlgorithm.name !== key[_algorithm].name) {
       throw new DOMException(
-        "Decryption algorithm doesn't match key algorithm.",
+        `Decryption algorithm "${normalizedAlgorithm.name}" does not match key algorithm`,
         "OperationError",
       );
     }
@@ -607,7 +616,7 @@ class SubtleCrypto {
     // 9.
     if (!ArrayPrototypeIncludes(key[_usages], "decrypt")) {
       throw new DOMException(
-        "Key does not support the 'decrypt' operation.",
+        "Key does not support the 'decrypt' operation",
         "InvalidAccessError",
       );
     }
@@ -683,7 +692,7 @@ class SubtleCrypto {
           normalizedAlgorithm.length === 0 || normalizedAlgorithm.length > 128
         ) {
           throw new DOMException(
-            "Counter length must not be 0 or greater than 128",
+            `Counter length must not be 0 or greater than 128: received ${normalizedAlgorithm.length}`,
             "OperationError",
           );
         }
@@ -713,7 +722,7 @@ class SubtleCrypto {
           )
         ) {
           throw new DOMException(
-            "Invalid tag length",
+            `Invalid tag length: ${normalizedAlgorithm.tagLength}`,
             "OperationError",
           );
         }
@@ -805,7 +814,7 @@ class SubtleCrypto {
     // 8.
     if (normalizedAlgorithm.name !== key[_algorithm].name) {
       throw new DOMException(
-        "Signing algorithm doesn't match key algorithm.",
+        "Signing algorithm does not match key algorithm",
         "InvalidAccessError",
       );
     }
@@ -813,7 +822,7 @@ class SubtleCrypto {
     // 9.
     if (!ArrayPrototypeIncludes(key[_usages], "sign")) {
       throw new DOMException(
-        "Key does not support the 'sign' operation.",
+        "Key does not support the 'sign' operation",
         "InvalidAccessError",
       );
     }
@@ -928,7 +937,7 @@ class SubtleCrypto {
       }
     }
 
-    throw new TypeError("unreachable");
+    throw new TypeError("Unreachable");
   }
 
   /**
@@ -939,7 +948,6 @@ class SubtleCrypto {
    * @param {KeyUsages[]} keyUsages
    * @returns {Promise<any>}
    */
-  // deno-lint-ignore require-await
   async importKey(format, keyData, algorithm, extractable, keyUsages) {
     webidl.assertBranded(this, SubtleCryptoPrototype);
     const prefix = "Failed to execute 'importKey' on 'SubtleCrypto'";
@@ -967,96 +975,34 @@ class SubtleCrypto {
       if (ArrayBufferIsView(keyData) || isArrayBuffer(keyData)) {
         keyData = copyBuffer(keyData);
       } else {
-        throw new TypeError("keyData is a JsonWebKey");
+        throw new TypeError("Cannot import key: 'keyData' is a JsonWebKey");
       }
     } else {
       if (ArrayBufferIsView(keyData) || isArrayBuffer(keyData)) {
-        throw new TypeError("keyData is not a JsonWebKey");
+        throw new TypeError("Cannot import key: 'keyData' is not a JsonWebKey");
       }
     }
 
     const normalizedAlgorithm = normalizeAlgorithm(algorithm, "importKey");
 
-    const algorithmName = normalizedAlgorithm.name;
+    // 8.
+    const result = await importKeyInner(
+      format,
+      normalizedAlgorithm,
+      keyData,
+      extractable,
+      keyUsages,
+    );
 
-    switch (algorithmName) {
-      case "HMAC": {
-        return importKeyHMAC(
-          format,
-          normalizedAlgorithm,
-          keyData,
-          extractable,
-          keyUsages,
-        );
-      }
-      case "ECDH":
-      case "ECDSA": {
-        return importKeyEC(
-          format,
-          normalizedAlgorithm,
-          keyData,
-          extractable,
-          keyUsages,
-        );
-      }
-      case "RSASSA-PKCS1-v1_5":
-      case "RSA-PSS":
-      case "RSA-OAEP": {
-        return importKeyRSA(
-          format,
-          normalizedAlgorithm,
-          keyData,
-          extractable,
-          keyUsages,
-        );
-      }
-      case "HKDF": {
-        return importKeyHKDF(format, keyData, extractable, keyUsages);
-      }
-      case "PBKDF2": {
-        return importKeyPBKDF2(format, keyData, extractable, keyUsages);
-      }
-      case "AES-CTR":
-      case "AES-CBC":
-      case "AES-GCM": {
-        return importKeyAES(
-          format,
-          normalizedAlgorithm,
-          keyData,
-          extractable,
-          keyUsages,
-          ["encrypt", "decrypt", "wrapKey", "unwrapKey"],
-        );
-      }
-      case "AES-KW": {
-        return importKeyAES(
-          format,
-          normalizedAlgorithm,
-          keyData,
-          extractable,
-          keyUsages,
-          ["wrapKey", "unwrapKey"],
-        );
-      }
-      case "X25519": {
-        return importKeyX25519(
-          format,
-          keyData,
-          extractable,
-          keyUsages,
-        );
-      }
-      case "Ed25519": {
-        return importKeyEd25519(
-          format,
-          keyData,
-          extractable,
-          keyUsages,
-        );
-      }
-      default:
-        throw new DOMException("Not implemented", "NotSupportedError");
+    // 9.
+    if (
+      ArrayPrototypeIncludes(["private", "secret"], result[_type]) &&
+      keyUsages.length == 0
+    ) {
+      throw new SyntaxError("Invalid key usage");
     }
+
+    return result;
   }
 
   /**
@@ -1098,6 +1044,10 @@ class SubtleCrypto {
       }
       case "Ed25519": {
         result = exportKeyEd25519(format, key, innerKey);
+        break;
+      }
+      case "X448": {
+        result = exportKeyX448(format, key, innerKey);
         break;
       }
       case "X25519": {
@@ -1156,7 +1106,7 @@ class SubtleCrypto {
     // 8.
     if (!ArrayPrototypeIncludes(baseKey[_usages], "deriveBits")) {
       throw new DOMException(
-        "baseKey usages does not contain `deriveBits`",
+        "'baseKey' usages does not contain 'deriveBits'",
         "InvalidAccessError",
       );
     }
@@ -1222,7 +1172,7 @@ class SubtleCrypto {
     // 11.
     if (normalizedAlgorithm.name !== baseKey[_algorithm].name) {
       throw new DOMException(
-        "Invalid algorithm name",
+        `Invalid algorithm name: ${normalizedAlgorithm.name}`,
         "InvalidAccessError",
       );
     }
@@ -1230,7 +1180,7 @@ class SubtleCrypto {
     // 12.
     if (!ArrayPrototypeIncludes(baseKey[_usages], "deriveKey")) {
       throw new DOMException(
-        "baseKey usages does not contain `deriveKey`",
+        "'baseKey' usages does not contain 'deriveKey'",
         "InvalidAccessError",
       );
     }
@@ -1259,7 +1209,7 @@ class SubtleCrypto {
       ArrayPrototypeIncludes(["private", "secret"], result[_type]) &&
       keyUsages.length == 0
     ) {
-      throw new SyntaxError("Invalid key usages");
+      throw new SyntaxError("Invalid key usage");
     }
     // 17.
     return result;
@@ -1298,14 +1248,14 @@ class SubtleCrypto {
 
     if (normalizedAlgorithm.name !== key[_algorithm].name) {
       throw new DOMException(
-        "Verifying algorithm doesn't match key algorithm.",
+        "Verifying algorithm does not match key algorithm",
         "InvalidAccessError",
       );
     }
 
     if (!ArrayPrototypeIncludes(key[_usages], "verify")) {
       throw new DOMException(
-        "Key does not support the 'verify' operation.",
+        "Key does not support the 'verify' operation",
         "InvalidAccessError",
       );
     }
@@ -1396,7 +1346,7 @@ class SubtleCrypto {
       }
     }
 
-    throw new TypeError("unreachable");
+    throw new TypeError("Unreachable");
   }
 
   /**
@@ -1435,7 +1385,7 @@ class SubtleCrypto {
     // 8.
     if (normalizedAlgorithm.name !== wrappingKey[_algorithm].name) {
       throw new DOMException(
-        "Wrapping algorithm doesn't match key algorithm.",
+        "Wrapping algorithm does not match key algorithm",
         "InvalidAccessError",
       );
     }
@@ -1443,7 +1393,7 @@ class SubtleCrypto {
     // 9.
     if (!ArrayPrototypeIncludes(wrappingKey[_usages], "wrapKey")) {
       throw new DOMException(
-        "Key does not support the 'wrapKey' operation.",
+        "Key does not support the 'wrapKey' operation",
         "InvalidAccessError",
       );
     }
@@ -1591,7 +1541,7 @@ class SubtleCrypto {
     // 11.
     if (normalizedAlgorithm.name !== unwrappingKey[_algorithm].name) {
       throw new DOMException(
-        "Unwrapping algorithm doesn't match key algorithm.",
+        "Unwrapping algorithm does not match key algorithm",
         "InvalidAccessError",
       );
     }
@@ -1599,7 +1549,7 @@ class SubtleCrypto {
     // 12.
     if (!ArrayPrototypeIncludes(unwrappingKey[_usages], "unwrapKey")) {
       throw new DOMException(
-        "Key does not support the 'unwrapKey' operation.",
+        "Key does not support the 'unwrapKey' operation",
         "InvalidAccessError",
       );
     }
@@ -1678,7 +1628,7 @@ class SubtleCrypto {
       (result[_type] == "secret" || result[_type] == "private") &&
       keyUsages.length == 0
     ) {
-      throw new SyntaxError("Invalid key type.");
+      throw new SyntaxError("Invalid key type");
     }
     // 17.
     result[_extractable] = extractable;
@@ -1726,13 +1676,13 @@ class SubtleCrypto {
     if (ObjectPrototypeIsPrototypeOf(CryptoKeyPrototype, result)) {
       const type = result[_type];
       if ((type === "secret" || type === "private") && usages.length === 0) {
-        throw new DOMException("Invalid key usages", "SyntaxError");
+        throw new DOMException("Invalid key usage", "SyntaxError");
       }
     } else if (
       ObjectPrototypeIsPrototypeOf(CryptoKeyPrototype, result.privateKey)
     ) {
       if (result.privateKey[_usages].length === 0) {
-        throw new DOMException("Invalid key usages", "SyntaxError");
+        throw new DOMException("Invalid key usage", "SyntaxError");
       }
     }
 
@@ -1758,7 +1708,7 @@ async function generateKey(normalizedAlgorithm, extractable, usages) {
           (u) => !ArrayPrototypeIncludes(["sign", "verify"], u),
         ) !== undefined
       ) {
-        throw new DOMException("Invalid key usages", "SyntaxError");
+        throw new DOMException("Invalid key usage", "SyntaxError");
       }
 
       // 2.
@@ -1817,7 +1767,7 @@ async function generateKey(normalizedAlgorithm, extractable, usages) {
             ], u),
         ) !== undefined
       ) {
-        throw new DOMException("Invalid key usages", "SyntaxError");
+        throw new DOMException("Invalid key usage", "SyntaxError");
       }
 
       // 2.
@@ -1873,7 +1823,7 @@ async function generateKey(normalizedAlgorithm, extractable, usages) {
           (u) => !ArrayPrototypeIncludes(["sign", "verify"], u),
         ) !== undefined
       ) {
-        throw new DOMException("Invalid key usages", "SyntaxError");
+        throw new DOMException("Invalid key usage", "SyntaxError");
       }
 
       // 2-3.
@@ -1933,7 +1883,7 @@ async function generateKey(normalizedAlgorithm, extractable, usages) {
           (u) => !ArrayPrototypeIncludes(["deriveKey", "deriveBits"], u),
         ) !== undefined
       ) {
-        throw new DOMException("Invalid key usages", "SyntaxError");
+        throw new DOMException("Invalid key usage", "SyntaxError");
       }
 
       // 2-3.
@@ -1999,7 +1949,7 @@ async function generateKey(normalizedAlgorithm, extractable, usages) {
             ], u),
         ) !== undefined
       ) {
-        throw new DOMException("Invalid key usages", "SyntaxError");
+        throw new DOMException("Invalid key usage", "SyntaxError");
       }
 
       return generateKeyAES(normalizedAlgorithm, extractable, usages);
@@ -2012,10 +1962,52 @@ async function generateKey(normalizedAlgorithm, extractable, usages) {
           (u) => !ArrayPrototypeIncludes(["wrapKey", "unwrapKey"], u),
         ) !== undefined
       ) {
-        throw new DOMException("Invalid key usages", "SyntaxError");
+        throw new DOMException("Invalid key usage", "SyntaxError");
       }
 
       return generateKeyAES(normalizedAlgorithm, extractable, usages);
+    }
+    case "X448": {
+      if (
+        ArrayPrototypeFind(
+          usages,
+          (u) => !ArrayPrototypeIncludes(["deriveKey", "deriveBits"], u),
+        ) !== undefined
+      ) {
+        throw new DOMException("Invalid key usage", "SyntaxError");
+      }
+      const privateKeyData = new Uint8Array(56);
+      const publicKeyData = new Uint8Array(56);
+
+      op_crypto_generate_x448_keypair(privateKeyData, publicKeyData);
+
+      const handle = {};
+      WeakMapPrototypeSet(KEY_STORE, handle, privateKeyData);
+
+      const publicHandle = {};
+      WeakMapPrototypeSet(KEY_STORE, publicHandle, publicKeyData);
+
+      const algorithm = {
+        name: algorithmName,
+      };
+
+      const publicKey = constructKey(
+        "public",
+        true,
+        usageIntersection(usages, []),
+        algorithm,
+        publicHandle,
+      );
+
+      const privateKey = constructKey(
+        "private",
+        extractable,
+        usageIntersection(usages, ["deriveKey", "deriveBits"]),
+        algorithm,
+        handle,
+      );
+
+      return { publicKey, privateKey };
     }
     case "X25519": {
       if (
@@ -2024,7 +2016,7 @@ async function generateKey(normalizedAlgorithm, extractable, usages) {
           (u) => !ArrayPrototypeIncludes(["deriveKey", "deriveBits"], u),
         ) !== undefined
       ) {
-        throw new DOMException("Invalid key usages", "SyntaxError");
+        throw new DOMException("Invalid key usage", "SyntaxError");
       }
       const privateKeyData = new Uint8Array(32);
       const publicKeyData = new Uint8Array(32);
@@ -2065,7 +2057,7 @@ async function generateKey(normalizedAlgorithm, extractable, usages) {
           (u) => !ArrayPrototypeIncludes(["sign", "verify"], u),
         ) !== undefined
       ) {
-        throw new DOMException("Invalid key usages", "SyntaxError");
+        throw new DOMException("Invalid key usage", "SyntaxError");
       }
 
       const ED25519_SEED_LEN = 32;
@@ -2114,7 +2106,7 @@ async function generateKey(normalizedAlgorithm, extractable, usages) {
           (u) => !ArrayPrototypeIncludes(["sign", "verify"], u),
         ) !== undefined
       ) {
-        throw new DOMException("Invalid key usages", "SyntaxError");
+        throw new DOMException("Invalid key usage", "SyntaxError");
       }
 
       // 2.
@@ -2163,6 +2155,211 @@ async function generateKey(normalizedAlgorithm, extractable, usages) {
   }
 }
 
+function importKeyX448(
+  format,
+  keyData,
+  extractable,
+  keyUsages,
+) {
+  switch (format) {
+    case "raw": {
+      // 1.
+      if (keyUsages.length > 0) {
+        throw new DOMException("Invalid key usage", "SyntaxError");
+      }
+
+      const handle = {};
+      WeakMapPrototypeSet(KEY_STORE, handle, keyData);
+
+      // 2-3.
+      const algorithm = {
+        name: "X448",
+      };
+
+      // 4-6.
+      return constructKey(
+        "public",
+        extractable,
+        [],
+        algorithm,
+        handle,
+      );
+    }
+    case "spki": {
+      // 1.
+      if (keyUsages.length > 0) {
+        throw new DOMException("Invalid key usage", "SyntaxError");
+      }
+
+      const publicKeyData = new Uint8Array(56);
+      if (!op_crypto_import_spki_x448(keyData, publicKeyData)) {
+        throw new DOMException("Invalid key data", "DataError");
+      }
+
+      const handle = {};
+      WeakMapPrototypeSet(KEY_STORE, handle, publicKeyData);
+
+      const algorithm = {
+        name: "X448",
+      };
+
+      return constructKey(
+        "public",
+        extractable,
+        [],
+        algorithm,
+        handle,
+      );
+    }
+    case "pkcs8": {
+      // 1.
+      if (
+        ArrayPrototypeFind(
+          keyUsages,
+          (u) => !ArrayPrototypeIncludes(["deriveKey", "deriveBits"], u),
+        ) !== undefined
+      ) {
+        throw new DOMException("Invalid key usage", "SyntaxError");
+      }
+
+      const privateKeyData = new Uint8Array(32);
+      if (!op_crypto_import_pkcs8_x448(keyData, privateKeyData)) {
+        throw new DOMException("Invalid key data", "DataError");
+      }
+
+      const handle = {};
+      WeakMapPrototypeSet(KEY_STORE, handle, privateKeyData);
+
+      const algorithm = {
+        name: "X448",
+      };
+
+      return constructKey(
+        "private",
+        extractable,
+        usageIntersection(keyUsages, recognisedUsages),
+        algorithm,
+        handle,
+      );
+    }
+    case "jwk": {
+      // 1.
+      const jwk = keyData;
+
+      // 2.
+      if (jwk.d !== undefined) {
+        if (
+          ArrayPrototypeFind(
+            keyUsages,
+            (u) =>
+              !ArrayPrototypeIncludes(
+                ["deriveKey", "deriveBits"],
+                u,
+              ),
+          ) !== undefined
+        ) {
+          throw new DOMException("Invalid key usage", "SyntaxError");
+        }
+      }
+
+      // 3.
+      if (jwk.d === undefined && keyUsages.length > 0) {
+        throw new DOMException("Invalid key usage", "SyntaxError");
+      }
+
+      // 4.
+      if (jwk.kty !== "OKP") {
+        throw new DOMException("Invalid key type", "DataError");
+      }
+
+      // 5.
+      if (jwk.crv !== "X448") {
+        throw new DOMException("Invalid curve", "DataError");
+      }
+
+      // 6.
+      if (keyUsages.length > 0 && jwk.use !== undefined) {
+        if (jwk.use !== "enc") {
+          throw new DOMException("Invalid key use", "DataError");
+        }
+      }
+
+      // 7.
+      if (jwk.key_ops !== undefined) {
+        if (
+          ArrayPrototypeFind(
+            jwk.key_ops,
+            (u) => !ArrayPrototypeIncludes(recognisedUsages, u),
+          ) !== undefined
+        ) {
+          throw new DOMException(
+            "'key_ops' property of JsonWebKey is invalid",
+            "DataError",
+          );
+        }
+
+        if (
+          !ArrayPrototypeEvery(
+            jwk.key_ops,
+            (u) => ArrayPrototypeIncludes(keyUsages, u),
+          )
+        ) {
+          throw new DOMException(
+            "'key_ops' property of JsonWebKey is invalid",
+            "DataError",
+          );
+        }
+      }
+
+      // 8.
+      if (jwk.ext !== undefined && jwk.ext === false && extractable) {
+        throw new DOMException("Invalid key extractability", "DataError");
+      }
+
+      // 9.
+      if (jwk.d !== undefined) {
+        // https://www.rfc-editor.org/rfc/rfc8037#section-2
+        const privateKeyData = op_crypto_base64url_decode(jwk.d);
+
+        const handle = {};
+        WeakMapPrototypeSet(KEY_STORE, handle, privateKeyData);
+
+        const algorithm = {
+          name: "X448",
+        };
+
+        return constructKey(
+          "private",
+          extractable,
+          usageIntersection(keyUsages, ["deriveKey", "deriveBits"]),
+          algorithm,
+          handle,
+        );
+      } else {
+        // https://www.rfc-editor.org/rfc/rfc8037#section-2
+        const publicKeyData = op_crypto_base64url_decode(jwk.x);
+
+        const handle = {};
+        WeakMapPrototypeSet(KEY_STORE, handle, publicKeyData);
+
+        const algorithm = {
+          name: "X448",
+        };
+
+        return constructKey(
+          "public",
+          extractable,
+          [],
+          algorithm,
+          handle,
+        );
+      }
+    }
+    default:
+      throw new DOMException("Not implemented", "NotSupportedError");
+  }
+}
+
 function importKeyEd25519(
   format,
   keyData,
@@ -2178,7 +2375,7 @@ function importKeyEd25519(
           (u) => !ArrayPrototypeIncludes(["verify"], u),
         ) !== undefined
       ) {
-        throw new DOMException("Invalid key usages", "SyntaxError");
+        throw new DOMException("Invalid key usage", "SyntaxError");
       }
 
       const handle = {};
@@ -2206,7 +2403,7 @@ function importKeyEd25519(
           (u) => !ArrayPrototypeIncludes(["verify"], u),
         ) !== undefined
       ) {
-        throw new DOMException("Invalid key usages", "SyntaxError");
+        throw new DOMException("Invalid key usage", "SyntaxError");
       }
 
       const publicKeyData = new Uint8Array(32);
@@ -2237,7 +2434,7 @@ function importKeyEd25519(
           (u) => !ArrayPrototypeIncludes(["sign"], u),
         ) !== undefined
       ) {
-        throw new DOMException("Invalid key usages", "SyntaxError");
+        throw new DOMException("Invalid key usage", "SyntaxError");
       }
 
       const privateKeyData = new Uint8Array(32);
@@ -2276,7 +2473,7 @@ function importKeyEd25519(
               ),
           ) !== undefined
         ) {
-          throw new DOMException("Invalid key usages", "SyntaxError");
+          throw new DOMException("Invalid key usage", "SyntaxError");
         }
       } else {
         if (
@@ -2289,7 +2486,7 @@ function importKeyEd25519(
               ),
           ) !== undefined
         ) {
-          throw new DOMException("Invalid key usages", "SyntaxError");
+          throw new DOMException("Invalid key usage", "SyntaxError");
         }
       }
 
@@ -2349,7 +2546,7 @@ function importKeyEd25519(
         try {
           privateKeyData = op_crypto_base64url_decode(jwk.d);
         } catch (_) {
-          throw new DOMException("invalid private key data", "DataError");
+          throw new DOMException("Invalid private key data", "DataError");
         }
 
         const handle = {};
@@ -2372,7 +2569,7 @@ function importKeyEd25519(
         try {
           publicKeyData = op_crypto_base64url_decode(jwk.x);
         } catch (_) {
-          throw new DOMException("invalid public key data", "DataError");
+          throw new DOMException("Invalid public key data", "DataError");
         }
 
         const handle = {};
@@ -2406,7 +2603,7 @@ function importKeyX25519(
     case "raw": {
       // 1.
       if (keyUsages.length > 0) {
-        throw new DOMException("Invalid key usages", "SyntaxError");
+        throw new DOMException("Invalid key usage", "SyntaxError");
       }
 
       const handle = {};
@@ -2429,7 +2626,7 @@ function importKeyX25519(
     case "spki": {
       // 1.
       if (keyUsages.length > 0) {
-        throw new DOMException("Invalid key usages", "SyntaxError");
+        throw new DOMException("Invalid key usage", "SyntaxError");
       }
 
       const publicKeyData = new Uint8Array(32);
@@ -2460,7 +2657,7 @@ function importKeyX25519(
           (u) => !ArrayPrototypeIncludes(["deriveKey", "deriveBits"], u),
         ) !== undefined
       ) {
-        throw new DOMException("Invalid key usages", "SyntaxError");
+        throw new DOMException("Invalid key usage", "SyntaxError");
       }
 
       const privateKeyData = new Uint8Array(32);
@@ -2499,13 +2696,13 @@ function importKeyX25519(
               ),
           ) !== undefined
         ) {
-          throw new DOMException("Invalid key usages", "SyntaxError");
+          throw new DOMException("Invalid key usage", "SyntaxError");
         }
       }
 
       // 3.
       if (jwk.d === undefined && keyUsages.length > 0) {
-        throw new DOMException("Invalid key usages", "SyntaxError");
+        throw new DOMException("Invalid key usage", "SyntaxError");
       }
 
       // 4.
@@ -2641,7 +2838,7 @@ function exportKeyAES(
           break;
         default:
           throw new DOMException(
-            "Invalid key length",
+            `Invalid key length: ${algorithm.length}`,
             "NotSupportedError",
           );
       }
@@ -2675,7 +2872,7 @@ function importKeyAES(
       (u) => !ArrayPrototypeIncludes(supportedKeyUsages, u),
     ) !== undefined
   ) {
-    throw new DOMException("Invalid key usages", "SyntaxError");
+    throw new DOMException("Invalid key usage", "SyntaxError");
   }
 
   const algorithmName = normalizedAlgorithm.name;
@@ -2731,7 +2928,10 @@ function importKeyAES(
             jwk.alg !== undefined &&
             jwk.alg !== aesJwkAlg[algorithmName][128]
           ) {
-            throw new DOMException("Invalid algorithm", "DataError");
+            throw new DOMException(
+              `Invalid algorithm: ${jwk.alg}`,
+              "DataError",
+            );
           }
           break;
         case 192:
@@ -2739,7 +2939,10 @@ function importKeyAES(
             jwk.alg !== undefined &&
             jwk.alg !== aesJwkAlg[algorithmName][192]
           ) {
-            throw new DOMException("Invalid algorithm", "DataError");
+            throw new DOMException(
+              `Invalid algorithm: ${jwk.alg}`,
+              "DataError",
+            );
           }
           break;
         case 256:
@@ -2747,7 +2950,10 @@ function importKeyAES(
             jwk.alg !== undefined &&
             jwk.alg !== aesJwkAlg[algorithmName][256]
           ) {
-            throw new DOMException("Invalid algorithm", "DataError");
+            throw new DOMException(
+              `Invalid algorithm: ${jwk.alg}`,
+              "DataError",
+            );
           }
           break;
         default:
@@ -2761,7 +2967,7 @@ function importKeyAES(
       if (
         keyUsages.length > 0 && jwk.use !== undefined && jwk.use !== "enc"
       ) {
-        throw new DOMException("Invalid key usages", "DataError");
+        throw new DOMException("Invalid key usage", "DataError");
       }
 
       // 7.
@@ -2844,7 +3050,7 @@ function importKeyHMAC(
       (u) => !ArrayPrototypeIncludes(["sign", "verify"], u),
     ) !== undefined
   ) {
-    throw new DOMException("Invalid key usages", "SyntaxError");
+    throw new DOMException("Invalid key usage", "SyntaxError");
   }
 
   // 3.
@@ -2926,7 +3132,7 @@ function importKeyHMAC(
           break;
         }
         default:
-          throw new TypeError("unreachable");
+          throw new TypeError("Unreachable");
       }
 
       // 7.
@@ -3059,7 +3265,7 @@ function importKeyEC(
             ),
         ) !== undefined
       ) {
-        throw new DOMException("Invalid key usages", "SyntaxError");
+        throw new DOMException("Invalid key usage", "SyntaxError");
       }
 
       // 3.
@@ -3100,7 +3306,7 @@ function importKeyEC(
             ),
         ) !== undefined
       ) {
-        throw new DOMException("Invalid key usages", "SyntaxError");
+        throw new DOMException("Invalid key usage", "SyntaxError");
       }
 
       // 2-9.
@@ -3140,7 +3346,7 @@ function importKeyEC(
               ),
           ) !== undefined
         ) {
-          throw new DOMException("Invalid key usages", "SyntaxError");
+          throw new DOMException("Invalid key usage", "SyntaxError");
         }
       } else if (keyUsages.length != 0) {
         throw new DOMException("Key usage must be empty", "SyntaxError");
@@ -3183,7 +3389,7 @@ function importKeyEC(
           (u) => !ArrayPrototypeIncludes(supportedUsages[keyType], u),
         ) !== undefined
       ) {
-        throw new DOMException("Invalid key usages", "SyntaxError");
+        throw new DOMException("Invalid key usage", "SyntaxError");
       }
 
       // 3.
@@ -3343,6 +3549,104 @@ function importKeyEC(
   }
 }
 
+// deno-lint-ignore require-await
+async function importKeyInner(
+  format,
+  normalizedAlgorithm,
+  keyData,
+  extractable,
+  keyUsages,
+) {
+  const algorithmName = normalizedAlgorithm.name;
+
+  switch (algorithmName) {
+    case "HMAC": {
+      return importKeyHMAC(
+        format,
+        normalizedAlgorithm,
+        keyData,
+        extractable,
+        keyUsages,
+      );
+    }
+    case "ECDH":
+    case "ECDSA": {
+      return importKeyEC(
+        format,
+        normalizedAlgorithm,
+        keyData,
+        extractable,
+        keyUsages,
+      );
+    }
+    case "RSASSA-PKCS1-v1_5":
+    case "RSA-PSS":
+    case "RSA-OAEP": {
+      return importKeyRSA(
+        format,
+        normalizedAlgorithm,
+        keyData,
+        extractable,
+        keyUsages,
+      );
+    }
+    case "HKDF": {
+      return importKeyHKDF(format, keyData, extractable, keyUsages);
+    }
+    case "PBKDF2": {
+      return importKeyPBKDF2(format, keyData, extractable, keyUsages);
+    }
+    case "AES-CTR":
+    case "AES-CBC":
+    case "AES-GCM": {
+      return importKeyAES(
+        format,
+        normalizedAlgorithm,
+        keyData,
+        extractable,
+        keyUsages,
+        ["encrypt", "decrypt", "wrapKey", "unwrapKey"],
+      );
+    }
+    case "AES-KW": {
+      return importKeyAES(
+        format,
+        normalizedAlgorithm,
+        keyData,
+        extractable,
+        keyUsages,
+        ["wrapKey", "unwrapKey"],
+      );
+    }
+    case "X448": {
+      return importKeyX448(
+        format,
+        keyData,
+        extractable,
+        keyUsages,
+      );
+    }
+    case "X25519": {
+      return importKeyX25519(
+        format,
+        keyData,
+        extractable,
+        keyUsages,
+      );
+    }
+    case "Ed25519": {
+      return importKeyEd25519(
+        format,
+        keyData,
+        extractable,
+        keyUsages,
+      );
+    }
+    default:
+      throw new DOMException("Not implemented", "NotSupportedError");
+  }
+}
+
 const SUPPORTED_KEY_USAGES = {
   "RSASSA-PKCS1-v1_5": {
     public: ["verify"],
@@ -3391,7 +3695,7 @@ function importKeyRSA(
             ),
         ) !== undefined
       ) {
-        throw new DOMException("Invalid key usages", "SyntaxError");
+        throw new DOMException("Invalid key usage", "SyntaxError");
       }
 
       // 2-9.
@@ -3436,7 +3740,7 @@ function importKeyRSA(
             ),
         ) !== undefined
       ) {
-        throw new DOMException("Invalid key usages", "SyntaxError");
+        throw new DOMException("Invalid key usage", "SyntaxError");
       }
 
       // 2-9.
@@ -3485,7 +3789,7 @@ function importKeyRSA(
               ),
           ) !== undefined
         ) {
-          throw new DOMException("Invalid key usages", "SyntaxError");
+          throw new DOMException("Invalid key usage", "SyntaxError");
         }
       } else if (
         ArrayPrototypeFind(
@@ -3497,7 +3801,7 @@ function importKeyRSA(
             ),
         ) !== undefined
       ) {
-        throw new DOMException("Invalid key usages", "SyntaxError");
+        throw new DOMException("Invalid key usage", "SyntaxError");
       }
 
       // 3.
@@ -3579,7 +3883,7 @@ function importKeyRSA(
             break;
           default:
             throw new DOMException(
-              `'alg' property of JsonWebKey must be one of 'RS1', 'RS256', 'RS384', 'RS512'`,
+              `'alg' property of JsonWebKey must be one of 'RS1', 'RS256', 'RS384', 'RS512': received ${jwk.alg}`,
               "DataError",
             );
         }
@@ -3602,7 +3906,7 @@ function importKeyRSA(
             break;
           default:
             throw new DOMException(
-              `'alg' property of JsonWebKey must be one of 'PS1', 'PS256', 'PS384', 'PS512'`,
+              `'alg' property of JsonWebKey must be one of 'PS1', 'PS256', 'PS384', 'PS512': received ${jwk.alg}`,
               "DataError",
             );
         }
@@ -3625,7 +3929,7 @@ function importKeyRSA(
             break;
           default:
             throw new DOMException(
-              `'alg' property of JsonWebKey must be one of 'RSA-OAEP', 'RSA-OAEP-256', 'RSA-OAEP-384', or 'RSA-OAEP-512'`,
+              `'alg' property of JsonWebKey must be one of 'RSA-OAEP', 'RSA-OAEP-256', 'RSA-OAEP-384', or 'RSA-OAEP-512': received ${jwk.alg}`,
               "DataError",
             );
         }
@@ -3639,7 +3943,7 @@ function importKeyRSA(
         // 9.2.
         if (normalizedHash.name !== normalizedAlgorithm.hash.name) {
           throw new DOMException(
-            `'alg' property of JsonWebKey must be '${normalizedAlgorithm.name}'`,
+            `'alg' property of JsonWebKey must be '${normalizedAlgorithm.name}': received ${jwk.alg}`,
             "DataError",
           );
         }
@@ -3684,7 +3988,7 @@ function importKeyRSA(
           }
         } else {
           throw new DOMException(
-            "only optimized private keys are supported",
+            "Only optimized private keys are supported",
             "NotSupportedError",
           );
         }
@@ -3782,7 +4086,7 @@ function importKeyHKDF(
       (u) => !ArrayPrototypeIncludes(["deriveKey", "deriveBits"], u),
     ) !== undefined
   ) {
-    throw new DOMException("Invalid key usages", "SyntaxError");
+    throw new DOMException("Invalid key usage", "SyntaxError");
   }
 
   // 2.
@@ -3834,7 +4138,7 @@ function importKeyPBKDF2(
       (u) => !ArrayPrototypeIncludes(["deriveKey", "deriveBits"], u),
     ) !== undefined
   ) {
-    throw new DOMException("Invalid key usages", "SyntaxError");
+    throw new DOMException("Invalid key usage", "SyntaxError");
   }
 
   // 3.
@@ -3878,7 +4182,7 @@ function exportKeyHMAC(format, key, innerKey) {
     // 3.
     case "raw": {
       const bits = innerKey.data;
-      // TODO(petamoriken): Uint8Array doesn't have push method
+      // TODO(petamoriken): Uint8Array does not have push method
       // for (let _i = 7 & (8 - bits.length % 8); _i > 0; _i--) {
       //   bits.push(0);
       // }
@@ -4126,6 +4430,66 @@ function exportKeyEd25519(format, key, innerKey) {
   }
 }
 
+function exportKeyX448(format, key, innerKey) {
+  switch (format) {
+    case "raw": {
+      // 1.
+      if (key[_type] !== "public") {
+        throw new DOMException(
+          "Key is not a public key",
+          "InvalidAccessError",
+        );
+      }
+
+      // 2-3.
+      return TypedArrayPrototypeGetBuffer(innerKey);
+    }
+    case "spki": {
+      // 1.
+      if (key[_type] !== "public") {
+        throw new DOMException(
+          "Key is not a public key",
+          "InvalidAccessError",
+        );
+      }
+
+      const spkiDer = op_crypto_export_spki_x448(innerKey);
+      return TypedArrayPrototypeGetBuffer(spkiDer);
+    }
+    case "pkcs8": {
+      // 1.
+      if (key[_type] !== "private") {
+        throw new DOMException(
+          "Key is not a private key",
+          "InvalidAccessError",
+        );
+      }
+
+      const pkcs8Der = op_crypto_export_pkcs8_x448(
+        new Uint8Array([0x04, 0x22, ...new SafeArrayIterator(innerKey)]),
+      );
+      pkcs8Der[15] = 0x20;
+      return TypedArrayPrototypeGetBuffer(pkcs8Der);
+    }
+    case "jwk": {
+      if (key[_type] === "private") {
+        throw new DOMException("Not implemented", "NotSupportedError");
+      }
+      const x = op_crypto_base64url_encode(innerKey);
+      const jwk = {
+        kty: "OKP",
+        crv: "X448",
+        x,
+        "key_ops": key.usages,
+        ext: key[_extractable],
+      };
+      return jwk;
+    }
+    default:
+      throw new DOMException("Not implemented", "NotSupportedError");
+  }
+}
+
 function exportKeyX25519(format, key, innerKey) {
   switch (format) {
     case "raw": {
@@ -4331,7 +4695,10 @@ async function generateKeyAES(normalizedAlgorithm, extractable, usages) {
 
   // 2.
   if (!ArrayPrototypeIncludes([128, 192, 256], normalizedAlgorithm.length)) {
-    throw new DOMException("Invalid key length", "OperationError");
+    throw new DOMException(
+      `Invalid key length: ${normalizedAlgorithm.length}`,
+      "OperationError",
+    );
   }
 
   // 3.
@@ -4417,7 +4784,7 @@ async function deriveBits(normalizedAlgorithm, baseKey, length) {
         publicKey[_algorithm].namedCurve !== baseKey[_algorithm].namedCurve
       ) {
         throw new DOMException(
-          "namedCurve mismatch",
+          "'namedCurve' mismatch",
           "InvalidAccessError",
         );
       }
@@ -4479,6 +4846,55 @@ async function deriveBits(normalizedAlgorithm, baseKey, length) {
       }, normalizedAlgorithm.salt);
 
       return TypedArrayPrototypeGetBuffer(buf);
+    }
+    case "X448": {
+      // 1.
+      if (baseKey[_type] !== "private") {
+        throw new DOMException("Invalid key type", "InvalidAccessError");
+      }
+      // 2.
+      const publicKey = normalizedAlgorithm.public;
+      // 3.
+      if (publicKey[_type] !== "public") {
+        throw new DOMException("Invalid key type", "InvalidAccessError");
+      }
+      // 4.
+      if (publicKey[_algorithm].name !== baseKey[_algorithm].name) {
+        throw new DOMException(
+          "Algorithm mismatch",
+          "InvalidAccessError",
+        );
+      }
+
+      // 5.
+      const kHandle = baseKey[_handle];
+      const k = WeakMapPrototypeGet(KEY_STORE, kHandle);
+
+      const uHandle = publicKey[_handle];
+      const u = WeakMapPrototypeGet(KEY_STORE, uHandle);
+
+      const secret = new Uint8Array(56);
+      const isIdentity = op_crypto_derive_bits_x448(k, u, secret);
+
+      // 6.
+      if (isIdentity) {
+        throw new DOMException("Invalid key", "OperationError");
+      }
+
+      // 7.
+      if (length === null) {
+        return TypedArrayPrototypeGetBuffer(secret);
+      } else if (
+        TypedArrayPrototypeGetByteLength(secret) * 8 < length
+      ) {
+        throw new DOMException("Invalid length", "OperationError");
+      } else {
+        return ArrayBufferPrototypeSlice(
+          TypedArrayPrototypeGetBuffer(secret),
+          0,
+          MathCeil(length / 8),
+        );
+      }
     }
     case "X25519": {
       // 1.
@@ -4670,7 +5086,7 @@ async function encrypt(normalizedAlgorithm, key, data) {
         )
       ) {
         throw new DOMException(
-          "Invalid tag length",
+          `Invalid tag length: ${normalizedAlgorithm.tagLength}`,
           "OperationError",
         );
       }
