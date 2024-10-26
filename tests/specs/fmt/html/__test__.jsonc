@@ -12,6 +12,20 @@
     "broken": {
       "args": "fmt broken.html",
       "output": "broken.out"
+    },
+    // Regression test for https://github.com/denoland/deno/issues/26560 and
+    // https://github.com/denoland/deno/issues/26451
+    "js_in_html": {
+      "steps": [
+        { "args": "fmt js_in_html.html", "output": "[WILDCARD]js_in_html.html\nChecked 1 file\n" },
+        { 
+          "args": [
+            "eval",
+            "console.log(Deno.readTextFileSync('js_in_html.html').trim())"
+          ], 
+          "output": "js_in_html.out" 
+        }
+      ]
     }
   }
 }

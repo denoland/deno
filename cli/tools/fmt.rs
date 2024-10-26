@@ -418,6 +418,15 @@ pub fn format_html(
           let mut typescript_config =
             get_resolved_typescript_config(fmt_options);
           typescript_config.line_width = hints.print_width as u32;
+          // NOTE(bartlomieju): this is a make-shift fix, to avoid panics for
+          // https://github.com/denoland/deno/issues/26560 and
+          // https://github.com/denoland/deno/issues/26451, but it should
+          // be fixed in dprint directly: https://github.com/dprint/dprint-plugin-typescript/issues/678
+          let text: String = text
+            .lines()
+            .map(|l| l.trim())
+            .collect::<Vec<_>>()
+            .join("\n");
           dprint_plugin_typescript::format_text(
             &path,
             None,
