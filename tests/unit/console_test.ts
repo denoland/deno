@@ -1162,7 +1162,7 @@ Deno.test(function consoleTestWithIntegerFormatSpecifier() {
   assertEquals(stringify("%i"), "%i");
   assertEquals(stringify("%i", 42.0), "42");
   assertEquals(stringify("%i", 42), "42");
-  assertEquals(stringify("%i", "42"), "NaN");
+  assertEquals(stringify("%i", "42"), "42");
   assertEquals(stringify("%i", 1.5), "1");
   assertEquals(stringify("%i", -0.5), "0");
   assertEquals(stringify("%i", ""), "NaN");
@@ -1172,7 +1172,7 @@ Deno.test(function consoleTestWithIntegerFormatSpecifier() {
   assertEquals(stringify("%d", 12345678901234567890123), "1");
   assertEquals(
     stringify("%i", 12345678901234567890123n),
-    "12345678901234567890123n",
+    "1.2345678901234568e+22",
   );
 });
 
@@ -1180,13 +1180,13 @@ Deno.test(function consoleTestWithFloatFormatSpecifier() {
   assertEquals(stringify("%f"), "%f");
   assertEquals(stringify("%f", 42.0), "42");
   assertEquals(stringify("%f", 42), "42");
-  assertEquals(stringify("%f", "42"), "NaN");
+  assertEquals(stringify("%f", "42"), "42");
   assertEquals(stringify("%f", 1.5), "1.5");
   assertEquals(stringify("%f", -0.5), "-0.5");
   assertEquals(stringify("%f", Math.PI), "3.141592653589793");
   assertEquals(stringify("%f", ""), "NaN");
   assertEquals(stringify("%f", Symbol("foo")), "NaN");
-  assertEquals(stringify("%f", 5n), "NaN");
+  assertEquals(stringify("%f", 5n), "5");
   assertEquals(stringify("%f %f", 42, 43), "42 43");
   assertEquals(stringify("%f %f", 42), "42 %f");
 });
@@ -1227,6 +1227,7 @@ Deno.test(function consoleParseCssColor() {
   assertEquals(parseCssColor("inherit"), null);
   assertEquals(parseCssColor("black"), [0, 0, 0]);
   assertEquals(parseCssColor("darkmagenta"), [139, 0, 139]);
+  assertEquals(parseCssColor("darkMaGenta"), [139, 0, 139]);
   assertEquals(parseCssColor("slateblue"), [106, 90, 205]);
   assertEquals(parseCssColor("#ffaa00"), [255, 170, 0]);
   assertEquals(parseCssColor("#ffAA00"), [255, 170, 0]);

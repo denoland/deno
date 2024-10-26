@@ -329,7 +329,12 @@ impl JupyterServer {
             })
             .collect();
 
-            (candidates, cursor_pos - prop_name.len())
+            if prop_name.len() > cursor_pos {
+              // TODO(bartlomieju): most likely not correct, but better than panicking because of sub with overflow
+              (candidates, cursor_pos)
+            } else {
+              (candidates, cursor_pos - prop_name.len())
+            }
           } else {
             // combine results of declarations and globalThis properties
             let mut candidates = get_expression_property_names(
@@ -349,7 +354,12 @@ impl JupyterServer {
             candidates.sort();
             candidates.dedup(); // make sure to sort first
 
-            (candidates, cursor_pos - expr.len())
+            if expr.len() > cursor_pos {
+              // TODO(bartlomieju): most likely not correct, but better than panicking because of sub with overflow
+              (candidates, cursor_pos)
+            } else {
+              (candidates, cursor_pos - expr.len())
+            }
           };
 
           connection

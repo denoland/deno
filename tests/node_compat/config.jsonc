@@ -439,6 +439,7 @@
       "test-net-server-unref.js",
       "test-net-socket-destroy-twice.js",
       "test-net-socket-no-halfopen-enforcer.js",
+      "test-net-socket-setnodelay.js",
       "test-net-timeout-no-handle.js",
       "test-net-write-arguments.js",
       "test-next-tick-doesnt-hang.js",
