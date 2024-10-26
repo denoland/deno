@@ -1,5 +1,5 @@
 {
-  "args": "run -A main.ts",
+  "args": "run -L debug -A main.ts",
   "output": "main.out",
   "tempDir": true
 }

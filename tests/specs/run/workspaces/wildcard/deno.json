@@ -2,7 +2,7 @@
   "workspace": [
     "./packages/*"
   ],
-  "tasks": {
-    "dev": "deno run --watch main.ts"
+  "imports": {
+    "chalk": "npm:chalk"
   }
 }

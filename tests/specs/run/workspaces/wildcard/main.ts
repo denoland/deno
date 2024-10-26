@@ -1,4 +1,5 @@
-import * as foo from "@deno-test/foo";
-import * as bar from "@deno-test/bar";
+import chalk from "chalk";
+import "./packages/foo/mod.ts";
+import "./packages/bar/mod.ts";
 
-console.log(foo, bar);
+console.log(chalk);
