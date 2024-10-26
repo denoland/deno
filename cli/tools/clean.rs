@@ -46,7 +46,24 @@ pub fn clean(clean_flags: CleanFlags) -> Result<(), AnyError> {
       .progress_guard
       .set_total_size(no_of_files.try_into().unwrap());
 
-    rm_rf(&mut state, &deno_dir.root, clean_flags.size)?;
+    let root_path = if clean_flags.deps {
+      // TODO: wrong, should be two paths
+      deno_dir.root.join("./remote")
+    } else if clean_flags.npm {
+      deno_dir.root.join("./npm")
+    } else if clean_flags.jsr {
+      // TODO: wrong, don't know the path
+      deno_dir.root.join("./jsr")
+    } else if clean_flags.emit {
+      deno_dir.root.join("./gen")
+    } else if clean_flags.caches {
+      // TODO: wrong, should be multiple paths for typecheck, lint and other caches
+      deno_dir.root.join("./location_data")
+    } else {
+      deno_dir.root
+    };
+
+    rm_rf(&mut state, &root_path, clean_flags.size)?;
 
     // Drop the guard so that progress bar disappears.
     drop(state.progress_guard);
@@ -55,7 +72,7 @@ pub fn clean(clean_flags: CleanFlags) -> Result<(), AnyError> {
       log::info!(
         "{} {} {}",
         colors::green("Removed"),
-        deno_dir.root.display(),
+        root_path.display(),
         colors::gray(&format!(
           "({} files, {})",
           state.files_removed + state.dirs_removed,
@@ -65,7 +82,7 @@ pub fn clean(clean_flags: CleanFlags) -> Result<(), AnyError> {
     } else {
       log::info!(
         "Cache size {} {}",
-        deno_dir.root.display(),
+        root_path.display(),
         colors::gray(&format!(
           "({} files, {})",
           state.files_removed + state.dirs_removed,
