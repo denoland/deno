@@ -10,16 +10,16 @@ use deno_ast::SourceRanged;
 use deno_ast::SourceRangedForSpanned as _;
 use deno_ast::SourceTextInfoProvider as _;
 
-static COVERAGE_IGNORE_DIRECTIVE: &str = "deno-coverage-ignore";
+static COVERAGE_IGNORE_NEXT_DIRECTIVE: &str = "deno-coverage-ignore-next";
 static COVERAGE_IGNORE_FILE_DIRECTIVE: &str = "deno-coverage-ignore-file";
 
-pub type LineIgnoreDirective = IgnoreDirective<Line>;
+pub type NextIgnoreDirective = IgnoreDirective<Next>;
 pub type FileIgnoreDirective = IgnoreDirective<File>;
 
-pub enum Line {}
+pub enum Next {}
 pub enum File {}
 pub trait DirectiveKind {}
-impl DirectiveKind for Line {}
+impl DirectiveKind for Next {}
 impl DirectiveKind for File {}
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -34,14 +34,14 @@ impl<T: DirectiveKind> IgnoreDirective<T> {
   }
 }
 
-pub fn parse_line_ignore_directives(
+pub fn parse_next_ignore_directives(
   program: &ast_view::Program,
-) -> HashMap<usize, LineIgnoreDirective> {
+) -> HashMap<usize, NextIgnoreDirective> {
   program
     .comment_container()
     .all_comments()
     .filter_map(|comment| {
-      parse_ignore_comment(COVERAGE_IGNORE_DIRECTIVE, comment).map(
+      parse_ignore_comment(COVERAGE_IGNORE_NEXT_DIRECTIVE, comment).map(
         |directive| {
           (
             program.text_info().line_index(directive.range().start),
@@ -148,7 +148,7 @@ mod tests {
     "#;
 
     parse_and_then(source_code, |program| {
-      let line_directives = parse_line_ignore_directives(&program);
+      let line_directives = parse_next_ignore_directives(&program);
 
       assert_eq!(line_directives.len(), 2);
     });

@@ -27,7 +27,7 @@ use deno_core::sourcemap::SourceMap;
 use deno_core::url::Url;
 use deno_core::LocalInspectorSession;
 use ignore_directives::parse_file_ignore_directives;
-use ignore_directives::parse_line_ignore_directives;
+use ignore_directives::parse_next_ignore_directives;
 use node_resolver::InNpmPackageChecker;
 use regex::Regex;
 use std::fs;
@@ -223,9 +223,6 @@ fn generate_coverage_report(
     };
   }
 
-  // let coverage_ignore_directives =
-  //   parsed_source.with_view(|program| parse_line_ignore_directives(&program));
-
   let maybe_source_map = maybe_source_map
     .as_ref()
     .map(|source_map| SourceMap::from_slice(source_map).unwrap());
@@ -253,6 +250,9 @@ fn generate_coverage_report(
     output: output.clone(),
   };
 
+  let coverage_ignore_directives =
+    parsed_source.with_view(|program| parse_next_ignore_directives(&program));
+
   for function in &script_coverage.functions {
     if function.function_name.is_empty() {
       continue;
@@ -263,6 +263,11 @@ fn generate_coverage_report(
       &text_lines,
       &maybe_source_map,
     );
+
+    if line_index > 0 && coverage_ignore_directives.contains_key(&(line_index - 1 as usize)) {
+      continue;
+    }
+
     coverage_report.named_functions.push(FunctionCoverageItem {
       name: function.function_name.clone(),
       line_index,
@@ -275,6 +280,10 @@ fn generate_coverage_report(
     for (branch_number, range) in function.ranges[1..].iter().enumerate() {
       let line_index =
         range_to_src_line_index(range, &text_lines, &maybe_source_map);
+
+      if line_index > 0 && coverage_ignore_directives.contains_key(&(line_index - 1 as usize)) {
+        continue;
+      }
 
       // From https://manpages.debian.org/unstable/lcov/geninfo.1.en.html:
       //
@@ -351,6 +360,22 @@ fn generate_coverage_report(
     line_counts.push(count);
   }
 
+  let found_lines_coverage_filter = |(line, _): &(usize, i64)| -> bool {
+    if coverage_ignore_directives.get(&line).is_some() {
+      return false;
+    }
+
+    if *line == 0 as usize {
+      return true;
+    }
+
+    if coverage_ignore_directives.get(&(line - 1 as usize)).is_some() {
+      return false;
+    }
+
+    return true;
+  };
+
   coverage_report.found_lines =
     if let Some(source_map) = maybe_source_map.as_ref() {
       let script_source_lines = script_runtime_source.lines().collect::<Vec<_>>();
@@ -385,6 +410,7 @@ fn generate_coverage_report(
           results.dedup_by_key(|(index, _)| *index);
           results.into_iter()
         })
+        .filter(found_lines_coverage_filter)
         .collect::<Vec<(usize, i64)>>();
 
       found_lines.sort_unstable_by_key(|(index, _)| *index);
@@ -400,6 +426,7 @@ fn generate_coverage_report(
       line_counts
         .into_iter()
         .enumerate()
+        .filter(found_lines_coverage_filter)
         .collect::<Vec<(usize, i64)>>()
     };
 
