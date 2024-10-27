@@ -1009,7 +1009,11 @@ impl deno_graph::source::Reporter for FileWatcherReporter {
   ) {
     let mut file_paths = self.file_paths.lock();
     if specifier.scheme() == "file" {
-      file_paths.push(specifier.to_file_path().unwrap());
+      // Don't trust that the path is a valid path at this point:
+      // https://github.com/denoland/deno/issues/26209.
+      if let Ok(file_path) = specifier.to_file_path() {
+        file_paths.push(file_path);
+      }
     }
 
     if modules_done == modules_total {
