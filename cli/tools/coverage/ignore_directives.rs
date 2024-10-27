@@ -190,13 +190,73 @@ mod tests {
   }
 
   #[test]
-  fn test_parse_line_ignore_comments() {
+  fn test_parse_range_ignore_comments() {
     let source_code = r#"
-        // deno-coverage-ignore
+        // deno-coverage-ignore-start
+        function foo(): any {}
+        // deno-coverage-ignore-stop
+
+        function bar(): any {
+          // deno-coverage-ignore-start
+          foo();
+          // deno-coverage-ignore-stop
+        }
+    "#;
+
+    parse_and_then(source_code, |program| {
+      let line_directives = parse_range_ignore_directives(&program);
+
+      assert_eq!(line_directives.len(), 2);
+    });
+  }
+
+  #[test]
+  fn test_parse_range_ignore_comments_unterminated() {
+    let source_code = r#"
+        // deno-coverage-ignore-start
         function foo(): any {}
 
         function bar(): any {
-          // deno-coverage-ignore
+          foo();
+        }
+    "#;
+
+    parse_and_then(source_code, |program| {
+      let line_directives = parse_range_ignore_directives(&program);
+
+      assert_eq!(line_directives.len(), 1);
+    });
+  }
+
+  #[test]
+  fn test_parse_range_ignore_comments_nested() {
+    let source_code = r#"
+        // deno-coverage-ignore-start
+        function foo(): any {}
+
+        function bar(): any {
+          // deno-coverage-ignore-start
+          foo();
+          // deno-coverage-ignore-stop
+        }
+        // deno-coverage-ignore-stop
+    "#;
+
+    parse_and_then(source_code, |program| {
+      let line_directives = parse_range_ignore_directives(&program);
+
+      assert_eq!(line_directives.len(), 1);
+    });
+  }
+
+  #[test]
+  fn test_parse_next_ignore_comments() {
+    let source_code = r#"
+        // deno-coverage-ignore-next
+        function foo(): any {}
+
+        function bar(): any {
+          // deno-coverage-ignore-next
           foo();
         }
     "#;
