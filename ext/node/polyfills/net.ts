@@ -859,10 +859,6 @@ export class Socket extends Duplex {
     }
   }
 
-  get rid() {
-    return this._handle.rid;
-  }
-
   /**
    * Initiate a connection on a given socket.
    *

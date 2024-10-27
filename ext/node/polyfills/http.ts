@@ -69,6 +69,7 @@ import { UpgradedConn } from "ext:deno_net/01_net.js";
 import { STATUS_CODES } from "node:_http_server";
 import { methods as METHODS } from "node:_http_common";
 
+const { internalRidSymbol } = core;
 const { ArrayIsArray, StringPrototypeToLowerCase } = primordials;
 
 type Chunk = string | Buffer | Uint8Array;
@@ -450,10 +451,10 @@ class ClientRequest extends OutgoingMessage {
     (async () => {
       try {
         const parsedUrl = new URL(url);
-        let baseConnRid = this.socket.rid;
+        let baseConnRid = this.socket._handle[internalRidSymbol];
         if (this._encrypted && !this.socket.authorized) {
           [baseConnRid] = op_tls_start({
-            rid: this.socket.rid,
+            rid: this.socket._handle[internalRidSymbol],
             hostname: parsedUrl.hostname,
             caCerts: [],
             alpnProtocols: ["http/1.0", "http/1.1"],

@@ -258,10 +258,6 @@ export class TCP extends ConnectionWrap {
     }
   }
 
-  get rid() {
-    return this[kStreamBaseField][internalRidSymbol];
-  }
-
   /**
    * Populates the provided object with local address entries.
    * @param sockname An object to add the local address entries to.
@@ -389,6 +385,7 @@ export class TCP extends ConnectionWrap {
         this.#address = req.localAddress = localAddr.hostname;
         this.#port = req.localPort = localAddr.port;
         this[kStreamBaseField] = conn;
+        this[internalRidSymbol] = conn[internalRidSymbol];
 
         try {
           this.afterConnect(req, 0);
