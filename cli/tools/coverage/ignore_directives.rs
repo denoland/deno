@@ -1,6 +1,5 @@
-use std::collections::HashMap;
-
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+
 use deno_ast::swc::common::comments::Comment;
 use deno_ast::swc::common::comments::CommentKind;
 use deno_ast::view as ast_view;
@@ -9,6 +8,7 @@ use deno_ast::SourceRange;
 use deno_ast::SourceRanged;
 use deno_ast::SourceRangedForSpanned as _;
 use deno_ast::SourceTextInfoProvider as _;
+use std::collections::HashMap;
 
 static COVERAGE_IGNORE_START_DIRECTIVE: &str = "deno-coverage-ignore-start";
 static COVERAGE_IGNORE_STOP_DIRECTIVE: &str = "deno-coverage-ignore-stop";
@@ -59,8 +59,7 @@ pub fn parse_range_ignore_directives(
         if current_range.is_none() {
           current_range = Some(comment.range());
         }
-      }
-      else if depth > 0 && prefix == COVERAGE_IGNORE_STOP_DIRECTIVE {
+      } else if depth > 0 && prefix == COVERAGE_IGNORE_STOP_DIRECTIVE {
         depth -= 1;
         if depth == 0 {
           let mut range = current_range.take().unwrap();
@@ -165,7 +164,9 @@ fn parse_ignore_comment<T: DirectiveKind>(
 
 #[cfg(test)]
 mod tests {
-  use deno_ast::{MediaType, ModuleSpecifier, ParsedSource};
+  use deno_ast::MediaType;
+  use deno_ast::ModuleSpecifier;
+  use deno_ast::ParsedSource;
 
   use crate::tools::coverage::ast_parser;
 

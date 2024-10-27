@@ -284,17 +284,17 @@ fn generate_coverage_report(
     );
 
     if line_index > 0
-      && coverage_ignore_next_directives
-        .contains_key(&(line_index - 1 as usize))
+      && coverage_ignore_next_directives.contains_key(&(line_index - 1_usize))
     {
       continue;
     }
 
     if coverage_ignore_range_directives
       .iter()
-      .any(|(start, stop)| *start <= line_index && *stop >= line_index) {
-        continue;
-      }
+      .any(|(start, stop)| *start <= line_index && *stop >= line_index)
+    {
+      continue;
+    }
 
     coverage_report.named_functions.push(FunctionCoverageItem {
       name: function.function_name.clone(),
@@ -310,17 +310,17 @@ fn generate_coverage_report(
         range_to_src_line_index(range, &text_lines, &maybe_source_map);
 
       if line_index > 0
-        && coverage_ignore_next_directives
-          .contains_key(&(line_index - 1 as usize))
+        && coverage_ignore_next_directives.contains_key(&(line_index - 1_usize))
       {
         continue;
       }
 
       if coverage_ignore_range_directives
         .iter()
-        .any(|(start, stop)| *start <= line_index && *stop >= line_index) {
-          continue;
-        }
+        .any(|(start, stop)| *start <= line_index && *stop >= line_index)
+      {
+        continue;
+      }
 
       // From https://manpages.debian.org/unstable/lcov/geninfo.1.en.html:
       //
@@ -400,26 +400,24 @@ fn generate_coverage_report(
   let found_lines_coverage_filter = |(line, _): &(usize, i64)| -> bool {
     if coverage_ignore_range_directives
       .iter()
-      .any(|(start, stop)| start <= line && stop >= line) {
-        return false;
-      }
-
-    if coverage_ignore_next_directives.get(&line).is_some() {
-      return false;
-    }
-
-    if *line == 0 as usize {
-      return true;
-    }
-
-    if coverage_ignore_next_directives
-      .get(&(line - 1 as usize))
-      .is_some()
+      .any(|(start, stop)| start <= line && stop >= line)
     {
       return false;
     }
 
-    return true;
+    if coverage_ignore_next_directives.contains_key(line) {
+      return false;
+    }
+
+    if *line == 0_usize {
+      return true;
+    }
+
+    if coverage_ignore_next_directives.contains_key(&(line - 1_usize)) {
+      return false;
+    }
+
+    true
   };
 
   coverage_report.found_lines =
