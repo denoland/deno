@@ -12,6 +12,7 @@ use bytes::Bytes;
 use deno_core::anyhow;
 use deno_core::anyhow::Error;
 use deno_core::error::bad_resource;
+use deno_core::error::custom_error;
 use deno_core::error::type_error;
 use deno_core::error::AnyError;
 use deno_core::futures::stream::Peekable;
@@ -34,6 +35,7 @@ use deno_core::OpState;
 use deno_core::RcRef;
 use deno_core::Resource;
 use deno_core::ResourceId;
+use deno_fetch::FetchError;
 use deno_fetch::ResBody;
 use deno_net::io::TcpStreamResource;
 use deno_net::ops_tls::TlsStreamResource;
@@ -106,7 +108,7 @@ where
       .resource_table
       .take::<TlsStreamResource>(conn_rid)?;
     let resource = Rc::try_unwrap(resource_rc)
-      .map_err(|_e| bad_resource("TLS stream is currently in use"));
+      .map_err(|_e| custom_error("Busy", "TLS stream is currently in use"));
     let resource = resource?;
     let (read_half, write_half) = resource.into_inner();
     let tcp_stream = read_half.unsplit(write_half);
@@ -125,7 +127,7 @@ where
       .resource_table
       .take::<TcpStreamResource>(conn_rid)?;
     let resource = Rc::try_unwrap(resource_rc)
-      .map_err(|_| bad_resource("TCP stream is currently in use"));
+      .map_err(|_| custom_error("Busy", "TCP stream is currently in use"));
     let resource = resource?;
     let (read_half, write_half) = resource.into_inner();
     let tcp_stream = read_half.reunite(write_half)?;
@@ -166,7 +168,11 @@ where
   let (body, con_len) = if let Some(body) = body {
     (
       BodyExt::boxed(NodeHttpResourceToBodyAdapter::new(
-        state.borrow_mut().resource_table.take_any(body)?,
+        state
+          .borrow_mut()
+          .resource_table
+          .take_any(body)
+          .map_err(FetchError::Resource)?,
       )),
       None,
     )
@@ -194,7 +200,7 @@ where
     .map(|q| format!("{}?{}", path, q))
     .unwrap_or_else(|| path.to_string())
     .parse()
-    .map_err(|_| type_error("Invalid URL"))?;
+    .map_err(|_| FetchError::InvalidUrl(url_parsed.clone()))?;
   *request.headers_mut() = header_map;
 
   if let Some((username, password)) = maybe_authority {
@@ -230,12 +236,9 @@ pub async fn op_node_http_await_response(
     .resource_table
     .take::<NodeHttpClientResponse>(rid)?;
   let resource = Rc::try_unwrap(resource)
-    .map_err(|_| bad_resource("NodeHttpClientResponse"));
-  let resource = resource?;
+    .map_err(|_| bad_resource("NodeHttpClientResponse"))?;
 
-  let res = resource.response.await;
-  let res = res?;
-
+  let res = resource.response.await?;
   let status = res.status();
   let mut res_headers = Vec::new();
   for (key, val) in res.headers().iter() {
@@ -350,23 +353,26 @@ impl UpgradeStream {
     }
   }
 
-  async fn read(self: Rc<Self>, buf: &mut [u8]) -> Result<usize, AnyError> {
+  async fn read(
+    self: Rc<Self>,
+    buf: &mut [u8],
+  ) -> Result<usize, std::io::Error> {
     let cancel_handle = RcRef::map(self.clone(), |this| &this.cancel_handle);
     async {
       let read = RcRef::map(self, |this| &this.read);
       let mut read = read.borrow_mut().await;
-      Ok(Pin::new(&mut *read).read(buf).await?)
+      Pin::new(&mut *read).read(buf).await
     }
     .try_or_cancel(cancel_handle)
     .await
   }
 
-  async fn write(self: Rc<Self>, buf: &[u8]) -> Result<usize, AnyError> {
+  async fn write(self: Rc<Self>, buf: &[u8]) -> Result<usize, std::io::Error> {
     let cancel_handle = RcRef::map(self.clone(), |this| &this.cancel_handle);
     async {
       let write = RcRef::map(self, |this| &this.write);
       let mut write = write.borrow_mut().await;
-      Ok(Pin::new(&mut *write).write(buf).await?)
+      Pin::new(&mut *write).write(buf).await
     }
     .try_or_cancel(cancel_handle)
     .await
