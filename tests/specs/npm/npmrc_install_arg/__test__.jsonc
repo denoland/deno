@@ -1,0 +1,23 @@
+{
+  "tempDir": true,
+  "tests": {
+    "deno_install_add": {
+      "steps": [{
+        "args": "install npm:@denotest/basic",
+        "output": "install.out"
+      }, {
+        "args": "run -A main.js",
+        "output": "main.out"
+      }]
+    },
+    "deno_add": {
+      "steps": [{
+        "args": "add npm:@denotest/basic",
+        "output": "add.out"
+      }, {
+        "args": "run -A main.js",
+        "output": "main.out"
+      }]
+    }
+  }
+}

@@ -1,6 +1,7 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 use std::borrow::Cow;
+use std::fmt::Formatter;
 use std::io;
 use std::rc::Rc;
 use std::time::SystemTime;
@@ -20,6 +21,21 @@ pub enum FsError {
   NotSupported,
   NotCapable(&'static str),
 }
+
+impl std::fmt::Display for FsError {
+  fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+    match self {
+      FsError::Io(err) => std::fmt::Display::fmt(err, f),
+      FsError::FileBusy => f.write_str("file busy"),
+      FsError::NotSupported => f.write_str("not supported"),
+      FsError::NotCapable(err) => {
+        f.write_str(&format!("requires {err} access"))
+      }
+    }
+  }
+}
+
+impl std::error::Error for FsError {}
 
 impl FsError {
   pub fn kind(&self) -> io::ErrorKind {
@@ -52,20 +68,6 @@ impl From<io::Error> for FsError {
 impl From<io::ErrorKind> for FsError {
   fn from(err: io::ErrorKind) -> Self {
     Self::Io(err.into())
-  }
-}
-
-impl From<FsError> for deno_core::error::AnyError {
-  fn from(err: FsError) -> Self {
-    match err {
-      FsError::Io(err) => err.into(),
-      FsError::FileBusy => deno_core::error::resource_unavailable(),
-      FsError::NotSupported => deno_core::error::not_supported(),
-      FsError::NotCapable(err) => deno_core::error::custom_error(
-        "NotCapable",
-        format!("permission denied: {err}"),
-      ),
-    }
   }
 }
 

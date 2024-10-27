@@ -762,6 +762,7 @@ impl CliFactory {
     let cli_options = self.cli_options()?;
     Ok(DenoCompileBinaryWriter::new(
       self.deno_dir()?,
+      self.emitter()?,
       self.file_fetcher()?,
       self.http_client_provider(),
       self.npm_resolver().await?.as_ref(),

@@ -26,7 +26,7 @@ use crate::cache::CACHE_PERM;
 use crate::util::fs::atomic_write_file_with_retries;
 use crate::util::fs::hard_link_dir_recursive;
 
-mod registry_info;
+pub mod registry_info;
 mod tarball;
 mod tarball_extract;
 

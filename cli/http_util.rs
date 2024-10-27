@@ -19,6 +19,7 @@ use deno_runtime::deno_fetch;
 use deno_runtime::deno_fetch::create_http_client;
 use deno_runtime::deno_fetch::CreateHttpClientOptions;
 use deno_runtime::deno_tls::RootCertStoreProvider;
+use http::header;
 use http::header::HeaderName;
 use http::header::HeaderValue;
 use http::header::ACCEPT;
@@ -204,6 +205,7 @@ pub struct FetchOnceArgs<'a> {
   pub maybe_accept: Option<String>,
   pub maybe_etag: Option<String>,
   pub maybe_auth_token: Option<AuthToken>,
+  pub maybe_auth: Option<(header::HeaderName, header::HeaderValue)>,
   pub maybe_progress_guard: Option<&'a UpdateGuard>,
 }
 
@@ -382,6 +384,8 @@ impl HttpClient {
       request
         .headers_mut()
         .insert(AUTHORIZATION, authorization_val);
+    } else if let Some((header, value)) = args.maybe_auth {
+      request.headers_mut().insert(header, value);
     }
     if let Some(accept) = args.maybe_accept {
       let accepts_val = HeaderValue::from_str(&accept)?;
@@ -792,6 +796,7 @@ mod test {
         maybe_etag: None,
         maybe_auth_token: None,
         maybe_progress_guard: None,
+        maybe_auth: None,
       })
       .await;
     if let Ok(FetchOnceResult::Code(body, headers)) = result {
@@ -818,6 +823,7 @@ mod test {
         maybe_etag: None,
         maybe_auth_token: None,
         maybe_progress_guard: None,
+        maybe_auth: None,
       })
       .await;
     if let Ok(FetchOnceResult::Code(body, headers)) = result {
@@ -845,6 +851,7 @@ mod test {
         maybe_etag: None,
         maybe_auth_token: None,
         maybe_progress_guard: None,
+        maybe_auth: None,
       })
       .await;
     if let Ok(FetchOnceResult::Code(body, headers)) = result {
@@ -866,6 +873,7 @@ mod test {
         maybe_etag: Some("33a64df551425fcc55e".to_string()),
         maybe_auth_token: None,
         maybe_progress_guard: None,
+        maybe_auth: None,
       })
       .await;
     assert_eq!(res.unwrap(), FetchOnceResult::NotModified);
@@ -885,6 +893,7 @@ mod test {
         maybe_etag: None,
         maybe_auth_token: None,
         maybe_progress_guard: None,
+        maybe_auth: None,
       })
       .await;
     if let Ok(FetchOnceResult::Code(body, headers)) = result {
@@ -914,6 +923,7 @@ mod test {
         maybe_etag: None,
         maybe_auth_token: None,
         maybe_progress_guard: None,
+        maybe_auth: None,
       })
       .await;
     if let Ok(FetchOnceResult::Code(body, _)) = result {
@@ -939,6 +949,7 @@ mod test {
         maybe_etag: None,
         maybe_auth_token: None,
         maybe_progress_guard: None,
+        maybe_auth: None,
       })
       .await;
     if let Ok(FetchOnceResult::Redirect(url, _)) = result {
@@ -974,6 +985,7 @@ mod test {
         maybe_etag: None,
         maybe_auth_token: None,
         maybe_progress_guard: None,
+        maybe_auth: None,
       })
       .await;
     if let Ok(FetchOnceResult::Code(body, headers)) = result {
@@ -1021,6 +1033,7 @@ mod test {
           maybe_etag: None,
           maybe_auth_token: None,
           maybe_progress_guard: None,
+          maybe_auth: None,
         })
         .await;
 
@@ -1083,6 +1096,7 @@ mod test {
         maybe_etag: None,
         maybe_auth_token: None,
         maybe_progress_guard: None,
+        maybe_auth: None,
       })
       .await;
 
@@ -1136,6 +1150,7 @@ mod test {
         maybe_etag: None,
         maybe_auth_token: None,
         maybe_progress_guard: None,
+        maybe_auth: None,
       })
       .await;
     if let Ok(FetchOnceResult::Code(body, headers)) = result {
@@ -1177,6 +1192,7 @@ mod test {
         maybe_etag: None,
         maybe_auth_token: None,
         maybe_progress_guard: None,
+        maybe_auth: None,
       })
       .await;
     if let Ok(FetchOnceResult::Code(body, headers)) = result {
@@ -1199,6 +1215,7 @@ mod test {
         maybe_etag: Some("33a64df551425fcc55e".to_string()),
         maybe_auth_token: None,
         maybe_progress_guard: None,
+        maybe_auth: None,
       })
       .await;
     assert_eq!(res.unwrap(), FetchOnceResult::NotModified);
@@ -1233,6 +1250,7 @@ mod test {
         maybe_etag: None,
         maybe_auth_token: None,
         maybe_progress_guard: None,
+        maybe_auth: None,
       })
       .await;
     if let Ok(FetchOnceResult::Code(body, headers)) = result {
@@ -1262,6 +1280,7 @@ mod test {
         maybe_etag: None,
         maybe_auth_token: None,
         maybe_progress_guard: None,
+        maybe_auth: None,
       })
       .await;
     assert!(result.is_err());
@@ -1283,6 +1302,7 @@ mod test {
         maybe_etag: None,
         maybe_auth_token: None,
         maybe_progress_guard: None,
+        maybe_auth: None,
       })
       .await;
 
@@ -1306,6 +1326,7 @@ mod test {
         maybe_etag: None,
         maybe_auth_token: None,
         maybe_progress_guard: None,
+        maybe_auth: None,
       })
       .await;
 
