@@ -10,15 +10,20 @@ use deno_ast::SourceRanged;
 use deno_ast::SourceRangedForSpanned as _;
 use deno_ast::SourceTextInfoProvider as _;
 
+static COVERAGE_IGNORE_START_DIRECTIVE: &str = "deno-coverage-ignore-start";
+static COVERAGE_IGNORE_STOP_DIRECTIVE: &str = "deno-coverage-ignore-stop";
 static COVERAGE_IGNORE_NEXT_DIRECTIVE: &str = "deno-coverage-ignore-next";
 static COVERAGE_IGNORE_FILE_DIRECTIVE: &str = "deno-coverage-ignore-file";
 
+pub type RangeIgnoreDirective = IgnoreDirective<Range>;
 pub type NextIgnoreDirective = IgnoreDirective<Next>;
 pub type FileIgnoreDirective = IgnoreDirective<File>;
 
+pub enum Range {}
 pub enum Next {}
 pub enum File {}
 pub trait DirectiveKind {}
+impl DirectiveKind for Range {}
 impl DirectiveKind for Next {}
 impl DirectiveKind for File {}
 
@@ -32,6 +37,55 @@ impl<T: DirectiveKind> IgnoreDirective<T> {
   pub fn range(&self) -> SourceRange {
     self.range
   }
+}
+
+pub fn parse_range_ignore_directives(
+  program: &ast_view::Program,
+) -> Vec<RangeIgnoreDirective> {
+  let mut depth: usize = 0;
+  let mut directives = Vec::<RangeIgnoreDirective>::new();
+  let mut current_range: Option<SourceRange> = None;
+
+  for comment in program.comment_container().all_comments() {
+    if comment.kind != CommentKind::Line {
+      continue;
+    }
+
+    let comment_text = comment.text.trim();
+
+    if let Some(prefix) = comment_text.split_whitespace().next() {
+      if prefix == COVERAGE_IGNORE_START_DIRECTIVE {
+        depth += 1;
+        if current_range.is_none() {
+          current_range = Some(comment.range());
+        }
+      }
+      else if depth > 0 && prefix == COVERAGE_IGNORE_STOP_DIRECTIVE {
+        depth -= 1;
+        if depth == 0 {
+          let mut range = current_range.take().unwrap();
+          range.end = comment.range().end;
+          directives.push(IgnoreDirective {
+            range,
+            _marker: std::marker::PhantomData,
+          });
+          current_range = None;
+        }
+      }
+    }
+  }
+
+  // If the coverage ignore start directive has no corresponding close directive
+  // then close it at the end of the program.
+  if let Some(mut range) = current_range.take() {
+    range.end = program.range().end;
+    directives.push(IgnoreDirective {
+      range,
+      _marker: std::marker::PhantomData,
+    });
+  }
+
+  directives
 }
 
 pub fn parse_next_ignore_directives(

@@ -14,6 +14,7 @@ use ast_parser::parse_program;
 use deno_ast::MediaType;
 use deno_ast::ModuleKind;
 use deno_ast::ModuleSpecifier;
+use deno_ast::SourceTextInfoProvider as _;
 use deno_config::glob::FileCollector;
 use deno_config::glob::FilePatterns;
 use deno_config::glob::PathOrPattern;
@@ -28,6 +29,7 @@ use deno_core::url::Url;
 use deno_core::LocalInspectorSession;
 use ignore_directives::parse_file_ignore_directives;
 use ignore_directives::parse_next_ignore_directives;
+use ignore_directives::parse_range_ignore_directives;
 use node_resolver::InNpmPackageChecker;
 use regex::Regex;
 use std::fs;
@@ -208,9 +210,14 @@ fn generate_coverage_report(
   maybe_source_map: &Option<Vec<u8>>,
   output: &Option<PathBuf>,
 ) -> CoverageReport {
-  let parsed_source = parse_program(script_module_specifier, script_media_type, &script_original_source)
-    .expect("invalid source code");
-  let ignore_file_directive = parsed_source.with_view(|program| parse_file_ignore_directives(&program));
+  let parsed_source = parse_program(
+    script_module_specifier,
+    script_media_type,
+    &script_original_source,
+  )
+  .expect("invalid source code");
+  let ignore_file_directive =
+    parsed_source.with_view(|program| parse_file_ignore_directives(&program));
   let url = Url::parse(&script_coverage.url).unwrap();
 
   if ignore_file_directive.is_some() {
@@ -228,13 +235,14 @@ fn generate_coverage_report(
     .map(|source_map| SourceMap::from_slice(source_map).unwrap());
   let text_lines = TextLines::new(&script_runtime_source);
 
-  let comment_ranges = deno_ast::lex(&script_runtime_source, MediaType::JavaScript)
-    .into_iter()
-    .filter(|item| {
-      matches!(item.inner, deno_ast::TokenOrComment::Comment { .. })
-    })
-    .map(|item| item.range)
-    .collect::<Vec<_>>();
+  let comment_ranges =
+    deno_ast::lex(&script_runtime_source, MediaType::JavaScript)
+      .into_iter()
+      .filter(|item| {
+        matches!(item.inner, deno_ast::TokenOrComment::Comment { .. })
+      })
+      .map(|item| item.range)
+      .collect::<Vec<_>>();
 
   let mut coverage_report = CoverageReport {
     url,
@@ -250,8 +258,19 @@ fn generate_coverage_report(
     output: output.clone(),
   };
 
-  let coverage_ignore_directives =
+  let coverage_ignore_next_directives =
     parsed_source.with_view(|program| parse_next_ignore_directives(&program));
+  let coverage_ignore_range_directives = parsed_source.with_view(|program| {
+    parse_range_ignore_directives(&program)
+      .iter()
+      .map(|directive| {
+        (
+          program.text_info().line_index(directive.range().start),
+          program.text_info().line_index(directive.range().end),
+        )
+      })
+      .collect::<Vec<_>>()
+  });
 
   for function in &script_coverage.functions {
     if function.function_name.is_empty() {
@@ -264,9 +283,18 @@ fn generate_coverage_report(
       &maybe_source_map,
     );
 
-    if line_index > 0 && coverage_ignore_directives.contains_key(&(line_index - 1 as usize)) {
+    if line_index > 0
+      && coverage_ignore_next_directives
+        .contains_key(&(line_index - 1 as usize))
+    {
       continue;
     }
+
+    if coverage_ignore_range_directives
+      .iter()
+      .any(|(start, stop)| *start <= line_index && *stop >= line_index) {
+        continue;
+      }
 
     coverage_report.named_functions.push(FunctionCoverageItem {
       name: function.function_name.clone(),
@@ -281,9 +309,18 @@ fn generate_coverage_report(
       let line_index =
         range_to_src_line_index(range, &text_lines, &maybe_source_map);
 
-      if line_index > 0 && coverage_ignore_directives.contains_key(&(line_index - 1 as usize)) {
+      if line_index > 0
+        && coverage_ignore_next_directives
+          .contains_key(&(line_index - 1 as usize))
+      {
         continue;
       }
+
+      if coverage_ignore_range_directives
+        .iter()
+        .any(|(start, stop)| *start <= line_index && *stop >= line_index) {
+          continue;
+        }
 
       // From https://manpages.debian.org/unstable/lcov/geninfo.1.en.html:
       //
@@ -361,7 +398,13 @@ fn generate_coverage_report(
   }
 
   let found_lines_coverage_filter = |(line, _): &(usize, i64)| -> bool {
-    if coverage_ignore_directives.get(&line).is_some() {
+    if coverage_ignore_range_directives
+      .iter()
+      .any(|(start, stop)| start <= line && stop >= line) {
+        return false;
+      }
+
+    if coverage_ignore_next_directives.get(&line).is_some() {
       return false;
     }
 
@@ -369,7 +412,10 @@ fn generate_coverage_report(
       return true;
     }
 
-    if coverage_ignore_directives.get(&(line - 1 as usize)).is_some() {
+    if coverage_ignore_next_directives
+      .get(&(line - 1 as usize))
+      .is_some()
+    {
       return false;
     }
 
