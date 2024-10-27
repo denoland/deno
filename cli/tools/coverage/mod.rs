@@ -10,6 +10,7 @@ use crate::tools::fmt::format_json;
 use crate::tools::test::is_supported_test_path;
 use crate::util::text_encoding::source_map_from_code;
 
+use ast_parser::parse_program;
 use deno_ast::MediaType;
 use deno_ast::ModuleKind;
 use deno_ast::ModuleSpecifier;
@@ -25,6 +26,8 @@ use deno_core::serde_json;
 use deno_core::sourcemap::SourceMap;
 use deno_core::url::Url;
 use deno_core::LocalInspectorSession;
+use ignore_directives::parse_file_ignore_directives;
+use ignore_directives::parse_line_ignore_directives;
 use node_resolver::InNpmPackageChecker;
 use regex::Regex;
 use std::fs;
@@ -37,6 +40,8 @@ use std::sync::Arc;
 use text_lines::TextLines;
 use uuid::Uuid;
 
+mod ast_parser;
+mod ignore_directives;
 mod merge;
 mod range_tree;
 mod reporter;
@@ -195,11 +200,32 @@ pub struct CoverageReport {
 }
 
 fn generate_coverage_report(
+  script_module_specifier: Url,
+  script_media_type: MediaType,
   script_coverage: &cdp::ScriptCoverage,
+  script_original_source: String,
   script_runtime_source: String,
   maybe_source_map: &Option<Vec<u8>>,
   output: &Option<PathBuf>,
 ) -> CoverageReport {
+  let parsed_source = parse_program(script_module_specifier, script_media_type, &script_original_source)
+    .expect("invalid source code");
+  let ignore_file_directive = parsed_source.with_view(|program| parse_file_ignore_directives(&program));
+  let url = Url::parse(&script_coverage.url).unwrap();
+
+  if ignore_file_directive.is_some() {
+    return CoverageReport {
+      url,
+      named_functions: Vec::new(),
+      branches: Vec::new(),
+      found_lines: Vec::new(),
+      output: output.clone(),
+    };
+  }
+
+  // let coverage_ignore_directives =
+  //   parsed_source.with_view(|program| parse_line_ignore_directives(&program));
+
   let maybe_source_map = maybe_source_map
     .as_ref()
     .map(|source_map| SourceMap::from_slice(source_map).unwrap());
@@ -213,7 +239,6 @@ fn generate_coverage_report(
     .map(|item| item.range)
     .collect::<Vec<_>>();
 
-  let url = Url::parse(&script_coverage.url).unwrap();
   let mut coverage_report = CoverageReport {
     url,
     named_functions: Vec::with_capacity(
@@ -328,7 +353,7 @@ fn generate_coverage_report(
 
   coverage_report.found_lines =
     if let Some(source_map) = maybe_source_map.as_ref() {
-      let script_source_lines = script_source.lines().collect::<Vec<_>>();
+      let script_source_lines = script_runtime_source.lines().collect::<Vec<_>>();
       let mut found_lines = line_counts
         .iter()
         .enumerate()
@@ -623,7 +648,10 @@ pub fn cover_files(
 
     let source_map = source_map_from_code(runtime_code.as_bytes());
     let coverage_report = generate_coverage_report(
+      module_specifier,
+      file.media_type,
       &script_coverage,
+      original_source.to_string(),
       runtime_code.as_str().to_owned(),
       &source_map,
       &out_mode,
