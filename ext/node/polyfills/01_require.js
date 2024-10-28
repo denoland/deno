@@ -505,6 +505,7 @@ Module.globalPaths = modulePaths;
 
 const CHAR_FORWARD_SLASH = 47;
 const TRAILING_SLASH_REGEX = /(?:^|\/)\.?\.$/;
+const ERROR_CODE_REGEX = /^\[([0-9a-zA-Z_]+)\]/;
 
 // This only applies to requests of a specific form:
 // 1. name/.*
@@ -527,14 +528,24 @@ function resolveExports(
     return false;
   }
 
-  return op_require_resolve_exports(
-    usesLocalNodeModulesDir,
-    modulesPath,
-    request,
-    name,
-    expansion,
-    parentPath,
-  ) ?? false;
+  try {
+    return op_require_resolve_exports(
+      usesLocalNodeModulesDir,
+      modulesPath,
+      request,
+      name,
+      expansion,
+      parentPath ?? "",
+    ) ?? false;
+  } catch (error) {
+    if (error instanceof Error) {
+      const m = error.message.match(ERROR_CODE_REGEX);
+      if (m) {
+        error.code = m[1];
+      }
+    }
+    throw error;
+  }
 }
 
 Module._findPath = function (request, paths, isMain, parentPath) {
@@ -1087,7 +1098,6 @@ function loadESMFromCJS(module, filename, code) {
     url.pathToFileURL(filename).toString(),
     code,
   );
-
   module.exports = namespace;
 }
 
