@@ -1337,7 +1337,6 @@ delete Object.prototype.__proto__;
     "console",
     "Console",
     "ErrorConstructor",
-    "exports",
     "gc",
     "Global",
     "ImportMeta",
