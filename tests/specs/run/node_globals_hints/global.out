@@ -4,4 +4,4 @@ global;
     at [WILDCARD]global.js:1:1
 
     info: global is not available in the global scope in Deno.
-    hint: Use globalThis instead.
+    hint: Use globalThis instead or assign globalThis.global = globalThis.

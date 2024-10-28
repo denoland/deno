@@ -361,7 +361,7 @@ fn get_suggestions_for_terminal_errors(e: &JsError) -> Vec<FixSuggestion> {
         FixSuggestion::info(cstr!(
           "<u>global</> is not available in the global scope in Deno."
         )),
-        FixSuggestion::hint(cstr!("Use <u>globalThis</> instead.")),
+        FixSuggestion::hint(cstr!("Use <u>globalThis</> instead, or assign <u>globalThis.global = globalThis</>.")),
       ];
     } else if msg.contains("openKv is not a function") {
       return vec![
