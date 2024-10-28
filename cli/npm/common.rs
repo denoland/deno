@@ -2,7 +2,8 @@
 
 use base64::prelude::BASE64_STANDARD;
 use base64::Engine;
-use deno_core::anyhow::{bail, Context};
+use deno_core::anyhow::bail;
+use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
 use deno_npm::npm_rc::RegistryConfig;
 use http::header;
