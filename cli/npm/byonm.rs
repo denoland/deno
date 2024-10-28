@@ -11,7 +11,6 @@ use deno_core::url::Url;
 use deno_resolver::npm::ByonmNpmResolver;
 use deno_resolver::npm::ByonmNpmResolverCreateOptions;
 use deno_runtime::deno_node::NodePermissions;
-use deno_runtime::deno_node::NodeRequireLoader;
 use deno_runtime::ops::process::NpmProcessStateProvider;
 use deno_semver::package::PackageReq;
 use node_resolver::NpmResolver;

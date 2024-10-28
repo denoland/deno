@@ -34,7 +34,6 @@ use crate::node::CliCjsCodeAnalyzer;
 use crate::node::CliNodeCodeTranslator;
 use crate::npm::create_cli_npm_resolver;
 use crate::npm::CliByonmNpmResolverCreateOptions;
-use crate::npm::CliNodeRequireLoader;
 use crate::npm::CliNpmResolver;
 use crate::npm::CliNpmResolverCreateOptions;
 use crate::npm::CliNpmResolverManagedCreateOptions;
