@@ -438,7 +438,13 @@ impl WorkspaceLinter {
                     .url
                     .as_ref()
                     .map(|x| x.to_string()),
-                  code: "foo".to_string(),
+                  code: msg
+                    .error
+                    .code
+                    .number
+                    .as_ref()
+                    .map(|x| x.to_string())
+                    .unwrap(),
                   fixes: vec![],
                   hint: None,
                   info: vec![],
