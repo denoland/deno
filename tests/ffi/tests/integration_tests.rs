@@ -95,10 +95,10 @@ fn basic() {
     579.912\n\
     579.912\n\
     579\n\
-    8589934590\n\
-    -8589934590\n\
-    8589934590\n\
-    -8589934590\n\
+    8589934590n\n\
+    -8589934590n\n\
+    8589934590n\n\
+    -8589934590n\n\
     9007199254740992n\n\
     9007199254740992n\n\
     -9007199254740992n\n\
@@ -300,6 +300,6 @@ fn ffi_callback_errors_test() {
   assert_eq!(stdout, expected);
   assert_eq!(
     stderr,
-    "Illegal unhandled exception in nonblocking callback.\n".repeat(3)
+    "Illegal unhandled exception in nonblocking callback\n".repeat(3)
   );
 }

@@ -14,13 +14,11 @@ use deno_graph::packages::JsrPackageInfo;
 use deno_graph::packages::JsrPackageInfoVersion;
 use deno_graph::packages::JsrPackageVersionInfo;
 use deno_graph::ModuleSpecifier;
-use deno_runtime::deno_permissions::PermissionsContainer;
 use deno_semver::jsr::JsrPackageReqReference;
 use deno_semver::package::PackageNv;
 use deno_semver::package::PackageReq;
 use deno_semver::Version;
 use serde::Deserialize;
-use std::borrow::Cow;
 use std::collections::HashMap;
 use std::sync::Arc;
 
@@ -93,20 +91,23 @@ impl JsrCacheResolver {
       }
     }
     if let Some(lockfile) = config_data.and_then(|d| d.lockfile.as_ref()) {
-      for (req_url, nv_url) in &lockfile.lock().content.packages.specifiers {
-        let Some(req) = req_url.strip_prefix("jsr:") else {
+      for (dep_req, version) in &lockfile.lock().content.packages.specifiers {
+        let req = match dep_req.kind {
+          deno_semver::package::PackageKind::Jsr => &dep_req.req,
+          deno_semver::package::PackageKind::Npm => {
+            continue;
+          }
+        };
+        let Ok(version) = Version::parse_standard(version) else {
           continue;
         };
-        let Some(nv) = nv_url.strip_prefix("jsr:") else {
-          continue;
-        };
-        let Ok(req) = PackageReq::from_str(req) else {
-          continue;
-        };
-        let Ok(nv) = PackageNv::from_str(nv) else {
-          continue;
-        };
-        nv_by_req.insert(req, Some(nv));
+        nv_by_req.insert(
+          req.clone(),
+          Some(PackageNv {
+            name: req.name.clone(),
+            version,
+          }),
+        );
       }
     }
     Self {
@@ -157,7 +158,7 @@ impl JsrCacheResolver {
     let maybe_nv = self.req_to_nv(&req);
     let nv = maybe_nv.as_ref()?;
     let info = self.package_version_info(nv)?;
-    let path = info.export(&normalize_export_name(req_ref.sub_path()))?;
+    let path = info.export(&req_ref.export_name())?;
     if let Some(workspace_scope) = self.workspace_scope_by_name.get(&nv.name) {
       workspace_scope.join(path).ok()
     } else {
@@ -259,36 +260,9 @@ fn read_cached_url(
   cache: &Arc<dyn HttpCache>,
 ) -> Option<Vec<u8>> {
   cache
-    .read_file_bytes(
-      &cache.cache_item_key(url).ok()?,
-      None,
-      deno_cache_dir::GlobalToLocalCopy::Disallow,
-    )
+    .get(&cache.cache_item_key(url).ok()?, None)
     .ok()?
-}
-
-// TODO(nayeemrmn): This is duplicated from a private function in deno_graph
-// 0.65.1. Make it public or cleanup otherwise.
-fn normalize_export_name(sub_path: Option<&str>) -> Cow<str> {
-  let Some(sub_path) = sub_path else {
-    return Cow::Borrowed(".");
-  };
-  if sub_path.is_empty() || matches!(sub_path, "/" | ".") {
-    Cow::Borrowed(".")
-  } else {
-    let sub_path = if sub_path.starts_with('/') {
-      Cow::Owned(format!(".{}", sub_path))
-    } else if !sub_path.starts_with("./") {
-      Cow::Owned(format!("./{}", sub_path))
-    } else {
-      Cow::Borrowed(sub_path)
-    };
-    if let Some(prefix) = sub_path.strip_suffix('/') {
-      Cow::Owned(prefix.to_string())
-    } else {
-      sub_path
-    }
-  }
+    .map(|f| f.content)
 }
 
 #[derive(Debug)]
@@ -336,7 +310,7 @@ impl PackageSearchApi for CliJsrSearchApi {
     // spawn due to the lsp's `Send` requirement
     let file = deno_core::unsync::spawn(async move {
       file_fetcher
-        .fetch(&search_url, &PermissionsContainer::allow_all())
+        .fetch_bypass_permissions(&search_url)
         .await?
         .into_text_decoded()
     })

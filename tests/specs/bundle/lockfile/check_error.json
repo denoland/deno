@@ -1,5 +1,0 @@
-{
-  "http://127.0.0.1:4545/subdir/mod1.ts": "bfc1037b02c99abc20367f739bca7455813a5950066abd77965bff33b6eece0f",
-  "http://127.0.0.1:4545/subdir/print_hello.ts": "fa6692c8f9ff3fb107e773c3ece5274e9d08be282867a1e3ded1d9c00fcaa63c",
-  "http://127.0.0.1:4545/subdir/subdir2/mod2.ts": "bad"
-}

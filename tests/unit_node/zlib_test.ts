@@ -6,6 +6,7 @@ import {
   brotliCompress,
   brotliCompressSync,
   brotliDecompressSync,
+  constants,
   createBrotliCompress,
   createBrotliDecompress,
   createDeflate,
@@ -137,6 +138,19 @@ Deno.test("should work with a buffer from an encoded string", () => {
   assertEquals(decompressed.toString(), "hello world");
 });
 
+// https://github.com/denoland/deno/issues/24572
+Deno.test("Brotli quality 10 doesn't panic", () => {
+  const e = brotliCompressSync("abc", {
+    params: {
+      [constants.BROTLI_PARAM_QUALITY]: 10,
+    },
+  });
+  assertEquals(
+    new Uint8Array(e.buffer),
+    new Uint8Array([11, 1, 128, 97, 98, 99, 3]),
+  );
+});
+
 Deno.test(
   "zlib compression with dataview",
   () => {
@@ -173,6 +187,25 @@ Deno.test("brotli decompress flush restore size", async () => {
   const output = await buffer(
     Readable.from([input])
       .pipe(createBrotliCompress())
+      .pipe(createBrotliDecompress()),
+  );
+  assertEquals(output.length, input.length);
+});
+
+Deno.test("createBrotliCompress params", async () => {
+  const compress = createBrotliCompress({
+    params: {
+      [constants.BROTLI_PARAM_QUALITY]: 11,
+    },
+  });
+
+  const input = new Uint8Array(10000);
+  for (let i = 0; i < input.length; i++) {
+    input[i] = Math.random() * 256;
+  }
+  const output = await buffer(
+    Readable.from([input])
+      .pipe(compress)
       .pipe(createBrotliDecompress()),
   );
   assertEquals(output.length, input.length);

@@ -17,9 +17,13 @@ import {
   op_node_x509_get_valid_to,
   op_node_x509_key_usage,
   op_node_x509_parse,
+  op_node_x509_public_key,
 } from "ext:core/ops";
 
-import { KeyObject } from "ext:deno_node/internal/crypto/keys.ts";
+import {
+  KeyObject,
+  PublicKeyObject,
+} from "ext:deno_node/internal/crypto/keys.ts";
 import { Buffer } from "node:buffer";
 import { ERR_INVALID_ARG_TYPE } from "ext:deno_node/internal/errors.ts";
 import { isArrayBufferView } from "ext:deno_node/internal/util/types.ts";
@@ -144,10 +148,9 @@ export class X509Certificate {
     return result;
   }
 
-  get publicKey(): KeyObject {
-    notImplemented("crypto.X509Certificate.prototype.publicKey");
-
-    return {} as KeyObject;
+  get publicKey(): PublicKeyObject {
+    const handle = op_node_x509_public_key(this.#handle);
+    return new PublicKeyObject(handle);
   }
 
   get raw(): Buffer {

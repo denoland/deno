@@ -1,0 +1,21 @@
+{
+  "tempDir": true,
+  "tests": {
+    "basic": {
+      "steps": [
+        {
+          "args": "install --entrypoint main.ts second.ts",
+          "output": "install.out"
+        }
+      ]
+    },
+    "allow_scripts": {
+      "steps": [
+        {
+          "args": "install --allow-scripts --node-modules-dir=auto --entrypoint lifecycle.ts",
+          "output": "lifecycle.out"
+        }
+      ]
+    }
+  }
+}

@@ -1,2 +1,2 @@
-Error: CompileError: WebAssembly.compile(): reached end while decoding  length: @+10
+Error: CompileError: WebAssembly.compile(): reached end while decoding length @+10
     at file:///[WILDCARD]/close_in_wasm_reactions.js:18:13

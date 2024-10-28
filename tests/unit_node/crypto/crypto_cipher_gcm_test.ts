@@ -101,3 +101,21 @@ for (
     });
   }
 }
+
+Deno.test({
+  name: "aes-128-gcm encrypt multiple",
+  fn() {
+    const key = Buffer.alloc(16);
+    const nonce = Buffer.alloc(12);
+
+    const gcm = crypto.createCipheriv("aes-128-gcm", key, nonce);
+
+    assertEquals(gcm.update("hello", "utf8", "hex"), "6bedb6a20f");
+    assertEquals(gcm.update("world", "utf8", "hex"), "c1cce09f4c");
+    gcm.final();
+    assertEquals(
+      gcm.getAuthTag().toString("hex"),
+      "bf6d20a38e0c828bea3de63b7ff1dfbd",
+    );
+  },
+});

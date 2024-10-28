@@ -1,3 +1,0 @@
-[WILDCARD]error: Uncaught (in worker "") Module not found "file:///[WILDCARD]/workers/doesnt_exist.js".
-error: Uncaught (in promise) Error: Unhandled error in child worker.
-    at Worker.#pollControl[WILDCARD]

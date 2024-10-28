@@ -3,8 +3,10 @@
 #![deny(clippy::print_stderr)]
 #![deny(clippy::print_stdout)]
 
+use std::borrow::Cow;
 use std::collections::HashSet;
 use std::path::Path;
+use std::path::PathBuf;
 
 use deno_core::error::AnyError;
 use deno_core::located_script_name;
@@ -14,7 +16,6 @@ use deno_core::url::Url;
 use deno_core::v8;
 use deno_core::v8::ExternalReference;
 use deno_core::JsRuntime;
-use deno_core::OpState;
 use deno_fs::sync::MaybeSend;
 use deno_fs::sync::MaybeSync;
 use node_resolver::NpmResolverRc;
@@ -23,13 +24,14 @@ use once_cell::sync::Lazy;
 extern crate libz_sys as zlib;
 
 mod global;
-mod ops;
+pub mod ops;
 mod polyfill;
 
 pub use deno_package_json::PackageJson;
 pub use node_resolver::PathClean;
 pub use ops::ipc::ChildPipeFd;
 pub use ops::ipc::IpcJsonStreamResource;
+pub use ops::ipc::IpcRefTracker;
 use ops::vm;
 pub use ops::vm::create_v8_context;
 pub use ops::vm::init_global_template;
@@ -48,54 +50,30 @@ pub trait NodePermissions {
     url: &Url,
     api_name: &str,
   ) -> Result<(), AnyError>;
+  #[must_use = "the resolved return value to mitigate time-of-check to time-of-use issues"]
   #[inline(always)]
-  fn check_read(&mut self, path: &Path) -> Result<(), AnyError> {
+  fn check_read(&mut self, path: &str) -> Result<PathBuf, AnyError> {
     self.check_read_with_api_name(path, None)
   }
+  #[must_use = "the resolved return value to mitigate time-of-check to time-of-use issues"]
   fn check_read_with_api_name(
     &mut self,
-    path: &Path,
+    path: &str,
     api_name: Option<&str>,
-  ) -> Result<(), AnyError>;
+  ) -> Result<PathBuf, AnyError>;
+  #[must_use = "the resolved return value to mitigate time-of-check to time-of-use issues"]
+  fn check_read_path<'a>(
+    &mut self,
+    path: &'a Path,
+  ) -> Result<Cow<'a, Path>, AnyError>;
+  fn query_read_all(&mut self) -> bool;
   fn check_sys(&mut self, kind: &str, api_name: &str) -> Result<(), AnyError>;
+  #[must_use = "the resolved return value to mitigate time-of-check to time-of-use issues"]
   fn check_write_with_api_name(
     &mut self,
-    path: &Path,
+    path: &str,
     api_name: Option<&str>,
-  ) -> Result<(), AnyError>;
-}
-
-pub struct AllowAllNodePermissions;
-
-impl NodePermissions for AllowAllNodePermissions {
-  fn check_net_url(
-    &mut self,
-    _url: &Url,
-    _api_name: &str,
-  ) -> Result<(), AnyError> {
-    Ok(())
-  }
-  fn check_read_with_api_name(
-    &mut self,
-    _path: &Path,
-    _api_name: Option<&str>,
-  ) -> Result<(), AnyError> {
-    Ok(())
-  }
-  fn check_write_with_api_name(
-    &mut self,
-    _path: &Path,
-    _api_name: Option<&str>,
-  ) -> Result<(), AnyError> {
-    Ok(())
-  }
-  fn check_sys(
-    &mut self,
-    _kind: &str,
-    _api_name: &str,
-  ) -> Result<(), AnyError> {
-    Ok(())
-  }
+  ) -> Result<PathBuf, AnyError>;
 }
 
 impl NodePermissions for deno_permissions::PermissionsContainer {
@@ -111,20 +89,31 @@ impl NodePermissions for deno_permissions::PermissionsContainer {
   #[inline(always)]
   fn check_read_with_api_name(
     &mut self,
-    path: &Path,
+    path: &str,
     api_name: Option<&str>,
-  ) -> Result<(), AnyError> {
+  ) -> Result<PathBuf, AnyError> {
     deno_permissions::PermissionsContainer::check_read_with_api_name(
       self, path, api_name,
     )
   }
 
+  fn check_read_path<'a>(
+    &mut self,
+    path: &'a Path,
+  ) -> Result<Cow<'a, Path>, AnyError> {
+    deno_permissions::PermissionsContainer::check_read_path(self, path, None)
+  }
+
+  fn query_read_all(&mut self) -> bool {
+    deno_permissions::PermissionsContainer::query_read_all(self)
+  }
+
   #[inline(always)]
   fn check_write_with_api_name(
     &mut self,
-    path: &Path,
+    path: &str,
     api_name: Option<&str>,
-  ) -> Result<(), AnyError> {
+  ) -> Result<PathBuf, AnyError> {
     deno_permissions::PermissionsContainer::check_write_with_api_name(
       self, path, api_name,
     )
@@ -136,33 +125,16 @@ impl NodePermissions for deno_permissions::PermissionsContainer {
 }
 
 #[allow(clippy::disallowed_types)]
-pub type NpmProcessStateProviderRc =
-  deno_fs::sync::MaybeArc<dyn NpmProcessStateProvider>;
-
-pub trait NpmProcessStateProvider:
-  std::fmt::Debug + MaybeSend + MaybeSync
-{
-  /// Gets a string containing the serialized npm state of the process.
-  ///
-  /// This will be set on the `DENO_DONT_USE_INTERNAL_NODE_COMPAT_STATE` environment
-  /// variable when doing a `child_process.fork`. The implementor can then check this environment
-  /// variable on startup to repopulate the internal npm state.
-  fn get_npm_process_state(&self) -> String {
-    // This method is only used in the CLI.
-    String::new()
-  }
-}
-
-#[allow(clippy::disallowed_types)]
 pub type NodeRequireResolverRc =
   deno_fs::sync::MaybeArc<dyn NodeRequireResolver>;
 
 pub trait NodeRequireResolver: std::fmt::Debug + MaybeSend + MaybeSync {
-  fn ensure_read_permission(
+  #[must_use = "the resolved return value to mitigate time-of-check to time-of-use issues"]
+  fn ensure_read_permission<'a>(
     &self,
     permissions: &mut dyn NodePermissions,
-    path: &Path,
-  ) -> Result<(), AnyError>;
+    path: &'a Path,
+  ) -> Result<Cow<'a, Path>, AnyError>;
 }
 
 pub static NODE_ENV_VAR_ALLOWLIST: Lazy<HashSet<String>> = Lazy::new(|| {
@@ -180,26 +152,9 @@ fn op_node_build_os() -> String {
   env!("TARGET").split('-').nth(2).unwrap().to_string()
 }
 
-#[op2(fast)]
-fn op_node_is_promise_rejected(value: v8::Local<v8::Value>) -> bool {
-  let Ok(promise) = v8::Local::<v8::Promise>::try_from(value) else {
-    return false;
-  };
-
-  promise.state() == v8::PromiseState::Rejected
-}
-
-#[op2]
-#[string]
-fn op_npm_process_state(state: &mut OpState) -> Result<String, AnyError> {
-  let npm_resolver = state.borrow_mut::<NpmProcessStateProviderRc>();
-  Ok(npm_resolver.get_npm_process_state())
-}
-
 pub struct NodeExtInitServices {
   pub node_require_resolver: NodeRequireResolverRc,
   pub node_resolver: NodeResolverRc,
-  pub npm_process_state_provider: NpmProcessStateProviderRc,
   pub npm_resolver: NpmResolverRc,
 }
 
@@ -218,63 +173,91 @@ deno_core::extension!(deno_node,
 
     ops::buffer::op_is_ascii,
     ops::buffer::op_is_utf8,
-    ops::crypto::op_node_create_decipheriv,
+    ops::buffer::op_transcode,
+    ops::crypto::op_node_check_prime_async,
+    ops::crypto::op_node_check_prime_bytes_async,
+    ops::crypto::op_node_check_prime_bytes,
+    ops::crypto::op_node_check_prime,
     ops::crypto::op_node_cipheriv_encrypt,
     ops::crypto::op_node_cipheriv_final,
     ops::crypto::op_node_cipheriv_set_aad,
-    ops::crypto::op_node_decipheriv_set_aad,
+    ops::crypto::op_node_cipheriv_take,
     ops::crypto::op_node_create_cipheriv,
+    ops::crypto::op_node_create_decipheriv,
     ops::crypto::op_node_create_hash,
-    ops::crypto::op_node_get_hashes,
     ops::crypto::op_node_decipheriv_decrypt,
     ops::crypto::op_node_decipheriv_final,
-    ops::crypto::op_node_hash_update,
-    ops::crypto::op_node_hash_update_str,
-    ops::crypto::op_node_hash_digest,
-    ops::crypto::op_node_hash_digest_hex,
-    ops::crypto::op_node_hash_clone,
-    ops::crypto::op_node_private_encrypt,
-    ops::crypto::op_node_private_decrypt,
-    ops::crypto::op_node_public_encrypt,
-    ops::crypto::op_node_check_prime,
-    ops::crypto::op_node_check_prime_async,
-    ops::crypto::op_node_check_prime_bytes,
-    ops::crypto::op_node_check_prime_bytes_async,
-    ops::crypto::op_node_gen_prime,
-    ops::crypto::op_node_gen_prime_async,
-    ops::crypto::op_node_pbkdf2,
-    ops::crypto::op_node_pbkdf2_async,
-    ops::crypto::op_node_hkdf,
-    ops::crypto::op_node_hkdf_async,
-    ops::crypto::op_node_generate_secret,
-    ops::crypto::op_node_generate_secret_async,
-    ops::crypto::op_node_sign,
-    ops::crypto::op_node_generate_rsa,
-    ops::crypto::op_node_generate_rsa_async,
-    ops::crypto::op_node_dsa_generate,
-    ops::crypto::op_node_dsa_generate_async,
-    ops::crypto::op_node_ec_generate,
-    ops::crypto::op_node_ec_generate_async,
-    ops::crypto::op_node_ed25519_generate,
-    ops::crypto::op_node_ed25519_generate_async,
-    ops::crypto::op_node_x25519_generate,
-    ops::crypto::op_node_x25519_generate_async,
-    ops::crypto::op_node_dh_generate_group,
-    ops::crypto::op_node_dh_generate_group_async,
-    ops::crypto::op_node_dh_generate,
-    ops::crypto::op_node_dh_generate2,
+    ops::crypto::op_node_decipheriv_set_aad,
+    ops::crypto::op_node_decipheriv_take,
     ops::crypto::op_node_dh_compute_secret,
-    ops::crypto::op_node_dh_generate_async,
-    ops::crypto::op_node_verify,
-    ops::crypto::op_node_random_int,
-    ops::crypto::op_node_scrypt_sync,
-    ops::crypto::op_node_scrypt_async,
-    ops::crypto::op_node_ecdh_generate_keys,
-    ops::crypto::op_node_ecdh_compute_secret,
+    ops::crypto::op_node_diffie_hellman,
     ops::crypto::op_node_ecdh_compute_public_key,
+    ops::crypto::op_node_ecdh_compute_secret,
     ops::crypto::op_node_ecdh_encode_pubkey,
-    ops::crypto::op_node_export_rsa_public_pem,
-    ops::crypto::op_node_export_rsa_spki_der,
+    ops::crypto::op_node_ecdh_generate_keys,
+    ops::crypto::op_node_fill_random_async,
+    ops::crypto::op_node_fill_random,
+    ops::crypto::op_node_gen_prime_async,
+    ops::crypto::op_node_gen_prime,
+    ops::crypto::op_node_get_hashes,
+    ops::crypto::op_node_hash_clone,
+    ops::crypto::op_node_hash_digest_hex,
+    ops::crypto::op_node_hash_digest,
+    ops::crypto::op_node_hash_update_str,
+    ops::crypto::op_node_hash_update,
+    ops::crypto::op_node_hkdf_async,
+    ops::crypto::op_node_hkdf,
+    ops::crypto::op_node_pbkdf2_async,
+    ops::crypto::op_node_pbkdf2,
+    ops::crypto::op_node_private_decrypt,
+    ops::crypto::op_node_private_encrypt,
+    ops::crypto::op_node_public_encrypt,
+    ops::crypto::op_node_random_int,
+    ops::crypto::op_node_scrypt_async,
+    ops::crypto::op_node_scrypt_sync,
+    ops::crypto::op_node_sign,
+    ops::crypto::op_node_sign_ed25519,
+    ops::crypto::op_node_verify,
+    ops::crypto::op_node_verify_ed25519,
+    ops::crypto::keys::op_node_create_private_key,
+    ops::crypto::keys::op_node_create_ed_raw,
+    ops::crypto::keys::op_node_create_rsa_jwk,
+    ops::crypto::keys::op_node_create_ec_jwk,
+    ops::crypto::keys::op_node_create_public_key,
+    ops::crypto::keys::op_node_create_secret_key,
+    ops::crypto::keys::op_node_derive_public_key_from_private_key,
+    ops::crypto::keys::op_node_dh_keys_generate_and_export,
+    ops::crypto::keys::op_node_export_private_key_der,
+    ops::crypto::keys::op_node_export_private_key_pem,
+    ops::crypto::keys::op_node_export_public_key_der,
+    ops::crypto::keys::op_node_export_public_key_pem,
+    ops::crypto::keys::op_node_export_public_key_jwk,
+    ops::crypto::keys::op_node_export_secret_key_b64url,
+    ops::crypto::keys::op_node_export_secret_key,
+    ops::crypto::keys::op_node_generate_dh_group_key_async,
+    ops::crypto::keys::op_node_generate_dh_group_key,
+    ops::crypto::keys::op_node_generate_dh_key_async,
+    ops::crypto::keys::op_node_generate_dh_key,
+    ops::crypto::keys::op_node_generate_dsa_key_async,
+    ops::crypto::keys::op_node_generate_dsa_key,
+    ops::crypto::keys::op_node_generate_ec_key_async,
+    ops::crypto::keys::op_node_generate_ec_key,
+    ops::crypto::keys::op_node_generate_ed25519_key_async,
+    ops::crypto::keys::op_node_generate_ed25519_key,
+    ops::crypto::keys::op_node_generate_rsa_key_async,
+    ops::crypto::keys::op_node_generate_rsa_key,
+    ops::crypto::keys::op_node_generate_rsa_pss_key,
+    ops::crypto::keys::op_node_generate_rsa_pss_key_async,
+    ops::crypto::keys::op_node_generate_secret_key_async,
+    ops::crypto::keys::op_node_generate_secret_key,
+    ops::crypto::keys::op_node_generate_x25519_key_async,
+    ops::crypto::keys::op_node_generate_x25519_key,
+    ops::crypto::keys::op_node_get_asymmetric_key_details,
+    ops::crypto::keys::op_node_get_asymmetric_key_type,
+    ops::crypto::keys::op_node_get_private_key_from_pair,
+    ops::crypto::keys::op_node_get_public_key_from_pair,
+    ops::crypto::keys::op_node_get_symmetric_key_size,
+    ops::crypto::keys::op_node_key_type,
     ops::crypto::x509::op_node_x509_parse,
     ops::crypto::x509::op_node_x509_ca,
     ops::crypto::x509::op_node_x509_check_email,
@@ -287,6 +270,7 @@ deno_core::extension!(deno_node,
     ops::crypto::x509::op_node_x509_get_valid_to,
     ops::crypto::x509::op_node_x509_get_serial_number,
     ops::crypto::x509::op_node_x509_key_usage,
+    ops::crypto::x509::op_node_x509_public_key,
     ops::fs::op_node_fs_exists_sync<P>,
     ops::fs::op_node_fs_exists<P>,
     ops::fs::op_node_cp_sync<P>,
@@ -299,11 +283,32 @@ deno_core::extension!(deno_node,
     ops::winerror::op_node_sys_to_uv_error,
     ops::v8::op_v8_cached_data_version_tag,
     ops::v8::op_v8_get_heap_statistics,
+    ops::v8::op_v8_get_wire_format_version,
+    ops::v8::op_v8_new_deserializer,
+    ops::v8::op_v8_new_serializer,
+    ops::v8::op_v8_read_double,
+    ops::v8::op_v8_read_header,
+    ops::v8::op_v8_read_raw_bytes,
+    ops::v8::op_v8_read_uint32,
+    ops::v8::op_v8_read_uint64,
+    ops::v8::op_v8_read_value,
+    ops::v8::op_v8_release_buffer,
+    ops::v8::op_v8_set_treat_array_buffer_views_as_host_objects,
+    ops::v8::op_v8_transfer_array_buffer,
+    ops::v8::op_v8_transfer_array_buffer_de,
+    ops::v8::op_v8_write_double,
+    ops::v8::op_v8_write_header,
+    ops::v8::op_v8_write_raw_bytes,
+    ops::v8::op_v8_write_uint32,
+    ops::v8::op_v8_write_uint64,
+    ops::v8::op_v8_write_value,
     ops::vm::op_vm_create_script,
     ops::vm::op_vm_create_context,
     ops::vm::op_vm_script_run_in_context,
-    ops::vm::op_vm_script_run_in_this_context,
     ops::vm::op_vm_is_context,
+    ops::vm::op_vm_compile_function,
+    ops::vm::op_vm_script_get_source_map_url,
+    ops::vm::op_vm_script_create_cached_data,
     ops::idna::op_node_idna_domain_to_ascii,
     ops::idna::op_node_idna_domain_to_unicode,
     ops::idna::op_node_idna_punycode_to_ascii,
@@ -327,6 +332,8 @@ deno_core::extension!(deno_node,
     ops::zlib::brotli::op_brotli_decompress_stream,
     ops::zlib::brotli::op_brotli_decompress_stream_end,
     ops::http::op_node_http_request<P>,
+    ops::http::op_node_http_fetch_response_upgrade,
+    ops::http::op_node_http_fetch_send,
     ops::http2::op_http2_connect,
     ops::http2::op_http2_poll_client_connection,
     ops::http2::op_http2_client_request,
@@ -347,8 +354,7 @@ deno_core::extension!(deno_node,
     ops::os::op_cpus<P>,
     ops::os::op_homedir<P>,
     op_node_build_os,
-    op_node_is_promise_rejected,
-    op_npm_process_state,
+    ops::require::op_require_can_parse_as_esm,
     ops::require::op_require_init_paths,
     ops::require::op_require_node_module_paths<P>,
     ops::require::op_require_proxy_path,
@@ -373,13 +379,14 @@ deno_core::extension!(deno_node,
     ops::require::op_require_break_on_next_statement,
     ops::util::op_node_guess_handle_type,
     ops::worker_threads::op_worker_threads_filename<P>,
-    ops::crypto::op_node_create_private_key,
-    ops::crypto::op_node_create_public_key,
     ops::ipc::op_node_child_ipc_pipe,
     ops::ipc::op_node_ipc_write,
     ops::ipc::op_node_ipc_read,
+    ops::ipc::op_node_ipc_ref,
+    ops::ipc::op_node_ipc_unref,
     ops::process::op_node_process_kill,
     ops::process::op_process_abort,
+    ops::tls::op_get_root_certificates,
   ],
   esm_entry_point = "ext:deno_node/02_init.js",
   esm = [
@@ -432,17 +439,12 @@ deno_core::extension!(deno_node,
     "_fs/_fs_write.mjs",
     "_fs/_fs_writeFile.ts",
     "_fs/_fs_writev.mjs",
-    "_http_agent.mjs",
-    "_http_common.ts",
-    "_http_outgoing.ts",
     "_next_tick.ts",
     "_process/exiting.ts",
     "_process/process.ts",
     "_process/streams.mjs",
     "_readline.mjs",
     "_stream.mjs",
-    "_tls_common.ts",
-    "_tls_wrap.ts",
     "_util/_util_callbackify.js",
     "_util/asserts.ts",
     "_util/async.ts",
@@ -454,7 +456,6 @@ deno_core::extension!(deno_node,
     "_zlib_binding.mjs",
     "_zlib.mjs",
     "assertion_error.ts",
-    "inspector.ts",
     "internal_binding/_libuv_winerror.ts",
     "internal_binding/_listen.ts",
     "internal_binding/_node.ts",
@@ -468,6 +469,7 @@ deno_core::extension!(deno_node,
     "internal_binding/constants.ts",
     "internal_binding/crypto.ts",
     "internal_binding/handle_wrap.ts",
+    "internal_binding/http_parser.ts",
     "internal_binding/mod.ts",
     "internal_binding/node_file.ts",
     "internal_binding/node_options.ts",
@@ -513,6 +515,7 @@ deno_core::extension!(deno_node,
     "internal/error_codes.ts",
     "internal/errors.ts",
     "internal/event_target.mjs",
+    "internal/events/abort_listener.mjs",
     "internal/fixed_queue.ts",
     "internal/fs/streams.mjs",
     "internal/fs/utils.mjs",
@@ -537,15 +540,10 @@ deno_core::extension!(deno_node,
     "internal/streams/add-abort-signal.mjs",
     "internal/streams/buffer_list.mjs",
     "internal/streams/destroy.mjs",
-    "internal/streams/duplex.mjs",
     "internal/streams/end-of-stream.mjs",
     "internal/streams/lazy_transform.mjs",
-    "internal/streams/passthrough.mjs",
-    "internal/streams/readable.mjs",
     "internal/streams/state.mjs",
-    "internal/streams/transform.mjs",
     "internal/streams/utils.mjs",
-    "internal/streams/writable.mjs",
     "internal/test/binding.ts",
     "internal/timers.mjs",
     "internal/url.ts",
@@ -566,7 +564,17 @@ deno_core::extension!(deno_node,
     "path/mod.ts",
     "path/separator.ts",
     "readline/promises.ts",
-    "wasi.ts",
+    "node:_http_agent" = "_http_agent.mjs",
+    "node:_http_common" = "_http_common.ts",
+    "node:_http_outgoing" = "_http_outgoing.ts",
+    "node:_http_server" = "_http_server.ts",
+    "node:_stream_duplex" = "internal/streams/duplex.mjs",
+    "node:_stream_passthrough" = "internal/streams/passthrough.mjs",
+    "node:_stream_readable" = "internal/streams/readable.mjs",
+    "node:_stream_transform" = "internal/streams/transform.mjs",
+    "node:_stream_writable" = "internal/streams/writable.mjs",
+    "node:_tls_common" = "_tls_common.ts",
+    "node:_tls_wrap" = "_tls_wrap.ts",
     "node:assert" = "assert.ts",
     "node:assert/strict" = "assert/strict.ts",
     "node:async_hooks" = "async_hooks.ts",
@@ -587,6 +595,8 @@ deno_core::extension!(deno_node,
     "node:http" = "http.ts",
     "node:http2" = "http2.ts",
     "node:https" = "https.ts",
+    "node:inspector" = "inspector.ts",
+    "node:inspector/promises" = "inspector.ts",
     "node:module" = "01_require.js",
     "node:net" = "net.ts",
     "node:os" = "os.ts",
@@ -598,6 +608,7 @@ deno_core::extension!(deno_node,
     "node:punycode" = "punycode.ts",
     "node:querystring" = "querystring.js",
     "node:readline" = "readline.ts",
+    "node:readline/promises" = "readline/promises.ts",
     "node:repl" = "repl.ts",
     "node:stream" = "stream.ts",
     "node:stream/consumers" = "stream/consumers.mjs",
@@ -609,12 +620,14 @@ deno_core::extension!(deno_node,
     "node:timers" = "timers.ts",
     "node:timers/promises" = "timers/promises.ts",
     "node:tls" = "tls.ts",
+    "node:trace_events" = "trace_events.ts",
     "node:tty" = "tty.js",
     "node:url" = "url.ts",
     "node:util" = "util.ts",
     "node:util/types" = "util/types.ts",
     "node:v8" = "v8.ts",
-    "node:vm" = "vm.ts",
+    "node:vm" = "vm.js",
+    "node:wasi" = "wasi.ts",
     "node:worker_threads" = "worker_threads.ts",
     "node:zlib" = "zlib.ts",
   ],
@@ -629,106 +642,121 @@ deno_core::extension!(deno_node,
       state.put(init.node_require_resolver.clone());
       state.put(init.node_resolver.clone());
       state.put(init.npm_resolver.clone());
-      state.put(init.npm_process_state_provider.clone());
     }
   },
   global_template_middleware = global_template_middleware,
   global_object_middleware = global_object_middleware,
   customizer = |ext: &mut deno_core::Extension| {
-    let mut external_references = Vec::with_capacity(14);
+    let external_references = [
+      vm::QUERY_MAP_FN.with(|query| {
+        ExternalReference {
+          named_query: *query,
+        }
+      }),
+      vm::GETTER_MAP_FN.with(|getter| {
+        ExternalReference {
+          named_getter: *getter,
+        }
+      }),
+      vm::SETTER_MAP_FN.with(|setter| {
+        ExternalReference {
+          named_setter: *setter,
+        }
+      }),
+      vm::DESCRIPTOR_MAP_FN.with(|descriptor| {
+        ExternalReference {
+          named_getter: *descriptor,
+        }
+      }),
+      vm::DELETER_MAP_FN.with(|deleter| {
+        ExternalReference {
+          named_deleter: *deleter,
+        }
+      }),
+      vm::ENUMERATOR_MAP_FN.with(|enumerator| {
+        ExternalReference {
+          enumerator: *enumerator,
+        }
+      }),
+      vm::DEFINER_MAP_FN.with(|definer| {
+        ExternalReference {
+          named_definer: *definer,
+        }
+      }),
 
-    vm::GETTER_MAP_FN.with(|getter| {
-      external_references.push(ExternalReference {
-        named_getter: *getter,
-      });
-    });
-    vm::SETTER_MAP_FN.with(|setter| {
-      external_references.push(ExternalReference {
-        named_setter: *setter,
-      });
-    });
-    vm::DELETER_MAP_FN.with(|deleter| {
-      external_references.push(ExternalReference {
-        named_getter: *deleter,
-      },);
-    });
-    vm::ENUMERATOR_MAP_FN.with(|enumerator| {
-      external_references.push(ExternalReference {
-        enumerator: *enumerator,
-      });
-    });
-    vm::DEFINER_MAP_FN.with(|definer| {
-      external_references.push(ExternalReference {
-        named_definer: *definer,
-      });
-    });
-    vm::DESCRIPTOR_MAP_FN.with(|descriptor| {
-      external_references.push(ExternalReference {
-        named_getter: *descriptor,
-      });
-    });
+      vm::INDEXED_QUERY_MAP_FN.with(|query| {
+        ExternalReference {
+          indexed_query: *query,
+        }
+      }),
+      vm::INDEXED_GETTER_MAP_FN.with(|getter| {
+        ExternalReference {
+          indexed_getter: *getter,
+        }
+      }),
+      vm::INDEXED_SETTER_MAP_FN.with(|setter| {
+        ExternalReference {
+          indexed_setter: *setter,
+        }
+      }),
+      vm::INDEXED_DESCRIPTOR_MAP_FN.with(|descriptor| {
+        ExternalReference {
+          indexed_getter: *descriptor,
+        }
+      }),
+      vm::INDEXED_DELETER_MAP_FN.with(|deleter| {
+        ExternalReference {
+          indexed_deleter: *deleter,
+        }
+      }),
+      vm::INDEXED_DEFINER_MAP_FN.with(|definer| {
+        ExternalReference {
+          indexed_definer: *definer,
+        }
+      }),
+      vm::INDEXED_ENUMERATOR_MAP_FN.with(|enumerator| {
+        ExternalReference {
+          enumerator: *enumerator,
+        }
+      }),
 
-    vm::INDEXED_GETTER_MAP_FN.with(|getter| {
-      external_references.push(ExternalReference {
-        indexed_getter: *getter,
-      });
-    });
-    vm::INDEXED_SETTER_MAP_FN.with(|setter| {
-      external_references.push(ExternalReference {
-        indexed_setter: *setter,
-      });
-    });
-    vm::INDEXED_DELETER_MAP_FN.with(|deleter| {
-      external_references.push(ExternalReference {
-        indexed_getter: *deleter,
-      });
-    });
-    vm::INDEXED_DEFINER_MAP_FN.with(|definer| {
-      external_references.push(ExternalReference {
-        indexed_definer: *definer,
-      });
-    });
-    vm::INDEXED_DESCRIPTOR_MAP_FN.with(|descriptor| {
-      external_references.push(ExternalReference {
-        indexed_getter: *descriptor,
-      });
-    });
+      global::GETTER_MAP_FN.with(|getter| {
+        ExternalReference {
+          named_getter: *getter,
+        }
+      }),
+      global::SETTER_MAP_FN.with(|setter| {
+        ExternalReference {
+          named_setter: *setter,
+        }
+      }),
+      global::QUERY_MAP_FN.with(|query| {
+        ExternalReference {
+          named_query: *query,
+        }
+      }),
+      global::DELETER_MAP_FN.with(|deleter| {
+        ExternalReference {
+          named_deleter: *deleter,
+        }
+      }),
+      global::ENUMERATOR_MAP_FN.with(|enumerator| {
+        ExternalReference {
+          enumerator: *enumerator,
+        }
+      }),
+      global::DEFINER_MAP_FN.with(|definer| {
+        ExternalReference {
+          named_definer: *definer,
+        }
+      }),
+      global::DESCRIPTOR_MAP_FN.with(|descriptor| {
+        ExternalReference {
+          named_getter: *descriptor,
+        }
+      }),
+    ];
 
-    global::GETTER_MAP_FN.with(|getter| {
-      external_references.push(ExternalReference {
-        named_getter: *getter,
-      });
-    });
-    global::SETTER_MAP_FN.with(|setter| {
-      external_references.push(ExternalReference {
-        named_setter: *setter,
-      });
-    });
-    global::QUERY_MAP_FN.with(|query| {
-      external_references.push(ExternalReference {
-        named_getter: *query,
-      });
-    });
-    global::DELETER_MAP_FN.with(|deleter| {
-      external_references.push(ExternalReference {
-        named_getter: *deleter,
-      },);
-    });
-    global::ENUMERATOR_MAP_FN.with(|enumerator| {
-      external_references.push(ExternalReference {
-        enumerator: *enumerator,
-      });
-    });
-    global::DEFINER_MAP_FN.with(|definer| {
-      external_references.push(ExternalReference {
-        named_definer: *definer,
-      });
-    });
-    global::DESCRIPTOR_MAP_FN.with(|descriptor| {
-      external_references.push(ExternalReference {
-        named_getter: *descriptor,
-      });
-    });
     ext.external_references.to_mut().extend(external_references);
   },
 );
@@ -835,4 +863,13 @@ impl<'a> deno_package_json::fs::DenoPkgJsonFs for DenoPkgJsonFsAdapter<'a> {
       .read_text_file_lossy_sync(path, None)
       .map_err(|err| err.into_io_error())
   }
+}
+
+pub fn create_host_defined_options<'s>(
+  scope: &mut v8::HandleScope<'s>,
+) -> v8::Local<'s, v8::Data> {
+  let host_defined_options = v8::PrimitiveArray::new(scope, 1);
+  let value = v8::Boolean::new(scope, true);
+  host_defined_options.set(scope, 0, value.into());
+  host_defined_options.into()
 }

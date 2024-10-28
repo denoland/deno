@@ -1,0 +1,4 @@
+error: 'import', and 'export' cannot be used outside of module code at file://[WILDCARD]/@denotest/type-commonjs/1.0.0/index.js:1:1
+
+  export {};
+  ~~~~~~

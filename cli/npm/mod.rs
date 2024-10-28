@@ -1,38 +1,49 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 mod byonm;
-mod cache_dir;
 mod common;
 mod managed;
 
+use std::path::Path;
 use std::path::PathBuf;
 use std::sync::Arc;
 
+use common::maybe_auth_header_for_npm_registry;
 use dashmap::DashMap;
 use deno_ast::ModuleSpecifier;
 use deno_core::error::AnyError;
 use deno_core::serde_json;
+use deno_npm::npm_rc::ResolvedNpmRc;
 use deno_npm::registry::NpmPackageInfo;
+use deno_resolver::npm::ByonmNpmResolver;
+use deno_resolver::npm::ByonmResolvePkgFolderFromDenoReqError;
 use deno_runtime::deno_node::NodeRequireResolver;
-use deno_runtime::deno_node::NpmProcessStateProvider;
-use deno_runtime::deno_permissions::PermissionsContainer;
+use deno_runtime::ops::process::NpmProcessStateProvider;
 use deno_semver::package::PackageNv;
 use deno_semver::package::PackageReq;
+use managed::cache::registry_info::get_package_url;
 use node_resolver::NpmResolver;
+use thiserror::Error;
 
-use crate::args::npm_registry_url;
 use crate::file_fetcher::FileFetcher;
 
-pub use self::byonm::ByonmCliNpmResolver;
-pub use self::byonm::CliNpmResolverByonmCreateOptions;
-pub use self::cache_dir::NpmCacheDir;
+pub use self::byonm::CliByonmNpmResolver;
+pub use self::byonm::CliByonmNpmResolverCreateOptions;
 pub use self::managed::CliNpmResolverManagedCreateOptions;
 pub use self::managed::CliNpmResolverManagedSnapshotOption;
 pub use self::managed::ManagedCliNpmResolver;
 
+#[derive(Debug, Error)]
+pub enum ResolvePkgFolderFromDenoReqError {
+  #[error(transparent)]
+  Managed(deno_core::error::AnyError),
+  #[error(transparent)]
+  Byonm(#[from] ByonmResolvePkgFolderFromDenoReqError),
+}
+
 pub enum CliNpmResolverCreateOptions {
   Managed(CliNpmResolverManagedCreateOptions),
-  Byonm(CliNpmResolverByonmCreateOptions),
+  Byonm(CliByonmNpmResolverCreateOptions),
 }
 
 pub async fn create_cli_npm_resolver_for_lsp(
@@ -43,7 +54,7 @@ pub async fn create_cli_npm_resolver_for_lsp(
     Managed(options) => {
       managed::create_managed_npm_resolver_for_lsp(options).await
     }
-    Byonm(options) => byonm::create_byonm_npm_resolver(options),
+    Byonm(options) => Arc::new(ByonmNpmResolver::new(options)),
   }
 }
 
@@ -53,14 +64,14 @@ pub async fn create_cli_npm_resolver(
   use CliNpmResolverCreateOptions::*;
   match options {
     Managed(options) => managed::create_managed_npm_resolver(options).await,
-    Byonm(options) => Ok(byonm::create_byonm_npm_resolver(options)),
+    Byonm(options) => Ok(Arc::new(ByonmNpmResolver::new(options))),
   }
 }
 
 pub enum InnerCliNpmResolverRef<'a> {
   Managed(&'a ManagedCliNpmResolver),
   #[allow(dead_code)]
-  Byonm(&'a ByonmCliNpmResolver),
+  Byonm(&'a CliByonmNpmResolver),
 }
 
 pub trait CliNpmResolver: NpmResolver {
@@ -81,20 +92,20 @@ pub trait CliNpmResolver: NpmResolver {
     }
   }
 
-  fn as_byonm(&self) -> Option<&ByonmCliNpmResolver> {
+  fn as_byonm(&self) -> Option<&CliByonmNpmResolver> {
     match self.as_inner() {
       InnerCliNpmResolverRef::Managed(_) => None,
       InnerCliNpmResolverRef::Byonm(inner) => Some(inner),
     }
   }
 
-  fn root_node_modules_path(&self) -> Option<&PathBuf>;
+  fn root_node_modules_path(&self) -> Option<&Path>;
 
   fn resolve_pkg_folder_from_deno_module_req(
     &self,
     req: &PackageReq,
     referrer: &ModuleSpecifier,
-  ) -> Result<PathBuf, AnyError>;
+  ) -> Result<PathBuf, ResolvePkgFolderFromDenoReqError>;
 
   /// Returns a hash returning the state of the npm resolver
   /// or `None` if the state currently can't be determined.
@@ -106,14 +117,19 @@ pub struct NpmFetchResolver {
   nv_by_req: DashMap<PackageReq, Option<PackageNv>>,
   info_by_name: DashMap<String, Option<Arc<NpmPackageInfo>>>,
   file_fetcher: Arc<FileFetcher>,
+  npmrc: Arc<ResolvedNpmRc>,
 }
 
 impl NpmFetchResolver {
-  pub fn new(file_fetcher: Arc<FileFetcher>) -> Self {
+  pub fn new(
+    file_fetcher: Arc<FileFetcher>,
+    npmrc: Arc<ResolvedNpmRc>,
+  ) -> Self {
     Self {
       nv_by_req: Default::default(),
       info_by_name: Default::default(),
       file_fetcher,
+      npmrc,
     }
   }
 
@@ -124,6 +140,10 @@ impl NpmFetchResolver {
     let maybe_get_nv = || async {
       let name = req.name.clone();
       let package_info = self.package_info(&name).await?;
+      if let Some(dist_tag) = req.version_req.tag() {
+        let version = package_info.dist_tags.get(dist_tag)?.clone();
+        return Some(PackageNv { name, version });
+      }
       // Find the first matching version of the package.
       let mut versions = package_info.versions.keys().collect::<Vec<_>>();
       versions.sort();
@@ -144,12 +164,19 @@ impl NpmFetchResolver {
       return info.value().clone();
     }
     let fetch_package_info = || async {
-      let info_url = npm_registry_url().join(name).ok()?;
+      let info_url = get_package_url(&self.npmrc, name);
       let file_fetcher = self.file_fetcher.clone();
+      let registry_config = self.npmrc.get_registry_config(name);
+      // TODO(bartlomieju): this should error out, not use `.ok()`.
+      let maybe_auth_header =
+        maybe_auth_header_for_npm_registry(registry_config).ok()?;
       // spawn due to the lsp's `Send` requirement
       let file = deno_core::unsync::spawn(async move {
         file_fetcher
-          .fetch(&info_url, &PermissionsContainer::allow_all())
+          .fetch_bypass_permissions_with_maybe_auth(
+            &info_url,
+            maybe_auth_header,
+          )
           .await
           .ok()
       })

@@ -48,7 +48,7 @@ jobs:
       - pre_build
     if: '${{ needs.pre_build.outputs.skip_build != ''true'' }}'
     runs-on: '${{ matrix.runner }}'
-    timeout-minutes: 150
+    timeout-minutes: 180
     defaults:
       run:
         shell: bash
@@ -178,7 +178,7 @@ jobs:
         if: '!(matrix.skip)'
       - if: '!(matrix.skip) && (matrix.job == ''lint'' || matrix.job == ''test'' || matrix.job == ''bench'')'
         name: Install Deno
-        uses: denoland/setup-deno@v1
+        uses: denoland/setup-deno@v2
         with:
           deno-version: v1.x
       - name: Install Python
@@ -199,12 +199,6 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 18
-      - name: Install protoc
-        uses: arduino/setup-protoc@v3
-        with:
-          version: '21.12'
-          repo-token: '${{ secrets.GITHUB_TOKEN }}'
-        if: '!(matrix.skip)'
       - if: |-
           !(matrix.skip) && (matrix.profile == 'release' &&
           matrix.job == 'test' &&
@@ -367,8 +361,8 @@ jobs:
           path: |-
             ~/.cargo/registry/index
             ~/.cargo/registry/cache
-          key: '9-cargo-home-${{ matrix.os }}-${{ matrix.arch }}-${{ hashFiles(''Cargo.lock'') }}'
-          restore-keys: '9-cargo-home-${{ matrix.os }}-${{ matrix.arch }}'
+          key: '22-cargo-home-${{ matrix.os }}-${{ matrix.arch }}-${{ hashFiles(''Cargo.lock'') }}'
+          restore-keys: '22-cargo-home-${{ matrix.os }}-${{ matrix.arch }}'
         if: '!(matrix.skip)'
       - name: Restore cache build output (PR)
         uses: actions/cache/restore@v4
@@ -381,7 +375,7 @@ jobs:
             !./target/*/*.zip
             !./target/*/*.tar.gz
           key: never_saved
-          restore-keys: '9-cargo-target-${{ matrix.os }}-${{ matrix.arch }}-${{ matrix.profile }}-${{ matrix.job }}-'
+          restore-keys: '22-cargo-target-${{ matrix.os }}-${{ matrix.arch }}-${{ matrix.profile }}-${{ matrix.job }}-'
       - name: Apply and update mtime cache
         if: '!(matrix.skip) && (!startsWith(github.ref, ''refs/tags/''))'
         uses: ./.github/mtime_cache
@@ -389,7 +383,7 @@ jobs:
           cache-path: ./target
       - name: test_format.js
         if: '!(matrix.skip) && (matrix.job == ''lint'' && matrix.os == ''linux'')'
-        run: deno run --unstable --allow-write --allow-read --allow-run --allow-net ./tools/format.js --check
+        run: deno run --allow-write --allow-read --allow-run --allow-net ./tools/format.js --check
       - name: Lint PR title
         if: '!(matrix.skip) && (matrix.job == ''lint'' && github.event_name == ''pull_request'' && matrix.os == ''linux'')'
         env:
@@ -397,7 +391,7 @@ jobs:
         run: deno run ./tools/verify_pr_title.js "$PR_TITLE"
       - name: lint.js
         if: '!(matrix.skip) && (matrix.job == ''lint'')'
-        run: deno run --unstable --allow-write --allow-read --allow-run --allow-net ./tools/lint.js
+        run: deno run --allow-write --allow-read --allow-run --allow-net ./tools/lint.js
       - name: jsdoc_checker.js
         if: '!(matrix.skip) && (matrix.job == ''lint'')'
         run: deno run --allow-read --allow-env --allow-sys ./tools/jsdoc_checker.js
@@ -449,8 +443,10 @@ jobs:
         run: |-
           cd target/release
           zip -r deno-${{ matrix.arch }}-unknown-linux-gnu.zip deno
+          shasum -a 256 deno-${{ matrix.arch }}-unknown-linux-gnu.zip > deno-${{ matrix.arch }}-unknown-linux-gnu.zip.sha256sum
           strip denort
           zip -r denort-${{ matrix.arch }}-unknown-linux-gnu.zip denort
+          shasum -a 256 denort-${{ matrix.arch }}-unknown-linux-gnu.zip > denort-${{ matrix.arch }}-unknown-linux-gnu.zip.sha256sum
           ./deno types > lib.deno.d.ts
       - name: Pre-release (mac)
         if: |-
@@ -466,8 +462,10 @@ jobs:
           rcodesign sign target/release/deno --code-signature-flags=runtime --p12-password="$APPLE_CODESIGN_PASSWORD" --p12-file=<(echo $APPLE_CODESIGN_KEY | base64 -d) --entitlements-xml-file=cli/entitlements.plist
           cd target/release
           zip -r deno-${{ matrix.arch }}-apple-darwin.zip deno
+          shasum -a 256 deno-${{ matrix.arch }}-apple-darwin.zip > deno-${{ matrix.arch }}-apple-darwin.zip.sha256sum
           strip denort
           zip -r denort-${{ matrix.arch }}-apple-darwin.zip denort
+          shasum -a 256 denort-${{ matrix.arch }}-apple-darwin.zip > denort-${{ matrix.arch }}-apple-darwin.zip.sha256sum
       - name: Pre-release (windows)
         if: |-
           !(matrix.skip) && (matrix.os == 'windows' &&
@@ -477,7 +475,9 @@ jobs:
         shell: pwsh
         run: |-
           Compress-Archive -CompressionLevel Optimal -Force -Path target/release/deno.exe -DestinationPath target/release/deno-${{ matrix.arch }}-pc-windows-msvc.zip
+          Get-FileHash target/release/deno-${{ matrix.arch }}-pc-windows-msvc.zip -Algorithm SHA256 | Format-List > target/release/deno-${{ matrix.arch }}-pc-windows-msvc.zip.sha256sum
           Compress-Archive -CompressionLevel Optimal -Force -Path target/release/denort.exe -DestinationPath target/release/denort-${{ matrix.arch }}-pc-windows-msvc.zip
+          Get-FileHash target/release/denort-${{ matrix.arch }}-pc-windows-msvc.zip -Algorithm SHA256 | Format-List > target/release/denort-${{ matrix.arch }}-pc-windows-msvc.zip.sha256sum
       - name: Upload canary to dl.deno.land
         if: |-
           !(matrix.skip) && (matrix.job == 'test' &&
@@ -486,6 +486,7 @@ jobs:
           github.ref == 'refs/heads/main')
         run: |-
           gsutil -h "Cache-Control: public, max-age=3600" cp ./target/release/*.zip gs://dl.deno.land/canary/$(git rev-parse HEAD)/
+          gsutil -h "Cache-Control: public, max-age=3600" cp ./target/release/*.sha256sum gs://dl.deno.land/canary/$(git rev-parse HEAD)/
           echo ${{ github.sha }} > canary-latest.txt
           gsutil -h "Cache-Control: no-cache" cp canary-latest.txt gs://dl.deno.land/canary-$(rustc -vV | sed -n "s|host: ||p")-latest.txt
       - name: Autobahn testsuite
@@ -494,7 +495,7 @@ jobs:
           matrix.job == 'test' &&
           matrix.profile == 'release' &&
           !startsWith(github.ref, 'refs/tags/'))
-        run: target/release/deno run -A --unstable --config tests/config/deno.json ext/websocket/autobahn/fuzzingclient.js
+        run: target/release/deno run -A --config tests/config/deno.json ext/websocket/autobahn/fuzzingclient.js
       - name: 'Test (full, debug)'
         if: |-
           !(matrix.skip) && (matrix.job == 'test' &&
@@ -531,18 +532,18 @@ jobs:
         env:
           DENO_BIN: ./target/debug/deno
         run: |-
-          deno run -A --unstable --lock=tools/deno.lock.json --config tests/config/deno.json\
+          deno run -A --lock=tools/deno.lock.json --config tests/config/deno.json\
                   ./tests/wpt/wpt.ts setup
-          deno run -A --unstable --lock=tools/deno.lock.json --config tests/config/deno.json\
+          deno run -A --lock=tools/deno.lock.json --config tests/config/deno.json\
                    ./tests/wpt/wpt.ts run --quiet --binary="$DENO_BIN"
       - name: Run web platform tests (release)
         if: '!(matrix.skip) && (matrix.wpt && matrix.profile == ''release'')'
         env:
           DENO_BIN: ./target/release/deno
         run: |-
-          deno run -A --unstable --lock=tools/deno.lock.json --config tests/config/deno.json\
+          deno run -A --lock=tools/deno.lock.json --config tests/config/deno.json\
                    ./tests/wpt/wpt.ts setup
-          deno run -A --unstable --lock=tools/deno.lock.json --config tests/config/deno.json\
+          deno run -A --lock=tools/deno.lock.json --config tests/config/deno.json\
                    ./tests/wpt/wpt.ts run --quiet --release         \
                                       --binary="$DENO_BIN"          \
                                       --json=wpt.json               \
@@ -590,8 +591,7 @@ jobs:
           git clone --depth 1 --branch gh-pages                             \
               https://${DENOBOT_PAT}@github.com/denoland/benchmark_data.git \
               gh-pages
-          ./target/release/deno run --allow-all --unstable \
-              ./tools/build_benchmark_jsons.js --release
+          ./target/release/deno run --allow-all ./tools/build_benchmark_jsons.js --release
           cd gh-pages
           git config user.email "propelml@gmail.com"
           git config user.name "denobot"
@@ -616,7 +616,9 @@ jobs:
           matrix.profile == 'release' &&
           github.repository == 'denoland/deno' &&
           startsWith(github.ref, 'refs/tags/'))
-        run: 'gsutil -h "Cache-Control: public, max-age=3600" cp ./target/release/*.zip gs://dl.deno.land/release/${GITHUB_REF#refs/*/}/'
+        run: |-
+          gsutil -h "Cache-Control: public, max-age=3600" cp ./target/release/*.zip gs://dl.deno.land/release/${GITHUB_REF#refs/*/}/
+          gsutil -h "Cache-Control: public, max-age=3600" cp ./target/release/*.sha256sum gs://dl.deno.land/release/${GITHUB_REF#refs/*/}/
       - name: Upload release to dl.deno.land (windows)
         if: |-
           !(matrix.skip) && (matrix.os == 'windows' &&
@@ -626,7 +628,9 @@ jobs:
           startsWith(github.ref, 'refs/tags/'))
         env:
           CLOUDSDK_PYTHON: '${{env.pythonLocation}}\python.exe'
-        run: 'gsutil -h "Cache-Control: public, max-age=3600" cp ./target/release/*.zip gs://dl.deno.land/release/${GITHUB_REF#refs/*/}/'
+        run: |-
+          gsutil -h "Cache-Control: public, max-age=3600" cp ./target/release/*.zip gs://dl.deno.land/release/${GITHUB_REF#refs/*/}/
+          gsutil -h "Cache-Control: public, max-age=3600" cp ./target/release/*.sha256sum gs://dl.deno.land/release/${GITHUB_REF#refs/*/}/
       - name: Create release notes
         if: |-
           !(matrix.skip) && (matrix.job == 'test' &&
@@ -648,15 +652,25 @@ jobs:
         with:
           files: |-
             target/release/deno-x86_64-pc-windows-msvc.zip
+            target/release/deno-x86_64-pc-windows-msvc.zip.sha256sum
             target/release/denort-x86_64-pc-windows-msvc.zip
+            target/release/denort-x86_64-pc-windows-msvc.zip.sha256sum
             target/release/deno-x86_64-unknown-linux-gnu.zip
+            target/release/deno-x86_64-unknown-linux-gnu.zip.sha256sum
             target/release/denort-x86_64-unknown-linux-gnu.zip
+            target/release/denort-x86_64-unknown-linux-gnu.zip.sha256sum
             target/release/deno-x86_64-apple-darwin.zip
+            target/release/deno-x86_64-apple-darwin.zip.sha256sum
             target/release/denort-x86_64-apple-darwin.zip
+            target/release/denort-x86_64-apple-darwin.zip.sha256sum
             target/release/deno-aarch64-unknown-linux-gnu.zip
+            target/release/deno-aarch64-unknown-linux-gnu.zip.sha256sum
             target/release/denort-aarch64-unknown-linux-gnu.zip
+            target/release/denort-aarch64-unknown-linux-gnu.zip.sha256sum
             target/release/deno-aarch64-apple-darwin.zip
+            target/release/deno-aarch64-apple-darwin.zip.sha256sum
             target/release/denort-aarch64-apple-darwin.zip
+            target/release/denort-aarch64-apple-darwin.zip.sha256sum
             target/release/deno_src.tar.gz
             target/release/lib.deno.d.ts
           body_path: target/release/release-notes.md
@@ -669,8 +683,9 @@ jobs:
             ./target
             !./target/*/gn_out
             !./target/*/*.zip
+            !./target/*/*.sha256sum
             !./target/*/*.tar.gz
-          key: '9-cargo-target-${{ matrix.os }}-${{ matrix.arch }}-${{ matrix.profile }}-${{ matrix.job }}-${{ github.sha }}'
+          key: '22-cargo-target-${{ matrix.os }}-${{ matrix.arch }}-${{ matrix.profile }}-${{ matrix.job }}-${{ github.sha }}'
   publish-canary:
     name: publish canary
     runs-on: ubuntu-22.04

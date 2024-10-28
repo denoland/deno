@@ -4,7 +4,7 @@ use dashmap::DashMap;
 use deno_core::anyhow::anyhow;
 use deno_core::error::AnyError;
 use deno_core::serde_json;
-use deno_runtime::deno_permissions::PermissionsContainer;
+use deno_npm::npm_rc::NpmRc;
 use deno_semver::package::PackageNv;
 use deno_semver::Version;
 use serde::Deserialize;
@@ -26,7 +26,10 @@ pub struct CliNpmSearchApi {
 
 impl CliNpmSearchApi {
   pub fn new(file_fetcher: Arc<FileFetcher>) -> Self {
-    let resolver = NpmFetchResolver::new(file_fetcher.clone());
+    let resolver = NpmFetchResolver::new(
+      file_fetcher.clone(),
+      Arc::new(NpmRc::default().as_resolved(npm_registry_url()).unwrap()),
+    );
     Self {
       file_fetcher,
       resolver,
@@ -55,7 +58,7 @@ impl PackageSearchApi for CliNpmSearchApi {
     let file_fetcher = self.file_fetcher.clone();
     let file = deno_core::unsync::spawn(async move {
       file_fetcher
-        .fetch(&search_url, &PermissionsContainer::allow_all())
+        .fetch_bypass_permissions(&search_url)
         .await?
         .into_text_decoded()
     })

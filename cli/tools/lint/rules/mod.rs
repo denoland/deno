@@ -14,7 +14,7 @@ use deno_graph::ModuleGraph;
 use deno_lint::diagnostic::LintDiagnostic;
 use deno_lint::rules::LintRule;
 
-use crate::resolver::SloppyImportsResolver;
+use crate::resolver::CliSloppyImportsResolver;
 
 mod no_sloppy_imports;
 mod no_slow_types;
@@ -144,13 +144,13 @@ impl ConfiguredRules {
 }
 
 pub struct LintRuleProvider {
-  sloppy_imports_resolver: Option<Arc<SloppyImportsResolver>>,
+  sloppy_imports_resolver: Option<Arc<CliSloppyImportsResolver>>,
   workspace_resolver: Option<Arc<WorkspaceResolver>>,
 }
 
 impl LintRuleProvider {
   pub fn new(
-    sloppy_imports_resolver: Option<Arc<SloppyImportsResolver>>,
+    sloppy_imports_resolver: Option<Arc<CliSloppyImportsResolver>>,
     workspace_resolver: Option<Arc<WorkspaceResolver>>,
   ) -> Self {
     Self {

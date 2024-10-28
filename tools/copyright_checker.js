@@ -1,6 +1,8 @@
 #!/usr/bin/env -S deno run --allow-read=. --allow-run=git --config=tests/config/deno.json
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
+// deno-lint-ignore-file no-console
+
 import { getSources, ROOT_PATH } from "./util.js";
 
 const copyrightYear = 2024;
@@ -22,24 +24,30 @@ export async function checkCopyright() {
   const sourceFiles = await getSources(ROOT_PATH, [
     // js and ts
     "*.js",
+    "*.mjs",
+    "*.jsx",
     "*.ts",
+    "*.tsx",
     ":!:.github/mtime_cache/action.js",
+    ":!:cli/bench/testdata/**",
+    ":!:cli/tools/bench/mitata.rs",
+    ":!:cli/tools/init/templates/**",
+    ":!:cli/tsc/*typescript.js",
+    ":!:cli/tsc/compiler.d.ts",
+    ":!:cli/tsc/dts/**",
+    ":!:tests/node_compat/test/**",
     ":!:tests/registry/**",
     ":!:tests/specs/**",
     ":!:tests/testdata/**",
-    ":!:cli/bench/testdata/**",
-    ":!:cli/tsc/dts/**",
-    ":!:cli/tsc/*typescript.js",
-    ":!:cli/tsc/compiler.d.ts",
-    ":!:tests/wpt/suite/**",
-    ":!:cli/tools/init/templates/**",
     ":!:tests/unit_node/testdata/**",
-    ":!:tests/node_compat/test/**",
-    ":!:cli/tools/bench/mitata.rs",
+    ":!:tests/wpt/suite/**",
 
     // rust
     "*.rs",
     ":!:ops/optimizer_tests/**",
+
+    // c
+    "*.c",
 
     // toml
     "*Cargo.toml",

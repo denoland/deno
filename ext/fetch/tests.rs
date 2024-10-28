@@ -4,6 +4,8 @@ use std::net::SocketAddr;
 use std::sync::Arc;
 
 use bytes::Bytes;
+use fast_socks5::server::Config as Socks5Config;
+use fast_socks5::server::Socks5Socket;
 use http_body_util::BodyExt;
 use tokio::io::AsyncReadExt;
 use tokio::io::AsyncWriteExt;
@@ -19,27 +21,41 @@ static EXAMPLE_KEY: &[u8] =
 async fn test_https_proxy_http11() {
   let src_addr = create_https_server(false).await;
   let prx_addr = create_http_proxy(src_addr).await;
-  run_test_client(prx_addr, src_addr, false, http::Version::HTTP_11).await;
+  run_test_client(prx_addr, src_addr, "http", http::Version::HTTP_11).await;
 }
 
 #[tokio::test]
 async fn test_https_proxy_h2() {
   let src_addr = create_https_server(true).await;
   let prx_addr = create_http_proxy(src_addr).await;
-  run_test_client(prx_addr, src_addr, false, http::Version::HTTP_2).await;
+  run_test_client(prx_addr, src_addr, "http", http::Version::HTTP_2).await;
 }
 
 #[tokio::test]
 async fn test_https_proxy_https_h2() {
   let src_addr = create_https_server(true).await;
   let prx_addr = create_https_proxy(src_addr).await;
-  run_test_client(prx_addr, src_addr, true, http::Version::HTTP_2).await;
+  run_test_client(prx_addr, src_addr, "https", http::Version::HTTP_2).await;
+}
+
+#[tokio::test]
+async fn test_socks_proxy_http11() {
+  let src_addr = create_https_server(false).await;
+  let prx_addr = create_socks_proxy(src_addr).await;
+  run_test_client(prx_addr, src_addr, "socks5", http::Version::HTTP_11).await;
+}
+
+#[tokio::test]
+async fn test_socks_proxy_h2() {
+  let src_addr = create_https_server(true).await;
+  let prx_addr = create_socks_proxy(src_addr).await;
+  run_test_client(prx_addr, src_addr, "socks5", http::Version::HTTP_2).await;
 }
 
 async fn run_test_client(
   prx_addr: SocketAddr,
   src_addr: SocketAddr,
-  https: bool,
+  proto: &str,
   ver: http::Version,
 ) {
   let client = create_http_client(
@@ -48,7 +64,7 @@ async fn run_test_client(
       root_cert_store: None,
       ca_certs: vec![],
       proxy: Some(deno_tls::Proxy {
-        url: format!("http{}://{}", if https { "s" } else { "" }, prx_addr),
+        url: format!("{}://{}", proto, prx_addr),
         basic_auth: None,
       }),
       unsafely_ignore_certificate_errors: Some(vec![]),
@@ -177,6 +193,32 @@ async fn create_https_proxy(src_addr: SocketAddr) -> SocketAddr {
           tokio::net::TcpStream::connect(src_addr).await.unwrap();
         sock.write_all(b"HTTP/1.1 200 OK\r\n\r\n").await.unwrap();
         tokio::io::copy_bidirectional(&mut sock, &mut dst_tcp)
+          .await
+          .unwrap();
+      };
+      tokio::spawn(fut);
+    }
+  });
+
+  prx_addr
+}
+
+async fn create_socks_proxy(src_addr: SocketAddr) -> SocketAddr {
+  let prx_tcp = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+  let prx_addr = prx_tcp.local_addr().unwrap();
+
+  tokio::spawn(async move {
+    while let Ok((sock, _)) = prx_tcp.accept().await {
+      let cfg: Socks5Config = Default::default();
+      let mut socks_conn = Socks5Socket::new(sock, cfg.into())
+        .upgrade_to_socks5()
+        .await
+        .unwrap();
+
+      let fut = async move {
+        let mut dst_tcp =
+          tokio::net::TcpStream::connect(src_addr).await.unwrap();
+        tokio::io::copy_bidirectional(&mut socks_conn, &mut dst_tcp)
           .await
           .unwrap();
       };

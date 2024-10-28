@@ -60,6 +60,13 @@
     "error_when_package_json_changed": {
       "steps": [
         {
+          "args": [
+            "eval",
+            "Deno.writeTextFileSync('deno.json', `{ \"nodeModulesDir\": \"auto\" }`)"
+          ],
+          "output": "[WILDCARD]"
+        },
+        {
           "args": "cache add.ts",
           "output": "[WILDCARD]"
         },
@@ -76,9 +83,6 @@
           "exitCode": 1
         },
         {
-          "envs": {
-            "DENO_FUTURE": "1"
-          },
           "args": "install --frozen",
           "output": "frozen_package_json_changed_install.out",
           "exitCode": 1
@@ -110,6 +114,33 @@
         {
           "args": "run --frozen add.ts",
           "output": "no_lockfile_run.out",
+          "exitCode": 1
+        }
+      ]
+    },
+    "lockfile_config": {
+      "steps": [
+        {
+          "args": [
+            "eval",
+            "Deno.writeTextFileSync('deno.json', JSON.stringify({ lock: { frozen: true }, ...JSON.parse(Deno.readTextFileSync('deno.json')) }))"
+          ],
+          "output": ""
+        },
+        {
+          "args": "cache --frozen=false add.ts",
+          "output": "[WILDCARD]"
+        },
+        {
+          // sub.ts imports from an npm package
+          // that's not in the lockfile
+          "args": "run sub.ts",
+          "output": "frozen_new_dep_run.out",
+          "exitCode": 1
+        },
+        {
+          "args": "cache sub.ts",
+          "output": "frozen_new_dep_cache.out",
           "exitCode": 1
         }
       ]
@@ -147,9 +178,22 @@
           "output": "[WILDCARD]"
         },
         {
-          "args": "run --frozen --allow-net http-dynamic.ts",
+          "args": "run --frozen --allow-import http-dynamic.ts",
           "output": "frozen_new_dep_dynamic_http.out",
           "exitCode": 1
+        }
+      ]
+    },
+    "check_subcommand": {
+      "steps": [
+        {
+          "args": "check --frozen=true add.ts",
+          "output": "[WILDCARD]The lockfile is out of date[WILDCARD]",
+          "exitCode": 1
+        },
+        {
+          "args": "check --frozen=false add.ts",
+          "output": "[WILDCARD]Check [WILDCARD]add.ts\n"
         }
       ]
     }

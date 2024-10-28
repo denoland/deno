@@ -1,7 +1,13 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 import { assert, assertEquals } from "@std/assert";
-import { createSign, createVerify, sign, verify } from "node:crypto";
+import {
+  createSign,
+  createVerify,
+  generateKeyPairSync,
+  sign,
+  verify,
+} from "node:crypto";
 import { Buffer } from "node:buffer";
 import fixtures from "../testdata/crypto_digest_fixtures.json" with {
   type: "json",
@@ -148,16 +154,21 @@ Deno.test("crypto.createSign|sign - compare with node", async (t) => {
     new URL(import.meta.resolve("../testdata/rsa_private.pem")),
   );
   for (const { digest, signature } of fixtures) {
-    await t.step(digest, () => {
-      let actual: string | null;
-      try {
-        const s = createSign(digest);
-        s.update(DATA);
-        actual = s.sign(privateKey).toString("hex");
-      } catch {
-        actual = null;
-      }
-      assertEquals(actual, signature);
+    await t.step({
+      name: digest,
+      // TODO(lucacasonato): our md4 implementation does not have an OID, so it can't sign/verify
+      ignore: digest.toLowerCase().includes("md4"),
+      fn: () => {
+        let actual: string | null;
+        try {
+          const s = createSign(digest);
+          s.update(DATA);
+          actual = s.sign(privateKey).toString("hex");
+        } catch {
+          actual = null;
+        }
+        assertEquals(actual, signature);
+      },
     });
   }
 });
@@ -170,7 +181,8 @@ Deno.test("crypto.createVerify|verify - compare with node", async (t) => {
   for (const { digest, signature } of fixtures) {
     await t.step({
       name: digest,
-      ignore: signature === null,
+      // TODO(lucacasonato): our md4 implementation does not have an OID, so it can't sign/verify
+      ignore: signature === null || digest.toLowerCase().includes("md4"),
       fn: () => {
         const s = createVerify(digest);
         s.update(DATA);
@@ -178,4 +190,26 @@ Deno.test("crypto.createVerify|verify - compare with node", async (t) => {
       },
     });
   }
+});
+
+Deno.test("crypto sign|verify dsaEncoding", () => {
+  const { privateKey, publicKey } = generateKeyPairSync("ec", {
+    namedCurve: "P-256",
+  });
+
+  const sign = createSign("SHA256");
+  sign.write("some data to sign");
+  sign.end();
+
+  // @ts-ignore FIXME: types dont allow this
+  privateKey.dsaEncoding = "ieee-p1363";
+  const signature = sign.sign(privateKey, "hex");
+
+  const verify = createVerify("SHA256");
+  verify.write("some data to sign");
+  verify.end();
+
+  // @ts-ignore FIXME: types dont allow this
+  publicKey.dsaEncoding = "ieee-p1363";
+  assert(verify.verify(publicKey, signature, "hex"));
 });

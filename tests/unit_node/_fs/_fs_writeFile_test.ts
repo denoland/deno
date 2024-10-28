@@ -104,7 +104,12 @@ Deno.test(
 );
 
 Deno.test(
-  "Data is written to correct rid",
+  {
+    name: "Data is written to correct rid",
+    // TODO(bartlomieju): this test is broken in Deno 2, because `file.rid` is undefined.
+    // The fs APIs should be rewritten to use actual FDs, not RIDs
+    ignore: true,
+  },
   async function testCorrectWriteUsingRid() {
     const tempFile: string = await Deno.makeTempFile();
     using file = await Deno.open(tempFile, {
@@ -114,6 +119,7 @@ Deno.test(
     });
 
     await new Promise<void>((resolve, reject) => {
+      // @ts-ignore (iuioiua) `file.rid` should no longer be needed once FDs are used
       writeFile(file.rid, "hello world", (err) => {
         if (err) return reject(err);
         resolve();
@@ -191,7 +197,12 @@ Deno.test("Path can be an URL", async function testCorrectWriteUsingURL() {
   assertEquals(decoder.decode(data), "hello world");
 });
 
-Deno.test("Mode is correctly set", async function testCorrectFileMode() {
+Deno.test({
+  name: "Mode is correctly set",
+  // TODO(bartlomieju): this test is broken in Deno 2, because `file.rid` is undefined.
+  // The fs APIs should be rewritten to use actual FDs, not RIDs
+  ignore: true,
+}, async function testCorrectFileMode() {
   if (Deno.build.os === "windows") return;
   const filename = "_fs_writeFile_test_file.txt";
 
@@ -207,7 +218,12 @@ Deno.test("Mode is correctly set", async function testCorrectFileMode() {
 });
 
 Deno.test(
-  "Mode is not set when rid is passed",
+  {
+    name: "Mode is not set when rid is passed",
+    // TODO(bartlomieju): this test is broken in Deno 2, because `file.rid` is undefined.
+    // The fs APIs should be rewritten to use actual FDs, not RIDs
+    ignore: true,
+  },
   async function testCorrectFileModeRid() {
     if (Deno.build.os === "windows") return;
 
@@ -219,6 +235,7 @@ Deno.test(
     });
 
     await new Promise<void>((resolve, reject) => {
+      // @ts-ignore (iuioiua) `file.rid` should no longer be needed once FDs are used
       writeFile(file.rid, "hello world", { mode: 0o777 }, (err) => {
         if (err) return reject(err);
         resolve();
@@ -259,7 +276,12 @@ Deno.test(
 );
 
 Deno.test(
-  "Data is written synchronously to correct rid",
+  {
+    name: "Data is written synchronously to correct rid",
+    // TODO(bartlomieju): this test is broken in Deno 2, because `file.rid` is undefined.
+    // The fs APIs should be rewritten to use actual FDs, not RIDs
+    ignore: true,
+  },
   function testCorrectWriteSyncUsingRid() {
     const tempFile: string = Deno.makeTempFileSync();
     using file = Deno.openSync(tempFile, {
@@ -268,6 +290,7 @@ Deno.test(
       read: true,
     });
 
+    // @ts-ignore (iuioiua) `file.rid` should no longer be needed once FDs are used
     writeFileSync(file.rid, "hello world");
 
     const data = Deno.readFileSync(tempFile);

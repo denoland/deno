@@ -8,6 +8,7 @@ use num_traits::Zero;
 use rand::Rng;
 use std::ops::Deref;
 
+#[derive(Clone)]
 pub struct Prime(pub num_bigint_dig::BigUint);
 
 impl Prime {

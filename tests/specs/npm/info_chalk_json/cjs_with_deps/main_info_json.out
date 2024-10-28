@@ -1,0 +1,172 @@
+{
+  "version": 1,
+  "roots": [
+    "file://[WILDCARD]/main.js"
+  ],
+  "modules": [
+    {
+      "kind": "esm",
+      "dependencies": [
+        {
+          "specifier": "npm:chalk@4",
+          "code": {
+            "specifier": "npm:chalk@4",
+            "span": {
+              "start": {
+                "line": 0,
+                "character": 18
+              },
+              "end": {
+                "line": 0,
+                "character": 31
+              }
+            }
+          },
+          "npmPackage": "chalk@4.1.2"
+        },
+        {
+          "specifier": "npm:chai@4.3",
+          "code": {
+            "specifier": "npm:chai@4.3",
+            "span": {
+              "start": {
+                "line": 1,
+                "character": 23
+              },
+              "end": {
+                "line": 1,
+                "character": 37
+              }
+            }
+          },
+          "npmPackage": "chai@4.3.6"
+        }
+      ],
+      "local": "[WILDCARD]main.js",
+      "size": 325,
+      "mediaType": "JavaScript",
+      "specifier": "[WILDCARD]/main.js"
+    },
+    {
+      "kind": "npm",
+      "specifier": "npm:/chai@4.3.6",
+      "npmPackage": "chai@4.3.6"
+    },
+    {
+      "kind": "npm",
+      "specifier": "npm:/chalk@4.1.2",
+      "npmPackage": "chalk@4.1.2"
+    }
+  ],
+  "redirects": {
+    "npm:chai@4.3": "npm:/chai@4.3.6",
+    "npm:chalk@4": "npm:/chalk@4.1.2"
+  },
+  "npmPackages": {
+    "ansi-styles@4.3.0": {
+      "name": "ansi-styles",
+      "version": "4.3.0",
+      "dependencies": [
+        "color-convert@2.0.1"
+      ],
+      "registryUrl": "http://localhost:4260/"
+    },
+    "assertion-error@1.1.0": {
+      "name": "assertion-error",
+      "version": "1.1.0",
+      "dependencies": [],
+      "registryUrl": "http://localhost:4260/"
+    },
+    "chai@4.3.6": {
+      "name": "chai",
+      "version": "4.3.6",
+      "dependencies": [
+        "assertion-error@1.1.0",
+        "check-error@1.0.2",
+        "deep-eql@3.0.1",
+        "get-func-name@2.0.0",
+        "loupe@2.3.4",
+        "pathval@1.1.1",
+        "type-detect@4.0.8"
+      ],
+      "registryUrl": "http://localhost:4260/"
+    },
+    "chalk@4.1.2": {
+      "name": "chalk",
+      "version": "4.1.2",
+      "dependencies": [
+        "ansi-styles@4.3.0",
+        "supports-color@7.2.0"
+      ],
+      "registryUrl": "http://localhost:4260/"
+    },
+    "check-error@1.0.2": {
+      "name": "check-error",
+      "version": "1.0.2",
+      "dependencies": [],
+      "registryUrl": "http://localhost:4260/"
+    },
+    "color-convert@2.0.1": {
+      "name": "color-convert",
+      "version": "2.0.1",
+      "dependencies": [
+        "color-name@1.1.4"
+      ],
+      "registryUrl": "http://localhost:4260/"
+    },
+    "color-name@1.1.4": {
+      "name": "color-name",
+      "version": "1.1.4",
+      "dependencies": [],
+      "registryUrl": "http://localhost:4260/"
+    },
+    "deep-eql@3.0.1": {
+      "name": "deep-eql",
+      "version": "3.0.1",
+      "dependencies": [
+        "type-detect@4.0.8"
+      ],
+      "registryUrl": "http://localhost:4260/"
+    },
+    "get-func-name@2.0.0": {
+      "name": "get-func-name",
+      "version": "2.0.0",
+      "dependencies": [],
+      "registryUrl": "http://localhost:4260/"
+    },
+    "has-flag@4.0.0": {
+      "name": "has-flag",
+      "version": "4.0.0",
+      "dependencies": [],
+      "registryUrl": "http://localhost:4260/"
+    },
+    "loupe@2.3.4": {
+      "name": "loupe",
+      "version": "2.3.4",
+      "dependencies": [
+        "get-func-name@2.0.0"
+      ],
+      "registryUrl": "http://localhost:4260/"
+    },
+    "pathval@1.1.1": {
+      "name": "pathval",
+      "version": "1.1.1",
+      "dependencies": [],
+      "registryUrl": "http://localhost:4260/"
+    },
+    "supports-color@7.2.0": {
+      "name": "supports-color",
+      "version": "7.2.0",
+      "dependencies": [
+        "has-flag@4.0.0"
+      ],
+      "registryUrl": "http://localhost:4260/"
+    },
+    "type-detect@4.0.8": {
+      "name": "type-detect",
+      "version": "4.0.8",
+      "dependencies": [],
+      "registryUrl": "http://localhost:4260/"
+    }
+  }
+}

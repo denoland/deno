@@ -2,7 +2,7 @@
 
 [package]
 name = "deno_broadcast_channel"
-version = "0.157.0"
+version = "0.168.0"
 authors.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -16,5 +16,6 @@ path = "lib.rs"
 [dependencies]
 async-trait.workspace = true
 deno_core.workspace = true
+thiserror.workspace = true
 tokio.workspace = true
 uuid.workspace = true

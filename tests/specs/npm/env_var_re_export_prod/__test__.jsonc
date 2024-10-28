@@ -1,0 +1,7 @@
+{
+  "args": "run --allow-read --allow-env --quiet env_var_re_export/main.js",
+  "output": "prod\n",
+  "envs": {
+    "NODE_ENV": "production"
+  }
+}

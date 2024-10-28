@@ -452,6 +452,11 @@ fn filter_coverages(
   let exclude: Vec<Regex> =
     exclude.iter().map(|e| Regex::new(e).unwrap()).collect();
 
+  // Matches virtual file paths for doc testing
+  // e.g. file:///path/to/mod.ts$23-29.ts
+  let doc_test_re =
+    Regex::new(r"\$\d+-\d+\.(js|mjs|cjs|jsx|ts|mts|cts|tsx)$").unwrap();
+
   coverages
     .into_iter()
     .filter(|e| {
@@ -460,6 +465,7 @@ fn filter_coverages(
         || e.url.ends_with("$deno$test.js")
         || e.url.ends_with(".snap")
         || is_supported_test_path(Path::new(e.url.as_str()))
+        || doc_test_re.is_match(e.url.as_str())
         || Url::parse(&e.url)
           .ok()
           .map(|url| npm_resolver.in_npm_package(&url))
@@ -565,7 +571,7 @@ pub async fn cover_files(
       | MediaType::Cjs
       | MediaType::Mjs
       | MediaType::Json => None,
-      MediaType::Dts | MediaType::Dmts | MediaType::Dcts => Some(Vec::new()),
+      MediaType::Dts | MediaType::Dmts | MediaType::Dcts => Some(String::new()),
       MediaType::TypeScript
       | MediaType::Jsx
       | MediaType::Mts
@@ -587,8 +593,7 @@ pub async fn cover_files(
       }
     };
     let runtime_code: String = match transpiled_code {
-      Some(code) => String::from_utf8(code)
-        .with_context(|| format!("Failed decoding {}", file.specifier))?,
+      Some(code) => code,
       None => original_source.to_string(),
     };
 

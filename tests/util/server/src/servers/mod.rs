@@ -91,6 +91,7 @@ const PROVENANCE_MOCK_SERVER_PORT: u16 = 4251;
 pub(crate) const PUBLIC_NPM_REGISTRY_PORT: u16 = 4260;
 pub(crate) const PRIVATE_NPM_REGISTRY_1_PORT: u16 = 4261;
 pub(crate) const PRIVATE_NPM_REGISTRY_2_PORT: u16 = 4262;
+pub(crate) const PRIVATE_NPM_REGISTRY_3_PORT: u16 = 4263;
 
 // Use the single-threaded scheduler. The hyper server is used as a point of
 // comparison for the (single-threaded!) benchmarks in cli/bench. We're not
@@ -143,6 +144,8 @@ pub async fn run_all_servers() {
     npm_registry::private_npm_registry1(PRIVATE_NPM_REGISTRY_1_PORT);
   let private_npm_registry_2_server_futs =
     npm_registry::private_npm_registry2(PRIVATE_NPM_REGISTRY_2_PORT);
+  let private_npm_registry_3_server_futs =
+    npm_registry::private_npm_registry3(PRIVATE_NPM_REGISTRY_3_PORT);
 
   let mut futures = vec![
     redirect_server_fut.boxed_local(),
@@ -173,6 +176,7 @@ pub async fn run_all_servers() {
   futures.extend(npm_registry_server_futs);
   futures.extend(private_npm_registry_1_server_futs);
   futures.extend(private_npm_registry_2_server_futs);
+  futures.extend(private_npm_registry_3_server_futs);
 
   assert_eq!(futures.len(), TEST_SERVERS_COUNT);
 
@@ -194,7 +198,6 @@ fn json_body(value: serde_json::Value) -> UnsyncBoxBody<Bytes, Infallible> {
 
 /// Benchmark server that just serves "hello world" responses.
 async fn hyper_hello(port: u16) {
-  println!("hyper hello");
   let addr = SocketAddr::from(([127, 0, 0, 1], port));
   let handler = move |_: Request<hyper::body::Incoming>| async move {
     Ok::<_, anyhow::Error>(Response::new(UnsyncBoxBody::new(
@@ -338,7 +341,10 @@ async fn get_tcp_listener_stream(
     .collect::<Vec<_>>();
 
   // Eye catcher for HttpServerCount
-  println!("ready: {name} on {:?}", addresses);
+  #[allow(clippy::print_stdout)]
+  {
+    println!("ready: {name} on {:?}", addresses);
+  }
 
   futures::stream::select_all(listeners)
 }
@@ -354,7 +360,10 @@ async fn run_tls_client_auth_server(port: u16) {
   while let Some(Ok(mut tls_stream)) = tls.next().await {
     tokio::spawn(async move {
       let Ok(handshake) = tls_stream.handshake().await else {
-        eprintln!("Failed to handshake");
+        #[allow(clippy::print_stderr)]
+        {
+          eprintln!("Failed to handshake");
+        }
         return;
       };
       // We only need to check for the presence of client certificates
@@ -401,7 +410,6 @@ async fn absolute_redirect(
       .collect();
 
     if let Some(url) = query_params.get("redirect_to") {
-      println!("URL: {url:?}");
       let redirect = redirect_resp(url.to_owned());
       return Ok(redirect);
     }
@@ -409,7 +417,6 @@ async fn absolute_redirect(
 
   if path.starts_with("/REDIRECT") {
     let url = &req.uri().path()[9..];
-    println!("URL: {url:?}");
     let redirect = redirect_resp(url.to_string());
     return Ok(redirect);
   }
@@ -1135,7 +1142,7 @@ async fn main_server(
     _ => {
       let uri_path = req.uri().path();
       let mut file_path = testdata_path().to_path_buf();
-      file_path.push(&uri_path[1..].replace("%2f", "/"));
+      file_path.push(uri_path[1..].replace("%2f", "/"));
       if let Ok(file) = tokio::fs::read(&file_path).await {
         let file_resp = custom_headers(uri_path, file);
         return Ok(file_resp);
@@ -1353,6 +1360,7 @@ async fn wrap_client_auth_https_server(port: u16) {
       // here. Rusttls ensures that they are valid and signed by the CA.
       match handshake.has_peer_certificates {
         true => { yield Ok(tls); },
+        #[allow(clippy::print_stderr)]
         false => { eprintln!("https_client_auth: no valid client certificate"); },
       };
     }

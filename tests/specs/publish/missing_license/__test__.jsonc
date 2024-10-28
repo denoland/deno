@@ -1,4 +1,5 @@
 {
   "args": "publish --token 'sadfasdf'",
-  "output": "mod.out"
+  "output": "mod.out",
+  "exitCode": 1
 }

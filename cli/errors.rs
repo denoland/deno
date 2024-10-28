@@ -17,7 +17,6 @@ use deno_graph::ModuleGraphError;
 use deno_graph::ModuleLoadError;
 use deno_graph::ResolutionError;
 use import_map::ImportMapError;
-use std::fmt::Write;
 
 fn get_import_map_error_class(_: &ImportMapError) -> &'static str {
   "URIError"
@@ -30,7 +29,6 @@ fn get_diagnostic_class(_: &ParseDiagnostic) -> &'static str {
 fn get_module_graph_error_class(err: &ModuleGraphError) -> &'static str {
   use deno_graph::JsrLoadError;
   use deno_graph::NpmLoadError;
-  use deno_graph::WorkspaceLoadError;
 
   match err {
     ModuleGraphError::ResolutionError(err)
@@ -72,10 +70,6 @@ fn get_module_graph_error_class(err: &ModuleGraphError) -> &'static str {
           | JsrLoadError::PackageVersionNotFound(_)
           | JsrLoadError::UnknownExport { .. } => "NotFound",
         },
-        ModuleLoadError::Workspace(err) => match err {
-          WorkspaceLoadError::MemberInvalidExportPath { .. } => "TypeError",
-          WorkspaceLoadError::MissingMemberExports { .. } => "NotFound",
-        },
       },
     },
   }
@@ -112,17 +106,5 @@ pub fn get_error_class_name(e: &AnyError) -> &'static str {
       e.downcast_ref::<ResolutionError>()
         .map(get_resolution_error_class)
     })
-    .unwrap_or_else(|| {
-      if cfg!(debug) {
-        log::warn!(
-          "Error '{}' contains boxed error of unknown type:{}",
-          e,
-          e.chain().fold(String::new(), |mut output, e| {
-            let _ = write!(output, "\n  {e:?}");
-            output
-          })
-        );
-      }
-      "Error"
-    })
+    .unwrap_or("Error")
 }

@@ -15,17 +15,11 @@ Deno.test(function consoleSize() {
   assert(typeof result.rows !== "undefined");
 });
 
-Deno.test({ permissions: { read: true } }, function isatty() {
-  // CI not under TTY, so cannot test stdin/stdout/stderr.
-  const f = Deno.openSync("tests/testdata/assets/hello.txt");
-  assert(!Deno.isatty(f.rid));
-  f.close();
-});
-
 Deno.test(function isattyError() {
   let caught = false;
   try {
     // Absurdly large rid.
+    // @ts-ignore `Deno.isatty()` was soft-removed in Deno 2.
     Deno.isatty(0x7fffffff);
   } catch (e) {
     caught = true;

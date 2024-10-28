@@ -11,7 +11,7 @@ use deno_npm::NpmSystemInfo;
 use deno_runtime::deno_fs::FileSystem;
 
 use crate::args::LifecycleScriptsConfig;
-use crate::args::PackageJsonInstallDepsProvider;
+use crate::args::NpmInstallDepsProvider;
 use crate::util::progress_bar::ProgressBar;
 
 pub use self::common::NpmPackageFsResolver;
@@ -27,7 +27,7 @@ use super::resolution::NpmResolution;
 pub fn create_npm_fs_resolver(
   fs: Arc<dyn FileSystem>,
   npm_cache: Arc<NpmCache>,
-  pkg_json_deps_provider: &Arc<PackageJsonInstallDepsProvider>,
+  npm_install_deps_provider: &Arc<NpmInstallDepsProvider>,
   progress_bar: &ProgressBar,
   resolution: Arc<NpmResolution>,
   tarball_cache: Arc<TarballCache>,
@@ -39,7 +39,7 @@ pub fn create_npm_fs_resolver(
     Some(node_modules_folder) => Arc::new(LocalNpmPackageResolver::new(
       npm_cache,
       fs,
-      pkg_json_deps_provider.clone(),
+      npm_install_deps_provider.clone(),
       progress_bar.clone(),
       resolution,
       tarball_cache,
@@ -53,6 +53,7 @@ pub fn create_npm_fs_resolver(
       tarball_cache,
       resolution,
       system_info,
+      lifecycle_scripts,
     )),
   }
 }
