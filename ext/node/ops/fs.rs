@@ -152,13 +152,21 @@ where
     let mut cpath = path.as_bytes().to_vec();
     cpath.push(0);
     if bigint {
-      #[cfg(not(target_os = "macos"))]
+      #[cfg(not(any(
+        target_os = "macos",
+        target_os = "freebsd",
+        target_os = "openbsd"
+      )))]
       // SAFETY: `cpath` is NUL-terminated and result is pointer to valid statfs memory.
       let (code, result) = unsafe {
         let mut result: libc::statfs64 = std::mem::zeroed();
         (libc::statfs64(cpath.as_ptr() as _, &mut result), result)
       };
-      #[cfg(target_os = "macos")]
+      #[cfg(not(any(
+        target_os = "macos",
+        target_os = "freebsd",
+        target_os = "openbsd"
+      )))]
       // SAFETY: `cpath` is NUL-terminated and result is pointer to valid statfs memory.
       let (code, result) = unsafe {
         let mut result: libc::statfs = std::mem::zeroed();
@@ -168,7 +176,10 @@ where
         return Err(std::io::Error::last_os_error().into());
       }
       Ok(StatFs {
+        #[cfg(not(target_os = "openbsd"))]
         typ: result.f_type as _,
+        #[cfg(target_os = "openbsd")]
+        typ: 0 as _,
         bsize: result.f_bsize as _,
         blocks: result.f_blocks as _,
         bfree: result.f_bfree as _,
@@ -186,7 +197,10 @@ where
         return Err(std::io::Error::last_os_error().into());
       }
       Ok(StatFs {
+        #[cfg(not(target_os = "openbsd"))]
         typ: result.f_type as _,
+        #[cfg(target_os = "openbsd")]
+        typ: 0 as _,
         bsize: result.f_bsize as _,
         blocks: result.f_blocks as _,
         bfree: result.f_bfree as _,
