@@ -5,10 +5,17 @@ console.log(globals.global === globals.globalThis);
 // @ts-expect-error even though these are the same object, they have different types
 console.log(globals.globalThis === globalThis);
 console.log(globals.process.execArgv);
+console.log("process equals process", process === globals.process);
 
 type AssertTrue<T extends true> = never;
-type _TestNoProcessGlobal = AssertTrue<
-  typeof globalThis extends { process: any } ? false : true
+type _TestHasProcessGlobal = AssertTrue<
+  typeof globalThis extends { process: any } ? true : false
+>;
+type _TestProcessGlobalVersion = AssertTrue<
+  typeof process.versions.node extends string ? true : false
+>;
+type _TestNoBufferGlogal = AssertTrue<
+  typeof globalThis extends { Buffer: any } ? false : true
 >;
 type _TestHasNodeJsGlobal = NodeJS.Architecture;
 
