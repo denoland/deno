@@ -162,11 +162,11 @@ where
         let mut result: libc::statfs64 = std::mem::zeroed();
         (libc::statfs64(cpath.as_ptr() as _, &mut result), result)
       };
-      #[cfg(not(any(
+      #[cfg(any(
         target_os = "macos",
         target_os = "freebsd",
         target_os = "openbsd"
-      )))]
+      ))]
       // SAFETY: `cpath` is NUL-terminated and result is pointer to valid statfs memory.
       let (code, result) = unsafe {
         let mut result: libc::statfs = std::mem::zeroed();
