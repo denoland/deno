@@ -1354,9 +1354,9 @@ dependencies = [
 
 [[package]]
 name = "deno_cache_dir"
-version = "0.13.0"
+version = "0.13.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "186a102b13b4512841f5f40784cd25822042d22954afe3b5b070d406d15eb4f2"
+checksum = "693ca429aebf945de5fef30df232044f9f80be4cc5a5e7c8d767226c43880f5a"
 dependencies = [
  "base32",
  "deno_media_type",
