@@ -25,8 +25,8 @@ use log::debug;
 use oxc::allocator::Allocator;
 use oxc::parser::Parser;
 use oxc::semantic::SemanticBuilder;
+use oxc::span::SourceType;
 use oxc_linter::FixKind;
-use oxc_linter::LinterBuilder;
 use reporters::create_reporter;
 use reporters::LintReporter;
 use serde::Serialize;
@@ -74,23 +74,6 @@ pub async fn lint(
   flags: Arc<Flags>,
   lint_flags: LintFlags,
 ) -> Result<(), AnyError> {
-  if true {
-    let linter = oxc_linter::LinterBuilder::all().build();
-    let allocator = Allocator::default();
-    let ret = Parser::new(&allocator, source_text, source_type).parse();
-    let path = Path::new("");
-    let semantic_ret = SemanticBuilder::new()
-      .with_build_jsdoc(true)
-      .with_cfg(true)
-      .build_module_record(path, &ret.program)
-      .build(&ret.program);
-    let linter = LinterBuilder::all().with_fix(FixKind::All).build();
-    let semantic = Rc::new(semantic_ret.semantic);
-    linter.run(&std::env::current_dir().unwrap(), semantic);
-
-    return Ok(());
-  }
-
   if let Some(watch_flags) = &lint_flags.watch {
     if lint_flags.is_stdin() {
       return Err(generic_error(
@@ -315,6 +298,12 @@ impl WorkspaceLinter {
       deno_lint_config: lint_config,
     }));
 
+    let mut oxc_linter_builder = oxc_linter::LinterBuilder::all();
+    if lint_options.fix {
+      oxc_linter_builder = oxc_linter_builder.with_fix(FixKind::All)
+    }
+    let oxc_linter = Arc::new(oxc_linter_builder.build());
+
     let mut futures = Vec::with_capacity(2);
     if linter.has_package_rules() {
       if self.workspace_module_graph.is_none() {
@@ -374,6 +363,8 @@ impl WorkspaceLinter {
       let maybe_incremental_cache = maybe_incremental_cache.clone();
       let linter = linter.clone();
       let cli_options = cli_options.clone();
+
+      let oxc_linter = oxc_linter.clone();
       async move {
         run_parallelized(paths, {
           move |file_path| {
@@ -385,6 +376,22 @@ impl WorkspaceLinter {
               if incremental_cache.is_file_same(&file_path, &file_text) {
                 return Ok(());
               }
+            }
+
+            let allocator = Allocator::default();
+            let source_type = SourceType::from_path(&file_path).unwrap();
+            let ret = Parser::new(&allocator, &file_text, source_type).parse();
+            let semantic_ret = SemanticBuilder::new()
+              .with_build_jsdoc(true)
+              .with_cfg(true)
+              .build_module_record(&file_path, &ret.program)
+              .build(&ret.program);
+
+            let semantic = Rc::new(semantic_ret.semantic);
+            let messages = oxc_linter.run(&file_path, semantic);
+
+            for msg in messages {
+              eprintln!("oxc {:#?}", msg.error)
             }
 
             let r = linter.lint_file(
