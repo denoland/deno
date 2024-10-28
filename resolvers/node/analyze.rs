@@ -27,10 +27,10 @@ use crate::NpmResolverRc;
 use crate::PathClean;
 
 #[derive(Debug, Clone)]
-pub enum CjsAnalysis {
+pub enum CjsAnalysis<'a> {
   /// File was found to be an ES module and the translator should
   /// load the code as ESM.
-  Esm(String),
+  Esm(Cow<'a, str>),
   Cjs(CjsAnalysisExports),
 }
 
@@ -50,11 +50,11 @@ pub trait CjsCodeAnalyzer {
   /// already has it. If the source is needed by the implementation,
   /// then it can use the provided source, or otherwise load it if
   /// necessary.
-  async fn analyze_cjs(
+  async fn analyze_cjs<'a>(
     &self,
     specifier: &Url,
-    maybe_source: Option<String>,
-  ) -> Result<CjsAnalysis, AnyError>;
+    maybe_source: Option<Cow<'a, str>>,
+  ) -> Result<CjsAnalysis<'a>, AnyError>;
 }
 
 pub struct NodeCodeTranslator<
@@ -90,11 +90,11 @@ impl<TCjsCodeAnalyzer: CjsCodeAnalyzer, TNodeResolverEnv: NodeResolverEnv>
   /// For all discovered reexports the analysis will be performed recursively.
   ///
   /// If successful a source code for equivalent ES module is returned.
-  pub async fn translate_cjs_to_esm(
+  pub async fn translate_cjs_to_esm<'a>(
     &self,
     entry_specifier: &Url,
-    source: Option<String>,
-  ) -> Result<String, AnyError> {
+    source: Option<Cow<'a, str>>,
+  ) -> Result<Cow<'a, str>, AnyError> {
     let mut temp_var_count = 0;
 
     let analysis = self
@@ -159,7 +159,7 @@ impl<TCjsCodeAnalyzer: CjsCodeAnalyzer, TNodeResolverEnv: NodeResolverEnv>
     source.push("export default mod;".to_string());
 
     let translated_source = source.join("\n");
-    Ok(translated_source)
+    Ok(Cow::Owned(translated_source))
   }
 
   async fn analyze_reexports<'a>(
@@ -174,7 +174,7 @@ impl<TCjsCodeAnalyzer: CjsCodeAnalyzer, TNodeResolverEnv: NodeResolverEnv>
     struct Analysis {
       reexport_specifier: url::Url,
       referrer: url::Url,
-      analysis: CjsAnalysis,
+      analysis: CjsAnalysis<'static>,
     }
 
     type AnalysisFuture<'a> = LocalBoxFuture<'a, Result<Analysis, AnyError>>;

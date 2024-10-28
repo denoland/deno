@@ -571,13 +571,13 @@ impl<TGraphContainer: ModuleGraphContainer>
         source,
       }) => {
         let js_source = match media_type {
-          MediaType::Cts => {
+          MediaType::Cts => Cow::Owned(
             self
               .emitter
               .emit_parsed_source(specifier, MediaType::Cts, source)
-              .await?
-          }
-          MediaType::Cjs => source.to_string(),
+              .await?,
+          ),
+          MediaType::Cjs => Cow::Borrowed(source.as_ref()),
           _ => unreachable!(),
         };
         let text = self
@@ -588,7 +588,7 @@ impl<TGraphContainer: ModuleGraphContainer>
         self.parsed_source_cache.free(specifier);
 
         Ok(Some(ModuleCodeStringSource {
-          code: ModuleSourceCode::String(text.into()),
+          code: ModuleSourceCode::String(text.into_owned().into()),
           found_url: specifier.clone(),
           media_type,
         }))

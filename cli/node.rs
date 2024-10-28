@@ -1,5 +1,6 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
+use std::borrow::Cow;
 use std::sync::Arc;
 
 use deno_ast::MediaType;
@@ -156,11 +157,11 @@ impl CliCjsCodeAnalyzer {
 
 #[async_trait::async_trait(?Send)]
 impl CjsCodeAnalyzer for CliCjsCodeAnalyzer {
-  async fn analyze_cjs(
+  async fn analyze_cjs<'a>(
     &self,
     specifier: &ModuleSpecifier,
-    source: Option<String>,
-  ) -> Result<ExtNodeCjsAnalysis, AnyError> {
+    source: Option<Cow<'a, str>>,
+  ) -> Result<ExtNodeCjsAnalysis<'a>, AnyError> {
     let source = match source {
       Some(source) => source,
       None => {
@@ -168,7 +169,7 @@ impl CjsCodeAnalyzer for CliCjsCodeAnalyzer {
           if let Ok(source_from_file) =
             self.fs.read_text_file_lossy_async(path, None).await
           {
-            source_from_file
+            Cow::Owned(source_from_file)
           } else {
             return Ok(ExtNodeCjsAnalysis::Cjs(CjsAnalysisExports {
               exports: vec![],

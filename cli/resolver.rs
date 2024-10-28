@@ -43,6 +43,7 @@ use node_resolver::NodeModuleKind;
 use node_resolver::NodeResolution;
 use node_resolver::NodeResolutionMode;
 use node_resolver::PackageJson;
+use std::borrow::Cow;
 use std::path::Path;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -418,8 +419,9 @@ impl NpmModuleLoader {
       ModuleSourceCode::String(
         self
           .node_code_translator
-          .translate_cjs_to_esm(specifier, Some(code))
+          .translate_cjs_to_esm(specifier, Some(Cow::Owned(code)))
           .await?
+          .into_owned()
           .into(),
       )
     } else {

@@ -19,6 +19,7 @@ use deno_core::error::type_error;
 use deno_core::error::AnyError;
 use deno_core::futures::FutureExt;
 use deno_core::v8_set_flags;
+use deno_core::FastString;
 use deno_core::FeatureChecker;
 use deno_core::ModuleLoader;
 use deno_core::ModuleSourceCode;
@@ -44,6 +45,7 @@ use deno_semver::npm::NpmPackageReqReference;
 use import_map::parse_from_json;
 use node_resolver::analyze::NodeCodeTranslator;
 use node_resolver::NodeResolutionMode;
+use serialization::DenoCompileModuleSource;
 use std::borrow::Cow;
 use std::rc::Rc;
 use std::sync::Arc;
@@ -62,6 +64,7 @@ use crate::cache::NodeAnalysisCache;
 use crate::cache::RealDenoCacheEnv;
 use crate::http_util::HttpClientProvider;
 use crate::node::CliCjsCodeAnalyzer;
+use crate::node::CliNodeCodeTranslator;
 use crate::npm::create_cli_npm_resolver;
 use crate::npm::CliByonmNpmResolverCreateOptions;
 use crate::npm::CliNodeRequireLoader;
@@ -94,8 +97,10 @@ use self::binary::Metadata;
 use self::file_system::DenoCompileFileSystem;
 
 struct SharedModuleLoaderState {
+  cjs_resolutions: Arc<CjsResolutionStore>,
   fs: Arc<dyn deno_fs::FileSystem>,
   modules: StandaloneModules,
+  node_code_translator: Arc<CliNodeCodeTranslator>,
   node_resolver: Arc<CliNodeResolver>,
   npm_module_loader: Arc<NpmModuleLoader>,
   npm_resolver: Arc<dyn CliNpmResolver>,
@@ -329,16 +334,58 @@ impl ModuleLoader for EmbeddedModuleLoader {
     match self.shared.modules.read(original_specifier) {
       Ok(Some(module)) => {
         let (module_specifier, module_type, module_source) =
-          module.into_for_v8();
-        deno_core::ModuleLoadResponse::Sync(Ok(
-          deno_core::ModuleSource::new_with_redirect(
-            module_type,
-            module_source,
-            original_specifier,
-            module_specifier,
-            None,
-          ),
-        ))
+          module.into_parts();
+        if self.shared.cjs_resolutions.is_known_cjs(original_specifier) {
+          let original_specifier = original_specifier.clone();
+          let module_specifier = module_specifier.clone();
+          let shared = self.shared.clone();
+          deno_core::ModuleLoadResponse::Async(
+            async move {
+              let source = match module_source {
+                DenoCompileModuleSource::String(string) => {
+                  Cow::Borrowed(string)
+                }
+                DenoCompileModuleSource::Bytes(module_code_bytes) => {
+                  match module_code_bytes {
+                    Cow::Owned(bytes) => Cow::Owned(
+                      crate::util::text_encoding::from_utf8_lossy_owned(bytes),
+                    ),
+                    Cow::Borrowed(bytes) => String::from_utf8_lossy(bytes),
+                  }
+                }
+              };
+              let source = shared
+                .node_code_translator
+                .translate_cjs_to_esm(&module_specifier, Some(source))
+                .await?;
+              let module_source = match source {
+                Cow::Owned(source) => ModuleSourceCode::String(source.into()),
+                Cow::Borrowed(source) => {
+                  ModuleSourceCode::String(FastString::from_static(source))
+                }
+              };
+              Ok(deno_core::ModuleSource::new_with_redirect(
+                module_type,
+                module_source,
+                &original_specifier,
+                &module_specifier,
+                None,
+              ))
+            }
+            .boxed_local(),
+          )
+        } else {
+          let module_source = module_source.into_for_v8();
+          deno_core::ModuleLoadResponse::Sync(Ok(
+            deno_core::ModuleSource::new_with_redirect(
+              module_type,
+              module_source,
+              original_specifier,
+              module_specifier,
+              None,
+            ),
+          ))
+        }
       }
       Ok(None) => deno_core::ModuleLoadResponse::Sync(Err(type_error(
         format!("{MODULE_NOT_FOUND}: {}", original_specifier),
@@ -597,8 +644,10 @@ pub async fn run(data: StandaloneData) -> Result<i32, AnyError> {
   };
   let module_loader_factory = StandaloneModuleLoaderFactory {
     shared: Arc::new(SharedModuleLoaderState {
+      cjs_resolutions: cjs_resolutions.clone(),
       fs: fs.clone(),
       modules,
+      node_code_translator: node_code_translator.clone(),
       node_resolver: cli_node_resolver.clone(),
       npm_module_loader: Arc::new(NpmModuleLoader::new(
         cjs_resolutions.clone(),
