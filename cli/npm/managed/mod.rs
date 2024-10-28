@@ -55,7 +55,7 @@ use super::CliNpmResolver;
 use super::InnerCliNpmResolverRef;
 use super::ResolvePkgFolderFromDenoReqError;
 
-mod cache;
+pub mod cache;
 mod registry;
 mod resolution;
 mod resolvers;

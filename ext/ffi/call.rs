@@ -9,12 +9,14 @@ use crate::FfiPermissions;
 use crate::ForeignFunction;
 use deno_core::op2;
 use deno_core::serde_json::Value;
+use deno_core::serde_v8::BigInt as V8BigInt;
 use deno_core::serde_v8::ExternalPointer;
 use deno_core::unsync::spawn_blocking;
 use deno_core::v8;
 use deno_core::OpState;
 use deno_core::ResourceId;
 use libffi::middle::Arg;
+use num_bigint::BigInt;
 use serde::Serialize;
 use std::cell::RefCell;
 use std::ffi::c_void;
@@ -202,6 +204,7 @@ where
 #[serde(untagged)]
 pub enum FfiValue {
   Value(Value),
+  BigInt(V8BigInt),
   External(ExternalPointer),
 }
 
@@ -251,18 +254,18 @@ fn ffi_call(
       NativeType::I32 => {
         FfiValue::Value(Value::from(cif.call::<i32>(fun_ptr, &call_args)))
       }
-      NativeType::U64 => {
-        FfiValue::Value(Value::from(cif.call::<u64>(fun_ptr, &call_args)))
-      }
-      NativeType::I64 => {
-        FfiValue::Value(Value::from(cif.call::<i64>(fun_ptr, &call_args)))
-      }
-      NativeType::USize => {
-        FfiValue::Value(Value::from(cif.call::<usize>(fun_ptr, &call_args)))
-      }
-      NativeType::ISize => {
-        FfiValue::Value(Value::from(cif.call::<isize>(fun_ptr, &call_args)))
-      }
+      NativeType::U64 => FfiValue::BigInt(V8BigInt::from(BigInt::from(
+        cif.call::<u64>(fun_ptr, &call_args),
+      ))),
+      NativeType::I64 => FfiValue::BigInt(V8BigInt::from(BigInt::from(
+        cif.call::<i64>(fun_ptr, &call_args),
+      ))),
+      NativeType::USize => FfiValue::BigInt(V8BigInt::from(BigInt::from(
+        cif.call::<usize>(fun_ptr, &call_args),
+      ))),
+      NativeType::ISize => FfiValue::BigInt(V8BigInt::from(BigInt::from(
+        cif.call::<isize>(fun_ptr, &call_args),
+      ))),
       NativeType::F32 => {
         FfiValue::Value(Value::from(cif.call::<f32>(fun_ptr, &call_args)))
       }
