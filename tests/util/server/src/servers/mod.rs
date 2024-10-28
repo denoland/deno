@@ -993,107 +993,107 @@ async fn main_server(
           .unwrap(),
       )
     }
-    (&Method::POST, "/kv_blackhole/snapshot_read") => {
-      if req
-        .headers()
-        .get("authorization")
-        .and_then(|x| x.to_str().ok())
-        .unwrap_or_default()
-        != format!("Bearer {}", KV_DATABASE_TOKEN)
-      {
-        return Ok(
-          Response::builder()
-            .status(StatusCode::UNAUTHORIZED)
-            .body(empty_body())
-            .unwrap(),
-        );
-      }
+    // (&Method::POST, "/kv_blackhole/snapshot_read") => {
+    //   if req
+    //     .headers()
+    //     .get("authorization")
+    //     .and_then(|x| x.to_str().ok())
+    //     .unwrap_or_default()
+    //     != format!("Bearer {}", KV_DATABASE_TOKEN)
+    //   {
+    //     return Ok(
+    //       Response::builder()
+    //         .status(StatusCode::UNAUTHORIZED)
+    //         .body(empty_body())
+    //         .unwrap(),
+    //     );
+    //   }
 
-      let body = req
-        .into_body()
-        .collect()
-        .await
-        .unwrap_or_default()
-        .to_bytes();
-      let Ok(body): Result<SnapshotRead, _> = prost::Message::decode(&body[..])
-      else {
-        return Ok(
-          Response::builder()
-            .status(StatusCode::BAD_REQUEST)
-            .body(empty_body())
-            .unwrap(),
-        );
-      };
-      if body.ranges.is_empty() {
-        return Ok(
-          Response::builder()
-            .status(StatusCode::BAD_REQUEST)
-            .body(empty_body())
-            .unwrap(),
-        );
-      }
-      Ok(
-        Response::builder()
-          .body(UnsyncBoxBody::new(Full::new(Bytes::from(
-            SnapshotReadOutput {
-              ranges: body
-                .ranges
-                .iter()
-                .map(|_| ReadRangeOutput { values: vec![] })
-                .collect(),
-              read_disabled: false,
-              read_is_strongly_consistent: true,
-              status: SnapshotReadStatus::SrSuccess.into(),
-            }
-            .encode_to_vec(),
-          ))))
-          .unwrap(),
-      )
-    }
-    (&Method::POST, "/kv_blackhole/atomic_write") => {
-      if req
-        .headers()
-        .get("authorization")
-        .and_then(|x| x.to_str().ok())
-        .unwrap_or_default()
-        != format!("Bearer {}", KV_DATABASE_TOKEN)
-      {
-        return Ok(
-          Response::builder()
-            .status(StatusCode::UNAUTHORIZED)
-            .body(empty_body())
-            .unwrap(),
-        );
-      }
+    //   let body = req
+    //     .into_body()
+    //     .collect()
+    //     .await
+    //     .unwrap_or_default()
+    //     .to_bytes();
+    //   let Ok(body): Result<SnapshotRead, _> = prost::Message::decode(&body[..])
+    //   else {
+    //     return Ok(
+    //       Response::builder()
+    //         .status(StatusCode::BAD_REQUEST)
+    //         .body(empty_body())
+    //         .unwrap(),
+    //     );
+    //   };
+    //   if body.ranges.is_empty() {
+    //     return Ok(
+    //       Response::builder()
+    //         .status(StatusCode::BAD_REQUEST)
+    //         .body(empty_body())
+    //         .unwrap(),
+    //     );
+    //   }
+    //   Ok(
+    //     Response::builder()
+    //       .body(UnsyncBoxBody::new(Full::new(Bytes::from(
+    //         SnapshotReadOutput {
+    //           ranges: body
+    //             .ranges
+    //             .iter()
+    //             .map(|_| ReadRangeOutput { values: vec![] })
+    //             .collect(),
+    //           read_disabled: false,
+    //           read_is_strongly_consistent: true,
+    //           status: SnapshotReadStatus::SrSuccess.into(),
+    //         }
+    //         .encode_to_vec(),
+    //       ))))
+    //       .unwrap(),
+    //   )
+    // }
+    // (&Method::POST, "/kv_blackhole/atomic_write") => {
+    //   if req
+    //     .headers()
+    //     .get("authorization")
+    //     .and_then(|x| x.to_str().ok())
+    //     .unwrap_or_default()
+    //     != format!("Bearer {}", KV_DATABASE_TOKEN)
+    //   {
+    //     return Ok(
+    //       Response::builder()
+    //         .status(StatusCode::UNAUTHORIZED)
+    //         .body(empty_body())
+    //         .unwrap(),
+    //     );
+    //   }
 
-      let body = req
-        .into_body()
-        .collect()
-        .await
-        .unwrap_or_default()
-        .to_bytes();
-      let Ok(_body): Result<AtomicWrite, _> = prost::Message::decode(&body[..])
-      else {
-        return Ok(
-          Response::builder()
-            .status(StatusCode::BAD_REQUEST)
-            .body(empty_body())
-            .unwrap(),
-        );
-      };
-      Ok(
-        Response::builder()
-          .body(UnsyncBoxBody::new(Full::new(Bytes::from(
-            AtomicWriteOutput {
-              status: AtomicWriteStatus::AwSuccess.into(),
-              versionstamp: vec![0u8; 10],
-              failed_checks: vec![],
-            }
-            .encode_to_vec(),
-          ))))
-          .unwrap(),
-      )
-    }
+    //   let body = req
+    //     .into_body()
+    //     .collect()
+    //     .await
+    //     .unwrap_or_default()
+    //     .to_bytes();
+    //   let Ok(_body): Result<AtomicWrite, _> = prost::Message::decode(&body[..])
+    //   else {
+    //     return Ok(
+    //       Response::builder()
+    //         .status(StatusCode::BAD_REQUEST)
+    //         .body(empty_body())
+    //         .unwrap(),
+    //     );
+    //   };
+    //   Ok(
+    //     Response::builder()
+    //       .body(UnsyncBoxBody::new(Full::new(Bytes::from(
+    //         AtomicWriteOutput {
+    //           status: AtomicWriteStatus::AwSuccess.into(),
+    //           versionstamp: vec![0u8; 10],
+    //           failed_checks: vec![],
+    //         }
+    //         .encode_to_vec(),
+    //       ))))
+    //       .unwrap(),
+    //   )
+    // }
     (&Method::GET, "/upgrade/sleep/release-latest.txt") => {
       tokio::time::sleep(Duration::from_secs(95)).await;
       return Ok(

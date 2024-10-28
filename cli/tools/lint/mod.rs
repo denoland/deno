@@ -3,6 +3,7 @@
 //! This module provides file linting utilities using
 //! [`deno_lint`](https://github.com/denoland/deno_lint).
 
+use deno_ast::swc::utils::IsEmpty;
 use deno_ast::ModuleSpecifier;
 use deno_ast::ParsedSource;
 use deno_config::deno_json::LintRulesConfig;
@@ -20,6 +21,8 @@ use deno_core::unsync::future::LocalFutureExt;
 use deno_core::unsync::future::SharedLocal;
 use deno_graph::ModuleGraph;
 use deno_lint::diagnostic::LintDiagnostic;
+use deno_lint::diagnostic::LintDiagnosticDetails;
+use deno_lint::diagnostic::LintDiagnosticRange;
 use deno_lint::linter::LintConfig;
 use log::debug;
 use oxc::allocator::Allocator;
@@ -53,6 +56,7 @@ use crate::tools::fmt::run_parallelized;
 use crate::util::display;
 use crate::util::file_watcher;
 use crate::util::fs::canonicalize_path;
+use crate::util::fs::specifier_from_file_path;
 use crate::util::path::is_script_ext;
 use crate::util::sync::AtomicFlag;
 
@@ -277,6 +281,7 @@ impl WorkspaceLinter {
     member_dir: WorkspaceDirectory,
     paths: Vec<PathBuf>,
   ) -> Result<(), AnyError> {
+    eprintln!("LINT FILES {:#?}", paths);
     self.file_count += paths.len();
 
     let lint_rules = self.lint_rule_provider.resolve_lint_rules_err_empty(
@@ -306,6 +311,7 @@ impl WorkspaceLinter {
 
     let mut futures = Vec::with_capacity(2);
     if linter.has_package_rules() {
+      eprintln!("PKG RULES");
       if self.workspace_module_graph.is_none() {
         let module_graph_creator = self.module_graph_creator.clone();
         let packages = self.workspace_dir.jsr_packages_for_publish();
@@ -372,11 +378,11 @@ impl WorkspaceLinter {
               deno_ast::strip_bom(fs::read_to_string(&file_path)?);
 
             // don't bother rechecking this file if it didn't have any diagnostics before
-            if let Some(incremental_cache) = &maybe_incremental_cache {
-              if incremental_cache.is_file_same(&file_path, &file_text) {
-                return Ok(());
-              }
-            }
+            // if let Some(incremental_cache) = &maybe_incremental_cache {
+            //   if incremental_cache.is_file_same(&file_path, &file_text) {
+            //     return Ok(());
+            //   }
+            // }
 
             let allocator = Allocator::default();
             let source_type = SourceType::from_path(&file_path).unwrap();
@@ -389,17 +395,64 @@ impl WorkspaceLinter {
 
             let semantic = Rc::new(semantic_ret.semantic);
             let messages = oxc_linter.run(&file_path, semantic);
-
+            let mut diagnostics: Vec<LintDiagnostic> = vec![];
+            let specifier = specifier_from_file_path(&file_path)?;
             for msg in messages {
-              eprintln!("oxc {:#?}", msg.error)
+              eprintln!("oxc {:#?}", msg.error);
+
+              let range: Option<LintDiagnosticRange> =
+                if msg.error.labels.is_empty() {
+                  None
+                } else {
+                  if let Some(_labels) = &msg.error.labels {
+                    // TODO: Multiple labels? Not sure what they are
+                    // exactly
+
+                    // TODO: I have no idea what SWC wants from me
+                    // if let Some(first) = labels.first() {
+                    //   let start = SourcePos {};
+                    //   Some(LintDiagnosticRange {
+                    //     text_info: SourceTextInfo::from_string(file_text),
+                    //     range: SourceRange {
+                    //       start: SourcePos::unsafely_from_byte_pos(
+                    //         BytePos {
+                    //           (first.offset())
+                    //         },
+                    //       ),
+                    //       end: first.offset() + first.len(),
+                    //     },
+                    //     description: first.label().map(|s| s.to_string()),
+                    //   })
+                    // }
+                    None
+                  } else {
+                    None
+                  }
+                };
+              diagnostics.push(LintDiagnostic {
+                specifier: specifier.clone(),
+                details: LintDiagnosticDetails {
+                  message: msg.error.message.to_string(),
+                  custom_docs_url: msg
+                    .error
+                    .url
+                    .as_ref()
+                    .map(|x| x.to_string()),
+                  code: "foo".to_string(),
+                  fixes: vec![],
+                  hint: None,
+                  info: vec![],
+                },
+                range,
+              });
             }
 
-            let r = linter.lint_file(
+            let mut r = linter.lint_file(
               &file_path,
               file_text,
               cli_options.ext_flag().as_deref(),
             );
-            if let Ok((file_source, file_diagnostics)) = &r {
+            if let Ok((file_source, file_diagnostics)) = &mut r {
               if let Some(incremental_cache) = &maybe_incremental_cache {
                 if file_diagnostics.is_empty() {
                   // update the incremental cache if there were no diagnostics
@@ -410,6 +463,8 @@ impl WorkspaceLinter {
                   )
                 }
               }
+
+              file_diagnostics.append(&mut diagnostics);
             }
 
             let success = handle_lint_result(
