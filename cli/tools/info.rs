@@ -11,6 +11,7 @@ use deno_core::anyhow::bail;
 use deno_core::error::AnyError;
 use deno_core::resolve_url_or_path;
 use deno_core::serde_json;
+use deno_core::url;
 use deno_graph::Dependency;
 use deno_graph::GraphKind;
 use deno_graph::Module;
@@ -51,18 +52,20 @@ pub async fn info(
     let npmrc = cli_options.npmrc();
     let resolver = factory.workspace_resolver().await?;
 
-    let maybe_import_specifier =
-      if let Some(import_map) = resolver.maybe_import_map() {
-        if let Ok(imports_specifier) =
-          import_map.resolve(&specifier, import_map.base_url())
-        {
-          Some(imports_specifier)
-        } else {
-          None
-        }
+    let cwd_url =
+      url::Url::from_directory_path(cli_options.initial_cwd()).unwrap();
+
+    let maybe_import_specifier = if let Some(import_map) =
+      resolver.maybe_import_map()
+    {
+      if let Ok(imports_specifier) = import_map.resolve(&specifier, &cwd_url) {
+        Some(imports_specifier)
       } else {
         None
-      };
+      }
+    } else {
+      None
+    };
 
     let specifier = match maybe_import_specifier {
       Some(specifier) => specifier,
