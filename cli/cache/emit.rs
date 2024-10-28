@@ -39,7 +39,7 @@ impl EmitCache {
     &self,
     specifier: &ModuleSpecifier,
     expected_source_hash: u64,
-  ) -> Option<Vec<u8>> {
+  ) -> Option<String> {
     let emit_filename = self.get_emit_filename(specifier)?;
     let bytes = self.disk_cache.get(&emit_filename).ok()?;
     self
@@ -100,7 +100,7 @@ impl EmitFileSerializer {
     &self,
     mut bytes: Vec<u8>,
     expected_source_hash: u64,
-  ) -> Option<Vec<u8>> {
+  ) -> Option<String> {
     let last_newline_index = bytes.iter().rposition(|&b| b == b'\n')?;
     let (content, last_line) = bytes.split_at(last_newline_index);
     let hashes = last_line.strip_prefix(LAST_LINE_PREFIX.as_bytes())?;
@@ -120,7 +120,7 @@ impl EmitFileSerializer {
 
     // everything looks good, truncate and return it
     bytes.truncate(content.len());
-    Some(bytes)
+    String::from_utf8(bytes).ok()
   }
 
   pub fn serialize(&self, code: &[u8], source_hash: u64) -> Vec<u8> {
@@ -170,8 +170,6 @@ mod test {
       },
       emit_failed_flag: Default::default(),
     };
-    let to_string =
-      |bytes: Vec<u8>| -> String { String::from_utf8(bytes).unwrap() };
 
     let specifier1 =
       ModuleSpecifier::from_file_path(temp_dir.path().join("file1.ts"))
@@ -188,13 +186,10 @@ mod test {
     assert_eq!(cache.get_emit_code(&specifier1, 5), None);
     // providing the correct source hash
     assert_eq!(
-      cache.get_emit_code(&specifier1, 10).map(to_string),
+      cache.get_emit_code(&specifier1, 10),
       Some(emit_code1.clone()),
     );
-    assert_eq!(
-      cache.get_emit_code(&specifier2, 2).map(to_string),
-      Some(emit_code2)
-    );
+    assert_eq!(cache.get_emit_code(&specifier2, 2), Some(emit_code2));
 
     // try changing the cli version (should not load previous ones)
     let cache = EmitCache {
@@ -215,18 +210,12 @@ mod test {
       },
       emit_failed_flag: Default::default(),
     };
-    assert_eq!(
-      cache.get_emit_code(&specifier1, 5).map(to_string),
-      Some(emit_code1)
-    );
+    assert_eq!(cache.get_emit_code(&specifier1, 5), Some(emit_code1));
 
     // adding when already exists should not cause issue
     let emit_code3 = "asdf".to_string();
     cache.set_emit_code(&specifier1, 20, emit_code3.as_bytes());
     assert_eq!(cache.get_emit_code(&specifier1, 5), None);
-    assert_eq!(
-      cache.get_emit_code(&specifier1, 20).map(to_string),
-      Some(emit_code3)
-    );
+    assert_eq!(cache.get_emit_code(&specifier1, 20), Some(emit_code3));
   }
 }

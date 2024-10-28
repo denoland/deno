@@ -10,4 +10,4 @@ console.log(require("./add").add(1, 2));
           or change the file extension to .cjs,
           or add package.json next to the file with "type": "commonjs" option
           and pass --unstable-detect-cjs flag.
-    hint: See https://docs.deno.com/go/commonjs for details
+    docs: https://docs.deno.com/go/commonjs

@@ -571,7 +571,7 @@ pub async fn cover_files(
       | MediaType::Cjs
       | MediaType::Mjs
       | MediaType::Json => None,
-      MediaType::Dts | MediaType::Dmts | MediaType::Dcts => Some(Vec::new()),
+      MediaType::Dts | MediaType::Dmts | MediaType::Dcts => Some(String::new()),
       MediaType::TypeScript
       | MediaType::Jsx
       | MediaType::Mts
@@ -593,8 +593,7 @@ pub async fn cover_files(
       }
     };
     let runtime_code: String = match transpiled_code {
-      Some(code) => String::from_utf8(code)
-        .with_context(|| format!("Failed decoding {}", file.specifier))?,
+      Some(code) => code,
       None => original_source.to_string(),
     };
 
