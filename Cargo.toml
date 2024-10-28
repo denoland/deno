@@ -157,8 +157,8 @@ percent-encoding = "2.3.0"
 phf = { version = "0.11", features = ["macros"] }
 pin-project = "1.0.11" # don't pin because they yank crates from cargo
 pretty_assertions = "=1.4.0"
-prost = "0.11"
-prost-build = "0.11"
+prost = "0.13.3"
+prost-build = "0.13.3"
 rand = "=0.8.5"
 regex = "^1.7.0"
 reqwest = { version = "=0.12.5", default-features = false, features = ["rustls-tls", "stream", "gzip", "brotli", "socks", "json", "http2"] } # pinned because of https://github.com/seanmonstar/reqwest/pull/1955
@@ -198,7 +198,7 @@ tower-lsp = { package = "deno_tower_lsp", version = "0.1.0", features = ["propos
 tower-service = "0.3.2"
 twox-hash = "=1.6.3"
 # Upgrading past 2.4.1 may cause WPT failures
-url = { version = "< 2.5.0", features = ["serde", "expose_internals"] }
+url = { version = "^2.5.0", features = ["serde"] }
 uuid = { version = "1.3.0", features = ["v4"] }
 webpki-root-certs = "0.26.5"
 webpki-roots = "0.26"

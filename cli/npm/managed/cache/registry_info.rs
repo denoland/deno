@@ -199,6 +199,7 @@ impl RegistryInfoDownloader {
           return std::future::ready(Err(Arc::new(err))).boxed_local()
         }
       };
+    eprintln!("load future: {:#?}", maybe_auth_header);
     let guard = self.progress_bar.update(package_url.as_str());
     let name = name.to_string();
     async move {

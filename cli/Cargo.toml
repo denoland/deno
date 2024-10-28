@@ -169,6 +169,8 @@ which.workspace = true
 zeromq.workspace = true
 zip = { version = "2.1.6", default-features = false, features = ["deflate-flate2"] }
 zstd.workspace = true
+oxc_linter = { path = "../../../github/oxc/crates/oxc_linter" }
+oxc = { path = "../../../github/oxc/crates/oxc", features = ["full"]}
 
 [target.'cfg(windows)'.dependencies]
 junction.workspace = true
