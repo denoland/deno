@@ -287,8 +287,11 @@ where
         .clone_from(&received_changed_paths);
       let excluded_paths = &exclude_set_cloned;
       let received_changed_paths_cloned = received_changed_paths.clone();
-      let is_excluded_file_changed =
-        received_changed_paths_cloned.unwrap().iter().any(|path| {
+      let is_excluded_file_changed = received_changed_paths_cloned
+        .clone()
+        .unwrap()
+        .iter()
+        .any(|path| {
           excluded_paths.matches_path(path)
             || excluded_paths.inner().iter().any(|excluded_path| {
               excluded_path.base_path().unwrap().is_dir()
@@ -306,6 +309,11 @@ where
             let _ = changed_paths_tx.send(received_changed_paths);
           }
         }
+      } else {
+        log::debug!(
+          "Following file content changed, but excluded from watch: {:?}",
+          received_changed_paths_cloned.unwrap()[0]
+        );
       }
     }
   });

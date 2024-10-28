@@ -1626,6 +1626,39 @@ async fn run_watch_with_excluded_paths() {
 }
 
 #[flaky_test(tokio)]
+async fn watch_directory_with_excluded_file_in_same_directory() {
+  let t = TempDir::new();
+
+  let file_to_exclude = t.path().join("file_to_exclude.js");
+  file_to_exclude.write("export const foo = 0;");
+
+  let file_to_watch = t.path().join("file_to_watch.js");
+  file_to_watch.write("console.log('hello')");
+
+  let mut child = util::deno_cmd()
+    .current_dir(t.path())
+    .arg("run")
+    .arg("--watch=.")
+    .arg("--watch-exclude=file_to_exclude.js")
+    .arg("-L")
+    .arg("debug")
+    .arg(&file_to_watch)
+    .env("NO_COLOR", "1")
+    .piped_output()
+    .spawn()
+    .unwrap();
+  let (_stdout_lines, mut stderr_lines) = child_lines(&mut child);
+  wait_contains("Watching paths", &mut stderr_lines).await;
+  file_to_exclude.write("console.log(\"This file's content has been changed, but it's excluded from watch.\")");
+  wait_contains(
+    "Following file content changed, but excluded from watch: ",
+    &mut stderr_lines,
+  )
+  .await;
+  check_alive_then_kill(child);
+}
+
+#[flaky_test(tokio)]
 async fn run_hmr_server() {
   let t = TempDir::new();
   let file_to_watch = t.path().join("file_to_watch.js");
