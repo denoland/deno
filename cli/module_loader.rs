@@ -541,7 +541,10 @@ impl<TGraphContainer: ModuleGraphContainer>
       Some(Module::Js(module)) => module.specifier.clone(),
       Some(Module::Json(module)) => module.specifier.clone(),
       Some(Module::External(module)) => {
-        node::resolve_specifier_into_node_modules(&module.specifier)
+        node::resolve_specifier_into_node_modules(
+          &module.specifier,
+          self.shared.fs.as_ref(),
+        )
       }
       None => specifier.into_owned(),
     };

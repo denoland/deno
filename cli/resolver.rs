@@ -303,8 +303,10 @@ impl CliNodeResolver {
       // so canoncalize then check if it's in the node_modules directory.
       // If so, check if we need to store this specifier as being a CJS
       // resolution.
-      let specifier =
-        crate::node::resolve_specifier_into_node_modules(specifier);
+      let specifier = crate::node::resolve_specifier_into_node_modules(
+        specifier,
+        self.fs.as_ref(),
+      );
       if self.in_npm_package(&specifier) {
         let resolution =
           self.node_resolver.url_to_node_resolution(specifier)?;
@@ -465,41 +467,36 @@ impl CjsTracker {
     }
 
     let media_type = MediaType::from_specifier(specifier);
-    if matches!(media_type, MediaType::Cjs | MediaType::Cts)
-      || self.set.contains(specifier)
-    {
-      return Ok(true);
-    }
 
-    if self.unstable_detect_cjs {
-      let is_pkg_json_type_affected = match media_type {
-        MediaType::JavaScript
-        | MediaType::Jsx
-        | MediaType::TypeScript
-        | MediaType::Tsx
-        | MediaType::Dts => true,
-        MediaType::Dmts
-        | MediaType::Dcts
-        | MediaType::Css
-        | MediaType::Json
-        | MediaType::Wasm
-        | MediaType::Mjs
-        | MediaType::Cjs
-        | MediaType::Mts
-        | MediaType::Cts
-        | MediaType::SourceMap
-        | MediaType::Unknown => false,
-      };
-      if is_pkg_json_type_affected {
-        if let Some(pkg_json) =
-          self.pkg_json_resolver.get_closest_package_json(specifier)?
-        {
-          return Ok(pkg_json.typ == "commonjs");
+    match media_type {
+      MediaType::Mts | MediaType::Mjs | MediaType::Dmts => Ok(false),
+      MediaType::Cjs | MediaType::Cts | MediaType::Dcts => Ok(true),
+      MediaType::JavaScript
+      | MediaType::Jsx
+      | MediaType::TypeScript
+      | MediaType::Tsx
+      | MediaType::Dts
+      // treat these as unknown
+      | MediaType::Json
+      | MediaType::Css
+      | MediaType::Wasm
+      | MediaType::SourceMap
+      | MediaType::Unknown => {
+        if self.set.contains(specifier) {
+          return Ok(true);
         }
+
+        if self.unstable_detect_cjs {
+          if let Some(pkg_json) =
+            self.pkg_json_resolver.get_closest_package_json(specifier)?
+          {
+            return Ok(pkg_json.typ == "commonjs");
+          }
+        }
+
+        Ok(false)
       }
     }
-
-    Ok(false)
   }
 
   pub fn insert(&self, specifier: ModuleSpecifier) {

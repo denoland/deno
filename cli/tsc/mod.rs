@@ -32,6 +32,7 @@ use deno_graph::GraphKind;
 use deno_graph::Module;
 use deno_graph::ModuleGraph;
 use deno_graph::ResolutionResolved;
+use deno_runtime::deno_fs;
 use deno_runtime::deno_node::NodeResolver;
 use deno_semver::npm::NpmPackageReqReference;
 use node_resolver::errors::NodeJsErrorCode;
@@ -576,8 +577,10 @@ fn op_load_inner(
         Module::Npm(_) | Module::Node(_) => None,
         Module::External(module) => {
           // means it's Deno code importing an npm module
-          let specifier =
-            node::resolve_specifier_into_node_modules(&module.specifier);
+          let specifier = node::resolve_specifier_into_node_modules(
+            &module.specifier,
+            &deno_fs::RealFs,
+          );
           Some(Cow::Owned(load_from_node_modules(
             &specifier,
             state.maybe_npm.as_ref().map(|n| n.node_resolver.as_ref()),
@@ -831,8 +834,10 @@ fn resolve_graph_specifier_types(
     Some(Module::External(module)) => {
       // we currently only use "External" for when the module is in an npm package
       Ok(state.maybe_npm.as_ref().map(|npm| {
-        let specifier =
-          node::resolve_specifier_into_node_modules(&module.specifier);
+        let specifier = node::resolve_specifier_into_node_modules(
+          &module.specifier,
+          &deno_fs::RealFs,
+        );
         NodeResolution::into_specifier_and_media_type(
           npm.node_resolver.url_to_node_resolution(specifier).ok(),
         )

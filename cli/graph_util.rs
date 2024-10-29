@@ -692,6 +692,7 @@ impl ModuleGraphBuilder {
   ) -> cache::FetchCacher {
     cache::FetchCacher::new(
       self.file_fetcher.clone(),
+      self.fs.clone(),
       self.global_http_cache.clone(),
       self.npm_resolver.clone(),
       self.module_info_cache.clone(),

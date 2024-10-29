@@ -21,6 +21,7 @@ use deno_graph::source::CacheInfo;
 use deno_graph::source::LoadFuture;
 use deno_graph::source::LoadResponse;
 use deno_graph::source::Loader;
+use deno_runtime::deno_fs;
 use deno_runtime::deno_permissions::PermissionsContainer;
 use std::collections::HashMap;
 use std::path::Path;
@@ -183,6 +184,7 @@ pub struct FetchCacherOptions {
 pub struct FetchCacher {
   pub file_header_overrides: HashMap<ModuleSpecifier, HashMap<String, String>>,
   file_fetcher: Arc<FileFetcher>,
+  fs: Arc<dyn deno_fs::FileSystem>,
   global_http_cache: Arc<GlobalHttpCache>,
   npm_resolver: Arc<dyn CliNpmResolver>,
   module_info_cache: Arc<ModuleInfoCache>,
@@ -194,6 +196,7 @@ pub struct FetchCacher {
 impl FetchCacher {
   pub fn new(
     file_fetcher: Arc<FileFetcher>,
+    fs: Arc<dyn deno_fs::FileSystem>,
     global_http_cache: Arc<GlobalHttpCache>,
     npm_resolver: Arc<dyn CliNpmResolver>,
     module_info_cache: Arc<ModuleInfoCache>,
@@ -201,6 +204,7 @@ impl FetchCacher {
   ) -> Self {
     Self {
       file_fetcher,
+      fs,
       global_http_cache,
       npm_resolver,
       module_info_cache,
@@ -265,8 +269,10 @@ impl Loader for FetchCacher {
       // symlinked to `/my-project-2/node_modules`), so first we checked if the path
       // is in a node_modules dir to avoid needlessly canonicalizing, then now compare
       // against the canonicalized specifier.
-      let specifier =
-        crate::node::resolve_specifier_into_node_modules(specifier);
+      let specifier = crate::node::resolve_specifier_into_node_modules(
+        specifier,
+        self.fs.as_ref(),
+      );
       if self.npm_resolver.in_npm_package(&specifier) {
         return Box::pin(futures::future::ready(Ok(Some(
           LoadResponse::External { specifier },
