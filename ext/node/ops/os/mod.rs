@@ -180,9 +180,9 @@ fn get_user_info(_uid: u32) -> Result<UserInfo, OsError> {
   // SAFETY: path is `bufsize` elements
   unsafe {
     if GetUserProfileDirectoryW(token.0, path.as_mut_ptr(), &mut bufsize) == 0 {
-      return Err(OsError::FailedToGetUserInfo(
-        std::io::Error::last_os_error().into(),
-      ));
+      return Err(
+        OsError::FailedToGetUserInfo(std::io::Error::last_os_error()),
+      );
     }
   }
   // remove trailing nul
@@ -209,7 +209,7 @@ where
   {
     let permissions = state.borrow_mut::<P>();
     permissions
-      .check_sys("username", "node:os.userInfo()")
+      .check_sys("userInfo", "node:os.userInfo()")
       .map_err(OsError::Permission)?;
   }
 
