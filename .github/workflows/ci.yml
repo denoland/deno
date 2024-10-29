@@ -8,7 +8,7 @@ on:
     branches:
       - main
     tags:
-      - '*'
+      - "*"
   pull_request:
     types:
       - opened
@@ -16,14 +16,14 @@ on:
       - synchronize
       - ready_for_review
 concurrency:
-  group: '${{ github.workflow }}-${{ !contains(github.event.pull_request.labels.*.name, ''ci-test-flaky'') && github.head_ref || github.run_id }}'
+  group: "${{ github.workflow }}-${{ !contains(github.event.pull_request.labels.*.name, 'ci-test-flaky') && github.head_ref || github.run_id }}"
   cancel-in-progress: true
 jobs:
   pre_build:
     name: pre-build
     runs-on: ubuntu-latest
     outputs:
-      skip_build: '${{ steps.check.outputs.skip_build }}'
+      skip_build: "${{ steps.check.outputs.skip_build }}"
     steps:
       - name: Configure git
         run: |-
@@ -37,17 +37,17 @@ jobs:
           submodules: false
         if: github.event.pull_request.draft == true
       - id: check
-        if: 'github.event.pull_request.draft == true && (!contains(github.event.pull_request.labels.*.name, ''ci-draft''))'
+        if: "github.event.pull_request.draft == true && (!contains(github.event.pull_request.labels.*.name, 'ci-draft'))"
         run: |-
           GIT_MESSAGE=$(git log --format=%s -n 1 ${{github.event.after}})
           echo Commit message: $GIT_MESSAGE
           echo $GIT_MESSAGE | grep '\[ci\]' || (echo 'Exiting due to draft PR. Commit with [ci] to bypass or add the ci-draft label.' ; echo 'skip_build=true' >> $GITHUB_OUTPUT)
   build:
-    name: '${{ matrix.job }} ${{ matrix.profile }} ${{ matrix.os }}-${{ matrix.arch }}'
+    name: "${{ matrix.job }} ${{ matrix.profile }} ${{ matrix.os }}-${{ matrix.arch }}"
     needs:
       - pre_build
-    if: '${{ needs.pre_build.outputs.skip_build != ''true'' }}'
-    runs-on: '${{ matrix.runner }}'
+    if: "${{ needs.pre_build.outputs.skip_build != 'true' }}"
+    runs-on: "${{ matrix.runner }}"
     timeout-minutes: 180
     defaults:
       run:
@@ -62,10 +62,10 @@ jobs:
             profile: debug
           - os: macos
             arch: x86_64
-            runner: '${{ (!contains(github.event.pull_request.labels.*.name, ''ci-full'') && (github.event_name == ''pull_request'')) && ''ubuntu-22.04'' || ''macos-13'' }}'
+            runner: "${{ (!contains(github.event.pull_request.labels.*.name, 'ci-full') && (github.event_name == 'pull_request')) && 'ubuntu-22.04' || 'macos-13' }}"
             job: test
             profile: release
-            skip: '${{ !contains(github.event.pull_request.labels.*.name, ''ci-full'') && (github.event_name == ''pull_request'') }}'
+            skip: "${{ !contains(github.event.pull_request.labels.*.name, 'ci-full') && (github.event_name == 'pull_request') }}"
           - os: macos
             arch: aarch64
             runner: macos-14
@@ -73,10 +73,10 @@ jobs:
             profile: debug
           - os: macos
             arch: aarch64
-            runner: '${{ (!contains(github.event.pull_request.labels.*.name, ''ci-full'') && (github.event_name == ''pull_request'')) && ''ubuntu-22.04'' || ''macos-14'' }}'
+            runner: "${{ (!contains(github.event.pull_request.labels.*.name, 'ci-full') && (github.event_name == 'pull_request')) && 'ubuntu-22.04' || 'macos-14' }}"
             job: test
             profile: release
-            skip: '${{ !contains(github.event.pull_request.labels.*.name, ''ci-full'') && (github.event_name == ''pull_request'') }}'
+            skip: "${{ !contains(github.event.pull_request.labels.*.name, 'ci-full') && (github.event_name == 'pull_request') }}"
           - os: windows
             arch: x86_64
             runner: windows-2022
@@ -84,24 +84,24 @@ jobs:
             profile: debug
           - os: windows
             arch: x86_64
-            runner: '${{ (!contains(github.event.pull_request.labels.*.name, ''ci-full'') && (github.event_name == ''pull_request'')) && ''ubuntu-22.04'' || github.repository == ''denoland/deno'' && ''windows-2022-xl'' || ''windows-2022'' }}'
+            runner: "${{ (!contains(github.event.pull_request.labels.*.name, 'ci-full') && (github.event_name == 'pull_request')) && 'ubuntu-22.04' || github.repository == 'denoland/deno' && 'windows-2022-xl' || 'windows-2022' }}"
             job: test
             profile: release
-            skip: '${{ !contains(github.event.pull_request.labels.*.name, ''ci-full'') && (github.event_name == ''pull_request'') }}'
+            skip: "${{ !contains(github.event.pull_request.labels.*.name, 'ci-full') && (github.event_name == 'pull_request') }}"
           - os: linux
             arch: x86_64
-            runner: '${{ github.repository == ''denoland/deno'' && ''ubuntu-22.04-xl'' || ''ubuntu-22.04'' }}'
+            runner: "${{ github.repository == 'denoland/deno' && 'ubuntu-22.04-xl' || 'ubuntu-22.04' }}"
             job: test
             profile: release
             use_sysroot: true
-            wpt: '${{ !startsWith(github.ref, ''refs/tags/'') }}'
+            wpt: "${{ !startsWith(github.ref, 'refs/tags/') }}"
           - os: linux
             arch: x86_64
-            runner: '${{ (!contains(github.event.pull_request.labels.*.name, ''ci-full'') && (github.event_name == ''pull_request'' && !contains(github.event.pull_request.labels.*.name, ''ci-bench''))) && ''ubuntu-22.04'' || github.repository == ''denoland/deno'' && ''ubuntu-22.04-xl'' || ''ubuntu-22.04'' }}'
+            runner: "${{ (!contains(github.event.pull_request.labels.*.name, 'ci-full') && (github.event_name == 'pull_request' && !contains(github.event.pull_request.labels.*.name, 'ci-bench'))) && 'ubuntu-22.04' || github.repository == 'denoland/deno' && 'ubuntu-22.04-xl' || 'ubuntu-22.04' }}"
             job: bench
             profile: release
             use_sysroot: true
-            skip: '${{ !contains(github.event.pull_request.labels.*.name, ''ci-full'') && (github.event_name == ''pull_request'' && !contains(github.event.pull_request.labels.*.name, ''ci-bench'')) }}'
+            skip: "${{ !contains(github.event.pull_request.labels.*.name, 'ci-full') && (github.event_name == 'pull_request' && !contains(github.event.pull_request.labels.*.name, 'ci-bench')) }}"
           - os: linux
             arch: x86_64
             runner: ubuntu-22.04
@@ -134,7 +134,7 @@ jobs:
             runner: windows-2022
             job: lint
             profile: debug
-      fail-fast: '${{ github.event_name == ''pull_request'' || (github.ref != ''refs/heads/main'' && !startsWith(github.ref, ''refs/tags/'')) }}'
+      fail-fast: "${{ github.event_name == 'pull_request' || (github.ref != 'refs/heads/main' && !startsWith(github.ref, 'refs/tags/')) }}"
     env:
       CARGO_TERM_COLOR: always
       RUST_BACKTRACE: full
@@ -144,26 +144,26 @@ jobs:
         run: |-
           git config --global core.symlinks true
           git config --global fetch.parallel 32
-        if: '!(matrix.skip)'
+        if: "!(matrix.skip)"
       - name: Clone repository
         uses: actions/checkout@v4
         with:
           fetch-depth: 5
           submodules: false
-        if: '!(matrix.skip)'
+        if: "!(matrix.skip)"
       - name: Clone submodule ./tests/util/std
         run: git submodule update --init --recursive --depth=1 -- ./tests/util/std
-        if: '!(matrix.skip)'
+        if: "!(matrix.skip)"
       - name: Clone submodule ./tests/wpt/suite
         run: git submodule update --init --recursive --depth=1 -- ./tests/wpt/suite
-        if: '!(matrix.skip) && (matrix.wpt)'
+        if: "!(matrix.skip) && (matrix.wpt)"
       - name: Clone submodule ./tests/node_compat/runner/suite
         run: git submodule update --init --recursive --depth=1 -- ./tests/node_compat/runner/suite
-        if: '!(matrix.skip) && (matrix.job == ''lint'' && matrix.os == ''linux'')'
+        if: "!(matrix.skip) && (matrix.job == 'lint' && matrix.os == 'linux')"
       - name: Clone submodule ./cli/bench/testdata/lsp_benchdata
         run: git submodule update --init --recursive --depth=1 -- ./cli/bench/testdata/lsp_benchdata
-        if: '!(matrix.skip) && (matrix.job == ''bench'')'
-      - name: 'Create source tarballs (release, linux)'
+        if: "!(matrix.skip) && (matrix.job == 'bench')"
+      - name: "Create source tarballs (release, linux)"
         if: |-
           !(matrix.skip) && (matrix.os == 'linux' &&
           matrix.profile == 'release' &&
@@ -175,8 +175,8 @@ jobs:
           tar --exclude=".git*" --exclude=target --exclude=third_party/prebuilt \
               -czvf target/release/deno_src.tar.gz -C .. deno
       - uses: dsherret/rust-toolchain-file@v1
-        if: '!(matrix.skip)'
-      - if: '!(matrix.skip) && (matrix.job == ''lint'' || matrix.job == ''test'' || matrix.job == ''bench'')'
+        if: "!(matrix.skip)"
+      - if: "!(matrix.skip) && (matrix.job == 'lint' || matrix.job == 'test' || matrix.job == 'bench')"
         name: Install Deno
         uses: denoland/setup-deno@v2
         with:
@@ -185,16 +185,16 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: 3.11
-        if: '!(matrix.skip) && (matrix.job != ''lint'' && (matrix.os != ''linux'' || matrix.arch != ''aarch64''))'
+        if: "!(matrix.skip) && (matrix.job != 'lint' && (matrix.os != 'linux' || matrix.arch != 'aarch64'))"
       - name: Remove unused versions of Python
-        if: '!(matrix.skip) && (matrix.job != ''lint'' && (matrix.os != ''linux'' || matrix.arch != ''aarch64'') && (matrix.os == ''windows''))'
+        if: "!(matrix.skip) && (matrix.job != 'lint' && (matrix.os != 'linux' || matrix.arch != 'aarch64') && (matrix.os == 'windows'))"
         shell: pwsh
         run: |-
           $env:PATH -split ";" |
             Where-Object { Test-Path "$_\python.exe" } |
             Select-Object -Skip 1 |
             ForEach-Object { Move-Item "$_" "$_.disabled" }
-      - if: '!(matrix.skip) && (matrix.job == ''bench'' || matrix.job == ''test'')'
+      - if: "!(matrix.skip) && (matrix.job == 'bench' || matrix.job == 'test')"
         name: Install Node
         uses: actions/setup-node@v4
         with:
@@ -209,7 +209,7 @@ jobs:
         uses: google-github-actions/auth@v2
         with:
           project_id: denoland
-          credentials_json: '${{ secrets.GCP_SA_KEY }}'
+          credentials_json: "${{ secrets.GCP_SA_KEY }}"
           export_environment_variables: true
           create_credentials_file: true
       - name: Setup gcloud (unix)
@@ -243,7 +243,7 @@ jobs:
           github.repository == 'denoland/deno' &&
           github.ref == 'refs/heads/main')
         run: echo "DENO_CANARY=true" >> $GITHUB_ENV
-      - if: '!(matrix.skip) && (matrix.use_sysroot)'
+      - if: "!(matrix.skip) && (matrix.use_sysroot)"
         name: Set up incremental LTO and sysroot build
         run: |-
           # Setting up sysroot
@@ -323,32 +323,21 @@ jobs:
           CFLAGS=-flto=thin $CFLAGS
           " > $GITHUB_ENV
 
-      - name: Echo gcc lib
-        if: '!(matrix.skip) && (matrix.use_sysroot)'
-        run: |-
-          echo "gcc lib"
-          ls -l /sysroot/usr/lib/gcc
-          echo "----------------"
-          ls -l /sysroot/usr/lib/gcc/x86_64-linux-gnu
-          echo "----------------"
-          ls -l /sysroot/usr/lib
-          echo "----------------"
-          ls -l /sysroot/lib
       - name: Remove macOS cURL --ipv4 flag
         run: |-
           curl --version
           which curl
           cat /etc/hosts
           rm ~/.curlrc || true
-        if: '!(matrix.skip) && (matrix.os == ''macos'')'
+        if: "!(matrix.skip) && (matrix.os == 'macos')"
       - name: Install macOS aarch64 lld
         run: ./tools/install_prebuilt.js ld64.lld
-        if: '!(matrix.skip) && (matrix.os == ''macos'' && matrix.arch == ''aarch64'')'
+        if: "!(matrix.skip) && (matrix.os == 'macos' && matrix.arch == 'aarch64')"
       - name: Install rust-codesign
         run: |-
           ./tools/install_prebuilt.js rcodesign
           echo $GITHUB_WORKSPACE/third_party/prebuilt/mac >> $GITHUB_PATH
-        if: '!(matrix.skip) && (matrix.os == ''macos'')'
+        if: "!(matrix.skip) && (matrix.os == 'macos')"
       - name: Log versions
         run: |-
           echo '*** Python'
@@ -363,9 +352,9 @@ jobs:
           command -v node && node --version || echo 'No node found or bad executable'
           echo '*** Installed packages'
           command -v dpkg && dpkg -l || echo 'No dpkg found or bad executable'
-        if: '!(matrix.skip)'
+        if: "!(matrix.skip)"
       - name: Install benchmark tools
-        if: '!(matrix.skip) && (matrix.job == ''bench'')'
+        if: "!(matrix.skip) && (matrix.job == 'bench')"
         run: ./tools/install_prebuilt.js wrk hyperfine
       - name: Cache Cargo home
         uses: actions/cache@v4
@@ -373,12 +362,12 @@ jobs:
           path: |-
             ~/.cargo/registry/index
             ~/.cargo/registry/cache
-          key: '23-cargo-home-${{ matrix.os }}-${{ matrix.arch }}-${{ hashFiles(''Cargo.lock'') }}'
-          restore-keys: '23-cargo-home-${{ matrix.os }}-${{ matrix.arch }}'
-        if: '!(matrix.skip)'
+          key: "23-cargo-home-${{ matrix.os }}-${{ matrix.arch }}-${{ hashFiles('Cargo.lock') }}"
+          restore-keys: "23-cargo-home-${{ matrix.os }}-${{ matrix.arch }}"
+        if: "!(matrix.skip)"
       - name: Restore cache build output (PR)
         uses: actions/cache/restore@v4
-        if: '!(matrix.skip) && (github.ref != ''refs/heads/main'' && !startsWith(github.ref, ''refs/tags/''))'
+        if: "!(matrix.skip) && (github.ref != 'refs/heads/main' && !startsWith(github.ref, 'refs/tags/'))"
         with:
           path: |-
             ./target
@@ -387,35 +376,35 @@ jobs:
             !./target/*/*.zip
             !./target/*/*.tar.gz
           key: never_saved
-          restore-keys: '23-cargo-target-${{ matrix.os }}-${{ matrix.arch }}-${{ matrix.profile }}-${{ matrix.job }}-'
+          restore-keys: "23-cargo-target-${{ matrix.os }}-${{ matrix.arch }}-${{ matrix.profile }}-${{ matrix.job }}-"
       - name: Apply and update mtime cache
-        if: '!(matrix.skip) && (!startsWith(github.ref, ''refs/tags/''))'
+        if: "!(matrix.skip) && (!startsWith(github.ref, 'refs/tags/'))"
         uses: ./.github/mtime_cache
         with:
           cache-path: ./target
       - name: test_format.js
-        if: '!(matrix.skip) && (matrix.job == ''lint'' && matrix.os == ''linux'')'
+        if: "!(matrix.skip) && (matrix.job == 'lint' && matrix.os == 'linux')"
         run: deno run --allow-write --allow-read --allow-run --allow-net ./tools/format.js --check
       - name: Lint PR title
-        if: '!(matrix.skip) && (matrix.job == ''lint'' && github.event_name == ''pull_request'' && matrix.os == ''linux'')'
+        if: "!(matrix.skip) && (matrix.job == 'lint' && github.event_name == 'pull_request' && matrix.os == 'linux')"
         env:
-          PR_TITLE: '${{ github.event.pull_request.title }}'
+          PR_TITLE: "${{ github.event.pull_request.title }}"
         run: deno run ./tools/verify_pr_title.js "$PR_TITLE"
       - name: lint.js
-        if: '!(matrix.skip) && (matrix.job == ''lint'')'
+        if: "!(matrix.skip) && (matrix.job == 'lint')"
         run: deno run --allow-write --allow-read --allow-run --allow-net ./tools/lint.js
       - name: jsdoc_checker.js
-        if: '!(matrix.skip) && (matrix.job == ''lint'')'
+        if: "!(matrix.skip) && (matrix.job == 'lint')"
         run: deno run --allow-read --allow-env --allow-sys ./tools/jsdoc_checker.js
       - name: node_compat/setup.ts --check
-        if: '!(matrix.skip) && (matrix.job == ''lint'' && matrix.os == ''linux'')'
+        if: "!(matrix.skip) && (matrix.job == 'lint' && matrix.os == 'linux')"
         run: deno run --allow-write --allow-read --allow-run=git ./tests/node_compat/runner/setup.ts --check
       - name: Echo paths
         run: |-
           find /usr/lib -name "crtbeginS.o"
           find /usr/lib -name "crtbeginS.o"
       - name: Build debug
-        if: '!(matrix.skip) && (matrix.job == ''test'' && matrix.profile == ''debug'')'
+        if: "!(matrix.skip) && (matrix.job == 'test' && matrix.profile == 'debug')"
         run: |-
           df -h
           cargo build -vv --locked --all-targets
@@ -432,12 +421,12 @@ jobs:
           cargo build --release --locked --all-targets
           df -h
       - name: Check deno binary
-        if: '!(matrix.skip) && (matrix.job == ''test'')'
+        if: "!(matrix.skip) && (matrix.job == 'test')"
         run: 'target/${{ matrix.profile }}/deno eval "console.log(1+2)" | grep 3'
         env:
           NO_COLOR: 1
       - name: Check deno binary (in sysroot)
-        if: '!(matrix.skip) && (matrix.job == ''test'' && matrix.use_sysroot)'
+        if: "!(matrix.skip) && (matrix.job == 'test' && matrix.use_sysroot)"
         run: 'sudo chroot /sysroot "$(pwd)/target/${{ matrix.profile }}/deno" --version'
       - name: Upload PR artifact (linux)
         if: |-
@@ -448,7 +437,7 @@ jobs:
           startsWith(github.ref, 'refs/tags/')))))
         uses: actions/upload-artifact@v4
         with:
-          name: 'deno-${{ matrix.os }}-${{ matrix.arch }}-${{ github.event.number }}'
+          name: "deno-${{ matrix.os }}-${{ matrix.arch }}-${{ github.event.number }}"
           path: target/release/deno
       - name: Pre-release (linux)
         if: |-
@@ -471,8 +460,8 @@ jobs:
           matrix.profile == 'release' &&
           github.repository == 'denoland/deno')
         env:
-          APPLE_CODESIGN_KEY: '${{ secrets.APPLE_CODESIGN_KEY }}'
-          APPLE_CODESIGN_PASSWORD: '${{ secrets.APPLE_CODESIGN_PASSWORD }}'
+          APPLE_CODESIGN_KEY: "${{ secrets.APPLE_CODESIGN_KEY }}"
+          APPLE_CODESIGN_PASSWORD: "${{ secrets.APPLE_CODESIGN_PASSWORD }}"
         run: |-
           echo "Key is $(echo $APPLE_CODESIGN_KEY | base64 -d | wc -c) bytes"
           rcodesign sign target/release/deno --code-signature-flags=runtime --p12-password="$APPLE_CODESIGN_PASSWORD" --p12-file=<(echo $APPLE_CODESIGN_KEY | base64 -d) --entitlements-xml-file=cli/entitlements.plist
@@ -512,7 +501,7 @@ jobs:
           matrix.profile == 'release' &&
           !startsWith(github.ref, 'refs/tags/'))
         run: target/release/deno run -A --config tests/config/deno.json ext/websocket/autobahn/fuzzingclient.js
-      - name: 'Test (full, debug)'
+      - name: "Test (full, debug)"
         if: |-
           !(matrix.skip) && (matrix.job == 'test' &&
           matrix.profile == 'debug' &&
@@ -521,7 +510,7 @@ jobs:
         run: cargo test --locked
         env:
           CARGO_PROFILE_DEV_DEBUG: 0
-      - name: 'Test (fast, debug)'
+      - name: "Test (fast, debug)"
         if: |-
           !(matrix.skip) && (matrix.job == 'test' &&
           matrix.profile == 'debug' &&
@@ -540,11 +529,11 @@ jobs:
           !startsWith(github.ref, 'refs/tags/'))))
         run: cargo test --release --locked
       - name: Configure hosts file for WPT
-        if: '!(matrix.skip) && (matrix.wpt)'
+        if: "!(matrix.skip) && (matrix.wpt)"
         run: ./wpt make-hosts-file | sudo tee -a /etc/hosts
         working-directory: tests/wpt/suite/
       - name: Run web platform tests (debug)
-        if: '!(matrix.skip) && (matrix.wpt && matrix.profile == ''debug'')'
+        if: "!(matrix.skip) && (matrix.wpt && matrix.profile == 'debug')"
         env:
           DENO_BIN: ./target/debug/deno
         run: |-
@@ -553,7 +542,7 @@ jobs:
           deno run -A --lock=tools/deno.lock.json --config tests/config/deno.json\
                    ./tests/wpt/wpt.ts run --quiet --binary="$DENO_BIN"
       - name: Run web platform tests (release)
-        if: '!(matrix.skip) && (matrix.wpt && matrix.profile == ''release'')'
+        if: "!(matrix.skip) && (matrix.wpt && matrix.profile == 'release')"
         env:
           DENO_BIN: ./target/release/deno
         run: |-
@@ -588,13 +577,13 @@ jobs:
           github.ref == 'refs/heads/main' && !startsWith(github.ref, 'refs/tags/'))
         env:
           WPT_FYI_USER: deno
-          WPT_FYI_PW: '${{ secrets.WPT_FYI_PW }}'
-          GITHUB_TOKEN: '${{ secrets.DENOBOT_PAT }}'
+          WPT_FYI_PW: "${{ secrets.WPT_FYI_PW }}"
+          GITHUB_TOKEN: "${{ secrets.DENOBOT_PAT }}"
         run: |-
           ./target/release/deno run --allow-all --lock=tools/deno.lock.json \
               ./tools/upload_wptfyi.js $(git rev-parse HEAD) --ghstatus
       - name: Run benchmarks
-        if: '!(matrix.skip) && (matrix.job == ''bench'' && !startsWith(github.ref, ''refs/tags/''))'
+        if: "!(matrix.skip) && (matrix.job == 'bench' && !startsWith(github.ref, 'refs/tags/'))"
         run: cargo bench --locked
       - name: Post Benchmarks
         if: |-
@@ -602,7 +591,7 @@ jobs:
           github.repository == 'denoland/deno' &&
           github.ref == 'refs/heads/main' && !startsWith(github.ref, 'refs/tags/'))
         env:
-          DENOBOT_PAT: '${{ secrets.DENOBOT_PAT }}'
+          DENOBOT_PAT: "${{ secrets.DENOBOT_PAT }}"
         run: |-
           git clone --depth 1 --branch gh-pages                             \
               https://${DENOBOT_PAT}@github.com/denoland/benchmark_data.git \
@@ -615,13 +604,13 @@ jobs:
           git commit --message "Update benchmarks"
           git push origin gh-pages
       - name: Build product size info
-        if: '!(matrix.skip) && (matrix.job != ''lint'' && matrix.profile != ''debug'' && github.repository == ''denoland/deno'' && (github.ref == ''refs/heads/main'' || startsWith(github.ref, ''refs/tags/'')))'
+        if: "!(matrix.skip) && (matrix.job != 'lint' && matrix.profile != 'debug' && github.repository == 'denoland/deno' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/')))"
         run: |-
           du -hd1 "./target/${{ matrix.profile }}"
           du -ha  "./target/${{ matrix.profile }}/deno"
           du -ha  "./target/${{ matrix.profile }}/denort"
       - name: Worker info
-        if: '!(matrix.skip) && (matrix.job == ''bench'')'
+        if: "!(matrix.skip) && (matrix.job == 'bench')"
         run: |-
           cat /proc/cpuinfo
           cat /proc/meminfo
@@ -664,7 +653,7 @@ jobs:
           github.repository == 'denoland/deno' &&
           startsWith(github.ref, 'refs/tags/'))
         env:
-          GITHUB_TOKEN: '${{ secrets.GITHUB_TOKEN }}'
+          GITHUB_TOKEN: "${{ secrets.GITHUB_TOKEN }}"
         with:
           files: |-
             target/release/deno-x86_64-pc-windows-msvc.zip
@@ -693,7 +682,7 @@ jobs:
           draft: true
       - name: Save cache build output (main)
         uses: actions/cache/save@v4
-        if: '!(matrix.skip) && ((matrix.job == ''test'' || matrix.job == ''lint'') && github.ref == ''refs/heads/main'')'
+        if: "!(matrix.skip) && ((matrix.job == 'test' || matrix.job == 'lint') && github.ref == 'refs/heads/main')"
         with:
           path: |-
             ./target
@@ -701,7 +690,7 @@ jobs:
             !./target/*/*.zip
             !./target/*/*.sha256sum
             !./target/*/*.tar.gz
-          key: '23-cargo-target-${{ matrix.os }}-${{ matrix.arch }}-${{ matrix.profile }}-${{ matrix.job }}-${{ github.sha }}'
+          key: "23-cargo-target-${{ matrix.os }}-${{ matrix.arch }}-${{ matrix.profile }}-${{ matrix.job }}-${{ github.sha }}"
   publish-canary:
     name: publish canary
     runs-on: ubuntu-22.04
@@ -713,7 +702,7 @@ jobs:
         uses: google-github-actions/auth@v2
         with:
           project_id: denoland
-          credentials_json: '${{ secrets.GCP_SA_KEY }}'
+          credentials_json: "${{ secrets.GCP_SA_KEY }}"
           export_environment_variables: true
           create_credentials_file: true
       - name: Setup gcloud
