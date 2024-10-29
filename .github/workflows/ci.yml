@@ -287,12 +287,7 @@ jobs:
           cat /sysroot/.env
           . /sysroot/.env
 
-          if [ -d "/sysroot/usr/lib/gcc/x86_64-linux-gnu/12/crtbeginS.o" ]; then
-            ln -s /sysroot/usr/lib/gcc/x86_64-linux-gnu/12/crtbeginS.o /sysroot/usr/lib/crtbeginS.o
-            ln -s /sysroot/usr/lib/gcc/x86_64-linux-gnu/12/crtendS.o /sysroot/usr/lib/crtendS.o
-          else
-            echo "Not found"
-          fi
+          sudo cp -R /usr/lib/gcc/`uname -m`-linux-gnu/14/** /sysroot/usr/lib/
 
           # Important notes:
           #   1. -ldl seems to be required to avoid a failure in FFI tests. This flag seems
@@ -406,10 +401,6 @@ jobs:
       - name: node_compat/setup.ts --check
         if: '!(matrix.skip) && (matrix.job == ''lint'' && matrix.os == ''linux'')'
         run: deno run --allow-write --allow-read --allow-run=git ./tests/node_compat/runner/setup.ts --check
-      - name: Setup tmate session
-        if: |-
-          (matrix.job == 'test' || matrix.job == 'bench') && (matrix.use_sysroot || github.repository == 'denoland/deno')
-        uses: mxschmitt/action-tmate@v3
       - name: Build debug
         if: '!(matrix.skip) && (matrix.job == ''test'' && matrix.profile == ''debug'')'
         run: |-
