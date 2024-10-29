@@ -33,6 +33,7 @@ use deno_runtime::deno_fs;
 use deno_runtime::deno_node::create_host_defined_options;
 use deno_runtime::deno_node::NodeRequireLoader;
 use deno_runtime::deno_node::NodeResolver;
+use deno_runtime::deno_node::PackageJsonResolver;
 use deno_runtime::deno_permissions::Permissions;
 use deno_runtime::deno_permissions::PermissionsContainer;
 use deno_runtime::deno_tls::rustls::RootCertStore;
@@ -578,15 +579,19 @@ pub async fn run(data: StandaloneData) -> Result<i32, AnyError> {
   };
 
   let has_node_modules_dir = npm_resolver.root_node_modules_path().is_some();
+  let pkg_json_resolver = Arc::new(PackageJsonResolver::new(
+    deno_runtime::deno_node::DenoFsNodeResolverEnv::new(fs.clone()),
+  ));
   let node_resolver = Arc::new(NodeResolver::new(
     deno_runtime::deno_node::DenoFsNodeResolverEnv::new(fs.clone()),
     npm_resolver.clone().into_npm_resolver(),
+    pkg_json_resolver.clone(),
   ));
   let cjs_tracker = Arc::new(CjsTracker::new(
     CjsTrackerOptions {
       unstable_detect_cjs: metadata.unstable_config.detect_cjs,
     },
-    node_resolver.clone(),
+    pkg_json_resolver.clone(),
   ));
   let cache_db = Caches::new(deno_dir_provider.clone());
   let node_analysis_cache = NodeAnalysisCache::new(cache_db.node_analysis_db());
@@ -598,8 +603,8 @@ pub async fn run(data: StandaloneData) -> Result<i32, AnyError> {
   ));
   let cjs_esm_code_analyzer = CliCjsCodeAnalyzer::new(
     node_analysis_cache,
+    cjs_tracker.clone(),
     fs.clone(),
-    cli_node_resolver.clone(),
     None,
   );
   let node_code_translator = Arc::new(NodeCodeTranslator::new(
@@ -665,7 +670,7 @@ pub async fn run(data: StandaloneData) -> Result<i32, AnyError> {
       node_code_translator: node_code_translator.clone(),
       node_resolver: cli_node_resolver.clone(),
       npm_module_loader: Arc::new(NpmModuleLoader::new(
-        cjs_tracker.clone(),
+        cjs_tracker,
         node_code_translator,
         fs.clone(),
         cli_node_resolver,
@@ -710,7 +715,6 @@ pub async fn run(data: StandaloneData) -> Result<i32, AnyError> {
   });
   let worker_factory = CliMainWorkerFactory::new(
     Arc::new(BlobStore::default()),
-    cjs_tracker,
     // Code cache is not supported for standalone binary yet.
     None,
     feature_checker,
@@ -721,6 +725,7 @@ pub async fn run(data: StandaloneData) -> Result<i32, AnyError> {
     Box::new(module_loader_factory),
     node_resolver,
     npm_resolver,
+    pkg_json_resolver,
     root_cert_store_provider,
     permissions,
     StorageKeyResolver::empty(),
@@ -753,7 +758,6 @@ pub async fn run(data: StandaloneData) -> Result<i32, AnyError> {
       node_ipc: None,
       serve_port: None,
       serve_host: None,
-      unstable_detect_cjs: metadata.unstable_config.detect_cjs,
     },
   );
 

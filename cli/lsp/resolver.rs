@@ -14,6 +14,7 @@ use deno_path_util::url_to_file_path;
 use deno_runtime::deno_fs;
 use deno_runtime::deno_node::NodeResolver;
 use deno_runtime::deno_node::PackageJson;
+use deno_runtime::deno_node::PackageJsonResolver;
 use deno_semver::jsr::JsrPackageReqReference;
 use deno_semver::npm::NpmPackageReqReference;
 use deno_semver::package::PackageNv;
@@ -64,6 +65,7 @@ struct LspScopeResolver {
   jsr_resolver: Option<Arc<JsrCacheResolver>>,
   npm_resolver: Option<Arc<dyn CliNpmResolver>>,
   node_resolver: Option<Arc<CliNodeResolver>>,
+  pkg_json_resolver: Option<Arc<PackageJsonResolver>>,
   redirect_resolver: Option<Arc<RedirectResolver>>,
   graph_imports: Arc<IndexMap<ModuleSpecifier, GraphImport>>,
   config_data: Option<Arc<ConfigData>>,
@@ -76,6 +78,7 @@ impl Default for LspScopeResolver {
       jsr_resolver: None,
       npm_resolver: None,
       node_resolver: None,
+      pkg_json_resolver: None,
       redirect_resolver: None,
       graph_imports: Default::default(),
       config_data: None,
@@ -91,6 +94,10 @@ impl LspScopeResolver {
   ) -> Self {
     let mut npm_resolver = None;
     let mut node_resolver = None;
+    let fs = Arc::new(deno_fs::RealFs);
+    let pkg_json_resolver = Arc::new(PackageJsonResolver::new(
+      deno_runtime::deno_node::DenoFsNodeResolverEnv::new(fs.clone()),
+    ));
     if let Some(http_client) = http_client_provider {
       npm_resolver = create_npm_resolver(
         config_data.map(|d| d.as_ref()),
@@ -98,7 +105,13 @@ impl LspScopeResolver {
         http_client,
       )
       .await;
-      node_resolver = create_node_resolver(npm_resolver.as_ref());
+      node_resolver = npm_resolver.as_ref().map(|npm_resolver| {
+        create_node_resolver(
+          fs.clone(),
+          npm_resolver,
+          pkg_json_resolver.clone(),
+        )
+      });
     }
     let graph_resolver = create_graph_resolver(
       config_data.map(|d| d.as_ref()),
@@ -139,6 +152,7 @@ impl LspScopeResolver {
       jsr_resolver,
       npm_resolver,
       node_resolver,
+      pkg_json_resolver: Some(pkg_json_resolver),
       redirect_resolver,
       graph_imports,
       config_data: config_data.cloned(),
@@ -148,7 +162,13 @@ impl LspScopeResolver {
   fn snapshot(&self) -> Arc<Self> {
     let npm_resolver =
       self.npm_resolver.as_ref().map(|r| r.clone_snapshotted());
-    let node_resolver = create_node_resolver(npm_resolver.as_ref());
+    let fs = Arc::new(deno_fs::RealFs);
+    let pkg_json_resolver = Arc::new(PackageJsonResolver::new(
+      deno_runtime::deno_node::DenoFsNodeResolverEnv::new(fs.clone()),
+    ));
+    let node_resolver = npm_resolver.as_ref().map(|npm_resolver| {
+      create_node_resolver(fs, npm_resolver, pkg_json_resolver.clone())
+    });
     let graph_resolver = create_graph_resolver(
       self.config_data.as_deref(),
       npm_resolver.as_ref(),
@@ -160,6 +180,7 @@ impl LspScopeResolver {
       npm_resolver,
       node_resolver,
       redirect_resolver: self.redirect_resolver.clone(),
+      pkg_json_resolver: Some(pkg_json_resolver),
       graph_imports: self.graph_imports.clone(),
       config_data: self.config_data.clone(),
     })
@@ -399,10 +420,10 @@ impl LspResolver {
     referrer: &ModuleSpecifier,
   ) -> Result<Option<Arc<PackageJson>>, ClosestPkgJsonError> {
     let resolver = self.get_scope_resolver(Some(referrer));
-    let Some(node_resolver) = resolver.node_resolver.as_ref() else {
+    let Some(pkg_json_resolver) = resolver.pkg_json_resolver.as_ref() else {
       return Ok(None);
     };
-    node_resolver.get_closest_package_json(referrer)
+    pkg_json_resolver.get_closest_package_json(referrer)
   }
 
   pub fn resolve_redirects(
@@ -508,27 +529,28 @@ async fn create_npm_resolver(
 }
 
 fn create_node_resolver(
-  npm_resolver: Option<&Arc<dyn CliNpmResolver>>,
-) -> Option<Arc<CliNodeResolver>> {
-  let npm_resolver = npm_resolver?;
-  let fs = Arc::new(deno_fs::RealFs);
+  fs: Arc<dyn deno_fs::FileSystem>,
+  npm_resolver: &Arc<dyn CliNpmResolver>,
+  pkg_json_resolver: Arc<PackageJsonResolver>,
+) -> Arc<CliNodeResolver> {
   let node_resolver_inner = Arc::new(NodeResolver::new(
     deno_runtime::deno_node::DenoFsNodeResolverEnv::new(fs.clone()),
     npm_resolver.clone().into_npm_resolver(),
+    pkg_json_resolver.clone(),
   ));
   let cjs_tracker = Arc::new(CjsTracker::new(
     CjsTrackerOptions {
       // todo(dsherret): support in the lsp
       unstable_detect_cjs: false,
     },
-    node_resolver_inner.clone(),
+    pkg_json_resolver,
   ));
-  Some(Arc::new(CliNodeResolver::new(
+  Arc::new(CliNodeResolver::new(
     cjs_tracker,
     fs,
     node_resolver_inner,
     npm_resolver.clone(),
-  )))
+  ))
 }
 
 fn create_graph_resolver(

@@ -42,24 +42,6 @@ pub fn get_extension(file_path: &Path) -> Option<String> {
     .map(|e| e.to_lowercase());
 }
 
-// todo(dsherret): replace with https://github.com/denoland/deno_path_util/pull/4
-pub fn specifier_has_extension(
-  specifier: &ModuleSpecifier,
-  searching_ext: &str,
-) -> bool {
-  let searching_ext = searching_ext.strip_prefix('.').unwrap_or(searching_ext);
-  debug_assert!(!searching_ext.contains('.')); // exts like .d.ts are not implemented here
-  let path = specifier.path();
-  if path.len() < searching_ext.len() {
-    return false;
-  }
-  let ext_pos = path.len() - searching_ext.len();
-  let (start_path, end_path) = path.split_at(ext_pos);
-  end_path.eq_ignore_ascii_case(searching_ext)
-    && start_path.ends_with('.')
-    && !start_path.ends_with("/.")
-}
-
 pub fn get_atomic_dir_path(file_path: &Path) -> PathBuf {
   let rand = gen_rand_path_component();
   let new_file_name = format!(
@@ -351,18 +333,6 @@ mod test {
         "from: \"{from_str}\" to: \"{to_str}\""
       );
     }
-  }
-
-  #[test]
-  fn test_specifier_has_extension() {
-    fn get(specifier: &str, ext: &str) -> bool {
-      specifier_has_extension(&ModuleSpecifier::parse(specifier).unwrap(), ext)
-    }
-
-    assert!(get("file:///a/b/c.ts", "ts"));
-    assert!(get("file:///a/b/c.ts", ".ts"));
-    assert!(!get("file:///a/b/c.ts", ".cts"));
-    assert!(get("file:///a/b/c.CtS", ".cts"));
   }
 
   #[test]

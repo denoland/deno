@@ -158,6 +158,7 @@ pub struct NodeExtInitServices {
   pub node_require_loader: NodeRequireLoaderRc,
   pub node_resolver: NodeResolverRc,
   pub npm_resolver: NpmResolverRc,
+  pub pkg_json_resolver: PackageJsonResolverRc,
 }
 
 deno_core::extension!(deno_node,
@@ -644,6 +645,7 @@ deno_core::extension!(deno_node,
       state.put(init.node_require_loader.clone());
       state.put(init.node_resolver.clone());
       state.put(init.npm_resolver.clone());
+      state.put(init.pkg_json_resolver.clone());
     }
   },
   global_template_middleware = global_template_middleware,
@@ -790,6 +792,12 @@ pub type NodeResolver = node_resolver::NodeResolver<DenoFsNodeResolverEnv>;
 #[allow(clippy::disallowed_types)]
 pub type NodeResolverRc =
   deno_fs::sync::MaybeArc<node_resolver::NodeResolver<DenoFsNodeResolverEnv>>;
+pub type PackageJsonResolver =
+  node_resolver::PackageJsonResolver<DenoFsNodeResolverEnv>;
+#[allow(clippy::disallowed_types)]
+pub type PackageJsonResolverRc = deno_fs::sync::MaybeArc<
+  node_resolver::PackageJsonResolver<DenoFsNodeResolverEnv>,
+>;
 
 #[derive(Debug)]
 pub struct DenoFsNodeResolverEnv {

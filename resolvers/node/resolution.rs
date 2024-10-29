@@ -7,8 +7,6 @@ use std::path::PathBuf;
 use anyhow::bail;
 use anyhow::Error as AnyError;
 use deno_media_type::MediaType;
-use deno_package_json::PackageJsonRc;
-use deno_path_util::strip_unc_prefix;
 use deno_path_util::url_from_file_path;
 use serde_json::Map;
 use serde_json::Value;
@@ -16,8 +14,6 @@ use url::Url;
 
 use crate::env::NodeResolverEnv;
 use crate::errors;
-use crate::errors::CanonicalizingPkgJsonDirError;
-use crate::errors::ClosestPkgJsonError;
 use crate::errors::DataUrlReferrerError;
 use crate::errors::FinalizeResolutionError;
 use crate::errors::InvalidModuleSpecifierError;
@@ -32,7 +28,6 @@ use crate::errors::PackageExportsResolveError;
 use crate::errors::PackageImportNotDefinedError;
 use crate::errors::PackageImportsResolveError;
 use crate::errors::PackageImportsResolveErrorKind;
-use crate::errors::PackageJsonLoadError;
 use crate::errors::PackagePathNotExportedError;
 use crate::errors::PackageResolveError;
 use crate::errors::PackageSubpathResolveError;
@@ -50,6 +45,7 @@ use crate::errors::UnsupportedDirImportError;
 use crate::errors::UnsupportedEsmUrlSchemeError;
 use crate::errors::UrlToNodeResolutionError;
 use crate::NpmResolverRc;
+use crate::PackageJsonResolverRc;
 use crate::PathClean;
 use deno_package_json::PackageJson;
 
@@ -137,11 +133,20 @@ pub type NodeResolverRc<TEnv> = crate::sync::MaybeArc<NodeResolver<TEnv>>;
 pub struct NodeResolver<TEnv: NodeResolverEnv> {
   env: TEnv,
   npm_resolver: NpmResolverRc,
+  pkg_json_resolver: PackageJsonResolverRc<TEnv>,
 }
 
 impl<TEnv: NodeResolverEnv> NodeResolver<TEnv> {
-  pub fn new(env: TEnv, npm_resolver: NpmResolverRc) -> Self {
-    Self { env, npm_resolver }
+  pub fn new(
+    env: TEnv,
+    npm_resolver: NpmResolverRc,
+    pkg_json_resolver: PackageJsonResolverRc<TEnv>,
+  ) -> Self {
+    Self {
+      env,
+      npm_resolver,
+      pkg_json_resolver,
+    }
   }
 
   pub fn in_npm_package(&self, specifier: &Url) -> bool {
@@ -236,6 +241,7 @@ impl<TEnv: NodeResolverEnv> NodeResolver<TEnv> {
       })?)
     } else if specifier.starts_with('#') {
       let pkg_config = self
+        .pkg_json_resolver
         .get_closest_package_json(referrer)
         .map_err(PackageImportsResolveErrorKind::ClosestPkgJson)
         .map_err(|err| PackageImportsResolveError(Box::new(err)))?;
@@ -356,7 +362,9 @@ impl<TEnv: NodeResolverEnv> NodeResolver<TEnv> {
     package_folder: &Path,
   ) -> Result<Vec<String>, ResolveBinaryCommandsError> {
     let pkg_json_path = package_folder.join("package.json");
-    let Some(package_json) = self.load_package_json(&pkg_json_path)? else {
+    let Some(package_json) =
+      self.pkg_json_resolver.load_package_json(&pkg_json_path)?
+    else {
       return Ok(Vec::new());
     };
 
@@ -383,7 +391,9 @@ impl<TEnv: NodeResolverEnv> NodeResolver<TEnv> {
     sub_path: Option<&str>,
   ) -> Result<NodeResolution, ResolvePkgJsonBinExportError> {
     let pkg_json_path = package_folder.join("package.json");
-    let Some(package_json) = self.load_package_json(&pkg_json_path)? else {
+    let Some(package_json) =
+      self.pkg_json_resolver.load_package_json(&pkg_json_path)?
+    else {
       return Err(ResolvePkgJsonBinExportError::MissingPkgJson {
         pkg_json_path,
       });
@@ -410,7 +420,8 @@ impl<TEnv: NodeResolverEnv> NodeResolver<TEnv> {
     if url_str.starts_with("http") || url_str.ends_with(".json") {
       Ok(NodeResolution::Esm(url))
     } else if url_str.ends_with(".js") || url_str.ends_with(".d.ts") {
-      let maybe_package_config = self.get_closest_package_json(&url)?;
+      let maybe_package_config =
+        self.pkg_json_resolver.get_closest_package_json(&url)?;
       match maybe_package_config {
         Some(c) if c.typ == "module" => Ok(NodeResolution::Esm(url)),
         Some(_) => Ok(NodeResolution::CommonJs(url)),
@@ -1101,7 +1112,9 @@ impl<TEnv: NodeResolverEnv> NodeResolver<TEnv> {
     let (package_name, package_subpath, _is_scoped) =
       parse_npm_pkg_name(specifier, referrer)?;
 
-    if let Some(package_config) = self.get_closest_package_json(referrer)? {
+    if let Some(package_config) =
+      self.pkg_json_resolver.get_closest_package_json(referrer)?
+    {
       // ResolveSelf
       if package_config.name.as_ref() == Some(&package_name) {
         if let Some(exports) = &package_config.exports {
@@ -1216,7 +1229,10 @@ impl<TEnv: NodeResolverEnv> NodeResolver<TEnv> {
     mode: NodeResolutionMode,
   ) -> Result<Url, PackageSubpathResolveError> {
     let package_json_path = package_dir_path.join("package.json");
-    match self.load_package_json(&package_json_path)? {
+    match self
+      .pkg_json_resolver
+      .load_package_json(&package_json_path)?
+    {
       Some(pkg_json) => self.resolve_package_subpath(
         &pkg_json,
         package_subpath,
@@ -1335,70 +1351,6 @@ impl<TEnv: NodeResolverEnv> NodeResolver<TEnv> {
         )
         .map_err(|err| err.into())
     }
-  }
-
-  pub fn get_closest_package_json(
-    &self,
-    url: &Url,
-  ) -> Result<Option<PackageJsonRc>, ClosestPkgJsonError> {
-    let Ok(file_path) = deno_path_util::url_to_file_path(url) else {
-      return Ok(None);
-    };
-    self.get_closest_package_json_from_path(&file_path)
-  }
-
-  pub fn get_closest_package_json_from_path(
-    &self,
-    file_path: &Path,
-  ) -> Result<Option<PackageJsonRc>, ClosestPkgJsonError> {
-    // we use this for deno compile using byonm because the script paths
-    // won't be in virtual file system, but the package.json paths will be
-    fn canonicalize_first_ancestor_exists(
-      dir_path: &Path,
-      env: &dyn NodeResolverEnv,
-    ) -> Result<Option<PathBuf>, std::io::Error> {
-      for ancestor in dir_path.ancestors() {
-        match env.realpath_sync(ancestor) {
-          Ok(dir_path) => return Ok(Some(dir_path)),
-          Err(err) if err.kind() == std::io::ErrorKind::NotFound => {
-            // keep searching
-          }
-          Err(err) => return Err(err),
-        }
-      }
-      Ok(None)
-    }
-
-    let parent_dir = file_path.parent().unwrap();
-    let Some(start_dir) = canonicalize_first_ancestor_exists(
-      parent_dir, &self.env,
-    )
-    .map_err(|source| CanonicalizingPkgJsonDirError {
-      dir_path: parent_dir.to_path_buf(),
-      source,
-    })?
-    else {
-      return Ok(None);
-    };
-    let start_dir = strip_unc_prefix(start_dir);
-    for current_dir in start_dir.ancestors() {
-      let package_json_path = current_dir.join("package.json");
-      if let Some(pkg_json) = self.load_package_json(&package_json_path)? {
-        return Ok(Some(pkg_json));
-      }
-    }
-
-    Ok(None)
-  }
-
-  pub fn load_package_json(
-    &self,
-    package_json_path: &Path,
-  ) -> Result<Option<PackageJsonRc>, PackageJsonLoadError> {
-    crate::package_json::load_pkg_json(
-      self.env.pkg_json_fs(),
-      package_json_path,
-    )
   }
 
   pub(super) fn legacy_main_resolve(

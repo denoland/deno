@@ -29,6 +29,7 @@ use deno_runtime::deno_fs;
 use deno_runtime::deno_fs::FileSystem;
 use deno_runtime::deno_node::is_builtin_node_module;
 use deno_runtime::deno_node::NodeResolver;
+use deno_runtime::deno_node::PackageJsonResolver;
 use deno_semver::npm::NpmPackageReqReference;
 use deno_semver::package::PackageReq;
 use node_resolver::errors::ClosestPkgJsonError;
@@ -42,7 +43,6 @@ use node_resolver::errors::UrlToNodeResolutionError;
 use node_resolver::NodeModuleKind;
 use node_resolver::NodeResolution;
 use node_resolver::NodeResolutionMode;
-use node_resolver::PackageJson;
 use std::borrow::Cow;
 use std::path::Path;
 use std::path::PathBuf;
@@ -53,7 +53,6 @@ use crate::args::DENO_DISABLE_PEDANTIC_NODE_WARNINGS;
 use crate::node::CliNodeCodeTranslator;
 use crate::npm::CliNpmResolver;
 use crate::npm::InnerCliNpmResolverRef;
-use crate::util::path::specifier_has_extension;
 use crate::util::sync::AtomicFlag;
 use crate::util::text_encoding::from_utf8_lossy_owned;
 
@@ -128,13 +127,6 @@ impl CliNodeResolver {
 
   pub fn in_npm_package(&self, specifier: &ModuleSpecifier) -> bool {
     self.npm_resolver.in_npm_package(specifier)
-  }
-
-  pub fn get_closest_package_json(
-    &self,
-    referrer: &ModuleSpecifier,
-  ) -> Result<Option<Arc<PackageJson>>, ClosestPkgJsonError> {
-    self.node_resolver.get_closest_package_json(referrer)
   }
 
   pub fn resolve_if_for_npm_pkg(
@@ -449,18 +441,18 @@ pub struct CjsTrackerOptions {
 pub struct CjsTracker {
   unstable_detect_cjs: bool,
   set: DashSet<ModuleSpecifier>,
-  node_resolver: Arc<NodeResolver>,
+  pkg_json_resolver: Arc<PackageJsonResolver>,
 }
 
 impl CjsTracker {
   pub fn new(
     options: CjsTrackerOptions,
-    node_resolver: Arc<NodeResolver>,
+    pkg_json_resolver: Arc<PackageJsonResolver>,
   ) -> Self {
     Self {
       unstable_detect_cjs: options.unstable_detect_cjs,
       set: DashSet::new(),
-      node_resolver,
+      pkg_json_resolver,
     }
   }
 
@@ -500,7 +492,7 @@ impl CjsTracker {
       };
       if is_pkg_json_type_affected {
         if let Some(pkg_json) =
-          self.node_resolver.get_closest_package_json(specifier)?
+          self.pkg_json_resolver.get_closest_package_json(specifier)?
         {
           return Ok(pkg_json.typ == "commonjs");
         }

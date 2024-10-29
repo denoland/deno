@@ -19,7 +19,7 @@ use serde::Serialize;
 use crate::cache::CacheDBHash;
 use crate::cache::NodeAnalysisCache;
 use crate::cache::ParsedSourceCache;
-use crate::resolver::CliNodeResolver;
+use crate::resolver::CjsTracker;
 use crate::util::fs::canonicalize_path_maybe_not_exists;
 
 pub type CliNodeCodeTranslator =
@@ -57,22 +57,22 @@ pub enum CliCjsAnalysis {
 
 pub struct CliCjsCodeAnalyzer {
   cache: NodeAnalysisCache,
+  cjs_tracker: Arc<CjsTracker>,
   fs: deno_fs::FileSystemRc,
-  node_resolver: Arc<CliNodeResolver>,
   parsed_source_cache: Option<Arc<ParsedSourceCache>>,
 }
 
 impl CliCjsCodeAnalyzer {
   pub fn new(
     cache: NodeAnalysisCache,
+    cjs_tracker: Arc<CjsTracker>,
     fs: deno_fs::FileSystemRc,
-    node_resolver: Arc<CliNodeResolver>,
     parsed_source_cache: Option<Arc<ParsedSourceCache>>,
   ) -> Self {
     Self {
       cache,
+      cjs_tracker,
       fs,
-      node_resolver,
       parsed_source_cache,
     }
   }
@@ -89,7 +89,7 @@ impl CliCjsCodeAnalyzer {
       return Ok(analysis);
     }
 
-    let mut media_type = MediaType::from_specifier(specifier);
+    let media_type = MediaType::from_specifier(specifier);
     if media_type == MediaType::Json {
       return Ok(CliCjsAnalysis::Cjs {
         exports: vec![],
@@ -97,55 +97,44 @@ impl CliCjsCodeAnalyzer {
       });
     }
 
-    if media_type == MediaType::JavaScript {
-      if let Some(package_json) =
-        self.node_resolver.get_closest_package_json(specifier)?
-      {
-        match package_json.typ.as_str() {
-          "commonjs" => {
-            media_type = MediaType::Cjs;
-          }
-          "module" => {
-            media_type = MediaType::Mjs;
-          }
-          _ => {}
-        }
-      }
-    }
+    let treat_as_cjs = self.cjs_tracker.treat_as_cjs(&specifier)?;
+    let analysis = if treat_as_cjs {
+      let maybe_parsed_source = self
+        .parsed_source_cache
+        .as_ref()
+        .and_then(|c| c.remove_parsed_source(specifier));
 
-    let maybe_parsed_source = self
-      .parsed_source_cache
-      .as_ref()
-      .and_then(|c| c.remove_parsed_source(specifier));
-
-    let analysis = deno_core::unsync::spawn_blocking({
-      let specifier = specifier.clone();
-      let source: Arc<str> = source.into();
-      move || -> Result<_, deno_ast::ParseDiagnostic> {
-        let parsed_source =
-          maybe_parsed_source.map(Ok).unwrap_or_else(|| {
-            deno_ast::parse_program(deno_ast::ParseParams {
-              specifier,
-              text: source,
-              media_type,
-              capture_tokens: true,
-              scope_analysis: false,
-              maybe_syntax: None,
+      deno_core::unsync::spawn_blocking({
+        let specifier = specifier.clone();
+        let source: Arc<str> = source.into();
+        move || -> Result<_, AnyError> {
+          let parsed_source =
+            maybe_parsed_source.map(Ok).unwrap_or_else(|| {
+              deno_ast::parse_program(deno_ast::ParseParams {
+                specifier,
+                text: source,
+                media_type,
+                capture_tokens: true,
+                scope_analysis: false,
+                maybe_syntax: None,
+              })
+            })?;
+          if parsed_source.is_script() && treat_as_cjs {
+            let analysis = parsed_source.analyze_cjs();
+            Ok(CliCjsAnalysis::Cjs {
+              exports: analysis.exports,
+              reexports: analysis.reexports,
             })
-          })?;
-        if parsed_source.is_script() || media_type == MediaType::Cjs {
-          let analysis = parsed_source.analyze_cjs();
-          Ok(CliCjsAnalysis::Cjs {
-            exports: analysis.exports,
-            reexports: analysis.reexports,
-          })
-        } else {
-          Ok(CliCjsAnalysis::Esm)
+          } else {
+            Ok(CliCjsAnalysis::Esm)
+          }
         }
-      }
-    })
-    .await
-    .unwrap()?;
+      })
+      .await
+      .unwrap()?
+    } else {
+      CliCjsAnalysis::Esm
+    };
 
     self
       .cache

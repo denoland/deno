@@ -493,7 +493,7 @@ pub async fn cover_files(
   let npm_resolver = factory.npm_resolver().await?;
   let file_fetcher = factory.file_fetcher()?;
   let emitter = factory.emitter()?;
-  let cjs_tracker = factory.cjs_tracker().await?;
+  let cjs_tracker = factory.cjs_tracker()?;
 
   assert!(!coverage_flags.files.include.is_empty());
 

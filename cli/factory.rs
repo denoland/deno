@@ -68,6 +68,7 @@ use deno_core::FeatureChecker;
 use deno_runtime::deno_fs;
 use deno_runtime::deno_node::DenoFsNodeResolverEnv;
 use deno_runtime::deno_node::NodeResolver;
+use deno_runtime::deno_node::PackageJsonResolver;
 use deno_runtime::deno_permissions::Permissions;
 use deno_runtime::deno_permissions::PermissionsContainer;
 use deno_runtime::deno_tls::rustls::RootCertStore;
@@ -188,6 +189,7 @@ struct CliFactoryServices {
   node_resolver: Deferred<Arc<NodeResolver>>,
   npm_resolver: Deferred<Arc<dyn CliNpmResolver>>,
   permission_desc_parser: Deferred<Arc<RuntimePermissionDescriptorParser>>,
+  pkg_json_resolver: Deferred<Arc<PackageJsonResolver>>,
   root_permissions_container: Deferred<PermissionsContainer>,
   sloppy_imports_resolver: Deferred<Option<Arc<CliSloppyImportsResolver>>>,
   text_only_progress_bar: Deferred<ProgressBar>,
@@ -558,6 +560,7 @@ impl CliFactory {
           Ok(Arc::new(NodeResolver::new(
             DenoFsNodeResolverEnv::new(self.fs().clone()),
             self.npm_resolver().await?.clone().into_npm_resolver(),
+            self.pkg_json_resolver().clone(),
           )))
         }
         .boxed_local(),
@@ -575,22 +578,30 @@ impl CliFactory {
         let caches = self.caches()?;
         let node_analysis_cache =
           NodeAnalysisCache::new(caches.node_analysis_db());
-        let node_resolver = self.cli_node_resolver().await?.clone();
+        let node_resolver = self.node_resolver().await?.clone();
         let cjs_esm_analyzer = CliCjsCodeAnalyzer::new(
           node_analysis_cache,
+          self.cjs_tracker()?.clone(),
           self.fs().clone(),
-          node_resolver,
           Some(self.parsed_source_cache().clone()),
         );
 
         Ok(Arc::new(NodeCodeTranslator::new(
           cjs_esm_analyzer,
           DenoFsNodeResolverEnv::new(self.fs().clone()),
-          self.node_resolver().await?.clone(),
+          node_resolver,
           self.npm_resolver().await?.clone().into_npm_resolver(),
         )))
       })
       .await
+  }
+
+  pub fn pkg_json_resolver(&self) -> &Arc<PackageJsonResolver> {
+    self.services.pkg_json_resolver.get_or_init(|| {
+      Arc::new(PackageJsonResolver::new(DenoFsNodeResolverEnv::new(
+        self.fs().clone(),
+      )))
+    })
   }
 
   pub async fn type_checker(&self) -> Result<&Arc<TypeChecker>, AnyError> {
@@ -701,20 +712,16 @@ impl CliFactory {
       .await
   }
 
-  pub async fn cjs_tracker(&self) -> Result<&Arc<CjsTracker>, AnyError> {
-    self
-      .services
-      .cjs_tracker
-      .get_or_try_init_async(async {
-        let options = self.cli_options()?;
-        Ok(Arc::new(CjsTracker::new(
-          CjsTrackerOptions {
-            unstable_detect_cjs: options.unstable_detect_cjs(),
-          },
-          self.node_resolver().await?.clone(),
-        )))
-      })
-      .await
+  pub fn cjs_tracker(&self) -> Result<&Arc<CjsTracker>, AnyError> {
+    self.services.cjs_tracker.get_or_try_init(|| {
+      let options = self.cli_options()?;
+      Ok(Arc::new(CjsTracker::new(
+        CjsTrackerOptions {
+          unstable_detect_cjs: options.unstable_detect_cjs(),
+        },
+        self.pkg_json_resolver().clone(),
+      )))
+    })
   }
 
   pub async fn cli_node_resolver(
@@ -725,7 +732,7 @@ impl CliFactory {
       .cli_node_resolver
       .get_or_try_init_async(async {
         Ok(Arc::new(CliNodeResolver::new(
-          self.cjs_tracker().await?.clone(),
+          self.cjs_tracker()?.clone(),
           self.fs().clone(),
           self.node_resolver().await?.clone(),
           self.npm_resolver().await?.clone(),
@@ -764,7 +771,7 @@ impl CliFactory {
   ) -> Result<DenoCompileBinaryWriter, AnyError> {
     let cli_options = self.cli_options()?;
     Ok(DenoCompileBinaryWriter::new(
-      self.cjs_tracker().await?,
+      self.cjs_tracker()?,
       self.deno_dir()?,
       self.emitter()?,
       self.file_fetcher()?,
@@ -806,11 +813,11 @@ impl CliFactory {
       None
     };
     let node_code_translator = self.node_code_translator().await?;
-    let cjs_tracker = self.cjs_tracker().await?.clone();
+    let cjs_tracker = self.cjs_tracker()?.clone();
+    let pkg_json_resolver = self.pkg_json_resolver().clone();
 
     Ok(CliMainWorkerFactory::new(
       self.blob_store().clone(),
-      cjs_tracker.clone(),
       if cli_options.code_cache_enabled() {
         Some(self.code_cache()?.clone())
       } else {
@@ -837,7 +844,7 @@ impl CliFactory {
         cli_node_resolver.clone(),
         cli_npm_resolver.clone(),
         NpmModuleLoader::new(
-          self.cjs_tracker().await?.clone(),
+          self.cjs_tracker()?.clone(),
           node_code_translator.clone(),
           fs.clone(),
           cli_node_resolver.clone(),
@@ -847,22 +854,23 @@ impl CliFactory {
       )),
       node_resolver.clone(),
       npm_resolver.clone(),
+      pkg_json_resolver,
       self.root_cert_store_provider().clone(),
       self.root_permissions_container()?.clone(),
       StorageKeyResolver::from_options(cli_options),
       cli_options.sub_command().clone(),
-      self.create_cli_main_worker_options().await?,
+      self.create_cli_main_worker_options()?,
     ))
   }
 
-  async fn create_cli_main_worker_options(
+  fn create_cli_main_worker_options(
     &self,
   ) -> Result<CliMainWorkerOptions, AnyError> {
     let cli_options = self.cli_options()?;
     let create_hmr_runner = if cli_options.has_hmr() {
       let watcher_communicator = self.watcher_communicator.clone().unwrap();
       let emitter = self.emitter()?.clone();
-      let cjs_tracker = self.cjs_tracker().await?.clone();
+      let cjs_tracker = self.cjs_tracker()?.clone();
       let fn_: crate::worker::CreateHmrRunnerCb = Box::new(move |session| {
         Box::new(HmrRunner::new(
           cjs_tracker.clone(),
@@ -920,7 +928,6 @@ impl CliFactory {
       node_ipc: cli_options.node_ipc_fd(),
       serve_port: cli_options.serve_port(),
       serve_host: cli_options.serve_host(),
-      unstable_detect_cjs: cli_options.unstable_detect_cjs(),
     })
   }
 }
