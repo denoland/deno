@@ -51,6 +51,7 @@ import { Agent, globalAgent } from "node:_http_agent";
 import { urlToHttpOptions } from "ext:deno_node/internal/url.ts";
 import { kEmptyObject, once } from "ext:deno_node/internal/util.mjs";
 import { constants, TCP } from "ext:deno_node/internal_binding/tcp_wrap.ts";
+import { kStreamBaseField } from "ext:deno_node/internal_binding/stream_wrap.ts";
 import { notImplemented } from "ext:deno_node/_utils.ts";
 import { isWindows } from "ext:deno_node/_util/os.ts";
 import {
@@ -453,10 +454,11 @@ class ClientRequest extends OutgoingMessage {
     (async () => {
       try {
         const parsedUrl = new URL(url);
-        let baseConnRid = this.socket._handle[internalRidSymbol];
+        let baseConnRid =
+          this.socket._handle[kStreamBaseField][internalRidSymbol];
         if (this._encrypted && !this.socket.authorized) {
           [baseConnRid] = op_tls_start({
-            rid: this.socket._handle[internalRidSymbol],
+            rid: baseConnRid,
             hostname: parsedUrl.hostname,
             caCerts: [],
             alpnProtocols: ["http/1.0", "http/1.1"],

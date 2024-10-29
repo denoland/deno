@@ -385,7 +385,6 @@ export class TCP extends ConnectionWrap {
         this.#address = req.localAddress = localAddr.hostname;
         this.#port = req.localPort = localAddr.port;
         this[kStreamBaseField] = conn;
-        this[internalRidSymbol] = conn[internalRidSymbol];
 
         try {
           this.afterConnect(req, 0);
