@@ -232,7 +232,7 @@ impl CliNodeResolver {
       self
         .node_resolver
         .resolve(specifier, referrer, referrer_kind, mode)?;
-    Ok(self.handle_node_resolution(res))
+    Ok(res)
   }
 
   pub fn resolve_req_reference(
@@ -297,7 +297,7 @@ impl CliNodeResolver {
         maybe_referrer,
         mode,
       )?;
-    Ok(self.handle_node_resolution(res))
+    Ok(res)
   }
 
   pub fn handle_if_in_node_modules(
@@ -320,34 +320,6 @@ impl CliNodeResolver {
     }
 
     Ok(None)
-  }
-
-  pub fn url_to_node_resolution(
-    &self,
-    specifier: ModuleSpecifier,
-  ) -> Result<NodeResolution, UrlToNodeResolutionError> {
-    self.node_resolver.url_to_node_resolution(specifier)
-  }
-
-  fn handle_node_resolution(
-    &self,
-    resolution: NodeResolution,
-  ) -> NodeResolution {
-    match &resolution {
-      NodeResolution::CommonJs(specifier) => {
-        // remember that this was a common js resolution
-        self
-          .cjs_tracker
-          .mark_kind(specifier.clone(), ModuleKind::Cjs);
-      }
-      NodeResolution::Esm(specifier) => {
-        self
-          .cjs_tracker
-          .mark_kind(specifier.clone(), ModuleKind::Esm);
-      }
-      NodeResolution::BuiltIn(_) => {}
-    }
-    resolution
   }
 }
 
@@ -549,14 +521,14 @@ impl CjsTracker {
           Some(value.unwrap_or(ModuleKind::Esm))
         }
       }
+      MediaType::Wasm |
+      MediaType::Json => Some(ModuleKind::Esm),
       MediaType::JavaScript
       | MediaType::Jsx
       | MediaType::TypeScript
       | MediaType::Tsx
       // treat these as unknown
-      | MediaType::Json
       | MediaType::Css
-      | MediaType::Wasm
       | MediaType::SourceMap
       | MediaType::Unknown => {
         if let Some(value) = self.known.get(specifier).map(|v| v.clone()) {
