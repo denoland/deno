@@ -275,13 +275,6 @@ jobs:
           sudo mount --rbind /home /sysroot/home
           sudo mount -t proc /proc /sysroot/proc
 
-          if [ -d "/usr/lib/gcc/x86_64-linux-gnu/12/crtbeginS.o" ]; then
-            ln -s /usr/lib/gcc/x86_64-linux-gnu/12/crtbeginS.o /sysroot/usr/lib/crtbeginS.o
-            ln -s /usr/lib/gcc/x86_64-linux-gnu/12/crtendS.o /sysroot/usr/lib/crtendS.o
-          else
-            echo "Not found"
-          fi
-
           cd
 
           echo "Done."
@@ -293,6 +286,13 @@ jobs:
           echo "sysroot env:"
           cat /sysroot/.env
           . /sysroot/.env
+
+          if [ -d "/sysroot/usr/lib/gcc/x86_64-linux-gnu/12/crtbeginS.o" ]; then
+            ln -s /sysroot/usr/lib/gcc/x86_64-linux-gnu/12/crtbeginS.o /sysroot/usr/lib/crtbeginS.o
+            ln -s /sysroot/usr/lib/gcc/x86_64-linux-gnu/12/crtendS.o /sysroot/usr/lib/crtendS.o
+          else
+            echo "Not found"
+          fi
 
           # Important notes:
           #   1. -ldl seems to be required to avoid a failure in FFI tests. This flag seems
