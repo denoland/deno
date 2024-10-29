@@ -237,10 +237,12 @@ pub fn op_require_resolve_deno_dir(
 pub fn op_require_is_deno_dir_package(
   state: &mut OpState,
   #[string] path: String,
-) -> Result<bool, deno_path_util::PathToUrlError> {
+) -> bool {
   let resolver = state.borrow::<NodeResolverRc>();
-  let specifier = deno_path_util::url_from_file_path(&PathBuf::from(path))?;
-  Ok(resolver.in_npm_package(&specifier))
+  match deno_path_util::url_from_file_path(&PathBuf::from(path)) {
+    Ok(specifier) => resolver.in_npm_package(&specifier),
+    Err(_) => false,
+  }
 }
 
 #[op2]
