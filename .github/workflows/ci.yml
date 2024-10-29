@@ -287,7 +287,10 @@ jobs:
           cat /sysroot/.env
           . /sysroot/.env
 
-          sudo cp -R /usr/lib/gcc/`uname -m`-linux-gnu/14/** /sysroot/usr/lib/
+          GCC_DIR=`find /usr/lib -name "crtbeginS.o" -print -quit | xargs dirname`
+          echo "GCC_DIR=$GCC_DIR"
+
+          sudo cp -R $GCC_DIR/** /sysroot/usr/lib/
 
           # Important notes:
           #   1. -ldl seems to be required to avoid a failure in FFI tests. This flag seems
