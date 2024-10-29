@@ -671,9 +671,8 @@ pub async fn run(data: StandaloneData) -> Result<i32, AnyError> {
       node_resolver: cli_node_resolver.clone(),
       npm_module_loader: Arc::new(NpmModuleLoader::new(
         cjs_tracker,
-        node_code_translator,
         fs.clone(),
-        cli_node_resolver,
+        node_code_translator,
       )),
       npm_resolver: npm_resolver.clone(),
       workspace_resolver,

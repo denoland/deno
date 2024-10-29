@@ -845,9 +845,8 @@ impl CliFactory {
         cli_npm_resolver.clone(),
         NpmModuleLoader::new(
           self.cjs_tracker()?.clone(),
-          node_code_translator.clone(),
           fs.clone(),
-          cli_node_resolver.clone(),
+          node_code_translator.clone(),
         ),
         self.parsed_source_cache().clone(),
         self.resolver().await?.clone(),

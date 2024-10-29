@@ -416,7 +416,7 @@ impl<TGraphContainer: ModuleGraphContainer>
     if let Some(code_source) = self.load_prepared_module(specifier).await? {
       return Ok(code_source);
     }
-    if self.shared.npm_module_loader.if_in_npm_package(specifier) {
+    if self.shared.node_resolver.in_npm_package(specifier) {
       return self
         .shared
         .npm_module_loader
@@ -583,7 +583,10 @@ impl<TGraphContainer: ModuleGraphContainer>
         specifier,
         media_type,
         source,
-      }) => self.load_cjs(specifier, media_type, source).await.map(Some),
+      }) => self
+        .load_maybe_cjs(specifier, media_type, source)
+        .await
+        .map(Some),
       None => Ok(None),
     }
   }
@@ -713,7 +716,7 @@ impl<TGraphContainer: ModuleGraphContainer>
     }
   }
 
-  async fn load_cjs(
+  async fn load_maybe_cjs(
     &self,
     specifier: &ModuleSpecifier,
     media_type: MediaType,

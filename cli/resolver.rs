@@ -4,6 +4,7 @@ use async_trait::async_trait;
 use dashmap::DashMap;
 use dashmap::DashSet;
 use deno_ast::MediaType;
+use deno_ast::ModuleKind;
 use deno_config::workspace::MappedResolution;
 use deno_config::workspace::MappedResolutionDiagnostic;
 use deno_config::workspace::MappedResolutionError;
@@ -329,15 +330,21 @@ impl CliNodeResolver {
     &self,
     resolution: NodeResolution,
   ) -> NodeResolution {
-    if let NodeResolution::CommonJs(specifier) = &resolution {
-      // remember that this was a common js resolution
-      self.mark_cjs_resolution(specifier.clone());
+    match &resolution {
+      NodeResolution::CommonJs(specifier) => {
+        // remember that this was a common js resolution
+        self
+          .cjs_tracker
+          .mark_kind(specifier.clone(), ModuleKind::Cjs);
+      }
+      NodeResolution::Esm(specifier) => {
+        self
+          .cjs_tracker
+          .mark_kind(specifier.clone(), ModuleKind::Esm);
+      }
+      NodeResolution::BuiltIn(_) => {}
     }
     resolution
-  }
-
-  pub fn mark_cjs_resolution(&self, specifier: ModuleSpecifier) {
-    self.cjs_tracker.insert(specifier);
   }
 }
 
@@ -345,28 +352,21 @@ impl CliNodeResolver {
 #[derive(Clone)]
 pub struct NpmModuleLoader {
   cjs_tracker: Arc<CjsTracker>,
-  node_code_translator: Arc<CliNodeCodeTranslator>,
   fs: Arc<dyn deno_fs::FileSystem>,
-  node_resolver: Arc<CliNodeResolver>,
+  node_code_translator: Arc<CliNodeCodeTranslator>,
 }
 
 impl NpmModuleLoader {
   pub fn new(
     cjs_tracker: Arc<CjsTracker>,
-    node_code_translator: Arc<CliNodeCodeTranslator>,
     fs: Arc<dyn deno_fs::FileSystem>,
-    node_resolver: Arc<CliNodeResolver>,
+    node_code_translator: Arc<CliNodeCodeTranslator>,
   ) -> Self {
     Self {
       cjs_tracker,
       node_code_translator,
       fs,
-      node_resolver,
     }
-  }
-
-  pub fn if_in_npm_package(&self, specifier: &ModuleSpecifier) -> bool {
-    self.node_resolver.in_npm_package(specifier)
   }
 
   pub async fn load(
@@ -442,7 +442,7 @@ pub struct CjsTrackerOptions {
 #[derive(Debug)]
 pub struct CjsTracker {
   unstable_detect_cjs: bool,
-  set: DashSet<ModuleSpecifier>,
+  known: DashMap<ModuleSpecifier, ModuleKind>,
   pkg_json_resolver: Arc<PackageJsonResolver>,
 }
 
@@ -453,7 +453,7 @@ impl CjsTracker {
   ) -> Self {
     Self {
       unstable_detect_cjs: options.unstable_detect_cjs,
-      set: DashSet::new(),
+      known: Default::default(),
       pkg_json_resolver,
     }
   }
@@ -482,8 +482,8 @@ impl CjsTracker {
       | MediaType::Wasm
       | MediaType::SourceMap
       | MediaType::Unknown => {
-        if self.set.contains(specifier) {
-          return Ok(true);
+        if let Some(value) = self.known.get(specifier) {
+          return Ok(value.is_cjs());
         }
 
         if self.unstable_detect_cjs {
@@ -499,8 +499,8 @@ impl CjsTracker {
     }
   }
 
-  pub fn insert(&self, specifier: ModuleSpecifier) {
-    self.set.insert(specifier);
+  pub fn mark_kind(&self, specifier: ModuleSpecifier, kind: ModuleKind) {
+    self.known.insert(specifier, kind);
   }
 }
 
