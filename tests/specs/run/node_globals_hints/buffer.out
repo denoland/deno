@@ -1,0 +1,7 @@
+error: Uncaught (in promise) ReferenceError: Buffer is not defined
+Buffer;
+^
+    at [WILDCARD]buffer.js:1:1
+
+    info: Buffer is not available in the global scope in Deno.
+    hint: Import it explicitly with import { Buffer } from "node:buffer";.

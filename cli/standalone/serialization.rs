@@ -173,6 +173,7 @@ pub struct RemoteModulesStoreBuilder {
 
 impl RemoteModulesStoreBuilder {
   pub fn add(&mut self, specifier: &Url, media_type: MediaType, data: Vec<u8>) {
+    log::debug!("Adding '{}' ({})", specifier, media_type);
     let specifier = specifier.to_string();
     self.specifiers.push((specifier, self.data_byte_len));
     self.data_byte_len += 1 + 8 + data.len() as u64; // media type (1 byte), data length (8 bytes), data
@@ -182,6 +183,7 @@ impl RemoteModulesStoreBuilder {
   pub fn add_redirects(&mut self, redirects: &BTreeMap<Url, Url>) {
     self.redirects.reserve(redirects.len());
     for (from, to) in redirects {
+      log::debug!("Adding redirect '{}' -> '{}'", from, to);
       let from = from.to_string();
       let to = to.to_string();
       self.redirects_len += (4 + from.len() + 4 + to.len()) as u64;
@@ -354,17 +356,17 @@ impl RemoteModulesStore {
 
   pub fn read<'a>(
     &'a self,
-    specifier: &'a Url,
+    original_specifier: &'a Url,
   ) -> Result<Option<DenoCompileModuleData<'a>>, AnyError> {
     let mut count = 0;
-    let mut current = specifier;
+    let mut specifier = original_specifier;
     loop {
       if count > 10 {
-        bail!("Too many redirects resolving '{}'", specifier);
+        bail!("Too many redirects resolving '{}'", original_specifier);
       }
-      match self.specifiers.get(current) {
+      match self.specifiers.get(specifier) {
         Some(RemoteModulesStoreSpecifierValue::Redirect(to)) => {
-          current = to;
+          specifier = to;
           count += 1;
         }
         Some(RemoteModulesStoreSpecifierValue::Data(offset)) => {
