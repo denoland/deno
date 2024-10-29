@@ -1,1 +1,6 @@
- 
+{
+  "args": "serve --port 12468 server.ts",
+  "output": "server.out",
+  "tempDir": true,
+  "exitCode": 0
+} 
