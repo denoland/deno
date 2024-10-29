@@ -2,7 +2,7 @@
 
 [package]
 name = "deno"
-version = "2.0.2"
+version = "2.0.3"
 authors.workspace = true
 default-run = "deno"
 edition.workspace = true
@@ -73,7 +73,7 @@ deno_cache_dir = { workspace = true }
 deno_config = { version = "=0.37.2", features = ["workspace", "sync"] }
 deno_core = { workspace = true, features = ["include_js_files_for_snapshotting"] }
 deno_doc = { version = "0.154.0", default-features = false, features = ["rust", "html", "syntect"] }
-deno_graph = { version = "=0.83.3" }
+deno_graph = { version = "=0.83.4" }
 deno_lint = { version = "=0.67.0", features = ["docs"] }
 deno_lockfile.workspace = true
 deno_npm.workspace = true
@@ -84,9 +84,7 @@ deno_runtime = { workspace = true, features = ["include_js_files_for_snapshottin
 deno_semver.workspace = true
 deno_task_shell = "=0.18.1"
 deno_terminal.workspace = true
-eszip = "=0.79.1"
 libsui = "0.4.0"
-napi_sym.workspace = true
 node_resolver.workspace = true
 
 anstream = "0.6.14"
@@ -175,14 +173,12 @@ zstd.workspace = true
 [target.'cfg(windows)'.dependencies]
 junction.workspace = true
 winapi = { workspace = true, features = ["knownfolders", "mswsock", "objbase", "shlobj", "tlhelp32", "winbase", "winerror", "winsock2"] }
-windows-sys.workspace = true
 
 [target.'cfg(unix)'.dependencies]
 nix.workspace = true
 
 [dev-dependencies]
 deno_bench_util.workspace = true
-libuv-sys-lite = "=1.48.2"
 pretty_assertions.workspace = true
 test_util.workspace = true
 

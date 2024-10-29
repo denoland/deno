@@ -18,7 +18,6 @@ use deno_lint::diagnostic::LintDiagnosticRange;
 use deno_ast::SourceRange;
 use deno_ast::SourceRangedForSpanned;
 use deno_ast::SourceTextInfo;
-use deno_core::anyhow::anyhow;
 use deno_core::error::custom_error;
 use deno_core::error::AnyError;
 use deno_core::serde::Deserialize;
@@ -40,6 +39,7 @@ use import_map::ImportMap;
 use node_resolver::NpmResolver;
 use once_cell::sync::Lazy;
 use regex::Regex;
+use std::borrow::Cow;
 use std::cmp::Ordering;
 use std::collections::HashMap;
 use std::collections::HashSet;
@@ -598,68 +598,62 @@ pub fn fix_ts_import_changes(
 
 /// Fix tsc import code actions so that the module specifier is correct for
 /// resolution by Deno (includes the extension).
-fn fix_ts_import_action(
+fn fix_ts_import_action<'a>(
   referrer: &ModuleSpecifier,
-  action: &tsc::CodeFixAction,
+  action: &'a tsc::CodeFixAction,
   import_mapper: &TsResponseImportMapper,
-) -> Result<Option<tsc::CodeFixAction>, AnyError> {
-  if matches!(
+) -> Option<Cow<'a, tsc::CodeFixAction>> {
+  if !matches!(
     action.fix_name.as_str(),
     "import" | "fixMissingFunctionDeclaration"
   ) {
-    let change = action
+    return Some(Cow::Borrowed(action));
+  }
+  let specifier = (|| {
+    let text_change = action.changes.first()?.text_changes.first()?;
+    let captures = IMPORT_SPECIFIER_RE.captures(&text_change.new_text)?;
+    Some(captures.get(1)?.as_str())
+  })();
+  let Some(specifier) = specifier else {
+    return Some(Cow::Borrowed(action));
+  };
+  if let Some(new_specifier) =
+    import_mapper.check_unresolved_specifier(specifier, referrer)
+  {
+    let description = action.description.replace(specifier, &new_specifier);
+    let changes = action
       .changes
-      .first()
-      .ok_or_else(|| anyhow!("Unexpected action changes."))?;
-    let text_change = change
-      .text_changes
-      .first()
-      .ok_or_else(|| anyhow!("Missing text change."))?;
-    if let Some(captures) = IMPORT_SPECIFIER_RE.captures(&text_change.new_text)
-    {
-      let specifier = captures
-        .get(1)
-        .ok_or_else(|| anyhow!("Missing capture."))?
-        .as_str();
-      if let Some(new_specifier) =
-        import_mapper.check_unresolved_specifier(specifier, referrer)
-      {
-        let description = action.description.replace(specifier, &new_specifier);
-        let changes = action
-          .changes
+      .iter()
+      .map(|c| {
+        let text_changes = c
+          .text_changes
           .iter()
-          .map(|c| {
-            let text_changes = c
-              .text_changes
-              .iter()
-              .map(|tc| tsc::TextChange {
-                span: tc.span.clone(),
-                new_text: tc.new_text.replace(specifier, &new_specifier),
-              })
-              .collect();
-            tsc::FileTextChanges {
-              file_name: c.file_name.clone(),
-              text_changes,
-              is_new_file: c.is_new_file,
-            }
+          .map(|tc| tsc::TextChange {
+            span: tc.span.clone(),
+            new_text: tc.new_text.replace(specifier, &new_specifier),
           })
           .collect();
+        tsc::FileTextChanges {
+          file_name: c.file_name.clone(),
+          text_changes,
+          is_new_file: c.is_new_file,
+        }
+      })
+      .collect();
 
-        return Ok(Some(tsc::CodeFixAction {
-          description,
-          changes,
-          commands: None,
-          fix_name: action.fix_name.clone(),
-          fix_id: None,
-          fix_all_description: None,
-        }));
-      } else if !import_mapper.is_valid_import(specifier, referrer) {
-        return Ok(None);
-      }
-    }
+    Some(Cow::Owned(tsc::CodeFixAction {
+      description,
+      changes,
+      commands: None,
+      fix_name: action.fix_name.clone(),
+      fix_id: None,
+      fix_all_description: None,
+    }))
+  } else if !import_mapper.is_valid_import(specifier, referrer) {
+    None
+  } else {
+    Some(Cow::Borrowed(action))
   }
-
-  Ok(Some(action.clone()))
 }
 
 /// Determines if two TypeScript diagnostic codes are effectively equivalent.
@@ -1004,8 +998,7 @@ impl CodeActionCollection {
       specifier,
       action,
       &language_server.get_ts_response_import_mapper(specifier),
-    )?
-    else {
+    ) else {
       return Ok(());
     };
     let edit = ts_changes_to_edit(&action.changes, language_server)?;
@@ -1027,7 +1020,7 @@ impl CodeActionCollection {
     });
     self
       .actions
-      .push(CodeActionKind::Tsc(code_action, action.clone()));
+      .push(CodeActionKind::Tsc(code_action, action.as_ref().clone()));
 
     if let Some(fix_id) = &action.fix_id {
       if let Some(CodeActionKind::Tsc(existing_fix_all, existing_action)) =

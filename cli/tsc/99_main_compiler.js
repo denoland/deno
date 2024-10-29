@@ -516,7 +516,6 @@ delete Object.prototype.__proto__;
   /** @typedef {{
    *    ls: ts.LanguageService & { [k:string]: any },
    *    compilerOptions: ts.CompilerOptions,
-   *    forceEnabledVerbatimModuleSyntax: boolean,
    *  }} LanguageServiceEntry */
   /** @type {{ unscoped: LanguageServiceEntry, byScope: Map<string, LanguageServiceEntry> }} */
   const languageServiceEntries = {
@@ -1026,7 +1025,7 @@ delete Object.prototype.__proto__;
         : ts.sortAndDeduplicateDiagnostics(
           checkFiles.map((s) => program.getSemanticDiagnostics(s)).flat(),
         )),
-    ].filter(filterMapDiagnostic.bind(null, false));
+    ].filter(filterMapDiagnostic);
 
     // emit the tsbuildinfo file
     // @ts-ignore: emitBuildInfo is not exposed (https://github.com/microsoft/TypeScript/issues/49871)
@@ -1041,27 +1040,10 @@ delete Object.prototype.__proto__;
     debug("<<< exec stop");
   }
 
-  /**
-   * @param {boolean} isLsp
-   * @param {ts.Diagnostic} diagnostic
-   */
-  function filterMapDiagnostic(isLsp, diagnostic) {
+  /** @param {ts.Diagnostic} diagnostic */
+  function filterMapDiagnostic(diagnostic) {
     if (IGNORED_DIAGNOSTICS.includes(diagnostic.code)) {
       return false;
-    }
-    if (isLsp) {
-      // TS1484: `...` is a type and must be imported using a type-only import when 'verbatimModuleSyntax' is enabled.
-      // We force-enable `verbatimModuleSyntax` in the LSP so the `type`
-      // modifier is used when auto-importing types. But we don't want this
-      // diagnostic unless it was explicitly enabled by the user.
-      if (diagnostic.code == 1484) {
-        const entry = (lastRequestScope
-          ? languageServiceEntries.byScope.get(lastRequestScope)
-          : null) ?? languageServiceEntries.unscoped;
-        if (entry.forceEnabledVerbatimModuleSyntax) {
-          return false;
-        }
-      }
     }
     // make the diagnostic for using an `export =` in an es module a warning
     if (diagnostic.code === 1203) {
@@ -1159,12 +1141,10 @@ delete Object.prototype.__proto__;
         "strict": true,
         "target": "esnext",
         "useDefineForClassFields": true,
-        "verbatimModuleSyntax": true,
         "jsx": "react",
         "jsxFactory": "React.createElement",
         "jsxFragmentFactory": "React.Fragment",
       }),
-      forceEnabledVerbatimModuleSyntax: true,
     };
     setLogDebug(enableDebugLogging, "TSLS");
     debug("serverInit()");
@@ -1230,17 +1210,8 @@ delete Object.prototype.__proto__;
           const ls = oldEntry
             ? oldEntry.ls
             : ts.createLanguageService(host, documentRegistry);
-          let forceEnabledVerbatimModuleSyntax = false;
-          if (!config["verbatimModuleSyntax"]) {
-            config["verbatimModuleSyntax"] = true;
-            forceEnabledVerbatimModuleSyntax = true;
-          }
           const compilerOptions = lspTsConfigToCompilerOptions(config);
-          newByScope.set(scope, {
-            ls,
-            compilerOptions,
-            forceEnabledVerbatimModuleSyntax,
-          });
+          newByScope.set(scope, { ls, compilerOptions });
           languageServiceEntries.byScope.delete(scope);
         }
         for (const oldEntry of languageServiceEntries.byScope.values()) {
@@ -1305,7 +1276,7 @@ delete Object.prototype.__proto__;
               ...ls.getSemanticDiagnostics(specifier),
               ...ls.getSuggestionDiagnostics(specifier),
               ...ls.getSyntacticDiagnostics(specifier),
-            ].filter(filterMapDiagnostic.bind(null, true)));
+            ].filter(filterMapDiagnostic));
           }
           return respond(id, diagnosticMap);
         } catch (e) {
@@ -1366,18 +1337,12 @@ delete Object.prototype.__proto__;
     "console",
     "Console",
     "ErrorConstructor",
-    "exports",
     "gc",
     "Global",
     "ImportMeta",
     "localStorage",
-    "module",
-    "NodeModule",
-    "NodeRequire",
-    "process",
     "queueMicrotask",
     "RequestInit",
-    "require",
     "ResponseInit",
     "sessionStorage",
     "setImmediate",

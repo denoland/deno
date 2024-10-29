@@ -541,7 +541,8 @@ impl<TGraphContainer: ModuleGraphContainer>
         self.parsed_source_cache.free(specifier);
 
         Ok(Some(ModuleCodeStringSource {
-          code: ModuleSourceCode::Bytes(transpile_result),
+          // note: it's faster to provide a string if we know it's a string
+          code: ModuleSourceCode::String(transpile_result.into()),
           found_url: specifier.clone(),
           media_type,
         }))
@@ -571,7 +572,8 @@ impl<TGraphContainer: ModuleGraphContainer>
         self.parsed_source_cache.free(specifier);
 
         Ok(Some(ModuleCodeStringSource {
-          code: ModuleSourceCode::Bytes(transpile_result),
+          // note: it's faster to provide a string if we know it's a string
+          code: ModuleSourceCode::String(transpile_result.into()),
           found_url: specifier.clone(),
           media_type,
         }))

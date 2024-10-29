@@ -321,6 +321,48 @@ fn get_suggestions_for_terminal_errors(e: &JsError) -> Vec<FixSuggestion> {
         ]),
         FixSuggestion::docs("https://docs.deno.com/go/commonjs"),
       ];
+    } else if msg.contains("__filename is not defined") {
+      return vec![
+        FixSuggestion::info(cstr!(
+          "<u>__filename</> global is not available in ES modules."
+        )),
+        FixSuggestion::hint(cstr!("Use <u>import.meta.filename</> instead.")),
+      ];
+    } else if msg.contains("__dirname is not defined") {
+      return vec![
+        FixSuggestion::info(cstr!(
+          "<u>__dirname</> global is not available in ES modules."
+        )),
+        FixSuggestion::hint(cstr!("Use <u>import.meta.dirname</> instead.")),
+      ];
+    } else if msg.contains("Buffer is not defined") {
+      return vec![
+        FixSuggestion::info(cstr!(
+          "<u>Buffer</> is not available in the global scope in Deno."
+        )),
+        FixSuggestion::hint(cstr!("Import it explicitly with <u>import { Buffer } from \"node:buffer\";</>.")),
+      ];
+    } else if msg.contains("clearImmediate is not defined") {
+      return vec![
+        FixSuggestion::info(cstr!(
+          "<u>clearImmediate</> is not available in the global scope in Deno."
+        )),
+        FixSuggestion::hint(cstr!("Import it explicitly with <u>import { clearImmediate } from \"node:timers\";</>.")),
+      ];
+    } else if msg.contains("setImmediate is not defined") {
+      return vec![
+        FixSuggestion::info(cstr!(
+          "<u>setImmediate</> is not available in the global scope in Deno."
+        )),
+        FixSuggestion::hint(cstr!("Import it explicitly with <u>import { setImmediate } from \"node:timers\";</>.")),
+      ];
+    } else if msg.contains("global is not defined") {
+      return vec![
+        FixSuggestion::info(cstr!(
+          "<u>global</> is not available in the global scope in Deno."
+        )),
+        FixSuggestion::hint(cstr!("Use <u>globalThis</> instead, or assign <u>globalThis.global = globalThis</>.")),
+      ];
     } else if msg.contains("openKv is not a function") {
       return vec![
         FixSuggestion::info("Deno.openKv() is an unstable API."),
