@@ -456,7 +456,7 @@ class ClientRequest extends OutgoingMessage {
         const parsedUrl = new URL(url);
         let baseConnRid =
           this.socket._handle[kStreamBaseField][internalRidSymbol];
-        if (this._encrypted && !this.socket.authorized) {
+        if (this._encrypted) {
           [baseConnRid] = op_tls_start({
             rid: baseConnRid,
             hostname: parsedUrl.hostname,
