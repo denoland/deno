@@ -2,6 +2,7 @@
 
 use dashmap::DashMap;
 use deno_ast::MediaType;
+use deno_ast::ParsedSource;
 use deno_cache_dir::npm::NpmCacheDir;
 use deno_cache_dir::HttpCache;
 use deno_config::workspace::PackageJsonDepResolution;
@@ -61,13 +62,12 @@ use crate::resolver::CliGraphResolverOptions;
 use crate::resolver::CliNodeResolver;
 use crate::resolver::WorkerCliNpmGraphResolver;
 use crate::tsc::into_specifier_and_media_type;
-use crate::tsc::TypeCheckingCjsTracker;
 use crate::util::progress_bar::ProgressBar;
 use crate::util::progress_bar::ProgressBarStyle;
 
 #[derive(Debug, Clone)]
 struct LspScopeResolver {
-  cjs_tracker: Option<Arc<TypeCheckingCjsTracker>>,
+  cjs_tracker: Option<Arc<LspCjsTracker>>,
   graph_resolver: Arc<CliGraphResolver>,
   jsr_resolver: Option<Arc<JsrCacheResolver>>,
   npm_resolver: Option<Arc<dyn CliNpmResolver>>,
@@ -102,7 +102,7 @@ impl LspScopeResolver {
   ) -> Self {
     let mut npm_resolver = None;
     let mut node_resolver = None;
-    let mut type_checking_cjs_tracker = None;
+    let mut lsp_cjs_tracker = None;
     let fs = Arc::new(deno_fs::RealFs);
     let pkg_json_resolver = Arc::new(PackageJsonResolver::new(
       deno_runtime::deno_node::DenoFsNodeResolverEnv::new(fs.clone()),
@@ -121,9 +121,8 @@ impl LspScopeResolver {
           in_npm_pkg_checker.clone(),
           pkg_json_resolver.clone(),
         );
-        type_checking_cjs_tracker = Some(Arc::new(
-          TypeCheckingCjsTracker::new_for_lsp(cjs_tracker.clone()),
-        ));
+        lsp_cjs_tracker =
+          Some(Arc::new(LspCjsTracker::new(cjs_tracker.clone())));
         node_resolver = Some(create_node_resolver(
           cjs_tracker,
           fs.clone(),
@@ -168,7 +167,7 @@ impl LspScopeResolver {
       })
       .unwrap_or_default();
     Self {
-      cjs_tracker: type_checking_cjs_tracker,
+      cjs_tracker: lsp_cjs_tracker,
       graph_resolver,
       jsr_resolver,
       npm_resolver,
@@ -188,16 +187,14 @@ impl LspScopeResolver {
       deno_runtime::deno_node::DenoFsNodeResolverEnv::new(fs.clone()),
     ));
     let mut node_resolver = None;
-    let mut type_checking_cjs_tracker = None;
+    let mut lsp_cjs_tracker = None;
     if let Some(npm_resolver) = &npm_resolver {
       let in_npm_pkg_checker = create_in_npm_pkg_checker(npm_resolver);
       let cjs_tracker = create_cjs_tracker(
         in_npm_pkg_checker.clone(),
         pkg_json_resolver.clone(),
       );
-      type_checking_cjs_tracker = Some(Arc::new(
-        TypeCheckingCjsTracker::new_for_lsp(cjs_tracker.clone()),
-      ));
+      lsp_cjs_tracker = Some(Arc::new(LspCjsTracker::new(cjs_tracker.clone())));
       node_resolver = Some(create_node_resolver(
         cjs_tracker,
         fs,
@@ -212,7 +209,7 @@ impl LspScopeResolver {
       node_resolver.as_ref(),
     );
     Arc::new(Self {
-      cjs_tracker: type_checking_cjs_tracker,
+      cjs_tracker: lsp_cjs_tracker,
       graph_resolver,
       jsr_resolver: self.jsr_resolver.clone(),
       npm_resolver,
@@ -324,7 +321,7 @@ impl LspResolver {
   pub fn maybe_cjs_tracker(
     &self,
     file_referrer: Option<&ModuleSpecifier>,
-  ) -> Option<&Arc<TypeCheckingCjsTracker>> {
+  ) -> Option<&Arc<LspCjsTracker>> {
     let resolver = self.get_scope_resolver(file_referrer);
     resolver.cjs_tracker.as_ref()
   }
@@ -811,6 +808,40 @@ impl RedirectResolver {
 
   fn did_cache(&self) {
     self.entries.retain(|_, entry| entry.is_some());
+  }
+}
+
+#[derive(Debug)]
+pub struct LspCjsTracker {
+  cjs_tracker: Arc<CjsTracker>,
+}
+
+impl LspCjsTracker {
+  pub fn new(cjs_tracker: Arc<CjsTracker>) -> Self {
+    Self { cjs_tracker }
+  }
+
+  pub fn is_cjs(
+    &self,
+    specifier: &ModuleSpecifier,
+    media_type: MediaType,
+    maybe_parsed_source: Option<&ParsedSource>,
+  ) -> bool {
+    if let Some(module_kind) = self.cjs_tracker.get_known_kind(specifier) {
+      module_kind.is_cjs()
+    } else {
+      let maybe_is_script = maybe_parsed_source.map(|p| p.is_script());
+      maybe_is_script
+        .and_then(|is_script| {
+          self
+            .cjs_tracker
+            .is_cjs_with_known_is_script(specifier, is_script)
+            .ok()
+        })
+        .unwrap_or_else(|| {
+          self.cjs_tracker.is_maybe_cjs(specifier).unwrap_or(false)
+        })
+    }
   }
 }
 

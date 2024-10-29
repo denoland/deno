@@ -4363,14 +4363,22 @@ fn op_load<'s>(
     } else {
       let asset_or_document = state.get_asset_or_document(&specifier);
       asset_or_document.map(|doc| {
-        let maybe_cjs_tracker =
-          state.state_snapshot.resolver.maybe_cjs_tracker(specifier);
+        let maybe_cjs_tracker = state
+          .state_snapshot
+          .resolver
+          .maybe_cjs_tracker(Some(&specifier));
         LoadResponse {
           data: doc.text(),
           script_kind: crate::tsc::as_ts_script_kind(doc.media_type()),
           version: state.script_version(&specifier),
           is_cjs: maybe_cjs_tracker
-            .map(|t| t.is_cjs(&specifier, doc.media_type(), &doc.text()))
+            .map(|t| {
+              t.is_cjs(
+                &specifier,
+                doc.media_type(),
+                doc.maybe_parsed_source().and_then(|p| p.as_ref().ok()),
+              )
+            })
             .unwrap_or(false),
         }
       })

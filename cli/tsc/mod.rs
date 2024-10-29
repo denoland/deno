@@ -321,34 +321,10 @@ pub fn into_specifier_and_media_type(
   }
 }
 
-trait IsScriptModuleAnalyzer: std::fmt::Debug + Send + Sync {
-  fn analyze_sync(
-    &self,
-    specifier: &ModuleSpecifier,
-    media_type: MediaType,
-    code: &Arc<str>,
-  ) -> Option<bool>;
-}
-
-impl IsScriptModuleAnalyzer for ModuleInfoCache {
-  fn analyze_sync(
-    &self,
-    specifier: &ModuleSpecifier,
-    media_type: MediaType,
-    code: &Arc<str>,
-  ) -> Option<bool> {
-    self
-      .as_module_analyzer()
-      .analyze_sync(specifier, media_type, code)
-      .map(|info| info.is_script)
-      .ok()
-  }
-}
-
 #[derive(Debug)]
 pub struct TypeCheckingCjsTracker {
   cjs_tracker: Arc<CjsTracker>,
-  analyzer: Arc<dyn IsScriptModuleAnalyzer>,
+  module_info_cache: Arc<ModuleInfoCache>,
 }
 
 impl TypeCheckingCjsTracker {
@@ -358,14 +334,7 @@ impl TypeCheckingCjsTracker {
   ) -> Self {
     Self {
       cjs_tracker,
-      analyzer: module_info_cache,
-    }
-  }
-
-  pub fn new_for_lsp(cjs_tracker: Arc<CjsTracker>) -> Self {
-    Self {
-      cjs_tracker,
-      analyzer: module_info_cache,
+      module_info_cache,
     }
   }
 
@@ -378,8 +347,12 @@ impl TypeCheckingCjsTracker {
     if let Some(module_kind) = self.cjs_tracker.get_known_kind(specifier) {
       module_kind.is_cjs()
     } else {
-      let maybe_is_script =
-        self.analyzer.analyze_sync(specifier, media_type, code);
+      let maybe_is_script = self
+        .module_info_cache
+        .as_module_analyzer()
+        .analyze_sync(specifier, media_type, code)
+        .ok()
+        .map(|info| info.is_script);
       maybe_is_script
         .and_then(|is_script| {
           self
@@ -390,13 +363,6 @@ impl TypeCheckingCjsTracker {
         .unwrap_or_else(|| {
           self.cjs_tracker.is_maybe_cjs(specifier).unwrap_or(false)
         })
-    }
-  }
-
-  pub fn snapshot(&self) -> TypeCheckingCjsTracker {
-    Self {
-      cjs_tracker: Arc::new(self.cjs_tracker.snapshot()),
-      analyzer: self.analyzer.clone(),
     }
   }
 }
