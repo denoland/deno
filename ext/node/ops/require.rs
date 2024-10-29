@@ -59,6 +59,8 @@ pub enum RequireError {
   #[error(transparent)]
   FilePathConversion(#[from] deno_path_util::UrlToFilePathError),
   #[error(transparent)]
+  UrlConversion(#[from] deno_path_util::PathToUrlError),
+  #[error(transparent)]
   Fs(#[from] deno_io::fs::FsError),
   #[error(transparent)]
   ReadModule(deno_core::error::AnyError),
@@ -235,9 +237,10 @@ pub fn op_require_resolve_deno_dir(
 pub fn op_require_is_deno_dir_package(
   state: &mut OpState,
   #[string] path: String,
-) -> bool {
-  let resolver = state.borrow::<NpmResolverRc>();
-  resolver.in_npm_package_at_file_path(&PathBuf::from(path))
+) -> Result<bool, deno_path_util::PathToUrlError> {
+  let resolver = state.borrow::<NodeResolverRc>();
+  let specifier = deno_path_util::url_from_file_path(&PathBuf::from(path))?;
+  Ok(resolver.in_npm_package(&specifier))
 }
 
 #[op2]
@@ -514,12 +517,12 @@ where
   P: NodePermissions + 'static,
 {
   let fs = state.borrow::<FileSystemRc>();
-  let npm_resolver = state.borrow::<NpmResolverRc>();
   let node_resolver = state.borrow::<NodeResolverRc>();
   let pkg_json_resolver = state.borrow::<PackageJsonResolverRc>();
 
   let modules_path = PathBuf::from(&modules_path_str);
-  let pkg_path = if npm_resolver.in_npm_package_at_file_path(&modules_path)
+  let modules_specifier = deno_path_util::url_from_file_path(&modules_path)?;
+  let pkg_path = if node_resolver.in_npm_package(&modules_specifier)
     && !uses_local_node_modules_dir
   {
     modules_path

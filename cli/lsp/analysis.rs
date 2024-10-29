@@ -336,7 +336,12 @@ impl<'a> TsResponseImportMapper<'a> {
       .resolver
       .maybe_managed_npm_resolver(Some(&self.file_referrer))
     {
-      if npm_resolver.in_npm_package(specifier) {
+      let in_npm_pkg = self
+        .resolver
+        .maybe_node_resolver(Some(&self.file_referrer))
+        .map(|n| n.in_npm_package(specifier))
+        .unwrap_or(false);
+      if in_npm_pkg {
         if let Ok(Some(pkg_id)) =
           npm_resolver.resolve_pkg_id_from_specifier(specifier)
         {

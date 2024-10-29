@@ -145,11 +145,7 @@ impl crate::worker::HmrRunner for HmrRunner {
 
             let source_code = self.emitter.load_and_emit_for_hmr(
               &module_url,
-              if self.cjs_tracker.treat_as_cjs(&module_url)? {
-                ModuleKind::Cjs
-              } else {
-                ModuleKind::Esm
-              },
+              ModuleKind::from_is_cjs(self.cjs_tracker.is_maybe_cjs(&module_url)?),
             ).await?;
 
             let mut tries = 1;

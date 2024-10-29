@@ -661,7 +661,11 @@ impl<TGraphContainer: ModuleGraphContainer>
         is_script,
         ..
       })) => {
-        if *is_script && self.shared.cjs_tracker.treat_as_cjs(specifier)? {
+        if self
+          .shared
+          .cjs_tracker
+          .is_cjs_with_known_is_script(specifier, *is_script)?
+        {
           return Ok(Some(CodeOrDeferredEmit::Cjs {
             specifier,
             media_type: *media_type,

@@ -18,6 +18,7 @@ use deno_core::error::AnyError;
 use deno_core::serde_json;
 use deno_npm::npm_rc::ResolvedNpmRc;
 use deno_npm::registry::NpmPackageInfo;
+use deno_resolver::npm::ByonmInNpmPackageChecker;
 use deno_resolver::npm::ByonmNpmResolver;
 use deno_resolver::npm::ByonmResolvePkgFolderFromDenoReqError;
 use deno_runtime::deno_fs::FileSystem;
@@ -27,6 +28,8 @@ use deno_runtime::ops::process::NpmProcessStateProvider;
 use deno_semver::package::PackageNv;
 use deno_semver::package::PackageReq;
 use managed::cache::registry_info::get_package_url;
+use managed::create_managed_in_npm_pkg_checker;
+use node_resolver::InNpmPackageChecker;
 use node_resolver::NpmResolver;
 use thiserror::Error;
 
@@ -35,7 +38,8 @@ use crate::file_fetcher::FileFetcher;
 
 pub use self::byonm::CliByonmNpmResolver;
 pub use self::byonm::CliByonmNpmResolverCreateOptions;
-pub use self::managed::CliNpmResolverManagedCreateOptions;
+pub use self::managed::CliManagedInNpmPkgCheckerCreateOptions;
+pub use self::managed::CliManagedNpmResolverCreateOptions;
 pub use self::managed::CliNpmResolverManagedSnapshotOption;
 pub use self::managed::ManagedCliNpmResolver;
 
@@ -48,7 +52,7 @@ pub enum ResolvePkgFolderFromDenoReqError {
 }
 
 pub enum CliNpmResolverCreateOptions {
-  Managed(CliNpmResolverManagedCreateOptions),
+  Managed(CliManagedNpmResolverCreateOptions),
   Byonm(CliByonmNpmResolverCreateOptions),
 }
 
@@ -71,6 +75,24 @@ pub async fn create_cli_npm_resolver(
   match options {
     Managed(options) => managed::create_managed_npm_resolver(options).await,
     Byonm(options) => Ok(Arc::new(ByonmNpmResolver::new(options))),
+  }
+}
+
+pub enum CreateInNpmPkgCheckerOptions<'a> {
+  Managed(CliManagedInNpmPkgCheckerCreateOptions<'a>),
+  Byonm,
+}
+
+pub fn create_in_npm_pkg_checker(
+  options: CreateInNpmPkgCheckerOptions,
+) -> Arc<dyn InNpmPackageChecker> {
+  match options {
+    CreateInNpmPkgCheckerOptions::Managed(options) => {
+      create_managed_in_npm_pkg_checker(options)
+    }
+    CreateInNpmPkgCheckerOptions::Byonm => {
+      Arc::new(ByonmInNpmPackageChecker::default())
+    }
   }
 }
 

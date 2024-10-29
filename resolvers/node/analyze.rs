@@ -19,11 +19,12 @@ use anyhow::Error as AnyError;
 use url::Url;
 
 use crate::env::NodeResolverEnv;
-use crate::package_json::load_pkg_json;
+use crate::npm::InNpmPackageCheckerRc;
 use crate::resolution::NodeResolverRc;
 use crate::NodeModuleKind;
 use crate::NodeResolutionMode;
 use crate::NpmResolverRc;
+use crate::PackageJsonResolverRc;
 use crate::PathClean;
 
 #[derive(Debug, Clone)]
@@ -63,8 +64,10 @@ pub struct NodeCodeTranslator<
 > {
   cjs_code_analyzer: TCjsCodeAnalyzer,
   env: TNodeResolverEnv,
+  in_npm_pkg_checker: InNpmPackageCheckerRc,
   node_resolver: NodeResolverRc<TNodeResolverEnv>,
   npm_resolver: NpmResolverRc,
+  pkg_json_resolver: PackageJsonResolverRc<TNodeResolverEnv>,
 }
 
 impl<TCjsCodeAnalyzer: CjsCodeAnalyzer, TNodeResolverEnv: NodeResolverEnv>
@@ -73,14 +76,18 @@ impl<TCjsCodeAnalyzer: CjsCodeAnalyzer, TNodeResolverEnv: NodeResolverEnv>
   pub fn new(
     cjs_code_analyzer: TCjsCodeAnalyzer,
     env: TNodeResolverEnv,
+    in_npm_pkg_checker: InNpmPackageCheckerRc,
     node_resolver: NodeResolverRc<TNodeResolverEnv>,
     npm_resolver: NpmResolverRc,
+    pkg_json_resolver: PackageJsonResolverRc<TNodeResolverEnv>,
   ) -> Self {
     Self {
       cjs_code_analyzer,
       env,
+      in_npm_pkg_checker,
       node_resolver,
       npm_resolver,
+      pkg_json_resolver,
     }
   }
 
@@ -329,8 +336,9 @@ impl<TCjsCodeAnalyzer: CjsCodeAnalyzer, TNodeResolverEnv: NodeResolverEnv>
     }?;
 
     let package_json_path = module_dir.join("package.json");
-    let maybe_package_json =
-      load_pkg_json(self.env.pkg_json_fs(), &package_json_path)?;
+    let maybe_package_json = self
+      .pkg_json_resolver
+      .load_package_json(&package_json_path)?;
     if let Some(package_json) = maybe_package_json {
       if let Some(exports) = &package_json.exports {
         return Some(
@@ -356,8 +364,9 @@ impl<TCjsCodeAnalyzer: CjsCodeAnalyzer, TNodeResolverEnv: NodeResolverEnv>
         if self.env.is_dir_sync(&d) {
           // subdir might have a package.json that specifies the entrypoint
           let package_json_path = d.join("package.json");
-          let maybe_package_json =
-            load_pkg_json(self.env.pkg_json_fs(), &package_json_path)?;
+          let maybe_package_json = self
+            .pkg_json_resolver
+            .load_package_json(&package_json_path)?;
           if let Some(package_json) = maybe_package_json {
             if let Some(main) = package_json.main(NodeModuleKind::Cjs) {
               return Ok(Some(url_from_file_path(&d.join(main).clean())?));
@@ -382,7 +391,7 @@ impl<TCjsCodeAnalyzer: CjsCodeAnalyzer, TNodeResolverEnv: NodeResolverEnv>
     // as a fallback, attempt to resolve it via the ancestor directories
     let mut last = referrer_path.as_path();
     while let Some(parent) = last.parent() {
-      if !self.npm_resolver.in_npm_package_at_dir_path(parent) {
+      if !self.in_npm_pkg_checker.in_npm_package_at_dir_path(parent) {
         break;
       }
       let path = if parent.ends_with("node_modules") {

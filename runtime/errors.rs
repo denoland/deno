@@ -1062,6 +1062,7 @@ mod node {
       | RequireError::PackageJsonLoad(_)
       | RequireError::ClosestPkgJson(_)
       | RequireError::FilePathConversion(_)
+      | RequireError::UrlConversion(_)
       | RequireError::ReadModule(_)
       | RequireError::PackageImportsResolve(_) => "Error",
       RequireError::Fs(e) | RequireError::UnableToGetCwd(e) => {

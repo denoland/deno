@@ -605,12 +605,10 @@ impl<'a> DenoCompileBinaryWriter<'a> {
       let (maybe_source, media_type) = match module {
         deno_graph::Module::Js(m) => {
           let source = if m.media_type.is_emittable() {
-            let module_kind =
-              if m.is_script && self.cjs_tracker.treat_as_cjs(&m.specifier)? {
-                ModuleKind::Cjs
-              } else {
-                ModuleKind::Esm
-              };
+            let is_cjs = self
+              .cjs_tracker
+              .is_cjs_with_known_is_script(&m.specifier, m.is_script)?;
+            let module_kind = ModuleKind::from_is_cjs(is_cjs);
             let source = self
               .emitter
               .emit_parsed_source(
@@ -752,8 +750,9 @@ impl<'a> DenoCompileBinaryWriter<'a> {
         } else {
           // DO NOT include the user's registry url as it may contain credentials,
           // but also don't make this dependent on the registry url
-          let global_cache_root_path = npm_resolver.global_cache_root_folder();
-          let mut builder = VfsBuilder::new(global_cache_root_path)?;
+          let global_cache_root_path = npm_resolver.global_cache_root_path();
+          let mut builder =
+            VfsBuilder::new(global_cache_root_path.to_path_buf())?;
           let mut packages =
             npm_resolver.all_system_packages(&self.npm_system_info);
           packages.sort_by(|a, b| a.id.cmp(&b.id)); // determinism

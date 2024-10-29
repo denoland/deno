@@ -1597,6 +1597,15 @@ impl CliOptions {
   }
 
   pub fn use_byonm(&self) -> bool {
+    if matches!(
+      self.sub_command(),
+      DenoSubcommand::Install(_)
+        | DenoSubcommand::Add(_)
+        | DenoSubcommand::Remove(_)
+    ) {
+      // For `deno install/add/remove` we want to force the managed resolver so it can set up `node_modules/` directory.
+      return false;
+    }
     if self.node_modules_dir().ok().flatten().is_none()
       && self.maybe_node_modules_folder.is_some()
       && self

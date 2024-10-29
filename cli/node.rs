@@ -4,7 +4,6 @@ use std::borrow::Cow;
 use std::sync::Arc;
 
 use deno_ast::MediaType;
-use deno_ast::ModuleKind;
 use deno_ast::ModuleSpecifier;
 use deno_core::error::AnyError;
 use deno_graph::ParsedSourceStore;
@@ -101,8 +100,8 @@ impl CliCjsCodeAnalyzer {
     }
 
     let cjs_tracker = self.cjs_tracker.clone();
-    let treat_as_cjs = cjs_tracker.treat_as_cjs(&specifier)?;
-    let analysis = if treat_as_cjs {
+    let is_maybe_cjs = cjs_tracker.is_maybe_cjs(&specifier)?;
+    let analysis = if is_maybe_cjs {
       let maybe_parsed_source = self
         .parsed_source_cache
         .as_ref()
@@ -123,11 +122,10 @@ impl CliCjsCodeAnalyzer {
                 maybe_syntax: None,
               })
             })?;
-          let is_cjs = parsed_source.is_script() && treat_as_cjs;
-          cjs_tracker.mark_kind(
-            parsed_source.specifier().clone(),
-            ModuleKind::from_is_cjs(is_cjs),
-          );
+          let is_cjs = cjs_tracker.is_cjs_with_known_is_script(
+            parsed_source.specifier(),
+            parsed_source.is_script(),
+          )?;
           if is_cjs {
             let analysis = parsed_source.analyze_cjs();
             Ok(CliCjsAnalysis::Cjs {

@@ -56,7 +56,7 @@ impl GlobalNpmPackageResolver {
     Self {
       registry_read_permission_checker: RegistryReadPermissionChecker::new(
         fs,
-        cache.root_folder(),
+        cache.root_dir_path().to_path_buf(),
       ),
       cache,
       tarball_cache,
@@ -69,10 +69,6 @@ impl GlobalNpmPackageResolver {
 
 #[async_trait(?Send)]
 impl NpmPackageFsResolver for GlobalNpmPackageResolver {
-  fn root_dir_url(&self) -> &Url {
-    self.cache.root_dir_url()
-  }
-
   fn node_modules_path(&self) -> Option<&Path> {
     None
   }

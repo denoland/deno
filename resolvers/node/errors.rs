@@ -395,6 +395,18 @@ impl NodeJsErrorCoded for CanonicalizingPkgJsonDirError {
 }
 
 #[derive(Debug, Error)]
+#[error("JSX files are not supported in npm packages: {specifier}")]
+pub struct JsxNotSupportedInNpmError {
+  pub specifier: Url,
+}
+
+impl NodeJsErrorCoded for JsxNotSupportedInNpmError {
+  fn code(&self) -> NodeJsErrorCode {
+    NodeJsErrorCode::ERR_UNKNOWN_FILE_EXTENSION
+  }
+}
+
+#[derive(Debug, Error)]
 #[error("TypeScript files are not supported in npm packages: {specifier}")]
 pub struct TypeScriptNotSupportedInNpmError {
   pub specifier: Url,
@@ -411,6 +423,7 @@ kinded_err!(UrlToNodeResolutionError, UrlToNodeResolutionErrorKind);
 impl NodeJsErrorCoded for UrlToNodeResolutionError {
   fn code(&self) -> NodeJsErrorCode {
     match self.as_kind() {
+      UrlToNodeResolutionErrorKind::JsxNotSupported(e) => e.code(),
       UrlToNodeResolutionErrorKind::TypeScriptNotSupported(e) => e.code(),
       UrlToNodeResolutionErrorKind::ClosestPkgJson(e) => e.code(),
     }
@@ -419,6 +432,8 @@ impl NodeJsErrorCoded for UrlToNodeResolutionError {
 
 #[derive(Debug, Error)]
 pub enum UrlToNodeResolutionErrorKind {
+  #[error(transparent)]
+  JsxNotSupported(#[from] JsxNotSupportedInNpmError),
   #[error(transparent)]
   TypeScriptNotSupported(#[from] TypeScriptNotSupportedInNpmError),
   #[error(transparent)]

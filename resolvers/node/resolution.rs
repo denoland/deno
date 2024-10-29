@@ -18,6 +18,7 @@ use crate::errors::DataUrlReferrerError;
 use crate::errors::FinalizeResolutionError;
 use crate::errors::InvalidModuleSpecifierError;
 use crate::errors::InvalidPackageTargetError;
+use crate::errors::JsxNotSupportedInNpmError;
 use crate::errors::LegacyResolveError;
 use crate::errors::ModuleNotFoundError;
 use crate::errors::NodeJsErrorCode;
@@ -44,6 +45,7 @@ use crate::errors::TypesNotFoundErrorData;
 use crate::errors::UnsupportedDirImportError;
 use crate::errors::UnsupportedEsmUrlSchemeError;
 use crate::errors::UrlToNodeResolutionError;
+use crate::npm::InNpmPackageCheckerRc;
 use crate::NpmResolverRc;
 use crate::PackageJsonResolverRc;
 use crate::PathClean;
@@ -132,6 +134,7 @@ pub type NodeResolverRc<TEnv> = crate::sync::MaybeArc<NodeResolver<TEnv>>;
 #[derive(Debug)]
 pub struct NodeResolver<TEnv: NodeResolverEnv> {
   env: TEnv,
+  in_npm_pkg_checker: InNpmPackageCheckerRc,
   npm_resolver: NpmResolverRc,
   pkg_json_resolver: PackageJsonResolverRc<TEnv>,
 }
@@ -139,18 +142,20 @@ pub struct NodeResolver<TEnv: NodeResolverEnv> {
 impl<TEnv: NodeResolverEnv> NodeResolver<TEnv> {
   pub fn new(
     env: TEnv,
+    in_npm_pkg_checker: InNpmPackageCheckerRc,
     npm_resolver: NpmResolverRc,
     pkg_json_resolver: PackageJsonResolverRc<TEnv>,
   ) -> Self {
     Self {
       env,
+      in_npm_pkg_checker,
       npm_resolver,
       pkg_json_resolver,
     }
   }
 
   pub fn in_npm_package(&self, specifier: &Url) -> bool {
-    self.npm_resolver.in_npm_package(specifier)
+    self.in_npm_pkg_checker.in_npm_package(specifier)
   }
 
   /// This function is an implementation of `defaultResolve` in
@@ -416,27 +421,48 @@ impl<TEnv: NodeResolverEnv> NodeResolver<TEnv> {
     &self,
     url: Url,
   ) -> Result<NodeResolution, UrlToNodeResolutionError> {
-    let url_str = url.as_str().to_lowercase();
-    if url_str.starts_with("http") || url_str.ends_with(".json") {
-      Ok(NodeResolution::Esm(url))
-    } else if url_str.ends_with(".js") || url_str.ends_with(".d.ts") {
-      let maybe_package_config =
-        self.pkg_json_resolver.get_closest_package_json(&url)?;
-      match maybe_package_config {
-        Some(c) if c.typ == "module" => Ok(NodeResolution::Esm(url)),
-        Some(_) => Ok(NodeResolution::CommonJs(url)),
-        None => Ok(NodeResolution::Esm(url)),
+    if url.scheme() != "file" {
+      return Ok(NodeResolution::Esm(url));
+    }
+    let media_type = MediaType::from_specifier(&url);
+    match media_type {
+      MediaType::JavaScript | MediaType::Dts => {
+        let maybe_package_config =
+          self.pkg_json_resolver.get_closest_package_json(&url)?;
+        match maybe_package_config {
+          Some(c) if c.typ == "module" => Ok(NodeResolution::Esm(url)),
+          Some(_) => Ok(NodeResolution::CommonJs(url)),
+          None => Ok(NodeResolution::Esm(url)),
+        }
       }
-    } else if url_str.ends_with(".mjs") || url_str.ends_with(".d.mts") {
-      Ok(NodeResolution::Esm(url))
-    } else if url_str.ends_with(".ts") || url_str.ends_with(".mts") {
-      if self.in_npm_package(&url) {
-        Err(TypeScriptNotSupportedInNpmError { specifier: url }.into())
-      } else {
+      MediaType::Json | MediaType::Wasm | MediaType::Mjs | MediaType::Dmts => {
         Ok(NodeResolution::Esm(url))
       }
-    } else {
-      Ok(NodeResolution::CommonJs(url))
+      MediaType::Cjs | MediaType::Dcts => Ok(NodeResolution::CommonJs(url)),
+      MediaType::TypeScript | MediaType::Mts => {
+        if self.in_npm_pkg_checker.in_npm_package(&url) {
+          Err(TypeScriptNotSupportedInNpmError { specifier: url }.into())
+        } else {
+          Ok(NodeResolution::Esm(url))
+        }
+      }
+      MediaType::Cts => {
+        if self.in_npm_pkg_checker.in_npm_package(&url) {
+          Err(TypeScriptNotSupportedInNpmError { specifier: url }.into())
+        } else {
+          Ok(NodeResolution::CommonJs(url))
+        }
+      }
+      MediaType::Jsx | MediaType::Tsx => {
+        if self.in_npm_pkg_checker.in_npm_package(&url) {
+          Err(JsxNotSupportedInNpmError { specifier: url }.into())
+        } else {
+          Ok(NodeResolution::Esm(url))
+        }
+      }
+      MediaType::Css | MediaType::SourceMap | MediaType::Unknown => {
+        Ok(NodeResolution::CommonJs(url))
+      }
     }
   }
 

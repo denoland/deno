@@ -67,12 +67,15 @@ use crate::http_util::HttpClientProvider;
 use crate::node::CliCjsCodeAnalyzer;
 use crate::node::CliNodeCodeTranslator;
 use crate::npm::create_cli_npm_resolver;
+use crate::npm::create_in_npm_pkg_checker;
 use crate::npm::CliByonmNpmResolverCreateOptions;
+use crate::npm::CliManagedInNpmPkgCheckerCreateOptions;
+use crate::npm::CliManagedNpmResolverCreateOptions;
 use crate::npm::CliNodeRequireLoader;
 use crate::npm::CliNpmResolver;
 use crate::npm::CliNpmResolverCreateOptions;
-use crate::npm::CliNpmResolverManagedCreateOptions;
 use crate::npm::CliNpmResolverManagedSnapshotOption;
+use crate::npm::CreateInNpmPkgCheckerOptions;
 use crate::resolver::CjsTracker;
 use crate::resolver::CjsTrackerOptions;
 use crate::resolver::CliDenoResolverFs;
@@ -338,7 +341,7 @@ impl ModuleLoader for EmbeddedModuleLoader {
         let (module_specifier, module_type, module_source) =
           module.into_parts();
         let is_cjs =
-          match self.shared.cjs_tracker.treat_as_cjs(original_specifier) {
+          match self.shared.cjs_tracker.is_maybe_cjs(original_specifier) {
             Ok(is_cjs) => is_cjs,
             Err(err) => {
               return deno_core::ModuleLoadResponse::Sync(Err(type_error(
@@ -503,87 +506,122 @@ pub async fn run(data: StandaloneData) -> Result<i32, AnyError> {
   let main_module = root_dir_url.join(&metadata.entrypoint_key).unwrap();
   let npm_global_cache_dir = root_path.join(".deno_compile_node_modules");
   let cache_setting = CacheSetting::Only;
-  let npm_resolver = match metadata.node_modules {
+  let pkg_json_resolver = Arc::new(PackageJsonResolver::new(
+    deno_runtime::deno_node::DenoFsNodeResolverEnv::new(fs.clone()),
+  ));
+  let (in_npm_pkg_checker, npm_resolver) = match metadata.node_modules {
     Some(binary::NodeModules::Managed { node_modules_dir }) => {
+      // create an npmrc that uses the fake npm_registry_url to resolve packages
+      let npmrc = Arc::new(ResolvedNpmRc {
+        default_config: deno_npm::npm_rc::RegistryConfigWithUrl {
+          registry_url: npm_registry_url.clone(),
+          config: Default::default(),
+        },
+        scopes: Default::default(),
+        registry_configs: Default::default(),
+      });
+      let npm_cache_dir = Arc::new(NpmCacheDir::new(
+        &DenoCacheEnvFsAdapter(fs.as_ref()),
+        npm_global_cache_dir,
+        npmrc.get_all_known_registries_urls(),
+      ));
       let snapshot = npm_snapshot.unwrap();
       let maybe_node_modules_path = node_modules_dir
         .map(|node_modules_dir| root_path.join(node_modules_dir));
-      create_cli_npm_resolver(CliNpmResolverCreateOptions::Managed(
-        CliNpmResolverManagedCreateOptions {
-          snapshot: CliNpmResolverManagedSnapshotOption::Specified(Some(
-            snapshot,
-          )),
-          maybe_lockfile: None,
-          fs: fs.clone(),
-          http_client_provider: http_client_provider.clone(),
-          npm_global_cache_dir,
-          cache_setting,
-          text_only_progress_bar: progress_bar,
-          maybe_node_modules_path,
-          npm_system_info: Default::default(),
-          npm_install_deps_provider: Arc::new(
-            // this is only used for installing packages, which isn't necessary with deno compile
-            NpmInstallDepsProvider::empty(),
-          ),
-          // create an npmrc that uses the fake npm_registry_url to resolve packages
-          npmrc: Arc::new(ResolvedNpmRc {
-            default_config: deno_npm::npm_rc::RegistryConfigWithUrl {
-              registry_url: npm_registry_url.clone(),
-              config: Default::default(),
-            },
-            scopes: Default::default(),
-            registry_configs: Default::default(),
-          }),
-          lifecycle_scripts: Default::default(),
-        },
-      ))
-      .await?
+      let in_npm_pkg_checker =
+        create_in_npm_pkg_checker(CreateInNpmPkgCheckerOptions::Managed(
+          CliManagedInNpmPkgCheckerCreateOptions {
+            root_cache_dir_url: npm_cache_dir.root_dir_url(),
+            maybe_node_modules_path: maybe_node_modules_path.as_deref(),
+          },
+        ));
+      let npm_resolver =
+        create_cli_npm_resolver(CliNpmResolverCreateOptions::Managed(
+          CliManagedNpmResolverCreateOptions {
+            snapshot: CliNpmResolverManagedSnapshotOption::Specified(Some(
+              snapshot,
+            )),
+            maybe_lockfile: None,
+            fs: fs.clone(),
+            http_client_provider: http_client_provider.clone(),
+            npm_cache_dir,
+            cache_setting,
+            text_only_progress_bar: progress_bar,
+            maybe_node_modules_path,
+            npm_system_info: Default::default(),
+            npm_install_deps_provider: Arc::new(
+              // this is only used for installing packages, which isn't necessary with deno compile
+              NpmInstallDepsProvider::empty(),
+            ),
+            npmrc,
+            lifecycle_scripts: Default::default(),
+          },
+        ))
+        .await?;
+      (in_npm_pkg_checker, npm_resolver)
     }
     Some(binary::NodeModules::Byonm {
       root_node_modules_dir,
     }) => {
       let root_node_modules_dir =
         root_node_modules_dir.map(|p| vfs.root().join(p));
-      create_cli_npm_resolver(CliNpmResolverCreateOptions::Byonm(
-        CliByonmNpmResolverCreateOptions {
+      let in_npm_pkg_checker =
+        create_in_npm_pkg_checker(CreateInNpmPkgCheckerOptions::Byonm);
+      let npm_resolver = create_cli_npm_resolver(
+        CliNpmResolverCreateOptions::Byonm(CliByonmNpmResolverCreateOptions {
           fs: CliDenoResolverFs(fs.clone()),
+          pkg_json_resolver: pkg_json_resolver.clone(),
           root_node_modules_dir,
-        },
-      ))
-      .await?
+        }),
+      )
+      .await?;
+      (in_npm_pkg_checker, npm_resolver)
     }
     None => {
-      create_cli_npm_resolver(CliNpmResolverCreateOptions::Managed(
-        CliNpmResolverManagedCreateOptions {
-          snapshot: CliNpmResolverManagedSnapshotOption::Specified(None),
-          maybe_lockfile: None,
-          fs: fs.clone(),
-          http_client_provider: http_client_provider.clone(),
-          npm_global_cache_dir,
-          cache_setting,
-          text_only_progress_bar: progress_bar,
-          maybe_node_modules_path: None,
-          npm_system_info: Default::default(),
-          npm_install_deps_provider: Arc::new(
-            // this is only used for installing packages, which isn't necessary with deno compile
-            NpmInstallDepsProvider::empty(),
-          ),
-          // Packages from different registries are already inlined in the binary,
-          // so no need to create actual `.npmrc` configuration.
-          npmrc: create_default_npmrc(),
-          lifecycle_scripts: Default::default(),
-        },
-      ))
-      .await?
+      // Packages from different registries are already inlined in the binary,
+      // so no need to create actual `.npmrc` configuration.
+      let npmrc = create_default_npmrc();
+      let npm_cache_dir = Arc::new(NpmCacheDir::new(
+        &DenoCacheEnvFsAdapter(fs.as_ref()),
+        npm_global_cache_dir,
+        npmrc.get_all_known_registries_urls(),
+      ));
+      let in_npm_pkg_checker =
+        create_in_npm_pkg_checker(CreateInNpmPkgCheckerOptions::Managed(
+          CliManagedInNpmPkgCheckerCreateOptions {
+            root_cache_dir_url: npm_cache_dir.root_dir_url(),
+            maybe_node_modules_path: None,
+          },
+        ));
+      let npm_resolver =
+        create_cli_npm_resolver(CliNpmResolverCreateOptions::Managed(
+          CliManagedNpmResolverCreateOptions {
+            snapshot: CliNpmResolverManagedSnapshotOption::Specified(None),
+            maybe_lockfile: None,
+            fs: fs.clone(),
+            http_client_provider: http_client_provider.clone(),
+            npm_cache_dir,
+            cache_setting,
+            text_only_progress_bar: progress_bar,
+            maybe_node_modules_path: None,
+            npm_system_info: Default::default(),
+            npm_install_deps_provider: Arc::new(
+              // this is only used for installing packages, which isn't necessary with deno compile
+              NpmInstallDepsProvider::empty(),
+            ),
+            npmrc: create_default_npmrc(),
+            lifecycle_scripts: Default::default(),
+          },
+        ))
+        .await?;
+      (in_npm_pkg_checker, npm_resolver)
     }
   };
 
   let has_node_modules_dir = npm_resolver.root_node_modules_path().is_some();
-  let pkg_json_resolver = Arc::new(PackageJsonResolver::new(
-    deno_runtime::deno_node::DenoFsNodeResolverEnv::new(fs.clone()),
-  ));
   let node_resolver = Arc::new(NodeResolver::new(
     deno_runtime::deno_node::DenoFsNodeResolverEnv::new(fs.clone()),
+    in_npm_pkg_checker.clone(),
     npm_resolver.clone().into_npm_resolver(),
     pkg_json_resolver.clone(),
   ));
@@ -598,6 +636,7 @@ pub async fn run(data: StandaloneData) -> Result<i32, AnyError> {
   let cli_node_resolver = Arc::new(CliNodeResolver::new(
     cjs_tracker.clone(),
     fs.clone(),
+    in_npm_pkg_checker.clone(),
     node_resolver.clone(),
     npm_resolver.clone(),
   ));
@@ -610,8 +649,10 @@ pub async fn run(data: StandaloneData) -> Result<i32, AnyError> {
   let node_code_translator = Arc::new(NodeCodeTranslator::new(
     cjs_esm_code_analyzer,
     deno_runtime::deno_node::DenoFsNodeResolverEnv::new(fs.clone()),
+    in_npm_pkg_checker,
     node_resolver.clone(),
     npm_resolver.clone().into_npm_resolver(),
+    pkg_json_resolver.clone(),
   ));
   let workspace_resolver = {
     let import_map = match metadata.workspace_resolver.import_map {

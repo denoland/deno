@@ -23,6 +23,7 @@ use deno_graph::source::LoadResponse;
 use deno_graph::source::Loader;
 use deno_runtime::deno_fs;
 use deno_runtime::deno_permissions::PermissionsContainer;
+use node_resolver::InNpmPackageChecker;
 use std::collections::HashMap;
 use std::path::Path;
 use std::path::PathBuf;
@@ -186,7 +187,7 @@ pub struct FetchCacher {
   file_fetcher: Arc<FileFetcher>,
   fs: Arc<dyn deno_fs::FileSystem>,
   global_http_cache: Arc<GlobalHttpCache>,
-  npm_resolver: Arc<dyn CliNpmResolver>,
+  in_npm_pkg_checker: Arc<dyn InNpmPackageChecker>,
   module_info_cache: Arc<ModuleInfoCache>,
   permissions: PermissionsContainer,
   is_deno_publish: bool,
@@ -198,7 +199,7 @@ impl FetchCacher {
     file_fetcher: Arc<FileFetcher>,
     fs: Arc<dyn deno_fs::FileSystem>,
     global_http_cache: Arc<GlobalHttpCache>,
-    npm_resolver: Arc<dyn CliNpmResolver>,
+    in_npm_pkg_checker: Arc<dyn InNpmPackageChecker>,
     module_info_cache: Arc<ModuleInfoCache>,
     options: FetchCacherOptions,
   ) -> Self {
@@ -206,7 +207,7 @@ impl FetchCacher {
       file_fetcher,
       fs,
       global_http_cache,
-      npm_resolver,
+      in_npm_pkg_checker,
       module_info_cache,
       file_header_overrides: options.file_header_overrides,
       permissions: options.permissions,
@@ -273,7 +274,7 @@ impl Loader for FetchCacher {
         specifier,
         self.fs.as_ref(),
       );
-      if self.npm_resolver.in_npm_package(&specifier) {
+      if self.in_npm_pkg_checker.in_npm_package(&specifier) {
         return Box::pin(futures::future::ready(Ok(Some(
           LoadResponse::External { specifier },
         ))));

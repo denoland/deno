@@ -10,6 +10,7 @@ use deno_core::serde_json;
 use deno_core::url::Url;
 use deno_resolver::npm::ByonmNpmResolver;
 use deno_resolver::npm::ByonmNpmResolverCreateOptions;
+use deno_runtime::deno_node::DenoFsNodeResolverEnv;
 use deno_runtime::deno_node::NodePermissions;
 use deno_runtime::ops::process::NpmProcessStateProvider;
 use deno_semver::package::PackageReq;
@@ -24,8 +25,9 @@ use super::InnerCliNpmResolverRef;
 use super::ResolvePkgFolderFromDenoReqError;
 
 pub type CliByonmNpmResolverCreateOptions =
-  ByonmNpmResolverCreateOptions<CliDenoResolverFs>;
-pub type CliByonmNpmResolver = ByonmNpmResolver<CliDenoResolverFs>;
+  ByonmNpmResolverCreateOptions<CliDenoResolverFs, DenoFsNodeResolverEnv>;
+pub type CliByonmNpmResolver =
+  ByonmNpmResolver<CliDenoResolverFs, DenoFsNodeResolverEnv>;
 
 // todo(dsherret): the services hanging off `CliNpmResolver` doesn't seem ideal. We should probably decouple.
 #[derive(Debug)]

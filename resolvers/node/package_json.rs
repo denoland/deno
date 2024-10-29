@@ -109,27 +109,21 @@ impl<TEnv: NodeResolverEnv> PackageJsonResolver<TEnv> {
 
   pub fn load_package_json(
     &self,
-    package_json_path: &Path,
+    path: &Path,
   ) -> Result<Option<PackageJsonRc>, PackageJsonLoadError> {
-    load_pkg_json(self.env.pkg_json_fs(), package_json_path)
-  }
-}
-
-/// Helper to load a package.json file using the thread local cache
-/// in node_resolver.
-pub fn load_pkg_json(
-  fs: &dyn deno_package_json::fs::DenoPkgJsonFs,
-  path: &Path,
-) -> Result<Option<PackageJsonRc>, PackageJsonLoadError> {
-  let result =
-    PackageJson::load_from_path(path, fs, Some(&PackageJsonThreadLocalCache));
-  match result {
-    Ok(pkg_json) => Ok(Some(pkg_json)),
-    Err(deno_package_json::PackageJsonLoadError::Io { source, .. })
-      if source.kind() == ErrorKind::NotFound =>
-    {
-      Ok(None)
+    let result = PackageJson::load_from_path(
+      path,
+      self.env.pkg_json_fs(),
+      Some(&PackageJsonThreadLocalCache),
+    );
+    match result {
+      Ok(pkg_json) => Ok(Some(pkg_json)),
+      Err(deno_package_json::PackageJsonLoadError::Io { source, .. })
+        if source.kind() == ErrorKind::NotFound =>
+      {
+        Ok(None)
+      }
+      Err(err) => Err(PackageJsonLoadError(err)),
     }
-    Err(err) => Err(PackageJsonLoadError(err)),
   }
 }

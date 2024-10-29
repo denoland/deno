@@ -48,6 +48,7 @@ use deno_runtime::deno_permissions::PermissionsContainer;
 use deno_semver::jsr::JsrDepPackageReq;
 use deno_semver::package::PackageNv;
 use import_map::ImportMapError;
+use node_resolver::InNpmPackageChecker;
 use std::collections::HashSet;
 use std::error::Error;
 use std::ops::Deref;
@@ -377,48 +378,51 @@ pub struct BuildFastCheckGraphOptions<'a> {
 }
 
 pub struct ModuleGraphBuilder {
-  options: Arc<CliOptions>,
   caches: Arc<cache::Caches>,
+  cli_options: Arc<CliOptions>,
+  file_fetcher: Arc<FileFetcher>,
   fs: Arc<dyn FileSystem>,
-  resolver: Arc<CliGraphResolver>,
-  npm_resolver: Arc<dyn CliNpmResolver>,
-  module_info_cache: Arc<ModuleInfoCache>,
-  parsed_source_cache: Arc<ParsedSourceCache>,
+  global_http_cache: Arc<GlobalHttpCache>,
+  in_npm_pkg_checker: Arc<dyn InNpmPackageChecker>,
   lockfile: Option<Arc<CliLockfile>>,
   maybe_file_watcher_reporter: Option<FileWatcherReporter>,
-  file_fetcher: Arc<FileFetcher>,
-  global_http_cache: Arc<GlobalHttpCache>,
+  module_info_cache: Arc<ModuleInfoCache>,
+  npm_resolver: Arc<dyn CliNpmResolver>,
+  parsed_source_cache: Arc<ParsedSourceCache>,
+  resolver: Arc<CliGraphResolver>,
   root_permissions_container: PermissionsContainer,
 }
 
 impl ModuleGraphBuilder {
   #[allow(clippy::too_many_arguments)]
   pub fn new(
-    options: Arc<CliOptions>,
     caches: Arc<cache::Caches>,
+    cli_options: Arc<CliOptions>,
+    file_fetcher: Arc<FileFetcher>,
     fs: Arc<dyn FileSystem>,
-    resolver: Arc<CliGraphResolver>,
-    npm_resolver: Arc<dyn CliNpmResolver>,
-    module_info_cache: Arc<ModuleInfoCache>,
-    parsed_source_cache: Arc<ParsedSourceCache>,
+    global_http_cache: Arc<GlobalHttpCache>,
+    in_npm_pkg_checker: Arc<dyn InNpmPackageChecker>,
     lockfile: Option<Arc<CliLockfile>>,
     maybe_file_watcher_reporter: Option<FileWatcherReporter>,
-    file_fetcher: Arc<FileFetcher>,
-    global_http_cache: Arc<GlobalHttpCache>,
+    module_info_cache: Arc<ModuleInfoCache>,
+    npm_resolver: Arc<dyn CliNpmResolver>,
+    parsed_source_cache: Arc<ParsedSourceCache>,
+    resolver: Arc<CliGraphResolver>,
     root_permissions_container: PermissionsContainer,
   ) -> Self {
     Self {
-      options,
       caches,
+      cli_options,
+      file_fetcher,
       fs,
-      resolver,
-      npm_resolver,
-      module_info_cache,
-      parsed_source_cache,
+      global_http_cache,
+      in_npm_pkg_checker,
       lockfile,
       maybe_file_watcher_reporter,
-      file_fetcher,
-      global_http_cache,
+      module_info_cache,
+      npm_resolver,
+      parsed_source_cache,
+      resolver,
       root_permissions_container,
     }
   }
@@ -504,7 +508,7 @@ impl ModuleGraphBuilder {
     }
 
     let maybe_imports = if options.graph_kind.include_types() {
-      self.options.to_compiler_option_types()?
+      self.cli_options.to_compiler_option_types()?
     } else {
       Vec::new()
     };
@@ -558,7 +562,7 @@ impl ModuleGraphBuilder {
     // ensure an "npm install" is done if the user has explicitly
     // opted into using a node_modules directory
     if self
-      .options
+      .cli_options
       .node_modules_dir()?
       .map(|m| m.uses_node_modules_dir())
       .unwrap_or(false)
@@ -694,13 +698,13 @@ impl ModuleGraphBuilder {
       self.file_fetcher.clone(),
       self.fs.clone(),
       self.global_http_cache.clone(),
-      self.npm_resolver.clone(),
+      self.in_npm_pkg_checker.clone(),
       self.module_info_cache.clone(),
       cache::FetchCacherOptions {
-        file_header_overrides: self.options.resolve_file_header_overrides(),
+        file_header_overrides: self.cli_options.resolve_file_header_overrides(),
         permissions,
         is_deno_publish: matches!(
-          self.options.sub_command(),
+          self.cli_options.sub_command(),
           crate::args::DenoSubcommand::Publish { .. }
         ),
       },
@@ -727,12 +731,12 @@ impl ModuleGraphBuilder {
       &self.fs,
       roots,
       GraphValidOptions {
-        kind: if self.options.type_check_mode().is_true() {
+        kind: if self.cli_options.type_check_mode().is_true() {
           GraphKind::All
         } else {
           GraphKind::CodeOnly
         },
-        check_js: self.options.check_js(),
+        check_js: self.cli_options.check_js(),
         exit_integrity_errors: true,
       },
     )

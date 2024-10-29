@@ -41,6 +41,7 @@ use node_resolver::errors::PackageFolderResolveIoError;
 use node_resolver::errors::PackageNotFoundError;
 use node_resolver::errors::PackageResolveErrorKind;
 use node_resolver::errors::UrlToNodeResolutionError;
+use node_resolver::InNpmPackageChecker;
 use node_resolver::NodeModuleKind;
 use node_resolver::NodeResolution;
 use node_resolver::NodeResolutionMode;
@@ -107,6 +108,7 @@ impl deno_resolver::fs::DenoResolverFs for CliDenoResolverFs {
 pub struct CliNodeResolver {
   cjs_tracker: Arc<CjsTracker>,
   fs: Arc<dyn deno_fs::FileSystem>,
+  in_npm_pkg_checker: Arc<dyn InNpmPackageChecker>,
   node_resolver: Arc<NodeResolver>,
   npm_resolver: Arc<dyn CliNpmResolver>,
 }
@@ -115,19 +117,21 @@ impl CliNodeResolver {
   pub fn new(
     cjs_tracker: Arc<CjsTracker>,
     fs: Arc<dyn deno_fs::FileSystem>,
+    in_npm_pkg_checker: Arc<dyn InNpmPackageChecker>,
     node_resolver: Arc<NodeResolver>,
     npm_resolver: Arc<dyn CliNpmResolver>,
   ) -> Self {
     Self {
       cjs_tracker,
       fs,
+      in_npm_pkg_checker,
       node_resolver,
       npm_resolver,
     }
   }
 
   pub fn in_npm_package(&self, specifier: &ModuleSpecifier) -> bool {
-    self.npm_resolver.in_npm_package(specifier)
+    self.in_npm_pkg_checker.in_npm_package(specifier)
   }
 
   pub fn resolve_if_for_npm_pkg(
@@ -212,7 +216,7 @@ impl CliNodeResolver {
   ) -> Result<NodeResolution, NodeResolveError> {
     let referrer_kind = if self
       .cjs_tracker
-      .treat_as_cjs(referrer)
+      .is_maybe_cjs(referrer)
       .map_err(|err| NodeResolveErrorKind::PackageResolve(err.into()))?
     {
       NodeModuleKind::Cjs
@@ -411,7 +415,7 @@ impl NpmModuleLoader {
         }
       })?;
 
-    let code = if self.cjs_tracker.treat_as_cjs(specifier)? {
+    let code = if self.cjs_tracker.is_maybe_cjs(specifier)? {
       // translate cjs to esm if it's cjs and inject node globals
       let code = from_utf8_lossy_owned(code);
       ModuleSourceCode::String(
@@ -458,9 +462,25 @@ impl CjsTracker {
     }
   }
 
-  pub fn treat_as_cjs(
+  pub fn is_cjs_with_known_is_script(
     &self,
     specifier: &ModuleSpecifier,
+    is_script: bool,
+  ) -> Result<bool, ClosestPkgJsonError> {
+    self.treat_as_cjs_with_is_script(specifier, Some(is_script))
+  }
+
+  pub fn is_maybe_cjs(
+    &self,
+    specifier: &ModuleSpecifier,
+  ) -> Result<bool, ClosestPkgJsonError> {
+    self.treat_as_cjs_with_is_script(specifier, None)
+  }
+
+  fn treat_as_cjs_with_is_script(
+    &self,
+    specifier: &ModuleSpecifier,
+    is_script: Option<bool>,
   ) -> Result<bool, ClosestPkgJsonError> {
     if specifier.scheme() != "file" {
       return Ok(false);
@@ -482,15 +502,29 @@ impl CjsTracker {
       | MediaType::Wasm
       | MediaType::SourceMap
       | MediaType::Unknown => {
-        if let Some(value) = self.known.get(specifier) {
-          return Ok(value.is_cjs());
+        if let Some(value) = self.get_known_kind(specifier) {
+          let is_known_cjs = value.is_cjs();
+          if is_known_cjs && is_script == Some(false) {
+            // we now know this is actually esm
+            self.known.insert(specifier.clone(), ModuleKind::Esm);
+            return Ok(false);
+          } else {
+            return Ok(is_known_cjs);
+          }
         }
 
         if self.unstable_detect_cjs {
           if let Some(pkg_json) =
             self.pkg_json_resolver.get_closest_package_json(specifier)?
           {
-            return Ok(pkg_json.typ == "commonjs");
+            let is_cjs_type = pkg_json.typ == "commonjs";
+            if let Some(is_script) = is_script {
+              let module_kind = ModuleKind::from_is_cjs(is_script && is_cjs_type);
+              self.known.insert(specifier.clone(), module_kind);
+              return Ok(module_kind.is_cjs());
+            } else {
+              return Ok(is_cjs_type);
+            }
           }
         }
 
@@ -501,6 +535,10 @@ impl CjsTracker {
 
   pub fn mark_kind(&self, specifier: ModuleSpecifier, kind: ModuleKind) {
     self.known.insert(specifier, kind);
+  }
+
+  fn get_known_kind(&self, specifier: &ModuleSpecifier) -> Option<ModuleKind> {
+    self.known.get(specifier).map(|v| v.clone())
   }
 }
 
