@@ -148,6 +148,7 @@ const unstableIds = {
   unsafeProto: 10,
   webgpu: 11,
   workerOptions: 12,
+  nodeGlobals: 13,
 };
 
 const denoNsUnstableById = { __proto__: null };

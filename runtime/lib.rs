@@ -132,6 +132,12 @@ pub static UNSTABLE_GRANULAR_FLAGS: &[UnstableGranularFlag] = &[
     show_in_help: true,
     id: 12,
   },
+  UnstableGranularFlag {
+    name: "node-globals",
+    help_text: "Expose Node globals everywhere",
+    show_in_help: true,
+    id: 13,
+  },
 ];
 
 #[cfg(test)]
