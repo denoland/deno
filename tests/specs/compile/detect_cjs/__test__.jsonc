@@ -9,7 +9,7 @@
     "commandName": "./main",
     "args": [],
     "output": "output.out",
-    "exitCode": 1
+    "exitCode": 0
   }, {
     "if": "windows",
     "args": "compile --allow-read --output main.exe main.js",
@@ -19,6 +19,6 @@
     "commandName": "./main.exe",
     "args": [],
     "output": "output.out",
-    "exitCode": 1
+    "exitCode": 0
   }]
 }

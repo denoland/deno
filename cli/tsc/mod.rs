@@ -305,6 +305,22 @@ pub struct EmittedFile {
   pub media_type: MediaType,
 }
 
+pub fn into_specifier_and_media_type(
+  specifier: Option<ModuleSpecifier>,
+) -> (ModuleSpecifier, MediaType) {
+  match specifier {
+    Some(specifier) => {
+      let media_type = MediaType::from_specifier(&specifier);
+
+      (specifier, media_type)
+    }
+    None => (
+      Url::parse("internal:///missing_dependency.d.ts").unwrap(),
+      MediaType::Dts,
+    ),
+  }
+}
+
 #[derive(Debug)]
 pub struct TypeCheckingCjsTracker {
   cjs_tracker: Arc<CjsTracker>,
@@ -789,7 +805,13 @@ fn op_resolve_inner(
             }
           }
         };
-        (specifier_str, media_type.as_ts_extension())
+        (
+          specifier_str,
+          match media_type {
+            MediaType::Css => ".js",
+            media_type => media_type.as_ts_extension(),
+          },
+        )
       }
       None => (
         MISSING_DEPENDENCY_SPECIFIER.to_string(),
@@ -861,30 +883,26 @@ fn resolve_graph_specifier_types(
             NodeResolutionMode::Types,
           );
         let maybe_resolution = match res_result {
-          Ok(res) => Some(res),
+          Ok(res) => Some(res.into_url()),
           Err(err) => match err.code() {
             NodeJsErrorCode::ERR_TYPES_NOT_FOUND
             | NodeJsErrorCode::ERR_MODULE_NOT_FOUND => None,
             _ => return Err(err.into()),
           },
         };
-        Ok(Some(NodeResolution::into_specifier_and_media_type(
-          maybe_resolution,
-        )))
+        Ok(Some(into_specifier_and_media_type(maybe_resolution)))
       } else {
         Ok(None)
       }
     }
     Some(Module::External(module)) => {
       // we currently only use "External" for when the module is in an npm package
-      Ok(state.maybe_npm.as_ref().map(|npm| {
+      Ok(state.maybe_npm.as_ref().map(|_| {
         let specifier = node::resolve_specifier_into_node_modules(
           &module.specifier,
           &deno_fs::RealFs,
         );
-        NodeResolution::into_specifier_and_media_type(
-          npm.node_resolver.url_to_node_resolution(specifier).ok(),
-        )
+        into_specifier_and_media_type(Some(specifier))
       }))
     }
     Some(Module::Node(_)) | None => Ok(None),
@@ -915,7 +933,7 @@ fn resolve_non_graph_specifier_types(
   let node_resolver = &npm.node_resolver;
   if node_resolver.in_npm_package(referrer) {
     // we're in an npm package, so use node resolution
-    Ok(Some(NodeResolution::into_specifier_and_media_type(
+    Ok(Some(into_specifier_and_media_type(
       node_resolver
         .resolve(
           raw_specifier,
@@ -923,7 +941,8 @@ fn resolve_non_graph_specifier_types(
           referrer_kind,
           NodeResolutionMode::Types,
         )
-        .ok(),
+        .ok()
+        .map(|res| res.into_url()),
     )))
   } else if let Ok(npm_req_ref) =
     NpmPackageReqReference::from_str(raw_specifier)
@@ -950,8 +969,8 @@ fn resolve_non_graph_specifier_types(
         _ => return Err(err.into()),
       },
     };
-    Ok(Some(NodeResolution::into_specifier_and_media_type(
-      maybe_resolution,
+    Ok(Some(into_specifier_and_media_type(
+      maybe_resolution.map(|res| res.into_url()),
     )))
   } else {
     Ok(None)

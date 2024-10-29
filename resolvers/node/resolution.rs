@@ -69,6 +69,7 @@ impl NodeResolutionMode {
   }
 }
 
+// todo(THIS PR): REMOVE THIS
 #[derive(Debug)]
 pub enum NodeResolution {
   Esm(Url),
@@ -91,6 +92,7 @@ impl NodeResolution {
     }
   }
 
+  // todo(THIS PR): REMOVE THIS
   pub fn into_specifier_and_media_type(
     resolution: Option<Self>,
   ) -> (Url, MediaType) {
