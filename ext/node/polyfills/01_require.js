@@ -505,7 +505,7 @@ Module.globalPaths = modulePaths;
 
 const CHAR_FORWARD_SLASH = 47;
 const TRAILING_SLASH_REGEX = /(?:^|\/)\.?\.$/;
-const ERROR_CODE_REGEX = /^\[([0-9a-zA-Z_]+)\]/;
+const ERROR_CODE_REGEX = /^\[(\w+)\]/;
 
 // This only applies to requests of a specific form:
 // 1. name/.*
