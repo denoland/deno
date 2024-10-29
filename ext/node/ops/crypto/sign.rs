@@ -210,7 +210,8 @@ impl KeyObjectHandle {
           )
         };
 
-        Ok(signer.verify(key, digest, signature).is_ok())
+        signer.verify(key, digest, signature).unwrap();
+        Ok(true)
       }
       AsymmetricPublicKey::RsaPss(key) => {
         let mut hash_algorithm = None;
