@@ -7,6 +7,7 @@ use deno_ast::MediaType;
 use deno_ast::ModuleSpecifier;
 use deno_ast::ParsedSource;
 use deno_ast::SourceTextInfo;
+use deno_core::anyhow::bail;
 use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
 use deno_graph::ModuleGraph;
@@ -97,6 +98,14 @@ impl CliLinter {
     ext: Option<&str>,
   ) -> Result<(ParsedSource, Vec<LintDiagnostic>), AnyError> {
     let specifier = specifier_from_file_path(file_path)?;
+
+    if is_minified_file(&source_code) {
+      bail!(
+        "{} appears to be a minified file, skipping linting",
+        specifier.as_str()
+      );
+    }
+
     let media_type = if let Some(ext) = ext {
       MediaType::from_str(&format!("placeholder.{ext}"))
     } else if file_path.extension().is_none() {
@@ -256,4 +265,106 @@ fn apply_lint_fixes(
   let new_text =
     deno_ast::apply_text_changes(text_info.text_str(), quick_fixes);
   Some(new_text)
+}
+
+#[derive(Debug, Default)]
+pub struct FileMetrics {
+  avg_line_length: f64,
+  long_line_percentage: f64,
+  whitespace_ratio: f64,
+  has_source_map: bool,
+  short_var_name_ratio: f64,
+}
+
+pub fn is_minified_file(code: &str) -> bool {
+  let mut metrics = FileMetrics::default();
+
+  // Split into non-empty lines
+  let lines: Vec<&str> = code
+    .lines()
+    .map(str::trim)
+    .filter(|line| !line.is_empty())
+    .collect();
+
+  if lines.is_empty() {
+    return false;
+  }
+
+  // Calculate average line length
+  let total_length: usize = lines.iter().map(|line| line.len()).sum();
+  metrics.avg_line_length = total_length as f64 / lines.len() as f64;
+
+  // Calculate percentage of long lines (>500 chars)
+  let long_lines = lines.iter().filter(|line| line.len() > 500).count();
+  metrics.long_line_percentage =
+    (long_lines as f64 / lines.len() as f64) * 100.0;
+
+  // Calculate whitespace ratio
+  let whitespace_count = code.chars().filter(|c| c.is_whitespace()).count();
+  metrics.whitespace_ratio = whitespace_count as f64 / code.len() as f64;
+
+  // Check for source map references
+  metrics.has_source_map = code.contains("//# sourceMappingURL=");
+
+  // Calculate score
+  let mut score = 0.0;
+
+  // Very long average line length is a strong indicator
+  if metrics.avg_line_length > 200.0 {
+    score += 3.0;
+  }
+  if metrics.avg_line_length > 500.0 {
+    score += 2.0;
+  }
+
+  // High percentage of long lines
+  if metrics.long_line_percentage > 10.0 {
+    score += 2.0;
+  }
+
+  // Low whitespace ratio is typical in minified files
+  if metrics.whitespace_ratio < 0.1 {
+    score += 2.0;
+  }
+
+  // Presence of source maps is a good indicator
+  if metrics.has_source_map {
+    score += 1.0;
+  }
+
+  // High ratio of short variable names
+  if metrics.short_var_name_ratio > 0.3 {
+    score += 2.0;
+  }
+
+  score >= 5.0
+}
+
+// Example test module
+#[cfg(test)]
+mod tests {
+  use super::*;
+
+  #[test]
+  fn test_minified_file() {
+    let minified =
+      "function f(a,b){return a.concat(b)}var x=function(n){return n+1};";
+    let result = is_minified_file(minified);
+    assert!(result.is_minified);
+  }
+
+  #[test]
+  fn test_normal_file() {
+    let normal = r#"
+       function concatenateArrays(array1, array2) {
+           return array1.concat(array2);
+       }
+
+       const incrementNumber = function(number) {
+           return number + 1;
+       };
+        "#;
+    let result = is_minified_file(normal);
+    assert!(!result.is_minified);
+  }
 }
