@@ -785,10 +785,11 @@ impl CliFactory {
     self.services.cjs_tracker.get_or_try_init(|| {
       let options = self.cli_options()?;
       Ok(Arc::new(CjsTracker::new(
+        self.in_npm_pkg_checker()?.clone(),
+        self.pkg_json_resolver().clone(),
         CjsTrackerOptions {
           unstable_detect_cjs: options.unstable_detect_cjs(),
         },
-        self.pkg_json_resolver().clone(),
       )))
     })
   }

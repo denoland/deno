@@ -626,10 +626,11 @@ pub async fn run(data: StandaloneData) -> Result<i32, AnyError> {
     pkg_json_resolver.clone(),
   ));
   let cjs_tracker = Arc::new(CjsTracker::new(
+    in_npm_pkg_checker.clone(),
+    pkg_json_resolver.clone(),
     CjsTrackerOptions {
       unstable_detect_cjs: metadata.unstable_config.detect_cjs,
     },
-    pkg_json_resolver.clone(),
   ));
   let cache_db = Caches::new(deno_dir_provider.clone());
   let node_analysis_cache = NodeAnalysisCache::new(cache_db.node_analysis_db());

@@ -572,11 +572,12 @@ fn create_node_resolver(
     pkg_json_resolver.clone(),
   ));
   let cjs_tracker = Arc::new(CjsTracker::new(
+    in_npm_pkg_checker.clone(),
+    pkg_json_resolver,
     CjsTrackerOptions {
       // todo(dsherret): support in the lsp
       unstable_detect_cjs: false,
     },
-    pkg_json_resolver,
   ));
   Arc::new(CliNodeResolver::new(
     cjs_tracker,

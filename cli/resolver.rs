@@ -445,20 +445,23 @@ pub struct CjsTrackerOptions {
 /// Keeps track of what module specifiers were resolved as CJS.
 #[derive(Debug)]
 pub struct CjsTracker {
+  in_npm_pkg_checker: Arc<dyn InNpmPackageChecker>,
+  pkg_json_resolver: Arc<PackageJsonResolver>,
   unstable_detect_cjs: bool,
   known: DashMap<ModuleSpecifier, ModuleKind>,
-  pkg_json_resolver: Arc<PackageJsonResolver>,
 }
 
 impl CjsTracker {
   pub fn new(
-    options: CjsTrackerOptions,
+    in_npm_pkg_checker: Arc<dyn InNpmPackageChecker>,
     pkg_json_resolver: Arc<PackageJsonResolver>,
+    options: CjsTrackerOptions,
   ) -> Self {
     Self {
+      in_npm_pkg_checker,
+      pkg_json_resolver,
       unstable_detect_cjs: options.unstable_detect_cjs,
       known: Default::default(),
-      pkg_json_resolver,
     }
   }
 
@@ -513,7 +516,27 @@ impl CjsTracker {
           }
         }
 
-        if self.unstable_detect_cjs {
+        if let Some(is_script) = is_script {
+          if !is_script {
+            self.known.insert(specifier.clone(), ModuleKind::Esm);
+            return Ok(false);
+          }
+        }
+
+        if self.in_npm_pkg_checker.in_npm_package(specifier) {
+          if let Some(pkg_json) =
+            self.pkg_json_resolver.get_closest_package_json(specifier)?
+          {
+            let is_file_location_cjs = pkg_json.typ != "module";
+            if let Some(is_script) = is_script {
+              let module_kind = ModuleKind::from_is_cjs(is_script && is_file_location_cjs);
+              self.known.insert(specifier.clone(), module_kind);
+              return Ok(module_kind.is_cjs());
+            } else {
+              return Ok(is_file_location_cjs);
+            }
+          }
+        } else if self.unstable_detect_cjs {
           if let Some(pkg_json) =
             self.pkg_json_resolver.get_closest_package_json(specifier)?
           {
