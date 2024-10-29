@@ -677,6 +677,15 @@ declare namespace Deno {
      * @default {false}
      */
     write?: "inherit" | boolean | Array<string | URL>;
+
+    /** Specifies if the `import` permission should be requested or revoked.
+     * If set to `"inherit"` the current `import` permission will be inherited.
+     * If set to `true`, the global `import` permission will be requested.
+     * If set to `false`, the global `import` permission will be revoked.
+     * If set to `Array<string>`, the `import` permissions will be requested with the
+     * specified domains.
+     * */
+    import?: "inherit" | boolean | Array<string>;
   }
 
   /**
