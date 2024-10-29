@@ -17,6 +17,8 @@ pub enum OsError {
   Permission(deno_core::error::AnyError),
   #[error("Failed to get cpu info")]
   FailedToGetCpuInfo,
+  #[error("Failed to get user info")]
+  FailedToGetUserInfo(#[source] std::io::Error),
 }
 
 #[op2(fast)]
@@ -64,7 +66,7 @@ pub struct UserInfo {
 }
 
 #[cfg(unix)]
-fn get_user_info(uid: u32) -> Result<UserInfo, AnyError> {
+fn get_user_info(uid: u32) -> Result<UserInfo, OsError> {
   use std::ffi::CStr;
   let mut pw: MaybeUninit<libc::passwd> = MaybeUninit::uninit();
   let mut result: *mut libc::passwd = std::ptr::null_mut();
@@ -96,9 +98,13 @@ fn get_user_info(uid: u32) -> Result<UserInfo, AnyError> {
   };
   if result.is_null() {
     if s != 0 {
-      return Err(std::io::Error::last_os_error().into());
+      return Err(
+        OsError::FailedToGetUserInfo(std::io::Error::last_os_error()),
+      );
     } else {
-      return Err(std::io::Error::from(std::io::ErrorKind::NotFound).into());
+      return Err(OsError::FailedToGetUserInfo(std::io::Error::from(
+        std::io::ErrorKind::NotFound,
+      )));
     }
   }
   // SAFETY: pw was initialized by the call to `getpwuid_r` above
@@ -117,7 +123,7 @@ fn get_user_info(uid: u32) -> Result<UserInfo, AnyError> {
 }
 
 #[cfg(windows)]
-fn get_user_info(_uid: u32) -> Result<UserInfo, AnyError> {
+fn get_user_info(_uid: u32) -> Result<UserInfo, OsError> {
   use std::ffi::OsString;
   use std::os::windows::ffi::OsStringExt;
 
@@ -148,7 +154,9 @@ fn get_user_info(_uid: u32) -> Result<UserInfo, AnyError> {
       token.as_mut_ptr(),
     ) == 0
     {
-      return Err(std::io::Error::last_os_error().into());
+      return Err(
+        OsError::FailedToGetUserInfo(std::io::Error::last_os_error()),
+      );
     }
   }
 
@@ -162,7 +170,9 @@ fn get_user_info(_uid: u32) -> Result<UserInfo, AnyError> {
     GetUserProfileDirectoryW(token.0, std::ptr::null_mut(), &mut bufsize);
     let err = GetLastError();
     if err != ERROR_INSUFFICIENT_BUFFER {
-      return Err(std::io::Error::from_raw_os_error(err as i32).into());
+      return Err(OsError::FailedToGetUserInfo(
+        std::io::Error::from_raw_os_error(err as i32),
+      ));
     }
   }
   let mut path = vec![0; bufsize as usize];
@@ -170,7 +180,9 @@ fn get_user_info(_uid: u32) -> Result<UserInfo, AnyError> {
   // SAFETY: path is `bufsize` elements
   unsafe {
     if GetUserProfileDirectoryW(token.0, path.as_mut_ptr(), &mut bufsize) == 0 {
-      return Err(std::io::Error::last_os_error().into());
+      return Err(OsError::FailedToGetUserInfo(
+        std::io::Error::last_os_error().into(),
+      ));
     }
   }
   // remove trailing nul
@@ -190,13 +202,15 @@ fn get_user_info(_uid: u32) -> Result<UserInfo, AnyError> {
 pub fn op_node_os_user_info<P>(
   state: &mut OpState,
   #[smi] uid: u32,
-) -> Result<UserInfo, deno_core::error::AnyError>
+) -> Result<UserInfo, OsError>
 where
   P: NodePermissions + 'static,
 {
   {
     let permissions = state.borrow_mut::<P>();
-    permissions.check_sys("userInfo", "node:os.userInfo()")?;
+    permissions
+      .check_sys("username", "node:os.userInfo()")
+      .map_err(OsError::Permission)?;
   }
 
   get_user_info(uid)
