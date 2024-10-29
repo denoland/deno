@@ -191,10 +191,10 @@ impl<'a> ModuleInfoCacheModuleAnalyzer<'a> {
     &self,
     specifier: &ModuleSpecifier,
     media_type: MediaType,
-    source: &str,
+    source: &Arc<str>,
   ) -> Result<ModuleInfo, deno_ast::ParseDiagnostic> {
     // attempt to load from the cache
-    let source_hash = CacheDBHash::from_source(&source);
+    let source_hash = CacheDBHash::from_source(source);
     if let Some(info) =
       self.load_cached_module_info(specifier, media_type, source_hash)
     {
@@ -205,7 +205,7 @@ impl<'a> ModuleInfoCacheModuleAnalyzer<'a> {
     let parser = self.parsed_source_cache.as_capturing_parser();
     let analyzer = ParserModuleAnalyzer::new(&parser);
     let module_info =
-      analyzer.analyze_sync(&specifier, Arc::from(source), media_type)?;
+      analyzer.analyze_sync(&specifier, source.clone(), media_type)?;
 
     // then attempt to cache it
     self.save_module_info_to_cache(

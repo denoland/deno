@@ -36,7 +36,6 @@ use crate::tools::check;
 use crate::tools::check::TypeChecker;
 use crate::util::progress_bar::ProgressBar;
 use crate::util::text_encoding::code_without_source_map;
-use crate::util::text_encoding::from_utf8_lossy_owned;
 use crate::util::text_encoding::source_map_from_code;
 use crate::worker::CreateModuleLoaderResult;
 use crate::worker::ModuleLoaderFactory;

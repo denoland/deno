@@ -321,10 +321,34 @@ pub fn into_specifier_and_media_type(
   }
 }
 
+trait IsScriptModuleAnalyzer: std::fmt::Debug + Send + Sync {
+  fn analyze_sync(
+    &self,
+    specifier: &ModuleSpecifier,
+    media_type: MediaType,
+    code: &Arc<str>,
+  ) -> Option<bool>;
+}
+
+impl IsScriptModuleAnalyzer for ModuleInfoCache {
+  fn analyze_sync(
+    &self,
+    specifier: &ModuleSpecifier,
+    media_type: MediaType,
+    code: &Arc<str>,
+  ) -> Option<bool> {
+    self
+      .as_module_analyzer()
+      .analyze_sync(specifier, media_type, code)
+      .map(|info| info.is_script)
+      .ok()
+  }
+}
+
 #[derive(Debug)]
 pub struct TypeCheckingCjsTracker {
   cjs_tracker: Arc<CjsTracker>,
-  module_info_cache: Arc<ModuleInfoCache>,
+  analyzer: Arc<dyn IsScriptModuleAnalyzer>,
 }
 
 impl TypeCheckingCjsTracker {
@@ -334,7 +358,14 @@ impl TypeCheckingCjsTracker {
   ) -> Self {
     Self {
       cjs_tracker,
-      module_info_cache,
+      analyzer: module_info_cache,
+    }
+  }
+
+  pub fn new_for_lsp(cjs_tracker: Arc<CjsTracker>) -> Self {
+    Self {
+      cjs_tracker,
+      analyzer: module_info_cache,
     }
   }
 
@@ -342,17 +373,13 @@ impl TypeCheckingCjsTracker {
     &self,
     specifier: &ModuleSpecifier,
     media_type: MediaType,
-    code: &str,
+    code: &Arc<str>,
   ) -> bool {
     if let Some(module_kind) = self.cjs_tracker.get_known_kind(specifier) {
       module_kind.is_cjs()
     } else {
-      let maybe_is_script = self
-        .module_info_cache
-        .as_module_analyzer()
-        .analyze_sync(specifier, media_type, &code)
-        .ok()
-        .map(|info| info.is_script);
+      let maybe_is_script =
+        self.analyzer.analyze_sync(specifier, media_type, code);
       maybe_is_script
         .and_then(|is_script| {
           self
@@ -363,6 +390,13 @@ impl TypeCheckingCjsTracker {
         .unwrap_or_else(|| {
           self.cjs_tracker.is_maybe_cjs(specifier).unwrap_or(false)
         })
+    }
+  }
+
+  pub fn snapshot(&self) -> TypeCheckingCjsTracker {
+    Self {
+      cjs_tracker: Arc::new(self.cjs_tracker.snapshot()),
+      analyzer: self.analyzer.clone(),
     }
   }
 }
@@ -563,12 +597,14 @@ fn op_load_inner(
     let file_path = specifier.to_file_path().unwrap();
     let code = std::fs::read_to_string(&file_path)
       .with_context(|| format!("Unable to load {}", file_path.display()))?;
+    let code: Arc<str> = code.into();
     *is_cjs = npm_state
       .map(|npm_state| {
         npm_state.cjs_tracker.is_cjs(specifier, *media_type, &code)
       })
       .unwrap_or(false);
-    Ok(code)
+    // todo(dsherret): how to avoid cloning here?
+    Ok(code.to_string())
   }
 
   let state = state.borrow_mut::<State>();
@@ -808,7 +844,7 @@ fn op_resolve_inner(
         (
           specifier_str,
           match media_type {
-            MediaType::Css => ".js",
+            MediaType::Css => ".js", // surface these as .js for typescript
             media_type => media_type.as_ts_extension(),
           },
         )

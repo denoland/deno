@@ -608,6 +608,15 @@ impl CjsTracker {
   pub fn mark_kind(&self, specifier: ModuleSpecifier, kind: ModuleKind) {
     self.known.insert(specifier, kind);
   }
+
+  pub fn snapshot(&self) -> CjsTracker {
+    CjsTracker {
+      in_npm_pkg_checker: self.in_npm_pkg_checker.clone(),
+      pkg_json_resolver: self.pkg_json_resolver.clone(),
+      unstable_detect_cjs: self.unstable_detect_cjs,
+      known: self.known.clone(),
+    }
+  }
 }
 
 pub type CliSloppyImportsResolver =

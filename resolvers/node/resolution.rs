@@ -91,43 +91,6 @@ impl NodeResolution {
       }
     }
   }
-
-  // todo(THIS PR): REMOVE THIS
-  pub fn into_specifier_and_media_type(
-    resolution: Option<Self>,
-  ) -> (Url, MediaType) {
-    match resolution {
-      Some(NodeResolution::CommonJs(specifier)) => {
-        let media_type = MediaType::from_specifier(&specifier);
-        (
-          specifier,
-          match media_type {
-            MediaType::JavaScript | MediaType::Jsx => MediaType::Cjs,
-            MediaType::TypeScript | MediaType::Tsx => MediaType::Cts,
-            MediaType::Dts => MediaType::Dcts,
-            _ => media_type,
-          },
-        )
-      }
-      Some(NodeResolution::Esm(specifier)) => {
-        let media_type = MediaType::from_specifier(&specifier);
-        (
-          specifier,
-          match media_type {
-            MediaType::JavaScript | MediaType::Jsx => MediaType::Mjs,
-            MediaType::TypeScript | MediaType::Tsx => MediaType::Mts,
-            MediaType::Dts => MediaType::Dmts,
-            _ => media_type,
-          },
-        )
-      }
-      Some(resolution) => (resolution.into_url(), MediaType::Dts),
-      None => (
-        Url::parse("internal:///missing_dependency.d.ts").unwrap(),
-        MediaType::Dts,
-      ),
-    }
-  }
 }
 
 #[allow(clippy::disallowed_types)]

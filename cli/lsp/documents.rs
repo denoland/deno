@@ -1561,7 +1561,7 @@ fn parse_source(
   text: Arc<str>,
   media_type: MediaType,
 ) -> ParsedSourceResult {
-  deno_ast::parse_module(deno_ast::ParseParams {
+  deno_ast::parse_program(deno_ast::ParseParams {
     specifier,
     text,
     media_type,
