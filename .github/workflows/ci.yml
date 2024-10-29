@@ -406,6 +406,11 @@ jobs:
       - name: node_compat/setup.ts --check
         if: '!(matrix.skip) && (matrix.job == ''lint'' && matrix.os == ''linux'')'
         run: deno run --allow-write --allow-read --allow-run=git ./tests/node_compat/runner/setup.ts --check
+      - name: Setup tmate session
+        if: |-
+          (matrix.job == 'test' || matrix.job == 'bench') && matrix.profile == 'debug' && (matrix.use_sysroot || github.repository == 'denoland/deno')
+        uses: mxschmitt/action-tmate@v3
+
       - name: Build debug
         if: '!(matrix.skip) && (matrix.job == ''test'' && matrix.profile == ''debug'')'
         run: |-
@@ -414,10 +419,6 @@ jobs:
           df -h
         env:
           CARGO_PROFILE_DEV_DEBUG: 0
-      - name: Setup tmate session
-        if: |-
-          (matrix.job == 'test' || matrix.job == 'bench') && matrix.profile == 'release' && (matrix.use_sysroot || github.repository == 'denoland/deno')
-        uses: mxschmitt/action-tmate@v3
       - name: Build release
         if: |-
           !(matrix.skip) && ((matrix.job == 'test' || matrix.job == 'bench') &&
