@@ -47,9 +47,6 @@ import {
 } from "ext:deno_node/internal_binding/_listen.ts";
 import { nextTick } from "ext:deno_node/_next_tick.ts";
 
-import { core } from "ext:core/mod.js";
-const { internalRidSymbol } = core;
-
 /** The type of TCP socket. */
 enum socketType {
   SOCKET,
