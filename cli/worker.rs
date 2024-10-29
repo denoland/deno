@@ -54,6 +54,7 @@ use crate::args::DenoSubcommand;
 use crate::args::StorageKeyResolver;
 use crate::errors;
 use crate::npm::CliNpmResolver;
+use crate::resolver::CjsTracker;
 use crate::util::checksum;
 use crate::util::file_watcher::WatcherCommunicator;
 use crate::util::file_watcher::WatcherRestartMode;
@@ -111,7 +112,6 @@ pub struct CliMainWorkerOptions {
   pub inspect_wait: bool,
   pub strace_ops: Option<Vec<String>>,
   pub is_inspecting: bool,
-  pub is_npm_main: bool,
   pub location: Option<Url>,
   pub argv0: Option<String>,
   pub node_debug: Option<String>,
@@ -129,6 +129,7 @@ pub struct CliMainWorkerOptions {
 struct SharedWorkerState {
   blob_store: Arc<BlobStore>,
   broadcast_channel: InMemoryBroadcastChannel,
+  cjs_tracker: Arc<CjsTracker>,
   code_cache: Option<Arc<dyn code_cache::CodeCache>>,
   compiled_wasm_module_store: CompiledWasmModuleStore,
   feature_checker: Arc<FeatureChecker>,
@@ -168,7 +169,6 @@ impl SharedWorkerState {
 
 pub struct CliMainWorker {
   main_module: ModuleSpecifier,
-  is_main_cjs: bool,
   worker: MainWorker,
   shared: Arc<SharedWorkerState>,
 }
@@ -190,17 +190,7 @@ impl CliMainWorker {
 
     log::debug!("main_module {}", self.main_module);
 
-    if self.is_main_cjs {
-      deno_node::load_cjs_module(
-        &mut self.worker.js_runtime,
-        &self.main_module.to_file_path().unwrap().to_string_lossy(),
-        true,
-        self.shared.options.inspect_brk,
-      )?;
-    } else {
-      self.execute_main_module_possibly_with_npm().await?;
-    }
-
+    self.execute_main_module_possibly_with_npm().await?;
     self.worker.dispatch_load_event()?;
 
     loop {
@@ -288,22 +278,7 @@ impl CliMainWorker {
       /// Execute the given main module emitting load and unload events before and after execution
       /// respectively.
       pub async fn execute(&mut self) -> Result<(), AnyError> {
-        if self.inner.is_main_cjs {
-          deno_node::load_cjs_module(
-            &mut self.inner.worker.js_runtime,
-            &self
-              .inner
-              .main_module
-              .to_file_path()
-              .unwrap()
-              .to_string_lossy(),
-            true,
-            self.inner.shared.options.inspect_brk,
-          )?;
-        } else {
-          self.inner.execute_main_module_possibly_with_npm().await?;
-        }
-
+        self.inner.execute_main_module_possibly_with_npm().await?;
         self.inner.worker.dispatch_load_event()?;
         self.pending_unload = true;
 
@@ -431,6 +406,7 @@ impl CliMainWorkerFactory {
   #[allow(clippy::too_many_arguments)]
   pub fn new(
     blob_store: Arc<BlobStore>,
+    cjs_tracker: Arc<CjsTracker>,
     code_cache: Option<Arc<dyn code_cache::CodeCache>>,
     feature_checker: Arc<FeatureChecker>,
     fs: Arc<dyn deno_fs::FileSystem>,
@@ -451,6 +427,7 @@ impl CliMainWorkerFactory {
       shared: Arc::new(SharedWorkerState {
         blob_store,
         broadcast_channel: Default::default(),
+        cjs_tracker,
         code_cache,
         compiled_wasm_module_store: Default::default(),
         feature_checker,
@@ -503,7 +480,7 @@ impl CliMainWorkerFactory {
     } = shared
       .module_loader_factory
       .create_for_main(permissions.clone());
-    let (main_module, is_main_cjs) = if let Ok(package_ref) =
+    let main_module = if let Ok(package_ref) =
       NpmPackageReqReference::from_specifier(&main_module)
     {
       if let Some(npm_resolver) = shared.npm_resolver.as_managed() {
@@ -523,9 +500,8 @@ impl CliMainWorkerFactory {
           package_ref.req(),
           &referrer,
         )?;
-      let node_resolution = self
+      let main_module = self
         .resolve_binary_entrypoint(&package_folder, package_ref.sub_path())?;
-      let is_main_cjs = matches!(node_resolution, NodeResolution::CommonJs(_));
 
       if let Some(lockfile) = &shared.maybe_lockfile {
         // For npm binary commands, ensure that the lockfile gets updated
@@ -534,16 +510,9 @@ impl CliMainWorkerFactory {
         lockfile.write_if_changed()?;
       }
 
-      (node_resolution.into_url(), is_main_cjs)
-    } else if shared.options.is_npm_main
-      || shared.node_resolver.in_npm_package(&main_module)
-    {
-      let node_resolution =
-        shared.node_resolver.url_to_node_resolution(main_module)?;
-      let is_main_cjs = matches!(node_resolution, NodeResolution::CommonJs(_));
-      (node_resolution.into_url(), is_main_cjs)
+      main_module
     } else {
-      (main_module, false)
+      main_module
     };
 
     let maybe_inspector_server = shared.maybe_inspector_server.clone();
@@ -672,7 +641,6 @@ impl CliMainWorkerFactory {
 
     Ok(CliMainWorker {
       main_module,
-      is_main_cjs,
       worker,
       shared: shared.clone(),
     })
@@ -682,19 +650,19 @@ impl CliMainWorkerFactory {
     &self,
     package_folder: &Path,
     sub_path: Option<&str>,
-  ) -> Result<NodeResolution, AnyError> {
+  ) -> Result<ModuleSpecifier, AnyError> {
     match self
       .shared
       .node_resolver
       .resolve_binary_export(package_folder, sub_path)
     {
-      Ok(node_resolution) => Ok(node_resolution),
+      Ok(specifier) => Ok(specifier.into_url()),
       Err(original_err) => {
         // if the binary entrypoint was not found, fallback to regular node resolution
         let result =
           self.resolve_binary_entrypoint_fallback(package_folder, sub_path);
         match result {
-          Ok(Some(resolution)) => Ok(resolution),
+          Ok(Some(specifier)) => Ok(specifier),
           Ok(None) => Err(original_err.into()),
           Err(fallback_err) => {
             bail!("{:#}\n\nFallback failed: {:#}", original_err, fallback_err)
@@ -709,7 +677,7 @@ impl CliMainWorkerFactory {
     &self,
     package_folder: &Path,
     sub_path: Option<&str>,
-  ) -> Result<Option<NodeResolution>, AnyError> {
+  ) -> Result<Option<ModuleSpecifier>, AnyError> {
     // only fallback if the user specified a sub path
     if sub_path.is_none() {
       // it's confusing to users if the package doesn't have any binary
@@ -735,7 +703,7 @@ impl CliMainWorkerFactory {
           .map(|p| p.exists())
           .unwrap_or(false)
         {
-          Ok(Some(resolution))
+          Ok(Some(resolution.into_url()))
         } else {
           bail!("Cannot find module '{}'", specifier)
         }

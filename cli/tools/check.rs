@@ -25,11 +25,13 @@ use crate::args::TypeCheckMode;
 use crate::cache::CacheDBHash;
 use crate::cache::Caches;
 use crate::cache::FastInsecureHasher;
+use crate::cache::ModuleInfoCache;
 use crate::cache::TypeCheckCache;
 use crate::factory::CliFactory;
 use crate::graph_util::BuildFastCheckGraphOptions;
 use crate::graph_util::ModuleGraphBuilder;
 use crate::npm::CliNpmResolver;
+use crate::resolver::CjsTracker;
 use crate::tsc;
 use crate::tsc::Diagnostics;
 use crate::util::extract;
@@ -99,8 +101,10 @@ pub struct CheckOptions {
 
 pub struct TypeChecker {
   caches: Arc<Caches>,
+  cjs_tracker: Arc<CjsTracker>,
   cli_options: Arc<CliOptions>,
   module_graph_builder: Arc<ModuleGraphBuilder>,
+  module_info_cache: Arc<ModuleInfoCache>,
   node_resolver: Arc<NodeResolver>,
   npm_resolver: Arc<dyn CliNpmResolver>,
 }
@@ -108,15 +112,19 @@ pub struct TypeChecker {
 impl TypeChecker {
   pub fn new(
     caches: Arc<Caches>,
+    cjs_tracker: Arc<CjsTracker>,
     cli_options: Arc<CliOptions>,
     module_graph_builder: Arc<ModuleGraphBuilder>,
+    module_info_cache: Arc<ModuleInfoCache>,
     node_resolver: Arc<NodeResolver>,
     npm_resolver: Arc<dyn CliNpmResolver>,
   ) -> Self {
     Self {
       caches,
+      cjs_tracker,
       cli_options,
       module_graph_builder,
+      module_info_cache,
       node_resolver,
       npm_resolver,
     }
@@ -244,6 +252,8 @@ impl TypeChecker {
       graph: graph.clone(),
       hash_data,
       maybe_npm: Some(tsc::RequestNpmState {
+        cjs_tracker: self.cjs_tracker.clone(),
+        module_info_cache: self.module_info_cache.clone(),
         node_resolver: self.node_resolver.clone(),
         npm_resolver: self.npm_resolver.clone(),
       }),

@@ -9,13 +9,11 @@ use std::path::Path;
 use std::path::PathBuf;
 
 use deno_core::error::AnyError;
-use deno_core::located_script_name;
 use deno_core::op2;
 use deno_core::url::Url;
 #[allow(unused_imports)]
 use deno_core::v8;
 use deno_core::v8::ExternalReference;
-use deno_core::JsRuntime;
 use deno_fs::sync::MaybeSend;
 use deno_fs::sync::MaybeSync;
 use node_resolver::NpmResolverRc;
@@ -764,29 +762,6 @@ deno_core::extension!(deno_node,
     ext.external_references.to_mut().extend(external_references);
   },
 );
-
-pub fn load_cjs_module(
-  js_runtime: &mut JsRuntime,
-  module: &str,
-  main: bool,
-  inspect_brk: bool,
-) -> Result<(), AnyError> {
-  fn escape_for_single_quote_string(text: &str) -> String {
-    text.replace('\\', r"\\").replace('\'', r"\'")
-  }
-
-  let source_code = format!(
-    r#"(function loadCjsModule(moduleName, isMain, inspectBrk) {{
-      Deno[Deno.internal].node.loadCjsModule(moduleName, isMain, inspectBrk);
-    }})('{module}', {main}, {inspect_brk});"#,
-    main = main,
-    module = escape_for_single_quote_string(module),
-    inspect_brk = inspect_brk,
-  );
-
-  js_runtime.execute_script(located_script_name!(), source_code)?;
-  Ok(())
-}
 
 pub type NodeResolver = node_resolver::NodeResolver<DenoFsNodeResolverEnv>;
 #[allow(clippy::disallowed_types)]

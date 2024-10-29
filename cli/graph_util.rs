@@ -512,9 +512,7 @@ impl ModuleGraphBuilder {
     } else {
       Vec::new()
     };
-    let analyzer = self
-      .module_info_cache
-      .as_module_analyzer(&self.parsed_source_cache);
+    let analyzer = self.module_info_cache.as_module_analyzer();
     let mut loader = match options.loader {
       Some(loader) => MutLoaderRef::Borrowed(loader),
       None => MutLoaderRef::Owned(self.create_graph_loader()),

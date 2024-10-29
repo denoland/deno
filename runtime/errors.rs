@@ -1048,8 +1048,6 @@ mod node {
       WorkerThreadsFilenameError::UrlToPathString => "Error",
       WorkerThreadsFilenameError::UrlToPath => "Error",
       WorkerThreadsFilenameError::FileNotFound(_) => "Error",
-      WorkerThreadsFilenameError::NeitherEsmNorCjs => "Error",
-      WorkerThreadsFilenameError::UrlToNodeResolution(_) => "Error",
       WorkerThreadsFilenameError::Fs(e) => super::get_fs_error(e),
     }
   }

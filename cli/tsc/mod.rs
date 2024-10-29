@@ -3,9 +3,11 @@
 use crate::args::TsConfig;
 use crate::args::TypeCheckMode;
 use crate::cache::FastInsecureHasher;
+use crate::cache::ModuleInfoCache;
 use crate::node;
 use crate::npm::CliNpmResolver;
 use crate::npm::ResolvePkgFolderFromDenoReqError;
+use crate::resolver::CjsTracker;
 use crate::util::checksum;
 use crate::util::path::mapped_specifier_for_tsc;
 
@@ -305,6 +307,9 @@ pub struct EmittedFile {
 
 #[derive(Debug)]
 pub struct RequestNpmState {
+  pub cjs_tracker: Arc<CjsTracker>,
+  /// Used for telling if the source of a module is a script.
+  pub module_info_cache: Arc<ModuleInfoCache>,
   pub node_resolver: Arc<NodeResolver>,
   pub npm_resolver: Arc<dyn CliNpmResolver>,
 }
@@ -490,24 +495,43 @@ fn op_load_inner(
 ) -> Result<Option<LoadResponse>, AnyError> {
   fn load_from_node_modules(
     specifier: &ModuleSpecifier,
-    node_resolver: Option<&NodeResolver>,
+    npm_state: Option<&RequestNpmState>,
     media_type: &mut MediaType,
     is_cjs: &mut bool,
   ) -> Result<String, AnyError> {
     *media_type = MediaType::from_specifier(specifier);
-    *is_cjs = node_resolver
-      .map(|node_resolver| {
-        match node_resolver.url_to_node_resolution(specifier.clone()) {
-          Ok(NodeResolution::CommonJs(_)) => true,
-          Ok(NodeResolution::Esm(_))
-          | Ok(NodeResolution::BuiltIn(_))
-          | Err(_) => false,
-        }
-      })
-      .unwrap_or(false);
     let file_path = specifier.to_file_path().unwrap();
     let code = std::fs::read_to_string(&file_path)
       .with_context(|| format!("Unable to load {}", file_path.display()))?;
+    *is_cjs = npm_state
+      .map(|npm_state| {
+        if let Some(module_kind) =
+          npm_state.cjs_tracker.get_known_kind(specifier)
+        {
+          return module_kind.is_cjs();
+        } else {
+          let maybe_is_script = npm_state
+            .module_info_cache
+            .as_module_analyzer()
+            .analyze_sync(specifier, &code, *media_type)
+            .ok()
+            .map(|info| info.is_script);
+          maybe_is_script
+            .and_then(|is_script| {
+              npm_state
+                .cjs_tracker
+                .is_cjs_with_known_is_script(specifier, is_script)
+                .ok()
+            })
+            .unwrap_or_else(|| {
+              npm_state
+                .cjs_tracker
+                .is_maybe_cjs(specifier)
+                .unwrap_or(false)
+            })
+        }
+      })
+      .unwrap_or(false);
     Ok(code)
   }
 
@@ -583,7 +607,7 @@ fn op_load_inner(
           );
           Some(Cow::Owned(load_from_node_modules(
             &specifier,
-            state.maybe_npm.as_ref().map(|n| n.node_resolver.as_ref()),
+            state.maybe_npm.as_ref(),
             &mut media_type,
             &mut is_cjs,
           )?))
@@ -596,7 +620,7 @@ fn op_load_inner(
     {
       Some(Cow::Owned(load_from_node_modules(
         specifier,
-        Some(npm.node_resolver.as_ref()),
+        Some(npm),
         &mut media_type,
         &mut is_cjs,
       )?))

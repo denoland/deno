@@ -71,7 +71,6 @@ use crate::npm::create_in_npm_pkg_checker;
 use crate::npm::CliByonmNpmResolverCreateOptions;
 use crate::npm::CliManagedInNpmPkgCheckerCreateOptions;
 use crate::npm::CliManagedNpmResolverCreateOptions;
-use crate::npm::CliNodeRequireLoader;
 use crate::npm::CliNpmResolver;
 use crate::npm::CliNpmResolverCreateOptions;
 use crate::npm::CliNpmResolverManagedSnapshotOption;
@@ -712,7 +711,7 @@ pub async fn run(data: StandaloneData) -> Result<i32, AnyError> {
       node_code_translator: node_code_translator.clone(),
       node_resolver: cli_node_resolver.clone(),
       npm_module_loader: Arc::new(NpmModuleLoader::new(
-        cjs_tracker,
+        cjs_tracker.clone(),
         fs.clone(),
         node_code_translator,
       )),
@@ -756,6 +755,7 @@ pub async fn run(data: StandaloneData) -> Result<i32, AnyError> {
   });
   let worker_factory = CliMainWorkerFactory::new(
     Arc::new(BlobStore::default()),
+    cjs_tracker,
     // Code cache is not supported for standalone binary yet.
     None,
     feature_checker,
@@ -782,7 +782,6 @@ pub async fn run(data: StandaloneData) -> Result<i32, AnyError> {
       inspect_wait: false,
       strace_ops: None,
       is_inspecting: false,
-      is_npm_main: main_module.scheme() == "npm",
       skip_op_registration: true,
       location: metadata.location,
       argv0: NpmPackageReqReference::from_specifier(&main_module)

@@ -70,7 +70,6 @@ use deno_core::error::AnyError;
 use deno_core::futures::FutureExt;
 use deno_core::FeatureChecker;
 
-use deno_resolver::npm::ByonmInNpmPackageChecker;
 use deno_runtime::deno_fs;
 use deno_runtime::deno_node::DenoFsNodeResolverEnv;
 use deno_runtime::deno_node::NodeResolver;
@@ -573,6 +572,7 @@ impl CliFactory {
     self.services.module_info_cache.get_or_try_init(|| {
       Ok(Arc::new(ModuleInfoCache::new(
         self.caches()?.dep_analysis_db(),
+        self.parsed_source_cache().clone(),
       )))
     })
   }
@@ -680,8 +680,10 @@ impl CliFactory {
         let cli_options = self.cli_options()?;
         Ok(Arc::new(TypeChecker::new(
           self.caches()?.clone(),
+          self.cjs_tracker()?.clone(),
           cli_options.clone(),
           self.module_graph_builder().await?.clone(),
+          self.module_info_cache()?.clone(),
           self.node_resolver().await?.clone(),
           self.npm_resolver().await?.clone(),
         )))
@@ -878,6 +880,7 @@ impl CliFactory {
     let npm_resolver = self.npm_resolver().await?;
     let cli_node_resolver = self.cli_node_resolver().await?;
     let cli_npm_resolver = self.npm_resolver().await?.clone();
+    let in_npm_pkg_checker = self.in_npm_pkg_checker()?;
     let maybe_file_watcher_communicator = if cli_options.has_hmr() {
       Some(self.watcher_communicator.clone().unwrap())
     } else {
@@ -889,6 +892,7 @@ impl CliFactory {
 
     Ok(CliMainWorkerFactory::new(
       self.blob_store().clone(),
+      cjs_tracker.clone(),
       if cli_options.code_cache_enabled() {
         Some(self.code_cache()?.clone())
       } else {
@@ -909,6 +913,7 @@ impl CliFactory {
         },
         self.emitter()?.clone(),
         fs.clone(),
+        in_npm_pkg_checker.clone(),
         self.main_module_graph_container().await?.clone(),
         self.module_load_preparer().await?.clone(),
         node_code_translator.clone(),
@@ -980,7 +985,6 @@ impl CliFactory {
       inspect_wait: cli_options.inspect_wait().is_some(),
       strace_ops: cli_options.strace_ops().clone(),
       is_inspecting: cli_options.is_inspecting(),
-      is_npm_main: cli_options.is_npm_main(),
       location: cli_options.location_flag().clone(),
       // if the user ran a binary command, we'll need to set process.argv[0]
       // to be the name of the binary command instead of deno

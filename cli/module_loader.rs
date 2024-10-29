@@ -2,6 +2,7 @@
 
 use std::borrow::Cow;
 use std::cell::RefCell;
+use std::path::Path;
 use std::path::PathBuf;
 use std::pin::Pin;
 use std::rc::Rc;
@@ -24,17 +25,18 @@ use crate::graph_util::CreateGraphOptions;
 use crate::graph_util::ModuleGraphBuilder;
 use crate::node;
 use crate::node::CliNodeCodeTranslator;
-use crate::npm::CliNodeRequireLoader;
 use crate::npm::CliNpmResolver;
 use crate::resolver::CjsTracker;
 use crate::resolver::CliGraphResolver;
 use crate::resolver::CliNodeResolver;
 use crate::resolver::ModuleCodeStringSource;
+use crate::resolver::NotSupportedKindInNpmError;
 use crate::resolver::NpmModuleLoader;
 use crate::tools::check;
 use crate::tools::check::TypeChecker;
 use crate::util::progress_bar::ProgressBar;
 use crate::util::text_encoding::code_without_source_map;
+use crate::util::text_encoding::from_utf8_lossy_owned;
 use crate::util::text_encoding::source_map_from_code;
 use crate::worker::CreateModuleLoaderResult;
 use crate::worker::ModuleLoaderFactory;
@@ -49,6 +51,7 @@ use deno_core::error::AnyError;
 use deno_core::futures::future::FutureExt;
 use deno_core::futures::Future;
 use deno_core::resolve_url;
+use deno_core::url::Url;
 use deno_core::ModuleCodeString;
 use deno_core::ModuleLoader;
 use deno_core::ModuleSource;
@@ -67,11 +70,15 @@ use deno_graph::Module;
 use deno_graph::ModuleGraph;
 use deno_graph::Resolution;
 use deno_runtime::code_cache;
+use deno_runtime::deno_fs;
 use deno_runtime::deno_fs::FileSystem;
 use deno_runtime::deno_node::create_host_defined_options;
+use deno_runtime::deno_node::NodeRequireLoader;
 use deno_runtime::deno_permissions::PermissionsContainer;
 use deno_semver::npm::NpmPackageReqReference;
+use node_resolver::InNpmPackageChecker;
 use node_resolver::NodeResolutionMode;
+use thiserror::Error;
 
 pub struct ModuleLoadPreparer {
   options: Arc<CliOptions>,
@@ -208,6 +215,7 @@ struct SharedCliModuleLoaderState {
   code_cache: Option<Arc<CodeCache>>,
   emitter: Arc<Emitter>,
   fs: Arc<dyn FileSystem>,
+  in_npm_pkg_checker: Arc<dyn InNpmPackageChecker>,
   main_module_graph_container: Arc<MainModuleGraphContainer>,
   module_load_preparer: Arc<ModuleLoadPreparer>,
   node_code_translator: Arc<CliNodeCodeTranslator>,
@@ -230,6 +238,7 @@ impl CliModuleLoaderFactory {
     code_cache: Option<Arc<CodeCache>>,
     emitter: Arc<Emitter>,
     fs: Arc<dyn FileSystem>,
+    in_npm_pkg_checker: Arc<dyn InNpmPackageChecker>,
     main_module_graph_container: Arc<MainModuleGraphContainer>,
     module_load_preparer: Arc<ModuleLoadPreparer>,
     node_code_translator: Arc<CliNodeCodeTranslator>,
@@ -254,6 +263,7 @@ impl CliModuleLoaderFactory {
         code_cache,
         emitter,
         fs,
+        in_npm_pkg_checker,
         main_module_graph_container,
         module_load_preparer,
         node_code_translator,
@@ -289,6 +299,7 @@ impl CliModuleLoaderFactory {
     let node_require_loader = Rc::new(CliNodeRequireLoader::new(
       self.shared.emitter.clone(),
       self.shared.fs.clone(),
+      self.shared.in_npm_pkg_checker.clone(),
       self.shared.npm_resolver.clone(),
     ));
     CreateModuleLoaderResult {
@@ -1003,5 +1014,65 @@ impl ModuleGraphUpdatePermit for WorkerModuleGraphUpdatePermit {
   fn commit(self) {
     *self.inner.borrow_mut() = Arc::new(self.graph);
     drop(self.permit); // explicit drop for clarity
+  }
+}
+
+#[derive(Debug)]
+struct CliNodeRequireLoader {
+  emitter: Arc<Emitter>,
+  fs: Arc<dyn FileSystem>,
+  in_npm_pkg_checker: Arc<dyn InNpmPackageChecker>,
+  npm_resolver: Arc<dyn CliNpmResolver>,
+}
+
+impl CliNodeRequireLoader {
+  pub fn new(
+    emitter: Arc<Emitter>,
+    fs: Arc<dyn FileSystem>,
+    in_npm_pkg_checker: Arc<dyn InNpmPackageChecker>,
+    npm_resolver: Arc<dyn CliNpmResolver>,
+  ) -> Self {
+    Self {
+      emitter,
+      fs,
+      in_npm_pkg_checker,
+      npm_resolver,
+    }
+  }
+}
+
+impl NodeRequireLoader for CliNodeRequireLoader {
+  fn ensure_read_permission<'a>(
+    &self,
+    permissions: &mut dyn deno_runtime::deno_node::NodePermissions,
+    path: &'a Path,
+  ) -> Result<std::borrow::Cow<'a, Path>, AnyError> {
+    self.npm_resolver.ensure_read_permission(permissions, path)
+  }
+
+  fn load_text_file_lossy(&self, path: &Path) -> Result<String, AnyError> {
+    // todo(dsherret): use the preloaded module from the graph if available
+    let specifier = deno_path_util::url_from_file_path(path)?;
+    let media_type = MediaType::from_specifier(&specifier);
+    let text = self.fs.read_text_file_lossy_sync(path, None)?;
+    if media_type.is_emittable() {
+      if self.in_npm_pkg_checker.in_npm_package(&specifier) {
+        return Err(
+          NotSupportedKindInNpmError {
+            media_type,
+            specifier,
+          }
+          .into(),
+        );
+      }
+      self.emitter.emit_parsed_source_sync(
+        &specifier,
+        ModuleKind::Cjs,
+        media_type,
+        &text.into(),
+      )
+    } else {
+      Ok(text)
+    }
   }
 }

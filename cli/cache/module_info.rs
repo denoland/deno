@@ -44,18 +44,32 @@ pub static MODULE_INFO_CACHE_DB: CacheDBConfiguration = CacheDBConfiguration {
 /// A cache of `deno_graph::ModuleInfo` objects. Using this leads to a considerable
 /// performance improvement because when it exists we can skip parsing a module for
 /// deno_graph.
+#[derive(Debug)]
 pub struct ModuleInfoCache {
   conn: CacheDB,
+  parsed_source_cache: Arc<ParsedSourceCache>,
 }
 
 impl ModuleInfoCache {
   #[cfg(test)]
-  pub fn new_in_memory(version: &'static str) -> Self {
-    Self::new(CacheDB::in_memory(&MODULE_INFO_CACHE_DB, version))
+  pub fn new_in_memory(
+    version: &'static str,
+    parsed_source_cache: Arc<ParsedSourceCache>,
+  ) -> Self {
+    Self::new(
+      CacheDB::in_memory(&MODULE_INFO_CACHE_DB, version),
+      parsed_source_cache,
+    )
   }
 
-  pub fn new(conn: CacheDB) -> Self {
-    Self { conn }
+  pub fn new(
+    conn: CacheDB,
+    parsed_source_cache: Arc<ParsedSourceCache>,
+  ) -> Self {
+    Self {
+      conn,
+      parsed_source_cache,
+    }
   }
 
   /// Useful for testing: re-create this cache DB with a different current version.
@@ -63,6 +77,7 @@ impl ModuleInfoCache {
   pub(crate) fn recreate_with_version(self, version: &'static str) -> Self {
     Self {
       conn: self.conn.recreate_with_version(version),
+      parsed_source_cache: self.parsed_source_cache,
     }
   }
 
@@ -113,13 +128,10 @@ impl ModuleInfoCache {
     Ok(())
   }
 
-  pub fn as_module_analyzer<'a>(
-    &'a self,
-    parsed_source_cache: &'a Arc<ParsedSourceCache>,
-  ) -> ModuleInfoCacheModuleAnalyzer<'a> {
+  pub fn as_module_analyzer<'a>(&'a self) -> ModuleInfoCacheModuleAnalyzer<'a> {
     ModuleInfoCacheModuleAnalyzer {
       module_info_cache: self,
-      parsed_source_cache,
+      parsed_source_cache: &self.parsed_source_cache,
     }
   }
 }
@@ -127,6 +139,84 @@ impl ModuleInfoCache {
 pub struct ModuleInfoCacheModuleAnalyzer<'a> {
   module_info_cache: &'a ModuleInfoCache,
   parsed_source_cache: &'a Arc<ParsedSourceCache>,
+}
+
+impl<'a> ModuleInfoCacheModuleAnalyzer<'a> {
+  fn load_cached_module_info(
+    &self,
+    specifier: &ModuleSpecifier,
+    media_type: MediaType,
+    source_hash: CacheDBHash,
+  ) -> Option<ModuleInfo> {
+    match self.module_info_cache.get_module_info(
+      specifier,
+      media_type,
+      source_hash,
+    ) {
+      Ok(Some(info)) => Some(info),
+      Ok(None) => None,
+      Err(err) => {
+        log::debug!(
+          "Error loading module cache info for {}. {:#}",
+          specifier,
+          err
+        );
+        None
+      }
+    }
+  }
+
+  fn save_module_info_to_cache(
+    &self,
+    specifier: &ModuleSpecifier,
+    media_type: MediaType,
+    source_hash: CacheDBHash,
+    module_info: &ModuleInfo,
+  ) {
+    if let Err(err) = self.module_info_cache.set_module_info(
+      specifier,
+      media_type,
+      source_hash,
+      &module_info,
+    ) {
+      log::debug!(
+        "Error saving module cache info for {}. {:#}",
+        specifier,
+        err
+      );
+    }
+  }
+
+  pub fn analyze_sync(
+    &self,
+    specifier: &ModuleSpecifier,
+    source: &str,
+    media_type: MediaType,
+  ) -> Result<ModuleInfo, deno_ast::ParseDiagnostic> {
+    // attempt to load from the cache
+    let source_hash = CacheDBHash::from_source(&source);
+    if let Some(info) =
+      self.load_cached_module_info(specifier, media_type, source_hash)
+    {
+      return Ok(info);
+    }
+
+    // otherwise, get the module info from the parsed source cache
+    let parser = self.parsed_source_cache.as_capturing_parser();
+    let analyzer = ParserModuleAnalyzer::new(&parser);
+    let module_info =
+      analyzer.analyze_sync(&specifier, Arc::from(source), media_type)?;
+
+    // then attempt to cache it
+    self.save_module_info_to_cache(
+      specifier,
+      media_type,
+      source_hash,
+      &module_info,
+    );
+
+    Ok(module_info)
+  }
 }
 
 #[async_trait::async_trait(?Send)]
@@ -139,20 +229,10 @@ impl<'a> deno_graph::ModuleAnalyzer for ModuleInfoCacheModuleAnalyzer<'a> {
   ) -> Result<ModuleInfo, deno_ast::ParseDiagnostic> {
     // attempt to load from the cache
     let source_hash = CacheDBHash::from_source(&source);
-    match self.module_info_cache.get_module_info(
-      specifier,
-      media_type,
-      source_hash,
-    ) {
-      Ok(Some(info)) => return Ok(info),
-      Ok(None) => {}
-      Err(err) => {
-        log::debug!(
-          "Error loading module cache info for {}. {:#}",
-          specifier,
-          err
-        );
-      }
+    if let Some(info) =
+      self.load_cached_module_info(specifier, media_type, source_hash)
+    {
+      return Ok(info);
     }
 
     // otherwise, get the module info from the parsed source cache
@@ -169,18 +249,12 @@ impl<'a> deno_graph::ModuleAnalyzer for ModuleInfoCacheModuleAnalyzer<'a> {
     .unwrap()?;
 
     // then attempt to cache it
-    if let Err(err) = self.module_info_cache.set_module_info(
+    self.save_module_info_to_cache(
       specifier,
       media_type,
       source_hash,
       &module_info,
-    ) {
-      log::debug!(
-        "Error saving module cache info for {}. {:#}",
-        specifier,
-        err
-      );
-    }
+    );
 
     Ok(module_info)
   }
@@ -217,7 +291,7 @@ mod test {
 
   #[test]
   pub fn module_info_cache_general_use() {
-    let cache = ModuleInfoCache::new_in_memory("1.0.0");
+    let cache = ModuleInfoCache::new_in_memory("1.0.0", Default::default());
     let specifier1 =
       ModuleSpecifier::parse("https://localhost/mod.ts").unwrap();
     let specifier2 =

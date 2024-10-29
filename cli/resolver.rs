@@ -12,6 +12,7 @@ use deno_config::workspace::WorkspaceResolver;
 use deno_core::anyhow::anyhow;
 use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
+use deno_core::url::Url;
 use deno_core::ModuleSourceCode;
 use deno_core::ModuleSpecifier;
 use deno_graph::source::ResolutionMode;
@@ -29,6 +30,7 @@ use deno_runtime::colors;
 use deno_runtime::deno_fs;
 use deno_runtime::deno_fs::FileSystem;
 use deno_runtime::deno_node::is_builtin_node_module;
+use deno_runtime::deno_node::NodeRequireLoader;
 use deno_runtime::deno_node::NodeResolver;
 use deno_runtime::deno_node::PackageJsonResolver;
 use deno_semver::npm::NpmPackageReqReference;
@@ -49,9 +51,11 @@ use std::borrow::Cow;
 use std::path::Path;
 use std::path::PathBuf;
 use std::sync::Arc;
+use thiserror::Error;
 
 use crate::args::JsxImportSourceConfig;
 use crate::args::DENO_DISABLE_PEDANTIC_NODE_WARNINGS;
+use crate::emit::Emitter;
 use crate::node::CliNodeCodeTranslator;
 use crate::npm::CliNpmResolver;
 use crate::npm::InnerCliNpmResolverRef;
@@ -312,12 +316,7 @@ impl CliNodeResolver {
         specifier,
         self.fs.as_ref(),
       );
-      if self.in_npm_package(&specifier) {
-        let resolution =
-          self.node_resolver.url_to_node_resolution(specifier)?;
-        let resolution = self.handle_node_resolution(resolution);
-        return Ok(Some(resolution.into_url()));
-      }
+      return Ok(Some(specifier));
     }
 
     Ok(None)
@@ -352,7 +351,14 @@ impl CliNodeResolver {
   }
 }
 
-// todo(dsherret): move to module_loader.rs
+#[derive(Debug, Error)]
+#[error("{media_type} files are not supported in npm packages: {specifier}")]
+pub struct NotSupportedKindInNpmError {
+  pub media_type: MediaType,
+  pub specifier: Url,
+}
+
+// todo(dsherret): move to module_loader.rs (it seems to be here due to use in standalone)
 #[derive(Clone)]
 pub struct NpmModuleLoader {
   cjs_tracker: Arc<CjsTracker>,
@@ -415,6 +421,14 @@ impl NpmModuleLoader {
         }
       })?;
 
+    let media_type = MediaType::from_specifier(specifier);
+    if media_type.is_emittable() {
+      return Err(AnyError::from(NotSupportedKindInNpmError {
+        media_type,
+        specifier: specifier.clone(),
+      }));
+    }
+
     let code = if self.cjs_tracker.is_maybe_cjs(specifier)? {
       // translate cjs to esm if it's cjs and inject node globals
       let code = from_utf8_lossy_owned(code);
@@ -430,6 +444,7 @@ impl NpmModuleLoader {
       // esm and json code is untouched
       ModuleSourceCode::Bytes(code.into_boxed_slice().into())
     };
+
     Ok(ModuleCodeStringSource {
       code,
       found_url: specifier.clone(),
@@ -465,6 +480,21 @@ impl CjsTracker {
     }
   }
 
+  /// Checks whether the file might be treated as CJS, but it's not for sure
+  /// yet because the source hasn't been loaded to see whether it contains
+  /// imports or exports.
+  pub fn is_maybe_cjs(
+    &self,
+    specifier: &ModuleSpecifier,
+  ) -> Result<bool, ClosestPkgJsonError> {
+    self.treat_as_cjs_with_is_script(specifier, None)
+  }
+
+  /// Gets whether the file is CJS. If true, this is for sure
+  /// cjs because `is_script` is provided.
+  ///
+  /// `is_script` should be `true` when the contents of the file at the
+  /// provided specifier are known to be a script and not an ES module.
   pub fn is_cjs_with_known_is_script(
     &self,
     specifier: &ModuleSpecifier,
@@ -473,95 +503,110 @@ impl CjsTracker {
     self.treat_as_cjs_with_is_script(specifier, Some(is_script))
   }
 
-  pub fn is_maybe_cjs(
-    &self,
-    specifier: &ModuleSpecifier,
-  ) -> Result<bool, ClosestPkgJsonError> {
-    self.treat_as_cjs_with_is_script(specifier, None)
-  }
-
   fn treat_as_cjs_with_is_script(
     &self,
     specifier: &ModuleSpecifier,
     is_script: Option<bool>,
   ) -> Result<bool, ClosestPkgJsonError> {
+    let kind = match self.get_known_kind_with_is_script(specifier, is_script) {
+      Some(kind) => kind,
+      None => self.check_based_on_pkg_json(specifier)?,
+    };
+    Ok(kind.is_cjs())
+  }
+
+  pub fn get_known_kind(
+    &self,
+    specifier: &ModuleSpecifier,
+  ) -> Option<ModuleKind> {
+    self.get_known_kind_with_is_script(specifier, None)
+  }
+
+  fn get_known_kind_with_is_script(
+    &self,
+    specifier: &ModuleSpecifier,
+    is_script: Option<bool>,
+  ) -> Option<ModuleKind> {
     if specifier.scheme() != "file" {
-      return Ok(false);
+      return Some(ModuleKind::Esm);
     }
 
     let media_type = MediaType::from_specifier(specifier);
 
     match media_type {
-      MediaType::Mts | MediaType::Mjs | MediaType::Dmts => Ok(false),
-      MediaType::Cjs | MediaType::Cts | MediaType::Dcts => Ok(true),
+      MediaType::Mts | MediaType::Mjs | MediaType::Dmts => Some(ModuleKind::Esm),
+      MediaType::Cjs | MediaType::Cts | MediaType::Dcts => Some(ModuleKind::Cjs),
+      MediaType::Dts => {
+        // dts files are always determined based on the package.json because
+        // they contain imports/exports even when considered CJS
+        if let Some(value) = self.known.get(specifier).map(|v| v.clone()) {
+          Some(value)
+        } else {
+          let value = self.check_based_on_pkg_json(specifier).ok();
+          if let Some(value) = value {
+            self.known.insert(specifier.clone(), value.clone());
+          }
+          Some(value.unwrap_or(ModuleKind::Esm))
+        }
+      }
       MediaType::JavaScript
       | MediaType::Jsx
       | MediaType::TypeScript
       | MediaType::Tsx
-      | MediaType::Dts
       // treat these as unknown
       | MediaType::Json
       | MediaType::Css
       | MediaType::Wasm
       | MediaType::SourceMap
       | MediaType::Unknown => {
-        if let Some(value) = self.get_known_kind(specifier) {
-          let is_known_cjs = value.is_cjs();
-          if is_known_cjs && is_script == Some(false) {
+        if let Some(value) = self.known.get(specifier).map(|v| v.clone()) {
+          if value.is_cjs() && is_script == Some(false) {
             // we now know this is actually esm
             self.known.insert(specifier.clone(), ModuleKind::Esm);
-            return Ok(false);
+            Some(ModuleKind::Esm)
           } else {
-            return Ok(is_known_cjs);
+            Some(value)
           }
+        } else if is_script == Some(false) {
+          // we know this is esm
+          self.known.insert(specifier.clone(), ModuleKind::Esm);
+          Some(ModuleKind::Esm)
+        } else {
+          None
         }
-
-        if let Some(is_script) = is_script {
-          if !is_script {
-            self.known.insert(specifier.clone(), ModuleKind::Esm);
-            return Ok(false);
-          }
-        }
-
-        if self.in_npm_pkg_checker.in_npm_package(specifier) {
-          if let Some(pkg_json) =
-            self.pkg_json_resolver.get_closest_package_json(specifier)?
-          {
-            let is_file_location_cjs = pkg_json.typ != "module";
-            if let Some(is_script) = is_script {
-              let module_kind = ModuleKind::from_is_cjs(is_script && is_file_location_cjs);
-              self.known.insert(specifier.clone(), module_kind);
-              return Ok(module_kind.is_cjs());
-            } else {
-              return Ok(is_file_location_cjs);
-            }
-          }
-        } else if self.unstable_detect_cjs {
-          if let Some(pkg_json) =
-            self.pkg_json_resolver.get_closest_package_json(specifier)?
-          {
-            let is_cjs_type = pkg_json.typ == "commonjs";
-            if let Some(is_script) = is_script {
-              let module_kind = ModuleKind::from_is_cjs(is_script && is_cjs_type);
-              self.known.insert(specifier.clone(), module_kind);
-              return Ok(module_kind.is_cjs());
-            } else {
-              return Ok(is_cjs_type);
-            }
-          }
-        }
-
-        Ok(false)
       }
+    }
+  }
+
+  fn check_based_on_pkg_json(
+    &self,
+    specifier: &ModuleSpecifier,
+  ) -> Result<ModuleKind, ClosestPkgJsonError> {
+    if self.in_npm_pkg_checker.in_npm_package(specifier) {
+      if let Some(pkg_json) =
+        self.pkg_json_resolver.get_closest_package_json(specifier)?
+      {
+        let is_file_location_cjs = pkg_json.typ != "module";
+        Ok(ModuleKind::from_is_cjs(is_file_location_cjs))
+      } else {
+        Ok(ModuleKind::Cjs)
+      }
+    } else if self.unstable_detect_cjs {
+      if let Some(pkg_json) =
+        self.pkg_json_resolver.get_closest_package_json(specifier)?
+      {
+        let is_cjs_type = pkg_json.typ == "commonjs";
+        Ok(ModuleKind::from_is_cjs(is_cjs_type))
+      } else {
+        Ok(ModuleKind::Esm)
+      }
+    } else {
+      Ok(ModuleKind::Esm)
     }
   }
 
   pub fn mark_kind(&self, specifier: ModuleSpecifier, kind: ModuleKind) {
     self.known.insert(specifier, kind);
-  }
-
-  fn get_known_kind(&self, specifier: &ModuleSpecifier) -> Option<ModuleKind> {
-    self.known.get(specifier).map(|v| v.clone())
   }
 }
 
