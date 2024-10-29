@@ -143,12 +143,12 @@ const unstableIds = {
   http: 5,
   kv: 6,
   net: 7,
-  process: 8,
-  temporal: 9,
-  unsafeProto: 10,
-  webgpu: 11,
-  workerOptions: 12,
-  nodeGlobals: 13,
+  nodeGlobals: 8,
+  process: 9,
+  temporal: 10,
+  unsafeProto: 11,
+  webgpu: 12,
+  workerOptions: 13,
 };
 
 const denoNsUnstableById = { __proto__: null };
