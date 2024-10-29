@@ -55,6 +55,7 @@ use crate::tools::check::TypeChecker;
 use crate::tools::coverage::CoverageCollector;
 use crate::tools::lint::LintRuleProvider;
 use crate::tools::run::hmr::HmrRunner;
+use crate::tsc::TypeCheckingCjsTracker;
 use crate::util::file_watcher::WatcherCommunicator;
 use crate::util::fs::canonicalize_path_maybe_not_exists;
 use crate::util::progress_bar::ProgressBar;
@@ -680,10 +681,12 @@ impl CliFactory {
         let cli_options = self.cli_options()?;
         Ok(Arc::new(TypeChecker::new(
           self.caches()?.clone(),
-          self.cjs_tracker()?.clone(),
+          Arc::new(TypeCheckingCjsTracker::new(
+            self.cjs_tracker()?.clone(),
+            self.module_info_cache()?.clone(),
+          )),
           cli_options.clone(),
           self.module_graph_builder().await?.clone(),
-          self.module_info_cache()?.clone(),
           self.node_resolver().await?.clone(),
           self.npm_resolver().await?.clone(),
         )))

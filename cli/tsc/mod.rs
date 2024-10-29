@@ -306,10 +306,54 @@ pub struct EmittedFile {
 }
 
 #[derive(Debug)]
+pub struct TypeCheckingCjsTracker {
+  cjs_tracker: Arc<CjsTracker>,
+  module_info_cache: Arc<ModuleInfoCache>,
+}
+
+impl TypeCheckingCjsTracker {
+  pub fn new(
+    cjs_tracker: Arc<CjsTracker>,
+    module_info_cache: Arc<ModuleInfoCache>,
+  ) -> Self {
+    Self {
+      cjs_tracker,
+      module_info_cache,
+    }
+  }
+
+  pub fn is_cjs(
+    &self,
+    specifier: &ModuleSpecifier,
+    media_type: MediaType,
+    code: &str,
+  ) -> bool {
+    if let Some(module_kind) = self.cjs_tracker.get_known_kind(specifier) {
+      module_kind.is_cjs()
+    } else {
+      let maybe_is_script = self
+        .module_info_cache
+        .as_module_analyzer()
+        .analyze_sync(specifier, media_type, &code)
+        .ok()
+        .map(|info| info.is_script);
+      maybe_is_script
+        .and_then(|is_script| {
+          self
+            .cjs_tracker
+            .is_cjs_with_known_is_script(specifier, is_script)
+            .ok()
+        })
+        .unwrap_or_else(|| {
+          self.cjs_tracker.is_maybe_cjs(specifier).unwrap_or(false)
+        })
+    }
+  }
+}
+
+#[derive(Debug)]
 pub struct RequestNpmState {
-  pub cjs_tracker: Arc<CjsTracker>,
-  /// Used for telling if the source of a module is a script.
-  pub module_info_cache: Arc<ModuleInfoCache>,
+  pub cjs_tracker: Arc<TypeCheckingCjsTracker>,
   pub node_resolver: Arc<NodeResolver>,
   pub npm_resolver: Arc<dyn CliNpmResolver>,
 }
@@ -505,31 +549,7 @@ fn op_load_inner(
       .with_context(|| format!("Unable to load {}", file_path.display()))?;
     *is_cjs = npm_state
       .map(|npm_state| {
-        if let Some(module_kind) =
-          npm_state.cjs_tracker.get_known_kind(specifier)
-        {
-          return module_kind.is_cjs();
-        } else {
-          let maybe_is_script = npm_state
-            .module_info_cache
-            .as_module_analyzer()
-            .analyze_sync(specifier, &code, *media_type)
-            .ok()
-            .map(|info| info.is_script);
-          maybe_is_script
-            .and_then(|is_script| {
-              npm_state
-                .cjs_tracker
-                .is_cjs_with_known_is_script(specifier, is_script)
-                .ok()
-            })
-            .unwrap_or_else(|| {
-              npm_state
-                .cjs_tracker
-                .is_maybe_cjs(specifier)
-                .unwrap_or(false)
-            })
-        }
+        npm_state.cjs_tracker.is_cjs(specifier, *media_type, &code)
       })
       .unwrap_or(false);
     Ok(code)

@@ -190,8 +190,8 @@ impl<'a> ModuleInfoCacheModuleAnalyzer<'a> {
   pub fn analyze_sync(
     &self,
     specifier: &ModuleSpecifier,
-    source: &str,
     media_type: MediaType,
+    source: &str,
   ) -> Result<ModuleInfo, deno_ast::ParseDiagnostic> {
     // attempt to load from the cache
     let source_hash = CacheDBHash::from_source(&source);
