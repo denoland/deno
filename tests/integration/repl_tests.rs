@@ -255,6 +255,20 @@ fn console_log() {
     console.write_line("'world'");
     console.expect("\"world\"");
   });
+
+  // https://github.com/denoland/deno/issues/21428
+  let (out, err) = util::run_and_collect_output_with_args(
+    true,
+    vec![
+      "repl",
+      "--eval-file=./../specs/repl/console_log/093_console_log_format.js",
+    ],
+    None,
+    None,
+    false,
+  );
+  assert_contains!(out, "0.5");
+  assert!(err.is_empty());
 }
 
 #[test]
@@ -1040,7 +1054,9 @@ fn pty_tab_indexable_props() {
   });
 }
 
+// TODO(2.0): this should first run `deno install`
 #[flaky_test::flaky_test]
+#[ignore]
 fn package_json_uncached_no_error() {
   let test_context = TestContextBuilder::for_npm()
     .use_temp_cwd()
@@ -1133,4 +1149,23 @@ fn eval_file_promise_error() {
   );
   assert_contains!(out, "Uncaught undefined");
   assert!(err.is_empty());
+}
+
+#[test]
+fn repl_json_imports() {
+  let context = TestContextBuilder::default().use_temp_cwd().build();
+  let temp_dir = context.temp_dir();
+  temp_dir.write("./data.json", r#"{"hello": "world"}"#);
+  context
+    .new_command()
+    .env("NO_COLOR", "1")
+    .args_vec(["repl", "-A"])
+    .with_pty(|mut console| {
+      console.write_line_raw(
+        "import data from './data.json' with { type: 'json' };",
+      );
+      console.expect("undefined");
+      console.write_line_raw("data");
+      console.expect(r#"{ hello: "world" }"#);
+    });
 }

@@ -8,7 +8,7 @@ Deno.test(function testWrongOverloads() {
       Deno.test("some name", { fn: () => {} }, () => {});
     },
     TypeError,
-    "Unexpected 'fn' field in options, test function is already provided as the third argument.",
+    "Unexpected 'fn' field in options, test function is already provided as the third argument",
   );
   assertThrows(
     () => {
@@ -16,7 +16,7 @@ Deno.test(function testWrongOverloads() {
       Deno.test("some name", { name: "some name2" }, () => {});
     },
     TypeError,
-    "Unexpected 'name' field in options, test name is already provided as the first argument.",
+    "Unexpected 'name' field in options, test name is already provided as the first argument",
   );
   assertThrows(
     () => {
@@ -40,7 +40,7 @@ Deno.test(function testWrongOverloads() {
       Deno.test({ fn: () => {} }, function foo() {});
     },
     TypeError,
-    "Unexpected 'fn' field in options, test function is already provided as the second argument.",
+    "Unexpected 'fn' field in options, test function is already provided as the second argument",
   );
   assertThrows(
     () => {
@@ -48,7 +48,7 @@ Deno.test(function testWrongOverloads() {
       Deno.test({});
     },
     TypeError,
-    "Expected 'fn' field in the first argument to be a test function.",
+    "Expected 'fn' field in the first argument to be a test function",
   );
   assertThrows(
     () => {
@@ -56,7 +56,7 @@ Deno.test(function testWrongOverloads() {
       Deno.test({ fn: "boo!" });
     },
     TypeError,
-    "Expected 'fn' field in the first argument to be a test function.",
+    "Expected 'fn' field in the first argument to be a test function",
   );
 });
 
@@ -87,7 +87,7 @@ Deno.test(async function invalidStepArguments(t) {
       await (t as any).step("test");
     },
     TypeError,
-    "Expected function for second argument.",
+    "Expected function for second argument",
   );
 
   await assertRejects(
@@ -96,7 +96,7 @@ Deno.test(async function invalidStepArguments(t) {
       await (t as any).step("test", "not a function");
     },
     TypeError,
-    "Expected function for second argument.",
+    "Expected function for second argument",
   );
 
   await assertRejects(
@@ -105,7 +105,7 @@ Deno.test(async function invalidStepArguments(t) {
       await (t as any).step();
     },
     TypeError,
-    "Expected a test definition or name and function.",
+    "Expected a test definition or name and function",
   );
 
   await assertRejects(
@@ -114,7 +114,7 @@ Deno.test(async function invalidStepArguments(t) {
       await (t as any).step(() => {});
     },
     TypeError,
-    "The step function must have a name.",
+    "The step function must have a name",
   );
 });
 

@@ -34,7 +34,7 @@ pub struct PublishableTarball {
 }
 
 pub fn create_gzipped_tarball(
-  publish_paths: &[CollectedPublishPath],
+  publish_paths: Vec<CollectedPublishPath>,
   source_parser: LazyGraphSourceParser,
   diagnostics_collector: &PublishDiagnosticsCollector,
   unfurler: &SpecifierUnfurler,
@@ -45,15 +45,17 @@ pub fn create_gzipped_tarball(
   for path in publish_paths {
     let path_str = &path.relative_path;
     let specifier = &path.specifier;
-    let path = &path.path;
 
-    let content = resolve_content_maybe_unfurling(
-      path,
-      specifier,
-      unfurler,
-      source_parser,
-      diagnostics_collector,
-    )?;
+    let content = match path.maybe_content {
+      Some(content) => content.clone(),
+      None => resolve_content_maybe_unfurling(
+        &path.path,
+        specifier,
+        unfurler,
+        source_parser,
+        diagnostics_collector,
+      )?,
+    };
 
     files.push(PublishableTarballFile {
       path_str: path_str.clone(),
@@ -62,10 +64,11 @@ pub fn create_gzipped_tarball(
       hash: format!("sha256-{:x}", sha2::Sha256::digest(&content)),
       size: content.len(),
     });
+    assert!(path_str.starts_with('/'));
     tar
       .add_file(format!(".{}", path_str), &content)
       .with_context(|| {
-        format!("Unable to add file to tarball '{}'", path.display())
+        format!("Unable to add file to tarball '{}'", path.path.display())
       })?;
   }
 

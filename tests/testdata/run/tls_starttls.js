@@ -1,6 +1,6 @@
-import { assert, assertEquals } from "../../../tests/util/std/assert/mod.ts";
-import { BufReader } from "../../../tests/util/std/io/buf_reader.ts";
-import { BufWriter } from "../../../tests/util/std/io/buf_writer.ts";
+import { assert, assertEquals } from "@std/assert";
+import { BufReader } from "@std/io/buf-reader";
+import { BufWriter } from "@std/io/buf-writer";
 import { TextProtoReader } from "./textproto.ts";
 
 const encoder = new TextEncoder();
@@ -36,7 +36,6 @@ listener.accept().then(
 
 let conn = await Deno.connect({ hostname, port });
 conn = await Deno.startTls(conn, { hostname });
-assert(conn.rid > 0);
 const w = new BufWriter(conn);
 const r = new BufReader(conn);
 const body = `GET / HTTP/1.1\r\nHost: ${hostname}:${port}\r\n\r\n`;

@@ -30,7 +30,7 @@ Release checklist: <LINK TO THIS FORKED GIST GOES HERE>
 
 ## Patch release preparation
 
-**If you are cutting a patch release**: First you need to sync commits to the
+⛔ **If you are cutting a patch release**: First you need to sync commits to the
 `v$MINOR_VERSION` branch in the `deno` repo.
 
 To do that, you need to cherry-pick commits from the main branch to the
@@ -75,13 +75,13 @@ verify on GitHub that everything looks correct.
   1. Click on the "Run workflow" button.
   1. In the drop down, select the minor branch (`v$MINOR_VERSION`) if doing a
      patch release or the main branch if doing a minor release.
-  1. For the kind of release, select either "patch", "minor", or "major".
+  1. For the kind of release, select either `patch` or `minor`.
   1. Run the workflow.
 
 - [ ] Wait for the workflow to complete and for a pull request to be
       automatically opened. Review the pull request, make any necessary changes,
       and merge it.
-  - ⛔ DO NOT create a release tag manually That will automatically happen.
+  - ⛔ **DO NOT** create a release tag manually That will automatically happen.
 
   <details>
      <summary>Failure Steps</summary>
@@ -120,7 +120,8 @@ verify on GitHub that everything looks correct.
   (https://github.com/denoland/deno/releases).
 
 - ⛔ Verify that:
-  - [ ] There are 14 assets on the release draft.
+  - [ ] There are 24 assets on the
+        [GitHub release draft](https://github.com/denoland/deno/releases/v$VERSION).
   - [ ] There are 10 zip files for this version on
         [dl.deno.land](https://console.cloud.google.com/storage/browser/dl.deno.land/release/v$VERSION).
 
@@ -148,13 +149,6 @@ verify on GitHub that everything looks correct.
 
 - [ ] Run the version bump workflow:
       https://github.com/denoland/deno_docker/actions/workflows/version_bump.yml
-- [ ] This will open a PR. Review and merge it.
-- [ ] Create a `$VERSION` tag (_without_ `v` prefix).
-
-## Updating `deno-lambda`
-
-- [ ] Run the version bump workflow:
-      https://github.com/denoland/deno-lambda/actions/workflows/bump.yml
 - [ ] This will open a PR. Review and merge it.
 - [ ] Create a `$VERSION` tag (_without_ `v` prefix).
 

@@ -1,11 +1,7 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 import { Buffer } from "node:buffer";
 import { randomFill, randomFillSync } from "node:crypto";
-import {
-  assertEquals,
-  assertNotEquals,
-  assertThrows,
-} from "@std/assert/mod.ts";
+import { assertEquals, assertNotEquals, assertThrows } from "@std/assert";
 
 const validateNonZero = (buf: Buffer) => {
   if (!buf.some((ch) => ch > 0)) throw new Error("Error");

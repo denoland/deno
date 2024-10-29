@@ -1,4 +1,4 @@
-Proxy server listening on [WILDCARD]
+Listening on [WILDCARD]
 Proxy request to: http://localhost:4545/run/045_mod.ts
 Proxy request to: http://localhost:4545/run/045_mod.ts
 Proxy request to: http://localhost:4545/run/045_output.ts

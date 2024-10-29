@@ -1,0 +1,5 @@
+{
+  "args": "run typescript_file_in_package/main.ts",
+  "output": "typescript_file_in_package/main.out",
+  "exitCode": 1
+}

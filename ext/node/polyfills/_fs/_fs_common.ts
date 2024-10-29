@@ -38,7 +38,7 @@ export type BinaryOptionsArgument =
 export type FileOptionsArgument = Encodings | FileOptions;
 
 export type ReadOptions = {
-  buffer: Buffer | Uint8Array;
+  buffer: Buffer | ArrayBufferView;
   offset: number;
   length: number;
   position: number | null;

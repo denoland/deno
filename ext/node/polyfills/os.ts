@@ -315,7 +315,7 @@ export function type(): string {
     case "openbsd":
       return "OpenBSD";
     default:
-      throw Error("unreachable");
+      throw new Error("unreachable");
   }
 }
 

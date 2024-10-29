@@ -8,6 +8,7 @@ use deno_ast::SourceTextInfo;
 use deno_core::anyhow::anyhow;
 use deno_core::error::AnyError;
 use deno_core::serde_json;
+use lsp_types::Uri;
 use tower_lsp::lsp_types::ClientCapabilities;
 use tower_lsp::lsp_types::ClientInfo;
 use tower_lsp::lsp_types::CompletionContext;
@@ -40,6 +41,8 @@ use super::config::LanguageWorkspaceSettings;
 use super::config::ObjectLiteralMethodSnippets;
 use super::config::TestingSettings;
 use super::config::WorkspaceSettings;
+use super::urls::uri_parse_unencoded;
+use super::urls::url_to_uri;
 
 #[derive(Debug)]
 pub struct ReplCompletionItem {
@@ -73,7 +76,7 @@ impl ReplLanguageServer {
       .initialize(InitializeParams {
         process_id: None,
         root_path: None,
-        root_uri: Some(cwd_uri.clone()),
+        root_uri: Some(url_to_uri(&cwd_uri).unwrap()),
         initialization_options: Some(
           serde_json::to_value(get_repl_workspace_settings()).unwrap(),
         ),
@@ -84,6 +87,7 @@ impl ReplLanguageServer {
           general: None,
           experimental: None,
           offset_encoding: None,
+          notebook_document: None,
         },
         trace: None,
         workspace_folders: None,
@@ -92,6 +96,7 @@ impl ReplLanguageServer {
           version: None,
         }),
         locale: None,
+        work_done_progress_params: Default::default(),
       })
       .await?;
 
@@ -133,7 +138,7 @@ impl ReplLanguageServer {
       .completion(CompletionParams {
         text_document_position: TextDocumentPositionParams {
           text_document: TextDocumentIdentifier {
-            uri: self.get_document_specifier(),
+            uri: self.get_document_uri(),
           },
           position: Position {
             line: line_and_column.line_index as u32,
@@ -208,7 +213,7 @@ impl ReplLanguageServer {
       .language_server
       .did_change(DidChangeTextDocumentParams {
         text_document: VersionedTextDocumentIdentifier {
-          uri: self.get_document_specifier(),
+          uri: self.get_document_uri(),
           version: self.document_version,
         },
         content_changes: vec![TextDocumentContentChangeEvent {
@@ -233,7 +238,7 @@ impl ReplLanguageServer {
         .language_server
         .did_close(DidCloseTextDocumentParams {
           text_document: TextDocumentIdentifier {
-            uri: self.get_document_specifier(),
+            uri: self.get_document_uri(),
           },
         })
         .await;
@@ -248,7 +253,7 @@ impl ReplLanguageServer {
       .language_server
       .did_open(DidOpenTextDocumentParams {
         text_document: TextDocumentItem {
-          uri: self.get_document_specifier(),
+          uri: self.get_document_uri(),
           language_id: "typescript".to_string(),
           version: self.document_version,
           text: format!("{}{}", self.document_text, self.pending_text),
@@ -257,8 +262,9 @@ impl ReplLanguageServer {
       .await;
   }
 
-  fn get_document_specifier(&self) -> ModuleSpecifier {
-    self.cwd_uri.join("$deno$repl.ts").unwrap()
+  fn get_document_uri(&self) -> Uri {
+    uri_parse_unencoded(self.cwd_uri.join("$deno$repl.ts").unwrap().as_str())
+      .unwrap()
   }
 }
 
@@ -306,7 +312,7 @@ pub fn get_repl_workspace_settings() -> WorkspaceSettings {
     document_preload_limit: 0, // don't pre-load any modules as it's expensive and not useful for the repl
     tls_certificate: None,
     unsafely_ignore_certificate_errors: None,
-    unstable: false,
+    unstable: Default::default(),
     suggest: DenoCompletionSettings {
       imports: ImportCompletionSettings {
         auto_discover: false,

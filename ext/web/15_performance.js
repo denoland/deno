@@ -3,10 +3,7 @@
 import { primordials } from "ext:core/mod.js";
 const {
   ArrayPrototypeFilter,
-  ArrayPrototypeFind,
   ArrayPrototypePush,
-  ArrayPrototypeReverse,
-  ArrayPrototypeSlice,
   ObjectKeys,
   ObjectPrototypeIsPrototypeOf,
   ReflectHas,
@@ -101,10 +98,12 @@ function findMostRecent(
   name,
   type,
 ) {
-  return ArrayPrototypeFind(
-    ArrayPrototypeReverse(ArrayPrototypeSlice(performanceEntries)),
-    (entry) => entry.name === name && entry.entryType === type,
-  );
+  for (let i = performanceEntries.length - 1; i >= 0; --i) {
+    const entry = performanceEntries[i];
+    if (entry.name === name && entry.entryType === type) {
+      return entry;
+    }
+  }
 }
 
 function convertMarkToTimestamp(mark) {

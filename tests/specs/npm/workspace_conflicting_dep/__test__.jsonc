@@ -2,9 +2,6 @@
   "tempDir": true,
   "tests": {
     "conflicting_deps": {
-      "envs": {
-        "DENO_FUTURE": "1"
-      },
       "steps": [
         {
           "args": "install",

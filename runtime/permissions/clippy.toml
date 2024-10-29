@@ -1,0 +1,3 @@
+disallowed-methods = [
+  { path = "std::str::FromStr", reason = "Don't want to have stuff like `'0.0.0.0'.parse().unwrap()`. Instead implement ConcreteType::parse methods." },
+]

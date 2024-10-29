@@ -30,7 +30,7 @@ jobs:
           persist-credentials: false
 
       - name: Setup Deno
-        uses: denoland/setup-deno@v1
+        uses: denoland/setup-deno@v2
         with:
           deno-version: ${{ matrix.deno-version }}
 
@@ -66,9 +66,9 @@ jobs:
       - name: Run web platform tests
         shell: bash
         run: |
-          deno run --unstable -A --lock=tools/deno.lock.json                   \
+          deno run -A --lock=tools/deno.lock.json --config=tests/config/deno.json \
             ./tests/wpt/wpt.ts setup
-          deno run --unstable -A --lock=tools/deno.lock.json                   \
+          deno run -A --lock=tools/deno.lock.json --config=tests/config/deno.json \
             ./tests/wpt/wpt.ts run                                             \                                                \
             --binary=$(which deno) --quiet --release --no-ignore --json=wpt.json --wptreport=wptreport.json --exit-zero
 

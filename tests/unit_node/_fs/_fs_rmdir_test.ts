@@ -1,8 +1,8 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
-import { assertEquals, fail } from "@std/assert/mod.ts";
+import { assertEquals, fail } from "@std/assert";
 import { rmdir, rmdirSync } from "node:fs";
 import { existsSync } from "node:fs";
-import { join } from "@std/path/mod.ts";
+import { join } from "@std/path";
 import { assertCallbackErrorUncaught } from "../_test_utils.ts";
 
 Deno.test({

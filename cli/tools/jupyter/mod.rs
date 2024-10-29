@@ -11,6 +11,7 @@ use crate::tools::repl;
 use crate::tools::test::create_single_test_event_channel;
 use crate::tools::test::reporters::PrettyTestReporter;
 use crate::tools::test::TestEventWorkerSender;
+use crate::tools::test::TestFailureFormatOptions;
 use crate::CliFactory;
 use deno_core::anyhow::bail;
 use deno_core::anyhow::Context;
@@ -24,7 +25,6 @@ use deno_core::serde_json::json;
 use deno_core::url::Url;
 use deno_runtime::deno_io::Stdio;
 use deno_runtime::deno_io::StdioPipe;
-use deno_runtime::deno_permissions::Permissions;
 use deno_runtime::deno_permissions::PermissionsContainer;
 use deno_runtime::WorkerExecutionMode;
 use deno_terminal::colors;
@@ -64,7 +64,8 @@ pub async fn kernel(
     resolve_url_or_path("./$deno$jupyter.ts", cli_options.initial_cwd())
       .unwrap();
   // TODO(bartlomieju): should we run with all permissions?
-  let permissions = PermissionsContainer::new(Permissions::allow_all());
+  let permissions =
+    PermissionsContainer::allow_all(factory.permission_desc_parser()?.clone());
   let npm_resolver = factory.npm_resolver().await?.clone();
   let resolver = factory.resolver().await?.clone();
   let worker_factory = factory.create_cli_main_worker_factory().await?;
@@ -125,9 +126,7 @@ pub async fn kernel(
     fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
       self
         .0
-        .send(StreamContent::stdout(
-          String::from_utf8_lossy(buf).into_owned(),
-        ))
+        .send(StreamContent::stdout(&String::from_utf8_lossy(buf)))
         .ok();
       Ok(buf.len())
     }
@@ -144,8 +143,15 @@ pub async fn kernel(
     })?;
   repl_session.set_test_reporter_factory(Box::new(move || {
     Box::new(
-      PrettyTestReporter::new(false, true, false, true, cwd_url.clone())
-        .with_writer(Box::new(TestWriter(stdio_tx.clone()))),
+      PrettyTestReporter::new(
+        false,
+        true,
+        false,
+        true,
+        cwd_url.clone(),
+        TestFailureFormatOptions::default(),
+      )
+      .with_writer(Box::new(TestWriter(stdio_tx.clone()))),
     )
   }));
 
@@ -351,54 +357,72 @@ pub struct JupyterReplSession {
 
 impl JupyterReplSession {
   pub async fn start(&mut self) {
+    let mut poll_worker = true;
     loop {
-      let Some(msg) = self.rx.recv().await else {
-        break;
-      };
-      let resp = match msg {
-        JupyterReplRequest::LspCompletions {
-          line_text,
-          position,
-        } => JupyterReplResponse::LspCompletions(
-          self.lsp_completions(&line_text, position).await,
-        ),
-        JupyterReplRequest::JsGetProperties { object_id } => {
-          JupyterReplResponse::JsGetProperties(
-            self.get_properties(object_id).await,
-          )
-        }
-        JupyterReplRequest::JsEvaluate { expr } => {
-          JupyterReplResponse::JsEvaluate(self.evaluate(expr).await)
-        }
-        JupyterReplRequest::JsGlobalLexicalScopeNames => {
-          JupyterReplResponse::JsGlobalLexicalScopeNames(
-            self.global_lexical_scope_names().await,
-          )
-        }
-        JupyterReplRequest::JsEvaluateLineWithObjectWrapping { line } => {
-          JupyterReplResponse::JsEvaluateLineWithObjectWrapping(
-            self.evaluate_line_with_object_wrapping(&line).await,
-          )
-        }
-        JupyterReplRequest::JsCallFunctionOnArgs {
-          function_declaration,
-          args,
-        } => JupyterReplResponse::JsCallFunctionOnArgs(
-          self
-            .call_function_on_args(function_declaration, &args)
-            .await,
-        ),
-        JupyterReplRequest::JsCallFunctionOn { arg0, arg1 } => {
-          JupyterReplResponse::JsCallFunctionOn(
-            self.call_function_on(arg0, arg1).await,
-          )
-        }
-      };
+      tokio::select! {
+        biased;
 
-      let Ok(()) = self.tx.send(resp) else {
-        break;
-      };
+        maybe_message = self.rx.recv() => {
+          let Some(msg) = maybe_message else {
+            break;
+          };
+          if self.handle_message(msg).await.is_err() {
+            break;
+          }
+          poll_worker = true;
+        },
+        _ = self.repl_session.run_event_loop(), if poll_worker => {
+          poll_worker = false;
+        }
+      }
     }
+  }
+
+  async fn handle_message(
+    &mut self,
+    msg: JupyterReplRequest,
+  ) -> Result<(), AnyError> {
+    let resp = match msg {
+      JupyterReplRequest::LspCompletions {
+        line_text,
+        position,
+      } => JupyterReplResponse::LspCompletions(
+        self.lsp_completions(&line_text, position).await,
+      ),
+      JupyterReplRequest::JsGetProperties { object_id } => {
+        JupyterReplResponse::JsGetProperties(
+          self.get_properties(object_id).await,
+        )
+      }
+      JupyterReplRequest::JsEvaluate { expr } => {
+        JupyterReplResponse::JsEvaluate(self.evaluate(expr).await)
+      }
+      JupyterReplRequest::JsGlobalLexicalScopeNames => {
+        JupyterReplResponse::JsGlobalLexicalScopeNames(
+          self.global_lexical_scope_names().await,
+        )
+      }
+      JupyterReplRequest::JsEvaluateLineWithObjectWrapping { line } => {
+        JupyterReplResponse::JsEvaluateLineWithObjectWrapping(
+          self.evaluate_line_with_object_wrapping(&line).await,
+        )
+      }
+      JupyterReplRequest::JsCallFunctionOnArgs {
+        function_declaration,
+        args,
+      } => JupyterReplResponse::JsCallFunctionOnArgs(
+        self
+          .call_function_on_args(function_declaration, &args)
+          .await,
+      ),
+      JupyterReplRequest::JsCallFunctionOn { arg0, arg1 } => {
+        JupyterReplResponse::JsCallFunctionOn(
+          self.call_function_on(arg0, arg1).await,
+        )
+      }
+    };
+
+    self.tx.send(resp).map_err(|e| e.into())
   }
 
   pub async fn lsp_completions(

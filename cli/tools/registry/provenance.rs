@@ -229,16 +229,16 @@ impl Predicate {
 struct ProvenanceAttestation {
   #[serde(rename = "type")]
   _type: &'static str,
-  subject: Subject,
+  subject: Vec<Subject>,
   predicate_type: &'static str,
   predicate: Predicate,
 }
 
 impl ProvenanceAttestation {
-  pub fn new_github_actions(subject: Subject) -> Self {
+  pub fn new_github_actions(subjects: Vec<Subject>) -> Self {
     Self {
       _type: INTOTO_STATEMENT_TYPE,
-      subject,
+      subject: subjects,
       predicate_type: SLSA_PREDICATE_TYPE,
       predicate: Predicate::new_github_actions(),
     }
@@ -296,7 +296,7 @@ pub struct ProvenanceBundle {
 
 pub async fn generate_provenance(
   http_client: &HttpClient,
-  subject: Subject,
+  subjects: Vec<Subject>,
 ) -> Result<ProvenanceBundle, AnyError> {
   if !is_gha() {
     bail!("Automatic provenance is only available in GitHub Actions");
@@ -308,7 +308,7 @@ pub async fn generate_provenance(
     );
   };
 
-  let slsa = ProvenanceAttestation::new_github_actions(subject);
+  let slsa = ProvenanceAttestation::new_github_actions(subjects);
 
   let attestation = serde_json::to_string(&slsa)?;
   let bundle = attest(http_client, &attestation, INTOTO_PAYLOAD_TYPE).await?;
@@ -738,8 +738,13 @@ mod tests {
         sha256: "yourmom".to_string(),
       },
     };
-    let slsa = ProvenanceAttestation::new_github_actions(subject);
-    assert_eq!(slsa.subject.name, "jsr:@divy/sdl2@0.0.1");
-    assert_eq!(slsa.subject.digest.sha256, "yourmom");
+    let slsa = ProvenanceAttestation::new_github_actions(vec![subject]);
+    assert_eq!(
+      slsa.subject.len(),
+      1,
+      "Subject should be an array per the in-toto specification"
+    );
+    assert_eq!(slsa.subject[0].name, "jsr:@divy/sdl2@0.0.1");
+    assert_eq!(slsa.subject[0].digest.sha256, "yourmom");
   }
 }

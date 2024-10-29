@@ -1,26 +1,18 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 // Copyright Joyent and Node contributors. All rights reserved. MIT license.
 
-// TODO(petamoriken): enable prefer-primordials for node polyfills
-// deno-lint-ignore-file prefer-primordials
-
 import { EventEmitter } from "node:events";
 import { notImplemented } from "ext:deno_node/_utils.ts";
+import { primordials } from "ext:core/mod.js";
 
-const connectionSymbol = Symbol("connectionProperty");
-const messageCallbacksSymbol = Symbol("messageCallbacks");
-const nextIdSymbol = Symbol("nextId");
-const onMessageSymbol = Symbol("onMessage");
+const {
+  SafeMap,
+} = primordials;
 
 class Session extends EventEmitter {
-  [connectionSymbol]: null;
-  [nextIdSymbol]: number;
-  [messageCallbacksSymbol]: Map<string, (e: Error) => void>;
-
-  constructor() {
-    super();
-    notImplemented("inspector.Session.prototype.constructor");
-  }
+  #connection = null;
+  #nextId = 1;
+  #messageCallbacks = new SafeMap();
 
   /** Connects the session to the inspector back-end. */
   connect() {
@@ -31,10 +23,6 @@ class Session extends EventEmitter {
    * inspector back-end. */
   connectToMainThread() {
     notImplemented("inspector.Session.prototype.connectToMainThread");
-  }
-
-  [onMessageSymbol](_message: string) {
-    notImplemented("inspector.Session.prototype[Symbol('onMessage')]");
   }
 
   /** Posts a message to the inspector back-end. */

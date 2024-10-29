@@ -107,7 +107,7 @@ impl DenoTestCollector {
           for prop in &obj_lit.props {
             if let ast::PropOrSpread::Prop(prop) = prop {
               if let ast::Prop::KeyValue(key_value_prop) = prop.as_ref() {
-                if let ast::PropName::Ident(ast::Ident { sym, .. }) =
+                if let ast::PropName::Ident(ast::IdentName { sym, .. }) =
                   &key_value_prop.key
                 {
                   if sym == "name" {

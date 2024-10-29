@@ -2,12 +2,13 @@
 import {
   assert,
   assertEquals,
+  assertNotEquals,
   assertNotStrictEquals,
   assertStringIncludes,
   assertThrows,
 } from "./test_util.ts";
 
-Deno.test({ permissions: { hrtime: false } }, async function performanceNow() {
+Deno.test({ permissions: {} }, async function performanceNow() {
   const { promise, resolve } = Promise.withResolvers<void>();
   const start = performance.now();
   let totalTime = 0;
@@ -34,6 +35,41 @@ Deno.test(function performanceToJSON() {
   assert(json.timeOrigin === performance.timeOrigin);
   // check there are no other keys
   assertEquals(Object.keys(json).length, 1);
+});
+
+Deno.test(function clearMarks() {
+  performance.mark("a");
+  performance.mark("a");
+  performance.mark("b");
+  performance.mark("c");
+
+  const marksNum = performance.getEntriesByType("mark").length;
+
+  performance.clearMarks("a");
+  assertEquals(performance.getEntriesByType("mark").length, marksNum - 2);
+
+  performance.clearMarks();
+  assertEquals(performance.getEntriesByType("mark").length, 0);
+});
+
+Deno.test(function clearMeasures() {
+  performance.measure("from-start");
+  performance.mark("a");
+  performance.measure("from-mark-a", "a");
+  performance.measure("from-start");
+  performance.measure("from-mark-a", "a");
+  performance.mark("b");
+  performance.measure("between-a-and-b", "a", "b");
+
+  const measuresNum = performance.getEntriesByType("measure").length;
+
+  performance.clearMeasures("from-start");
+  assertEquals(performance.getEntriesByType("measure").length, measuresNum - 2);
+
+  performance.clearMeasures();
+  assertEquals(performance.getEntriesByType("measure").length, 0);
+
+  performance.clearMarks();
 });
 
 Deno.test(function performanceMark() {
@@ -119,6 +155,25 @@ Deno.test(function performanceMeasure() {
         assert(entriesByName[entriesByName.length - 1] === measure1);
         const measureEntries = performance.getEntriesByType("measure");
         assert(measureEntries[measureEntries.length - 1] === measure2);
+      } catch (e) {
+        return reject(e);
+      }
+      resolve();
+    }, 100);
+  });
+});
+
+Deno.test(function performanceMeasureUseMostRecentMark() {
+  const markName1 = "mark1";
+  const measureName1 = "measure1";
+  const mark1 = performance.mark(markName1);
+  return new Promise((resolve, reject) => {
+    setTimeout(() => {
+      try {
+        const laterMark1 = performance.mark(markName1);
+        const measure1 = performance.measure(measureName1, markName1);
+        assertNotEquals(mark1.startTime, measure1.startTime);
+        assertEquals(laterMark1.startTime, measure1.startTime);
       } catch (e) {
         return reject(e);
       }

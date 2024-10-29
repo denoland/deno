@@ -1,4 +1,5 @@
 {
+  "version": 1,
   "roots": [
     "[WILDCARD]/npm/peer_deps_with_copied_folders/main.ts"
   ],
@@ -42,8 +43,6 @@
         }
       ],
       "local": "[WILDCARD]main.ts",
-      "emit": null,
-      "map": null,
       "size": 171,
       "mediaType": "TypeScript",
       "specifier": "file://[WILDCARD]/main.ts"

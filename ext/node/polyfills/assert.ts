@@ -746,6 +746,9 @@ function validateThrownError(
     message = error;
     error = undefined;
   }
+  if (error?.prototype !== undefined && e instanceof error) {
+    return true;
+  }
   if (
     typeof error === "function" &&
     (error === Error || ObjectPrototypeIsPrototypeOf(Error, error))

@@ -1,6 +1,6 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
-import { assert, assertStringIncludes } from "@std/assert/mod.ts";
+import { assert, assertStringIncludes } from "@std/assert";
 
 /** Asserts that an error thrown in a callback will not be wrongly caught. */
 export async function assertCallbackErrorUncaught(
@@ -21,7 +21,6 @@ export async function assertCallbackErrorUncaught(
   const p = new Deno.Command(Deno.execPath(), {
     args: [
       "eval",
-      "--unstable",
       `${prelude ?? ""}
   
         ${invocation}(err) => {

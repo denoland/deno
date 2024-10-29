@@ -3,28 +3,38 @@
 use std::mem::MaybeUninit;
 
 use crate::NodePermissions;
-use deno_core::error::type_error;
-use deno_core::error::AnyError;
 use deno_core::op2;
 use deno_core::OpState;
 
 mod cpus;
-mod priority;
+pub mod priority;
+
+#[derive(Debug, thiserror::Error)]
+pub enum OsError {
+  #[error(transparent)]
+  Priority(priority::PriorityError),
+  #[error(transparent)]
+  Permission(deno_core::error::AnyError),
+  #[error("Failed to get cpu info")]
+  FailedToGetCpuInfo,
+}
 
 #[op2(fast)]
 pub fn op_node_os_get_priority<P>(
   state: &mut OpState,
   pid: u32,
-) -> Result<i32, AnyError>
+) -> Result<i32, OsError>
 where
   P: NodePermissions + 'static,
 {
   {
     let permissions = state.borrow_mut::<P>();
-    permissions.check_sys("getPriority", "node:os.getPriority()")?;
+    permissions
+      .check_sys("getPriority", "node:os.getPriority()")
+      .map_err(OsError::Permission)?;
   }
 
-  priority::get_priority(pid)
+  priority::get_priority(pid).map_err(OsError::Priority)
 }
 
 #[op2(fast)]
@@ -32,16 +42,18 @@ pub fn op_node_os_set_priority<P>(
   state: &mut OpState,
   pid: u32,
   priority: i32,
-) -> Result<(), AnyError>
+) -> Result<(), OsError>
 where
   P: NodePermissions + 'static,
 {
   {
     let permissions = state.borrow_mut::<P>();
-    permissions.check_sys("setPriority", "node:os.setPriority()")?;
+    permissions
+      .check_sys("setPriority", "node:os.setPriority()")
+      .map_err(OsError::Permission)?;
   }
 
-  priority::set_priority(pid, priority)
+  priority::set_priority(pid, priority).map_err(OsError::Priority)
 }
 
 #[derive(serde::Serialize)]
@@ -178,7 +190,7 @@ fn get_user_info(_uid: u32) -> Result<UserInfo, AnyError> {
 pub fn op_node_os_user_info<P>(
   state: &mut OpState,
   #[smi] uid: u32,
-) -> Result<UserInfo, AnyError>
+) -> Result<UserInfo, deno_core::error::AnyError>
 where
   P: NodePermissions + 'static,
 {
@@ -191,7 +203,9 @@ where
 }
 
 #[op2(fast)]
-pub fn op_geteuid<P>(state: &mut OpState) -> Result<u32, AnyError>
+pub fn op_geteuid<P>(
+  state: &mut OpState,
+) -> Result<u32, deno_core::error::AnyError>
 where
   P: NodePermissions + 'static,
 {
@@ -210,7 +224,9 @@ where
 }
 
 #[op2(fast)]
-pub fn op_getegid<P>(state: &mut OpState) -> Result<u32, AnyError>
+pub fn op_getegid<P>(
+  state: &mut OpState,
+) -> Result<u32, deno_core::error::AnyError>
 where
   P: NodePermissions + 'static,
 {
@@ -230,21 +246,25 @@ where
 
 #[op2]
 #[serde]
-pub fn op_cpus<P>(state: &mut OpState) -> Result<Vec<cpus::CpuInfo>, AnyError>
+pub fn op_cpus<P>(state: &mut OpState) -> Result<Vec<cpus::CpuInfo>, OsError>
 where
   P: NodePermissions + 'static,
 {
   {
     let permissions = state.borrow_mut::<P>();
-    permissions.check_sys("cpus", "node:os.cpus()")?;
+    permissions
+      .check_sys("cpus", "node:os.cpus()")
+      .map_err(OsError::Permission)?;
   }
 
-  cpus::cpu_info().ok_or_else(|| type_error("Failed to get cpu info"))
+  cpus::cpu_info().ok_or(OsError::FailedToGetCpuInfo)
 }
 
 #[op2]
 #[string]
-pub fn op_homedir<P>(state: &mut OpState) -> Result<Option<String>, AnyError>
+pub fn op_homedir<P>(
+  state: &mut OpState,
+) -> Result<Option<String>, deno_core::error::AnyError>
 where
   P: NodePermissions + 'static,
 {

@@ -19,8 +19,10 @@ use super::refactor::EXTRACT_TYPE;
 use super::semantic_tokens;
 use super::semantic_tokens::SemanticTokensBuilder;
 use super::text::LineIndex;
-use super::urls::LspClientUrl;
+use super::urls::uri_to_url;
+use super::urls::url_to_uri;
 use super::urls::INVALID_SPECIFIER;
+use super::urls::INVALID_URI;
 
 use crate::args::jsr_url;
 use crate::args::FmtOptionsConfig;
@@ -37,7 +39,6 @@ use deno_core::convert::ToV8;
 use deno_core::error::StdAnyError;
 use deno_core::futures::stream::FuturesOrdered;
 use deno_core::futures::StreamExt;
-use deno_runtime::fs_util::specifier_to_file_path;
 
 use dashmap::DashMap;
 use deno_ast::MediaType;
@@ -61,6 +62,7 @@ use deno_core::ModuleSpecifier;
 use deno_core::OpState;
 use deno_core::PollEventLoopOptions;
 use deno_core::RuntimeOptions;
+use deno_path_util::url_to_file_path;
 use deno_runtime::inspector_server::InspectorServer;
 use deno_runtime::tokio_util::create_basic_runtime;
 use indexmap::IndexMap;
@@ -215,6 +217,8 @@ pub enum SemicolonPreference {
   Remove,
 }
 
+// Allow due to false positive https://github.com/rust-lang/rust-clippy/issues/13170
+#[allow(clippy::needless_borrows_for_generic_args)]
 fn normalize_diagnostic(
   diagnostic: &mut crate::tsc::Diagnostic,
   specifier_map: &TscSpecifierMap,
@@ -2041,12 +2045,10 @@ impl DocumentSpan {
     let target_asset_or_doc =
       language_server.get_maybe_asset_or_document(&target_specifier)?;
     let target_line_index = target_asset_or_doc.line_index();
-    let file_referrer = language_server
-      .documents
-      .get_file_referrer(&target_specifier);
+    let file_referrer = target_asset_or_doc.file_referrer();
     let target_uri = language_server
       .url_map
-      .normalize_specifier(&target_specifier, file_referrer.as_deref())
+      .specifier_to_uri(&target_specifier, file_referrer)
       .ok()?;
     let (target_range, target_selection_range) =
       if let Some(context_span) = &self.context_span {
@@ -2071,7 +2073,7 @@ impl DocumentSpan {
       };
     let link = lsp::LocationLink {
       origin_selection_range,
-      target_uri: target_uri.into_url(),
+      target_uri,
       target_range,
       target_selection_range,
     };
@@ -2090,12 +2092,12 @@ impl DocumentSpan {
       language_server.get_maybe_asset_or_document(&specifier)?;
     let line_index = asset_or_doc.line_index();
     let range = self.text_span.to_range(line_index);
-    let file_referrer = language_server.documents.get_file_referrer(&specifier);
-    let mut target = language_server
+    let file_referrer = asset_or_doc.file_referrer();
+    let target_uri = language_server
       .url_map
-      .normalize_specifier(&specifier, file_referrer.as_deref())
-      .ok()?
-      .into_url();
+      .specifier_to_uri(&specifier, file_referrer)
+      .ok()?;
+    let mut target = uri_to_url(&target_uri);
     target.set_fragment(Some(&format!(
       "L{},{}",
       range.start.line + 1,
@@ -2151,16 +2153,13 @@ impl NavigateToItem {
     let asset_or_doc =
       language_server.get_asset_or_document(&specifier).ok()?;
     let line_index = asset_or_doc.line_index();
-    let file_referrer = language_server.documents.get_file_referrer(&specifier);
+    let file_referrer = asset_or_doc.file_referrer();
     let uri = language_server
       .url_map
-      .normalize_specifier(&specifier, file_referrer.as_deref())
+      .specifier_to_uri(&specifier, file_referrer)
       .ok()?;
     let range = self.text_span.to_range(line_index);
-    let location = lsp::Location {
-      uri: uri.into_url(),
-      range,
-    };
+    let location = lsp::Location { uri, range };
 
     let mut tags: Option<Vec<lsp::SymbolTag>> = None;
     let kind_modifiers = parse_kind_modifier(&self.kind_modifiers);
@@ -2180,6 +2179,50 @@ impl NavigateToItem {
       location,
       container_name: self.container_name.clone(),
     })
+  }
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct InlayHintDisplayPart {
+  pub text: String,
+  pub span: Option<TextSpan>,
+  pub file: Option<String>,
+}
+
+impl InlayHintDisplayPart {
+  pub fn to_lsp(
+    &self,
+    language_server: &language_server::Inner,
+  ) -> lsp::InlayHintLabelPart {
+    let location = self.file.as_ref().map(|f| {
+      let specifier =
+        resolve_url(f).unwrap_or_else(|_| INVALID_SPECIFIER.clone());
+      let file_referrer =
+        language_server.documents.get_file_referrer(&specifier);
+      let uri = language_server
+        .url_map
+        .specifier_to_uri(&specifier, file_referrer.as_deref())
+        .unwrap_or_else(|_| INVALID_URI.clone());
+      let range = self
+        .span
+        .as_ref()
+        .and_then(|s| {
+          let asset_or_doc =
+            language_server.get_asset_or_document(&specifier).ok()?;
+          Some(s.to_range(asset_or_doc.line_index()))
+        })
+        .unwrap_or_else(|| {
+          lsp::Range::new(lsp::Position::new(0, 0), lsp::Position::new(0, 0))
+        });
+      lsp::Location { uri, range }
+    });
+    lsp::InlayHintLabelPart {
+      value: self.text.clone(),
+      tooltip: None,
+      location,
+      command: None,
+    }
   }
 }
 
@@ -2204,6 +2247,7 @@ impl InlayHintKind {
 #[serde(rename_all = "camelCase")]
 pub struct InlayHint {
   pub text: String,
+  pub display_parts: Option<Vec<InlayHintDisplayPart>>,
   pub position: u32,
   pub kind: InlayHintKind,
   pub whitespace_before: Option<bool>,
@@ -2211,10 +2255,23 @@ pub struct InlayHint {
 }
 
 impl InlayHint {
-  pub fn to_lsp(&self, line_index: Arc<LineIndex>) -> lsp::InlayHint {
+  pub fn to_lsp(
+    &self,
+    line_index: Arc<LineIndex>,
+    language_server: &language_server::Inner,
+  ) -> lsp::InlayHint {
     lsp::InlayHint {
       position: line_index.position_tsc(self.position.into()),
-      label: lsp::InlayHintLabel::String(self.text.clone()),
+      label: if let Some(display_parts) = &self.display_parts {
+        lsp::InlayHintLabel::LabelParts(
+          display_parts
+            .iter()
+            .map(|p| p.to_lsp(language_server))
+            .collect(),
+        )
+      } else {
+        lsp::InlayHintLabel::String(self.text.clone())
+      },
       kind: self.kind.to_lsp(),
       padding_left: self.whitespace_before,
       padding_right: self.whitespace_after,
@@ -2413,12 +2470,10 @@ impl ImplementationLocation {
     let file_referrer = language_server.documents.get_file_referrer(&specifier);
     let uri = language_server
       .url_map
-      .normalize_specifier(&specifier, file_referrer.as_deref())
-      .unwrap_or_else(|_| {
-        LspClientUrl::new(ModuleSpecifier::parse("deno://invalid").unwrap())
-      });
+      .specifier_to_uri(&specifier, file_referrer.as_deref())
+      .unwrap_or_else(|_| INVALID_URI.clone());
     lsp::Location {
-      uri: uri.into_url(),
+      uri,
       range: self.document_span.text_span.to_range(line_index),
     }
   }
@@ -2474,7 +2529,7 @@ impl RenameLocations {
         language_server.documents.get_file_referrer(&specifier);
       let uri = language_server
         .url_map
-        .normalize_specifier(&specifier, file_referrer.as_deref())?;
+        .specifier_to_uri(&specifier, file_referrer.as_deref())?;
       let asset_or_doc = language_server.get_asset_or_document(&specifier)?;
 
       // ensure TextDocumentEdit for `location.file_name`.
@@ -2483,7 +2538,7 @@ impl RenameLocations {
           uri.clone(),
           lsp::TextDocumentEdit {
             text_document: lsp::OptionalVersionedTextDocumentIdentifier {
-              uri: uri.as_url().clone(),
+              uri: uri.clone(),
               version: asset_or_doc.document_lsp_version(),
             },
             edits:
@@ -2685,7 +2740,7 @@ impl FileTextChanges {
       .collect();
     Ok(lsp::TextDocumentEdit {
       text_document: lsp::OptionalVersionedTextDocumentIdentifier {
-        uri: specifier,
+        uri: url_to_uri(&specifier)?,
         version: asset_or_doc.document_lsp_version(),
       },
       edits,
@@ -2712,7 +2767,7 @@ impl FileTextChanges {
     if self.is_new_file.unwrap_or(false) {
       ops.push(lsp::DocumentChangeOperation::Op(lsp::ResourceOp::Create(
         lsp::CreateFile {
-          uri: specifier.clone(),
+          uri: url_to_uri(&specifier)?,
           options: Some(lsp::CreateFileOptions {
             ignore_if_exists: Some(true),
             overwrite: None,
@@ -2729,7 +2784,7 @@ impl FileTextChanges {
       .collect();
     ops.push(lsp::DocumentChangeOperation::Edit(lsp::TextDocumentEdit {
       text_document: lsp::OptionalVersionedTextDocumentIdentifier {
-        uri: specifier,
+        uri: url_to_uri(&specifier)?,
         version: maybe_asset_or_document.and_then(|d| d.document_lsp_version()),
       },
       edits,
@@ -3127,10 +3182,10 @@ impl ReferenceEntry {
     let file_referrer = language_server.documents.get_file_referrer(&specifier);
     let uri = language_server
       .url_map
-      .normalize_specifier(&specifier, file_referrer.as_deref())
-      .unwrap_or_else(|_| LspClientUrl::new(INVALID_SPECIFIER.clone()));
+      .specifier_to_uri(&specifier, file_referrer.as_deref())
+      .unwrap_or_else(|_| INVALID_URI.clone());
     lsp::Location {
-      uri: uri.into_url(),
+      uri,
       range: self.document_span.text_span.to_range(line_index),
     }
   }
@@ -3188,12 +3243,13 @@ impl CallHierarchyItem {
       .get_file_referrer(&target_specifier);
     let uri = language_server
       .url_map
-      .normalize_specifier(&target_specifier, file_referrer.as_deref())
-      .unwrap_or_else(|_| LspClientUrl::new(INVALID_SPECIFIER.clone()));
+      .specifier_to_uri(&target_specifier, file_referrer.as_deref())
+      .unwrap_or_else(|_| INVALID_URI.clone());
 
     let use_file_name = self.is_source_file_item();
-    let maybe_file_path = if uri.as_url().scheme() == "file" {
-      specifier_to_file_path(uri.as_url()).ok()
+    let maybe_file_path = if uri.scheme().is_some_and(|s| s.as_str() == "file")
+    {
+      url_to_file_path(&uri_to_url(&uri)).ok()
     } else {
       None
     };
@@ -3237,7 +3293,7 @@ impl CallHierarchyItem {
     lsp::CallHierarchyItem {
       name,
       tags,
-      uri: uri.into_url(),
+      uri,
       detail: Some(detail),
       kind: self.kind.clone().into(),
       range: self.span.to_range(line_index.clone()),
@@ -3941,7 +3997,7 @@ pub struct OutliningSpan {
   kind: OutliningSpanKind,
 }
 
-const FOLD_END_PAIR_CHARACTERS: &[u8] = &[b'}', b']', b')', b'`'];
+const FOLD_END_PAIR_CHARACTERS: &[u8] = b"}])`";
 
 impl OutliningSpan {
   pub fn to_folding_range(
@@ -4230,14 +4286,10 @@ impl State {
   }
 
   fn get_document(&self, specifier: &ModuleSpecifier) -> Option<Arc<Document>> {
-    if let Some(scope) = &self.last_scope {
-      self.state_snapshot.documents.get_or_load(specifier, scope)
-    } else {
-      self
-        .state_snapshot
-        .documents
-        .get_or_load(specifier, &ModuleSpecifier::parse("file:///").unwrap())
-    }
+    self
+      .state_snapshot
+      .documents
+      .get_or_load(specifier, self.last_scope.as_ref())
   }
 
   fn get_asset_or_document(
@@ -4559,7 +4611,7 @@ fn op_script_names(state: &mut OpState) -> ScriptNames {
           specifier,
           doc.file_referrer(),
         )?;
-        let types_doc = documents.get_or_load(&types, specifier)?;
+        let types_doc = documents.get_or_load(&types, doc.file_referrer())?;
         Some(types_doc.specifier().clone())
       })();
       // If there is a types dep, use that as the root instead. But if the doc
@@ -4898,6 +4950,10 @@ pub struct UserPreferences {
   pub allow_rename_of_import_path: Option<bool>,
   #[serde(skip_serializing_if = "Option::is_none")]
   pub auto_import_file_exclude_patterns: Option<Vec<String>>,
+  #[serde(skip_serializing_if = "Option::is_none")]
+  pub interactive_inlay_hints: Option<bool>,
+  #[serde(skip_serializing_if = "Option::is_none")]
+  pub prefer_type_only_auto_imports: Option<bool>,
 }
 
 impl UserPreferences {
@@ -4915,6 +4971,7 @@ impl UserPreferences {
       include_completions_with_snippet_text: Some(
         config.snippet_support_capable(),
       ),
+      interactive_inlay_hints: Some(true),
       provide_refactor_not_applicable_reason: Some(true),
       quote_preference: Some(fmt_config.into()),
       use_label_details_in_completion_entries: Some(true),
@@ -5019,6 +5076,9 @@ impl UserPreferences {
       } else {
         Some(language_settings.preferences.quote_style)
       },
+      prefer_type_only_auto_imports: Some(
+        language_settings.preferences.prefer_type_only_auto_imports,
+      ),
       ..base_preferences
     }
   }
@@ -5402,7 +5462,7 @@ mod tests {
     sources: &[(&str, &str, i32, LanguageId)],
   ) -> (TempDir, TsServer, Arc<StateSnapshot>, LspCache) {
     let temp_dir = TempDir::new();
-    let cache = LspCache::new(Some(temp_dir.uri().join(".deno_dir").unwrap()));
+    let cache = LspCache::new(Some(temp_dir.url().join(".deno_dir").unwrap()));
     let mut config = Config::default();
     config
       .tree
@@ -5412,7 +5472,7 @@ mod tests {
             "compilerOptions": ts_config,
           })
           .to_string(),
-          temp_dir.uri().join("deno.json").unwrap(),
+          temp_dir.url().join("deno.json").unwrap(),
           &Default::default(),
         )
         .unwrap(),
@@ -5423,7 +5483,7 @@ mod tests {
     let mut documents = Documents::default();
     documents.update_config(&config, &resolver, &cache, &Default::default());
     for (relative_specifier, source, version, language_id) in sources {
-      let specifier = temp_dir.uri().join(relative_specifier).unwrap();
+      let specifier = temp_dir.url().join(relative_specifier).unwrap();
       documents.open(specifier, *version, *language_id, (*source).into(), None);
     }
     let snapshot = Arc::new(StateSnapshot {
@@ -5481,7 +5541,6 @@ mod tests {
     let (temp_dir, ts_server, snapshot, _) = setup(
       json!({
         "target": "esnext",
-        "module": "esnext",
         "noEmit": true,
         "lib": [],
       }),
@@ -5493,7 +5552,7 @@ mod tests {
       )],
     )
     .await;
-    let specifier = temp_dir.uri().join("a.ts").unwrap();
+    let specifier = temp_dir.url().join("a.ts").unwrap();
     let diagnostics = ts_server
       .get_diagnostics(snapshot, vec![specifier.clone()], Default::default())
       .await
@@ -5527,7 +5586,6 @@ mod tests {
     let (temp_dir, ts_server, snapshot, _) = setup(
       json!({
         "target": "esnext",
-        "module": "esnext",
         "jsx": "react",
         "lib": ["esnext", "dom", "deno.ns"],
         "noEmit": true,
@@ -5540,7 +5598,7 @@ mod tests {
       )],
     )
     .await;
-    let specifier = temp_dir.uri().join("a.ts").unwrap();
+    let specifier = temp_dir.url().join("a.ts").unwrap();
     let diagnostics = ts_server
       .get_diagnostics(snapshot, vec![specifier.clone()], Default::default())
       .await
@@ -5553,7 +5611,6 @@ mod tests {
     let (temp_dir, ts_server, snapshot, _) = setup(
       json!({
         "target": "esnext",
-        "module": "esnext",
         "lib": ["deno.ns", "deno.window"],
         "noEmit": true,
       }),
@@ -5571,7 +5628,7 @@ mod tests {
       )],
     )
     .await;
-    let specifier = temp_dir.uri().join("a.ts").unwrap();
+    let specifier = temp_dir.url().join("a.ts").unwrap();
     let diagnostics = ts_server
       .get_diagnostics(snapshot, vec![specifier.clone()], Default::default())
       .await
@@ -5584,7 +5641,6 @@ mod tests {
     let (temp_dir, ts_server, snapshot, _) = setup(
       json!({
         "target": "esnext",
-        "module": "esnext",
         "lib": ["deno.ns", "deno.window"],
         "noEmit": true,
       }),
@@ -5598,7 +5654,7 @@ mod tests {
       )],
     )
     .await;
-    let specifier = temp_dir.uri().join("a.ts").unwrap();
+    let specifier = temp_dir.url().join("a.ts").unwrap();
     let diagnostics = ts_server
       .get_diagnostics(snapshot, vec![specifier.clone()], Default::default())
       .await
@@ -5630,7 +5686,6 @@ mod tests {
     let (temp_dir, ts_server, snapshot, _) = setup(
       json!({
         "target": "esnext",
-        "module": "esnext",
         "lib": ["deno.ns", "deno.window"],
         "noEmit": true,
       }),
@@ -5648,7 +5703,7 @@ mod tests {
       )],
     )
     .await;
-    let specifier = temp_dir.uri().join("a.ts").unwrap();
+    let specifier = temp_dir.url().join("a.ts").unwrap();
     let diagnostics = ts_server
       .get_diagnostics(snapshot, vec![specifier.clone()], Default::default())
       .await
@@ -5661,7 +5716,6 @@ mod tests {
     let (temp_dir, ts_server, snapshot, _) = setup(
       json!({
         "target": "esnext",
-        "module": "esnext",
         "lib": ["deno.ns", "deno.window"],
         "noEmit": true,
       }),
@@ -5682,7 +5736,7 @@ mod tests {
       )],
     )
     .await;
-    let specifier = temp_dir.uri().join("a.ts").unwrap();
+    let specifier = temp_dir.url().join("a.ts").unwrap();
     let diagnostics = ts_server
       .get_diagnostics(snapshot, vec![specifier.clone()], Default::default())
       .await
@@ -5728,7 +5782,6 @@ mod tests {
     let (temp_dir, ts_server, snapshot, _) = setup(
       json!({
         "target": "esnext",
-        "module": "esnext",
         "lib": ["deno.ns", "deno.window"],
         "noEmit": true,
       }),
@@ -5740,7 +5793,7 @@ mod tests {
       )],
     )
     .await;
-    let specifier = temp_dir.uri().join("a.ts").unwrap();
+    let specifier = temp_dir.url().join("a.ts").unwrap();
     let diagnostics = ts_server
       .get_diagnostics(snapshot, vec![specifier.clone()], Default::default())
       .await
@@ -5806,7 +5859,6 @@ mod tests {
     let (temp_dir, ts_server, snapshot, cache) = setup(
       json!({
         "target": "esnext",
-        "module": "esnext",
         "lib": ["deno.ns", "deno.window"],
         "noEmit": true,
       }),
@@ -5833,7 +5885,7 @@ mod tests {
         b"export const b = \"b\";\n",
       )
       .unwrap();
-    let specifier = temp_dir.uri().join("a.ts").unwrap();
+    let specifier = temp_dir.url().join("a.ts").unwrap();
     let diagnostics = ts_server
       .get_diagnostics(
         snapshot.clone(),
@@ -5883,7 +5935,7 @@ mod tests {
       [(&specifier_dep, ChangeKind::Opened)],
       None,
     );
-    let specifier = temp_dir.uri().join("a.ts").unwrap();
+    let specifier = temp_dir.url().join("a.ts").unwrap();
     let diagnostics = ts_server
       .get_diagnostics(
         snapshot.clone(),
@@ -5948,14 +6000,13 @@ mod tests {
     let (temp_dir, ts_server, snapshot, _) = setup(
       json!({
         "target": "esnext",
-        "module": "esnext",
         "lib": ["deno.ns", "deno.window"],
         "noEmit": true,
       }),
       &[("a.ts", fixture, 1, LanguageId::TypeScript)],
     )
     .await;
-    let specifier = temp_dir.uri().join("a.ts").unwrap();
+    let specifier = temp_dir.url().join("a.ts").unwrap();
     let info = ts_server
       .get_completions(
         snapshot.clone(),
@@ -5970,7 +6021,7 @@ mod tests {
           trigger_kind: None,
         },
         Default::default(),
-        Some(temp_dir.uri()),
+        Some(temp_dir.url()),
       )
       .await
       .unwrap();
@@ -5987,7 +6038,7 @@ mod tests {
           preferences: None,
           data: None,
         },
-        Some(temp_dir.uri()),
+        Some(temp_dir.url()),
       )
       .await
       .unwrap()
@@ -6099,7 +6150,6 @@ mod tests {
     let (temp_dir, ts_server, snapshot, _) = setup(
       json!({
         "target": "esnext",
-        "module": "esnext",
         "lib": ["deno.ns", "deno.window"],
         "noEmit": true,
       }),
@@ -6109,7 +6159,7 @@ mod tests {
       ],
     )
     .await;
-    let specifier = temp_dir.uri().join("a.ts").unwrap();
+    let specifier = temp_dir.url().join("a.ts").unwrap();
     let fmt_options_config = FmtOptionsConfig {
       semi_colons: Some(false),
       single_quote: Some(true),
@@ -6130,7 +6180,7 @@ mod tests {
           ..Default::default()
         },
         FormatCodeSettings::from(&fmt_options_config),
-        Some(temp_dir.uri()),
+        Some(temp_dir.url()),
       )
       .await
       .unwrap();
@@ -6156,7 +6206,7 @@ mod tests {
           }),
           data: entry.data.clone(),
         },
-        Some(temp_dir.uri()),
+        Some(temp_dir.url()),
       )
       .await
       .unwrap()
@@ -6208,7 +6258,6 @@ mod tests {
     let (temp_dir, ts_server, snapshot, _) = setup(
       json!({
         "target": "esnext",
-        "module": "esnext",
         "lib": ["deno.ns", "deno.window"],
         "noEmit": true,
       }),
@@ -6221,8 +6270,8 @@ mod tests {
     let changes = ts_server
       .get_edits_for_file_rename(
         snapshot,
-        temp_dir.uri().join("b.ts").unwrap(),
-        temp_dir.uri().join("🦕.ts").unwrap(),
+        temp_dir.url().join("b.ts").unwrap(),
+        temp_dir.url().join("🦕.ts").unwrap(),
         FormatCodeSettings::default(),
         UserPreferences::default(),
       )
@@ -6231,7 +6280,7 @@ mod tests {
     assert_eq!(
       changes,
       vec![FileTextChanges {
-        file_name: temp_dir.uri().join("a.ts").unwrap().to_string(),
+        file_name: temp_dir.url().join("a.ts").unwrap().to_string(),
         text_changes: vec![TextChange {
           span: TextSpan {
             start: 8,
@@ -6279,7 +6328,6 @@ mod tests {
     let (temp_dir, _, snapshot, _) = setup(
       json!({
         "target": "esnext",
-        "module": "esnext",
         "lib": ["deno.ns", "deno.window"],
         "noEmit": true,
       }),
@@ -6290,7 +6338,7 @@ mod tests {
     let resolved = op_resolve_inner(
       &mut state,
       ResolveArgs {
-        base: temp_dir.uri().join("a.ts").unwrap().to_string(),
+        base: temp_dir.url().join("a.ts").unwrap().to_string(),
         is_base_cjs: false,
         specifiers: vec!["./b.ts".to_string()],
       },
@@ -6299,7 +6347,7 @@ mod tests {
     assert_eq!(
       resolved,
       vec![Some((
-        temp_dir.uri().join("b.ts").unwrap().to_string(),
+        temp_dir.url().join("b.ts").unwrap().to_string(),
         MediaType::TypeScript.as_ts_extension().to_string()
       ))]
     );

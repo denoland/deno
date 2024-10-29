@@ -7,7 +7,6 @@ use std::rc::Rc;
 use std::task::Poll;
 
 use bytes::Bytes;
-use deno_core::error::AnyError;
 use deno_core::futures::future::poll_fn;
 use deno_core::op2;
 use deno_core::serde::Serialize;
@@ -110,17 +109,28 @@ impl Resource for Http2ServerSendResponse {
   }
 }
 
+#[derive(Debug, thiserror::Error)]
+pub enum Http2Error {
+  #[error(transparent)]
+  Resource(deno_core::error::AnyError),
+  #[error(transparent)]
+  UrlParse(#[from] url::ParseError),
+  #[error(transparent)]
+  H2(#[from] h2::Error),
+}
+
 #[op2(async)]
 #[serde]
 pub async fn op_http2_connect(
   state: Rc<RefCell<OpState>>,
   #[smi] rid: ResourceId,
   #[string] url: String,
-) -> Result<(ResourceId, ResourceId), AnyError> {
+) -> Result<(ResourceId, ResourceId), Http2Error> {
   // No permission check necessary because we're using an existing connection
   let network_stream = {
     let mut state = state.borrow_mut();
-    take_network_stream_resource(&mut state.resource_table, rid)?
+    take_network_stream_resource(&mut state.resource_table, rid)
+      .map_err(Http2Error::Resource)?
   };
 
   let url = Url::parse(&url)?;
@@ -144,9 +154,10 @@ pub async fn op_http2_connect(
 pub async fn op_http2_listen(
   state: Rc<RefCell<OpState>>,
   #[smi] rid: ResourceId,
-) -> Result<ResourceId, AnyError> {
+) -> Result<ResourceId, Http2Error> {
   let stream =
-    take_network_stream_resource(&mut state.borrow_mut().resource_table, rid)?;
+    take_network_stream_resource(&mut state.borrow_mut().resource_table, rid)
+      .map_err(Http2Error::Resource)?;
 
   let conn = h2::server::Builder::new().handshake(stream).await?;
   Ok(
@@ -166,12 +177,13 @@ pub async fn op_http2_accept(
   #[smi] rid: ResourceId,
 ) -> Result<
   Option<(Vec<(ByteString, ByteString)>, ResourceId, ResourceId)>,
-  AnyError,
+  Http2Error,
 > {
   let resource = state
     .borrow()
     .resource_table
-    .get::<Http2ServerConnection>(rid)?;
+    .get::<Http2ServerConnection>(rid)
+    .map_err(Http2Error::Resource)?;
   let mut conn = RcRef::map(&resource, |r| &r.conn).borrow_mut().await;
   if let Some(res) = conn.accept().await {
     let (req, resp) = res?;
@@ -233,11 +245,12 @@ pub async fn op_http2_send_response(
   #[smi] rid: ResourceId,
   #[smi] status: u16,
   #[serde] headers: Vec<(ByteString, ByteString)>,
-) -> Result<(ResourceId, u32), AnyError> {
+) -> Result<(ResourceId, u32), Http2Error> {
   let resource = state
     .borrow()
     .resource_table
-    .get::<Http2ServerSendResponse>(rid)?;
+    .get::<Http2ServerSendResponse>(rid)
+    .map_err(Http2Error::Resource)?;
   let mut send_response = RcRef::map(resource, |r| &r.send_response)
     .borrow_mut()
     .await;
@@ -247,7 +260,7 @@ pub async fn op_http2_send_response(
   }
   for (name, value) in headers {
     response.headers_mut().append(
-      HeaderName::from_lowercase(&name).unwrap(),
+      HeaderName::from_bytes(&name).unwrap(),
       HeaderValue::from_bytes(&value).unwrap(),
     );
   }
@@ -262,8 +275,12 @@ pub async fn op_http2_send_response(
 pub async fn op_http2_poll_client_connection(
   state: Rc<RefCell<OpState>>,
   #[smi] rid: ResourceId,
-) -> Result<(), AnyError> {
-  let resource = state.borrow().resource_table.get::<Http2ClientConn>(rid)?;
+) -> Result<(), Http2Error> {
+  let resource = state
+    .borrow()
+    .resource_table
+    .get::<Http2ClientConn>(rid)
+    .map_err(Http2Error::Resource)?;
 
   let cancel_handle = RcRef::map(resource.clone(), |this| &this.cancel_handle);
   let mut conn = RcRef::map(resource, |this| &this.conn).borrow_mut().await;
@@ -289,11 +306,12 @@ pub async fn op_http2_client_request(
   // 4 strings of keys?
   #[serde] mut pseudo_headers: HashMap<String, String>,
   #[serde] headers: Vec<(ByteString, ByteString)>,
-) -> Result<(ResourceId, u32), AnyError> {
+) -> Result<(ResourceId, u32), Http2Error> {
   let resource = state
     .borrow()
     .resource_table
-    .get::<Http2Client>(client_rid)?;
+    .get::<Http2Client>(client_rid)
+    .map_err(Http2Error::Resource)?;
 
   let url = resource.url.clone();
 
@@ -317,7 +335,7 @@ pub async fn op_http2_client_request(
 
   for (name, value) in headers {
     req.headers_mut().unwrap().append(
-      HeaderName::from_lowercase(&name).unwrap(),
+      HeaderName::from_bytes(&name).unwrap(),
       HeaderValue::from_bytes(&value).unwrap(),
     );
   }
@@ -326,7 +344,10 @@ pub async fn op_http2_client_request(
 
   let resource = {
     let state = state.borrow();
-    state.resource_table.get::<Http2Client>(client_rid)?
+    state
+      .resource_table
+      .get::<Http2Client>(client_rid)
+      .map_err(Http2Error::Resource)?
   };
   let mut client = RcRef::map(&resource, |r| &r.client).borrow_mut().await;
   poll_fn(|cx| client.poll_ready(cx)).await?;
@@ -345,11 +366,12 @@ pub async fn op_http2_client_send_data(
   #[smi] stream_rid: ResourceId,
   #[buffer] data: JsBuffer,
   end_of_stream: bool,
-) -> Result<(), AnyError> {
+) -> Result<(), Http2Error> {
   let resource = state
     .borrow()
     .resource_table
-    .get::<Http2ClientStream>(stream_rid)?;
+    .get::<Http2ClientStream>(stream_rid)
+    .map_err(Http2Error::Resource)?;
   let mut stream = RcRef::map(&resource, |r| &r.stream).borrow_mut().await;
 
   stream.send_data(data.to_vec().into(), end_of_stream)?;
@@ -361,7 +383,7 @@ pub async fn op_http2_client_reset_stream(
   state: Rc<RefCell<OpState>>,
   #[smi] stream_rid: ResourceId,
   #[smi] code: u32,
-) -> Result<(), AnyError> {
+) -> Result<(), deno_core::error::AnyError> {
   let resource = state
     .borrow()
     .resource_table
@@ -376,11 +398,12 @@ pub async fn op_http2_client_send_trailers(
   state: Rc<RefCell<OpState>>,
   #[smi] stream_rid: ResourceId,
   #[serde] trailers: Vec<(ByteString, ByteString)>,
-) -> Result<(), AnyError> {
+) -> Result<(), Http2Error> {
   let resource = state
     .borrow()
     .resource_table
-    .get::<Http2ClientStream>(stream_rid)?;
+    .get::<Http2ClientStream>(stream_rid)
+    .map_err(Http2Error::Resource)?;
   let mut stream = RcRef::map(&resource, |r| &r.stream).borrow_mut().await;
 
   let mut trailers_map = http::HeaderMap::new();
@@ -408,11 +431,12 @@ pub struct Http2ClientResponse {
 pub async fn op_http2_client_get_response(
   state: Rc<RefCell<OpState>>,
   #[smi] stream_rid: ResourceId,
-) -> Result<(Http2ClientResponse, bool), AnyError> {
+) -> Result<(Http2ClientResponse, bool), Http2Error> {
   let resource = state
     .borrow()
     .resource_table
-    .get::<Http2ClientStream>(stream_rid)?;
+    .get::<Http2ClientStream>(stream_rid)
+    .map_err(Http2Error::Resource)?;
   let mut response_future =
     RcRef::map(&resource, |r| &r.response).borrow_mut().await;
 
@@ -478,23 +502,22 @@ fn poll_data_or_trailers(
 pub async fn op_http2_client_get_response_body_chunk(
   state: Rc<RefCell<OpState>>,
   #[smi] body_rid: ResourceId,
-) -> Result<(Option<Vec<u8>>, bool, bool), AnyError> {
+) -> Result<(Option<Vec<u8>>, bool, bool), Http2Error> {
   let resource = state
     .borrow()
     .resource_table
-    .get::<Http2ClientResponseBody>(body_rid)?;
+    .get::<Http2ClientResponseBody>(body_rid)
+    .map_err(Http2Error::Resource)?;
   let mut body = RcRef::map(&resource, |r| &r.body).borrow_mut().await;
 
   loop {
     let result = poll_fn(|cx| poll_data_or_trailers(cx, &mut body)).await;
     if let Err(err) = result {
-      let reason = err.reason();
-      if let Some(reason) = reason {
-        if reason == Reason::CANCEL {
-          return Ok((None, false, true));
-        }
+      match err.reason() {
+        Some(Reason::NO_ERROR) => return Ok((None, true, false)),
+        Some(Reason::CANCEL) => return Ok((None, false, true)),
+        _ => return Err(err.into()),
       }
-      return Err(err.into());
     }
     match result.unwrap() {
       DataOrTrailers::Data(data) => {
@@ -527,7 +550,7 @@ pub async fn op_http2_client_get_response_body_chunk(
 pub async fn op_http2_client_get_response_trailers(
   state: Rc<RefCell<OpState>>,
   #[smi] body_rid: ResourceId,
-) -> Result<Option<Vec<(ByteString, ByteString)>>, AnyError> {
+) -> Result<Option<Vec<(ByteString, ByteString)>>, deno_core::error::AnyError> {
   let resource = state
     .borrow()
     .resource_table

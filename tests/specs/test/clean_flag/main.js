@@ -1,4 +1,4 @@
-import { emptyDir } from "../../../util/std/fs/empty_dir.ts";
+import { emptyDir } from "@std/fs/empty-dir";
 
 const DIR = "./coverage";
 const COMMAND = new Deno.Command(Deno.execPath(), {

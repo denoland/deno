@@ -11,6 +11,8 @@ use std::io::StderrLock;
 use std::io::StdinLock;
 use std::io::Write as IoWrite;
 
+use crate::is_standalone;
+
 /// Helper function to make control characters visible so users can see the underlying filename.
 fn escape_control_characters(s: &str) -> std::borrow::Cow<str> {
   if !s.contains(|c: char| c.is_ascii_control() || c.is_control()) {
@@ -76,6 +78,10 @@ pub fn set_prompt_callbacks(
 ) {
   *MAYBE_BEFORE_PROMPT_CALLBACK.lock() = Some(before_callback);
   *MAYBE_AFTER_PROMPT_CALLBACK.lock() = Some(after_callback);
+}
+
+pub fn set_prompter(prompter: Box<dyn PermissionPrompter>) {
+  *PERMISSION_PROMPTER.lock() = prompter;
 }
 
 pub type PromptCallback = Box<dyn FnMut() + Send + Sync>;
@@ -319,16 +325,33 @@ impl PermissionPrompter for TtyPrompter {
     // output everything in one shot to make the tests more reliable
     {
       let mut output = String::new();
-      write!(&mut output, "┌ {PERMISSION_EMOJI}  ").unwrap();
+      write!(&mut output, "┏ {PERMISSION_EMOJI}  ").unwrap();
       write!(&mut output, "{}", colors::bold("Deno requests ")).unwrap();
       write!(&mut output, "{}", colors::bold(message.clone())).unwrap();
       writeln!(&mut output, "{}", colors::bold(".")).unwrap();
       if let Some(api_name) = api_name.clone() {
-        writeln!(&mut output, "├ Requested by `{api_name}` API.").unwrap();
+        writeln!(
+          &mut output,
+          "┠─ Requested by `{}` API.",
+          colors::bold(api_name)
+        )
+        .unwrap();
       }
-      let msg = format!("Run again with --allow-{name} to bypass this prompt.");
-      writeln!(&mut output, "├ {}", colors::italic(&msg)).unwrap();
-      write!(&mut output, "└ {}", colors::bold("Allow?")).unwrap();
+      let msg = format!(
+        "Learn more at: {}",
+        colors::cyan_with_underline(&format!(
+          "https://docs.deno.com/go/--allow-{}",
+          name
+        ))
+      );
+      writeln!(&mut output, "┠─ {}", colors::italic(&msg)).unwrap();
+      let msg = if is_standalone() {
+        format!("Specify the required permissions during compile time using `deno compile --allow-{name}`.")
+      } else {
+        format!("Run again with --allow-{name} to bypass this prompt.")
+      };
+      writeln!(&mut output, "┠─ {}", colors::italic(&msg)).unwrap();
+      write!(&mut output, "┗ {}", colors::bold("Allow?")).unwrap();
       write!(&mut output, " {opts} > ").unwrap();
 
       stderr_lock.write_all(output.as_bytes()).unwrap();
@@ -347,7 +370,7 @@ impl PermissionPrompter for TtyPrompter {
 
       let mut input = String::new();
       let result = stdin_lock.read_line(&mut input);
-      let input = input.trim_end_matches(|c| c == '\r' || c == '\n');
+      let input = input.trim_end_matches(['\r', '\n']);
       if result.is_err() || input.len() != 1 {
         break PromptResponse::Deny;
       };
@@ -355,7 +378,7 @@ impl PermissionPrompter for TtyPrompter {
         'y' | 'Y' => {
           clear_n_lines(
             &mut stderr_lock,
-            if api_name.is_some() { 4 } else { 3 },
+            if api_name.is_some() { 5 } else { 4 },
           );
           let msg = format!("Granted {message}.");
           writeln!(stderr_lock, "✅ {}", colors::bold(&msg)).unwrap();
@@ -364,7 +387,7 @@ impl PermissionPrompter for TtyPrompter {
         'n' | 'N' | '\x1b' => {
           clear_n_lines(
             &mut stderr_lock,
-            if api_name.is_some() { 4 } else { 3 },
+            if api_name.is_some() { 5 } else { 4 },
           );
           let msg = format!("Denied {message}.");
           writeln!(stderr_lock, "❌ {}", colors::bold(&msg)).unwrap();
@@ -373,7 +396,7 @@ impl PermissionPrompter for TtyPrompter {
         'A' if is_unary => {
           clear_n_lines(
             &mut stderr_lock,
-            if api_name.is_some() { 4 } else { 3 },
+            if api_name.is_some() { 5 } else { 4 },
           );
           let msg = format!("Granted all {name} access.");
           writeln!(stderr_lock, "✅ {}", colors::bold(&msg)).unwrap();
@@ -384,7 +407,7 @@ impl PermissionPrompter for TtyPrompter {
           clear_n_lines(&mut stderr_lock, 1);
           write!(
             stderr_lock,
-            "└ {} {opts} > ",
+            "┗ {} {opts} > ",
             colors::bold("Unrecognized option. Allow?")
           )
           .unwrap();
@@ -456,9 +479,5 @@ pub mod tests {
     pub fn set(&self, value: bool) {
       STUB_PROMPT_VALUE.store(value, Ordering::SeqCst);
     }
-  }
-
-  pub fn set_prompter(prompter: Box<dyn PermissionPrompter>) {
-    *PERMISSION_PROMPTER.lock() = prompter;
   }
 }

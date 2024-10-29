@@ -1,6 +1,6 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 import { hkdfSync } from "node:crypto";
-import { assertEquals } from "@std/assert/mod.ts";
+import { assertEquals } from "@std/assert";
 import { Buffer } from "node:buffer";
 import nodeFixtures from "../testdata/crypto_digest_fixtures.json" with {
   type: "json",

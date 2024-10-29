@@ -8,6 +8,7 @@ use napi_sys::ValueType::napi_object;
 use napi_sys::ValueType::napi_undefined;
 use napi_sys::*;
 use std::ptr;
+use Status::napi_pending_exception;
 
 /// `test_callback_run((a, b) => a + b, [1, 2])` => 3
 extern "C" fn test_callback_run(
@@ -98,6 +99,34 @@ extern "C" fn test_callback_run_with_recv(
   result
 }
 
+extern "C" fn test_callback_throws(
+  env: napi_env,
+  info: napi_callback_info,
+) -> napi_value {
+  let (args, ..) = napi_get_callback_info!(env, info, 1);
+
+  let mut global: napi_value = ptr::null_mut();
+  assert_napi_ok!(napi_get_global(env, &mut global));
+
+  let mut argv = vec![];
+  let mut result: napi_value = ptr::null_mut();
+  assert_eq!(
+    unsafe {
+      napi_call_function(
+        env,
+        global,  // recv
+        args[0], // cb
+        argv.len(),
+        argv.as_mut_ptr(),
+        &mut result,
+      )
+    },
+    napi_pending_exception
+  );
+
+  result
+}
+
 pub fn init(env: napi_env, exports: napi_value) {
   let properties = &[
     napi_new_property!(env, "test_callback_run", test_callback_run),
@@ -106,6 +135,7 @@ pub fn init(env: napi_env, exports: napi_value) {
       "test_callback_run_with_recv",
       test_callback_run_with_recv
     ),
+    napi_new_property!(env, "test_callback_throws", test_callback_throws),
   ];
 
   assert_napi_ok!(napi_define_properties(

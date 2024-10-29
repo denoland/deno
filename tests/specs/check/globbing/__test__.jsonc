@@ -1,0 +1,24 @@
+{
+  "tests": {
+    "star": {
+      "args": "check *.ts",
+      "output": "Check [WILDLINE]main.ts\n",
+      "exitCode": 0
+    },
+    "star_not_found": {
+      "args": "check *.js",
+      "output": "Warning No matching files found.\n",
+      "exitCode": 0
+    },
+    "glob_star": {
+      "args": "check **/*.ts",
+      "output": "Check [WILDLINE]main.ts\nCheck [WILDLINE]sub_dir/main.ts\nerror: TS2322[WILDCARD]",
+      "exitCode": 1
+    },
+    "sub_dir": {
+      "args": "check sub_dir",
+      "output": "Check [WILDLINE]sub_dir/main.ts\nerror: TS2322[WILDCARD]",
+      "exitCode": 1
+    }
+  }
+}

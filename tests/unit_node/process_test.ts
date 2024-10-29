@@ -1,11 +1,14 @@
-// deno-lint-ignore-file no-undef
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+
+// deno-lint-ignore-file no-undef no-console
 
 import process, {
   arch as importedArch,
   argv,
   argv0 as importedArgv0,
   env,
+  execArgv as importedExecArgv,
+  execPath as importedExecPath,
   geteuid,
   pid as importedPid,
   platform as importedPlatform,
@@ -21,10 +24,10 @@ import {
   assertStrictEquals,
   assertThrows,
   fail,
-} from "@std/assert/mod.ts";
-import { stripColor } from "@std/fmt/colors.ts";
-import * as path from "@std/path/mod.ts";
-import { delay } from "@std/async/delay.ts";
+} from "@std/assert";
+import { stripAnsiCode } from "@std/fmt/colors";
+import * as path from "@std/path";
+import { delay } from "@std/async/delay";
 
 const testDir = new URL(".", import.meta.url);
 
@@ -170,7 +173,6 @@ Deno.test({
       args: [
         "run",
         "--quiet",
-        "--unstable",
         "./testdata/process_exit.ts",
       ],
       cwd,
@@ -178,7 +180,7 @@ Deno.test({
     const { stdout } = await command.output();
 
     const decoder = new TextDecoder();
-    assertEquals(stripColor(decoder.decode(stdout).trim()), "1\n2");
+    assertEquals(stripAnsiCode(decoder.decode(stdout).trim()), "1\n2");
   },
 });
 
@@ -458,6 +460,7 @@ Deno.test({
 Deno.test({
   name: "process.stdin",
   fn() {
+    // @ts-ignore `Deno.stdin.rid` was soft-removed in Deno 2.
     assertEquals(process.stdin.fd, Deno.stdin.rid);
     assertEquals(process.stdin.isTTY, Deno.stdin.isTerminal());
   },
@@ -637,6 +640,7 @@ Deno.test({
 Deno.test({
   name: "process.stdout",
   fn() {
+    // @ts-ignore `Deno.stdout.rid` was soft-removed in Deno 2.
     assertEquals(process.stdout.fd, Deno.stdout.rid);
     const isTTY = Deno.stdout.isTerminal();
     assertEquals(process.stdout.isTTY, isTTY);
@@ -659,12 +663,23 @@ Deno.test({
       assertStrictEquals(process.stdout.clearLine, undefined);
       assertStrictEquals(process.stdout.clearScreenDown, undefined);
     }
+
+    // Allows overwriting `process.stdout.isTTY`
+    // https://github.com/denoland/deno/issues/26123
+    const original = process.stdout.isTTY;
+    try {
+      process.stdout.isTTY = !isTTY;
+      assertEquals(process.stdout.isTTY, !isTTY);
+    } finally {
+      process.stdout.isTTY = original;
+    }
   },
 });
 
 Deno.test({
   name: "process.stderr",
   fn() {
+    // @ts-ignore `Deno.stderr.rid` was soft-removed in Deno 2.
     assertEquals(process.stderr.fd, Deno.stderr.rid);
     const isTTY = Deno.stderr.isTerminal();
     assertEquals(process.stderr.isTTY, isTTY);
@@ -889,7 +904,6 @@ Deno.test({
       args: [
         "run",
         "--quiet",
-        "--unstable",
         "./testdata/process_exit2.ts",
       ],
       cwd: testDir,
@@ -897,7 +911,7 @@ Deno.test({
     const { stdout } = await command.output();
 
     const decoder = new TextDecoder();
-    assertEquals(stripColor(decoder.decode(stdout).trim()), "exit");
+    assertEquals(stripAnsiCode(decoder.decode(stdout).trim()), "exit");
   },
 });
 
@@ -908,7 +922,6 @@ Deno.test({
       args: [
         "run",
         "--quiet",
-        "--unstable",
         "./testdata/process_really_exit.ts",
       ],
       cwd: testDir,
@@ -916,7 +929,7 @@ Deno.test({
     const { stdout } = await command.output();
 
     const decoder = new TextDecoder();
-    assertEquals(stripColor(decoder.decode(stdout).trim()), "really exited");
+    assertEquals(stripAnsiCode(decoder.decode(stdout).trim()), "really exited");
   },
 });
 
@@ -1119,4 +1132,23 @@ Deno.test("process.listeners - include SIG* events", () => {
 
 Deno.test(function processVersionsOwnProperty() {
   assert(Object.prototype.hasOwnProperty.call(process, "versions"));
+});
+
+Deno.test(function importedExecArgvTest() {
+  assert(Array.isArray(importedExecArgv));
+});
+
+Deno.test(function importedExecPathTest() {
+  assertEquals(importedExecPath, Deno.execPath());
+});
+
+Deno.test("process.cpuUsage()", () => {
+  const cpuUsage = process.cpuUsage();
+  assert(typeof cpuUsage.user === "number");
+  assert(typeof cpuUsage.system === "number");
+});
+
+Deno.test("process.stdout.columns writable", () => {
+  process.stdout.columns = 80;
+  assertEquals(process.stdout.columns, 80);
 });

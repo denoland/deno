@@ -4,9 +4,10 @@ use deno_core::serde::Deserialize;
 use deno_core::serde_json;
 use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
-use deno_core::url::Url;
+use lsp_types::Uri;
 use std::collections::HashMap;
 use std::path::Path;
+use std::str::FromStr;
 use std::time::Duration;
 use test_util::lsp::LspClientBuilder;
 use test_util::PathRef;
@@ -91,7 +92,7 @@ fn bench_deco_apps_edits(deno_exe: &Path) -> Duration {
     .build();
   client.initialize(|c| {
     c.set_workspace_folders(vec![lsp_types::WorkspaceFolder {
-      uri: Url::from_file_path(&apps).unwrap(),
+      uri: apps.uri_dir(),
       name: "apps".to_string(),
     }]);
     c.set_deno_enable(true);
@@ -149,7 +150,11 @@ fn bench_big_file_edits(deno_exe: &Path) -> Duration {
     .deno_exe(deno_exe)
     .build();
   client.initialize_default();
+  let (method, _): (String, Option<Value>) = client.read_notification();
+  assert_eq!(method, "deno/didRefreshDenoConfigurationTree");
   client.change_configuration(json!({ "deno": { "enable": true } }));
+  let (method, _): (String, Option<Value>) = client.read_notification();
+  assert_eq!(method, "deno/didRefreshDenoConfigurationTree");
 
   client.write_notification(
     "textDocument/didOpen",
@@ -205,6 +210,8 @@ fn bench_code_lens(deno_exe: &Path) -> Duration {
     .deno_exe(deno_exe)
     .build();
   client.initialize_default();
+  let (method, _): (String, Option<Value>) = client.read_notification();
+  assert_eq!(method, "deno/didRefreshDenoConfigurationTree");
   client.change_configuration(json!({ "deno": {
     "enable": true,
     "codeLens": {
@@ -213,6 +220,8 @@ fn bench_code_lens(deno_exe: &Path) -> Duration {
       "test": true,
     },
   } }));
+  let (method, _): (String, Option<Value>) = client.read_notification();
+  assert_eq!(method, "deno/didRefreshDenoConfigurationTree");
 
   client.write_notification(
     "textDocument/didOpen",
@@ -256,7 +265,11 @@ fn bench_find_replace(deno_exe: &Path) -> Duration {
     .deno_exe(deno_exe)
     .build();
   client.initialize_default();
+  let (method, _): (String, Option<Value>) = client.read_notification();
+  assert_eq!(method, "deno/didRefreshDenoConfigurationTree");
   client.change_configuration(json!({ "deno": { "enable": true } }));
+  let (method, _): (String, Option<Value>) = client.read_notification();
+  assert_eq!(method, "deno/didRefreshDenoConfigurationTree");
 
   for i in 0..10 {
     client.write_notification(
@@ -283,7 +296,7 @@ fn bench_find_replace(deno_exe: &Path) -> Duration {
       "textDocument/didChange",
       lsp::DidChangeTextDocumentParams {
         text_document: lsp::VersionedTextDocumentIdentifier {
-          uri: Url::parse(&file_name).unwrap(),
+          uri: Uri::from_str(&file_name).unwrap(),
           version: 2,
         },
         content_changes: vec![lsp::TextDocumentContentChangeEvent {
@@ -310,7 +323,7 @@ fn bench_find_replace(deno_exe: &Path) -> Duration {
       "textDocument/formatting",
       lsp::DocumentFormattingParams {
         text_document: lsp::TextDocumentIdentifier {
-          uri: Url::parse(&file_name).unwrap(),
+          uri: Uri::from_str(&file_name).unwrap(),
         },
         options: lsp::FormattingOptions {
           tab_size: 2,
@@ -340,7 +353,11 @@ fn bench_startup_shutdown(deno_exe: &Path) -> Duration {
     .deno_exe(deno_exe)
     .build();
   client.initialize_default();
+  let (method, _): (String, Option<Value>) = client.read_notification();
+  assert_eq!(method, "deno/didRefreshDenoConfigurationTree");
   client.change_configuration(json!({ "deno": { "enable": true } }));
+  let (method, _): (String, Option<Value>) = client.read_notification();
+  assert_eq!(method, "deno/didRefreshDenoConfigurationTree");
 
   client.write_notification(
     "textDocument/didOpen",

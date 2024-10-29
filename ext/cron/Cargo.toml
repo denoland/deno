@@ -2,7 +2,7 @@
 
 [package]
 name = "deno_cron"
-version = "0.42.0"
+version = "0.54.0"
 authors.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -19,4 +19,5 @@ async-trait.workspace = true
 chrono = { workspace = true, features = ["now"] }
 deno_core.workspace = true
 saffron.workspace = true
+thiserror.workspace = true
 tokio.workspace = true

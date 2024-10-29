@@ -1,0 +1,4 @@
+{
+  "args": "run --allow-read cjs_local_global_decls/main.ts",
+  "output": "cjs_local_global_decls/main.out"
+}

@@ -65,14 +65,12 @@ pub fn op_jupyter_input(
       return Ok(None);
     }
 
-    let msg = JupyterMessage::new(
-      InputRequest {
-        prompt,
-        password: is_password,
-      }
-      .into(),
-      Some(&last_request),
-    );
+    let content = InputRequest {
+      prompt,
+      password: is_password,
+    };
+
+    let msg = JupyterMessage::new(content, Some(&last_request));
 
     let Ok(()) = stdin_connection_proxy.lock().tx.send(msg) else {
       return Ok(None);
@@ -149,13 +147,13 @@ pub fn op_print(
   let sender = state.borrow_mut::<mpsc::UnboundedSender<StreamContent>>();
 
   if is_err {
-    if let Err(err) = sender.send(StreamContent::stderr(msg.into())) {
+    if let Err(err) = sender.send(StreamContent::stderr(msg)) {
       log::error!("Failed to send stderr message: {}", err);
     }
     return Ok(());
   }
 
-  if let Err(err) = sender.send(StreamContent::stdout(msg.into())) {
+  if let Err(err) = sender.send(StreamContent::stdout(msg)) {
     log::error!("Failed to send stdout message: {}", err);
   }
   Ok(())

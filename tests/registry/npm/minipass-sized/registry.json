@@ -1,1 +1,77 @@
-{"_id":"minipass-sized","_rev":"4-fe87ca1f0f48e40782c57e220d3d5f27","name":"minipass-sized","dist-tags":{"latest":"1.0.3"},"versions":{"1.0.0":{"name":"minipass-sized","version":"1.0.0","description":"A Minipass stream that raises an error if you get a different number of bytes than expected","author":{"name":"Isaac Z. Schlueter","email":"i@izs.me","url":"https://izs.me"},"license":"ISC","scripts":{"test":"tap","snap":"tap","preversion":"npm test","postversion":"npm publish","postpublish":"git push origin --follow-tags"},"tap":{"check-coverage":true},"devDependencies":{"tap":"^14.6.4"},"dependencies":{"minipass":"^2.6.5"},"main":"index.js","keywords":["minipass","size","length"],"directories":{"test":"test"},"repository":{"type":"git","url":"git+https://github.com/isaacs/minipass-sized.git"},"gitHead":"f43f1c3bc294ea6e6b44b3c74a71865ad358ec96","bugs":{"url":"https://github.com/isaacs/minipass-sized/issues"},"homepage":"https://github.com/isaacs/minipass-sized#readme","_id":"minipass-sized@1.0.0","_nodeVersion":"12.8.1","_npmVersion":"6.11.3","dist":{"integrity":"sha512-nlv+3YPnfjgs0WJwlNGSEE66oYOsLSWDPsWXin8/AhrHM6/IjxAV5GkHmFdWya92AsKvXZZKWAORp/qohNrUVA==","shasum":"35ef931e8f3a5d9471fce6205764a13b5a286454","tarball":"http://localhost:4260/minipass-sized/minipass-sized-1.0.0.tgz","fileCount":7,"unpackedSize":122870,"npm-signature":"-----BEGIN PGP SIGNATURE-----\r\nVersion: OpenPGP.js v3.0.4\r\nComment: https://openpgpjs.org\r\n\r\nwsFcBAEBCAAQBQJdhq62CRA9TVsSAnZWagAABQUQAIj2pu/X0oB5Bx/XaO6Y\nEAX4ASqMpR0uMbN0j/ul3SSULbtn1+6PTU+qhLfzF6pAb2h7T0VXAqU7q5Gg\nRtv5EnroKbWRcXYSO6zwfJiBSqI/7SPj6T6t6r9ZjAcIiShGpJHZtVNUwqnc\n001N9RKS5TU2pTfcoP3y1rOHyadKLfzGTWXkoHPp8b3z+4JtW620uCtHVb+F\nJFymSNuTzYm+1BAtTL2XgxBsqmiAGg5Npv+NvfRe/M6pQUEeluBD+r4QNnBh\nWh1NxIEsRZ6t/ddfv4Uzo6GLtjOdr6tisUzs5tzveezqOkCa41qkEvPmcHML\nkjJXEYXfMODoj3Jxyr4726MH95g0eTJeJUK2IrEAUPakHgj4fF2wW5Cv4Zua\npGJlL7mI4ZUOVTgBrHhWpSRJhI1gm4WZFSd9cmIJ/Tkz4WFaH0gVxCc5yAZ9\nhiVUnh4pBSB5NVeeSqrIDvThxTVXqHuP+YqqG2xHxAXPGA3Y04Qzwz6J7Yv+\nYjvDsHn0gl5PFDjkLFbfbaCKkWKbsbFoyIjW/dpoR0V1ebeBsXJBwSz6siAm\n1hNXRb5J2NaKY4yEL1aaAXjsCY85lQHctsgsOG3FdKDWI91HpQL2vzVyR6JY\nTyHDFNXxtWyaIG7mdRGbtx0cqvQ+8alf9EWZ3XPm9FMK16QUxSRBu0aSw39p\nugdH\r\n=RZ8Y\r\n-----END PGP SIGNATURE-----\r\n","signatures":[{"keyid":"SHA256:jl3bwswu80PjjokCgh0o2w5c2U4LhQAE57gj9cz1kzA","sig":"MEQCIGQ8ZRS6ialN7frsuHpQO9Ip218+sWm8NbHZflxOzSKnAiApi1XSCdIhU2mrHvZZIsy7MyPpFj5bs0D5rZwO+dHnMQ=="}]},"maintainers":[{"name":"isaacs","email":"i@izs.me"}],"_npmUser":{"name":"isaacs","email":"i@izs.me"},"_npmOperationalInternal":{"host":"s3://npm-registry-packages","tmp":"tmp/minipass-sized_1.0.0_1569107638213_0.7654586174350935"},"_hasShrinkwrap":false},"1.0.1":{"name":"minipass-sized","version":"1.0.1","description":"A Minipass stream that raises an error if you get a different number of bytes than expected","author":{"name":"Isaac Z. Schlueter","email":"i@izs.me","url":"https://izs.me"},"license":"ISC","scripts":{"test":"tap","snap":"tap","preversion":"npm test","postversion":"npm publish","postpublish":"git push origin --follow-tags"},"tap":{"check-coverage":true},"devDependencies":{"tap":"^14.6.4"},"dependencies":{"minipass":"^2.6.5"},"main":"index.js","keywords":["minipass","size","length"],"directories":{"test":"test"},"repository":{"type":"git","url":"git+https://github.com/isaacs/minipass-sized.git"},"gitHead":"e0251eabfa4c828c517b694ecb0de51be782dd7c","bugs":{"url":"https://github.com/isaacs/minipass-sized/issues"},"homepage":"https://github.com/isaacs/minipass-sized#readme","_id":"minipass-sized@1.0.1","_nodeVersion":"12.8.1","_npmVersion":"6.11.3","dist":{"integrity":"sha512-aSxYBRYK8b1W26nDi86sbPyloADK0RiEWWIfF0fVvgF5y5WHqzWDjt/VBJXkBkMS3YsEb03JDTwhmKVwqElcBA==","shasum":"e47f37edd05a1c3e9ec8974ecccd35451842cb02","tarball":"http://localhost:4260/minipass-sized/minipass-sized-1.0.1.tgz","fileCount":7,"unpackedSize":123037,"npm-signature":"-----BEGIN PGP SIGNATURE-----\r\nVersion: OpenPGP.js v3.0.4\r\nComment: https://openpgpjs.org\r\n\r\nwsFcBAEBCAAQBQJdhq9TCRA9TVsSAnZWagAAXxUQAJ3n0KcL2movulOxPtus\nU1OtEV7bqA+tNzSU2cSr+1wztjp6lJmNR2iu2NpvC5MrVhf+u4jRrRjBQXzD\nK5J14pP5FW0FzmxP53EOJ9koZ8IuiynepNyxnmAKlMxEybFVRAfyLKECgEKM\nwnqLtwNDgU9F38QaDoUon6wKKHwKQVlQMumwru3LdYh6gjkE/kt3Bk+GF4Q0\n4cwLsLt1hxllPMKEV8Bo4oBVPHI0BOF8zmBU04JdCJdsseBC2PryNJ6nQ64I\nwOu96T+fPTiGJn9jo9fbjiTnicT2Y3B2YQMrLl3eYDO17q8TeRuJtVsllKiW\nDs5c7ddc4t5IPSEDwICBPB/ERHOb5shMHyuKuJjGMxgqkTASGj+qywH0ob2s\n/H+qYzBBVYbEoQhCzgRftmZTwHJSQ6KGUEl4tu1EBIqCuvD86HoJ4pdZ+e8O\nc5xVO0J7lX2WgF9QdzE3yCmxF63CoFYwZRs+O4Daz2ngil1EAjob9IDqEw6I\nMp7SPs0/rDOU65a8Dejft4MrMNNdMwlmoDQrkeB1RYZEEkOlE6JIF3yDXCd8\nI8saMiZYmGbm6cY/9fimmoBD2SHhoGVFT9guyrNcD9ExnMryMN1diKgyzM0D\nUWjVjYROX+wVmf0sAaU3HgFkOA/shp7GjNp/xxhrhAWExGkgNGAQdTDSDoxN\npKTx\r\n=uo9/\r\n-----END PGP SIGNATURE-----\r\n","signatures":[{"keyid":"SHA256:jl3bwswu80PjjokCgh0o2w5c2U4LhQAE57gj9cz1kzA","sig":"MEUCIGU+ajq1Ku49SA+ZAqG37IB6kLLLXzVfUSvIL0JsajRSAiEAo9mgu4i4B+B1Ht62fkoOa6onj8BYxiqYbpMlPA2UG/w="}]},"maintainers":[{"name":"isaacs","email":"i@izs.me"}],"_npmUser":{"name":"isaacs","email":"i@izs.me"},"_npmOperationalInternal":{"host":"s3://npm-registry-packages","tmp":"tmp/minipass-sized_1.0.1_1569107794649_0.4339924043247734"},"_hasShrinkwrap":false},"1.0.2":{"name":"minipass-sized","version":"1.0.2","description":"A Minipass stream that raises an error if you get a different number of bytes than expected","author":{"name":"Isaac Z. Schlueter","email":"i@izs.me","url":"https://izs.me"},"license":"ISC","scripts":{"test":"tap","snap":"tap","preversion":"npm test","postversion":"npm publish","postpublish":"git push origin --follow-tags"},"tap":{"check-coverage":true},"devDependencies":{"tap":"^14.6.4"},"dependencies":{"minipass":"^2.6.5"},"main":"index.js","keywords":["minipass","size","length"],"directories":{"test":"test"},"repository":{"type":"git","url":"git+https://github.com/isaacs/minipass-sized.git"},"gitHead":"e49f02e0eea8d86ce0c998b8ae221d1bdc7fc283","bugs":{"url":"https://github.com/isaacs/minipass-sized/issues"},"homepage":"https://github.com/isaacs/minipass-sized#readme","_id":"minipass-sized@1.0.2","_nodeVersion":"12.8.1","_npmVersion":"6.11.3","dist":{"integrity":"sha512-x2sUm+4EXoi6HYnuedXFSDt8yBTOr41yliNCP6dLziFoDCvJolw9+OKHYtd9sLUdkp/AWvj89Od9msIGfScQDg==","shasum":"648d3eaeae68892b900c66d34a5a5eeda7e1b9bd","tarball":"http://localhost:4260/minipass-sized/minipass-sized-1.0.2.tgz","fileCount":7,"unpackedSize":123128,"npm-signature":"-----BEGIN PGP SIGNATURE-----\r\nVersion: OpenPGP.js v3.0.4\r\nComment: https://openpgpjs.org\r\n\r\nwsFcBAEBCAAQBQJdhrDbCRA9TVsSAnZWagAAFesP/3c3wFt2HfIiLBYgUGeX\n8s2Sv+oJRPwVDZFKLcIgdJCJsoaI58roty1ks6Fu7ceZytXRf0hILFj0+B8+\nIsrmoxWFXHq8EU86cxghVM7HC6ou3HSfYR4bPa9Qn3NHWAZj8XkO0JtVreod\nNpg7N9NTQPKQ3Mz/wZYJ9XpmpJfXOn/4jm130VYeGNE38EgS2Ztkm1PxJ+0l\nbshgn9iF4x79153XPt3yqmC5LdSWrbxw5BNzQiCtYAlDR6BJRlJHYAh64OdV\nC1jG7XPnC5MtRSEK0iE/ouUajp5j+4kZbxc9FbXJUXtL9gjYq+o9eezUfYdW\n9313g6C9HZSFx94ssXpADuT7VKSlP+4mXigu8nghTWZ05tO7os7hFGTW6HS0\n6MGmzhAdTXOejbWTvu9LN5TRSiBJbtHVfTVGBVwa9cLgEqKAWyG4xY6TaD+8\nkQu0yuDAb2CtbPTqYVOfnHBQwOKgaxaKmPwWdvFvtG5VEX+rBv4bw+DEoTSj\nTPhANwjnX4WC1Cb9YX+CBZ4KWGulP1Ei2Atcs/94G42mqpecA1xFgsoukOUU\nc1QxiuA40l1lKYiMAjtKiBOZWjWvrt0SJQoPN8CQ7PO7tIfqS36a2x+0ZWbA\nGnY1uYim2QbH/SAMUILuVCGANadM9LxDhdeD59MPp9gy3VrLYIJL6A3kaRdA\nbB9K\r\n=gm3y\r\n-----END PGP SIGNATURE-----\r\n","signatures":[{"keyid":"SHA256:jl3bwswu80PjjokCgh0o2w5c2U4LhQAE57gj9cz1kzA","sig":"MEUCIQCb8XVpHUcaQL9x2cgBzuTUHa0dwixoDCfaqvvIsYB/kwIgU1OmseCaMuJm/BWB4wU4y4UcT1w1GivdGKpMPHk5DDo="}]},"maintainers":[{"name":"isaacs","email":"i@izs.me"}],"_npmUser":{"name":"isaacs","email":"i@izs.me"},"_npmOperationalInternal":{"host":"s3://npm-registry-packages","tmp":"tmp/minipass-sized_1.0.2_1569108186749_0.22612875154912793"},"_hasShrinkwrap":false},"1.0.3":{"name":"minipass-sized","version":"1.0.3","description":"A Minipass stream that raises an error if you get a different number of bytes than expected","author":{"name":"Isaac Z. Schlueter","email":"i@izs.me","url":"https://izs.me"},"license":"ISC","scripts":{"test":"tap","snap":"tap","preversion":"npm test","postversion":"npm publish","postpublish":"git push origin --follow-tags"},"tap":{"check-coverage":true},"devDependencies":{"tap":"^14.6.4"},"dependencies":{"minipass":"^3.0.0"},"main":"index.js","keywords":["minipass","size","length"],"directories":{"test":"test"},"repository":{"type":"git","url":"git+https://github.com/isaacs/minipass-sized.git"},"engines":{"node":">=8"},"gitHead":"4314081d97c5f3f4bd4c23e380e81fd7392aaa2c","bugs":{"url":"https://github.com/isaacs/minipass-sized/issues"},"homepage":"https://github.com/isaacs/minipass-sized#readme","_id":"minipass-sized@1.0.3","_nodeVersion":"12.8.1","_npmVersion":"6.12.0-next.0","dist":{"integrity":"sha512-MbkQQ2CTiBMlA2Dm/5cY+9SWFEN8pzzOXi6rlM5Xxq0Yqbda5ZQy9sU75a673FE9ZK0Zsbr6Y5iP6u9nktfg2g==","shasum":"70ee5a7c5052070afacfbc22977ea79def353b70","tarball":"http://localhost:4260/minipass-sized/minipass-sized-1.0.3.tgz","fileCount":7,"unpackedSize":123865,"npm-signature":"-----BEGIN PGP SIGNATURE-----\r\nVersion: OpenPGP.js v3.0.4\r\nComment: https://openpgpjs.org\r\n\r\nwsFcBAEBCAAQBQJdkmZECRA9TVsSAnZWagAAUPcQAIf33O6EWy+mASa+JfQv\noGNPaC54UKUC/QoerRzQDLmRIEE/QkNYqMBTm6Q5uHfuecqtJDb3d1O4trFe\nM7o9ctpbjhcLkvemtgsc9fev2N6JgSY68OLrpvYqSLqedcUvomhAJxKMupLm\n97eR6MGlb2+Kstv616VlZI37O9tDeE6pvtRohI+cmvOdk2uzTByUhn7gVaql\nvlYh0z5E807Q7xmEcaR+sx6JHrOFfELdux3agnOz/LoHJw2fDPoE34uu+LLw\nrMvcp3bXYHK1m1MYouiyYS6D23OT9DN5fK6ofGvdDqR0IgsN6EelE42cxjxP\nRTzzmsP4Ccw8nffYaEnPZ5Bcar/7Q8zWUHny90+soDpFbY6PhTp6fCvRBjrT\nwj0P9HX4MOhlel6xVFIX8JPBoEqtkus0VUENze720yuI7ziscOcxG4G7rFij\nxv3iuqC03AQfIRK4zRTTrXWiUdgm68fSw6IZEp8sR4x2AkUd807/YF2prKZy\nTnbWjy2l9DSn4IkyYmVOjiNpMmCzaw9MTb6JAMfEEYmc7zlWhpOBldYvTOqS\n/AIdWQS2sZ+CnXDmnv6cQy+SqEsK337aZY0PXFoFV2RHudtcceOQMNs0Eii6\n1bZSMY3acyifsAa0yeDlY0zokUDSNat9QZYdv4r2Kujw6xsHrayJA2y3K76l\nDP/x\r\n=oVVn\r\n-----END PGP SIGNATURE-----\r\n","signatures":[{"keyid":"SHA256:jl3bwswu80PjjokCgh0o2w5c2U4LhQAE57gj9cz1kzA","sig":"MEYCIQCtsBF/Ry3rWgEiNmHYrvXBbzV+Mm9omSjLis/aKkd95QIhAIQABBP+xC5JFzOtybiV5xZZnwCc96BDP+SRIKzJHzCF"}]},"maintainers":[{"name":"isaacs","email":"i@izs.me"}],"_npmUser":{"name":"isaacs","email":"i@izs.me"},"_npmOperationalInternal":{"host":"s3://npm-registry-packages","tmp":"tmp/minipass-sized_1.0.3_1569875524154_0.9383648627837997"},"_hasShrinkwrap":false}},"time":{"created":"2019-09-21T23:13:58.213Z","1.0.0":"2019-09-21T23:13:58.383Z","modified":"2022-05-09T10:23:49.950Z","1.0.1":"2019-09-21T23:16:34.822Z","1.0.2":"2019-09-21T23:23:06.858Z","1.0.3":"2019-09-30T20:32:04.488Z"},"maintainers":[{"name":"isaacs","email":"i@izs.me"}],"description":"A Minipass stream that raises an error if you get a different number of bytes than expected","homepage":"https://github.com/isaacs/minipass-sized#readme","keywords":["minipass","size","length"],"repository":{"type":"git","url":"git+https://github.com/isaacs/minipass-sized.git"},"author":{"name":"Isaac Z. Schlueter","email":"i@izs.me","url":"https://izs.me"},"bugs":{"url":"https://github.com/isaacs/minipass-sized/issues"},"license":"ISC","readme":"# minipass-sized\n\nA Minipass stream that raises an error if you get a different number of\nbytes than expected.\n\n## USAGE\n\nUse just like any old [minipass](http://npm.im/minipass) stream, but\nprovide a `size` option to the constructor.\n\nThe `size` option must be a positive integer, smaller than\n`Number.MAX_SAFE_INTEGER`.\n\n```js\nconst MinipassSized = require('minipass-sized')\n// figure out how much data you expect to get\nconst expectedSize = +headers['content-length']\nconst stream = new MinipassSized({ size: expectedSize })\nstream.on('error', er => {\n  // if it's the wrong size, then this will raise an error with\n  // { found: <number>, expect: <number>, code: 'EBADSIZE' }\n})\nresponse.pipe(stream)\n```\n\nCaveats: this does not work with `objectMode` streams, and will throw a\n`TypeError` from the constructor if the size argument is missing or\ninvalid.\n","readmeFilename":"README.md"}
+{
+  "name": "minipass-sized",
+  "dist-tags": {
+    "latest": "1.0.3"
+  },
+  "versions": {
+    "1.0.3": {
+      "name": "minipass-sized",
+      "version": "1.0.3",
+      "description": "A Minipass stream that raises an error if you get a different number of bytes than expected",
+      "author": {
+        "name": "Isaac Z. Schlueter",
+        "email": "i@izs.me",
+        "url": "https://izs.me"
+      },
+      "license": "ISC",
+      "scripts": {
+        "test": "tap",
+        "snap": "tap",
+        "preversion": "npm test",
+        "postversion": "npm publish",
+        "postpublish": "git push origin --follow-tags"
+      },
+      "tap": {
+        "check-coverage": true
+      },
+      "devDependencies": {
+        "tap": "^14.6.4"
+      },
+      "dependencies": {
+        "minipass": "^3.0.0"
+      },
+      "main": "index.js",
+      "directories": {
+        "test": "test"
+      },
+      "repository": {
+        "type": "git",
+        "url": "git+https://github.com/isaacs/minipass-sized.git"
+      },
+      "engines": {
+        "node": ">=8"
+      },
+      "gitHead": "4314081d97c5f3f4bd4c23e380e81fd7392aaa2c",
+      "bugs": {
+        "url": "https://github.com/isaacs/minipass-sized/issues"
+      },
+      "_id": "minipass-sized@1.0.3",
+      "_nodeVersion": "12.8.1",
+      "_npmVersion": "6.12.0-next.0",
+      "dist": {
+        "integrity": "sha512-MbkQQ2CTiBMlA2Dm/5cY+9SWFEN8pzzOXi6rlM5Xxq0Yqbda5ZQy9sU75a673FE9ZK0Zsbr6Y5iP6u9nktfg2g==",
+        "shasum": "70ee5a7c5052070afacfbc22977ea79def353b70",
+        "tarball": "http://localhost:4260/minipass-sized/minipass-sized-1.0.3.tgz",
+        "fileCount": 7,
+        "unpackedSize": 123865
+      },
+      "_hasShrinkwrap": false
+    }
+  },
+  "description": "A Minipass stream that raises an error if you get a different number of bytes than expected",
+  "homepage": "https://github.com/isaacs/minipass-sized#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/isaacs/minipass-sized.git"
+  },
+  "author": {
+    "name": "Isaac Z. Schlueter",
+    "email": "i@izs.me",
+    "url": "https://izs.me"
+  },
+  "bugs": {
+    "url": "https://github.com/isaacs/minipass-sized/issues"
+  },
+  "license": "ISC",
+  "readmeFilename": "README.md"
+}

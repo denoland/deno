@@ -1,5 +1,5 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
-import { assert, assertRejects, assertThrows } from "@std/assert/mod.ts";
+import { assert, assertRejects, assertThrows } from "@std/assert";
 import { EncodingOption, existsSync, mkdtemp, mkdtempSync } from "node:fs";
 import { env } from "node:process";
 import { promisify } from "node:util";

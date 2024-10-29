@@ -1,6 +1,4 @@
 {
-  "_id": "@types/lz-string",
-  "_rev": "554-923923210a37cca16c53a3e8dd472e22",
   "name": "@types/lz-string",
   "description": "Stub TypeScript definitions entry for lz-string, which provides its own types definitions",
   "dist-tags": {
@@ -12,13 +10,6 @@
       "version": "1.3.33",
       "description": "TypeScript definitions for lz-string",
       "license": "MIT",
-      "contributors": [
-        {
-          "name": "Roman Nikitin",
-          "url": "https://github.com/M0ns1gn0r",
-          "githubUsername": "M0ns1gn0r"
-        }
-      ],
       "main": "",
       "types": "index",
       "repository": {
@@ -35,30 +26,9 @@
         "shasum": "de2d6105ea7bcaf67dd1d9451d580700d30473fc",
         "tarball": "http://localhost:4260/@types/lz-string/lz-string-1.3.33.tgz",
         "fileCount": 4,
-        "unpackedSize": 5960,
-        "npm-signature": "-----BEGIN PGP SIGNATURE-----\r\nVersion: OpenPGP.js v3.0.4\r\nComment: https://openpgpjs.org\r\n\r\nwsFcBAEBCAAQBQJcZIpFCRA9TVsSAnZWagAAYm8QAJCahktTDI8BUR8q+Qra\nzsvv7Vbb20Ti7uoh97yzJiEC8UEWCGnxpZouWr3xoy0FjByYIvGmHqslGohP\nksiikCXiy+5pfT0Yi3M4QeADPlQjqUVTweCoeMmpUaHWGBdqG2kE6tnioCQy\nAL9n/YnQc10b5SE/XYgKHuBN/HJ5tx1Ejcg/o7qJG/2cUe/1K1asIMFUockV\ncgwFXFl8OSMTcA3Bs0C84zIdcaC4njVqUIQOWqdgKbe1vs+O/Zf/OdiYQh9f\nZZMXffwJKVpLSfhOTeDHeD1WMNmiww+FVIikeUIihp7Xahk9YbrLtE5BUSgG\nl9/vNfzUDW+J5oJb6n8k9WojHjte00inzMa1O7QVT7cUC+e5Nup1df0VErNF\nVuaBMUy2o0LViCVcXOYUnDBQCoaKpQ8cIVhtl0VLFrOdyn+a0blcwaNNrvE1\nFKb+OgBqipIDwAx1QghV45MPtRzI/TLYeSZtHoOYVJ8zc11FzjaQ33NZj/5w\nVzMnRkmjpwF5j++JSOa3687iKJTgrJ6XHYliYpxRRpJY3Oa4Nl0/G+xMm1BS\n0ueZuqpM+h2ZMuG7TQOeDKtTll7tsuKwy2UlkkP2uJOVurqJkCvcK/ImG25W\nKENAcoJvsk956vlbvJCdqvIcV5OF5XhgQh10gaAfHl+pJiLbCBhHpeWd95+Y\n5/3T\r\n=MjUN\r\n-----END PGP SIGNATURE-----\r\n",
-        "signatures": [
-          {
-            "keyid": "SHA256:jl3bwswu80PjjokCgh0o2w5c2U4LhQAE57gj9cz1kzA",
-            "sig": "MEUCIHlPUpoP+v+OWyats51tKkKMx97XrotlO8GzoVtS22/KAiEAxLb7ultFaZZIfGVCNeHE/X+J9I58zkNA6a8LKcm2Wns="
-          }
-        ]
-      },
-      "maintainers": [
-        {
-          "name": "types",
-          "email": "ts-npm-types@microsoft.com"
-        }
-      ],
-      "_npmUser": {
-        "name": "types",
-        "email": "ts-npm-types@microsoft.com"
+        "unpackedSize": 5960
       },
       "directories": {},
-      "_npmOperationalInternal": {
-        "host": "s3://npm-registry-packages",
-        "tmp": "tmp/lz-string_1.3.33_1550092868900_0.5979975733337666"
-      },
       "_hasShrinkwrap": false
     },
     "1.5.0": {
@@ -78,36 +48,12 @@
         "shasum": "2f15d2dd9dbfb344f3d31aee5a82cf350b037e5f",
         "tarball": "http://localhost:4260/@types/lz-string/lz-string-1.5.0.tgz",
         "fileCount": 4,
-        "unpackedSize": 1754,
-        "signatures": [
-          {
-            "keyid": "SHA256:jl3bwswu80PjjokCgh0o2w5c2U4LhQAE57gj9cz1kzA",
-            "sig": "MEQCIFwugI1BNDwbq90OnD5/morYlSnSQheJEnyTkclzw0SKAiAThdPB2+I/hjRlN5URdZcK4v0XXcVnh5xvMSf7SgQZ8A=="
-          }
-        ],
-        "npm-signature": "-----BEGIN PGP SIGNATURE-----\r\nVersion: OpenPGP.js v4.10.10\r\nComment: https://openpgpjs.org\r\n\r\nwsFzBAEBCAAGBQJkECMgACEJED1NWxICdlZqFiEECWMYAoorWMhJKdjhPU1b\r\nEgJ2VmopOQ//U+7G8WFrWQ3ecjTZrMAAqmwWNK1jgA3r0PonmwkiDjQlNAHj\r\nXAfJK8YSuFBrl8buIAkoJT9i+H6bpHIShj5fA4FKVtA1ihcwclAdvvoilwH2\r\nNCvoFeZZgrZB6y5e6AvGDHY67C2DzQ9XhfqYM0myyXS+of2gfznAPVqXwGCs\r\nWW39ee/WAbBEoN2Z1/hEAh+W51hV0HUjs39sbupo0vOHy9GdYuVJtTMeqesF\r\nmCfDDaM1FxbsMFccy8qRsihD26iwBMRa+W3+208gCc0i9xs8wRc+8GQcAGWd\r\nxSrTEgRd8hfBs6bxDKlSD3Qg7pTq3L+HvlUZGL2AHSbC6k/MCNduHhxEcrrj\r\nssFE4iuCievfQsd0CC4rI/8s5MDGwdQ+nldv0rYjsSphjLgHDly0LE1kAbNv\r\nxZWFXmFb7318wmbC38KYDn1I0b6YndHQFu1usVJ+Z107H/mxWRZeRg0THlD8\r\n3LuLEkCJqRddGmLkSQkJ6IZtX8H9EuuhU4ny6Xb3FYFhnXWmw7YSuvrrfSgs\r\nPlLlscCRsXgWYPzQ7h8mOyE4MoHfrjzcgFKIUgWPvW6EprDPAKu28vIXnn7j\r\nG0CiCYL+IWWTqa6pKkOJsE1ILkPYTZj/592zfGPzspl9Kfb/4+IaDMmApBVO\r\n51TMBjyXgYYDajmh6y8/U389X93/bIV/wjY=\r\n=935O\r\n-----END PGP SIGNATURE-----\r\n"
-      },
-      "_npmUser": {
-        "name": "types",
-        "email": "ts-npm-types@microsoft.com"
+        "unpackedSize": 1754
       },
       "directories": {},
-      "maintainers": [
-        {
-          "name": "types",
-          "email": "ts-npm-types@microsoft.com"
-        }
-      ],
-      "_npmOperationalInternal": {
-        "host": "s3://npm-registry-packages",
-        "tmp": "tmp/lz-string_1.5.0_1678779167950_0.5151061207876493"
-      },
       "_hasShrinkwrap": false
     }
   },
   "license": "MIT",
-  "readmeFilename": "",
-  "users": {
-    "flumpus-dev": true
-  }
+  "readmeFilename": ""
 }

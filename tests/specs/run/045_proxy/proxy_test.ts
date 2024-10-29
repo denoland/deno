@@ -1,14 +1,10 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
-import { Server } from "../../../util/std/http/server.ts";
-
 const addr = Deno.args[1] || "localhost:4555";
 
-async function proxyServer() {
+function proxyServer() {
   const [hostname, p] = addr.split(":");
   const port = parseInt(p ?? 4555);
-  const server = new Server({ hostname, port, handler });
-  console.log(`Proxy server listening on http://${addr}/`);
-  await server.listenAndServe();
+  Deno.serve({ hostname, port }, handler);
 }
 
 async function handler(req: Request): Promise<Response> {
@@ -112,7 +108,6 @@ async function testFetchProgrammaticProxy() {
       "--quiet",
       "--reload",
       "--allow-net=localhost:4545,localhost:4555",
-      "--unstable",
       "programmatic_proxy_client.ts",
     ],
   }).output();

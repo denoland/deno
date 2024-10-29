@@ -151,7 +151,7 @@ class InnerBody {
    * @returns {Promise<Uint8Array>}
    */
   consume() {
-    if (this.unusable()) throw new TypeError("Body already consumed.");
+    if (this.unusable()) throw new TypeError("Body already consumed");
     if (
       ObjectPrototypeIsPrototypeOf(
         ReadableStreamPrototype,
@@ -196,10 +196,23 @@ class InnerBody {
    * @returns {InnerBody}
    */
   clone() {
-    const { 0: out1, 1: out2 } = readableStreamTee(this.stream, true);
-    this.streamOrStatic = out1;
-    const second = new InnerBody(out2);
-    second.source = core.deserialize(core.serialize(this.source));
+    let second;
+    if (
+      !ObjectPrototypeIsPrototypeOf(
+        ReadableStreamPrototype,
+        this.streamOrStatic,
+      ) && !this.streamOrStatic.consumed
+    ) {
+      second = new InnerBody({
+        body: this.streamOrStatic.body,
+        consumed: false,
+      });
+    } else {
+      const { 0: out1, 1: out2 } = readableStreamTee(this.stream, true);
+      this.streamOrStatic = out1;
+      second = new InnerBody(out2);
+    }
+    second.source = this.source;
     second.length = this.length;
     return second;
   }
@@ -250,6 +263,7 @@ function mixinBody(prototype, bodySymbol, mimeTypeSymbol) {
   /** @type {PropertyDescriptorMap} */
   const mixin = {
     body: {
+      __proto__: null,
       /**
        * @returns {ReadableStream<Uint8Array> | null}
        */
@@ -265,6 +279,7 @@ function mixinBody(prototype, bodySymbol, mimeTypeSymbol) {
       enumerable: true,
     },
     bodyUsed: {
+      __proto__: null,
       /**
        * @returns {boolean}
        */
@@ -279,6 +294,7 @@ function mixinBody(prototype, bodySymbol, mimeTypeSymbol) {
       enumerable: true,
     },
     arrayBuffer: {
+      __proto__: null,
       /** @returns {Promise<ArrayBuffer>} */
       value: function arrayBuffer() {
         return consumeBody(this, "ArrayBuffer");
@@ -288,6 +304,7 @@ function mixinBody(prototype, bodySymbol, mimeTypeSymbol) {
       enumerable: true,
     },
     blob: {
+      __proto__: null,
       /** @returns {Promise<Blob>} */
       value: function blob() {
         return consumeBody(this, "Blob");
@@ -297,6 +314,7 @@ function mixinBody(prototype, bodySymbol, mimeTypeSymbol) {
       enumerable: true,
     },
     bytes: {
+      __proto__: null,
       /** @returns {Promise<Uint8Array>} */
       value: function bytes() {
         return consumeBody(this, "bytes");
@@ -306,6 +324,7 @@ function mixinBody(prototype, bodySymbol, mimeTypeSymbol) {
       enumerable: true,
     },
     formData: {
+      __proto__: null,
       /** @returns {Promise<FormData>} */
       value: function formData() {
         return consumeBody(this, "FormData");
@@ -315,6 +334,7 @@ function mixinBody(prototype, bodySymbol, mimeTypeSymbol) {
       enumerable: true,
     },
     json: {
+      __proto__: null,
       /** @returns {Promise<any>} */
       value: function json() {
         return consumeBody(this, "JSON");
@@ -324,6 +344,7 @@ function mixinBody(prototype, bodySymbol, mimeTypeSymbol) {
       enumerable: true,
     },
     text: {
+      __proto__: null,
       /** @returns {Promise<string>} */
       value: function text() {
         return consumeBody(this, "text");
@@ -359,7 +380,7 @@ function packageData(bytes, type, mimeType) {
           const boundary = mimeType.parameters.get("boundary");
           if (boundary === null) {
             throw new TypeError(
-              "Missing boundary parameter in mime type of multipart formdata.",
+              "Cannot turn into form data: missing boundary parameter in mime type of multipart form data",
             );
           }
           return parseFormData(chunkToU8(bytes), boundary);

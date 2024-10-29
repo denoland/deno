@@ -28,6 +28,7 @@ pub enum ProgressMessagePrompt {
   Download,
   Blocking,
   Initialize,
+  Cleaning,
 }
 
 impl ProgressMessagePrompt {
@@ -38,13 +39,14 @@ impl ProgressMessagePrompt {
       ProgressMessagePrompt::Initialize => {
         colors::green("Initialize").to_string()
       }
+      ProgressMessagePrompt::Cleaning => colors::green("Cleaning").to_string(),
     }
   }
 }
 
 #[derive(Debug)]
 pub struct UpdateGuard {
-  maybe_entry: Option<ProgressBarEntry>,
+  maybe_entry: Option<Arc<ProgressBarEntry>>,
 }
 
 impl Drop for UpdateGuard {
@@ -71,17 +73,23 @@ impl UpdateGuard {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ProgressBarStyle {
+  /// Shows a progress bar with human readable download size
   DownloadBars,
+
+  /// Shows a progress bar with numeric progres count
+  ProgressBars,
+
+  /// Shows a list of currently downloaded files.
   TextOnly,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Debug)]
 struct ProgressBarEntry {
   id: usize,
   prompt: ProgressMessagePrompt,
   pub message: String,
-  pos: Arc<AtomicU64>,
-  total_size: Arc<AtomicU64>,
+  pos: AtomicU64,
+  total_size: AtomicU64,
   progress_bar: ProgressBarInner,
 }
 
@@ -111,6 +119,8 @@ impl ProgressBarEntry {
     let total_size = self.total_size.load(Ordering::Relaxed) as f64;
     if total_size == 0f64 {
       0f64
+    } else if pos > total_size {
+      1f64
     } else {
       pos / total_size
     }
@@ -125,7 +135,7 @@ struct InternalState {
   start_time: Instant,
   keep_alive_count: usize,
   total_entries: usize,
-  entries: Vec<ProgressBarEntry>,
+  entries: Vec<Arc<ProgressBarEntry>>,
 }
 
 #[derive(Clone, Debug)]
@@ -152,17 +162,17 @@ impl ProgressBarInner {
     &self,
     kind: ProgressMessagePrompt,
     message: String,
-  ) -> ProgressBarEntry {
+  ) -> Arc<ProgressBarEntry> {
     let mut internal_state = self.state.lock();
     let id = internal_state.total_entries;
-    let entry = ProgressBarEntry {
+    let entry = Arc::new(ProgressBarEntry {
       id,
       prompt: kind,
       message,
       pos: Default::default(),
       total_size: Default::default(),
       progress_bar: self.clone(),
-    };
+    });
     internal_state.entries.push(entry.clone());
     internal_state.total_entries += 1;
     internal_state.keep_alive_count += 1;
@@ -221,23 +231,23 @@ impl DrawThreadRenderer for ProgressBarInner {
       if state.entries.is_empty() {
         return String::new();
       }
-      let preferred_entry = state
+      let display_entries = state
         .entries
         .iter()
-        .find(|e| e.percent() > 0f64)
-        .or_else(|| state.entries.iter().last())
-        .unwrap();
+        .map(|e| ProgressDataDisplayEntry {
+          prompt: e.prompt,
+          message: e.message.to_string(),
+          position: e.position(),
+          total_size: e.total_size(),
+        })
+        .collect::<Vec<_>>();
+
       ProgressData {
         duration: state.start_time.elapsed(),
         terminal_width: size.cols,
         pending_entries: state.entries.len(),
         total_entries: state.total_entries,
-        display_entry: ProgressDataDisplayEntry {
-          prompt: preferred_entry.prompt,
-          message: preferred_entry.message.clone(),
-          position: preferred_entry.position(),
-          total_size: preferred_entry.total_size(),
-        },
+        display_entries,
         percent_done: {
           let mut total_percent_sum = 0f64;
           for entry in &state.entries {
@@ -268,10 +278,17 @@ impl ProgressBar {
     Self {
       inner: ProgressBarInner::new(match style {
         ProgressBarStyle::DownloadBars => {
-          Arc::new(renderer::BarProgressBarRenderer)
+          Arc::new(renderer::BarProgressBarRenderer {
+            display_human_download_size: true,
+          })
+        }
+        ProgressBarStyle::ProgressBars => {
+          Arc::new(renderer::BarProgressBarRenderer {
+            display_human_download_size: false,
+          })
         }
         ProgressBarStyle::TextOnly => {
-          Arc::new(renderer::TextOnlyProgressBarRenderer)
+          Arc::new(renderer::TextOnlyProgressBarRenderer::default())
         }
       }),
     }

@@ -33,6 +33,7 @@ import {
   op_get_non_index_property_names,
   op_preview_entries,
 } from "ext:core/ops";
+import * as ops from "ext:core/ops";
 const {
   Array,
   ArrayBufferPrototypeGetByteLength,
@@ -83,6 +84,8 @@ const {
   NumberIsInteger,
   NumberIsNaN,
   NumberParseInt,
+  NumberParseFloat,
+  NumberPrototypeToFixed,
   NumberPrototypeToString,
   NumberPrototypeValueOf,
   ObjectAssign,
@@ -151,10 +154,22 @@ const {
   SymbolPrototypeToString,
   SymbolPrototypeValueOf,
   SymbolToStringTag,
+  TypedArrayPrototypeGetBuffer,
   TypedArrayPrototypeGetByteLength,
   TypedArrayPrototypeGetLength,
   Uint8Array,
+  Uint32Array,
 } = primordials;
+
+let currentTime = DateNow;
+if (ops.op_now) {
+  const hrU8 = new Uint8Array(8);
+  const hr = new Uint32Array(TypedArrayPrototypeGetBuffer(hrU8));
+  currentTime = function opNow() {
+    ops.op_now(hrU8);
+    return (hr[0] * 1000 + hr[1] / 1e6);
+  };
+}
 
 let noColorStdout = () => false;
 let noColorStderr = () => false;
@@ -179,7 +194,7 @@ class AssertionError extends Error {
   }
 }
 
-function assert(cond, msg = "Assertion failed.") {
+function assert(cond, msg = "Assertion failed") {
   if (!cond) {
     throw new AssertionError(msg);
   }
@@ -260,6 +275,7 @@ const colors = {
 
 function defineColorAlias(target, alias) {
   ObjectDefineProperty(colors, alias, {
+    __proto__: null,
     get() {
       return this[target];
     },
@@ -792,6 +808,24 @@ function formatRaw(ctx, value, recurseTimes, typedArray, proxyDetails) {
         }
       } else if (
         proxyDetails === null &&
+        ObjectPrototypeIsPrototypeOf(globalThis.Intl.Locale.prototype, value)
+      ) {
+        braces[0] = `${getPrefix(constructor, tag, "Intl.Locale")}{`;
+        ArrayPrototypeUnshift(
+          keys,
+          "baseName",
+          "calendar",
+          "caseFirst",
+          "collation",
+          "hourCycle",
+          "language",
+          "numberingSystem",
+          "numeric",
+          "region",
+          "script",
+        );
+      } else if (
+        proxyDetails === null &&
         typeof globalThis.Temporal !== "undefined" &&
         (
           ObjectPrototypeIsPrototypeOf(
@@ -824,14 +858,6 @@ function formatRaw(ctx, value, recurseTimes, typedArray, proxyDetails) {
           ) ||
           ObjectPrototypeIsPrototypeOf(
             globalThis.Temporal.Duration.prototype,
-            value,
-          ) ||
-          ObjectPrototypeIsPrototypeOf(
-            globalThis.Temporal.TimeZone.prototype,
-            value,
-          ) ||
-          ObjectPrototypeIsPrototypeOf(
-            globalThis.Temporal.Calendar.prototype,
             value,
           )
         )
@@ -1275,6 +1301,9 @@ function getKeys(value, showHidden) {
       const filter = (key) => ObjectPrototypePropertyIsEnumerable(value, key);
       ArrayPrototypePushApply(keys, ArrayPrototypeFilter(symbols, filter));
     }
+  }
+  if (ObjectPrototypeIsPrototypeOf(ErrorPrototype, value)) {
+    keys = ArrayPrototypeFilter(keys, (key) => key !== "cause");
   }
   return keys;
 }
@@ -2624,6 +2653,7 @@ const HSL_PATTERN = new SafeRegExp(
 );
 
 function parseCssColor(colorString) {
+  colorString = StringPrototypeToLowerCase(colorString);
   if (colorKeywords.has(colorString)) {
     colorString = colorKeywords.get(colorString);
   }
@@ -2982,20 +3012,18 @@ function inspectArgs(args, inspectOptions = { __proto__: null }) {
           } else if (ArrayPrototypeIncludes(["d", "i"], char)) {
             // Format as an integer.
             const value = args[a++];
-            if (typeof value == "bigint") {
-              formattedArg = `${value}n`;
-            } else if (typeof value == "number") {
-              formattedArg = `${NumberParseInt(String(value))}`;
-            } else {
+            if (typeof value === "symbol") {
               formattedArg = "NaN";
+            } else {
+              formattedArg = `${NumberParseInt(value)}`;
             }
           } else if (char == "f") {
             // Format as a floating point value.
             const value = args[a++];
-            if (typeof value == "number") {
-              formattedArg = `${value}`;
-            } else {
+            if (typeof value === "symbol") {
               formattedArg = "NaN";
+            } else {
+              formattedArg = `${NumberParseFloat(value)}`;
             }
           } else if (ArrayPrototypeIncludes(["O", "o"], char)) {
             // Format as an object.
@@ -3218,8 +3246,8 @@ class Console {
   table = (data = undefined, properties = undefined) => {
     if (properties !== undefined && !ArrayIsArray(properties)) {
       throw new Error(
-        "The 'properties' argument must be of type Array. " +
-          "Received type " + typeof properties,
+        "The 'properties' argument must be of type Array: " +
+          "received type " + typeof properties,
       );
     }
 
@@ -3229,7 +3257,7 @@ class Console {
 
     const stringifyValue = (value) =>
       inspectValueWithQuotes(value, {
-        ...getDefaultInspectOptions(),
+        ...getConsoleInspectOptions(noColorStdout()),
         depth: 1,
         compact: true,
       });
@@ -3319,7 +3347,7 @@ class Console {
       return;
     }
 
-    MapPrototypeSet(timerMap, label, DateNow());
+    MapPrototypeSet(timerMap, label, currentTime());
   };
 
   timeLog = (label = "default", ...args) => {
@@ -3331,7 +3359,16 @@ class Console {
     }
 
     const startTime = MapPrototypeGet(timerMap, label);
-    const duration = DateNow() - startTime;
+    let duration = currentTime() - startTime;
+    if (duration < 1) {
+      duration = NumberPrototypeToFixed(duration, 3);
+    } else if (duration < 10) {
+      duration = NumberPrototypeToFixed(duration, 2);
+    } else if (duration < 100) {
+      duration = NumberPrototypeToFixed(duration, 1);
+    } else {
+      duration = NumberPrototypeToFixed(duration, 0);
+    }
 
     this.info(`${label}: ${duration}ms`, ...new SafeArrayIterator(args));
   };
@@ -3346,7 +3383,16 @@ class Console {
 
     const startTime = MapPrototypeGet(timerMap, label);
     MapPrototypeDelete(timerMap, label);
-    const duration = DateNow() - startTime;
+    let duration = currentTime() - startTime;
+    if (duration < 1) {
+      duration = NumberPrototypeToFixed(duration, 3);
+    } else if (duration < 10) {
+      duration = NumberPrototypeToFixed(duration, 2);
+    } else if (duration < 100) {
+      duration = NumberPrototypeToFixed(duration, 1);
+    } else {
+      duration = NumberPrototypeToFixed(duration, 0);
+    }
 
     this.info(`${label}: ${duration}ms`);
   };
@@ -3429,7 +3475,10 @@ function inspect(
 function createFilteredInspectProxy({ object, keys, evaluate }) {
   const obj = class {};
   if (object.constructor?.name) {
-    ObjectDefineProperty(obj, "name", { value: object.constructor.name });
+    ObjectDefineProperty(obj, "name", {
+      __proto__: null,
+      value: object.constructor.name,
+    });
   }
 
   return new Proxy(new obj(), {

@@ -1,0 +1,18 @@
+{
+  "tempDir": true,
+  "tests": {
+    "stdin": {
+      "args": "run -",
+      "input": "const x: string = \"foo\";console.log(x)",
+      "output": "foo\n"
+    },
+    "ext_flag": {
+      "args": "run --ext=ts as_ts.js",
+      "output": "foo\n"
+    },
+    "extensionless": {
+      "args": "run extensionless",
+      "output": "foo\n"
+    }
+  }
+}

@@ -1,7 +1,7 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 import * as punycode from "node:punycode";
-import { assertEquals } from "@std/assert/mod.ts";
+import { assertEquals } from "@std/assert";
 
 Deno.test("regression #19214", () => {
   const input = "个\uFFFD\uFFFD.hk";

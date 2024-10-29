@@ -5,4 +5,3 @@ console.log(Deno.permissions.querySync({ name: "ffi" }));
 console.log(Deno.permissions.querySync({ name: "run" }));
 console.log(Deno.permissions.querySync({ name: "sys" }));
 console.log(Deno.permissions.querySync({ name: "net" }));
-console.log(Deno.permissions.querySync({ name: "hrtime" }));

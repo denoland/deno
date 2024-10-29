@@ -7,8 +7,6 @@ use std::rc::Rc;
 use std::sync::Arc;
 
 use async_trait::async_trait;
-use deno_core::error::type_error;
-use deno_core::error::AnyError;
 use deno_core::op2;
 use deno_core::parking_lot::Mutex;
 use deno_core::url::Url;
@@ -18,6 +16,18 @@ use deno_core::ToJsBuffer;
 use serde::Deserialize;
 use serde::Serialize;
 use uuid::Uuid;
+
+#[derive(Debug, thiserror::Error)]
+pub enum BlobError {
+  #[error("Blob part not found")]
+  BlobPartNotFound,
+  #[error("start + len can not be larger than blob part size")]
+  SizeLargerThanBlobPart,
+  #[error("Blob URLs are not supported in this context")]
+  BlobURLsNotSupported,
+  #[error(transparent)]
+  Url(#[from] deno_core::url::ParseError),
+}
 
 use crate::Location;
 
@@ -96,18 +106,18 @@ pub struct Blob {
 
 impl Blob {
   // TODO(lucacsonato): this should be a stream!
-  pub async fn read_all(&self) -> Result<Vec<u8>, AnyError> {
+  pub async fn read_all(&self) -> Vec<u8> {
     let size = self.size();
     let mut bytes = Vec::with_capacity(size);
 
     for part in &self.parts {
-      let chunk = part.read().await?;
+      let chunk = part.read().await;
       bytes.extend_from_slice(chunk);
     }
 
     assert_eq!(bytes.len(), size);
 
-    Ok(bytes)
+    bytes
   }
 
   fn size(&self) -> usize {
@@ -122,7 +132,7 @@ impl Blob {
 #[async_trait]
 pub trait BlobPart: Debug {
   // TODO(lucacsonato): this should be a stream!
-  async fn read(&self) -> Result<&[u8], AnyError>;
+  async fn read(&self) -> &[u8];
   fn size(&self) -> usize;
 }
 
@@ -137,8 +147,8 @@ impl From<Vec<u8>> for InMemoryBlobPart {
 
 #[async_trait]
 impl BlobPart for InMemoryBlobPart {
-  async fn read(&self) -> Result<&[u8], AnyError> {
-    Ok(&self.0)
+  async fn read(&self) -> &[u8] {
+    &self.0
   }
 
   fn size(&self) -> usize {
@@ -155,9 +165,9 @@ pub struct SlicedBlobPart {
 
 #[async_trait]
 impl BlobPart for SlicedBlobPart {
-  async fn read(&self) -> Result<&[u8], AnyError> {
-    let original = self.part.read().await?;
-    Ok(&original[self.start..self.start + self.len])
+  async fn read(&self) -> &[u8] {
+    let original = self.part.read().await;
+    &original[self.start..self.start + self.len]
   }
 
   fn size(&self) -> usize {
@@ -189,19 +199,17 @@ pub fn op_blob_slice_part(
   state: &mut OpState,
   #[serde] id: Uuid,
   #[serde] options: SliceOptions,
-) -> Result<Uuid, AnyError> {
+) -> Result<Uuid, BlobError> {
   let blob_store = state.borrow::<Arc<BlobStore>>();
   let part = blob_store
     .get_part(&id)
-    .ok_or_else(|| type_error("Blob part not found"))?;
+    .ok_or(BlobError::BlobPartNotFound)?;
 
   let SliceOptions { start, len } = options;
 
   let size = part.size();
   if start + len > size {
-    return Err(type_error(
-      "start + len can not be larger than blob part size",
-    ));
+    return Err(BlobError::SizeLargerThanBlobPart);
   }
 
   let sliced_part = SlicedBlobPart { part, start, len };
@@ -215,14 +223,14 @@ pub fn op_blob_slice_part(
 pub async fn op_blob_read_part(
   state: Rc<RefCell<OpState>>,
   #[serde] id: Uuid,
-) -> Result<ToJsBuffer, AnyError> {
+) -> Result<ToJsBuffer, BlobError> {
   let part = {
     let state = state.borrow();
     let blob_store = state.borrow::<Arc<BlobStore>>();
     blob_store.get_part(&id)
   }
-  .ok_or_else(|| type_error("Blob part not found"))?;
-  let buf = part.read().await?;
+  .ok_or(BlobError::BlobPartNotFound)?;
+  let buf = part.read().await;
   Ok(ToJsBuffer::from(buf.to_vec()))
 }
 
@@ -238,13 +246,13 @@ pub fn op_blob_create_object_url(
   state: &mut OpState,
   #[string] media_type: String,
   #[serde] part_ids: Vec<Uuid>,
-) -> Result<String, AnyError> {
+) -> Result<String, BlobError> {
   let mut parts = Vec::with_capacity(part_ids.len());
   let blob_store = state.borrow::<Arc<BlobStore>>();
   for part_id in part_ids {
     let part = blob_store
       .get_part(&part_id)
-      .ok_or_else(|| type_error("Blob part not found"))?;
+      .ok_or(BlobError::BlobPartNotFound)?;
     parts.push(part);
   }
 
@@ -263,7 +271,7 @@ pub fn op_blob_create_object_url(
 pub fn op_blob_revoke_object_url(
   state: &mut OpState,
   #[string] url: &str,
-) -> Result<(), AnyError> {
+) -> Result<(), BlobError> {
   let url = Url::parse(url)?;
   let blob_store = state.borrow::<Arc<BlobStore>>();
   blob_store.remove_object_url(&url);
@@ -287,15 +295,15 @@ pub struct ReturnBlobPart {
 pub fn op_blob_from_object_url(
   state: &mut OpState,
   #[string] url: String,
-) -> Result<Option<ReturnBlob>, AnyError> {
+) -> Result<Option<ReturnBlob>, BlobError> {
   let url = Url::parse(&url)?;
   if url.scheme() != "blob" {
     return Ok(None);
   }
 
-  let blob_store = state.try_borrow::<Arc<BlobStore>>().ok_or_else(|| {
-    type_error("Blob URLs are not supported in this context.")
-  })?;
+  let blob_store = state
+    .try_borrow::<Arc<BlobStore>>()
+    .ok_or(BlobError::BlobURLsNotSupported)?;
   if let Some(blob) = blob_store.get_object_url(url) {
     let parts = blob
       .parts

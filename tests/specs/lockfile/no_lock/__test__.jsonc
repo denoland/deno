@@ -1,39 +1,39 @@
 {
   "tests": {
     "info": {
-      "args": "info main.ts",
+      "args": "info --allow-import main.ts",
       "output": "fail.out",
       "exitCode": 10
     },
     "info_no_lock": {
-      "args": "info --no-lock main.ts",
+      "args": "info --allow-import --no-lock main.ts",
       "output": "info.nolock.out"
     },
     "bench": {
-      "args": "bench",
+      "args": "bench --allow-import",
       "output": "fail.out",
       "exitCode": 10
     },
     "bench_no_lock": {
-      "args": "bench --no-lock",
+      "args": "bench --allow-import --no-lock",
       "output": "bench.nolock.out"
     },
     "doc": {
-      "args": "doc main.ts",
+      "args": "doc --allow-import main.ts",
       "exitCode": 10,
       "output": "fail.out"
     },
     "doc_no_lock": {
-      "args": "doc --no-lock main.ts",
+      "args": "doc --allow-import --no-lock main.ts",
       "output": "doc.nolock.out"
     },
     "test": {
-      "args": "test",
+      "args": "test --allow-import",
       "exitCode": 10,
       "output": "fail.out"
     },
     "test_no_lock": {
-      "args": "test --no-lock",
+      "args": "test --allow-import --no-lock",
       "output": "test.nolock.out"
     }
   }

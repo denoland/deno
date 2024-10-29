@@ -1,7 +1,7 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 import { assertCallbackErrorUncaught } from "../_test_utils.ts";
 import { BigIntStats, stat, Stats, statSync } from "node:fs";
-import { assertEquals, fail } from "@std/assert/mod.ts";
+import { assertEquals, fail } from "@std/assert";
 
 export function assertStats(actual: Stats, expected: Deno.FileInfo) {
   assertEquals(actual.dev, expected.dev);
@@ -133,7 +133,9 @@ Deno.test("[std/node/fs] stat callback isn't called twice if error is thrown", a
 Deno.test({
   name: "[std/node/fs] stat default methods",
   fn() {
-    const stats = new Stats();
+    // stats ctor is private
+    // deno-lint-ignore no-explicit-any
+    const stats = new (Stats as any)();
     assertEquals(stats.isFile(), false);
     assertEquals(stats.isDirectory(), false);
     assertEquals(stats.isBlockDevice(), false);

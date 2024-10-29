@@ -50,6 +50,9 @@
         },
         "exitCode": {
           "type": "integer"
+        },
+        "ignore": {
+          "type": "boolean"
         }
       }
     },
@@ -77,6 +80,9 @@
             "items": {
               "$ref": "#/definitions/single_test"
             }
+          },
+          "ignore": {
+            "type": "boolean"
           }
         }
       }, {
@@ -126,6 +132,9 @@
           "additionalProperties": {
             "$ref": "#/definitions/single_or_multi_step_test"
           }
+        },
+        "ignore": {
+          "type": "boolean"
         }
       }
     }

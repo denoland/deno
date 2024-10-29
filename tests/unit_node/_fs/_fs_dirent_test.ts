@@ -1,5 +1,5 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
-import { assert, assertEquals, assertThrows } from "@std/assert/mod.ts";
+import { assert, assertEquals, assertThrows } from "@std/assert";
 import { Dirent as Dirent_ } from "node:fs";
 
 // deno-lint-ignore no-explicit-any

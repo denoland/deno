@@ -1,4 +1,4 @@
-import { assert } from "../../../tests/util/std/assert/mod.ts";
+import { assert } from "@std/assert";
 
 onmessage = function (e) {
   if (typeof self.Deno === "undefined") {

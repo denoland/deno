@@ -17,7 +17,6 @@ use std::process::Stdio;
 use std::time::SystemTime;
 use test_util::PathRef;
 
-mod http;
 mod lsp;
 
 fn read_json(filename: &Path) -> Result<Value> {
@@ -124,6 +123,8 @@ const EXEC_TIME_BENCHMARKS: &[(&str, &[&str], Option<i32>)] = &[
       "check",
       "--reload",
       "--unstable",
+      "--config",
+      "tests/config/deno.json",
       "tests/util/std/http/file_server_test.ts",
     ],
     None,
@@ -135,25 +136,8 @@ const EXEC_TIME_BENCHMARKS: &[(&str, &[&str], Option<i32>)] = &[
       "--reload",
       "--no-check",
       "--unstable",
-      "tests/util/std/http/file_server_test.ts",
-    ],
-    None,
-  ),
-  (
-    "bundle",
-    &[
-      "bundle",
-      "--unstable",
-      "tests/util/std/http/file_server_test.ts",
-    ],
-    None,
-  ),
-  (
-    "bundle_no_check",
-    &[
-      "bundle",
-      "--no-check",
-      "--unstable",
+      "--config",
+      "tests/config/deno.json",
       "tests/util/std/http/file_server_test.ts",
     ],
     None,
@@ -306,38 +290,6 @@ fn get_binary_sizes(target_dir: &Path) -> Result<HashMap<String, i64>> {
   Ok(sizes)
 }
 
-const BUNDLES: &[(&str, &str)] = &[
-  ("file_server", "./tests/util/std/http/file_server.ts"),
-  ("welcome", "./tests/testdata/welcome.ts"),
-];
-fn bundle_benchmark(deno_exe: &Path) -> Result<HashMap<String, i64>> {
-  let mut sizes = HashMap::<String, i64>::new();
-
-  for (name, url) in BUNDLES {
-    let path = format!("{name}.bundle.js");
-    test_util::run(
-      &[
-        deno_exe.to_str().unwrap(),
-        "bundle",
-        "--unstable",
-        url,
-        &path,
-      ],
-      None,
-      None,
-      None,
-      true,
-    );
-
-    let file = PathBuf::from(path);
-    assert!(file.is_file());
-    sizes.insert(name.to_string(), file.metadata()?.len() as i64);
-    let _ = fs::remove_file(file);
-  }
-
-  Ok(sizes)
-}
-
 fn run_max_mem_benchmark(deno_exe: &Path) -> Result<HashMap<String, i64>> {
   let mut results = HashMap::<String, i64>::new();
 
@@ -392,9 +344,11 @@ struct BenchResult {
   binary_size: HashMap<String, i64>,
   bundle_size: HashMap<String, i64>,
   cargo_deps: usize,
+  // TODO(bartlomieju): remove
   max_latency: HashMap<String, f64>,
   max_memory: HashMap<String, i64>,
   lsp_exec_time: HashMap<String, i64>,
+  // TODO(bartlomieju): remove
   req_per_sec: HashMap<String, i64>,
   syscall_count: HashMap<String, i64>,
   thread_count: HashMap<String, i64>,
@@ -405,12 +359,10 @@ async fn main() -> Result<()> {
   let mut args = env::args();
 
   let mut benchmarks = vec![
-    "bundle",
     "exec_time",
     "binary_size",
     "cargo_deps",
     "lsp",
-    "http",
     "strace",
     "mem_usage",
   ];
@@ -455,11 +407,6 @@ async fn main() -> Result<()> {
     ..Default::default()
   };
 
-  if benchmarks.contains(&"bundle") {
-    let bundle_size = bundle_benchmark(&deno_exe)?;
-    new_data.bundle_size = bundle_size;
-  }
-
   if benchmarks.contains(&"exec_time") {
     let exec_times = run_exec_time(&deno_exe, &target_dir)?;
     new_data.benchmark = exec_times;
@@ -478,21 +425,6 @@ async fn main() -> Result<()> {
   if benchmarks.contains(&"lsp") {
     let lsp_exec_times = lsp::benchmarks(&deno_exe);
     new_data.lsp_exec_time = lsp_exec_times;
-  }
-
-  if benchmarks.contains(&"http") && cfg!(not(target_os = "windows")) {
-    let stats = http::benchmark(target_dir.as_path())?;
-    let req_per_sec = stats
-      .iter()
-      .map(|(name, result)| (name.clone(), result.requests as i64))
-      .collect();
-    new_data.req_per_sec = req_per_sec;
-    let max_latency = stats
-      .iter()
-      .map(|(name, result)| (name.clone(), result.latency))
-      .collect();
-
-    new_data.max_latency = max_latency;
   }
 
   if cfg!(target_os = "linux") && benchmarks.contains(&"strace") {

@@ -1,4 +1,6 @@
-error: The module's source code could not be parsed: Unexpected eof at [WILDCARD]/error_syntax_empty_trailing_line.mjs:2:22
+error: The module's source code could not be parsed: Unexpected eof at [WILDCARD]/error_syntax_empty_trailing_line.mjs:3:1
 
   setTimeout(() => {}),
-                       ~
+  ~~~~~~~~~~~~~~~~~~~~~
+
+  ~

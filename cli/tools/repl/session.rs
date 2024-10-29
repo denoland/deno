@@ -16,6 +16,7 @@ use crate::tools::test::send_test_event;
 use crate::tools::test::worker_has_tests;
 use crate::tools::test::TestEvent;
 use crate::tools::test::TestEventReceiver;
+use crate::tools::test::TestFailureFormatOptions;
 
 use deno_ast::diagnostics::Diagnostic;
 use deno_ast::swc::ast as swc_ast;
@@ -276,6 +277,7 @@ impl ReplSession {
           false,
           true,
           cwd_url.clone(),
+          TestFailureFormatOptions::default(),
         ))
       }),
       main_module,
@@ -642,6 +644,7 @@ impl ReplSession {
         },
         &deno_ast::EmitOptions {
           source_map: deno_ast::SourceMapOption::None,
+          source_map_base: None,
           source_map_file: None,
           inline_sources: false,
           remove_comments: false,
@@ -865,7 +868,7 @@ impl AnalyzedJsxPragmas {
 }
 
 /// Analyze provided source and return information about carious pragmas
-/// used to configure the JSX tranforms.
+/// used to configure the JSX transforms.
 fn analyze_jsx_pragmas(
   parsed_source: &ParsedSource,
 ) -> Option<AnalyzedJsxPragmas> {

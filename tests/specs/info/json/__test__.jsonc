@@ -1,0 +1,4 @@
+{
+  "args": "info --json",
+  "output": "info_json.out"
+}

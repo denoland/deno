@@ -7,10 +7,21 @@
 // THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 use crate::colors;
-use std::str::FromStr;
+
+/// Taken from https://stackoverflow.com/a/76572321
+fn precision_f64(x: f64, decimals: u32) -> f64 {
+  if x == 0. || decimals == 0 {
+    0.
+  } else {
+    let shift = decimals as i32 - x.abs().log10().ceil() as i32;
+    let shift_factor = 10_f64.powi(shift);
+
+    (x * shift_factor).round() / shift_factor
+  }
+}
 
 fn avg_to_iter_per_s(time: f64) -> String {
-  let iter_per_s = 1e9 / time;
+  let iter_per_s = precision_f64(1e9 / time, 4);
   let (decimals, fractional) = into_decimal_and_fractional_parts(iter_per_s);
   human_readable_decimal_with_fractional(decimals, fractional)
 }
@@ -47,55 +58,34 @@ fn human_readable_decimal_with_fractional(
     .unwrap()
     .join(",");
 
-  format!("{}.{}", fmt_decimal, fractional)
+  if fmt_decimal.len() >= 4 {
+    fmt_decimal
+  } else {
+    format!("{}.{}", fmt_decimal, fractional)
+  }
 }
 
 pub fn fmt_duration(time: f64) -> String {
-  // SAFETY: this is safe since its just reformatting numbers
-  unsafe {
-    if time < 1e0 {
-      return format!(
-        "{} ps",
-        f64::from_str(&format!("{:.2}", time * 1e3)).unwrap_unchecked()
-      );
-    }
-
-    if time < 1e3 {
-      return format!(
-        "{} ns",
-        f64::from_str(&format!("{:.2}", time)).unwrap_unchecked()
-      );
-    }
-    if time < 1e6 {
-      return format!(
-        "{} µs",
-        f64::from_str(&format!("{:.2}", time / 1e3)).unwrap_unchecked()
-      );
-    }
-    if time < 1e9 {
-      return format!(
-        "{} ms",
-        f64::from_str(&format!("{:.2}", time / 1e6)).unwrap_unchecked()
-      );
-    }
-    if time < 1e12 {
-      return format!(
-        "{} s",
-        f64::from_str(&format!("{:.2}", time / 1e9)).unwrap_unchecked()
-      );
-    }
-    if time < 36e11 {
-      return format!(
-        "{} m",
-        f64::from_str(&format!("{:.2}", time / 60e9)).unwrap_unchecked()
-      );
-    }
-
-    format!(
-      "{} h",
-      f64::from_str(&format!("{:.2}", time / 36e11)).unwrap_unchecked()
-    )
+  if time < 1e0 {
+    return format!("{:.1} ps", time * 1e3);
   }
+  if time < 1e3 {
+    return format!("{:.1} ns", time);
+  }
+  if time < 1e6 {
+    return format!("{:.1} µs", time / 1e3);
+  }
+  if time < 1e9 {
+    return format!("{:.1} ms", time / 1e6);
+  }
+  if time < 1e12 {
+    return format!("{:.1} s", time / 1e9);
+  }
+  if time < 36e11 {
+    return format!("{:.1} m", time / 60e9);
+  }
+
+  format!("{:.1} h", time / 36e11)
 }
 
 pub mod cpu {
@@ -231,16 +221,19 @@ pub mod reporter {
   pub fn br(options: &Options) -> String {
     let mut s = String::new();
 
-    s.push_str(&"-".repeat(
-      options.size
-        + 14 * options.avg as usize
-        + 14 * options.avg as usize
-        + 24 * options.min_max as usize,
-    ));
+    s.push_str(&"-".repeat(options.size));
 
+    if options.avg {
+      s.push(' ');
+      s.push_str(&"-".repeat(15 + 1 + 13));
+    }
+    if options.min_max {
+      s.push(' ');
+      s.push_str(&"-".repeat(21));
+    }
     if options.percentiles {
       s.push(' ');
-      s.push_str(&"-".repeat(9 + 10 + 10));
+      s.push_str(&"-".repeat(8 + 1 + 8 + 1 + 8));
     }
 
     s
@@ -251,7 +244,7 @@ pub mod reporter {
     let mut s = String::new();
 
     s.push_str(&format!("{:<size$}", n));
-    s.push_str(&format!("{}: {}", colors::red("error"), e.message));
+    s.push_str(&format!(" {}: {}", colors::red("error"), e.message));
 
     if let Some(ref stack) = e.stack {
       s.push('\n');
@@ -268,14 +261,14 @@ pub mod reporter {
 
     s.push_str(&format!("{:<size$}", "benchmark"));
     if options.avg {
-      s.push_str(&format!("{:>14}", "time (avg)"));
-      s.push_str(&format!("{:>14}", "iter/s"));
+      s.push_str(&format!(" {:<15}", "time/iter (avg)"));
+      s.push_str(&format!(" {:>13}", "iter/s"));
     }
     if options.min_max {
-      s.push_str(&format!("{:>24}", "(min … max)"));
+      s.push_str(&format!(" {:^21}", "(min … max)"));
     }
     if options.percentiles {
-      s.push_str(&format!(" {:>9} {:>9} {:>9}", "p75", "p99", "p995"));
+      s.push_str(&format!(" {:>8} {:>8} {:>8}", "p75", "p99", "p995"));
     }
 
     s
@@ -293,28 +286,28 @@ pub mod reporter {
 
     if options.avg {
       s.push_str(&format!(
-        "{:>30}",
-        format!("{}/iter", colors::yellow(fmt_duration(stats.avg)))
+        " {}",
+        colors::yellow(&format!("{:>15}", fmt_duration(stats.avg)))
       ));
-      s.push_str(&format!("{:>14}", avg_to_iter_per_s(stats.avg)));
+      s.push_str(&format!(" {:>13}", &avg_to_iter_per_s(stats.avg)));
     }
     if options.min_max {
       s.push_str(&format!(
-        "{:>50}",
-        format!(
-          "({} … {})",
-          colors::cyan(fmt_duration(stats.min)),
-          colors::magenta(fmt_duration(stats.max))
-        )
+        " ({} … {})",
+        colors::cyan(format!("{:>8}", fmt_duration(stats.min))),
+        colors::magenta(format!("{:>8}", fmt_duration(stats.max)))
       ));
     }
     if options.percentiles {
-      s.push_str(&format!(
-        " {:>22} {:>22} {:>22}",
-        colors::magenta(fmt_duration(stats.p75)),
-        colors::magenta(fmt_duration(stats.p99)),
-        colors::magenta(fmt_duration(stats.p995))
-      ));
+      s.push_str(
+        &colors::magenta(format!(
+          " {:>8} {:>8} {:>8}",
+          fmt_duration(stats.p75),
+          fmt_duration(stats.p99),
+          fmt_duration(stats.p995)
+        ))
+        .to_string(),
+      );
     }
 
     s
@@ -337,22 +330,25 @@ pub mod reporter {
 
     for b in benchmarks.iter().filter(|b| *b != baseline) {
       let faster = b.stats.avg >= baseline.stats.avg;
-      let diff = f64::from_str(&format!(
-        "{:.2}",
-        1.0 / baseline.stats.avg * b.stats.avg
-      ))
-      .unwrap();
-      let inv_diff = f64::from_str(&format!(
-        "{:.2}",
-        1.0 / b.stats.avg * baseline.stats.avg
-      ))
-      .unwrap();
-      s.push_str(&format!(
-        "\n   {}x {} than {}",
+      let x_faster = precision_f64(
         if faster {
-          colors::green(diff.to_string()).to_string()
+          b.stats.avg / baseline.stats.avg
         } else {
-          colors::red(inv_diff.to_string()).to_string()
+          baseline.stats.avg / b.stats.avg
+        },
+        4,
+      );
+      let diff = if x_faster > 1000. {
+        &format!("{:>9.0}", x_faster)
+      } else {
+        &format!("{:>9.2}", x_faster)
+      };
+      s.push_str(&format!(
+        "\n{}x {} than {}",
+        if faster {
+          colors::green(diff)
+        } else {
+          colors::red(diff)
         },
         if faster { "faster" } else { "slower" },
         colors::cyan_bold(&b.name)
@@ -384,9 +380,10 @@ mod tests {
 
   #[test]
   fn test_avg_to_iter_per_s() {
-    assert_eq!(avg_to_iter_per_s(55.85), "17,905,103.0");
+    assert_eq!(avg_to_iter_per_s(55.85), "17,910,000");
     assert_eq!(avg_to_iter_per_s(64_870_000.0), "15.4");
     assert_eq!(avg_to_iter_per_s(104_370_000.0), "9.6");
+    assert_eq!(avg_to_iter_per_s(640_000.0), "1,563");
     assert_eq!(avg_to_iter_per_s(6_400_000.0), "156.3");
     assert_eq!(avg_to_iter_per_s(46_890_000.0), "21.3");
     assert_eq!(avg_to_iter_per_s(100_000_000.0), "10.0");

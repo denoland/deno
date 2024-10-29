@@ -165,6 +165,7 @@ function resolvePromiseWith(value) {
 function rethrowAssertionErrorRejection(e) {
   if (e && ObjectPrototypeIsPrototypeOf(AssertionError.prototype, e)) {
     queueMicrotask(() => {
+      // deno-lint-ignore no-console
       console.error(`Internal Error: ${e.stack}`);
     });
   }
@@ -523,10 +524,10 @@ function dequeueValue(container) {
 function enqueueValueWithSize(container, value, size) {
   assert(container[_queue] && typeof container[_queueTotalSize] === "number");
   if (isNonNegativeNumber(size) === false) {
-    throw RangeError("chunk size isn't a positive number");
+    throw new RangeError("chunk size isn't a positive number");
   }
   if (size === Infinity) {
-    throw RangeError("chunk size is invalid");
+    throw new RangeError("chunk size is invalid");
   }
   container[_queue].enqueue({ value, size });
   container[_queueTotalSize] += size;
@@ -542,7 +543,7 @@ function extractHighWaterMark(strategy, defaultHWM) {
   }
   const highWaterMark = strategy.highWaterMark;
   if (NumberIsNaN(highWaterMark) || highWaterMark < 0) {
-    throw RangeError(
+    throw new RangeError(
       `Expected highWaterMark to be a positive number or Infinity, got "${highWaterMark}".`,
     );
   }
@@ -1053,7 +1054,7 @@ async function readableStreamCollectIntoUint8Array(stream) {
     getReadableStreamResourceBackingUnrefable(stream);
   const reader = acquireReadableStreamDefaultReader(stream);
 
-  if (resourceBacking) {
+  if (resourceBacking && !isReadableStreamDisturbed(stream)) {
     // fast path, read whole body in a single op call
     try {
       readableStreamDisturb(stream);
@@ -5419,6 +5420,7 @@ class ReadableStream {
 // TODO(lucacasonato): should be moved to webidl crate
 ReadableStream.prototype[SymbolAsyncIterator] = ReadableStream.prototype.values;
 ObjectDefineProperty(ReadableStream.prototype, SymbolAsyncIterator, {
+  __proto__: null,
   writable: true,
   enumerable: false,
   configurable: true,

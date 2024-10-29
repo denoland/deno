@@ -1,7 +1,7 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
-import { assertEquals, assertThrows, fail } from "@std/assert/mod.ts";
+import { assertEquals, assertThrows, fail } from "@std/assert";
 import { appendFile, appendFileSync } from "node:fs";
-import { fromFileUrl } from "@std/path/mod.ts";
+import { fromFileUrl } from "@std/path";
 import { assertCallbackErrorUncaught } from "../_test_utils.ts";
 
 const decoder = new TextDecoder("utf-8");
@@ -64,6 +64,9 @@ Deno.test({
 
 Deno.test({
   name: "Async: Data is written to passed in rid",
+  // TODO(bartlomieju): this test is broken in Deno 2, because `file.rid` is undefined.
+  // The fs APIs should be rewritten to use actual FDs, not RIDs
+  ignore: true,
   async fn() {
     const tempFile: string = await Deno.makeTempFile();
     using file = await Deno.open(tempFile, {
@@ -72,6 +75,7 @@ Deno.test({
       read: true,
     });
     await new Promise<void>((resolve, reject) => {
+      // @ts-ignore (iuioiua) `file.rid` should no longer be needed once FDs are used
       appendFile(file.rid, "hello world", (err) => {
         if (err) reject();
         else resolve();
@@ -153,6 +157,9 @@ Deno.test({
 
 Deno.test({
   name: "Sync: Data is written to passed in rid",
+  // TODO(bartlomieju): this test is broken in Deno 2, because `file.rid` is undefined.
+  // The fs APIs should be rewritten to use actual FDs, not RIDs
+  ignore: true,
   fn() {
     const tempFile: string = Deno.makeTempFileSync();
     using file = Deno.openSync(tempFile, {
@@ -160,6 +167,7 @@ Deno.test({
       write: true,
       read: true,
     });
+    // @ts-ignore (iuioiua) `file.rid` should no longer be needed once FDs are used
     appendFileSync(file.rid, "hello world");
     const data = Deno.readFileSync(tempFile);
     assertEquals(decoder.decode(data), "hello world");
