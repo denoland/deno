@@ -539,6 +539,8 @@ function resolveExports(
     ) ?? false;
   } catch (error) {
     if (error instanceof Error) {
+      // TODO(nathanwhit): properly throw an error with the `code` property set
+      // from rust once the error rework lands
       const m = error.message.match(ERROR_CODE_REGEX);
       if (m) {
         error.code = m[1];
@@ -1098,6 +1100,7 @@ function loadESMFromCJS(module, filename, code) {
     url.pathToFileURL(filename).toString(),
     code,
   );
+
   module.exports = namespace;
 }
 
