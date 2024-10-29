@@ -26,6 +26,7 @@ use crate::node;
 use crate::node::CliNodeCodeTranslator;
 use crate::npm::CliNodeRequireLoader;
 use crate::npm::CliNpmResolver;
+use crate::resolver::CjsTracker;
 use crate::resolver::CliGraphResolver;
 use crate::resolver::CliNodeResolver;
 use crate::resolver::ModuleCodeStringSource;
@@ -38,6 +39,7 @@ use crate::util::text_encoding::source_map_from_code;
 use crate::worker::CreateModuleLoaderResult;
 use crate::worker::ModuleLoaderFactory;
 use deno_ast::MediaType;
+use deno_ast::ModuleKind;
 use deno_core::anyhow::anyhow;
 use deno_core::anyhow::bail;
 use deno_core::anyhow::Context;
@@ -202,6 +204,7 @@ struct SharedCliModuleLoaderState {
   initial_cwd: PathBuf,
   is_inspecting: bool,
   is_repl: bool,
+  cjs_tracker: Arc<CjsTracker>,
   code_cache: Option<Arc<CodeCache>>,
   emitter: Arc<Emitter>,
   fs: Arc<dyn FileSystem>,
@@ -223,6 +226,7 @@ impl CliModuleLoaderFactory {
   #[allow(clippy::too_many_arguments)]
   pub fn new(
     options: &CliOptions,
+    cjs_tracker: Arc<CjsTracker>,
     code_cache: Option<Arc<CodeCache>>,
     emitter: Arc<Emitter>,
     fs: Arc<dyn FileSystem>,
@@ -246,6 +250,7 @@ impl CliModuleLoaderFactory {
           options.sub_command(),
           DenoSubcommand::Repl(_) | DenoSubcommand::Jupyter(_)
         ),
+        cjs_tracker,
         code_cache,
         emitter,
         fs,
@@ -349,24 +354,7 @@ impl<TGraphContainer: ModuleGraphContainer>
     maybe_referrer: Option<&ModuleSpecifier>,
     requested_module_type: RequestedModuleType,
   ) -> Result<ModuleSource, AnyError> {
-    let code_source = match self.load_prepared_module(specifier).await? {
-      Some(code_source) => code_source,
-      None => {
-        if self.shared.npm_module_loader.if_in_npm_package(specifier) {
-          self
-            .shared
-            .npm_module_loader
-            .load(specifier, maybe_referrer)
-            .await?
-        } else {
-          let mut msg = format!("Loading unprepared module: {specifier}");
-          if let Some(referrer) = maybe_referrer {
-            msg = format!("{}, imported from: {}", msg, referrer.as_str());
-          }
-          return Err(anyhow!(msg));
-        }
-      }
-    };
+    let code_source = self.load_code_source(specifier, maybe_referrer).await?;
     let code = if self.shared.is_inspecting {
       // we need the code with the source map in order for
       // it to work with --inspect or --inspect-brk
@@ -418,6 +406,29 @@ impl<TGraphContainer: ModuleGraphContainer>
       &code_source.found_url,
       code_cache,
     ))
+  }
+
+  async fn load_code_source(
+    &self,
+    specifier: &ModuleSpecifier,
+    maybe_referrer: Option<&ModuleSpecifier>,
+  ) -> Result<ModuleCodeStringSource, AnyError> {
+    if let Some(code_source) = self.load_prepared_module(specifier).await? {
+      return Ok(code_source);
+    }
+    if self.shared.npm_module_loader.if_in_npm_package(specifier) {
+      return self
+        .shared
+        .npm_module_loader
+        .load(specifier, maybe_referrer)
+        .await;
+    }
+
+    let mut msg = format!("Loading unprepared module: {specifier}");
+    if let Some(referrer) = maybe_referrer {
+      msg = format!("{}, imported from: {}", msg, referrer.as_str());
+    }
+    Err(anyhow!(msg))
   }
 
   fn resolve_referrer(
@@ -552,7 +563,7 @@ impl<TGraphContainer: ModuleGraphContainer>
       }) => {
         let transpile_result = self
           .emitter
-          .emit_parsed_source(specifier, media_type, source)
+          .emit_parsed_source(specifier, ModuleKind::Esm, media_type, source)
           .await?;
 
         // at this point, we no longer need the parsed source in memory, so free it
@@ -569,30 +580,7 @@ impl<TGraphContainer: ModuleGraphContainer>
         specifier,
         media_type,
         source,
-      }) => {
-        let js_source = match media_type {
-          MediaType::Cts => Cow::Owned(
-            self
-              .emitter
-              .emit_parsed_source(specifier, MediaType::Cts, source)
-              .await?,
-          ),
-          MediaType::Cjs => Cow::Borrowed(source.as_ref()),
-          _ => unreachable!(),
-        };
-        let text = self
-          .node_code_translator
-          .translate_cjs_to_esm(specifier, Some(js_source))
-          .await?;
-        // at this point, we no longer need the parsed source in memory, so free it
-        self.parsed_source_cache.free(specifier);
-
-        Ok(Some(ModuleCodeStringSource {
-          code: ModuleSourceCode::String(text.into_owned().into()),
-          found_url: specifier.clone(),
-          media_type,
-        }))
-      }
+      }) => self.load_cjs(specifier, media_type, source).await.map(Some),
       None => Ok(None),
     }
   }
@@ -610,9 +598,12 @@ impl<TGraphContainer: ModuleGraphContainer>
         media_type,
         source,
       }) => {
-        let transpile_result = self
-          .emitter
-          .emit_parsed_source_sync(specifier, media_type, source)?;
+        let transpile_result = self.emitter.emit_parsed_source_sync(
+          specifier,
+          ModuleKind::Esm,
+          media_type,
+          source,
+        )?;
 
         // at this point, we no longer need the parsed source in memory, so free it
         self.parsed_source_cache.free(specifier);
@@ -661,8 +652,16 @@ impl<TGraphContainer: ModuleGraphContainer>
         source,
         media_type,
         specifier,
+        is_script,
         ..
       })) => {
+        if *is_script && self.shared.cjs_tracker.treat_as_cjs(specifier)? {
+          return Ok(Some(CodeOrDeferredEmit::Cjs {
+            specifier,
+            media_type: *media_type,
+            source,
+          }));
+        }
         let code: ModuleCodeString = match media_type {
           MediaType::JavaScript
           | MediaType::Unknown
@@ -688,7 +687,7 @@ impl<TGraphContainer: ModuleGraphContainer>
               source,
             }));
           }
-          MediaType::TsBuildInfo | MediaType::Wasm | MediaType::SourceMap => {
+          MediaType::Css | MediaType::Wasm | MediaType::SourceMap => {
             panic!("Unexpected media type {media_type} for {specifier}")
           }
         };
@@ -709,6 +708,35 @@ impl<TGraphContainer: ModuleGraphContainer>
       )
       | None => Ok(None),
     }
+  }
+
+  async fn load_cjs(
+    &self,
+    specifier: &ModuleSpecifier,
+    media_type: MediaType,
+    source: &Arc<str>,
+  ) -> Result<ModuleCodeStringSource, AnyError> {
+    let js_source = if media_type.is_emittable() {
+      Cow::Owned(
+        self
+          .emitter
+          .emit_parsed_source(specifier, ModuleKind::Cjs, media_type, source)
+          .await?,
+      )
+    } else {
+      Cow::Borrowed(source.as_ref())
+    };
+    let text = self
+      .node_code_translator
+      .translate_cjs_to_esm(specifier, Some(js_source))
+      .await?;
+    // at this point, we no longer need the parsed source in memory, so free it
+    self.parsed_source_cache.free(specifier);
+    Ok(ModuleCodeStringSource {
+      code: ModuleSourceCode::String(text.into_owned().into()),
+      found_url: specifier.clone(),
+      media_type,
+    })
   }
 }
 

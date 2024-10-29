@@ -202,7 +202,7 @@ fn serialize_media_type(media_type: MediaType) -> i64 {
     Tsx => 11,
     Json => 12,
     Wasm => 13,
-    TsBuildInfo => 14,
+    Css => 14,
     SourceMap => 15,
     Unknown => 16,
   }

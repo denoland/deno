@@ -72,7 +72,8 @@ use crate::npm::CliNpmResolver;
 use crate::npm::CliNpmResolverCreateOptions;
 use crate::npm::CliNpmResolverManagedCreateOptions;
 use crate::npm::CliNpmResolverManagedSnapshotOption;
-use crate::resolver::CjsResolutionStore;
+use crate::resolver::CjsTracker;
+use crate::resolver::CjsTrackerOptions;
 use crate::resolver::CliDenoResolverFs;
 use crate::resolver::CliNodeResolver;
 use crate::resolver::NpmModuleLoader;
@@ -97,7 +98,7 @@ use self::binary::Metadata;
 use self::file_system::DenoCompileFileSystem;
 
 struct SharedModuleLoaderState {
-  cjs_resolutions: Arc<CjsResolutionStore>,
+  cjs_tracker: Arc<CjsTracker>,
   fs: Arc<dyn deno_fs::FileSystem>,
   modules: StandaloneModules,
   node_code_translator: Arc<CliNodeCodeTranslator>,
@@ -335,7 +336,16 @@ impl ModuleLoader for EmbeddedModuleLoader {
       Ok(Some(module)) => {
         let (module_specifier, module_type, module_source) =
           module.into_parts();
-        if self.shared.cjs_resolutions.is_known_cjs(original_specifier) {
+        let is_cjs =
+          match self.shared.cjs_tracker.treat_as_cjs(original_specifier) {
+            Ok(is_cjs) => is_cjs,
+            Err(err) => {
+              return deno_core::ModuleLoadResponse::Sync(Err(type_error(
+                format!("{:?}", err),
+              )));
+            }
+          };
+        if is_cjs {
           let original_specifier = original_specifier.clone();
           let module_specifier = module_specifier.clone();
           let shared = self.shared.clone();
@@ -572,11 +582,16 @@ pub async fn run(data: StandaloneData) -> Result<i32, AnyError> {
     deno_runtime::deno_node::DenoFsNodeResolverEnv::new(fs.clone()),
     npm_resolver.clone().into_npm_resolver(),
   ));
-  let cjs_resolutions = Arc::new(CjsResolutionStore::default());
+  let cjs_tracker = Arc::new(CjsTracker::new(
+    CjsTrackerOptions {
+      unstable_detect_cjs: metadata.unstable_config.detect_cjs,
+    },
+    node_resolver.clone(),
+  ));
   let cache_db = Caches::new(deno_dir_provider.clone());
   let node_analysis_cache = NodeAnalysisCache::new(cache_db.node_analysis_db());
   let cli_node_resolver = Arc::new(CliNodeResolver::new(
-    cjs_resolutions.clone(),
+    cjs_tracker.clone(),
     fs.clone(),
     node_resolver.clone(),
     npm_resolver.clone(),
@@ -644,13 +659,13 @@ pub async fn run(data: StandaloneData) -> Result<i32, AnyError> {
   };
   let module_loader_factory = StandaloneModuleLoaderFactory {
     shared: Arc::new(SharedModuleLoaderState {
-      cjs_resolutions: cjs_resolutions.clone(),
+      cjs_tracker: cjs_tracker.clone(),
       fs: fs.clone(),
       modules,
       node_code_translator: node_code_translator.clone(),
       node_resolver: cli_node_resolver.clone(),
       npm_module_loader: Arc::new(NpmModuleLoader::new(
-        cjs_resolutions.clone(),
+        cjs_tracker.clone(),
         node_code_translator,
         fs.clone(),
         cli_node_resolver,
@@ -695,7 +710,7 @@ pub async fn run(data: StandaloneData) -> Result<i32, AnyError> {
   });
   let worker_factory = CliMainWorkerFactory::new(
     Arc::new(BlobStore::default()),
-    cjs_resolutions,
+    cjs_tracker,
     // Code cache is not supported for standalone binary yet.
     None,
     feature_checker,

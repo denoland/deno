@@ -48,7 +48,8 @@ use crate::npm::CliNpmResolverCreateOptions;
 use crate::npm::CliNpmResolverManagedCreateOptions;
 use crate::npm::CliNpmResolverManagedSnapshotOption;
 use crate::npm::ManagedCliNpmResolver;
-use crate::resolver::CjsResolutionStore;
+use crate::resolver::CjsTracker;
+use crate::resolver::CjsTrackerOptions;
 use crate::resolver::CliDenoResolverFs;
 use crate::resolver::CliGraphResolver;
 use crate::resolver::CliGraphResolverOptions;
@@ -509,21 +510,21 @@ async fn create_npm_resolver(
 fn create_node_resolver(
   npm_resolver: Option<&Arc<dyn CliNpmResolver>>,
 ) -> Option<Arc<CliNodeResolver>> {
-  use once_cell::sync::Lazy;
-
-  // it's not ideal to share this across all scopes and to
-  // never clear it, but it's fine for the time being
-  static CJS_RESOLUTIONS: Lazy<Arc<CjsResolutionStore>> =
-    Lazy::new(Default::default);
-
   let npm_resolver = npm_resolver?;
   let fs = Arc::new(deno_fs::RealFs);
   let node_resolver_inner = Arc::new(NodeResolver::new(
     deno_runtime::deno_node::DenoFsNodeResolverEnv::new(fs.clone()),
     npm_resolver.clone().into_npm_resolver(),
   ));
+  let cjs_tracker = Arc::new(CjsTracker::new(
+    CjsTrackerOptions {
+      // todo(dsherret): support in the lsp
+      unstable_detect_cjs: false,
+    },
+    node_resolver_inner.clone(),
+  ));
   Some(Arc::new(CliNodeResolver::new(
-    CJS_RESOLUTIONS.clone(),
+    cjs_tracker,
     fs,
     node_resolver_inner,
     npm_resolver.clone(),

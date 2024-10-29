@@ -22,9 +22,9 @@ use deno_core::serde_json;
 use deno_doc as doc;
 use deno_doc::html::UrlResolveKind;
 use deno_graph::source::NullFileSystem;
+use deno_graph::EsParser;
 use deno_graph::GraphKind;
 use deno_graph::ModuleAnalyzer;
-use deno_graph::ModuleParser;
 use deno_graph::ModuleSpecifier;
 use doc::html::ShortPath;
 use doc::DocDiagnostic;
@@ -37,7 +37,7 @@ const JSON_SCHEMA_VERSION: u8 = 1;
 
 async fn generate_doc_nodes_for_builtin_types(
   doc_flags: DocFlags,
-  parser: &dyn ModuleParser,
+  parser: &dyn EsParser,
   analyzer: &dyn ModuleAnalyzer,
 ) -> Result<IndexMap<ModuleSpecifier, Vec<doc::DocNode>>, AnyError> {
   let source_file_specifier =

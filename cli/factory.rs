@@ -14,7 +14,6 @@ use crate::cache::CodeCache;
 use crate::cache::DenoDir;
 use crate::cache::DenoDirProvider;
 use crate::cache::EmitCache;
-use crate::cache::EsmOrCjsChecker;
 use crate::cache::GlobalHttpCache;
 use crate::cache::HttpCache;
 use crate::cache::LocalHttpCache;
@@ -38,7 +37,8 @@ use crate::npm::CliNpmResolver;
 use crate::npm::CliNpmResolverCreateOptions;
 use crate::npm::CliNpmResolverManagedCreateOptions;
 use crate::npm::CliNpmResolverManagedSnapshotOption;
-use crate::resolver::CjsResolutionStore;
+use crate::resolver::CjsTracker;
+use crate::resolver::CjsTrackerOptions;
 use crate::resolver::CliDenoResolverFs;
 use crate::resolver::CliGraphResolver;
 use crate::resolver::CliGraphResolverOptions;
@@ -172,7 +172,6 @@ struct CliFactoryServices {
   http_client_provider: Deferred<Arc<HttpClientProvider>>,
   emit_cache: Deferred<Arc<EmitCache>>,
   emitter: Deferred<Arc<Emitter>>,
-  esm_or_cjs_checker: Deferred<Arc<EsmOrCjsChecker>>,
   fs: Deferred<Arc<dyn deno_fs::FileSystem>>,
   main_graph_container: Deferred<Arc<MainModuleGraphContainer>>,
   maybe_inspector_server: Deferred<Option<Arc<InspectorServer>>>,
@@ -193,7 +192,7 @@ struct CliFactoryServices {
   sloppy_imports_resolver: Deferred<Option<Arc<CliSloppyImportsResolver>>>,
   text_only_progress_bar: Deferred<ProgressBar>,
   type_checker: Deferred<Arc<TypeChecker>>,
-  cjs_resolutions: Deferred<Arc<CjsResolutionStore>>,
+  cjs_tracker: Deferred<Arc<CjsTracker>>,
   cli_node_resolver: Deferred<Arc<CliNodeResolver>>,
   feature_checker: Deferred<Arc<FeatureChecker>>,
   code_cache: Deferred<Arc<CodeCache>>,
@@ -298,12 +297,6 @@ impl CliFactory {
       .services
       .text_only_progress_bar
       .get_or_init(|| ProgressBar::new(ProgressBarStyle::TextOnly))
-  }
-
-  pub fn esm_or_cjs_checker(&self) -> &Arc<EsmOrCjsChecker> {
-    self.services.esm_or_cjs_checker.get_or_init(|| {
-      Arc::new(EsmOrCjsChecker::new(self.parsed_source_cache().clone()))
-    })
   }
 
   pub fn global_http_cache(&self) -> Result<&Arc<GlobalHttpCache>, AnyError> {
@@ -628,10 +621,8 @@ impl CliFactory {
         Ok(Arc::new(ModuleGraphBuilder::new(
           cli_options.clone(),
           self.caches()?.clone(),
-          self.esm_or_cjs_checker().clone(),
           self.fs().clone(),
           self.resolver().await?.clone(),
-          self.cli_node_resolver().await?.clone(),
           self.npm_resolver().await?.clone(),
           self.module_info_cache()?.clone(),
           self.parsed_source_cache().clone(),
@@ -710,8 +701,20 @@ impl CliFactory {
       .await
   }
 
-  pub fn cjs_resolutions(&self) -> &Arc<CjsResolutionStore> {
-    self.services.cjs_resolutions.get_or_init(Default::default)
+  pub async fn cjs_tracker(&self) -> Result<&Arc<CjsTracker>, AnyError> {
+    self
+      .services
+      .cjs_tracker
+      .get_or_try_init_async(async {
+        let options = self.cli_options()?;
+        Ok(Arc::new(CjsTracker::new(
+          CjsTrackerOptions {
+            unstable_detect_cjs: options.unstable_detect_cjs(),
+          },
+          self.node_resolver().await?.clone(),
+        )))
+      })
+      .await
   }
 
   pub async fn cli_node_resolver(
@@ -722,7 +725,7 @@ impl CliFactory {
       .cli_node_resolver
       .get_or_try_init_async(async {
         Ok(Arc::new(CliNodeResolver::new(
-          self.cjs_resolutions().clone(),
+          self.cjs_tracker().await?.clone(),
           self.fs().clone(),
           self.node_resolver().await?.clone(),
           self.npm_resolver().await?.clone(),
@@ -761,6 +764,7 @@ impl CliFactory {
   ) -> Result<DenoCompileBinaryWriter, AnyError> {
     let cli_options = self.cli_options()?;
     Ok(DenoCompileBinaryWriter::new(
+      self.cjs_tracker().await?,
       self.deno_dir()?,
       self.emitter()?,
       self.file_fetcher()?,
@@ -802,10 +806,11 @@ impl CliFactory {
       None
     };
     let node_code_translator = self.node_code_translator().await?;
+    let cjs_tracker = self.cjs_tracker().await?.clone();
 
     Ok(CliMainWorkerFactory::new(
       self.blob_store().clone(),
-      self.cjs_resolutions().clone(),
+      cjs_tracker.clone(),
       if cli_options.code_cache_enabled() {
         Some(self.code_cache()?.clone())
       } else {
@@ -818,6 +823,7 @@ impl CliFactory {
       cli_options.maybe_lockfile().cloned(),
       Box::new(CliModuleLoaderFactory::new(
         cli_options,
+        cjs_tracker,
         if cli_options.code_cache_enabled() {
           Some(self.code_cache()?.clone())
         } else {
@@ -831,7 +837,7 @@ impl CliFactory {
         cli_node_resolver.clone(),
         cli_npm_resolver.clone(),
         NpmModuleLoader::new(
-          self.cjs_resolutions().clone(),
+          self.cjs_tracker().await?.clone(),
           node_code_translator.clone(),
           fs.clone(),
           cli_node_resolver.clone(),
@@ -845,19 +851,21 @@ impl CliFactory {
       self.root_permissions_container()?.clone(),
       StorageKeyResolver::from_options(cli_options),
       cli_options.sub_command().clone(),
-      self.create_cli_main_worker_options()?,
+      self.create_cli_main_worker_options().await?,
     ))
   }
 
-  fn create_cli_main_worker_options(
+  async fn create_cli_main_worker_options(
     &self,
   ) -> Result<CliMainWorkerOptions, AnyError> {
     let cli_options = self.cli_options()?;
     let create_hmr_runner = if cli_options.has_hmr() {
       let watcher_communicator = self.watcher_communicator.clone().unwrap();
       let emitter = self.emitter()?.clone();
+      let cjs_tracker = self.cjs_tracker().await?.clone();
       let fn_: crate::worker::CreateHmrRunnerCb = Box::new(move |session| {
         Box::new(HmrRunner::new(
+          cjs_tracker.clone(),
           emitter.clone(),
           session,
           watcher_communicator.clone(),

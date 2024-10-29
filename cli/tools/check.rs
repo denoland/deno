@@ -346,7 +346,7 @@ fn get_check_hash(
             }
           }
           MediaType::Json
-          | MediaType::TsBuildInfo
+          | MediaType::Css
           | MediaType::SourceMap
           | MediaType::Wasm
           | MediaType::Unknown => continue,
@@ -428,7 +428,7 @@ fn get_tsc_roots(
         }
         MediaType::Json
         | MediaType::Wasm
-        | MediaType::TsBuildInfo
+        | MediaType::Css
         | MediaType::SourceMap
         | MediaType::Unknown => None,
       },
@@ -536,7 +536,7 @@ fn has_ts_check(media_type: MediaType, file_text: &str) -> bool {
     | MediaType::Tsx
     | MediaType::Json
     | MediaType::Wasm
-    | MediaType::TsBuildInfo
+    | MediaType::Css
     | MediaType::SourceMap
     | MediaType::Unknown => false,
   }

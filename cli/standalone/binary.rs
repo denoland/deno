@@ -21,6 +21,7 @@ use std::process::Command;
 use std::sync::Arc;
 
 use deno_ast::MediaType;
+use deno_ast::ModuleKind;
 use deno_ast::ModuleSpecifier;
 use deno_config::workspace::PackageJsonDepResolution;
 use deno_config::workspace::ResolverWorkspaceJsrPackage;
@@ -67,6 +68,7 @@ use crate::file_fetcher::FileFetcher;
 use crate::http_util::HttpClientProvider;
 use crate::npm::CliNpmResolver;
 use crate::npm::InnerCliNpmResolverRef;
+use crate::resolver::CjsTracker;
 use crate::shared::ReleaseChannel;
 use crate::standalone::virtual_fs::VfsEntry;
 use crate::util::archive;
@@ -353,6 +355,7 @@ pub fn extract_standalone(
 }
 
 pub struct DenoCompileBinaryWriter<'a> {
+  cjs_tracker: &'a CjsTracker,
   deno_dir: &'a DenoDir,
   emitter: &'a Emitter,
   file_fetcher: &'a FileFetcher,
@@ -365,6 +368,7 @@ pub struct DenoCompileBinaryWriter<'a> {
 impl<'a> DenoCompileBinaryWriter<'a> {
   #[allow(clippy::too_many_arguments)]
   pub fn new(
+    cjs_tracker: &'a CjsTracker,
     deno_dir: &'a DenoDir,
     emitter: &'a Emitter,
     file_fetcher: &'a FileFetcher,
@@ -374,6 +378,7 @@ impl<'a> DenoCompileBinaryWriter<'a> {
     npm_system_info: NpmSystemInfo,
   ) -> Self {
     Self {
+      cjs_tracker,
       deno_dir,
       emitter,
       file_fetcher,
@@ -599,19 +604,21 @@ impl<'a> DenoCompileBinaryWriter<'a> {
       }
       let (maybe_source, media_type) = match module {
         deno_graph::Module::Js(m) => {
-          // todo(https://github.com/denoland/deno_media_type/pull/12): use is_emittable()
-          let is_emittable = matches!(
-            m.media_type,
-            MediaType::TypeScript
-              | MediaType::Mts
-              | MediaType::Cts
-              | MediaType::Jsx
-              | MediaType::Tsx
-          );
-          let source = if is_emittable {
+          let source = if m.media_type.is_emittable() {
+            let module_kind =
+              if m.is_script && self.cjs_tracker.treat_as_cjs(&m.specifier)? {
+                ModuleKind::Cjs
+              } else {
+                ModuleKind::Esm
+              };
             let source = self
               .emitter
-              .emit_parsed_source(&m.specifier, m.media_type, &m.source)
+              .emit_parsed_source(
+                &m.specifier,
+                module_kind,
+                m.media_type,
+                &m.source,
+              )
               .await?;
             source.into_bytes()
           } else {

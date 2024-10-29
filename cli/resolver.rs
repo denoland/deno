@@ -105,7 +105,7 @@ impl deno_resolver::fs::DenoResolverFs for CliDenoResolverFs {
 
 #[derive(Debug)]
 pub struct CliNodeResolver {
-  cjs_resolutions: Arc<CjsResolutionStore>,
+  cjs_tracker: Arc<CjsTracker>,
   fs: Arc<dyn deno_fs::FileSystem>,
   node_resolver: Arc<NodeResolver>,
   npm_resolver: Arc<dyn CliNpmResolver>,
@@ -113,13 +113,13 @@ pub struct CliNodeResolver {
 
 impl CliNodeResolver {
   pub fn new(
-    cjs_resolutions: Arc<CjsResolutionStore>,
+    cjs_tracker: Arc<CjsTracker>,
     fs: Arc<dyn deno_fs::FileSystem>,
     node_resolver: Arc<NodeResolver>,
     npm_resolver: Arc<dyn CliNpmResolver>,
   ) -> Self {
     Self {
-      cjs_resolutions,
+      cjs_tracker,
       fs,
       node_resolver,
       npm_resolver,
@@ -217,7 +217,11 @@ impl CliNodeResolver {
     referrer: &ModuleSpecifier,
     mode: NodeResolutionMode,
   ) -> Result<NodeResolution, NodeResolveError> {
-    let referrer_kind = if self.cjs_resolutions.is_known_cjs(referrer) {
+    let referrer_kind = if self
+      .cjs_tracker
+      .treat_as_cjs(referrer)
+      .map_err(|err| NodeResolveErrorKind::PackageResolve(err.into()))?
+    {
       NodeModuleKind::Cjs
     } else {
       NodeModuleKind::Esm
@@ -339,14 +343,14 @@ impl CliNodeResolver {
   }
 
   pub fn mark_cjs_resolution(&self, specifier: ModuleSpecifier) {
-    self.cjs_resolutions.insert(specifier);
+    self.cjs_tracker.insert(specifier);
   }
 }
 
 // todo(dsherret): move to module_loader.rs
 #[derive(Clone)]
 pub struct NpmModuleLoader {
-  cjs_resolutions: Arc<CjsResolutionStore>,
+  cjs_tracker: Arc<CjsTracker>,
   node_code_translator: Arc<CliNodeCodeTranslator>,
   fs: Arc<dyn deno_fs::FileSystem>,
   node_resolver: Arc<CliNodeResolver>,
@@ -354,13 +358,13 @@ pub struct NpmModuleLoader {
 
 impl NpmModuleLoader {
   pub fn new(
-    cjs_resolutions: Arc<CjsResolutionStore>,
+    cjs_tracker: Arc<CjsTracker>,
     node_code_translator: Arc<CliNodeCodeTranslator>,
     fs: Arc<dyn deno_fs::FileSystem>,
     node_resolver: Arc<CliNodeResolver>,
   ) -> Self {
     Self {
-      cjs_resolutions,
+      cjs_tracker,
       node_code_translator,
       fs,
       node_resolver,
@@ -413,7 +417,7 @@ impl NpmModuleLoader {
         }
       })?;
 
-    let code = if self.cjs_resolutions.is_known_cjs(specifier) {
+    let code = if self.cjs_tracker.treat_as_cjs(specifier)? {
       // translate cjs to esm if it's cjs and inject node globals
       let code = from_utf8_lossy_owned(code);
       ModuleSourceCode::String(
@@ -436,23 +440,78 @@ impl NpmModuleLoader {
   }
 }
 
-/// Keeps track of what module specifiers were resolved as CJS.
-#[derive(Debug, Default)]
-pub struct CjsResolutionStore(DashSet<ModuleSpecifier>);
+pub struct CjsTrackerOptions {
+  pub unstable_detect_cjs: bool,
+}
 
-impl CjsResolutionStore {
-  pub fn is_known_cjs(&self, specifier: &ModuleSpecifier) -> bool {
+/// Keeps track of what module specifiers were resolved as CJS.
+#[derive(Debug)]
+pub struct CjsTracker {
+  unstable_detect_cjs: bool,
+  set: DashSet<ModuleSpecifier>,
+  node_resolver: Arc<NodeResolver>,
+}
+
+impl CjsTracker {
+  pub fn new(
+    options: CjsTrackerOptions,
+    node_resolver: Arc<NodeResolver>,
+  ) -> Self {
+    Self {
+      unstable_detect_cjs: options.unstable_detect_cjs,
+      set: DashSet::new(),
+      node_resolver,
+    }
+  }
+
+  pub fn treat_as_cjs(
+    &self,
+    specifier: &ModuleSpecifier,
+  ) -> Result<bool, ClosestPkgJsonError> {
     if specifier.scheme() != "file" {
-      return false;
+      return Ok(false);
     }
 
-    specifier_has_extension(specifier, "cjs")
-      || specifier_has_extension(specifier, "cts")
-      || self.0.contains(specifier)
+    let media_type = MediaType::from_specifier(specifier);
+    if matches!(media_type, MediaType::Cjs | MediaType::Cts)
+      || self.set.contains(specifier)
+    {
+      return Ok(true);
+    }
+
+    if self.unstable_detect_cjs {
+      let is_pkg_json_type_affected = match media_type {
+        MediaType::JavaScript
+        | MediaType::Jsx
+        | MediaType::TypeScript
+        | MediaType::Tsx
+        | MediaType::Dts => true,
+        MediaType::Dmts
+        | MediaType::Dcts
+        | MediaType::Css
+        | MediaType::Json
+        | MediaType::Wasm
+        | MediaType::Mjs
+        | MediaType::Cjs
+        | MediaType::Mts
+        | MediaType::Cts
+        | MediaType::SourceMap
+        | MediaType::Unknown => false,
+      };
+      if is_pkg_json_type_affected {
+        if let Some(pkg_json) =
+          self.node_resolver.get_closest_package_json(specifier)?
+        {
+          return Ok(pkg_json.typ == "commonjs");
+        }
+      }
+    }
+
+    Ok(false)
   }
 
   pub fn insert(&self, specifier: ModuleSpecifier) {
-    self.0.insert(specifier);
+    self.set.insert(specifier);
   }
 }
 

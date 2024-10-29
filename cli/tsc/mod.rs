@@ -456,7 +456,7 @@ pub fn as_ts_script_kind(media_type: MediaType) -> i32 {
     MediaType::Tsx => 4,
     MediaType::Json => 6,
     MediaType::SourceMap
-    | MediaType::TsBuildInfo
+    | MediaType::Css
     | MediaType::Wasm
     | MediaType::Unknown => 0,
   }

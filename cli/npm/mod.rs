@@ -12,6 +12,7 @@ use std::sync::Arc;
 use common::maybe_auth_header_for_npm_registry;
 use dashmap::DashMap;
 use deno_ast::MediaType;
+use deno_ast::ModuleKind;
 use deno_ast::ModuleSpecifier;
 use deno_core::error::AnyError;
 use deno_core::serde_json;
@@ -232,13 +233,16 @@ impl NodeRequireLoader for CliNodeRequireLoader {
 
   fn load_text_file_lossy(&self, path: &Path) -> Result<String, AnyError> {
     // todo(dsherret): use the preloaded module from the graph if available
-    let specifier = deno_path_util::url_from_file_path(&path)?;
+    let specifier = deno_path_util::url_from_file_path(path)?;
     let media_type = MediaType::from_specifier(&specifier);
     let text = self.fs.read_text_file_lossy_sync(path, None)?;
     if media_type == MediaType::Cts {
-      self
-        .emitter
-        .emit_parsed_source_sync(&specifier, media_type, &text.into())
+      self.emitter.emit_parsed_source_sync(
+        &specifier,
+        ModuleKind::Cjs,
+        media_type,
+        &text.into(),
+      )
     } else {
       Ok(text)
     }

@@ -53,7 +53,7 @@ use crate::args::DenoSubcommand;
 use crate::args::StorageKeyResolver;
 use crate::errors;
 use crate::npm::CliNpmResolver;
-use crate::resolver::CjsResolutionStore;
+use crate::resolver::CjsTracker;
 use crate::util::checksum;
 use crate::util::file_watcher::WatcherCommunicator;
 use crate::util::file_watcher::WatcherRestartMode;
@@ -131,7 +131,7 @@ pub struct CliMainWorkerOptions {
 struct SharedWorkerState {
   blob_store: Arc<BlobStore>,
   broadcast_channel: InMemoryBroadcastChannel,
-  cjs_resolution_store: Arc<CjsResolutionStore>,
+  cjs_tracker: Arc<CjsTracker>,
   code_cache: Option<Arc<dyn code_cache::CodeCache>>,
   compiled_wasm_module_store: CompiledWasmModuleStore,
   feature_checker: Arc<FeatureChecker>,
@@ -156,7 +156,7 @@ impl SharedWorkerState {
     node_require_loader: NodeRequireLoaderRc,
   ) -> NodeExtInitServices {
     NodeExtInitServices {
-      node_require_loader: node_require_loader,
+      node_require_loader,
       node_resolver: self.node_resolver.clone(),
       npm_resolver: self.npm_resolver.clone().into_npm_resolver(),
     }
@@ -432,7 +432,7 @@ impl CliMainWorkerFactory {
   #[allow(clippy::too_many_arguments)]
   pub fn new(
     blob_store: Arc<BlobStore>,
-    cjs_resolution_store: Arc<CjsResolutionStore>,
+    cjs_tracker: Arc<CjsTracker>,
     code_cache: Option<Arc<dyn code_cache::CodeCache>>,
     feature_checker: Arc<FeatureChecker>,
     fs: Arc<dyn deno_fs::FileSystem>,
@@ -452,7 +452,7 @@ impl CliMainWorkerFactory {
       shared: Arc::new(SharedWorkerState {
         blob_store,
         broadcast_channel: Default::default(),
-        cjs_resolution_store,
+        cjs_tracker,
         code_cache,
         compiled_wasm_module_store: Default::default(),
         feature_checker,
@@ -544,28 +544,7 @@ impl CliMainWorkerFactory {
       let is_main_cjs = matches!(node_resolution, NodeResolution::CommonJs(_));
       (node_resolution.into_url(), is_main_cjs)
     } else {
-      let is_maybe_cjs_js_ext = self.shared.options.unstable_detect_cjs
-        && specifier_has_extension(&main_module, "js")
-        && self
-          .shared
-          .node_resolver
-          .get_closest_package_json(&main_module)
-          .ok()
-          .flatten()
-          .map(|pkg_json| pkg_json.typ == "commonjs")
-          .unwrap_or(false);
-      let is_cjs = if is_maybe_cjs_js_ext {
-        // fill the cjs resolution store by preparing the module load
-        module_loader
-          .prepare_load(&main_module, None, false)
-          .await?;
-        self.shared.cjs_resolution_store.is_known_cjs(&main_module)
-      } else {
-        main_module.scheme() == "file"
-          && (specifier_has_extension(&main_module, "cjs")
-            || specifier_has_extension(&main_module, "cts"))
-      };
-      (main_module, is_cjs)
+      (main_module, false)
     };
 
     let maybe_inspector_server = shared.maybe_inspector_server.clone();

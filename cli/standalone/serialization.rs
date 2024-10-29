@@ -275,7 +275,7 @@ impl<'a> DenoCompileModuleData<'a> {
         (ModuleType::Wasm, DenoCompileModuleSource::Bytes(self.data))
       }
       // just assume javascript if we made it here
-      MediaType::TsBuildInfo | MediaType::SourceMap | MediaType::Unknown => (
+      MediaType::Css | MediaType::SourceMap | MediaType::Unknown => (
         ModuleType::JavaScript,
         DenoCompileModuleSource::Bytes(self.data),
       ),
@@ -568,7 +568,7 @@ fn serialize_media_type(media_type: MediaType) -> u8 {
     MediaType::Tsx => 10,
     MediaType::Json => 11,
     MediaType::Wasm => 12,
-    MediaType::TsBuildInfo => 13,
+    MediaType::Css => 13,
     MediaType::SourceMap => 14,
     MediaType::Unknown => 15,
   }
@@ -589,7 +589,7 @@ fn deserialize_media_type(value: u8) -> Result<MediaType, AnyError> {
     10 => Ok(MediaType::Tsx),
     11 => Ok(MediaType::Json),
     12 => Ok(MediaType::Wasm),
-    13 => Ok(MediaType::TsBuildInfo),
+    13 => Ok(MediaType::Css),
     14 => Ok(MediaType::SourceMap),
     15 => Ok(MediaType::Unknown),
     _ => bail!("Unknown media type value: {}", value),

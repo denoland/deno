@@ -12,6 +12,7 @@ use crate::tools::test::is_supported_test_path;
 use crate::util::text_encoding::source_map_from_code;
 
 use deno_ast::MediaType;
+use deno_ast::ModuleKind;
 use deno_ast::ModuleSpecifier;
 use deno_config::glob::FileCollector;
 use deno_config::glob::FilePatterns;
@@ -492,6 +493,7 @@ pub async fn cover_files(
   let npm_resolver = factory.npm_resolver().await?;
   let file_fetcher = factory.file_fetcher()?;
   let emitter = factory.emitter()?;
+  let cjs_tracker = factory.cjs_tracker().await?;
 
   assert!(!coverage_flags.files.include.is_empty());
 
@@ -568,6 +570,8 @@ pub async fn cover_files(
     let transpiled_code = match file.media_type {
       MediaType::JavaScript
       | MediaType::Unknown
+      | MediaType::Css
+      | MediaType::Wasm
       | MediaType::Cjs
       | MediaType::Mjs
       | MediaType::Json => None,
@@ -577,7 +581,12 @@ pub async fn cover_files(
       | MediaType::Mts
       | MediaType::Cts
       | MediaType::Tsx => {
-        Some(match emitter.maybe_cached_emit(&file.specifier, &file.source) {
+        let module_kind = if cjs_tracker.treat_as_cjs(&file.specifier)? {
+          ModuleKind::Cjs
+        } else {
+          ModuleKind::Esm
+        };
+        Some(match emitter.maybe_cached_emit(&file.specifier, module_kind, &file.source) {
           Some(code) => code,
           None => {
             return Err(anyhow!(
@@ -588,7 +597,7 @@ pub async fn cover_files(
           }
         })
       }
-      MediaType::Wasm | MediaType::TsBuildInfo | MediaType::SourceMap => {
+      MediaType::SourceMap => {
         unreachable!()
       }
     };

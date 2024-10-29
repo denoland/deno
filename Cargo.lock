@@ -1279,7 +1279,7 @@ dependencies = [
 
 [[package]]
 name = "deno_ast"
-version = "0.42.2"
+version = "0.43.0"
 dependencies = [
  "base64 0.21.7",
  "deno_media_type",
@@ -1354,9 +1354,9 @@ dependencies = [
 
 [[package]]
 name = "deno_cache_dir"
-version = "0.13.1"
+version = "0.13.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "693ca429aebf945de5fef30df232044f9f80be4cc5a5e7c8d767226c43880f5a"
+checksum = "08c1f52170cd7715f8006da54cde1444863a0d6fbd9c11d037a737db2dec8e22"
 dependencies = [
  "base32",
  "deno_media_type",
@@ -1504,7 +1504,9 @@ dependencies = [
 
 [[package]]
 name = "deno_doc"
-version = "0.154.0"
+version = "0.156.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "2585b98d6ad76dae30bf2d7b6d71b8363cae041158b8780d14a2f4fe17590a61"
 dependencies = [
  "anyhow",
  "cfg-if",
@@ -1602,7 +1604,9 @@ dependencies = [
 
 [[package]]
 name = "deno_graph"
-version = "0.83.4"
+version = "0.84.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c9d6c7edec696810563d8002e4330e87b63ecbdd48996a18a94946b9a0f4db50"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -1720,9 +1724,9 @@ dependencies = [
 
 [[package]]
 name = "deno_lint"
-version = "0.67.0"
+version = "0.68.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "871b60e32bfb6c110cbb9b0688dbf048f81e5d347fe4ce5a42239263de9dd938"
+checksum = "bb994e6d1b18223df0a756c7948143b35682941d615edffef60d5b38822f38ac"
 dependencies = [
  "anyhow",
  "deno_ast",
@@ -1750,9 +1754,9 @@ dependencies = [
 
 [[package]]
 name = "deno_media_type"
-version = "0.1.4"
+version = "0.2.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a8978229b82552bf8457a0125aa20863f023619cfc21ebb007b1e571d68fd85b"
+checksum = "7fcf552fbdedbe81c89705349d7d2485c7051382b000dfddbdbf7fc25931cf83"
 dependencies = [
  "data-url",
  "serde",
@@ -2602,9 +2606,9 @@ dependencies = [
 
 [[package]]
 name = "dprint-plugin-typescript"
-version = "0.93.0"
+version = "0.93.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e9308d98b923b7c0335c2ee1560199e3f2321b1be82803107b4ba4ed5dac46cc"
+checksum = "5abfd78fe3cde4f5a6699d65f760c8d44da130cf446b6f80a7a9bc6580e156ab"
 dependencies = [
  "anyhow",
  "deno_ast",

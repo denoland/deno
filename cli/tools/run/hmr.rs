@@ -1,9 +1,10 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
-use crate::cdp;
-use crate::emit::Emitter;
-use crate::util::file_watcher::WatcherCommunicator;
-use crate::util::file_watcher::WatcherRestartMode;
+use std::collections::HashMap;
+use std::path::PathBuf;
+use std::sync::Arc;
+
+use deno_ast::ModuleKind;
 use deno_core::error::generic_error;
 use deno_core::error::AnyError;
 use deno_core::futures::StreamExt;
@@ -12,10 +13,13 @@ use deno_core::serde_json::{self};
 use deno_core::url::Url;
 use deno_core::LocalInspectorSession;
 use deno_terminal::colors;
-use std::collections::HashMap;
-use std::path::PathBuf;
-use std::sync::Arc;
 use tokio::select;
+
+use crate::cdp;
+use crate::emit::Emitter;
+use crate::resolver::CjsTracker;
+use crate::util::file_watcher::WatcherCommunicator;
+use crate::util::file_watcher::WatcherRestartMode;
 
 fn explain(status: &cdp::Status) -> &'static str {
   match status {
@@ -58,6 +62,7 @@ pub struct HmrRunner {
   session: LocalInspectorSession,
   watcher_communicator: Arc<WatcherCommunicator>,
   script_ids: HashMap<String, String>,
+  cjs_tracker: Arc<CjsTracker>,
   emitter: Arc<Emitter>,
 }
 
@@ -139,7 +144,12 @@ impl crate::worker::HmrRunner for HmrRunner {
             };
 
             let source_code = self.emitter.load_and_emit_for_hmr(
-              &module_url
+              &module_url,
+              if self.cjs_tracker.treat_as_cjs(&module_url)? {
+                ModuleKind::Cjs
+              } else {
+                ModuleKind::Esm
+              },
             ).await?;
 
             let mut tries = 1;
@@ -172,12 +182,14 @@ impl crate::worker::HmrRunner for HmrRunner {
 
 impl HmrRunner {
   pub fn new(
+    cjs_tracker: Arc<CjsTracker>,
     emitter: Arc<Emitter>,
     session: LocalInspectorSession,
     watcher_communicator: Arc<WatcherCommunicator>,
   ) -> Self {
     Self {
       session,
+      cjs_tracker,
       emitter,
       watcher_communicator,
       script_ids: HashMap::new(),
