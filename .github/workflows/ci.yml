@@ -408,9 +408,8 @@ jobs:
         run: deno run --allow-write --allow-read --allow-run=git ./tests/node_compat/runner/setup.ts --check
       - name: Setup tmate session
         if: |-
-          (matrix.job == 'test' || matrix.job == 'bench') && matrix.profile == 'debug' && (matrix.use_sysroot || github.repository == 'denoland/deno')
+          (matrix.job == 'test' || matrix.job == 'bench') && (matrix.use_sysroot || github.repository == 'denoland/deno')
         uses: mxschmitt/action-tmate@v3
-
       - name: Build debug
         if: '!(matrix.skip) && (matrix.job == ''test'' && matrix.profile == ''debug'')'
         run: |-
