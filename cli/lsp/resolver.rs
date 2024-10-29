@@ -431,18 +431,6 @@ impl LspResolver {
     has_node_modules_dir(specifier)
   }
 
-  pub fn node_media_type(
-    &self,
-    specifier: &ModuleSpecifier,
-  ) -> Option<MediaType> {
-    let resolver = self.get_scope_resolver(Some(specifier));
-    let node_resolver = resolver.node_resolver.as_ref()?;
-    let resolution = node_resolver
-      .url_to_node_resolution(specifier.clone())
-      .ok()?;
-    Some(into_specifier_and_media_type(Some(resolution.into_url())).1)
-  }
-
   pub fn is_bare_package_json_dep(
     &self,
     specifier_text: &str,
