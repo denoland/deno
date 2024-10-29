@@ -422,6 +422,7 @@ jobs:
           !(matrix.skip) && ((matrix.job == 'test' || matrix.job == 'bench') &&
           matrix.profile == 'release' && (matrix.use_sysroot ||
           github.repository == 'denoland/deno'))
+        uses: mxschmitt/action-tmate@v3
         run: |-
           df -h
           cargo build --release --locked --all-targets
