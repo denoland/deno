@@ -274,6 +274,14 @@ jobs:
           sudo mount --rbind /sys /sysroot/sys
           sudo mount --rbind /home /sysroot/home
           sudo mount -t proc /proc /sysroot/proc
+
+          if [ -d "/usr/lib/gcc/x86_64-unknown-linux-gnu/13/crtbeginS.o" ]; then
+            ln -s /usr/lib/gcc/x86_64-unknown-linux-gnu/13/crtbeginS.o /sysroot/usr/lib/crtbeginS.o
+            ln -s /usr/lib/gcc/x86_64-unknown-linux-gnu/13/crtendS.o /sysroot/usr/lib/crtendS.o
+          else
+            echo "Not found"
+          fi
+
           cd
 
           echo "Done."
