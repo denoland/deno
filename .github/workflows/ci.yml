@@ -267,7 +267,7 @@ jobs:
           (yes '' | sudo update-alternatives --force --all) > /dev/null 2> /dev/null || true
 
           echo "Decompressing sysroot..."
-          wget -q https://github.com/denoland/deno_sysroot_build/releases/download/sysroot-20240528/sysroot-`uname -m`.tar.xz -O /tmp/sysroot.tar.xz
+          wget -q https://github.com/satyarohith/deno_sysroot_build/releases/download/sysroot-%231/sysroot-`uname -m`.tar.xz -O /tmp/sysroot.tar.xz
           cd /
           xzcat /tmp/sysroot.tar.xz | sudo tar -x
           sudo mount --rbind /dev /sysroot/dev
@@ -285,26 +285,6 @@ jobs:
           echo "sysroot env:"
           cat /sysroot/.env
           . /sysroot/.env
-
-
-          NORMALIZED_TRIPLE=$(clang-19 --target=x86_64-linux-gnu -print-target-triple)
-          echo "Using normalized target triple: $NORMALIZED_TRIPLE"
-
-          export RUSTFLAGS="$RUSTFLAGS -C link-arg=-L/sysroot/usr/lib/gcc/$NORMALIZED_TRIPLE -C link-arg=-L/usr/lib/gcc/$NORMALIZED_TRIPLE"
-
-          echo "Checking library paths:"
-          echo "Original path: /sysroot/usr/lib/gcc/x86_64-linux-gnu"
-          ls -l /sysroot/usr/lib/gcc/x86_64-linux-gnu || echo "Original path does not exist"
-
-          echo "Normalized path: /sysroot/usr/lib/gcc/$NORMALIZED_TRIPLE"
-          ls -l /sysroot/usr/lib/gcc/$NORMALIZED_TRIPLE || echo "Normalized path does not exist"
-
-          # If normalized path doesn't exist but original does, create symlink
-          if [ ! -d "/sysroot/usr/lib/gcc/$NORMALIZED_TRIPLE" ] && [ -d "/sysroot/usr/lib/gcc/x86_64-linux-gnu" ]; then
-            echo "Creating symlink from original to normalized path"
-            sudo mkdir -p /sysroot/usr/lib/gcc/$(dirname "$NORMALIZED_TRIPLE")
-            sudo ln -s /sysroot/usr/lib/gcc/x86_64-linux-gnu /sysroot/usr/lib/gcc/$NORMALIZED_TRIPLE
-          fi
 
           # Important notes:
           #   1. -ldl seems to be required to avoid a failure in FFI tests. This flag seems
