@@ -399,6 +399,10 @@ jobs:
       - name: node_compat/setup.ts --check
         if: "!(matrix.skip) && (matrix.job == 'lint' && matrix.os == 'linux')"
         run: deno run --allow-write --allow-read --allow-run=git ./tests/node_compat/runner/setup.ts --check
+      - name: Echo paths
+        run: |-
+          find /usr/lib -name "crtbeginS.o"
+          find /usr/lib -name "crtbeginS.o"
       - name: Build debug
         if: "!(matrix.skip) && (matrix.job == 'test' && matrix.profile == 'debug')"
         run: |-
