@@ -69,7 +69,6 @@ pub async fn lint(
   flags: Arc<Flags>,
   lint_flags: LintFlags,
 ) -> Result<(), AnyError> {
-  eprintln!("here11111");
   if let Some(watch_flags) = &lint_flags.watch {
     if lint_flags.is_stdin() {
       return Err(generic_error(
@@ -176,10 +175,8 @@ pub async fn lint(
         cli_options.start_dir.clone(),
         &workspace_lint_options,
       );
-      eprintln!("here");
       let paths_with_options_batches =
         resolve_paths_with_options_batches(cli_options, &lint_flags)?;
-      eprintln!("after collecting");
       for paths_with_options in paths_with_options_batches {
         linter
           .lint_files(
