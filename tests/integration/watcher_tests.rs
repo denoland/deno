@@ -567,6 +567,76 @@ async fn run_watch_no_dynamic() {
 }
 
 #[flaky_test(tokio)]
+async fn serve_watch_all() {
+  let t = TempDir::new();
+  let main_file_to_watch = t.path().join("main_file_to_watch.js");
+  main_file_to_watch.write(
+    "export default {
+      fetch(_request: Request) {
+        return new Response(\"aaaaaaqqq!\");
+      },
+    };",
+  );
+
+  let mut child = util::deno_cmd()
+    .current_dir(t.path())
+    .arg("serve")
+    .arg("--watch=another_file.js")
+    .arg("-L")
+    .arg("debug")
+    .arg(&main_file_to_watch)
+    .env("NO_COLOR", "1")
+    .piped_output()
+    .spawn()
+    .unwrap();
+  let (mut stdout_lines, mut stderr_lines) = child_lines(&mut child);
+
+  wait_for_watcher("main_file_to_watch.js", &mut stderr_lines).await;
+
+  // Change content of the file
+  main_file_to_watch.write(
+    "export default {
+      fetch(_request: Request) {
+        return new Response(\"aaaaaaqqq123!\");
+      },
+    };",
+  );
+  wait_contains("Restarting", &mut stderr_lines).await;
+  wait_for_watcher("main_file_to_watch.js", &mut stderr_lines).await;
+
+  let another_file = t.path().join("another_file.js");
+  another_file.write("export const foo = 0;");
+  // Confirm that the added file is watched as well
+  wait_contains("Restarting", &mut stderr_lines).await;
+
+  main_file_to_watch
+    .write("import { foo } from './another_file.js'; console.log(foo);");
+  wait_contains("Restarting", &mut stderr_lines).await;
+  wait_contains("0", &mut stdout_lines).await;
+
+  another_file.write("export const foo = 42;");
+  wait_contains("Restarting", &mut stderr_lines).await;
+  wait_contains("42", &mut stdout_lines).await;
+
+  // Confirm that watch continues even with wrong syntax error
+  another_file.write("syntax error ^^");
+
+  wait_contains("Restarting", &mut stderr_lines).await;
+  wait_contains("error:", &mut stderr_lines).await;
+
+  main_file_to_watch.write(
+    "export default {
+      fetch(_request: Request) {
+        return new Response(\"aaaaaaqqq!\");
+      },
+    };",
+  );
+  wait_contains("Restarting", &mut stderr_lines).await;
+  wait_for_watcher("main_file_to_watch.js", &mut stderr_lines).await;
+  check_alive_then_kill(child);
+}
+
+#[flaky_test(tokio)]
 async fn run_watch_npm_specifier() {
   let _g = util::http_server();
   let t = TempDir::new();
