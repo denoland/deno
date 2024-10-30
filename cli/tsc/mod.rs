@@ -39,7 +39,7 @@ use deno_runtime::deno_node::NodeResolver;
 use deno_semver::npm::NpmPackageReqReference;
 use node_resolver::errors::NodeJsErrorCode;
 use node_resolver::errors::NodeJsErrorCoded;
-use node_resolver::errors::ResolvePkgSubpathFromDenoModuleError;
+use node_resolver::errors::PackageSubpathResolveError;
 use node_resolver::NodeModuleKind;
 use node_resolver::NodeResolution;
 use node_resolver::NodeResolutionMode;
@@ -344,7 +344,9 @@ impl TypeCheckingCjsTracker {
     media_type: MediaType,
     code: &Arc<str>,
   ) -> bool {
-    if let Some(module_kind) = self.cjs_tracker.get_known_kind(specifier) {
+    if let Some(module_kind) =
+      self.cjs_tracker.get_known_kind(specifier, media_type)
+    {
       module_kind.is_cjs()
     } else {
       let maybe_is_script = self
@@ -357,11 +359,14 @@ impl TypeCheckingCjsTracker {
         .and_then(|is_script| {
           self
             .cjs_tracker
-            .is_cjs_with_known_is_script(specifier, is_script)
+            .is_cjs_with_known_is_script(specifier, media_type, is_script)
             .ok()
         })
         .unwrap_or_else(|| {
-          self.cjs_tracker.is_maybe_cjs(specifier).unwrap_or(false)
+          self
+            .cjs_tracker
+            .is_maybe_cjs(specifier, media_type)
+            .unwrap_or(false)
         })
     }
   }
@@ -884,15 +889,15 @@ fn resolve_graph_specifier_types(
             Some(referrer),
             NodeResolutionMode::Types,
           );
-        let maybe_resolution = match res_result {
-          Ok(res) => Some(res.into_url()),
+        let maybe_url = match res_result {
+          Ok(url) => Some(url),
           Err(err) => match err.code() {
             NodeJsErrorCode::ERR_TYPES_NOT_FOUND
             | NodeJsErrorCode::ERR_MODULE_NOT_FOUND => None,
             _ => return Err(err.into()),
           },
         };
-        Ok(Some(into_specifier_and_media_type(maybe_resolution)))
+        Ok(Some(into_specifier_and_media_type(maybe_url)))
       } else {
         Ok(None)
       }
@@ -916,7 +921,7 @@ enum ResolveNonGraphSpecifierTypesError {
   #[error(transparent)]
   ResolvePkgFolderFromDenoReq(#[from] ResolvePkgFolderFromDenoReqError),
   #[error(transparent)]
-  ResolvePkgSubpathFromDenoModule(#[from] ResolvePkgSubpathFromDenoModuleError),
+  PackageSubpathResolve(#[from] PackageSubpathResolveError),
 }
 
 fn resolve_non_graph_specifier_types(
@@ -963,17 +968,15 @@ fn resolve_non_graph_specifier_types(
       Some(referrer),
       NodeResolutionMode::Types,
     );
-    let maybe_resolution = match res_result {
-      Ok(res) => Some(res),
+    let maybe_url = match res_result {
+      Ok(url) => Some(url),
       Err(err) => match err.code() {
         NodeJsErrorCode::ERR_TYPES_NOT_FOUND
         | NodeJsErrorCode::ERR_MODULE_NOT_FOUND => None,
         _ => return Err(err.into()),
       },
     };
-    Ok(Some(into_specifier_and_media_type(
-      maybe_resolution.map(|res| res.into_url()),
-    )))
+    Ok(Some(into_specifier_and_media_type(maybe_url)))
   } else {
     Ok(None)
   }

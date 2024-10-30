@@ -6,7 +6,6 @@ use std::path::PathBuf;
 
 use anyhow::bail;
 use anyhow::Error as AnyError;
-use deno_media_type::MediaType;
 use deno_path_util::url_from_file_path;
 use serde_json::Map;
 use serde_json::Value;
@@ -18,7 +17,6 @@ use crate::errors::DataUrlReferrerError;
 use crate::errors::FinalizeResolutionError;
 use crate::errors::InvalidModuleSpecifierError;
 use crate::errors::InvalidPackageTargetError;
-use crate::errors::JsxNotSupportedInNpmError;
 use crate::errors::LegacyResolveError;
 use crate::errors::ModuleNotFoundError;
 use crate::errors::NodeJsErrorCode;
@@ -38,13 +36,10 @@ use crate::errors::PackageTargetResolveError;
 use crate::errors::PackageTargetResolveErrorKind;
 use crate::errors::ResolveBinaryCommandsError;
 use crate::errors::ResolvePkgJsonBinExportError;
-use crate::errors::ResolvePkgSubpathFromDenoModuleError;
-use crate::errors::TypeScriptNotSupportedInNpmError;
 use crate::errors::TypesNotFoundError;
 use crate::errors::TypesNotFoundErrorData;
 use crate::errors::UnsupportedDirImportError;
 use crate::errors::UnsupportedEsmUrlSchemeError;
-use crate::errors::UrlToNodeResolutionError;
 use crate::npm::InNpmPackageCheckerRc;
 use crate::NpmResolverRc;
 use crate::PackageJsonResolverRc;
@@ -69,19 +64,16 @@ impl NodeResolutionMode {
   }
 }
 
-// todo(THIS PR): REMOVE THIS
 #[derive(Debug)]
 pub enum NodeResolution {
-  Esm(Url),
-  CommonJs(Url),
+  Module(Url),
   BuiltIn(String),
 }
 
 impl NodeResolution {
   pub fn into_url(self) -> Url {
     match self {
-      Self::Esm(u) => u,
-      Self::CommonJs(u) => u,
+      Self::Module(u) => u,
       Self::BuiltIn(specifier) => {
         if specifier.starts_with("node:") {
           Url::parse(&specifier).unwrap()
@@ -141,7 +133,7 @@ impl<TEnv: NodeResolverEnv> NodeResolver<TEnv> {
 
     if let Ok(url) = Url::parse(specifier) {
       if url.scheme() == "data" {
-        return Ok(NodeResolution::Esm(url));
+        return Ok(NodeResolution::Module(url));
       }
 
       if let Some(module_name) =
@@ -166,7 +158,7 @@ impl<TEnv: NodeResolverEnv> NodeResolver<TEnv> {
         let url = referrer
           .join(specifier)
           .map_err(|source| DataUrlReferrerError { source })?;
-        return Ok(NodeResolution::Esm(url));
+        return Ok(NodeResolution::Module(url));
       }
     }
 
@@ -187,7 +179,7 @@ impl<TEnv: NodeResolverEnv> NodeResolver<TEnv> {
     };
 
     let url = self.finalize_resolution(url, Some(referrer))?;
-    let resolve_response = self.url_to_node_resolution(url)?;
+    let resolve_response = NodeResolution::Module(url);
     // TODO(bartlomieju): skipped checking errors for commonJS resolution and
     // "preserveSymlinksMain"/"preserveSymlinks" options.
     Ok(resolve_response)
@@ -308,7 +300,7 @@ impl<TEnv: NodeResolverEnv> NodeResolver<TEnv> {
     package_subpath: Option<&str>,
     maybe_referrer: Option<&Url>,
     mode: NodeResolutionMode,
-  ) -> Result<NodeResolution, ResolvePkgSubpathFromDenoModuleError> {
+  ) -> Result<Url, PackageSubpathResolveError> {
     let node_module_kind = NodeModuleKind::Esm;
     let package_subpath = package_subpath
       .map(|s| format!("./{s}"))
@@ -321,10 +313,9 @@ impl<TEnv: NodeResolverEnv> NodeResolver<TEnv> {
       DEFAULT_CONDITIONS,
       mode,
     )?;
-    let resolve_response = self.url_to_node_resolution(resolved_url)?;
     // TODO(bartlomieju): skipped checking errors for commonJS resolution and
     // "preserveSymlinksMain"/"preserveSymlinks" options.
-    Ok(resolve_response)
+    Ok(resolved_url)
   }
 
   pub fn resolve_binary_commands(
@@ -359,7 +350,7 @@ impl<TEnv: NodeResolverEnv> NodeResolver<TEnv> {
     &self,
     package_folder: &Path,
     sub_path: Option<&str>,
-  ) -> Result<NodeResolution, ResolvePkgJsonBinExportError> {
+  ) -> Result<Url, ResolvePkgJsonBinExportError> {
     let pkg_json_path = package_folder.join("package.json");
     let Some(package_json) =
       self.pkg_json_resolver.load_package_json(&pkg_json_path)?
@@ -376,59 +367,9 @@ impl<TEnv: NodeResolverEnv> NodeResolver<TEnv> {
       })?;
     let url = url_from_file_path(&package_folder.join(bin_entry)).unwrap();
 
-    let resolve_response = self.url_to_node_resolution(url)?;
     // TODO(bartlomieju): skipped checking errors for commonJS resolution and
     // "preserveSymlinksMain"/"preserveSymlinks" options.
-    Ok(resolve_response)
-  }
-
-  pub fn url_to_node_resolution(
-    &self,
-    url: Url,
-  ) -> Result<NodeResolution, UrlToNodeResolutionError> {
-    if url.scheme() != "file" {
-      return Ok(NodeResolution::Esm(url));
-    }
-    let media_type = MediaType::from_specifier(&url);
-    match media_type {
-      MediaType::JavaScript | MediaType::Dts => {
-        let maybe_package_config =
-          self.pkg_json_resolver.get_closest_package_json(&url)?;
-        match maybe_package_config {
-          Some(c) if c.typ == "module" => Ok(NodeResolution::Esm(url)),
-          Some(_) => Ok(NodeResolution::CommonJs(url)),
-          None => Ok(NodeResolution::Esm(url)),
-        }
-      }
-      MediaType::Json | MediaType::Wasm | MediaType::Mjs | MediaType::Dmts => {
-        Ok(NodeResolution::Esm(url))
-      }
-      MediaType::Cjs | MediaType::Dcts => Ok(NodeResolution::CommonJs(url)),
-      MediaType::TypeScript | MediaType::Mts => {
-        if self.in_npm_pkg_checker.in_npm_package(&url) {
-          Err(TypeScriptNotSupportedInNpmError { specifier: url }.into())
-        } else {
-          Ok(NodeResolution::Esm(url))
-        }
-      }
-      MediaType::Cts => {
-        if self.in_npm_pkg_checker.in_npm_package(&url) {
-          Err(TypeScriptNotSupportedInNpmError { specifier: url }.into())
-        } else {
-          Ok(NodeResolution::CommonJs(url))
-        }
-      }
-      MediaType::Jsx | MediaType::Tsx => {
-        if self.in_npm_pkg_checker.in_npm_package(&url) {
-          Err(JsxNotSupportedInNpmError { specifier: url }.into())
-        } else {
-          Ok(NodeResolution::Esm(url))
-        }
-      }
-      MediaType::Css | MediaType::SourceMap | MediaType::Unknown => {
-        Ok(NodeResolution::CommonJs(url))
-      }
-    }
+    Ok(url)
   }
 
   /// Checks if the resolved file has a corresponding declaration file.

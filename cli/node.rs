@@ -100,7 +100,7 @@ impl CliCjsCodeAnalyzer {
     }
 
     let cjs_tracker = self.cjs_tracker.clone();
-    let is_maybe_cjs = cjs_tracker.is_maybe_cjs(&specifier)?;
+    let is_maybe_cjs = cjs_tracker.is_maybe_cjs(&specifier, media_type)?;
     let analysis = if is_maybe_cjs {
       let maybe_parsed_source = self
         .parsed_source_cache
@@ -124,6 +124,7 @@ impl CliCjsCodeAnalyzer {
             })?;
           let is_cjs = cjs_tracker.is_cjs_with_known_is_script(
             parsed_source.specifier(),
+            media_type,
             parsed_source.is_script(),
           )?;
           if is_cjs {

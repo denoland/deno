@@ -605,9 +605,11 @@ impl<'a> DenoCompileBinaryWriter<'a> {
       let (maybe_source, media_type) = match module {
         deno_graph::Module::Js(m) => {
           let source = if m.media_type.is_emittable() {
-            let is_cjs = self
-              .cjs_tracker
-              .is_cjs_with_known_is_script(&m.specifier, m.is_script)?;
+            let is_cjs = self.cjs_tracker.is_cjs_with_known_is_script(
+              &m.specifier,
+              m.media_type,
+              m.is_script,
+            )?;
             let module_kind = ModuleKind::from_is_cjs(is_cjs);
             let source = self
               .emitter

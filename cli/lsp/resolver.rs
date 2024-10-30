@@ -404,7 +404,6 @@ impl LspResolver {
     Some(into_specifier_and_media_type(Some(
       node_resolver
         .resolve_req_reference(req_ref, referrer, NodeResolutionMode::Types)
-        .map(|res| res.into_url())
         .ok()?,
     )))
   }
@@ -815,7 +814,9 @@ impl LspCjsTracker {
     media_type: MediaType,
     maybe_parsed_source: Option<&ParsedSource>,
   ) -> bool {
-    if let Some(module_kind) = self.cjs_tracker.get_known_kind(specifier) {
+    if let Some(module_kind) =
+      self.cjs_tracker.get_known_kind(specifier, media_type)
+    {
       module_kind.is_cjs()
     } else {
       let maybe_is_script = maybe_parsed_source.map(|p| p.is_script());
@@ -823,11 +824,14 @@ impl LspCjsTracker {
         .and_then(|is_script| {
           self
             .cjs_tracker
-            .is_cjs_with_known_is_script(specifier, is_script)
+            .is_cjs_with_known_is_script(specifier, media_type, is_script)
             .ok()
         })
         .unwrap_or_else(|| {
-          self.cjs_tracker.is_maybe_cjs(specifier).unwrap_or(false)
+          self
+            .cjs_tracker
+            .is_maybe_cjs(specifier, media_type)
+            .unwrap_or(false)
         })
     }
   }

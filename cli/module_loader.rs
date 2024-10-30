@@ -513,15 +513,11 @@ impl<TGraphContainer: ModuleGraphContainer>
     if self.shared.is_repl {
       if let Ok(reference) = NpmPackageReqReference::from_specifier(&specifier)
       {
-        return self
-          .shared
-          .node_resolver
-          .resolve_req_reference(
-            &reference,
-            referrer,
-            NodeResolutionMode::Execution,
-          )
-          .map(|res| res.into_url());
+        return self.shared.node_resolver.resolve_req_reference(
+          &reference,
+          referrer,
+          NodeResolutionMode::Execution,
+        );
       }
     }
 
@@ -545,7 +541,6 @@ impl<TGraphContainer: ModuleGraphContainer>
           .with_context(|| {
             format!("Could not resolve '{}'.", module.nv_reference)
           })?
-          .into_url()
       }
       Some(Module::Node(module)) => module.specifier.clone(),
       Some(Module::Js(module)) => module.specifier.clone(),
@@ -671,11 +666,11 @@ impl<TGraphContainer: ModuleGraphContainer>
         is_script,
         ..
       })) => {
-        if self
-          .shared
-          .cjs_tracker
-          .is_cjs_with_known_is_script(specifier, *is_script)?
-        {
+        if self.shared.cjs_tracker.is_cjs_with_known_is_script(
+          specifier,
+          *media_type,
+          *is_script,
+        )? {
           return Ok(Some(CodeOrDeferredEmit::Cjs {
             specifier,
             media_type: *media_type,

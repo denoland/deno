@@ -179,8 +179,7 @@ impl ModuleLoader for EmbeddedModuleLoader {
             sub_path.as_deref(),
             Some(&referrer),
             NodeResolutionMode::Execution,
-          )?
-          .into_url(),
+          )?,
       ),
       Ok(MappedResolution::PackageJson {
         dep_result,
@@ -188,16 +187,14 @@ impl ModuleLoader for EmbeddedModuleLoader {
         alias,
         ..
       }) => match dep_result.as_ref().map_err(|e| AnyError::from(e.clone()))? {
-        PackageJsonDepValue::Req(req) => self
-          .shared
-          .node_resolver
-          .resolve_req_with_sub_path(
+        PackageJsonDepValue::Req(req) => {
+          self.shared.node_resolver.resolve_req_with_sub_path(
             req,
             sub_path.as_deref(),
             &referrer,
             NodeResolutionMode::Execution,
           )
-          .map(|res| res.into_url()),
+        }
         PackageJsonDepValue::Workspace(version_req) => {
           let pkg_folder = self
             .shared
@@ -215,8 +212,7 @@ impl ModuleLoader for EmbeddedModuleLoader {
                 sub_path.as_deref(),
                 Some(&referrer),
                 NodeResolutionMode::Execution,
-              )?
-              .into_url(),
+              )?,
           )
         }
       },
@@ -225,15 +221,11 @@ impl ModuleLoader for EmbeddedModuleLoader {
         if let Ok(reference) =
           NpmPackageReqReference::from_specifier(&specifier)
         {
-          return self
-            .shared
-            .node_resolver
-            .resolve_req_reference(
-              &reference,
-              &referrer,
-              NodeResolutionMode::Execution,
-            )
-            .map(|res| res.into_url());
+          return self.shared.node_resolver.resolve_req_reference(
+            &reference,
+            &referrer,
+            NodeResolutionMode::Execution,
+          );
         }
 
         if specifier.scheme() == "jsr" {
@@ -337,17 +329,21 @@ impl ModuleLoader for EmbeddedModuleLoader {
 
     match self.shared.modules.read(original_specifier) {
       Ok(Some(module)) => {
+        let media_type = module.media_type;
         let (module_specifier, module_type, module_source) =
           module.into_parts();
-        let is_cjs =
-          match self.shared.cjs_tracker.is_maybe_cjs(original_specifier) {
-            Ok(is_cjs) => is_cjs,
-            Err(err) => {
-              return deno_core::ModuleLoadResponse::Sync(Err(type_error(
-                format!("{:?}", err),
-              )));
-            }
-          };
+        let is_cjs = match self
+          .shared
+          .cjs_tracker
+          .is_maybe_cjs(original_specifier, media_type)
+        {
+          Ok(is_cjs) => is_cjs,
+          Err(err) => {
+            return deno_core::ModuleLoadResponse::Sync(Err(type_error(
+              format!("{:?}", err),
+            )));
+          }
+        };
         if is_cjs {
           let original_specifier = original_specifier.clone();
           let module_specifier = module_specifier.clone();

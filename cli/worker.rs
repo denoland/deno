@@ -656,7 +656,7 @@ impl CliMainWorkerFactory {
       .node_resolver
       .resolve_binary_export(package_folder, sub_path)
     {
-      Ok(specifier) => Ok(specifier.into_url()),
+      Ok(specifier) => Ok(specifier),
       Err(original_err) => {
         // if the binary entrypoint was not found, fallback to regular node resolution
         let result =
@@ -686,7 +686,7 @@ impl CliMainWorkerFactory {
       return Ok(None);
     }
 
-    let resolution = self
+    let specifier = self
       .shared
       .node_resolver
       .resolve_package_subpath_from_deno_module(
@@ -695,19 +695,14 @@ impl CliMainWorkerFactory {
         /* referrer */ None,
         NodeResolutionMode::Execution,
       )?;
-    match &resolution {
-      NodeResolution::BuiltIn(_) => Ok(None),
-      NodeResolution::CommonJs(specifier) | NodeResolution::Esm(specifier) => {
-        if specifier
-          .to_file_path()
-          .map(|p| p.exists())
-          .unwrap_or(false)
-        {
-          Ok(Some(resolution.into_url()))
-        } else {
-          bail!("Cannot find module '{}'", specifier)
-        }
-      }
+    if specifier
+      .to_file_path()
+      .map(|p| p.exists())
+      .unwrap_or(false)
+    {
+      Ok(Some(specifier))
+    } else {
+      bail!("Cannot find module '{}'", specifier)
     }
   }
 }

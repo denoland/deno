@@ -81,29 +81,6 @@ pub trait NodeJsErrorCoded {
   fn code(&self) -> NodeJsErrorCode;
 }
 
-kinded_err!(
-  ResolvePkgSubpathFromDenoModuleError,
-  ResolvePkgSubpathFromDenoModuleErrorKind
-);
-
-impl NodeJsErrorCoded for ResolvePkgSubpathFromDenoModuleError {
-  fn code(&self) -> NodeJsErrorCode {
-    use ResolvePkgSubpathFromDenoModuleErrorKind::*;
-    match self.as_kind() {
-      PackageSubpathResolve(e) => e.code(),
-      UrlToNodeResolution(e) => e.code(),
-    }
-  }
-}
-
-#[derive(Debug, Error)]
-pub enum ResolvePkgSubpathFromDenoModuleErrorKind {
-  #[error(transparent)]
-  PackageSubpathResolve(#[from] PackageSubpathResolveError),
-  #[error(transparent)]
-  UrlToNodeResolution(#[from] UrlToNodeResolutionError),
-}
-
 // todo(https://github.com/denoland/deno_core/issues/810): make this a TypeError
 #[derive(Debug, Clone, Error)]
 #[error(
@@ -394,52 +371,6 @@ impl NodeJsErrorCoded for CanonicalizingPkgJsonDirError {
   }
 }
 
-#[derive(Debug, Error)]
-#[error("JSX files are not supported in npm packages: {specifier}")]
-pub struct JsxNotSupportedInNpmError {
-  pub specifier: Url,
-}
-
-impl NodeJsErrorCoded for JsxNotSupportedInNpmError {
-  fn code(&self) -> NodeJsErrorCode {
-    NodeJsErrorCode::ERR_UNKNOWN_FILE_EXTENSION
-  }
-}
-
-#[derive(Debug, Error)]
-#[error("TypeScript files are not supported in npm packages: {specifier}")]
-pub struct TypeScriptNotSupportedInNpmError {
-  pub specifier: Url,
-}
-
-impl NodeJsErrorCoded for TypeScriptNotSupportedInNpmError {
-  fn code(&self) -> NodeJsErrorCode {
-    NodeJsErrorCode::ERR_UNKNOWN_FILE_EXTENSION
-  }
-}
-
-kinded_err!(UrlToNodeResolutionError, UrlToNodeResolutionErrorKind);
-
-impl NodeJsErrorCoded for UrlToNodeResolutionError {
-  fn code(&self) -> NodeJsErrorCode {
-    match self.as_kind() {
-      UrlToNodeResolutionErrorKind::JsxNotSupported(e) => e.code(),
-      UrlToNodeResolutionErrorKind::TypeScriptNotSupported(e) => e.code(),
-      UrlToNodeResolutionErrorKind::ClosestPkgJson(e) => e.code(),
-    }
-  }
-}
-
-#[derive(Debug, Error)]
-pub enum UrlToNodeResolutionErrorKind {
-  #[error(transparent)]
-  JsxNotSupported(#[from] JsxNotSupportedInNpmError),
-  #[error(transparent)]
-  TypeScriptNotSupported(#[from] TypeScriptNotSupportedInNpmError),
-  #[error(transparent)]
-  ClosestPkgJson(#[from] ClosestPkgJsonError),
-}
-
 // todo(https://github.com/denoland/deno_core/issues/810): make this a TypeError
 #[derive(Debug, Error)]
 #[error(
@@ -548,8 +479,6 @@ pub enum NodeResolveErrorKind {
   TypesNotFound(#[from] TypesNotFoundError),
   #[error(transparent)]
   FinalizeResolution(#[from] FinalizeResolutionError),
-  #[error(transparent)]
-  UrlToNodeResolution(#[from] UrlToNodeResolutionError),
 }
 
 kinded_err!(FinalizeResolutionError, FinalizeResolutionErrorKind);
@@ -743,8 +672,6 @@ pub enum ResolvePkgJsonBinExportError {
   MissingPkgJson { pkg_json_path: PathBuf },
   #[error("Failed resolving binary export. {message}")]
   InvalidBinProperty { message: String },
-  #[error(transparent)]
-  UrlToNodeResolution(#[from] UrlToNodeResolutionError),
 }
 
 #[derive(Debug, Error)]

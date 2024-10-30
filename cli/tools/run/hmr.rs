@@ -4,6 +4,7 @@ use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::Arc;
 
+use deno_ast::MediaType;
 use deno_ast::ModuleKind;
 use deno_core::error::generic_error;
 use deno_core::error::AnyError;
@@ -145,7 +146,7 @@ impl crate::worker::HmrRunner for HmrRunner {
 
             let source_code = self.emitter.load_and_emit_for_hmr(
               &module_url,
-              ModuleKind::from_is_cjs(self.cjs_tracker.is_maybe_cjs(&module_url)?),
+              ModuleKind::from_is_cjs(self.cjs_tracker.is_maybe_cjs(&module_url, MediaType::from_specifier(&module_url))?),
             ).await?;
 
             let mut tries = 1;

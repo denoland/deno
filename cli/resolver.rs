@@ -42,7 +42,7 @@ use node_resolver::errors::PackageFolderResolveErrorKind;
 use node_resolver::errors::PackageFolderResolveIoError;
 use node_resolver::errors::PackageNotFoundError;
 use node_resolver::errors::PackageResolveErrorKind;
-use node_resolver::errors::UrlToNodeResolutionError;
+use node_resolver::errors::PackageSubpathResolveError;
 use node_resolver::InNpmPackageChecker;
 use node_resolver::NodeModuleKind;
 use node_resolver::NodeResolution;
@@ -155,8 +155,7 @@ impl CliNodeResolver {
           | NodeResolveErrorKind::UnsupportedEsmUrlScheme(_)
           | NodeResolveErrorKind::DataUrlReferrer(_)
           | NodeResolveErrorKind::TypesNotFound(_)
-          | NodeResolveErrorKind::FinalizeResolution(_)
-          | NodeResolveErrorKind::UrlToNodeResolution(_) => Err(err.into()),
+          | NodeResolveErrorKind::FinalizeResolution(_) => Err(err.into()),
           NodeResolveErrorKind::PackageResolve(err) => {
             let err = err.into_kind();
             match err {
@@ -220,7 +219,7 @@ impl CliNodeResolver {
   ) -> Result<NodeResolution, NodeResolveError> {
     let referrer_kind = if self
       .cjs_tracker
-      .is_maybe_cjs(referrer)
+      .is_maybe_cjs(referrer, MediaType::from_specifier(referrer))
       .map_err(|err| NodeResolveErrorKind::PackageResolve(err.into()))?
     {
       NodeModuleKind::Cjs
@@ -240,7 +239,7 @@ impl CliNodeResolver {
     req_ref: &NpmPackageReqReference,
     referrer: &ModuleSpecifier,
     mode: NodeResolutionMode,
-  ) -> Result<NodeResolution, AnyError> {
+  ) -> Result<ModuleSpecifier, AnyError> {
     self.resolve_req_with_sub_path(
       req_ref.req(),
       req_ref.sub_path(),
@@ -255,7 +254,7 @@ impl CliNodeResolver {
     sub_path: Option<&str>,
     referrer: &ModuleSpecifier,
     mode: NodeResolutionMode,
-  ) -> Result<NodeResolution, AnyError> {
+  ) -> Result<ModuleSpecifier, AnyError> {
     let package_folder = self
       .npm_resolver
       .resolve_pkg_folder_from_deno_module_req(req, referrer)?;
@@ -266,7 +265,7 @@ impl CliNodeResolver {
       mode,
     );
     match resolution_result {
-      Ok(resolution) => Ok(resolution),
+      Ok(url) => Ok(url),
       Err(err) => {
         if self.npm_resolver.as_byonm().is_some() {
           let package_json_path = package_folder.join("package.json");
@@ -277,7 +276,7 @@ impl CliNodeResolver {
             ));
           }
         }
-        Err(err)
+        Err(err.into())
       }
     }
   }
@@ -288,16 +287,13 @@ impl CliNodeResolver {
     sub_path: Option<&str>,
     maybe_referrer: Option<&ModuleSpecifier>,
     mode: NodeResolutionMode,
-  ) -> Result<NodeResolution, AnyError> {
-    let res = self
-      .node_resolver
-      .resolve_package_subpath_from_deno_module(
-        package_folder,
-        sub_path,
-        maybe_referrer,
-        mode,
-      )?;
-    Ok(res)
+  ) -> Result<ModuleSpecifier, PackageSubpathResolveError> {
+    self.node_resolver.resolve_package_subpath_from_deno_module(
+      package_folder,
+      sub_path,
+      maybe_referrer,
+      mode,
+    )
   }
 
   pub fn handle_if_in_node_modules(
@@ -401,7 +397,7 @@ impl NpmModuleLoader {
       }));
     }
 
-    let code = if self.cjs_tracker.is_maybe_cjs(specifier)? {
+    let code = if self.cjs_tracker.is_maybe_cjs(specifier, media_type)? {
       // translate cjs to esm if it's cjs and inject node globals
       let code = from_utf8_lossy_owned(code);
       ModuleSourceCode::String(
@@ -458,8 +454,9 @@ impl CjsTracker {
   pub fn is_maybe_cjs(
     &self,
     specifier: &ModuleSpecifier,
+    media_type: MediaType,
   ) -> Result<bool, ClosestPkgJsonError> {
-    self.treat_as_cjs_with_is_script(specifier, None)
+    self.treat_as_cjs_with_is_script(specifier, media_type, None)
   }
 
   /// Gets whether the file is CJS. If true, this is for sure
@@ -470,17 +467,21 @@ impl CjsTracker {
   pub fn is_cjs_with_known_is_script(
     &self,
     specifier: &ModuleSpecifier,
+    media_type: MediaType,
     is_script: bool,
   ) -> Result<bool, ClosestPkgJsonError> {
-    self.treat_as_cjs_with_is_script(specifier, Some(is_script))
+    self.treat_as_cjs_with_is_script(specifier, media_type, Some(is_script))
   }
 
   fn treat_as_cjs_with_is_script(
     &self,
     specifier: &ModuleSpecifier,
+    media_type: MediaType,
     is_script: Option<bool>,
   ) -> Result<bool, ClosestPkgJsonError> {
-    let kind = match self.get_known_kind_with_is_script(specifier, is_script) {
+    let kind = match self
+      .get_known_kind_with_is_script(specifier, media_type, is_script)
+    {
       Some(kind) => kind,
       None => self.check_based_on_pkg_json(specifier)?,
     };
@@ -490,20 +491,20 @@ impl CjsTracker {
   pub fn get_known_kind(
     &self,
     specifier: &ModuleSpecifier,
+    media_type: MediaType,
   ) -> Option<ModuleKind> {
-    self.get_known_kind_with_is_script(specifier, None)
+    self.get_known_kind_with_is_script(specifier, media_type, None)
   }
 
   fn get_known_kind_with_is_script(
     &self,
     specifier: &ModuleSpecifier,
+    media_type: MediaType,
     is_script: Option<bool>,
   ) -> Option<ModuleKind> {
     if specifier.scheme() != "file" {
       return Some(ModuleKind::Esm);
     }
-
-    let media_type = MediaType::from_specifier(specifier);
 
     match media_type {
       MediaType::Mts | MediaType::Mjs | MediaType::Dmts => Some(ModuleKind::Esm),
@@ -771,8 +772,7 @@ impl Resolver for CliGraphResolver {
             Some(referrer),
             to_node_mode(mode),
           )
-          .map_err(ResolveError::Other)
-          .map(|res| res.into_url()),
+          .map_err(|e| ResolveError::Other(e.into())),
         MappedResolution::PackageJson {
           dep_result,
           alias,
@@ -813,8 +813,8 @@ impl Resolver for CliGraphResolver {
                         sub_path.as_deref(),
                         Some(referrer),
                         to_node_mode(mode),
-                      )?
-                      .into_url(),
+                      )
+                      .map_err(|e| ResolveError::Other(e.into()))?,
                   )
                 }),
             })
@@ -862,8 +862,8 @@ impl Resolver for CliGraphResolver {
                   npm_req_ref.sub_path(),
                   Some(referrer),
                   to_node_mode(mode),
-                )?
-                .into_url(),
+                )
+                .map_err(|e| ResolveError::Other(e.into()))?,
             );
           }
 
@@ -871,7 +871,6 @@ impl Resolver for CliGraphResolver {
           if is_byonm {
             return node_resolver
               .resolve_req_reference(&npm_req_ref, referrer, to_node_mode(mode))
-              .map(|res| res.into_url())
               .map_err(|err| err.into());
           }
         }
@@ -889,9 +888,7 @@ impl Resolver for CliGraphResolver {
             .map_err(ResolveError::Other)?;
           if let Some(res) = maybe_resolution {
             match res {
-              NodeResolution::Esm(url) | NodeResolution::CommonJs(url) => {
-                return Ok(url)
-              }
+              NodeResolution::Module(url) => return Ok(url),
               NodeResolution::BuiltIn(_) => {
                 // don't resolve bare specifiers for built-in modules via node resolution
               }
