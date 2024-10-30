@@ -267,7 +267,7 @@ jobs:
           (yes '' | sudo update-alternatives --force --all) > /dev/null 2> /dev/null || true
 
           echo "Decompressing sysroot..."
-          wget -q https://github.com/denoland/deno_sysroot_build/releases/download/sysroot-20240528/sysroot-`uname -m`.tar.xz -O /tmp/sysroot.tar.xz
+          wget -q https://github.com/littledivy/deno_sysroot_build/releases/download/test-2/sysroot-`uname -m`.tar.xz -O /tmp/sysroot.tar.xz
           cd /
           xzcat /tmp/sysroot.tar.xz | sudo tar -x
           sudo mount --rbind /dev /sysroot/dev
@@ -285,11 +285,6 @@ jobs:
           echo "sysroot env:"
           cat /sysroot/.env
           . /sysroot/.env
-
-          GCC_DIR=`find /usr/lib -name "crtbeginS.o" -print -quit | xargs dirname`
-          echo "GCC_DIR=$GCC_DIR"
-
-          sudo cp -R $GCC_DIR/** /sysroot/usr/lib/
 
           # Important notes:
           #   1. -ldl seems to be required to avoid a failure in FFI tests. This flag seems
