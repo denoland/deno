@@ -69,6 +69,7 @@ pub async fn lint(
   flags: Arc<Flags>,
   lint_flags: LintFlags,
 ) -> Result<(), AnyError> {
+  eprintln!("here11111");
   if let Some(watch_flags) = &lint_flags.watch {
     if lint_flags.is_stdin() {
       return Err(generic_error(
@@ -175,8 +176,10 @@ pub async fn lint(
         cli_options.start_dir.clone(),
         &workspace_lint_options,
       );
+      eprintln!("here");
       let paths_with_options_batches =
         resolve_paths_with_options_batches(cli_options, &lint_flags)?;
+      eprintln!("after collecting");
       for paths_with_options in paths_with_options_batches {
         linter
           .lint_files(
@@ -425,13 +428,25 @@ impl WorkspaceLinter {
   }
 }
 
+const DEFAULT_IGNORED_DIRS: [&'static str; 5] =
+  [".config", ".next", ".vite", "dist", "target"];
+
 fn collect_lint_files(
   cli_options: &CliOptions,
   files: FilePatterns,
 ) -> Result<Vec<PathBuf>, AnyError> {
   FileCollector::new(|e| {
-    is_script_ext(e.path)
-      || (e.path.extension().is_none() && cli_options.ext_flag().is_some())
+    !e.path.components().any(|comp| {
+      let std::path::Component::Normal(comp) = comp else {
+        return false;
+      };
+      if let Some(s) = comp.to_str() {
+        DEFAULT_IGNORED_DIRS.contains(&s)
+      } else {
+        false
+      }
+    }) && (is_script_ext(e.path)
+      || (e.path.extension().is_none() && cli_options.ext_flag().is_some()))
   })
   .ignore_git_folder()
   .ignore_node_modules()
