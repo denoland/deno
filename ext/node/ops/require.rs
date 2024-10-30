@@ -131,9 +131,6 @@ where
     normalize_path(current_dir.join(from))
   };
 
-  let from = ensure_read_permission::<P>(state, &from)
-    .map_err(RequireError::Permission)?;
-
   if cfg!(windows) {
     // return root node_modules when path is 'D:\\'.
     let from_str = from.to_str().unwrap();
