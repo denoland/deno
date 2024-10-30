@@ -1873,6 +1873,7 @@ Unless --reload is specified, this command will not re-download already cached d
             .required_unless_present("help")
             .value_hint(ValueHint::FilePath),
         )
+        .arg(frozen_lockfile_arg())
         .arg(allow_import_arg())
       }
     )
@@ -2290,7 +2291,7 @@ Ignore formatting a file by adding an ignore comment at the top of the file:
             "sass", "less", "html", "svelte", "vue", "astro", "yml", "yaml",
             "ipynb",
           ])
-          .help_heading(FMT_HEADING),
+          .help_heading(FMT_HEADING).requires("files"),
       )
       .arg(
         Arg::new("ignore")
@@ -4390,6 +4391,7 @@ fn check_parse(
   flags.type_check_mode = TypeCheckMode::Local;
   compile_args_without_check_parse(flags, matches)?;
   unstable_args_parse(flags, matches, UnstableArgsConfig::ResolutionAndRuntime);
+  frozen_lockfile_arg_parse(flags, matches);
   let files = matches.remove_many::<String>("file").unwrap().collect();
   if matches.get_flag("all") || matches.get_flag("remote") {
     flags.type_check_mode = TypeCheckMode::All;
@@ -6814,6 +6816,32 @@ mod tests {
           unstable_component: false,
           watch: Default::default(),
         }),
+        ..Flags::default()
+      }
+    );
+
+    let r = flags_from_vec(svec!["deno", "fmt", "--ext", "html"]);
+    assert!(r.is_err());
+    let r = flags_from_vec(svec!["deno", "fmt", "--ext", "html", "./**"]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Fmt(FmtFlags {
+          check: false,
+          files: FileFlags {
+            include: vec!["./**".to_string()],
+            ignore: vec![],
+          },
+          use_tabs: None,
+          line_width: None,
+          indent_width: None,
+          single_quote: None,
+          prose_wrap: None,
+          no_semicolons: None,
+          unstable_component: false,
+          watch: Default::default(),
+        }),
+        ext: Some("html".to_string()),
         ..Flags::default()
       }
     );

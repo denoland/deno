@@ -365,6 +365,9 @@ fn main() {
     return;
   }
 
+  deno_napi::print_linker_flags("deno");
+  deno_napi::print_linker_flags("denort");
+
   // Host snapshots won't work when cross compiling.
   let target = env::var("TARGET").unwrap();
   let host = env::var("HOST").unwrap();
@@ -373,58 +376,6 @@ fn main() {
   if !skip_cross_check && target != host {
     panic!("Cross compiling with snapshot is not supported.");
   }
-
-  let symbols_file_name = match env::consts::OS {
-    "android" | "freebsd" | "openbsd" => {
-      "generated_symbol_exports_list_linux.def".to_string()
-    }
-    os => format!("generated_symbol_exports_list_{}.def", os),
-  };
-  let symbols_path = std::path::Path::new("napi")
-    .join(symbols_file_name)
-    .canonicalize()
-    .expect(
-        "Missing symbols list! Generate using tools/napi/generate_symbols_lists.js",
-    );
-
-  println!("cargo:rustc-rerun-if-changed={}", symbols_path.display());
-
-  #[cfg(target_os = "windows")]
-  println!(
-    "cargo:rustc-link-arg-bin=deno=/DEF:{}",
-    symbols_path.display()
-  );
-
-  #[cfg(target_os = "macos")]
-  println!(
-    "cargo:rustc-link-arg-bin=deno=-Wl,-exported_symbols_list,{}",
-    symbols_path.display()
-  );
-
-  #[cfg(target_os = "linux")]
-  {
-    // If a custom compiler is set, the glibc version is not reliable.
-    // Here, we assume that if a custom compiler is used, that it will be modern enough to support a dynamic symbol list.
-    if env::var("CC").is_err()
-      && glibc_version::get_version()
-        .map(|ver| ver.major <= 2 && ver.minor < 35)
-        .unwrap_or(false)
-    {
-      println!("cargo:warning=Compiling with all symbols exported, this will result in a larger binary. Please use glibc 2.35 or later for an optimised build.");
-      println!("cargo:rustc-link-arg-bin=deno=-rdynamic");
-    } else {
-      println!(
-        "cargo:rustc-link-arg-bin=deno=-Wl,--export-dynamic-symbol-list={}",
-        symbols_path.display()
-      );
-    }
-  }
-
-  #[cfg(target_os = "android")]
-  println!(
-    "cargo:rustc-link-arg-bin=deno=-Wl,--export-dynamic-symbol-list={}",
-    symbols_path.display()
-  );
 
   // To debug snapshot issues uncomment:
   // op_fetch_asset::trace_serializer();

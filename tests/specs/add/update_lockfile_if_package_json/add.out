@@ -1,0 +1,5 @@
+[UNORDERED_START]
+Add npm:@denotest/esm-basic@1.0.0
+Add npm:@denotest/say-hello@1.0.0
+[UNORDERED_END]
+[WILDCARD]
