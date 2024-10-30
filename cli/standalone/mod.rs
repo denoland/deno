@@ -332,19 +332,19 @@ impl ModuleLoader for EmbeddedModuleLoader {
         let media_type = module.media_type;
         let (module_specifier, module_type, module_source) =
           module.into_parts();
-        let is_cjs = match self
+        let is_maybe_cjs = match self
           .shared
           .cjs_tracker
           .is_maybe_cjs(original_specifier, media_type)
         {
-          Ok(is_cjs) => is_cjs,
+          Ok(is_maybe_cjs) => is_maybe_cjs,
           Err(err) => {
             return deno_core::ModuleLoadResponse::Sync(Err(type_error(
               format!("{:?}", err),
             )));
           }
         };
-        if is_cjs {
+        if is_maybe_cjs {
           let original_specifier = original_specifier.clone();
           let module_specifier = module_specifier.clone();
           let shared = self.shared.clone();

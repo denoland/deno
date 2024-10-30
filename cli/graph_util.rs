@@ -671,10 +671,10 @@ impl ModuleGraphBuilder {
 
     graph.build_fast_check_type_graph(
       deno_graph::BuildFastCheckTypeGraphOptions {
-        jsr_url_provider: &CliJsrUrlProvider,
+        es_parser: Some(&parser),
         fast_check_cache: fast_check_cache.as_ref().map(|c| c as _),
         fast_check_dts: false,
-        es_parser: Some(&parser),
+        jsr_url_provider: &CliJsrUrlProvider,
         resolver: Some(graph_resolver),
         npm_resolver: Some(&graph_npm_resolver),
         workspace_fast_check: options.workspace_fast_check,

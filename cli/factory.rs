@@ -602,6 +602,7 @@ impl CliFactory {
           ts_config_result.ts_config,
         )?;
       Ok(Arc::new(Emitter::new(
+        self.cjs_tracker()?.clone(),
         self.emit_cache()?.clone(),
         self.parsed_source_cache().clone(),
         transpile_options,

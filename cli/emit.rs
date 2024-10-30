@@ -3,6 +3,7 @@
 use crate::cache::EmitCache;
 use crate::cache::FastInsecureHasher;
 use crate::cache::ParsedSourceCache;
+use crate::resolver::CjsTracker;
 
 use deno_ast::ModuleKind;
 use deno_ast::SourceMapOption;
@@ -23,6 +24,7 @@ use std::sync::Arc;
 
 #[derive(Debug)]
 pub struct Emitter {
+  cjs_tracker: Arc<CjsTracker>,
   emit_cache: Arc<EmitCache>,
   parsed_source_cache: Arc<ParsedSourceCache>,
   transpile_and_emit_options:
@@ -33,6 +35,7 @@ pub struct Emitter {
 
 impl Emitter {
   pub fn new(
+    cjs_tracker: Arc<CjsTracker>,
     emit_cache: Arc<EmitCache>,
     parsed_source_cache: Arc<ParsedSourceCache>,
     transpile_options: deno_ast::TranspileOptions,
@@ -45,6 +48,7 @@ impl Emitter {
       hasher.finish()
     };
     Self {
+      cjs_tracker,
       emit_cache,
       parsed_source_cache,
       transpile_and_emit_options: Arc::new((transpile_options, emit_options)),
@@ -67,9 +71,14 @@ impl Emitter {
           self
             .emit_parsed_source(
               &module.specifier,
-              // todo(THIS PR): don't assume this is esm
-              ModuleKind::Esm,
               module.media_type,
+              ModuleKind::from_is_cjs(
+                self.cjs_tracker.is_cjs_with_known_is_script(
+                  &module.specifier,
+                  module.media_type,
+                  module.is_script,
+                )?,
+              ),
               &module.source,
             )
             .boxed_local(),
@@ -98,8 +107,8 @@ impl Emitter {
   pub async fn emit_parsed_source(
     &self,
     specifier: &ModuleSpecifier,
-    module_kind: deno_ast::ModuleKind,
     media_type: MediaType,
+    module_kind: deno_ast::ModuleKind,
     source: &Arc<str>,
   ) -> Result<String, AnyError> {
     // Note: keep this in sync with the sync version below
@@ -117,8 +126,8 @@ impl Emitter {
             EmitParsedSourceHelper::transpile(
               &parsed_source_cache,
               &specifier,
-              module_kind,
               media_type,
+              module_kind,
               source.clone(),
               &transpile_and_emit_options.0,
               &transpile_and_emit_options.1,
@@ -140,8 +149,8 @@ impl Emitter {
   pub fn emit_parsed_source_sync(
     &self,
     specifier: &ModuleSpecifier,
-    module_kind: deno_ast::ModuleKind,
     media_type: MediaType,
+    module_kind: deno_ast::ModuleKind,
     source: &Arc<str>,
   ) -> Result<String, AnyError> {
     // Note: keep this in sync with the async version above
@@ -152,8 +161,8 @@ impl Emitter {
         let transpiled_source = EmitParsedSourceHelper::transpile(
           &self.parsed_source_cache,
           specifier,
-          module_kind,
           media_type,
+          module_kind,
           source.clone(),
           &self.transpile_and_emit_options.0,
           &self.transpile_and_emit_options.1,
@@ -264,8 +273,8 @@ impl<'a> EmitParsedSourceHelper<'a> {
   pub fn transpile(
     parsed_source_cache: &ParsedSourceCache,
     specifier: &ModuleSpecifier,
-    module_kind: deno_ast::ModuleKind,
     media_type: MediaType,
+    module_kind: deno_ast::ModuleKind,
     source: Arc<str>,
     transpile_options: &deno_ast::TranspileOptions,
     emit_options: &deno_ast::EmitOptions,

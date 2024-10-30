@@ -619,8 +619,8 @@ impl<'a> DenoCompileBinaryWriter<'a> {
               .emitter
               .emit_parsed_source(
                 &m.specifier,
-                module_kind,
                 m.media_type,
+                module_kind,
                 &m.source,
               )
               .await?;

@@ -573,7 +573,7 @@ impl<TGraphContainer: ModuleGraphContainer>
       }) => {
         let transpile_result = self
           .emitter
-          .emit_parsed_source(specifier, ModuleKind::Esm, media_type, source)
+          .emit_parsed_source(specifier, media_type, ModuleKind::Esm, source)
           .await?;
 
         // at this point, we no longer need the parsed source in memory, so free it
@@ -613,8 +613,8 @@ impl<TGraphContainer: ModuleGraphContainer>
       }) => {
         let transpile_result = self.emitter.emit_parsed_source_sync(
           specifier,
-          ModuleKind::Esm,
           media_type,
+          ModuleKind::Esm,
           source,
         )?;
 
@@ -734,17 +734,22 @@ impl<TGraphContainer: ModuleGraphContainer>
     &self,
     specifier: &ModuleSpecifier,
     media_type: MediaType,
-    source: &Arc<str>,
+    original_source: &Arc<str>,
   ) -> Result<ModuleCodeStringSource, AnyError> {
     let js_source = if media_type.is_emittable() {
       Cow::Owned(
         self
           .emitter
-          .emit_parsed_source(specifier, ModuleKind::Cjs, media_type, source)
+          .emit_parsed_source(
+            specifier,
+            media_type,
+            ModuleKind::Cjs,
+            original_source,
+          )
           .await?,
       )
     } else {
-      Cow::Borrowed(source.as_ref())
+      Cow::Borrowed(original_source.as_ref())
     };
     let text = self
       .node_code_translator
@@ -753,8 +758,15 @@ impl<TGraphContainer: ModuleGraphContainer>
     // at this point, we no longer need the parsed source in memory, so free it
     self.parsed_source_cache.free(specifier);
     Ok(ModuleCodeStringSource {
-      // todo(dsherret): perf: if text is borrowed then we can clone the original source
-      code: ModuleSourceCode::String(text.into_owned().into()),
+      code: match text {
+        // perf: if the text is borrowed, that means it didn't make any changes
+        // to the original source, so we can just provide that instead of cloning
+        // the borrowed text
+        Cow::Borrowed(_) => {
+          ModuleSourceCode::String(original_source.clone().into())
+        }
+        Cow::Owned(text) => ModuleSourceCode::String(text.into()),
+      },
       found_url: specifier.clone(),
       media_type,
     })
@@ -1055,8 +1067,8 @@ impl<TGraphContainer: ModuleGraphContainer> NodeRequireLoader
     path: &'a Path,
   ) -> Result<std::borrow::Cow<'a, Path>, AnyError> {
     if let Ok(url) = deno_path_util::url_from_file_path(path) {
+      // allow reading if it's in the module graph
       if self.graph_container.graph().get(&url).is_some() {
-        // allow reading if it's in the module graph
         return Ok(std::borrow::Cow::Borrowed(path));
       }
     }
@@ -1080,8 +1092,11 @@ impl<TGraphContainer: ModuleGraphContainer> NodeRequireLoader
       }
       self.emitter.emit_parsed_source_sync(
         &specifier,
-        ModuleKind::Cjs,
         media_type,
+        // this is probably not super accurate due to require esm, but probably ok.
+        // If we find this causes a lot of churn in the emit cache then we should
+        // investigate how we can make this better
+        ModuleKind::Cjs,
         &text.into(),
       )
     } else {

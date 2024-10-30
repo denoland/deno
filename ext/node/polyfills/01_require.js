@@ -1080,27 +1080,29 @@ Module._extensions[".js"] = function (module, filename) {
   module._compile(content, filename, format);
 };
 
-Module._extensions[".ts"] = function (module, filename) {
-  const content = op_require_read_file(filename);
+Module._extensions[".ts"] =
+  Module._extensions[".jsx"] =
+  Module._extensions[".tsx"] =
+    function (module, filename) {
+      const content = op_require_read_file(filename);
 
-  let format;
-  const pkg = op_require_read_closest_package_json(filename);
-  if (pkg?.type === "module") {
-    format = "module";
-  } else if (pkg?.type === "commonjs") {
-    format = "commonjs";
-  }
+      let format;
+      const pkg = op_require_read_closest_package_json(filename);
+      if (pkg?.type === "module") {
+        format = "module";
+      } else if (pkg?.type === "commonjs") {
+        format = "commonjs";
+      }
 
-  module._compile(content, filename, format);
-};
+      module._compile(content, filename, format);
+    };
 
-Module._extensions[".cjs"] = Module._extensions[".cts"] = function (
-  module,
-  filename,
-) {
-  const content = op_require_read_file(filename);
-  module._compile(content, filename, "commonjs");
-};
+Module._extensions[".cjs"] =
+  Module._extensions[".cts"] =
+    function (module, filename) {
+      const content = op_require_read_file(filename);
+      module._compile(content, filename, "commonjs");
+    };
 
 function loadESMFromCJS(module, filename, code) {
   const namespace = op_import_sync(

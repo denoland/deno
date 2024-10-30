@@ -424,6 +424,10 @@ pub struct CjsTrackerOptions {
 }
 
 /// Keeps track of what module specifiers were resolved as CJS.
+///
+/// Modules that are `.js` or `.ts` are only known to be CJS or
+/// ESM after they're loaded based on their contents. So these files
+/// will be "maybe CJS" until they're loaded.
 #[derive(Debug)]
 pub struct CjsTracker {
   in_npm_pkg_checker: Arc<dyn InNpmPackageChecker>,
