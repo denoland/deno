@@ -151,7 +151,7 @@ where
   }
 
   let mut paths = Vec::with_capacity(from.components().count());
-  let mut current_path = from.as_ref();
+  let mut current_path = from.as_path();
   let mut maybe_parent = Some(current_path);
   while let Some(parent) = maybe_parent {
     if !parent.ends_with("node_modules") {
