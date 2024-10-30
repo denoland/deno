@@ -1075,11 +1075,31 @@ Module._extensions[".js"] = function (module, filename) {
     } else if (pkg?.type === "commonjs") {
       format = "commonjs";
     }
-  } else if (StringPrototypeEndsWith(filename, ".cjs")) {
+  }
+
+  module._compile(content, filename, format);
+};
+
+Module._extensions[".ts"] = function (module, filename) {
+  const content = op_require_read_file(filename);
+
+  let format;
+  const pkg = op_require_read_closest_package_json(filename);
+  if (pkg?.type === "module") {
+    format = "module";
+  } else if (pkg?.type === "commonjs") {
     format = "commonjs";
   }
 
   module._compile(content, filename, format);
+};
+
+Module._extensions[".cjs"] = Module._extensions[".cts"] = function (
+  module,
+  filename,
+) {
+  const content = op_require_read_file(filename);
+  module._compile(content, filename, "commonjs");
 };
 
 function loadESMFromCJS(module, filename, code) {
@@ -1091,7 +1111,10 @@ function loadESMFromCJS(module, filename, code) {
   module.exports = namespace;
 }
 
-Module._extensions[".mjs"] = function (module, filename) {
+Module._extensions[".mjs"] = Module._extensions[".mts"] = function (
+  module,
+  filename,
+) {
   loadESMFromCJS(module, filename);
 };
 

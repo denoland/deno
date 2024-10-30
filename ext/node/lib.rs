@@ -14,8 +14,6 @@ use deno_core::url::Url;
 #[allow(unused_imports)]
 use deno_core::v8;
 use deno_core::v8::ExternalReference;
-use deno_fs::sync::MaybeSend;
-use deno_fs::sync::MaybeSync;
 use node_resolver::NpmResolverRc;
 use once_cell::sync::Lazy;
 
@@ -125,7 +123,7 @@ impl NodePermissions for deno_permissions::PermissionsContainer {
 #[allow(clippy::disallowed_types)]
 pub type NodeRequireLoaderRc = std::rc::Rc<dyn NodeRequireLoader>;
 
-pub trait NodeRequireLoader: std::fmt::Debug + MaybeSend + MaybeSync {
+pub trait NodeRequireLoader {
   #[must_use = "the resolved return value to mitigate time-of-check to time-of-use issues"]
   fn ensure_read_permission<'a>(
     &self,
@@ -151,7 +149,7 @@ fn op_node_build_os() -> String {
   env!("TARGET").split('-').nth(2).unwrap().to_string()
 }
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct NodeExtInitServices {
   pub node_require_loader: NodeRequireLoaderRc,
   pub node_resolver: NodeResolverRc,

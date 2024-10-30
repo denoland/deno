@@ -2,7 +2,7 @@
   "tempDir": true,
   "steps": [{
     "if": "unix",
-    "args": "compile -A --output main main.js",
+    "args": "compile --output main main.js",
     "output": "[WILDCARD]"
   }, {
     "if": "unix",
@@ -12,7 +12,7 @@
     "exitCode": 0
   }, {
     "if": "windows",
-    "args": "compile -A --output main.exe main.js",
+    "args": "compile --output main.exe main.js",
     "output": "[WILDCARD]"
   }, {
     "if": "windows",

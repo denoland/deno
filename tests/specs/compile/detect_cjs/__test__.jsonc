@@ -1,8 +1,11 @@
 {
   "tempDir": true,
   "steps": [{
+    "args": "install",
+    "output": "[WILDCARD]"
+  }, {
     "if": "unix",
-    "args": "compile --allow-read --output main main.js",
+    "args": "compile --output main main.js",
     "output": "compile.out"
   }, {
     "if": "unix",
@@ -12,7 +15,7 @@
     "exitCode": 0
   }, {
     "if": "windows",
-    "args": "compile --allow-read --output main.exe main.js",
+    "args": "compile --output main.exe main.js",
     "output": "compile.out"
   }, {
     "if": "windows",

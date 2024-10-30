@@ -289,7 +289,7 @@ impl CliModuleLoaderFactory {
         is_npm_main: self.shared.is_npm_main,
         parent_permissions,
         permissions,
-        graph_container,
+        graph_container: graph_container.clone(),
         node_code_translator: self.shared.node_code_translator.clone(),
         emitter: self.shared.emitter.clone(),
         parsed_source_cache: self.shared.parsed_source_cache.clone(),
@@ -298,6 +298,7 @@ impl CliModuleLoaderFactory {
     let node_require_loader = Rc::new(CliNodeRequireLoader::new(
       self.shared.emitter.clone(),
       self.shared.fs.clone(),
+      graph_container,
       self.shared.in_npm_pkg_checker.clone(),
       self.shared.npm_resolver.clone(),
     ));
@@ -1017,35 +1018,48 @@ impl ModuleGraphUpdatePermit for WorkerModuleGraphUpdatePermit {
 }
 
 #[derive(Debug)]
-struct CliNodeRequireLoader {
+struct CliNodeRequireLoader<TGraphContainer: ModuleGraphContainer> {
   emitter: Arc<Emitter>,
   fs: Arc<dyn FileSystem>,
+  graph_container: TGraphContainer,
   in_npm_pkg_checker: Arc<dyn InNpmPackageChecker>,
   npm_resolver: Arc<dyn CliNpmResolver>,
 }
 
-impl CliNodeRequireLoader {
+impl<TGraphContainer: ModuleGraphContainer>
+  CliNodeRequireLoader<TGraphContainer>
+{
   pub fn new(
     emitter: Arc<Emitter>,
     fs: Arc<dyn FileSystem>,
+    graph_container: TGraphContainer,
     in_npm_pkg_checker: Arc<dyn InNpmPackageChecker>,
     npm_resolver: Arc<dyn CliNpmResolver>,
   ) -> Self {
     Self {
       emitter,
       fs,
+      graph_container,
       in_npm_pkg_checker,
       npm_resolver,
     }
   }
 }
 
-impl NodeRequireLoader for CliNodeRequireLoader {
+impl<TGraphContainer: ModuleGraphContainer> NodeRequireLoader
+  for CliNodeRequireLoader<TGraphContainer>
+{
   fn ensure_read_permission<'a>(
     &self,
     permissions: &mut dyn deno_runtime::deno_node::NodePermissions,
     path: &'a Path,
   ) -> Result<std::borrow::Cow<'a, Path>, AnyError> {
+    if let Ok(url) = deno_path_util::url_from_file_path(path) {
+      if self.graph_container.graph().get(&url).is_some() {
+        // allow reading if it's in the module graph
+        return Ok(std::borrow::Cow::Borrowed(path));
+      }
+    }
     self.npm_resolver.ensure_read_permission(permissions, path)
   }
 

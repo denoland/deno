@@ -3605,7 +3605,7 @@ fn running_declaration_files() {
     temp_dir.write(file, "");
     context
       .new_command()
-      .args_vec(["run", "--allow-read", file])
+      .args_vec(["run", file])
       .run()
       .skip_output_check()
       .assert_exit_code(0);

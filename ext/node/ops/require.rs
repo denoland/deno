@@ -137,9 +137,6 @@ where
     normalize_path(current_dir.join(from))
   };
 
-  let from = ensure_read_permission::<P>(state, &from)
-    .map_err(RequireError::Permission)?;
-
   if cfg!(windows) {
     // return root node_modules when path is 'D:\\'.
     let from_str = from.to_str().unwrap();
@@ -160,7 +157,7 @@ where
   }
 
   let mut paths = Vec::with_capacity(from.components().count());
-  let mut current_path = from.as_ref();
+  let mut current_path = from.as_path();
   let mut maybe_parent = Some(current_path);
   while let Some(parent) = maybe_parent {
     if !parent.ends_with("node_modules") {

@@ -259,6 +259,10 @@ impl StandaloneModules {
     }
   }
 
+  pub fn has_file(&self, path: &Path) -> bool {
+    self.vfs.file_entry(path).is_ok()
+  }
+
   pub fn read<'a>(
     &'a self,
     specifier: &'a ModuleSpecifier,
