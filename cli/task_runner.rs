@@ -155,6 +155,12 @@ fn prepare_env_vars(
       initial_cwd.to_string_lossy().to_string(),
     );
   }
+  if !env_vars.contains_key(crate::npm::NPM_CONFIG_USER_AGENT_ENV_VAR) {
+    env_vars.insert(
+      crate::npm::NPM_CONFIG_USER_AGENT_ENV_VAR.into(),
+      crate::npm::get_npm_config_user_agent(),
+    );
+  }
   if let Some(node_modules_dir) = node_modules_dir {
     prepend_to_path(
       &mut env_vars,
@@ -215,10 +221,6 @@ impl ShellCommand for NpmCommand {
       args.extend(context.args.iter().skip(1).cloned());
 
       let mut state = context.state;
-      state.apply_env_var(
-        "npm_config_user_agent",
-        &crate::npm::get_npm_config_user_agent(),
-      );
       state.apply_env_var(USE_PKG_JSON_HIDDEN_ENV_VAR_NAME, "1");
       return ExecutableCommand::new(
         "deno".to_string(),
@@ -250,12 +252,8 @@ pub struct NodeCommand;
 impl ShellCommand for NodeCommand {
   fn execute(
     &self,
-    mut context: ShellCommandContext,
+    context: ShellCommandContext,
   ) -> LocalBoxFuture<'static, ExecuteResult> {
-    context.state.apply_env_var(
-      "npm_config_user_agent",
-      &crate::npm::get_npm_config_user_agent(),
-    );
     // run with deno if it's a simple invocation, fall back to node
     // if there are extra flags
     let mut args = Vec::with_capacity(context.args.len());
@@ -296,13 +294,8 @@ pub struct NodeGypCommand;
 impl ShellCommand for NodeGypCommand {
   fn execute(
     &self,
-    mut context: ShellCommandContext,
+    context: ShellCommandContext,
   ) -> LocalBoxFuture<'static, ExecuteResult> {
-    context.state.apply_env_var(
-      "npm_config_user_agent",
-      &crate::npm::get_npm_config_user_agent(),
-    );
-
     // at the moment this shell command is just to give a warning if node-gyp is not found
     // in the future, we could try to run/install node-gyp for the user with deno
     if context.state.resolve_command_path("node-gyp").is_err() {
@@ -325,14 +318,10 @@ impl ShellCommand for NpxCommand {
   ) -> LocalBoxFuture<'static, ExecuteResult> {
     if let Some(first_arg) = context.args.first().cloned() {
       if let Some(command) = context.state.resolve_custom_command(&first_arg) {
-        let mut context = ShellCommandContext {
+        let context = ShellCommandContext {
           args: context.args.iter().skip(1).cloned().collect::<Vec<_>>(),
           ..context
         };
-        context.state.apply_env_var(
-          "npm_config_user_agent",
-          &crate::npm::get_npm_config_user_agent(),
-        );
         command.execute(context)
       } else {
         // can't find the command, so fallback to running the real npx command
@@ -363,7 +352,7 @@ struct NpmPackageBinCommand {
 impl ShellCommand for NpmPackageBinCommand {
   fn execute(
     &self,
-    mut context: ShellCommandContext,
+    context: ShellCommandContext,
   ) -> LocalBoxFuture<'static, ExecuteResult> {
     let mut args = vec![
       "run".to_string(),
@@ -406,10 +395,6 @@ impl ShellCommand for NodeModulesFileRunCommand {
     let executable_command = deno_task_shell::ExecutableCommand::new(
       "deno".to_string(),
       std::env::current_exe().unwrap(),
-    );
-    context.state.apply_env_var(
-      "npm_config_user_agent",
-      &crate::npm::get_npm_config_user_agent(),
     );
     // set this environment variable so that the launched process knows the npm command name
     context

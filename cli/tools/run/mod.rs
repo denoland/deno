@@ -34,7 +34,7 @@ fn set_npm_user_agent() {
   static ONCE: std::sync::Once = std::sync::Once::new();
   ONCE.call_once(|| {
     std::env::set_var(
-      "npm_config_user_agent",
+      crate::npm::NPM_CONFIG_USER_AGENT_ENV_VAR,
       crate::npm::get_npm_config_user_agent(),
     );
   });

@@ -1,7 +1,7 @@
 {
   "tempDir": true,
   "tests": {
-    "run_npm_package": {
+    "set_for_npm_package": {
       "steps": [
         {
           "args": "install",
@@ -13,37 +13,32 @@
         }
       ]
     },
-    "npx": {
+    "unset_for_local_file": {
+      "steps": [
+        {
+          "args": "run -A main.ts",
+          "output": "Download [WILDCARD]\nnpm_config_user_agent: undefined\n"
+        }
+      ]
+    },
+    "set_for_tasks": {
       "steps": [
         {
           "args": "install",
           "output": "[WILDCARD]"
         },
-        {
-          "if": "unix",
-          "args": "task run-with-npx",
-          "output": "npx.out"
-        }
-      ]
-    },
-    "bin_command": {
-      "steps": [
-        { "args": "install", "output": "[WILDCARD]" },
         {
           "args": "task run-via-bin",
-          "output": "Task run-via-bin print-npm-user-agent\nnpm_config_user_agent: deno/[WILDCARD] npm/? deno/[WILDCARD] [WILDCARD] [WILDCARD]\n"
+          "output": "bin_command.out"
         }
       ]
     },
-    "npm_run": {
+    "set_for_lifecycle_scripts": {
       "steps": [
         {
-          "args": "install",
-          "output": "[WILDCARD]"
-        },
-        {
-          "args": "task run-via-other-task",
-          "output": "npm_run.out"
+          "args": "install --allow-scripts",
+          "output": "postinstall.out",
+          "exitCode": 1
         }
       ]
     }
