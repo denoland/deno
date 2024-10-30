@@ -11,8 +11,6 @@ use std::sync::Arc;
 
 use common::maybe_auth_header_for_npm_registry;
 use dashmap::DashMap;
-use deno_ast::MediaType;
-use deno_ast::ModuleKind;
 use deno_ast::ModuleSpecifier;
 use deno_core::error::AnyError;
 use deno_core::serde_json;
@@ -21,9 +19,7 @@ use deno_npm::registry::NpmPackageInfo;
 use deno_resolver::npm::ByonmInNpmPackageChecker;
 use deno_resolver::npm::ByonmNpmResolver;
 use deno_resolver::npm::ByonmResolvePkgFolderFromDenoReqError;
-use deno_runtime::deno_fs::FileSystem;
 use deno_runtime::deno_node::NodePermissions;
-use deno_runtime::deno_node::NodeRequireLoader;
 use deno_runtime::ops::process::NpmProcessStateProvider;
 use deno_semver::package::PackageNv;
 use deno_semver::package::PackageReq;
@@ -33,7 +29,6 @@ use node_resolver::InNpmPackageChecker;
 use node_resolver::NpmResolver;
 use thiserror::Error;
 
-use crate::emit::Emitter;
 use crate::file_fetcher::FileFetcher;
 
 pub use self::byonm::CliByonmNpmResolver;
@@ -90,9 +85,7 @@ pub fn create_in_npm_pkg_checker(
     CreateInNpmPkgCheckerOptions::Managed(options) => {
       create_managed_in_npm_pkg_checker(options)
     }
-    CreateInNpmPkgCheckerOptions::Byonm => {
-      Arc::new(ByonmInNpmPackageChecker::default())
-    }
+    CreateInNpmPkgCheckerOptions::Byonm => Arc::new(ByonmInNpmPackageChecker),
   }
 }
 

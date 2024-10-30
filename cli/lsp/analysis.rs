@@ -36,7 +36,6 @@ use deno_semver::package::PackageReq;
 use deno_semver::package::PackageReqReference;
 use deno_semver::Version;
 use import_map::ImportMap;
-use node_resolver::NpmResolver;
 use once_cell::sync::Lazy;
 use regex::Regex;
 use std::borrow::Cow;

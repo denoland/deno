@@ -30,7 +30,6 @@ use deno_runtime::colors;
 use deno_runtime::deno_fs;
 use deno_runtime::deno_fs::FileSystem;
 use deno_runtime::deno_node::is_builtin_node_module;
-use deno_runtime::deno_node::NodeRequireLoader;
 use deno_runtime::deno_node::NodeResolver;
 use deno_runtime::deno_node::PackageJsonResolver;
 use deno_semver::npm::NpmPackageReqReference;
@@ -55,7 +54,6 @@ use thiserror::Error;
 
 use crate::args::JsxImportSourceConfig;
 use crate::args::DENO_DISABLE_PEDANTIC_NODE_WARNINGS;
-use crate::emit::Emitter;
 use crate::node::CliNodeCodeTranslator;
 use crate::npm::CliNpmResolver;
 use crate::npm::InnerCliNpmResolverRef;
@@ -512,12 +510,12 @@ impl CjsTracker {
       MediaType::Dts => {
         // dts files are always determined based on the package.json because
         // they contain imports/exports even when considered CJS
-        if let Some(value) = self.known.get(specifier).map(|v| v.clone()) {
+        if let Some(value) = self.known.get(specifier).map(|v| *v) {
           Some(value)
         } else {
           let value = self.check_based_on_pkg_json(specifier).ok();
           if let Some(value) = value {
-            self.known.insert(specifier.clone(), value.clone());
+            self.known.insert(specifier.clone(), value);
           }
           Some(value.unwrap_or(ModuleKind::Esm))
         }
@@ -532,7 +530,7 @@ impl CjsTracker {
       | MediaType::Css
       | MediaType::SourceMap
       | MediaType::Unknown => {
-        if let Some(value) = self.known.get(specifier).map(|v| v.clone()) {
+        if let Some(value) = self.known.get(specifier).map(|v| *v) {
           if value.is_cjs() && is_script == Some(false) {
             // we now know this is actually esm
             self.known.insert(specifier.clone(), ModuleKind::Esm);
@@ -575,19 +573,6 @@ impl CjsTracker {
       }
     } else {
       Ok(ModuleKind::Esm)
-    }
-  }
-
-  pub fn mark_kind(&self, specifier: ModuleSpecifier, kind: ModuleKind) {
-    self.known.insert(specifier, kind);
-  }
-
-  pub fn snapshot(&self) -> CjsTracker {
-    CjsTracker {
-      in_npm_pkg_checker: self.in_npm_pkg_checker.clone(),
-      pkg_json_resolver: self.pkg_json_resolver.clone(),
-      unstable_detect_cjs: self.unstable_detect_cjs,
-      known: self.known.clone(),
     }
   }
 }
@@ -803,19 +788,17 @@ impl Resolver for CliGraphResolver {
                 )
                 .map_err(|e| ResolveError::Other(e.into()))
                 .and_then(|pkg_folder| {
-                  Ok(
-                    self
-                      .node_resolver
-                      .as_ref()
-                      .unwrap()
-                      .resolve_package_sub_path_from_deno_module(
-                        pkg_folder,
-                        sub_path.as_deref(),
-                        Some(referrer),
-                        to_node_mode(mode),
-                      )
-                      .map_err(|e| ResolveError::Other(e.into()))?,
-                  )
+                  self
+                    .node_resolver
+                    .as_ref()
+                    .unwrap()
+                    .resolve_package_sub_path_from_deno_module(
+                      pkg_folder,
+                      sub_path.as_deref(),
+                      Some(referrer),
+                      to_node_mode(mode),
+                    )
+                    .map_err(|e| ResolveError::Other(e.into()))
                 }),
             })
         }
@@ -855,16 +838,14 @@ impl Resolver for CliGraphResolver {
               npm_req_ref.req(),
             )
           {
-            return Ok(
-              node_resolver
-                .resolve_package_sub_path_from_deno_module(
-                  pkg_folder,
-                  npm_req_ref.sub_path(),
-                  Some(referrer),
-                  to_node_mode(mode),
-                )
-                .map_err(|e| ResolveError::Other(e.into()))?,
-            );
+            return node_resolver
+              .resolve_package_sub_path_from_deno_module(
+                pkg_folder,
+                npm_req_ref.sub_path(),
+                Some(referrer),
+                to_node_mode(mode),
+              )
+              .map_err(|e| ResolveError::Other(e.into()));
           }
 
           // do npm resolution for byonm

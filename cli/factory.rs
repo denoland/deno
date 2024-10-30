@@ -895,7 +895,6 @@ impl CliFactory {
 
     Ok(CliMainWorkerFactory::new(
       self.blob_store().clone(),
-      cjs_tracker.clone(),
       if cli_options.code_cache_enabled() {
         Some(self.code_cache()?.clone())
       } else {

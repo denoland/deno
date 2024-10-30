@@ -323,7 +323,7 @@ impl Diagnostics {
             // todo(dsherret): use a short lived cache to prevent parsing
             // source maps so often
             if let Ok(source_map) =
-              SourceMap::from_slice(&fast_check_module.source_map.as_bytes())
+              SourceMap::from_slice(fast_check_module.source_map.as_bytes())
             {
               if let Some(start) = d.start.as_mut() {
                 let maybe_token = source_map

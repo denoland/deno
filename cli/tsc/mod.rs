@@ -41,7 +41,6 @@ use node_resolver::errors::NodeJsErrorCode;
 use node_resolver::errors::NodeJsErrorCoded;
 use node_resolver::errors::PackageSubpathResolveError;
 use node_resolver::NodeModuleKind;
-use node_resolver::NodeResolution;
 use node_resolver::NodeResolutionMode;
 use once_cell::sync::Lazy;
 use std::borrow::Cow;

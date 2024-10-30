@@ -50,7 +50,6 @@ use deno_core::error::AnyError;
 use deno_core::futures::future::FutureExt;
 use deno_core::futures::Future;
 use deno_core::resolve_url;
-use deno_core::url::Url;
 use deno_core::ModuleCodeString;
 use deno_core::ModuleLoader;
 use deno_core::ModuleSource;
@@ -69,7 +68,6 @@ use deno_graph::Module;
 use deno_graph::ModuleGraph;
 use deno_graph::Resolution;
 use deno_runtime::code_cache;
-use deno_runtime::deno_fs;
 use deno_runtime::deno_fs::FileSystem;
 use deno_runtime::deno_node::create_host_defined_options;
 use deno_runtime::deno_node::NodeRequireLoader;
@@ -77,7 +75,6 @@ use deno_runtime::deno_permissions::PermissionsContainer;
 use deno_semver::npm::NpmPackageReqReference;
 use node_resolver::InNpmPackageChecker;
 use node_resolver::NodeResolutionMode;
-use thiserror::Error;
 
 pub struct ModuleLoadPreparer {
   options: Arc<CliOptions>,

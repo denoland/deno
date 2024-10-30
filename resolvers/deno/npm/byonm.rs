@@ -356,7 +356,7 @@ impl<
   }
 }
 
-#[derive(Default, Debug)]
+#[derive(Debug)]
 pub struct ByonmInNpmPackageChecker;
 
 impl InNpmPackageChecker for ByonmInNpmPackageChecker {

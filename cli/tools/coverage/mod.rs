@@ -6,7 +6,6 @@ use crate::args::FileFlags;
 use crate::args::Flags;
 use crate::cdp;
 use crate::factory::CliFactory;
-use crate::npm::CliNpmResolver;
 use crate::tools::fmt::format_json;
 use crate::tools::test::is_supported_test_path;
 use crate::util::text_encoding::source_map_from_code;
@@ -481,7 +480,7 @@ fn filter_coverages(
     .collect::<Vec<cdp::ScriptCoverage>>()
 }
 
-pub async fn cover_files(
+pub fn cover_files(
   flags: Arc<Flags>,
   coverage_flags: CoverageFlags,
 ) -> Result<(), AnyError> {

@@ -8,7 +8,6 @@ use crate::file_fetcher::FetchOptions;
 use crate::file_fetcher::FetchPermissionsOptionRef;
 use crate::file_fetcher::FileFetcher;
 use crate::file_fetcher::FileOrRedirect;
-use crate::npm::CliNpmResolver;
 use crate::util::fs::atomic_write_file_with_retries;
 use crate::util::fs::atomic_write_file_with_retries_and_fs;
 use crate::util::fs::AtomicWriteFileFsAdapter;

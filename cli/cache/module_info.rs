@@ -128,7 +128,7 @@ impl ModuleInfoCache {
     Ok(())
   }
 
-  pub fn as_module_analyzer<'a>(&'a self) -> ModuleInfoCacheModuleAnalyzer<'a> {
+  pub fn as_module_analyzer(&self) -> ModuleInfoCacheModuleAnalyzer {
     ModuleInfoCacheModuleAnalyzer {
       module_info_cache: self,
       parsed_source_cache: &self.parsed_source_cache,
@@ -177,7 +177,7 @@ impl<'a> ModuleInfoCacheModuleAnalyzer<'a> {
       specifier,
       media_type,
       source_hash,
-      &module_info,
+      module_info,
     ) {
       log::debug!(
         "Error saving module cache info for {}. {:#}",
@@ -205,7 +205,7 @@ impl<'a> ModuleInfoCacheModuleAnalyzer<'a> {
     let parser = self.parsed_source_cache.as_capturing_parser();
     let analyzer = ParserModuleAnalyzer::new(&parser);
     let module_info =
-      analyzer.analyze_sync(&specifier, source.clone(), media_type)?;
+      analyzer.analyze_sync(specifier, source.clone(), media_type)?;
 
     // then attempt to cache it
     self.save_module_info_to_cache(

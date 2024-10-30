@@ -24,7 +24,6 @@ use deno_semver::package::PackageReq;
 use indexmap::IndexMap;
 use node_resolver::errors::ClosestPkgJsonError;
 use node_resolver::InNpmPackageChecker;
-use node_resolver::NodeResolution;
 use node_resolver::NodeResolutionMode;
 use std::borrow::Cow;
 use std::collections::BTreeMap;

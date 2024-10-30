@@ -751,7 +751,6 @@ pub async fn run(data: StandaloneData) -> Result<i32, AnyError> {
   });
   let worker_factory = CliMainWorkerFactory::new(
     Arc::new(BlobStore::default()),
-    cjs_tracker,
     // Code cache is not supported for standalone binary yet.
     None,
     feature_checker,

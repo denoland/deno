@@ -21,7 +21,6 @@ use deno_core::SharedArrayBufferStore;
 use deno_runtime::code_cache;
 use deno_runtime::deno_broadcast_channel::InMemoryBroadcastChannel;
 use deno_runtime::deno_fs;
-use deno_runtime::deno_node;
 use deno_runtime::deno_node::NodeExtInitServices;
 use deno_runtime::deno_node::NodeRequireLoader;
 use deno_runtime::deno_node::NodeRequireLoaderRc;
@@ -45,7 +44,6 @@ use deno_runtime::WorkerExecutionMode;
 use deno_runtime::WorkerLogLevel;
 use deno_semver::npm::NpmPackageReqReference;
 use deno_terminal::colors;
-use node_resolver::NodeResolution;
 use node_resolver::NodeResolutionMode;
 use tokio::select;
 
@@ -54,7 +52,6 @@ use crate::args::DenoSubcommand;
 use crate::args::StorageKeyResolver;
 use crate::errors;
 use crate::npm::CliNpmResolver;
-use crate::resolver::CjsTracker;
 use crate::util::checksum;
 use crate::util::file_watcher::WatcherCommunicator;
 use crate::util::file_watcher::WatcherRestartMode;
@@ -129,7 +126,6 @@ pub struct CliMainWorkerOptions {
 struct SharedWorkerState {
   blob_store: Arc<BlobStore>,
   broadcast_channel: InMemoryBroadcastChannel,
-  cjs_tracker: Arc<CjsTracker>,
   code_cache: Option<Arc<dyn code_cache::CodeCache>>,
   compiled_wasm_module_store: CompiledWasmModuleStore,
   feature_checker: Arc<FeatureChecker>,
@@ -406,7 +402,6 @@ impl CliMainWorkerFactory {
   #[allow(clippy::too_many_arguments)]
   pub fn new(
     blob_store: Arc<BlobStore>,
-    cjs_tracker: Arc<CjsTracker>,
     code_cache: Option<Arc<dyn code_cache::CodeCache>>,
     feature_checker: Arc<FeatureChecker>,
     fs: Arc<dyn deno_fs::FileSystem>,
@@ -427,7 +422,6 @@ impl CliMainWorkerFactory {
       shared: Arc::new(SharedWorkerState {
         blob_store,
         broadcast_channel: Default::default(),
-        cjs_tracker,
         code_cache,
         compiled_wasm_module_store: Default::default(),
         feature_checker,
