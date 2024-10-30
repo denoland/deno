@@ -6,6 +6,44 @@ https://github.com/denoland/deno/releases
 We also have one-line install commands at:
 https://github.com/denoland/deno_install
 
+### 2.0.3 / 2024.10.25
+
+- feat(lsp): interactive inlay hints (#26382)
+- fix: support node-api in denort (#26389)
+- fix(check): support `--frozen` on deno check (#26479)
+- fix(cli): increase size of blocking task threadpool on windows (#26465)
+- fix(config): schemas for lint rule and tag autocompletion (#26515)
+- fix(ext/console): ignore casing for named colors in css parsing (#26466)
+- fix(ext/ffi): return u64/i64 as bigints from nonblocking ffi calls (#26486)
+- fix(ext/node): cancel pending ipc writes on channel close (#26504)
+- fix(ext/node): map `ERROR_INVALID_NAME` to `ENOENT` on windows (#26475)
+- fix(ext/node): only set our end of child process pipe to nonblocking mode
+  (#26495)
+- fix(ext/node): properly map reparse point error in readlink (#26375)
+- fix(ext/node): refactor http.ServerResponse into function class (#26210)
+- fix(ext/node): stub HTTPParser internal binding (#26401)
+- fix(ext/node): use primordials in `ext/node/polyfills/https.ts` (#26323)
+- fix(fmt): --ext flag requires to pass files (#26525)
+- fix(fmt): upgrade formatters (#26469)
+- fix(help): missing package specifier (#26380)
+- fix(info): resolve workspace member mappings (#26350)
+- fix(install): better json editing (#26450)
+- fix(install): cache all exports of JSR packages listed in `deno.json` (#26501)
+- fix(install): cache type only module deps in `deno install` (#26497)
+- fix(install): don't cache json exports of JSR packages (for now) (#26530)
+- fix(install): update lockfile when using package.json (#26458)
+- fix(lsp): import-map-remap quickfix for type imports (#26454)
+- fix(node/util): support array formats in `styleText` (#26507)
+- fix(node:tls): set TLSSocket.alpnProtocol for client connections (#26476)
+- fix(npm): ensure scoped package name is encoded in URLs (#26390)
+- fix(npm): support version ranges with && or comma (#26453)
+- fix: `.npmrc` settings not being passed to install/add command (#26473)
+- fix: add 'fmt-component' to unstable features in schema file (#26526)
+- fix: share inotify fd across watchers (#26200)
+- fix: unpin tokio version (#26457)
+- perf(compile): pass module source data from binary directly to v8 (#26494)
+- perf: avoid multiple calls to runMicrotask (#26378)
+
 ### 2.0.2 / 2024.10.17
 
 - fix(cli): set napi object property properly (#26344)
