@@ -1,0 +1,10 @@
+{
+  "scripts": {
+    "run-with-npx": "npx print-npm-user-agent",
+    "run-via-other-task": "npm run run-via-bin",
+    "run-via-bin": "print-npm-user-agent"
+  },
+  "dependencies": {
+    "@denotest/print-npm-user-agent": "1.0.0"
+  }
+}

@@ -30,6 +30,16 @@ To grant permissions, set them before the script argument. For example:
   }
 }
 
+fn set_npm_user_agent() {
+  static ONCE: std::sync::Once = std::sync::Once::new();
+  ONCE.call_once(|| {
+    std::env::set_var(
+      "npm_config_user_agent",
+      crate::npm::get_npm_config_user_agent(),
+    );
+  });
+}
+
 pub async fn run_script(
   mode: WorkerExecutionMode,
   flags: Arc<Flags>,
@@ -57,6 +67,10 @@ pub async fn run_script(
   );
 
   let main_module = cli_options.resolve_main_module()?;
+
+  if main_module.scheme() == "npm" {
+    set_npm_user_agent();
+  }
 
   maybe_npm_install(&factory).await?;
 
@@ -118,6 +132,10 @@ async fn run_with_watch(
         );
         let cli_options = factory.cli_options()?;
         let main_module = cli_options.resolve_main_module()?;
+
+        if main_module.scheme() == "npm" {
+          set_npm_user_agent();
+        }
 
         maybe_npm_install(&factory).await?;
 

@@ -204,7 +204,7 @@ impl ShellCommand for NpmCommand {
     mut context: ShellCommandContext,
   ) -> LocalBoxFuture<'static, ExecuteResult> {
     if context.args.first().map(|s| s.as_str()) == Some("run")
-      && context.args.len() > 2
+      && context.args.len() >= 2
       // for now, don't run any npm scripts that have a flag because
       // we don't handle stuff like `--workspaces` properly
       && !context.args.iter().any(|s| s.starts_with('-'))
@@ -374,11 +374,6 @@ impl ShellCommand for NpmPackageBinCommand {
         format!("npm:{}/{}", self.npm_package, self.name)
       },
     ];
-
-    context.state.apply_env_var(
-      "npm_config_user_agent",
-      &crate::npm::get_npm_config_user_agent(),
-    );
 
     args.extend(context.args);
     let executable_command = deno_task_shell::ExecutableCommand::new(

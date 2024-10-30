@@ -1,0 +1,18 @@
+{
+  "version": "4",
+  "specifiers": {
+    "npm:@denotest/print-npm-user-agent@1.0.0": "1.0.0"
+  },
+  "npm": {
+    "@denotest/print-npm-user-agent@1.0.0": {
+      "integrity": "sha512-1ZouMMagj2cTA6CHGOtqIg4/P3llK0igFw6qFT3y32GCLqCWTU4t2VfyF6eFs2njLoXlArhSVHHCeQ0QR5/9FQ=="
+    }
+  },
+  "workspace": {
+    "packageJson": {
+      "dependencies": [
+        "npm:@denotest/print-npm-user-agent@1.0.0"
+      ]
+    }
+  }
+}

@@ -1,0 +1,7 @@
+{
+  "name": "@denotest/print-npm-user-agent",
+  "version": "1.0.0",
+  "bin": {
+    "print-npm-user-agent": "index.js"
+  }
+}
