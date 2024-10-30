@@ -578,6 +578,7 @@ fn discover_npmrc(
     let resolved = npmrc
       .as_resolved(npm_registry_url())
       .context("Failed to resolve .npmrc options")?;
+    log::debug!(".npmrc found at: '{}'", path.display());
     Ok(Arc::new(resolved))
   }
 
@@ -963,6 +964,9 @@ impl CliOptions {
     match self.sub_command() {
       DenoSubcommand::Cache(_) => GraphKind::All,
       DenoSubcommand::Check(_) => GraphKind::TypesOnly,
+      DenoSubcommand::Install(InstallFlags {
+        kind: InstallKind::Local(_),
+      }) => GraphKind::All,
       _ => self.type_check_mode().as_graph_kind(),
     }
   }
@@ -1666,6 +1670,10 @@ impl CliOptions {
   pub fn watch_paths(&self) -> Vec<PathBuf> {
     let mut full_paths = Vec::new();
     if let DenoSubcommand::Run(RunFlags {
+      watch: Some(WatchFlagsWithPaths { paths, .. }),
+      ..
+    })
+    | DenoSubcommand::Serve(ServeFlags {
       watch: Some(WatchFlagsWithPaths { paths, .. }),
       ..
     }) = &self.flags.subcommand

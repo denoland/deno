@@ -23,7 +23,6 @@ use deno_core::InspectorSessionProxy;
 use deno_core::JsRuntime;
 use fastwebsockets::Frame;
 use fastwebsockets::OpCode;
-use fastwebsockets::Payload;
 use fastwebsockets::WebSocket;
 use hyper::body::Bytes;
 use hyper_util::rt::TokioIo;
@@ -34,7 +33,6 @@ use std::pin::pin;
 use std::process;
 use std::rc::Rc;
 use std::thread;
-use std::time::Duration;
 use tokio::net::TcpListener;
 use tokio::sync::broadcast;
 use uuid::Uuid;
@@ -395,13 +393,8 @@ async fn pump_websocket_messages(
   inbound_tx: UnboundedSender<String>,
   mut outbound_rx: UnboundedReceiver<InspectorMsg>,
 ) {
-  let mut ticker = tokio::time::interval(Duration::from_secs(30));
-
   'pump: loop {
     tokio::select! {
-        _ = ticker.tick() => {
-            let _ = websocket.write_frame(Frame::new(true, OpCode::Ping, None, Payload::Borrowed(&[]))).await;
-        }
         Some(msg) = outbound_rx.next() => {
             let msg = Frame::text(msg.content.into_bytes().into());
             let _ = websocket.write_frame(msg).await;
