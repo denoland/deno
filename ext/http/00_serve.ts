@@ -862,7 +862,7 @@ internals.upgradeHttpRaw = upgradeHttpRaw;
 internals.serveHttpOnListener = serveHttpOnListener;
 internals.serveHttpOnConnection = serveHttpOnConnection;
 
-export function registerDeclarativeServer(exports) {
+function registerDeclarativeServer(exports) {
   if (ObjectHasOwn(exports, "fetch")) {
     if (typeof exports.fetch !== "function") {
       throw new TypeError(
