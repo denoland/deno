@@ -1675,6 +1675,10 @@ impl CliOptions {
     if let DenoSubcommand::Run(RunFlags {
       watch: Some(WatchFlagsWithPaths { paths, .. }),
       ..
+    })
+    | DenoSubcommand::Serve(ServeFlags {
+      watch: Some(WatchFlagsWithPaths { paths, .. }),
+      ..
     }) = &self.flags.subcommand
     {
       full_paths.extend(paths.iter().map(|path| self.initial_cwd.join(path)));

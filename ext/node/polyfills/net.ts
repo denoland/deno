@@ -1871,13 +1871,23 @@ function _setupListenHandle(
 
     // Try to bind to the unspecified IPv6 address, see if IPv6 is available
     if (!address && typeof fd !== "number") {
-      if (isWindows) {
-        address = DEFAULT_IPV4_ADDR;
-        addressType = 4;
-      } else {
-        address = DEFAULT_IPV6_ADDR;
-        addressType = 6;
-      }
+      // TODO(@bartlomieju): differs from Node which tries to bind to IPv6 first
+      // when no address is provided.
+      //
+      // Forcing IPv4 as a workaround for Deno not aligning with Node on
+      // implicit binding on Windows.
+      //
+      // REF: https://github.com/denoland/deno/issues/10762
+      // rval = _createServerHandle(DEFAULT_IPV6_ADDR, port, 6, fd, flags);
+
+      // if (typeof rval === "number") {
+      //   rval = null;
+      address = DEFAULT_IPV4_ADDR;
+      addressType = 4;
+      // } else {
+      //   address = DEFAULT_IPV6_ADDR;
+      //   addressType = 6;
+      // }
     }
 
     if (rval === null) {
