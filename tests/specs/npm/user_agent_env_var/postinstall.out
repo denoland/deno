@@ -5,6 +5,6 @@ Initialize @denotest/print-npm-user-agent@1.0.0: running 'postinstall' script
 error: script 'postinstall' in '@denotest/print-npm-user-agent@1.0.0' failed with exit code 1
 stdout:
 postinstall
-npm_config_user_agent: deno/[WILDCARD] npm/? deno/2.0.3 macos aarch64
+npm_config_user_agent: deno/[WILDCARD] npm/? deno/[WILDCARD] [WILDCARD] [WILDCARD]
 
 error: failed to run scripts for packages: @denotest/print-npm-user-agent@1.0.0
