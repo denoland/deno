@@ -1206,6 +1206,14 @@ impl CliOptions {
     }
   }
 
+  // If the main module should be treated as being in an npm package.
+  // This is triggered via a secret environment variable which is used
+  // for functionality like child_process.fork. Users should NOT depend
+  // on this functionality.
+  pub fn is_npm_main(&self) -> bool {
+    NPM_PROCESS_STATE.is_some()
+  }
+
   pub fn has_node_modules_dir(&self) -> bool {
     self.maybe_node_modules_folder.is_some()
   }

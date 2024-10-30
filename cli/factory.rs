@@ -651,6 +651,7 @@ impl CliFactory {
           self.cjs_tracker()?.clone(),
           self.fs().clone(),
           Some(self.parsed_source_cache().clone()),
+          self.cli_options()?.is_npm_main(),
         );
 
         Ok(Arc::new(NodeCodeTranslator::new(

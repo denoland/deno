@@ -206,6 +206,7 @@ struct SharedCliModuleLoaderState {
   lib_worker: TsTypeLib,
   initial_cwd: PathBuf,
   is_inspecting: bool,
+  is_npm_main: bool,
   is_repl: bool,
   cjs_tracker: Arc<CjsTracker>,
   code_cache: Option<Arc<CodeCache>>,
@@ -251,6 +252,7 @@ impl CliModuleLoaderFactory {
         lib_worker: options.ts_type_lib_worker(),
         initial_cwd: options.initial_cwd().to_path_buf(),
         is_inspecting: options.is_inspecting(),
+        is_npm_main: options.is_npm_main(),
         is_repl: matches!(
           options.sub_command(),
           DenoSubcommand::Repl(_) | DenoSubcommand::Jupyter(_)
@@ -284,6 +286,7 @@ impl CliModuleLoaderFactory {
       Rc::new(CliModuleLoader(Rc::new(CliModuleLoaderInner {
         lib,
         is_worker,
+        is_npm_main: self.shared.is_npm_main,
         parent_permissions,
         permissions,
         graph_container,
@@ -339,6 +342,7 @@ impl ModuleLoaderFactory for CliModuleLoaderFactory {
 
 struct CliModuleLoaderInner<TGraphContainer: ModuleGraphContainer> {
   lib: TsTypeLib,
+  is_npm_main: bool,
   is_worker: bool,
   /// The initial set of permissions used to resolve the static imports in the
   /// worker. These are "allow all" for main worker, and parent thread
@@ -663,11 +667,14 @@ impl<TGraphContainer: ModuleGraphContainer>
         is_script,
         ..
       })) => {
-        if self.shared.cjs_tracker.is_cjs_with_known_is_script(
-          specifier,
-          *media_type,
-          *is_script,
-        )? {
+        // todo(dsherret): revert in https://github.com/denoland/deno/pull/26439
+        if self.is_npm_main && *is_script
+          || self.shared.cjs_tracker.is_cjs_with_known_is_script(
+            specifier,
+            *media_type,
+            *is_script,
+          )?
+        {
           return Ok(Some(CodeOrDeferredEmit::Cjs {
             specifier,
             media_type: *media_type,
@@ -745,6 +752,7 @@ impl<TGraphContainer: ModuleGraphContainer>
     // at this point, we no longer need the parsed source in memory, so free it
     self.parsed_source_cache.free(specifier);
     Ok(ModuleCodeStringSource {
+      // todo(dsherret): perf: if text is borrowed then we can clone the original source
       code: ModuleSourceCode::String(text.into_owned().into()),
       found_url: specifier.clone(),
       media_type,
@@ -1042,11 +1050,11 @@ impl NodeRequireLoader for CliNodeRequireLoader {
   }
 
   fn load_text_file_lossy(&self, path: &Path) -> Result<String, AnyError> {
-    // todo(dsherret): use the preloaded module from the graph if available
-    let specifier = deno_path_util::url_from_file_path(path)?;
-    let media_type = MediaType::from_specifier(&specifier);
+    // todo(dsherret): use the preloaded module from the graph if available?
+    let media_type = MediaType::from_path(path);
     let text = self.fs.read_text_file_lossy_sync(path, None)?;
     if media_type.is_emittable() {
+      let specifier = deno_path_util::url_from_file_path(path)?;
       if self.in_npm_pkg_checker.in_npm_package(&specifier) {
         return Err(
           NotSupportedKindInNpmError {

@@ -641,6 +641,7 @@ pub async fn run(data: StandaloneData) -> Result<i32, AnyError> {
     cjs_tracker.clone(),
     fs.clone(),
     None,
+    false,
   );
   let node_code_translator = Arc::new(NodeCodeTranslator::new(
     cjs_esm_code_analyzer,

@@ -14,7 +14,6 @@ use deno_core::v8;
 use deno_core::CompiledWasmModuleStore;
 use deno_core::Extension;
 use deno_core::FeatureChecker;
-use deno_core::ModuleId;
 use deno_core::ModuleLoader;
 use deno_core::PollEventLoopOptions;
 use deno_core::SharedArrayBufferStore;
@@ -186,7 +185,7 @@ impl CliMainWorker {
 
     log::debug!("main_module {}", self.main_module);
 
-    self.execute_main_module_possibly_with_npm().await?;
+    self.execute_main_module().await?;
     self.worker.dispatch_load_event()?;
 
     loop {
@@ -274,7 +273,7 @@ impl CliMainWorker {
       /// Execute the given main module emitting load and unload events before and after execution
       /// respectively.
       pub async fn execute(&mut self) -> Result<(), AnyError> {
-        self.inner.execute_main_module_possibly_with_npm().await?;
+        self.inner.execute_main_module().await?;
         self.inner.worker.dispatch_load_event()?;
         self.pending_unload = true;
 
@@ -315,24 +314,13 @@ impl CliMainWorker {
     executor.execute().await
   }
 
-  pub async fn execute_main_module_possibly_with_npm(
-    &mut self,
-  ) -> Result<(), AnyError> {
+  pub async fn execute_main_module(&mut self) -> Result<(), AnyError> {
     let id = self.worker.preload_main_module(&self.main_module).await?;
-    self.evaluate_module_possibly_with_npm(id).await
+    self.worker.evaluate_module(id).await
   }
 
-  pub async fn execute_side_module_possibly_with_npm(
-    &mut self,
-  ) -> Result<(), AnyError> {
+  pub async fn execute_side_module(&mut self) -> Result<(), AnyError> {
     let id = self.worker.preload_side_module(&self.main_module).await?;
-    self.evaluate_module_possibly_with_npm(id).await
-  }
-
-  async fn evaluate_module_possibly_with_npm(
-    &mut self,
-    id: ModuleId,
-  ) -> Result<(), AnyError> {
     self.worker.evaluate_module(id).await
   }
 
