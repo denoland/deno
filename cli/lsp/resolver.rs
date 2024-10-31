@@ -818,7 +818,7 @@ impl LspCjsTracker {
     {
       module_kind.is_cjs()
     } else {
-      let maybe_is_script = maybe_parsed_source.map(|p| p.is_script());
+      let maybe_is_script = maybe_parsed_source.map(|p| p.compute_is_script());
       maybe_is_script
         .and_then(|is_script| {
           self

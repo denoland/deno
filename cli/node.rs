@@ -130,11 +130,12 @@ impl CliCjsCodeAnalyzer {
                 maybe_syntax: None,
               })
             })?;
+          let is_script = parsed_source.compute_is_script();
           let is_cjs = cjs_tracker.is_cjs_with_known_is_script(
             parsed_source.specifier(),
             media_type,
-            parsed_source.is_script(),
-          )? || parsed_source.is_script() && is_npm_main;
+            is_script,
+          )? || is_script && is_npm_main;
           if is_cjs {
             let analysis = parsed_source.analyze_cjs();
             Ok(CliCjsAnalysis::Cjs {
