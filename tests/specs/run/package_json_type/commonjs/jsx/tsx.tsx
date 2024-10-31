@@ -1,4 +1,4 @@
-const mod = require("./add.js");
+import mod = require("./add.js");
 
 console.log(mod.add(2, 2));
 
