@@ -108,7 +108,7 @@ pub async fn publish(
     }
   }
 
-  if let Some(version) = &publish_flags.override_version {
+  if let Some(version) = &publish_flags.set_version {
     publish_configs = publish_configs
       .into_iter()
       .map(|mut config| {
