@@ -494,7 +494,7 @@ impl ManagedCliNpmResolver {
         } => {
           // only warn for this one
           log::warn!(
-            "{} {} in {}",
+            "{} {}\n    at {}",
             colors::yellow("Warning"),
             err.source,
             err.location,
