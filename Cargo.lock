@@ -1418,9 +1418,9 @@ dependencies = [
 
 [[package]]
 name = "deno_core"
-version = "0.314.2"
+version = "0.316.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "83138917579676069b423c3eb9be3c1e579f60dc022d85f6ded4c792456255ff"
+checksum = "94f68061c88ced959c6b0417f0f0d0b3dbeaeb18013b55f86c505e9fba705cf8"
 dependencies = [
  "anyhow",
  "bincode",
@@ -1921,9 +1921,9 @@ dependencies = [
 
 [[package]]
 name = "deno_ops"
-version = "0.190.1"
+version = "0.192.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "26f46d4e4f52f26c882b74a9b58810ea75252b807cf0966166ec333077cdfd85"
+checksum = "bdb7096887508456349d7e7e09e326d157d4dba46ef1f5849bc544592ea3042a"
 dependencies = [
  "proc-macro-rules",
  "proc-macro2",
@@ -4311,9 +4311,9 @@ dependencies = [
 
 [[package]]
 name = "markup_fmt"
-version = "0.14.0"
+version = "0.15.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3f15d7b24ae4ea9b87279bc0696462a4fb6c2168847f2cc162a2da05fe1a0f61"
+checksum = "ebae65c91eab3d42231232bf48107f351e5a8d511454927218c53aeb68bbdb6f"
 dependencies = [
  "aho-corasick",
  "css_dataset",
@@ -6169,9 +6169,9 @@ dependencies = [
 
 [[package]]
 name = "serde_v8"
-version = "0.223.1"
+version = "0.225.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9cf3d859dda87ee96423c01244f10af864fa6d6a9fcdc2b77e0595078ea0ea11"
+checksum = "ce4b71200ef49a9e629edaea3d13fc98c25ede07e1496558df7f09354e37976f"
 dependencies = [
  "num-bigint",
  "serde",

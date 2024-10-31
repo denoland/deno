@@ -650,8 +650,8 @@ fn create_graph_resolver(
       workspace.to_maybe_jsx_import_source_config().ok().flatten()
     }),
     maybe_vendor_dir: config_data.and_then(|d| d.vendor_dir.as_ref()),
-    bare_node_builtins_enabled: workspace
-      .is_some_and(|workspace| workspace.has_unstable("bare-node-builtins")),
+    bare_node_builtins_enabled: config_data
+      .is_some_and(|d| d.unstable.contains("bare-node-builtins")),
     sloppy_imports_resolver: config_data
       .and_then(|d| d.sloppy_imports_resolver.clone()),
   }))

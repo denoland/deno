@@ -41,6 +41,7 @@ use deno_runtime::deno_node::PackageJson;
 use indexmap::IndexSet;
 use lsp_types::ClientCapabilities;
 use std::collections::BTreeMap;
+use std::collections::BTreeSet;
 use std::collections::HashMap;
 use std::ops::Deref;
 use std::ops::DerefMut;
@@ -1190,6 +1191,7 @@ pub struct ConfigData {
   pub resolver: Arc<WorkspaceResolver>,
   pub sloppy_imports_resolver: Option<Arc<CliSloppyImportsResolver>>,
   pub import_map_from_settings: Option<ModuleSpecifier>,
+  pub unstable: BTreeSet<String>,
   watched_files: HashMap<ModuleSpecifier, ConfigWatchedFileType>,
 }
 
@@ -1587,9 +1589,16 @@ impl ConfigData {
           .join("\n")
       );
     }
+    let unstable = member_dir
+      .workspace
+      .unstable_features()
+      .iter()
+      .chain(settings.unstable.as_deref())
+      .cloned()
+      .collect::<BTreeSet<_>>();
     let unstable_sloppy_imports = std::env::var("DENO_UNSTABLE_SLOPPY_IMPORTS")
       .is_ok()
-      || member_dir.workspace.has_unstable("sloppy-imports");
+      || unstable.contains("sloppy-imports");
     let sloppy_imports_resolver = unstable_sloppy_imports.then(|| {
       Arc::new(CliSloppyImportsResolver::new(
         SloppyImportsCachedFs::new_without_stat_cache(Arc::new(
@@ -1630,6 +1639,7 @@ impl ConfigData {
       lockfile,
       npmrc,
       import_map_from_settings,
+      unstable,
       watched_files,
     }
   }
