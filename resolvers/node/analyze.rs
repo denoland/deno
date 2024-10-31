@@ -115,7 +115,7 @@ impl<TCjsCodeAnalyzer: CjsCodeAnalyzer, TNodeResolverEnv: NodeResolverEnv>
     };
 
     let mut source = vec![
-      r#"import {createRequire as __internalCreateRequire} from "node:module";
+      r#"import {createRequire as __internalCreateRequire, Module as __internalModule } from "node:module";
       const require = __internalCreateRequire(import.meta.url);"#
         .to_string(),
     ];
@@ -142,7 +142,12 @@ impl<TCjsCodeAnalyzer: CjsCodeAnalyzer, TNodeResolverEnv: NodeResolverEnv>
     }
 
     source.push(format!(
-      "const mod = require(\"{}\");",
+      r#"let mod;
+      if (import.meta.main) {{
+        mod = __internalModule._load("{0}", null, true)
+      }} else {{
+        mod = require("{0}");
+      }}"#,
       url_to_file_path(entry_specifier)
         .unwrap()
         .to_str()
