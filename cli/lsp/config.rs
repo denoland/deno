@@ -41,6 +41,7 @@ use deno_runtime::deno_node::PackageJson;
 use indexmap::IndexSet;
 use lsp_types::ClientCapabilities;
 use std::collections::BTreeMap;
+use std::collections::BTreeSet;
 use std::collections::HashMap;
 use std::ops::Deref;
 use std::ops::DerefMut;
@@ -50,6 +51,8 @@ use std::sync::Arc;
 use tower_lsp::lsp_types as lsp;
 
 use super::logging::lsp_log;
+use super::lsp_custom;
+use super::urls::url_to_uri;
 use crate::args::discover_npmrc_from_workspace;
 use crate::args::has_flag_env_var;
 use crate::args::CliLockfile;
@@ -437,6 +440,8 @@ pub struct LanguagePreferences {
   pub use_aliases_for_renames: bool,
   #[serde(default)]
   pub quote_style: QuoteStyle,
+  #[serde(default)]
+  pub prefer_type_only_auto_imports: bool,
 }
 
 impl Default for LanguagePreferences {
@@ -447,6 +452,7 @@ impl Default for LanguagePreferences {
       auto_import_file_exclude_patterns: vec![],
       use_aliases_for_renames: true,
       quote_style: Default::default(),
+      prefer_type_only_auto_imports: false,
     }
   }
 }
@@ -1185,6 +1191,7 @@ pub struct ConfigData {
   pub resolver: Arc<WorkspaceResolver>,
   pub sloppy_imports_resolver: Option<Arc<CliSloppyImportsResolver>>,
   pub import_map_from_settings: Option<ModuleSpecifier>,
+  pub unstable: BTreeSet<String>,
   watched_files: HashMap<ModuleSpecifier, ConfigWatchedFileType>,
 }
 
@@ -1582,9 +1589,16 @@ impl ConfigData {
           .join("\n")
       );
     }
+    let unstable = member_dir
+      .workspace
+      .unstable_features()
+      .iter()
+      .chain(settings.unstable.as_deref())
+      .cloned()
+      .collect::<BTreeSet<_>>();
     let unstable_sloppy_imports = std::env::var("DENO_UNSTABLE_SLOPPY_IMPORTS")
       .is_ok()
-      || member_dir.workspace.has_unstable("sloppy-imports");
+      || unstable.contains("sloppy-imports");
     let sloppy_imports_resolver = unstable_sloppy_imports.then(|| {
       Arc::new(CliSloppyImportsResolver::new(
         SloppyImportsCachedFs::new_without_stat_cache(Arc::new(
@@ -1625,6 +1639,7 @@ impl ConfigData {
       lockfile,
       npmrc,
       import_map_from_settings,
+      unstable,
       watched_files,
     }
   }
@@ -1716,14 +1731,14 @@ impl ConfigTree {
       .unwrap_or_else(|| Arc::new(FmtConfig::new_with_base(PathBuf::from("/"))))
   }
 
-  /// Returns (scope_uri, type).
+  /// Returns (scope_url, type).
   pub fn watched_file_type(
     &self,
     specifier: &ModuleSpecifier,
   ) -> Option<(&ModuleSpecifier, ConfigWatchedFileType)> {
-    for (scope_uri, data) in self.scopes.iter() {
+    for (scope_url, data) in self.scopes.iter() {
       if let Some(typ) = data.watched_files.get(specifier) {
-        return Some((scope_uri, *typ));
+        return Some((scope_url, *typ));
       }
     }
     None
@@ -1745,6 +1760,46 @@ impl ConfigTree {
       .scopes
       .values()
       .any(|data| data.watched_files.contains_key(specifier))
+  }
+
+  pub fn to_did_refresh_params(
+    &self,
+  ) -> lsp_custom::DidRefreshDenoConfigurationTreeNotificationParams {
+    let data = self
+      .scopes
+      .values()
+      .filter_map(|data| {
+        let workspace_root_scope_uri =
+          Some(data.member_dir.workspace.root_dir())
+            .filter(|s| *s != data.member_dir.dir_url())
+            .and_then(|s| url_to_uri(s).ok());
+        Some(lsp_custom::DenoConfigurationData {
+          scope_uri: url_to_uri(&data.scope).ok()?,
+          deno_json: data.maybe_deno_json().and_then(|c| {
+            if workspace_root_scope_uri.is_some()
+              && Some(&c.specifier)
+                == data
+                  .member_dir
+                  .workspace
+                  .root_deno_json()
+                  .map(|c| &c.specifier)
+            {
+              return None;
+            }
+            Some(lsp::TextDocumentIdentifier {
+              uri: url_to_uri(&c.specifier).ok()?,
+            })
+          }),
+          package_json: data.maybe_pkg_json().and_then(|p| {
+            Some(lsp::TextDocumentIdentifier {
+              uri: url_to_uri(&p.specifier()).ok()?,
+            })
+          }),
+          workspace_root_scope_uri,
+        })
+      })
+      .collect();
+    lsp_custom::DidRefreshDenoConfigurationTreeNotificationParams { data }
   }
 
   pub async fn refresh(
@@ -2209,6 +2264,7 @@ mod tests {
             auto_import_file_exclude_patterns: vec![],
             use_aliases_for_renames: true,
             quote_style: QuoteStyle::Auto,
+            prefer_type_only_auto_imports: false,
           },
           suggest: CompletionSettings {
             complete_function_calls: false,
@@ -2254,6 +2310,7 @@ mod tests {
             auto_import_file_exclude_patterns: vec![],
             use_aliases_for_renames: true,
             quote_style: QuoteStyle::Auto,
+            prefer_type_only_auto_imports: false,
           },
           suggest: CompletionSettings {
             complete_function_calls: false,

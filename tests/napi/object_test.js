@@ -1,6 +1,11 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
-import { assert, assertEquals, loadTestLibrary } from "./common.js";
+import {
+  assert,
+  assertEquals,
+  assertThrows,
+  loadTestLibrary,
+} from "./common.js";
 
 const object = loadTestLibrary();
 
@@ -12,4 +17,22 @@ Deno.test("napi object", function () {
 
   const r1 = object.test_object_get(r);
   assert(r === r1);
+
+  const r2 = object.test_object_attr_property(r);
+  assert(r === r2);
+  assertThrows(
+    () => {
+      r2.self = "2";
+    },
+    Error,
+    "Cannot assign to read only property 'self' of object '#<Object>'",
+  );
+
+  assertThrows(
+    () => {
+      r2.method = () => {};
+    },
+    Error,
+    "Cannot assign to read only property 'method' of object '#<Object>'",
+  );
 });

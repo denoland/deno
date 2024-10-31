@@ -46,6 +46,7 @@ fn create_custom_gc(env: sys::napi_env) {
     "Create async resource string in napi_register_module_v1 napi_register_module_v1"
   );
   let mut custom_gc_tsfn = ptr::null_mut();
+  let context = Box::into_raw(Box::new(0)) as *mut c_void;
   check_status_or_panic!(
     unsafe {
       sys::napi_create_threadsafe_function(
@@ -57,7 +58,7 @@ fn create_custom_gc(env: sys::napi_env) {
         1,
         ptr::null_mut(),
         Some(custom_gc_finalize),
-        ptr::null_mut(),
+        context,
         Some(custom_gc),
         &mut custom_gc_tsfn,
       )
@@ -80,8 +81,9 @@ unsafe extern "C" fn empty(
 unsafe extern "C" fn custom_gc_finalize(
   _env: sys::napi_env,
   _finalize_data: *mut c_void,
-  _finalize_hint: *mut c_void,
+  finalize_hint: *mut c_void,
 ) {
+  let _ = Box::from_raw(finalize_hint as *mut i32);
 }
 
 extern "C" fn custom_gc(

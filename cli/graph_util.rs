@@ -6,6 +6,7 @@ use crate::args::CliLockfile;
 use crate::args::CliOptions;
 use crate::args::DENO_DISABLE_PEDANTIC_NODE_WARNINGS;
 use crate::cache;
+use crate::cache::EsmOrCjsChecker;
 use crate::cache::GlobalHttpCache;
 use crate::cache::ModuleInfoCache;
 use crate::cache::ParsedSourceCache;
@@ -14,6 +15,7 @@ use crate::errors::get_error_class_name;
 use crate::file_fetcher::FileFetcher;
 use crate::npm::CliNpmResolver;
 use crate::resolver::CliGraphResolver;
+use crate::resolver::CliNodeResolver;
 use crate::resolver::CliSloppyImportsResolver;
 use crate::resolver::SloppyImportsCachedFs;
 use crate::tools::check;
@@ -379,8 +381,10 @@ pub struct BuildFastCheckGraphOptions<'a> {
 pub struct ModuleGraphBuilder {
   options: Arc<CliOptions>,
   caches: Arc<cache::Caches>,
+  esm_or_cjs_checker: Arc<EsmOrCjsChecker>,
   fs: Arc<dyn FileSystem>,
   resolver: Arc<CliGraphResolver>,
+  node_resolver: Arc<CliNodeResolver>,
   npm_resolver: Arc<dyn CliNpmResolver>,
   module_info_cache: Arc<ModuleInfoCache>,
   parsed_source_cache: Arc<ParsedSourceCache>,
@@ -396,8 +400,10 @@ impl ModuleGraphBuilder {
   pub fn new(
     options: Arc<CliOptions>,
     caches: Arc<cache::Caches>,
+    esm_or_cjs_checker: Arc<EsmOrCjsChecker>,
     fs: Arc<dyn FileSystem>,
     resolver: Arc<CliGraphResolver>,
+    node_resolver: Arc<CliNodeResolver>,
     npm_resolver: Arc<dyn CliNpmResolver>,
     module_info_cache: Arc<ModuleInfoCache>,
     parsed_source_cache: Arc<ParsedSourceCache>,
@@ -410,8 +416,10 @@ impl ModuleGraphBuilder {
     Self {
       options,
       caches,
+      esm_or_cjs_checker,
       fs,
       resolver,
+      node_resolver,
       npm_resolver,
       module_info_cache,
       parsed_source_cache,
@@ -691,8 +699,10 @@ impl ModuleGraphBuilder {
     permissions: PermissionsContainer,
   ) -> cache::FetchCacher {
     cache::FetchCacher::new(
+      self.esm_or_cjs_checker.clone(),
       self.file_fetcher.clone(),
       self.global_http_cache.clone(),
+      self.node_resolver.clone(),
       self.npm_resolver.clone(),
       self.module_info_cache.clone(),
       cache::FetchCacherOptions {
@@ -702,6 +712,7 @@ impl ModuleGraphBuilder {
           self.options.sub_command(),
           crate::args::DenoSubcommand::Publish { .. }
         ),
+        unstable_detect_cjs: self.options.unstable_detect_cjs(),
       },
     )
   }
@@ -998,7 +1009,11 @@ impl deno_graph::source::Reporter for FileWatcherReporter {
   ) {
     let mut file_paths = self.file_paths.lock();
     if specifier.scheme() == "file" {
-      file_paths.push(specifier.to_file_path().unwrap());
+      // Don't trust that the path is a valid path at this point:
+      // https://github.com/denoland/deno/issues/26209.
+      if let Ok(file_path) = specifier.to_file_path() {
+        file_paths.push(file_path);
+      }
     }
 
     if modules_done == modules_total {

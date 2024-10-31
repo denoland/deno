@@ -1,7 +1,7 @@
 [UNORDERED_START]
-Download http://localhost:4260/@denotest/peer-dep-test-child
-Download http://localhost:4260/@denotest/peer-dep-test-grandchild
-Download http://localhost:4260/@denotest/peer-dep-test-peer
+Download http://localhost:4260/@denotest%2fpeer-dep-test-child
+Download http://localhost:4260/@denotest%2fpeer-dep-test-grandchild
+Download http://localhost:4260/@denotest%2fpeer-dep-test-peer
 [UNORDERED_END]
 [UNORDERED_START]
 Download http://localhost:4260/@denotest/peer-dep-test-child/1.0.0.tgz

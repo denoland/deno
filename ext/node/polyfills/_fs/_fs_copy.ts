@@ -53,8 +53,9 @@ export function copyFile(
     }, (e) => {
       if (e instanceof Deno.errors.NotFound) {
         Deno.copyFile(srcStr, destStr).then(() => cb(null), cb);
+      } else {
+        cb(e);
       }
-      cb(e);
     });
   } else {
     Deno.copyFile(srcStr, destStr).then(() => cb(null), cb);
@@ -83,8 +84,9 @@ export function copyFileSync(
     } catch (e) {
       if (e instanceof Deno.errors.NotFound) {
         Deno.copyFileSync(srcStr, destStr);
+      } else {
+        throw e;
       }
-      throw e;
     }
   } else {
     Deno.copyFileSync(srcStr, destStr);

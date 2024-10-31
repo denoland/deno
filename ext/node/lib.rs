@@ -24,7 +24,7 @@ use once_cell::sync::Lazy;
 extern crate libz_sys as zlib;
 
 mod global;
-mod ops;
+pub mod ops;
 mod polyfill;
 
 pub use deno_package_json::PackageJson;
@@ -469,6 +469,7 @@ deno_core::extension!(deno_node,
     "internal_binding/constants.ts",
     "internal_binding/crypto.ts",
     "internal_binding/handle_wrap.ts",
+    "internal_binding/http_parser.ts",
     "internal_binding/mod.ts",
     "internal_binding/node_file.ts",
     "internal_binding/node_options.ts",

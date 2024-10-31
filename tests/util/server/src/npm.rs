@@ -18,6 +18,7 @@ use crate::PathRef;
 
 pub const DENOTEST_SCOPE_NAME: &str = "@denotest";
 pub const DENOTEST2_SCOPE_NAME: &str = "@denotest2";
+pub const DENOTEST3_SCOPE_NAME: &str = "@denotest3";
 
 pub static PUBLIC_TEST_NPM_REGISTRY: Lazy<TestNpmRegistry> = Lazy::new(|| {
   TestNpmRegistry::new(
@@ -51,6 +52,18 @@ pub static PRIVATE_TEST_NPM_REGISTRY_2: Lazy<TestNpmRegistry> =
         crate::servers::PRIVATE_NPM_REGISTRY_2_PORT
       ),
       "npm-private2",
+    )
+  });
+
+pub static PRIVATE_TEST_NPM_REGISTRY_3: Lazy<TestNpmRegistry> =
+  Lazy::new(|| {
+    TestNpmRegistry::new(
+      NpmRegistryKind::Private,
+      &format!(
+        "http://localhost:{}",
+        crate::servers::PRIVATE_NPM_REGISTRY_3_PORT
+      ),
+      "npm-private3",
     )
   });
 
@@ -159,6 +172,17 @@ impl TestNpmRegistry {
 
     if let Some(package_name_with_path) = maybe_package_name_with_path {
       return Some((DENOTEST2_SCOPE_NAME, package_name_with_path));
+    }
+
+    let prefix1 = format!("/{}/", DENOTEST3_SCOPE_NAME);
+    let prefix2 = format!("/{}%2f", DENOTEST3_SCOPE_NAME);
+
+    let maybe_package_name_with_path = uri_path
+      .strip_prefix(&prefix1)
+      .or_else(|| uri_path.strip_prefix(&prefix2));
+
+    if let Some(package_name_with_path) = maybe_package_name_with_path {
+      return Some((DENOTEST3_SCOPE_NAME, package_name_with_path));
     }
 
     None
