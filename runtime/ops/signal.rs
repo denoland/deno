@@ -49,7 +49,7 @@ pub enum SignalError {
   #[cfg(any(
     target_os = "android",
     target_os = "linux",
-    target_os = "openbsd",
+    target_os = "freebsd",
     target_os = "openbsd",
     target_os = "macos",
     target_os = "solaris",
@@ -60,7 +60,7 @@ pub enum SignalError {
   #[cfg(any(
     target_os = "android",
     target_os = "linux",
-    target_os = "openbsd",
+    target_os = "freebsd",
     target_os = "openbsd",
     target_os = "macos",
     target_os = "solaris",
