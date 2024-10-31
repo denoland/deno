@@ -1384,14 +1384,10 @@ impl Inner {
         .clone();
       fmt_options.use_tabs = Some(!params.options.insert_spaces);
       fmt_options.indent_width = Some(params.options.tab_size as u8);
-      let maybe_workspace = self
-        .config
-        .tree
-        .data_for_specifier(&specifier)
-        .map(|d| &d.member_dir.workspace);
+      let config_data = self.config.tree.data_for_specifier(&specifier);
       let unstable_options = UnstableFmtOptions {
-        component: maybe_workspace
-          .map(|w| w.has_unstable("fmt-component"))
+        component: config_data
+          .map(|d| d.unstable.contains("fmt-component"))
           .unwrap_or(false),
       };
       let document = document.clone();
