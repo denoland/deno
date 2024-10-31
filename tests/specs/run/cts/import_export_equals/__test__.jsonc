@@ -1,0 +1,4 @@
+{
+  "args": "run --check --allow-read=. main.cts",
+  "output": "main.out"
+}
