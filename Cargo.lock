@@ -4311,9 +4311,9 @@ dependencies = [
 
 [[package]]
 name = "markup_fmt"
-version = "0.14.0"
+version = "0.15.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3f15d7b24ae4ea9b87279bc0696462a4fb6c2168847f2cc162a2da05fe1a0f61"
+checksum = "ebae65c91eab3d42231232bf48107f351e5a8d511454927218c53aeb68bbdb6f"
 dependencies = [
  "aho-corasick",
  "css_dataset",
