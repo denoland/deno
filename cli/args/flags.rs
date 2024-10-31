@@ -26,6 +26,9 @@ use color_print::cstr;
 use deno_config::deno_json::NodeModulesDirMode;
 use deno_config::glob::FilePatterns;
 use deno_config::glob::PathOrPatternSet;
+use deno_config::workspace::WorkspaceDirectory;
+use deno_config::workspace::WorkspaceDiscoverOptions;
+use deno_config::workspace::WorkspaceDiscoverStart;
 use deno_core::anyhow::bail;
 use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
@@ -426,7 +429,7 @@ pub struct PublishFlags {
   pub allow_slow_types: bool,
   pub allow_dirty: bool,
   pub no_provenance: bool,
-  pub override_version: Option<String>,
+  pub set_version: Option<String>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -1372,7 +1375,7 @@ pub fn flags_from_vec(args: Vec<OsString>) -> clap::error::Result<Flags> {
       "uninstall" => uninstall_parse(&mut flags, &mut m),
       "upgrade" => upgrade_parse(&mut flags, &mut m),
       "vendor" => vendor_parse(&mut flags, &mut m),
-      "publish" => publish_parse(&mut flags, &mut m),
+      "publish" => publish_parse(&mut flags, &mut m)?,
       _ => unreachable!(),
     }
   } else {
@@ -3228,9 +3231,9 @@ fn publish_subcommand() -> Command {
             .help_heading(PUBLISH_HEADING)
         )
         .arg(
-          Arg::new("override-version")
-            .long("override-version")
-            .help("Override the version specified in the configuration file")
+          Arg::new("set-version")
+            .long("set-version")
+            .help("Set the version specified in the configuration file")
             .value_name("VERSION")
             .help_heading(PUBLISH_HEADING)
         )
@@ -5150,12 +5153,34 @@ fn vendor_parse(flags: &mut Flags, _matches: &mut ArgMatches) {
   flags.subcommand = DenoSubcommand::Vendor
 }
 
-fn publish_parse(flags: &mut Flags, matches: &mut ArgMatches) {
+fn publish_parse(
+  flags: &mut Flags,
+  matches: &mut ArgMatches,
+) -> clap::error::Result<()> {
   flags.type_check_mode = TypeCheckMode::Local; // local by default
   unstable_args_parse(flags, matches, UnstableArgsConfig::ResolutionOnly);
   no_check_arg_parse(flags, matches);
   check_arg_parse(flags, matches);
   config_args_parse(flags, matches);
+
+  let set_version = matches.remove_one::<String>("set-version");
+
+  if set_version.is_some() {
+    if let Ok(workspace_dir) = WorkspaceDirectory::discover(
+      WorkspaceDiscoverStart::Paths(&[
+        std::env::current_dir().unwrap_or_default()
+      ]),
+      &WorkspaceDiscoverOptions::default(),
+    ) {
+      let jsr_packages = workspace_dir.jsr_packages_for_publish();
+      if jsr_packages.len() > 1 {
+        return Err(clap::Error::raw(
+          clap::error::ErrorKind::ArgumentConflict,
+          "The --set-version flag cannot be used in a workspace. It is only allowed for individual packages.",
+        ));
+      }
+    }
+  }
 
   flags.subcommand = DenoSubcommand::Publish(PublishFlags {
     token: matches.remove_one("token"),
@@ -5163,8 +5188,10 @@ fn publish_parse(flags: &mut Flags, matches: &mut ArgMatches) {
     allow_slow_types: matches.get_flag("allow-slow-types"),
     allow_dirty: matches.get_flag("allow-dirty"),
     no_provenance: matches.get_flag("no-provenance"),
-    override_version: matches.remove_one("override-version"),
+    set_version,
   });
+
+  Ok(())
 }
 
 fn compile_args_parse(
@@ -10621,7 +10648,7 @@ mod tests {
       "--allow-slow-types",
       "--allow-dirty",
       "--token=asdf",
-      "--override-version=1.0.1",
+      "--set-version=1.0.1",
     ]);
     assert_eq!(
       r.unwrap(),
@@ -10632,7 +10659,7 @@ mod tests {
           allow_slow_types: true,
           allow_dirty: true,
           no_provenance: true,
-          override_version: Some("1.0.1".to_string()),
+          set_version: Some("1.0.1".to_string()),
         }),
         type_check_mode: TypeCheckMode::Local,
         ..Flags::default()
