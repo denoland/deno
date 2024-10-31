@@ -103,7 +103,7 @@ impl NpmInstallDepsProvider {
               pkg_json_dep_errors.push(
                 PackageJsonDepValueParseWithLocationError {
                   location: pkg_json.specifier(),
-                  alias: alias,
+                  alias,
                   source: err,
                 },
               );
