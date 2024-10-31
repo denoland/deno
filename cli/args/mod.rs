@@ -46,6 +46,7 @@ pub use flags::*;
 pub use lockfile::CliLockfile;
 pub use lockfile::CliLockfileReadFromPathOptions;
 pub use package_json::NpmInstallDepsProvider;
+pub use package_json::PackageJsonDepValueParseWithLocationError;
 
 use deno_ast::ModuleSpecifier;
 use deno_core::anyhow::bail;

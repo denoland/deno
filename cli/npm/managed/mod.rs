@@ -38,6 +38,7 @@ use crate::args::LifecycleScriptsConfig;
 use crate::args::NpmInstallDepsProvider;
 use crate::args::NpmProcessState;
 use crate::args::NpmProcessStateKind;
+use crate::args::PackageJsonDepValueParseWithLocationError;
 use crate::cache::DenoCacheEnvFsAdapter;
 use crate::cache::FastInsecureHasher;
 use crate::http_util::HttpClientProvider;
@@ -480,19 +481,24 @@ impl ManagedCliNpmResolver {
     self.resolution.resolve_pkg_id_from_pkg_req(req)
   }
 
-  pub fn ensure_no_pkg_json_dep_errors(&self) -> Result<(), AnyError> {
+  pub fn ensure_no_pkg_json_dep_errors(
+    &self,
+  ) -> Result<(), Box<PackageJsonDepValueParseWithLocationError>> {
     for err in self.npm_install_deps_provider.pkg_json_dep_errors() {
-      match err {
+      match &err.source {
         deno_package_json::PackageJsonDepValueParseError::VersionReq(_) => {
-          return Err(
-            AnyError::from(err.clone())
-              .context("Failed to install from package.json"),
-          );
+          return Err(Box::new(err.clone()));
         }
         deno_package_json::PackageJsonDepValueParseError::Unsupported {
           ..
         } => {
-          log::warn!("{} {} in package.json", colors::yellow("Warning"), err)
+          // only warn for this one
+          log::warn!(
+            "{} {}\n    at {}",
+            colors::yellow("Warning"),
+            err.source,
+            err.location,
+          )
         }
       }
     }
