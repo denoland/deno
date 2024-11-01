@@ -383,6 +383,11 @@ impl<'a> TsResponseImportMapper<'a> {
           }
         }
       }
+    } else if let Some(dep_name) = self
+      .resolver
+      .file_url_to_package_json_dep(specifier, Some(&self.file_referrer))
+    {
+      return Some(dep_name);
     }
 
     // check if the import map has this specifier

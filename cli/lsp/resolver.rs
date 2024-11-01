@@ -65,6 +65,7 @@ struct LspScopeResolver {
   node_resolver: Option<Arc<CliNodeResolver>>,
   redirect_resolver: Option<Arc<RedirectResolver>>,
   graph_imports: Arc<IndexMap<ModuleSpecifier, GraphImport>>,
+  package_json_deps_by_resolution: Arc<IndexMap<ModuleSpecifier, String>>,
   config_data: Option<Arc<ConfigData>>,
 }
 
@@ -77,6 +78,7 @@ impl Default for LspScopeResolver {
       node_resolver: None,
       redirect_resolver: None,
       graph_imports: Default::default(),
+      package_json_deps_by_resolution: Default::default(),
       config_data: None,
     }
   }
@@ -133,6 +135,33 @@ impl LspScopeResolver {
         )
       })
       .unwrap_or_default();
+    let package_json_deps_by_resolution = (|| {
+      let node_resolver = node_resolver.as_ref()?;
+      let package_json = config_data?.maybe_pkg_json()?;
+      let referrer = package_json.specifier();
+      let dependencies = package_json.dependencies.as_ref()?;
+      let result = dependencies
+        .iter()
+        .flat_map(|(name, _)| {
+          let req_ref =
+            NpmPackageReqReference::from_str(&format!("npm:{name}")).ok()?;
+          let specifier = NodeResolution::into_specifier_and_media_type(Some(
+            node_resolver
+              .resolve_req_reference(
+                &req_ref,
+                &referrer,
+                NodeResolutionMode::Types,
+              )
+              .ok()?,
+          ))
+          .0;
+          Some((specifier, name.clone()))
+        })
+        .collect();
+      Some(result)
+    })();
+    let package_json_deps_by_resolution =
+      Arc::new(package_json_deps_by_resolution.unwrap_or_default());
     Self {
       graph_resolver,
       jsr_resolver,
@@ -140,6 +169,7 @@ impl LspScopeResolver {
       node_resolver,
       redirect_resolver,
       graph_imports,
+      package_json_deps_by_resolution,
       config_data: config_data.cloned(),
     }
   }
@@ -160,6 +190,9 @@ impl LspScopeResolver {
       node_resolver,
       redirect_resolver: self.redirect_resolver.clone(),
       graph_imports: self.graph_imports.clone(),
+      package_json_deps_by_resolution: self
+        .package_json_deps_by_resolution
+        .clone(),
       config_data: self.config_data.clone(),
     })
   }
@@ -333,6 +366,18 @@ impl LspResolver {
         .resolve_req_reference(req_ref, referrer, NodeResolutionMode::Types)
         .ok()?,
     )))
+  }
+
+  pub fn file_url_to_package_json_dep(
+    &self,
+    specifier: &ModuleSpecifier,
+    file_referrer: Option<&ModuleSpecifier>,
+  ) -> Option<String> {
+    let resolver = self.get_scope_resolver(file_referrer);
+    resolver
+      .package_json_deps_by_resolution
+      .get(specifier)
+      .cloned()
   }
 
   pub fn in_node_modules(&self, specifier: &ModuleSpecifier) -> bool {

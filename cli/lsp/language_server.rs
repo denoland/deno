@@ -2281,7 +2281,11 @@ impl Inner {
             .into(),
           scope.cloned(),
         )
-        .await;
+        .await
+        .unwrap_or_else(|err| {
+          error!("Unable to get completion info from TypeScript: {:#}", err);
+          None
+        });
 
       if let Some(completions) = maybe_completion_info {
         response = Some(

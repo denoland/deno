@@ -882,20 +882,22 @@ impl TsServer {
     options: GetCompletionsAtPositionOptions,
     format_code_settings: FormatCodeSettings,
     scope: Option<ModuleSpecifier>,
-  ) -> Option<CompletionInfo> {
+  ) -> Result<Option<CompletionInfo>, AnyError> {
     let req = TscRequest::GetCompletionsAtPosition(Box::new((
       self.specifier_map.denormalize(&specifier),
       position,
       options,
       format_code_settings,
     )));
-    match self.request(snapshot, req, scope).await {
-      Ok(maybe_info) => maybe_info,
-      Err(err) => {
-        log::error!("Unable to get completion info from TypeScript: {:#}", err);
-        None
-      }
-    }
+    self
+      .request::<Option<CompletionInfo>>(snapshot, req, scope)
+      .await
+      .map(|mut info| {
+        if let Some(info) = &mut info {
+          info.normalize(&self.specifier_map);
+        }
+        info
+      })
   }
 
   pub async fn get_completion_details(
@@ -3642,6 +3644,12 @@ pub struct CompletionInfo {
 }
 
 impl CompletionInfo {
+  fn normalize(&mut self, specifier_map: &TscSpecifierMap) {
+    for entry in &mut self.entries {
+      entry.normalize(specifier_map);
+    }
+  }
+
   pub fn as_completion_response(
     &self,
     line_index: Arc<LineIndex>,
@@ -3703,9 +3711,15 @@ pub struct CompletionItemData {
 
 #[derive(Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
-struct CompletionEntryDataImport {
+struct CompletionEntryDataAutoImport {
   module_specifier: String,
   file_name: String,
+}
+
+#[derive(Debug)]
+pub struct CompletionNormalizedAutoImportData {
+  raw: CompletionEntryDataAutoImport,
+  normalized: ModuleSpecifier,
 }
 
 #[derive(Debug, Default, Deserialize, Serialize)]
@@ -3740,9 +3754,28 @@ pub struct CompletionEntry {
   is_import_statement_completion: Option<bool>,
   #[serde(skip_serializing_if = "Option::is_none")]
   data: Option<Value>,
+  /// This is not from tsc, we add it for convenience during normalization.
+  /// Represents `self.data.file_name`, but normalized.
+  #[serde(skip)]
+  auto_import_data: Option<CompletionNormalizedAutoImportData>,
 }
 
 impl CompletionEntry {
+  fn normalize(&mut self, specifier_map: &TscSpecifierMap) {
+    let Some(data) = &self.data else {
+      return;
+    };
+    let Ok(raw) =
+      serde_json::from_value::<CompletionEntryDataAutoImport>(data.clone())
+    else {
+      return;
+    };
+    if let Ok(normalized) = specifier_map.normalize(&raw.file_name) {
+      self.auto_import_data =
+        Some(CompletionNormalizedAutoImportData { raw, normalized });
+    }
+  }
+
   fn get_commit_characters(
     &self,
     info: &CompletionInfo,
@@ -3891,25 +3924,21 @@ impl CompletionEntry {
 
     if let Some(source) = &self.source {
       let mut display_source = source.clone();
-      if let Some(data) = &self.data {
-        if let Ok(import_data) =
-          serde_json::from_value::<CompletionEntryDataImport>(data.clone())
+      if let Some(import_data) = &self.auto_import_data {
+        if let Some(new_module_specifier) = language_server
+          .get_ts_response_import_mapper(specifier)
+          .check_specifier(&import_data.normalized, specifier)
+          .or_else(|| relative_specifier(specifier, &import_data.normalized))
         {
-          if let Ok(import_specifier) = resolve_url(&import_data.file_name) {
-            if let Some(new_module_specifier) = language_server
-              .get_ts_response_import_mapper(specifier)
-              .check_specifier(&import_specifier, specifier)
-              .or_else(|| relative_specifier(specifier, &import_specifier))
-            {
-              display_source.clone_from(&new_module_specifier);
-              if new_module_specifier != import_data.module_specifier {
-                specifier_rewrite =
-                  Some((import_data.module_specifier, new_module_specifier));
-              }
-            } else if source.starts_with(jsr_url().as_str()) {
-              return None;
-            }
+          display_source.clone_from(&new_module_specifier);
+          if new_module_specifier != import_data.raw.module_specifier {
+            specifier_rewrite = Some((
+              import_data.raw.module_specifier.clone(),
+              new_module_specifier,
+            ));
           }
+        } else if source.starts_with(jsr_url().as_str()) {
+          return None;
         }
       }
       // We want relative or bare (import-mapped or otherwise) specifiers to
@@ -4212,6 +4241,9 @@ impl TscSpecifierMap {
       return specifier.to_string();
     }
     let mut specifier = original.to_string();
+    if !specifier.as_str().contains("/node_modules/@types/node/") {
+      specifier = specifier.replace("/node_modules/", "/$node_modules/");
+    }
     let media_type = MediaType::from_specifier(original);
     // If the URL-inferred media type doesn't correspond to tsc's path-inferred
     // media type, force it to be the same by appending an extension.
@@ -4329,7 +4361,7 @@ fn op_is_cancelled(state: &mut OpState) -> bool {
 fn op_is_node_file(state: &mut OpState, #[string] path: String) -> bool {
   let state = state.borrow::<State>();
   let mark = state.performance.mark("tsc.op.op_is_node_file");
-  let r = match ModuleSpecifier::parse(&path) {
+  let r = match state.specifier_map.normalize(path) {
     Ok(specifier) => state.state_snapshot.resolver.in_node_modules(&specifier),
     Err(_) => false,
   };
@@ -4598,7 +4630,10 @@ fn op_script_names(state: &mut OpState) -> ScriptNames {
   for doc in &docs {
     let specifier = doc.specifier();
     let is_open = doc.is_open();
-    if is_open || specifier.scheme() == "file" {
+    if is_open
+      || (specifier.scheme() == "file"
+        && !specifier.as_str().contains("/node_modules/"))
+    {
       let script_names = doc
         .scope()
         .and_then(|s| result.by_scope.get_mut(s))
@@ -6024,6 +6059,7 @@ mod tests {
         Some(temp_dir.url()),
       )
       .await
+      .unwrap()
       .unwrap();
     assert_eq!(info.entries.len(), 22);
     let details = ts_server
@@ -6183,6 +6219,7 @@ mod tests {
         Some(temp_dir.url()),
       )
       .await
+      .unwrap()
       .unwrap();
     let entry = info
       .entries
