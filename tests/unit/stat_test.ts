@@ -32,6 +32,7 @@ Deno.test(
       tempInfo.birthtime === null || now - tempInfo.birthtime.valueOf() < 1000,
     );
     assert(tempInfo.ctime !== null && now - tempInfo.ctime.valueOf() < 1000);
+    assertEquals(tempInfo.mode! & 0o777, 0o600);
 
     const readmeInfoByUrl = Deno.statSync(pathToAbsoluteFileUrl("README.md"));
     assert(readmeInfoByUrl.isFile);
