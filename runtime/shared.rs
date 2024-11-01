@@ -98,6 +98,7 @@ pub fn maybe_transpile_source(
         imports_not_used_as_values: deno_ast::ImportsNotUsedAsValues::Remove,
         ..Default::default()
       },
+      &deno_ast::TranspileModuleOptions::default(),
       &deno_ast::EmitOptions {
         source_map: if cfg!(debug_assertions) {
           SourceMapOption::Separate
@@ -109,9 +110,9 @@ pub fn maybe_transpile_source(
     )?
     .into_source();
 
-  let maybe_source_map: Option<SourceMapData> =
-    transpiled_source.source_map.map(|sm| sm.into());
-  let source_text = String::from_utf8(transpiled_source.source)?;
-
+  let maybe_source_map: Option<SourceMapData> = transpiled_source
+    .source_map
+    .map(|sm| sm.into_bytes().into());
+  let source_text = transpiled_source.text;
   Ok((source_text.into(), maybe_source_map))
 }

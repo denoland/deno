@@ -845,6 +845,8 @@ delete Object.prototype.__proto__;
         jqueryMessage,
       "Cannot_find_name_0_Do_you_need_to_install_type_definitions_for_jQuery_Try_npm_i_save_dev_types_Slash_2592":
         jqueryMessage,
+      "Module_0_was_resolved_to_1_but_allowArbitraryExtensions_is_not_set_6263":
+        "Module '{0}' was resolved to '{1}', but importing these modules is not supported.",
     };
   })());
 

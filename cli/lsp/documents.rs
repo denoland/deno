@@ -272,7 +272,7 @@ fn get_maybe_test_module_fut(
       parsed_source.specifier().clone(),
       parsed_source.text_info_lazy().clone(),
     );
-    parsed_source.module().visit_with(&mut collector);
+    parsed_source.program().visit_with(&mut collector);
     Arc::new(collector.take())
   })
   .map(Result::ok)
@@ -332,12 +332,8 @@ impl Document {
       .filter(|s| cache.is_valid_file_referrer(s))
       .cloned()
       .or(file_referrer);
-    let media_type = resolve_media_type(
-      &specifier,
-      maybe_headers.as_ref(),
-      maybe_language_id,
-      &resolver,
-    );
+    let media_type =
+      resolve_media_type(&specifier, maybe_headers.as_ref(), maybe_language_id);
     let (maybe_parsed_source, maybe_module) =
       if media_type_is_diagnosable(media_type) {
         parse_and_analyze_module(
@@ -399,7 +395,6 @@ impl Document {
       &self.specifier,
       self.maybe_headers.as_ref(),
       self.maybe_language_id,
-      &resolver,
     );
     let dependencies;
     let maybe_types_dependency;
@@ -764,14 +759,7 @@ fn resolve_media_type(
   specifier: &ModuleSpecifier,
   maybe_headers: Option<&HashMap<String, String>>,
   maybe_language_id: Option<LanguageId>,
-  resolver: &LspResolver,
 ) -> MediaType {
-  if resolver.in_node_modules(specifier) {
-    if let Some(media_type) = resolver.node_media_type(specifier) {
-      return media_type;
-    }
-  }
-
   if let Some(language_id) = maybe_language_id {
     return MediaType::from_specifier_and_content_type(
       specifier,
@@ -1561,7 +1549,7 @@ fn parse_source(
   text: Arc<str>,
   media_type: MediaType,
 ) -> ParsedSourceResult {
-  deno_ast::parse_module(deno_ast::ParseParams {
+  deno_ast::parse_program(deno_ast::ParseParams {
     specifier,
     text,
     media_type,

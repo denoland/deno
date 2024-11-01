@@ -22,7 +22,13 @@ pub trait NpmResolver: std::fmt::Debug + MaybeSend + MaybeSync {
     specifier: &str,
     referrer: &Url,
   ) -> Result<PathBuf, errors::PackageFolderResolveError>;
+}
 
+#[allow(clippy::disallowed_types)]
+pub type InNpmPackageCheckerRc = crate::sync::MaybeArc<dyn InNpmPackageChecker>;
+
+/// Checks if a provided specifier is in an npm package.
+pub trait InNpmPackageChecker: std::fmt::Debug + MaybeSend + MaybeSync {
   fn in_npm_package(&self, specifier: &Url) -> bool;
 
   fn in_npm_package_at_dir_path(&self, path: &Path) -> bool {
