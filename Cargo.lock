@@ -1418,9 +1418,7 @@ dependencies = [
 
 [[package]]
 name = "deno_core"
-version = "0.316.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "94f68061c88ced959c6b0417f0f0d0b3dbeaeb18013b55f86c505e9fba705cf8"
+version = "0.317.0"
 dependencies = [
  "anyhow",
  "bincode",
@@ -1432,6 +1430,7 @@ dependencies = [
  "deno_ops",
  "deno_unsync",
  "futures",
+ "indexmap",
  "libc",
  "memoffset",
  "parking_lot",
@@ -1446,6 +1445,7 @@ dependencies = [
  "tokio",
  "url",
  "v8",
+ "wasm_dep_analyzer 0.0.1",
 ]
 
 [[package]]
@@ -1627,7 +1627,7 @@ dependencies = [
  "thiserror",
  "twox-hash",
  "url",
- "wasm_dep_analyzer",
+ "wasm_dep_analyzer 0.1.0",
 ]
 
 [[package]]
@@ -1918,9 +1918,7 @@ dependencies = [
 
 [[package]]
 name = "deno_ops"
-version = "0.192.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "bdb7096887508456349d7e7e09e326d157d4dba46ef1f5849bc544592ea3042a"
+version = "0.193.0"
 dependencies = [
  "proc-macro-rules",
  "proc-macro2",
@@ -6166,9 +6164,7 @@ dependencies = [
 
 [[package]]
 name = "serde_v8"
-version = "0.225.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ce4b71200ef49a9e629edaea3d13fc98c25ede07e1496558df7f09354e37976f"
+version = "0.226.0"
 dependencies = [
  "num-bigint",
  "serde",
@@ -7980,6 +7976,15 @@ dependencies = [
  "wasm-bindgen",
  "wasm-bindgen-futures",
  "web-sys",
+]
+
+[[package]]
+name = "wasm_dep_analyzer"
+version = "0.0.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7fda582fdf067ec11fbbf893797c9b17742d994bc6f5cdd05863f111b84c23cf"
+dependencies = [
+ "thiserror",
 ]
 
 [[package]]
