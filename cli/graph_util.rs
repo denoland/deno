@@ -757,7 +757,8 @@ pub fn enhanced_resolution_error_message(error: &ResolutionError) -> String {
     get_resolution_error_bare_node_specifier(error)
   {
     if !*DENO_DISABLE_PEDANTIC_NODE_WARNINGS {
-      Some(format!("If you want to use a built-in Node module, add a \"node:\" prefix (ex. \"node:{specifier}\")."))
+      Some(format!("If you want to use a built-in Node module, add a \"node:\" prefix (ex. \"node:{specifier}\"), or use
+        --unstable-bare-node-builtins flag, or specify `bare-node-builtins` in the `unstable` option in the config file."))
     } else {
       None
     }

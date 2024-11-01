@@ -1,3 +1,4 @@
 error: Relative import path "fs" not prefixed with / or ./ or ../
-  hint: If you want to use a built-in Node module, add a "node:" prefix (ex. "node:fs").
+  hint: If you want to use a built-in Node module, add a "node:" prefix (ex. "node:fs"), or use
+        --unstable-bare-node-builtins flag, or specify `bare-node-builtins` in the `unstable` option in the config file.
     at file:///[WILDLINE]/missing.ts:1:16

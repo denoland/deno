@@ -803,7 +803,7 @@ impl<'a> deno_graph::source::NpmResolver for WorkerCliNpmGraphResolver<'a> {
     let line = start.line + 1;
     let column = start.character + 1;
     if !*DENO_DISABLE_PEDANTIC_NODE_WARNINGS {
-      log::warn!("{} Resolving \"{module_name}\" as \"node:{module_name}\" at {specifier}:{line}:{column}. If you want to use a built-in Node module, add a \"node:\" prefix.", colors::yellow("Warning"))
+      log::warn!("{} Resolving \"{module_name}\" as \"node:{module_name}\" at {specifier}:{line}:{column}.\n    If you want to use a built-in Node module, add a \"node:\" prefix, or use\n    --unstable-bare-node-builtins flag, or specify `bare-node-builtins` in the `unstable` option in the config file.", colors::yellow("Warning"))
     }
   }
 
