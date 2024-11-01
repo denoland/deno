@@ -1208,6 +1208,14 @@ declare namespace Deno {
     end(): void;
   }
 
+/** Interface for serving HTTP requests. */
+interface ServeDefaultExport {
+  /** The handler function to invoke when a new request is received. */
+  fetch: ServeHandler;
+  /** An optional function that is called when the server starts listening on the port. */
+  onListen?: (params: { hostname: string; port: number; serverType: "HTTP" | "HTTPS" }) => void;
+}
+
   /**
    * The interface for defining a benchmark test using {@linkcode Deno.bench}.
    *
