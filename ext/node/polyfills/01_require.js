@@ -523,17 +523,13 @@ function resolveExports(
     return;
   }
 
-  if (!parentPath) {
-    return false;
-  }
-
   return op_require_resolve_exports(
     usesLocalNodeModulesDir,
     modulesPath,
     request,
     name,
     expansion,
-    parentPath,
+    parentPath ?? "",
   ) ?? false;
 }
 

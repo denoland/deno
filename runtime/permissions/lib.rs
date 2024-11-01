@@ -1368,8 +1368,12 @@ impl SysDescriptor {
     match kind.as_str() {
       "hostname" | "osRelease" | "osUptime" | "loadavg"
       | "networkInterfaces" | "systemMemoryInfo" | "uid" | "gid" | "cpus"
-      | "homedir" | "getegid" | "username" | "statfs" | "getPriority"
-      | "setPriority" => Ok(Self(kind)),
+      | "homedir" | "getegid" | "statfs" | "getPriority" | "setPriority"
+      | "userInfo" => Ok(Self(kind)),
+
+      // the underlying permission check changed to `userInfo` to better match the API,
+      // alias this to avoid breaking existing projects with `--allow-sys=username`
+      "username" => Ok(Self("userInfo".into())),
       _ => Err(type_error(format!("unknown system info kind \"{kind}\""))),
     }
   }
