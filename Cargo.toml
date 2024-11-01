@@ -326,3 +326,7 @@ opt-level = 3
 opt-level = 3
 [profile.release.package.zstd-sys]
 opt-level = 3
+
+[patch.crates-io]
+deno_graph = { path = "../deno_graph" }
+deno_doc = { path = "../deno_doc" }

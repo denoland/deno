@@ -640,6 +640,10 @@ fn op_load_inner(
           media_type = MediaType::Json;
           Some(Cow::Borrowed(&*module.source))
         }
+        Module::Wasm(module) => {
+          media_type = MediaType::Dts;
+          Some(Cow::Borrowed(&*module.source_dts))
+        }
         Module::Npm(_) | Module::Node(_) => None,
         Module::External(module) => {
           // means it's Deno code importing an npm module
@@ -873,6 +877,9 @@ fn resolve_graph_specifier_types(
     }
     Some(Module::Json(module)) => {
       Ok(Some((module.specifier.clone(), module.media_type)))
+    }
+    Some(Module::Wasm(module)) => {
+      Ok(Some((module.specifier.clone(), MediaType::Dmts)))
     }
     Some(Module::Npm(module)) => {
       if let Some(npm) = &state.maybe_npm.as_ref() {

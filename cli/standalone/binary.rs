@@ -633,6 +633,9 @@ impl<'a> DenoCompileBinaryWriter<'a> {
         deno_graph::Module::Json(m) => {
           (Some(m.source.as_bytes().to_vec()), m.media_type)
         }
+        deno_graph::Module::Wasm(m) => {
+          (Some(m.source.to_vec()), MediaType::Wasm)
+        }
         deno_graph::Module::Npm(_)
         | deno_graph::Module::Node(_)
         | deno_graph::Module::External(_) => (None, MediaType::Unknown),

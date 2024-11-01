@@ -1507,8 +1507,6 @@ dependencies = [
 [[package]]
 name = "deno_doc"
 version = "0.156.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2585b98d6ad76dae30bf2d7b6d71b8363cae041158b8780d14a2f4fe17590a61"
 dependencies = [
  "anyhow",
  "cfg-if",
@@ -1607,8 +1605,6 @@ dependencies = [
 [[package]]
 name = "deno_graph"
 version = "0.84.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "cd4f4a14aa069087be41c2998077b0453f0191747898f96e6343f700abfc2c18"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -1631,6 +1627,7 @@ dependencies = [
  "thiserror",
  "twox-hash",
  "url",
+ "wasm_dep_analyzer",
 ]
 
 [[package]]
@@ -7983,6 +7980,15 @@ dependencies = [
  "wasm-bindgen",
  "wasm-bindgen-futures",
  "web-sys",
+]
+
+[[package]]
+name = "wasm_dep_analyzer"
+version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7f270206a91783fd90625c8bb0d8fbd459d0b1d1bf209b656f713f01ae7c04b8"
+dependencies = [
+ "thiserror",
 ]
 
 [[package]]
