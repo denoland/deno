@@ -367,6 +367,10 @@ pub async fn add(
   }
 
   let start_dir = cli_factory.cli_options()?.start_dir.dir_path();
+
+  // only prefer to add npm deps to `package.json` if there isn't a closer deno.json.
+  // example: if deno.json is in the CWD and package.json is in the parent, we should add
+  // npm deps to deno.json, since it's closer
   let prefer_npm_config = match (npm_config.as_ref(), deno_config.as_ref()) {
     (Some(npm), Some(deno)) => {
       let npm_distance = path_distance(&npm.path, &start_dir);
