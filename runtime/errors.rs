@@ -1086,6 +1086,7 @@ mod node {
       },
       OsError::Permission(e) => get_error_class_name(e).unwrap_or("Error"),
       OsError::FailedToGetCpuInfo => "TypeError",
+      OsError::FailedToGetUserInfo(e) => get_io_error_class(e),
     }
   }
 
