@@ -380,7 +380,7 @@ function parseFileInfo(response) {
       : null,
     ctime: response.ctimeSet === true ? new Date(response.ctime) : null,
     dev: response.dev,
-    mode: unix ? response.mode : null,
+    mode: response.mode,
     ino: unix ? response.ino : null,
     nlink: unix ? response.nlink : null,
     uid: unix ? response.uid : null,
