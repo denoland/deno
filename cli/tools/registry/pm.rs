@@ -1,5 +1,6 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
+use std::path::Path;
 use std::path::PathBuf;
 use std::sync::Arc;
 
@@ -333,6 +334,14 @@ fn load_configs(
   Ok((cli_factory, npm_config, deno_config))
 }
 
+fn path_distance(a: &Path, b: &Path) -> usize {
+  let diff = pathdiff::diff_paths(a, b);
+  let Some(diff) = diff else {
+    return usize::MAX;
+  };
+  diff.components().count()
+}
+
 pub async fn add(
   flags: Arc<Flags>,
   add_flags: AddFlags,
@@ -356,6 +365,17 @@ pub async fn add(
       );
     }
   }
+
+  let start_dir = cli_factory.cli_options()?.start_dir.dir_path();
+  let prefer_npm_config = match (npm_config.as_ref(), deno_config.as_ref()) {
+    (Some(npm), Some(deno)) => {
+      let npm_distance = path_distance(&npm.path, &start_dir);
+      let deno_distance = path_distance(&deno.path, &start_dir);
+      npm_distance <= deno_distance
+    }
+    (Some(_), None) => true,
+    (None, _) => false,
+  };
 
   let http_client = cli_factory.http_client_provider();
   let deps_http_cache = cli_factory.global_http_cache()?;
@@ -455,7 +475,7 @@ pub async fn add(
       selected_package.selected_version
     );
 
-    if selected_package.package_name.starts_with("npm:") {
+    if selected_package.package_name.starts_with("npm:") && prefer_npm_config {
       if let Some(npm) = &mut npm_config {
         npm.add(selected_package, dev);
       } else {
