@@ -1,0 +1,7 @@
+{
+  "name": "@project/ui",
+  "exports": {
+    "./main.ts": "./main.ts",
+    "./globals.css": "./globals.css"
+  }
+}
