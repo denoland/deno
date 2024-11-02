@@ -25,3 +25,9 @@ thiserror.workspace = true
 tokio.workspace = true
 trust-dns-proto = "0.23"
 trust-dns-resolver = { version = "0.23", features = ["tokio-runtime", "serde-config"] }
+
+[target.'cfg(unix)'.dependencies]
+libc.workspace = true
+
+[target.'cfg(windows)'.dependencies]
+windows-sys.workspace = true
