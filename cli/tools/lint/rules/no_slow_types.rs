@@ -71,13 +71,16 @@ pub fn collect_no_slow_type_diagnostics(
   graph: &ModuleGraph,
   package_export_urls: &[ModuleSpecifier],
 ) -> Vec<FastCheckDiagnostic> {
-  let mut js_exports = package_export_urls
+  let mut js_exports: Vec<_> = package_export_urls
     .iter()
-    .filter_map(|url| graph.get(url).and_then(|m| m.js()));
+    .filter_map(|url| graph.get(url).and_then(|m| m.js()))
+    .collect();
+
+  eprintln!("js exports {:#?}", js_exports);
   // fast check puts the same diagnostics in each entrypoint for the
   // package (since it's all or nothing), so we only need to check
   // the first one JS entrypoint
-  let Some(module) = js_exports.next() else {
+  let Some(module) = js_exports.into_iter().next() else {
     // could happen if all the exports are JSON
     return vec![];
   };

@@ -323,9 +323,11 @@ impl WorkspaceLinter {
           .collect::<HashSet<_>>();
         futures.push(
           async move {
+            eprintln!("workspace module graph");
             let graph = workspace_module_graph_future
               .await
               .map_err(|err| anyhow!("{:#}", err))?;
+            eprintln!("workspace module graph2");
             let export_urls =
               publish_config.config_file.resolve_export_value_urls()?;
             if !export_urls.iter().any(|url| path_urls.contains(url)) {
