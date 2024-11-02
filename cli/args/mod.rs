@@ -46,6 +46,7 @@ pub use flags::*;
 pub use lockfile::CliLockfile;
 pub use lockfile::CliLockfileReadFromPathOptions;
 pub use package_json::NpmInstallDepsProvider;
+pub use package_json::PackageJsonDepValueParseWithLocationError;
 
 use deno_ast::ModuleSpecifier;
 use deno_core::anyhow::bail;
@@ -200,6 +201,8 @@ pub fn ts_config_to_transpile_and_emit_options(
       precompile_jsx_dynamic_props: None,
       transform_jsx,
       var_decl_imports: false,
+      // todo(dsherret): support verbatim_module_syntax here properly
+      verbatim_module_syntax: false,
     },
     deno_ast::EmitOptions {
       inline_sources: options.inline_sources,
@@ -1454,6 +1457,12 @@ impl CliOptions {
     }) = &self.flags.subcommand
     {
       *hmr
+    } else if let DenoSubcommand::Serve(ServeFlags {
+      watch: Some(WatchFlagsWithPaths { hmr, .. }),
+      ..
+    }) = &self.flags.subcommand
+    {
+      *hmr
     } else {
       false
     }
@@ -1595,6 +1604,15 @@ impl CliOptions {
   }
 
   pub fn use_byonm(&self) -> bool {
+    if matches!(
+      self.sub_command(),
+      DenoSubcommand::Install(_)
+        | DenoSubcommand::Add(_)
+        | DenoSubcommand::Remove(_)
+    ) {
+      // For `deno install/add/remove` we want to force the managed resolver so it can set up `node_modules/` directory.
+      return false;
+    }
     if self.node_modules_dir().ok().flatten().is_none()
       && self.maybe_node_modules_folder.is_some()
       && self

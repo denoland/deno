@@ -15484,25 +15484,23 @@ fn lsp_sloppy_imports() {
 fn lsp_sloppy_imports_prefers_dts() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let temp_dir = context.temp_dir();
-  let temp_dir = temp_dir.path();
-
-  temp_dir
-    .join("deno.json")
-    .write(r#"{ "unstable": ["sloppy-imports"] }"#);
-
-  let mut client: LspClient = context
-    .new_lsp_command()
-    .set_root_dir(temp_dir.clone())
-    .build();
-  client.initialize_default();
-
-  temp_dir.join("a.js").write("export const foo: number;");
-
-  let a_dts = source_file(temp_dir.join("a.d.ts"), "export const foo = 3;");
+  temp_dir.write("deno.json", json!({}).to_string());
+  temp_dir.write("a.js", "export const foo: number;");
+  let a_dts =
+    source_file(temp_dir.path().join("a.d.ts"), "export const foo = 3;");
   let file = source_file(
-    temp_dir.join("file.ts"),
+    temp_dir.path().join("file.ts"),
     "import { foo } from './a.js';\nconsole.log(foo);",
   );
+  let mut client: LspClient = context.new_lsp_command().build();
+  client.initialize_default();
+  client.change_configuration(json!({
+    "deno": {
+      "enable": true,
+      "unstable": ["sloppy-imports"],
+    },
+  }));
+
   let diagnostics = client.did_open_file(&file);
   // no other warnings because "a.js" exists
   assert_eq!(
