@@ -155,10 +155,6 @@ impl LocalNpmPackageResolver {
 
 #[async_trait(?Send)]
 impl NpmPackageFsResolver for LocalNpmPackageResolver {
-  fn root_dir_url(&self) -> &Url {
-    &self.root_node_modules_url
-  }
-
   fn node_modules_path(&self) -> Option<&Path> {
     Some(self.root_node_modules_path.as_ref())
   }
@@ -713,6 +709,7 @@ async fn sync_resolution_with_fs(
       snapshot,
       &package_partitions.packages,
       Some(root_node_modules_dir_path),
+      progress_bar,
     )
     .await?;
 

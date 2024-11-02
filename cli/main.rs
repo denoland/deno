@@ -15,7 +15,6 @@ mod js;
 mod jsr;
 mod lsp;
 mod module_loader;
-mod napi;
 mod node;
 mod npm;
 mod ops;
@@ -47,8 +46,7 @@ use deno_core::error::JsError;
 use deno_core::futures::FutureExt;
 use deno_core::unsync::JoinHandle;
 use deno_npm::resolution::SnapshotFromLockfileError;
-use deno_runtime::fmt_errors::format_js_error_with_suggestions;
-use deno_runtime::fmt_errors::FixSuggestion;
+use deno_runtime::fmt_errors::format_js_error;
 use deno_runtime::tokio_util::create_and_run_current_thread_with_maybe_metrics;
 use deno_terminal::colors;
 use factory::CliFactory;
@@ -61,6 +59,10 @@ use std::io::IsTerminal;
 use std::ops::Deref;
 use std::path::PathBuf;
 use std::sync::Arc;
+
+#[cfg(feature = "dhat-heap")]
+#[global_allocator]
+static ALLOC: dhat::Alloc = dhat::Alloc;
 
 /// Ensures that all subcommands return an i32 exit code and an [`AnyError`] error type.
 trait SubcommandOutput {
@@ -133,7 +135,7 @@ async fn run_subcommand(flags: Arc<Flags>) -> Result<i32, AnyError> {
       tools::compile::compile(flags, compile_flags).await
     }),
     DenoSubcommand::Coverage(coverage_flags) => spawn_subcommand(async {
-      tools::coverage::cover_files(flags, coverage_flags).await
+      tools::coverage::cover_files(flags, coverage_flags)
     }),
     DenoSubcommand::Fmt(fmt_flags) => {
       spawn_subcommand(
@@ -166,10 +168,10 @@ async fn run_subcommand(flags: Arc<Flags>) -> Result<i32, AnyError> {
       if std::io::stderr().is_terminal() {
         log::warn!(
           "{} command is intended to be run by text editors and IDEs and shouldn't be run manually.
-  
+
   Visit https://docs.deno.com/runtime/getting_started/setup_your_environment/ for instruction
   how to setup your favorite text editor.
-  
+
   Press Ctrl+C to exit.
         ", colors::cyan("deno lsp"));
       }
@@ -362,104 +364,12 @@ fn exit_with_message(message: &str, code: i32) -> ! {
   std::process::exit(code);
 }
 
-fn get_suggestions_for_terminal_errors(e: &JsError) -> Vec<FixSuggestion> {
-  if let Some(msg) = &e.message {
-    if msg.contains("module is not defined")
-      || msg.contains("exports is not defined")
-    {
-      return vec![
-        FixSuggestion::info(
-          "Deno does not support CommonJS modules without `.cjs` extension.",
-        ),
-        FixSuggestion::hint(
-          "Rewrite this module to ESM or change the file extension to `.cjs`.",
-        ),
-      ];
-    } else if msg.contains("openKv is not a function") {
-      return vec![
-        FixSuggestion::info("Deno.openKv() is an unstable API."),
-        FixSuggestion::hint(
-          "Run again with `--unstable-kv` flag to enable this API.",
-        ),
-      ];
-    } else if msg.contains("cron is not a function") {
-      return vec![
-        FixSuggestion::info("Deno.cron() is an unstable API."),
-        FixSuggestion::hint(
-          "Run again with `--unstable-cron` flag to enable this API.",
-        ),
-      ];
-    } else if msg.contains("WebSocketStream is not defined") {
-      return vec![
-        FixSuggestion::info("new WebSocketStream() is an unstable API."),
-        FixSuggestion::hint(
-          "Run again with `--unstable-net` flag to enable this API.",
-        ),
-      ];
-    } else if msg.contains("Temporal is not defined") {
-      return vec![
-        FixSuggestion::info("Temporal is an unstable API."),
-        FixSuggestion::hint(
-          "Run again with `--unstable-temporal` flag to enable this API.",
-        ),
-      ];
-    } else if msg.contains("BroadcastChannel is not defined") {
-      return vec![
-        FixSuggestion::info("BroadcastChannel is an unstable API."),
-        FixSuggestion::hint(
-          "Run again with `--unstable-broadcast-channel` flag to enable this API.",
-        ),
-      ];
-    } else if msg.contains("window is not defined") {
-      return vec![
-        FixSuggestion::info("window global is not available in Deno 2."),
-        FixSuggestion::hint("Replace `window` with `globalThis`."),
-      ];
-    } else if msg.contains("UnsafeWindowSurface is not a constructor") {
-      return vec![
-        FixSuggestion::info("Deno.UnsafeWindowSurface is an unstable API."),
-        FixSuggestion::hint(
-          "Run again with `--unstable-webgpu` flag to enable this API.",
-        ),
-      ];
-    // Try to capture errors like:
-    // ```
-    // Uncaught Error: Cannot find module '../build/Release/canvas.node'
-    // Require stack:
-    // - /.../deno/npm/registry.npmjs.org/canvas/2.11.2/lib/bindings.js
-    // - /.../.cache/deno/npm/registry.npmjs.org/canvas/2.11.2/lib/canvas.js
-    // ```
-    } else if msg.contains("Cannot find module")
-      && msg.contains("Require stack")
-      && msg.contains(".node'")
-    {
-      return vec![
-        FixSuggestion::info_multiline(
-          &[
-            "Trying to execute an npm package using Node-API addons,",
-            "these packages require local `node_modules` directory to be present."
-          ]
-        ),
-        FixSuggestion::hint_multiline(
-          &[
-            "Add `\"nodeModulesDir\": \"auto\" option to `deno.json`, and then run",
-            "`deno install --allow-scripts=npm:<package> --entrypoint <script>` to setup `node_modules` directory."
-          ]
-        )
-      ];
-    }
-  }
-
-  vec![]
-}
-
 fn exit_for_error(error: AnyError) -> ! {
   let mut error_string = format!("{error:?}");
   let mut error_code = 1;
 
   if let Some(e) = error.downcast_ref::<JsError>() {
-    let suggestions = get_suggestions_for_terminal_errors(e);
-    error_string = format_js_error_with_suggestions(e, suggestions);
+    error_string = format_js_error(e);
   } else if let Some(SnapshotFromLockfileError::IntegrityCheckFailed(e)) =
     error.downcast_ref::<SnapshotFromLockfileError>()
   {
@@ -480,6 +390,9 @@ pub(crate) fn unstable_exit_cb(feature: &str, api_name: &str) {
 }
 
 pub fn main() {
+  #[cfg(feature = "dhat-heap")]
+  let profiler = dhat::Profiler::new_heap();
+
   setup_panic_hook();
 
   util::unix::raise_fd_limit();
@@ -500,7 +413,12 @@ pub fn main() {
     run_subcommand(Arc::new(flags)).await
   };
 
-  match create_and_run_current_thread_with_maybe_metrics(future) {
+  let result = create_and_run_current_thread_with_maybe_metrics(future);
+
+  #[cfg(feature = "dhat-heap")]
+  drop(profiler);
+
+  match result {
     Ok(exit_code) => std::process::exit(exit_code),
     Err(err) => exit_for_error(err),
   }

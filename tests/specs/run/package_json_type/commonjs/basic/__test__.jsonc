@@ -1,0 +1,34 @@
+{
+  "tests": {
+    "main_cjs": {
+      "args": "run --allow-read=. main_cjs.js",
+      "output": "3\n"
+    },
+    "main_esm": {
+      "args": "run --allow-read=. main_esm.js",
+      "output": "3\n"
+    },
+    "main_mix": {
+      "args": "run --allow-read=. main_mix.js",
+      "output": "main_mix.out",
+      "exitCode": 1
+    },
+    "import_import_meta": {
+      "args": "run import_import_meta.js",
+      "output": "[WILDLINE]/import_meta.js\n"
+    },
+    "main_import_meta": {
+      "args": "run main_esm_import_meta.js",
+      "output": "main_esm_import_meta.out",
+      "exitCode": 1
+    },
+    "not_import_meta": {
+      "args": "run --allow-read=. not_import_meta.js",
+      "output": "3\n"
+    },
+    "tla": {
+      "args": "run --allow-read=. tla.js",
+      "output": "loaded\n"
+    }
+  }
+}

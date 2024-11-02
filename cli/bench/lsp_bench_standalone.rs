@@ -13,7 +13,11 @@ use test_util::lsp::LspClientBuilder;
 fn incremental_change_wait(bench: &mut Bencher) {
   let mut client = LspClientBuilder::new().use_diagnostic_sync(false).build();
   client.initialize_default();
+  let (method, _): (String, Option<Value>) = client.read_notification();
+  assert_eq!(method, "deno/didRefreshDenoConfigurationTree");
   client.change_configuration(json!({ "deno": { "enable": true } }));
+  let (method, _): (String, Option<Value>) = client.read_notification();
+  assert_eq!(method, "deno/didRefreshDenoConfigurationTree");
 
   client.write_notification(
     "textDocument/didOpen",

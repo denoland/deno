@@ -46,6 +46,7 @@ pub use flags::*;
 pub use lockfile::CliLockfile;
 pub use lockfile::CliLockfileReadFromPathOptions;
 pub use package_json::NpmInstallDepsProvider;
+pub use package_json::PackageJsonDepValueParseWithLocationError;
 
 use deno_ast::ModuleSpecifier;
 use deno_core::anyhow::bail;
@@ -200,6 +201,8 @@ pub fn ts_config_to_transpile_and_emit_options(
       precompile_jsx_dynamic_props: None,
       transform_jsx,
       var_decl_imports: false,
+      // todo(dsherret): support verbatim_module_syntax here properly
+      verbatim_module_syntax: false,
     },
     deno_ast::EmitOptions {
       inline_sources: options.inline_sources,
@@ -578,6 +581,7 @@ fn discover_npmrc(
     let resolved = npmrc
       .as_resolved(npm_registry_url())
       .context("Failed to resolve .npmrc options")?;
+    log::debug!(".npmrc found at: '{}'", path.display());
     Ok(Arc::new(resolved))
   }
 
@@ -963,6 +967,9 @@ impl CliOptions {
     match self.sub_command() {
       DenoSubcommand::Cache(_) => GraphKind::All,
       DenoSubcommand::Check(_) => GraphKind::TypesOnly,
+      DenoSubcommand::Install(InstallFlags {
+        kind: InstallKind::Local(_),
+      }) => GraphKind::All,
       _ => self.type_check_mode().as_graph_kind(),
     }
   }
@@ -1450,6 +1457,12 @@ impl CliOptions {
     }) = &self.flags.subcommand
     {
       *hmr
+    } else if let DenoSubcommand::Serve(ServeFlags {
+      watch: Some(WatchFlagsWithPaths { hmr, .. }),
+      ..
+    }) = &self.flags.subcommand
+    {
+      *hmr
     } else {
       false
     }
@@ -1576,6 +1589,11 @@ impl CliOptions {
       || self.workspace().has_unstable("bare-node-builtins")
   }
 
+  pub fn unstable_detect_cjs(&self) -> bool {
+    self.flags.unstable_config.detect_cjs
+      || self.workspace().has_unstable("detect-cjs")
+  }
+
   fn byonm_enabled(&self) -> bool {
     // check if enabled via unstable
     self.node_modules_dir().ok().flatten() == Some(NodeModulesDirMode::Manual)
@@ -1586,6 +1604,15 @@ impl CliOptions {
   }
 
   pub fn use_byonm(&self) -> bool {
+    if matches!(
+      self.sub_command(),
+      DenoSubcommand::Install(_)
+        | DenoSubcommand::Add(_)
+        | DenoSubcommand::Remove(_)
+    ) {
+      // For `deno install/add/remove` we want to force the managed resolver so it can set up `node_modules/` directory.
+      return false;
+    }
     if self.node_modules_dir().ok().flatten().is_none()
       && self.maybe_node_modules_folder.is_some()
       && self
@@ -1620,21 +1647,17 @@ impl CliOptions {
       });
 
     if !from_config_file.is_empty() {
-      // collect unstable granular flags
-      let mut all_valid_unstable_flags: Vec<&str> =
-        crate::UNSTABLE_GRANULAR_FLAGS
-          .iter()
-          .map(|granular_flag| granular_flag.name)
-          .collect();
-
-      let mut another_unstable_flags = Vec::from([
-        "sloppy-imports",
-        "byonm",
-        "bare-node-builtins",
-        "fmt-component",
-      ]);
-      // add more unstable flags to the same vector holding granular flags
-      all_valid_unstable_flags.append(&mut another_unstable_flags);
+      let all_valid_unstable_flags: Vec<&str> = crate::UNSTABLE_GRANULAR_FLAGS
+        .iter()
+        .map(|granular_flag| granular_flag.name)
+        .chain([
+          "sloppy-imports",
+          "byonm",
+          "bare-node-builtins",
+          "fmt-component",
+          "detect-cjs",
+        ])
+        .collect();
 
       // check and warn if the unstable flag of config file isn't supported, by
       // iterating through the vector holding the unstable flags
@@ -1665,6 +1688,10 @@ impl CliOptions {
   pub fn watch_paths(&self) -> Vec<PathBuf> {
     let mut full_paths = Vec::new();
     if let DenoSubcommand::Run(RunFlags {
+      watch: Some(WatchFlagsWithPaths { paths, .. }),
+      ..
+    })
+    | DenoSubcommand::Serve(ServeFlags {
       watch: Some(WatchFlagsWithPaths { paths, .. }),
       ..
     }) = &self.flags.subcommand

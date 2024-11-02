@@ -898,7 +898,7 @@ fn lock_redirects() {
     .run()
     .assert_matches_text(concat!(
       "Download http://localhost:4545/echo.ts\n",
-      "Download http://localhost:4260/@denotest/esm-basic\n",
+      "Download http://localhost:4260/@denotest%2fesm-basic\n",
       "Download http://localhost:4260/@denotest/esm-basic/1.0.0.tgz\n",
       "Hi, there",
     ));
@@ -3605,7 +3605,8 @@ fn running_declaration_files() {
     temp_dir.write(file, "");
     context
       .new_command()
-      .args_vec(["run", file])
+      // todo(dsherret): investigate why --allow-read is required here
+      .args_vec(["run", "--allow-read", file])
       .run()
       .skip_output_check()
       .assert_exit_code(0);
