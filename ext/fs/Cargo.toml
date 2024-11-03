@@ -2,7 +2,7 @@
 
 [package]
 name = "deno_fs"
-version = "0.83.0"
+version = "0.85.0"
 authors.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -31,7 +31,7 @@ serde.workspace = true
 thiserror.workspace = true
 
 [target.'cfg(unix)'.dependencies]
-nix = { workspace = true, features = ["user"] }
+nix = { workspace = true, features = ["fs", "user"] }
 
 [target.'cfg(windows)'.dependencies]
 winapi = { workspace = true, features = ["winbase"] }
