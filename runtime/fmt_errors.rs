@@ -303,6 +303,13 @@ fn format_js_error_inner(
 }
 
 fn get_suggestions_for_terminal_errors(e: &JsError) -> Vec<FixSuggestion> {
+  if let Some(frame) = e.frames.get(0) {
+    if let Some(file_name) = &frame.file_name {
+        if file_name.ends_with(".mjs") || file_name.ends_with(".mts") {
+            return vec![];
+        }
+    }
+}
   if let Some(msg) = &e.message {
     if msg.contains("module is not defined")
       || msg.contains("exports is not defined")
