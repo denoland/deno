@@ -802,7 +802,10 @@ delete Object.prototype.__proto__;
         debug(`host.getScriptSnapshot("${specifier}")`);
       }
       if (specifier.startsWith(ASSETS_URL_PREFIX)) {
-        const sourceFile = this.getSourceFile(specifier, ts.ScriptTarget.ESNext);
+        const sourceFile = this.getSourceFile(
+          specifier,
+          ts.ScriptTarget.ESNext,
+        );
         if (sourceFile) {
           if (!assetScopes.has(specifier)) {
             assetScopes.set(specifier, lastRequestScope);
