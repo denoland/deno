@@ -5955,7 +5955,7 @@ fn lsp_jsr_code_action_missing_declaration() {
                       "character": 6,
                     },
                   },
-                  "newText": "import type { ReturnType } from \"jsr:@denotest/types-file/types\";\n",
+                  "newText": "import { ReturnType } from \"jsr:@denotest/types-file/types\";\n",
                 },
                 {
                   "range": {
@@ -6469,6 +6469,16 @@ fn lsp_code_actions_imports() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let mut client = context.new_lsp_command().build();
   client.initialize_default();
+  client.change_configuration(json!({
+    "deno": {
+      "enable": true,
+    },
+    "typescript": {
+      "preferences": {
+        "preferTypeOnlyAutoImports": true,
+      },
+    },
+  }));
   client.did_open(json!({
       "textDocument": {
         "uri": "file:///a/file00.ts",
@@ -6768,7 +6778,7 @@ fn lsp_code_actions_imports_dts() {
               "start": { "line": 0, "character": 0 },
               "end": { "line": 0, "character": 0 },
             },
-            "newText": "import type { SomeType } from \"./decl.d.ts\";\n",
+            "newText": "import { SomeType } from \"./decl.d.ts\";\n",
           }],
         }],
       },
@@ -7199,7 +7209,7 @@ fn lsp_code_actions_imports_respects_fmt_config() {
               "start": { "line": 0, "character": 0 },
               "end": { "line": 0, "character": 0 }
             },
-            "newText": "import type { DuckConfigOptions } from './file01.ts'\n"
+            "newText": "import { DuckConfigOptions } from './file01.ts'\n"
           }]
         }]
       }
@@ -7252,7 +7262,7 @@ fn lsp_code_actions_imports_respects_fmt_config() {
               "start": { "line": 0, "character": 0 },
               "end": { "line": 0, "character": 0 }
             },
-            "newText": "import type { DuckConfigOptions } from './file01.ts'\n"
+            "newText": "import { DuckConfigOptions } from './file01.ts'\n"
           }]
         }]
       },
@@ -7352,7 +7362,7 @@ fn lsp_quote_style_from_workspace_settings() {
               "start": { "line": 0, "character": 0 },
               "end": { "line": 0, "character": 0 },
             },
-            "newText": "import type { DuckConfigOptions } from './file01.ts';\n",
+            "newText": "import { DuckConfigOptions } from './file01.ts';\n",
           }],
         }],
       },
@@ -7396,7 +7406,7 @@ fn lsp_quote_style_from_workspace_settings() {
               "start": { "line": 0, "character": 0 },
               "end": { "line": 0, "character": 0 },
             },
-            "newText": "import type { DuckConfigOptions } from \"./file01.ts\";\n",
+            "newText": "import { DuckConfigOptions } from \"./file01.ts\";\n",
           }],
         }],
       },
@@ -15474,25 +15484,23 @@ fn lsp_sloppy_imports() {
 fn lsp_sloppy_imports_prefers_dts() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let temp_dir = context.temp_dir();
-  let temp_dir = temp_dir.path();
-
-  temp_dir
-    .join("deno.json")
-    .write(r#"{ "unstable": ["sloppy-imports"] }"#);
-
-  let mut client: LspClient = context
-    .new_lsp_command()
-    .set_root_dir(temp_dir.clone())
-    .build();
-  client.initialize_default();
-
-  temp_dir.join("a.js").write("export const foo: number;");
-
-  let a_dts = source_file(temp_dir.join("a.d.ts"), "export const foo = 3;");
+  temp_dir.write("deno.json", json!({}).to_string());
+  temp_dir.write("a.js", "export const foo: number;");
+  let a_dts =
+    source_file(temp_dir.path().join("a.d.ts"), "export const foo = 3;");
   let file = source_file(
-    temp_dir.join("file.ts"),
+    temp_dir.path().join("file.ts"),
     "import { foo } from './a.js';\nconsole.log(foo);",
   );
+  let mut client: LspClient = context.new_lsp_command().build();
+  client.initialize_default();
+  client.change_configuration(json!({
+    "deno": {
+      "enable": true,
+      "unstable": ["sloppy-imports"],
+    },
+  }));
+
   let diagnostics = client.did_open_file(&file);
   // no other warnings because "a.js" exists
   assert_eq!(

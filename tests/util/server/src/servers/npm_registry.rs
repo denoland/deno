@@ -56,6 +56,14 @@ pub fn private_npm_registry2(port: u16) -> Vec<LocalBoxFuture<'static, ()>> {
   )
 }
 
+pub fn private_npm_registry3(port: u16) -> Vec<LocalBoxFuture<'static, ()>> {
+  run_npm_server(
+    port,
+    "npm private registry server error",
+    private_npm_registry3_handler,
+  )
+}
+
 fn run_npm_server<F, S>(
   port: u16,
   error_msg: &'static str,
@@ -139,6 +147,13 @@ async fn private_npm_registry2_handler(
   }
 
   handle_req_for_registry(req, &npm::PRIVATE_TEST_NPM_REGISTRY_2).await
+}
+
+async fn private_npm_registry3_handler(
+  req: Request<hyper::body::Incoming>,
+) -> Result<Response<UnsyncBoxBody<Bytes, Infallible>>, anyhow::Error> {
+  // No auth for this registry
+  handle_req_for_registry(req, &npm::PRIVATE_TEST_NPM_REGISTRY_3).await
 }
 
 async fn handle_req_for_registry(

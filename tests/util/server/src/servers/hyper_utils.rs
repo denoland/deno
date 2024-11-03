@@ -42,7 +42,10 @@ where
   let fut: Pin<Box<dyn Future<Output = Result<(), anyhow::Error>>>> =
     async move {
       let listener = TcpListener::bind(options.addr).await?;
-      println!("ready: {}", options.addr);
+      #[allow(clippy::print_stdout)]
+      {
+        println!("ready: {}", options.addr);
+      }
       loop {
         let (stream, _) = listener.accept().await?;
         let io = TokioIo::new(stream);
@@ -58,6 +61,7 @@ where
 
   if let Err(e) = fut.await {
     let err_str = e.to_string();
+    #[allow(clippy::print_stderr)]
     if !err_str.contains("early eof") {
       eprintln!("{}: {:?}", options.error_msg, e);
     }
@@ -89,6 +93,7 @@ pub async fn run_server_with_acceptor<'a, A, F, S>(
 
   if let Err(e) = fut.await {
     let err_str = e.to_string();
+    #[allow(clippy::print_stderr)]
     if !err_str.contains("early eof") {
       eprintln!("{}: {:?}", error_msg, e);
     }
@@ -135,6 +140,7 @@ async fn hyper_serve_connection<I, F, S>(
 
   if let Err(e) = result {
     let err_str = e.to_string();
+    #[allow(clippy::print_stderr)]
     if !err_str.contains("early eof") {
       eprintln!("{}: {:?}", error_msg, e);
     }

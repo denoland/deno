@@ -19,11 +19,12 @@ use deno_core::serde_json::Value;
 use deno_core::unsync::spawn;
 use deno_core::url::Url;
 use deno_core::InspectorMsg;
+use deno_core::InspectorSessionKind;
+use deno_core::InspectorSessionOptions;
 use deno_core::InspectorSessionProxy;
 use deno_core::JsRuntime;
 use fastwebsockets::Frame;
 use fastwebsockets::OpCode;
-use fastwebsockets::Payload;
 use fastwebsockets::WebSocket;
 use hyper::body::Bytes;
 use hyper_util::rt::TokioIo;
@@ -34,7 +35,6 @@ use std::pin::pin;
 use std::process;
 use std::rc::Rc;
 use std::thread;
-use std::time::Duration;
 use tokio::net::TcpListener;
 use tokio::sync::broadcast;
 use uuid::Uuid;
@@ -194,6 +194,11 @@ fn handle_ws_request(
     let inspector_session_proxy = InspectorSessionProxy {
       tx: outbound_tx,
       rx: inbound_rx,
+      options: InspectorSessionOptions {
+        kind: InspectorSessionKind::NonBlocking {
+          wait_for_disconnect: true,
+        },
+      },
     };
 
     log::info!("Debugger session started.");
@@ -395,13 +400,8 @@ async fn pump_websocket_messages(
   inbound_tx: UnboundedSender<String>,
   mut outbound_rx: UnboundedReceiver<InspectorMsg>,
 ) {
-  let mut ticker = tokio::time::interval(Duration::from_secs(30));
-
   'pump: loop {
     tokio::select! {
-        _ = ticker.tick() => {
-            let _ = websocket.write_frame(Frame::new(true, OpCode::Ping, None, Payload::Borrowed(&[]))).await;
-        }
         Some(msg) = outbound_rx.next() => {
             let msg = Frame::text(msg.content.into_bytes().into());
             let _ = websocket.write_frame(msg).await;

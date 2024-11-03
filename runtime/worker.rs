@@ -20,6 +20,8 @@ use deno_core::CompiledWasmModuleStore;
 use deno_core::Extension;
 use deno_core::FeatureChecker;
 use deno_core::GetErrorClassFn;
+use deno_core::InspectorSessionKind;
+use deno_core::InspectorSessionOptions;
 use deno_core::JsRuntime;
 use deno_core::LocalInspectorSession;
 use deno_core::ModuleCodeString;
@@ -795,7 +797,11 @@ impl MainWorker {
   /// was not configured to create inspector.
   pub fn create_inspector_session(&mut self) -> LocalInspectorSession {
     self.js_runtime.maybe_init_inspector();
-    self.js_runtime.inspector().borrow().create_local_session()
+    self.js_runtime.inspector().borrow().create_local_session(
+      InspectorSessionOptions {
+        kind: InspectorSessionKind::Blocking,
+      },
+    )
   }
 
   pub async fn run_event_loop(

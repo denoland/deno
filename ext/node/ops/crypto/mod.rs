@@ -519,11 +519,11 @@ pub fn op_node_dh_compute_secret(
 }
 
 #[op2(fast)]
-#[smi]
+#[number]
 pub fn op_node_random_int(
-  #[smi] min: i32,
-  #[smi] max: i32,
-) -> Result<i32, AnyError> {
+  #[number] min: i64,
+  #[number] max: i64,
+) -> Result<i64, AnyError> {
   let mut rng = rand::thread_rng();
   // Uniform distribution is required to avoid Modulo Bias
   // https://en.wikipedia.org/wiki/Fisher–Yates_shuffle#Modulo_bias
