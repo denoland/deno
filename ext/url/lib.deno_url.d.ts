@@ -6,7 +6,7 @@
 /// <reference lib="esnext" />
 
 /** @category URL */
-declare interface URLSearchParams {
+interface URLSearchParams {
   /** Appends a specified key/value pair as a new search parameter.
    *
    * ```ts
@@ -170,7 +170,7 @@ declare var URLSearchParams: {
  *
  * @category URL
  */
-declare interface URL {
+interface URL {
   hash: string;
   host: string;
   hostname: string;
@@ -202,7 +202,7 @@ declare var URL: {
 };
 
 /** @category URL */
-declare interface URLPatternInit {
+interface URLPatternInit {
   protocol?: string;
   username?: string;
   password?: string;
@@ -215,10 +215,10 @@ declare interface URLPatternInit {
 }
 
 /** @category URL */
-declare type URLPatternInput = string | URLPatternInit;
+type URLPatternInput = string | URLPatternInit;
 
 /** @category URL */
-declare interface URLPatternComponentResult {
+interface URLPatternComponentResult {
   input: string;
   groups: Record<string, string | undefined>;
 }
@@ -227,7 +227,7 @@ declare interface URLPatternComponentResult {
  *
  * @category URL
  */
-declare interface URLPatternResult {
+interface URLPatternResult {
   /** The inputs provided when matching. */
   inputs: [URLPatternInit] | [URLPatternInit, string];
 
@@ -254,7 +254,7 @@ declare interface URLPatternResult {
  *
  * @category URL
  */
-declare interface URLPatternOptions {
+interface URLPatternOptions {
   /**
    * Enables case-insensitive matching.
    *
@@ -293,7 +293,7 @@ declare interface URLPatternOptions {
  *
  * @category URL
  */
-declare interface URLPattern {
+interface URLPattern {
   /**
    * Test if the given input matches the stored pattern.
    *

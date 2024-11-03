@@ -39,7 +39,6 @@ use deno_core::convert::ToV8;
 use deno_core::error::StdAnyError;
 use deno_core::futures::stream::FuturesOrdered;
 use deno_core::futures::StreamExt;
-use deno_runtime::fs_util::specifier_to_file_path;
 
 use dashmap::DashMap;
 use deno_ast::MediaType;
@@ -63,6 +62,7 @@ use deno_core::ModuleSpecifier;
 use deno_core::OpState;
 use deno_core::PollEventLoopOptions;
 use deno_core::RuntimeOptions;
+use deno_path_util::url_to_file_path;
 use deno_runtime::inspector_server::InspectorServer;
 use deno_runtime::tokio_util::create_basic_runtime;
 use indexmap::IndexMap;
@@ -2183,6 +2183,50 @@ impl NavigateToItem {
 }
 
 #[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct InlayHintDisplayPart {
+  pub text: String,
+  pub span: Option<TextSpan>,
+  pub file: Option<String>,
+}
+
+impl InlayHintDisplayPart {
+  pub fn to_lsp(
+    &self,
+    language_server: &language_server::Inner,
+  ) -> lsp::InlayHintLabelPart {
+    let location = self.file.as_ref().map(|f| {
+      let specifier =
+        resolve_url(f).unwrap_or_else(|_| INVALID_SPECIFIER.clone());
+      let file_referrer =
+        language_server.documents.get_file_referrer(&specifier);
+      let uri = language_server
+        .url_map
+        .specifier_to_uri(&specifier, file_referrer.as_deref())
+        .unwrap_or_else(|_| INVALID_URI.clone());
+      let range = self
+        .span
+        .as_ref()
+        .and_then(|s| {
+          let asset_or_doc =
+            language_server.get_asset_or_document(&specifier).ok()?;
+          Some(s.to_range(asset_or_doc.line_index()))
+        })
+        .unwrap_or_else(|| {
+          lsp::Range::new(lsp::Position::new(0, 0), lsp::Position::new(0, 0))
+        });
+      lsp::Location { uri, range }
+    });
+    lsp::InlayHintLabelPart {
+      value: self.text.clone(),
+      tooltip: None,
+      location,
+      command: None,
+    }
+  }
+}
+
+#[derive(Debug, Clone, Deserialize)]
 pub enum InlayHintKind {
   Type,
   Parameter,
@@ -2203,6 +2247,7 @@ impl InlayHintKind {
 #[serde(rename_all = "camelCase")]
 pub struct InlayHint {
   pub text: String,
+  pub display_parts: Option<Vec<InlayHintDisplayPart>>,
   pub position: u32,
   pub kind: InlayHintKind,
   pub whitespace_before: Option<bool>,
@@ -2210,10 +2255,23 @@ pub struct InlayHint {
 }
 
 impl InlayHint {
-  pub fn to_lsp(&self, line_index: Arc<LineIndex>) -> lsp::InlayHint {
+  pub fn to_lsp(
+    &self,
+    line_index: Arc<LineIndex>,
+    language_server: &language_server::Inner,
+  ) -> lsp::InlayHint {
     lsp::InlayHint {
       position: line_index.position_tsc(self.position.into()),
-      label: lsp::InlayHintLabel::String(self.text.clone()),
+      label: if let Some(display_parts) = &self.display_parts {
+        lsp::InlayHintLabel::LabelParts(
+          display_parts
+            .iter()
+            .map(|p| p.to_lsp(language_server))
+            .collect(),
+        )
+      } else {
+        lsp::InlayHintLabel::String(self.text.clone())
+      },
       kind: self.kind.to_lsp(),
       padding_left: self.whitespace_before,
       padding_right: self.whitespace_after,
@@ -3191,7 +3249,7 @@ impl CallHierarchyItem {
     let use_file_name = self.is_source_file_item();
     let maybe_file_path = if uri.scheme().is_some_and(|s| s.as_str() == "file")
     {
-      specifier_to_file_path(&uri_to_url(&uri)).ok()
+      url_to_file_path(&uri_to_url(&uri)).ok()
     } else {
       None
     };
@@ -3939,7 +3997,7 @@ pub struct OutliningSpan {
   kind: OutliningSpanKind,
 }
 
-const FOLD_END_PAIR_CHARACTERS: &[u8] = &[b'}', b']', b')', b'`'];
+const FOLD_END_PAIR_CHARACTERS: &[u8] = b"}])`";
 
 impl OutliningSpan {
   pub fn to_folding_range(
@@ -4304,14 +4362,25 @@ fn op_load<'s>(
       None
     } else {
       let asset_or_document = state.get_asset_or_document(&specifier);
-      asset_or_document.map(|doc| LoadResponse {
-        data: doc.text(),
-        script_kind: crate::tsc::as_ts_script_kind(doc.media_type()),
-        version: state.script_version(&specifier),
-        is_cjs: matches!(
-          doc.media_type(),
-          MediaType::Cjs | MediaType::Cts | MediaType::Dcts
-        ),
+      asset_or_document.map(|doc| {
+        let maybe_cjs_tracker = state
+          .state_snapshot
+          .resolver
+          .maybe_cjs_tracker(Some(&specifier));
+        LoadResponse {
+          data: doc.text(),
+          script_kind: crate::tsc::as_ts_script_kind(doc.media_type()),
+          version: state.script_version(&specifier),
+          is_cjs: maybe_cjs_tracker
+            .map(|t| {
+              t.is_cjs(
+                &specifier,
+                doc.media_type(),
+                doc.maybe_parsed_source().and_then(|p| p.as_ref().ok()),
+              )
+            })
+            .unwrap_or(false),
+        }
       })
     };
 
@@ -4892,6 +4961,10 @@ pub struct UserPreferences {
   pub allow_rename_of_import_path: Option<bool>,
   #[serde(skip_serializing_if = "Option::is_none")]
   pub auto_import_file_exclude_patterns: Option<Vec<String>>,
+  #[serde(skip_serializing_if = "Option::is_none")]
+  pub interactive_inlay_hints: Option<bool>,
+  #[serde(skip_serializing_if = "Option::is_none")]
+  pub prefer_type_only_auto_imports: Option<bool>,
 }
 
 impl UserPreferences {
@@ -4909,6 +4982,7 @@ impl UserPreferences {
       include_completions_with_snippet_text: Some(
         config.snippet_support_capable(),
       ),
+      interactive_inlay_hints: Some(true),
       provide_refactor_not_applicable_reason: Some(true),
       quote_preference: Some(fmt_config.into()),
       use_label_details_in_completion_entries: Some(true),
@@ -5013,6 +5087,9 @@ impl UserPreferences {
       } else {
         Some(language_settings.preferences.quote_style)
       },
+      prefer_type_only_auto_imports: Some(
+        language_settings.preferences.prefer_type_only_auto_imports,
+      ),
       ..base_preferences
     }
   }
@@ -5475,7 +5552,6 @@ mod tests {
     let (temp_dir, ts_server, snapshot, _) = setup(
       json!({
         "target": "esnext",
-        "module": "esnext",
         "noEmit": true,
         "lib": [],
       }),
@@ -5521,7 +5597,6 @@ mod tests {
     let (temp_dir, ts_server, snapshot, _) = setup(
       json!({
         "target": "esnext",
-        "module": "esnext",
         "jsx": "react",
         "lib": ["esnext", "dom", "deno.ns"],
         "noEmit": true,
@@ -5547,7 +5622,6 @@ mod tests {
     let (temp_dir, ts_server, snapshot, _) = setup(
       json!({
         "target": "esnext",
-        "module": "esnext",
         "lib": ["deno.ns", "deno.window"],
         "noEmit": true,
       }),
@@ -5578,7 +5652,6 @@ mod tests {
     let (temp_dir, ts_server, snapshot, _) = setup(
       json!({
         "target": "esnext",
-        "module": "esnext",
         "lib": ["deno.ns", "deno.window"],
         "noEmit": true,
       }),
@@ -5624,7 +5697,6 @@ mod tests {
     let (temp_dir, ts_server, snapshot, _) = setup(
       json!({
         "target": "esnext",
-        "module": "esnext",
         "lib": ["deno.ns", "deno.window"],
         "noEmit": true,
       }),
@@ -5655,7 +5727,6 @@ mod tests {
     let (temp_dir, ts_server, snapshot, _) = setup(
       json!({
         "target": "esnext",
-        "module": "esnext",
         "lib": ["deno.ns", "deno.window"],
         "noEmit": true,
       }),
@@ -5722,7 +5793,6 @@ mod tests {
     let (temp_dir, ts_server, snapshot, _) = setup(
       json!({
         "target": "esnext",
-        "module": "esnext",
         "lib": ["deno.ns", "deno.window"],
         "noEmit": true,
       }),
@@ -5800,7 +5870,6 @@ mod tests {
     let (temp_dir, ts_server, snapshot, cache) = setup(
       json!({
         "target": "esnext",
-        "module": "esnext",
         "lib": ["deno.ns", "deno.window"],
         "noEmit": true,
       }),
@@ -5942,7 +6011,6 @@ mod tests {
     let (temp_dir, ts_server, snapshot, _) = setup(
       json!({
         "target": "esnext",
-        "module": "esnext",
         "lib": ["deno.ns", "deno.window"],
         "noEmit": true,
       }),
@@ -6093,7 +6161,6 @@ mod tests {
     let (temp_dir, ts_server, snapshot, _) = setup(
       json!({
         "target": "esnext",
-        "module": "esnext",
         "lib": ["deno.ns", "deno.window"],
         "noEmit": true,
       }),
@@ -6202,7 +6269,6 @@ mod tests {
     let (temp_dir, ts_server, snapshot, _) = setup(
       json!({
         "target": "esnext",
-        "module": "esnext",
         "lib": ["deno.ns", "deno.window"],
         "noEmit": true,
       }),
@@ -6273,7 +6339,6 @@ mod tests {
     let (temp_dir, _, snapshot, _) = setup(
       json!({
         "target": "esnext",
-        "module": "esnext",
         "lib": ["deno.ns", "deno.window"],
         "noEmit": true,
       }),

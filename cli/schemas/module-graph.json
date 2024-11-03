@@ -83,14 +83,6 @@
           "type": "string",
           "description": "The checksum of the local source file. This can be used to validate if the current on disk version matches the version described here."
         },
-        "emit": {
-          "type": "string",
-          "description": "The path to an emitted version of the module, if the module requires transpilation to be loaded into the Deno runtime."
-        },
-        "map": {
-          "type": "string",
-          "description": "The path to an optionally emitted source map between the original and emitted version of the file."
-        },
         "error": {
           "type": "string",
           "description": "If when resolving the module, Deno encountered an error and the module is unavailable, the text of that error will be indicated here."

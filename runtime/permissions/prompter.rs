@@ -80,6 +80,10 @@ pub fn set_prompt_callbacks(
   *MAYBE_AFTER_PROMPT_CALLBACK.lock() = Some(after_callback);
 }
 
+pub fn set_prompter(prompter: Box<dyn PermissionPrompter>) {
+  *PERMISSION_PROMPTER.lock() = prompter;
+}
+
 pub type PromptCallback = Box<dyn FnMut() + Send + Sync>;
 
 pub trait PermissionPrompter: Send + Sync {
@@ -265,7 +269,7 @@ fn get_stdin_metadata() -> std::io::Result<std::fs::Metadata> {
   unsafe {
     let stdin = std::fs::File::from_raw_fd(0);
     let metadata = stdin.metadata().unwrap();
-    stdin.into_raw_fd();
+    let _ = stdin.into_raw_fd();
     Ok(metadata)
   }
 }
@@ -366,7 +370,7 @@ impl PermissionPrompter for TtyPrompter {
 
       let mut input = String::new();
       let result = stdin_lock.read_line(&mut input);
-      let input = input.trim_end_matches(|c| c == '\r' || c == '\n');
+      let input = input.trim_end_matches(['\r', '\n']);
       if result.is_err() || input.len() != 1 {
         break PromptResponse::Deny;
       };
@@ -475,9 +479,5 @@ pub mod tests {
     pub fn set(&self, value: bool) {
       STUB_PROMPT_VALUE.store(value, Ordering::SeqCst);
     }
-  }
-
-  pub fn set_prompter(prompter: Box<dyn PermissionPrompter>) {
-    *PERMISSION_PROMPTER.lock() = prompter;
   }
 }

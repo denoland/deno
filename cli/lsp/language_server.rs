@@ -1,6 +1,5 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
-use base64::Engine;
 use deno_ast::MediaType;
 use deno_config::workspace::WorkspaceDirectory;
 use deno_config::workspace::WorkspaceDiscoverOptions;
@@ -16,6 +15,7 @@ use deno_core::url::Url;
 use deno_core::ModuleSpecifier;
 use deno_graph::GraphKind;
 use deno_graph::Resolution;
+use deno_path_util::url_to_file_path;
 use deno_runtime::deno_tls::rustls::RootCertStore;
 use deno_runtime::deno_tls::RootCertStoreProvider;
 use deno_semver::jsr::JsrPackageReqReference;
@@ -96,6 +96,7 @@ use crate::args::CaData;
 use crate::args::CacheSetting;
 use crate::args::CliOptions;
 use crate::args::Flags;
+use crate::args::InternalFlags;
 use crate::args::UnstableFmtOptions;
 use crate::factory::CliFactory;
 use crate::file_fetcher::FileFetcher;
@@ -113,7 +114,6 @@ use crate::util::fs::remove_dir_all_if_exists;
 use crate::util::path::is_importable_ext;
 use crate::util::path::to_percent_decoded_str;
 use crate::util::sync::AsyncFlag;
-use deno_runtime::fs_util::specifier_to_file_path;
 
 struct LspRootCertStoreProvider(RootCertStore);
 
@@ -208,11 +208,11 @@ pub struct Inner {
   module_registry: ModuleRegistry,
   /// A lazily create "server" for handling test run requests.
   maybe_testing_server: Option<testing::TestServer>,
-  npm_search_api: CliNpmSearchApi,
+  pub npm_search_api: CliNpmSearchApi,
   project_version: usize,
   /// A collection of measurements which instrument that performance of the LSP.
   performance: Arc<Performance>,
-  resolver: Arc<LspResolver>,
+  pub resolver: Arc<LspResolver>,
   task_queue: LanguageServerTaskQueue,
   /// A memoized version of fixable diagnostic codes retrieved from TypeScript.
   ts_fixable_diagnostics: Vec<String>,
@@ -241,7 +241,7 @@ impl LanguageServer {
     }
   }
 
-  /// Similar to `deno cache` on the command line, where modules will be cached
+  /// Similar to `deno install --entrypoint` on the command line, where modules will be cached
   /// in the Deno cache, including any of their dependencies.
   pub async fn cache(
     &self,
@@ -275,10 +275,9 @@ impl LanguageServer {
         factory.fs(),
         &roots,
         graph_util::GraphValidOptions {
-          is_vendoring: false,
-          follow_type_only: true,
+          kind: GraphKind::All,
           check_js: false,
-          exit_lockfile_errors: false,
+          exit_integrity_errors: false,
         },
       )?;
 
@@ -628,7 +627,7 @@ impl Inner {
     let maybe_root_path = self
       .config
       .root_uri()
-      .and_then(|uri| specifier_to_file_path(uri).ok());
+      .and_then(|uri| url_to_file_path(uri).ok());
     let root_cert_store = get_root_cert_store(
       maybe_root_path,
       workspace_settings.certificate_stores.clone(),
@@ -804,7 +803,7 @@ impl Inner {
     let mut roots = config
       .workspace_folders
       .iter()
-      .filter_map(|p| specifier_to_file_path(&p.0).ok())
+      .filter_map(|p| url_to_file_path(&p.0).ok())
       .collect::<Vec<_>>();
     roots.sort();
     let roots = roots
@@ -905,7 +904,7 @@ impl Inner {
             | MediaType::Tsx => {}
             MediaType::Wasm
             | MediaType::SourceMap
-            | MediaType::TsBuildInfo
+            | MediaType::Css
             | MediaType::Unknown => {
               if path.extension().and_then(|s| s.to_str()) != Some("jsonc") {
                 continue;
@@ -964,21 +963,36 @@ impl Inner {
       .tree
       .refresh(&self.config.settings, &self.workspace_files, &file_fetcher)
       .await;
+    self
+      .client
+      .send_did_refresh_deno_configuration_tree_notification(
+        self.config.tree.to_did_refresh_params(),
+      );
     for config_file in self.config.tree.config_files() {
       (|| {
-        let compiler_options = config_file.to_compiler_options().ok()?.0;
-        let compiler_options_obj = compiler_options.as_object()?;
-        let jsx_import_source = compiler_options_obj.get("jsxImportSource")?;
-        let jsx_import_source = jsx_import_source.as_str()?;
+        let compiler_options = config_file.to_compiler_options().ok()?.options;
+        let jsx_import_source = compiler_options.get("jsxImportSource")?;
+        let jsx_import_source = jsx_import_source.as_str()?.to_string();
         let referrer = config_file.specifier.clone();
-        let specifier = Url::parse(&format!(
-          "data:application/typescript;base64,{}",
-          base64::engine::general_purpose::STANDARD
-            .encode(format!("import '{jsx_import_source}/jsx-runtime';"))
-        ))
-        .unwrap();
+        let specifier = format!("{jsx_import_source}/jsx-runtime");
         self.task_queue.queue_task(Box::new(|ls: LanguageServer| {
           spawn(async move {
+            let specifier = {
+              let inner = ls.inner.read().await;
+              let resolver = inner.resolver.as_graph_resolver(Some(&referrer));
+              let Ok(specifier) = resolver.resolve(
+                &specifier,
+                &deno_graph::Range {
+                  specifier: referrer.clone(),
+                  start: deno_graph::Position::zeroed(),
+                  end: deno_graph::Position::zeroed(),
+                },
+                deno_graph::source::ResolutionMode::Types,
+              ) else {
+                return;
+              };
+              specifier
+            };
             if let Err(err) = ls.cache(vec![specifier], referrer, false).await {
               lsp_warn!("{:#}", err);
             }
@@ -1116,7 +1130,7 @@ impl Inner {
     {
       return;
     }
-    match specifier_to_file_path(&specifier) {
+    match url_to_file_path(&specifier) {
       Ok(path) if is_importable_ext(&path) => {}
       _ => return,
     }
@@ -1354,7 +1368,7 @@ impl Inner {
     {
       specifier = uri_to_url(&params.text_document.uri);
     }
-    let file_path = specifier_to_file_path(&specifier).map_err(|err| {
+    let file_path = url_to_file_path(&specifier).map_err(|err| {
       error!("{:#}", err);
       LspError::invalid_request()
     })?;
@@ -1370,23 +1384,10 @@ impl Inner {
         .clone();
       fmt_options.use_tabs = Some(!params.options.insert_spaces);
       fmt_options.indent_width = Some(params.options.tab_size as u8);
-      let maybe_workspace = self
-        .config
-        .tree
-        .data_for_specifier(&specifier)
-        .map(|d| &d.member_dir.workspace);
+      let config_data = self.config.tree.data_for_specifier(&specifier);
       let unstable_options = UnstableFmtOptions {
-        css: maybe_workspace
-          .map(|w| w.has_unstable("fmt-css"))
-          .unwrap_or(false),
-        html: maybe_workspace
-          .map(|w| w.has_unstable("fmt-html"))
-          .unwrap_or(false),
-        component: maybe_workspace
-          .map(|w| w.has_unstable("fmt-component"))
-          .unwrap_or(false),
-        yaml: maybe_workspace
-          .map(|w| w.has_unstable("fmt-yaml"))
+        component: config_data
+          .map(|d| d.unstable.contains("fmt-component"))
           .unwrap_or(false),
       };
       let document = document.clone();
@@ -1411,6 +1412,7 @@ impl Inner {
               document.content(),
               &fmt_options,
               &unstable_options,
+              None,
             )
           }
         };
@@ -1612,8 +1614,8 @@ impl Inner {
         None => false,
       })
       .collect();
+    let mut code_actions = CodeActionCollection::default();
     if !fixable_diagnostics.is_empty() {
-      let mut code_actions = CodeActionCollection::default();
       let file_diagnostics = self
         .diagnostics_server
         .get_ts_diagnostics(&specifier, asset_or_doc.document_lsp_version());
@@ -1721,9 +1723,14 @@ impl Inner {
             .add_cache_all_action(&specifier, no_cache_diagnostics.to_owned());
         }
       }
-      code_actions.set_preferred_fixes();
-      all_actions.extend(code_actions.get_response());
     }
+    if let Some(document) = asset_or_doc.document() {
+      code_actions
+        .add_source_actions(document, &params.range, self)
+        .await;
+    }
+    code_actions.set_preferred_fixes();
+    all_actions.extend(code_actions.get_response());
 
     // Refactor
     let only = params
@@ -1912,6 +1919,7 @@ impl Inner {
         // as the import map is an implementation detail
         .and_then(|d| d.resolver.maybe_import_map()),
       self.resolver.as_ref(),
+      file_referrer,
     )
   }
 
@@ -2508,7 +2516,7 @@ impl Inner {
     let maybe_root_path_owned = self
       .config
       .root_uri()
-      .and_then(|uri| specifier_to_file_path(uri).ok());
+      .and_then(|uri| url_to_file_path(uri).ok());
     let mut resolved_items = Vec::<CallHierarchyIncomingCall>::new();
     for item in incoming_calls.iter() {
       if let Some(resolved) = item.try_resolve_call_hierarchy_incoming_call(
@@ -2554,7 +2562,7 @@ impl Inner {
     let maybe_root_path_owned = self
       .config
       .root_uri()
-      .and_then(|uri| specifier_to_file_path(uri).ok());
+      .and_then(|uri| url_to_file_path(uri).ok());
     let mut resolved_items = Vec::<CallHierarchyOutgoingCall>::new();
     for item in outgoing_calls.iter() {
       if let Some(resolved) = item.try_resolve_call_hierarchy_outgoing_call(
@@ -2603,7 +2611,7 @@ impl Inner {
       let maybe_root_path_owned = self
         .config
         .root_uri()
-        .and_then(|uri| specifier_to_file_path(uri).ok());
+        .and_then(|uri| url_to_file_path(uri).ok());
       let mut resolved_items = Vec::<CallHierarchyItem>::new();
       match one_or_many {
         tsc::OneOrMany::One(item) => {
@@ -3600,7 +3608,10 @@ impl Inner {
     };
     let cli_options = CliOptions::new(
       Arc::new(Flags {
-        cache_path: Some(self.cache.deno_dir().root.clone()),
+        internal: InternalFlags {
+          cache_path: Some(self.cache.deno_dir().root.clone()),
+          ..Default::default()
+        },
         ca_stores: workspace_settings.certificate_stores.clone(),
         ca_data: workspace_settings.tls_certificate.clone().map(CaData::File),
         unsafely_ignore_certificate_errors: workspace_settings
@@ -3613,6 +3624,11 @@ impl Inner {
         }),
         // bit of a hack to force the lsp to cache the @types/node package
         type_check_mode: crate::args::TypeCheckMode::Local,
+        permissions: crate::args::PermissionFlags {
+          // allow remote import permissions in the lsp for now
+          allow_import: Some(vec![]),
+          ..Default::default()
+        },
         ..Default::default()
       }),
       initial_cwd,
@@ -3792,7 +3808,7 @@ impl Inner {
     let maybe_inlay_hints = maybe_inlay_hints.map(|hints| {
       hints
         .iter()
-        .map(|hint| hint.to_lsp(line_index.clone()))
+        .map(|hint| hint.to_lsp(line_index.clone(), self))
         .collect()
     });
     self.performance.measure(mark);
@@ -3860,7 +3876,11 @@ impl Inner {
 
   </details>
 "#,
-        serde_json::to_string_pretty(&workspace_settings).unwrap(),
+        serde_json::to_string_pretty(&workspace_settings)
+          .inspect_err(|e| {
+            dbg!(e);
+          })
+          .unwrap(),
         documents_specifiers.len(),
         documents_specifiers
           .into_iter()

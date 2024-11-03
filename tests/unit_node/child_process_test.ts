@@ -12,7 +12,7 @@ import {
   assertThrows,
 } from "@std/assert";
 import * as path from "@std/path";
-import { setTimeout } from "node:timers";
+import { clearTimeout, setTimeout } from "node:timers";
 
 const { spawn, spawnSync, execFile, execFileSync, ChildProcess } = CP;
 
@@ -528,7 +528,6 @@ Deno.test({
     const childProcess = spawn(Deno.execPath(), [
       "run",
       "-A",
-      "--unstable",
       script,
     ]);
     const deferred = Promise.withResolvers<void>();
@@ -1042,6 +1041,22 @@ Deno.test(async function sendAfterClosedThrows() {
   });
   child.on("close", () => {
     child.send("ready");
+  });
+
+  await timeout.promise;
+});
+
+Deno.test(async function noWarningsFlag() {
+  const code = ``;
+  const file = await Deno.makeTempFile();
+  await Deno.writeTextFile(file, code);
+  const timeout = withTimeout<void>();
+  const child = CP.fork(file, [], {
+    execArgv: ["--no-warnings"],
+    stdio: ["inherit", "inherit", "inherit", "ipc"],
+  });
+  child.on("close", () => {
+    timeout.resolve();
   });
 
   await timeout.promise;

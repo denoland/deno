@@ -1,2 +1,2 @@
-error: Uncaught (in promise) PermissionDenied: Requires run access to "deno", specify the required permissions during compilation using `deno compile --allow-run`
+error: Uncaught (in promise) NotCapable: Requires run access to "deno", specify the required permissions during compilation using `deno compile --allow-run`
 [WILDCARD]

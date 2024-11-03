@@ -33,6 +33,7 @@ pub mod fs_util;
 pub mod inspector_server;
 pub mod js;
 pub mod ops;
+pub mod permissions;
 pub mod snapshot;
 pub mod tokio_util;
 pub mod web_worker;
@@ -44,7 +45,6 @@ pub use worker_bootstrap::WorkerExecutionMode;
 pub use worker_bootstrap::WorkerLogLevel;
 
 mod shared;
-pub use shared::import_assertion_callback;
 pub use shared::runtime;
 
 pub struct UnstableGranularFlag {
@@ -72,13 +72,13 @@ pub static UNSTABLE_GRANULAR_FLAGS: &[UnstableGranularFlag] = &[
   UnstableGranularFlag {
     name: deno_ffi::UNSTABLE_FEATURE_NAME,
     help_text: "Enable unstable FFI APIs",
-    show_in_help: true,
+    show_in_help: false,
     id: 3,
   },
   UnstableGranularFlag {
     name: deno_fs::UNSTABLE_FEATURE_NAME,
     help_text: "Enable unstable file system APIs",
-    show_in_help: true,
+    show_in_help: false,
     id: 4,
   },
   UnstableGranularFlag {
@@ -99,10 +99,11 @@ pub static UNSTABLE_GRANULAR_FLAGS: &[UnstableGranularFlag] = &[
     show_in_help: true,
     id: 7,
   },
+  // TODO(bartlomieju): consider removing it
   UnstableGranularFlag {
     name: ops::process::UNSTABLE_FEATURE_NAME,
     help_text: "Enable unstable process APIs",
-    show_in_help: true,
+    show_in_help: false,
     id: 8,
   },
   UnstableGranularFlag {
@@ -121,7 +122,7 @@ pub static UNSTABLE_GRANULAR_FLAGS: &[UnstableGranularFlag] = &[
   },
   UnstableGranularFlag {
     name: deno_webgpu::UNSTABLE_FEATURE_NAME,
-    help_text: "Enable unstable `WebGPU` API",
+    help_text: "Enable unstable `WebGPU` APIs",
     show_in_help: true,
     id: 11,
   },

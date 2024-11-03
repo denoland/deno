@@ -105,7 +105,7 @@ class Cache {
     const reqUrl = new URL(innerRequest.url());
     if (reqUrl.protocol !== "http:" && reqUrl.protocol !== "https:") {
       throw new TypeError(
-        "Request url protocol must be 'http:' or 'https:'",
+        `Request url protocol must be 'http:' or 'https:': received '${reqUrl.protocol}'`,
       );
     }
     if (innerRequest.method !== "GET") {

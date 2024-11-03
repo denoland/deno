@@ -1,5 +1,6 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
+use std::borrow::Cow;
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::env::current_dir;
@@ -15,9 +16,9 @@ use std::sync::OnceLock;
 use async_trait::async_trait;
 use deno_core::error::type_error;
 use deno_core::error::AnyError;
-use deno_core::normalize_path;
 use deno_core::unsync::spawn_blocking;
 use deno_core::OpState;
+use deno_path_util::normalize_path;
 pub use denokv_sqlite::SqliteBackendError;
 use denokv_sqlite::SqliteConfig;
 use denokv_sqlite::SqliteNotifier;
@@ -36,19 +37,37 @@ pub struct SqliteDbHandler<P: SqliteDbHandlerPermissions + 'static> {
 }
 
 pub trait SqliteDbHandlerPermissions {
-  fn check_read(&mut self, p: &Path, api_name: &str) -> Result<(), AnyError>;
-  fn check_write(&mut self, p: &Path, api_name: &str) -> Result<(), AnyError>;
+  #[must_use = "the resolved return value to mitigate time-of-check to time-of-use issues"]
+  fn check_read(
+    &mut self,
+    p: &str,
+    api_name: &str,
+  ) -> Result<PathBuf, AnyError>;
+  #[must_use = "the resolved return value to mitigate time-of-check to time-of-use issues"]
+  fn check_write<'a>(
+    &mut self,
+    p: &'a Path,
+    api_name: &str,
+  ) -> Result<Cow<'a, Path>, AnyError>;
 }
 
 impl SqliteDbHandlerPermissions for deno_permissions::PermissionsContainer {
   #[inline(always)]
-  fn check_read(&mut self, p: &Path, api_name: &str) -> Result<(), AnyError> {
+  fn check_read(
+    &mut self,
+    p: &str,
+    api_name: &str,
+  ) -> Result<PathBuf, AnyError> {
     deno_permissions::PermissionsContainer::check_read(self, p, api_name)
   }
 
   #[inline(always)]
-  fn check_write(&mut self, p: &Path, api_name: &str) -> Result<(), AnyError> {
-    deno_permissions::PermissionsContainer::check_write(self, p, api_name)
+  fn check_write<'a>(
+    &mut self,
+    p: &'a Path,
+    api_name: &str,
+  ) -> Result<Cow<'a, Path>, AnyError> {
+    deno_permissions::PermissionsContainer::check_write_path(self, p, api_name)
   }
 }
 
@@ -74,28 +93,35 @@ impl<P: SqliteDbHandlerPermissions> DatabaseHandler for SqliteDbHandler<P> {
     state: Rc<RefCell<OpState>>,
     path: Option<String>,
   ) -> Result<Self::DB, AnyError> {
-    // Validate path
-    if let Some(path) = &path {
-      if path != ":memory:" {
-        if path.is_empty() {
-          return Err(type_error("Filename cannot be empty"));
-        }
-        if path.starts_with(':') {
-          return Err(type_error(
-            "Filename cannot start with ':' unless prefixed with './'",
-          ));
-        }
-        let path = Path::new(path);
-        {
-          let mut state = state.borrow_mut();
-          let permissions = state.borrow_mut::<P>();
-          permissions.check_read(path, "Deno.openKv")?;
-          permissions.check_write(path, "Deno.openKv")?;
-        }
+    #[must_use = "the resolved return value to mitigate time-of-check to time-of-use issues"]
+    fn validate_path<P: SqliteDbHandlerPermissions + 'static>(
+      state: &RefCell<OpState>,
+      path: Option<String>,
+    ) -> Result<Option<String>, AnyError> {
+      let Some(path) = path else {
+        return Ok(None);
+      };
+      if path == ":memory:" {
+        return Ok(Some(path));
+      }
+      if path.is_empty() {
+        return Err(type_error("Filename cannot be empty"));
+      }
+      if path.starts_with(':') {
+        return Err(type_error(
+          "Filename cannot start with ':' unless prefixed with './'",
+        ));
+      }
+      {
+        let mut state = state.borrow_mut();
+        let permissions = state.borrow_mut::<P>();
+        let path = permissions.check_read(&path, "Deno.openKv")?;
+        let path = permissions.check_write(&path, "Deno.openKv")?;
+        Ok(Some(path.to_string_lossy().to_string()))
       }
     }
 
-    let path = path.clone();
+    let path = validate_path::<P>(&state, path)?;
     let default_storage_dir = self.default_storage_dir.clone();
     type ConnGen =
       Arc<dyn Fn() -> rusqlite::Result<rusqlite::Connection> + Send + Sync>;

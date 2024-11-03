@@ -41,8 +41,10 @@ impl log::Log for CliLogger {
 pub fn init(maybe_level: Option<log::Level>) {
   let log_level = maybe_level.unwrap_or(log::Level::Info);
   let logger = env_logger::Builder::from_env(
-    env_logger::Env::default()
-      .default_filter_or(log_level.to_level_filter().to_string()),
+    env_logger::Env::new()
+      // Use `DENO_LOG` and `DENO_LOG_STYLE` instead of `RUST_` prefix
+      .filter_or("DENO_LOG", log_level.to_level_filter().to_string())
+      .write_style("DENO_LOG_STYLE"),
   )
   // https://github.com/denoland/deno/issues/6641
   .filter_module("rustyline", log::LevelFilter::Off)
@@ -63,6 +65,8 @@ pub fn init(maybe_level: Option<log::Level>) {
   .filter_module("swc_ecma_parser", log::LevelFilter::Error)
   // Suppress span lifecycle logs since they are too verbose
   .filter_module("tracing::span", log::LevelFilter::Off)
+  // for deno_compile, this is too verbose
+  .filter_module("editpe", log::LevelFilter::Error)
   .format(|buf, record| {
     let mut target = record.target().to_string();
     if let Some(line_no) = record.line() {

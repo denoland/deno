@@ -153,7 +153,7 @@ Deno.test({ permissions: { write: false } }, async function removePerm() {
   for (const method of REMOVE_METHODS) {
     await assertRejects(async () => {
       await Deno[method]("/baddir");
-    }, Deno.errors.PermissionDenied);
+    }, Deno.errors.NotCapable);
   }
 });
 
@@ -233,7 +233,7 @@ Deno.test({ permissions: { write: false } }, async function removeAllPerm() {
   for (const method of REMOVE_METHODS) {
     await assertRejects(async () => {
       await Deno[method]("/baddir", { recursive: true });
-    }, Deno.errors.PermissionDenied);
+    }, Deno.errors.NotCapable);
   }
 });
 

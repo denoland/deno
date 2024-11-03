@@ -22,8 +22,8 @@ use super::virtual_fs::FileBackedVfs;
 pub struct DenoCompileFileSystem(Arc<FileBackedVfs>);
 
 impl DenoCompileFileSystem {
-  pub fn new(vfs: FileBackedVfs) -> Self {
-    Self(Arc::new(vfs))
+  pub fn new(vfs: Arc<FileBackedVfs>) -> Self {
+    Self(vfs)
   }
 
   fn error_if_in_vfs(&self, path: &Path) -> FsResult<()> {
@@ -102,7 +102,7 @@ impl FileSystem for DenoCompileFileSystem {
     &self,
     path: &Path,
     recursive: bool,
-    mode: u32,
+    mode: Option<u32>,
   ) -> FsResult<()> {
     self.error_if_in_vfs(path)?;
     RealFs.mkdir_sync(path, recursive, mode)
@@ -111,7 +111,7 @@ impl FileSystem for DenoCompileFileSystem {
     &self,
     path: PathBuf,
     recursive: bool,
-    mode: u32,
+    mode: Option<u32>,
   ) -> FsResult<()> {
     self.error_if_in_vfs(&path)?;
     RealFs.mkdir_async(path, recursive, mode).await

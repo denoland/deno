@@ -5,8 +5,6 @@ use std::sync::Arc;
 
 use deno_config::deno_json::NodeModulesDirMode;
 use deno_core::error::AnyError;
-use deno_runtime::deno_permissions::Permissions;
-use deno_runtime::deno_permissions::PermissionsContainer;
 use deno_runtime::WorkerExecutionMode;
 
 use crate::args::EvalFlags;
@@ -30,6 +28,16 @@ To grant permissions, set them before the script argument. For example:
       )
     );
   }
+}
+
+fn set_npm_user_agent() {
+  static ONCE: std::sync::Once = std::sync::Once::new();
+  ONCE.call_once(|| {
+    std::env::set_var(
+      crate::npm::NPM_CONFIG_USER_AGENT_ENV_VAR,
+      crate::npm::get_npm_config_user_agent(),
+    );
+  });
 }
 
 pub async fn run_script(
@@ -60,14 +68,15 @@ pub async fn run_script(
 
   let main_module = cli_options.resolve_main_module()?;
 
+  if main_module.scheme() == "npm" {
+    set_npm_user_agent();
+  }
+
   maybe_npm_install(&factory).await?;
 
-  let permissions = PermissionsContainer::new(Permissions::from_options(
-    &cli_options.permissions_options()?,
-  )?);
   let worker_factory = factory.create_cli_main_worker_factory().await?;
   let mut worker = worker_factory
-    .create_main_worker(mode, main_module, permissions)
+    .create_main_worker(mode, main_module.clone())
     .await?;
 
   let exit_code = worker.run().await?;
@@ -83,9 +92,6 @@ pub async fn run_from_stdin(flags: Arc<Flags>) -> Result<i32, AnyError> {
 
   let file_fetcher = factory.file_fetcher()?;
   let worker_factory = factory.create_cli_main_worker_factory().await?;
-  let permissions = PermissionsContainer::new(Permissions::from_options(
-    &cli_options.permissions_options()?,
-  )?);
   let mut source = Vec::new();
   std::io::stdin().read_to_end(&mut source)?;
   // Save a fake file into file fetcher cache
@@ -97,7 +103,7 @@ pub async fn run_from_stdin(flags: Arc<Flags>) -> Result<i32, AnyError> {
   });
 
   let mut worker = worker_factory
-    .create_main_worker(WorkerExecutionMode::Run, main_module, permissions)
+    .create_main_worker(WorkerExecutionMode::Run, main_module.clone())
     .await?;
   let exit_code = worker.run().await?;
   Ok(exit_code)
@@ -127,17 +133,18 @@ async fn run_with_watch(
         let cli_options = factory.cli_options()?;
         let main_module = cli_options.resolve_main_module()?;
 
+        if main_module.scheme() == "npm" {
+          set_npm_user_agent();
+        }
+
         maybe_npm_install(&factory).await?;
 
         let _ = watcher_communicator.watch_paths(cli_options.watch_paths());
 
-        let permissions = PermissionsContainer::new(Permissions::from_options(
-          &cli_options.permissions_options()?,
-        )?);
         let mut worker = factory
           .create_cli_main_worker_factory()
           .await?
-          .create_main_worker(mode, main_module, permissions)
+          .create_main_worker(mode, main_module.clone())
           .await?;
 
         if watch_flags.hmr {
@@ -181,12 +188,9 @@ pub async fn eval_command(
     source: source_code.into_bytes().into(),
   });
 
-  let permissions = PermissionsContainer::new(Permissions::from_options(
-    &cli_options.permissions_options()?,
-  )?);
   let worker_factory = factory.create_cli_main_worker_factory().await?;
   let mut worker = worker_factory
-    .create_main_worker(WorkerExecutionMode::Eval, main_module, permissions)
+    .create_main_worker(WorkerExecutionMode::Eval, main_module.clone())
     .await?;
   let exit_code = worker.run().await?;
   Ok(exit_code)

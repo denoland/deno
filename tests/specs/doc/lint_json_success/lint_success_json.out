@@ -1,0 +1,54 @@
+{
+  "version": 1,
+  "nodes": [
+    {
+      "name": "Test",
+      "isDefault": false,
+      "location": {
+        "filename": "file:///[WILDCARD]/lint_success.ts",
+        "line": 2,
+        "col": 0,
+        "byteIndex": 22
+      },
+      "declarationKind": "export",
+      "jsDoc": {
+        "doc": "My test class."
+      },
+      "kind": "class",
+      "classDef": {
+        "isAbstract": false,
+        "constructors": [],
+        "properties": [
+          {
+            "jsDoc": {
+              "doc": "My property."
+            },
+            "tsType": {
+              "repr": "string",
+              "kind": "keyword",
+              "keyword": "string"
+            },
+            "readonly": false,
+            "accessibility": null,
+            "optional": false,
+            "isAbstract": false,
+            "isStatic": false,
+            "name": "prop",
+            "location": {
+              "filename": "file:///[WILDCARD]/lint_success.ts",
+              "line": 4,
+              "col": 2,
+              "byteIndex": 66
+            }
+          }
+        ],
+        "indexSignatures": [],
+        "methods": [],
+        "extends": null,
+        "implements": [],
+        "typeParams": [],
+        "superTypeParams": []
+      }
+    }
+  ]
+}

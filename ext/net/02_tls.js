@@ -13,7 +13,6 @@ import {
   op_tls_handshake,
   op_tls_key_null,
   op_tls_key_static,
-  op_tls_key_static_from_file,
   op_tls_start,
 } from "ext:core/ops";
 const {
@@ -30,19 +29,11 @@ class TlsConn extends Conn {
   constructor(rid, remoteAddr, localAddr) {
     super(rid, remoteAddr, localAddr);
     ObjectDefineProperty(this, internalRidSymbol, {
+      __proto__: null,
       enumerable: false,
       value: rid,
     });
     this.#rid = rid;
-  }
-
-  get rid() {
-    internals.warnOnDeprecatedApi(
-      "Deno.TlsConn.rid",
-      new Error().stack,
-      "Use `Deno.TlsConn` instance methods instead.",
-    );
-    return this.#rid;
   }
 
   handshake() {
@@ -58,45 +49,23 @@ async function connectTls({
   alpnProtocols = undefined,
   keyFormat = undefined,
   cert = undefined,
-  certFile = undefined,
-  certChain = undefined,
   key = undefined,
-  keyFile = undefined,
-  privateKey = undefined,
 }) {
   if (transport !== "tcp") {
     throw new TypeError(`Unsupported transport: '${transport}'`);
-  }
-  let deprecatedCertFile = undefined;
-
-  // Deno.connectTls has an irregular option where you can just pass `certFile` and
-  // not `keyFile`. In this case it's used for `caCerts` rather than the client key.
-  if (certFile !== undefined && keyFile === undefined) {
-    internals.warnOnDeprecatedApi(
-      "Deno.ConnectTlsOptions.certFile",
-      new Error().stack,
-      "Pass the cert file's contents to the `Deno.ConnectTlsOptions.caCerts` option instead.",
-    );
-
-    deprecatedCertFile = certFile;
-    certFile = undefined;
   }
 
   const keyPair = loadTlsKeyPair("Deno.connectTls", {
     keyFormat,
     cert,
-    certFile,
-    certChain,
     key,
-    keyFile,
-    privateKey,
   });
   // TODO(mmastrac): We only expose this feature via symbol for now. This should actually be a feature
   // in Deno.connectTls, however.
   const serverName = arguments[0][serverNameSymbol] ?? null;
   const { 0: rid, 1: localAddr, 2: remoteAddr } = await op_net_connect_tls(
     { hostname, port },
-    { certFile: deprecatedCertFile, caCerts, alpnProtocols, serverName },
+    { caCerts, alpnProtocols, serverName },
     keyPair,
   );
   localAddr.transport = "tcp";
@@ -110,19 +79,11 @@ class TlsListener extends Listener {
   constructor(rid, addr) {
     super(rid, addr);
     ObjectDefineProperty(this, internalRidSymbol, {
+      __proto__: null,
       enumerable: false,
       value: rid,
     });
     this.#rid = rid;
-  }
-
-  get rid() {
-    internals.warnOnDeprecatedApi(
-      "Deno.TlsListener.rid",
-      new Error().stack,
-      "Use `Deno.TlsListener` instance methods instead.",
-    );
-    return this.#rid;
   }
 
   async accept() {
@@ -144,10 +105,7 @@ function hasTlsKeyPairOptions(options) {
   if (options[resolverSymbol] !== undefined) {
     return true;
   }
-  return (options.cert !== undefined || options.key !== undefined ||
-    options.certFile !== undefined ||
-    options.keyFile !== undefined || options.privateKey !== undefined ||
-    options.certChain !== undefined);
+  return (options.cert !== undefined || options.key !== undefined);
 }
 
 /**
@@ -157,19 +115,8 @@ function hasTlsKeyPairOptions(options) {
 function loadTlsKeyPair(api, {
   keyFormat,
   cert,
-  certFile,
-  certChain,
   key,
-  keyFile,
-  privateKey,
 }) {
-  if (internals.future) {
-    certFile = undefined;
-    certChain = undefined;
-    keyFile = undefined;
-    privateKey = undefined;
-  }
-
   // TODO(mmastrac): remove this temporary symbol when the API lands
   if (arguments[1][resolverSymbol] !== undefined) {
     return createTlsKeyResolver(arguments[1][resolverSymbol]);
@@ -177,71 +124,23 @@ function loadTlsKeyPair(api, {
 
   // Check for "pem" format
   if (keyFormat !== undefined && keyFormat !== "pem") {
-    throw new TypeError('If `keyFormat` is specified, it must be "pem"');
+    throw new TypeError(
+      `If "keyFormat" is specified, it must be "pem": received "${keyFormat}"`,
+    );
   }
 
-  function exclusive(a1, a1v, a2, a2v) {
-    if (a1v !== undefined && a2v !== undefined) {
-      throw new TypeError(
-        `Cannot specify both \`${a1}\` and \`${a2}\` for \`${api}\`.`,
-      );
-    }
+  if (cert !== undefined && key === undefined) {
+    throw new TypeError(
+      `If \`cert\` is specified, \`key\` must be specified as well for \`${api}\``,
+    );
+  }
+  if (cert === undefined && key !== undefined) {
+    throw new TypeError(
+      `If \`key\` is specified, \`cert\` must be specified as well for \`${api}\``,
+    );
   }
 
-  // Ensure that only one pair is valid
-  exclusive("certChain", certChain, "cert", cert);
-  exclusive("certChain", certChain, "certFile", certFile);
-  exclusive("key", key, "keyFile", keyFile);
-  exclusive("key", key, "privateKey", privateKey);
-
-  function both(a1, a1v, a2, a2v) {
-    if (a1v !== undefined && a2v === undefined) {
-      throw new TypeError(
-        `If \`${a1}\` is specified, \`${a2}\` must be specified as well for \`${api}\`.`,
-      );
-    }
-    if (a1v === undefined && a2v !== undefined) {
-      throw new TypeError(
-        `If \`${a2}\` is specified, \`${a1}\` must be specified as well for \`${api}\`.`,
-      );
-    }
-  }
-
-  // Pick one pair of cert/key, certFile/keyFile or certChain/privateKey
-  both("cert", cert, "key", key);
-  both("certFile", certFile, "keyFile", keyFile);
-  both("certChain", certChain, "privateKey", privateKey);
-
-  if (certFile !== undefined) {
-    internals.warnOnDeprecatedApi(
-      "Deno.TlsCertifiedKeyOptions.keyFile",
-      new Error().stack,
-      "Pass the key file's contents to the `Deno.TlsCertifiedKeyPem.key` option instead.",
-    );
-    internals.warnOnDeprecatedApi(
-      "Deno.TlsCertifiedKeyOptions.certFile",
-      new Error().stack,
-      "Pass the cert file's contents to the `Deno.TlsCertifiedKeyPem.cert` option instead.",
-    );
-    return op_tls_key_static_from_file(api, certFile, keyFile);
-  } else if (certChain !== undefined) {
-    if (api !== "Deno.connectTls") {
-      throw new TypeError(
-        `Invalid options 'certChain' and 'privateKey' for ${api}`,
-      );
-    }
-    internals.warnOnDeprecatedApi(
-      "Deno.TlsCertifiedKeyOptions.privateKey",
-      new Error().stack,
-      "Use the `Deno.TlsCertifiedKeyPem.key` option instead.",
-    );
-    internals.warnOnDeprecatedApi(
-      "Deno.TlsCertifiedKeyOptions.certChain",
-      new Error().stack,
-      "Use the `Deno.TlsCertifiedKeyPem.cert` option instead.",
-    );
-    return op_tls_key_static(certChain, privateKey);
-  } else if (cert !== undefined) {
+  if (cert !== undefined) {
     return op_tls_key_static(cert, key);
   } else {
     return op_tls_key_null();

@@ -6,14 +6,14 @@
       "output": "Checked 1 file\n"
     },
     "flag": {
-      "args": "fmt --unstable-css --unstable-component",
+      "args": "fmt --unstable-component",
       "output": "[WILDLINE]badly_formatted.svelte\nChecked 1 file\n"
     },
     "config_file": {
       "steps": [{
         "args": [
           "eval",
-          "Deno.writeTextFile('deno.json', '{\\n  \"unstable\": [\"fmt-css\", \"fmt-component\"]\\n}\\n')"
+          "Deno.writeTextFile('deno.json', '{\\n  \"unstable\": [\"fmt-component\"]\\n}\\n')"
         ],
         "output": "[WILDCARD]"
       }, {

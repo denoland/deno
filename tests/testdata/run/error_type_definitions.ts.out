@@ -1,2 +1,3 @@
 [WILDCARD]error: Failed resolving types. Relative import path "baz" not prefixed with / or ./ or ../
+  hint: If you want to use a JSR or npm package, try running `deno add jsr:baz` or `deno add npm:baz`
     at [WILDCARD]/type_definitions/bar.d.ts:[WILDCARD]

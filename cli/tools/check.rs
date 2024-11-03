@@ -14,7 +14,10 @@ use deno_terminal::colors;
 use once_cell::sync::Lazy;
 use regex::Regex;
 
+use crate::args::check_warn_tsconfig;
+use crate::args::CheckFlags;
 use crate::args::CliOptions;
+use crate::args::Flags;
 use crate::args::TsConfig;
 use crate::args::TsConfigType;
 use crate::args::TsTypeLib;
@@ -23,12 +26,58 @@ use crate::cache::CacheDBHash;
 use crate::cache::Caches;
 use crate::cache::FastInsecureHasher;
 use crate::cache::TypeCheckCache;
+use crate::factory::CliFactory;
 use crate::graph_util::BuildFastCheckGraphOptions;
 use crate::graph_util::ModuleGraphBuilder;
 use crate::npm::CliNpmResolver;
 use crate::tsc;
 use crate::tsc::Diagnostics;
+use crate::tsc::TypeCheckingCjsTracker;
+use crate::util::extract;
 use crate::util::path::to_percent_decoded_str;
+
+pub async fn check(
+  flags: Arc<Flags>,
+  check_flags: CheckFlags,
+) -> Result<(), AnyError> {
+  let factory = CliFactory::from_flags(flags);
+
+  let main_graph_container = factory.main_module_graph_container().await?;
+
+  let specifiers =
+    main_graph_container.collect_specifiers(&check_flags.files)?;
+  if specifiers.is_empty() {
+    log::warn!("{} No matching files found.", colors::yellow("Warning"));
+  }
+
+  let specifiers_for_typecheck = if check_flags.doc || check_flags.doc_only {
+    let file_fetcher = factory.file_fetcher()?;
+    let root_permissions = factory.root_permissions_container()?;
+
+    let mut specifiers_for_typecheck = if check_flags.doc {
+      specifiers.clone()
+    } else {
+      vec![]
+    };
+
+    for s in specifiers {
+      let file = file_fetcher.fetch(&s, root_permissions).await?;
+      let snippet_files = extract::extract_snippet_files(file)?;
+      for snippet_file in snippet_files {
+        specifiers_for_typecheck.push(snippet_file.specifier.clone());
+        file_fetcher.insert_memory_files(snippet_file);
+      }
+    }
+
+    specifiers_for_typecheck
+  } else {
+    specifiers
+  };
+
+  main_graph_container
+    .check_specifiers(&specifiers_for_typecheck, None)
+    .await
+}
 
 /// Options for performing a check of a module graph. Note that the decision to
 /// emit or not is determined by the `ts_config` settings.
@@ -51,6 +100,7 @@ pub struct CheckOptions {
 
 pub struct TypeChecker {
   caches: Arc<Caches>,
+  cjs_tracker: Arc<TypeCheckingCjsTracker>,
   cli_options: Arc<CliOptions>,
   module_graph_builder: Arc<ModuleGraphBuilder>,
   node_resolver: Arc<NodeResolver>,
@@ -60,6 +110,7 @@ pub struct TypeChecker {
 impl TypeChecker {
   pub fn new(
     caches: Arc<Caches>,
+    cjs_tracker: Arc<TypeCheckingCjsTracker>,
     cli_options: Arc<CliOptions>,
     module_graph_builder: Arc<ModuleGraphBuilder>,
     node_resolver: Arc<NodeResolver>,
@@ -67,6 +118,7 @@ impl TypeChecker {
   ) -> Self {
     Self {
       caches,
+      cjs_tracker,
       cli_options,
       module_graph_builder,
       node_resolver,
@@ -83,7 +135,9 @@ impl TypeChecker {
     graph: ModuleGraph,
     options: CheckOptions,
   ) -> Result<Arc<ModuleGraph>, AnyError> {
-    let (graph, diagnostics) = self.check_diagnostics(graph, options).await?;
+    let (graph, mut diagnostics) =
+      self.check_diagnostics(graph, options).await?;
+    diagnostics.emit_warnings();
     if diagnostics.is_empty() {
       Ok(graph)
     } else {
@@ -118,9 +172,7 @@ impl TypeChecker {
       .cli_options
       .resolve_ts_config_for_emit(TsConfigType::Check { lib: options.lib })?;
     if options.log_ignored_options {
-      if let Some(ignored_options) = ts_config_result.maybe_ignored_options {
-        log::warn!("{}", ignored_options);
-      }
+      check_warn_tsconfig(&ts_config_result);
     }
 
     let type_check_mode = options.type_check_mode;
@@ -196,6 +248,7 @@ impl TypeChecker {
       graph: graph.clone(),
       hash_data,
       maybe_npm: Some(tsc::RequestNpmState {
+        cjs_tracker: self.cjs_tracker.clone(),
         node_resolver: self.node_resolver.clone(),
         npm_resolver: self.npm_resolver.clone(),
       }),
@@ -298,7 +351,7 @@ fn get_check_hash(
             }
           }
           MediaType::Json
-          | MediaType::TsBuildInfo
+          | MediaType::Css
           | MediaType::SourceMap
           | MediaType::Wasm
           | MediaType::Unknown => continue,
@@ -380,7 +433,7 @@ fn get_tsc_roots(
         }
         MediaType::Json
         | MediaType::Wasm
-        | MediaType::TsBuildInfo
+        | MediaType::Css
         | MediaType::SourceMap
         | MediaType::Unknown => None,
       },
@@ -488,7 +541,7 @@ fn has_ts_check(media_type: MediaType, file_text: &str) -> bool {
     | MediaType::Tsx
     | MediaType::Json
     | MediaType::Wasm
-    | MediaType::TsBuildInfo
+    | MediaType::Css
     | MediaType::SourceMap
     | MediaType::Unknown => false,
   }

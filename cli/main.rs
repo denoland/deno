@@ -15,7 +15,6 @@ mod js;
 mod jsr;
 mod lsp;
 mod module_loader;
-mod napi;
 mod node;
 mod npm;
 mod ops;
@@ -32,12 +31,12 @@ mod worker;
 use crate::args::flags_from_vec;
 use crate::args::DenoSubcommand;
 use crate::args::Flags;
-use crate::graph_container::ModuleGraphContainer;
 use crate::util::display;
 use crate::util::v8::get_v8_flags_from_env;
 use crate::util::v8::init_v8_flags;
 
 use args::TaskFlags;
+use deno_resolver::npm::ByonmResolvePkgFolderFromDenoReqError;
 use deno_runtime::WorkerExecutionMode;
 pub use deno_runtime::UNSTABLE_GRANULAR_FLAGS;
 
@@ -51,13 +50,19 @@ use deno_runtime::fmt_errors::format_js_error;
 use deno_runtime::tokio_util::create_and_run_current_thread_with_maybe_metrics;
 use deno_terminal::colors;
 use factory::CliFactory;
+use npm::ResolvePkgFolderFromDenoReqError;
 use standalone::MODULE_NOT_FOUND;
 use standalone::UNSUPPORTED_SCHEME;
 use std::env;
 use std::future::Future;
+use std::io::IsTerminal;
 use std::ops::Deref;
 use std::path::PathBuf;
 use std::sync::Arc;
+
+#[cfg(feature = "dhat-heap")]
+#[global_allocator]
+static ALLOC: dhat::Alloc = dhat::Alloc;
 
 /// Ensures that all subcommands return an i32 exit code and an [`AnyError`] error type.
 trait SubcommandOutput {
@@ -118,22 +123,10 @@ async fn run_subcommand(flags: Arc<Flags>) -> Result<i32, AnyError> {
       tools::run::eval_command(flags, eval_flags).await
     }),
     DenoSubcommand::Cache(cache_flags) => spawn_subcommand(async move {
-      let factory = CliFactory::from_flags(flags);
-      let emitter = factory.emitter()?;
-      let main_graph_container =
-        factory.main_module_graph_container().await?;
-      main_graph_container
-        .load_and_type_check_files(&cache_flags.files)
-        .await?;
-      emitter.cache_module_emits(&main_graph_container.graph()).await
+      tools::installer::install_from_entrypoints(flags, &cache_flags.files).await
     }),
     DenoSubcommand::Check(check_flags) => spawn_subcommand(async move {
-      let factory = CliFactory::from_flags(flags);
-      let main_graph_container =
-        factory.main_module_graph_container().await?;
-      main_graph_container
-        .load_and_type_check_files(&check_flags.files)
-        .await
+      tools::check::check(flags, check_flags).await
     }),
     DenoSubcommand::Clean => spawn_subcommand(async move {
       tools::clean::clean()
@@ -142,7 +135,7 @@ async fn run_subcommand(flags: Arc<Flags>) -> Result<i32, AnyError> {
       tools::compile::compile(flags, compile_flags).await
     }),
     DenoSubcommand::Coverage(coverage_flags) => spawn_subcommand(async {
-      tools::coverage::cover_files(flags, coverage_flags).await
+      tools::coverage::cover_files(flags, coverage_flags)
     }),
     DenoSubcommand::Fmt(fmt_flags) => {
       spawn_subcommand(
@@ -169,9 +162,21 @@ async fn run_subcommand(flags: Arc<Flags>) -> Result<i32, AnyError> {
       tools::jupyter::kernel(flags, jupyter_flags).await
     }),
     DenoSubcommand::Uninstall(uninstall_flags) => spawn_subcommand(async {
-      tools::installer::uninstall(uninstall_flags)
+      tools::installer::uninstall(flags, uninstall_flags).await
     }),
-    DenoSubcommand::Lsp => spawn_subcommand(async { lsp::start().await }),
+    DenoSubcommand::Lsp => spawn_subcommand(async {
+      if std::io::stderr().is_terminal() {
+        log::warn!(
+          "{} command is intended to be run by text editors and IDEs and shouldn't be run manually.
+
+  Visit https://docs.deno.com/runtime/getting_started/setup_your_environment/ for instruction
+  how to setup your favorite text editor.
+
+  Press Ctrl+C to exit.
+        ", colors::cyan("deno lsp"));
+      }
+      lsp::start().await
+    }),
     DenoSubcommand::Lint(lint_flags) => spawn_subcommand(async {
       if lint_flags.rules {
         tools::lint::print_rules_list(
@@ -194,6 +199,21 @@ async fn run_subcommand(flags: Arc<Flags>) -> Result<i32, AnyError> {
         match result {
           Ok(v) => Ok(v),
           Err(script_err) => {
+            if let Some(ResolvePkgFolderFromDenoReqError::Byonm(ByonmResolvePkgFolderFromDenoReqError::UnmatchedReq(_))) = script_err.downcast_ref::<ResolvePkgFolderFromDenoReqError>() {
+              if flags.node_modules_dir.is_none() {
+                let mut flags = flags.deref().clone();
+                let watch = match &flags.subcommand {
+                  DenoSubcommand::Run(run_flags) => run_flags.watch.clone(),
+                  _ => unreachable!(),
+                };
+                flags.node_modules_dir = Some(deno_config::deno_json::NodeModulesDirMode::None);
+                // use the current lockfile, but don't write it out
+                if flags.frozen_lockfile.is_none() {
+                  flags.internal.lockfile_skip_write = true;
+                }
+                return tools::run::run_script(WorkerExecutionMode::Run, Arc::new(flags), watch).await;
+              }
+            }
             let script_err_msg = script_err.to_string();
             if script_err_msg.starts_with(MODULE_NOT_FOUND) || script_err_msg.starts_with(UNSUPPORTED_SCHEME) {
               if run_flags.bare {
@@ -283,9 +303,7 @@ async fn run_subcommand(flags: Arc<Flags>) -> Result<i32, AnyError> {
       "This deno was built without the \"upgrade\" feature. Please upgrade using the installation method originally used to install Deno.",
       1,
     ),
-    DenoSubcommand::Vendor(vendor_flags) => spawn_subcommand(async {
-      tools::vendor::vendor(flags, vendor_flags).await
-    }),
+    DenoSubcommand::Vendor => exit_with_message("⚠️ `deno vendor` was removed in Deno 2.\n\nSee the Deno 1.x to 2.x Migration Guide for migration instructions: https://docs.deno.com/runtime/manual/advanced/migrate_deprecations", 1),
     DenoSubcommand::Publish(publish_flags) => spawn_subcommand(async {
       tools::registry::publish(flags, publish_flags).await
     }),
@@ -371,19 +389,10 @@ pub(crate) fn unstable_exit_cb(feature: &str, api_name: &str) {
   std::process::exit(70);
 }
 
-// TODO(bartlomieju): remove when `--unstable` flag is removed.
-#[allow(clippy::print_stderr)]
-pub(crate) fn unstable_warn_cb(feature: &str, api_name: &str) {
-  eprintln!(
-    "⚠️  {}",
-    colors::yellow(format!(
-      "The `{}` API was used with `--unstable` flag. The `--unstable` flag is deprecated and will be removed in Deno 2.0. Use granular `--unstable-{}` instead.\nLearn more at: https://docs.deno.com/runtime/manual/tools/unstable_flags",
-      api_name, feature
-    ))
-  );
-}
-
 pub fn main() {
+  #[cfg(feature = "dhat-heap")]
+  let profiler = dhat::Profiler::new_heap();
+
   setup_panic_hook();
 
   util::unix::raise_fd_limit();
@@ -404,7 +413,12 @@ pub fn main() {
     run_subcommand(Arc::new(flags)).await
   };
 
-  match create_and_run_current_thread_with_maybe_metrics(future) {
+  let result = create_and_run_current_thread_with_maybe_metrics(future);
+
+  #[cfg(feature = "dhat-heap")]
+  drop(profiler);
+
+  match result {
     Ok(exit_code) => std::process::exit(exit_code),
     Err(err) => exit_for_error(err),
   }
@@ -425,25 +439,14 @@ fn resolve_flags_and_init(
     Err(err) => exit_for_error(AnyError::from(err)),
   };
 
-  // TODO(bartlomieju): remove when `--unstable` flag is removed.
+  // TODO(bartlomieju): remove in Deno v2.5 and hard error then.
   if flags.unstable_config.legacy_flag_enabled {
-    #[allow(clippy::print_stderr)]
-    if matches!(flags.subcommand, DenoSubcommand::Check(_)) {
-      // can't use log crate because that's not setup yet
-      eprintln!(
-        "⚠️  {}",
-        colors::yellow(
-          "The `--unstable` flag is not needed for `deno check` anymore."
-        )
-      );
-    } else {
-      eprintln!(
-        "⚠️  {}",
-        colors::yellow(
-          "The `--unstable` flag is deprecated and will be removed in Deno 2.0. Use granular `--unstable-*` flags instead.\nLearn more at: https://docs.deno.com/runtime/manual/tools/unstable_flags"
-        )
-      );
-    }
+    log::warn!(
+      "⚠️  {}",
+      colors::yellow(
+        "The `--unstable` flag has been removed in Deno 2.0. Use granular `--unstable-*` flags instead.\nLearn more at: https://docs.deno.com/runtime/manual/tools/unstable_flags"
+      )
+    );
   }
 
   let default_v8_flags = match flags.subcommand {
@@ -460,7 +463,7 @@ fn resolve_flags_and_init(
   };
 
   init_v8_flags(&default_v8_flags, &flags.v8_flags, get_v8_flags_from_env());
-  // TODO(bartlomieju): remove last argument in Deno 2.
+  // TODO(bartlomieju): remove last argument once Deploy no longer needs it
   deno_core::JsRuntime::init_platform(
     None, /* import assertions enabled */ false,
   );

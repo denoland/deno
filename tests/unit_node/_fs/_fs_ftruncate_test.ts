@@ -31,6 +31,7 @@ Deno.test({
     });
 
     await new Promise<void>((resolve, reject) => {
+      // @ts-ignore (iuioiua) `file.rid` should no longer be needed once FDs are used
       ftruncate(file.rid, (err: Error | null) => {
         if (err !== null) reject();
         else resolve();
@@ -66,6 +67,7 @@ Deno.test({
     });
 
     await new Promise<void>((resolve, reject) => {
+      // @ts-ignore (iuioiua) `file.rid` should no longer be needed once FDs are used
       ftruncate(file.rid, 3, (err: Error | null) => {
         if (err !== null) reject();
         else resolve();
@@ -101,6 +103,7 @@ Deno.test({
     });
 
     try {
+      // @ts-ignore (iuioiua) `file.rid` should no longer be needed once FDs are used
       ftruncateSync(file.rid);
       const fileInfo: Deno.FileInfo = Deno.lstatSync(filePath);
       assertEquals(fileInfo.size, 0);
@@ -125,6 +128,7 @@ Deno.test({
     });
 
     try {
+      // @ts-ignore (iuioiua) `file.rid` should no longer be needed once FDs are used
       ftruncateSync(file.rid, 3);
       const fileInfo: Deno.FileInfo = Deno.lstatSync(filePath);
       assertEquals(fileInfo.size, 3);

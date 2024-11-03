@@ -1,4 +1,0 @@
-error: Uncaught (in promise) ReferenceError: Temporal is not defined
-Temporal.Now.instant();
-^
-    at [WILDCARD]missing_flag.js:1:1

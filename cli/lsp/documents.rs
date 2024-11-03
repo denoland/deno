@@ -11,7 +11,6 @@ use super::tsc;
 use super::tsc::AssetDocument;
 
 use crate::graph_util::CliJsrUrlProvider;
-use deno_runtime::fs_util::specifier_to_file_path;
 
 use dashmap::DashMap;
 use deno_ast::swc::visit::VisitWith;
@@ -27,6 +26,7 @@ use deno_core::parking_lot::Mutex;
 use deno_core::ModuleSpecifier;
 use deno_graph::source::ResolutionMode;
 use deno_graph::Resolution;
+use deno_path_util::url_to_file_path;
 use deno_runtime::deno_node;
 use deno_semver::jsr::JsrPackageReqReference;
 use deno_semver::npm::NpmPackageReqReference;
@@ -272,7 +272,7 @@ fn get_maybe_test_module_fut(
       parsed_source.specifier().clone(),
       parsed_source.text_info_lazy().clone(),
     );
-    parsed_source.module().visit_with(&mut collector);
+    parsed_source.program().visit_with(&mut collector);
     Arc::new(collector.take())
   })
   .map(Result::ok)
@@ -332,12 +332,8 @@ impl Document {
       .filter(|s| cache.is_valid_file_referrer(s))
       .cloned()
       .or(file_referrer);
-    let media_type = resolve_media_type(
-      &specifier,
-      maybe_headers.as_ref(),
-      maybe_language_id,
-      &resolver,
-    );
+    let media_type =
+      resolve_media_type(&specifier, maybe_headers.as_ref(), maybe_language_id);
     let (maybe_parsed_source, maybe_module) =
       if media_type_is_diagnosable(media_type) {
         parse_and_analyze_module(
@@ -399,7 +395,6 @@ impl Document {
       &self.specifier,
       self.maybe_headers.as_ref(),
       self.maybe_language_id,
-      &resolver,
     );
     let dependencies;
     let maybe_types_dependency;
@@ -764,14 +759,7 @@ fn resolve_media_type(
   specifier: &ModuleSpecifier,
   maybe_headers: Option<&HashMap<String, String>>,
   maybe_language_id: Option<LanguageId>,
-  resolver: &LspResolver,
 ) -> MediaType {
-  if resolver.in_node_modules(specifier) {
-    if let Some(media_type) = resolver.node_media_type(specifier) {
-      return media_type;
-    }
-  }
-
   if let Some(language_id) = maybe_language_id {
     return MediaType::from_specifier_and_content_type(
       specifier,
@@ -849,7 +837,7 @@ impl FileSystemDocuments {
     file_referrer: Option<&ModuleSpecifier>,
   ) -> Option<Arc<Document>> {
     let doc = if specifier.scheme() == "file" {
-      let path = specifier_to_file_path(specifier).ok()?;
+      let path = url_to_file_path(specifier).ok()?;
       let bytes = fs::read(path).ok()?;
       let content =
         deno_graph::source::decode_owned_source(specifier, bytes, None).ok()?;
@@ -1136,7 +1124,7 @@ impl Documents {
         return true;
       }
       if specifier.scheme() == "file" {
-        return specifier_to_file_path(&specifier)
+        return url_to_file_path(&specifier)
           .map(|p| p.is_file())
           .unwrap_or(false);
       }
@@ -1251,7 +1239,7 @@ impl Documents {
   /// tsc when type checking.
   pub fn resolve(
     &self,
-    specifiers: &[String],
+    raw_specifiers: &[String],
     referrer: &ModuleSpecifier,
     file_referrer: Option<&ModuleSpecifier>,
   ) -> Vec<Option<(ModuleSpecifier, MediaType)>> {
@@ -1262,16 +1250,16 @@ impl Documents {
       .or(file_referrer);
     let dependencies = document.as_ref().map(|d| d.dependencies());
     let mut results = Vec::new();
-    for specifier in specifiers {
-      if specifier.starts_with("asset:") {
-        if let Ok(specifier) = ModuleSpecifier::parse(specifier) {
+    for raw_specifier in raw_specifiers {
+      if raw_specifier.starts_with("asset:") {
+        if let Ok(specifier) = ModuleSpecifier::parse(raw_specifier) {
           let media_type = MediaType::from_specifier(&specifier);
           results.push(Some((specifier, media_type)));
         } else {
           results.push(None);
         }
       } else if let Some(dep) =
-        dependencies.as_ref().and_then(|d| d.get(specifier))
+        dependencies.as_ref().and_then(|d| d.get(raw_specifier))
       {
         if let Some(specifier) = dep.maybe_type.maybe_specifier() {
           results.push(self.resolve_dependency(
@@ -1290,7 +1278,7 @@ impl Documents {
         }
       } else if let Ok(specifier) =
         self.resolver.as_graph_resolver(file_referrer).resolve(
-          specifier,
+          raw_specifier,
           &deno_graph::Range {
             specifier: referrer.clone(),
             start: deno_graph::Position::zeroed(),
@@ -1325,7 +1313,7 @@ impl Documents {
       let fs_docs = &self.file_system_docs;
       // Clean up non-existent documents.
       fs_docs.docs.retain(|specifier, _| {
-        let Ok(path) = specifier_to_file_path(specifier) else {
+        let Ok(path) = url_to_file_path(specifier) else {
           // Remove non-file schemed docs (deps). They may not be dependencies
           // anymore after updating resolvers.
           return false;
@@ -1524,12 +1512,16 @@ impl<'a> deno_graph::source::Loader for OpenDocumentsGraphLoader<'a> {
   fn cache_module_info(
     &self,
     specifier: &deno_ast::ModuleSpecifier,
+    media_type: MediaType,
     source: &Arc<[u8]>,
     module_info: &deno_graph::ModuleInfo,
   ) {
-    self
-      .inner_loader
-      .cache_module_info(specifier, source, module_info)
+    self.inner_loader.cache_module_info(
+      specifier,
+      media_type,
+      source,
+      module_info,
+    )
   }
 }
 
@@ -1557,7 +1549,7 @@ fn parse_source(
   text: Arc<str>,
   media_type: MediaType,
 ) -> ParsedSourceResult {
-  deno_ast::parse_module(deno_ast::ParseParams {
+  deno_ast::parse_program(deno_ast::ParseParams {
     specifier,
     text,
     media_type,

@@ -1,0 +1,5 @@
+{
+  "args": "check --all check_errors/main.ts",
+  "output": "check_errors/main_all.out",
+  "exitCode": 1
+}

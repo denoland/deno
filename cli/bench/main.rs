@@ -17,7 +17,6 @@ use std::process::Stdio;
 use std::time::SystemTime;
 use test_util::PathRef;
 
-mod http;
 mod lsp;
 
 fn read_json(filename: &Path) -> Result<Value> {
@@ -345,9 +344,11 @@ struct BenchResult {
   binary_size: HashMap<String, i64>,
   bundle_size: HashMap<String, i64>,
   cargo_deps: usize,
+  // TODO(bartlomieju): remove
   max_latency: HashMap<String, f64>,
   max_memory: HashMap<String, i64>,
   lsp_exec_time: HashMap<String, i64>,
+  // TODO(bartlomieju): remove
   req_per_sec: HashMap<String, i64>,
   syscall_count: HashMap<String, i64>,
   thread_count: HashMap<String, i64>,
@@ -362,7 +363,6 @@ async fn main() -> Result<()> {
     "binary_size",
     "cargo_deps",
     "lsp",
-    "http",
     "strace",
     "mem_usage",
   ];
@@ -425,21 +425,6 @@ async fn main() -> Result<()> {
   if benchmarks.contains(&"lsp") {
     let lsp_exec_times = lsp::benchmarks(&deno_exe);
     new_data.lsp_exec_time = lsp_exec_times;
-  }
-
-  if benchmarks.contains(&"http") && cfg!(not(target_os = "windows")) {
-    let stats = http::benchmark(target_dir.as_path())?;
-    let req_per_sec = stats
-      .iter()
-      .map(|(name, result)| (name.clone(), result.requests as i64))
-      .collect();
-    new_data.req_per_sec = req_per_sec;
-    let max_latency = stats
-      .iter()
-      .map(|(name, result)| (name.clone(), result.latency))
-      .collect();
-
-    new_data.max_latency = max_latency;
   }
 
   if cfg!(target_os = "linux") && benchmarks.contains(&"strace") {

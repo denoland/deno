@@ -1,47 +1,12 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
-// deno-lint-ignore-file no-deprecated-deno-api
-
 import {
   assert,
   assertEquals,
   assertRejects,
   assertThrows,
-  DENO_FUTURE,
   pathToAbsoluteFileUrl,
 } from "./test_util.ts";
-
-Deno.test(
-  { ignore: DENO_FUTURE, permissions: { read: true } },
-  function fstatSyncSuccess() {
-    using file = Deno.openSync("README.md");
-    const fileInfo = Deno.fstatSync(file.rid);
-    assert(fileInfo.isFile);
-    assert(!fileInfo.isSymlink);
-    assert(!fileInfo.isDirectory);
-    assert(fileInfo.size);
-    assert(fileInfo.atime);
-    assert(fileInfo.mtime);
-    // The `birthtime` field is not available on Linux before kernel version 4.11.
-    assert(fileInfo.birthtime || Deno.build.os === "linux");
-  },
-);
-
-Deno.test(
-  { ignore: DENO_FUTURE, permissions: { read: true } },
-  async function fstatSuccess() {
-    using file = await Deno.open("README.md");
-    const fileInfo = await Deno.fstat(file.rid);
-    assert(fileInfo.isFile);
-    assert(!fileInfo.isSymlink);
-    assert(!fileInfo.isDirectory);
-    assert(fileInfo.size);
-    assert(fileInfo.atime);
-    assert(fileInfo.mtime);
-    // The `birthtime` field is not available on Linux before kernel version 4.11.
-    assert(fileInfo.birthtime || Deno.build.os === "linux");
-  },
-);
 
 Deno.test(
   { permissions: { read: true, write: true } },
@@ -109,7 +74,7 @@ Deno.test(
 Deno.test({ permissions: { read: false } }, function statSyncPerm() {
   assertThrows(() => {
     Deno.statSync("README.md");
-  }, Deno.errors.PermissionDenied);
+  }, Deno.errors.NotCapable);
 });
 
 Deno.test({ permissions: { read: true } }, function statSyncNotFound() {
@@ -153,7 +118,7 @@ Deno.test({ permissions: { read: true } }, function lstatSyncSuccess() {
 Deno.test({ permissions: { read: false } }, function lstatSyncPerm() {
   assertThrows(() => {
     Deno.lstatSync("assets/hello.txt");
-  }, Deno.errors.PermissionDenied);
+  }, Deno.errors.NotCapable);
 });
 
 Deno.test({ permissions: { read: true } }, function lstatSyncNotFound() {
@@ -235,7 +200,7 @@ Deno.test(
 Deno.test({ permissions: { read: false } }, async function statPerm() {
   await assertRejects(async () => {
     await Deno.stat("README.md");
-  }, Deno.errors.PermissionDenied);
+  }, Deno.errors.NotCapable);
 });
 
 Deno.test({ permissions: { read: true } }, async function statNotFound() {
@@ -279,7 +244,7 @@ Deno.test({ permissions: { read: true } }, async function lstatSuccess() {
 Deno.test({ permissions: { read: false } }, async function lstatPerm() {
   await assertRejects(async () => {
     await Deno.lstat("README.md");
-  }, Deno.errors.PermissionDenied);
+  }, Deno.errors.NotCapable);
 });
 
 Deno.test({ permissions: { read: true } }, async function lstatNotFound() {

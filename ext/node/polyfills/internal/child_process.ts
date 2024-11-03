@@ -56,6 +56,12 @@ import { StringPrototypeSlice } from "ext:deno_node/internal/primordials.mjs";
 import { StreamBase } from "ext:deno_node/internal_binding/stream_wrap.ts";
 import { Pipe, socketType } from "ext:deno_node/internal_binding/pipe_wrap.ts";
 import { Socket } from "node:net";
+import {
+  kDetached,
+  kExtraStdio,
+  kIpc,
+  kNeedsNpmProcessState,
+} from "ext:runtime/40_process.js";
 
 export function mapValues<T, O>(
   record: Readonly<Record<string, T>>,
@@ -109,6 +115,7 @@ export function stdioStringToArray(
 
 const kClosesNeeded = Symbol("_closesNeeded");
 const kClosesReceived = Symbol("_closesReceived");
+const kCanDisconnect = Symbol("_canDisconnect");
 
 // We only want to emit a close event for the child process when all of
 // the writable streams have closed. The value of `child[kClosesNeeded]` should be 1 +
@@ -222,7 +229,7 @@ export class ChildProcess extends EventEmitter {
   #spawned = Promise.withResolvers<void>();
   [kClosesNeeded] = 1;
   [kClosesReceived] = 0;
-  canDisconnect = false;
+  [kCanDisconnect] = false;
 
   constructor(
     command: string,
@@ -238,6 +245,7 @@ export class ChildProcess extends EventEmitter {
       shell = false,
       signal,
       windowsVerbatimArguments = false,
+      detached,
     } = options || {};
     const normalizedStdio = normalizeStdioOption(stdio);
     const [
@@ -275,8 +283,11 @@ export class ChildProcess extends EventEmitter {
         stdout: toDenoStdio(stdout),
         stderr: toDenoStdio(stderr),
         windowsRawArguments: windowsVerbatimArguments,
-        ipc, // internal
-        extraStdio: extraStdioNormalized,
+        [kIpc]: ipc, // internal
+        [kExtraStdio]: extraStdioNormalized,
+        [kDetached]: detached,
+        // deno-lint-ignore no-explicit-any
+        [kNeedsNpmProcessState]: (options ?? {} as any)[kNeedsNpmProcessState],
       }).spawn();
       this.pid = this.#process.pid;
 
@@ -421,7 +432,7 @@ export class ChildProcess extends EventEmitter {
     }
 
     /* Cancel any pending IPC I/O */
-    if (this.canDisconnect) {
+    if (this[kCanDisconnect]) {
       this.disconnect?.();
     }
 
@@ -552,7 +563,7 @@ export interface ChildProcessOptions {
   stdio?: Array<NodeStdio | number | Stream | null | undefined> | NodeStdio;
 
   /**
-   * NOTE: This option is not yet implemented.
+   * Whether to spawn the process in a detached state.
    */
   detached?: boolean;
 
@@ -1180,8 +1191,12 @@ function toDenoArgs(args: string[]): string[] {
     }
 
     if (flagInfo === undefined) {
-      // Not a known flag that expects a value. Just copy it to the output.
-      denoArgs.push(arg);
+      if (arg === "--no-warnings") {
+        denoArgs.push("--quiet");
+      } else {
+        // Not a known flag that expects a value. Just copy it to the output.
+        denoArgs.push(arg);
+      }
       continue;
     }
 
@@ -1324,7 +1339,7 @@ export function setupChannel(target: any, ipc: number) {
           }
         }
 
-        process.nextTick(handleMessage, msg);
+        nextTick(handleMessage, msg);
       }
     } catch (err) {
       if (
@@ -1385,7 +1400,7 @@ export function setupChannel(target: any, ipc: number) {
     if (!target.connected) {
       const err = new ERR_IPC_CHANNEL_CLOSED();
       if (typeof callback === "function") {
-        process.nextTick(callback, err);
+        nextTick(callback, err);
       } else {
         nextTick(() => target.emit("error", err));
       }
@@ -1401,7 +1416,18 @@ export function setupChannel(target: any, ipc: number) {
       .then(() => {
         control.unrefCounted();
         if (callback) {
-          process.nextTick(callback, null);
+          nextTick(callback, null);
+        }
+      }, (err: Error) => {
+        control.unrefCounted();
+        if (err instanceof Deno.errors.Interrupted) {
+          // Channel closed on us mid-write.
+        } else {
+          if (typeof callback === "function") {
+            nextTick(callback, err);
+          } else {
+            nextTick(() => target.emit("error", err));
+          }
         }
       });
     return queueOk[0];
@@ -1416,15 +1442,15 @@ export function setupChannel(target: any, ipc: number) {
     }
 
     target.connected = false;
-    target.canDisconnect = false;
+    target[kCanDisconnect] = false;
     control[kControlDisconnect]();
-    process.nextTick(() => {
+    nextTick(() => {
       target.channel = null;
       core.close(ipc);
       target.emit("disconnect");
     });
   };
-  target.canDisconnect = true;
+  target[kCanDisconnect] = true;
 
   // Start reading messages from the channel.
   readLoop();

@@ -1,0 +1,10 @@
+{
+  "version": "3",
+  "remote": {
+    "https://esm.sh/preact@10.15.1": "4bfd0b2c5a2d432e0c8cda295d6b7304152ae08c85f7d0a22f91289c97085b89",
+    "https://esm.sh/preact@10.15.1/debug": "4bfd0b2c5a2d432e0c8cda295d6b7304152ae08c85f7d0a22f91289c97085b89",
+    "https://esm.sh/stable/preact@10.15.1/denonext/debug.js": "e8e5e198bd48c93d484c91c4c78af1900bd81d9bfcfd543e8ac75216f5404c10",
+    "https://esm.sh/stable/preact@10.15.1/denonext/devtools.js": "f61430e179a84483f8ea8dc098d7d0d46b2f0546de4027518bfcef197cd665c9",
+    "https://esm.sh/stable/preact@10.15.1/denonext/preact.mjs": "30710ac1d5ff3711ae0c04eddbeb706f34f82d97489f61aaf09897bc75d2a628"
+  }
+}

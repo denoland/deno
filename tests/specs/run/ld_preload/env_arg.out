@@ -1,4 +1,8 @@
-error: Uncaught (in promise) PermissionDenied: Requires --allow-all permissions to spawn subprocess with LD_PRELOAD environment variable.
-}).spawn();
-   ^
-    at [WILDCARD]
+NotCapable: Requires --allow-all permissions to spawn subprocess with LD_PRELOAD environment variable.
+    [WILDCARD]
+  name: "NotCapable"
+}
+NotCapable: Requires --allow-all permissions to spawn subprocess with LD_PRELOAD environment variable.
+    [WILDCARD]
+  name: "NotCapable"
+}

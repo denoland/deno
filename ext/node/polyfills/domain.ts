@@ -15,9 +15,20 @@ function emitError(e) {
   this.emit("error", e);
 }
 
+// TODO(bartlomieju): maybe use this one
+// deno-lint-ignore prefer-const
+let stack = [];
+export const _stack = stack;
+export const active = null;
+
 export function create() {
   return new Domain();
 }
+
+export function createDomain() {
+  return new Domain();
+}
+
 export class Domain extends EventEmitter {
   #handler;
 
@@ -85,6 +96,9 @@ export class Domain extends EventEmitter {
   }
 }
 export default {
+  _stack,
   create,
+  active,
+  createDomain,
   Domain,
 };

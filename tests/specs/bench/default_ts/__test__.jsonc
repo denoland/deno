@@ -1,0 +1,13 @@
+{
+  "tempDir": true,
+  "tests": {
+    "ext_flag": {
+      "args": "bench --ext=ts as_ts.js",
+      "output": "ext.out"
+    },
+    "extensionless": {
+      "args": "bench extensionless",
+      "output": "extensionless.out"
+    }
+  }
+}

@@ -752,7 +752,15 @@ impl KeyObjectHandle {
               | KeyObjectHandle::Secret(_) => unreachable!(),
             }
           }
-          // TODO: handle x509 certificates as public keys
+          "CERTIFICATE" => {
+            let (_, pem) = x509_parser::pem::parse_x509_pem(pem.as_bytes())
+              .map_err(|_| type_error("invalid x509 certificate"))?;
+
+            let cert = pem.parse_x509()?;
+            let public_key = cert.tbs_certificate.subject_pki;
+
+            return KeyObjectHandle::new_x509_public_key(&public_key);
+          }
           _ => {
             return Err(type_error(format!("unsupported PEM label: {}", label)))
           }
@@ -2016,7 +2024,9 @@ pub fn op_node_export_public_key_pem(
     _ => unreachable!("export_der would have errored"),
   };
 
-  let mut out = vec![0; 2048];
+  let pem_len = der::pem::encapsulated_len(label, LineEnding::LF, data.len())
+    .map_err(|_| type_error("very large data"))?;
+  let mut out = vec![0; pem_len];
   let mut writer = PemWriter::new(label, LineEnding::LF, &mut out)?;
   writer.write(&data)?;
   let len = writer.finish()?;
@@ -2055,7 +2065,9 @@ pub fn op_node_export_private_key_pem(
     _ => unreachable!("export_der would have errored"),
   };
 
-  let mut out = vec![0; 2048];
+  let pem_len = der::pem::encapsulated_len(label, LineEnding::LF, data.len())
+    .map_err(|_| type_error("very large data"))?;
+  let mut out = vec![0; pem_len];
   let mut writer = PemWriter::new(label, LineEnding::LF, &mut out)?;
   writer.write(&data)?;
   let len = writer.finish()?;

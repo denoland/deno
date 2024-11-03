@@ -25,9 +25,13 @@ const {
   StringPrototypeIsWellFormed,
   StringPrototypePadStart,
   StringPrototypeToWellFormed,
+  PromiseResolve,
 } = primordials;
 
-import { promisify } from "ext:deno_node/internal/util.mjs";
+import {
+  createDeferredPromise,
+  promisify,
+} from "ext:deno_node/internal/util.mjs";
 import { callbackify } from "ext:deno_node/_util/_util_callbackify.js";
 import { debuglog } from "ext:deno_node/internal/util/debuglog.ts";
 import {
@@ -35,14 +39,20 @@ import {
   formatWithOptions,
   inspect,
   stripVTControlCharacters,
+  styleText,
 } from "ext:deno_node/internal/util/inspect.mjs";
 import { codes } from "ext:deno_node/internal/error_codes.ts";
 import types from "node:util/types";
 import { Buffer } from "node:buffer";
 import { isDeepStrictEqual } from "ext:deno_node/internal/util/comparisons.ts";
 import process from "node:process";
-import { validateString } from "ext:deno_node/internal/validators.mjs";
+import {
+  validateAbortSignal,
+  validateString,
+} from "ext:deno_node/internal/validators.mjs";
 import { parseArgs } from "ext:deno_node/internal/util/parse_args/parse_args.js";
+import * as abortSignal from "ext:deno_web/03_abort_signal.js";
+import { ERR_INVALID_ARG_TYPE } from "ext:deno_node/internal/errors.ts";
 
 export {
   callbackify,
@@ -54,6 +64,7 @@ export {
   parseArgs,
   promisify,
   stripVTControlCharacters,
+  styleText,
   types,
 };
 
@@ -168,6 +179,7 @@ export function inherits<T, U>(
     );
   }
   ObjectDefineProperty(ctor, "super_", {
+    __proto__: null,
     value: superCtor,
     writable: true,
     configurable: true,
@@ -288,6 +300,24 @@ export function deprecate(fn: any, msg: string, code?: any) {
   return deprecated;
 }
 
+// deno-lint-ignore require-await
+export async function aborted(
+  signal: AbortSignal,
+  // deno-lint-ignore no-explicit-any
+  _resource: any,
+): Promise<void> {
+  if (signal === undefined) {
+    throw new ERR_INVALID_ARG_TYPE("signal", "AbortSignal", signal);
+  }
+  validateAbortSignal(signal, "signal");
+  if (signal.aborted) {
+    return PromiseResolve();
+  }
+  const abortPromise = createDeferredPromise();
+  signal[abortSignal.add](abortPromise.resolve);
+  return abortPromise.promise;
+}
+
 export { getSystemErrorName, isDeepStrictEqual };
 
 export default {
@@ -311,6 +341,7 @@ export default {
   isBuffer,
   _extend,
   getSystemErrorName,
+  aborted,
   deprecate,
   callbackify,
   parseArgs,
@@ -325,4 +356,5 @@ export default {
   debuglog,
   debug: debuglog,
   isDeepStrictEqual,
+  styleText,
 };

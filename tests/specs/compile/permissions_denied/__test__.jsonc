@@ -1,5 +1,9 @@
 {
   "tempDir": true,
+  "envs": {
+    "DYLD_FALLBACK_LIBRARY_PATH": "",
+    "LD_LIBRARY_PATH": ""
+  },
   "steps": [{
     "if": "unix",
     "args": "compile --output main main.ts",

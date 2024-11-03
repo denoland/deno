@@ -1,6 +1,6 @@
 {
   "steps": [{
-    "args": "run --quiet --reload --allow-net --cert RootCA.pem cafile_ts_fetch.ts",
+    "args": "run --quiet --reload --allow-net --allow-import --cert RootCA.pem cafile_ts_fetch.ts",
     "flaky": true,
     "output": "cafile_ts_fetch.ts.out"
   }, {
@@ -8,11 +8,11 @@
     "flaky": true,
     "output": "cafile_ts_fetch.ts.out"
   }, {
-    "args": "info --quiet --cert RootCA.pem https://localhost:5545/cert/cafile_info.ts",
+    "args": "info --quiet --allow-import --cert RootCA.pem https://localhost:5545/cert/cafile_info.ts",
     "flaky": true,
     "output": "cafile_info.ts.out"
   }, {
-    "args": "cache --quiet --cert RootCA.pem http://localhost:4545/cert/cafile_url_imports.ts",
+    "args": "cache --quiet --allow-import --cert RootCA.pem http://localhost:4545/cert/cafile_url_imports.ts",
     "flaky": true,
     "output": ""
   }]

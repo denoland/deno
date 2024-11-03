@@ -104,12 +104,12 @@ function bench(
       }
       if (optionsOrFn.fn != undefined) {
         throw new TypeError(
-          "Unexpected 'fn' field in options, bench function is already provided as the third argument.",
+          "Unexpected 'fn' field in options, bench function is already provided as the third argument",
         );
       }
       if (optionsOrFn.name != undefined) {
         throw new TypeError(
-          "Unexpected 'name' field in options, bench name is already provided as the first argument.",
+          "Unexpected 'name' field in options, bench name is already provided as the first argument",
         );
       }
       benchDesc = {
@@ -141,7 +141,7 @@ function bench(
       fn = optionsOrFn;
       if (nameOrFnOrOptions.fn != undefined) {
         throw new TypeError(
-          "Unexpected 'fn' field in options, bench function is already provided as the second argument.",
+          "Unexpected 'fn' field in options, bench function is already provided as the second argument",
         );
       }
       name = nameOrFnOrOptions.name ?? fn.name;
@@ -150,7 +150,7 @@ function bench(
         !nameOrFnOrOptions.fn || typeof nameOrFnOrOptions.fn !== "function"
       ) {
         throw new TypeError(
-          "Expected 'fn' field in the first argument to be a bench function.",
+          "Expected 'fn' field in the first argument to be a bench function",
         );
       }
       fn = nameOrFnOrOptions.fn;
@@ -385,12 +385,12 @@ function createBenchContext(desc) {
     start() {
       if (currentBenchId !== desc.id) {
         throw new TypeError(
-          "The benchmark which this context belongs to is not being executed.",
+          "The benchmark which this context belongs to is not being executed",
         );
       }
       if (currentBenchUserExplicitStart != null) {
         throw new TypeError(
-          "BenchContext::start() has already been invoked.",
+          "BenchContext::start() has already been invoked",
         );
       }
       currentBenchUserExplicitStart = benchNow();
@@ -399,11 +399,11 @@ function createBenchContext(desc) {
       const end = benchNow();
       if (currentBenchId !== desc.id) {
         throw new TypeError(
-          "The benchmark which this context belongs to is not being executed.",
+          "The benchmark which this context belongs to is not being executed",
         );
       }
       if (currentBenchUserExplicitEnd != null) {
-        throw new TypeError("BenchContext::end() has already been invoked.");
+        throw new TypeError("BenchContext::end() has already been invoked");
       }
       currentBenchUserExplicitEnd = end;
     },
