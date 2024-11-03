@@ -24,32 +24,29 @@ pub fn init_project(init_flags: InitFlags) -> Result<(), AnyError> {
     create_file(
       &dir,
       "main.ts",
-      r#"import { type Route, route, serveDir } from "@std/http";
+      r#"import { serveDir } from "@std/http";
 
-const routes: Route[] = [
-  {
-    pattern: new URLPattern({ pathname: "/" }),
-    handler: () => new Response("Home page"),
-  },
-  {
-    pattern: new URLPattern({ pathname: "/users/:id" }),
-    handler: (_req, _info, params) => new Response(params?.pathname.groups.id),
-  },
-  {
-    pattern: new URLPattern({ pathname: "/static/*" }),
-    handler: (req) => serveDir(req),
-  },
-];
-
-function defaultHandler(_req: Request) {
-  return new Response("Not found", { status: 404 });
-}
-
-const handler = route(routes, defaultHandler);
+const userPagePattern = new URLPattern({ pathname: "/users/:id" });
+const staticPathPattern = new URLPattern({ pathname: "/static/*" });
 
 export default {
   fetch(req) {
-    return handler(req);
+    const url = new URL(req.url);
+
+    if (url.pathname === "/") {
+      return new Response("Home page");
+    }
+
+    const userPageMatch = userPagePattern.exec(url);
+    if (userPageMatch) {
+      return new Response(userPageMatch.pathname.groups.id);
+    }
+
+    if (staticPathPattern.test(url)) {
+      return serveDir(req);
+    }
+
+    return new Response("Not found", { status: 404 });
   },
 } satisfies Deno.ServeDefaultExport;
 "#,

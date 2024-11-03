@@ -6,7 +6,6 @@ use crate::args::CliLockfile;
 use crate::args::CliOptions;
 use crate::args::DENO_DISABLE_PEDANTIC_NODE_WARNINGS;
 use crate::cache;
-use crate::cache::EsmOrCjsChecker;
 use crate::cache::GlobalHttpCache;
 use crate::cache::ModuleInfoCache;
 use crate::cache::ParsedSourceCache;
@@ -15,7 +14,6 @@ use crate::errors::get_error_class_name;
 use crate::file_fetcher::FileFetcher;
 use crate::npm::CliNpmResolver;
 use crate::resolver::CliGraphResolver;
-use crate::resolver::CliNodeResolver;
 use crate::resolver::CliSloppyImportsResolver;
 use crate::resolver::SloppyImportsCachedFs;
 use crate::tools::check;
@@ -50,6 +48,7 @@ use deno_runtime::deno_permissions::PermissionsContainer;
 use deno_semver::jsr::JsrDepPackageReq;
 use deno_semver::package::PackageNv;
 use import_map::ImportMapError;
+use node_resolver::InNpmPackageChecker;
 use std::collections::HashSet;
 use std::error::Error;
 use std::ops::Deref;
@@ -379,54 +378,51 @@ pub struct BuildFastCheckGraphOptions<'a> {
 }
 
 pub struct ModuleGraphBuilder {
-  options: Arc<CliOptions>,
   caches: Arc<cache::Caches>,
-  esm_or_cjs_checker: Arc<EsmOrCjsChecker>,
+  cli_options: Arc<CliOptions>,
+  file_fetcher: Arc<FileFetcher>,
   fs: Arc<dyn FileSystem>,
-  resolver: Arc<CliGraphResolver>,
-  node_resolver: Arc<CliNodeResolver>,
-  npm_resolver: Arc<dyn CliNpmResolver>,
-  module_info_cache: Arc<ModuleInfoCache>,
-  parsed_source_cache: Arc<ParsedSourceCache>,
+  global_http_cache: Arc<GlobalHttpCache>,
+  in_npm_pkg_checker: Arc<dyn InNpmPackageChecker>,
   lockfile: Option<Arc<CliLockfile>>,
   maybe_file_watcher_reporter: Option<FileWatcherReporter>,
-  file_fetcher: Arc<FileFetcher>,
-  global_http_cache: Arc<GlobalHttpCache>,
+  module_info_cache: Arc<ModuleInfoCache>,
+  npm_resolver: Arc<dyn CliNpmResolver>,
+  parsed_source_cache: Arc<ParsedSourceCache>,
+  resolver: Arc<CliGraphResolver>,
   root_permissions_container: PermissionsContainer,
 }
 
 impl ModuleGraphBuilder {
   #[allow(clippy::too_many_arguments)]
   pub fn new(
-    options: Arc<CliOptions>,
     caches: Arc<cache::Caches>,
-    esm_or_cjs_checker: Arc<EsmOrCjsChecker>,
+    cli_options: Arc<CliOptions>,
+    file_fetcher: Arc<FileFetcher>,
     fs: Arc<dyn FileSystem>,
-    resolver: Arc<CliGraphResolver>,
-    node_resolver: Arc<CliNodeResolver>,
-    npm_resolver: Arc<dyn CliNpmResolver>,
-    module_info_cache: Arc<ModuleInfoCache>,
-    parsed_source_cache: Arc<ParsedSourceCache>,
+    global_http_cache: Arc<GlobalHttpCache>,
+    in_npm_pkg_checker: Arc<dyn InNpmPackageChecker>,
     lockfile: Option<Arc<CliLockfile>>,
     maybe_file_watcher_reporter: Option<FileWatcherReporter>,
-    file_fetcher: Arc<FileFetcher>,
-    global_http_cache: Arc<GlobalHttpCache>,
+    module_info_cache: Arc<ModuleInfoCache>,
+    npm_resolver: Arc<dyn CliNpmResolver>,
+    parsed_source_cache: Arc<ParsedSourceCache>,
+    resolver: Arc<CliGraphResolver>,
     root_permissions_container: PermissionsContainer,
   ) -> Self {
     Self {
-      options,
       caches,
-      esm_or_cjs_checker,
+      cli_options,
+      file_fetcher,
       fs,
-      resolver,
-      node_resolver,
-      npm_resolver,
-      module_info_cache,
-      parsed_source_cache,
+      global_http_cache,
+      in_npm_pkg_checker,
       lockfile,
       maybe_file_watcher_reporter,
-      file_fetcher,
-      global_http_cache,
+      module_info_cache,
+      npm_resolver,
+      parsed_source_cache,
+      resolver,
       root_permissions_container,
     }
   }
@@ -512,13 +508,11 @@ impl ModuleGraphBuilder {
     }
 
     let maybe_imports = if options.graph_kind.include_types() {
-      self.options.to_compiler_option_types()?
+      self.cli_options.to_compiler_option_types()?
     } else {
       Vec::new()
     };
-    let analyzer = self
-      .module_info_cache
-      .as_module_analyzer(&self.parsed_source_cache);
+    let analyzer = self.module_info_cache.as_module_analyzer();
     let mut loader = match options.loader {
       Some(loader) => MutLoaderRef::Borrowed(loader),
       None => MutLoaderRef::Owned(self.create_graph_loader()),
@@ -566,7 +560,7 @@ impl ModuleGraphBuilder {
     // ensure an "npm install" is done if the user has explicitly
     // opted into using a node_modules directory
     if self
-      .options
+      .cli_options
       .node_modules_dir()?
       .map(|m| m.uses_node_modules_dir())
       .unwrap_or(false)
@@ -677,10 +671,10 @@ impl ModuleGraphBuilder {
 
     graph.build_fast_check_type_graph(
       deno_graph::BuildFastCheckTypeGraphOptions {
-        jsr_url_provider: &CliJsrUrlProvider,
+        es_parser: Some(&parser),
         fast_check_cache: fast_check_cache.as_ref().map(|c| c as _),
         fast_check_dts: false,
-        module_parser: Some(&parser),
+        jsr_url_provider: &CliJsrUrlProvider,
         resolver: Some(graph_resolver),
         npm_resolver: Some(&graph_npm_resolver),
         workspace_fast_check: options.workspace_fast_check,
@@ -699,20 +693,18 @@ impl ModuleGraphBuilder {
     permissions: PermissionsContainer,
   ) -> cache::FetchCacher {
     cache::FetchCacher::new(
-      self.esm_or_cjs_checker.clone(),
       self.file_fetcher.clone(),
+      self.fs.clone(),
       self.global_http_cache.clone(),
-      self.node_resolver.clone(),
-      self.npm_resolver.clone(),
+      self.in_npm_pkg_checker.clone(),
       self.module_info_cache.clone(),
       cache::FetchCacherOptions {
-        file_header_overrides: self.options.resolve_file_header_overrides(),
+        file_header_overrides: self.cli_options.resolve_file_header_overrides(),
         permissions,
         is_deno_publish: matches!(
-          self.options.sub_command(),
+          self.cli_options.sub_command(),
           crate::args::DenoSubcommand::Publish { .. }
         ),
-        unstable_detect_cjs: self.options.unstable_detect_cjs(),
       },
     )
   }
@@ -737,12 +729,12 @@ impl ModuleGraphBuilder {
       &self.fs,
       roots,
       GraphValidOptions {
-        kind: if self.options.type_check_mode().is_true() {
+        kind: if self.cli_options.type_check_mode().is_true() {
           GraphKind::All
         } else {
           GraphKind::CodeOnly
         },
-        check_js: self.options.check_js(),
+        check_js: self.cli_options.check_js(),
         exit_integrity_errors: true,
       },
     )
@@ -1009,7 +1001,11 @@ impl deno_graph::source::Reporter for FileWatcherReporter {
   ) {
     let mut file_paths = self.file_paths.lock();
     if specifier.scheme() == "file" {
-      file_paths.push(specifier.to_file_path().unwrap());
+      // Don't trust that the path is a valid path at this point:
+      // https://github.com/denoland/deno/issues/26209.
+      if let Ok(file_path) = specifier.to_file_path() {
+        file_paths.push(file_path);
+      }
     }
 
     if modules_done == modules_total {

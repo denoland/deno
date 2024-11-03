@@ -183,9 +183,10 @@ fn from_raw(
 ) -> Result<(BiPipeRead, BiPipeWrite), std::io::Error> {
   use std::os::fd::FromRawFd;
   // Safety: The fd is part of a pair of connected sockets
-  let unix_stream = tokio::net::UnixStream::from_std(unsafe {
-    std::os::unix::net::UnixStream::from_raw_fd(stream)
-  })?;
+  let unix_stream =
+    unsafe { std::os::unix::net::UnixStream::from_raw_fd(stream) };
+  unix_stream.set_nonblocking(true)?;
+  let unix_stream = tokio::net::UnixStream::from_std(unix_stream)?;
   let (read, write) = unix_stream.into_split();
   Ok((BiPipeRead { inner: read }, BiPipeWrite { inner: write }))
 }
@@ -280,7 +281,7 @@ pub fn bi_pipe_pair_raw(
     // https://github.com/nix-rust/nix/issues/861
     let mut fds = [-1, -1];
     #[cfg(not(target_os = "macos"))]
-    let flags = libc::SOCK_CLOEXEC | libc::SOCK_NONBLOCK;
+    let flags = libc::SOCK_CLOEXEC;
 
     #[cfg(target_os = "macos")]
     let flags = 0;
@@ -301,13 +302,13 @@ pub fn bi_pipe_pair_raw(
     if cfg!(target_os = "macos") {
       let fcntl = |fd: i32, flag: libc::c_int| -> Result<(), std::io::Error> {
         // SAFETY: libc call, fd is valid
-        let flags = unsafe { libc::fcntl(fd, libc::F_GETFL) };
+        let flags = unsafe { libc::fcntl(fd, libc::F_GETFD) };
 
         if flags == -1 {
           return Err(fail(fds));
         }
         // SAFETY: libc call, fd is valid
-        let ret = unsafe { libc::fcntl(fd, libc::F_SETFL, flags | flag) };
+        let ret = unsafe { libc::fcntl(fd, libc::F_SETFD, flags | flag) };
         if ret == -1 {
           return Err(fail(fds));
         }
@@ -323,13 +324,9 @@ pub fn bi_pipe_pair_raw(
         std::io::Error::last_os_error()
       }
 
-      // SOCK_NONBLOCK is not supported on macOS.
-      (fcntl)(fds[0], libc::O_NONBLOCK)?;
-      (fcntl)(fds[1], libc::O_NONBLOCK)?;
-
       // SOCK_CLOEXEC is not supported on macOS.
-      (fcntl)(fds[0], libc::FD_CLOEXEC)?;
-      (fcntl)(fds[1], libc::FD_CLOEXEC)?;
+      fcntl(fds[0], libc::FD_CLOEXEC)?;
+      fcntl(fds[1], libc::FD_CLOEXEC)?;
     }
 
     let fd1 = fds[0];
