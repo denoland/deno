@@ -93,3 +93,13 @@ Deno.test("[node/fs filehandle.write] Write from string", async function () {
   assertEquals(res.bytesWritten, 11);
   assertEquals(decoder.decode(data), "hello world");
 });
+
+Deno.test("[node/fs filehandle.stat] Get file status", async function () {
+  const fileHandle = await fs.open(testData);
+  const stat = await fileHandle.stat();
+
+  assertEquals(stat.isFile(), true);
+  assertEquals(stat.size, 11);
+
+  await fileHandle.close();
+})
