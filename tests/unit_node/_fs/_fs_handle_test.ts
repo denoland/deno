@@ -1,8 +1,8 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
-import * as path from "@std/path";
+import * as path from "jsr:@std/path";
 import { Buffer } from "node:buffer";
 import * as fs from "node:fs/promises";
-import { assert, assertEquals } from "@std/assert";
+import { assert, assertEquals } from "jsr:@std/assert";
 
 const moduleDir = path.dirname(path.fromFileUrl(import.meta.url));
 const testData = path.resolve(moduleDir, "testdata", "hello.txt");
@@ -99,7 +99,21 @@ Deno.test("[node/fs filehandle.stat] Get file status", async function () {
   const stat = await fileHandle.stat();
 
   assertEquals(stat.isFile(), true);
-  assertEquals(stat.size, 11);
+  assertEquals(stat.size, "hello world".length);
 
   await fileHandle.close();
+});
+
+Deno.test("[node/fs filehandle.writeFile] Write to file", async function () {
+  const tempFile: string = await Deno.makeTempFile();
+  const fileHandle = await fs.open(tempFile, "w");
+
+  const str = "hello world";
+  await fileHandle.writeFile(str);
+
+  const data = Deno.readFileSync(tempFile);
+  await Deno.remove(tempFile);
+  await fileHandle.close();
+
+  assertEquals(decoder.decode(data), "hello world");
 });
