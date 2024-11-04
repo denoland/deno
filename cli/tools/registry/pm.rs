@@ -1,5 +1,6 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
+use std::path::Path;
 use std::path::PathBuf;
 use std::sync::Arc;
 
@@ -333,6 +334,14 @@ fn load_configs(
   Ok((cli_factory, npm_config, deno_config))
 }
 
+fn path_distance(a: &Path, b: &Path) -> usize {
+  let diff = pathdiff::diff_paths(a, b);
+  let Some(diff) = diff else {
+    return usize::MAX;
+  };
+  diff.components().count()
+}
+
 pub async fn add(
   flags: Arc<Flags>,
   add_flags: AddFlags,
@@ -357,6 +366,21 @@ pub async fn add(
     }
   }
 
+  let start_dir = cli_factory.cli_options()?.start_dir.dir_path();
+
+  // only prefer to add npm deps to `package.json` if there isn't a closer deno.json.
+  // example: if deno.json is in the CWD and package.json is in the parent, we should add
+  // npm deps to deno.json, since it's closer
+  let prefer_npm_config = match (npm_config.as_ref(), deno_config.as_ref()) {
+    (Some(npm), Some(deno)) => {
+      let npm_distance = path_distance(&npm.path, &start_dir);
+      let deno_distance = path_distance(&deno.path, &start_dir);
+      npm_distance <= deno_distance
+    }
+    (Some(_), None) => true,
+    (None, _) => false,
+  };
+
   let http_client = cli_factory.http_client_provider();
   let deps_http_cache = cli_factory.global_http_cache()?;
   let mut deps_file_fetcher = FileFetcher::new(
@@ -367,10 +391,14 @@ pub async fn add(
     Default::default(),
     None,
   );
+
+  let npmrc = cli_factory.cli_options().unwrap().npmrc();
+
   deps_file_fetcher.set_download_log_level(log::Level::Trace);
   let deps_file_fetcher = Arc::new(deps_file_fetcher);
   let jsr_resolver = Arc::new(JsrFetchResolver::new(deps_file_fetcher.clone()));
-  let npm_resolver = Arc::new(NpmFetchResolver::new(deps_file_fetcher));
+  let npm_resolver =
+    Arc::new(NpmFetchResolver::new(deps_file_fetcher, npmrc.clone()));
 
   let mut selected_packages = Vec::with_capacity(add_flags.packages.len());
   let mut package_reqs = Vec::with_capacity(add_flags.packages.len());
@@ -451,7 +479,7 @@ pub async fn add(
       selected_package.selected_version
     );
 
-    if selected_package.package_name.starts_with("npm:") {
+    if selected_package.package_name.starts_with("npm:") && prefer_npm_config {
       if let Some(npm) = &mut npm_config {
         npm.add(selected_package, dev);
       } else {

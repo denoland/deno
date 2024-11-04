@@ -286,7 +286,7 @@ fn get_stdin_metadata() -> std::io::Result<std::fs::Metadata> {
   unsafe {
     let stdin = std::fs::File::from_raw_fd(0);
     let metadata = stdin.metadata().unwrap();
-    stdin.into_raw_fd();
+    let _ = stdin.into_raw_fd();
     Ok(metadata)
   }
 }
