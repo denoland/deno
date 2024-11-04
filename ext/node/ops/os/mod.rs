@@ -14,7 +14,7 @@ pub enum OsError {
   #[error(transparent)]
   Priority(priority::PriorityError),
   #[error(transparent)]
-  Permission(deno_core::error::AnyError),
+  Permission(#[from] deno_permissions::PermissionCheckError),
   #[error("Failed to get cpu info")]
   FailedToGetCpuInfo,
   #[error("Failed to get user info")]
@@ -31,9 +31,7 @@ where
 {
   {
     let permissions = state.borrow_mut::<P>();
-    permissions
-      .check_sys("getPriority", "node:os.getPriority()")
-      .map_err(OsError::Permission)?;
+    permissions.check_sys("getPriority", "node:os.getPriority()")?;
   }
 
   priority::get_priority(pid).map_err(OsError::Priority)
@@ -50,9 +48,7 @@ where
 {
   {
     let permissions = state.borrow_mut::<P>();
-    permissions
-      .check_sys("setPriority", "node:os.setPriority()")
-      .map_err(OsError::Permission)?;
+    permissions.check_sys("setPriority", "node:os.setPriority()")?;
   }
 
   priority::set_priority(pid, priority).map_err(OsError::Priority)
@@ -266,9 +262,7 @@ where
 {
   {
     let permissions = state.borrow_mut::<P>();
-    permissions
-      .check_sys("cpus", "node:os.cpus()")
-      .map_err(OsError::Permission)?;
+    permissions.check_sys("cpus", "node:os.cpus()")?;
   }
 
   cpus::cpu_info().ok_or(OsError::FailedToGetCpuInfo)
