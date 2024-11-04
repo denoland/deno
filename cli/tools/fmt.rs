@@ -353,6 +353,17 @@ fn format_yaml(
   file_text: &str,
   fmt_options: &FmtOptionsConfig,
 ) -> Result<Option<String>, AnyError> {
+  let ignore_file = file_text
+    .lines()
+    .take_while(|line| line.starts_with('#'))
+    .any(|line| {
+      line.strip_prefix('#').unwrap().trim() == "deno-fmt-ignore-file"
+    });
+
+  if ignore_file {
+    return Ok(None);
+  }
+
   let formatted_str =
     pretty_yaml::format_text(file_text, &get_resolved_yaml_config(fmt_options))
       .map_err(AnyError::from)?;
