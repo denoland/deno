@@ -1312,6 +1312,8 @@ export function findSourceMap(_path) {
   return undefined;
 }
 
+Module.findSourceMap = findSourceMap;
+
 /**
  * @param {string | URL} _specifier
  * @param {string | URL} _parentUrl
