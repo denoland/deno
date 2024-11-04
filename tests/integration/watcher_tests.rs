@@ -572,7 +572,7 @@ async fn serve_watch_all() {
   let main_file_to_watch = t.path().join("main_file_to_watch.js");
   main_file_to_watch.write(
     "export default {
-      fetch(_request: Request) {
+      fetch(_request) {
         return new Response(\"aaaaaaqqq!\");
       },
     };",
@@ -596,7 +596,7 @@ async fn serve_watch_all() {
   // Change content of the file
   main_file_to_watch.write(
     "export default {
-      fetch(_request: Request) {
+      fetch(_request) {
         return new Response(\"aaaaaaqqq123!\");
       },
     };",
@@ -626,7 +626,7 @@ async fn serve_watch_all() {
 
   main_file_to_watch.write(
     "export default {
-      fetch(_request: Request) {
+      fetch(_request) {
         return new Response(\"aaaaaaqqq!\");
       },
     };",
