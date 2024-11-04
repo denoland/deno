@@ -14,6 +14,7 @@ const windowsX86Runner = "windows-2022";
 const windowsX86XlRunner = "windows-2022-xl";
 const macosX86Runner = "macos-13";
 const macosArmRunner = "macos-14";
+const selfHostedMacosArmRunner = "self-hosted";
 
 const Runners = {
   linuxX86: {
@@ -40,7 +41,8 @@ const Runners = {
   macosArm: {
     os: "macos",
     arch: "aarch64",
-    runner: macosArmRunner,
+    runner:
+      `\${{ github.repository == 'denoland/deno' && startsWith(github.ref, 'refs/tags/') && '${selfHostedMacosArmRunner}' || '${macosArmRunner}' }}`,
   },
   windowsX86: {
     os: "windows",
