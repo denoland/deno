@@ -11,6 +11,8 @@ import {
   FileOptionsArgument,
   ReadOptions,
   TextOptionsArgument,
+  Stats,
+  BigIntStats,
 } from "ext:deno_node/_fs/_fs_common.ts";
 import { core } from "ext:core/mod.js";
 
@@ -140,6 +142,13 @@ export class FileHandle extends EventEmitter {
   close(): Promise<void> {
     // Note that Deno.close is not async
     return Promise.resolve(core.close(this.fd));
+  }
+
+  stat(): Promise<Stats>;
+  stat(options: { bigint: false }): Promise<Stats>;
+  stat(options: { bigint: true }): Promise<BigIntStats>;
+  stat(options?: { bigint: boolean }): Stats | BigIntStats {
+    return fsCall(promises.fstat, this, options);
   }
 }
 

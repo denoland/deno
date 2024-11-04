@@ -243,3 +243,5 @@ export function makeCallback(
 
   return (...args: unknown[]) => Reflect.apply(cb!, this, args);
 }
+
+export type { BigIntStats, Stats } from "ext:deno_node/_fs/_fs_stat.ts";
