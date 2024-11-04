@@ -95,21 +95,12 @@ pub trait PermissionPrompter: Send + Sync {
   ) -> PromptResponse;
 }
 
-#[derive(Debug, thiserror::Error)]
-pub enum PrompterError {
-  #[cfg(not(unix))]
-  #[error("{0}")]
-  Io(#[from] std::io::Error),
-  #[error(transparent)]
-  Other(#[from] deno_core::error::AnyError),
-}
-
 pub struct TtyPrompter;
 #[cfg(unix)]
 fn clear_stdin(
   _stdin_lock: &mut StdinLock,
   _stderr_lock: &mut StderrLock,
-) -> Result<(), PrompterError> {
+) -> Result<(), std::io::Error> {
   use std::mem::MaybeUninit;
 
   const STDIN_FD: i32 = 0;
@@ -124,10 +115,10 @@ fn clear_stdin(
     loop {
       let r = libc::tcflush(STDIN_FD, libc::TCIFLUSH);
       if r != 0 {
-        return Err(
-          deno_core::error::generic_error("clear_stdin failed (tcflush)")
-            .into(),
-        );
+        return Err(std::io::Error::new(
+          std::io::ErrorKind::Other,
+          "clear_stdin failed (tcflush)",
+        ));
       }
 
       // Initialize timeout for select to be 100ms
@@ -147,9 +138,10 @@ fn clear_stdin(
 
       // Check if select returned an error
       if r < 0 {
-        return Err(PrompterError::Other(deno_core::error::generic_error(
+        return Err(std::io::Error::new(
+          std::io::ErrorKind::Other,
           "clear_stdin failed (select)",
-        )));
+        ));
       }
 
       // Check if select returned due to timeout (stdin is quiescent)
@@ -168,7 +160,7 @@ fn clear_stdin(
 fn clear_stdin(
   stdin_lock: &mut StdinLock,
   stderr_lock: &mut StderrLock,
-) -> Result<(), PrompterError> {
+) -> Result<(), std::io::Error> {
   use winapi::shared::minwindef::TRUE;
   use winapi::shared::minwindef::UINT;
   use winapi::shared::minwindef::WORD;
@@ -205,22 +197,23 @@ fn clear_stdin(
 
   return Ok(());
 
-  unsafe fn flush_input_buffer(
-    stdin: HANDLE,
-  ) -> Result<(), deno_core::error::AnyError> {
+  unsafe fn flush_input_buffer(stdin: HANDLE) -> Result<(), std::io::Error> {
     let success = FlushConsoleInputBuffer(stdin);
     if success != TRUE {
-      return Err(deno_core::error::generic_error(format!(
-        "Could not flush the console input buffer: {}",
-        std::io::Error::last_os_error()
-      )));
+      return Err(std::io::Error::new(
+        std::io::ErrorKind::Other,
+        format!(
+          "Could not flush the console input buffer: {}",
+          std::io::Error::last_os_error()
+        ),
+      ));
     }
     Ok(())
   }
 
   unsafe fn emulate_enter_key_press(
     stdin: HANDLE,
-  ) -> Result<(), deno_core::error::AnyError> {
+  ) -> Result<(), std::io::Error> {
     // https://github.com/libuv/libuv/blob/a39009a5a9252a566ca0704d02df8dabc4ce328f/src/win/tty.c#L1121-L1131
     let mut input_record: INPUT_RECORD = std::mem::zeroed();
     input_record.EventType = KEY_EVENT;
@@ -235,26 +228,32 @@ fn clear_stdin(
     let success =
       WriteConsoleInputW(stdin, &input_record, 1, &mut record_written);
     if success != TRUE {
-      return Err(deno_core::error::generic_error(format!(
-        "Could not emulate enter key press: {}",
-        std::io::Error::last_os_error()
-      )));
+      return Err(std::io::Error::new(
+        std::io::ErrorKind::Other,
+        format!(
+          "Could not emulate enter key press: {}",
+          std::io::Error::last_os_error()
+        ),
+      ));
     }
     Ok(())
   }
 
   unsafe fn is_input_buffer_empty(
     stdin: HANDLE,
-  ) -> Result<bool, deno_core::error::AnyError> {
+  ) -> Result<bool, std::io::Error> {
     let mut buffer = Vec::with_capacity(1);
     let mut events_read = 0;
     let success =
       PeekConsoleInputW(stdin, buffer.as_mut_ptr(), 1, &mut events_read);
     if success != TRUE {
-      return Err(deno_core::error::generic_error(format!(
-        "Could not peek the console input buffer: {}",
-        std::io::Error::last_os_error()
-      )));
+      return Err(std::io::Error::new(
+        std::io::ErrorKind::Other,
+        format!(
+          "Could not peek the console input buffer: {}",
+          std::io::Error::last_os_error()
+        ),
+      ));
     }
     Ok(events_read == 0)
   }
