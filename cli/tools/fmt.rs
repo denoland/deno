@@ -360,6 +360,7 @@ fn format_yaml(
       line
         .strip_prefix('#')
         .unwrap()
+        .trim()
         .starts_with("deno-fmt-ignore-file")
     });
 
