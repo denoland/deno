@@ -6,7 +6,7 @@
     },
     "run_file": {
       "args": "lint main.ts",
-      "output": "output.out"
+      "output": "Checked 1 file\n"
     }
   }
 }
