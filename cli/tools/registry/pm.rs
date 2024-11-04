@@ -12,7 +12,9 @@ use deno_core::futures::StreamExt;
 use deno_path_util::url_to_file_path;
 use deno_semver::jsr::JsrPackageReqReference;
 use deno_semver::npm::NpmPackageReqReference;
+use deno_semver::package::PackageNv;
 use deno_semver::package::PackageReq;
+use deno_semver::Version;
 use deno_semver::VersionReq;
 use jsonc_parser::cst::CstObject;
 use jsonc_parser::cst::CstObjectProp;
@@ -455,15 +457,32 @@ pub async fn add(
     match package_and_version {
       PackageAndVersion::NotFound {
         package: package_name,
-        found_npm_package,
+        help,
         package_req,
-      } => {
-        if found_npm_package {
-          bail!("{} was not found, but a matching npm package exists. Did you mean `{}`?", crate::colors::red(package_name), crate::colors::yellow(format!("deno {cmd_name} npm:{package_req}")));
-        } else {
-          bail!("{} was not found.", crate::colors::red(package_name));
+      } => match help {
+        Some(NotFoundHelp::FoundNpmPackage) => {
+          bail!(
+            "{} was not found, but a matching npm package exists. Did you mean `{}`?",
+            crate::colors::red(package_name),
+            crate::colors::yellow(format!("deno {cmd_name} npm:{package_req}"))
+          );
         }
-      }
+        Some(NotFoundHelp::FoundJsrPackage) => {
+          bail!(
+            "{} was not found, but a matching jsr package exists. Did you mean `{}`?",
+            crate::colors::red(package_name),
+            crate::colors::yellow(format!("deno {cmd_name} jsr:{package_req}"))
+          )
+        }
+        Some(NotFoundHelp::FoundPreReleaseVersion(version)) => {
+          bail!(
+            "{} has only pre-release versions available. Try specifying a version: `{}`",
+            crate::colors::red(&package_name),
+            crate::colors::yellow(format!("deno {cmd_name} {package_name}@^{version}"))
+          )
+        }
+        None => bail!("{} was not found.", crate::colors::red(package_name)),
+      },
       PackageAndVersion::Selected(selected) => {
         selected_packages.push(selected);
       }
@@ -511,13 +530,72 @@ struct SelectedPackage {
   selected_version: String,
 }
 
+enum NotFoundHelp {
+  FoundNpmPackage,
+  FoundJsrPackage,
+  FoundPreReleaseVersion(Version),
+}
+
 enum PackageAndVersion {
   NotFound {
     package: String,
-    found_npm_package: bool,
     package_req: PackageReq,
+    help: Option<NotFoundHelp>,
   },
   Selected(SelectedPackage),
+}
+
+fn best_version<'a>(
+  versions: impl Iterator<Item = &'a Version>,
+) -> Option<&'a Version> {
+  let mut maybe_best_version: Option<&Version> = None;
+  for version in versions {
+    let is_best_version = maybe_best_version
+      .as_ref()
+      .map(|best_version| (*best_version).cmp(version).is_lt())
+      .unwrap_or(true);
+    if is_best_version {
+      maybe_best_version = Some(version);
+    }
+  }
+  maybe_best_version
+}
+
+trait PackageInfoProvider {
+  const SPECIFIER_PREFIX: &str;
+  /// The help to return if a package is found by this provider
+  const HELP: NotFoundHelp;
+  async fn req_to_nv(&self, req: &PackageReq) -> Option<PackageNv>;
+  async fn latest_version<'a>(&self, req: &PackageReq) -> Option<Version>;
+}
+
+impl PackageInfoProvider for Arc<JsrFetchResolver> {
+  const HELP: NotFoundHelp = NotFoundHelp::FoundJsrPackage;
+  const SPECIFIER_PREFIX: &str = "jsr";
+  async fn req_to_nv(&self, req: &PackageReq) -> Option<PackageNv> {
+    (**self).req_to_nv(req).await
+  }
+
+  async fn latest_version<'a>(&self, req: &PackageReq) -> Option<Version> {
+    let info = self.package_info(&req.name).await?;
+    best_version(info.versions.iter().filter_map(|(version, version_info)| {
+      (!version_info.yanked).then(|| version)
+    }))
+    .cloned()
+  }
+}
+
+impl PackageInfoProvider for Arc<NpmFetchResolver> {
+  const HELP: NotFoundHelp = NotFoundHelp::FoundNpmPackage;
+  const SPECIFIER_PREFIX: &str = "npm";
+  async fn req_to_nv(&self, req: &PackageReq) -> Option<PackageNv> {
+    (**self).req_to_nv(req).await
+  }
+
+  async fn latest_version<'a>(&self, req: &PackageReq) -> Option<Version> {
+    let info = self.package_info(&req.name).await?;
+    best_version(info.versions.keys()).cloned()
+  }
 }
 
 async fn find_package_and_select_version_for_req(
@@ -525,62 +603,67 @@ async fn find_package_and_select_version_for_req(
   npm_resolver: Arc<NpmFetchResolver>,
   add_package_req: AddRmPackageReq,
 ) -> Result<PackageAndVersion, AnyError> {
-  match add_package_req.value {
-    AddRmPackageReqValue::Jsr(req) => {
-      let jsr_prefixed_name = format!("jsr:{}", &req.name);
-      let Some(nv) = jsr_resolver.req_to_nv(&req).await else {
-        if npm_resolver.req_to_nv(&req).await.is_some() {
+  async fn select<T: PackageInfoProvider, S: PackageInfoProvider>(
+    main_resolver: T,
+    fallback_resolver: S,
+    add_package_req: AddRmPackageReq,
+  ) -> Result<PackageAndVersion, AnyError> {
+    let req = match &add_package_req.value {
+      AddRmPackageReqValue::Jsr(req) => req,
+      AddRmPackageReqValue::Npm(req) => req,
+    };
+    let prefixed_name = format!("{}:{}", T::SPECIFIER_PREFIX, req.name);
+    let help_if_found_in_fallback = S::HELP;
+    let Some(nv) = main_resolver.req_to_nv(&req).await else {
+      if fallback_resolver.req_to_nv(&req).await.is_some() {
+        // it's in the other registry
+        return Ok(PackageAndVersion::NotFound {
+          package: prefixed_name,
+          help: Some(help_if_found_in_fallback),
+          package_req: req.clone(),
+        });
+      }
+      if req.version_req.version_text() == "*" {
+        if let Some(pre_release_version) =
+          main_resolver.latest_version(&req).await
+        {
           return Ok(PackageAndVersion::NotFound {
-            package: jsr_prefixed_name,
-            found_npm_package: true,
-            package_req: req,
+            package: prefixed_name,
+            package_req: req.clone(),
+            help: Some(NotFoundHelp::FoundPreReleaseVersion(
+              pre_release_version.clone(),
+            )),
           });
         }
+      }
 
-        return Ok(PackageAndVersion::NotFound {
-          package: jsr_prefixed_name,
-          found_npm_package: false,
-          package_req: req,
-        });
-      };
-      let range_symbol = if req.version_req.version_text().starts_with('~') {
-        "~"
-      } else if req.version_req.version_text() == nv.version.to_string() {
-        ""
-      } else {
-        "^"
-      };
-      Ok(PackageAndVersion::Selected(SelectedPackage {
-        import_name: add_package_req.alias,
-        package_name: jsr_prefixed_name,
-        version_req: format!("{}{}", range_symbol, &nv.version),
-        selected_version: nv.version.to_string(),
-      }))
+      return Ok(PackageAndVersion::NotFound {
+        package: prefixed_name,
+        help: None,
+        package_req: req.clone(),
+      });
+    };
+    let range_symbol = if req.version_req.version_text().starts_with('~') {
+      "~"
+    } else if req.version_req.version_text() == nv.version.to_string() {
+      ""
+    } else {
+      "^"
+    };
+    Ok(PackageAndVersion::Selected(SelectedPackage {
+      import_name: add_package_req.alias,
+      package_name: prefixed_name,
+      version_req: format!("{}{}", range_symbol, &nv.version),
+      selected_version: nv.version.to_string(),
+    }))
+  }
+
+  match &add_package_req.value {
+    AddRmPackageReqValue::Jsr(_) => {
+      select(jsr_resolver, npm_resolver, add_package_req).await
     }
-    AddRmPackageReqValue::Npm(req) => {
-      let npm_prefixed_name = format!("npm:{}", &req.name);
-      let Some(nv) = npm_resolver.req_to_nv(&req).await else {
-        return Ok(PackageAndVersion::NotFound {
-          package: npm_prefixed_name,
-          found_npm_package: false,
-          package_req: req,
-        });
-      };
-
-      let range_symbol = if req.version_req.version_text().starts_with('~') {
-        "~"
-      } else if req.version_req.version_text() == nv.version.to_string() {
-        ""
-      } else {
-        "^"
-      };
-
-      Ok(PackageAndVersion::Selected(SelectedPackage {
-        import_name: add_package_req.alias,
-        package_name: npm_prefixed_name,
-        version_req: format!("{}{}", range_symbol, &nv.version),
-        selected_version: nv.version.to_string(),
-      }))
+    AddRmPackageReqValue::Npm(_) => {
+      select(npm_resolver, jsr_resolver, add_package_req).await
     }
   }
 }
