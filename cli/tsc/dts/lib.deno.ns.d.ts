@@ -556,14 +556,23 @@ declare namespace Deno {
      */
     env?: "inherit" | boolean | string[];
 
-    /** Specifies if the `sys` permission should be requested or revoked.
-     * If set to `"inherit"`, the current `sys` permission will be inherited.
-     * If set to `true`, the global `sys` permission will be requested.
-     * If set to `false`, the global `sys` permission will be revoked.
+    /** Specifies if the `ffi` permission should be requested or revoked.
+     * If set to `"inherit"`, the current `ffi` permission will be inherited.
+     * If set to `true`, the global `ffi` permission will be requested.
+     * If set to `false`, the global `ffi` permission will be revoked.
      *
      * @default {false}
      */
-    sys?: "inherit" | boolean | string[];
+    ffi?: "inherit" | boolean | Array<string | URL>;
+
+    /** Specifies if the `import` permission should be requested or revoked.
+     * If set to `"inherit"` the current `import` permission will be inherited.
+     * If set to `true`, the global `import` permission will be requested.
+     * If set to `false`, the global `import` permission will be revoked.
+     * If set to `Array<string>`, the `import` permissions will be requested with the
+     * specified domains.
+     */
+    import?: "inherit" | boolean | Array<string>;
 
     /** Specifies if the `net` permission should be requested or revoked.
      * if set to `"inherit"`, the current `net` permission will be inherited.
@@ -638,15 +647,6 @@ declare namespace Deno {
      */
     net?: "inherit" | boolean | string[];
 
-    /** Specifies if the `ffi` permission should be requested or revoked.
-     * If set to `"inherit"`, the current `ffi` permission will be inherited.
-     * If set to `true`, the global `ffi` permission will be requested.
-     * If set to `false`, the global `ffi` permission will be revoked.
-     *
-     * @default {false}
-     */
-    ffi?: "inherit" | boolean | Array<string | URL>;
-
     /** Specifies if the `read` permission should be requested or revoked.
      * If set to `"inherit"`, the current `read` permission will be inherited.
      * If set to `true`, the global `read` permission will be requested.
@@ -667,6 +667,15 @@ declare namespace Deno {
      */
     run?: "inherit" | boolean | Array<string | URL>;
 
+    /** Specifies if the `sys` permission should be requested or revoked.
+     * If set to `"inherit"`, the current `sys` permission will be inherited.
+     * If set to `true`, the global `sys` permission will be requested.
+     * If set to `false`, the global `sys` permission will be revoked.
+     *
+     * @default {false}
+     */
+    sys?: "inherit" | boolean | string[];
+
     /** Specifies if the `write` permission should be requested or revoked.
      * If set to `"inherit"`, the current `write` permission will be inherited.
      * If set to `true`, the global `write` permission will be requested.
@@ -677,15 +686,6 @@ declare namespace Deno {
      * @default {false}
      */
     write?: "inherit" | boolean | Array<string | URL>;
-
-    /** Specifies if the `import` permission should be requested or revoked.
-     * If set to `"inherit"` the current `import` permission will be inherited.
-     * If set to `true`, the global `import` permission will be requested.
-     * If set to `false`, the global `import` permission will be revoked.
-     * If set to `Array<string>`, the `import` permissions will be requested with the
-     * specified domains.
-     */
-    import?: "inherit" | boolean | Array<string>;
   }
 
   /**
