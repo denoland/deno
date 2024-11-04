@@ -460,21 +460,21 @@ pub async fn add(
         help,
         package_req,
       } => match help {
-        Some(NotFoundHelp::FoundNpmPackage) => {
+        Some(NotFoundHelp::NpmPackage) => {
           bail!(
             "{} was not found, but a matching npm package exists. Did you mean `{}`?",
             crate::colors::red(package_name),
             crate::colors::yellow(format!("deno {cmd_name} npm:{package_req}"))
           );
         }
-        Some(NotFoundHelp::FoundJsrPackage) => {
+        Some(NotFoundHelp::JsrPackage) => {
           bail!(
             "{} was not found, but a matching jsr package exists. Did you mean `{}`?",
             crate::colors::red(package_name),
             crate::colors::yellow(format!("deno {cmd_name} jsr:{package_req}"))
           )
         }
-        Some(NotFoundHelp::FoundPreReleaseVersion(version)) => {
+        Some(NotFoundHelp::PreReleaseVersion(version)) => {
           bail!(
             "{} has only pre-release versions available. Try specifying a version: `{}`",
             crate::colors::red(&package_name),
@@ -531,9 +531,9 @@ struct SelectedPackage {
 }
 
 enum NotFoundHelp {
-  FoundNpmPackage,
-  FoundJsrPackage,
-  FoundPreReleaseVersion(Version),
+  NpmPackage,
+  JsrPackage,
+  PreReleaseVersion(Version),
 }
 
 enum PackageAndVersion {
@@ -570,7 +570,7 @@ trait PackageInfoProvider {
 }
 
 impl PackageInfoProvider for Arc<JsrFetchResolver> {
-  const HELP: NotFoundHelp = NotFoundHelp::FoundJsrPackage;
+  const HELP: NotFoundHelp = NotFoundHelp::JsrPackage;
   const SPECIFIER_PREFIX: &str = "jsr";
   async fn req_to_nv(&self, req: &PackageReq) -> Option<PackageNv> {
     (**self).req_to_nv(req).await
@@ -578,15 +578,19 @@ impl PackageInfoProvider for Arc<JsrFetchResolver> {
 
   async fn latest_version<'a>(&self, req: &PackageReq) -> Option<Version> {
     let info = self.package_info(&req.name).await?;
-    best_version(info.versions.iter().filter_map(|(version, version_info)| {
-      (!version_info.yanked).then(|| version)
-    }))
+    best_version(
+      info
+        .versions
+        .iter()
+        .filter(|(_, version_info)| !version_info.yanked)
+        .map(|(version, _)| version),
+    )
     .cloned()
   }
 }
 
 impl PackageInfoProvider for Arc<NpmFetchResolver> {
-  const HELP: NotFoundHelp = NotFoundHelp::FoundNpmPackage;
+  const HELP: NotFoundHelp = NotFoundHelp::NpmPackage;
   const SPECIFIER_PREFIX: &str = "npm";
   async fn req_to_nv(&self, req: &PackageReq) -> Option<PackageNv> {
     (**self).req_to_nv(req).await
@@ -614,8 +618,8 @@ async fn find_package_and_select_version_for_req(
     };
     let prefixed_name = format!("{}:{}", T::SPECIFIER_PREFIX, req.name);
     let help_if_found_in_fallback = S::HELP;
-    let Some(nv) = main_resolver.req_to_nv(&req).await else {
-      if fallback_resolver.req_to_nv(&req).await.is_some() {
+    let Some(nv) = main_resolver.req_to_nv(req).await else {
+      if fallback_resolver.req_to_nv(req).await.is_some() {
         // it's in the other registry
         return Ok(PackageAndVersion::NotFound {
           package: prefixed_name,
@@ -625,12 +629,12 @@ async fn find_package_and_select_version_for_req(
       }
       if req.version_req.version_text() == "*" {
         if let Some(pre_release_version) =
-          main_resolver.latest_version(&req).await
+          main_resolver.latest_version(req).await
         {
           return Ok(PackageAndVersion::NotFound {
             package: prefixed_name,
             package_req: req.clone(),
-            help: Some(NotFoundHelp::FoundPreReleaseVersion(
+            help: Some(NotFoundHelp::PreReleaseVersion(
               pre_release_version.clone(),
             )),
           });
