@@ -6396,6 +6396,45 @@ fn lsp_cache_on_save() {
   client.shutdown();
 }
 
+// Regression test for https://github.com/denoland/deno/issues/25999.
+#[test]
+fn lsp_asset_document_dom_code_action() {
+  let context = TestContextBuilder::new().use_temp_cwd().build();
+  let temp_dir = context.temp_dir();
+  temp_dir.write(
+    "deno.json",
+    json!({
+      "compilerOptions": {
+        "lib": ["deno.window", "dom"],
+      },
+    })
+    .to_string(),
+  );
+  let mut client = context.new_lsp_command().build();
+  client.initialize_default();
+  client.did_open(json!({
+    "textDocument": {
+      "uri": temp_dir.url().join("file.ts").unwrap(),
+      "languageId": "typescript",
+      "version": 1,
+      "text": r#""#,
+    },
+  }));
+  let res = client.write_request(
+    "textDocument/codeAction",
+    json!({
+      "textDocument": { "uri": "asset:///lib.dom.d.ts" },
+      "range": {
+        "start": { "line": 0, "character": 0 },
+        "end": { "line": 0, "character": 0 },
+      },
+      "context": { "diagnostics": [], "only": ["quickfix"] },
+    }),
+  );
+  assert_eq!(res, json!(null));
+  client.shutdown();
+}
+
 // Regression test for https://github.com/denoland/deno/issues/22122.
 #[test]
 fn lsp_cache_then_definition() {
