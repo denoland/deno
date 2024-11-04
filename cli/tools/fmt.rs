@@ -357,7 +357,10 @@ fn format_yaml(
     .lines()
     .take_while(|line| line.starts_with('#'))
     .any(|line| {
-      line.strip_prefix('#').unwrap().trim() == "deno-fmt-ignore-file"
+      line
+        .strip_prefix('#')
+        .unwrap()
+        .starts_with("deno-fmt-ignore-file")
     });
 
   if ignore_file {

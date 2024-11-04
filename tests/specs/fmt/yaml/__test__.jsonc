@@ -25,6 +25,10 @@
       "args": "fmt ignore_file3.yaml",
       "output": "Checked 1 file\n"
     },
+    "ignore_file4": {
+      "args": "fmt ignore_file4.yaml",
+      "output": "Checked 1 file\n"
+    },
     "wrong_file_ignore": {
       "args": "fmt wrong_file_ignore.yaml",
       "output": "wrong_file_ignore.out"
