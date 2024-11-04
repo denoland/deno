@@ -7,12 +7,12 @@ import { EventEmitter } from "node:events";
 import { Buffer } from "node:buffer";
 import { promises, read, write } from "node:fs";
 import {
+  BigIntStats,
   BinaryOptionsArgument,
   FileOptionsArgument,
   ReadOptions,
-  TextOptionsArgument,
   Stats,
-  BigIntStats,
+  TextOptionsArgument,
 } from "ext:deno_node/_fs/_fs_common.ts";
 import { core } from "ext:core/mod.js";
 

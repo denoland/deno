@@ -102,4 +102,4 @@ Deno.test("[node/fs filehandle.stat] Get file status", async function () {
   assertEquals(stat.size, 11);
 
   await fileHandle.close();
-})
+});
