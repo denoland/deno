@@ -1,19 +1,8 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
-#[derive(Debug)]
-pub enum Error {
-  BadArgument,
-}
-
-impl std::fmt::Display for Error {
-  fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-    match self {
-      Error::BadArgument => write!(f, "bad argument"),
-    }
-  }
-}
-
-impl std::error::Error for Error {}
+#[derive(Debug, thiserror::Error)]
+#[error("bad argument")]
+pub struct ModeError;
 
 macro_rules! repr_i32 {
     ($(#[$meta:meta])* $vis:vis enum $name:ident {
@@ -25,12 +14,12 @@ macro_rules! repr_i32 {
       }
 
       impl core::convert::TryFrom<i32> for $name {
-        type Error = Error;
+        type Error = ModeError;
 
         fn try_from(v: i32) -> Result<Self, Self::Error> {
           match v {
             $(x if x == $name::$vname as i32 => Ok($name::$vname),)*
-            _ => Err(Error::BadArgument),
+            _ => Err(ModeError),
           }
         }
       }
