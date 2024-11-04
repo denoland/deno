@@ -985,7 +985,7 @@ impl Config {
       | MediaType::Tsx => Some(&workspace_settings.typescript),
       MediaType::Json
       | MediaType::Wasm
-      | MediaType::TsBuildInfo
+      | MediaType::Css
       | MediaType::SourceMap
       | MediaType::Unknown => None,
     }
