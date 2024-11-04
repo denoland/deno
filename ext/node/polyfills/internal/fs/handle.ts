@@ -148,7 +148,7 @@ export class FileHandle extends EventEmitter {
   stat(options: { bigint: false }): Promise<Stats>;
   stat(options: { bigint: true }): Promise<BigIntStats>;
   stat(options?: { bigint: boolean }): Promise<Stats | BigIntStats> {
-    return promises.fstat(this.fd, options);
+    return fsCall(promises.fstat, this, options);
   }
 }
 
@@ -161,7 +161,7 @@ function fsCall(fn, handle, ...args) {
     });
   }
 
-  return fn(handle, ...args);
+  return fn(handle.fd, ...args);
 }
 
 export default {
