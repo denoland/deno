@@ -30,6 +30,7 @@ use deno_runtime::deno_tls::RootCertStoreProvider;
 use deno_runtime::deno_web::BlobStore;
 use deno_runtime::fmt_errors::format_js_error;
 use deno_runtime::inspector_server::InspectorServer;
+use deno_runtime::ops::otel::OtelConfig;
 use deno_runtime::ops::process::NpmProcessStateProviderRc;
 use deno_runtime::ops::worker_host::CreateWebWorkerCb;
 use deno_runtime::web_worker::WebWorker;
@@ -142,6 +143,7 @@ struct SharedWorkerState {
   storage_key_resolver: StorageKeyResolver,
   options: CliMainWorkerOptions,
   subcommand: DenoSubcommand,
+  otel_config: Option<OtelConfig>, // `None` means OpenTelemetry is disabled.
 }
 
 impl SharedWorkerState {
@@ -405,6 +407,7 @@ impl CliMainWorkerFactory {
     storage_key_resolver: StorageKeyResolver,
     subcommand: DenoSubcommand,
     options: CliMainWorkerOptions,
+    otel_config: Option<OtelConfig>,
   ) -> Self {
     Self {
       shared: Arc::new(SharedWorkerState {
@@ -427,6 +430,7 @@ impl CliMainWorkerFactory {
         storage_key_resolver,
         options,
         subcommand,
+        otel_config,
       }),
     }
   }
@@ -576,6 +580,7 @@ impl CliMainWorkerFactory {
         mode,
         serve_port: shared.options.serve_port,
         serve_host: shared.options.serve_host.clone(),
+        otel_config: shared.otel_config.clone(),
       },
       extensions: custom_extensions,
       startup_snapshot: crate::js::deno_isolate_init(),
@@ -775,6 +780,7 @@ fn create_web_worker_callback(
         mode: WorkerExecutionMode::Worker,
         serve_port: shared.options.serve_port,
         serve_host: shared.options.serve_host.clone(),
+        otel_config: shared.otel_config.clone(),
       },
       extensions: vec![],
       startup_snapshot: crate::js::deno_isolate_init(),

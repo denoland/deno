@@ -27,6 +27,7 @@ use deno_npm::npm_rc::ResolvedNpmRc;
 use deno_npm::resolution::ValidSerializedNpmResolutionSnapshot;
 use deno_npm::NpmSystemInfo;
 use deno_path_util::normalize_path;
+use deno_runtime::ops::otel::OtelConfig;
 use deno_semver::npm::NpmPackageReqReference;
 use import_map::resolve_import_map_value_from_specifier;
 
@@ -1124,6 +1125,25 @@ impl CliOptions {
   pub fn serve_host(&self) -> Option<String> {
     if let DenoSubcommand::Serve(flags) = self.sub_command() {
       Some(flags.host.clone())
+    } else {
+      None
+    }
+  }
+
+  pub fn otel_config(&self) -> Option<OtelConfig> {
+    if self
+      .flags
+      .unstable_config
+      .features
+      .contains(&String::from("otel"))
+    {
+      Some(OtelConfig {
+        default_service_name: Cow::Borrowed("deno"),
+        default_service_version: Cow::Borrowed(
+          crate::version::DENO_VERSION_INFO.deno,
+        ),
+        ..Default::default()
+      })
     } else {
       None
     }

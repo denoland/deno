@@ -114,8 +114,13 @@ log.workspace = true
 netif = "0.1.6"
 notify.workspace = true
 once_cell.workspace = true
+opentelemetry.workspace = true
+opentelemetry-otlp.workspace = true
+opentelemetry-semantic-conventions.workspace = true
+opentelemetry_sdk.workspace = true
 percent-encoding.workspace = true
 regex.workspace = true
+reqwest.workspace = true
 rustyline = { workspace = true, features = ["custom-bindings"] }
 same-file = "1.0.6"
 serde.workspace = true
