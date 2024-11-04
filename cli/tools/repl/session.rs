@@ -25,6 +25,7 @@ use deno_ast::swc::visit::noop_visit_type;
 use deno_ast::swc::visit::Visit;
 use deno_ast::swc::visit::VisitWith;
 use deno_ast::ImportsNotUsedAsValues;
+use deno_ast::ModuleKind;
 use deno_ast::ModuleSpecifier;
 use deno_ast::ParseDiagnosticsError;
 use deno_ast::ParsedSource;
@@ -641,6 +642,10 @@ impl ReplSession {
           jsx_fragment_factory: self.jsx.frag_factory.clone(),
           jsx_import_source: self.jsx.import_source.clone(),
           var_decl_imports: true,
+          verbatim_module_syntax: false,
+        },
+        &deno_ast::TranspileModuleOptions {
+          module_kind: Some(ModuleKind::Esm),
         },
         &deno_ast::EmitOptions {
           source_map: deno_ast::SourceMapOption::None,
@@ -651,7 +656,6 @@ impl ReplSession {
         },
       )?
       .into_source()
-      .into_string()?
       .text;
 
     let value = self

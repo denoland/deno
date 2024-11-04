@@ -1048,8 +1048,6 @@ mod node {
       WorkerThreadsFilenameError::UrlToPathString => "Error",
       WorkerThreadsFilenameError::UrlToPath => "Error",
       WorkerThreadsFilenameError::FileNotFound(_) => "Error",
-      WorkerThreadsFilenameError::NeitherEsmNorCjs => "Error",
-      WorkerThreadsFilenameError::UrlToNodeResolution(_) => "Error",
       WorkerThreadsFilenameError::Fs(e) => super::get_fs_error(e),
     }
   }
@@ -1058,11 +1056,13 @@ mod node {
     match error {
       RequireError::UrlParse(e) => get_url_parse_error_class(e),
       RequireError::Permission(e) => get_error_class_name(e).unwrap_or("Error"),
-      RequireError::PackageExportsResolve(_) => "Error",
-      RequireError::PackageJsonLoad(_) => "Error",
-      RequireError::ClosestPkgJson(_) => "Error",
-      RequireError::FilePathConversion(_) => "Error",
-      RequireError::PackageImportsResolve(_) => "Error",
+      RequireError::PackageExportsResolve(_)
+      | RequireError::PackageJsonLoad(_)
+      | RequireError::ClosestPkgJson(_)
+      | RequireError::FilePathConversion(_)
+      | RequireError::UrlConversion(_)
+      | RequireError::ReadModule(_)
+      | RequireError::PackageImportsResolve(_) => "Error",
       RequireError::Fs(e) | RequireError::UnableToGetCwd(e) => {
         super::get_fs_error(e)
       }
@@ -1086,6 +1086,7 @@ mod node {
       },
       OsError::Permission(e) => get_error_class_name(e).unwrap_or("Error"),
       OsError::FailedToGetCpuInfo => "TypeError",
+      OsError::FailedToGetUserInfo(e) => get_io_error_class(e),
     }
   }
 

@@ -6,6 +6,38 @@ https://github.com/denoland/deno/releases
 We also have one-line install commands at:
 https://github.com/denoland/deno_install
 
+### 2.0.4 / 2024.10.29
+
+- Revert "fix(ext/node): fix dns.lookup result ordering (#26264)" (#26621)
+- Revert "fix(ext/node): use primordials in `ext/node/polyfills/https.ts`
+  (#26323)" (#26613)
+- feat(lsp): "typescript.preferences.preferTypeOnlyAutoImports" setting (#26546)
+- fix(check): expose more globals from @types/node (#26603)
+- fix(check): ignore resolving `jsxImportSource` when jsx is not used in graph
+  (#26548)
+- fix(cli): Make --watcher CLEAR_SCREEN clear scrollback buffer as well as
+  visible screen (#25997)
+- fix(compile): regression handling redirects (#26586)
+- fix(ext/napi): export dynamic symbols list for {Free,Open}BSD (#26605)
+- fix(ext/node): add path to `fs.stat` and `fs.statSync` error (#26037)
+- fix(ext/node): compatibility with {Free,Open}BSD (#26604)
+- fix(ext/node): use primordials in
+  ext\node\polyfills\internal\crypto\_randomInt.ts (#26534)
+- fix(install): cache json exports of JSR packages (#26552)
+- fix(install): regression - do not panic when config file contains \r\n
+  newlines (#26547)
+- fix(lsp): make missing import action fix infallible (#26539)
+- fix(npm): match npm bearer token generation (#26544)
+- fix(upgrade): stop running `deno lsp` processes on windows before attempting
+  to replace executable (#26542)
+- fix(watch): don't panic on invalid file specifiers (#26577)
+- fix: do not panic when failing to write to http cache (#26591)
+- fix: provide hints in terminal errors for Node.js globals (#26610)
+- fix: report exceptions from nextTick (#26579)
+- fix: support watch flag to enable watching other files than the main module on
+  serve subcommand (#26622)
+- perf: pass transpiled module to deno_core as known string (#26555)
+
 ### 2.0.3 / 2024.10.25
 
 - feat(lsp): interactive inlay hints (#26382)

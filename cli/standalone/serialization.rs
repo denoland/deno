@@ -173,6 +173,7 @@ pub struct RemoteModulesStoreBuilder {
 
 impl RemoteModulesStoreBuilder {
   pub fn add(&mut self, specifier: &Url, media_type: MediaType, data: Vec<u8>) {
+    log::debug!("Adding '{}' ({})", specifier, media_type);
     let specifier = specifier.to_string();
     self.specifiers.push((specifier, self.data_byte_len));
     self.data_byte_len += 1 + 8 + data.len() as u64; // media type (1 byte), data length (8 bytes), data
@@ -182,6 +183,7 @@ impl RemoteModulesStoreBuilder {
   pub fn add_redirects(&mut self, redirects: &BTreeMap<Url, Url>) {
     self.redirects.reserve(redirects.len());
     for (from, to) in redirects {
+      log::debug!("Adding redirect '{}' -> '{}'", from, to);
       let from = from.to_string();
       let to = to.to_string();
       self.redirects_len += (4 + from.len() + 4 + to.len()) as u64;
@@ -212,14 +214,13 @@ impl RemoteModulesStoreBuilder {
   }
 }
 
-pub struct DenoCompileModuleData<'a> {
-  pub specifier: &'a Url,
-  pub media_type: MediaType,
-  pub data: Cow<'static, [u8]>,
+pub enum DenoCompileModuleSource {
+  String(&'static str),
+  Bytes(Cow<'static, [u8]>),
 }
 
-impl<'a> DenoCompileModuleData<'a> {
-  pub fn into_for_v8(self) -> (&'a Url, ModuleType, ModuleSourceCode) {
+impl DenoCompileModuleSource {
+  pub fn into_for_v8(self) -> ModuleSourceCode {
     fn into_bytes(data: Cow<'static, [u8]>) -> ModuleSourceCode {
       ModuleSourceCode::Bytes(match data {
         Cow::Borrowed(d) => d.into(),
@@ -227,16 +228,31 @@ impl<'a> DenoCompileModuleData<'a> {
       })
     }
 
-    fn into_string_unsafe(data: Cow<'static, [u8]>) -> ModuleSourceCode {
+    match self {
       // todo(https://github.com/denoland/deno_core/pull/943): store whether
       // the string is ascii or not ahead of time so we can avoid the is_ascii()
       // check in FastString::from_static
+      Self::String(s) => ModuleSourceCode::String(FastString::from_static(s)),
+      Self::Bytes(b) => into_bytes(b),
+    }
+  }
+}
+
+pub struct DenoCompileModuleData<'a> {
+  pub specifier: &'a Url,
+  pub media_type: MediaType,
+  pub data: Cow<'static, [u8]>,
+}
+
+impl<'a> DenoCompileModuleData<'a> {
+  pub fn into_parts(self) -> (&'a Url, ModuleType, DenoCompileModuleSource) {
+    fn into_string_unsafe(data: Cow<'static, [u8]>) -> DenoCompileModuleSource {
       match data {
-        Cow::Borrowed(d) => ModuleSourceCode::String(
+        Cow::Borrowed(d) => DenoCompileModuleSource::String(
           // SAFETY: we know this is a valid utf8 string
-          unsafe { FastString::from_static(std::str::from_utf8_unchecked(d)) },
+          unsafe { std::str::from_utf8_unchecked(d) },
         ),
-        Cow::Owned(d) => ModuleSourceCode::Bytes(d.into_boxed_slice().into()),
+        Cow::Owned(d) => DenoCompileModuleSource::Bytes(Cow::Owned(d)),
       }
     }
 
@@ -255,11 +271,14 @@ impl<'a> DenoCompileModuleData<'a> {
         (ModuleType::JavaScript, into_string_unsafe(self.data))
       }
       MediaType::Json => (ModuleType::Json, into_string_unsafe(self.data)),
-      MediaType::Wasm => (ModuleType::Wasm, into_bytes(self.data)),
-      // just assume javascript if we made it here
-      MediaType::TsBuildInfo | MediaType::SourceMap | MediaType::Unknown => {
-        (ModuleType::JavaScript, into_bytes(self.data))
+      MediaType::Wasm => {
+        (ModuleType::Wasm, DenoCompileModuleSource::Bytes(self.data))
       }
+      // just assume javascript if we made it here
+      MediaType::Css | MediaType::SourceMap | MediaType::Unknown => (
+        ModuleType::JavaScript,
+        DenoCompileModuleSource::Bytes(self.data),
+      ),
     };
     (self.specifier, media_type, source)
   }
@@ -354,17 +373,17 @@ impl RemoteModulesStore {
 
   pub fn read<'a>(
     &'a self,
-    specifier: &'a Url,
+    original_specifier: &'a Url,
   ) -> Result<Option<DenoCompileModuleData<'a>>, AnyError> {
     let mut count = 0;
-    let mut current = specifier;
+    let mut specifier = original_specifier;
     loop {
       if count > 10 {
-        bail!("Too many redirects resolving '{}'", specifier);
+        bail!("Too many redirects resolving '{}'", original_specifier);
       }
-      match self.specifiers.get(current) {
+      match self.specifiers.get(specifier) {
         Some(RemoteModulesStoreSpecifierValue::Redirect(to)) => {
-          current = to;
+          specifier = to;
           count += 1;
         }
         Some(RemoteModulesStoreSpecifierValue::Data(offset)) => {
@@ -549,7 +568,7 @@ fn serialize_media_type(media_type: MediaType) -> u8 {
     MediaType::Tsx => 10,
     MediaType::Json => 11,
     MediaType::Wasm => 12,
-    MediaType::TsBuildInfo => 13,
+    MediaType::Css => 13,
     MediaType::SourceMap => 14,
     MediaType::Unknown => 15,
   }
@@ -570,7 +589,7 @@ fn deserialize_media_type(value: u8) -> Result<MediaType, AnyError> {
     10 => Ok(MediaType::Tsx),
     11 => Ok(MediaType::Json),
     12 => Ok(MediaType::Wasm),
-    13 => Ok(MediaType::TsBuildInfo),
+    13 => Ok(MediaType::Css),
     14 => Ok(MediaType::SourceMap),
     15 => Ok(MediaType::Unknown),
     _ => bail!("Unknown media type value: {}", value),
