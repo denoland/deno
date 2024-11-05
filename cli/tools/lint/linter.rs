@@ -269,7 +269,10 @@ fn apply_lint_fixes(
 
 pub fn is_minified_file(code: &str) -> bool {
   const LONG_LINE_THRESHOLD: usize = 250;
-  const WHITESPACE_THRESHOLD: f64 = 0.2;
+  const WHITESPACE_THRESHOLD: f64 = 0.01;
+
+  let mut whitespace_count = 0;
+  let mut total_len = 0;
 
   let is_possibly_minified = code.lines().any(|line| {
     // Line length over the threshold suggests a minified file.
@@ -284,18 +287,23 @@ pub fn is_minified_file(code: &str) -> bool {
       return true;
     }
 
-    // Last ditch effort, if there's few whitespaces it's probably minified.
+    // Last ditch effort, keep track of whitespace count.
     if line_len > 0 {
-      let whitespace_count =
+      whitespace_count +=
         line.chars().filter(|c| c.is_ascii_whitespace()).count();
-      return (whitespace_count as f64 / line_len as f64)
-        < WHITESPACE_THRESHOLD;
+      total_len += line.len();
     }
 
     false
   });
 
-  is_possibly_minified
+  let whitespace_ratio = whitespace_count as f64 / total_len as f64;
+  eprintln!("whitespace_ration {}", whitespace_ratio);
+  if whitespace_ratio < WHITESPACE_THRESHOLD {
+    true
+  } else {
+    is_possibly_minified
+  }
 }
 
 // Example test module
