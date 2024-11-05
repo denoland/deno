@@ -62,7 +62,7 @@ impl<'a> LifecycleScripts<'a> {
   }
 }
 
-fn has_lifecycle_scripts(
+pub fn has_lifecycle_scripts(
   package: &NpmResolutionPackage,
   package_path: &Path,
 ) -> bool {
@@ -277,6 +277,10 @@ impl<'a> LifecycleScripts<'a> {
         self.strategy.did_run_scripts(package)?;
       }
 
+      // re-set up bin entries for the packages which we've run scripts for.
+      // lifecycle scripts can create files that are linked to by bin entries,
+      // and the only reliable way to handle this is to re-link bin entries
+      // (this is what PNPM does as well)
       bin_entries.finish_only(
         snapshot,
         &root_node_modules_dir_path.join(".bin"),

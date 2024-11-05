@@ -664,8 +664,13 @@ async fn sync_resolution_with_fs(
       |setup_outcome| {
         match setup_outcome {
           bin_entries::EntrySetupOutcome::MissingEntrypoint {
-            package, ..
-          } if lifecycle_scripts.can_run_scripts(&package.id.nv)
+            package,
+            package_path,
+            ..
+          } if super::common::lifecycle_scripts::has_lifecycle_scripts(
+            package,
+            package_path,
+          ) && lifecycle_scripts.can_run_scripts(&package.id.nv)
             && !lifecycle_scripts.has_run_scripts(package) =>
           {
             // ignore, it might get fixed when the lifecycle scripts run.
