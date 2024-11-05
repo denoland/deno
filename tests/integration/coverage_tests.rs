@@ -134,6 +134,7 @@ fn run_coverage_text(test_name: &str, extension: &str) {
     .args_vec(vec![
       "coverage".to_string(),
       "--detailed".to_string(),
+      "--quiet".to_string(),
       format!("{}/", tempdir),
     ])
     .split_output()

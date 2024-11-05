@@ -8,6 +8,7 @@ use deno_ast::SourceRange;
 use deno_ast::SourceRanged;
 use deno_ast::SourceRangedForSpanned as _;
 use deno_ast::SourceTextInfoProvider as _;
+use deno_core::url::Url;
 use std::collections::HashMap;
 
 static COVERAGE_IGNORE_START_DIRECTIVE: &str = "deno-coverage-ignore-start";
@@ -40,13 +41,21 @@ impl<T: DirectiveKind> IgnoreDirective<T> {
 }
 
 pub fn parse_range_ignore_directives(
+  is_quiet: bool,
+  script_module_specifier: &Url,
   program: &ast_view::Program,
 ) -> Vec<RangeIgnoreDirective> {
   let mut depth: usize = 0;
   let mut directives = Vec::<RangeIgnoreDirective>::new();
   let mut current_range: Option<SourceRange> = None;
 
-  for comment in program.comment_container().all_comments() {
+  let mut comments_sorted = program
+    .comment_container()
+    .all_comments()
+    .collect::<Vec<_>>();
+  comments_sorted.sort_by(|a, b| a.range().start.cmp(&b.range().start));
+
+  for comment in comments_sorted.iter() {
     if comment.kind != CommentKind::Line {
       continue;
     }
@@ -77,6 +86,17 @@ pub fn parse_range_ignore_directives(
   // If the coverage ignore start directive has no corresponding close directive
   // then close it at the end of the program.
   if let Some(mut range) = current_range.take() {
+    if !is_quiet {
+      let text_info = program.text_info();
+      let loc = text_info.line_and_column_display(range.start);
+      log::warn!(
+        "WARNING: Unterminated {} comment at {}:{}:{}",
+        COVERAGE_IGNORE_START_DIRECTIVE,
+        script_module_specifier,
+        loc.line_number,
+        loc.column_number,
+      );
+    }
     range.end = program.range().end;
     directives.push(IgnoreDirective {
       range,
@@ -164,6 +184,8 @@ fn parse_ignore_comment<T: DirectiveKind>(
 
 #[cfg(test)]
 mod tests {
+  use std::str::FromStr;
+
   use deno_ast::MediaType;
   use deno_ast::ModuleSpecifier;
   use deno_ast::ParsedSource;
@@ -205,7 +227,11 @@ mod tests {
     "#;
 
     parse_and_then(source_code, |program| {
-      let line_directives = parse_range_ignore_directives(&program);
+      let line_directives = parse_range_ignore_directives(
+        true,
+        &Url::from_str("test.ts").unwrap(),
+        &program,
+      );
 
       assert_eq!(line_directives.len(), 2);
     });
@@ -223,7 +249,11 @@ mod tests {
     "#;
 
     parse_and_then(source_code, |program| {
-      let line_directives = parse_range_ignore_directives(&program);
+      let line_directives = parse_range_ignore_directives(
+        true,
+        &Url::from_str("test.ts").unwrap(),
+        &program,
+      );
 
       assert_eq!(line_directives.len(), 1);
     });
@@ -244,7 +274,11 @@ mod tests {
     "#;
 
     parse_and_then(source_code, |program| {
-      let line_directives = parse_range_ignore_directives(&program);
+      let line_directives = parse_range_ignore_directives(
+        true,
+        &Url::from_str("test.ts").unwrap(),
+        &program,
+      );
 
       assert_eq!(line_directives.len(), 1);
     });
