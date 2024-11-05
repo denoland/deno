@@ -56,12 +56,13 @@ async function dlint() {
     ":!:cli/tsc/compiler.d.ts",
     ":!:runtime/examples/",
     ":!:target/",
+    ":!:tests/ffi/tests/test.js",
     ":!:tests/registry/**",
     ":!:tests/specs/**",
     ":!:tests/testdata/**",
     ":!:tests/unit_node/testdata/**",
-    ":!:tests/wpt/suite/**",
     ":!:tests/wpt/runner/**",
+    ":!:tests/wpt/suite/**",
   ]);
 
   if (!sourceFiles.length) {
