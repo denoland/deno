@@ -32,7 +32,12 @@ Deno.test(
       tempInfo.birthtime === null || now - tempInfo.birthtime.valueOf() < 1000,
     );
     assert(tempInfo.ctime !== null && now - tempInfo.ctime.valueOf() < 1000);
-    assertEquals(tempInfo.mode! & 0o777, 0o600);
+    const mode = tempInfo.mode! & 0o777;
+    if (Deno.build.os === "windows") {
+      assertEquals(mode, 0o666);
+    } else {
+      assertEquals(mode, 0o600);
+    }
 
     const readmeInfoByUrl = Deno.statSync(pathToAbsoluteFileUrl("README.md"));
     assert(readmeInfoByUrl.isFile);
