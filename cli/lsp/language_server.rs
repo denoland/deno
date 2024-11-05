@@ -1392,6 +1392,9 @@ impl Inner {
         component: config_data
           .map(|d| d.unstable.contains("fmt-component"))
           .unwrap_or(false),
+        sql: config_data
+          .map(|d| d.unstable.contains("fmt-sql"))
+          .unwrap_or(false),
       };
       let document = document.clone();
       move || {
