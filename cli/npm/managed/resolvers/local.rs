@@ -1039,7 +1039,7 @@ fn junction_or_symlink_dir(
         .context("Failed creating junction in node_modules folder")
     }
     Err(symlink_err) => {
-      eprintln!(
+      log::warn!(
         "{} Unexpected error symlinking node_modules: {symlink_err}",
         colors::yellow("Warning")
       );
