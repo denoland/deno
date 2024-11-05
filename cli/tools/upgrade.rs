@@ -6,7 +6,9 @@ use crate::args::Flags;
 use crate::args::UpgradeFlags;
 use crate::args::UPGRADE_USAGE;
 use crate::colors;
+use crate::download_deno_binary::archive_name;
 use crate::download_deno_binary::download_deno_binary;
+use crate::download_deno_binary::BinaryKind;
 use crate::factory::CliFactory;
 use crate::http_util::HttpClient;
 use crate::http_util::HttpClientProvider;
@@ -34,7 +36,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 static ARCHIVE_NAME: Lazy<String> =
-  Lazy::new(|| format!("deno-{}.zip", env!("TARGET")));
+  Lazy::new(|| archive_name(BinaryKind::Deno, env!("TARGET")));
 
 // How often query server for new version. In hours.
 const UPGRADE_CHECK_INTERVAL: i64 = 24;
@@ -530,7 +532,7 @@ pub async fn upgrade(
   let binary_path = download_deno_binary(
     http_client_provider,
     factory.deno_dir()?,
-    "deno",
+    BinaryKind::Deno,
     env!("TARGET"),
     &selected_version_to_upgrade.version_or_hash,
     requested_version.release_channel(),

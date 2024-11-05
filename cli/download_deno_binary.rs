@@ -13,15 +13,30 @@ use deno_core::error::AnyError;
 use crate::cache::DenoDir;
 use crate::shared::ReleaseChannel;
 
+#[derive(Clone, Copy, Debug)]
+pub enum BinaryKind {
+  Deno,
+  Denort,
+}
+
+impl BinaryKind {
+  pub fn name(&self) -> &str {
+    match self {
+      BinaryKind::Deno => "deno",
+      BinaryKind::Denort => "denort",
+    }
+  }
+}
+
 pub async fn download_deno_binary(
   http_client_provider: &HttpClientProvider,
   deno_dir: &DenoDir,
-  binary_kind: &str,
+  binary_kind: BinaryKind,
   target: &str,
   version_or_git_hash: &str,
   release_channel: ReleaseChannel,
 ) -> Result<PathBuf, AnyError> {
-  let binary_name = format!("{}-{}.zip", binary_kind, target);
+  let binary_name = archive_name(binary_kind, target);
   let binary_path_suffix = match release_channel {
     ReleaseChannel::Canary => {
       format!("canary/{}/{}", version_or_git_hash, binary_name,)
@@ -45,6 +60,10 @@ pub async fn download_deno_binary(
   }
 
   Ok(binary_path)
+}
+
+pub fn archive_name(binary_kind: BinaryKind, target: &str) -> String {
+  format!("{}-{}.zip", binary_kind.name(), target)
 }
 
 async fn download_base_binary(
