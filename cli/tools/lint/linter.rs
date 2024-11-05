@@ -267,77 +267,35 @@ fn apply_lint_fixes(
   Some(new_text)
 }
 
-#[derive(Debug, Default)]
-pub struct FileMetrics {
-  avg_line_length: f64,
-  long_line_percentage: f64,
-  whitespace_ratio: f64,
-  has_source_map: bool,
-  short_var_name_ratio: f64,
-}
-
 pub fn is_minified_file(code: &str) -> bool {
-  let mut metrics = FileMetrics::default();
+  const LONG_LINE_THRESHOLD: usize = 250;
+  const WHITESPACE_THRESHOLD: f64 = 0.2;
 
-  // Split into non-empty lines
-  let lines: Vec<&str> = code
-    .lines()
-    .map(str::trim)
-    .filter(|line| !line.is_empty())
-    .collect();
+  let is_possibly_minified = code.lines().any(|line| {
+    // Line length over the threshold suggests a minified file.
+    let line_len = line.len();
+    if line_len > LONG_LINE_THRESHOLD {
+      return true;
+    }
 
-  if lines.is_empty() {
-    return false;
-  }
+    let line = line.trim();
+    // So does a source map url.
+    if line.starts_with("//# sourceMappingURL=") {
+      return true;
+    }
 
-  // Calculate average line length
-  let total_length: usize = lines.iter().map(|line| line.len()).sum();
-  metrics.avg_line_length = total_length as f64 / lines.len() as f64;
+    // Last ditch effort, if there's few whitespaces it's probably minified.
+    if line_len > 0 {
+      let whitespace_count =
+        line.chars().filter(|c| c.is_ascii_whitespace()).count();
+      return (whitespace_count as f64 / line_len as f64)
+        < WHITESPACE_THRESHOLD;
+    }
 
-  // Calculate percentage of long lines (>500 chars)
-  let long_lines = lines.iter().filter(|line| line.len() > 500).count();
-  metrics.long_line_percentage =
-    (long_lines as f64 / lines.len() as f64) * 100.0;
+    false
+  });
 
-  // Calculate whitespace ratio
-  let whitespace_count = code.chars().filter(|c| c.is_whitespace()).count();
-  metrics.whitespace_ratio = whitespace_count as f64 / code.len() as f64;
-
-  // Check for source map references
-  metrics.has_source_map = code.contains("//# sourceMappingURL=");
-
-  // Calculate score
-  let mut score = 0.0;
-
-  // Very long average line length is a strong indicator
-  if metrics.avg_line_length > 200.0 {
-    score += 3.0;
-  }
-  if metrics.avg_line_length > 500.0 {
-    score += 2.0;
-  }
-
-  // High percentage of long lines
-  if metrics.long_line_percentage > 10.0 {
-    score += 2.0;
-  }
-
-  // Low whitespace ratio is typical in minified files
-  if metrics.whitespace_ratio < 0.1 {
-    score += 2.0;
-  }
-
-  // Presence of source maps is a good indicator
-  if metrics.has_source_map {
-    score += 1.0;
-  }
-
-  // High ratio of short variable names
-  if metrics.short_var_name_ratio > 0.3 {
-    score += 2.0;
-  }
-
-  score >= 5.0
+  is_possibly_minified
 }
 
 // Example test module
@@ -346,25 +304,43 @@ mod tests {
   use super::*;
 
   #[test]
-  fn test_minified_file() {
+  fn test_minified_file_col_length() {
+    let minified =
+      "const LOREM_IPSUM = `Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat. Duis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla pariatur.`";
+    assert!(is_minified_file(minified));
+  }
+
+  #[test]
+  fn test_minified_file_whitespace() {
     let minified =
       "function f(a,b){return a.concat(b)}var x=function(n){return n+1};";
-    let result = is_minified_file(minified);
-    assert!(result.is_minified);
+    assert!(is_minified_file(minified));
   }
 
   #[test]
   fn test_normal_file() {
     let normal = r#"
-       function concatenateArrays(array1, array2) {
-           return array1.concat(array2);
-       }
+function concatenateArrays(array1, array2) {
+    return array1.concat(array2);
+}
 
-       const incrementNumber = function(number) {
-           return number + 1;
-       };
-        "#;
-    let result = is_minified_file(normal);
-    assert!(!result.is_minified);
+const incrementNumber = function(number) {
+    return number + 1;
+};"#;
+    assert!(!is_minified_file(normal));
+  }
+
+  #[test]
+  fn test_minified_file_source_map() {
+    let normal = r#"
+function concatenateArrays(array1, array2) {
+    return array1.concat(array2);
+}
+
+const incrementNumber = function(number) {
+    return number + 1;
+};
+//# sourceMappingURL=sourcefile.map.js"#;
+    assert!(is_minified_file(normal));
   }
 }
