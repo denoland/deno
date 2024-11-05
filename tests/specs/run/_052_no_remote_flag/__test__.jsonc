@@ -1,0 +1,5 @@
+{
+  "args": "run --reload --check --allow-import --no-remote http://127.0.0.1:4545/019_media_types.ts",
+  "output": "052_no_remote_flag.out",
+  "exitCode": 1
+}

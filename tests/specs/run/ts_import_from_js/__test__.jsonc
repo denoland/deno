@@ -1,0 +1,4 @@
+{
+  "args": "run --allow-import --quiet --reload ts_import_from_js/main.js",
+  "output": "ts_import_from_js/main.out"
+}
