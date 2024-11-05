@@ -68,12 +68,8 @@ pub async fn op_node_check_prime_async(
   #[number] checks: usize,
 ) -> Result<bool, tokio::task::JoinError> {
   // TODO(@littledivy): use rayon for CPU-bound tasks
-  Ok(
-    spawn_blocking(move || {
-      primes::is_probably_prime(&BigInt::from(num), checks)
-    })
-    .await?,
-  )
+  spawn_blocking(move || primes::is_probably_prime(&BigInt::from(num), checks))
+    .await
 }
 
 #[op2(async)]
@@ -84,10 +80,7 @@ pub fn op_node_check_prime_bytes_async(
   let candidate = BigInt::from_bytes_be(num_bigint::Sign::Plus, bytes);
   // TODO(@littledivy): use rayon for CPU-bound tasks
   async move {
-    Ok(
-      spawn_blocking(move || primes::is_probably_prime(&candidate, checks))
-        .await?,
-    )
+    spawn_blocking(move || primes::is_probably_prime(&candidate, checks)).await
   }
 }
 
@@ -276,7 +269,10 @@ pub fn op_node_cipheriv_final(
   #[buffer] input: &[u8],
   #[anybuffer] output: &mut [u8],
 ) -> Result<Option<Vec<u8>>, cipher::CipherContextError> {
-  let context = state.resource_table.take::<cipher::CipherContext>(rid).map_err(cipher::CipherContextError::Resource)?;
+  let context = state
+    .resource_table
+    .take::<cipher::CipherContext>(rid)
+    .map_err(cipher::CipherContextError::Resource)?;
   let context = Rc::try_unwrap(context)
     .map_err(|_| cipher::CipherContextError::ContextInUse)?;
   context.r#final(auto_pad, input, output).map_err(Into::into)
@@ -288,7 +284,10 @@ pub fn op_node_cipheriv_take(
   state: &mut OpState,
   #[smi] rid: u32,
 ) -> Result<Option<Vec<u8>>, cipher::CipherContextError> {
-  let context = state.resource_table.take::<cipher::CipherContext>(rid).map_err(cipher::CipherContextError::Resource)?;
+  let context = state
+    .resource_table
+    .take::<cipher::CipherContext>(rid)
+    .map_err(cipher::CipherContextError::Resource)?;
   let context = Rc::try_unwrap(context)
     .map_err(|_| cipher::CipherContextError::ContextInUse)?;
   Ok(context.take_tag())
@@ -340,7 +339,10 @@ pub fn op_node_decipheriv_take(
   state: &mut OpState,
   #[smi] rid: u32,
 ) -> Result<(), cipher::DecipherContextError> {
-  let context = state.resource_table.take::<cipher::DecipherContext>(rid).map_err(cipher::DecipherContextError::Resource)?;
+  let context = state
+    .resource_table
+    .take::<cipher::DecipherContext>(rid)
+    .map_err(cipher::DecipherContextError::Resource)?;
   Rc::try_unwrap(context)
     .map_err(|_| cipher::DecipherContextError::ContextInUse)?;
   Ok(())
@@ -355,7 +357,10 @@ pub fn op_node_decipheriv_final(
   #[anybuffer] output: &mut [u8],
   #[buffer] auth_tag: &[u8],
 ) -> Result<(), cipher::DecipherContextError> {
-  let context = state.resource_table.take::<cipher::DecipherContext>(rid).map_err(cipher::DecipherContextError::Resource)?;
+  let context = state
+    .resource_table
+    .take::<cipher::DecipherContext>(rid)
+    .map_err(cipher::DecipherContextError::Resource)?;
   let context = Rc::try_unwrap(context)
     .map_err(|_| cipher::DecipherContextError::ContextInUse)?;
   context
@@ -905,7 +910,7 @@ pub fn op_node_gen_prime(#[number] size: usize) -> ToJsBuffer {
 pub async fn op_node_gen_prime_async(
   #[number] size: usize,
 ) -> Result<ToJsBuffer, tokio::task::JoinError> {
-  Ok(spawn_blocking(move || gen_prime(size)).await?)
+  spawn_blocking(move || gen_prime(size)).await
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -928,10 +933,10 @@ pub fn op_node_diffie_hellman(
 ) -> Result<Box<[u8]>, DiffieHellmanError> {
   let private = private
     .as_private_key()
-    .ok_or_else(|| DiffieHellmanError::ExpectedPrivateKey)?;
+    .ok_or(DiffieHellmanError::ExpectedPrivateKey)?;
   let public = public
     .as_public_key()
-    .ok_or_else(|| DiffieHellmanError::ExpectedPublicKey)?;
+    .ok_or(DiffieHellmanError::ExpectedPublicKey)?;
 
   let res =
     match (private, &*public) {

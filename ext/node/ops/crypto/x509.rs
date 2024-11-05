@@ -5,10 +5,10 @@ use deno_core::op2;
 use x509_parser::der_parser::asn1_rs::Any;
 use x509_parser::der_parser::asn1_rs::Tag;
 use x509_parser::der_parser::oid::Oid;
+pub use x509_parser::error::X509Error;
 use x509_parser::extensions;
 use x509_parser::pem;
 use x509_parser::prelude::*;
-pub use x509_parser::error::X509Error;
 
 use super::KeyObjectHandle;
 

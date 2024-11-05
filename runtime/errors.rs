@@ -1224,7 +1224,9 @@ mod node {
     match e {
       CipherContextError::ContextInUse => "TypeError",
       CipherContextError::Cipher(e) => get_crypto_cipher_error(e),
-      CipherContextError::Resource(e) => get_error_class_name(e).unwrap_or("Error"),
+      CipherContextError::Resource(e) => {
+        get_error_class_name(e).unwrap_or("Error")
+      }
     }
   }
 
@@ -1244,7 +1246,9 @@ mod node {
     match e {
       DecipherContextError::ContextInUse => "TypeError",
       DecipherContextError::Decipher(e) => get_crypto_decipher_error(e),
-      DecipherContextError::Resource(e) => get_error_class_name(e).unwrap_or("Error"),
+      DecipherContextError::Resource(e) => {
+        get_error_class_name(e).unwrap_or("Error")
+      }
     }
   }
 

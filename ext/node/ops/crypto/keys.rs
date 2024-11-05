@@ -971,9 +971,9 @@ impl KeyObjectHandle {
         let named_curve = spki.algorithm.parameters_oid().map_err(|_| {
           AsymmetricPublicKeyError::MalformedOrMissingNamedCurveInEcParameters
         })?;
-        let data = spki.subject_public_key.as_bytes().ok_or_else(|| {
-          AsymmetricPublicKeyError::MalformedOrMissingPublicKeyInEcSpki
-        })?;
+        let data = spki.subject_public_key.as_bytes().ok_or(
+          AsymmetricPublicKeyError::MalformedOrMissingPublicKeyInEcSpki,
+        )?;
 
         match named_curve {
           ID_SECP224R1_OID => {
@@ -993,9 +993,9 @@ impl KeyObjectHandle {
       }
       X25519_OID => {
         let mut bytes = [0; 32];
-        let data = spki.subject_public_key.as_bytes().ok_or_else(|| {
-          AsymmetricPublicKeyError::MalformedOrMissingPublicKeyInX25519Spki
-        })?;
+        let data = spki.subject_public_key.as_bytes().ok_or(
+          AsymmetricPublicKeyError::MalformedOrMissingPublicKeyInX25519Spki,
+        )?;
         if data.len() < 32 {
           return Err(AsymmetricPublicKeyError::X25519PublicKeyIsTooShort);
         }
@@ -1854,7 +1854,7 @@ fn generate_rsa_pss(
     let hash_algorithm = match_fixed_digest_with_oid!(
       hash_algorithm,
       fn (algorithm: Option<RsaPssHashAlgorithm>) {
-        algorithm.ok_or_else(|| GenerateRsaPssError(None))?
+        algorithm.ok_or(GenerateRsaPssError(None))?
       },
       _ => {
         return Err(GenerateRsaPssError(Some(hash_algorithm.to_string())))
@@ -1863,7 +1863,7 @@ fn generate_rsa_pss(
     let mf1_hash_algorithm = match_fixed_digest_with_oid!(
       mf1_hash_algorithm,
       fn (algorithm: Option<RsaPssHashAlgorithm>) {
-        algorithm.ok_or_else(|| GenerateRsaPssError(None))?
+        algorithm.ok_or(GenerateRsaPssError(None))?
       },
       _ => {
         return Err(GenerateRsaPssError(Some(mf1_hash_algorithm.to_string())))
@@ -2258,7 +2258,7 @@ pub fn op_node_export_public_key_pem(
 ) -> Result<String, ExportPublicKeyPemError> {
   let public_key = handle
     .as_public_key()
-    .ok_or_else(|| AsymmetricPublicKeyDerError::KeyIsNotAsymmetricPublicKey)?;
+    .ok_or(AsymmetricPublicKeyDerError::KeyIsNotAsymmetricPublicKey)?;
   let data = public_key.export_der(typ)?;
 
   let label = match typ {
@@ -2286,7 +2286,7 @@ pub fn op_node_export_public_key_der(
 ) -> Result<Box<[u8]>, AsymmetricPublicKeyDerError> {
   let public_key = handle
     .as_public_key()
-    .ok_or_else(|| AsymmetricPublicKeyDerError::KeyIsNotAsymmetricPublicKey)?;
+    .ok_or(AsymmetricPublicKeyDerError::KeyIsNotAsymmetricPublicKey)?;
   public_key.export_der(typ)
 }
 
@@ -2306,9 +2306,9 @@ pub fn op_node_export_private_key_pem(
   #[cppgc] handle: &KeyObjectHandle,
   #[string] typ: &str,
 ) -> Result<String, ExportPrivateKeyPemError> {
-  let private_key = handle.as_private_key().ok_or_else(|| {
-    AsymmetricPrivateKeyDerError::KeyIsNotAsymmetricPrivateKey
-  })?;
+  let private_key = handle
+    .as_private_key()
+    .ok_or(AsymmetricPrivateKeyDerError::KeyIsNotAsymmetricPrivateKey)?;
   let data = private_key.export_der(typ)?;
 
   let label = match typ {
@@ -2335,9 +2335,9 @@ pub fn op_node_export_private_key_der(
   #[cppgc] handle: &KeyObjectHandle,
   #[string] typ: &str,
 ) -> Result<Box<[u8]>, AsymmetricPrivateKeyDerError> {
-  let private_key = handle.as_private_key().ok_or_else(|| {
-    AsymmetricPrivateKeyDerError::KeyIsNotAsymmetricPrivateKey
-  })?;
+  let private_key = handle
+    .as_private_key()
+    .ok_or(AsymmetricPrivateKeyDerError::KeyIsNotAsymmetricPrivateKey)?;
   private_key.export_der(typ)
 }
 

@@ -57,7 +57,9 @@ pub enum KeyObjectHandlePrehashedSignAndVerifyError {
   FailedToSignDigestWithDsa,
   #[error("rsa-pss with different mf1 hash algorithm and hash algorithm is not supported")]
   RsaPssHashAlgorithmUnsupported,
-  #[error("private key does not allow {actual} to be used, expected {expected}")]
+  #[error(
+    "private key does not allow {actual} to be used, expected {expected}"
+  )]
   PrivateKeyDisallowsUsage { actual: String, expected: String },
   #[error("failed to sign digest")]
   FailedToSignDigest,
