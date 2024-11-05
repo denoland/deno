@@ -696,6 +696,7 @@ function bootstrapMainRuntime(runtimeOptions, warmup = false) {
     // are lost.
     let jupyterNs = undefined;
     ObjectDefineProperty(finalDenoNs, "jupyter", {
+      __proto__: null,
       get() {
         if (jupyterNs) {
           return jupyterNs;
