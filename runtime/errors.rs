@@ -1051,6 +1051,34 @@ mod node {
   use super::get_serde_json_error_class;
   use super::get_url_parse_error_class;
   pub use deno_node::ops::blocklist::BlocklistError;
+  pub use deno_node::ops::crypto::cipher::CipherContextError;
+  pub use deno_node::ops::crypto::cipher::CipherError;
+  pub use deno_node::ops::crypto::cipher::DecipherContextError;
+  pub use deno_node::ops::crypto::cipher::DecipherError;
+  pub use deno_node::ops::crypto::digest::HashError;
+  pub use deno_node::ops::crypto::keys::AsymmetricPrivateKeyDerError;
+  pub use deno_node::ops::crypto::keys::AsymmetricPrivateKeyError;
+  pub use deno_node::ops::crypto::keys::AsymmetricPublicKeyDerError;
+  pub use deno_node::ops::crypto::keys::AsymmetricPublicKeyError;
+  pub use deno_node::ops::crypto::keys::AsymmetricPublicKeyJwkError;
+  pub use deno_node::ops::crypto::keys::EcJwkError;
+  pub use deno_node::ops::crypto::keys::EdRawError;
+  pub use deno_node::ops::crypto::keys::ExportPrivateKeyPemError;
+  pub use deno_node::ops::crypto::keys::ExportPublicKeyPemError;
+  pub use deno_node::ops::crypto::keys::GenerateRsaPssError;
+  pub use deno_node::ops::crypto::keys::RsaJwkError;
+  pub use deno_node::ops::crypto::keys::RsaPssParamsParseError;
+  pub use deno_node::ops::crypto::keys::X509PublicKeyError;
+  pub use deno_node::ops::crypto::sign::KeyObjectHandlePrehashedSignAndVerifyError;
+  pub use deno_node::ops::crypto::x509::X509Error;
+  pub use deno_node::ops::crypto::DiffieHellmanError;
+  pub use deno_node::ops::crypto::EcdhEncodePubKey;
+  pub use deno_node::ops::crypto::HkdfError;
+  pub use deno_node::ops::crypto::Pbkdf2Error;
+  pub use deno_node::ops::crypto::PrivateEncryptDecryptError;
+  pub use deno_node::ops::crypto::ScryptAsyncError;
+  pub use deno_node::ops::crypto::SignEd25519Error;
+  pub use deno_node::ops::crypto::VerifyEd25519Error;
   pub use deno_node::ops::fs::FsError;
   pub use deno_node::ops::http2::Http2Error;
   pub use deno_node::ops::idna::IdnaError;
@@ -1189,6 +1217,320 @@ mod node {
       ZlibError::Other(e) => get_error_class_name(e).unwrap_or("Error"),
     }
   }
+
+  pub fn get_crypto_cipher_context_error(
+    e: &CipherContextError,
+  ) -> &'static str {
+    match e {
+      CipherContextError::ContextInUse => "TypeError",
+      CipherContextError::Cipher(e) => get_crypto_cipher_error(e),
+      CipherContextError::Resource(e) => get_error_class_name(e).unwrap_or("Error"),
+    }
+  }
+
+  pub fn get_crypto_cipher_error(e: &CipherError) -> &'static str {
+    match e {
+      CipherError::InvalidIvLength => "TypeError",
+      CipherError::InvalidKeyLength => "RangeError",
+      CipherError::InvalidInitializationVector => "TypeError",
+      CipherError::CannotPadInputData => "TypeError",
+      CipherError::UnknownCipher(_) => "TypeError",
+    }
+  }
+
+  pub fn get_crypto_decipher_context_error(
+    e: &DecipherContextError,
+  ) -> &'static str {
+    match e {
+      DecipherContextError::ContextInUse => "TypeError",
+      DecipherContextError::Decipher(e) => get_crypto_decipher_error(e),
+      DecipherContextError::Resource(e) => get_error_class_name(e).unwrap_or("Error"),
+    }
+  }
+
+  pub fn get_crypto_decipher_error(e: &DecipherError) -> &'static str {
+    match e {
+      DecipherError::InvalidIvLength => "TypeError",
+      DecipherError::InvalidKeyLength => "RangeError",
+      DecipherError::InvalidInitializationVector => "TypeError",
+      DecipherError::CannotUnpadInputData => "TypeError",
+      DecipherError::DataAuthenticationFailed => "TypeError",
+      DecipherError::SetAutoPaddingFalseAes128GcmUnsupported => "TypeError",
+      DecipherError::SetAutoPaddingFalseAes256GcmUnsupported => "TypeError",
+      DecipherError::UnknownCipher(_) => "TypeError",
+    }
+  }
+
+  pub fn get_x509_error(_: &X509Error) -> &'static str {
+    "Error"
+  }
+
+  pub fn get_crypto_key_object_handle_prehashed_sign_and_verify_error(
+    e: &KeyObjectHandlePrehashedSignAndVerifyError,
+  ) -> &'static str {
+    match e {
+      KeyObjectHandlePrehashedSignAndVerifyError::InvalidDsaSignatureEncoding => "TypeError",
+      KeyObjectHandlePrehashedSignAndVerifyError::KeyIsNotPrivate => "TypeError",
+      KeyObjectHandlePrehashedSignAndVerifyError::DigestNotAllowedForRsaSignature(_) => "TypeError",
+      KeyObjectHandlePrehashedSignAndVerifyError::FailedToSignDigestWithRsa => "Error",
+      KeyObjectHandlePrehashedSignAndVerifyError::DigestNotAllowedForRsaPssSignature(_) => "TypeError",
+      KeyObjectHandlePrehashedSignAndVerifyError::FailedToSignDigestWithRsaPss => "Error",
+      KeyObjectHandlePrehashedSignAndVerifyError::FailedToSignDigestWithDsa => "TypeError",
+      KeyObjectHandlePrehashedSignAndVerifyError::RsaPssHashAlgorithmUnsupported => "TypeError",
+      KeyObjectHandlePrehashedSignAndVerifyError::PrivateKeyDisallowsUsage { .. } => "TypeError",
+      KeyObjectHandlePrehashedSignAndVerifyError::FailedToSignDigest => "TypeError",
+      KeyObjectHandlePrehashedSignAndVerifyError::X25519KeyCannotBeUsedForSigning => "TypeError",
+      KeyObjectHandlePrehashedSignAndVerifyError::Ed25519KeyCannotBeUsedForPrehashedSigning => "TypeError",
+      KeyObjectHandlePrehashedSignAndVerifyError::DhKeyCannotBeUsedForSigning => "TypeError",
+      KeyObjectHandlePrehashedSignAndVerifyError::KeyIsNotPublicOrPrivate => "TypeError",
+      KeyObjectHandlePrehashedSignAndVerifyError::InvalidDsaSignature => "TypeError",
+      KeyObjectHandlePrehashedSignAndVerifyError::X25519KeyCannotBeUsedForVerification => "TypeError",
+      KeyObjectHandlePrehashedSignAndVerifyError::Ed25519KeyCannotBeUsedForPrehashedVerification => "TypeError",
+      KeyObjectHandlePrehashedSignAndVerifyError::DhKeyCannotBeUsedForVerification => "TypeError",
+    }
+  }
+
+  pub fn get_crypto_hash_error(_: &HashError) -> &'static str {
+    "Error"
+  }
+
+  pub fn get_asymmetric_public_key_jwk_error(
+    e: &AsymmetricPublicKeyJwkError,
+  ) -> &'static str {
+    match e {
+      AsymmetricPublicKeyJwkError::UnsupportedJwkEcCurveP224 => "TypeError",
+      AsymmetricPublicKeyJwkError::JwkExportNotImplementedForKeyType => {
+        "TypeError"
+      }
+      AsymmetricPublicKeyJwkError::KeyIsNotAsymmetricPublicKey => "TypeError",
+    }
+  }
+
+  pub fn get_generate_rsa_pss_error(_: &GenerateRsaPssError) -> &'static str {
+    "TypeError"
+  }
+
+  pub fn get_asymmetric_private_key_der_error(
+    e: &AsymmetricPrivateKeyDerError,
+  ) -> &'static str {
+    match e {
+      AsymmetricPrivateKeyDerError::KeyIsNotAsymmetricPrivateKey => "TypeError",
+      AsymmetricPrivateKeyDerError::InvalidRsaPrivateKey => "TypeError",
+      AsymmetricPrivateKeyDerError::ExportingNonRsaPrivateKeyAsPkcs1Unsupported => "TypeError",
+      AsymmetricPrivateKeyDerError::InvalidEcPrivateKey => "TypeError",
+      AsymmetricPrivateKeyDerError::ExportingNonEcPrivateKeyAsSec1Unsupported => "TypeError",
+      AsymmetricPrivateKeyDerError::ExportingNonRsaPssPrivateKeyAsPkcs8Unsupported => "Error",
+      AsymmetricPrivateKeyDerError::InvalidDsaPrivateKey => "TypeError",
+      AsymmetricPrivateKeyDerError::InvalidX25519PrivateKey => "TypeError",
+      AsymmetricPrivateKeyDerError::InvalidEd25519PrivateKey => "TypeError",
+      AsymmetricPrivateKeyDerError::InvalidDhPrivateKey => "TypeError",
+      AsymmetricPrivateKeyDerError::UnsupportedKeyType(_) => "TypeError",
+    }
+  }
+
+  pub fn get_asymmetric_public_key_der_error(
+    _: &AsymmetricPublicKeyDerError,
+  ) -> &'static str {
+    "TypeError"
+  }
+
+  pub fn get_export_public_key_pem_error(
+    e: &ExportPublicKeyPemError,
+  ) -> &'static str {
+    match e {
+      ExportPublicKeyPemError::AsymmetricPublicKeyDer(e) => {
+        get_asymmetric_public_key_der_error(e)
+      }
+      ExportPublicKeyPemError::VeryLargeData => "TypeError",
+      ExportPublicKeyPemError::Der(_) => "Error",
+    }
+  }
+
+  pub fn get_export_private_key_pem_error(
+    e: &ExportPrivateKeyPemError,
+  ) -> &'static str {
+    match e {
+      ExportPrivateKeyPemError::AsymmetricPublicKeyDer(e) => {
+        get_asymmetric_private_key_der_error(e)
+      }
+      ExportPrivateKeyPemError::VeryLargeData => "TypeError",
+      ExportPrivateKeyPemError::Der(_) => "Error",
+    }
+  }
+
+  pub fn get_x509_public_key_error(e: &X509PublicKeyError) -> &'static str {
+    match e {
+      X509PublicKeyError::X509(_) => "Error",
+      X509PublicKeyError::Rsa(_) => "Error",
+      X509PublicKeyError::Asn1(_) => "Error",
+      X509PublicKeyError::Ec(_) => "Error",
+      X509PublicKeyError::UnsupportedEcNamedCurve => "TypeError",
+      X509PublicKeyError::MissingEcParameters => "TypeError",
+      X509PublicKeyError::MalformedDssPublicKey => "TypeError",
+      X509PublicKeyError::UnsupportedX509KeyType => "TypeError",
+    }
+  }
+
+  pub fn get_rsa_jwk_error(e: &RsaJwkError) -> &'static str {
+    match e {
+      RsaJwkError::Base64(_) => "Error",
+      RsaJwkError::Rsa(_) => "Error",
+      RsaJwkError::MissingRsaPrivateComponent => "TypeError",
+    }
+  }
+
+  pub fn get_ec_jwk_error(e: &EcJwkError) -> &'static str {
+    match e {
+      EcJwkError::Ec(_) => "Error",
+      EcJwkError::UnsupportedCurve(_) => "TypeError",
+    }
+  }
+
+  pub fn get_ed_raw_error(e: &EdRawError) -> &'static str {
+    match e {
+      EdRawError::Ed25519Signature(_) => "Error",
+      EdRawError::InvalidEd25519Key => "TypeError",
+      EdRawError::UnsupportedCurve => "TypeError",
+    }
+  }
+
+  pub fn get_pbkdf2_error(e: &Pbkdf2Error) -> &'static str {
+    match e {
+      Pbkdf2Error::UnsupportedDigest(_) => "TypeError",
+      Pbkdf2Error::Join(_) => "Error",
+    }
+  }
+
+  pub fn get_scrypt_async_error(e: &ScryptAsyncError) -> &'static str {
+    match e {
+      ScryptAsyncError::Join(_) => "Error",
+      ScryptAsyncError::Other(e) => get_error_class_name(e).unwrap_or("Error"),
+    }
+  }
+
+  pub fn get_hkdf_error_error(e: &HkdfError) -> &'static str {
+    match e {
+      HkdfError::ExpectedSecretKey => "TypeError",
+      HkdfError::HkdfExpandFailed => "TypeError",
+      HkdfError::UnsupportedDigest(_) => "TypeError",
+      HkdfError::Join(_) => "Error",
+    }
+  }
+
+  pub fn get_rsa_pss_params_parse_error(
+    _: &RsaPssParamsParseError,
+  ) -> &'static str {
+    "TypeError"
+  }
+
+  pub fn get_asymmetric_private_key_error(
+    e: &AsymmetricPrivateKeyError,
+  ) -> &'static str {
+    match e {
+      AsymmetricPrivateKeyError::InvalidPemPrivateKeyInvalidUtf8(_) => "TypeError",
+      AsymmetricPrivateKeyError::InvalidEncryptedPemPrivateKey => "TypeError",
+      AsymmetricPrivateKeyError::InvalidPemPrivateKey => "TypeError",
+      AsymmetricPrivateKeyError::EncryptedPrivateKeyRequiresPassphraseToDecrypt => "TypeError",
+      AsymmetricPrivateKeyError::InvalidPkcs1PrivateKey => "TypeError",
+      AsymmetricPrivateKeyError::InvalidSec1PrivateKey => "TypeError",
+      AsymmetricPrivateKeyError::UnsupportedPemLabel(_) => "TypeError",
+      AsymmetricPrivateKeyError::RsaPssParamsParse(e) => get_rsa_pss_params_parse_error(e),
+      AsymmetricPrivateKeyError::InvalidEncryptedPkcs8PrivateKey => "TypeError",
+      AsymmetricPrivateKeyError::InvalidPkcs8PrivateKey => "TypeError",
+      AsymmetricPrivateKeyError::Pkcs1PrivateKeyDoesNotSupportEncryptionWithPassphrase => "TypeError",
+      AsymmetricPrivateKeyError::Sec1PrivateKeyDoesNotSupportEncryptionWithPassphrase => "TypeError",
+      AsymmetricPrivateKeyError::UnsupportedEcNamedCurve => "TypeError",
+      AsymmetricPrivateKeyError::InvalidPrivateKey => "TypeError",
+      AsymmetricPrivateKeyError::InvalidDsaPrivateKey => "TypeError",
+      AsymmetricPrivateKeyError::MalformedOrMissingNamedCurveInEcParameters => "TypeError",
+      AsymmetricPrivateKeyError::UnsupportedKeyType(_) => "TypeError",
+      AsymmetricPrivateKeyError::UnsupportedKeyFormat(_) => "TypeError",
+      AsymmetricPrivateKeyError::InvalidX25519PrivateKey => "TypeError",
+      AsymmetricPrivateKeyError::X25519PrivateKeyIsWrongLength => "TypeError",
+      AsymmetricPrivateKeyError::InvalidEd25519PrivateKey => "TypeError",
+      AsymmetricPrivateKeyError::MissingDhParameters => "TypeError",
+      AsymmetricPrivateKeyError::UnsupportedPrivateKeyOid => "TypeError",
+    }
+  }
+
+  pub fn get_asymmetric_public_key_error(
+    e: &AsymmetricPublicKeyError,
+  ) -> &'static str {
+    match e {
+      AsymmetricPublicKeyError::InvalidPemPrivateKeyInvalidUtf8(_) => {
+        "TypeError"
+      }
+      AsymmetricPublicKeyError::InvalidPemPublicKey => "TypeError",
+      AsymmetricPublicKeyError::InvalidPkcs1PublicKey => "TypeError",
+      AsymmetricPublicKeyError::AsymmetricPrivateKey(e) => {
+        get_asymmetric_private_key_error(e)
+      }
+      AsymmetricPublicKeyError::InvalidX509Certificate => "TypeError",
+      AsymmetricPublicKeyError::X509(_) => "Error",
+      AsymmetricPublicKeyError::X509PublicKey(e) => {
+        get_x509_public_key_error(e)
+      }
+      AsymmetricPublicKeyError::UnsupportedPemLabel(_) => "TypeError",
+      AsymmetricPublicKeyError::InvalidSpkiPublicKey => "TypeError",
+      AsymmetricPublicKeyError::UnsupportedKeyType(_) => "TypeError",
+      AsymmetricPublicKeyError::UnsupportedKeyFormat(_) => "TypeError",
+      AsymmetricPublicKeyError::Spki(_) => "Error",
+      AsymmetricPublicKeyError::Pkcs1(_) => "Error",
+      AsymmetricPublicKeyError::RsaPssParamsParse(_) => "TypeError",
+      AsymmetricPublicKeyError::MalformedDssPublicKey => "TypeError",
+      AsymmetricPublicKeyError::MalformedOrMissingNamedCurveInEcParameters => {
+        "TypeError"
+      }
+      AsymmetricPublicKeyError::MalformedOrMissingPublicKeyInEcSpki => {
+        "TypeError"
+      }
+      AsymmetricPublicKeyError::Ec(_) => "Error",
+      AsymmetricPublicKeyError::UnsupportedEcNamedCurve => "TypeError",
+      AsymmetricPublicKeyError::MalformedOrMissingPublicKeyInX25519Spki => {
+        "TypeError"
+      }
+      AsymmetricPublicKeyError::X25519PublicKeyIsTooShort => "TypeError",
+      AsymmetricPublicKeyError::InvalidEd25519PublicKey => "TypeError",
+      AsymmetricPublicKeyError::MissingDhParameters => "TypeError",
+      AsymmetricPublicKeyError::MalformedDhParameters => "TypeError",
+      AsymmetricPublicKeyError::MalformedOrMissingPublicKeyInDhSpki => {
+        "TypeError"
+      }
+      AsymmetricPublicKeyError::UnsupportedPrivateKeyOid => "TypeError",
+    }
+  }
+
+  pub fn get_private_encrypt_decrypt_error(
+    e: &PrivateEncryptDecryptError,
+  ) -> &'static str {
+    match e {
+      PrivateEncryptDecryptError::Pkcs8(_) => "Error",
+      PrivateEncryptDecryptError::Spki(_) => "Error",
+      PrivateEncryptDecryptError::Utf8(_) => "Error",
+      PrivateEncryptDecryptError::Rsa(_) => "Error",
+      PrivateEncryptDecryptError::UnknownPadding => "TypeError",
+    }
+  }
+
+  pub fn get_ecdh_encode_pub_key_error(e: &EcdhEncodePubKey) -> &'static str {
+    match e {
+      EcdhEncodePubKey::InvalidPublicKey => "TypeError",
+      EcdhEncodePubKey::UnsupportedCurve => "TypeError",
+      EcdhEncodePubKey::Sec1(_) => "Error",
+    }
+  }
+
+  pub fn get_diffie_hellman_error(_: &DiffieHellmanError) -> &'static str {
+    "TypeError"
+  }
+
+  pub fn get_sign_ed25519_error(_: &SignEd25519Error) -> &'static str {
+    "TypeError"
+  }
+
+  pub fn get_verify_ed25519_error(_: &VerifyEd25519Error) -> &'static str {
+    "TypeError"
+  }
 }
 
 fn get_os_error(error: &OsError) -> &'static str {
@@ -1272,6 +1614,114 @@ pub fn get_error_class_name(e: &AnyError) -> Option<&'static str> {
     .or_else(|| {
       e.downcast_ref::<node::ZlibError>()
         .map(node::get_zlib_error)
+    })
+    .or_else(|| {
+      e.downcast_ref::<node::CipherError>()
+        .map(node::get_crypto_cipher_error)
+    })
+    .or_else(|| {
+      e.downcast_ref::<node::CipherContextError>()
+        .map(node::get_crypto_cipher_context_error)
+    })
+    .or_else(|| {
+      e.downcast_ref::<node::DecipherError>()
+        .map(node::get_crypto_decipher_error)
+    })
+    .or_else(|| {
+      e.downcast_ref::<node::DecipherContextError>()
+        .map(node::get_crypto_decipher_context_error)
+    })
+    .or_else(|| {
+      e.downcast_ref::<node::X509Error>()
+        .map(node::get_x509_error)
+    })
+    .or_else(|| {
+      e.downcast_ref::<node::KeyObjectHandlePrehashedSignAndVerifyError>()
+        .map(node::get_crypto_key_object_handle_prehashed_sign_and_verify_error)
+    })
+    .or_else(|| {
+      e.downcast_ref::<node::HashError>()
+        .map(node::get_crypto_hash_error)
+    })
+    .or_else(|| {
+      e.downcast_ref::<node::AsymmetricPublicKeyJwkError>()
+        .map(node::get_asymmetric_public_key_jwk_error)
+    })
+    .or_else(|| {
+      e.downcast_ref::<node::GenerateRsaPssError>()
+        .map(node::get_generate_rsa_pss_error)
+    })
+    .or_else(|| {
+      e.downcast_ref::<node::AsymmetricPrivateKeyDerError>()
+        .map(node::get_asymmetric_private_key_der_error)
+    })
+    .or_else(|| {
+      e.downcast_ref::<node::AsymmetricPublicKeyDerError>()
+        .map(node::get_asymmetric_public_key_der_error)
+    })
+    .or_else(|| {
+      e.downcast_ref::<node::ExportPublicKeyPemError>()
+        .map(node::get_export_public_key_pem_error)
+    })
+    .or_else(|| {
+      e.downcast_ref::<node::ExportPrivateKeyPemError>()
+        .map(node::get_export_private_key_pem_error)
+    })
+    .or_else(|| {
+      e.downcast_ref::<node::RsaJwkError>()
+        .map(node::get_rsa_jwk_error)
+    })
+    .or_else(|| {
+      e.downcast_ref::<node::EcJwkError>()
+        .map(node::get_ec_jwk_error)
+    })
+    .or_else(|| {
+      e.downcast_ref::<node::EdRawError>()
+        .map(node::get_ed_raw_error)
+    })
+    .or_else(|| {
+      e.downcast_ref::<node::Pbkdf2Error>()
+        .map(node::get_pbkdf2_error)
+    })
+    .or_else(|| {
+      e.downcast_ref::<node::ScryptAsyncError>()
+        .map(node::get_scrypt_async_error)
+    })
+    .or_else(|| {
+      e.downcast_ref::<node::HkdfError>()
+        .map(node::get_hkdf_error_error)
+    })
+    .or_else(|| {
+      e.downcast_ref::<node::RsaPssParamsParseError>()
+        .map(node::get_rsa_pss_params_parse_error)
+    })
+    .or_else(|| {
+      e.downcast_ref::<node::AsymmetricPrivateKeyError>()
+        .map(node::get_asymmetric_private_key_error)
+    })
+    .or_else(|| {
+      e.downcast_ref::<node::AsymmetricPublicKeyError>()
+        .map(node::get_asymmetric_public_key_error)
+    })
+    .or_else(|| {
+      e.downcast_ref::<node::PrivateEncryptDecryptError>()
+        .map(node::get_private_encrypt_decrypt_error)
+    })
+    .or_else(|| {
+      e.downcast_ref::<node::EcdhEncodePubKey>()
+        .map(node::get_ecdh_encode_pub_key_error)
+    })
+    .or_else(|| {
+      e.downcast_ref::<node::DiffieHellmanError>()
+        .map(node::get_diffie_hellman_error)
+    })
+    .or_else(|| {
+      e.downcast_ref::<node::SignEd25519Error>()
+        .map(node::get_sign_ed25519_error)
+    })
+    .or_else(|| {
+      e.downcast_ref::<node::VerifyEd25519Error>()
+        .map(node::get_verify_ed25519_error)
     })
     .or_else(|| e.downcast_ref::<NApiError>().map(get_napi_error_class))
     .or_else(|| e.downcast_ref::<WebError>().map(get_web_error_class))

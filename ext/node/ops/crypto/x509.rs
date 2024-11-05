@@ -1,6 +1,5 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
-use deno_core::error::AnyError;
 use deno_core::op2;
 
 use x509_parser::der_parser::asn1_rs::Any;
@@ -9,6 +8,7 @@ use x509_parser::der_parser::oid::Oid;
 use x509_parser::extensions;
 use x509_parser::pem;
 use x509_parser::prelude::*;
+pub use x509_parser::error::X509Error;
 
 use super::KeyObjectHandle;
 
@@ -65,7 +65,7 @@ impl<'a> Deref for CertificateView<'a> {
 #[cppgc]
 pub fn op_node_x509_parse(
   #[buffer] buf: &[u8],
-) -> Result<Certificate, AnyError> {
+) -> Result<Certificate, X509Error> {
   let source = match pem::parse_x509_pem(buf) {
     Ok((_, pem)) => CertificateSources::Pem(pem),
     Err(_) => CertificateSources::Der(buf.to_vec().into_boxed_slice()),
@@ -81,7 +81,7 @@ pub fn op_node_x509_parse(
             X509Certificate::from_der(buf).map(|(_, cert)| cert)?
           }
         };
-        Ok::<_, AnyError>(CertificateView { cert })
+        Ok::<_, X509Error>(CertificateView { cert })
       },
     )?;
 
@@ -89,23 +89,23 @@ pub fn op_node_x509_parse(
 }
 
 #[op2(fast)]
-pub fn op_node_x509_ca(#[cppgc] cert: &Certificate) -> Result<bool, AnyError> {
+pub fn op_node_x509_ca(#[cppgc] cert: &Certificate) -> bool {
   let cert = cert.inner.get().deref();
-  Ok(cert.is_ca())
+  cert.is_ca()
 }
 
 #[op2(fast)]
 pub fn op_node_x509_check_email(
   #[cppgc] cert: &Certificate,
   #[string] email: &str,
-) -> Result<bool, AnyError> {
+) -> bool {
   let cert = cert.inner.get().deref();
   let subject = cert.subject();
   if subject
     .iter_email()
     .any(|e| e.as_str().unwrap_or("") == email)
   {
-    return Ok(true);
+    return true;
   }
 
   let subject_alt = cert
@@ -121,62 +121,60 @@ pub fn op_node_x509_check_email(
     for name in &subject_alt.general_names {
       if let extensions::GeneralName::RFC822Name(n) = name {
         if *n == email {
-          return Ok(true);
+          return true;
         }
       }
     }
   }
 
-  Ok(false)
+  false
 }
 
 #[op2]
 #[string]
-pub fn op_node_x509_fingerprint(
-  #[cppgc] cert: &Certificate,
-) -> Result<Option<String>, AnyError> {
-  Ok(cert.fingerprint::<sha1::Sha1>())
+pub fn op_node_x509_fingerprint(#[cppgc] cert: &Certificate) -> Option<String> {
+  cert.fingerprint::<sha1::Sha1>()
 }
 
 #[op2]
 #[string]
 pub fn op_node_x509_fingerprint256(
   #[cppgc] cert: &Certificate,
-) -> Result<Option<String>, AnyError> {
-  Ok(cert.fingerprint::<sha2::Sha256>())
+) -> Option<String> {
+  cert.fingerprint::<sha2::Sha256>()
 }
 
 #[op2]
 #[string]
 pub fn op_node_x509_fingerprint512(
   #[cppgc] cert: &Certificate,
-) -> Result<Option<String>, AnyError> {
-  Ok(cert.fingerprint::<sha2::Sha512>())
+) -> Option<String> {
+  cert.fingerprint::<sha2::Sha512>()
 }
 
 #[op2]
 #[string]
 pub fn op_node_x509_get_issuer(
   #[cppgc] cert: &Certificate,
-) -> Result<String, AnyError> {
+) -> Result<String, X509Error> {
   let cert = cert.inner.get().deref();
-  Ok(x509name_to_string(cert.issuer(), oid_registry())?)
+  x509name_to_string(cert.issuer(), oid_registry())
 }
 
 #[op2]
 #[string]
 pub fn op_node_x509_get_subject(
   #[cppgc] cert: &Certificate,
-) -> Result<String, AnyError> {
+) -> Result<String, X509Error> {
   let cert = cert.inner.get().deref();
-  Ok(x509name_to_string(cert.subject(), oid_registry())?)
+  x509name_to_string(cert.subject(), oid_registry())
 }
 
 #[op2]
 #[cppgc]
 pub fn op_node_x509_public_key(
   #[cppgc] cert: &Certificate,
-) -> Result<KeyObjectHandle, AnyError> {
+) -> Result<KeyObjectHandle, super::keys::X509PublicKeyError> {
   let cert = cert.inner.get().deref();
   let public_key = &cert.tbs_certificate.subject_pki;
 
@@ -245,37 +243,29 @@ fn x509name_to_string(
 
 #[op2]
 #[string]
-pub fn op_node_x509_get_valid_from(
-  #[cppgc] cert: &Certificate,
-) -> Result<String, AnyError> {
+pub fn op_node_x509_get_valid_from(#[cppgc] cert: &Certificate) -> String {
   let cert = cert.inner.get().deref();
-  Ok(cert.validity().not_before.to_string())
+  cert.validity().not_before.to_string()
 }
 
 #[op2]
 #[string]
-pub fn op_node_x509_get_valid_to(
-  #[cppgc] cert: &Certificate,
-) -> Result<String, AnyError> {
+pub fn op_node_x509_get_valid_to(#[cppgc] cert: &Certificate) -> String {
   let cert = cert.inner.get().deref();
-  Ok(cert.validity().not_after.to_string())
+  cert.validity().not_after.to_string()
 }
 
 #[op2]
 #[string]
-pub fn op_node_x509_get_serial_number(
-  #[cppgc] cert: &Certificate,
-) -> Result<String, AnyError> {
+pub fn op_node_x509_get_serial_number(#[cppgc] cert: &Certificate) -> String {
   let cert = cert.inner.get().deref();
   let mut s = cert.serial.to_str_radix(16);
   s.make_ascii_uppercase();
-  Ok(s)
+  s
 }
 
 #[op2(fast)]
-pub fn op_node_x509_key_usage(
-  #[cppgc] cert: &Certificate,
-) -> Result<u16, AnyError> {
+pub fn op_node_x509_key_usage(#[cppgc] cert: &Certificate) -> u16 {
   let cert = cert.inner.get().deref();
   let key_usage = cert
     .extensions()
@@ -286,5 +276,5 @@ pub fn op_node_x509_key_usage(
       _ => None,
     });
 
-  Ok(key_usage.map(|k| k.flags).unwrap_or(0))
+  key_usage.map(|k| k.flags).unwrap_or(0)
 }
