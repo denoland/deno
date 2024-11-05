@@ -422,7 +422,7 @@ fn generate_coverage_report(
 
   coverage_report.found_lines =
     if let Some(source_map) = maybe_source_map.as_ref() {
-      let script_source_lines = script_runtime_source.lines().collect::<Vec<_>>();
+      let script_runtime_source_lines = script_runtime_source.lines().collect::<Vec<_>>();
       let mut found_lines = line_counts
         .iter()
         .enumerate()
@@ -434,7 +434,7 @@ fn generate_coverage_report(
               let dst_line = token.get_dst_line() as usize;
               dst_line == index && {
                 let dst_col = token.get_dst_col() as usize;
-                let content = script_source_lines
+                let content = script_runtime_source_lines
                   .get(dst_line)
                   .and_then(|line| {
                     line.get(dst_col..std::cmp::min(dst_col + 2, line.len()))
