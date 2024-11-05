@@ -565,7 +565,9 @@ pub fn symlink_dir(oldpath: &Path, newpath: &Path) -> Result<(), Error> {
     use std::os::windows::fs::symlink_dir;
     symlink_dir(oldpath, newpath).map_err(|err| {
       if let Some(code) = err.raw_os_error() {
-        if code as u32 == winapi::shared::winerror::ERROR_PRIVILEGE_NOT_HELD {
+        if code as u32 == winapi::shared::winerror::ERROR_PRIVILEGE_NOT_HELD
+          || code as u32 == winapi::shared::winerror::ERROR_INVALID_FUNCTION
+        {
           return err_mapper(err, Some(ErrorKind::PermissionDenied));
         }
       }

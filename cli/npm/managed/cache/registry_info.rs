@@ -84,7 +84,7 @@ impl RegistryInfoDownloader {
     self.load_package_info_inner(name).await.with_context(|| {
       format!(
         "Error getting response at {} for package \"{}\"",
-        self.get_package_url(name),
+        get_package_url(&self.npmrc, name),
         name
       )
     })
@@ -190,7 +190,7 @@ impl RegistryInfoDownloader {
 
   fn create_load_future(self: &Arc<Self>, name: &str) -> LoadFuture {
     let downloader = self.clone();
-    let package_url = self.get_package_url(name);
+    let package_url = get_package_url(&self.npmrc, name);
     let registry_config = self.npmrc.get_registry_config(name);
     let maybe_auth_header =
       match maybe_auth_header_for_npm_registry(registry_config) {
@@ -239,25 +239,36 @@ impl RegistryInfoDownloader {
     .map(|r| r.map_err(Arc::new))
     .boxed_local()
   }
+}
 
-  fn get_package_url(&self, name: &str) -> Url {
-    let registry_url = self.npmrc.get_registry_url(name);
-    // list of all characters used in npm packages:
-    //  !, ', (, ), *, -, ., /, [0-9], @, [A-Za-z], _, ~
-    const ASCII_SET: percent_encoding::AsciiSet =
-      percent_encoding::NON_ALPHANUMERIC
-        .remove(b'!')
-        .remove(b'\'')
-        .remove(b'(')
-        .remove(b')')
-        .remove(b'*')
-        .remove(b'-')
-        .remove(b'.')
-        .remove(b'/')
-        .remove(b'@')
-        .remove(b'_')
-        .remove(b'~');
-    let name = percent_encoding::utf8_percent_encode(name, &ASCII_SET);
-    registry_url.join(&name.to_string()).unwrap()
-  }
+pub fn get_package_url(npmrc: &ResolvedNpmRc, name: &str) -> Url {
+  let registry_url = npmrc.get_registry_url(name);
+  // The '/' character in scoped package names "@scope/name" must be
+  // encoded for older third party registries. Newer registries and
+  // npm itself support both ways
+  //   - encoded: https://registry.npmjs.org/@rollup%2fplugin-json
+  //   - non-ecoded: https://registry.npmjs.org/@rollup/plugin-json
+  // To support as many third party registries as possible we'll
+  // always encode the '/' character.
+
+  // list of all characters used in npm packages:
+  //  !, ', (, ), *, -, ., /, [0-9], @, [A-Za-z], _, ~
+  const ASCII_SET: percent_encoding::AsciiSet =
+    percent_encoding::NON_ALPHANUMERIC
+      .remove(b'!')
+      .remove(b'\'')
+      .remove(b'(')
+      .remove(b')')
+      .remove(b'*')
+      .remove(b'-')
+      .remove(b'.')
+      .remove(b'@')
+      .remove(b'_')
+      .remove(b'~');
+  let name = percent_encoding::utf8_percent_encode(name, &ASCII_SET);
+  registry_url
+    // Ensure that scoped package name percent encoding is lower cased
+    // to match npm.
+    .join(&name.to_string().replace("%2F", "%2f"))
+    .unwrap()
 }

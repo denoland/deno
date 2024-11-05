@@ -157,6 +157,7 @@ impl LspStdoutReader {
     self.pending_messages.0.lock().len()
   }
 
+  #[allow(clippy::print_stderr)]
   pub fn output_pending_messages(&self) {
     let messages = self.pending_messages.0.lock();
     eprintln!("{:?}", messages);
@@ -305,34 +306,6 @@ impl InitializeParamsBuilder {
     folders: Vec<lsp_types::WorkspaceFolder>,
   ) -> &mut Self {
     self.params.workspace_folders = Some(folders);
-    self
-  }
-
-  pub fn enable_inlay_hints(&mut self) -> &mut Self {
-    let options = self.initialization_options_mut();
-    options.insert(
-      "inlayHints".to_string(),
-      json!({
-        "parameterNames": {
-          "enabled": "all"
-        },
-        "parameterTypes": {
-          "enabled": true
-        },
-        "variableTypes": {
-          "enabled": true
-        },
-        "propertyDeclarationTypes": {
-          "enabled": true
-        },
-        "functionLikeReturnTypes": {
-          "enabled": true
-        },
-        "enumMemberValues": {
-          "enabled": true
-        }
-      }),
-    );
     self
   }
 
@@ -601,6 +574,7 @@ impl LspClientBuilder {
         for line in stderr.lines() {
           match line {
             Ok(line) => {
+              #[allow(clippy::print_stderr)]
               if print_stderr {
                 eprintln!("{}", line);
               }
@@ -615,7 +589,10 @@ impl LspClientBuilder {
                       continue;
                     }
                     Err(err) => {
-                      eprintln!("failed to parse perf record: {:#}", err);
+                      #[allow(clippy::print_stderr)]
+                      {
+                        eprintln!("failed to parse perf record: {:#}", err);
+                      }
                     }
                   }
                 }
@@ -810,11 +787,14 @@ impl LspClient {
       std::thread::sleep(Duration::from_millis(20));
     }
 
-    eprintln!("==== STDERR OUTPUT ====");
-    for line in found_lines {
-      eprintln!("{}", line)
+    #[allow(clippy::print_stderr)]
+    {
+      eprintln!("==== STDERR OUTPUT ====");
+      for line in found_lines {
+        eprintln!("{}", line)
+      }
+      eprintln!("== END STDERR OUTPUT ==");
     }
-    eprintln!("== END STDERR OUTPUT ==");
 
     panic!("Timed out waiting on condition.")
   }

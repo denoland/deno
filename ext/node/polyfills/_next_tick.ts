@@ -62,6 +62,8 @@ export function processTicksAndRejections() {
               callback(...args);
           }
         }
+      } catch (e) {
+        reportError(e);
       } finally {
         // FIXME(bartlomieju): Deno currently doesn't support async hooks
         // if (destroyHooksExist())
@@ -87,8 +89,7 @@ export function runNextTicks() {
   //   runMicrotasks();
   // if (!hasTickScheduled() && !hasRejectionToWarn())
   //   return;
-  if (!core.hasTickScheduled()) {
-    core.runMicrotasks();
+  if (queue.isEmpty() || !core.hasTickScheduled()) {
     return true;
   }
 

@@ -9,25 +9,22 @@ use std::path::Path;
 use std::path::PathBuf;
 
 use deno_core::error::AnyError;
-use deno_core::located_script_name;
 use deno_core::op2;
 use deno_core::url::Url;
 #[allow(unused_imports)]
 use deno_core::v8;
 use deno_core::v8::ExternalReference;
-use deno_core::JsRuntime;
-use deno_fs::sync::MaybeSend;
-use deno_fs::sync::MaybeSync;
 use node_resolver::NpmResolverRc;
 use once_cell::sync::Lazy;
 
 extern crate libz_sys as zlib;
 
 mod global;
-mod ops;
+pub mod ops;
 mod polyfill;
 
 pub use deno_package_json::PackageJson;
+use deno_permissions::PermissionCheckError;
 pub use node_resolver::PathClean;
 pub use ops::ipc::ChildPipeFd;
 pub use ops::ipc::IpcJsonStreamResource;
@@ -49,10 +46,13 @@ pub trait NodePermissions {
     &mut self,
     url: &Url,
     api_name: &str,
-  ) -> Result<(), AnyError>;
+  ) -> Result<(), PermissionCheckError>;
   #[must_use = "the resolved return value to mitigate time-of-check to time-of-use issues"]
   #[inline(always)]
-  fn check_read(&mut self, path: &str) -> Result<PathBuf, AnyError> {
+  fn check_read(
+    &mut self,
+    path: &str,
+  ) -> Result<PathBuf, PermissionCheckError> {
     self.check_read_with_api_name(path, None)
   }
   #[must_use = "the resolved return value to mitigate time-of-check to time-of-use issues"]
@@ -60,20 +60,24 @@ pub trait NodePermissions {
     &mut self,
     path: &str,
     api_name: Option<&str>,
-  ) -> Result<PathBuf, AnyError>;
+  ) -> Result<PathBuf, PermissionCheckError>;
   #[must_use = "the resolved return value to mitigate time-of-check to time-of-use issues"]
   fn check_read_path<'a>(
     &mut self,
     path: &'a Path,
-  ) -> Result<Cow<'a, Path>, AnyError>;
+  ) -> Result<Cow<'a, Path>, PermissionCheckError>;
   fn query_read_all(&mut self) -> bool;
-  fn check_sys(&mut self, kind: &str, api_name: &str) -> Result<(), AnyError>;
+  fn check_sys(
+    &mut self,
+    kind: &str,
+    api_name: &str,
+  ) -> Result<(), PermissionCheckError>;
   #[must_use = "the resolved return value to mitigate time-of-check to time-of-use issues"]
   fn check_write_with_api_name(
     &mut self,
     path: &str,
     api_name: Option<&str>,
-  ) -> Result<PathBuf, AnyError>;
+  ) -> Result<PathBuf, PermissionCheckError>;
 }
 
 impl NodePermissions for deno_permissions::PermissionsContainer {
@@ -82,7 +86,7 @@ impl NodePermissions for deno_permissions::PermissionsContainer {
     &mut self,
     url: &Url,
     api_name: &str,
-  ) -> Result<(), AnyError> {
+  ) -> Result<(), PermissionCheckError> {
     deno_permissions::PermissionsContainer::check_net_url(self, url, api_name)
   }
 
@@ -91,7 +95,7 @@ impl NodePermissions for deno_permissions::PermissionsContainer {
     &mut self,
     path: &str,
     api_name: Option<&str>,
-  ) -> Result<PathBuf, AnyError> {
+  ) -> Result<PathBuf, PermissionCheckError> {
     deno_permissions::PermissionsContainer::check_read_with_api_name(
       self, path, api_name,
     )
@@ -100,7 +104,7 @@ impl NodePermissions for deno_permissions::PermissionsContainer {
   fn check_read_path<'a>(
     &mut self,
     path: &'a Path,
-  ) -> Result<Cow<'a, Path>, AnyError> {
+  ) -> Result<Cow<'a, Path>, PermissionCheckError> {
     deno_permissions::PermissionsContainer::check_read_path(self, path, None)
   }
 
@@ -113,28 +117,33 @@ impl NodePermissions for deno_permissions::PermissionsContainer {
     &mut self,
     path: &str,
     api_name: Option<&str>,
-  ) -> Result<PathBuf, AnyError> {
+  ) -> Result<PathBuf, PermissionCheckError> {
     deno_permissions::PermissionsContainer::check_write_with_api_name(
       self, path, api_name,
     )
   }
 
-  fn check_sys(&mut self, kind: &str, api_name: &str) -> Result<(), AnyError> {
+  fn check_sys(
+    &mut self,
+    kind: &str,
+    api_name: &str,
+  ) -> Result<(), PermissionCheckError> {
     deno_permissions::PermissionsContainer::check_sys(self, kind, api_name)
   }
 }
 
 #[allow(clippy::disallowed_types)]
-pub type NodeRequireResolverRc =
-  deno_fs::sync::MaybeArc<dyn NodeRequireResolver>;
+pub type NodeRequireLoaderRc = std::rc::Rc<dyn NodeRequireLoader>;
 
-pub trait NodeRequireResolver: std::fmt::Debug + MaybeSend + MaybeSync {
+pub trait NodeRequireLoader {
   #[must_use = "the resolved return value to mitigate time-of-check to time-of-use issues"]
   fn ensure_read_permission<'a>(
     &self,
     permissions: &mut dyn NodePermissions,
     path: &'a Path,
   ) -> Result<Cow<'a, Path>, AnyError>;
+
+  fn load_text_file_lossy(&self, path: &Path) -> Result<String, AnyError>;
 }
 
 pub static NODE_ENV_VAR_ALLOWLIST: Lazy<HashSet<String>> = Lazy::new(|| {
@@ -152,10 +161,12 @@ fn op_node_build_os() -> String {
   env!("TARGET").split('-').nth(2).unwrap().to_string()
 }
 
+#[derive(Clone)]
 pub struct NodeExtInitServices {
-  pub node_require_resolver: NodeRequireResolverRc,
+  pub node_require_loader: NodeRequireLoaderRc,
   pub node_resolver: NodeResolverRc,
   pub npm_resolver: NpmResolverRc,
+  pub pkg_json_resolver: PackageJsonResolverRc,
 }
 
 deno_core::extension!(deno_node,
@@ -348,7 +359,7 @@ deno_core::extension!(deno_node,
     ops::http2::op_http2_send_response,
     ops::os::op_node_os_get_priority<P>,
     ops::os::op_node_os_set_priority<P>,
-    ops::os::op_node_os_username<P>,
+    ops::os::op_node_os_user_info<P>,
     ops::os::op_geteuid<P>,
     ops::os::op_getegid<P>,
     ops::os::op_cpus<P>,
@@ -469,6 +480,7 @@ deno_core::extension!(deno_node,
     "internal_binding/constants.ts",
     "internal_binding/crypto.ts",
     "internal_binding/handle_wrap.ts",
+    "internal_binding/http_parser.ts",
     "internal_binding/mod.ts",
     "internal_binding/node_file.ts",
     "internal_binding/node_options.ts",
@@ -638,9 +650,10 @@ deno_core::extension!(deno_node,
     state.put(options.fs.clone());
 
     if let Some(init) = &options.maybe_init {
-      state.put(init.node_require_resolver.clone());
+      state.put(init.node_require_loader.clone());
       state.put(init.node_resolver.clone());
       state.put(init.npm_resolver.clone());
+      state.put(init.pkg_json_resolver.clone());
     }
   },
   global_template_middleware = global_template_middleware,
@@ -760,33 +773,16 @@ deno_core::extension!(deno_node,
   },
 );
 
-pub fn load_cjs_module(
-  js_runtime: &mut JsRuntime,
-  module: &str,
-  main: bool,
-  inspect_brk: bool,
-) -> Result<(), AnyError> {
-  fn escape_for_single_quote_string(text: &str) -> String {
-    text.replace('\\', r"\\").replace('\'', r"\'")
-  }
-
-  let source_code = format!(
-    r#"(function loadCjsModule(moduleName, isMain, inspectBrk) {{
-      Deno[Deno.internal].node.loadCjsModule(moduleName, isMain, inspectBrk);
-    }})('{module}', {main}, {inspect_brk});"#,
-    main = main,
-    module = escape_for_single_quote_string(module),
-    inspect_brk = inspect_brk,
-  );
-
-  js_runtime.execute_script(located_script_name!(), source_code)?;
-  Ok(())
-}
-
 pub type NodeResolver = node_resolver::NodeResolver<DenoFsNodeResolverEnv>;
 #[allow(clippy::disallowed_types)]
 pub type NodeResolverRc =
   deno_fs::sync::MaybeArc<node_resolver::NodeResolver<DenoFsNodeResolverEnv>>;
+pub type PackageJsonResolver =
+  node_resolver::PackageJsonResolver<DenoFsNodeResolverEnv>;
+#[allow(clippy::disallowed_types)]
+pub type PackageJsonResolverRc = deno_fs::sync::MaybeArc<
+  node_resolver::PackageJsonResolver<DenoFsNodeResolverEnv>,
+>;
 
 #[derive(Debug)]
 pub struct DenoFsNodeResolverEnv {

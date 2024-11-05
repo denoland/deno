@@ -1,7 +1,5 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
-use deno_core::error::type_error;
-use deno_core::error::AnyError;
 use deno_core::op2;
 use flate2::write::DeflateDecoder;
 use flate2::write::DeflateEncoder;
@@ -12,6 +10,18 @@ use flate2::write::ZlibEncoder;
 use flate2::Compression;
 use std::cell::RefCell;
 use std::io::Write;
+
+#[derive(Debug, thiserror::Error)]
+pub enum CompressionError {
+  #[error("Unsupported format")]
+  UnsupportedFormat,
+  #[error("resource is closed")]
+  ResourceClosed,
+  #[error(transparent)]
+  IoTypeError(std::io::Error),
+  #[error(transparent)]
+  Io(std::io::Error),
+}
 
 #[derive(Debug)]
 struct CompressionResource(RefCell<Option<Inner>>);
@@ -34,7 +44,7 @@ enum Inner {
 pub fn op_compression_new(
   #[string] format: &str,
   is_decoder: bool,
-) -> Result<CompressionResource, AnyError> {
+) -> Result<CompressionResource, CompressionError> {
   let w = Vec::new();
   let inner = match (format, is_decoder) {
     ("deflate", true) => Inner::DeflateDecoder(ZlibDecoder::new(w)),
@@ -49,7 +59,7 @@ pub fn op_compression_new(
     ("gzip", false) => {
       Inner::GzEncoder(GzEncoder::new(w, Compression::default()))
     }
-    _ => return Err(type_error("Unsupported format")),
+    _ => return Err(CompressionError::UnsupportedFormat),
   };
   Ok(CompressionResource(RefCell::new(Some(inner))))
 }
@@ -59,40 +69,38 @@ pub fn op_compression_new(
 pub fn op_compression_write(
   #[cppgc] resource: &CompressionResource,
   #[anybuffer] input: &[u8],
-) -> Result<Vec<u8>, AnyError> {
+) -> Result<Vec<u8>, CompressionError> {
   let mut inner = resource.0.borrow_mut();
-  let inner = inner
-    .as_mut()
-    .ok_or_else(|| type_error("resource is closed"))?;
+  let inner = inner.as_mut().ok_or(CompressionError::ResourceClosed)?;
   let out: Vec<u8> = match &mut *inner {
     Inner::DeflateDecoder(d) => {
-      d.write_all(input).map_err(|e| type_error(e.to_string()))?;
-      d.flush()?;
+      d.write_all(input).map_err(CompressionError::IoTypeError)?;
+      d.flush().map_err(CompressionError::Io)?;
       d.get_mut().drain(..)
     }
     Inner::DeflateEncoder(d) => {
-      d.write_all(input).map_err(|e| type_error(e.to_string()))?;
-      d.flush()?;
+      d.write_all(input).map_err(CompressionError::IoTypeError)?;
+      d.flush().map_err(CompressionError::Io)?;
       d.get_mut().drain(..)
     }
     Inner::DeflateRawDecoder(d) => {
-      d.write_all(input).map_err(|e| type_error(e.to_string()))?;
-      d.flush()?;
+      d.write_all(input).map_err(CompressionError::IoTypeError)?;
+      d.flush().map_err(CompressionError::Io)?;
       d.get_mut().drain(..)
     }
     Inner::DeflateRawEncoder(d) => {
-      d.write_all(input).map_err(|e| type_error(e.to_string()))?;
-      d.flush()?;
+      d.write_all(input).map_err(CompressionError::IoTypeError)?;
+      d.flush().map_err(CompressionError::Io)?;
       d.get_mut().drain(..)
     }
     Inner::GzDecoder(d) => {
-      d.write_all(input).map_err(|e| type_error(e.to_string()))?;
-      d.flush()?;
+      d.write_all(input).map_err(CompressionError::IoTypeError)?;
+      d.flush().map_err(CompressionError::Io)?;
       d.get_mut().drain(..)
     }
     Inner::GzEncoder(d) => {
-      d.write_all(input).map_err(|e| type_error(e.to_string()))?;
-      d.flush()?;
+      d.write_all(input).map_err(CompressionError::IoTypeError)?;
+      d.flush().map_err(CompressionError::Io)?;
       d.get_mut().drain(..)
     }
   }
@@ -105,27 +113,27 @@ pub fn op_compression_write(
 pub fn op_compression_finish(
   #[cppgc] resource: &CompressionResource,
   report_errors: bool,
-) -> Result<Vec<u8>, AnyError> {
+) -> Result<Vec<u8>, CompressionError> {
   let inner = resource
     .0
     .borrow_mut()
     .take()
-    .ok_or_else(|| type_error("resource is closed"))?;
+    .ok_or(CompressionError::ResourceClosed)?;
   let out = match inner {
     Inner::DeflateDecoder(d) => {
-      d.finish().map_err(|e| type_error(e.to_string()))
+      d.finish().map_err(CompressionError::IoTypeError)
     }
     Inner::DeflateEncoder(d) => {
-      d.finish().map_err(|e| type_error(e.to_string()))
+      d.finish().map_err(CompressionError::IoTypeError)
     }
     Inner::DeflateRawDecoder(d) => {
-      d.finish().map_err(|e| type_error(e.to_string()))
+      d.finish().map_err(CompressionError::IoTypeError)
     }
     Inner::DeflateRawEncoder(d) => {
-      d.finish().map_err(|e| type_error(e.to_string()))
+      d.finish().map_err(CompressionError::IoTypeError)
     }
-    Inner::GzDecoder(d) => d.finish().map_err(|e| type_error(e.to_string())),
-    Inner::GzEncoder(d) => d.finish().map_err(|e| type_error(e.to_string())),
+    Inner::GzDecoder(d) => d.finish().map_err(CompressionError::IoTypeError),
+    Inner::GzEncoder(d) => d.finish().map_err(CompressionError::IoTypeError),
   };
   match out {
     Err(err) => {

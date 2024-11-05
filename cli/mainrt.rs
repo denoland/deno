@@ -89,11 +89,10 @@ fn main() {
   let standalone = standalone::extract_standalone(Cow::Owned(args));
   let future = async move {
     match standalone {
-      Ok(Some(future)) => {
-        let (metadata, eszip) = future.await?;
-        util::logger::init(metadata.log_level);
-        load_env_vars(&metadata.env_vars_from_env_file);
-        let exit_code = standalone::run(eszip, metadata).await?;
+      Ok(Some(data)) => {
+        util::logger::init(data.metadata.log_level);
+        load_env_vars(&data.metadata.env_vars_from_env_file);
+        let exit_code = standalone::run(data).await?;
         std::process::exit(exit_code);
       }
       Ok(None) => Ok(()),

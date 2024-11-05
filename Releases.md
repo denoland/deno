@@ -6,6 +6,91 @@ https://github.com/denoland/deno/releases
 We also have one-line install commands at:
 https://github.com/denoland/deno_install
 
+### 2.0.4 / 2024.10.29
+
+- Revert "fix(ext/node): fix dns.lookup result ordering (#26264)" (#26621)
+- Revert "fix(ext/node): use primordials in `ext/node/polyfills/https.ts`
+  (#26323)" (#26613)
+- feat(lsp): "typescript.preferences.preferTypeOnlyAutoImports" setting (#26546)
+- fix(check): expose more globals from @types/node (#26603)
+- fix(check): ignore resolving `jsxImportSource` when jsx is not used in graph
+  (#26548)
+- fix(cli): Make --watcher CLEAR_SCREEN clear scrollback buffer as well as
+  visible screen (#25997)
+- fix(compile): regression handling redirects (#26586)
+- fix(ext/napi): export dynamic symbols list for {Free,Open}BSD (#26605)
+- fix(ext/node): add path to `fs.stat` and `fs.statSync` error (#26037)
+- fix(ext/node): compatibility with {Free,Open}BSD (#26604)
+- fix(ext/node): use primordials in
+  ext\node\polyfills\internal\crypto\_randomInt.ts (#26534)
+- fix(install): cache json exports of JSR packages (#26552)
+- fix(install): regression - do not panic when config file contains \r\n
+  newlines (#26547)
+- fix(lsp): make missing import action fix infallible (#26539)
+- fix(npm): match npm bearer token generation (#26544)
+- fix(upgrade): stop running `deno lsp` processes on windows before attempting
+  to replace executable (#26542)
+- fix(watch): don't panic on invalid file specifiers (#26577)
+- fix: do not panic when failing to write to http cache (#26591)
+- fix: provide hints in terminal errors for Node.js globals (#26610)
+- fix: report exceptions from nextTick (#26579)
+- fix: support watch flag to enable watching other files than the main module on
+  serve subcommand (#26622)
+- perf: pass transpiled module to deno_core as known string (#26555)
+
+### 2.0.3 / 2024.10.25
+
+- feat(lsp): interactive inlay hints (#26382)
+- fix: support node-api in denort (#26389)
+- fix(check): support `--frozen` on deno check (#26479)
+- fix(cli): increase size of blocking task threadpool on windows (#26465)
+- fix(config): schemas for lint rule and tag autocompletion (#26515)
+- fix(ext/console): ignore casing for named colors in css parsing (#26466)
+- fix(ext/ffi): return u64/i64 as bigints from nonblocking ffi calls (#26486)
+- fix(ext/node): cancel pending ipc writes on channel close (#26504)
+- fix(ext/node): map `ERROR_INVALID_NAME` to `ENOENT` on windows (#26475)
+- fix(ext/node): only set our end of child process pipe to nonblocking mode
+  (#26495)
+- fix(ext/node): properly map reparse point error in readlink (#26375)
+- fix(ext/node): refactor http.ServerResponse into function class (#26210)
+- fix(ext/node): stub HTTPParser internal binding (#26401)
+- fix(ext/node): use primordials in `ext/node/polyfills/https.ts` (#26323)
+- fix(fmt): --ext flag requires to pass files (#26525)
+- fix(fmt): upgrade formatters (#26469)
+- fix(help): missing package specifier (#26380)
+- fix(info): resolve workspace member mappings (#26350)
+- fix(install): better json editing (#26450)
+- fix(install): cache all exports of JSR packages listed in `deno.json` (#26501)
+- fix(install): cache type only module deps in `deno install` (#26497)
+- fix(install): don't cache json exports of JSR packages (for now) (#26530)
+- fix(install): update lockfile when using package.json (#26458)
+- fix(lsp): import-map-remap quickfix for type imports (#26454)
+- fix(node/util): support array formats in `styleText` (#26507)
+- fix(node:tls): set TLSSocket.alpnProtocol for client connections (#26476)
+- fix(npm): ensure scoped package name is encoded in URLs (#26390)
+- fix(npm): support version ranges with && or comma (#26453)
+- fix: `.npmrc` settings not being passed to install/add command (#26473)
+- fix: add 'fmt-component' to unstable features in schema file (#26526)
+- fix: share inotify fd across watchers (#26200)
+- fix: unpin tokio version (#26457)
+- perf(compile): pass module source data from binary directly to v8 (#26494)
+- perf: avoid multiple calls to runMicrotask (#26378)
+
+### 2.0.2 / 2024.10.17
+
+- fix(cli): set napi object property properly (#26344)
+- fix(ext/node): add null check for kStreamBaseField (#26368)
+- fix(install): don't attempt to cache specifiers that point to directories
+  (#26369)
+- fix(jupyter): fix panics for overslow subtraction (#26371)
+- fix(jupyter): update to the new logo (#26353)
+- fix(net): don't try to set nodelay on upgrade streams (#26342)
+- fix(node/fs): copyFile with `COPYFILE_EXCL` should not throw if the
+  destination doesn't exist (#26360)
+- fix(node/http): normalize header names in `ServerResponse` (#26339)
+- fix(runtime): send ws ping frames from inspector server (#26352)
+- fix: don't warn on ignored signals on windows (#26332)
+
 ### 2.0.1 / 2024.10.16
 
 - feat(lsp): "deno/didRefreshDenoConfigurationTree" notifications (#26215)
