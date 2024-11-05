@@ -68,7 +68,7 @@
     "third_party"
   ],
   "plugins": [
-    "https://plugins.dprint.dev/typescript-0.93.1.wasm",
+    "https://plugins.dprint.dev/typescript-0.93.2.wasm",
     "https://plugins.dprint.dev/json-0.19.4.wasm",
     "https://plugins.dprint.dev/markdown-0.17.8.wasm",
     "https://plugins.dprint.dev/toml-0.6.3.wasm",
