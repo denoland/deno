@@ -1837,7 +1837,7 @@ impl Inner {
         fix_ts_import_changes(
           &code_action_data.specifier,
           &combined_code_actions.changes,
-          &self.get_ts_response_import_mapper(&code_action_data.specifier),
+          self,
         )
         .map_err(|err| {
           error!("Unable to remap changes: {:#}", err);
@@ -1890,7 +1890,7 @@ impl Inner {
         refactor_edit_info.edits = fix_ts_import_changes(
           &action_data.specifier,
           &refactor_edit_info.edits,
-          &self.get_ts_response_import_mapper(&action_data.specifier),
+          self,
         )
         .map_err(|err| {
           error!("Unable to remap changes: {:#}", err);
@@ -1921,7 +1921,8 @@ impl Inner {
         // todo(dsherret): this should probably just take the resolver itself
         // as the import map is an implementation detail
         .and_then(|d| d.resolver.maybe_import_map()),
-      self.resolver.as_ref(),
+      &self.resolver,
+      &self.ts_server.specifier_map,
       file_referrer,
     )
   }

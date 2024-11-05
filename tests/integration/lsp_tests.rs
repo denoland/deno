@@ -6629,6 +6629,23 @@ export class DuckConfig {
         }]
       }
     }, {
+      "title": "Add all missing imports",
+      "kind": "quickfix",
+      "diagnostics": [{
+        "range": {
+          "start": { "line": 0, "character": 50 },
+          "end": { "line": 0, "character": 67 }
+        },
+        "severity": 1,
+        "code": 2304,
+        "source": "deno-ts",
+        "message": "Cannot find name 'DuckConfigOptions'."
+      }],
+      "data": {
+        "specifier": "file:///a/file00.ts",
+        "fixId": "fixMissingImport"
+      }
+    }, {
       "title": "Add import from \"./file01.ts\"",
       "kind": "quickfix",
       "diagnostics": [{
@@ -6655,23 +6672,6 @@ export class DuckConfig {
             "newText": "import { DuckConfig } from \"./file01.ts\";\n\n"
           }]
         }]
-      }
-    }, {
-      "title": "Add all missing imports",
-      "kind": "quickfix",
-      "diagnostics": [{
-        "range": {
-          "start": { "line": 0, "character": 50 },
-          "end": { "line": 0, "character": 67 }
-        },
-        "severity": 1,
-        "code": 2304,
-        "source": "deno-ts",
-        "message": "Cannot find name 'DuckConfigOptions'."
-      }],
-      "data": {
-        "specifier": "file:///a/file00.ts",
-        "fixId": "fixMissingImport"
       }
     }])
   );
@@ -8237,8 +8237,8 @@ fn lsp_infer_return_type() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let temp_dir = context.temp_dir();
   temp_dir.write("deno.json", json!({}).to_string());
-  let types_file = source_file(
-    temp_dir.path().join("types.d.ts"),
+  temp_dir.write(
+    "types.d.ts",
     r#"
       export interface SomeInterface {
         someField: number;
@@ -8319,7 +8319,7 @@ fn lsp_infer_return_type() {
                   "start": { "line": 1, "character": 20 },
                   "end": { "line": 1, "character": 20 },
                 },
-                "newText": format!(": import(\"{}\").SomeInterface", types_file.url()),
+                "newText": ": import(\"./types.d.ts\").SomeInterface",
               },
             ],
           },

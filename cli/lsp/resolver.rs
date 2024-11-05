@@ -177,7 +177,7 @@ impl LspScopeResolver {
         .flat_map(|(name, _)| {
           let req_ref =
             NpmPackageReqReference::from_str(&format!("npm:{name}")).ok()?;
-          let specifier = NodeResolution::into_specifier_and_media_type(Some(
+          let specifier = into_specifier_and_media_type(Some(
             node_resolver
               .resolve_req_reference(
                 &req_ref,
