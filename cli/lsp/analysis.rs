@@ -493,6 +493,7 @@ impl<'a> TsResponseImportMapper<'a> {
         if let Some(specifier) = self
           .check_specifier(&specifier, referrer)
           .or_else(|| relative_specifier(referrer, &specifier))
+          .filter(|s| !s.contains("/node_modules/"))
         {
           return Some(specifier);
         }

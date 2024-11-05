@@ -3930,6 +3930,9 @@ impl CompletionEntry {
           .check_specifier(&import_data.normalized, specifier)
           .or_else(|| relative_specifier(specifier, &import_data.normalized))
         {
+          if new_module_specifier.contains("/node_modules/") {
+            return None;
+          }
           display_source.clone_from(&new_module_specifier);
           if new_module_specifier != import_data.raw.module_specifier {
             specifier_rewrite = Some((
