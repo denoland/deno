@@ -7122,6 +7122,7 @@ dependencies = [
  "console_static_text",
  "deno_unsync",
  "denokv_proto",
+ "faster-hex",
  "fastwebsockets",
  "flate2",
  "futures",
