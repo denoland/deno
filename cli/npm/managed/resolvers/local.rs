@@ -55,6 +55,7 @@ use crate::util::progress_bar::ProgressMessagePrompt;
 use super::super::cache::NpmCache;
 use super::super::cache::TarballCache;
 use super::super::resolution::NpmResolution;
+use super::common::bin_entries;
 use super::common::NpmPackageFsResolver;
 use super::common::RegistryReadPermissionChecker;
 
@@ -329,8 +330,7 @@ async fn sync_resolution_with_fs(
   let mut cache_futures = FuturesUnordered::new();
   let mut newest_packages_by_name: HashMap<&String, &NpmResolutionPackage> =
     HashMap::with_capacity(package_partitions.packages.len());
-  let bin_entries =
-    Rc::new(RefCell::new(super::common::bin_entries::BinEntries::new()));
+  let bin_entries = Rc::new(RefCell::new(bin_entries::BinEntries::new()));
   let mut lifecycle_scripts =
     super::common::lifecycle_scripts::LifecycleScripts::new(
       lifecycle_scripts,
@@ -658,7 +658,23 @@ async fn sync_resolution_with_fs(
   // 7. Set up `node_modules/.bin` entries for packages that need it.
   {
     let bin_entries = std::mem::take(&mut *bin_entries.borrow_mut());
-    bin_entries.finish(snapshot, &bin_node_modules_dir_path)?;
+    bin_entries.finish(
+      snapshot,
+      &bin_node_modules_dir_path,
+      |setup_outcome| {
+        match setup_outcome {
+          bin_entries::EntrySetupOutcome::MissingEntrypoint {
+            package, ..
+          } if lifecycle_scripts.can_run_scripts(&package.id.nv)
+            && !lifecycle_scripts.has_run_scripts(package) =>
+          {
+            // ignore, it might get fixed when the lifecycle scripts run.
+            // if not, we'll warn then
+          }
+          outcome => outcome.warn_if_failed(),
+        }
+      },
+    )?;
   }
 
   // 8. Create symlinks for the workspace packages
@@ -708,7 +724,7 @@ async fn sync_resolution_with_fs(
     .finish(
       snapshot,
       &package_partitions.packages,
-      Some(root_node_modules_dir_path),
+      root_node_modules_dir_path,
       progress_bar,
     )
     .await?;

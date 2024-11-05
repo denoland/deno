@@ -1,0 +1,24 @@
+{
+  "tempDir": true,
+  "tests": {
+    "all_at_once": {
+      "steps": [
+        {
+          "args": "install --allow-scripts",
+          "output": "all_at_once_install.out"
+        },
+        { "args": "task run-testbin", "output": "run_testbin.out" }
+      ]
+    },
+    "separate_steps": {
+      "steps": [
+        { "args": "install", "output": "install_warn.out" },
+        {
+          "args": "install --allow-scripts",
+          "output": "Initialize @denotest/bin-created-by-lifecycle@1.0.0: running 'install' script\n"
+        },
+        { "args": "task run-testbin", "output": "run_testbin.out" }
+      ]
+    }
+  }
+}
