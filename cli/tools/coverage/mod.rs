@@ -6,12 +6,12 @@ use crate::args::FileFlags;
 use crate::args::Flags;
 use crate::cdp;
 use crate::factory::CliFactory;
-use crate::npm::CliNpmResolver;
 use crate::tools::fmt::format_json;
 use crate::tools::test::is_supported_test_path;
 use crate::util::text_encoding::source_map_from_code;
 
 use deno_ast::MediaType;
+use deno_ast::ModuleKind;
 use deno_ast::ModuleSpecifier;
 use deno_config::glob::FileCollector;
 use deno_config::glob::FilePatterns;
@@ -25,6 +25,7 @@ use deno_core::serde_json;
 use deno_core::sourcemap::SourceMap;
 use deno_core::url::Url;
 use deno_core::LocalInspectorSession;
+use node_resolver::InNpmPackageChecker;
 use regex::Regex;
 use std::fs;
 use std::fs::File;
@@ -461,7 +462,7 @@ fn filter_coverages(
   coverages: Vec<cdp::ScriptCoverage>,
   include: Vec<String>,
   exclude: Vec<String>,
-  npm_resolver: &dyn CliNpmResolver,
+  in_npm_pkg_checker: &dyn InNpmPackageChecker,
 ) -> Vec<cdp::ScriptCoverage> {
   let include: Vec<Regex> =
     include.iter().map(|e| Regex::new(e).unwrap()).collect();
@@ -485,7 +486,7 @@ fn filter_coverages(
         || doc_test_re.is_match(e.url.as_str())
         || Url::parse(&e.url)
           .ok()
-          .map(|url| npm_resolver.in_npm_package(&url))
+          .map(|url| in_npm_pkg_checker.in_npm_package(&url))
           .unwrap_or(false);
 
       let is_included = include.iter().any(|p| p.is_match(&e.url));
@@ -496,7 +497,7 @@ fn filter_coverages(
     .collect::<Vec<cdp::ScriptCoverage>>()
 }
 
-pub async fn cover_files(
+pub fn cover_files(
   flags: Arc<Flags>,
   coverage_flags: CoverageFlags,
 ) -> Result<(), AnyError> {
@@ -506,9 +507,10 @@ pub async fn cover_files(
 
   let factory = CliFactory::from_flags(flags);
   let cli_options = factory.cli_options()?;
-  let npm_resolver = factory.npm_resolver().await?;
+  let in_npm_pkg_checker = factory.in_npm_pkg_checker()?;
   let file_fetcher = factory.file_fetcher()?;
   let emitter = factory.emitter()?;
+  let cjs_tracker = factory.cjs_tracker()?;
 
   assert!(!coverage_flags.files.include.is_empty());
 
@@ -528,7 +530,7 @@ pub async fn cover_files(
     script_coverages,
     coverage_flags.include,
     coverage_flags.exclude,
-    npm_resolver.as_ref(),
+    in_npm_pkg_checker.as_ref(),
   );
   if script_coverages.is_empty() {
     return Err(generic_error("No covered files included in the report"));
@@ -585,6 +587,8 @@ pub async fn cover_files(
     let transpiled_code = match file.media_type {
       MediaType::JavaScript
       | MediaType::Unknown
+      | MediaType::Css
+      | MediaType::Wasm
       | MediaType::Cjs
       | MediaType::Mjs
       | MediaType::Json => None,
@@ -594,7 +598,10 @@ pub async fn cover_files(
       | MediaType::Mts
       | MediaType::Cts
       | MediaType::Tsx => {
-        Some(match emitter.maybe_cached_emit(&file.specifier, &file.source) {
+        let module_kind = ModuleKind::from_is_cjs(
+          cjs_tracker.is_maybe_cjs(&file.specifier, file.media_type)?,
+        );
+        Some(match emitter.maybe_cached_emit(&file.specifier, module_kind, &file.source) {
           Some(code) => code,
           None => {
             return Err(anyhow!(
@@ -605,7 +612,7 @@ pub async fn cover_files(
           }
         })
       }
-      MediaType::Wasm | MediaType::TsBuildInfo | MediaType::SourceMap => {
+      MediaType::SourceMap => {
         unreachable!()
       }
     };

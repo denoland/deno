@@ -4,6 +4,7 @@ mod byonm;
 mod common;
 mod managed;
 
+use std::borrow::Cow;
 use std::path::Path;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -15,13 +16,16 @@ use deno_core::error::AnyError;
 use deno_core::serde_json;
 use deno_npm::npm_rc::ResolvedNpmRc;
 use deno_npm::registry::NpmPackageInfo;
+use deno_resolver::npm::ByonmInNpmPackageChecker;
 use deno_resolver::npm::ByonmNpmResolver;
 use deno_resolver::npm::ByonmResolvePkgFolderFromDenoReqError;
-use deno_runtime::deno_node::NodeRequireResolver;
+use deno_runtime::deno_node::NodePermissions;
 use deno_runtime::ops::process::NpmProcessStateProvider;
 use deno_semver::package::PackageNv;
 use deno_semver::package::PackageReq;
 use managed::cache::registry_info::get_package_url;
+use managed::create_managed_in_npm_pkg_checker;
+use node_resolver::InNpmPackageChecker;
 use node_resolver::NpmResolver;
 use thiserror::Error;
 
@@ -29,7 +33,8 @@ use crate::file_fetcher::FileFetcher;
 
 pub use self::byonm::CliByonmNpmResolver;
 pub use self::byonm::CliByonmNpmResolverCreateOptions;
-pub use self::managed::CliNpmResolverManagedCreateOptions;
+pub use self::managed::CliManagedInNpmPkgCheckerCreateOptions;
+pub use self::managed::CliManagedNpmResolverCreateOptions;
 pub use self::managed::CliNpmResolverManagedSnapshotOption;
 pub use self::managed::ManagedCliNpmResolver;
 
@@ -42,7 +47,7 @@ pub enum ResolvePkgFolderFromDenoReqError {
 }
 
 pub enum CliNpmResolverCreateOptions {
-  Managed(CliNpmResolverManagedCreateOptions),
+  Managed(CliManagedNpmResolverCreateOptions),
   Byonm(CliByonmNpmResolverCreateOptions),
 }
 
@@ -68,6 +73,22 @@ pub async fn create_cli_npm_resolver(
   }
 }
 
+pub enum CreateInNpmPkgCheckerOptions<'a> {
+  Managed(CliManagedInNpmPkgCheckerCreateOptions<'a>),
+  Byonm,
+}
+
+pub fn create_in_npm_pkg_checker(
+  options: CreateInNpmPkgCheckerOptions,
+) -> Arc<dyn InNpmPackageChecker> {
+  match options {
+    CreateInNpmPkgCheckerOptions::Managed(options) => {
+      create_managed_in_npm_pkg_checker(options)
+    }
+    CreateInNpmPkgCheckerOptions::Byonm => Arc::new(ByonmInNpmPackageChecker),
+  }
+}
+
 pub enum InnerCliNpmResolverRef<'a> {
   Managed(&'a ManagedCliNpmResolver),
   #[allow(dead_code)]
@@ -76,7 +97,6 @@ pub enum InnerCliNpmResolverRef<'a> {
 
 pub trait CliNpmResolver: NpmResolver {
   fn into_npm_resolver(self: Arc<Self>) -> Arc<dyn NpmResolver>;
-  fn into_require_resolver(self: Arc<Self>) -> Arc<dyn NodeRequireResolver>;
   fn into_process_state_provider(
     self: Arc<Self>,
   ) -> Arc<dyn NpmProcessStateProvider>;
@@ -106,6 +126,12 @@ pub trait CliNpmResolver: NpmResolver {
     req: &PackageReq,
     referrer: &ModuleSpecifier,
   ) -> Result<PathBuf, ResolvePkgFolderFromDenoReqError>;
+
+  fn ensure_read_permission<'a>(
+    &self,
+    permissions: &mut dyn NodePermissions,
+    path: &'a Path,
+  ) -> Result<Cow<'a, Path>, AnyError>;
 
   /// Returns a hash returning the state of the npm resolver
   /// or `None` if the state currently can't be determined.

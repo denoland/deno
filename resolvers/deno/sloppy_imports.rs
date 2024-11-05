@@ -232,7 +232,7 @@ impl<Fs: SloppyImportResolverFs> SloppyImportsResolver<Fs> {
             | MediaType::Tsx
             | MediaType::Json
             | MediaType::Wasm
-            | MediaType::TsBuildInfo
+            | MediaType::Css
             | MediaType::SourceMap => {
               return None;
             }

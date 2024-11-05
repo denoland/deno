@@ -36,7 +36,6 @@ use deno_semver::package::PackageReq;
 use deno_semver::package::PackageReqReference;
 use deno_semver::Version;
 use import_map::ImportMap;
-use node_resolver::NpmResolver;
 use once_cell::sync::Lazy;
 use regex::Regex;
 use std::borrow::Cow;
@@ -336,7 +335,12 @@ impl<'a> TsResponseImportMapper<'a> {
       .resolver
       .maybe_managed_npm_resolver(Some(&self.file_referrer))
     {
-      if npm_resolver.in_npm_package(specifier) {
+      let in_npm_pkg = self
+        .resolver
+        .maybe_node_resolver(Some(&self.file_referrer))
+        .map(|n| n.in_npm_package(specifier))
+        .unwrap_or(false);
+      if in_npm_pkg {
         if let Ok(Some(pkg_id)) =
           npm_resolver.resolve_pkg_id_from_specifier(specifier)
         {
@@ -1204,14 +1208,11 @@ impl CodeActionCollection {
         }),
       );
 
-      match parsed_source.program_ref() {
-        deno_ast::swc::ast::Program::Module(module) => module
-          .body
-          .iter()
-          .find(|i| i.range().contains(&specifier_range))
-          .map(|i| text_info.line_and_column_index(i.range().start)),
-        deno_ast::swc::ast::Program::Script(_) => None,
-      }
+      parsed_source
+        .program_ref()
+        .body()
+        .find(|i| i.range().contains(&specifier_range))
+        .map(|i| text_info.line_and_column_index(i.range().start))
     }
 
     async fn deno_types_for_npm_action(
