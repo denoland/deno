@@ -1,5 +1,10 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
+//! Server for NodeJS header tarballs, used by `node-gyp` in tests to download headers
+//!
+//! Loads from `testdata/assets`, if we update our node version in `process.versions` we'll need to
+//! update the header tarball there.
+
 use std::collections::HashMap;
 use std::convert::Infallible;
 use std::net::SocketAddr;
@@ -19,7 +24,7 @@ use crate::servers::string_body;
 use crate::testdata_path;
 
 pub static NODEJS_MIRROR: LazyLock<NodeJsMirror> =
-  LazyLock::new(|| NodeJsMirror::default());
+  LazyLock::new(NodeJsMirror::default);
 
 #[derive(Default)]
 pub struct NodeJsMirror {
@@ -36,10 +41,8 @@ impl NodeJsMirror {
       }
       std::collections::hash_map::Entry::Vacant(vacant) => {
         let contents = testdata_path().join("assets").join(file);
-        let contents = contents
-          .read_to_bytes_if_exists()
-          .ok()
-          .map(|b| Bytes::from(b))?;
+        let contents =
+          contents.read_to_bytes_if_exists().ok().map(Bytes::from)?;
         vacant.insert(contents.clone());
         Some(contents)
       }
@@ -73,7 +76,6 @@ pub async fn nodejs_org_mirror(port: u16) {
         let Some(version) = parts.next() else {
           return not_found(format!("missing node version in path: {path}"));
         };
-        // node header download
         let Some(file) = parts.next() else {
           return not_found(format!("missing file version in path: {path}"));
         };
@@ -93,7 +95,7 @@ pub async fn nodejs_org_mirror(port: u16) {
         };
         Ok(Response::new(UnsyncBoxBody::new(Full::new(bytes))))
       } else {
-        return not_found(format!("unexpected request path: {path}"));
+        not_found(format!("unexpected request path: {path}"))
       }
     },
   )
