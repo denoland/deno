@@ -8143,7 +8143,11 @@ fn lsp_npm_auto_import_and_quick_fix_byonm() {
     })
     .to_string(),
   );
-  context.run_npm("install");
+  context
+    .new_command()
+    .args("install")
+    .run()
+    .skip_output_check();
   temp_dir.write("other.ts", "import \"cowsay\";\n");
   let mut client = context.new_lsp_command().build();
   client.initialize_default();
