@@ -15,6 +15,7 @@ use crate::SnapshotReadOptions;
 use async_trait::async_trait;
 use deno_core::error::type_error;
 use deno_core::error::AnyError;
+use deno_core::error::JsStackFrame;
 use deno_core::OpState;
 use denokv_proto::CommitResult;
 use denokv_proto::ReadRangeOutput;
@@ -62,17 +63,20 @@ impl DatabaseHandler for MultiBackendDbHandler {
     &self,
     state: Rc<RefCell<OpState>>,
     path: Option<String>,
+    stack: Option<Vec<JsStackFrame>>,
   ) -> Result<Self::DB, AnyError> {
     for (prefixes, handler) in &self.backends {
       for &prefix in *prefixes {
         if prefix.is_empty() {
-          return handler.dyn_open(state.clone(), path.clone()).await;
+          return handler.dyn_open(state.clone(), path.clone(), stack).await;
         }
         let Some(path) = &path else {
           continue;
         };
         if path.starts_with(prefix) {
-          return handler.dyn_open(state.clone(), Some(path.clone())).await;
+          return handler
+            .dyn_open(state.clone(), Some(path.clone()), stack)
+            .await;
         }
       }
     }
@@ -89,6 +93,7 @@ pub trait DynamicDbHandler {
     &self,
     state: Rc<RefCell<OpState>>,
     path: Option<String>,
+    stack: Option<Vec<JsStackFrame>>,
   ) -> Result<RcDynamicDb, AnyError>;
 }
 
@@ -100,8 +105,9 @@ impl DatabaseHandler for Box<dyn DynamicDbHandler> {
     &self,
     state: Rc<RefCell<OpState>>,
     path: Option<String>,
+    stack: Option<Vec<JsStackFrame>>,
   ) -> Result<Self::DB, AnyError> {
-    (**self).dyn_open(state, path).await
+    (**self).dyn_open(state, path, stack).await
   }
 }
 
@@ -115,8 +121,9 @@ where
     &self,
     state: Rc<RefCell<OpState>>,
     path: Option<String>,
+    stack: Option<Vec<JsStackFrame>>,
   ) -> Result<RcDynamicDb, AnyError> {
-    Ok(RcDynamicDb(Rc::new(self.open(state, path).await?)))
+    Ok(RcDynamicDb(Rc::new(self.open(state, path, stack).await?)))
   }
 }
 

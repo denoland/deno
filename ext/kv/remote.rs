@@ -11,6 +11,7 @@ use async_trait::async_trait;
 use bytes::Bytes;
 use deno_core::error::type_error;
 use deno_core::error::AnyError;
+use deno_core::error::JsStackFrame;
 use deno_core::futures::Stream;
 use deno_core::OpState;
 use deno_fetch::create_http_client;
@@ -46,18 +47,27 @@ impl HttpOptions {
 }
 
 pub trait RemoteDbHandlerPermissions {
-  fn check_env(&mut self, var: &str) -> Result<(), PermissionCheckError>;
+  fn check_env(
+    &mut self,
+    var: &str,
+    stack: Option<Vec<JsStackFrame>>,
+  ) -> Result<(), PermissionCheckError>;
   fn check_net_url(
     &mut self,
     url: &Url,
     api_name: &str,
+    stack: Option<Vec<JsStackFrame>>,
   ) -> Result<(), PermissionCheckError>;
 }
 
 impl RemoteDbHandlerPermissions for deno_permissions::PermissionsContainer {
   #[inline(always)]
-  fn check_env(&mut self, var: &str) -> Result<(), PermissionCheckError> {
-    deno_permissions::PermissionsContainer::check_env(self, var)
+  fn check_env(
+    &mut self,
+    var: &str,
+    stack: Option<Vec<JsStackFrame>>,
+  ) -> Result<(), PermissionCheckError> {
+    deno_permissions::PermissionsContainer::check_env(self, var, stack)
   }
 
   #[inline(always)]
@@ -65,8 +75,11 @@ impl RemoteDbHandlerPermissions for deno_permissions::PermissionsContainer {
     &mut self,
     url: &Url,
     api_name: &str,
+    stack: Option<Vec<JsStackFrame>>,
   ) -> Result<(), PermissionCheckError> {
-    deno_permissions::PermissionsContainer::check_net_url(self, url, api_name)
+    deno_permissions::PermissionsContainer::check_net_url(
+      self, url, api_name, stack,
+    )
   }
 }
 
@@ -105,7 +118,7 @@ impl<P: RemoteDbHandlerPermissions + 'static> denokv_remote::RemotePermissions
     let mut state = self.state.borrow_mut();
     let permissions = state.borrow_mut::<P>();
     permissions
-      .check_net_url(url, "Deno.openKv")
+      .check_net_url(url, "Deno.openKv", None)
       .map_err(Into::into)
   }
 }
@@ -161,6 +174,7 @@ impl<P: RemoteDbHandlerPermissions + 'static> DatabaseHandler
     &self,
     state: Rc<RefCell<OpState>>,
     path: Option<String>,
+    stack: Option<Vec<JsStackFrame>>,
   ) -> Result<Self::DB, AnyError> {
     const ENV_VAR_NAME: &str = "DENO_KV_ACCESS_TOKEN";
 
@@ -175,8 +189,8 @@ impl<P: RemoteDbHandlerPermissions + 'static> DatabaseHandler
     {
       let mut state = state.borrow_mut();
       let permissions = state.borrow_mut::<P>();
-      permissions.check_env(ENV_VAR_NAME)?;
-      permissions.check_net_url(&parsed_url, "Deno.openKv")?;
+      permissions.check_env(ENV_VAR_NAME, stack.clone())?;
+      permissions.check_net_url(&parsed_url, "Deno.openKv", stack)?;
     }
 
     let access_token = std::env::var(ENV_VAR_NAME)

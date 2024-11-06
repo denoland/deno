@@ -133,12 +133,13 @@ pub enum CreateWorkerError {
 }
 
 /// Create worker as the host
-#[op2]
+#[op2(reentrant)]
 #[serde]
 fn op_create_worker(
   state: &mut OpState,
   #[serde] args: CreateWorkerArgs,
   #[serde] maybe_worker_metadata: Option<JsMessageData>,
+  #[stack_trace] stack: Option<Vec<deno_core::error::JsStackFrame>>,
 ) -> Result<WorkerId, CreateWorkerError> {
   let specifier = args.specifier.clone();
   let maybe_source_code = if args.has_source_code {
@@ -165,7 +166,7 @@ fn op_create_worker(
   let worker_permissions = if let Some(child_permissions_arg) = args.permissions
   {
     parent_permissions
-      .create_child_permissions(child_permissions_arg)
+      .create_child_permissions(child_permissions_arg, stack)
       .map_err(CreateWorkerError::Permission)?
   } else {
     parent_permissions.clone()

@@ -3,6 +3,7 @@
 use crate::symbol::NativeType;
 use crate::FfiPermissions;
 use crate::ForeignFunction;
+use deno_core::error::JsStackFrame;
 use deno_core::op2;
 use deno_core::v8;
 use deno_core::v8::TryCatch;
@@ -561,18 +562,19 @@ pub struct RegisterCallbackArgs {
   result: NativeType,
 }
 
-#[op2]
+#[op2(reentrant)]
 pub fn op_ffi_unsafe_callback_create<FP, 'scope>(
   state: &mut OpState,
   scope: &mut v8::HandleScope<'scope>,
   #[serde] args: RegisterCallbackArgs,
   cb: v8::Local<v8::Function>,
+  #[stack_trace] stack: Option<Vec<JsStackFrame>>,
 ) -> Result<v8::Local<'scope, v8::Value>, CallbackError>
 where
   FP: FfiPermissions + 'static,
 {
   let permissions = state.borrow_mut::<FP>();
-  permissions.check_partial_no_path()?;
+  permissions.check_partial_no_path(stack)?;
 
   let thread_id: u32 = LOCAL_THREAD_ID.with(|s| {
     let value = *s.borrow();

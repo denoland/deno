@@ -4,6 +4,7 @@ use crate::io::UnixStreamResource;
 use crate::ops::NetError;
 use crate::raw::NetworkListenerResource;
 use crate::NetPermissions;
+use deno_core::error::JsStackFrame;
 use deno_core::op2;
 use deno_core::AsyncRefCell;
 use deno_core::CancelHandle;
@@ -85,11 +86,12 @@ pub async fn op_net_accept_unix(
   Ok((rid, local_addr_path, remote_addr_path))
 }
 
-#[op2(async)]
+#[op2(async, reentrant)]
 #[serde]
 pub async fn op_net_connect_unix<NP>(
   state: Rc<RefCell<OpState>>,
   #[string] address_path: String,
+  #[stack_trace] stack: Option<Vec<JsStackFrame>>,
 ) -> Result<(ResourceId, Option<String>, Option<String>), NetError>
 where
   NP: NetPermissions + 'static,
@@ -98,11 +100,11 @@ where
     let mut state_ = state.borrow_mut();
     let address_path = state_
       .borrow_mut::<NP>()
-      .check_read(&address_path, "Deno.connect()")
+      .check_read(&address_path, "Deno.connect()", stack.clone())
       .map_err(NetError::Permission)?;
     _ = state_
       .borrow_mut::<NP>()
-      .check_write_path(&address_path, "Deno.connect()")
+      .check_write_path(&address_path, "Deno.connect()", stack)
       .map_err(NetError::Permission)?;
     address_path
   };
@@ -140,13 +142,14 @@ pub async fn op_net_recv_unixpacket(
   Ok((nread, path))
 }
 
-#[op2(async)]
+#[op2(async, reentrant)]
 #[number]
 pub async fn op_net_send_unixpacket<NP>(
   state: Rc<RefCell<OpState>>,
   #[smi] rid: ResourceId,
   #[string] address_path: String,
   #[buffer] zero_copy: JsBuffer,
+  #[stack_trace] stack: Option<Vec<JsStackFrame>>,
 ) -> Result<usize, NetError>
 where
   NP: NetPermissions + 'static,
@@ -154,7 +157,7 @@ where
   let address_path = {
     let mut s = state.borrow_mut();
     s.borrow_mut::<NP>()
-      .check_write(&address_path, "Deno.DatagramConn.send()")
+      .check_write(&address_path, "Deno.DatagramConn.send()", stack)
       .map_err(NetError::Permission)?
   };
 
@@ -171,12 +174,13 @@ where
   Ok(nwritten)
 }
 
-#[op2]
+#[op2(reentrant)]
 #[serde]
 pub fn op_net_listen_unix<NP>(
   state: &mut OpState,
   #[string] address_path: String,
   #[string] api_name: String,
+  #[stack_trace] stack: Option<Vec<JsStackFrame>>,
 ) -> Result<(ResourceId, Option<String>), NetError>
 where
   NP: NetPermissions + 'static,
@@ -184,10 +188,10 @@ where
   let permissions = state.borrow_mut::<NP>();
   let api_call_expr = format!("{}()", api_name);
   let address_path = permissions
-    .check_read(&address_path, &api_call_expr)
+    .check_read(&address_path, &api_call_expr, stack.clone())
     .map_err(NetError::Permission)?;
   _ = permissions
-    .check_write_path(&address_path, &api_call_expr)
+    .check_write_path(&address_path, &api_call_expr, stack)
     .map_err(NetError::Permission)?;
   let listener = UnixListener::bind(address_path)?;
   let local_addr = listener.local_addr()?;
@@ -200,16 +204,17 @@ where
 pub fn net_listen_unixpacket<NP>(
   state: &mut OpState,
   address_path: String,
+  stack: Option<Vec<JsStackFrame>>,
 ) -> Result<(ResourceId, Option<String>), NetError>
 where
   NP: NetPermissions + 'static,
 {
   let permissions = state.borrow_mut::<NP>();
   let address_path = permissions
-    .check_read(&address_path, "Deno.listenDatagram()")
+    .check_read(&address_path, "Deno.listenDatagram()", stack.clone())
     .map_err(NetError::Permission)?;
   _ = permissions
-    .check_write_path(&address_path, "Deno.listenDatagram()")
+    .check_write_path(&address_path, "Deno.listenDatagram()", stack)
     .map_err(NetError::Permission)?;
   let socket = UnixDatagram::bind(address_path)?;
   let local_addr = socket.local_addr()?;
@@ -222,29 +227,31 @@ where
   Ok((rid, pathname))
 }
 
-#[op2]
+#[op2(reentrant)]
 #[serde]
 pub fn op_net_listen_unixpacket<NP>(
   state: &mut OpState,
   #[string] path: String,
+  #[stack_trace] stack: Option<Vec<JsStackFrame>>,
 ) -> Result<(ResourceId, Option<String>), NetError>
 where
   NP: NetPermissions + 'static,
 {
   super::check_unstable(state, "Deno.listenDatagram");
-  net_listen_unixpacket::<NP>(state, path)
+  net_listen_unixpacket::<NP>(state, path, stack)
 }
 
-#[op2]
+#[op2(reentrant)]
 #[serde]
 pub fn op_node_unstable_net_listen_unixpacket<NP>(
   state: &mut OpState,
   #[string] path: String,
+  #[stack_trace] stack: Option<Vec<JsStackFrame>>,
 ) -> Result<(ResourceId, Option<String>), NetError>
 where
   NP: NetPermissions + 'static,
 {
-  net_listen_unixpacket::<NP>(state, path)
+  net_listen_unixpacket::<NP>(state, path, stack)
 }
 
 pub fn pathstring(pathname: &Path) -> Result<String, NetError> {

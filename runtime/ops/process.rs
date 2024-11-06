@@ -33,6 +33,7 @@ use tokio::process::Command;
 use std::os::windows::process::CommandExt;
 
 use crate::ops::signal::SignalError;
+use deno_core::error::JsStackFrame;
 #[cfg(unix)]
 use std::os::unix::prelude::ExitStatusExt;
 #[cfg(unix)]
@@ -335,6 +336,7 @@ fn create_command(
   state: &mut OpState,
   mut args: SpawnArgs,
   api_name: &str,
+  stack: Option<Vec<JsStackFrame>>,
 ) -> Result<CreateCommand, ProcessError> {
   let maybe_npm_process_state = if args.needs_npm_process_state {
     let provider = state.borrow::<NpmProcessStateProviderRc>();
@@ -356,6 +358,7 @@ fn create_command(
     args.clear_env,
     state,
     api_name,
+    stack,
   )?;
   let mut command = std::process::Command::new(cmd);
 
@@ -634,6 +637,7 @@ fn compute_run_cmd_and_check_permissions(
   arg_clear_env: bool,
   state: &mut OpState,
   api_name: &str,
+  stack: Option<Vec<JsStackFrame>>,
 ) -> Result<(PathBuf, RunEnv), ProcessError> {
   let run_env =
     compute_run_env(arg_cwd, arg_envs, arg_clear_env).map_err(|e| {
@@ -655,6 +659,7 @@ fn compute_run_cmd_and_check_permissions(
     },
     &run_env,
     api_name,
+    stack,
   )?;
   Ok((cmd, run_env))
 }
@@ -748,9 +753,10 @@ fn check_run_permission(
   cmd: &RunQueryDescriptor,
   run_env: &RunEnv,
   api_name: &str,
+  stack: Option<Vec<JsStackFrame>>,
 ) -> Result<(), CheckRunPermissionError> {
   let permissions = state.borrow_mut::<PermissionsContainer>();
-  if !permissions.query_run_all(api_name) {
+  if !permissions.query_run_all(api_name, stack.clone()) {
     // error the same on all platforms
     let env_var_names = get_requires_allow_all_env_vars(run_env);
     if !env_var_names.is_empty() {
@@ -765,7 +771,7 @@ fn check_run_permission(
         )
       )));
     }
-    permissions.check_run(cmd, api_name)?;
+    permissions.check_run(cmd, api_name, stack)?;
   }
   Ok(())
 }
@@ -799,16 +805,17 @@ fn get_requires_allow_all_env_vars(env: &RunEnv) -> Vec<&str> {
   found_envs
 }
 
-#[op2]
+#[op2(reentrant)]
 #[serde]
 fn op_spawn_child(
   state: &mut OpState,
   #[serde] args: SpawnArgs,
   #[string] api_name: String,
+  #[stack_trace] stack: Option<Vec<JsStackFrame>>,
 ) -> Result<Child, ProcessError> {
   let detached = args.detached;
   let (command, pipe_rid, extra_pipe_rids, handles_to_close) =
-    create_command(state, args, &api_name)?;
+    create_command(state, args, &api_name, stack)?;
   let child = spawn_child(state, command, pipe_rid, extra_pipe_rids, detached);
   for handle in handles_to_close {
     deno_io::close_raw_handle(handle);
@@ -841,16 +848,17 @@ async fn op_spawn_wait(
   Ok(result)
 }
 
-#[op2]
+#[op2(reentrant)]
 #[serde]
 fn op_spawn_sync(
   state: &mut OpState,
   #[serde] args: SpawnArgs,
+  #[stack_trace] stack: Option<Vec<JsStackFrame>>,
 ) -> Result<SpawnOutput, ProcessError> {
   let stdout = matches!(args.stdio.stdout, StdioOrRid::Stdio(Stdio::Piped));
   let stderr = matches!(args.stdio.stderr, StdioOrRid::Stdio(Stdio::Piped));
   let (mut command, _, _, _) =
-    create_command(state, args, "Deno.Command().outputSync()")?;
+    create_command(state, args, "Deno.Command().outputSync()", stack)?;
   let output = command.output().map_err(|e| ProcessError::SpawnFailed {
     command: command.get_program().to_string_lossy().to_string(),
     error: Box::new(e.into()),
@@ -925,11 +933,12 @@ mod deprecated {
     stderr_rid: Option<ResourceId>,
   }
 
-  #[op2]
+  #[op2(reentrant)]
   #[serde]
   pub fn op_run(
     state: &mut OpState,
     #[serde] run_args: RunArgs,
+    #[stack_trace] stack: Option<Vec<JsStackFrame>>,
   ) -> Result<RunInfo, ProcessError> {
     let args = run_args.cmd;
     let cmd = args.first().ok_or(ProcessError::MissingCmd)?;
@@ -940,6 +949,7 @@ mod deprecated {
       /* clear env */ false,
       state,
       "Deno.run()",
+      stack,
     )?;
 
     let mut c = Command::new(cmd);
@@ -1126,16 +1136,17 @@ mod deprecated {
     }
   }
 
-  #[op2(fast)]
+  #[op2(reentrant)]
   pub fn op_kill(
     state: &mut OpState,
     #[smi] pid: i32,
     #[string] signal: String,
     #[string] api_name: String,
+    #[stack_trace] stack: Option<Vec<JsStackFrame>>,
   ) -> Result<(), ProcessError> {
     state
       .borrow_mut::<PermissionsContainer>()
-      .check_run_all(&api_name)?;
+      .check_run_all(&api_name, stack)?;
     kill(pid, &signal)
   }
 }

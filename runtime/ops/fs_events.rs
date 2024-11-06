@@ -162,12 +162,13 @@ fn start_watcher(
   Ok(())
 }
 
-#[op2]
+#[op2(reentrant)]
 #[smi]
 fn op_fs_events_open(
   state: &mut OpState,
   recursive: bool,
   #[serde] paths: Vec<String>,
+  #[stack_trace] stack: Option<Vec<deno_core::error::JsStackFrame>>,
 ) -> Result<ResourceId, FsEventsError> {
   let (sender, receiver) = mpsc::channel::<Result<FsEvent, NotifyError>>(16);
 
@@ -179,9 +180,11 @@ fn op_fs_events_open(
     RecursiveMode::NonRecursive
   };
   for path in &paths {
-    let path = state
-      .borrow_mut::<PermissionsContainer>()
-      .check_read(path, "Deno.watchFs()")?;
+    let path = state.borrow_mut::<PermissionsContainer>().check_read(
+      path,
+      "Deno.watchFs()",
+      stack.clone(),
+    )?;
 
     let watcher = state.borrow_mut::<WatcherState>();
     watcher.watcher.watch(&path, recursive_mode)?;

@@ -206,6 +206,7 @@ pub struct WorkerOptions {
   pub cache_storage_dir: Option<std::path::PathBuf>,
   pub origin_storage_dir: Option<std::path::PathBuf>,
   pub stdio: Stdio,
+  pub enable_stack_trace_arg_in_ops: bool,
 }
 
 impl Default for WorkerOptions {
@@ -230,6 +231,7 @@ impl Default for WorkerOptions {
       create_params: Default::default(),
       bootstrap: Default::default(),
       stdio: Default::default(),
+      enable_stack_trace_arg_in_ops: false,
     }
   }
 }
@@ -502,6 +504,7 @@ impl MainWorker {
         validate_import_attributes_callback,
       )),
       import_assertions_support: deno_core::ImportAssertionsSupport::Error,
+      enable_stack_trace_arg_in_ops: options.enable_stack_trace_arg_in_ops,
       eval_context_code_cache_cbs: services.v8_code_cache.map(|cache| {
         let cache_clone = cache.clone();
         (

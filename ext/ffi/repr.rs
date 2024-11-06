@@ -1,6 +1,7 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 use crate::FfiPermissions;
+use deno_core::error::JsStackFrame;
 use deno_core::op2;
 use deno_core::v8;
 use deno_core::OpState;
@@ -49,59 +50,63 @@ pub enum ReprError {
   Permission(#[from] deno_permissions::PermissionCheckError),
 }
 
-#[op2(fast)]
+#[op2(reentrant)]
 pub fn op_ffi_ptr_create<FP>(
   state: &mut OpState,
   #[bigint] ptr_number: usize,
+  #[stack_trace] stack: Option<Vec<JsStackFrame>>,
 ) -> Result<*mut c_void, ReprError>
 where
   FP: FfiPermissions + 'static,
 {
   let permissions = state.borrow_mut::<FP>();
-  permissions.check_partial_no_path()?;
+  permissions.check_partial_no_path(stack)?;
 
   Ok(ptr_number as *mut c_void)
 }
 
-#[op2(fast)]
+#[op2(reentrant)]
 pub fn op_ffi_ptr_equals<FP>(
   state: &mut OpState,
   a: *const c_void,
   b: *const c_void,
+  #[stack_trace] stack: Option<Vec<JsStackFrame>>,
 ) -> Result<bool, ReprError>
 where
   FP: FfiPermissions + 'static,
 {
   let permissions = state.borrow_mut::<FP>();
-  permissions.check_partial_no_path()?;
+  permissions.check_partial_no_path(stack)?;
 
   Ok(a == b)
 }
 
-#[op2]
+#[op2(reentrant)]
 pub fn op_ffi_ptr_of<FP>(
   state: &mut OpState,
   #[anybuffer] buf: *const u8,
+  #[stack_trace] stack: Option<Vec<JsStackFrame>>,
 ) -> Result<*mut c_void, ReprError>
 where
   FP: FfiPermissions + 'static,
 {
   let permissions = state.borrow_mut::<FP>();
-  permissions.check_partial_no_path()?;
+  permissions.check_partial_no_path(stack)?;
 
   Ok(buf as *mut c_void)
 }
 
-#[op2(fast)]
+#[op2(reentrant)]
 pub fn op_ffi_ptr_of_exact<FP>(
   state: &mut OpState,
   buf: v8::Local<v8::ArrayBufferView>,
+  #[stack_trace] stack: Option<Vec<JsStackFrame>>,
 ) -> Result<*mut c_void, ReprError>
 where
   FP: FfiPermissions + 'static,
 {
   let permissions = state.borrow_mut::<FP>();
-  permissions.check_partial_no_path()?;
+  permissions.check_partial_no_path(stack)?;
 
   let Some(buf) = buf.get_backing_store() else {
     return Ok(0 as _);
@@ -112,17 +117,18 @@ where
   Ok(buf.as_ptr() as _)
 }
 
-#[op2(fast)]
+#[op2(reentrant)]
 pub fn op_ffi_ptr_offset<FP>(
   state: &mut OpState,
   ptr: *mut c_void,
   #[number] offset: isize,
+  #[stack_trace] stack: Option<Vec<JsStackFrame>>,
 ) -> Result<*mut c_void, ReprError>
 where
   FP: FfiPermissions + 'static,
 {
   let permissions = state.borrow_mut::<FP>();
-  permissions.check_partial_no_path()?;
+  permissions.check_partial_no_path(stack)?;
 
   if ptr.is_null() {
     return Err(ReprError::InvalidOffset);
@@ -142,34 +148,36 @@ unsafe extern "C" fn noop_deleter_callback(
 ) {
 }
 
-#[op2(fast)]
+#[op2(reentrant)]
 #[bigint]
 pub fn op_ffi_ptr_value<FP>(
   state: &mut OpState,
   ptr: *mut c_void,
+  #[stack_trace] stack: Option<Vec<JsStackFrame>>,
 ) -> Result<usize, ReprError>
 where
   FP: FfiPermissions + 'static,
 {
   let permissions = state.borrow_mut::<FP>();
-  permissions.check_partial_no_path()?;
+  permissions.check_partial_no_path(stack)?;
 
   Ok(ptr as usize)
 }
 
-#[op2]
+#[op2(reentrant)]
 pub fn op_ffi_get_buf<FP, 'scope>(
   scope: &mut v8::HandleScope<'scope>,
   state: &mut OpState,
   ptr: *mut c_void,
   #[number] offset: isize,
   #[number] len: usize,
+  #[stack_trace] stack: Option<Vec<JsStackFrame>>,
 ) -> Result<v8::Local<'scope, v8::ArrayBuffer>, ReprError>
 where
   FP: FfiPermissions + 'static,
 {
   let permissions = state.borrow_mut::<FP>();
-  permissions.check_partial_no_path()?;
+  permissions.check_partial_no_path(stack)?;
 
   if ptr.is_null() {
     return Err(ReprError::InvalidArrayBuffer);
@@ -189,19 +197,20 @@ where
   Ok(array_buffer)
 }
 
-#[op2]
+#[op2(reentrant)]
 pub fn op_ffi_buf_copy_into<FP>(
   state: &mut OpState,
   src: *mut c_void,
   #[number] offset: isize,
   #[anybuffer] dst: &mut [u8],
   #[number] len: usize,
+  #[stack_trace] stack: Option<Vec<JsStackFrame>>,
 ) -> Result<(), ReprError>
 where
   FP: FfiPermissions + 'static,
 {
   let permissions = state.borrow_mut::<FP>();
-  permissions.check_partial_no_path()?;
+  permissions.check_partial_no_path(stack)?;
 
   if src.is_null() {
     Err(ReprError::InvalidArrayBuffer)
@@ -219,18 +228,19 @@ where
   }
 }
 
-#[op2]
+#[op2(reentrant)]
 pub fn op_ffi_cstr_read<FP, 'scope>(
   scope: &mut v8::HandleScope<'scope>,
   state: &mut OpState,
   ptr: *mut c_void,
   #[number] offset: isize,
+  #[stack_trace] stack: Option<Vec<JsStackFrame>>,
 ) -> Result<v8::Local<'scope, v8::String>, ReprError>
 where
   FP: FfiPermissions + 'static,
 {
   let permissions = state.borrow_mut::<FP>();
-  permissions.check_partial_no_path()?;
+  permissions.check_partial_no_path(stack)?;
 
   if ptr.is_null() {
     return Err(ReprError::InvalidCString);
@@ -244,17 +254,18 @@ where
   Ok(value)
 }
 
-#[op2(fast)]
+#[op2(reentrant)]
 pub fn op_ffi_read_bool<FP>(
   state: &mut OpState,
   ptr: *mut c_void,
   #[number] offset: isize,
+  #[stack_trace] stack: Option<Vec<JsStackFrame>>,
 ) -> Result<bool, ReprError>
 where
   FP: FfiPermissions + 'static,
 {
   let permissions = state.borrow_mut::<FP>();
-  permissions.check_partial_no_path()?;
+  permissions.check_partial_no_path(stack)?;
 
   if ptr.is_null() {
     return Err(ReprError::InvalidBool);
@@ -264,17 +275,18 @@ where
   Ok(unsafe { ptr::read_unaligned::<bool>(ptr.offset(offset) as *const bool) })
 }
 
-#[op2(fast)]
+#[op2(reentrant)]
 pub fn op_ffi_read_u8<FP>(
   state: &mut OpState,
   ptr: *mut c_void,
   #[number] offset: isize,
+  #[stack_trace] stack: Option<Vec<JsStackFrame>>,
 ) -> Result<u32, ReprError>
 where
   FP: FfiPermissions + 'static,
 {
   let permissions = state.borrow_mut::<FP>();
-  permissions.check_partial_no_path()?;
+  permissions.check_partial_no_path(stack)?;
 
   if ptr.is_null() {
     return Err(ReprError::InvalidU8);
@@ -286,17 +298,18 @@ where
   })
 }
 
-#[op2(fast)]
+#[op2(reentrant)]
 pub fn op_ffi_read_i8<FP>(
   state: &mut OpState,
   ptr: *mut c_void,
   #[number] offset: isize,
+  #[stack_trace] stack: Option<Vec<JsStackFrame>>,
 ) -> Result<i32, ReprError>
 where
   FP: FfiPermissions + 'static,
 {
   let permissions = state.borrow_mut::<FP>();
-  permissions.check_partial_no_path()?;
+  permissions.check_partial_no_path(stack)?;
 
   if ptr.is_null() {
     return Err(ReprError::InvalidI8);
@@ -308,17 +321,18 @@ where
   })
 }
 
-#[op2(fast)]
+#[op2(reentrant)]
 pub fn op_ffi_read_u16<FP>(
   state: &mut OpState,
   ptr: *mut c_void,
   #[number] offset: isize,
+  #[stack_trace] stack: Option<Vec<JsStackFrame>>,
 ) -> Result<u32, ReprError>
 where
   FP: FfiPermissions + 'static,
 {
   let permissions = state.borrow_mut::<FP>();
-  permissions.check_partial_no_path()?;
+  permissions.check_partial_no_path(stack)?;
 
   if ptr.is_null() {
     return Err(ReprError::InvalidU16);
@@ -330,17 +344,18 @@ where
   })
 }
 
-#[op2(fast)]
+#[op2(reentrant)]
 pub fn op_ffi_read_i16<FP>(
   state: &mut OpState,
   ptr: *mut c_void,
   #[number] offset: isize,
+  #[stack_trace] stack: Option<Vec<JsStackFrame>>,
 ) -> Result<i32, ReprError>
 where
   FP: FfiPermissions + 'static,
 {
   let permissions = state.borrow_mut::<FP>();
-  permissions.check_partial_no_path()?;
+  permissions.check_partial_no_path(stack)?;
 
   if ptr.is_null() {
     return Err(ReprError::InvalidI16);
@@ -352,17 +367,18 @@ where
   })
 }
 
-#[op2(fast)]
+#[op2(reentrant)]
 pub fn op_ffi_read_u32<FP>(
   state: &mut OpState,
   ptr: *mut c_void,
   #[number] offset: isize,
+  #[stack_trace] stack: Option<Vec<JsStackFrame>>,
 ) -> Result<u32, ReprError>
 where
   FP: FfiPermissions + 'static,
 {
   let permissions = state.borrow_mut::<FP>();
-  permissions.check_partial_no_path()?;
+  permissions.check_partial_no_path(stack)?;
 
   if ptr.is_null() {
     return Err(ReprError::InvalidU32);
@@ -372,17 +388,18 @@ where
   Ok(unsafe { ptr::read_unaligned::<u32>(ptr.offset(offset) as *const u32) })
 }
 
-#[op2(fast)]
+#[op2(reentrant)]
 pub fn op_ffi_read_i32<FP>(
   state: &mut OpState,
   ptr: *mut c_void,
   #[number] offset: isize,
+  #[stack_trace] stack: Option<Vec<JsStackFrame>>,
 ) -> Result<i32, ReprError>
 where
   FP: FfiPermissions + 'static,
 {
   let permissions = state.borrow_mut::<FP>();
-  permissions.check_partial_no_path()?;
+  permissions.check_partial_no_path(stack)?;
 
   if ptr.is_null() {
     return Err(ReprError::InvalidI32);
@@ -392,7 +409,7 @@ where
   Ok(unsafe { ptr::read_unaligned::<i32>(ptr.offset(offset) as *const i32) })
 }
 
-#[op2(fast)]
+#[op2(reentrant)]
 #[bigint]
 pub fn op_ffi_read_u64<FP>(
   state: &mut OpState,
@@ -400,12 +417,13 @@ pub fn op_ffi_read_u64<FP>(
   // Note: The representation of 64-bit integers is function-wide. We cannot
   // choose to take this parameter as a number while returning a bigint.
   #[bigint] offset: isize,
+  #[stack_trace] stack: Option<Vec<JsStackFrame>>,
 ) -> Result<u64, ReprError>
 where
   FP: FfiPermissions + 'static,
 {
   let permissions = state.borrow_mut::<FP>();
-  permissions.check_partial_no_path()?;
+  permissions.check_partial_no_path(stack)?;
 
   if ptr.is_null() {
     return Err(ReprError::InvalidU64);
@@ -418,7 +436,7 @@ where
   Ok(value)
 }
 
-#[op2(fast)]
+#[op2(reentrant)]
 #[bigint]
 pub fn op_ffi_read_i64<FP>(
   state: &mut OpState,
@@ -426,12 +444,13 @@ pub fn op_ffi_read_i64<FP>(
   // Note: The representation of 64-bit integers is function-wide. We cannot
   // choose to take this parameter as a number while returning a bigint.
   #[bigint] offset: isize,
+  #[stack_trace] stack: Option<Vec<JsStackFrame>>,
 ) -> Result<i64, ReprError>
 where
   FP: FfiPermissions + 'static,
 {
   let permissions = state.borrow_mut::<FP>();
-  permissions.check_partial_no_path()?;
+  permissions.check_partial_no_path(stack)?;
 
   if ptr.is_null() {
     return Err(ReprError::InvalidI64);
@@ -444,17 +463,18 @@ where
   Ok(value)
 }
 
-#[op2(fast)]
+#[op2(reentrant)]
 pub fn op_ffi_read_f32<FP>(
   state: &mut OpState,
   ptr: *mut c_void,
   #[number] offset: isize,
+  #[stack_trace] stack: Option<Vec<JsStackFrame>>,
 ) -> Result<f32, ReprError>
 where
   FP: FfiPermissions + 'static,
 {
   let permissions = state.borrow_mut::<FP>();
-  permissions.check_partial_no_path()?;
+  permissions.check_partial_no_path(stack)?;
 
   if ptr.is_null() {
     return Err(ReprError::InvalidF32);
@@ -464,17 +484,18 @@ where
   Ok(unsafe { ptr::read_unaligned::<f32>(ptr.offset(offset) as *const f32) })
 }
 
-#[op2(fast)]
+#[op2(reentrant)]
 pub fn op_ffi_read_f64<FP>(
   state: &mut OpState,
   ptr: *mut c_void,
   #[number] offset: isize,
+  #[stack_trace] stack: Option<Vec<JsStackFrame>>,
 ) -> Result<f64, ReprError>
 where
   FP: FfiPermissions + 'static,
 {
   let permissions = state.borrow_mut::<FP>();
-  permissions.check_partial_no_path()?;
+  permissions.check_partial_no_path(stack)?;
 
   if ptr.is_null() {
     return Err(ReprError::InvalidF64);
@@ -484,17 +505,18 @@ where
   Ok(unsafe { ptr::read_unaligned::<f64>(ptr.offset(offset) as *const f64) })
 }
 
-#[op2(fast)]
+#[op2(reentrant)]
 pub fn op_ffi_read_ptr<FP>(
   state: &mut OpState,
   ptr: *mut c_void,
   #[number] offset: isize,
+  #[stack_trace] stack: Option<Vec<JsStackFrame>>,
 ) -> Result<*mut c_void, ReprError>
 where
   FP: FfiPermissions + 'static,
 {
   let permissions = state.borrow_mut::<FP>();
-  permissions.check_partial_no_path()?;
+  permissions.check_partial_no_path(stack)?;
 
   if ptr.is_null() {
     return Err(ReprError::InvalidPointer);

@@ -371,6 +371,7 @@ pub struct WebWorkerOptions {
   pub strace_ops: Option<Vec<String>>,
   pub close_on_idle: bool,
   pub maybe_worker_metadata: Option<WorkerMetadata>,
+  pub enable_stack_trace_arg_in_ops: bool,
 }
 
 /// This struct is an implementation of `Worker` Web API
@@ -572,6 +573,7 @@ impl WebWorker {
         validate_import_attributes_callback,
       )),
       import_assertions_support: deno_core::ImportAssertionsSupport::Error,
+      enable_stack_trace_arg_in_ops: options.enable_stack_trace_arg_in_ops,
       ..Default::default()
     });
 

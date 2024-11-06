@@ -2,6 +2,7 @@
 
 use ::deno_permissions::PermissionState;
 use ::deno_permissions::PermissionsContainer;
+use deno_core::error::JsStackFrame;
 use deno_core::op2;
 use deno_core::OpState;
 use serde::Deserialize;
@@ -99,21 +100,22 @@ pub fn op_revoke_permission(
   Ok(PermissionStatus::from(perm))
 }
 
-#[op2]
+#[op2(reentrant)]
 #[serde]
 pub fn op_request_permission(
   state: &mut OpState,
   #[serde] args: PermissionArgs,
+  #[stack_trace] stack: Option<Vec<JsStackFrame>>,
 ) -> Result<PermissionStatus, PermissionError> {
   let permissions = state.borrow::<PermissionsContainer>();
   let perm = match args.name.as_ref() {
-    "read" => permissions.request_read(args.path.as_deref())?,
-    "write" => permissions.request_write(args.path.as_deref())?,
-    "net" => permissions.request_net(args.host.as_deref())?,
-    "env" => permissions.request_env(args.variable.as_deref()),
-    "sys" => permissions.request_sys(args.kind.as_deref())?,
-    "run" => permissions.request_run(args.command.as_deref())?,
-    "ffi" => permissions.request_ffi(args.path.as_deref())?,
+    "read" => permissions.request_read(args.path.as_deref(), stack)?,
+    "write" => permissions.request_write(args.path.as_deref(), stack)?,
+    "net" => permissions.request_net(args.host.as_deref(), stack)?,
+    "env" => permissions.request_env(args.variable.as_deref(), stack),
+    "sys" => permissions.request_sys(args.kind.as_deref(), stack)?,
+    "run" => permissions.request_run(args.command.as_deref(), stack)?,
+    "ffi" => permissions.request_ffi(args.path.as_deref(), stack)?,
     _ => return Err(PermissionError::InvalidPermissionName(args.name)),
   };
   Ok(PermissionStatus::from(perm))

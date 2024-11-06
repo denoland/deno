@@ -1,5 +1,7 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
+use crate::is_standalone;
+use deno_core::error::JsStackFrame;
 use deno_core::parking_lot::Mutex;
 use deno_terminal::colors;
 use once_cell::sync::Lazy;
@@ -9,8 +11,6 @@ use std::io::IsTerminal;
 use std::io::StderrLock;
 use std::io::StdinLock;
 use std::io::Write as IoWrite;
-
-use crate::is_standalone;
 
 /// Helper function to make control characters visible so users can see the underlying filename.
 fn escape_control_characters(s: &str) -> std::borrow::Cow<str> {
@@ -58,13 +58,14 @@ pub fn permission_prompt(
   flag: &str,
   api_name: Option<&str>,
   is_unary: bool,
+  stack: Option<Vec<JsStackFrame>>,
 ) -> PromptResponse {
   if let Some(before_callback) = MAYBE_BEFORE_PROMPT_CALLBACK.lock().as_mut() {
     before_callback();
   }
   let r = PERMISSION_PROMPTER
     .lock()
-    .prompt(message, flag, api_name, is_unary);
+    .prompt(message, flag, api_name, is_unary, stack);
   if let Some(after_callback) = MAYBE_AFTER_PROMPT_CALLBACK.lock().as_mut() {
     after_callback();
   }
@@ -92,6 +93,7 @@ pub trait PermissionPrompter: Send + Sync {
     name: &str,
     api_name: Option<&str>,
     is_unary: bool,
+    stack: Option<Vec<JsStackFrame>>,
   ) -> PromptResponse;
 }
 
@@ -298,6 +300,7 @@ impl PermissionPrompter for TtyPrompter {
     name: &str,
     api_name: Option<&str>,
     is_unary: bool,
+    stack: Option<Vec<JsStackFrame>>,
   ) -> PromptResponse {
     if !std::io::stdin().is_terminal() || !std::io::stderr().is_terminal() {
       return PromptResponse::Deny;
@@ -353,6 +356,20 @@ impl PermissionPrompter for TtyPrompter {
           colors::bold(api_name)
         )
         .unwrap();
+      }
+      if let Some(stack) = stack {
+        let len = stack.len();
+        for (idx, frame) in stack.into_iter().enumerate() {
+          writeln!(
+            &mut output,
+            "┃  {} {}",
+            colors::gray(if idx != len - 1 { "├─" } else { "└─" }),
+            colors::gray(deno_core::error::format_frame::<
+              deno_core::error::NoAnsiColors,
+            >(&frame))
+          )
+          .unwrap();
+        }
       }
       let msg = format!(
         "Learn more at: {}",
@@ -475,6 +492,7 @@ pub mod tests {
       _name: &str,
       _api_name: Option<&str>,
       _is_unary: bool,
+      _stack: Option<Vec<JsStackFrame>>,
     ) -> PromptResponse {
       if STUB_PROMPT_VALUE.load(Ordering::SeqCst) {
         PromptResponse::Allow

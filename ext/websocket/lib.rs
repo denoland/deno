@@ -1,6 +1,7 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 use crate::stream::WebSocketStream;
 use bytes::Bytes;
+use deno_core::error::JsStackFrame;
 use deno_core::futures::TryFutureExt;
 use deno_core::op2;
 use deno_core::unsync::spawn;
@@ -123,7 +124,7 @@ impl WebSocketPermissions for deno_permissions::PermissionsContainer {
     url: &url::Url,
     api_name: &str,
   ) -> Result<(), PermissionCheckError> {
-    deno_permissions::PermissionsContainer::check_net_url(self, url, api_name)
+    deno_permissions::PermissionsContainer::check_net_url(self, url, api_name, todo!())
   }
 }
 

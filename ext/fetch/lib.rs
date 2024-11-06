@@ -75,6 +75,7 @@ use tower_http::decompression::Decompression;
 
 // Re-export data_url
 pub use data_url;
+use deno_core::error::JsStackFrame;
 pub use proxy::basic_auth;
 
 pub use fs_fetch_handler::FsFetchHandler;
@@ -347,12 +348,14 @@ pub trait FetchPermissions {
     &mut self,
     url: &Url,
     api_name: &str,
+    stack: Option<Vec<JsStackFrame>>,
   ) -> Result<(), PermissionCheckError>;
   #[must_use = "the resolved return value to mitigate time-of-check to time-of-use issues"]
   fn check_read<'a>(
     &mut self,
     p: &'a Path,
     api_name: &str,
+    stack: Option<Vec<JsStackFrame>>,
   ) -> Result<Cow<'a, Path>, PermissionCheckError>;
 }
 
@@ -362,8 +365,11 @@ impl FetchPermissions for deno_permissions::PermissionsContainer {
     &mut self,
     url: &Url,
     api_name: &str,
+    stack: Option<Vec<JsStackFrame>>,
   ) -> Result<(), PermissionCheckError> {
-    deno_permissions::PermissionsContainer::check_net_url(self, url, api_name)
+    deno_permissions::PermissionsContainer::check_net_url(
+      self, url, api_name, stack,
+    )
   }
 
   #[inline(always)]
@@ -371,16 +377,18 @@ impl FetchPermissions for deno_permissions::PermissionsContainer {
     &mut self,
     path: &'a Path,
     api_name: &str,
+    stack: Option<Vec<JsStackFrame>>,
   ) -> Result<Cow<'a, Path>, PermissionCheckError> {
     deno_permissions::PermissionsContainer::check_read_path(
       self,
       path,
       Some(api_name),
+      stack,
     )
   }
 }
 
-#[op2]
+#[op2(reentrant)]
 #[serde]
 #[allow(clippy::too_many_arguments)]
 pub fn op_fetch<FP>(
@@ -392,6 +400,7 @@ pub fn op_fetch<FP>(
   has_body: bool,
   #[buffer] data: Option<JsBuffer>,
   #[smi] resource: Option<ResourceId>,
+  #[stack_trace] stack: Option<Vec<JsStackFrame>>,
 ) -> Result<FetchReturn, FetchError>
 where
   FP: FetchPermissions + 'static,
@@ -415,7 +424,7 @@ where
     "file" => {
       let path = url.to_file_path().map_err(|_| FetchError::NetworkError)?;
       let permissions = state.borrow_mut::<FP>();
-      let path = permissions.check_read(&path, "fetch()")?;
+      let path = permissions.check_read(&path, "fetch()", stack)?;
       let url = match path {
         Cow::Owned(path) => Url::from_file_path(path).unwrap(),
         Cow::Borrowed(_) => url,
@@ -441,7 +450,7 @@ where
     }
     "http" | "https" => {
       let permissions = state.borrow_mut::<FP>();
-      permissions.check_net_url(&url, "fetch()")?;
+      permissions.check_net_url(&url, "fetch()", stack)?;
 
       let maybe_authority = extract_authority(&mut url);
       let uri = url
@@ -847,12 +856,13 @@ fn default_true() -> bool {
   true
 }
 
-#[op2]
+#[op2(reentrant)]
 #[smi]
 pub fn op_fetch_custom_client<FP>(
   state: &mut OpState,
   #[serde] args: CreateHttpClientArgs,
   #[cppgc] tls_keys: &TlsKeysHolder,
+  #[stack_trace] stack: Option<Vec<JsStackFrame>>,
 ) -> Result<ResourceId, FetchError>
 where
   FP: FetchPermissions + 'static,
@@ -860,7 +870,7 @@ where
   if let Some(proxy) = args.proxy.clone() {
     let permissions = state.borrow_mut::<FP>();
     let url = Url::parse(&proxy.url)?;
-    permissions.check_net_url(&url, "Deno.createHttpClient()")?;
+    permissions.check_net_url(&url, "Deno.createHttpClient()", stack)?;
   }
 
   let options = state.borrow::<Options>();

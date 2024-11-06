@@ -17,6 +17,7 @@ use crate::DatabaseHandler;
 use async_trait::async_trait;
 use deno_core::error::type_error;
 use deno_core::error::AnyError;
+use deno_core::error::JsStackFrame;
 use deno_core::unsync::spawn_blocking;
 use deno_core::OpState;
 use deno_path_util::normalize_path;
@@ -42,12 +43,14 @@ pub trait SqliteDbHandlerPermissions {
     &mut self,
     p: &str,
     api_name: &str,
+    stack: Option<Vec<JsStackFrame>>,
   ) -> Result<PathBuf, PermissionCheckError>;
   #[must_use = "the resolved return value to mitigate time-of-check to time-of-use issues"]
   fn check_write<'a>(
     &mut self,
     p: &'a Path,
     api_name: &str,
+    stack: Option<Vec<JsStackFrame>>,
   ) -> Result<Cow<'a, Path>, PermissionCheckError>;
 }
 
@@ -57,8 +60,9 @@ impl SqliteDbHandlerPermissions for deno_permissions::PermissionsContainer {
     &mut self,
     p: &str,
     api_name: &str,
+    stack: Option<Vec<JsStackFrame>>,
   ) -> Result<PathBuf, PermissionCheckError> {
-    deno_permissions::PermissionsContainer::check_read(self, p, api_name)
+    deno_permissions::PermissionsContainer::check_read(self, p, api_name, stack)
   }
 
   #[inline(always)]
@@ -66,8 +70,11 @@ impl SqliteDbHandlerPermissions for deno_permissions::PermissionsContainer {
     &mut self,
     p: &'a Path,
     api_name: &str,
+    stack: Option<Vec<JsStackFrame>>,
   ) -> Result<Cow<'a, Path>, PermissionCheckError> {
-    deno_permissions::PermissionsContainer::check_write_path(self, p, api_name)
+    deno_permissions::PermissionsContainer::check_write_path(
+      self, p, api_name, stack,
+    )
   }
 }
 
@@ -92,11 +99,13 @@ impl<P: SqliteDbHandlerPermissions> DatabaseHandler for SqliteDbHandler<P> {
     &self,
     state: Rc<RefCell<OpState>>,
     path: Option<String>,
+    stack: Option<Vec<JsStackFrame>>,
   ) -> Result<Self::DB, AnyError> {
     #[must_use = "the resolved return value to mitigate time-of-check to time-of-use issues"]
     fn validate_path<P: SqliteDbHandlerPermissions + 'static>(
       state: &RefCell<OpState>,
       path: Option<String>,
+      stack: Option<Vec<JsStackFrame>>,
     ) -> Result<Option<String>, AnyError> {
       let Some(path) = path else {
         return Ok(None);
@@ -115,13 +124,14 @@ impl<P: SqliteDbHandlerPermissions> DatabaseHandler for SqliteDbHandler<P> {
       {
         let mut state = state.borrow_mut();
         let permissions = state.borrow_mut::<P>();
-        let path = permissions.check_read(&path, "Deno.openKv")?;
-        let path = permissions.check_write(&path, "Deno.openKv")?;
+        let path =
+          permissions.check_read(&path, "Deno.openKv", stack.clone())?;
+        let path = permissions.check_write(&path, "Deno.openKv", stack)?;
         Ok(Some(path.to_string_lossy().to_string()))
       }
     }
 
-    let path = validate_path::<P>(&state, path)?;
+    let path = validate_path::<P>(&state, path, stack)?;
     let default_storage_dir = self.default_storage_dir.clone();
     type ConnGen =
       Arc<dyn Fn() -> rusqlite::Result<rusqlite::Connection> + Send + Sync>;

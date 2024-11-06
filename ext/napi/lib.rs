@@ -54,6 +54,7 @@ use libloading::os::windows::*;
 
 // Expose common stuff for ease of use.
 // `use deno_napi::*`
+use deno_core::error::JsStackFrame;
 pub use deno_core::v8;
 use deno_permissions::PermissionCheckError;
 pub use std::ffi::CStr;
@@ -509,15 +510,23 @@ deno_core::extension!(deno_napi,
 
 pub trait NapiPermissions {
   #[must_use = "the resolved return value to mitigate time-of-check to time-of-use issues"]
-  fn check(&mut self, path: &str) -> Result<PathBuf, PermissionCheckError>;
+  fn check(
+    &mut self,
+    path: &str,
+    stack: Option<Vec<JsStackFrame>>,
+  ) -> Result<PathBuf, PermissionCheckError>;
 }
 
 // NOTE(bartlomieju): for now, NAPI uses `--allow-ffi` flag, but that might
 // change in the future.
 impl NapiPermissions for deno_permissions::PermissionsContainer {
   #[inline(always)]
-  fn check(&mut self, path: &str) -> Result<PathBuf, PermissionCheckError> {
-    deno_permissions::PermissionsContainer::check_ffi(self, path)
+  fn check(
+    &mut self,
+    path: &str,
+    stack: Option<Vec<JsStackFrame>>,
+  ) -> Result<PathBuf, PermissionCheckError> {
+    deno_permissions::PermissionsContainer::check_ffi(self, path, stack)
   }
 }
 
@@ -539,6 +548,7 @@ fn op_napi_open<NP, 'scope>(
   global: v8::Local<'scope, v8::Object>,
   buffer_constructor: v8::Local<'scope, v8::Function>,
   report_error: v8::Local<'scope, v8::Function>,
+  #[stack_trace] stack: Option<Vec<JsStackFrame>>,
 ) -> Result<v8::Local<'scope, v8::Value>, NApiError>
 where
   NP: NapiPermissions + 'static,
@@ -548,7 +558,7 @@ where
   let (async_work_sender, cleanup_hooks, external_ops_tracker, path) = {
     let mut op_state = op_state.borrow_mut();
     let permissions = op_state.borrow_mut::<NP>();
-    let path = permissions.check(&path)?;
+    let path = permissions.check(&path, stack)?;
     let napi_state = op_state.borrow::<NapiState>();
     (
       op_state.borrow::<V8CrossThreadTaskSpawner>().clone(),

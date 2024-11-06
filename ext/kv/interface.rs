@@ -16,5 +16,6 @@ pub trait DatabaseHandler {
     &self,
     state: Rc<RefCell<OpState>>,
     path: Option<String>,
+    stack: Option<Vec<deno_core::error::JsStackFrame>>,
   ) -> Result<Self::DB, AnyError>;
 }

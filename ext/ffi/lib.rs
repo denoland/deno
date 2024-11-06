@@ -1,5 +1,6 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
+use deno_core::error::JsStackFrame;
 use std::mem::size_of;
 use std::os::raw::c_char;
 use std::os::raw::c_short;
@@ -47,27 +48,37 @@ const _: () = {
 pub const UNSTABLE_FEATURE_NAME: &str = "ffi";
 
 pub trait FfiPermissions {
-  fn check_partial_no_path(&mut self) -> Result<(), PermissionCheckError>;
+  fn check_partial_no_path(
+    &mut self,
+    stack: Option<Vec<JsStackFrame>>,
+  ) -> Result<(), PermissionCheckError>;
   #[must_use = "the resolved return value to mitigate time-of-check to time-of-use issues"]
   fn check_partial_with_path(
     &mut self,
     path: &str,
+    stack: Option<Vec<JsStackFrame>>,
   ) -> Result<PathBuf, PermissionCheckError>;
 }
 
 impl FfiPermissions for deno_permissions::PermissionsContainer {
   #[inline(always)]
-  fn check_partial_no_path(&mut self) -> Result<(), PermissionCheckError> {
-    deno_permissions::PermissionsContainer::check_ffi_partial_no_path(self)
+  fn check_partial_no_path(
+    &mut self,
+    stack: Option<Vec<JsStackFrame>>,
+  ) -> Result<(), PermissionCheckError> {
+    deno_permissions::PermissionsContainer::check_ffi_partial_no_path(
+      self, stack,
+    )
   }
 
   #[inline(always)]
   fn check_partial_with_path(
     &mut self,
     path: &str,
+    stack: Option<Vec<JsStackFrame>>,
   ) -> Result<PathBuf, PermissionCheckError> {
     deno_permissions::PermissionsContainer::check_ffi_partial_with_path(
-      self, path,
+      self, path, stack,
     )
   }
 }

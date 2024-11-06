@@ -11,6 +11,7 @@ use crate::tcp::TcpListener;
 use crate::DefaultTlsOptions;
 use crate::NetPermissions;
 use crate::UnsafelyIgnoreCertificateErrors;
+use deno_core::error::JsStackFrame;
 use deno_core::futures::TryFutureExt;
 use deno_core::op2;
 use deno_core::v8;
@@ -251,11 +252,12 @@ pub fn op_tls_cert_resolver_resolve_error(
   lookup.resolve(sni, Err(error))
 }
 
-#[op2]
+#[op2(reentrant)]
 #[serde]
 pub fn op_tls_start<NP>(
   state: Rc<RefCell<OpState>>,
   #[serde] args: StartTlsArgs,
+  #[stack_trace] stack: Option<Vec<JsStackFrame>>,
 ) -> Result<(ResourceId, IpAddr, IpAddr), NetError>
 where
   NP: NetPermissions + 'static,
@@ -270,7 +272,7 @@ where
     let mut s = state.borrow_mut();
     let permissions = s.borrow_mut::<NP>();
     permissions
-      .check_net(&(&hostname, Some(0)), "Deno.startTls()")
+      .check_net(&(&hostname, Some(0)), "Deno.startTls()", stack)
       .map_err(NetError::Permission)?;
   }
 
@@ -340,13 +342,14 @@ where
   Ok((rid, IpAddr::from(local_addr), IpAddr::from(remote_addr)))
 }
 
-#[op2(async)]
+#[op2(async, reentrant)]
 #[serde]
 pub async fn op_net_connect_tls<NP>(
   state: Rc<RefCell<OpState>>,
   #[serde] addr: IpAddr,
   #[serde] args: ConnectTlsArgs,
   #[cppgc] key_pair: &TlsKeysHolder,
+  #[stack_trace] stack: Option<Vec<JsStackFrame>>,
 ) -> Result<(ResourceId, IpAddr, IpAddr), NetError>
 where
   NP: NetPermissions + 'static,
@@ -361,12 +364,16 @@ where
     let mut s = state.borrow_mut();
     let permissions = s.borrow_mut::<NP>();
     permissions
-      .check_net(&(&addr.hostname, Some(addr.port)), "Deno.connectTls()")
+      .check_net(
+        &(&addr.hostname, Some(addr.port)),
+        "Deno.connectTls()",
+        stack.clone(),
+      )
       .map_err(NetError::Permission)?;
     if let Some(path) = cert_file {
       Some(
         permissions
-          .check_read(path, "Deno.connectTls()")
+          .check_read(path, "Deno.connectTls()", stack)
           .map_err(NetError::Permission)?,
       )
     } else {
@@ -445,13 +452,14 @@ pub struct ListenTlsArgs {
   load_balanced: bool,
 }
 
-#[op2]
+#[op2(reentrant)]
 #[serde]
 pub fn op_net_listen_tls<NP>(
   state: &mut OpState,
   #[serde] addr: IpAddr,
   #[serde] args: ListenTlsArgs,
   #[cppgc] keys: &TlsKeysHolder,
+  #[stack_trace] stack: Option<Vec<JsStackFrame>>,
 ) -> Result<(ResourceId, IpAddr), NetError>
 where
   NP: NetPermissions + 'static,
@@ -463,7 +471,11 @@ where
   {
     let permissions = state.borrow_mut::<NP>();
     permissions
-      .check_net(&(&addr.hostname, Some(addr.port)), "Deno.listenTls()")
+      .check_net(
+        &(&addr.hostname, Some(addr.port)),
+        "Deno.listenTls()",
+        stack,
+      )
       .map_err(NetError::Permission)?;
   }
 

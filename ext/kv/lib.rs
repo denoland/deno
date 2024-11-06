@@ -17,6 +17,7 @@ use base64::Engine;
 use chrono::DateTime;
 use chrono::Utc;
 use deno_core::error::get_custom_error_class;
+use deno_core::error::JsStackFrame;
 use deno_core::futures::StreamExt;
 use deno_core::op2;
 use deno_core::serde_v8::AnyValue;
@@ -174,11 +175,12 @@ pub enum KvError {
   InvalidRange,
 }
 
-#[op2(async)]
+#[op2(async, reentrant)]
 #[smi]
 async fn op_kv_database_open<DBH>(
   state: Rc<RefCell<OpState>>,
   #[string] path: Option<String>,
+  #[stack_trace] stack: Option<Vec<JsStackFrame>>,
 ) -> Result<ResourceId, KvError>
 where
   DBH: DatabaseHandler + 'static,
@@ -191,7 +193,7 @@ where
     state.borrow::<Rc<DBH>>().clone()
   };
   let db = handler
-    .open(state.clone(), path)
+    .open(state.clone(), path, stack)
     .await
     .map_err(KvError::DatabaseHandler)?;
   let rid = state.borrow_mut().resource_table.add(DatabaseResource {

@@ -7,6 +7,7 @@ use crate::symbol::NativeType;
 use crate::symbol::Symbol;
 use crate::FfiPermissions;
 use crate::ForeignFunction;
+use deno_core::error::JsStackFrame;
 use deno_core::op2;
 use deno_core::serde_json::Value;
 use deno_core::serde_v8::BigInt as V8BigInt;
@@ -287,7 +288,7 @@ fn ffi_call(
   }
 }
 
-#[op2(async)]
+#[op2(async, reentrant)]
 #[serde]
 pub fn op_ffi_call_ptr_nonblocking<FP>(
   scope: &mut v8::HandleScope,
@@ -296,6 +297,7 @@ pub fn op_ffi_call_ptr_nonblocking<FP>(
   #[serde] def: ForeignFunction,
   parameters: v8::Local<v8::Array>,
   out_buffer: Option<v8::Local<v8::TypedArray>>,
+  #[stack_trace] stack: Option<Vec<JsStackFrame>>,
 ) -> Result<impl Future<Output = Result<FfiValue, CallError>>, CallError>
 where
   FP: FfiPermissions + 'static,
@@ -303,7 +305,7 @@ where
   {
     let mut state = state.borrow_mut();
     let permissions = state.borrow_mut::<FP>();
-    permissions.check_partial_no_path()?;
+    permissions.check_partial_no_path(stack)?;
   };
 
   let symbol = PtrSymbol::new(pointer, &def)?;
@@ -394,6 +396,7 @@ pub fn op_ffi_call_ptr<FP>(
   #[serde] def: ForeignFunction,
   parameters: v8::Local<v8::Array>,
   out_buffer: Option<v8::Local<v8::TypedArray>>,
+  #[stack_trace] stack: Option<Vec<JsStackFrame>>,
 ) -> Result<FfiValue, CallError>
 where
   FP: FfiPermissions + 'static,
@@ -401,7 +404,7 @@ where
   {
     let mut state = state.borrow_mut();
     let permissions = state.borrow_mut::<FP>();
-    permissions.check_partial_no_path()?;
+    permissions.check_partial_no_path(stack)?;
   };
 
   let symbol = PtrSymbol::new(pointer, &def)?;

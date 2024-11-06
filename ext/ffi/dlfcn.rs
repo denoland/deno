@@ -6,6 +6,7 @@ use crate::symbol::Symbol;
 use crate::turbocall;
 use crate::turbocall::Turbocall;
 use crate::FfiPermissions;
+use deno_core::error::JsStackFrame;
 use deno_core::op2;
 use deno_core::v8;
 use deno_core::GarbageCollected;
@@ -123,17 +124,18 @@ pub struct FfiLoadArgs {
   symbols: HashMap<String, ForeignSymbol>,
 }
 
-#[op2]
+#[op2(reentrant)]
 pub fn op_ffi_load<'scope, FP>(
   scope: &mut v8::HandleScope<'scope>,
   state: &mut OpState,
   #[serde] args: FfiLoadArgs,
+  #[stack_trace] stack: Option<Vec<JsStackFrame>>,
 ) -> Result<v8::Local<'scope, v8::Value>, DlfcnError>
 where
   FP: FfiPermissions + 'static,
 {
   let permissions = state.borrow_mut::<FP>();
-  let path = permissions.check_partial_with_path(&args.path)?;
+  let path = permissions.check_partial_with_path(&args.path, stack)?;
 
   let lib = Library::open(&path).map_err(|e| {
     dlopen2::Error::OpeningLibraryError(std::io::Error::new(

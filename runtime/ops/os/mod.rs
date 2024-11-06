@@ -1,6 +1,7 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 use crate::worker::ExitCode;
+use deno_core::error::JsStackFrame;
 use deno_core::op2;
 use deno_core::v8;
 use deno_core::OpState;
@@ -88,13 +89,16 @@ pub enum OsError {
   Io(#[from] std::io::Error),
 }
 
-#[op2]
+#[op2(reentrant)]
 #[string]
-fn op_exec_path(state: &mut OpState) -> Result<String, OsError> {
+fn op_exec_path(
+  state: &mut OpState,
+  #[stack_trace] stack: Option<Vec<JsStackFrame>>,
+) -> Result<String, OsError> {
   let current_exe = env::current_exe().unwrap();
   state
     .borrow_mut::<PermissionsContainer>()
-    .check_read_blind(&current_exe, "exec_path", "Deno.execPath()")?;
+    .check_read_blind(&current_exe, "exec_path", "Deno.execPath()", stack)?;
   // normalize path so it doesn't include '.' or '..' components
   let path = normalize_path(current_exe);
 
@@ -104,13 +108,16 @@ fn op_exec_path(state: &mut OpState) -> Result<String, OsError> {
     .map_err(OsError::InvalidUtf8)
 }
 
-#[op2(fast)]
+#[op2(reentrant)]
 fn op_set_env(
   state: &mut OpState,
   #[string] key: &str,
   #[string] value: &str,
+  #[stack_trace] stack: Option<Vec<JsStackFrame>>,
 ) -> Result<(), OsError> {
-  state.borrow_mut::<PermissionsContainer>().check_env(key)?;
+  state
+    .borrow_mut::<PermissionsContainer>()
+    .check_env(key, stack)?;
   if key.is_empty() {
     return Err(OsError::EnvEmptyKey);
   }
@@ -124,25 +131,31 @@ fn op_set_env(
   Ok(())
 }
 
-#[op2]
+#[op2(reentrant)]
 #[serde]
 fn op_env(
   state: &mut OpState,
+  #[stack_trace] stack: Option<Vec<JsStackFrame>>,
 ) -> Result<HashMap<String, String>, deno_core::error::AnyError> {
-  state.borrow_mut::<PermissionsContainer>().check_env_all()?;
+  state
+    .borrow_mut::<PermissionsContainer>()
+    .check_env_all(stack)?;
   Ok(env::vars().collect())
 }
 
-#[op2]
+#[op2(reentrant)]
 #[string]
 fn op_get_env(
   state: &mut OpState,
   #[string] key: String,
+  #[stack_trace] stack: Option<Vec<JsStackFrame>>,
 ) -> Result<Option<String>, OsError> {
   let skip_permission_check = NODE_ENV_VAR_ALLOWLIST.contains(&key);
 
   if !skip_permission_check {
-    state.borrow_mut::<PermissionsContainer>().check_env(&key)?;
+    state
+      .borrow_mut::<PermissionsContainer>()
+      .check_env(&key, stack)?;
   }
 
   if key.is_empty() {
@@ -160,12 +173,15 @@ fn op_get_env(
   Ok(r)
 }
 
-#[op2(fast)]
+#[op2(fast, reentrant)]
 fn op_delete_env(
   state: &mut OpState,
   #[string] key: String,
+  #[stack_trace] stack: Option<Vec<JsStackFrame>>,
 ) -> Result<(), OsError> {
-  state.borrow_mut::<PermissionsContainer>().check_env(&key)?;
+  state
+    .borrow_mut::<PermissionsContainer>()
+    .check_env(&key, stack)?;
   if key.is_empty() || key.contains(&['=', '\0'] as &[char]) {
     return Err(OsError::EnvInvalidKey(key.to_string()));
   }
@@ -190,47 +206,59 @@ fn op_exit(state: &mut OpState) {
   std::process::exit(code)
 }
 
-#[op2]
+#[op2(reentrant)]
 #[serde]
 fn op_loadavg(
   state: &mut OpState,
+  #[stack_trace] stack: Option<Vec<JsStackFrame>>,
 ) -> Result<(f64, f64, f64), deno_core::error::AnyError> {
-  state
-    .borrow_mut::<PermissionsContainer>()
-    .check_sys("loadavg", "Deno.loadavg()")?;
+  state.borrow_mut::<PermissionsContainer>().check_sys(
+    "loadavg",
+    "Deno.loadavg()",
+    stack,
+  )?;
   Ok(sys_info::loadavg())
 }
 
-#[op2]
+#[op2(reentrant)]
 #[string]
 fn op_hostname(
   state: &mut OpState,
+  #[stack_trace] stack: Option<Vec<JsStackFrame>>,
 ) -> Result<String, deno_core::error::AnyError> {
-  state
-    .borrow_mut::<PermissionsContainer>()
-    .check_sys("hostname", "Deno.hostname()")?;
+  state.borrow_mut::<PermissionsContainer>().check_sys(
+    "hostname",
+    "Deno.hostname()",
+    stack,
+  )?;
   Ok(sys_info::hostname())
 }
 
-#[op2]
+#[op2(reentrant)]
 #[string]
 fn op_os_release(
   state: &mut OpState,
+  #[stack_trace] stack: Option<Vec<JsStackFrame>>,
 ) -> Result<String, deno_core::error::AnyError> {
-  state
-    .borrow_mut::<PermissionsContainer>()
-    .check_sys("osRelease", "Deno.osRelease()")?;
+  state.borrow_mut::<PermissionsContainer>().check_sys(
+    "osRelease",
+    "Deno.osRelease()",
+    stack,
+  )?;
   Ok(sys_info::os_release())
 }
 
-#[op2]
+#[op2(reentrant)]
 #[serde]
 fn op_network_interfaces(
   state: &mut OpState,
+  #[stack_trace] stack: Option<Vec<JsStackFrame>>,
 ) -> Result<Vec<NetworkInterface>, OsError> {
-  state
-    .borrow_mut::<PermissionsContainer>()
-    .check_sys("networkInterfaces", "Deno.networkInterfaces()")?;
+  state.borrow_mut::<PermissionsContainer>().check_sys(
+    "networkInterfaces",
+    "Deno.networkInterfaces()",
+    stack,
+  )?;
   Ok(netif::up()?.map(NetworkInterface::from).collect())
 }
 
@@ -275,26 +303,32 @@ impl From<netif::Interface> for NetworkInterface {
   }
 }
 
-#[op2]
+#[op2(reentrant)]
 #[serde]
 fn op_system_memory_info(
   state: &mut OpState,
+  #[stack_trace] stack: Option<Vec<JsStackFrame>>,
 ) -> Result<Option<sys_info::MemInfo>, deno_core::error::AnyError> {
-  state
-    .borrow_mut::<PermissionsContainer>()
-    .check_sys("systemMemoryInfo", "Deno.systemMemoryInfo()")?;
+  state.borrow_mut::<PermissionsContainer>().check_sys(
+    "systemMemoryInfo",
+    "Deno.systemMemoryInfo()",
+    stack,
+  )?;
   Ok(sys_info::mem_info())
 }
 
 #[cfg(not(windows))]
-#[op2]
+#[op2(reentrant)]
 #[smi]
 fn op_gid(
   state: &mut OpState,
+  #[stack_trace] stack: Option<Vec<JsStackFrame>>,
 ) -> Result<Option<u32>, deno_core::error::AnyError> {
-  state
-    .borrow_mut::<PermissionsContainer>()
-    .check_sys("gid", "Deno.gid()")?;
+  state.borrow_mut::<PermissionsContainer>().check_sys(
+    "gid",
+    "Deno.gid()",
+    stack,
+  )?;
   // TODO(bartlomieju):
   #[allow(clippy::undocumented_unsafe_blocks)]
   unsafe {
@@ -303,26 +337,32 @@ fn op_gid(
 }
 
 #[cfg(windows)]
-#[op2]
+#[op2(reentrant)]
 #[smi]
 fn op_gid(
   state: &mut OpState,
+  #[stack_trace] stack: Option<Vec<JsStackFrame>>,
 ) -> Result<Option<u32>, deno_core::error::AnyError> {
-  state
-    .borrow_mut::<PermissionsContainer>()
-    .check_sys("gid", "Deno.gid()")?;
+  state.borrow_mut::<PermissionsContainer>().check_sys(
+    "gid",
+    "Deno.gid()",
+    stack,
+  )?;
   Ok(None)
 }
 
 #[cfg(not(windows))]
-#[op2]
+#[op2(reentrant)]
 #[smi]
 fn op_uid(
   state: &mut OpState,
+  #[stack_trace] stack: Option<Vec<JsStackFrame>>,
 ) -> Result<Option<u32>, deno_core::error::AnyError> {
-  state
-    .borrow_mut::<PermissionsContainer>()
-    .check_sys("uid", "Deno.uid()")?;
+  state.borrow_mut::<PermissionsContainer>().check_sys(
+    "uid",
+    "Deno.uid()",
+    stack,
+  )?;
   // TODO(bartlomieju):
   #[allow(clippy::undocumented_unsafe_blocks)]
   unsafe {
@@ -331,14 +371,17 @@ fn op_uid(
 }
 
 #[cfg(windows)]
-#[op2]
+#[op2(reentrant)]
 #[smi]
 fn op_uid(
   state: &mut OpState,
+  #[stack_trace] stack: Option<Vec<JsStackFrame>>,
 ) -> Result<Option<u32>, deno_core::error::AnyError> {
-  state
-    .borrow_mut::<PermissionsContainer>()
-    .check_sys("uid", "Deno.uid()")?;
+  state.borrow_mut::<PermissionsContainer>().check_sys(
+    "uid",
+    "Deno.uid()",
+    stack,
+  )?;
   Ok(None)
 }
 
@@ -513,17 +556,23 @@ fn rss() -> usize {
   }
 }
 
-fn os_uptime(state: &mut OpState) -> Result<u64, deno_core::error::AnyError> {
-  state
-    .borrow_mut::<PermissionsContainer>()
-    .check_sys("osUptime", "Deno.osUptime()")?;
+fn os_uptime(
+  state: &mut OpState,
+  stack: Option<Vec<JsStackFrame>>,
+) -> Result<u64, deno_core::error::AnyError> {
+  state.borrow_mut::<PermissionsContainer>().check_sys(
+    "osUptime",
+    "Deno.osUptime()",
+    stack,
+  )?;
   Ok(sys_info::os_uptime())
 }
 
-#[op2(fast)]
+#[op2(reentrant)]
 #[number]
 fn op_os_uptime(
   state: &mut OpState,
+  #[stack_trace] stack: Option<Vec<JsStackFrame>>,
 ) -> Result<u64, deno_core::error::AnyError> {
-  os_uptime(state)
+  os_uptime(state, stack)
 }

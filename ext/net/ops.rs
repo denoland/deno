@@ -9,6 +9,7 @@ use crate::NetPermissions;
 use deno_core::op2;
 use deno_core::CancelFuture;
 
+use deno_core::error::JsStackFrame;
 use deno_core::AsyncRefCell;
 use deno_core::ByteString;
 use deno_core::CancelHandle;
@@ -182,13 +183,14 @@ pub async fn op_net_recv_udp(
   Ok((nread, IpAddr::from(remote_addr)))
 }
 
-#[op2(async)]
+#[op2(async, reentrant)]
 #[number]
 pub async fn op_net_send_udp<NP>(
   state: Rc<RefCell<OpState>>,
   #[smi] rid: ResourceId,
   #[serde] addr: IpAddr,
   #[buffer] zero_copy: JsBuffer,
+  #[stack_trace] stack: Option<Vec<JsStackFrame>>,
 ) -> Result<usize, NetError>
 where
   NP: NetPermissions + 'static,
@@ -198,6 +200,7 @@ where
     s.borrow_mut::<NP>().check_net(
       &(&addr.hostname, Some(addr.port)),
       "Deno.DatagramConn.send()",
+      stack,
     )?;
   }
   let addr = resolve_addr(&addr.hostname, addr.port)
@@ -343,31 +346,35 @@ pub async fn op_net_set_multi_ttl_udp(
   Ok(())
 }
 
-#[op2(async)]
+#[op2(async, reentrant)]
 #[serde]
 pub async fn op_net_connect_tcp<NP>(
   state: Rc<RefCell<OpState>>,
   #[serde] addr: IpAddr,
+  #[stack_trace] stack: Option<Vec<JsStackFrame>>,
 ) -> Result<(ResourceId, IpAddr, IpAddr), NetError>
 where
   NP: NetPermissions + 'static,
 {
-  op_net_connect_tcp_inner::<NP>(state, addr).await
+  op_net_connect_tcp_inner::<NP>(state, addr, stack).await
 }
 
 #[inline]
 pub async fn op_net_connect_tcp_inner<NP>(
   state: Rc<RefCell<OpState>>,
   addr: IpAddr,
+  stack: Option<Vec<JsStackFrame>>,
 ) -> Result<(ResourceId, IpAddr, IpAddr), NetError>
 where
   NP: NetPermissions + 'static,
 {
   {
     let mut state_ = state.borrow_mut();
-    state_
-      .borrow_mut::<NP>()
-      .check_net(&(&addr.hostname, Some(addr.port)), "Deno.connect()")?;
+    state_.borrow_mut::<NP>().check_net(
+      &(&addr.hostname, Some(addr.port)),
+      "Deno.connect()",
+      stack,
+    )?;
   }
 
   let addr = resolve_addr(&addr.hostname, addr.port)
@@ -401,13 +408,14 @@ impl Resource for UdpSocketResource {
   }
 }
 
-#[op2]
+#[op2(reentrant)]
 #[serde]
 pub fn op_net_listen_tcp<NP>(
   state: &mut OpState,
   #[serde] addr: IpAddr,
   reuse_port: bool,
   load_balanced: bool,
+  #[stack_trace] stack: Option<Vec<JsStackFrame>>,
 ) -> Result<(ResourceId, IpAddr), NetError>
 where
   NP: NetPermissions + 'static,
@@ -415,9 +423,11 @@ where
   if reuse_port {
     super::check_unstable(state, "Deno.listen({ reusePort: true })");
   }
-  state
-    .borrow_mut::<NP>()
-    .check_net(&(&addr.hostname, Some(addr.port)), "Deno.listen()")?;
+  state.borrow_mut::<NP>().check_net(
+    &(&addr.hostname, Some(addr.port)),
+    "Deno.listen()",
+    stack,
+  )?;
   let addr = resolve_addr_sync(&addr.hostname, addr.port)?
     .next()
     .ok_or_else(|| NetError::NoResolvedAddress)?;
@@ -439,13 +449,16 @@ fn net_listen_udp<NP>(
   addr: IpAddr,
   reuse_address: bool,
   loopback: bool,
+  stack: Option<Vec<JsStackFrame>>,
 ) -> Result<(ResourceId, IpAddr), NetError>
 where
   NP: NetPermissions + 'static,
 {
-  state
-    .borrow_mut::<NP>()
-    .check_net(&(&addr.hostname, Some(addr.port)), "Deno.listenDatagram()")?;
+  state.borrow_mut::<NP>().check_net(
+    &(&addr.hostname, Some(addr.port)),
+    "Deno.listenDatagram()",
+    stack,
+  )?;
   let addr = resolve_addr_sync(&addr.hostname, addr.port)?
     .next()
     .ok_or_else(|| NetError::NoResolvedAddress)?;
@@ -501,33 +514,35 @@ where
   Ok((rid, IpAddr::from(local_addr)))
 }
 
-#[op2]
+#[op2(reentrant)]
 #[serde]
 pub fn op_net_listen_udp<NP>(
   state: &mut OpState,
   #[serde] addr: IpAddr,
   reuse_address: bool,
   loopback: bool,
+  #[stack_trace] stack: Option<Vec<JsStackFrame>>,
 ) -> Result<(ResourceId, IpAddr), NetError>
 where
   NP: NetPermissions + 'static,
 {
   super::check_unstable(state, "Deno.listenDatagram");
-  net_listen_udp::<NP>(state, addr, reuse_address, loopback)
+  net_listen_udp::<NP>(state, addr, reuse_address, loopback, stack)
 }
 
-#[op2]
+#[op2(reentrant)]
 #[serde]
 pub fn op_node_unstable_net_listen_udp<NP>(
   state: &mut OpState,
   #[serde] addr: IpAddr,
   reuse_address: bool,
   loopback: bool,
+  #[stack_trace] stack: Option<Vec<JsStackFrame>>,
 ) -> Result<(ResourceId, IpAddr), NetError>
 where
   NP: NetPermissions + 'static,
 {
-  net_listen_udp::<NP>(state, addr, reuse_address, loopback)
+  net_listen_udp::<NP>(state, addr, reuse_address, loopback, stack)
 }
 
 #[derive(Serialize, Eq, PartialEq, Debug)]
@@ -601,11 +616,12 @@ pub struct NameServer {
   port: u16,
 }
 
-#[op2(async)]
+#[op2(async, reentrant)]
 #[serde]
 pub async fn op_dns_resolve<NP>(
   state: Rc<RefCell<OpState>>,
   #[serde] args: ResolveAddrArgs,
+  #[stack_trace] stack: Option<Vec<JsStackFrame>>,
 ) -> Result<Vec<DnsReturnRecord>, NetError>
 where
   NP: NetPermissions + 'static,
@@ -642,7 +658,7 @@ where
       let socker_addr = &ns.socket_addr;
       let ip = socker_addr.ip().to_string();
       let port = socker_addr.port();
-      perm.check_net(&(ip, Some(port)), "Deno.resolveDns()")?;
+      perm.check_net(&(ip, Some(port)), "Deno.resolveDns()", stack.clone())?;
     }
   }
 
@@ -1035,6 +1051,7 @@ mod tests {
       &mut self,
       _host: &(T, Option<u16>),
       _api_name: &str,
+      _stack: Option<Vec<JsStackFrame>>,
     ) -> Result<(), PermissionCheckError> {
       Ok(())
     }
@@ -1043,6 +1060,7 @@ mod tests {
       &mut self,
       p: &str,
       _api_name: &str,
+      _stack: Option<Vec<JsStackFrame>>,
     ) -> Result<PathBuf, PermissionCheckError> {
       Ok(PathBuf::from(p))
     }
@@ -1051,6 +1069,7 @@ mod tests {
       &mut self,
       p: &str,
       _api_name: &str,
+      _stack: Option<Vec<JsStackFrame>>,
     ) -> Result<PathBuf, PermissionCheckError> {
       Ok(PathBuf::from(p))
     }
@@ -1059,6 +1078,7 @@ mod tests {
       &mut self,
       p: &'a Path,
       _api_name: &str,
+      _stack: Option<Vec<JsStackFrame>>,
     ) -> Result<Cow<'a, Path>, PermissionCheckError> {
       Ok(Cow::Borrowed(p))
     }
@@ -1127,7 +1147,7 @@ mod tests {
     };
 
     let mut connect_fut =
-      op_net_connect_tcp_inner::<TestPermission>(conn_state, ip_addr)
+      op_net_connect_tcp_inner::<TestPermission>(conn_state, ip_addr, None)
         .boxed_local();
     let mut rid = None;
 
