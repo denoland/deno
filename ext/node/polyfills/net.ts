@@ -1029,7 +1029,7 @@ function _lookupAndConnectMultiple(
         // net.createConnection() creates a net.Socket object and immediately
         // calls net.Socket.connect() on it (that's us). There are no event
         // listeners registered yet so defer the error event to the next tick.
-        process.nextTick(_connectErrorNT, self, err);
+        nextTick(_connectErrorNT, self, err);
         return;
       }
 
@@ -1066,14 +1066,14 @@ function _lookupAndConnectMultiple(
 
         if (!isIP(firstIp)) {
           err = new ERR_INVALID_IP_ADDRESS(firstIp);
-          process.nextTick(_connectErrorNT, self, err);
+          nextTick(_connectErrorNT, self, err);
         } else if (firstAddressType !== 4 && firstAddressType !== 6) {
           err = new ERR_INVALID_ADDRESS_FAMILY(
             firstAddressType,
             options.host,
             options.port,
           );
-          process.nextTick(_connectErrorNT, self, err);
+          nextTick(_connectErrorNT, self, err);
         }
 
         return;
