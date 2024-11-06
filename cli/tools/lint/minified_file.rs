@@ -14,12 +14,13 @@ impl FileMetrics {
     let long_lines_ratio =
       self.long_lines_count as f64 / self.total_lines as f64;
 
-    (long_lines_ratio > 0.3 || self.whitespace_ratio < 0.05)
-      && !(self.has_license_comment && self.total_lines < 5)
+    (long_lines_ratio >= 0.2 || self.whitespace_ratio < 0.05)
+      && !(self.has_license_comment && self.total_lines < 3)
   }
 }
 
 pub fn analyze_content(content: &str) -> FileMetrics {
+  const LONG_LINE_LEN: usize = 250;
   let mut total_lines = 0;
   let mut long_lines_count = 0;
   let mut whitespace_count = 0;
@@ -73,7 +74,7 @@ pub fn analyze_content(content: &str) -> FileMetrics {
       }
 
       // Check line length
-      if line_buffer.len() > 250 {
+      if line_buffer.len() > LONG_LINE_LEN {
         long_lines_count += 1;
       }
 

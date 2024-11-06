@@ -43,6 +43,7 @@
     "tests/specs/fmt",
     "tests/specs/lint/bom",
     "tests/specs/lint/default_ts",
+    "tests/specs/lint/minified",
     "tests/specs/lint/syntax_error_reporting",
     "tests/specs/publish/no_check_surfaces_syntax_error",
     "tests/specs/run/default_ts",

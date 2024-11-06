@@ -1,0 +1,7 @@
+{
+  "tests": {
+    "args": ["lint", "minified.js"],
+    "output": "minified.out",
+    "exitCode": 1
+  }
+}
