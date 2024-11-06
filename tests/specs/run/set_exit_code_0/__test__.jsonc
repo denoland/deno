@@ -1,0 +1,5 @@
+{
+  "args": "run --no-check set_exit_code_0.ts",
+  "output": "",
+  "exitCode": 0
+}

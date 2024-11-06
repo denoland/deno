@@ -1,0 +1,5 @@
+{
+  "args": "run error_009_extensions_error.js",
+  "output": "error_009_extensions_error.js.out",
+  "exitCode": 1
+}
