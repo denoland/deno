@@ -650,7 +650,7 @@ pub mod tests {
     .unwrap();
     let text_info = parsed_module.text_info_lazy().clone();
     let mut collector = TestCollector::new(specifier, text_info);
-    parsed_module.module().visit_with(&mut collector);
+    parsed_module.program().visit_with(&mut collector);
     collector.take()
   }
 

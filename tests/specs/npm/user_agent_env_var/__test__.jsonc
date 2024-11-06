@@ -1,0 +1,46 @@
+{
+  "tempDir": true,
+  "tests": {
+    "set_for_npm_package": {
+      "steps": [
+        {
+          "args": "install",
+          "output": "[WILDCARD]"
+        },
+        {
+          "args": "run -A npm:@denotest/print-npm-user-agent",
+          "output": "run.out"
+        }
+      ]
+    },
+    "unset_for_local_file": {
+      "steps": [
+        {
+          "args": "run -A main.ts",
+          "output": "Download [WILDCARD]\nnpm_config_user_agent: undefined\n"
+        }
+      ]
+    },
+    "set_for_tasks": {
+      "steps": [
+        {
+          "args": "install",
+          "output": "[WILDCARD]"
+        },
+        {
+          "args": "task run-via-bin",
+          "output": "bin_command.out"
+        }
+      ]
+    },
+    "set_for_lifecycle_scripts": {
+      "steps": [
+        {
+          "args": "install --allow-scripts",
+          "output": "postinstall.out",
+          "exitCode": 1
+        }
+      ]
+    }
+  }
+}
