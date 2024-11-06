@@ -114,6 +114,7 @@ pub trait WebSocketPermissions {
     &mut self,
     _url: &url::Url,
     _api_name: &str,
+    stack: Option<Vec<JsStackFrame>>,
   ) -> Result<(), PermissionCheckError>;
 }
 
@@ -123,8 +124,11 @@ impl WebSocketPermissions for deno_permissions::PermissionsContainer {
     &mut self,
     url: &url::Url,
     api_name: &str,
+    stack: Option<Vec<JsStackFrame>>,
   ) -> Result<(), PermissionCheckError> {
-    deno_permissions::PermissionsContainer::check_net_url(self, url, api_name, todo!())
+    deno_permissions::PermissionsContainer::check_net_url(
+      self, url, api_name, stack,
+    )
   }
 }
 
@@ -149,13 +153,14 @@ impl Resource for WsCancelResource {
 // This op is needed because creating a WS instance in JavaScript is a sync
 // operation and should throw error when permissions are not fulfilled,
 // but actual op that connects WS is async.
-#[op2]
+#[op2(reentrant)]
 #[smi]
 pub fn op_ws_check_permission_and_cancel_handle<WP>(
   state: &mut OpState,
   #[string] api_name: String,
   #[string] url: String,
   cancel_handle: bool,
+  #[stack_trace] stack: Option<Vec<JsStackFrame>>,
 ) -> Result<Option<ResourceId>, WebsocketError>
 where
   WP: WebSocketPermissions + 'static,
@@ -163,6 +168,7 @@ where
   state.borrow_mut::<WP>().check_net_url(
     &url::Url::parse(&url).map_err(WebsocketError::Url)?,
     &api_name,
+    stack,
   )?;
 
   if cancel_handle {
@@ -444,7 +450,7 @@ fn populate_common_request_headers(
   Ok(request)
 }
 
-#[op2(async)]
+#[op2(async, reentrant)]
 #[serde]
 pub async fn op_ws_create<WP>(
   state: Rc<RefCell<OpState>>,
@@ -453,6 +459,7 @@ pub async fn op_ws_create<WP>(
   #[string] protocols: String,
   #[smi] cancel_handle: Option<ResourceId>,
   #[serde] headers: Option<Vec<(ByteString, ByteString)>>,
+  #[stack_trace] stack: Option<Vec<JsStackFrame>>,
 ) -> Result<CreateResponse, WebsocketError>
 where
   WP: WebSocketPermissions + 'static,
@@ -463,6 +470,7 @@ where
       .check_net_url(
         &url::Url::parse(&url).map_err(WebsocketError::Url)?,
         &api_name,
+        stack,
       )
       .expect(
         "Permission check should have been done in op_ws_check_permission",

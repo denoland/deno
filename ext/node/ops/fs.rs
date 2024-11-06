@@ -1,12 +1,12 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
-use std::cell::RefCell;
-use std::rc::Rc;
-
+use deno_core::error::JsStackFrame;
 use deno_core::op2;
 use deno_core::OpState;
 use deno_fs::FileSystemRc;
 use serde::Serialize;
+use std::cell::RefCell;
+use std::rc::Rc;
 
 use crate::NodePermissions;
 
@@ -26,78 +26,94 @@ pub enum FsError {
   Fs(#[from] deno_io::fs::FsError),
 }
 
-#[op2(fast)]
+#[op2(reentrant)]
 pub fn op_node_fs_exists_sync<P>(
   state: &mut OpState,
   #[string] path: String,
+  #[stack_trace] stack: Option<Vec<JsStackFrame>>,
 ) -> Result<bool, deno_core::error::AnyError>
 where
   P: NodePermissions + 'static,
 {
-  let path = state
-    .borrow_mut::<P>()
-    .check_read_with_api_name(&path, Some("node:fs.existsSync()"))?;
+  let path = state.borrow_mut::<P>().check_read_with_api_name(
+    &path,
+    Some("node:fs.existsSync()"),
+    stack,
+  )?;
   let fs = state.borrow::<FileSystemRc>();
   Ok(fs.exists_sync(&path))
 }
 
-#[op2(async)]
+#[op2(async, reentrant)]
 pub async fn op_node_fs_exists<P>(
   state: Rc<RefCell<OpState>>,
   #[string] path: String,
+  #[stack_trace] stack: Option<Vec<JsStackFrame>>,
 ) -> Result<bool, FsError>
 where
   P: NodePermissions + 'static,
 {
   let (fs, path) = {
     let mut state = state.borrow_mut();
-    let path = state
-      .borrow_mut::<P>()
-      .check_read_with_api_name(&path, Some("node:fs.exists()"))?;
+    let path = state.borrow_mut::<P>().check_read_with_api_name(
+      &path,
+      Some("node:fs.exists()"),
+      stack,
+    )?;
     (state.borrow::<FileSystemRc>().clone(), path)
   };
 
   Ok(fs.exists_async(path).await?)
 }
 
-#[op2(fast)]
+#[op2(reentrant)]
 pub fn op_node_cp_sync<P>(
   state: &mut OpState,
   #[string] path: &str,
   #[string] new_path: &str,
+  #[stack_trace] stack: Option<Vec<JsStackFrame>>,
 ) -> Result<(), FsError>
 where
   P: NodePermissions + 'static,
 {
-  let path = state
-    .borrow_mut::<P>()
-    .check_read_with_api_name(path, Some("node:fs.cpSync"))?;
-  let new_path = state
-    .borrow_mut::<P>()
-    .check_write_with_api_name(new_path, Some("node:fs.cpSync"))?;
+  let path = state.borrow_mut::<P>().check_read_with_api_name(
+    path,
+    Some("node:fs.cpSync"),
+    stack.clone(),
+  )?;
+  let new_path = state.borrow_mut::<P>().check_write_with_api_name(
+    new_path,
+    Some("node:fs.cpSync"),
+    stack,
+  )?;
 
   let fs = state.borrow::<FileSystemRc>();
   fs.cp_sync(&path, &new_path)?;
   Ok(())
 }
 
-#[op2(async)]
+#[op2(async, reentrant)]
 pub async fn op_node_cp<P>(
   state: Rc<RefCell<OpState>>,
   #[string] path: String,
   #[string] new_path: String,
+  #[stack_trace] stack: Option<Vec<JsStackFrame>>,
 ) -> Result<(), FsError>
 where
   P: NodePermissions + 'static,
 {
   let (fs, path, new_path) = {
     let mut state = state.borrow_mut();
-    let path = state
-      .borrow_mut::<P>()
-      .check_read_with_api_name(&path, Some("node:fs.cpSync"))?;
-    let new_path = state
-      .borrow_mut::<P>()
-      .check_write_with_api_name(&new_path, Some("node:fs.cpSync"))?;
+    let path = state.borrow_mut::<P>().check_read_with_api_name(
+      &path,
+      Some("node:fs.cpSync"),
+      stack.clone(),
+    )?;
+    let new_path = state.borrow_mut::<P>().check_write_with_api_name(
+      &new_path,
+      Some("node:fs.cpSync"),
+      stack,
+    )?;
     (state.borrow::<FileSystemRc>().clone(), path, new_path)
   };
 
@@ -117,24 +133,27 @@ pub struct StatFs {
   pub ffree: u64,
 }
 
-#[op2]
+#[op2(reentrant)]
 #[serde]
 pub fn op_node_statfs<P>(
   state: Rc<RefCell<OpState>>,
   #[string] path: String,
   bigint: bool,
+  #[stack_trace] stack: Option<Vec<JsStackFrame>>,
 ) -> Result<StatFs, FsError>
 where
   P: NodePermissions + 'static,
 {
   let path = {
     let mut state = state.borrow_mut();
-    let path = state
-      .borrow_mut::<P>()
-      .check_read_with_api_name(&path, Some("node:fs.statfs"))?;
+    let path = state.borrow_mut::<P>().check_read_with_api_name(
+      &path,
+      Some("node:fs.statfs"),
+      stack.clone(),
+    )?;
     state
       .borrow_mut::<P>()
-      .check_sys("statfs", "node:fs.statfs")?;
+      .check_sys("statfs", "node:fs.statfs", stack)?;
     path
   };
   #[cfg(unix)]
@@ -258,7 +277,7 @@ where
   }
 }
 
-#[op2(fast)]
+#[op2(reentrant)]
 pub fn op_node_lutimes_sync<P>(
   state: &mut OpState,
   #[string] path: &str,
@@ -266,20 +285,23 @@ pub fn op_node_lutimes_sync<P>(
   #[smi] atime_nanos: u32,
   #[number] mtime_secs: i64,
   #[smi] mtime_nanos: u32,
+  #[stack_trace] stack: Option<Vec<JsStackFrame>>,
 ) -> Result<(), FsError>
 where
   P: NodePermissions + 'static,
 {
-  let path = state
-    .borrow_mut::<P>()
-    .check_write_with_api_name(path, Some("node:fs.lutimes"))?;
+  let path = state.borrow_mut::<P>().check_write_with_api_name(
+    path,
+    Some("node:fs.lutimes"),
+    stack,
+  )?;
 
   let fs = state.borrow::<FileSystemRc>();
   fs.lutime_sync(&path, atime_secs, atime_nanos, mtime_secs, mtime_nanos)?;
   Ok(())
 }
 
-#[op2(async)]
+#[op2(async, reentrant)]
 pub async fn op_node_lutimes<P>(
   state: Rc<RefCell<OpState>>,
   #[string] path: String,
@@ -287,15 +309,18 @@ pub async fn op_node_lutimes<P>(
   #[smi] atime_nanos: u32,
   #[number] mtime_secs: i64,
   #[smi] mtime_nanos: u32,
+  #[stack_trace] stack: Option<Vec<JsStackFrame>>,
 ) -> Result<(), FsError>
 where
   P: NodePermissions + 'static,
 {
   let (fs, path) = {
     let mut state = state.borrow_mut();
-    let path = state
-      .borrow_mut::<P>()
-      .check_write_with_api_name(&path, Some("node:fs.lutimesSync"))?;
+    let path = state.borrow_mut::<P>().check_write_with_api_name(
+      &path,
+      Some("node:fs.lutimesSync"),
+      stack,
+    )?;
     (state.borrow::<FileSystemRc>().clone(), path)
   };
 
@@ -305,39 +330,45 @@ where
   Ok(())
 }
 
-#[op2]
+#[op2(reentrant)]
 pub fn op_node_lchown_sync<P>(
   state: &mut OpState,
   #[string] path: String,
   uid: Option<u32>,
   gid: Option<u32>,
+  #[stack_trace] stack: Option<Vec<JsStackFrame>>,
 ) -> Result<(), FsError>
 where
   P: NodePermissions + 'static,
 {
-  let path = state
-    .borrow_mut::<P>()
-    .check_write_with_api_name(&path, Some("node:fs.lchownSync"))?;
+  let path = state.borrow_mut::<P>().check_write_with_api_name(
+    &path,
+    Some("node:fs.lchownSync"),
+    stack,
+  )?;
   let fs = state.borrow::<FileSystemRc>();
   fs.lchown_sync(&path, uid, gid)?;
   Ok(())
 }
 
-#[op2(async)]
+#[op2(async, reentrant)]
 pub async fn op_node_lchown<P>(
   state: Rc<RefCell<OpState>>,
   #[string] path: String,
   uid: Option<u32>,
   gid: Option<u32>,
+  #[stack_trace] stack: Option<Vec<JsStackFrame>>,
 ) -> Result<(), FsError>
 where
   P: NodePermissions + 'static,
 {
   let (fs, path) = {
     let mut state = state.borrow_mut();
-    let path = state
-      .borrow_mut::<P>()
-      .check_write_with_api_name(&path, Some("node:fs.lchown"))?;
+    let path = state.borrow_mut::<P>().check_write_with_api_name(
+      &path,
+      Some("node:fs.lchown"),
+      stack,
+    )?;
     (state.borrow::<FileSystemRc>().clone(), path)
   };
   fs.lchown_async(path, uid, gid).await?;

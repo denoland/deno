@@ -1,10 +1,10 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
-use std::mem::MaybeUninit;
-
 use crate::NodePermissions;
+use deno_core::error::JsStackFrame;
 use deno_core::op2;
 use deno_core::OpState;
+use std::mem::MaybeUninit;
 
 mod cpus;
 pub mod priority;
@@ -21,34 +21,36 @@ pub enum OsError {
   FailedToGetUserInfo(#[source] std::io::Error),
 }
 
-#[op2(fast)]
+#[op2(reentrant)]
 pub fn op_node_os_get_priority<P>(
   state: &mut OpState,
   pid: u32,
+  #[stack_trace] stack: Option<Vec<JsStackFrame>>,
 ) -> Result<i32, OsError>
 where
   P: NodePermissions + 'static,
 {
   {
     let permissions = state.borrow_mut::<P>();
-    permissions.check_sys("getPriority", "node:os.getPriority()")?;
+    permissions.check_sys("getPriority", "node:os.getPriority()", stack)?;
   }
 
   priority::get_priority(pid).map_err(OsError::Priority)
 }
 
-#[op2(fast)]
+#[op2(reentrant)]
 pub fn op_node_os_set_priority<P>(
   state: &mut OpState,
   pid: u32,
   priority: i32,
+  #[stack_trace] stack: Option<Vec<JsStackFrame>>,
 ) -> Result<(), OsError>
 where
   P: NodePermissions + 'static,
 {
   {
     let permissions = state.borrow_mut::<P>();
-    permissions.check_sys("setPriority", "node:os.setPriority()")?;
+    permissions.check_sys("setPriority", "node:os.setPriority()", stack)?;
   }
 
   priority::set_priority(pid, priority).map_err(OsError::Priority)
@@ -193,11 +195,12 @@ fn get_user_info(_uid: u32) -> Result<UserInfo, OsError> {
   })
 }
 
-#[op2]
+#[op2(reentrant)]
 #[serde]
 pub fn op_node_os_user_info<P>(
   state: &mut OpState,
   #[smi] uid: u32,
+  #[stack_trace] stack: Option<Vec<JsStackFrame>>,
 ) -> Result<UserInfo, OsError>
 where
   P: NodePermissions + 'static,
@@ -205,23 +208,24 @@ where
   {
     let permissions = state.borrow_mut::<P>();
     permissions
-      .check_sys("userInfo", "node:os.userInfo()")
+      .check_sys("userInfo", "node:os.userInfo()", stack)
       .map_err(OsError::Permission)?;
   }
 
   get_user_info(uid)
 }
 
-#[op2(fast)]
+#[op2(reentrant)]
 pub fn op_geteuid<P>(
   state: &mut OpState,
+  #[stack_trace] stack: Option<Vec<JsStackFrame>>,
 ) -> Result<u32, deno_core::error::AnyError>
 where
   P: NodePermissions + 'static,
 {
   {
     let permissions = state.borrow_mut::<P>();
-    permissions.check_sys("uid", "node:os.geteuid()")?;
+    permissions.check_sys("uid", "node:os.geteuid()", stack)?;
   }
 
   #[cfg(windows)]
@@ -233,16 +237,17 @@ where
   Ok(euid)
 }
 
-#[op2(fast)]
+#[op2(reentrant)]
 pub fn op_getegid<P>(
   state: &mut OpState,
+  #[stack_trace] stack: Option<Vec<JsStackFrame>>,
 ) -> Result<u32, deno_core::error::AnyError>
 where
   P: NodePermissions + 'static,
 {
   {
     let permissions = state.borrow_mut::<P>();
-    permissions.check_sys("getegid", "node:os.getegid()")?;
+    permissions.check_sys("getegid", "node:os.getegid()", stack)?;
   }
 
   #[cfg(windows)]
@@ -254,31 +259,35 @@ where
   Ok(egid)
 }
 
-#[op2]
+#[op2(reentrant)]
 #[serde]
-pub fn op_cpus<P>(state: &mut OpState) -> Result<Vec<cpus::CpuInfo>, OsError>
+pub fn op_cpus<P>(
+  state: &mut OpState,
+  #[stack_trace] stack: Option<Vec<JsStackFrame>>,
+) -> Result<Vec<cpus::CpuInfo>, OsError>
 where
   P: NodePermissions + 'static,
 {
   {
     let permissions = state.borrow_mut::<P>();
-    permissions.check_sys("cpus", "node:os.cpus()")?;
+    permissions.check_sys("cpus", "node:os.cpus()", stack)?;
   }
 
   cpus::cpu_info().ok_or(OsError::FailedToGetCpuInfo)
 }
 
-#[op2]
+#[op2(reentrant)]
 #[string]
 pub fn op_homedir<P>(
   state: &mut OpState,
+  #[stack_trace] stack: Option<Vec<JsStackFrame>>,
 ) -> Result<Option<String>, deno_core::error::AnyError>
 where
   P: NodePermissions + 'static,
 {
   {
     let permissions = state.borrow_mut::<P>();
-    permissions.check_sys("homedir", "node:os.homedir()")?;
+    permissions.check_sys("homedir", "node:os.homedir()", stack)?;
   }
 
   Ok(home::home_dir().map(|path| path.to_string_lossy().to_string()))

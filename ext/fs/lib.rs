@@ -22,6 +22,7 @@ pub use crate::sync::MaybeSync;
 
 use crate::ops::*;
 
+use deno_core::error::JsStackFrame;
 use deno_io::fs::FsError;
 use deno_permissions::PermissionCheckError;
 use std::borrow::Cow;
@@ -36,56 +37,66 @@ pub trait FsPermissions {
     write: bool,
     path: &'a Path,
     api_name: &str,
+    stack: Option<Vec<JsStackFrame>>,
   ) -> Result<std::borrow::Cow<'a, Path>, FsError>;
   #[must_use = "the resolved return value to mitigate time-of-check to time-of-use issues"]
   fn check_read(
     &mut self,
     path: &str,
     api_name: &str,
+    stack: Option<Vec<JsStackFrame>>,
   ) -> Result<PathBuf, PermissionCheckError>;
   #[must_use = "the resolved return value to mitigate time-of-check to time-of-use issues"]
   fn check_read_path<'a>(
     &mut self,
     path: &'a Path,
     api_name: &str,
+    stack: Option<Vec<JsStackFrame>>,
   ) -> Result<Cow<'a, Path>, PermissionCheckError>;
   fn check_read_all(
     &mut self,
     api_name: &str,
+    stack: Option<Vec<JsStackFrame>>,
   ) -> Result<(), PermissionCheckError>;
   fn check_read_blind(
     &mut self,
     p: &Path,
     display: &str,
     api_name: &str,
+    stack: Option<Vec<JsStackFrame>>,
   ) -> Result<(), PermissionCheckError>;
   #[must_use = "the resolved return value to mitigate time-of-check to time-of-use issues"]
   fn check_write(
     &mut self,
     path: &str,
     api_name: &str,
+    stack: Option<Vec<JsStackFrame>>,
   ) -> Result<PathBuf, PermissionCheckError>;
   #[must_use = "the resolved return value to mitigate time-of-check to time-of-use issues"]
   fn check_write_path<'a>(
     &mut self,
     path: &'a Path,
     api_name: &str,
+    stack: Option<Vec<JsStackFrame>>,
   ) -> Result<Cow<'a, Path>, PermissionCheckError>;
   #[must_use = "the resolved return value to mitigate time-of-check to time-of-use issues"]
   fn check_write_partial(
     &mut self,
     path: &str,
     api_name: &str,
+    stack: Option<Vec<JsStackFrame>>,
   ) -> Result<PathBuf, PermissionCheckError>;
   fn check_write_all(
     &mut self,
     api_name: &str,
+    stack: Option<Vec<JsStackFrame>>,
   ) -> Result<(), PermissionCheckError>;
   fn check_write_blind(
     &mut self,
     p: &Path,
     display: &str,
     api_name: &str,
+    stack: Option<Vec<JsStackFrame>>,
   ) -> Result<(), PermissionCheckError>;
 
   fn check<'a>(
@@ -94,6 +105,7 @@ pub trait FsPermissions {
     open_options: &OpenOptions,
     path: &'a Path,
     api_name: &str,
+    stack: Option<Vec<JsStackFrame>>,
   ) -> Result<std::borrow::Cow<'a, Path>, FsError> {
     self.check_open(
       resolved,
@@ -101,6 +113,7 @@ pub trait FsPermissions {
       open_options.write || open_options.append,
       path,
       api_name,
+      stack,
     )
   }
 }
@@ -113,10 +126,11 @@ impl FsPermissions for deno_permissions::PermissionsContainer {
     write: bool,
     path: &'a Path,
     api_name: &str,
+    stack: Option<Vec<JsStackFrame>>,
   ) -> Result<Cow<'a, Path>, FsError> {
     if resolved {
       self
-        .check_special_file(path, api_name)
+        .check_special_file(path, api_name, stack)
         .map_err(FsError::NotCapable)?;
       return Ok(Cow::Borrowed(path));
     }
@@ -125,15 +139,16 @@ impl FsPermissions for deno_permissions::PermissionsContainer {
     let read = read || !write;
     let mut path: Cow<'a, Path> = Cow::Borrowed(path);
     if read {
-      let resolved_path = FsPermissions::check_read_path(self, &path, api_name)
-        .map_err(|_| FsError::NotCapable("read"))?;
+      let resolved_path =
+        FsPermissions::check_read_path(self, &path, api_name, stack.clone())
+          .map_err(|_| FsError::NotCapable("read"))?;
       if let Cow::Owned(resolved_path) = resolved_path {
         path = Cow::Owned(resolved_path);
       }
     }
     if write {
       let resolved_path =
-        FsPermissions::check_write_path(self, &path, api_name)
+        FsPermissions::check_write_path(self, &path, api_name, stack)
           .map_err(|_| FsError::NotCapable("write"))?;
       if let Cow::Owned(resolved_path) = resolved_path {
         path = Cow::Owned(resolved_path);
@@ -146,19 +161,24 @@ impl FsPermissions for deno_permissions::PermissionsContainer {
     &mut self,
     path: &str,
     api_name: &str,
+    stack: Option<Vec<JsStackFrame>>,
   ) -> Result<PathBuf, PermissionCheckError> {
-    deno_permissions::PermissionsContainer::check_read(self, path, api_name)
+    deno_permissions::PermissionsContainer::check_read(
+      self, path, api_name, stack,
+    )
   }
 
   fn check_read_path<'a>(
     &mut self,
     path: &'a Path,
     api_name: &str,
+    stack: Option<Vec<JsStackFrame>>,
   ) -> Result<Cow<'a, Path>, PermissionCheckError> {
     deno_permissions::PermissionsContainer::check_read_path(
       self,
       path,
       Some(api_name),
+      stack,
     )
   }
   fn check_read_blind(
@@ -166,9 +186,10 @@ impl FsPermissions for deno_permissions::PermissionsContainer {
     path: &Path,
     display: &str,
     api_name: &str,
+    stack: Option<Vec<JsStackFrame>>,
   ) -> Result<(), PermissionCheckError> {
     deno_permissions::PermissionsContainer::check_read_blind(
-      self, path, display, api_name,
+      self, path, display, api_name, stack,
     )
   }
 
@@ -176,17 +197,21 @@ impl FsPermissions for deno_permissions::PermissionsContainer {
     &mut self,
     path: &str,
     api_name: &str,
+    stack: Option<Vec<JsStackFrame>>,
   ) -> Result<PathBuf, PermissionCheckError> {
-    deno_permissions::PermissionsContainer::check_write(self, path, api_name)
+    deno_permissions::PermissionsContainer::check_write(
+      self, path, api_name, stack,
+    )
   }
 
   fn check_write_path<'a>(
     &mut self,
     path: &'a Path,
     api_name: &str,
+    stack: Option<Vec<JsStackFrame>>,
   ) -> Result<Cow<'a, Path>, PermissionCheckError> {
     deno_permissions::PermissionsContainer::check_write_path(
-      self, path, api_name,
+      self, path, api_name, stack,
     )
   }
 
@@ -194,9 +219,10 @@ impl FsPermissions for deno_permissions::PermissionsContainer {
     &mut self,
     path: &str,
     api_name: &str,
+    stack: Option<Vec<JsStackFrame>>,
   ) -> Result<PathBuf, PermissionCheckError> {
     deno_permissions::PermissionsContainer::check_write_partial(
-      self, path, api_name,
+      self, path, api_name, stack,
     )
   }
 
@@ -205,24 +231,31 @@ impl FsPermissions for deno_permissions::PermissionsContainer {
     p: &Path,
     display: &str,
     api_name: &str,
+    stack: Option<Vec<JsStackFrame>>,
   ) -> Result<(), PermissionCheckError> {
     deno_permissions::PermissionsContainer::check_write_blind(
-      self, p, display, api_name,
+      self, p, display, api_name, stack,
     )
   }
 
   fn check_read_all(
     &mut self,
     api_name: &str,
+    stack: Option<Vec<JsStackFrame>>,
   ) -> Result<(), PermissionCheckError> {
-    deno_permissions::PermissionsContainer::check_read_all(self, api_name)
+    deno_permissions::PermissionsContainer::check_read_all(
+      self, api_name, stack,
+    )
   }
 
   fn check_write_all(
     &mut self,
     api_name: &str,
+    stack: Option<Vec<JsStackFrame>>,
   ) -> Result<(), PermissionCheckError> {
-    deno_permissions::PermissionsContainer::check_write_all(self, api_name)
+    deno_permissions::PermissionsContainer::check_write_all(
+      self, api_name, stack,
+    )
   }
 }
 

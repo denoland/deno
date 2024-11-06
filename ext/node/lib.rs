@@ -9,6 +9,7 @@ use std::path::Path;
 use std::path::PathBuf;
 
 use deno_core::error::AnyError;
+use deno_core::error::JsStackFrame;
 use deno_core::op2;
 use deno_core::url::Url;
 #[allow(unused_imports)]
@@ -46,37 +47,43 @@ pub trait NodePermissions {
     &mut self,
     url: &Url,
     api_name: &str,
+    stack: Option<Vec<JsStackFrame>>,
   ) -> Result<(), PermissionCheckError>;
   #[must_use = "the resolved return value to mitigate time-of-check to time-of-use issues"]
   #[inline(always)]
   fn check_read(
     &mut self,
     path: &str,
+    stack: Option<Vec<JsStackFrame>>,
   ) -> Result<PathBuf, PermissionCheckError> {
-    self.check_read_with_api_name(path, None)
+    self.check_read_with_api_name(path, None, stack)
   }
   #[must_use = "the resolved return value to mitigate time-of-check to time-of-use issues"]
   fn check_read_with_api_name(
     &mut self,
     path: &str,
     api_name: Option<&str>,
+    stack: Option<Vec<JsStackFrame>>,
   ) -> Result<PathBuf, PermissionCheckError>;
   #[must_use = "the resolved return value to mitigate time-of-check to time-of-use issues"]
   fn check_read_path<'a>(
     &mut self,
     path: &'a Path,
+    stack: Option<Vec<JsStackFrame>>,
   ) -> Result<Cow<'a, Path>, PermissionCheckError>;
   fn query_read_all(&mut self) -> bool;
   fn check_sys(
     &mut self,
     kind: &str,
     api_name: &str,
+    stack: Option<Vec<JsStackFrame>>,
   ) -> Result<(), PermissionCheckError>;
   #[must_use = "the resolved return value to mitigate time-of-check to time-of-use issues"]
   fn check_write_with_api_name(
     &mut self,
     path: &str,
     api_name: Option<&str>,
+    stack: Option<Vec<JsStackFrame>>,
   ) -> Result<PathBuf, PermissionCheckError>;
 }
 
@@ -86,8 +93,11 @@ impl NodePermissions for deno_permissions::PermissionsContainer {
     &mut self,
     url: &Url,
     api_name: &str,
+    stack: Option<Vec<JsStackFrame>>,
   ) -> Result<(), PermissionCheckError> {
-    deno_permissions::PermissionsContainer::check_net_url(self, url, api_name)
+    deno_permissions::PermissionsContainer::check_net_url(
+      self, url, api_name, stack,
+    )
   }
 
   #[inline(always)]
@@ -95,17 +105,21 @@ impl NodePermissions for deno_permissions::PermissionsContainer {
     &mut self,
     path: &str,
     api_name: Option<&str>,
+    stack: Option<Vec<JsStackFrame>>,
   ) -> Result<PathBuf, PermissionCheckError> {
     deno_permissions::PermissionsContainer::check_read_with_api_name(
-      self, path, api_name,
+      self, path, api_name, stack,
     )
   }
 
   fn check_read_path<'a>(
     &mut self,
     path: &'a Path,
+    stack: Option<Vec<JsStackFrame>>,
   ) -> Result<Cow<'a, Path>, PermissionCheckError> {
-    deno_permissions::PermissionsContainer::check_read_path(self, path, None)
+    deno_permissions::PermissionsContainer::check_read_path(
+      self, path, None, stack,
+    )
   }
 
   fn query_read_all(&mut self) -> bool {
@@ -117,9 +131,10 @@ impl NodePermissions for deno_permissions::PermissionsContainer {
     &mut self,
     path: &str,
     api_name: Option<&str>,
+    stack: Option<Vec<JsStackFrame>>,
   ) -> Result<PathBuf, PermissionCheckError> {
     deno_permissions::PermissionsContainer::check_write_with_api_name(
-      self, path, api_name,
+      self, path, api_name, stack,
     )
   }
 
@@ -127,8 +142,11 @@ impl NodePermissions for deno_permissions::PermissionsContainer {
     &mut self,
     kind: &str,
     api_name: &str,
+    stack: Option<Vec<JsStackFrame>>,
   ) -> Result<(), PermissionCheckError> {
-    deno_permissions::PermissionsContainer::check_sys(self, kind, api_name)
+    deno_permissions::PermissionsContainer::check_sys(
+      self, kind, api_name, stack,
+    )
   }
 }
 

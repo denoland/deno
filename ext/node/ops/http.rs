@@ -8,6 +8,7 @@ use std::task::Context;
 use std::task::Poll;
 
 use bytes::Bytes;
+use deno_core::error::JsStackFrame;
 use deno_core::futures::stream::Peekable;
 use deno_core::futures::Future;
 use deno_core::futures::FutureExt;
@@ -49,7 +50,7 @@ use std::cmp::min;
 use tokio::io::AsyncReadExt;
 use tokio::io::AsyncWriteExt;
 
-#[op2]
+#[op2(reentrant)]
 #[serde]
 pub fn op_node_http_request<P>(
   state: &mut OpState,
@@ -58,6 +59,7 @@ pub fn op_node_http_request<P>(
   #[serde] headers: Vec<(ByteString, ByteString)>,
   #[smi] client_rid: Option<u32>,
   #[smi] body: Option<ResourceId>,
+  #[stack_trace] stack: Option<Vec<JsStackFrame>>,
 ) -> Result<FetchReturn, FetchError>
 where
   P: crate::NodePermissions + 'static,
@@ -78,7 +80,7 @@ where
 
   {
     let permissions = state.borrow_mut::<P>();
-    permissions.check_net_url(&url, "ClientRequest")?;
+    permissions.check_net_url(&url, "ClientRequest", stack)?;
   }
 
   let mut header_map = HeaderMap::new();

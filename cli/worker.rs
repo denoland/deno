@@ -596,7 +596,9 @@ impl CliMainWorkerFactory {
       origin_storage_dir,
       stdio,
       skip_op_registration: shared.options.skip_op_registration,
-      enable_stack_trace_arg_in_ops: crate::args::has_flag_env_var("DENO_TRACE_PERMISSIONS"),
+      enable_stack_trace_arg_in_ops: crate::args::has_flag_env_var(
+        "DENO_TRACE_PERMISSIONS",
+      ),
     };
 
     let mut worker = MainWorker::bootstrap_from_options(
@@ -793,7 +795,9 @@ fn create_web_worker_callback(
       strace_ops: shared.options.strace_ops.clone(),
       close_on_idle: args.close_on_idle,
       maybe_worker_metadata: args.maybe_worker_metadata,
-      enable_stack_trace_arg_in_ops: crate::args::has_flag_env_var("DENO_TRACE_PERMISSIONS"),
+      enable_stack_trace_arg_in_ops: crate::args::has_flag_env_var(
+        "DENO_TRACE_PERMISSIONS",
+      ),
     };
 
     WebWorker::bootstrap_from_options(services, options)

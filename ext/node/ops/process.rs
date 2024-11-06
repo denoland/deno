@@ -45,15 +45,16 @@ fn kill(pid: i32, _sig: i32) -> i32 {
   }
 }
 
-#[op2(fast)]
+#[op2(reentrant)]
 pub fn op_node_process_kill(
   state: &mut OpState,
   #[smi] pid: i32,
   #[smi] sig: i32,
+  #[stack_trace] stack: Option<Vec<deno_core::error::JsStackFrame>>,
 ) -> Result<i32, deno_core::error::AnyError> {
   state
     .borrow_mut::<PermissionsContainer>()
-    .check_run_all("process.kill")?;
+    .check_run_all("process.kill", stack)?;
   Ok(kill(pid, sig))
 }
 
