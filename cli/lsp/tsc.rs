@@ -4245,6 +4245,8 @@ impl TscSpecifierMap {
     }
     let mut specifier = original.to_string();
     if !specifier.as_str().contains("/node_modules/@types/node/") {
+      // The ts server doesn't give completions from files with `/node_modules/`
+      // in their paths. We work around it like this.
       specifier = specifier.replace("/node_modules/", "/$node_modules/");
     }
     let media_type = MediaType::from_specifier(original);
@@ -4646,7 +4648,7 @@ fn op_script_names(state: &mut OpState) -> ScriptNames {
     let is_open = doc.is_open();
     if is_open
       || (specifier.scheme() == "file"
-        && !specifier.as_str().contains("/node_modules/"))
+        && !state.state_snapshot.resolver.in_node_modules(specifier))
     {
       let script_names = doc
         .scope()
