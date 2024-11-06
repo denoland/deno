@@ -86,7 +86,7 @@ impl deno_node::NodePermissions for Permissions {
     &mut self,
     _host: (&str, Option<u16>),
     _api_name: &str,
-  ) -> Result<(), deno_core::error::AnyError> {
+  ) -> Result<(), PermissionCheckError> {
     unreachable!("snapshotting!")
   }
   fn check_read_path<'a>(

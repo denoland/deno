@@ -99,7 +99,7 @@ impl NodePermissions for deno_permissions::PermissionsContainer {
     &mut self,
     host: (&str, Option<u16>),
     api_name: &str,
-  ) -> Result<(), AnyError> {
+  ) -> Result<(), PermissionCheckError> {
     deno_permissions::PermissionsContainer::check_net(self, &host, api_name)
   }
 
