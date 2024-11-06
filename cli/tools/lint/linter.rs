@@ -269,10 +269,11 @@ fn apply_lint_fixes(
 
 pub fn is_minified_file(code: &str) -> bool {
   const LONG_LINE_THRESHOLD: usize = 250;
-  const WHITESPACE_THRESHOLD: f64 = 0.01;
+  const WHITESPACE_THRESHOLD: f64 = 0.1;
 
   let mut whitespace_count = 0;
   let mut total_len = 0;
+  let mut line_count = 0;
 
   let is_possibly_minified = code.lines().any(|line| {
     // Line length over the threshold suggests a minified file.
@@ -287,6 +288,7 @@ pub fn is_minified_file(code: &str) -> bool {
       return true;
     }
 
+    line_count += 1;
     // Last ditch effort, keep track of whitespace count.
     if line_len > 0 {
       whitespace_count +=
@@ -297,13 +299,17 @@ pub fn is_minified_file(code: &str) -> bool {
     false
   });
 
+  if is_possibly_minified {
+    return true;
+  }
+
+  eprintln!(
+    "whitespace count {} total_len {}",
+    whitespace_count, total_len
+  );
   let whitespace_ratio = whitespace_count as f64 / total_len as f64;
   eprintln!("whitespace_ration {}", whitespace_ratio);
-  if whitespace_ratio < WHITESPACE_THRESHOLD {
-    true
-  } else {
-    is_possibly_minified
-  }
+  whitespace_ratio < WHITESPACE_THRESHOLD
 }
 
 // Example test module
@@ -326,6 +332,15 @@ mod tests {
   }
 
   #[test]
+  fn test_minified_file_sourcemap() {
+    let minified = r#"function f(a, b) { return a.concat(b) }
+var x = function(n) { return n + 1; };
+//# sourceMappingURL=sourcefile.map.js"
+"#;
+    assert!(is_minified_file(minified));
+  }
+
+  #[test]
   fn test_normal_file() {
     let normal = r#"
 function concatenateArrays(array1, array2) {
@@ -339,7 +354,7 @@ const incrementNumber = function(number) {
   }
 
   #[test]
-  fn test_minified_file_source_map() {
+  fn test_normal_file_source_map() {
     let normal = r#"
 function concatenateArrays(array1, array2) {
     return array1.concat(array2);
@@ -349,6 +364,6 @@ const incrementNumber = function(number) {
     return number + 1;
 };
 //# sourceMappingURL=sourcefile.map.js"#;
-    assert!(is_minified_file(normal));
+    assert!(!is_minified_file(normal));
   }
 }
