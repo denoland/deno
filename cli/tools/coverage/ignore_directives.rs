@@ -229,7 +229,7 @@ mod tests {
     parse_and_then(source_code, |program| {
       let line_directives = parse_range_ignore_directives(
         true,
-        &Url::from_str("test.ts").unwrap(),
+        &Url::from_str(TEST_FILE_NAME).unwrap(),
         &program,
       );
 
@@ -251,7 +251,7 @@ mod tests {
     parse_and_then(source_code, |program| {
       let line_directives = parse_range_ignore_directives(
         true,
-        &Url::from_str("test.ts").unwrap(),
+        &Url::from_str(TEST_FILE_NAME).unwrap(),
         &program,
       );
 
@@ -276,7 +276,7 @@ mod tests {
     parse_and_then(source_code, |program| {
       let line_directives = parse_range_ignore_directives(
         true,
-        &Url::from_str("test.ts").unwrap(),
+        &Url::from_str(TEST_FILE_NAME).unwrap(),
         &program,
       );
 
