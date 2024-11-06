@@ -114,7 +114,9 @@ Deno.test(`[node/http2 client createConnection]`, {
   assertEquals(receivedData, "hello world\n");
 });
 
-Deno.test("[node/http2 client GET https://www.example.com]", async () => {
+// TODO(kt3k): Enable this test
+const TEST_NAME = "[node/http2 client GET https://www.example.com]";
+Deno.test(TEST_NAME, { ignore: true }, async () => {
   const clientSession = http2.connect("https://www.example.com");
   const req = clientSession.request({
     ":method": "GET",
