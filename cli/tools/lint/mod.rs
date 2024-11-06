@@ -52,6 +52,7 @@ use crate::util::path::is_script_ext;
 use crate::util::sync::AtomicFlag;
 
 mod linter;
+mod minified_file;
 mod reporters;
 mod rules;
 

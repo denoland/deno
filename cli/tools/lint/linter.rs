@@ -20,6 +20,7 @@ use deno_lint::linter::LinterOptions;
 use crate::util::fs::atomic_write_file_with_retries;
 use crate::util::fs::specifier_from_file_path;
 
+use super::minified_file;
 use super::rules::FileOrPackageLintRule;
 use super::rules::PackageLintRule;
 use super::ConfiguredRules;
@@ -99,7 +100,8 @@ impl CliLinter {
   ) -> Result<(ParsedSource, Vec<LintDiagnostic>), AnyError> {
     let specifier = specifier_from_file_path(file_path)?;
 
-    if is_minified_file(&source_code) {
+    let metrics = minified_file::analyze_content(&source_code);
+    if metrics.is_likely_minified() {
       bail!(
         "{} appears to be a minified file, skipping linting",
         specifier.as_str()
@@ -265,105 +267,4 @@ fn apply_lint_fixes(
   let new_text =
     deno_ast::apply_text_changes(text_info.text_str(), quick_fixes);
   Some(new_text)
-}
-
-pub fn is_minified_file(code: &str) -> bool {
-  const LONG_LINE_THRESHOLD: usize = 250;
-  const WHITESPACE_THRESHOLD: f64 = 0.1;
-
-  let mut whitespace_count = 0;
-  let mut total_len = 0;
-  let mut line_count = 0;
-
-  let is_possibly_minified = code.lines().any(|line| {
-    // Line length over the threshold suggests a minified file.
-    let line_len = line.len();
-    if line_len > LONG_LINE_THRESHOLD {
-      return true;
-    }
-
-    let line = line.trim();
-    // So does a source map url.
-    if line.starts_with("//# sourceMappingURL=") {
-      return true;
-    }
-
-    line_count += 1;
-    // Last ditch effort, keep track of whitespace count.
-    if line_len > 0 {
-      whitespace_count +=
-        line.chars().filter(|c| c.is_ascii_whitespace()).count();
-      total_len += line.len();
-    }
-
-    false
-  });
-
-  if is_possibly_minified {
-    return true;
-  }
-
-  eprintln!(
-    "whitespace count {} total_len {}",
-    whitespace_count, total_len
-  );
-  let whitespace_ratio = whitespace_count as f64 / total_len as f64;
-  eprintln!("whitespace_ration {}", whitespace_ratio);
-  whitespace_ratio < WHITESPACE_THRESHOLD
-}
-
-// Example test module
-#[cfg(test)]
-mod tests {
-  use super::*;
-
-  #[test]
-  fn test_minified_file_col_length() {
-    let minified =
-      "const LOREM_IPSUM = `Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat. Duis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla pariatur.`";
-    assert!(is_minified_file(minified));
-  }
-
-  #[test]
-  fn test_minified_file_whitespace() {
-    let minified =
-      "function f(a,b){return a.concat(b)}var x=function(n){return n+1};";
-    assert!(is_minified_file(minified));
-  }
-
-  #[test]
-  fn test_minified_file_sourcemap() {
-    let minified = r#"function f(a, b) { return a.concat(b) }
-var x = function(n) { return n + 1; };
-//# sourceMappingURL=sourcefile.map.js"
-"#;
-    assert!(is_minified_file(minified));
-  }
-
-  #[test]
-  fn test_normal_file() {
-    let normal = r#"
-function concatenateArrays(array1, array2) {
-    return array1.concat(array2);
-}
-
-const incrementNumber = function(number) {
-    return number + 1;
-};"#;
-    assert!(!is_minified_file(normal));
-  }
-
-  #[test]
-  fn test_normal_file_source_map() {
-    let normal = r#"
-function concatenateArrays(array1, array2) {
-    return array1.concat(array2);
-}
-
-const incrementNumber = function(number) {
-    return number + 1;
-};
-//# sourceMappingURL=sourcefile.map.js"#;
-    assert!(!is_minified_file(normal));
-  }
 }
