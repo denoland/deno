@@ -6,6 +6,42 @@ https://github.com/denoland/deno/releases
 We also have one-line install commands at:
 https://github.com/denoland/deno_install
 
+### 2.0.5 / 2024.11.05
+
+- fix(add): better error message when adding package that only has pre-release
+  versions (#26724)
+- fix(add): only add npm deps to package.json if it's at least as close as
+  deno.json (#26683)
+- fix(cli): set `npm_config_user_agent` when running npm packages or tasks
+  (#26639)
+- fix(coverage): exclude comment lines from coverage reports (#25939)
+- fix(ext/node): add `findSourceMap` to the default export of `node:module`
+  (#26720)
+- fix(ext/node): convert errors from `fs.readFile/fs.readFileSync` to node
+  format (#26632)
+- fix(ext/node): resolve exports even if parent module filename isn't present
+  (#26553)
+- fix(ext/node): return `this` from `http.Server.ref/unref()` (#26647)
+- fix(fmt): do not panic for jsx ignore container followed by jsx text (#26723)
+- fix(fmt): fix several HTML and components issues (#26654)
+- fix(fmt): ignore file directive for YAML files (#26717)
+- fix(install): handle invalid function error, and fallback to junctions
+  regardless of the error (#26730)
+- fix(lsp): include unstable features from editor settings (#26655)
+- fix(lsp): scope attribution for lazily loaded assets (#26699)
+- fix(node): Implement `os.userInfo` properly, add missing `toPrimitive`
+  (#24702)
+- fix(serve): support serve hmr (#26078)
+- fix(types): missing `import` permission on `PermissionOptionsObject` (#26627)
+- fix(workspace): support wildcard packages (#26568)
+- fix: clamp smi in fast calls by default (#26506)
+- fix: improved support for cjs and cts modules (#26558)
+- fix: op_run_microtasks crash (#26718)
+- fix: panic_hook hangs without procfs (#26732)
+- fix: remove permission check in op_require_node_module_paths (#26645)
+- fix: surface package.json location on dep parse failure (#26665)
+- perf(lsp): don't walk coverage directory (#26715)
+
 ### 2.0.4 / 2024.10.29
 
 - Revert "fix(ext/node): fix dns.lookup result ordering (#26264)" (#26621)
