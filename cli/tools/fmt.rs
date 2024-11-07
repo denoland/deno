@@ -1032,7 +1032,7 @@ fn get_resolved_markup_fmt_config(
     max_attrs_per_line: None,
     prefer_attrs_single_line: false,
     html_normal_self_closing: None,
-    html_void_self_closing: Some(true),
+    html_void_self_closing: None,
     component_self_closing: None,
     svg_self_closing: None,
     mathml_self_closing: None,

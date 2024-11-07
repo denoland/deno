@@ -58,7 +58,7 @@ pub fn op_pledge_test_permissions(
   state: &mut OpState,
   #[serde] args: ChildPermissionsArg,
   #[stack_trace] stack: Option<Vec<JsStackFrame>>,
-) -> Result<Uuid, AnyError> {
+) -> Result<Uuid, deno_runtime::deno_permissions::ChildPermissionError> {
   let token = Uuid::new_v4();
   let parent_permissions = state.borrow_mut::<PermissionsContainer>();
   let worker_permissions =
@@ -150,7 +150,7 @@ fn op_dispatch_bench_event(state: &mut OpState, #[serde] event: BenchEvent) {
 
 #[op2(fast)]
 #[number]
-fn op_bench_now(state: &mut OpState) -> Result<u64, AnyError> {
+fn op_bench_now(state: &mut OpState) -> Result<u64, std::num::TryFromIntError> {
   let ns = state.borrow::<time::Instant>().elapsed().as_nanos();
   let ns_u64 = u64::try_from(ns)?;
   Ok(ns_u64)

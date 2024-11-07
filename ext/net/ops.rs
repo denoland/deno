@@ -19,6 +19,16 @@ use deno_core::OpState;
 use deno_core::RcRef;
 use deno_core::Resource;
 use deno_core::ResourceId;
+use hickory_proto::rr::rdata::caa::Value;
+use hickory_proto::rr::record_data::RData;
+use hickory_proto::rr::record_type::RecordType;
+use hickory_resolver::config::NameServerConfigGroup;
+use hickory_resolver::config::ResolverConfig;
+use hickory_resolver::config::ResolverOpts;
+use hickory_resolver::error::ResolveError;
+use hickory_resolver::error::ResolveErrorKind;
+use hickory_resolver::system_conf;
+use hickory_resolver::AsyncResolver;
 use serde::Deserialize;
 use serde::Serialize;
 use socket2::Domain;
@@ -34,16 +44,6 @@ use std::rc::Rc;
 use std::str::FromStr;
 use tokio::net::TcpStream;
 use tokio::net::UdpSocket;
-use trust_dns_proto::rr::rdata::caa::Value;
-use trust_dns_proto::rr::record_data::RData;
-use trust_dns_proto::rr::record_type::RecordType;
-use trust_dns_resolver::config::NameServerConfigGroup;
-use trust_dns_resolver::config::ResolverConfig;
-use trust_dns_resolver::config::ResolverOpts;
-use trust_dns_resolver::error::ResolveError;
-use trust_dns_resolver::error::ResolveErrorKind;
-use trust_dns_resolver::system_conf;
-use trust_dns_resolver::AsyncResolver;
 
 #[derive(Serialize, Clone, Debug)]
 #[serde(rename_all = "camelCase")]
@@ -844,6 +844,21 @@ mod tests {
   use deno_core::JsRuntime;
   use deno_core::RuntimeOptions;
   use deno_permissions::PermissionCheckError;
+  use hickory_proto::rr::rdata::a::A;
+  use hickory_proto::rr::rdata::aaaa::AAAA;
+  use hickory_proto::rr::rdata::caa::KeyValue;
+  use hickory_proto::rr::rdata::caa::CAA;
+  use hickory_proto::rr::rdata::mx::MX;
+  use hickory_proto::rr::rdata::name::ANAME;
+  use hickory_proto::rr::rdata::name::CNAME;
+  use hickory_proto::rr::rdata::name::NS;
+  use hickory_proto::rr::rdata::name::PTR;
+  use hickory_proto::rr::rdata::naptr::NAPTR;
+  use hickory_proto::rr::rdata::srv::SRV;
+  use hickory_proto::rr::rdata::txt::TXT;
+  use hickory_proto::rr::rdata::SOA;
+  use hickory_proto::rr::record_data::RData;
+  use hickory_proto::rr::Name;
   use socket2::SockRef;
   use std::net::Ipv4Addr;
   use std::net::Ipv6Addr;
@@ -852,21 +867,6 @@ mod tests {
   use std::path::PathBuf;
   use std::sync::Arc;
   use std::sync::Mutex;
-  use trust_dns_proto::rr::rdata::a::A;
-  use trust_dns_proto::rr::rdata::aaaa::AAAA;
-  use trust_dns_proto::rr::rdata::caa::KeyValue;
-  use trust_dns_proto::rr::rdata::caa::CAA;
-  use trust_dns_proto::rr::rdata::mx::MX;
-  use trust_dns_proto::rr::rdata::name::ANAME;
-  use trust_dns_proto::rr::rdata::name::CNAME;
-  use trust_dns_proto::rr::rdata::name::NS;
-  use trust_dns_proto::rr::rdata::name::PTR;
-  use trust_dns_proto::rr::rdata::naptr::NAPTR;
-  use trust_dns_proto::rr::rdata::srv::SRV;
-  use trust_dns_proto::rr::rdata::txt::TXT;
-  use trust_dns_proto::rr::rdata::SOA;
-  use trust_dns_proto::rr::record_data::RData;
-  use trust_dns_proto::rr::Name;
 
   #[test]
   fn rdata_to_return_record_a() {

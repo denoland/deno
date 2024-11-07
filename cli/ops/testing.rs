@@ -52,7 +52,7 @@ pub fn op_pledge_test_permissions(
   state: &mut OpState,
   #[serde] args: ChildPermissionsArg,
   #[stack_trace] stack: Option<Vec<deno_core::error::JsStackFrame>>,
-) -> Result<Uuid, AnyError> {
+) -> Result<Uuid, deno_runtime::deno_permissions::ChildPermissionError> {
   let token = Uuid::new_v4();
   let parent_permissions = state.borrow_mut::<PermissionsContainer>();
   let worker_permissions =
@@ -152,7 +152,7 @@ fn op_register_test_step(
   #[smi] parent_id: usize,
   #[smi] root_id: usize,
   #[string] root_name: String,
-) -> Result<usize, AnyError> {
+) -> usize {
   let id = NEXT_ID.fetch_add(1, Ordering::SeqCst);
   let origin = state.borrow::<ModuleSpecifier>().to_string();
   let description = TestStepDescription {
@@ -171,7 +171,7 @@ fn op_register_test_step(
   };
   let sender = state.borrow_mut::<TestEventSender>();
   sender.send(TestEvent::StepRegister(description)).ok();
-  Ok(id)
+  id
 }
 
 #[op2(fast)]
