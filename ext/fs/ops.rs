@@ -878,7 +878,7 @@ where
   Ok(target_string)
 }
 
-#[op2(async)]
+#[op2(async, reentrant)]
 #[string]
 pub async fn op_fs_read_link_async<P>(
   state: Rc<RefCell<OpState>>,
@@ -1329,6 +1329,7 @@ fn tmp_name(
   Ok(path)
 }
 
+#[allow(clippy::too_many_arguments)]
 #[op2(reentrant)]
 pub fn op_fs_write_file_sync<P>(
   state: &mut OpState,

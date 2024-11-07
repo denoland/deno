@@ -46,7 +46,7 @@ pub enum WorkerThreadsFilenameError {
 }
 
 // todo(dsherret): we should remove this and do all this work inside op_create_worker
-#[op2]
+#[op2(reentrant)]
 #[string]
 pub fn op_worker_threads_filename<P>(
   state: &mut OpState,
