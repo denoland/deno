@@ -11,6 +11,7 @@ import {
   op_http_cancel,
   op_http_close,
   op_http_close_after_finish,
+  op_http_get_request_cancelled,
   op_http_get_request_headers,
   op_http_get_request_method_and_url,
   op_http_read_request_body,
@@ -372,6 +373,13 @@ class InnerRequest {
 
   get external() {
     return this.#external;
+  }
+
+  get isCancelled() {
+    if (this.#external === null) {
+      return true;
+    }
+    return op_http_get_request_cancelled(this.#external);
   }
 }
 
