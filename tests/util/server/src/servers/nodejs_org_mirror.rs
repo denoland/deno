@@ -24,6 +24,27 @@ use crate::servers::hyper_utils::ServerKind;
 use crate::servers::hyper_utils::ServerOptions;
 use crate::servers::string_body;
 use crate::testdata_path;
+use crate::PathRef;
+
+/// a little helper extension trait to log errors but convert to option
+trait OkWarn<T, E> {
+  fn ok_warn(self) -> Option<T>;
+}
+
+impl<T, E> OkWarn<T, E> for Result<T, E>
+where
+  E: std::fmt::Display,
+{
+  fn ok_warn(self) -> Option<T> {
+    self
+      .inspect_err(|err| {
+        eprintln!(
+          "test_server warning: error occurred in nodejs_org_mirror.rs: {err}"
+        )
+      })
+      .ok()
+  }
+}
 
 pub static NODEJS_MIRROR: LazyLock<NodeJsMirror> =
   LazyLock::new(NodeJsMirror::default);
@@ -31,33 +52,121 @@ pub static NODEJS_MIRROR: LazyLock<NodeJsMirror> =
 #[derive(Default)]
 pub struct NodeJsMirror {
   cache: Mutex<HashMap<String, Bytes>>,
+  checksum_cache: Mutex<HashMap<String, String>>,
+}
+
+fn asset_file_path(file: &str) -> PathRef {
+  testdata_path().join("assets").join("node-gyp").join(file)
 }
 
 impl NodeJsMirror {
-  pub fn get_header_bytes(&self, file: &str, version: &str) -> Option<Bytes> {
+  pub fn get_header_bytes(&self, file: &str) -> Option<Bytes> {
     let mut cache = self.cache.lock();
-    let entry = cache.entry(version.into());
+    let entry = cache.entry(file.to_owned());
     match entry {
       std::collections::hash_map::Entry::Occupied(occupied) => {
         Some(occupied.get().clone())
       }
       std::collections::hash_map::Entry::Vacant(vacant) => {
-        let contents = testdata_path().join("assets").join(file);
-        let contents =
-          contents.read_to_bytes_if_exists().ok().map(Bytes::from)?;
+        let contents = asset_file_path(file);
+        let contents = contents
+          .read_to_bytes_if_exists()
+          .ok_warn()
+          .map(Bytes::from)?;
         vacant.insert(contents.clone());
         Some(contents)
       }
     }
   }
-  pub fn get_header_checksum(&self, version: &str) -> Option<String> {
-    let file = format!("{version}-headers.tar.gz");
-    let bytes = self.get_header_bytes(&file, version)?;
+
+  fn get_checksum(&self, file: &str, bytes: Bytes) -> String {
     use sha2::Digest;
+    if let Some(checksum) = self.checksum_cache.lock().get(file).cloned() {
+      return checksum;
+    }
     let mut hasher = sha2::Sha256::new();
     hasher.update(&bytes);
-    Some(faster_hex::hex_string(hasher.finalize().as_ref()))
+    let checksum = faster_hex::hex_string(hasher.finalize().as_ref());
+    self
+      .checksum_cache
+      .lock()
+      .insert(file.to_owned(), checksum.clone());
+    checksum
   }
+
+  pub fn get_checksum_file(&self, version: &str) -> Option<String> {
+    let mut entries = Vec::with_capacity(2);
+
+    let header_file = header_tar_name(version);
+    let header_bytes = self.get_header_bytes(&header_file)?;
+    let header_checksum = self.get_checksum(&header_file, header_bytes);
+    entries.push((header_file, header_checksum));
+
+    if cfg!(windows) {
+      if !cfg!(target_arch = "x86_64") {
+        panic!("unsupported target arch on windows, only support x86_64");
+      }
+      let Some(bytes) = self.get_node_lib_bytes(version, "win-x64") else {
+        eprintln!("test server failed to get node lib");
+        return None;
+      };
+      {
+        let file = format!("{version}/win-x64/node.lib");
+        let checksum = self.get_checksum(&file, bytes);
+        let filename_for_checksum =
+          file.trim_start_matches(&format!("{version}/"));
+        entries.push((filename_for_checksum.to_owned(), checksum));
+      }
+    }
+
+    Some(
+      entries
+        .into_iter()
+        .map(|(file, checksum)| format!("{checksum}  {file}"))
+        .collect::<Vec<_>>()
+        .join("\n"),
+    )
+  }
+
+  pub fn get_node_lib_bytes(
+    &self,
+    version: &str,
+    platform: &str,
+  ) -> Option<Bytes> {
+    let mut cache = self.cache.lock();
+    let file_name = format!("{version}/{platform}/node.lib");
+    let entry = cache.entry(file_name);
+    match entry {
+      std::collections::hash_map::Entry::Occupied(occupied) => {
+        Some(occupied.get().clone())
+      }
+      std::collections::hash_map::Entry::Vacant(vacant) => {
+        let tarball_filename =
+          format!("{version}__{platform}__node.lib.tar.gz");
+        let contents = asset_file_path(&tarball_filename);
+        let contents = contents.read_to_bytes_if_exists().ok_warn()?;
+        let extracted = Bytes::from(extract_tarball(&contents)?);
+        vacant.insert(extracted.clone());
+        Some(extracted)
+      }
+    }
+  }
+}
+
+fn header_tar_name(version: &str) -> String {
+  format!("node-{version}-headers.tar.gz")
+}
+
+fn extract_tarball(compressed: &[u8]) -> Option<Vec<u8>> {
+  let mut out = Vec::with_capacity(compressed.len());
+  let decoder = flate2::read::GzDecoder::new(compressed);
+  let mut archive = tar::Archive::new(decoder);
+  for file in archive.entries().ok_warn()? {
+    let mut file = file.ok_warn()?;
+
+    std::io::copy(&mut file, &mut out).ok_warn()?;
+  }
+  Some(out)
 }
 
 /// Server for node JS header tarballs, used by `node-gyp` in tests
@@ -85,15 +194,30 @@ pub async fn nodejs_org_mirror(port: u16) {
           return not_found(format!("missing file version in path: {path}"));
         };
         if file == "SHASUMS256.txt" {
-          let Some(checksum) = NODEJS_MIRROR.get_header_checksum(version)
+          let Some(checksum_file) = NODEJS_MIRROR.get_checksum_file(version)
           else {
             return not_found(format!("failed to get header checksum: {path}"));
           };
-          let checksum_file =
-            format!("{checksum}  node-{version}-headers.tar.gz\n");
           return Ok(Response::new(string_body(&checksum_file)));
+        } else if !file.contains("headers") {
+          let platform = file;
+          let Some(file) = parts.next() else {
+            return not_found("expected file");
+          };
+          if file != "node.lib" {
+            return not_found(format!(
+              "unexpected file name, expected node.lib, got: {file}"
+            ));
+          }
+          let Some(bytes) = NODEJS_MIRROR.get_node_lib_bytes(version, platform)
+          else {
+            return not_found("expected node lib bytes");
+          };
+
+          return Ok(Response::new(UnsyncBoxBody::new(Full::new(bytes))));
         }
-        let Some(bytes) = NODEJS_MIRROR.get_header_bytes(file, version) else {
+
+        let Some(bytes) = NODEJS_MIRROR.get_header_bytes(file) else {
           return not_found(format!(
             "couldn't find headers for version {version}, missing file: {file}"
           ));
