@@ -20,7 +20,10 @@ use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
 use deno_core::serde_json;
 use deno_doc as doc;
+use deno_doc::html::DocNodeWithContext;
 use deno_doc::html::UrlResolveKind;
+use deno_doc::html::UsageComposer;
+use deno_doc::html::UsageComposerEntry;
 use deno_graph::source::NullFileSystem;
 use deno_graph::EsParser;
 use deno_graph::GraphKind;
@@ -312,10 +315,6 @@ impl deno_doc::html::HrefResolver for DocResolver {
     None
   }
 
-  fn resolve_usage(&self, current_resolve: UrlResolveKind) -> Option<String> {
-    current_resolve.get_file().map(|file| file.path.to_string())
-  }
-
   fn resolve_source(&self, location: &deno_doc::Location) -> Option<String> {
     Some(location.filename.to_string())
   }
@@ -347,6 +346,34 @@ impl deno_doc::html::HrefResolver for DocResolver {
     } else {
       None
     }
+  }
+}
+
+struct DocComposer;
+
+impl UsageComposer for DocComposer {
+  fn is_single_mode(&self) -> bool {
+    true
+  }
+
+  fn compose(
+    &self,
+    nodes: &[DocNodeWithContext],
+    current_resolve: UrlResolveKind,
+    usage_to_md: deno_doc::html::UsageToMd,
+  ) -> IndexMap<UsageComposerEntry, String> {
+    current_resolve
+      .get_file()
+      .map(|current_file| {
+        IndexMap::from([(
+          UsageComposerEntry {
+            name: "".to_string(),
+            icon: None,
+          },
+          usage_to_md(nodes, current_file.path.as_str()),
+        )])
+      })
+      .unwrap_or_default()
   }
 }
 
@@ -383,10 +410,6 @@ impl deno_doc::html::HrefResolver for DenoDocResolver {
     None
   }
 
-  fn resolve_usage(&self, _current_resolve: UrlResolveKind) -> Option<String> {
-    None
-  }
-
   fn resolve_source(&self, _location: &deno_doc::Location) -> Option<String> {
     None
   }
@@ -397,6 +420,23 @@ impl deno_doc::html::HrefResolver for DenoDocResolver {
     _symbol: Option<&str>,
   ) -> Option<(String, String)> {
     None
+  }
+}
+
+struct DenoDocComposer;
+
+impl UsageComposer for DenoDocComposer {
+  fn is_single_mode(&self) -> bool {
+    true
+  }
+
+  fn compose(
+    &self,
+    _nodes: &[DocNodeWithContext],
+    _current_resolve: UrlResolveKind,
+    _usage_to_md: deno_doc::html::UsageToMd,
+  ) -> IndexMap<UsageComposerEntry, String> {
+    Default::default()
   }
 }
 
@@ -433,12 +473,6 @@ impl deno_doc::html::HrefResolver for NodeDocResolver {
     None
   }
 
-  fn resolve_usage(&self, current_resolve: UrlResolveKind) -> Option<String> {
-    current_resolve
-      .get_file()
-      .map(|file| format!("node:{}", file.path))
-  }
-
   fn resolve_source(&self, _location: &deno_doc::Location) -> Option<String> {
     None
   }
@@ -449,6 +483,34 @@ impl deno_doc::html::HrefResolver for NodeDocResolver {
     _symbol: Option<&str>,
   ) -> Option<(String, String)> {
     None
+  }
+}
+
+struct NodeDocComposer;
+
+impl UsageComposer for NodeDocComposer {
+  fn is_single_mode(&self) -> bool {
+    true
+  }
+
+  fn compose(
+    &self,
+    nodes: &[DocNodeWithContext],
+    current_resolve: UrlResolveKind,
+    usage_to_md: deno_doc::html::UsageToMd,
+  ) -> IndexMap<UsageComposerEntry, String> {
+    current_resolve
+      .get_file()
+      .map(|file| {
+        IndexMap::from([(
+          UsageComposerEntry {
+            name: "".to_string(),
+            icon: None,
+          },
+          usage_to_md(nodes, &format!("node:{}", file.path)),
+        )])
+      })
+      .unwrap_or_default()
   }
 }
 
@@ -463,22 +525,34 @@ fn generate_docs_directory(
 
   let internal_env = std::env::var("DENO_INTERNAL_HTML_DOCS").ok();
 
-  let href_resolver: Rc<dyn deno_doc::html::HrefResolver> = if internal_env
+  let (href_resolver, usage_composer): (
+    Rc<dyn deno_doc::html::HrefResolver>,
+    Rc<dyn UsageComposer>,
+  ) = if internal_env
     .as_ref()
     .is_some_and(|internal_html_docs| internal_html_docs == "node")
   {
-    Rc::new(NodeDocResolver(html_options.strip_trailing_html))
+    (
+      Rc::new(NodeDocResolver(html_options.strip_trailing_html)),
+      Rc::new(NodeDocComposer),
+    )
   } else if internal_env
     .as_ref()
     .is_some_and(|internal_html_docs| internal_html_docs == "deno")
     || deno_ns.is_empty()
   {
-    Rc::new(DenoDocResolver(html_options.strip_trailing_html))
+    (
+      Rc::new(DenoDocResolver(html_options.strip_trailing_html)),
+      Rc::new(DenoDocComposer),
+    )
   } else {
-    Rc::new(DocResolver {
-      deno_ns,
-      strip_trailing_html: html_options.strip_trailing_html,
-    })
+    (
+      Rc::new(DocResolver {
+        deno_ns,
+        strip_trailing_html: html_options.strip_trailing_html,
+      }),
+      Rc::new(DocComposer),
+    )
   };
 
   let category_docs =
@@ -512,11 +586,13 @@ fn generate_docs_directory(
     main_entrypoint: None,
     rewrite_map,
     href_resolver,
-    usage_composer: None,
+    usage_composer,
     category_docs,
     disable_search: internal_env.is_some(),
     symbol_redirect_map,
     default_symbol_map,
+    markdown_renderer: Rc::new(deno_doc::html::comrak::render),
+    markdown_stripper: Rc::new(deno_doc::html::comrak::strip),
   };
 
   let files = deno_doc::html::generate(options, doc_nodes_by_url)

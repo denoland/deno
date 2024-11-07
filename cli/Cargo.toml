@@ -72,7 +72,7 @@ deno_ast = { workspace = true, features = ["bundler", "cjs", "codegen", "proposa
 deno_cache_dir = { workspace = true }
 deno_config = { version = "=0.38.2", features = ["workspace", "sync"] }
 deno_core = { workspace = true, features = ["include_js_files_for_snapshotting"] }
-deno_doc = { version = "0.156.0", default-features = false, features = ["rust", "html", "syntect"] }
+deno_doc = { path = "../../deno_doc", default-features = false, features = ["rust", "comrak"] }
 deno_graph = { version = "=0.84.1" }
 deno_lint = { version = "=0.68.0", features = ["docs"] }
 deno_lockfile.workspace = true
