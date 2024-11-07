@@ -20,9 +20,9 @@ Deno.test(
     const program = `
 const file = await Deno.open("${exitCodeFileLock}", { write: true, create: true });
 async function tryExit() {
+  await file.lock(true);
   try {
-    await file.lock(true);
-    const code = parseInt(await Deno.readTextFile("${cwd}/${exitCodeFile}"));
+    const code = parseInt(await Deno.readTextFile("${exitCodeFile}"));
     Deno.exit(code);
   } catch {
     // Retry if we got here before deno wrote the file.
