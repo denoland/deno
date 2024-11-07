@@ -18,7 +18,7 @@ Deno.test(
     const exitCodeFile = "deno_was_here";
     const programFile = "poll_exit.ts";
     const program = `
-const file = await Deno.open("${exitCodeFileLock}", { append: true, create: true });
+const file = await Deno.open("${exitCodeFileLock}", { write: true, create: true });
 async function tryExit() {
   try {
     await file.lock(true);
@@ -49,7 +49,7 @@ tryExit();
     const code = 84;
 
     await using file = await Deno.open(`${cwd}/${exitCodeFileLock}`, {
-      append: true,
+      write: true,
       create: true,
     });
     await file.lock(true);
