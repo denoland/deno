@@ -5,6 +5,8 @@
 //! Loads from `testdata/assets`, if we update our node version in `process.versions` we'll need to
 //! update the header tarball there.
 
+#![allow(clippy::print_stderr)]
+
 use std::collections::HashMap;
 use std::convert::Infallible;
 use std::net::SocketAddr;
@@ -70,7 +72,10 @@ pub async fn nodejs_org_mirror(port: u16) {
     },
     |req| async move {
       let path = req.uri().path();
-      if path.contains("-headers.tar.gz") || path.contains("SHASUMS256.txt") {
+      if path.contains("-headers.tar.gz")
+        || path.contains("SHASUMS256.txt")
+        || path.contains("node.lib")
+      {
         let mut parts = path.split('/');
         let _ = parts.next(); // empty
         let Some(version) = parts.next() else {
@@ -105,8 +110,12 @@ pub async fn nodejs_org_mirror(port: u16) {
 fn not_found(
   msg: impl AsRef<str>,
 ) -> Result<Response<UnsyncBoxBody<Bytes, Infallible>>, anyhow::Error> {
+  let msg = msg.as_ref();
+  eprintln!(
+    "test_server warning: error likely occurred in nodejs_org_mirror.rs: {msg}"
+  );
   Response::builder()
     .status(StatusCode::NOT_FOUND)
-    .body(string_body(msg.as_ref()))
+    .body(string_body(msg))
     .map_err(|e| e.into())
 }
