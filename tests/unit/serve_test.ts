@@ -4276,7 +4276,6 @@ Deno.test({
 }, async () => {
   const { promise, resolve } = Promise.withResolvers<void>();
 
-  const ac = new AbortController();
   let cancelled = false;
 
   const server = Deno.serve({
