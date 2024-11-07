@@ -6629,6 +6629,23 @@ export class DuckConfig {
         }]
       }
     }, {
+      "title": "Add all missing imports",
+      "kind": "quickfix",
+      "diagnostics": [{
+        "range": {
+          "start": { "line": 0, "character": 50 },
+          "end": { "line": 0, "character": 67 }
+        },
+        "severity": 1,
+        "code": 2304,
+        "source": "deno-ts",
+        "message": "Cannot find name 'DuckConfigOptions'."
+      }],
+      "data": {
+        "specifier": "file:///a/file00.ts",
+        "fixId": "fixMissingImport"
+      }
+    }, {
       "title": "Add import from \"./file01.ts\"",
       "kind": "quickfix",
       "diagnostics": [{
@@ -6655,23 +6672,6 @@ export class DuckConfig {
             "newText": "import { DuckConfig } from \"./file01.ts\";\n\n"
           }]
         }]
-      }
-    }, {
-      "title": "Add all missing imports",
-      "kind": "quickfix",
-      "diagnostics": [{
-        "range": {
-          "start": { "line": 0, "character": 50 },
-          "end": { "line": 0, "character": 67 }
-        },
-        "severity": 1,
-        "code": 2304,
-        "source": "deno-ts",
-        "message": "Cannot find name 'DuckConfigOptions'."
-      }],
-      "data": {
-        "specifier": "file:///a/file00.ts",
-        "fixId": "fixMissingImport"
       }
     }])
   );
@@ -8126,6 +8126,151 @@ fn lsp_npm_completions_auto_import_and_quick_fix_no_import_map() {
 }
 
 #[test]
+fn lsp_npm_auto_import_and_quick_fix_byonm() {
+  let context = TestContextBuilder::new()
+    .use_http_server()
+    .use_temp_cwd()
+    .add_npm_env_vars()
+    .build();
+  let temp_dir = context.temp_dir();
+  temp_dir.write("deno.json", json!({}).to_string());
+  temp_dir.write(
+    "package.json",
+    json!({
+      "dependencies": {
+        "cowsay": "*",
+      },
+    })
+    .to_string(),
+  );
+  context
+    .new_command()
+    .args("install")
+    .run()
+    .skip_output_check();
+  temp_dir.write("other.ts", "import \"cowsay\";\n");
+  let mut client = context.new_lsp_command().build();
+  client.initialize_default();
+  let diagnostics = client.did_open(json!({
+    "textDocument": {
+      "uri": temp_dir.url().join("file.ts").unwrap(),
+      "languageId": "typescript",
+      "version": 1,
+      "text": "think({ text: \"foo\" });\n",
+    },
+  }));
+  let list = client.get_completion_list(
+    temp_dir.url().join("file.ts").unwrap(),
+    (0, 5),
+    json!({ "triggerKind": 1 }),
+  );
+  assert!(!list.is_incomplete);
+  let item = list
+    .items
+    .iter()
+    .find(|item| item.label == "think")
+    .unwrap();
+  let res = client.write_request("completionItem/resolve", item);
+  assert_eq!(
+    res,
+    json!({
+      "label": "think",
+      "labelDetails": {
+        "description": "cowsay",
+      },
+      "kind": 3,
+      "detail": "function think(options: IOptions): string",
+      "documentation": {
+        "kind": "markdown",
+        "value": "\n\n*@param*  \noptions ## Face :\nEither choose a mode (set the value as true) **_or_**\nset your own defined eyes and tongue to `e` and `T`.\n- ### `e` : eyes\n- ### `T` : tongue\n\n## Cow :\nEither specify a cow name (e.g. \"fox\") **_or_**\nset the value of `r` to true which selects a random cow.\n- ### `r` : random selection\n- ### `f` : cow name - from `cows` folder\n\n## Modes :\nModes are just ready-to-use faces, here's their list:\n- #### `b` : borg\n- #### `d` : dead      \n- #### `g` : greedy\n- #### `p` : paranoia\n- #### `s` : stoned\n- #### `t` : tired\n- #### `w` : youthful\n- #### `y` : wired  \n\n*@example*  \n```\n// custom cow and face\ncowsay.think({\n    text: 'Hello world!',\n    e: '^^', // eyes\n    T: 'U ', // tongue\n    f: 'USA' // name of the cow from `cows` folder\n})\n\n// using a random cow\ncowsay.think({\n    text: 'Hello world!',\n    e: 'xx', // eyes\n    r: true, // random mode - use a random cow.\n})\n\n// using a mode\ncowsay.think({\n    text: 'Hello world!',\n    y: true, // using y mode - youthful mode\n})\n```",
+      },
+      "sortText": "￿16_0",
+      "additionalTextEdits": [
+        {
+          "range": {
+            "start": { "line": 0, "character": 0 },
+            "end": { "line": 0, "character": 0 },
+          },
+          "newText": "import { think } from \"cowsay\";\n\n",
+        },
+      ],
+    }),
+  );
+  let diagnostics = diagnostics
+    .messages_with_file_and_source(
+      temp_dir.url().join("file.ts").unwrap().as_str(),
+      "deno-ts",
+    )
+    .diagnostics;
+  let res = client.write_request(
+    "textDocument/codeAction",
+    json!(json!({
+      "textDocument": {
+        "uri": temp_dir.url().join("file.ts").unwrap(),
+      },
+      "range": {
+        "start": { "line": 0, "character": 0 },
+        "end": { "line": 0, "character": 5 },
+      },
+      "context": {
+        "diagnostics": &diagnostics,
+        "only": ["quickfix"],
+      },
+    })),
+  );
+  assert_eq!(
+    res,
+    json!([
+      {
+        "title": "Add import from \"cowsay\"",
+        "kind": "quickfix",
+        "diagnostics": &diagnostics,
+        "edit": {
+          "documentChanges": [{
+            "textDocument": {
+              "uri": temp_dir.url().join("file.ts").unwrap(),
+              "version": 1,
+            },
+            "edits": [{
+              "range": {
+                "start": { "line": 0, "character": 0 },
+                "end": { "line": 0, "character": 0 },
+              },
+              "newText": "import { think } from \"cowsay\";\n\n",
+            }],
+          }],
+        },
+      },
+      {
+        "title": "Add missing function declaration 'think'",
+        "kind": "quickfix",
+        "diagnostics": &diagnostics,
+        "edit": {
+          "documentChanges": [
+            {
+              "textDocument": {
+                "uri": temp_dir.url().join("file.ts").unwrap(),
+                "version": 1,
+              },
+              "edits": [
+                {
+                  "range": {
+                    "start": { "line": 1, "character": 0 },
+                    "end": { "line": 1, "character": 0 },
+                  },
+                  "newText": "\nfunction think(arg0: { text: string; }) {\n  throw new Error(\"Function not implemented.\");\n}\n",
+                },
+              ],
+            },
+          ],
+        },
+      },
+    ]),
+  );
+  client.shutdown();
+}
+
+#[test]
 fn lsp_completions_node_specifier() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let temp_dir = context.temp_dir();
@@ -8237,8 +8382,8 @@ fn lsp_infer_return_type() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let temp_dir = context.temp_dir();
   temp_dir.write("deno.json", json!({}).to_string());
-  let types_file = source_file(
-    temp_dir.path().join("types.d.ts"),
+  temp_dir.write(
+    "types.d.ts",
     r#"
       export interface SomeInterface {
         someField: number;
@@ -8319,7 +8464,7 @@ fn lsp_infer_return_type() {
                   "start": { "line": 1, "character": 20 },
                   "end": { "line": 1, "character": 20 },
                 },
-                "newText": format!(": import(\"{}\").SomeInterface", types_file.url()),
+                "newText": ": import(\"./types.d.ts\").SomeInterface",
               },
             ],
           },

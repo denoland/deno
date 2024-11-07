@@ -1,7 +1,4 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
-use deno_core::error::generic_error;
-use deno_core::error::type_error;
-use deno_core::error::AnyError;
 use rand::rngs::OsRng;
 use rsa::signature::hazmat::PrehashSigner as _;
 use rsa::signature::hazmat::PrehashVerifier as _;
@@ -26,7 +23,7 @@ use elliptic_curve::FieldBytesSize;
 fn dsa_signature<C: elliptic_curve::PrimeCurve>(
   encoding: u32,
   signature: ecdsa::Signature<C>,
-) -> Result<Box<[u8]>, AnyError>
+) -> Result<Box<[u8]>, KeyObjectHandlePrehashedSignAndVerifyError>
 where
   MaxSize<C>: ArrayLength<u8>,
   <FieldBytesSize<C> as Add>::Output: Add<MaxOverhead> + ArrayLength<u8>,
@@ -36,8 +33,52 @@ where
     0 => Ok(signature.to_der().to_bytes().to_vec().into_boxed_slice()),
     // IEEE P1363
     1 => Ok(signature.to_bytes().to_vec().into_boxed_slice()),
-    _ => Err(type_error("invalid DSA signature encoding")),
+    _ => Err(
+      KeyObjectHandlePrehashedSignAndVerifyError::InvalidDsaSignatureEncoding,
+    ),
   }
+}
+
+#[derive(Debug, thiserror::Error)]
+pub enum KeyObjectHandlePrehashedSignAndVerifyError {
+  #[error("invalid DSA signature encoding")]
+  InvalidDsaSignatureEncoding,
+  #[error("key is not a private key")]
+  KeyIsNotPrivate,
+  #[error("digest not allowed for RSA signature: {0}")]
+  DigestNotAllowedForRsaSignature(String),
+  #[error("failed to sign digest with RSA")]
+  FailedToSignDigestWithRsa,
+  #[error("digest not allowed for RSA-PSS signature: {0}")]
+  DigestNotAllowedForRsaPssSignature(String),
+  #[error("failed to sign digest with RSA-PSS")]
+  FailedToSignDigestWithRsaPss,
+  #[error("failed to sign digest with DSA")]
+  FailedToSignDigestWithDsa,
+  #[error("rsa-pss with different mf1 hash algorithm and hash algorithm is not supported")]
+  RsaPssHashAlgorithmUnsupported,
+  #[error(
+    "private key does not allow {actual} to be used, expected {expected}"
+  )]
+  PrivateKeyDisallowsUsage { actual: String, expected: String },
+  #[error("failed to sign digest")]
+  FailedToSignDigest,
+  #[error("x25519 key cannot be used for signing")]
+  X25519KeyCannotBeUsedForSigning,
+  #[error("Ed25519 key cannot be used for prehashed signing")]
+  Ed25519KeyCannotBeUsedForPrehashedSigning,
+  #[error("DH key cannot be used for signing")]
+  DhKeyCannotBeUsedForSigning,
+  #[error("key is not a public or private key")]
+  KeyIsNotPublicOrPrivate,
+  #[error("Invalid DSA signature")]
+  InvalidDsaSignature,
+  #[error("x25519 key cannot be used for verification")]
+  X25519KeyCannotBeUsedForVerification,
+  #[error("Ed25519 key cannot be used for prehashed verification")]
+  Ed25519KeyCannotBeUsedForPrehashedVerification,
+  #[error("DH key cannot be used for verification")]
+  DhKeyCannotBeUsedForVerification,
 }
 
 impl KeyObjectHandle {
@@ -47,10 +88,10 @@ impl KeyObjectHandle {
     digest: &[u8],
     pss_salt_length: Option<u32>,
     dsa_signature_encoding: u32,
-  ) -> Result<Box<[u8]>, AnyError> {
+  ) -> Result<Box<[u8]>, KeyObjectHandlePrehashedSignAndVerifyError> {
     let private_key = self
       .as_private_key()
-      .ok_or_else(|| type_error("key is not a private key"))?;
+      .ok_or(KeyObjectHandlePrehashedSignAndVerifyError::KeyIsNotPrivate)?;
 
     match private_key {
       AsymmetricPrivateKey::Rsa(key) => {
@@ -63,17 +104,14 @@ impl KeyObjectHandle {
               rsa::pkcs1v15::Pkcs1v15Sign::new::<D>()
             },
             _ => {
-              return Err(type_error(format!(
-                "digest not allowed for RSA signature: {}",
-                digest_type
-              )))
+              return Err(KeyObjectHandlePrehashedSignAndVerifyError::DigestNotAllowedForRsaSignature(digest_type.to_string()))
             }
           )
         };
 
         let signature = signer
           .sign(Some(&mut OsRng), key, digest)
-          .map_err(|_| generic_error("failed to sign digest with RSA"))?;
+          .map_err(|_| KeyObjectHandlePrehashedSignAndVerifyError::FailedToSignDigestWithRsa)?;
         Ok(signature.into())
       }
       AsymmetricPrivateKey::RsaPss(key) => {
@@ -81,9 +119,7 @@ impl KeyObjectHandle {
         let mut salt_length = None;
         if let Some(details) = &key.details {
           if details.hash_algorithm != details.mf1_hash_algorithm {
-            return Err(type_error(
-                "rsa-pss with different mf1 hash algorithm and hash algorithm is not supported",
-              ));
+            return Err(KeyObjectHandlePrehashedSignAndVerifyError::RsaPssHashAlgorithmUnsupported);
           }
           hash_algorithm = Some(details.hash_algorithm);
           salt_length = Some(details.salt_length as usize);
@@ -96,10 +132,10 @@ impl KeyObjectHandle {
           fn <D>(algorithm: Option<RsaPssHashAlgorithm>) {
             if let Some(hash_algorithm) = hash_algorithm.take() {
               if Some(hash_algorithm) != algorithm {
-                return Err(type_error(format!(
-                  "private key does not allow {} to be used, expected {}",
-                  digest_type, hash_algorithm.as_str()
-                )));
+                return Err(KeyObjectHandlePrehashedSignAndVerifyError::PrivateKeyDisallowsUsage {
+                  actual: digest_type.to_string(),
+                  expected: hash_algorithm.as_str().to_string(),
+                });
               }
             }
             if let Some(salt_length) = salt_length {
@@ -109,15 +145,12 @@ impl KeyObjectHandle {
             }
           },
           _ => {
-            return Err(type_error(format!(
-              "digest not allowed for RSA-PSS signature: {}",
-              digest_type
-            )))
+            return Err(KeyObjectHandlePrehashedSignAndVerifyError::DigestNotAllowedForRsaPssSignature(digest_type.to_string()));
           }
         );
         let signature = pss
           .sign(Some(&mut OsRng), &key.key, digest)
-          .map_err(|_| generic_error("failed to sign digest with RSA-PSS"))?;
+          .map_err(|_| KeyObjectHandlePrehashedSignAndVerifyError::FailedToSignDigestWithRsaPss)?;
         Ok(signature.into())
       }
       AsymmetricPrivateKey::Dsa(key) => {
@@ -127,15 +160,12 @@ impl KeyObjectHandle {
             key.sign_prehashed_rfc6979::<D>(digest)
           },
           _ => {
-            return Err(type_error(format!(
-              "digest not allowed for RSA signature: {}",
-              digest_type
-            )))
+            return Err(KeyObjectHandlePrehashedSignAndVerifyError::DigestNotAllowedForRsaSignature(digest_type.to_string()))
           }
         );
 
         let signature =
-          res.map_err(|_| generic_error("failed to sign digest with DSA"))?;
+          res.map_err(|_| KeyObjectHandlePrehashedSignAndVerifyError::FailedToSignDigestWithDsa)?;
         Ok(signature.into())
       }
       AsymmetricPrivateKey::Ec(key) => match key {
@@ -143,7 +173,7 @@ impl KeyObjectHandle {
           let signing_key = p224::ecdsa::SigningKey::from(key);
           let signature: p224::ecdsa::Signature = signing_key
             .sign_prehash(digest)
-            .map_err(|_| type_error("failed to sign digest"))?;
+            .map_err(|_| KeyObjectHandlePrehashedSignAndVerifyError::FailedToSignDigest)?;
 
           dsa_signature(dsa_signature_encoding, signature)
         }
@@ -151,7 +181,7 @@ impl KeyObjectHandle {
           let signing_key = p256::ecdsa::SigningKey::from(key);
           let signature: p256::ecdsa::Signature = signing_key
             .sign_prehash(digest)
-            .map_err(|_| type_error("failed to sign digest"))?;
+            .map_err(|_| KeyObjectHandlePrehashedSignAndVerifyError::FailedToSignDigest)?;
 
           dsa_signature(dsa_signature_encoding, signature)
         }
@@ -159,19 +189,17 @@ impl KeyObjectHandle {
           let signing_key = p384::ecdsa::SigningKey::from(key);
           let signature: p384::ecdsa::Signature = signing_key
             .sign_prehash(digest)
-            .map_err(|_| type_error("failed to sign digest"))?;
+            .map_err(|_| KeyObjectHandlePrehashedSignAndVerifyError::FailedToSignDigest)?;
 
           dsa_signature(dsa_signature_encoding, signature)
         }
       },
       AsymmetricPrivateKey::X25519(_) => {
-        Err(type_error("x25519 key cannot be used for signing"))
+        Err(KeyObjectHandlePrehashedSignAndVerifyError::X25519KeyCannotBeUsedForSigning)
       }
-      AsymmetricPrivateKey::Ed25519(_) => Err(type_error(
-        "Ed25519 key cannot be used for prehashed signing",
-      )),
+      AsymmetricPrivateKey::Ed25519(_) => Err(KeyObjectHandlePrehashedSignAndVerifyError::Ed25519KeyCannotBeUsedForPrehashedSigning),
       AsymmetricPrivateKey::Dh(_) => {
-        Err(type_error("DH key cannot be used for signing"))
+        Err(KeyObjectHandlePrehashedSignAndVerifyError::DhKeyCannotBeUsedForSigning)
       }
     }
   }
@@ -183,10 +211,10 @@ impl KeyObjectHandle {
     signature: &[u8],
     pss_salt_length: Option<u32>,
     dsa_signature_encoding: u32,
-  ) -> Result<bool, AnyError> {
-    let public_key = self
-      .as_public_key()
-      .ok_or_else(|| type_error("key is not a public or private key"))?;
+  ) -> Result<bool, KeyObjectHandlePrehashedSignAndVerifyError> {
+    let public_key = self.as_public_key().ok_or(
+      KeyObjectHandlePrehashedSignAndVerifyError::KeyIsNotPublicOrPrivate,
+    )?;
 
     match &*public_key {
       AsymmetricPublicKey::Rsa(key) => {
@@ -199,10 +227,7 @@ impl KeyObjectHandle {
               rsa::pkcs1v15::Pkcs1v15Sign::new::<D>()
             },
             _ => {
-              return Err(type_error(format!(
-                "digest not allowed for RSA signature: {}",
-                digest_type
-              )))
+              return Err(KeyObjectHandlePrehashedSignAndVerifyError::DigestNotAllowedForRsaSignature(digest_type.to_string()))
             }
           )
         };
@@ -214,9 +239,7 @@ impl KeyObjectHandle {
         let mut salt_length = None;
         if let Some(details) = &key.details {
           if details.hash_algorithm != details.mf1_hash_algorithm {
-            return Err(type_error(
-                "rsa-pss with different mf1 hash algorithm and hash algorithm is not supported",
-              ));
+            return Err(KeyObjectHandlePrehashedSignAndVerifyError::RsaPssHashAlgorithmUnsupported);
           }
           hash_algorithm = Some(details.hash_algorithm);
           salt_length = Some(details.salt_length as usize);
@@ -229,10 +252,10 @@ impl KeyObjectHandle {
           fn <D>(algorithm: Option<RsaPssHashAlgorithm>) {
             if let Some(hash_algorithm) = hash_algorithm.take() {
               if Some(hash_algorithm) != algorithm {
-                return Err(type_error(format!(
-                  "private key does not allow {} to be used, expected {}",
-                  digest_type, hash_algorithm.as_str()
-                )));
+                return Err(KeyObjectHandlePrehashedSignAndVerifyError::PrivateKeyDisallowsUsage {
+                  actual: digest_type.to_string(),
+                  expected: hash_algorithm.as_str().to_string(),
+                });
               }
             }
             if let Some(salt_length) = salt_length {
@@ -242,17 +265,14 @@ impl KeyObjectHandle {
             }
           },
           _ => {
-            return Err(type_error(format!(
-              "digest not allowed for RSA-PSS signature: {}",
-              digest_type
-            )))
+            return Err(KeyObjectHandlePrehashedSignAndVerifyError::DigestNotAllowedForRsaPssSignature(digest_type.to_string()));
           }
         );
         Ok(pss.verify(&key.key, digest, signature).is_ok())
       }
       AsymmetricPublicKey::Dsa(key) => {
         let signature = dsa::Signature::from_der(signature)
-          .map_err(|_| type_error("Invalid DSA signature"))?;
+          .map_err(|_| KeyObjectHandlePrehashedSignAndVerifyError::InvalidDsaSignature)?;
         Ok(key.verify_prehash(digest, &signature).is_ok())
       }
       AsymmetricPublicKey::Ec(key) => match key {
@@ -294,13 +314,11 @@ impl KeyObjectHandle {
         }
       },
       AsymmetricPublicKey::X25519(_) => {
-        Err(type_error("x25519 key cannot be used for verification"))
+        Err(KeyObjectHandlePrehashedSignAndVerifyError::X25519KeyCannotBeUsedForVerification)
       }
-      AsymmetricPublicKey::Ed25519(_) => Err(type_error(
-        "Ed25519 key cannot be used for prehashed verification",
-      )),
+      AsymmetricPublicKey::Ed25519(_) => Err(KeyObjectHandlePrehashedSignAndVerifyError::Ed25519KeyCannotBeUsedForPrehashedVerification),
       AsymmetricPublicKey::Dh(_) => {
-        Err(type_error("DH key cannot be used for verification"))
+        Err(KeyObjectHandlePrehashedSignAndVerifyError::DhKeyCannotBeUsedForVerification)
       }
     }
   }
