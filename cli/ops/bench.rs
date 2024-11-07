@@ -7,6 +7,7 @@ use std::time;
 use deno_core::error::generic_error;
 use deno_core::error::type_error;
 use deno_core::error::AnyError;
+use deno_core::error::JsStackFrame;
 use deno_core::op2;
 use deno_core::v8;
 use deno_core::ModuleSpecifier;
@@ -51,15 +52,17 @@ fn op_bench_get_origin(state: &mut OpState) -> String {
 #[derive(Clone)]
 struct PermissionsHolder(Uuid, PermissionsContainer);
 
-#[op2]
+#[op2(reentrant)]
 #[serde]
 pub fn op_pledge_test_permissions(
   state: &mut OpState,
   #[serde] args: ChildPermissionsArg,
+  #[stack_trace] stack: Option<Vec<JsStackFrame>>,
 ) -> Result<Uuid, AnyError> {
   let token = Uuid::new_v4();
   let parent_permissions = state.borrow_mut::<PermissionsContainer>();
-  let worker_permissions = parent_permissions.create_child_permissions(args)?;
+  let worker_permissions =
+    parent_permissions.create_child_permissions(args, stack)?;
   let parent_permissions = parent_permissions.clone();
 
   if state.try_take::<PermissionsHolder>().is_some() {

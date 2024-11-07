@@ -164,7 +164,7 @@ where
   Ok(path_str)
 }
 
-#[op2(reentrant)]
+#[op2(fast, reentrant)]
 pub fn op_fs_chdir<P>(
   state: &mut OpState,
   #[string] directory: &str,
@@ -304,7 +304,7 @@ where
   Ok(())
 }
 
-#[op2(reentrant)]
+#[op2(fast, reentrant)]
 pub fn op_fs_chmod_sync<P>(
   state: &mut OpState,
   #[string] path: String,
@@ -393,7 +393,7 @@ where
   Ok(())
 }
 
-#[op2(reentrant)]
+#[op2(fast, reentrant)]
 pub fn op_fs_remove_sync<P>(
   state: &mut OpState,
   #[string] path: &str,
@@ -449,7 +449,7 @@ where
   Ok(())
 }
 
-#[op2(reentrant)]
+#[op2(fast, reentrant)]
 pub fn op_fs_copy_file_sync<P>(
   state: &mut OpState,
   #[string] from: &str,
@@ -497,7 +497,7 @@ where
   Ok(())
 }
 
-#[op2(reentrant)]
+#[op2(fast, reentrant)]
 pub fn op_fs_stat_sync<P>(
   state: &mut OpState,
   #[string] path: String,
@@ -541,7 +541,7 @@ where
   Ok(SerializableStat::from(stat))
 }
 
-#[op2(reentrant)]
+#[op2(fast, reentrant)]
 pub fn op_fs_lstat_sync<P>(
   state: &mut OpState,
   #[string] path: String,
@@ -698,7 +698,7 @@ where
   Ok(entries)
 }
 
-#[op2(reentrant)]
+#[op2(fast, reentrant)]
 pub fn op_fs_rename_sync<P>(
   state: &mut OpState,
   #[string] oldpath: String,
@@ -750,7 +750,7 @@ where
   Ok(())
 }
 
-#[op2(reentrant)]
+#[op2(fast, reentrant)]
 pub fn op_fs_link_sync<P>(
   state: &mut OpState,
   #[string] oldpath: &str,
@@ -905,7 +905,7 @@ where
   Ok(target_string)
 }
 
-#[op2(reentrant)]
+#[op2(fast, reentrant)]
 pub fn op_fs_truncate_sync<P>(
   state: &mut OpState,
   #[string] path: &str,
@@ -953,7 +953,7 @@ where
   Ok(())
 }
 
-#[op2(reentrant)]
+#[op2(fast, reentrant)]
 pub fn op_fs_utime_sync<P>(
   state: &mut OpState,
   #[string] path: &str,

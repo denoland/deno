@@ -26,7 +26,7 @@ pub enum FsError {
   Fs(#[from] deno_io::fs::FsError),
 }
 
-#[op2(reentrant)]
+#[op2(fast, reentrant)]
 pub fn op_node_fs_exists_sync<P>(
   state: &mut OpState,
   #[string] path: String,
@@ -66,7 +66,7 @@ where
   Ok(fs.exists_async(path).await?)
 }
 
-#[op2(reentrant)]
+#[op2(fast, reentrant)]
 pub fn op_node_cp_sync<P>(
   state: &mut OpState,
   #[string] path: &str,
@@ -277,7 +277,7 @@ where
   }
 }
 
-#[op2(reentrant)]
+#[op2(fast, reentrant)]
 pub fn op_node_lutimes_sync<P>(
   state: &mut OpState,
   #[string] path: &str,

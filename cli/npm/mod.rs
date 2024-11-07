@@ -131,6 +131,7 @@ pub trait CliNpmResolver: NpmResolver {
     &self,
     permissions: &mut dyn NodePermissions,
     path: &'a Path,
+    stack: Option<Vec<deno_core::error::JsStackFrame>>,
   ) -> Result<Cow<'a, Path>, AnyError>;
 
   /// Returns a hash returning the state of the npm resolver

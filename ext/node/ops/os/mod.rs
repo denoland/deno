@@ -21,7 +21,7 @@ pub enum OsError {
   FailedToGetUserInfo(#[source] std::io::Error),
 }
 
-#[op2(reentrant)]
+#[op2(fast, reentrant)]
 pub fn op_node_os_get_priority<P>(
   state: &mut OpState,
   pid: u32,
@@ -38,7 +38,7 @@ where
   priority::get_priority(pid).map_err(OsError::Priority)
 }
 
-#[op2(reentrant)]
+#[op2(fast, reentrant)]
 pub fn op_node_os_set_priority<P>(
   state: &mut OpState,
   pid: u32,
@@ -215,7 +215,7 @@ where
   get_user_info(uid)
 }
 
-#[op2(reentrant)]
+#[op2(fast, reentrant)]
 pub fn op_geteuid<P>(
   state: &mut OpState,
   #[stack_trace] stack: Option<Vec<JsStackFrame>>,
@@ -237,7 +237,7 @@ where
   Ok(euid)
 }
 
-#[op2(reentrant)]
+#[op2(fast, reentrant)]
 pub fn op_getegid<P>(
   state: &mut OpState,
   #[stack_trace] stack: Option<Vec<JsStackFrame>>,

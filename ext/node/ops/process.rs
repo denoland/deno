@@ -45,7 +45,7 @@ fn kill(pid: i32, _sig: i32) -> i32 {
   }
 }
 
-#[op2(reentrant)]
+#[op2(fast, reentrant)]
 pub fn op_node_process_kill(
   state: &mut OpState,
   #[smi] pid: i32,

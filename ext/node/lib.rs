@@ -159,6 +159,7 @@ pub trait NodeRequireLoader {
     &self,
     permissions: &mut dyn NodePermissions,
     path: &'a Path,
+    stack: Option<Vec<JsStackFrame>>,
   ) -> Result<Cow<'a, Path>, AnyError>;
 
   fn load_text_file_lossy(&self, path: &Path) -> Result<String, AnyError>;

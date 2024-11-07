@@ -46,15 +46,17 @@ deno_core::extension!(deno_test,
 #[derive(Clone)]
 struct PermissionsHolder(Uuid, PermissionsContainer);
 
-#[op2]
+#[op2(reentrant)]
 #[serde]
 pub fn op_pledge_test_permissions(
   state: &mut OpState,
   #[serde] args: ChildPermissionsArg,
+  #[stack_trace] stack: Option<Vec<deno_core::error::JsStackFrame>>,
 ) -> Result<Uuid, AnyError> {
   let token = Uuid::new_v4();
   let parent_permissions = state.borrow_mut::<PermissionsContainer>();
-  let worker_permissions = parent_permissions.create_child_permissions(args)?;
+  let worker_permissions =
+    parent_permissions.create_child_permissions(args, stack)?;
   let parent_permissions = parent_permissions.clone();
 
   if state.try_take::<PermissionsHolder>().is_some() {

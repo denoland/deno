@@ -411,6 +411,7 @@ impl NodeRequireLoader for EmbeddedModuleLoader {
     &self,
     permissions: &mut dyn deno_runtime::deno_node::NodePermissions,
     path: &'a std::path::Path,
+    stack: Option<Vec<deno_core::error::JsStackFrame>>,
   ) -> Result<Cow<'a, std::path::Path>, AnyError> {
     if self.shared.modules.has_file(path) {
       // allow reading if the file is in the snapshot
@@ -420,7 +421,7 @@ impl NodeRequireLoader for EmbeddedModuleLoader {
     self
       .shared
       .npm_resolver
-      .ensure_read_permission(permissions, path)
+      .ensure_read_permission(permissions, path, stack)
   }
 
   fn load_text_file_lossy(

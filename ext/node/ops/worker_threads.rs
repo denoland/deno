@@ -15,13 +15,14 @@ use crate::NodeRequireLoaderRc;
 fn ensure_read_permission<'a, P>(
   state: &mut OpState,
   file_path: &'a Path,
+  stack: Option<Vec<deno_core::error::JsStackFrame>>,
 ) -> Result<Cow<'a, Path>, deno_core::error::AnyError>
 where
   P: NodePermissions + 'static,
 {
   let loader = state.borrow::<NodeRequireLoaderRc>().clone();
   let permissions = state.borrow_mut::<P>();
-  loader.ensure_read_permission(permissions, file_path)
+  loader.ensure_read_permission(permissions, file_path, stack)
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -50,6 +51,7 @@ pub enum WorkerThreadsFilenameError {
 pub fn op_worker_threads_filename<P>(
   state: &mut OpState,
   #[string] specifier: String,
+  #[stack_trace] stack: Option<Vec<deno_core::error::JsStackFrame>>,
 ) -> Result<String, WorkerThreadsFilenameError>
 where
   P: NodePermissions + 'static,
@@ -64,7 +66,7 @@ where
     if path.is_relative() && !specifier.starts_with('.') {
       return Err(WorkerThreadsFilenameError::InvalidRelativeUrl);
     }
-    let path = ensure_read_permission::<P>(state, &path)
+    let path = ensure_read_permission::<P>(state, &path, stack.clone())
       .map_err(WorkerThreadsFilenameError::Permission)?;
     let fs = state.borrow::<FileSystemRc>();
     let canonicalized_path =
@@ -75,7 +77,7 @@ where
   let url_path = url
     .to_file_path()
     .map_err(|_| WorkerThreadsFilenameError::UrlToPathString)?;
-  let url_path = ensure_read_permission::<P>(state, &url_path)
+  let url_path = ensure_read_permission::<P>(state, &url_path, stack)
     .map_err(WorkerThreadsFilenameError::Permission)?;
   let fs = state.borrow::<FileSystemRc>();
   if !fs.exists_sync(&url_path) {

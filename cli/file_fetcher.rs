@@ -656,12 +656,14 @@ impl FileFetcher {
         permissions.check_specifier(
           specifier,
           deno_runtime::deno_permissions::CheckSpecifierKind::Static,
+          None,
         )?;
       }
       FetchPermissionsOptionRef::DynamicContainer(permissions) => {
         permissions.check_specifier(
           specifier,
           deno_runtime::deno_permissions::CheckSpecifierKind::Dynamic,
+          None,
         )?;
       }
     }

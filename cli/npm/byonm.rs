@@ -84,12 +84,13 @@ impl CliNpmResolver for CliByonmNpmResolver {
     &self,
     permissions: &mut dyn NodePermissions,
     path: &'a Path,
+    stack: Option<Vec<deno_core::error::JsStackFrame>>,
   ) -> Result<Cow<'a, Path>, AnyError> {
     if !path
       .components()
       .any(|c| c.as_os_str().to_ascii_lowercase() == "node_modules")
     {
-      permissions.check_read_path(path).map_err(Into::into)
+      permissions.check_read_path(path, stack).map_err(Into::into)
     } else {
       Ok(Cow::Borrowed(path))
     }

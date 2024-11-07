@@ -5,6 +5,7 @@ use crate::ops::bootstrap::SnapshotOptions;
 use crate::shared::maybe_transpile_source;
 use crate::shared::runtime;
 use deno_cache::SqliteBackedCache;
+use deno_core::error::JsStackFrame;
 use deno_core::snapshot::*;
 use deno_core::v8;
 use deno_core::Extension;
@@ -26,6 +27,7 @@ impl deno_websocket::WebSocketPermissions for Permissions {
     &mut self,
     _url: &deno_core::url::Url,
     _api_name: &str,
+    _stack: Option<Vec<JsStackFrame>>,
   ) -> Result<(), PermissionCheckError> {
     unreachable!("snapshotting!")
   }
@@ -42,6 +44,7 @@ impl deno_fetch::FetchPermissions for Permissions {
     &mut self,
     _url: &deno_core::url::Url,
     _api_name: &str,
+    _stack: Option<Vec<JsStackFrame>>,
   ) -> Result<(), PermissionCheckError> {
     unreachable!("snapshotting!")
   }
@@ -50,26 +53,35 @@ impl deno_fetch::FetchPermissions for Permissions {
     &mut self,
     _p: &'a Path,
     _api_name: &str,
+    _stack: Option<Vec<JsStackFrame>>,
   ) -> Result<Cow<'a, Path>, PermissionCheckError> {
     unreachable!("snapshotting!")
   }
 }
 
 impl deno_ffi::FfiPermissions for Permissions {
-  fn check_partial_no_path(&mut self) -> Result<(), PermissionCheckError> {
+  fn check_partial_no_path(
+    &mut self,
+    _stack: Option<Vec<JsStackFrame>>,
+  ) -> Result<(), PermissionCheckError> {
     unreachable!("snapshotting!")
   }
 
   fn check_partial_with_path(
     &mut self,
     _path: &str,
+    _stack: Option<Vec<JsStackFrame>>,
   ) -> Result<PathBuf, PermissionCheckError> {
     unreachable!("snapshotting!")
   }
 }
 
 impl deno_napi::NapiPermissions for Permissions {
-  fn check(&mut self, _path: &str) -> Result<PathBuf, PermissionCheckError> {
+  fn check(
+    &mut self,
+    _path: &str,
+    _stack: Option<Vec<JsStackFrame>>,
+  ) -> Result<PathBuf, PermissionCheckError> {
     unreachable!("snapshotting!")
   }
 }
@@ -79,12 +91,14 @@ impl deno_node::NodePermissions for Permissions {
     &mut self,
     _url: &deno_core::url::Url,
     _api_name: &str,
+    _stack: Option<Vec<JsStackFrame>>,
   ) -> Result<(), PermissionCheckError> {
     unreachable!("snapshotting!")
   }
   fn check_read_path<'a>(
     &mut self,
     _path: &'a Path,
+    _stack: Option<Vec<JsStackFrame>>,
   ) -> Result<Cow<'a, Path>, PermissionCheckError> {
     unreachable!("snapshotting!")
   }
@@ -92,6 +106,7 @@ impl deno_node::NodePermissions for Permissions {
     &mut self,
     _p: &str,
     _api_name: Option<&str>,
+    _stack: Option<Vec<JsStackFrame>>,
   ) -> Result<PathBuf, PermissionCheckError> {
     unreachable!("snapshotting!")
   }
@@ -102,6 +117,7 @@ impl deno_node::NodePermissions for Permissions {
     &mut self,
     _p: &str,
     _api_name: Option<&str>,
+    _stack: Option<Vec<JsStackFrame>>,
   ) -> Result<PathBuf, PermissionCheckError> {
     unreachable!("snapshotting!")
   }
@@ -109,6 +125,7 @@ impl deno_node::NodePermissions for Permissions {
     &mut self,
     _kind: &str,
     _api_name: &str,
+    _stack: Option<Vec<JsStackFrame>>,
   ) -> Result<(), PermissionCheckError> {
     unreachable!("snapshotting!")
   }
@@ -119,6 +136,7 @@ impl deno_net::NetPermissions for Permissions {
     &mut self,
     _host: &(T, Option<u16>),
     _api_name: &str,
+    _stack: Option<Vec<JsStackFrame>>,
   ) -> Result<(), PermissionCheckError> {
     unreachable!("snapshotting!")
   }
@@ -127,6 +145,7 @@ impl deno_net::NetPermissions for Permissions {
     &mut self,
     _p: &str,
     _api_name: &str,
+    _stack: Option<Vec<JsStackFrame>>,
   ) -> Result<PathBuf, PermissionCheckError> {
     unreachable!("snapshotting!")
   }
@@ -135,6 +154,7 @@ impl deno_net::NetPermissions for Permissions {
     &mut self,
     _p: &str,
     _api_name: &str,
+    _stack: Option<Vec<JsStackFrame>>,
   ) -> Result<PathBuf, PermissionCheckError> {
     unreachable!("snapshotting!")
   }
@@ -143,6 +163,7 @@ impl deno_net::NetPermissions for Permissions {
     &mut self,
     _p: &'a Path,
     _api_name: &str,
+    _stack: Option<Vec<JsStackFrame>>,
   ) -> Result<Cow<'a, Path>, PermissionCheckError> {
     unreachable!("snapshotting!")
   }
@@ -156,6 +177,7 @@ impl deno_fs::FsPermissions for Permissions {
     _write: bool,
     _path: &'a Path,
     _api_name: &str,
+    _stack: Option<Vec<JsStackFrame>>,
   ) -> Result<Cow<'a, Path>, FsError> {
     unreachable!("snapshotting!")
   }
@@ -164,6 +186,7 @@ impl deno_fs::FsPermissions for Permissions {
     &mut self,
     _path: &str,
     _api_name: &str,
+    _stack: Option<Vec<JsStackFrame>>,
   ) -> Result<PathBuf, PermissionCheckError> {
     unreachable!("snapshotting!")
   }
@@ -171,6 +194,7 @@ impl deno_fs::FsPermissions for Permissions {
   fn check_read_all(
     &mut self,
     _api_name: &str,
+    _stack: Option<Vec<JsStackFrame>>,
   ) -> Result<(), PermissionCheckError> {
     unreachable!("snapshotting!")
   }
@@ -180,6 +204,7 @@ impl deno_fs::FsPermissions for Permissions {
     _path: &Path,
     _display: &str,
     _api_name: &str,
+    _stack: Option<Vec<JsStackFrame>>,
   ) -> Result<(), PermissionCheckError> {
     unreachable!("snapshotting!")
   }
@@ -188,6 +213,7 @@ impl deno_fs::FsPermissions for Permissions {
     &mut self,
     _path: &str,
     _api_name: &str,
+    _stack: Option<Vec<JsStackFrame>>,
   ) -> Result<PathBuf, PermissionCheckError> {
     unreachable!("snapshotting!")
   }
@@ -196,6 +222,7 @@ impl deno_fs::FsPermissions for Permissions {
     &mut self,
     _path: &str,
     _api_name: &str,
+    _stack: Option<Vec<JsStackFrame>>,
   ) -> Result<PathBuf, PermissionCheckError> {
     unreachable!("snapshotting!")
   }
@@ -203,6 +230,7 @@ impl deno_fs::FsPermissions for Permissions {
   fn check_write_all(
     &mut self,
     _api_name: &str,
+    _stack: Option<Vec<JsStackFrame>>,
   ) -> Result<(), PermissionCheckError> {
     unreachable!("snapshotting!")
   }
@@ -212,6 +240,7 @@ impl deno_fs::FsPermissions for Permissions {
     _path: &Path,
     _display: &str,
     _api_name: &str,
+    _stack: Option<Vec<JsStackFrame>>,
   ) -> Result<(), PermissionCheckError> {
     unreachable!("snapshotting!")
   }
@@ -220,6 +249,7 @@ impl deno_fs::FsPermissions for Permissions {
     &mut self,
     _path: &'a Path,
     _api_name: &str,
+    _stack: Option<Vec<JsStackFrame>>,
   ) -> Result<Cow<'a, Path>, PermissionCheckError> {
     unreachable!("snapshotting!")
   }
@@ -228,6 +258,7 @@ impl deno_fs::FsPermissions for Permissions {
     &mut self,
     _path: &'a Path,
     _api_name: &str,
+    _stack: Option<Vec<JsStackFrame>>,
   ) -> Result<Cow<'a, Path>, PermissionCheckError> {
     unreachable!("snapshotting!")
   }
@@ -238,6 +269,7 @@ impl deno_kv::sqlite::SqliteDbHandlerPermissions for Permissions {
     &mut self,
     _path: &str,
     _api_name: &str,
+    _stack: Option<Vec<JsStackFrame>>,
   ) -> Result<PathBuf, PermissionCheckError> {
     unreachable!("snapshotting!")
   }
@@ -246,6 +278,7 @@ impl deno_kv::sqlite::SqliteDbHandlerPermissions for Permissions {
     &mut self,
     _path: &'a Path,
     _api_name: &str,
+    _stack: Option<Vec<JsStackFrame>>,
   ) -> Result<Cow<'a, Path>, PermissionCheckError> {
     unreachable!("snapshotting!")
   }

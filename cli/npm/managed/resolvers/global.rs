@@ -182,10 +182,11 @@ impl NpmPackageFsResolver for GlobalNpmPackageResolver {
     &self,
     permissions: &mut dyn NodePermissions,
     path: &'a Path,
+    stack: Option<Vec<deno_core::error::JsStackFrame>>,
   ) -> Result<Cow<'a, Path>, AnyError> {
     self
       .registry_read_permission_checker
-      .ensure_registry_read_permission(permissions, path)
+      .ensure_registry_read_permission(permissions, path, stack)
   }
 }
 

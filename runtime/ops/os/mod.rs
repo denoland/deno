@@ -108,7 +108,7 @@ fn op_exec_path(
     .map_err(OsError::InvalidUtf8)
 }
 
-#[op2(reentrant)]
+#[op2(fast, reentrant)]
 fn op_set_env(
   state: &mut OpState,
   #[string] key: &str,
@@ -568,7 +568,7 @@ fn os_uptime(
   Ok(sys_info::os_uptime())
 }
 
-#[op2(reentrant)]
+#[op2(fast, reentrant)]
 #[number]
 fn op_os_uptime(
   state: &mut OpState,

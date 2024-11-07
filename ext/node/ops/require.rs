@@ -29,13 +29,14 @@ use crate::PackageJsonResolverRc;
 fn ensure_read_permission<'a, P>(
   state: &mut OpState,
   file_path: &'a Path,
+  stack: Option<Vec<deno_core::error::JsStackFrame>>,
 ) -> Result<Cow<'a, Path>, deno_core::error::AnyError>
 where
   P: NodePermissions + 'static,
 {
   let loader = state.borrow::<NodeRequireLoaderRc>().clone();
   let permissions = state.borrow_mut::<P>();
-  loader.ensure_read_permission(permissions, file_path)
+  loader.ensure_read_permission(permissions, file_path, stack)
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -289,16 +290,17 @@ pub fn op_require_path_is_absolute(#[string] p: String) -> bool {
   PathBuf::from(p).is_absolute()
 }
 
-#[op2(fast)]
+#[op2(fast, reentrant)]
 pub fn op_require_stat<P>(
   state: &mut OpState,
   #[string] path: String,
+  #[stack_trace] stack: Option<Vec<deno_core::error::JsStackFrame>>,
 ) -> Result<i32, deno_core::error::AnyError>
 where
   P: NodePermissions + 'static,
 {
   let path = PathBuf::from(path);
-  let path = ensure_read_permission::<P>(state, &path)?;
+  let path = ensure_read_permission::<P>(state, &path, stack)?;
   let fs = state.borrow::<FileSystemRc>();
   if let Ok(metadata) = fs.stat_sync(&path) {
     if metadata.is_file {
@@ -311,17 +313,18 @@ where
   Ok(-1)
 }
 
-#[op2]
+#[op2(reentrant)]
 #[string]
 pub fn op_require_real_path<P>(
   state: &mut OpState,
   #[string] request: String,
+  #[stack_trace] stack: Option<Vec<deno_core::error::JsStackFrame>>,
 ) -> Result<String, RequireError>
 where
   P: NodePermissions + 'static,
 {
   let path = PathBuf::from(request);
-  let path = ensure_read_permission::<P>(state, &path)
+  let path = ensure_read_permission::<P>(state, &path, stack)
     .map_err(RequireError::Permission)?;
   let fs = state.borrow::<FileSystemRc>();
   let canonicalized_path =
@@ -375,13 +378,14 @@ pub fn op_require_path_basename(
   }
 }
 
-#[op2]
+#[op2(reentrant)]
 #[string]
 pub fn op_require_try_self_parent_path<P>(
   state: &mut OpState,
   has_parent: bool,
   #[string] maybe_parent_filename: Option<String>,
   #[string] maybe_parent_id: Option<String>,
+  #[stack_trace] stack: Option<Vec<deno_core::error::JsStackFrame>>,
 ) -> Result<Option<String>, deno_core::error::AnyError>
 where
   P: NodePermissions + 'static,
@@ -398,7 +402,7 @@ where
     if parent_id == "<repl>" || parent_id == "internal/preload" {
       let fs = state.borrow::<FileSystemRc>();
       if let Ok(cwd) = fs.cwd() {
-        let cwd = ensure_read_permission::<P>(state, &cwd)?;
+        let cwd = ensure_read_permission::<P>(state, &cwd, stack)?;
         return Ok(Some(cwd.to_string_lossy().into_owned()));
       }
     }
@@ -470,18 +474,19 @@ where
   }
 }
 
-#[op2]
+#[op2(reentrant)]
 #[string]
 pub fn op_require_read_file<P>(
   state: &mut OpState,
   #[string] file_path: String,
+  #[stack_trace] stack: Option<Vec<deno_core::error::JsStackFrame>>,
 ) -> Result<String, RequireError>
 where
   P: NodePermissions + 'static,
 {
   let file_path = PathBuf::from(file_path);
   // todo(dsherret): there's multiple borrows to NodeRequireLoaderRc here
-  let file_path = ensure_read_permission::<P>(state, &file_path)
+  let file_path = ensure_read_permission::<P>(state, &file_path, stack)
     .map_err(RequireError::Permission)?;
   let loader = state.borrow::<NodeRequireLoaderRc>();
   loader
@@ -600,18 +605,19 @@ where
     .flatten()
 }
 
-#[op2]
+#[op2(reentrant)]
 #[string]
 pub fn op_require_package_imports_resolve<P>(
   state: &mut OpState,
   #[string] referrer_filename: String,
   #[string] request: String,
+  #[stack_trace] stack: Option<Vec<deno_core::error::JsStackFrame>>,
 ) -> Result<Option<String>, RequireError>
 where
   P: NodePermissions + 'static,
 {
   let referrer_path = PathBuf::from(&referrer_filename);
-  let referrer_path = ensure_read_permission::<P>(state, &referrer_path)
+  let referrer_path = ensure_read_permission::<P>(state, &referrer_path, stack)
     .map_err(RequireError::Permission)?;
   let pkg_json_resolver = state.borrow::<PackageJsonResolverRc>();
   let Some(pkg) =

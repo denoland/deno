@@ -1136,7 +1136,7 @@ mod deprecated {
     }
   }
 
-  #[op2(reentrant)]
+  #[op2(fast, reentrant)]
   pub fn op_kill(
     state: &mut OpState,
     #[smi] pid: i32,

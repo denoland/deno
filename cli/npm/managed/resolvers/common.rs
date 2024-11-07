@@ -64,6 +64,7 @@ pub trait NpmPackageFsResolver: Send + Sync {
     &self,
     permissions: &mut dyn NodePermissions,
     path: &'a Path,
+    stack: Option<Vec<deno_core::error::JsStackFrame>>,
   ) -> Result<Cow<'a, Path>, AnyError>;
 }
 
@@ -87,6 +88,7 @@ impl RegistryReadPermissionChecker {
     &self,
     permissions: &mut dyn NodePermissions,
     path: &'a Path,
+    stack: Option<Vec<deno_core::error::JsStackFrame>>,
   ) -> Result<Cow<'a, Path>, AnyError> {
     if permissions.query_read_all() {
       return Ok(Cow::Borrowed(path)); // skip permissions checks below
@@ -133,7 +135,7 @@ impl RegistryReadPermissionChecker {
       }
     }
 
-    permissions.check_read_path(path).map_err(Into::into)
+    permissions.check_read_path(path, stack).map_err(Into::into)
   }
 }
 

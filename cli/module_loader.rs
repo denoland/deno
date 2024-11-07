@@ -1065,6 +1065,7 @@ impl<TGraphContainer: ModuleGraphContainer> NodeRequireLoader
     &self,
     permissions: &mut dyn deno_runtime::deno_node::NodePermissions,
     path: &'a Path,
+    stack: Option<Vec<deno_core::error::JsStackFrame>>,
   ) -> Result<std::borrow::Cow<'a, Path>, AnyError> {
     if let Ok(url) = deno_path_util::url_from_file_path(path) {
       // allow reading if it's in the module graph
@@ -1072,7 +1073,9 @@ impl<TGraphContainer: ModuleGraphContainer> NodeRequireLoader
         return Ok(std::borrow::Cow::Borrowed(path));
       }
     }
-    self.npm_resolver.ensure_read_permission(permissions, path)
+    self
+      .npm_resolver
+      .ensure_read_permission(permissions, path, stack)
   }
 
   fn load_text_file_lossy(&self, path: &Path) -> Result<String, AnyError> {

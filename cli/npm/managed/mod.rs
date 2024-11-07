@@ -704,8 +704,11 @@ impl CliNpmResolver for ManagedCliNpmResolver {
     &self,
     permissions: &mut dyn NodePermissions,
     path: &'a Path,
+    stack: Option<Vec<deno_core::error::JsStackFrame>>,
   ) -> Result<Cow<'a, Path>, AnyError> {
-    self.fs_resolver.ensure_read_permission(permissions, path)
+    self
+      .fs_resolver
+      .ensure_read_permission(permissions, path, stack)
   }
 
   fn check_state_hash(&self) -> Option<u64> {
