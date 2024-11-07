@@ -252,6 +252,8 @@ if (common.hasIPv6) {
       const errors = error.errors.map((e) => e.message);
       assert.ok(errors.includes('connect ECONNREFUSED 127.0.0.1:10'));
 
+      console.log(errors);
+
       if (common.hasIPv6) {
         assert.ok(errors.includes('connect ECONNREFUSED ::1:10'));
       }
