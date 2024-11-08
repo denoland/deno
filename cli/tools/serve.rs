@@ -44,7 +44,7 @@ pub async fn serve(
   maybe_npm_install(&factory).await?;
 
   let worker_factory = factory.create_cli_main_worker_factory().await?;
-  
+
   if serve_flags.open_site {
     let host: String;
     if serve_flags.host == "0.0.0.0" || serve_flags.host == "127.0.0.1" {

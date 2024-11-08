@@ -171,6 +171,43 @@ impl ServeClient {
 
     return self.endpoint.borrow().clone().unwrap();
   }
+
+  // Check if a new browser tab has been opened by checking
+  // stderr includes the target output expected
+  fn check_tab_opened(&self) {
+    let mut buffer = self.output_buf.borrow_mut();
+    let mut temp_buf = [0u8; 64];
+    let mut child = self.child.borrow_mut();
+    let stderr = child.stderr.as_mut().unwrap();
+
+    let start = std::time::Instant::now();
+
+    // Loop to check for "hello" in the output
+    loop {
+      if start.elapsed() > Duration::from_secs(5) {
+        panic!("timed out waiting for the browser tab to be opened.");
+      }
+
+      let read = stderr.read(&mut temp_buf).unwrap();
+      buffer.extend_from_slice(&temp_buf[..read]);
+
+      let target_output =
+        "browser on the address that the server is running on".as_bytes();
+      let target_index = buffer
+        .windows(target_output.len())
+        .position(|window| window == target_output);
+      match target_index {
+        Some(_) => {
+          break;
+        }
+        None =>
+        // Sleep for a short duration to avoid busy-waiting
+        {
+          std::thread::sleep(Duration::from_millis(5))
+        }
+      }
+    }
+  }
 }
 
 #[tokio::test]
@@ -196,6 +233,35 @@ async fn deno_serve_no_args() {
 
   let body = res.text().await.unwrap();
   assert_eq!(body, "deno serve with no args in fetch() works!");
+}
+
+#[tokio::test]
+async fn deno_serve_open_browser() {
+  let client = ServeClientBuilder(
+    util::deno_cmd()
+      .current_dir(util::testdata_path())
+      .arg("serve")
+      .arg("--open")
+      .arg("-L")
+      .arg("debug")
+      .arg("-A")
+      .arg("--port")
+      .arg("263")
+      .arg("./serve/no_args.ts")
+      .stdout_piped()
+      .stderr_piped(),
+    None,
+  );
+
+  let serve_client = client.entry_point("./serve/no_args.ts").build();
+  serve_client.check_tab_opened();
+  let result_unwrapped = serve_client.get().send().await;
+  let res = result_unwrapped.unwrap();
+  assert_eq!(200, res.status());
+
+  let body = res.text().await.unwrap();
+  assert_eq!(body, "deno serve with no args in fetch() works!");
+  serve_client.kill();
 }
 
 #[tokio::test]
