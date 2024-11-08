@@ -1,5 +1,0 @@
-{
-  "args": "serve --open main.ts",
-  "output": "main.out",
-  "tempDir": true
-}
