@@ -55,7 +55,7 @@ function createDnsServer(ipv6Addrs, ipv4Addrs, cb) {
   // Create a DNS server which replies with a AAAA and a A record for the same host
   const socket = dgram.createSocket('udp4');
 
-  // Note(kt3k): Deno seems sending more than on message to the DNS server.
+  // Note(kt3k): Deno seems sending more than one message to the DNS server.
   socket.on('message', common.mustCallAtLeast((msg, { address, port }) => {
     const parsed = parseDNSPacket(msg);
     const domain = parsed.questions[0].domain;

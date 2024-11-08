@@ -10,6 +10,11 @@ import * as net from "node:net";
 import { assert, assertEquals } from "@std/assert";
 import { curlRequest } from "../unit/test_util.ts";
 
+// Increase the timeout for the auto select family to avoid flakiness
+net.setDefaultAutoSelectFamilyAttemptTimeout(
+  net.getDefaultAutoSelectFamilyAttemptTimeout() * 30,
+);
+
 for (const url of ["http://localhost:4246", "https://localhost:4247"]) {
   Deno.test(`[node/http2 client] ${url}`, {
     ignore: Deno.build.os === "windows",
@@ -114,9 +119,7 @@ Deno.test(`[node/http2 client createConnection]`, {
   assertEquals(receivedData, "hello world\n");
 });
 
-// TODO(kt3k): Enable this test
-const TEST_NAME = "[node/http2 client GET https://www.example.com]";
-Deno.test(TEST_NAME, { ignore: true }, async () => {
+Deno.test("[node/http2 client GET https://www.example.com]", async () => {
   const clientSession = http2.connect("https://www.example.com");
   const req = clientSession.request({
     ":method": "GET",

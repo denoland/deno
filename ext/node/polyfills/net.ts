@@ -136,9 +136,8 @@ const kBytesWritten = Symbol("kBytesWritten");
 const DEFAULT_IPV4_ADDR = "0.0.0.0";
 const DEFAULT_IPV6_ADDR = "::";
 
-// TODO(kt3k): Implement `setDefaultAutoSelectFamily` API to allow users
-// to set this value.
-const autoSelectFamilyDefault = true;
+let autoSelectFamilyDefault = true;
+let autoSelectFamilyAttemptTimeoutDefault = 250;
 
 type Handle = TCP | Pipe;
 
@@ -876,7 +875,7 @@ function _lookupAndConnect(
       autoSelectFamilyAttemptTimeout = 10;
     }
   } else {
-    autoSelectFamilyAttemptTimeout = 250;
+    autoSelectFamilyAttemptTimeout = autoSelectFamilyAttemptTimeoutDefault;
   }
 
   // If host is an IP, skip performing a lookup
@@ -2025,6 +2024,33 @@ export function connect(...args: unknown[]) {
 
 export const createConnection = connect;
 
+/** https://docs.deno.com/api/node/net/#namespace_getdefaultautoselectfamily */
+export function getDefaultAutoSelectFamily() {
+  return autoSelectFamilyDefault;
+}
+
+/** https://docs.deno.com/api/node/net/#namespace_setdefaultautoselectfamily */
+export function setDefaultAutoSelectFamily(value: boolean) {
+  validateBoolean(value, "value");
+  autoSelectFamilyDefault = value;
+}
+
+/** https://docs.deno.com/api/node/net/#namespace_getdefaultautoselectfamilyattempttimeout */
+export function getDefaultAutoSelectFamilyAttemptTimeout() {
+  return autoSelectFamilyAttemptTimeoutDefault;
+}
+
+/** https://docs.deno.com/api/node/net/#namespace_setdefaultautoselectfamilyattempttimeout */
+export function setDefaultAutoSelectFamilyAttemptTimeout(value: number) {
+  validateInt32(value, "value", 1);
+
+  if (value < 10) {
+    value = 10;
+  }
+
+  autoSelectFamilyAttemptTimeoutDefault = value;
+}
+
 export interface ListenOptions extends Abortable {
   fd?: number;
   port?: number | undefined;
@@ -2910,15 +2936,19 @@ export { BlockList, isIP, isIPv4, isIPv6, SocketAddress };
 export default {
   _createServerHandle,
   _normalizeArgs,
-  isIP,
-  isIPv4,
-  isIPv6,
   BlockList,
-  SocketAddress,
   connect,
   createConnection,
   createServer,
+  getDefaultAutoSelectFamily,
+  getDefaultAutoSelectFamilyAttemptTimeout,
+  isIP,
+  isIPv4,
+  isIPv6,
   Server,
+  setDefaultAutoSelectFamily,
+  setDefaultAutoSelectFamilyAttemptTimeout,
   Socket,
+  SocketAddress,
   Stream,
 };
