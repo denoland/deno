@@ -625,7 +625,7 @@ fn create_cjs_tracker(
     CjsTrackerOptions {
       // todo(dsherret): support in the lsp by stabilizing the feature
       // so that we don't have to pipe the config in here
-      unstable_detect_cjs: false,
+      detect_cjs: false,
     },
   ))
 }

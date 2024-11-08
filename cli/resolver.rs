@@ -420,7 +420,7 @@ impl NpmModuleLoader {
 }
 
 pub struct CjsTrackerOptions {
-  pub unstable_detect_cjs: bool,
+  pub detect_cjs: bool,
 }
 
 /// Keeps track of what module specifiers were resolved as CJS.
@@ -445,7 +445,7 @@ impl CjsTracker {
     Self {
       in_npm_pkg_checker,
       pkg_json_resolver,
-      unstable_detect_cjs: options.unstable_detect_cjs,
+      unstable_detect_cjs: options.detect_cjs,
       known: Default::default(),
     }
   }

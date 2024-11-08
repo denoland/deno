@@ -1,7 +1,4 @@
 {
   "lock": false,
-  "importMap": "../../import_map.json",
-  "unstable": [
-    "detect-cjs"
-  ]
+  "importMap": "../../import_map.json"
 }

@@ -1589,9 +1589,10 @@ impl CliOptions {
       || self.workspace().has_unstable("bare-node-builtins")
   }
 
-  pub fn unstable_detect_cjs(&self) -> bool {
+  pub fn detect_cjs(&self) -> bool {
     self.flags.unstable_config.detect_cjs
       || self.workspace().has_unstable("detect-cjs")
+      || self.workspace().package_jsons().next().is_some()
   }
 
   fn byonm_enabled(&self) -> bool {
@@ -1655,7 +1656,6 @@ impl CliOptions {
           "byonm",
           "bare-node-builtins",
           "fmt-component",
-          "detect-cjs",
         ])
         .collect();
 

@@ -795,7 +795,7 @@ impl CliFactory {
         self.in_npm_pkg_checker()?.clone(),
         self.pkg_json_resolver().clone(),
         CjsTrackerOptions {
-          unstable_detect_cjs: options.unstable_detect_cjs(),
+          detect_cjs: options.detect_cjs(),
         },
       )))
     })
