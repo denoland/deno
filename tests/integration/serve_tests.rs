@@ -246,7 +246,7 @@ async fn deno_serve_open_browser() {
       .arg("debug")
       .arg("-A")
       .arg("--port")
-      .arg("263")
+      .arg("0")
       .arg("./serve/no_args.ts")
       .stdout_piped()
       .stderr_piped(),
