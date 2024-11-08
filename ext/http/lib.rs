@@ -87,6 +87,7 @@ mod service;
 mod websocket_upgrade;
 
 use fly_accept_encoding::Encoding;
+pub use http_next::Http2Config;
 pub use http_next::HttpNextError;
 pub use request_properties::DefaultHttpPropertyExtractor;
 pub use request_properties::HttpConnectionProperties;
@@ -134,6 +135,12 @@ deno_core::extension!(
     http_next::op_http_cancel,
   ],
   esm = ["00_serve.ts", "01_http.js", "02_websocket.ts"],
+  options = {
+    h2_config: Http2Config,
+  },
+  state = |state, options| {
+    state.put(options.h2_config);
+  }
 );
 
 #[derive(Debug, thiserror::Error)]

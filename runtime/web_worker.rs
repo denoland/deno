@@ -488,7 +488,9 @@ impl WebWorker {
       ),
       deno_cron::deno_cron::init_ops_and_esm(LocalCronHandler::new()),
       deno_napi::deno_napi::init_ops_and_esm::<PermissionsContainer>(),
-      deno_http::deno_http::init_ops_and_esm::<DefaultHttpPropertyExtractor>(),
+      deno_http::deno_http::init_ops_and_esm::<DefaultHttpPropertyExtractor>(
+        deno_http::Http2Config::default(),
+      ),
       deno_io::deno_io::init_ops_and_esm(Some(options.stdio)),
       deno_fs::deno_fs::init_ops_and_esm::<PermissionsContainer>(
         services.fs.clone(),
