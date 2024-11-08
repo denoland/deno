@@ -381,8 +381,10 @@ class InnerRequest {
       return;
     }
 
-    op_http_request_on_cancel(this.#external)
-      .then(callback);
+    PromisePrototypeThen(
+      op_http_request_on_cancel(this.#external),
+      callback,
+    );
   }
 }
 
