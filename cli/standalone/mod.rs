@@ -629,7 +629,7 @@ pub async fn run(data: StandaloneData) -> Result<i32, AnyError> {
     in_npm_pkg_checker.clone(),
     pkg_json_resolver.clone(),
     CjsTrackerOptions {
-      detect_cjs: metadata.unstable_config.detect_cjs,
+      detect_cjs: !metadata.workspace_resolver.package_jsons.is_empty(),
     },
   ));
   let cache_db = Caches::new(deno_dir_provider.clone());

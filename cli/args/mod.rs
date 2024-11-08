@@ -1590,9 +1590,7 @@ impl CliOptions {
   }
 
   pub fn detect_cjs(&self) -> bool {
-    self.flags.unstable_config.detect_cjs
-      || self.workspace().has_unstable("detect-cjs")
-      || self.workspace().package_jsons().next().is_some()
+    self.workspace().package_jsons().next().is_some()
   }
 
   fn byonm_enabled(&self) -> bool {
