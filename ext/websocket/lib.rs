@@ -50,6 +50,7 @@ use tokio::io::ReadHalf;
 use tokio::io::WriteHalf;
 use tokio::net::TcpStream;
 
+use deno_permissions::PermissionCheckError;
 use fastwebsockets::CloseCode;
 use fastwebsockets::FragmentCollectorRead;
 use fastwebsockets::Frame;
@@ -75,7 +76,7 @@ pub enum WebsocketError {
   #[error(transparent)]
   Url(url::ParseError),
   #[error(transparent)]
-  Permission(deno_core::error::AnyError),
+  Permission(#[from] PermissionCheckError),
   #[error(transparent)]
   Resource(deno_core::error::AnyError),
   #[error(transparent)]
@@ -112,7 +113,7 @@ pub trait WebSocketPermissions {
     &mut self,
     _url: &url::Url,
     _api_name: &str,
-  ) -> Result<(), deno_core::error::AnyError>;
+  ) -> Result<(), PermissionCheckError>;
 }
 
 impl WebSocketPermissions for deno_permissions::PermissionsContainer {
@@ -121,7 +122,7 @@ impl WebSocketPermissions for deno_permissions::PermissionsContainer {
     &mut self,
     url: &url::Url,
     api_name: &str,
-  ) -> Result<(), deno_core::error::AnyError> {
+  ) -> Result<(), PermissionCheckError> {
     deno_permissions::PermissionsContainer::check_net_url(self, url, api_name)
   }
 }
@@ -158,13 +159,10 @@ pub fn op_ws_check_permission_and_cancel_handle<WP>(
 where
   WP: WebSocketPermissions + 'static,
 {
-  state
-    .borrow_mut::<WP>()
-    .check_net_url(
-      &url::Url::parse(&url).map_err(WebsocketError::Url)?,
-      &api_name,
-    )
-    .map_err(WebsocketError::Permission)?;
+  state.borrow_mut::<WP>().check_net_url(
+    &url::Url::parse(&url).map_err(WebsocketError::Url)?,
+    &api_name,
+  )?;
 
   if cancel_handle {
     let rid = state

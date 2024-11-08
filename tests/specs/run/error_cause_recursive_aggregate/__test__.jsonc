@@ -1,0 +1,5 @@
+{
+  "args": "run error_cause_recursive_aggregate.ts",
+  "output": "error_cause_recursive_aggregate.ts.out",
+  "exitCode": 1
+}

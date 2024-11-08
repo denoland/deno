@@ -16,7 +16,7 @@ on:
 jobs:
   build:
     name: version bump
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
     timeout-minutes: 90
 
     env:
