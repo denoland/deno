@@ -2,6 +2,7 @@
 
 use std::borrow::Cow;
 use std::ops::Range;
+use std::sync::Arc;
 
 use base64::prelude::BASE64_STANDARD;
 use base64::Engine;

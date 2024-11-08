@@ -1060,33 +1060,13 @@ Module.prototype._compile = function (content, filename, format) {
   return result;
 };
 
-Module._extensions[".js"] = function (module, filename) {
-  const content = op_require_read_file(filename);
-
-  let format;
-  if (StringPrototypeEndsWith(filename, ".cjs")) {
-    format = "commonjs";
-  } else {
-    format = op_require_module_format(filename);
-  }
-
-  module._compile(content, filename, format);
-};
-
-Module._extensions[".ts"] =
+Module._extensions[".js"] =
+  Module._extensions[".ts"] =
   Module._extensions[".jsx"] =
   Module._extensions[".tsx"] =
     function (module, filename) {
       const content = op_require_read_file(filename);
-
-      let format;
-      const pkg = op_require_read_closest_package_json(filename);
-      if (pkg?.type === "module") {
-        format = "module";
-      } else if (pkg?.type === "commonjs") {
-        format = "commonjs";
-      }
-
+      const format = op_require_module_format(filename);
       module._compile(content, filename, format);
     };
 

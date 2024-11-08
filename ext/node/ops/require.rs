@@ -1,14 +1,15 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
+use deno_core::error::AnyError;
 use deno_core::op2;
 use deno_core::url::Url;
 use deno_core::v8;
 use deno_core::JsRuntimeInspector;
-use deno_core::ModuleSpecifier;
 use deno_core::OpState;
 use deno_fs::FileSystemRc;
 use deno_package_json::PackageJsonRc;
 use deno_path_util::normalize_path;
+use deno_path_util::url_from_file_path;
 use deno_path_util::url_to_file_path;
 use node_resolver::NodeModuleKind;
 use node_resolver::NodeResolutionMode;
@@ -223,9 +224,7 @@ pub fn op_require_resolve_deno_dir(
     resolver
       .resolve_package_folder_from_package(
         &request,
-        &ModuleSpecifier::from_file_path(&parent_filename).map_err(|_| {
-          anyhow!("Url::from_file_path: [{:?}]", parent_filename)
-        })?,
+        &url_from_file_path(&PathBuf::from(parent_filename))?,
       )
       .ok()
       .map(|p| p.to_string_lossy().into_owned()),
@@ -571,15 +570,35 @@ where
 pub fn op_require_module_format<P>(
   state: &mut OpState,
   #[string] filename: String,
-) -> Result<Option<PackageJsonRc>, node_resolver::errors::ClosestPkgJsonError>
+) -> Result<Option<&'static str>, node_resolver::errors::ClosestPkgJsonError>
 where
   P: NodePermissions + 'static,
 {
   let filename = PathBuf::from(filename);
-  let url = ModuleSpecifier::from_file_path(&filename)
-    .map_err(|_| anyhow!("Url::from_file_path: [{:?}]", filename))?;
   let pkg_json_resolver = state.borrow::<PackageJsonResolverRc>();
-  pkg_json_resolver.get_closest_package_json_from_path(&filename)
+  let pkg_json =
+    pkg_json_resolver.get_closest_package_json_from_path(&filename)?;
+  let Some(pkg_json) = pkg_json else {
+    return Ok(None);
+  };
+  match pkg_json.typ.as_str() {
+    "commonjs" => Ok(Some("commonjs")),
+    "module" => Ok(Some("module")),
+    "none" => {
+      let resolver = state.borrow::<NodeResolverRc>();
+      match deno_path_util::url_from_file_path(&filename) {
+        Ok(specifier) => {
+          if resolver.in_npm_package(&specifier) {
+            Ok(None)
+          } else {
+            Ok(Some("module"))
+          }
+        }
+        Err(_) => Ok(Some("module")),
+      }
+    }
+    _ => Ok(None),
+  }
 }
 
 #[op2]

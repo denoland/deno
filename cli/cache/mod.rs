@@ -204,6 +204,7 @@ impl FetchCacher {
   ) -> Self {
     Self {
       file_fetcher,
+      fs,
       global_http_cache,
       in_npm_pkg_checker,
       module_info_cache,

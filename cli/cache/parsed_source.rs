@@ -6,15 +6,12 @@ use std::sync::Arc;
 use deno_ast::MediaType;
 use deno_ast::ModuleSpecifier;
 use deno_ast::ParsedSource;
-use deno_core::error::AnyError;
 use deno_core::parking_lot::Mutex;
 use deno_graph::CapturingEsParser;
 use deno_graph::DefaultEsParser;
 use deno_graph::EsParser;
 use deno_graph::ParseOptions;
 use deno_graph::ParsedSourceStore;
-use deno_runtime::deno_fs::FileSystem;
-use node_resolver::ContentIsEsmAnalyzer;
 
 /// Lazily parses JS/TS sources from a `deno_graph::ModuleGraph` given
 /// a `ParsedSourceCache`. Note that deno_graph doesn't necessarily cause

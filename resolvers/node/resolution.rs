@@ -85,11 +85,6 @@ impl NodeResolution {
   }
 }
 
-pub trait ContentIsEsmAnalyzer: std::fmt::Debug + Send + Sync {
-  /// Returns whether the content of the specified module specifier is ESM.
-  fn analyze_content_is_esm(&self, specifier: &Url) -> Result<bool, AnyError>;
-}
-
 #[allow(clippy::disallowed_types)]
 pub type NodeResolverRc<TEnv> = crate::sync::MaybeArc<NodeResolver<TEnv>>;
 

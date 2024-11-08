@@ -22,7 +22,6 @@ pub use package_json::PackageJsonResolverRc;
 pub use package_json::PackageJsonThreadLocalCache;
 pub use path::PathClean;
 pub use resolution::parse_npm_pkg_name;
-pub use resolution::ContentIsEsmAnalyzer;
 pub use resolution::NodeModuleKind;
 pub use resolution::NodeResolution;
 pub use resolution::NodeResolutionMode;
