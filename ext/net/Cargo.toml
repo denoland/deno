@@ -2,7 +2,7 @@
 
 [package]
 name = "deno_net"
-version = "0.167.0"
+version = "0.168.0"
 authors.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -17,11 +17,11 @@ path = "lib.rs"
 deno_core.workspace = true
 deno_permissions.workspace = true
 deno_tls.workspace = true
+hickory-proto = "0.24"
+hickory-resolver = { version = "0.24", features = ["tokio-runtime", "serde-config"] }
 pin-project.workspace = true
 rustls-tokio-stream.workspace = true
 serde.workspace = true
 socket2.workspace = true
 thiserror.workspace = true
 tokio.workspace = true
-trust-dns-proto = "0.23"
-trust-dns-resolver = { version = "0.23", features = ["tokio-runtime", "serde-config"] }

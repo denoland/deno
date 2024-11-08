@@ -7,6 +7,7 @@ pub mod fs;
 pub mod http;
 pub mod http2;
 pub mod idna;
+pub mod inspector;
 pub mod ipc;
 pub mod os;
 pub mod process;
