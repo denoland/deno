@@ -4305,8 +4305,6 @@ Deno.test({
 }, async () => {
   const { promise, resolve } = Promise.withResolvers<void>();
 
-  let cancelled = false;
-
   const server = Deno.serve({
     hostname: "0.0.0.0",
     port: servePort,
