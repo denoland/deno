@@ -700,6 +700,14 @@ fn set_response(
   http.complete();
 }
 
+#[op2(fast)]
+pub fn op_http_get_request_cancelled(external: *const c_void) -> bool {
+  let http =
+    // SAFETY: op is called with external.
+    unsafe { clone_external!(external, "op_http_get_request_cancelled") };
+  http.cancelled()
+}
+
 /// Returned promise resolves when body streaming finishes.
 /// Call [`op_http_close_after_finish`] when done with the external.
 #[op2(async)]

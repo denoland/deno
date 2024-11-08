@@ -1,0 +1,4 @@
+{
+  "args": "run --quiet --reload --allow-read --unstable-broadcast-channel unstable_broadcast_channel.js",
+  "output": "unstable_broadcast_channel.enabled.out"
+}

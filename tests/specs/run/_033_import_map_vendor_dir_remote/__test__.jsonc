@@ -1,0 +1,4 @@
+{
+  "args": "run --quiet --reload --allow-import --import-map=import_map_remote.json --vendor test_remote.ts",
+  "output": "033_import_map_remote.out"
+}

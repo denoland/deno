@@ -4270,3 +4270,32 @@ Deno.test({
   assertEquals(hostname, "0.0.0.0");
   await server.shutdown();
 });
+
+Deno.test({
+  name: "AbortSignal aborted when request is cancelled",
+}, async () => {
+  const { promise, resolve } = Promise.withResolvers<void>();
+
+  let cancelled = false;
+
+  const server = Deno.serve({
+    hostname: "0.0.0.0",
+    port: servePort,
+    onListen: () => resolve(),
+  }, async (request) => {
+    request.signal.addEventListener("abort", () => cancelled = true);
+    assert(!request.signal.aborted);
+    await new Promise((resolve) => setTimeout(resolve, 3000)); // abort during waiting
+    assert(request.signal.aborted);
+    return new Response("Ok");
+  });
+
+  await promise;
+  await fetch(`http://localhost:${servePort}/`, {
+    signal: AbortSignal.timeout(1000),
+  }).catch(() => {});
+
+  await server.shutdown();
+
+  assert(cancelled);
+});

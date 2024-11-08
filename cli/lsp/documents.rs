@@ -1059,34 +1059,6 @@ impl Documents {
     self.cache.is_valid_file_referrer(specifier)
   }
 
-  /// Return `true` if the provided specifier can be resolved to a document,
-  /// otherwise `false`.
-  pub fn contains_import(
-    &self,
-    specifier: &str,
-    referrer: &ModuleSpecifier,
-  ) -> bool {
-    let file_referrer = self.get_file_referrer(referrer);
-    let maybe_specifier = self
-      .resolver
-      .as_graph_resolver(file_referrer.as_deref())
-      .resolve(
-        specifier,
-        &deno_graph::Range {
-          specifier: referrer.clone(),
-          start: deno_graph::Position::zeroed(),
-          end: deno_graph::Position::zeroed(),
-        },
-        ResolutionMode::Types,
-      )
-      .ok();
-    if let Some(import_specifier) = maybe_specifier {
-      self.exists(&import_specifier, file_referrer.as_deref())
-    } else {
-      false
-    }
-  }
-
   pub fn resolve_document_specifier(
     &self,
     specifier: &ModuleSpecifier,
