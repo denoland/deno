@@ -1,0 +1,8 @@
+{
+  "steps": [
+    {
+      "args": "install",
+      "output": "install.out"
+    }
+  ]
+}
