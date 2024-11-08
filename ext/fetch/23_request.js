@@ -281,11 +281,11 @@ class Request {
     if (signal === undefined) {
       const signal = newSignal();
       this[_signalCache] = signal;
-      return signal;
-    }
+      this[_request].onCancel?.(() => {
+        signal[signalAbort](signalAbortError);
+      });
 
-    if (!signal.aborted && this[_request].isCancelled) {
-      signal[signalAbort](signalAbortError);
+      return signal;
     }
 
     return signal;
