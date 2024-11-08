@@ -1,0 +1,4 @@
+{
+  "args": "run --allow-import --reload --import-map jsx/import-map.json --no-check jsx_import_source_pragma_import_map.tsx",
+  "output": "jsx_import_source_import_map.out"
+}

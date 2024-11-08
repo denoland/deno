@@ -353,6 +353,21 @@ fn format_yaml(
   file_text: &str,
   fmt_options: &FmtOptionsConfig,
 ) -> Result<Option<String>, AnyError> {
+  let ignore_file = file_text
+    .lines()
+    .take_while(|line| line.starts_with('#'))
+    .any(|line| {
+      line
+        .strip_prefix('#')
+        .unwrap()
+        .trim()
+        .starts_with("deno-fmt-ignore-file")
+    });
+
+  if ignore_file {
+    return Ok(None);
+  }
+
   let formatted_str =
     pretty_yaml::format_text(file_text, &get_resolved_yaml_config(fmt_options))
       .map_err(AnyError::from)?;
@@ -978,6 +993,7 @@ fn get_resolved_malva_config(
     single_line_top_level_declarations: false,
     selector_override_comment_directive: "deno-fmt-selector-override".into(),
     ignore_comment_directive: "deno-fmt-ignore".into(),
+    ignore_file_comment_directive: "deno-fmt-ignore-file".into(),
   };
 
   FormatOptions {
@@ -1016,7 +1032,7 @@ fn get_resolved_markup_fmt_config(
     max_attrs_per_line: None,
     prefer_attrs_single_line: false,
     html_normal_self_closing: None,
-    html_void_self_closing: Some(true),
+    html_void_self_closing: None,
     component_self_closing: None,
     svg_self_closing: None,
     mathml_self_closing: None,
@@ -1036,6 +1052,7 @@ fn get_resolved_markup_fmt_config(
     svelte_directive_shorthand: Some(true),
     astro_attr_shorthand: Some(true),
     ignore_comment_directive: "deno-fmt-ignore".into(),
+    ignore_file_comment_directive: "deno-fmt-ignore-file".into(),
   };
 
   FormatOptions {

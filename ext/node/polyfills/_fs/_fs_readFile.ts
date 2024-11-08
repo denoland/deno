@@ -19,6 +19,7 @@ import {
   TextEncodings,
 } from "ext:deno_node/_utils.ts";
 import { FsFile } from "ext:deno_fs/30_fs.js";
+import { denoErrorToNodeError } from "ext:deno_node/internal/errors.ts";
 
 function maybeDecode(data: Uint8Array, encoding: TextEncodings): string;
 function maybeDecode(
@@ -87,7 +88,7 @@ export function readFile(
       }
       const buffer = maybeDecode(data, encoding);
       (cb as BinaryCallback)(null, buffer);
-    }, (err) => cb && cb(err));
+    }, (err) => cb && cb(denoErrorToNodeError(err)));
   }
 }
 
@@ -117,7 +118,12 @@ export function readFileSync(
   opt?: FileOptionsArgument,
 ): string | Buffer {
   path = path instanceof URL ? pathFromURL(path) : path;
-  const data = Deno.readFileSync(path);
+  let data;
+  try {
+    data = Deno.readFileSync(path);
+  } catch (err) {
+    throw denoErrorToNodeError(err);
+  }
   const encoding = getEncoding(opt);
   if (encoding && encoding !== "binary") {
     const text = maybeDecode(data, encoding);

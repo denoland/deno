@@ -2,6 +2,8 @@
 
 use dashmap::DashMap;
 use deno_ast::MediaType;
+use deno_ast::ParsedSource;
+use deno_cache_dir::npm::NpmCacheDir;
 use deno_cache_dir::HttpCache;
 use deno_config::workspace::PackageJsonDepResolution;
 use deno_config::workspace::WorkspaceResolver;
@@ -14,15 +16,15 @@ use deno_path_util::url_to_file_path;
 use deno_runtime::deno_fs;
 use deno_runtime::deno_node::NodeResolver;
 use deno_runtime::deno_node::PackageJson;
+use deno_runtime::deno_node::PackageJsonResolver;
 use deno_semver::jsr::JsrPackageReqReference;
 use deno_semver::npm::NpmPackageReqReference;
 use deno_semver::package::PackageNv;
 use deno_semver::package::PackageReq;
 use indexmap::IndexMap;
 use node_resolver::errors::ClosestPkgJsonError;
-use node_resolver::NodeResolution;
+use node_resolver::InNpmPackageChecker;
 use node_resolver::NodeResolutionMode;
-use node_resolver::NpmResolver;
 use std::borrow::Cow;
 use std::collections::BTreeMap;
 use std::collections::BTreeSet;
@@ -36,6 +38,7 @@ use crate::args::create_default_npmrc;
 use crate::args::CacheSetting;
 use crate::args::CliLockfile;
 use crate::args::NpmInstallDepsProvider;
+use crate::cache::DenoCacheEnvFsAdapter;
 use crate::graph_util::CliJsrUrlProvider;
 use crate::http_util::HttpClientProvider;
 use crate::lsp::config::Config;
@@ -43,40 +46,50 @@ use crate::lsp::config::ConfigData;
 use crate::lsp::logging::lsp_warn;
 use crate::npm::create_cli_npm_resolver_for_lsp;
 use crate::npm::CliByonmNpmResolverCreateOptions;
+use crate::npm::CliManagedInNpmPkgCheckerCreateOptions;
+use crate::npm::CliManagedNpmResolverCreateOptions;
 use crate::npm::CliNpmResolver;
 use crate::npm::CliNpmResolverCreateOptions;
-use crate::npm::CliNpmResolverManagedCreateOptions;
 use crate::npm::CliNpmResolverManagedSnapshotOption;
+use crate::npm::CreateInNpmPkgCheckerOptions;
 use crate::npm::ManagedCliNpmResolver;
-use crate::resolver::CjsResolutionStore;
+use crate::resolver::CjsTracker;
+use crate::resolver::CjsTrackerOptions;
 use crate::resolver::CliDenoResolverFs;
 use crate::resolver::CliGraphResolver;
 use crate::resolver::CliGraphResolverOptions;
 use crate::resolver::CliNodeResolver;
 use crate::resolver::WorkerCliNpmGraphResolver;
+use crate::tsc::into_specifier_and_media_type;
 use crate::util::progress_bar::ProgressBar;
 use crate::util::progress_bar::ProgressBarStyle;
 
 #[derive(Debug, Clone)]
 struct LspScopeResolver {
+  cjs_tracker: Option<Arc<LspCjsTracker>>,
   graph_resolver: Arc<CliGraphResolver>,
   jsr_resolver: Option<Arc<JsrCacheResolver>>,
   npm_resolver: Option<Arc<dyn CliNpmResolver>>,
   node_resolver: Option<Arc<CliNodeResolver>>,
+  pkg_json_resolver: Option<Arc<PackageJsonResolver>>,
   redirect_resolver: Option<Arc<RedirectResolver>>,
   graph_imports: Arc<IndexMap<ModuleSpecifier, GraphImport>>,
+  package_json_deps_by_resolution: Arc<IndexMap<ModuleSpecifier, String>>,
   config_data: Option<Arc<ConfigData>>,
 }
 
 impl Default for LspScopeResolver {
   fn default() -> Self {
     Self {
+      cjs_tracker: None,
       graph_resolver: create_graph_resolver(None, None, None),
       jsr_resolver: None,
       npm_resolver: None,
       node_resolver: None,
+      pkg_json_resolver: None,
       redirect_resolver: None,
       graph_imports: Default::default(),
+      package_json_deps_by_resolution: Default::default(),
       config_data: None,
     }
   }
@@ -90,14 +103,35 @@ impl LspScopeResolver {
   ) -> Self {
     let mut npm_resolver = None;
     let mut node_resolver = None;
+    let mut lsp_cjs_tracker = None;
+    let fs = Arc::new(deno_fs::RealFs);
+    let pkg_json_resolver = Arc::new(PackageJsonResolver::new(
+      deno_runtime::deno_node::DenoFsNodeResolverEnv::new(fs.clone()),
+    ));
     if let Some(http_client) = http_client_provider {
       npm_resolver = create_npm_resolver(
         config_data.map(|d| d.as_ref()),
         cache,
         http_client,
+        &pkg_json_resolver,
       )
       .await;
-      node_resolver = create_node_resolver(npm_resolver.as_ref());
+      if let Some(npm_resolver) = &npm_resolver {
+        let in_npm_pkg_checker = create_in_npm_pkg_checker(npm_resolver);
+        let cjs_tracker = create_cjs_tracker(
+          in_npm_pkg_checker.clone(),
+          pkg_json_resolver.clone(),
+        );
+        lsp_cjs_tracker =
+          Some(Arc::new(LspCjsTracker::new(cjs_tracker.clone())));
+        node_resolver = Some(create_node_resolver(
+          cjs_tracker,
+          fs.clone(),
+          in_npm_pkg_checker,
+          npm_resolver,
+          pkg_json_resolver.clone(),
+        ));
+      }
     }
     let graph_resolver = create_graph_resolver(
       config_data.map(|d| d.as_ref()),
@@ -133,13 +167,43 @@ impl LspScopeResolver {
         )
       })
       .unwrap_or_default();
+    let package_json_deps_by_resolution = (|| {
+      let node_resolver = node_resolver.as_ref()?;
+      let package_json = config_data?.maybe_pkg_json()?;
+      let referrer = package_json.specifier();
+      let dependencies = package_json.dependencies.as_ref()?;
+      let result = dependencies
+        .iter()
+        .flat_map(|(name, _)| {
+          let req_ref =
+            NpmPackageReqReference::from_str(&format!("npm:{name}")).ok()?;
+          let specifier = into_specifier_and_media_type(Some(
+            node_resolver
+              .resolve_req_reference(
+                &req_ref,
+                &referrer,
+                NodeResolutionMode::Types,
+              )
+              .ok()?,
+          ))
+          .0;
+          Some((specifier, name.clone()))
+        })
+        .collect();
+      Some(result)
+    })();
+    let package_json_deps_by_resolution =
+      Arc::new(package_json_deps_by_resolution.unwrap_or_default());
     Self {
+      cjs_tracker: lsp_cjs_tracker,
       graph_resolver,
       jsr_resolver,
       npm_resolver,
       node_resolver,
+      pkg_json_resolver: Some(pkg_json_resolver),
       redirect_resolver,
       graph_imports,
+      package_json_deps_by_resolution,
       config_data: config_data.cloned(),
     }
   }
@@ -147,19 +211,44 @@ impl LspScopeResolver {
   fn snapshot(&self) -> Arc<Self> {
     let npm_resolver =
       self.npm_resolver.as_ref().map(|r| r.clone_snapshotted());
-    let node_resolver = create_node_resolver(npm_resolver.as_ref());
+    let fs = Arc::new(deno_fs::RealFs);
+    let pkg_json_resolver = Arc::new(PackageJsonResolver::new(
+      deno_runtime::deno_node::DenoFsNodeResolverEnv::new(fs.clone()),
+    ));
+    let mut node_resolver = None;
+    let mut lsp_cjs_tracker = None;
+    if let Some(npm_resolver) = &npm_resolver {
+      let in_npm_pkg_checker = create_in_npm_pkg_checker(npm_resolver);
+      let cjs_tracker = create_cjs_tracker(
+        in_npm_pkg_checker.clone(),
+        pkg_json_resolver.clone(),
+      );
+      lsp_cjs_tracker = Some(Arc::new(LspCjsTracker::new(cjs_tracker.clone())));
+      node_resolver = Some(create_node_resolver(
+        cjs_tracker,
+        fs,
+        in_npm_pkg_checker,
+        npm_resolver,
+        pkg_json_resolver.clone(),
+      ));
+    }
     let graph_resolver = create_graph_resolver(
       self.config_data.as_deref(),
       npm_resolver.as_ref(),
       node_resolver.as_ref(),
     );
     Arc::new(Self {
+      cjs_tracker: lsp_cjs_tracker,
       graph_resolver,
       jsr_resolver: self.jsr_resolver.clone(),
       npm_resolver,
       node_resolver,
       redirect_resolver: self.redirect_resolver.clone(),
+      pkg_json_resolver: Some(pkg_json_resolver),
       graph_imports: self.graph_imports.clone(),
+      package_json_deps_by_resolution: self
+        .package_json_deps_by_resolution
+        .clone(),
       config_data: self.config_data.clone(),
     })
   }
@@ -261,6 +350,22 @@ impl LspResolver {
     resolver.graph_resolver.create_graph_npm_resolver()
   }
 
+  pub fn maybe_cjs_tracker(
+    &self,
+    file_referrer: Option<&ModuleSpecifier>,
+  ) -> Option<&Arc<LspCjsTracker>> {
+    let resolver = self.get_scope_resolver(file_referrer);
+    resolver.cjs_tracker.as_ref()
+  }
+
+  pub fn maybe_node_resolver(
+    &self,
+    file_referrer: Option<&ModuleSpecifier>,
+  ) -> Option<&Arc<CliNodeResolver>> {
+    let resolver = self.get_scope_resolver(file_referrer);
+    resolver.node_resolver.as_ref()
+  }
+
   pub fn maybe_managed_npm_resolver(
     &self,
     file_referrer: Option<&ModuleSpecifier>,
@@ -328,11 +433,23 @@ impl LspResolver {
   ) -> Option<(ModuleSpecifier, MediaType)> {
     let resolver = self.get_scope_resolver(file_referrer);
     let node_resolver = resolver.node_resolver.as_ref()?;
-    Some(NodeResolution::into_specifier_and_media_type(Some(
+    Some(into_specifier_and_media_type(Some(
       node_resolver
         .resolve_req_reference(req_ref, referrer, NodeResolutionMode::Types)
         .ok()?,
     )))
+  }
+
+  pub fn file_url_to_package_json_dep(
+    &self,
+    specifier: &ModuleSpecifier,
+    file_referrer: Option<&ModuleSpecifier>,
+  ) -> Option<String> {
+    let resolver = self.get_scope_resolver(file_referrer);
+    resolver
+      .package_json_deps_by_resolution
+      .get(specifier)
+      .cloned()
   }
 
   pub fn in_node_modules(&self, specifier: &ModuleSpecifier) -> bool {
@@ -346,31 +463,15 @@ impl LspResolver {
           .contains("/node_modules/")
     }
 
-    let global_npm_resolver = self
-      .get_scope_resolver(Some(specifier))
-      .npm_resolver
-      .as_ref()
-      .and_then(|npm_resolver| npm_resolver.as_managed())
-      .filter(|r| r.root_node_modules_path().is_none());
-    if let Some(npm_resolver) = &global_npm_resolver {
-      if npm_resolver.in_npm_package(specifier) {
+    if let Some(node_resolver) =
+      &self.get_scope_resolver(Some(specifier)).node_resolver
+    {
+      if node_resolver.in_npm_package(specifier) {
         return true;
       }
     }
 
     has_node_modules_dir(specifier)
-  }
-
-  pub fn node_media_type(
-    &self,
-    specifier: &ModuleSpecifier,
-  ) -> Option<MediaType> {
-    let resolver = self.get_scope_resolver(Some(specifier));
-    let node_resolver = resolver.node_resolver.as_ref()?;
-    let resolution = node_resolver
-      .url_to_node_resolution(specifier.clone())
-      .ok()?;
-    Some(NodeResolution::into_specifier_and_media_type(Some(resolution)).1)
   }
 
   pub fn is_bare_package_json_dep(
@@ -398,10 +499,10 @@ impl LspResolver {
     referrer: &ModuleSpecifier,
   ) -> Result<Option<Arc<PackageJson>>, ClosestPkgJsonError> {
     let resolver = self.get_scope_resolver(Some(referrer));
-    let Some(node_resolver) = resolver.node_resolver.as_ref() else {
+    let Some(pkg_json_resolver) = resolver.pkg_json_resolver.as_ref() else {
       return Ok(None);
     };
-    node_resolver.get_closest_package_json(referrer)
+    pkg_json_resolver.get_closest_package_json(referrer)
   }
 
   pub fn resolve_redirects(
@@ -457,11 +558,13 @@ async fn create_npm_resolver(
   config_data: Option<&ConfigData>,
   cache: &LspCache,
   http_client_provider: &Arc<HttpClientProvider>,
+  pkg_json_resolver: &Arc<PackageJsonResolver>,
 ) -> Option<Arc<dyn CliNpmResolver>> {
   let enable_byonm = config_data.map(|d| d.byonm).unwrap_or(false);
   let options = if enable_byonm {
     CliNpmResolverCreateOptions::Byonm(CliByonmNpmResolverCreateOptions {
       fs: CliDenoResolverFs(Arc::new(deno_fs::RealFs)),
+      pkg_json_resolver: pkg_json_resolver.clone(),
       root_node_modules_dir: config_data.and_then(|config_data| {
         config_data.node_modules_dir.clone().or_else(|| {
           url_to_file_path(&config_data.scope)
@@ -471,7 +574,15 @@ async fn create_npm_resolver(
       }),
     })
   } else {
-    CliNpmResolverCreateOptions::Managed(CliNpmResolverManagedCreateOptions {
+    let npmrc = config_data
+      .and_then(|d| d.npmrc.clone())
+      .unwrap_or_else(create_default_npmrc);
+    let npm_cache_dir = Arc::new(NpmCacheDir::new(
+      &DenoCacheEnvFsAdapter(&deno_fs::RealFs),
+      cache.deno_dir().npm_folder_path(),
+      npmrc.get_all_known_registries_urls(),
+    ));
+    CliNpmResolverCreateOptions::Managed(CliManagedNpmResolverCreateOptions {
       http_client_provider: http_client_provider.clone(),
       snapshot: match config_data.and_then(|d| d.lockfile.as_ref()) {
         Some(lockfile) => {
@@ -485,7 +596,7 @@ async fn create_npm_resolver(
       // updating it. Only the cache request should update the lockfile.
       maybe_lockfile: None,
       fs: Arc::new(deno_fs::RealFs),
-      npm_global_cache_dir: cache.deno_dir().npm_folder_path(),
+      npm_cache_dir,
       // Use an "only" cache setting in order to make the
       // user do an explicit "cache" command and prevent
       // the cache from being filled with lots of packages while
@@ -496,9 +607,7 @@ async fn create_npm_resolver(
         .and_then(|d| d.node_modules_dir.clone()),
       // only used for top level install, so we can ignore this
       npm_install_deps_provider: Arc::new(NpmInstallDepsProvider::empty()),
-      npmrc: config_data
-        .and_then(|d| d.npmrc.clone())
-        .unwrap_or_else(create_default_npmrc),
+      npmrc,
       npm_system_info: NpmSystemInfo::default(),
       lifecycle_scripts: Default::default(),
     })
@@ -506,29 +615,59 @@ async fn create_npm_resolver(
   Some(create_cli_npm_resolver_for_lsp(options).await)
 }
 
+fn create_cjs_tracker(
+  in_npm_pkg_checker: Arc<dyn InNpmPackageChecker>,
+  pkg_json_resolver: Arc<PackageJsonResolver>,
+) -> Arc<CjsTracker> {
+  Arc::new(CjsTracker::new(
+    in_npm_pkg_checker,
+    pkg_json_resolver,
+    CjsTrackerOptions {
+      // todo(dsherret): support in the lsp by stabilizing the feature
+      // so that we don't have to pipe the config in here
+      unstable_detect_cjs: false,
+    },
+  ))
+}
+
+fn create_in_npm_pkg_checker(
+  npm_resolver: &Arc<dyn CliNpmResolver>,
+) -> Arc<dyn InNpmPackageChecker> {
+  crate::npm::create_in_npm_pkg_checker(match npm_resolver.as_inner() {
+    crate::npm::InnerCliNpmResolverRef::Byonm(_) => {
+      CreateInNpmPkgCheckerOptions::Byonm
+    }
+    crate::npm::InnerCliNpmResolverRef::Managed(m) => {
+      CreateInNpmPkgCheckerOptions::Managed(
+        CliManagedInNpmPkgCheckerCreateOptions {
+          root_cache_dir_url: m.global_cache_root_url(),
+          maybe_node_modules_path: m.maybe_node_modules_path(),
+        },
+      )
+    }
+  })
+}
+
 fn create_node_resolver(
-  npm_resolver: Option<&Arc<dyn CliNpmResolver>>,
-) -> Option<Arc<CliNodeResolver>> {
-  use once_cell::sync::Lazy;
-
-  // it's not ideal to share this across all scopes and to
-  // never clear it, but it's fine for the time being
-  static CJS_RESOLUTIONS: Lazy<Arc<CjsResolutionStore>> =
-    Lazy::new(Default::default);
-
-  let npm_resolver = npm_resolver?;
-  let fs = Arc::new(deno_fs::RealFs);
+  cjs_tracker: Arc<CjsTracker>,
+  fs: Arc<dyn deno_fs::FileSystem>,
+  in_npm_pkg_checker: Arc<dyn InNpmPackageChecker>,
+  npm_resolver: &Arc<dyn CliNpmResolver>,
+  pkg_json_resolver: Arc<PackageJsonResolver>,
+) -> Arc<CliNodeResolver> {
   let node_resolver_inner = Arc::new(NodeResolver::new(
     deno_runtime::deno_node::DenoFsNodeResolverEnv::new(fs.clone()),
+    in_npm_pkg_checker.clone(),
     npm_resolver.clone().into_npm_resolver(),
-    None,
+    pkg_json_resolver.clone(),
   ));
-  Some(Arc::new(CliNodeResolver::new(
-    CJS_RESOLUTIONS.clone(),
+  Arc::new(CliNodeResolver::new(
+    cjs_tracker.clone(),
     fs,
+    in_npm_pkg_checker,
     node_resolver_inner,
     npm_resolver.clone(),
-  )))
+  ))
 }
 
 fn create_graph_resolver(
@@ -556,8 +695,8 @@ fn create_graph_resolver(
       workspace.to_maybe_jsx_import_source_config().ok().flatten()
     }),
     maybe_vendor_dir: config_data.and_then(|d| d.vendor_dir.as_ref()),
-    bare_node_builtins_enabled: workspace
-      .is_some_and(|workspace| workspace.has_unstable("bare-node-builtins")),
+    bare_node_builtins_enabled: config_data
+      .is_some_and(|d| d.unstable.contains("bare-node-builtins")),
     sloppy_imports_resolver: config_data
       .and_then(|d| d.sloppy_imports_resolver.clone()),
   }))
@@ -700,6 +839,45 @@ impl RedirectResolver {
 
   fn did_cache(&self) {
     self.entries.retain(|_, entry| entry.is_some());
+  }
+}
+
+#[derive(Debug)]
+pub struct LspCjsTracker {
+  cjs_tracker: Arc<CjsTracker>,
+}
+
+impl LspCjsTracker {
+  pub fn new(cjs_tracker: Arc<CjsTracker>) -> Self {
+    Self { cjs_tracker }
+  }
+
+  pub fn is_cjs(
+    &self,
+    specifier: &ModuleSpecifier,
+    media_type: MediaType,
+    maybe_parsed_source: Option<&ParsedSource>,
+  ) -> bool {
+    if let Some(module_kind) =
+      self.cjs_tracker.get_known_kind(specifier, media_type)
+    {
+      module_kind.is_cjs()
+    } else {
+      let maybe_is_script = maybe_parsed_source.map(|p| p.compute_is_script());
+      maybe_is_script
+        .and_then(|is_script| {
+          self
+            .cjs_tracker
+            .is_cjs_with_known_is_script(specifier, media_type, is_script)
+            .ok()
+        })
+        .unwrap_or_else(|| {
+          self
+            .cjs_tracker
+            .is_maybe_cjs(specifier, media_type)
+            .unwrap_or(false)
+        })
+    }
   }
 }
 

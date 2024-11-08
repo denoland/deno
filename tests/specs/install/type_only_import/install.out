@@ -1,0 +1,6 @@
+Download http://127.0.0.1:4250/@denotest/type-only-import/meta.json
+Download http://127.0.0.1:4250/@denotest/type-only-import/1.0.0_meta.json
+[UNORDERED_START]
+Download http://127.0.0.1:4250/@denotest/type-only-import/1.0.0/mod.ts
+Download http://127.0.0.1:4250/@denotest/type-only-import/1.0.0/foo.ts
+[UNORDERED_END]
