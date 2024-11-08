@@ -47,8 +47,7 @@ pub async fn cache_top_level_deps(
     for entry in import_map.imports().entries().chain(
       import_map
         .scopes()
-        .map(|scope| scope.imports.entries())
-        .flatten(),
+        .flat_map(|scope| scope.imports.entries()),
     ) {
       let Some(specifier) = entry.value else {
         continue;
