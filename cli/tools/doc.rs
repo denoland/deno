@@ -38,6 +38,9 @@ use std::sync::Arc;
 
 const JSON_SCHEMA_VERSION: u8 = 1;
 
+const PRISM_CSS: &str = include_str!("./prism.css");
+const PRISM_JS: &str = include_str!("./prism.js");
+
 async fn generate_doc_nodes_for_builtin_types(
   doc_flags: DocFlags,
   parser: &dyn EsParser,
@@ -591,12 +594,49 @@ fn generate_docs_directory(
     disable_search: internal_env.is_some(),
     symbol_redirect_map,
     default_symbol_map,
-    markdown_renderer: Rc::new(deno_doc::html::comrak::render),
+    markdown_renderer: deno_doc::html::comrak::create_renderer(
+      None,
+      Some(Box::new(|ammonia| {
+        ammonia.add_allowed_classes(
+          "code",
+          &[
+            "language-ts",
+            "language-tsx",
+            "language-typescript",
+            "language-js",
+            "language-jsx",
+            "language-javascript",
+            "language-bash",
+            "language-shell",
+            "language-md",
+            "language-markdown",
+            "language-rs",
+            "language-rust",
+            "language-html",
+            "language-xml",
+            "language-css",
+            "language-json",
+            "language-regex",
+            "language-svg",
+          ],
+        );
+      })),
+      None,
+    ),
     markdown_stripper: Rc::new(deno_doc::html::comrak::strip),
+    head_inject: Some(Rc::new(|root| {
+      format!(
+        r#"<link href="{root}{}" rel="stylesheet" /><link href="{root}prism.css" rel="stylesheet" /><script src="{root}prism.js"></script>"#,
+        deno_doc::html::comrak::COMRAK_STYLESHEET_FILENAME
+      )
+    })),
   };
 
-  let files = deno_doc::html::generate(options, doc_nodes_by_url)
+  let mut files = deno_doc::html::generate(options, doc_nodes_by_url)
     .context("Failed to generate HTML documentation")?;
+
+  files.insert("prism.js".to_string(), PRISM_JS.to_string());
+  files.insert("prism.css".to_string(), PRISM_CSS.to_string());
 
   let path = &output_dir_resolved;
   let _ = std::fs::remove_dir_all(path);
