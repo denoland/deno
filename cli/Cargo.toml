@@ -2,7 +2,7 @@
 
 [package]
 name = "deno"
-version = "2.0.4"
+version = "2.0.5"
 authors.workspace = true
 default-run = "deno"
 edition.workspace = true
@@ -84,7 +84,7 @@ deno_runtime = { workspace = true, features = ["include_js_files_for_snapshottin
 deno_semver.workspace = true
 deno_task_shell = "=0.18.1"
 deno_terminal.workspace = true
-libsui = "0.4.0"
+libsui = "0.5.0"
 node_resolver.workspace = true
 
 anstream = "0.6.14"

@@ -1,0 +1,4 @@
+{
+  "args": "run colors_without_globalThis.js",
+  "output": "true\n"
+}

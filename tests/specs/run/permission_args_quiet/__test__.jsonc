@@ -1,0 +1,4 @@
+{
+  "args": "run --quiet 001_hello.js --allow-net",
+  "output": "001_hello.js.out"
+}
