@@ -713,9 +713,9 @@ pub async fn op_http_request_on_cancel(external: *const c_void) {
   let http =
     // SAFETY: op is called with external.
     unsafe { clone_external!(external, "op_http_request_on_cancel") };
-  let (tx, rx) = tokio::sync::oneshot::channel();
 
   http.on_cancel(tx);
+  drop(http);
 
   rx.await.ok();
 }
