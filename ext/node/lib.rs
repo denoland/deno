@@ -24,6 +24,7 @@ pub mod ops;
 mod polyfill;
 
 pub use deno_package_json::PackageJson;
+use deno_permissions::PermissionCheckError;
 pub use node_resolver::PathClean;
 pub use ops::ipc::ChildPipeFd;
 pub use ops::ipc::IpcJsonStreamResource;
@@ -45,10 +46,18 @@ pub trait NodePermissions {
     &mut self,
     url: &Url,
     api_name: &str,
-  ) -> Result<(), AnyError>;
+  ) -> Result<(), PermissionCheckError>;
+  fn check_net(
+    &mut self,
+    host: (&str, Option<u16>),
+    api_name: &str,
+  ) -> Result<(), PermissionCheckError>;
   #[must_use = "the resolved return value to mitigate time-of-check to time-of-use issues"]
   #[inline(always)]
-  fn check_read(&mut self, path: &str) -> Result<PathBuf, AnyError> {
+  fn check_read(
+    &mut self,
+    path: &str,
+  ) -> Result<PathBuf, PermissionCheckError> {
     self.check_read_with_api_name(path, None)
   }
   #[must_use = "the resolved return value to mitigate time-of-check to time-of-use issues"]
@@ -56,20 +65,24 @@ pub trait NodePermissions {
     &mut self,
     path: &str,
     api_name: Option<&str>,
-  ) -> Result<PathBuf, AnyError>;
+  ) -> Result<PathBuf, PermissionCheckError>;
   #[must_use = "the resolved return value to mitigate time-of-check to time-of-use issues"]
   fn check_read_path<'a>(
     &mut self,
     path: &'a Path,
-  ) -> Result<Cow<'a, Path>, AnyError>;
+  ) -> Result<Cow<'a, Path>, PermissionCheckError>;
   fn query_read_all(&mut self) -> bool;
-  fn check_sys(&mut self, kind: &str, api_name: &str) -> Result<(), AnyError>;
+  fn check_sys(
+    &mut self,
+    kind: &str,
+    api_name: &str,
+  ) -> Result<(), PermissionCheckError>;
   #[must_use = "the resolved return value to mitigate time-of-check to time-of-use issues"]
   fn check_write_with_api_name(
     &mut self,
     path: &str,
     api_name: Option<&str>,
-  ) -> Result<PathBuf, AnyError>;
+  ) -> Result<PathBuf, PermissionCheckError>;
 }
 
 impl NodePermissions for deno_permissions::PermissionsContainer {
@@ -78,8 +91,16 @@ impl NodePermissions for deno_permissions::PermissionsContainer {
     &mut self,
     url: &Url,
     api_name: &str,
-  ) -> Result<(), AnyError> {
+  ) -> Result<(), PermissionCheckError> {
     deno_permissions::PermissionsContainer::check_net_url(self, url, api_name)
+  }
+
+  fn check_net(
+    &mut self,
+    host: (&str, Option<u16>),
+    api_name: &str,
+  ) -> Result<(), PermissionCheckError> {
+    deno_permissions::PermissionsContainer::check_net(self, &host, api_name)
   }
 
   #[inline(always)]
@@ -87,7 +108,7 @@ impl NodePermissions for deno_permissions::PermissionsContainer {
     &mut self,
     path: &str,
     api_name: Option<&str>,
-  ) -> Result<PathBuf, AnyError> {
+  ) -> Result<PathBuf, PermissionCheckError> {
     deno_permissions::PermissionsContainer::check_read_with_api_name(
       self, path, api_name,
     )
@@ -96,7 +117,7 @@ impl NodePermissions for deno_permissions::PermissionsContainer {
   fn check_read_path<'a>(
     &mut self,
     path: &'a Path,
-  ) -> Result<Cow<'a, Path>, AnyError> {
+  ) -> Result<Cow<'a, Path>, PermissionCheckError> {
     deno_permissions::PermissionsContainer::check_read_path(self, path, None)
   }
 
@@ -109,13 +130,17 @@ impl NodePermissions for deno_permissions::PermissionsContainer {
     &mut self,
     path: &str,
     api_name: Option<&str>,
-  ) -> Result<PathBuf, AnyError> {
+  ) -> Result<PathBuf, PermissionCheckError> {
     deno_permissions::PermissionsContainer::check_write_with_api_name(
       self, path, api_name,
     )
   }
 
-  fn check_sys(&mut self, kind: &str, api_name: &str) -> Result<(), AnyError> {
+  fn check_sys(
+    &mut self,
+    kind: &str,
+    api_name: &str,
+  ) -> Result<(), PermissionCheckError> {
     deno_permissions::PermissionsContainer::check_sys(self, kind, api_name)
   }
 }
@@ -386,6 +411,15 @@ deno_core::extension!(deno_node,
     ops::process::op_node_process_kill,
     ops::process::op_process_abort,
     ops::tls::op_get_root_certificates,
+    ops::inspector::op_inspector_open<P>,
+    ops::inspector::op_inspector_close,
+    ops::inspector::op_inspector_url,
+    ops::inspector::op_inspector_wait,
+    ops::inspector::op_inspector_connect<P>,
+    ops::inspector::op_inspector_dispatch,
+    ops::inspector::op_inspector_disconnect,
+    ops::inspector::op_inspector_emit_protocol_event,
+    ops::inspector::op_inspector_enabled,
   ],
   esm_entry_point = "ext:deno_node/02_init.js",
   esm = [
@@ -594,8 +628,8 @@ deno_core::extension!(deno_node,
     "node:http" = "http.ts",
     "node:http2" = "http2.ts",
     "node:https" = "https.ts",
-    "node:inspector" = "inspector.ts",
-    "node:inspector/promises" = "inspector.ts",
+    "node:inspector" = "inspector.js",
+    "node:inspector/promises" = "inspector/promises.js",
     "node:module" = "01_require.js",
     "node:net" = "net.ts",
     "node:os" = "os.ts",

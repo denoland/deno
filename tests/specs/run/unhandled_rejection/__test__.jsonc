@@ -1,0 +1,4 @@
+{
+  "args": "run --check unhandled_rejection.ts",
+  "output": "unhandled_rejection.ts.out"
+}
