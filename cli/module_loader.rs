@@ -206,7 +206,6 @@ struct SharedCliModuleLoaderState {
   lib_worker: TsTypeLib,
   initial_cwd: PathBuf,
   is_inspecting: bool,
-  is_npm_main: bool,
   is_repl: bool,
   cjs_tracker: Arc<CjsTracker>,
   code_cache: Option<Arc<CodeCache>>,
@@ -252,7 +251,6 @@ impl CliModuleLoaderFactory {
         lib_worker: options.ts_type_lib_worker(),
         initial_cwd: options.initial_cwd().to_path_buf(),
         is_inspecting: options.is_inspecting(),
-        is_npm_main: options.is_npm_main(),
         is_repl: matches!(
           options.sub_command(),
           DenoSubcommand::Repl(_) | DenoSubcommand::Jupyter(_)
@@ -286,7 +284,6 @@ impl CliModuleLoaderFactory {
       Rc::new(CliModuleLoader(Rc::new(CliModuleLoaderInner {
         lib,
         is_worker,
-        is_npm_main: self.shared.is_npm_main,
         parent_permissions,
         permissions,
         graph_container: graph_container.clone(),
@@ -343,7 +340,6 @@ impl ModuleLoaderFactory for CliModuleLoaderFactory {
 
 struct CliModuleLoaderInner<TGraphContainer: ModuleGraphContainer> {
   lib: TsTypeLib,
-  is_npm_main: bool,
   is_worker: bool,
   /// The initial set of permissions used to resolve the static imports in the
   /// worker. These are "allow all" for main worker, and parent thread
@@ -668,14 +664,11 @@ impl<TGraphContainer: ModuleGraphContainer>
         is_script,
         ..
       })) => {
-        // todo(dsherret): revert in https://github.com/denoland/deno/pull/26439
-        if self.is_npm_main && *is_script
-          || self.shared.cjs_tracker.is_cjs_with_known_is_script(
-            specifier,
-            *media_type,
-            *is_script,
-          )?
-        {
+        if self.shared.cjs_tracker.is_cjs_with_known_is_script(
+          specifier,
+          *media_type,
+          *is_script,
+        )? {
           return Ok(Some(CodeOrDeferredEmit::Cjs {
             specifier,
             media_type: *media_type,
