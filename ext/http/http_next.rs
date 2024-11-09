@@ -700,6 +700,27 @@ fn set_response(
   http.complete();
 }
 
+#[op2(fast)]
+pub fn op_http_get_request_cancelled(external: *const c_void) -> bool {
+  let http =
+    // SAFETY: op is called with external.
+    unsafe { clone_external!(external, "op_http_get_request_cancelled") };
+  http.cancelled()
+}
+
+#[op2(async)]
+pub async fn op_http_request_on_cancel(external: *const c_void) {
+  let http =
+    // SAFETY: op is called with external.
+    unsafe { clone_external!(external, "op_http_request_on_cancel") };
+  let (tx, rx) = tokio::sync::oneshot::channel();
+
+  http.on_cancel(tx);
+  drop(http);
+
+  rx.await.ok();
+}
+
 /// Returned promise resolves when body streaming finishes.
 /// Call [`op_http_close_after_finish`] when done with the external.
 #[op2(async)]

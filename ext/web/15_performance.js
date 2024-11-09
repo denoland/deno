@@ -1,6 +1,7 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 import { primordials } from "ext:core/mod.js";
+import { op_now, op_time_origin } from "ext:core/ops";
 const {
   ArrayPrototypeFilter,
   ArrayPrototypePush,
@@ -10,18 +11,33 @@ const {
   Symbol,
   SymbolFor,
   TypeError,
+  TypedArrayPrototypeGetBuffer,
+  Uint8Array,
+  Uint32Array,
 } = primordials;
 
 import * as webidl from "ext:deno_webidl/00_webidl.js";
 import { structuredClone } from "./02_structured_clone.js";
 import { createFilteredInspectProxy } from "ext:deno_console/01_console.js";
 import { EventTarget } from "./02_event.js";
-import { opNow } from "./02_timers.js";
 import { DOMException } from "./01_dom_exception.js";
 
 const illegalConstructorKey = Symbol("illegalConstructorKey");
 let performanceEntries = [];
 let timeOrigin;
+
+const hrU8 = new Uint8Array(8);
+const hr = new Uint32Array(TypedArrayPrototypeGetBuffer(hrU8));
+
+function setTimeOrigin() {
+  op_time_origin(hrU8);
+  timeOrigin = hr[0] * 1000 + hr[1] / 1e6;
+}
+
+function now() {
+  op_now(hrU8);
+  return hr[0] * 1000 + hr[1] / 1e6;
+}
 
 webidl.converters["PerformanceMarkOptions"] = webidl
   .createDictionaryConverter(
@@ -90,10 +106,6 @@ webidl.converters["DOMString or PerformanceMeasureOptions"] = (
   return webidl.converters.DOMString(V, prefix, context, opts);
 };
 
-function setTimeOrigin(origin) {
-  timeOrigin = origin;
-}
-
 function findMostRecent(
   name,
   type,
@@ -134,8 +146,6 @@ function filterByNameType(
       (type ? entry.entryType === type : true),
   );
 }
-
-const now = opNow;
 
 const _name = Symbol("[[name]]");
 const _entryType = Symbol("[[entryType]]");

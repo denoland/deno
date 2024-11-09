@@ -14,27 +14,31 @@ Deno.test(
     const enc = new TextEncoder();
     const cwd = await Deno.makeTempDir({ prefix: "deno_command_test" });
 
+    const exitCodeFileLock = "deno_was_here.lock";
     const exitCodeFile = "deno_was_here";
     const programFile = "poll_exit.ts";
     const program = `
+const file = await Deno.open("${exitCodeFileLock}", { write: true, create: true });
 async function tryExit() {
+  await file.lock(true);
   try {
     const code = parseInt(await Deno.readTextFile("${exitCodeFile}"));
     Deno.exit(code);
   } catch {
     // Retry if we got here before deno wrote the file.
     setTimeout(tryExit, 0.01);
+  } finally {
+    await file.unlock();
   }
 }
 
 tryExit();
 `;
-
     Deno.writeFileSync(`${cwd}/${programFile}`, enc.encode(program));
 
     const command = new Deno.Command(Deno.execPath(), {
       cwd,
-      args: ["run", "--allow-read", programFile],
+      args: ["run", "-RW", programFile],
       stdout: "inherit",
       stderr: "inherit",
     });
@@ -43,12 +47,18 @@ tryExit();
     // Write the expected exit code *after* starting deno.
     // This is how we verify that `Child` is actually asynchronous.
     const code = 84;
-    Deno.writeFileSync(`${cwd}/${exitCodeFile}`, enc.encode(`${code}`));
 
+    await using file = await Deno.open(`${cwd}/${exitCodeFileLock}`, {
+      write: true,
+      create: true,
+    });
+    await file.lock(true);
+    Deno.writeFileSync(`${cwd}/${exitCodeFile}`, enc.encode(`${code}`));
+    await file.unlock();
     const status = await child.status;
     await Deno.remove(cwd, { recursive: true });
-    assertEquals(status.success, false);
     assertEquals(status.code, code);
+    assertEquals(status.success, false);
     assertEquals(status.signal, null);
   },
 );
