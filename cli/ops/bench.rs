@@ -2,7 +2,6 @@
 
 use std::sync::atomic::AtomicUsize;
 use std::sync::atomic::Ordering;
-use std::time;
 
 use deno_core::error::generic_error;
 use deno_core::error::type_error;
@@ -13,6 +12,7 @@ use deno_core::ModuleSpecifier;
 use deno_core::OpState;
 use deno_runtime::deno_permissions::ChildPermissionsArg;
 use deno_runtime::deno_permissions::PermissionsContainer;
+use deno_runtime::deno_web::StartTime;
 use tokio::sync::mpsc::UnboundedSender;
 use uuid::Uuid;
 
@@ -148,7 +148,7 @@ fn op_dispatch_bench_event(state: &mut OpState, #[serde] event: BenchEvent) {
 #[op2(fast)]
 #[number]
 fn op_bench_now(state: &mut OpState) -> Result<u64, std::num::TryFromIntError> {
-  let ns = state.borrow::<time::Instant>().elapsed().as_nanos();
+  let ns = state.borrow::<StartTime>().elapsed().as_nanos();
   let ns_u64 = u64::try_from(ns)?;
   Ok(ns_u64)
 }
