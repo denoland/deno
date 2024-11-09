@@ -10,7 +10,6 @@ mod standalone;
 mod args;
 mod auth_tokens;
 mod cache;
-mod download_deno_binary;
 mod emit;
 mod errors;
 mod file_fetcher;
