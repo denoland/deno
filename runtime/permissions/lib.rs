@@ -40,8 +40,8 @@ pub use prompter::PromptResponse;
 #[derive(Debug, thiserror::Error)]
 #[error("Requires {access}, {}", format_permission_error(.name))]
 pub struct PermissionDeniedError {
-  access: String,
-  name: &'static str,
+  pub access: String,
+  pub name: &'static str,
 }
 
 fn format_permission_error(name: &'static str) -> String {
