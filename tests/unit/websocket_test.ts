@@ -453,7 +453,8 @@ Deno.test("invalid server", async () => {
   const { promise, resolve } = Promise.withResolvers<void>();
   const ws = new WebSocket("ws://localhost:2121");
   let err = false;
-  ws.onerror = () => {
+  ws.onerror = (e) => {
+    assert(e.error);
     err = true;
   };
   ws.onclose = () => {

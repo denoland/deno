@@ -488,8 +488,11 @@ class WebSocket extends EventTarget {
           /* error */
           this[_readyState] = CLOSED;
 
+          const message = op_ws_get_error(rid);
+          const error = new Error(message);
           const errorEv = new ErrorEvent("error", {
-            message: op_ws_get_error(rid),
+            error,
+            message,
           });
           this.dispatchEvent(errorEv);
 
