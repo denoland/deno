@@ -1,3 +1,3 @@
 import * as a from "./a.cts";
 
-console.log(a.add(1, 2));
+await Deno.stdout.write(new TextEncoder().encode(a.add(1, 2)));
