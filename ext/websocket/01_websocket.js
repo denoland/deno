@@ -28,6 +28,7 @@ const {
   ArrayPrototypePush,
   ArrayPrototypeShift,
   ArrayPrototypeSome,
+  Error,
   ErrorPrototypeToString,
   ObjectDefineProperties,
   ObjectPrototypeIsPrototypeOf,
