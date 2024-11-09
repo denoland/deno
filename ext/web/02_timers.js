@@ -1,12 +1,9 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 import { core, primordials } from "ext:core/mod.js";
-import { op_defer, op_now } from "ext:core/ops";
+import { op_defer } from "ext:core/ops";
 const {
-  Uint8Array,
-  Uint32Array,
   PromisePrototypeThen,
-  TypedArrayPrototypeGetBuffer,
   TypeError,
   indirectEval,
   ReflectApply,
@@ -17,13 +14,6 @@ const {
 } = core;
 
 import * as webidl from "ext:deno_webidl/00_webidl.js";
-
-const hrU8 = new Uint8Array(8);
-const hr = new Uint32Array(TypedArrayPrototypeGetBuffer(hrU8));
-function opNow() {
-  op_now(hrU8);
-  return (hr[0] * 1000 + hr[1] / 1e6);
-}
 
 // ---------------------------------------------------------------------------
 
@@ -151,7 +141,6 @@ export {
   clearInterval,
   clearTimeout,
   defer,
-  opNow,
   refTimer,
   setImmediate,
   setInterval,
