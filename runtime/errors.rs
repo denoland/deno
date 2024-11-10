@@ -623,7 +623,7 @@ fn get_ffi_call_error_class(e: &CallError) -> &'static str {
 fn get_webstorage_class_name(e: &WebStorageError) -> &'static str {
   match e {
     WebStorageError::ContextNotSupported => "DOMExceptionNotSupportedError",
-    WebStorageError::Sqlite(_) => todo!(),
+    WebStorageError::Sqlite(_) => "Error",
     WebStorageError::Io(e) => get_io_error_class(e),
     WebStorageError::StorageExceeded => "DOMExceptionQuotaExceededError",
   }
