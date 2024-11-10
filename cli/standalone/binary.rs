@@ -63,9 +63,6 @@ use crate::args::NpmInstallDepsProvider;
 use crate::args::PermissionFlags;
 use crate::args::UnstableConfig;
 use crate::cache::DenoDir;
-use crate::download_deno_binary::archive_name;
-use crate::download_deno_binary::download_deno_binary;
-use crate::download_deno_binary::BinaryKind;
 use crate::emit::Emitter;
 use crate::file_fetcher::FileFetcher;
 use crate::http_util::HttpClientProvider;
@@ -455,24 +452,36 @@ impl<'a> DenoCompileBinaryWriter<'a> {
     }
 
     let target = compile_flags.resolve_target();
+    let binary_name = format!("denort-{target}.zip");
 
-    let archive_name = archive_name(BinaryKind::Denort, &target);
+    let binary_path_suffix =
+      match crate::version::DENO_VERSION_INFO.release_channel {
+        ReleaseChannel::Canary => {
+          format!(
+            "canary/{}/{}",
+            crate::version::DENO_VERSION_INFO.git_hash,
+            binary_name
+          )
+        }
+        _ => {
+          format!("release/v{}/{}", env!("CARGO_PKG_VERSION"), binary_name)
+        }
+      };
 
-    let binary_path = download_deno_binary(
-      self.http_client_provider,
-      self.deno_dir,
-      BinaryKind::Denort,
-      &target,
-      crate::version::DENO_VERSION_INFO.version_or_git_hash(),
-      crate::version::DENO_VERSION_INFO.release_channel,
-    )
-    .await?;
+    let download_directory = self.deno_dir.dl_folder_path();
+    let binary_path = download_directory.join(&binary_path_suffix);
+
+    if !binary_path.exists() {
+      self
+        .download_base_binary(&download_directory, &binary_path_suffix)
+        .await?;
+    }
 
     let archive_data = std::fs::read(binary_path)?;
     let temp_dir = tempfile::TempDir::new()?;
     let base_binary_path = archive::unpack_into_dir(archive::UnpackArgs {
-      exe_name: BinaryKind::Denort.name(),
-      archive_name: &archive_name,
+      exe_name: "denort",
+      archive_name: &binary_name,
       archive_data: &archive_data,
       is_windows: target.contains("windows"),
       dest_path: temp_dir.path(),
@@ -480,6 +489,41 @@ impl<'a> DenoCompileBinaryWriter<'a> {
     let base_binary = std::fs::read(base_binary_path)?;
     drop(temp_dir); // delete the temp dir
     Ok(base_binary)
+  }
+
+  async fn download_base_binary(
+    &self,
+    output_directory: &Path,
+    binary_path_suffix: &str,
+  ) -> Result<(), AnyError> {
+    let download_url = format!("https://dl.deno.land/{binary_path_suffix}");
+    let maybe_bytes = {
+      let progress_bars = ProgressBar::new(ProgressBarStyle::DownloadBars);
+      let progress = progress_bars.update(&download_url);
+
+      self
+        .http_client_provider
+        .get_or_create()?
+        .download_with_progress_and_retries(
+          download_url.parse()?,
+          None,
+          &progress,
+        )
+        .await?
+    };
+    let bytes = match maybe_bytes {
+      Some(bytes) => bytes,
+      None => {
+        log::info!("Download could not be found, aborting");
+        std::process::exit(1)
+      }
+    };
+
+    std::fs::create_dir_all(output_directory)?;
+    let output_path = output_directory.join(binary_path_suffix);
+    std::fs::create_dir_all(output_path.parent().unwrap())?;
+    tokio::fs::write(output_path, bytes).await?;
+    Ok(())
   }
 
   /// This functions creates a standalone deno binary by appending a bundle
