@@ -4,7 +4,6 @@ mod args;
 mod auth_tokens;
 mod cache;
 mod cdp;
-mod download_deno_binary;
 mod emit;
 mod errors;
 mod factory;
