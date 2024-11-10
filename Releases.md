@@ -8,7 +8,6 @@ https://github.com/denoland/deno_install
 
 ### 2.0.6 / 2024.11.10
 
-- Revert "perf(upgrade): cache downloaded binaries in DENO_DIR" (#26799)
 - feat(ext/http): abort event when request is cancelled (#26781)
 - feat(ext/http): abort signal when request is cancelled (#26761)
 - feat(lsp): auto-import completions from byonm dependencies (#26680)
@@ -18,7 +17,6 @@ https://github.com/denoland/deno_install
 - fix(install): cache jsr deps from all workspace config files (#26779)
 - fix(node:zlib): gzip & gzipSync should accept ArrayBuffer (#26762)
 - fix: performance.timeOrigin (#26787)
-- perf(upgrade): cache downloaded binaries in DENO_DIR (#26108)
 
 ### 2.0.5 / 2024.11.05
 
