@@ -1,4 +1,4 @@
 {
   "args": "run --unstable --allow-read main.mts",
-  "output": "3"
+  "output": "main.out"
 }
