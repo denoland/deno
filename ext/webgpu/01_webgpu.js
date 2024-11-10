@@ -421,6 +421,25 @@ function createGPUAdapter(inner) {
   return adapter;
 }
 
+/**
+ * @param {number} adapterRid
+ * @returns {GPUAdapterInfo}
+ */
+function createGPUAdapterInfo(adapterRid) {
+  const {
+    vendor,
+    architecture,
+    device,
+    description,
+  } = op_webgpu_request_adapter_info(adapterRid);
+  const adapterInfo = webidl.createBranded(GPUAdapterInfo);
+  adapterInfo[_vendor] = vendor;
+  adapterInfo[_architecture] = architecture;
+  adapterInfo[_device] = device;
+  adapterInfo[_description] = description;
+  return adapterInfo;
+}
+
 class GPUAdapter {
   /** @type {InnerGPUAdapter} */
   [_adapter];
@@ -443,6 +462,19 @@ class GPUAdapter {
   get isFallbackAdapter() {
     webidl.assertBranded(this, GPUAdapterPrototype);
     return this[_adapter].isFallback;
+  }
+
+  /** @returns {GPUAdapterInfo} */
+  get info() {
+    webidl.assertBranded(this, GPUAdapterPrototype);
+
+    if (this[_adapterInfo] !== undefined) {
+      return this[_adapterInfo];
+    }
+
+    const adapterInfo = createGPUAdapterInfo(this[_adapter].rid);
+    this[_adapterInfo] = adapterInfo;
+    return adapterInfo;
   }
 
   constructor() {
@@ -504,38 +536,6 @@ class GPUAdapter {
     );
     inner.device = device;
     return device;
-  }
-
-  /**
-   * @returns {GPUAdapterInfo}
-   */
-  get info() {
-    webidl.assertBranded(this, GPUAdapterPrototype);
-
-    if (this[_adapterInfo] !== undefined) {
-      return this[_adapterInfo];
-    }
-
-    if (this[_invalid]) {
-      throw new TypeError(
-        "The adapter cannot be reused, as it has been invalidated by a device creation",
-      );
-    }
-
-    const {
-      vendor,
-      architecture,
-      device,
-      description,
-    } = op_webgpu_request_adapter_info(this[_adapter].rid);
-
-    const adapterInfo = webidl.createBranded(GPUAdapterInfo);
-    adapterInfo[_vendor] = vendor;
-    adapterInfo[_architecture] = architecture;
-    adapterInfo[_device] = device;
-    adapterInfo[_description] = description;
-    this[_adapterInfo] = adapterInfo;
-    return adapterInfo;
   }
 
   [SymbolFor("Deno.privateCustomInspect")](inspect, inspectOptions) {
