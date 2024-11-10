@@ -6,6 +6,20 @@ https://github.com/denoland/deno/releases
 We also have one-line install commands at:
 https://github.com/denoland/deno_install
 
+### 2.0.6 / 2024.11.10
+
+- Revert "perf(upgrade): cache downloaded binaries in DENO_DIR" (#26799)
+- feat(ext/http): abort event when request is cancelled (#26781)
+- feat(ext/http): abort signal when request is cancelled (#26761)
+- feat(lsp): auto-import completions from byonm dependencies (#26680)
+- fix(ext/cache): don't panic when creating cache (#26780)
+- fix(ext/node): better inspector support (#26471)
+- fix(fmt): don't use self-closing tags in HTML (#26754)
+- fix(install): cache jsr deps from all workspace config files (#26779)
+- fix(node:zlib): gzip & gzipSync should accept ArrayBuffer (#26762)
+- fix: performance.timeOrigin (#26787)
+- perf(upgrade): cache downloaded binaries in DENO_DIR (#26108)
+
 ### 2.0.5 / 2024.11.05
 
 - fix(add): better error message when adding package that only has pre-release
