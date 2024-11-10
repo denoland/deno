@@ -421,25 +421,6 @@ function createGPUAdapter(inner) {
   return adapter;
 }
 
-/**
- * @param {number} adapterRid
- * @returns {GPUAdapterInfo}
- */
-function createGPUAdapterInfo(adapterRid) {
-  const {
-    vendor,
-    architecture,
-    device,
-    description,
-  } = op_webgpu_request_adapter_info(adapterRid);
-  const adapterInfo = webidl.createBranded(GPUAdapterInfo);
-  adapterInfo[_vendor] = vendor;
-  adapterInfo[_architecture] = architecture;
-  adapterInfo[_device] = device;
-  adapterInfo[_description] = description;
-  return adapterInfo;
-}
-
 class GPUAdapter {
   /** @type {InnerGPUAdapter} */
   [_adapter];
@@ -472,7 +453,18 @@ class GPUAdapter {
       return this[_adapterInfo];
     }
 
-    const adapterInfo = createGPUAdapterInfo(this[_adapter].rid);
+    const {
+      vendor,
+      architecture,
+      device,
+      description,
+    } = op_webgpu_request_adapter_info(this[_adapter].rid);
+    const adapterInfo = createGPUAdapterInfo(
+      vendor,
+      architecture,
+      device,
+      description,
+    );
     this[_adapterInfo] = adapterInfo;
     return adapterInfo;
   }
@@ -555,6 +547,22 @@ class GPUAdapter {
   }
 }
 const GPUAdapterPrototype = GPUAdapter.prototype;
+
+/**
+ * @param {string} vendor
+ * @param {string} architecture
+ * @param {string} device
+ * @param {string} description
+ * @returns {GPUAdapterInfo}
+ */
+function createGPUAdapterInfo(vendor, architecture, device, description) {
+  const adapterInfo = webidl.createBranded(GPUAdapterInfo);
+  adapterInfo[_vendor] = vendor;
+  adapterInfo[_architecture] = architecture;
+  adapterInfo[_device] = device;
+  adapterInfo[_description] = description;
+  return adapterInfo;
+}
 
 class GPUAdapterInfo {
   /** @type {string} */
@@ -1087,6 +1095,31 @@ class GPUDevice extends EventTarget {
   get queue() {
     webidl.assertBranded(this, GPUDevicePrototype);
     return this[_queue];
+  }
+
+  /** @returns {GPUAdapterInfo} */
+  get adapterInfo() {
+    webidl.assertBranded(this, GPUDevicePrototype);
+
+    const adapter = this[_device].adapter;
+    if (adapter[_adapterInfo] !== undefined) {
+      return adapter[_adapterInfo];
+    }
+
+    const {
+      vendor,
+      architecture,
+      device,
+      description,
+    } = op_webgpu_request_adapter_info(adapter[_adapter].rid);
+    const adapterInfo = createGPUAdapterInfo(
+      vendor,
+      architecture,
+      device,
+      description,
+    );
+    adapter[_adapterInfo] = adapterInfo;
+    return adapterInfo;
   }
 
   constructor() {
@@ -1837,6 +1870,7 @@ class GPUDevice extends EventTarget {
         object: this,
         evaluate: ObjectPrototypeIsPrototypeOf(GPUDevicePrototype, this),
         keys: [
+          "adapterInfo",
           "features",
           "label",
           "limits",
