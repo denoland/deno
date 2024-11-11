@@ -4,6 +4,7 @@ use super::cache::calculate_fs_version;
 use super::cache::LspCache;
 use super::config::Config;
 use super::resolver::LspResolver;
+use super::resolver::ScopeDepInfo;
 use super::testing::TestCollector;
 use super::testing::TestModule;
 use super::text::LineIndex;
@@ -35,7 +36,6 @@ use indexmap::IndexMap;
 use indexmap::IndexSet;
 use std::borrow::Cow;
 use std::collections::BTreeMap;
-use std::collections::BTreeSet;
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::fs;
@@ -940,12 +940,7 @@ pub struct Documents {
   /// A resolver that takes into account currently loaded import map and JSX
   /// settings.
   resolver: Arc<LspResolver>,
-  /// The npm package requirements found in npm specifiers.
-  npm_reqs_by_scope:
-    Arc<BTreeMap<Option<ModuleSpecifier>, BTreeSet<PackageReq>>>,
-  /// Config scopes that contain a node: specifier such that a @types/node
-  /// package should be injected.
-  scopes_with_node_specifier: Arc<HashSet<Option<ModuleSpecifier>>>,
+  dep_info_by_scope: Arc<BTreeMap<Option<ModuleSpecifier>, Arc<ScopeDepInfo>>>,
 }
 
 impl Documents {
@@ -1107,17 +1102,20 @@ impl Documents {
     false
   }
 
-  pub fn npm_reqs_by_scope(
+  pub fn dep_info_by_scope(
     &mut self,
-  ) -> Arc<BTreeMap<Option<ModuleSpecifier>, BTreeSet<PackageReq>>> {
-    self.calculate_npm_reqs_if_dirty();
-    self.npm_reqs_by_scope.clone()
+  ) -> Arc<BTreeMap<Option<ModuleSpecifier>, Arc<ScopeDepInfo>>> {
+    self.calculate_dep_info_if_dirty();
+    self.dep_info_by_scope.clone()
   }
 
-  pub fn scopes_with_node_specifier(
-    &self,
-  ) -> &Arc<HashSet<Option<ModuleSpecifier>>> {
-    &self.scopes_with_node_specifier
+  pub fn scopes_with_node_specifier(&self) -> HashSet<Option<ModuleSpecifier>> {
+    self
+      .dep_info_by_scope
+      .iter()
+      .filter(|(_, i)| i.has_node_specifier)
+      .map(|(s, _)| s.clone())
+      .collect::<HashSet<_>>()
   }
 
   /// Return a document for the specifier.
@@ -1339,34 +1337,46 @@ impl Documents {
   /// Iterate through the documents, building a map where the key is a unique
   /// document and the value is a set of specifiers that depend on that
   /// document.
-  fn calculate_npm_reqs_if_dirty(&mut self) {
-    let mut npm_reqs_by_scope: BTreeMap<_, BTreeSet<_>> = Default::default();
-    let mut scopes_with_specifier = HashSet::new();
+  fn calculate_dep_info_if_dirty(&mut self) {
+    let mut dep_info_by_scope: BTreeMap<_, ScopeDepInfo> = Default::default();
     let is_fs_docs_dirty = self.file_system_docs.set_dirty(false);
     if !is_fs_docs_dirty && !self.dirty {
       return;
     }
     let mut visit_doc = |doc: &Arc<Document>| {
       let scope = doc.scope();
-      let reqs = npm_reqs_by_scope.entry(scope.cloned()).or_default();
+      let dep_info = dep_info_by_scope.entry(scope.cloned()).or_default();
       for dependency in doc.dependencies().values() {
-        if let Some(dep) = dependency.get_code() {
+        let code_specifier = dependency.get_code();
+        let type_specifier = dependency.get_type();
+        if let Some(dep) = code_specifier {
           if dep.scheme() == "node" {
-            scopes_with_specifier.insert(scope.cloned());
+            dep_info.has_node_specifier = true;
           }
           if let Ok(reference) = NpmPackageReqReference::from_specifier(dep) {
-            reqs.insert(reference.into_inner().req);
+            dep_info.npm_reqs.insert(reference.into_inner().req);
           }
         }
-        if let Some(dep) = dependency.get_type() {
+        if let Some(dep) = type_specifier {
           if let Ok(reference) = NpmPackageReqReference::from_specifier(dep) {
-            reqs.insert(reference.into_inner().req);
+            dep_info.npm_reqs.insert(reference.into_inner().req);
+          }
+        }
+        if dependency.maybe_deno_types_specifier.is_some() {
+          if let (Some(code_specifier), Some(type_specifier)) =
+            (code_specifier, type_specifier)
+          {
+            if MediaType::from_specifier(type_specifier).is_declaration() {
+              dep_info
+                .deno_types_to_code_resolutions
+                .insert(type_specifier.clone(), code_specifier.clone());
+            }
           }
         }
       }
       if let Some(dep) = doc.maybe_types_dependency().maybe_specifier() {
         if let Ok(reference) = NpmPackageReqReference::from_specifier(dep) {
-          reqs.insert(reference.into_inner().req);
+          dep_info.npm_reqs.insert(reference.into_inner().req);
         }
       }
     };
@@ -1377,14 +1387,37 @@ impl Documents {
       visit_doc(doc);
     }
 
-    // fill the reqs from the lockfile
     for (scope, config_data) in self.config.tree.data_by_scope().as_ref() {
+      let dep_info = dep_info_by_scope.entry(Some(scope.clone())).or_default();
+      (|| {
+        let config_file = config_data.maybe_deno_json()?;
+        let jsx_config =
+          config_file.to_maybe_jsx_import_source_config().ok()??;
+        let type_specifier = jsx_config.default_types_specifier.as_ref()?;
+        let code_specifier = jsx_config.default_specifier.as_ref()?;
+        let graph_resolver = self.resolver.as_graph_resolver(Some(scope));
+        let range = deno_graph::Range {
+          specifier: jsx_config.base_url.clone(),
+          start: deno_graph::Position::zeroed(),
+          end: deno_graph::Position::zeroed(),
+        };
+        let type_specifier = graph_resolver
+          .resolve(type_specifier, &range, ResolutionMode::Types)
+          .ok()?;
+        let code_specifier = graph_resolver
+          .resolve(code_specifier, &range, ResolutionMode::Execution)
+          .ok()?;
+        dep_info
+          .deno_types_to_code_resolutions
+          .insert(type_specifier, code_specifier);
+        Some(())
+      })();
+      // fill the reqs from the lockfile
       if let Some(lockfile) = config_data.lockfile.as_ref() {
-        let reqs = npm_reqs_by_scope.entry(Some(scope.clone())).or_default();
         let lockfile = lockfile.lock();
         for dep_req in lockfile.content.packages.specifiers.keys() {
           if dep_req.kind == deno_semver::package::PackageKind::Npm {
-            reqs.insert(dep_req.req.clone());
+            dep_info.npm_reqs.insert(dep_req.req.clone());
           }
         }
       }
@@ -1393,15 +1426,22 @@ impl Documents {
     // Ensure a @types/node package exists when any module uses a node: specifier.
     // Unlike on the command line, here we just add @types/node to the npm package
     // requirements since this won't end up in the lockfile.
-    for scope in &scopes_with_specifier {
-      let reqs = npm_reqs_by_scope.entry(scope.clone()).or_default();
-      if !reqs.iter().any(|r| r.name == "@types/node") {
-        reqs.insert(PackageReq::from_str("@types/node").unwrap());
+    for dep_info in dep_info_by_scope.values_mut() {
+      if dep_info.has_node_specifier
+        && !dep_info.npm_reqs.iter().any(|r| r.name == "@types/node")
+      {
+        dep_info
+          .npm_reqs
+          .insert(PackageReq::from_str("@types/node").unwrap());
       }
     }
 
-    self.npm_reqs_by_scope = Arc::new(npm_reqs_by_scope);
-    self.scopes_with_node_specifier = Arc::new(scopes_with_specifier);
+    self.dep_info_by_scope = Arc::new(
+      dep_info_by_scope
+        .into_iter()
+        .map(|(s, i)| (s, Arc::new(i)))
+        .collect(),
+    );
     self.dirty = false;
   }
 

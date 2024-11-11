@@ -1027,7 +1027,7 @@ impl Inner {
 
     // refresh the npm specifiers because it might have discovered
     // a @types/node package and now's a good time to do that anyway
-    self.refresh_npm_specifiers().await;
+    self.refresh_dep_info().await;
 
     self.project_changed([], true);
   }
@@ -1073,7 +1073,7 @@ impl Inner {
     );
     if document.is_diagnosable() {
       self.project_changed([(document.specifier(), ChangeKind::Opened)], false);
-      self.refresh_npm_specifiers().await;
+      self.refresh_dep_info().await;
       self.diagnostics_server.invalidate(&[specifier]);
       self.send_diagnostics_update();
       self.send_testing_update();
@@ -1094,8 +1094,8 @@ impl Inner {
       Ok(document) => {
         if document.is_diagnosable() {
           let old_scopes_with_node_specifier =
-            self.documents.scopes_with_node_specifier().clone();
-          self.refresh_npm_specifiers().await;
+            self.documents.scopes_with_node_specifier();
+          self.refresh_dep_info().await;
           let mut config_changed = false;
           if !self
             .documents
@@ -1146,13 +1146,15 @@ impl Inner {
     }));
   }
 
-  async fn refresh_npm_specifiers(&mut self) {
-    let package_reqs = self.documents.npm_reqs_by_scope();
+  async fn refresh_dep_info(&mut self) {
+    let dep_info_by_scope = self.documents.dep_info_by_scope();
     let resolver = self.resolver.clone();
     // spawn due to the lsp's `Send` requirement
-    spawn(async move { resolver.set_npm_reqs(&package_reqs).await })
-      .await
-      .ok();
+    spawn(
+      async move { resolver.set_dep_info_by_scope(&dep_info_by_scope).await },
+    )
+    .await
+    .ok();
   }
 
   async fn did_close(&mut self, params: DidCloseTextDocumentParams) {
@@ -1171,7 +1173,7 @@ impl Inner {
       .uri_to_specifier(&params.text_document.uri, LspUrlKind::File);
     self.diagnostics_state.clear(&specifier);
     if self.is_diagnosable(&specifier) {
-      self.refresh_npm_specifiers().await;
+      self.refresh_dep_info().await;
       self.diagnostics_server.invalidate(&[specifier.clone()]);
       self.send_diagnostics_update();
       self.send_testing_update();
@@ -3572,15 +3574,16 @@ impl Inner {
 
     if byonm {
       roots.retain(|s| s.scheme() != "npm");
-    } else if let Some(npm_reqs) = self
+    } else if let Some(dep_info) = self
       .documents
-      .npm_reqs_by_scope()
+      .dep_info_by_scope()
       .get(&config_data.map(|d| d.scope.as_ref().clone()))
     {
       // always include the npm packages since resolution of one npm package
       // might affect the resolution of other npm packages
       roots.extend(
-        npm_reqs
+        dep_info
+          .npm_reqs
           .iter()
           .map(|req| ModuleSpecifier::parse(&format!("npm:{}", req)).unwrap()),
       );
@@ -3658,7 +3661,7 @@ impl Inner {
 
   async fn post_cache(&mut self) {
     self.resolver.did_cache();
-    self.refresh_npm_specifiers().await;
+    self.refresh_dep_info().await;
     self.diagnostics_server.invalidate_all();
     self.project_changed([], true);
     self.ts_server.cleanup_semantic_cache(self.snapshot()).await;
