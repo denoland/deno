@@ -1141,14 +1141,14 @@ impl CliOptions {
             resolve_url_or_path(&compile_flags.source_file, self.initial_cwd())?
           }
           DenoSubcommand::Eval(_) => {
-            resolve_url_or_path("./$deno$eval.ts", self.initial_cwd())?
+            resolve_url_or_path("./$deno$eval.mts", self.initial_cwd())?
           }
           DenoSubcommand::Repl(_) => {
-            resolve_url_or_path("./$deno$repl.ts", self.initial_cwd())?
+            resolve_url_or_path("./$deno$repl.mts", self.initial_cwd())?
           }
           DenoSubcommand::Run(run_flags) => {
             if run_flags.is_stdin() {
-              resolve_url_or_path("./$deno$stdin.ts", self.initial_cwd())?
+              resolve_url_or_path("./$deno$stdin.mts", self.initial_cwd())?
             } else {
               resolve_url_or_path(&run_flags.script, self.initial_cwd())?
             }

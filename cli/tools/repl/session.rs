@@ -245,7 +245,7 @@ impl ReplSession {
     assert_ne!(context_id, 0);
 
     let referrer =
-      deno_core::resolve_path("./$deno$repl.ts", cli_options.initial_cwd())
+      deno_core::resolve_path("./$deno$repl.mts", cli_options.initial_cwd())
         .unwrap();
 
     let cwd_url =
