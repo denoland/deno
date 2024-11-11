@@ -336,6 +336,7 @@ impl LspResolver {
     {
       let dep_info = dep_info_by_scope.get(&scope.cloned());
       if let Some(dep_info) = dep_info {
+        dbg!(scope.map(|s| s.as_str()), deno_core::serde_json::json!(dep_info.deno_types_to_code_resolutions));
         *resolver.dep_info.lock() = dep_info.clone();
       }
       if let Some(npm_resolver) = resolver.npm_resolver.as_ref() {
@@ -476,10 +477,12 @@ impl LspResolver {
   ) -> Option<ModuleSpecifier> {
     let resolver = self.get_scope_resolver(file_referrer);
     let dep_info = resolver.dep_info.lock().clone();
-    dep_info
+    let s = dep_info
       .deno_types_to_code_resolutions
       .get(specifier)
-      .cloned()
+      .cloned();
+    dbg!(specifier.as_str(), s.as_ref().map(|s| s.as_str()));
+    s
   }
 
   pub fn in_node_modules(&self, specifier: &ModuleSpecifier) -> bool {
