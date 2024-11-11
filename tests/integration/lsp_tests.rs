@@ -8311,7 +8311,7 @@ fn lsp_npm_auto_import_with_deno_types() {
   );
   let mut client = context.new_lsp_command().build();
   client.initialize_default();
-  client.did_open(json!({
+  let diagnostics = client.did_open(json!({
     "textDocument": {
       "uri": temp_dir.url().join("file.ts").unwrap(),
       "languageId": "typescript",
@@ -8322,11 +8322,13 @@ fn lsp_npm_auto_import_with_deno_types() {
       "#,
     },
   }));
+  dbg!(json!(diagnostics.all()));
   let list = client.get_completion_list(
     temp_dir.url().join("file.ts").unwrap(),
     (1, 24),
     json!({ "triggerKind": 1 }),
   );
+  dbg!(json!(&list));
   let item = list
     .items
     .iter()
