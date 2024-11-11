@@ -44,6 +44,7 @@ use crate::graph_util::CliJsrUrlProvider;
 use crate::http_util::HttpClientProvider;
 use crate::lsp::config::Config;
 use crate::lsp::config::ConfigData;
+use crate::lsp::logging::lsp_log;
 use crate::lsp::logging::lsp_warn;
 use crate::npm::create_cli_npm_resolver_for_lsp;
 use crate::npm::CliByonmNpmResolverCreateOptions;
@@ -336,7 +337,7 @@ impl LspResolver {
     {
       let dep_info = dep_info_by_scope.get(&scope.cloned());
       if let Some(dep_info) = dep_info {
-        dbg!(
+        lsp_log!(
           scope.map(|s| s.as_str()),
           deno_core::serde_json::json!(dep_info.deno_types_to_code_resolutions)
         );
@@ -484,7 +485,7 @@ impl LspResolver {
       .deno_types_to_code_resolutions
       .get(specifier)
       .cloned();
-    dbg!(specifier.as_str(), s.as_ref().map(|s| s.as_str()));
+    lsp_log!(specifier.as_str(), s.as_ref().map(|s| s.as_str()));
     s
   }
 
