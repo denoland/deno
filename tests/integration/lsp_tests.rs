@@ -8306,7 +8306,8 @@ fn lsp_npm_auto_import_with_deno_types() {
     "other.ts",
     r#"
       // @deno-types="@types/lz-string"
-      import "lz-string";
+      import { compressToBase64 } from "lz-string";
+      console.log(compressToBase64);
     "#,
   );
   let mut client = context.new_lsp_command().build();
