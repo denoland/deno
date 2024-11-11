@@ -1685,6 +1685,10 @@ impl CliOptions {
     self.flags.code_cache_enabled
   }
 
+  pub fn in_memory_cache(&self) -> bool {
+    self.flags.in_memory_cache.unwrap_or(false)
+  }
+
   pub fn watch_paths(&self) -> Vec<PathBuf> {
     let mut full_paths = Vec::new();
     if let DenoSubcommand::Run(RunFlags {

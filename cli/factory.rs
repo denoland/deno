@@ -265,7 +265,10 @@ impl CliFactory {
   pub fn caches(&self) -> Result<&Arc<Caches>, AnyError> {
     self.services.caches.get_or_try_init(|| {
       let cli_options = self.cli_options()?;
-      let caches = Arc::new(Caches::new(self.deno_dir_provider()?.clone()));
+      let caches = Arc::new(Caches::new(
+        self.deno_dir_provider()?.clone(),
+        cli_options.in_memory_cache(),
+      ));
       // Warm up the caches we know we'll likely need based on the CLI mode
       match cli_options.sub_command() {
         DenoSubcommand::Run(_)

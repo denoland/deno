@@ -632,7 +632,7 @@ pub async fn run(data: StandaloneData) -> Result<i32, AnyError> {
       unstable_detect_cjs: metadata.unstable_config.detect_cjs,
     },
   ));
-  let cache_db = Caches::new(deno_dir_provider.clone());
+  let cache_db = Caches::new(deno_dir_provider.clone(), false);
   let node_analysis_cache = NodeAnalysisCache::new(cache_db.node_analysis_db());
   let cli_node_resolver = Arc::new(CliNodeResolver::new(
     cjs_tracker.clone(),
