@@ -44,9 +44,9 @@ use crate::npm::CreateInNpmPkgCheckerOptions;
 use crate::resolver::CjsTracker;
 use crate::resolver::CjsTrackerOptions;
 use crate::resolver::CliDenoResolverFs;
-use crate::resolver::CliGraphResolver;
-use crate::resolver::CliGraphResolverOptions;
 use crate::resolver::CliNodeResolver;
+use crate::resolver::CliResolver;
+use crate::resolver::CliResolverOptions;
 use crate::resolver::CliSloppyImportsResolver;
 use crate::resolver::NpmModuleLoader;
 use crate::resolver::SloppyImportsCachedFs;
@@ -201,7 +201,7 @@ struct CliFactoryServices {
   parsed_source_cache: Deferred<Arc<ParsedSourceCache>>,
   permission_desc_parser: Deferred<Arc<RuntimePermissionDescriptorParser>>,
   pkg_json_resolver: Deferred<Arc<PackageJsonResolver>>,
-  resolver: Deferred<Arc<CliGraphResolver>>,
+  resolver: Deferred<Arc<CliResolver>>,
   root_cert_store_provider: Deferred<Arc<dyn RootCertStoreProvider>>,
   root_permissions_container: Deferred<PermissionsContainer>,
   sloppy_imports_resolver: Deferred<Option<Arc<CliSloppyImportsResolver>>>,
@@ -523,15 +523,14 @@ impl CliFactory {
       .await
   }
 
-  pub async fn resolver(&self) -> Result<&Arc<CliGraphResolver>, AnyError> {
+  pub async fn resolver(&self) -> Result<&Arc<CliResolver>, AnyError> {
     self
       .services
       .resolver
       .get_or_try_init_async(
         async {
           let cli_options = self.cli_options()?;
-          Ok(Arc::new(CliGraphResolver::new(CliGraphResolverOptions {
-            cjs_tracker: self.cjs_tracker()?.clone(),
+          Ok(Arc::new(CliResolver::new(CliResolverOptions {
             sloppy_imports_resolver: self.sloppy_imports_resolver()?.cloned(),
             node_resolver: Some(self.cli_node_resolver().await?.clone()),
             npm_resolver: if cli_options.no_npm() {
@@ -706,6 +705,7 @@ impl CliFactory {
         let cli_options = self.cli_options()?;
         Ok(Arc::new(ModuleGraphBuilder::new(
           self.caches()?.clone(),
+          self.cjs_tracker()?.clone(),
           cli_options.clone(),
           self.file_fetcher()?.clone(),
           self.fs().clone(),
@@ -809,7 +809,6 @@ impl CliFactory {
       .cli_node_resolver
       .get_or_try_init_async(async {
         Ok(Arc::new(CliNodeResolver::new(
-          self.cjs_tracker()?.clone(),
           self.fs().clone(),
           self.in_npm_pkg_checker()?.clone(),
           self.node_resolver().await?.clone(),

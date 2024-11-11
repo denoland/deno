@@ -26,6 +26,7 @@ use deno_core::parking_lot::Mutex;
 use deno_core::ModuleSpecifier;
 use deno_graph::source::ResolutionMode;
 use deno_graph::Resolution;
+use deno_path_util::url_from_directory_path;
 use deno_path_util::url_to_file_path;
 use deno_runtime::deno_node;
 use deno_semver::jsr::JsrPackageReqReference;
@@ -33,6 +34,8 @@ use deno_semver::npm::NpmPackageReqReference;
 use deno_semver::package::PackageReq;
 use indexmap::IndexMap;
 use indexmap::IndexSet;
+use node_resolver::InNpmPackageChecker;
+use node_resolver::NodeModuleKind;
 use std::borrow::Cow;
 use std::collections::BTreeMap;
 use std::collections::BTreeSet;
@@ -422,8 +425,7 @@ impl Document {
       maybe_test_module_fut =
         get_maybe_test_module_fut(maybe_parsed_source.as_ref(), &config);
     } else {
-      let graph_resolver =
-        resolver.as_graph_resolver(self.file_referrer.as_ref());
+      let cli_resolver = resolver.as_cli_resolver(self.file_referrer.as_ref());
       let npm_resolver =
         resolver.create_graph_npm_resolver(self.file_referrer.as_ref());
       dependencies = Arc::new(
@@ -436,7 +438,7 @@ impl Document {
               d.with_new_resolver(
                 s,
                 &CliJsrUrlProvider,
-                Some(graph_resolver),
+                Some(cli_resolver),
                 Some(&npm_resolver),
               ),
             )
@@ -446,7 +448,7 @@ impl Document {
       maybe_types_dependency = self.maybe_types_dependency.as_ref().map(|d| {
         Arc::new(d.with_new_resolver(
           &CliJsrUrlProvider,
-          Some(graph_resolver),
+          Some(cli_resolver),
           Some(&npm_resolver),
         ))
       });
@@ -1249,7 +1251,7 @@ impl Documents {
           results.push(None);
         }
       } else if let Ok(specifier) =
-        self.resolver.as_graph_resolver(file_referrer).resolve(
+        self.resolver.as_cli_resolver(file_referrer).resolve(
           raw_specifier,
           &deno_graph::Range {
             specifier: referrer.clone(),
@@ -1412,6 +1414,7 @@ impl Documents {
     &self,
     specifier: &ModuleSpecifier,
     referrer: &ModuleSpecifier,
+    referrer_kind: NodeModuleKind,
     file_referrer: Option<&ModuleSpecifier>,
   ) -> Option<(ModuleSpecifier, MediaType)> {
     if let Some(module_name) = specifier.as_str().strip_prefix("node:") {
@@ -1425,10 +1428,12 @@ impl Documents {
     let mut specifier = specifier.clone();
     let mut media_type = None;
     if let Ok(npm_ref) = NpmPackageReqReference::from_specifier(&specifier) {
-      let (s, mt) =
-        self
-          .resolver
-          .npm_to_file_url(&npm_ref, referrer, file_referrer)?;
+      let (s, mt) = self.resolver.npm_to_file_url(
+        &npm_ref,
+        referrer,
+        referrer_kind,
+        file_referrer,
+      )?;
       specifier = s;
       media_type = Some(mt);
     }
@@ -1544,22 +1549,55 @@ fn analyze_module(
   match parsed_source_result {
     Ok(parsed_source) => {
       let npm_resolver = resolver.create_graph_npm_resolver(file_referrer);
-      deno_graph::parse_module_from_ast(deno_graph::ParseModuleFromAstOptions {
-        graph_kind: deno_graph::GraphKind::TypesOnly,
-        specifier,
-        maybe_headers,
-        parsed_source,
-        // use a null file system because there's no need to bother resolving
-        // dynamic imports like import(`./dir/${something}`) in the LSP
-        file_system: &deno_graph::source::NullFileSystem,
-        jsr_url_provider: &CliJsrUrlProvider,
-        maybe_resolver: Some(resolver.as_graph_resolver(file_referrer)),
-        maybe_npm_resolver: Some(&npm_resolver),
-      })
+      Ok(deno_graph::parse_module_from_ast(
+        deno_graph::ParseModuleFromAstOptions {
+          graph_kind: deno_graph::GraphKind::TypesOnly,
+          specifier,
+          maybe_headers,
+          parsed_source,
+          // use a null file system because there's no need to bother resolving
+          // dynamic imports like import(`./dir/${something}`) in the LSP
+          file_system: &deno_graph::source::NullFileSystem,
+          jsr_url_provider: &CliJsrUrlProvider,
+          maybe_resolver: Some(resolver.as_cli_resolver(file_referrer)),
+          maybe_npm_resolver: Some(&npm_resolver),
+        },
+      ))
     }
     Err(err) => Err(deno_graph::ModuleGraphError::ModuleError(
       deno_graph::ModuleError::ParseErr(specifier, err.clone()),
     )),
+  }
+}
+
+#[derive(Debug)]
+struct LspInNpmPackageChecker {
+  global_cache_dir: ModuleSpecifier,
+}
+
+impl LspInNpmPackageChecker {
+  pub fn new(cache: &LspCache) -> Self {
+    Self {
+      global_cache_dir: url_from_directory_path(
+        &cache.deno_dir().npm_folder_path(),
+      )
+      .unwrap_or_else(|_| ModuleSpecifier::parse("file:///invalid/").unwrap()),
+    }
+  }
+}
+
+impl InNpmPackageChecker for LspInNpmPackageChecker {
+  fn in_npm_package(&self, specifier: &ModuleSpecifier) -> bool {
+    if specifier.scheme() != "file" {
+      return false;
+    }
+    if specifier
+      .as_str()
+      .starts_with(self.global_cache_dir.as_str())
+    {
+      return true;
+    }
+    specifier.as_str().contains("/node_modules/")
   }
 }
 

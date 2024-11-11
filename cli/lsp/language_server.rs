@@ -22,6 +22,7 @@ use deno_semver::jsr::JsrPackageReqReference;
 use indexmap::Equivalent;
 use indexmap::IndexSet;
 use log::error;
+use node_resolver::NodeModuleKind;
 use serde::Deserialize;
 use serde_json::from_value;
 use std::collections::BTreeMap;
@@ -986,7 +987,7 @@ impl Inner {
           spawn(async move {
             let specifier = {
               let inner = ls.inner.read().await;
-              let resolver = inner.resolver.as_graph_resolver(Some(&referrer));
+              let resolver = inner.resolver.as_cli_resolver(Some(&referrer));
               let Ok(specifier) = resolver.resolve(
                 &specifier,
                 &deno_graph::Range {
@@ -994,6 +995,7 @@ impl Inner {
                   start: deno_graph::Position::zeroed(),
                   end: deno_graph::Position::zeroed(),
                 },
+                NodeModuleKind::Esm,
                 deno_graph::source::ResolutionMode::Types,
               ) else {
                 return;
@@ -1015,7 +1017,6 @@ impl Inner {
       LspResolver::from_config(
         &self.config,
         &self.cache,
-        self.cjs_tracker.clone(),
         Some(&self.http_client_provider),
       )
       .await,

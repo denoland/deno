@@ -476,7 +476,7 @@ impl<'a> TsResponseImportMapper<'a> {
     for specifier in specifiers {
       if let Some(specifier) = self
         .resolver
-        .as_graph_resolver(Some(&self.file_referrer))
+        .as_cli_resolver(Some(&self.file_referrer))
         .resolve(
           &specifier,
           &deno_graph::Range {
@@ -509,7 +509,7 @@ impl<'a> TsResponseImportMapper<'a> {
   ) -> bool {
     self
       .resolver
-      .as_graph_resolver(Some(&self.file_referrer))
+      .as_cli_resolver(Some(&self.file_referrer))
       .resolve(
         specifier_text,
         &deno_graph::Range {

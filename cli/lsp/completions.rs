@@ -35,6 +35,7 @@ use deno_semver::package::PackageNv;
 use import_map::ImportMap;
 use indexmap::IndexSet;
 use lsp_types::CompletionList;
+use node_resolver::NodeModuleKind;
 use once_cell::sync::Lazy;
 use regex::Regex;
 use tower_lsp::lsp_types as lsp;
@@ -167,7 +168,7 @@ pub async fn get_import_completions(
   let (text, _, range) = document.get_maybe_dependency(position)?;
   let range = to_narrow_lsp_range(document.text_info(), &range);
   let resolved = resolver
-    .as_graph_resolver(file_referrer)
+    .as_cli_resolver(file_referrer)
     .resolve(
       &text,
       &Range {
@@ -355,24 +356,26 @@ fn get_import_map_completions(
 
 /// Return local completions that are relative to the base specifier.
 fn get_local_completions(
-  base: &ModuleSpecifier,
+  referrer: &ModuleSpecifier,
+  referrer_kind: NodeModuleKind,
   text: &str,
   range: &lsp::Range,
   resolver: &LspResolver,
 ) -> Option<CompletionList> {
-  if base.scheme() != "file" {
+  if referrer.scheme() != "file" {
     return None;
   }
   let parent = &text[..text.char_indices().rfind(|(_, c)| *c == '/')?.0 + 1];
   let resolved_parent = resolver
-    .as_graph_resolver(Some(base))
+    .as_cli_resolver(Some(referrer))
     .resolve(
       parent,
       &Range {
-        specifier: base.clone(),
+        specifier: referrer.clone(),
         start: deno_graph::Position::zeroed(),
         end: deno_graph::Position::zeroed(),
       },
+      referrer_kind,
       ResolutionMode::Execution,
     )
     .ok()?;
@@ -385,7 +388,7 @@ fn get_local_completions(
         let de = de.ok()?;
         let label = de.path().file_name()?.to_string_lossy().to_string();
         let entry_specifier = resolve_path(de.path().to_str()?, &cwd).ok()?;
-        if entry_specifier == *base {
+        if entry_specifier == *referrer {
           return None;
         }
         let full_text = format!("{parent}{label}");

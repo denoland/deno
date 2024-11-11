@@ -1638,7 +1638,6 @@ mod tests {
   use crate::lsp::documents::Documents;
   use crate::lsp::documents::LanguageId;
   use crate::lsp::language_server::StateSnapshot;
-  use crate::lsp::resolver::LspCjsTracker;
   use crate::lsp::resolver::LspResolver;
 
   use deno_config::deno_json::ConfigFile;
@@ -1687,10 +1686,8 @@ mod tests {
       .unwrap();
       config.tree.inject_config_file(config_file).await;
     }
-    let cjs_tracker = Arc::new(LspCjsTracker::new(&cache));
-    let resolver = Arc::new(
-      LspResolver::from_config(&config, &cache, cjs_tracker, None).await,
-    );
+    let resolver =
+      Arc::new(LspResolver::from_config(&config, &cache, None).await);
     let mut documents = Documents::default();
     documents.update_config(&config, &resolver, &cache, &Default::default());
     for (relative_path, source, version, language_id) in sources {

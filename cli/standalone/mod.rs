@@ -655,7 +655,6 @@ pub async fn run(data: StandaloneData) -> Result<i32, AnyError> {
   let cache_db = Caches::new(deno_dir_provider.clone());
   let node_analysis_cache = NodeAnalysisCache::new(cache_db.node_analysis_db());
   let cli_node_resolver = Arc::new(CliNodeResolver::new(
-    cjs_tracker.clone(),
     fs.clone(),
     in_npm_pkg_checker.clone(),
     node_resolver.clone(),

@@ -7,7 +7,7 @@ use crate::cdp;
 use crate::colors;
 use crate::lsp::ReplLanguageServer;
 use crate::npm::CliNpmResolver;
-use crate::resolver::CliGraphResolver;
+use crate::resolver::CliResolver;
 use crate::tools::test::report_tests;
 use crate::tools::test::reporters::PrettyTestReporter;
 use crate::tools::test::reporters::TestReporter;
@@ -180,7 +180,7 @@ struct ReplJsxState {
 
 pub struct ReplSession {
   npm_resolver: Arc<dyn CliNpmResolver>,
-  resolver: Arc<CliGraphResolver>,
+  resolver: Arc<CliResolver>,
   pub worker: MainWorker,
   session: LocalInspectorSession,
   pub context_id: u64,
@@ -199,7 +199,7 @@ impl ReplSession {
   pub async fn initialize(
     cli_options: &CliOptions,
     npm_resolver: Arc<dyn CliNpmResolver>,
-    resolver: Arc<CliGraphResolver>,
+    resolver: Arc<CliResolver>,
     mut worker: MainWorker,
     main_module: ModuleSpecifier,
     test_event_receiver: TestEventReceiver,

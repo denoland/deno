@@ -27,8 +27,8 @@ use crate::node;
 use crate::node::CliNodeCodeTranslator;
 use crate::npm::CliNpmResolver;
 use crate::resolver::CjsTracker;
-use crate::resolver::CliGraphResolver;
 use crate::resolver::CliNodeResolver;
+use crate::resolver::CliResolver;
 use crate::resolver::ModuleCodeStringSource;
 use crate::resolver::NotSupportedKindInNpmError;
 use crate::resolver::NpmModuleLoader;
@@ -220,7 +220,7 @@ struct SharedCliModuleLoaderState {
   npm_resolver: Arc<dyn CliNpmResolver>,
   npm_module_loader: NpmModuleLoader,
   parsed_source_cache: Arc<ParsedSourceCache>,
-  resolver: Arc<CliGraphResolver>,
+  resolver: Arc<CliResolver>,
 }
 
 pub struct CliModuleLoaderFactory {
@@ -243,7 +243,7 @@ impl CliModuleLoaderFactory {
     npm_resolver: Arc<dyn CliNpmResolver>,
     npm_module_loader: NpmModuleLoader,
     parsed_source_cache: Arc<ParsedSourceCache>,
-    resolver: Arc<CliGraphResolver>,
+    resolver: Arc<CliResolver>,
   ) -> Self {
     Self {
       shared: Arc::new(SharedCliModuleLoaderState {
@@ -510,6 +510,7 @@ impl<TGraphContainer: ModuleGraphContainer>
           start: deno_graph::Position::zeroed(),
           end: deno_graph::Position::zeroed(),
         },
+        self.shared.cjs_tracker.get_referrer_kind(referrer),
         ResolutionMode::Execution,
       )?),
     };

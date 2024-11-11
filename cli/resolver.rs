@@ -18,7 +18,6 @@ use deno_graph::source::ResolutionMode;
 use deno_graph::source::ResolveError;
 use deno_graph::source::Resolver;
 use deno_graph::source::UnknownBuiltInNodeModuleError;
-use deno_graph::source::DEFAULT_JSX_IMPORT_SOURCE_MODULE;
 use deno_graph::NpmLoadError;
 use deno_graph::NpmResolvePkgReqsResult;
 use deno_npm::resolution::NpmResolutionError;
@@ -495,6 +494,9 @@ impl CjsTracker {
     &self,
     specifier: &ModuleSpecifier,
   ) -> NodeModuleKind {
+    if specifier.scheme() != "file" {
+      return NodeModuleKind::Esm;
+    }
     self
       .get_known_kind(specifier, MediaType::from_specifier(specifier))
       .unwrap_or_else(|| {
@@ -604,23 +606,18 @@ pub type CliSloppyImportsResolver =
 /// A resolver that takes care of resolution, taking into account loaded
 /// import map, JSX settings.
 #[derive(Debug)]
-pub struct CliGraphResolver {
-  cjs_tracker: Arc<CjsTracker>,
+pub struct CliResolver {
   node_resolver: Option<Arc<CliNodeResolver>>,
   npm_resolver: Option<Arc<dyn CliNpmResolver>>,
   sloppy_imports_resolver: Option<Arc<CliSloppyImportsResolver>>,
   workspace_resolver: Arc<WorkspaceResolver>,
-  maybe_default_jsx_import_source: Option<String>,
-  maybe_default_jsx_import_source_types: Option<String>,
-  maybe_jsx_import_source_module: Option<String>,
   maybe_vendor_specifier: Option<ModuleSpecifier>,
   found_package_json_dep_flag: AtomicFlag,
   bare_node_builtins_enabled: bool,
   warned_pkgs: DashSet<PackageReq>,
 }
 
-pub struct CliGraphResolverOptions<'a> {
-  pub cjs_tracker: Arc<CjsTracker>,
+pub struct CliResolverOptions<'a> {
   pub node_resolver: Option<Arc<CliNodeResolver>>,
   pub npm_resolver: Option<Arc<dyn CliNpmResolver>>,
   pub sloppy_imports_resolver: Option<Arc<CliSloppyImportsResolver>>,
@@ -630,25 +627,13 @@ pub struct CliGraphResolverOptions<'a> {
   pub maybe_vendor_dir: Option<&'a PathBuf>,
 }
 
-impl CliGraphResolver {
-  pub fn new(options: CliGraphResolverOptions) -> Self {
+impl CliResolver {
+  pub fn new(options: CliResolverOptions) -> Self {
     Self {
-      cjs_tracker: options.cjs_tracker,
       node_resolver: options.node_resolver,
       npm_resolver: options.npm_resolver,
       sloppy_imports_resolver: options.sloppy_imports_resolver,
       workspace_resolver: options.workspace_resolver,
-      maybe_default_jsx_import_source: options
-        .maybe_jsx_import_source_config
-        .as_ref()
-        .and_then(|c| c.default_specifier.clone()),
-      maybe_default_jsx_import_source_types: options
-        .maybe_jsx_import_source_config
-        .as_ref()
-        .and_then(|c| c.default_types_specifier.clone()),
-      maybe_jsx_import_source_module: options
-        .maybe_jsx_import_source_config
-        .map(|c| c.module),
       maybe_vendor_specifier: options
         .maybe_vendor_dir
         .and_then(|v| ModuleSpecifier::from_directory_path(v).ok()),
@@ -658,10 +643,6 @@ impl CliGraphResolver {
     }
   }
 
-  pub fn as_graph_resolver(&self) -> &dyn Resolver {
-    self
-  }
-
   pub fn create_graph_npm_resolver(&self) -> WorkerCliNpmGraphResolver {
     WorkerCliNpmGraphResolver {
       npm_resolver: self.npm_resolver.as_ref(),
@@ -669,28 +650,12 @@ impl CliGraphResolver {
       bare_node_builtins_enabled: self.bare_node_builtins_enabled,
     }
   }
-}
 
-impl Resolver for CliGraphResolver {
-  fn default_jsx_import_source(&self) -> Option<String> {
-    self.maybe_default_jsx_import_source.clone()
-  }
-
-  fn default_jsx_import_source_types(&self) -> Option<String> {
-    self.maybe_default_jsx_import_source_types.clone()
-  }
-
-  fn jsx_import_source_module(&self) -> &str {
-    self
-      .maybe_jsx_import_source_module
-      .as_deref()
-      .unwrap_or(DEFAULT_JSX_IMPORT_SOURCE_MODULE)
-  }
-
-  fn resolve(
+  pub fn resolve(
     &self,
     raw_specifier: &str,
     referrer_range: &deno_graph::Range,
+    referrer_kind: NodeModuleKind,
     mode: ResolutionMode,
   ) -> Result<ModuleSpecifier, ResolveError> {
     fn to_node_mode(mode: ResolutionMode) -> NodeResolutionMode {
@@ -706,12 +671,7 @@ impl Resolver for CliGraphResolver {
     if let Some(node_resolver) = self.node_resolver.as_ref() {
       if referrer.scheme() == "file" && node_resolver.in_npm_package(referrer) {
         return node_resolver
-          .resolve(
-            raw_specifier,
-            referrer,
-            self.cjs_tracker.get_referrer_kind(referrer),
-            to_node_mode(mode),
-          )
+          .resolve(raw_specifier, referrer, referrer_kind, to_node_mode(mode))
           .map(|res| res.into_url())
           .map_err(|e| ResolveError::Other(e.into()));
       }
@@ -784,7 +744,7 @@ impl Resolver for CliGraphResolver {
             pkg_json.dir_path(),
             sub_path.as_deref(),
             Some(referrer),
-            self.cjs_tracker.get_referrer_kind(referrer),
+            referrer_kind,
             to_node_mode(mode),
           )
           .map_err(|e| ResolveError::Other(e.into())),
@@ -826,7 +786,7 @@ impl Resolver for CliGraphResolver {
                       pkg_folder,
                       sub_path.as_deref(),
                       Some(referrer),
-                      self.cjs_tracker.get_referrer_kind(referrer),
+                      referrer_kind,
                       to_node_mode(mode),
                     )
                     .map_err(|e| ResolveError::Other(e.into()))
@@ -874,7 +834,7 @@ impl Resolver for CliGraphResolver {
                 pkg_folder,
                 npm_req_ref.sub_path(),
                 Some(referrer),
-                self.cjs_tracker.get_referrer_kind(referrer),
+                referrer_kind,
                 to_node_mode(mode),
               )
               .map_err(|e| ResolveError::Other(e.into()));
@@ -886,7 +846,7 @@ impl Resolver for CliGraphResolver {
               .resolve_req_reference(
                 &npm_req_ref,
                 referrer,
-                self.cjs_tracker.get_referrer_kind(referrer),
+                referrer_kind,
                 to_node_mode(mode),
               )
               .map_err(|err| err.into());
@@ -905,7 +865,7 @@ impl Resolver for CliGraphResolver {
             .resolve_if_for_npm_pkg(
               raw_specifier,
               referrer,
-              self.cjs_tracker.get_referrer_kind(referrer),
+              referrer_kind,
               to_node_mode(mode),
             )
             .map_err(ResolveError::Other)?;
