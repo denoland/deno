@@ -16,6 +16,8 @@ use crate::interface::FsDirEntry;
 use crate::interface::FsFileType;
 use crate::FsPermissions;
 use crate::OpenOptions;
+use deno_core::error::JsNativeError;
+use deno_core::error::ResourceError;
 use deno_core::op2;
 use deno_core::CancelFuture;
 use deno_core::CancelHandle;
@@ -32,31 +34,43 @@ use rand::thread_rng;
 use rand::Rng;
 use serde::Serialize;
 
-#[derive(Debug, thiserror::Error)]
+#[derive(Debug, thiserror::Error, deno_core::JsError)]
 pub enum FsOpsError {
+  #[class(inherit)]
   #[error("{0}")]
-  Io(#[source] std::io::Error),
+  Io(#[source] #[inherit] std::io::Error),
+  #[class(inherit)]
   #[error("{0}")]
-  OperationError(#[source] OperationError),
+  OperationError(#[source] #[inherit] OperationError),
+  #[class(inherit)]
   #[error(transparent)]
-  Permission(#[from] PermissionCheckError),
+  Permission(#[from] #[inherit] PermissionCheckError),
+  #[class(inherit)]
   #[error(transparent)]
-  Resource(deno_core::error::AnyError),
+  Resource(#[from] #[inherit] ResourceError),
+  #[class("InvalidData")]
   #[error("File name or path {0:?} is not valid UTF-8")]
   InvalidUtf8(std::ffi::OsString),
+  #[class(GENERIC)]
   #[error("{0}")]
   StripPrefix(#[from] StripPrefixError),
+  #[class(inherit)]
   #[error("{0}")]
-  Canceled(#[from] deno_core::Canceled),
+  Canceled(#[from] #[inherit] deno_core::Canceled),
+  #[class(TYPE)]
   #[error("Invalid seek mode: {0}")]
   InvalidSeekMode(i32),
+  #[class(GENERIC)]
   #[error("Invalid control character in prefix or suffix: {0:?}")]
   InvalidControlCharacter(String),
+  #[class(GENERIC)]
   #[error("Invalid character in prefix or suffix: {0:?}")]
   InvalidCharacter(String),
   #[cfg(windows)]
+  #[class(GENERIC)]
   #[error("Invalid trailing character in suffix")]
   InvalidTrailingCharacter,
+  #[class("NotCapable")]
   #[error("Requires {err} access to {path}, {}", print_not_capable_info(*.standalone, .err))]
   NotCapableAccess {
     // NotCapable
@@ -64,21 +78,21 @@ pub enum FsOpsError {
     err: &'static str,
     path: String,
   },
+  #[class("NotCapable")]
   #[error("permission denied: {0}")]
-  NotCapable(&'static str), // NotCapable
+  NotCapable(&'static str),
+  #[class(inherit)]
   #[error(transparent)]
-  Other(deno_core::error::AnyError),
+  Other(#[inherit] JsNativeError),
 }
 
 impl From<FsError> for FsOpsError {
   fn from(err: FsError) -> Self {
     match err {
       FsError::Io(err) => FsOpsError::Io(err),
-      FsError::FileBusy => {
-        FsOpsError::Other(deno_core::error::resource_unavailable())
-      }
+      FsError::FileBusy => FsOpsError::Resource(ResourceError::Unavailable),
       FsError::NotSupported => {
-        FsOpsError::Other(deno_core::error::not_supported())
+        FsOpsError::Other(JsNativeError::not_supported())
       }
       FsError::NotCapable(err) => FsOpsError::NotCapable(err),
     }
@@ -1455,8 +1469,7 @@ pub fn op_fs_seek_sync(
   #[smi] whence: i32,
 ) -> Result<u64, FsOpsError> {
   let pos = to_seek_from(offset, whence)?;
-  let file =
-    FileResource::get_file(state, rid).map_err(FsOpsError::Resource)?;
+  let file = FileResource::get_file(state, rid)?;
   let cursor = file.seek_sync(pos)?;
   Ok(cursor)
 }
@@ -1470,8 +1483,7 @@ pub async fn op_fs_seek_async(
   #[smi] whence: i32,
 ) -> Result<u64, FsOpsError> {
   let pos = to_seek_from(offset, whence)?;
-  let file = FileResource::get_file(&state.borrow(), rid)
-    .map_err(FsOpsError::Resource)?;
+  let file = FileResource::get_file(&state.borrow(), rid)?;
   let cursor = file.seek_async(pos).await?;
   Ok(cursor)
 }
@@ -1481,8 +1493,7 @@ pub fn op_fs_file_sync_data_sync(
   state: &mut OpState,
   #[smi] rid: ResourceId,
 ) -> Result<(), FsOpsError> {
-  let file =
-    FileResource::get_file(state, rid).map_err(FsOpsError::Resource)?;
+  let file = FileResource::get_file(state, rid)?;
   file.datasync_sync()?;
   Ok(())
 }
@@ -1492,8 +1503,7 @@ pub async fn op_fs_file_sync_data_async(
   state: Rc<RefCell<OpState>>,
   #[smi] rid: ResourceId,
 ) -> Result<(), FsOpsError> {
-  let file = FileResource::get_file(&state.borrow(), rid)
-    .map_err(FsOpsError::Resource)?;
+  let file = FileResource::get_file(&state.borrow(), rid)?;
   file.datasync_async().await?;
   Ok(())
 }
@@ -1503,8 +1513,7 @@ pub fn op_fs_file_sync_sync(
   state: &mut OpState,
   #[smi] rid: ResourceId,
 ) -> Result<(), FsOpsError> {
-  let file =
-    FileResource::get_file(state, rid).map_err(FsOpsError::Resource)?;
+  let file = FileResource::get_file(state, rid)?;
   file.sync_sync()?;
   Ok(())
 }
@@ -1514,8 +1523,7 @@ pub async fn op_fs_file_sync_async(
   state: Rc<RefCell<OpState>>,
   #[smi] rid: ResourceId,
 ) -> Result<(), FsOpsError> {
-  let file = FileResource::get_file(&state.borrow(), rid)
-    .map_err(FsOpsError::Resource)?;
+  let file = FileResource::get_file(&state.borrow(), rid)?;
   file.sync_async().await?;
   Ok(())
 }
@@ -1526,8 +1534,7 @@ pub fn op_fs_file_stat_sync(
   #[smi] rid: ResourceId,
   #[buffer] stat_out_buf: &mut [u32],
 ) -> Result<(), FsOpsError> {
-  let file =
-    FileResource::get_file(state, rid).map_err(FsOpsError::Resource)?;
+  let file = FileResource::get_file(state, rid)?;
   let stat = file.stat_sync()?;
   let serializable_stat = SerializableStat::from(stat);
   serializable_stat.write(stat_out_buf);
@@ -1540,8 +1547,7 @@ pub async fn op_fs_file_stat_async(
   state: Rc<RefCell<OpState>>,
   #[smi] rid: ResourceId,
 ) -> Result<SerializableStat, FsOpsError> {
-  let file = FileResource::get_file(&state.borrow(), rid)
-    .map_err(FsOpsError::Resource)?;
+  let file = FileResource::get_file(&state.borrow(), rid)?;
   let stat = file.stat_async().await?;
   Ok(stat.into())
 }
@@ -1552,8 +1558,7 @@ pub fn op_fs_flock_sync(
   #[smi] rid: ResourceId,
   exclusive: bool,
 ) -> Result<(), FsOpsError> {
-  let file =
-    FileResource::get_file(state, rid).map_err(FsOpsError::Resource)?;
+  let file = FileResource::get_file(state, rid)?;
   file.lock_sync(exclusive)?;
   Ok(())
 }
@@ -1564,8 +1569,7 @@ pub async fn op_fs_flock_async(
   #[smi] rid: ResourceId,
   exclusive: bool,
 ) -> Result<(), FsOpsError> {
-  let file = FileResource::get_file(&state.borrow(), rid)
-    .map_err(FsOpsError::Resource)?;
+  let file = FileResource::get_file(&state.borrow(), rid)?;
   file.lock_async(exclusive).await?;
   Ok(())
 }
@@ -1575,8 +1579,7 @@ pub fn op_fs_funlock_sync(
   state: &mut OpState,
   #[smi] rid: ResourceId,
 ) -> Result<(), FsOpsError> {
-  let file =
-    FileResource::get_file(state, rid).map_err(FsOpsError::Resource)?;
+  let file = FileResource::get_file(state, rid)?;
   file.unlock_sync()?;
   Ok(())
 }
@@ -1586,8 +1589,7 @@ pub async fn op_fs_funlock_async(
   state: Rc<RefCell<OpState>>,
   #[smi] rid: ResourceId,
 ) -> Result<(), FsOpsError> {
-  let file = FileResource::get_file(&state.borrow(), rid)
-    .map_err(FsOpsError::Resource)?;
+  let file = FileResource::get_file(&state.borrow(), rid)?;
   file.unlock_async().await?;
   Ok(())
 }
@@ -1598,8 +1600,7 @@ pub fn op_fs_ftruncate_sync(
   #[smi] rid: ResourceId,
   #[number] len: u64,
 ) -> Result<(), FsOpsError> {
-  let file =
-    FileResource::get_file(state, rid).map_err(FsOpsError::Resource)?;
+  let file = FileResource::get_file(state, rid)?;
   file.truncate_sync(len)?;
   Ok(())
 }
@@ -1610,8 +1611,7 @@ pub async fn op_fs_file_truncate_async(
   #[smi] rid: ResourceId,
   #[number] len: u64,
 ) -> Result<(), FsOpsError> {
-  let file = FileResource::get_file(&state.borrow(), rid)
-    .map_err(FsOpsError::Resource)?;
+  let file = FileResource::get_file(&state.borrow(), rid)?;
   file.truncate_async(len).await?;
   Ok(())
 }
@@ -1625,8 +1625,7 @@ pub fn op_fs_futime_sync(
   #[number] mtime_secs: i64,
   #[smi] mtime_nanos: u32,
 ) -> Result<(), FsOpsError> {
-  let file =
-    FileResource::get_file(state, rid).map_err(FsOpsError::Resource)?;
+  let file = FileResource::get_file(state, rid)?;
   file.utime_sync(atime_secs, atime_nanos, mtime_secs, mtime_nanos)?;
   Ok(())
 }
@@ -1640,18 +1639,19 @@ pub async fn op_fs_futime_async(
   #[number] mtime_secs: i64,
   #[smi] mtime_nanos: u32,
 ) -> Result<(), FsOpsError> {
-  let file = FileResource::get_file(&state.borrow(), rid)
-    .map_err(FsOpsError::Resource)?;
+  let file = FileResource::get_file(&state.borrow(), rid)?;
   file
     .utime_async(atime_secs, atime_nanos, mtime_secs, mtime_nanos)
     .await?;
   Ok(())
 }
 
-#[derive(Debug)]
+#[derive(Debug, deno_core::JsError)]
+#[class(inherit)]
 pub struct OperationError {
   operation: &'static str,
   kind: OperationErrorKind,
+  #[inherit]
   pub err: FsError,
 }
 

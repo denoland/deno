@@ -6,11 +6,11 @@ use std::rc::Rc;
 use std::sync::Arc;
 
 use async_trait::async_trait;
-use deno_core::error::type_error;
 use deno_core::op2;
 use deno_core::serde::Deserialize;
 use deno_core::serde::Serialize;
 use deno_core::ByteString;
+use deno_core::error::JsNativeError;
 use deno_core::OpState;
 use deno_core::Resource;
 use deno_core::ResourceId;
@@ -18,18 +18,26 @@ use deno_core::ResourceId;
 mod sqlite;
 pub use sqlite::SqliteBackedCache;
 
-#[derive(Debug, thiserror::Error)]
+#[derive(Debug, thiserror::Error, deno_core::JsError)]
 pub enum CacheError {
+  #[class(TYPE)]
+  #[error("CacheStorage is not available in this context")]
+  ContextUnsupported,
+  #[class(GENERIC)]
   #[error(transparent)]
   Sqlite(#[from] rusqlite::Error),
+  #[class(GENERIC)]
   #[error(transparent)]
   JoinError(#[from] tokio::task::JoinError),
+  #[class(inherit)]
   #[error(transparent)]
-  Resource(deno_core::error::AnyError),
+  Resource(#[from] #[inherit] deno_core::error::ResourceError),
+  #[class(inherit)]
   #[error(transparent)]
-  Other(deno_core::error::AnyError),
+  Other(#[inherit] JsNativeError),
+  #[class(inherit)]
   #[error("{0}")]
-  Io(#[from] std::io::Error),
+  Io(#[from] #[inherit] std::io::Error),
 }
 
 #[derive(Clone)]
@@ -233,13 +241,11 @@ where
   if let Some(cache) = state.try_borrow::<CA>() {
     Ok(cache.clone())
   } else if let Some(create_cache) = state.try_borrow::<CreateCache<CA>>() {
-    let cache = create_cache.0()?;
+    let cache = create_cache.0();
     state.put(cache);
     Ok(state.borrow::<CA>().clone())
   } else {
-    Err(CacheError::Other(type_error(
-      "CacheStorage is not available in this context",
-    )))
+    Err(CacheError::ContextUnsupported)
   }
 }
 

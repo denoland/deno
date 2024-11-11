@@ -11,6 +11,7 @@ use deno_core::Resource;
 use socket2::SockRef;
 use std::borrow::Cow;
 use std::rc::Rc;
+use deno_core::error::JsNativeError;
 use tokio::io::AsyncRead;
 use tokio::io::AsyncReadExt;
 use tokio::io::AsyncWrite;
@@ -90,10 +91,12 @@ where
   }
 }
 
-#[derive(Debug, thiserror::Error)]
+#[derive(Debug, thiserror::Error, deno_core::JsError)]
 pub enum MapError {
+  #[class(inherit)]
   #[error("{0}")]
-  Io(std::io::Error),
+  Io(#[inherit] std::io::Error),
+  #[class(GENERIC)]
   #[error("Unable to get resources")]
   NoResources,
 }
@@ -110,7 +113,7 @@ impl Resource for TcpStreamResource {
   }
 
   fn shutdown(self: Rc<Self>) -> AsyncResult<()> {
-    Box::pin(self.shutdown().map_err(Into::into))
+    Box::pin(self.shutdown().map_err(JsNativeError::from_err))
   }
 
   fn close(self: Rc<Self>) {
@@ -164,7 +167,7 @@ impl UnixStreamResource {
   #[allow(clippy::unused_async)]
   pub async fn shutdown(
     self: Rc<Self>,
-  ) -> Result<(), deno_core::error::AnyError> {
+  ) -> Result<(), JsNativeError> {
     unreachable!()
   }
   pub fn cancel_read_ops(&self) {
@@ -181,7 +184,7 @@ impl Resource for UnixStreamResource {
   }
 
   fn shutdown(self: Rc<Self>) -> AsyncResult<()> {
-    Box::pin(self.shutdown().map_err(Into::into))
+    Box::pin(self.shutdown().map_err(JsNativeError::from_err))
   }
 
   fn close(self: Rc<Self>) {

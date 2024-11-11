@@ -83,14 +83,18 @@ pub mod shader;
 pub mod surface;
 pub mod texture;
 
-#[derive(Debug, thiserror::Error)]
+#[derive(Debug, thiserror::Error, deno_core::JsError)]
 pub enum InitError {
+  #[class(inherit)]
   #[error(transparent)]
-  Resource(deno_core::error::AnyError),
+  Resource(#[from] #[inherit] deno_core::error::ResourceError),
+  #[class(GENERIC)]
   #[error(transparent)]
   InvalidAdapter(wgpu_core::instance::InvalidAdapter),
+  #[class("DOMExceptionOperationError")]
   #[error(transparent)]
   RequestDevice(wgpu_core::instance::RequestDeviceError),
+  #[class(GENERIC)]
   #[error(transparent)]
   InvalidDevice(wgpu_core::device::InvalidDevice),
 }
@@ -676,10 +680,8 @@ pub fn op_webgpu_request_device(
   #[serde] required_limits: Option<wgpu_types::Limits>,
 ) -> Result<GpuDeviceRes, InitError> {
   let mut state = state.borrow_mut();
-  let adapter_resource = state
-    .resource_table
-    .take::<WebGpuAdapter>(adapter_rid)
-    .map_err(InitError::Resource)?;
+  let adapter_resource =
+    state.resource_table.take::<WebGpuAdapter>(adapter_rid)?;
   let adapter = adapter_resource.1;
   let instance = state.borrow::<Instance>();
 
@@ -738,10 +740,8 @@ pub fn op_webgpu_request_adapter_info(
   #[smi] adapter_rid: ResourceId,
 ) -> Result<GPUAdapterInfo, InitError> {
   let state = state.borrow_mut();
-  let adapter_resource = state
-    .resource_table
-    .get::<WebGpuAdapter>(adapter_rid)
-    .map_err(InitError::Resource)?;
+  let adapter_resource =
+    state.resource_table.get::<WebGpuAdapter>(adapter_rid)?;
   let adapter = adapter_resource.1;
   let instance = state.borrow::<Instance>();
 
@@ -788,10 +788,8 @@ pub fn op_webgpu_create_query_set(
   state: &mut OpState,
   #[serde] args: CreateQuerySetArgs,
 ) -> Result<WebGpuResult, InitError> {
-  let device_resource = state
-    .resource_table
-    .get::<WebGpuDevice>(args.device_rid)
-    .map_err(InitError::Resource)?;
+  let device_resource =
+    state.resource_table.get::<WebGpuDevice>(args.device_rid)?;
   let device = device_resource.1;
   let instance = state.borrow::<Instance>();
 

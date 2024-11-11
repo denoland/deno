@@ -71,20 +71,27 @@ pub enum EncryptAlgorithm {
   },
 }
 
-#[derive(Debug, thiserror::Error)]
+#[derive(Debug, thiserror::Error, deno_core::JsError)]
 pub enum EncryptError {
+  #[class(inherit)]
   #[error(transparent)]
-  General(#[from] SharedError),
+  General(#[from] #[inherit] SharedError),
+  #[class(TYPE)]
   #[error("invalid length")]
   InvalidLength,
+  #[class("DOMExceptionOperationError")]
   #[error("invalid key or iv")]
   InvalidKeyOrIv,
+  #[class(TYPE)]
   #[error("iv length not equal to 12 or 16")]
   InvalidIvLength,
+  #[class(TYPE)]
   #[error("invalid counter length. Currently supported 32/64/128 bits")]
   InvalidCounterLength,
+  #[class("DOMExceptionOperationError")]
   #[error("tried to encrypt too much data")]
   TooMuchData,
+  #[class("DOMExceptionOperationError")]
   #[error("Encryption failed")]
   Failed,
 }

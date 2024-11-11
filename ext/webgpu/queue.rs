@@ -2,7 +2,7 @@
 
 use crate::command_encoder::WebGpuCommandBuffer;
 use crate::Instance;
-use deno_core::error::AnyError;
+use deno_core::error::ResourceError;
 use deno_core::op2;
 use deno_core::OpState;
 use deno_core::Resource;
@@ -30,7 +30,7 @@ pub fn op_webgpu_queue_submit(
   state: &mut OpState,
   #[smi] queue_rid: ResourceId,
   #[serde] command_buffers: Vec<ResourceId>,
-) -> Result<WebGpuResult, AnyError> {
+) -> Result<WebGpuResult, ResourceError> {
   let instance = state.borrow::<Instance>();
   let queue_resource = state.resource_table.get::<WebGpuQueue>(queue_rid)?;
   let queue = queue_resource.1;
@@ -43,7 +43,7 @@ pub fn op_webgpu_queue_submit(
       let mut id = buffer_resource.1.borrow_mut();
       Ok(id.take().unwrap())
     })
-    .collect::<Result<Vec<_>, AnyError>>()?;
+    .collect::<Result<Vec<_>, ResourceError>>()?;
 
   let maybe_err =
     gfx_select!(queue => instance.queue_submit(queue, &ids)).err();
@@ -84,7 +84,7 @@ pub fn op_webgpu_write_buffer(
   #[number] data_offset: usize,
   #[number] size: Option<usize>,
   #[buffer] buf: &[u8],
-) -> Result<WebGpuResult, AnyError> {
+) -> Result<WebGpuResult, ResourceError> {
   let instance = state.borrow::<Instance>();
   let buffer_resource = state
     .resource_table
@@ -117,7 +117,7 @@ pub fn op_webgpu_write_texture(
   #[serde] data_layout: GpuImageDataLayout,
   #[serde] size: wgpu_types::Extent3d,
   #[buffer] buf: &[u8],
-) -> Result<WebGpuResult, AnyError> {
+) -> Result<WebGpuResult, ResourceError> {
   let instance = state.borrow::<Instance>();
   let texture_resource = state
     .resource_table

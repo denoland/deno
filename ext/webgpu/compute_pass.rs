@@ -1,6 +1,6 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
-use deno_core::error::AnyError;
+use deno_core::error::ResourceError;
 use deno_core::op2;
 use deno_core::OpState;
 use deno_core::Resource;
@@ -25,7 +25,7 @@ pub fn op_webgpu_compute_pass_set_pipeline(
   state: &mut OpState,
   #[smi] compute_pass_rid: ResourceId,
   #[smi] pipeline: ResourceId,
-) -> Result<WebGpuResult, AnyError> {
+) -> Result<WebGpuResult, ResourceError> {
   let compute_pipeline_resource =
     state
       .resource_table
@@ -50,7 +50,7 @@ pub fn op_webgpu_compute_pass_dispatch_workgroups(
   x: u32,
   y: u32,
   z: u32,
-) -> Result<WebGpuResult, AnyError> {
+) -> Result<WebGpuResult, ResourceError> {
   let compute_pass_resource = state
     .resource_table
     .get::<WebGpuComputePass>(compute_pass_rid)?;
@@ -72,7 +72,7 @@ pub fn op_webgpu_compute_pass_dispatch_workgroups_indirect(
   #[smi] compute_pass_rid: ResourceId,
   #[smi] indirect_buffer: ResourceId,
   #[number] indirect_offset: u64,
-) -> Result<WebGpuResult, AnyError> {
+) -> Result<WebGpuResult, ResourceError> {
   let buffer_resource = state
     .resource_table
     .get::<super::buffer::WebGpuBuffer>(indirect_buffer)?;
@@ -95,7 +95,7 @@ pub fn op_webgpu_compute_pass_end(
   state: &mut OpState,
   #[smi] command_encoder_rid: ResourceId,
   #[smi] compute_pass_rid: ResourceId,
-) -> Result<WebGpuResult, AnyError> {
+) -> Result<WebGpuResult, ResourceError> {
   let command_encoder_resource = state
     .resource_table
     .get::<super::command_encoder::WebGpuCommandEncoder>(
@@ -124,7 +124,7 @@ pub fn op_webgpu_compute_pass_set_bind_group(
   #[buffer] dynamic_offsets_data: &[u32],
   #[number] dynamic_offsets_data_start: usize,
   #[number] dynamic_offsets_data_length: usize,
-) -> Result<WebGpuResult, AnyError> {
+) -> Result<WebGpuResult, ResourceError> {
   let bind_group_resource =
     state
       .resource_table
@@ -158,7 +158,7 @@ pub fn op_webgpu_compute_pass_push_debug_group(
   state: &mut OpState,
   #[smi] compute_pass_rid: ResourceId,
   #[string] group_label: &str,
-) -> Result<WebGpuResult, AnyError> {
+) -> Result<WebGpuResult, ResourceError> {
   let compute_pass_resource = state
     .resource_table
     .get::<WebGpuComputePass>(compute_pass_rid)?;
@@ -177,7 +177,7 @@ pub fn op_webgpu_compute_pass_push_debug_group(
 pub fn op_webgpu_compute_pass_pop_debug_group(
   state: &mut OpState,
   #[smi] compute_pass_rid: ResourceId,
-) -> Result<WebGpuResult, AnyError> {
+) -> Result<WebGpuResult, ResourceError> {
   let compute_pass_resource = state
     .resource_table
     .get::<WebGpuComputePass>(compute_pass_rid)?;
@@ -195,7 +195,7 @@ pub fn op_webgpu_compute_pass_insert_debug_marker(
   state: &mut OpState,
   #[smi] compute_pass_rid: ResourceId,
   #[string] marker_label: &str,
-) -> Result<WebGpuResult, AnyError> {
+) -> Result<WebGpuResult, ResourceError> {
   let compute_pass_resource = state
     .resource_table
     .get::<WebGpuComputePass>(compute_pass_rid)?;

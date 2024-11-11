@@ -17,20 +17,26 @@ use deno_core::ToJsBuffer;
 use std::cell::RefCell;
 use std::io::Read;
 
-#[derive(Debug, thiserror::Error)]
+#[derive(Debug, thiserror::Error, deno_core::JsError)]
 pub enum BrotliError {
+  #[class(TYPE)]
   #[error("Invalid encoder mode")]
   InvalidEncoderMode,
+  #[class(TYPE)]
   #[error("Failed to compress")]
   CompressFailed,
+  #[class(TYPE)]
   #[error("Failed to decompress")]
   DecompressFailed,
+  #[class(inherit)]
   #[error(transparent)]
-  Join(#[from] tokio::task::JoinError),
+  Join(#[from] #[inherit] tokio::task::JoinError),
+  #[class(inherit)]
   #[error(transparent)]
-  Resource(deno_core::error::AnyError),
+  Resource(#[from] #[inherit] deno_core::error::ResourceError),
+  #[class(inherit)]
   #[error("{0}")]
-  Io(std::io::Error),
+  Io(#[inherit] std::io::Error),
 }
 
 fn encoder_mode(mode: u32) -> Result<BrotliEncoderMode, BrotliError> {
@@ -169,7 +175,7 @@ pub fn op_brotli_compress_stream(
   let ctx = state
     .resource_table
     .get::<BrotliCompressCtx>(rid)
-    .map_err(BrotliError::Resource)?;
+    ?;
   let mut inst = ctx.inst.borrow_mut();
   let mut output_offset = 0;
 
@@ -201,7 +207,7 @@ pub fn op_brotli_compress_stream_end(
   let ctx = state
     .resource_table
     .get::<BrotliCompressCtx>(rid)
-    .map_err(BrotliError::Resource)?;
+    ?;
   let mut inst = ctx.inst.borrow_mut();
   let mut output_offset = 0;
 
@@ -279,7 +285,7 @@ pub fn op_brotli_decompress_stream(
   let ctx = state
     .resource_table
     .get::<BrotliDecompressCtx>(rid)
-    .map_err(BrotliError::Resource)?;
+    ?;
   let mut inst = ctx.inst.borrow_mut();
   let mut output_offset = 0;
 
@@ -310,7 +316,7 @@ pub fn op_brotli_decompress_stream_end(
   let ctx = state
     .resource_table
     .get::<BrotliDecompressCtx>(rid)
-    .map_err(BrotliError::Resource)?;
+    ?;
   let mut inst = ctx.inst.borrow_mut();
   let mut output_offset = 0;
 

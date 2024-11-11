@@ -1,7 +1,7 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 use std::rc::Rc;
-
+use deno_core::error::ResourceError;
 use deno_core::op2;
 use deno_core::OpState;
 use deno_core::ResourceId;
@@ -13,23 +13,30 @@ pub const UNSTABLE_FEATURE_NAME: &str = "http";
 
 deno_core::extension!(deno_http_runtime, ops = [op_http_start],);
 
-#[derive(Debug, thiserror::Error)]
+#[derive(Debug, thiserror::Error, deno_core::JsError)]
 pub enum HttpStartError {
+  #[class("Busy")]
   #[error("TCP stream is currently in use")]
   TcpStreamInUse,
+  #[class("Busy")]
   #[error("TLS stream is currently in use")]
   TlsStreamInUse,
+  #[class("Busy")]
   #[error("Unix socket is currently in use")]
   UnixSocketInUse,
+  #[class(GENERIC)]
   #[error(transparent)]
   ReuniteTcp(#[from] tokio::net::tcp::ReuniteError),
   #[cfg(unix)]
+  #[class(GENERIC)]
   #[error(transparent)]
   ReuniteUnix(#[from] tokio::net::unix::ReuniteError),
+  #[class(inherit)]
   #[error("{0}")]
-  Io(#[from] std::io::Error),
+  Io(#[from] #[inherit] std::io::Error),
+  #[class(inherit)]
   #[error(transparent)]
-  Other(deno_core::error::AnyError),
+  Resource(#[inherit] ResourceError),
 }
 
 #[op2(fast)]
@@ -89,5 +96,5 @@ fn op_http_start(
     ));
   }
 
-  Err(HttpStartError::Other(deno_core::error::bad_resource_id()))
+  Err(HttpStartError::Resource(ResourceError::BadResourceId))
 }

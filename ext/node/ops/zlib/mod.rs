@@ -3,6 +3,7 @@
 use deno_core::op2;
 use std::borrow::Cow;
 use std::cell::RefCell;
+use deno_core::error::JsNativeError;
 use zlib::*;
 
 mod alloc;
@@ -16,11 +17,11 @@ use mode::Mode;
 use self::stream::StreamWrapper;
 
 #[inline]
-fn check(condition: bool, msg: &str) -> Result<(), deno_core::error::AnyError> {
+fn check(condition: bool, msg: &str) -> Result<(), JsNativeError> {
   if condition {
     Ok(())
   } else {
-    Err(deno_core::error::type_error(msg.to_string()))
+    Err(JsNativeError::type_error(msg.to_string()))
   }
 }
 
@@ -55,7 +56,7 @@ impl ZlibInner {
     out_off: u32,
     out_len: u32,
     flush: Flush,
-  ) -> Result<(), deno_core::error::AnyError> {
+  ) -> Result<(), JsNativeError> {
     check(self.init_done, "write before init")?;
     check(!self.write_in_progress, "write already in progress")?;
     check(!self.pending_close, "close already in progress")?;
@@ -64,11 +65,11 @@ impl ZlibInner {
 
     let next_in = input
       .get(in_off as usize..in_off as usize + in_len as usize)
-      .ok_or_else(|| deno_core::error::type_error("invalid input range"))?
+      .ok_or_else(|| JsNativeError::type_error("invalid input range"))?
       .as_ptr() as *mut _;
     let next_out = out
       .get_mut(out_off as usize..out_off as usize + out_len as usize)
-      .ok_or_else(|| deno_core::error::type_error("invalid output range"))?
+      .ok_or_else(|| JsNativeError::type_error("invalid output range"))?
       .as_mut_ptr();
 
     self.strm.avail_in = in_len;
@@ -83,7 +84,7 @@ impl ZlibInner {
   fn do_write(
     &mut self,
     flush: Flush,
-  ) -> Result<(), deno_core::error::AnyError> {
+  ) -> Result<(), JsNativeError> {
     self.flush = flush;
     match self.mode {
       Mode::Deflate | Mode::Gzip | Mode::DeflateRaw => {
@@ -129,7 +130,7 @@ impl ZlibInner {
             self.mode = Mode::Inflate;
           }
         } else if next_expected_header_byte.is_some() {
-          return Err(deno_core::error::type_error(
+          return Err(JsNativeError::type_error(
             "invalid number of gzip magic number bytes read",
           ));
         }
@@ -183,7 +184,7 @@ impl ZlibInner {
     Ok(())
   }
 
-  fn init_stream(&mut self) -> Result<(), deno_core::error::AnyError> {
+  fn init_stream(&mut self) -> Result<(), JsNativeError> {
     match self.mode {
       Mode::Gzip | Mode::Gunzip => self.window_bits += 16,
       Mode::Unzip => self.window_bits += 32,
@@ -201,7 +202,7 @@ impl ZlibInner {
       Mode::Inflate | Mode::Gunzip | Mode::InflateRaw | Mode::Unzip => {
         self.strm.inflate_init(self.window_bits)
       }
-      Mode::None => return Err(deno_core::error::type_error("Unknown mode")),
+      Mode::None => return Err(JsNativeError::type_error("Unknown mode")),
     };
 
     self.write_in_progress = false;
@@ -210,7 +211,7 @@ impl ZlibInner {
     Ok(())
   }
 
-  fn close(&mut self) -> Result<bool, deno_core::error::AnyError> {
+  fn close(&mut self) -> Result<bool, JsNativeError> {
     if self.write_in_progress {
       self.pending_close = true;
       return Ok(false);
@@ -256,14 +257,17 @@ pub fn op_zlib_new(#[smi] mode: i32) -> Result<Zlib, mode::ModeError> {
   })
 }
 
-#[derive(Debug, thiserror::Error)]
+#[derive(Debug, thiserror::Error, deno_core::JsError)]
 pub enum ZlibError {
+  #[class(TYPE)]
   #[error("zlib not initialized")]
   NotInitialized,
+  #[class(inherit)]
   #[error(transparent)]
-  Mode(#[from] mode::ModeError),
+  Mode(#[from] #[inherit] mode::ModeError),
+  #[class(inherit)]
   #[error(transparent)]
-  Other(#[from] deno_core::error::AnyError),
+  Other(#[from] #[inherit] JsNativeError),
 }
 
 #[op2(fast)]

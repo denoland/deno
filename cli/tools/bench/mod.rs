@@ -16,9 +16,9 @@ use crate::util::path::matches_pattern_or_exact_path;
 use crate::worker::CliMainWorkerFactory;
 
 use deno_config::glob::WalkEntry;
-use deno_core::error::generic_error;
 use deno_core::error::AnyError;
 use deno_core::error::JsError;
+use deno_core::error::JsNativeError::generic;
 use deno_core::futures::future;
 use deno_core::futures::stream;
 use deno_core::futures::StreamExt;

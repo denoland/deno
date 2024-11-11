@@ -1,5 +1,6 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 use bytes::Bytes;
+use deno_core::error::JsNativeError;
 use deno_core::futures::stream::Peekable;
 use deno_core::futures::Stream;
 use deno_core::futures::StreamExt;
@@ -82,7 +83,10 @@ impl Resource for HttpRequestBody {
   }
 
   fn read(self: Rc<Self>, limit: usize) -> AsyncResult<BufView> {
-    Box::pin(HttpRequestBody::read(self, limit).map_err(Into::into))
+    Box::pin(
+      HttpRequestBody::read(self, limit)
+        .map_err(|e| JsNativeError::new("Http", e.to_string())),
+    )
   }
 
   fn size_hint(&self) -> (u64, Option<u64>) {

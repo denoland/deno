@@ -2,24 +2,27 @@
 
 // NOTE to all: use **cached** prepared statements when interfacing with SQLite.
 
-use std::path::PathBuf;
-
 use deno_core::op2;
 use deno_core::OpState;
 use rusqlite::params;
 use rusqlite::Connection;
 use rusqlite::OptionalExtension;
+use std::path::PathBuf;
 
 pub use rusqlite;
 
-#[derive(Debug, thiserror::Error)]
+#[derive(Debug, thiserror::Error, deno_core::JsError)]
 pub enum WebStorageError {
+  #[class("DOMExceptionNotSupportedError")]
   #[error("LocalStorage is not supported in this context.")]
   ContextNotSupported,
+  #[class(GENERIC)]
   #[error(transparent)]
   Sqlite(#[from] rusqlite::Error),
+  #[class(inherit)]
   #[error(transparent)]
-  Io(std::io::Error),
+  Io(#[inherit] std::io::Error),
+  #[class("DOMExceptionQuotaExceededError")]
   #[error("Exceeded maximum storage size")]
   StorageExceeded,
 }

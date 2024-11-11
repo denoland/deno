@@ -23,20 +23,26 @@ use std::ffi::c_void;
 use std::future::Future;
 use std::rc::Rc;
 
-#[derive(Debug, thiserror::Error)]
+#[derive(Debug, thiserror::Error, deno_core::JsError)]
 pub enum CallError {
+  #[class(TYPE)]
   #[error(transparent)]
   IR(#[from] IRError),
+  #[class(GENERIC)]
   #[error("Nonblocking FFI call failed: {0}")]
   NonblockingCallFailure(#[source] tokio::task::JoinError),
+  #[class(TYPE)]
   #[error("Invalid FFI symbol name: '{0}'")]
   InvalidSymbol(String),
+  #[class(inherit)]
   #[error(transparent)]
-  Permission(#[from] deno_permissions::PermissionCheckError),
+  Permission(#[from] #[inherit] deno_permissions::PermissionCheckError),
+  #[class(inherit)]
   #[error(transparent)]
-  Resource(deno_core::error::AnyError),
+  Resource(#[from] #[inherit] deno_core::error::ResourceError),
+  #[class(inherit)]
   #[error(transparent)]
-  Callback(#[from] super::CallbackError),
+  Callback(#[from] #[inherit]  super::CallbackError),
 }
 
 // SAFETY: Makes an FFI call
@@ -344,10 +350,7 @@ pub fn op_ffi_call_nonblocking(
 ) -> Result<impl Future<Output = Result<FfiValue, CallError>>, CallError> {
   let symbol = {
     let state = state.borrow();
-    let resource = state
-      .resource_table
-      .get::<DynamicLibraryResource>(rid)
-      .map_err(CallError::Resource)?;
+    let resource = state.resource_table.get::<DynamicLibraryResource>(rid)?;
     let symbols = &resource.symbols;
     *symbols
       .get(&symbol)

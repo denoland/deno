@@ -12,10 +12,12 @@ use spki::der::asn1::BitString;
 use spki::der::Decode;
 use spki::der::Encode;
 
-#[derive(Debug, thiserror::Error)]
+#[derive(Debug, thiserror::Error, deno_core::JsError)]
 pub enum X448Error {
+  #[class("DOMExceptionOperationError")]
   #[error("Failed to export key")]
   FailedExport,
+  #[class(GENERIC)]
   #[error(transparent)]
   Der(#[from] spki::der::Error),
 }

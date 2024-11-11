@@ -1,8 +1,7 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 use crate::NodePermissions;
-use deno_core::anyhow::Error;
-use deno_core::error::generic_error;
+use deno_core::error::JsNativeError;
 use deno_core::futures::channel::mpsc;
 use deno_core::op2;
 use deno_core::v8;
@@ -25,7 +24,7 @@ pub fn op_inspector_open<P>(
   _state: &mut OpState,
   _port: Option<u16>,
   #[string] _host: Option<String>,
-) -> Result<(), Error>
+) -> Result<(), JsNativeError>
 where
   P: NodePermissions + 'static,
 {
@@ -85,6 +84,16 @@ struct JSInspectorSession {
 
 impl GarbageCollected for JSInspectorSession {}
 
+#[derive(Debug, thiserror::Error, deno_core::JsError)]
+pub enum InspectorConnectError {
+  #[class(inherit)]
+  #[error(transparent)]
+  Permission(#[from] #[inherit] deno_permissions::PermissionCheckError),
+  #[class(GENERIC)]
+  #[error("connectToMainThread not supported")]
+  ConnectToMainThreadUnsupported,
+}
+
 #[op2]
 #[cppgc]
 pub fn op_inspector_connect<'s, P>(
@@ -93,7 +102,7 @@ pub fn op_inspector_connect<'s, P>(
   state: &mut OpState,
   connect_to_main_thread: bool,
   callback: v8::Local<'s, v8::Function>,
-) -> Result<JSInspectorSession, Error>
+) -> Result<JSInspectorSession, InspectorConnectError>
 where
   P: NodePermissions + 'static,
 {
@@ -102,7 +111,7 @@ where
     .check_sys("inspector", "inspector.Session.connect")?;
 
   if connect_to_main_thread {
-    return Err(generic_error("connectToMainThread not supported"));
+    return Err(InspectorConnectError::ConnectToMainThreadUnsupported);
   }
 
   let context = scope.get_current_context();

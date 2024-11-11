@@ -46,6 +46,7 @@ use http_body_util::BodyExt;
 use hyper::body::Frame;
 use hyper_util::rt::TokioIo;
 use std::cmp::min;
+use deno_core::error::JsNativeError;
 use tokio::io::AsyncReadExt;
 use tokio::io::AsyncWriteExt;
 
@@ -455,7 +456,7 @@ impl Resource for NodeHttpFetchResponseResource {
             Some(_) => match reader.as_mut().next().await.unwrap() {
               Ok(chunk) => assert!(chunk.is_empty()),
               Err(err) => {
-                break Err(deno_core::error::type_error(err.to_string()))
+                break Err(JsNativeError::type_error(err.to_string()))
               }
             },
             None => break Ok(BufView::empty()),
@@ -481,7 +482,7 @@ impl Resource for NodeHttpFetchResponseResource {
 pub struct NodeHttpResourceToBodyAdapter(
   Rc<dyn Resource>,
   Option<
-    Pin<Box<dyn Future<Output = Result<BufView, deno_core::anyhow::Error>>>>,
+    Pin<Box<dyn Future<Output = Result<BufView, JsNativeError>>>>,
   >,
 );
 
@@ -498,7 +499,7 @@ unsafe impl Send for NodeHttpResourceToBodyAdapter {}
 unsafe impl Sync for NodeHttpResourceToBodyAdapter {}
 
 impl Stream for NodeHttpResourceToBodyAdapter {
-  type Item = Result<Bytes, deno_core::anyhow::Error>;
+  type Item = Result<Bytes, JsNativeError>;
 
   fn poll_next(
     self: Pin<&mut Self>,
@@ -528,7 +529,7 @@ impl Stream for NodeHttpResourceToBodyAdapter {
 
 impl hyper::body::Body for NodeHttpResourceToBodyAdapter {
   type Data = Bytes;
-  type Error = deno_core::anyhow::Error;
+  type Error = JsNativeError;
 
   fn poll_frame(
     self: Pin<&mut Self>,

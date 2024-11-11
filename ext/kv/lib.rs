@@ -16,7 +16,8 @@ use base64::prelude::BASE64_URL_SAFE;
 use base64::Engine;
 use chrono::DateTime;
 use chrono::Utc;
-use deno_core::error::get_custom_error_class;
+use deno_core::error::JsErrorClass;
+use deno_core::error::JsNativeError;
 use deno_core::futures::StreamExt;
 use deno_core::op2;
 use deno_core::serde_v8::AnyValue;
@@ -114,62 +115,90 @@ impl Resource for DatabaseWatcherResource {
   }
 }
 
-#[derive(Debug, thiserror::Error)]
+#[derive(Debug, thiserror::Error, deno_core::JsError)]
 pub enum KvError {
+  #[class(inherit)]
   #[error(transparent)]
-  DatabaseHandler(deno_core::error::AnyError),
+  DatabaseHandler( #[inherit] JsNativeError),
+  #[class(inherit)]
   #[error(transparent)]
-  Resource(deno_core::error::AnyError),
+  Resource(#[from] #[inherit] deno_core::error::ResourceError),
+  #[class(TYPE)]
   #[error("Too many ranges (max {0})")]
   TooManyRanges(usize),
+  #[class(TYPE)]
   #[error("Too many entries (max {0})")]
   TooManyEntries(usize),
+  #[class(TYPE)]
   #[error("Too many checks (max {0})")]
   TooManyChecks(usize),
+  #[class(TYPE)]
   #[error("Too many mutations (max {0})")]
   TooManyMutations(usize),
+  #[class(TYPE)]
   #[error("Too many keys (max {0})")]
   TooManyKeys(usize),
+  #[class(TYPE)]
   #[error("limit must be greater than 0")]
   InvalidLimit,
+  #[class(TYPE)]
   #[error("Invalid boundary key")]
   InvalidBoundaryKey,
+  #[class(TYPE)]
   #[error("Key too large for read (max {0} bytes)")]
   KeyTooLargeToRead(usize),
+  #[class(TYPE)]
   #[error("Key too large for write (max {0} bytes)")]
   KeyTooLargeToWrite(usize),
+  #[class(TYPE)]
   #[error("Total mutation size too large (max {0} bytes)")]
   TotalMutationTooLarge(usize),
+  #[class(TYPE)]
   #[error("Total key size too large (max {0} bytes)")]
   TotalKeyTooLarge(usize),
+  #[class(GENERIC)]
   #[error(transparent)]
   Kv(deno_core::error::AnyError),
+  #[class(inherit)]
   #[error(transparent)]
-  Io(#[from] std::io::Error),
+  Io(#[from] #[inherit] std::io::Error),
+  #[class(TYPE)]
   #[error("Queue message not found")]
   QueueMessageNotFound,
+  #[class(TYPE)]
   #[error("Start key is not in the keyspace defined by prefix")]
   StartKeyNotInKeyspace,
+  #[class(TYPE)]
   #[error("End key is not in the keyspace defined by prefix")]
   EndKeyNotInKeyspace,
+  #[class(TYPE)]
   #[error("Start key is greater than end key")]
   StartKeyGreaterThanEndKey,
+  #[class(inherit)]
   #[error("Invalid check")]
-  InvalidCheck(#[source] KvCheckError),
+  InvalidCheck(#[source] #[inherit] KvCheckError),
+  #[class(inherit)]
   #[error("Invalid mutation")]
-  InvalidMutation(#[source] KvMutationError),
+  InvalidMutation(#[source]#[inherit]  KvMutationError),
+  #[class(inherit)]
   #[error("Invalid enqueue")]
-  InvalidEnqueue(#[source] std::io::Error),
+  InvalidEnqueue(#[source] #[inherit] std::io::Error),
+  #[class(TYPE)]
   #[error("key cannot be empty")]
-  EmptyKey, // TypeError
+  EmptyKey,
+  #[class(TYPE)]
   #[error("Value too large (max {0} bytes)")]
-  ValueTooLarge(usize), // TypeError
+  ValueTooLarge(usize),
+  #[class(TYPE)]
   #[error("enqueue payload too large (max {0} bytes)")]
-  EnqueuePayloadTooLarge(usize), // TypeError
+  EnqueuePayloadTooLarge(usize),
+  #[class(TYPE)]
   #[error("invalid cursor")]
   InvalidCursor,
+  #[class(TYPE)]
   #[error("cursor out of bounds")]
   CursorOutOfBounds,
+  #[class(TYPE)]
   #[error("Invalid range")]
   InvalidRange,
 }
@@ -326,10 +355,8 @@ where
 {
   let db = {
     let state = state.borrow();
-    let resource = state
-      .resource_table
-      .get::<DatabaseResource<DBH::DB>>(rid)
-      .map_err(KvError::Resource)?;
+    let resource =
+      state.resource_table.get::<DatabaseResource<DBH::DB>>(rid)?;
     resource.db.clone()
   };
 
@@ -412,7 +439,7 @@ where
       match state.resource_table.get::<DatabaseResource<DBH::DB>>(rid) {
         Ok(resource) => resource,
         Err(err) => {
-          if get_custom_error_class(&err) == Some("BadResource") {
+          if err.get_class() == "BadResource" {
             return Ok(None);
           } else {
             return Err(KvError::Resource(err));
@@ -445,10 +472,7 @@ fn op_kv_watch<DBH>(
 where
   DBH: DatabaseHandler + 'static,
 {
-  let resource = state
-    .resource_table
-    .get::<DatabaseResource<DBH::DB>>(rid)
-    .map_err(KvError::Resource)?;
+  let resource = state.resource_table.get::<DatabaseResource<DBH::DB>>(rid)?;
   let config = state.borrow::<Rc<KvConfig>>().clone();
 
   if keys.len() > config.max_watched_keys {
@@ -490,10 +514,7 @@ async fn op_kv_watch_next(
 ) -> Result<Option<Vec<WatchEntry>>, KvError> {
   let resource = {
     let state = state.borrow();
-    let resource = state
-      .resource_table
-      .get::<DatabaseWatcherResource>(rid)
-      .map_err(KvError::Resource)?;
+    let resource = state.resource_table.get::<DatabaseWatcherResource>(rid)?;
     resource.clone()
   };
 
@@ -562,12 +583,14 @@ where
   Ok(())
 }
 
-#[derive(Debug, thiserror::Error)]
+#[derive(Debug, thiserror::Error, deno_core::JsError)]
 pub enum KvCheckError {
+  #[class(TYPE)]
   #[error("invalid versionstamp")]
   InvalidVersionstamp,
+  #[class(inherit)]
   #[error(transparent)]
-  Io(std::io::Error),
+  Io(#[inherit] std::io::Error),
 }
 
 type V8KvCheck = (KvKey, Option<ByteString>);
@@ -591,14 +614,18 @@ fn check_from_v8(value: V8KvCheck) -> Result<Check, KvCheckError> {
   })
 }
 
-#[derive(Debug, thiserror::Error)]
+#[derive(Debug, thiserror::Error, deno_core::JsError)]
 pub enum KvMutationError {
+  #[class(GENERIC)]
   #[error(transparent)]
   BigInt(#[from] num_bigint::TryFromBigIntError<num_bigint::BigInt>),
+  #[class(inherit)]
   #[error(transparent)]
-  Io(#[from] std::io::Error),
+  Io(#[from] #[inherit] std::io::Error),
+  #[class(TYPE)]
   #[error("Invalid mutation '{0}' with value")]
   InvalidMutationWithValue(String),
+  #[class(TYPE)]
   #[error("Invalid mutation '{0}' without value")]
   InvalidMutationWithoutValue(String),
 }
@@ -852,10 +879,8 @@ where
   let current_timestamp = chrono::Utc::now();
   let db = {
     let state = state.borrow();
-    let resource = state
-      .resource_table
-      .get::<DatabaseResource<DBH::DB>>(rid)
-      .map_err(KvError::Resource)?;
+    let resource =
+      state.resource_table.get::<DatabaseResource<DBH::DB>>(rid)?;
     resource.db.clone()
   };
 

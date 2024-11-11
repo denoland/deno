@@ -37,6 +37,7 @@ use crate::ops::signal::SignalError;
 use std::os::unix::prelude::ExitStatusExt;
 #[cfg(unix)]
 use std::os::unix::process::CommandExt;
+use deno_core::error::JsNativeError;
 
 pub const UNSTABLE_FEATURE_NAME: &str = "process";
 
@@ -107,8 +108,7 @@ impl StdioOrRid {
     match &self {
       StdioOrRid::Stdio(val) => Ok(val.as_stdio()),
       StdioOrRid::Rid(rid) => {
-        FileResource::with_file(state, *rid, |file| Ok(file.as_stdio()?))
-          .map_err(ProcessError::Resource)
+        Ok(FileResource::with_file(state, *rid, |file| Ok(file.as_stdio().map_err(JsNativeError::from_err)?))?)
       }
     }
   }
@@ -190,37 +190,72 @@ pub struct SpawnArgs {
   needs_npm_process_state: bool,
 }
 
-#[derive(Debug, thiserror::Error)]
+#[cfg(unix)]
+deno_core::js_error_wrapper!(nix::Error, JsNixError, |err| {
+    match err {
+    nix::Error::ECHILD => "NotFound",
+    nix::Error::EINVAL => "TypeError",
+    nix::Error::ENOENT => "NotFound",
+    nix::Error::ENOTTY => "BadResource",
+    nix::Error::EPERM => "PermissionDenied",
+    nix::Error::ESRCH => "NotFound",
+    nix::Error::ELOOP => "FilesystemLoop",
+    nix::Error::ENOTDIR => "NotADirectory",
+    nix::Error::ENETUNREACH => "NetworkUnreachable",
+    nix::Error::EISDIR => "IsADirectory",
+    nix::Error::UnknownErrno => "Error",
+    &nix::Error::ENOTSUP => unreachable!(),
+    _ => "Error",
+  }
+});
+
+#[derive(Debug, thiserror::Error, deno_core::JsError)]
 pub enum ProcessError {
+  #[class(inherit)]
   #[error("Failed to spawn '{command}': {error}")]
   SpawnFailed {
     command: String,
-    #[source]
+    #[source] #[inherit]
     error: Box<ProcessError>,
   },
+  #[class(inherit)]
   #[error("{0}")]
-  Io(#[from] std::io::Error),
+  Io(#[from] #[inherit] std::io::Error),
   #[cfg(unix)]
+  #[class(inherit)]
   #[error(transparent)]
-  Nix(nix::Error),
+  Nix(#[inherit] JsNixError),
+  #[class(inherit)]
   #[error("failed resolving cwd: {0}")]
-  FailedResolvingCwd(#[source] std::io::Error),
+  FailedResolvingCwd(#[source] #[inherit] std::io::Error),
+  #[class(inherit)]
   #[error(transparent)]
-  Permission(#[from] deno_permissions::PermissionCheckError),
+  Permission(#[from] #[inherit] deno_permissions::PermissionCheckError),
+  #[class(inherit)]
   #[error(transparent)]
-  RunPermission(#[from] CheckRunPermissionError),
+  RunPermission(#[from] #[inherit] CheckRunPermissionError),
+  #[class(inherit)]
   #[error(transparent)]
-  Resource(deno_core::error::AnyError),
+  Resource(#[inherit] deno_core::error::ResourceError),
+  #[class(GENERIC)]
   #[error(transparent)]
   BorrowMut(std::cell::BorrowMutError),
+  #[class(GENERIC)]
   #[error(transparent)]
   Which(which::Error),
+  #[class(TYPE)]
   #[error("Child process has already terminated.")]
   ChildProcessAlreadyTerminated,
+  #[class(TYPE)]
   #[error("Invalid pid")]
   InvalidPid,
+  #[class(inherit)]
   #[error(transparent)]
-  Signal(#[from] SignalError),
+  Signal(#[from] #[inherit] SignalError),
+  #[class(inherit)]
+  #[error(transparent)]
+  Other(#[from] #[inherit] JsNativeError),
+  #[class(TYPE)]
   #[error("Missing cmd")]
   MissingCmd, // only for Deno.run
 }
@@ -735,12 +770,14 @@ fn resolve_path(path: &str, cwd: &Path) -> PathBuf {
   deno_path_util::normalize_path(cwd.join(path))
 }
 
-#[derive(Debug, thiserror::Error)]
+#[derive(Debug, thiserror::Error, deno_core::JsError)]
 pub enum CheckRunPermissionError {
+  #[class(inherit)]
   #[error(transparent)]
-  Permission(#[from] deno_permissions::PermissionCheckError),
+  Permission(#[from] #[inherit] deno_permissions::PermissionCheckError),
+  #[class(inherit)]
   #[error("{0}")]
-  Other(deno_core::error::AnyError),
+  Other(#[inherit] JsNativeError),
 }
 
 fn check_run_permission(
@@ -756,7 +793,7 @@ fn check_run_permission(
     if !env_var_names.is_empty() {
       // we don't allow users to launch subprocesses with any LD_ or DYLD_*
       // env vars set because this allows executing code (ex. LD_PRELOAD)
-      return Err(CheckRunPermissionError::Other(deno_core::error::custom_error(
+      return Err(CheckRunPermissionError::Other(JsNativeError::new(
         "NotCapable",
         format!(
           "Requires --allow-all permissions to spawn subprocess with {} environment variable{}.",
@@ -1077,8 +1114,8 @@ mod deprecated {
     use nix::sys::signal::kill as unix_kill;
     use nix::sys::signal::Signal;
     use nix::unistd::Pid;
-    let sig = Signal::try_from(signo).map_err(ProcessError::Nix)?;
-    unix_kill(Pid::from_raw(pid), Some(sig)).map_err(ProcessError::Nix)
+    let sig = Signal::try_from(signo).map_err(|e | ProcessError::Nix(JsNixError(e)))?;
+    unix_kill(Pid::from_raw(pid), Some(sig)).map_err(|e | ProcessError::Nix(JsNixError(e)))
   }
 
   #[cfg(not(unix))]

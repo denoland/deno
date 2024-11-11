@@ -4,6 +4,7 @@ use crate::CancelHandle;
 use crate::CancelableResponseFuture;
 use crate::FetchHandler;
 
+use deno_core::error::JsNativeError;
 use deno_core::futures::FutureExt;
 use deno_core::futures::TryFutureExt;
 use deno_core::futures::TryStreamExt;
@@ -33,7 +34,7 @@ impl FetchHandler for FsFetchHandler {
       let file = tokio::fs::File::open(path).map_err(|_| ()).await?;
       let stream = ReaderStream::new(file)
         .map_ok(hyper::body::Frame::data)
-        .map_err(Into::into);
+        .map_err(JsNativeError::from_err);
       let body = http_body_util::StreamBody::new(stream).boxed();
       let response = http::Response::builder()
         .status(StatusCode::OK)

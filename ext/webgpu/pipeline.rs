@@ -1,6 +1,6 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
-use deno_core::error::AnyError;
+use deno_core::error::ResourceError;
 use deno_core::op2;
 use deno_core::OpState;
 use deno_core::Resource;
@@ -87,7 +87,7 @@ pub fn op_webgpu_create_compute_pipeline(
   #[string] label: Cow<str>,
   #[serde] layout: GPUPipelineLayoutOrGPUAutoLayoutMode,
   #[serde] compute: GpuProgrammableStage,
-) -> Result<WebGpuResult, AnyError> {
+) -> Result<WebGpuResult, ResourceError> {
   let instance = state.borrow::<super::Instance>();
   let device_resource = state
     .resource_table
@@ -155,7 +155,7 @@ pub fn op_webgpu_compute_pipeline_get_bind_group_layout(
   state: &mut OpState,
   #[smi] compute_pipeline_rid: ResourceId,
   index: u32,
-) -> Result<PipelineLayout, AnyError> {
+) -> Result<PipelineLayout, ResourceError> {
   let instance = state.borrow::<super::Instance>();
   let compute_pipeline_resource = state
     .resource_table
@@ -334,7 +334,7 @@ pub struct CreateRenderPipelineArgs {
 pub fn op_webgpu_create_render_pipeline(
   state: &mut OpState,
   #[serde] args: CreateRenderPipelineArgs,
-) -> Result<WebGpuResult, AnyError> {
+) -> Result<WebGpuResult, ResourceError> {
   let instance = state.borrow::<super::Instance>();
   let device_resource = state
     .resource_table
@@ -433,7 +433,7 @@ pub fn op_webgpu_render_pipeline_get_bind_group_layout(
   state: &mut OpState,
   #[smi] render_pipeline_rid: ResourceId,
   index: u32,
-) -> Result<PipelineLayout, AnyError> {
+) -> Result<PipelineLayout, ResourceError> {
   let instance = state.borrow::<super::Instance>();
   let render_pipeline_resource = state
     .resource_table

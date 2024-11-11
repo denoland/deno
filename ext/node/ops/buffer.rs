@@ -1,7 +1,6 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
-use deno_core::anyhow::anyhow;
-use deno_core::anyhow::Result;
+use deno_core::error::JsNativeError;
 use deno_core::op2;
 
 #[op2(fast)]
@@ -20,7 +19,7 @@ pub fn op_transcode(
   #[buffer] source: &[u8],
   #[string] from_encoding: &str,
   #[string] to_encoding: &str,
-) -> Result<Vec<u8>> {
+) -> Result<Vec<u8>, JsNativeError> {
   match (from_encoding, to_encoding) {
     ("utf8", "ascii") => Ok(utf8_to_ascii(source)),
     ("utf8", "latin1") => Ok(utf8_to_latin1(source)),
@@ -29,7 +28,7 @@ pub fn op_transcode(
     ("latin1", "utf16le") | ("ascii", "utf16le") => {
       Ok(latin1_ascii_to_utf16le(source))
     }
-    (from, to) => Err(anyhow!("Unable to transcode Buffer {from}->{to}")),
+    (from, to) => Err(JsNativeError::generic(format!("Unable to transcode Buffer {from}->{to}"))),
   }
 }
 
@@ -42,18 +41,18 @@ fn latin1_ascii_to_utf16le(source: &[u8]) -> Vec<u8> {
   result
 }
 
-fn utf16le_to_utf8(source: &[u8]) -> Result<Vec<u8>> {
+fn utf16le_to_utf8(source: &[u8]) -> Result<Vec<u8>, JsNativeError> {
   let ucs2_vec: Vec<u16> = source
     .chunks(2)
     .map(|chunk| u16::from_le_bytes([chunk[0], chunk[1]]))
     .collect();
   String::from_utf16(&ucs2_vec)
     .map(|utf8_string| utf8_string.into_bytes())
-    .map_err(|e| anyhow!("Invalid UTF-16 sequence: {}", e))
+    .map_err(|e|JsNativeError::generic(format!("Invalid UTF-16 sequence: {}", e)))
 }
 
-fn utf8_to_utf16le(source: &[u8]) -> Result<Vec<u8>> {
-  let utf8_string = std::str::from_utf8(source)?;
+fn utf8_to_utf16le(source: &[u8]) -> Result<Vec<u8>, JsNativeError> {
+  let utf8_string = std::str::from_utf8(source).map_err(JsNativeError::from_err)?;
   let ucs2_vec: Vec<u16> = utf8_string.encode_utf16().collect();
   let bytes: Vec<u8> = ucs2_vec.iter().flat_map(|&x| x.to_le_bytes()).collect();
   Ok(bytes)

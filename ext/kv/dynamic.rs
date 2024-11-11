@@ -13,8 +13,8 @@ use crate::QueueMessageHandle;
 use crate::ReadRange;
 use crate::SnapshotReadOptions;
 use async_trait::async_trait;
-use deno_core::error::type_error;
 use deno_core::error::AnyError;
+use deno_core::error::JsNativeError;
 use deno_core::OpState;
 use denokv_proto::CommitResult;
 use denokv_proto::ReadRangeOutput;
@@ -62,7 +62,7 @@ impl DatabaseHandler for MultiBackendDbHandler {
     &self,
     state: Rc<RefCell<OpState>>,
     path: Option<String>,
-  ) -> Result<Self::DB, AnyError> {
+  ) -> Result<Self::DB, JsNativeError> {
     for (prefixes, handler) in &self.backends {
       for &prefix in *prefixes {
         if prefix.is_empty() {
@@ -76,7 +76,7 @@ impl DatabaseHandler for MultiBackendDbHandler {
         }
       }
     }
-    Err(type_error(format!(
+    Err(JsNativeError::type_error(format!(
       "No backend supports the given path: {:?}",
       path
     )))
@@ -89,7 +89,7 @@ pub trait DynamicDbHandler {
     &self,
     state: Rc<RefCell<OpState>>,
     path: Option<String>,
-  ) -> Result<RcDynamicDb, AnyError>;
+  ) -> Result<RcDynamicDb, JsNativeError>;
 }
 
 #[async_trait(?Send)]
@@ -100,7 +100,7 @@ impl DatabaseHandler for Box<dyn DynamicDbHandler> {
     &self,
     state: Rc<RefCell<OpState>>,
     path: Option<String>,
-  ) -> Result<Self::DB, AnyError> {
+  ) -> Result<Self::DB, JsNativeError> {
     (**self).dyn_open(state, path).await
   }
 }
@@ -115,7 +115,7 @@ where
     &self,
     state: Rc<RefCell<OpState>>,
     path: Option<String>,
-  ) -> Result<RcDynamicDb, AnyError> {
+  ) -> Result<RcDynamicDb, JsNativeError> {
     Ok(RcDynamicDb(Rc::new(self.open(state, path).await?)))
   }
 }

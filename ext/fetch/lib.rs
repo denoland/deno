@@ -28,6 +28,7 @@ use deno_core::url;
 use deno_core::url::Url;
 use deno_core::AsyncRefCell;
 use deno_core::AsyncResult;
+use deno_core::error::JsNativeError;
 use deno_core::BufView;
 use deno_core::ByteString;
 use deno_core::CancelFuture;
@@ -86,7 +87,7 @@ pub struct Options {
   pub proxy: Option<Proxy>,
   #[allow(clippy::type_complexity)]
   pub request_builder_hook: Option<
-    fn(&mut http::Request<ReqBody>) -> Result<(), deno_core::error::AnyError>,
+    fn(&mut http::Request<ReqBody>) -> Result<(), JsNativeError>,
   >,
   pub unsafely_ignore_certificate_errors: Option<Vec<String>>,
   pub client_cert_chain_and_key: TlsKeys,
@@ -96,7 +97,7 @@ pub struct Options {
 impl Options {
   pub fn root_cert_store(
     &self,
-  ) -> Result<Option<RootCertStore>, deno_core::error::AnyError> {
+  ) -> Result<Option<RootCertStore>, JsNativeError> {
     Ok(match &self.root_cert_store_provider {
       Some(provider) => Some(provider.get_or_try_init()?.clone()),
       None => None,
@@ -145,47 +146,67 @@ deno_core::extension!(deno_fetch,
   },
 );
 
-#[derive(Debug, thiserror::Error)]
+#[derive(Debug, thiserror::Error, deno_core::JsError)]
 pub enum FetchError {
+  #[class(inherit)]
   #[error(transparent)]
-  Resource(deno_core::error::AnyError),
+  Resource(#[from] #[inherit] deno_core::error::ResourceError),
+  #[class(inherit)]
   #[error(transparent)]
-  Permission(#[from] PermissionCheckError),
+  Permission(#[from] #[inherit] PermissionCheckError),
+  #[class(TYPE)]
   #[error("NetworkError when attempting to fetch resource")]
   NetworkError,
+  #[class(TYPE)]
   #[error("Fetching files only supports the GET method: received {0}")]
   FsNotGet(Method),
+  #[class(TYPE)]
   #[error("Invalid URL {0}")]
   InvalidUrl(Url),
+  #[class(TYPE)]
   #[error(transparent)]
   InvalidHeaderName(#[from] http::header::InvalidHeaderName),
+  #[class(TYPE)]
   #[error(transparent)]
   InvalidHeaderValue(#[from] http::header::InvalidHeaderValue),
+  #[class(TYPE)]
   #[error("{0:?}")]
   DataUrl(data_url::DataUrlError),
+  #[class(TYPE)]
   #[error("{0:?}")]
   Base64(data_url::forgiving_base64::InvalidBase64),
+  #[class(TYPE)]
   #[error("Blob for the given URL not found.")]
   BlobNotFound,
+  #[class(TYPE)]
   #[error("Url scheme '{0}' not supported")]
   SchemeNotSupported(String),
+  #[class(TYPE)]
   #[error("Request was cancelled")]
   RequestCanceled,
+  #[class(GENERIC)]
   #[error(transparent)]
   Http(#[from] http::Error),
+  #[class(inherit)]
   #[error(transparent)]
-  ClientCreate(#[from] HttpClientCreateError),
+  ClientCreate(#[from] #[inherit] HttpClientCreateError),
+  #[class(inherit)]
   #[error(transparent)]
-  Url(#[from] url::ParseError),
+  Url(#[from] #[inherit] url::ParseError),
+  #[class(TYPE)]
   #[error(transparent)]
   Method(#[from] http::method::InvalidMethod),
+  #[class(TYPE)]
   #[error(transparent)]
   ClientSend(#[from] ClientSendError),
+  #[class(inherit)]
   #[error(transparent)]
-  RequestBuilderHook(deno_core::error::AnyError),
+  RequestBuilderHook(#[inherit] JsNativeError),
+  #[class(inherit)]
   #[error(transparent)]
-  Io(#[from] std::io::Error),
+  Io(#[from] #[inherit] std::io::Error),
   // Only used for node upgrade
+  #[class("Http")]
   #[error(transparent)]
   Hyper(#[from] hyper::Error),
 }
@@ -274,9 +295,7 @@ pub fn create_client_from_options(
 #[allow(clippy::type_complexity)]
 pub struct ResourceToBodyAdapter(
   Rc<dyn Resource>,
-  Option<
-    Pin<Box<dyn Future<Output = Result<BufView, deno_core::error::AnyError>>>>,
-  >,
+  Option<Pin<Box<dyn Future<Output = Result<BufView, JsNativeError>>>>>,
 );
 
 impl ResourceToBodyAdapter {
@@ -292,7 +311,7 @@ unsafe impl Send for ResourceToBodyAdapter {}
 unsafe impl Sync for ResourceToBodyAdapter {}
 
 impl Stream for ResourceToBodyAdapter {
-  type Item = Result<Bytes, deno_core::error::AnyError>;
+  type Item = Result<Bytes, JsNativeError>;
 
   fn poll_next(
     self: Pin<&mut Self>,
@@ -322,7 +341,7 @@ impl Stream for ResourceToBodyAdapter {
 
 impl hyper::body::Body for ResourceToBodyAdapter {
   type Data = Bytes;
-  type Error = deno_core::error::AnyError;
+  type Error = JsNativeError;
 
   fn poll_frame(
     self: Pin<&mut Self>,
@@ -397,10 +416,7 @@ where
   FP: FetchPermissions + 'static,
 {
   let (client, allow_host) = if let Some(rid) = client_rid {
-    let r = state
-      .resource_table
-      .get::<HttpClientResource>(rid)
-      .map_err(FetchError::Resource)?;
+    let r = state.resource_table.get::<HttpClientResource>(rid)?;
     (r.client.clone(), r.allow_host)
   } else {
     (get_or_create_client_from_state(state)?, false)
@@ -461,10 +477,7 @@ where
               .boxed()
           }
           (_, Some(resource)) => {
-            let resource = state
-              .resource_table
-              .take_any(resource)
-              .map_err(FetchError::Resource)?;
+            let resource = state.resource_table.take_any(resource)?;
             match resource.size_hint() {
               (body_size, Some(n)) if body_size == n && body_size > 0 => {
                 con_len = Some(body_size);
@@ -608,8 +621,7 @@ pub async fn op_fetch_send(
   let request = state
     .borrow_mut()
     .resource_table
-    .take::<FetchRequestResource>(rid)
-    .map_err(FetchError::Resource)?;
+    .take::<FetchRequestResource>(rid)?;
 
   let request = Rc::try_unwrap(request)
     .ok()
@@ -789,7 +801,7 @@ impl Resource for FetchResponseResource {
             Some(_) => match reader.as_mut().next().await.unwrap() {
               Ok(chunk) => assert!(chunk.is_empty()),
               Err(err) => {
-                break Err(deno_core::error::type_error(err.to_string()))
+                break Err(JsNativeError::type_error(err.to_string()))
               }
             },
             None => break Ok(BufView::empty()),
@@ -798,7 +810,10 @@ impl Resource for FetchResponseResource {
       };
 
       let cancel_handle = RcRef::map(self, |r| &r.cancel);
-      fut.try_or_cancel(cancel_handle).await
+      fut
+        .try_or_cancel(cancel_handle)
+        .await
+        .map_err(JsNativeError::from_err)
     })
   }
 
@@ -933,7 +948,8 @@ impl Default for CreateHttpClientOptions {
   }
 }
 
-#[derive(Debug, thiserror::Error)]
+#[derive(Debug, thiserror::Error, deno_core::JsError)]
+#[class(TYPE)]
 pub enum HttpClientCreateError {
   #[error(transparent)]
   Tls(deno_tls::TlsError),
@@ -943,8 +959,9 @@ pub enum HttpClientCreateError {
   InvalidProxyUrl,
   #[error("Cannot create Http Client: either `http1` or `http2` needs to be set to true")]
   HttpVersionSelectionInvalid,
+  #[class(inherit)]
   #[error(transparent)]
-  RootCertStore(deno_core::error::AnyError),
+  RootCertStore(#[inherit] JsNativeError),
 }
 
 /// Create new instance of async Client. This client supports
@@ -1132,14 +1149,15 @@ impl Client {
       .oneshot(req)
       .await
       .map_err(|e| ClientSendError { uri, source: e })?;
-    Ok(resp.map(|b| b.map_err(|e| deno_core::anyhow::anyhow!(e)).boxed()))
+    Ok(
+      resp
+        .map(|b| b.map_err(|e| JsNativeError::generic(e.to_string())).boxed()),
+    )
   }
 }
 
-pub type ReqBody =
-  http_body_util::combinators::BoxBody<Bytes, deno_core::error::AnyError>;
-pub type ResBody =
-  http_body_util::combinators::BoxBody<Bytes, deno_core::error::AnyError>;
+pub type ReqBody = http_body_util::combinators::BoxBody<Bytes, JsNativeError>;
+pub type ResBody = http_body_util::combinators::BoxBody<Bytes, JsNativeError>;
 
 /// Copied from https://github.com/seanmonstar/reqwest/blob/b9d62a0323d96f11672a61a17bf8849baec00275/src/async_impl/request.rs#L572
 /// Check the request URL for a "username:password" type authority, and if

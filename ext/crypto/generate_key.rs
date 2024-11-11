@@ -15,10 +15,12 @@ use serde::Deserialize;
 
 use crate::shared::*;
 
-#[derive(Debug, thiserror::Error)]
+#[derive(Debug, thiserror::Error, deno_core::JsError)]
+#[class("DOMExceptionOperationError")]
 pub enum GenerateKeyError {
+  #[class(inherit)]
   #[error(transparent)]
-  General(#[from] SharedError),
+  General(#[from] #[inherit] SharedError),
   #[error("Bad public exponent")]
   BadPublicExponent,
   #[error("Invalid HMAC key length")]

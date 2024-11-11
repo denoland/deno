@@ -6,7 +6,7 @@ use deno_core::v8;
 use deno_core::OpState;
 use deno_node::NODE_ENV_VAR_ALLOWLIST;
 use deno_path_util::normalize_path;
-use deno_permissions::PermissionsContainer;
+use deno_permissions::{PermissionCheckError, PermissionsContainer};
 use serde::Serialize;
 use std::collections::HashMap;
 use std::env;
@@ -70,22 +70,29 @@ deno_core::extension!(
   },
 );
 
-#[derive(Debug, thiserror::Error)]
+#[derive(Debug, thiserror::Error, deno_core::JsError)]
 pub enum OsError {
+  #[class(inherit)]
   #[error(transparent)]
-  Permission(#[from] deno_permissions::PermissionCheckError),
+  Permission(#[from] #[inherit] PermissionCheckError),
+  #[class("InvalidData")]
   #[error("File name or path {0:?} is not valid UTF-8")]
   InvalidUtf8(std::ffi::OsString),
+  #[class(TYPE)]
   #[error("Key is an empty string.")]
   EnvEmptyKey,
+  #[class(TYPE)]
   #[error("Key contains invalid characters: {0:?}")]
   EnvInvalidKey(String),
+  #[class(TYPE)]
   #[error("Value contains invalid characters: {0:?}")]
   EnvInvalidValue(String),
+  #[class(inherit)]
   #[error(transparent)]
-  Var(#[from] env::VarError),
+  Var(#[from] #[inherit] env::VarError),
+  #[class(inherit)]
   #[error("{0}")]
-  Io(#[from] std::io::Error),
+  Io(#[from] #[inherit] std::io::Error),
 }
 
 #[op2]
@@ -128,7 +135,7 @@ fn op_set_env(
 #[serde]
 fn op_env(
   state: &mut OpState,
-) -> Result<HashMap<String, String>, deno_core::error::AnyError> {
+) -> Result<HashMap<String, String>, PermissionCheckError> {
   state.borrow_mut::<PermissionsContainer>().check_env_all()?;
   Ok(env::vars().collect())
 }
@@ -194,7 +201,7 @@ fn op_exit(state: &mut OpState) {
 #[serde]
 fn op_loadavg(
   state: &mut OpState,
-) -> Result<(f64, f64, f64), deno_core::error::AnyError> {
+) -> Result<(f64, f64, f64), PermissionCheckError> {
   state
     .borrow_mut::<PermissionsContainer>()
     .check_sys("loadavg", "Deno.loadavg()")?;
@@ -205,7 +212,7 @@ fn op_loadavg(
 #[string]
 fn op_hostname(
   state: &mut OpState,
-) -> Result<String, deno_core::error::AnyError> {
+) -> Result<String, PermissionCheckError> {
   state
     .borrow_mut::<PermissionsContainer>()
     .check_sys("hostname", "Deno.hostname()")?;
@@ -216,7 +223,7 @@ fn op_hostname(
 #[string]
 fn op_os_release(
   state: &mut OpState,
-) -> Result<String, deno_core::error::AnyError> {
+) -> Result<String, PermissionCheckError> {
   state
     .borrow_mut::<PermissionsContainer>()
     .check_sys("osRelease", "Deno.osRelease()")?;
@@ -279,7 +286,7 @@ impl From<netif::Interface> for NetworkInterface {
 #[serde]
 fn op_system_memory_info(
   state: &mut OpState,
-) -> Result<Option<sys_info::MemInfo>, deno_core::error::AnyError> {
+) -> Result<Option<sys_info::MemInfo>, PermissionCheckError> {
   state
     .borrow_mut::<PermissionsContainer>()
     .check_sys("systemMemoryInfo", "Deno.systemMemoryInfo()")?;
@@ -291,7 +298,7 @@ fn op_system_memory_info(
 #[smi]
 fn op_gid(
   state: &mut OpState,
-) -> Result<Option<u32>, deno_core::error::AnyError> {
+) -> Result<Option<u32>, PermissionCheckError> {
   state
     .borrow_mut::<PermissionsContainer>()
     .check_sys("gid", "Deno.gid()")?;
@@ -307,7 +314,7 @@ fn op_gid(
 #[smi]
 fn op_gid(
   state: &mut OpState,
-) -> Result<Option<u32>, deno_core::error::AnyError> {
+) -> Result<Option<u32>, PermissionCheckError> {
   state
     .borrow_mut::<PermissionsContainer>()
     .check_sys("gid", "Deno.gid()")?;
@@ -319,7 +326,7 @@ fn op_gid(
 #[smi]
 fn op_uid(
   state: &mut OpState,
-) -> Result<Option<u32>, deno_core::error::AnyError> {
+) -> Result<Option<u32>, PermissionCheckError> {
   state
     .borrow_mut::<PermissionsContainer>()
     .check_sys("uid", "Deno.uid()")?;
@@ -335,7 +342,7 @@ fn op_uid(
 #[smi]
 fn op_uid(
   state: &mut OpState,
-) -> Result<Option<u32>, deno_core::error::AnyError> {
+) -> Result<Option<u32>, PermissionCheckError> {
   state
     .borrow_mut::<PermissionsContainer>()
     .check_sys("uid", "Deno.uid()")?;
@@ -513,7 +520,7 @@ fn rss() -> usize {
   }
 }
 
-fn os_uptime(state: &mut OpState) -> Result<u64, deno_core::error::AnyError> {
+fn os_uptime(state: &mut OpState) -> Result<u64, PermissionCheckError> {
   state
     .borrow_mut::<PermissionsContainer>()
     .check_sys("osUptime", "Deno.osUptime()")?;
@@ -524,6 +531,6 @@ fn os_uptime(state: &mut OpState) -> Result<u64, deno_core::error::AnyError> {
 #[number]
 fn op_os_uptime(
   state: &mut OpState,
-) -> Result<u64, deno_core::error::AnyError> {
+) -> Result<u64, PermissionCheckError> {
   os_uptime(state)
 }

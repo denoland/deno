@@ -15,6 +15,7 @@ use deno_core::BufView;
 use deno_core::ByteString;
 use deno_core::CancelFuture;
 use deno_core::CancelHandle;
+use deno_core::error::ResourceError;
 use deno_core::JsBuffer;
 use deno_core::OpState;
 use deno_core::RcRef;
@@ -109,14 +110,20 @@ impl Resource for Http2ServerSendResponse {
   }
 }
 
-#[derive(Debug, thiserror::Error)]
+#[derive(Debug, thiserror::Error, deno_core::JsError)]
 pub enum Http2Error {
+  #[class(inherit)]
   #[error(transparent)]
-  Resource(deno_core::error::AnyError),
+  Resource(#[from] #[inherit] ResourceError),
+  #[class(inherit)]
   #[error(transparent)]
-  UrlParse(#[from] url::ParseError),
+  UrlParse(#[from] #[inherit] url::ParseError),
+  #[class(GENERIC)]
   #[error(transparent)]
   H2(#[from] h2::Error),
+  #[class(inherit)]
+  #[error(transparent)]
+  TakeNetworkStream(#[from] #[inherit] deno_net::raw::TakeNetworkStreamError),
 }
 
 #[op2(async)]
@@ -130,7 +137,7 @@ pub async fn op_http2_connect(
   let network_stream = {
     let mut state = state.borrow_mut();
     take_network_stream_resource(&mut state.resource_table, rid)
-      .map_err(Http2Error::Resource)?
+      ?
   };
 
   let url = Url::parse(&url)?;
@@ -157,7 +164,7 @@ pub async fn op_http2_listen(
 ) -> Result<ResourceId, Http2Error> {
   let stream =
     take_network_stream_resource(&mut state.borrow_mut().resource_table, rid)
-      .map_err(Http2Error::Resource)?;
+      ?;
 
   let conn = h2::server::Builder::new().handshake(stream).await?;
   Ok(
@@ -183,7 +190,7 @@ pub async fn op_http2_accept(
     .borrow()
     .resource_table
     .get::<Http2ServerConnection>(rid)
-    .map_err(Http2Error::Resource)?;
+    ?;
   let mut conn = RcRef::map(&resource, |r| &r.conn).borrow_mut().await;
   if let Some(res) = conn.accept().await {
     let (req, resp) = res?;
@@ -250,7 +257,7 @@ pub async fn op_http2_send_response(
     .borrow()
     .resource_table
     .get::<Http2ServerSendResponse>(rid)
-    .map_err(Http2Error::Resource)?;
+    ?;
   let mut send_response = RcRef::map(resource, |r| &r.send_response)
     .borrow_mut()
     .await;
@@ -280,7 +287,7 @@ pub async fn op_http2_poll_client_connection(
     .borrow()
     .resource_table
     .get::<Http2ClientConn>(rid)
-    .map_err(Http2Error::Resource)?;
+    ?;
 
   let cancel_handle = RcRef::map(resource.clone(), |this| &this.cancel_handle);
   let mut conn = RcRef::map(resource, |this| &this.conn).borrow_mut().await;
@@ -311,7 +318,7 @@ pub async fn op_http2_client_request(
     .borrow()
     .resource_table
     .get::<Http2Client>(client_rid)
-    .map_err(Http2Error::Resource)?;
+    ?;
 
   let url = resource.url.clone();
 
@@ -347,7 +354,7 @@ pub async fn op_http2_client_request(
     state
       .resource_table
       .get::<Http2Client>(client_rid)
-      .map_err(Http2Error::Resource)?
+      ?
   };
   let mut client = RcRef::map(&resource, |r| &r.client).borrow_mut().await;
   poll_fn(|cx| client.poll_ready(cx)).await?;
@@ -371,7 +378,7 @@ pub async fn op_http2_client_send_data(
     .borrow()
     .resource_table
     .get::<Http2ClientStream>(stream_rid)
-    .map_err(Http2Error::Resource)?;
+    ?;
   let mut stream = RcRef::map(&resource, |r| &r.stream).borrow_mut().await;
 
   stream.send_data(data.to_vec().into(), end_of_stream)?;
@@ -383,7 +390,7 @@ pub async fn op_http2_client_reset_stream(
   state: Rc<RefCell<OpState>>,
   #[smi] stream_rid: ResourceId,
   #[smi] code: u32,
-) -> Result<(), deno_core::error::AnyError> {
+) -> Result<(), ResourceError> {
   let resource = state
     .borrow()
     .resource_table
@@ -403,7 +410,7 @@ pub async fn op_http2_client_send_trailers(
     .borrow()
     .resource_table
     .get::<Http2ClientStream>(stream_rid)
-    .map_err(Http2Error::Resource)?;
+    ?;
   let mut stream = RcRef::map(&resource, |r| &r.stream).borrow_mut().await;
 
   let mut trailers_map = http::HeaderMap::new();
@@ -436,7 +443,7 @@ pub async fn op_http2_client_get_response(
     .borrow()
     .resource_table
     .get::<Http2ClientStream>(stream_rid)
-    .map_err(Http2Error::Resource)?;
+    ?;
   let mut response_future =
     RcRef::map(&resource, |r| &r.response).borrow_mut().await;
 
@@ -507,7 +514,7 @@ pub async fn op_http2_client_get_response_body_chunk(
     .borrow()
     .resource_table
     .get::<Http2ClientResponseBody>(body_rid)
-    .map_err(Http2Error::Resource)?;
+    ?;
   let mut body = RcRef::map(&resource, |r| &r.body).borrow_mut().await;
 
   loop {
@@ -550,7 +557,7 @@ pub async fn op_http2_client_get_response_body_chunk(
 pub async fn op_http2_client_get_response_trailers(
   state: Rc<RefCell<OpState>>,
   #[smi] body_rid: ResourceId,
-) -> Result<Option<Vec<(ByteString, ByteString)>>, deno_core::error::AnyError> {
+) -> Result<Option<Vec<(ByteString, ByteString)>>, ResourceError> {
   let resource = state
     .borrow()
     .resource_table

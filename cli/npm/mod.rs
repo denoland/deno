@@ -131,7 +131,7 @@ pub trait CliNpmResolver: NpmResolver {
     &self,
     permissions: &mut dyn NodePermissions,
     path: &'a Path,
-  ) -> Result<Cow<'a, Path>, AnyError>;
+  ) -> Result<Cow<'a, Path>, deno_runtime::deno_permissions::PermissionCheckError>;
 
   /// Returns a hash returning the state of the npm resolver
   /// or `None` if the state currently can't be determined.

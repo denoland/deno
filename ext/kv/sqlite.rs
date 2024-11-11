@@ -15,8 +15,7 @@ use std::sync::OnceLock;
 
 use crate::DatabaseHandler;
 use async_trait::async_trait;
-use deno_core::error::type_error;
-use deno_core::error::AnyError;
+use deno_core::error::JsNativeError;
 use deno_core::unsync::spawn_blocking;
 use deno_core::OpState;
 use deno_path_util::normalize_path;
@@ -84,6 +83,8 @@ impl<P: SqliteDbHandlerPermissions> SqliteDbHandler<P> {
   }
 }
 
+deno_core::js_error_wrapper!(SqliteBackendError, JsSqliteBackendError, "TypeError");
+
 #[async_trait(?Send)]
 impl<P: SqliteDbHandlerPermissions> DatabaseHandler for SqliteDbHandler<P> {
   type DB = denokv_sqlite::Sqlite;
@@ -92,12 +93,12 @@ impl<P: SqliteDbHandlerPermissions> DatabaseHandler for SqliteDbHandler<P> {
     &self,
     state: Rc<RefCell<OpState>>,
     path: Option<String>,
-  ) -> Result<Self::DB, AnyError> {
+  ) -> Result<Self::DB, JsNativeError> {
     #[must_use = "the resolved return value to mitigate time-of-check to time-of-use issues"]
     fn validate_path<P: SqliteDbHandlerPermissions + 'static>(
       state: &RefCell<OpState>,
       path: Option<String>,
-    ) -> Result<Option<String>, AnyError> {
+    ) -> Result<Option<String>, JsNativeError> {
       let Some(path) = path else {
         return Ok(None);
       };
@@ -105,18 +106,22 @@ impl<P: SqliteDbHandlerPermissions> DatabaseHandler for SqliteDbHandler<P> {
         return Ok(Some(path));
       }
       if path.is_empty() {
-        return Err(type_error("Filename cannot be empty"));
+        return Err(JsNativeError::type_error("Filename cannot be empty"));
       }
       if path.starts_with(':') {
-        return Err(type_error(
+        return Err(JsNativeError::type_error(
           "Filename cannot start with ':' unless prefixed with './'",
         ));
       }
       {
         let mut state = state.borrow_mut();
         let permissions = state.borrow_mut::<P>();
-        let path = permissions.check_read(&path, "Deno.openKv")?;
-        let path = permissions.check_write(&path, "Deno.openKv")?;
+        let path = permissions
+          .check_read(&path, "Deno.openKv")
+          .map_err(JsNativeError::from_err)?;
+        let path = permissions
+          .check_write(&path, "Deno.openKv")
+          .map_err(JsNativeError::from_err)?;
         Ok(Some(path.to_string_lossy().to_string()))
       }
     }
@@ -136,8 +141,7 @@ impl<P: SqliteDbHandlerPermissions> DatabaseHandler for SqliteDbHandler<P> {
           (Some(path), _) => {
             let flags =
               OpenFlags::default().difference(OpenFlags::SQLITE_OPEN_URI);
-            let resolved_path = canonicalize_path(&PathBuf::from(path))
-              .map_err(anyhow::Error::from)?;
+            let resolved_path = canonicalize_path(&PathBuf::from(path))?;
             let path = path.to_string();
             (
               Arc::new(move || {
@@ -161,7 +165,8 @@ impl<P: SqliteDbHandlerPermissions> DatabaseHandler for SqliteDbHandler<P> {
       })
     })
     .await
-    .unwrap()?;
+    .unwrap()
+    .map_err(|e| JsNativeError::from_err(JsSqliteBackendError::from(e)))?;
 
     let notifier = if let Some(notifier_key) = notifier_key {
       SQLITE_NOTIFIERS_MAP
@@ -197,11 +202,14 @@ impl<P: SqliteDbHandlerPermissions> DatabaseHandler for SqliteDbHandler<P> {
       notifier,
       config,
     )
+    .map_err(|e| JsNativeError::generic(e.to_string()))
   }
 }
 
 /// Same as Path::canonicalize, but also handles non-existing paths.
-fn canonicalize_path(path: &Path) -> Result<PathBuf, AnyError> {
+fn canonicalize_path(
+  path: &Path,
+) -> Result<PathBuf, deno_core::error::AnyError> {
   let path = normalize_path(path);
   let mut path = path;
   let mut names_stack = Vec::new();

@@ -27,6 +27,7 @@ use std::path::Path;
 use std::path::PathBuf;
 use std::rc::Rc;
 use std::sync::Arc;
+use deno_core::error::GENERIC_ERROR;
 use tokio::sync::mpsc;
 
 deno_core::extension!(
@@ -109,16 +110,31 @@ fn starts_with_canonicalized(path: &Path, prefix: &str) -> bool {
   }
 }
 
-#[derive(Debug, thiserror::Error)]
+deno_core::js_error_wrapper!(NotifyError, JsNotifyError, |err| {
+  match &err.kind {
+    notify::ErrorKind::Generic(_) => GENERIC_ERROR,
+    notify::ErrorKind::Io(e) => e.get_class(),
+    notify::ErrorKind::PathNotFound => "NotFound",
+    notify::ErrorKind::WatchNotFound => "NotFound",
+    notify::ErrorKind::InvalidConfig(_) => "InvalidData",
+    notify::ErrorKind::MaxFilesWatch => GENERIC_ERROR,
+  }
+});
+
+#[derive(Debug, thiserror::Error, deno_core::JsError)]
 pub enum FsEventsError {
+  #[class(inherit)]
   #[error(transparent)]
-  Resource(deno_core::error::AnyError),
+  Resource(#[from] #[inherit] deno_core::error::ResourceError),
+  #[class(inherit)]
   #[error(transparent)]
-  Permission(#[from] deno_permissions::PermissionCheckError),
+  Permission(#[from] #[inherit] deno_permissions::PermissionCheckError),
+  #[class(inherit)]
   #[error(transparent)]
-  Notify(#[from] NotifyError),
+  Notify(#[inherit] JsNotifyError),
+  #[class(inherit)]
   #[error(transparent)]
-  Canceled(#[from] deno_core::Canceled),
+  Canceled(#[from] #[inherit] deno_core::Canceled),
 }
 
 fn start_watcher(
@@ -136,7 +152,7 @@ fn start_watcher(
   let sender_clone = senders.clone();
   let watcher: RecommendedWatcher = Watcher::new(
     move |res: Result<NotifyEvent, NotifyError>| {
-      let res2 = res.map(FsEvent::from).map_err(FsEventsError::Notify);
+      let res2 = res.map(FsEvent::from).map_err(|e| FsEventsError::Notify(JsNotifyError(e)));
       for (paths, sender) in sender_clone.lock().iter() {
         // Ignore result, if send failed it means that watcher was already closed,
         // but not all messages have been flushed.
@@ -155,7 +171,7 @@ fn start_watcher(
       }
     },
     Default::default(),
-  )?;
+  ).map_err(|e| FsEventsError::Notify(JsNotifyError(e)))?;
 
   state.put::<WatcherState>(WatcherState { watcher, senders });
 
@@ -184,7 +200,7 @@ fn op_fs_events_open(
       .check_read(path, "Deno.watchFs()")?;
 
     let watcher = state.borrow_mut::<WatcherState>();
-    watcher.watcher.watch(&path, recursive_mode)?;
+    watcher.watcher.watch(&path, recursive_mode).map_err(|e| FsEventsError::Notify(JsNotifyError(e)))?;
   }
   let resource = FsEventsResource {
     receiver: AsyncRefCell::new(receiver),
@@ -203,14 +219,13 @@ async fn op_fs_events_poll(
   let resource = state
     .borrow()
     .resource_table
-    .get::<FsEventsResource>(rid)
-    .map_err(FsEventsError::Resource)?;
+    .get::<FsEventsResource>(rid)?;
   let mut receiver = RcRef::map(&resource, |r| &r.receiver).borrow_mut().await;
   let cancel = RcRef::map(resource, |r| &r.cancel);
   let maybe_result = receiver.recv().or_cancel(cancel).await?;
   match maybe_result {
     Some(Ok(value)) => Ok(Some(value)),
-    Some(Err(err)) => Err(FsEventsError::Notify(err)),
+    Some(Err(err)) => Err(FsEventsError::Notify(JsNotifyError(err))),
     None => Ok(None),
   }
 }

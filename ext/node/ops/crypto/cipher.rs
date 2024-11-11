@@ -47,14 +47,17 @@ pub struct DecipherContext {
   decipher: Rc<RefCell<Decipher>>,
 }
 
-#[derive(Debug, thiserror::Error)]
+#[derive(Debug, thiserror::Error, deno_core::JsError)]
 pub enum CipherContextError {
+  #[class(TYPE)]
   #[error("Cipher context is already in use")]
   ContextInUse,
+  #[class(inherit)]
   #[error("{0}")]
-  Resource(deno_core::error::AnyError),
+  Resource(#[from] #[inherit] deno_core::error::ResourceError),
+  #[class(inherit)]
   #[error(transparent)]
-  Cipher(#[from] CipherError),
+  Cipher(#[from] #[inherit] CipherError),
 }
 
 impl CipherContext {
@@ -94,14 +97,17 @@ impl CipherContext {
   }
 }
 
-#[derive(Debug, thiserror::Error)]
+#[derive(Debug, thiserror::Error, deno_core::JsError)]
 pub enum DecipherContextError {
+  #[class(TYPE)]
   #[error("Decipher context is already in use")]
   ContextInUse,
+  #[class(inherit)]
   #[error("{0}")]
-  Resource(deno_core::error::AnyError),
+  Resource(#[from] #[inherit] deno_core::error::ResourceError),
+  #[class(inherit)]
   #[error(transparent)]
-  Decipher(#[from] DecipherError),
+  Decipher(#[from] #[inherit] DecipherError),
 }
 
 impl DecipherContext {
@@ -150,16 +156,21 @@ impl Resource for DecipherContext {
   }
 }
 
-#[derive(Debug, thiserror::Error)]
+#[derive(Debug, thiserror::Error, deno_core::JsError)]
 pub enum CipherError {
+  #[class(TYPE)]
   #[error("IV length must be 12 bytes")]
   InvalidIvLength,
+  #[class(RANGE)]
   #[error("Invalid key length")]
   InvalidKeyLength,
+  #[class(TYPE)]
   #[error("Invalid initialization vector")]
   InvalidInitializationVector,
+  #[class(TYPE)]
   #[error("Cannot pad the input data")]
   CannotPadInputData,
+  #[class(TYPE)]
   #[error("Unknown cipher {0}")]
   UnknownCipher(String),
 }
@@ -360,22 +371,30 @@ impl Cipher {
   }
 }
 
-#[derive(Debug, thiserror::Error)]
+#[derive(Debug, thiserror::Error, deno_core::JsError)]
 pub enum DecipherError {
+  #[class(TYPE)]
   #[error("IV length must be 12 bytes")]
   InvalidIvLength,
+  #[class(RANGE)]
   #[error("Invalid key length")]
   InvalidKeyLength,
+  #[class(TYPE)]
   #[error("Invalid initialization vector")]
   InvalidInitializationVector,
+  #[class(TYPE)]
   #[error("Cannot unpad the input data")]
   CannotUnpadInputData,
+  #[class(TYPE)]
   #[error("Failed to authenticate data")]
   DataAuthenticationFailed,
+  #[class(TYPE)]
   #[error("setAutoPadding(false) not supported for Aes128Gcm yet")]
   SetAutoPaddingFalseAes128GcmUnsupported,
+  #[class(TYPE)]
   #[error("setAutoPadding(false) not supported for Aes256Gcm yet")]
   SetAutoPaddingFalseAes256GcmUnsupported,
+  #[class(TYPE)]
   #[error("Unknown cipher {0}")]
   UnknownCipher(String),
 }

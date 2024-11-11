@@ -118,18 +118,23 @@ pub struct CreateWorkerArgs {
   close_on_idle: bool,
 }
 
-#[derive(Debug, thiserror::Error)]
+#[derive(Debug, thiserror::Error, deno_core::JsError)]
 pub enum CreateWorkerError {
+  #[class("DOMExceptionNotSupportedError")]
   #[error("Classic workers are not supported.")]
   ClassicWorkers,
+  #[class(inherit)]
   #[error(transparent)]
-  Permission(deno_permissions::ChildPermissionError),
+  Permission(#[inherit] deno_permissions::ChildPermissionError),
+  #[class(inherit)]
   #[error(transparent)]
-  ModuleResolution(#[from] deno_core::ModuleResolutionError),
+  ModuleResolution(#[from] #[inherit] deno_core::ModuleResolutionError),
+  #[class(inherit)]
   #[error(transparent)]
-  MessagePort(#[from] MessagePortError),
+  MessagePort(#[from] #[inherit] MessagePortError),
+  #[class(inherit)]
   #[error("{0}")]
-  Io(#[from] std::io::Error),
+  Io(#[from] #[inherit] std::io::Error),
 }
 
 /// Create worker as the host

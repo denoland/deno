@@ -8,7 +8,6 @@ use std::time::SystemTime;
 use std::time::UNIX_EPOCH;
 
 use async_trait::async_trait;
-use deno_core::error::AnyError;
 use deno_core::futures::future::poll_fn;
 use deno_core::parking_lot::Mutex;
 use deno_core::unsync::spawn_blocking;
@@ -378,7 +377,10 @@ impl CacheResponseResource {
     }
   }
 
-  async fn read(self: Rc<Self>, data: &mut [u8]) -> Result<usize, AnyError> {
+  async fn read(
+    self: Rc<Self>,
+    data: &mut [u8],
+  ) -> Result<usize, std::io::Error> {
     let resource = deno_core::RcRef::map(&self, |r| &r.file);
     let mut file = resource.borrow_mut().await;
     let nread = file.read(data).await?;

@@ -9,7 +9,7 @@ use brotli::enc::encode::BrotliEncoderStateStruct;
 use brotli::writer::StandardAlloc;
 use bytes::Bytes;
 use bytes::BytesMut;
-use deno_core::error::AnyError;
+use deno_core::error::JsNativeError;
 use deno_core::futures::ready;
 use deno_core::futures::FutureExt;
 use deno_core::AsyncResult;
@@ -32,10 +32,12 @@ pub enum ResponseStreamResult {
   /// will only be returned from compression streams that require additional buffering.
   NoData,
   /// Stream failed.
-  Error(AnyError),
+  Error(JsNativeError),
 }
 
-impl From<ResponseStreamResult> for Option<Result<Frame<BufView>, AnyError>> {
+impl From<ResponseStreamResult>
+  for Option<Result<Frame<BufView>, JsNativeError>>
+{
   fn from(value: ResponseStreamResult) -> Self {
     match value {
       ResponseStreamResult::EndOfStream => None,
@@ -411,7 +413,9 @@ impl PollFrame for GZipResponseStream {
     };
     let len = stm.total_out() - start_out;
     let res = match res {
-      Err(err) => ResponseStreamResult::Error(err.into()),
+      Err(err) => {
+        ResponseStreamResult::Error(JsNativeError::generic(err.to_string()))
+      }
       Ok(flate2::Status::BufError) => {
         // This should not happen
         unreachable!("old={orig_state:?} new={state:?} buf_len={}", buf.len());

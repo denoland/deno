@@ -1,5 +1,6 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
+use deno_core::error::ResourceError;
 use deno_core::op2;
 use deno_core::OpState;
 use deno_core::Resource;
@@ -10,10 +11,12 @@ use std::cell::RefCell;
 
 use super::error::WebGpuResult;
 
-#[derive(Debug, thiserror::Error)]
+#[derive(Debug, thiserror::Error, deno_core::JsError)]
 pub enum RenderPassError {
+  #[class(inherit)]
   #[error(transparent)]
-  Resource(deno_core::error::AnyError),
+  Resource(#[from] #[inherit] ResourceError),
+  #[class(TYPE)]
   #[error("size must be larger than 0")]
   InvalidSize,
 }
@@ -44,7 +47,7 @@ pub struct RenderPassSetViewportArgs {
 pub fn op_webgpu_render_pass_set_viewport(
   state: &mut OpState,
   #[serde] args: RenderPassSetViewportArgs,
-) -> Result<WebGpuResult, deno_core::error::AnyError> {
+) -> Result<WebGpuResult, ResourceError> {
   let render_pass_resource = state
     .resource_table
     .get::<WebGpuRenderPass>(args.render_pass_rid)?;
@@ -71,7 +74,7 @@ pub fn op_webgpu_render_pass_set_scissor_rect(
   y: u32,
   width: u32,
   height: u32,
-) -> Result<WebGpuResult, deno_core::error::AnyError> {
+) -> Result<WebGpuResult, ResourceError> {
   let render_pass_resource = state
     .resource_table
     .get::<WebGpuRenderPass>(render_pass_rid)?;
@@ -93,7 +96,7 @@ pub fn op_webgpu_render_pass_set_blend_constant(
   state: &mut OpState,
   #[smi] render_pass_rid: ResourceId,
   #[serde] color: wgpu_types::Color,
-) -> Result<WebGpuResult, deno_core::error::AnyError> {
+) -> Result<WebGpuResult, ResourceError> {
   let render_pass_resource = state
     .resource_table
     .get::<WebGpuRenderPass>(render_pass_rid)?;
@@ -112,7 +115,7 @@ pub fn op_webgpu_render_pass_set_stencil_reference(
   state: &mut OpState,
   #[smi] render_pass_rid: ResourceId,
   reference: u32,
-) -> Result<WebGpuResult, deno_core::error::AnyError> {
+) -> Result<WebGpuResult, ResourceError> {
   let render_pass_resource = state
     .resource_table
     .get::<WebGpuRenderPass>(render_pass_rid)?;
@@ -131,7 +134,7 @@ pub fn op_webgpu_render_pass_begin_occlusion_query(
   state: &mut OpState,
   #[smi] render_pass_rid: ResourceId,
   query_index: u32,
-) -> Result<WebGpuResult, deno_core::error::AnyError> {
+) -> Result<WebGpuResult, ResourceError> {
   let render_pass_resource = state
     .resource_table
     .get::<WebGpuRenderPass>(render_pass_rid)?;
@@ -149,7 +152,7 @@ pub fn op_webgpu_render_pass_begin_occlusion_query(
 pub fn op_webgpu_render_pass_end_occlusion_query(
   state: &mut OpState,
   #[smi] render_pass_rid: ResourceId,
-) -> Result<WebGpuResult, deno_core::error::AnyError> {
+) -> Result<WebGpuResult, ResourceError> {
   let render_pass_resource = state
     .resource_table
     .get::<WebGpuRenderPass>(render_pass_rid)?;
@@ -167,7 +170,7 @@ pub fn op_webgpu_render_pass_execute_bundles(
   state: &mut OpState,
   #[smi] render_pass_rid: ResourceId,
   #[serde] bundles: Vec<u32>,
-) -> Result<WebGpuResult, deno_core::error::AnyError> {
+) -> Result<WebGpuResult, ResourceError> {
   let bundles = bundles
     .iter()
     .map(|rid| {
@@ -177,7 +180,7 @@ pub fn op_webgpu_render_pass_execute_bundles(
           .get::<super::bundle::WebGpuRenderBundle>(*rid)?;
       Ok(render_bundle_resource.1)
     })
-    .collect::<Result<Vec<_>, deno_core::error::AnyError>>()?;
+    .collect::<Result<Vec<_>, ResourceError>>()?;
 
   let render_pass_resource = state
     .resource_table
@@ -197,7 +200,7 @@ pub fn op_webgpu_render_pass_end(
   state: &mut OpState,
   #[smi] command_encoder_rid: ResourceId,
   #[smi] render_pass_rid: ResourceId,
-) -> Result<WebGpuResult, deno_core::error::AnyError> {
+) -> Result<WebGpuResult, ResourceError> {
   let command_encoder_resource = state
     .resource_table
     .get::<super::command_encoder::WebGpuCommandEncoder>(
@@ -223,7 +226,7 @@ pub fn op_webgpu_render_pass_set_bind_group(
   #[buffer] dynamic_offsets_data: &[u32],
   #[number] dynamic_offsets_data_start: usize,
   #[number] dynamic_offsets_data_length: usize,
-) -> Result<WebGpuResult, deno_core::error::AnyError> {
+) -> Result<WebGpuResult, ResourceError> {
   let bind_group_resource =
     state
       .resource_table
@@ -257,7 +260,7 @@ pub fn op_webgpu_render_pass_push_debug_group(
   state: &mut OpState,
   #[smi] render_pass_rid: ResourceId,
   #[string] group_label: &str,
-) -> Result<WebGpuResult, deno_core::error::AnyError> {
+) -> Result<WebGpuResult, ResourceError> {
   let render_pass_resource = state
     .resource_table
     .get::<WebGpuRenderPass>(render_pass_rid)?;
@@ -276,7 +279,7 @@ pub fn op_webgpu_render_pass_push_debug_group(
 pub fn op_webgpu_render_pass_pop_debug_group(
   state: &mut OpState,
   #[smi] render_pass_rid: ResourceId,
-) -> Result<WebGpuResult, deno_core::error::AnyError> {
+) -> Result<WebGpuResult, ResourceError> {
   let render_pass_resource = state
     .resource_table
     .get::<WebGpuRenderPass>(render_pass_rid)?;
@@ -294,7 +297,7 @@ pub fn op_webgpu_render_pass_insert_debug_marker(
   state: &mut OpState,
   #[smi] render_pass_rid: ResourceId,
   #[string] marker_label: &str,
-) -> Result<WebGpuResult, deno_core::error::AnyError> {
+) -> Result<WebGpuResult, ResourceError> {
   let render_pass_resource = state
     .resource_table
     .get::<WebGpuRenderPass>(render_pass_rid)?;
@@ -314,7 +317,7 @@ pub fn op_webgpu_render_pass_set_pipeline(
   state: &mut OpState,
   #[smi] render_pass_rid: ResourceId,
   pipeline: u32,
-) -> Result<WebGpuResult, deno_core::error::AnyError> {
+) -> Result<WebGpuResult, ResourceError> {
   let render_pipeline_resource =
     state
       .resource_table
@@ -343,12 +346,10 @@ pub fn op_webgpu_render_pass_set_index_buffer(
 ) -> Result<WebGpuResult, RenderPassError> {
   let buffer_resource = state
     .resource_table
-    .get::<super::buffer::WebGpuBuffer>(buffer)
-    .map_err(RenderPassError::Resource)?;
+    .get::<super::buffer::WebGpuBuffer>(buffer)?;
   let render_pass_resource = state
     .resource_table
-    .get::<WebGpuRenderPass>(render_pass_rid)
-    .map_err(RenderPassError::Resource)?;
+    .get::<WebGpuRenderPass>(render_pass_rid)?;
 
   let size = if let Some(size) = size {
     Some(std::num::NonZeroU64::new(size).ok_or(RenderPassError::InvalidSize)?)
@@ -378,12 +379,10 @@ pub fn op_webgpu_render_pass_set_vertex_buffer(
 ) -> Result<WebGpuResult, RenderPassError> {
   let buffer_resource = state
     .resource_table
-    .get::<super::buffer::WebGpuBuffer>(buffer)
-    .map_err(RenderPassError::Resource)?;
+    .get::<super::buffer::WebGpuBuffer>(buffer)?;
   let render_pass_resource = state
     .resource_table
-    .get::<WebGpuRenderPass>(render_pass_rid)
-    .map_err(RenderPassError::Resource)?;
+    .get::<WebGpuRenderPass>(render_pass_rid)?;
 
   let size = if let Some(size) = size {
     Some(std::num::NonZeroU64::new(size).ok_or(RenderPassError::InvalidSize)?)
@@ -411,7 +410,7 @@ pub fn op_webgpu_render_pass_draw(
   instance_count: u32,
   first_vertex: u32,
   first_instance: u32,
-) -> Result<WebGpuResult, deno_core::error::AnyError> {
+) -> Result<WebGpuResult, ResourceError> {
   let render_pass_resource = state
     .resource_table
     .get::<WebGpuRenderPass>(render_pass_rid)?;
@@ -437,7 +436,7 @@ pub fn op_webgpu_render_pass_draw_indexed(
   first_index: u32,
   base_vertex: i32,
   first_instance: u32,
-) -> Result<WebGpuResult, deno_core::error::AnyError> {
+) -> Result<WebGpuResult, ResourceError> {
   let render_pass_resource = state
     .resource_table
     .get::<WebGpuRenderPass>(render_pass_rid)?;
@@ -461,7 +460,7 @@ pub fn op_webgpu_render_pass_draw_indirect(
   #[smi] render_pass_rid: ResourceId,
   indirect_buffer: u32,
   #[number] indirect_offset: u64,
-) -> Result<WebGpuResult, deno_core::error::AnyError> {
+) -> Result<WebGpuResult, ResourceError> {
   let buffer_resource = state
     .resource_table
     .get::<super::buffer::WebGpuBuffer>(indirect_buffer)?;
@@ -485,7 +484,7 @@ pub fn op_webgpu_render_pass_draw_indexed_indirect(
   #[smi] render_pass_rid: ResourceId,
   indirect_buffer: u32,
   #[number] indirect_offset: u64,
-) -> Result<WebGpuResult, deno_core::error::AnyError> {
+) -> Result<WebGpuResult, ResourceError> {
   let buffer_resource = state
     .resource_table
     .get::<super::buffer::WebGpuBuffer>(indirect_buffer)?;

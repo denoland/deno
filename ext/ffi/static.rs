@@ -8,16 +8,20 @@ use deno_core::OpState;
 use deno_core::ResourceId;
 use std::ptr;
 
-#[derive(Debug, thiserror::Error)]
+#[derive(Debug, thiserror::Error, deno_core::JsError)]
 pub enum StaticError {
+  #[class(inherit)]
   #[error(transparent)]
-  Dlfcn(super::DlfcnError),
+  Dlfcn(#[inherit] super::DlfcnError),
+  #[class(TYPE)]
   #[error("Invalid FFI static type 'void'")]
   InvalidTypeVoid,
+  #[class(TYPE)]
   #[error("Invalid FFI static type 'struct'")]
   InvalidTypeStruct,
+  #[class(inherit)]
   #[error(transparent)]
-  Resource(deno_core::error::AnyError),
+  Resource(#[from] #[inherit] deno_core::error::ResourceError),
 }
 
 #[op2]
@@ -29,10 +33,7 @@ pub fn op_ffi_get_static<'scope>(
   #[serde] static_type: NativeType,
   optional: bool,
 ) -> Result<v8::Local<'scope, v8::Value>, StaticError> {
-  let resource = state
-    .resource_table
-    .get::<DynamicLibraryResource>(rid)
-    .map_err(StaticError::Resource)?;
+  let resource = state.resource_table.get::<DynamicLibraryResource>(rid)?;
 
   let data_ptr = match resource.get_static(name) {
     Ok(data_ptr) => data_ptr,

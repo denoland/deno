@@ -8,7 +8,7 @@ use std::collections::HashSet;
 use std::path::Path;
 use std::path::PathBuf;
 
-use deno_core::error::AnyError;
+use deno_core::error::JsNativeError;
 use deno_core::op2;
 use deno_core::url::Url;
 #[allow(unused_imports)]
@@ -154,9 +154,9 @@ pub trait NodeRequireLoader {
     &self,
     permissions: &mut dyn NodePermissions,
     path: &'a Path,
-  ) -> Result<Cow<'a, Path>, AnyError>;
+  ) -> Result<Cow<'a, Path>, PermissionCheckError>;
 
-  fn load_text_file_lossy(&self, path: &Path) -> Result<String, AnyError>;
+  fn load_text_file_lossy(&self, path: &Path) -> Result<String, JsNativeError>;
 }
 
 pub static NODE_ENV_VAR_ALLOWLIST: Lazy<HashSet<String>> = Lazy::new(|| {

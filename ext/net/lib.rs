@@ -9,7 +9,6 @@ pub mod raw;
 pub mod resolve_addr;
 mod tcp;
 
-use deno_core::error::AnyError;
 use deno_core::OpState;
 use deno_permissions::PermissionCheckError;
 use deno_tls::rustls::RootCertStore;
@@ -104,7 +103,7 @@ pub struct DefaultTlsOptions {
 }
 
 impl DefaultTlsOptions {
-  pub fn root_cert_store(&self) -> Result<Option<RootCertStore>, AnyError> {
+  pub fn root_cert_store(&self) -> Result<Option<RootCertStore>, deno_core::error::JsNativeError> {
     Ok(match &self.root_cert_store_provider {
       Some(provider) => Some(provider.get_or_try_init()?.clone()),
       None => None,

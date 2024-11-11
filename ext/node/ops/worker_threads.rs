@@ -7,7 +7,7 @@ use deno_fs::FileSystemRc;
 use std::borrow::Cow;
 use std::path::Path;
 use std::path::PathBuf;
-
+use deno_permissions::PermissionCheckError;
 use crate::NodePermissions;
 use crate::NodeRequireLoaderRc;
 
@@ -15,7 +15,7 @@ use crate::NodeRequireLoaderRc;
 fn ensure_read_permission<'a, P>(
   state: &mut OpState,
   file_path: &'a Path,
-) -> Result<Cow<'a, Path>, deno_core::error::AnyError>
+) -> Result<Cow<'a, Path>, PermissionCheckError>
 where
   P: NodePermissions + 'static,
 {
@@ -24,24 +24,32 @@ where
   loader.ensure_read_permission(permissions, file_path)
 }
 
-#[derive(Debug, thiserror::Error)]
+#[derive(Debug, thiserror::Error, deno_core::JsError)]
 pub enum WorkerThreadsFilenameError {
+  #[class(inherit)]
   #[error(transparent)]
-  Permission(deno_core::error::AnyError),
+  Permission(#[from] #[inherit] PermissionCheckError),
+  #[class(inherit)]
   #[error("{0}")]
-  UrlParse(#[from] url::ParseError),
+  UrlParse(#[from] #[inherit] url::ParseError),
+  #[class(GENERIC)]
   #[error("Relative path entries must start with '.' or '..'")]
   InvalidRelativeUrl,
+  #[class(GENERIC)]
   #[error("URL from Path-String")]
   UrlFromPathString,
+  #[class(GENERIC)]
   #[error("URL to Path-String")]
   UrlToPathString,
+  #[class(GENERIC)]
   #[error("URL to Path")]
   UrlToPath,
+  #[class(GENERIC)]
   #[error("File not found [{0:?}]")]
   FileNotFound(PathBuf),
+  #[class(inherit)]
   #[error(transparent)]
-  Fs(#[from] deno_io::fs::FsError),
+  Fs(#[from] #[inherit] deno_io::fs::FsError),
 }
 
 // todo(dsherret): we should remove this and do all this work inside op_create_worker
@@ -65,7 +73,7 @@ where
       return Err(WorkerThreadsFilenameError::InvalidRelativeUrl);
     }
     let path = ensure_read_permission::<P>(state, &path)
-      .map_err(WorkerThreadsFilenameError::Permission)?;
+      ?;
     let fs = state.borrow::<FileSystemRc>();
     let canonicalized_path =
       deno_path_util::strip_unc_prefix(fs.realpath_sync(&path)?);
@@ -76,7 +84,7 @@ where
     .to_file_path()
     .map_err(|_| WorkerThreadsFilenameError::UrlToPathString)?;
   let url_path = ensure_read_permission::<P>(state, &url_path)
-    .map_err(WorkerThreadsFilenameError::Permission)?;
+    ?;
   let fs = state.borrow::<FileSystemRc>();
   if !fs.exists_sync(&url_path) {
     return Err(WorkerThreadsFilenameError::FileNotFound(

@@ -9,7 +9,8 @@ use std::ffi::c_void;
 use std::ffi::CStr;
 use std::ptr;
 
-#[derive(Debug, thiserror::Error)]
+#[derive(Debug, thiserror::Error, deno_core::JsError)]
+#[class(TYPE)]
 pub enum ReprError {
   #[error("Invalid pointer to offset, pointer is null")]
   InvalidOffset,
@@ -45,8 +46,9 @@ pub enum ReprError {
   InvalidF64,
   #[error("Invalid pointer pointer, pointer is null")]
   InvalidPointer,
+  #[class(inherit)]
   #[error(transparent)]
-  Permission(#[from] deno_permissions::PermissionCheckError),
+  Permission(#[from] #[inherit] deno_permissions::PermissionCheckError),
 }
 
 #[op2(fast)]

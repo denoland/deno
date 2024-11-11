@@ -6,6 +6,8 @@ use crate::symbol::Symbol;
 use crate::turbocall;
 use crate::turbocall::Turbocall;
 use crate::FfiPermissions;
+use deno_core::error::{JsErrorClass};
+use deno_core::error::{JsNativeError};
 use deno_core::op2;
 use deno_core::v8;
 use deno_core::GarbageCollected;
@@ -19,20 +21,33 @@ use std::collections::HashMap;
 use std::ffi::c_void;
 use std::rc::Rc;
 
-#[derive(Debug, thiserror::Error)]
+deno_core::js_error_wrapper!(dlopen2::Error, JsDlopen2Error, |err| {
+  match err {
+    dlopen2::Error::NullCharacter(_) => "InvalidData",
+    dlopen2::Error::OpeningLibraryError(e) => e.get_class(),
+    dlopen2::Error::SymbolGettingError(e) => e.get_class(),
+    dlopen2::Error::AddrNotMatchingDll(e) => e.get_class(),
+    dlopen2::Error::NullSymbol => "NotFound",
+  }});
+
+#[derive(Debug, thiserror::Error, deno_core::JsError)]
 pub enum DlfcnError {
+  #[class(GENERIC)]
   #[error("Failed to register symbol {symbol}: {error}")]
   RegisterSymbol {
     symbol: String,
     #[source]
     error: dlopen2::Error,
   },
+  #[class(GENERIC)]
   #[error(transparent)]
   Dlopen(#[from] dlopen2::Error),
+  #[class(inherit)]
   #[error(transparent)]
-  Permission(#[from] deno_permissions::PermissionCheckError),
+  Permission(#[from] #[inherit] deno_permissions::PermissionCheckError),
+  #[class(inherit)]
   #[error(transparent)]
-  Other(deno_core::error::AnyError),
+  Other(#[from] #[inherit] JsNativeError),
 }
 
 pub struct DynamicLibraryResource {
@@ -184,13 +199,8 @@ where
             .clone()
             .into_iter()
             .map(libffi::middle::Type::try_from)
-            .collect::<Result<Vec<_>, _>>()
-            .map_err(DlfcnError::Other)?,
-          foreign_fn
-            .result
-            .clone()
-            .try_into()
-            .map_err(DlfcnError::Other)?,
+            .collect::<Result<Vec<_>, _>>()?,
+          foreign_fn.result.clone().try_into()?,
         );
 
         let func_key = v8::String::new(scope, &symbol_key).unwrap();
@@ -297,9 +307,7 @@ fn sync_fn_impl<'s>(
             unsafe { result.to_v8(scope, data.symbol.result_type.clone()) };
       rv.set(result);
     }
-    Err(err) => {
-      deno_core::_ops::throw_type_error(scope, err.to_string());
-    }
+    Err(err) => err.throw(scope),
   };
 }
 

@@ -27,6 +27,7 @@ use nix::sys::termios;
 use std::cell::RefCell;
 #[cfg(unix)]
 use std::collections::HashMap;
+use deno_core::error::{JsNativeError, GENERIC_ERROR};
 
 #[cfg(unix)]
 #[derive(Default, Clone)]
@@ -53,6 +54,7 @@ impl TtyModeStore {
 use winapi::shared::minwindef::DWORD;
 #[cfg(windows)]
 use winapi::um::wincon;
+use crate::ops::process::JsNixError;
 
 deno_core::extension!(
   deno_tty,
@@ -63,17 +65,21 @@ deno_core::extension!(
   },
 );
 
-#[derive(Debug, thiserror::Error)]
+#[derive(Debug, thiserror::Error, deno_core::JsError)]
 pub enum TtyError {
+  #[class(inherit)]
   #[error(transparent)]
-  Resource(deno_core::error::AnyError),
+  Resource(#[from] #[inherit] deno_core::error::ResourceError),
+  #[class(inherit)]
   #[error("{0}")]
-  Io(#[from] std::io::Error),
+  Io(#[from] #[inherit] Error),
   #[cfg(unix)]
+  #[class(inherit)]
   #[error(transparent)]
-  Nix(nix::Error),
+  Nix(#[inherit] JsNixError),
+  #[class(inherit)]
   #[error(transparent)]
-  Other(deno_core::error::AnyError),
+  Other(#[inherit] JsNativeError),
 }
 
 // ref: <https://learn.microsoft.com/en-us/windows/console/setconsolemode>
@@ -106,7 +112,7 @@ fn op_set_raw(
   let handle_or_fd = state
     .resource_table
     .get_fd(rid)
-    .map_err(TtyError::Resource)?;
+    ?;
 
   // From https://github.com/kkawakam/rustyline/blob/master/src/tty/windows.rs
   // and https://github.com/kkawakam/rustyline/blob/master/src/tty/unix.rs
@@ -116,13 +122,14 @@ fn op_set_raw(
   #[cfg(windows)]
   {
     use winapi::shared::minwindef::FALSE;
+    use deno_core::error::JsNativeError;
 
     use winapi::um::consoleapi;
 
     let handle = handle_or_fd;
 
     if cbreak {
-      return Err(TtyError::Other(deno_core::error::not_supported()));
+      return Err(TtyError::Other(JsNativeError::not_supported()));
     }
 
     let mut original_mode: DWORD = 0;
@@ -268,7 +275,7 @@ fn op_set_raw(
         None => {
           // Save original mode.
           let original_mode =
-            termios::tcgetattr(raw_fd).map_err(TtyError::Nix)?;
+            termios::tcgetattr(raw_fd).map_err(|e| TtyError::Nix(JsNixError(e)))?;
           tty_mode_store.set(rid, original_mode.clone());
           original_mode
         }
@@ -291,12 +298,12 @@ fn op_set_raw(
       raw.control_chars[termios::SpecialCharacterIndices::VMIN as usize] = 1;
       raw.control_chars[termios::SpecialCharacterIndices::VTIME as usize] = 0;
       termios::tcsetattr(raw_fd, termios::SetArg::TCSADRAIN, &raw)
-        .map_err(TtyError::Nix)?;
+        .map_err(|e| TtyError::Nix(JsNixError(e)))?;
     } else {
       // Try restore saved mode.
       if let Some(mode) = tty_mode_store.take(rid) {
         termios::tcsetattr(raw_fd, termios::SetArg::TCSADRAIN, &mode)
-          .map_err(TtyError::Nix)?;
+          .map_err(|e| TtyError::Nix(JsNixError(e)))?;
       }
     }
 
@@ -317,7 +324,7 @@ fn op_console_size(
     let fd = state
       .resource_table
       .get_fd(rid)
-      .map_err(TtyError::Resource)?;
+      ?;
     let size = console_size_from_fd(fd)?;
     result[0] = size.cols;
     result[1] = size.rows;
@@ -435,12 +442,28 @@ mod tests {
   }
 }
 
+deno_core::js_error_wrapper!(ReadlineError, JsReadlineError, |err| {
+  match err {
+    ReadlineError::Io(e) => e.get_class(),
+    ReadlineError::Eof => GENERIC_ERROR,
+    ReadlineError::Interrupted => GENERIC_ERROR,
+    #[cfg(unix)]
+    ReadlineError::Errno(e) => JsNixError(e.clone()).get_class(),
+    ReadlineError::WindowResized => GENERIC_ERROR,
+    #[cfg(windows)]
+    ReadlineError::Decode(_) => GENERIC_ERROR,
+    #[cfg(windows)]
+    ReadlineError::SystemError(_) => GENERIC_ERROR,
+    _ => GENERIC_ERROR,
+  }
+});
+
 #[op2]
 #[string]
 pub fn op_read_line_prompt(
   #[string] prompt_text: &str,
   #[string] default_value: &str,
-) -> Result<Option<String>, ReadlineError> {
+) -> Result<Option<String>, JsReadlineError> {
   let mut editor = Editor::<(), rustyline::history::DefaultHistory>::new()
     .expect("Failed to create editor.");
 
@@ -460,6 +483,6 @@ pub fn op_read_line_prompt(
       Ok(None)
     }
     Err(ReadlineError::Eof) => Ok(None),
-    Err(err) => Err(err),
+    Err(err) => Err(JsReadlineError(err)),
   }
 }

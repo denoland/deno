@@ -1,6 +1,5 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
-use deno_core::error::generic_error;
-use deno_core::error::type_error;
+use deno_core::error::JsNativeError;
 use deno_core::op2;
 use deno_core::unsync::spawn_blocking;
 use deno_core::JsBuffer;
@@ -141,16 +140,21 @@ pub fn op_node_hash_clone(
   hasher.clone_inner(output_length.map(|l| l as usize))
 }
 
-#[derive(Debug, thiserror::Error)]
+#[derive(Debug, thiserror::Error, deno_core::JsError)]
 pub enum PrivateEncryptDecryptError {
+  #[class(GENERIC)]
   #[error(transparent)]
   Pkcs8(#[from] pkcs8::Error),
+  #[class(GENERIC)]
   #[error(transparent)]
   Spki(#[from] spki::Error),
+  #[class(GENERIC)]
   #[error(transparent)]
   Utf8(#[from] std::str::Utf8Error),
+  #[class(GENERIC)]
   #[error(transparent)]
   Rsa(#[from] rsa::Error),
+  #[class(TYPE)]
   #[error("Unknown padding")]
   UnknownPadding,
 }
@@ -272,7 +276,7 @@ pub fn op_node_cipheriv_final(
   let context = state
     .resource_table
     .take::<cipher::CipherContext>(rid)
-    .map_err(cipher::CipherContextError::Resource)?;
+    ?;
   let context = Rc::try_unwrap(context)
     .map_err(|_| cipher::CipherContextError::ContextInUse)?;
   context.r#final(auto_pad, input, output).map_err(Into::into)
@@ -287,7 +291,7 @@ pub fn op_node_cipheriv_take(
   let context = state
     .resource_table
     .take::<cipher::CipherContext>(rid)
-    .map_err(cipher::CipherContextError::Resource)?;
+    ?;
   let context = Rc::try_unwrap(context)
     .map_err(|_| cipher::CipherContextError::ContextInUse)?;
   Ok(context.take_tag())
@@ -342,7 +346,7 @@ pub fn op_node_decipheriv_take(
   let context = state
     .resource_table
     .take::<cipher::DecipherContext>(rid)
-    .map_err(cipher::DecipherContextError::Resource)?;
+    ?;
   Rc::try_unwrap(context)
     .map_err(|_| cipher::DecipherContextError::ContextInUse)?;
   Ok(())
@@ -360,7 +364,7 @@ pub fn op_node_decipheriv_final(
   let context = state
     .resource_table
     .take::<cipher::DecipherContext>(rid)
-    .map_err(cipher::DecipherContextError::Resource)?;
+    ?;
   let context = Rc::try_unwrap(context)
     .map_err(|_| cipher::DecipherContextError::ContextInUse)?;
   context
@@ -403,12 +407,14 @@ pub fn op_node_verify(
   )
 }
 
-#[derive(Debug, thiserror::Error)]
+#[derive(Debug, thiserror::Error, deno_core::JsError)]
 pub enum Pbkdf2Error {
+  #[class(TYPE)]
   #[error("unsupported digest: {0}")]
   UnsupportedDigest(String),
+  #[class(inherit)]
   #[error(transparent)]
-  Join(#[from] tokio::task::JoinError),
+  Join(#[from] #[inherit] tokio::task::JoinError),
 }
 
 fn pbkdf2_sync(
@@ -475,16 +481,20 @@ pub async fn op_node_fill_random_async(#[smi] len: i32) -> ToJsBuffer {
   .unwrap()
 }
 
-#[derive(Debug, thiserror::Error)]
+#[derive(Debug, thiserror::Error, deno_core::JsError)]
 pub enum HkdfError {
+  #[class(TYPE)]
   #[error("expected secret key")]
   ExpectedSecretKey,
+  #[class(TYPE)]
   #[error("HKDF-Expand failed")]
   HkdfExpandFailed,
+  #[class(TYPE)]
   #[error("Unsupported digest: {0}")]
   UnsupportedDigest(String),
+  #[class(inherit)]
   #[error(transparent)]
-  Join(#[from] tokio::task::JoinError),
+  Join(#[from] #[inherit] tokio::task::JoinError),
 }
 
 fn hkdf_sync(
@@ -576,7 +586,7 @@ fn scrypt(
   parallelization: u32,
   _maxmem: u32,
   output_buffer: &mut [u8],
-) -> Result<(), deno_core::error::AnyError> {
+) -> Result<(), JsNativeError> {
   // Construct Params
   let params = scrypt::Params::new(
     cost as u8,
@@ -592,7 +602,7 @@ fn scrypt(
     Ok(())
   } else {
     // TODO(lev): key derivation failed, so what?
-    Err(generic_error("scrypt key derivation failed"))
+    Err(JsNativeError::generic("scrypt key derivation failed"))
   }
 }
 
@@ -607,7 +617,7 @@ pub fn op_node_scrypt_sync(
   #[smi] parallelization: u32,
   #[smi] maxmem: u32,
   #[anybuffer] output_buffer: &mut [u8],
-) -> Result<(), deno_core::error::AnyError> {
+) -> Result<(), JsNativeError> {
   scrypt(
     password,
     salt,
@@ -620,12 +630,14 @@ pub fn op_node_scrypt_sync(
   )
 }
 
-#[derive(Debug, thiserror::Error)]
+#[derive(Debug, thiserror::Error, deno_core::JsError)]
 pub enum ScryptAsyncError {
+  #[class(inherit)]
   #[error(transparent)]
-  Join(#[from] tokio::task::JoinError),
+  Join(#[from] #[inherit] tokio::task::JoinError),
+  #[class(inherit)]
   #[error(transparent)]
-  Other(deno_core::error::AnyError),
+  Other(#[inherit] JsNativeError),
 }
 
 #[op2(async)]
@@ -658,12 +670,15 @@ pub async fn op_node_scrypt_async(
   .await?
 }
 
-#[derive(Debug, thiserror::Error)]
+#[derive(Debug, thiserror::Error, deno_core::JsError)]
 pub enum EcdhEncodePubKey {
+  #[class(TYPE)]
   #[error("Invalid public key")]
   InvalidPublicKey,
+  #[class(TYPE)]
   #[error("Unsupported curve")]
   UnsupportedCurve,
+  #[class(GENERIC)]
   #[error(transparent)]
   Sec1(#[from] sec1::Error),
 }
@@ -743,7 +758,7 @@ pub fn op_node_ecdh_generate_keys(
   #[buffer] pubbuf: &mut [u8],
   #[buffer] privbuf: &mut [u8],
   #[string] format: &str,
-) -> Result<(), deno_core::error::AnyError> {
+) -> Result<(), JsNativeError> {
   let mut rng = rand::thread_rng();
   let compress = format == "compressed";
   match curve {
@@ -780,7 +795,7 @@ pub fn op_node_ecdh_generate_keys(
 
       Ok(())
     }
-    &_ => Err(type_error(format!("Unsupported curve: {}", curve))),
+    &_ => Err(JsNativeError::type_error(format!("Unsupported curve: {}", curve))),
   }
 }
 
@@ -913,7 +928,8 @@ pub async fn op_node_gen_prime_async(
   spawn_blocking(move || gen_prime(size)).await
 }
 
-#[derive(Debug, thiserror::Error)]
+#[derive(Debug, thiserror::Error, deno_core::JsError)]
+#[class(TYPE)]
 pub enum DiffieHellmanError {
   #[error("Expected private key")]
   ExpectedPrivateKey,
@@ -1005,7 +1021,8 @@ pub fn op_node_diffie_hellman(
   Ok(res)
 }
 
-#[derive(Debug, thiserror::Error)]
+#[derive(Debug, thiserror::Error, deno_core::JsError)]
+#[class(TYPE)]
 pub enum SignEd25519Error {
   #[error("Expected private key")]
   ExpectedPrivateKey,
@@ -1037,7 +1054,8 @@ pub fn op_node_sign_ed25519(
   Ok(())
 }
 
-#[derive(Debug, thiserror::Error)]
+#[derive(Debug, thiserror::Error, deno_core::JsError)]
+#[class(TYPE)]
 pub enum VerifyEd25519Error {
   #[error("Expected public key")]
   ExpectedPublicKey,

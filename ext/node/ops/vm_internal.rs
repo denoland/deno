@@ -1,8 +1,7 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 use crate::create_host_defined_options;
-use deno_core::error::type_error;
-use deno_core::error::AnyError;
+use deno_core::error::JsNativeError;
 use deno_core::v8;
 use deno_core::v8::MapFnTo;
 
@@ -19,7 +18,7 @@ impl ContextifyScript {
   pub fn new(
     scope: &mut v8::HandleScope,
     source_str: v8::Local<v8::String>,
-  ) -> Result<Self, AnyError> {
+  ) -> Result<Self, JsNativeError> {
     let resource_name = v8::undefined(scope);
     let host_defined_options = create_host_defined_options(scope);
     let origin = v8::ScriptOrigin::new(
@@ -44,7 +43,7 @@ impl ContextifyScript {
       v8::script_compiler::CompileOptions::NoCompileOptions,
       v8::script_compiler::NoCacheReason::NoReason,
     )
-    .ok_or_else(|| type_error("Failed to compile script"))?;
+    .ok_or_else(|| JsNativeError::type_error("Failed to compile script"))?;
     let script = v8::Global::new(scope, unbound_script);
     Ok(Self { script })
   }

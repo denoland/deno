@@ -11,10 +11,12 @@ use serde::Deserialize;
 use serde::Serialize;
 use std::path::PathBuf;
 
-#[derive(Debug, thiserror::Error)]
+#[derive(Debug, thiserror::Error, deno_core::JsError)]
 pub enum CanvasError {
+  #[class(TYPE)]
   #[error("Color type '{0:?}' not supported")]
   UnsupportedColorType(ColorType),
+  #[class(GENERIC)]
   #[error(transparent)]
   Image(#[from] image::ImageError),
 }

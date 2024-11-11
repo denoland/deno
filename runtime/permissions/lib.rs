@@ -805,7 +805,8 @@ pub enum Host {
   Ip(IpAddr),
 }
 
-#[derive(Debug, thiserror::Error)]
+#[derive(Debug, thiserror::Error, deno_core::JsError)]
+#[class(URI)]
 pub enum HostParseError {
   #[error("invalid IPv6 address: '{0}'")]
   InvalidIpv6(String),
@@ -940,12 +941,14 @@ pub enum NetDescriptorParseError {
   Host(#[from] HostParseError),
 }
 
-#[derive(Debug, thiserror::Error)]
+#[derive(Debug, thiserror::Error, deno_core::JsError)]
 pub enum NetDescriptorFromUrlParseError {
+  #[class(TYPE)]
   #[error("Missing host in url: '{0}'")]
   MissingHost(Url),
+  #[class(inherit)]
   #[error("{0}")]
-  Host(#[from] HostParseError),
+  Host(#[from] #[inherit] HostParseError),
 }
 
 impl NetDescriptor {
@@ -1197,10 +1200,12 @@ pub enum RunQueryDescriptor {
   Name(String),
 }
 
-#[derive(Debug, thiserror::Error)]
+#[derive(Debug, thiserror::Error, deno_core::JsError)]
 pub enum PathResolveError {
+  #[class(inherit)]
   #[error("failed resolving cwd: {0}")]
-  CwdResolve(#[source] std::io::Error),
+  CwdResolve(#[source] #[inherit] std::io::Error),
+  #[class(GENERIC)]
   #[error("Empty path is not allowed")]
   EmptyPath,
 }
@@ -1357,12 +1362,15 @@ pub enum AllowRunDescriptorParseResult {
   Descriptor(AllowRunDescriptor),
 }
 
-#[derive(Debug, thiserror::Error)]
+#[derive(Debug, thiserror::Error, deno_core::JsError)]
 pub enum RunDescriptorParseError {
+  #[class(GENERIC)]
   #[error("{0}")]
   Which(#[from] which::Error),
+  #[class(inherit)]
   #[error("{0}")]
-  PathResolve(#[from] PathResolveError),
+  PathResolve(#[from] #[inherit] PathResolveError),
+  #[class(GENERIC)]
   #[error("Empty run query is not allowed")]
   EmptyRunQuery,
 }
@@ -1447,10 +1455,12 @@ fn denies_run_name(name: &str, cmd_path: &Path) -> bool {
   suffix.is_empty() || suffix.starts_with('.')
 }
 
-#[derive(Debug, thiserror::Error)]
+#[derive(Debug, thiserror::Error, deno_core::JsError)]
 pub enum SysDescriptorParseError {
+  #[class(TYPE)]
   #[error("unknown system info kind \"{0}\"")]
-  InvalidKind(String), // TypeError
+  InvalidKind(String),
+  #[class(GENERIC)]
   #[error("Empty sys not allowed")]
   Empty, // Error
 }
@@ -2175,34 +2185,46 @@ pub enum CheckSpecifierKind {
   Dynamic,
 }
 
-#[derive(Debug, thiserror::Error)]
+#[derive(Debug, thiserror::Error, deno_core::JsError)]
 pub enum ChildPermissionError {
+  #[class("NotCapable")]
   #[error("Can't escalate parent thread permissions")]
   Escalation,
+  #[class(inherit)]
   #[error("{0}")]
-  PathResolve(#[from] PathResolveError),
+  PathResolve(#[from] #[inherit] PathResolveError),
+  #[class(URI)]
   #[error("{0}")]
   NetDescriptorParse(#[from] NetDescriptorParseError),
+  #[class(GENERIC)]
   #[error("{0}")]
   EnvDescriptorParse(#[from] EnvDescriptorParseError),
+  #[class(inherit)]
   #[error("{0}")]
-  SysDescriptorParse(#[from] SysDescriptorParseError),
+  SysDescriptorParse(#[from] #[inherit] SysDescriptorParseError),
+  #[class(inherit)]
   #[error("{0}")]
-  RunDescriptorParse(#[from] RunDescriptorParseError),
+  RunDescriptorParse(#[from] #[inherit] RunDescriptorParseError),
 }
 
-#[derive(Debug, thiserror::Error)]
+#[derive(Debug, thiserror::Error, deno_core::JsError)]
 pub enum PermissionCheckError {
+  #[class("NotCapable")]
   #[error(transparent)]
   PermissionDenied(#[from] PermissionDeniedError),
+  #[class(URI)]
   #[error("Invalid file path.\n  Specifier: {0}")]
   InvalidFilePath(Url),
+  #[class(inherit)]
   #[error(transparent)]
-  NetDescriptorForUrlParse(#[from] NetDescriptorFromUrlParseError),
+  NetDescriptorForUrlParse(#[from] #[inherit] NetDescriptorFromUrlParseError),
+  #[class(inherit)]
   #[error(transparent)]
-  SysDescriptorParse(#[from] SysDescriptorParseError),
+  SysDescriptorParse(#[from] #[inherit] SysDescriptorParseError),
+  #[class(inherit)]
   #[error(transparent)]
-  PathResolve(#[from] PathResolveError),
+  PathResolve(#[from] #[inherit] PathResolveError),
+  #[class(URI)]
   #[error(transparent)]
   HostParse(#[from] HostParseError),
 }

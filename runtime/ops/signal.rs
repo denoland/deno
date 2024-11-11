@@ -17,7 +17,7 @@ use std::rc::Rc;
 use std::sync::atomic::AtomicBool;
 #[cfg(unix)]
 use std::sync::Arc;
-
+use deno_core::error::ResourceError;
 #[cfg(unix)]
 use tokio::signal::unix::signal;
 #[cfg(unix)]
@@ -44,7 +44,7 @@ deno_core::extension!(
   }
 );
 
-#[derive(Debug, thiserror::Error)]
+#[derive(Debug, thiserror::Error, deno_core::JsError)]
 pub enum SignalError {
   #[cfg(any(
     target_os = "android",
@@ -55,6 +55,7 @@ pub enum SignalError {
     target_os = "solaris",
     target_os = "illumos"
   ))]
+  #[class(TYPE)]
   #[error("Invalid signal: {0}")]
   InvalidSignalStr(String),
   #[cfg(any(
@@ -66,18 +67,23 @@ pub enum SignalError {
     target_os = "solaris",
     target_os = "illumos"
   ))]
+  #[class(TYPE)]
   #[error("Invalid signal: {0}")]
   InvalidSignalInt(libc::c_int),
   #[cfg(target_os = "windows")]
+  #[class(TYPE)]
   #[error("Windows only supports ctrl-c (SIGINT) and ctrl-break (SIGBREAK), but got {0}")]
   InvalidSignalStr(String),
   #[cfg(target_os = "windows")]
+  #[class(TYPE)]
   #[error("Windows only supports ctrl-c (SIGINT) and ctrl-break (SIGBREAK), but got {0}")]
   InvalidSignalInt(libc::c_int),
+  #[class(TYPE)]
   #[error("Binding to signal '{0}' is not allowed")]
   SignalNotAllowed(String),
+  #[class(inherit)]
   #[error("{0}")]
-  Io(#[from] std::io::Error),
+  Io(#[from] #[inherit] std::io::Error),
 }
 
 #[cfg(unix)]
@@ -460,7 +466,7 @@ fn op_signal_bind(
 async fn op_signal_poll(
   state: Rc<RefCell<OpState>>,
   #[smi] rid: ResourceId,
-) -> Result<bool, deno_core::error::AnyError> {
+) -> Result<bool, ResourceError> {
   let resource = state
     .borrow_mut()
     .resource_table
@@ -479,7 +485,7 @@ async fn op_signal_poll(
 pub fn op_signal_unbind(
   state: &mut OpState,
   #[smi] rid: ResourceId,
-) -> Result<(), deno_core::error::AnyError> {
+) -> Result<(), ResourceError> {
   let resource = state.resource_table.take::<SignalStreamResource>(rid)?;
 
   #[cfg(unix)]

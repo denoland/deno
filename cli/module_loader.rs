@@ -1065,11 +1065,11 @@ impl<TGraphContainer: ModuleGraphContainer> NodeRequireLoader
     &self,
     permissions: &mut dyn deno_runtime::deno_node::NodePermissions,
     path: &'a Path,
-  ) -> Result<std::borrow::Cow<'a, Path>, AnyError> {
+  ) -> Result<Cow<'a, Path>, deno_runtime::deno_permissions::PermissionCheckError> {
     if let Ok(url) = deno_path_util::url_from_file_path(path) {
       // allow reading if it's in the module graph
       if self.graph_container.graph().get(&url).is_some() {
-        return Ok(std::borrow::Cow::Borrowed(path));
+        return Ok(Cow::Borrowed(path));
       }
     }
     self.npm_resolver.ensure_read_permission(permissions, path)

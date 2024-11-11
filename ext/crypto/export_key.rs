@@ -20,12 +20,15 @@ use spki::AlgorithmIdentifierOwned;
 
 use crate::shared::*;
 
-#[derive(Debug, thiserror::Error)]
+#[derive(Debug, thiserror::Error, deno_core::JsError)]
 pub enum ExportKeyError {
+  #[class(inherit)]
   #[error(transparent)]
-  General(#[from] SharedError),
+  General(#[from] #[inherit] SharedError),
+  #[class(GENERIC)]
   #[error(transparent)]
   Der(#[from] spki::der::Error),
+  #[class("DOMExceptionNotSupportedError")]
   #[error("Unsupported named curve")]
   UnsupportedNamedCurve,
 }

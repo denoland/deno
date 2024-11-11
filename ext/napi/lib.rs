@@ -34,18 +34,6 @@ use std::path::PathBuf;
 use std::rc::Rc;
 use std::thread_local;
 
-#[derive(Debug, thiserror::Error)]
-pub enum NApiError {
-  #[error("Invalid path")]
-  InvalidPath,
-  #[error(transparent)]
-  LibLoading(#[from] libloading::Error),
-  #[error("Unable to find register Node-API module at {}", .0.display())]
-  ModuleNotFound(PathBuf),
-  #[error(transparent)]
-  Permission(#[from] PermissionCheckError),
-}
-
 #[cfg(unix)]
 use libloading::os::unix::*;
 
@@ -64,6 +52,22 @@ pub use value::napi_value;
 
 pub mod function;
 mod value;
+
+#[derive(Debug, thiserror::Error, deno_core::JsError)]
+pub enum NApiError {
+  #[class(TYPE)]
+  #[error("Invalid path")]
+  InvalidPath,
+  #[class(TYPE)]
+  #[error(transparent)]
+  LibLoading(#[from] libloading::Error),
+  #[class(TYPE)]
+  #[error("Unable to find register Node-API module at {}", .0.display())]
+  ModuleNotFound(PathBuf),
+  #[class(inherit)]
+  #[error(transparent)]
+  Permission(#[from] #[inherit] PermissionCheckError),
+}
 
 pub type napi_status = i32;
 pub type napi_env = *mut c_void;

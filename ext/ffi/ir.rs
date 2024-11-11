@@ -6,7 +6,8 @@ use libffi::middle::Arg;
 use std::ffi::c_void;
 use std::ptr;
 
-#[derive(Debug, thiserror::Error)]
+#[derive(Debug, thiserror::Error, deno_core::JsError)]
+#[class(TYPE)]
 pub enum IRError {
   #[error("Invalid FFI u8 type, expected boolean")]
   InvalidU8ExpectedBoolean,

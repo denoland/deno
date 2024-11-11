@@ -411,7 +411,7 @@ impl NodeRequireLoader for EmbeddedModuleLoader {
     &self,
     permissions: &mut dyn deno_runtime::deno_node::NodePermissions,
     path: &'a std::path::Path,
-  ) -> Result<Cow<'a, std::path::Path>, AnyError> {
+  ) -> Result<Cow<'a, std::path::Path>, deno_runtime::deno_permissions::PermissionCheckError> {
     if self.shared.modules.has_file(path) {
       // allow reading if the file is in the snapshot
       return Ok(Cow::Borrowed(path));

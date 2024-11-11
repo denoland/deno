@@ -26,22 +26,29 @@ use std::io::BufReader;
 use std::io::Cursor;
 use std::net::IpAddr;
 use std::sync::Arc;
+use deno_core::error::JsNativeError;
 
 mod tls_key;
 pub use tls_key::*;
 
-#[derive(Debug, thiserror::Error)]
+#[derive(Debug, thiserror::Error, deno_core::JsError)]
 pub enum TlsError {
+  #[class(GENERIC)]
   #[error(transparent)]
   Rustls(#[from] rustls::Error),
+  #[class(inherit)]
   #[error("Unable to add pem file to certificate store: {0}")]
-  UnableAddPemFileToCert(std::io::Error),
+  UnableAddPemFileToCert(#[inherit] std::io::Error),
+  #[class("InvalidData")]
   #[error("Unable to decode certificate")]
   CertInvalid,
+  #[class("InvalidData")]
   #[error("No certificates found in certificate data")]
   CertsNotFound,
+  #[class("InvalidData")]
   #[error("No keys found in key data")]
   KeysNotFound,
+  #[class("InvalidData")]
   #[error("Unable to decode key")]
   KeyDecode,
 }
@@ -53,7 +60,7 @@ pub enum TlsError {
 pub trait RootCertStoreProvider: Send + Sync {
   fn get_or_try_init(
     &self,
-  ) -> Result<&RootCertStore, deno_core::error::AnyError>;
+  ) -> Result<&RootCertStore, JsNativeError>;
 }
 
 // This extension has no runtime apis, it only exports some shared native functions.

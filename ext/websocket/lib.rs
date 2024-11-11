@@ -44,6 +44,7 @@ use std::num::NonZeroUsize;
 use std::path::PathBuf;
 use std::rc::Rc;
 use std::sync::Arc;
+use deno_core::error::JsNativeError;
 use tokio::io::AsyncRead;
 use tokio::io::AsyncWrite;
 use tokio::io::ReadHalf;
@@ -71,24 +72,32 @@ static USE_WRITEV: Lazy<bool> = Lazy::new(|| {
   false
 });
 
-#[derive(Debug, thiserror::Error)]
+#[derive(Debug, thiserror::Error, deno_core::JsError)]
 pub enum WebsocketError {
+  #[class(inherit)]
   #[error(transparent)]
-  Url(url::ParseError),
+  Url(#[inherit] url::ParseError),
+  #[class(inherit)]
   #[error(transparent)]
-  Permission(#[from] PermissionCheckError),
+  Permission(#[from] #[inherit] PermissionCheckError),
+  #[class(inherit)]
   #[error(transparent)]
-  Resource(deno_core::error::AnyError),
+  Resource(#[from] #[inherit] deno_core::error::ResourceError),
+  #[class(GENERIC)]
   #[error(transparent)]
   Uri(#[from] http::uri::InvalidUri),
+  #[class(inherit)]
   #[error("{0}")]
-  Io(#[from] std::io::Error),
+  Io(#[from] #[inherit] std::io::Error),
+  #[class(TYPE)]
   #[error(transparent)]
   WebSocket(#[from] fastwebsockets::WebSocketError),
+  #[class("DOMExceptionNetworkError")]
   #[error("failed to connect to WebSocket: {0}")]
   ConnectionFailed(#[from] HandshakeError),
+  #[class(inherit)]
   #[error(transparent)]
-  Canceled(#[from] deno_core::Canceled),
+  Canceled(#[from] #[inherit] deno_core::Canceled),
 }
 
 #[derive(Clone)]
@@ -97,7 +106,7 @@ pub struct WsRootStoreProvider(Option<Arc<dyn RootCertStoreProvider>>);
 impl WsRootStoreProvider {
   pub fn get_or_try_init(
     &self,
-  ) -> Result<Option<RootCertStore>, deno_core::error::AnyError> {
+  ) -> Result<Option<RootCertStore>, JsNativeError> {
     Ok(match &self.0 {
       Some(provider) => Some(provider.get_or_try_init()?.clone()),
       None => None,
@@ -182,32 +191,45 @@ pub struct CreateResponse {
   extensions: String,
 }
 
-#[derive(Debug, thiserror::Error)]
+#[derive(Debug, thiserror::Error, deno_core::JsError)]
 pub enum HandshakeError {
+  #[class(TYPE)]
   #[error("Missing path in url")]
   MissingPath,
+  #[class(GENERIC)]
   #[error("Invalid status code {0}")]
   InvalidStatusCode(StatusCode),
+  #[class(GENERIC)]
   #[error(transparent)]
   Http(#[from] http::Error),
+  #[class(TYPE)]
   #[error(transparent)]
   WebSocket(#[from] fastwebsockets::WebSocketError),
+  #[class(GENERIC)]
   #[error("Didn't receive h2 alpn, aborting connection")]
   NoH2Alpn,
+  #[class(GENERIC)]
   #[error(transparent)]
   Rustls(#[from] deno_tls::rustls::Error),
+  #[class(inherit)]
   #[error(transparent)]
-  Io(#[from] std::io::Error),
+  Io(#[from] #[inherit] std::io::Error),
+  #[class(GENERIC)]
   #[error(transparent)]
   H2(#[from] h2::Error),
+  #[class(TYPE)]
   #[error("Invalid hostname: '{0}'")]
   InvalidHostname(String),
+  #[class(inherit)]
   #[error(transparent)]
-  RootStoreError(deno_core::error::AnyError),
+  RootStoreError(#[inherit] JsNativeError),
+  #[class(inherit)]
   #[error(transparent)]
-  Tls(deno_tls::TlsError),
+  Tls(#[inherit] deno_tls::TlsError),
+  #[class(TYPE)]
   #[error(transparent)]
   HeaderName(#[from] http::header::InvalidHeaderName),
+  #[class(TYPE)]
   #[error(transparent)]
   HeaderValue(#[from] http::header::InvalidHeaderValue),
 }
@@ -472,8 +494,7 @@ where
     let r = state
       .borrow_mut()
       .resource_table
-      .get::<WsCancelResource>(cancel_rid)
-      .map_err(WebsocketError::Resource)?;
+      .get::<WsCancelResource>(cancel_rid)?;
     Some(r.0.clone())
   } else {
     None
@@ -677,8 +698,7 @@ pub async fn op_ws_send_binary_async(
   let resource = state
     .borrow_mut()
     .resource_table
-    .get::<ServerWebSocket>(rid)
-    .map_err(WebsocketError::Resource)?;
+    .get::<ServerWebSocket>(rid)?;
   let data = data.to_vec();
   let lock = resource.reserve_lock();
   resource
@@ -696,8 +716,7 @@ pub async fn op_ws_send_text_async(
   let resource = state
     .borrow_mut()
     .resource_table
-    .get::<ServerWebSocket>(rid)
-    .map_err(WebsocketError::Resource)?;
+    .get::<ServerWebSocket>(rid)?;
   let lock = resource.reserve_lock();
   resource
     .write_frame(
@@ -731,8 +750,7 @@ pub async fn op_ws_send_ping(
   let resource = state
     .borrow_mut()
     .resource_table
-    .get::<ServerWebSocket>(rid)
-    .map_err(WebsocketError::Resource)?;
+    .get::<ServerWebSocket>(rid)?;
   let lock = resource.reserve_lock();
   resource
     .write_frame(

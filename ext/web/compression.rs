@@ -11,16 +11,20 @@ use flate2::Compression;
 use std::cell::RefCell;
 use std::io::Write;
 
-#[derive(Debug, thiserror::Error)]
+#[derive(Debug, thiserror::Error, deno_core::JsError)]
 pub enum CompressionError {
+  #[class(TYPE)]
   #[error("Unsupported format")]
   UnsupportedFormat,
+  #[class(TYPE)]
   #[error("resource is closed")]
   ResourceClosed,
+  #[class(TYPE)]
   #[error(transparent)]
   IoTypeError(std::io::Error),
+  #[class(inherit)]
   #[error(transparent)]
-  Io(std::io::Error),
+  Io(#[inherit] std::io::Error),
 }
 
 #[derive(Debug)]

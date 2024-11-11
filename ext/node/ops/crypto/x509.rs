@@ -61,11 +61,13 @@ impl<'a> Deref for CertificateView<'a> {
   }
 }
 
+deno_core::js_error_wrapper!(X509Error, JsX509Error, "Error");
+
 #[op2]
 #[cppgc]
 pub fn op_node_x509_parse(
   #[buffer] buf: &[u8],
-) -> Result<Certificate, X509Error> {
+) -> Result<Certificate, JsX509Error> {
   let source = match pem::parse_x509_pem(buf) {
     Ok((_, pem)) => CertificateSources::Pem(pem),
     Err(_) => CertificateSources::Der(buf.to_vec().into_boxed_slice()),
@@ -156,18 +158,18 @@ pub fn op_node_x509_fingerprint512(
 #[string]
 pub fn op_node_x509_get_issuer(
   #[cppgc] cert: &Certificate,
-) -> Result<String, X509Error> {
+) -> Result<String, JsX509Error> {
   let cert = cert.inner.get().deref();
-  x509name_to_string(cert.issuer(), oid_registry())
+  x509name_to_string(cert.issuer(), oid_registry()).map_err(Into::into)
 }
 
 #[op2]
 #[string]
 pub fn op_node_x509_get_subject(
   #[cppgc] cert: &Certificate,
-) -> Result<String, X509Error> {
+) -> Result<String, JsX509Error> {
   let cert = cert.inner.get().deref();
-  x509name_to_string(cert.subject(), oid_registry())
+  x509name_to_string(cert.subject(), oid_registry()).map_err(Into::into)
 }
 
 #[op2]

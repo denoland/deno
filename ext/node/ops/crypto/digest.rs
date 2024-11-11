@@ -182,7 +182,8 @@ pub enum Hash {
 
 use Hash::*;
 
-#[derive(Debug, thiserror::Error)]
+#[derive(Debug, thiserror::Error, deno_core::JsError)]
+#[class(GENERIC)]
 pub enum HashError {
   #[error("Output length mismatch for non-extendable algorithm")]
   OutputLengthMismatch,

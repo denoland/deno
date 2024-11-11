@@ -30,10 +30,12 @@ use std::task::Context;
 use std::task::Poll;
 use std::task::Waker;
 
-#[derive(Debug, thiserror::Error)]
+#[derive(Debug, thiserror::Error, deno_core::JsError)]
 pub enum StreamResourceError {
+  #[class(inherit)]
   #[error(transparent)]
-  Canceled(#[from] deno_core::Canceled),
+  Canceled(#[from] #[inherit] deno_core::Canceled),
+  #[class(TYPE)]
   #[error("{0}")]
   Js(String),
 }
@@ -403,7 +405,10 @@ impl Resource for ReadableStreamResource {
   }
 
   fn read(self: Rc<Self>, limit: usize) -> AsyncResult<BufView> {
-    Box::pin(ReadableStreamResource::read(self, limit).map_err(|e| e.into()))
+    Box::pin(
+      ReadableStreamResource::read(self, limit)
+        .map_err(|e| deno_core::error::JsNativeError::from_err(e)),
+    )
   }
 
   fn close(self: Rc<Self>) {

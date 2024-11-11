@@ -1,5 +1,6 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
+use deno_core::error::ResourceError;
 use deno_core::op2;
 use deno_core::OpState;
 use deno_core::Resource;
@@ -11,10 +12,12 @@ use std::rc::Rc;
 
 use super::error::WebGpuResult;
 
-#[derive(Debug, thiserror::Error)]
+#[derive(Debug, thiserror::Error, deno_core::JsError)]
 pub enum BundleError {
+  #[class(inherit)]
   #[error(transparent)]
-  Resource(deno_core::error::AnyError),
+  Resource(#[from] #[inherit] ResourceError),
+  #[class(TYPE)]
   #[error("size must be larger than 0")]
   InvalidSize,
 }
@@ -59,7 +62,7 @@ pub struct CreateRenderBundleEncoderArgs {
 pub fn op_webgpu_create_render_bundle_encoder(
   state: &mut OpState,
   #[serde] args: CreateRenderBundleEncoderArgs,
-) -> Result<WebGpuResult, deno_core::error::AnyError> {
+) -> Result<WebGpuResult, ResourceError> {
   let device_resource = state
     .resource_table
     .get::<super::WebGpuDevice>(args.device_rid)?;
@@ -106,7 +109,7 @@ pub fn op_webgpu_render_bundle_encoder_finish(
   state: &mut OpState,
   #[smi] render_bundle_encoder_rid: ResourceId,
   #[string] label: Cow<str>,
-) -> Result<WebGpuResult, deno_core::error::AnyError> {
+) -> Result<WebGpuResult, ResourceError> {
   let render_bundle_encoder_resource =
     state
       .resource_table
@@ -137,7 +140,7 @@ pub fn op_webgpu_render_bundle_encoder_set_bind_group(
   #[buffer] dynamic_offsets_data: &[u32],
   #[number] dynamic_offsets_data_start: usize,
   #[number] dynamic_offsets_data_length: usize,
-) -> Result<WebGpuResult, deno_core::error::AnyError> {
+) -> Result<WebGpuResult, ResourceError> {
   let bind_group_resource =
     state
       .resource_table
@@ -177,7 +180,7 @@ pub fn op_webgpu_render_bundle_encoder_push_debug_group(
   state: &mut OpState,
   #[smi] render_bundle_encoder_rid: ResourceId,
   #[string] group_label: &str,
-) -> Result<WebGpuResult, deno_core::error::AnyError> {
+) -> Result<WebGpuResult, ResourceError> {
   let render_bundle_encoder_resource =
     state
       .resource_table
@@ -201,7 +204,7 @@ pub fn op_webgpu_render_bundle_encoder_push_debug_group(
 pub fn op_webgpu_render_bundle_encoder_pop_debug_group(
   state: &mut OpState,
   #[smi] render_bundle_encoder_rid: ResourceId,
-) -> Result<WebGpuResult, deno_core::error::AnyError> {
+) -> Result<WebGpuResult, ResourceError> {
   let render_bundle_encoder_resource =
     state
       .resource_table
@@ -220,7 +223,7 @@ pub fn op_webgpu_render_bundle_encoder_insert_debug_marker(
   state: &mut OpState,
   #[smi] render_bundle_encoder_rid: ResourceId,
   #[string] marker_label: &str,
-) -> Result<WebGpuResult, deno_core::error::AnyError> {
+) -> Result<WebGpuResult, ResourceError> {
   let render_bundle_encoder_resource =
     state
       .resource_table
@@ -245,7 +248,7 @@ pub fn op_webgpu_render_bundle_encoder_set_pipeline(
   state: &mut OpState,
   #[smi] render_bundle_encoder_rid: ResourceId,
   #[smi] pipeline: ResourceId,
-) -> Result<WebGpuResult, deno_core::error::AnyError> {
+) -> Result<WebGpuResult, ResourceError> {
   let render_pipeline_resource =
     state
       .resource_table
@@ -275,12 +278,11 @@ pub fn op_webgpu_render_bundle_encoder_set_index_buffer(
 ) -> Result<WebGpuResult, BundleError> {
   let buffer_resource = state
     .resource_table
-    .get::<super::buffer::WebGpuBuffer>(buffer)
-    .map_err(BundleError::Resource)?;
-  let render_bundle_encoder_resource = state
-    .resource_table
-    .get::<WebGpuRenderBundleEncoder>(render_bundle_encoder_rid)
-    .map_err(BundleError::Resource)?;
+    .get::<super::buffer::WebGpuBuffer>(buffer)?;
+  let render_bundle_encoder_resource =
+    state
+      .resource_table
+      .get::<WebGpuRenderBundleEncoder>(render_bundle_encoder_rid)?;
   let size =
     Some(std::num::NonZeroU64::new(size).ok_or(BundleError::InvalidSize)?);
 
@@ -304,12 +306,11 @@ pub fn op_webgpu_render_bundle_encoder_set_vertex_buffer(
 ) -> Result<WebGpuResult, BundleError> {
   let buffer_resource = state
     .resource_table
-    .get::<super::buffer::WebGpuBuffer>(buffer)
-    .map_err(BundleError::Resource)?;
-  let render_bundle_encoder_resource = state
-    .resource_table
-    .get::<WebGpuRenderBundleEncoder>(render_bundle_encoder_rid)
-    .map_err(BundleError::Resource)?;
+    .get::<super::buffer::WebGpuBuffer>(buffer)?;
+  let render_bundle_encoder_resource =
+    state
+      .resource_table
+      .get::<WebGpuRenderBundleEncoder>(render_bundle_encoder_rid)?;
   let size = if let Some(size) = size {
     Some(std::num::NonZeroU64::new(size).ok_or(BundleError::InvalidSize)?)
   } else {
@@ -336,7 +337,7 @@ pub fn op_webgpu_render_bundle_encoder_draw(
   instance_count: u32,
   first_vertex: u32,
   first_instance: u32,
-) -> Result<WebGpuResult, deno_core::error::AnyError> {
+) -> Result<WebGpuResult, ResourceError> {
   let render_bundle_encoder_resource =
     state
       .resource_table
@@ -363,7 +364,7 @@ pub fn op_webgpu_render_bundle_encoder_draw_indexed(
   first_index: u32,
   base_vertex: i32,
   first_instance: u32,
-) -> Result<WebGpuResult, deno_core::error::AnyError> {
+) -> Result<WebGpuResult, ResourceError> {
   let render_bundle_encoder_resource =
     state
       .resource_table
@@ -388,7 +389,7 @@ pub fn op_webgpu_render_bundle_encoder_draw_indirect(
   #[smi] render_bundle_encoder_rid: ResourceId,
   #[smi] indirect_buffer: ResourceId,
   #[number] indirect_offset: u64,
-) -> Result<WebGpuResult, deno_core::error::AnyError> {
+) -> Result<WebGpuResult, ResourceError> {
   let buffer_resource = state
     .resource_table
     .get::<super::buffer::WebGpuBuffer>(indirect_buffer)?;
