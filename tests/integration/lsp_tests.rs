@@ -8310,7 +8310,8 @@ fn lsp_npm_auto_import_with_deno_types() {
       console.log(compressToBase64);
     "#,
   );
-  let mut client = context.new_lsp_command().build();
+  #[allow(deprecated)]
+  let mut client = context.new_lsp_command().print_stderr().build();
   client.initialize_default();
   let diagnostics = client.did_open(json!({
     "textDocument": {

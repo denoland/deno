@@ -336,7 +336,10 @@ impl LspResolver {
     {
       let dep_info = dep_info_by_scope.get(&scope.cloned());
       if let Some(dep_info) = dep_info {
-        dbg!(scope.map(|s| s.as_str()), deno_core::serde_json::json!(dep_info.deno_types_to_code_resolutions));
+        dbg!(
+          scope.map(|s| s.as_str()),
+          deno_core::serde_json::json!(dep_info.deno_types_to_code_resolutions)
+        );
         *resolver.dep_info.lock() = dep_info.clone();
       }
       if let Some(npm_resolver) = resolver.npm_resolver.as_ref() {
