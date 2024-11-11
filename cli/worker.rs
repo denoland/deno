@@ -43,6 +43,7 @@ use deno_runtime::WorkerExecutionMode;
 use deno_runtime::WorkerLogLevel;
 use deno_semver::npm::NpmPackageReqReference;
 use deno_terminal::colors;
+use node_resolver::NodeModuleKind;
 use node_resolver::NodeResolutionMode;
 use tokio::select;
 
@@ -675,6 +676,7 @@ impl CliMainWorkerFactory {
         package_folder,
         sub_path,
         /* referrer */ None,
+        NodeModuleKind::Esm,
         NodeResolutionMode::Execution,
       )?;
     if specifier

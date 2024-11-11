@@ -77,6 +77,7 @@ use super::parent_process_checker;
 use super::performance::Performance;
 use super::refactor;
 use super::registries::ModuleRegistry;
+use super::resolver::LspCjsTracker;
 use super::resolver::LspResolver;
 use super::testing;
 use super::text;
@@ -194,6 +195,7 @@ pub struct Inner {
   cache: LspCache,
   /// The LSP client that this LSP server is connected to.
   pub client: Client,
+  cjs_tracker: Arc<LspCjsTracker>,
   /// Configuration information.
   pub config: Config,
   diagnostics_state: Arc<diagnostics::DiagnosticsState>,
@@ -462,6 +464,7 @@ impl Inner {
       cache.deno_dir().registries_folder_path(),
       http_client_provider.clone(),
     );
+    let cjs_tracker = Arc::new(LspCjsTracker::new(&cache));
     let jsr_search_api =
       CliJsrSearchApi::new(module_registry.file_fetcher.clone());
     let npm_search_api =
@@ -484,6 +487,7 @@ impl Inner {
     Self {
       assets,
       cache,
+      cjs_tracker,
       client,
       config,
       diagnostics_state,
@@ -1011,6 +1015,7 @@ impl Inner {
       LspResolver::from_config(
         &self.config,
         &self.cache,
+        self.cjs_tracker.clone(),
         Some(&self.http_client_provider),
       )
       .await,

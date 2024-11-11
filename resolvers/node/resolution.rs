@@ -299,9 +299,9 @@ impl<TEnv: NodeResolverEnv> NodeResolver<TEnv> {
     package_dir: &Path,
     package_subpath: Option<&str>,
     maybe_referrer: Option<&Url>,
+    referrer_kind: NodeModuleKind,
     mode: NodeResolutionMode,
   ) -> Result<Url, PackageSubpathResolveError> {
-    let node_module_kind = NodeModuleKind::Esm;
     let package_subpath = package_subpath
       .map(|s| format!("./{s}"))
       .unwrap_or_else(|| ".".to_string());
@@ -309,7 +309,7 @@ impl<TEnv: NodeResolverEnv> NodeResolver<TEnv> {
       package_dir,
       &package_subpath,
       maybe_referrer,
-      node_module_kind,
+      referrer_kind,
       DEFAULT_CONDITIONS,
       mode,
     )?;

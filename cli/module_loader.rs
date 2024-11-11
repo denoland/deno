@@ -74,6 +74,7 @@ use deno_runtime::deno_node::NodeRequireLoader;
 use deno_runtime::deno_permissions::PermissionsContainer;
 use deno_semver::npm::NpmPackageReqReference;
 use node_resolver::InNpmPackageChecker;
+use node_resolver::NodeModuleKind;
 use node_resolver::NodeResolutionMode;
 
 pub struct ModuleLoadPreparer {
@@ -474,7 +475,12 @@ impl<TGraphContainer: ModuleGraphContainer>
         self
           .shared
           .node_resolver
-          .resolve(raw_specifier, referrer, NodeResolutionMode::Execution)?
+          .resolve(
+            raw_specifier,
+            referrer,
+            self.shared.cjs_tracker.get_referrer_kind(referrer),
+            NodeResolutionMode::Execution,
+          )?
           .into_url(),
       );
     }
@@ -514,6 +520,7 @@ impl<TGraphContainer: ModuleGraphContainer>
         return self.shared.node_resolver.resolve_req_reference(
           &reference,
           referrer,
+          self.shared.cjs_tracker.get_referrer_kind(referrer),
           NodeResolutionMode::Execution,
         );
       }
@@ -534,6 +541,7 @@ impl<TGraphContainer: ModuleGraphContainer>
             &package_folder,
             module.nv_reference.sub_path(),
             Some(referrer),
+            self.shared.cjs_tracker.get_referrer_kind(referrer),
             NodeResolutionMode::Execution,
           )
           .with_context(|| {

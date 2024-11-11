@@ -45,6 +45,7 @@ use deno_runtime::WorkerLogLevel;
 use deno_semver::npm::NpmPackageReqReference;
 use import_map::parse_from_json;
 use node_resolver::analyze::NodeCodeTranslator;
+use node_resolver::NodeModuleKind;
 use node_resolver::NodeResolutionMode;
 use serialization::DenoCompileModuleSource;
 use std::borrow::Cow;
@@ -146,13 +147,27 @@ impl ModuleLoader for EmbeddedModuleLoader {
         type_error(format!("Referrer uses invalid specifier: {}", err))
       })?
     };
+    let referrer_kind = if self
+      .shared
+      .cjs_tracker
+      .is_maybe_cjs(&referrer, MediaType::from_specifier(&referrer))?
+    {
+      NodeModuleKind::Cjs
+    } else {
+      NodeModuleKind::Esm
+    };
 
     if self.shared.node_resolver.in_npm_package(&referrer) {
       return Ok(
         self
           .shared
           .node_resolver
-          .resolve(raw_specifier, &referrer, NodeResolutionMode::Execution)?
+          .resolve(
+            raw_specifier,
+            &referrer,
+            referrer_kind,
+            NodeResolutionMode::Execution,
+          )?
           .into_url(),
       );
     }
@@ -178,6 +193,7 @@ impl ModuleLoader for EmbeddedModuleLoader {
             pkg_json.dir_path(),
             sub_path.as_deref(),
             Some(&referrer),
+            referrer_kind,
             NodeResolutionMode::Execution,
           )?,
       ),
@@ -192,6 +208,7 @@ impl ModuleLoader for EmbeddedModuleLoader {
             req,
             sub_path.as_deref(),
             &referrer,
+            referrer_kind,
             NodeResolutionMode::Execution,
           )
         }
@@ -211,6 +228,7 @@ impl ModuleLoader for EmbeddedModuleLoader {
                 pkg_folder,
                 sub_path.as_deref(),
                 Some(&referrer),
+                referrer_kind,
                 NodeResolutionMode::Execution,
               )?,
           )
@@ -224,6 +242,7 @@ impl ModuleLoader for EmbeddedModuleLoader {
           return self.shared.node_resolver.resolve_req_reference(
             &reference,
             &referrer,
+            referrer_kind,
             NodeResolutionMode::Execution,
           );
         }
@@ -250,6 +269,7 @@ impl ModuleLoader for EmbeddedModuleLoader {
         let maybe_res = self.shared.node_resolver.resolve_if_for_npm_pkg(
           raw_specifier,
           &referrer,
+          referrer_kind,
           NodeResolutionMode::Execution,
         )?;
         if let Some(res) = maybe_res {

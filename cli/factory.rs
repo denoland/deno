@@ -531,6 +531,7 @@ impl CliFactory {
         async {
           let cli_options = self.cli_options()?;
           Ok(Arc::new(CliGraphResolver::new(CliGraphResolverOptions {
+            cjs_tracker: self.cjs_tracker()?.clone(),
             sloppy_imports_resolver: self.sloppy_imports_resolver()?.cloned(),
             node_resolver: Some(self.cli_node_resolver().await?.clone()),
             npm_resolver: if cli_options.no_npm() {
@@ -948,10 +949,8 @@ impl CliFactory {
     let create_hmr_runner = if cli_options.has_hmr() {
       let watcher_communicator = self.watcher_communicator.clone().unwrap();
       let emitter = self.emitter()?.clone();
-      let cjs_tracker = self.cjs_tracker()?.clone();
       let fn_: crate::worker::CreateHmrRunnerCb = Box::new(move |session| {
         Box::new(HmrRunner::new(
-          cjs_tracker.clone(),
           emitter.clone(),
           session,
           watcher_communicator.clone(),
