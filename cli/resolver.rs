@@ -493,14 +493,7 @@ impl CjsTracker {
     }
     self
       .get_known_kind(specifier, MediaType::from_specifier(specifier))
-      .unwrap_or_else(|| {
-        debug_assert!(
-          false,
-          "referrer '{}' should always have a known kind",
-          specifier
-        );
-        NodeModuleKind::Esm
-      })
+      .unwrap_or(NodeModuleKind::Esm)
   }
 
   fn get_known_kind_with_is_script(
