@@ -469,10 +469,12 @@ impl LspResolver {
     file_referrer: Option<&ModuleSpecifier>,
   ) -> Option<String> {
     let resolver = self.get_scope_resolver(file_referrer);
-    resolver
+    let s = resolver
       .package_json_deps_by_resolution
       .get(specifier)
-      .cloned()
+      .cloned();
+    lsp_log!("5555 {} {:?}", specifier, &s);
+    s
   }
 
   pub fn deno_types_to_code_resolution(

@@ -26,6 +26,7 @@ use super::urls::INVALID_URI;
 
 use crate::args::jsr_url;
 use crate::args::FmtOptionsConfig;
+use crate::lsp::logging::lsp_log;
 use crate::lsp::logging::lsp_warn;
 use crate::tsc;
 use crate::tsc::ResolveArgs;
@@ -3949,6 +3950,7 @@ impl CompletionEntry {
       if let Some(import_data) = &self.auto_import_data {
         let import_mapper =
           language_server.get_ts_response_import_mapper(specifier);
+        lsp_log!("3333 {}", &import_data.normalized);
         if let Some(mut new_specifier) = import_mapper
           .check_specifier(&import_data.normalized, specifier)
           .or_else(|| relative_specifier(specifier, &import_data.normalized))
