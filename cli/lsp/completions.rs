@@ -9,6 +9,7 @@ use super::jsr::CliJsrSearchApi;
 use super::lsp_custom;
 use super::npm::CliNpmSearchApi;
 use super::registries::ModuleRegistry;
+use super::resolver::LspIsCjsResolver;
 use super::resolver::LspResolver;
 use super::search::PackageSearchApi;
 use super::tsc;
@@ -160,10 +161,12 @@ pub async fn get_import_completions(
   jsr_search_api: &CliJsrSearchApi,
   npm_search_api: &CliNpmSearchApi,
   documents: &Documents,
+  is_cjs_resolver: &LspIsCjsResolver,
   resolver: &LspResolver,
   maybe_import_map: Option<&ImportMap>,
 ) -> Option<lsp::CompletionResponse> {
   let document = documents.get(specifier)?;
+  let specifier_kind = is_cjs_resolver.get_doc_module_kind(&document);
   let file_referrer = document.file_referrer();
   let (text, _, range) = document.get_maybe_dependency(position)?;
   let range = to_narrow_lsp_range(document.text_info(), &range);
@@ -176,6 +179,7 @@ pub async fn get_import_completions(
         start: deno_graph::Position::zeroed(),
         end: deno_graph::Position::zeroed(),
       },
+      specifier_kind,
       ResolutionMode::Execution,
     )
     .ok();
@@ -202,7 +206,7 @@ pub async fn get_import_completions(
     // completions for import map specifiers
     Some(lsp::CompletionResponse::List(completion_list))
   } else if let Some(completion_list) =
-    get_local_completions(specifier, &text, &range, resolver)
+    get_local_completions(specifier, specifier_kind, &text, &range, resolver)
   {
     // completions for local relative modules
     Some(lsp::CompletionResponse::List(completion_list))
@@ -908,6 +912,7 @@ mod tests {
       ModuleSpecifier::from_file_path(file_c).expect("could not create");
     let actual = get_local_completions(
       &specifier,
+      NodeModuleKind::Esm,
       "./",
       &lsp::Range {
         start: lsp::Position {

@@ -44,12 +44,12 @@ use deno_core::url::Url;
 use deno_core::LocalInspectorSession;
 use deno_core::PollEventLoopOptions;
 use deno_graph::source::ResolutionMode;
-use deno_graph::source::Resolver;
 use deno_graph::Position;
 use deno_graph::PositionRange;
 use deno_graph::SpecifierWithRange;
 use deno_runtime::worker::MainWorker;
 use deno_semver::npm::NpmPackageReqReference;
+use node_resolver::NodeModuleKind;
 use once_cell::sync::Lazy;
 use regex::Match;
 use regex::Regex;
@@ -712,7 +712,12 @@ impl ReplSession {
       .flat_map(|i| {
         self
           .resolver
-          .resolve(i, &referrer_range, ResolutionMode::Execution)
+          .resolve(
+            i,
+            &referrer_range,
+            NodeModuleKind::Esm,
+            ResolutionMode::Execution,
+          )
           .ok()
           .or_else(|| ModuleSpecifier::parse(i).ok())
       })

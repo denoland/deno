@@ -77,9 +77,9 @@ use crate::npm::CliNpmResolverCreateOptions;
 use crate::npm::CliNpmResolverManagedSnapshotOption;
 use crate::npm::CreateInNpmPkgCheckerOptions;
 use crate::resolver::CjsTracker;
-use crate::resolver::CjsTrackerOptions;
 use crate::resolver::CliDenoResolverFs;
 use crate::resolver::CliNodeResolver;
+use crate::resolver::IsCjsResolverOptions;
 use crate::resolver::NpmModuleLoader;
 use crate::util::progress_bar::ProgressBar;
 use crate::util::progress_bar::ProgressBarStyle;
@@ -648,7 +648,7 @@ pub async fn run(data: StandaloneData) -> Result<i32, AnyError> {
   let cjs_tracker = Arc::new(CjsTracker::new(
     in_npm_pkg_checker.clone(),
     pkg_json_resolver.clone(),
-    CjsTrackerOptions {
+    IsCjsResolverOptions {
       detect_cjs: !metadata.workspace_resolver.package_jsons.is_empty(),
     },
   ));

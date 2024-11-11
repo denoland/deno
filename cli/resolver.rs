@@ -16,7 +16,6 @@ use deno_core::ModuleSourceCode;
 use deno_core::ModuleSpecifier;
 use deno_graph::source::ResolutionMode;
 use deno_graph::source::ResolveError;
-use deno_graph::source::Resolver;
 use deno_graph::source::UnknownBuiltInNodeModuleError;
 use deno_graph::NpmLoadError;
 use deno_graph::NpmResolvePkgReqsResult;
@@ -50,7 +49,6 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use thiserror::Error;
 
-use crate::args::JsxImportSourceConfig;
 use crate::args::DENO_DISABLE_PEDANTIC_NODE_WARNINGS;
 use crate::node::CliNodeCodeTranslator;
 use crate::npm::CliNpmResolver;
@@ -411,10 +409,6 @@ impl NpmModuleLoader {
   }
 }
 
-pub struct CjsTrackerOptions {
-  pub detect_cjs: bool,
-}
-
 /// Keeps track of what module specifiers were resolved as CJS.
 ///
 /// Modules that are `.js` or `.ts` are only known to be CJS or
@@ -422,9 +416,7 @@ pub struct CjsTrackerOptions {
 /// will be "maybe CJS" until they're loaded.
 #[derive(Debug)]
 pub struct CjsTracker {
-  in_npm_pkg_checker: Arc<dyn InNpmPackageChecker>,
-  pkg_json_resolver: Arc<PackageJsonResolver>,
-  detect_cjs: bool,
+  is_cjs_resolver: IsCjsResolver,
   known: DashMap<ModuleSpecifier, NodeModuleKind>,
 }
 
@@ -432,12 +424,14 @@ impl CjsTracker {
   pub fn new(
     in_npm_pkg_checker: Arc<dyn InNpmPackageChecker>,
     pkg_json_resolver: Arc<PackageJsonResolver>,
-    options: CjsTrackerOptions,
+    options: IsCjsResolverOptions,
   ) -> Self {
     Self {
-      in_npm_pkg_checker,
-      pkg_json_resolver,
-      detect_cjs: options.detect_cjs,
+      is_cjs_resolver: IsCjsResolver::new(
+        in_npm_pkg_checker,
+        pkg_json_resolver,
+        options,
+      ),
       known: Default::default(),
     }
   }
@@ -477,7 +471,7 @@ impl CjsTracker {
       .get_known_kind_with_is_script(specifier, media_type, is_script)
     {
       Some(kind) => kind,
-      None => self.check_based_on_pkg_json(specifier)?,
+      None => self.is_cjs_resolver.check_based_on_pkg_json(specifier)?,
     };
     Ok(kind == NodeModuleKind::Cjs)
   }
@@ -515,6 +509,64 @@ impl CjsTracker {
     media_type: MediaType,
     is_script: Option<bool>,
   ) -> Option<NodeModuleKind> {
+    self.is_cjs_resolver.get_known_kind_with_is_script(
+      specifier,
+      media_type,
+      is_script,
+      Some(&self.known),
+    )
+  }
+}
+
+pub struct IsCjsResolverOptions {
+  pub detect_cjs: bool,
+}
+
+#[derive(Debug)]
+pub struct IsCjsResolver {
+  in_npm_pkg_checker: Arc<dyn InNpmPackageChecker>,
+  pkg_json_resolver: Arc<PackageJsonResolver>,
+  detect_cjs: bool,
+}
+
+impl IsCjsResolver {
+  pub fn new(
+    in_npm_pkg_checker: Arc<dyn InNpmPackageChecker>,
+    pkg_json_resolver: Arc<PackageJsonResolver>,
+    options: IsCjsResolverOptions,
+  ) -> Self {
+    Self {
+      in_npm_pkg_checker,
+      pkg_json_resolver,
+      detect_cjs: options.detect_cjs,
+    }
+  }
+
+  pub fn get_lsp_referrer_kind(
+    &self,
+    specifier: &ModuleSpecifier,
+    is_script: Option<bool>,
+  ) -> NodeModuleKind {
+    if specifier.scheme() != "file" {
+      return NodeModuleKind::Esm;
+    }
+    self
+      .get_known_kind_with_is_script(
+        specifier,
+        MediaType::from_specifier(specifier),
+        is_script,
+        None,
+      )
+      .unwrap_or(NodeModuleKind::Esm)
+  }
+
+  fn get_known_kind_with_is_script(
+    &self,
+    specifier: &ModuleSpecifier,
+    media_type: MediaType,
+    is_script: Option<bool>,
+    known_cache: Option<&DashMap<ModuleSpecifier, NodeModuleKind>>,
+  ) -> Option<NodeModuleKind> {
     if specifier.scheme() != "file" {
       return Some(NodeModuleKind::Esm);
     }
@@ -525,12 +577,14 @@ impl CjsTracker {
       MediaType::Dts => {
         // dts files are always determined based on the package.json because
         // they contain imports/exports even when considered CJS
-        if let Some(value) = self.known.get(specifier).map(|v| *v) {
+        if let Some(value) = known_cache.and_then(|c| c.get(specifier)).map(|v| *v) {
           Some(value)
         } else {
           let value = self.check_based_on_pkg_json(specifier).ok();
           if let Some(value) = value {
-            self.known.insert(specifier.clone(), value);
+            if let Some(known_cache) = known_cache {
+              known_cache.insert(specifier.clone(), value);
+            }
           }
           Some(value.unwrap_or(NodeModuleKind::Esm))
         }
@@ -545,17 +599,21 @@ impl CjsTracker {
       | MediaType::Css
       | MediaType::SourceMap
       | MediaType::Unknown => {
-        if let Some(value) = self.known.get(specifier).map(|v| *v) {
+        if let Some(value) = known_cache.and_then(|c| c.get(specifier)).map(|v| *v) {
           if value == NodeModuleKind::Cjs && is_script == Some(false) {
             // we now know this is actually esm
-            self.known.insert(specifier.clone(), NodeModuleKind::Esm);
+            if let Some(known_cache) = known_cache {
+              known_cache.insert(specifier.clone(), NodeModuleKind::Esm);
+            }
             Some(NodeModuleKind::Esm)
           } else {
             Some(value)
           }
         } else if is_script == Some(false) {
           // we know this is esm
-          self.known.insert(specifier.clone(), NodeModuleKind::Esm);
+          if let Some(known_cache) = known_cache {
+            known_cache.insert(specifier.clone(), NodeModuleKind::Esm);
+          }
           Some(NodeModuleKind::Esm)
         } else {
           None
@@ -623,7 +681,6 @@ pub struct CliResolverOptions<'a> {
   pub sloppy_imports_resolver: Option<Arc<CliSloppyImportsResolver>>,
   pub workspace_resolver: Arc<WorkspaceResolver>,
   pub bare_node_builtins_enabled: bool,
-  pub maybe_jsx_import_source_config: Option<JsxImportSourceConfig>,
   pub maybe_vendor_dir: Option<&'a PathBuf>,
 }
 

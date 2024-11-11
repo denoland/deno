@@ -60,7 +60,6 @@ use deno_core::RequestedModuleType;
 use deno_core::ResolutionKind;
 use deno_core::SourceCodeCacheInfo;
 use deno_graph::source::ResolutionMode;
-use deno_graph::source::Resolver;
 use deno_graph::GraphKind;
 use deno_graph::JsModule;
 use deno_graph::JsonModule;
@@ -74,7 +73,6 @@ use deno_runtime::deno_node::NodeRequireLoader;
 use deno_runtime::deno_permissions::PermissionsContainer;
 use deno_semver::npm::NpmPackageReqReference;
 use node_resolver::InNpmPackageChecker;
-use node_resolver::NodeModuleKind;
 use node_resolver::NodeResolutionMode;
 
 pub struct ModuleLoadPreparer {

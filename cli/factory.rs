@@ -42,12 +42,12 @@ use crate::npm::CliNpmResolverCreateOptions;
 use crate::npm::CliNpmResolverManagedSnapshotOption;
 use crate::npm::CreateInNpmPkgCheckerOptions;
 use crate::resolver::CjsTracker;
-use crate::resolver::CjsTrackerOptions;
 use crate::resolver::CliDenoResolverFs;
 use crate::resolver::CliNodeResolver;
 use crate::resolver::CliResolver;
 use crate::resolver::CliResolverOptions;
 use crate::resolver::CliSloppyImportsResolver;
+use crate::resolver::IsCjsResolverOptions;
 use crate::resolver::NpmModuleLoader;
 use crate::resolver::SloppyImportsCachedFs;
 use crate::standalone::DenoCompileBinaryWriter;
@@ -541,9 +541,6 @@ impl CliFactory {
             workspace_resolver: self.workspace_resolver().await?.clone(),
             bare_node_builtins_enabled: cli_options
               .unstable_bare_node_builtins(),
-            maybe_jsx_import_source_config: cli_options
-              .workspace()
-              .to_maybe_jsx_import_source_config()?,
             maybe_vendor_dir: cli_options.vendor_dir_path(),
           })))
         }
@@ -794,7 +791,7 @@ impl CliFactory {
       Ok(Arc::new(CjsTracker::new(
         self.in_npm_pkg_checker()?.clone(),
         self.pkg_json_resolver().clone(),
-        CjsTrackerOptions {
+        IsCjsResolverOptions {
           detect_cjs: options.detect_cjs(),
         },
       )))

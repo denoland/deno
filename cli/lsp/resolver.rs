@@ -1,17 +1,17 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 use dashmap::DashMap;
-use deno_ast::view::Module;
 use deno_ast::MediaType;
-use deno_ast::ParsedSource;
 use deno_cache_dir::npm::NpmCacheDir;
 use deno_cache_dir::HttpCache;
+use deno_config::deno_json::JsxImportSourceConfig;
 use deno_config::workspace::PackageJsonDepResolution;
 use deno_config::workspace::WorkspaceResolver;
 use deno_core::url::Url;
-use deno_graph::source::Resolver;
+use deno_graph::source::ResolutionMode;
 use deno_graph::GraphImport;
 use deno_graph::ModuleSpecifier;
+use deno_graph::Range;
 use deno_npm::NpmSystemInfo;
 use deno_path_util::url_from_directory_path;
 use deno_path_util::url_to_file_path;
@@ -36,6 +36,7 @@ use std::collections::HashSet;
 use std::sync::Arc;
 
 use super::cache::LspCache;
+use super::documents::Document;
 use super::jsr::JsrCacheResolver;
 use crate::args::create_default_npmrc;
 use crate::args::CacheSetting;
@@ -56,12 +57,11 @@ use crate::npm::CliNpmResolverCreateOptions;
 use crate::npm::CliNpmResolverManagedSnapshotOption;
 use crate::npm::CreateInNpmPkgCheckerOptions;
 use crate::npm::ManagedCliNpmResolver;
-use crate::resolver::CjsTracker;
-use crate::resolver::CjsTrackerOptions;
 use crate::resolver::CliDenoResolverFs;
 use crate::resolver::CliNodeResolver;
 use crate::resolver::CliResolver;
 use crate::resolver::CliResolverOptions;
+use crate::resolver::IsCjsResolver;
 use crate::resolver::WorkerCliNpmGraphResolver;
 use crate::tsc::into_specifier_and_media_type;
 use crate::util::progress_bar::ProgressBar;
@@ -104,7 +104,6 @@ impl LspScopeResolver {
   ) -> Self {
     let mut npm_resolver = None;
     let mut node_resolver = None;
-    let mut lsp_cjs_tracker = None;
     let fs = Arc::new(deno_fs::RealFs);
     let pkg_json_resolver = Arc::new(PackageJsonResolver::new(
       deno_runtime::deno_node::DenoFsNodeResolverEnv::new(fs.clone()),
@@ -127,7 +126,7 @@ impl LspScopeResolver {
         ));
       }
     }
-    let graph_resolver = create_cli_resolver(
+    let cli_resolver = create_cli_resolver(
       config_data.map(|d| d.as_ref()),
       npm_resolver.as_ref(),
       node_resolver.as_ref(),
@@ -140,7 +139,9 @@ impl LspScopeResolver {
       cache.for_specifier(config_data.map(|d| d.scope.as_ref())),
       config_data.and_then(|d| d.lockfile.clone()),
     )));
-    let npm_graph_resolver = graph_resolver.create_graph_npm_resolver();
+    let npm_graph_resolver = cli_resolver.create_graph_npm_resolver();
+    let maybe_jsx_import_source_config =
+      config_data.and_then(|d| d.maybe_jsx_import_source_config());
     let graph_imports = config_data
       .and_then(|d| d.member_dir.workspace.to_compiler_option_types().ok())
       .map(|imports| {
@@ -148,11 +149,18 @@ impl LspScopeResolver {
           imports
             .into_iter()
             .map(|(referrer, imports)| {
+              let resolver = SingleReferrerGraphResolver {
+                valid_referrer: &referrer,
+                referrer_kind: NodeModuleKind::Esm,
+                cli_resolver: &cli_resolver,
+                jsx_import_source_config: maybe_jsx_import_source_config
+                  .as_ref(),
+              };
               let graph_import = GraphImport::new(
                 &referrer,
                 imports,
                 &CliJsrUrlProvider,
-                Some(graph_resolver.as_ref()),
+                Some(&resolver),
                 Some(&npm_graph_resolver),
               );
               (referrer, graph_import)
@@ -191,7 +199,7 @@ impl LspScopeResolver {
     let package_json_deps_by_resolution =
       Arc::new(package_json_deps_by_resolution.unwrap_or_default());
     Self {
-      resolver: graph_resolver,
+      resolver: cli_resolver,
       jsr_resolver,
       npm_resolver,
       node_resolver,
@@ -335,6 +343,14 @@ impl LspResolver {
   ) -> WorkerCliNpmGraphResolver {
     let resolver = self.get_scope_resolver(file_referrer);
     resolver.resolver.create_graph_npm_resolver()
+  }
+
+  pub fn as_config_data(
+    &self,
+    file_referrer: Option<&ModuleSpecifier>,
+  ) -> Option<&Arc<ConfigData>> {
+    let resolver = self.get_scope_resolver(file_referrer);
+    resolver.config_data.as_ref()
   }
 
   pub fn maybe_node_resolver(
@@ -645,7 +661,6 @@ fn create_cli_resolver(
   npm_resolver: Option<&Arc<dyn CliNpmResolver>>,
   node_resolver: Option<&Arc<CliNodeResolver>>,
 ) -> Arc<CliResolver> {
-  let workspace = config_data.map(|d| &d.member_dir.workspace);
   Arc::new(CliResolver::new(CliResolverOptions {
     node_resolver: node_resolver.cloned(),
     npm_resolver: npm_resolver.cloned(),
@@ -661,9 +676,6 @@ fn create_cli_resolver(
         ))
       },
     ),
-    maybe_jsx_import_source_config: workspace.and_then(|workspace| {
-      workspace.to_maybe_jsx_import_source_config().ok().flatten()
-    }),
     maybe_vendor_dir: config_data.and_then(|d| d.vendor_dir.as_ref()),
     bare_node_builtins_enabled: config_data
       .is_some_and(|d| d.unstable.contains("bare-node-builtins")),
@@ -693,6 +705,136 @@ impl std::fmt::Debug for RedirectResolver {
       .field("get_headers", &"Box(|_| { ... })")
       .field("entries", &self.entries)
       .finish()
+  }
+}
+
+#[derive(Debug)]
+pub struct LspIsCjsResolver {
+  inner: IsCjsResolver,
+}
+
+impl Default for LspIsCjsResolver {
+  fn default() -> Self {
+    LspIsCjsResolver::new(&Default::default())
+  }
+}
+
+impl LspIsCjsResolver {
+  pub fn new(cache: &LspCache) -> Self {
+    #[derive(Debug)]
+    struct LspInNpmPackageChecker {
+      global_cache_dir: ModuleSpecifier,
+    }
+
+    impl LspInNpmPackageChecker {
+      pub fn new(cache: &LspCache) -> Self {
+        Self {
+          global_cache_dir: url_from_directory_path(
+            &cache.deno_dir().npm_folder_path(),
+          )
+          .unwrap_or_else(|_| {
+            ModuleSpecifier::parse("file:///invalid/").unwrap()
+          }),
+        }
+      }
+    }
+
+    impl InNpmPackageChecker for LspInNpmPackageChecker {
+      fn in_npm_package(&self, specifier: &ModuleSpecifier) -> bool {
+        if specifier.scheme() != "file" {
+          return false;
+        }
+        if specifier
+          .as_str()
+          .starts_with(self.global_cache_dir.as_str())
+        {
+          return true;
+        }
+        specifier.as_str().contains("/node_modules/")
+      }
+    }
+
+    let fs = Arc::new(deno_fs::RealFs);
+    let pkg_json_resolver = Arc::new(PackageJsonResolver::new(
+      deno_runtime::deno_node::DenoFsNodeResolverEnv::new(fs.clone()),
+    ));
+
+    LspIsCjsResolver {
+      inner: IsCjsResolver::new(
+        Arc::new(LspInNpmPackageChecker::new(cache)),
+        pkg_json_resolver,
+        crate::resolver::IsCjsResolverOptions { detect_cjs: true },
+      ),
+    }
+  }
+
+  pub fn get_maybe_doc_module_kind(
+    &self,
+    specifier: &ModuleSpecifier,
+    maybe_document: Option<&Document>,
+  ) -> NodeModuleKind {
+    self.get_lsp_referrer_kind(
+      specifier,
+      maybe_document.and_then(|d| d.is_script()),
+    )
+  }
+
+  pub fn get_doc_module_kind(&self, document: &Document) -> NodeModuleKind {
+    self.get_lsp_referrer_kind(document.specifier(), document.is_script())
+  }
+
+  pub fn get_lsp_referrer_kind(
+    &self,
+    specifier: &ModuleSpecifier,
+    is_script: Option<bool>,
+  ) -> NodeModuleKind {
+    self.inner.get_lsp_referrer_kind(specifier, is_script)
+  }
+}
+
+#[derive(Debug)]
+pub struct SingleReferrerGraphResolver<'a> {
+  pub valid_referrer: &'a ModuleSpecifier,
+  pub referrer_kind: NodeModuleKind,
+  pub cli_resolver: &'a CliResolver,
+  pub jsx_import_source_config: Option<&'a JsxImportSourceConfig>,
+}
+
+impl<'a> deno_graph::source::Resolver for SingleReferrerGraphResolver<'a> {
+  fn default_jsx_import_source(&self) -> Option<String> {
+    self
+      .jsx_import_source_config
+      .and_then(|c| c.default_specifier.clone())
+  }
+
+  fn default_jsx_import_source_types(&self) -> Option<String> {
+    self
+      .jsx_import_source_config
+      .and_then(|c| c.default_types_specifier.clone())
+  }
+
+  fn jsx_import_source_module(&self) -> &str {
+    self
+      .jsx_import_source_config
+      .map(|c| c.module.as_str())
+      .unwrap_or(deno_graph::source::DEFAULT_JSX_IMPORT_SOURCE_MODULE)
+  }
+
+  fn resolve(
+    &self,
+    specifier_text: &str,
+    referrer_range: &Range,
+    mode: ResolutionMode,
+  ) -> Result<ModuleSpecifier, deno_graph::source::ResolveError> {
+    // this resolver assumes it will only be used with a single referrer
+    // with the provided referrer kind
+    debug_assert_eq!(referrer_range.specifier, *self.valid_referrer);
+    self.cli_resolver.resolve(
+      specifier_text,
+      referrer_range,
+      self.referrer_kind,
+      mode,
+    )
   }
 }
 

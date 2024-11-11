@@ -33,7 +33,6 @@ use import_map::resolve_import_map_value_from_specifier;
 pub use deno_config::deno_json::BenchConfig;
 pub use deno_config::deno_json::ConfigFile;
 pub use deno_config::deno_json::FmtOptionsConfig;
-pub use deno_config::deno_json::JsxImportSourceConfig;
 pub use deno_config::deno_json::LintRulesConfig;
 pub use deno_config::deno_json::ProseWrap;
 pub use deno_config::deno_json::TsConfig;
