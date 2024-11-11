@@ -1,0 +1,6 @@
+{
+  "type": "commonjs",
+  "dependencies": {
+    "@denotest/dual-cjs-esm": "*"
+  }
+}

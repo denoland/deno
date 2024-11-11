@@ -363,6 +363,17 @@ impl TypeCheckingCjsTracker {
           .unwrap_or(false)
       })
   }
+
+  pub fn is_cjs_with_known_is_script(
+    &self,
+    specifier: &ModuleSpecifier,
+    media_type: MediaType,
+    is_script: bool,
+  ) -> Result<bool, node_resolver::errors::ClosestPkgJsonError> {
+    self
+      .cjs_tracker
+      .is_cjs_with_known_is_script(specifier, media_type, is_script)
+  }
 }
 
 #[derive(Debug)]
@@ -621,8 +632,12 @@ fn op_load_inner(
       match module {
         Module::Js(module) => {
           media_type = module.media_type;
-          if matches!(media_type, MediaType::Cjs | MediaType::Cts) {
-            is_cjs = true;
+          if let Some(npm_state) = &state.maybe_npm {
+            is_cjs = npm_state.cjs_tracker.is_cjs_with_known_is_script(
+              specifier,
+              module.media_type,
+              module.is_script,
+            )?;
           }
           let source = module
             .fast_check_module()
