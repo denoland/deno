@@ -115,6 +115,10 @@ export const umask = () => {
   return 0o22;
 };
 
+export const getBuiltinModule = (id: string) => {
+  return Module.getBuiltinModule(id);
+};
+
 export const abort = () => {
   op_process_abort();
 };
@@ -727,6 +731,8 @@ Process.prototype.getegid = getegid;
 
 /** This method is removed on Windows */
 Process.prototype.geteuid = geteuid;
+
+Process.prototype.getBuiltinModule = getBuiltinModule;
 
 // TODO(kt3k): Implement this when we added -e option to node compat mode
 Process.prototype._eval = undefined;
