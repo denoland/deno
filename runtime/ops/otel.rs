@@ -36,8 +36,11 @@ use opentelemetry_sdk::logs::LogRecord;
 use opentelemetry_sdk::trace::BatchSpanProcessor;
 use opentelemetry_sdk::trace::SpanProcessor as SpanProcessorTrait;
 use opentelemetry_sdk::Resource;
-use opentelemetry_semantic_conventions::resource::SERVICE_NAME;
-use opentelemetry_semantic_conventions::resource::SERVICE_VERSION;
+use opentelemetry_semantic_conventions::resource::PROCESS_RUNTIME_NAME;
+use opentelemetry_semantic_conventions::resource::PROCESS_RUNTIME_VERSION;
+use opentelemetry_semantic_conventions::resource::TELEMETRY_SDK_LANGUAGE;
+use opentelemetry_semantic_conventions::resource::TELEMETRY_SDK_NAME;
+use opentelemetry_semantic_conventions::resource::TELEMETRY_SDK_VERSION;
 use serde::Deserialize;
 use serde::Serialize;
 use std::borrow::Cow;
@@ -68,8 +71,8 @@ deno_core::extension!(
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct OtelConfig {
-  pub default_service_name: Cow<'static, str>,
-  pub default_service_version: Cow<'static, str>,
+  pub runtime_name: Cow<'static, str>,
+  pub runtime_version: Cow<'static, str>,
   pub console: OtelConsoleConfig,
 }
 
@@ -84,8 +87,8 @@ pub enum OtelConsoleConfig {
 impl Default for OtelConfig {
   fn default() -> Self {
     Self {
-      default_service_name: Cow::Borrowed(env!("CARGO_PKG_NAME")),
-      default_service_version: Cow::Borrowed(env!("CARGO_PKG_VERSION")),
+      runtime_name: Cow::Borrowed(env!("CARGO_PKG_NAME")),
+      runtime_version: Cow::Borrowed(env!("CARGO_PKG_VERSION")),
       console: OtelConsoleConfig::Capture,
     }
   }
@@ -326,23 +329,35 @@ fn otel_create_globals(
   //   * Default attribute values defined here.
   // TODO(piscisaureus): add more default attributes (e.g. script path).
   let mut resource = Resource::default();
-  // The default service name assigned by `Resource::default()`, if not
-  // otherwise specified via environment variables, is "unknown_service".
-  // Override this with the current crate name and version.
-  if resource
-    .get(Key::from_static_str(SERVICE_NAME))
-    .filter(|service_name| service_name.as_str() != "unknown_service")
-    .is_none()
-  {
-    resource = resource.merge(&Resource::new(
-      [
-        (SERVICE_NAME, config.default_service_name),
-        (SERVICE_VERSION, config.default_service_version),
-      ]
-      .into_iter()
-      .map(|(k, v)| KeyValue::new(k, v)),
-    ))
-  }
+
+  // Add the runtime name and version to the resource attributes. Also override
+  // the `telemetry.sdk` attributes to include the Deno runtime.
+  resource = resource.merge(&Resource::new(vec![
+    KeyValue::new(PROCESS_RUNTIME_NAME, config.runtime_name),
+    KeyValue::new(PROCESS_RUNTIME_VERSION, config.runtime_version.clone()),
+    KeyValue::new(
+      TELEMETRY_SDK_LANGUAGE,
+      format!(
+        "deno-{}",
+        resource.get(Key::new(TELEMETRY_SDK_LANGUAGE)).unwrap()
+      ),
+    ),
+    KeyValue::new(
+      TELEMETRY_SDK_NAME,
+      format!(
+        "deno-{}",
+        resource.get(Key::new(TELEMETRY_SDK_NAME)).unwrap()
+      ),
+    ),
+    KeyValue::new(
+      TELEMETRY_SDK_VERSION,
+      format!(
+        "{}-{}",
+        config.runtime_version,
+        resource.get(Key::new(TELEMETRY_SDK_VERSION)).unwrap()
+      ),
+    ),
+  ]));
 
   // The OTLP endpoint is automatically picked up from the
   // `OTEL_EXPORTER_OTLP_ENDPOINT` environment variable. Additional headers can

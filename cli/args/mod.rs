@@ -1138,10 +1138,8 @@ impl CliOptions {
       .contains(&String::from("otel"))
     {
       Some(OtelConfig {
-        default_service_name: Cow::Borrowed("deno"),
-        default_service_version: Cow::Borrowed(
-          crate::version::DENO_VERSION_INFO.deno,
-        ),
+        runtime_name: Cow::Borrowed("deno"),
+        runtime_version: Cow::Borrowed(crate::version::DENO_VERSION_INFO.deno),
         ..Default::default()
       })
     } else {
