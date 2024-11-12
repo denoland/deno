@@ -1294,11 +1294,15 @@ declare namespace Deno {
 
       [Symbol.dispose](): void;
 
+      /**
+       * Get the "current" span, if one exists.
+       */
       static current(): Span | undefined | null;
     }
 
     /**
      * A SpanExporter compatible with OpenTelemetry.js
+     * https://open-telemetry.github.io/opentelemetry-js/interfaces/_opentelemetry_sdk_trace_base.SpanExporter.html
      * @category Telemetry
      * @experimental
      */
@@ -1306,6 +1310,7 @@ declare namespace Deno {
 
     /**
      * A ContextManager compatible with OpenTelemetry.js
+     * https://open-telemetry.github.io/opentelemetry-js/interfaces/_opentelemetry_api.ContextManager.html
      * @category Telemetry
      * @experimental
      */

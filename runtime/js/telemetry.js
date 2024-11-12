@@ -121,7 +121,7 @@ class Span {
   startTime;
   endTime;
   status = null;
-  attributes = {};
+  attributes = { __proto__: null };
   traceFlags = TRACE_FLAG_SAMPLED;
 
   enabled = TRACING_ENABLED;
@@ -136,13 +136,13 @@ class Span {
 
     const parent = Span.current();
     if (parent) {
-      if (parent.spanContext) {
+      if (parent.spanId) {
+        this.parentSpanId = parent.spanId;
+        this.traceId = parent.traceId ?? generateId(TRACE_ID_BYTES);
+      } else {
         const context = parent.spanContext();
         this.parentSpanId = context.spanId;
         this.traceId = context.traceId ?? generateId(TRACE_ID_BYTES);
-      } else {
-        this.parentSpanId = parent.spanId;
-        this.traceId = parent.traceId ?? generateId(TRACE_ID_BYTES);
       }
     } else {
       this.traceId = generateId(TRACE_ID_BYTES);
@@ -323,15 +323,15 @@ function otelLog(message, level) {
   let traceFlags = 0;
   const span = Span.current();
   if (span) {
-    if (span.spanContext) {
-      const context = span.spanContext();
-      traceId = context.traceId;
-      spanId = context.spanId;
-      traceFlags = context.traceFlags;
-    } else {
-      traceId = span.traceId;
+    if (span.spanId) {
       spanId = span.spanId;
+      traceId = span.traceId;
       traceFlags = span.traceFlags;
+    } else {
+      const context = span.spanContext();
+      spanId = context.spanId;
+      traceId = context.traceId;
+      traceFlags = context.traceFlags;
     }
   }
   return op_otel_log(message, level, traceId, spanId, traceFlags);
