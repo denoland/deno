@@ -351,7 +351,7 @@ class GPUUncapturedErrorEvent extends Event {
 const GPUUncapturedErrorEventPrototype = GPUUncapturedErrorEvent.prototype;
 
 // A finalization registry to clean up underlying resources that are GC'ed.
-const RESOURCE_REGISTRY = new SafeFinalizationRegistry((rid) => {
+const GPU_RESOURCE_REGISTRY = new SafeFinalizationRegistry((rid) => {
   core.tryClose(rid);
 });
 
@@ -389,7 +389,7 @@ class GPU {
         limits,
         isFallbackAdapter,
       );
-      RESOURCE_REGISTRY.register(adapter, rid, adapter);
+      GPU_RESOURCE_REGISTRY.register(adapter, rid, adapter);
       return adapter;
     }
   }
@@ -541,7 +541,7 @@ class GPUAdapter {
 
     const queue = createGPUQueue(descriptor.label, inner, queueRid);
     inner.trackResource(queue);
-    RESOURCE_REGISTRY.register(queue, queueRid, queue);
+    GPU_RESOURCE_REGISTRY.register(queue, queueRid, queue);
 
     const device = createGPUDevice(
       descriptor.label,
@@ -549,7 +549,7 @@ class GPUAdapter {
       queue,
     );
     inner.device = device;
-    RESOURCE_REGISTRY.register(device, rid, device);
+    GPU_RESOURCE_REGISTRY.register(device, rid, device);
 
     return device;
   }
@@ -1104,7 +1104,7 @@ class GPUDevice extends EventTarget {
     const rid = device.rid;
     if (rid !== undefined) {
       core.close(rid);
-      RESOURCE_REGISTRY.unregister(this);
+      GPU_RESOURCE_REGISTRY.unregister(this);
       /** @type {number | undefined} */
       device.rid = undefined;
     }
@@ -1208,7 +1208,7 @@ class GPUDevice extends EventTarget {
       options,
     );
     device.trackResource(buffer);
-    RESOURCE_REGISTRY.register(buffer, rid, buffer);
+    GPU_RESOURCE_REGISTRY.register(buffer, rid, buffer);
 
     return buffer;
   }
@@ -1241,7 +1241,7 @@ class GPUDevice extends EventTarget {
       rid,
     );
     device.trackResource(texture);
-    RESOURCE_REGISTRY.register(texture, rid, texture);
+    GPU_RESOURCE_REGISTRY.register(texture, rid, texture);
 
     return texture;
   }
@@ -1271,7 +1271,7 @@ class GPUDevice extends EventTarget {
       rid,
     );
     device.trackResource(sampler);
-    RESOURCE_REGISTRY.register(sampler, rid, sampler);
+    GPU_RESOURCE_REGISTRY.register(sampler, rid, sampler);
 
     return sampler;
   }
@@ -1318,7 +1318,7 @@ class GPUDevice extends EventTarget {
       rid,
     );
     device.trackResource(bindGroupLayout);
-    RESOURCE_REGISTRY.register(bindGroupLayout, rid, bindGroupLayout);
+    GPU_RESOURCE_REGISTRY.register(bindGroupLayout, rid, bindGroupLayout);
 
     return bindGroupLayout;
   }
@@ -1363,7 +1363,7 @@ class GPUDevice extends EventTarget {
       rid,
     );
     device.trackResource(pipelineLayout);
-    RESOURCE_REGISTRY.unregister(pipelineLayout, rid, pipelineLayout);
+    GPU_RESOURCE_REGISTRY.unregister(pipelineLayout, rid, pipelineLayout);
 
     return pipelineLayout;
   }
@@ -1435,7 +1435,7 @@ class GPUDevice extends EventTarget {
       rid,
     );
     device.trackResource(bindGroup);
-    RESOURCE_REGISTRY.register(bindGroup, rid, bindGroup);
+    GPU_RESOURCE_REGISTRY.register(bindGroup, rid, bindGroup);
 
     return bindGroup;
   }
@@ -1466,7 +1466,7 @@ class GPUDevice extends EventTarget {
       rid,
     );
     device.trackResource(shaderModule);
-    RESOURCE_REGISTRY.register(shaderModule, rid, shaderModule);
+    GPU_RESOURCE_REGISTRY.register(shaderModule, rid, shaderModule);
 
     return shaderModule;
   }
@@ -1524,7 +1524,7 @@ class GPUDevice extends EventTarget {
       rid,
     );
     device.trackResource(computePipeline);
-    RESOURCE_REGISTRY.register(computePipeline, rid, computePipeline);
+    GPU_RESOURCE_REGISTRY.register(computePipeline, rid, computePipeline);
 
     return computePipeline;
   }
@@ -1606,7 +1606,7 @@ class GPUDevice extends EventTarget {
       rid,
     );
     device.trackResource(renderPipeline);
-    RESOURCE_REGISTRY.register(renderPipeline, rid, renderPipeline);
+    GPU_RESOURCE_REGISTRY.register(renderPipeline, rid, renderPipeline);
 
     return renderPipeline;
   }
@@ -1679,7 +1679,7 @@ class GPUDevice extends EventTarget {
       rid,
     );
     device.trackResource(computePipeline);
-    RESOURCE_REGISTRY.register(computePipeline, rid, computePipeline);
+    GPU_RESOURCE_REGISTRY.register(computePipeline, rid, computePipeline);
 
     return PromiseResolve(computePipeline);
   }
@@ -1776,7 +1776,7 @@ class GPUDevice extends EventTarget {
       rid,
     );
     device.trackResource(renderPipeline);
-    RESOURCE_REGISTRY.register(renderPipeline, rid, renderPipeline);
+    GPU_RESOURCE_REGISTRY.register(renderPipeline, rid, renderPipeline);
 
     return PromiseResolve(renderPipeline);
   }
@@ -1806,7 +1806,7 @@ class GPUDevice extends EventTarget {
       rid,
     );
     device.trackResource(commandEncoder);
-    RESOURCE_REGISTRY.register(commandEncoder, rid, commandEncoder);
+    GPU_RESOURCE_REGISTRY.register(commandEncoder, rid, commandEncoder);
 
     return commandEncoder;
   }
@@ -1838,7 +1838,11 @@ class GPUDevice extends EventTarget {
       rid,
     );
     device.trackResource(renderBundleEncoder);
-    RESOURCE_REGISTRY.register(renderBundleEncoder, rid, renderBundleEncoder);
+    GPU_RESOURCE_REGISTRY.register(
+      renderBundleEncoder,
+      rid,
+      renderBundleEncoder,
+    );
 
     return renderBundleEncoder;
   }
@@ -1870,7 +1874,7 @@ class GPUDevice extends EventTarget {
       descriptor,
     );
     device.trackResource(querySet);
-    RESOURCE_REGISTRY.register(querySet, rid, querySet);
+    GPU_RESOURCE_REGISTRY.register(querySet, rid, querySet);
 
     return querySet;
   }
@@ -1992,7 +1996,7 @@ class GPUQueue {
     const rid = this[_rid];
     if (rid !== undefined) {
       core.close(rid);
-      RESOURCE_REGISTRY.unregister(this);
+      GPU_RESOURCE_REGISTRY.unregister(this);
       /** @type {number | undefined} */
       this[_rid] = undefined;
     }
@@ -2223,14 +2227,14 @@ class GPUBuffer {
         const mappedRange = ArrayPrototypePop(mappedRanges);
         if (mappedRange !== undefined) {
           core.close(mappedRange[1]);
-          RESOURCE_REGISTRY.unregister(mappedRange);
+          GPU_RESOURCE_REGISTRY.unregister(mappedRange);
         }
       }
     }
     const rid = this[_rid];
     if (rid !== undefined) {
       core.close(rid);
-      RESOURCE_REGISTRY.unregister(this);
+      GPU_RESOURCE_REGISTRY.unregister(this);
       /** @type {number | undefined} */
       this[_rid] = undefined;
     }
@@ -2398,7 +2402,7 @@ class GPUBuffer {
 
     const mappedRange = [buffer, rid, offset];
     ArrayPrototypePush(mappedRanges, mappedRange);
-    RESOURCE_REGISTRY.register(mappedRange, rid, mappedRange);
+    GPU_RESOURCE_REGISTRY.register(mappedRange, rid, mappedRange);
 
     return buffer;
   }
@@ -2595,7 +2599,7 @@ class GPUTexture {
     const rid = this[_rid];
     if (rid !== undefined) {
       core.close(rid);
-      RESOURCE_REGISTRY.unregister(this);
+      GPU_RESOURCE_REGISTRY.unregister(this);
       /** @type {number | undefined} */
       this[_rid] = undefined;
     }
@@ -2631,7 +2635,7 @@ class GPUTexture {
       rid,
     );
     ArrayPrototypePush(this[_views], new SafeWeakRef(textureView));
-    RESOURCE_REGISTRY.register(textureView, rid, textureView);
+    GPU_RESOURCE_REGISTRY.register(textureView, rid, textureView);
 
     return textureView;
   }
@@ -2751,7 +2755,7 @@ class GPUTextureView {
     const rid = this[_rid];
     if (rid !== undefined) {
       core.close(rid);
-      RESOURCE_REGISTRY.unregister(this);
+      GPU_RESOURCE_REGISTRY.unregister(this);
       /** @type {number | undefined} */
       this[_rid] = undefined;
     }
@@ -2802,7 +2806,7 @@ class GPUSampler {
     const rid = this[_rid];
     if (rid !== undefined) {
       core.close(rid);
-      RESOURCE_REGISTRY.unregister(this);
+      GPU_RESOURCE_REGISTRY.unregister(this);
       /** @type {number | undefined} */
       this[_rid] = undefined;
     }
@@ -2848,7 +2852,7 @@ class GPUBindGroupLayout {
     const rid = this[_rid];
     if (rid !== undefined) {
       core.close(rid);
-      RESOURCE_REGISTRY.unregister(this);
+      GPU_RESOURCE_REGISTRY.unregister(this);
       /** @type {number | undefined} */
       this[_rid] = undefined;
     }
@@ -2902,7 +2906,7 @@ class GPUPipelineLayout {
     const rid = this[_rid];
     if (rid !== undefined) {
       core.close(rid);
-      RESOURCE_REGISTRY.unregister(this);
+      GPU_RESOURCE_REGISTRY.unregister(this);
       /** @type {number | undefined} */
       this[_rid] = undefined;
     }
@@ -2956,7 +2960,7 @@ class GPUBindGroup {
     const rid = this[_rid];
     if (rid !== undefined) {
       core.close(rid);
-      RESOURCE_REGISTRY.unregister(this);
+      GPU_RESOURCE_REGISTRY.unregister(this);
       /** @type {number | undefined} */
       this[_rid] = undefined;
     }
@@ -3007,7 +3011,7 @@ class GPUShaderModule {
     const rid = this[_rid];
     if (rid !== undefined) {
       core.close(rid);
-      RESOURCE_REGISTRY.unregister(this);
+      GPU_RESOURCE_REGISTRY.unregister(this);
       /** @type {number | undefined} */
       this[_rid] = undefined;
     }
@@ -3075,7 +3079,7 @@ class GPUComputePipeline {
     const rid = this[_rid];
     if (rid !== undefined) {
       core.close(rid);
-      RESOURCE_REGISTRY.unregister(this);
+      GPU_RESOURCE_REGISTRY.unregister(this);
       /** @type {number | undefined} */
       this[_rid] = undefined;
     }
@@ -3110,7 +3114,7 @@ class GPUComputePipeline {
       rid,
     );
     device.trackResource(bindGroupLayout);
-    RESOURCE_REGISTRY.register(bindGroupLayout, rid, bindGroupLayout);
+    GPU_RESOURCE_REGISTRY.register(bindGroupLayout, rid, bindGroupLayout);
 
     return bindGroupLayout;
   }
@@ -3159,7 +3163,7 @@ class GPURenderPipeline {
     const rid = this[_rid];
     if (rid !== undefined) {
       core.close(rid);
-      RESOURCE_REGISTRY.unregister(this);
+      GPU_RESOURCE_REGISTRY.unregister(this);
       /** @type {number | undefined} */
       this[_rid] = undefined;
     }
@@ -3192,7 +3196,7 @@ class GPURenderPipeline {
       rid,
     );
     device.trackResource(bindGroupLayout);
-    RESOURCE_REGISTRY.register(bindGroupLayout, rid, bindGroupLayout);
+    GPU_RESOURCE_REGISTRY.register(bindGroupLayout, rid, bindGroupLayout);
 
     return bindGroupLayout;
   }
@@ -3273,7 +3277,7 @@ class GPUCommandEncoder {
     const rid = this[_rid];
     if (rid !== undefined) {
       core.close(rid);
-      RESOURCE_REGISTRY.unregister(this);
+      GPU_RESOURCE_REGISTRY.unregister(this);
       /** @type {number | undefined} */
       this[_rid] = undefined;
     }
@@ -3436,7 +3440,7 @@ class GPUCommandEncoder {
       rid,
     );
     ArrayPrototypePush(this[_encoders], new SafeWeakRef(renderPassEncoder));
-    RESOURCE_REGISTRY.register(renderPassEncoder, rid, renderPassEncoder);
+    GPU_RESOURCE_REGISTRY.register(renderPassEncoder, rid, renderPassEncoder);
 
     return renderPassEncoder;
   }
@@ -3485,7 +3489,7 @@ class GPUCommandEncoder {
       rid,
     );
     ArrayPrototypePush(this[_encoders], new SafeWeakRef(computePassEncoder));
-    RESOURCE_REGISTRY.register(computePassEncoder, rid, computePassEncoder);
+    GPU_RESOURCE_REGISTRY.register(computePassEncoder, rid, computePassEncoder);
 
     return computePassEncoder;
   }
@@ -3921,7 +3925,7 @@ class GPUCommandEncoder {
       rid,
     );
     device.trackResource(commandBuffer);
-    RESOURCE_REGISTRY.register(commandBuffer, rid, commandBuffer);
+    GPU_RESOURCE_REGISTRY.register(commandBuffer, rid, commandBuffer);
 
     return commandBuffer;
   }
@@ -3970,7 +3974,7 @@ class GPURenderPassEncoder {
     const rid = this[_rid];
     if (rid !== undefined) {
       core.close(rid);
-      RESOURCE_REGISTRY.unregister(this);
+      GPU_RESOURCE_REGISTRY.unregister(this);
       /** @type {number | undefined} */
       this[_rid] = undefined;
     }
@@ -4580,7 +4584,7 @@ class GPUComputePassEncoder {
     const rid = this[_rid];
     if (rid !== undefined) {
       core.close(rid);
-      RESOURCE_REGISTRY.unregister(this);
+      GPU_RESOURCE_REGISTRY.unregister(this);
       /** @type {number | undefined} */
       this[_rid] = undefined;
     }
@@ -4856,7 +4860,7 @@ class GPUCommandBuffer {
     const rid = this[_rid];
     if (rid !== undefined) {
       core.close(rid);
-      RESOURCE_REGISTRY.unregister(this);
+      GPU_RESOURCE_REGISTRY.unregister(this);
       /** @type {number | undefined} */
       this[_rid] = undefined;
     }
@@ -4907,7 +4911,7 @@ class GPURenderBundleEncoder {
     const rid = this[_rid];
     if (rid !== undefined) {
       core.close(rid);
-      RESOURCE_REGISTRY.unregister(this);
+      GPU_RESOURCE_REGISTRY.unregister(this);
       /** @type {number | undefined} */
       this[_rid] = undefined;
     }
@@ -4943,7 +4947,7 @@ class GPURenderBundleEncoder {
       rid,
     );
     device.trackResource(renderBundle);
-    RESOURCE_REGISTRY.register(renderBundle, rid, renderBundle);
+    GPU_RESOURCE_REGISTRY.register(renderBundle, rid, renderBundle);
 
     return renderBundle;
   }
@@ -5301,7 +5305,7 @@ class GPURenderBundle {
     const rid = this[_rid];
     if (rid !== undefined) {
       core.close(rid);
-      RESOURCE_REGISTRY.unregister(this);
+      GPU_RESOURCE_REGISTRY.unregister(this);
       /** @type {number | undefined} */
       this[_rid] = undefined;
     }
@@ -5359,7 +5363,7 @@ class GPUQuerySet {
     const rid = this[_rid];
     if (rid !== undefined) {
       core.close(rid);
-      RESOURCE_REGISTRY.unregister(this);
+      GPU_RESOURCE_REGISTRY.unregister(this);
       /** @type {number | undefined} */
       this[_rid] = undefined;
     }
@@ -7593,6 +7597,7 @@ export {
   createGPUTexture,
   GPU,
   gpu,
+  GPU_RESOURCE_REGISTRY,
   GPUAdapter,
   GPUAdapterInfo,
   GPUBindGroup,
