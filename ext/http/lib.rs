@@ -112,6 +112,7 @@ deno_core::extension!(
     http_next::op_http_close_after_finish,
     http_next::op_http_get_request_header,
     http_next::op_http_get_request_headers,
+    http_next::op_http_request_on_cancel,
     http_next::op_http_get_request_method_and_url<HTTP>,
     http_next::op_http_get_request_cancelled,
     http_next::op_http_read_request_body,
