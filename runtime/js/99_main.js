@@ -27,7 +27,6 @@ const {
   ArrayPrototypeForEach,
   ArrayPrototypeIncludes,
   ArrayPrototypeMap,
-  DateNow,
   Error,
   ErrorPrototype,
   FunctionPrototypeBind,
@@ -642,7 +641,7 @@ function bootstrapMainRuntime(runtimeOptions, warmup = false) {
 
     removeImportedOps();
 
-    performance.setTimeOrigin(DateNow());
+    performance.setTimeOrigin();
     globalThis_ = globalThis;
 
     // Remove bootstrapping data from the global scope
@@ -696,6 +695,7 @@ function bootstrapMainRuntime(runtimeOptions, warmup = false) {
     // are lost.
     let jupyterNs = undefined;
     ObjectDefineProperty(finalDenoNs, "jupyter", {
+      __proto__: null,
       get() {
         if (jupyterNs) {
           return jupyterNs;
@@ -857,7 +857,7 @@ function bootstrapWorkerRuntime(
       7: nodeDebug,
     } = runtimeOptions;
 
-    performance.setTimeOrigin(DateNow());
+    performance.setTimeOrigin();
     globalThis_ = globalThis;
 
     // Remove bootstrapping data from the global scope

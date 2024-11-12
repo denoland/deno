@@ -1,0 +1,17 @@
+Check file:///[WILDLINE]main.js
+error: TS2580 [ERROR]: Cannot find name 'module'.
+module.exports.add = function (a, b) {
+~~~~~~
+    at file:///[WILDLINE]
+
+TS7006 [ERROR]: Parameter 'a' implicitly has an 'any' type.
+module.exports.add = function (a, b) {
+                               ^
+    at file:///[WILDLINE]
+
+TS7006 [ERROR]: Parameter 'b' implicitly has an 'any' type.
+module.exports.add = function (a, b) {
+                                  ^
+    at file:///[WILDLINE]
+
+Found 3 errors.

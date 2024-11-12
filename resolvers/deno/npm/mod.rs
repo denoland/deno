@@ -3,6 +3,7 @@
 mod byonm;
 mod local;
 
+pub use byonm::ByonmInNpmPackageChecker;
 pub use byonm::ByonmNpmResolver;
 pub use byonm::ByonmNpmResolverCreateOptions;
 pub use byonm::ByonmResolvePkgFolderFromDenoReqError;
