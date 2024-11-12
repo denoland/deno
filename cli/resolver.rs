@@ -506,7 +506,7 @@ impl CjsTracker {
       specifier,
       media_type,
       is_script,
-      Some(&self.known),
+      &self.known,
     )
   }
 }
@@ -543,14 +543,30 @@ impl IsCjsResolver {
     if specifier.scheme() != "file" {
       return NodeModuleKind::Esm;
     }
-    self
-      .get_known_kind_with_is_script(
-        specifier,
-        MediaType::from_specifier(specifier),
-        is_script,
-        None,
-      )
-      .unwrap_or(NodeModuleKind::Esm)
+    match MediaType::from_specifier(specifier) {
+      MediaType::Mts | MediaType::Mjs | MediaType::Dmts => NodeModuleKind::Esm,
+      MediaType::Cjs | MediaType::Cts | MediaType::Dcts => NodeModuleKind::Cjs,
+      MediaType::Dts => {
+        // dts files are always determined based on the package.json because
+        // they contain imports/exports even when considered CJS
+        self.check_based_on_pkg_json(specifier).unwrap_or(NodeModuleKind::Esm)
+      }
+      MediaType::Wasm |
+      MediaType::Json => NodeModuleKind::Esm,
+      MediaType::JavaScript
+      | MediaType::Jsx
+      | MediaType::TypeScript
+      | MediaType::Tsx
+      // treat these as unknown
+      | MediaType::Css
+      | MediaType::SourceMap
+      | MediaType::Unknown => {
+        match is_script {
+          Some(true) => self.check_based_on_pkg_json(specifier).unwrap_or(NodeModuleKind::Esm),
+          Some(false) | None => NodeModuleKind::Esm,
+        }
+      }
+    }
   }
 
   fn get_known_kind_with_is_script(
@@ -558,7 +574,7 @@ impl IsCjsResolver {
     specifier: &ModuleSpecifier,
     media_type: MediaType,
     is_script: Option<bool>,
-    known_cache: Option<&DashMap<ModuleSpecifier, NodeModuleKind>>,
+    known_cache: &DashMap<ModuleSpecifier, NodeModuleKind>,
   ) -> Option<NodeModuleKind> {
     if specifier.scheme() != "file" {
       return Some(NodeModuleKind::Esm);
@@ -570,14 +586,12 @@ impl IsCjsResolver {
       MediaType::Dts => {
         // dts files are always determined based on the package.json because
         // they contain imports/exports even when considered CJS
-        if let Some(value) = known_cache.and_then(|c| c.get(specifier)).map(|v| *v) {
+        if let Some(value) = known_cache.get(specifier).map(|v| *v) {
           Some(value)
         } else {
           let value = self.check_based_on_pkg_json(specifier).ok();
           if let Some(value) = value {
-            if let Some(known_cache) = known_cache {
-              known_cache.insert(specifier.clone(), value);
-            }
+            known_cache.insert(specifier.clone(), value);
           }
           Some(value.unwrap_or(NodeModuleKind::Esm))
         }
@@ -592,28 +606,18 @@ impl IsCjsResolver {
       | MediaType::Css
       | MediaType::SourceMap
       | MediaType::Unknown => {
-        if let Some(value) = known_cache.and_then(|c| c.get(specifier)).map(|v| *v) {
+        if let Some(value) = known_cache.get(specifier).map(|v| *v) {
           if value == NodeModuleKind::Cjs && is_script == Some(false) {
             // we now know this is actually esm
-            if let Some(known_cache) = known_cache {
-              known_cache.insert(specifier.clone(), NodeModuleKind::Esm);
-            }
+            known_cache.insert(specifier.clone(), NodeModuleKind::Esm);
             Some(NodeModuleKind::Esm)
           } else {
             Some(value)
           }
         } else if is_script == Some(false) {
           // we know this is esm
-          if let Some(known_cache) = known_cache {
             known_cache.insert(specifier.clone(), NodeModuleKind::Esm);
-          }
           Some(NodeModuleKind::Esm)
-        } else if is_script == Some(true) {
-          // we know this is cjs
-          if let Some(known_cache) = known_cache {
-            known_cache.insert(specifier.clone(), NodeModuleKind::Cjs);
-          }
-          Some(NodeModuleKind::Cjs)
         } else {
           None
         }
