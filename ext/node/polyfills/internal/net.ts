@@ -95,4 +95,5 @@ export function makeSyncWrite(fd: number) {
   };
 }
 
+export const kReinitializeHandle = Symbol("kReinitializeHandle");
 export const normalizedArgsSymbol = Symbol("normalizedArgs");

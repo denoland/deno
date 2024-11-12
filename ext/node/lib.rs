@@ -47,6 +47,11 @@ pub trait NodePermissions {
     url: &Url,
     api_name: &str,
   ) -> Result<(), PermissionCheckError>;
+  fn check_net(
+    &mut self,
+    host: (&str, Option<u16>),
+    api_name: &str,
+  ) -> Result<(), PermissionCheckError>;
   #[must_use = "the resolved return value to mitigate time-of-check to time-of-use issues"]
   #[inline(always)]
   fn check_read(
@@ -88,6 +93,14 @@ impl NodePermissions for deno_permissions::PermissionsContainer {
     api_name: &str,
   ) -> Result<(), PermissionCheckError> {
     deno_permissions::PermissionsContainer::check_net_url(self, url, api_name)
+  }
+
+  fn check_net(
+    &mut self,
+    host: (&str, Option<u16>),
+    api_name: &str,
+  ) -> Result<(), PermissionCheckError> {
+    deno_permissions::PermissionsContainer::check_net(self, &host, api_name)
   }
 
   #[inline(always)]
@@ -398,6 +411,15 @@ deno_core::extension!(deno_node,
     ops::process::op_node_process_kill,
     ops::process::op_process_abort,
     ops::tls::op_get_root_certificates,
+    ops::inspector::op_inspector_open<P>,
+    ops::inspector::op_inspector_close,
+    ops::inspector::op_inspector_url,
+    ops::inspector::op_inspector_wait,
+    ops::inspector::op_inspector_connect<P>,
+    ops::inspector::op_inspector_dispatch,
+    ops::inspector::op_inspector_disconnect,
+    ops::inspector::op_inspector_emit_protocol_event,
+    ops::inspector::op_inspector_enabled,
   ],
   esm_entry_point = "ext:deno_node/02_init.js",
   esm = [
@@ -606,8 +628,8 @@ deno_core::extension!(deno_node,
     "node:http" = "http.ts",
     "node:http2" = "http2.ts",
     "node:https" = "https.ts",
-    "node:inspector" = "inspector.ts",
-    "node:inspector/promises" = "inspector.ts",
+    "node:inspector" = "inspector.js",
+    "node:inspector/promises" = "inspector/promises.js",
     "node:module" = "01_require.js",
     "node:net" = "net.ts",
     "node:os" = "os.ts",
