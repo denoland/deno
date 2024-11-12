@@ -10,6 +10,7 @@ use super::tsc;
 use super::urls::url_to_uri;
 
 use crate::args::jsr_url;
+use crate::lsp::logging::lsp_warn;
 use crate::lsp::search::PackageSearchApi;
 use crate::tools::lint::CliLinter;
 use crate::util::path::relative_specifier;
@@ -754,8 +755,14 @@ pub fn ts_changes_to_edit(
 ) -> Result<Option<lsp::WorkspaceEdit>, AnyError> {
   let mut text_document_edits = Vec::new();
   for change in changes {
-    let text_document_edit = change.to_text_document_edit(language_server)?;
-    text_document_edits.push(text_document_edit);
+    let edit = match change.to_text_document_edit(language_server) {
+      Ok(e) => e,
+      Err(err) => {
+        lsp_warn!("Couldn't covert text document edit: {:#}", err);
+        continue;
+      }
+    };
+    text_document_edits.push(edit);
   }
   Ok(Some(lsp::WorkspaceEdit {
     changes: None,
