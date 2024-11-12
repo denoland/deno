@@ -1,0 +1,6 @@
+{
+  "tasks": {
+    "dev": "file-server",
+    "echo": "echo Hello A!"
+  }
+}

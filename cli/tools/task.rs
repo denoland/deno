@@ -16,6 +16,7 @@ use deno_core::anyhow::anyhow;
 use deno_core::anyhow::bail;
 use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
+use deno_core::futures::future::join_all;
 use deno_path_util::normalize_path;
 use deno_task_shell::ShellCommand;
 
@@ -28,16 +29,13 @@ use crate::npm::CliNpmResolver;
 use crate::task_runner;
 use crate::util::fs::canonicalize_path;
 
-pub async fn execute_script(
+async fn execute_script_inner(
   flags: Arc<Flags>,
   task_flags: TaskFlags,
+  start_dir: Arc<WorkspaceDirectory>,
 ) -> Result<i32, AnyError> {
   let factory = CliFactory::from_flags(flags);
   let cli_options = factory.cli_options()?;
-  let start_dir = &cli_options.start_dir;
-  if !start_dir.has_deno_or_pkg_json() {
-    bail!("deno task couldn't find deno.json(c). See https://docs.deno.com/go/config")
-  }
   let force_use_pkg_json =
     std::env::var_os(crate::task_runner::USE_PKG_JSON_HIDDEN_ENV_VAR_NAME)
       .map(|v| {
@@ -58,11 +56,7 @@ pub async fn execute_script(
   let task_name = match &task_flags.task {
     Some(task) => task,
     None => {
-      print_available_tasks(
-        &mut std::io::stdout(),
-        &cli_options.start_dir,
-        &tasks_config,
-      )?;
+      print_available_tasks(&mut std::io::stdout(), &start_dir, &tasks_config)?;
       return Ok(0);
     }
   };
@@ -153,6 +147,60 @@ pub async fn execute_script(
       }
       Ok(1)
     }
+  }
+}
+
+pub async fn execute_script(
+  flags: Arc<Flags>,
+  task_flags: TaskFlags,
+) -> Result<i32, AnyError> {
+  let factory = CliFactory::from_flags(flags.clone());
+  let cli_options = factory.cli_options()?;
+  let start_dir = &cli_options.start_dir;
+
+  if !start_dir.has_deno_or_pkg_json() {
+    bail!("deno task couldn't find deno.json(c). See https://docs.deno.com/go/config")
+  }
+
+  if task_flags.recursive {
+    let members: Vec<Arc<WorkspaceDirectory>> = start_dir
+      .workspace
+      .config_folders()
+      .keys()
+      .map(|specifier| {
+        Arc::new(start_dir.workspace.resolve_member_dir(specifier))
+      })
+      .collect();
+
+    let tasks: Vec<_> = members
+      .into_iter()
+      // Filter based on workspace directory name
+      .filter(|w| {
+        if let Some(filter) = &task_flags.filter {
+          w.dir_path()
+            .file_name()
+            .and_then(|n| n.to_str())
+            // TODO: support glob patterns
+            .map(|name| name.contains(filter))
+            .unwrap_or(false)
+        } else {
+          w.to_tasks_config().map(|c| !c.is_empty()).unwrap_or(false)
+        }
+      })
+      .map(|member| {
+        execute_script_inner(flags.clone(), task_flags.clone(), member)
+      })
+      .collect();
+
+    let results = join_all(tasks).await;
+    let exit_code = results
+      .into_iter()
+      .find_map(|r| r.ok().filter(|&code| code != 0))
+      .unwrap_or(0);
+
+    Ok(exit_code)
+  } else {
+    execute_script_inner(flags, task_flags, Arc::clone(start_dir)).await
   }
 }
 

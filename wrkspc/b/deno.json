@@ -1,0 +1,6 @@
+{
+  "tasks": {
+    "dev": "file-server -p 8080",
+    "echo": "echo Hello B!"
+  }
+}

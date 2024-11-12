@@ -375,6 +375,8 @@ pub struct WatchFlagsWithPaths {
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct TaskFlags {
+  pub recursive: bool,
+  pub filter: Option<String>,
   pub cwd: Option<String>,
   pub task: Option<String>,
   pub is_run: bool,
@@ -2918,6 +2920,20 @@ List all available tasks:
           .help("Specify the directory to run the task in")
           .value_hint(ValueHint::DirPath),
       )
+      .arg(
+        Arg::new("recursive")
+          .long("recursive")
+          .short('r')
+          .help("Run the task in all projects in the workspace")
+          .action(ArgAction::SetTrue),
+      )
+      .arg(
+        Arg::new("filter")
+        .long("filter")
+        .short('f')
+        .help("Filter members of the workspace by name - should be used with --recursive")
+        .value_parser(value_parser!(String)),
+      )
       .arg(node_modules_dir_arg())
   })
 }
@@ -5032,6 +5048,8 @@ fn task_parse(flags: &mut Flags, matches: &mut ArgMatches) {
   node_modules_arg_parse(flags, matches);
 
   let mut task_flags = TaskFlags {
+    recursive: matches.get_flag("recursive"),
+    filter: matches.remove_one::<String>("filter"),
     cwd: matches.remove_one::<String>("cwd"),
     task: None,
     is_run: false,
