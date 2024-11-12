@@ -4286,9 +4286,7 @@ impl TscSpecifierMap {
       return specifier.to_string();
     }
     let mut specifier = original.to_string();
-    if specifier.contains("/node_modules/.deno/")
-      && !specifier.contains("/node_modules/@types/node/")
-    {
+    if !specifier.contains("/node_modules/@types/node/") {
       // The ts server doesn't give completions from files in
       // `node_modules/.deno/`. We work around it like this.
       specifier = specifier.replace("/node_modules/", "/$node_modules/");
@@ -4464,6 +4462,8 @@ fn op_load<'s>(
         }
       })
     };
+
+  lsp_warn!("op_load {} {}", &specifier, maybe_load_response.is_some());
 
   let serialized = serde_v8::to_v8(scope, maybe_load_response)?;
 
