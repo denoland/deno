@@ -15,6 +15,7 @@ use deno_core::futures::Stream;
 use deno_core::OpState;
 use deno_fetch::create_http_client;
 use deno_fetch::CreateHttpClientOptions;
+use deno_permissions::PermissionCheckError;
 use deno_tls::rustls::RootCertStore;
 use deno_tls::Proxy;
 use deno_tls::RootCertStoreProvider;
@@ -45,17 +46,17 @@ impl HttpOptions {
 }
 
 pub trait RemoteDbHandlerPermissions {
-  fn check_env(&mut self, var: &str) -> Result<(), AnyError>;
+  fn check_env(&mut self, var: &str) -> Result<(), PermissionCheckError>;
   fn check_net_url(
     &mut self,
     url: &Url,
     api_name: &str,
-  ) -> Result<(), AnyError>;
+  ) -> Result<(), PermissionCheckError>;
 }
 
 impl RemoteDbHandlerPermissions for deno_permissions::PermissionsContainer {
   #[inline(always)]
-  fn check_env(&mut self, var: &str) -> Result<(), AnyError> {
+  fn check_env(&mut self, var: &str) -> Result<(), PermissionCheckError> {
     deno_permissions::PermissionsContainer::check_env(self, var)
   }
 
@@ -64,7 +65,7 @@ impl RemoteDbHandlerPermissions for deno_permissions::PermissionsContainer {
     &mut self,
     url: &Url,
     api_name: &str,
-  ) -> Result<(), AnyError> {
+  ) -> Result<(), PermissionCheckError> {
     deno_permissions::PermissionsContainer::check_net_url(self, url, api_name)
   }
 }
@@ -103,7 +104,9 @@ impl<P: RemoteDbHandlerPermissions + 'static> denokv_remote::RemotePermissions
   fn check_net_url(&self, url: &Url) -> Result<(), anyhow::Error> {
     let mut state = self.state.borrow_mut();
     let permissions = state.borrow_mut::<P>();
-    permissions.check_net_url(url, "Deno.openKv")
+    permissions
+      .check_net_url(url, "Deno.openKv")
+      .map_err(Into::into)
   }
 }
 

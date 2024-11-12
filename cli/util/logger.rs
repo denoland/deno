@@ -65,6 +65,8 @@ pub fn init(maybe_level: Option<log::Level>) {
   .filter_module("swc_ecma_parser", log::LevelFilter::Error)
   // Suppress span lifecycle logs since they are too verbose
   .filter_module("tracing::span", log::LevelFilter::Off)
+  // for deno_compile, this is too verbose
+  .filter_module("editpe", log::LevelFilter::Error)
   .format(|buf, record| {
     let mut target = record.target().to_string();
     if let Some(line_no) = record.line() {

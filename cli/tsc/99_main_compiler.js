@@ -801,13 +801,18 @@ delete Object.prototype.__proto__;
       if (logDebug) {
         debug(`host.getScriptSnapshot("${specifier}")`);
       }
-      const sourceFile = sourceFileCache.get(specifier);
-      if (sourceFile) {
-        if (!assetScopes.has(specifier)) {
-          assetScopes.set(specifier, lastRequestScope);
+      if (specifier.startsWith(ASSETS_URL_PREFIX)) {
+        const sourceFile = this.getSourceFile(
+          specifier,
+          ts.ScriptTarget.ESNext,
+        );
+        if (sourceFile) {
+          if (!assetScopes.has(specifier)) {
+            assetScopes.set(specifier, lastRequestScope);
+          }
+          // This case only occurs for assets.
+          return ts.ScriptSnapshot.fromString(sourceFile.text);
         }
-        // This case only occurs for assets.
-        return ts.ScriptSnapshot.fromString(sourceFile.text);
       }
       let sourceText = sourceTextCache.get(specifier);
       if (sourceText == undefined) {
@@ -845,6 +850,8 @@ delete Object.prototype.__proto__;
         jqueryMessage,
       "Cannot_find_name_0_Do_you_need_to_install_type_definitions_for_jQuery_Try_npm_i_save_dev_types_Slash_2592":
         jqueryMessage,
+      "Module_0_was_resolved_to_1_but_allowArbitraryExtensions_is_not_set_6263":
+        "Module '{0}' was resolved to '{1}', but importing these modules is not supported.",
     };
   })());
 

@@ -5,10 +5,12 @@ use std::sync::Arc;
 
 use deno_config::workspace::Workspace;
 use deno_core::serde_json;
+use deno_core::url::Url;
 use deno_package_json::PackageJsonDepValue;
 use deno_package_json::PackageJsonDepValueParseError;
 use deno_semver::npm::NpmPackageReqReference;
 use deno_semver::package::PackageReq;
+use thiserror::Error;
 
 #[derive(Debug)]
 pub struct InstallNpmRemotePkg {
@@ -23,11 +25,20 @@ pub struct InstallNpmWorkspacePkg {
   pub target_dir: PathBuf,
 }
 
+#[derive(Debug, Error, Clone)]
+#[error("Failed to install '{}'\n    at {}", alias, location)]
+pub struct PackageJsonDepValueParseWithLocationError {
+  pub location: Url,
+  pub alias: String,
+  #[source]
+  pub source: PackageJsonDepValueParseError,
+}
+
 #[derive(Debug, Default)]
 pub struct NpmInstallDepsProvider {
   remote_pkgs: Vec<InstallNpmRemotePkg>,
   workspace_pkgs: Vec<InstallNpmWorkspacePkg>,
-  pkg_json_dep_errors: Vec<PackageJsonDepValueParseError>,
+  pkg_json_dep_errors: Vec<PackageJsonDepValueParseWithLocationError>,
 }
 
 impl NpmInstallDepsProvider {
@@ -89,7 +100,13 @@ impl NpmInstallDepsProvider {
           let dep = match dep {
             Ok(dep) => dep,
             Err(err) => {
-              pkg_json_dep_errors.push(err);
+              pkg_json_dep_errors.push(
+                PackageJsonDepValueParseWithLocationError {
+                  location: pkg_json.specifier(),
+                  alias,
+                  source: err,
+                },
+              );
               continue;
             }
           };
@@ -150,7 +167,9 @@ impl NpmInstallDepsProvider {
     &self.workspace_pkgs
   }
 
-  pub fn pkg_json_dep_errors(&self) -> &[PackageJsonDepValueParseError] {
+  pub fn pkg_json_dep_errors(
+    &self,
+  ) -> &[PackageJsonDepValueParseWithLocationError] {
     &self.pkg_json_dep_errors
   }
 }

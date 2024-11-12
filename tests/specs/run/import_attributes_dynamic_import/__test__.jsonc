@@ -1,0 +1,4 @@
+{
+  "args": "run --allow-read --check dynamic_import.ts",
+  "output": "dynamic_import.out"
+}

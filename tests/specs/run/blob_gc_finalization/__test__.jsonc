@@ -1,0 +1,5 @@
+{
+  "args": "run blob_gc_finalization.js",
+  "output": "blob_gc_finalization.js.out",
+  "exitCode": 0
+}

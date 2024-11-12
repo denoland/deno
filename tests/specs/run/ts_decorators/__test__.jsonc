@@ -1,0 +1,4 @@
+{
+  "args": "run --reload --check decorators/experimental/ts/main.ts",
+  "output": "decorators/experimental/ts/main.out"
+}

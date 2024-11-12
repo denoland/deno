@@ -1,0 +1,5 @@
+{
+  "args": "run --quiet --reload --allow-read worker_drop_handle_race.js",
+  "output": "worker_drop_handle_race.js.out",
+  "exitCode": 1
+}
