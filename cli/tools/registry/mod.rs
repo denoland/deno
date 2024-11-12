@@ -911,6 +911,7 @@ async fn perform_publish(
         publish_order_graph.finish_package(&package_name);
       }
       Err(err) => {
+        #[allow(clippy::print_stderr)]
         eprintln!("{}: {}", colors::red("Error publishing"), err);
       }
     }
