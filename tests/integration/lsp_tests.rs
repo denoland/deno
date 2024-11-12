@@ -8309,8 +8309,7 @@ fn lsp_npm_auto_import_with_deno_types() {
       import "lz-string";
     "#,
   );
-  #[allow(deprecated)]
-  let mut client = context.new_lsp_command().print_stderr().build();
+  let mut client = context.new_lsp_command().build();
   client.initialize_default();
   client.did_open(json!({
     "textDocument": {
