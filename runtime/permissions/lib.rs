@@ -1461,7 +1461,7 @@ pub struct SysDescriptor(String);
 impl SysDescriptor {
   pub fn parse(kind: String) -> Result<Self, SysDescriptorParseError> {
     match kind.as_str() {
-      "hostname" | "osRelease" | "osUptime" | "loadavg"
+      "hostname" | "inspector" | "osRelease" | "osUptime" | "loadavg"
       | "networkInterfaces" | "systemMemoryInfo" | "uid" | "gid" | "cpus"
       | "homedir" | "getegid" | "statfs" | "getPriority" | "setPriority"
       | "userInfo" => Ok(Self(kind)),
