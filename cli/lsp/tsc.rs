@@ -3793,6 +3793,7 @@ impl CompletionEntry {
     else {
       return;
     };
+    eprintln!("6666 {} {:?}", &self.name, &raw);
     if let Ok(normalized) = specifier_map.normalize(&raw.file_name) {
       self.auto_import_data =
         Some(CompletionNormalizedAutoImportData { raw, normalized });
