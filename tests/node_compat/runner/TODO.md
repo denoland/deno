@@ -1767,7 +1767,6 @@ NOTE: This file should not be manually edited. Please edit `tests/node_compat/co
 - [parallel/test-net-autoselectfamily-commandline-option.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-net-autoselectfamily-commandline-option.js)
 - [parallel/test-net-autoselectfamily-default.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-net-autoselectfamily-default.js)
 - [parallel/test-net-autoselectfamily-ipv4first.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-net-autoselectfamily-ipv4first.js)
-- [parallel/test-net-autoselectfamily.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-net-autoselectfamily.js)
 - [parallel/test-net-better-error-messages-listen.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-net-better-error-messages-listen.js)
 - [parallel/test-net-binary.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-net-binary.js)
 - [parallel/test-net-bind-twice.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-net-bind-twice.js)
