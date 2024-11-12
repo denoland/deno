@@ -10,12 +10,12 @@ let child: Deno.ChildProcess;
 Deno.serve(
   {
     port: 0,
-    async onListen({ hostname, port }) {
+    async onListen({ port }) {
       const command = new Deno.Command(Deno.execPath(), {
         args: ["run", "-A", "--unstable-otel", "child.ts"],
         env: {
           OTEL_EXPORTER_OTLP_PROTOCOL: "http/json",
-          OTEL_EXPORTER_OTLP_ENDPOINT: `http://${hostname}:${port}`,
+          OTEL_EXPORTER_OTLP_ENDPOINT: `http://localhost:${port}`,
           OTEL_BSP_SCHEDULE_DELAY: "10",
           OTEL_BLRP_SCHEDULE_DELAY: "10",
         },
