@@ -608,6 +608,12 @@ impl IsCjsResolver {
             known_cache.insert(specifier.clone(), NodeModuleKind::Esm);
           }
           Some(NodeModuleKind::Esm)
+        } else if is_script == Some(true) {
+          // we know this is cjs
+          if let Some(known_cache) = known_cache {
+            known_cache.insert(specifier.clone(), NodeModuleKind::Cjs);
+          }
+          Some(NodeModuleKind::Cjs)
         } else {
           None
         }
