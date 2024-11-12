@@ -1201,6 +1201,8 @@ export class Socket extends Duplex {
   _host: string | null = null;
   // deno-lint-ignore no-explicit-any
   _parent: any = null;
+  // The flag for detecting if it's called in @npmcli/agent
+  // See discussions in https://github.com/denoland/deno/pull/25470 for more details.
   _isNpmAgent = false;
   autoSelectFamilyAttemptedAddresses: AddressInfo[] | undefined = undefined;
 
