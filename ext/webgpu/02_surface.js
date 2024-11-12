@@ -6,7 +6,7 @@
 /// <reference path="../web/lib.deno_web.d.ts" />
 /// <reference path="./lib.deno_webgpu.d.ts" />
 
-import { primordials } from "ext:core/mod.js";
+import { core, primordials } from "ext:core/mod.js";
 import {
   op_webgpu_surface_configure,
   op_webgpu_surface_create,
@@ -15,6 +15,7 @@ import {
 } from "ext:core/ops";
 const {
   ObjectPrototypeIsPrototypeOf,
+  SafeFinalizationRegistry,
   Symbol,
   SymbolFor,
   TypeError,
@@ -30,6 +31,11 @@ const _canvas = Symbol("[[canvas]]");
 const _currentTexture = Symbol("[[currentTexture]]");
 const _present = Symbol("[[present]]");
 const _dim = Symbol("[[dimensions]]");
+
+// A finalization registry to clean up underlying resources that are GC'ed.
+const RESOURCE_REGISTRY = new SafeFinalizationRegistry((rid) => {
+  core.tryClose(rid);
+});
 
 class GPUCanvasContext {
   /** @type {number} */
@@ -53,7 +59,11 @@ class GPUCanvasContext {
     webidl.assertBranded(this, GPUCanvasContextPrototype);
     const prefix = "Failed to execute 'configure' on 'GPUCanvasContext'";
     webidl.requiredArguments(arguments.length, 1, prefix);
-    configuration = webidl.converters.GPUCanvasConfiguration(configuration, prefix, "Argument 1");
+    configuration = webidl.converters.GPUCanvasConfiguration(
+      configuration,
+      prefix,
+      "Argument 1",
+    );
 
     const { _device, assertDevice } = loadWebGPU();
     this[_device] = configuration.device[_device];
@@ -124,6 +134,8 @@ class GPUCanvasContext {
       rid,
     );
     device.trackResource(texture);
+    RESOURCE_REGISTRY.register(texture, rid, texture);
+
     this[_currentTexture] = texture;
     return texture;
   }
