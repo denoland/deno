@@ -586,7 +586,10 @@ fn generate_pseudo_file(
         wrap_kind,
       }));
 
-  let source = deno_ast::swc::codegen::to_code(&transformed);
+  let source = deno_ast::swc::codegen::to_code_with_comments(
+    Some(&parsed.comments().as_single_threaded()),
+    &transformed,
+  );
 
   log::debug!("{}:\n{}", file.specifier, source);
 
