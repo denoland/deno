@@ -1,4 +1,4 @@
 {
   "args": "run -A main.ts",
-  "output": "[WILDCARD]"
+  "output": "processed\n"
 }

@@ -207,10 +207,11 @@ yoke = { version = "0.7.4", features = ["derive"] }
 zeromq = { version = "=0.4.0", default-features = false, features = ["tcp-transport", "tokio-runtime"] }
 zstd = "=0.12.4"
 
-opentelemetry = "0.26.0"
-opentelemetry-otlp = { version = "0.26.0", features = ["logs", "http-proto", "http-json", "reqwest-rustls-webpki-roots"] }
-opentelemetry-semantic-conventions = "0.26.0"
-opentelemetry_sdk = "0.26.0"
+opentelemetry = "0.27.0"
+opentelemetry-http = "0.27.0"
+opentelemetry-otlp = { version = "0.27.0", features = ["logs", "http-proto", "http-json"] }
+opentelemetry-semantic-conventions = "0.27.0"
+opentelemetry_sdk = "0.27.0"
 
 # crypto
 hkdf = "0.12.3"

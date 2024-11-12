@@ -13,9 +13,6 @@ use deno_core::op2;
 use deno_core::v8;
 use deno_core::OpState;
 use once_cell::sync::Lazy;
-use opentelemetry::logs::LogRecord;
-use opentelemetry::logs::Logger as LoggerTrait;
-use opentelemetry::logs::LoggerProvider;
 use opentelemetry::logs::Severity;
 use opentelemetry::trace::SpanContext;
 use opentelemetry::trace::SpanId;
@@ -23,19 +20,21 @@ use opentelemetry::trace::SpanKind;
 use opentelemetry::trace::Status as SpanStatus;
 use opentelemetry::trace::TraceFlags;
 use opentelemetry::trace::TraceId;
+use opentelemetry::InstrumentationScope;
 use opentelemetry::Key;
 use opentelemetry::KeyValue;
 use opentelemetry::StringValue;
 use opentelemetry::Value;
 use opentelemetry_otlp::HttpExporterBuilder;
-use opentelemetry_otlp::LogExporterBuilder;
 use opentelemetry_otlp::Protocol;
-use opentelemetry_otlp::SpanExporterBuilder;
+use opentelemetry_otlp::WithExportConfig;
+use opentelemetry_otlp::WithHttpConfig;
 use opentelemetry_sdk::export::trace::SpanData;
-use opentelemetry_sdk::logs::Logger;
+use opentelemetry_sdk::logs::BatchLogProcessor;
+use opentelemetry_sdk::logs::LogProcessor as LogProcessorTrait;
+use opentelemetry_sdk::logs::LogRecord;
 use opentelemetry_sdk::trace::BatchSpanProcessor;
 use opentelemetry_sdk::trace::SpanProcessor as SpanProcessorTrait;
-use opentelemetry_sdk::InstrumentationLibrary;
 use opentelemetry_sdk::Resource;
 use opentelemetry_semantic_conventions::resource::SERVICE_NAME;
 use opentelemetry_semantic_conventions::resource::SERVICE_VERSION;
@@ -52,6 +51,7 @@ use std::time::Duration;
 use std::time::SystemTime;
 
 type SpanProcessor = BatchSpanProcessor<OtelSharedRuntime>;
+type LogProcessor = BatchLogProcessor<OtelSharedRuntime>;
 
 deno_core::extension!(
   deno_otel,
@@ -113,6 +113,14 @@ fn otel_create_shared_runtime() -> UnboundedSender<BoxFuture<'static, ()>> {
 
 #[derive(Clone, Copy)]
 struct OtelSharedRuntime;
+
+impl hyper::rt::Executor<BoxFuture<'static, ()>> for OtelSharedRuntime {
+  fn execute(&self, fut: BoxFuture<'static, ()>) {
+    (*OTEL_SHARED_RUNTIME_SPAWN_TASK_TX)
+      .unbounded_send(fut)
+      .expect("failed to send task to shared OpenTelemetry runtime");
+  }
+}
 
 impl opentelemetry_sdk::runtime::Runtime for OtelSharedRuntime {
   type Interval = Pin<Box<dyn Stream<Item = ()> + Send + 'static>>;
@@ -204,6 +212,86 @@ impl<T> Stream for BatchMessageChannelReceiver<T> {
   }
 }
 
+mod hyper_client {
+  use http_body_util::BodyExt;
+  use http_body_util::Full;
+  use hyper::body::Body as HttpBody;
+  use hyper::body::Frame;
+  use hyper_util::client::legacy::connect::HttpConnector;
+  use hyper_util::client::legacy::Client;
+  use opentelemetry_http::Bytes;
+  use opentelemetry_http::HttpError;
+  use opentelemetry_http::Request;
+  use opentelemetry_http::Response;
+  use opentelemetry_http::ResponseExt;
+  use std::fmt::Debug;
+  use std::pin::Pin;
+  use std::task::Poll;
+  use std::task::{self};
+
+  use super::OtelSharedRuntime;
+
+  // same as opentelemetry_http::HyperClient except it uses OtelSharedRuntime
+  #[derive(Debug, Clone)]
+  pub struct HyperClient {
+    inner: Client<HttpConnector, Body>,
+  }
+
+  impl HyperClient {
+    pub fn new() -> Self {
+      Self {
+        inner: Client::builder(OtelSharedRuntime).build(HttpConnector::new()),
+      }
+    }
+  }
+
+  #[async_trait::async_trait]
+  impl opentelemetry_http::HttpClient for HyperClient {
+    async fn send(
+      &self,
+      request: Request<Vec<u8>>,
+    ) -> Result<Response<Bytes>, HttpError> {
+      let (parts, body) = request.into_parts();
+      let request = Request::from_parts(parts, Body(Full::from(body)));
+      let mut response = self.inner.request(request).await?;
+      let headers = std::mem::take(response.headers_mut());
+
+      let mut http_response = Response::builder()
+        .status(response.status())
+        .body(response.into_body().collect().await?.to_bytes())?;
+      *http_response.headers_mut() = headers;
+
+      Ok(http_response.error_for_status()?)
+    }
+  }
+
+  #[pin_project::pin_project]
+  pub struct Body(#[pin] Full<Bytes>);
+
+  impl HttpBody for Body {
+    type Data = Bytes;
+    type Error = Box<dyn std::error::Error + Send + Sync + 'static>;
+
+    #[inline]
+    fn poll_frame(
+      self: Pin<&mut Self>,
+      cx: &mut task::Context<'_>,
+    ) -> Poll<Option<Result<Frame<Self::Data>, Self::Error>>> {
+      self.project().0.poll_frame(cx).map_err(Into::into)
+    }
+
+    #[inline]
+    fn is_end_stream(&self) -> bool {
+      self.0.is_end_stream()
+    }
+
+    #[inline]
+    fn size_hint(&self) -> hyper::body::SizeHint {
+      self.0.size_hint()
+    }
+  }
+}
+
 fn otel_create_globals(
   config: OtelConfig,
   op_state: &mut OpState,
@@ -260,35 +348,25 @@ fn otel_create_globals(
   // `OTEL_EXPORTER_OTLP_ENDPOINT` environment variable. Additional headers can
   // be specified using `OTEL_EXPORTER_OTLP_HEADERS`.
 
-  let client = reqwest::Client::new();
+  let client = hyper_client::HyperClient::new();
 
-  let span_exporter = SpanExporterBuilder::Http(
-    HttpExporterBuilder::default()
-      .with_protocol(protocol)
-      .with_http_client(client.clone()),
-  )
-  .build_span_exporter()?;
+  let span_exporter = HttpExporterBuilder::default()
+    .with_http_client(client.clone())
+    .with_protocol(protocol)
+    .build_span_exporter()?;
   let mut span_processor =
     BatchSpanProcessor::builder(span_exporter, OtelSharedRuntime).build();
   span_processor.set_resource(&resource);
   op_state.put::<SpanProcessor>(span_processor);
 
-  let logging_exporter = LogExporterBuilder::Http(
-    HttpExporterBuilder::default()
-      .with_protocol(protocol)
-      .with_http_client(client.clone()),
-  );
-  let logging_provider = opentelemetry_otlp::new_pipeline()
-    .logging()
-    .with_exporter(logging_exporter)
-    .with_resource(resource)
-    .install_batch(OtelSharedRuntime)?;
-
-  // Create the `Logger` instance that will be used to emit console logs.
-  // The "console" argument is used to specify the `otel.scope.name` attribute,
-  // which is a standard attribute to instrumentation scope of log records.
-  let logger = logging_provider.logger_builder("console").build();
-  op_state.put::<Logger>(logger);
+  let log_exporter = HttpExporterBuilder::default()
+    .with_http_client(client)
+    .with_protocol(protocol)
+    .build_log_exporter()?;
+  let log_processor =
+    BatchLogProcessor::builder(log_exporter, OtelSharedRuntime).build();
+  log_processor.set_resource(&resource);
+  op_state.put::<LogProcessor>(log_processor);
 
   Ok(())
 }
@@ -297,8 +375,14 @@ fn otel_create_globals(
 /// `os::process::exit()`, to ensure that all OpenTelemetry logs are properly
 /// flushed before the process terminates.
 pub fn otel_drop_state(state: &mut OpState) {
-  drop(state.try_take::<SpanProcessor>());
-  drop(state.try_take::<Logger>());
+  if let Some(processor) = state.try_take::<SpanProcessor>() {
+    let _ = processor.force_flush();
+    drop(processor);
+  }
+  if let Some(processor) = state.try_take::<LogProcessor>() {
+    let _ = processor.force_flush();
+    drop(processor);
+  }
 }
 
 #[op2(fast)]
@@ -310,7 +394,7 @@ fn op_otel_log(
   #[string] span_id: &str,
   #[smi] trace_flags: u8,
 ) {
-  let Some(logger) = state.try_borrow::<Logger>() else {
+  let Some(logger) = state.try_borrow::<LogProcessor>() else {
     log::error!("op_otel_log: OpenTelemetry Logger not available");
     return;
   };
@@ -324,10 +408,12 @@ fn op_otel_log(
     3.. => Severity::Error,
   };
 
-  let mut log_record = logger.create_log_record();
-  log_record.set_body(message.into());
-  log_record.set_severity_number(severity);
-  log_record.set_severity_text(severity.name());
+  let mut log_record = LogRecord::default();
+
+  log_record.observed_timestamp = Some(SystemTime::now());
+  log_record.body = Some(message.into());
+  log_record.severity_number = Some(severity);
+  log_record.severity_text = Some(severity.name());
   if let (Ok(trace_id), Ok(span_id)) =
     (TraceId::from_hex(trace_id), SpanId::from_hex(span_id))
   {
@@ -340,7 +426,10 @@ fn op_otel_log(
     );
     log_record.trace_context = Some((&span_context).into());
   }
-  logger.emit(log_record);
+  logger.emit(
+    &mut log_record,
+    &InstrumentationScope::builder("deno").build(),
+  );
 }
 
 struct TemporarySpan(SpanData);
@@ -439,7 +528,7 @@ fn op_otel_span_start<'s>(
     events: Default::default(),
     links: Default::default(),
     status: SpanStatus::Unset,
-    instrumentation_lib: InstrumentationLibrary::builder("deno").build(),
+    instrumentation_scope: InstrumentationScope::builder("deno").build(),
   });
   state.put(temporary_span);
 
@@ -496,10 +585,10 @@ macro_rules! attr {
       None
     };
     if let Some(value) = value {
-      $temporary_span.0.attributes.push(KeyValue {
-        key: Key::from(name),
-        value,
-      });
+      $temporary_span
+        .0
+        .attributes
+        .push(KeyValue::new(name, value));
     } else {
       $temporary_span.0.dropped_attributes_count += 1;
     }
