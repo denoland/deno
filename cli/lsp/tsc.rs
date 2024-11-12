@@ -3788,17 +3788,18 @@ impl CompletionEntry {
     let Some(data) = &self.data else {
       return;
     };
+    lsp_log!("6666 {} {:?}", &self.name, data);
     let Ok(raw) =
       serde_json::from_value::<CompletionEntryDataAutoImport>(data.clone())
     else {
       return;
     };
     if let Ok(normalized) = specifier_map.normalize(&raw.file_name) {
-      lsp_log!("6666 1 {} {:?} {}", &self.name, &raw, normalized);
+      lsp_log!("7777 1 {} {:?} {}", &self.name, &raw, normalized);
       self.auto_import_data =
         Some(CompletionNormalizedAutoImportData { raw, normalized });
     } else {
-      lsp_log!("6666 2 {} {:?}", &self.name, &raw);
+      lsp_log!("7777 2 {} {:?}", &self.name, &raw);
     }
   }
 
