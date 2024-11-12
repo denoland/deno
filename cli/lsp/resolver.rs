@@ -64,6 +64,7 @@ use crate::resolver::CliResolverOptions;
 use crate::resolver::IsCjsResolver;
 use crate::resolver::WorkerCliNpmGraphResolver;
 use crate::tsc::into_specifier_and_media_type;
+use crate::util::fs::canonicalize_path_maybe_not_exists;
 use crate::util::progress_bar::ProgressBar;
 use crate::util::progress_bar::ProgressBarStyle;
 
@@ -728,9 +729,11 @@ impl LspIsCjsResolver {
 
     impl LspInNpmPackageChecker {
       pub fn new(cache: &LspCache) -> Self {
+        let npm_folder_path = cache.deno_dir().npm_folder_path();
         Self {
           global_cache_dir: url_from_directory_path(
-            &cache.deno_dir().npm_folder_path(),
+            &canonicalize_path_maybe_not_exists(&npm_folder_path)
+              .unwrap_or(npm_folder_path),
           )
           .unwrap_or_else(|_| {
             ModuleSpecifier::parse("file:///invalid/").unwrap()
