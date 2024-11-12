@@ -1767,7 +1767,7 @@ class GPUDevice extends EventTarget {
     webidl.assertBranded(this, GPUDevicePrototype);
     const prefix =
       "Failed to execute 'createRenderBundleEncoder' on 'GPUDevice'";
-    webidl.requiredArguments(arguments.length, 1, { prefix });
+    webidl.requiredArguments(arguments.length, 1, prefix);
     descriptor = webidl.converters.GPURenderBundleEncoderDescriptor(
       descriptor,
       prefix,
@@ -1951,9 +1951,7 @@ class GPUQueue {
   submit(commandBuffers) {
     webidl.assertBranded(this, GPUQueuePrototype);
     const prefix = "Failed to execute 'submit' on 'GPUQueue'";
-    webidl.requiredArguments(arguments.length, 1, {
-      prefix,
-    });
+    webidl.requiredArguments(arguments.length, 1, prefix);
     commandBuffers = webidl.converters["sequence<GPUCommandBuffer>"](
       commandBuffers,
       prefix,
@@ -3014,7 +3012,7 @@ class GPUComputePipeline {
     webidl.assertBranded(this, GPUComputePipelinePrototype);
     const prefix =
       "Failed to execute 'getBindGroupLayout' on 'GPUComputePipeline'";
-    webidl.requiredArguments(arguments.length, 1, { prefix });
+    webidl.requiredArguments(arguments.length, 1, prefix);
     index = webidl.converters["unsigned long"](index, prefix, "Argument 1");
     const device = assertDevice(this, prefix, "this");
     const computePipelineRid = assertResource(this, prefix, "this");
@@ -3763,7 +3761,7 @@ class GPUCommandEncoder {
   ) {
     webidl.assertBranded(this, GPUCommandEncoderPrototype);
     const prefix = "Failed to execute 'resolveQuerySet' on 'GPUCommandEncoder'";
-    webidl.requiredArguments(arguments.length, 5, { prefix });
+    webidl.requiredArguments(arguments.length, 5, prefix);
     querySet = webidl.converters.GPUQuerySet(querySet, prefix, "Argument 1");
     firstQuery = webidl.converters.GPUSize32(firstQuery, prefix, "Argument 2");
     queryCount = webidl.converters.GPUSize32(queryCount, prefix, "Argument 3");
@@ -3897,7 +3895,7 @@ class GPURenderPassEncoder {
   setViewport(x, y, width, height, minDepth, maxDepth) {
     webidl.assertBranded(this, GPURenderPassEncoderPrototype);
     const prefix = "Failed to execute 'setViewport' on 'GPUComputePassEncoder'";
-    webidl.requiredArguments(arguments.length, 6, { prefix });
+    webidl.requiredArguments(arguments.length, 6, prefix);
     x = webidl.converters.float(x, prefix, "Argument 1");
     y = webidl.converters.float(y, prefix, "Argument 2");
     width = webidl.converters.float(width, prefix, "Argument 3");

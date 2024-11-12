@@ -52,11 +52,8 @@ class GPUCanvasContext {
   configure(configuration) {
     webidl.assertBranded(this, GPUCanvasContextPrototype);
     const prefix = "Failed to execute 'configure' on 'GPUCanvasContext'";
-    webidl.requiredArguments(arguments.length, 1, { prefix });
-    configuration = webidl.converters.GPUCanvasConfiguration(configuration, {
-      prefix,
-      context: "Argument 1",
-    });
+    webidl.requiredArguments(arguments.length, 1, prefix);
+    configuration = webidl.converters.GPUCanvasConfiguration(configuration, prefix, "Argument 1");
 
     const { _device, assertDevice } = loadWebGPU();
     this[_device] = configuration.device[_device];
