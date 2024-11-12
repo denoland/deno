@@ -144,6 +144,7 @@ declare class GPUDevice extends EventTarget implements GPUObjectBase {
   pushErrorScope(filter: GPUErrorFilter): undefined;
   popErrorScope(): Promise<GPUError | null>;
 
+  readonly adapterInfo: GPUAdapterInfo;
   readonly features: GPUSupportedFeatures;
   readonly limits: GPUSupportedLimits;
   readonly queue: GPUQueue;
