@@ -863,7 +863,10 @@ impl Inner {
           // We ignore these directories by default because there is a
           // high likelihood they aren't relevant. Someone can opt-into
           // them by specifying one of them as an enabled path.
-          if matches!(dir_name.as_str(), "vendor" | "node_modules" | ".git") {
+          if matches!(
+            dir_name.as_str(),
+            "vendor" | "coverage" | "node_modules" | ".git"
+          ) {
             continue;
           }
           // ignore cargo target directories for anyone using Deno with Rust
@@ -904,7 +907,7 @@ impl Inner {
             | MediaType::Tsx => {}
             MediaType::Wasm
             | MediaType::SourceMap
-            | MediaType::TsBuildInfo
+            | MediaType::Css
             | MediaType::Unknown => {
               if path.extension().and_then(|s| s.to_str()) != Some("jsonc") {
                 continue;
@@ -1384,14 +1387,10 @@ impl Inner {
         .clone();
       fmt_options.use_tabs = Some(!params.options.insert_spaces);
       fmt_options.indent_width = Some(params.options.tab_size as u8);
-      let maybe_workspace = self
-        .config
-        .tree
-        .data_for_specifier(&specifier)
-        .map(|d| &d.member_dir.workspace);
+      let config_data = self.config.tree.data_for_specifier(&specifier);
       let unstable_options = UnstableFmtOptions {
-        component: maybe_workspace
-          .map(|w| w.has_unstable("fmt-component"))
+        component: config_data
+          .map(|d| d.unstable.contains("fmt-component"))
           .unwrap_or(false),
       };
       let document = document.clone();
@@ -1838,7 +1837,7 @@ impl Inner {
         fix_ts_import_changes(
           &code_action_data.specifier,
           &combined_code_actions.changes,
-          &self.get_ts_response_import_mapper(&code_action_data.specifier),
+          self,
         )
         .map_err(|err| {
           error!("Unable to remap changes: {:#}", err);
@@ -1891,7 +1890,7 @@ impl Inner {
         refactor_edit_info.edits = fix_ts_import_changes(
           &action_data.specifier,
           &refactor_edit_info.edits,
-          &self.get_ts_response_import_mapper(&action_data.specifier),
+          self,
         )
         .map_err(|err| {
           error!("Unable to remap changes: {:#}", err);
@@ -1922,7 +1921,8 @@ impl Inner {
         // todo(dsherret): this should probably just take the resolver itself
         // as the import map is an implementation detail
         .and_then(|d| d.resolver.maybe_import_map()),
-      self.resolver.as_ref(),
+      &self.resolver,
+      &self.ts_server.specifier_map,
       file_referrer,
     )
   }
@@ -2285,7 +2285,11 @@ impl Inner {
             .into(),
           scope.cloned(),
         )
-        .await;
+        .await
+        .unwrap_or_else(|err| {
+          error!("Unable to get completion info from TypeScript: {:#}", err);
+          None
+        });
 
       if let Some(completions) = maybe_completion_info {
         response = Some(
@@ -3812,7 +3816,7 @@ impl Inner {
     let maybe_inlay_hints = maybe_inlay_hints.map(|hints| {
       hints
         .iter()
-        .map(|hint| hint.to_lsp(line_index.clone()))
+        .map(|hint| hint.to_lsp(line_index.clone(), self))
         .collect()
     });
     self.performance.measure(mark);
@@ -3948,7 +3952,9 @@ mod tests {
   fn test_walk_workspace() {
     let temp_dir = TempDir::new();
     temp_dir.create_dir_all("root1/vendor/");
+    temp_dir.create_dir_all("root1/coverage/");
     temp_dir.write("root1/vendor/mod.ts", ""); // no, vendor
+    temp_dir.write("root1/coverage/mod.ts", ""); // no, coverage
 
     temp_dir.create_dir_all("root1/node_modules/");
     temp_dir.write("root1/node_modules/mod.ts", ""); // no, node_modules

@@ -236,7 +236,7 @@ pub struct TsServer {
   performance: Arc<Performance>,
   sender: mpsc::UnboundedSender<Request>,
   receiver: Mutex<Option<mpsc::UnboundedReceiver<Request>>>,
-  specifier_map: Arc<TscSpecifierMap>,
+  pub specifier_map: Arc<TscSpecifierMap>,
   inspector_server: Mutex<Option<Arc<InspectorServer>>>,
   pending_change: Mutex<Option<PendingChange>>,
 }
@@ -882,20 +882,22 @@ impl TsServer {
     options: GetCompletionsAtPositionOptions,
     format_code_settings: FormatCodeSettings,
     scope: Option<ModuleSpecifier>,
-  ) -> Option<CompletionInfo> {
+  ) -> Result<Option<CompletionInfo>, AnyError> {
     let req = TscRequest::GetCompletionsAtPosition(Box::new((
       self.specifier_map.denormalize(&specifier),
       position,
       options,
       format_code_settings,
     )));
-    match self.request(snapshot, req, scope).await {
-      Ok(maybe_info) => maybe_info,
-      Err(err) => {
-        log::error!("Unable to get completion info from TypeScript: {:#}", err);
-        None
-      }
-    }
+    self
+      .request::<Option<CompletionInfo>>(snapshot, req, scope)
+      .await
+      .map(|mut info| {
+        if let Some(info) = &mut info {
+          info.normalize(&self.specifier_map);
+        }
+        info
+      })
   }
 
   pub async fn get_completion_details(
@@ -2183,6 +2185,50 @@ impl NavigateToItem {
 }
 
 #[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct InlayHintDisplayPart {
+  pub text: String,
+  pub span: Option<TextSpan>,
+  pub file: Option<String>,
+}
+
+impl InlayHintDisplayPart {
+  pub fn to_lsp(
+    &self,
+    language_server: &language_server::Inner,
+  ) -> lsp::InlayHintLabelPart {
+    let location = self.file.as_ref().map(|f| {
+      let specifier =
+        resolve_url(f).unwrap_or_else(|_| INVALID_SPECIFIER.clone());
+      let file_referrer =
+        language_server.documents.get_file_referrer(&specifier);
+      let uri = language_server
+        .url_map
+        .specifier_to_uri(&specifier, file_referrer.as_deref())
+        .unwrap_or_else(|_| INVALID_URI.clone());
+      let range = self
+        .span
+        .as_ref()
+        .and_then(|s| {
+          let asset_or_doc =
+            language_server.get_asset_or_document(&specifier).ok()?;
+          Some(s.to_range(asset_or_doc.line_index()))
+        })
+        .unwrap_or_else(|| {
+          lsp::Range::new(lsp::Position::new(0, 0), lsp::Position::new(0, 0))
+        });
+      lsp::Location { uri, range }
+    });
+    lsp::InlayHintLabelPart {
+      value: self.text.clone(),
+      tooltip: None,
+      location,
+      command: None,
+    }
+  }
+}
+
+#[derive(Debug, Clone, Deserialize)]
 pub enum InlayHintKind {
   Type,
   Parameter,
@@ -2203,6 +2249,7 @@ impl InlayHintKind {
 #[serde(rename_all = "camelCase")]
 pub struct InlayHint {
   pub text: String,
+  pub display_parts: Option<Vec<InlayHintDisplayPart>>,
   pub position: u32,
   pub kind: InlayHintKind,
   pub whitespace_before: Option<bool>,
@@ -2210,10 +2257,23 @@ pub struct InlayHint {
 }
 
 impl InlayHint {
-  pub fn to_lsp(&self, line_index: Arc<LineIndex>) -> lsp::InlayHint {
+  pub fn to_lsp(
+    &self,
+    line_index: Arc<LineIndex>,
+    language_server: &language_server::Inner,
+  ) -> lsp::InlayHint {
     lsp::InlayHint {
       position: line_index.position_tsc(self.position.into()),
-      label: lsp::InlayHintLabel::String(self.text.clone()),
+      label: if let Some(display_parts) = &self.display_parts {
+        lsp::InlayHintLabel::LabelParts(
+          display_parts
+            .iter()
+            .map(|p| p.to_lsp(language_server))
+            .collect(),
+        )
+      } else {
+        lsp::InlayHintLabel::String(self.text.clone())
+      },
       kind: self.kind.to_lsp(),
       padding_left: self.whitespace_before,
       padding_right: self.whitespace_after,
@@ -3584,6 +3644,12 @@ pub struct CompletionInfo {
 }
 
 impl CompletionInfo {
+  fn normalize(&mut self, specifier_map: &TscSpecifierMap) {
+    for entry in &mut self.entries {
+      entry.normalize(specifier_map);
+    }
+  }
+
   pub fn as_completion_response(
     &self,
     line_index: Arc<LineIndex>,
@@ -3645,9 +3711,15 @@ pub struct CompletionItemData {
 
 #[derive(Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
-struct CompletionEntryDataImport {
+struct CompletionEntryDataAutoImport {
   module_specifier: String,
   file_name: String,
+}
+
+#[derive(Debug)]
+pub struct CompletionNormalizedAutoImportData {
+  raw: CompletionEntryDataAutoImport,
+  normalized: ModuleSpecifier,
 }
 
 #[derive(Debug, Default, Deserialize, Serialize)]
@@ -3682,9 +3754,28 @@ pub struct CompletionEntry {
   is_import_statement_completion: Option<bool>,
   #[serde(skip_serializing_if = "Option::is_none")]
   data: Option<Value>,
+  /// This is not from tsc, we add it for convenience during normalization.
+  /// Represents `self.data.file_name`, but normalized.
+  #[serde(skip)]
+  auto_import_data: Option<CompletionNormalizedAutoImportData>,
 }
 
 impl CompletionEntry {
+  fn normalize(&mut self, specifier_map: &TscSpecifierMap) {
+    let Some(data) = &self.data else {
+      return;
+    };
+    let Ok(raw) =
+      serde_json::from_value::<CompletionEntryDataAutoImport>(data.clone())
+    else {
+      return;
+    };
+    if let Ok(normalized) = specifier_map.normalize(&raw.file_name) {
+      self.auto_import_data =
+        Some(CompletionNormalizedAutoImportData { raw, normalized });
+    }
+  }
+
   fn get_commit_characters(
     &self,
     info: &CompletionInfo,
@@ -3833,25 +3924,24 @@ impl CompletionEntry {
 
     if let Some(source) = &self.source {
       let mut display_source = source.clone();
-      if let Some(data) = &self.data {
-        if let Ok(import_data) =
-          serde_json::from_value::<CompletionEntryDataImport>(data.clone())
+      if let Some(import_data) = &self.auto_import_data {
+        if let Some(new_module_specifier) = language_server
+          .get_ts_response_import_mapper(specifier)
+          .check_specifier(&import_data.normalized, specifier)
+          .or_else(|| relative_specifier(specifier, &import_data.normalized))
         {
-          if let Ok(import_specifier) = resolve_url(&import_data.file_name) {
-            if let Some(new_module_specifier) = language_server
-              .get_ts_response_import_mapper(specifier)
-              .check_specifier(&import_specifier, specifier)
-              .or_else(|| relative_specifier(specifier, &import_specifier))
-            {
-              display_source.clone_from(&new_module_specifier);
-              if new_module_specifier != import_data.module_specifier {
-                specifier_rewrite =
-                  Some((import_data.module_specifier, new_module_specifier));
-              }
-            } else if source.starts_with(jsr_url().as_str()) {
-              return None;
-            }
+          if new_module_specifier.contains("/node_modules/") {
+            return None;
           }
+          display_source.clone_from(&new_module_specifier);
+          if new_module_specifier != import_data.raw.module_specifier {
+            specifier_rewrite = Some((
+              import_data.raw.module_specifier.clone(),
+              new_module_specifier,
+            ));
+          }
+        } else if source.starts_with(jsr_url().as_str()) {
+          return None;
         }
       }
       // We want relative or bare (import-mapped or otherwise) specifiers to
@@ -4154,6 +4244,13 @@ impl TscSpecifierMap {
       return specifier.to_string();
     }
     let mut specifier = original.to_string();
+    if specifier.contains("/node_modules/.deno/")
+      && !specifier.contains("/node_modules/@types/node/")
+    {
+      // The ts server doesn't give completions from files in
+      // `node_modules/.deno/`. We work around it like this.
+      specifier = specifier.replace("/node_modules/", "/$node_modules/");
+    }
     let media_type = MediaType::from_specifier(original);
     // If the URL-inferred media type doesn't correspond to tsc's path-inferred
     // media type, force it to be the same by appending an extension.
@@ -4271,7 +4368,7 @@ fn op_is_cancelled(state: &mut OpState) -> bool {
 fn op_is_node_file(state: &mut OpState, #[string] path: String) -> bool {
   let state = state.borrow::<State>();
   let mark = state.performance.mark("tsc.op.op_is_node_file");
-  let r = match ModuleSpecifier::parse(&path) {
+  let r = match state.specifier_map.normalize(path) {
     Ok(specifier) => state.state_snapshot.resolver.in_node_modules(&specifier),
     Err(_) => false,
   };
@@ -4304,14 +4401,25 @@ fn op_load<'s>(
       None
     } else {
       let asset_or_document = state.get_asset_or_document(&specifier);
-      asset_or_document.map(|doc| LoadResponse {
-        data: doc.text(),
-        script_kind: crate::tsc::as_ts_script_kind(doc.media_type()),
-        version: state.script_version(&specifier),
-        is_cjs: matches!(
-          doc.media_type(),
-          MediaType::Cjs | MediaType::Cts | MediaType::Dcts
-        ),
+      asset_or_document.map(|doc| {
+        let maybe_cjs_tracker = state
+          .state_snapshot
+          .resolver
+          .maybe_cjs_tracker(Some(&specifier));
+        LoadResponse {
+          data: doc.text(),
+          script_kind: crate::tsc::as_ts_script_kind(doc.media_type()),
+          version: state.script_version(&specifier),
+          is_cjs: maybe_cjs_tracker
+            .map(|t| {
+              t.is_cjs(
+                &specifier,
+                doc.media_type(),
+                doc.maybe_parsed_source().and_then(|p| p.as_ref().ok()),
+              )
+            })
+            .unwrap_or(false),
+        }
       })
     };
 
@@ -4540,7 +4648,10 @@ fn op_script_names(state: &mut OpState) -> ScriptNames {
   for doc in &docs {
     let specifier = doc.specifier();
     let is_open = doc.is_open();
-    if is_open || specifier.scheme() == "file" {
+    if is_open
+      || (specifier.scheme() == "file"
+        && !state.state_snapshot.resolver.in_node_modules(specifier))
+    {
       let script_names = doc
         .scope()
         .and_then(|s| result.by_scope.get_mut(s))
@@ -4892,6 +5003,10 @@ pub struct UserPreferences {
   pub allow_rename_of_import_path: Option<bool>,
   #[serde(skip_serializing_if = "Option::is_none")]
   pub auto_import_file_exclude_patterns: Option<Vec<String>>,
+  #[serde(skip_serializing_if = "Option::is_none")]
+  pub interactive_inlay_hints: Option<bool>,
+  #[serde(skip_serializing_if = "Option::is_none")]
+  pub prefer_type_only_auto_imports: Option<bool>,
 }
 
 impl UserPreferences {
@@ -4909,6 +5024,7 @@ impl UserPreferences {
       include_completions_with_snippet_text: Some(
         config.snippet_support_capable(),
       ),
+      interactive_inlay_hints: Some(true),
       provide_refactor_not_applicable_reason: Some(true),
       quote_preference: Some(fmt_config.into()),
       use_label_details_in_completion_entries: Some(true),
@@ -5013,6 +5129,9 @@ impl UserPreferences {
       } else {
         Some(language_settings.preferences.quote_style)
       },
+      prefer_type_only_auto_imports: Some(
+        language_settings.preferences.prefer_type_only_auto_imports,
+      ),
       ..base_preferences
     }
   }
@@ -5958,6 +6077,7 @@ mod tests {
         Some(temp_dir.url()),
       )
       .await
+      .unwrap()
       .unwrap();
     assert_eq!(info.entries.len(), 22);
     let details = ts_server
@@ -6117,6 +6237,7 @@ mod tests {
         Some(temp_dir.url()),
       )
       .await
+      .unwrap()
       .unwrap();
     let entry = info
       .entries
@@ -6154,7 +6275,7 @@ mod tests {
     let change = changes.text_changes.first().unwrap();
     assert_eq!(
       change.new_text,
-      "import type { someLongVariable } from './b.ts'\n"
+      "import { someLongVariable } from './b.ts'\n"
     );
   }
 

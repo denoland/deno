@@ -18,6 +18,16 @@ use deno_core::OpState;
 use deno_core::RcRef;
 use deno_core::Resource;
 use deno_core::ResourceId;
+use hickory_proto::rr::rdata::caa::Value;
+use hickory_proto::rr::record_data::RData;
+use hickory_proto::rr::record_type::RecordType;
+use hickory_resolver::config::NameServerConfigGroup;
+use hickory_resolver::config::ResolverConfig;
+use hickory_resolver::config::ResolverOpts;
+use hickory_resolver::error::ResolveError;
+use hickory_resolver::error::ResolveErrorKind;
+use hickory_resolver::system_conf;
+use hickory_resolver::AsyncResolver;
 use serde::Deserialize;
 use serde::Serialize;
 use socket2::Domain;
@@ -33,16 +43,6 @@ use std::rc::Rc;
 use std::str::FromStr;
 use tokio::net::TcpStream;
 use tokio::net::UdpSocket;
-use trust_dns_proto::rr::rdata::caa::Value;
-use trust_dns_proto::rr::record_data::RData;
-use trust_dns_proto::rr::record_type::RecordType;
-use trust_dns_resolver::config::NameServerConfigGroup;
-use trust_dns_resolver::config::ResolverConfig;
-use trust_dns_resolver::config::ResolverOpts;
-use trust_dns_resolver::error::ResolveError;
-use trust_dns_resolver::error::ResolveErrorKind;
-use trust_dns_resolver::system_conf;
-use trust_dns_resolver::AsyncResolver;
 
 #[derive(Serialize, Clone, Debug)]
 #[serde(rename_all = "camelCase")]
@@ -81,8 +81,8 @@ pub enum NetError {
   Io(#[from] std::io::Error),
   #[error("Another accept task is ongoing")]
   AcceptTaskOngoing,
-  #[error("{0}")]
-  Permission(deno_core::error::AnyError),
+  #[error(transparent)]
+  Permission(#[from] deno_permissions::PermissionCheckError),
   #[error("{0}")]
   Resource(deno_core::error::AnyError),
   #[error("No resolved address found")]
@@ -195,12 +195,10 @@ where
 {
   {
     let mut s = state.borrow_mut();
-    s.borrow_mut::<NP>()
-      .check_net(
-        &(&addr.hostname, Some(addr.port)),
-        "Deno.DatagramConn.send()",
-      )
-      .map_err(NetError::Permission)?;
+    s.borrow_mut::<NP>().check_net(
+      &(&addr.hostname, Some(addr.port)),
+      "Deno.DatagramConn.send()",
+    )?;
   }
   let addr = resolve_addr(&addr.hostname, addr.port)
     .await?
@@ -369,8 +367,7 @@ where
     let mut state_ = state.borrow_mut();
     state_
       .borrow_mut::<NP>()
-      .check_net(&(&addr.hostname, Some(addr.port)), "Deno.connect()")
-      .map_err(NetError::Permission)?;
+      .check_net(&(&addr.hostname, Some(addr.port)), "Deno.connect()")?;
   }
 
   let addr = resolve_addr(&addr.hostname, addr.port)
@@ -420,8 +417,7 @@ where
   }
   state
     .borrow_mut::<NP>()
-    .check_net(&(&addr.hostname, Some(addr.port)), "Deno.listen()")
-    .map_err(NetError::Permission)?;
+    .check_net(&(&addr.hostname, Some(addr.port)), "Deno.listen()")?;
   let addr = resolve_addr_sync(&addr.hostname, addr.port)?
     .next()
     .ok_or_else(|| NetError::NoResolvedAddress)?;
@@ -449,8 +445,7 @@ where
 {
   state
     .borrow_mut::<NP>()
-    .check_net(&(&addr.hostname, Some(addr.port)), "Deno.listenDatagram()")
-    .map_err(NetError::Permission)?;
+    .check_net(&(&addr.hostname, Some(addr.port)), "Deno.listenDatagram()")?;
   let addr = resolve_addr_sync(&addr.hostname, addr.port)?
     .next()
     .ok_or_else(|| NetError::NoResolvedAddress)?;
@@ -647,9 +642,7 @@ where
       let socker_addr = &ns.socket_addr;
       let ip = socker_addr.ip().to_string();
       let port = socker_addr.port();
-      perm
-        .check_net(&(ip, Some(port)), "Deno.resolveDns()")
-        .map_err(NetError::Permission)?;
+      perm.check_net(&(ip, Some(port)), "Deno.resolveDns()")?;
     }
   }
 
@@ -834,6 +827,22 @@ mod tests {
   use deno_core::futures::FutureExt;
   use deno_core::JsRuntime;
   use deno_core::RuntimeOptions;
+  use deno_permissions::PermissionCheckError;
+  use hickory_proto::rr::rdata::a::A;
+  use hickory_proto::rr::rdata::aaaa::AAAA;
+  use hickory_proto::rr::rdata::caa::KeyValue;
+  use hickory_proto::rr::rdata::caa::CAA;
+  use hickory_proto::rr::rdata::mx::MX;
+  use hickory_proto::rr::rdata::name::ANAME;
+  use hickory_proto::rr::rdata::name::CNAME;
+  use hickory_proto::rr::rdata::name::NS;
+  use hickory_proto::rr::rdata::name::PTR;
+  use hickory_proto::rr::rdata::naptr::NAPTR;
+  use hickory_proto::rr::rdata::srv::SRV;
+  use hickory_proto::rr::rdata::txt::TXT;
+  use hickory_proto::rr::rdata::SOA;
+  use hickory_proto::rr::record_data::RData;
+  use hickory_proto::rr::Name;
   use socket2::SockRef;
   use std::net::Ipv4Addr;
   use std::net::Ipv6Addr;
@@ -842,21 +851,6 @@ mod tests {
   use std::path::PathBuf;
   use std::sync::Arc;
   use std::sync::Mutex;
-  use trust_dns_proto::rr::rdata::a::A;
-  use trust_dns_proto::rr::rdata::aaaa::AAAA;
-  use trust_dns_proto::rr::rdata::caa::KeyValue;
-  use trust_dns_proto::rr::rdata::caa::CAA;
-  use trust_dns_proto::rr::rdata::mx::MX;
-  use trust_dns_proto::rr::rdata::name::ANAME;
-  use trust_dns_proto::rr::rdata::name::CNAME;
-  use trust_dns_proto::rr::rdata::name::NS;
-  use trust_dns_proto::rr::rdata::name::PTR;
-  use trust_dns_proto::rr::rdata::naptr::NAPTR;
-  use trust_dns_proto::rr::rdata::srv::SRV;
-  use trust_dns_proto::rr::rdata::txt::TXT;
-  use trust_dns_proto::rr::rdata::SOA;
-  use trust_dns_proto::rr::record_data::RData;
-  use trust_dns_proto::rr::Name;
 
   #[test]
   fn rdata_to_return_record_a() {
@@ -1041,7 +1035,7 @@ mod tests {
       &mut self,
       _host: &(T, Option<u16>),
       _api_name: &str,
-    ) -> Result<(), deno_core::error::AnyError> {
+    ) -> Result<(), PermissionCheckError> {
       Ok(())
     }
 
@@ -1049,7 +1043,7 @@ mod tests {
       &mut self,
       p: &str,
       _api_name: &str,
-    ) -> Result<PathBuf, deno_core::error::AnyError> {
+    ) -> Result<PathBuf, PermissionCheckError> {
       Ok(PathBuf::from(p))
     }
 
@@ -1057,7 +1051,7 @@ mod tests {
       &mut self,
       p: &str,
       _api_name: &str,
-    ) -> Result<PathBuf, deno_core::error::AnyError> {
+    ) -> Result<PathBuf, PermissionCheckError> {
       Ok(PathBuf::from(p))
     }
 
@@ -1065,7 +1059,7 @@ mod tests {
       &mut self,
       p: &'a Path,
       _api_name: &str,
-    ) -> Result<Cow<'a, Path>, deno_core::error::AnyError> {
+    ) -> Result<Cow<'a, Path>, PermissionCheckError> {
       Ok(Cow::Borrowed(p))
     }
   }

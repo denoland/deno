@@ -1,0 +1,4 @@
+{
+  "args": "run eval_context_throw_dom_exception.js",
+  "output": "eval_context_throw_dom_exception.js.out"
+}

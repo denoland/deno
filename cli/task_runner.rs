@@ -155,6 +155,12 @@ fn prepare_env_vars(
       initial_cwd.to_string_lossy().to_string(),
     );
   }
+  if !env_vars.contains_key(crate::npm::NPM_CONFIG_USER_AGENT_ENV_VAR) {
+    env_vars.insert(
+      crate::npm::NPM_CONFIG_USER_AGENT_ENV_VAR.into(),
+      crate::npm::get_npm_config_user_agent(),
+    );
+  }
   if let Some(node_modules_dir) = node_modules_dir {
     prepend_to_path(
       &mut env_vars,
@@ -204,7 +210,7 @@ impl ShellCommand for NpmCommand {
     mut context: ShellCommandContext,
   ) -> LocalBoxFuture<'static, ExecuteResult> {
     if context.args.first().map(|s| s.as_str()) == Some("run")
-      && context.args.len() > 2
+      && context.args.len() >= 2
       // for now, don't run any npm scripts that have a flag because
       // we don't handle stuff like `--workspaces` properly
       && !context.args.iter().any(|s| s.starts_with('-'))
@@ -267,10 +273,12 @@ impl ShellCommand for NodeCommand {
       )
       .execute(context);
     }
+
     args.extend(["run", "-A"].into_iter().map(|s| s.to_string()));
     args.extend(context.args.iter().cloned());
 
     let mut state = context.state;
+
     state.apply_env_var(USE_PKG_JSON_HIDDEN_ENV_VAR_NAME, "1");
     ExecutableCommand::new("deno".to_string(), std::env::current_exe().unwrap())
       .execute(ShellCommandContext {
