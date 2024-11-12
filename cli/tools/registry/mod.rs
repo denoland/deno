@@ -906,8 +906,14 @@ async fn perform_publish(
       break;
     };
 
-    let package_name = result?;
-    publish_order_graph.finish_package(&package_name);
+    match result {
+      Ok(package_name) => {
+        publish_order_graph.finish_package(&package_name);
+      }
+      Err(err) => {
+        eprintln!("{}: {}", colors::red("Error publishing"), err);
+      }
+    }
   }
 
   Ok(())
