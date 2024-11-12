@@ -55,7 +55,7 @@ function createDnsServer(ipv6Addrs, ipv4Addrs, cb) {
   // Create a DNS server which replies with a AAAA and a A record for the same host
   const socket = dgram.createSocket('udp4');
 
-  // Note(kt3k): We use common.mustCallAtLeast instead of common.mustCall
+  // TODO(kt3k): We use common.mustCallAtLeast instead of common.mustCall
   // because Deno sends multiple requests to the DNS server.
   // This can be addressed if Deno.resolveDns supports ANY record type.
   // See https://github.com/denoland/deno/issues/14492
