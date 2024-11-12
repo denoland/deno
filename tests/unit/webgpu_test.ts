@@ -19,6 +19,8 @@ const isWsl = await checkIsWsl();
 Deno.test({
   permissions: { read: true, env: true },
   ignore: isWsl || isCIWithoutGPU,
+  // TODO(petamoriken): wait for GPUAdapter to become manually destroyable
+  sanitizeResources: false,
 }, async function webgpuComputePass() {
   const adapter = await navigator.gpu.requestAdapter();
   assert(adapter);
@@ -105,6 +107,8 @@ Deno.test({
 Deno.test({
   permissions: { read: true, env: true },
   ignore: isWsl || isCIWithoutGPU,
+  // TODO(petamoriken): wait for GPUAdapter to become manually destroyable
+  sanitizeResources: false,
 }, async function webgpuHelloTriangle() {
   const adapter = await navigator.gpu.requestAdapter();
   assert(adapter);
@@ -217,6 +221,8 @@ Deno.test({
 
 Deno.test({
   ignore: isWsl || isCIWithoutGPU,
+  // TODO(petamoriken): wait for GPUAdapter to become manually destroyable
+  sanitizeResources: false,
 }, async function webgpuAdapterHasFeatures() {
   const adapter = await navigator.gpu.requestAdapter();
   assert(adapter);
@@ -227,6 +233,8 @@ Deno.test({
 
 Deno.test({
   ignore: isWsl || isCIWithoutGPU,
+  // TODO(petamoriken): wait for GPUAdapter to become manually destroyable
+  sanitizeResources: false,
 }, async function webgpuAdapterHasInfo() {
   const adapter = await navigator.gpu.requestAdapter();
   assert(adapter);
@@ -238,6 +246,8 @@ Deno.test({
 
 Deno.test({
   ignore: isWsl || isCIWithoutGPU,
+  // TODO(petamoriken): wait for GPUAdapter to become manually destroyable
+  sanitizeResources: false,
 }, async function webgpuDeviceHasAdapterInfo() {
   const adapter = await navigator.gpu.requestAdapter();
   assert(adapter);
@@ -249,6 +259,8 @@ Deno.test({
 
 Deno.test({
   ignore: isWsl || isCIWithoutGPU,
+  // TODO(petamoriken): wait for GPUAdapter to become manually destroyable
+  sanitizeResources: false,
 }, async function webgpuNullWindowSurfaceThrows() {
   const adapter = await navigator.gpu.requestAdapter();
   assert(adapter);
@@ -291,6 +303,8 @@ Deno.test(function getPreferredCanvasFormat() {
 
 Deno.test({
   ignore: isWsl || isCIWithoutGPU,
+  // TODO(petamoriken): wait for GPUAdapter to become manually destroyable
+  sanitizeResources: false,
 }, async function validateGPUColor() {
   const adapter = await navigator.gpu.requestAdapter();
   assert(adapter);
@@ -354,6 +368,8 @@ Deno.test({
 
 Deno.test({
   ignore: isWsl || isCIWithoutGPU,
+  // TODO(petamoriken): wait for GPUAdapter to become manually destroyable
+  sanitizeResources: false,
 }, async function validateGPUExtent3D() {
   const adapter = await navigator.gpu.requestAdapter();
   assert(adapter);
@@ -454,6 +470,8 @@ Deno.test({
 
 Deno.test({
   ignore: isWsl || isCIWithoutGPU,
+  // TODO(petamoriken): wait for GPUAdapter to become manually destroyable
+  sanitizeResources: false,
 }, async function validateGPUOrigin3D() {
   const adapter = await navigator.gpu.requestAdapter();
   assert(adapter);
@@ -547,6 +565,8 @@ Deno.test({
 
 Deno.test({
   ignore: isWsl || isCIWithoutGPU,
+  // TODO(petamoriken): wait for GPUAdapter to become manually destroyable
+  sanitizeResources: false,
 }, async function beginRenderPassWithoutDepthClearValue() {
   const adapter = await navigator.gpu.requestAdapter();
   assert(adapter);
