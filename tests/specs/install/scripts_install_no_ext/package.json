@@ -1,0 +1,5 @@
+{
+  "dependencies": {
+    "@denotest/install-no-ext": "*"
+  }
+}

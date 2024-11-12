@@ -50,6 +50,15 @@ pub static DEFAULT_CONDITIONS: &[&str] = &["deno", "node", "import"];
 pub static REQUIRE_CONDITIONS: &[&str] = &["require", "node"];
 static TYPES_ONLY_CONDITIONS: &[&str] = &["types"];
 
+fn conditions_from_module_kind(
+  kind: NodeModuleKind,
+) -> &'static [&'static str] {
+  match kind {
+    NodeModuleKind::Esm => DEFAULT_CONDITIONS,
+    NodeModuleKind::Cjs => REQUIRE_CONDITIONS,
+  }
+}
+
 pub type NodeModuleKind = deno_package_json::NodeModuleKind;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -166,8 +175,7 @@ impl<TEnv: NodeResolverEnv> NodeResolver<TEnv> {
       specifier,
       referrer,
       referrer_kind,
-      // even though the referrer may be CJS, if we're here that means we're doing ESM resolution
-      DEFAULT_CONDITIONS,
+      conditions_from_module_kind(referrer_kind),
       mode,
     )?;
 
@@ -310,7 +318,7 @@ impl<TEnv: NodeResolverEnv> NodeResolver<TEnv> {
       &package_subpath,
       maybe_referrer,
       referrer_kind,
-      DEFAULT_CONDITIONS,
+      conditions_from_module_kind(referrer_kind),
       mode,
     )?;
     // TODO(bartlomieju): skipped checking errors for commonJS resolution and
@@ -441,10 +449,7 @@ impl<TEnv: NodeResolverEnv> NodeResolver<TEnv> {
         /* sub path */ ".",
         maybe_referrer,
         referrer_kind,
-        match referrer_kind {
-          NodeModuleKind::Esm => DEFAULT_CONDITIONS,
-          NodeModuleKind::Cjs => REQUIRE_CONDITIONS,
-        },
+        conditions_from_module_kind(referrer_kind),
         NodeResolutionMode::Types,
       );
       if let Ok(resolution) = resolution_result {

@@ -11,8 +11,8 @@ import {
   op_require_can_parse_as_esm,
   op_require_init_paths,
   op_require_is_deno_dir_package,
+  op_require_is_maybe_cjs,
   op_require_is_request_relative,
-  op_require_module_format,
   op_require_node_module_paths,
   op_require_package_imports_resolve,
   op_require_path_basename,
@@ -1066,7 +1066,7 @@ Module._extensions[".js"] =
   Module._extensions[".tsx"] =
     function (module, filename) {
       const content = op_require_read_file(filename);
-      const format = op_require_module_format(filename);
+      const format = op_require_is_maybe_cjs(filename) ? undefined : "module";
       module._compile(content, filename, format);
     };
 

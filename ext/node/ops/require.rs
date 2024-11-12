@@ -7,11 +7,12 @@ use deno_core::v8;
 use deno_core::JsRuntimeInspector;
 use deno_core::OpState;
 use deno_fs::FileSystemRc;
+use deno_package_json::NodeModuleKind;
 use deno_package_json::PackageJsonRc;
 use deno_path_util::normalize_path;
 use deno_path_util::url_from_file_path;
 use deno_path_util::url_to_file_path;
-use node_resolver::NodeModuleKind;
+use node_resolver::errors::ClosestPkgJsonError;
 use node_resolver::NodeResolutionMode;
 use node_resolver::REQUIRE_CONDITIONS;
 use std::borrow::Cow;
@@ -565,40 +566,17 @@ where
   }))
 }
 
-#[op2]
-#[string]
-pub fn op_require_module_format<P>(
+#[op2(fast)]
+pub fn op_require_is_maybe_cjs(
   state: &mut OpState,
   #[string] filename: String,
-) -> Result<Option<&'static str>, node_resolver::errors::ClosestPkgJsonError>
-where
-  P: NodePermissions + 'static,
-{
+) -> Result<bool, ClosestPkgJsonError> {
   let filename = PathBuf::from(filename);
-  let pkg_json_resolver = state.borrow::<PackageJsonResolverRc>();
-  let pkg_json =
-    pkg_json_resolver.get_closest_package_json_from_path(&filename)?;
-  let Some(pkg_json) = pkg_json else {
-    return Ok(None);
+  let Ok(url) = url_from_file_path(&filename) else {
+    return Ok(false);
   };
-  match pkg_json.typ.as_str() {
-    "commonjs" => Ok(Some("commonjs")),
-    "module" => Ok(Some("module")),
-    "none" => {
-      let resolver = state.borrow::<NodeResolverRc>();
-      match deno_path_util::url_from_file_path(&filename) {
-        Ok(specifier) => {
-          if resolver.in_npm_package(&specifier) {
-            Ok(None)
-          } else {
-            Ok(Some("module"))
-          }
-        }
-        Err(_) => Ok(Some("module")),
-      }
-    }
-    _ => Ok(None),
-  }
+  let loader = state.borrow::<NodeRequireLoaderRc>();
+  loader.is_maybe_cjs(&url)
 }
 
 #[op2]

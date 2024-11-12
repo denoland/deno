@@ -766,7 +766,10 @@ impl LspIsCjsResolver {
       inner: IsCjsResolver::new(
         Arc::new(LspInNpmPackageChecker::new(cache)),
         pkg_json_resolver,
-        crate::resolver::IsCjsResolverOptions { detect_cjs: true },
+        crate::resolver::IsCjsResolverOptions {
+          detect_cjs: true,
+          is_node_main: false,
+        },
       ),
     }
   }

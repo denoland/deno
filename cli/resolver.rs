@@ -511,15 +511,17 @@ impl CjsTracker {
   }
 }
 
+#[derive(Debug)]
 pub struct IsCjsResolverOptions {
   pub detect_cjs: bool,
+  pub is_node_main: bool,
 }
 
 #[derive(Debug)]
 pub struct IsCjsResolver {
   in_npm_pkg_checker: Arc<dyn InNpmPackageChecker>,
   pkg_json_resolver: Arc<PackageJsonResolver>,
-  detect_cjs: bool,
+  options: IsCjsResolverOptions,
 }
 
 impl IsCjsResolver {
@@ -531,7 +533,7 @@ impl IsCjsResolver {
     Self {
       in_npm_pkg_checker,
       pkg_json_resolver,
-      detect_cjs: options.detect_cjs,
+      options,
     }
   }
 
@@ -642,16 +644,19 @@ impl IsCjsResolver {
       } else {
         Ok(NodeModuleKind::Cjs)
       }
-    } else if self.detect_cjs {
+    } else if self.options.detect_cjs || self.options.is_node_main {
       if let Some(pkg_json) =
         self.pkg_json_resolver.get_closest_package_json(specifier)?
       {
-        let is_cjs_type = pkg_json.typ == "commonjs";
+        let is_cjs_type = pkg_json.typ == "commonjs"
+          || self.options.is_node_main && pkg_json.typ == "none";
         Ok(if is_cjs_type {
           NodeModuleKind::Cjs
         } else {
           NodeModuleKind::Esm
         })
+      } else if self.options.is_node_main {
+        Ok(NodeModuleKind::Cjs)
       } else {
         Ok(NodeModuleKind::Esm)
       }

@@ -45,6 +45,7 @@ use deno_runtime::WorkerLogLevel;
 use deno_semver::npm::NpmPackageReqReference;
 use import_map::parse_from_json;
 use node_resolver::analyze::NodeCodeTranslator;
+use node_resolver::errors::ClosestPkgJsonError;
 use node_resolver::NodeModuleKind;
 use node_resolver::NodeResolutionMode;
 use serialization::DenoCompileModuleSource;
@@ -449,6 +450,14 @@ impl NodeRequireLoader for EmbeddedModuleLoader {
   ) -> Result<String, AnyError> {
     Ok(self.shared.fs.read_text_file_lossy_sync(path, None)?)
   }
+
+  fn is_maybe_cjs(
+    &self,
+    specifier: &ModuleSpecifier,
+  ) -> Result<bool, ClosestPkgJsonError> {
+    let media_type = MediaType::from_specifier(specifier);
+    self.shared.cjs_tracker.is_maybe_cjs(specifier, media_type)
+  }
 }
 
 struct StandaloneModuleLoaderFactory {
@@ -650,6 +659,7 @@ pub async fn run(data: StandaloneData) -> Result<i32, AnyError> {
     pkg_json_resolver.clone(),
     IsCjsResolverOptions {
       detect_cjs: !metadata.workspace_resolver.package_jsons.is_empty(),
+      is_node_main: false,
     },
   ));
   let cache_db = Caches::new(deno_dir_provider.clone());

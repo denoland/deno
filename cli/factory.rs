@@ -793,6 +793,7 @@ impl CliFactory {
         self.pkg_json_resolver().clone(),
         IsCjsResolverOptions {
           detect_cjs: options.detect_cjs(),
+          is_node_main: options.is_node_main(),
         },
       )))
     })
