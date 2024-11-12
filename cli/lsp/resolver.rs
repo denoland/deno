@@ -44,7 +44,6 @@ use crate::graph_util::CliJsrUrlProvider;
 use crate::http_util::HttpClientProvider;
 use crate::lsp::config::Config;
 use crate::lsp::config::ConfigData;
-use crate::lsp::logging::lsp_log;
 use crate::lsp::logging::lsp_warn;
 use crate::npm::create_cli_npm_resolver_for_lsp;
 use crate::npm::CliByonmNpmResolverCreateOptions;
@@ -337,11 +336,6 @@ impl LspResolver {
     {
       let dep_info = dep_info_by_scope.get(&scope.cloned());
       if let Some(dep_info) = dep_info {
-        lsp_log!(
-          "1111 {:?} {:?}",
-          scope.map(|s| s.as_str()),
-          deno_core::serde_json::json!(dep_info.deno_types_to_code_resolutions)
-        );
         *resolver.dep_info.lock() = dep_info.clone();
       }
       if let Some(npm_resolver) = resolver.npm_resolver.as_ref() {
@@ -469,12 +463,10 @@ impl LspResolver {
     file_referrer: Option<&ModuleSpecifier>,
   ) -> Option<String> {
     let resolver = self.get_scope_resolver(file_referrer);
-    let s = resolver
+    resolver
       .package_json_deps_by_resolution
       .get(specifier)
-      .cloned();
-    lsp_log!("5555 {} {:?}", specifier, &s);
-    s
+      .cloned()
   }
 
   pub fn deno_types_to_code_resolution(
@@ -484,16 +476,10 @@ impl LspResolver {
   ) -> Option<ModuleSpecifier> {
     let resolver = self.get_scope_resolver(file_referrer);
     let dep_info = resolver.dep_info.lock().clone();
-    let s = dep_info
+    dep_info
       .deno_types_to_code_resolutions
       .get(specifier)
-      .cloned();
-    lsp_log!(
-      "2222 {:?} {:?}",
-      specifier.as_str(),
-      s.as_ref().map(|s| s.as_str())
-    );
-    s
+      .cloned()
   }
 
   pub fn in_node_modules(&self, specifier: &ModuleSpecifier) -> bool {

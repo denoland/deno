@@ -8306,27 +8306,12 @@ fn lsp_npm_auto_import_with_deno_types() {
     "other.ts",
     r#"
       // @deno-types="@types/lz-string"
-      import { compressToBase64 } from "lz-string";
-      console.log(compressToBase64);
+      import "lz-string";
     "#,
   );
-  #[allow(deprecated)]
-  let mut client = context.new_lsp_command().print_stderr().build();
+  let mut client = context.new_lsp_command().build();
   client.initialize_default();
-  let diagnostics = client.did_open(json!({
-    "textDocument": {
-      "uri": temp_dir.url().join("other.ts").unwrap(),
-      "languageId": "typescript",
-      "version": 1,
-      "text": r#"
-      // @deno-types="@types/lz-string"
-      import { compressToBase64 } from "lz-string";
-      console.log(compressToBase64);
-      "#,
-    },
-  }));
-  dbg!(json!(diagnostics.all()));
-  let diagnostics = client.did_open(json!({
+  client.did_open(json!({
     "textDocument": {
       "uri": temp_dir.url().join("file.ts").unwrap(),
       "languageId": "typescript",
@@ -8337,13 +8322,11 @@ fn lsp_npm_auto_import_with_deno_types() {
       "#,
     },
   }));
-  dbg!(json!(diagnostics.all()));
   let list = client.get_completion_list(
     temp_dir.url().join("file.ts").unwrap(),
     (1, 24),
     json!({ "triggerKind": 1 }),
   );
-  dbg!(json!(&list));
   let item = list
     .items
     .iter()
