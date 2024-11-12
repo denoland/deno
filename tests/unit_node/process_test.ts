@@ -1155,5 +1155,6 @@ Deno.test("process.stdout.columns writable", () => {
 
 Deno.test("getBuiltinModule", () => {
   assert(process.getBuiltinModule("fs"));
+  assert(process.getBuiltinModule("node:fs"));
   assertEquals(process.getBuiltinModule("something"), undefined);
 });

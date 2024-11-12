@@ -1251,8 +1251,6 @@ function getBuiltinModule(id) {
   return undefined;
 }
 
-Module.getBuiltinModule = getBuiltinModule;
-
 Module.isBuiltin = isBuiltin;
 
 Module.createRequire = createRequire;

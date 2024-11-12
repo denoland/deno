@@ -15,7 +15,7 @@ import {
 
 import { warnNotImplemented } from "ext:deno_node/_utils.ts";
 import { EventEmitter } from "node:events";
-import Module from "node:module";
+import Module, { getBuiltinModule } from "node:module";
 import { report } from "ext:deno_node/internal/process/report.ts";
 import { validateString } from "ext:deno_node/internal/validators.mjs";
 import {
@@ -38,7 +38,15 @@ import {
   versions,
 } from "ext:deno_node/_process/process.ts";
 import { _exiting } from "ext:deno_node/_process/exiting.ts";
-export { _nextTick as nextTick, chdir, cwd, env, version, versions };
+export {
+  _nextTick as nextTick,
+  chdir,
+  cwd,
+  env,
+  getBuiltinModule,
+  version,
+  versions,
+};
 import {
   createWritableStdioStream,
   initStdin,
@@ -113,10 +121,6 @@ export const umask = () => {
   // condition bug.
   // See https://github.com/denoland/deno_std/issues/1893#issuecomment-1032897779
   return 0o22;
-};
-
-export const getBuiltinModule = (id: string) => {
-  return Module.getBuiltinModule(id);
 };
 
 export const abort = () => {
