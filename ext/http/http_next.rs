@@ -564,6 +564,7 @@ fn is_request_compressible(
   match accept_encoding.to_str() {
     // Firefox and Chrome send this -- no need to parse
     Ok("gzip, deflate, br") => return Compression::Brotli,
+    Ok("gzip, deflate, br, zstd") => return Compression::Brotli,
     Ok("gzip") => return Compression::GZip,
     Ok("br") => return Compression::Brotli,
     _ => (),
