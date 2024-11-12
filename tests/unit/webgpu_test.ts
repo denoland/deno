@@ -227,6 +227,28 @@ Deno.test({
 
 Deno.test({
   ignore: isWsl || isCIWithoutGPU,
+}, async function webgpuAdapterHasInfo() {
+  const adapter = await navigator.gpu.requestAdapter();
+  assert(adapter);
+  assert(adapter.info);
+  const device = await adapter.requestDevice();
+  assert(device.adapterInfo);
+  device.destroy();
+});
+
+Deno.test({
+  ignore: isWsl || isCIWithoutGPU,
+}, async function webgpuDeviceHasAdapterInfo() {
+  const adapter = await navigator.gpu.requestAdapter();
+  assert(adapter);
+  const device = await adapter.requestDevice();
+  assert(adapter.info);
+  assert(device.adapterInfo);
+  device.destroy();
+});
+
+Deno.test({
+  ignore: isWsl || isCIWithoutGPU,
 }, async function webgpuNullWindowSurfaceThrows() {
   const adapter = await navigator.gpu.requestAdapter();
   assert(adapter);
