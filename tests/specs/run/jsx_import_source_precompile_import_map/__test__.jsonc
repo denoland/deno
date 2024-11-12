@@ -1,0 +1,4 @@
+{
+  "args": "run --allow-import --reload --check --import-map jsx/import-map.json --no-lock --config jsx/deno-jsx-precompile.jsonc jsx_precompile/no_pragma.tsx",
+  "output": "jsx_precompile/no_pragma.out"
+}

@@ -1,0 +1,4 @@
+{
+  "args": "run --allow-import --quiet --reload --no-check 006_url_imports.ts",
+  "output": "006_url_imports.ts.out"
+}

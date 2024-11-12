@@ -155,10 +155,6 @@ impl LocalNpmPackageResolver {
 
 #[async_trait(?Send)]
 impl NpmPackageFsResolver for LocalNpmPackageResolver {
-  fn root_dir_url(&self) -> &Url {
-    &self.root_node_modules_url
-  }
-
   fn node_modules_path(&self) -> Option<&Path> {
     Some(self.root_node_modules_path.as_ref())
   }
@@ -1039,12 +1035,18 @@ fn junction_or_symlink_dir(
       if symlink_err.kind() == std::io::ErrorKind::PermissionDenied =>
     {
       USE_JUNCTIONS.store(true, std::sync::atomic::Ordering::Relaxed);
-      junction::create(old_path, new_path).map_err(Into::into)
+      junction::create(old_path, new_path)
+        .context("Failed creating junction in node_modules folder")
     }
-    Err(symlink_err) => Err(
-      AnyError::from(symlink_err)
-        .context("Failed creating symlink in node_modules folder"),
-    ),
+    Err(symlink_err) => {
+      log::warn!(
+        "{} Unexpected error symlinking node_modules: {symlink_err}",
+        colors::yellow("Warning")
+      );
+      USE_JUNCTIONS.store(true, std::sync::atomic::Ordering::Relaxed);
+      junction::create(old_path, new_path)
+        .context("Failed creating junction in node_modules folder")
+    }
   }
 }
 

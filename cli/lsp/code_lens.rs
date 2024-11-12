@@ -421,7 +421,7 @@ pub fn collect_test(
 ) -> Result<Vec<lsp::CodeLens>, AnyError> {
   let mut collector =
     DenoTestCollector::new(specifier.clone(), parsed_source.clone());
-  parsed_source.module().visit_with(&mut collector);
+  parsed_source.program().visit_with(&mut collector);
   Ok(collector.take())
 }
 
@@ -581,7 +581,7 @@ mod tests {
     .unwrap();
     let mut collector =
       DenoTestCollector::new(specifier, parsed_module.clone());
-    parsed_module.module().visit_with(&mut collector);
+    parsed_module.program().visit_with(&mut collector);
     assert_eq!(
       collector.take(),
       vec![
