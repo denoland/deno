@@ -19,6 +19,7 @@ import { magenta } from "@std/fmt/colors";
 import { pooledMap } from "@std/async/pool";
 import { dirname, fromFileUrl, join } from "@std/path";
 import { assertEquals, fail } from "@std/assert";
+import { distinct } from "@std/collections";
 import {
   config,
   getPathsFromTestSuites,
@@ -36,6 +37,9 @@ const testPaths = partitionParallelTestPaths(
     getPathsFromTestSuites(config.ignore),
   ),
 );
+testPaths.sequential = distinct(testPaths.sequential);
+testPaths.parallel = distinct(testPaths.parallel);
+
 const cwd = new URL(".", import.meta.url);
 const windowsIgnorePaths = new Set(
   getPathsFromTestSuites(config.windowsIgnore),
