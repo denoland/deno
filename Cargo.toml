@@ -207,6 +207,12 @@ yoke = { version = "0.7.4", features = ["derive"] }
 zeromq = { version = "=0.4.1", default-features = false, features = ["tcp-transport", "tokio-runtime"] }
 zstd = "=0.12.4"
 
+opentelemetry = "0.27.0"
+opentelemetry-http = "0.27.0"
+opentelemetry-otlp = { version = "0.27.0", features = ["logs", "http-proto", "http-json"] }
+opentelemetry-semantic-conventions = { version = "0.27.0", features = ["semconv_experimental"] }
+opentelemetry_sdk = "0.27.0"
+
 # crypto
 hkdf = "0.12.3"
 rsa = { version = "0.9.3", default-features = false, features = ["std", "pem", "hazmat"] } # hazmat needed for PrehashSigner in ext/node
