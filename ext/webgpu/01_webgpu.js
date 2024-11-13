@@ -420,8 +420,8 @@ const GPUPrototype = GPU.prototype;
 
 /**
  * @param {number} rid
- * @param {GPUSupportedFeatures} features
- * @param {GPUSupportedLimits} limits
+ * @param {string[]} features
+ * @param {object} limits
  * @param {boolean} isFallbackAdapter
  * @returns {GPUAdapter}
  */
