@@ -460,7 +460,7 @@ class GPUAdapter {
   /** @returns {boolean} */
   get isFallbackAdapter() {
     webidl.assertBranded(this, GPUAdapterPrototype);
-    return this[_adapter].isFallback;
+    return this[_adapter].isFallbackAdapter;
   }
 
   /** @returns {GPUAdapterInfo} */

@@ -392,7 +392,7 @@ pub struct GpuAdapterRes {
   rid: ResourceId,
   limits: wgpu_types::Limits,
   features: Vec<&'static str>,
-  is_fallback: bool,
+  is_fallback_adapter: bool,
 }
 
 #[derive(Serialize)]
@@ -466,7 +466,7 @@ pub fn op_webgpu_request_adapter(
     features,
     limits: adapter_limits,
     // TODO(lucacasonato): report correctly from wgpu
-    is_fallback: false,
+    is_fallback_adapter: false,
   }))
 }
 
