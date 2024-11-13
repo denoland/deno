@@ -421,7 +421,7 @@ const GPUPrototype = GPU.prototype;
 /**
  * @param {number} rid
  * @param {string[]} features
- * @param {object} limits
+ * @param {InnerAdapterLimits} limits
  * @param {boolean} isFallbackAdapter
  * @returns {GPUAdapter}
  */
@@ -639,6 +639,10 @@ class GPUAdapterInfo {
 }
 const GPUAdapterInfoPrototype = GPUAdapterInfo.prototype;
 
+/**
+ * @param {InnerAdapterLimits} limits
+ * @returns {GPUSupportedLimits}
+ */
 function createGPUSupportedLimits(limits) {
   /** @type {GPUSupportedLimits} */
   const adapterFeatures = webidl.createBranded(GPUSupportedLimits);
@@ -852,6 +856,10 @@ class GPUSupportedLimits {
 }
 const GPUSupportedLimitsPrototype = GPUSupportedLimits.prototype;
 
+/**
+ * @param {string[]} features
+ * @returns {GPUSupportedFeatures}
+ */
 function createGPUSupportedFeatures(features) {
   /** @type {GPUSupportedFeatures} */
   const supportedFeatures = webidl.createBranded(GPUSupportedFeatures);
