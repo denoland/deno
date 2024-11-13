@@ -1233,6 +1233,24 @@ function isBuiltin(moduleName) {
     !StringPrototypeStartsWith(moduleName, "internal/");
 }
 
+function getBuiltinModule(id) {
+  if (!isBuiltin(id)) {
+    return undefined;
+  }
+
+  if (StringPrototypeStartsWith(id, "node:")) {
+    // Slice 'node:' prefix
+    id = StringPrototypeSlice(id, 5);
+  }
+
+  const mod = loadNativeModule(id, id);
+  if (mod) {
+    return mod.exports;
+  }
+
+  return undefined;
+}
+
 Module.isBuiltin = isBuiltin;
 
 Module.createRequire = createRequire;
@@ -1327,7 +1345,7 @@ export function register(_specifier, _parentUrl, _options) {
   return undefined;
 }
 
-export { builtinModules, createRequire, isBuiltin, Module };
+export { builtinModules, createRequire, getBuiltinModule, isBuiltin, Module };
 export const _cache = Module._cache;
 export const _extensions = Module._extensions;
 export const _findPath = Module._findPath;
