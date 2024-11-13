@@ -1601,6 +1601,9 @@ impl CliOptions {
   }
 
   pub fn detect_cjs(&self) -> bool {
+    // only enabled when there's a package.json in order to not have a
+    // perf penalty for non-npm Deno projects of searching for the closest
+    // package.json beside each module
     self.workspace().package_jsons().next().is_some() || self.is_node_main()
   }
 
