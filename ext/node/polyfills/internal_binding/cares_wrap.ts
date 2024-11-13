@@ -107,13 +107,6 @@ export function getaddrinfo(
       });
     }
 
-    // TODO(@bartlomieju): Forces IPv4 as a workaround for Deno not
-    // aligning with Node on implicit binding on Windows
-    // REF: https://github.com/denoland/deno/issues/10762
-    if (isWindows && hostname === "localhost") {
-      addresses = addresses.filter((address) => isIPv4(address));
-    }
-
     req.oncomplete(error, addresses);
   })();
 
