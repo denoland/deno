@@ -13,9 +13,12 @@ mod resolution;
 mod sync;
 
 pub use deno_package_json::PackageJson;
+pub use npm::InNpmPackageChecker;
+pub use npm::InNpmPackageCheckerRc;
 pub use npm::NpmResolver;
 pub use npm::NpmResolverRc;
-pub use package_json::load_pkg_json;
+pub use package_json::PackageJsonResolver;
+pub use package_json::PackageJsonResolverRc;
 pub use package_json::PackageJsonThreadLocalCache;
 pub use path::PathClean;
 pub use resolution::parse_npm_pkg_name;

@@ -523,17 +523,13 @@ function resolveExports(
     return;
   }
 
-  if (!parentPath) {
-    return false;
-  }
-
   return op_require_resolve_exports(
     usesLocalNodeModulesDir,
     modulesPath,
     request,
     name,
     expansion,
-    parentPath,
+    parentPath ?? "",
   ) ?? false;
 }
 
@@ -1075,12 +1071,34 @@ Module._extensions[".js"] = function (module, filename) {
     } else if (pkg?.type === "commonjs") {
       format = "commonjs";
     }
-  } else if (StringPrototypeEndsWith(filename, ".cjs")) {
-    format = "commonjs";
   }
 
   module._compile(content, filename, format);
 };
+
+Module._extensions[".ts"] =
+  Module._extensions[".jsx"] =
+  Module._extensions[".tsx"] =
+    function (module, filename) {
+      const content = op_require_read_file(filename);
+
+      let format;
+      const pkg = op_require_read_closest_package_json(filename);
+      if (pkg?.type === "module") {
+        format = "module";
+      } else if (pkg?.type === "commonjs") {
+        format = "commonjs";
+      }
+
+      module._compile(content, filename, format);
+    };
+
+Module._extensions[".cjs"] =
+  Module._extensions[".cts"] =
+    function (module, filename) {
+      const content = op_require_read_file(filename);
+      module._compile(content, filename, "commonjs");
+    };
 
 function loadESMFromCJS(module, filename, code) {
   const namespace = op_import_sync(
@@ -1091,7 +1109,10 @@ function loadESMFromCJS(module, filename, code) {
   module.exports = namespace;
 }
 
-Module._extensions[".mjs"] = function (module, filename) {
+Module._extensions[".mjs"] = Module._extensions[".mts"] = function (
+  module,
+  filename,
+) {
   loadESMFromCJS(module, filename);
 };
 
@@ -1212,6 +1233,24 @@ function isBuiltin(moduleName) {
     !StringPrototypeStartsWith(moduleName, "internal/");
 }
 
+function getBuiltinModule(id) {
+  if (!isBuiltin(id)) {
+    return undefined;
+  }
+
+  if (StringPrototypeStartsWith(id, "node:")) {
+    // Slice 'node:' prefix
+    id = StringPrototypeSlice(id, 5);
+  }
+
+  const mod = loadNativeModule(id, id);
+  if (mod) {
+    return mod.exports;
+  }
+
+  return undefined;
+}
+
 Module.isBuiltin = isBuiltin;
 
 Module.createRequire = createRequire;
@@ -1291,6 +1330,8 @@ export function findSourceMap(_path) {
   return undefined;
 }
 
+Module.findSourceMap = findSourceMap;
+
 /**
  * @param {string | URL} _specifier
  * @param {string | URL} _parentUrl
@@ -1304,7 +1345,7 @@ export function register(_specifier, _parentUrl, _options) {
   return undefined;
 }
 
-export { builtinModules, createRequire, isBuiltin, Module };
+export { builtinModules, createRequire, getBuiltinModule, isBuiltin, Module };
 export const _cache = Module._cache;
 export const _extensions = Module._extensions;
 export const _findPath = Module._findPath;

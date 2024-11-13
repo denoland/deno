@@ -14,6 +14,7 @@ import {
   op_http_get_request_headers,
   op_http_get_request_method_and_url,
   op_http_read_request_body,
+  op_http_request_on_cancel,
   op_http_serve,
   op_http_serve_on,
   op_http_set_promise_complete,
@@ -372,6 +373,18 @@ class InnerRequest {
 
   get external() {
     return this.#external;
+  }
+
+  onCancel(callback) {
+    if (this.#external === null) {
+      callback();
+      return;
+    }
+
+    PromisePrototypeThen(
+      op_http_request_on_cancel(this.#external),
+      callback,
+    );
   }
 }
 

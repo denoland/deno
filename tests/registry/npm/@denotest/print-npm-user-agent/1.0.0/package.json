@@ -1,0 +1,10 @@
+{
+  "name": "@denotest/print-npm-user-agent",
+  "version": "1.0.0",
+  "bin": {
+    "print-npm-user-agent": "index.js"
+  },
+  "scripts": {
+    "postinstall": "echo postinstall && node index.js && exit 1"
+  }
+}

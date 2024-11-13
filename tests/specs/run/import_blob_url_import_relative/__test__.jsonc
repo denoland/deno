@@ -1,0 +1,5 @@
+{
+  "args": "run --quiet --reload import_blob_url_import_relative.ts",
+  "output": "import_blob_url_import_relative.ts.out",
+  "exitCode": 1
+}

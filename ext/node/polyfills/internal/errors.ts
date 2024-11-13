@@ -18,7 +18,7 @@
  */
 
 import { primordials } from "ext:core/mod.js";
-const { JSONStringify, SymbolFor } = primordials;
+const { JSONStringify, SafeArrayIterator, SymbolFor } = primordials;
 import { format, inspect } from "ext:deno_node/internal/util/inspect.mjs";
 import { codes } from "ext:deno_node/internal/error_codes.ts";
 import {
@@ -1874,6 +1874,11 @@ export class ERR_SOCKET_CLOSED extends NodeError {
     super("ERR_SOCKET_CLOSED", `Socket is closed`);
   }
 }
+export class ERR_SOCKET_CONNECTION_TIMEOUT extends NodeError {
+  constructor() {
+    super("ERR_SOCKET_CONNECTION_TIMEOUT", `Socket connection timeout`);
+  }
+}
 export class ERR_SOCKET_DGRAM_IS_CONNECTED extends NodeError {
   constructor() {
     super("ERR_SOCKET_DGRAM_IS_CONNECTED", `Already connected`);
@@ -2558,19 +2563,6 @@ export class ERR_FS_RMDIR_ENOTDIR extends NodeSystemError {
   }
 }
 
-export class ERR_OS_NO_HOMEDIR extends NodeSystemError {
-  constructor() {
-    const code = isWindows ? "ENOENT" : "ENOTDIR";
-    const ctx: NodeSystemErrorCtx = {
-      message: "not a directory",
-      syscall: "home",
-      code,
-      errno: isWindows ? osConstants.errno.ENOENT : osConstants.errno.ENOTDIR,
-    };
-    super(code, ctx, "Path is not a directory");
-  }
-}
-
 export class ERR_HTTP_SOCKET_ASSIGNED extends NodeError {
   constructor() {
     super(
@@ -2646,11 +2638,30 @@ export function aggregateTwoErrors(
   }
   return innerError || outerError;
 }
+
+export class NodeAggregateError extends AggregateError {
+  code: string;
+  constructor(errors, message) {
+    super(new SafeArrayIterator(errors), message);
+    this.code = errors[0]?.code;
+  }
+
+  get [kIsNodeError]() {
+    return true;
+  }
+
+  // deno-lint-ignore adjacent-overload-signatures
+  get ["constructor"]() {
+    return AggregateError;
+  }
+}
+
 codes.ERR_IPC_CHANNEL_CLOSED = ERR_IPC_CHANNEL_CLOSED;
 codes.ERR_INVALID_ARG_TYPE = ERR_INVALID_ARG_TYPE;
 codes.ERR_INVALID_ARG_VALUE = ERR_INVALID_ARG_VALUE;
 codes.ERR_OUT_OF_RANGE = ERR_OUT_OF_RANGE;
 codes.ERR_SOCKET_BAD_PORT = ERR_SOCKET_BAD_PORT;
+codes.ERR_SOCKET_CONNECTION_TIMEOUT = ERR_SOCKET_CONNECTION_TIMEOUT;
 codes.ERR_BUFFER_OUT_OF_BOUNDS = ERR_BUFFER_OUT_OF_BOUNDS;
 codes.ERR_UNKNOWN_ENCODING = ERR_UNKNOWN_ENCODING;
 codes.ERR_PARSE_ARGS_INVALID_OPTION_VALUE = ERR_PARSE_ARGS_INVALID_OPTION_VALUE;

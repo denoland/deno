@@ -65,10 +65,14 @@
     "tests/wpt/runner/expectation.json",
     "tests/wpt/runner/manifest.json",
     "tests/wpt/suite",
-    "third_party"
+    "third_party",
+    "tests/specs/run/shebang_with_json_imports_tsc",
+    "tests/specs/run/shebang_with_json_imports_swc",
+    "tests/specs/run/ext_flag_takes_precedence_over_extension",
+    "tests/specs/run/error_syntax_empty_trailing_line/error_syntax_empty_trailing_line.mjs"
   ],
   "plugins": [
-    "https://plugins.dprint.dev/typescript-0.93.0.wasm",
+    "https://plugins.dprint.dev/typescript-0.93.2.wasm",
     "https://plugins.dprint.dev/json-0.19.4.wasm",
     "https://plugins.dprint.dev/markdown-0.17.8.wasm",
     "https://plugins.dprint.dev/toml-0.6.3.wasm",

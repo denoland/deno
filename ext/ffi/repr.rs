@@ -46,7 +46,7 @@ pub enum ReprError {
   #[error("Invalid pointer pointer, pointer is null")]
   InvalidPointer,
   #[error(transparent)]
-  Permission(deno_core::error::AnyError),
+  Permission(#[from] deno_permissions::PermissionCheckError),
 }
 
 #[op2(fast)]
@@ -58,9 +58,7 @@ where
   FP: FfiPermissions + 'static,
 {
   let permissions = state.borrow_mut::<FP>();
-  permissions
-    .check_partial_no_path()
-    .map_err(ReprError::Permission)?;
+  permissions.check_partial_no_path()?;
 
   Ok(ptr_number as *mut c_void)
 }
@@ -75,9 +73,7 @@ where
   FP: FfiPermissions + 'static,
 {
   let permissions = state.borrow_mut::<FP>();
-  permissions
-    .check_partial_no_path()
-    .map_err(ReprError::Permission)?;
+  permissions.check_partial_no_path()?;
 
   Ok(a == b)
 }
@@ -91,9 +87,7 @@ where
   FP: FfiPermissions + 'static,
 {
   let permissions = state.borrow_mut::<FP>();
-  permissions
-    .check_partial_no_path()
-    .map_err(ReprError::Permission)?;
+  permissions.check_partial_no_path()?;
 
   Ok(buf as *mut c_void)
 }
@@ -107,9 +101,7 @@ where
   FP: FfiPermissions + 'static,
 {
   let permissions = state.borrow_mut::<FP>();
-  permissions
-    .check_partial_no_path()
-    .map_err(ReprError::Permission)?;
+  permissions.check_partial_no_path()?;
 
   let Some(buf) = buf.get_backing_store() else {
     return Ok(0 as _);
@@ -130,9 +122,7 @@ where
   FP: FfiPermissions + 'static,
 {
   let permissions = state.borrow_mut::<FP>();
-  permissions
-    .check_partial_no_path()
-    .map_err(ReprError::Permission)?;
+  permissions.check_partial_no_path()?;
 
   if ptr.is_null() {
     return Err(ReprError::InvalidOffset);
@@ -162,9 +152,7 @@ where
   FP: FfiPermissions + 'static,
 {
   let permissions = state.borrow_mut::<FP>();
-  permissions
-    .check_partial_no_path()
-    .map_err(ReprError::Permission)?;
+  permissions.check_partial_no_path()?;
 
   Ok(ptr as usize)
 }
@@ -181,9 +169,7 @@ where
   FP: FfiPermissions + 'static,
 {
   let permissions = state.borrow_mut::<FP>();
-  permissions
-    .check_partial_no_path()
-    .map_err(ReprError::Permission)?;
+  permissions.check_partial_no_path()?;
 
   if ptr.is_null() {
     return Err(ReprError::InvalidArrayBuffer);
@@ -215,9 +201,7 @@ where
   FP: FfiPermissions + 'static,
 {
   let permissions = state.borrow_mut::<FP>();
-  permissions
-    .check_partial_no_path()
-    .map_err(ReprError::Permission)?;
+  permissions.check_partial_no_path()?;
 
   if src.is_null() {
     Err(ReprError::InvalidArrayBuffer)
@@ -246,9 +230,7 @@ where
   FP: FfiPermissions + 'static,
 {
   let permissions = state.borrow_mut::<FP>();
-  permissions
-    .check_partial_no_path()
-    .map_err(ReprError::Permission)?;
+  permissions.check_partial_no_path()?;
 
   if ptr.is_null() {
     return Err(ReprError::InvalidCString);
@@ -272,9 +254,7 @@ where
   FP: FfiPermissions + 'static,
 {
   let permissions = state.borrow_mut::<FP>();
-  permissions
-    .check_partial_no_path()
-    .map_err(ReprError::Permission)?;
+  permissions.check_partial_no_path()?;
 
   if ptr.is_null() {
     return Err(ReprError::InvalidBool);
@@ -294,9 +274,7 @@ where
   FP: FfiPermissions + 'static,
 {
   let permissions = state.borrow_mut::<FP>();
-  permissions
-    .check_partial_no_path()
-    .map_err(ReprError::Permission)?;
+  permissions.check_partial_no_path()?;
 
   if ptr.is_null() {
     return Err(ReprError::InvalidU8);
@@ -318,9 +296,7 @@ where
   FP: FfiPermissions + 'static,
 {
   let permissions = state.borrow_mut::<FP>();
-  permissions
-    .check_partial_no_path()
-    .map_err(ReprError::Permission)?;
+  permissions.check_partial_no_path()?;
 
   if ptr.is_null() {
     return Err(ReprError::InvalidI8);
@@ -342,9 +318,7 @@ where
   FP: FfiPermissions + 'static,
 {
   let permissions = state.borrow_mut::<FP>();
-  permissions
-    .check_partial_no_path()
-    .map_err(ReprError::Permission)?;
+  permissions.check_partial_no_path()?;
 
   if ptr.is_null() {
     return Err(ReprError::InvalidU16);
@@ -366,9 +340,7 @@ where
   FP: FfiPermissions + 'static,
 {
   let permissions = state.borrow_mut::<FP>();
-  permissions
-    .check_partial_no_path()
-    .map_err(ReprError::Permission)?;
+  permissions.check_partial_no_path()?;
 
   if ptr.is_null() {
     return Err(ReprError::InvalidI16);
@@ -390,9 +362,7 @@ where
   FP: FfiPermissions + 'static,
 {
   let permissions = state.borrow_mut::<FP>();
-  permissions
-    .check_partial_no_path()
-    .map_err(ReprError::Permission)?;
+  permissions.check_partial_no_path()?;
 
   if ptr.is_null() {
     return Err(ReprError::InvalidU32);
@@ -412,9 +382,7 @@ where
   FP: FfiPermissions + 'static,
 {
   let permissions = state.borrow_mut::<FP>();
-  permissions
-    .check_partial_no_path()
-    .map_err(ReprError::Permission)?;
+  permissions.check_partial_no_path()?;
 
   if ptr.is_null() {
     return Err(ReprError::InvalidI32);
@@ -437,9 +405,7 @@ where
   FP: FfiPermissions + 'static,
 {
   let permissions = state.borrow_mut::<FP>();
-  permissions
-    .check_partial_no_path()
-    .map_err(ReprError::Permission)?;
+  permissions.check_partial_no_path()?;
 
   if ptr.is_null() {
     return Err(ReprError::InvalidU64);
@@ -465,9 +431,7 @@ where
   FP: FfiPermissions + 'static,
 {
   let permissions = state.borrow_mut::<FP>();
-  permissions
-    .check_partial_no_path()
-    .map_err(ReprError::Permission)?;
+  permissions.check_partial_no_path()?;
 
   if ptr.is_null() {
     return Err(ReprError::InvalidI64);
@@ -490,9 +454,7 @@ where
   FP: FfiPermissions + 'static,
 {
   let permissions = state.borrow_mut::<FP>();
-  permissions
-    .check_partial_no_path()
-    .map_err(ReprError::Permission)?;
+  permissions.check_partial_no_path()?;
 
   if ptr.is_null() {
     return Err(ReprError::InvalidF32);
@@ -512,9 +474,7 @@ where
   FP: FfiPermissions + 'static,
 {
   let permissions = state.borrow_mut::<FP>();
-  permissions
-    .check_partial_no_path()
-    .map_err(ReprError::Permission)?;
+  permissions.check_partial_no_path()?;
 
   if ptr.is_null() {
     return Err(ReprError::InvalidF64);
@@ -534,9 +494,7 @@ where
   FP: FfiPermissions + 'static,
 {
   let permissions = state.borrow_mut::<FP>();
-  permissions
-    .check_partial_no_path()
-    .map_err(ReprError::Permission)?;
+  permissions.check_partial_no_path()?;
 
   if ptr.is_null() {
     return Err(ReprError::InvalidPointer);
