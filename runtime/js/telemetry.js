@@ -112,6 +112,10 @@ function submit(span) {
 
 const now = () => (performance.timeOrigin + performance.now()) / 1000;
 
+const INVALID_SPAN_ID = "0000000000000000";
+const INVALID_TRACE_ID = "00000000000000000000000000000000";
+const NO_ASYNC_CONTEXT = {};
+
 class Span {
   traceId;
   spanId;
@@ -125,27 +129,42 @@ class Span {
   traceFlags = TRACE_FLAG_SAMPLED;
 
   enabled = TRACING_ENABLED;
-  #asyncContext;
+  #asyncContext = NO_ASYNC_CONTEXT;
 
   constructor(name, kind = "internal") {
-    if (!this.enabled) return;
+    if (!this.enabled) {
+      this.traceId = INVALID_TRACE_ID;
+      this.spanId = INVALID_SPAN_ID;
+      this.parentSpanId = INVALID_SPAN_ID;
+      return;
+    }
 
     this.startTime = now();
 
     this.spanId = generateId(SPAN_ID_BYTES);
 
+    let traceId;
+    let parentSpanId;
     const parent = Span.current();
     if (parent) {
-      if (parent.spanId) {
-        this.parentSpanId = parent.spanId;
-        this.traceId = parent.traceId ?? generateId(TRACE_ID_BYTES);
+      if (parent.spanId !== undefined) {
+        parentSpanId = parent.spanId;
+        traceId = parent.traceId;
       } else {
         const context = parent.spanContext();
-        this.parentSpanId = context.spanId;
-        this.traceId = context.traceId ?? generateId(TRACE_ID_BYTES);
+        parentSpanId = context.spanId;
+        traceId = context.traceId;
       }
+    }
+    if (
+      traceId && traceId !== INVALID_TRACE_ID && parentSpanId &&
+      parentSpanId !== INVALID_SPAN_ID
+    ) {
+      this.traceId = traceId;
+      this.parentSpanId = parentSpanId;
     } else {
       this.traceId = generateId(TRACE_ID_BYTES);
+      this.parentSpanId = INVALID_SPAN_ID;
     }
 
     this.name = name;
@@ -194,17 +213,15 @@ class Span {
   }
 
   exit() {
-    if (!this.enabled || !this.#asyncContext) return;
+    if (!this.enabled || this.#asyncContext === NO_ASYNC_CONTEXT) return;
     setAsyncContext(this.#asyncContext);
+    this.#asyncContext = NO_ASYNC_CONTEXT;
   }
 
   end() {
-    if (!this.enabled || this.endTime) return;
-
-    this.endTime = now();
-
+    if (!this.enabled || this.endTime !== undefined) return;
     this.exit();
-
+    this.endTime = now();
     submit(this);
   }
 
@@ -323,7 +340,7 @@ function otelLog(message, level) {
   let traceFlags = 0;
   const span = Span.current();
   if (span) {
-    if (span.spanId) {
+    if (span.spanId !== undefined) {
       spanId = span.spanId;
       traceId = span.traceId;
       traceFlags = span.traceFlags;

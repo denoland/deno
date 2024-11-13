@@ -470,7 +470,7 @@ fn op_otel_span_start<'s>(
   };
 
   let trace_id = {
-    let x = v8::ValueView::new(scope, trace_id.cast());
+    let x = v8::ValueView::new(scope, trace_id.try_cast()?);
     match x.data() {
       v8::ValueViewData::OneByte(bytes) => {
         TraceId::from_hex(&String::from_utf8_lossy(bytes))?
@@ -480,7 +480,7 @@ fn op_otel_span_start<'s>(
   };
 
   let span_id = {
-    let x = v8::ValueView::new(scope, span_id.cast());
+    let x = v8::ValueView::new(scope, span_id.try_cast()?);
     match x.data() {
       v8::ValueViewData::OneByte(bytes) => {
         SpanId::from_hex(&String::from_utf8_lossy(bytes))?
@@ -490,7 +490,7 @@ fn op_otel_span_start<'s>(
   };
 
   let parent_span_id = {
-    let x = v8::ValueView::new(scope, parent_span_id.cast());
+    let x = v8::ValueView::new(scope, parent_span_id.try_cast()?);
     match x.data() {
       v8::ValueViewData::OneByte(bytes) => {
         let s = String::from_utf8_lossy(bytes);
@@ -505,7 +505,7 @@ fn op_otel_span_start<'s>(
   };
 
   let name = {
-    let x = v8::ValueView::new(scope, name.cast());
+    let x = v8::ValueView::new(scope, name.try_cast()?);
     match x.data() {
       v8::ValueViewData::OneByte(bytes) => {
         String::from_utf8_lossy(bytes).into_owned()
@@ -570,14 +570,18 @@ fn op_otel_span_continue(
 
 macro_rules! attr {
   ($scope:ident, $temporary_span:ident, $name:ident, $value:ident) => {
-    let name = {
-      let x = v8::ValueView::new($scope, $name.cast());
-      match x.data() {
+    let name = if let Ok(name) = $name.try_cast() {
+      let view = v8::ValueView::new($scope, name);
+      match view.data() {
         v8::ValueViewData::OneByte(bytes) => {
-          String::from_utf8_lossy(bytes).into_owned()
+          Some(String::from_utf8_lossy(bytes).into_owned())
         }
-        v8::ValueViewData::TwoByte(bytes) => String::from_utf16_lossy(bytes),
+        v8::ValueViewData::TwoByte(bytes) => {
+          Some(String::from_utf16_lossy(bytes))
+        }
       }
+    } else {
+      None
     };
     let value = if let Ok(string) = $value.try_cast::<v8::String>() {
       Some(Value::String(StringValue::from({
@@ -599,7 +603,7 @@ macro_rules! attr {
     } else {
       None
     };
-    if let Some(value) = value {
+    if let (Some(name), Some(value)) = (name, value) {
       $temporary_span
         .0
         .attributes
