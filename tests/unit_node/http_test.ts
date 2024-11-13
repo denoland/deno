@@ -489,6 +489,7 @@ Deno.test("[node/http] send request with non-chunked body", async () => {
     res.on("data", () => {});
     res.on("end", () => {
       abortController.abort();
+      req.socket!.destroy();
     });
     assertEquals(res.statusCode, 200);
     assertEquals(requestHeaders.get("content-length"), "11");
