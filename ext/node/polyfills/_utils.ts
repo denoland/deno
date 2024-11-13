@@ -35,7 +35,7 @@ export type TextEncodings =
 export type Encodings = BinaryEncodings | TextEncodings;
 
 export function notImplemented(msg: string): never {
-  throw new ERR_NOT_IMPLEMENTED(message);
+  throw new ERR_NOT_IMPLEMENTED(msg);
 }
 
 export function warnNotImplemented(msg?: string) {
