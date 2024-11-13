@@ -32,8 +32,12 @@ use crate::jsr::JsrFetchResolver;
 use crate::npm::NpmFetchResolver;
 
 mod cache_deps;
+mod outdated;
+mod update;
 
 pub use cache_deps::cache_top_level_deps;
+pub use outdated::outdated;
+pub use update::update;
 
 #[derive(Debug, Copy, Clone)]
 enum ConfigKind {
@@ -377,6 +381,10 @@ pub async fn add(
     (Some(npm), Some(deno)) => {
       let npm_distance = path_distance(&npm.path, &start_dir);
       let deno_distance = path_distance(&deno.path, &start_dir);
+      eprintln!(
+        "npm: {:?}, deno: {:?}, start: {:?}; distances: {} {}",
+        &npm.path, &deno.path, &start_dir, npm_distance, deno_distance
+      );
       npm_distance <= deno_distance
     }
     (Some(_), None) => true,

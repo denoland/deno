@@ -265,6 +265,7 @@ async fn add_package_reqs_to_snapshot(
   maybe_lockfile: Option<Arc<CliLockfile>>,
   get_new_snapshot: impl Fn() -> NpmResolutionSnapshot,
 ) -> deno_npm::resolution::AddPkgReqsResult {
+  eprintln!("add_package_reqs_to_snapshot: {package_reqs:?}");
   let snapshot = get_new_snapshot();
   if package_reqs
     .iter()

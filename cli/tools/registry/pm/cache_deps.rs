@@ -119,6 +119,8 @@ pub async fn cache_top_level_deps(
         None,
       )
       .await?;
+  } else if let Some(lockfile) = lockfile {
+    lockfile.write_if_changed()?;
   }
 
   Ok(())

@@ -463,11 +463,24 @@ pub enum DenoSubcommand {
   Serve(ServeFlags),
   Task(TaskFlags),
   Test(TestFlags),
+  Update(UpdateFlags),
+  Outdated(OutdatedFlags),
   Types,
   Upgrade(UpgradeFlags),
   Vendor,
   Publish(PublishFlags),
   Help(HelpFlags),
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct OutdatedFlags {
+  pub filters: Vec<String>,
+  pub compatible: bool,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct UpdateFlags {
+  pub filters: Vec<String>,
 }
 
 impl DenoSubcommand {
@@ -1382,6 +1395,8 @@ pub fn flags_from_vec(args: Vec<OsString>) -> clap::error::Result<Flags> {
       "jupyter" => jupyter_parse(&mut flags, &mut m),
       "lint" => lint_parse(&mut flags, &mut m)?,
       "lsp" => lsp_parse(&mut flags, &mut m),
+      "outdated" => outdated_parse(&mut flags, &mut m)?,
+      "update" => update_parse(&mut flags, &mut m)?,
       "repl" => repl_parse(&mut flags, &mut m)?,
       "run" => run_parse(&mut flags, &mut m, app, false)?,
       "serve" => serve_parse(&mut flags, &mut m, app)?,
@@ -1624,6 +1639,8 @@ pub fn clap_root() -> Command {
         .subcommand(json_reference_subcommand())
         .subcommand(jupyter_subcommand())
         .subcommand(uninstall_subcommand())
+        .subcommand(outdated_subcommand())
+        .subcommand(update_subcommand())
         .subcommand(lsp_subcommand())
         .subcommand(lint_subcommand())
         .subcommand(publish_subcommand())
@@ -2612,6 +2629,41 @@ fn jupyter_subcommand() -> Command {
         .value_parser(value_parser!(String))
         .value_hint(ValueHint::FilePath)
         .conflicts_with("install"))
+}
+
+fn outdated_subcommand() -> Command {
+  command(
+    "outdated",
+    "Check for outdated dependencies",
+    UnstableArgsConfig::None,
+  )
+  .defer(|cmd| {
+    cmd
+      .arg(
+        Arg::new("filters")
+          .num_args(0..)
+          .action(ArgAction::Append)
+          .help("List of filters used for checking outdated packages"),
+      )
+      .arg(
+        Arg::new("compatible")
+          .long("compatible")
+          .action(ArgAction::SetTrue)
+          .help("only output versions that satisfy semver requirements"),
+      )
+  })
+}
+fn update_subcommand() -> Command {
+  command("update", "Update dependencies", UnstableArgsConfig::None).defer(
+    |cmd| {
+      cmd.arg(
+        Arg::new("filters")
+          .num_args(0..)
+          .action(ArgAction::Append)
+          .help("List of filters used for updating outdated packages"),
+      )
+    },
+  )
 }
 
 fn uninstall_subcommand() -> Command {
@@ -4327,6 +4379,34 @@ fn remove_parse(flags: &mut Flags, matches: &mut ArgMatches) {
   flags.subcommand = DenoSubcommand::Remove(RemoveFlags {
     packages: matches.remove_many::<String>("packages").unwrap().collect(),
   });
+}
+
+fn outdated_parse(
+  flags: &mut Flags,
+  matches: &mut ArgMatches,
+) -> clap::error::Result<()> {
+  let filters = match matches.remove_many::<String>("filters") {
+    Some(f) => f.collect(),
+    None => vec![],
+  };
+  let compatible = matches.get_flag("compatible");
+  flags.subcommand = DenoSubcommand::Outdated(OutdatedFlags {
+    filters,
+    compatible,
+  });
+  Ok(())
+}
+
+fn update_parse(
+  flags: &mut Flags,
+  matches: &mut ArgMatches,
+) -> clap::error::Result<()> {
+  let filters = match matches.remove_many::<String>("filters") {
+    Some(f) => f.collect(),
+    None => vec![],
+  };
+  flags.subcommand = DenoSubcommand::Update(UpdateFlags { filters });
+  Ok(())
 }
 
 fn bench_parse(

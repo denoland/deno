@@ -984,7 +984,9 @@ impl CliOptions {
       CacheSetting::Only
     } else if !self.flags.cache_blocklist.is_empty() {
       CacheSetting::ReloadSome(self.flags.cache_blocklist.clone())
-    } else if self.flags.reload {
+    } else if self.flags.reload
+      || matches!(self.sub_command(), DenoSubcommand::Update(..))
+    {
       CacheSetting::ReloadAll
     } else {
       CacheSetting::Use
@@ -1624,6 +1626,8 @@ impl CliOptions {
       DenoSubcommand::Install(_)
         | DenoSubcommand::Add(_)
         | DenoSubcommand::Remove(_)
+        | DenoSubcommand::Outdated(_)
+        | DenoSubcommand::Update(_)
     ) {
       // For `deno install/add/remove` we want to force the managed resolver so it can set up `node_modules/` directory.
       return false;
