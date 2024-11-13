@@ -42,12 +42,12 @@ use crate::npm::CliNpmResolverCreateOptions;
 use crate::npm::CliNpmResolverManagedSnapshotOption;
 use crate::npm::CreateInNpmPkgCheckerOptions;
 use crate::resolver::CjsTracker;
-use crate::resolver::CjsTrackerOptions;
 use crate::resolver::CliDenoResolverFs;
-use crate::resolver::CliGraphResolver;
-use crate::resolver::CliGraphResolverOptions;
 use crate::resolver::CliNodeResolver;
+use crate::resolver::CliResolver;
+use crate::resolver::CliResolverOptions;
 use crate::resolver::CliSloppyImportsResolver;
+use crate::resolver::IsCjsResolverOptions;
 use crate::resolver::NpmModuleLoader;
 use crate::resolver::SloppyImportsCachedFs;
 use crate::standalone::DenoCompileBinaryWriter;
@@ -201,7 +201,7 @@ struct CliFactoryServices {
   parsed_source_cache: Deferred<Arc<ParsedSourceCache>>,
   permission_desc_parser: Deferred<Arc<RuntimePermissionDescriptorParser>>,
   pkg_json_resolver: Deferred<Arc<PackageJsonResolver>>,
-  resolver: Deferred<Arc<CliGraphResolver>>,
+  resolver: Deferred<Arc<CliResolver>>,
   root_cert_store_provider: Deferred<Arc<dyn RootCertStoreProvider>>,
   root_permissions_container: Deferred<PermissionsContainer>,
   sloppy_imports_resolver: Deferred<Option<Arc<CliSloppyImportsResolver>>>,
@@ -523,14 +523,14 @@ impl CliFactory {
       .await
   }
 
-  pub async fn resolver(&self) -> Result<&Arc<CliGraphResolver>, AnyError> {
+  pub async fn resolver(&self) -> Result<&Arc<CliResolver>, AnyError> {
     self
       .services
       .resolver
       .get_or_try_init_async(
         async {
           let cli_options = self.cli_options()?;
-          Ok(Arc::new(CliGraphResolver::new(CliGraphResolverOptions {
+          Ok(Arc::new(CliResolver::new(CliResolverOptions {
             sloppy_imports_resolver: self.sloppy_imports_resolver()?.cloned(),
             node_resolver: Some(self.cli_node_resolver().await?.clone()),
             npm_resolver: if cli_options.no_npm() {
@@ -541,9 +541,6 @@ impl CliFactory {
             workspace_resolver: self.workspace_resolver().await?.clone(),
             bare_node_builtins_enabled: cli_options
               .unstable_bare_node_builtins(),
-            maybe_jsx_import_source_config: cli_options
-              .workspace()
-              .to_maybe_jsx_import_source_config()?,
             maybe_vendor_dir: cli_options.vendor_dir_path(),
           })))
         }
@@ -652,7 +649,6 @@ impl CliFactory {
           self.cjs_tracker()?.clone(),
           self.fs().clone(),
           Some(self.parsed_source_cache().clone()),
-          self.cli_options()?.is_npm_main(),
         );
 
         Ok(Arc::new(NodeCodeTranslator::new(
@@ -706,6 +702,7 @@ impl CliFactory {
         let cli_options = self.cli_options()?;
         Ok(Arc::new(ModuleGraphBuilder::new(
           self.caches()?.clone(),
+          self.cjs_tracker()?.clone(),
           cli_options.clone(),
           self.file_fetcher()?.clone(),
           self.fs().clone(),
@@ -794,8 +791,9 @@ impl CliFactory {
       Ok(Arc::new(CjsTracker::new(
         self.in_npm_pkg_checker()?.clone(),
         self.pkg_json_resolver().clone(),
-        CjsTrackerOptions {
-          unstable_detect_cjs: options.unstable_detect_cjs(),
+        IsCjsResolverOptions {
+          detect_cjs: options.detect_cjs(),
+          is_node_main: options.is_node_main(),
         },
       )))
     })
@@ -809,7 +807,6 @@ impl CliFactory {
       .cli_node_resolver
       .get_or_try_init_async(async {
         Ok(Arc::new(CliNodeResolver::new(
-          self.cjs_tracker()?.clone(),
           self.fs().clone(),
           self.in_npm_pkg_checker()?.clone(),
           self.node_resolver().await?.clone(),
@@ -950,10 +947,8 @@ impl CliFactory {
     let create_hmr_runner = if cli_options.has_hmr() {
       let watcher_communicator = self.watcher_communicator.clone().unwrap();
       let emitter = self.emitter()?.clone();
-      let cjs_tracker = self.cjs_tracker()?.clone();
       let fn_: crate::worker::CreateHmrRunnerCb = Box::new(move |session| {
         Box::new(HmrRunner::new(
-          cjs_tracker.clone(),
           emitter.clone(),
           session,
           watcher_communicator.clone(),

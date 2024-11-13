@@ -1707,6 +1707,7 @@ mod tests {
         documents: Arc::new(documents),
         assets: Default::default(),
         config: Arc::new(config),
+        is_cjs_resolver: Default::default(),
         resolver,
       },
     )

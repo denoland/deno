@@ -393,6 +393,13 @@ pub struct WebWorker {
   maybe_worker_metadata: Option<WorkerMetadata>,
 }
 
+impl Drop for WebWorker {
+  fn drop(&mut self) {
+    // clean up the package.json thread local cache
+    node_resolver::PackageJsonThreadLocalCache::clear();
+  }
+}
+
 impl WebWorker {
   pub fn bootstrap_from_options(
     services: WebWorkerServiceOptions,

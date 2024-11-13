@@ -27,8 +27,8 @@ use crate::node;
 use crate::node::CliNodeCodeTranslator;
 use crate::npm::CliNpmResolver;
 use crate::resolver::CjsTracker;
-use crate::resolver::CliGraphResolver;
 use crate::resolver::CliNodeResolver;
+use crate::resolver::CliResolver;
 use crate::resolver::ModuleCodeStringSource;
 use crate::resolver::NotSupportedKindInNpmError;
 use crate::resolver::NpmModuleLoader;
@@ -60,7 +60,6 @@ use deno_core::RequestedModuleType;
 use deno_core::ResolutionKind;
 use deno_core::SourceCodeCacheInfo;
 use deno_graph::source::ResolutionMode;
-use deno_graph::source::Resolver;
 use deno_graph::GraphKind;
 use deno_graph::JsModule;
 use deno_graph::JsonModule;
@@ -73,6 +72,7 @@ use deno_runtime::deno_node::create_host_defined_options;
 use deno_runtime::deno_node::NodeRequireLoader;
 use deno_runtime::deno_permissions::PermissionsContainer;
 use deno_semver::npm::NpmPackageReqReference;
+use node_resolver::errors::ClosestPkgJsonError;
 use node_resolver::InNpmPackageChecker;
 use node_resolver::NodeResolutionMode;
 
@@ -206,7 +206,6 @@ struct SharedCliModuleLoaderState {
   lib_worker: TsTypeLib,
   initial_cwd: PathBuf,
   is_inspecting: bool,
-  is_npm_main: bool,
   is_repl: bool,
   cjs_tracker: Arc<CjsTracker>,
   code_cache: Option<Arc<CodeCache>>,
@@ -220,7 +219,7 @@ struct SharedCliModuleLoaderState {
   npm_resolver: Arc<dyn CliNpmResolver>,
   npm_module_loader: NpmModuleLoader,
   parsed_source_cache: Arc<ParsedSourceCache>,
-  resolver: Arc<CliGraphResolver>,
+  resolver: Arc<CliResolver>,
 }
 
 pub struct CliModuleLoaderFactory {
@@ -243,7 +242,7 @@ impl CliModuleLoaderFactory {
     npm_resolver: Arc<dyn CliNpmResolver>,
     npm_module_loader: NpmModuleLoader,
     parsed_source_cache: Arc<ParsedSourceCache>,
-    resolver: Arc<CliGraphResolver>,
+    resolver: Arc<CliResolver>,
   ) -> Self {
     Self {
       shared: Arc::new(SharedCliModuleLoaderState {
@@ -252,7 +251,6 @@ impl CliModuleLoaderFactory {
         lib_worker: options.ts_type_lib_worker(),
         initial_cwd: options.initial_cwd().to_path_buf(),
         is_inspecting: options.is_inspecting(),
-        is_npm_main: options.is_npm_main(),
         is_repl: matches!(
           options.sub_command(),
           DenoSubcommand::Repl(_) | DenoSubcommand::Jupyter(_)
@@ -286,7 +284,6 @@ impl CliModuleLoaderFactory {
       Rc::new(CliModuleLoader(Rc::new(CliModuleLoaderInner {
         lib,
         is_worker,
-        is_npm_main: self.shared.is_npm_main,
         parent_permissions,
         permissions,
         graph_container: graph_container.clone(),
@@ -295,13 +292,14 @@ impl CliModuleLoaderFactory {
         parsed_source_cache: self.shared.parsed_source_cache.clone(),
         shared: self.shared.clone(),
       })));
-    let node_require_loader = Rc::new(CliNodeRequireLoader::new(
-      self.shared.emitter.clone(),
-      self.shared.fs.clone(),
+    let node_require_loader = Rc::new(CliNodeRequireLoader {
+      cjs_tracker: self.shared.cjs_tracker.clone(),
+      emitter: self.shared.emitter.clone(),
+      fs: self.shared.fs.clone(),
       graph_container,
-      self.shared.in_npm_pkg_checker.clone(),
-      self.shared.npm_resolver.clone(),
-    ));
+      in_npm_pkg_checker: self.shared.in_npm_pkg_checker.clone(),
+      npm_resolver: self.shared.npm_resolver.clone(),
+    });
     CreateModuleLoaderResult {
       module_loader,
       node_require_loader,
@@ -343,7 +341,6 @@ impl ModuleLoaderFactory for CliModuleLoaderFactory {
 
 struct CliModuleLoaderInner<TGraphContainer: ModuleGraphContainer> {
   lib: TsTypeLib,
-  is_npm_main: bool,
   is_worker: bool,
   /// The initial set of permissions used to resolve the static imports in the
   /// worker. These are "allow all" for main worker, and parent thread
@@ -450,7 +447,7 @@ impl<TGraphContainer: ModuleGraphContainer>
     let referrer = if referrer.is_empty() && self.shared.is_repl {
       // FIXME(bartlomieju): this is a hacky way to provide compatibility with REPL
       // and `Deno.core.evalContext` API. Ideally we should always have a referrer filled
-      "./$deno$repl.ts"
+      "./$deno$repl.mts"
     } else {
       referrer
     };
@@ -478,7 +475,12 @@ impl<TGraphContainer: ModuleGraphContainer>
         self
           .shared
           .node_resolver
-          .resolve(raw_specifier, referrer, NodeResolutionMode::Execution)?
+          .resolve(
+            raw_specifier,
+            referrer,
+            self.shared.cjs_tracker.get_referrer_kind(referrer),
+            NodeResolutionMode::Execution,
+          )?
           .into_url(),
       );
     }
@@ -508,6 +510,7 @@ impl<TGraphContainer: ModuleGraphContainer>
           start: deno_graph::Position::zeroed(),
           end: deno_graph::Position::zeroed(),
         },
+        self.shared.cjs_tracker.get_referrer_kind(referrer),
         ResolutionMode::Execution,
       )?),
     };
@@ -518,6 +521,7 @@ impl<TGraphContainer: ModuleGraphContainer>
         return self.shared.node_resolver.resolve_req_reference(
           &reference,
           referrer,
+          self.shared.cjs_tracker.get_referrer_kind(referrer),
           NodeResolutionMode::Execution,
         );
       }
@@ -538,6 +542,7 @@ impl<TGraphContainer: ModuleGraphContainer>
             &package_folder,
             module.nv_reference.sub_path(),
             Some(referrer),
+            self.shared.cjs_tracker.get_referrer_kind(referrer),
             NodeResolutionMode::Execution,
           )
           .with_context(|| {
@@ -668,14 +673,11 @@ impl<TGraphContainer: ModuleGraphContainer>
         is_script,
         ..
       })) => {
-        // todo(dsherret): revert in https://github.com/denoland/deno/pull/26439
-        if self.is_npm_main && *is_script
-          || self.shared.cjs_tracker.is_cjs_with_known_is_script(
-            specifier,
-            *media_type,
-            *is_script,
-          )?
-        {
+        if self.shared.cjs_tracker.is_cjs_with_known_is_script(
+          specifier,
+          *media_type,
+          *is_script,
+        )? {
           return Ok(Some(CodeOrDeferredEmit::Cjs {
             specifier,
             media_type: *media_type,
@@ -1031,31 +1033,12 @@ impl ModuleGraphUpdatePermit for WorkerModuleGraphUpdatePermit {
 
 #[derive(Debug)]
 struct CliNodeRequireLoader<TGraphContainer: ModuleGraphContainer> {
+  cjs_tracker: Arc<CjsTracker>,
   emitter: Arc<Emitter>,
   fs: Arc<dyn FileSystem>,
   graph_container: TGraphContainer,
   in_npm_pkg_checker: Arc<dyn InNpmPackageChecker>,
   npm_resolver: Arc<dyn CliNpmResolver>,
-}
-
-impl<TGraphContainer: ModuleGraphContainer>
-  CliNodeRequireLoader<TGraphContainer>
-{
-  pub fn new(
-    emitter: Arc<Emitter>,
-    fs: Arc<dyn FileSystem>,
-    graph_container: TGraphContainer,
-    in_npm_pkg_checker: Arc<dyn InNpmPackageChecker>,
-    npm_resolver: Arc<dyn CliNpmResolver>,
-  ) -> Self {
-    Self {
-      emitter,
-      fs,
-      graph_container,
-      in_npm_pkg_checker,
-      npm_resolver,
-    }
-  }
 }
 
 impl<TGraphContainer: ModuleGraphContainer> NodeRequireLoader
@@ -1102,5 +1085,13 @@ impl<TGraphContainer: ModuleGraphContainer> NodeRequireLoader
     } else {
       Ok(text)
     }
+  }
+
+  fn is_maybe_cjs(
+    &self,
+    specifier: &ModuleSpecifier,
+  ) -> Result<bool, ClosestPkgJsonError> {
+    let media_type = MediaType::from_specifier(specifier);
+    self.cjs_tracker.is_maybe_cjs(specifier, media_type)
   }
 }

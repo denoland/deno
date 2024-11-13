@@ -1,16 +1,18 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
+use deno_core::error::AnyError;
 use deno_core::op2;
 use deno_core::url::Url;
 use deno_core::v8;
 use deno_core::JsRuntimeInspector;
-use deno_core::ModuleSpecifier;
 use deno_core::OpState;
 use deno_fs::FileSystemRc;
+use deno_package_json::NodeModuleKind;
 use deno_package_json::PackageJsonRc;
 use deno_path_util::normalize_path;
+use deno_path_util::url_from_file_path;
 use deno_path_util::url_to_file_path;
-use node_resolver::NodeModuleKind;
+use node_resolver::errors::ClosestPkgJsonError;
 use node_resolver::NodeResolutionMode;
 use node_resolver::REQUIRE_CONDITIONS;
 use std::borrow::Cow;
@@ -217,17 +219,17 @@ pub fn op_require_resolve_deno_dir(
   state: &mut OpState,
   #[string] request: String,
   #[string] parent_filename: String,
-) -> Option<String> {
+) -> Result<Option<String>, AnyError> {
   let resolver = state.borrow::<NpmResolverRc>();
-  resolver
-    .resolve_package_folder_from_package(
-      &request,
-      &ModuleSpecifier::from_file_path(&parent_filename).unwrap_or_else(|_| {
-        panic!("Url::from_file_path: [{:?}]", parent_filename)
-      }),
-    )
-    .ok()
-    .map(|p| p.to_string_lossy().into_owned())
+  Ok(
+    resolver
+      .resolve_package_folder_from_package(
+        &request,
+        &url_from_file_path(&PathBuf::from(parent_filename))?,
+      )
+      .ok()
+      .map(|p| p.to_string_lossy().into_owned()),
+  )
 }
 
 #[op2(fast)]
@@ -564,19 +566,17 @@ where
   }))
 }
 
-#[op2]
-#[serde]
-pub fn op_require_read_closest_package_json<P>(
+#[op2(fast)]
+pub fn op_require_is_maybe_cjs(
   state: &mut OpState,
   #[string] filename: String,
-) -> Result<Option<PackageJsonRc>, node_resolver::errors::ClosestPkgJsonError>
-where
-  P: NodePermissions + 'static,
-{
+) -> Result<bool, ClosestPkgJsonError> {
   let filename = PathBuf::from(filename);
-  // permissions: allow reading the closest package.json files
-  let pkg_json_resolver = state.borrow::<PackageJsonResolverRc>();
-  pkg_json_resolver.get_closest_package_json_from_path(&filename)
+  let Ok(url) = url_from_file_path(&filename) else {
+    return Ok(false);
+  };
+  let loader = state.borrow::<NodeRequireLoaderRc>();
+  loader.is_maybe_cjs(&url)
 }
 
 #[op2]

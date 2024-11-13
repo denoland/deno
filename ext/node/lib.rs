@@ -14,6 +14,7 @@ use deno_core::url::Url;
 #[allow(unused_imports)]
 use deno_core::v8;
 use deno_core::v8::ExternalReference;
+use node_resolver::errors::ClosestPkgJsonError;
 use node_resolver::NpmResolverRc;
 use once_cell::sync::Lazy;
 
@@ -157,6 +158,10 @@ pub trait NodeRequireLoader {
   ) -> Result<Cow<'a, Path>, AnyError>;
 
   fn load_text_file_lossy(&self, path: &Path) -> Result<String, AnyError>;
+
+  /// Get if the module kind is maybe CJS and loading should determine
+  /// if its CJS or ESM.
+  fn is_maybe_cjs(&self, specifier: &Url) -> Result<bool, ClosestPkgJsonError>;
 }
 
 pub static NODE_ENV_VAR_ALLOWLIST: Lazy<HashSet<String>> = Lazy::new(|| {
@@ -385,6 +390,7 @@ deno_core::extension!(deno_node,
     ops::require::op_require_proxy_path,
     ops::require::op_require_is_deno_dir_package,
     ops::require::op_require_resolve_deno_dir,
+    ops::require::op_require_is_maybe_cjs,
     ops::require::op_require_is_request_relative,
     ops::require::op_require_resolve_lookup_paths,
     ops::require::op_require_try_self_parent_path<P>,
@@ -398,7 +404,6 @@ deno_core::extension!(deno_node,
     ops::require::op_require_read_file<P>,
     ops::require::op_require_as_file_path,
     ops::require::op_require_resolve_exports<P>,
-    ops::require::op_require_read_closest_package_json<P>,
     ops::require::op_require_read_package_scope<P>,
     ops::require::op_require_package_imports_resolve<P>,
     ops::require::op_require_break_on_next_statement,
