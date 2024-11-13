@@ -517,7 +517,7 @@ impl<'a> DenoCompileBinaryWriter<'a> {
       Some(bytes) => bytes,
       None => {
         log::info!("Download could not be found, aborting");
-        std::process::exit(1)
+        deno_runtime::exit(1);
       }
     };
 

@@ -823,10 +823,8 @@ impl CliOptions {
       };
       let msg =
         format!("DANGER: TLS certificate validation is disabled {}", domains);
-      #[allow(clippy::print_stderr)]
       {
-        // use eprintln instead of log::warn so this always gets shown
-        eprintln!("{}", colors::yellow(msg));
+        log::error!("{}", colors::yellow(msg));
       }
     }
 
@@ -1131,20 +1129,7 @@ impl CliOptions {
   }
 
   pub fn otel_config(&self) -> Option<OtelConfig> {
-    if self
-      .flags
-      .unstable_config
-      .features
-      .contains(&String::from("otel"))
-    {
-      Some(OtelConfig {
-        runtime_name: Cow::Borrowed("deno"),
-        runtime_version: Cow::Borrowed(crate::version::DENO_VERSION_INFO.deno),
-        ..Default::default()
-      })
-    } else {
-      None
-    }
+    self.flags.otel_config()
   }
 
   pub fn env_file_name(&self) -> Option<&String> {

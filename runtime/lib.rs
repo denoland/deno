@@ -140,6 +140,11 @@ pub static UNSTABLE_GRANULAR_FLAGS: &[UnstableGranularFlag] = &[
   },
 ];
 
+pub fn exit(code: i32) -> ! {
+  crate::ops::otel::flush();
+  std::process::exit(code);
+}
+
 #[cfg(test)]
 mod test {
   use super::*;

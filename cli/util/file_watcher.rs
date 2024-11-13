@@ -73,7 +73,6 @@ impl DebouncedReceiver {
   }
 }
 
-#[allow(clippy::print_stderr)]
 async fn error_handler<F>(watch_future: F) -> bool
 where
   F: Future<Output = Result<(), AnyError>>,
@@ -84,7 +83,7 @@ where
       Some(e) => format_js_error(e),
       None => format!("{err:?}"),
     };
-    eprintln!(
+    log::error!(
       "{}: {}",
       colors::red_bold("error"),
       error_string.trim_start_matches("error: ")

@@ -186,10 +186,8 @@ fn op_get_exit_code(state: &mut OpState) -> i32 {
 
 #[op2(fast)]
 fn op_exit(state: &mut OpState) {
-  crate::ops::otel::otel_drop_state(state);
-
   let code = state.borrow::<ExitCode>().get();
-  std::process::exit(code)
+  crate::exit(code)
 }
 
 #[op2]
