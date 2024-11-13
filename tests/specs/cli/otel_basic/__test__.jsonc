@@ -1,4 +1,32 @@
 {
-  "args": "run -A main.ts",
-  "output": "processed\n"
+  "steps": [
+    {
+      "args": "run -A main.ts basic.ts",
+      "envs": {
+        "DENO_UNSTABLE_OTEL_DETERMINISTIC": "1"
+      },
+      "output": "basic.out"
+    },
+    {
+      "args": "run -A main.ts natural_exit.ts",
+      "envs": {
+        "DENO_UNSTABLE_OTEL_DETERMINISTIC": "1"
+      },
+      "output": "natural_exit.out"
+    },
+    {
+      "args": "run -A main.ts deno_dot_exit.ts",
+      "envs": {
+        "DENO_UNSTABLE_OTEL_DETERMINISTIC": "1"
+      },
+      "output": "deno_dot_exit.out"
+    },
+    {
+      "args": "run -A main.ts uncaught.ts",
+      "envs": {
+        "DENO_UNSTABLE_OTEL_DETERMINISTIC": "1"
+      },
+      "output": "uncaught.out"
+    }
+  ]
 }

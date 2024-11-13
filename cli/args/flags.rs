@@ -978,6 +978,8 @@ impl Flags {
       Some(OtelConfig {
         runtime_name: Cow::Borrowed("deno"),
         runtime_version: Cow::Borrowed(crate::version::DENO_VERSION_INFO.deno),
+        deterministic: std::env::var("DENO_UNSTABLE_OTEL_DETERMINISTIC")
+          .is_ok(),
         ..Default::default()
       })
     } else {

@@ -77,6 +77,7 @@ pub struct OtelConfig {
   pub runtime_name: Cow<'static, str>,
   pub runtime_version: Cow<'static, str>,
   pub console: OtelConsoleConfig,
+  pub deterministic: bool,
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
@@ -93,6 +94,7 @@ impl Default for OtelConfig {
       runtime_name: Cow::Borrowed(env!("CARGO_PKG_NAME")),
       runtime_version: Cow::Borrowed(env!("CARGO_PKG_VERSION")),
       console: OtelConsoleConfig::Capture,
+      deterministic: false,
     }
   }
 }
@@ -469,7 +471,6 @@ fn op_otel_log(
   #[smi] trace_flags: u8,
 ) {
   let Some((_, log_processor)) = OTEL_PROCESSORS.get() else {
-    log::error!("op_otel_log: OpenTelemetry Logger not available");
     return;
   };
 
