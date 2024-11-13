@@ -1018,7 +1018,8 @@ Deno.test(
     request.destroy();
     request.on("error", (e) => {
       assertEquals(e.message, "socket hang up");
-      // Use socket on close event to avoid op leaks
+      // Use socket's "close" event to avoid op leaks
+      // deno-lint-ignore no-explicit-any
       const socket = (request as any).agent.sockets["localhost:5929:"][0];
       socket.on("close", resolve);
     });
