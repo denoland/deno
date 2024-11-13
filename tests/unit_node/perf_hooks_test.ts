@@ -75,5 +75,6 @@ Deno.test("[perf_hooks]: monitorEventLoopDelay", () => {
     performance.monitorEventLoopDelay({ resolution: 1 });
   });
 
+  // deno-lint-ignore no-explicit-any
   assertEquals((e as any).code, "ERR_NOT_IMPLEMENTED");
 });
