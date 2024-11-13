@@ -55,6 +55,7 @@ use crate::util::progress_bar::ProgressMessagePrompt;
 use super::super::cache::NpmCache;
 use super::super::cache::TarballCache;
 use super::super::resolution::NpmResolution;
+use super::common::bin_entries;
 use super::common::NpmPackageFsResolver;
 use super::common::RegistryReadPermissionChecker;
 
@@ -155,10 +156,6 @@ impl LocalNpmPackageResolver {
 
 #[async_trait(?Send)]
 impl NpmPackageFsResolver for LocalNpmPackageResolver {
-  fn root_dir_url(&self) -> &Url {
-    &self.root_node_modules_url
-  }
-
   fn node_modules_path(&self) -> Option<&Path> {
     Some(self.root_node_modules_path.as_ref())
   }
@@ -333,8 +330,7 @@ async fn sync_resolution_with_fs(
   let mut cache_futures = FuturesUnordered::new();
   let mut newest_packages_by_name: HashMap<&String, &NpmResolutionPackage> =
     HashMap::with_capacity(package_partitions.packages.len());
-  let bin_entries =
-    Rc::new(RefCell::new(super::common::bin_entries::BinEntries::new()));
+  let bin_entries = Rc::new(RefCell::new(bin_entries::BinEntries::new()));
   let mut lifecycle_scripts =
     super::common::lifecycle_scripts::LifecycleScripts::new(
       lifecycle_scripts,
@@ -662,7 +658,28 @@ async fn sync_resolution_with_fs(
   // 7. Set up `node_modules/.bin` entries for packages that need it.
   {
     let bin_entries = std::mem::take(&mut *bin_entries.borrow_mut());
-    bin_entries.finish(snapshot, &bin_node_modules_dir_path)?;
+    bin_entries.finish(
+      snapshot,
+      &bin_node_modules_dir_path,
+      |setup_outcome| {
+        match setup_outcome {
+          bin_entries::EntrySetupOutcome::MissingEntrypoint {
+            package,
+            package_path,
+            ..
+          } if super::common::lifecycle_scripts::has_lifecycle_scripts(
+            package,
+            package_path,
+          ) && lifecycle_scripts.can_run_scripts(&package.id.nv)
+            && !lifecycle_scripts.has_run_scripts(package) =>
+          {
+            // ignore, it might get fixed when the lifecycle scripts run.
+            // if not, we'll warn then
+          }
+          outcome => outcome.warn_if_failed(),
+        }
+      },
+    )?;
   }
 
   // 8. Create symlinks for the workspace packages
@@ -712,7 +729,7 @@ async fn sync_resolution_with_fs(
     .finish(
       snapshot,
       &package_partitions.packages,
-      Some(root_node_modules_dir_path),
+      root_node_modules_dir_path,
       progress_bar,
     )
     .await?;
@@ -1039,12 +1056,18 @@ fn junction_or_symlink_dir(
       if symlink_err.kind() == std::io::ErrorKind::PermissionDenied =>
     {
       USE_JUNCTIONS.store(true, std::sync::atomic::Ordering::Relaxed);
-      junction::create(old_path, new_path).map_err(Into::into)
+      junction::create(old_path, new_path)
+        .context("Failed creating junction in node_modules folder")
     }
-    Err(symlink_err) => Err(
-      AnyError::from(symlink_err)
-        .context("Failed creating symlink in node_modules folder"),
-    ),
+    Err(symlink_err) => {
+      log::warn!(
+        "{} Unexpected error symlinking node_modules: {symlink_err}",
+        colors::yellow("Warning")
+      );
+      USE_JUNCTIONS.store(true, std::sync::atomic::Ordering::Relaxed);
+      junction::create(old_path, new_path)
+        .context("Failed creating junction in node_modules folder")
+    }
   }
 }
 

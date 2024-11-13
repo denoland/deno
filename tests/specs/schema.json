@@ -36,6 +36,9 @@
         "flaky": {
           "type": "boolean"
         },
+        "symlinkedTempDir": {
+          "type": "boolean"
+        },
         "if": {
           "type": "string",
           "examples": [

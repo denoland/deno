@@ -126,6 +126,7 @@ ObjectSetPrototypeOf(HTTPParser.prototype, AsyncWrap.prototype);
 function defineProps(obj: object, props: Record<string, unknown>) {
   for (const entry of new SafeArrayIterator(ObjectEntries(props))) {
     ObjectDefineProperty(obj, entry[0], {
+      __proto__: null,
       value: entry[1],
       enumerable: true,
       writable: true,

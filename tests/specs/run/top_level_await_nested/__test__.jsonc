@@ -1,0 +1,4 @@
+{
+  "args": "run --allow-read top_level_await/nested/main.js",
+  "output": "top_level_await/nested.out"
+}

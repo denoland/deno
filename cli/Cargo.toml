@@ -2,7 +2,7 @@
 
 [package]
 name = "deno"
-version = "2.0.3"
+version = "2.0.6"
 authors.workspace = true
 default-run = "deno"
 edition.workspace = true
@@ -70,11 +70,11 @@ winres.workspace = true
 [dependencies]
 deno_ast = { workspace = true, features = ["bundler", "cjs", "codegen", "proposal", "react", "sourcemap", "transforms", "typescript", "view", "visit"] }
 deno_cache_dir = { workspace = true }
-deno_config = { version = "=0.37.2", features = ["workspace", "sync"] }
+deno_config = { version = "=0.38.2", features = ["workspace", "sync"] }
 deno_core = { workspace = true, features = ["include_js_files_for_snapshotting"] }
-deno_doc = { version = "0.154.0", default-features = false, features = ["rust", "html", "syntect"] }
-deno_graph = { version = "=0.83.3" }
-deno_lint = { version = "=0.67.0", features = ["docs"] }
+deno_doc = { version = "0.156.0", default-features = false, features = ["rust", "html", "syntect"] }
+deno_graph = { version = "=0.84.1" }
+deno_lint = { version = "=0.68.0", features = ["docs"] }
 deno_lockfile.workspace = true
 deno_npm.workspace = true
 deno_package_json.workspace = true
@@ -84,7 +84,7 @@ deno_runtime = { workspace = true, features = ["include_js_files_for_snapshottin
 deno_semver.workspace = true
 deno_task_shell = "=0.18.1"
 deno_terminal.workspace = true
-libsui = "0.4.0"
+libsui = "0.5.0"
 node_resolver.workspace = true
 
 anstream = "0.6.14"
@@ -107,7 +107,7 @@ dotenvy = "0.15.7"
 dprint-plugin-json = "=0.19.4"
 dprint-plugin-jupyter = "=0.1.5"
 dprint-plugin-markdown = "=0.17.8"
-dprint-plugin-typescript = "=0.93.0"
+dprint-plugin-typescript = "=0.93.2"
 env_logger = "=0.10.0"
 fancy-regex = "=0.10.0"
 faster-hex.workspace = true
@@ -129,7 +129,7 @@ libz-sys.workspace = true
 log = { workspace = true, features = ["serde"] }
 lsp-types.workspace = true
 malva = "=0.11.0"
-markup_fmt = "=0.14.0"
+markup_fmt = "=0.15.0"
 memmem.workspace = true
 monch.workspace = true
 notify.workspace = true

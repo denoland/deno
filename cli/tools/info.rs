@@ -530,7 +530,7 @@ impl<'a> GraphDisplayContext<'a> {
 
   fn build_module_info(&mut self, module: &Module, type_dep: bool) -> TreeNode {
     enum PackageOrSpecifier {
-      Package(NpmResolutionPackage),
+      Package(Box<NpmResolutionPackage>),
       Specifier(ModuleSpecifier),
     }
 
@@ -538,7 +538,7 @@ impl<'a> GraphDisplayContext<'a> {
 
     let package_or_specifier = match module.npm() {
       Some(npm) => match self.npm_info.resolve_package(npm.nv_reference.nv()) {
-        Some(package) => Package(package.clone()),
+        Some(package) => Package(Box::new(package.clone())),
         None => Specifier(module.specifier().clone()), // should never happen
       },
       None => Specifier(module.specifier().clone()),
@@ -645,10 +645,12 @@ impl<'a> GraphDisplayContext<'a> {
         let message = match err {
           HttpsChecksumIntegrity(_) => "(checksum integrity error)",
           Decode(_) => "(loading decode error)",
-          Loader(err) => match deno_core::error::get_custom_error_class(err) {
-            Some("NotCapable") => "(not capable, requires --allow-import)",
-            _ => "(loading error)",
-          },
+          Loader(err) => {
+            match deno_runtime::errors::get_error_class_name(err) {
+              Some("NotCapable") => "(not capable, requires --allow-import)",
+              _ => "(loading error)",
+            }
+          }
           Jsr(_) => "(loading error)",
           NodeUnknownBuiltinModule(_) => "(unknown node built-in error)",
           Npm(_) => "(npm loading error)",

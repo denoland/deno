@@ -97,6 +97,7 @@ fn find_source_map_range(code: &[u8]) -> Option<Range<usize>> {
 }
 
 /// Converts an `Arc<str>` to an `Arc<[u8]>`.
+#[allow(dead_code)]
 pub fn arc_str_to_bytes(arc_str: Arc<str>) -> Arc<[u8]> {
   let raw = Arc::into_raw(arc_str);
   // SAFETY: This is safe because they have the same memory layout.

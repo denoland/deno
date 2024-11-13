@@ -13,19 +13,19 @@ use std::sync::Arc;
 use std::sync::Mutex;
 use std::sync::OnceLock;
 
+use crate::DatabaseHandler;
 use async_trait::async_trait;
 use deno_core::error::type_error;
 use deno_core::error::AnyError;
 use deno_core::unsync::spawn_blocking;
 use deno_core::OpState;
 use deno_path_util::normalize_path;
+use deno_permissions::PermissionCheckError;
 pub use denokv_sqlite::SqliteBackendError;
 use denokv_sqlite::SqliteConfig;
 use denokv_sqlite::SqliteNotifier;
 use rand::SeedableRng;
 use rusqlite::OpenFlags;
-
-use crate::DatabaseHandler;
 
 static SQLITE_NOTIFIERS_MAP: OnceLock<Mutex<HashMap<PathBuf, SqliteNotifier>>> =
   OnceLock::new();
@@ -42,13 +42,13 @@ pub trait SqliteDbHandlerPermissions {
     &mut self,
     p: &str,
     api_name: &str,
-  ) -> Result<PathBuf, AnyError>;
+  ) -> Result<PathBuf, PermissionCheckError>;
   #[must_use = "the resolved return value to mitigate time-of-check to time-of-use issues"]
   fn check_write<'a>(
     &mut self,
     p: &'a Path,
     api_name: &str,
-  ) -> Result<Cow<'a, Path>, AnyError>;
+  ) -> Result<Cow<'a, Path>, PermissionCheckError>;
 }
 
 impl SqliteDbHandlerPermissions for deno_permissions::PermissionsContainer {
@@ -57,7 +57,7 @@ impl SqliteDbHandlerPermissions for deno_permissions::PermissionsContainer {
     &mut self,
     p: &str,
     api_name: &str,
-  ) -> Result<PathBuf, AnyError> {
+  ) -> Result<PathBuf, PermissionCheckError> {
     deno_permissions::PermissionsContainer::check_read(self, p, api_name)
   }
 
@@ -66,7 +66,7 @@ impl SqliteDbHandlerPermissions for deno_permissions::PermissionsContainer {
     &mut self,
     p: &'a Path,
     api_name: &str,
-  ) -> Result<Cow<'a, Path>, AnyError> {
+  ) -> Result<Cow<'a, Path>, PermissionCheckError> {
     deno_permissions::PermissionsContainer::check_write_path(self, p, api_name)
   }
 }
