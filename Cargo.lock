@@ -493,7 +493,7 @@ dependencies = [
  "clang-sys",
  "itertools 0.13.0",
  "log",
- "prettyplease 0.2.17",
+ "prettyplease",
  "proc-macro2",
  "quote",
  "regex",
@@ -1739,7 +1739,7 @@ dependencies = [
  "http-body-util",
  "log",
  "num-bigint",
- "prost 0.11.9",
+ "prost",
  "prost-build",
  "rand",
  "rusqlite",
@@ -2290,25 +2290,25 @@ dependencies = [
 
 [[package]]
 name = "denokv_proto"
-version = "0.8.2"
+version = "0.8.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f629c77d2bf59e2e2a07fd7b14bfffae352a3813fbdcb801e72205741fb7625c"
+checksum = "f7ba1f99ed11a9c11e868a8521b1f71a7e1aba785d7f42ea9ecbdc01146c89ec"
 dependencies = [
  "anyhow",
  "async-trait",
  "chrono",
  "futures",
  "num-bigint",
- "prost 0.11.9",
+ "prost",
  "serde",
  "uuid",
 ]
 
 [[package]]
 name = "denokv_remote"
-version = "0.8.1"
+version = "0.8.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d57717b5123e8d1ec5f52973a67f98e3621274d362d18b245038967b402082df"
+checksum = "08ed833073189e8f6d03155fe3b05a024e75e29d8a28a4c2e9ec3b5c925e727b"
 dependencies = [
  "anyhow",
  "async-stream",
@@ -2319,7 +2319,7 @@ dependencies = [
  "futures",
  "http 1.1.0",
  "log",
- "prost 0.11.9",
+ "prost",
  "rand",
  "serde",
  "serde_json",
@@ -2331,9 +2331,9 @@ dependencies = [
 
 [[package]]
 name = "denokv_sqlite"
-version = "0.8.2"
+version = "0.8.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3c4f5719e2bf698ec4f39fe29d91b62ff06a4b4a37ee481ffb8658d140fed986"
+checksum = "9b790f01d1302d53a0c3cbd27de88a06b3abd64ec8ab8673924e490541c7c713"
 dependencies = [
  "anyhow",
  "async-stream",
@@ -4936,7 +4936,7 @@ dependencies = [
  "opentelemetry-http",
  "opentelemetry-proto",
  "opentelemetry_sdk",
- "prost 0.13.3",
+ "prost",
  "serde_json",
  "thiserror",
  "tokio",
@@ -4953,7 +4953,7 @@ dependencies = [
  "hex",
  "opentelemetry",
  "opentelemetry_sdk",
- "prost 0.13.3",
+ "prost",
  "serde",
  "tonic",
 ]
@@ -5390,16 +5390,6 @@ dependencies = [
 
 [[package]]
 name = "prettyplease"
-version = "0.1.25"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6c8646e95016a7a6c4adea95bafa8a16baab64b583356217f2c85db4a39d9a86"
-dependencies = [
- "proc-macro2",
- "syn 1.0.109",
-]
-
-[[package]]
-name = "prettyplease"
 version = "0.2.17"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8d3928fb5db768cb86f891ff014f0144589297e3c6a1aba6ed7cecfdace270c7"
@@ -5481,57 +5471,33 @@ checksum = "43d84d1d7a6ac92673717f9f6d1518374ef257669c24ebc5ac25d5033828be58"
 
 [[package]]
 name = "prost"
-version = "0.11.9"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0b82eaa1d779e9a4bc1c3217db8ffbeabaae1dca241bf70183242128d48681cd"
-dependencies = [
- "bytes",
- "prost-derive 0.11.9",
-]
-
-[[package]]
-name = "prost"
 version = "0.13.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7b0487d90e047de87f984913713b85c601c05609aad5b0df4b4573fbf69aa13f"
 dependencies = [
  "bytes",
- "prost-derive 0.13.3",
+ "prost-derive",
 ]
 
 [[package]]
 name = "prost-build"
-version = "0.11.9"
+version = "0.13.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "119533552c9a7ffacc21e099c24a0ac8bb19c2a2a3f363de84cd9b844feab270"
+checksum = "0c1318b19085f08681016926435853bbf7858f9c082d0999b80550ff5d9abe15"
 dependencies = [
  "bytes",
- "heck 0.4.1",
- "itertools 0.10.5",
- "lazy_static",
+ "heck 0.5.0",
+ "itertools 0.13.0",
  "log",
  "multimap",
+ "once_cell",
  "petgraph",
- "prettyplease 0.1.25",
- "prost 0.11.9",
+ "prettyplease",
+ "prost",
  "prost-types",
  "regex",
- "syn 1.0.109",
+ "syn 2.0.72",
  "tempfile",
- "which 4.4.2",
-]
-
-[[package]]
-name = "prost-derive"
-version = "0.11.9"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e5d2d8d10f3c6ded6da8b05b5fb3b8a5082514344d56c9f871412d29b4e075b4"
-dependencies = [
- "anyhow",
- "itertools 0.10.5",
- "proc-macro2",
- "quote",
- "syn 1.0.109",
 ]
 
 [[package]]
@@ -5549,11 +5515,11 @@ dependencies = [
 
 [[package]]
 name = "prost-types"
-version = "0.11.9"
+version = "0.13.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "213622a1460818959ac1181aaeb2dc9c7f63df720db7d788b3e24eacd1983e13"
+checksum = "4759aa0d3a6232fb8dbdb97b61de2c20047c68aca932c7ed76da9d788508d670"
 dependencies = [
- "prost 0.11.9",
+ "prost",
 ]
 
 [[package]]
@@ -7380,7 +7346,7 @@ dependencies = [
  "os_pipe",
  "parking_lot",
  "pretty_assertions",
- "prost 0.11.9",
+ "prost",
  "prost-build",
  "regex",
  "reqwest",
@@ -7628,7 +7594,7 @@ dependencies = [
  "hyper-util",
  "percent-encoding",
  "pin-project",
- "prost 0.13.3",
+ "prost",
  "socket2",
  "tokio",
  "tokio-stream",
