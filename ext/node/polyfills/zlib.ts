@@ -41,7 +41,6 @@ import {
   createBrotliDecompress,
 } from "ext:deno_node/_brotli.js";
 import { ERR_INVALID_ARG_TYPE } from "ext:deno_node/internal/errors.ts";
-import { isAnyArrayBuffer } from "ext:deno_node/internal/util/types.ts";
 import { validateUint32 } from "ext:deno_node/internal/validators.mjs";
 import { op_zlib_crc32 } from "ext:core/ops";
 import { core, primordials } from "ext:core/mod.js";
