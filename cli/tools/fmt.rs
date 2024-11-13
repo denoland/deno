@@ -790,28 +790,26 @@ fn format_ensure_stable(
             return Ok(Some(current_text));
           }
           Err(err) => {
-            panic!(
+            bail!(
               concat!(
                 "Formatting succeeded initially, but failed when ensuring a ",
                 "stable format. This indicates a bug in the formatter where ",
                 "the text it produces is not syntactically correct. As a temporary ",
-                "workaround you can ignore this file ({}).\n\n{:#}"
+                "workaround you can ignore this file.\n\n{:#}"
               ),
-              file_path.display(),
               err,
             )
           }
         }
         count += 1;
         if count == 5 {
-          panic!(
+          bail!(
             concat!(
               "Formatting not stable. Bailed after {} tries. This indicates a bug ",
-              "in the formatter where it formats the file ({}) differently each time. As a ",
+              "in the formatter where it formats the file differently each time. As a ",
               "temporary workaround you can ignore this file."
             ),
             count,
-            file_path.display(),
           )
         }
       }
