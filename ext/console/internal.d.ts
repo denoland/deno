@@ -9,4 +9,8 @@ declare module "ext:deno_console/01_console.js" {
     keys: (keyof TObject)[];
     evaluate: boolean;
   }): Record<string, unknown>;
+
+  class Console {
+    
+  }
 }

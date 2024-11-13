@@ -86,7 +86,7 @@ import {
   workerRuntimeGlobalProperties,
 } from "ext:runtime/98_global_scope_worker.js";
 import { SymbolDispose, SymbolMetadata } from "ext:deno_web/00_infra.js";
-import { bootstrap as bootstrapOtel } from "ext:runtime/telemetry.js";
+import { bootstrap as bootstrapOtel } from "ext:runtime/telemetry.ts";
 
 // deno-lint-ignore prefer-primordials
 if (Symbol.metadata) {
