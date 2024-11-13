@@ -460,8 +460,7 @@ Deno.test("[node/http] send request with non-chunked body", async () => {
   let requestHeaders: Headers;
   let requestBody = "";
 
-  // TODO(kt3k): This should be "localhost" when we implemented autoSelectFamily option for createConnections in node:net
-  const hostname = "127.0.0.1";
+  const hostname = "localhost";
   const port = 4505;
 
   const handler = async (req: Request) => {
@@ -518,8 +517,7 @@ Deno.test("[node/http] send request with chunked body", async () => {
   let requestHeaders: Headers;
   let requestBody = "";
 
-  // TODO(kt3k): This should be "localhost" when we implemented autoSelectFamily option for createConnections in node:net
-  const hostname = "127.0.0.1";
+  const hostname = "localhost";
   const port = 4505;
 
   const handler = async (req: Request) => {
@@ -566,8 +564,7 @@ Deno.test("[node/http] send request with chunked body as default", async () => {
   let requestHeaders: Headers;
   let requestBody = "";
 
-  // TODO(kt3k): This should be "localhost" when we implemented autoSelectFamily option for createConnections in node:net
-  const hostname = "127.0.0.1";
+  const hostname = "localhost";
   const port = 4505;
 
   const handler = async (req: Request) => {
