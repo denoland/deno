@@ -71,8 +71,9 @@ Deno.test("[perf_hooks]: eventLoopUtilization", () => {
 
 Deno.test("[perf_hooks]: monitorEventLoopDelay", () => {
   const e = assertThrows(() => {
+    // @ts-expect-error monitorEventLoopDelay is not in Performance interface
     performance.monitorEventLoopDelay({ resolution: 1 });
   });
 
-  assertEquals(e.code, "ERR_NOT_IMPLEMENTED");
+  assertEquals((e as any).code, "ERR_NOT_IMPLEMENTED");
 });
