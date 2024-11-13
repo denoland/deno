@@ -1021,7 +1021,12 @@ Deno.test(
     request.destroy();
     request.on("error", (e) => {
       assertEquals(e.message, "socket hang up");
-      resolve();
+      // Use socket on close event to avoid op leaks
+      const socket = (request as any).agent.sockets["localhost:5929:"][0];
+      socket.on("close", resolve);
+    });
+    request.on("socket", (socket) => {
+      console.log(socket);
     });
     await promise;
   },
