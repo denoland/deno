@@ -36,7 +36,6 @@ import {
 } from "ext:deno_node/internal_binding/async_wrap.ts";
 import { ares_strerror } from "ext:deno_node/internal_binding/ares.ts";
 import { notImplemented } from "ext:deno_node/_utils.ts";
-import { isWindows } from "ext:deno_node/_util/os.ts";
 
 interface LookupAddress {
   address: string;
@@ -68,7 +67,7 @@ export function getaddrinfo(
   _hints: number,
   verbatim: boolean,
 ): number {
-  let addresses: string[] = [];
+  const addresses: string[] = [];
 
   // TODO(cmorten): use hints
   // REF: https://nodejs.org/api/dns.html#dns_supported_getaddrinfo_flags
