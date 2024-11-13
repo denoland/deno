@@ -70,10 +70,9 @@ Deno.test("[perf_hooks]: eventLoopUtilization", () => {
 });
 
 Deno.test("[perf_hooks]: monitorEventLoopDelay", () => {
-  try {
+  const e = assertThrows(() => {
     performance.monitorEventLoopDelay({ resolution: 1 });
-    throw new Error("should not reach here");
-  } catch (e) {
-    assertEquals(e.code, "ERR_NOT_IMPLEMENTED");
-  }
+  });
+
+  assertEquals(e.code, "ERR_NOT_IMPLEMENTED");
 });
