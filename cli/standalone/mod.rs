@@ -828,6 +828,7 @@ pub async fn run(data: StandaloneData) -> Result<i32, AnyError> {
       serve_port: None,
       serve_host: None,
     },
+    metadata.otel_config,
   );
 
   // Initialize v8 once from the main thread.

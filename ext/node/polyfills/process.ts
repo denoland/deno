@@ -15,7 +15,7 @@ import {
 
 import { warnNotImplemented } from "ext:deno_node/_utils.ts";
 import { EventEmitter } from "node:events";
-import Module from "node:module";
+import Module, { getBuiltinModule } from "node:module";
 import { report } from "ext:deno_node/internal/process/report.ts";
 import { validateString } from "ext:deno_node/internal/validators.mjs";
 import {
@@ -38,7 +38,15 @@ import {
   versions,
 } from "ext:deno_node/_process/process.ts";
 import { _exiting } from "ext:deno_node/_process/exiting.ts";
-export { _nextTick as nextTick, chdir, cwd, env, version, versions };
+export {
+  _nextTick as nextTick,
+  chdir,
+  cwd,
+  env,
+  getBuiltinModule,
+  version,
+  versions,
+};
 import {
   createWritableStdioStream,
   initStdin,
@@ -727,6 +735,8 @@ Process.prototype.getegid = getegid;
 
 /** This method is removed on Windows */
 Process.prototype.geteuid = geteuid;
+
+Process.prototype.getBuiltinModule = getBuiltinModule;
 
 // TODO(kt3k): Implement this when we added -e option to node compat mode
 Process.prototype._eval = undefined;

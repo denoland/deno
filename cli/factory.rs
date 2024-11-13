@@ -936,6 +936,7 @@ impl CliFactory {
       StorageKeyResolver::from_options(cli_options),
       cli_options.sub_command().clone(),
       self.create_cli_main_worker_options()?,
+      self.cli_options()?.otel_config(),
     ))
   }
 

@@ -512,6 +512,9 @@ impl WebWorker {
       ),
       ops::fs_events::deno_fs_events::init_ops_and_esm(),
       ops::os::deno_os_worker::init_ops_and_esm(),
+      ops::otel::deno_otel::init_ops_and_esm(
+        options.bootstrap.otel_config.clone(),
+      ),
       ops::permissions::deno_permissions::init_ops_and_esm(),
       ops::process::deno_process::init_ops_and_esm(
         services.npm_process_state_provider,
