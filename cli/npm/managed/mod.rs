@@ -22,6 +22,7 @@ use deno_npm::resolution::ValidSerializedNpmResolutionSnapshot;
 use deno_npm::NpmPackageId;
 use deno_npm::NpmResolutionPackage;
 use deno_npm::NpmSystemInfo;
+use deno_resolver::npm::CliNpmReqResolver;
 use deno_runtime::colors;
 use deno_runtime::deno_fs::FileSystem;
 use deno_runtime::deno_node::NodePermissions;
@@ -31,7 +32,7 @@ use deno_semver::package::PackageReq;
 use node_resolver::errors::PackageFolderResolveError;
 use node_resolver::errors::PackageFolderResolveIoError;
 use node_resolver::InNpmPackageChecker;
-use node_resolver::NpmResolver;
+use node_resolver::NpmPackageFolderResolver;
 use resolution::AddPkgReqsResult;
 
 use crate::args::CliLockfile;
@@ -605,7 +606,7 @@ fn npm_process_state(
   .unwrap()
 }
 
-impl NpmResolver for ManagedCliNpmResolver {
+impl NpmPackageFolderResolver for ManagedCliNpmResolver {
   fn resolve_package_folder_from_package(
     &self,
     name: &str,
@@ -635,8 +636,29 @@ impl NpmProcessStateProvider for ManagedCliNpmResolver {
   }
 }
 
+impl CliNpmReqResolver for ManagedCliNpmResolver {
+  fn resolve_pkg_folder_from_deno_module_req(
+    &self,
+    req: &PackageReq,
+    _referrer: &ModuleSpecifier,
+  ) -> Result<PathBuf, ResolvePkgFolderFromDenoReqError> {
+    let pkg_id = self
+      .resolve_pkg_id_from_pkg_req(req)
+      .map_err(|err| ResolvePkgFolderFromDenoReqError::Managed(err.into()))?;
+    self
+      .resolve_pkg_folder_from_pkg_id(&pkg_id)
+      .map_err(ResolvePkgFolderFromDenoReqError::Managed)
+  }
+}
+
 impl CliNpmResolver for ManagedCliNpmResolver {
-  fn into_npm_resolver(self: Arc<Self>) -> Arc<dyn NpmResolver> {
+  fn into_npm_pkg_folder_resolver(
+    self: Arc<Self>,
+  ) -> Arc<dyn NpmPackageFolderResolver> {
+    self
+  }
+
+  fn into_npm_req_resolver(self: Arc<Self>) -> Arc<dyn CliNpmReqResolver> {
     self
   }
 
@@ -685,19 +707,6 @@ impl CliNpmResolver for ManagedCliNpmResolver {
 
   fn root_node_modules_path(&self) -> Option<&Path> {
     self.fs_resolver.node_modules_path()
-  }
-
-  fn resolve_pkg_folder_from_deno_module_req(
-    &self,
-    req: &PackageReq,
-    _referrer: &ModuleSpecifier,
-  ) -> Result<PathBuf, ResolvePkgFolderFromDenoReqError> {
-    let pkg_id = self
-      .resolve_pkg_id_from_pkg_req(req)
-      .map_err(|err| ResolvePkgFolderFromDenoReqError::Managed(err.into()))?;
-    self
-      .resolve_pkg_folder_from_pkg_id(&pkg_id)
-      .map_err(ResolvePkgFolderFromDenoReqError::Managed)
   }
 
   fn ensure_read_permission<'a>(

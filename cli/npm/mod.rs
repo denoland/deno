@@ -19,6 +19,8 @@ use deno_npm::registry::NpmPackageInfo;
 use deno_resolver::npm::ByonmInNpmPackageChecker;
 use deno_resolver::npm::ByonmNpmResolver;
 use deno_resolver::npm::ByonmResolvePkgFolderFromDenoReqError;
+use deno_resolver::npm::CliNpmReqResolver;
+use deno_resolver::npm::ResolvePkgFolderFromDenoReqError;
 use deno_runtime::deno_node::NodePermissions;
 use deno_runtime::ops::process::NpmProcessStateProvider;
 use deno_semver::package::PackageNv;
@@ -26,7 +28,7 @@ use deno_semver::package::PackageReq;
 use managed::cache::registry_info::get_package_url;
 use managed::create_managed_in_npm_pkg_checker;
 use node_resolver::InNpmPackageChecker;
-use node_resolver::NpmResolver;
+use node_resolver::NpmPackageFolderResolver;
 use thiserror::Error;
 
 use crate::file_fetcher::FileFetcher;
@@ -37,14 +39,6 @@ pub use self::managed::CliManagedInNpmPkgCheckerCreateOptions;
 pub use self::managed::CliManagedNpmResolverCreateOptions;
 pub use self::managed::CliNpmResolverManagedSnapshotOption;
 pub use self::managed::ManagedCliNpmResolver;
-
-#[derive(Debug, Error)]
-pub enum ResolvePkgFolderFromDenoReqError {
-  #[error(transparent)]
-  Managed(deno_core::error::AnyError),
-  #[error(transparent)]
-  Byonm(#[from] ByonmResolvePkgFolderFromDenoReqError),
-}
 
 pub enum CliNpmResolverCreateOptions {
   Managed(CliManagedNpmResolverCreateOptions),
@@ -95,11 +89,17 @@ pub enum InnerCliNpmResolverRef<'a> {
   Byonm(&'a CliByonmNpmResolver),
 }
 
-pub trait CliNpmResolver: NpmResolver {
-  fn into_npm_resolver(self: Arc<Self>) -> Arc<dyn NpmResolver>;
+pub trait CliNpmResolver: NpmPackageFolderResolver + CliNpmReqResolver {
+  fn into_npm_pkg_folder_resolver(
+    self: Arc<Self>,
+  ) -> Arc<dyn NpmPackageFolderResolver>;
+  fn into_npm_req_resolver(self: Arc<Self>) -> Arc<dyn CliNpmReqResolver>;
   fn into_process_state_provider(
     self: Arc<Self>,
   ) -> Arc<dyn NpmProcessStateProvider>;
+  fn into_maybe_byonm(self: Arc<Self>) -> Option<Arc<CliByonmNpmResolver>> {
+    None
+  }
 
   fn clone_snapshotted(&self) -> Arc<dyn CliNpmResolver>;
 
@@ -120,12 +120,6 @@ pub trait CliNpmResolver: NpmResolver {
   }
 
   fn root_node_modules_path(&self) -> Option<&Path>;
-
-  fn resolve_pkg_folder_from_deno_module_req(
-    &self,
-    req: &PackageReq,
-    referrer: &ModuleSpecifier,
-  ) -> Result<PathBuf, ResolvePkgFolderFromDenoReqError>;
 
   fn ensure_read_permission<'a>(
     &self,

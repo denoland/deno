@@ -155,7 +155,7 @@ impl SharedWorkerState {
     NodeExtInitServices {
       node_require_loader,
       node_resolver: self.node_resolver.clone(),
-      npm_resolver: self.npm_resolver.clone().into_npm_resolver(),
+      npm_resolver: self.npm_resolver.clone().into_npm_pkg_folder_resolver(),
       pkg_json_resolver: self.pkg_json_resolver.clone(),
     }
   }

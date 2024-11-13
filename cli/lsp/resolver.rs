@@ -15,6 +15,7 @@ use deno_graph::Range;
 use deno_npm::NpmSystemInfo;
 use deno_path_util::url_from_directory_path;
 use deno_path_util::url_to_file_path;
+use deno_resolver::DenoResolverOptions;
 use deno_runtime::deno_fs;
 use deno_runtime::deno_node::NodeResolver;
 use deno_runtime::deno_node::PackageJson;
@@ -58,7 +59,7 @@ use crate::npm::CliNpmResolverManagedSnapshotOption;
 use crate::npm::CreateInNpmPkgCheckerOptions;
 use crate::npm::ManagedCliNpmResolver;
 use crate::resolver::CliDenoResolverFs;
-use crate::resolver::CliNodeResolver;
+use crate::resolver::CliNpmReqResolver;
 use crate::resolver::CliResolver;
 use crate::resolver::CliResolverOptions;
 use crate::resolver::IsCjsResolver;
@@ -72,8 +73,9 @@ use crate::util::progress_bar::ProgressBarStyle;
 struct LspScopeResolver {
   resolver: Arc<CliResolver>,
   jsr_resolver: Option<Arc<JsrCacheResolver>>,
+  npm_req_resolver: Option<Arc<CliNpmReqResolver>>,
   npm_resolver: Option<Arc<dyn CliNpmResolver>>,
-  node_resolver: Option<Arc<CliNodeResolver>>,
+  node_resolver: Option<Arc<NodeResolver>>,
   pkg_json_resolver: Option<Arc<PackageJsonResolver>>,
   redirect_resolver: Option<Arc<RedirectResolver>>,
   graph_imports: Arc<IndexMap<ModuleSpecifier, GraphImport>>,
@@ -86,6 +88,7 @@ impl Default for LspScopeResolver {
     Self {
       resolver: create_cli_resolver(None, None, None),
       jsr_resolver: None,
+      npm_req_resolver: None,
       npm_resolver: None,
       node_resolver: None,
       pkg_json_resolver: None,
@@ -646,7 +649,7 @@ fn create_node_resolver(
   let node_resolver_inner = Arc::new(NodeResolver::new(
     deno_runtime::deno_node::DenoFsNodeResolverEnv::new(fs.clone()),
     in_npm_pkg_checker.clone(),
-    npm_resolver.clone().into_npm_resolver(),
+    npm_resolver.clone().into_npm_pkg_folder_resolver(),
     pkg_json_resolver.clone(),
   ));
   Arc::new(CliNodeResolver::new(

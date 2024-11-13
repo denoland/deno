@@ -2007,6 +2007,8 @@ version = "0.9.0"
 dependencies = [
  "anyhow",
  "base32",
+ "dashmap",
+ "deno_config",
  "deno_media_type",
  "deno_package_json",
  "deno_path_util",
