@@ -1,6 +1,10 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 import * as perfHooks from "node:perf_hooks";
-import { performance, PerformanceObserver } from "node:perf_hooks";
+import {
+  monitorEventLoopDelay,
+  performance,
+  PerformanceObserver,
+} from "node:perf_hooks";
 import { assertEquals, assertThrows } from "@std/assert";
 
 Deno.test({
@@ -71,8 +75,7 @@ Deno.test("[perf_hooks]: eventLoopUtilization", () => {
 
 Deno.test("[perf_hooks]: monitorEventLoopDelay", () => {
   const e = assertThrows(() => {
-    // @ts-expect-error monitorEventLoopDelay is not in Performance interface
-    performance.monitorEventLoopDelay({ resolution: 1 });
+    monitorEventLoopDelay({ resolution: 1 });
   });
 
   // deno-lint-ignore no-explicit-any
