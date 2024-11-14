@@ -17,9 +17,11 @@ use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
 use deno_core::futures::stream::futures_unordered;
 use deno_core::futures::StreamExt;
+use deno_core::url::Url;
 use deno_path_util::normalize_path;
 use deno_runtime::deno_node::NodeResolver;
 use deno_task_shell::ShellCommand;
+use indexmap::IndexMap;
 
 use crate::args::CliOptions;
 use crate::args::Flags;
@@ -100,97 +102,115 @@ impl<'a> TaskRunner<'a> {
     &self,
     task_name: &String,
   ) -> Result<i32, deno_core::anyhow::Error> {
-    match self.tasks_config.task(task_name) {
-      Some((dir_url, task_or_script)) => match task_or_script {
-        TaskOrScript::Task(_tasks, definition) => {
-          let mut futures_unordered =
-            futures_unordered::FuturesUnordered::new();
-          for dep in &definition.dependencies {
-            let dep = dep.clone();
-            futures_unordered.push(async move { self.run_task(&dep).await })
-          }
-          while let Some(result) = futures_unordered.next().await {
-            let exit_code = result?;
-            if exit_code > 0 {
-              return Ok(exit_code);
-            }
-          }
-          let cwd = match &self.task_flags.cwd {
-            Some(path) => canonicalize_path(&PathBuf::from(path))
-              .context("failed canonicalizing --cwd")?,
-            None => normalize_path(dir_url.to_file_path().unwrap()),
-          };
+    let Some((dir_url, task_or_script)) = self.tasks_config.task(task_name)
+    else {
+      if self.task_flags.is_run {
+        return Err(anyhow!("Task not found: {}", task_name));
+      }
 
-          let custom_commands = task_runner::resolve_custom_commands(
-            self.npm_resolver,
-            self.node_resolver,
-          )?;
-          self
-            .run_single(RunSingleOptions {
-              task_name,
-              script: &definition.command,
-              cwd: &cwd,
-              custom_commands,
-            })
-            .await
-        }
-        TaskOrScript::Script(scripts, _script) => {
-          // ensure the npm packages are installed if using a managed resolver
-          if let Some(npm_resolver) = self.npm_resolver.as_managed() {
-            npm_resolver.ensure_top_level_package_json_install().await?;
-          }
+      log::error!("Task not found: {}", task_name);
+      if log::log_enabled!(log::Level::Error) {
+        print_available_tasks(
+          &mut std::io::stderr(),
+          &self.cli_options.start_dir,
+          &self.tasks_config,
+        )?;
+      }
+      return Ok(1);
+    };
 
-          let cwd = match &self.task_flags.cwd {
-            Some(path) => canonicalize_path(&PathBuf::from(path))?,
-            None => normalize_path(dir_url.to_file_path().unwrap()),
-          };
-
-          // At this point we already checked if the task name exists in package.json.
-          // We can therefore check for "pre" and "post" scripts too, since we're only
-          // dealing with package.json here and not deno.json
-          let task_names = vec![
-            format!("pre{}", task_name),
-            task_name.clone(),
-            format!("post{}", task_name),
-          ];
-          let custom_commands = task_runner::resolve_custom_commands(
-            self.npm_resolver,
-            self.node_resolver,
-          )?;
-          for task_name in &task_names {
-            if let Some(script) = scripts.get(task_name) {
-              let exit_code = self
-                .run_single(RunSingleOptions {
-                  task_name,
-                  script,
-                  cwd: &cwd,
-                  custom_commands: custom_commands.clone(),
-                })
-                .await?;
-              if exit_code > 0 {
-                return Ok(exit_code);
-              }
-            }
-          }
-
-          Ok(0)
-        }
-      },
-      None => {
-        if self.task_flags.is_run {
-          return Err(anyhow!("Task not found: {}", task_name));
-        }
-        log::error!("Task not found: {}", task_name);
-        if log::log_enabled!(log::Level::Error) {
-          print_available_tasks(
-            &mut std::io::stderr(),
-            &self.cli_options.start_dir,
-            &self.tasks_config,
-          )?;
-        }
-        Ok(1)
+    match task_or_script {
+      TaskOrScript::Task(_tasks, definition) => {
+        self.run_deno_task(dir_url, task_name, definition).await
+      }
+      TaskOrScript::Script(scripts, _script) => {
+        self.run_npm_script(dir_url, task_name, scripts).await
       }
     }
+  }
+
+  async fn run_deno_task(
+    &self,
+    dir_url: &Url,
+    task_name: &String,
+    definition: &TaskDefinition,
+  ) -> Result<i32, deno_core::anyhow::Error> {
+    let mut futures_unordered = futures_unordered::FuturesUnordered::new();
+    for dep in &definition.dependencies {
+      let dep = dep.clone();
+      futures_unordered.push(async move { self.run_task(&dep).await })
+    }
+    while let Some(result) = futures_unordered.next().await {
+      let exit_code = result?;
+      if exit_code > 0 {
+        return Ok(exit_code);
+      }
+    }
+    let cwd = match &self.task_flags.cwd {
+      Some(path) => canonicalize_path(&PathBuf::from(path))
+        .context("failed canonicalizing --cwd")?,
+      None => normalize_path(dir_url.to_file_path().unwrap()),
+    };
+
+    let custom_commands = task_runner::resolve_custom_commands(
+      self.npm_resolver,
+      self.node_resolver,
+    )?;
+    self
+      .run_single(RunSingleOptions {
+        task_name,
+        script: &definition.command,
+        cwd: &cwd,
+        custom_commands,
+      })
+      .await
+  }
+
+  async fn run_npm_script(
+    &self,
+    dir_url: &Url,
+    task_name: &String,
+    scripts: &IndexMap<String, String>,
+  ) -> Result<i32, deno_core::anyhow::Error> {
+    // ensure the npm packages are installed if using a managed resolver
+    if let Some(npm_resolver) = self.npm_resolver.as_managed() {
+      npm_resolver.ensure_top_level_package_json_install().await?;
+    }
+
+    let cwd = match &self.task_flags.cwd {
+      Some(path) => canonicalize_path(&PathBuf::from(path))?,
+      None => normalize_path(dir_url.to_file_path().unwrap()),
+    };
+
+    // At this point we already checked if the task name exists in package.json.
+    // We can therefore check for "pre" and "post" scripts too, since we're only
+    // dealing with package.json here and not deno.json
+    let task_names = vec![
+      format!("pre{}", task_name),
+      task_name.clone(),
+      format!("post{}", task_name),
+    ];
+    let custom_commands = task_runner::resolve_custom_commands(
+      self.npm_resolver,
+      self.node_resolver,
+    )?;
+    for task_name in &task_names {
+      if let Some(script) = scripts.get(task_name) {
+        let exit_code = self
+          .run_single(RunSingleOptions {
+            task_name,
+            script,
+            cwd: &cwd,
+            custom_commands: custom_commands.clone(),
+          })
+          .await?;
+        if exit_code > 0 {
+          return Ok(exit_code);
+        }
+      }
+    }
+
+    Ok(0)
   }
 
   async fn run_single(
@@ -294,7 +314,7 @@ fn print_available_tasks(
 
         task_descriptions.push(AvailableTaskDescription {
           is_root,
-          is_deno: true,
+          is_deno: false,
           name: name.to_string(),
           task: deno_config::deno_json::TaskDefinition {
             command: script.to_string(),
