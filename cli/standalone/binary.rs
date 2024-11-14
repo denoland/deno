@@ -21,6 +21,7 @@ use std::process::Command;
 use std::sync::Arc;
 
 use deno_ast::MediaType;
+use deno_ast::ModuleKind;
 use deno_ast::ModuleSpecifier;
 use deno_config::workspace::PackageJsonDepResolution;
 use deno_config::workspace::ResolverWorkspaceJsrPackage;
@@ -46,6 +47,7 @@ use deno_runtime::deno_fs::FileSystem;
 use deno_runtime::deno_fs::RealFs;
 use deno_runtime::deno_io::fs::FsError;
 use deno_runtime::deno_node::PackageJson;
+use deno_runtime::ops::otel::OtelConfig;
 use deno_semver::npm::NpmVersionReqParseError;
 use deno_semver::package::PackageReq;
 use deno_semver::Version;
@@ -67,6 +69,7 @@ use crate::file_fetcher::FileFetcher;
 use crate::http_util::HttpClientProvider;
 use crate::npm::CliNpmResolver;
 use crate::npm::InnerCliNpmResolverRef;
+use crate::resolver::CjsTracker;
 use crate::shared::ReleaseChannel;
 use crate::standalone::virtual_fs::VfsEntry;
 use crate::util::archive;
@@ -183,6 +186,7 @@ pub struct Metadata {
   pub entrypoint_key: String,
   pub node_modules: Option<NodeModules>,
   pub unstable_config: UnstableConfig,
+  pub otel_config: Option<OtelConfig>, // None means disabled.
 }
 
 fn write_binary_bytes(
@@ -255,6 +259,10 @@ impl StandaloneModules {
     } else {
       self.remote_modules.resolve_specifier(specifier)
     }
+  }
+
+  pub fn has_file(&self, path: &Path) -> bool {
+    self.vfs.file_entry(path).is_ok()
   }
 
   pub fn read<'a>(
@@ -353,6 +361,7 @@ pub fn extract_standalone(
 }
 
 pub struct DenoCompileBinaryWriter<'a> {
+  cjs_tracker: &'a CjsTracker,
   deno_dir: &'a DenoDir,
   emitter: &'a Emitter,
   file_fetcher: &'a FileFetcher,
@@ -365,6 +374,7 @@ pub struct DenoCompileBinaryWriter<'a> {
 impl<'a> DenoCompileBinaryWriter<'a> {
   #[allow(clippy::too_many_arguments)]
   pub fn new(
+    cjs_tracker: &'a CjsTracker,
     deno_dir: &'a DenoDir,
     emitter: &'a Emitter,
     file_fetcher: &'a FileFetcher,
@@ -374,6 +384,7 @@ impl<'a> DenoCompileBinaryWriter<'a> {
     npm_system_info: NpmSystemInfo,
   ) -> Self {
     Self {
+      cjs_tracker,
       deno_dir,
       emitter,
       file_fetcher,
@@ -599,19 +610,21 @@ impl<'a> DenoCompileBinaryWriter<'a> {
       }
       let (maybe_source, media_type) = match module {
         deno_graph::Module::Js(m) => {
-          // todo(https://github.com/denoland/deno_media_type/pull/12): use is_emittable()
-          let is_emittable = matches!(
-            m.media_type,
-            MediaType::TypeScript
-              | MediaType::Mts
-              | MediaType::Cts
-              | MediaType::Jsx
-              | MediaType::Tsx
-          );
-          let source = if is_emittable {
+          let source = if m.media_type.is_emittable() {
+            let is_cjs = self.cjs_tracker.is_cjs_with_known_is_script(
+              &m.specifier,
+              m.media_type,
+              m.is_script,
+            )?;
+            let module_kind = ModuleKind::from_is_cjs(is_cjs);
             let source = self
               .emitter
-              .emit_parsed_source(&m.specifier, m.media_type, &m.source)
+              .emit_parsed_source(
+                &m.specifier,
+                m.media_type,
+                module_kind,
+                &m.source,
+              )
               .await?;
             source.into_bytes()
           } else {
@@ -707,10 +720,10 @@ impl<'a> DenoCompileBinaryWriter<'a> {
       unstable_config: UnstableConfig {
         legacy_flag_enabled: false,
         bare_node_builtins: cli_options.unstable_bare_node_builtins(),
-        detect_cjs: cli_options.unstable_detect_cjs(),
         sloppy_imports: cli_options.unstable_sloppy_imports(),
         features: cli_options.unstable_features(),
       },
+      otel_config: cli_options.otel_config(),
     };
 
     write_binary_bytes(
@@ -745,8 +758,9 @@ impl<'a> DenoCompileBinaryWriter<'a> {
         } else {
           // DO NOT include the user's registry url as it may contain credentials,
           // but also don't make this dependent on the registry url
-          let global_cache_root_path = npm_resolver.global_cache_root_folder();
-          let mut builder = VfsBuilder::new(global_cache_root_path)?;
+          let global_cache_root_path = npm_resolver.global_cache_root_path();
+          let mut builder =
+            VfsBuilder::new(global_cache_root_path.to_path_buf())?;
           let mut packages =
             npm_resolver.all_system_packages(&self.npm_system_info);
           packages.sort_by(|a, b| a.id.cmp(&b.id)); // determinism
