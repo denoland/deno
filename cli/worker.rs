@@ -547,6 +547,7 @@ impl CliMainWorkerFactory {
       npm_process_state_provider: Some(shared.npm_process_state_provider()),
       blob_store: shared.blob_store.clone(),
       broadcast_channel: shared.broadcast_channel.clone(),
+      fetch_dns_resolver: Default::default(),
       shared_array_buffer_store: Some(shared.shared_array_buffer_store.clone()),
       compiled_wasm_module_store: Some(
         shared.compiled_wasm_module_store.clone(),
@@ -842,6 +843,7 @@ mod tests {
         node_services: Default::default(),
         npm_process_state_provider: Default::default(),
         root_cert_store_provider: Default::default(),
+        fetch_dns_resolver: Default::default(),
         shared_array_buffer_store: Default::default(),
         compiled_wasm_module_store: Default::default(),
         v8_code_cache: Default::default(),
