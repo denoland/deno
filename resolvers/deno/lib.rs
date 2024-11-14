@@ -48,7 +48,7 @@ pub struct DenoResolution {
 }
 
 #[derive(Debug, Error)]
-pub enum DenoResolveError {
+pub enum DenoResolveErrorKind {
   #[error("Importing from the vendor directory is not permitted. Use a remote specifier instead or disable vendoring.")]
   InvalidVendorFolderImport,
   #[error(transparent)]
@@ -69,6 +69,35 @@ pub enum DenoResolveError {
   ResolvePkgFolderFromDenoReq(#[from] ResolvePkgFolderFromDenoReqError),
   #[error(transparent)]
   WorkspaceResolvePkgJsonFolder(#[from] WorkspaceResolvePkgJsonFolderError),
+}
+
+impl DenoResolveErrorKind {
+  pub fn into_box(self) -> DenoResolveError {
+    DenoResolveError(Box::new(self))
+  }
+}
+
+#[derive(Error, Debug)]
+#[error(transparent)]
+pub struct DenoResolveError(pub Box<DenoResolveErrorKind>);
+
+impl DenoResolveError {
+  pub fn as_kind(&self) -> &DenoResolveErrorKind {
+    &self.0
+  }
+
+  pub fn into_kind(self) -> DenoResolveErrorKind {
+    *self.0
+  }
+}
+
+impl<E> From<E> for DenoResolveError
+where
+  DenoResolveErrorKind: From<E>,
+{
+  fn from(err: E) -> Self {
+    DenoResolveError(Box::new(DenoResolveErrorKind::from(err)))
+  }
 }
 
 #[derive(Debug)]
@@ -233,7 +262,10 @@ impl<
 
           dep_result
             .as_ref()
-            .map_err(|e| DenoResolveError::PackageJsonDepValueParse(e.clone()))
+            .map_err(|e| {
+              DenoResolveErrorKind::PackageJsonDepValueParse(e.clone())
+                .into_box()
+            })
             .and_then(|dep| match dep {
               // todo(dsherret): it seems bad that we're converting this
               // to a url because the req might not be a valid url.
@@ -242,14 +274,19 @@ impl<
                 req,
                 sub_path.map(|s| format!("/{}", s)).unwrap_or_default()
               ))
-              .map_err(DenoResolveError::PackageJsonDepValueUrlParse),
+              .map_err(|e| {
+                DenoResolveErrorKind::PackageJsonDepValueUrlParse(e).into_box()
+              }),
               PackageJsonDepValue::Workspace(version_req) => self
                 .workspace_resolver
                 .resolve_workspace_pkg_json_folder_for_pkg_json_dep(
                   alias,
                   version_req,
                 )
-                .map_err(DenoResolveError::WorkspaceResolvePkgJsonFolder)
+                .map_err(|e| {
+                  DenoResolveErrorKind::WorkspaceResolvePkgJsonFolder(e)
+                    .into_box()
+                })
                 .and_then(|pkg_folder| {
                   self
                     .node_and_npm_resolver
@@ -263,7 +300,9 @@ impl<
                       referrer_kind,
                       mode,
                     )
-                    .map_err(DenoResolveError::PackageSubpathResolve)
+                    .map_err(|e| {
+                      DenoResolveErrorKind::PackageSubpathResolve(e).into_box()
+                    })
                 }),
             })
         }
@@ -278,7 +317,9 @@ impl<
     if let Some(vendor_specifier) = &self.maybe_vendor_specifier {
       if let Ok(specifier) = &result {
         if specifier.as_str().starts_with(vendor_specifier.as_str()) {
-          return Err(DenoResolveError::InvalidVendorFolderImport);
+          return Err(
+            DenoResolveErrorKind::InvalidVendorFolderImport.into_box(),
+          );
         }
       }
     }
@@ -371,7 +412,7 @@ impl<
             )
             .map_err(|e| match e {
               ResolveIfForNpmPackageError::NodeResolve(e) => {
-                DenoResolveError::Node(e)
+                DenoResolveErrorKind::Node(e).into_box()
               }
               ResolveIfForNpmPackageError::NodeModulesOutOfDate(e) => e.into(),
             })?;

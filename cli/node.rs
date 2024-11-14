@@ -7,8 +7,6 @@ use deno_ast::MediaType;
 use deno_ast::ModuleSpecifier;
 use deno_core::error::AnyError;
 use deno_graph::ParsedSourceStore;
-use deno_path_util::url_from_file_path;
-use deno_path_util::url_to_file_path;
 use deno_runtime::deno_fs;
 use deno_runtime::deno_node::DenoFsNodeResolverEnv;
 use node_resolver::analyze::CjsAnalysis as ExtNodeCjsAnalysis;

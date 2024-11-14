@@ -409,9 +409,9 @@ impl LspResolver {
     file_referrer: Option<&ModuleSpecifier>,
   ) -> Option<(ModuleSpecifier, MediaType)> {
     let resolver = self.get_scope_resolver(file_referrer);
-    let node_resolver = resolver.node_resolver.as_ref()?;
+    let npm_pkg_req_resolver = resolver.npm_pkg_req_resolver.as_ref()?;
     Some(into_specifier_and_media_type(Some(
-      node_resolver
+      npm_pkg_req_resolver
         .resolve_req_reference(
           req_ref,
           referrer,
@@ -463,10 +463,11 @@ impl LspResolver {
     referrer_kind: NodeModuleKind,
   ) -> bool {
     let resolver = self.get_scope_resolver(Some(referrer));
-    let Some(node_resolver) = resolver.node_resolver.as_ref() else {
+    let Some(npm_pkg_req_resolver) = resolver.npm_pkg_req_resolver.as_ref()
+    else {
       return false;
     };
-    node_resolver
+    npm_pkg_req_resolver
       .resolve_if_for_npm_pkg(
         specifier_text,
         referrer,
@@ -640,7 +641,7 @@ impl<'a> ResolverFactory<'a> {
   pub fn cli_resolver(&self) -> &Arc<CliResolver> {
     self.services.cli_resolver.get_or_init(|| {
       let npm_req_resolver = self.npm_pkg_req_resolver().cloned();
-      let deno_resolver = CliDenoResolver::new(DenoResolverOptions {
+      let deno_resolver = Arc::new(CliDenoResolver::new(DenoResolverOptions {
         in_npm_pkg_checker: self.in_npm_pkg_checker().clone(),
         node_and_req_resolver: match (self.node_resolver(), npm_req_resolver) {
           (Some(node_resolver), Some(npm_req_resolver)) => {
@@ -669,7 +670,7 @@ impl<'a> ResolverFactory<'a> {
           }),
         is_byonm: self.config_data.map(|d| d.byonm).unwrap_or(false),
         maybe_vendor_dir: self.config_data.and_then(|d| d.vendor_dir.as_ref()),
-      });
+      }));
       Arc::new(CliResolver::new(CliResolverOptions {
         deno_resolver,
         npm_resolver: self.npm_resolver().cloned(),

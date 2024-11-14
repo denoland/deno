@@ -234,6 +234,8 @@ impl CliResolver {
     }
   }
 
+  // todo(dsherret): move this off CliResolver as CliResolver is acting
+  // like a factory by doing this (it's beyond its responsibility)
   pub fn create_graph_npm_resolver(&self) -> WorkerCliNpmGraphResolver {
     WorkerCliNpmGraphResolver {
       npm_resolver: self.npm_resolver.as_ref(),
@@ -264,13 +266,13 @@ impl CliResolver {
         referrer_kind,
         to_node_mode(mode),
       )
-      .map_err(|err| match err {
-        deno_resolver::DenoResolveError::MappedResolution(
+      .map_err(|err| match err.into_kind() {
+        deno_resolver::DenoResolveErrorKind::MappedResolution(
           mapped_resolution_error,
         ) => match mapped_resolution_error {
-          MappedResolutionError::Specifier(specifier_error) => {
-            ResolveError::Specifier(specifier_error)
-          }
+          MappedResolutionError::Specifier(e) => ResolveError::Specifier(e),
+          // deno_graph checks specifically for an ImportMapError
+          MappedResolutionError::ImportMap(e) => ResolveError::Other(e.into()),
           err => ResolveError::Other(err.into()),
         },
         err => ResolveError::Other(err.into()),

@@ -6,19 +6,16 @@ mod managed;
 
 use std::borrow::Cow;
 use std::path::Path;
-use std::path::PathBuf;
 use std::sync::Arc;
 
 use common::maybe_auth_header_for_npm_registry;
 use dashmap::DashMap;
-use deno_ast::ModuleSpecifier;
 use deno_core::error::AnyError;
 use deno_core::serde_json;
 use deno_npm::npm_rc::ResolvedNpmRc;
 use deno_npm::registry::NpmPackageInfo;
 use deno_resolver::npm::ByonmInNpmPackageChecker;
 use deno_resolver::npm::ByonmNpmResolver;
-use deno_resolver::npm::ByonmResolvePkgFolderFromDenoReqError;
 use deno_resolver::npm::CliNpmReqResolver;
 use deno_resolver::npm::ResolvePkgFolderFromDenoReqError;
 use deno_runtime::deno_node::NodePermissions;
@@ -29,7 +26,6 @@ use managed::cache::registry_info::get_package_url;
 use managed::create_managed_in_npm_pkg_checker;
 use node_resolver::InNpmPackageChecker;
 use node_resolver::NpmPackageFolderResolver;
-use thiserror::Error;
 
 use crate::file_fetcher::FileFetcher;
 
