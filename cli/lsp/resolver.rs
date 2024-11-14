@@ -184,9 +184,11 @@ impl LspScopeResolver {
                 NodeResolutionMode::Types,
               )
               .or_else(|_| {
-                node_resolver.resolve_req_reference(
+                npm_pkg_req_resolver.resolve_req_reference(
                   &req_ref,
                   &referrer,
+                  // todo(dsherret): this is wrong because it doesn't consider CJS referrers
+                  NodeModuleKind::Esm,
                   NodeResolutionMode::Execution,
                 )
               })
@@ -573,67 +575,6 @@ pub struct ScopeDepInfo {
   pub deno_types_to_code_resolutions: HashMap<ModuleSpecifier, ModuleSpecifier>,
   pub npm_reqs: BTreeSet<PackageReq>,
   pub has_node_specifier: bool,
-}
-
-async fn create_npm_resolver(
-  config_data: Option<&ConfigData>,
-  cache: &LspCache,
-  http_client_provider: &Arc<HttpClientProvider>,
-  pkg_json_resolver: &Arc<PackageJsonResolver>,
-) -> Option<Arc<dyn CliNpmResolver>> {
-  let enable_byonm = config_data.map(|d| d.byonm).unwrap_or(false);
-  let options = if enable_byonm {
-    CliNpmResolverCreateOptions::Byonm(CliByonmNpmResolverCreateOptions {
-      fs: CliDenoResolverFs(Arc::new(deno_fs::RealFs)),
-      pkg_json_resolver: pkg_json_resolver.clone(),
-      root_node_modules_dir: config_data.and_then(|config_data| {
-        config_data.node_modules_dir.clone().or_else(|| {
-          url_to_file_path(&config_data.scope)
-            .ok()
-            .map(|p| p.join("node_modules/"))
-        })
-      }),
-    })
-  } else {
-    let npmrc = config_data
-      .and_then(|d| d.npmrc.clone())
-      .unwrap_or_else(create_default_npmrc);
-    let npm_cache_dir = Arc::new(NpmCacheDir::new(
-      &DenoCacheEnvFsAdapter(&deno_fs::RealFs),
-      cache.deno_dir().npm_folder_path(),
-      npmrc.get_all_known_registries_urls(),
-    ));
-    CliNpmResolverCreateOptions::Managed(CliManagedNpmResolverCreateOptions {
-      http_client_provider: http_client_provider.clone(),
-      snapshot: match config_data.and_then(|d| d.lockfile.as_ref()) {
-        Some(lockfile) => {
-          CliNpmResolverManagedSnapshotOption::ResolveFromLockfile(
-            lockfile.clone(),
-          )
-        }
-        None => CliNpmResolverManagedSnapshotOption::Specified(None),
-      },
-      // Don't provide the lockfile. We don't want these resolvers
-      // updating it. Only the cache request should update the lockfile.
-      maybe_lockfile: None,
-      fs: Arc::new(deno_fs::RealFs),
-      npm_cache_dir,
-      // Use an "only" cache setting in order to make the
-      // user do an explicit "cache" command and prevent
-      // the cache from being filled with lots of packages while
-      // the user is typing.
-      cache_setting: CacheSetting::Only,
-      text_only_progress_bar: ProgressBar::new(ProgressBarStyle::TextOnly),
-      maybe_node_modules_path: config_data
-        .and_then(|d| d.node_modules_dir.clone()),
-      // only used for top level install, so we can ignore this
-      npm_install_deps_provider: Arc::new(NpmInstallDepsProvider::empty()),
-      npmrc,
-      npm_system_info: NpmSystemInfo::default(),
-      lifecycle_scripts: Default::default(),
-    })
-  };
-  Some(create_cli_npm_resolver_for_lsp(options).await)
 }
 
 #[derive(Default)]

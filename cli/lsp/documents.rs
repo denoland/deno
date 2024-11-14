@@ -1466,17 +1466,29 @@ impl Documents {
           config_file.to_maybe_jsx_import_source_config().ok()??;
         let type_specifier = jsx_config.default_types_specifier.as_ref()?;
         let code_specifier = jsx_config.default_specifier.as_ref()?;
-        let graph_resolver = self.resolver.as_graph_resolver(Some(scope));
+        let cli_resolver = self.resolver.as_cli_resolver(Some(scope));
         let range = deno_graph::Range {
           specifier: jsx_config.base_url.clone(),
           start: deno_graph::Position::zeroed(),
           end: deno_graph::Position::zeroed(),
         };
-        let type_specifier = graph_resolver
-          .resolve(type_specifier, &range, ResolutionMode::Types)
+        let type_specifier = cli_resolver
+          .resolve(
+            type_specifier,
+            &range,
+            // todo(dsherret): this is wrong because it doesn't consider CJS referrers
+            deno_package_json::NodeModuleKind::Esm,
+            ResolutionMode::Types,
+          )
           .ok()?;
-        let code_specifier = graph_resolver
-          .resolve(code_specifier, &range, ResolutionMode::Execution)
+        let code_specifier = cli_resolver
+          .resolve(
+            code_specifier,
+            &range,
+            // todo(dsherret): this is wrong because it doesn't consider CJS referrers
+            deno_package_json::NodeModuleKind::Esm,
+            ResolutionMode::Execution,
+          )
           .ok()?;
         dep_info
           .deno_types_to_code_resolutions
