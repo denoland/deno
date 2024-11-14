@@ -4161,6 +4161,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "jupyter-serde"
+version = "0.4.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "dd71aa17c4fa65e6d7536ab2728881a41f8feb2ee5841c2240516c3c3d65d8b3"
+dependencies = [
+ "anyhow",
+ "serde",
+ "serde_json",
+ "thiserror",
+ "uuid",
+]
+
+[[package]]
 name = "k256"
 version = "0.13.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -5965,9 +5978,9 @@ dependencies = [
 
 [[package]]
 name = "runtimelib"
-version = "0.14.0"
+version = "0.19.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0c3d817764e3971867351e6103955b17d808f5330e9ef63aaaaab55bf8c664c1"
+checksum = "fe23ba9967355bbb1be2fb9a8e51bd239ffdf9c791fad5a9b765122ee2bde2e4"
 dependencies = [
  "anyhow",
  "base64 0.22.1",
@@ -5977,6 +5990,7 @@ dependencies = [
  "dirs",
  "futures",
  "glob",
+ "jupyter-serde",
  "rand",
  "ring",
  "serde",
