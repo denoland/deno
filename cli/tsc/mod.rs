@@ -10,6 +10,7 @@ use crate::npm::ResolvePkgFolderFromDenoReqError;
 use crate::resolver::CjsTracker;
 use crate::util::checksum;
 use crate::util::path::mapped_specifier_for_tsc;
+use crate::worker::create_isolate_create_params;
 
 use deno_ast::MediaType;
 use deno_core::anyhow::anyhow;
@@ -1104,6 +1105,7 @@ pub fn exec(request: Request) -> Result<Response, AnyError> {
       root_map,
       remapped_specifiers,
     )],
+    create_params: create_isolate_create_params(),
     ..Default::default()
   });
 

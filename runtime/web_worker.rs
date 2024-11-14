@@ -361,6 +361,8 @@ pub struct WebWorkerOptions {
   pub extensions: Vec<Extension>,
   pub startup_snapshot: Option<&'static [u8]>,
   pub unsafely_ignore_certificate_errors: Option<Vec<String>>,
+  /// Optional isolate creation parameters, such as heap limits.
+  pub create_params: Option<v8::CreateParams>,
   pub seed: Option<u64>,
   pub create_web_worker_cb: Arc<ops::worker_host::CreateWebWorkerCb>,
   pub format_js_error_fn: Option<Arc<FormatJsErrorFn>>,
@@ -565,6 +567,7 @@ impl WebWorker {
     let mut js_runtime = JsRuntime::new(RuntimeOptions {
       module_loader: Some(services.module_loader),
       startup_snapshot: options.startup_snapshot,
+      create_params: options.create_params,
       get_error_class_fn: options.get_error_class_fn,
       shared_array_buffer_store: services.shared_array_buffer_store,
       compiled_wasm_module_store: services.compiled_wasm_module_store,
