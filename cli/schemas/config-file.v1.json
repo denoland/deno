@@ -528,7 +528,6 @@
           "bare-node-builtins",
           "byonm",
           "cron",
-          "detect-cjs",
           "ffi",
           "fs",
           "fmt-component",

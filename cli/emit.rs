@@ -181,7 +181,6 @@ impl Emitter {
   pub async fn load_and_emit_for_hmr(
     &self,
     specifier: &ModuleSpecifier,
-    module_kind: deno_ast::ModuleKind,
   ) -> Result<String, AnyError> {
     let media_type = MediaType::from_specifier(specifier);
     let source_code = tokio::fs::read_to_string(
@@ -203,11 +202,16 @@ impl Emitter {
         // this statement is probably wrong)
         let mut options = self.transpile_and_emit_options.1.clone();
         options.source_map = SourceMapOption::None;
+        let is_cjs = self.cjs_tracker.is_cjs_with_known_is_script(
+          specifier,
+          media_type,
+          parsed_source.compute_is_script(),
+        )?;
         let transpiled_source = parsed_source
           .transpile(
             &self.transpile_and_emit_options.0,
             &deno_ast::TranspileModuleOptions {
-              module_kind: Some(module_kind),
+              module_kind: Some(ModuleKind::from_is_cjs(is_cjs)),
             },
             &options,
           )?

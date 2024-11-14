@@ -310,14 +310,13 @@ fn get_suggestions_for_terminal_errors(e: &JsError) -> Vec<FixSuggestion> {
     {
       return vec![
         FixSuggestion::info_multiline(&[
-          cstr!("Deno supports CommonJS modules in <u>.cjs</> files, or when there's a <u>package.json</>"),
-          cstr!("with <i>\"type\": \"commonjs\"</> option and <i>--unstable-detect-cjs</> flag is used.")
+          cstr!("Deno supports CommonJS modules in <u>.cjs</> files, or when the closest"),
+          cstr!("<u>package.json</> has a <i>\"type\": \"commonjs\"</> option.")
         ]),
         FixSuggestion::hint_multiline(&[
           "Rewrite this module to ESM,",
           cstr!("or change the file extension to <u>.cjs</u>,"),
-          cstr!("or add <u>package.json</> next to the file with <i>\"type\": \"commonjs\"</> option"),
-          cstr!("and pass <i>--unstable-detect-cjs</> flag."),
+          cstr!("or add <u>package.json</> next to the file with <i>\"type\": \"commonjs\"</> option."),
         ]),
         FixSuggestion::docs("https://docs.deno.com/go/commonjs"),
       ];

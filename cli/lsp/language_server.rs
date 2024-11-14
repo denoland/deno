@@ -22,6 +22,7 @@ use deno_semver::jsr::JsrPackageReqReference;
 use indexmap::Equivalent;
 use indexmap::IndexSet;
 use log::error;
+use node_resolver::NodeModuleKind;
 use serde::Deserialize;
 use serde_json::from_value;
 use std::collections::BTreeMap;
@@ -77,6 +78,7 @@ use super::parent_process_checker;
 use super::performance::Performance;
 use super::refactor;
 use super::registries::ModuleRegistry;
+use super::resolver::LspIsCjsResolver;
 use super::resolver::LspResolver;
 use super::testing;
 use super::text;
@@ -144,6 +146,7 @@ pub struct StateSnapshot {
   pub project_version: usize,
   pub assets: AssetsSnapshot,
   pub config: Arc<Config>,
+  pub is_cjs_resolver: Arc<LspIsCjsResolver>,
   pub documents: Arc<Documents>,
   pub resolver: Arc<LspResolver>,
 }
@@ -203,6 +206,7 @@ pub struct Inner {
   pub documents: Documents,
   http_client_provider: Arc<HttpClientProvider>,
   initial_cwd: PathBuf,
+  pub is_cjs_resolver: Arc<LspIsCjsResolver>,
   jsr_search_api: CliJsrSearchApi,
   /// Handles module registries, which allow discovery of modules
   module_registry: ModuleRegistry,
@@ -480,6 +484,7 @@ impl Inner {
     let initial_cwd = std::env::current_dir().unwrap_or_else(|_| {
       panic!("Could not resolve current working directory")
     });
+    let is_cjs_resolver = Arc::new(LspIsCjsResolver::new(&cache));
 
     Self {
       assets,
@@ -491,6 +496,7 @@ impl Inner {
       documents,
       http_client_provider,
       initial_cwd: initial_cwd.clone(),
+      is_cjs_resolver,
       jsr_search_api,
       project_version: 0,
       task_queue: Default::default(),
@@ -601,6 +607,7 @@ impl Inner {
       project_version: self.project_version,
       assets: self.assets.snapshot(),
       config: Arc::new(self.config.clone()),
+      is_cjs_resolver: self.is_cjs_resolver.clone(),
       documents: Arc::new(self.documents.clone()),
       resolver: self.resolver.snapshot(),
     })
@@ -622,6 +629,7 @@ impl Inner {
       }
     });
     self.cache = LspCache::new(global_cache_url);
+    self.is_cjs_resolver = Arc::new(LspIsCjsResolver::new(&self.cache));
     let deno_dir = self.cache.deno_dir();
     let workspace_settings = self.config.workspace_settings();
     let maybe_root_path = self
@@ -982,7 +990,7 @@ impl Inner {
           spawn(async move {
             let specifier = {
               let inner = ls.inner.read().await;
-              let resolver = inner.resolver.as_graph_resolver(Some(&referrer));
+              let resolver = inner.resolver.as_cli_resolver(Some(&referrer));
               let Ok(specifier) = resolver.resolve(
                 &specifier,
                 &deno_graph::Range {
@@ -990,6 +998,7 @@ impl Inner {
                   start: deno_graph::Position::zeroed(),
                   end: deno_graph::Position::zeroed(),
                 },
+                NodeModuleKind::Esm,
                 deno_graph::source::ResolutionMode::Types,
               ) else {
                 return;
@@ -1622,6 +1631,10 @@ impl Inner {
       let file_diagnostics = self
         .diagnostics_server
         .get_ts_diagnostics(&specifier, asset_or_doc.document_lsp_version());
+      let specifier_kind = asset_or_doc
+        .document()
+        .map(|d| self.is_cjs_resolver.get_doc_module_kind(d))
+        .unwrap_or(NodeModuleKind::Esm);
       let mut includes_no_cache = false;
       for diagnostic in &fixable_diagnostics {
         match diagnostic.source.as_deref() {
@@ -1660,7 +1673,13 @@ impl Inner {
               .await;
             for action in actions {
               code_actions
-                .add_ts_fix_action(&specifier, &action, diagnostic, self)
+                .add_ts_fix_action(
+                  &specifier,
+                  specifier_kind,
+                  &action,
+                  diagnostic,
+                  self,
+                )
                 .map_err(|err| {
                   error!("Unable to convert fix: {:#}", err);
                   LspError::internal_error()
@@ -1806,10 +1825,9 @@ impl Inner {
           error!("Unable to decode code action data: {:#}", err);
           LspError::invalid_params("The CodeAction's data is invalid.")
         })?;
-      let scope = self
-        .get_asset_or_document(&code_action_data.specifier)
-        .ok()
-        .and_then(|d| d.scope().cloned());
+      let maybe_asset_or_doc =
+        self.get_asset_or_document(&code_action_data.specifier).ok();
+      let scope = maybe_asset_or_doc.as_ref().and_then(|d| d.scope().cloned());
       let combined_code_actions = self
         .ts_server
         .get_combined_code_fix(
@@ -1836,6 +1854,11 @@ impl Inner {
       let changes = if code_action_data.fix_id == "fixMissingImport" {
         fix_ts_import_changes(
           &code_action_data.specifier,
+          maybe_asset_or_doc
+            .as_ref()
+            .and_then(|d| d.document())
+            .map(|d| self.is_cjs_resolver.get_doc_module_kind(d))
+            .unwrap_or(NodeModuleKind::Esm),
           &combined_code_actions.changes,
           self,
         )
@@ -1889,6 +1912,10 @@ impl Inner {
       if kind_suffix == ".rewrite.function.returnType" {
         refactor_edit_info.edits = fix_ts_import_changes(
           &action_data.specifier,
+          asset_or_doc
+            .document()
+            .map(|d| self.is_cjs_resolver.get_doc_module_kind(d))
+            .unwrap_or(NodeModuleKind::Esm),
           &refactor_edit_info.edits,
           self,
         )
@@ -2238,6 +2265,7 @@ impl Inner {
         &self.jsr_search_api,
         &self.npm_search_api,
         &self.documents,
+        &self.is_cjs_resolver,
         self.resolver.as_ref(),
         self
           .config
