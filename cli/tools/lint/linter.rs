@@ -33,7 +33,7 @@ pub enum LintResult {
   },
   /// File was not parsed and linted because, eg. it might have
   /// been a minified file.
-  Skipped { diagnostic: LintDiagnostic },
+  Skipped { diagnostic: Box<LintDiagnostic> },
 }
 
 pub struct CliLinterOptions {
@@ -121,11 +121,11 @@ impl CliLinter {
         custom_docs_url: None,
         info: vec![],
       };
-      let diagnostic = LintDiagnostic {
+      let diagnostic = Box::new(LintDiagnostic {
         specifier,
         range: None,
         details,
-      };
+      });
       return Ok(LintResult::Skipped { diagnostic });
     }
 
