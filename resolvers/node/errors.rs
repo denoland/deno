@@ -12,12 +12,6 @@ use crate::NodeResolutionMode;
 
 macro_rules! kinded_err {
   ($name:ident, $kind_name:ident) => {
-    impl $kind_name {
-      pub fn into_box(self) -> $name {
-        $name(Box::new(self))
-      }
-    }
-
     #[derive(Error, Debug)]
     #[error(transparent)]
     pub struct $name(pub Box<$kind_name>);
