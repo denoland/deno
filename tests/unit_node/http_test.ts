@@ -1015,11 +1015,8 @@ Deno.test(
     request.destroy();
     request.on("error", (e) => {
       assertEquals(e.message, "socket hang up");
-      // Use socket's "close" event to avoid op leaks
-      // deno-lint-ignore no-explicit-any
-      const socket = (request as any).agent.sockets["localhost:5929:"][0];
-      socket.on("close", resolve);
     });
+    request.on("close", () => resolve());
     await promise;
   },
 );
@@ -1028,21 +1025,23 @@ Deno.test(
   "[node/http] destroyed requests should not be sent",
   async () => {
     let receivedRequest = false;
+    const requestClosed = Promise.withResolvers<void>();
     const ac = new AbortController();
     const server = Deno.serve({ signal: ac.signal }, () => {
       receivedRequest = true;
       return new Response(null);
     });
-    let receivedError = null;
     const request = http.request(`http://localhost:${server.addr.port}/`);
     request.destroy();
     request.end("hello");
     request.on("error", (err) => {
-      receivedError = err;
+      assert(err.message.includes("socket hang up"));
       ac.abort();
     });
-    await new Promise((r) => setTimeout(r, 500));
-    assert(receivedError!.message.includes("socket hang up"));
+    request.on("close", () => {
+      requestClosed.resolve();
+    });
+    await requestClosed.promise;
     assertEquals(receivedRequest, false);
     await server.finished;
   },
