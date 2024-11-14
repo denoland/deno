@@ -193,7 +193,7 @@ async fn bench_specifier_inner(
     .await?;
 
   // We execute the main module as a side module so that import.meta.main is not set.
-  worker.execute_side_module_possibly_with_npm().await?;
+  worker.execute_side_module().await?;
 
   let mut worker = worker.into_main_worker();
 

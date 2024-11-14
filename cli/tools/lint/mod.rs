@@ -63,7 +63,7 @@ pub use rules::LintRuleProvider;
 
 const JSON_SCHEMA_VERSION: u8 = 1;
 
-static STDIN_FILE_NAME: &str = "$deno$stdin.ts";
+static STDIN_FILE_NAME: &str = "$deno$stdin.mts";
 
 pub async fn lint(
   flags: Arc<Flags>,

@@ -1,0 +1,4 @@
+{
+  "args": "run --allow-read unhandled_rejection_dynamic_import2/main.ts",
+  "output": "unhandled_rejection_dynamic_import2/main.ts.out"
+}

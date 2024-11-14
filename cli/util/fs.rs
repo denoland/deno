@@ -160,11 +160,11 @@ fn atomic_write_file(
     data: &[u8],
   ) -> std::io::Result<()> {
     fs.write_file(temp_file_path, data)?;
-    fs.rename_file(temp_file_path, file_path).map_err(|err| {
-      // clean up the created temp file on error
-      let _ = fs.remove_file(temp_file_path);
-      err
-    })
+    fs.rename_file(temp_file_path, file_path)
+      .inspect_err(|_err| {
+        // clean up the created temp file on error
+        let _ = fs.remove_file(temp_file_path);
+      })
   }
 
   let temp_file_path = get_atomic_file_path(file_path);
@@ -565,7 +565,9 @@ pub fn symlink_dir(oldpath: &Path, newpath: &Path) -> Result<(), Error> {
     use std::os::windows::fs::symlink_dir;
     symlink_dir(oldpath, newpath).map_err(|err| {
       if let Some(code) = err.raw_os_error() {
-        if code as u32 == winapi::shared::winerror::ERROR_PRIVILEGE_NOT_HELD {
+        if code as u32 == winapi::shared::winerror::ERROR_PRIVILEGE_NOT_HELD
+          || code as u32 == winapi::shared::winerror::ERROR_INVALID_FUNCTION
+        {
           return err_mapper(err, Some(ErrorKind::PermissionDenied));
         }
       }

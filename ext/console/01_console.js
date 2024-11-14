@@ -2653,6 +2653,7 @@ const HSL_PATTERN = new SafeRegExp(
 );
 
 function parseCssColor(colorString) {
+  colorString = StringPrototypeToLowerCase(colorString);
   if (colorKeywords.has(colorString)) {
     colorString = colorKeywords.get(colorString);
   }
@@ -3256,7 +3257,7 @@ class Console {
 
     const stringifyValue = (value) =>
       inspectValueWithQuotes(value, {
-        ...getDefaultInspectOptions(),
+        ...getConsoleInspectOptions(noColorStdout()),
         depth: 1,
         compact: true,
       });

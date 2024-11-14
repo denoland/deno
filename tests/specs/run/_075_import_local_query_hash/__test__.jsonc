@@ -1,0 +1,4 @@
+{
+  "args": "run 075_import_local_query_hash.ts",
+  "output": "075_import_local_query_hash.ts.out"
+}

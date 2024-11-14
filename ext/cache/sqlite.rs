@@ -42,7 +42,7 @@ pub struct SqliteBackedCache {
 }
 
 impl SqliteBackedCache {
-  pub fn new(cache_storage_dir: PathBuf) -> Self {
+  pub fn new(cache_storage_dir: PathBuf) -> Result<Self, CacheError> {
     {
       std::fs::create_dir_all(&cache_storage_dir)
         .expect("failed to create cache dir");
@@ -57,18 +57,14 @@ impl SqliteBackedCache {
         PRAGMA synchronous=NORMAL;
         PRAGMA optimize;
       ";
-      connection
-        .execute_batch(initial_pragmas)
-        .expect("failed to execute pragmas");
-      connection
-        .execute(
-          "CREATE TABLE IF NOT EXISTS cache_storage (
+      connection.execute_batch(initial_pragmas)?;
+      connection.execute(
+        "CREATE TABLE IF NOT EXISTS cache_storage (
                     id              INTEGER PRIMARY KEY,
                     cache_name      TEXT NOT NULL UNIQUE
                 )",
-          (),
-        )
-        .expect("failed to create cache_storage table");
+        (),
+      )?;
       connection
         .execute(
           "CREATE TABLE IF NOT EXISTS request_response_list (
@@ -86,12 +82,11 @@ impl SqliteBackedCache {
                     UNIQUE (cache_id, request_url)
                 )",
           (),
-        )
-        .expect("failed to create request_response_list table");
-      SqliteBackedCache {
+        )?;
+      Ok(SqliteBackedCache {
         connection: Arc::new(Mutex::new(connection)),
         cache_storage_dir,
-      }
+      })
     }
   }
 }

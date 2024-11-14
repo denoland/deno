@@ -576,7 +576,6 @@ pub struct UnstableConfig {
   // TODO(bartlomieju): remove in Deno 2.5
   pub legacy_flag_enabled: bool, // --unstable
   pub bare_node_builtins: bool,
-  pub detect_cjs: bool,
   pub sloppy_imports: bool,
   pub features: Vec<String>, // --unstabe-kv --unstable-cron
 }
@@ -1178,9 +1177,9 @@ static DENO_HELP: &str = cstr!(
 
   <y>Dependency management:</>
     <g>add</>          Add dependencies
-                  <p(245)>deno add @std/assert  |  deno add npm:express</>
-    <g>install</>      Install script as an executable
-    <g>uninstall</>    Uninstall a script previously installed with deno install
+                  <p(245)>deno add jsr:@std/assert  |  deno add npm:express</>
+    <g>install</>      Installs dependencies either in the local project or globally to a bin directory
+    <g>uninstall</>    Uninstalls a dependency or an executable script in the installation root's bin directory
     <g>remove</>       Remove dependencies from the configuration file
 
   <y>Tooling:</>
@@ -1659,10 +1658,10 @@ fn add_subcommand() -> Command {
     "add",
     cstr!(
       "Add dependencies to your configuration file.
-  <p(245)>deno add @std/path</>
+  <p(245)>deno add jsr:@std/path</>
 
 You can add multiple dependencies at once:
-  <p(245)>deno add @std/path @std/assert</>"
+  <p(245)>deno add jsr:@std/path jsr:@std/assert</>"
     ),
     UnstableArgsConfig::None,
   )
@@ -1856,6 +1855,7 @@ Unless --reload is specified, this command will not re-download already cached d
             .required_unless_present("help")
             .value_hint(ValueHint::FilePath),
         )
+        .arg(frozen_lockfile_arg())
         .arg(allow_import_arg())
       }
     )
@@ -2273,7 +2273,7 @@ Ignore formatting a file by adding an ignore comment at the top of the file:
             "sass", "less", "html", "svelte", "vue", "astro", "yml", "yaml",
             "ipynb",
           ])
-          .help_heading(FMT_HEADING),
+          .help_heading(FMT_HEADING).requires("files"),
       )
       .arg(
         Arg::new("ignore")
@@ -2470,7 +2470,7 @@ in the package cache. If no dependency is specified, installs all dependencies l
 If the <p(245)>--entrypoint</> flag is passed, installs the dependencies of the specified entrypoint(s).
 
   <p(245)>deno install</>
-  <p(245)>deno install @std/bytes</>
+  <p(245)>deno install jsr:@std/bytes</>
   <p(245)>deno install npm:chalk</>
   <p(245)>deno install --entrypoint entry1.ts entry2.ts</>
 
@@ -2769,8 +2769,13 @@ It is especially useful for quick prototyping and checking snippets of code.
 
 TypeScript is supported, however it is not type-checked, only transpiled."
   ), UnstableArgsConfig::ResolutionAndRuntime)
-    .defer(|cmd| runtime_args(cmd, true, true, true)
-      .arg(check_arg(false))
+    .defer(|cmd| {
+      let cmd = compile_args_without_check_args(cmd);
+      let cmd = inspect_args(cmd);
+      let cmd = permission_args(cmd, None);
+      let cmd = runtime_misc_args(cmd);
+
+      cmd
       .arg(
         Arg::new("eval-file")
           .long("eval-file")
@@ -2789,7 +2794,7 @@ TypeScript is supported, however it is not type-checked, only transpiled."
       .after_help(cstr!("<y>Environment variables:</>
   <g>DENO_REPL_HISTORY</>  Set REPL history file path. History file is disabled when the value is empty.
                        <p(245)>[default: $DENO_DIR/deno_history.txt]</>"))
-    )
+    })
     .arg(env_file_arg())
     .arg(
       Arg::new("args")
@@ -3382,8 +3387,7 @@ fn permission_args(app: Command, requires: Option<&'static str>) -> Command {
           .value_name("IP_OR_HOSTNAME")
           .help("Allow network access. Optionally specify allowed IP addresses and host names, with ports as necessary")
           .value_parser(flags_net::validator)
-          .hide(true)
-          ;
+          .hide(true);
         if let Some(requires) = requires {
           arg = arg.requires(requires)
         }
@@ -3662,6 +3666,10 @@ fn runtime_args(
   } else {
     app
   };
+  runtime_misc_args(app)
+}
+
+fn runtime_misc_args(app: Command) -> Command {
   app
     .arg(frozen_lockfile_arg())
     .arg(cached_only_arg())
@@ -4364,6 +4372,7 @@ fn check_parse(
   flags.type_check_mode = TypeCheckMode::Local;
   compile_args_without_check_parse(flags, matches)?;
   unstable_args_parse(flags, matches, UnstableArgsConfig::ResolutionAndRuntime);
+  frozen_lockfile_arg_parse(flags, matches);
   let files = matches.remove_many::<String>("file").unwrap().collect();
   if matches.get_flag("all") || matches.get_flag("remote") {
     flags.type_check_mode = TypeCheckMode::All;
@@ -4880,8 +4889,18 @@ fn repl_parse(
   flags: &mut Flags,
   matches: &mut ArgMatches,
 ) -> clap::error::Result<()> {
-  runtime_args_parse(flags, matches, true, true, true)?;
-  unsafely_ignore_certificate_errors_parse(flags, matches);
+  unstable_args_parse(flags, matches, UnstableArgsConfig::ResolutionAndRuntime);
+  compile_args_without_check_parse(flags, matches)?;
+  cached_only_arg_parse(flags, matches);
+  frozen_lockfile_arg_parse(flags, matches);
+  permission_args_parse(flags, matches)?;
+  inspect_arg_parse(flags, matches);
+  location_arg_parse(flags, matches);
+  v8_flags_arg_parse(flags, matches);
+  seed_arg_parse(flags, matches);
+  enable_testing_features_arg_parse(flags, matches);
+  env_file_arg_parse(flags, matches);
+  strace_ops_parse(flags, matches);
 
   let eval_files = matches
     .remove_many::<String>("eval-file")
@@ -5700,7 +5719,6 @@ fn unstable_args_parse(
 
   flags.unstable_config.bare_node_builtins =
     matches.get_flag("unstable-bare-node-builtins");
-  flags.unstable_config.detect_cjs = matches.get_flag("unstable-detect-cjs");
   flags.unstable_config.sloppy_imports =
     matches.get_flag("unstable-sloppy-imports");
 
@@ -6781,6 +6799,32 @@ mod tests {
         ..Flags::default()
       }
     );
+
+    let r = flags_from_vec(svec!["deno", "fmt", "--ext", "html"]);
+    assert!(r.is_err());
+    let r = flags_from_vec(svec!["deno", "fmt", "--ext", "html", "./**"]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Fmt(FmtFlags {
+          check: false,
+          files: FileFlags {
+            include: vec!["./**".to_string()],
+            ignore: vec![],
+          },
+          use_tabs: None,
+          line_width: None,
+          indent_width: None,
+          single_quote: None,
+          prose_wrap: None,
+          no_semicolons: None,
+          unstable_component: false,
+          watch: Default::default(),
+        }),
+        ext: Some("html".to_string()),
+        ..Flags::default()
+      }
+    );
   }
 
   #[test]
@@ -7429,7 +7473,7 @@ mod tests {
   #[test]
   fn repl_with_flags() {
     #[rustfmt::skip]
-    let r = flags_from_vec(svec!["deno", "repl", "-A", "--import-map", "import_map.json", "--no-remote", "--config", "tsconfig.json", "--no-check", "--reload", "--lock", "lock.json", "--cert", "example.crt", "--cached-only", "--location", "https:foo", "--v8-flags=--help", "--seed", "1", "--inspect=127.0.0.1:9229", "--unsafely-ignore-certificate-errors", "--env=.example.env"]);
+    let r = flags_from_vec(svec!["deno", "repl", "-A", "--import-map", "import_map.json", "--no-remote", "--config", "tsconfig.json", "--reload", "--lock", "lock.json", "--cert", "example.crt", "--cached-only", "--location", "https:foo", "--v8-flags=--help", "--seed", "1", "--inspect=127.0.0.1:9229", "--unsafely-ignore-certificate-errors", "--env=.example.env"]);
     assert_eq!(
       r.unwrap(),
       Flags {
@@ -7477,7 +7521,6 @@ mod tests {
           allow_write: Some(vec![]),
           ..Default::default()
         },
-        type_check_mode: TypeCheckMode::None,
         ..Flags::default()
       }
     );
@@ -7499,7 +7542,6 @@ mod tests {
           eval: None,
           is_default_command: false,
         }),
-        type_check_mode: TypeCheckMode::None,
         ..Flags::default()
       }
     );

@@ -1,6 +1,6 @@
 [UNORDERED_START]
-Download http://localhost:4260/@denotest/MixedCase
-Download http://localhost:4260/@denotest/CAPITALS
+Download http://localhost:4260/@denotest%2fMixedCase
+Download http://localhost:4260/@denotest%2fCAPITALS
 [UNORDERED_END]
 [UNORDERED_START]
 Download http://localhost:4260/@denotest/CAPITALS/1.0.0.tgz

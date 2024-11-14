@@ -631,7 +631,7 @@ async fn configure_main_worker(
       "Deno[Deno.internal].core.setLeakTracingEnabled(true);",
     )?;
   }
-  let res = worker.execute_side_module_possibly_with_npm().await;
+  let res = worker.execute_side_module().await;
   let mut worker = worker.into_main_worker();
   match res {
     Ok(()) => Ok(()),

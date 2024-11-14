@@ -2,7 +2,7 @@
 
 [package]
 name = "deno_fs"
-version = "0.81.0"
+version = "0.87.0"
 authors.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -28,9 +28,10 @@ libc.workspace = true
 rand.workspace = true
 rayon = "1.8.0"
 serde.workspace = true
+thiserror.workspace = true
 
 [target.'cfg(unix)'.dependencies]
-nix.workspace = true
+nix = { workspace = true, features = ["fs", "user"] }
 
 [target.'cfg(windows)'.dependencies]
 winapi = { workspace = true, features = ["winbase"] }

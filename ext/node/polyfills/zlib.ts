@@ -40,6 +40,58 @@ import {
   createBrotliCompress,
   createBrotliDecompress,
 } from "ext:deno_node/_brotli.js";
+import { ERR_INVALID_ARG_TYPE } from "ext:deno_node/internal/errors.ts";
+import { validateUint32 } from "ext:deno_node/internal/validators.mjs";
+import { op_zlib_crc32 } from "ext:core/ops";
+import { core, primordials } from "ext:core/mod.js";
+import { TextEncoder } from "ext:deno_web/08_text_encoding.js";
+const {
+  Uint8Array,
+  TypedArrayPrototypeGetBuffer,
+  TypedArrayPrototypeGetByteLength,
+  TypedArrayPrototypeGetByteOffset,
+  DataViewPrototypeGetBuffer,
+  DataViewPrototypeGetByteLength,
+  DataViewPrototypeGetByteOffset,
+} = primordials;
+const { isTypedArray, isDataView } = core;
+
+const enc = new TextEncoder();
+const toU8 = (input) => {
+  if (typeof input === "string") {
+    return enc.encode(input);
+  }
+
+  if (isTypedArray(input)) {
+    return new Uint8Array(
+      TypedArrayPrototypeGetBuffer(input),
+      TypedArrayPrototypeGetByteOffset(input),
+      TypedArrayPrototypeGetByteLength(input),
+    );
+  } else if (isDataView(input)) {
+    return new Uint8Array(
+      DataViewPrototypeGetBuffer(input),
+      DataViewPrototypeGetByteOffset(input),
+      DataViewPrototypeGetByteLength(input),
+    );
+  }
+
+  return input;
+};
+
+export function crc32(data, value = 0) {
+  if (typeof data !== "string" && !isArrayBufferView(data)) {
+    throw new ERR_INVALID_ARG_TYPE("data", [
+      "Buffer",
+      "TypedArray",
+      "DataView",
+      "string",
+    ], data);
+  }
+  validateUint32(value, "value");
+
+  return op_zlib_crc32(toU8(data), value);
+}
 
 export class Options {
   constructor() {
@@ -87,6 +139,7 @@ export default {
   BrotliOptions,
   codes,
   constants,
+  crc32,
   createBrotliCompress,
   createBrotliDecompress,
   createDeflate,

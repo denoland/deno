@@ -1,0 +1,5 @@
+{
+  "args": "run wasm_streaming_panic_test.js",
+  "output": "wasm_streaming_panic_test.js.out",
+  "exitCode": 1
+}
