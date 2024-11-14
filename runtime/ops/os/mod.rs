@@ -1,5 +1,6 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
+use crate::sys_info;
 use crate::worker::ExitCode;
 use deno_core::op2;
 use deno_core::v8;
@@ -10,8 +11,6 @@ use deno_permissions::PermissionsContainer;
 use serde::Serialize;
 use std::collections::HashMap;
 use std::env;
-
-mod sys_info;
 
 deno_core::extension!(
   deno_os,

@@ -555,6 +555,17 @@ impl CliMainWorkerFactory {
       permissions,
       v8_code_cache: shared.code_cache.clone(),
     };
+
+    let maybe_mem_info = deno_runtime::sys_info::mem_info();
+    let isolate_create_params = if let Some(mem_info) = maybe_mem_info {
+      Some(
+        v8::CreateParams::default()
+          .heap_limits_from_system_memory(mem_info.total, 0),
+      )
+    } else {
+      None
+    };
+
     let options = WorkerOptions {
       bootstrap: BootstrapOptions {
         deno_version: crate::version::DENO_VERSION_INFO.deno.to_string(),
@@ -585,7 +596,7 @@ impl CliMainWorkerFactory {
       },
       extensions: custom_extensions,
       startup_snapshot: crate::js::deno_isolate_init(),
-      create_params: None,
+      create_params: isolate_create_params,
       unsafely_ignore_certificate_errors: shared
         .options
         .unsafely_ignore_certificate_errors
