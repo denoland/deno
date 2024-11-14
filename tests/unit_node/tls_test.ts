@@ -32,15 +32,13 @@ for (
 ) {
   Deno.test(`tls.connect sends correct ALPN: '${alpnServer}' + '${alpnClient}' = '${expected}'`, async () => {
     const listener = Deno.listenTls({
-      hostname: "localhost",
       port: 0,
       key,
       cert,
       alpnProtocols: alpnServer,
     });
     const outgoing = tls.connect({
-      host: "::1",
-      servername: "localhost",
+      host: "localhost",
       port: listener.addr.port,
       ALPNProtocols: alpnClient,
       secureContext: {
@@ -63,7 +61,6 @@ Deno.test("tls.connect makes tls connection", async () => {
   const ctl = new AbortController();
   let port;
   const serve = Deno.serve({
-    hostname: "localhost",
     port: 0,
     key,
     cert,
@@ -74,8 +71,7 @@ Deno.test("tls.connect makes tls connection", async () => {
   await delay(200);
 
   const conn = tls.connect({
-    host: "::1",
-    servername: "localhost",
+    host: "localhost",
     port,
     secureContext: {
       ca: rootCaCert,
@@ -106,7 +102,6 @@ Deno.test("tls.connect mid-read tcp->tls upgrade", async () => {
   const { promise, resolve } = Promise.withResolvers<void>();
   const ctl = new AbortController();
   const serve = Deno.serve({
-    hostname: "localhost",
     port: 8443,
     key,
     cert,
@@ -116,8 +111,7 @@ Deno.test("tls.connect mid-read tcp->tls upgrade", async () => {
   await delay(200);
 
   const conn = tls.connect({
-    host: "::1",
-    servername: "localhost",
+    host: "localhost",
     port: 8443,
     secureContext: {
       ca: rootCaCert,

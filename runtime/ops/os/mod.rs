@@ -73,7 +73,7 @@ deno_core::extension!(
 #[derive(Debug, thiserror::Error)]
 pub enum OsError {
   #[error(transparent)]
-  Permission(deno_core::error::AnyError),
+  Permission(#[from] deno_permissions::PermissionCheckError),
   #[error("File name or path {0:?} is not valid UTF-8")]
   InvalidUtf8(std::ffi::OsString),
   #[error("Key is an empty string.")]
@@ -94,8 +94,7 @@ fn op_exec_path(state: &mut OpState) -> Result<String, OsError> {
   let current_exe = env::current_exe().unwrap();
   state
     .borrow_mut::<PermissionsContainer>()
-    .check_read_blind(&current_exe, "exec_path", "Deno.execPath()")
-    .map_err(OsError::Permission)?;
+    .check_read_blind(&current_exe, "exec_path", "Deno.execPath()")?;
   // normalize path so it doesn't include '.' or '..' components
   let path = normalize_path(current_exe);
 
@@ -111,10 +110,7 @@ fn op_set_env(
   #[string] key: &str,
   #[string] value: &str,
 ) -> Result<(), OsError> {
-  state
-    .borrow_mut::<PermissionsContainer>()
-    .check_env(key)
-    .map_err(OsError::Permission)?;
+  state.borrow_mut::<PermissionsContainer>().check_env(key)?;
   if key.is_empty() {
     return Err(OsError::EnvEmptyKey);
   }
@@ -146,10 +142,7 @@ fn op_get_env(
   let skip_permission_check = NODE_ENV_VAR_ALLOWLIST.contains(&key);
 
   if !skip_permission_check {
-    state
-      .borrow_mut::<PermissionsContainer>()
-      .check_env(&key)
-      .map_err(OsError::Permission)?;
+    state.borrow_mut::<PermissionsContainer>().check_env(&key)?;
   }
 
   if key.is_empty() {
@@ -172,10 +165,7 @@ fn op_delete_env(
   state: &mut OpState,
   #[string] key: String,
 ) -> Result<(), OsError> {
-  state
-    .borrow_mut::<PermissionsContainer>()
-    .check_env(&key)
-    .map_err(OsError::Permission)?;
+  state.borrow_mut::<PermissionsContainer>().check_env(&key)?;
   if key.is_empty() || key.contains(&['=', '\0'] as &[char]) {
     return Err(OsError::EnvInvalidKey(key.to_string()));
   }
@@ -197,7 +187,7 @@ fn op_get_exit_code(state: &mut OpState) -> i32 {
 #[op2(fast)]
 fn op_exit(state: &mut OpState) {
   let code = state.borrow::<ExitCode>().get();
-  std::process::exit(code)
+  crate::exit(code)
 }
 
 #[op2]
@@ -240,8 +230,7 @@ fn op_network_interfaces(
 ) -> Result<Vec<NetworkInterface>, OsError> {
   state
     .borrow_mut::<PermissionsContainer>()
-    .check_sys("networkInterfaces", "Deno.networkInterfaces()")
-    .map_err(OsError::Permission)?;
+    .check_sys("networkInterfaces", "Deno.networkInterfaces()")?;
   Ok(netif::up()?.map(NetworkInterface::from).collect())
 }
 

@@ -212,3 +212,7 @@ itest!(unhandled_rejection_web_process {
   envs: env_vars_for_npm_tests(),
   http_server: true,
 });
+
+// !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+// The itest macro is deprecated. Please move your new test to ~/tests/specs.
+// !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!

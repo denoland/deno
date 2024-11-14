@@ -631,7 +631,7 @@ async fn configure_main_worker(
       "Deno[Deno.internal].core.setLeakTracingEnabled(true);",
     )?;
   }
-  let res = worker.execute_side_module_possibly_with_npm().await;
+  let res = worker.execute_side_module().await;
   let mut worker = worker.into_main_worker();
   match res {
     Ok(()) => Ok(()),
@@ -1357,6 +1357,7 @@ pub async fn report_tests(
         if let Err(err) = reporter.flush_report(&elapsed, &tests, &test_steps) {
           eprint!("Test reporter failed to flush: {}", err)
         }
+        #[allow(clippy::disallowed_methods)]
         std::process::exit(130);
       }
     }
@@ -1642,6 +1643,7 @@ pub async fn run_tests_with_watch(
     loop {
       signal::ctrl_c().await.unwrap();
       if !HAS_TEST_RUN_SIGINT_HANDLER.load(Ordering::Relaxed) {
+        #[allow(clippy::disallowed_methods)]
         std::process::exit(130);
       }
     }

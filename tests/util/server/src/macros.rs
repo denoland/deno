@@ -33,6 +33,7 @@ macro_rules! timeout {
           use std::io::Write;
           eprintln!("Test {function} timed out after {timeout} seconds, aborting");
           _ = std::io::stderr().flush();
+          #[allow(clippy::disallowed_methods)]
           ::std::process::exit(1);
         }
       });

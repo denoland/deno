@@ -7,9 +7,11 @@ import {
   brotliCompressSync,
   brotliDecompressSync,
   constants,
+  crc32,
   createBrotliCompress,
   createBrotliDecompress,
   createDeflate,
+  gzip,
   gzipSync,
   unzipSync,
 } from "node:zlib";
@@ -209,4 +211,22 @@ Deno.test("createBrotliCompress params", async () => {
       .pipe(createBrotliDecompress()),
   );
   assertEquals(output.length, input.length);
+});
+
+Deno.test("gzip() and gzipSync() accept ArrayBuffer", async () => {
+  const deffered = Promise.withResolvers<void>();
+  const buf = new ArrayBuffer(0);
+  let output: Buffer;
+  gzip(buf, (_err, data) => {
+    output = data;
+    deffered.resolve();
+  });
+  await deffered.promise;
+  assert(output! instanceof Buffer);
+  const outputSync = gzipSync(buf);
+  assert(outputSync instanceof Buffer);
+});
+
+Deno.test("crc32()", () => {
+  assertEquals(crc32("hello world"), 222957957);
 });

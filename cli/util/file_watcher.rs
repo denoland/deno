@@ -30,7 +30,7 @@ use tokio::sync::mpsc;
 use tokio::sync::mpsc::UnboundedReceiver;
 use tokio::time::sleep;
 
-const CLEAR_SCREEN: &str = "\x1B[2J\x1B[1;1H";
+const CLEAR_SCREEN: &str = "\x1B[H\x1B[2J\x1B[3J";
 const DEBOUNCE_INTERVAL: Duration = Duration::from_millis(200);
 
 struct DebouncedReceiver {
@@ -73,7 +73,6 @@ impl DebouncedReceiver {
   }
 }
 
-#[allow(clippy::print_stderr)]
 async fn error_handler<F>(watch_future: F) -> bool
 where
   F: Future<Output = Result<(), AnyError>>,
@@ -84,7 +83,7 @@ where
       Some(e) => format_js_error(e),
       None => format!("{err:?}"),
     };
-    eprintln!(
+    log::error!(
       "{}: {}",
       colors::red_bold("error"),
       error_string.trim_start_matches("error: ")

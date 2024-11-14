@@ -6,9 +6,6 @@ use std::path::PathBuf;
 
 use anyhow::bail;
 use anyhow::Error as AnyError;
-use deno_media_type::MediaType;
-use deno_package_json::PackageJsonRc;
-use deno_path_util::strip_unc_prefix;
 use deno_path_util::url_from_file_path;
 use serde_json::Map;
 use serde_json::Value;
@@ -16,8 +13,6 @@ use url::Url;
 
 use crate::env::NodeResolverEnv;
 use crate::errors;
-use crate::errors::CanonicalizingPkgJsonDirError;
-use crate::errors::ClosestPkgJsonError;
 use crate::errors::DataUrlReferrerError;
 use crate::errors::FinalizeResolutionError;
 use crate::errors::InvalidModuleSpecifierError;
@@ -32,7 +27,6 @@ use crate::errors::PackageExportsResolveError;
 use crate::errors::PackageImportNotDefinedError;
 use crate::errors::PackageImportsResolveError;
 use crate::errors::PackageImportsResolveErrorKind;
-use crate::errors::PackageJsonLoadError;
 use crate::errors::PackagePathNotExportedError;
 use crate::errors::PackageResolveError;
 use crate::errors::PackageSubpathResolveError;
@@ -42,20 +36,28 @@ use crate::errors::PackageTargetResolveError;
 use crate::errors::PackageTargetResolveErrorKind;
 use crate::errors::ResolveBinaryCommandsError;
 use crate::errors::ResolvePkgJsonBinExportError;
-use crate::errors::ResolvePkgSubpathFromDenoModuleError;
-use crate::errors::TypeScriptNotSupportedInNpmError;
 use crate::errors::TypesNotFoundError;
 use crate::errors::TypesNotFoundErrorData;
 use crate::errors::UnsupportedDirImportError;
 use crate::errors::UnsupportedEsmUrlSchemeError;
-use crate::errors::UrlToNodeResolutionError;
-use crate::NpmResolverRc;
+use crate::npm::InNpmPackageCheckerRc;
+use crate::NpmPackageFolderResolverRc;
+use crate::PackageJsonResolverRc;
 use crate::PathClean;
 use deno_package_json::PackageJson;
 
 pub static DEFAULT_CONDITIONS: &[&str] = &["deno", "node", "import"];
 pub static REQUIRE_CONDITIONS: &[&str] = &["require", "node"];
 static TYPES_ONLY_CONDITIONS: &[&str] = &["types"];
+
+fn conditions_from_module_kind(
+  kind: NodeModuleKind,
+) -> &'static [&'static str] {
+  match kind {
+    NodeModuleKind::Esm => DEFAULT_CONDITIONS,
+    NodeModuleKind::Cjs => REQUIRE_CONDITIONS,
+  }
+}
 
 pub type NodeModuleKind = deno_package_json::NodeModuleKind;
 
@@ -73,16 +75,14 @@ impl NodeResolutionMode {
 
 #[derive(Debug)]
 pub enum NodeResolution {
-  Esm(Url),
-  CommonJs(Url),
+  Module(Url),
   BuiltIn(String),
 }
 
 impl NodeResolution {
   pub fn into_url(self) -> Url {
     match self {
-      Self::Esm(u) => u,
-      Self::CommonJs(u) => u,
+      Self::Module(u) => u,
       Self::BuiltIn(specifier) => {
         if specifier.starts_with("node:") {
           Url::parse(&specifier).unwrap()
@@ -90,42 +90,6 @@ impl NodeResolution {
           Url::parse(&format!("node:{specifier}")).unwrap()
         }
       }
-    }
-  }
-
-  pub fn into_specifier_and_media_type(
-    resolution: Option<Self>,
-  ) -> (Url, MediaType) {
-    match resolution {
-      Some(NodeResolution::CommonJs(specifier)) => {
-        let media_type = MediaType::from_specifier(&specifier);
-        (
-          specifier,
-          match media_type {
-            MediaType::JavaScript | MediaType::Jsx => MediaType::Cjs,
-            MediaType::TypeScript | MediaType::Tsx => MediaType::Cts,
-            MediaType::Dts => MediaType::Dcts,
-            _ => media_type,
-          },
-        )
-      }
-      Some(NodeResolution::Esm(specifier)) => {
-        let media_type = MediaType::from_specifier(&specifier);
-        (
-          specifier,
-          match media_type {
-            MediaType::JavaScript | MediaType::Jsx => MediaType::Mjs,
-            MediaType::TypeScript | MediaType::Tsx => MediaType::Mts,
-            MediaType::Dts => MediaType::Dmts,
-            _ => media_type,
-          },
-        )
-      }
-      Some(resolution) => (resolution.into_url(), MediaType::Dts),
-      None => (
-        Url::parse("internal:///missing_dependency.d.ts").unwrap(),
-        MediaType::Dts,
-      ),
     }
   }
 }
@@ -136,16 +100,28 @@ pub type NodeResolverRc<TEnv> = crate::sync::MaybeArc<NodeResolver<TEnv>>;
 #[derive(Debug)]
 pub struct NodeResolver<TEnv: NodeResolverEnv> {
   env: TEnv,
-  npm_resolver: NpmResolverRc,
+  in_npm_pkg_checker: InNpmPackageCheckerRc,
+  npm_pkg_folder_resolver: NpmPackageFolderResolverRc,
+  pkg_json_resolver: PackageJsonResolverRc<TEnv>,
 }
 
 impl<TEnv: NodeResolverEnv> NodeResolver<TEnv> {
-  pub fn new(env: TEnv, npm_resolver: NpmResolverRc) -> Self {
-    Self { env, npm_resolver }
+  pub fn new(
+    env: TEnv,
+    in_npm_pkg_checker: InNpmPackageCheckerRc,
+    npm_pkg_folder_resolver: NpmPackageFolderResolverRc,
+    pkg_json_resolver: PackageJsonResolverRc<TEnv>,
+  ) -> Self {
+    Self {
+      env,
+      in_npm_pkg_checker,
+      npm_pkg_folder_resolver,
+      pkg_json_resolver,
+    }
   }
 
   pub fn in_npm_package(&self, specifier: &Url) -> bool {
-    self.npm_resolver.in_npm_package(specifier)
+    self.in_npm_pkg_checker.in_npm_package(specifier)
   }
 
   /// This function is an implementation of `defaultResolve` in
@@ -166,7 +142,7 @@ impl<TEnv: NodeResolverEnv> NodeResolver<TEnv> {
 
     if let Ok(url) = Url::parse(specifier) {
       if url.scheme() == "data" {
-        return Ok(NodeResolution::Esm(url));
+        return Ok(NodeResolution::Module(url));
       }
 
       if let Some(module_name) =
@@ -191,7 +167,7 @@ impl<TEnv: NodeResolverEnv> NodeResolver<TEnv> {
         let url = referrer
           .join(specifier)
           .map_err(|source| DataUrlReferrerError { source })?;
-        return Ok(NodeResolution::Esm(url));
+        return Ok(NodeResolution::Module(url));
       }
     }
 
@@ -199,8 +175,7 @@ impl<TEnv: NodeResolverEnv> NodeResolver<TEnv> {
       specifier,
       referrer,
       referrer_kind,
-      // even though the referrer may be CJS, if we're here that means we're doing ESM resolution
-      DEFAULT_CONDITIONS,
+      conditions_from_module_kind(referrer_kind),
       mode,
     )?;
 
@@ -212,7 +187,7 @@ impl<TEnv: NodeResolverEnv> NodeResolver<TEnv> {
     };
 
     let url = self.finalize_resolution(url, Some(referrer))?;
-    let resolve_response = self.url_to_node_resolution(url)?;
+    let resolve_response = NodeResolution::Module(url);
     // TODO(bartlomieju): skipped checking errors for commonJS resolution and
     // "preserveSymlinksMain"/"preserveSymlinks" options.
     Ok(resolve_response)
@@ -236,6 +211,7 @@ impl<TEnv: NodeResolverEnv> NodeResolver<TEnv> {
       })?)
     } else if specifier.starts_with('#') {
       let pkg_config = self
+        .pkg_json_resolver
         .get_closest_package_json(referrer)
         .map_err(PackageImportsResolveErrorKind::ClosestPkgJson)
         .map_err(|err| PackageImportsResolveError(Box::new(err)))?;
@@ -331,9 +307,9 @@ impl<TEnv: NodeResolverEnv> NodeResolver<TEnv> {
     package_dir: &Path,
     package_subpath: Option<&str>,
     maybe_referrer: Option<&Url>,
+    referrer_kind: NodeModuleKind,
     mode: NodeResolutionMode,
-  ) -> Result<NodeResolution, ResolvePkgSubpathFromDenoModuleError> {
-    let node_module_kind = NodeModuleKind::Esm;
+  ) -> Result<Url, PackageSubpathResolveError> {
     let package_subpath = package_subpath
       .map(|s| format!("./{s}"))
       .unwrap_or_else(|| ".".to_string());
@@ -341,14 +317,13 @@ impl<TEnv: NodeResolverEnv> NodeResolver<TEnv> {
       package_dir,
       &package_subpath,
       maybe_referrer,
-      node_module_kind,
-      DEFAULT_CONDITIONS,
+      referrer_kind,
+      conditions_from_module_kind(referrer_kind),
       mode,
     )?;
-    let resolve_response = self.url_to_node_resolution(resolved_url)?;
     // TODO(bartlomieju): skipped checking errors for commonJS resolution and
     // "preserveSymlinksMain"/"preserveSymlinks" options.
-    Ok(resolve_response)
+    Ok(resolved_url)
   }
 
   pub fn resolve_binary_commands(
@@ -356,7 +331,9 @@ impl<TEnv: NodeResolverEnv> NodeResolver<TEnv> {
     package_folder: &Path,
   ) -> Result<Vec<String>, ResolveBinaryCommandsError> {
     let pkg_json_path = package_folder.join("package.json");
-    let Some(package_json) = self.load_package_json(&pkg_json_path)? else {
+    let Some(package_json) =
+      self.pkg_json_resolver.load_package_json(&pkg_json_path)?
+    else {
       return Ok(Vec::new());
     };
 
@@ -381,9 +358,11 @@ impl<TEnv: NodeResolverEnv> NodeResolver<TEnv> {
     &self,
     package_folder: &Path,
     sub_path: Option<&str>,
-  ) -> Result<NodeResolution, ResolvePkgJsonBinExportError> {
+  ) -> Result<Url, ResolvePkgJsonBinExportError> {
     let pkg_json_path = package_folder.join("package.json");
-    let Some(package_json) = self.load_package_json(&pkg_json_path)? else {
+    let Some(package_json) =
+      self.pkg_json_resolver.load_package_json(&pkg_json_path)?
+    else {
       return Err(ResolvePkgJsonBinExportError::MissingPkgJson {
         pkg_json_path,
       });
@@ -396,37 +375,9 @@ impl<TEnv: NodeResolverEnv> NodeResolver<TEnv> {
       })?;
     let url = url_from_file_path(&package_folder.join(bin_entry)).unwrap();
 
-    let resolve_response = self.url_to_node_resolution(url)?;
     // TODO(bartlomieju): skipped checking errors for commonJS resolution and
     // "preserveSymlinksMain"/"preserveSymlinks" options.
-    Ok(resolve_response)
-  }
-
-  pub fn url_to_node_resolution(
-    &self,
-    url: Url,
-  ) -> Result<NodeResolution, UrlToNodeResolutionError> {
-    let url_str = url.as_str().to_lowercase();
-    if url_str.starts_with("http") || url_str.ends_with(".json") {
-      Ok(NodeResolution::Esm(url))
-    } else if url_str.ends_with(".js") || url_str.ends_with(".d.ts") {
-      let maybe_package_config = self.get_closest_package_json(&url)?;
-      match maybe_package_config {
-        Some(c) if c.typ == "module" => Ok(NodeResolution::Esm(url)),
-        Some(_) => Ok(NodeResolution::CommonJs(url)),
-        None => Ok(NodeResolution::Esm(url)),
-      }
-    } else if url_str.ends_with(".mjs") || url_str.ends_with(".d.mts") {
-      Ok(NodeResolution::Esm(url))
-    } else if url_str.ends_with(".ts") || url_str.ends_with(".mts") {
-      if self.in_npm_package(&url) {
-        Err(TypeScriptNotSupportedInNpmError { specifier: url }.into())
-      } else {
-        Ok(NodeResolution::Esm(url))
-      }
-    } else {
-      Ok(NodeResolution::CommonJs(url))
-    }
+    Ok(url)
   }
 
   /// Checks if the resolved file has a corresponding declaration file.
@@ -498,10 +449,7 @@ impl<TEnv: NodeResolverEnv> NodeResolver<TEnv> {
         /* sub path */ ".",
         maybe_referrer,
         referrer_kind,
-        match referrer_kind {
-          NodeModuleKind::Esm => DEFAULT_CONDITIONS,
-          NodeModuleKind::Cjs => REQUIRE_CONDITIONS,
-        },
+        conditions_from_module_kind(referrer_kind),
         NodeResolutionMode::Types,
       );
       if let Ok(resolution) = resolution_result {
@@ -1101,7 +1049,9 @@ impl<TEnv: NodeResolverEnv> NodeResolver<TEnv> {
     let (package_name, package_subpath, _is_scoped) =
       parse_npm_pkg_name(specifier, referrer)?;
 
-    if let Some(package_config) = self.get_closest_package_json(referrer)? {
+    if let Some(package_config) =
+      self.pkg_json_resolver.get_closest_package_json(referrer)?
+    {
       // ResolveSelf
       if package_config.name.as_ref() == Some(&package_name) {
         if let Some(exports) = &package_config.exports {
@@ -1176,7 +1126,7 @@ impl<TEnv: NodeResolverEnv> NodeResolver<TEnv> {
     mode: NodeResolutionMode,
   ) -> Result<Url, PackageResolveError> {
     let package_dir_path = self
-      .npm_resolver
+      .npm_pkg_folder_resolver
       .resolve_package_folder_from_package(package_name, referrer)?;
 
     // todo: error with this instead when can't find package
@@ -1216,7 +1166,10 @@ impl<TEnv: NodeResolverEnv> NodeResolver<TEnv> {
     mode: NodeResolutionMode,
   ) -> Result<Url, PackageSubpathResolveError> {
     let package_json_path = package_dir_path.join("package.json");
-    match self.load_package_json(&package_json_path)? {
+    match self
+      .pkg_json_resolver
+      .load_package_json(&package_json_path)?
+    {
       Some(pkg_json) => self.resolve_package_subpath(
         &pkg_json,
         package_subpath,
@@ -1335,70 +1288,6 @@ impl<TEnv: NodeResolverEnv> NodeResolver<TEnv> {
         )
         .map_err(|err| err.into())
     }
-  }
-
-  pub fn get_closest_package_json(
-    &self,
-    url: &Url,
-  ) -> Result<Option<PackageJsonRc>, ClosestPkgJsonError> {
-    let Ok(file_path) = deno_path_util::url_to_file_path(url) else {
-      return Ok(None);
-    };
-    self.get_closest_package_json_from_path(&file_path)
-  }
-
-  pub fn get_closest_package_json_from_path(
-    &self,
-    file_path: &Path,
-  ) -> Result<Option<PackageJsonRc>, ClosestPkgJsonError> {
-    // we use this for deno compile using byonm because the script paths
-    // won't be in virtual file system, but the package.json paths will be
-    fn canonicalize_first_ancestor_exists(
-      dir_path: &Path,
-      env: &dyn NodeResolverEnv,
-    ) -> Result<Option<PathBuf>, std::io::Error> {
-      for ancestor in dir_path.ancestors() {
-        match env.realpath_sync(ancestor) {
-          Ok(dir_path) => return Ok(Some(dir_path)),
-          Err(err) if err.kind() == std::io::ErrorKind::NotFound => {
-            // keep searching
-          }
-          Err(err) => return Err(err),
-        }
-      }
-      Ok(None)
-    }
-
-    let parent_dir = file_path.parent().unwrap();
-    let Some(start_dir) = canonicalize_first_ancestor_exists(
-      parent_dir, &self.env,
-    )
-    .map_err(|source| CanonicalizingPkgJsonDirError {
-      dir_path: parent_dir.to_path_buf(),
-      source,
-    })?
-    else {
-      return Ok(None);
-    };
-    let start_dir = strip_unc_prefix(start_dir);
-    for current_dir in start_dir.ancestors() {
-      let package_json_path = current_dir.join("package.json");
-      if let Some(pkg_json) = self.load_package_json(&package_json_path)? {
-        return Ok(Some(pkg_json));
-      }
-    }
-
-    Ok(None)
-  }
-
-  pub fn load_package_json(
-    &self,
-    package_json_path: &Path,
-  ) -> Result<Option<PackageJsonRc>, PackageJsonLoadError> {
-    crate::package_json::load_pkg_json(
-      self.env.pkg_json_fs(),
-      package_json_path,
-    )
   }
 
   pub(super) fn legacy_main_resolve(
@@ -1522,6 +1411,25 @@ impl<TEnv: NodeResolverEnv> NodeResolver<TEnv> {
         .into(),
       )
     }
+  }
+
+  /// Resolves a specifier that is pointing into a node_modules folder by canonicalizing it.
+  ///
+  /// Returns `None` when the specifier is not in a node_modules folder.
+  pub fn handle_if_in_node_modules(&self, specifier: &Url) -> Option<Url> {
+    // skip canonicalizing if we definitely know it's unnecessary
+    if specifier.scheme() == "file"
+      && specifier.path().contains("/node_modules/")
+    {
+      // Specifiers in the node_modules directory are canonicalized
+      // so canoncalize then check if it's in the node_modules directory.
+      let specifier = resolve_specifier_into_node_modules(specifier, &|path| {
+        self.env.realpath_sync(path)
+      });
+      return Some(specifier);
+    }
+
+    None
   }
 }
 
@@ -1769,6 +1677,28 @@ pub fn parse_npm_pkg_name(
   };
 
   Ok((package_name, package_subpath, is_scoped))
+}
+
+/// Resolves a specifier that is pointing into a node_modules folder.
+///
+/// Note: This should be called whenever getting the specifier from
+/// a Module::External(module) reference because that module might
+/// not be fully resolved at the time deno_graph is analyzing it
+/// because the node_modules folder might not exist at that time.
+pub fn resolve_specifier_into_node_modules(
+  specifier: &Url,
+  canonicalize: &impl Fn(&Path) -> std::io::Result<PathBuf>,
+) -> Url {
+  deno_path_util::url_to_file_path(specifier)
+    .ok()
+    // this path might not exist at the time the graph is being created
+    // because the node_modules folder might not yet exist
+    .and_then(|path| {
+      deno_path_util::canonicalize_path_maybe_not_exists(&path, canonicalize)
+        .ok()
+    })
+    .and_then(|path| deno_path_util::url_from_file_path(&path).ok())
+    .unwrap_or_else(|| specifier.clone())
 }
 
 fn pattern_key_compare(a: &str, b: &str) -> i32 {

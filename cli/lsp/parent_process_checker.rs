@@ -11,7 +11,7 @@ pub fn start(parent_process_id: u32) {
     std::thread::sleep(Duration::from_secs(10));
 
     if !is_process_active(parent_process_id) {
-      std::process::exit(1);
+      deno_runtime::exit(1);
     }
   });
 }
