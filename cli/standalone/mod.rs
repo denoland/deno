@@ -45,6 +45,8 @@ use deno_runtime::WorkerLogLevel;
 use deno_semver::npm::NpmPackageReqReference;
 use import_map::parse_from_json;
 use node_resolver::analyze::NodeCodeTranslator;
+use node_resolver::errors::ClosestPkgJsonError;
+use node_resolver::NodeModuleKind;
 use node_resolver::NodeResolutionMode;
 use serialization::DenoCompileModuleSource;
 use std::borrow::Cow;
@@ -76,9 +78,9 @@ use crate::npm::CliNpmResolverCreateOptions;
 use crate::npm::CliNpmResolverManagedSnapshotOption;
 use crate::npm::CreateInNpmPkgCheckerOptions;
 use crate::resolver::CjsTracker;
-use crate::resolver::CjsTrackerOptions;
 use crate::resolver::CliDenoResolverFs;
 use crate::resolver::CliNodeResolver;
+use crate::resolver::IsCjsResolverOptions;
 use crate::resolver::NpmModuleLoader;
 use crate::util::progress_bar::ProgressBar;
 use crate::util::progress_bar::ProgressBarStyle;
@@ -146,13 +148,27 @@ impl ModuleLoader for EmbeddedModuleLoader {
         type_error(format!("Referrer uses invalid specifier: {}", err))
       })?
     };
+    let referrer_kind = if self
+      .shared
+      .cjs_tracker
+      .is_maybe_cjs(&referrer, MediaType::from_specifier(&referrer))?
+    {
+      NodeModuleKind::Cjs
+    } else {
+      NodeModuleKind::Esm
+    };
 
     if self.shared.node_resolver.in_npm_package(&referrer) {
       return Ok(
         self
           .shared
           .node_resolver
-          .resolve(raw_specifier, &referrer, NodeResolutionMode::Execution)?
+          .resolve(
+            raw_specifier,
+            &referrer,
+            referrer_kind,
+            NodeResolutionMode::Execution,
+          )?
           .into_url(),
       );
     }
@@ -178,6 +194,7 @@ impl ModuleLoader for EmbeddedModuleLoader {
             pkg_json.dir_path(),
             sub_path.as_deref(),
             Some(&referrer),
+            referrer_kind,
             NodeResolutionMode::Execution,
           )?,
       ),
@@ -192,6 +209,7 @@ impl ModuleLoader for EmbeddedModuleLoader {
             req,
             sub_path.as_deref(),
             &referrer,
+            referrer_kind,
             NodeResolutionMode::Execution,
           )
         }
@@ -211,6 +229,7 @@ impl ModuleLoader for EmbeddedModuleLoader {
                 pkg_folder,
                 sub_path.as_deref(),
                 Some(&referrer),
+                referrer_kind,
                 NodeResolutionMode::Execution,
               )?,
           )
@@ -224,6 +243,7 @@ impl ModuleLoader for EmbeddedModuleLoader {
           return self.shared.node_resolver.resolve_req_reference(
             &reference,
             &referrer,
+            referrer_kind,
             NodeResolutionMode::Execution,
           );
         }
@@ -250,6 +270,7 @@ impl ModuleLoader for EmbeddedModuleLoader {
         let maybe_res = self.shared.node_resolver.resolve_if_for_npm_pkg(
           raw_specifier,
           &referrer,
+          referrer_kind,
           NodeResolutionMode::Execution,
         )?;
         if let Some(res) = maybe_res {
@@ -428,6 +449,14 @@ impl NodeRequireLoader for EmbeddedModuleLoader {
     path: &std::path::Path,
   ) -> Result<String, AnyError> {
     Ok(self.shared.fs.read_text_file_lossy_sync(path, None)?)
+  }
+
+  fn is_maybe_cjs(
+    &self,
+    specifier: &ModuleSpecifier,
+  ) -> Result<bool, ClosestPkgJsonError> {
+    let media_type = MediaType::from_specifier(specifier);
+    self.shared.cjs_tracker.is_maybe_cjs(specifier, media_type)
   }
 }
 
@@ -628,14 +657,14 @@ pub async fn run(data: StandaloneData) -> Result<i32, AnyError> {
   let cjs_tracker = Arc::new(CjsTracker::new(
     in_npm_pkg_checker.clone(),
     pkg_json_resolver.clone(),
-    CjsTrackerOptions {
-      unstable_detect_cjs: metadata.unstable_config.detect_cjs,
+    IsCjsResolverOptions {
+      detect_cjs: !metadata.workspace_resolver.package_jsons.is_empty(),
+      is_node_main: false,
     },
   ));
   let cache_db = Caches::new(deno_dir_provider.clone());
   let node_analysis_cache = NodeAnalysisCache::new(cache_db.node_analysis_db());
   let cli_node_resolver = Arc::new(CliNodeResolver::new(
-    cjs_tracker.clone(),
     fs.clone(),
     in_npm_pkg_checker.clone(),
     node_resolver.clone(),
@@ -646,7 +675,6 @@ pub async fn run(data: StandaloneData) -> Result<i32, AnyError> {
     cjs_tracker.clone(),
     fs.clone(),
     None,
-    false,
   );
   let node_code_translator = Arc::new(NodeCodeTranslator::new(
     cjs_esm_code_analyzer,
@@ -800,6 +828,7 @@ pub async fn run(data: StandaloneData) -> Result<i32, AnyError> {
       serve_port: None,
       serve_host: None,
     },
+    metadata.otel_config,
   );
 
   // Initialize v8 once from the main thread.

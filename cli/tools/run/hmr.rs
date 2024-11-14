@@ -4,8 +4,6 @@ use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use deno_ast::MediaType;
-use deno_ast::ModuleKind;
 use deno_core::error::generic_error;
 use deno_core::error::AnyError;
 use deno_core::futures::StreamExt;
@@ -18,7 +16,6 @@ use tokio::select;
 
 use crate::cdp;
 use crate::emit::Emitter;
-use crate::resolver::CjsTracker;
 use crate::util::file_watcher::WatcherCommunicator;
 use crate::util::file_watcher::WatcherRestartMode;
 
@@ -63,7 +60,6 @@ pub struct HmrRunner {
   session: LocalInspectorSession,
   watcher_communicator: Arc<WatcherCommunicator>,
   script_ids: HashMap<String, String>,
-  cjs_tracker: Arc<CjsTracker>,
   emitter: Arc<Emitter>,
 }
 
@@ -146,7 +142,6 @@ impl crate::worker::HmrRunner for HmrRunner {
 
             let source_code = self.emitter.load_and_emit_for_hmr(
               &module_url,
-              ModuleKind::from_is_cjs(self.cjs_tracker.is_maybe_cjs(&module_url, MediaType::from_specifier(&module_url))?),
             ).await?;
 
             let mut tries = 1;
@@ -179,14 +174,12 @@ impl crate::worker::HmrRunner for HmrRunner {
 
 impl HmrRunner {
   pub fn new(
-    cjs_tracker: Arc<CjsTracker>,
     emitter: Arc<Emitter>,
     session: LocalInspectorSession,
     watcher_communicator: Arc<WatcherCommunicator>,
   ) -> Self {
     Self {
       session,
-      cjs_tracker,
       emitter,
       watcher_communicator,
       script_ids: HashMap::new(),

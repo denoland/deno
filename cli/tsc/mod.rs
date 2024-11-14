@@ -343,31 +343,36 @@ impl TypeCheckingCjsTracker {
     media_type: MediaType,
     code: &Arc<str>,
   ) -> bool {
-    if let Some(module_kind) =
-      self.cjs_tracker.get_known_kind(specifier, media_type)
-    {
-      module_kind.is_cjs()
-    } else {
-      let maybe_is_script = self
-        .module_info_cache
-        .as_module_analyzer()
-        .analyze_sync(specifier, media_type, code)
-        .ok()
-        .map(|info| info.is_script);
-      maybe_is_script
-        .and_then(|is_script| {
-          self
-            .cjs_tracker
-            .is_cjs_with_known_is_script(specifier, media_type, is_script)
-            .ok()
-        })
-        .unwrap_or_else(|| {
-          self
-            .cjs_tracker
-            .is_maybe_cjs(specifier, media_type)
-            .unwrap_or(false)
-        })
-    }
+    let maybe_is_script = self
+      .module_info_cache
+      .as_module_analyzer()
+      .analyze_sync(specifier, media_type, code)
+      .ok()
+      .map(|info| info.is_script);
+    maybe_is_script
+      .and_then(|is_script| {
+        self
+          .cjs_tracker
+          .is_cjs_with_known_is_script(specifier, media_type, is_script)
+          .ok()
+      })
+      .unwrap_or_else(|| {
+        self
+          .cjs_tracker
+          .is_maybe_cjs(specifier, media_type)
+          .unwrap_or(false)
+      })
+  }
+
+  pub fn is_cjs_with_known_is_script(
+    &self,
+    specifier: &ModuleSpecifier,
+    media_type: MediaType,
+    is_script: bool,
+  ) -> Result<bool, node_resolver::errors::ClosestPkgJsonError> {
+    self
+      .cjs_tracker
+      .is_cjs_with_known_is_script(specifier, media_type, is_script)
   }
 }
 
@@ -627,8 +632,12 @@ fn op_load_inner(
       match module {
         Module::Js(module) => {
           media_type = module.media_type;
-          if matches!(media_type, MediaType::Cjs | MediaType::Cts) {
-            is_cjs = true;
+          if let Some(npm_state) = &state.maybe_npm {
+            is_cjs = npm_state.cjs_tracker.is_cjs_with_known_is_script(
+              specifier,
+              module.media_type,
+              module.is_script,
+            )?;
           }
           let source = module
             .fast_check_module()
@@ -737,6 +746,7 @@ fn op_resolve_inner(
       "Error converting a string module specifier for \"op_resolve\".",
     )?
   };
+  let referrer_module = state.graph.get(&referrer);
   for specifier in args.specifiers {
     if specifier.starts_with("node:") {
       resolved.push((
@@ -752,16 +762,19 @@ fn op_resolve_inner(
       continue;
     }
 
-    let graph = &state.graph;
-    let resolved_dep = graph
-      .get(&referrer)
+    let resolved_dep = referrer_module
       .and_then(|m| m.js())
       .and_then(|m| m.dependencies_prefer_fast_check().get(&specifier))
       .and_then(|d| d.maybe_type.ok().or_else(|| d.maybe_code.ok()));
 
     let maybe_result = match resolved_dep {
       Some(ResolutionResolved { specifier, .. }) => {
-        resolve_graph_specifier_types(specifier, &referrer, state)?
+        resolve_graph_specifier_types(
+          specifier,
+          &referrer,
+          referrer_kind,
+          state,
+        )?
       }
       _ => {
         match resolve_non_graph_specifier_types(
@@ -834,6 +847,7 @@ fn op_resolve_inner(
 fn resolve_graph_specifier_types(
   specifier: &ModuleSpecifier,
   referrer: &ModuleSpecifier,
+  referrer_kind: NodeModuleKind,
   state: &State,
 ) -> Result<Option<(ModuleSpecifier, MediaType)>, AnyError> {
   let graph = &state.graph;
@@ -886,6 +900,7 @@ fn resolve_graph_specifier_types(
             &package_folder,
             module.nv_reference.sub_path(),
             Some(referrer),
+            referrer_kind,
             NodeResolutionMode::Types,
           );
         let maybe_url = match res_result {
@@ -965,6 +980,7 @@ fn resolve_non_graph_specifier_types(
       &package_folder,
       npm_req_ref.sub_path(),
       Some(referrer),
+      referrer_kind,
       NodeResolutionMode::Types,
     );
     let maybe_url = match res_result {

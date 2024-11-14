@@ -393,6 +393,13 @@ pub struct WebWorker {
   maybe_worker_metadata: Option<WorkerMetadata>,
 }
 
+impl Drop for WebWorker {
+  fn drop(&mut self) {
+    // clean up the package.json thread local cache
+    node_resolver::PackageJsonThreadLocalCache::clear();
+  }
+}
+
 impl WebWorker {
   pub fn bootstrap_from_options(
     services: WebWorkerServiceOptions,
@@ -507,6 +514,9 @@ impl WebWorker {
       ),
       ops::fs_events::deno_fs_events::init_ops_and_esm(),
       ops::os::deno_os_worker::init_ops_and_esm(),
+      ops::otel::deno_otel::init_ops_and_esm(
+        options.bootstrap.otel_config.clone(),
+      ),
       ops::permissions::deno_permissions::init_ops_and_esm(),
       ops::process::deno_process::init_ops_and_esm(
         services.npm_process_state_provider,

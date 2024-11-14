@@ -584,6 +584,7 @@ fn is_request_compressible(
   match accept_encoding.to_str() {
     // Firefox and Chrome send this -- no need to parse
     Ok("gzip, deflate, br") => return Compression::Brotli,
+    Ok("gzip, deflate, br, zstd") => return Compression::Brotli,
     Ok("gzip") => return Compression::GZip,
     Ok("br") => return Compression::Brotli,
     _ => (),
@@ -726,6 +727,19 @@ pub fn op_http_get_request_cancelled(external: *const c_void) -> bool {
     // SAFETY: op is called with external.
     unsafe { clone_external!(external, "op_http_get_request_cancelled") };
   http.cancelled()
+}
+
+#[op2(async)]
+pub async fn op_http_request_on_cancel(external: *const c_void) {
+  let http =
+    // SAFETY: op is called with external.
+    unsafe { clone_external!(external, "op_http_request_on_cancel") };
+  let (tx, rx) = tokio::sync::oneshot::channel();
+
+  http.on_cancel(tx);
+  drop(http);
+
+  rx.await.ok();
 }
 
 /// Returned promise resolves when body streaming finishes.

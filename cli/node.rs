@@ -62,10 +62,6 @@ pub struct CliCjsCodeAnalyzer {
   cjs_tracker: Arc<CjsTracker>,
   fs: deno_fs::FileSystemRc,
   parsed_source_cache: Option<Arc<ParsedSourceCache>>,
-  // todo(dsherret): hack, remove in https://github.com/denoland/deno/pull/26439
-  // For example, this does not properly handle if cjs analysis was already done
-  // and has been cached.
-  is_npm_main: bool,
 }
 
 impl CliCjsCodeAnalyzer {
@@ -74,14 +70,12 @@ impl CliCjsCodeAnalyzer {
     cjs_tracker: Arc<CjsTracker>,
     fs: deno_fs::FileSystemRc,
     parsed_source_cache: Option<Arc<ParsedSourceCache>>,
-    is_npm_main: bool,
   ) -> Self {
     Self {
       cache,
       cjs_tracker,
       fs,
       parsed_source_cache,
-      is_npm_main,
     }
   }
 
@@ -106,9 +100,7 @@ impl CliCjsCodeAnalyzer {
     }
 
     let cjs_tracker = self.cjs_tracker.clone();
-    let is_npm_main = self.is_npm_main;
-    let is_maybe_cjs =
-      cjs_tracker.is_maybe_cjs(specifier, media_type)? || is_npm_main;
+    let is_maybe_cjs = cjs_tracker.is_maybe_cjs(specifier, media_type)?;
     let analysis = if is_maybe_cjs {
       let maybe_parsed_source = self
         .parsed_source_cache
@@ -135,7 +127,7 @@ impl CliCjsCodeAnalyzer {
             parsed_source.specifier(),
             media_type,
             is_script,
-          )? || is_script && is_npm_main;
+          )?;
           if is_cjs {
             let analysis = parsed_source.analyze_cjs();
             Ok(CliCjsAnalysis::Cjs {

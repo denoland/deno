@@ -40,8 +40,8 @@ pub use prompter::PromptResponse;
 #[derive(Debug, thiserror::Error)]
 #[error("Requires {access}, {}", format_permission_error(.name))]
 pub struct PermissionDeniedError {
-  access: String,
-  name: &'static str,
+  pub access: String,
+  pub name: &'static str,
 }
 
 fn format_permission_error(name: &'static str) -> String {
@@ -1461,7 +1461,7 @@ pub struct SysDescriptor(String);
 impl SysDescriptor {
   pub fn parse(kind: String) -> Result<Self, SysDescriptorParseError> {
     match kind.as_str() {
-      "hostname" | "osRelease" | "osUptime" | "loadavg"
+      "hostname" | "inspector" | "osRelease" | "osUptime" | "loadavg"
       | "networkInterfaces" | "systemMemoryInfo" | "uid" | "gid" | "cpus"
       | "homedir" | "getegid" | "statfs" | "getPriority" | "setPriority"
       | "userInfo" => Ok(Self(kind)),
