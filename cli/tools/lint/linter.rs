@@ -7,11 +7,11 @@ use deno_ast::MediaType;
 use deno_ast::ModuleSpecifier;
 use deno_ast::ParsedSource;
 use deno_ast::SourceTextInfo;
-use deno_core::anyhow::bail;
 use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
 use deno_graph::ModuleGraph;
 use deno_lint::diagnostic::LintDiagnostic;
+use deno_lint::diagnostic::LintDiagnosticDetails;
 use deno_lint::linter::LintConfig as DenoLintConfig;
 use deno_lint::linter::LintFileOptions;
 use deno_lint::linter::Linter as DenoLintLinter;
@@ -33,8 +33,7 @@ pub enum LintResult {
   },
   /// File was not parsed and linted because, eg. it might have
   /// been a minified file.
-  #[allow(unused)]
-  Skipped,
+  Skipped { diagnostic: LintDiagnostic },
 }
 
 pub struct CliLinterOptions {
@@ -114,7 +113,20 @@ impl CliLinter {
 
     let metrics = minified_file::analyze_content(&source_code);
     if metrics.is_likely_minified() {
-      Ok(LintResult::Skipped);
+      let details = LintDiagnosticDetails {
+        message: "File was not linted, because it's minified".to_string(),
+        code: "".to_string(),
+        hint: None,
+        fixes: vec![],
+        custom_docs_url: None,
+        info: vec![],
+      };
+      let diagnostic = LintDiagnostic {
+        specifier,
+        range: None,
+        details,
+      };
+      return Ok(LintResult::Skipped { diagnostic });
     }
 
     let media_type = if let Some(ext) = ext {

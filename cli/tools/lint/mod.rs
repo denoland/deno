@@ -524,12 +524,11 @@ fn handle_lint_result(
   let mut reporter = reporter_lock.lock();
 
   match result {
-    Ok(lint_result) => {
-      if let LintResult::Linted {
+    Ok(lint_result) => match lint_result {
+      LintResult::Linted {
         parsed_source,
         mut diagnostics,
-      } = lint_result
-      {
+      } => {
         if !parsed_source.diagnostics().is_empty() {
           for parse_diagnostic in parsed_source.diagnostics() {
             log::warn!("{}: {}", colors::yellow("warn"), parse_diagnostic);
@@ -550,10 +549,12 @@ fn handle_lint_result(
           reporter.visit_diagnostic(d);
         }
         diagnostics.is_empty()
-      } else {
+      }
+      LintResult::Skipped { diagnostic } => {
+        reporter.visit_diagnostic(&diagnostic);
         true
       }
-    }
+    },
     Err(err) => {
       reporter.visit_error(file_path, &err);
       false
