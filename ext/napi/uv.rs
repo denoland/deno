@@ -5,10 +5,9 @@ use deno_core::parking_lot::Mutex;
 use std::mem::MaybeUninit;
 use std::ptr::addr_of_mut;
 
-#[allow(clippy::print_stderr)]
 fn assert_ok(res: c_int) -> c_int {
   if res != 0 {
-    eprintln!("bad result in uv polyfill: {res}");
+    log::error!("bad result in uv polyfill: {res}");
     // don't panic because that might unwind into
     // c/c++
     std::process::abort();

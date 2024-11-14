@@ -40,23 +40,21 @@ use std::env::current_exe;
 
 use crate::args::Flags;
 
-#[allow(clippy::print_stderr)]
 pub(crate) fn unstable_exit_cb(feature: &str, api_name: &str) {
-  eprintln!(
+  log::error!(
     "Unstable API '{api_name}'. The `--unstable-{}` flag must be provided.",
     feature
   );
-  std::process::exit(70);
+  deno_runtime::exit(70);
 }
 
-#[allow(clippy::print_stderr)]
 fn exit_with_message(message: &str, code: i32) -> ! {
-  eprintln!(
+  log::error!(
     "{}: {}",
     colors::red_bold("error"),
     message.trim_start_matches("error: ")
   );
-  std::process::exit(code);
+  deno_runtime::exit(code);
 }
 
 fn unwrap_or_exit<T>(result: Result<T, AnyError>) -> T {
@@ -89,13 +87,19 @@ fn main() {
   let future = async move {
     match standalone {
       Ok(Some(data)) => {
+        if let Some(otel_config) = data.metadata.otel_config.clone() {
+          deno_runtime::ops::otel::init(otel_config)?;
+        }
         util::logger::init(data.metadata.log_level);
         load_env_vars(&data.metadata.env_vars_from_env_file);
         let exit_code = standalone::run(data).await?;
-        std::process::exit(exit_code);
+        deno_runtime::exit(exit_code);
       }
       Ok(None) => Ok(()),
-      Err(err) => Err(err),
+      Err(err) => {
+        util::logger::init(None);
+        Err(err)
+      }
     }
   };
 

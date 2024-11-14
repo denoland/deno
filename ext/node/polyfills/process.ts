@@ -919,7 +919,7 @@ Object.defineProperty(argv, "1", {
     if (Deno.mainModule?.startsWith("file:")) {
       return pathFromURL(new URL(Deno.mainModule));
     } else {
-      return join(Deno.cwd(), "$deno$node.js");
+      return join(Deno.cwd(), "$deno$node.mjs");
     }
   },
 });

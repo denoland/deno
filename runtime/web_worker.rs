@@ -393,6 +393,13 @@ pub struct WebWorker {
   maybe_worker_metadata: Option<WorkerMetadata>,
 }
 
+impl Drop for WebWorker {
+  fn drop(&mut self) {
+    // clean up the package.json thread local cache
+    node_resolver::PackageJsonThreadLocalCache::clear();
+  }
+}
+
 impl WebWorker {
   pub fn bootstrap_from_options(
     services: WebWorkerServiceOptions,
@@ -505,6 +512,7 @@ impl WebWorker {
       ),
       ops::fs_events::deno_fs_events::init_ops_and_esm(),
       ops::os::deno_os_worker::init_ops_and_esm(),
+      ops::otel::deno_otel::init_ops_and_esm(),
       ops::permissions::deno_permissions::init_ops_and_esm(),
       ops::process::deno_process::init_ops_and_esm(
         services.npm_process_state_provider,
@@ -821,13 +829,12 @@ impl WebWorker {
 
         // TODO(mmastrac): we don't want to test this w/classic workers because
         // WPT triggers a failure here. This is only exposed via --enable-testing-features-do-not-use.
-        #[allow(clippy::print_stderr)]
         if self.worker_type == WebWorkerType::Module {
           panic!(
             "coding error: either js is polling or the worker is terminated"
           );
         } else {
-          eprintln!("classic worker terminated unexpectedly");
+          log::error!("classic worker terminated unexpectedly");
           Poll::Ready(Ok(()))
         }
       }
@@ -895,7 +902,6 @@ impl WebWorker {
   }
 }
 
-#[allow(clippy::print_stderr)]
 fn print_worker_error(
   error: &AnyError,
   name: &str,
@@ -908,7 +914,7 @@ fn print_worker_error(
     },
     None => error.to_string(),
   };
-  eprintln!(
+  log::error!(
     "{}: Uncaught (in worker \"{}\") {}",
     colors::red_bold("error"),
     name,

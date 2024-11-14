@@ -7,6 +7,7 @@ import {
   brotliCompressSync,
   brotliDecompressSync,
   constants,
+  crc32,
   createBrotliCompress,
   createBrotliDecompress,
   createDeflate,
@@ -224,4 +225,8 @@ Deno.test("gzip() and gzipSync() accept ArrayBuffer", async () => {
   assert(output! instanceof Buffer);
   const outputSync = gzipSync(buf);
   assert(outputSync instanceof Buffer);
+});
+
+Deno.test("crc32()", () => {
+  assertEquals(crc32("hello world"), 222957957);
 });

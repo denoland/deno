@@ -86,6 +86,8 @@ import {
   workerRuntimeGlobalProperties,
 } from "ext:runtime/98_global_scope_worker.js";
 import { SymbolDispose, SymbolMetadata } from "ext:deno_web/00_infra.js";
+import { bootstrap as bootstrapOtel } from "ext:runtime/telemetry.js";
+
 // deno-lint-ignore prefer-primordials
 if (Symbol.metadata) {
   throw "V8 supports Symbol.metadata now, no need to shim it";
@@ -573,6 +575,7 @@ function bootstrapMainRuntime(runtimeOptions, warmup = false) {
       10: serveHost,
       11: serveIsMain,
       12: serveWorkerCount,
+      13: otelConfig,
     } = runtimeOptions;
 
     if (mode === executionModes.serve) {
@@ -673,9 +676,10 @@ function bootstrapMainRuntime(runtimeOptions, warmup = false) {
     });
     ObjectSetPrototypeOf(globalThis, Window.prototype);
 
+    bootstrapOtel(otelConfig);
+
     if (inspectFlag) {
-      const consoleFromDeno = globalThis.console;
-      core.wrapConsole(consoleFromDeno, core.v8Console);
+      core.wrapConsole(globalThis.console, core.v8Console);
     }
 
     event.defineEventHandler(globalThis, "error");
@@ -855,6 +859,7 @@ function bootstrapWorkerRuntime(
       5: hasNodeModulesDir,
       6: argv0,
       7: nodeDebug,
+      13: otelConfig,
     } = runtimeOptions;
 
     performance.setTimeOrigin();
@@ -882,8 +887,9 @@ function bootstrapWorkerRuntime(
     }
     ObjectSetPrototypeOf(globalThis, DedicatedWorkerGlobalScope.prototype);
 
-    const consoleFromDeno = globalThis.console;
-    core.wrapConsole(consoleFromDeno, core.v8Console);
+    bootstrapOtel(otelConfig);
+
+    core.wrapConsole(globalThis.console, core.v8Console);
 
     event.defineEventHandler(self, "message");
     event.defineEventHandler(self, "error", undefined, true);

@@ -1,4 +1,5 @@
 {
-  "args": "run --allow-read permissions_outside_package/main.ts",
-  "output": "permissions_outside_package/main.out"
+  "tempDir": true,
+  "args": "run --allow-read --node-modules-dir=none main.ts",
+  "output": "main.out"
 }
