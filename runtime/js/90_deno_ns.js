@@ -29,6 +29,7 @@ import * as tty from "ext:runtime/40_tty.js";
 import * as kv from "ext:deno_kv/01_db.ts";
 import * as cron from "ext:deno_cron/01_cron.ts";
 import * as webgpuSurface from "ext:deno_webgpu/02_surface.js";
+import * as telemetry from "ext:runtime/telemetry.js";
 
 const denoNs = {
   Process: process.Process,
@@ -134,7 +135,7 @@ const denoNs = {
   createHttpClient: httpClient.createHttpClient,
 };
 
-// NOTE(bartlomieju): keep IDs in sync with `cli/main.rs`
+// NOTE(bartlomieju): keep IDs in sync with `runtime/lib.rs`
 const unstableIds = {
   broadcastChannel: 1,
   cron: 2,
@@ -143,11 +144,12 @@ const unstableIds = {
   http: 5,
   kv: 6,
   net: 7,
-  process: 8,
-  temporal: 9,
-  unsafeProto: 10,
-  webgpu: 11,
-  workerOptions: 12,
+  otel: 8,
+  process: 9,
+  temporal: 10,
+  unsafeProto: 11,
+  webgpu: 12,
+  workerOptions: 13,
 };
 
 const denoNsUnstableById = { __proto__: null };
@@ -180,5 +182,10 @@ denoNsUnstableById[unstableIds.webgpu] = {
 };
 
 // denoNsUnstableById[unstableIds.workerOptions] = { __proto__: null }
+
+denoNsUnstableById[unstableIds.otel] = {
+  tracing: telemetry.tracing,
+  metrics: telemetry.metrics,
+};
 
 export { denoNs, denoNsUnstableById, unstableIds };

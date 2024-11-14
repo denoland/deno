@@ -2971,6 +2971,10 @@ declare namespace Deno {
      * field from `stat` on Mac/BSD and `ftCreationTime` on Windows. This may
      * not be available on all platforms. */
     birthtime: Date | null;
+    /** The last change time of the file. This corresponds to the `ctime`
+     * field from `stat` on Mac/BSD and `ChangeTime` on Windows. This may
+     * not be available on all platforms. */
+    ctime: Date | null;
     /** ID of the device containing the file. */
     dev: number;
     /** Inode number.
@@ -2979,8 +2983,7 @@ declare namespace Deno {
     ino: number | null;
     /** The underlying raw `st_mode` bits that contain the standard Unix
      * permissions for this file/directory.
-     *
-     * _Linux/Mac OS only._ */
+     */
     mode: number | null;
     /** Number of hard links pointing to this file.
      *

@@ -10,6 +10,11 @@ import * as net from "node:net";
 import { assert, assertEquals } from "@std/assert";
 import { curlRequest } from "../unit/test_util.ts";
 
+// Increase the timeout for the auto select family to avoid flakiness
+net.setDefaultAutoSelectFamilyAttemptTimeout(
+  net.getDefaultAutoSelectFamilyAttemptTimeout() * 30,
+);
+
 for (const url of ["http://localhost:4246", "https://localhost:4247"]) {
   Deno.test(`[node/http2 client] ${url}`, {
     ignore: Deno.build.os === "windows",

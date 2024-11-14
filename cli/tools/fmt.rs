@@ -790,28 +790,26 @@ fn format_ensure_stable(
             return Ok(Some(current_text));
           }
           Err(err) => {
-            panic!(
+            bail!(
               concat!(
                 "Formatting succeeded initially, but failed when ensuring a ",
                 "stable format. This indicates a bug in the formatter where ",
                 "the text it produces is not syntactically correct. As a temporary ",
-                "workaround you can ignore this file ({}).\n\n{:#}"
+                "workaround you can ignore this file.\n\n{:#}"
               ),
-              file_path.display(),
               err,
             )
           }
         }
         count += 1;
         if count == 5 {
-          panic!(
+          bail!(
             concat!(
               "Formatting not stable. Bailed after {} tries. This indicates a bug ",
-              "in the formatter where it formats the file ({}) differently each time. As a ",
+              "in the formatter where it formats the file differently each time. As a ",
               "temporary workaround you can ignore this file."
             ),
             count,
-            file_path.display(),
           )
         }
       }
@@ -1215,6 +1213,8 @@ fn is_supported_ext_fmt(path: &Path) -> bool {
 
 #[cfg(test)]
 mod test {
+  use test_util::assert_starts_with;
+
   use super::*;
 
   #[test]
@@ -1270,12 +1270,16 @@ mod test {
   }
 
   #[test]
-  #[should_panic(expected = "Formatting not stable. Bailed after 5 tries.")]
   fn test_format_ensure_stable_unstable_format() {
-    format_ensure_stable(&PathBuf::from("mod.ts"), "1", |_, file_text| {
-      Ok(Some(format!("1{file_text}")))
-    })
-    .unwrap();
+    let err =
+      format_ensure_stable(&PathBuf::from("mod.ts"), "1", |_, file_text| {
+        Ok(Some(format!("1{file_text}")))
+      })
+      .unwrap_err();
+    assert_starts_with!(
+      err.to_string(),
+      "Formatting not stable. Bailed after 5 tries."
+    );
   }
 
   #[test]
@@ -1289,16 +1293,20 @@ mod test {
   }
 
   #[test]
-  #[should_panic(expected = "Formatting succeeded initially, but failed when")]
   fn test_format_ensure_stable_error_second() {
-    format_ensure_stable(&PathBuf::from("mod.ts"), "1", |_, file_text| {
-      if file_text == "1" {
-        Ok(Some("11".to_string()))
-      } else {
-        bail!("Error formatting.")
-      }
-    })
-    .unwrap();
+    let err =
+      format_ensure_stable(&PathBuf::from("mod.ts"), "1", |_, file_text| {
+        if file_text == "1" {
+          Ok(Some("11".to_string()))
+        } else {
+          bail!("Error formatting.")
+        }
+      })
+      .unwrap_err();
+    assert_starts_with!(
+      err.to_string(),
+      "Formatting succeeded initially, but failed when"
+    );
   }
 
   #[test]

@@ -46,7 +46,7 @@ repository = "https://github.com/denoland/deno"
 
 [workspace.dependencies]
 deno_ast = { version = "=0.43.3", features = ["transpiling"] }
-deno_core = { version = "0.318.0" }
+deno_core = { version = "0.319.0" }
 
 deno_bench_util = { version = "0.171.0", path = "./bench_util" }
 deno_lockfile = "=0.23.1"
@@ -60,10 +60,10 @@ deno_terminal = "0.2.0"
 napi_sym = { version = "0.107.0", path = "./ext/napi/sym" }
 test_util = { package = "test_server", path = "./tests/util/server" }
 
-denokv_proto = "0.8.1"
-denokv_remote = "0.8.1"
+denokv_proto = "0.8.4"
+denokv_remote = "0.8.4"
 # denokv_sqlite brings in bundled sqlite if we don't disable the default features
-denokv_sqlite = { default-features = false, version = "0.8.2" }
+denokv_sqlite = { default-features = false, version = "0.8.4" }
 
 # exts
 deno_broadcast_channel = { version = "0.171.0", path = "./ext/broadcast_channel" }
@@ -157,8 +157,8 @@ percent-encoding = "2.3.0"
 phf = { version = "0.11", features = ["macros"] }
 pin-project = "1.0.11" # don't pin because they yank crates from cargo
 pretty_assertions = "=1.4.0"
-prost = "0.11"
-prost-build = "0.11"
+prost = "0.13"
+prost-build = "0.13"
 rand = "=0.8.5"
 regex = "^1.7.0"
 reqwest = { version = "=0.12.5", default-features = false, features = ["rustls-tls", "stream", "gzip", "brotli", "socks", "json", "http2"] } # pinned because of https://github.com/seanmonstar/reqwest/pull/1955
@@ -204,8 +204,14 @@ webpki-root-certs = "0.26.5"
 webpki-roots = "0.26"
 which = "4.2.5"
 yoke = { version = "0.7.4", features = ["derive"] }
-zeromq = { version = "=0.4.0", default-features = false, features = ["tcp-transport", "tokio-runtime"] }
+zeromq = { version = "=0.4.1", default-features = false, features = ["tcp-transport", "tokio-runtime"] }
 zstd = "=0.12.4"
+
+opentelemetry = "0.27.0"
+opentelemetry-http = "0.27.0"
+opentelemetry-otlp = { version = "0.27.0", features = ["logs", "http-proto", "http-json"] }
+opentelemetry-semantic-conventions = { version = "0.27.0", features = ["semconv_experimental"] }
+opentelemetry_sdk = "0.27.0"
 
 # crypto
 hkdf = "0.12.3"
