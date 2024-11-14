@@ -25,6 +25,18 @@ use super::rules::FileOrPackageLintRule;
 use super::rules::PackageLintRule;
 use super::ConfiguredRules;
 
+pub enum LintResult {
+  /// File was linted and optionally produced diagnostics
+  Linted {
+    parsed_source: ParsedSource,
+    diagnostics: Vec<LintDiagnostic>,
+  },
+  /// File was not parsed and linted because, eg. it might have
+  /// been a minified file.
+  #[allow(unused)]
+  Skipped,
+}
+
 pub struct CliLinterOptions {
   pub configured_rules: ConfiguredRules,
   pub fix: bool,
@@ -97,15 +109,12 @@ impl CliLinter {
     file_path: &Path,
     source_code: String,
     ext: Option<&str>,
-  ) -> Result<(ParsedSource, Vec<LintDiagnostic>), AnyError> {
+  ) -> Result<LintResult, AnyError> {
     let specifier = specifier_from_file_path(file_path)?;
 
     let metrics = minified_file::analyze_content(&source_code);
     if metrics.is_likely_minified() {
-      bail!(
-        "{} appears to be a minified file, skipping linting",
-        specifier.as_str()
-      );
+      Ok(LintResult::Skipped);
     }
 
     let media_type = if let Some(ext) = ext {
@@ -119,7 +128,7 @@ impl CliLinter {
     if self.fix {
       self.lint_file_and_fix(&specifier, media_type, source_code, file_path)
     } else {
-      self
+      let (parsed_source, diagnostics) = self
         .linter
         .lint_file(LintFileOptions {
           specifier,
@@ -127,7 +136,11 @@ impl CliLinter {
           source_code,
           config: self.deno_lint_config.clone(),
         })
-        .map_err(AnyError::from)
+        .map_err(AnyError::from)?;
+      Ok(LintResult::Linted {
+        parsed_source,
+        diagnostics,
+      })
     }
   }
 
@@ -137,7 +150,7 @@ impl CliLinter {
     media_type: MediaType,
     source_code: String,
     file_path: &Path,
-  ) -> Result<(ParsedSource, Vec<LintDiagnostic>), deno_core::anyhow::Error> {
+  ) -> Result<LintResult, deno_core::anyhow::Error> {
     // initial lint
     let (source, diagnostics) = self.linter.lint_file(LintFileOptions {
       specifier: specifier.clone(),
@@ -194,7 +207,10 @@ impl CliLinter {
       .context("Failed writing fix to file.")?;
     }
 
-    Ok((source, diagnostics))
+    Ok(LintResult::Linted {
+      parsed_source: source,
+      diagnostics,
+    })
   }
 }
 

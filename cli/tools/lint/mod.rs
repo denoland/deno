@@ -4,7 +4,6 @@
 //! [`deno_lint`](https://github.com/denoland/deno_lint).
 
 use deno_ast::ModuleSpecifier;
-use deno_ast::ParsedSource;
 use deno_config::deno_json::LintRulesConfig;
 use deno_config::glob::FileCollector;
 use deno_config::glob::FilePatterns;
@@ -19,8 +18,8 @@ use deno_core::serde_json;
 use deno_core::unsync::future::LocalFutureExt;
 use deno_core::unsync::future::SharedLocal;
 use deno_graph::ModuleGraph;
-use deno_lint::diagnostic::LintDiagnostic;
 use deno_lint::linter::LintConfig;
+use linter::LintResult;
 use log::debug;
 use reporters::create_reporter;
 use reporters::LintReporter;
@@ -371,14 +370,18 @@ impl WorkspaceLinter {
               file_text,
               cli_options.ext_flag().as_deref(),
             );
-            if let Ok((file_source, file_diagnostics)) = &r {
+            if let Ok(LintResult::Linted {
+              parsed_source,
+              diagnostics,
+            }) = &r
+            {
               if let Some(incremental_cache) = &maybe_incremental_cache {
-                if file_diagnostics.is_empty() {
+                if diagnostics.is_empty() {
                   // update the incremental cache if there were no diagnostics
                   incremental_cache.update_file(
                     &file_path,
                     // ensure the returned text is used here as it may have been modified via --fix
-                    file_source.text(),
+                    parsed_source.text(),
                   )
                 }
               }
@@ -496,7 +499,7 @@ fn lint_stdin(
   file_path: &Path,
   configured_rules: ConfiguredRules,
   deno_lint_config: LintConfig,
-) -> Result<(ParsedSource, Vec<LintDiagnostic>), AnyError> {
+) -> Result<LintResult, AnyError> {
   let mut source_code = String::new();
   if stdin().read_to_string(&mut source_code).is_err() {
     return Err(generic_error("Failed to read from stdin"));
@@ -515,33 +518,41 @@ fn lint_stdin(
 
 fn handle_lint_result(
   file_path: &str,
-  result: Result<(ParsedSource, Vec<LintDiagnostic>), AnyError>,
+  result: Result<LintResult, AnyError>,
   reporter_lock: Arc<Mutex<Box<dyn LintReporter + Send>>>,
 ) -> bool {
   let mut reporter = reporter_lock.lock();
 
   match result {
-    Ok((source, mut file_diagnostics)) => {
-      if !source.diagnostics().is_empty() {
-        for parse_diagnostic in source.diagnostics() {
-          log::warn!("{}: {}", colors::yellow("warn"), parse_diagnostic);
-        }
-      }
-      file_diagnostics.sort_by(|a, b| match a.specifier.cmp(&b.specifier) {
-        std::cmp::Ordering::Equal => {
-          let a_start = a.range.as_ref().map(|r| r.range.start);
-          let b_start = b.range.as_ref().map(|r| r.range.start);
-          match a_start.cmp(&b_start) {
-            std::cmp::Ordering::Equal => a.details.code.cmp(&b.details.code),
-            other => other,
+    Ok(lint_result) => {
+      if let LintResult::Linted {
+        parsed_source,
+        mut diagnostics,
+      } = lint_result
+      {
+        if !parsed_source.diagnostics().is_empty() {
+          for parse_diagnostic in parsed_source.diagnostics() {
+            log::warn!("{}: {}", colors::yellow("warn"), parse_diagnostic);
           }
         }
-        file_order => file_order,
-      });
-      for d in &file_diagnostics {
-        reporter.visit_diagnostic(d);
+        diagnostics.sort_by(|a, b| match a.specifier.cmp(&b.specifier) {
+          std::cmp::Ordering::Equal => {
+            let a_start = a.range.as_ref().map(|r| r.range.start);
+            let b_start = b.range.as_ref().map(|r| r.range.start);
+            match a_start.cmp(&b_start) {
+              std::cmp::Ordering::Equal => a.details.code.cmp(&b.details.code),
+              other => other,
+            }
+          }
+          file_order => file_order,
+        });
+        for d in &diagnostics {
+          reporter.visit_diagnostic(d);
+        }
+        diagnostics.is_empty()
+      } else {
+        true
       }
-      file_diagnostics.is_empty()
     }
     Err(err) => {
       reporter.visit_error(file_path, &err);
