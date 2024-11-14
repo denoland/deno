@@ -1020,9 +1020,6 @@ Deno.test(
       const socket = (request as any).agent.sockets["localhost:5929:"][0];
       socket.on("close", resolve);
     });
-    request.on("socket", (socket) => {
-      console.log(socket);
-    });
     await promise;
   },
 );
