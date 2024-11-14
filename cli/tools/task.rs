@@ -135,12 +135,14 @@ impl<'a> TaskRunner<'a> {
     task_name: &String,
     definition: &TaskDefinition,
   ) -> Result<i32, deno_core::anyhow::Error> {
-    let mut futures_unordered = futures_unordered::FuturesUnordered::new();
+    // TODO(bartlomieju): we might want to limit concurrency here - eg. `wireit` runs 2 tasks in parallel
+    // unless and env var is specified.
+    let mut dependency_tasks = futures_unordered::FuturesUnordered::new();
     for dep in &definition.dependencies {
       let dep = dep.clone();
-      futures_unordered.push(async move { self.run_task(&dep).await })
+      dependency_tasks.push(async move { self.run_task(&dep).await })
     }
-    while let Some(result) = futures_unordered.next().await {
+    while let Some(result) = dependency_tasks.next().await {
       let exit_code = result?;
       if exit_code > 0 {
         return Ok(exit_code);
