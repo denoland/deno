@@ -15,7 +15,6 @@ mod js;
 mod jsr;
 mod lsp;
 mod module_loader;
-mod napi;
 mod node;
 mod npm;
 mod ops;
@@ -136,7 +135,7 @@ async fn run_subcommand(flags: Arc<Flags>) -> Result<i32, AnyError> {
       tools::compile::compile(flags, compile_flags).await
     }),
     DenoSubcommand::Coverage(coverage_flags) => spawn_subcommand(async {
-      tools::coverage::cover_files(flags, coverage_flags).await
+      tools::coverage::cover_files(flags, coverage_flags)
     }),
     DenoSubcommand::Fmt(fmt_flags) => {
       spawn_subcommand(
@@ -169,10 +168,10 @@ async fn run_subcommand(flags: Arc<Flags>) -> Result<i32, AnyError> {
       if std::io::stderr().is_terminal() {
         log::warn!(
           "{} command is intended to be run by text editors and IDEs and shouldn't be run manually.
-  
+
   Visit https://docs.deno.com/runtime/getting_started/setup_your_environment/ for instruction
   how to setup your favorite text editor.
-  
+
   Press Ctrl+C to exit.
         ", colors::cyan("deno lsp"));
       }
@@ -351,18 +350,17 @@ fn setup_panic_hook() {
     eprintln!("Args: {:?}", env::args().collect::<Vec<_>>());
     eprintln!();
     orig_hook(panic_info);
-    std::process::exit(1);
+    deno_runtime::exit(1);
   }));
 }
 
-#[allow(clippy::print_stderr)]
 fn exit_with_message(message: &str, code: i32) -> ! {
-  eprintln!(
+  log::error!(
     "{}: {}",
     colors::red_bold("error"),
     message.trim_start_matches("error: ")
   );
-  std::process::exit(code);
+  deno_runtime::exit(code);
 }
 
 fn exit_for_error(error: AnyError) -> ! {
@@ -381,13 +379,12 @@ fn exit_for_error(error: AnyError) -> ! {
   exit_with_message(&error_string, error_code);
 }
 
-#[allow(clippy::print_stderr)]
 pub(crate) fn unstable_exit_cb(feature: &str, api_name: &str) {
-  eprintln!(
+  log::error!(
     "Unstable API '{api_name}'. The `--unstable-{}` flag must be provided.",
     feature
   );
-  std::process::exit(70);
+  deno_runtime::exit(70);
 }
 
 pub fn main() {
@@ -420,7 +417,7 @@ pub fn main() {
   drop(profiler);
 
   match result {
-    Ok(exit_code) => std::process::exit(exit_code),
+    Ok(exit_code) => deno_runtime::exit(exit_code),
     Err(err) => exit_for_error(err),
   }
 }
@@ -434,11 +431,20 @@ fn resolve_flags_and_init(
       if err.kind() == clap::error::ErrorKind::DisplayVersion =>
     {
       // Ignore results to avoid BrokenPipe errors.
+      util::logger::init(None);
       let _ = err.print();
-      std::process::exit(0);
+      deno_runtime::exit(0);
     }
-    Err(err) => exit_for_error(AnyError::from(err)),
+    Err(err) => {
+      util::logger::init(None);
+      exit_for_error(AnyError::from(err))
+    }
   };
+
+  if let Some(otel_config) = flags.otel_config() {
+    deno_runtime::ops::otel::init(otel_config)?;
+  }
+  util::logger::init(flags.log_level);
 
   // TODO(bartlomieju): remove in Deno v2.5 and hard error then.
   if flags.unstable_config.legacy_flag_enabled {
@@ -468,7 +474,6 @@ fn resolve_flags_and_init(
   deno_core::JsRuntime::init_platform(
     None, /* import assertions enabled */ false,
   );
-  util::logger::init(flags.log_level);
 
   Ok(flags)
 }

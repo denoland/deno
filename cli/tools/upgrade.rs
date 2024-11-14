@@ -540,7 +540,7 @@ pub async fn upgrade(
   let Some(archive_data) = download_package(&client, download_url).await?
   else {
     log::error!("Download could not be found, aborting");
-    std::process::exit(1)
+    deno_runtime::exit(1)
   };
 
   log::info!(
@@ -579,6 +579,10 @@ pub async fn upgrade(
 
   let output_exe_path =
     full_path_output_flag.as_ref().unwrap_or(&current_exe_path);
+
+  #[cfg(windows)]
+  kill_running_deno_lsp_processes();
+
   let output_result = if *output_exe_path == current_exe_path {
     replace_exe(&new_exe_path, output_exe_path)
   } else {
@@ -964,6 +968,34 @@ fn check_windows_access_denied_error(
       output_exe_path.display(),
     )
   })
+}
+
+#[cfg(windows)]
+fn kill_running_deno_lsp_processes() {
+  // limit this to `deno lsp` invocations to avoid killing important programs someone might be running
+  let is_debug = log::log_enabled!(log::Level::Debug);
+  let get_pipe = || {
+    if is_debug {
+      std::process::Stdio::inherit()
+    } else {
+      std::process::Stdio::null()
+    }
+  };
+  let _ = Command::new("powershell.exe")
+    .args([
+      "-Command",
+      r#"Get-WmiObject Win32_Process | Where-Object {
+    $_.Name -eq 'deno.exe' -and
+    $_.CommandLine -match '^(?:\"[^\"]+\"|\S+)\s+lsp\b'
+} | ForEach-Object {
+  if ($_.Terminate()) {
+    Write-Host 'Terminated:' $_.ProcessId
+  }
+}"#,
+    ])
+    .stdout(get_pipe())
+    .stderr(get_pipe())
+    .output();
 }
 
 fn set_exe_permissions(

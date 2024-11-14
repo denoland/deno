@@ -44,7 +44,11 @@ pub async fn cache_top_level_deps(
 
     let mut seen_reqs = std::collections::HashSet::new();
 
-    for entry in import_map.imports().entries() {
+    for entry in import_map.imports().entries().chain(
+      import_map
+        .scopes()
+        .flat_map(|scope| scope.imports.entries()),
+    ) {
       let Some(specifier) = entry.value else {
         continue;
       };
@@ -89,10 +93,6 @@ pub async fn cache_top_level_deps(
 
     while let Some(info_future) = info_futures.next().await {
       if let Some((specifier, info)) = info_future {
-        if info.export(".").is_some() {
-          roots.push(specifier.clone());
-          continue;
-        }
         let exports = info.exports();
         for (k, _) in exports {
           if let Ok(spec) = specifier.join(k) {
