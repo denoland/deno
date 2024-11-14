@@ -7,10 +7,14 @@ async function inner() {
   console.log("log 2");
 }
 
-Deno.serve({
+const server = Deno.serve({
   port: 0,
-  onListen({ port }) {
-    console.log(port.toString());
+  async onListen({ port }) {
+    try {
+      await fetch(`http://localhost:${port}`);
+    } finally {
+      server.shutdown();
+    }
   },
   handler: async (_req) => {
     using _span = new Deno.tracing.Span("outer span");

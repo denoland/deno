@@ -22,11 +22,14 @@ const {
   ReflectApply,
   SymbolFor,
   Error,
+  NumberPrototypeToString,
+  StringPrototypePadStart,
 } = primordials;
 const { AsyncVariable, setAsyncContext } = core;
 
 const CURRENT = new AsyncVariable();
 let TRACING_ENABLED = false;
+let DETERMINISTIC = false;
 
 const SPAN_ID_BYTES = 8;
 const TRACE_ID_BYTES = 16;
@@ -45,7 +48,19 @@ const hexSliceLookupTable = (function () {
   return table;
 })();
 
+let counter = 1;
+
+const INVALID_SPAN_ID = "0000000000000000";
+const INVALID_TRACE_ID = "00000000000000000000000000000000";
+
 function generateId(bytes) {
+  if (DETERMINISTIC) {
+    return StringPrototypePadStart(
+      NumberPrototypeToString(counter++, 16),
+      bytes * 2,
+      "0",
+    );
+  }
   let out = "";
   for (let i = 0; i < bytes / 4; i += 1) {
     const r32 = (MathRandom() * 2 ** 32) >>> 0;
@@ -112,8 +127,6 @@ function submit(span) {
 
 const now = () => (performance.timeOrigin + performance.now()) / 1000;
 
-const INVALID_SPAN_ID = "0000000000000000";
-const INVALID_TRACE_ID = "00000000000000000000000000000000";
 const NO_ASYNC_CONTEXT = {};
 
 class Span {
@@ -362,9 +375,10 @@ const otelConsoleConfig = {
 
 export function bootstrap(config) {
   if (config.length === 0) return;
-  const { 0: consoleConfig } = config;
+  const { 0: consoleConfig, 1: deterministic } = config;
 
   TRACING_ENABLED = true;
+  DETERMINISTIC = deterministic === 1;
 
   switch (consoleConfig) {
     case otelConsoleConfig.capture:

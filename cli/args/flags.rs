@@ -36,6 +36,7 @@ use deno_path_util::normalize_path;
 use deno_path_util::url_to_file_path;
 use deno_runtime::deno_permissions::PermissionsOptions;
 use deno_runtime::deno_permissions::SysDescriptor;
+use deno_runtime::ops::otel::OtelConfig;
 use log::debug;
 use log::Level;
 use serde::Deserialize;
@@ -965,6 +966,24 @@ impl Flags {
     }
 
     args
+  }
+
+  pub fn otel_config(&self) -> Option<OtelConfig> {
+    if self
+      .unstable_config
+      .features
+      .contains(&String::from("otel"))
+    {
+      Some(OtelConfig {
+        runtime_name: Cow::Borrowed("deno"),
+        runtime_version: Cow::Borrowed(crate::version::DENO_VERSION_INFO.deno),
+        deterministic: std::env::var("DENO_UNSTABLE_OTEL_DETERMINISTIC")
+          .is_ok(),
+        ..Default::default()
+      })
+    } else {
+      None
+    }
   }
 
   /// Extract the paths the config file should be discovered from.
