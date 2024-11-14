@@ -256,80 +256,91 @@ fn print_available_tasks(
       "  {}",
       colors::red("No tasks found in configuration file")
     )?;
-  } else {
-    let mut seen_task_names =
-      HashSet::with_capacity(tasks_config.tasks_count());
-    for maybe_config in [&tasks_config.member, &tasks_config.root] {
-      let Some(config) = maybe_config else {
-        continue;
-      };
-      for (is_root, is_deno, (key, task)) in config
-        .deno_json
-        .as_ref()
-        .map(|config| {
-          let is_root = !is_cwd_root_dir
-            && config.folder_url
-              == *workspace_dir.workspace.root_dir().as_ref();
-          config
-            .tasks
-            .iter()
-            .map(move |(k, t)| (is_root, true, (k, Cow::Borrowed(t))))
-        })
-        .into_iter()
-        .flatten()
-        .chain(
-          config
-            .package_json
-            .as_ref()
-            .map(|config| {
-              let is_root = !is_cwd_root_dir
-                && config.folder_url
-                  == *workspace_dir.workspace.root_dir().as_ref();
-              config.tasks.iter().map(move |(k, v)| {
+    return Ok(());
+  }
+
+  let mut seen_task_names = HashSet::with_capacity(tasks_config.tasks_count());
+  for maybe_config in [&tasks_config.member, &tasks_config.root] {
+    let Some(config) = maybe_config else {
+      continue;
+    };
+    for (is_root, is_deno, (key, task)) in config
+      .deno_json
+      .as_ref()
+      .map(|config| {
+        let is_root = !is_cwd_root_dir
+          && config.folder_url == *workspace_dir.workspace.root_dir().as_ref();
+        config
+          .tasks
+          .iter()
+          .map(move |(k, t)| (is_root, true, (k, Cow::Borrowed(t))))
+      })
+      .into_iter()
+      .flatten()
+      .chain(
+        config
+          .package_json
+          .as_ref()
+          .map(|config| {
+            let is_root = !is_cwd_root_dir
+              && config.folder_url
+                == *workspace_dir.workspace.root_dir().as_ref();
+            config.tasks.iter().map(move |(k, v)| {
+              (
+                is_root,
+                false,
                 (
-                  is_root,
-                  false,
-                  (
-                    k,
-                    Cow::Owned(Task::Definition(
-                      deno_config::deno_json::TaskDefinition {
-                        command: v.clone(),
-                        dependencies: vec![],
-                      },
-                    )),
-                  ),
-                )
-              })
+                  k,
+                  Cow::Owned(Task::Definition(
+                    deno_config::deno_json::TaskDefinition {
+                      command: v.clone(),
+                      dependencies: vec![],
+                      description: None,
+                    },
+                  )),
+                ),
+              )
             })
-            .into_iter()
-            .flatten(),
-        )
-      {
-        if !seen_task_names.insert(key) {
-          continue; // already seen
-        }
-        writeln!(
-          writer,
-          "- {}{}",
-          colors::cyan(key),
-          if is_root {
-            if is_deno {
-              format!(" {}", colors::italic_gray("(workspace)"))
-            } else {
-              format!(" {}", colors::italic_gray("(workspace package.json)"))
-            }
-          } else if is_deno {
-            "".to_string()
+          })
+          .into_iter()
+          .flatten(),
+      )
+    {
+      if !seen_task_names.insert(key) {
+        continue; // already seen
+      }
+      writeln!(
+        writer,
+        "- {}{}",
+        colors::cyan(key),
+        if is_root {
+          if is_deno {
+            format!(" {}", colors::italic_gray("(workspace)"))
           } else {
-            format!(" {}", colors::italic_gray("(package.json)"))
+            format!(" {}", colors::italic_gray("(workspace package.json)"))
           }
-        )?;
-        let definition = match task.as_ref() {
-          Task::Definition(definition) => definition,
-          Task::Commented { definition, .. } => definition,
-        };
-        if let Task::Commented { comments, .. } = task.as_ref() {
-          let slash_slash = colors::italic_gray("//");
+        } else if is_deno {
+          "".to_string()
+        } else {
+          format!(" {}", colors::italic_gray("(package.json)"))
+        }
+      )?;
+      let definition = match task.as_ref() {
+        Task::Definition(definition) => definition,
+        Task::Commented { definition, .. } => definition,
+      };
+      let slash_slash = colors::italic_gray("//");
+      match task.as_ref() {
+        Task::Definition(definition) => {
+          if let Some(description) = &definition.description {
+            writeln!(
+              writer,
+              "    {slash_slash} {}",
+              colors::italic_gray(description)
+            )?;
+          }
+        }
+        Task::Commented { comments, .. } => {
           for comment in comments {
             writeln!(
               writer,
@@ -338,8 +349,8 @@ fn print_available_tasks(
             )?;
           }
         }
-        writeln!(writer, "    {}", definition.command)?;
       }
+      writeln!(writer, "    {}", definition.command)?;
     }
   }
 
