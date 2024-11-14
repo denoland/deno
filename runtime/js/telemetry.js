@@ -378,9 +378,7 @@ export function bootstrap(config) {
   const { 0: consoleConfig, 1: deterministic } = config;
 
   TRACING_ENABLED = true;
-  if (deterministic === 1) {
-    DETERMINISTIC = true;
-  }
+  DETERMINISTIC = deterministic === 1;
 
   switch (consoleConfig) {
     case otelConsoleConfig.capture:

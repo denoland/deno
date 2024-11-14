@@ -185,7 +185,7 @@ pub fn graph_exit_integrity_errors(graph: &ModuleGraph) {
 fn exit_for_integrity_error(err: &ModuleError) {
   if let Some(err_message) = enhanced_integrity_error_message(err) {
     log::error!("{} {}", colors::red("error:"), err_message);
-    std::process::exit(10);
+    deno_runtime::exit(10);
   }
 }
 

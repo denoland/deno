@@ -191,7 +191,7 @@ pub async fn lint(
       linter.finish()
     };
     if !success {
-      std::process::exit(1);
+      deno_runtime::exit(1);
     }
   }
 

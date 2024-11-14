@@ -14,8 +14,6 @@ const server = Deno.serve(
         env: {
           OTEL_EXPORTER_OTLP_PROTOCOL: "http/json",
           OTEL_EXPORTER_OTLP_ENDPOINT: `http://localhost:${port}`,
-          OTEL_BSP_SCHEDULE_DELAY: "10",
-          OTEL_BLRP_SCHEDULE_DELAY: "10",
         },
         stdout: "null",
       });
