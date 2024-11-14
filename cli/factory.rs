@@ -130,7 +130,7 @@ impl RootCertStoreProvider for CliRootCertStoreProvider {
   }
 }
 
-struct Deferred<T>(once_cell::unsync::OnceCell<T>);
+pub struct Deferred<T>(once_cell::unsync::OnceCell<T>);
 
 impl<T> Default for Deferred<T> {
   fn default() -> Self {

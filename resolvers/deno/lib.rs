@@ -3,7 +3,6 @@
 #![deny(clippy::print_stderr)]
 #![deny(clippy::print_stdout)]
 
-use std::path::Path;
 use std::path::PathBuf;
 use std::sync::Arc;
 
@@ -24,7 +23,6 @@ use node_resolver::NodeModuleKind;
 use node_resolver::NodeResolution;
 use node_resolver::NodeResolutionMode;
 use node_resolver::NodeResolver;
-use npm::CliNpmReqResolver;
 use npm::MissingPackageNodeModulesFolderError;
 use npm::NodeModulesOutOfDateError;
 use npm::NpmReqResolver;
@@ -41,7 +39,6 @@ pub mod cjs;
 pub mod fs;
 pub mod npm;
 pub mod sloppy_imports;
-mod sync;
 
 #[derive(Debug, Clone)]
 pub struct DenoResolution {
@@ -125,13 +122,8 @@ impl<
     TSloppyImportResolverFs: SloppyImportResolverFs,
   > DenoResolver<Fs, TNodeResolverEnv, TSloppyImportResolverFs>
 {
-  pub fn new<'a>(
-    options: DenoResolverOptions<
-      'a,
-      Fs,
-      TNodeResolverEnv,
-      TSloppyImportResolverFs,
-    >,
+  pub fn new(
+    options: DenoResolverOptions<Fs, TNodeResolverEnv, TSloppyImportResolverFs>,
   ) -> Self {
     Self {
       in_npm_pkg_checker: options.in_npm_pkg_checker,
@@ -255,7 +247,7 @@ impl<
                 .workspace_resolver
                 .resolve_workspace_pkg_json_folder_for_pkg_json_dep(
                   alias,
-                  &version_req,
+                  version_req,
                 )
                 .map_err(DenoResolveError::WorkspaceResolvePkgJsonFolder)
                 .and_then(|pkg_folder| {
