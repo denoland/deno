@@ -4,4 +4,5 @@ Buffer;
     at [WILDCARD]buffer.js:1:1
 
     info: Buffer is not available in the global scope in Deno.
-    hint: Import it explicitly with import { Buffer } from "node:buffer";.
+    hint: Import it explicitly with import { Buffer } from "node:buffer";,
+          or run again with --unstable-node-globals flag to add this global.

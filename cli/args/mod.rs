@@ -7,6 +7,7 @@ mod import_map;
 mod lockfile;
 mod package_json;
 
+use deno_ast::MediaType;
 use deno_ast::SourceMapOption;
 use deno_config::deno_json::NodeModulesDirMode;
 use deno_config::workspace::CreateResolverOptions;
@@ -27,13 +28,13 @@ use deno_npm::npm_rc::ResolvedNpmRc;
 use deno_npm::resolution::ValidSerializedNpmResolutionSnapshot;
 use deno_npm::NpmSystemInfo;
 use deno_path_util::normalize_path;
+use deno_runtime::ops::otel::OtelConfig;
 use deno_semver::npm::NpmPackageReqReference;
 use import_map::resolve_import_map_value_from_specifier;
 
 pub use deno_config::deno_json::BenchConfig;
 pub use deno_config::deno_json::ConfigFile;
 pub use deno_config::deno_json::FmtOptionsConfig;
-pub use deno_config::deno_json::JsxImportSourceConfig;
 pub use deno_config::deno_json::LintRulesConfig;
 pub use deno_config::deno_json::ProseWrap;
 pub use deno_config::deno_json::TsConfig;
@@ -822,10 +823,8 @@ impl CliOptions {
       };
       let msg =
         format!("DANGER: TLS certificate validation is disabled {}", domains);
-      #[allow(clippy::print_stderr)]
       {
-        // use eprintln instead of log::warn so this always gets shown
-        eprintln!("{}", colors::yellow(msg));
+        log::error!("{}", colors::yellow(msg));
       }
     }
 
@@ -1129,6 +1128,10 @@ impl CliOptions {
     }
   }
 
+  pub fn otel_config(&self) -> Option<OtelConfig> {
+    self.flags.otel_config()
+  }
+
   pub fn env_file_name(&self) -> Option<&String> {
     self.flags.env_file.as_ref()
   }
@@ -1137,21 +1140,34 @@ impl CliOptions {
     self
       .main_module_cell
       .get_or_init(|| {
-        let main_module = match &self.flags.subcommand {
+        Ok(match &self.flags.subcommand {
           DenoSubcommand::Compile(compile_flags) => {
             resolve_url_or_path(&compile_flags.source_file, self.initial_cwd())?
           }
           DenoSubcommand::Eval(_) => {
-            resolve_url_or_path("./$deno$eval.ts", self.initial_cwd())?
+            resolve_url_or_path("./$deno$eval.mts", self.initial_cwd())?
           }
           DenoSubcommand::Repl(_) => {
-            resolve_url_or_path("./$deno$repl.ts", self.initial_cwd())?
+            resolve_url_or_path("./$deno$repl.mts", self.initial_cwd())?
           }
           DenoSubcommand::Run(run_flags) => {
             if run_flags.is_stdin() {
-              resolve_url_or_path("./$deno$stdin.ts", self.initial_cwd())?
+              resolve_url_or_path("./$deno$stdin.mts", self.initial_cwd())?
             } else {
-              resolve_url_or_path(&run_flags.script, self.initial_cwd())?
+              let url =
+                resolve_url_or_path(&run_flags.script, self.initial_cwd())?;
+              if self.is_node_main()
+                && url.scheme() == "file"
+                && MediaType::from_specifier(&url) == MediaType::Unknown
+              {
+                try_resolve_node_binary_main_entrypoint(
+                  &run_flags.script,
+                  self.initial_cwd(),
+                )?
+                .unwrap_or(url)
+              } else {
+                url
+              }
             }
           }
           DenoSubcommand::Serve(run_flags) => {
@@ -1160,9 +1176,7 @@ impl CliOptions {
           _ => {
             bail!("No main module.")
           }
-        };
-
-        Ok(main_module)
+        })
       })
       .as_ref()
       .map_err(|err| deno_core::anyhow::anyhow!("{}", err))
@@ -1211,7 +1225,7 @@ impl CliOptions {
   // This is triggered via a secret environment variable which is used
   // for functionality like child_process.fork. Users should NOT depend
   // on this functionality.
-  pub fn is_npm_main(&self) -> bool {
+  pub fn is_node_main(&self) -> bool {
     NPM_PROCESS_STATE.is_some()
   }
 
@@ -1589,9 +1603,11 @@ impl CliOptions {
       || self.workspace().has_unstable("bare-node-builtins")
   }
 
-  pub fn unstable_detect_cjs(&self) -> bool {
-    self.flags.unstable_config.detect_cjs
-      || self.workspace().has_unstable("detect-cjs")
+  pub fn detect_cjs(&self) -> bool {
+    // only enabled when there's a package.json in order to not have a
+    // perf penalty for non-npm Deno projects of searching for the closest
+    // package.json beside each module
+    self.workspace().package_jsons().next().is_some() || self.is_node_main()
   }
 
   fn byonm_enabled(&self) -> bool {
@@ -1655,7 +1671,6 @@ impl CliOptions {
           "byonm",
           "bare-node-builtins",
           "fmt-component",
-          "detect-cjs",
         ])
         .collect();
 
@@ -1791,6 +1806,36 @@ fn resolve_node_modules_folder(
     resolve_from_root(root_folder, cwd)
   };
   Ok(Some(canonicalize_path_maybe_not_exists(&path)?))
+}
+
+fn try_resolve_node_binary_main_entrypoint(
+  specifier: &str,
+  initial_cwd: &Path,
+) -> Result<Option<Url>, AnyError> {
+  // node allows running files at paths without a `.js` extension
+  // or at directories with an index.js file
+  let path = deno_core::normalize_path(initial_cwd.join(specifier));
+  if path.is_dir() {
+    let index_file = path.join("index.js");
+    Ok(if index_file.is_file() {
+      Some(deno_path_util::url_from_file_path(&index_file)?)
+    } else {
+      None
+    })
+  } else {
+    let path = path.with_extension(
+      path
+        .extension()
+        .and_then(|s| s.to_str())
+        .map(|s| format!("{}.js", s))
+        .unwrap_or("js".to_string()),
+    );
+    if path.is_file() {
+      Ok(Some(deno_path_util::url_from_file_path(&path)?))
+    } else {
+      Ok(None)
+    }
+  }
 }
 
 fn resolve_import_map_specifier(

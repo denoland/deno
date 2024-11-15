@@ -1,0 +1,4 @@
+{
+  "args": "run --no-check byte_order_mark.ts",
+  "output": "byte_order_mark.out"
+}

@@ -29,6 +29,7 @@ use deno_core::RequestedModuleType;
 use deno_core::ResolutionKind;
 use deno_npm::npm_rc::ResolvedNpmRc;
 use deno_package_json::PackageJsonDepValue;
+use deno_resolver::npm::NpmReqResolverOptions;
 use deno_runtime::deno_fs;
 use deno_runtime::deno_node::create_host_defined_options;
 use deno_runtime::deno_node::NodeRequireLoader;
@@ -45,6 +46,8 @@ use deno_runtime::WorkerLogLevel;
 use deno_semver::npm::NpmPackageReqReference;
 use import_map::parse_from_json;
 use node_resolver::analyze::NodeCodeTranslator;
+use node_resolver::errors::ClosestPkgJsonError;
+use node_resolver::NodeModuleKind;
 use node_resolver::NodeResolutionMode;
 use serialization::DenoCompileModuleSource;
 use std::borrow::Cow;
@@ -76,9 +79,9 @@ use crate::npm::CliNpmResolverCreateOptions;
 use crate::npm::CliNpmResolverManagedSnapshotOption;
 use crate::npm::CreateInNpmPkgCheckerOptions;
 use crate::resolver::CjsTracker;
-use crate::resolver::CjsTrackerOptions;
 use crate::resolver::CliDenoResolverFs;
-use crate::resolver::CliNodeResolver;
+use crate::resolver::CliNpmReqResolver;
+use crate::resolver::IsCjsResolverOptions;
 use crate::resolver::NpmModuleLoader;
 use crate::util::progress_bar::ProgressBar;
 use crate::util::progress_bar::ProgressBarStyle;
@@ -105,8 +108,9 @@ struct SharedModuleLoaderState {
   fs: Arc<dyn deno_fs::FileSystem>,
   modules: StandaloneModules,
   node_code_translator: Arc<CliNodeCodeTranslator>,
-  node_resolver: Arc<CliNodeResolver>,
+  node_resolver: Arc<NodeResolver>,
   npm_module_loader: Arc<NpmModuleLoader>,
+  npm_req_resolver: Arc<CliNpmReqResolver>,
   npm_resolver: Arc<dyn CliNpmResolver>,
   workspace_resolver: WorkspaceResolver,
 }
@@ -146,13 +150,27 @@ impl ModuleLoader for EmbeddedModuleLoader {
         type_error(format!("Referrer uses invalid specifier: {}", err))
       })?
     };
+    let referrer_kind = if self
+      .shared
+      .cjs_tracker
+      .is_maybe_cjs(&referrer, MediaType::from_specifier(&referrer))?
+    {
+      NodeModuleKind::Cjs
+    } else {
+      NodeModuleKind::Esm
+    };
 
     if self.shared.node_resolver.in_npm_package(&referrer) {
       return Ok(
         self
           .shared
           .node_resolver
-          .resolve(raw_specifier, &referrer, NodeResolutionMode::Execution)?
+          .resolve(
+            raw_specifier,
+            &referrer,
+            referrer_kind,
+            NodeResolutionMode::Execution,
+          )?
           .into_url(),
       );
     }
@@ -174,10 +192,11 @@ impl ModuleLoader for EmbeddedModuleLoader {
         self
           .shared
           .node_resolver
-          .resolve_package_sub_path_from_deno_module(
+          .resolve_package_subpath_from_deno_module(
             pkg_json.dir_path(),
             sub_path.as_deref(),
             Some(&referrer),
+            referrer_kind,
             NodeResolutionMode::Execution,
           )?,
       ),
@@ -187,14 +206,17 @@ impl ModuleLoader for EmbeddedModuleLoader {
         alias,
         ..
       }) => match dep_result.as_ref().map_err(|e| AnyError::from(e.clone()))? {
-        PackageJsonDepValue::Req(req) => {
-          self.shared.node_resolver.resolve_req_with_sub_path(
+        PackageJsonDepValue::Req(req) => self
+          .shared
+          .npm_req_resolver
+          .resolve_req_with_sub_path(
             req,
             sub_path.as_deref(),
             &referrer,
+            referrer_kind,
             NodeResolutionMode::Execution,
           )
-        }
+          .map_err(AnyError::from),
         PackageJsonDepValue::Workspace(version_req) => {
           let pkg_folder = self
             .shared
@@ -207,10 +229,11 @@ impl ModuleLoader for EmbeddedModuleLoader {
             self
               .shared
               .node_resolver
-              .resolve_package_sub_path_from_deno_module(
+              .resolve_package_subpath_from_deno_module(
                 pkg_folder,
                 sub_path.as_deref(),
                 Some(&referrer),
+                referrer_kind,
                 NodeResolutionMode::Execution,
               )?,
           )
@@ -221,11 +244,12 @@ impl ModuleLoader for EmbeddedModuleLoader {
         if let Ok(reference) =
           NpmPackageReqReference::from_specifier(&specifier)
         {
-          return self.shared.node_resolver.resolve_req_reference(
+          return Ok(self.shared.npm_req_resolver.resolve_req_reference(
             &reference,
             &referrer,
+            referrer_kind,
             NodeResolutionMode::Execution,
-          );
+          )?);
         }
 
         if specifier.scheme() == "jsr" {
@@ -240,16 +264,17 @@ impl ModuleLoader for EmbeddedModuleLoader {
           self
             .shared
             .node_resolver
-            .handle_if_in_node_modules(&specifier)?
+            .handle_if_in_node_modules(&specifier)
             .unwrap_or(specifier),
         )
       }
       Err(err)
         if err.is_unmapped_bare_specifier() && referrer.scheme() == "file" =>
       {
-        let maybe_res = self.shared.node_resolver.resolve_if_for_npm_pkg(
+        let maybe_res = self.shared.npm_req_resolver.resolve_if_for_npm_pkg(
           raw_specifier,
           &referrer,
+          referrer_kind,
           NodeResolutionMode::Execution,
         )?;
         if let Some(res) = maybe_res {
@@ -428,6 +453,14 @@ impl NodeRequireLoader for EmbeddedModuleLoader {
     path: &std::path::Path,
   ) -> Result<String, AnyError> {
     Ok(self.shared.fs.read_text_file_lossy_sync(path, None)?)
+  }
+
+  fn is_maybe_cjs(
+    &self,
+    specifier: &ModuleSpecifier,
+  ) -> Result<bool, ClosestPkgJsonError> {
+    let media_type = MediaType::from_specifier(specifier);
+    self.shared.cjs_tracker.is_maybe_cjs(specifier, media_type)
   }
 }
 
@@ -622,38 +655,39 @@ pub async fn run(data: StandaloneData) -> Result<i32, AnyError> {
   let node_resolver = Arc::new(NodeResolver::new(
     deno_runtime::deno_node::DenoFsNodeResolverEnv::new(fs.clone()),
     in_npm_pkg_checker.clone(),
-    npm_resolver.clone().into_npm_resolver(),
+    npm_resolver.clone().into_npm_pkg_folder_resolver(),
     pkg_json_resolver.clone(),
   ));
   let cjs_tracker = Arc::new(CjsTracker::new(
     in_npm_pkg_checker.clone(),
     pkg_json_resolver.clone(),
-    CjsTrackerOptions {
-      unstable_detect_cjs: metadata.unstable_config.detect_cjs,
+    IsCjsResolverOptions {
+      detect_cjs: !metadata.workspace_resolver.package_jsons.is_empty(),
+      is_node_main: false,
     },
   ));
   let cache_db = Caches::new(deno_dir_provider.clone());
   let node_analysis_cache = NodeAnalysisCache::new(cache_db.node_analysis_db());
-  let cli_node_resolver = Arc::new(CliNodeResolver::new(
-    cjs_tracker.clone(),
-    fs.clone(),
-    in_npm_pkg_checker.clone(),
-    node_resolver.clone(),
-    npm_resolver.clone(),
-  ));
+  let npm_req_resolver =
+    Arc::new(CliNpmReqResolver::new(NpmReqResolverOptions {
+      byonm_resolver: (npm_resolver.clone()).into_maybe_byonm(),
+      fs: CliDenoResolverFs(fs.clone()),
+      in_npm_pkg_checker: in_npm_pkg_checker.clone(),
+      node_resolver: node_resolver.clone(),
+      npm_req_resolver: npm_resolver.clone().into_npm_req_resolver(),
+    }));
   let cjs_esm_code_analyzer = CliCjsCodeAnalyzer::new(
     node_analysis_cache,
     cjs_tracker.clone(),
     fs.clone(),
     None,
-    false,
   );
   let node_code_translator = Arc::new(NodeCodeTranslator::new(
     cjs_esm_code_analyzer,
     deno_runtime::deno_node::DenoFsNodeResolverEnv::new(fs.clone()),
     in_npm_pkg_checker,
     node_resolver.clone(),
-    npm_resolver.clone().into_npm_resolver(),
+    npm_resolver.clone().into_npm_pkg_folder_resolver(),
     pkg_json_resolver.clone(),
   ));
   let workspace_resolver = {
@@ -711,7 +745,7 @@ pub async fn run(data: StandaloneData) -> Result<i32, AnyError> {
       fs: fs.clone(),
       modules,
       node_code_translator: node_code_translator.clone(),
-      node_resolver: cli_node_resolver.clone(),
+      node_resolver: node_resolver.clone(),
       npm_module_loader: Arc::new(NpmModuleLoader::new(
         cjs_tracker.clone(),
         fs.clone(),
@@ -719,6 +753,7 @@ pub async fn run(data: StandaloneData) -> Result<i32, AnyError> {
       )),
       npm_resolver: npm_resolver.clone(),
       workspace_resolver,
+      npm_req_resolver,
     }),
   };
 
@@ -800,6 +835,7 @@ pub async fn run(data: StandaloneData) -> Result<i32, AnyError> {
       serve_port: None,
       serve_host: None,
     },
+    metadata.otel_config,
   );
 
   // Initialize v8 once from the main thread.

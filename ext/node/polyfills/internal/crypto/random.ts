@@ -38,6 +38,7 @@ import {
   ERR_INVALID_ARG_TYPE,
   ERR_OUT_OF_RANGE,
 } from "ext:deno_node/internal/errors.ts";
+import { Buffer } from "node:buffer";
 
 export { default as randomBytes } from "ext:deno_node/internal/crypto/_randomBytes.ts";
 export {

@@ -648,10 +648,12 @@ impl<'a> GraphDisplayContext<'a> {
         let message = match err {
           HttpsChecksumIntegrity(_) => "(checksum integrity error)",
           Decode(_) => "(loading decode error)",
-          Loader(err) => match deno_core::error::get_custom_error_class(err) {
-            Some("NotCapable") => "(not capable, requires --allow-import)",
-            _ => "(loading error)",
-          },
+          Loader(err) => {
+            match deno_runtime::errors::get_error_class_name(err) {
+              Some("NotCapable") => "(not capable, requires --allow-import)",
+              _ => "(loading error)",
+            }
+          }
           Jsr(_) => "(loading error)",
           NodeUnknownBuiltinModule(_) => "(unknown node built-in error)",
           Npm(_) => "(npm loading error)",

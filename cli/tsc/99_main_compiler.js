@@ -121,8 +121,8 @@ delete Object.prototype.__proto__;
   /** @type {Map<string, ts.SourceFile>} */
   const sourceFileCache = new Map();
 
-  /** @type {Map<string, string>} */
-  const sourceTextCache = new Map();
+  /** @type {Map<string, ts.IScriptSnapshot & { isCjs?: boolean; }>} */
+  const scriptSnapshotCache = new Map();
 
   /** @type {Map<string, number>} */
   const sourceRefCounts = new Map();
@@ -132,9 +132,6 @@ delete Object.prototype.__proto__;
 
   /** @type {Map<string, boolean>} */
   const isNodeSourceFileCache = new Map();
-
-  /** @type {Map<string, boolean>} */
-  const isCjsCache = new Map();
 
   // Maps asset specifiers to the first scope that the asset was loaded into.
   /** @type {Map<string, string | null>} */
@@ -210,12 +207,13 @@ delete Object.prototype.__proto__;
       const mapKey = path + key;
       let sourceFile = documentRegistrySourceFileCache.get(mapKey);
       if (!sourceFile || sourceFile.version !== version) {
+        const isCjs = /** @type {any} */ (scriptSnapshot).isCjs;
         sourceFile = ts.createLanguageServiceSourceFile(
           fileName,
           scriptSnapshot,
           {
             ...getCreateSourceFileOptions(sourceFileOptions),
-            impliedNodeFormat: (isCjsCache.get(fileName) ?? false)
+            impliedNodeFormat: isCjs
               ? ts.ModuleKind.CommonJS
               : ts.ModuleKind.ESNext,
             // in the lsp we want to be able to show documentation
@@ -320,7 +318,7 @@ delete Object.prototype.__proto__;
         if (lastRequestMethod != "cleanupSemanticCache") {
           const mapKey = path + key;
           documentRegistrySourceFileCache.delete(mapKey);
-          sourceTextCache.delete(path);
+          scriptSnapshotCache.delete(path);
           ops.op_release(path);
         }
       } else {
@@ -624,8 +622,6 @@ delete Object.prototype.__proto__;
         `"data" is unexpectedly null for "${specifier}".`,
       );
 
-      isCjsCache.set(specifier, isCjs);
-
       sourceFile = ts.createSourceFile(
         specifier,
         data,
@@ -699,7 +695,7 @@ delete Object.prototype.__proto__;
           /** @type {[string, ts.Extension] | undefined} */
           const resolved = ops.op_resolve(
             containingFilePath,
-            isCjsCache.get(containingFilePath) ?? false,
+            containingFileMode === ts.ModuleKind.CommonJS,
             [fileReference.fileName],
           )?.[0];
           if (resolved) {
@@ -723,7 +719,14 @@ delete Object.prototype.__proto__;
         }
       });
     },
-    resolveModuleNames(specifiers, base) {
+    resolveModuleNames(
+      specifiers,
+      base,
+      _reusedNames,
+      _redirectedReference,
+      _options,
+      containingSourceFile,
+    ) {
       if (logDebug) {
         debug(`host.resolveModuleNames()`);
         debug(`  base: ${base}`);
@@ -732,7 +735,7 @@ delete Object.prototype.__proto__;
       /** @type {Array<[string, ts.Extension] | undefined>} */
       const resolved = ops.op_resolve(
         base,
-        isCjsCache.get(base) ?? false,
+        containingSourceFile?.impliedNodeFormat === ts.ModuleKind.CommonJS,
         specifiers,
       );
       if (resolved) {
@@ -801,27 +804,32 @@ delete Object.prototype.__proto__;
       if (logDebug) {
         debug(`host.getScriptSnapshot("${specifier}")`);
       }
-      const sourceFile = sourceFileCache.get(specifier);
-      if (sourceFile) {
-        if (!assetScopes.has(specifier)) {
-          assetScopes.set(specifier, lastRequestScope);
+      if (specifier.startsWith(ASSETS_URL_PREFIX)) {
+        const sourceFile = this.getSourceFile(
+          specifier,
+          ts.ScriptTarget.ESNext,
+        );
+        if (sourceFile) {
+          if (!assetScopes.has(specifier)) {
+            assetScopes.set(specifier, lastRequestScope);
+          }
+          // This case only occurs for assets.
+          return ts.ScriptSnapshot.fromString(sourceFile.text);
         }
-        // This case only occurs for assets.
-        return ts.ScriptSnapshot.fromString(sourceFile.text);
       }
-      let sourceText = sourceTextCache.get(specifier);
-      if (sourceText == undefined) {
+      let scriptSnapshot = scriptSnapshotCache.get(specifier);
+      if (scriptSnapshot == undefined) {
         /** @type {{ data: string, version: string, isCjs: boolean }} */
         const fileInfo = ops.op_load(specifier);
         if (!fileInfo) {
           return undefined;
         }
-        isCjsCache.set(specifier, fileInfo.isCjs);
-        sourceTextCache.set(specifier, fileInfo.data);
+        scriptSnapshot = ts.ScriptSnapshot.fromString(fileInfo.data);
+        scriptSnapshot.isCjs = fileInfo.isCjs;
+        scriptSnapshotCache.set(specifier, scriptSnapshot);
         scriptVersionCache.set(specifier, fileInfo.version);
-        sourceText = fileInfo.data;
       }
-      return ts.ScriptSnapshot.fromString(sourceText);
+      return scriptSnapshot;
     },
   };
 
@@ -1233,7 +1241,7 @@ delete Object.prototype.__proto__;
           closed = true;
         }
         scriptVersionCache.delete(script);
-        sourceTextCache.delete(script);
+        scriptSnapshotCache.delete(script);
       }
 
       if (newConfigsByScope || opened || closed) {

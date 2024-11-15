@@ -39,6 +39,7 @@ use tokio::net::TcpStream;
 mod grpc;
 mod hyper_utils;
 mod jsr_registry;
+mod nodejs_org_mirror;
 mod npm_registry;
 mod ws;
 
@@ -86,8 +87,9 @@ const WS_CLOSE_PORT: u16 = 4244;
 const WS_PING_PORT: u16 = 4245;
 const H2_GRPC_PORT: u16 = 4246;
 const H2S_GRPC_PORT: u16 = 4247;
-const JSR_REGISTRY_SERVER_PORT: u16 = 4250;
-const PROVENANCE_MOCK_SERVER_PORT: u16 = 4251;
+pub(crate) const JSR_REGISTRY_SERVER_PORT: u16 = 4250;
+pub(crate) const PROVENANCE_MOCK_SERVER_PORT: u16 = 4251;
+pub(crate) const NODEJS_ORG_MIRROR_SERVER_PORT: u16 = 4252;
 pub(crate) const PUBLIC_NPM_REGISTRY_PORT: u16 = 4260;
 pub(crate) const PRIVATE_NPM_REGISTRY_1_PORT: u16 = 4261;
 pub(crate) const PRIVATE_NPM_REGISTRY_2_PORT: u16 = 4262;
@@ -147,6 +149,10 @@ pub async fn run_all_servers() {
   let private_npm_registry_3_server_futs =
     npm_registry::private_npm_registry3(PRIVATE_NPM_REGISTRY_3_PORT);
 
+  // for serving node header files to node-gyp in tests
+  let node_js_mirror_server_fut =
+    nodejs_org_mirror::nodejs_org_mirror(NODEJS_ORG_MIRROR_SERVER_PORT);
+
   let mut futures = vec![
     redirect_server_fut.boxed_local(),
     ws_server_fut.boxed_local(),
@@ -172,6 +178,7 @@ pub async fn run_all_servers() {
     h2_grpc_server_fut.boxed_local(),
     registry_server_fut.boxed_local(),
     provenance_mock_server_fut.boxed_local(),
+    node_js_mirror_server_fut.boxed_local(),
   ];
   futures.extend(npm_registry_server_futs);
   futures.extend(private_npm_registry_1_server_futs);
@@ -800,17 +807,17 @@ async fn main_server(
     (_, "/jsx/jsx-runtime") | (_, "/jsx/jsx-dev-runtime") => {
       let mut res = Response::new(string_body(
         r#"export function jsx(
-          _type,
-          _props,
-          _key,
-          _source,
-          _self,
-        ) {}
-        export const jsxs = jsx;
-        export const jsxDEV = jsx;
-        export const Fragment = Symbol("Fragment");
-        console.log("imported", import.meta.url);
-        "#,
+  _type,
+  _props,
+  _key,
+  _source,
+  _self,
+) {}
+export const jsxs = jsx;
+export const jsxDEV = jsx;
+export const Fragment = Symbol("Fragment");
+console.log("imported", import.meta.url);
+"#,
       ));
       res.headers_mut().insert(
         "Content-type",

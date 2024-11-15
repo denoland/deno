@@ -2,7 +2,7 @@
 
 [package]
 name = "deno_runtime"
-version = "0.184.0"
+version = "0.186.0"
 authors.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -100,6 +100,7 @@ deno_websocket.workspace = true
 deno_webstorage.workspace = true
 node_resolver = { workspace = true, features = ["sync"] }
 
+async-trait.workspace = true
 color-print.workspace = true
 dlopen2.workspace = true
 encoding_rs.workspace = true
@@ -114,7 +115,13 @@ log.workspace = true
 netif = "0.1.6"
 notify.workspace = true
 once_cell.workspace = true
+opentelemetry.workspace = true
+opentelemetry-http.workspace = true
+opentelemetry-otlp.workspace = true
+opentelemetry-semantic-conventions.workspace = true
+opentelemetry_sdk.workspace = true
 percent-encoding.workspace = true
+pin-project.workspace = true
 regex.workspace = true
 rustyline = { workspace = true, features = ["custom-bindings"] }
 same-file = "1.0.6"

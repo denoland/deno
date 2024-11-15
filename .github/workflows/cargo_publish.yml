@@ -10,7 +10,7 @@ concurrency:
 jobs:
   build:
     name: cargo publish
-    runs-on: ubuntu-20.04-xl
+    runs-on: ubuntu-24.04-xl
     timeout-minutes: 90
 
     env:

@@ -16,7 +16,7 @@ use node_resolver::errors::PackageFolderResolveIoError;
 use node_resolver::errors::PackageJsonLoadError;
 use node_resolver::errors::PackageNotFoundError;
 use node_resolver::InNpmPackageChecker;
-use node_resolver::NpmResolver;
+use node_resolver::NpmPackageFolderResolver;
 use node_resolver::PackageJsonResolverRc;
 use thiserror::Error;
 use url::Url;
@@ -24,6 +24,8 @@ use url::Url;
 use crate::fs::DenoResolverFs;
 
 use super::local::normalize_pkg_name_for_node_modules_deno_folder;
+use super::CliNpmReqResolver;
+use super::ResolvePkgFolderFromDenoReqError;
 
 #[derive(Debug, Error)]
 pub enum ByonmResolvePkgFolderFromDenoReqError {
@@ -303,7 +305,24 @@ impl<Fs: DenoResolverFs, TEnv: NodeResolverEnv> ByonmNpmResolver<Fs, TEnv> {
 impl<
     Fs: DenoResolverFs + Send + Sync + std::fmt::Debug,
     TEnv: NodeResolverEnv,
-  > NpmResolver for ByonmNpmResolver<Fs, TEnv>
+  > CliNpmReqResolver for ByonmNpmResolver<Fs, TEnv>
+{
+  fn resolve_pkg_folder_from_deno_module_req(
+    &self,
+    req: &PackageReq,
+    referrer: &Url,
+  ) -> Result<PathBuf, ResolvePkgFolderFromDenoReqError> {
+    ByonmNpmResolver::resolve_pkg_folder_from_deno_module_req(
+      self, req, referrer,
+    )
+    .map_err(ResolvePkgFolderFromDenoReqError::Byonm)
+  }
+}
+
+impl<
+    Fs: DenoResolverFs + Send + Sync + std::fmt::Debug,
+    TEnv: NodeResolverEnv,
+  > NpmPackageFolderResolver for ByonmNpmResolver<Fs, TEnv>
 {
   fn resolve_package_folder_from_package(
     &self,
