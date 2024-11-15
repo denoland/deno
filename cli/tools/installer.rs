@@ -1406,6 +1406,7 @@ mod tests {
       .env_clear()
       // use the deno binary in the target directory
       .env("PATH", test_util::target_dir())
+      .env("RUST_BACKTRACE", "1")
       .spawn()
       .unwrap()
       .wait()

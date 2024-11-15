@@ -206,7 +206,9 @@ pub enum ProcessError {
   #[error("failed resolving cwd: {0}")]
   FailedResolvingCwd(#[source] std::io::Error),
   #[error(transparent)]
-  Permission(deno_core::error::AnyError),
+  Permission(#[from] deno_permissions::PermissionCheckError),
+  #[error(transparent)]
+  RunPermission(#[from] CheckRunPermissionError),
   #[error(transparent)]
   Resource(deno_core::error::AnyError),
   #[error(transparent)]
@@ -653,8 +655,7 @@ fn compute_run_cmd_and_check_permissions(
     },
     &run_env,
     api_name,
-  )
-  .map_err(ProcessError::Permission)?;
+  )?;
   Ok((cmd, run_env))
 }
 
@@ -734,12 +735,20 @@ fn resolve_path(path: &str, cwd: &Path) -> PathBuf {
   deno_path_util::normalize_path(cwd.join(path))
 }
 
+#[derive(Debug, thiserror::Error)]
+pub enum CheckRunPermissionError {
+  #[error(transparent)]
+  Permission(#[from] deno_permissions::PermissionCheckError),
+  #[error("{0}")]
+  Other(deno_core::error::AnyError),
+}
+
 fn check_run_permission(
   state: &mut OpState,
   cmd: &RunQueryDescriptor,
   run_env: &RunEnv,
   api_name: &str,
-) -> Result<(), deno_core::error::AnyError> {
+) -> Result<(), CheckRunPermissionError> {
   let permissions = state.borrow_mut::<PermissionsContainer>();
   if !permissions.query_run_all(api_name) {
     // error the same on all platforms
@@ -747,13 +756,16 @@ fn check_run_permission(
     if !env_var_names.is_empty() {
       // we don't allow users to launch subprocesses with any LD_ or DYLD_*
       // env vars set because this allows executing code (ex. LD_PRELOAD)
-      return Err(deno_core::error::custom_error(
-        "NotCapable",
-        format!(
-          "Requires --allow-all permissions to spawn subprocess with {} environment variable{}.",
-          env_var_names.join(", "),
-          if env_var_names.len() != 1 { "s" } else { "" }
-        )
+      return Err(CheckRunPermissionError::Other(
+        deno_core::error::custom_error(
+          "NotCapable",
+          format!(
+            "Requires --allow-run permissions to spawn subprocess with {0} environment variable{1}. Alternatively, spawn with {2} environment variable{1} unset.",
+            env_var_names.join(", "),
+            if env_var_names.len() != 1 { "s" } else { "" },
+            if env_var_names.len() != 1 { "these" } else { "the" }
+          ),
+        ),
       ));
     }
     permissions.check_run(cmd, api_name)?;
@@ -1126,8 +1138,7 @@ mod deprecated {
   ) -> Result<(), ProcessError> {
     state
       .borrow_mut::<PermissionsContainer>()
-      .check_run_all(&api_name)
-      .map_err(ProcessError::Permission)?;
+      .check_run_all(&api_name)?;
     kill(pid, &signal)
   }
 }

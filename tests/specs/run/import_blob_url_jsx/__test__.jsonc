@@ -1,0 +1,4 @@
+{
+  "args": "run --quiet --reload import_blob_url_jsx.ts",
+  "output": "import_blob_url_jsx.ts.out"
+}

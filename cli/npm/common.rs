@@ -3,6 +3,7 @@
 use base64::prelude::BASE64_STANDARD;
 use base64::Engine;
 use deno_core::anyhow::bail;
+use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
 use deno_npm::npm_rc::RegistryConfig;
 use http::header;
@@ -36,17 +37,21 @@ pub fn maybe_auth_header_for_npm_registry(
   }
 
   if username.is_some() && password.is_some() {
+    // The npm client does some double encoding when generating the
+    // bearer token value, see
+    // https://github.com/npm/cli/blob/780afc50e3a345feb1871a28e33fa48235bc3bd5/workspaces/config/lib/index.js#L846-L851
+    let pw_base64 = BASE64_STANDARD
+      .decode(password.unwrap())
+      .with_context(|| "The password in npmrc is an invalid base64 string")?;
+    let bearer = BASE64_STANDARD.encode(format!(
+      "{}:{}",
+      username.unwrap(),
+      String::from_utf8_lossy(&pw_base64)
+    ));
+
     return Ok(Some((
       header::AUTHORIZATION,
-      header::HeaderValue::from_str(&format!(
-        "Basic {}",
-        BASE64_STANDARD.encode(format!(
-          "{}:{}",
-          username.unwrap(),
-          password.unwrap()
-        ))
-      ))
-      .unwrap(),
+      header::HeaderValue::from_str(&format!("Basic {}", bearer)).unwrap(),
     )));
   }
 

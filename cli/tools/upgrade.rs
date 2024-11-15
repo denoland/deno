@@ -540,7 +540,7 @@ pub async fn upgrade(
   let Some(archive_data) = download_package(&client, download_url).await?
   else {
     log::error!("Download could not be found, aborting");
-    std::process::exit(1)
+    deno_runtime::exit(1)
   };
 
   log::info!(

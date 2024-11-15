@@ -1,0 +1,5 @@
+{
+  "args": "run --quiet event_listener_error_immediate_exit.ts",
+  "output": "event_listener_error_immediate_exit.ts.out",
+  "exitCode": 1
+}

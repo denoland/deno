@@ -1,6 +1,7 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 use deno_core::op2;
+use libc::c_ulong;
 use std::borrow::Cow;
 use std::cell::RefCell;
 use zlib::*;
@@ -379,6 +380,15 @@ pub fn op_zlib_close_if_pending(
   }
 
   Ok(())
+}
+
+#[op2(fast)]
+#[smi]
+pub fn op_zlib_crc32(#[buffer] data: &[u8], #[smi] value: u32) -> u32 {
+  // SAFETY: `data` is a valid buffer.
+  unsafe {
+    zlib::crc32(value as c_ulong, data.as_ptr(), data.len() as u32) as u32
+  }
 }
 
 #[cfg(test)]

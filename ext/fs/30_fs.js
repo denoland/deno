@@ -346,9 +346,10 @@ const { 0: statStruct, 1: statBuf } = createByteStruct({
   mtime: "date",
   atime: "date",
   birthtime: "date",
+  ctime: "date",
   dev: "u64",
   ino: "?u64",
-  mode: "?u64",
+  mode: "u64",
   nlink: "?u64",
   uid: "?u64",
   gid: "?u64",
@@ -377,9 +378,10 @@ function parseFileInfo(response) {
     birthtime: response.birthtimeSet === true
       ? new Date(response.birthtime)
       : null,
+    ctime: response.ctimeSet === true ? new Date(response.ctime) : null,
     dev: response.dev,
+    mode: response.mode,
     ino: unix ? response.ino : null,
-    mode: unix ? response.mode : null,
     nlink: unix ? response.nlink : null,
     uid: unix ? response.uid : null,
     gid: unix ? response.gid : null,

@@ -1,0 +1,4 @@
+global: true
+Buffer: true
+setImmediate: true
+clearImmediate: true

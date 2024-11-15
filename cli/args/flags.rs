@@ -36,6 +36,7 @@ use deno_path_util::normalize_path;
 use deno_path_util::url_to_file_path;
 use deno_runtime::deno_permissions::PermissionsOptions;
 use deno_runtime::deno_permissions::SysDescriptor;
+use deno_runtime::ops::otel::OtelConfig;
 use log::debug;
 use log::Level;
 use serde::Deserialize;
@@ -576,7 +577,6 @@ pub struct UnstableConfig {
   // TODO(bartlomieju): remove in Deno 2.5
   pub legacy_flag_enabled: bool, // --unstable
   pub bare_node_builtins: bool,
-  pub detect_cjs: bool,
   pub sloppy_imports: bool,
   pub features: Vec<String>, // --unstabe-kv --unstable-cron
 }
@@ -968,6 +968,24 @@ impl Flags {
     args
   }
 
+  pub fn otel_config(&self) -> Option<OtelConfig> {
+    if self
+      .unstable_config
+      .features
+      .contains(&String::from("otel"))
+    {
+      Some(OtelConfig {
+        runtime_name: Cow::Borrowed("deno"),
+        runtime_version: Cow::Borrowed(crate::version::DENO_VERSION_INFO.deno),
+        deterministic: std::env::var("DENO_UNSTABLE_OTEL_DETERMINISTIC")
+          .is_ok(),
+        ..Default::default()
+      })
+    } else {
+      None
+    }
+  }
+
   /// Extract the paths the config file should be discovered from.
   ///
   /// Returns `None` if the config file should not be auto-discovered.
@@ -1179,8 +1197,8 @@ static DENO_HELP: &str = cstr!(
   <y>Dependency management:</>
     <g>add</>          Add dependencies
                   <p(245)>deno add jsr:@std/assert  |  deno add npm:express</>
-    <g>install</>      Install script as an executable
-    <g>uninstall</>    Uninstall a script previously installed with deno install
+    <g>install</>      Installs dependencies either in the local project or globally to a bin directory
+    <g>uninstall</>    Uninstalls a dependency or an executable script in the installation root's bin directory
     <g>remove</>       Remove dependencies from the configuration file
 
   <y>Tooling:</>
@@ -3388,8 +3406,7 @@ fn permission_args(app: Command, requires: Option<&'static str>) -> Command {
           .value_name("IP_OR_HOSTNAME")
           .help("Allow network access. Optionally specify allowed IP addresses and host names, with ports as necessary")
           .value_parser(flags_net::validator)
-          .hide(true)
-          ;
+          .hide(true);
         if let Some(requires) = requires {
           arg = arg.requires(requires)
         }
@@ -5721,7 +5738,6 @@ fn unstable_args_parse(
 
   flags.unstable_config.bare_node_builtins =
     matches.get_flag("unstable-bare-node-builtins");
-  flags.unstable_config.detect_cjs = matches.get_flag("unstable-detect-cjs");
   flags.unstable_config.sloppy_imports =
     matches.get_flag("unstable-sloppy-imports");
 

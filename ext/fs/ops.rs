@@ -10,6 +10,12 @@ use std::path::PathBuf;
 use std::path::StripPrefixError;
 use std::rc::Rc;
 
+use crate::interface::AccessCheckFn;
+use crate::interface::FileSystemRc;
+use crate::interface::FsDirEntry;
+use crate::interface::FsFileType;
+use crate::FsPermissions;
+use crate::OpenOptions;
 use deno_core::op2;
 use deno_core::CancelFuture;
 use deno_core::CancelHandle;
@@ -20,17 +26,11 @@ use deno_core::ToJsBuffer;
 use deno_io::fs::FileResource;
 use deno_io::fs::FsError;
 use deno_io::fs::FsStat;
+use deno_permissions::PermissionCheckError;
 use rand::rngs::ThreadRng;
 use rand::thread_rng;
 use rand::Rng;
 use serde::Serialize;
-
-use crate::interface::AccessCheckFn;
-use crate::interface::FileSystemRc;
-use crate::interface::FsDirEntry;
-use crate::interface::FsFileType;
-use crate::FsPermissions;
-use crate::OpenOptions;
 
 #[derive(Debug, thiserror::Error)]
 pub enum FsOpsError {
@@ -39,7 +39,7 @@ pub enum FsOpsError {
   #[error("{0}")]
   OperationError(#[source] OperationError),
   #[error(transparent)]
-  Permission(deno_core::error::AnyError),
+  Permission(#[from] PermissionCheckError),
   #[error(transparent)]
   Resource(deno_core::error::AnyError),
   #[error("File name or path {0:?} is not valid UTF-8")]
@@ -150,8 +150,7 @@ where
   let path = fs.cwd()?;
   state
     .borrow_mut::<P>()
-    .check_read_blind(&path, "CWD", "Deno.cwd()")
-    .map_err(FsOpsError::Permission)?;
+    .check_read_blind(&path, "CWD", "Deno.cwd()")?;
   let path_str = path_into_string(path.into_os_string())?;
   Ok(path_str)
 }
@@ -166,8 +165,7 @@ where
 {
   let d = state
     .borrow_mut::<P>()
-    .check_read(directory, "Deno.chdir()")
-    .map_err(FsOpsError::Permission)?;
+    .check_read(directory, "Deno.chdir()")?;
   state
     .borrow::<FileSystemRc>()
     .chdir(&d)
@@ -253,8 +251,7 @@ where
 
   let path = state
     .borrow_mut::<P>()
-    .check_write(&path, "Deno.mkdirSync()")
-    .map_err(FsOpsError::Permission)?;
+    .check_write(&path, "Deno.mkdirSync()")?;
 
   let fs = state.borrow::<FileSystemRc>();
   fs.mkdir_sync(&path, recursive, Some(mode))
@@ -277,10 +274,7 @@ where
 
   let (fs, path) = {
     let mut state = state.borrow_mut();
-    let path = state
-      .borrow_mut::<P>()
-      .check_write(&path, "Deno.mkdir()")
-      .map_err(FsOpsError::Permission)?;
+    let path = state.borrow_mut::<P>().check_write(&path, "Deno.mkdir()")?;
     (state.borrow::<FileSystemRc>().clone(), path)
   };
 
@@ -302,8 +296,7 @@ where
 {
   let path = state
     .borrow_mut::<P>()
-    .check_write(&path, "Deno.chmodSync()")
-    .map_err(FsOpsError::Permission)?;
+    .check_write(&path, "Deno.chmodSync()")?;
   let fs = state.borrow::<FileSystemRc>();
   fs.chmod_sync(&path, mode).context_path("chmod", &path)?;
   Ok(())
@@ -320,10 +313,7 @@ where
 {
   let (fs, path) = {
     let mut state = state.borrow_mut();
-    let path = state
-      .borrow_mut::<P>()
-      .check_write(&path, "Deno.chmod()")
-      .map_err(FsOpsError::Permission)?;
+    let path = state.borrow_mut::<P>().check_write(&path, "Deno.chmod()")?;
     (state.borrow::<FileSystemRc>().clone(), path)
   };
   fs.chmod_async(path.clone(), mode)
@@ -344,8 +334,7 @@ where
 {
   let path = state
     .borrow_mut::<P>()
-    .check_write(&path, "Deno.chownSync()")
-    .map_err(FsOpsError::Permission)?;
+    .check_write(&path, "Deno.chownSync()")?;
   let fs = state.borrow::<FileSystemRc>();
   fs.chown_sync(&path, uid, gid)
     .context_path("chown", &path)?;
@@ -364,10 +353,7 @@ where
 {
   let (fs, path) = {
     let mut state = state.borrow_mut();
-    let path = state
-      .borrow_mut::<P>()
-      .check_write(&path, "Deno.chown()")
-      .map_err(FsOpsError::Permission)?;
+    let path = state.borrow_mut::<P>().check_write(&path, "Deno.chown()")?;
     (state.borrow::<FileSystemRc>().clone(), path)
   };
   fs.chown_async(path.clone(), uid, gid)
@@ -387,8 +373,7 @@ where
 {
   let path = state
     .borrow_mut::<P>()
-    .check_write(path, "Deno.removeSync()")
-    .map_err(FsOpsError::Permission)?;
+    .check_write(path, "Deno.removeSync()")?;
 
   let fs = state.borrow::<FileSystemRc>();
   fs.remove_sync(&path, recursive)
@@ -411,13 +396,11 @@ where
     let path = if recursive {
       state
         .borrow_mut::<P>()
-        .check_write(&path, "Deno.remove()")
-        .map_err(FsOpsError::Permission)?
+        .check_write(&path, "Deno.remove()")?
     } else {
       state
         .borrow_mut::<P>()
-        .check_write_partial(&path, "Deno.remove()")
-        .map_err(FsOpsError::Permission)?
+        .check_write_partial(&path, "Deno.remove()")?
     };
 
     (state.borrow::<FileSystemRc>().clone(), path)
@@ -440,12 +423,8 @@ where
   P: FsPermissions + 'static,
 {
   let permissions = state.borrow_mut::<P>();
-  let from = permissions
-    .check_read(from, "Deno.copyFileSync()")
-    .map_err(FsOpsError::Permission)?;
-  let to = permissions
-    .check_write(to, "Deno.copyFileSync()")
-    .map_err(FsOpsError::Permission)?;
+  let from = permissions.check_read(from, "Deno.copyFileSync()")?;
+  let to = permissions.check_write(to, "Deno.copyFileSync()")?;
 
   let fs = state.borrow::<FileSystemRc>();
   fs.copy_file_sync(&from, &to)
@@ -466,12 +445,8 @@ where
   let (fs, from, to) = {
     let mut state = state.borrow_mut();
     let permissions = state.borrow_mut::<P>();
-    let from = permissions
-      .check_read(&from, "Deno.copyFile()")
-      .map_err(FsOpsError::Permission)?;
-    let to = permissions
-      .check_write(&to, "Deno.copyFile()")
-      .map_err(FsOpsError::Permission)?;
+    let from = permissions.check_read(&from, "Deno.copyFile()")?;
+    let to = permissions.check_write(&to, "Deno.copyFile()")?;
     (state.borrow::<FileSystemRc>().clone(), from, to)
   };
 
@@ -493,8 +468,7 @@ where
 {
   let path = state
     .borrow_mut::<P>()
-    .check_read(&path, "Deno.statSync()")
-    .map_err(FsOpsError::Permission)?;
+    .check_read(&path, "Deno.statSync()")?;
   let fs = state.borrow::<FileSystemRc>();
   let stat = fs.stat_sync(&path).context_path("stat", &path)?;
   let serializable_stat = SerializableStat::from(stat);
@@ -514,9 +488,7 @@ where
   let (fs, path) = {
     let mut state = state.borrow_mut();
     let permissions = state.borrow_mut::<P>();
-    let path = permissions
-      .check_read(&path, "Deno.stat()")
-      .map_err(FsOpsError::Permission)?;
+    let path = permissions.check_read(&path, "Deno.stat()")?;
     (state.borrow::<FileSystemRc>().clone(), path)
   };
   let stat = fs
@@ -537,8 +509,7 @@ where
 {
   let path = state
     .borrow_mut::<P>()
-    .check_read(&path, "Deno.lstatSync()")
-    .map_err(FsOpsError::Permission)?;
+    .check_read(&path, "Deno.lstatSync()")?;
   let fs = state.borrow::<FileSystemRc>();
   let stat = fs.lstat_sync(&path).context_path("lstat", &path)?;
   let serializable_stat = SerializableStat::from(stat);
@@ -558,9 +529,7 @@ where
   let (fs, path) = {
     let mut state = state.borrow_mut();
     let permissions = state.borrow_mut::<P>();
-    let path = permissions
-      .check_read(&path, "Deno.lstat()")
-      .map_err(FsOpsError::Permission)?;
+    let path = permissions.check_read(&path, "Deno.lstat()")?;
     (state.borrow::<FileSystemRc>().clone(), path)
   };
   let stat = fs
@@ -581,13 +550,9 @@ where
 {
   let fs = state.borrow::<FileSystemRc>().clone();
   let permissions = state.borrow_mut::<P>();
-  let path = permissions
-    .check_read(&path, "Deno.realPathSync()")
-    .map_err(FsOpsError::Permission)?;
+  let path = permissions.check_read(&path, "Deno.realPathSync()")?;
   if path.is_relative() {
-    permissions
-      .check_read_blind(&fs.cwd()?, "CWD", "Deno.realPathSync()")
-      .map_err(FsOpsError::Permission)?;
+    permissions.check_read_blind(&fs.cwd()?, "CWD", "Deno.realPathSync()")?;
   }
 
   let resolved_path =
@@ -610,13 +575,9 @@ where
     let mut state = state.borrow_mut();
     let fs = state.borrow::<FileSystemRc>().clone();
     let permissions = state.borrow_mut::<P>();
-    let path = permissions
-      .check_read(&path, "Deno.realPath()")
-      .map_err(FsOpsError::Permission)?;
+    let path = permissions.check_read(&path, "Deno.realPath()")?;
     if path.is_relative() {
-      permissions
-        .check_read_blind(&fs.cwd()?, "CWD", "Deno.realPath()")
-        .map_err(FsOpsError::Permission)?;
+      permissions.check_read_blind(&fs.cwd()?, "CWD", "Deno.realPath()")?;
     }
     (fs, path)
   };
@@ -640,8 +601,7 @@ where
 {
   let path = state
     .borrow_mut::<P>()
-    .check_read(&path, "Deno.readDirSync()")
-    .map_err(FsOpsError::Permission)?;
+    .check_read(&path, "Deno.readDirSync()")?;
 
   let fs = state.borrow::<FileSystemRc>();
   let entries = fs.read_dir_sync(&path).context_path("readdir", &path)?;
@@ -662,8 +622,7 @@ where
     let mut state = state.borrow_mut();
     let path = state
       .borrow_mut::<P>()
-      .check_read(&path, "Deno.readDir()")
-      .map_err(FsOpsError::Permission)?;
+      .check_read(&path, "Deno.readDir()")?;
     (state.borrow::<FileSystemRc>().clone(), path)
   };
 
@@ -685,15 +644,9 @@ where
   P: FsPermissions + 'static,
 {
   let permissions = state.borrow_mut::<P>();
-  let _ = permissions
-    .check_read(&oldpath, "Deno.renameSync()")
-    .map_err(FsOpsError::Permission)?;
-  let oldpath = permissions
-    .check_write(&oldpath, "Deno.renameSync()")
-    .map_err(FsOpsError::Permission)?;
-  let newpath = permissions
-    .check_write(&newpath, "Deno.renameSync()")
-    .map_err(FsOpsError::Permission)?;
+  let _ = permissions.check_read(&oldpath, "Deno.renameSync()")?;
+  let oldpath = permissions.check_write(&oldpath, "Deno.renameSync()")?;
+  let newpath = permissions.check_write(&newpath, "Deno.renameSync()")?;
 
   let fs = state.borrow::<FileSystemRc>();
   fs.rename_sync(&oldpath, &newpath)
@@ -714,15 +667,9 @@ where
   let (fs, oldpath, newpath) = {
     let mut state = state.borrow_mut();
     let permissions = state.borrow_mut::<P>();
-    _ = permissions
-      .check_read(&oldpath, "Deno.rename()")
-      .map_err(FsOpsError::Permission)?;
-    let oldpath = permissions
-      .check_write(&oldpath, "Deno.rename()")
-      .map_err(FsOpsError::Permission)?;
-    let newpath = permissions
-      .check_write(&newpath, "Deno.rename()")
-      .map_err(FsOpsError::Permission)?;
+    _ = permissions.check_read(&oldpath, "Deno.rename()")?;
+    let oldpath = permissions.check_write(&oldpath, "Deno.rename()")?;
+    let newpath = permissions.check_write(&newpath, "Deno.rename()")?;
     (state.borrow::<FileSystemRc>().clone(), oldpath, newpath)
   };
 
@@ -743,18 +690,10 @@ where
   P: FsPermissions + 'static,
 {
   let permissions = state.borrow_mut::<P>();
-  _ = permissions
-    .check_read(oldpath, "Deno.linkSync()")
-    .map_err(FsOpsError::Permission)?;
-  let oldpath = permissions
-    .check_write(oldpath, "Deno.linkSync()")
-    .map_err(FsOpsError::Permission)?;
-  _ = permissions
-    .check_read(newpath, "Deno.linkSync()")
-    .map_err(FsOpsError::Permission)?;
-  let newpath = permissions
-    .check_write(newpath, "Deno.linkSync()")
-    .map_err(FsOpsError::Permission)?;
+  _ = permissions.check_read(oldpath, "Deno.linkSync()")?;
+  let oldpath = permissions.check_write(oldpath, "Deno.linkSync()")?;
+  _ = permissions.check_read(newpath, "Deno.linkSync()")?;
+  let newpath = permissions.check_write(newpath, "Deno.linkSync()")?;
 
   let fs = state.borrow::<FileSystemRc>();
   fs.link_sync(&oldpath, &newpath)
@@ -775,18 +714,10 @@ where
   let (fs, oldpath, newpath) = {
     let mut state = state.borrow_mut();
     let permissions = state.borrow_mut::<P>();
-    _ = permissions
-      .check_read(&oldpath, "Deno.link()")
-      .map_err(FsOpsError::Permission)?;
-    let oldpath = permissions
-      .check_write(&oldpath, "Deno.link()")
-      .map_err(FsOpsError::Permission)?;
-    _ = permissions
-      .check_read(&newpath, "Deno.link()")
-      .map_err(FsOpsError::Permission)?;
-    let newpath = permissions
-      .check_write(&newpath, "Deno.link()")
-      .map_err(FsOpsError::Permission)?;
+    _ = permissions.check_read(&oldpath, "Deno.link()")?;
+    let oldpath = permissions.check_write(&oldpath, "Deno.link()")?;
+    _ = permissions.check_read(&newpath, "Deno.link()")?;
+    let newpath = permissions.check_write(&newpath, "Deno.link()")?;
     (state.borrow::<FileSystemRc>().clone(), oldpath, newpath)
   };
 
@@ -811,12 +742,8 @@ where
   let newpath = PathBuf::from(newpath);
 
   let permissions = state.borrow_mut::<P>();
-  permissions
-    .check_write_all("Deno.symlinkSync()")
-    .map_err(FsOpsError::Permission)?;
-  permissions
-    .check_read_all("Deno.symlinkSync()")
-    .map_err(FsOpsError::Permission)?;
+  permissions.check_write_all("Deno.symlinkSync()")?;
+  permissions.check_read_all("Deno.symlinkSync()")?;
 
   let fs = state.borrow::<FileSystemRc>();
   fs.symlink_sync(&oldpath, &newpath, file_type)
@@ -841,12 +768,8 @@ where
   let fs = {
     let mut state = state.borrow_mut();
     let permissions = state.borrow_mut::<P>();
-    permissions
-      .check_write_all("Deno.symlink()")
-      .map_err(FsOpsError::Permission)?;
-    permissions
-      .check_read_all("Deno.symlink()")
-      .map_err(FsOpsError::Permission)?;
+    permissions.check_write_all("Deno.symlink()")?;
+    permissions.check_read_all("Deno.symlink()")?;
     state.borrow::<FileSystemRc>().clone()
   };
 
@@ -868,8 +791,7 @@ where
 {
   let path = state
     .borrow_mut::<P>()
-    .check_read(&path, "Deno.readLink()")
-    .map_err(FsOpsError::Permission)?;
+    .check_read(&path, "Deno.readLink()")?;
 
   let fs = state.borrow::<FileSystemRc>();
 
@@ -891,8 +813,7 @@ where
     let mut state = state.borrow_mut();
     let path = state
       .borrow_mut::<P>()
-      .check_read(&path, "Deno.readLink()")
-      .map_err(FsOpsError::Permission)?;
+      .check_read(&path, "Deno.readLink()")?;
     (state.borrow::<FileSystemRc>().clone(), path)
   };
 
@@ -915,8 +836,7 @@ where
 {
   let path = state
     .borrow_mut::<P>()
-    .check_write(path, "Deno.truncateSync()")
-    .map_err(FsOpsError::Permission)?;
+    .check_write(path, "Deno.truncateSync()")?;
 
   let fs = state.borrow::<FileSystemRc>();
   fs.truncate_sync(&path, len)
@@ -938,8 +858,7 @@ where
     let mut state = state.borrow_mut();
     let path = state
       .borrow_mut::<P>()
-      .check_write(&path, "Deno.truncate()")
-      .map_err(FsOpsError::Permission)?;
+      .check_write(&path, "Deno.truncate()")?;
     (state.borrow::<FileSystemRc>().clone(), path)
   };
 
@@ -962,10 +881,7 @@ pub fn op_fs_utime_sync<P>(
 where
   P: FsPermissions + 'static,
 {
-  let path = state
-    .borrow_mut::<P>()
-    .check_write(path, "Deno.utime()")
-    .map_err(FsOpsError::Permission)?;
+  let path = state.borrow_mut::<P>().check_write(path, "Deno.utime()")?;
 
   let fs = state.borrow::<FileSystemRc>();
   fs.utime_sync(&path, atime_secs, atime_nanos, mtime_secs, mtime_nanos)
@@ -988,10 +904,7 @@ where
 {
   let (fs, path) = {
     let mut state = state.borrow_mut();
-    let path = state
-      .borrow_mut::<P>()
-      .check_write(&path, "Deno.utime()")
-      .map_err(FsOpsError::Permission)?;
+    let path = state.borrow_mut::<P>().check_write(&path, "Deno.utime()")?;
     (state.borrow::<FileSystemRc>().clone(), path)
   };
 
@@ -1219,16 +1132,12 @@ where
 {
   let fs = state.borrow::<FileSystemRc>().clone();
   let dir = match dir {
-    Some(dir) => state
-      .borrow_mut::<P>()
-      .check_write(dir, api_name)
-      .map_err(FsOpsError::Permission)?,
+    Some(dir) => state.borrow_mut::<P>().check_write(dir, api_name)?,
     None => {
       let dir = fs.tmp_dir().context("tmpdir")?;
       state
         .borrow_mut::<P>()
-        .check_write_blind(&dir, "TMP", api_name)
-        .map_err(FsOpsError::Permission)?;
+        .check_write_blind(&dir, "TMP", api_name)?;
       dir
     }
   };
@@ -1246,16 +1155,12 @@ where
   let mut state = state.borrow_mut();
   let fs = state.borrow::<FileSystemRc>().clone();
   let dir = match dir {
-    Some(dir) => state
-      .borrow_mut::<P>()
-      .check_write(dir, api_name)
-      .map_err(FsOpsError::Permission)?,
+    Some(dir) => state.borrow_mut::<P>().check_write(dir, api_name)?,
     None => {
       let dir = fs.tmp_dir().context("tmpdir")?;
       state
         .borrow_mut::<P>()
-        .check_write_blind(&dir, "TMP", api_name)
-        .map_err(FsOpsError::Permission)?;
+        .check_write_blind(&dir, "TMP", api_name)?;
       dir
     }
   };
@@ -1890,6 +1795,8 @@ create_struct_writer! {
     atime: u64,
     birthtime_set: bool,
     birthtime: u64,
+    ctime_set: bool,
+    ctime: u64,
     // Following are only valid under Unix.
     dev: u64,
     ino: u64,
@@ -1921,6 +1828,8 @@ impl From<FsStat> for SerializableStat {
       atime: stat.atime.unwrap_or(0),
       birthtime_set: stat.birthtime.is_some(),
       birthtime: stat.birthtime.unwrap_or(0),
+      ctime_set: stat.ctime.is_some(),
+      ctime: stat.ctime.unwrap_or(0),
 
       dev: stat.dev,
       ino: stat.ino,

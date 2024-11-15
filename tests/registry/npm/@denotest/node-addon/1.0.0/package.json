@@ -2,7 +2,7 @@
   "name": "@denotest/node-addon",
   "version": "1.0.0",
   "scripts": {
-    "install": "node-gyp configure build"
+    "install": "node-gyp configure --verbose build"
   },
   "dependencies": {
     "node-gyp": "10.1.0"
