@@ -470,6 +470,7 @@ Deno.test("[node/http] send request with non-chunked body", async () => {
   };
   const abortController = new AbortController();
   const servePromise = Deno.serve({
+    hostname,
     port,
     signal: abortController.signal,
     onListen: undefined,
@@ -526,6 +527,7 @@ Deno.test("[node/http] send request with chunked body", async () => {
   };
   const abortController = new AbortController();
   const servePromise = Deno.serve({
+    hostname,
     port,
     signal: abortController.signal,
     onListen: undefined,
@@ -572,6 +574,7 @@ Deno.test("[node/http] send request with chunked body as default", async () => {
   };
   const abortController = new AbortController();
   const servePromise = Deno.serve({
+    hostname,
     port,
     signal: abortController.signal,
     onListen: undefined,
