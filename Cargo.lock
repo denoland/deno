@@ -1635,7 +1635,6 @@ dependencies = [
  "async-trait",
  "data-url",
  "deno_ast",
- "deno_package_json",
  "deno_semver",
  "deno_unsync",
  "encoding_rs",
@@ -1653,6 +1652,7 @@ dependencies = [
  "thiserror",
  "twox-hash",
  "url",
+ "wasm_dep_analyzer",
 ]
 
 [[package]]
@@ -8115,9 +8115,9 @@ dependencies = [
 
 [[package]]
 name = "wasm_dep_analyzer"
-version = "0.0.1"
+version = "0.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7fda582fdf067ec11fbbf893797c9b17742d994bc6f5cdd05863f111b84c23cf"
+checksum = "7f270206a91783fd90625c8bb0d8fbd459d0b1d1bf209b656f713f01ae7c04b8"
 dependencies = [
  "thiserror",
 ]
