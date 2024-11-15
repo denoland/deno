@@ -24,7 +24,7 @@ use std::rc::Rc;
 use crate::NodePermissions;
 use crate::NodeRequireLoaderRc;
 use crate::NodeResolverRc;
-use crate::NpmResolverRc;
+use crate::NpmPackageFolderResolverRc;
 use crate::PackageJsonResolverRc;
 
 #[must_use = "the resolved return value to mitigate time-of-check to time-of-use issues"]
@@ -220,7 +220,7 @@ pub fn op_require_resolve_deno_dir(
   #[string] request: String,
   #[string] parent_filename: String,
 ) -> Result<Option<String>, AnyError> {
-  let resolver = state.borrow::<NpmResolverRc>();
+  let resolver = state.borrow::<NpmPackageFolderResolverRc>();
   Ok(
     resolver
       .resolve_package_folder_from_package(

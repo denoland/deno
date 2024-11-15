@@ -143,6 +143,7 @@ pub struct WorkerServiceOptions {
   pub npm_process_state_provider: Option<NpmProcessStateProviderRc>,
   pub permissions: PermissionsContainer,
   pub root_cert_store_provider: Option<Arc<dyn RootCertStoreProvider>>,
+  pub fetch_dns_resolver: deno_fetch::dns::Resolver,
 
   /// The store to use for transferring SharedArrayBuffers between isolates.
   /// If multiple isolates should have the possibility of sharing
@@ -363,6 +364,7 @@ impl MainWorker {
             .unsafely_ignore_certificate_errors
             .clone(),
           file_fetch_handler: Rc::new(deno_fetch::FsFetchHandler),
+          resolver: services.fetch_dns_resolver,
           ..Default::default()
         },
       ),

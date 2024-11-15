@@ -1,5 +1,6 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
+pub mod dns;
 mod fs_fetch_handler;
 mod proxy;
 #[cfg(test)]
@@ -91,6 +92,7 @@ pub struct Options {
   pub unsafely_ignore_certificate_errors: Option<Vec<String>>,
   pub client_cert_chain_and_key: TlsKeys,
   pub file_fetch_handler: Rc<dyn FetchHandler>,
+  pub resolver: dns::Resolver,
 }
 
 impl Options {
@@ -114,6 +116,7 @@ impl Default for Options {
       unsafely_ignore_certificate_errors: None,
       client_cert_chain_and_key: TlsKeys::Null,
       file_fetch_handler: Rc::new(DefaultFileFetchHandler),
+      resolver: dns::Resolver::default(),
     }
   }
 }
@@ -255,6 +258,7 @@ pub fn create_client_from_options(
         .map_err(HttpClientCreateError::RootCertStore)?,
       ca_certs: vec![],
       proxy: options.proxy.clone(),
+      dns_resolver: options.resolver.clone(),
       unsafely_ignore_certificate_errors: options
         .unsafely_ignore_certificate_errors
         .clone(),
@@ -835,6 +839,8 @@ pub struct CreateHttpClientArgs {
   proxy: Option<Proxy>,
   pool_max_idle_per_host: Option<usize>,
   pool_idle_timeout: Option<serde_json::Value>,
+  #[serde(default)]
+  use_hickory_resolver: bool,
   #[serde(default = "default_true")]
   http1: bool,
   #[serde(default = "default_true")]
@@ -878,6 +884,13 @@ where
         .map_err(HttpClientCreateError::RootCertStore)?,
       ca_certs,
       proxy: args.proxy,
+      dns_resolver: if args.use_hickory_resolver {
+        dns::Resolver::hickory()
+          .map_err(deno_core::error::AnyError::new)
+          .map_err(FetchError::Resource)?
+      } else {
+        dns::Resolver::default()
+      },
       unsafely_ignore_certificate_errors: options
         .unsafely_ignore_certificate_errors
         .clone(),
@@ -909,6 +922,7 @@ pub struct CreateHttpClientOptions {
   pub root_cert_store: Option<RootCertStore>,
   pub ca_certs: Vec<Vec<u8>>,
   pub proxy: Option<Proxy>,
+  pub dns_resolver: dns::Resolver,
   pub unsafely_ignore_certificate_errors: Option<Vec<String>>,
   pub client_cert_chain_and_key: Option<TlsKey>,
   pub pool_max_idle_per_host: Option<usize>,
@@ -923,6 +937,7 @@ impl Default for CreateHttpClientOptions {
       root_cert_store: None,
       ca_certs: vec![],
       proxy: None,
+      dns_resolver: dns::Resolver::default(),
       unsafely_ignore_certificate_errors: None,
       client_cert_chain_and_key: None,
       pool_max_idle_per_host: None,
@@ -976,7 +991,8 @@ pub fn create_http_client(
   tls_config.alpn_protocols = alpn_protocols;
   let tls_config = Arc::from(tls_config);
 
-  let mut http_connector = HttpConnector::new();
+  let mut http_connector =
+    HttpConnector::new_with_resolver(options.dns_resolver.clone());
   http_connector.enforce_http(false);
 
   let user_agent = user_agent.parse::<HeaderValue>().map_err(|_| {
@@ -1051,7 +1067,7 @@ pub struct Client {
   user_agent: HeaderValue,
 }
 
-type Connector = proxy::ProxyConnector<HttpConnector>;
+type Connector = proxy::ProxyConnector<HttpConnector<dns::Resolver>>;
 
 // clippy is wrong here
 #[allow(clippy::declare_interior_mutable_const)]

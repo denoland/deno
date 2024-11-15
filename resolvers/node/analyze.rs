@@ -23,7 +23,7 @@ use crate::npm::InNpmPackageCheckerRc;
 use crate::resolution::NodeResolverRc;
 use crate::NodeModuleKind;
 use crate::NodeResolutionMode;
-use crate::NpmResolverRc;
+use crate::NpmPackageFolderResolverRc;
 use crate::PackageJsonResolverRc;
 use crate::PathClean;
 
@@ -66,7 +66,7 @@ pub struct NodeCodeTranslator<
   env: TNodeResolverEnv,
   in_npm_pkg_checker: InNpmPackageCheckerRc,
   node_resolver: NodeResolverRc<TNodeResolverEnv>,
-  npm_resolver: NpmResolverRc,
+  npm_resolver: NpmPackageFolderResolverRc,
   pkg_json_resolver: PackageJsonResolverRc<TNodeResolverEnv>,
 }
 
@@ -78,7 +78,7 @@ impl<TCjsCodeAnalyzer: CjsCodeAnalyzer, TNodeResolverEnv: NodeResolverEnv>
     env: TNodeResolverEnv,
     in_npm_pkg_checker: InNpmPackageCheckerRc,
     node_resolver: NodeResolverRc<TNodeResolverEnv>,
-    npm_resolver: NpmResolverRc,
+    npm_resolver: NpmPackageFolderResolverRc,
     pkg_json_resolver: PackageJsonResolverRc<TNodeResolverEnv>,
   ) -> Self {
     Self {
