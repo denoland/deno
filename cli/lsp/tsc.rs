@@ -34,6 +34,7 @@ use crate::util::path::relative_specifier;
 use crate::util::path::to_percent_decoded_str;
 use crate::util::result::InfallibleResultExt;
 use crate::util::v8::convert;
+use crate::worker::create_isolate_create_params;
 use deno_core::convert::Smi;
 use deno_core::convert::ToV8;
 use deno_core::error::StdAnyError;
@@ -4760,6 +4761,7 @@ fn run_tsc_thread(
       specifier_map,
       request_rx,
     )],
+    create_params: create_isolate_create_params(),
     startup_snapshot: Some(tsc::compiler_snapshot()),
     inspector: has_inspector_server,
     ..Default::default()
