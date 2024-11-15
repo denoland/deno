@@ -20,7 +20,6 @@ use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
 use deno_core::serde_json;
 use deno_doc as doc;
-use deno_doc::html::DocNodeWithContext;
 use deno_doc::html::UrlResolveKind;
 use deno_doc::html::UsageComposer;
 use deno_doc::html::UsageComposerEntry;
@@ -361,7 +360,6 @@ impl UsageComposer for DocComposer {
 
   fn compose(
     &self,
-    nodes: &[DocNodeWithContext],
     current_resolve: UrlResolveKind,
     usage_to_md: deno_doc::html::UsageToMd,
   ) -> IndexMap<UsageComposerEntry, String> {
@@ -373,144 +371,7 @@ impl UsageComposer for DocComposer {
             name: "".to_string(),
             icon: None,
           },
-          usage_to_md(nodes, current_file.path.as_str()),
-        )])
-      })
-      .unwrap_or_default()
-  }
-}
-
-struct DenoDocResolver(bool);
-
-impl deno_doc::html::HrefResolver for DenoDocResolver {
-  fn resolve_path(
-    &self,
-    current: UrlResolveKind,
-    target: UrlResolveKind,
-  ) -> String {
-    let path = deno_doc::html::href_path_resolve(current, target);
-    if self.0 {
-      if let Some(path) = path
-        .strip_suffix("index.html")
-        .or_else(|| path.strip_suffix(".html"))
-      {
-        return path.to_owned();
-      }
-    }
-
-    path
-  }
-
-  fn resolve_global_symbol(&self, _symbol: &[String]) -> Option<String> {
-    None
-  }
-
-  fn resolve_import_href(
-    &self,
-    _symbol: &[String],
-    _src: &str,
-  ) -> Option<String> {
-    None
-  }
-
-  fn resolve_source(&self, _location: &deno_doc::Location) -> Option<String> {
-    None
-  }
-
-  fn resolve_external_jsdoc_module(
-    &self,
-    _module: &str,
-    _symbol: Option<&str>,
-  ) -> Option<(String, String)> {
-    None
-  }
-}
-
-struct DenoDocComposer;
-
-impl UsageComposer for DenoDocComposer {
-  fn is_single_mode(&self) -> bool {
-    true
-  }
-
-  fn compose(
-    &self,
-    _nodes: &[DocNodeWithContext],
-    _current_resolve: UrlResolveKind,
-    _usage_to_md: deno_doc::html::UsageToMd,
-  ) -> IndexMap<UsageComposerEntry, String> {
-    Default::default()
-  }
-}
-
-struct NodeDocResolver(bool);
-
-impl deno_doc::html::HrefResolver for NodeDocResolver {
-  fn resolve_path(
-    &self,
-    current: UrlResolveKind,
-    target: UrlResolveKind,
-  ) -> String {
-    let path = deno_doc::html::href_path_resolve(current, target);
-    if self.0 {
-      if let Some(path) = path
-        .strip_suffix("index.html")
-        .or_else(|| path.strip_suffix(".html"))
-      {
-        return path.to_owned();
-      }
-    }
-
-    path
-  }
-
-  fn resolve_global_symbol(&self, _symbol: &[String]) -> Option<String> {
-    None
-  }
-
-  fn resolve_import_href(
-    &self,
-    _symbol: &[String],
-    _src: &str,
-  ) -> Option<String> {
-    None
-  }
-
-  fn resolve_source(&self, _location: &deno_doc::Location) -> Option<String> {
-    None
-  }
-
-  fn resolve_external_jsdoc_module(
-    &self,
-    _module: &str,
-    _symbol: Option<&str>,
-  ) -> Option<(String, String)> {
-    None
-  }
-}
-
-struct NodeDocComposer;
-
-impl UsageComposer for NodeDocComposer {
-  fn is_single_mode(&self) -> bool {
-    true
-  }
-
-  fn compose(
-    &self,
-    nodes: &[DocNodeWithContext],
-    current_resolve: UrlResolveKind,
-    usage_to_md: deno_doc::html::UsageToMd,
-  ) -> IndexMap<UsageComposerEntry, String> {
-    current_resolve
-      .get_file()
-      .map(|file| {
-        IndexMap::from([(
-          UsageComposerEntry {
-            name: "".to_string(),
-            icon: None,
-          },
-          usage_to_md(nodes, &format!("node:{}", file.path)),
+          usage_to_md(current_file.path.as_str(), None),
         )])
       })
       .unwrap_or_default()
@@ -526,42 +387,10 @@ fn generate_docs_directory(
   let cwd = std::env::current_dir().context("Failed to get CWD")?;
   let output_dir_resolved = cwd.join(&html_options.output);
 
-  let internal_env = std::env::var("DENO_INTERNAL_HTML_DOCS").ok();
-
-  let (href_resolver, usage_composer): (
-    Rc<dyn deno_doc::html::HrefResolver>,
-    Rc<dyn UsageComposer>,
-  ) = if internal_env
-    .as_ref()
-    .is_some_and(|internal_html_docs| internal_html_docs == "node")
-  {
-    (
-      Rc::new(NodeDocResolver(html_options.strip_trailing_html)),
-      Rc::new(NodeDocComposer),
-    )
-  } else if internal_env
-    .as_ref()
-    .is_some_and(|internal_html_docs| internal_html_docs == "deno")
-    || deno_ns.is_empty()
-  {
-    (
-      Rc::new(DenoDocResolver(html_options.strip_trailing_html)),
-      Rc::new(DenoDocComposer),
-    )
-  } else {
-    (
-      Rc::new(DocResolver {
-        deno_ns,
-        strip_trailing_html: html_options.strip_trailing_html,
-      }),
-      Rc::new(DocComposer),
-    )
-  };
-
   let category_docs =
     if let Some(category_docs_path) = &html_options.category_docs_path {
       let content = std::fs::read(category_docs_path)?;
-      Some(deno_core::serde_json::from_slice(&content)?)
+      Some(serde_json::from_slice(&content)?)
     } else {
       None
     };
@@ -570,7 +399,7 @@ fn generate_docs_directory(
     &html_options.symbol_redirect_map_path
   {
     let content = std::fs::read(symbol_redirect_map_path)?;
-    Some(deno_core::serde_json::from_slice(&content)?)
+    Some(serde_json::from_slice(&content)?)
   } else {
     None
   };
@@ -579,19 +408,23 @@ fn generate_docs_directory(
     &html_options.default_symbol_map_path
   {
     let content = std::fs::read(default_symbol_map_path)?;
-    Some(deno_core::serde_json::from_slice(&content)?)
+    Some(serde_json::from_slice(&content)?)
   } else {
     None
   };
+
 
   let options = deno_doc::html::GenerateOptions {
     package_name: html_options.name.clone(),
     main_entrypoint: None,
     rewrite_map,
-    href_resolver,
-    usage_composer,
+    href_resolver: Rc::new(DocResolver {
+      deno_ns,
+      strip_trailing_html: html_options.strip_trailing_html,
+    }),
+    usage_composer: Rc::new(DocComposer),
     category_docs,
-    disable_search: internal_env.is_some(),
+    disable_search: false,
     symbol_redirect_map,
     default_symbol_map,
     markdown_renderer: deno_doc::html::comrak::create_renderer(
