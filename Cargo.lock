@@ -579,9 +579,9 @@ dependencies = [
 
 [[package]]
 name = "boxed_error"
-version = "0.2.0"
+version = "0.2.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8c9502f734a084efe611334f96bc2fc382f85293e21a615d2a3a6e5b3afd2650"
+checksum = "69aae56aaf59d1994b902ed5c0c79024012bdc2426741def75a635999a030e7e"
 dependencies = [
  "quote",
  "syn 2.0.87",
