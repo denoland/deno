@@ -16,6 +16,8 @@ path = "lib.rs"
 [dependencies]
 anyhow.workspace = true
 base32.workspace = true
+dashmap.workspace = true
+deno_config.workspace = true
 deno_media_type.workspace = true
 deno_package_json.workspace = true
 deno_package_json.features = ["sync"]
