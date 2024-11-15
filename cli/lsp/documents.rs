@@ -883,8 +883,13 @@ impl FileSystemDocuments {
     let doc = if specifier.scheme() == "file" {
       let path = url_to_file_path(specifier).ok()?;
       let bytes = fs::read(path).ok()?;
-      let content =
-        deno_graph::source::decode_owned_source(specifier, bytes, None).ok()?;
+      let content = bytes_to_content(
+        specifier,
+        MediaType::from_specifier(specifier),
+        bytes,
+        None,
+      )
+      .ok()?;
       Document::new(
         specifier.clone(),
         content.into(),
@@ -923,19 +928,24 @@ impl FileSystemDocuments {
           specifier,
           Some(&cached_file.metadata.headers),
         );
-      let content = deno_graph::source::decode_owned_source(
+      let media_type = resolve_media_type(
+        &specifier,
+        Some(&cached_file.metadata.headers),
+        None,
+      );
+      let content = bytes_to_content(
         specifier,
+        media_type,
         cached_file.content,
         maybe_charset,
       )
       .ok()?;
-      let maybe_headers = Some(cached_file.metadata.headers);
       Document::new(
         specifier.clone(),
         content.into(),
         None,
         None,
-        maybe_headers,
+        Some(cached_file.metadata.headers),
         is_cjs_resolver,
         resolver.clone(),
         config.clone(),
@@ -1703,6 +1713,24 @@ fn analyze_module(
     Err(err) => Err(deno_graph::ModuleGraphError::ModuleError(
       deno_graph::ModuleError::ParseErr(specifier, err.clone()),
     )),
+  }
+}
+
+fn bytes_to_content(
+  specifier: &ModuleSpecifier,
+  media_type: MediaType,
+  bytes: Vec<u8>,
+  maybe_charset: Option<&str>,
+) -> Result<String, AnyError> {
+  if media_type == MediaType::Wasm {
+    // we use the dts representation for Wasm modules
+    Ok(deno_graph::source::wasm::wasm_module_to_dts(&bytes)?)
+  } else {
+    Ok(deno_graph::source::decode_owned_source(
+      specifier,
+      bytes,
+      maybe_charset,
+    )?)
   }
 }
 
