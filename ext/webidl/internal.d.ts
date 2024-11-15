@@ -439,6 +439,27 @@ declare module "ext:deno_webidl/00_webidl.js" {
   ) => T[];
 
   /**
+   * Create a converter that converts an async iterable of the inner type.
+   */
+  function createAsyncIterableConverter<V, T>(
+    converter: (
+      v: V,
+      prefix?: string,
+      context?: string,
+      opts?: any,
+    ) => T,
+  ): (
+    v: any,
+    prefix?: string,
+    context?: string,
+    opts?: any,
+  ) => ConvertedAsyncIterable<V, T>;
+
+  interface ConvertedAsyncIterable<V, T> extends AsyncIterableIterator<T> {
+    value: V;
+  }
+
+  /**
    * Create a converter that converts a Promise of the inner type.
    */
   function createPromiseConverter<T>(
@@ -559,4 +580,9 @@ declare module "ext:deno_webidl/00_webidl.js" {
     | "Symbol"
     | "BigInt"
     | "Object";
+
+  /**
+   * Check whether a value is an async iterable.
+   */
+  function isAsyncIterable(v: any): boolean;
 }
