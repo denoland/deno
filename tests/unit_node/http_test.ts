@@ -1021,6 +1021,8 @@ Deno.test(
     });
     request.on("close", () => resolve());
     await promise;
+    // TODO(kt3k): This is necessary for preventing op leak
+    await new Promise((resolve) => setTimeout(resolve, 2000));
   },
 );
 
@@ -1047,6 +1049,8 @@ Deno.test(
     await requestClosed.promise;
     assertEquals(receivedRequest, false);
     await server.finished;
+    // TODO(kt3k): This is necessary for preventing op leak
+    await new Promise((resolve) => setTimeout(resolve, 2000));
   },
 );
 
