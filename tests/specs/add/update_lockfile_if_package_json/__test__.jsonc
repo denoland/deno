@@ -1,0 +1,31 @@
+{
+  "tempDir": true,
+  "tests": {
+    "updates_lockfile": {
+      "steps": [
+        {
+          "args": "add npm:@denotest/esm-basic npm:@denotest/say-hello",
+          "output": "add.out"
+        },
+        {
+          "args": [
+            "eval",
+            "console.log(Deno.readTextFileSync('deno.lock'))"
+          ],
+          "output": "lockfile_add.out"
+        },
+        {
+          "args": "remove @denotest/esm-basic @denotest/say-hello",
+          "output": "remove.out"
+        },
+        {
+          "args": [
+            "eval",
+            "console.log(Deno.readTextFileSync('deno.lock'))"
+          ],
+          "output": "lockfile_remove.out"
+        }
+      ]
+    }
+  }
+}

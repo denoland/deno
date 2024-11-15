@@ -298,6 +298,10 @@ async fn install_local(
     }
     InstallFlagsLocal::TopLevel => {
       let factory = CliFactory::from_flags(flags);
+      // surface any errors in the package.json
+      if let Some(npm_resolver) = factory.npm_resolver().await?.as_managed() {
+        npm_resolver.ensure_no_pkg_json_dep_errors()?;
+      }
       crate::tools::registry::cache_top_level_deps(&factory, None).await?;
 
       if let Some(lockfile) = factory.cli_options()?.maybe_lockfile() {
@@ -1392,6 +1396,7 @@ mod tests {
       .env_clear()
       // use the deno binary in the target directory
       .env("PATH", test_util::target_dir())
+      .env("RUST_BACKTRACE", "1")
       .spawn()
       .unwrap()
       .wait()

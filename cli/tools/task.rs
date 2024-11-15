@@ -16,7 +16,7 @@ use deno_core::anyhow::anyhow;
 use deno_core::anyhow::bail;
 use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
-use deno_core::normalize_path;
+use deno_path_util::normalize_path;
 use deno_task_shell::ShellCommand;
 
 use crate::args::CliOptions;
@@ -182,19 +182,21 @@ async fn run_task(opts: RunTaskOptions<'_>) -> Result<i32, AnyError> {
     &task_runner::get_script_with_args(script, cli_options.argv()),
   );
 
-  task_runner::run_task(task_runner::RunTaskOptions {
-    task_name,
-    script,
-    cwd,
-    env_vars,
-    custom_commands,
-    init_cwd: opts.cli_options.initial_cwd(),
-    argv: cli_options.argv(),
-    root_node_modules_dir: npm_resolver
-      .root_node_modules_path()
-      .map(|p| p.as_path()),
-  })
-  .await
+  Ok(
+    task_runner::run_task(task_runner::RunTaskOptions {
+      task_name,
+      script,
+      cwd,
+      env_vars,
+      custom_commands,
+      init_cwd: opts.cli_options.initial_cwd(),
+      argv: cli_options.argv(),
+      root_node_modules_dir: npm_resolver.root_node_modules_path(),
+      stdio: None,
+    })
+    .await?
+    .exit_code,
+  )
 }
 
 fn output_task(task_name: &str, script: &str) {

@@ -28,6 +28,7 @@ use crate::fs::PathRef;
 use crate::http_server;
 use crate::jsr_registry_unset_url;
 use crate::lsp::LspClientBuilder;
+use crate::nodejs_org_mirror_unset_url;
 use crate::npm_registry_unset_url;
 use crate::pty::Pty;
 use crate::strip_ansi_codes;
@@ -78,6 +79,7 @@ impl DiagnosticLogger {
         logger.write_all(text.as_ref().as_bytes()).unwrap();
         logger.write_all(b"\n").unwrap();
       }
+      #[allow(clippy::print_stderr)]
       None => eprintln!("{}", text.as_ref()),
     }
   }
@@ -841,6 +843,12 @@ impl TestCommandBuilder {
     }
     if !envs.contains_key("JSR_URL") {
       envs.insert("JSR_URL".to_string(), jsr_registry_unset_url());
+    }
+    if !envs.contains_key("NODEJS_ORG_MIRROR") {
+      envs.insert(
+        "NODEJS_ORG_MIRROR".to_string(),
+        nodejs_org_mirror_unset_url(),
+      );
     }
     for key in &self.envs_remove {
       envs.remove(key);

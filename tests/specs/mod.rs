@@ -119,6 +119,9 @@ struct MultiStepMetaData {
   /// steps.
   #[serde(default)]
   pub temp_dir: bool,
+  /// Whether the temporary directory should be symlinked to another path.
+  #[serde(default)]
+  pub symlinked_temp_dir: bool,
   /// The base environment to use for the test.
   #[serde(default)]
   pub base: Option<String>,
@@ -142,6 +145,8 @@ struct SingleTestMetaData {
   #[serde(default)]
   pub temp_dir: bool,
   #[serde(default)]
+  pub symlinked_temp_dir: bool,
+  #[serde(default)]
   pub repeat: Option<usize>,
   #[serde(flatten)]
   pub step: StepMetaData,
@@ -155,6 +160,7 @@ impl SingleTestMetaData {
       base: self.base,
       cwd: None,
       temp_dir: self.temp_dir,
+      symlinked_temp_dir: self.symlinked_temp_dir,
       repeat: self.repeat,
       envs: Default::default(),
       steps: vec![self.step],
@@ -328,6 +334,20 @@ fn test_context_from_metadata(
     builder = builder.use_temp_cwd();
   } else {
     builder = builder.cwd(cwd.to_string_lossy());
+  }
+
+  if metadata.symlinked_temp_dir {
+    // not actually deprecated, we just want to discourage its use
+    // because it's mostly used for testing purposes locally
+    #[allow(deprecated)]
+    {
+      builder = builder.use_symlinked_temp_dir();
+    }
+    if cfg!(not(debug_assertions)) {
+      // panic to prevent using this on the CI as CI already uses
+      // a symlinked temp directory for every test
+      panic!("Cannot use symlinkedTempDir in release mode");
+    }
   }
 
   match &metadata.base {

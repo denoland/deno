@@ -15,13 +15,14 @@ use deno_core::url::Url;
 use deno_core::ModuleSpecifier;
 use deno_graph::GraphKind;
 use deno_graph::Resolution;
+use deno_path_util::url_to_file_path;
 use deno_runtime::deno_tls::rustls::RootCertStore;
 use deno_runtime::deno_tls::RootCertStoreProvider;
-use deno_runtime::fs_util::specifier_to_file_path;
 use deno_semver::jsr::JsrPackageReqReference;
 use indexmap::Equivalent;
 use indexmap::IndexSet;
 use log::error;
+use node_resolver::NodeModuleKind;
 use serde::Deserialize;
 use serde_json::from_value;
 use std::collections::BTreeMap;
@@ -77,6 +78,7 @@ use super::parent_process_checker;
 use super::performance::Performance;
 use super::refactor;
 use super::registries::ModuleRegistry;
+use super::resolver::LspIsCjsResolver;
 use super::resolver::LspResolver;
 use super::testing;
 use super::text;
@@ -96,6 +98,7 @@ use crate::args::CaData;
 use crate::args::CacheSetting;
 use crate::args::CliOptions;
 use crate::args::Flags;
+use crate::args::InternalFlags;
 use crate::args::UnstableFmtOptions;
 use crate::factory::CliFactory;
 use crate::file_fetcher::FileFetcher;
@@ -143,6 +146,7 @@ pub struct StateSnapshot {
   pub project_version: usize,
   pub assets: AssetsSnapshot,
   pub config: Arc<Config>,
+  pub is_cjs_resolver: Arc<LspIsCjsResolver>,
   pub documents: Arc<Documents>,
   pub resolver: Arc<LspResolver>,
 }
@@ -202,16 +206,17 @@ pub struct Inner {
   pub documents: Documents,
   http_client_provider: Arc<HttpClientProvider>,
   initial_cwd: PathBuf,
+  pub is_cjs_resolver: Arc<LspIsCjsResolver>,
   jsr_search_api: CliJsrSearchApi,
   /// Handles module registries, which allow discovery of modules
   module_registry: ModuleRegistry,
   /// A lazily create "server" for handling test run requests.
   maybe_testing_server: Option<testing::TestServer>,
-  npm_search_api: CliNpmSearchApi,
+  pub npm_search_api: CliNpmSearchApi,
   project_version: usize,
   /// A collection of measurements which instrument that performance of the LSP.
   performance: Arc<Performance>,
-  resolver: Arc<LspResolver>,
+  pub resolver: Arc<LspResolver>,
   task_queue: LanguageServerTaskQueue,
   /// A memoized version of fixable diagnostic codes retrieved from TypeScript.
   ts_fixable_diagnostics: Vec<String>,
@@ -479,6 +484,7 @@ impl Inner {
     let initial_cwd = std::env::current_dir().unwrap_or_else(|_| {
       panic!("Could not resolve current working directory")
     });
+    let is_cjs_resolver = Arc::new(LspIsCjsResolver::new(&cache));
 
     Self {
       assets,
@@ -490,6 +496,7 @@ impl Inner {
       documents,
       http_client_provider,
       initial_cwd: initial_cwd.clone(),
+      is_cjs_resolver,
       jsr_search_api,
       project_version: 0,
       task_queue: Default::default(),
@@ -600,6 +607,7 @@ impl Inner {
       project_version: self.project_version,
       assets: self.assets.snapshot(),
       config: Arc::new(self.config.clone()),
+      is_cjs_resolver: self.is_cjs_resolver.clone(),
       documents: Arc::new(self.documents.clone()),
       resolver: self.resolver.snapshot(),
     })
@@ -621,12 +629,13 @@ impl Inner {
       }
     });
     self.cache = LspCache::new(global_cache_url);
+    self.is_cjs_resolver = Arc::new(LspIsCjsResolver::new(&self.cache));
     let deno_dir = self.cache.deno_dir();
     let workspace_settings = self.config.workspace_settings();
     let maybe_root_path = self
       .config
       .root_uri()
-      .and_then(|uri| specifier_to_file_path(uri).ok());
+      .and_then(|uri| url_to_file_path(uri).ok());
     let root_cert_store = get_root_cert_store(
       maybe_root_path,
       workspace_settings.certificate_stores.clone(),
@@ -802,7 +811,7 @@ impl Inner {
     let mut roots = config
       .workspace_folders
       .iter()
-      .filter_map(|p| specifier_to_file_path(&p.0).ok())
+      .filter_map(|p| url_to_file_path(&p.0).ok())
       .collect::<Vec<_>>();
     roots.sort();
     let roots = roots
@@ -862,7 +871,10 @@ impl Inner {
           // We ignore these directories by default because there is a
           // high likelihood they aren't relevant. Someone can opt-into
           // them by specifying one of them as an enabled path.
-          if matches!(dir_name.as_str(), "vendor" | "node_modules" | ".git") {
+          if matches!(
+            dir_name.as_str(),
+            "vendor" | "coverage" | "node_modules" | ".git"
+          ) {
             continue;
           }
           // ignore cargo target directories for anyone using Deno with Rust
@@ -903,7 +915,7 @@ impl Inner {
             | MediaType::Tsx => {}
             MediaType::Wasm
             | MediaType::SourceMap
-            | MediaType::TsBuildInfo
+            | MediaType::Css
             | MediaType::Unknown => {
               if path.extension().and_then(|s| s.to_str()) != Some("jsonc") {
                 continue;
@@ -962,6 +974,11 @@ impl Inner {
       .tree
       .refresh(&self.config.settings, &self.workspace_files, &file_fetcher)
       .await;
+    self
+      .client
+      .send_did_refresh_deno_configuration_tree_notification(
+        self.config.tree.to_did_refresh_params(),
+      );
     for config_file in self.config.tree.config_files() {
       (|| {
         let compiler_options = config_file.to_compiler_options().ok()?.options;
@@ -973,7 +990,7 @@ impl Inner {
           spawn(async move {
             let specifier = {
               let inner = ls.inner.read().await;
-              let resolver = inner.resolver.as_graph_resolver(Some(&referrer));
+              let resolver = inner.resolver.as_cli_resolver(Some(&referrer));
               let Ok(specifier) = resolver.resolve(
                 &specifier,
                 &deno_graph::Range {
@@ -981,6 +998,7 @@ impl Inner {
                   start: deno_graph::Position::zeroed(),
                   end: deno_graph::Position::zeroed(),
                 },
+                NodeModuleKind::Esm,
                 deno_graph::source::ResolutionMode::Types,
               ) else {
                 return;
@@ -1124,7 +1142,7 @@ impl Inner {
     {
       return;
     }
-    match specifier_to_file_path(&specifier) {
+    match url_to_file_path(&specifier) {
       Ok(path) if is_importable_ext(&path) => {}
       _ => return,
     }
@@ -1362,7 +1380,7 @@ impl Inner {
     {
       specifier = uri_to_url(&params.text_document.uri);
     }
-    let file_path = specifier_to_file_path(&specifier).map_err(|err| {
+    let file_path = url_to_file_path(&specifier).map_err(|err| {
       error!("{:#}", err);
       LspError::invalid_request()
     })?;
@@ -1378,14 +1396,10 @@ impl Inner {
         .clone();
       fmt_options.use_tabs = Some(!params.options.insert_spaces);
       fmt_options.indent_width = Some(params.options.tab_size as u8);
-      let maybe_workspace = self
-        .config
-        .tree
-        .data_for_specifier(&specifier)
-        .map(|d| &d.member_dir.workspace);
+      let config_data = self.config.tree.data_for_specifier(&specifier);
       let unstable_options = UnstableFmtOptions {
-        component: maybe_workspace
-          .map(|w| w.has_unstable("fmt-component"))
+        component: config_data
+          .map(|d| d.unstable.contains("fmt-component"))
           .unwrap_or(false),
       };
       let document = document.clone();
@@ -1612,11 +1626,15 @@ impl Inner {
         None => false,
       })
       .collect();
+    let mut code_actions = CodeActionCollection::default();
     if !fixable_diagnostics.is_empty() {
-      let mut code_actions = CodeActionCollection::default();
       let file_diagnostics = self
         .diagnostics_server
         .get_ts_diagnostics(&specifier, asset_or_doc.document_lsp_version());
+      let specifier_kind = asset_or_doc
+        .document()
+        .map(|d| self.is_cjs_resolver.get_doc_module_kind(d))
+        .unwrap_or(NodeModuleKind::Esm);
       let mut includes_no_cache = false;
       for diagnostic in &fixable_diagnostics {
         match diagnostic.source.as_deref() {
@@ -1655,7 +1673,13 @@ impl Inner {
               .await;
             for action in actions {
               code_actions
-                .add_ts_fix_action(&specifier, &action, diagnostic, self)
+                .add_ts_fix_action(
+                  &specifier,
+                  specifier_kind,
+                  &action,
+                  diagnostic,
+                  self,
+                )
                 .map_err(|err| {
                   error!("Unable to convert fix: {:#}", err);
                   LspError::internal_error()
@@ -1721,9 +1745,14 @@ impl Inner {
             .add_cache_all_action(&specifier, no_cache_diagnostics.to_owned());
         }
       }
-      code_actions.set_preferred_fixes();
-      all_actions.extend(code_actions.get_response());
     }
+    if let Some(document) = asset_or_doc.document() {
+      code_actions
+        .add_source_actions(document, &params.range, self)
+        .await;
+    }
+    code_actions.set_preferred_fixes();
+    all_actions.extend(code_actions.get_response());
 
     // Refactor
     let only = params
@@ -1796,10 +1825,9 @@ impl Inner {
           error!("Unable to decode code action data: {:#}", err);
           LspError::invalid_params("The CodeAction's data is invalid.")
         })?;
-      let scope = self
-        .get_asset_or_document(&code_action_data.specifier)
-        .ok()
-        .and_then(|d| d.scope().cloned());
+      let maybe_asset_or_doc =
+        self.get_asset_or_document(&code_action_data.specifier).ok();
+      let scope = maybe_asset_or_doc.as_ref().and_then(|d| d.scope().cloned());
       let combined_code_actions = self
         .ts_server
         .get_combined_code_fix(
@@ -1826,8 +1854,13 @@ impl Inner {
       let changes = if code_action_data.fix_id == "fixMissingImport" {
         fix_ts_import_changes(
           &code_action_data.specifier,
+          maybe_asset_or_doc
+            .as_ref()
+            .and_then(|d| d.document())
+            .map(|d| self.is_cjs_resolver.get_doc_module_kind(d))
+            .unwrap_or(NodeModuleKind::Esm),
           &combined_code_actions.changes,
-          &self.get_ts_response_import_mapper(&code_action_data.specifier),
+          self,
         )
         .map_err(|err| {
           error!("Unable to remap changes: {:#}", err);
@@ -1879,8 +1912,12 @@ impl Inner {
       if kind_suffix == ".rewrite.function.returnType" {
         refactor_edit_info.edits = fix_ts_import_changes(
           &action_data.specifier,
+          asset_or_doc
+            .document()
+            .map(|d| self.is_cjs_resolver.get_doc_module_kind(d))
+            .unwrap_or(NodeModuleKind::Esm),
           &refactor_edit_info.edits,
-          &self.get_ts_response_import_mapper(&action_data.specifier),
+          self,
         )
         .map_err(|err| {
           error!("Unable to remap changes: {:#}", err);
@@ -1911,7 +1948,9 @@ impl Inner {
         // todo(dsherret): this should probably just take the resolver itself
         // as the import map is an implementation detail
         .and_then(|d| d.resolver.maybe_import_map()),
-      self.resolver.as_ref(),
+      &self.resolver,
+      &self.ts_server.specifier_map,
+      file_referrer,
     )
   }
 
@@ -2226,6 +2265,7 @@ impl Inner {
         &self.jsr_search_api,
         &self.npm_search_api,
         &self.documents,
+        &self.is_cjs_resolver,
         self.resolver.as_ref(),
         self
           .config
@@ -2273,7 +2313,11 @@ impl Inner {
             .into(),
           scope.cloned(),
         )
-        .await;
+        .await
+        .unwrap_or_else(|err| {
+          error!("Unable to get completion info from TypeScript: {:#}", err);
+          None
+        });
 
       if let Some(completions) = maybe_completion_info {
         response = Some(
@@ -2508,7 +2552,7 @@ impl Inner {
     let maybe_root_path_owned = self
       .config
       .root_uri()
-      .and_then(|uri| specifier_to_file_path(uri).ok());
+      .and_then(|uri| url_to_file_path(uri).ok());
     let mut resolved_items = Vec::<CallHierarchyIncomingCall>::new();
     for item in incoming_calls.iter() {
       if let Some(resolved) = item.try_resolve_call_hierarchy_incoming_call(
@@ -2554,7 +2598,7 @@ impl Inner {
     let maybe_root_path_owned = self
       .config
       .root_uri()
-      .and_then(|uri| specifier_to_file_path(uri).ok());
+      .and_then(|uri| url_to_file_path(uri).ok());
     let mut resolved_items = Vec::<CallHierarchyOutgoingCall>::new();
     for item in outgoing_calls.iter() {
       if let Some(resolved) = item.try_resolve_call_hierarchy_outgoing_call(
@@ -2603,7 +2647,7 @@ impl Inner {
       let maybe_root_path_owned = self
         .config
         .root_uri()
-        .and_then(|uri| specifier_to_file_path(uri).ok());
+        .and_then(|uri| url_to_file_path(uri).ok());
       let mut resolved_items = Vec::<CallHierarchyItem>::new();
       match one_or_many {
         tsc::OneOrMany::One(item) => {
@@ -3600,7 +3644,10 @@ impl Inner {
     };
     let cli_options = CliOptions::new(
       Arc::new(Flags {
-        cache_path: Some(self.cache.deno_dir().root.clone()),
+        internal: InternalFlags {
+          cache_path: Some(self.cache.deno_dir().root.clone()),
+          ..Default::default()
+        },
         ca_stores: workspace_settings.certificate_stores.clone(),
         ca_data: workspace_settings.tls_certificate.clone().map(CaData::File),
         unsafely_ignore_certificate_errors: workspace_settings
@@ -3797,7 +3844,7 @@ impl Inner {
     let maybe_inlay_hints = maybe_inlay_hints.map(|hints| {
       hints
         .iter()
-        .map(|hint| hint.to_lsp(line_index.clone()))
+        .map(|hint| hint.to_lsp(line_index.clone(), self))
         .collect()
     });
     self.performance.measure(mark);
@@ -3933,7 +3980,9 @@ mod tests {
   fn test_walk_workspace() {
     let temp_dir = TempDir::new();
     temp_dir.create_dir_all("root1/vendor/");
+    temp_dir.create_dir_all("root1/coverage/");
     temp_dir.write("root1/vendor/mod.ts", ""); // no, vendor
+    temp_dir.write("root1/coverage/mod.ts", ""); // no, coverage
 
     temp_dir.create_dir_all("root1/node_modules/");
     temp_dir.write("root1/node_modules/mod.ts", ""); // no, node_modules

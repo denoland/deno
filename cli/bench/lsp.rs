@@ -150,7 +150,11 @@ fn bench_big_file_edits(deno_exe: &Path) -> Duration {
     .deno_exe(deno_exe)
     .build();
   client.initialize_default();
+  let (method, _): (String, Option<Value>) = client.read_notification();
+  assert_eq!(method, "deno/didRefreshDenoConfigurationTree");
   client.change_configuration(json!({ "deno": { "enable": true } }));
+  let (method, _): (String, Option<Value>) = client.read_notification();
+  assert_eq!(method, "deno/didRefreshDenoConfigurationTree");
 
   client.write_notification(
     "textDocument/didOpen",
@@ -206,6 +210,8 @@ fn bench_code_lens(deno_exe: &Path) -> Duration {
     .deno_exe(deno_exe)
     .build();
   client.initialize_default();
+  let (method, _): (String, Option<Value>) = client.read_notification();
+  assert_eq!(method, "deno/didRefreshDenoConfigurationTree");
   client.change_configuration(json!({ "deno": {
     "enable": true,
     "codeLens": {
@@ -214,6 +220,8 @@ fn bench_code_lens(deno_exe: &Path) -> Duration {
       "test": true,
     },
   } }));
+  let (method, _): (String, Option<Value>) = client.read_notification();
+  assert_eq!(method, "deno/didRefreshDenoConfigurationTree");
 
   client.write_notification(
     "textDocument/didOpen",
@@ -257,7 +265,11 @@ fn bench_find_replace(deno_exe: &Path) -> Duration {
     .deno_exe(deno_exe)
     .build();
   client.initialize_default();
+  let (method, _): (String, Option<Value>) = client.read_notification();
+  assert_eq!(method, "deno/didRefreshDenoConfigurationTree");
   client.change_configuration(json!({ "deno": { "enable": true } }));
+  let (method, _): (String, Option<Value>) = client.read_notification();
+  assert_eq!(method, "deno/didRefreshDenoConfigurationTree");
 
   for i in 0..10 {
     client.write_notification(
@@ -341,7 +353,11 @@ fn bench_startup_shutdown(deno_exe: &Path) -> Duration {
     .deno_exe(deno_exe)
     .build();
   client.initialize_default();
+  let (method, _): (String, Option<Value>) = client.read_notification();
+  assert_eq!(method, "deno/didRefreshDenoConfigurationTree");
   client.change_configuration(json!({ "deno": { "enable": true } }));
+  let (method, _): (String, Option<Value>) = client.read_notification();
+  assert_eq!(method, "deno/didRefreshDenoConfigurationTree");
 
   client.write_notification(
     "textDocument/didOpen",

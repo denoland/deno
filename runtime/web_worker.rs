@@ -1,16 +1,5 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
-use crate::inspector_server::InspectorServer;
-use crate::ops;
-use crate::ops::process::NpmProcessStateProviderRc;
-use crate::ops::worker_host::WorkersTable;
-use crate::shared::maybe_transpile_source;
-use crate::shared::runtime;
-use crate::tokio_util::create_and_run_current_thread;
-use crate::worker::create_op_metrics;
-use crate::worker::import_meta_resolve_callback;
-use crate::worker::validate_import_attributes_callback;
-use crate::worker::FormatJsErrorFn;
-use crate::BootstrapOptions;
+
 use deno_broadcast_channel::InMemoryBroadcastChannel;
 use deno_cache::CreateCache;
 use deno_cache::SqliteBackedCache;
@@ -45,7 +34,6 @@ use deno_http::DefaultHttpPropertyExtractor;
 use deno_io::Stdio;
 use deno_kv::dynamic::MultiBackendDbHandler;
 use deno_node::NodeExtInitServices;
-use deno_permissions::PermissionDescriptorParser;
 use deno_permissions::PermissionsContainer;
 use deno_terminal::colors;
 use deno_tls::RootCertStoreProvider;
@@ -66,6 +54,19 @@ use std::sync::atomic::Ordering;
 use std::sync::Arc;
 use std::task::Context;
 use std::task::Poll;
+
+use crate::inspector_server::InspectorServer;
+use crate::ops;
+use crate::ops::process::NpmProcessStateProviderRc;
+use crate::ops::worker_host::WorkersTable;
+use crate::shared::maybe_transpile_source;
+use crate::shared::runtime;
+use crate::tokio_util::create_and_run_current_thread;
+use crate::worker::create_op_metrics;
+use crate::worker::import_meta_resolve_callback;
+use crate::worker::validate_import_attributes_callback;
+use crate::worker::FormatJsErrorFn;
+use crate::BootstrapOptions;
 
 pub struct WorkerMetadata {
   pub buffer: DetachedBuffer,
@@ -165,7 +166,10 @@ pub struct WebWorkerInternalHandle {
 
 impl WebWorkerInternalHandle {
   /// Post WorkerEvent to parent as a worker
-  pub fn post_event(&self, event: WorkerControlEvent) -> Result<(), AnyError> {
+  pub fn post_event(
+    &self,
+    event: WorkerControlEvent,
+  ) -> Result<(), mpsc::TrySendError<WorkerControlEvent>> {
     let mut sender = self.sender.clone();
     // If the channel is closed,
     // the worker must have terminated but the termination message has not yet been received.
@@ -175,8 +179,7 @@ impl WebWorkerInternalHandle {
       self.has_terminated.store(true, Ordering::SeqCst);
       return Ok(());
     }
-    sender.try_send(event)?;
-    Ok(())
+    sender.try_send(event)
   }
 
   /// Check if this worker is terminated or being terminated
@@ -262,11 +265,9 @@ impl WebWorkerHandle {
   /// Get the WorkerEvent with lock
   /// Return error if more than one listener tries to get event
   #[allow(clippy::await_holding_refcell_ref)] // TODO(ry) remove!
-  pub async fn get_control_event(
-    &self,
-  ) -> Result<Option<WorkerControlEvent>, AnyError> {
+  pub async fn get_control_event(&self) -> Option<WorkerControlEvent> {
     let mut receiver = self.receiver.borrow_mut();
-    Ok(receiver.next().await)
+    receiver.next().await
   }
 
   /// Terminate the worker
@@ -337,6 +338,43 @@ fn create_handles(
   (internal_handle, external_handle)
 }
 
+pub struct WebWorkerServiceOptions {
+  pub blob_store: Arc<BlobStore>,
+  pub broadcast_channel: InMemoryBroadcastChannel,
+  pub compiled_wasm_module_store: Option<CompiledWasmModuleStore>,
+  pub feature_checker: Arc<FeatureChecker>,
+  pub fs: Arc<dyn FileSystem>,
+  pub maybe_inspector_server: Option<Arc<InspectorServer>>,
+  pub module_loader: Rc<dyn ModuleLoader>,
+  pub node_services: Option<NodeExtInitServices>,
+  pub npm_process_state_provider: Option<NpmProcessStateProviderRc>,
+  pub permissions: PermissionsContainer,
+  pub root_cert_store_provider: Option<Arc<dyn RootCertStoreProvider>>,
+  pub shared_array_buffer_store: Option<SharedArrayBufferStore>,
+}
+
+pub struct WebWorkerOptions {
+  pub name: String,
+  pub main_module: ModuleSpecifier,
+  pub worker_id: WorkerId,
+  pub bootstrap: BootstrapOptions,
+  pub extensions: Vec<Extension>,
+  pub startup_snapshot: Option<&'static [u8]>,
+  pub unsafely_ignore_certificate_errors: Option<Vec<String>>,
+  /// Optional isolate creation parameters, such as heap limits.
+  pub create_params: Option<v8::CreateParams>,
+  pub seed: Option<u64>,
+  pub create_web_worker_cb: Arc<ops::worker_host::CreateWebWorkerCb>,
+  pub format_js_error_fn: Option<Arc<FormatJsErrorFn>>,
+  pub worker_type: WebWorkerType,
+  pub get_error_class_fn: Option<GetErrorClassFn>,
+  pub cache_storage_dir: Option<std::path::PathBuf>,
+  pub stdio: Stdio,
+  pub strace_ops: Option<Vec<String>>,
+  pub close_on_idle: bool,
+  pub maybe_worker_metadata: Option<WorkerMetadata>,
+}
+
 /// This struct is an implementation of `Worker` Web API
 ///
 /// Each `WebWorker` is either a child of `MainWorker` or other
@@ -357,58 +395,28 @@ pub struct WebWorker {
   maybe_worker_metadata: Option<WorkerMetadata>,
 }
 
-pub struct WebWorkerOptions {
-  // todo(dsherret): extract out the service structs from this options bag
-  pub bootstrap: BootstrapOptions,
-  pub extensions: Vec<Extension>,
-  pub startup_snapshot: Option<&'static [u8]>,
-  pub unsafely_ignore_certificate_errors: Option<Vec<String>>,
-  pub root_cert_store_provider: Option<Arc<dyn RootCertStoreProvider>>,
-  pub seed: Option<u64>,
-  pub fs: Arc<dyn FileSystem>,
-  pub module_loader: Rc<dyn ModuleLoader>,
-  pub node_services: Option<NodeExtInitServices>,
-  pub create_web_worker_cb: Arc<ops::worker_host::CreateWebWorkerCb>,
-  pub format_js_error_fn: Option<Arc<FormatJsErrorFn>>,
-  pub worker_type: WebWorkerType,
-  pub maybe_inspector_server: Option<Arc<InspectorServer>>,
-  pub get_error_class_fn: Option<GetErrorClassFn>,
-  pub blob_store: Arc<BlobStore>,
-  pub broadcast_channel: InMemoryBroadcastChannel,
-  pub shared_array_buffer_store: Option<SharedArrayBufferStore>,
-  pub compiled_wasm_module_store: Option<CompiledWasmModuleStore>,
-  pub cache_storage_dir: Option<std::path::PathBuf>,
-  pub stdio: Stdio,
-  pub feature_checker: Arc<FeatureChecker>,
-  pub permission_desc_parser: Arc<dyn PermissionDescriptorParser>,
-  pub strace_ops: Option<Vec<String>>,
-  pub close_on_idle: bool,
-  pub maybe_worker_metadata: Option<WorkerMetadata>,
-  pub npm_process_state_provider: Option<NpmProcessStateProviderRc>,
+impl Drop for WebWorker {
+  fn drop(&mut self) {
+    // clean up the package.json thread local cache
+    node_resolver::PackageJsonThreadLocalCache::clear();
+  }
 }
 
 impl WebWorker {
   pub fn bootstrap_from_options(
-    name: String,
-    permissions: PermissionsContainer,
-    main_module: ModuleSpecifier,
-    worker_id: WorkerId,
+    services: WebWorkerServiceOptions,
     options: WebWorkerOptions,
   ) -> (Self, SendableWebWorkerHandle) {
-    let bootstrap_options = options.bootstrap.clone();
-    let (mut worker, handle) =
-      Self::from_options(name, permissions, main_module, worker_id, options);
+    let (mut worker, handle, bootstrap_options) =
+      Self::from_options(services, options);
     worker.bootstrap(&bootstrap_options);
     (worker, handle)
   }
 
-  pub fn from_options(
-    name: String,
-    permissions: PermissionsContainer,
-    main_module: ModuleSpecifier,
-    worker_id: WorkerId,
+  fn from_options(
+    services: WebWorkerServiceOptions,
     mut options: WebWorkerOptions,
-  ) -> (Self, SendableWebWorkerHandle) {
+  ) -> (Self, SendableWebWorkerHandle, BootstrapOptions) {
     deno_core::extension!(deno_permissions_web_worker,
       options = {
         permissions: PermissionsContainer,
@@ -436,15 +444,15 @@ impl WebWorker {
       deno_console::deno_console::init_ops_and_esm(),
       deno_url::deno_url::init_ops_and_esm(),
       deno_web::deno_web::init_ops_and_esm::<PermissionsContainer>(
-        options.blob_store.clone(),
-        Some(main_module.clone()),
+        services.blob_store,
+        Some(options.main_module.clone()),
       ),
       deno_webgpu::deno_webgpu::init_ops_and_esm(),
       deno_canvas::deno_canvas::init_ops_and_esm(),
       deno_fetch::deno_fetch::init_ops_and_esm::<PermissionsContainer>(
         deno_fetch::Options {
           user_agent: options.bootstrap.user_agent.clone(),
-          root_cert_store_provider: options.root_cert_store_provider.clone(),
+          root_cert_store_provider: services.root_cert_store_provider.clone(),
           unsafely_ignore_certificate_errors: options
             .unsafely_ignore_certificate_errors
             .clone(),
@@ -457,17 +465,17 @@ impl WebWorker {
       ),
       deno_websocket::deno_websocket::init_ops_and_esm::<PermissionsContainer>(
         options.bootstrap.user_agent.clone(),
-        options.root_cert_store_provider.clone(),
+        services.root_cert_store_provider.clone(),
         options.unsafely_ignore_certificate_errors.clone(),
       ),
       deno_webstorage::deno_webstorage::init_ops_and_esm(None).disable(),
       deno_crypto::deno_crypto::init_ops_and_esm(options.seed),
       deno_broadcast_channel::deno_broadcast_channel::init_ops_and_esm(
-        options.broadcast_channel.clone(),
+        services.broadcast_channel,
       ),
       deno_ffi::deno_ffi::init_ops_and_esm::<PermissionsContainer>(),
       deno_net::deno_net::init_ops_and_esm::<PermissionsContainer>(
-        options.root_cert_store_provider.clone(),
+        services.root_cert_store_provider.clone(),
         options.unsafely_ignore_certificate_errors.clone(),
       ),
       deno_tls::deno_tls::init_ops_and_esm(),
@@ -477,7 +485,7 @@ impl WebWorker {
           options.seed,
           deno_kv::remote::HttpOptions {
             user_agent: options.bootstrap.user_agent.clone(),
-            root_cert_store_provider: options.root_cert_store_provider.clone(),
+            root_cert_store_provider: services.root_cert_store_provider,
             unsafely_ignore_certificate_errors: options
               .unsafely_ignore_certificate_errors
               .clone(),
@@ -492,25 +500,24 @@ impl WebWorker {
       deno_http::deno_http::init_ops_and_esm::<DefaultHttpPropertyExtractor>(),
       deno_io::deno_io::init_ops_and_esm(Some(options.stdio)),
       deno_fs::deno_fs::init_ops_and_esm::<PermissionsContainer>(
-        options.fs.clone(),
+        services.fs.clone(),
       ),
       deno_node::deno_node::init_ops_and_esm::<PermissionsContainer>(
-        options.node_services,
-        options.fs,
+        services.node_services,
+        services.fs,
       ),
       // Runtime ops that are always initialized for WebWorkers
-      ops::runtime::deno_runtime::init_ops_and_esm(main_module.clone()),
+      ops::runtime::deno_runtime::init_ops_and_esm(options.main_module.clone()),
       ops::worker_host::deno_worker_host::init_ops_and_esm(
-        options.create_web_worker_cb.clone(),
-        options.format_js_error_fn.clone(),
+        options.create_web_worker_cb,
+        options.format_js_error_fn,
       ),
       ops::fs_events::deno_fs_events::init_ops_and_esm(),
       ops::os::deno_os_worker::init_ops_and_esm(),
-      ops::permissions::deno_permissions::init_ops_and_esm(
-        options.permission_desc_parser.clone(),
-      ),
+      ops::otel::deno_otel::init_ops_and_esm(),
+      ops::permissions::deno_permissions::init_ops_and_esm(),
       ops::process::deno_process::init_ops_and_esm(
-        options.npm_process_state_provider,
+        services.npm_process_state_provider,
       ),
       ops::signal::deno_signal::init_ops_and_esm(),
       ops::tty::deno_tty::init_ops_and_esm(),
@@ -523,7 +530,7 @@ impl WebWorker {
         },
       ),
       deno_permissions_web_worker::init_ops_and_esm(
-        permissions,
+        services.permissions,
         enable_testing_features,
       ),
       runtime::init_ops_and_esm(),
@@ -556,17 +563,18 @@ impl WebWorker {
     );
 
     let mut js_runtime = JsRuntime::new(RuntimeOptions {
-      module_loader: Some(options.module_loader.clone()),
+      module_loader: Some(services.module_loader),
       startup_snapshot: options.startup_snapshot,
+      create_params: options.create_params,
       get_error_class_fn: options.get_error_class_fn,
-      shared_array_buffer_store: options.shared_array_buffer_store.clone(),
-      compiled_wasm_module_store: options.compiled_wasm_module_store.clone(),
+      shared_array_buffer_store: services.shared_array_buffer_store,
+      compiled_wasm_module_store: services.compiled_wasm_module_store,
       extensions,
       extension_transpiler: Some(Rc::new(|specifier, source| {
         maybe_transpile_source(specifier, source)
       })),
-      inspector: options.maybe_inspector_server.is_some(),
-      feature_checker: Some(options.feature_checker.clone()),
+      inspector: true,
+      feature_checker: Some(services.feature_checker),
       op_metrics_factory_fn,
       import_meta_resolve_callback: Some(Box::new(
         import_meta_resolve_callback,
@@ -582,24 +590,24 @@ impl WebWorker {
       js_runtime.op_state().borrow_mut().put(op_summary_metrics);
     }
 
-    if let Some(server) = options.maybe_inspector_server.clone() {
+    // Put inspector handle into the op state so we can put a breakpoint when
+    // executing a CJS entrypoint.
+    let op_state = js_runtime.op_state();
+    let inspector = js_runtime.inspector();
+    op_state.borrow_mut().put(inspector);
+
+    if let Some(server) = services.maybe_inspector_server {
       server.register_inspector(
-        main_module.to_string(),
+        options.main_module.to_string(),
         &mut js_runtime,
         false,
       );
-
-      // Put inspector handle into the op state so we can put a breakpoint when
-      // executing a CJS entrypoint.
-      let op_state = js_runtime.op_state();
-      let inspector = js_runtime.inspector();
-      op_state.borrow_mut().put(inspector);
     }
 
     let (internal_handle, external_handle) = {
       let handle = js_runtime.v8_isolate().thread_safe_handle();
       let (internal_handle, external_handle) =
-        create_handles(handle, name.clone(), options.worker_type);
+        create_handles(handle, options.name.clone(), options.worker_type);
       let op_state = js_runtime.op_state();
       let mut op_state = op_state.borrow_mut();
       op_state.put(internal_handle.clone());
@@ -630,12 +638,12 @@ impl WebWorker {
 
     (
       Self {
-        id: worker_id,
+        id: options.worker_id,
         js_runtime,
-        name,
+        name: options.name,
         internal_handle,
         worker_type: options.worker_type,
-        main_module,
+        main_module: options.main_module,
         poll_for_messages_fn: None,
         has_message_event_listener_fn: None,
         bootstrap_fn_global: Some(bootstrap_fn_global),
@@ -644,6 +652,7 @@ impl WebWorker {
         maybe_worker_metadata: options.maybe_worker_metadata,
       },
       external_handle,
+      options.bootstrap,
     )
   }
 
@@ -823,13 +832,12 @@ impl WebWorker {
 
         // TODO(mmastrac): we don't want to test this w/classic workers because
         // WPT triggers a failure here. This is only exposed via --enable-testing-features-do-not-use.
-        #[allow(clippy::print_stderr)]
         if self.worker_type == WebWorkerType::Module {
           panic!(
             "coding error: either js is polling or the worker is terminated"
           );
         } else {
-          eprintln!("classic worker terminated unexpectedly");
+          log::error!("classic worker terminated unexpectedly");
           Poll::Ready(Ok(()))
         }
       }
@@ -897,7 +905,6 @@ impl WebWorker {
   }
 }
 
-#[allow(clippy::print_stderr)]
 fn print_worker_error(
   error: &AnyError,
   name: &str,
@@ -910,7 +917,7 @@ fn print_worker_error(
     },
     None => error.to_string(),
   };
-  eprintln!(
+  log::error!(
     "{}: Uncaught (in worker \"{}\") {}",
     colors::red_bold("error"),
     name,

@@ -1,0 +1,2 @@
+error: Could not resolve "@denotest/cjs-default-export", but found it in a package.json. Deno expects the node_modules/ directory to be up to date. Did you forget to run `deno install`?
+    at file:///[WILDCARD]/error.ts:2:23

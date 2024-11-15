@@ -11,7 +11,6 @@ use crate::colors;
 use async_trait::async_trait;
 use deno_ast::ModuleSpecifier;
 use deno_core::error::AnyError;
-use deno_core::url::Url;
 use deno_npm::NpmPackageCacheFolderId;
 use deno_npm::NpmPackageId;
 use deno_npm::NpmResolutionPackage;
@@ -56,7 +55,7 @@ impl GlobalNpmPackageResolver {
     Self {
       registry_read_permission_checker: RegistryReadPermissionChecker::new(
         fs,
-        cache.root_folder(),
+        cache.root_dir_path().to_path_buf(),
       ),
       cache,
       tarball_cache,
@@ -69,11 +68,7 @@ impl GlobalNpmPackageResolver {
 
 #[async_trait(?Send)]
 impl NpmPackageFsResolver for GlobalNpmPackageResolver {
-  fn root_dir_url(&self) -> &Url {
-    self.cache.root_dir_url()
-  }
-
-  fn node_modules_path(&self) -> Option<&PathBuf> {
+  fn node_modules_path(&self) -> Option<&Path> {
     None
   }
 
@@ -183,11 +178,11 @@ impl NpmPackageFsResolver for GlobalNpmPackageResolver {
     Ok(())
   }
 
-  fn ensure_read_permission(
+  fn ensure_read_permission<'a>(
     &self,
     permissions: &mut dyn NodePermissions,
-    path: &Path,
-  ) -> Result<(), AnyError> {
+    path: &'a Path,
+  ) -> Result<Cow<'a, Path>, AnyError> {
     self
       .registry_read_permission_checker
       .ensure_registry_read_permission(permissions, path)

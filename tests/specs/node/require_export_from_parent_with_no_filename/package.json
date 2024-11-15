@@ -1,0 +1,5 @@
+{
+  "dependencies": {
+    "@denotest/cjs-multiple-exports": "1.0.0"
+  }
+}

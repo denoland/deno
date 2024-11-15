@@ -118,7 +118,6 @@
         }
       ]
     },
-
     "lockfile_config": {
       "steps": [
         {
@@ -146,7 +145,6 @@
         }
       ]
     },
-
     "non_analyzable_dynamic_npm": {
       "steps": [
         {
@@ -183,6 +181,19 @@
           "args": "run --frozen --allow-import http-dynamic.ts",
           "output": "frozen_new_dep_dynamic_http.out",
           "exitCode": 1
+        }
+      ]
+    },
+    "check_subcommand": {
+      "steps": [
+        {
+          "args": "check --frozen=true add.ts",
+          "output": "[WILDCARD]The lockfile is out of date[WILDCARD]",
+          "exitCode": 1
+        },
+        {
+          "args": "check --frozen=false add.ts",
+          "output": "[WILDCARD]Check [WILDCARD]add.ts\n"
         }
       ]
     }

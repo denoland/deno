@@ -20,54 +20,72 @@ Deno.test(function permissionInvalidNameSync() {
   }, TypeError);
 });
 
-Deno.test(async function permissionNetInvalidHost() {
-  await assertRejects(async () => {
-    await Deno.permissions.query({ name: "net", host: ":" });
-  }, URIError);
-});
+Deno.test(
+  { permissions: { net: [] } },
+  async function permissionNetInvalidHost() {
+    await assertRejects(async () => {
+      await Deno.permissions.query({ name: "net", host: ":" });
+    }, URIError);
+  },
+);
 
-Deno.test(function permissionNetInvalidHostSync() {
-  assertThrows(() => {
-    Deno.permissions.querySync({ name: "net", host: ":" });
-  }, URIError);
-});
+Deno.test(
+  { permissions: { net: [] } },
+  function permissionNetInvalidHostSync() {
+    assertThrows(() => {
+      Deno.permissions.querySync({ name: "net", host: ":" });
+    }, URIError);
+  },
+);
 
-Deno.test(async function permissionSysValidKind() {
-  await Deno.permissions.query({ name: "sys", kind: "loadavg" });
-  await Deno.permissions.query({ name: "sys", kind: "osRelease" });
-  await Deno.permissions.query({ name: "sys", kind: "osUptime" });
-  await Deno.permissions.query({ name: "sys", kind: "networkInterfaces" });
-  await Deno.permissions.query({ name: "sys", kind: "systemMemoryInfo" });
-  await Deno.permissions.query({ name: "sys", kind: "hostname" });
-  await Deno.permissions.query({ name: "sys", kind: "uid" });
-  await Deno.permissions.query({ name: "sys", kind: "gid" });
-  await Deno.permissions.query({ name: "sys", kind: "cpus" });
-});
+Deno.test(
+  { permissions: { sys: [] } },
+  async function permissionSysValidKind() {
+    await Deno.permissions.query({ name: "sys", kind: "loadavg" });
+    await Deno.permissions.query({ name: "sys", kind: "osRelease" });
+    await Deno.permissions.query({ name: "sys", kind: "osUptime" });
+    await Deno.permissions.query({ name: "sys", kind: "networkInterfaces" });
+    await Deno.permissions.query({ name: "sys", kind: "systemMemoryInfo" });
+    await Deno.permissions.query({ name: "sys", kind: "hostname" });
+    await Deno.permissions.query({ name: "sys", kind: "uid" });
+    await Deno.permissions.query({ name: "sys", kind: "gid" });
+    await Deno.permissions.query({ name: "sys", kind: "cpus" });
+  },
+);
 
-Deno.test(function permissionSysValidKindSync() {
-  Deno.permissions.querySync({ name: "sys", kind: "loadavg" });
-  Deno.permissions.querySync({ name: "sys", kind: "osRelease" });
-  Deno.permissions.querySync({ name: "sys", kind: "networkInterfaces" });
-  Deno.permissions.querySync({ name: "sys", kind: "systemMemoryInfo" });
-  Deno.permissions.querySync({ name: "sys", kind: "hostname" });
-  Deno.permissions.querySync({ name: "sys", kind: "uid" });
-  Deno.permissions.querySync({ name: "sys", kind: "gid" });
-  Deno.permissions.querySync({ name: "sys", kind: "cpus" });
-});
+Deno.test(
+  { permissions: { sys: [] } },
+  function permissionSysValidKindSync() {
+    Deno.permissions.querySync({ name: "sys", kind: "loadavg" });
+    Deno.permissions.querySync({ name: "sys", kind: "osRelease" });
+    Deno.permissions.querySync({ name: "sys", kind: "networkInterfaces" });
+    Deno.permissions.querySync({ name: "sys", kind: "systemMemoryInfo" });
+    Deno.permissions.querySync({ name: "sys", kind: "hostname" });
+    Deno.permissions.querySync({ name: "sys", kind: "uid" });
+    Deno.permissions.querySync({ name: "sys", kind: "gid" });
+    Deno.permissions.querySync({ name: "sys", kind: "cpus" });
+  },
+);
 
-Deno.test(async function permissionSysInvalidKind() {
-  await assertRejects(async () => {
-    // deno-lint-ignore no-explicit-any
-    await Deno.permissions.query({ name: "sys", kind: "abc" as any });
-  }, TypeError);
-});
+Deno.test(
+  { permissions: { sys: [] } },
+  async function permissionSysInvalidKind() {
+    await assertRejects(async () => {
+      // deno-lint-ignore no-explicit-any
+      await Deno.permissions.query({ name: "sys", kind: "abc" as any });
+    }, TypeError);
+  },
+);
 
-Deno.test(function permissionSysInvalidKindSync() {
-  assertThrows(() => {
-    // deno-lint-ignore no-explicit-any
-    Deno.permissions.querySync({ name: "sys", kind: "abc" as any });
-  }, TypeError);
-});
+Deno.test(
+  { permissions: { sys: [] } },
+  function permissionSysInvalidKindSync() {
+    assertThrows(() => {
+      // deno-lint-ignore no-explicit-any
+      Deno.permissions.querySync({ name: "sys", kind: "abc" as any });
+    }, TypeError);
+  },
+);
 
 Deno.test(async function permissionQueryReturnsEventTarget() {
   const status = await Deno.permissions.query({ name: "read", path: "." });
@@ -134,29 +152,35 @@ Deno.test(function permissionStatusIllegalConstructor() {
 });
 
 // Regression test for https://github.com/denoland/deno/issues/17020
-Deno.test(async function permissionURL() {
-  const path = new URL(".", import.meta.url);
+Deno.test(
+  { permissions: { read: [], write: [], ffi: [], run: [] } },
+  async function permissionURL() {
+    const path = new URL(".", import.meta.url);
 
-  await Deno.permissions.query({ name: "read", path });
-  await Deno.permissions.query({ name: "write", path });
-  await Deno.permissions.query({ name: "ffi", path });
-  await Deno.permissions.query({ name: "run", command: path });
-});
+    await Deno.permissions.query({ name: "read", path });
+    await Deno.permissions.query({ name: "write", path });
+    await Deno.permissions.query({ name: "ffi", path });
+    await Deno.permissions.query({ name: "run", command: path });
+  },
+);
 
-Deno.test(function permissionURLSync() {
-  Deno.permissions.querySync({
-    name: "read",
-    path: new URL(".", import.meta.url),
-  });
-  Deno.permissions.querySync({
-    name: "write",
-    path: new URL(".", import.meta.url),
-  });
-  Deno.permissions.querySync({
-    name: "run",
-    command: new URL(".", import.meta.url),
-  });
-});
+Deno.test(
+  { permissions: { read: [], write: [], ffi: [], run: [] } },
+  function permissionURLSync() {
+    Deno.permissions.querySync({
+      name: "read",
+      path: new URL(".", import.meta.url),
+    });
+    Deno.permissions.querySync({
+      name: "write",
+      path: new URL(".", import.meta.url),
+    });
+    Deno.permissions.querySync({
+      name: "run",
+      command: new URL(".", import.meta.url),
+    });
+  },
+);
 
 Deno.test(async function permissionDescriptorValidation() {
   for (const value of [undefined, null, {}]) {

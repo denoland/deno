@@ -628,3 +628,37 @@ async fn jupyter_store_history_false() -> Result<()> {
 
   Ok(())
 }
+
+#[tokio::test]
+async fn jupyter_http_server() -> Result<()> {
+  let (_ctx, client, _process) = setup().await;
+  client
+    .send(
+      Shell,
+      "execute_request",
+      json!({
+        "silent": false,
+        "store_history": false,
+        "code": r#"Deno.serve({ port: 10234 }, (req) => Response.json({ hello: "world" }))"#,
+      }),
+    )
+    .await?;
+
+  let reply = client.recv(Shell).await?;
+  assert_eq!(reply.header.msg_type, "execute_reply");
+  assert_json_subset(
+    reply.content,
+    json!({
+      "status": "ok",
+      "execution_count": 0,
+    }),
+  );
+
+  for _ in 0..3 {
+    let resp = reqwest::get("http://localhost:10234").await.unwrap();
+    let text: serde_json::Value = resp.json().await.unwrap();
+    assert_eq!(text, json!({ "hello": "world" }));
+  }
+
+  Ok(())
+}

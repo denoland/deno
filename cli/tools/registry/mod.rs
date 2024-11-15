@@ -43,7 +43,8 @@ use crate::cache::ParsedSourceCache;
 use crate::factory::CliFactory;
 use crate::graph_util::ModuleGraphCreator;
 use crate::http_util::HttpClient;
-use crate::resolver::SloppyImportsResolver;
+use crate::resolver::CliSloppyImportsResolver;
+use crate::resolver::SloppyImportsCachedFs;
 use crate::tools::check::CheckOptions;
 use crate::tools::lint::collect_no_slow_type_diagnostics;
 use crate::tools::registry::diagnostics::PublishDiagnostic;
@@ -108,7 +109,9 @@ pub async fn publish(
   }
   let specifier_unfurler = Arc::new(SpecifierUnfurler::new(
     if cli_options.unstable_sloppy_imports() {
-      Some(SloppyImportsResolver::new(cli_factory.fs().clone()))
+      Some(CliSloppyImportsResolver::new(SloppyImportsCachedFs::new(
+        cli_factory.fs().clone(),
+      )))
     } else {
       None
     },

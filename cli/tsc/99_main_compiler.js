@@ -121,8 +121,8 @@ delete Object.prototype.__proto__;
   /** @type {Map<string, ts.SourceFile>} */
   const sourceFileCache = new Map();
 
-  /** @type {Map<string, string>} */
-  const sourceTextCache = new Map();
+  /** @type {Map<string, ts.IScriptSnapshot & { isCjs?: boolean; }>} */
+  const scriptSnapshotCache = new Map();
 
   /** @type {Map<string, number>} */
   const sourceRefCounts = new Map();
@@ -132,9 +132,6 @@ delete Object.prototype.__proto__;
 
   /** @type {Map<string, boolean>} */
   const isNodeSourceFileCache = new Map();
-
-  /** @type {Map<string, boolean>} */
-  const isCjsCache = new Map();
 
   // Maps asset specifiers to the first scope that the asset was loaded into.
   /** @type {Map<string, string | null>} */
@@ -210,12 +207,13 @@ delete Object.prototype.__proto__;
       const mapKey = path + key;
       let sourceFile = documentRegistrySourceFileCache.get(mapKey);
       if (!sourceFile || sourceFile.version !== version) {
+        const isCjs = /** @type {any} */ (scriptSnapshot).isCjs;
         sourceFile = ts.createLanguageServiceSourceFile(
           fileName,
           scriptSnapshot,
           {
             ...getCreateSourceFileOptions(sourceFileOptions),
-            impliedNodeFormat: (isCjsCache.get(fileName) ?? false)
+            impliedNodeFormat: isCjs
               ? ts.ModuleKind.CommonJS
               : ts.ModuleKind.ESNext,
             // in the lsp we want to be able to show documentation
@@ -320,7 +318,7 @@ delete Object.prototype.__proto__;
         if (lastRequestMethod != "cleanupSemanticCache") {
           const mapKey = path + key;
           documentRegistrySourceFileCache.delete(mapKey);
-          sourceTextCache.delete(path);
+          scriptSnapshotCache.delete(path);
           ops.op_release(path);
         }
       } else {
@@ -516,7 +514,6 @@ delete Object.prototype.__proto__;
   /** @typedef {{
    *    ls: ts.LanguageService & { [k:string]: any },
    *    compilerOptions: ts.CompilerOptions,
-   *    forceEnabledVerbatimModuleSyntax: boolean,
    *  }} LanguageServiceEntry */
   /** @type {{ unscoped: LanguageServiceEntry, byScope: Map<string, LanguageServiceEntry> }} */
   const languageServiceEntries = {
@@ -625,8 +622,6 @@ delete Object.prototype.__proto__;
         `"data" is unexpectedly null for "${specifier}".`,
       );
 
-      isCjsCache.set(specifier, isCjs);
-
       sourceFile = ts.createSourceFile(
         specifier,
         data,
@@ -700,7 +695,7 @@ delete Object.prototype.__proto__;
           /** @type {[string, ts.Extension] | undefined} */
           const resolved = ops.op_resolve(
             containingFilePath,
-            isCjsCache.get(containingFilePath) ?? false,
+            containingFileMode === ts.ModuleKind.CommonJS,
             [fileReference.fileName],
           )?.[0];
           if (resolved) {
@@ -724,7 +719,14 @@ delete Object.prototype.__proto__;
         }
       });
     },
-    resolveModuleNames(specifiers, base) {
+    resolveModuleNames(
+      specifiers,
+      base,
+      _reusedNames,
+      _redirectedReference,
+      _options,
+      containingSourceFile,
+    ) {
       if (logDebug) {
         debug(`host.resolveModuleNames()`);
         debug(`  base: ${base}`);
@@ -733,7 +735,7 @@ delete Object.prototype.__proto__;
       /** @type {Array<[string, ts.Extension] | undefined>} */
       const resolved = ops.op_resolve(
         base,
-        isCjsCache.get(base) ?? false,
+        containingSourceFile?.impliedNodeFormat === ts.ModuleKind.CommonJS,
         specifiers,
       );
       if (resolved) {
@@ -802,27 +804,32 @@ delete Object.prototype.__proto__;
       if (logDebug) {
         debug(`host.getScriptSnapshot("${specifier}")`);
       }
-      const sourceFile = sourceFileCache.get(specifier);
-      if (sourceFile) {
-        if (!assetScopes.has(specifier)) {
-          assetScopes.set(specifier, lastRequestScope);
+      if (specifier.startsWith(ASSETS_URL_PREFIX)) {
+        const sourceFile = this.getSourceFile(
+          specifier,
+          ts.ScriptTarget.ESNext,
+        );
+        if (sourceFile) {
+          if (!assetScopes.has(specifier)) {
+            assetScopes.set(specifier, lastRequestScope);
+          }
+          // This case only occurs for assets.
+          return ts.ScriptSnapshot.fromString(sourceFile.text);
         }
-        // This case only occurs for assets.
-        return ts.ScriptSnapshot.fromString(sourceFile.text);
       }
-      let sourceText = sourceTextCache.get(specifier);
-      if (sourceText == undefined) {
+      let scriptSnapshot = scriptSnapshotCache.get(specifier);
+      if (scriptSnapshot == undefined) {
         /** @type {{ data: string, version: string, isCjs: boolean }} */
         const fileInfo = ops.op_load(specifier);
         if (!fileInfo) {
           return undefined;
         }
-        isCjsCache.set(specifier, fileInfo.isCjs);
-        sourceTextCache.set(specifier, fileInfo.data);
+        scriptSnapshot = ts.ScriptSnapshot.fromString(fileInfo.data);
+        scriptSnapshot.isCjs = fileInfo.isCjs;
+        scriptSnapshotCache.set(specifier, scriptSnapshot);
         scriptVersionCache.set(specifier, fileInfo.version);
-        sourceText = fileInfo.data;
       }
-      return ts.ScriptSnapshot.fromString(sourceText);
+      return scriptSnapshot;
     },
   };
 
@@ -846,6 +853,8 @@ delete Object.prototype.__proto__;
         jqueryMessage,
       "Cannot_find_name_0_Do_you_need_to_install_type_definitions_for_jQuery_Try_npm_i_save_dev_types_Slash_2592":
         jqueryMessage,
+      "Module_0_was_resolved_to_1_but_allowArbitraryExtensions_is_not_set_6263":
+        "Module '{0}' was resolved to '{1}', but importing these modules is not supported.",
     };
   })());
 
@@ -1026,7 +1035,7 @@ delete Object.prototype.__proto__;
         : ts.sortAndDeduplicateDiagnostics(
           checkFiles.map((s) => program.getSemanticDiagnostics(s)).flat(),
         )),
-    ].filter(filterMapDiagnostic.bind(null, false));
+    ].filter(filterMapDiagnostic);
 
     // emit the tsbuildinfo file
     // @ts-ignore: emitBuildInfo is not exposed (https://github.com/microsoft/TypeScript/issues/49871)
@@ -1041,27 +1050,10 @@ delete Object.prototype.__proto__;
     debug("<<< exec stop");
   }
 
-  /**
-   * @param {boolean} isLsp
-   * @param {ts.Diagnostic} diagnostic
-   */
-  function filterMapDiagnostic(isLsp, diagnostic) {
+  /** @param {ts.Diagnostic} diagnostic */
+  function filterMapDiagnostic(diagnostic) {
     if (IGNORED_DIAGNOSTICS.includes(diagnostic.code)) {
       return false;
-    }
-    if (isLsp) {
-      // TS1484: `...` is a type and must be imported using a type-only import when 'verbatimModuleSyntax' is enabled.
-      // We force-enable `verbatimModuleSyntax` in the LSP so the `type`
-      // modifier is used when auto-importing types. But we don't want this
-      // diagnostic unless it was explicitly enabled by the user.
-      if (diagnostic.code == 1484) {
-        const entry = (lastRequestScope
-          ? languageServiceEntries.byScope.get(lastRequestScope)
-          : null) ?? languageServiceEntries.unscoped;
-        if (entry.forceEnabledVerbatimModuleSyntax) {
-          return false;
-        }
-      }
     }
     // make the diagnostic for using an `export =` in an es module a warning
     if (diagnostic.code === 1203) {
@@ -1159,12 +1151,10 @@ delete Object.prototype.__proto__;
         "strict": true,
         "target": "esnext",
         "useDefineForClassFields": true,
-        "verbatimModuleSyntax": true,
         "jsx": "react",
         "jsxFactory": "React.createElement",
         "jsxFragmentFactory": "React.Fragment",
       }),
-      forceEnabledVerbatimModuleSyntax: true,
     };
     setLogDebug(enableDebugLogging, "TSLS");
     debug("serverInit()");
@@ -1230,17 +1220,8 @@ delete Object.prototype.__proto__;
           const ls = oldEntry
             ? oldEntry.ls
             : ts.createLanguageService(host, documentRegistry);
-          let forceEnabledVerbatimModuleSyntax = false;
-          if (!config["verbatimModuleSyntax"]) {
-            config["verbatimModuleSyntax"] = true;
-            forceEnabledVerbatimModuleSyntax = true;
-          }
           const compilerOptions = lspTsConfigToCompilerOptions(config);
-          newByScope.set(scope, {
-            ls,
-            compilerOptions,
-            forceEnabledVerbatimModuleSyntax,
-          });
+          newByScope.set(scope, { ls, compilerOptions });
           languageServiceEntries.byScope.delete(scope);
         }
         for (const oldEntry of languageServiceEntries.byScope.values()) {
@@ -1260,7 +1241,7 @@ delete Object.prototype.__proto__;
           closed = true;
         }
         scriptVersionCache.delete(script);
-        sourceTextCache.delete(script);
+        scriptSnapshotCache.delete(script);
       }
 
       if (newConfigsByScope || opened || closed) {
@@ -1305,7 +1286,7 @@ delete Object.prototype.__proto__;
               ...ls.getSemanticDiagnostics(specifier),
               ...ls.getSuggestionDiagnostics(specifier),
               ...ls.getSyntacticDiagnostics(specifier),
-            ].filter(filterMapDiagnostic.bind(null, true)));
+            ].filter(filterMapDiagnostic));
           }
           return respond(id, diagnosticMap);
         } catch (e) {
@@ -1366,18 +1347,12 @@ delete Object.prototype.__proto__;
     "console",
     "Console",
     "ErrorConstructor",
-    "exports",
     "gc",
     "Global",
     "ImportMeta",
     "localStorage",
-    "module",
-    "NodeModule",
-    "NodeRequire",
-    "process",
     "queueMicrotask",
     "RequestInit",
-    "require",
     "ResponseInit",
     "sessionStorage",
     "setImmediate",

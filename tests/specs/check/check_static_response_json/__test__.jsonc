@@ -1,0 +1,5 @@
+{
+  "args": "check --quiet response_json.ts",
+  "output": "",
+  "exitCode": 0
+}

@@ -19,8 +19,9 @@ use deno_core::v8;
 use deno_core::CompiledWasmModuleStore;
 use deno_core::Extension;
 use deno_core::FeatureChecker;
-use deno_core::FsModuleLoader;
 use deno_core::GetErrorClassFn;
+use deno_core::InspectorSessionKind;
+use deno_core::InspectorSessionOptions;
 use deno_core::JsRuntime;
 use deno_core::LocalInspectorSession;
 use deno_core::ModuleCodeString;
@@ -50,7 +51,6 @@ use crate::code_cache::CodeCacheType;
 use crate::inspector_server::InspectorServer;
 use crate::ops;
 use crate::ops::process::NpmProcessStateProviderRc;
-use crate::permissions::RuntimePermissionDescriptorParser;
 use crate::shared::maybe_transpile_source;
 use crate::shared::runtime;
 use crate::BootstrapOptions;
@@ -128,6 +128,41 @@ pub struct MainWorker {
   dispatch_process_exit_event_fn_global: v8::Global<v8::Function>,
 }
 
+pub struct WorkerServiceOptions {
+  pub blob_store: Arc<BlobStore>,
+  pub broadcast_channel: InMemoryBroadcastChannel,
+  pub feature_checker: Arc<FeatureChecker>,
+  pub fs: Arc<dyn FileSystem>,
+  /// Implementation of `ModuleLoader` which will be
+  /// called when V8 requests to load ES modules.
+  ///
+  /// If not provided runtime will error if code being
+  /// executed tries to load modules.
+  pub module_loader: Rc<dyn ModuleLoader>,
+  pub node_services: Option<NodeExtInitServices>,
+  pub npm_process_state_provider: Option<NpmProcessStateProviderRc>,
+  pub permissions: PermissionsContainer,
+  pub root_cert_store_provider: Option<Arc<dyn RootCertStoreProvider>>,
+
+  /// The store to use for transferring SharedArrayBuffers between isolates.
+  /// If multiple isolates should have the possibility of sharing
+  /// SharedArrayBuffers, they should use the same [SharedArrayBufferStore]. If
+  /// no [SharedArrayBufferStore] is specified, SharedArrayBuffer can not be
+  /// serialized.
+  pub shared_array_buffer_store: Option<SharedArrayBufferStore>,
+
+  /// The store to use for transferring `WebAssembly.Module` objects between
+  /// isolates.
+  /// If multiple isolates should have the possibility of sharing
+  /// `WebAssembly.Module` objects, they should use the same
+  /// [CompiledWasmModuleStore]. If no [CompiledWasmModuleStore] is specified,
+  /// `WebAssembly.Module` objects cannot be serialized.
+  pub compiled_wasm_module_store: Option<CompiledWasmModuleStore>,
+
+  /// V8 code cache for module and script source code.
+  pub v8_code_cache: Option<Arc<dyn CodeCache>>,
+}
+
 pub struct WorkerOptions {
   pub bootstrap: BootstrapOptions,
 
@@ -148,20 +183,8 @@ pub struct WorkerOptions {
   pub create_params: Option<v8::CreateParams>,
 
   pub unsafely_ignore_certificate_errors: Option<Vec<String>>,
-  pub root_cert_store_provider: Option<Arc<dyn RootCertStoreProvider>>,
   pub seed: Option<u64>,
 
-  pub fs: Arc<dyn FileSystem>,
-  /// Implementation of `ModuleLoader` which will be
-  /// called when V8 requests to load ES modules.
-  ///
-  /// If not provided runtime will error if code being
-  /// executed tries to load modules.
-  pub module_loader: Rc<dyn ModuleLoader>,
-  pub node_services: Option<NodeExtInitServices>,
-  pub npm_process_state_provider: Option<NpmProcessStateProviderRc>,
-  pub permission_desc_parser:
-    Arc<dyn deno_permissions::PermissionDescriptorParser>,
   // Callbacks invoked when creating new instance of WebWorker
   pub create_web_worker_cb: Arc<ops::worker_host::CreateWebWorkerCb>,
   pub format_js_error_fn: Option<Arc<FormatJsErrorFn>>,
@@ -182,69 +205,31 @@ pub struct WorkerOptions {
   pub get_error_class_fn: Option<GetErrorClassFn>,
   pub cache_storage_dir: Option<std::path::PathBuf>,
   pub origin_storage_dir: Option<std::path::PathBuf>,
-  pub blob_store: Arc<BlobStore>,
-  pub broadcast_channel: InMemoryBroadcastChannel,
-
-  /// The store to use for transferring SharedArrayBuffers between isolates.
-  /// If multiple isolates should have the possibility of sharing
-  /// SharedArrayBuffers, they should use the same [SharedArrayBufferStore]. If
-  /// no [SharedArrayBufferStore] is specified, SharedArrayBuffer can not be
-  /// serialized.
-  pub shared_array_buffer_store: Option<SharedArrayBufferStore>,
-
-  /// The store to use for transferring `WebAssembly.Module` objects between
-  /// isolates.
-  /// If multiple isolates should have the possibility of sharing
-  /// `WebAssembly.Module` objects, they should use the same
-  /// [CompiledWasmModuleStore]. If no [CompiledWasmModuleStore] is specified,
-  /// `WebAssembly.Module` objects cannot be serialized.
-  pub compiled_wasm_module_store: Option<CompiledWasmModuleStore>,
   pub stdio: Stdio,
-  pub feature_checker: Arc<FeatureChecker>,
-
-  /// V8 code cache for module and script source code.
-  pub v8_code_cache: Option<Arc<dyn CodeCache>>,
 }
 
-// todo(dsherret): this is error prone to use. We should separate
-// out the WorkerOptions from the services.
 impl Default for WorkerOptions {
   fn default() -> Self {
-    let real_fs = Arc::new(deno_fs::RealFs);
     Self {
       create_web_worker_cb: Arc::new(|_| {
         unimplemented!("web workers are not supported")
       }),
-      fs: real_fs.clone(),
-      module_loader: Rc::new(FsModuleLoader),
       skip_op_registration: false,
       seed: None,
       unsafely_ignore_certificate_errors: Default::default(),
       should_break_on_first_statement: Default::default(),
       should_wait_for_inspector_session: Default::default(),
       strace_ops: Default::default(),
-      compiled_wasm_module_store: Default::default(),
-      shared_array_buffer_store: Default::default(),
       maybe_inspector_server: Default::default(),
       format_js_error_fn: Default::default(),
       get_error_class_fn: Default::default(),
       origin_storage_dir: Default::default(),
       cache_storage_dir: Default::default(),
-      broadcast_channel: Default::default(),
-      root_cert_store_provider: Default::default(),
-      node_services: Default::default(),
-      blob_store: Default::default(),
       extensions: Default::default(),
       startup_snapshot: Default::default(),
       create_params: Default::default(),
-      npm_process_state_provider: Default::default(),
       bootstrap: Default::default(),
       stdio: Default::default(),
-      feature_checker: Default::default(),
-      permission_desc_parser: Arc::new(RuntimePermissionDescriptorParser::new(
-        real_fs,
-      )),
-      v8_code_cache: Default::default(),
     }
   }
 }
@@ -318,20 +303,20 @@ pub fn create_op_metrics(
 impl MainWorker {
   pub fn bootstrap_from_options(
     main_module: ModuleSpecifier,
-    permissions: PermissionsContainer,
+    services: WorkerServiceOptions,
     options: WorkerOptions,
   ) -> Self {
-    let bootstrap_options = options.bootstrap.clone();
-    let mut worker = Self::from_options(main_module, permissions, options);
+    let (mut worker, bootstrap_options) =
+      Self::from_options(main_module, services, options);
     worker.bootstrap(bootstrap_options);
     worker
   }
 
-  pub fn from_options(
+  fn from_options(
     main_module: ModuleSpecifier,
-    permissions: PermissionsContainer,
+    services: WorkerServiceOptions,
     mut options: WorkerOptions,
-  ) -> Self {
+  ) -> (Self, BootstrapOptions) {
     deno_core::extension!(deno_permissions_worker,
       options = {
         permissions: PermissionsContainer,
@@ -365,7 +350,7 @@ impl MainWorker {
       deno_console::deno_console::init_ops_and_esm(),
       deno_url::deno_url::init_ops_and_esm(),
       deno_web::deno_web::init_ops_and_esm::<PermissionsContainer>(
-        options.blob_store.clone(),
+        services.blob_store.clone(),
         options.bootstrap.location.clone(),
       ),
       deno_webgpu::deno_webgpu::init_ops_and_esm(),
@@ -373,7 +358,7 @@ impl MainWorker {
       deno_fetch::deno_fetch::init_ops_and_esm::<PermissionsContainer>(
         deno_fetch::Options {
           user_agent: options.bootstrap.user_agent.clone(),
-          root_cert_store_provider: options.root_cert_store_provider.clone(),
+          root_cert_store_provider: services.root_cert_store_provider.clone(),
           unsafely_ignore_certificate_errors: options
             .unsafely_ignore_certificate_errors
             .clone(),
@@ -386,7 +371,7 @@ impl MainWorker {
       ),
       deno_websocket::deno_websocket::init_ops_and_esm::<PermissionsContainer>(
         options.bootstrap.user_agent.clone(),
-        options.root_cert_store_provider.clone(),
+        services.root_cert_store_provider.clone(),
         options.unsafely_ignore_certificate_errors.clone(),
       ),
       deno_webstorage::deno_webstorage::init_ops_and_esm(
@@ -394,11 +379,11 @@ impl MainWorker {
       ),
       deno_crypto::deno_crypto::init_ops_and_esm(options.seed),
       deno_broadcast_channel::deno_broadcast_channel::init_ops_and_esm(
-        options.broadcast_channel.clone(),
+        services.broadcast_channel.clone(),
       ),
       deno_ffi::deno_ffi::init_ops_and_esm::<PermissionsContainer>(),
       deno_net::deno_net::init_ops_and_esm::<PermissionsContainer>(
-        options.root_cert_store_provider.clone(),
+        services.root_cert_store_provider.clone(),
         options.unsafely_ignore_certificate_errors.clone(),
       ),
       deno_tls::deno_tls::init_ops_and_esm(),
@@ -408,7 +393,7 @@ impl MainWorker {
           options.seed,
           deno_kv::remote::HttpOptions {
             user_agent: options.bootstrap.user_agent.clone(),
-            root_cert_store_provider: options.root_cert_store_provider.clone(),
+            root_cert_store_provider: services.root_cert_store_provider.clone(),
             unsafely_ignore_certificate_errors: options
               .unsafely_ignore_certificate_errors
               .clone(),
@@ -423,11 +408,11 @@ impl MainWorker {
       deno_http::deno_http::init_ops_and_esm::<DefaultHttpPropertyExtractor>(),
       deno_io::deno_io::init_ops_and_esm(Some(options.stdio)),
       deno_fs::deno_fs::init_ops_and_esm::<PermissionsContainer>(
-        options.fs.clone(),
+        services.fs.clone(),
       ),
       deno_node::deno_node::init_ops_and_esm::<PermissionsContainer>(
-        options.node_services,
-        options.fs,
+        services.node_services,
+        services.fs,
       ),
       // Ops from this crate
       ops::runtime::deno_runtime::init_ops_and_esm(main_module.clone()),
@@ -437,11 +422,10 @@ impl MainWorker {
       ),
       ops::fs_events::deno_fs_events::init_ops_and_esm(),
       ops::os::deno_os::init_ops_and_esm(exit_code.clone()),
-      ops::permissions::deno_permissions::init_ops_and_esm(
-        options.permission_desc_parser,
-      ),
+      ops::otel::deno_otel::init_ops_and_esm(),
+      ops::permissions::deno_permissions::init_ops_and_esm(),
       ops::process::deno_process::init_ops_and_esm(
-        options.npm_process_state_provider,
+        services.npm_process_state_provider,
       ),
       ops::signal::deno_signal::init_ops_and_esm(),
       ops::tty::deno_tty::init_ops_and_esm(),
@@ -454,7 +438,7 @@ impl MainWorker {
         },
       ),
       deno_permissions_worker::init_ops_and_esm(
-        permissions,
+        services.permissions,
         enable_testing_features,
       ),
       runtime::init_ops_and_esm(),
@@ -494,20 +478,20 @@ impl MainWorker {
     });
 
     let mut js_runtime = JsRuntime::new(RuntimeOptions {
-      module_loader: Some(options.module_loader.clone()),
+      module_loader: Some(services.module_loader.clone()),
       startup_snapshot: options.startup_snapshot,
       create_params: options.create_params,
       skip_op_registration: options.skip_op_registration,
       get_error_class_fn: options.get_error_class_fn,
-      shared_array_buffer_store: options.shared_array_buffer_store.clone(),
-      compiled_wasm_module_store: options.compiled_wasm_module_store.clone(),
+      shared_array_buffer_store: services.shared_array_buffer_store.clone(),
+      compiled_wasm_module_store: services.compiled_wasm_module_store.clone(),
       extensions,
       extension_transpiler: Some(Rc::new(|specifier, source| {
         maybe_transpile_source(specifier, source)
       })),
-      inspector: options.maybe_inspector_server.is_some(),
+      inspector: true,
       is_main: true,
-      feature_checker: Some(options.feature_checker.clone()),
+      feature_checker: Some(services.feature_checker.clone()),
       op_metrics_factory_fn,
       wait_for_inspector_disconnect_callback: Some(
         wait_for_inspector_disconnect_callback,
@@ -519,7 +503,7 @@ impl MainWorker {
         validate_import_attributes_callback,
       )),
       import_assertions_support: deno_core::ImportAssertionsSupport::Error,
-      eval_context_code_cache_cbs: options.v8_code_cache.map(|cache| {
+      eval_context_code_cache_cbs: services.v8_code_cache.map(|cache| {
         let cache_clone = cache.clone();
         (
           Box::new(move |specifier: &ModuleSpecifier, code: &v8::String| {
@@ -563,6 +547,12 @@ impl MainWorker {
       js_runtime.op_state().borrow_mut().put(op_summary_metrics);
     }
 
+    // Put inspector handle into the op state so we can put a breakpoint when
+    // executing a CJS entrypoint.
+    let op_state = js_runtime.op_state();
+    let inspector = js_runtime.inspector();
+    op_state.borrow_mut().put(inspector);
+
     if let Some(server) = options.maybe_inspector_server.clone() {
       server.register_inspector(
         main_module.to_string(),
@@ -570,13 +560,8 @@ impl MainWorker {
         options.should_break_on_first_statement
           || options.should_wait_for_inspector_session,
       );
-
-      // Put inspector handle into the op state so we can put a breakpoint when
-      // executing a CJS entrypoint.
-      let op_state = js_runtime.op_state();
-      let inspector = js_runtime.inspector();
-      op_state.borrow_mut().put(inspector);
     }
+
     let (
       bootstrap_fn_global,
       dispatch_load_event_fn_global,
@@ -666,7 +651,7 @@ impl MainWorker {
       )
     };
 
-    Self {
+    let worker = Self {
       js_runtime,
       should_break_on_first_statement: options.should_break_on_first_statement,
       should_wait_for_inspector_session: options
@@ -678,7 +663,8 @@ impl MainWorker {
       dispatch_unload_event_fn_global,
       dispatch_process_beforeexit_event_fn_global,
       dispatch_process_exit_event_fn_global,
-    }
+    };
+    (worker, options.bootstrap)
   }
 
   pub fn bootstrap(&mut self, options: BootstrapOptions) {
@@ -810,7 +796,11 @@ impl MainWorker {
   /// was not configured to create inspector.
   pub fn create_inspector_session(&mut self) -> LocalInspectorSession {
     self.js_runtime.maybe_init_inspector();
-    self.js_runtime.inspector().borrow().create_local_session()
+    self.js_runtime.inspector().borrow().create_local_session(
+      InspectorSessionOptions {
+        kind: InspectorSessionKind::Blocking,
+      },
+    )
   }
 
   pub async fn run_event_loop(

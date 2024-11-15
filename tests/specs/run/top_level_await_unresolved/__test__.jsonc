@@ -1,0 +1,5 @@
+{
+  "args": "run top_level_await/unresolved.js",
+  "output": "top_level_await/unresolved.out",
+  "exitCode": 1
+}

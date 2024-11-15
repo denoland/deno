@@ -5,6 +5,7 @@ use crate::args::CompileFlags;
 use crate::args::Flags;
 use crate::factory::CliFactory;
 use crate::http_util::HttpClientProvider;
+use crate::standalone::binary::StandaloneRelativeFileBaseUrl;
 use crate::standalone::is_standalone_binary;
 use deno_ast::ModuleSpecifier;
 use deno_core::anyhow::bail;
@@ -14,7 +15,6 @@ use deno_core::error::AnyError;
 use deno_core::resolve_url_or_path;
 use deno_graph::GraphKind;
 use deno_terminal::colors;
-use eszip::EszipRelativeFileBaseUrl;
 use rand::Rng;
 use std::path::Path;
 use std::path::PathBuf;
@@ -29,7 +29,6 @@ pub async fn compile(
   let factory = CliFactory::from_flags(flags);
   let cli_options = factory.cli_options()?;
   let module_graph_creator = factory.module_graph_creator().await?;
-  let parsed_source_cache = factory.parsed_source_cache();
   let binary_writer = factory.create_compile_binary_writer().await?;
   let http_client = factory.http_client_provider();
   let module_specifier = cli_options.resolve_main_module()?;
@@ -70,7 +69,7 @@ pub async fn compile(
   let graph = if cli_options.type_check_mode().is_true() {
     // In this case, the previous graph creation did type checking, which will
     // create a module graph with types information in it. We don't want to
-    // store that in the eszip so create a code only module graph from scratch.
+    // store that in the binary so create a code only module graph from scratch.
     module_graph_creator
       .create_graph(GraphKind::CodeOnly, module_roots)
       .await?
@@ -81,11 +80,6 @@ pub async fn compile(
   let ts_config_for_emit = cli_options
     .resolve_ts_config_for_emit(deno_config::deno_json::TsConfigType::Emit)?;
   check_warn_tsconfig(&ts_config_for_emit);
-  let (transpile_options, emit_options) =
-    crate::args::ts_config_to_transpile_and_emit_options(
-      ts_config_for_emit.ts_config,
-    )?;
-  let parser = parsed_source_cache.as_capturing_parser();
   let root_dir_url = resolve_root_dir_from_specifiers(
     cli_options.workspace().root_dir(),
     graph.specifiers().map(|(s, _)| s).chain(
@@ -96,17 +90,6 @@ pub async fn compile(
     ),
   );
   log::debug!("Binary root dir: {}", root_dir_url);
-  let root_dir_url = EszipRelativeFileBaseUrl::new(&root_dir_url);
-  let eszip = eszip::EszipV2::from_graph(eszip::FromGraphOptions {
-    graph,
-    parser,
-    transpile_options,
-    emit_options,
-    // make all the modules relative to the root folder
-    relative_file_base: Some(root_dir_url),
-    npm_packages: None,
-  })?;
-
   log::info!(
     "{} {} to {}",
     colors::green("Compile"),
@@ -133,15 +116,18 @@ pub async fn compile(
   let write_result = binary_writer
     .write_bin(
       file,
-      eszip,
-      root_dir_url,
+      &graph,
+      StandaloneRelativeFileBaseUrl::from(&root_dir_url),
       module_specifier,
       &compile_flags,
       cli_options,
     )
     .await
     .with_context(|| {
-      format!("Writing temporary file '{}'", temp_path.display())
+      format!(
+        "Writing deno compile executable to temporary file '{}'",
+        temp_path.display()
+      )
     });
 
   // set it as executable
