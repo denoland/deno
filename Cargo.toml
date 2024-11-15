@@ -127,6 +127,7 @@ fs3 = "0.5.0"
 futures = "0.3.21"
 glob = "0.3.1"
 h2 = "0.4.4"
+hickory-resolver = { version = "0.24", features = ["tokio-runtime", "serde-config"] }
 http = "1.0"
 http-body = "1.0"
 http-body-util = "0.1.2"
