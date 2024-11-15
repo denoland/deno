@@ -16,6 +16,7 @@ use deno_semver::package::PackageNv;
 use deno_semver::package::PackageReq;
 use deno_semver::Version;
 use deno_semver::VersionReq;
+use deps::KeyPath;
 use jsonc_parser::cst::CstObject;
 use jsonc_parser::cst::CstObjectProp;
 use jsonc_parser::cst::CstRootNode;
@@ -32,6 +33,7 @@ use crate::jsr::JsrFetchResolver;
 use crate::npm::NpmFetchResolver;
 
 mod cache_deps;
+pub(crate) mod deps;
 mod outdated;
 mod update;
 
@@ -39,7 +41,7 @@ pub use cache_deps::cache_top_level_deps;
 pub use outdated::outdated;
 pub use update::update;
 
-#[derive(Debug, Copy, Clone)]
+#[derive(Debug, Copy, Clone, Hash)]
 enum ConfigKind {
   DenoJson,
   PackageJson,
@@ -88,6 +90,30 @@ impl ConfigUpdater {
 
   fn contents(&self) -> String {
     self.cst.to_string()
+  }
+
+  fn get_property_for_mutation(
+    &mut self,
+    key_path: &KeyPath,
+  ) -> Option<CstObjectProp> {
+    let mut current_node = self.root_object.clone();
+
+    self.modified = true;
+
+    for (i, part) in key_path.parts.iter().enumerate() {
+      let s = part.as_str();
+      if i < key_path.parts.len().saturating_sub(1) {
+        let Some(object) = current_node.object_value(s) else {
+          return None;
+        };
+        current_node = object;
+      } else {
+        // last part
+        return current_node.get(s);
+      }
+    }
+
+    None
   }
 
   fn add(&mut self, selected: SelectedPackage, dev: bool) {

@@ -559,7 +559,7 @@ impl ManagedCliNpmResolver {
       log::debug!(
         "All package.json deps resolvable. Skipping top level install."
       );
-      return Ok(false); // everything is already resolvable
+      // return Ok(false); // everything is already resolvable
     }
 
     let pkg_reqs = pkg_json_remote_pkgs
