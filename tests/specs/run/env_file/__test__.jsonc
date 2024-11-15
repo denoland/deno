@@ -1,0 +1,4 @@
+{
+  "args": "run --env=../../../testdata/env --allow-env env_file.ts",
+  "output": "env_file.out"
+}

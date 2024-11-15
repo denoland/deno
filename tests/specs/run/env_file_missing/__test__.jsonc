@@ -1,0 +1,4 @@
+{
+  "args": "run --env=../../../testdata/missing --allow-env env_file.ts",
+  "output": "env_file_missing.out"
+}

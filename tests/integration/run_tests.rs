@@ -418,21 +418,6 @@ fn permissions_cache() {
     });
 }
 
-itest!(env_file {
-  args: "run --env=env --allow-env run/env_file.ts",
-  output: "run/env_file.out",
-});
-
-itest!(env_file_missing {
-  args: "run --env=missing --allow-env run/env_file.ts",
-  output: "run/env_file_missing.out",
-});
-
-itest!(env_file_multiple {
-  args: "run --env=env --env=env_one --env=env_two --allow-env run/multiple_env_file.ts",
-  output: "run/multiple_env_file.out",
-});
-
 itest!(lock_write_fetch {
   args:
     "run --quiet --allow-import --allow-read --allow-write --allow-env --allow-run run/lock_write_fetch/main.ts",
