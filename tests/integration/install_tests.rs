@@ -160,6 +160,7 @@ fn install_custom_dir_env_var() {
   let context = TestContext::with_http_server();
   let temp_dir = context.temp_dir();
   let temp_dir_str = temp_dir.path().to_string();
+  let temp_bin_dir_str = temp_dir.path().join("bin").to_string();
 
   context
     .new_command()
@@ -168,7 +169,7 @@ fn install_custom_dir_env_var() {
     .envs([
       ("HOME", temp_dir_str.as_str()),
       ("USERPROFILE", temp_dir_str.as_str()),
-      ("DENO_INSTALL_ROOT", temp_dir_str.as_str()),
+      ("DENO_INSTALL_ROOT", temp_bin_dir_str.as_str()),
     ])
     .run()
     .skip_output_check()
