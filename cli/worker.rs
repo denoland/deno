@@ -555,6 +555,7 @@ impl CliMainWorkerFactory {
       permissions,
       v8_code_cache: shared.code_cache.clone(),
     };
+
     let options = WorkerOptions {
       bootstrap: BootstrapOptions {
         deno_version: crate::version::DENO_VERSION_INFO.deno.to_string(),
@@ -585,7 +586,7 @@ impl CliMainWorkerFactory {
       },
       extensions: custom_extensions,
       startup_snapshot: crate::js::deno_isolate_init(),
-      create_params: None,
+      create_params: create_isolate_create_params(),
       unsafely_ignore_certificate_errors: shared
         .options
         .unsafely_ignore_certificate_errors
@@ -786,6 +787,7 @@ fn create_web_worker_callback(
       },
       extensions: vec![],
       startup_snapshot: crate::js::deno_isolate_init(),
+      create_params: create_isolate_create_params(),
       unsafely_ignore_certificate_errors: shared
         .options
         .unsafely_ignore_certificate_errors
@@ -803,6 +805,17 @@ fn create_web_worker_callback(
     };
 
     WebWorker::bootstrap_from_options(services, options)
+  })
+}
+
+/// By default V8 uses 1.4Gb heap limit which is meant for browser tabs.
+/// Instead probe for the total memory on the system and use it instead
+/// as a default.
+pub fn create_isolate_create_params() -> Option<v8::CreateParams> {
+  let maybe_mem_info = deno_runtime::sys_info::mem_info();
+  maybe_mem_info.map(|mem_info| {
+    v8::CreateParams::default()
+      .heap_limits_from_system_memory(mem_info.total, 0)
   })
 }
 
