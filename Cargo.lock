@@ -1566,6 +1566,7 @@ dependencies = [
  "dyn-clone",
  "error_reporter",
  "fast-socks5",
+ "hickory-resolver",
  "http 1.1.0",
  "http-body-util",
  "hyper 1.4.1",
