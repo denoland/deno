@@ -413,7 +413,6 @@ fn generate_docs_directory(
     None
   };
 
-
   let options = deno_doc::html::GenerateOptions {
     package_name: html_options.name.clone(),
     main_entrypoint: None,
