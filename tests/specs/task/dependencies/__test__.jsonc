@@ -11,6 +11,13 @@
       "tempDir": true,
       "args": "task run",
       "output": "./basic2.out"
+    },
+    "cross_package": {
+      "cwd": "cross_package/package1",
+      "tempDir": true,
+      "args": "task run",
+      "output": "./cross_package.out",
+      "exitCode": 1
     }
   }
 }
