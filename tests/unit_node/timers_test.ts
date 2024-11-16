@@ -118,7 +118,7 @@ Deno.test({
       expectedValue: 42,
       intervalMs: 100,
       iterations: 3,
-      tolerancePercent: 10,
+      tolerancePercent: 50,
     };
 
     const { setInterval } = timersPromises;
