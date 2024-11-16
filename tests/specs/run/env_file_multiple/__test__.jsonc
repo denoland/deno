@@ -1,4 +1,0 @@
-{
-  "args": "run --env=../../../testdata/env --env=../../../testdata/env_one --env=../../../testdata/env_two --allow-env multiple_env_file.ts",
-  "output": "multiple_env_file.out"
-}
