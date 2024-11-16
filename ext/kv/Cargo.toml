@@ -17,6 +17,7 @@ path = "lib.rs"
 anyhow.workspace = true
 async-trait.workspace = true
 base64.workspace = true
+boxed_error.workspace = true
 bytes.workspace = true
 chrono = { workspace = true, features = ["now"] }
 deno_core.workspace = true

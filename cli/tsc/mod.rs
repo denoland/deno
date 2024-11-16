@@ -6,10 +6,10 @@ use crate::cache::FastInsecureHasher;
 use crate::cache::ModuleInfoCache;
 use crate::node;
 use crate::npm::CliNpmResolver;
-use crate::npm::ResolvePkgFolderFromDenoReqError;
 use crate::resolver::CjsTracker;
 use crate::util::checksum;
 use crate::util::path::mapped_specifier_for_tsc;
+use crate::worker::create_isolate_create_params;
 
 use deno_ast::MediaType;
 use deno_core::anyhow::anyhow;
@@ -34,6 +34,7 @@ use deno_graph::GraphKind;
 use deno_graph::Module;
 use deno_graph::ModuleGraph;
 use deno_graph::ResolutionResolved;
+use deno_resolver::npm::ResolvePkgFolderFromDenoReqError;
 use deno_runtime::deno_fs;
 use deno_runtime::deno_node::NodeResolver;
 use deno_semver::npm::NpmPackageReqReference;
@@ -1104,6 +1105,7 @@ pub fn exec(request: Request) -> Result<Response, AnyError> {
       root_map,
       remapped_specifiers,
     )],
+    create_params: create_isolate_create_params(),
     ..Default::default()
   });
 

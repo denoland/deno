@@ -148,6 +148,7 @@ impl<'a> TaskRunner<'a> {
         return Ok(exit_code);
       }
     }
+
     let cwd = match &self.task_flags.cwd {
       Some(path) => canonicalize_path(&PathBuf::from(path))
         .context("failed canonicalizing --cwd")?,

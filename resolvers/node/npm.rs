@@ -13,10 +13,13 @@ use crate::sync::MaybeSend;
 use crate::sync::MaybeSync;
 
 #[allow(clippy::disallowed_types)]
-pub type NpmResolverRc = crate::sync::MaybeArc<dyn NpmResolver>;
+pub type NpmPackageFolderResolverRc =
+  crate::sync::MaybeArc<dyn NpmPackageFolderResolver>;
 
-pub trait NpmResolver: std::fmt::Debug + MaybeSend + MaybeSync {
-  /// Resolves an npm package folder path from an npm package referrer.
+pub trait NpmPackageFolderResolver:
+  std::fmt::Debug + MaybeSend + MaybeSync
+{
+  /// Resolves an npm package folder path from the specified referrer.
   fn resolve_package_folder_from_package(
     &self,
     specifier: &str,
