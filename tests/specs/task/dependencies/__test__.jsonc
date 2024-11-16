@@ -1,0 +1,16 @@
+{
+  "tests": {
+    "basic1": {
+      "cwd": "basic1",
+      "tempDir": true,
+      "args": "task run",
+      "output": "./basic1.out"
+    },
+    "basic2": {
+      "cwd": "basic2",
+      "tempDir": true,
+      "args": "task run",
+      "output": "./basic2.out"
+    }
+  }
+}

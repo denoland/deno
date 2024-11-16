@@ -1,5 +1,0 @@
-{
-  "tempDir": true,
-  "args": "task run",
-  "output": "run.out"
-}
