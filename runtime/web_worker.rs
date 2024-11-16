@@ -166,7 +166,10 @@ pub struct WebWorkerInternalHandle {
 
 impl WebWorkerInternalHandle {
   /// Post WorkerEvent to parent as a worker
-  pub fn post_event(&self, event: WorkerControlEvent) -> Result<(), AnyError> {
+  pub fn post_event(
+    &self,
+    event: WorkerControlEvent,
+  ) -> Result<(), mpsc::TrySendError<WorkerControlEvent>> {
     let mut sender = self.sender.clone();
     // If the channel is closed,
     // the worker must have terminated but the termination message has not yet been received.
@@ -176,8 +179,7 @@ impl WebWorkerInternalHandle {
       self.has_terminated.store(true, Ordering::SeqCst);
       return Ok(());
     }
-    sender.try_send(event)?;
-    Ok(())
+    sender.try_send(event)
   }
 
   /// Check if this worker is terminated or being terminated
@@ -263,11 +265,9 @@ impl WebWorkerHandle {
   /// Get the WorkerEvent with lock
   /// Return error if more than one listener tries to get event
   #[allow(clippy::await_holding_refcell_ref)] // TODO(ry) remove!
-  pub async fn get_control_event(
-    &self,
-  ) -> Result<Option<WorkerControlEvent>, AnyError> {
+  pub async fn get_control_event(&self) -> Option<WorkerControlEvent> {
     let mut receiver = self.receiver.borrow_mut();
-    Ok(receiver.next().await)
+    receiver.next().await
   }
 
   /// Terminate the worker
@@ -361,6 +361,8 @@ pub struct WebWorkerOptions {
   pub extensions: Vec<Extension>,
   pub startup_snapshot: Option<&'static [u8]>,
   pub unsafely_ignore_certificate_errors: Option<Vec<String>>,
+  /// Optional isolate creation parameters, such as heap limits.
+  pub create_params: Option<v8::CreateParams>,
   pub seed: Option<u64>,
   pub create_web_worker_cb: Arc<ops::worker_host::CreateWebWorkerCb>,
   pub format_js_error_fn: Option<Arc<FormatJsErrorFn>>,
@@ -391,6 +393,13 @@ pub struct WebWorker {
   bootstrap_fn_global: Option<v8::Global<v8::Function>>,
   // Consumed when `bootstrap_fn` is called
   maybe_worker_metadata: Option<WorkerMetadata>,
+}
+
+impl Drop for WebWorker {
+  fn drop(&mut self) {
+    // clean up the package.json thread local cache
+    node_resolver::PackageJsonThreadLocalCache::clear();
+  }
 }
 
 impl WebWorker {
@@ -505,6 +514,7 @@ impl WebWorker {
       ),
       ops::fs_events::deno_fs_events::init_ops_and_esm(),
       ops::os::deno_os_worker::init_ops_and_esm(),
+      ops::otel::deno_otel::init_ops_and_esm(),
       ops::permissions::deno_permissions::init_ops_and_esm(),
       ops::process::deno_process::init_ops_and_esm(
         services.npm_process_state_provider,
@@ -555,6 +565,7 @@ impl WebWorker {
     let mut js_runtime = JsRuntime::new(RuntimeOptions {
       module_loader: Some(services.module_loader),
       startup_snapshot: options.startup_snapshot,
+      create_params: options.create_params,
       get_error_class_fn: options.get_error_class_fn,
       shared_array_buffer_store: services.shared_array_buffer_store,
       compiled_wasm_module_store: services.compiled_wasm_module_store,
@@ -562,7 +573,7 @@ impl WebWorker {
       extension_transpiler: Some(Rc::new(|specifier, source| {
         maybe_transpile_source(specifier, source)
       })),
-      inspector: services.maybe_inspector_server.is_some(),
+      inspector: true,
       feature_checker: Some(services.feature_checker),
       op_metrics_factory_fn,
       import_meta_resolve_callback: Some(Box::new(
@@ -579,18 +590,18 @@ impl WebWorker {
       js_runtime.op_state().borrow_mut().put(op_summary_metrics);
     }
 
+    // Put inspector handle into the op state so we can put a breakpoint when
+    // executing a CJS entrypoint.
+    let op_state = js_runtime.op_state();
+    let inspector = js_runtime.inspector();
+    op_state.borrow_mut().put(inspector);
+
     if let Some(server) = services.maybe_inspector_server {
       server.register_inspector(
         options.main_module.to_string(),
         &mut js_runtime,
         false,
       );
-
-      // Put inspector handle into the op state so we can put a breakpoint when
-      // executing a CJS entrypoint.
-      let op_state = js_runtime.op_state();
-      let inspector = js_runtime.inspector();
-      op_state.borrow_mut().put(inspector);
     }
 
     let (internal_handle, external_handle) = {
@@ -821,13 +832,12 @@ impl WebWorker {
 
         // TODO(mmastrac): we don't want to test this w/classic workers because
         // WPT triggers a failure here. This is only exposed via --enable-testing-features-do-not-use.
-        #[allow(clippy::print_stderr)]
         if self.worker_type == WebWorkerType::Module {
           panic!(
             "coding error: either js is polling or the worker is terminated"
           );
         } else {
-          eprintln!("classic worker terminated unexpectedly");
+          log::error!("classic worker terminated unexpectedly");
           Poll::Ready(Ok(()))
         }
       }
@@ -895,7 +905,6 @@ impl WebWorker {
   }
 }
 
-#[allow(clippy::print_stderr)]
 fn print_worker_error(
   error: &AnyError,
   name: &str,
@@ -908,7 +917,7 @@ fn print_worker_error(
     },
     None => error.to_string(),
   };
-  eprintln!(
+  log::error!(
     "{}: Uncaught (in worker \"{}\") {}",
     colors::red_bold("error"),
     name,

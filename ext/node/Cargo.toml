@@ -2,7 +2,7 @@
 
 [package]
 name = "deno_node"
-version = "0.108.0"
+version = "0.114.0"
 authors.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -22,6 +22,7 @@ aes.workspace = true
 async-trait.workspace = true
 base64.workspace = true
 blake2 = "0.10.6"
+boxed_error.workspace = true
 brotli.workspace = true
 bytes.workspace = true
 cbc.workspace = true

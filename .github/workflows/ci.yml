@@ -62,18 +62,18 @@ jobs:
             profile: debug
           - os: macos
             arch: x86_64
-            runner: '${{ (!contains(github.event.pull_request.labels.*.name, ''ci-full'') && (github.event_name == ''pull_request'')) && ''ubuntu-22.04'' || ''macos-13'' }}'
+            runner: '${{ (!contains(github.event.pull_request.labels.*.name, ''ci-full'') && (github.event_name == ''pull_request'')) && ''ubuntu-24.04'' || ''macos-13'' }}'
             job: test
             profile: release
             skip: '${{ !contains(github.event.pull_request.labels.*.name, ''ci-full'') && (github.event_name == ''pull_request'') }}'
           - os: macos
             arch: aarch64
-            runner: macos-14
+            runner: '${{ github.repository == ''denoland/deno'' && startsWith(github.ref, ''refs/tags/'') && ''self-hosted'' || ''macos-14'' }}'
             job: test
             profile: debug
           - os: macos
             arch: aarch64
-            runner: '${{ (!contains(github.event.pull_request.labels.*.name, ''ci-full'') && (github.event_name == ''pull_request'')) && ''ubuntu-22.04'' || ''macos-14'' }}'
+            runner: '${{ (!contains(github.event.pull_request.labels.*.name, ''ci-full'') && (github.event_name == ''pull_request'')) && ''ubuntu-24.04'' || github.repository == ''denoland/deno'' && startsWith(github.ref, ''refs/tags/'') && ''self-hosted'' || ''macos-14'' }}'
             job: test
             profile: release
             skip: '${{ !contains(github.event.pull_request.labels.*.name, ''ci-full'') && (github.event_name == ''pull_request'') }}'
@@ -84,33 +84,33 @@ jobs:
             profile: debug
           - os: windows
             arch: x86_64
-            runner: '${{ (!contains(github.event.pull_request.labels.*.name, ''ci-full'') && (github.event_name == ''pull_request'')) && ''ubuntu-22.04'' || github.repository == ''denoland/deno'' && ''windows-2022-xl'' || ''windows-2022'' }}'
+            runner: '${{ (!contains(github.event.pull_request.labels.*.name, ''ci-full'') && (github.event_name == ''pull_request'')) && ''ubuntu-24.04'' || github.repository == ''denoland/deno'' && ''windows-2022-xl'' || ''windows-2022'' }}'
             job: test
             profile: release
             skip: '${{ !contains(github.event.pull_request.labels.*.name, ''ci-full'') && (github.event_name == ''pull_request'') }}'
           - os: linux
             arch: x86_64
-            runner: '${{ github.repository == ''denoland/deno'' && ''ubuntu-22.04-xl'' || ''ubuntu-22.04'' }}'
+            runner: '${{ github.repository == ''denoland/deno'' && ''ubuntu-24.04-xl'' || ''ubuntu-24.04'' }}'
             job: test
             profile: release
             use_sysroot: true
             wpt: '${{ !startsWith(github.ref, ''refs/tags/'') }}'
           - os: linux
             arch: x86_64
-            runner: '${{ (!contains(github.event.pull_request.labels.*.name, ''ci-full'') && (github.event_name == ''pull_request'' && !contains(github.event.pull_request.labels.*.name, ''ci-bench''))) && ''ubuntu-22.04'' || github.repository == ''denoland/deno'' && ''ubuntu-22.04-xl'' || ''ubuntu-22.04'' }}'
+            runner: '${{ (!contains(github.event.pull_request.labels.*.name, ''ci-full'') && (github.event_name == ''pull_request'' && !contains(github.event.pull_request.labels.*.name, ''ci-bench''))) && ''ubuntu-24.04'' || github.repository == ''denoland/deno'' && ''ubuntu-24.04-xl'' || ''ubuntu-24.04'' }}'
             job: bench
             profile: release
             use_sysroot: true
             skip: '${{ !contains(github.event.pull_request.labels.*.name, ''ci-full'') && (github.event_name == ''pull_request'' && !contains(github.event.pull_request.labels.*.name, ''ci-bench'')) }}'
           - os: linux
             arch: x86_64
-            runner: ubuntu-22.04
+            runner: ubuntu-24.04
             job: test
             profile: debug
             use_sysroot: true
           - os: linux
             arch: x86_64
-            runner: ubuntu-22.04
+            runner: ubuntu-24.04
             job: lint
             profile: debug
           - os: linux
@@ -178,7 +178,7 @@ jobs:
         if: '!(matrix.skip)'
       - if: '!(matrix.skip) && (matrix.job == ''lint'' || matrix.job == ''test'' || matrix.job == ''bench'')'
         name: Install Deno
-        uses: denoland/setup-deno@v1
+        uses: denoland/setup-deno@v2
         with:
           deno-version: v1.x
       - name: Install Python
@@ -252,22 +252,22 @@ jobs:
           # to complete.
           sudo apt-get -qq remove --purge -y man-db  > /dev/null 2> /dev/null
           # Remove older clang before we install
-          sudo apt-get -qq remove   'clang-12*' 'clang-13*' 'clang-14*' 'clang-15*' 'clang-16*' 'llvm-12*' 'llvm-13*' 'llvm-14*' 'llvm-15*' 'llvm-16*' 'lld-12*' 'lld-13*' 'lld-14*' 'lld-15*' 'lld-16*' > /dev/null 2> /dev/null
+          sudo apt-get -qq remove   'clang-12*' 'clang-13*' 'clang-14*' 'clang-15*' 'clang-16*' 'clang-17*' 'clang-18*' 'llvm-12*' 'llvm-13*' 'llvm-14*' 'llvm-15*' 'llvm-16*' 'lld-12*' 'lld-13*' 'lld-14*' 'lld-15*' 'lld-16*' 'lld-17*' 'lld-18*' > /dev/null 2> /dev/null
 
           # Install clang-XXX, lld-XXX, and debootstrap.
-          echo "deb http://apt.llvm.org/jammy/ llvm-toolchain-jammy-18 main" |
-            sudo dd of=/etc/apt/sources.list.d/llvm-toolchain-jammy-18.list
+          echo "deb http://apt.llvm.org/jammy/ llvm-toolchain-jammy-19 main" |
+            sudo dd of=/etc/apt/sources.list.d/llvm-toolchain-jammy-19.list
           curl https://apt.llvm.org/llvm-snapshot.gpg.key |
             gpg --dearmor                                 |
           sudo dd of=/etc/apt/trusted.gpg.d/llvm-snapshot.gpg
           sudo apt-get update
           # this was unreliable sometimes, so try again if it fails
-          sudo apt-get install --no-install-recommends clang-18 lld-18 clang-tools-18 clang-format-18 clang-tidy-18 || echo 'Failed. Trying again.' && sudo apt-get clean && sudo apt-get update && sudo apt-get install --no-install-recommends clang-18 lld-18 clang-tools-18 clang-format-18 clang-tidy-18
+          sudo apt-get install --no-install-recommends clang-19 lld-19 clang-tools-19 clang-format-19 clang-tidy-19 || echo 'Failed. Trying again.' && sudo apt-get clean && sudo apt-get update && sudo apt-get install --no-install-recommends clang-19 lld-19 clang-tools-19 clang-format-19 clang-tidy-19
           # Fix alternatives
           (yes '' | sudo update-alternatives --force --all) > /dev/null 2> /dev/null || true
 
           echo "Decompressing sysroot..."
-          wget -q https://github.com/denoland/deno_sysroot_build/releases/download/sysroot-20240528/sysroot-`uname -m`.tar.xz -O /tmp/sysroot.tar.xz
+          wget -q https://github.com/denoland/deno_sysroot_build/releases/download/sysroot-20241030/sysroot-`uname -m`.tar.xz -O /tmp/sysroot.tar.xz
           cd /
           xzcat /tmp/sysroot.tar.xz | sudo tar -x
           sudo mount --rbind /dev /sysroot/dev
@@ -299,8 +299,8 @@ jobs:
           CARGO_PROFILE_RELEASE_LTO=false
           RUSTFLAGS<<__1
             -C linker-plugin-lto=true
-            -C linker=clang-18
-            -C link-arg=-fuse-ld=lld-18
+            -C linker=clang-19
+            -C link-arg=-fuse-ld=lld-19
             -C link-arg=-ldl
             -C link-arg=-Wl,--allow-shlib-undefined
             -C link-arg=-Wl,--thinlto-cache-dir=$(pwd)/target/release/lto-cache
@@ -310,8 +310,8 @@ jobs:
           __1
           RUSTDOCFLAGS<<__1
             -C linker-plugin-lto=true
-            -C linker=clang-18
-            -C link-arg=-fuse-ld=lld-18
+            -C linker=clang-19
+            -C link-arg=-fuse-ld=lld-19
             -C link-arg=-ldl
             -C link-arg=-Wl,--allow-shlib-undefined
             -C link-arg=-Wl,--thinlto-cache-dir=$(pwd)/target/release/lto-cache
@@ -319,7 +319,7 @@ jobs:
             --cfg tokio_unstable
             $RUSTFLAGS
           __1
-          CC=/usr/bin/clang-18
+          CC=/usr/bin/clang-19
           CFLAGS=-flto=thin $CFLAGS
           " > $GITHUB_ENV
       - name: Remove macOS cURL --ipv4 flag
@@ -361,8 +361,8 @@ jobs:
           path: |-
             ~/.cargo/registry/index
             ~/.cargo/registry/cache
-          key: '19-cargo-home-${{ matrix.os }}-${{ matrix.arch }}-${{ hashFiles(''Cargo.lock'') }}'
-          restore-keys: '19-cargo-home-${{ matrix.os }}-${{ matrix.arch }}'
+          key: '25-cargo-home-${{ matrix.os }}-${{ matrix.arch }}-${{ hashFiles(''Cargo.lock'') }}'
+          restore-keys: '25-cargo-home-${{ matrix.os }}-${{ matrix.arch }}'
         if: '!(matrix.skip)'
       - name: Restore cache build output (PR)
         uses: actions/cache/restore@v4
@@ -375,7 +375,7 @@ jobs:
             !./target/*/*.zip
             !./target/*/*.tar.gz
           key: never_saved
-          restore-keys: '19-cargo-target-${{ matrix.os }}-${{ matrix.arch }}-${{ matrix.profile }}-${{ matrix.job }}-'
+          restore-keys: '25-cargo-target-${{ matrix.os }}-${{ matrix.arch }}-${{ matrix.profile }}-${{ matrix.job }}-'
       - name: Apply and update mtime cache
         if: '!(matrix.skip) && (!startsWith(github.ref, ''refs/tags/''))'
         uses: ./.github/mtime_cache
@@ -685,10 +685,10 @@ jobs:
             !./target/*/*.zip
             !./target/*/*.sha256sum
             !./target/*/*.tar.gz
-          key: '19-cargo-target-${{ matrix.os }}-${{ matrix.arch }}-${{ matrix.profile }}-${{ matrix.job }}-${{ github.sha }}'
+          key: '25-cargo-target-${{ matrix.os }}-${{ matrix.arch }}-${{ matrix.profile }}-${{ matrix.job }}-${{ github.sha }}'
   publish-canary:
     name: publish canary
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
     needs:
       - build
     if: github.repository == 'denoland/deno' && github.ref == 'refs/heads/main'

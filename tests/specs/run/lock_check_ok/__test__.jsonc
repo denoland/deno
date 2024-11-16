@@ -1,0 +1,4 @@
+{
+  "args": "run --quiet --allow-import --lock=lock_check_ok.json 003_relative_import.ts",
+  "output": "003_relative_import.ts.out"
+}

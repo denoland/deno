@@ -61,7 +61,7 @@ pub async fn kernel(
   let factory = CliFactory::from_flags(flags);
   let cli_options = factory.cli_options()?;
   let main_module =
-    resolve_url_or_path("./$deno$jupyter.ts", cli_options.initial_cwd())
+    resolve_url_or_path("./$deno$jupyter.mts", cli_options.initial_cwd())
       .unwrap();
   // TODO(bartlomieju): should we run with all permissions?
   let permissions =
