@@ -52,7 +52,7 @@ impl SqliteBackedCache {
             cache_storage_dir.display()
           )
         })
-        .map_err(|e| CacheError::Other(e))?;
+        .map_err(CacheError::Other)?;
       let path = cache_storage_dir.join("cache_metadata.db");
       let connection = rusqlite::Connection::open(&path).unwrap_or_else(|_| {
         panic!("failed to open cache db at {}", path.display())
