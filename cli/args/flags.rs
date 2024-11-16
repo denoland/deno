@@ -221,6 +221,7 @@ impl FmtFlags {
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct InitFlags {
+  pub package: Option<String>,
   pub dir: Option<String>,
   pub lib: bool,
   pub serve: bool,
@@ -4647,6 +4648,8 @@ fn fmt_parse(
 
 fn init_parse(flags: &mut Flags, matches: &mut ArgMatches) {
   flags.subcommand = DenoSubcommand::Init(InitFlags {
+    // TODO:
+    package: None,
     dir: matches.remove_one::<String>("dir"),
     lib: matches.get_flag("lib"),
     serve: matches.get_flag("serve"),
@@ -10569,6 +10572,7 @@ mod tests {
       r.unwrap(),
       Flags {
         subcommand: DenoSubcommand::Init(InitFlags {
+          package: None,
           dir: None,
           lib: false,
           serve: false,
@@ -10582,6 +10586,7 @@ mod tests {
       r.unwrap(),
       Flags {
         subcommand: DenoSubcommand::Init(InitFlags {
+          package: None,
           dir: Some(String::from("foo")),
           lib: false,
           serve: false,
@@ -10595,6 +10600,7 @@ mod tests {
       r.unwrap(),
       Flags {
         subcommand: DenoSubcommand::Init(InitFlags {
+          package: None,
           dir: None,
           lib: false,
           serve: false,
@@ -10609,6 +10615,7 @@ mod tests {
       r.unwrap(),
       Flags {
         subcommand: DenoSubcommand::Init(InitFlags {
+          package: None,
           dir: None,
           lib: true,
           serve: false,
@@ -10622,6 +10629,7 @@ mod tests {
       r.unwrap(),
       Flags {
         subcommand: DenoSubcommand::Init(InitFlags {
+          package: None,
           dir: None,
           lib: false,
           serve: true,
@@ -10635,7 +10643,28 @@ mod tests {
       r.unwrap(),
       Flags {
         subcommand: DenoSubcommand::Init(InitFlags {
+          package: None,
           dir: Some(String::from("foo")),
+          lib: true,
+          serve: false,
+        }),
+        ..Flags::default()
+      }
+    );
+
+    let r = flags_from_vec(svec!["deno", "init", "npm:vite", "--lib"]);
+    assert!(r.is_err());
+
+    let r = flags_from_vec(svec!["deno", "init", "npm:vite", "--serve"]);
+    assert!(r.is_err());
+
+    let r = flags_from_vec(svec!["deno", "init", "npm:vite", "new_dir"]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Init(InitFlags {
+          package: Some("npm:vite".to_string()),
+          dir: Some(String::from("new_dir")),
           lib: true,
           serve: false,
         }),

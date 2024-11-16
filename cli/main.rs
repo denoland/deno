@@ -35,7 +35,11 @@ use crate::util::display;
 use crate::util::v8::get_v8_flags_from_env;
 use crate::util::v8::init_v8_flags;
 
+use args::PackagesAllowedScripts;
+use args::PermissionFlags;
+use args::RunFlags;
 use args::TaskFlags;
+use deno_core::anyhow::bail;
 use deno_resolver::npm::ByonmResolvePkgFolderFromDenoReqError;
 use deno_resolver::npm::ResolvePkgFolderFromDenoReqError;
 use deno_runtime::WorkerExecutionMode;
@@ -143,6 +147,32 @@ async fn run_subcommand(flags: Arc<Flags>) -> Result<i32, AnyError> {
       )
     }
     DenoSubcommand::Init(init_flags) => {
+      if let Some(dir) = &init_flags.dir {
+        if dir.starts_with("jsr:") {
+          bail!("Initializing project from a jsr package is currently not supported.");
+        } else if dir.starts_with("npm:") {
+          // TODO: do prompt
+          let script_name = format!("npm:create-{}", dir.strip_prefix("npm:").unwrap());
+
+          let new_flags = Flags {
+            permissions: PermissionFlags {
+              allow_all: true,
+              ..Default::default()
+            },
+            allow_scripts: PackagesAllowedScripts::All,
+            // TODO:
+            argv: vec![],
+            subcommand: DenoSubcommand::Run(RunFlags {
+                script: script_name,
+                ..Default::default()
+            }),
+            ..Default::default()
+          };
+          let result = tools::run::run_script(WorkerExecutionMode::Run, new_flags.into(), None).await;
+          return result;
+        }
+      }
+
       spawn_subcommand(async {
         // make compiler happy since init_project is sync
         tokio::task::yield_now().await;
