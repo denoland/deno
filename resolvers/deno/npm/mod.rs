@@ -4,6 +4,7 @@ use std::fmt::Debug;
 use std::path::PathBuf;
 use std::sync::Arc;
 
+use boxed_error::Boxed;
 use deno_semver::npm::NpmPackageReqReference;
 use deno_semver::package::PackageReq;
 use node_resolver::env::NodeResolverEnv;
@@ -45,16 +46,24 @@ pub struct MissingPackageNodeModulesFolderError {
   pub package_json_path: PathBuf,
 }
 
+#[derive(Debug, Boxed)]
+pub struct ResolveIfForNpmPackageError(
+  pub Box<ResolveIfForNpmPackageErrorKind>,
+);
+
 #[derive(Debug, Error)]
-pub enum ResolveIfForNpmPackageError {
+pub enum ResolveIfForNpmPackageErrorKind {
   #[error(transparent)]
   NodeResolve(#[from] NodeResolveError),
   #[error(transparent)]
   NodeModulesOutOfDate(#[from] NodeModulesOutOfDateError),
 }
 
+#[derive(Debug, Boxed)]
+pub struct ResolveReqWithSubPathError(pub Box<ResolveReqWithSubPathErrorKind>);
+
 #[derive(Debug, Error)]
-pub enum ResolveReqWithSubPathError {
+pub enum ResolveReqWithSubPathErrorKind {
   #[error(transparent)]
   MissingPackageNodeModulesFolder(#[from] MissingPackageNodeModulesFolderError),
   #[error(transparent)]
@@ -191,20 +200,21 @@ impl<Fs: DenoResolverFs, TNodeResolverEnv: NodeResolverEnv>
           | NodeResolveErrorKind::UnsupportedEsmUrlScheme(_)
           | NodeResolveErrorKind::DataUrlReferrer(_)
           | NodeResolveErrorKind::TypesNotFound(_)
-          | NodeResolveErrorKind::FinalizeResolution(_) => {
-            Err(ResolveIfForNpmPackageError::NodeResolve(err.into()))
-          }
+          | NodeResolveErrorKind::FinalizeResolution(_) => Err(
+            ResolveIfForNpmPackageErrorKind::NodeResolve(err.into()).into_box(),
+          ),
           NodeResolveErrorKind::PackageResolve(err) => {
             let err = err.into_kind();
             match err {
               PackageResolveErrorKind::ClosestPkgJson(_)
               | PackageResolveErrorKind::InvalidModuleSpecifier(_)
               | PackageResolveErrorKind::ExportsResolve(_)
-              | PackageResolveErrorKind::SubpathResolve(_) => {
-                Err(ResolveIfForNpmPackageError::NodeResolve(
+              | PackageResolveErrorKind::SubpathResolve(_) => Err(
+                ResolveIfForNpmPackageErrorKind::NodeResolve(
                   NodeResolveErrorKind::PackageResolve(err.into()).into(),
-                ))
-              }
+                )
+                .into_box(),
+              ),
               PackageResolveErrorKind::PackageFolderResolve(err) => {
                 match err.as_kind() {
                   PackageFolderResolveErrorKind::Io(
@@ -214,9 +224,13 @@ impl<Fs: DenoResolverFs, TNodeResolverEnv: NodeResolverEnv>
                     PackageNotFoundError { package_name, .. },
                   ) => {
                     if self.in_npm_pkg_checker.in_npm_package(referrer) {
-                      return Err(ResolveIfForNpmPackageError::NodeResolve(
-                        NodeResolveErrorKind::PackageResolve(err.into()).into(),
-                      ));
+                      return Err(
+                        ResolveIfForNpmPackageErrorKind::NodeResolve(
+                          NodeResolveErrorKind::PackageResolve(err.into())
+                            .into(),
+                        )
+                        .into_box(),
+                      );
                     }
                     if let Some(byonm_npm_resolver) = &self.byonm_resolver {
                       if byonm_npm_resolver
@@ -227,11 +241,11 @@ impl<Fs: DenoResolverFs, TNodeResolverEnv: NodeResolverEnv>
                         .is_some()
                       {
                         return Err(
-                          ResolveIfForNpmPackageError::NodeModulesOutOfDate(
+                          ResolveIfForNpmPackageErrorKind::NodeModulesOutOfDate(
                             NodeModulesOutOfDateError {
                               specifier: specifier.to_string(),
                             },
-                          ),
+                          ).into_box(),
                         );
                       }
                     }
@@ -239,9 +253,13 @@ impl<Fs: DenoResolverFs, TNodeResolverEnv: NodeResolverEnv>
                   }
                   PackageFolderResolveErrorKind::ReferrerNotFound(_) => {
                     if self.in_npm_pkg_checker.in_npm_package(referrer) {
-                      return Err(ResolveIfForNpmPackageError::NodeResolve(
-                        NodeResolveErrorKind::PackageResolve(err.into()).into(),
-                      ));
+                      return Err(
+                        ResolveIfForNpmPackageErrorKind::NodeResolve(
+                          NodeResolveErrorKind::PackageResolve(err.into())
+                            .into(),
+                        )
+                        .into_box(),
+                      );
                     }
                     Ok(None)
                   }

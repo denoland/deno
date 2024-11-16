@@ -6,6 +6,7 @@
 use std::path::PathBuf;
 use std::sync::Arc;
 
+use boxed_error::Boxed;
 use deno_config::workspace::MappedResolution;
 use deno_config::workspace::MappedResolutionDiagnostic;
 use deno_config::workspace::MappedResolutionError;
@@ -26,9 +27,9 @@ use node_resolver::NodeResolver;
 use npm::MissingPackageNodeModulesFolderError;
 use npm::NodeModulesOutOfDateError;
 use npm::NpmReqResolver;
-use npm::ResolveIfForNpmPackageError;
+use npm::ResolveIfForNpmPackageErrorKind;
 use npm::ResolvePkgFolderFromDenoReqError;
-use npm::ResolveReqWithSubPathError;
+use npm::ResolveReqWithSubPathErrorKind;
 use sloppy_imports::SloppyImportResolverFs;
 use sloppy_imports::SloppyImportsResolutionMode;
 use sloppy_imports::SloppyImportsResolver;
@@ -46,6 +47,9 @@ pub struct DenoResolution {
   pub maybe_diagnostic: Option<Box<MappedResolutionDiagnostic>>,
   pub found_package_json_dep: bool,
 }
+
+#[derive(Debug, Boxed)]
+pub struct DenoResolveError(pub Box<DenoResolveErrorKind>);
 
 #[derive(Debug, Error)]
 pub enum DenoResolveErrorKind {
@@ -69,35 +73,6 @@ pub enum DenoResolveErrorKind {
   ResolvePkgFolderFromDenoReq(#[from] ResolvePkgFolderFromDenoReqError),
   #[error(transparent)]
   WorkspaceResolvePkgJsonFolder(#[from] WorkspaceResolvePkgJsonFolderError),
-}
-
-impl DenoResolveErrorKind {
-  pub fn into_box(self) -> DenoResolveError {
-    DenoResolveError(Box::new(self))
-  }
-}
-
-#[derive(Error, Debug)]
-#[error(transparent)]
-pub struct DenoResolveError(pub Box<DenoResolveErrorKind>);
-
-impl DenoResolveError {
-  pub fn as_kind(&self) -> &DenoResolveErrorKind {
-    &self.0
-  }
-
-  pub fn into_kind(self) -> DenoResolveErrorKind {
-    *self.0
-  }
-}
-
-impl<E> From<E> for DenoResolveError
-where
-  DenoResolveErrorKind: From<E>,
-{
-  fn from(err: E) -> Self {
-    DenoResolveError(Box::new(DenoResolveErrorKind::from(err)))
-  }
 }
 
 #[derive(Debug)]
@@ -378,16 +353,18 @@ impl<
                 maybe_diagnostic,
                 found_package_json_dep,
               })
-              .map_err(|err| match err {
-                ResolveReqWithSubPathError::MissingPackageNodeModulesFolder(
+              .map_err(|err| {
+                match err.into_kind() {
+                ResolveReqWithSubPathErrorKind::MissingPackageNodeModulesFolder(
                   err,
                 ) => err.into(),
-                ResolveReqWithSubPathError::ResolvePkgFolderFromDenoReq(
+                ResolveReqWithSubPathErrorKind::ResolvePkgFolderFromDenoReq(
                   err,
                 ) => err.into(),
-                ResolveReqWithSubPathError::PackageSubpathResolve(err) => {
+                ResolveReqWithSubPathErrorKind::PackageSubpathResolve(err) => {
                   err.into()
                 }
+              }
               });
           }
         }
@@ -410,11 +387,13 @@ impl<
               referrer_kind,
               mode,
             )
-            .map_err(|e| match e {
-              ResolveIfForNpmPackageError::NodeResolve(e) => {
+            .map_err(|e| match e.into_kind() {
+              ResolveIfForNpmPackageErrorKind::NodeResolve(e) => {
                 DenoResolveErrorKind::Node(e).into_box()
               }
-              ResolveIfForNpmPackageError::NodeModulesOutOfDate(e) => e.into(),
+              ResolveIfForNpmPackageErrorKind::NodeModulesOutOfDate(e) => {
+                e.into()
+              }
             })?;
           if let Some(res) = maybe_resolution {
             match res {

@@ -16,6 +16,7 @@ path = "lib.rs"
 [dependencies]
 anyhow.workspace = true
 base32.workspace = true
+boxed_error.workspace = true
 dashmap.workspace = true
 deno_config.workspace = true
 deno_media_type.workspace = true
