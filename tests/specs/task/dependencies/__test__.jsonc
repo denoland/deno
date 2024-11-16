@@ -18,6 +18,12 @@
       "args": "task run",
       "output": "./cross_package.out",
       "exitCode": 1
+    },
+    "diamond": {
+      "cwd": "diamond",
+      "tempDir": true,
+      "args": "task a",
+      "output": "./diamond.out"
     }
   }
 }

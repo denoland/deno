@@ -1,0 +1,10 @@
+Task d deno run d.js
+Running d
+[UNORDERED_START]
+Task c deno run c.js
+Task b deno run b.js
+Running b
+Running c
+[UNORDERED_END]
+Task a deno run a.js
+Running a
