@@ -7,6 +7,7 @@ use deno_cache_dir::HttpCache;
 use deno_config::deno_json::JsxImportSourceConfig;
 use deno_config::workspace::PackageJsonDepResolution;
 use deno_config::workspace::WorkspaceResolver;
+use deno_core::parking_lot::Mutex;
 use deno_core::url::Url;
 use deno_graph::source::ResolutionMode;
 use deno_graph::GraphImport;
@@ -84,6 +85,7 @@ struct LspScopeResolver {
   pkg_json_resolver: Arc<PackageJsonResolver>,
   redirect_resolver: Option<Arc<RedirectResolver>>,
   graph_imports: Arc<IndexMap<ModuleSpecifier, GraphImport>>,
+  dep_info: Arc<Mutex<Arc<ScopeDepInfo>>>,
   package_json_deps_by_resolution: Arc<IndexMap<ModuleSpecifier, String>>,
   config_data: Option<Arc<ConfigData>>,
 }
@@ -101,6 +103,7 @@ impl Default for LspScopeResolver {
       pkg_json_resolver: factory.pkg_json_resolver().clone(),
       redirect_resolver: None,
       graph_imports: Default::default(),
+      dep_info: Default::default(),
       package_json_deps_by_resolution: Default::default(),
       config_data: None,
     }
@@ -180,6 +183,15 @@ impl LspScopeResolver {
                 NodeModuleKind::Esm,
                 NodeResolutionMode::Types,
               )
+              .or_else(|_| {
+                npm_pkg_req_resolver.resolve_req_reference(
+                  &req_ref,
+                  &referrer,
+                  // todo(dsherret): this is wrong because it doesn't consider CJS referrers
+                  NodeModuleKind::Esm,
+                  NodeResolutionMode::Execution,
+                )
+              })
               .ok()?,
           ))
           .0;
@@ -200,6 +212,7 @@ impl LspScopeResolver {
       pkg_json_resolver,
       redirect_resolver,
       graph_imports,
+      dep_info: Default::default(),
       package_json_deps_by_resolution,
       config_data: config_data.cloned(),
     }
@@ -222,6 +235,7 @@ impl LspScopeResolver {
       redirect_resolver: self.redirect_resolver.clone(),
       pkg_json_resolver: factory.pkg_json_resolver().clone(),
       graph_imports: self.graph_imports.clone(),
+      dep_info: self.dep_info.clone(),
       package_json_deps_by_resolution: self
         .package_json_deps_by_resolution
         .clone(),
@@ -288,19 +302,24 @@ impl LspResolver {
     }
   }
 
-  pub async fn set_npm_reqs(
+  pub async fn set_dep_info_by_scope(
     &self,
-    reqs: &BTreeMap<Option<ModuleSpecifier>, BTreeSet<PackageReq>>,
+    dep_info_by_scope: &Arc<
+      BTreeMap<Option<ModuleSpecifier>, Arc<ScopeDepInfo>>,
+    >,
   ) {
     for (scope, resolver) in [(None, &self.unscoped)]
       .into_iter()
       .chain(self.by_scope.iter().map(|(s, r)| (Some(s), r)))
     {
+      let dep_info = dep_info_by_scope.get(&scope.cloned());
+      if let Some(dep_info) = dep_info {
+        *resolver.dep_info.lock() = dep_info.clone();
+      }
       if let Some(npm_resolver) = resolver.npm_resolver.as_ref() {
         if let Some(npm_resolver) = npm_resolver.as_managed() {
-          let reqs = reqs
-            .get(&scope.cloned())
-            .map(|reqs| reqs.iter().cloned().collect::<Vec<_>>())
+          let reqs = dep_info
+            .map(|i| i.npm_reqs.iter().cloned().collect::<Vec<_>>())
             .unwrap_or_default();
           if let Err(err) = npm_resolver.set_package_reqs(&reqs).await {
             lsp_warn!("Could not set npm package requirements: {:#}", err);
@@ -434,6 +453,19 @@ impl LspResolver {
       .cloned()
   }
 
+  pub fn deno_types_to_code_resolution(
+    &self,
+    specifier: &ModuleSpecifier,
+    file_referrer: Option<&ModuleSpecifier>,
+  ) -> Option<ModuleSpecifier> {
+    let resolver = self.get_scope_resolver(file_referrer);
+    let dep_info = resolver.dep_info.lock().clone();
+    dep_info
+      .deno_types_to_code_resolutions
+      .get(specifier)
+      .cloned()
+  }
+
   pub fn in_node_modules(&self, specifier: &ModuleSpecifier) -> bool {
     fn has_node_modules_dir(specifier: &ModuleSpecifier) -> bool {
       // consider any /node_modules/ directory as being in the node_modules
@@ -536,6 +568,13 @@ impl LspResolver {
       .map(|r| r.as_ref())
       .unwrap_or(self.unscoped.as_ref())
   }
+}
+
+#[derive(Debug, Default, Clone)]
+pub struct ScopeDepInfo {
+  pub deno_types_to_code_resolutions: HashMap<ModuleSpecifier, ModuleSpecifier>,
+  pub npm_reqs: BTreeSet<PackageReq>,
+  pub has_node_specifier: bool,
 }
 
 #[derive(Default)]

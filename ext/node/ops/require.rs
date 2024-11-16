@@ -1,5 +1,6 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
+use boxed_error::Boxed;
 use deno_core::error::AnyError;
 use deno_core::op2;
 use deno_core::url::Url;
@@ -40,8 +41,11 @@ where
   loader.ensure_read_permission(permissions, file_path)
 }
 
+#[derive(Debug, Boxed)]
+pub struct RequireError(pub Box<RequireErrorKind>);
+
 #[derive(Debug, thiserror::Error)]
-pub enum RequireError {
+pub enum RequireErrorKind {
   #[error(transparent)]
   UrlParse(#[from] url::ParseError),
   #[error(transparent)]
@@ -135,7 +139,7 @@ where
   let from = if from.starts_with("file:///") {
     url_to_file_path(&Url::parse(&from)?)?
   } else {
-    let current_dir = &fs.cwd().map_err(RequireError::UnableToGetCwd)?;
+    let current_dir = &fs.cwd().map_err(RequireErrorKind::UnableToGetCwd)?;
     normalize_path(current_dir.join(from))
   };
 
@@ -324,7 +328,7 @@ where
 {
   let path = PathBuf::from(request);
   let path = ensure_read_permission::<P>(state, &path)
-    .map_err(RequireError::Permission)?;
+    .map_err(RequireErrorKind::Permission)?;
   let fs = state.borrow::<FileSystemRc>();
   let canonicalized_path =
     deno_path_util::strip_unc_prefix(fs.realpath_sync(&path)?);
@@ -484,11 +488,11 @@ where
   let file_path = PathBuf::from(file_path);
   // todo(dsherret): there's multiple borrows to NodeRequireLoaderRc here
   let file_path = ensure_read_permission::<P>(state, &file_path)
-    .map_err(RequireError::Permission)?;
+    .map_err(RequireErrorKind::Permission)?;
   let loader = state.borrow::<NodeRequireLoaderRc>();
   loader
     .load_text_file_lossy(&file_path)
-    .map_err(RequireError::ReadModule)
+    .map_err(|e| RequireErrorKind::ReadModule(e).into_box())
 }
 
 #[op2]
@@ -612,7 +616,7 @@ where
 {
   let referrer_path = PathBuf::from(&referrer_filename);
   let referrer_path = ensure_read_permission::<P>(state, &referrer_path)
-    .map_err(RequireError::Permission)?;
+    .map_err(RequireErrorKind::Permission)?;
   let pkg_json_resolver = state.borrow::<PackageJsonResolverRc>();
   let Some(pkg) =
     pkg_json_resolver.get_closest_package_json_from_path(&referrer_path)?

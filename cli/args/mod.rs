@@ -868,12 +868,8 @@ impl CliOptions {
         } else {
           &[]
         };
-      let config_parse_options = deno_config::deno_json::ConfigParseOptions {
-        include_task_comments: matches!(
-          flags.subcommand,
-          DenoSubcommand::Task(..)
-        ),
-      };
+      let config_parse_options =
+        deno_config::deno_json::ConfigParseOptions::default();
       let discover_pkg_json = flags.config_flag != ConfigFlag::Disabled
         && !flags.no_npm
         && !has_flag_env_var("DENO_NO_PACKAGE_JSON");

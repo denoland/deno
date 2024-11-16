@@ -22,6 +22,7 @@ deno_permissions.workspace = true
 deno_tls.workspace = true
 dyn-clone = "1"
 error_reporter = "1"
+hickory-resolver.workspace = true
 http.workspace = true
 http-body-util.workspace = true
 hyper.workspace = true
