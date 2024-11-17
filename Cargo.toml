@@ -338,3 +338,4 @@ opt-level = 3
 
 [patch.crates-io]
 deno_core = { path = "../deno_core/core" }
+v8 = { path = "../rusty_v8" }

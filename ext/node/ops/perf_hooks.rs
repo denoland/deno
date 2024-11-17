@@ -63,59 +63,57 @@ impl EldHistogram {
   #[fast]
   fn reset(&self) {}
 
-  // getters
-
   // The number of samples recorded by the histogram.
-  #[fast]
+  #[getter]
   #[number]
   fn count_(&self) -> u64 {
     self.eld.len()
   }
 
   // The number of samples recorded by the histogram as a bigint.
-  #[fast]
+  #[getter]
   #[bigint]
   fn count_bigint(&self) -> u64 {
     self.eld.len()
   }
 
   // The maximum recorded event loop delay.
-  #[fast]
+  #[getter]
   #[number]
   fn max(&self) -> u64 {
     self.eld.max()
   }
 
   // The maximum recorded event loop delay as a bigint.
-  #[fast]
+  #[getter]
   #[bigint]
   fn max_bigint(&self) -> u64 {
     self.eld.max()
   }
 
   // The mean of the recorded event loop delays.
-  #[fast]
+  #[getter]
   fn mean(&self) -> f64 {
     self.eld.mean()
   }
 
   // The minimum recorded event loop delay.
-  #[fast]
+  #[getter]
   #[number]
   fn min(&self) -> u64 {
     self.eld.min()
   }
 
   // The minimum recorded event loop delay as a bigint.
-  #[fast]
+  #[getter]
   #[bigint]
   fn min_bigint(&self) -> u64 {
     self.eld.min()
   }
 
   // The standard deviation of the recorded event loop delays.
-  #[fast]
+  #[getter]
   fn stddev(&self) -> f64 {
-    self.eld.stddev()
+    self.eld.stdev()
   }
 }
