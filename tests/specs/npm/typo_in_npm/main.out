@@ -1,0 +1,8 @@
+error: Unsupported scheme "np" for module "np:cowsay". Supported schemes:
+ - "blob"
+ - "data"
+ - "file"
+ - "http"
+ - "https"
+ - "jsr"
+ - "npm"

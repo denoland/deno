@@ -1,5 +1,6 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
+// use deno_core::error::AnyError;
 use deno_core::parking_lot::Mutex;
 use deno_core::serde::de;
 use deno_core::serde::Deserialize;
@@ -40,8 +41,8 @@ pub use prompter::PromptResponse;
 #[derive(Debug, thiserror::Error)]
 #[error("Requires {access}, {}", format_permission_error(.name))]
 pub struct PermissionDeniedError {
-  access: String,
-  name: &'static str,
+  pub access: String,
+  pub name: &'static str,
 }
 
 fn format_permission_error(name: &'static str) -> String {
@@ -294,7 +295,7 @@ impl UnitPermission {
 /// A normalized environment variable name. On Windows this will
 /// be uppercase and on other platforms it will stay as-is.
 #[derive(Clone, Eq, PartialEq, Hash, Debug)]
-struct EnvVarName {
+pub struct EnvVarName {
   inner: String,
 }
 
@@ -1114,9 +1115,9 @@ impl ImportDescriptor {
 pub struct EnvDescriptorParseError;
 
 #[derive(Clone, Eq, PartialEq, Hash, Debug)]
-pub struct EnvDescriptor(EnvVarName);
+pub struct EnvQueryDescriptor(EnvVarName);
 
-impl EnvDescriptor {
+impl EnvQueryDescriptor {
   pub fn new(env: impl AsRef<str>) -> Self {
     Self(EnvVarName::new(env))
   }
@@ -1136,7 +1137,23 @@ impl EnvDescriptor {
   }
 }
 
-impl QueryDescriptor for EnvDescriptor {
+#[derive(Clone, Eq, PartialEq, Hash, Debug)]
+pub enum EnvDescriptor {
+  Name(EnvVarName),
+  PrefixPattern(EnvVarName),
+}
+
+impl EnvDescriptor {
+  pub fn new(env: impl AsRef<str>) -> Self {
+    if let Some(prefix_pattern) = env.as_ref().strip_suffix('*') {
+      Self::PrefixPattern(EnvVarName::new(prefix_pattern))
+    } else {
+      Self::Name(EnvVarName::new(env))
+    }
+  }
+}
+
+impl QueryDescriptor for EnvQueryDescriptor {
   type AllowDesc = EnvDescriptor;
   type DenyDesc = EnvDescriptor;
 
@@ -1149,15 +1166,18 @@ impl QueryDescriptor for EnvDescriptor {
   }
 
   fn from_allow(allow: &Self::AllowDesc) -> Self {
-    allow.clone()
+    match allow {
+      Self::AllowDesc::Name(s) => Self(s.clone()),
+      Self::AllowDesc::PrefixPattern(_s) => todo!(),
+    }
   }
 
   fn as_allow(&self) -> Option<Self::AllowDesc> {
-    Some(self.clone())
+    Some(Self::AllowDesc::Name(self.0.clone()))
   }
 
   fn as_deny(&self) -> Self::DenyDesc {
-    self.clone()
+    Self::AllowDesc::Name(self.0.clone())
   }
 
   fn check_in_permission(
@@ -1170,19 +1190,31 @@ impl QueryDescriptor for EnvDescriptor {
   }
 
   fn matches_allow(&self, other: &Self::AllowDesc) -> bool {
-    self == other
+    match other {
+      Self::AllowDesc::Name(n) => *n == self.0,
+      Self::AllowDesc::PrefixPattern(p) => self.0.inner.starts_with(p.as_ref()),
+    }
   }
 
   fn matches_deny(&self, other: &Self::DenyDesc) -> bool {
-    self == other
+    match other {
+      Self::AllowDesc::Name(n) => *n == self.0,
+      Self::AllowDesc::PrefixPattern(p) => self.0.inner.starts_with(p.as_ref()),
+    }
   }
 
   fn revokes(&self, other: &Self::AllowDesc) -> bool {
-    self == other
+    match other {
+      Self::AllowDesc::Name(n) => *n == self.0,
+      Self::AllowDesc::PrefixPattern(p) => self.0.inner.starts_with(p.as_ref()),
+    }
   }
 
   fn stronger_than_deny(&self, other: &Self::DenyDesc) -> bool {
-    self == other
+    match other {
+      Self::AllowDesc::Name(n) => *n == self.0,
+      Self::AllowDesc::PrefixPattern(p) => self.0.inner.starts_with(p.as_ref()),
+    }
   }
 
   fn overlaps_deny(&self, _other: &Self::DenyDesc) -> bool {
@@ -1190,7 +1222,7 @@ impl QueryDescriptor for EnvDescriptor {
   }
 }
 
-impl AsRef<str> for EnvDescriptor {
+impl AsRef<str> for EnvQueryDescriptor {
   fn as_ref(&self) -> &str {
     self.0.as_ref()
   }
@@ -1475,7 +1507,7 @@ pub struct SysDescriptor(String);
 impl SysDescriptor {
   pub fn parse(kind: String) -> Result<Self, SysDescriptorParseError> {
     match kind.as_str() {
-      "hostname" | "osRelease" | "osUptime" | "loadavg"
+      "hostname" | "inspector" | "osRelease" | "osUptime" | "loadavg"
       | "networkInterfaces" | "systemMemoryInfo" | "uid" | "gid" | "cpus"
       | "homedir" | "getegid" | "statfs" | "getPriority" | "setPriority"
       | "userInfo" => Ok(Self(kind)),
@@ -1763,20 +1795,20 @@ impl UnaryPermission<ImportDescriptor> {
   }
 }
 
-impl UnaryPermission<EnvDescriptor> {
+impl UnaryPermission<EnvQueryDescriptor> {
   pub fn query(&self, env: Option<&str>) -> PermissionState {
     self.query_desc(
-      env.map(EnvDescriptor::new).as_ref(),
+      env.map(EnvQueryDescriptor::new).as_ref(),
       AllowPartial::TreatAsPartialGranted,
     )
   }
 
   pub fn request(&mut self, env: Option<&str>) -> PermissionState {
-    self.request_desc(env.map(EnvDescriptor::new).as_ref())
+    self.request_desc(env.map(EnvQueryDescriptor::new).as_ref())
   }
 
   pub fn revoke(&mut self, env: Option<&str>) -> PermissionState {
-    self.revoke_desc(env.map(EnvDescriptor::new).as_ref())
+    self.revoke_desc(env.map(EnvQueryDescriptor::new).as_ref())
   }
 
   pub fn check(
@@ -1785,22 +1817,7 @@ impl UnaryPermission<EnvDescriptor> {
     api_name: Option<&str>,
   ) -> Result<(), PermissionDeniedError> {
     skip_check_if_is_permission_fully_granted!(self);
-
-    let env_desc = EnvDescriptor::new(env);
-    let mut matched = false;
-
-    for desc in &self.granted_list {
-      if desc.matches(env) {
-        matched = true;
-        break;
-      }
-    }
-
-    if matched {
-      self.granted_list.insert(env_desc);
-    }
-
-    self.check_desc(Some(&EnvDescriptor::new(env)), false, api_name)
+    self.check_desc(Some(&EnvQueryDescriptor::new(env)), false, api_name)
   }
 
   pub fn check_all(&mut self) -> Result<(), PermissionDeniedError> {
@@ -1934,7 +1951,7 @@ pub struct Permissions {
   pub read: UnaryPermission<ReadQueryDescriptor>,
   pub write: UnaryPermission<WriteQueryDescriptor>,
   pub net: UnaryPermission<NetDescriptor>,
-  pub env: UnaryPermission<EnvDescriptor>,
+  pub env: UnaryPermission<EnvQueryDescriptor>,
   pub sys: UnaryPermission<SysDescriptor>,
   pub run: UnaryPermission<RunQueryDescriptor>,
   pub ffi: UnaryPermission<FfiQueryDescriptor>,

@@ -30,6 +30,7 @@ use deno_runtime::deno_tls::RootCertStoreProvider;
 use deno_runtime::deno_web::BlobStore;
 use deno_runtime::fmt_errors::format_js_error;
 use deno_runtime::inspector_server::InspectorServer;
+use deno_runtime::ops::otel::OtelConfig;
 use deno_runtime::ops::process::NpmProcessStateProviderRc;
 use deno_runtime::ops::worker_host::CreateWebWorkerCb;
 use deno_runtime::web_worker::WebWorker;
@@ -43,6 +44,7 @@ use deno_runtime::WorkerExecutionMode;
 use deno_runtime::WorkerLogLevel;
 use deno_semver::npm::NpmPackageReqReference;
 use deno_terminal::colors;
+use node_resolver::NodeModuleKind;
 use node_resolver::NodeResolutionMode;
 use tokio::select;
 
@@ -142,6 +144,7 @@ struct SharedWorkerState {
   storage_key_resolver: StorageKeyResolver,
   options: CliMainWorkerOptions,
   subcommand: DenoSubcommand,
+  otel_config: Option<OtelConfig>, // `None` means OpenTelemetry is disabled.
 }
 
 impl SharedWorkerState {
@@ -152,7 +155,7 @@ impl SharedWorkerState {
     NodeExtInitServices {
       node_require_loader,
       node_resolver: self.node_resolver.clone(),
-      npm_resolver: self.npm_resolver.clone().into_npm_resolver(),
+      npm_resolver: self.npm_resolver.clone().into_npm_pkg_folder_resolver(),
       pkg_json_resolver: self.pkg_json_resolver.clone(),
     }
   }
@@ -405,6 +408,7 @@ impl CliMainWorkerFactory {
     storage_key_resolver: StorageKeyResolver,
     subcommand: DenoSubcommand,
     options: CliMainWorkerOptions,
+    otel_config: Option<OtelConfig>,
   ) -> Self {
     Self {
       shared: Arc::new(SharedWorkerState {
@@ -427,6 +431,7 @@ impl CliMainWorkerFactory {
         storage_key_resolver,
         options,
         subcommand,
+        otel_config,
       }),
     }
   }
@@ -542,6 +547,7 @@ impl CliMainWorkerFactory {
       npm_process_state_provider: Some(shared.npm_process_state_provider()),
       blob_store: shared.blob_store.clone(),
       broadcast_channel: shared.broadcast_channel.clone(),
+      fetch_dns_resolver: Default::default(),
       shared_array_buffer_store: Some(shared.shared_array_buffer_store.clone()),
       compiled_wasm_module_store: Some(
         shared.compiled_wasm_module_store.clone(),
@@ -550,6 +556,7 @@ impl CliMainWorkerFactory {
       permissions,
       v8_code_cache: shared.code_cache.clone(),
     };
+
     let options = WorkerOptions {
       bootstrap: BootstrapOptions {
         deno_version: crate::version::DENO_VERSION_INFO.deno.to_string(),
@@ -576,10 +583,11 @@ impl CliMainWorkerFactory {
         mode,
         serve_port: shared.options.serve_port,
         serve_host: shared.options.serve_host.clone(),
+        otel_config: shared.otel_config.clone(),
       },
       extensions: custom_extensions,
       startup_snapshot: crate::js::deno_isolate_init(),
-      create_params: None,
+      create_params: create_isolate_create_params(),
       unsafely_ignore_certificate_errors: shared
         .options
         .unsafely_ignore_certificate_errors
@@ -675,6 +683,7 @@ impl CliMainWorkerFactory {
         package_folder,
         sub_path,
         /* referrer */ None,
+        NodeModuleKind::Esm,
         NodeResolutionMode::Execution,
       )?;
     if specifier
@@ -775,9 +784,11 @@ fn create_web_worker_callback(
         mode: WorkerExecutionMode::Worker,
         serve_port: shared.options.serve_port,
         serve_host: shared.options.serve_host.clone(),
+        otel_config: shared.otel_config.clone(),
       },
       extensions: vec![],
       startup_snapshot: crate::js::deno_isolate_init(),
+      create_params: create_isolate_create_params(),
       unsafely_ignore_certificate_errors: shared
         .options
         .unsafely_ignore_certificate_errors
@@ -795,6 +806,17 @@ fn create_web_worker_callback(
     };
 
     WebWorker::bootstrap_from_options(services, options)
+  })
+}
+
+/// By default V8 uses 1.4Gb heap limit which is meant for browser tabs.
+/// Instead probe for the total memory on the system and use it instead
+/// as a default.
+pub fn create_isolate_create_params() -> Option<v8::CreateParams> {
+  let maybe_mem_info = deno_runtime::sys_info::mem_info();
+  maybe_mem_info.map(|mem_info| {
+    v8::CreateParams::default()
+      .heap_limits_from_system_memory(mem_info.total, 0)
   })
 }
 
@@ -834,6 +856,7 @@ mod tests {
         node_services: Default::default(),
         npm_process_state_provider: Default::default(),
         root_cert_store_provider: Default::default(),
+        fetch_dns_resolver: Default::default(),
         shared_array_buffer_store: Default::default(),
         compiled_wasm_module_store: Default::default(),
         v8_code_cache: Default::default(),

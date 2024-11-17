@@ -15,8 +15,8 @@ use crate::errors::CanonicalizingPkgJsonDirError;
 use crate::errors::ClosestPkgJsonError;
 use crate::errors::PackageJsonLoadError;
 
-// todo(dsherret): this isn't exactly correct and we should change it to instead
-// be created per worker and passed down as a ctor arg to the pkg json resolver
+// it would be nice if this was passed down as a ctor arg to the package.json resolver,
+// but it's a little bit complicated to do that, so we just maintain a thread local cache
 thread_local! {
   static CACHE: RefCell<HashMap<PathBuf, PackageJsonRc>> = RefCell::new(HashMap::new());
 }

@@ -12,6 +12,7 @@ pub struct DirEntry {
 pub trait DenoResolverFs {
   fn read_to_string_lossy(&self, path: &Path) -> std::io::Result<String>;
   fn realpath_sync(&self, path: &Path) -> std::io::Result<PathBuf>;
+  fn exists_sync(&self, path: &Path) -> bool;
   fn is_dir_sync(&self, path: &Path) -> bool;
   fn read_dir_sync(&self, dir_path: &Path) -> std::io::Result<Vec<DirEntry>>;
 }
