@@ -1453,6 +1453,7 @@ dependencies = [
 [[package]]
 name = "deno_core"
 version = "0.319.0"
+source = "git+https://github.com/littledivy/deno_core?branch=accessors_op2#8ab8d2cef71145c6fda0d2550e96f7dea5ca7c80"
 dependencies = [
  "anyhow",
  "bincode",
@@ -1959,6 +1960,7 @@ dependencies = [
 [[package]]
 name = "deno_ops"
 version = "0.195.0"
+source = "git+https://github.com/littledivy/deno_core?branch=accessors_op2#8ab8d2cef71145c6fda0d2550e96f7dea5ca7c80"
 dependencies = [
  "proc-macro-rules",
  "proc-macro2",
@@ -6418,6 +6420,7 @@ dependencies = [
 [[package]]
 name = "serde_v8"
 version = "0.228.0"
+source = "git+https://github.com/littledivy/deno_core?branch=accessors_op2#8ab8d2cef71145c6fda0d2550e96f7dea5ca7c80"
 dependencies = [
  "num-bigint",
  "serde",
@@ -7533,7 +7536,9 @@ dependencies = [
 
 [[package]]
 name = "tokio-eld"
-version = "0.1.0"
+version = "0.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9166030f05d6bc5642bdb8f8c2be31eb3c02cd465d662bcdc2df82d4aa41a584"
 dependencies = [
  "hdrhistogram",
  "tokio",
@@ -7961,6 +7966,8 @@ dependencies = [
 [[package]]
 name = "v8"
 version = "130.0.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c23b5c2caff00209b03a716609b275acae94b02dd3b63c4648e7232a84a8402f"
 dependencies = [
  "bindgen",
  "bitflags 2.6.0",
