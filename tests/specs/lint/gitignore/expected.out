@@ -1,5 +1,5 @@
 error[no-empty]: Empty block statement
- --> [WILDCARD]/file2.ts:3:14
+ --> [WILDCARD]file2.ts:3:14
   | 
 3 | } catch (_e) {}
   |              ^^

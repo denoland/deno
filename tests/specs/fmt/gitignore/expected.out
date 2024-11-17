@@ -1,5 +1,5 @@
 
-from [WILDCARD]/file2.ts:
+from [WILDCARD]file2.ts:
 1 | -function foo(   ): any   {
 1 | +function foo(): any {
 2 | - console.log(  "hello")
