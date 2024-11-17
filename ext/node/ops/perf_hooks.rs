@@ -3,8 +3,17 @@
 use deno_core::op2;
 use deno_core::GarbageCollected;
 
+use std::cell::Cell;
+
+#[derive(Debug, thiserror::Error)]
+pub enum PerfHooksError {
+  #[error(transparent)]
+  TokioEld(#[from] tokio_eld::Error),
+}
+
 pub struct EldHistogram {
   eld: tokio_eld::EldHistogram<u64>,
+  started: Cell<bool>,
 }
 
 impl GarbageCollected for EldHistogram {}
@@ -17,10 +26,11 @@ impl EldHistogram {
   // The delays will be reported in nanoseconds.
   #[constructor]
   #[cppgc]
-  pub fn new(#[smi] resolution: u32) -> EldHistogram {
-    EldHistogram {
-      eld: tokio_eld::EldHistogram::new(resolution as usize).unwrap(),
-    }
+  pub fn new(#[smi] resolution: u32) -> Result<EldHistogram, PerfHooksError> {
+    Ok(EldHistogram {
+      eld: tokio_eld::EldHistogram::new(resolution as usize)?,
+      started: Cell::new(false),
+    })
   }
 
   // Disables the update interval timer.
@@ -28,7 +38,12 @@ impl EldHistogram {
   // Returns true if the timer was stopped, false if it was already stopped.
   #[fast]
   fn enable(&self) -> bool {
+    if self.started.get() {
+      return false;
+    }
+
     self.eld.start();
+    self.started.set(true);
 
     true
   }
@@ -38,7 +53,12 @@ impl EldHistogram {
   // Returns true if the timer was started, false if it was already started.
   #[fast]
   fn disable(&self) -> bool {
+    if !self.started.get() {
+      return false;
+    }
+
     self.eld.stop();
+    self.started.set(false);
 
     true
   }
@@ -58,10 +78,6 @@ impl EldHistogram {
   fn percentile_bigint(&self, percentile: f64) -> u64 {
     self.eld.value_at_percentile(percentile)
   }
-
-  // Resets the collected histogram data.
-  #[fast]
-  fn reset(&self) {}
 
   // The number of samples recorded by the histogram.
   #[getter]
