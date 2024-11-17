@@ -5,7 +5,7 @@ import {
   performance,
   PerformanceObserver,
 } from "node:perf_hooks";
-import { assertEquals, assertThrows } from "@std/assert";
+import { assert, assertEquals, assertThrows } from "@std/assert";
 
 Deno.test({
   name: "[perf_hooks] performance",
@@ -73,11 +73,15 @@ Deno.test("[perf_hooks]: eventLoopUtilization", () => {
   assertEquals(typeof obj.utilization, "number");
 });
 
-Deno.test("[perf_hooks]: monitorEventLoopDelay", () => {
-  const e = assertThrows(() => {
-    monitorEventLoopDelay({ resolution: 1 });
-  });
+Deno.test("[perf_hooks]: monitorEventLoopDelay", async () => {
+  const e = monitorEventLoopDelay();
+  assertEquals(e.count, 0);
+  e.enable();
 
-  // deno-lint-ignore no-explicit-any
-  assertEquals((e as any).code, "ERR_NOT_IMPLEMENTED");
+  await new Promise((resolve) => setTimeout(resolve, 100));
+
+  assert(e.min > 0);
+  assert(e.count > 0);
+
+  e.disable();
 });

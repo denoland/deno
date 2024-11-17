@@ -82,7 +82,7 @@ impl EldHistogram {
   // The number of samples recorded by the histogram.
   #[getter]
   #[number]
-  fn count_(&self) -> u64 {
+  fn count(&self) -> u64 {
     self.eld.len()
   }
 
