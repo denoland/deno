@@ -659,9 +659,15 @@ impl<'a> DenoCompileBinaryWriter<'a> {
     remote_modules_store.add_redirects(&graph.redirects);
 
     let env_vars_from_env_file = match cli_options.env_file_name() {
-      Some(env_filename) => {
-        log::info!("{} Environment variables from the file \"{}\" were embedded in the generated executable file", crate::colors::yellow("Warning"), env_filename);
-        get_file_env_vars(env_filename.to_string())?
+      Some(env_filenames) => {
+        let mut aggregated_env_vars = IndexMap::new();
+        for env_filename in env_filenames.iter().rev() {
+          log::info!("{} Environment variables from the file \"{}\" were embedded in the generated executable file", crate::colors::yellow("Warning"), env_filename);
+
+          let env_vars = get_file_env_vars(env_filename.to_string())?;
+          aggregated_env_vars.extend(env_vars);
+        }
+        aggregated_env_vars
       }
       None => Default::default(),
     };

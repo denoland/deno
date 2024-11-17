@@ -613,7 +613,7 @@ pub struct Flags {
   pub internal: InternalFlags,
   pub ignore: Vec<String>,
   pub import_map_path: Option<String>,
-  pub env_file: Option<String>,
+  pub env_file: Option<Vec<String>>,
   pub inspect_brk: Option<SocketAddr>,
   pub inspect_wait: Option<SocketAddr>,
   pub inspect: Option<SocketAddr>,
@@ -3775,12 +3775,14 @@ fn env_file_arg() -> Arg {
     .help(cstr!(
       "Load environment variables from local file
   <p(245)>Only the first environment variable with a given key is used.
-  Existing process environment variables are not overwritten.</>"
+  Existing process environment variables are not overwritten, so if variables with the same names already exist in the environment, their values will be preserved.
+  Where multiple declarations for the same environment variable exist in your .env file, the first one encountered is applied. This is determined by the order of the files you pass as arguments.</>"
     ))
     .value_hint(ValueHint::FilePath)
     .default_missing_value(".env")
     .require_equals(true)
     .num_args(0..=1)
+    .action(ArgAction::Append)
 }
 
 fn reload_arg() -> Arg {
@@ -5487,7 +5489,9 @@ fn import_map_arg_parse(flags: &mut Flags, matches: &mut ArgMatches) {
 }
 
 fn env_file_arg_parse(flags: &mut Flags, matches: &mut ArgMatches) {
-  flags.env_file = matches.remove_one::<String>("env-file");
+  flags.env_file = matches
+    .get_many::<String>("env-file")
+    .map(|values| values.cloned().collect());
 }
 
 fn reload_arg_parse(
@@ -7423,7 +7427,7 @@ mod tests {
           allow_all: true,
           ..Default::default()
         },
-        env_file: Some(".example.env".to_owned()),
+        env_file: Some(vec![".example.env".to_owned()]),
         ..Flags::default()
       }
     );
@@ -7517,7 +7521,7 @@ mod tests {
           allow_all: true,
           ..Default::default()
         },
-        env_file: Some(".example.env".to_owned()),
+        env_file: Some(vec![".example.env".to_owned()]),
         unsafely_ignore_certificate_errors: Some(vec![]),
         ..Flags::default()
       }
@@ -8165,7 +8169,7 @@ mod tests {
         subcommand: DenoSubcommand::Run(RunFlags::new_default(
           "script.ts".to_string(),
         )),
-        env_file: Some(".env".to_owned()),
+        env_file: Some(vec![".env".to_owned()]),
         code_cache_enabled: true,
         ..Flags::default()
       }
@@ -8181,7 +8185,7 @@ mod tests {
         subcommand: DenoSubcommand::Run(RunFlags::new_default(
           "script.ts".to_string(),
         )),
-        env_file: Some(".env".to_owned()),
+        env_file: Some(vec![".env".to_owned()]),
         code_cache_enabled: true,
         ..Flags::default()
       }
@@ -8214,7 +8218,7 @@ mod tests {
         subcommand: DenoSubcommand::Run(RunFlags::new_default(
           "script.ts".to_string(),
         )),
-        env_file: Some(".another_env".to_owned()),
+        env_file: Some(vec![".another_env".to_owned()]),
         code_cache_enabled: true,
         ..Flags::default()
       }
@@ -8235,7 +8239,29 @@ mod tests {
         subcommand: DenoSubcommand::Run(RunFlags::new_default(
           "script.ts".to_string(),
         )),
-        env_file: Some(".another_env".to_owned()),
+        env_file: Some(vec![".another_env".to_owned()]),
+        code_cache_enabled: true,
+        ..Flags::default()
+      }
+    );
+  }
+
+  #[test]
+  fn run_multiple_env_file_defined() {
+    let r = flags_from_vec(svec![
+      "deno",
+      "run",
+      "--env-file",
+      "--env-file=.two_env",
+      "script.ts"
+    ]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Run(RunFlags::new_default(
+          "script.ts".to_string(),
+        )),
+        env_file: Some(vec![".env".to_owned(), ".two_env".to_owned()]),
         code_cache_enabled: true,
         ..Flags::default()
       }
@@ -8378,7 +8404,7 @@ mod tests {
           allow_read: Some(vec![]),
           ..Default::default()
         },
-        env_file: Some(".example.env".to_owned()),
+        env_file: Some(vec![".example.env".to_owned()]),
         ..Flags::default()
       }
     );
@@ -10053,7 +10079,7 @@ mod tests {
         unsafely_ignore_certificate_errors: Some(vec![]),
         v8_flags: svec!["--help", "--random-seed=1"],
         seed: Some(1),
-        env_file: Some(".example.env".to_owned()),
+        env_file: Some(vec![".example.env".to_owned()]),
         ..Flags::default()
       }
     );
