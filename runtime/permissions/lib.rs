@@ -1,6 +1,5 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
-// use deno_core::error::AnyError;
 use deno_core::parking_lot::Mutex;
 use deno_core::serde::de;
 use deno_core::serde::Deserialize;
@@ -1120,20 +1119,6 @@ pub struct EnvQueryDescriptor(EnvVarName);
 impl EnvQueryDescriptor {
   pub fn new(env: impl AsRef<str>) -> Self {
     Self(EnvVarName::new(env))
-  }
-  pub fn matches(&self, env: &str) -> bool {
-    let pattern = self.0.as_ref();
-    if let Some(prefix) = pattern.strip_suffix('*') {
-      if env.starts_with(prefix) {
-        return true;
-      }
-    }
-    if let Some(suffix) = pattern.strip_prefix('*') {
-      if env.ends_with(suffix) {
-        return true;
-      }
-    }
-    env == pattern
   }
 }
 
