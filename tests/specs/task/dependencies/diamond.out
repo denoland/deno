@@ -1,4 +1,7 @@
+[# this is not really correct - this diamond dependency should only be run once, needs to be fixed in a follow up]
 Task d deno run d.js
+Task d deno run d.js
+Running d
 Running d
 [UNORDERED_START]
 Task c deno run c.js
