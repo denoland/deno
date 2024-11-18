@@ -454,7 +454,7 @@ impl ModuleLoader for EmbeddedModuleLoader {
           let module_source = module_source.into_for_v8();
           let code_cache_entry = self
             .shared
-            .get_code_cache(&module_specifier, module_source.as_bytes());
+            .get_code_cache(module_specifier, module_source.as_bytes());
           deno_core::ModuleLoadResponse::Sync(Ok(
             deno_core::ModuleSource::new_with_redirect(
               module_type,
