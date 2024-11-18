@@ -1453,7 +1453,7 @@ dependencies = [
 [[package]]
 name = "deno_core"
 version = "0.319.0"
-source = "git+https://github.com/littledivy/deno_core?branch=accessors_op2#8ab8d2cef71145c6fda0d2550e96f7dea5ca7c80"
+source = "git+https://github.com/littledivy/deno_core?branch=object_wrap_camelcase#f296249bf69309e8a719dbc7260f0254c1c05e65"
 dependencies = [
  "anyhow",
  "bincode",
@@ -1960,11 +1960,12 @@ dependencies = [
 [[package]]
 name = "deno_ops"
 version = "0.195.0"
-source = "git+https://github.com/littledivy/deno_core?branch=accessors_op2#8ab8d2cef71145c6fda0d2550e96f7dea5ca7c80"
+source = "git+https://github.com/littledivy/deno_core?branch=object_wrap_camelcase#f296249bf69309e8a719dbc7260f0254c1c05e65"
 dependencies = [
  "proc-macro-rules",
  "proc-macro2",
  "quote",
+ "stringcase",
  "strum",
  "strum_macros",
  "syn 2.0.87",
@@ -6420,7 +6421,7 @@ dependencies = [
 [[package]]
 name = "serde_v8"
 version = "0.228.0"
-source = "git+https://github.com/littledivy/deno_core?branch=accessors_op2#8ab8d2cef71145c6fda0d2550e96f7dea5ca7c80"
+source = "git+https://github.com/littledivy/deno_core?branch=object_wrap_camelcase#f296249bf69309e8a719dbc7260f0254c1c05e65"
 dependencies = [
  "num-bigint",
  "serde",
@@ -6732,6 +6733,12 @@ dependencies = [
  "swc_macros_common",
  "syn 2.0.87",
 ]
+
+[[package]]
+name = "stringcase"
+version = "0.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "04028eeb851ed08af6aba5caa29f2d59a13ed168cee4d6bd753aeefcf1d636b0"
 
 [[package]]
 name = "strip-ansi-escapes"

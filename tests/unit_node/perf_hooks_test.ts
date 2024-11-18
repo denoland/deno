@@ -81,6 +81,7 @@ Deno.test("[perf_hooks]: monitorEventLoopDelay", async () => {
   await new Promise((resolve) => setTimeout(resolve, 100));
 
   assert(e.min > 0);
+  assert(e.minBigInt > 0n);
   assert(e.count > 0);
 
   e.disable();

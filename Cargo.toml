@@ -337,4 +337,4 @@ opt-level = 3
 opt-level = 3
 
 [patch.crates-io]
-deno_core = { git = "https://github.com/littledivy/deno_core", branch = "accessors_op2" }
+deno_core = { git = "https://github.com/littledivy/deno_core", branch = "object_wrap_camelcase" }

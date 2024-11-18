@@ -75,7 +75,7 @@ impl EldHistogram {
   // Returns the value at the given percentile as a bigint.
   #[fast]
   #[bigint]
-  fn percentile_bigint(&self, percentile: f64) -> u64 {
+  fn percentile_big_int(&self, percentile: f64) -> u64 {
     self.eld.value_at_percentile(percentile)
   }
 
@@ -89,7 +89,7 @@ impl EldHistogram {
   // The number of samples recorded by the histogram as a bigint.
   #[getter]
   #[bigint]
-  fn count_bigint(&self) -> u64 {
+  fn count_big_int(&self) -> u64 {
     self.eld.len()
   }
 
@@ -103,7 +103,7 @@ impl EldHistogram {
   // The maximum recorded event loop delay as a bigint.
   #[getter]
   #[bigint]
-  fn max_bigint(&self) -> u64 {
+  fn max_big_int(&self) -> u64 {
     self.eld.max()
   }
 
@@ -123,7 +123,7 @@ impl EldHistogram {
   // The minimum recorded event loop delay as a bigint.
   #[getter]
   #[bigint]
-  fn min_bigint(&self) -> u64 {
+  fn min_big_int(&self) -> u64 {
     self.eld.min()
   }
 
