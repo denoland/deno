@@ -1,6 +1,6 @@
 use std::borrow::Cow;
 use std::collections::HashMap;
-use std::path::PathBuf;
+use std::sync::atomic::AtomicBool;
 use std::sync::Arc;
 
 use deno_ast::ModuleSpecifier;
@@ -10,6 +10,7 @@ use deno_config::workspace::Workspace;
 use deno_config::workspace::WorkspaceDirectory;
 use deno_core::anyhow::bail;
 use deno_core::error::AnyError;
+use deno_core::futures::future::try_join;
 use deno_core::futures::stream::FuturesOrdered;
 use deno_core::futures::stream::FuturesUnordered;
 use deno_core::futures::FutureExt;
@@ -20,13 +21,11 @@ use deno_package_json::PackageJsonDepValue;
 use deno_package_json::PackageJsonDepValueParseError;
 use deno_package_json::PackageJsonRc;
 use deno_runtime::deno_permissions::PermissionsContainer;
-use deno_semver::jsr::JsrDepPackageReq;
 use deno_semver::jsr::JsrPackageReqReference;
 use deno_semver::npm::NpmPackageReqReference;
 use deno_semver::package::PackageNv;
 use deno_semver::package::PackageReq;
 use deno_semver::package::PackageReqReference;
-use deno_semver::Version;
 use deno_semver::VersionReq;
 use import_map::ImportMap;
 use import_map::ImportMapWithDiagnostics;
@@ -61,8 +60,20 @@ impl DepLocation {
   pub fn is_deno_json(&self) -> bool {
     matches!(self, DepLocation::DenoJson(..))
   }
-  pub fn is_package_json(&self) -> bool {
-    matches!(self, DepLocation::PackageJson(..))
+
+  pub fn file_path(&self) -> Cow<std::path::Path> {
+    match self {
+      DepLocation::DenoJson(arc, _, _) => {
+        Cow::Owned(arc.specifier.to_file_path().unwrap())
+      }
+      DepLocation::PackageJson(arc, _) => Cow::Borrowed(arc.path.as_ref()),
+    }
+  }
+  fn config_kind(&self) -> super::ConfigKind {
+    match self {
+      DepLocation::DenoJson(_, _, _) => super::ConfigKind::DenoJson,
+      DepLocation::PackageJson(_, _) => super::ConfigKind::PackageJson,
+    }
   }
 }
 
@@ -102,14 +113,14 @@ impl std::fmt::Debug for DepLocation {
   }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub enum DepKind {
   Npm,
   Jsr,
 }
 
 impl DepKind {
-  fn scheme(&self) -> &'static str {
+  pub fn scheme(&self) -> &'static str {
     match self {
       DepKind::Npm => "npm",
       DepKind::Jsr => "jsr",
@@ -124,17 +135,6 @@ pub enum KeyPart {
   Dependencies,
   DevDependencies,
   String(String),
-}
-
-macro_rules! const_assert {
-  ($x:expr $(,)?) => {
-    #[allow(unknown_lints, eq_op)]
-    const _: [();
-      0 - !{
-        const ASSERT: bool = $x;
-        ASSERT
-      } as usize] = [];
-  };
 }
 
 impl From<String> for KeyPart {
@@ -185,19 +185,8 @@ pub struct Dep {
   pub req: PackageReq,
   pub kind: DepKind,
   pub location: DepLocation,
+  #[allow(dead_code)]
   pub id: DepId,
-  // specifier: String,
-}
-
-#[derive(Debug, Clone)]
-pub struct ResolvedDep {
-  dep: Dep,
-  resolved_version: Option<Version>,
-}
-
-#[derive(Debug)]
-pub struct WorkspaceDeps {
-  deps: Vec<Dep>,
 }
 
 fn import_map_entries<'a>(
@@ -230,26 +219,42 @@ fn import_map_entries<'a>(
     }))
 }
 
+fn to_import_map_value_from_imports(
+  deno_json: &ConfigFile,
+) -> serde_json::Value {
+  let mut value = serde_json::Map::with_capacity(2);
+  if let Some(imports) = &deno_json.json.imports {
+    value.insert("imports".to_string(), imports.clone());
+  }
+  if let Some(scopes) = &deno_json.json.scopes {
+    value.insert("scopes".to_string(), scopes.clone());
+  }
+  serde_json::Value::Object(value)
+}
+
 fn deno_json_import_map(
   deno_json: &ConfigFile,
 ) -> Result<Option<(ImportMapWithDiagnostics, ImportMapKind)>, AnyError> {
-  let Some((url, value)) = deno_json.to_import_map_value(|path| {
-    std::fs::read_to_string(path).map_err(Into::into)
-  })?
-  else {
-    return Ok(None);
-  };
+  let (value, kind) =
+    if deno_json.json.imports.is_some() || deno_json.json.scopes.is_some() {
+      (
+        to_import_map_value_from_imports(deno_json),
+        ImportMapKind::Inline,
+      )
+    } else {
+      match deno_json.to_import_map_path()? {
+        Some(path) => {
+          let text = std::fs::read_to_string(&path)?;
+          let value = serde_json::from_str(&text)?;
+          (value, ImportMapKind::Outline)
+        }
+        None => return Ok(None),
+      }
+    };
 
   import_map::parse_from_value(deno_json.specifier.clone(), value)
     .map_err(Into::into)
-    .map(|import_map| {
-      let kind = if &*url == &deno_json.specifier {
-        ImportMapKind::Inline
-      } else {
-        ImportMapKind::Outline
-      };
-      Some((import_map, kind))
-    })
+    .map(|import_map| Some((import_map, kind)))
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -267,6 +272,7 @@ type PackageJsonDeps = IndexMap<
 >;
 
 /// Resolve the package.json's dependencies.
+// TODO(nathanwhit): Remove once we update deno_package_json with dev deps split out
 fn resolve_local_package_json_deps(
   package_json: &PackageJsonRc,
 ) -> PackageJsonDeps {
@@ -345,7 +351,11 @@ fn resolve_local_package_json_deps(
   result
 }
 
-fn add_deps_from_deno_json(deno_json: &Arc<ConfigFile>, deps: &mut Vec<Dep>) {
+fn add_deps_from_deno_json(
+  deno_json: &Arc<ConfigFile>,
+  mut filter: impl DepFilter,
+  deps: &mut Vec<Dep>,
+) {
   let (import_map, import_map_kind) = match deno_json_import_map(deno_json) {
     Ok(Some((import_map, import_map_kind))) => (import_map, import_map_kind),
     Ok(None) => return,
@@ -361,13 +371,16 @@ fn add_deps_from_deno_json(deno_json: &Arc<ConfigFile>, deps: &mut Vec<Dep>) {
       "jsr" => DepKind::Jsr,
       _ => continue,
     };
-    let req = match JsrDepPackageReq::from_str(value.as_str()) {
-      Ok(req) => req,
+    let req = match parse_req_reference(value.as_str(), kind) {
+      Ok(req) => req.req.clone(),
       Err(err) => {
         log::warn!("failed to parse package req \"{}\": {err}", value.as_str());
         continue;
       }
     };
+    if !filter.should_include(&req, kind) {
+      continue;
+    }
     let id = DepId(deps.len());
     deps.push(Dep {
       location: DepLocation::DenoJson(
@@ -376,7 +389,7 @@ fn add_deps_from_deno_json(deno_json: &Arc<ConfigFile>, deps: &mut Vec<Dep>) {
         import_map_kind,
       ),
       kind,
-      req: req.req,
+      req,
       id,
     });
   }
@@ -384,10 +397,12 @@ fn add_deps_from_deno_json(deno_json: &Arc<ConfigFile>, deps: &mut Vec<Dep>) {
 
 fn add_deps_from_package_json(
   package_json: &PackageJsonRc,
+  mut filter: impl DepFilter,
   deps: &mut Vec<Dep>,
 ) {
   let package_json_deps = resolve_local_package_json_deps(package_json);
   for (k, v) in package_json_deps {
+    eprintln!("{k}");
     let (package_dep_kind, v) = match v {
       Ok((k, v)) => (k, v),
       Err(e) => {
@@ -397,6 +412,9 @@ fn add_deps_from_package_json(
     };
     match v {
       deno_package_json::PackageJsonDepValue::Req(package_req) => {
+        if !filter.should_include(&package_req, DepKind::Npm) {
+          continue;
+        }
         let id = DepId(deps.len());
         deps.push(Dep {
           id,
@@ -415,26 +433,19 @@ fn add_deps_from_package_json(
 
 fn deps_from_workspace(
   workspace: &Arc<Workspace>,
+  dep_filter: impl DepFilter,
 ) -> Result<Vec<Dep>, AnyError> {
   let mut deps = Vec::with_capacity(32);
   for deno_json in workspace.deno_jsons() {
     eprintln!("deno_json: {}", deno_json.specifier);
-    add_deps_from_deno_json(deno_json, &mut deps);
+    add_deps_from_deno_json(deno_json, dep_filter, &mut deps);
   }
   for package_json in workspace.package_jsons() {
     eprintln!("package_json: {}", package_json.path.display());
-    add_deps_from_package_json(package_json, &mut deps);
+    add_deps_from_package_json(package_json, dep_filter, &mut deps);
   }
 
   Ok(deps)
-}
-
-#[derive(Default, Clone)]
-enum ResolveState {
-  #[default]
-  NotYet,
-  Unresolved,
-  Resolved(PackageNv),
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -445,14 +456,59 @@ pub enum Change {
   Update(DepId, VersionReq),
 }
 
+pub struct DepData<'a, T> {
+  inner: &'a [T],
+}
+
+impl<'a, T> DepData<'a, T> {
+  // pub fn len(&self) -> usize {
+  //   self.inner.len()
+  // }
+}
+
+impl<'a, T> std::ops::Index<DepId> for DepData<'a, T> {
+  type Output = T;
+
+  fn index(&self, index: DepId) -> &Self::Output {
+    &self.inner[index.0]
+  }
+}
+
+pub trait DepFilter: Copy {
+  fn should_include(
+    &mut self,
+    package_req: &PackageReq,
+    dep_kind: DepKind,
+  ) -> bool;
+}
+
+impl<T> DepFilter for T
+where
+  T: FnMut(&PackageReq, DepKind) -> bool + Copy,
+{
+  fn should_include<'a>(
+    &mut self,
+    package_req: &'a PackageReq,
+    dep_kind: DepKind,
+  ) -> bool {
+    (*self)(package_req, dep_kind)
+  }
+}
+
+#[derive(Clone, Debug)]
+pub struct PackageLatestVersion {
+  pub semver_compatible: Option<PackageNv>,
+  pub latest: Option<PackageNv>,
+}
+
 pub struct DepManager {
   deps: Vec<Dep>,
   resolved_versions: Vec<Option<PackageNv>>,
-  latest_versions: Vec<Option<PackageNv>>,
+  latest_versions: Vec<PackageLatestVersion>,
 
   pending_changes: Vec<Change>,
 
-  loaded_roots: bool,
+  dependencies_resolved: AtomicBool,
   module_load_preparer: Arc<ModuleLoadPreparer>,
   jsr_fetch_resolver: Arc<JsrFetchResolver>,
   npm_fetch_resolver: Arc<NpmFetchResolver>,
@@ -488,7 +544,7 @@ impl DepManager {
       resolved_versions: Vec::new(),
       latest_versions: Vec::new(),
       jsr_fetch_resolver,
-      loaded_roots: false,
+      dependencies_resolved: AtomicBool::new(false),
       module_load_preparer,
       npm_fetch_resolver,
       npm_resolver,
@@ -500,31 +556,74 @@ impl DepManager {
   }
   pub fn from_workspace_dir(
     workspace_dir: &Arc<WorkspaceDirectory>,
+    dep_filter: impl DepFilter,
     args: DepManagerArgs,
   ) -> Result<Self, AnyError> {
     let mut deps = Vec::with_capacity(32);
     if let Some(deno_json) = workspace_dir.maybe_deno_json() {
-      add_deps_from_deno_json(deno_json, &mut deps);
+      add_deps_from_deno_json(deno_json, dep_filter, &mut deps);
     }
     if let Some(package_json) = workspace_dir.maybe_pkg_json() {
-      add_deps_from_package_json(package_json, &mut deps);
+      add_deps_from_package_json(package_json, dep_filter, &mut deps);
     }
 
     Ok(Self::with_deps_args(deps, args))
   }
   pub fn from_workspace(
     workspace: &Arc<Workspace>,
+    dep_filter: impl DepFilter,
     args: DepManagerArgs,
   ) -> Result<Self, AnyError> {
-    let deps = deps_from_workspace(workspace)?;
+    let deps = deps_from_workspace(workspace, dep_filter)?;
     Ok(Self::with_deps_args(deps, args))
   }
 
-  async fn load_roots(&mut self) -> Result<(), AnyError> {
-    if self.loaded_roots {
+  async fn run_dependency_resolution(&self) -> Result<(), AnyError> {
+    if self
+      .dependencies_resolved
+      .load(std::sync::atomic::Ordering::Relaxed)
+    {
       return Ok(());
     }
 
+    let mut graph_permit = self
+      .main_module_graph_container
+      .acquire_update_permit()
+      .await;
+    let graph = graph_permit.graph_mut();
+    // populate the information from the lockfile
+    if let Some(lockfile) = &self.lockfile {
+      let lockfile = lockfile.lock();
+      graph.fill_from_lockfile(FillFromLockfileOptions {
+        redirects: lockfile
+          .content
+          .redirects
+          .iter()
+          .map(|(from, to)| (from.as_str(), to.as_str())),
+        package_specifiers: lockfile
+          .content
+          .packages
+          .specifiers
+          .iter()
+          .map(|(dep, id)| (dep, id.as_str())),
+      });
+    }
+
+    let npm_resolver = self.npm_resolver.as_managed().unwrap();
+    if self.deps.iter().all(|dep| match dep.kind {
+      DepKind::Npm => {
+        npm_resolver.resolve_pkg_id_from_pkg_req(&dep.req).is_ok()
+      }
+      DepKind::Jsr => graph.packages.mappings().contains_key(&dep.req),
+    }) {
+      self
+        .dependencies_resolved
+        .store(true, std::sync::atomic::Ordering::Relaxed);
+      graph_permit.commit();
+      return Ok(());
+    }
+
+    npm_resolver.ensure_top_level_package_json_install().await?;
     let mut roots = Vec::new();
     let mut info_futures = FuturesUnordered::new();
     for dep in &self.deps {
@@ -551,6 +650,8 @@ impl DepManager {
       }
     }
 
+    eprintln!("roots len: {}", roots.len());
+
     while let Some(info_future) = info_futures.next().await {
       if let Some((specifier, info)) = info_future {
         let exports = info.exports();
@@ -562,28 +663,6 @@ impl DepManager {
       }
     }
 
-    let mut graph_permit = self
-      .main_module_graph_container
-      .acquire_update_permit()
-      .await;
-    let graph = graph_permit.graph_mut();
-    // populate the information from the lockfile
-    if let Some(lockfile) = &self.lockfile {
-      let lockfile = lockfile.lock();
-      graph.fill_from_lockfile(FillFromLockfileOptions {
-        redirects: lockfile
-          .content
-          .redirects
-          .iter()
-          .map(|(from, to)| (from.as_str(), to.as_str())),
-        package_specifiers: lockfile
-          .content
-          .packages
-          .specifiers
-          .iter()
-          .map(|(dep, id)| (dep, id.as_str())),
-      });
-    }
     self
       .module_load_preparer
       .prepare_module_load(
@@ -601,8 +680,8 @@ impl DepManager {
     Ok(())
   }
 
-  pub async fn resolve_versions(&mut self) -> Result<(), AnyError> {
-    self.load_roots().await?;
+  pub async fn resolve_current_versions(&mut self) -> Result<(), AnyError> {
+    self.run_dependency_resolution().await?;
 
     let graph = self.main_module_graph_container.graph();
 
@@ -628,32 +707,14 @@ impl DepManager {
     Ok(())
   }
 
-  pub fn resolved_version(
+  async fn load_latest_versions(
     &self,
-    dep_id: DepId,
-  ) -> Result<Option<&PackageNv>, AnyError> {
-    if self.resolved_versions.len() < self.deps.len() {
-      return Err(deno_core::anyhow::anyhow!(
-        "Versions haven't been resolved yet"
-      ));
-    }
-
-    Ok(self.resolved_versions[dep_id.0].as_ref())
-  }
-
-  pub fn resolved_versions(&self) -> &[Option<PackageNv>] {
-    &self.resolved_versions
-  }
-
-  pub async fn fetch_latest_versions(
-    &mut self,
-    semver_compatible: bool,
-  ) -> Result<(), AnyError> {
+  ) -> Result<Vec<PackageLatestVersion>, AnyError> {
     let latest_tag_req = deno_semver::VersionReq::from_raw_text_and_inner(
       "latest".into(),
       deno_semver::RangeSetOrTag::Tag("latest".into()),
     );
-    let mut latest = Vec::with_capacity(self.deps.len());
+    let mut latest_versions = Vec::with_capacity(self.deps.len());
 
     let sema = Semaphore::new(32);
     let mut futs = FuturesOrdered::new();
@@ -662,60 +723,118 @@ impl DepManager {
       match dep.kind {
         DepKind::Npm => futs.push_back(
           async {
-            let req = if semver_compatible {
-              Cow::Borrowed(&dep.req)
-            } else {
-              Cow::Owned(PackageReq {
-                name: dep.req.name.clone(),
-                version_req: latest_tag_req.clone(),
-              })
+            let semver_req = &dep.req;
+            let latest_req = PackageReq {
+              name: dep.req.name.clone(),
+              version_req: latest_tag_req.clone(),
             };
             let _permit = sema.acquire().await;
-            self.npm_fetch_resolver.req_to_nv(&req).await
+            let semver_compatible =
+              self.npm_fetch_resolver.req_to_nv(&semver_req).await;
+            let latest = self.npm_fetch_resolver.req_to_nv(&latest_req).await;
+            PackageLatestVersion {
+              latest,
+              semver_compatible,
+            }
           }
           .boxed_local(),
         ),
         DepKind::Jsr => futs.push_back(
           async {
-            let req = if semver_compatible {
-              Cow::Borrowed(&dep.req)
-            } else {
-              Cow::Owned(PackageReq {
-                name: dep.req.name.clone(),
-                version_req: deno_semver::WILDCARD_VERSION_REQ.clone(),
-              })
+            let semver_req = &dep.req;
+            let latest_req = PackageReq {
+              name: dep.req.name.clone(),
+              version_req: deno_semver::WILDCARD_VERSION_REQ.clone(),
             };
             let _permit = sema.acquire().await;
-            self.jsr_fetch_resolver.req_to_nv(&req).await
+            let semver_compatible =
+              self.jsr_fetch_resolver.req_to_nv(&semver_req).await;
+            let latest = self.jsr_fetch_resolver.req_to_nv(&latest_req).await;
+            PackageLatestVersion {
+              latest,
+              semver_compatible,
+            }
           }
           .boxed_local(),
         ),
       }
     }
     while let Some(nv) = futs.next().await {
-      latest.push(nv);
+      latest_versions.push(nv);
     }
-    self.latest_versions = latest;
+
+    Ok(latest_versions)
+  }
+
+  pub async fn resolve_versions(&mut self) -> Result<(), AnyError> {
+    let (_, latest_versions) = try_join(
+      self.run_dependency_resolution(),
+      self.load_latest_versions(),
+    )
+    .await?;
+
+    self.latest_versions = latest_versions;
+
+    self.resolve_current_versions().await?;
 
     Ok(())
   }
 
-  pub fn latest_versions(&self) -> &[Option<PackageNv>] {
-    &self.latest_versions
-  }
+  // pub fn resolved_version(
+  //   &self,
+  //   dep_id: DepId,
+  // ) -> Result<Option<&PackageNv>, AnyError> {
+  //   if self.resolved_versions.len() < self.deps.len() {
+  //     return Err(deno_core::anyhow::anyhow!(
+  //       "Versions haven't been resolved yet"
+  //     ));
+  //   }
 
-  pub fn deps_with_latest_versions(
+  //   Ok(self.resolved_versions[dep_id.0].as_ref())
+  // }
+
+  // pub fn resolved_versions(&self) -> DepData<'_, Option<PackageNv>> {
+  //   DepData {
+  //     inner: &self.resolved_versions,
+  //   }
+  // }
+
+  // pub fn latest_versions(&self) -> DepData<'_, PackageLatestVersion> {
+  //   DepData {
+  //     inner: &self.latest_versions,
+  //   }
+  // }
+
+  // pub fn deps_with_latest_versions(
+  //   &self,
+  // ) -> impl IntoIterator<Item = (DepId, PackageLatestVersion)> + '_ {
+  //   self
+  //     .latest_versions
+  //     .iter()
+  //     .enumerate()
+  //     .map(|(i, latest)| (DepId(i), latest.clone()))
+  // }
+
+  pub fn deps_with_resolved_latest_versions(
     &self,
-  ) -> impl IntoIterator<Item = (DepId, Option<PackageNv>)> + '_ {
+  ) -> impl IntoIterator<Item = (DepId, Option<PackageNv>, PackageLatestVersion)> + '_
+  {
     self
-      .latest_versions
+      .resolved_versions
       .iter()
+      .zip(self.latest_versions.iter())
       .enumerate()
-      .map(|(i, latest)| (DepId(i), latest.clone()))
+      .map(|(i, (resolved, latest))| {
+        (DepId(i), resolved.clone(), latest.clone())
+      })
   }
 
-  pub fn deps(&self) -> &[Dep] {
-    &self.deps
+  // pub fn deps(&self) -> DepData<'_, Dep> {
+  //   DepData { inner: &self.deps }
+  // }
+
+  pub fn get_dep(&self, id: DepId) -> &Dep {
+    &self.deps[id.0]
   }
 
   pub fn update_dep(&mut self, dep_id: DepId, new_version_req: VersionReq) {
@@ -726,10 +845,11 @@ impl DepManager {
 
   pub async fn commit_changes(&mut self) -> Result<(), AnyError> {
     let changes = std::mem::take(&mut self.pending_changes);
-    // let mut config_updaters = HashMap::new();
+    let mut config_updaters = HashMap::new();
     for change in changes {
       match change {
         Change::Update(dep_id, version_req) => {
+          // TODO: move most of this to ConfigUpdater
           let dep = &self.deps[dep_id.0];
           match &dep.location {
             DepLocation::DenoJson(arc, key_path, import_map_kind) => {
@@ -737,11 +857,9 @@ impl DepManager {
                 // not supported
                 continue;
               }
-              let mut updater = ConfigUpdater::new(
-                super::ConfigKind::DenoJson,
-                // TODO: unwrap is sus
-                arc.specifier.to_file_path().unwrap(),
-              )?;
+              let updater =
+                get_or_create_updater(&mut config_updaters, &dep.location)?;
+
               let Some(property) = updater.get_property_for_mutation(&key_path)
               else {
                 log::warn!(
@@ -750,13 +868,7 @@ impl DepManager {
                 );
                 continue;
               };
-              let value = property.value().unwrap();
-              let Some(string) = value.as_string_lit() else {
-                log::warn!("malformed entry");
-                continue;
-              };
-              let Ok(string_value) = string.decoded_value() else {
-                log::warn!("malformed string: {string:?}");
+              let Some(string_value) = cst_string_literal(&property) else {
                 continue;
               };
               let mut req_reference = match dep.kind {
@@ -768,18 +880,19 @@ impl DepManager {
                   .into_inner(),
               };
               req_reference.req.version_req = version_req;
-              let new_value =
+              let mut new_value =
                 format!("{}:{}", dep.kind.scheme(), req_reference);
+              if string_value.ends_with('/') && !new_value.ends_with('/') {
+                // the display impl for PackageReqReference maps `/` to the root
+                // subpath, but for the import map the trailing `/` is significant
+                new_value.push('/');
+              }
               property
                 .set_value(jsonc_parser::cst::CstInputValue::String(new_value));
-              updater.commit()?;
             }
             DepLocation::PackageJson(arc, key_path) => {
-              eprintln!("here: {dep:?}");
-              let mut updater = ConfigUpdater::new(
-                super::ConfigKind::PackageJson,
-                arc.path.clone(),
-              )?;
+              let updater =
+                get_or_create_updater(&mut config_updaters, &dep.location)?;
               let Some(property) = updater.get_property_for_mutation(&key_path)
               else {
                 log::warn!(
@@ -788,13 +901,7 @@ impl DepManager {
                 );
                 continue;
               };
-              let value = property.value().unwrap();
-              let Some(string) = value.as_string_lit() else {
-                log::warn!("malformed entry");
-                continue;
-              };
-              let Ok(string_value) = string.decoded_value() else {
-                log::warn!("malformed string: {string:?}");
+              let Some(string_value) = cst_string_literal(&property) else {
                 continue;
               };
               let new_value = if string_value.starts_with("npm:") {
@@ -815,13 +922,63 @@ impl DepManager {
               };
               property
                 .set_value(jsonc_parser::cst::CstInputValue::String(new_value));
-              updater.commit()?;
             }
           }
         }
       }
     }
 
+    for (_, updater) in config_updaters {
+      updater.commit()?;
+    }
+
     Ok(())
   }
+}
+
+fn get_or_create_updater<'a>(
+  config_updaters: &'a mut HashMap<std::path::PathBuf, ConfigUpdater>,
+  location: &DepLocation,
+) -> Result<&'a mut ConfigUpdater, AnyError> {
+  match config_updaters.entry(location.file_path().into_owned()) {
+    std::collections::hash_map::Entry::Occupied(occupied_entry) => {
+      Ok(occupied_entry.into_mut())
+    }
+    std::collections::hash_map::Entry::Vacant(vacant_entry) => {
+      let updater = ConfigUpdater::new(
+        location.config_kind(),
+        location.file_path().into_owned(),
+      )?;
+      Ok(vacant_entry.insert(updater))
+    }
+  }
+}
+
+fn cst_string_literal(
+  property: &jsonc_parser::cst::CstObjectProp,
+) -> Option<String> {
+  // TODO(nathanwhit): ensure this unwrap is safe
+  let value = property.value().unwrap();
+  let Some(string) = value.as_string_lit() else {
+    log::warn!("malformed entry");
+    return None;
+  };
+  let Ok(string_value) = string.decoded_value() else {
+    log::warn!("malformed string: {string:?}");
+    return None;
+  };
+  Some(string_value)
+}
+
+fn parse_req_reference(
+  input: &str,
+  kind: DepKind,
+) -> Result<
+  PackageReqReference,
+  deno_semver::package::PackageReqReferenceParseError,
+> {
+  Ok(match kind {
+    DepKind::Npm => NpmPackageReqReference::from_str(input)?.into_inner(),
+    DepKind::Jsr => JsrPackageReqReference::from_str(input)?.into_inner(),
+  })
 }

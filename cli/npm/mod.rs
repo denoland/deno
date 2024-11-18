@@ -160,6 +160,7 @@ impl NpmFetchResolver {
         let version = package_info.dist_tags.get(dist_tag)?.clone();
         return Some(PackageNv { name, version });
       }
+      let start = std::time::Instant::now();
       // Find the first matching version of the package.
       let mut versions = package_info.versions.keys().collect::<Vec<_>>();
       versions.sort();
@@ -168,6 +169,8 @@ impl NpmFetchResolver {
         .rev()
         .find(|v| req.version_req.tag().is_none() && req.version_req.matches(v))
         .cloned()?;
+      let elapsed = start.elapsed();
+      eprintln!("finding version for {name} took {}ms", elapsed.as_millis());
       Some(PackageNv { name, version })
     };
     let nv = maybe_get_nv().await;
@@ -187,18 +190,43 @@ impl NpmFetchResolver {
       let maybe_auth_header =
         maybe_auth_header_for_npm_registry(registry_config).ok()?;
       // spawn due to the lsp's `Send` requirement
-      let file = deno_core::unsync::spawn(async move {
-        file_fetcher
-          .fetch_bypass_permissions_with_maybe_auth(
-            &info_url,
-            maybe_auth_header,
-          )
-          .await
-          .ok()
+      let start = std::time::Instant::now();
+      debug_assert!(
+        tokio::runtime::Handle::current().runtime_flavor()
+          == tokio::runtime::RuntimeFlavor::CurrentThread
+      );
+      let file = unsafe {
+        deno_core::unsync::MaskFutureAsSend::new(async move {
+          file_fetcher
+            .fetch_bypass_permissions_with_maybe_auth(
+              &info_url,
+              maybe_auth_header,
+            )
+            .await
+            .ok()
+        })
+      }
+      .await
+      .into_inner()?;
+      let elapsed = start.elapsed();
+      eprintln!(
+        "fetching package info for {name} took {}ms",
+        elapsed.as_millis()
+      );
+      let name2 = name.to_string();
+      deno_core::unsync::spawn_blocking(move || {
+        let start = std::time::Instant::now();
+        let res = serde_json::from_slice::<NpmPackageInfo>(&file.source).ok();
+        let elapsed = start.elapsed();
+        eprintln!(
+          "parsing package info for {name2} took {}ms",
+          elapsed.as_millis()
+        );
+        res
       })
       .await
-      .ok()??;
-      serde_json::from_slice::<NpmPackageInfo>(&file.source).ok()
+      .ok()
+      .flatten()
     };
     let info = fetch_package_info().await.map(Arc::new);
     self.info_by_name.insert(name.to_string(), info.clone());

@@ -500,7 +500,7 @@ impl ManagedCliNpmResolver {
     self.resolve_pkg_folder_from_pkg_id(&pkg_id)
   }
 
-  fn resolve_pkg_id_from_pkg_req(
+  pub fn resolve_pkg_id_from_pkg_req(
     &self,
     req: &PackageReq,
   ) -> Result<NpmPackageId, PackageReqNotFoundError> {

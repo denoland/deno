@@ -34,11 +34,9 @@ use crate::npm::NpmFetchResolver;
 
 mod cache_deps;
 pub(crate) mod deps;
-mod outdated;
 mod update;
 
 pub use cache_deps::cache_top_level_deps;
-pub use outdated::outdated;
 pub use update::update;
 
 #[derive(Debug, Copy, Clone, Hash)]

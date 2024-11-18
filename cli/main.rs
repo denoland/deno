@@ -188,11 +188,6 @@ async fn run_subcommand(flags: Arc<Flags>) -> Result<i32, AnyError> {
         tools::lint::lint(flags, lint_flags).await
       }
     }),
-    DenoSubcommand::Outdated(outdated_flags) => {
-      spawn_subcommand(async move {
-        tools::registry::outdated(flags, outdated_flags).await
-      })
-    }
     DenoSubcommand::Update(update_flags) => {
       spawn_subcommand(async move {
         tools::registry::update(flags, update_flags).await
