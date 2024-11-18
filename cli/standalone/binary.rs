@@ -64,6 +64,7 @@ use crate::args::NpmInstallDepsProvider;
 use crate::args::PermissionFlags;
 use crate::args::UnstableConfig;
 use crate::cache::DenoDir;
+use crate::cache::FastInsecureHasher;
 use crate::emit::Emitter;
 use crate::file_fetcher::FileFetcher;
 use crate::http_util::HttpClientProvider;
@@ -174,6 +175,7 @@ pub struct SerializedWorkspaceResolver {
 pub struct Metadata {
   pub argv: Vec<String>,
   pub seed: Option<u64>,
+  pub code_cache_key: Option<u64>,
   pub permissions: PermissionFlags,
   pub location: Option<Url>,
   pub v8_flags: Vec<String>,
@@ -604,9 +606,20 @@ impl<'a> DenoCompileBinaryWriter<'a> {
       VfsBuilder::new(root_path.clone())?
     };
     let mut remote_modules_store = RemoteModulesStoreBuilder::default();
+    let mut code_cache_key_hasher = if cli_options.code_cache_enabled() {
+      Some(FastInsecureHasher::new_deno_versioned())
+    } else {
+      None
+    };
     for module in graph.modules() {
       if module.specifier().scheme() == "data" {
         continue; // don't store data urls as an entry as they're in the code
+      }
+      if let Some(hasher) = &mut code_cache_key_hasher {
+        if let Some(source) = module.source() {
+          hasher.write(module.specifier().as_str().as_bytes());
+          hasher.write(source.as_bytes());
+        }
       }
       let (maybe_source, media_type) = match module {
         deno_graph::Module::Js(m) => {
@@ -659,9 +672,15 @@ impl<'a> DenoCompileBinaryWriter<'a> {
     remote_modules_store.add_redirects(&graph.redirects);
 
     let env_vars_from_env_file = match cli_options.env_file_name() {
-      Some(env_filename) => {
-        log::info!("{} Environment variables from the file \"{}\" were embedded in the generated executable file", crate::colors::yellow("Warning"), env_filename);
-        get_file_env_vars(env_filename.to_string())?
+      Some(env_filenames) => {
+        let mut aggregated_env_vars = IndexMap::new();
+        for env_filename in env_filenames.iter().rev() {
+          log::info!("{} Environment variables from the file \"{}\" were embedded in the generated executable file", crate::colors::yellow("Warning"), env_filename);
+
+          let env_vars = get_file_env_vars(env_filename.to_string())?;
+          aggregated_env_vars.extend(env_vars);
+        }
+        aggregated_env_vars
       }
       None => Default::default(),
     };
@@ -669,6 +688,7 @@ impl<'a> DenoCompileBinaryWriter<'a> {
     let metadata = Metadata {
       argv: compile_flags.args.clone(),
       seed: cli_options.seed(),
+      code_cache_key: code_cache_key_hasher.map(|h| h.finish()),
       location: cli_options.location_flag().clone(),
       permissions: cli_options.permission_flags().clone(),
       v8_flags: cli_options.v8_flags().clone(),
