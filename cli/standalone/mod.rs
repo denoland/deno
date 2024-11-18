@@ -397,18 +397,6 @@ impl ModuleLoader for EmbeddedModuleLoader {
         let media_type = module.media_type;
         let (module_specifier, module_type, module_source) =
           module.into_parts();
-        let code_cache_entry = self
-          .shared
-          .get_code_cache(module_specifier, module_source.as_bytes());
-        deno_core::ModuleLoadResponse::Sync(Ok(
-          deno_core::ModuleSource::new_with_redirect(
-            module_type,
-            module_source,
-            original_specifier,
-            module_specifier,
-            code_cache_entry,
-          ),
-        ))
         let is_maybe_cjs = match self
           .shared
           .cjs_tracker
@@ -450,25 +438,30 @@ impl ModuleLoader for EmbeddedModuleLoader {
                   ModuleSourceCode::String(FastString::from_static(source))
                 }
               };
+              let code_cache_entry = shared
+                .get_code_cache(&module_specifier, module_source.as_bytes());
               Ok(deno_core::ModuleSource::new_with_redirect(
                 module_type,
                 module_source,
                 &original_specifier,
                 &module_specifier,
-                None,
+                code_cache_entry,
               ))
             }
             .boxed_local(),
           )
         } else {
           let module_source = module_source.into_for_v8();
+          let code_cache_entry = self
+            .shared
+            .get_code_cache(&module_specifier, module_source.as_bytes());
           deno_core::ModuleLoadResponse::Sync(Ok(
             deno_core::ModuleSource::new_with_redirect(
               module_type,
               module_source,
               original_specifier,
               module_specifier,
-              None,
+              code_cache_entry,
             ),
           ))
         }
