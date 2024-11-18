@@ -37,8 +37,8 @@ use std::sync::Arc;
 
 const JSON_SCHEMA_VERSION: u8 = 1;
 
-const PRISM_CSS: &str = include_str!("./prism.css");
-const PRISM_JS: &str = include_str!("./prism.js");
+const PRISM_CSS: &str = include_str!("./doc/prism.css");
+const PRISM_JS: &str = include_str!("./doc/prism.js");
 
 async fn generate_doc_nodes_for_builtin_types(
   doc_flags: DocFlags,
