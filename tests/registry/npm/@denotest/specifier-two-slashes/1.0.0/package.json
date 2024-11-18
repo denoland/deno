@@ -1,0 +1,5 @@
+{
+  "name": "@denotest/specifier-two-slashes",
+  "type": "module",
+  "main": "index.js"
+}
