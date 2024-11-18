@@ -11680,7 +11680,7 @@ fn lsp_format_with_config() {
       },
       "options": {
         "tabSize": 2,
-        "insertSpaces": false
+        "insertSpaces": true,
       }
     }),
   );
