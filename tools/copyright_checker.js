@@ -31,6 +31,7 @@ export async function checkCopyright() {
     ":!:.github/mtime_cache/action.js",
     ":!:cli/bench/testdata/**",
     ":!:cli/tools/bench/mitata.rs",
+    ":!:cli/tools/doc/",
     ":!:cli/tools/init/templates/**",
     ":!:cli/tsc/*typescript.js",
     ":!:cli/tsc/compiler.d.ts",

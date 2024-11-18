@@ -31,6 +31,7 @@
     "cli/tsc/dts/lib.scripthost.d.ts",
     "cli/tsc/dts/lib.webworker*.d.ts",
     "cli/tsc/dts/typescript.d.ts",
+    "cli/tools/doc",
     "ext/websocket/autobahn/reports",
     "gh-pages",
     "target",
