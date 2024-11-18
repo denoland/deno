@@ -406,8 +406,6 @@ fn main() {
       // webgpu
       "d3dcompiler_47",
       "OPENGL32",
-      // process information
-      "PSAPI",
       // network related functions
       "iphlpapi",
     ];
