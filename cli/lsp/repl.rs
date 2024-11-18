@@ -263,7 +263,7 @@ impl ReplLanguageServer {
   }
 
   fn get_document_uri(&self) -> Uri {
-    uri_parse_unencoded(self.cwd_uri.join("$deno$repl.ts").unwrap().as_str())
+    uri_parse_unencoded(self.cwd_uri.join("$deno$repl.mts").unwrap().as_str())
       .unwrap()
   }
 }

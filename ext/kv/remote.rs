@@ -197,6 +197,7 @@ impl<P: RemoteDbHandlerPermissions + 'static> DatabaseHandler
         root_cert_store: options.root_cert_store()?,
         ca_certs: vec![],
         proxy: options.proxy.clone(),
+        dns_resolver: Default::default(),
         unsafely_ignore_certificate_errors: options
           .unsafely_ignore_certificate_errors
           .clone(),

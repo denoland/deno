@@ -63,7 +63,7 @@ pub use rules::LintRuleProvider;
 
 const JSON_SCHEMA_VERSION: u8 = 1;
 
-static STDIN_FILE_NAME: &str = "$deno$stdin.ts";
+static STDIN_FILE_NAME: &str = "$deno$stdin.mts";
 
 pub async fn lint(
   flags: Arc<Flags>,
@@ -80,6 +80,7 @@ pub async fn lint(
       file_watcher::PrintConfig::new("Lint", !watch_flags.no_clear_screen),
       move |flags, watcher_communicator, changed_paths| {
         let lint_flags = lint_flags.clone();
+        watcher_communicator.show_path_changed(changed_paths.clone());
         Ok(async move {
           let factory = CliFactory::from_flags(flags);
           let cli_options = factory.cli_options()?;
@@ -191,7 +192,7 @@ pub async fn lint(
       linter.finish()
     };
     if !success {
-      std::process::exit(1);
+      deno_runtime::exit(1);
     }
   }
 
