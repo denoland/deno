@@ -15,6 +15,8 @@ use deno_core::anyhow::anyhow;
 use deno_core::anyhow::bail;
 use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
+use deno_core::futures::stream::futures_unordered;
+use deno_core::futures::StreamExt;
 use deno_core::url::Url;
 use deno_path_util::normalize_path;
 use deno_runtime::deno_node::NodeResolver;
@@ -132,14 +134,76 @@ impl<'a> TaskRunner<'a> {
   ) -> Result<i32, deno_core::anyhow::Error> {
     // TODO(bartlomieju): we might want to limit concurrency here - eg. `wireit` runs 2 tasks in parallel
     // unless and env var is specified.
-    // TODO(marvinhagemeister): Run in sequence for now as it's not safe
-    // to run all tasks in parallel. We can only run tasks in parallel where
-    // all dependencies have been executed prior to that.
-    for task_name in &task_names {
-      let exit_code = self.run_task(task_name).await?;
+    // TODO(marvinhagemeister): The fastest way to run this would be a
+    // work stealing queue that checks after each task completion which
+    // next task can be run. My rusts skills don't suffice to do that though.
+    // So for now this sorta does a breadth first approach.
+
+    let mut completed: Vec<String> = vec![];
+    let mut running: Vec<String> = vec![];
+
+    while completed.len() < task_names.len() {
+      let exit_code = self
+        .run_tasks_inner(&task_names, &mut completed, &mut running)
+        .await?;
+
       if exit_code > 0 {
         return Ok(exit_code);
       }
+    }
+
+    Ok(0)
+  }
+
+  async fn run_tasks_inner(
+    &self,
+    task_names: &Vec<String>,
+    completed: &mut Vec<String>,
+    running: &mut Vec<String>,
+  ) -> Result<i32, deno_core::anyhow::Error> {
+    let mut queue = futures_unordered::FuturesUnordered::new();
+
+    // Find all tasks that:
+    // 1. haven't been run already
+    // 2. that aren't being run at the moment
+    // 3. have no dependencies or all dependencies are completed
+    for name in task_names {
+      if !completed.contains(&name) && !running.contains(&name) {
+        let should_run = if let Ok((_, def)) = self.get_task(&name) {
+          match def {
+            TaskOrScript::Task(_, def) => {
+              def.dependencies.iter().all(|dep| completed.contains(&dep))
+            }
+            TaskOrScript::Script(_, _) => true,
+          }
+        } else {
+          false
+        };
+
+        if should_run {
+          running.push(name.clone());
+          let name = name.clone();
+          queue.push(async move {
+            self
+              .run_task(&name)
+              .await
+              .map(|exit_code| (exit_code, name.clone()))
+          });
+        }
+      }
+    }
+
+    while let Some(result) = queue.next().await {
+      let (exit_code, name) = result?;
+      if exit_code > 0 {
+        return Ok(exit_code);
+      }
+
+      if let Some(idx) = running.iter().position(|item| item == &name) {
+        running.remove(idx);
+      }
+
+      completed.push(name.clone());
     }
 
     Ok(0)
