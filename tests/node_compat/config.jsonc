@@ -13,10 +13,12 @@
       "x.txt"
     ],
     "internet": [
-      "test-dns-any.js",
-      "test-dns-ipv4.js",
-      "test-dns-ipv6.js",
-      "test-dns.js"
+      // TODO(bartlomieju): temporarily disabled as these tests were hitting nodejs.org
+      // server. We should have a setup that hits a local server instead.
+      // "test-dns-any.js",
+      // "test-dns-ipv4.js",
+      // "test-dns-ipv6.js",
+      // "test-dns.js"
     ],
     "parallel": [
       "test-assert.js",
