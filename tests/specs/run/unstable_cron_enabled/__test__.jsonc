@@ -1,0 +1,4 @@
+{
+  "args": "run --quiet --reload --allow-read --unstable-cron unstable_cron.js",
+  "output": "unstable_cron.enabled.out"
+}

@@ -1,0 +1,4 @@
+{
+  "args": "check main.ts",
+  "output": "main.out"
+}

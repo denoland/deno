@@ -120,7 +120,7 @@ fn resolve_content_maybe_unfurling(
         | MediaType::Unknown
         | MediaType::Json
         | MediaType::Wasm
-        | MediaType::TsBuildInfo => {
+        | MediaType::Css => {
           // not unfurlable data
           return Ok(data);
         }

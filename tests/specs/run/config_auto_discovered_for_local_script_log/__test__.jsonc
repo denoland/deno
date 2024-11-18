@@ -1,0 +1,4 @@
+{
+  "args": "run -L debug frontend_work.ts",
+  "output": "auto_discovery_log.out"
+}

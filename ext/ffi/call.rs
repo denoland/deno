@@ -32,7 +32,9 @@ pub enum CallError {
   #[error("Invalid FFI symbol name: '{0}'")]
   InvalidSymbol(String),
   #[error(transparent)]
-  Permission(deno_core::error::AnyError),
+  Permission(#[from] deno_permissions::PermissionCheckError),
+  #[error(transparent)]
+  Resource(deno_core::error::AnyError),
   #[error(transparent)]
   Callback(#[from] super::CallbackError),
 }
@@ -301,9 +303,7 @@ where
   {
     let mut state = state.borrow_mut();
     let permissions = state.borrow_mut::<FP>();
-    permissions
-      .check_partial_no_path()
-      .map_err(CallError::Permission)?;
+    permissions.check_partial_no_path()?;
   };
 
   let symbol = PtrSymbol::new(pointer, &def)?;
@@ -347,7 +347,7 @@ pub fn op_ffi_call_nonblocking(
     let resource = state
       .resource_table
       .get::<DynamicLibraryResource>(rid)
-      .map_err(CallError::Permission)?;
+      .map_err(CallError::Resource)?;
     let symbols = &resource.symbols;
     *symbols
       .get(&symbol)
@@ -401,9 +401,7 @@ where
   {
     let mut state = state.borrow_mut();
     let permissions = state.borrow_mut::<FP>();
-    permissions
-      .check_partial_no_path()
-      .map_err(CallError::Permission)?;
+    permissions.check_partial_no_path()?;
   };
 
   let symbol = PtrSymbol::new(pointer, &def)?;

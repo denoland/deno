@@ -114,7 +114,7 @@ pub enum FsEventsError {
   #[error(transparent)]
   Resource(deno_core::error::AnyError),
   #[error(transparent)]
-  Permission(deno_core::error::AnyError),
+  Permission(#[from] deno_permissions::PermissionCheckError),
   #[error(transparent)]
   Notify(#[from] NotifyError),
   #[error(transparent)]
@@ -181,8 +181,7 @@ fn op_fs_events_open(
   for path in &paths {
     let path = state
       .borrow_mut::<PermissionsContainer>()
-      .check_read(path, "Deno.watchFs()")
-      .map_err(FsEventsError::Permission)?;
+      .check_read(path, "Deno.watchFs()")?;
 
     let watcher = state.borrow_mut::<WatcherState>();
     watcher.watcher.watch(&path, recursive_mode)?;

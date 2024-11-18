@@ -43,9 +43,6 @@
       // TODO(littledivy): windows ipc streams not yet implemented
       "test-child-process-fork-ref.js",
       "test-child-process-fork-ref2.js",
-      // TODO(bartlomieju): this test is very flaky on CI
-      // https://github.com/denoland/deno/issues/25855
-      // "test-child-process-ipc-next-tick.js",
       "test-child-process-ipc.js",
       "test-child-process-spawnsync-env.js",
       "test-child-process-stdio-inherit.js",
@@ -80,6 +77,7 @@
       "test-fs-rmdir-recursive.js",
       "test-fs-write-file.js",
       "test-http-url.parse-https.request.js",
+      "test-net-autoselectfamily.js",
       "test-net-better-error-messages-path.js",
       "test-net-connect-buffer.js",
       "test-net-connect-buffer2.js",
@@ -90,8 +88,6 @@
       "test-net-server-try-ports.js",
       "test-net-socket-timeout.js",
       "test-net-write-arguments.js",
-      // TODO(nathanwhit): Disable os.userInfo is slightly incorrect
-      // "test-os.js",
       "test-path-resolve.js",
       "test-querystring.js",
       "test-readline-interface.js",
@@ -240,6 +236,7 @@
       "test-child-process-execfilesync-maxbuf.js",
       "test-child-process-execsync-maxbuf.js",
       "test-child-process-flush-stdio.js",
+      "test-child-process-ipc-next-tick.js",
       "test-child-process-kill.js",
       "test-child-process-set-blocking.js",
       "test-child-process-spawn-args.js",
@@ -408,6 +405,7 @@
       "test-http-url.parse-only-support-http-https-protocol.js",
       "test-icu-transcode.js",
       "test-net-access-byteswritten.js",
+      "test-net-autoselectfamily.js",
       "test-net-better-error-messages-listen-path.js",
       "test-net-better-error-messages-path.js",
       "test-net-better-error-messages-port-hostname.js",
@@ -450,6 +448,7 @@
       "test-next-tick-when-exiting.js",
       "test-next-tick.js",
       "test-nodeeventtarget.js",
+      "test-os.js",
       "test-outgoing-message-destroy.js",
       "test-outgoing-message-pipe.js",
       "test-parse-args.mjs",

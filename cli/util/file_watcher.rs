@@ -30,7 +30,7 @@ use tokio::sync::mpsc;
 use tokio::sync::mpsc::UnboundedReceiver;
 use tokio::time::sleep;
 
-const CLEAR_SCREEN: &str = "\x1B[2J\x1B[1;1H";
+const CLEAR_SCREEN: &str = "\x1B[H\x1B[2J\x1B[3J";
 const DEBOUNCE_INTERVAL: Duration = Duration::from_millis(200);
 
 struct DebouncedReceiver {
@@ -73,7 +73,6 @@ impl DebouncedReceiver {
   }
 }
 
-#[allow(clippy::print_stderr)]
 async fn error_handler<F>(watch_future: F) -> bool
 where
   F: Future<Output = Result<(), AnyError>>,
@@ -84,7 +83,7 @@ where
       Some(e) => format_js_error(e),
       None => format!("{err:?}"),
     };
-    eprintln!(
+    log::error!(
       "{}: {}",
       colors::red_bold("error"),
       error_string.trim_start_matches("error: ")
@@ -128,19 +127,12 @@ impl PrintConfig {
   }
 }
 
-fn create_print_after_restart_fn(
-  banner: &'static str,
-  clear_screen: bool,
-) -> impl Fn() {
+fn create_print_after_restart_fn(clear_screen: bool) -> impl Fn() {
   move || {
     #[allow(clippy::print_stderr)]
     if clear_screen && std::io::stderr().is_terminal() {
       eprint!("{}", CLEAR_SCREEN);
     }
-    info!(
-      "{} File change detected! Restarting!",
-      colors::intense_blue(banner),
-    );
   }
 }
 
@@ -188,7 +180,15 @@ impl WatcherCommunicator {
   }
 
   pub fn print(&self, msg: String) {
-    log::info!("{} {}", self.banner, msg);
+    log::info!("{} {}", self.banner, colors::gray(msg));
+  }
+
+  pub fn show_path_changed(&self, changed_paths: Option<Vec<PathBuf>>) {
+    if let Some(paths) = changed_paths {
+      self.print(
+        format!("Restarting! File change detected: {:?}", paths[0]).to_string(),
+      )
+    }
   }
 }
 
@@ -264,7 +264,7 @@ where
     clear_screen,
   } = print_config;
 
-  let print_after_restart = create_print_after_restart_fn(banner, clear_screen);
+  let print_after_restart = create_print_after_restart_fn(clear_screen);
   let watcher_communicator = Arc::new(WatcherCommunicator {
     paths_to_watch_tx: paths_to_watch_tx.clone(),
     changed_paths_rx: changed_paths_rx.resubscribe(),

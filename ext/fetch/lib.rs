@@ -1,5 +1,6 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
+pub mod dns;
 mod fs_fetch_handler;
 mod proxy;
 #[cfg(test)]
@@ -39,6 +40,7 @@ use deno_core::OpState;
 use deno_core::RcRef;
 use deno_core::Resource;
 use deno_core::ResourceId;
+use deno_permissions::PermissionCheckError;
 use deno_tls::rustls::RootCertStore;
 use deno_tls::Proxy;
 use deno_tls::RootCertStoreProvider;
@@ -90,6 +92,7 @@ pub struct Options {
   pub unsafely_ignore_certificate_errors: Option<Vec<String>>,
   pub client_cert_chain_and_key: TlsKeys,
   pub file_fetch_handler: Rc<dyn FetchHandler>,
+  pub resolver: dns::Resolver,
 }
 
 impl Options {
@@ -113,6 +116,7 @@ impl Default for Options {
       unsafely_ignore_certificate_errors: None,
       client_cert_chain_and_key: TlsKeys::Null,
       file_fetch_handler: Rc::new(DefaultFileFetchHandler),
+      resolver: dns::Resolver::default(),
     }
   }
 }
@@ -149,7 +153,7 @@ pub enum FetchError {
   #[error(transparent)]
   Resource(deno_core::error::AnyError),
   #[error(transparent)]
-  Permission(deno_core::error::AnyError),
+  Permission(#[from] PermissionCheckError),
   #[error("NetworkError when attempting to fetch resource")]
   NetworkError,
   #[error("Fetching files only supports the GET method: received {0}")]
@@ -254,6 +258,7 @@ pub fn create_client_from_options(
         .map_err(HttpClientCreateError::RootCertStore)?,
       ca_certs: vec![],
       proxy: options.proxy.clone(),
+      dns_resolver: options.resolver.clone(),
       unsafely_ignore_certificate_errors: options
         .unsafely_ignore_certificate_errors
         .clone(),
@@ -346,13 +351,13 @@ pub trait FetchPermissions {
     &mut self,
     url: &Url,
     api_name: &str,
-  ) -> Result<(), deno_core::error::AnyError>;
+  ) -> Result<(), PermissionCheckError>;
   #[must_use = "the resolved return value to mitigate time-of-check to time-of-use issues"]
   fn check_read<'a>(
     &mut self,
     p: &'a Path,
     api_name: &str,
-  ) -> Result<Cow<'a, Path>, deno_core::error::AnyError>;
+  ) -> Result<Cow<'a, Path>, PermissionCheckError>;
 }
 
 impl FetchPermissions for deno_permissions::PermissionsContainer {
@@ -361,7 +366,7 @@ impl FetchPermissions for deno_permissions::PermissionsContainer {
     &mut self,
     url: &Url,
     api_name: &str,
-  ) -> Result<(), deno_core::error::AnyError> {
+  ) -> Result<(), PermissionCheckError> {
     deno_permissions::PermissionsContainer::check_net_url(self, url, api_name)
   }
 
@@ -370,7 +375,7 @@ impl FetchPermissions for deno_permissions::PermissionsContainer {
     &mut self,
     path: &'a Path,
     api_name: &str,
-  ) -> Result<Cow<'a, Path>, deno_core::error::AnyError> {
+  ) -> Result<Cow<'a, Path>, PermissionCheckError> {
     deno_permissions::PermissionsContainer::check_read_path(
       self,
       path,
@@ -414,9 +419,7 @@ where
     "file" => {
       let path = url.to_file_path().map_err(|_| FetchError::NetworkError)?;
       let permissions = state.borrow_mut::<FP>();
-      let path = permissions
-        .check_read(&path, "fetch()")
-        .map_err(FetchError::Permission)?;
+      let path = permissions.check_read(&path, "fetch()")?;
       let url = match path {
         Cow::Owned(path) => Url::from_file_path(path).unwrap(),
         Cow::Borrowed(_) => url,
@@ -442,9 +445,7 @@ where
     }
     "http" | "https" => {
       let permissions = state.borrow_mut::<FP>();
-      permissions
-        .check_net_url(&url, "fetch()")
-        .map_err(FetchError::Resource)?;
+      permissions.check_net_url(&url, "fetch()")?;
 
       let maybe_authority = extract_authority(&mut url);
       let uri = url
@@ -838,6 +839,8 @@ pub struct CreateHttpClientArgs {
   proxy: Option<Proxy>,
   pool_max_idle_per_host: Option<usize>,
   pool_idle_timeout: Option<serde_json::Value>,
+  #[serde(default)]
+  use_hickory_resolver: bool,
   #[serde(default = "default_true")]
   http1: bool,
   #[serde(default = "default_true")]
@@ -863,9 +866,7 @@ where
   if let Some(proxy) = args.proxy.clone() {
     let permissions = state.borrow_mut::<FP>();
     let url = Url::parse(&proxy.url)?;
-    permissions
-      .check_net_url(&url, "Deno.createHttpClient()")
-      .map_err(FetchError::Permission)?;
+    permissions.check_net_url(&url, "Deno.createHttpClient()")?;
   }
 
   let options = state.borrow::<Options>();
@@ -883,6 +884,13 @@ where
         .map_err(HttpClientCreateError::RootCertStore)?,
       ca_certs,
       proxy: args.proxy,
+      dns_resolver: if args.use_hickory_resolver {
+        dns::Resolver::hickory()
+          .map_err(deno_core::error::AnyError::new)
+          .map_err(FetchError::Resource)?
+      } else {
+        dns::Resolver::default()
+      },
       unsafely_ignore_certificate_errors: options
         .unsafely_ignore_certificate_errors
         .clone(),
@@ -914,6 +922,7 @@ pub struct CreateHttpClientOptions {
   pub root_cert_store: Option<RootCertStore>,
   pub ca_certs: Vec<Vec<u8>>,
   pub proxy: Option<Proxy>,
+  pub dns_resolver: dns::Resolver,
   pub unsafely_ignore_certificate_errors: Option<Vec<String>>,
   pub client_cert_chain_and_key: Option<TlsKey>,
   pub pool_max_idle_per_host: Option<usize>,
@@ -928,6 +937,7 @@ impl Default for CreateHttpClientOptions {
       root_cert_store: None,
       ca_certs: vec![],
       proxy: None,
+      dns_resolver: dns::Resolver::default(),
       unsafely_ignore_certificate_errors: None,
       client_cert_chain_and_key: None,
       pool_max_idle_per_host: None,
@@ -981,7 +991,8 @@ pub fn create_http_client(
   tls_config.alpn_protocols = alpn_protocols;
   let tls_config = Arc::from(tls_config);
 
-  let mut http_connector = HttpConnector::new();
+  let mut http_connector =
+    HttpConnector::new_with_resolver(options.dns_resolver.clone());
   http_connector.enforce_http(false);
 
   let user_agent = user_agent.parse::<HeaderValue>().map_err(|_| {
@@ -1056,7 +1067,7 @@ pub struct Client {
   user_agent: HeaderValue,
 }
 
-type Connector = proxy::ProxyConnector<HttpConnector>;
+type Connector = proxy::ProxyConnector<HttpConnector<dns::Resolver>>;
 
 // clippy is wrong here
 #[allow(clippy::declare_interior_mutable_const)]

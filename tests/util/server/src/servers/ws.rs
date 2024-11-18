@@ -76,6 +76,7 @@ pub async fn run_wss2_server(port: u16) {
       let server: Handshake<_, Bytes> = h2.handshake(tls);
       let mut server = match server.await {
         Ok(server) => server,
+        #[allow(clippy::print_stdout)]
         Err(e) => {
           println!("Failed to handshake h2: {e:?}");
           return;
@@ -87,6 +88,7 @@ pub async fn run_wss2_server(port: u16) {
         };
         let (recv, send) = match conn {
           Ok(conn) => conn,
+          #[allow(clippy::print_stdout)]
           Err(e) => {
             println!("Failed to accept a connection: {e:?}");
             break;
@@ -137,6 +139,7 @@ where
           .map_err(|e| anyhow!("Error upgrading websocket connection: {}", e))
           .unwrap();
 
+        #[allow(clippy::print_stderr)]
         if let Err(e) = handler(ws).await {
           eprintln!("Error in websocket connection: {}", e);
         }
@@ -152,6 +155,7 @@ where
       .serve_connection(io, service)
       .with_upgrades();
 
+    #[allow(clippy::print_stderr)]
     if let Err(e) = conn.await {
       eprintln!("websocket server error: {e:?}");
     }
@@ -162,16 +166,19 @@ async fn handle_wss_stream(
   recv: Request<RecvStream>,
   mut send: SendResponse<Bytes>,
 ) -> Result<(), h2::Error> {
+  #[allow(clippy::print_stderr)]
   if recv.method() != Method::CONNECT {
     eprintln!("wss2: refusing non-CONNECT stream");
     send.send_reset(Reason::REFUSED_STREAM);
     return Ok(());
   }
+  #[allow(clippy::print_stderr)]
   let Some(protocol) = recv.extensions().get::<h2::ext::Protocol>() else {
     eprintln!("wss2: refusing no-:protocol stream");
     send.send_reset(Reason::REFUSED_STREAM);
     return Ok(());
   };
+  #[allow(clippy::print_stderr)]
   if protocol.as_str() != "websocket" && protocol.as_str() != "WebSocket" {
     eprintln!("wss2: refusing non-websocket stream");
     send.send_reset(Reason::REFUSED_STREAM);

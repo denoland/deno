@@ -4,45 +4,40 @@ mod byonm;
 mod common;
 mod managed;
 
+use std::borrow::Cow;
 use std::path::Path;
-use std::path::PathBuf;
 use std::sync::Arc;
 
 use common::maybe_auth_header_for_npm_registry;
 use dashmap::DashMap;
-use deno_ast::ModuleSpecifier;
 use deno_core::error::AnyError;
 use deno_core::serde_json;
 use deno_npm::npm_rc::ResolvedNpmRc;
 use deno_npm::registry::NpmPackageInfo;
+use deno_resolver::npm::ByonmInNpmPackageChecker;
 use deno_resolver::npm::ByonmNpmResolver;
-use deno_resolver::npm::ByonmResolvePkgFolderFromDenoReqError;
-use deno_runtime::deno_node::NodeRequireResolver;
+use deno_resolver::npm::CliNpmReqResolver;
+use deno_resolver::npm::ResolvePkgFolderFromDenoReqError;
+use deno_runtime::deno_node::NodePermissions;
 use deno_runtime::ops::process::NpmProcessStateProvider;
 use deno_semver::package::PackageNv;
 use deno_semver::package::PackageReq;
 use managed::cache::registry_info::get_package_url;
-use node_resolver::NpmResolver;
-use thiserror::Error;
+use managed::create_managed_in_npm_pkg_checker;
+use node_resolver::InNpmPackageChecker;
+use node_resolver::NpmPackageFolderResolver;
 
 use crate::file_fetcher::FileFetcher;
 
 pub use self::byonm::CliByonmNpmResolver;
 pub use self::byonm::CliByonmNpmResolverCreateOptions;
-pub use self::managed::CliNpmResolverManagedCreateOptions;
+pub use self::managed::CliManagedInNpmPkgCheckerCreateOptions;
+pub use self::managed::CliManagedNpmResolverCreateOptions;
 pub use self::managed::CliNpmResolverManagedSnapshotOption;
 pub use self::managed::ManagedCliNpmResolver;
 
-#[derive(Debug, Error)]
-pub enum ResolvePkgFolderFromDenoReqError {
-  #[error(transparent)]
-  Managed(deno_core::error::AnyError),
-  #[error(transparent)]
-  Byonm(#[from] ByonmResolvePkgFolderFromDenoReqError),
-}
-
 pub enum CliNpmResolverCreateOptions {
-  Managed(CliNpmResolverManagedCreateOptions),
+  Managed(CliManagedNpmResolverCreateOptions),
   Byonm(CliByonmNpmResolverCreateOptions),
 }
 
@@ -68,18 +63,39 @@ pub async fn create_cli_npm_resolver(
   }
 }
 
+pub enum CreateInNpmPkgCheckerOptions<'a> {
+  Managed(CliManagedInNpmPkgCheckerCreateOptions<'a>),
+  Byonm,
+}
+
+pub fn create_in_npm_pkg_checker(
+  options: CreateInNpmPkgCheckerOptions,
+) -> Arc<dyn InNpmPackageChecker> {
+  match options {
+    CreateInNpmPkgCheckerOptions::Managed(options) => {
+      create_managed_in_npm_pkg_checker(options)
+    }
+    CreateInNpmPkgCheckerOptions::Byonm => Arc::new(ByonmInNpmPackageChecker),
+  }
+}
+
 pub enum InnerCliNpmResolverRef<'a> {
   Managed(&'a ManagedCliNpmResolver),
   #[allow(dead_code)]
   Byonm(&'a CliByonmNpmResolver),
 }
 
-pub trait CliNpmResolver: NpmResolver {
-  fn into_npm_resolver(self: Arc<Self>) -> Arc<dyn NpmResolver>;
-  fn into_require_resolver(self: Arc<Self>) -> Arc<dyn NodeRequireResolver>;
+pub trait CliNpmResolver: NpmPackageFolderResolver + CliNpmReqResolver {
+  fn into_npm_pkg_folder_resolver(
+    self: Arc<Self>,
+  ) -> Arc<dyn NpmPackageFolderResolver>;
+  fn into_npm_req_resolver(self: Arc<Self>) -> Arc<dyn CliNpmReqResolver>;
   fn into_process_state_provider(
     self: Arc<Self>,
   ) -> Arc<dyn NpmProcessStateProvider>;
+  fn into_maybe_byonm(self: Arc<Self>) -> Option<Arc<CliByonmNpmResolver>> {
+    None
+  }
 
   fn clone_snapshotted(&self) -> Arc<dyn CliNpmResolver>;
 
@@ -101,11 +117,11 @@ pub trait CliNpmResolver: NpmResolver {
 
   fn root_node_modules_path(&self) -> Option<&Path>;
 
-  fn resolve_pkg_folder_from_deno_module_req(
+  fn ensure_read_permission<'a>(
     &self,
-    req: &PackageReq,
-    referrer: &ModuleSpecifier,
-  ) -> Result<PathBuf, ResolvePkgFolderFromDenoReqError>;
+    permissions: &mut dyn NodePermissions,
+    path: &'a Path,
+  ) -> Result<Cow<'a, Path>, AnyError>;
 
   /// Returns a hash returning the state of the npm resolver
   /// or `None` if the state currently can't be determined.
@@ -188,4 +204,16 @@ impl NpmFetchResolver {
     self.info_by_name.insert(name.to_string(), info.clone());
     info
   }
+}
+
+pub const NPM_CONFIG_USER_AGENT_ENV_VAR: &str = "npm_config_user_agent";
+
+pub fn get_npm_config_user_agent() -> String {
+  format!(
+    "deno/{} npm/? deno/{} {} {}",
+    env!("CARGO_PKG_VERSION"),
+    env!("CARGO_PKG_VERSION"),
+    std::env::consts::OS,
+    std::env::consts::ARCH
+  )
 }
