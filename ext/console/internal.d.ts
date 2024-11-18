@@ -11,6 +11,5 @@ declare module "ext:deno_console/01_console.js" {
   }): Record<string, unknown>;
 
   class Console {
-    
   }
 }

@@ -31,6 +31,12 @@ const {
   ObjectAssign,
   ObjectDefineProperty,
   WeakRefPrototypeDeref,
+  String,
+  ObjectPrototypeIsPrototypeOf,
+  DataView,
+  DataViewPrototypeSetUint32,
+  SafeWeakRef,
+  TypedArrayPrototypeGetBuffer,
 } = primordials;
 const { AsyncVariable, setAsyncContext } = core;
 
@@ -203,7 +209,7 @@ function submit(
     WeakRefPrototypeDeref(activeInstrumentationLibrary) !==
       instrumentationLibrary
   ) {
-    activeInstrumentationLibrary = new WeakRef(instrumentationLibrary);
+    activeInstrumentationLibrary = new SafeWeakRef(instrumentationLibrary);
     if (instrumentationLibrary === BUILTIN_INSTRUMENTATION_LIBRARY) {
       op_otel_instrumentation_scope_enter_builtin();
     } else {
@@ -446,13 +452,15 @@ export class Span {
     if (!currentSpan) {
       const buffer = new Uint8Array(TRACE_ID_BYTES + SPAN_ID_BYTES);
       if (DETERMINISTIC) {
-        new DataView(buffer.buffer).setUint32(
+        DataViewPrototypeSetUint32(
+          new DataView(TypedArrayPrototypeGetBuffer(buffer)),
           TRACE_ID_BYTES - 4,
           COUNTER,
           true,
         );
         COUNTER += 1;
-        new DataView(buffer.buffer).setUint32(
+        DataViewPrototypeSetUint32(
+          new DataView(TypedArrayPrototypeGetBuffer(buffer)),
           TRACE_ID_BYTES + SPAN_ID_BYTES - 4,
           COUNTER,
           true,
@@ -466,7 +474,8 @@ export class Span {
     } else {
       this.#spanId = new Uint8Array(SPAN_ID_BYTES);
       if (DETERMINISTIC) {
-        new DataView(this.#spanId.buffer).setUint32(
+        DataViewPrototypeSetUint32(
+          new DataView(TypedArrayPrototypeGetBuffer(this.#spanId)),
           SPAN_ID_BYTES - 4,
           COUNTER,
           true,
@@ -475,6 +484,7 @@ export class Span {
       } else {
         op_crypto_get_random_values(this.#spanId);
       }
+      // deno-lint-ignore prefer-primordials
       if (#traceId in currentSpan) {
         this.#traceId = currentSpan.#traceId;
         this.#parentSpanId = currentSpan.#spanId;
@@ -587,7 +597,9 @@ class SpanExporter {
     } catch (error) {
       resultCallback({
         code: 1,
-        error: error instanceof Error ? error : new Error(String(error)),
+        error: ObjectPrototypeIsPrototypeOf(error, Error)
+          ? error as Error
+          : new Error(String(error)),
       });
     }
   }
@@ -624,7 +636,7 @@ class Context {
   }
 }
 
-// TODO: @opentelemetry/api defines it's own ROOT_CONTEXT
+// TODO(lucacasonato): @opentelemetry/api defines it's own ROOT_CONTEXT
 const ROOT_CONTEXT = new Context();
 
 // Context manager for opentelemetry js library

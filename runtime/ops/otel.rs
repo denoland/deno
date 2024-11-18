@@ -622,7 +622,6 @@ fn op_otel_instrumentation_scope_enter_builtin(state: &mut OpState) {
 
 #[op2(fast)]
 fn op_otel_log(
-  state: &mut OpState,
   scope: &mut v8::HandleScope<'_>,
   #[string] message: String,
   #[smi] level: i32,
