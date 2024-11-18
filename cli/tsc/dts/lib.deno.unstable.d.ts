@@ -1274,7 +1274,7 @@ declare namespace Deno {
    * [`jsr:@deno/otel`](https://jsr.io/@deno/otel) package.
    *
    * @example Using OpenTelemetry API to create custom traces
-   * ```ts
+   * ```ts,ignore
    * import { trace } from "npm:@opentelemetry/api@1";
    * import "jsr:@deno/otel@0.0.2/register";
    *
