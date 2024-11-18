@@ -1,7 +1,9 @@
-Task d deno run d.js
-Running d
+Task e deno run e.js
+Running e
 Task b deno run b.js
 Running b
+Task d deno run d.js
+Running d
 Task c deno run c.js
 Running c
 Task a deno run a.js

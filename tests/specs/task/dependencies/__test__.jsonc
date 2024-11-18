@@ -24,6 +24,26 @@
       "tempDir": true,
       "args": "task a",
       "output": "./diamond.out"
+    },
+    "diamond_big": {
+      "cwd": "diamond_big",
+      "tempDir": true,
+      "args": "task a",
+      "output": "./diamond_big.out"
+    },
+    "cycle": {
+      "cwd": "cycle",
+      "tempDir": true,
+      "output": "./cycle.out",
+      "args": "task a",
+      "exitCode": 1
+    },
+    "cycle_2": {
+      "cwd": "cycle_2",
+      "tempDir": true,
+      "args": "task a",
+      "output": "./cycle_2.out",
+      "exitCode": 1
     }
   }
 }

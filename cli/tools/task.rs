@@ -15,8 +15,6 @@ use deno_core::anyhow::anyhow;
 use deno_core::anyhow::bail;
 use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
-use deno_core::futures::stream::futures_unordered;
-use deno_core::futures::StreamExt;
 use deno_core::url::Url;
 use deno_path_util::normalize_path;
 use deno_runtime::deno_node::NodeResolver;
@@ -78,7 +76,33 @@ pub async fn execute_script(
     env_vars,
     cli_options,
   };
-  task_runner.run_task(task_name).await
+
+  match task_runner.sort_tasks_topo(task_name) {
+    Ok(sorted) => {
+      return task_runner.run_tasks(sorted).await;
+    }
+    Err(err) => match err {
+      TaskError::NotFound(name) => {
+        if task_flags.is_run {
+          return Err(anyhow!("Task not found: {}", name));
+        }
+
+        log::error!("Task not found: {}", name);
+        if log::log_enabled!(log::Level::Error) {
+          print_available_tasks(
+            &mut std::io::stderr(),
+            &task_runner.cli_options.start_dir,
+            &task_runner.tasks_config,
+          )?;
+        }
+        return Ok(1);
+      }
+      TaskError::TaskDepCycle(name) => {
+        log::error!("Task cycle detected: {}", name);
+        return Ok(1);
+      }
+    },
+  }
 }
 
 struct RunSingleOptions<'a> {
@@ -86,6 +110,12 @@ struct RunSingleOptions<'a> {
   script: &'a str,
   cwd: &'a Path,
   custom_commands: HashMap<String, Rc<dyn ShellCommand>>,
+}
+
+#[derive(Debug)]
+enum TaskError {
+  NotFound(String),
+  TaskDepCycle(String),
 }
 
 struct TaskRunner<'a> {
@@ -98,26 +128,30 @@ struct TaskRunner<'a> {
 }
 
 impl<'a> TaskRunner<'a> {
+  async fn run_tasks(
+    &self,
+    task_names: Vec<String>,
+  ) -> Result<i32, deno_core::anyhow::Error> {
+    // TODO(bartlomieju): we might want to limit concurrency here - eg. `wireit` runs 2 tasks in parallel
+    // unless and env var is specified.
+    // TODO(marvinhagemeister): Run in sequence for now as it's not safe
+    // to run all tasks in parallel. We can only run tasks in parallel where
+    // all dependencies have been executed prior to that.
+    for task_name in &task_names {
+      let exit_code = self.run_task(&task_name).await?;
+      if exit_code > 0 {
+        return Ok(exit_code);
+      }
+    }
+
+    Ok(0)
+  }
+
   async fn run_task(
     &self,
     task_name: &String,
   ) -> Result<i32, deno_core::anyhow::Error> {
-    let Some((dir_url, task_or_script)) = self.tasks_config.task(task_name)
-    else {
-      if self.task_flags.is_run {
-        return Err(anyhow!("Task not found: {}", task_name));
-      }
-
-      log::error!("Task not found: {}", task_name);
-      if log::log_enabled!(log::Level::Error) {
-        print_available_tasks(
-          &mut std::io::stderr(),
-          &self.cli_options.start_dir,
-          &self.tasks_config,
-        )?;
-      }
-      return Ok(1);
-    };
+    let (dir_url, task_or_script) = self.get_task(task_name.as_str()).unwrap();
 
     match task_or_script {
       TaskOrScript::Task(_tasks, definition) => {
@@ -135,20 +169,6 @@ impl<'a> TaskRunner<'a> {
     task_name: &String,
     definition: &TaskDefinition,
   ) -> Result<i32, deno_core::anyhow::Error> {
-    // TODO(bartlomieju): we might want to limit concurrency here - eg. `wireit` runs 2 tasks in parallel
-    // unless and env var is specified.
-    let mut dependency_tasks = futures_unordered::FuturesUnordered::new();
-    for dep in &definition.dependencies {
-      let dep = dep.clone();
-      dependency_tasks.push(async move { self.run_task(&dep).await })
-    }
-    while let Some(result) = dependency_tasks.next().await {
-      let exit_code = result?;
-      if exit_code > 0 {
-        return Ok(exit_code);
-      }
-    }
-
     let cwd = match &self.task_flags.cwd {
       Some(path) => canonicalize_path(&PathBuf::from(path))
         .context("failed canonicalizing --cwd")?,
@@ -247,6 +267,62 @@ impl<'a> TaskRunner<'a> {
       .await?
       .exit_code,
     )
+  }
+
+  fn get_task(
+    &self,
+    task_name: &str,
+  ) -> Result<(&Url, TaskOrScript), TaskError> {
+    let Some(result) = self.tasks_config.task(task_name) else {
+      return Err(TaskError::NotFound(task_name.to_string()));
+    };
+
+    Ok(result)
+  }
+
+  fn sort_tasks_topo(&self, name: &str) -> Result<Vec<String>, TaskError> {
+    let mut marked: Vec<String> = vec![];
+    let mut sorted: Vec<String> = vec![];
+
+    self.sort_visit(name, &mut marked, &mut sorted)?;
+
+    Ok(sorted)
+  }
+
+  fn sort_visit(
+    &self,
+    name: &str,
+    marked: &mut Vec<String>,
+    sorted: &mut Vec<String>,
+  ) -> Result<(), TaskError> {
+    // Already sorted
+    if sorted.contains(&name.to_string()) {
+      return Ok(());
+    }
+
+    // Graph has a cycle
+    if marked.contains(&name.to_string()) {
+      return Err(TaskError::TaskDepCycle(name.to_string()));
+    }
+
+    marked.push(name.to_string());
+
+    let Some(def) = self.tasks_config.task(name) else {
+      return Err(TaskError::NotFound(name.to_string()));
+    };
+
+    match def.1 {
+      TaskOrScript::Task(_, actual_def) => {
+        for dep in &actual_def.dependencies {
+          self.sort_visit(dep, marked, sorted)?
+        }
+      }
+      TaskOrScript::Script(_, name) => self.sort_visit(name, marked, sorted)?,
+    }
+
+    sorted.push(name.to_string());
+
+    Ok(())
   }
 }
 
