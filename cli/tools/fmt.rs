@@ -228,6 +228,7 @@ fn collect_fmt_files(
   })
   .ignore_git_folder()
   .ignore_node_modules()
+  .use_gitignore()
   .set_vendor_folder(cli_options.vendor_dir_path().map(ToOwned::to_owned))
   .collect_file_patterns(&deno_config::fs::RealDenoConfigFs, files)
 }
