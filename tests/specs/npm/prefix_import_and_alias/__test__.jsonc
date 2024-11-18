@@ -1,7 +1,0 @@
-{
-  "tempDir": true,
-  "steps": [{
-    "args": "run -A main.js",
-    "output": "main.out"
-  }]
-}
