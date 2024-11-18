@@ -297,12 +297,14 @@ export class LibuvStreamWrap extends HandleWrap {
   }
 
   override _onClose(): number {
+    console.log("LibuvStreamWrap.prototype._onClose");
     let status = 0;
     this.#reading = false;
 
     try {
       this[kStreamBaseField]?.close();
-    } catch {
+    } catch (e) {
+      console.log(e);
       status = codeMap.get("ENOTCONN")!;
     }
 
