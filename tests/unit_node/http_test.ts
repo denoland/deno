@@ -1045,8 +1045,11 @@ Deno.test(
   },
 );
 
+const isWindows = Deno.build.os === "windows";
+
 Deno.test(
   "[node/http] destroyed requests should not be sent",
+  { sanitizeResources: !isWindows, sanitizeOps: !isWindows },
   async () => {
     let receivedRequest = false;
     const requestClosed = Promise.withResolvers<void>();
