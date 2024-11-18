@@ -78,9 +78,7 @@ pub async fn execute_script(
   };
 
   match task_runner.sort_tasks_topo(task_name) {
-    Ok(sorted) => {
-      return task_runner.run_tasks(sorted).await;
-    }
+    Ok(sorted) => task_runner.run_tasks(sorted).await,
     Err(err) => match err {
       TaskError::NotFound(name) => {
         if task_flags.is_run {
@@ -95,11 +93,11 @@ pub async fn execute_script(
             &task_runner.tasks_config,
           )?;
         }
-        return Ok(1);
+        Ok(1)
       }
       TaskError::TaskDepCycle(name) => {
         log::error!("Task cycle detected: {}", name);
-        return Ok(1);
+        Ok(1)
       }
     },
   }
@@ -138,7 +136,7 @@ impl<'a> TaskRunner<'a> {
     // to run all tasks in parallel. We can only run tasks in parallel where
     // all dependencies have been executed prior to that.
     for task_name in &task_names {
-      let exit_code = self.run_task(&task_name).await?;
+      let exit_code = self.run_task(task_name).await?;
       if exit_code > 0 {
         return Ok(exit_code);
       }
