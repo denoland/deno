@@ -217,7 +217,7 @@ zstd = "=0.12.4"
 
 opentelemetry = "0.27.0"
 opentelemetry-http = "0.27.0"
-opentelemetry-otlp = { version = "0.27.0", features = ["logs", "http-proto", "http-json"] }
+opentelemetry-otlp = { version = "0.27.0", features = ["logs", "http-proto", "http-json", "populate-logs-event-name"] }
 opentelemetry-semantic-conventions = { version = "0.27.0", features = ["semconv_experimental"] }
 opentelemetry_sdk = "0.27.0"
 

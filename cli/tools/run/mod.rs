@@ -77,9 +77,14 @@ pub async fn run_script(
   let worker_factory = factory.create_cli_main_worker_factory().await?;
   let mut worker = worker_factory
     .create_main_worker(mode, main_module.clone())
-    .await?;
+    .await
+    .inspect_err(|e| {
+      deno_telemetry::report_event("deno_boot_failure", e)
+    })?;
 
-  let exit_code = worker.run().await?;
+  let exit_code = worker.run().await.inspect_err(|e| {
+    deno_telemetry::report_event("deno_uncaught_exception", e)
+  })?;
   Ok(exit_code)
 }
 

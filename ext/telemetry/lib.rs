@@ -790,6 +790,25 @@ fn op_otel_log(
   logs.emit(&mut log_record, instrumentation_scope);
 }
 
+pub fn report_event(name: &'static str, data: impl std::fmt::Display) {
+  let Some(Processors { logs, .. }) = OTEL_PROCESSORS.get() else {
+    return;
+  };
+  let Some(instrumentation_scope) = BUILT_IN_INSTRUMENTATION_SCOPE.get() else {
+    return;
+  };
+
+  let mut log_record = LogRecord::default();
+
+  log_record.set_observed_timestamp(SystemTime::now());
+  log_record.set_event_name(name);
+  log_record.set_severity_number(Severity::Trace);
+  log_record.set_severity_text(Severity::Trace.name());
+  log_record.set_body(format!("{data}").into());
+
+  logs.emit(&mut log_record, instrumentation_scope);
+}
+
 fn owned_string<'s>(
   scope: &mut v8::HandleScope<'s>,
   string: v8::Local<'s, v8::String>,
