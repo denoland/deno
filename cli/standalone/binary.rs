@@ -47,6 +47,7 @@ use deno_runtime::deno_fs::FileSystem;
 use deno_runtime::deno_fs::RealFs;
 use deno_runtime::deno_io::fs::FsError;
 use deno_runtime::deno_node::PackageJson;
+use deno_runtime::ops::otel::OtelConfig;
 use deno_semver::npm::NpmVersionReqParseError;
 use deno_semver::package::PackageReq;
 use deno_semver::Version;
@@ -185,6 +186,7 @@ pub struct Metadata {
   pub entrypoint_key: String,
   pub node_modules: Option<NodeModules>,
   pub unstable_config: UnstableConfig,
+  pub otel_config: Option<OtelConfig>, // None means disabled.
 }
 
 fn write_binary_bytes(
@@ -515,7 +517,7 @@ impl<'a> DenoCompileBinaryWriter<'a> {
       Some(bytes) => bytes,
       None => {
         log::info!("Download could not be found, aborting");
-        std::process::exit(1)
+        deno_runtime::exit(1);
       }
     };
 
@@ -657,9 +659,15 @@ impl<'a> DenoCompileBinaryWriter<'a> {
     remote_modules_store.add_redirects(&graph.redirects);
 
     let env_vars_from_env_file = match cli_options.env_file_name() {
-      Some(env_filename) => {
-        log::info!("{} Environment variables from the file \"{}\" were embedded in the generated executable file", crate::colors::yellow("Warning"), env_filename);
-        get_file_env_vars(env_filename.to_string())?
+      Some(env_filenames) => {
+        let mut aggregated_env_vars = IndexMap::new();
+        for env_filename in env_filenames.iter().rev() {
+          log::info!("{} Environment variables from the file \"{}\" were embedded in the generated executable file", crate::colors::yellow("Warning"), env_filename);
+
+          let env_vars = get_file_env_vars(env_filename.to_string())?;
+          aggregated_env_vars.extend(env_vars);
+        }
+        aggregated_env_vars
       }
       None => Default::default(),
     };
@@ -718,10 +726,10 @@ impl<'a> DenoCompileBinaryWriter<'a> {
       unstable_config: UnstableConfig {
         legacy_flag_enabled: false,
         bare_node_builtins: cli_options.unstable_bare_node_builtins(),
-        detect_cjs: cli_options.unstable_detect_cjs(),
         sloppy_imports: cli_options.unstable_sloppy_imports(),
         features: cli_options.unstable_features(),
       },
+      otel_config: cli_options.otel_config(),
     };
 
     write_binary_bytes(

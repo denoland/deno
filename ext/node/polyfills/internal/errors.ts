@@ -2390,6 +2390,15 @@ export class ERR_INVALID_RETURN_VALUE extends NodeTypeError {
   }
 }
 
+export class ERR_NOT_IMPLEMENTED extends NodeError {
+  constructor(message?: string) {
+    super(
+      "ERR_NOT_IMPLEMENTED",
+      message ? `Not implemented: ${message}` : "Not implemented",
+    );
+  }
+}
+
 export class ERR_INVALID_URL extends NodeTypeError {
   input: string;
   constructor(input: string) {
@@ -2862,6 +2871,7 @@ export default {
   ERR_INVALID_SYNC_FORK_INPUT,
   ERR_INVALID_THIS,
   ERR_INVALID_TUPLE,
+  ERR_NOT_IMPLEMENTED,
   ERR_INVALID_URI,
   ERR_INVALID_URL,
   ERR_INVALID_URL_SCHEME,

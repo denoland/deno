@@ -13,16 +13,19 @@ use crate::colors;
 use crate::errors::get_error_class_name;
 use crate::file_fetcher::FileFetcher;
 use crate::npm::CliNpmResolver;
-use crate::resolver::CliGraphResolver;
+use crate::resolver::CjsTracker;
+use crate::resolver::CliResolver;
 use crate::resolver::CliSloppyImportsResolver;
 use crate::resolver::SloppyImportsCachedFs;
 use crate::tools::check;
 use crate::tools::check::TypeChecker;
 use crate::util::file_watcher::WatcherCommunicator;
 use crate::util::fs::canonicalize_path;
+use deno_config::deno_json::JsxImportSourceConfig;
 use deno_config::workspace::JsrPackageConfig;
 use deno_core::anyhow::bail;
 use deno_graph::source::LoaderChecksum;
+use deno_graph::source::ResolutionMode;
 use deno_graph::FillFromLockfileOptions;
 use deno_graph::JsrLoadError;
 use deno_graph::ModuleLoadError;
@@ -185,7 +188,7 @@ pub fn graph_exit_integrity_errors(graph: &ModuleGraph) {
 fn exit_for_integrity_error(err: &ModuleError) {
   if let Some(err_message) = enhanced_integrity_error_message(err) {
     log::error!("{} {}", colors::red("error:"), err_message);
-    std::process::exit(10);
+    deno_runtime::exit(10);
   }
 }
 
@@ -379,6 +382,7 @@ pub struct BuildFastCheckGraphOptions<'a> {
 
 pub struct ModuleGraphBuilder {
   caches: Arc<cache::Caches>,
+  cjs_tracker: Arc<CjsTracker>,
   cli_options: Arc<CliOptions>,
   file_fetcher: Arc<FileFetcher>,
   fs: Arc<dyn FileSystem>,
@@ -389,7 +393,7 @@ pub struct ModuleGraphBuilder {
   module_info_cache: Arc<ModuleInfoCache>,
   npm_resolver: Arc<dyn CliNpmResolver>,
   parsed_source_cache: Arc<ParsedSourceCache>,
-  resolver: Arc<CliGraphResolver>,
+  resolver: Arc<CliResolver>,
   root_permissions_container: PermissionsContainer,
 }
 
@@ -397,6 +401,7 @@ impl ModuleGraphBuilder {
   #[allow(clippy::too_many_arguments)]
   pub fn new(
     caches: Arc<cache::Caches>,
+    cjs_tracker: Arc<CjsTracker>,
     cli_options: Arc<CliOptions>,
     file_fetcher: Arc<FileFetcher>,
     fs: Arc<dyn FileSystem>,
@@ -407,11 +412,12 @@ impl ModuleGraphBuilder {
     module_info_cache: Arc<ModuleInfoCache>,
     npm_resolver: Arc<dyn CliNpmResolver>,
     parsed_source_cache: Arc<ParsedSourceCache>,
-    resolver: Arc<CliGraphResolver>,
+    resolver: Arc<CliResolver>,
     root_permissions_container: PermissionsContainer,
   ) -> Self {
     Self {
       caches,
+      cjs_tracker,
       cli_options,
       file_fetcher,
       fs,
@@ -518,7 +524,7 @@ impl ModuleGraphBuilder {
       None => MutLoaderRef::Owned(self.create_graph_loader()),
     };
     let cli_resolver = &self.resolver;
-    let graph_resolver = cli_resolver.as_graph_resolver();
+    let graph_resolver = self.create_graph_resolver()?;
     let graph_npm_resolver = cli_resolver.create_graph_npm_resolver();
     let maybe_file_watcher_reporter = self
       .maybe_file_watcher_reporter
@@ -543,7 +549,7 @@ impl ModuleGraphBuilder {
           npm_resolver: Some(&graph_npm_resolver),
           module_analyzer: &analyzer,
           reporter: maybe_file_watcher_reporter,
-          resolver: Some(graph_resolver),
+          resolver: Some(&graph_resolver),
           locker: locker.as_mut().map(|l| l as _),
         },
       )
@@ -666,7 +672,7 @@ impl ModuleGraphBuilder {
     };
     let parser = self.parsed_source_cache.as_capturing_parser();
     let cli_resolver = &self.resolver;
-    let graph_resolver = cli_resolver.as_graph_resolver();
+    let graph_resolver = self.create_graph_resolver()?;
     let graph_npm_resolver = cli_resolver.create_graph_npm_resolver();
 
     graph.build_fast_check_type_graph(
@@ -675,7 +681,7 @@ impl ModuleGraphBuilder {
         fast_check_cache: fast_check_cache.as_ref().map(|c| c as _),
         fast_check_dts: false,
         jsr_url_provider: &CliJsrUrlProvider,
-        resolver: Some(graph_resolver),
+        resolver: Some(&graph_resolver),
         npm_resolver: Some(&graph_npm_resolver),
         workspace_fast_check: options.workspace_fast_check,
       },
@@ -738,6 +744,18 @@ impl ModuleGraphBuilder {
         exit_integrity_errors: true,
       },
     )
+  }
+
+  fn create_graph_resolver(&self) -> Result<CliGraphResolver, AnyError> {
+    let jsx_import_source_config = self
+      .cli_options
+      .workspace()
+      .to_maybe_jsx_import_source_config()?;
+    Ok(CliGraphResolver {
+      cjs_tracker: &self.cjs_tracker,
+      resolver: &self.resolver,
+      jsx_import_source_config,
+    })
   }
 }
 
@@ -1141,6 +1159,53 @@ fn format_deno_graph_error(err: &dyn Error) -> String {
   }
 
   message
+}
+
+#[derive(Debug)]
+struct CliGraphResolver<'a> {
+  cjs_tracker: &'a CjsTracker,
+  resolver: &'a CliResolver,
+  jsx_import_source_config: Option<JsxImportSourceConfig>,
+}
+
+impl<'a> deno_graph::source::Resolver for CliGraphResolver<'a> {
+  fn default_jsx_import_source(&self) -> Option<String> {
+    self
+      .jsx_import_source_config
+      .as_ref()
+      .and_then(|c| c.default_specifier.clone())
+  }
+
+  fn default_jsx_import_source_types(&self) -> Option<String> {
+    self
+      .jsx_import_source_config
+      .as_ref()
+      .and_then(|c| c.default_types_specifier.clone())
+  }
+
+  fn jsx_import_source_module(&self) -> &str {
+    self
+      .jsx_import_source_config
+      .as_ref()
+      .map(|c| c.module.as_str())
+      .unwrap_or(deno_graph::source::DEFAULT_JSX_IMPORT_SOURCE_MODULE)
+  }
+
+  fn resolve(
+    &self,
+    raw_specifier: &str,
+    referrer_range: &deno_graph::Range,
+    mode: ResolutionMode,
+  ) -> Result<ModuleSpecifier, ResolveError> {
+    self.resolver.resolve(
+      raw_specifier,
+      referrer_range,
+      self
+        .cjs_tracker
+        .get_referrer_kind(&referrer_range.specifier),
+      mode,
+    )
+  }
 }
 
 #[cfg(test)]

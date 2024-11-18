@@ -29,6 +29,7 @@ impl log::Log for CliLogger {
       // thread's state
       DrawThread::hide();
       self.0.log(record);
+      deno_runtime::ops::otel::handle_log(record);
       DrawThread::show();
     }
   }

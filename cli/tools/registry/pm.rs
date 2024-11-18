@@ -679,7 +679,7 @@ enum AddRmPackageReqValue {
 }
 
 #[derive(Debug, PartialEq, Eq)]
-struct AddRmPackageReq {
+pub struct AddRmPackageReq {
   alias: String,
   value: AddRmPackageReqValue,
 }
