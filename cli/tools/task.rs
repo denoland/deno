@@ -315,7 +315,7 @@ impl<'a> TaskRunner<'a> {
           self.sort_visit(dep, marked, sorted)?
         }
       }
-      TaskOrScript::Script(_, name) => self.sort_visit(name, marked, sorted)?,
+      TaskOrScript::Script(..) => {}
     }
 
     sorted.push(name.to_string());
