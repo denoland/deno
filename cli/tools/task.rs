@@ -168,11 +168,11 @@ impl<'a> TaskRunner<'a> {
     // 2. that aren't being run at the moment
     // 3. have no dependencies or all dependencies are completed
     for name in task_names {
-      if !completed.contains(&name) && !running.contains(&name) {
-        let should_run = if let Ok((_, def)) = self.get_task(&name) {
+      if !completed.contains(name) && !running.contains(name) {
+        let should_run = if let Ok((_, def)) = self.get_task(name) {
           match def {
             TaskOrScript::Task(_, def) => {
-              def.dependencies.iter().all(|dep| completed.contains(&dep))
+              def.dependencies.iter().all(|dep| completed.contains(dep))
             }
             TaskOrScript::Script(_, _) => true,
           }
