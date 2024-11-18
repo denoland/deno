@@ -689,6 +689,7 @@ Deno.test("[node/http] ClientRequest handle non-string headers", async () => {
     method: "POST",
     headers: { 1: 2 },
   }, (resp) => {
+    console.log("resp", resp);
     headers = resp.headers;
 
     resp.on("data", () => {});
@@ -1050,7 +1051,7 @@ Deno.test(
     let receivedRequest = false;
     const requestClosed = Promise.withResolvers<void>();
     const ac = new AbortController();
-    const server = Deno.serve({ signal: ac.signal }, () => {
+    const server = Deno.serve({ port: 0, signal: ac.signal }, () => {
       receivedRequest = true;
       return new Response(null);
     });
