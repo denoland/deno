@@ -483,6 +483,7 @@ Deno.test("[node/http] send request with non-chunked body", async () => {
     headers: {
       "Content-Type": "text/plain; charset=utf-8",
       "Content-Length": "11",
+      "Connection": "close",
     },
   };
   const req = http.request(opts, (res) => {
@@ -540,6 +541,7 @@ Deno.test("[node/http] send request with chunked body", async () => {
     headers: {
       "Content-Type": "text/plain; charset=utf-8",
       "Content-Length": "11",
+      "Connection": "close",
       "Transfer-Encoding": "chunked",
     },
   };
@@ -586,6 +588,7 @@ Deno.test("[node/http] send request with chunked body as default", async () => {
     method: "POST",
     headers: {
       "Content-Type": "text/plain; charset=utf-8",
+      "Connection": "close",
     },
   };
   const req = http.request(opts, (res) => {
@@ -1021,8 +1024,11 @@ Deno.test(
     });
     request.on("close", () => resolve());
     await promise;
-    // TODO(kt3k): This is necessary for preventing op leak
-    await new Promise((resolve) => setTimeout(resolve, 2000));
+
+    if (Deno.build.os === "windows") {
+      // TODO(kt3k): This is necessary for preventing op leak
+      await new Promise((resolve) => setTimeout(resolve, 4000));
+    }
   },
 );
 
@@ -1049,8 +1055,11 @@ Deno.test(
     await requestClosed.promise;
     assertEquals(receivedRequest, false);
     await server.finished;
-    // TODO(kt3k): This is necessary for preventing op leak
-    await new Promise((resolve) => setTimeout(resolve, 2000));
+
+    if (Deno.build.os === "windows") {
+      // TODO(kt3k): This is necessary for preventing op leak
+      await new Promise((resolve) => setTimeout(resolve, 4000));
+    }
   },
 );
 
