@@ -148,7 +148,7 @@ impl Resource for WsCancelResource {
 // This op is needed because creating a WS instance in JavaScript is a sync
 // operation and should throw error when permissions are not fulfilled,
 // but actual op that connects WS is async.
-#[op2]
+#[op2(stack_trace)]
 #[smi]
 pub fn op_ws_check_permission_and_cancel_handle<WP>(
   state: &mut OpState,
@@ -443,7 +443,7 @@ fn populate_common_request_headers(
   Ok(request)
 }
 
-#[op2(async)]
+#[op2(async, stack_trace)]
 #[serde]
 pub async fn op_ws_create<WP>(
   state: Rc<RefCell<OpState>>,

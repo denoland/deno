@@ -133,7 +133,7 @@ pub enum CreateWorkerError {
 }
 
 /// Create worker as the host
-#[op2]
+#[op2(stack_trace)]
 #[serde]
 fn op_create_worker(
   state: &mut OpState,

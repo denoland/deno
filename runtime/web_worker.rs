@@ -590,7 +590,9 @@ impl WebWorker {
         Some(Box::new(|stack| {
           deno_permissions::prompter::set_current_stacktrace(stack)
         }))
-      } else { None },
+      } else {
+        None
+      },
       ..Default::default()
     });
 

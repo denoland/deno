@@ -12,8 +12,6 @@ use std::io::StderrLock;
 use std::io::StdinLock;
 use std::io::Write as IoWrite;
 
-
-
 /// Helper function to make control characters visible so users can see the underlying filename.
 fn escape_control_characters(s: &str) -> std::borrow::Cow<str> {
   if !s.contains(|c: char| c.is_ascii_control() || c.is_control()) {
