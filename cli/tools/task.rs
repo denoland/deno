@@ -1,6 +1,5 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
-use std::cell::RefCell;
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::num::NonZeroUsize;
@@ -80,11 +79,8 @@ pub async fn execute_script(
     std::thread::available_parallelism().ok()
   }
   .unwrap_or_else(|| NonZeroUsize::new(2).unwrap());
-  let completed = RefCell::new(HashSet::with_capacity(8));
-  let running =
-    RefCell::new(HashSet::with_capacity(no_of_concurrent_tasks.into()));
 
-  let mut task_runner = TaskRunner {
+  let task_runner = TaskRunner {
     tasks_config,
     task_flags: &task_flags,
     npm_resolver: npm_resolver.as_ref(),
@@ -92,36 +88,9 @@ pub async fn execute_script(
     env_vars,
     cli_options,
     concurrency: no_of_concurrent_tasks.into(),
-    completed,
-    running,
-    task_names: vec![],
   };
 
-  match task_runner.sort_tasks_topo(task_name) {
-    Ok(sorted) => task_runner.run_tasks_in_parallel(sorted).await,
-    Err(err) => match err {
-      TaskError::NotFound(name) => {
-        if task_flags.is_run {
-          return Err(anyhow!("Task not found: {}", name));
-        }
-
-        log::error!("Task not found: {}", name);
-        if log::log_enabled!(log::Level::Error) {
-          print_available_tasks(
-            &mut std::io::stderr(),
-            &task_runner.cli_options.start_dir,
-            &task_runner.tasks_config,
-          )?;
-        }
-        Ok(1)
-      }
-      TaskError::TaskDepCycle(name) => {
-        // TODO(bartlomieju): this should be improved to show the cycle
-        log::error!("Task cycle detected: {}", name);
-        Ok(1)
-      }
-    },
-  }
+  task_runner.run_task(task_name).await
 }
 
 struct RunSingleOptions<'a> {
@@ -129,12 +98,6 @@ struct RunSingleOptions<'a> {
   script: &'a str,
   cwd: &'a Path,
   custom_commands: HashMap<String, Rc<dyn ShellCommand>>,
-}
-
-#[derive(Debug)]
-enum TaskError {
-  NotFound(String),
-  TaskDepCycle(String),
 }
 
 struct TaskRunner<'a> {
@@ -145,22 +108,116 @@ struct TaskRunner<'a> {
   env_vars: HashMap<String, String>,
   cli_options: &'a CliOptions,
   concurrency: usize,
-  completed: RefCell<HashSet<String>>,
-  running: RefCell<HashSet<String>>,
-  task_names: Vec<String>,
 }
 
 impl<'a> TaskRunner<'a> {
+  pub async fn run_task(
+    &self,
+    task_name: &str,
+  ) -> Result<i32, deno_core::anyhow::Error> {
+    match sort_tasks_topo(task_name, &self.tasks_config) {
+      Ok(sorted) => self.run_tasks_in_parallel(sorted).await,
+      Err(err) => match err {
+        TaskError::NotFound(name) => {
+          if self.task_flags.is_run {
+            return Err(anyhow!("Task not found: {}", name));
+          }
+
+          log::error!("Task not found: {}", name);
+          if log::log_enabled!(log::Level::Error) {
+            self.print_available_tasks()?;
+          }
+          Ok(1)
+        }
+        TaskError::TaskDepCycle { path } => {
+          log::error!("Task cycle detected: {}", path.join(" -> "));
+          Ok(1)
+        }
+      },
+    }
+  }
+
+  pub fn print_available_tasks(&self) -> Result<(), std::io::Error> {
+    print_available_tasks(
+      &mut std::io::stderr(),
+      &self.cli_options.start_dir,
+      &self.tasks_config,
+    )
+  }
+
   async fn run_tasks_in_parallel(
-    &mut self,
+    &self,
     task_names: Vec<String>,
   ) -> Result<i32, deno_core::anyhow::Error> {
-    self.task_names = task_names;
+    struct PendingTasksContext {
+      completed: HashSet<String>,
+      running: HashSet<String>,
+      task_names: Vec<String>,
+    }
+
+    impl PendingTasksContext {
+      fn has_remaining_tasks(&self) -> bool {
+        self.completed.len() < self.task_names.len()
+      }
+
+      fn mark_complete(&mut self, task_name: String) {
+        self.running.remove(&task_name);
+        self.completed.insert(task_name);
+      }
+
+      fn get_next_task<'a>(
+        &mut self,
+        runner: &'a TaskRunner<'a>,
+      ) -> Option<LocalBoxFuture<'a, Result<(i32, String), AnyError>>> {
+        for name in &self.task_names {
+          if self.completed.contains(name) || self.running.contains(name) {
+            continue;
+          }
+
+          let should_run = if let Ok((_, def)) = runner.get_task(name) {
+            match def {
+              TaskOrScript::Task(_, def) => def
+                .dependencies
+                .iter()
+                .all(|dep| self.completed.contains(dep)),
+              TaskOrScript::Script(_, _) => true,
+            }
+          } else {
+            false
+          };
+
+          // TODO(bartlomieju): is this correct? Shouldn't it be `return None;`?
+          if !should_run {
+            continue;
+          }
+
+          self.running.insert(name.clone());
+          let name = name.clone();
+          return Some(
+            async move {
+              runner
+                .run_task_no_dependencies(&name)
+                .await
+                .map(|exit_code| (exit_code, name))
+            }
+            .boxed_local(),
+          );
+        }
+        None
+      }
+    }
+
+    let mut context = PendingTasksContext {
+      completed: HashSet::with_capacity(task_names.len()),
+      running: HashSet::with_capacity(self.concurrency),
+      task_names,
+    };
+
     let mut queue = futures_unordered::FuturesUnordered::new();
 
-    while self.has_remaining_tasks() {
+    while context.has_remaining_tasks() {
       while queue.len() < self.concurrency {
-        if let Some(task) = self.get_next_task() {
+        if let Some(task) = context.get_next_task(self) {
           queue.push(task);
         } else {
           break;
@@ -169,6 +226,7 @@ impl<'a> TaskRunner<'a> {
 
       // If queue is empty at this point, then there are no more tasks in the queue.
       let Some(result) = queue.next().await else {
+        debug_assert_eq!(context.task_names.len(), 0);
         break;
       };
 
@@ -177,8 +235,7 @@ impl<'a> TaskRunner<'a> {
         return Ok(exit_code);
       }
 
-      self.running.borrow_mut().remove(&name);
-      self.completed.borrow_mut().insert(name);
+      context.mark_complete(name);
     }
 
     Ok(0)
@@ -195,53 +252,7 @@ impl<'a> TaskRunner<'a> {
     Ok(result)
   }
 
-  fn has_remaining_tasks(&self) -> bool {
-    self.completed.borrow().len() < self.task_names.len()
-  }
-
-  fn get_next_task(
-    &'a self,
-  ) -> Option<LocalBoxFuture<'a, Result<(i32, String), AnyError>>> {
-    for name in &self.task_names {
-      if self.completed.borrow().contains(name)
-        || self.running.borrow().contains(name)
-      {
-        continue;
-      }
-
-      let should_run = if let Ok((_, def)) = self.get_task(name) {
-        match def {
-          TaskOrScript::Task(_, def) => def
-            .dependencies
-            .iter()
-            .all(|dep| self.completed.borrow().contains(dep)),
-          TaskOrScript::Script(_, _) => true,
-        }
-      } else {
-        false
-      };
-
-      // TODO(bartlomieju): is this correct? Shouldn't it be `return None;`?
-      if !should_run {
-        continue;
-      }
-
-      self.running.borrow_mut().insert(name.clone());
-      let name = name.clone();
-      return Some(
-        async move {
-          self
-            .run_task(&name)
-            .await
-            .map(|exit_code| (exit_code, name.clone()))
-        }
-        .boxed_local(),
-      );
-    }
-    None
-  }
-
-  async fn run_task(
+  async fn run_task_no_dependencies(
     &self,
     task_name: &String,
   ) -> Result<i32, deno_core::anyhow::Error> {
@@ -362,41 +373,50 @@ impl<'a> TaskRunner<'a> {
       .exit_code,
     )
   }
+}
 
-  fn sort_tasks_topo(&self, name: &str) -> Result<Vec<String>, TaskError> {
-    let mut marked: Vec<String> = vec![];
-    let mut sorted: Vec<String> = vec![];
+#[derive(Debug)]
+enum TaskError {
+  NotFound(String),
+  TaskDepCycle { path: Vec<String> },
+}
 
-    self.sort_visit(name, &mut marked, &mut sorted)?;
-
-    Ok(sorted)
-  }
-
-  fn sort_visit(
-    &self,
-    name: &str,
+fn sort_tasks_topo(
+  name: &str,
+  task_config: &WorkspaceTasksConfig,
+) -> Result<Vec<String>, TaskError> {
+  fn sort_visit<'a>(
+    name: &'a str,
     marked: &mut Vec<String>,
     sorted: &mut Vec<String>,
+    tasks_config: &'a WorkspaceTasksConfig,
+    // todo(dsherret): one directional graph would be more efficient than vec
+    mut path: Vec<&'a str>,
   ) -> Result<(), TaskError> {
     // Already sorted
-    if sorted.contains(&name.to_string()) {
+    if sorted.iter().any(|sorted_name| sorted_name == name) {
       return Ok(());
     }
 
     // Graph has a cycle
-    if marked.contains(&name.to_string()) {
-      return Err(TaskError::TaskDepCycle(name.to_string()));
+    if marked.iter().any(|marked_name| marked_name == name) {
+      path.push(name);
+      return Err(TaskError::TaskDepCycle {
+        path: path.iter().map(|s| s.to_string()).collect(),
+      });
     }
 
     marked.push(name.to_string());
 
-    let Some(def) = self.tasks_config.task(name) else {
+    let Some(def) = tasks_config.task(name) else {
       return Err(TaskError::NotFound(name.to_string()));
     };
 
     if let TaskOrScript::Task(_, actual_def) = def.1 {
       for dep in &actual_def.dependencies {
-        self.sort_visit(dep, marked, sorted)?
+        let mut path = path.clone();
+        path.push(name);
+        sort_visit(dep, marked, sorted, tasks_config, path)?
       }
     }
 
@@ -404,6 +424,13 @@ impl<'a> TaskRunner<'a> {
 
     Ok(())
   }
+
+  let mut marked: Vec<String> = vec![];
+  let mut sorted: Vec<String> = vec![];
+
+  sort_visit(name, &mut marked, &mut sorted, task_config, Vec::new())?;
+
+  Ok(sorted)
 }
 
 fn output_task(task_name: &str, script: &str) {
