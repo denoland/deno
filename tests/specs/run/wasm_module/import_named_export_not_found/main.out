@@ -1,0 +1,3 @@
+Download http://localhost:4545/wasm/math_with_import.wasm
+error: Uncaught SyntaxError: The requested module './math.ts' does not provide an export named 'add'
+    at <anonymous> (http://localhost:4545/wasm/math_with_import.wasm:[WILDLINE])

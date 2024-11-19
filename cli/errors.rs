@@ -38,6 +38,7 @@ fn get_module_graph_error_class(err: &ModuleGraphError) -> &'static str {
     ModuleGraphError::ModuleError(err) => match err {
       ModuleError::InvalidTypeAssertion { .. } => "SyntaxError",
       ModuleError::ParseErr(_, diagnostic) => get_diagnostic_class(diagnostic),
+      ModuleError::WasmParseErr(..) => "SyntaxError",
       ModuleError::UnsupportedMediaType { .. }
       | ModuleError::UnsupportedImportAttributeType { .. } => "TypeError",
       ModuleError::Missing(_, _) | ModuleError::MissingDynamic(_, _) => {
@@ -71,7 +72,6 @@ fn get_module_graph_error_class(err: &ModuleGraphError) -> &'static str {
           | JsrLoadError::UnknownExport { .. } => "NotFound",
         },
       },
-      ModuleError::WasmParseErr(_, _) => "SyntaxError",
     },
   }
 }
