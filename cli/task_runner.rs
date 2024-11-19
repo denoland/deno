@@ -484,9 +484,7 @@ fn resolve_execution_path_from_npx_shim(
     lazy_regex::lazy_regex!(r#""\$basedir\/([^"]+)" "\$@""#);
 
   let maybe_first_line = {
-    let Some(index) = text.find("\n") else {
-      return None;
-    };
+    let index = text.find("\n")?;
     Some(&text[0..index])
   };
 
