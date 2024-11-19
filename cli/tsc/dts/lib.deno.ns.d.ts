@@ -1209,12 +1209,6 @@ declare namespace Deno {
   }
 
 /** Interface for serving HTTP requests. */
-interface ServeDefaultExport {
-  /** The handler function to invoke when a new request is received. */
-  fetch: ServeHandler;
-  /** An optional function that is called when the server starts listening on the port. */
-  onListen?: (params: { hostname: string; port: number; serverType: "HTTP" | "HTTPS" }) => void;
-}
 
   /**
    * The interface for defining a benchmark test using {@linkcode Deno.bench}.
@@ -5075,14 +5069,16 @@ interface ServeDefaultExport {
    */
   export interface ServeDefaultExport {
     /** A handler for HTTP requests. Consumes a request and returns a response.
-     *
-     * If a handler throws, the server calling the handler will assume the impact
-     * of the error is isolated to the individual request. It will catch the error
-     * and if necessary will close the underlying connection.
-     *
-     * @category HTTP Server
-     */
+   *
+   * If a handler throws, the server calling the handler will assume the impact
+   * of the error is isolated to the individual request. It will catch the error
+   * and if necessary will close the underlying connection.
+   *
+   * @category HTTP Server
+   */
     fetch: ServeHandler;
+    /** An optional function that is called when the server starts listening on the port. */
+    onListen?: (params: { hostname: string; port: number; serverType: "HTTP" | "HTTPS" }) => void;
   }
 
   /** Options which can be set when calling {@linkcode Deno.serve}.
