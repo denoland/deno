@@ -21,7 +21,7 @@
   },
   "npm": {
     "@denotest/bin@1.0.0": {
-      "integrity": "sha512-LokQ7v6N8KiQCVZXuy9MAzaB4kcbI8tDntvy2DI3YOaigDFdghrkv3WJfc7xU9boni5jPcndNsiH9dPJEHZfyQ=="
+      "integrity": "[WILDCARD]"
     },
     "@denotest/breaking-change-between-versions@2.0.0": {
       "integrity": "sha512-x7q4LVdjFsu6pMsxIs1LPed6hix5p4RcCybssPzRZXOD2VCNBWbNCEDW9JRWiVFzT7+Md0n9czqMMIx+VUA5qA=="
