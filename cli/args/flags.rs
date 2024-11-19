@@ -26,9 +26,6 @@ use color_print::cstr;
 use deno_config::deno_json::NodeModulesDirMode;
 use deno_config::glob::FilePatterns;
 use deno_config::glob::PathOrPatternSet;
-use deno_config::workspace::WorkspaceDirectory;
-use deno_config::workspace::WorkspaceDiscoverOptions;
-use deno_config::workspace::WorkspaceDiscoverStart;
 use deno_core::anyhow::bail;
 use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
@@ -3269,7 +3266,8 @@ fn publish_subcommand() -> Command {
         .arg(
           Arg::new("set-version")
             .long("set-version")
-            .help("Set the version specified in the configuration file")
+            .help("Set version for a package to be published.
+  <p(245)>This flag can be used while publishing individual packages and cannot be used in a workspace.</>")
             .value_name("VERSION")
             .help_heading(PUBLISH_HEADING)
         )
@@ -5251,32 +5249,13 @@ fn publish_parse(
   check_arg_parse(flags, matches);
   config_args_parse(flags, matches);
 
-  let set_version = matches.remove_one::<String>("set-version");
-
-  if set_version.is_some() {
-    if let Ok(workspace_dir) = WorkspaceDirectory::discover(
-      WorkspaceDiscoverStart::Paths(&[
-        std::env::current_dir().unwrap_or_default()
-      ]),
-      &WorkspaceDiscoverOptions::default(),
-    ) {
-      let jsr_packages = workspace_dir.jsr_packages_for_publish();
-      if jsr_packages.len() > 1 {
-        return Err(clap::Error::raw(
-          clap::error::ErrorKind::ArgumentConflict,
-          "The --set-version flag cannot be used in a workspace. It is only allowed for individual packages.",
-        ));
-      }
-    }
-  }
-
   flags.subcommand = DenoSubcommand::Publish(PublishFlags {
     token: matches.remove_one("token"),
     dry_run: matches.get_flag("dry-run"),
     allow_slow_types: matches.get_flag("allow-slow-types"),
     allow_dirty: matches.get_flag("allow-dirty"),
     no_provenance: matches.get_flag("no-provenance"),
-    set_version,
+    set_version: matches.remove_one::<String>("set-version"),
   });
 
   Ok(())

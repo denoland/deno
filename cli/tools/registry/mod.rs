@@ -111,15 +111,14 @@ pub async fn publish(
   }
 
   if let Some(version) = &publish_flags.set_version {
-    publish_configs = publish_configs
-      .into_iter()
-      .map(|mut config| {
-        let mut config_file = config.config_file.as_ref().clone();
-        config_file.json.version = Some(version.clone());
-        config.config_file = Arc::new(config_file);
-        config
-      })
-      .collect();
+    if publish_configs.len() > 1 {
+      bail!("Cannot use --set-version when publishing a workspace. Change your cwd to an individual package instead.");
+    }
+    if let Some(publish_config) = publish_configs.get_mut(0) {
+      let mut config_file = publish_config.config_file.as_ref().clone();
+      config_file.json.version = Some(version.clone());
+      publish_config.config_file = Arc::new(config_file);
+    }
   }
 
   let specifier_unfurler = Arc::new(SpecifierUnfurler::new(

@@ -1,1 +1,0 @@
-error: The --set-version flag cannot be used in a workspace. It is only allowed for individual packages.
