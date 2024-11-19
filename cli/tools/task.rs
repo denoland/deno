@@ -387,11 +387,9 @@ fn sort_tasks_topo(
 ) -> Result<Vec<String>, TaskError> {
   fn sort_visit<'a>(
     name: &'a str,
-    marked: &mut Vec<String>,
     sorted: &mut Vec<String>,
-    tasks_config: &'a WorkspaceTasksConfig,
-    // todo(dsherret): one directional graph would be more efficient than vec
     mut path: Vec<&'a str>,
+    tasks_config: &'a WorkspaceTasksConfig,
   ) -> Result<(), TaskError> {
     // Already sorted
     if sorted.iter().any(|sorted_name| sorted_name == name) {
@@ -399,14 +397,12 @@ fn sort_tasks_topo(
     }
 
     // Graph has a cycle
-    if marked.iter().any(|marked_name| marked_name == name) {
+    if path.contains(&name) {
       path.push(name);
       return Err(TaskError::TaskDepCycle {
         path: path.iter().map(|s| s.to_string()).collect(),
       });
     }
-
-    marked.push(name.to_string());
 
     let Some(def) = tasks_config.task(name) else {
       return Err(TaskError::NotFound(name.to_string()));
@@ -416,7 +412,7 @@ fn sort_tasks_topo(
       for dep in &actual_def.dependencies {
         let mut path = path.clone();
         path.push(name);
-        sort_visit(dep, marked, sorted, tasks_config, path)?
+        sort_visit(dep, sorted, path, tasks_config)?
       }
     }
 
@@ -425,10 +421,9 @@ fn sort_tasks_topo(
     Ok(())
   }
 
-  let mut marked: Vec<String> = vec![];
   let mut sorted: Vec<String> = vec![];
 
-  sort_visit(name, &mut marked, &mut sorted, task_config, Vec::new())?;
+  sort_visit(name, &mut sorted, Vec::new(), task_config)?;
 
   Ok(sorted)
 }
