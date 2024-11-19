@@ -175,6 +175,7 @@ struct JsonLintReporter {
   version: u8,
   diagnostics: Vec<JsonLintDiagnostic>,
   errors: Vec<LintError>,
+  checked_files: Vec<String>,
 }
 
 impl JsonLintReporter {
@@ -183,6 +184,7 @@ impl JsonLintReporter {
       version: JSON_SCHEMA_VERSION,
       diagnostics: Vec::new(),
       errors: Vec::new(),
+      checked_files: Vec::new(),
     }
   }
 }
@@ -209,6 +211,10 @@ impl LintReporter for JsonLintReporter {
       code: d.code().to_string(),
       hint: d.hint().map(|h| h.to_string()),
     });
+
+    if !self.checked_files.contains(&d.specifier.to_string()) {
+      self.checked_files.push(d.specifier.to_string());
+    }
   }
 
   fn visit_error(&mut self, file_path: &str, err: &AnyError) {
@@ -216,6 +222,10 @@ impl LintReporter for JsonLintReporter {
       file_path: file_path.to_string(),
       message: err.to_string(),
     });
+
+    if !self.checked_files.contains(&file_path.to_string()) {
+      self.checked_files.push(file_path.to_string());
+    }
   }
 
   fn close(&mut self, _check_count: usize) {
