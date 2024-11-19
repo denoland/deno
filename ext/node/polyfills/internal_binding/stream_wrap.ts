@@ -297,16 +297,12 @@ export class LibuvStreamWrap extends HandleWrap {
   }
 
   override _onClose(): number {
-    // deno-lint-ignore no-console
-    console.log("LibuvStreamWrap.prototype._onClose");
     let status = 0;
     this.#reading = false;
 
     try {
       this[kStreamBaseField]?.close();
-    } catch (e) {
-      // deno-lint-ignore no-console
-      console.log(e);
+    } catch {
       status = codeMap.get("ENOTCONN")!;
     }
 
