@@ -1,5 +1,6 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
+use std::cell::RefCell;
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::num::NonZeroUsize;
@@ -20,7 +21,6 @@ use deno_core::futures::future::LocalBoxFuture;
 use deno_core::futures::stream::futures_unordered;
 use deno_core::futures::FutureExt;
 use deno_core::futures::StreamExt;
-use deno_core::parking_lot::Mutex;
 use deno_core::url::Url;
 use deno_path_util::normalize_path;
 use deno_runtime::deno_node::NodeResolver;
@@ -80,10 +80,9 @@ pub async fn execute_script(
     std::thread::available_parallelism().ok()
   }
   .unwrap_or_else(|| NonZeroUsize::new(2).unwrap());
-  let completed = Arc::new(Mutex::new(HashSet::with_capacity(8)));
-  let running = Arc::new(Mutex::new(HashSet::with_capacity(
-    no_of_concurrent_tasks.into(),
-  )));
+  let completed = RefCell::new(HashSet::with_capacity(8));
+  let running =
+    RefCell::new(HashSet::with_capacity(no_of_concurrent_tasks.into()));
 
   let mut task_runner = TaskRunner {
     tasks_config,
@@ -146,8 +145,8 @@ struct TaskRunner<'a> {
   env_vars: HashMap<String, String>,
   cli_options: &'a CliOptions,
   concurrency: usize,
-  completed: Arc<Mutex<HashSet<String>>>,
-  running: Arc<Mutex<HashSet<String>>>,
+  completed: RefCell<HashSet<String>>,
+  running: RefCell<HashSet<String>>,
   task_names: Vec<String>,
 }
 
@@ -178,8 +177,8 @@ impl<'a> TaskRunner<'a> {
         return Ok(exit_code);
       }
 
-      self.running.lock().remove(&name);
-      self.completed.lock().insert(name);
+      self.running.borrow_mut().remove(&name);
+      self.completed.borrow_mut().insert(name);
     }
 
     Ok(0)
@@ -197,15 +196,15 @@ impl<'a> TaskRunner<'a> {
   }
 
   fn has_remaining_tasks(&self) -> bool {
-    self.completed.lock().len() < self.task_names.len()
+    self.completed.borrow().len() < self.task_names.len()
   }
 
   fn get_next_task(
     &'a self,
   ) -> Option<LocalBoxFuture<'a, Result<(i32, String), AnyError>>> {
     for name in &self.task_names {
-      if self.completed.lock().contains(name)
-        || self.running.lock().contains(name)
+      if self.completed.borrow().contains(name)
+        || self.running.borrow().contains(name)
       {
         continue;
       }
@@ -215,7 +214,7 @@ impl<'a> TaskRunner<'a> {
           TaskOrScript::Task(_, def) => def
             .dependencies
             .iter()
-            .all(|dep| self.completed.lock().contains(dep)),
+            .all(|dep| self.completed.borrow().contains(dep)),
           TaskOrScript::Script(_, _) => true,
         }
       } else {
@@ -227,7 +226,7 @@ impl<'a> TaskRunner<'a> {
         continue;
       }
 
-      self.running.lock().insert(name.clone());
+      self.running.borrow_mut().insert(name.clone());
       let name = name.clone();
       return Some(
         async move {
