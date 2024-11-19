@@ -5,20 +5,16 @@
 import { primordials } from "ext:core/mod.js";
 import { Storage } from "ext:core/ops";
 const {
-  Symbol,
   SymbolFor,
   ObjectFromEntries,
   ObjectEntries,
   ReflectDefineProperty,
   ReflectDeleteProperty,
+  FunctionPrototypeBind,
   ReflectGet,
   ReflectHas,
   Proxy,
 } = primordials;
-
-import * as webidl from "ext:deno_webidl/00_webidl.js";
-
-const StoragePrototype = Storage.prototype;
 
 function createStorage(persistent) {
   const storage = new Storage(persistent);
@@ -47,7 +43,7 @@ function createStorage(persistent) {
       if (ReflectHas(target, key)) {
         const value = ReflectGet(target, key, receiver);
         if (typeof value === "function") {
-          return value.bind(target);
+          return FunctionPrototypeBind(value, target);
         }
         return value;
       }
