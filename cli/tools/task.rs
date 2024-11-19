@@ -521,6 +521,14 @@ fn print_available_tasks(
       )?;
     }
     writeln!(writer, "    {}", desc.task.command)?;
+    if !desc.task.dependencies.is_empty() {
+      writeln!(
+        writer,
+        "    {} {}",
+        colors::gray("depends on:"),
+        colors::cyan(desc.task.dependencies.join(", "))
+      )?;
+    }
   }
 
   Ok(())

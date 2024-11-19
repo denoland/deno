@@ -25,11 +25,23 @@
       "args": "task a",
       "output": "./diamond.out"
     },
+    "diamond_list": {
+      "cwd": "diamond",
+      "tempDir": true,
+      "args": "task",
+      "output": "./diamond_list.out"
+    },
     "diamond_big": {
       "cwd": "diamond_big",
       "tempDir": true,
       "args": "task a",
       "output": "./diamond_big.out"
+    },
+    "diamond_big_list": {
+      "cwd": "diamond_big",
+      "tempDir": true,
+      "args": "task",
+      "output": "./diamond_big_list.out"
     },
     "cycle": {
       "cwd": "cycle",
