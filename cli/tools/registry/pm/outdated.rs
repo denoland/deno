@@ -229,7 +229,7 @@ fn choose_new_version_req(
   filter_set: &filter::FilterSet,
 ) -> Option<VersionReq> {
   let explicit_version_req = filter_set
-    .matching_filter(&dep.prefixed_name())
+    .matching_filter(dep.alias.as_deref().unwrap_or(&dep.req.name))
     .version_spec()
     .cloned();
 
