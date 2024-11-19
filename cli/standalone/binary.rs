@@ -64,6 +64,7 @@ use crate::args::NpmInstallDepsProvider;
 use crate::args::PermissionFlags;
 use crate::args::UnstableConfig;
 use crate::cache::DenoDir;
+use crate::cache::FastInsecureHasher;
 use crate::emit::Emitter;
 use crate::file_fetcher::FileFetcher;
 use crate::http_util::HttpClientProvider;
@@ -174,6 +175,7 @@ pub struct SerializedWorkspaceResolver {
 pub struct Metadata {
   pub argv: Vec<String>,
   pub seed: Option<u64>,
+  pub code_cache_key: Option<u64>,
   pub permissions: PermissionFlags,
   pub location: Option<Url>,
   pub v8_flags: Vec<String>,
@@ -604,9 +606,20 @@ impl<'a> DenoCompileBinaryWriter<'a> {
       VfsBuilder::new(root_path.clone())?
     };
     let mut remote_modules_store = RemoteModulesStoreBuilder::default();
+    let mut code_cache_key_hasher = if cli_options.code_cache_enabled() {
+      Some(FastInsecureHasher::new_deno_versioned())
+    } else {
+      None
+    };
     for module in graph.modules() {
       if module.specifier().scheme() == "data" {
         continue; // don't store data urls as an entry as they're in the code
+      }
+      if let Some(hasher) = &mut code_cache_key_hasher {
+        if let Some(source) = module.source() {
+          hasher.write(module.specifier().as_str().as_bytes());
+          hasher.write(source.as_bytes());
+        }
       }
       let (maybe_source, media_type) = match module {
         deno_graph::Module::Js(m) => {
@@ -675,6 +688,7 @@ impl<'a> DenoCompileBinaryWriter<'a> {
     let metadata = Metadata {
       argv: compile_flags.args.clone(),
       seed: cli_options.seed(),
+      code_cache_key: code_cache_key_hasher.map(|h| h.finish()),
       location: cli_options.location_flag().clone(),
       permissions: cli_options.permission_flags().clone(),
       v8_flags: cli_options.v8_flags().clone(),
