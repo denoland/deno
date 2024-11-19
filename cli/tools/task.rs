@@ -2,11 +2,9 @@
 
 use std::collections::HashMap;
 use std::collections::HashSet;
-use std::future::Future;
 use std::num::NonZeroUsize;
 use std::path::Path;
 use std::path::PathBuf;
-use std::pin::Pin;
 use std::rc::Rc;
 use std::sync::Arc;
 
@@ -88,27 +86,22 @@ pub async fn execute_script(
   )));
 
   let mut task_runner = TaskRunner {
-    config: TaskRunnerConfig {
-      tasks_config,
-      task_flags: &task_flags,
-      npm_resolver: npm_resolver.as_ref(),
-      node_resolver: node_resolver.as_ref(),
-      env_vars,
-      cli_options,
-    },
-    executor: TaskRunnerExecutor {
-      concurrency: no_of_concurrent_tasks.into(),
-      completed,
-      running,
-      task_names: vec![],
-      queue: Default::default(),
-    },
+    tasks_config,
+    task_flags: &task_flags,
+    npm_resolver: npm_resolver.as_ref(),
+    node_resolver: node_resolver.as_ref(),
+    env_vars,
+    cli_options,
+    concurrency: no_of_concurrent_tasks.into(),
+    completed,
+    running,
+    task_names: vec![],
   };
 
   match task_runner.sort_tasks_topo(task_name) {
     Ok(sorted) => {
-      task_runner.executor.task_names = sorted.clone();
-      run_tasks_in_parallel(task_runner).await
+      task_runner.task_names = sorted.clone();
+      task_runner.run_tasks_in_parallel().await
     }
     Err(err) => match err {
       TaskError::NotFound(name) => {
@@ -120,8 +113,8 @@ pub async fn execute_script(
         if log::log_enabled!(log::Level::Error) {
           print_available_tasks(
             &mut std::io::stderr(),
-            &task_runner.config.cli_options.start_dir,
-            &task_runner.config.tasks_config,
+            &task_runner.cli_options.start_dir,
+            &task_runner.tasks_config,
           )?;
         }
         Ok(1)
@@ -148,16 +141,57 @@ enum TaskError {
   TaskDepCycle(String),
 }
 
-struct TaskRunnerConfig<'a> {
+struct TaskRunner<'a> {
   tasks_config: WorkspaceTasksConfig,
   task_flags: &'a TaskFlags,
   npm_resolver: &'a dyn CliNpmResolver,
   node_resolver: &'a NodeResolver,
   env_vars: HashMap<String, String>,
   cli_options: &'a CliOptions,
+  concurrency: usize,
+  completed: Arc<Mutex<HashSet<String>>>,
+  running: Arc<Mutex<HashSet<String>>>,
+  task_names: Vec<String>,
 }
 
-impl<'a> TaskRunnerConfig<'a> {
+impl<'a> TaskRunner<'a> {
+  async fn run_tasks_in_parallel(
+    &self,
+  ) -> Result<i32, deno_core::anyhow::Error> {
+    let mut queue = futures_unordered::FuturesUnordered::new();
+
+    loop {
+      // eprintln!("has remaining tasks {}", self.has_remaining_tasks());
+      if !self.has_remaining_tasks() {
+        break;
+      }
+
+      while queue.len() < self.concurrency {
+        // eprintln!("queue len {} {} ", queue.len(), self.concurrency);
+        if let Some(task) = self.add_tasks() {
+          queue.push(task);
+        } else {
+          break;
+        }
+      }
+
+      let Some(result) = queue.next().await else {
+        // TODO(bartlomieju): not sure if this condition is correct
+        break;
+      };
+
+      let (exit_code, name) = result?;
+      if exit_code > 0 {
+        return Ok(exit_code);
+      }
+
+      self.running.lock().remove(&name);
+      self.completed.lock().insert(name);
+    }
+
+    Ok(0)
+  }
+
   fn get_task(
     &self,
     task_name: &str,
@@ -168,96 +202,43 @@ impl<'a> TaskRunnerConfig<'a> {
 
     Ok(result)
   }
-}
 
-struct TaskRunnerExecutor {
-  concurrency: usize,
-  completed: Arc<Mutex<HashSet<String>>>,
-  running: Arc<Mutex<HashSet<String>>>,
-  task_names: Vec<String>,
-  queue: Arc<
-    Mutex<
-      futures_unordered::FuturesUnordered<
-        Pin<
-          Box<
-            dyn Future<
-              Output = Result<(i32, String), deno_core::anyhow::Error>,
-            >,
-          >,
-        >,
-      >,
-    >,
-  >,
-}
-
-struct TaskRunner<'config> {
-  config: TaskRunnerConfig<'config>,
-  executor: TaskRunnerExecutor,
-}
-
-async fn run_tasks_in_parallel<'config>(
-  task_runner: TaskRunner<'config>,
-) -> Result<i32, deno_core::anyhow::Error> {
-  task_runner.add_tasks();
-
-  loop {
-    if !task_runner.has_remaining_tasks() {
-      break;
-    }
-
-    let Some(result) = task_runner.executor.queue.lock().next().await else {
-      // TODO(bartlomieju): not sure if this condition is correct
-      break;
-    };
-
-    let (exit_code, name) = result?;
-    if exit_code > 0 {
-      return Ok(exit_code);
-    }
-
-    task_runner.executor.running.lock().remove(&name);
-    task_runner.executor.completed.lock().insert(name);
-    task_runner.add_tasks();
-  }
-
-  Ok(0)
-}
-
-impl<'config> TaskRunner<'config> {
   fn has_remaining_tasks(&self) -> bool {
-    self.executor.completed.lock().len() < self.executor.task_names.len()
+    self.completed.lock().len() < self.task_names.len()
   }
 
-  fn add_tasks(&self) {
-    for name in &self.executor.task_names {
-      if self.executor.completed.lock().contains(name) {
-        return;
+  fn add_tasks(
+    &'a self,
+  ) -> Option<LocalBoxFuture<'a, Result<(i32, String), AnyError>>> {
+    for name in &self.task_names {
+      if self.completed.lock().contains(name) {
+        continue;
       }
 
-      if self.executor.running.lock().contains(name) {
-        return;
+      if self.running.lock().contains(name) {
+        continue;
       }
 
-      let should_run = if let Ok((_, def)) = self.config.get_task(name) {
+      let should_run = if let Ok((_, def)) = self.get_task(name) {
         match def {
           TaskOrScript::Task(_, def) => def
             .dependencies
             .iter()
-            .all(|dep| self.executor.completed.lock().contains(dep)),
+            .all(|dep| self.completed.lock().contains(dep)),
           TaskOrScript::Script(_, _) => true,
         }
       } else {
         false
       };
 
+      // TODO(bartlomieju): is this correct? Shouldn't it be `return None;`?
       if !should_run {
-        return;
+        continue;
       }
 
-      self.executor.running.lock().insert(name.clone());
+      self.running.lock().insert(name.clone());
       let name = name.clone();
-      let queue = self.executor.queue.lock();
-      queue.push(
+      return Some(
         async move {
           self
             .run_task(&name)
@@ -266,19 +247,15 @@ impl<'config> TaskRunner<'config> {
         }
         .boxed_local(),
       );
-
-      if queue.len() >= self.executor.concurrency {
-        break;
-      }
     }
+    None
   }
 
   async fn run_task(
     &self,
     task_name: &String,
   ) -> Result<i32, deno_core::anyhow::Error> {
-    let (dir_url, task_or_script) =
-      self.config.get_task(task_name.as_str()).unwrap();
+    let (dir_url, task_or_script) = self.get_task(task_name.as_str()).unwrap();
 
     match task_or_script {
       TaskOrScript::Task(_tasks, definition) => {
@@ -296,15 +273,15 @@ impl<'config> TaskRunner<'config> {
     task_name: &String,
     definition: &TaskDefinition,
   ) -> Result<i32, deno_core::anyhow::Error> {
-    let cwd = match &self.config.task_flags.cwd {
+    let cwd = match &self.task_flags.cwd {
       Some(path) => canonicalize_path(&PathBuf::from(path))
         .context("failed canonicalizing --cwd")?,
       None => normalize_path(dir_url.to_file_path().unwrap()),
     };
 
     let custom_commands = task_runner::resolve_custom_commands(
-      self.config.npm_resolver,
-      self.config.node_resolver,
+      self.npm_resolver,
+      self.node_resolver,
     )?;
     self
       .run_single(RunSingleOptions {
@@ -323,11 +300,11 @@ impl<'config> TaskRunner<'config> {
     scripts: &IndexMap<String, String>,
   ) -> Result<i32, deno_core::anyhow::Error> {
     // ensure the npm packages are installed if using a managed resolver
-    if let Some(npm_resolver) = self.config.npm_resolver.as_managed() {
+    if let Some(npm_resolver) = self.npm_resolver.as_managed() {
       npm_resolver.ensure_top_level_package_json_install().await?;
     }
 
-    let cwd = match &self.config.task_flags.cwd {
+    let cwd = match &self.task_flags.cwd {
       Some(path) => canonicalize_path(&PathBuf::from(path))?,
       None => normalize_path(dir_url.to_file_path().unwrap()),
     };
@@ -341,8 +318,8 @@ impl<'config> TaskRunner<'config> {
       format!("post{}", task_name),
     ];
     let custom_commands = task_runner::resolve_custom_commands(
-      self.config.npm_resolver,
-      self.config.node_resolver,
+      self.npm_resolver,
+      self.node_resolver,
     )?;
     for task_name in &task_names {
       if let Some(script) = scripts.get(task_name) {
@@ -376,10 +353,7 @@ impl<'config> TaskRunner<'config> {
 
     output_task(
       opts.task_name,
-      &task_runner::get_script_with_args(
-        script,
-        self.config.cli_options.argv(),
-      ),
+      &task_runner::get_script_with_args(script, self.cli_options.argv()),
     );
 
     Ok(
@@ -387,14 +361,11 @@ impl<'config> TaskRunner<'config> {
         task_name,
         script,
         cwd,
-        env_vars: self.config.env_vars.clone(),
+        env_vars: self.env_vars.clone(),
         custom_commands,
-        init_cwd: self.config.cli_options.initial_cwd(),
-        argv: self.config.cli_options.argv(),
-        root_node_modules_dir: self
-          .config
-          .npm_resolver
-          .root_node_modules_path(),
+        init_cwd: self.cli_options.initial_cwd(),
+        argv: self.cli_options.argv(),
+        root_node_modules_dir: self.npm_resolver.root_node_modules_path(),
         stdio: None,
       })
       .await?
@@ -429,7 +400,7 @@ impl<'config> TaskRunner<'config> {
 
     marked.push(name.to_string());
 
-    let Some(def) = self.config.tasks_config.task(name) else {
+    let Some(def) = self.tasks_config.task(name) else {
       return Err(TaskError::NotFound(name.to_string()));
     };
 
