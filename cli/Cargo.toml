@@ -69,8 +69,8 @@ winres.workspace = true
 
 [dependencies]
 deno_ast = { workspace = true, features = ["bundler", "cjs", "codegen", "proposal", "react", "sourcemap", "transforms", "typescript", "view", "visit"] }
-deno_cache_dir = { workspace = true }
-deno_config = { version = "=0.38.2", features = ["workspace", "sync"] }
+deno_cache_dir.workspace = true
+deno_config.workspace = true
 deno_core = { workspace = true, features = ["include_js_files_for_snapshotting"] }
 deno_doc = { version = "0.156.0", default-features = false, features = ["rust", "html", "syntect"] }
 deno_graph = { version = "=0.84.1" }
@@ -122,7 +122,7 @@ hyper-util.workspace = true
 import_map = { version = "=0.20.1", features = ["ext"] }
 indexmap.workspace = true
 jsonc-parser = { workspace = true, features = ["cst", "serde"] }
-jupyter_runtime = { package = "runtimelib", version = "=0.14.0" }
+jupyter_runtime = { package = "runtimelib", version = "=0.19.0", features = ["tokio-runtime"] }
 lazy-regex.workspace = true
 libc.workspace = true
 libz-sys.workspace = true

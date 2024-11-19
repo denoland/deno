@@ -46,15 +46,14 @@ pub fn init_v8_flags(
     .skip(1)
     .collect::<Vec<_>>();
 
-  #[allow(clippy::print_stderr)]
   if !unrecognized_v8_flags.is_empty() {
     for f in unrecognized_v8_flags {
-      eprintln!("error: V8 did not recognize flag '{f}'");
+      log::error!("error: V8 did not recognize flag '{f}'");
     }
-    eprintln!("\nFor a list of V8 flags, use '--v8-flags=--help'");
-    std::process::exit(1);
+    log::error!("\nFor a list of V8 flags, use '--v8-flags=--help'");
+    deno_runtime::exit(1);
   }
   if v8_flags_includes_help {
-    std::process::exit(0);
+    deno_runtime::exit(0);
   }
 }

@@ -1,0 +1,8 @@
+{
+  "tasks": {
+    "echo_emoji": {
+      "description": "This is some task",
+      "command": "echo 1"
+    }
+  }
+}

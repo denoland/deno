@@ -1,5 +1,6 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
+use crate::ops::otel::OtelConfig;
 use deno_core::v8;
 use deno_core::ModuleSpecifier;
 use serde::Serialize;
@@ -118,6 +119,8 @@ pub struct BootstrapOptions {
   // Used by `deno serve`
   pub serve_port: Option<u16>,
   pub serve_host: Option<String>,
+  // OpenTelemetry output options. If `None`, OpenTelemetry is disabled.
+  pub otel_config: Option<OtelConfig>,
 }
 
 impl Default for BootstrapOptions {
@@ -152,6 +155,7 @@ impl Default for BootstrapOptions {
       mode: WorkerExecutionMode::None,
       serve_port: Default::default(),
       serve_host: Default::default(),
+      otel_config: None,
     }
   }
 }
@@ -193,6 +197,8 @@ struct BootstrapV8<'a>(
   Option<bool>,
   // serve worker count
   Option<usize>,
+  // OTEL config
+  Box<[u8]>,
 );
 
 impl BootstrapOptions {
@@ -219,6 +225,11 @@ impl BootstrapOptions {
       self.serve_host.as_deref(),
       serve_is_main,
       serve_worker_count,
+      if let Some(otel_config) = self.otel_config.as_ref() {
+        Box::new([otel_config.console as u8, otel_config.deterministic as u8])
+      } else {
+        Box::new([])
+      },
     );
 
     bootstrap.serialize(ser).unwrap()

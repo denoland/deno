@@ -87,6 +87,7 @@ impl LintRule for NoSloppyImportsRule {
       captures: Default::default(),
     };
 
+    // fill this and capture the sloppy imports in the resolver
     deno_graph::parse_module_from_ast(deno_graph::ParseModuleFromAstOptions {
       graph_kind: deno_graph::GraphKind::All,
       specifier: context.specifier().clone(),
