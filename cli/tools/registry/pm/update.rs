@@ -235,7 +235,7 @@ async fn do_update(
   jsr_resolver: Arc<JsrFetchResolver>,
   flags: Arc<Flags>,
 ) -> Result<(), AnyError> {
-  let mut updated = false;
+  let mut updated = HashSet::new();
   for (dep_id, resolved, latest_versions) in deps
     .deps_with_resolved_latest_versions()
     .into_iter()
@@ -260,14 +260,20 @@ async fn do_update(
     let new_req =
       VersionReq::parse_from_specifier(format!("^{}", latest.version).as_str())
         .unwrap();
+    let dep = deps.get_dep(dep_id);
+
+    updated.insert((dep.prefixed_req(), latest.version));
     deps.update_dep(dep_id, new_req);
-    updated = true;
   }
 
   deps.commit_changes().await?;
 
-  if updated {
+  if !updated.is_empty() {
     super::npm_install_after_modification(flags, Some(jsr_resolver)).await?;
+    log::info!("Updated {} dependencies:", updated.len());
+    for (req, new_version) in updated {
+      log::info!("{} -> {}", req, new_version);
+    }
   }
 
   Ok(())

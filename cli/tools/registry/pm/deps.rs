@@ -189,6 +189,15 @@ pub struct Dep {
   pub id: DepId,
 }
 
+impl Dep {
+  pub fn prefixed_req(&self) -> String {
+    match self.kind {
+      DepKind::Npm => format!("npm:{}", self.req),
+      DepKind::Jsr => format!("jsr:{}", self.req),
+    }
+  }
+}
+
 fn import_map_entries<'a>(
   import_map: &'a ImportMap,
 ) -> impl Iterator<Item = (KeyPath, SpecifierMapEntry<'a>)> {
@@ -212,7 +221,6 @@ fn import_map_entries<'a>(
 
       scope.imports.entries().map(move |entry| {
         let mut full_path = path.clone();
-        full_path.push(KeyPart::Imports);
         full_path.push(KeyPart::String(entry.raw_key.to_string()));
         (full_path, entry)
       })
@@ -886,6 +894,13 @@ impl DepManager {
                 // the display impl for PackageReqReference maps `/` to the root
                 // subpath, but for the import map the trailing `/` is significant
                 new_value.push('/');
+              }
+              if string_value
+                .trim_start_matches(format!("{}:", dep.kind.scheme()).as_str())
+                .starts_with('/')
+              {
+                // this is gross
+                new_value = new_value.replace(':', ":/");
               }
               property
                 .set_value(jsonc_parser::cst::CstInputValue::String(new_value));

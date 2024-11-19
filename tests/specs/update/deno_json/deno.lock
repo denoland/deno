@@ -1,0 +1,43 @@
+{
+  "version": "4",
+  "specifiers": {
+    "jsr:@denotest/add@0.2": "0.2.0",
+    "jsr:@denotest/multiple-exports@0.2.0": "0.2.0",
+    "jsr:@denotest/subtract@0.2": "0.2.0",
+    "npm:@denotest/bin@0.6.0": "0.6.0",
+    "npm:@denotest/breaking-change-between-versions@1.0.0": "1.0.0",
+    "npm:@denotest/has-patch-versions@0.1": "0.1.0"
+  },
+  "jsr": {
+    "@denotest/add@0.2.0": {
+      "integrity": "a9076d30ecb42b2fc6dd95e7055fbf4e6358b53f550741bd7f60089d19f68848"
+    },
+    "@denotest/multiple-exports@0.2.0": {
+      "integrity": "efe9748a0c0939c7ac245fee04acc0c42bd7a61874ff71a360c4543e4f5f6b36"
+    },
+    "@denotest/subtract@0.2.0": {
+      "integrity": "c9650fc559ab2430effc0c7fb1540e3aa89888fbdd926335ccfdeac57eb3a64d"
+    }
+  },
+  "npm": {
+    "@denotest/bin@0.6.0": {
+      "integrity": "sha512-+xIHuFv3j/rkWWF7H6HNAPEBGUtPT9uO4rBnXXNH5NVjsrQJ5c7ZtYp+z7Hk3JnQzt2exGeJrWGvVlndtgC+yw=="
+    },
+    "@denotest/breaking-change-between-versions@1.0.0": {
+      "integrity": "sha512-EjAhryqWinStR5SeDOCN4PpO8Z9cTiY4DV9nSnoZUaOUsboEtJ/r0uhm4sBiZm3//mW7Kg/5T6dqXG6RtzLusA=="
+    },
+    "@denotest/has-patch-versions@0.1.0": {
+      "integrity": "sha512-NMn5TOdV07srVJ5G7Co4EzOoF58OMKxSzYx1u83DBLwYgCyRuiIpNNK+qw2mdJrlyYb39FaO+ixOTPcOlbicQA=="
+    }
+  },
+  "workspace": {
+    "dependencies": [
+      "jsr:@denotest/add@0.2",
+      "jsr:@denotest/multiple-exports@0.2.0",
+      "jsr:@denotest/subtract@0.2",
+      "npm:@denotest/bin@0.6.0",
+      "npm:@denotest/breaking-change-between-versions@1.0.0",
+      "npm:@denotest/has-patch-versions@0.1"
+    ]
+  }
+}
