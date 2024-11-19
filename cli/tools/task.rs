@@ -159,11 +159,7 @@ impl<'a> TaskRunner<'a> {
     self.task_names = task_names;
     let mut queue = futures_unordered::FuturesUnordered::new();
 
-    loop {
-      if !self.has_remaining_tasks() {
-        break;
-      }
-
+    while self.has_remaining_tasks() {
       while queue.len() < self.concurrency {
         if let Some(task) = self.get_next_task() {
           queue.push(task);
