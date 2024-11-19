@@ -191,10 +191,7 @@ pub struct Dep {
 
 impl Dep {
   pub fn prefixed_req(&self) -> String {
-    match self.kind {
-      DepKind::Npm => format!("npm:{}", self.req),
-      DepKind::Jsr => format!("jsr:{}", self.req),
-    }
+    format!("{}:{}", self.kind.scheme(), self.req)
   }
 }
 
@@ -410,7 +407,6 @@ fn add_deps_from_package_json(
 ) {
   let package_json_deps = resolve_local_package_json_deps(package_json);
   for (k, v) in package_json_deps {
-    eprintln!("{k}");
     let (package_dep_kind, v) = match v {
       Ok((k, v)) => (k, v),
       Err(e) => {
@@ -445,11 +441,9 @@ fn deps_from_workspace(
 ) -> Result<Vec<Dep>, AnyError> {
   let mut deps = Vec::with_capacity(32);
   for deno_json in workspace.deno_jsons() {
-    eprintln!("deno_json: {}", deno_json.specifier);
     add_deps_from_deno_json(deno_json, dep_filter, &mut deps);
   }
   for package_json in workspace.package_jsons() {
-    eprintln!("package_json: {}", package_json.path.display());
     add_deps_from_package_json(package_json, dep_filter, &mut deps);
   }
 
@@ -462,24 +456,6 @@ pub struct DepId(usize);
 #[derive(Debug, Clone)]
 pub enum Change {
   Update(DepId, VersionReq),
-}
-
-pub struct DepData<'a, T> {
-  inner: &'a [T],
-}
-
-impl<'a, T> DepData<'a, T> {
-  // pub fn len(&self) -> usize {
-  //   self.inner.len()
-  // }
-}
-
-impl<'a, T> std::ops::Index<DepId> for DepData<'a, T> {
-  type Output = T;
-
-  fn index(&self, index: DepId) -> &Self::Output {
-    &self.inner[index.0]
-  }
 }
 
 pub trait DepFilter: Copy {
@@ -788,41 +764,6 @@ impl DepManager {
     Ok(())
   }
 
-  // pub fn resolved_version(
-  //   &self,
-  //   dep_id: DepId,
-  // ) -> Result<Option<&PackageNv>, AnyError> {
-  //   if self.resolved_versions.len() < self.deps.len() {
-  //     return Err(deno_core::anyhow::anyhow!(
-  //       "Versions haven't been resolved yet"
-  //     ));
-  //   }
-
-  //   Ok(self.resolved_versions[dep_id.0].as_ref())
-  // }
-
-  // pub fn resolved_versions(&self) -> DepData<'_, Option<PackageNv>> {
-  //   DepData {
-  //     inner: &self.resolved_versions,
-  //   }
-  // }
-
-  // pub fn latest_versions(&self) -> DepData<'_, PackageLatestVersion> {
-  //   DepData {
-  //     inner: &self.latest_versions,
-  //   }
-  // }
-
-  // pub fn deps_with_latest_versions(
-  //   &self,
-  // ) -> impl IntoIterator<Item = (DepId, PackageLatestVersion)> + '_ {
-  //   self
-  //     .latest_versions
-  //     .iter()
-  //     .enumerate()
-  //     .map(|(i, latest)| (DepId(i), latest.clone()))
-  // }
-
   pub fn deps_with_resolved_latest_versions(
     &self,
   ) -> impl IntoIterator<Item = (DepId, Option<PackageNv>, PackageLatestVersion)> + '_
@@ -836,10 +777,6 @@ impl DepManager {
         (DepId(i), resolved.clone(), latest.clone())
       })
   }
-
-  // pub fn deps(&self) -> DepData<'_, Dep> {
-  //   DepData { inner: &self.deps }
-  // }
 
   pub fn get_dep(&self, id: DepId) -> &Dep {
     &self.deps[id.0]

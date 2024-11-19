@@ -1,0 +1,28 @@
+{
+  "version": "4",
+  "specifiers": {
+    "npm:@denotest/bin@1": "1.0.0",
+    "npm:@denotest/breaking-change-between-versions@2": "2.0.0",
+    "npm:@denotest/has-patch-versions@0.2": "0.2.0"
+  },
+  "npm": {
+    "@denotest/bin@1.0.0": {
+      "integrity": "sha512-LokQ7v6N8KiQCVZXuy9MAzaB4kcbI8tDntvy2DI3YOaigDFdghrkv3WJfc7xU9boni5jPcndNsiH9dPJEHZfyQ=="
+    },
+    "@denotest/breaking-change-between-versions@2.0.0": {
+      "integrity": "sha512-x7q4LVdjFsu6pMsxIs1LPed6hix5p4RcCybssPzRZXOD2VCNBWbNCEDW9JRWiVFzT7+Md0n9czqMMIx+VUA5qA=="
+    },
+    "@denotest/has-patch-versions@0.2.0": {
+      "integrity": "sha512-r+5ZSpZHBgADr7Go++aGDMy7ogVtolEYT9b7Yqkp85Ms+E2TfImvXf0rGY1dTzU8qChfoHihLOrxcaTvdZ+r8A=="
+    }
+  },
+  "workspace": {
+    "packageJson": {
+      "dependencies": [
+        "npm:@denotest/bin@1",
+        "npm:@denotest/breaking-change-between-versions@2",
+        "npm:@denotest/has-patch-versions@0.2"
+      ]
+    }
+  }
+}

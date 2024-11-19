@@ -48,13 +48,12 @@ fn print_outdated_table(packages: &[OutdatedPackage]) {
   let update_column_width = longest_update.max(HEADINGS[2].len()) + 2;
   let latest_column_width = longest_latest.max(HEADINGS[3].len()) + 2;
 
-  println!(
-    "┌{}┬{}┬{}┬{}┐",
-    "─".repeat(package_column_width),
-    "─".repeat(current_column_width),
-    "─".repeat(update_column_width),
-    "─".repeat(latest_column_width)
-  );
+  let package_fill = "─".repeat(package_column_width);
+  let current_fill = "─".repeat(current_column_width);
+  let update_fill = "─".repeat(update_column_width);
+  let latest_fill = "─".repeat(latest_column_width);
+
+  println!("┌{package_fill}┬{current_fill}┬{update_fill}┬{latest_fill}┐");
   println!(
     "│ {}{} │ {}{} │ {}{} │ {}{} │",
     colors::intense_blue(HEADINGS[0]),
@@ -67,43 +66,31 @@ fn print_outdated_table(packages: &[OutdatedPackage]) {
     " ".repeat(latest_column_width - 2 - HEADINGS[3].len())
   );
   for package in packages {
-    println!(
-      "├{}┼{}┼{}┼{}┤",
-      "─".repeat(package_column_width),
-      "─".repeat(current_column_width),
-      "─".repeat(update_column_width),
-      "─".repeat(latest_column_width)
-    );
+    println!("├{package_fill}┼{current_fill}┼{update_fill}┼{latest_fill}┤",);
 
     print!(
-      "│{:^package_column_width$}",
+      "│ {:<package_column_width$} ",
       format!("{}:{}", package.kind.scheme(), package.name),
-      package_column_width = package_column_width
+      package_column_width = package_column_width - 2
     );
     print!(
-      "│{:^current_column_width$}",
+      "│ {:<current_column_width$} ",
       package.current,
-      current_column_width = current_column_width
+      current_column_width = current_column_width - 2
     );
     print!(
-      "│{:^update_column_width$}",
+      "│ {:<update_column_width$} ",
       package.semver_compatible,
-      update_column_width = update_column_width
+      update_column_width = update_column_width - 2
     );
     println!(
-      "│{:^latest_column_width$}│",
+      "│ {:<latest_column_width$} │",
       package.latest,
-      latest_column_width = latest_column_width
+      latest_column_width = latest_column_width - 2
     );
   }
 
-  println!(
-    "└{}┴{}┴{}┴{}┘",
-    "─".repeat(package_column_width),
-    "─".repeat(current_column_width),
-    "─".repeat(update_column_width),
-    "─".repeat(latest_column_width)
-  );
+  println!("└{package_fill}┴{current_fill}┴{update_fill}┴{latest_fill}┘",);
 }
 
 async fn outdated(

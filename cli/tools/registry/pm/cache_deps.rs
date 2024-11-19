@@ -9,7 +9,6 @@ use deno_core::error::AnyError;
 use deno_core::futures::stream::FuturesUnordered;
 use deno_core::futures::StreamExt;
 use deno_semver::jsr::JsrPackageReqReference;
-use deno_semver::package::PackageReq;
 
 pub async fn cache_top_level_deps(
   // todo(dsherret): don't pass the factory into this function. Instead use ctor deps
@@ -78,8 +77,6 @@ pub async fn cache_top_level_deps(
               }
               None
             });
-          } else {
-            eprintln!("badbad: {specifier_str}")
           }
         }
         "npm" => roots.push(specifier.clone()),
