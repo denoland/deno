@@ -21,13 +21,13 @@
   },
   "npm": {
     "@denotest/bin@0.6.0": {
-      "integrity": "sha512-+xIHuFv3j/rkWWF7H6HNAPEBGUtPT9uO4rBnXXNH5NVjsrQJ5c7ZtYp+z7Hk3JnQzt2exGeJrWGvVlndtgC+yw=="
+      "integrity": "sha512-vCNpxFgQN4fw4ZOp63nbTX1ilcDqNpvXCvYyC8nmfxQQAezsEt095I/YXwMIoMGzWtjCvlMf9kVEYfLuT5oEGQ=="
     },
     "@denotest/breaking-change-between-versions@1.0.0": {
-      "integrity": "sha512-EjAhryqWinStR5SeDOCN4PpO8Z9cTiY4DV9nSnoZUaOUsboEtJ/r0uhm4sBiZm3//mW7Kg/5T6dqXG6RtzLusA=="
+      "integrity": "sha512-bzMGYx+DxxPlI74n/VsDAN7Db1BY7Sz2XqxXruMo9dEznsBZu7Ez3i8YQ8n0leTxAiiMk1RCG4zQHPG1aj3xRw=="
     },
     "@denotest/has-patch-versions@0.1.0": {
-      "integrity": "sha512-NMn5TOdV07srVJ5G7Co4EzOoF58OMKxSzYx1u83DBLwYgCyRuiIpNNK+qw2mdJrlyYb39FaO+ixOTPcOlbicQA=="
+      "integrity": "sha512-H/MBo0jKDdMsX4AAGEGQbZj70nfNe3oUNZXbohYHhqf9EfpLnXp/7FC29ZdfV4+p6VjEcOGdCtXc6rilE6iYpg=="
     }
   },
   "workspace": {

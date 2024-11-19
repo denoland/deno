@@ -7,13 +7,13 @@
   },
   "npm": {
     "@denotest/bin@1.0.0": {
-      "integrity": "[WILDCARD]"
+      "integrity": "sha512-ZtrWnYYPIzw4a9H1uNeZRZRWuLCpHZZU/SllIyFLqcTLH/3zdRI8UH4Z1Kf+8N++bWGO3fg8Ev4vvS1LoLlidg=="
     },
     "@denotest/breaking-change-between-versions@2.0.0": {
-      "integrity": "sha512-x7q4LVdjFsu6pMsxIs1LPed6hix5p4RcCybssPzRZXOD2VCNBWbNCEDW9JRWiVFzT7+Md0n9czqMMIx+VUA5qA=="
+      "integrity": "sha512-3eQpPhhJYbSHaAmpgyVT8IM3+MkxcAQl90Uw8zmuTiFs64Wt3HGzSz74cwPlvfqqesRktm8fBZMmrtxVo3ENzw=="
     },
     "@denotest/has-patch-versions@0.2.0": {
-      "integrity": "sha512-r+5ZSpZHBgADr7Go++aGDMy7ogVtolEYT9b7Yqkp85Ms+E2TfImvXf0rGY1dTzU8qChfoHihLOrxcaTvdZ+r8A=="
+      "integrity": "sha512-7XIVGrBMyqnts5/wcc7dn7rVl4IWrCiGUT2GLDSLWnogOMIZBapJJLW9n8Leq1bDTJ3U6aDTEFKz9fVSOwZfLQ=="
     }
   },
   "workspace": {
