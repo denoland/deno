@@ -11,7 +11,6 @@ const {
   ReflectDefineProperty,
   ReflectDeleteProperty,
   FunctionPrototypeBind,
-  ReflectGet,
   ReflectHas,
   Proxy,
 } = primordials;
@@ -36,12 +35,12 @@ function createStorage(persistent) {
       return true;
     },
 
-    get(target, key, receiver) {
+    get(target, key) {
       if (typeof key === "symbol") {
         return target[key];
       }
       if (ReflectHas(target, key)) {
-        const value = ReflectGet(target, key, receiver);
+        const value = target[key];
         if (typeof value === "function") {
           return FunctionPrototypeBind(value, target);
         }
@@ -97,7 +96,7 @@ function createStorage(persistent) {
     inspect,
     inspectOptions,
   ) {
-    return `${this.constructor.name} ${
+    return `Storage ${
       inspect({
         ...ObjectFromEntries(ObjectEntries(proxy)),
         length: this.length,
