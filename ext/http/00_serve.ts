@@ -881,7 +881,7 @@ function registerDeclarativeServer(exports) {
               ? ` with ${serveWorkerCount} threads`
               : "";
             const host = formatHostName(hostname);
-
+            // deno-lint-ignore no-console
             // Log server information
             console.error(
               `%cdeno serve%c: Listening on %chttp://${host}:${port}/%c${nThreads}`,
