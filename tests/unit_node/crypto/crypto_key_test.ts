@@ -656,3 +656,47 @@ z6TExWlQMjt66nV7R8cRAkzmABrG+NW3e8Zpac7Lkuv+zu0S+K7c
   assertEquals(publicKey.type, "public");
   assertEquals(publicKey.asymmetricKeyType, "rsa");
 });
+
+// https://github.com/denoland/deno/issues/26188
+Deno.test("generateKeyPair large pem", function () {
+  const passphrase = "mypassphrase";
+  const cipher = "aes-256-cbc";
+  const modulusLength = 4096;
+
+  generateKeyPairSync("rsa", {
+    modulusLength,
+    publicKeyEncoding: {
+      type: "spki",
+      format: "pem",
+    },
+    privateKeyEncoding: {
+      type: "pkcs8",
+      format: "pem",
+      cipher,
+      passphrase,
+    },
+  });
+});
+
+Deno.test("generateKeyPair promisify", async () => {
+  const passphrase = "mypassphrase";
+  const cipher = "aes-256-cbc";
+  const modulusLength = 4096;
+
+  const { privateKey, publicKey } = await promisify(generateKeyPair)("rsa", {
+    modulusLength,
+    publicKeyEncoding: {
+      type: "spki",
+      format: "pem",
+    },
+    privateKeyEncoding: {
+      type: "pkcs8",
+      format: "pem",
+      cipher,
+      passphrase,
+    },
+  });
+
+  assert(publicKey.startsWith("-----BEGIN PUBLIC KEY-----"));
+  assert(privateKey.startsWith("-----BEGIN PRIVATE KEY-----"));
+});

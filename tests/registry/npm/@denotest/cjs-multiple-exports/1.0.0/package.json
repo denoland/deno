@@ -1,0 +1,8 @@
+{
+  "name": "@denotest/cjs-multiple-exports",
+  "version": "1.0.0",
+  "exports": {
+    ".": "./src/index.js",
+    "./add": "./src/add.js"
+  }
+}

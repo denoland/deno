@@ -1,16 +1,17 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
+#[derive(Clone, Copy, Debug)]
 pub struct KvConfig {
-  pub(crate) max_write_key_size_bytes: usize,
-  pub(crate) max_read_key_size_bytes: usize,
-  pub(crate) max_value_size_bytes: usize,
-  pub(crate) max_read_ranges: usize,
-  pub(crate) max_read_entries: usize,
-  pub(crate) max_checks: usize,
-  pub(crate) max_mutations: usize,
-  pub(crate) max_watched_keys: usize,
-  pub(crate) max_total_mutation_size_bytes: usize,
-  pub(crate) max_total_key_size_bytes: usize,
+  pub max_write_key_size_bytes: usize,
+  pub max_read_key_size_bytes: usize,
+  pub max_value_size_bytes: usize,
+  pub max_read_ranges: usize,
+  pub max_read_entries: usize,
+  pub max_checks: usize,
+  pub max_mutations: usize,
+  pub max_watched_keys: usize,
+  pub max_total_mutation_size_bytes: usize,
+  pub max_total_key_size_bytes: usize,
 }
 
 impl KvConfig {

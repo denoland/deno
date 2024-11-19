@@ -229,3 +229,31 @@ Deno.test("tls.rootCertificates is not empty", () => {
     (tls.rootCertificates as string[]).push("new cert");
   }, TypeError);
 });
+
+Deno.test("TLSSocket.alpnProtocol is set for client", async () => {
+  const listener = Deno.listenTls({
+    hostname: "localhost",
+    port: 0,
+    key,
+    cert,
+    alpnProtocols: ["a"],
+  });
+  const outgoing = tls.connect({
+    host: "::1",
+    servername: "localhost",
+    port: listener.addr.port,
+    ALPNProtocols: ["a"],
+    secureContext: {
+      ca: rootCaCert,
+      // deno-lint-ignore no-explicit-any
+    } as any,
+  });
+
+  const conn = await listener.accept();
+  const handshake = await conn.handshake();
+  assertEquals(handshake.alpnProtocol, "a");
+  conn.close();
+  outgoing.destroy();
+  listener.close();
+  await new Promise((resolve) => outgoing.on("close", resolve));
+});

@@ -69,6 +69,7 @@ pub use pm::add;
 pub use pm::cache_top_level_deps;
 pub use pm::remove;
 pub use pm::AddCommandName;
+pub use pm::AddRmPackageReq;
 use publish_order::PublishOrderGraph;
 use unfurl::SpecifierUnfurler;
 

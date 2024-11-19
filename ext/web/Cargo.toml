@@ -2,7 +2,7 @@
 
 [package]
 name = "deno_web"
-version = "0.202.0"
+version = "0.208.0"
 authors.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -23,6 +23,7 @@ encoding_rs.workspace = true
 flate2 = { workspace = true, features = ["default"] }
 futures.workspace = true
 serde = "1.0.149"
+thiserror.workspace = true
 tokio.workspace = true
 uuid = { workspace = true, features = ["serde"] }
 

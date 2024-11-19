@@ -876,7 +876,7 @@ fn auto_discover_lock_file() {
     .run();
   output
     .assert_matches_text(
-r#"Download http://localhost:4260/@denotest/bin
+r#"Download http://localhost:4260/@denotest%2fbin
 error: Integrity check failed for package: "npm:@denotest/bin@1.0.0". Unable to verify that the package
 is the same as when the lockfile was generated.
 
@@ -1058,10 +1058,10 @@ fn reload_info_not_found_cache_but_exists_remote() {
     .run();
   output.assert_matches_text(concat!(
     "[UNORDERED_START]\n",
-    "Download http://localhost:4260/@denotest/esm-basic\n",
-    "Download http://localhost:4260/@denotest/esm-import-cjs-default\n",
-    "Download http://localhost:4260/@denotest/cjs-default-export\n",
-    "Download http://localhost:4260/@denotest/cjs-default-export/1.0.0.tgz\n",
+    "Download http://localhost:4260/@denotest%2fesm-basic\n",
+    "Download http://localhost:4260/@denotest%2fesm-import-cjs-default\n",
+    "Download http://localhost:4260/@denotest%2fcjs-default-export\n",
+    "Download http://localhost:4260/@denotestcjs-default-export/1.0.0.tgz\n",
     "Download http://localhost:4260/@denotest/esm-basic/1.0.0.tgz\n",
     "Download http://localhost:4260/@denotest/esm-import-cjs-default/1.0.0.tgz\n",
     "[UNORDERED_END]\n",
@@ -1088,8 +1088,8 @@ fn reload_info_not_found_cache_but_exists_remote() {
     let output = test_context.new_command().args("run main.ts").run();
     output.assert_matches_text(concat!(
       "[UNORDERED_START]\n",
-      "Download http://localhost:4260/@denotest/esm-import-cjs-default\n",
-      "Download http://localhost:4260/@denotest/cjs-default-export\n",
+      "Download http://localhost:4260/@denotest%2fesm-import-cjs-default\n",
+      "Download http://localhost:4260/@denotest%2fcjs-default-export\n",
       "[UNORDERED_END]\n",
       "Node esm importing node cjs\n[WILDCARD]",
     ));
@@ -1120,8 +1120,8 @@ fn reload_info_not_found_cache_but_exists_remote() {
     let output = test_context.new_command().args("run main.ts").run();
     output.assert_matches_text(concat!(
       "[UNORDERED_START]\n",
-      "Download http://localhost:4260/@denotest/esm-import-cjs-default\n",
-      "Download http://localhost:4260/@denotest/cjs-default-export\n",
+      "Download http://localhost:4260/@denotest%2fesm-import-cjs-default\n",
+      "Download http://localhost:4260/@denotest%2fcjs-default-export\n",
       "[UNORDERED_END]\n",
       "Node esm importing node cjs\n[WILDCARD]",
     ));
@@ -1159,8 +1159,8 @@ fn reload_info_not_found_cache_but_exists_remote() {
     let output = test_context.new_command().args("run main.ts").run();
     output.assert_matches_text(concat!(
       "[UNORDERED_START]\n",
-      "Download http://localhost:4260/@denotest/esm-import-cjs-default\n",
-      "Download http://localhost:4260/@denotest/cjs-default-export\n",
+      "Download http://localhost:4260/@denotest%2fesm-import-cjs-default\n",
+      "Download http://localhost:4260/@denotest%2fcjs-default-export\n",
       "[UNORDERED_END]\n",
       "[UNORDERED_START]\n",
       "Initialize @denotest/cjs-default-export@1.0.0\n",
@@ -1196,9 +1196,9 @@ fn reload_info_not_found_cache_but_exists_remote() {
     let output = test_context.new_command().args("run main.ts").run();
     output.assert_matches_text(concat!(
       "[UNORDERED_START]\n",
-      "Download http://localhost:4260/@denotest/esm-basic\n",
-      "Download http://localhost:4260/@denotest/esm-import-cjs-default\n",
-      "Download http://localhost:4260/@denotest/cjs-default-export\n",
+      "Download http://localhost:4260/@denotest%2fesm-basic\n",
+      "Download http://localhost:4260/@denotest%2fesm-import-cjs-default\n",
+      "Download http://localhost:4260/@denotest%2fcjs-default-export\n",
       "[UNORDERED_END]\n",
       "Initialize @denotest/esm-basic@1.0.0\n",
       "Node esm importing node cjs\n[WILDCARD]",
@@ -1237,9 +1237,9 @@ fn reload_info_not_found_cache_but_exists_remote() {
     let output = test_context.new_command().args("run main.ts").run();
     output.assert_matches_text(concat!(
       "[UNORDERED_START]\n",
-      "Download http://localhost:4260/@denotest/cjs-default-export\n",
-      "Download http://localhost:4260/@denotest/esm-basic\n",
-      "Download http://localhost:4260/@denotest/esm-import-cjs-default\n",
+      "Download http://localhost:4260/@denotest%2fcjs-default-export\n",
+      "Download http://localhost:4260/@denotest%2fesm-basic\n",
+      "Download http://localhost:4260/@denotest%2fesm-import-cjs-default\n",
       "[UNORDERED_END]\n",
       "Node esm importing node cjs\n[WILDCARD]",
     ));
@@ -1419,7 +1419,7 @@ fn top_level_install_package_json_explicit_opt_in() {
   temp_dir.write("main.ts", "console.log(5);");
   let output = test_context.new_command().args("cache main.ts").run();
   output.assert_matches_text(concat!(
-    "Download http://localhost:4260/@denotest/esm-basic\n",
+    "Download http://localhost:4260/@denotest%2fesm-basic\n",
     "Download http://localhost:4260/@denotest/esm-basic/1.0.0.tgz\n",
     "Initialize @denotest/esm-basic@1.0.0\n",
   ));

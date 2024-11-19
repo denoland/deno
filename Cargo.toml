@@ -5,7 +5,6 @@ resolver = "2"
 members = [
   "bench_util",
   "cli",
-  "cli/napi/sym",
   "ext/broadcast_channel",
   "ext/cache",
   "ext/canvas",
@@ -19,6 +18,7 @@ members = [
   "ext/io",
   "ext/kv",
   "ext/napi",
+  "ext/napi/sym",
   "ext/net",
   "ext/node",
   "ext/url",
@@ -45,53 +45,54 @@ license = "MIT"
 repository = "https://github.com/denoland/deno"
 
 [workspace.dependencies]
-deno_ast = { version = "=0.42.2", features = ["transpiling"] }
-deno_core = { version = "0.311.0" }
+deno_ast = { version = "=0.43.3", features = ["transpiling"] }
+deno_core = { version = "0.320.0" }
 
-deno_bench_util = { version = "0.165.0", path = "./bench_util" }
+deno_bench_util = { version = "0.171.0", path = "./bench_util" }
+deno_config = { version = "=0.39.1", features = ["workspace", "sync"] }
 deno_lockfile = "=0.23.1"
-deno_media_type = { version = "0.1.4", features = ["module_specifier"] }
-deno_npm = "=0.25.3"
+deno_media_type = { version = "0.2.0", features = ["module_specifier"] }
+deno_npm = "=0.25.4"
 deno_path_util = "=0.2.1"
-deno_permissions = { version = "0.31.0", path = "./runtime/permissions" }
-deno_runtime = { version = "0.180.0", path = "./runtime" }
-deno_semver = "=0.5.14"
+deno_permissions = { version = "0.37.0", path = "./runtime/permissions" }
+deno_runtime = { version = "0.186.0", path = "./runtime" }
+deno_semver = "=0.5.16"
 deno_terminal = "0.2.0"
-napi_sym = { version = "0.101.0", path = "./cli/napi/sym" }
+napi_sym = { version = "0.107.0", path = "./ext/napi/sym" }
 test_util = { package = "test_server", path = "./tests/util/server" }
 
-denokv_proto = "0.8.1"
-denokv_remote = "0.8.1"
+denokv_proto = "0.8.4"
+denokv_remote = "0.8.4"
 # denokv_sqlite brings in bundled sqlite if we don't disable the default features
-denokv_sqlite = { default-features = false, version = "0.8.2" }
+denokv_sqlite = { default-features = false, version = "0.8.4" }
 
 # exts
-deno_broadcast_channel = { version = "0.165.0", path = "./ext/broadcast_channel" }
-deno_cache = { version = "0.103.0", path = "./ext/cache" }
-deno_canvas = { version = "0.40.0", path = "./ext/canvas" }
-deno_console = { version = "0.171.0", path = "./ext/console" }
-deno_cron = { version = "0.51.0", path = "./ext/cron" }
-deno_crypto = { version = "0.185.0", path = "./ext/crypto" }
-deno_fetch = { version = "0.195.0", path = "./ext/fetch" }
-deno_ffi = { version = "0.158.0", path = "./ext/ffi" }
-deno_fs = { version = "0.81.0", path = "./ext/fs" }
-deno_http = { version = "0.169.0", path = "./ext/http" }
-deno_io = { version = "0.81.0", path = "./ext/io" }
-deno_kv = { version = "0.79.0", path = "./ext/kv" }
-deno_napi = { version = "0.102.0", path = "./ext/napi" }
-deno_net = { version = "0.163.0", path = "./ext/net" }
-deno_node = { version = "0.108.0", path = "./ext/node" }
-deno_tls = { version = "0.158.0", path = "./ext/tls" }
-deno_url = { version = "0.171.0", path = "./ext/url" }
-deno_web = { version = "0.202.0", path = "./ext/web" }
-deno_webgpu = { version = "0.138.0", path = "./ext/webgpu" }
-deno_webidl = { version = "0.171.0", path = "./ext/webidl" }
-deno_websocket = { version = "0.176.0", path = "./ext/websocket" }
-deno_webstorage = { version = "0.166.0", path = "./ext/webstorage" }
+deno_broadcast_channel = { version = "0.171.0", path = "./ext/broadcast_channel" }
+deno_cache = { version = "0.109.0", path = "./ext/cache" }
+deno_canvas = { version = "0.46.0", path = "./ext/canvas" }
+deno_console = { version = "0.177.0", path = "./ext/console" }
+deno_cron = { version = "0.57.0", path = "./ext/cron" }
+deno_crypto = { version = "0.191.0", path = "./ext/crypto" }
+deno_fetch = { version = "0.201.0", path = "./ext/fetch" }
+deno_ffi = { version = "0.164.0", path = "./ext/ffi" }
+deno_fs = { version = "0.87.0", path = "./ext/fs" }
+deno_http = { version = "0.175.0", path = "./ext/http" }
+deno_io = { version = "0.87.0", path = "./ext/io" }
+deno_kv = { version = "0.85.0", path = "./ext/kv" }
+deno_napi = { version = "0.108.0", path = "./ext/napi" }
+deno_net = { version = "0.169.0", path = "./ext/net" }
+deno_node = { version = "0.114.0", path = "./ext/node" }
+deno_tls = { version = "0.164.0", path = "./ext/tls" }
+deno_url = { version = "0.177.0", path = "./ext/url" }
+deno_web = { version = "0.208.0", path = "./ext/web" }
+deno_webgpu = { version = "0.144.0", path = "./ext/webgpu" }
+deno_webidl = { version = "0.177.0", path = "./ext/webidl" }
+deno_websocket = { version = "0.182.0", path = "./ext/websocket" }
+deno_webstorage = { version = "0.172.0", path = "./ext/webstorage" }
 
 # resolvers
-deno_resolver = { version = "0.3.0", path = "./resolvers/deno" }
-node_resolver = { version = "0.10.0", path = "./resolvers/node" }
+deno_resolver = { version = "0.9.0", path = "./resolvers/deno" }
+node_resolver = { version = "0.16.0", path = "./resolvers/node" }
 
 aes = "=0.8.3"
 anyhow = "1.0.57"
@@ -99,6 +100,7 @@ async-trait = "0.1.73"
 base32 = "=0.5.1"
 base64 = "0.21.7"
 bencher = "0.1"
+boxed_error = "0.2.2"
 brotli = "6.0.0"
 bytes = "1.4.0"
 cache_control = "=0.2.0"
@@ -106,11 +108,12 @@ cbc = { version = "=0.1.2", features = ["alloc"] }
 # Note: Do not use the "clock" feature of chrono, as it links us to CoreFoundation on macOS.
 #       Instead use util::time::utc_now()
 chrono = { version = "0.4", default-features = false, features = ["std", "serde"] }
+color-print = "0.3.5"
 console_static_text = "=0.8.1"
 dashmap = "5.5.3"
 data-encoding = "2.3.3"
 data-url = "=0.3.0"
-deno_cache_dir = "=0.13.0"
+deno_cache_dir = "=0.13.2"
 deno_package_json = { version = "0.1.2", default-features = false }
 dlopen2 = "0.6.1"
 ecb = "=0.1.2"
@@ -125,6 +128,7 @@ fs3 = "0.5.0"
 futures = "0.3.21"
 glob = "0.3.1"
 h2 = "0.4.4"
+hickory-resolver = { version = "0.24", features = ["tokio-runtime", "serde-config"] }
 http = "1.0"
 http-body = "1.0"
 http-body-util = "0.1.2"
@@ -136,11 +140,11 @@ hyper-util = { version = "=0.1.7", features = ["tokio", "client", "client-legacy
 hyper_v014 = { package = "hyper", version = "0.14.26", features = ["runtime", "http1"] }
 indexmap = { version = "2", features = ["serde"] }
 ipnet = "2.3"
-jsonc-parser = { version = "=0.23.0", features = ["serde"] }
+jsonc-parser = { version = "=0.26.2", features = ["serde"] }
 lazy-regex = "3"
 libc = "0.2.126"
 libz-sys = { version = "1.1.20", default-features = false }
-log = "0.4.20"
+log = { version = "0.4.20", features = ["kv"] }
 lsp-types = "=0.97.0" # used by tower-lsp and "proposed" feature is unstable in patch releases
 memmem = "0.1.1"
 monch = "=0.5.0"
@@ -156,8 +160,8 @@ percent-encoding = "2.3.0"
 phf = { version = "0.11", features = ["macros"] }
 pin-project = "1.0.11" # don't pin because they yank crates from cargo
 pretty_assertions = "=1.4.0"
-prost = "0.11"
-prost-build = "0.11"
+prost = "0.13"
+prost-build = "0.13"
 rand = "=0.8.5"
 regex = "^1.7.0"
 reqwest = { version = "=0.12.5", default-features = false, features = ["rustls-tls", "stream", "gzip", "brotli", "socks", "json", "http2"] } # pinned because of https://github.com/seanmonstar/reqwest/pull/1955
@@ -186,7 +190,7 @@ tar = "=0.4.40"
 tempfile = "3.4.0"
 termcolor = "1.1.3"
 thiserror = "1.0.61"
-tokio = { version = "=1.36.0", features = ["full"] }
+tokio = { version = "1.36.0", features = ["full"] }
 tokio-metrics = { version = "0.3.0", features = ["rt"] }
 tokio-rustls = { version = "0.26.0", default-features = false, features = ["ring", "tls12"] }
 tokio-socks = "0.5.1"
@@ -203,8 +207,14 @@ webpki-root-certs = "0.26.5"
 webpki-roots = "0.26"
 which = "4.2.5"
 yoke = { version = "0.7.4", features = ["derive"] }
-zeromq = { version = "=0.4.0", default-features = false, features = ["tcp-transport", "tokio-runtime"] }
+zeromq = { version = "=0.4.1", default-features = false, features = ["tcp-transport", "tokio-runtime"] }
 zstd = "=0.12.4"
+
+opentelemetry = "0.27.0"
+opentelemetry-http = "0.27.0"
+opentelemetry-otlp = { version = "0.27.0", features = ["logs", "http-proto", "http-json"] }
+opentelemetry-semantic-conventions = { version = "0.27.0", features = ["semconv_experimental"] }
+opentelemetry_sdk = "0.27.0"
 
 # crypto
 hkdf = "0.12.3"
@@ -220,7 +230,7 @@ quote = "1"
 syn = { version = "2", features = ["full", "extra-traits"] }
 
 # unix
-nix = "=0.26.2"
+nix = "=0.27.1"
 
 # windows deps
 junction = "=0.2.0"

@@ -8,11 +8,9 @@ use crate::file_fetcher::FetchOptions;
 use crate::file_fetcher::FetchPermissionsOptionRef;
 use crate::file_fetcher::FileFetcher;
 use crate::file_fetcher::FileOrRedirect;
-use crate::npm::CliNpmResolver;
 use crate::util::fs::atomic_write_file_with_retries;
 use crate::util::fs::atomic_write_file_with_retries_and_fs;
 use crate::util::fs::AtomicWriteFileFsAdapter;
-use crate::util::path::specifier_has_extension;
 
 use deno_ast::MediaType;
 use deno_core::futures;
@@ -22,7 +20,9 @@ use deno_graph::source::CacheInfo;
 use deno_graph::source::LoadFuture;
 use deno_graph::source::LoadResponse;
 use deno_graph::source::Loader;
+use deno_runtime::deno_fs;
 use deno_runtime::deno_permissions::PermissionsContainer;
+use node_resolver::InNpmPackageChecker;
 use std::collections::HashMap;
 use std::path::Path;
 use std::path::PathBuf;
@@ -182,28 +182,31 @@ pub struct FetchCacherOptions {
 /// A "wrapper" for the FileFetcher and DiskCache for the Deno CLI that provides
 /// a concise interface to the DENO_DIR when building module graphs.
 pub struct FetchCacher {
-  file_fetcher: Arc<FileFetcher>,
   pub file_header_overrides: HashMap<ModuleSpecifier, HashMap<String, String>>,
+  file_fetcher: Arc<FileFetcher>,
+  fs: Arc<dyn deno_fs::FileSystem>,
   global_http_cache: Arc<GlobalHttpCache>,
-  npm_resolver: Arc<dyn CliNpmResolver>,
+  in_npm_pkg_checker: Arc<dyn InNpmPackageChecker>,
   module_info_cache: Arc<ModuleInfoCache>,
   permissions: PermissionsContainer,
-  cache_info_enabled: bool,
   is_deno_publish: bool,
+  cache_info_enabled: bool,
 }
 
 impl FetchCacher {
   pub fn new(
     file_fetcher: Arc<FileFetcher>,
+    fs: Arc<dyn deno_fs::FileSystem>,
     global_http_cache: Arc<GlobalHttpCache>,
-    npm_resolver: Arc<dyn CliNpmResolver>,
+    in_npm_pkg_checker: Arc<dyn InNpmPackageChecker>,
     module_info_cache: Arc<ModuleInfoCache>,
     options: FetchCacherOptions,
   ) -> Self {
     Self {
       file_fetcher,
+      fs,
       global_http_cache,
-      npm_resolver,
+      in_npm_pkg_checker,
       module_info_cache,
       file_header_overrides: options.file_header_overrides,
       permissions: options.permissions,
@@ -258,28 +261,21 @@ impl Loader for FetchCacher {
   ) -> LoadFuture {
     use deno_graph::source::CacheSetting as LoaderCacheSetting;
 
-    if specifier.scheme() == "file" {
-      if specifier.path().contains("/node_modules/") {
-        // The specifier might be in a completely different symlinked tree than
-        // what the node_modules url is in (ex. `/my-project-1/node_modules`
-        // symlinked to `/my-project-2/node_modules`), so first we checked if the path
-        // is in a node_modules dir to avoid needlessly canonicalizing, then now compare
-        // against the canonicalized specifier.
-        let specifier =
-          crate::node::resolve_specifier_into_node_modules(specifier);
-        if self.npm_resolver.in_npm_package(&specifier) {
-          return Box::pin(futures::future::ready(Ok(Some(
-            LoadResponse::External { specifier },
-          ))));
-        }
-      }
-
-      // make local CJS modules external to the graph
-      if specifier_has_extension(specifier, "cjs") {
+    if specifier.scheme() == "file"
+      && specifier.path().contains("/node_modules/")
+    {
+      // The specifier might be in a completely different symlinked tree than
+      // what the node_modules url is in (ex. `/my-project-1/node_modules`
+      // symlinked to `/my-project-2/node_modules`), so first we checked if the path
+      // is in a node_modules dir to avoid needlessly canonicalizing, then now compare
+      // against the canonicalized specifier.
+      let specifier = crate::node::resolve_specifier_into_node_modules(
+        specifier,
+        self.fs.as_ref(),
+      );
+      if self.in_npm_pkg_checker.in_npm_package(&specifier) {
         return Box::pin(futures::future::ready(Ok(Some(
-          LoadResponse::External {
-            specifier: specifier.clone(),
-          },
+          LoadResponse::External { specifier },
         ))));
       }
     }
@@ -325,6 +321,7 @@ impl Loader for FetchCacher {
             } else {
               FetchPermissionsOptionRef::DynamicContainer(&permissions)
             },
+            maybe_auth: None,
             maybe_accept: None,
             maybe_cache_setting: maybe_cache_setting.as_ref(),
           },

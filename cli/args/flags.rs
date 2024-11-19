@@ -36,6 +36,7 @@ use deno_path_util::normalize_path;
 use deno_path_util::url_to_file_path;
 use deno_runtime::deno_permissions::PermissionsOptions;
 use deno_runtime::deno_permissions::SysDescriptor;
+use deno_runtime::ops::otel::OtelConfig;
 use log::debug;
 use log::Level;
 use serde::Deserialize;
@@ -575,7 +576,7 @@ fn parse_packages_allowed_scripts(s: &str) -> Result<String, AnyError> {
 pub struct UnstableConfig {
   // TODO(bartlomieju): remove in Deno 2.5
   pub legacy_flag_enabled: bool, // --unstable
-  pub bare_node_builtins: bool,  // --unstable-bare-node-builts
+  pub bare_node_builtins: bool,
   pub sloppy_imports: bool,
   pub features: Vec<String>, // --unstabe-kv --unstable-cron
 }
@@ -612,7 +613,7 @@ pub struct Flags {
   pub internal: InternalFlags,
   pub ignore: Vec<String>,
   pub import_map_path: Option<String>,
-  pub env_file: Option<String>,
+  pub env_file: Option<Vec<String>>,
   pub inspect_brk: Option<SocketAddr>,
   pub inspect_wait: Option<SocketAddr>,
   pub inspect: Option<SocketAddr>,
@@ -967,6 +968,24 @@ impl Flags {
     args
   }
 
+  pub fn otel_config(&self) -> Option<OtelConfig> {
+    if self
+      .unstable_config
+      .features
+      .contains(&String::from("otel"))
+    {
+      Some(OtelConfig {
+        runtime_name: Cow::Borrowed("deno"),
+        runtime_version: Cow::Borrowed(crate::version::DENO_VERSION_INFO.deno),
+        deterministic: std::env::var("DENO_UNSTABLE_OTEL_DETERMINISTIC")
+          .is_ok(),
+        ..Default::default()
+      })
+    } else {
+      None
+    }
+  }
+
   /// Extract the paths the config file should be discovered from.
   ///
   /// Returns `None` if the config file should not be auto-discovered.
@@ -1177,9 +1196,9 @@ static DENO_HELP: &str = cstr!(
 
   <y>Dependency management:</>
     <g>add</>          Add dependencies
-                  <p(245)>deno add @std/assert  |  deno add npm:express</>
-    <g>install</>      Install script as an executable
-    <g>uninstall</>    Uninstall a script previously installed with deno install
+                  <p(245)>deno add jsr:@std/assert  |  deno add npm:express</>
+    <g>install</>      Installs dependencies either in the local project or globally to a bin directory
+    <g>uninstall</>    Uninstalls a dependency or an executable script in the installation root's bin directory
     <g>remove</>       Remove dependencies from the configuration file
 
   <y>Tooling:</>
@@ -1528,7 +1547,7 @@ pub fn clap_root() -> Command {
   );
 
   run_args(Command::new("deno"), true)
-    .args(unstable_args(UnstableArgsConfig::ResolutionAndRuntime))
+    .with_unstable_args(UnstableArgsConfig::ResolutionAndRuntime)
     .next_line_help(false)
     .bin_name("deno")
     .styles(
@@ -1630,7 +1649,7 @@ fn command(
 ) -> Command {
   Command::new(name)
     .about(about)
-    .args(unstable_args(unstable_args_config))
+    .with_unstable_args(unstable_args_config)
 }
 
 fn help_subcommand(app: &Command) -> Command {
@@ -1658,10 +1677,10 @@ fn add_subcommand() -> Command {
     "add",
     cstr!(
       "Add dependencies to your configuration file.
-  <p(245)>deno add @std/path</>
+  <p(245)>deno add jsr:@std/path</>
 
 You can add multiple dependencies at once:
-  <p(245)>deno add @std/path @std/assert</>"
+  <p(245)>deno add jsr:@std/path jsr:@std/assert</>"
     ),
     UnstableArgsConfig::None,
   )
@@ -1855,6 +1874,7 @@ Unless --reload is specified, this command will not re-download already cached d
             .required_unless_present("help")
             .value_hint(ValueHint::FilePath),
         )
+        .arg(frozen_lockfile_arg())
         .arg(allow_import_arg())
       }
     )
@@ -1919,6 +1939,7 @@ On the first invocation with deno will download the proper binary and cache it i
           ])
           .help_heading(COMPILE_HEADING),
       )
+      .arg(no_code_cache_arg())
       .arg(
         Arg::new("no-terminal")
           .long("no-terminal")
@@ -2272,7 +2293,7 @@ Ignore formatting a file by adding an ignore comment at the top of the file:
             "sass", "less", "html", "svelte", "vue", "astro", "yml", "yaml",
             "ipynb",
           ])
-          .help_heading(FMT_HEADING),
+          .help_heading(FMT_HEADING).requires("files"),
       )
       .arg(
         Arg::new("ignore")
@@ -2469,7 +2490,7 @@ in the package cache. If no dependency is specified, installs all dependencies l
 If the <p(245)>--entrypoint</> flag is passed, installs the dependencies of the specified entrypoint(s).
 
   <p(245)>deno install</>
-  <p(245)>deno install @std/bytes</>
+  <p(245)>deno install jsr:@std/bytes</>
   <p(245)>deno install npm:chalk</>
   <p(245)>deno install --entrypoint entry1.ts entry2.ts</>
 
@@ -2768,8 +2789,13 @@ It is especially useful for quick prototyping and checking snippets of code.
 
 TypeScript is supported, however it is not type-checked, only transpiled."
   ), UnstableArgsConfig::ResolutionAndRuntime)
-    .defer(|cmd| runtime_args(cmd, true, true, true)
-      .arg(check_arg(false))
+    .defer(|cmd| {
+      let cmd = compile_args_without_check_args(cmd);
+      let cmd = inspect_args(cmd);
+      let cmd = permission_args(cmd, None);
+      let cmd = runtime_misc_args(cmd);
+
+      cmd
       .arg(
         Arg::new("eval-file")
           .long("eval-file")
@@ -2788,7 +2814,7 @@ TypeScript is supported, however it is not type-checked, only transpiled."
       .after_help(cstr!("<y>Environment variables:</>
   <g>DENO_REPL_HISTORY</>  Set REPL history file path. History file is disabled when the value is empty.
                        <p(245)>[default: $DENO_DIR/deno_history.txt]</>"))
-    )
+    })
     .arg(env_file_arg())
     .arg(
       Arg::new("args")
@@ -3381,8 +3407,7 @@ fn permission_args(app: Command, requires: Option<&'static str>) -> Command {
           .value_name("IP_OR_HOSTNAME")
           .help("Allow network access. Optionally specify allowed IP addresses and host names, with ports as necessary")
           .value_parser(flags_net::validator)
-          .hide(true)
-          ;
+          .hide(true);
         if let Some(requires) = requires {
           arg = arg.requires(requires)
         }
@@ -3661,6 +3686,10 @@ fn runtime_args(
   } else {
     app
   };
+  runtime_misc_args(app)
+}
+
+fn runtime_misc_args(app: Command) -> Command {
   app
     .arg(frozen_lockfile_arg())
     .arg(cached_only_arg())
@@ -3747,12 +3776,14 @@ fn env_file_arg() -> Arg {
     .help(cstr!(
       "Load environment variables from local file
   <p(245)>Only the first environment variable with a given key is used.
-  Existing process environment variables are not overwritten.</>"
+  Existing process environment variables are not overwritten, so if variables with the same names already exist in the environment, their values will be preserved.
+  Where multiple declarations for the same environment variable exist in your .env file, the first one encountered is applied. This is determined by the order of the files you pass as arguments.</>"
     ))
     .value_hint(ValueHint::FilePath)
     .default_missing_value(".env")
     .require_equals(true)
     .num_args(0..=1)
+    .action(ArgAction::Append)
 }
 
 fn reload_arg() -> Arg {
@@ -4142,23 +4173,29 @@ enum UnstableArgsConfig {
   ResolutionAndRuntime,
 }
 
-struct UnstableArgsIter {
-  idx: usize,
-  cfg: UnstableArgsConfig,
+trait CommandExt {
+  fn with_unstable_args(self, cfg: UnstableArgsConfig) -> Self;
 }
 
-impl Iterator for UnstableArgsIter {
-  type Item = Arg;
+impl CommandExt for Command {
+  fn with_unstable_args(self, cfg: UnstableArgsConfig) -> Self {
+    let mut next_display_order = {
+      let mut value = 1000;
+      move || {
+        value += 1;
+        value
+      }
+    };
 
-  fn next(&mut self) -> Option<Self::Item> {
-    let arg = if self.idx == 0 {
+    let mut cmd = self.arg(
       Arg::new("unstable")
-        .long("unstable")
-        .help(cstr!("Enable all unstable features and APIs. Instead of using this flag, consider enabling individual unstable features
+      .long("unstable")
+      .help(cstr!("Enable all unstable features and APIs. Instead of using this flag, consider enabling individual unstable features
   <p(245)>To view the list of individual unstable feature flags, run this command again with --help=unstable</>"))
-        .action(ArgAction::SetTrue)
-        .hide(matches!(self.cfg, UnstableArgsConfig::None))
-    } else if self.idx == 1 {
+      .action(ArgAction::SetTrue)
+      .hide(matches!(cfg, UnstableArgsConfig::None))
+      .display_order(next_display_order())
+    ).arg(
       Arg::new("unstable-bare-node-builtins")
         .long("unstable-bare-node-builtins")
         .help("Enable unstable bare node builtins feature")
@@ -4166,20 +4203,36 @@ impl Iterator for UnstableArgsIter {
         .value_parser(FalseyValueParser::new())
         .action(ArgAction::SetTrue)
         .hide(true)
-        .long_help(match self.cfg {
+        .long_help(match cfg {
           UnstableArgsConfig::None => None,
           UnstableArgsConfig::ResolutionOnly
           | UnstableArgsConfig::ResolutionAndRuntime => Some("true"),
         })
         .help_heading(UNSTABLE_HEADING)
-    } else if self.idx == 2 {
+        .display_order(next_display_order()),
+    ).arg(
+      Arg::new("unstable-detect-cjs")
+        .long("unstable-detect-cjs")
+        .help("Reads the package.json type field in a project to treat .js files as .cjs")
+        .value_parser(FalseyValueParser::new())
+        .action(ArgAction::SetTrue)
+        .hide(true)
+        .long_help(match cfg {
+          UnstableArgsConfig::None => None,
+          UnstableArgsConfig::ResolutionOnly
+          | UnstableArgsConfig::ResolutionAndRuntime => Some("true"),
+        })
+        .help_heading(UNSTABLE_HEADING)
+        .display_order(next_display_order())
+    ).arg(
       Arg::new("unstable-byonm")
         .long("unstable-byonm")
         .value_parser(FalseyValueParser::new())
         .action(ArgAction::SetTrue)
         .hide(true)
         .help_heading(UNSTABLE_HEADING)
-    } else if self.idx == 3 {
+        .display_order(next_display_order()),
+    ).arg(
       Arg::new("unstable-sloppy-imports")
       .long("unstable-sloppy-imports")
       .help("Enable unstable resolving of specifiers by extension probing, .js to .ts, and directory probing")
@@ -4187,40 +4240,39 @@ impl Iterator for UnstableArgsIter {
       .value_parser(FalseyValueParser::new())
       .action(ArgAction::SetTrue)
       .hide(true)
-      .long_help(match self.cfg {
+      .long_help(match cfg {
         UnstableArgsConfig::None => None,
         UnstableArgsConfig::ResolutionOnly | UnstableArgsConfig::ResolutionAndRuntime => Some("true")
       })
       .help_heading(UNSTABLE_HEADING)
-    } else if self.idx > 3 {
-      let granular_flag = crate::UNSTABLE_GRANULAR_FLAGS.get(self.idx - 4)?;
-      Arg::new(format!("unstable-{}", granular_flag.name))
-        .long(format!("unstable-{}", granular_flag.name))
-        .help(granular_flag.help_text)
-        .action(ArgAction::SetTrue)
-        .hide(true)
-        .help_heading(UNSTABLE_HEADING)
-        // we don't render long help, so using it here as a sort of metadata
-        .long_help(if granular_flag.show_in_help {
-          match self.cfg {
-            UnstableArgsConfig::None | UnstableArgsConfig::ResolutionOnly => {
-              None
-            }
-            UnstableArgsConfig::ResolutionAndRuntime => Some("true"),
-          }
-        } else {
-          None
-        })
-    } else {
-      return None;
-    };
-    self.idx += 1;
-    Some(arg.display_order(self.idx + 1000))
-  }
-}
+      .display_order(next_display_order())
+    );
 
-fn unstable_args(cfg: UnstableArgsConfig) -> impl IntoIterator<Item = Arg> {
-  UnstableArgsIter { idx: 0, cfg }
+    for granular_flag in crate::UNSTABLE_GRANULAR_FLAGS.iter() {
+      cmd = cmd.arg(
+        Arg::new(format!("unstable-{}", granular_flag.name))
+          .long(format!("unstable-{}", granular_flag.name))
+          .help(granular_flag.help_text)
+          .action(ArgAction::SetTrue)
+          .hide(true)
+          .help_heading(UNSTABLE_HEADING)
+          // we don't render long help, so using it here as a sort of metadata
+          .long_help(if granular_flag.show_in_help {
+            match cfg {
+              UnstableArgsConfig::None | UnstableArgsConfig::ResolutionOnly => {
+                None
+              }
+              UnstableArgsConfig::ResolutionAndRuntime => Some("true"),
+            }
+          } else {
+            None
+          })
+          .display_order(next_display_order()),
+      );
+    }
+
+    cmd
+  }
 }
 
 fn allow_scripts_arg_parse(
@@ -4342,6 +4394,7 @@ fn check_parse(
   flags.type_check_mode = TypeCheckMode::Local;
   compile_args_without_check_parse(flags, matches)?;
   unstable_args_parse(flags, matches, UnstableArgsConfig::ResolutionAndRuntime);
+  frozen_lockfile_arg_parse(flags, matches);
   let files = matches.remove_many::<String>("file").unwrap().collect();
   if matches.get_flag("all") || matches.get_flag("remote") {
     flags.type_check_mode = TypeCheckMode::All;
@@ -4378,6 +4431,8 @@ fn compile_parse(
     None => vec![],
   };
   ext_arg_parse(flags, matches);
+
+  flags.code_cache_enabled = !matches.get_flag("no-code-cache");
 
   flags.subcommand = DenoSubcommand::Compile(CompileFlags {
     source_file,
@@ -4858,8 +4913,18 @@ fn repl_parse(
   flags: &mut Flags,
   matches: &mut ArgMatches,
 ) -> clap::error::Result<()> {
-  runtime_args_parse(flags, matches, true, true, true)?;
-  unsafely_ignore_certificate_errors_parse(flags, matches);
+  unstable_args_parse(flags, matches, UnstableArgsConfig::ResolutionAndRuntime);
+  compile_args_without_check_parse(flags, matches)?;
+  cached_only_arg_parse(flags, matches);
+  frozen_lockfile_arg_parse(flags, matches);
+  permission_args_parse(flags, matches)?;
+  inspect_arg_parse(flags, matches);
+  location_arg_parse(flags, matches);
+  v8_flags_arg_parse(flags, matches);
+  seed_arg_parse(flags, matches);
+  enable_testing_features_arg_parse(flags, matches);
+  env_file_arg_parse(flags, matches);
+  strace_ops_parse(flags, matches);
 
   let eval_files = matches
     .remove_many::<String>("eval-file")
@@ -5427,7 +5492,9 @@ fn import_map_arg_parse(flags: &mut Flags, matches: &mut ArgMatches) {
 }
 
 fn env_file_arg_parse(flags: &mut Flags, matches: &mut ArgMatches) {
-  flags.env_file = matches.remove_one::<String>("env-file");
+  flags.env_file = matches
+    .get_many::<String>("env-file")
+    .map(|values| values.cloned().collect());
 }
 
 fn reload_arg_parse(
@@ -6758,6 +6825,32 @@ mod tests {
         ..Flags::default()
       }
     );
+
+    let r = flags_from_vec(svec!["deno", "fmt", "--ext", "html"]);
+    assert!(r.is_err());
+    let r = flags_from_vec(svec!["deno", "fmt", "--ext", "html", "./**"]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Fmt(FmtFlags {
+          check: false,
+          files: FileFlags {
+            include: vec!["./**".to_string()],
+            ignore: vec![],
+          },
+          use_tabs: None,
+          line_width: None,
+          indent_width: None,
+          single_quote: None,
+          prose_wrap: None,
+          no_semicolons: None,
+          unstable_component: false,
+          watch: Default::default(),
+        }),
+        ext: Some("html".to_string()),
+        ..Flags::default()
+      }
+    );
   }
 
   #[test]
@@ -7337,7 +7430,7 @@ mod tests {
           allow_all: true,
           ..Default::default()
         },
-        env_file: Some(".example.env".to_owned()),
+        env_file: Some(vec![".example.env".to_owned()]),
         ..Flags::default()
       }
     );
@@ -7406,7 +7499,7 @@ mod tests {
   #[test]
   fn repl_with_flags() {
     #[rustfmt::skip]
-    let r = flags_from_vec(svec!["deno", "repl", "-A", "--import-map", "import_map.json", "--no-remote", "--config", "tsconfig.json", "--no-check", "--reload", "--lock", "lock.json", "--cert", "example.crt", "--cached-only", "--location", "https:foo", "--v8-flags=--help", "--seed", "1", "--inspect=127.0.0.1:9229", "--unsafely-ignore-certificate-errors", "--env=.example.env"]);
+    let r = flags_from_vec(svec!["deno", "repl", "-A", "--import-map", "import_map.json", "--no-remote", "--config", "tsconfig.json", "--reload", "--lock", "lock.json", "--cert", "example.crt", "--cached-only", "--location", "https:foo", "--v8-flags=--help", "--seed", "1", "--inspect=127.0.0.1:9229", "--unsafely-ignore-certificate-errors", "--env=.example.env"]);
     assert_eq!(
       r.unwrap(),
       Flags {
@@ -7431,7 +7524,7 @@ mod tests {
           allow_all: true,
           ..Default::default()
         },
-        env_file: Some(".example.env".to_owned()),
+        env_file: Some(vec![".example.env".to_owned()]),
         unsafely_ignore_certificate_errors: Some(vec![]),
         ..Flags::default()
       }
@@ -7454,7 +7547,6 @@ mod tests {
           allow_write: Some(vec![]),
           ..Default::default()
         },
-        type_check_mode: TypeCheckMode::None,
         ..Flags::default()
       }
     );
@@ -7476,7 +7568,6 @@ mod tests {
           eval: None,
           is_default_command: false,
         }),
-        type_check_mode: TypeCheckMode::None,
         ..Flags::default()
       }
     );
@@ -8081,7 +8172,7 @@ mod tests {
         subcommand: DenoSubcommand::Run(RunFlags::new_default(
           "script.ts".to_string(),
         )),
-        env_file: Some(".env".to_owned()),
+        env_file: Some(vec![".env".to_owned()]),
         code_cache_enabled: true,
         ..Flags::default()
       }
@@ -8097,7 +8188,7 @@ mod tests {
         subcommand: DenoSubcommand::Run(RunFlags::new_default(
           "script.ts".to_string(),
         )),
-        env_file: Some(".env".to_owned()),
+        env_file: Some(vec![".env".to_owned()]),
         code_cache_enabled: true,
         ..Flags::default()
       }
@@ -8130,7 +8221,7 @@ mod tests {
         subcommand: DenoSubcommand::Run(RunFlags::new_default(
           "script.ts".to_string(),
         )),
-        env_file: Some(".another_env".to_owned()),
+        env_file: Some(vec![".another_env".to_owned()]),
         code_cache_enabled: true,
         ..Flags::default()
       }
@@ -8151,7 +8242,29 @@ mod tests {
         subcommand: DenoSubcommand::Run(RunFlags::new_default(
           "script.ts".to_string(),
         )),
-        env_file: Some(".another_env".to_owned()),
+        env_file: Some(vec![".another_env".to_owned()]),
+        code_cache_enabled: true,
+        ..Flags::default()
+      }
+    );
+  }
+
+  #[test]
+  fn run_multiple_env_file_defined() {
+    let r = flags_from_vec(svec![
+      "deno",
+      "run",
+      "--env-file",
+      "--env-file=.two_env",
+      "script.ts"
+    ]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Run(RunFlags::new_default(
+          "script.ts".to_string(),
+        )),
+        env_file: Some(vec![".env".to_owned(), ".two_env".to_owned()]),
         code_cache_enabled: true,
         ..Flags::default()
       }
@@ -8294,7 +8407,7 @@ mod tests {
           allow_read: Some(vec![]),
           ..Default::default()
         },
-        env_file: Some(".example.env".to_owned()),
+        env_file: Some(vec![".example.env".to_owned()]),
         ..Flags::default()
       }
     );
@@ -9930,6 +10043,7 @@ mod tests {
           include: vec![]
         }),
         type_check_mode: TypeCheckMode::Local,
+        code_cache_enabled: true,
         ..Flags::default()
       }
     );
@@ -9938,7 +10052,7 @@ mod tests {
   #[test]
   fn compile_with_flags() {
     #[rustfmt::skip]
-    let r = flags_from_vec(svec!["deno", "compile", "--import-map", "import_map.json", "--no-remote", "--config", "tsconfig.json", "--no-check", "--unsafely-ignore-certificate-errors", "--reload", "--lock", "lock.json", "--cert", "example.crt", "--cached-only", "--location", "https:foo", "--allow-read", "--allow-net", "--v8-flags=--help", "--seed", "1", "--no-terminal", "--icon", "favicon.ico", "--output", "colors", "--env=.example.env", "https://examples.deno.land/color-logging.ts", "foo", "bar", "-p", "8080"]);
+    let r = flags_from_vec(svec!["deno", "compile", "--import-map", "import_map.json", "--no-code-cache", "--no-remote", "--config", "tsconfig.json", "--no-check", "--unsafely-ignore-certificate-errors", "--reload", "--lock", "lock.json", "--cert", "example.crt", "--cached-only", "--location", "https:foo", "--allow-read", "--allow-net", "--v8-flags=--help", "--seed", "1", "--no-terminal", "--icon", "favicon.ico", "--output", "colors", "--env=.example.env", "https://examples.deno.land/color-logging.ts", "foo", "bar", "-p", "8080"]);
     assert_eq!(
       r.unwrap(),
       Flags {
@@ -9954,6 +10068,7 @@ mod tests {
         }),
         import_map_path: Some("import_map.json".to_string()),
         no_remote: true,
+        code_cache_enabled: false,
         config_flag: ConfigFlag::Path("tsconfig.json".to_owned()),
         type_check_mode: TypeCheckMode::None,
         reload: true,
@@ -9969,7 +10084,7 @@ mod tests {
         unsafely_ignore_certificate_errors: Some(vec![]),
         v8_flags: svec!["--help", "--random-seed=1"],
         seed: Some(1),
-        env_file: Some(".example.env".to_owned()),
+        env_file: Some(vec![".example.env".to_owned()]),
         ..Flags::default()
       }
     );

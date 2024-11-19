@@ -6,8 +6,6 @@ use crate::symbol::Symbol;
 use crate::turbocall;
 use crate::turbocall::Turbocall;
 use crate::FfiPermissions;
-use deno_core::error::generic_error;
-use deno_core::error::AnyError;
 use deno_core::op2;
 use deno_core::v8;
 use deno_core::GarbageCollected;
@@ -17,9 +15,26 @@ use dlopen2::raw::Library;
 use serde::Deserialize;
 use serde_value::ValueDeserializer;
 use std::borrow::Cow;
+use std::cell::RefCell;
 use std::collections::HashMap;
 use std::ffi::c_void;
 use std::rc::Rc;
+
+#[derive(Debug, thiserror::Error)]
+pub enum DlfcnError {
+  #[error("Failed to register symbol {symbol}: {error}")]
+  RegisterSymbol {
+    symbol: String,
+    #[source]
+    error: dlopen2::Error,
+  },
+  #[error(transparent)]
+  Dlopen(#[from] dlopen2::Error),
+  #[error(transparent)]
+  Permission(#[from] deno_permissions::PermissionCheckError),
+  #[error(transparent)]
+  Other(deno_core::error::AnyError),
+}
 
 pub struct DynamicLibraryResource {
   lib: Library,
@@ -37,7 +52,7 @@ impl Resource for DynamicLibraryResource {
 }
 
 impl DynamicLibraryResource {
-  pub fn get_static(&self, symbol: String) -> Result<*mut c_void, AnyError> {
+  pub fn get_static(&self, symbol: String) -> Result<*mut c_void, DlfcnError> {
     // By default, Err returned by this function does not tell
     // which symbol wasn't exported. So we'll modify the error
     // message to include the name of symbol.
@@ -45,9 +60,7 @@ impl DynamicLibraryResource {
     // SAFETY: The obtained T symbol is the size of a pointer.
     match unsafe { self.lib.symbol::<*mut c_void>(&symbol) } {
       Ok(value) => Ok(Ok(value)),
-      Err(err) => Err(generic_error(format!(
-        "Failed to register symbol {symbol}: {err}"
-      ))),
+      Err(error) => Err(DlfcnError::RegisterSymbol { symbol, error }),
     }?
   }
 }
@@ -114,14 +127,17 @@ pub struct FfiLoadArgs {
 #[op2]
 pub fn op_ffi_load<'scope, FP>(
   scope: &mut v8::HandleScope<'scope>,
-  state: &mut OpState,
+  state: Rc<RefCell<OpState>>,
   #[serde] args: FfiLoadArgs,
-) -> Result<v8::Local<'scope, v8::Value>, AnyError>
+) -> Result<v8::Local<'scope, v8::Value>, DlfcnError>
 where
   FP: FfiPermissions + 'static,
 {
-  let permissions = state.borrow_mut::<FP>();
-  let path = permissions.check_partial_with_path(&args.path)?;
+  let path = {
+    let mut state = state.borrow_mut();
+    let permissions = state.borrow_mut::<FP>();
+    permissions.check_partial_with_path(&args.path)?
+  };
 
   let lib = Library::open(&path).map_err(|e| {
     dlopen2::Error::OpeningLibraryError(std::io::Error::new(
@@ -152,15 +168,16 @@ where
           // SAFETY: The obtained T symbol is the size of a pointer.
           match unsafe { resource.lib.symbol::<*const c_void>(symbol) } {
             Ok(value) => Ok(value),
-            Err(err) => if foreign_fn.optional {
+            Err(error) => if foreign_fn.optional {
               let null: v8::Local<v8::Value> = v8::null(scope).into();
               let func_key = v8::String::new(scope, &symbol_key).unwrap();
               obj.set(scope, func_key.into(), null);
               break 'register_symbol;
             } else {
-              Err(generic_error(format!(
-                "Failed to register symbol {symbol}: {err}"
-              )))
+              Err(DlfcnError::RegisterSymbol {
+                symbol: symbol.to_owned(),
+                error,
+              })
             },
           }?;
 
@@ -171,8 +188,13 @@ where
             .clone()
             .into_iter()
             .map(libffi::middle::Type::try_from)
-            .collect::<Result<Vec<_>, _>>()?,
-          foreign_fn.result.clone().try_into()?,
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(DlfcnError::Other)?,
+          foreign_fn
+            .result
+            .clone()
+            .try_into()
+            .map_err(DlfcnError::Other)?,
         );
 
         let func_key = v8::String::new(scope, &symbol_key).unwrap();
@@ -197,6 +219,7 @@ where
     }
   }
 
+  let mut state = state.borrow_mut();
   let out = v8::Array::new(scope, 2);
   let rid = state.resource_table.add(resource);
   let rid_v8 = v8::Integer::new_from_unsigned(scope, rid);

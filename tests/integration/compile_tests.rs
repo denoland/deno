@@ -241,7 +241,7 @@ fn compile_with_file_exists_error() {
       "./compile/args.ts",
     ])
     .run()
-    .assert_matches_text(&format!(
+    .assert_matches_text(format!(
       concat!(
         "[WILDCARD]error: Could not compile to file '{}' because its parent directory ",
         "is an existing file. You can use the `--output <file-path>` flag to ",
@@ -269,7 +269,7 @@ fn compile_with_directory_exists_error() {
       &exe.to_string_lossy(),
       "./compile/args.ts"
     ]).run()
-    .assert_matches_text(&format!(
+    .assert_matches_text(format!(
       concat!(
         "[WILDCARD]error: Could not compile to file '{}' because a directory exists with ",
         "the same name. You can use the `--output <file-path>` flag to ",
@@ -297,7 +297,7 @@ fn compile_with_conflict_file_exists_error() {
       &exe.to_string_lossy(),
       "./compile/args.ts"
     ]).run()
-    .assert_matches_text(&format!(
+    .assert_matches_text(format!(
       concat!(
         "[WILDCARD]error: Could not compile to file '{}' because the file already exists ",
         "and cannot be overwritten. Please delete the existing file or ",
@@ -1111,7 +1111,7 @@ console.log(getValue());"#,
     .run();
   output.assert_exit_code(0);
   output.assert_matches_text(
-    r#"Download http://localhost:4260/@denotest/esm-basic
+    r#"Download http://localhost:4260/@denotest%2fesm-basic
 Download http://localhost:4260/@denotest/esm-basic/1.0.0.tgz
 Initialize @denotest/esm-basic@1.0.0
 Check file:///[WILDCARD]/main.ts
