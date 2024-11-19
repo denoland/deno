@@ -1452,9 +1452,9 @@ dependencies = [
 
 [[package]]
 name = "deno_core"
-version = "0.319.0"
+version = "0.320.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e9dbb841f9850534320d8927dce53ca8d64bafbab5576c2a98f03f9e08534215"
+checksum = "f285eed7b072749f9c3a9c4cf2c9ebb06462a2c22afec94892a6684c38f32696"
 dependencies = [
  "anyhow",
  "bincode",
@@ -1929,6 +1929,7 @@ dependencies = [
  "stable_deref_trait",
  "thiserror",
  "tokio",
+ "tokio-eld",
  "url",
  "webpki-root-certs",
  "winapi",
@@ -1959,13 +1960,14 @@ dependencies = [
 
 [[package]]
 name = "deno_ops"
-version = "0.195.0"
+version = "0.196.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "797f348c38c07a5398bf790b280077c698e13fb49252f61ca6f6c5c616060292"
+checksum = "d35c75ae05062f37ec2ae5fd1d99b2dcdfa0aef70844d3706759b8775056c5f6"
 dependencies = [
  "proc-macro-rules",
  "proc-macro2",
  "quote",
+ "stringcase",
  "strum",
  "strum_macros",
  "syn 2.0.87",
@@ -3558,6 +3560,20 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "6ba4ff7128dee98c7dc9794b6a411377e1404dba1c97deb8d1a55297bd25d8af"
 dependencies = [
  "hashbrown 0.14.5",
+]
+
+[[package]]
+name = "hdrhistogram"
+version = "7.5.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "765c9198f173dd59ce26ff9f95ef0aafd0a0fe01fb9d72841bc5066a4c06511d"
+dependencies = [
+ "base64 0.21.7",
+ "byteorder",
+ "crossbeam-channel",
+ "flate2",
+ "nom 7.1.3",
+ "num-traits",
 ]
 
 [[package]]
@@ -6406,9 +6422,9 @@ dependencies = [
 
 [[package]]
 name = "serde_v8"
-version = "0.228.0"
+version = "0.229.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "bfe23e75c9a167f4e9d67a90d9fcaa622d1eec9aecad526c270e99a92f6915ff"
+checksum = "4e1dbbda82d67a393ea96f75d8383bc41fcd0bba43164aeaab599e1c2c2d46d7"
 dependencies = [
  "num-bigint",
  "serde",
@@ -6720,6 +6736,12 @@ dependencies = [
  "swc_macros_common",
  "syn 2.0.87",
 ]
+
+[[package]]
+name = "stringcase"
+version = "0.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "04028eeb851ed08af6aba5caa29f2d59a13ed168cee4d6bd753aeefcf1d636b0"
 
 [[package]]
 name = "strip-ansi-escapes"
@@ -7520,6 +7542,16 @@ dependencies = [
  "socket2",
  "tokio-macros",
  "windows-sys 0.48.0",
+]
+
+[[package]]
+name = "tokio-eld"
+version = "0.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9166030f05d6bc5642bdb8f8c2be31eb3c02cd465d662bcdc2df82d4aa41a584"
+dependencies = [
+ "hdrhistogram",
+ "tokio",
 ]
 
 [[package]]
