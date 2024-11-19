@@ -100,7 +100,7 @@ pub async fn execute_script(
 
   match task_runner.sort_tasks_topo(task_name) {
     Ok(sorted) => {
-      task_runner.task_names = sorted.clone();
+      task_runner.task_names = sorted;
       task_runner.run_tasks_in_parallel().await
     }
     Err(err) => match err {
