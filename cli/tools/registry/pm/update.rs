@@ -1,3 +1,4 @@
+use std::collections::HashSet;
 use std::sync::Arc;
 
 use deno_core::error::AnyError;
@@ -46,11 +47,6 @@ fn print_outdated_table(packages: &[OutdatedPackage]) {
   let current_column_width = longest_current.max(HEADINGS[1].len()) + 2;
   let update_column_width = longest_update.max(HEADINGS[2].len()) + 2;
   let latest_column_width = longest_latest.max(HEADINGS[3].len()) + 2;
-
-  eprintln!("package_column_width: {}", package_column_width);
-  eprintln!("current_column_width: {}", current_column_width);
-  eprintln!("update_column_width: {}", update_column_width);
-  eprintln!("latest_column_width: {}", latest_column_width);
 
   println!(
     "┌{}┬{}┬{}┬{}┐",
