@@ -329,3 +329,60 @@ fn check_local_by_default2() {
     .skip_output_check()
     .assert_exit_code(0);
 }
+
+#[test]
+fn show_prefix_hint_on_global_install() {
+  let context = TestContextBuilder::new()
+    .add_npm_env_vars()
+    .add_jsr_env_vars()
+    .use_http_server()
+    .use_temp_cwd()
+    .build();
+  let temp_dir = context.temp_dir();
+  let temp_dir_str = temp_dir.path().to_string();
+
+  let env_vars = [
+    ("HOME", temp_dir_str.as_str()),
+    ("USERPROFILE", temp_dir_str.as_str()),
+    ("DENO_INSTALL_ROOT", ""),
+  ];
+
+  for pkg_req in ["npm:@denotest/bin", "jsr:@denotest/add"] {
+    let name = pkg_req.split_once('/').unwrap().1;
+    let pkg = pkg_req.split_once(':').unwrap().1;
+
+    // try with prefix and ensure that the installation succeeds
+    context
+      .new_command()
+      .args_vec(["install", "-g", "--name", name, pkg_req])
+      .envs(env_vars)
+      .run()
+      .skip_output_check()
+      .assert_exit_code(0);
+
+    // try without the prefix and ensure that the installation fails with the appropriate error
+    // message
+    let output = context
+      .new_command()
+      .args_vec(["install", "-g", "--name", name, pkg])
+      .envs(env_vars)
+      .run();
+    output.assert_exit_code(1);
+
+    let output_text = output.combined_output();
+    let expected_text =
+      format!("error: {pkg} is missing a prefix. Did you mean `deno install -g {pkg_req}`?");
+    assert_contains!(output_text, &expected_text);
+  }
+
+  // try a pckage not in npm and jsr to make sure the appropriate error message still appears
+  let output = context
+    .new_command()
+    .args_vec(["install", "-g", "package-that-does-not-exist"])
+    .envs(env_vars)
+    .run();
+  output.assert_exit_code(1);
+
+  let output_text = output.combined_output();
+  assert_contains!(output_text, "error: Module not found");
+}

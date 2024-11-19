@@ -1,0 +1,6 @@
+{
+  "exports": {
+    ".": "./src/index.ts",
+    "./register": "./src/register.ts"
+  }
+}

@@ -1,9 +1,13 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
+use std::sync::Arc;
+
 use deno_ast::ModuleSpecifier;
 use deno_core::error::AnyError;
 use deno_runtime::code_cache;
 use deno_runtime::deno_webstorage::rusqlite::params;
+
+use crate::worker::CliCodeCache;
 
 use super::cache_db::CacheDB;
 use super::cache_db::CacheDBConfiguration;
@@ -79,6 +83,12 @@ impl CodeCache {
       CacheDBHash::new(source_hash),
       data,
     ));
+  }
+}
+
+impl CliCodeCache for CodeCache {
+  fn as_code_cache(self: Arc<Self>) -> Arc<dyn code_cache::CodeCache> {
+    self
   }
 }
 

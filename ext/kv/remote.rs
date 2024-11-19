@@ -210,6 +210,7 @@ impl<P: RemoteDbHandlerPermissions + 'static> DatabaseHandler
         pool_idle_timeout: None,
         http1: false,
         http2: true,
+        client_builder_hook: None,
       },
     )?;
     let fetch_client = FetchClient(client);
