@@ -97,7 +97,7 @@ pub async fn publish(
     match cli_options.start_dir.maybe_deno_json() {
       Some(deno_json) => {
         debug_assert!(!deno_json.is_package());
-        error_missing_exports_field(&deno_json)?;
+        error_missing_exports_field(deno_json)?;
         bail!(
           "Missing 'name' or 'exports' field in '{}'.",
           deno_json.specifier
