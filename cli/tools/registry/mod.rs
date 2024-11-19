@@ -441,21 +441,21 @@ impl PublishPreparer {
 
       let exports_content = format!(
         r#"{{
-      "name": "{}",
-      "version": "{}",
-      "exports": "{}"
-    }}"#,
+  "name": "{}",
+  "version": "{}",
+  "exports": "{}"
+}}"#,
         package.name,
         version,
         suggested_entrypoint.unwrap_or("<path_to_entrypoint>")
       );
 
       bail!(
-          "You did not specify an entrypoint to \"{}\" package in {}. Add `exports` mapping in the configuration file, eg:\n{}",
-          package.name,
-          deno_json.specifier,
-          exports_content
-        );
+        "You did not specify an entrypoint to \"{}\" package in {}. Add `exports` mapping in the configuration file, eg:\n{}",
+        package.name,
+        deno_json.specifier,
+        exports_content
+      );
     }
     let Some(name_no_at) = package.name.strip_prefix('@') else {
       bail!("Invalid package name, use '@<scope_name>/<package_name> format");
