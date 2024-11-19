@@ -151,25 +151,7 @@ async fn run_subcommand(flags: Arc<Flags>) -> Result<i32, AnyError> {
         if dir.starts_with("jsr:") {
           bail!("Initializing project from a jsr package is currently not supported.");
         } else if dir.starts_with("npm:") {
-          // TODO: do prompt
-          let script_name = format!("npm:create-{}", dir.strip_prefix("npm:").unwrap());
-
-          let new_flags = Flags {
-            permissions: PermissionFlags {
-              allow_all: true,
-              ..Default::default()
-            },
-            allow_scripts: PackagesAllowedScripts::All,
-            // TODO:
-            argv: vec![],
-            subcommand: DenoSubcommand::Run(RunFlags {
-                script: script_name,
-                ..Default::default()
-            }),
-            ..Default::default()
-          };
-          let result = tools::run::run_script(WorkerExecutionMode::Run, new_flags.into(), None).await;
-          return result;
+          return tools::init::init_npm(dir).await;
         }
       }
 

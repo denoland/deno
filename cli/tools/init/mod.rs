@@ -1,10 +1,16 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
+use crate::args::DenoSubcommand;
+use crate::args::Flags;
 use crate::args::InitFlags;
+use crate::args::PackagesAllowedScripts;
+use crate::args::PermissionFlags;
+use crate::args::RunFlags;
 use crate::colors;
 use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
 use deno_core::serde_json::json;
+use deno_runtime::WorkerExecutionMode;
 use log::info;
 use std::io::Write;
 use std::path::Path;
@@ -236,6 +242,33 @@ Deno.test(function addTest() {
     info!("  deno test");
   }
   Ok(())
+}
+
+pub async fn init_npm(name: &str) -> Result<i32, AnyError> {
+  // TODO: do prompt
+  let script_name =
+    format!("npm:create-{}", name.strip_prefix("npm:").unwrap());
+
+  let new_flags = Flags {
+    permissions: PermissionFlags {
+      allow_all: true,
+      ..Default::default()
+    },
+    allow_scripts: PackagesAllowedScripts::All,
+    // TODO:
+    argv: vec![],
+    subcommand: DenoSubcommand::Run(RunFlags {
+      script: script_name,
+      ..Default::default()
+    }),
+    ..Default::default()
+  };
+  crate::tools::run::run_script(
+    WorkerExecutionMode::Run,
+    new_flags.into(),
+    None,
+  )
+  .await
 }
 
 fn create_json_file(
