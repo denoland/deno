@@ -2672,6 +2672,9 @@ Specific version requirements to update to can be specified:
           )
       )
       .arg(
+        no_lock_arg()
+      )
+      .arg(
         Arg::new("latest")
           .long("latest")
           .action(ArgAction::SetTrue)
