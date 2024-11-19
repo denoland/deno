@@ -1,4 +1,4 @@
-Compile file:///[WILDLINE]/main.js to main
+Compile file:///[WILDLINE]/main.js to [WILDLINE]
 error: Writing deno compile executable to temporary file 'main[WILDLINE]'
 
 Caused by:
