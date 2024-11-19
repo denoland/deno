@@ -26,7 +26,6 @@ use deno_core::serde_json;
 use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
 use deno_core::url::Url;
-use deno_graph::Module;
 use deno_terminal::colors;
 use http_body_util::BodyExt;
 use serde::Deserialize;
@@ -1114,7 +1113,6 @@ fn collect_excluded_module_diagnostics(
       deno_graph::Module::Npm(_)
       | deno_graph::Module::Node(_)
       | deno_graph::Module::External(_) => None,
-      Module::Wasm(_) => todo!("@dsherret"),
     })
     .filter(|s| s.as_str().starts_with(root.as_str()));
   for specifier in graph_specifiers {

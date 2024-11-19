@@ -654,7 +654,6 @@ impl<'a> DenoCompileBinaryWriter<'a> {
         deno_graph::Module::Npm(_)
         | deno_graph::Module::Node(_)
         | deno_graph::Module::External(_) => (None, MediaType::Unknown),
-        deno_graph::Module::Wasm(_) => todo!("@dsherret"),
       };
       if module.specifier().scheme() == "file" {
         let file_path = deno_path_util::url_to_file_path(module.specifier())?;

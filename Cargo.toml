@@ -338,5 +338,3 @@ opt-level = 3
 
 [patch.crates-io]
 deno_core = { path = "../deno_core/core" }
-deno_graph = { path = "../deno_graph" }
-deno_doc = { path = "../deno_doc" }

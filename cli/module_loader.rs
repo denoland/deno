@@ -557,7 +557,6 @@ impl<TGraphContainer: ModuleGraphContainer>
         )
       }
       None => specifier.into_owned(),
-      Some(Module::Wasm(_)) => todo!("@dsherret"),
     };
     Ok(specifier)
   }
@@ -735,7 +734,6 @@ impl<TGraphContainer: ModuleGraphContainer>
         | deno_graph::Module::Npm(_),
       )
       | None => Ok(None),
-      Some(deno_graph::Module::Wasm(_)) => todo!("@dsherret"),
     }
   }
 
