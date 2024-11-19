@@ -1453,6 +1453,7 @@ dependencies = [
 [[package]]
 name = "deno_core"
 version = "0.320.0"
+source = "git+https://github.com/littledivy/deno_core?branch=reorder_self_isolate#414a51573052aec6e8c0a9ab3d85f02c351f819d"
 dependencies = [
  "anyhow",
  "bincode",
@@ -1959,6 +1960,7 @@ dependencies = [
 [[package]]
 name = "deno_ops"
 version = "0.196.0"
+source = "git+https://github.com/littledivy/deno_core?branch=reorder_self_isolate#414a51573052aec6e8c0a9ab3d85f02c351f819d"
 dependencies = [
  "proc-macro-rules",
  "proc-macro2",
@@ -6419,6 +6421,7 @@ dependencies = [
 [[package]]
 name = "serde_v8"
 version = "0.229.0"
+source = "git+https://github.com/littledivy/deno_core?branch=reorder_self_isolate#414a51573052aec6e8c0a9ab3d85f02c351f819d"
 dependencies = [
  "num-bigint",
  "serde",
