@@ -186,7 +186,6 @@ impl<'a> TaskRunner<'a> {
             false
           };
 
-          // TODO(bartlomieju): is this correct? Shouldn't it be `return None;`?
           if !should_run {
             continue;
           }
