@@ -6,7 +6,7 @@
     "jsr:@denotest/subtract@1": "1.0.0",
     "npm:@denotest/bin@1": "1.0.0",
     "npm:@denotest/breaking-change-between-versions@2": "2.0.0",
-    "npm:@denotest/has-patch-versions@0.2": "0.1.1"
+    "npm:@denotest/has-patch-versions@0.2": "0.2.0"
   },
   "jsr": {
     "@denotest/add@1.0.0": {
@@ -26,8 +26,8 @@
     "@denotest/breaking-change-between-versions@2.0.0": {
       "integrity": "sha512-x7q4LVdjFsu6pMsxIs1LPed6hix5p4RcCybssPzRZXOD2VCNBWbNCEDW9JRWiVFzT7+Md0n9czqMMIx+VUA5qA=="
     },
-    "@denotest/has-patch-versions@0.1.1": {
-      "integrity": "sha512-BcH2/Hbu6RCkhLpzHTgRM7Vdxhb2bq7WVovWOb56eTe1/2sNDEkpJ5O3gfHMU0WF1MG7Fn+boTgXpEAMfIrA5Q=="
+    "@denotest/has-patch-versions@0.2.0": {
+      "integrity": "sha512-r+5ZSpZHBgADr7Go++aGDMy7ogVtolEYT9b7Yqkp85Ms+E2TfImvXf0rGY1dTzU8qChfoHihLOrxcaTvdZ+r8A=="
     }
   },
   "workspace": {

@@ -2,11 +2,13 @@ use std::collections::HashSet;
 use std::sync::Arc;
 
 use deno_core::error::AnyError;
+use deno_semver::package::PackageNv;
 use deno_semver::package::PackageReq;
 use deno_semver::VersionReq;
 use deno_terminal::colors;
 
 use crate::args::CacheSetting;
+use crate::args::CliOptions;
 use crate::args::Flags;
 use crate::args::UpdateFlags;
 use crate::factory::CliFactory;
@@ -15,8 +17,10 @@ use crate::jsr::JsrFetchResolver;
 use crate::npm::NpmFetchResolver;
 use crate::tools::registry::pm::deps::DepKind;
 
+use super::deps::Dep;
 use super::deps::DepManager;
 use super::deps::DepManagerArgs;
+use super::deps::PackageLatestVersion;
 
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord)]
 struct OutdatedPackage {
@@ -164,45 +168,47 @@ pub async fn update(
   );
   file_fetcher.set_download_log_level(log::Level::Trace);
   let file_fetcher = Arc::new(file_fetcher);
-  let npm_resolver = Arc::new(NpmFetchResolver::new(
+  let npm_fetch_resolver = Arc::new(NpmFetchResolver::new(
     file_fetcher.clone(),
     cli_options.npmrc().clone(),
   ));
-  let jsr_resolver = Arc::new(JsrFetchResolver::new(file_fetcher.clone()));
+  let jsr_fetch_resolver =
+    Arc::new(JsrFetchResolver::new(file_fetcher.clone()));
 
-  let args = DepManagerArgs {
-    module_load_preparer: factory.module_load_preparer().await?.clone(),
-    jsr_fetch_resolver: jsr_resolver.clone(),
-    npm_fetch_resolver: npm_resolver,
-    npm_resolver: factory.npm_resolver().await?.clone(),
-    permissions_container: factory.root_permissions_container()?.clone(),
-    main_module_graph_container: factory
-      .main_module_graph_container()
-      .await?
-      .clone(),
-    lockfile: cli_options.maybe_lockfile().cloned(),
+  let args = dep_manager_args(
+    &factory,
+    &cli_options,
+    npm_fetch_resolver.clone(),
+    jsr_fetch_resolver.clone(),
+  )
+  .await?;
+
+  let filter_set = filter::FilterSet::from_filter_strings(
+    update_flags.filters.iter().map(|s| s.as_str()),
+  )?;
+
+  let filter_fn = |alias: Option<&str>, req: &PackageReq, _: DepKind| {
+    if filter_set.is_empty() {
+      return true;
+    }
+    let name = alias.unwrap_or(&req.name);
+    filter_set.matches(name)
   };
   let mut deps = if update_flags.recursive {
-    super::deps::DepManager::from_workspace(
-      workspace,
-      |_: &PackageReq, _: DepKind| true,
-      args,
-    )?
+    super::deps::DepManager::from_workspace(workspace, filter_fn, args)?
   } else {
     super::deps::DepManager::from_workspace_dir(
       &cli_options.start_dir,
-      |_: &PackageReq, _: DepKind| true,
+      filter_fn,
       args,
     )?
   };
 
-  // deps.resolve_versions().await?;
-  // deps.fetch_latest_versions().await?;
   deps.resolve_versions().await?;
 
   match update_flags.kind {
     crate::args::UpdateKind::Update { latest } => {
-      do_update(&mut deps, latest, jsr_resolver, flags).await?;
+      do_update(deps, latest, &filter_set, flags).await?;
     }
     crate::args::UpdateKind::PrintOutdated { compatible } => {
       outdated(&mut deps, compatible).await?;
@@ -212,52 +218,389 @@ pub async fn update(
   Ok(())
 }
 
-async fn do_update(
-  deps: &mut DepManager,
+fn choose_new_version_req(
+  dep: &Dep,
+  resolved: Option<&PackageNv>,
+  latest_versions: &PackageLatestVersion,
   update_to_latest: bool,
-  jsr_resolver: Arc<JsrFetchResolver>,
+  filter_set: &filter::FilterSet,
+) -> Option<VersionReq> {
+  let explicit_version_req = if let Some(version_req) = filter_set
+    .matching_filter(&dep.prefixed_name())
+    .version_spec()
+    .cloned()
+  {
+    Some(version_req)
+  } else {
+    None
+  };
+
+  if let Some(version_req) = explicit_version_req {
+    if let Some(resolved) = resolved {
+      // todo(nathanwhit): handle tag
+      if version_req.tag().is_none() && version_req.matches(&resolved.version) {
+        return None;
+      }
+    }
+    Some(version_req)
+  } else {
+    let preferred = if update_to_latest {
+      latest_versions.latest.as_ref()?
+    } else {
+      latest_versions.semver_compatible.as_ref()?
+    };
+    if preferred.version <= resolved?.version {
+      return None;
+    }
+    Some(
+      VersionReq::parse_from_specifier(
+        format!("^{}", preferred.version).as_str(),
+      )
+      .unwrap(),
+    )
+  }
+}
+
+async fn do_update(
+  mut deps: DepManager,
+  update_to_latest: bool,
+  filter_set: &filter::FilterSet,
   flags: Arc<Flags>,
 ) -> Result<(), AnyError> {
-  let mut updated = HashSet::new();
+  let mut updated = Vec::new();
+
   for (dep_id, resolved, latest_versions) in deps
     .deps_with_resolved_latest_versions()
     .into_iter()
     .collect::<Vec<_>>()
   {
-    let latest = {
-      let preferred = if update_to_latest {
-        latest_versions.latest
-      } else {
-        latest_versions.semver_compatible
-      };
-      if let Some(v) = preferred {
-        v
-      } else {
-        continue;
-      }
-    };
-    let Some(resolved) = resolved else { continue };
-    if latest.version <= resolved.version {
-      continue;
-    }
-    let new_req =
-      VersionReq::parse_from_specifier(format!("^{}", latest.version).as_str())
-        .unwrap();
     let dep = deps.get_dep(dep_id);
+    let new_version_req = choose_new_version_req(
+      dep,
+      resolved.as_ref(),
+      &latest_versions,
+      update_to_latest,
+      filter_set,
+    );
+    let Some(new_version_req) = new_version_req else {
+      continue;
+    };
 
-    updated.insert((dep.prefixed_req(), latest.version));
-    deps.update_dep(dep_id, new_req);
+    updated.push((dep_id, new_version_req.clone()));
+
+    deps.update_dep(dep_id, new_version_req);
   }
 
   deps.commit_changes().await?;
 
   if !updated.is_empty() {
-    super::npm_install_after_modification(flags, Some(jsr_resolver)).await?;
-    log::info!("Updated {} dependencies:", updated.len());
-    for (req, new_version) in updated {
-      log::info!("{} -> {}", req, new_version);
+    let factory = super::npm_install_after_modification(
+      flags.clone(),
+      Some(deps.jsr_fetch_resolver.clone()),
+    )
+    .await?;
+
+    let mut updated_to_versions = HashSet::new();
+    let cli_options = factory.cli_options()?;
+    let args = dep_manager_args(
+      &factory,
+      cli_options,
+      deps.npm_fetch_resolver.clone(),
+      deps.jsr_fetch_resolver.clone(),
+    )
+    .await?;
+
+    let mut deps = deps.reloaded_after_modification(args);
+    deps.resolve_current_versions().await?;
+    for (dep_id, new_version_req) in updated {
+      let prefixed_name = deps.get_dep(dep_id).prefixed_name();
+      if let Some(nv) = deps.resolved_version(dep_id) {
+        updated_to_versions.insert((prefixed_name, nv.version.clone()));
+      } else {
+        log::warn!(
+          "Failed to resolve version for new version requirement: {} -> {}",
+          prefixed_name,
+          new_version_req
+        );
+      }
     }
+
+    log::info!(
+      "Updated {} dependenc{}:",
+      updated_to_versions.len(),
+      if updated_to_versions.len() == 1 {
+        "y"
+      } else {
+        "ies"
+      }
+    );
+    for (prefixed_name, new_version) in updated_to_versions {
+      log::info!("• {} -> {}", prefixed_name, new_version);
+    }
+  } else {
+    log::info!(
+      "All {}dependencies are up to date.",
+      if filter_set.is_empty() {
+        ""
+      } else {
+        "matching "
+      }
+    );
   }
 
   Ok(())
+}
+
+async fn dep_manager_args(
+  factory: &CliFactory,
+  cli_options: &CliOptions,
+  npm_fetch_resolver: Arc<NpmFetchResolver>,
+  jsr_fetch_resolver: Arc<JsrFetchResolver>,
+) -> Result<DepManagerArgs, AnyError> {
+  Ok(DepManagerArgs {
+    module_load_preparer: factory.module_load_preparer().await?.clone(),
+    jsr_fetch_resolver,
+    npm_fetch_resolver,
+    npm_resolver: factory.npm_resolver().await?.clone(),
+    permissions_container: factory.root_permissions_container()?.clone(),
+    main_module_graph_container: factory
+      .main_module_graph_container()
+      .await?
+      .clone(),
+    lockfile: cli_options.maybe_lockfile().cloned(),
+  })
+}
+
+mod filter {
+  use deno_core::anyhow::anyhow;
+  use deno_core::anyhow::Context;
+  use deno_core::error::AnyError;
+  use deno_semver::VersionReq;
+
+  enum FilterKind {
+    Exclude,
+    Include,
+  }
+  pub struct Filter {
+    kind: FilterKind,
+    regex: regex::Regex,
+    version_spec: Option<VersionReq>,
+  }
+
+  fn pattern_to_regex(pattern: &str) -> Result<regex::Regex, AnyError> {
+    let escaped = regex::escape(pattern);
+    let unescaped_star = escaped.replace(r"\*", ".*");
+    Ok(regex::Regex::new(&format!("^{}$", unescaped_star))?)
+  }
+
+  impl Filter {
+    pub fn version_spec(&self) -> Option<&VersionReq> {
+      self.version_spec.as_ref()
+    }
+    pub fn from_str(input: &str) -> Result<Self, AnyError> {
+      let (kind, first_idx) = if input.starts_with('!') {
+        (FilterKind::Exclude, 1)
+      } else {
+        (FilterKind::Include, 0)
+      };
+      let s = &input[first_idx..];
+      let (pattern, version_spec) = if s.starts_with('@') {
+        if let Some(idx) = s[1..].find('@') {
+          let (pattern, version_spec) = s.split_at(idx + 1);
+          (
+            pattern,
+            Some(
+              VersionReq::parse_from_specifier(
+                version_spec.trim_start_matches('@'),
+              )
+              .with_context(|| format!("Invalid filter \"{input}\""))?,
+            ),
+          )
+        } else {
+          (s, None)
+        }
+      } else {
+        let mut parts = s.split('@');
+        let Some(pattern) = parts.next() else {
+          return Err(anyhow!("Invalid filter \"{input}\""));
+        };
+        (
+          pattern,
+          parts
+            .next()
+            .map(VersionReq::parse_from_specifier)
+            .transpose()
+            .with_context(|| format!("Invalid filter \"{input}\""))?,
+        )
+      };
+
+      Ok(Filter {
+        kind,
+        regex: pattern_to_regex(pattern)
+          .with_context(|| format!("Invalid filter \"{input}\""))?,
+        version_spec,
+      })
+    }
+
+    pub fn matches(&self, name: &str) -> bool {
+      self.regex.is_match(name)
+    }
+  }
+
+  pub struct FilterSet {
+    filters: Vec<Filter>,
+    has_exclude: bool,
+    has_include: bool,
+  }
+  impl FilterSet {
+    pub fn from_filter_strings<'a>(
+      filter_strings: impl IntoIterator<Item = &'a str>,
+    ) -> Result<Self, AnyError> {
+      let filters = filter_strings
+        .into_iter()
+        .map(|s| Filter::from_str(s))
+        .collect::<Result<Vec<_>, _>>()?;
+      let has_exclude = filters
+        .iter()
+        .any(|f| matches!(f.kind, FilterKind::Exclude));
+      let has_include = filters
+        .iter()
+        .any(|f| matches!(f.kind, FilterKind::Include));
+      Ok(FilterSet {
+        filters,
+        has_exclude,
+        has_include,
+      })
+    }
+
+    pub fn is_empty(&self) -> bool {
+      self.filters.is_empty()
+    }
+
+    pub fn matches(&self, name: &str) -> bool {
+      self.matching_filter(name).is_included()
+    }
+
+    pub fn matching_filter(&self, name: &str) -> MatchResult<'_> {
+      if self.filters.is_empty() {
+        return MatchResult::Included;
+      }
+      let mut matched = None;
+      for filter in &self.filters {
+        match filter.kind {
+          FilterKind::Include => {
+            if matched.is_none() && filter.matches(name) {
+              matched = Some(filter);
+            }
+          }
+          FilterKind::Exclude => {
+            if filter.matches(name) {
+              return MatchResult::Excluded;
+            }
+          }
+        }
+      }
+      if let Some(filter) = matched {
+        MatchResult::Matches(filter)
+      } else if self.has_exclude && !self.has_include {
+        MatchResult::Included
+      } else {
+        MatchResult::Excluded
+      }
+    }
+  }
+
+  pub enum MatchResult<'a> {
+    Matches(&'a Filter),
+    Included,
+    Excluded,
+  }
+
+  impl MatchResult<'_> {
+    pub fn version_spec(&self) -> Option<&VersionReq> {
+      match self {
+        MatchResult::Matches(filter) => filter.version_spec(),
+        _ => None,
+      }
+    }
+    pub fn is_included(&self) -> bool {
+      matches!(self, MatchResult::Included | MatchResult::Matches(_))
+    }
+  }
+
+  #[cfg(test)]
+  mod test {
+    fn matches_filters<'a, 'b>(
+      filters: impl IntoIterator<Item = &'a str>,
+      name: &str,
+    ) -> bool {
+      let filters = super::FilterSet::from_filter_strings(filters).unwrap();
+      filters.matches(name)
+    }
+
+    fn version_spec(s: &str) -> deno_semver::VersionReq {
+      deno_semver::VersionReq::parse_from_specifier(s).unwrap()
+    }
+
+    #[test]
+    fn basic_glob() {
+      assert!(matches_filters(["foo*"], "foo"));
+      assert!(matches_filters(["foo*"], "foobar"));
+      assert!(!matches_filters(["foo*"], "barfoo"));
+
+      assert!(matches_filters(["*foo"], "foo"));
+      assert!(matches_filters(["*foo"], "barfoo"));
+      assert!(!matches_filters(["*foo"], "foobar"));
+
+      assert!(matches_filters(["@scope/foo*"], "@scope/foobar"));
+    }
+
+    #[test]
+    fn basic_glob_with_version() {
+      assert!(matches_filters(["foo*@1"], "foo",));
+      assert!(matches_filters(["foo*@1"], "foobar",));
+      assert!(matches_filters(["foo*@1"], "foo-bar",));
+      assert!(!matches_filters(["foo*@1"], "barfoo",));
+      assert!(matches_filters(["@scope/*@1"], "@scope/foo"));
+    }
+
+    #[test]
+    fn glob_exclude() {
+      assert!(!matches_filters(["!foo*"], "foo"));
+      assert!(!matches_filters(["!foo*"], "foobar"));
+      assert!(matches_filters(["!foo*"], "barfoo"));
+
+      assert!(!matches_filters(["!*foo"], "foo"));
+      assert!(!matches_filters(["!*foo"], "barfoo"));
+      assert!(matches_filters(["!*foo"], "foobar"));
+
+      assert!(!matches_filters(["!@scope/foo*"], "@scope/foobar"));
+    }
+
+    #[test]
+    fn multiple_globs() {
+      assert!(matches_filters(["foo*", "bar*"], "foo"));
+      assert!(matches_filters(["foo*", "bar*"], "bar"));
+      assert!(!matches_filters(["foo*", "bar*"], "baz"));
+
+      assert!(matches_filters(["foo*", "!bar*"], "foo"));
+      assert!(!matches_filters(["foo*", "!bar*"], "bar"));
+      assert!(matches_filters(["foo*", "!bar*"], "foobar"));
+      assert!(!matches_filters(["foo*", "!*bar"], "foobar"));
+      assert!(!matches_filters(["foo*", "!*bar"], "baz"));
+
+      let filters =
+        super::FilterSet::from_filter_strings(["foo*@1", "bar*@2"]).unwrap();
+
+      assert_eq!(
+        filters.matching_filter("foo").version_spec().cloned(),
+        Some(version_spec("1"))
+      );
+
+      assert_eq!(
+        filters.matching_filter("bar").version_spec().cloned(),
+        Some(version_spec("2"))
+      );
+    }
+  }
 }

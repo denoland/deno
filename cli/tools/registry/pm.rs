@@ -856,7 +856,7 @@ async fn npm_install_after_modification(
   flags: Arc<Flags>,
   // explicitly provided to prevent redownloading
   jsr_resolver: Option<Arc<crate::jsr::JsrFetchResolver>>,
-) -> Result<(), AnyError> {
+) -> Result<CliFactory, AnyError> {
   // clear the previously cached package.json from memory before reloading it
   node_resolver::PackageJsonThreadLocalCache::clear();
 
@@ -874,7 +874,7 @@ async fn npm_install_after_modification(
     lockfile.write_if_changed()?;
   }
 
-  Ok(())
+  Ok(cli_factory)
 }
 
 #[cfg(test)]
