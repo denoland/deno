@@ -2,9 +2,11 @@
 
 use std::collections::HashMap;
 use std::collections::HashSet;
+use std::future::Future;
 use std::num::NonZeroUsize;
 use std::path::Path;
 use std::path::PathBuf;
+use std::pin::Pin;
 use std::rc::Rc;
 use std::sync::Arc;
 
@@ -16,7 +18,9 @@ use deno_core::anyhow::anyhow;
 use deno_core::anyhow::bail;
 use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
+use deno_core::futures::future::LocalBoxFuture;
 use deno_core::futures::stream::futures_unordered;
+use deno_core::futures::FutureExt;
 use deno_core::futures::StreamExt;
 use deno_core::parking_lot::Mutex;
 use deno_core::url::Url;
@@ -72,17 +76,40 @@ pub async fn execute_script(
   let node_resolver = factory.node_resolver().await?;
   let env_vars = task_runner::real_env_vars();
 
-  let task_runner = TaskRunner {
-    tasks_config,
-    task_flags: &task_flags,
-    npm_resolver: npm_resolver.as_ref(),
-    node_resolver: node_resolver.as_ref(),
-    env_vars,
-    cli_options,
+  let no_of_concurrent_tasks = if let Ok(value) = std::env::var("DENO_JOBS") {
+    value.parse::<NonZeroUsize>().ok()
+  } else {
+    std::thread::available_parallelism().ok()
+  }
+  .unwrap_or_else(|| NonZeroUsize::new(2).unwrap());
+  let completed = Arc::new(Mutex::new(HashSet::with_capacity(8)));
+  let running = Arc::new(Mutex::new(HashSet::with_capacity(
+    no_of_concurrent_tasks.into(),
+  )));
+
+  let mut task_runner = TaskRunner {
+    config: TaskRunnerConfig {
+      tasks_config,
+      task_flags: &task_flags,
+      npm_resolver: npm_resolver.as_ref(),
+      node_resolver: node_resolver.as_ref(),
+      env_vars,
+      cli_options,
+    },
+    executor: TaskRunnerExecutor {
+      concurrency: no_of_concurrent_tasks.into(),
+      completed,
+      running,
+      task_names: vec![],
+      queue: Default::default(),
+    },
   };
 
   match task_runner.sort_tasks_topo(task_name) {
-    Ok(sorted) => task_runner.run_tasks_in_parallel(sorted).await,
+    Ok(sorted) => {
+      task_runner.executor.task_names = sorted.clone();
+      run_tasks_in_parallel(task_runner).await
+    }
     Err(err) => match err {
       TaskError::NotFound(name) => {
         if task_flags.is_run {
@@ -93,13 +120,14 @@ pub async fn execute_script(
         if log::log_enabled!(log::Level::Error) {
           print_available_tasks(
             &mut std::io::stderr(),
-            &task_runner.cli_options.start_dir,
-            &task_runner.tasks_config,
+            &task_runner.config.cli_options.start_dir,
+            &task_runner.config.tasks_config,
           )?;
         }
         Ok(1)
       }
       TaskError::TaskDepCycle(name) => {
+        // TODO(bartlomieju): this should be improved to show the cycle
         log::error!("Task cycle detected: {}", name);
         Ok(1)
       }
@@ -120,7 +148,7 @@ enum TaskError {
   TaskDepCycle(String),
 }
 
-struct TaskRunner<'a> {
+struct TaskRunnerConfig<'a> {
   tasks_config: WorkspaceTasksConfig,
   task_flags: &'a TaskFlags,
   npm_resolver: &'a dyn CliNpmResolver,
@@ -129,171 +157,128 @@ struct TaskRunner<'a> {
   cli_options: &'a CliOptions,
 }
 
-impl<'a> TaskRunner<'a> {
-  async fn run_tasks_in_parallel(
+impl<'a> TaskRunnerConfig<'a> {
+  fn get_task(
     &self,
-    task_names: Vec<String>,
-  ) -> Result<i32, deno_core::anyhow::Error> {
-    let no_of_concurrent_tasks =
-      if let Ok(value) = std::env::var("DENO_JOBS") {
-        value.parse::<NonZeroUsize>().ok()
-      } else {
-        std::thread::available_parallelism().ok()
+    task_name: &str,
+  ) -> Result<(&Url, TaskOrScript), TaskError> {
+    let Some(result) = self.tasks_config.task(task_name) else {
+      return Err(TaskError::NotFound(task_name.to_string()));
+    };
+
+    Ok(result)
+  }
+}
+
+struct TaskRunnerExecutor {
+  concurrency: usize,
+  completed: Arc<Mutex<HashSet<String>>>,
+  running: Arc<Mutex<HashSet<String>>>,
+  task_names: Vec<String>,
+  queue: Arc<
+    Mutex<
+      futures_unordered::FuturesUnordered<
+        Pin<
+          Box<
+            dyn Future<
+              Output = Result<(i32, String), deno_core::anyhow::Error>,
+            >,
+          >,
+        >,
+      >,
+    >,
+  >,
+}
+
+struct TaskRunner<'config> {
+  config: TaskRunnerConfig<'config>,
+  executor: TaskRunnerExecutor,
+}
+
+async fn run_tasks_in_parallel<'config>(
+  task_runner: TaskRunner<'config>,
+) -> Result<i32, deno_core::anyhow::Error> {
+  task_runner.add_tasks();
+
+  loop {
+    if !task_runner.has_remaining_tasks() {
+      break;
+    }
+
+    let Some(result) = task_runner.executor.queue.lock().next().await else {
+      // TODO(bartlomieju): not sure if this condition is correct
+      break;
+    };
+
+    let (exit_code, name) = result?;
+    if exit_code > 0 {
+      return Ok(exit_code);
+    }
+
+    task_runner.executor.running.lock().remove(&name);
+    task_runner.executor.completed.lock().insert(name);
+    task_runner.add_tasks();
+  }
+
+  Ok(0)
+}
+
+impl<'config> TaskRunner<'config> {
+  fn has_remaining_tasks(&self) -> bool {
+    self.executor.completed.lock().len() < self.executor.task_names.len()
+  }
+
+  fn add_tasks(&self) {
+    for name in &self.executor.task_names {
+      if self.executor.completed.lock().contains(name) {
+        return;
       }
-      .unwrap_or_else(|| NonZeroUsize::new(2).unwrap());
 
-    let completed =
-      Arc::new(Mutex::new(HashSet::with_capacity(task_names.len())));
-    let running = Arc::new(Mutex::new(HashSet::with_capacity(
-      no_of_concurrent_tasks.into(),
-    )));
+      if self.executor.running.lock().contains(name) {
+        return;
+      }
 
-    let mut task_futures = Vec::with_capacity(task_names.len());
-
-    for name in task_names {
-      let completed = completed.clone();
-      let running = running.clone();
-      task_futures.push(async move {
-        if completed.lock().contains(&name) {
-          return None;
+      let should_run = if let Ok((_, def)) = self.config.get_task(name) {
+        match def {
+          TaskOrScript::Task(_, def) => def
+            .dependencies
+            .iter()
+            .all(|dep| self.executor.completed.lock().contains(dep)),
+          TaskOrScript::Script(_, _) => true,
         }
+      } else {
+        false
+      };
 
-        if running.lock().contains(&name) {
-          return None;
-        }
+      if !should_run {
+        return;
+      }
 
-        let should_run = if let Ok((_, def)) = self.get_task(&name) {
-          match def {
-            TaskOrScript::Task(_, def) => def
-              .dependencies
-              .iter()
-              .all(|dep| completed.lock().contains(dep)),
-            TaskOrScript::Script(_, _) => true,
-          }
-        } else {
-          false
-        };
-
-        if !should_run {
-          return None;
-        }
-
-        running.lock().insert(name.clone());
-        let name = name.clone();
-        Some(
+      self.executor.running.lock().insert(name.clone());
+      let name = name.clone();
+      let queue = self.executor.queue.lock();
+      queue.push(
+        async move {
           self
             .run_task(&name)
             .await
-            .map(|exit_code| (exit_code, name.clone())),
-        )
-      });
-    }
-
-    let stream_of_futures = deno_core::futures::stream::iter(task_futures);
-    let mut buffered = stream_of_futures.buffered(10);
-
-    while let Some(maybe_task_result) = buffered.next().await {
-      let Some(task_result) = maybe_task_result else {
-        continue;
-      };
-      let (exit_code, name) = task_result?;
-      if exit_code > 0 {
-        return Ok(exit_code);
-      }
-
-      running.lock().remove(&name);
-      completed.lock().insert(name.to_string());
-    }
-
-    Ok(0)
-  }
-
-  async fn run_tasks(
-    &self,
-    task_names: Vec<String>,
-  ) -> Result<i32, deno_core::anyhow::Error> {
-    // TODO(bartlomieju): we might want to limit concurrency here - eg. `wireit` runs 2 tasks in parallel
-    // unless and env var is specified.
-    // TODO(marvinhagemeister): The fastest way to run this would be a
-    // work stealing queue that checks after each task completion which
-    // next task can be run. My rusts skills don't suffice to do that though.
-    // So for now this sorta does a breadth first approach.
-
-    let mut completed: Vec<String> = vec![];
-    let mut running: Vec<String> = vec![];
-
-    while completed.len() < task_names.len() {
-      let exit_code = self
-        .run_tasks_inner(&task_names, &mut completed, &mut running)
-        .await?;
-
-      if exit_code > 0 {
-        return Ok(exit_code);
-      }
-    }
-
-    Ok(0)
-  }
-
-  async fn run_tasks_inner(
-    &self,
-    task_names: &Vec<String>,
-    completed: &mut Vec<String>,
-    running: &mut Vec<String>,
-  ) -> Result<i32, deno_core::anyhow::Error> {
-    let mut queue = futures_unordered::FuturesUnordered::new();
-
-    // Find all tasks that:
-    // 1. haven't been run already
-    // 2. that aren't being run at the moment
-    // 3. have no dependencies or all dependencies are completed
-    for name in task_names {
-      if !completed.contains(name) && !running.contains(name) {
-        let should_run = if let Ok((_, def)) = self.get_task(name) {
-          match def {
-            TaskOrScript::Task(_, def) => {
-              def.dependencies.iter().all(|dep| completed.contains(dep))
-            }
-            TaskOrScript::Script(_, _) => true,
-          }
-        } else {
-          false
-        };
-
-        if should_run {
-          running.push(name.clone());
-          let name = name.clone();
-          queue.push(async move {
-            self
-              .run_task(&name)
-              .await
-              .map(|exit_code| (exit_code, name.clone()))
-          });
+            .map(|exit_code| (exit_code, name.clone()))
         }
+        .boxed_local(),
+      );
+
+      if queue.len() >= self.executor.concurrency {
+        break;
       }
     }
-
-    while let Some(result) = queue.next().await {
-      let (exit_code, name) = result?;
-      if exit_code > 0 {
-        return Ok(exit_code);
-      }
-
-      if let Some(idx) = running.iter().position(|item| item == &name) {
-        running.remove(idx);
-      }
-
-      completed.push(name.clone());
-    }
-
-    Ok(0)
   }
 
   async fn run_task(
     &self,
     task_name: &String,
   ) -> Result<i32, deno_core::anyhow::Error> {
-    let (dir_url, task_or_script) = self.get_task(task_name.as_str()).unwrap();
+    let (dir_url, task_or_script) =
+      self.config.get_task(task_name.as_str()).unwrap();
 
     match task_or_script {
       TaskOrScript::Task(_tasks, definition) => {
@@ -311,15 +296,15 @@ impl<'a> TaskRunner<'a> {
     task_name: &String,
     definition: &TaskDefinition,
   ) -> Result<i32, deno_core::anyhow::Error> {
-    let cwd = match &self.task_flags.cwd {
+    let cwd = match &self.config.task_flags.cwd {
       Some(path) => canonicalize_path(&PathBuf::from(path))
         .context("failed canonicalizing --cwd")?,
       None => normalize_path(dir_url.to_file_path().unwrap()),
     };
 
     let custom_commands = task_runner::resolve_custom_commands(
-      self.npm_resolver,
-      self.node_resolver,
+      self.config.npm_resolver,
+      self.config.node_resolver,
     )?;
     self
       .run_single(RunSingleOptions {
@@ -338,11 +323,11 @@ impl<'a> TaskRunner<'a> {
     scripts: &IndexMap<String, String>,
   ) -> Result<i32, deno_core::anyhow::Error> {
     // ensure the npm packages are installed if using a managed resolver
-    if let Some(npm_resolver) = self.npm_resolver.as_managed() {
+    if let Some(npm_resolver) = self.config.npm_resolver.as_managed() {
       npm_resolver.ensure_top_level_package_json_install().await?;
     }
 
-    let cwd = match &self.task_flags.cwd {
+    let cwd = match &self.config.task_flags.cwd {
       Some(path) => canonicalize_path(&PathBuf::from(path))?,
       None => normalize_path(dir_url.to_file_path().unwrap()),
     };
@@ -356,8 +341,8 @@ impl<'a> TaskRunner<'a> {
       format!("post{}", task_name),
     ];
     let custom_commands = task_runner::resolve_custom_commands(
-      self.npm_resolver,
-      self.node_resolver,
+      self.config.npm_resolver,
+      self.config.node_resolver,
     )?;
     for task_name in &task_names {
       if let Some(script) = scripts.get(task_name) {
@@ -391,7 +376,10 @@ impl<'a> TaskRunner<'a> {
 
     output_task(
       opts.task_name,
-      &task_runner::get_script_with_args(script, self.cli_options.argv()),
+      &task_runner::get_script_with_args(
+        script,
+        self.config.cli_options.argv(),
+      ),
     );
 
     Ok(
@@ -399,27 +387,19 @@ impl<'a> TaskRunner<'a> {
         task_name,
         script,
         cwd,
-        env_vars: self.env_vars.clone(),
+        env_vars: self.config.env_vars.clone(),
         custom_commands,
-        init_cwd: self.cli_options.initial_cwd(),
-        argv: self.cli_options.argv(),
-        root_node_modules_dir: self.npm_resolver.root_node_modules_path(),
+        init_cwd: self.config.cli_options.initial_cwd(),
+        argv: self.config.cli_options.argv(),
+        root_node_modules_dir: self
+          .config
+          .npm_resolver
+          .root_node_modules_path(),
         stdio: None,
       })
       .await?
       .exit_code,
     )
-  }
-
-  fn get_task(
-    &self,
-    task_name: &str,
-  ) -> Result<(&Url, TaskOrScript), TaskError> {
-    let Some(result) = self.tasks_config.task(task_name) else {
-      return Err(TaskError::NotFound(task_name.to_string()));
-    };
-
-    Ok(result)
   }
 
   fn sort_tasks_topo(&self, name: &str) -> Result<Vec<String>, TaskError> {
@@ -449,17 +429,14 @@ impl<'a> TaskRunner<'a> {
 
     marked.push(name.to_string());
 
-    let Some(def) = self.tasks_config.task(name) else {
+    let Some(def) = self.config.tasks_config.task(name) else {
       return Err(TaskError::NotFound(name.to_string()));
     };
 
-    match def.1 {
-      TaskOrScript::Task(_, actual_def) => {
-        for dep in &actual_def.dependencies {
-          self.sort_visit(dep, marked, sorted)?
-        }
+    if let TaskOrScript::Task(_, actual_def) = def.1 {
+      for dep in &actual_def.dependencies {
+        self.sort_visit(dep, marked, sorted)?
       }
-      TaskOrScript::Script(..) => {}
     }
 
     sorted.push(name.to_string());
