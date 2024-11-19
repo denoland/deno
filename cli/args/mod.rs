@@ -1548,7 +1548,7 @@ impl CliOptions {
         DenoSubcommand::Doc(DocFlags {
           source_files: DocSourceFileFlag::Paths(paths),
           ..
-        }) => Some(files_to_urls(&paths)),
+        }) => Some(files_to_urls(paths)),
         _ => None,
       })
       .unwrap_or_default();

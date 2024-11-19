@@ -1,0 +1,12 @@
+{
+  "steps": [{
+    "args": "run -A setup.ts",
+    "output": "[WILDCARD]"
+  }, {
+    "args": "run -A main.cts",
+    "output": "main.out"
+  }, {
+    "args": "run -A main.cjs",
+    "output": "main.out"
+  }]
+}

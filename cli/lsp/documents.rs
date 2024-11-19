@@ -929,7 +929,7 @@ impl FileSystemDocuments {
           Some(&cached_file.metadata.headers),
         );
       let media_type = resolve_media_type(
-        &specifier,
+        specifier,
         Some(&cached_file.metadata.headers),
         None,
       );

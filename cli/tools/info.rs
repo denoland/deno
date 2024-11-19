@@ -583,8 +583,8 @@ impl<'a> GraphDisplayContext<'a> {
         Package(package) => {
           tree_node.children.extend(self.build_npm_deps(package));
         }
-        Specifier(_) => {
-          if let Some(module) = module.js() {
+        Specifier(_) => match module {
+          Module::Js(module) => {
             if let Some(types_dep) = &module.maybe_types_dependency {
               if let Some(child) =
                 self.build_resolved_info(&types_dep.dependency, true)
@@ -596,7 +596,16 @@ impl<'a> GraphDisplayContext<'a> {
               tree_node.children.extend(self.build_dep_info(dep));
             }
           }
-        }
+          Module::Wasm(module) => {
+            for dep in module.dependencies.values() {
+              tree_node.children.extend(self.build_dep_info(dep));
+            }
+          }
+          Module::Json(_)
+          | Module::Npm(_)
+          | Module::Node(_)
+          | Module::External(_) => {}
+        },
       }
     }
     tree_node
