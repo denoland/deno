@@ -5427,7 +5427,8 @@ fn lsp_code_actions_deno_cache() {
 
   let res =
     client
-    .write_request(      "textDocument/codeAction",
+    .write_request(
+      "textDocument/codeAction",
       json!({
         "textDocument": {
           "uri": "file:///a/file.ts"
@@ -5453,8 +5454,7 @@ fn lsp_code_actions_deno_cache() {
           "only": ["quickfix"]
         }
       }),
-    )
-    ;
+    );
   assert_eq!(
     res,
     json!([{
@@ -16515,4 +16515,48 @@ fn lsp_jsdoc_named_example() {
       ]
     }),
   );
+}
+
+#[test]
+fn lsp_wasm_module() {
+  let context = TestContextBuilder::new()
+    .use_temp_cwd()
+    .use_http_server()
+    .build();
+  let mut client = context.new_lsp_command().build();
+  client.initialize_default();
+  client.did_open(json!({
+    "textDocument": {
+      "uri": "file:///a/file.ts",
+      "languageId": "typescript",
+      "version": 1,
+      "text": "import { add } from \"http://localhost:4545/wasm/math.wasm\";\nadd(1, '');\n"
+    }
+  }));
+
+  client.write_request(
+    "workspace/executeCommand",
+    json!({
+      "command": "deno.cache",
+      "arguments": [[], "file:///a/file.ts"],
+    }),
+  );
+
+  let diagnostics = client.read_diagnostics();
+  assert_eq!(
+    json!(diagnostics.all()),
+    json!([
+      {
+        "range": {
+          "start": { "line": 1, "character": 7 },
+          "end": { "line": 1, "character": 9 }
+        },
+        "severity": 1,
+        "code": 2345,
+        "source": "deno-ts",
+        "message": "Argument of type 'string' is not assignable to parameter of type 'number'."
+      }
+    ])
+  );
+  client.shutdown();
 }
