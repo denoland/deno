@@ -172,8 +172,8 @@ impl<'a> TaskRunner<'a> {
         }
       }
 
+      // If queue is empty at this point, then there are no more tasks in the queue.
       let Some(result) = queue.next().await else {
-        // TODO(bartlomieju): not sure if this condition is correct
         break;
       };
 
