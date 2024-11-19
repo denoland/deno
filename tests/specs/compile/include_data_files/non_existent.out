@@ -1,5 +1,5 @@
 Compile file:///[WILDLINE]/main.js to main
-error: Writing deno compile executable to temporary file 'main.[WILDLINE]'
+error: Writing deno compile executable to temporary file 'main[WILDLINE]'
 
 Caused by:
     0: Including [WILDLINE]does_not_exist.txt
