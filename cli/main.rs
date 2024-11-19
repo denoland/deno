@@ -393,7 +393,7 @@ pub fn main() {
   let profiler = dhat::Profiler::new_heap();
 
   setup_panic_hook();
-  eprintln!("hello from deno");
+
   util::unix::raise_fd_limit();
   util::windows::ensure_stdio_open();
   #[cfg(windows)]

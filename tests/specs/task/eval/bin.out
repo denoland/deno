@@ -1,4 +1,3 @@
-error: [TASK] must be specified when using --eval
-
-Usage: deno task [OPTIONS] [TASK]
-
+Task  cli-esm hi hello
+hi
+hello

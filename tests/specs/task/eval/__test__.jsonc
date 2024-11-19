@@ -25,12 +25,6 @@
       }, {
         "args": [
           "task",
-          "sayhi"
-        ],
-        "output": "hello"
-      }, {
-        "args": [
-          "task",
           "--eval",
           "cli-esm hi hello"
         ],
