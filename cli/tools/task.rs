@@ -165,7 +165,7 @@ impl<'a> TaskRunner<'a> {
       }
 
       while queue.len() < self.concurrency {
-        if let Some(task) = self.add_tasks() {
+        if let Some(task) = self.get_next_task() {
           queue.push(task);
         } else {
           break;
@@ -204,15 +204,13 @@ impl<'a> TaskRunner<'a> {
     self.completed.lock().len() < self.task_names.len()
   }
 
-  fn add_tasks(
+  fn get_next_task(
     &'a self,
   ) -> Option<LocalBoxFuture<'a, Result<(i32, String), AnyError>>> {
     for name in &self.task_names {
-      if self.completed.lock().contains(name) {
-        continue;
-      }
-
-      if self.running.lock().contains(name) {
+      if self.completed.lock().contains(name)
+        || self.running.lock().contains(name)
+      {
         continue;
       }
 
