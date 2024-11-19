@@ -3,10 +3,10 @@
     "args": "run -A setup.ts",
     "output": "[WILDCARD]"
   }, {
-    "args": "run -A main.cts",
+    "args": "run -A --check main.cts",
     "output": "main.out"
   }, {
-    "args": "run -A main.cjs",
+    "args": "run -A --check main.cjs",
     "output": "main.out"
   }]
 }
