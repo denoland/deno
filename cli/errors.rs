@@ -71,6 +71,7 @@ fn get_module_graph_error_class(err: &ModuleGraphError) -> &'static str {
           | JsrLoadError::UnknownExport { .. } => "NotFound",
         },
       },
+      ModuleError::WasmParseErr(_, _) => "SyntaxError",
     },
   }
 }

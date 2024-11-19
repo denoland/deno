@@ -664,6 +664,7 @@ fn op_load_inner(
             &mut is_cjs,
           )?))
         }
+        Module::Wasm(_) => todo!("@dsherret"),
       }
     } else if let Some(npm) = state
       .maybe_npm
@@ -928,6 +929,7 @@ fn resolve_graph_specifier_types(
       }))
     }
     Some(Module::Node(_)) | None => Ok(None),
+    Some(Module::Wasm(_)) => todo!("@dsherret"),
   }
 }
 
