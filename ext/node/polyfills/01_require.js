@@ -11,6 +11,7 @@ import {
   op_require_can_parse_as_esm,
   op_require_init_paths,
   op_require_is_deno_dir_package,
+  op_require_is_maybe_cjs,
   op_require_is_request_relative,
   op_require_node_module_paths,
   op_require_package_imports_resolve,
@@ -19,7 +20,6 @@ import {
   op_require_path_is_absolute,
   op_require_path_resolve,
   op_require_proxy_path,
-  op_require_read_closest_package_json,
   op_require_read_file,
   op_require_read_package_scope,
   op_require_real_path,
@@ -1060,36 +1060,13 @@ Module.prototype._compile = function (content, filename, format) {
   return result;
 };
 
-Module._extensions[".js"] = function (module, filename) {
-  const content = op_require_read_file(filename);
-
-  let format;
-  if (StringPrototypeEndsWith(filename, ".js")) {
-    const pkg = op_require_read_closest_package_json(filename);
-    if (pkg?.type === "module") {
-      format = "module";
-    } else if (pkg?.type === "commonjs") {
-      format = "commonjs";
-    }
-  }
-
-  module._compile(content, filename, format);
-};
-
-Module._extensions[".ts"] =
+Module._extensions[".js"] =
+  Module._extensions[".ts"] =
   Module._extensions[".jsx"] =
   Module._extensions[".tsx"] =
     function (module, filename) {
       const content = op_require_read_file(filename);
-
-      let format;
-      const pkg = op_require_read_closest_package_json(filename);
-      if (pkg?.type === "module") {
-        format = "module";
-      } else if (pkg?.type === "commonjs") {
-        format = "commonjs";
-      }
-
+      const format = op_require_is_maybe_cjs(filename) ? undefined : "module";
       module._compile(content, filename, format);
     };
 
@@ -1233,6 +1210,24 @@ function isBuiltin(moduleName) {
     !StringPrototypeStartsWith(moduleName, "internal/");
 }
 
+function getBuiltinModule(id) {
+  if (!isBuiltin(id)) {
+    return undefined;
+  }
+
+  if (StringPrototypeStartsWith(id, "node:")) {
+    // Slice 'node:' prefix
+    id = StringPrototypeSlice(id, 5);
+  }
+
+  const mod = loadNativeModule(id, id);
+  if (mod) {
+    return mod.exports;
+  }
+
+  return undefined;
+}
+
 Module.isBuiltin = isBuiltin;
 
 Module.createRequire = createRequire;
@@ -1327,7 +1322,7 @@ export function register(_specifier, _parentUrl, _options) {
   return undefined;
 }
 
-export { builtinModules, createRequire, isBuiltin, Module };
+export { builtinModules, createRequire, getBuiltinModule, isBuiltin, Module };
 export const _cache = Module._cache;
 export const _extensions = Module._extensions;
 export const _findPath = Module._findPath;

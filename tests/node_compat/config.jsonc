@@ -13,10 +13,12 @@
       "x.txt"
     ],
     "internet": [
-      "test-dns-any.js",
-      "test-dns-ipv4.js",
-      "test-dns-ipv6.js",
-      "test-dns.js"
+      // TODO(bartlomieju): temporarily disabled as these tests were hitting nodejs.org
+      // server. We should have a setup that hits a local server instead.
+      // "test-dns-any.js",
+      // "test-dns-ipv4.js",
+      // "test-dns-ipv6.js",
+      // "test-dns.js"
     ],
     "parallel": [
       "test-assert.js",
@@ -77,6 +79,7 @@
       "test-fs-rmdir-recursive.js",
       "test-fs-write-file.js",
       "test-http-url.parse-https.request.js",
+      "test-net-autoselectfamily.js",
       "test-net-better-error-messages-path.js",
       "test-net-connect-buffer.js",
       "test-net-connect-buffer2.js",
@@ -148,15 +151,15 @@
     ],
     "fixtures/keys": ["agent1-cert.pem", "agent1-key.pem", "ca1-cert.pem"],
     "internet": [
-      "test-dns-any.js",
+      // "test-dns-any.js",
       "test-dns-idna2008.js",
-      "test-dns-ipv4.js",
-      "test-dns-ipv6.js",
+      // "test-dns-ipv4.js",
+      // "test-dns-ipv6.js",
       "test-dns-lookup.js",
       "test-dns-promises-resolve.js",
       "test-dns-regress-6244.js",
       "test-dns-setserver-in-callback-of-resolve4.js",
-      "test-dns.js",
+      // "test-dns.js",
       "test-http-https-default-ports.js"
     ],
     "parallel": [
@@ -404,6 +407,7 @@
       "test-http-url.parse-only-support-http-https-protocol.js",
       "test-icu-transcode.js",
       "test-net-access-byteswritten.js",
+      "test-net-autoselectfamily.js",
       "test-net-better-error-messages-listen-path.js",
       "test-net-better-error-messages-path.js",
       "test-net-better-error-messages-port-hostname.js",

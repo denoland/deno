@@ -383,6 +383,7 @@ fn get_check_hash(
       Module::External(module) => {
         hasher.write_str(module.specifier.as_str());
       }
+      Module::Wasm(_) => todo!("@dsherret"),
     }
   }
 
@@ -441,6 +442,7 @@ fn get_tsc_roots(
       | Module::Node(_)
       | Module::Npm(_)
       | Module::Json(_) => None,
+      Module::Wasm(_) => todo!("@dsherret"),
     }
   }
 

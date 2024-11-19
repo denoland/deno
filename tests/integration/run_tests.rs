@@ -16,12 +16,11 @@ use deno_tls::rustls;
 use deno_tls::rustls::ClientConnection;
 use deno_tls::rustls_pemfile;
 use deno_tls::TlsStream;
+use hickory_client::serialize::txt::Parser;
 use pretty_assertions::assert_eq;
 use test_util as util;
 use test_util::itest;
 use test_util::TempDir;
-use trust_dns_client::serialize::txt::Lexer;
-use trust_dns_client::serialize::txt::Parser;
 use util::assert_contains;
 use util::assert_not_contains;
 use util::PathRef;
@@ -418,16 +417,6 @@ fn permissions_cache() {
       console.expect("prompt");
     });
 }
-
-itest!(env_file {
-  args: "run --env=env --allow-env run/env_file.ts",
-  output: "run/env_file.out",
-});
-
-itest!(env_file_missing {
-  args: "run --env=missing --allow-env run/env_file.ts",
-  output: "run/env_file_missing.out",
-});
 
 itest!(lock_write_fetch {
   args:
@@ -2175,6 +2164,11 @@ fn basic_auth_tokens() {
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn test_resolve_dns() {
+  use hickory_server::authority::Catalog;
+  use hickory_server::authority::ZoneType;
+  use hickory_server::proto::rr::Name;
+  use hickory_server::store::in_memory::InMemoryAuthority;
+  use hickory_server::ServerFuture;
   use std::net::SocketAddr;
   use std::str::FromStr;
   use std::sync::Arc;
@@ -2182,11 +2176,6 @@ async fn test_resolve_dns() {
   use tokio::net::TcpListener;
   use tokio::net::UdpSocket;
   use tokio::sync::oneshot;
-  use trust_dns_server::authority::Catalog;
-  use trust_dns_server::authority::ZoneType;
-  use trust_dns_server::proto::rr::Name;
-  use trust_dns_server::store::in_memory::InMemoryAuthority;
-  use trust_dns_server::ServerFuture;
 
   const DNS_PORT: u16 = 4553;
 
@@ -2196,9 +2185,12 @@ async fn test_resolve_dns() {
       util::testdata_path().join("run/resolve_dns.zone.in"),
     )
     .unwrap();
-    let lexer = Lexer::new(&zone_file);
-    let records =
-      Parser::new().parse(lexer, Some(Name::from_str("example.com").unwrap()));
+    let records = Parser::new(
+      &zone_file,
+      None,
+      Some(Name::from_str("example.com").unwrap()),
+    )
+    .parse();
     if records.is_err() {
       panic!("failed to parse: {:?}", records.err())
     }
@@ -2896,37 +2888,6 @@ console.log(returnsHi());"#,
 ")
     .assert_exit_code(1);
 }
-
-// TODO(bartlomieju): temporary disabled
-// itest!(warn_on_deprecated_api {
-//   args: "run -A run/warn_on_deprecated_api/main.js",
-//   output: "run/warn_on_deprecated_api/main.out",
-//   http_server: true,
-//   exit_code: 0,
-// });
-
-// itest!(warn_on_deprecated_api_verbose {
-//   args: "run -A run/warn_on_deprecated_api/main.js",
-//   output: "run/warn_on_deprecated_api/main.verbose.out",
-//   envs: vec![("DENO_VERBOSE_WARNINGS".to_string(), "1".to_string())],
-//   http_server: true,
-//   exit_code: 0,
-// });
-
-// itest!(warn_on_deprecated_api_with_flag {
-//   args: "run -A --quiet run/warn_on_deprecated_api/main.js",
-//   output: "run/warn_on_deprecated_api/main_disabled_flag.out",
-//   http_server: true,
-//   exit_code: 0,
-// });
-
-// itest!(warn_on_deprecated_api_with_env_var {
-//   args: "run -A run/warn_on_deprecated_api/main.js",
-//   envs: vec![("DENO_NO_DEPRECATION_WARNINGS".to_string(), "1".to_string())],
-//   output: "run/warn_on_deprecated_api/main_disabled_env.out",
-//   http_server: true,
-//   exit_code: 0,
-// });
 
 #[test]
 fn deno_json_imports_expand() {

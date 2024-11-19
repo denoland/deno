@@ -83,6 +83,7 @@ pub async fn format(
       file_watcher::PrintConfig::new("Fmt", !watch_flags.no_clear_screen),
       move |flags, watcher_communicator, changed_paths| {
         let fmt_flags = fmt_flags.clone();
+        watcher_communicator.show_path_changed(changed_paths.clone());
         Ok(async move {
           let factory = CliFactory::from_flags(flags);
           let cli_options = factory.cli_options()?;
@@ -227,6 +228,7 @@ fn collect_fmt_files(
   })
   .ignore_git_folder()
   .ignore_node_modules()
+  .use_gitignore()
   .set_vendor_folder(cli_options.vendor_dir_path().map(ToOwned::to_owned))
   .collect_file_patterns(&deno_config::fs::RealDenoConfigFs, files)
 }
@@ -846,28 +848,26 @@ fn format_ensure_stable(
             return Ok(Some(current_text));
           }
           Err(err) => {
-            panic!(
+            bail!(
               concat!(
                 "Formatting succeeded initially, but failed when ensuring a ",
                 "stable format. This indicates a bug in the formatter where ",
                 "the text it produces is not syntactically correct. As a temporary ",
-                "workaround you can ignore this file ({}).\n\n{:#}"
+                "workaround you can ignore this file.\n\n{:#}"
               ),
-              file_path.display(),
               err,
             )
           }
         }
         count += 1;
         if count == 5 {
-          panic!(
+          bail!(
             concat!(
               "Formatting not stable. Bailed after {} tries. This indicates a bug ",
-              "in the formatter where it formats the file ({}) differently each time. As a ",
+              "in the formatter where it formats the file differently each time. As a ",
               "temporary workaround you can ignore this file."
             ),
             count,
-            file_path.display(),
           )
         }
       }
@@ -1088,7 +1088,7 @@ fn get_resolved_markup_fmt_config(
     max_attrs_per_line: None,
     prefer_attrs_single_line: false,
     html_normal_self_closing: None,
-    html_void_self_closing: Some(true),
+    html_void_self_closing: None,
     component_self_closing: None,
     svg_self_closing: None,
     mathml_self_closing: None,
@@ -1272,6 +1272,8 @@ fn is_supported_ext_fmt(path: &Path) -> bool {
 
 #[cfg(test)]
 mod test {
+  use test_util::assert_starts_with;
+
   use super::*;
 
   #[test]
@@ -1332,12 +1334,16 @@ mod test {
   }
 
   #[test]
-  #[should_panic(expected = "Formatting not stable. Bailed after 5 tries.")]
   fn test_format_ensure_stable_unstable_format() {
-    format_ensure_stable(&PathBuf::from("mod.ts"), "1", |_, file_text| {
-      Ok(Some(format!("1{file_text}")))
-    })
-    .unwrap();
+    let err =
+      format_ensure_stable(&PathBuf::from("mod.ts"), "1", |_, file_text| {
+        Ok(Some(format!("1{file_text}")))
+      })
+      .unwrap_err();
+    assert_starts_with!(
+      err.to_string(),
+      "Formatting not stable. Bailed after 5 tries."
+    );
   }
 
   #[test]
@@ -1351,16 +1357,20 @@ mod test {
   }
 
   #[test]
-  #[should_panic(expected = "Formatting succeeded initially, but failed when")]
   fn test_format_ensure_stable_error_second() {
-    format_ensure_stable(&PathBuf::from("mod.ts"), "1", |_, file_text| {
-      if file_text == "1" {
-        Ok(Some("11".to_string()))
-      } else {
-        bail!("Error formatting.")
-      }
-    })
-    .unwrap();
+    let err =
+      format_ensure_stable(&PathBuf::from("mod.ts"), "1", |_, file_text| {
+        if file_text == "1" {
+          Ok(Some("11".to_string()))
+        } else {
+          bail!("Error formatting.")
+        }
+      })
+      .unwrap_err();
+    assert_starts_with!(
+      err.to_string(),
+      "Formatting succeeded initially, but failed when"
+    );
   }
 
   #[test]

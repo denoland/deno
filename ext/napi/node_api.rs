@@ -140,7 +140,6 @@ fn napi_fatal_exception(env: &mut Env, err: napi_value) -> napi_status {
 }
 
 #[napi_sym]
-#[allow(clippy::print_stderr)]
 fn napi_fatal_error(
   location: *const c_char,
   location_len: usize,
@@ -173,9 +172,9 @@ fn napi_fatal_error(
   };
 
   if let Some(location) = location {
-    eprintln!("NODE API FATAL ERROR: {} {}", location, message);
+    log::error!("NODE API FATAL ERROR: {} {}", location, message);
   } else {
-    eprintln!("NODE API FATAL ERROR: {}", message);
+    log::error!("NODE API FATAL ERROR: {}", message);
   }
 
   std::process::abort();

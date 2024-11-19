@@ -34,6 +34,7 @@ use crate::util::path::relative_specifier;
 use crate::util::path::to_percent_decoded_str;
 use crate::util::result::InfallibleResultExt;
 use crate::util::v8::convert;
+use crate::worker::create_isolate_create_params;
 use deno_core::convert::Smi;
 use deno_core::convert::ToV8;
 use deno_core::error::StdAnyError;
@@ -69,6 +70,7 @@ use indexmap::IndexMap;
 use indexmap::IndexSet;
 use lazy_regex::lazy_regex;
 use log::error;
+use node_resolver::NodeModuleKind;
 use once_cell::sync::Lazy;
 use regex::Captures;
 use regex::Regex;
@@ -236,7 +238,7 @@ pub struct TsServer {
   performance: Arc<Performance>,
   sender: mpsc::UnboundedSender<Request>,
   receiver: Mutex<Option<mpsc::UnboundedReceiver<Request>>>,
-  specifier_map: Arc<TscSpecifierMap>,
+  pub specifier_map: Arc<TscSpecifierMap>,
   inspector_server: Mutex<Option<Arc<InspectorServer>>>,
   pending_change: Mutex<Option<PendingChange>>,
 }
@@ -882,20 +884,22 @@ impl TsServer {
     options: GetCompletionsAtPositionOptions,
     format_code_settings: FormatCodeSettings,
     scope: Option<ModuleSpecifier>,
-  ) -> Option<CompletionInfo> {
+  ) -> Result<Option<CompletionInfo>, AnyError> {
     let req = TscRequest::GetCompletionsAtPosition(Box::new((
       self.specifier_map.denormalize(&specifier),
       position,
       options,
       format_code_settings,
     )));
-    match self.request(snapshot, req, scope).await {
-      Ok(maybe_info) => maybe_info,
-      Err(err) => {
-        log::error!("Unable to get completion info from TypeScript: {:#}", err);
-        None
-      }
-    }
+    self
+      .request::<Option<CompletionInfo>>(snapshot, req, scope)
+      .await
+      .map(|mut info| {
+        if let Some(info) = &mut info {
+          info.normalize(&self.specifier_map);
+        }
+        info
+      })
   }
 
   pub async fn get_completion_details(
@@ -3413,9 +3417,18 @@ fn parse_code_actions(
           additional_text_edits.extend(change.text_changes.iter().map(|tc| {
             let mut text_edit = tc.as_text_edit(asset_or_doc.line_index());
             if let Some(specifier_rewrite) = &data.specifier_rewrite {
-              text_edit.new_text = text_edit
-                .new_text
-                .replace(&specifier_rewrite.0, &specifier_rewrite.1);
+              text_edit.new_text = text_edit.new_text.replace(
+                &specifier_rewrite.old_specifier,
+                &specifier_rewrite.new_specifier,
+              );
+              if let Some(deno_types_specifier) =
+                &specifier_rewrite.new_deno_types_specifier
+              {
+                text_edit.new_text = format!(
+                  "// @deno-types=\"{}\"\n{}",
+                  deno_types_specifier, &text_edit.new_text
+                );
+              }
             }
             text_edit
           }));
@@ -3574,17 +3587,23 @@ impl CompletionEntryDetails {
     let mut text_edit = original_item.text_edit.clone();
     if let Some(specifier_rewrite) = &data.specifier_rewrite {
       if let Some(text_edit) = &mut text_edit {
-        match text_edit {
-          lsp::CompletionTextEdit::Edit(text_edit) => {
-            text_edit.new_text = text_edit
-              .new_text
-              .replace(&specifier_rewrite.0, &specifier_rewrite.1);
-          }
+        let new_text = match text_edit {
+          lsp::CompletionTextEdit::Edit(text_edit) => &mut text_edit.new_text,
           lsp::CompletionTextEdit::InsertAndReplace(insert_replace_edit) => {
-            insert_replace_edit.new_text = insert_replace_edit
-              .new_text
-              .replace(&specifier_rewrite.0, &specifier_rewrite.1);
+            &mut insert_replace_edit.new_text
           }
+        };
+        *new_text = new_text.replace(
+          &specifier_rewrite.old_specifier,
+          &specifier_rewrite.new_specifier,
+        );
+        if let Some(deno_types_specifier) =
+          &specifier_rewrite.new_deno_types_specifier
+        {
+          *new_text = format!(
+            "// @deno-types=\"{}\"\n{}",
+            deno_types_specifier, new_text
+          );
         }
       }
     }
@@ -3642,6 +3661,12 @@ pub struct CompletionInfo {
 }
 
 impl CompletionInfo {
+  fn normalize(&mut self, specifier_map: &TscSpecifierMap) {
+    for entry in &mut self.entries {
+      entry.normalize(specifier_map);
+    }
+  }
+
   pub fn as_completion_response(
     &self,
     line_index: Arc<LineIndex>,
@@ -3683,6 +3708,13 @@ impl CompletionInfo {
   }
 }
 
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct CompletionSpecifierRewrite {
+  old_specifier: String,
+  new_specifier: String,
+  new_deno_types_specifier: Option<String>,
+}
+
 #[derive(Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CompletionItemData {
@@ -3695,7 +3727,7 @@ pub struct CompletionItemData {
   /// be rewritten by replacing the first string with the second. Intended for
   /// auto-import specifiers to be reverse-import-mapped.
   #[serde(skip_serializing_if = "Option::is_none")]
-  pub specifier_rewrite: Option<(String, String)>,
+  pub specifier_rewrite: Option<CompletionSpecifierRewrite>,
   #[serde(skip_serializing_if = "Option::is_none")]
   pub data: Option<Value>,
   pub use_code_snippet: bool,
@@ -3703,9 +3735,15 @@ pub struct CompletionItemData {
 
 #[derive(Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
-struct CompletionEntryDataImport {
+struct CompletionEntryDataAutoImport {
   module_specifier: String,
   file_name: String,
+}
+
+#[derive(Debug)]
+pub struct CompletionNormalizedAutoImportData {
+  raw: CompletionEntryDataAutoImport,
+  normalized: ModuleSpecifier,
 }
 
 #[derive(Debug, Default, Deserialize, Serialize)]
@@ -3740,9 +3778,28 @@ pub struct CompletionEntry {
   is_import_statement_completion: Option<bool>,
   #[serde(skip_serializing_if = "Option::is_none")]
   data: Option<Value>,
+  /// This is not from tsc, we add it for convenience during normalization.
+  /// Represents `self.data.file_name`, but normalized.
+  #[serde(skip)]
+  auto_import_data: Option<CompletionNormalizedAutoImportData>,
 }
 
 impl CompletionEntry {
+  fn normalize(&mut self, specifier_map: &TscSpecifierMap) {
+    let Some(data) = &self.data else {
+      return;
+    };
+    let Ok(raw) =
+      serde_json::from_value::<CompletionEntryDataAutoImport>(data.clone())
+    else {
+      return;
+    };
+    if let Ok(normalized) = specifier_map.normalize(&raw.file_name) {
+      self.auto_import_data =
+        Some(CompletionNormalizedAutoImportData { raw, normalized });
+    }
+  }
+
   fn get_commit_characters(
     &self,
     info: &CompletionInfo,
@@ -3891,25 +3948,44 @@ impl CompletionEntry {
 
     if let Some(source) = &self.source {
       let mut display_source = source.clone();
-      if let Some(data) = &self.data {
-        if let Ok(import_data) =
-          serde_json::from_value::<CompletionEntryDataImport>(data.clone())
+      if let Some(import_data) = &self.auto_import_data {
+        let import_mapper =
+          language_server.get_ts_response_import_mapper(specifier);
+        if let Some(mut new_specifier) = import_mapper
+          .check_specifier(&import_data.normalized, specifier)
+          .or_else(|| relative_specifier(specifier, &import_data.normalized))
         {
-          if let Ok(import_specifier) = resolve_url(&import_data.file_name) {
-            if let Some(new_module_specifier) = language_server
-              .get_ts_response_import_mapper(specifier)
-              .check_specifier(&import_specifier, specifier)
-              .or_else(|| relative_specifier(specifier, &import_specifier))
-            {
-              display_source.clone_from(&new_module_specifier);
-              if new_module_specifier != import_data.module_specifier {
-                specifier_rewrite =
-                  Some((import_data.module_specifier, new_module_specifier));
-              }
-            } else if source.starts_with(jsr_url().as_str()) {
-              return None;
-            }
+          if new_specifier.contains("/node_modules/") {
+            return None;
           }
+          let mut new_deno_types_specifier = None;
+          if let Some(code_specifier) = language_server
+            .resolver
+            .deno_types_to_code_resolution(
+              &import_data.normalized,
+              Some(specifier),
+            )
+            .and_then(|s| {
+              import_mapper
+                .check_specifier(&s, specifier)
+                .or_else(|| relative_specifier(specifier, &s))
+            })
+          {
+            new_deno_types_specifier =
+              Some(std::mem::replace(&mut new_specifier, code_specifier));
+          }
+          display_source.clone_from(&new_specifier);
+          if new_specifier != import_data.raw.module_specifier
+            || new_deno_types_specifier.is_some()
+          {
+            specifier_rewrite = Some(CompletionSpecifierRewrite {
+              old_specifier: import_data.raw.module_specifier.clone(),
+              new_specifier,
+              new_deno_types_specifier,
+            });
+          }
+        } else if source.starts_with(jsr_url().as_str()) {
+          return None;
         }
       }
       // We want relative or bare (import-mapped or otherwise) specifiers to
@@ -4212,6 +4288,11 @@ impl TscSpecifierMap {
       return specifier.to_string();
     }
     let mut specifier = original.to_string();
+    if !specifier.contains("/node_modules/@types/node/") {
+      // The ts server doesn't give completions from files in
+      // `node_modules/.deno/`. We work around it like this.
+      specifier = specifier.replace("/node_modules/", "/$node_modules/");
+    }
     let media_type = MediaType::from_specifier(original);
     // If the URL-inferred media type doesn't correspond to tsc's path-inferred
     // media type, force it to be the same by appending an extension.
@@ -4329,7 +4410,7 @@ fn op_is_cancelled(state: &mut OpState) -> bool {
 fn op_is_node_file(state: &mut OpState, #[string] path: String) -> bool {
   let state = state.borrow::<State>();
   let mark = state.performance.mark("tsc.op.op_is_node_file");
-  let r = match ModuleSpecifier::parse(&path) {
+  let r = match state.specifier_map.normalize(path) {
     Ok(specifier) => state.state_snapshot.resolver.in_node_modules(&specifier),
     Err(_) => false,
   };
@@ -4362,27 +4443,19 @@ fn op_load<'s>(
       None
     } else {
       let asset_or_document = state.get_asset_or_document(&specifier);
-      asset_or_document.map(|doc| {
-        let maybe_cjs_tracker = state
-          .state_snapshot
-          .resolver
-          .maybe_cjs_tracker(Some(&specifier));
-        LoadResponse {
-          data: doc.text(),
-          script_kind: crate::tsc::as_ts_script_kind(doc.media_type()),
-          version: state.script_version(&specifier),
-          is_cjs: maybe_cjs_tracker
-            .map(|t| {
-              t.is_cjs(
-                &specifier,
-                doc.media_type(),
-                doc.maybe_parsed_source().and_then(|p| p.as_ref().ok()),
-              )
-            })
-            .unwrap_or(false),
-        }
+      asset_or_document.map(|doc| LoadResponse {
+        data: doc.text(),
+        script_kind: crate::tsc::as_ts_script_kind(doc.media_type()),
+        version: state.script_version(&specifier),
+        is_cjs: doc
+          .document()
+          .map(|d| state.state_snapshot.is_cjs_resolver.get_doc_module_kind(d))
+          .unwrap_or(NodeModuleKind::Esm)
+          == NodeModuleKind::Cjs,
       })
     };
+
+  lsp_warn!("op_load {} {}", &specifier, maybe_load_response.is_some());
 
   let serialized = serde_v8::to_v8(scope, maybe_load_response)?;
 
@@ -4609,7 +4682,10 @@ fn op_script_names(state: &mut OpState) -> ScriptNames {
   for doc in &docs {
     let specifier = doc.specifier();
     let is_open = doc.is_open();
-    if is_open || specifier.scheme() == "file" {
+    if is_open
+      || (specifier.scheme() == "file"
+        && !state.state_snapshot.resolver.in_node_modules(specifier))
+    {
       let script_names = doc
         .scope()
         .and_then(|s| result.by_scope.get_mut(s))
@@ -4620,6 +4696,10 @@ fn op_script_names(state: &mut OpState) -> ScriptNames {
         let (types, _) = documents.resolve_dependency(
           types,
           specifier,
+          state
+            .state_snapshot
+            .is_cjs_resolver
+            .get_doc_module_kind(doc),
           doc.file_referrer(),
         )?;
         let types_doc = documents.get_or_load(&types, doc.file_referrer())?;
@@ -4723,6 +4803,7 @@ fn run_tsc_thread(
       specifier_map,
       request_rx,
     )],
+    create_params: create_isolate_create_params(),
     startup_snapshot: Some(tsc::compiler_snapshot()),
     inspector: has_inspector_server,
     ..Default::default()
@@ -5502,6 +5583,7 @@ mod tests {
       documents: Arc::new(documents),
       assets: Default::default(),
       config: Arc::new(config),
+      is_cjs_resolver: Default::default(),
       resolver,
     });
     let performance = Arc::new(Performance::default());
@@ -6035,6 +6117,7 @@ mod tests {
         Some(temp_dir.url()),
       )
       .await
+      .unwrap()
       .unwrap();
     assert_eq!(info.entries.len(), 22);
     let details = ts_server
@@ -6194,6 +6277,7 @@ mod tests {
         Some(temp_dir.url()),
       )
       .await
+      .unwrap()
       .unwrap();
     let entry = info
       .entries

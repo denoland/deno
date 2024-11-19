@@ -756,14 +756,17 @@ fn check_run_permission(
     if !env_var_names.is_empty() {
       // we don't allow users to launch subprocesses with any LD_ or DYLD_*
       // env vars set because this allows executing code (ex. LD_PRELOAD)
-      return Err(CheckRunPermissionError::Other(deno_core::error::custom_error(
-        "NotCapable",
-        format!(
-          "Requires --allow-all permissions to spawn subprocess with {} environment variable{}.",
-          env_var_names.join(", "),
-          if env_var_names.len() != 1 { "s" } else { "" }
-        )
-      )));
+      return Err(CheckRunPermissionError::Other(
+        deno_core::error::custom_error(
+          "NotCapable",
+          format!(
+            "Requires --allow-run permissions to spawn subprocess with {0} environment variable{1}. Alternatively, spawn with {2} environment variable{1} unset.",
+            env_var_names.join(", "),
+            if env_var_names.len() != 1 { "s" } else { "" },
+            if env_var_names.len() != 1 { "these" } else { "the" }
+          ),
+        ),
+      ));
     }
     permissions.check_run(cmd, api_name)?;
   }

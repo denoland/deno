@@ -71,6 +71,7 @@ fn get_module_graph_error_class(err: &ModuleGraphError) -> &'static str {
           | JsrLoadError::UnknownExport { .. } => "NotFound",
         },
       },
+      ModuleError::WasmParseErr(_, _) => "SyntaxError",
     },
   }
 }
@@ -86,6 +87,10 @@ fn get_resolution_error_class(err: &ResolutionError) -> &'static str {
     }
     _ => "TypeError",
   }
+}
+
+fn get_try_from_int_error_class(_: &std::num::TryFromIntError) -> &'static str {
+  "TypeError"
 }
 
 pub fn get_error_class_name(e: &AnyError) -> &'static str {
@@ -105,6 +110,10 @@ pub fn get_error_class_name(e: &AnyError) -> &'static str {
     .or_else(|| {
       e.downcast_ref::<ResolutionError>()
         .map(get_resolution_error_class)
+    })
+    .or_else(|| {
+      e.downcast_ref::<std::num::TryFromIntError>()
+        .map(get_try_from_int_error_class)
     })
     .unwrap_or("Error")
 }
