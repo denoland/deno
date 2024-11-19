@@ -207,6 +207,7 @@ pub struct WorkerOptions {
   pub cache_storage_dir: Option<std::path::PathBuf>,
   pub origin_storage_dir: Option<std::path::PathBuf>,
   pub stdio: Stdio,
+  pub enable_stack_trace_arg_in_ops: bool,
 }
 
 impl Default for WorkerOptions {
@@ -231,6 +232,7 @@ impl Default for WorkerOptions {
       create_params: Default::default(),
       bootstrap: Default::default(),
       stdio: Default::default(),
+      enable_stack_trace_arg_in_ops: false,
     }
   }
 }
@@ -544,6 +546,11 @@ impl MainWorker {
           ) as Box<dyn Fn(_, _, &_)>,
         )
       }),
+      maybe_op_stack_trace_callback: if options.enable_stack_trace_arg_in_ops {
+        Some(Box::new(|stack| {
+          deno_permissions::prompter::set_current_stacktrace(stack)
+        }))
+      } else { None },
       ..Default::default()
     });
 

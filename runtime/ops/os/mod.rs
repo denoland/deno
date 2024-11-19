@@ -200,7 +200,7 @@ fn op_loadavg(
   Ok(sys_info::loadavg())
 }
 
-#[op2]
+#[op2(stack_trace)]
 #[string]
 fn op_hostname(
   state: &mut OpState,

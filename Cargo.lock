@@ -504,7 +504,7 @@ dependencies = [
  "bitflags 2.6.0",
  "cexpr",
  "clang-sys",
- "itertools 0.13.0",
+ "itertools 0.10.5",
  "log",
  "prettyplease",
  "proc-macro2",
@@ -1119,7 +1119,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b28bfe653d79bd16c77f659305b195b82bb5ce0c0eb2a4846b82ddbd77586813"
 dependencies = [
  "bitflags 2.6.0",
- "libloading 0.8.5",
+ "libloading 0.7.4",
  "winapi",
 ]
 
@@ -1466,8 +1466,6 @@ dependencies = [
 [[package]]
 name = "deno_core"
 version = "0.320.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f285eed7b072749f9c3a9c4cf2c9ebb06462a2c22afec94892a6684c38f32696"
 dependencies = [
  "anyhow",
  "bincode",
@@ -1981,8 +1979,6 @@ dependencies = [
 [[package]]
 name = "deno_ops"
 version = "0.196.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d35c75ae05062f37ec2ae5fd1d99b2dcdfa0aef70844d3706759b8775056c5f6"
 dependencies = [
  "proc-macro-rules",
  "proc-macro2",
@@ -5617,7 +5613,7 @@ checksum = "0c1318b19085f08681016926435853bbf7858f9c082d0999b80550ff5d9abe15"
 dependencies = [
  "bytes",
  "heck 0.5.0",
- "itertools 0.13.0",
+ "itertools 0.10.5",
  "log",
  "multimap",
  "once_cell",
@@ -5637,7 +5633,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e9552f850d5f0964a4e4d0bf306459ac29323ddfbae05e35a7c0d35cb0803cc5"
 dependencies = [
  "anyhow",
- "itertools 0.13.0",
+ "itertools 0.10.5",
  "proc-macro2",
  "quote",
  "syn 2.0.87",
@@ -6517,8 +6513,6 @@ dependencies = [
 [[package]]
 name = "serde_v8"
 version = "0.229.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4e1dbbda82d67a393ea96f75d8383bc41fcd0bba43164aeaab599e1c2c2d46d7"
 dependencies = [
  "num-bigint",
  "serde",
@@ -8366,7 +8360,7 @@ dependencies = [
  "js-sys",
  "khronos-egl",
  "libc",
- "libloading 0.8.5",
+ "libloading 0.7.4",
  "log",
  "metal",
  "naga",
