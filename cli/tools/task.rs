@@ -2,6 +2,7 @@
 
 use std::collections::HashMap;
 use std::collections::HashSet;
+use std::num::NonZeroUsize;
 use std::path::Path;
 use std::path::PathBuf;
 use std::rc::Rc;
@@ -17,6 +18,7 @@ use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
 use deno_core::futures::stream::futures_unordered;
 use deno_core::futures::StreamExt;
+use deno_core::parking_lot::Mutex;
 use deno_core::url::Url;
 use deno_path_util::normalize_path;
 use deno_runtime::deno_node::NodeResolver;
@@ -80,7 +82,7 @@ pub async fn execute_script(
   };
 
   match task_runner.sort_tasks_topo(task_name) {
-    Ok(sorted) => task_runner.run_tasks(sorted).await,
+    Ok(sorted) => task_runner.run_tasks_in_parallel(sorted).await,
     Err(err) => match err {
       TaskError::NotFound(name) => {
         if task_flags.is_run {
@@ -128,6 +130,84 @@ struct TaskRunner<'a> {
 }
 
 impl<'a> TaskRunner<'a> {
+  async fn run_tasks_in_parallel(
+    &self,
+    task_names: Vec<String>,
+  ) -> Result<i32, deno_core::anyhow::Error> {
+    let no_of_concurrent_tasks =
+      if let Ok(value) = std::env::var("DENO_JOBS") {
+        value.parse::<NonZeroUsize>().ok()
+      } else {
+        std::thread::available_parallelism().ok()
+      }
+      .unwrap_or_else(|| NonZeroUsize::new(2).unwrap());
+
+    let completed =
+      Arc::new(Mutex::new(HashSet::with_capacity(task_names.len())));
+    let running = Arc::new(Mutex::new(HashSet::with_capacity(
+      no_of_concurrent_tasks.into(),
+    )));
+
+    let mut task_futures = Vec::with_capacity(task_names.len());
+
+    for name in task_names {
+      let completed = completed.clone();
+      let running = running.clone();
+      task_futures.push(async move {
+        if completed.lock().contains(&name) {
+          return None;
+        }
+
+        if running.lock().contains(&name) {
+          return None;
+        }
+
+        let should_run = if let Ok((_, def)) = self.get_task(&name) {
+          match def {
+            TaskOrScript::Task(_, def) => def
+              .dependencies
+              .iter()
+              .all(|dep| completed.lock().contains(dep)),
+            TaskOrScript::Script(_, _) => true,
+          }
+        } else {
+          false
+        };
+
+        if !should_run {
+          return None;
+        }
+
+        running.lock().insert(name.clone());
+        let name = name.clone();
+        Some(
+          self
+            .run_task(&name)
+            .await
+            .map(|exit_code| (exit_code, name.clone())),
+        )
+      });
+    }
+
+    let stream_of_futures = deno_core::futures::stream::iter(task_futures);
+    let mut buffered = stream_of_futures.buffered(10);
+
+    while let Some(maybe_task_result) = buffered.next().await {
+      let Some(task_result) = maybe_task_result else {
+        continue;
+      };
+      let (exit_code, name) = task_result?;
+      if exit_code > 0 {
+        return Ok(exit_code);
+      }
+
+      running.lock().remove(&name);
+      completed.lock().insert(name.to_string());
+    }
+
+    Ok(0)
+  }
+
   async fn run_tasks(
     &self,
     task_names: Vec<String>,
