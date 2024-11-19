@@ -114,7 +114,7 @@ impl CliNpmRegistryApiInner {
               {
                 // attempt to load from the file cache
                 if let Some(info) = api.load_file_cached_package_info(&name).await {
-                  let result: Option<Arc<NpmPackageInfo>> = Some(Arc::new(info));
+                  let result = Some(Arc::new(info));
                   return Ok(result);
                 }
               }

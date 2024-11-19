@@ -984,6 +984,8 @@ impl CliOptions {
       CacheSetting::Only
     } else if !self.flags.cache_blocklist.is_empty() {
       CacheSetting::ReloadSome(self.flags.cache_blocklist.clone())
+    } else if self.flags.reload {
+      CacheSetting::ReloadAll
     } else {
       CacheSetting::Use
     }
