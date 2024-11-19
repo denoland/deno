@@ -2671,9 +2671,8 @@ Specific version requirements to update to can be specified:
                       "If a version requirement is specified, the matching packages will be updated to the given requirement."),
           )
       )
-      .arg(
-        no_lock_arg()
-      )
+      .arg(no_lock_arg())
+      .arg(lock_arg())
       .arg(
         Arg::new("latest")
           .long("latest")
