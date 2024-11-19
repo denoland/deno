@@ -99,10 +99,7 @@ pub async fn execute_script(
   };
 
   match task_runner.sort_tasks_topo(task_name) {
-    Ok(sorted) => {
-      task_runner.task_names = sorted;
-      task_runner.run_tasks_in_parallel().await
-    }
+    Ok(sorted) => task_runner.run_tasks_in_parallel(sorted).await,
     Err(err) => match err {
       TaskError::NotFound(name) => {
         if task_flags.is_run {
@@ -156,18 +153,18 @@ struct TaskRunner<'a> {
 
 impl<'a> TaskRunner<'a> {
   async fn run_tasks_in_parallel(
-    &self,
+    &mut self,
+    task_names: Vec<String>,
   ) -> Result<i32, deno_core::anyhow::Error> {
+    self.task_names = task_names;
     let mut queue = futures_unordered::FuturesUnordered::new();
 
     loop {
-      // eprintln!("has remaining tasks {}", self.has_remaining_tasks());
       if !self.has_remaining_tasks() {
         break;
       }
 
       while queue.len() < self.concurrency {
-        // eprintln!("queue len {} {} ", queue.len(), self.concurrency);
         if let Some(task) = self.add_tasks() {
           queue.push(task);
         } else {
