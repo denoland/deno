@@ -493,7 +493,7 @@ fn resolve_execution_path_from_npx_shim(
   if let Some(first_line) = maybe_first_line {
     // TODO(bartlomieju): this doesn't handle arguments from the second command
     if first_line == "#!/usr/bin/env node"
-      || first_line.starts_with("#!/usr/bin/env -S node ")
+      || first_line.starts_with("#!/usr/bin/env -S node")
     {
       // launch this file itself because it's a JS file
       return Some(file_path);
