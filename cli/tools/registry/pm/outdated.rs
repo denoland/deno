@@ -1,3 +1,5 @@
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+
 use std::collections::HashSet;
 use std::sync::Arc;
 
@@ -10,7 +12,7 @@ use deno_terminal::colors;
 use crate::args::CacheSetting;
 use crate::args::CliOptions;
 use crate::args::Flags;
-use crate::args::UpdateFlags;
+use crate::args::OutdatedFlags;
 use crate::factory::CliFactory;
 use crate::file_fetcher::FileFetcher;
 use crate::jsr::JsrFetchResolver;
@@ -31,6 +33,7 @@ struct OutdatedPackage {
   name: String,
 }
 
+#[allow(clippy::print_stdout)]
 fn print_outdated_table(packages: &[OutdatedPackage]) {
   const HEADINGS: &[&str] = &["Package", "Current", "Update", "Latest"];
 
@@ -97,7 +100,7 @@ fn print_outdated_table(packages: &[OutdatedPackage]) {
   println!("└{package_fill}┴{current_fill}┴{update_fill}┴{latest_fill}┘",);
 }
 
-async fn outdated(
+fn print_outdated(
   deps: &mut DepManager,
   compatible: bool,
 ) -> Result<(), AnyError> {
@@ -149,9 +152,9 @@ async fn outdated(
   Ok(())
 }
 
-pub async fn update(
+pub async fn outdated(
   flags: Arc<Flags>,
-  update_flags: UpdateFlags,
+  update_flags: OutdatedFlags,
 ) -> Result<(), AnyError> {
   let factory = CliFactory::from_flags(flags.clone());
   let cli_options = factory.cli_options()?;
@@ -177,7 +180,7 @@ pub async fn update(
 
   let args = dep_manager_args(
     &factory,
-    &cli_options,
+    cli_options,
     npm_fetch_resolver.clone(),
     jsr_fetch_resolver.clone(),
   )
@@ -207,11 +210,11 @@ pub async fn update(
   deps.resolve_versions().await?;
 
   match update_flags.kind {
-    crate::args::UpdateKind::Update { latest } => {
-      do_update(deps, latest, &filter_set, flags).await?;
+    crate::args::OutdatedKind::Update { latest } => {
+      update(deps, latest, &filter_set, flags).await?;
     }
-    crate::args::UpdateKind::PrintOutdated { compatible } => {
-      outdated(&mut deps, compatible).await?;
+    crate::args::OutdatedKind::PrintOutdated { compatible } => {
+      print_outdated(&mut deps, compatible)?;
     }
   }
 
@@ -225,15 +228,10 @@ fn choose_new_version_req(
   update_to_latest: bool,
   filter_set: &filter::FilterSet,
 ) -> Option<VersionReq> {
-  let explicit_version_req = if let Some(version_req) = filter_set
+  let explicit_version_req = filter_set
     .matching_filter(&dep.prefixed_name())
     .version_spec()
-    .cloned()
-  {
-    Some(version_req)
-  } else {
-    None
-  };
+    .cloned();
 
   if let Some(version_req) = explicit_version_req {
     if let Some(resolved) = resolved {
@@ -261,7 +259,7 @@ fn choose_new_version_req(
   }
 }
 
-async fn do_update(
+async fn update(
   mut deps: DepManager,
   update_to_latest: bool,
   filter_set: &filter::FilterSet,
@@ -286,12 +284,12 @@ async fn do_update(
       continue;
     };
 
-    updated.push((dep_id, new_version_req.clone()));
+    updated.push((dep_id, dep.prefixed_req(), new_version_req.clone()));
 
     deps.update_dep(dep_id, new_version_req);
   }
 
-  deps.commit_changes().await?;
+  deps.commit_changes()?;
 
   if !updated.is_empty() {
     let factory = super::npm_install_after_modification(
@@ -312,14 +310,13 @@ async fn do_update(
 
     let mut deps = deps.reloaded_after_modification(args);
     deps.resolve_current_versions().await?;
-    for (dep_id, new_version_req) in updated {
-      let prefixed_name = deps.get_dep(dep_id).prefixed_name();
+    for (dep_id, prefixed_old_req, new_version_req) in updated {
       if let Some(nv) = deps.resolved_version(dep_id) {
-        updated_to_versions.insert((prefixed_name, nv.version.clone()));
+        updated_to_versions.insert((prefixed_old_req, nv.version.clone()));
       } else {
         log::warn!(
           "Failed to resolve version for new version requirement: {} -> {}",
-          prefixed_name,
+          prefixed_old_req,
           new_version_req
         );
       }
@@ -334,6 +331,9 @@ async fn do_update(
         "ies"
       }
     );
+    let mut updated_to_versions =
+      updated_to_versions.into_iter().collect::<Vec<_>>();
+    updated_to_versions.sort_by(|(k, _), (k2, _)| k.cmp(k2));
     for (prefixed_name, new_version) in updated_to_versions {
       log::info!("• {} -> {}", prefixed_name, new_version);
     }
@@ -404,35 +404,36 @@ mod filter {
         (FilterKind::Include, 0)
       };
       let s = &input[first_idx..];
-      let (pattern, version_spec) = if s.starts_with('@') {
-        if let Some(idx) = s[1..].find('@') {
-          let (pattern, version_spec) = s.split_at(idx + 1);
+      let (pattern, version_spec) =
+        if let Some(scope_name) = s.strip_prefix('@') {
+          if let Some(idx) = scope_name.find('@') {
+            let (pattern, version_spec) = s.split_at(idx + 1);
+            (
+              pattern,
+              Some(
+                VersionReq::parse_from_specifier(
+                  version_spec.trim_start_matches('@'),
+                )
+                .with_context(|| format!("Invalid filter \"{input}\""))?,
+              ),
+            )
+          } else {
+            (s, None)
+          }
+        } else {
+          let mut parts = s.split('@');
+          let Some(pattern) = parts.next() else {
+            return Err(anyhow!("Invalid filter \"{input}\""));
+          };
           (
             pattern,
-            Some(
-              VersionReq::parse_from_specifier(
-                version_spec.trim_start_matches('@'),
-              )
+            parts
+              .next()
+              .map(VersionReq::parse_from_specifier)
+              .transpose()
               .with_context(|| format!("Invalid filter \"{input}\""))?,
-            ),
           )
-        } else {
-          (s, None)
-        }
-      } else {
-        let mut parts = s.split('@');
-        let Some(pattern) = parts.next() else {
-          return Err(anyhow!("Invalid filter \"{input}\""));
         };
-        (
-          pattern,
-          parts
-            .next()
-            .map(VersionReq::parse_from_specifier)
-            .transpose()
-            .with_context(|| format!("Invalid filter \"{input}\""))?,
-        )
-      };
 
       Ok(Filter {
         kind,
@@ -458,7 +459,7 @@ mod filter {
     ) -> Result<Self, AnyError> {
       let filters = filter_strings
         .into_iter()
-        .map(|s| Filter::from_str(s))
+        .map(Filter::from_str)
         .collect::<Result<Vec<_>, _>>()?;
       let has_exclude = filters
         .iter()

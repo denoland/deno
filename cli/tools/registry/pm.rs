@@ -34,10 +34,10 @@ use crate::npm::NpmFetchResolver;
 
 mod cache_deps;
 pub(crate) mod deps;
-mod update;
+mod outdated;
 
 pub use cache_deps::cache_top_level_deps;
-pub use update::update;
+pub use outdated::outdated;
 
 #[derive(Debug, Copy, Clone, Hash)]
 enum ConfigKind {
@@ -101,9 +101,7 @@ impl ConfigUpdater {
     for (i, part) in key_path.parts.iter().enumerate() {
       let s = part.as_str();
       if i < key_path.parts.len().saturating_sub(1) {
-        let Some(object) = current_node.object_value(s) else {
-          return None;
-        };
+        let object = current_node.object_value(s)?;
         current_node = object;
       } else {
         // last part
@@ -405,10 +403,6 @@ pub async fn add(
     (Some(npm), Some(deno)) => {
       let npm_distance = path_distance(&npm.path, &start_dir);
       let deno_distance = path_distance(&deno.path, &start_dir);
-      eprintln!(
-        "npm: {:?}, deno: {:?}, start: {:?}; distances: {} {}",
-        &npm.path, &deno.path, &start_dir, npm_distance, deno_distance
-      );
       npm_distance <= deno_distance
     }
     (Some(_), None) => true,

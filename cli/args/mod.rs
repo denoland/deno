@@ -1622,7 +1622,7 @@ impl CliOptions {
       DenoSubcommand::Install(_)
         | DenoSubcommand::Add(_)
         | DenoSubcommand::Remove(_)
-        | DenoSubcommand::Update(_)
+        | DenoSubcommand::Outdated(_)
     ) {
       // For `deno install/add/remove` we want to force the managed resolver so it can set up `node_modules/` directory.
       return false;

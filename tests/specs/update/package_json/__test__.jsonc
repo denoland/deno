@@ -23,7 +23,7 @@
           "output": "[WILDCARD]"
         },
         {
-          "args": "update --outdated",
+          "args": "outdated",
           "output": "outdated.out"
         }
       ]
@@ -35,7 +35,7 @@
           "output": "[WILDCARD]"
         },
         {
-          "args": "update --outdated --compatible",
+          "args": "outdated --compatible",
           "output": "outdated_compatible.out"
         }
       ]
@@ -47,7 +47,7 @@
           "output": "[WILDCARD]"
         },
         {
-          "args": "update",
+          "args": "outdated --update",
           "output": "./update_compatible/update.out"
         },
         {
@@ -67,7 +67,7 @@
           "output": "[WILDCARD]"
         },
         {
-          "args": "update --latest",
+          "args": "outdated --update --latest",
           "output": "update_latest/update.out"
         },
         {

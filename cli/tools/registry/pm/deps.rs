@@ -1,3 +1,5 @@
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+
 use std::borrow::Cow;
 use std::collections::HashMap;
 use std::sync::atomic::AtomicBool;
@@ -195,14 +197,17 @@ pub struct Dep {
 }
 
 impl Dep {
+  pub fn prefixed_req(&self) -> String {
+    format!("{}:{}", self.kind.scheme(), self.req)
+  }
   pub fn prefixed_name(&self) -> String {
     format!("{}:{}", self.kind.scheme(), self.req.name)
   }
 }
 
-fn import_map_entries<'a>(
-  import_map: &'a ImportMap,
-) -> impl Iterator<Item = (KeyPath, SpecifierMapEntry<'a>)> {
+fn import_map_entries(
+  import_map: &ImportMap,
+) -> impl Iterator<Item = (KeyPath, SpecifierMapEntry<'_>)> {
   import_map
     .imports()
     .entries()
@@ -738,7 +743,7 @@ impl DepManager {
             };
             let _permit = sema.acquire().await;
             let semver_compatible =
-              self.npm_fetch_resolver.req_to_nv(&semver_req).await;
+              self.npm_fetch_resolver.req_to_nv(semver_req).await;
             let latest = self.npm_fetch_resolver.req_to_nv(&latest_req).await;
             PackageLatestVersion {
               latest,
@@ -756,7 +761,7 @@ impl DepManager {
             };
             let _permit = sema.acquire().await;
             let semver_compatible =
-              self.jsr_fetch_resolver.req_to_nv(&semver_req).await;
+              self.jsr_fetch_resolver.req_to_nv(semver_req).await;
             let latest = self.jsr_fetch_resolver.req_to_nv(&latest_req).await;
             PackageLatestVersion {
               latest,
@@ -812,7 +817,7 @@ impl DepManager {
       .push(Change::Update(dep_id, new_version_req));
   }
 
-  pub async fn commit_changes(&mut self) -> Result<(), AnyError> {
+  pub fn commit_changes(&mut self) -> Result<(), AnyError> {
     let changes = std::mem::take(&mut self.pending_changes);
     let mut config_updaters = HashMap::new();
     for change in changes {
@@ -830,7 +835,7 @@ impl DepManager {
               let updater =
                 get_or_create_updater(&mut config_updaters, &dep.location)?;
 
-              let Some(property) = updater.get_property_for_mutation(&key_path)
+              let Some(property) = updater.get_property_for_mutation(key_path)
               else {
                 log::warn!(
                   "failed to find property at path {key_path:?} for file {}",
@@ -870,7 +875,7 @@ impl DepManager {
             DepLocation::PackageJson(arc, key_path) => {
               let updater =
                 get_or_create_updater(&mut config_updaters, &dep.location)?;
-              let Some(property) = updater.get_property_for_mutation(&key_path)
+              let Some(property) = updater.get_property_for_mutation(key_path)
               else {
                 log::warn!(
                   "failed to find property at path {key_path:?} for file {}",
