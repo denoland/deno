@@ -190,13 +190,13 @@ impl TestNpmRegistry {
   }
 }
 
+// NOTE: extracted out partially from the `tar` crate, all credits to the original authors
 fn append_dir_all<W: std::io::Write>(
   builder: &mut tar::Builder<W>,
   path: &Path,
   src_path: &Path,
 ) -> std::io::Result<()> {
   builder.follow_symlinks(true);
-  let follow = true;
   let mode = tar::HeaderMode::Deterministic;
   builder.mode(mode);
   let mut stack = vec![(src_path.to_path_buf(), true, false)];
@@ -204,7 +204,7 @@ fn append_dir_all<W: std::io::Write>(
   while let Some((src, is_dir, is_symlink)) = stack.pop() {
     let dest = path.join(src.strip_prefix(src_path).unwrap());
     // In case of a symlink pointing to a directory, is_dir is false, but src.is_dir() will return true
-    if is_dir || (is_symlink && follow && src.is_dir()) {
+    if is_dir || (is_symlink && src.is_dir()) {
       for entry in fs::read_dir(&src)? {
         let entry = entry?;
         let file_type = entry.file_type()?;
