@@ -210,6 +210,7 @@ pub struct FmtFlags {
   pub no_semicolons: Option<bool>,
   pub watch: Option<WatchFlags>,
   pub unstable_component: bool,
+  pub unstable_sql: bool,
 }
 
 impl FmtFlags {
@@ -2291,7 +2292,7 @@ Ignore formatting a file by adding an ignore comment at the top of the file:
           .value_parser([
             "ts", "tsx", "js", "jsx", "md", "json", "jsonc", "css", "scss",
             "sass", "less", "html", "svelte", "vue", "astro", "yml", "yaml",
-            "ipynb",
+            "ipynb", "sql"
           ])
           .help_heading(FMT_HEADING).requires("files"),
       )
@@ -2409,6 +2410,14 @@ Ignore formatting a file by adding an ignore comment at the top of the file:
           .action(ArgAction::SetTrue)
           .help_heading(FMT_HEADING)
           .hide(true),
+      )
+      .arg(
+        Arg::new("unstable-sql")
+        .long("unstable-sql")
+        .help("Enable formatting SQL files.")
+        .value_parser(FalseyValueParser::new())
+        .action(ArgAction::SetTrue)
+        .help_heading(FMT_HEADING),
       )
   })
 }
@@ -4634,6 +4643,7 @@ fn fmt_parse(
   let prose_wrap = matches.remove_one::<String>("prose-wrap");
   let no_semicolons = matches.remove_one::<bool>("no-semicolons");
   let unstable_component = matches.get_flag("unstable-component");
+  let unstable_sql = matches.get_flag("unstable-sql");
 
   flags.subcommand = DenoSubcommand::Fmt(FmtFlags {
     check: matches.get_flag("check"),
@@ -4646,6 +4656,7 @@ fn fmt_parse(
     no_semicolons,
     watch: watch_arg_parse(matches)?,
     unstable_component,
+    unstable_sql,
   });
   Ok(())
 }
@@ -6565,6 +6576,7 @@ mod tests {
           prose_wrap: None,
           no_semicolons: None,
           unstable_component: false,
+          unstable_sql: false,
           watch: Default::default(),
         }),
         ..Flags::default()
@@ -6588,6 +6600,7 @@ mod tests {
           prose_wrap: None,
           no_semicolons: None,
           unstable_component: false,
+          unstable_sql: false,
           watch: Default::default(),
         }),
         ..Flags::default()
@@ -6611,6 +6624,7 @@ mod tests {
           prose_wrap: None,
           no_semicolons: None,
           unstable_component: false,
+          unstable_sql: false,
           watch: Default::default(),
         }),
         ..Flags::default()
@@ -6634,6 +6648,7 @@ mod tests {
           prose_wrap: None,
           no_semicolons: None,
           unstable_component: false,
+          unstable_sql: false,
           watch: Some(Default::default()),
         }),
         ..Flags::default()
@@ -6648,7 +6663,8 @@ mod tests {
       "--unstable-css",
       "--unstable-html",
       "--unstable-component",
-      "--unstable-yaml"
+      "--unstable-yaml",
+      "--unstable-sql"
     ]);
     assert_eq!(
       r.unwrap(),
@@ -6666,6 +6682,7 @@ mod tests {
           prose_wrap: None,
           no_semicolons: None,
           unstable_component: true,
+          unstable_sql: true,
           watch: Some(WatchFlags {
             hmr: false,
             no_clear_screen: true,
@@ -6700,6 +6717,7 @@ mod tests {
           prose_wrap: None,
           no_semicolons: None,
           unstable_component: false,
+          unstable_sql: false,
           watch: Some(Default::default()),
         }),
         ..Flags::default()
@@ -6723,6 +6741,7 @@ mod tests {
           prose_wrap: None,
           no_semicolons: None,
           unstable_component: false,
+          unstable_sql: false,
           watch: Default::default(),
         }),
         config_flag: ConfigFlag::Path("deno.jsonc".to_string()),
@@ -6754,6 +6773,7 @@ mod tests {
           prose_wrap: None,
           no_semicolons: None,
           unstable_component: false,
+          unstable_sql: false,
           watch: Some(Default::default()),
         }),
         config_flag: ConfigFlag::Path("deno.jsonc".to_string()),
@@ -6790,6 +6810,7 @@ mod tests {
           prose_wrap: Some("never".to_string()),
           no_semicolons: Some(true),
           unstable_component: false,
+          unstable_sql: false,
           watch: Default::default(),
         }),
         ..Flags::default()
@@ -6820,6 +6841,7 @@ mod tests {
           prose_wrap: None,
           no_semicolons: Some(false),
           unstable_component: false,
+          unstable_sql: false,
           watch: Default::default(),
         }),
         ..Flags::default()
@@ -6845,6 +6867,7 @@ mod tests {
           prose_wrap: None,
           no_semicolons: None,
           unstable_component: false,
+          unstable_sql: false,
           watch: Default::default(),
         }),
         ext: Some("html".to_string()),
