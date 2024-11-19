@@ -32,6 +32,7 @@ use crate::graph_util::ModuleGraphBuilder;
 use crate::npm::CliNpmResolver;
 use crate::tsc;
 use crate::tsc::Diagnostics;
+use crate::tsc::TypeCheckingCjsTracker;
 use crate::util::extract;
 use crate::util::path::to_percent_decoded_str;
 
@@ -99,6 +100,7 @@ pub struct CheckOptions {
 
 pub struct TypeChecker {
   caches: Arc<Caches>,
+  cjs_tracker: Arc<TypeCheckingCjsTracker>,
   cli_options: Arc<CliOptions>,
   module_graph_builder: Arc<ModuleGraphBuilder>,
   node_resolver: Arc<NodeResolver>,
@@ -108,6 +110,7 @@ pub struct TypeChecker {
 impl TypeChecker {
   pub fn new(
     caches: Arc<Caches>,
+    cjs_tracker: Arc<TypeCheckingCjsTracker>,
     cli_options: Arc<CliOptions>,
     module_graph_builder: Arc<ModuleGraphBuilder>,
     node_resolver: Arc<NodeResolver>,
@@ -115,6 +118,7 @@ impl TypeChecker {
   ) -> Self {
     Self {
       caches,
+      cjs_tracker,
       cli_options,
       module_graph_builder,
       node_resolver,
@@ -244,6 +248,7 @@ impl TypeChecker {
       graph: graph.clone(),
       hash_data,
       maybe_npm: Some(tsc::RequestNpmState {
+        cjs_tracker: self.cjs_tracker.clone(),
         node_resolver: self.node_resolver.clone(),
         npm_resolver: self.npm_resolver.clone(),
       }),
@@ -346,7 +351,7 @@ fn get_check_hash(
             }
           }
           MediaType::Json
-          | MediaType::TsBuildInfo
+          | MediaType::Css
           | MediaType::SourceMap
           | MediaType::Wasm
           | MediaType::Unknown => continue,
@@ -378,6 +383,7 @@ fn get_check_hash(
       Module::External(module) => {
         hasher.write_str(module.specifier.as_str());
       }
+      Module::Wasm(_) => todo!("@dsherret"),
     }
   }
 
@@ -428,7 +434,7 @@ fn get_tsc_roots(
         }
         MediaType::Json
         | MediaType::Wasm
-        | MediaType::TsBuildInfo
+        | MediaType::Css
         | MediaType::SourceMap
         | MediaType::Unknown => None,
       },
@@ -436,6 +442,7 @@ fn get_tsc_roots(
       | Module::Node(_)
       | Module::Npm(_)
       | Module::Json(_) => None,
+      Module::Wasm(_) => todo!("@dsherret"),
     }
   }
 
@@ -536,7 +543,7 @@ fn has_ts_check(media_type: MediaType, file_text: &str) -> bool {
     | MediaType::Tsx
     | MediaType::Json
     | MediaType::Wasm
-    | MediaType::TsBuildInfo
+    | MediaType::Css
     | MediaType::SourceMap
     | MediaType::Unknown => false,
   }

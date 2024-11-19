@@ -143,6 +143,7 @@ pub struct WorkerServiceOptions {
   pub npm_process_state_provider: Option<NpmProcessStateProviderRc>,
   pub permissions: PermissionsContainer,
   pub root_cert_store_provider: Option<Arc<dyn RootCertStoreProvider>>,
+  pub fetch_dns_resolver: deno_fetch::dns::Resolver,
 
   /// The store to use for transferring SharedArrayBuffers between isolates.
   /// If multiple isolates should have the possibility of sharing
@@ -363,6 +364,7 @@ impl MainWorker {
             .unsafely_ignore_certificate_errors
             .clone(),
           file_fetch_handler: Rc::new(deno_fetch::FsFetchHandler),
+          resolver: services.fetch_dns_resolver,
           ..Default::default()
         },
       ),
@@ -405,7 +407,9 @@ impl MainWorker {
       ),
       deno_cron::deno_cron::init_ops_and_esm(LocalCronHandler::new()),
       deno_napi::deno_napi::init_ops_and_esm::<PermissionsContainer>(),
-      deno_http::deno_http::init_ops_and_esm::<DefaultHttpPropertyExtractor>(),
+      deno_http::deno_http::init_ops_and_esm::<DefaultHttpPropertyExtractor>(
+        deno_http::Options::default(),
+      ),
       deno_io::deno_io::init_ops_and_esm(Some(options.stdio)),
       deno_fs::deno_fs::init_ops_and_esm::<PermissionsContainer>(
         services.fs.clone(),
@@ -422,6 +426,7 @@ impl MainWorker {
       ),
       ops::fs_events::deno_fs_events::init_ops_and_esm(),
       ops::os::deno_os::init_ops_and_esm(exit_code.clone()),
+      ops::otel::deno_otel::init_ops_and_esm(),
       ops::permissions::deno_permissions::init_ops_and_esm(),
       ops::process::deno_process::init_ops_and_esm(
         services.npm_process_state_provider,
@@ -488,7 +493,7 @@ impl MainWorker {
       extension_transpiler: Some(Rc::new(|specifier, source| {
         maybe_transpile_source(specifier, source)
       })),
-      inspector: options.maybe_inspector_server.is_some(),
+      inspector: true,
       is_main: true,
       feature_checker: Some(services.feature_checker.clone()),
       op_metrics_factory_fn,
@@ -546,6 +551,12 @@ impl MainWorker {
       js_runtime.op_state().borrow_mut().put(op_summary_metrics);
     }
 
+    // Put inspector handle into the op state so we can put a breakpoint when
+    // executing a CJS entrypoint.
+    let op_state = js_runtime.op_state();
+    let inspector = js_runtime.inspector();
+    op_state.borrow_mut().put(inspector);
+
     if let Some(server) = options.maybe_inspector_server.clone() {
       server.register_inspector(
         main_module.to_string(),
@@ -553,13 +564,8 @@ impl MainWorker {
         options.should_break_on_first_statement
           || options.should_wait_for_inspector_session,
       );
-
-      // Put inspector handle into the op state so we can put a breakpoint when
-      // executing a CJS entrypoint.
-      let op_state = js_runtime.op_state();
-      let inspector = js_runtime.inspector();
-      op_state.borrow_mut().put(inspector);
     }
+
     let (
       bootstrap_fn_global,
       dispatch_load_event_fn_global,

@@ -2,7 +2,7 @@
 
 [package]
 name = "deno_permissions"
-version = "0.35.0"
+version = "0.37.0"
 authors.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -23,6 +23,7 @@ log.workspace = true
 once_cell.workspace = true
 percent-encoding = { version = "2.3.1", features = [] }
 serde.workspace = true
+thiserror.workspace = true
 which.workspace = true
 
 [target.'cfg(windows)'.dependencies]

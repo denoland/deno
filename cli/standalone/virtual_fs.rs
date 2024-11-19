@@ -51,7 +51,8 @@ pub struct VfsBuilder {
 
 impl VfsBuilder {
   pub fn new(root_path: PathBuf) -> Result<Self, AnyError> {
-    let root_path = canonicalize_path(&root_path)?;
+    let root_path = canonicalize_path(&root_path)
+      .with_context(|| format!("Canonicalizing {}", root_path.display()))?;
     log::debug!("Building vfs with root '{}'", root_path.display());
     Ok(Self {
       root_dir: VirtualDirectory {
@@ -350,6 +351,7 @@ impl<'a> VfsEntryRef<'a> {
         atime: None,
         birthtime: None,
         mtime: None,
+        ctime: None,
         blksize: 0,
         size: 0,
         dev: 0,
@@ -372,6 +374,7 @@ impl<'a> VfsEntryRef<'a> {
         atime: None,
         birthtime: None,
         mtime: None,
+        ctime: None,
         blksize: 0,
         size: file.len,
         dev: 0,
@@ -394,6 +397,7 @@ impl<'a> VfsEntryRef<'a> {
         atime: None,
         birthtime: None,
         mtime: None,
+        ctime: None,
         blksize: 0,
         size: 0,
         dev: 0,

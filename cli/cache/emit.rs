@@ -10,6 +10,7 @@ use deno_core::unsync::sync::AtomicFlag;
 use super::DiskCache;
 
 /// The cache that stores previously emitted files.
+#[derive(Debug)]
 pub struct EmitCache {
   disk_cache: DiskCache,
   emit_failed_flag: AtomicFlag,
@@ -91,6 +92,7 @@ impl EmitCache {
 
 const LAST_LINE_PREFIX: &str = "\n// denoCacheMetadata=";
 
+#[derive(Debug)]
 struct EmitFileSerializer {
   cli_version: &'static str,
 }

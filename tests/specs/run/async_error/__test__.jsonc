@@ -1,0 +1,5 @@
+{
+  "args": "run --reload async_error.ts",
+  "output": "async_error.ts.out",
+  "exitCode": 1
+}

@@ -19,18 +19,19 @@ use anyhow::Error as AnyError;
 use url::Url;
 
 use crate::env::NodeResolverEnv;
-use crate::package_json::load_pkg_json;
+use crate::npm::InNpmPackageCheckerRc;
 use crate::resolution::NodeResolverRc;
 use crate::NodeModuleKind;
 use crate::NodeResolutionMode;
-use crate::NpmResolverRc;
+use crate::NpmPackageFolderResolverRc;
+use crate::PackageJsonResolverRc;
 use crate::PathClean;
 
 #[derive(Debug, Clone)]
-pub enum CjsAnalysis {
+pub enum CjsAnalysis<'a> {
   /// File was found to be an ES module and the translator should
   /// load the code as ESM.
-  Esm(String),
+  Esm(Cow<'a, str>),
   Cjs(CjsAnalysisExports),
 }
 
@@ -50,11 +51,11 @@ pub trait CjsCodeAnalyzer {
   /// already has it. If the source is needed by the implementation,
   /// then it can use the provided source, or otherwise load it if
   /// necessary.
-  async fn analyze_cjs(
+  async fn analyze_cjs<'a>(
     &self,
     specifier: &Url,
-    maybe_source: Option<String>,
-  ) -> Result<CjsAnalysis, AnyError>;
+    maybe_source: Option<Cow<'a, str>>,
+  ) -> Result<CjsAnalysis<'a>, AnyError>;
 }
 
 pub struct NodeCodeTranslator<
@@ -63,8 +64,10 @@ pub struct NodeCodeTranslator<
 > {
   cjs_code_analyzer: TCjsCodeAnalyzer,
   env: TNodeResolverEnv,
+  in_npm_pkg_checker: InNpmPackageCheckerRc,
   node_resolver: NodeResolverRc<TNodeResolverEnv>,
-  npm_resolver: NpmResolverRc,
+  npm_resolver: NpmPackageFolderResolverRc,
+  pkg_json_resolver: PackageJsonResolverRc<TNodeResolverEnv>,
 }
 
 impl<TCjsCodeAnalyzer: CjsCodeAnalyzer, TNodeResolverEnv: NodeResolverEnv>
@@ -73,14 +76,18 @@ impl<TCjsCodeAnalyzer: CjsCodeAnalyzer, TNodeResolverEnv: NodeResolverEnv>
   pub fn new(
     cjs_code_analyzer: TCjsCodeAnalyzer,
     env: TNodeResolverEnv,
+    in_npm_pkg_checker: InNpmPackageCheckerRc,
     node_resolver: NodeResolverRc<TNodeResolverEnv>,
-    npm_resolver: NpmResolverRc,
+    npm_resolver: NpmPackageFolderResolverRc,
+    pkg_json_resolver: PackageJsonResolverRc<TNodeResolverEnv>,
   ) -> Self {
     Self {
       cjs_code_analyzer,
       env,
+      in_npm_pkg_checker,
       node_resolver,
       npm_resolver,
+      pkg_json_resolver,
     }
   }
 
@@ -90,11 +97,11 @@ impl<TCjsCodeAnalyzer: CjsCodeAnalyzer, TNodeResolverEnv: NodeResolverEnv>
   /// For all discovered reexports the analysis will be performed recursively.
   ///
   /// If successful a source code for equivalent ES module is returned.
-  pub async fn translate_cjs_to_esm(
+  pub async fn translate_cjs_to_esm<'a>(
     &self,
     entry_specifier: &Url,
-    source: Option<String>,
-  ) -> Result<String, AnyError> {
+    source: Option<Cow<'a, str>>,
+  ) -> Result<Cow<'a, str>, AnyError> {
     let mut temp_var_count = 0;
 
     let analysis = self
@@ -108,7 +115,7 @@ impl<TCjsCodeAnalyzer: CjsCodeAnalyzer, TNodeResolverEnv: NodeResolverEnv>
     };
 
     let mut source = vec![
-      r#"import {createRequire as __internalCreateRequire} from "node:module";
+      r#"import {createRequire as __internalCreateRequire, Module as __internalModule } from "node:module";
       const require = __internalCreateRequire(import.meta.url);"#
         .to_string(),
     ];
@@ -135,7 +142,12 @@ impl<TCjsCodeAnalyzer: CjsCodeAnalyzer, TNodeResolverEnv: NodeResolverEnv>
     }
 
     source.push(format!(
-      "const mod = require(\"{}\");",
+      r#"let mod;
+      if (import.meta.main) {{
+        mod = __internalModule._load("{0}", null, true)
+      }} else {{
+        mod = require("{0}");
+      }}"#,
       url_to_file_path(entry_specifier)
         .unwrap()
         .to_str()
@@ -159,7 +171,7 @@ impl<TCjsCodeAnalyzer: CjsCodeAnalyzer, TNodeResolverEnv: NodeResolverEnv>
     source.push("export default mod;".to_string());
 
     let translated_source = source.join("\n");
-    Ok(translated_source)
+    Ok(Cow::Owned(translated_source))
   }
 
   async fn analyze_reexports<'a>(
@@ -174,7 +186,7 @@ impl<TCjsCodeAnalyzer: CjsCodeAnalyzer, TNodeResolverEnv: NodeResolverEnv>
     struct Analysis {
       reexport_specifier: url::Url,
       referrer: url::Url,
-      analysis: CjsAnalysis,
+      analysis: CjsAnalysis<'static>,
     }
 
     type AnalysisFuture<'a> = LocalBoxFuture<'a, Result<Analysis, AnyError>>;
@@ -329,8 +341,9 @@ impl<TCjsCodeAnalyzer: CjsCodeAnalyzer, TNodeResolverEnv: NodeResolverEnv>
     }?;
 
     let package_json_path = module_dir.join("package.json");
-    let maybe_package_json =
-      load_pkg_json(self.env.pkg_json_fs(), &package_json_path)?;
+    let maybe_package_json = self
+      .pkg_json_resolver
+      .load_package_json(&package_json_path)?;
     if let Some(package_json) = maybe_package_json {
       if let Some(exports) = &package_json.exports {
         return Some(
@@ -356,8 +369,9 @@ impl<TCjsCodeAnalyzer: CjsCodeAnalyzer, TNodeResolverEnv: NodeResolverEnv>
         if self.env.is_dir_sync(&d) {
           // subdir might have a package.json that specifies the entrypoint
           let package_json_path = d.join("package.json");
-          let maybe_package_json =
-            load_pkg_json(self.env.pkg_json_fs(), &package_json_path)?;
+          let maybe_package_json = self
+            .pkg_json_resolver
+            .load_package_json(&package_json_path)?;
           if let Some(package_json) = maybe_package_json {
             if let Some(main) = package_json.main(NodeModuleKind::Cjs) {
               return Ok(Some(url_from_file_path(&d.join(main).clean())?));
@@ -382,7 +396,7 @@ impl<TCjsCodeAnalyzer: CjsCodeAnalyzer, TNodeResolverEnv: NodeResolverEnv>
     // as a fallback, attempt to resolve it via the ancestor directories
     let mut last = referrer_path.as_path();
     while let Some(parent) = last.parent() {
-      if !self.npm_resolver.in_npm_package_at_dir_path(parent) {
+      if !self.in_npm_pkg_checker.in_npm_package_at_dir_path(parent) {
         break;
       }
       let path = if parent.ends_with("node_modules") {

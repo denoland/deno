@@ -39,6 +39,7 @@ use deno_path_util::normalize_path;
 use deno_path_util::url_to_file_path;
 use deno_runtime::deno_permissions::PermissionsOptions;
 use deno_runtime::deno_permissions::SysDescriptor;
+use deno_runtime::ops::otel::OtelConfig;
 use log::debug;
 use log::Level;
 use serde::Deserialize;
@@ -212,6 +213,7 @@ pub struct FmtFlags {
   pub no_semicolons: Option<bool>,
   pub watch: Option<WatchFlags>,
   pub unstable_component: bool,
+  pub unstable_sql: bool,
 }
 
 impl FmtFlags {
@@ -580,7 +582,6 @@ pub struct UnstableConfig {
   // TODO(bartlomieju): remove in Deno 2.5
   pub legacy_flag_enabled: bool, // --unstable
   pub bare_node_builtins: bool,
-  pub detect_cjs: bool,
   pub sloppy_imports: bool,
   pub features: Vec<String>, // --unstabe-kv --unstable-cron
 }
@@ -617,7 +618,7 @@ pub struct Flags {
   pub internal: InternalFlags,
   pub ignore: Vec<String>,
   pub import_map_path: Option<String>,
-  pub env_file: Option<String>,
+  pub env_file: Option<Vec<String>>,
   pub inspect_brk: Option<SocketAddr>,
   pub inspect_wait: Option<SocketAddr>,
   pub inspect: Option<SocketAddr>,
@@ -970,6 +971,24 @@ impl Flags {
     }
 
     args
+  }
+
+  pub fn otel_config(&self) -> Option<OtelConfig> {
+    if self
+      .unstable_config
+      .features
+      .contains(&String::from("otel"))
+    {
+      Some(OtelConfig {
+        runtime_name: Cow::Borrowed("deno"),
+        runtime_version: Cow::Borrowed(crate::version::DENO_VERSION_INFO.deno),
+        deterministic: std::env::var("DENO_UNSTABLE_OTEL_DETERMINISTIC")
+          .is_ok(),
+        ..Default::default()
+      })
+    } else {
+      None
+    }
   }
 
   /// Extract the paths the config file should be discovered from.
@@ -1894,10 +1913,10 @@ On the first invocation with deno will download the proper binary and cache it i
         Arg::new("include")
           .long("include")
           .help(
-            cstr!("Includes an additional module in the compiled executable's module graph.
+            cstr!("Includes an additional module or local data file in the compiled executable.
   <p(245)>Use this flag if a dynamically imported module or a web worker main module
-  fails to load in the executable. This flag can be passed multiple times,
-  to include multiple additional modules.</>",
+  fails to load in the executable or to embed a file in the executable. This flag can
+  be passed multiple times, to include multiple additional modules.</>",
           ))
           .action(ArgAction::Append)
           .value_hint(ValueHint::FilePath)
@@ -1925,6 +1944,7 @@ On the first invocation with deno will download the proper binary and cache it i
           ])
           .help_heading(COMPILE_HEADING),
       )
+      .arg(no_code_cache_arg())
       .arg(
         Arg::new("no-terminal")
           .long("no-terminal")
@@ -2276,7 +2296,7 @@ Ignore formatting a file by adding an ignore comment at the top of the file:
           .value_parser([
             "ts", "tsx", "js", "jsx", "md", "json", "jsonc", "css", "scss",
             "sass", "less", "html", "svelte", "vue", "astro", "yml", "yaml",
-            "ipynb",
+            "ipynb", "sql"
           ])
           .help_heading(FMT_HEADING).requires("files"),
       )
@@ -2394,6 +2414,14 @@ Ignore formatting a file by adding an ignore comment at the top of the file:
           .action(ArgAction::SetTrue)
           .help_heading(FMT_HEADING)
           .hide(true),
+      )
+      .arg(
+        Arg::new("unstable-sql")
+        .long("unstable-sql")
+        .help("Enable formatting SQL files.")
+        .value_parser(FalseyValueParser::new())
+        .action(ArgAction::SetTrue)
+        .help_heading(FMT_HEADING),
       )
   })
 }
@@ -3400,8 +3428,7 @@ fn permission_args(app: Command, requires: Option<&'static str>) -> Command {
           .value_name("IP_OR_HOSTNAME")
           .help("Allow network access. Optionally specify allowed IP addresses and host names, with ports as necessary")
           .value_parser(flags_net::validator)
-          .hide(true)
-          ;
+          .hide(true);
         if let Some(requires) = requires {
           arg = arg.requires(requires)
         }
@@ -3770,12 +3797,14 @@ fn env_file_arg() -> Arg {
     .help(cstr!(
       "Load environment variables from local file
   <p(245)>Only the first environment variable with a given key is used.
-  Existing process environment variables are not overwritten.</>"
+  Existing process environment variables are not overwritten, so if variables with the same names already exist in the environment, their values will be preserved.
+  Where multiple declarations for the same environment variable exist in your .env file, the first one encountered is applied. This is determined by the order of the files you pass as arguments.</>"
     ))
     .value_hint(ValueHint::FilePath)
     .default_missing_value(".env")
     .require_equals(true)
     .num_args(0..=1)
+    .action(ArgAction::Append)
 }
 
 fn reload_arg() -> Arg {
@@ -4424,6 +4453,8 @@ fn compile_parse(
   };
   ext_arg_parse(flags, matches);
 
+  flags.code_cache_enabled = !matches.get_flag("no-code-cache");
+
   flags.subcommand = DenoSubcommand::Compile(CompileFlags {
     source_file,
     output,
@@ -4624,6 +4655,7 @@ fn fmt_parse(
   let prose_wrap = matches.remove_one::<String>("prose-wrap");
   let no_semicolons = matches.remove_one::<bool>("no-semicolons");
   let unstable_component = matches.get_flag("unstable-component");
+  let unstable_sql = matches.get_flag("unstable-sql");
 
   flags.subcommand = DenoSubcommand::Fmt(FmtFlags {
     check: matches.get_flag("check"),
@@ -4636,6 +4668,7 @@ fn fmt_parse(
     no_semicolons,
     watch: watch_arg_parse(matches)?,
     unstable_component,
+    unstable_sql,
   });
   Ok(())
 }
@@ -5507,7 +5540,9 @@ fn import_map_arg_parse(flags: &mut Flags, matches: &mut ArgMatches) {
 }
 
 fn env_file_arg_parse(flags: &mut Flags, matches: &mut ArgMatches) {
-  flags.env_file = matches.remove_one::<String>("env-file");
+  flags.env_file = matches
+    .get_many::<String>("env-file")
+    .map(|values| values.cloned().collect());
 }
 
 fn reload_arg_parse(
@@ -5758,7 +5793,6 @@ fn unstable_args_parse(
 
   flags.unstable_config.bare_node_builtins =
     matches.get_flag("unstable-bare-node-builtins");
-  flags.unstable_config.detect_cjs = matches.get_flag("unstable-detect-cjs");
   flags.unstable_config.sloppy_imports =
     matches.get_flag("unstable-sloppy-imports");
 
@@ -6579,6 +6613,7 @@ mod tests {
           prose_wrap: None,
           no_semicolons: None,
           unstable_component: false,
+          unstable_sql: false,
           watch: Default::default(),
         }),
         ..Flags::default()
@@ -6602,6 +6637,7 @@ mod tests {
           prose_wrap: None,
           no_semicolons: None,
           unstable_component: false,
+          unstable_sql: false,
           watch: Default::default(),
         }),
         ..Flags::default()
@@ -6625,6 +6661,7 @@ mod tests {
           prose_wrap: None,
           no_semicolons: None,
           unstable_component: false,
+          unstable_sql: false,
           watch: Default::default(),
         }),
         ..Flags::default()
@@ -6648,6 +6685,7 @@ mod tests {
           prose_wrap: None,
           no_semicolons: None,
           unstable_component: false,
+          unstable_sql: false,
           watch: Some(Default::default()),
         }),
         ..Flags::default()
@@ -6662,7 +6700,8 @@ mod tests {
       "--unstable-css",
       "--unstable-html",
       "--unstable-component",
-      "--unstable-yaml"
+      "--unstable-yaml",
+      "--unstable-sql"
     ]);
     assert_eq!(
       r.unwrap(),
@@ -6680,6 +6719,7 @@ mod tests {
           prose_wrap: None,
           no_semicolons: None,
           unstable_component: true,
+          unstable_sql: true,
           watch: Some(WatchFlags {
             hmr: false,
             no_clear_screen: true,
@@ -6714,6 +6754,7 @@ mod tests {
           prose_wrap: None,
           no_semicolons: None,
           unstable_component: false,
+          unstable_sql: false,
           watch: Some(Default::default()),
         }),
         ..Flags::default()
@@ -6737,6 +6778,7 @@ mod tests {
           prose_wrap: None,
           no_semicolons: None,
           unstable_component: false,
+          unstable_sql: false,
           watch: Default::default(),
         }),
         config_flag: ConfigFlag::Path("deno.jsonc".to_string()),
@@ -6768,6 +6810,7 @@ mod tests {
           prose_wrap: None,
           no_semicolons: None,
           unstable_component: false,
+          unstable_sql: false,
           watch: Some(Default::default()),
         }),
         config_flag: ConfigFlag::Path("deno.jsonc".to_string()),
@@ -6804,6 +6847,7 @@ mod tests {
           prose_wrap: Some("never".to_string()),
           no_semicolons: Some(true),
           unstable_component: false,
+          unstable_sql: false,
           watch: Default::default(),
         }),
         ..Flags::default()
@@ -6834,6 +6878,7 @@ mod tests {
           prose_wrap: None,
           no_semicolons: Some(false),
           unstable_component: false,
+          unstable_sql: false,
           watch: Default::default(),
         }),
         ..Flags::default()
@@ -6859,6 +6904,7 @@ mod tests {
           prose_wrap: None,
           no_semicolons: None,
           unstable_component: false,
+          unstable_sql: false,
           watch: Default::default(),
         }),
         ext: Some("html".to_string()),
@@ -7444,7 +7490,7 @@ mod tests {
           allow_all: true,
           ..Default::default()
         },
-        env_file: Some(".example.env".to_owned()),
+        env_file: Some(vec![".example.env".to_owned()]),
         ..Flags::default()
       }
     );
@@ -7538,7 +7584,7 @@ mod tests {
           allow_all: true,
           ..Default::default()
         },
-        env_file: Some(".example.env".to_owned()),
+        env_file: Some(vec![".example.env".to_owned()]),
         unsafely_ignore_certificate_errors: Some(vec![]),
         ..Flags::default()
       }
@@ -8186,7 +8232,7 @@ mod tests {
         subcommand: DenoSubcommand::Run(RunFlags::new_default(
           "script.ts".to_string(),
         )),
-        env_file: Some(".env".to_owned()),
+        env_file: Some(vec![".env".to_owned()]),
         code_cache_enabled: true,
         ..Flags::default()
       }
@@ -8202,7 +8248,7 @@ mod tests {
         subcommand: DenoSubcommand::Run(RunFlags::new_default(
           "script.ts".to_string(),
         )),
-        env_file: Some(".env".to_owned()),
+        env_file: Some(vec![".env".to_owned()]),
         code_cache_enabled: true,
         ..Flags::default()
       }
@@ -8235,7 +8281,7 @@ mod tests {
         subcommand: DenoSubcommand::Run(RunFlags::new_default(
           "script.ts".to_string(),
         )),
-        env_file: Some(".another_env".to_owned()),
+        env_file: Some(vec![".another_env".to_owned()]),
         code_cache_enabled: true,
         ..Flags::default()
       }
@@ -8256,7 +8302,29 @@ mod tests {
         subcommand: DenoSubcommand::Run(RunFlags::new_default(
           "script.ts".to_string(),
         )),
-        env_file: Some(".another_env".to_owned()),
+        env_file: Some(vec![".another_env".to_owned()]),
+        code_cache_enabled: true,
+        ..Flags::default()
+      }
+    );
+  }
+
+  #[test]
+  fn run_multiple_env_file_defined() {
+    let r = flags_from_vec(svec![
+      "deno",
+      "run",
+      "--env-file",
+      "--env-file=.two_env",
+      "script.ts"
+    ]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Run(RunFlags::new_default(
+          "script.ts".to_string(),
+        )),
+        env_file: Some(vec![".env".to_owned(), ".two_env".to_owned()]),
         code_cache_enabled: true,
         ..Flags::default()
       }
@@ -8399,7 +8467,7 @@ mod tests {
           allow_read: Some(vec![]),
           ..Default::default()
         },
-        env_file: Some(".example.env".to_owned()),
+        env_file: Some(vec![".example.env".to_owned()]),
         ..Flags::default()
       }
     );
@@ -10035,6 +10103,7 @@ mod tests {
           include: vec![]
         }),
         type_check_mode: TypeCheckMode::Local,
+        code_cache_enabled: true,
         ..Flags::default()
       }
     );
@@ -10043,7 +10112,7 @@ mod tests {
   #[test]
   fn compile_with_flags() {
     #[rustfmt::skip]
-    let r = flags_from_vec(svec!["deno", "compile", "--import-map", "import_map.json", "--no-remote", "--config", "tsconfig.json", "--no-check", "--unsafely-ignore-certificate-errors", "--reload", "--lock", "lock.json", "--cert", "example.crt", "--cached-only", "--location", "https:foo", "--allow-read", "--allow-net", "--v8-flags=--help", "--seed", "1", "--no-terminal", "--icon", "favicon.ico", "--output", "colors", "--env=.example.env", "https://examples.deno.land/color-logging.ts", "foo", "bar", "-p", "8080"]);
+    let r = flags_from_vec(svec!["deno", "compile", "--import-map", "import_map.json", "--no-code-cache", "--no-remote", "--config", "tsconfig.json", "--no-check", "--unsafely-ignore-certificate-errors", "--reload", "--lock", "lock.json", "--cert", "example.crt", "--cached-only", "--location", "https:foo", "--allow-read", "--allow-net", "--v8-flags=--help", "--seed", "1", "--no-terminal", "--icon", "favicon.ico", "--output", "colors", "--env=.example.env", "https://examples.deno.land/color-logging.ts", "foo", "bar", "-p", "8080"]);
     assert_eq!(
       r.unwrap(),
       Flags {
@@ -10059,6 +10128,7 @@ mod tests {
         }),
         import_map_path: Some("import_map.json".to_string()),
         no_remote: true,
+        code_cache_enabled: false,
         config_flag: ConfigFlag::Path("tsconfig.json".to_owned()),
         type_check_mode: TypeCheckMode::None,
         reload: true,
@@ -10074,7 +10144,7 @@ mod tests {
         unsafely_ignore_certificate_errors: Some(vec![]),
         v8_flags: svec!["--help", "--random-seed=1"],
         seed: Some(1),
-        env_file: Some(".example.env".to_owned()),
+        env_file: Some(vec![".example.env".to_owned()]),
         ..Flags::default()
       }
     );

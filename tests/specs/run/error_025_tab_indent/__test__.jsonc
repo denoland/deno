@@ -1,0 +1,5 @@
+{
+  "args": "run error_025_tab_indent",
+  "output": "error_025_tab_indent.out",
+  "exitCode": 1
+}

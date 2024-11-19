@@ -15,6 +15,7 @@ pub use crate::interface::FsDirEntry;
 pub use crate::interface::FsFileType;
 pub use crate::interface::OpenOptions;
 pub use crate::ops::FsOpsError;
+pub use crate::ops::FsOpsErrorKind;
 pub use crate::ops::OperationError;
 pub use crate::std_fs::RealFs;
 pub use crate::sync::MaybeSend;
@@ -22,8 +23,8 @@ pub use crate::sync::MaybeSync;
 
 use crate::ops::*;
 
-use deno_core::error::AnyError;
 use deno_io::fs::FsError;
+use deno_permissions::PermissionCheckError;
 use std::borrow::Cow;
 use std::path::Path;
 use std::path::PathBuf;
@@ -42,45 +43,51 @@ pub trait FsPermissions {
     &mut self,
     path: &str,
     api_name: &str,
-  ) -> Result<PathBuf, AnyError>;
+  ) -> Result<PathBuf, PermissionCheckError>;
   #[must_use = "the resolved return value to mitigate time-of-check to time-of-use issues"]
   fn check_read_path<'a>(
     &mut self,
     path: &'a Path,
     api_name: &str,
-  ) -> Result<Cow<'a, Path>, AnyError>;
-  fn check_read_all(&mut self, api_name: &str) -> Result<(), AnyError>;
+  ) -> Result<Cow<'a, Path>, PermissionCheckError>;
+  fn check_read_all(
+    &mut self,
+    api_name: &str,
+  ) -> Result<(), PermissionCheckError>;
   fn check_read_blind(
     &mut self,
     p: &Path,
     display: &str,
     api_name: &str,
-  ) -> Result<(), AnyError>;
+  ) -> Result<(), PermissionCheckError>;
   #[must_use = "the resolved return value to mitigate time-of-check to time-of-use issues"]
   fn check_write(
     &mut self,
     path: &str,
     api_name: &str,
-  ) -> Result<PathBuf, AnyError>;
+  ) -> Result<PathBuf, PermissionCheckError>;
   #[must_use = "the resolved return value to mitigate time-of-check to time-of-use issues"]
   fn check_write_path<'a>(
     &mut self,
     path: &'a Path,
     api_name: &str,
-  ) -> Result<Cow<'a, Path>, AnyError>;
+  ) -> Result<Cow<'a, Path>, PermissionCheckError>;
   #[must_use = "the resolved return value to mitigate time-of-check to time-of-use issues"]
   fn check_write_partial(
     &mut self,
     path: &str,
     api_name: &str,
-  ) -> Result<PathBuf, AnyError>;
-  fn check_write_all(&mut self, api_name: &str) -> Result<(), AnyError>;
+  ) -> Result<PathBuf, PermissionCheckError>;
+  fn check_write_all(
+    &mut self,
+    api_name: &str,
+  ) -> Result<(), PermissionCheckError>;
   fn check_write_blind(
     &mut self,
     p: &Path,
     display: &str,
     api_name: &str,
-  ) -> Result<(), AnyError>;
+  ) -> Result<(), PermissionCheckError>;
 
   fn check<'a>(
     &mut self,
@@ -140,7 +147,7 @@ impl FsPermissions for deno_permissions::PermissionsContainer {
     &mut self,
     path: &str,
     api_name: &str,
-  ) -> Result<PathBuf, AnyError> {
+  ) -> Result<PathBuf, PermissionCheckError> {
     deno_permissions::PermissionsContainer::check_read(self, path, api_name)
   }
 
@@ -148,7 +155,7 @@ impl FsPermissions for deno_permissions::PermissionsContainer {
     &mut self,
     path: &'a Path,
     api_name: &str,
-  ) -> Result<Cow<'a, Path>, AnyError> {
+  ) -> Result<Cow<'a, Path>, PermissionCheckError> {
     deno_permissions::PermissionsContainer::check_read_path(
       self,
       path,
@@ -160,7 +167,7 @@ impl FsPermissions for deno_permissions::PermissionsContainer {
     path: &Path,
     display: &str,
     api_name: &str,
-  ) -> Result<(), AnyError> {
+  ) -> Result<(), PermissionCheckError> {
     deno_permissions::PermissionsContainer::check_read_blind(
       self, path, display, api_name,
     )
@@ -170,7 +177,7 @@ impl FsPermissions for deno_permissions::PermissionsContainer {
     &mut self,
     path: &str,
     api_name: &str,
-  ) -> Result<PathBuf, AnyError> {
+  ) -> Result<PathBuf, PermissionCheckError> {
     deno_permissions::PermissionsContainer::check_write(self, path, api_name)
   }
 
@@ -178,7 +185,7 @@ impl FsPermissions for deno_permissions::PermissionsContainer {
     &mut self,
     path: &'a Path,
     api_name: &str,
-  ) -> Result<Cow<'a, Path>, AnyError> {
+  ) -> Result<Cow<'a, Path>, PermissionCheckError> {
     deno_permissions::PermissionsContainer::check_write_path(
       self, path, api_name,
     )
@@ -188,7 +195,7 @@ impl FsPermissions for deno_permissions::PermissionsContainer {
     &mut self,
     path: &str,
     api_name: &str,
-  ) -> Result<PathBuf, AnyError> {
+  ) -> Result<PathBuf, PermissionCheckError> {
     deno_permissions::PermissionsContainer::check_write_partial(
       self, path, api_name,
     )
@@ -199,17 +206,23 @@ impl FsPermissions for deno_permissions::PermissionsContainer {
     p: &Path,
     display: &str,
     api_name: &str,
-  ) -> Result<(), AnyError> {
+  ) -> Result<(), PermissionCheckError> {
     deno_permissions::PermissionsContainer::check_write_blind(
       self, p, display, api_name,
     )
   }
 
-  fn check_read_all(&mut self, api_name: &str) -> Result<(), AnyError> {
+  fn check_read_all(
+    &mut self,
+    api_name: &str,
+  ) -> Result<(), PermissionCheckError> {
     deno_permissions::PermissionsContainer::check_read_all(self, api_name)
   }
 
-  fn check_write_all(&mut self, api_name: &str) -> Result<(), AnyError> {
+  fn check_write_all(
+    &mut self,
+    api_name: &str,
+  ) -> Result<(), PermissionCheckError> {
     deno_permissions::PermissionsContainer::check_write_all(self, api_name)
   }
 }
