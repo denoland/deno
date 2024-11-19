@@ -478,21 +478,6 @@ impl<TGraphContainer: ModuleGraphContainer>
     raw_specifier: &str,
     referrer: &ModuleSpecifier,
   ) -> Result<ModuleSpecifier, AnyError> {
-    if self.shared.in_npm_pkg_checker.in_npm_package(referrer) {
-      return Ok(
-        self
-          .shared
-          .node_resolver
-          .resolve(
-            raw_specifier,
-            referrer,
-            self.shared.cjs_tracker.get_referrer_kind(referrer),
-            NodeResolutionMode::Execution,
-          )?
-          .into_url(),
-      );
-    }
-
     let graph = self.graph_container.graph();
     let resolution = match graph.get(referrer) {
       Some(Module::Js(module)) => module
@@ -572,6 +557,7 @@ impl<TGraphContainer: ModuleGraphContainer>
         )
       }
       None => specifier.into_owned(),
+      Some(Module::Wasm(_)) => todo!("@dsherret"),
     };
     Ok(specifier)
   }
@@ -749,6 +735,7 @@ impl<TGraphContainer: ModuleGraphContainer>
         | deno_graph::Module::Npm(_),
       )
       | None => Ok(None),
+      Some(deno_graph::Module::Wasm(_)) => todo!("@dsherret"),
     }
   }
 

@@ -448,6 +448,7 @@ impl<'a> GraphDisplayContext<'a> {
           Module::Json(module) => module.maybe_cache_info.as_ref(),
           Module::Wasm(module) => module.maybe_cache_info.as_ref(),
           Module::Node(_) | Module::Npm(_) | Module::External(_) => None,
+          Module::Wasm(_) => todo!("@dsherret"),
         };
         if let Some(cache_info) = maybe_cache_info {
           if let Some(local) = &cache_info.local {
@@ -471,6 +472,7 @@ impl<'a> GraphDisplayContext<'a> {
               Module::Json(module) => module.size(),
               Module::Wasm(module) => module.size(),
               Module::Node(_) | Module::Npm(_) | Module::External(_) => 0,
+              Module::Wasm(_) => todo!("@dsherret"),
             };
             size as f64
           })
@@ -571,6 +573,7 @@ impl<'a> GraphDisplayContext<'a> {
           Module::Json(module) => Some(module.size() as u64),
           Module::Wasm(module) => Some(module.size() as u64),
           Module::Node(_) | Module::Npm(_) | Module::External(_) => None,
+          Module::Wasm(_) => todo!("@dsherret"),
         },
       };
       format!("{} {}", header_text, maybe_size_to_text(maybe_size))
@@ -673,6 +676,7 @@ impl<'a> GraphDisplayContext<'a> {
       ModuleError::Missing(_, _) | ModuleError::MissingDynamic(_, _) => {
         self.build_error_msg(specifier, "(missing)")
       }
+      ModuleError::WasmParseErr(_, _) => todo!("@dsherret"),
     }
   }
 
