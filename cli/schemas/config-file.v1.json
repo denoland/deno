@@ -448,6 +448,13 @@
                   "type": "string",
                   "required": true,
                   "description": "The task to execute"
+                },
+                "dependencies": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  },
+                  "description": "Tasks that should be executed before this task"
                 }
               }
             }
