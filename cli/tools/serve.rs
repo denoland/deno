@@ -55,15 +55,7 @@ pub async fn serve(
       host = format!("https://{}", serve_flags.host);
     }
     let port = serve_flags.port;
-    let browser_tab_open_result = open::that_detached(format!("{host}:{port}"));
-    if browser_tab_open_result.is_ok() {
-      log::info!(
-        "{}: Opened the browser on the address that the server is running on",
-        crate::colors::green("deno serve")
-      );
-    } else {
-      log::info!("{}: Couldn't open the browser on the address that the server is running on", crate::colors::red("deno serve"));
-    }
+    let _ = open::that_detached(format!("{host}:{port}"));
   }
 
   let hmr = serve_flags
