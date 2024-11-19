@@ -1909,10 +1909,10 @@ On the first invocation with deno will download the proper binary and cache it i
         Arg::new("include")
           .long("include")
           .help(
-            cstr!("Includes an additional module in the compiled executable's module graph.
+            cstr!("Includes an additional module or local data file in the compiled executable.
   <p(245)>Use this flag if a dynamically imported module or a web worker main module
-  fails to load in the executable. This flag can be passed multiple times,
-  to include multiple additional modules.</>",
+  fails to load in the executable or to embed a file in the executable. This flag can
+  be passed multiple times, to include multiple additional modules.</>",
           ))
           .action(ArgAction::Append)
           .value_hint(ValueHint::FilePath)

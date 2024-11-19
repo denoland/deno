@@ -884,6 +884,7 @@ impl CliFactory {
     let cli_options = self.cli_options()?;
     Ok(DenoCompileBinaryWriter::new(
       self.cjs_tracker()?,
+      self.cli_options()?,
       self.deno_dir()?,
       self.emitter()?,
       self.file_fetcher()?,
