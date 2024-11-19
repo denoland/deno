@@ -3573,6 +3573,10 @@ interface Float16ArrayConstructor {
  */
 declare var Float16Array: Float16ArrayConstructor;
 
+/**
+ * @category Platform
+ * @experimental
+ */
 interface Math {
   /**
    * Returns the nearest half precision float representation of a number.
@@ -3584,6 +3588,10 @@ interface Math {
   f16round(x: number): number;
 }
 
+/**
+ * @category Platform
+ * @experimental
+ */
 interface DataView<TArrayBuffer extends ArrayBufferLike> {
   /**
    * Gets the Float16 value at the specified byte offset from the start of the view. There is
