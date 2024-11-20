@@ -2965,6 +2965,7 @@ Evaluate a task from string
         .long("filter")
         .short('f')
         .help("Filter members of the workspace by name - should be used with --recursive")
+        .requires("recursive")
         .value_parser(value_parser!(String)),
       )
       .arg(
