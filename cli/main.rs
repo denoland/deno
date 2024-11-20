@@ -240,6 +240,7 @@ async fn run_subcommand(flags: Arc<Flags>) -> Result<i32, AnyError> {
                   is_run: true,
                   recursive: false,
                   filter: None
+                  eval: false,
                 };
                 new_flags.subcommand = DenoSubcommand::Task(task_flags.clone());
                 let result = tools::task::execute_script(Arc::new(new_flags), task_flags.clone()).await;
