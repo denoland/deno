@@ -51,7 +51,7 @@ fn op_bench_get_origin(state: &mut OpState) -> String {
 #[derive(Clone)]
 struct PermissionsHolder(Uuid, PermissionsContainer);
 
-#[op2]
+#[op2(stack_trace)]
 #[serde]
 pub fn op_pledge_test_permissions(
   state: &mut OpState,
