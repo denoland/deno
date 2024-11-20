@@ -129,8 +129,7 @@ libz-sys.workspace = true
 log = { workspace = true, features = ["serde"] }
 lsp-types.workspace = true
 malva = "=0.11.0"
-# NOTE(bartlomieju): for now using github URL, because v0.15.2 with important fixes to components hasn't been released yet.
-markup_fmt = { git = "https://github.com/g-plane/markup_fmt.git", rev = "5cd836" }
+markup_fmt = "=0.16.0"
 memmem.workspace = true
 monch.workspace = true
 notify.workspace = true
