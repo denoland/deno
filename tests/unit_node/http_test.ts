@@ -1070,11 +1070,6 @@ Deno.test(
     await requestClosed.promise;
     assertEquals(receivedRequest, false);
     await server.finished;
-
-    if (Deno.build.os === "windows") {
-      // FIXME(kt3k): This is necessary for preventing op leak on windows
-      await new Promise((resolve) => setTimeout(resolve, 4000));
-    }
   },
 );
 
