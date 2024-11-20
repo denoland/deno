@@ -427,6 +427,9 @@ deno_core::extension!(deno_node,
     ops::inspector::op_inspector_emit_protocol_event,
     ops::inspector::op_inspector_enabled,
   ],
+  objects = [
+    ops::perf_hooks::EldHistogram
+  ],
   esm_entry_point = "ext:deno_node/02_init.js",
   esm = [
     dir "polyfills",

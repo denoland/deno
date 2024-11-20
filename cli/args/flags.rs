@@ -210,6 +210,7 @@ pub struct FmtFlags {
   pub no_semicolons: Option<bool>,
   pub watch: Option<WatchFlags>,
   pub unstable_component: bool,
+  pub unstable_sql: bool,
 }
 
 impl FmtFlags {
@@ -379,6 +380,7 @@ pub struct TaskFlags {
   pub cwd: Option<String>,
   pub task: Option<String>,
   pub is_run: bool,
+  pub eval: bool,
 }
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
@@ -427,6 +429,7 @@ pub struct PublishFlags {
   pub allow_slow_types: bool,
   pub allow_dirty: bool,
   pub no_provenance: bool,
+  pub set_version: Option<String>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -1384,13 +1387,13 @@ pub fn flags_from_vec(args: Vec<OsString>) -> clap::error::Result<Flags> {
       "repl" => repl_parse(&mut flags, &mut m)?,
       "run" => run_parse(&mut flags, &mut m, app, false)?,
       "serve" => serve_parse(&mut flags, &mut m, app)?,
-      "task" => task_parse(&mut flags, &mut m),
+      "task" => task_parse(&mut flags, &mut m, app)?,
       "test" => test_parse(&mut flags, &mut m)?,
       "types" => types_parse(&mut flags, &mut m),
       "uninstall" => uninstall_parse(&mut flags, &mut m),
       "upgrade" => upgrade_parse(&mut flags, &mut m),
       "vendor" => vendor_parse(&mut flags, &mut m),
-      "publish" => publish_parse(&mut flags, &mut m),
+      "publish" => publish_parse(&mut flags, &mut m)?,
       _ => unreachable!(),
     }
   } else {
@@ -1908,10 +1911,10 @@ On the first invocation with deno will download the proper binary and cache it i
         Arg::new("include")
           .long("include")
           .help(
-            cstr!("Includes an additional module in the compiled executable's module graph.
+            cstr!("Includes an additional module or file/directory in the compiled executable.
   <p(245)>Use this flag if a dynamically imported module or a web worker main module
-  fails to load in the executable. This flag can be passed multiple times,
-  to include multiple additional modules.</>",
+  fails to load in the executable or to embed a file or directory in the executable.
+  This flag can be passed multiple times, to include multiple additional modules.</>",
           ))
           .action(ArgAction::Append)
           .value_hint(ValueHint::FilePath)
@@ -2291,7 +2294,7 @@ Ignore formatting a file by adding an ignore comment at the top of the file:
           .value_parser([
             "ts", "tsx", "js", "jsx", "md", "json", "jsonc", "css", "scss",
             "sass", "less", "html", "svelte", "vue", "astro", "yml", "yaml",
-            "ipynb",
+            "ipynb", "sql"
           ])
           .help_heading(FMT_HEADING).requires("files"),
       )
@@ -2409,6 +2412,14 @@ Ignore formatting a file by adding an ignore comment at the top of the file:
           .action(ArgAction::SetTrue)
           .help_heading(FMT_HEADING)
           .hide(true),
+      )
+      .arg(
+        Arg::new("unstable-sql")
+        .long("unstable-sql")
+        .help("Enable formatting SQL files.")
+        .value_parser(FalseyValueParser::new())
+        .action(ArgAction::SetTrue)
+        .help_heading(FMT_HEADING),
       )
   })
 }
@@ -2921,7 +2932,10 @@ fn task_subcommand() -> Command {
   <p(245)>deno task build</>
 
 List all available tasks:
-  <p(245)>deno task</>"
+  <p(245)>deno task</>
+  
+Evaluate a task from string
+  <p(245)>deno task --eval \"echo $(pwd)\"</>"
     ),
     UnstableArgsConfig::ResolutionAndRuntime,
   )
@@ -2937,6 +2951,13 @@ List all available tasks:
           .help("Specify the directory to run the task in")
           .value_hint(ValueHint::DirPath),
       )
+      .arg(
+        Arg::new("eval")
+          .long("eval")
+          .help(
+            "Evaluate the passed value as if, it was a task in a configuration file",
+          ).action(ArgAction::SetTrue)
+        )
       .arg(node_modules_dir_arg())
   })
 }
@@ -3216,12 +3237,12 @@ fn publish_subcommand() -> Command {
   command("publish", "Publish the current working directory's package or workspace to JSR", UnstableArgsConfig::ResolutionOnly)
     .defer(|cmd| {
       cmd
-      .arg(
-        Arg::new("token")
-          .long("token")
-          .help("The API token to use when publishing. If unset, interactive authentication is be used")
-          .help_heading(PUBLISH_HEADING)
-      )
+        .arg(
+          Arg::new("token")
+            .long("token")
+            .help("The API token to use when publishing. If unset, interactive authentication is be used")
+            .help_heading(PUBLISH_HEADING)
+        )
         .arg(config_arg())
         .arg(no_config_arg())
         .arg(
@@ -3229,29 +3250,38 @@ fn publish_subcommand() -> Command {
             .long("dry-run")
             .help("Prepare the package for publishing performing all checks and validations without uploading")
             .action(ArgAction::SetTrue)
-          .help_heading(PUBLISH_HEADING),
+            .help_heading(PUBLISH_HEADING),
         )
         .arg(
           Arg::new("allow-slow-types")
             .long("allow-slow-types")
             .help("Allow publishing with slow types")
             .action(ArgAction::SetTrue)
-          .help_heading(PUBLISH_HEADING),
+            .help_heading(PUBLISH_HEADING),
         )
         .arg(
           Arg::new("allow-dirty")
             .long("allow-dirty")
             .help("Allow publishing if the repository has uncommitted changed")
             .action(ArgAction::SetTrue)
-          .help_heading(PUBLISH_HEADING),
-        ).arg(
-        Arg::new("no-provenance")
-          .long("no-provenance")
-          .help(cstr!("Disable provenance attestation.
+            .help_heading(PUBLISH_HEADING),
+        )
+        .arg(
+          Arg::new("no-provenance")
+            .long("no-provenance")
+            .help(cstr!("Disable provenance attestation.
   <p(245)>Enabled by default on Github actions, publicly links the package to where it was built and published from.</>"))
-          .action(ArgAction::SetTrue)
-        .help_heading(PUBLISH_HEADING)
-      )
+            .action(ArgAction::SetTrue)
+            .help_heading(PUBLISH_HEADING)
+        )
+        .arg(
+          Arg::new("set-version")
+            .long("set-version")
+            .help("Set version for a package to be published.
+  <p(245)>This flag can be used while publishing individual packages and cannot be used in a workspace.</>")
+            .value_name("VERSION")
+            .help_heading(PUBLISH_HEADING)
+        )
         .arg(check_arg(/* type checks by default */ true))
         .arg(no_check_arg())
     })
@@ -4634,6 +4664,7 @@ fn fmt_parse(
   let prose_wrap = matches.remove_one::<String>("prose-wrap");
   let no_semicolons = matches.remove_one::<bool>("no-semicolons");
   let unstable_component = matches.get_flag("unstable-component");
+  let unstable_sql = matches.get_flag("unstable-sql");
 
   flags.subcommand = DenoSubcommand::Fmt(FmtFlags {
     check: matches.get_flag("check"),
@@ -4646,6 +4677,7 @@ fn fmt_parse(
     no_semicolons,
     watch: watch_arg_parse(matches)?,
     unstable_component,
+    unstable_sql,
   });
   Ok(())
 }
@@ -5045,7 +5077,11 @@ fn serve_parse(
   Ok(())
 }
 
-fn task_parse(flags: &mut Flags, matches: &mut ArgMatches) {
+fn task_parse(
+  flags: &mut Flags,
+  matches: &mut ArgMatches,
+  mut app: Command,
+) -> clap::error::Result<()> {
   flags.config_flag = matches
     .remove_one::<String>("config")
     .map(ConfigFlag::Path)
@@ -5058,6 +5094,7 @@ fn task_parse(flags: &mut Flags, matches: &mut ArgMatches) {
     cwd: matches.remove_one::<String>("cwd"),
     task: None,
     is_run: false,
+    eval: matches.get_flag("eval"),
   };
 
   if let Some((task, mut matches)) = matches.remove_subcommand() {
@@ -5070,9 +5107,15 @@ fn task_parse(flags: &mut Flags, matches: &mut ArgMatches) {
         .flatten()
         .filter_map(|arg| arg.into_string().ok()),
     );
+  } else if task_flags.eval {
+    return Err(app.find_subcommand_mut("task").unwrap().error(
+      clap::error::ErrorKind::MissingRequiredArgument,
+      "[TASK] must be specified when using --eval",
+    ));
   }
 
   flags.subcommand = DenoSubcommand::Task(task_flags);
+  Ok(())
 }
 
 fn parallel_arg_parse(matches: &mut ArgMatches) -> Option<NonZeroUsize> {
@@ -5218,7 +5261,10 @@ fn vendor_parse(flags: &mut Flags, _matches: &mut ArgMatches) {
   flags.subcommand = DenoSubcommand::Vendor
 }
 
-fn publish_parse(flags: &mut Flags, matches: &mut ArgMatches) {
+fn publish_parse(
+  flags: &mut Flags,
+  matches: &mut ArgMatches,
+) -> clap::error::Result<()> {
   flags.type_check_mode = TypeCheckMode::Local; // local by default
   unstable_args_parse(flags, matches, UnstableArgsConfig::ResolutionOnly);
   no_check_arg_parse(flags, matches);
@@ -5231,7 +5277,10 @@ fn publish_parse(flags: &mut Flags, matches: &mut ArgMatches) {
     allow_slow_types: matches.get_flag("allow-slow-types"),
     allow_dirty: matches.get_flag("allow-dirty"),
     no_provenance: matches.get_flag("no-provenance"),
+    set_version: matches.remove_one::<String>("set-version"),
   });
+
+  Ok(())
 }
 
 fn compile_args_parse(
@@ -6565,6 +6614,7 @@ mod tests {
           prose_wrap: None,
           no_semicolons: None,
           unstable_component: false,
+          unstable_sql: false,
           watch: Default::default(),
         }),
         ..Flags::default()
@@ -6588,6 +6638,7 @@ mod tests {
           prose_wrap: None,
           no_semicolons: None,
           unstable_component: false,
+          unstable_sql: false,
           watch: Default::default(),
         }),
         ..Flags::default()
@@ -6611,6 +6662,7 @@ mod tests {
           prose_wrap: None,
           no_semicolons: None,
           unstable_component: false,
+          unstable_sql: false,
           watch: Default::default(),
         }),
         ..Flags::default()
@@ -6634,6 +6686,7 @@ mod tests {
           prose_wrap: None,
           no_semicolons: None,
           unstable_component: false,
+          unstable_sql: false,
           watch: Some(Default::default()),
         }),
         ..Flags::default()
@@ -6648,7 +6701,8 @@ mod tests {
       "--unstable-css",
       "--unstable-html",
       "--unstable-component",
-      "--unstable-yaml"
+      "--unstable-yaml",
+      "--unstable-sql"
     ]);
     assert_eq!(
       r.unwrap(),
@@ -6666,6 +6720,7 @@ mod tests {
           prose_wrap: None,
           no_semicolons: None,
           unstable_component: true,
+          unstable_sql: true,
           watch: Some(WatchFlags {
             hmr: false,
             no_clear_screen: true,
@@ -6700,6 +6755,7 @@ mod tests {
           prose_wrap: None,
           no_semicolons: None,
           unstable_component: false,
+          unstable_sql: false,
           watch: Some(Default::default()),
         }),
         ..Flags::default()
@@ -6723,6 +6779,7 @@ mod tests {
           prose_wrap: None,
           no_semicolons: None,
           unstable_component: false,
+          unstable_sql: false,
           watch: Default::default(),
         }),
         config_flag: ConfigFlag::Path("deno.jsonc".to_string()),
@@ -6754,6 +6811,7 @@ mod tests {
           prose_wrap: None,
           no_semicolons: None,
           unstable_component: false,
+          unstable_sql: false,
           watch: Some(Default::default()),
         }),
         config_flag: ConfigFlag::Path("deno.jsonc".to_string()),
@@ -6790,6 +6848,7 @@ mod tests {
           prose_wrap: Some("never".to_string()),
           no_semicolons: Some(true),
           unstable_component: false,
+          unstable_sql: false,
           watch: Default::default(),
         }),
         ..Flags::default()
@@ -6820,6 +6879,7 @@ mod tests {
           prose_wrap: None,
           no_semicolons: Some(false),
           unstable_component: false,
+          unstable_sql: false,
           watch: Default::default(),
         }),
         ..Flags::default()
@@ -6845,6 +6905,7 @@ mod tests {
           prose_wrap: None,
           no_semicolons: None,
           unstable_component: false,
+          unstable_sql: false,
           watch: Default::default(),
         }),
         ext: Some("html".to_string()),
@@ -10235,6 +10296,7 @@ mod tests {
           cwd: None,
           task: Some("build".to_string()),
           is_run: false,
+          eval: false,
         }),
         argv: svec!["hello", "world"],
         ..Flags::default()
@@ -10249,6 +10311,7 @@ mod tests {
           cwd: None,
           task: Some("build".to_string()),
           is_run: false,
+          eval: false,
         }),
         ..Flags::default()
       }
@@ -10262,10 +10325,28 @@ mod tests {
           cwd: Some("foo".to_string()),
           task: Some("build".to_string()),
           is_run: false,
+          eval: false,
         }),
         ..Flags::default()
       }
     );
+
+    let r = flags_from_vec(svec!["deno", "task", "--eval", "echo 1"]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Task(TaskFlags {
+          cwd: None,
+          task: Some("echo 1".to_string()),
+          is_run: false,
+          eval: true,
+        }),
+        ..Flags::default()
+      }
+    );
+
+    let r = flags_from_vec(svec!["deno", "task", "--eval"]);
+    assert!(r.is_err());
   }
 
   #[test]
@@ -10287,6 +10368,7 @@ mod tests {
           cwd: None,
           task: Some("build".to_string()),
           is_run: false,
+          eval: false,
         }),
         argv: svec!["--", "hello", "world"],
         config_flag: ConfigFlag::Path("deno.json".to_owned()),
@@ -10304,6 +10386,7 @@ mod tests {
           cwd: Some("foo".to_string()),
           task: Some("build".to_string()),
           is_run: false,
+          eval: false,
         }),
         argv: svec!["--", "hello", "world"],
         ..Flags::default()
@@ -10322,6 +10405,7 @@ mod tests {
           cwd: None,
           task: Some("build".to_string()),
           is_run: false,
+          eval: false,
         }),
         argv: svec!["--"],
         ..Flags::default()
@@ -10339,6 +10423,7 @@ mod tests {
           cwd: None,
           task: Some("build".to_string()),
           is_run: false,
+          eval: false,
         }),
         argv: svec!["-1", "--test"],
         ..Flags::default()
@@ -10356,6 +10441,7 @@ mod tests {
           cwd: None,
           task: Some("build".to_string()),
           is_run: false,
+          eval: false,
         }),
         argv: svec!["--test"],
         ..Flags::default()
@@ -10374,6 +10460,7 @@ mod tests {
           cwd: None,
           task: Some("build".to_string()),
           is_run: false,
+          eval: false,
         }),
         log_level: Some(log::Level::Error),
         ..Flags::default()
@@ -10391,6 +10478,7 @@ mod tests {
           cwd: None,
           task: None,
           is_run: false,
+          eval: false,
         }),
         ..Flags::default()
       }
@@ -10407,6 +10495,7 @@ mod tests {
           cwd: None,
           task: None,
           is_run: false,
+          eval: false,
         }),
         config_flag: ConfigFlag::Path("deno.jsonc".to_string()),
         ..Flags::default()
@@ -10424,6 +10513,7 @@ mod tests {
           cwd: None,
           task: None,
           is_run: false,
+          eval: false,
         }),
         config_flag: ConfigFlag::Path("deno.jsonc".to_string()),
         ..Flags::default()
@@ -10746,6 +10836,7 @@ mod tests {
       "--allow-slow-types",
       "--allow-dirty",
       "--token=asdf",
+      "--set-version=1.0.1",
     ]);
     assert_eq!(
       r.unwrap(),
@@ -10756,6 +10847,7 @@ mod tests {
           allow_slow_types: true,
           allow_dirty: true,
           no_provenance: true,
+          set_version: Some("1.0.1".to_string()),
         }),
         type_check_mode: TypeCheckMode::Local,
         ..Flags::default()

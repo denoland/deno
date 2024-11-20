@@ -380,6 +380,11 @@ fn get_check_hash(
         hasher.write_str(module.specifier.as_str());
         hasher.write_str(&module.source);
       }
+      Module::Wasm(module) => {
+        has_file_to_type_check = true;
+        hasher.write_str(module.specifier.as_str());
+        hasher.write_str(&module.source_dts);
+      }
       Module::External(module) => {
         hasher.write_str(module.specifier.as_str());
       }
@@ -437,6 +442,7 @@ fn get_tsc_roots(
         | MediaType::SourceMap
         | MediaType::Unknown => None,
       },
+      Module::Wasm(module) => Some((module.specifier.clone(), MediaType::Dmts)),
       Module::External(_)
       | Module::Node(_)
       | Module::Npm(_)
