@@ -18,7 +18,11 @@ use std::io::IsTerminal;
 use std::io::Write;
 use std::path::Path;
 
-pub fn init_project(init_flags: InitFlags) -> Result<(), AnyError> {
+pub async fn init_project(init_flags: InitFlags) -> Result<(), AnyError> {
+  if let Some(package) = &init_flags.package {
+    return init_npm(package, init_flags.package_args).await;
+  }
+
   let cwd =
     std::env::current_dir().context("Can't read current working directory.")?;
   let dir = if let Some(dir) = &init_flags.dir {
@@ -247,7 +251,7 @@ Deno.test(function addTest() {
   Ok(())
 }
 
-pub async fn init_npm(name: &str, args: Vec<String>) -> Result<i32, AnyError> {
+async fn init_npm(name: &str, args: Vec<String>) -> Result<i32, AnyError> {
   let script_name = format!("npm:create-{}", name);
 
   fn print_manual_usage(script_name: &str, args: &[String]) -> i32 {
@@ -261,8 +265,8 @@ pub async fn init_npm(name: &str, args: Vec<String>) -> Result<i32, AnyError> {
       script_name
     );
     loop {
-      let _ = std::io::stdout().write(b"> ");
-      let _ = std::io::stdout().flush();
+      std::io::stdout().write(b"> ")?;
+      std::io::stdout().flush()?;
       let mut answer = String::new();
       if std::io::stdin().read_line(&mut answer).is_ok() {
         let answer = answer.trim().to_ascii_lowercase();

@@ -143,14 +143,8 @@ async fn run_subcommand(flags: Arc<Flags>) -> Result<i32, AnyError> {
       )
     }
     DenoSubcommand::Init(init_flags) => {
-      if let Some(package) = &init_flags.package {
-        return tools::init::init_npm(package, init_flags.package_args).await;
-      }
-
       spawn_subcommand(async {
-        // make compiler happy since init_project is sync
-        tokio::task::yield_now().await;
-        tools::init::init_project(init_flags)
+        tools::init::init_project(init_flags).await
       })
     }
     DenoSubcommand::Info(info_flags) => {
