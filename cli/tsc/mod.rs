@@ -6,10 +6,10 @@ use crate::cache::FastInsecureHasher;
 use crate::cache::ModuleInfoCache;
 use crate::node;
 use crate::npm::CliNpmResolver;
-use crate::npm::ResolvePkgFolderFromDenoReqError;
 use crate::resolver::CjsTracker;
 use crate::util::checksum;
 use crate::util::path::mapped_specifier_for_tsc;
+use crate::worker::create_isolate_create_params;
 
 use deno_ast::MediaType;
 use deno_core::anyhow::anyhow;
@@ -34,6 +34,7 @@ use deno_graph::GraphKind;
 use deno_graph::Module;
 use deno_graph::ModuleGraph;
 use deno_graph::ResolutionResolved;
+use deno_resolver::npm::ResolvePkgFolderFromDenoReqError;
 use deno_runtime::deno_fs;
 use deno_runtime::deno_node::NodeResolver;
 use deno_semver::npm::NpmPackageReqReference;
@@ -649,6 +650,10 @@ fn op_load_inner(
           media_type = MediaType::Json;
           Some(Cow::Borrowed(&*module.source))
         }
+        Module::Wasm(module) => {
+          media_type = MediaType::Dts;
+          Some(Cow::Borrowed(&*module.source_dts))
+        }
         Module::Npm(_) | Module::Node(_) => None,
         Module::External(module) => {
           // means it's Deno code importing an npm module
@@ -888,6 +893,9 @@ fn resolve_graph_specifier_types(
     Some(Module::Json(module)) => {
       Ok(Some((module.specifier.clone(), module.media_type)))
     }
+    Some(Module::Wasm(module)) => {
+      Ok(Some((module.specifier.clone(), MediaType::Dmts)))
+    }
     Some(Module::Npm(module)) => {
       if let Some(npm) = &state.maybe_npm.as_ref() {
         let package_folder = npm
@@ -1104,6 +1112,7 @@ pub fn exec(request: Request) -> Result<Response, AnyError> {
       root_map,
       remapped_specifiers,
     )],
+    create_params: create_isolate_create_params(),
     ..Default::default()
   });
 
@@ -1194,7 +1203,7 @@ mod tests {
         .context("Unable to get CWD")
         .unwrap(),
     );
-    let mut op_state = OpState::new(None);
+    let mut op_state = OpState::new(None, None);
     op_state.put(state);
     op_state
   }

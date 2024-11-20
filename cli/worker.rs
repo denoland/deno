@@ -83,6 +83,15 @@ pub trait HmrRunner: Send + Sync {
   async fn run(&mut self) -> Result<(), AnyError>;
 }
 
+pub trait CliCodeCache: code_cache::CodeCache {
+  /// Gets if the code cache is still enabled.
+  fn enabled(&self) -> bool {
+    true
+  }
+
+  fn as_code_cache(self: Arc<Self>) -> Arc<dyn code_cache::CodeCache>;
+}
+
 #[async_trait::async_trait(?Send)]
 pub trait CoverageCollector: Send + Sync {
   async fn start_collecting(&mut self) -> Result<(), AnyError>;
@@ -127,7 +136,7 @@ pub struct CliMainWorkerOptions {
 struct SharedWorkerState {
   blob_store: Arc<BlobStore>,
   broadcast_channel: InMemoryBroadcastChannel,
-  code_cache: Option<Arc<dyn code_cache::CodeCache>>,
+  code_cache: Option<Arc<dyn CliCodeCache>>,
   compiled_wasm_module_store: CompiledWasmModuleStore,
   feature_checker: Arc<FeatureChecker>,
   fs: Arc<dyn deno_fs::FileSystem>,
@@ -155,7 +164,7 @@ impl SharedWorkerState {
     NodeExtInitServices {
       node_require_loader,
       node_resolver: self.node_resolver.clone(),
-      npm_resolver: self.npm_resolver.clone().into_npm_resolver(),
+      npm_resolver: self.npm_resolver.clone().into_npm_pkg_folder_resolver(),
       pkg_json_resolver: self.pkg_json_resolver.clone(),
     }
   }
@@ -393,7 +402,7 @@ impl CliMainWorkerFactory {
   #[allow(clippy::too_many_arguments)]
   pub fn new(
     blob_store: Arc<BlobStore>,
-    code_cache: Option<Arc<dyn code_cache::CodeCache>>,
+    code_cache: Option<Arc<dyn CliCodeCache>>,
     feature_checker: Arc<FeatureChecker>,
     fs: Arc<dyn deno_fs::FileSystem>,
     maybe_file_watcher_communicator: Option<Arc<WatcherCommunicator>>,
@@ -547,14 +556,16 @@ impl CliMainWorkerFactory {
       npm_process_state_provider: Some(shared.npm_process_state_provider()),
       blob_store: shared.blob_store.clone(),
       broadcast_channel: shared.broadcast_channel.clone(),
+      fetch_dns_resolver: Default::default(),
       shared_array_buffer_store: Some(shared.shared_array_buffer_store.clone()),
       compiled_wasm_module_store: Some(
         shared.compiled_wasm_module_store.clone(),
       ),
       feature_checker,
       permissions,
-      v8_code_cache: shared.code_cache.clone(),
+      v8_code_cache: shared.code_cache.clone().map(|c| c.as_code_cache()),
     };
+
     let options = WorkerOptions {
       bootstrap: BootstrapOptions {
         deno_version: crate::version::DENO_VERSION_INFO.deno.to_string(),
@@ -585,7 +596,7 @@ impl CliMainWorkerFactory {
       },
       extensions: custom_extensions,
       startup_snapshot: crate::js::deno_isolate_init(),
-      create_params: None,
+      create_params: create_isolate_create_params(),
       unsafely_ignore_certificate_errors: shared
         .options
         .unsafely_ignore_certificate_errors
@@ -786,6 +797,7 @@ fn create_web_worker_callback(
       },
       extensions: vec![],
       startup_snapshot: crate::js::deno_isolate_init(),
+      create_params: create_isolate_create_params(),
       unsafely_ignore_certificate_errors: shared
         .options
         .unsafely_ignore_certificate_errors
@@ -803,6 +815,17 @@ fn create_web_worker_callback(
     };
 
     WebWorker::bootstrap_from_options(services, options)
+  })
+}
+
+/// By default V8 uses 1.4Gb heap limit which is meant for browser tabs.
+/// Instead probe for the total memory on the system and use it instead
+/// as a default.
+pub fn create_isolate_create_params() -> Option<v8::CreateParams> {
+  let maybe_mem_info = deno_runtime::sys_info::mem_info();
+  maybe_mem_info.map(|mem_info| {
+    v8::CreateParams::default()
+      .heap_limits_from_system_memory(mem_info.total, 0)
   })
 }
 
@@ -842,6 +865,7 @@ mod tests {
         node_services: Default::default(),
         npm_process_state_provider: Default::default(),
         root_cert_store_provider: Default::default(),
+        fetch_dns_resolver: Default::default(),
         shared_array_buffer_store: Default::default(),
         compiled_wasm_module_store: Default::default(),
         v8_code_cache: Default::default(),

@@ -586,7 +586,10 @@ fn generate_pseudo_file(
         wrap_kind,
       }));
 
-  let source = deno_ast::swc::codegen::to_code(&transformed);
+  let source = deno_ast::swc::codegen::to_code_with_comments(
+    Some(&parsed.comments().as_single_threaded()),
+    &transformed,
+  );
 
   log::debug!("{}:\n{}", file.specifier, source);
 
@@ -1165,6 +1168,33 @@ Deno.test("file:///main.ts$3-6.ts", async ()=>{
           media_type: MediaType::TypeScript,
         }],
       },
+      // https://github.com/denoland/deno/issues/26728
+      Test {
+        input: Input {
+          source: r#"
+/**
+ * ```ts
+ * // @ts-expect-error: can only add numbers
+ * add('1', '2');
+ * ```
+ */
+export function add(first: number, second: number) {
+  return first + second;
+}
+"#,
+          specifier: "file:///main.ts",
+        },
+        expected: vec![Expected {
+          source: r#"import { add } from "file:///main.ts";
+Deno.test("file:///main.ts$3-7.ts", async ()=>{
+    // @ts-expect-error: can only add numbers
+    add('1', '2');
+});
+"#,
+          specifier: "file:///main.ts$3-7.ts",
+          media_type: MediaType::TypeScript,
+        }],
+      },
     ];
 
     for test in tests {
@@ -1373,6 +1403,31 @@ export default Foo
 console.log(Foo);
 "#,
           specifier: "file:///main.ts$3-6.ts",
+          media_type: MediaType::TypeScript,
+        }],
+      },
+      // https://github.com/denoland/deno/issues/26728
+      Test {
+        input: Input {
+          source: r#"
+/**
+ * ```ts
+ * // @ts-expect-error: can only add numbers
+ * add('1', '2');
+ * ```
+ */
+export function add(first: number, second: number) {
+  return first + second;
+}
+"#,
+          specifier: "file:///main.ts",
+        },
+        expected: vec![Expected {
+          source: r#"import { add } from "file:///main.ts";
+// @ts-expect-error: can only add numbers
+add('1', '2');
+"#,
+          specifier: "file:///main.ts$3-7.ts",
           media_type: MediaType::TypeScript,
         }],
       },

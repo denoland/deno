@@ -446,6 +446,7 @@ impl<'a> GraphDisplayContext<'a> {
         let maybe_cache_info = match root {
           Module::Js(module) => module.maybe_cache_info.as_ref(),
           Module::Json(module) => module.maybe_cache_info.as_ref(),
+          Module::Wasm(module) => module.maybe_cache_info.as_ref(),
           Module::Node(_) | Module::Npm(_) | Module::External(_) => None,
         };
         if let Some(cache_info) = maybe_cache_info {
@@ -468,6 +469,7 @@ impl<'a> GraphDisplayContext<'a> {
             let size = match m {
               Module::Js(module) => module.size(),
               Module::Json(module) => module.size(),
+              Module::Wasm(module) => module.size(),
               Module::Node(_) | Module::Npm(_) | Module::External(_) => 0,
             };
             size as f64
@@ -567,6 +569,7 @@ impl<'a> GraphDisplayContext<'a> {
         Specifier(_) => match module {
           Module::Js(module) => Some(module.size() as u64),
           Module::Json(module) => Some(module.size() as u64),
+          Module::Wasm(module) => Some(module.size() as u64),
           Module::Node(_) | Module::Npm(_) | Module::External(_) => None,
         },
       };
@@ -580,8 +583,8 @@ impl<'a> GraphDisplayContext<'a> {
         Package(package) => {
           tree_node.children.extend(self.build_npm_deps(package));
         }
-        Specifier(_) => {
-          if let Some(module) = module.js() {
+        Specifier(_) => match module {
+          Module::Js(module) => {
             if let Some(types_dep) = &module.maybe_types_dependency {
               if let Some(child) =
                 self.build_resolved_info(&types_dep.dependency, true)
@@ -593,7 +596,16 @@ impl<'a> GraphDisplayContext<'a> {
               tree_node.children.extend(self.build_dep_info(dep));
             }
           }
-        }
+          Module::Wasm(module) => {
+            for dep in module.dependencies.values() {
+              tree_node.children.extend(self.build_dep_info(dep));
+            }
+          }
+          Module::Json(_)
+          | Module::Npm(_)
+          | Module::Node(_)
+          | Module::External(_) => {}
+        },
       }
     }
     tree_node
@@ -658,7 +670,7 @@ impl<'a> GraphDisplayContext<'a> {
         };
         self.build_error_msg(specifier, message.as_ref())
       }
-      ModuleError::ParseErr(_, _) => {
+      ModuleError::ParseErr(_, _) | ModuleError::WasmParseErr(_, _) => {
         self.build_error_msg(specifier, "(parsing error)")
       }
       ModuleError::UnsupportedImportAttributeType { .. } => {
