@@ -5106,12 +5106,15 @@ fn task_parse(
   unstable_args_parse(flags, matches, UnstableArgsConfig::ResolutionAndRuntime);
   node_modules_arg_parse(flags, matches);
 
+  let filter = matches.remove_one::<String>("filter");
+  let recursive = matches.get_flag("recursive") || filter.is_some();
+
   let mut task_flags = TaskFlags {
     cwd: matches.remove_one::<String>("cwd"),
     task: None,
     is_run: false,
-    recursive: matches.get_flag("recursive"),
-    filter: matches.remove_one::<String>("filter"),
+    recursive,
+    filter,
     eval: matches.get_flag("eval"),
   };
 
@@ -10363,7 +10366,7 @@ mod tests {
           cwd: None,
           task: Some("build".to_string()),
           is_run: false,
-          recursive: false,
+          recursive: true,
           filter: Some("*".to_string()),
           eval: false,
         }),
