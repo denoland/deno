@@ -1160,25 +1160,26 @@ static ENV_VARIABLES_HELP: &str = cstr!(
 <y>Docs:</> <c>https://docs.deno.com/go/env-vars</>
 
   <g>DENO_AUTH_TOKENS</>      A semi-colon separated list of bearer tokens and hostnames
-                        to use when fetching remote modules from private repositories
-                         <p(245)>(e.g. "abcde12345@deno.land;54321edcba@github.com")</>
-  <g>DENO_CERT</>             Load certificate authorities from PEM encoded file
-  <g>DENO_DIR</>              Set the cache directory
-  <g>DENO_INSTALL_ROOT</>     Set deno install's output directory
-                         <p(245)>(defaults to $HOME/.deno/bin)</>
-  <g>DENO_NO_PACKAGE_JSON</>  Disables auto-resolution of package.json
-  <g>DENO_NO_UPDATE_CHECK</>  Set to disable checking if a newer Deno version is available
-  <g>DENO_TLS_CA_STORE</>     Comma-separated list of order dependent certificate stores.
-                        Possible values: "system", "mozilla".
-                         <p(245)>(defaults to "mozilla")</>
-  <g>HTTP_PROXY</>            Proxy address for HTTP requests
-                         <p(245)>(module downloads, fetch)</>
-  <g>HTTPS_PROXY</>           Proxy address for HTTPS requests
-                         <p(245)>(module downloads, fetch)</>
-  <g>NO_COLOR</>              Set to disable color
-  <g>NO_PROXY</>              Comma-separated list of hosts which do not use a proxy
-                         <p(245)>(module downloads, fetch)</>
-  <g>NPM_CONFIG_REGISTRY</>   URL to use for the npm registry."#
+                         to use when fetching remote modules from private repositories
+                          <p(245)>(e.g. "abcde12345@deno.land;54321edcba@github.com")</>
+  <g>DENO_CERT</>              Load certificate authorities from PEM encoded file
+  <g>DENO_DIR</>               Set the cache directory
+  <g>DENO_INSTALL_ROOT</>      Set deno install's output directory
+                          <p(245)>(defaults to $HOME/.deno/bin)</>
+  <g>DENO_NO_PACKAGE_JSON</>   Disables auto-resolution of package.json
+  <g>DENO_NO_UPDATE_CHECK</>   Set to disable checking if a newer Deno version is available
+  <g>DENO_TLS_CA_STORE</>      Comma-separated list of order dependent certificate stores.
+  <g>DENO_TRACE_PERMISSIONS</> Environmental variable to enable stack traces in permission prompts.
+                         Possible values: "system", "mozilla".
+                          <p(245)>(defaults to "mozilla")</>
+  <g>HTTP_PROXY</>             Proxy address for HTTP requests
+                          <p(245)>(module downloads, fetch)</>
+  <g>HTTPS_PROXY</>            Proxy address for HTTPS requests
+                          <p(245)>(module downloads, fetch)</>
+  <g>NO_COLOR</>               Set to disable color
+  <g>NO_PROXY</>               Comma-separated list of hosts which do not use a proxy
+                          <p(245)>(module downloads, fetch)</>
+  <g>NPM_CONFIG_REGISTRY</>    URL to use for the npm registry."#
 );
 
 static DENO_HELP: &str = cstr!(
@@ -3346,6 +3347,8 @@ fn permission_args(app: Command, requires: Option<&'static str>) -> Command {
                                              <p(245)>--deny-run  |  --deny-run="whoami,ps"</>
       <g>--deny-ffi[=<<PATH>...]</>               (Unstable) Deny loading dynamic libraries. Optionally specify denied directories or files.
                                              <p(245)>--deny-ffi  |  --deny-ffi="./libfoo.so"</>
+      <g>DENO_TRACE_PERMISSIONS</>               Environmental variable to enable stack traces in permission prompts.
+                                             <p(245)>DENO_TRACE_PERMISSIONS=1 deno run main.ts</>
 "#))
     .arg(
       {

@@ -251,7 +251,7 @@ pub fn op_tls_cert_resolver_resolve_error(
   lookup.resolve(sni, Err(error))
 }
 
-#[op2]
+#[op2(stack_trace)]
 #[serde]
 pub fn op_tls_start<NP>(
   state: Rc<RefCell<OpState>>,
@@ -340,7 +340,7 @@ where
   Ok((rid, IpAddr::from(local_addr), IpAddr::from(remote_addr)))
 }
 
-#[op2(async)]
+#[op2(async, stack_trace)]
 #[serde]
 pub async fn op_net_connect_tls<NP>(
   state: Rc<RefCell<OpState>>,
@@ -445,7 +445,7 @@ pub struct ListenTlsArgs {
   load_balanced: bool,
 }
 
-#[op2]
+#[op2(stack_trace)]
 #[serde]
 pub fn op_net_listen_tls<NP>(
   state: &mut OpState,
