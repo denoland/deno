@@ -248,7 +248,6 @@ Deno.test(function addTest() {
 }
 
 pub async fn init_npm(name: &str, args: Vec<String>) -> Result<i32, AnyError> {
-  let name = name.strip_prefix("npm:").unwrap();
   let script_name = format!("npm:create-{}", name);
 
   fn print_manual_usage(script_name: &str) -> i32 {
