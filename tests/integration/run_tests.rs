@@ -2773,7 +2773,7 @@ fn stdio_streams_are_locked_in_permission_prompt() {
       console.human_delay();
       console.write_line_raw("y");
       // We ensure that nothing gets written here between the permission prompt and this text, despire the delay
-      console.expect_raw_next(format!("y{newline}\x1b[5A\x1b[0J✅ Granted read access to \""));
+      console.expect_raw_next(format!("y{newline}\x1b[6A\x1b[0J✅ Granted read access to \""));
 
       // Back to spamming!
       console.expect(malicious_output);
