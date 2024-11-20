@@ -257,7 +257,7 @@ pub async fn init_npm(name: &str, args: Vec<String>) -> Result<i32, AnyError> {
 
   if std::io::stdin().is_terminal() {
     log::info!(
-      cstr!("⚠️ Do you fully trust <y>{}</> package? Deno will inoke code from it will all permissions. Do you want to continue? <p(245)>[y/n]</>"),
+      cstr!("⚠️ Do you fully trust <y>{}</> package? Deno will invoke code from it with all permissions. Do you want to continue? <p(245)>[y/n]</>"),
       script_name
     );
     loop {
