@@ -11403,15 +11403,20 @@ Usage: deno repl [OPTIONS] [-- [ARGS]...]\n"
         OutdatedFlags {
           filters: svec!["@foo/bar"],
           kind: OutdatedKind::Update { latest: false },
-          recursive: true,
+          recursive: false,
         },
       ),
     ];
     for (input, expected) in cases {
       let mut args = svec!["deno", "outdated"];
       args.extend(input);
-      let r = flags_from_vec(args).unwrap();
-      assert_eq!(r.subcommand, DenoSubcommand::Outdated(expected));
+      let r = flags_from_vec(args.clone()).unwrap();
+      assert_eq!(
+        r.subcommand,
+        DenoSubcommand::Outdated(expected),
+        "incorrect result for args: {:?}",
+        args
+      );
     }
   }
 }
