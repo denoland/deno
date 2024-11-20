@@ -26,6 +26,7 @@ use deno_core::url::Url;
 use deno_path_util::normalize_path;
 use deno_runtime::deno_node::NodeResolver;
 use deno_task_shell::ShellCommand;
+use indexmap::IndexMap;
 use regex::Regex;
 
 use crate::args::CliOptions;
@@ -56,7 +57,7 @@ struct TaskInfo {
 struct PackageTaskInfo<'a> {
   url: &'a Arc<Url>,
   matched_tasks: Vec<String>,
-  tasks: HashMap<String, TaskInfo>,
+  tasks: IndexMap<String, TaskInfo>,
 }
 
 pub async fn execute_script(
@@ -145,7 +146,7 @@ pub async fn execute_script(
         }
 
         let mut config = PackageTaskInfo {
-          tasks: HashMap::new(),
+          tasks: IndexMap::new(),
           matched_tasks: vec![],
           url: folder.0,
         };
@@ -220,7 +221,7 @@ pub async fn execute_script(
 
       let mut config = PackageTaskInfo {
         url: start_dir.dir_url(),
-        tasks: HashMap::new(),
+        tasks: IndexMap::new(),
         matched_tasks: vec![],
       };
       extract_tasks(&mut config, &tasks_config, force_use_pkg_json);
@@ -261,7 +262,6 @@ pub async fn execute_script(
   if task_flags.eval {
     return task_runner
       .run_deno_task(
-        &Url::from_directory_path(cli_options.initial_cwd()).unwrap(),
         &"".to_string(),
         &TaskInfo {
           kind: TaskKind::Deno,
@@ -512,27 +512,23 @@ impl<'a> TaskRunner<'a> {
     tasks_config: &'a PackageTaskInfo<'a>,
     task_name: &String,
   ) -> Result<i32, deno_core::anyhow::Error> {
-    let dir_url = tasks_config.url;
     let task = tasks_config.tasks.get(task_name.as_str()).unwrap();
 
     match task.kind {
-      TaskKind::Deno => self.run_deno_task(dir_url, task_name, task).await,
-      TaskKind::Npm => {
-        self.run_npm_script(dir_url, task_name, tasks_config).await
-      }
+      TaskKind::Deno => self.run_deno_task(task_name, task).await,
+      TaskKind::Npm => self.run_npm_script(task_name, tasks_config).await,
     }
   }
 
   async fn run_deno_task(
     &self,
-    dir_url: &Url,
     task_name: &String,
     definition: &TaskInfo,
   ) -> Result<i32, deno_core::anyhow::Error> {
     let cwd = match &self.task_flags.cwd {
       Some(path) => canonicalize_path(&PathBuf::from(path))
         .context("failed canonicalizing --cwd")?,
-      None => normalize_path(dir_url.to_file_path().unwrap()),
+      None => normalize_path(definition.folder_url.to_file_path().unwrap()),
     };
 
     let custom_commands = task_runner::resolve_custom_commands(
@@ -551,7 +547,6 @@ impl<'a> TaskRunner<'a> {
 
   async fn run_npm_script(
     &self,
-    dir_url: &Url,
     task_name: &String,
     tasks_config: &PackageTaskInfo<'a>,
   ) -> Result<i32, deno_core::anyhow::Error> {
@@ -562,7 +557,15 @@ impl<'a> TaskRunner<'a> {
 
     let cwd = match &self.task_flags.cwd {
       Some(path) => canonicalize_path(&PathBuf::from(path))?,
-      None => normalize_path(dir_url.to_file_path().unwrap()),
+      None => normalize_path(
+        tasks_config
+          .tasks
+          .get(task_name)
+          .unwrap()
+          .folder_url
+          .to_file_path()
+          .unwrap(),
+      ),
     };
 
     // At this point we already checked if the task name exists in package.json.
@@ -732,8 +735,6 @@ fn print_available_tasks(
       task: task.clone(),
     });
   }
-
-  task_descriptions.sort_by_cached_key(|d| d.name.to_string());
 
   for desc in task_descriptions {
     writeln!(
