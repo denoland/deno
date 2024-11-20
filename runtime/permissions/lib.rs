@@ -1114,11 +1114,17 @@ impl ImportDescriptor {
 pub struct EnvDescriptorParseError;
 
 #[derive(Clone, Eq, PartialEq, Hash, Debug)]
-pub struct EnvQueryDescriptor(EnvVarName);
+enum EnvQueryDescriptorInner {
+  Name(EnvVarName),
+  PrefixPattern(EnvVarName),
+}
+
+#[derive(Clone, Eq, PartialEq, Hash, Debug)]
+pub struct EnvQueryDescriptor(EnvQueryDescriptorInner);
 
 impl EnvQueryDescriptor {
   pub fn new(env: impl AsRef<str>) -> Self {
-    Self(EnvVarName::new(env))
+    Self(EnvQueryDescriptorInner::Name(EnvVarName::new(env)))
   }
 }
 
@@ -1147,22 +1153,45 @@ impl QueryDescriptor for EnvQueryDescriptor {
   }
 
   fn display_name(&self) -> Cow<str> {
-    Cow::from(self.0.as_ref())
+    Cow::from(match &self.0 {
+      EnvQueryDescriptorInner::Name(env_var_name) => env_var_name.as_ref(),
+      EnvQueryDescriptorInner::PrefixPattern(env_var_name) => {
+        env_var_name.as_ref()
+      }
+    })
   }
 
   fn from_allow(allow: &Self::AllowDesc) -> Self {
     match allow {
-      Self::AllowDesc::Name(s) => Self(s.clone()),
-      Self::AllowDesc::PrefixPattern(_s) => todo!(),
+      Self::AllowDesc::Name(s) => {
+        Self(EnvQueryDescriptorInner::Name(s.clone()))
+      }
+      Self::AllowDesc::PrefixPattern(s) => {
+        Self(EnvQueryDescriptorInner::PrefixPattern(s.clone()))
+      }
     }
   }
 
   fn as_allow(&self) -> Option<Self::AllowDesc> {
-    Some(Self::AllowDesc::Name(self.0.clone()))
+    Some(match &self.0 {
+      EnvQueryDescriptorInner::Name(env_var_name) => {
+        Self::AllowDesc::Name(env_var_name.clone())
+      }
+      EnvQueryDescriptorInner::PrefixPattern(env_var_name) => {
+        Self::AllowDesc::PrefixPattern(env_var_name.clone())
+      }
+    })
   }
 
   fn as_deny(&self) -> Self::DenyDesc {
-    Self::AllowDesc::Name(self.0.clone())
+    match &self.0 {
+      EnvQueryDescriptorInner::Name(env_var_name) => {
+        Self::DenyDesc::Name(env_var_name.clone())
+      }
+      EnvQueryDescriptorInner::PrefixPattern(env_var_name) => {
+        Self::DenyDesc::PrefixPattern(env_var_name.clone())
+      }
+    }
   }
 
   fn check_in_permission(
@@ -1176,29 +1205,77 @@ impl QueryDescriptor for EnvQueryDescriptor {
 
   fn matches_allow(&self, other: &Self::AllowDesc) -> bool {
     match other {
-      Self::AllowDesc::Name(n) => *n == self.0,
-      Self::AllowDesc::PrefixPattern(p) => self.0.inner.starts_with(p.as_ref()),
+      Self::AllowDesc::Name(n) => match &self.0 {
+        EnvQueryDescriptorInner::Name(env_var_name) => n == env_var_name,
+        EnvQueryDescriptorInner::PrefixPattern(env_var_name) => {
+          env_var_name.as_ref().starts_with(n.as_ref())
+        }
+      },
+      Self::AllowDesc::PrefixPattern(p) => match &self.0 {
+        EnvQueryDescriptorInner::Name(env_var_name) => {
+          env_var_name.as_ref().starts_with(p.as_ref())
+        }
+        EnvQueryDescriptorInner::PrefixPattern(env_var_name) => {
+          p == env_var_name
+        }
+      },
     }
   }
 
   fn matches_deny(&self, other: &Self::DenyDesc) -> bool {
     match other {
-      Self::AllowDesc::Name(n) => *n == self.0,
-      Self::AllowDesc::PrefixPattern(p) => self.0.inner.starts_with(p.as_ref()),
+      Self::AllowDesc::Name(n) => match &self.0 {
+        EnvQueryDescriptorInner::Name(env_var_name) => n == env_var_name,
+        EnvQueryDescriptorInner::PrefixPattern(env_var_name) => {
+          env_var_name.as_ref().starts_with(n.as_ref())
+        }
+      },
+      Self::AllowDesc::PrefixPattern(p) => match &self.0 {
+        EnvQueryDescriptorInner::Name(env_var_name) => {
+          env_var_name.as_ref().starts_with(p.as_ref())
+        }
+        EnvQueryDescriptorInner::PrefixPattern(env_var_name) => {
+          p == env_var_name
+        }
+      },
     }
   }
 
   fn revokes(&self, other: &Self::AllowDesc) -> bool {
     match other {
-      Self::AllowDesc::Name(n) => *n == self.0,
-      Self::AllowDesc::PrefixPattern(p) => self.0.inner.starts_with(p.as_ref()),
+      Self::AllowDesc::Name(n) => match &self.0 {
+        EnvQueryDescriptorInner::Name(env_var_name) => n == env_var_name,
+        EnvQueryDescriptorInner::PrefixPattern(env_var_name) => {
+          env_var_name.as_ref().starts_with(n.as_ref())
+        }
+      },
+      Self::AllowDesc::PrefixPattern(p) => match &self.0 {
+        EnvQueryDescriptorInner::Name(env_var_name) => {
+          env_var_name.as_ref().starts_with(p.as_ref())
+        }
+        EnvQueryDescriptorInner::PrefixPattern(env_var_name) => {
+          p == env_var_name
+        }
+      },
     }
   }
 
   fn stronger_than_deny(&self, other: &Self::DenyDesc) -> bool {
     match other {
-      Self::AllowDesc::Name(n) => *n == self.0,
-      Self::AllowDesc::PrefixPattern(p) => self.0.inner.starts_with(p.as_ref()),
+      Self::AllowDesc::Name(n) => match &self.0 {
+        EnvQueryDescriptorInner::Name(env_var_name) => n == env_var_name,
+        EnvQueryDescriptorInner::PrefixPattern(env_var_name) => {
+          env_var_name.as_ref().starts_with(n.as_ref())
+        }
+      },
+      Self::AllowDesc::PrefixPattern(p) => match &self.0 {
+        EnvQueryDescriptorInner::Name(env_var_name) => {
+          env_var_name.as_ref().starts_with(p.as_ref())
+        }
+        EnvQueryDescriptorInner::PrefixPattern(env_var_name) => {
+          p == env_var_name
+        }
+      },
     }
   }
 
@@ -1209,7 +1286,12 @@ impl QueryDescriptor for EnvQueryDescriptor {
 
 impl AsRef<str> for EnvQueryDescriptor {
   fn as_ref(&self) -> &str {
-    self.0.as_ref()
+    match &self.0 {
+      EnvQueryDescriptorInner::Name(env_var_name) => env_var_name.as_ref(),
+      EnvQueryDescriptorInner::PrefixPattern(env_var_name) => {
+        env_var_name.as_ref()
+      }
+    }
   }
 }
 
