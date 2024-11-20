@@ -2686,7 +2686,6 @@ Specific version requirements to update to can be specified:
       .arg(
         Arg::new("update")
           .long("update")
-          .aliases(["up", "upgrade"])
           .short('u')
           .action(ArgAction::SetTrue)
           .conflicts_with("compatible")
@@ -11345,6 +11344,74 @@ Usage: deno repl [OPTIONS] [-- [ARGS]...]\n"
       let r =
         flags_from_vec(svec!["deno", "run", "--allow-all", flag, "foo.ts"]);
       assert!(r.is_err());
+    }
+  }
+
+  #[test]
+  fn outdated_subcommand() {
+    let cases = [
+      (
+        svec![],
+        OutdatedFlags {
+          filters: vec![],
+          kind: OutdatedKind::PrintOutdated { compatible: false },
+          recursive: false,
+        },
+      ),
+      (
+        svec!["--recursive"],
+        OutdatedFlags {
+          filters: vec![],
+          kind: OutdatedKind::PrintOutdated { compatible: false },
+          recursive: true,
+        },
+      ),
+      (
+        svec!["--recursive", "--compatible"],
+        OutdatedFlags {
+          filters: vec![],
+          kind: OutdatedKind::PrintOutdated { compatible: true },
+          recursive: true,
+        },
+      ),
+      (
+        svec!["--update"],
+        OutdatedFlags {
+          filters: vec![],
+          kind: OutdatedKind::Update { latest: false },
+          recursive: false,
+        },
+      ),
+      (
+        svec!["--update", "--latest"],
+        OutdatedFlags {
+          filters: vec![],
+          kind: OutdatedKind::Update { latest: true },
+          recursive: false,
+        },
+      ),
+      (
+        svec!["--update", "--recursive"],
+        OutdatedFlags {
+          filters: vec![],
+          kind: OutdatedKind::Update { latest: false },
+          recursive: true,
+        },
+      ),
+      (
+        svec!["--update", "@foo/bar"],
+        OutdatedFlags {
+          filters: svec!["@foo/bar"],
+          kind: OutdatedKind::Update { latest: false },
+          recursive: true,
+        },
+      ),
+    ];
+    for (input, expected) in cases {
+      let mut args = svec!["deno", "outdated"];
+      args.extend(input);
+      let r = flags_from_vec(args).unwrap();
+      assert_eq!(r.subcommand, DenoSubcommand::Outdated(expected));
     }
   }
 }

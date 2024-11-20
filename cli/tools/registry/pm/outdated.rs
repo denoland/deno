@@ -146,6 +146,7 @@ fn print_outdated(
   }
 
   if !outdated.is_empty() {
+    outdated.sort();
     print_outdated_table(&outdated);
   }
 

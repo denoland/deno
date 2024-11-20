@@ -117,8 +117,8 @@ impl std::fmt::Debug for DepLocation {
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub enum DepKind {
-  Npm,
   Jsr,
+  Npm,
 }
 
 impl DepKind {
@@ -452,7 +452,7 @@ fn deps_from_workspace(
   workspace: &Arc<Workspace>,
   dep_filter: impl DepFilter,
 ) -> Result<Vec<Dep>, AnyError> {
-  let mut deps = Vec::with_capacity(32);
+  let mut deps = Vec::with_capacity(256);
   for deno_json in workspace.deno_jsons() {
     add_deps_from_deno_json(deno_json, dep_filter, &mut deps);
   }
@@ -564,7 +564,7 @@ impl DepManager {
     dep_filter: impl DepFilter,
     args: DepManagerArgs,
   ) -> Result<Self, AnyError> {
-    let mut deps = Vec::with_capacity(32);
+    let mut deps = Vec::with_capacity(256);
     if let Some(deno_json) = workspace_dir.maybe_deno_json() {
       if deno_json.specifier.scheme() != "file" {
         bail!("remote deno.json files are not supported");
@@ -732,7 +732,8 @@ impl DepManager {
     );
     let mut latest_versions = Vec::with_capacity(self.deps.len());
 
-    let sema = Semaphore::new(32);
+    let npm_sema = Semaphore::new(32);
+    let jsr_sema = Semaphore::new(32);
     let mut futs = FuturesOrdered::new();
 
     for dep in &self.deps {
@@ -744,7 +745,7 @@ impl DepManager {
               name: dep.req.name.clone(),
               version_req: latest_tag_req.clone(),
             };
-            let _permit = sema.acquire().await;
+            let _permit = npm_sema.acquire().await;
             let semver_compatible =
               self.npm_fetch_resolver.req_to_nv(semver_req).await;
             let latest = self.npm_fetch_resolver.req_to_nv(&latest_req).await;
@@ -762,7 +763,7 @@ impl DepManager {
               name: dep.req.name.clone(),
               version_req: deno_semver::WILDCARD_VERSION_REQ.clone(),
             };
-            let _permit = sema.acquire().await;
+            let _permit = jsr_sema.acquire().await;
             let semver_compatible =
               self.jsr_fetch_resolver.req_to_nv(semver_req).await;
             let latest = self.jsr_fetch_resolver.req_to_nv(&latest_req).await;
