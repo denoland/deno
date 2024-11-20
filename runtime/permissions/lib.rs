@@ -1216,7 +1216,7 @@ impl QueryDescriptor for EnvQueryDescriptor {
           env_var_name.as_ref().starts_with(p.as_ref())
         }
         EnvQueryDescriptorInner::PrefixPattern(env_var_name) => {
-          p == env_var_name
+          env_var_name.as_ref().starts_with(p.as_ref())
         }
       },
     }
@@ -4675,6 +4675,56 @@ mod tests {
     assert!(perms.env.check("hOmE", None).is_ok());
 
     assert_eq!(perms.env.revoke(Some("HomE")), PermissionState::Prompt);
+  }
+
+  #[test]
+  fn test_env_wildcards() {
+    set_prompter(Box::new(TestPrompter));
+    let _prompt_value = PERMISSION_PROMPT_STUB_VALUE_SETTER.lock();
+    let mut perms = Permissions::allow_all();
+    perms.env = UnaryPermission {
+      granted_global: false,
+      ..Permissions::new_unary(
+        Some(HashSet::from([EnvDescriptor::new("HOME_*")])),
+        None,
+        false,
+      )
+    };
+    assert_eq!(perms.env.query(Some("HOME")), PermissionState::Prompt);
+    assert_eq!(perms.env.query(Some("HOME_")), PermissionState::Granted);
+    assert_eq!(perms.env.query(Some("HOME_TEST")), PermissionState::Granted);
+
+    // assert no privilege escalation
+    let parser = TestPermissionDescriptorParser;
+    assert!(perms
+      .env
+      .create_child_permissions(
+        ChildUnaryPermissionArg::GrantedList(vec!["HOME_SUB".to_string()]),
+        |value| parser.parse_env_descriptor(value).map(Some),
+      )
+      .is_ok());
+    assert!(perms
+      .env
+      .create_child_permissions(
+        ChildUnaryPermissionArg::GrantedList(vec!["HOME*".to_string()]),
+        |value| parser.parse_env_descriptor(value).map(Some),
+      )
+      .is_err());
+    assert!(perms
+      .env
+      .create_child_permissions(
+        ChildUnaryPermissionArg::GrantedList(vec!["OUTSIDE".to_string()]),
+        |value| parser.parse_env_descriptor(value).map(Some),
+      )
+      .is_err());
+    assert!(perms
+      .env
+      .create_child_permissions(
+        // ok because this is a subset of HOME_*
+        ChildUnaryPermissionArg::GrantedList(vec!["HOME_S*".to_string()]),
+        |value| parser.parse_env_descriptor(value).map(Some),
+      )
+      .is_ok());
   }
 
   #[test]
