@@ -288,7 +288,7 @@ async fn update(
     updated.push((
       dep_id,
       format!("{}:{}", dep.kind.scheme(), dep.req.name),
-      deps.resolved_version(dep.id).map(|a| a.clone()),
+      deps.resolved_version(dep.id).cloned(),
       new_version_req.clone(),
     ));
 
