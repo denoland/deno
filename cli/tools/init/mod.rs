@@ -244,7 +244,7 @@ Deno.test(function addTest() {
   Ok(())
 }
 
-pub async fn init_npm(name: &str) -> Result<i32, AnyError> {
+pub async fn init_npm(name: &str, args: Vec<String>) -> Result<i32, AnyError> {
   // TODO: do prompt
   let script_name =
     format!("npm:create-{}", name.strip_prefix("npm:").unwrap());
@@ -255,8 +255,7 @@ pub async fn init_npm(name: &str) -> Result<i32, AnyError> {
       ..Default::default()
     },
     allow_scripts: PackagesAllowedScripts::All,
-    // TODO:
-    argv: vec![],
+    argv: args,
     subcommand: DenoSubcommand::Run(RunFlags {
       script: script_name,
       ..Default::default()

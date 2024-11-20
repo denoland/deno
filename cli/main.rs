@@ -35,9 +35,6 @@ use crate::util::display;
 use crate::util::v8::get_v8_flags_from_env;
 use crate::util::v8::init_v8_flags;
 
-use args::PackagesAllowedScripts;
-use args::PermissionFlags;
-use args::RunFlags;
 use args::TaskFlags;
 use deno_core::anyhow::bail;
 use deno_resolver::npm::ByonmResolvePkgFolderFromDenoReqError;
@@ -147,11 +144,12 @@ async fn run_subcommand(flags: Arc<Flags>) -> Result<i32, AnyError> {
       )
     }
     DenoSubcommand::Init(init_flags) => {
-      if let Some(dir) = &init_flags.dir {
-        if dir.starts_with("jsr:") {
+      if let Some(package) = &init_flags.package {
+        if package.starts_with("jsr:") {
           bail!("Initializing project from a jsr package is currently not supported.");
-        } else if dir.starts_with("npm:") {
-          return tools::init::init_npm(dir).await;
+        } else {
+          assert!(package.starts_with("npm:"));
+          return tools::init::init_npm(package, init_flags.package_args).await;
         }
       }
 
