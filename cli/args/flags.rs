@@ -379,6 +379,8 @@ pub struct TaskFlags {
   pub cwd: Option<String>,
   pub task: Option<String>,
   pub is_run: bool,
+  pub recursive: bool,
+  pub filter: Option<String>,
 }
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
@@ -2937,6 +2939,20 @@ List all available tasks:
           .help("Specify the directory to run the task in")
           .value_hint(ValueHint::DirPath),
       )
+      .arg(
+        Arg::new("recursive")
+          .long("recursive")
+          .short('r')
+          .help("Run the task in all projects in the workspace")
+          .action(ArgAction::SetTrue),
+      )
+      .arg(
+        Arg::new("filter")
+        .long("filter")
+        .short('f')
+        .help("Filter members of the workspace by name - should be used with --recursive")
+        .value_parser(value_parser!(String)),
+      )
       .arg(node_modules_dir_arg())
   })
 }
@@ -5058,6 +5074,8 @@ fn task_parse(flags: &mut Flags, matches: &mut ArgMatches) {
     cwd: matches.remove_one::<String>("cwd"),
     task: None,
     is_run: false,
+    recursive: matches.get_flag("recursive"),
+    filter: matches.remove_one::<String>("filter"),
   };
 
   if let Some((task, mut matches)) = matches.remove_subcommand() {
@@ -10235,6 +10253,8 @@ mod tests {
           cwd: None,
           task: Some("build".to_string()),
           is_run: false,
+          recursive: false,
+          filter: None
         }),
         argv: svec!["hello", "world"],
         ..Flags::default()
@@ -10249,6 +10269,8 @@ mod tests {
           cwd: None,
           task: Some("build".to_string()),
           is_run: false,
+          recursive: false,
+          filter: None
         }),
         ..Flags::default()
       }
@@ -10262,6 +10284,53 @@ mod tests {
           cwd: Some("foo".to_string()),
           task: Some("build".to_string()),
           is_run: false,
+          recursive: false,
+          filter: None
+        }),
+        ..Flags::default()
+      }
+    );
+
+    let r = flags_from_vec(svec!["deno", "task", "--filter", "*", "build"]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Task(TaskFlags {
+          cwd: None,
+          task: Some("build".to_string()),
+          is_run: false,
+          recursive: false,
+          filter: Some("*".to_string())
+        }),
+        ..Flags::default()
+      }
+    );
+
+    let r = flags_from_vec(svec!["deno", "task", "--recursive", "build"]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Task(TaskFlags {
+          cwd: None,
+          task: Some("build".to_string()),
+          is_run: false,
+          recursive: true,
+          filter: None
+        }),
+        ..Flags::default()
+      }
+    );
+
+    let r = flags_from_vec(svec!["deno", "task", "-r", "build"]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Task(TaskFlags {
+          cwd: None,
+          task: Some("build".to_string()),
+          is_run: false,
+          recursive: true,
+          filter: None
         }),
         ..Flags::default()
       }
@@ -10287,6 +10356,8 @@ mod tests {
           cwd: None,
           task: Some("build".to_string()),
           is_run: false,
+          recursive: false,
+          filter: None
         }),
         argv: svec!["--", "hello", "world"],
         config_flag: ConfigFlag::Path("deno.json".to_owned()),
@@ -10304,6 +10375,8 @@ mod tests {
           cwd: Some("foo".to_string()),
           task: Some("build".to_string()),
           is_run: false,
+          recursive: false,
+          filter: None
         }),
         argv: svec!["--", "hello", "world"],
         ..Flags::default()
@@ -10322,6 +10395,8 @@ mod tests {
           cwd: None,
           task: Some("build".to_string()),
           is_run: false,
+          recursive: false,
+          filter: None
         }),
         argv: svec!["--"],
         ..Flags::default()
@@ -10339,6 +10414,8 @@ mod tests {
           cwd: None,
           task: Some("build".to_string()),
           is_run: false,
+          recursive: false,
+          filter: None
         }),
         argv: svec!["-1", "--test"],
         ..Flags::default()
@@ -10356,6 +10433,8 @@ mod tests {
           cwd: None,
           task: Some("build".to_string()),
           is_run: false,
+          recursive: false,
+          filter: None
         }),
         argv: svec!["--test"],
         ..Flags::default()
@@ -10374,6 +10453,8 @@ mod tests {
           cwd: None,
           task: Some("build".to_string()),
           is_run: false,
+          recursive: false,
+          filter: None,
         }),
         log_level: Some(log::Level::Error),
         ..Flags::default()
@@ -10391,6 +10472,8 @@ mod tests {
           cwd: None,
           task: None,
           is_run: false,
+          recursive: false,
+          filter: None
         }),
         ..Flags::default()
       }
@@ -10407,6 +10490,8 @@ mod tests {
           cwd: None,
           task: None,
           is_run: false,
+          recursive: false,
+          filter: None
         }),
         config_flag: ConfigFlag::Path("deno.jsonc".to_string()),
         ..Flags::default()
@@ -10424,6 +10509,8 @@ mod tests {
           cwd: None,
           task: None,
           is_run: false,
+          recursive: false,
+          filter: None
         }),
         config_flag: ConfigFlag::Path("deno.jsonc".to_string()),
         ..Flags::default()
