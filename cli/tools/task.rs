@@ -82,14 +82,8 @@ pub async fn execute_script(
       .unwrap_or(false);
 
   fn arg_to_regex(input: &str) -> Result<regex::Regex, regex::Error> {
-    let mut regex_str = String::new();
-    for ch in input.chars() {
-      match ch {
-        '*' => regex_str.push_str(".*"),
-        '/' => regex_str.push_str("\\/"),
-        _ => regex_str.push(ch),
-      }
-    }
+    let mut regex_str = regex::escape(input);
+    regex_str = regex_str.replace("\\*", ".*");
 
     Regex::new(&regex_str)
   }
