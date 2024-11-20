@@ -257,8 +257,8 @@ pub async fn init_npm(name: &str, args: Vec<String>) -> Result<i32, AnyError> {
 
   if std::io::stdin().is_terminal() {
     log::info!(
-      cstr!("Deno requires <u>all permissions</> to create a new <g>{}</> project. Do you want to continue? <p(245)>[y/n]</>"),
-      name
+      cstr!("⚠️ Do you fully trust <y>{}</> package? Deno will inoke code from it will all permissions. Do you want to continue? <p(245)>[y/n]</>"),
+      script_name
     );
     loop {
       let _ = std::io::stdout().write(b"> ");
