@@ -418,6 +418,32 @@ fn permissions_cache() {
     });
 }
 
+#[test]
+fn permissions_trace() {
+  TestContext::default()
+    .new_command()
+    .env("DENO_TRACE_PERMISSIONS", "1")
+    .args_vec(["run", "--quiet", "run/permissions_trace.ts"])
+    .with_pty(|mut console| {
+      let text = console.read_until("Allow? [y/n/A] (y = yes, allow; n = no, deny; A = allow all sys permissions)");
+      test_util::assertions::assert_wildcard_match(&text, concat!(
+      "┏ ⚠️  Deno requests sys access to \"hostname\".\r\n",
+      "┠─ Requested by `Deno.hostname()` API.\r\n",
+      "┃  ├─ Object.hostname (ext:runtime/30_os.js:43:10)\r\n",
+      "┃  ├─ foo (file://[WILDCARD]/run/permissions_trace.ts:2:8)\r\n",
+      "┃  ├─ bar (file://[WILDCARD]/run/permissions_trace.ts:6:3)\r\n",
+      "┃  └─ file://[WILDCARD]/run/permissions_trace.ts:9:1\r\n",
+      "┠─ Learn more at: https://docs.deno.com/go/--allow-sys\r\n",
+      "┠─ Run again with --allow-sys to bypass this prompt.\r\n",
+      "┗ Allow? [y/n/A] (y = yes, allow; n = no, deny; A = allow all sys permissions)",
+      ));
+
+      console.human_delay();
+      console.write_line_raw("y");
+      console.expect("✅ Granted sys access to \"hostname\".");
+    });
+}
+
 itest!(lock_write_fetch {
   args:
     "run --quiet --allow-import --allow-read --allow-write --allow-env --allow-run run/lock_write_fetch/main.ts",
