@@ -1114,21 +1114,6 @@ impl ImportDescriptor {
 pub struct EnvDescriptorParseError;
 
 #[derive(Clone, Eq, PartialEq, Hash, Debug)]
-enum EnvQueryDescriptorInner {
-  Name(EnvVarName),
-  PrefixPattern(EnvVarName),
-}
-
-#[derive(Clone, Eq, PartialEq, Hash, Debug)]
-pub struct EnvQueryDescriptor(EnvQueryDescriptorInner);
-
-impl EnvQueryDescriptor {
-  pub fn new(env: impl AsRef<str>) -> Self {
-    Self(EnvQueryDescriptorInner::Name(EnvVarName::new(env)))
-  }
-}
-
-#[derive(Clone, Eq, PartialEq, Hash, Debug)]
 pub enum EnvDescriptor {
   Name(EnvVarName),
   PrefixPattern(EnvVarName),
@@ -1141,6 +1126,21 @@ impl EnvDescriptor {
     } else {
       Self::Name(EnvVarName::new(env))
     }
+  }
+}
+
+#[derive(Clone, Eq, PartialEq, Hash, Debug)]
+enum EnvQueryDescriptorInner {
+  Name(EnvVarName),
+  PrefixPattern(EnvVarName),
+}
+
+#[derive(Clone, Eq, PartialEq, Hash, Debug)]
+pub struct EnvQueryDescriptor(EnvQueryDescriptorInner);
+
+impl EnvQueryDescriptor {
+  pub fn new(env: impl AsRef<str>) -> Self {
+    Self(EnvQueryDescriptorInner::Name(EnvVarName::new(env)))
   }
 }
 
