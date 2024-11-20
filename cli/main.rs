@@ -145,12 +145,7 @@ async fn run_subcommand(flags: Arc<Flags>) -> Result<i32, AnyError> {
     }
     DenoSubcommand::Init(init_flags) => {
       if let Some(package) = &init_flags.package {
-        if package.starts_with("jsr:") {
-          bail!("Initializing project from a jsr package is currently not supported.");
-        } else {
-          assert!(package.starts_with("npm:"));
-          return tools::init::init_npm(package, init_flags.package_args).await;
-        }
+        return tools::init::init_npm(package, init_flags.package_args).await;
       }
 
       spawn_subcommand(async {

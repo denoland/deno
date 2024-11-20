@@ -246,8 +246,7 @@ Deno.test(function addTest() {
 
 pub async fn init_npm(name: &str, args: Vec<String>) -> Result<i32, AnyError> {
   // TODO: do prompt
-  let script_name =
-    format!("npm:create-{}", name.strip_prefix("npm:").unwrap());
+  let script_name = format!("npm:create-{}", name);
 
   let new_flags = Flags {
     permissions: PermissionFlags {

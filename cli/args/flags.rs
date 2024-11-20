@@ -1376,7 +1376,7 @@ pub fn flags_from_vec(args: Vec<OsString>) -> clap::error::Result<Flags> {
       "doc" => doc_parse(&mut flags, &mut m)?,
       "eval" => eval_parse(&mut flags, &mut m)?,
       "fmt" => fmt_parse(&mut flags, &mut m)?,
-      "init" => init_parse(&mut flags, &mut m, app)?,
+      "init" => init_parse(&mut flags, &mut m)?,
       "info" => info_parse(&mut flags, &mut m)?,
       "install" => install_parse(&mut flags, &mut m)?,
       "json_reference" => json_reference_parse(&mut flags, &mut m, app),
@@ -2424,6 +2424,13 @@ fn init_subcommand() -> Command {
           .action(ArgAction::Append)
           .value_name("DIRECTORY OR PACKAGE")
           .trailing_var_arg(true)
+        )
+        .arg(
+          Arg::new("npm")
+            .long("npm")
+            .help("Generate a npm create-* project")
+            .conflicts_with_all(["lib", "serve"])
+            .action(ArgAction::SetTrue),
         )
         .arg(
           Arg::new("lib")
@@ -4660,7 +4667,6 @@ fn fmt_parse(
 fn init_parse(
   flags: &mut Flags,
   matches: &mut ArgMatches,
-  mut app: Command,
 ) -> Result<(), clap::Error> {
   let mut lib = matches.get_flag("lib");
   let mut serve = matches.get_flag("serve");
@@ -4672,19 +4678,7 @@ fn init_parse(
     let name = args.next().unwrap();
     let mut args = args.collect::<Vec<_>>();
 
-    if name.starts_with("npm:") || name.starts_with("jsr:") {
-      if lib {
-        return Err(app.error(
-          ErrorKind::ArgumentConflict,
-          "--lib may not be set when using a npm or jsr package",
-        ));
-      } else if serve {
-        return Err(app.error(
-          ErrorKind::ArgumentConflict,
-          "--serve may not be set when using a npm or jsr package",
-        ));
-      }
-
+    if matches.get_flag("npm") {
       package = Some(name);
       package_args = args;
     } else {
@@ -10738,18 +10732,18 @@ mod tests {
       }
     );
 
-    let r = flags_from_vec(svec!["deno", "init", "--lib", "npm:vite"]);
+    let r = flags_from_vec(svec!["deno", "init", "--lib", "--npm", "vite"]);
     assert!(r.is_err());
 
-    let r = flags_from_vec(svec!["deno", "init", "--serve", "npm:vite"]);
+    let r = flags_from_vec(svec!["deno", "init", "--serve", "--npm", "vite"]);
     assert!(r.is_err());
 
-    let r = flags_from_vec(svec!["deno", "init", "npm:vite", "--lib"]);
+    let r = flags_from_vec(svec!["deno", "init", "--npm", "vite", "--lib"]);
     assert_eq!(
       r.unwrap(),
       Flags {
         subcommand: DenoSubcommand::Init(InitFlags {
-          package: Some("npm:vite".to_string()),
+          package: Some("vite".to_string()),
           package_args: svec!["--lib"],
           dir: None,
           lib: false,
@@ -10759,12 +10753,12 @@ mod tests {
       }
     );
 
-    let r = flags_from_vec(svec!["deno", "init", "npm:vite", "--serve"]);
+    let r = flags_from_vec(svec!["deno", "init", "--npm", "vite", "--serve"]);
     assert_eq!(
       r.unwrap(),
       Flags {
         subcommand: DenoSubcommand::Init(InitFlags {
-          package: Some("npm:vite".to_string()),
+          package: Some("vite".to_string()),
           package_args: svec!["--serve"],
           dir: None,
           lib: false,
@@ -10774,12 +10768,12 @@ mod tests {
       }
     );
 
-    let r = flags_from_vec(svec!["deno", "init", "npm:vite", "new_dir"]);
+    let r = flags_from_vec(svec!["deno", "init", "--npm", "vite", "new_dir"]);
     assert_eq!(
       r.unwrap(),
       Flags {
         subcommand: DenoSubcommand::Init(InitFlags {
-          package: Some("npm:vite".to_string()),
+          package: Some("vite".to_string()),
           package_args: svec!["new_dir"],
           dir: None,
           lib: false,
