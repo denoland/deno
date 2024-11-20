@@ -196,12 +196,6 @@ pub struct Dep {
   pub alias: Option<String>,
 }
 
-impl Dep {
-  pub fn prefixed_req(&self) -> String {
-    format!("{}:{}", self.kind.scheme(), self.req)
-  }
-}
-
 fn import_map_entries(
   import_map: &ImportMap,
 ) -> impl Iterator<Item = (KeyPath, SpecifierMapEntry<'_>)> {

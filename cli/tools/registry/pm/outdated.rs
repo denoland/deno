@@ -285,7 +285,12 @@ async fn update(
       continue;
     };
 
-    updated.push((dep_id, dep.prefixed_req(), new_version_req.clone()));
+    updated.push((
+      dep_id,
+      format!("{}:{}", dep.kind.scheme(), dep.req.name),
+      deps.resolved_version(dep.id).map(|a| a.clone()),
+      new_version_req.clone(),
+    ));
 
     deps.update_dep(dep_id, new_version_req);
   }
@@ -311,13 +316,19 @@ async fn update(
 
     let mut deps = deps.reloaded_after_modification(args);
     deps.resolve_current_versions().await?;
-    for (dep_id, prefixed_old_req, new_version_req) in updated {
+    for (dep_id, package_name, maybe_current_version, new_version_req) in
+      updated
+    {
       if let Some(nv) = deps.resolved_version(dep_id) {
-        updated_to_versions.insert((prefixed_old_req, nv.version.clone()));
+        updated_to_versions.insert((
+          package_name,
+          maybe_current_version,
+          nv.version.clone(),
+        ));
       } else {
         log::warn!(
           "Failed to resolve version for new version requirement: {} -> {}",
-          prefixed_old_req,
+          package_name,
           new_version_req
         );
       }
@@ -334,9 +345,51 @@ async fn update(
     );
     let mut updated_to_versions =
       updated_to_versions.into_iter().collect::<Vec<_>>();
-    updated_to_versions.sort_by(|(k, _), (k2, _)| k.cmp(k2));
-    for (prefixed_name, new_version) in updated_to_versions {
-      log::info!("• {} -> {}", prefixed_name, new_version);
+    updated_to_versions.sort_by(|(k, _, _), (k2, _, _)| k.cmp(k2));
+    let max_name = updated_to_versions
+      .iter()
+      .map(|(name, _, _)| name.len())
+      .max()
+      .unwrap_or(0);
+    let max_old = updated_to_versions
+      .iter()
+      .map(|(_, maybe_current, _)| {
+        maybe_current
+          .as_ref()
+          .map(|v| v.version.to_string().len())
+          .unwrap_or(0)
+      })
+      .max()
+      .unwrap_or(0);
+    let max_new = updated_to_versions
+      .iter()
+      .map(|(_, _, new_version)| new_version.to_string().len())
+      .max()
+      .unwrap_or(0);
+
+    for (package_name, maybe_current_version, new_version) in
+      updated_to_versions
+    {
+      let current_version = if let Some(current_version) = maybe_current_version
+      {
+        current_version.version.to_string()
+      } else {
+        "".to_string()
+      };
+
+      log::info!(
+        " - {}{} {}{} -> {}{}",
+        format!(
+          "{}{}",
+          colors::gray(package_name[0..4].to_string()),
+          package_name[4..].to_string()
+        ),
+        " ".repeat(max_name - package_name.len()),
+        " ".repeat(max_old - current_version.len()),
+        colors::gray(&current_version),
+        " ".repeat(max_new - new_version.to_string().len()),
+        colors::green(&new_version),
+      );
     }
   } else {
     log::info!(
