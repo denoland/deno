@@ -12,6 +12,7 @@ use std::sync::Arc;
 use base64::prelude::BASE64_STANDARD;
 use base64::Engine;
 use deno_ast::ModuleSpecifier;
+use deno_config::deno_json::ConfigFile;
 use deno_config::workspace::JsrPackageConfig;
 use deno_config::workspace::PackageJsonDepResolution;
 use deno_config::workspace::Workspace;
@@ -95,8 +96,9 @@ pub async fn publish(
     match cli_options.start_dir.maybe_deno_json() {
       Some(deno_json) => {
         debug_assert!(!deno_json.is_package());
+        error_missing_exports_field(deno_json)?;
         bail!(
-          "Missing 'name', 'version' and 'exports' field in '{}'.",
+          "Missing 'name' or 'exports' field in '{}'.",
           deno_json.specifier
         );
       }
@@ -416,9 +418,6 @@ impl PublishPreparer {
     graph: Arc<deno_graph::ModuleGraph>,
     diagnostics_collector: &PublishDiagnosticsCollector,
   ) -> Result<Rc<PreparedPublishPackage>, AnyError> {
-    static SUGGESTED_ENTRYPOINTS: [&str; 4] =
-      ["mod.ts", "mod.js", "index.ts", "index.js"];
-
     let deno_json = &package.config_file;
     let config_path = deno_json.specifier.to_file_path().unwrap();
     let root_dir = config_path.parent().unwrap().to_path_buf();
@@ -428,34 +427,6 @@ impl PublishPreparer {
         deno_json.specifier
       )
     })?;
-    if deno_json.json.exports.is_none() {
-      let mut suggested_entrypoint = None;
-
-      for entrypoint in SUGGESTED_ENTRYPOINTS {
-        if root_dir.join(entrypoint).exists() {
-          suggested_entrypoint = Some(entrypoint);
-          break;
-        }
-      }
-
-      let exports_content = format!(
-        r#"{{
-  "name": "{}",
-  "version": "{}",
-  "exports": "{}"
-}}"#,
-        package.name,
-        version,
-        suggested_entrypoint.unwrap_or("<path_to_entrypoint>")
-      );
-
-      bail!(
-        "You did not specify an entrypoint to \"{}\" package in {}. Add `exports` mapping in the configuration file, eg:\n{}",
-        package.name,
-        deno_json.specifier,
-        exports_content
-      );
-    }
     let Some(name_no_at) = package.name.strip_prefix('@') else {
       bail!("Invalid package name, use '@<scope_name>/<package_name> format");
     };
@@ -1285,6 +1256,36 @@ fn has_license_file<'a>(
       })
       .unwrap_or(false)
   })
+}
+
+fn error_missing_exports_field(deno_json: &ConfigFile) -> Result<(), AnyError> {
+  static SUGGESTED_ENTRYPOINTS: [&str; 4] =
+    ["mod.ts", "mod.js", "index.ts", "index.js"];
+  let mut suggested_entrypoint = None;
+
+  for entrypoint in SUGGESTED_ENTRYPOINTS {
+    if deno_json.dir_path().join(entrypoint).exists() {
+      suggested_entrypoint = Some(entrypoint);
+      break;
+    }
+  }
+
+  let exports_content = format!(
+    r#"{{
+  "name": "{}",
+  "version": "{}",
+  "exports": "{}"
+}}"#,
+    deno_json.json.name.as_deref().unwrap_or("@scope/name"),
+    deno_json.json.name.as_deref().unwrap_or("0.0.0"),
+    suggested_entrypoint.unwrap_or("<path_to_entrypoint>")
+  );
+
+  bail!(
+    "You did not specify an entrypoint in {}. Add `exports` mapping in the configuration file, eg:\n{}",
+    deno_json.specifier,
+    exports_content
+  );
 }
 
 #[allow(clippy::print_stderr)]
