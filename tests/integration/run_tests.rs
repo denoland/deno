@@ -339,8 +339,8 @@ fn permissions_prompt_allow_all_2() {
       // "env" permissions
       console.expect(concat!(
         "┏ ⚠️  Deno requests env access to \"FOO\".\r\n",
-        "┠─ Learn more at: https://docs.deno.com/go/--allow-env\r\n",
         "┠─ To see a stack trace for this prompt, set the DENO_TRACE_PERMISSIONS environmental variable.\r\n",
+        "┠─ Learn more at: https://docs.deno.com/go/--allow-env\r\n",
         "┠─ Run again with --allow-env to bypass this prompt.\r\n",
         "┗ Allow? [y/n/A] (y = yes, allow; n = no, deny; A = allow all env permissions)",
       ));
@@ -1731,8 +1731,8 @@ fn issue9750() {
       console.expect("Denied env access.");
       console.expect(concat!(
         "┏ ⚠️  Deno requests env access to \"SECRET\".\r\n",
-        "┠─ Learn more at: https://docs.deno.com/go/--allow-env\r\n",
         "┠─ To see a stack trace for this prompt, set the DENO_TRACE_PERMISSIONS environmental variable.\r\n",
+        "┠─ Learn more at: https://docs.deno.com/go/--allow-env\r\n",
         "┠─ Run again with --allow-env to bypass this prompt.\r\n",
         "┗ Allow? [y/n/A] (y = yes, allow; n = no, deny; A = allow all env permissions)",
       ));
