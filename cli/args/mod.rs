@@ -1548,6 +1548,10 @@ impl CliOptions {
         }) => Url::parse(&flags.module_url)
           .ok()
           .map(|url| vec![Cow::Owned(url)]),
+        DenoSubcommand::Doc(DocFlags {
+          source_files: DocSourceFileFlag::Paths(paths),
+          ..
+        }) => Some(files_to_urls(paths)),
         _ => None,
       })
       .unwrap_or_default();
