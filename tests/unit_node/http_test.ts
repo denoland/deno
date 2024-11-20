@@ -689,7 +689,6 @@ Deno.test("[node/http] ClientRequest handle non-string headers", async () => {
     method: "POST",
     headers: { 1: 2 },
   }, (resp) => {
-    console.log("resp", resp);
     headers = resp.headers;
 
     resp.on("data", () => {});
