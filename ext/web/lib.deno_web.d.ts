@@ -370,7 +370,7 @@ interface TextEncoder extends TextEncoderCommon {
  */
 interface TextEncoder extends TextEncoderCommon {
   /** Turns a string into binary data (in the form of a Uint8Array) using UTF-8 encoding. */
-  encode(input?: string): Uint8Array;
+  encode(input?: string): Uint8Array<ArrayBuffer>;
 
   /** Encodes a string into the destination Uint8Array and returns the result of the encoding. */
   encodeInto(input: string, dest: Uint8Array): TextEncoderEncodeIntoResult;
@@ -1111,7 +1111,7 @@ declare var MessageEvent: {
 };
 
 /** @category Events */
-type Transferable = MessagePort | ArrayBuffer;
+type Transferable = MessagePort | ArrayBufferLike;
 
 /** @category Platform */
 interface StructuredSerializeOptions {
