@@ -80,6 +80,22 @@
           "output": "./update_latest/deno.lock.out"
         }
       ]
+    },
+    "update_filtered": {
+      "steps": [
+        {
+          "args": "install",
+          "output": "[WILDCARD]"
+        },
+        {
+          "args": "outdated --update --latest @denotest/add @denotest/b* !@denotest/breaking* @denotest/with-subpath@0.5.0",
+          "output": "filtered/update.out"
+        },
+        {
+          "args": "-A print_file.ts ./deno.json",
+          "output": "filtered/deno.json.out"
+        }
+      ]
     }
   }
 }

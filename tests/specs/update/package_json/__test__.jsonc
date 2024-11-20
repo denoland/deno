@@ -79,6 +79,22 @@
           "output": "update_latest/deno.lock.out"
         }
       ]
+    },
+    "update_filtered": {
+      "steps": [
+        {
+          "args": "install",
+          "output": "[WILDCARD]"
+        },
+        {
+          "args": "outdated --update --latest @denotest/has-patch* aliased@0.7.0",
+          "output": "filtered/update.out"
+        },
+        {
+          "args": "-A print_file.ts ./package.json",
+          "output": "filtered/package.json.out"
+        }
+      ]
     }
   }
 }
