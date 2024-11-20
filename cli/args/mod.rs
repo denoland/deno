@@ -289,6 +289,7 @@ impl BenchOptions {
 #[derive(Clone, Debug, Default, PartialEq, Eq, Hash)]
 pub struct UnstableFmtOptions {
   pub component: bool,
+  pub sql: bool,
 }
 
 #[derive(Clone, Debug)]
@@ -322,6 +323,7 @@ impl FmtOptions {
       options: resolve_fmt_options(fmt_flags, fmt_config.options),
       unstable: UnstableFmtOptions {
         component: unstable.component || fmt_flags.unstable_component,
+        sql: unstable.sql || fmt_flags.unstable_sql,
       },
       files: fmt_config.files,
     }
@@ -1319,6 +1321,7 @@ impl CliOptions {
     let workspace = self.workspace();
     UnstableFmtOptions {
       component: workspace.has_unstable("fmt-component"),
+      sql: workspace.has_unstable("fmt-sql"),
     }
   }
 
@@ -1545,6 +1548,10 @@ impl CliOptions {
         }) => Url::parse(&flags.module_url)
           .ok()
           .map(|url| vec![Cow::Owned(url)]),
+        DenoSubcommand::Doc(DocFlags {
+          source_files: DocSourceFileFlag::Paths(paths),
+          ..
+        }) => Some(files_to_urls(paths)),
         _ => None,
       })
       .unwrap_or_default();
@@ -1667,6 +1674,7 @@ impl CliOptions {
           "byonm",
           "bare-node-builtins",
           "fmt-component",
+          "fmt-sql",
         ])
         .collect();
 

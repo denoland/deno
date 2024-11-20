@@ -126,6 +126,7 @@ fn print_cache_info(
   let registry_cache = dir.registries_folder_path();
   let mut origin_dir = dir.origin_data_folder_path();
   let deno_dir = dir.root_path_for_display().to_string();
+  let web_cache_dir = crate::worker::get_cache_storage_dir();
 
   if let Some(location) = &location {
     origin_dir =
@@ -143,6 +144,7 @@ fn print_cache_info(
       "typescriptCache": typescript_cache,
       "registryCache": registry_cache,
       "originStorage": origin_dir,
+      "webCacheStorage": web_cache_dir,
     });
 
     if location.is_some() {
@@ -176,6 +178,11 @@ fn print_cache_info(
       "{} {}",
       colors::bold("Origin storage:"),
       origin_dir.display()
+    );
+    println!(
+      "{} {}",
+      colors::bold("Web cache storage:"),
+      web_cache_dir.display()
     );
     if location.is_some() {
       println!(
@@ -446,8 +453,8 @@ impl<'a> GraphDisplayContext<'a> {
         let maybe_cache_info = match root {
           Module::Js(module) => module.maybe_cache_info.as_ref(),
           Module::Json(module) => module.maybe_cache_info.as_ref(),
+          Module::Wasm(module) => module.maybe_cache_info.as_ref(),
           Module::Node(_) | Module::Npm(_) | Module::External(_) => None,
-          Module::Wasm(_) => todo!("@dsherret"),
         };
         if let Some(cache_info) = maybe_cache_info {
           if let Some(local) = &cache_info.local {
@@ -469,8 +476,8 @@ impl<'a> GraphDisplayContext<'a> {
             let size = match m {
               Module::Js(module) => module.size(),
               Module::Json(module) => module.size(),
+              Module::Wasm(module) => module.size(),
               Module::Node(_) | Module::Npm(_) | Module::External(_) => 0,
-              Module::Wasm(_) => todo!("@dsherret"),
             };
             size as f64
           })
@@ -569,8 +576,8 @@ impl<'a> GraphDisplayContext<'a> {
         Specifier(_) => match module {
           Module::Js(module) => Some(module.size() as u64),
           Module::Json(module) => Some(module.size() as u64),
+          Module::Wasm(module) => Some(module.size() as u64),
           Module::Node(_) | Module::Npm(_) | Module::External(_) => None,
-          Module::Wasm(_) => todo!("@dsherret"),
         },
       };
       format!("{} {}", header_text, maybe_size_to_text(maybe_size))
@@ -583,8 +590,8 @@ impl<'a> GraphDisplayContext<'a> {
         Package(package) => {
           tree_node.children.extend(self.build_npm_deps(package));
         }
-        Specifier(_) => {
-          if let Some(module) = module.js() {
+        Specifier(_) => match module {
+          Module::Js(module) => {
             if let Some(types_dep) = &module.maybe_types_dependency {
               if let Some(child) =
                 self.build_resolved_info(&types_dep.dependency, true)
@@ -596,7 +603,16 @@ impl<'a> GraphDisplayContext<'a> {
               tree_node.children.extend(self.build_dep_info(dep));
             }
           }
-        }
+          Module::Wasm(module) => {
+            for dep in module.dependencies.values() {
+              tree_node.children.extend(self.build_dep_info(dep));
+            }
+          }
+          Module::Json(_)
+          | Module::Npm(_)
+          | Module::Node(_)
+          | Module::External(_) => {}
+        },
       }
     }
     tree_node
@@ -661,7 +677,7 @@ impl<'a> GraphDisplayContext<'a> {
         };
         self.build_error_msg(specifier, message.as_ref())
       }
-      ModuleError::ParseErr(_, _) => {
+      ModuleError::ParseErr(_, _) | ModuleError::WasmParseErr(_, _) => {
         self.build_error_msg(specifier, "(parsing error)")
       }
       ModuleError::UnsupportedImportAttributeType { .. } => {
@@ -673,7 +689,6 @@ impl<'a> GraphDisplayContext<'a> {
       ModuleError::Missing(_, _) | ModuleError::MissingDynamic(_, _) => {
         self.build_error_msg(specifier, "(missing)")
       }
-      ModuleError::WasmParseErr(_, _) => todo!("@dsherret"),
     }
   }
 
