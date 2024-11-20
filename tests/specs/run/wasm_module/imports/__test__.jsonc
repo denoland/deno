@@ -1,0 +1,4 @@
+{
+  "args": "--allow-import main.js",
+  "output": "main.out"
+}

@@ -83,6 +83,15 @@ pub trait HmrRunner: Send + Sync {
   async fn run(&mut self) -> Result<(), AnyError>;
 }
 
+pub trait CliCodeCache: code_cache::CodeCache {
+  /// Gets if the code cache is still enabled.
+  fn enabled(&self) -> bool {
+    true
+  }
+
+  fn as_code_cache(self: Arc<Self>) -> Arc<dyn code_cache::CodeCache>;
+}
+
 #[async_trait::async_trait(?Send)]
 pub trait CoverageCollector: Send + Sync {
   async fn start_collecting(&mut self) -> Result<(), AnyError>;
@@ -127,7 +136,7 @@ pub struct CliMainWorkerOptions {
 struct SharedWorkerState {
   blob_store: Arc<BlobStore>,
   broadcast_channel: InMemoryBroadcastChannel,
-  code_cache: Option<Arc<dyn code_cache::CodeCache>>,
+  code_cache: Option<Arc<dyn CliCodeCache>>,
   compiled_wasm_module_store: CompiledWasmModuleStore,
   feature_checker: Arc<FeatureChecker>,
   fs: Arc<dyn deno_fs::FileSystem>,
@@ -384,6 +393,13 @@ impl CliMainWorker {
   }
 }
 
+// TODO(bartlomieju): this should be moved to some other place, added to avoid string
+// duplication between worker setups and `deno info` output.
+pub fn get_cache_storage_dir() -> PathBuf {
+  // Note: we currently use temp_dir() to avoid managing storage size.
+  std::env::temp_dir().join("deno_cache")
+}
+
 #[derive(Clone)]
 pub struct CliMainWorkerFactory {
   shared: Arc<SharedWorkerState>,
@@ -393,7 +409,7 @@ impl CliMainWorkerFactory {
   #[allow(clippy::too_many_arguments)]
   pub fn new(
     blob_store: Arc<BlobStore>,
-    code_cache: Option<Arc<dyn code_cache::CodeCache>>,
+    code_cache: Option<Arc<dyn CliCodeCache>>,
     feature_checker: Arc<FeatureChecker>,
     fs: Arc<dyn deno_fs::FileSystem>,
     maybe_file_watcher_communicator: Option<Arc<WatcherCommunicator>>,
@@ -520,10 +536,7 @@ impl CliMainWorkerFactory {
     });
     let cache_storage_dir = maybe_storage_key.map(|key| {
       // TODO(@satyarohith): storage quota management
-      // Note: we currently use temp_dir() to avoid managing storage size.
-      std::env::temp_dir()
-        .join("deno_cache")
-        .join(checksum::gen(&[key.as_bytes()]))
+      get_cache_storage_dir().join(checksum::gen(&[key.as_bytes()]))
     });
 
     // TODO(bartlomieju): this is cruft, update FeatureChecker to spit out
@@ -554,7 +567,7 @@ impl CliMainWorkerFactory {
       ),
       feature_checker,
       permissions,
-      v8_code_cache: shared.code_cache.clone(),
+      v8_code_cache: shared.code_cache.clone().map(|c| c.as_code_cache()),
     };
 
     let options = WorkerOptions {
@@ -720,10 +733,7 @@ fn create_web_worker_callback(
       .resolve_storage_key(&args.main_module);
     let cache_storage_dir = maybe_storage_key.map(|key| {
       // TODO(@satyarohith): storage quota management
-      // Note: we currently use temp_dir() to avoid managing storage size.
-      std::env::temp_dir()
-        .join("deno_cache")
-        .join(checksum::gen(&[key.as_bytes()]))
+      get_cache_storage_dir().join(checksum::gen(&[key.as_bytes()]))
     });
 
     // TODO(bartlomieju): this is cruft, update FeatureChecker to spit out

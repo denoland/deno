@@ -228,6 +228,7 @@ fn collect_fmt_files(
   })
   .ignore_git_folder()
   .ignore_node_modules()
+  .use_gitignore()
   .set_vendor_folder(cli_options.vendor_dir_path().map(ToOwned::to_owned))
   .collect_file_patterns(&deno_config::fs::RealDenoConfigFs, files)
 }
@@ -271,6 +272,7 @@ fn format_markdown(
           | "njk"
           | "yml"
           | "yaml"
+          | "sql"
       ) {
         // It's important to tell dprint proper file extension, otherwise
         // it might parse the file twice.
@@ -300,6 +302,13 @@ fn format_markdown(
             }
           }
           "yml" | "yaml" => format_yaml(text, fmt_options),
+          "sql" => {
+            if unstable_options.sql {
+              format_sql(text, fmt_options)
+            } else {
+              Ok(None)
+            }
+          }
           _ => {
             let mut codeblock_config =
               get_resolved_typescript_config(fmt_options);
@@ -502,7 +511,48 @@ pub fn format_html(
   })
 }
 
-/// Formats a single TS, TSX, JS, JSX, JSONC, JSON, MD, or IPYNB file.
+pub fn format_sql(
+  file_text: &str,
+  fmt_options: &FmtOptionsConfig,
+) -> Result<Option<String>, AnyError> {
+  let ignore_file = file_text
+    .lines()
+    .take_while(|line| line.starts_with("--"))
+    .any(|line| {
+      line
+        .strip_prefix("--")
+        .unwrap()
+        .trim()
+        .starts_with("deno-fmt-ignore-file")
+    });
+
+  if ignore_file {
+    return Ok(None);
+  }
+
+  let mut formatted_str = sqlformat::format(
+    file_text,
+    &sqlformat::QueryParams::None,
+    &sqlformat::FormatOptions {
+      ignore_case_convert: None,
+      indent: if fmt_options.use_tabs.unwrap_or_default() {
+        sqlformat::Indent::Tabs
+      } else {
+        sqlformat::Indent::Spaces(fmt_options.indent_width.unwrap_or(2))
+      },
+      // leave one blank line between queries.
+      lines_between_queries: 2,
+      uppercase: Some(true),
+    },
+  );
+
+  // Add single new line to the end of file.
+  formatted_str.push('\n');
+
+  Ok(Some(formatted_str))
+}
+
+/// Formats a single TS, TSX, JS, JSX, JSONC, JSON, MD, IPYNB or SQL file.
 pub fn format_file(
   file_path: &Path,
   file_text: &str,
@@ -537,6 +587,13 @@ pub fn format_file(
         format_file(file_path, &file_text, fmt_options, unstable_options, None)
       },
     ),
+    "sql" => {
+      if unstable_options.sql {
+        format_sql(file_text, fmt_options)
+      } else {
+        Ok(None)
+      }
+    }
     _ => {
       let config = get_resolved_typescript_config(fmt_options);
       dprint_plugin_typescript::format_text(
@@ -1208,6 +1265,7 @@ fn is_supported_ext_fmt(path: &Path) -> bool {
         | "yml"
         | "yaml"
         | "ipynb"
+        | "sql"
     )
   })
 }
@@ -1268,6 +1326,11 @@ mod test {
     assert!(is_supported_ext_fmt(Path::new("foo.yaml")));
     assert!(is_supported_ext_fmt(Path::new("foo.YaML")));
     assert!(is_supported_ext_fmt(Path::new("foo.ipynb")));
+    assert!(is_supported_ext_fmt(Path::new("foo.sql")));
+    assert!(is_supported_ext_fmt(Path::new("foo.Sql")));
+    assert!(is_supported_ext_fmt(Path::new("foo.sQl")));
+    assert!(is_supported_ext_fmt(Path::new("foo.sqL")));
+    assert!(is_supported_ext_fmt(Path::new("foo.SQL")));
   }
 
   #[test]

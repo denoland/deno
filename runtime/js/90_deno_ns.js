@@ -29,7 +29,7 @@ import * as tty from "ext:runtime/40_tty.js";
 import * as kv from "ext:deno_kv/01_db.ts";
 import * as cron from "ext:deno_cron/01_cron.ts";
 import * as webgpuSurface from "ext:deno_webgpu/02_surface.js";
-import * as telemetry from "ext:runtime/telemetry.js";
+import * as telemetry from "ext:runtime/telemetry.ts";
 
 const denoNs = {
   Process: process.Process,
@@ -185,8 +185,7 @@ denoNsUnstableById[unstableIds.webgpu] = {
 // denoNsUnstableById[unstableIds.workerOptions] = { __proto__: null }
 
 denoNsUnstableById[unstableIds.otel] = {
-  tracing: telemetry.tracing,
-  metrics: telemetry.metrics,
+  telemetry: telemetry.telemetry,
 };
 
 export { denoNs, denoNsUnstableById, unstableIds };

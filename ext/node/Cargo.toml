@@ -95,6 +95,7 @@ spki.workspace = true
 stable_deref_trait = "1.2.0"
 thiserror.workspace = true
 tokio.workspace = true
+tokio-eld = "0.2"
 url.workspace = true
 webpki-root-certs.workspace = true
 winapi.workspace = true
