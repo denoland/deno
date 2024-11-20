@@ -200,9 +200,6 @@ impl Dep {
   pub fn prefixed_req(&self) -> String {
     format!("{}:{}", self.kind.scheme(), self.req)
   }
-  pub fn prefixed_name(&self) -> String {
-    format!("{}:{}", self.kind.scheme(), self.req.name)
-  }
 }
 
 fn import_map_entries(
