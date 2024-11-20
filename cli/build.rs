@@ -186,6 +186,7 @@ mod ts {
       "es2016.intl",
       "es2016",
       "es2017",
+      "es2017.arraybuffer",
       "es2017.date",
       "es2017.intl",
       "es2017.object",
@@ -230,6 +231,14 @@ mod ts {
       "es2023.array",
       "es2023.collection",
       "es2023.intl",
+      "es2024",
+      "es2024.arraybuffer",
+      "es2024.collection",
+      "es2024.object",
+      "es2024.promise",
+      "es2024.regexp",
+      "es2024.sharedmemory",
+      "es2024.string",
       "esnext",
       "esnext.array",
       "esnext.collection",
@@ -393,7 +402,7 @@ fn main() {
   );
 
   let ts_version = ts::version();
-  debug_assert_eq!(ts_version, "5.6.2"); // bump this assertion when it changes
+  debug_assert_eq!(ts_version, "5.7.1-rc"); // bump this assertion when it changes
   println!("cargo:rustc-env=TS_VERSION={}", ts_version);
   println!("cargo:rerun-if-env-changed=TS_VERSION");
 
