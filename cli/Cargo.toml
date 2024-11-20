@@ -151,8 +151,8 @@ serde_repr.workspace = true
 sha2.workspace = true
 shell-escape = "=0.1.5"
 spki = { version = "0.7", features = ["pem"] }
-# NOTE(bartlomieju): for now using github URL, because 0.3.2 with important fixes hasn't been released yet.
-sqlformat = { git = "https://github.com/shssoichiro/sqlformat-rs.git", rev = "827d639" }
+# NOTE(bartlomieju): using temporary fork for now, revert back to `sqlformat-rs` later
+sqlformat = { package = "deno_sqlformat", version = "0.3.2" }
 strsim = "0.11.1"
 tar.workspace = true
 tempfile.workspace = true
