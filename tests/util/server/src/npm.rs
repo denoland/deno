@@ -217,7 +217,7 @@ fn append_dir_all<W: std::io::Write>(
       entries.push((src, dest));
     }
   }
-  entries.sort();
+  entries.sort_by(|(_, a), (_, b)| a.cmp(b));
   for (src, dest) in entries {
     builder.append_path_with_name(src, dest)?;
   }
