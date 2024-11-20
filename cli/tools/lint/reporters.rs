@@ -212,8 +212,15 @@ impl LintReporter for JsonLintReporter {
       hint: d.hint().map(|h| h.to_string()),
     });
 
-    if !self.checked_files.contains(&d.specifier.to_string()) {
-      self.checked_files.push(d.specifier.to_string());
+    let file_path = d
+      .specifier
+      .to_file_path()
+      .unwrap()
+      .to_string_lossy()
+      .to_string();
+
+    if !self.checked_files.contains(&file_path) {
+      self.checked_files.push(file_path);
     }
   }
 
@@ -230,6 +237,7 @@ impl LintReporter for JsonLintReporter {
 
   fn close(&mut self, _check_count: usize) {
     sort_diagnostics(&mut self.diagnostics);
+    self.checked_files.sort();
     let json = serde_json::to_string_pretty(&self);
     #[allow(clippy::print_stdout)]
     {

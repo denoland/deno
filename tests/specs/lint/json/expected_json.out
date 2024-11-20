@@ -63,8 +63,8 @@
     }
   ],
   "checked_files": [
-    "[WILDCARD]malformed.js",
-    "[WILDCARD]file1.ts",
-    "[WILDCARD]file2.js"
+    "[WILDCARD]file1.js",
+    "[WILDCARD]file2.ts",
+    "[WILDCARD]malformed.js"
   ]
 }
