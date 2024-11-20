@@ -181,7 +181,7 @@ fn print_cache_info(
     );
     println!(
       "{} {}",
-      colors::bold("Web Cache storage:"),
+      colors::bold("Web cache storage:"),
       web_cache_dir.display()
     );
     if location.is_some() {

@@ -4,5 +4,5 @@ npm modules cache: [WILDCARD]npm
 Emitted modules cache: [WILDCARD]gen
 Language server registries cache: [WILDCARD]registries
 Origin storage: [WILDCARD]location_data[WILDCARD]
-Web Cache storage: [WILDCARD]deno_cache
+Web cache storage: [WILDCARD]deno_cache
 Local Storage: [WILDCARD]location_data[WILDCARD]local_storage
