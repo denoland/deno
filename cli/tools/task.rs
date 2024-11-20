@@ -2,7 +2,6 @@
 
 use std::collections::HashMap;
 use std::collections::HashSet;
-use std::io::Write;
 use std::num::NonZeroUsize;
 use std::path::Path;
 use std::path::PathBuf;
@@ -75,10 +74,7 @@ pub async fn execute_script(
   let packages_task_configs: Vec<PackageTaskInfo> = if let Some(filter) =
     &task_flags.filter
   {
-    let Some(task_name) = &task_flags.task else {
-      writeln!(&mut std::io::stdout(), "Missing task argument")?;
-      return Ok(0);
-    };
+    let task_name = task_flags.task.as_ref().unwrap();
 
     // Filter based on package name
     let package_regex = arg_to_regex(filter)?;
@@ -172,14 +168,13 @@ pub async fn execute_script(
       .iter()
       .all(|config| config.matched_tasks.is_empty())
     {
-      writeln!(
-        &mut std::io::stdout(),
+      log::warn!(
         "{}",
         colors::red(format!(
           "No matching task or script '{}' found in selected packages.",
           task_name
         ))
-      )?;
+      );
       return Ok(0);
     }
 
