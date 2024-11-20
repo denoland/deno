@@ -3087,7 +3087,7 @@ declare namespace Intl {
  * @category Platform
  * @experimental
  */
-interface Float16Array {
+interface Float16Array<TArrayBuffer extends ArrayBufferLike = ArrayBufferLike> {
   /**
    * The size in bytes of each element in the array.
    */
@@ -3096,7 +3096,7 @@ interface Float16Array {
   /**
    * The ArrayBuffer instance referenced by the array.
    */
-  readonly buffer: ArrayBufferLike;
+  readonly buffer: TArrayBuffer;
 
   /**
    * The length in bytes of the array.
@@ -3107,6 +3107,12 @@ interface Float16Array {
    * The offset in bytes of the array.
    */
   readonly byteOffset: number;
+
+  /**
+   * Returns the item located at the specified index.
+   * @param index The zero-based index of the desired code unit. A negative index will count back from the last item.
+   */
+  at(index: number): number | undefined;
 
   /**
    * Returns the this object after copying a section of the array identified by start and end
@@ -3128,7 +3134,7 @@ interface Float16Array {
    * If thisArg is omitted, undefined is used as the this value.
    */
   every(
-    predicate: (value: number, index: number, array: Float16Array) => unknown,
+    predicate: (value: number, index: number, array: this) => unknown,
     thisArg?: any,
   ): boolean;
 
@@ -3150,9 +3156,9 @@ interface Float16Array {
    * If thisArg is omitted, undefined is used as the this value.
    */
   filter(
-    predicate: (value: number, index: number, array: Float16Array) => any,
+    predicate: (value: number, index: number, array: this) => any,
     thisArg?: any,
-  ): Float16Array;
+  ): Float16Array<ArrayBuffer>;
 
   /**
    * Returns the value of the first element in the array where predicate is true, and undefined
@@ -3164,7 +3170,7 @@ interface Float16Array {
    * predicate. If it is not provided, undefined is used instead.
    */
   find(
-    predicate: (value: number, index: number, obj: Float16Array) => boolean,
+    predicate: (value: number, index: number, obj: this) => boolean,
     thisArg?: any,
   ): number | undefined;
 
@@ -3178,7 +3184,51 @@ interface Float16Array {
    * predicate. If it is not provided, undefined is used instead.
    */
   findIndex(
-    predicate: (value: number, index: number, obj: Float16Array) => boolean,
+    predicate: (value: number, index: number, obj: this) => boolean,
+    thisArg?: any,
+  ): number;
+
+  /**
+   * Returns the value of the last element in the array where predicate is true, and undefined
+   * otherwise.
+   * @param predicate findLast calls predicate once for each element of the array, in descending
+   * order, until it finds one where predicate returns true. If such an element is found, findLast
+   * immediately returns that element value. Otherwise, findLast returns undefined.
+   * @param thisArg If provided, it will be used as the this value for each invocation of
+   * predicate. If it is not provided, undefined is used instead.
+   */
+  findLast<S extends number>(
+    predicate: (
+      value: number,
+      index: number,
+      array: this,
+    ) => value is S,
+    thisArg?: any,
+  ): S | undefined;
+  findLast(
+    predicate: (
+      value: number,
+      index: number,
+      array: this,
+    ) => unknown,
+    thisArg?: any,
+  ): number | undefined;
+
+  /**
+   * Returns the index of the last element in the array where predicate is true, and -1
+   * otherwise.
+   * @param predicate findLastIndex calls predicate once for each element of the array, in descending
+   * order, until it finds one where predicate returns true. If such an element is found,
+   * findLastIndex immediately returns that element index. Otherwise, findLastIndex returns -1.
+   * @param thisArg If provided, it will be used as the this value for each invocation of
+   * predicate. If it is not provided, undefined is used instead.
+   */
+  findLastIndex(
+    predicate: (
+      value: number,
+      index: number,
+      array: this,
+    ) => unknown,
     thisArg?: any,
   ): number;
 
@@ -3190,9 +3240,16 @@ interface Float16Array {
    * If thisArg is omitted, undefined is used as the this value.
    */
   forEach(
-    callbackfn: (value: number, index: number, array: Float16Array) => void,
+    callbackfn: (value: number, index: number, array: this) => void,
     thisArg?: any,
   ): void;
+
+  /**
+   * Determines whether an array includes a certain element, returning true or false as appropriate.
+   * @param searchElement The element to search for.
+   * @param fromIndex The position in this array at which to begin searching for searchElement.
+   */
+  includes(searchElement: number, fromIndex?: number): boolean;
 
   /**
    * Returns the index of the first occurrence of a value in an array.
@@ -3231,9 +3288,9 @@ interface Float16Array {
    * If thisArg is omitted, undefined is used as the this value.
    */
   map(
-    callbackfn: (value: number, index: number, array: Float16Array) => number,
+    callbackfn: (value: number, index: number, array: this) => number,
     thisArg?: any,
-  ): Float16Array;
+  ): Float16Array<ArrayBuffer>;
 
   /**
    * Calls the specified callback function for all the elements in an array. The return value of
@@ -3250,7 +3307,7 @@ interface Float16Array {
       previousValue: number,
       currentValue: number,
       currentIndex: number,
-      array: Float16Array,
+      array: this,
     ) => number,
   ): number;
   reduce(
@@ -3258,7 +3315,7 @@ interface Float16Array {
       previousValue: number,
       currentValue: number,
       currentIndex: number,
-      array: Float16Array,
+      array: this,
     ) => number,
     initialValue: number,
   ): number;
@@ -3278,7 +3335,7 @@ interface Float16Array {
       previousValue: U,
       currentValue: number,
       currentIndex: number,
-      array: Float16Array,
+      array: this,
     ) => U,
     initialValue: U,
   ): U;
@@ -3298,7 +3355,7 @@ interface Float16Array {
       previousValue: number,
       currentValue: number,
       currentIndex: number,
-      array: Float16Array,
+      array: this,
     ) => number,
   ): number;
   reduceRight(
@@ -3306,7 +3363,7 @@ interface Float16Array {
       previousValue: number,
       currentValue: number,
       currentIndex: number,
-      array: Float16Array,
+      array: this,
     ) => number,
     initialValue: number,
   ): number;
@@ -3326,7 +3383,7 @@ interface Float16Array {
       previousValue: U,
       currentValue: number,
       currentIndex: number,
-      array: Float16Array,
+      array: this,
     ) => U,
     initialValue: U,
   ): U;
@@ -3334,7 +3391,7 @@ interface Float16Array {
   /**
    * Reverses the elements in an Array.
    */
-  reverse(): Float16Array;
+  reverse(): this;
 
   /**
    * Sets a value or an array of values.
@@ -3348,7 +3405,7 @@ interface Float16Array {
    * @param start The beginning of the specified portion of the array.
    * @param end The end of the specified portion of the array. This is exclusive of the element at the index 'end'.
    */
-  slice(start?: number, end?: number): Float16Array;
+  slice(start?: number, end?: number): Float16Array<ArrayBuffer>;
 
   /**
    * Determines whether the specified callback function returns true for any element of an array.
@@ -3359,7 +3416,7 @@ interface Float16Array {
    * If thisArg is omitted, undefined is used as the this value.
    */
   some(
-    predicate: (value: number, index: number, array: Float16Array) => unknown,
+    predicate: (value: number, index: number, array: this) => unknown,
     thisArg?: any,
   ): boolean;
 
@@ -3380,12 +3437,34 @@ interface Float16Array {
    * @param begin The index of the beginning of the array.
    * @param end The index of the end of the array.
    */
-  subarray(begin?: number, end?: number): Float16Array;
+  subarray(begin?: number, end?: number): Float16Array<TArrayBuffer>;
 
   /**
    * Converts a number to a string by using the current locale.
    */
-  toLocaleString(): string;
+  toLocaleString(
+    locales?: string | string[],
+    options?: Intl.NumberFormatOptions,
+  ): string;
+
+  /**
+   * Copies the array and returns the copy with the elements in reverse order.
+   */
+  toReversed(): Float16Array<ArrayBuffer>;
+
+  /**
+   * Copies and sorts the array.
+   * @param compareFn Function used to determine the order of the elements. It is expected to return
+   * a negative value if the first argument is less than the second argument, zero if they're equal, and a positive
+   * value otherwise. If omitted, the elements are sorted in ascending order.
+   * ```ts
+   * const myNums = Float16Array<Buffer>.from([11.25, 2, -22.5, 1]);
+   * myNums.toSorted((a, b) => a - b) // Float16Array<Buffer>(4) [-22.5, 1, 2, 11.5]
+   * ```
+   */
+  toSorted(
+    compareFn?: (a: number, b: number) => number,
+  ): Float16Array<ArrayBuffer>;
 
   /**
    * Returns a string representation of an array.
@@ -3393,9 +3472,37 @@ interface Float16Array {
   toString(): string;
 
   /** Returns the primitive value of the specified object. */
-  valueOf(): Float16Array;
+  valueOf(): this;
+
+  /**
+   * Copies the array and inserts the given number at the provided index.
+   * @param index The index of the value to overwrite. If the index is
+   * negative, then it replaces from the end of the array.
+   * @param value The value to insert into the copied array.
+   * @returns A copy of the original array with the inserted value.
+   */
+  with(index: number, value: number): Float16Array<ArrayBuffer>;
 
   [index: number]: number;
+
+  [Symbol.iterator](): ArrayIterator<number>;
+
+  /**
+   * Returns an array of key, value pairs for every entry in the array
+   */
+  entries(): ArrayIterator<[number, number]>;
+
+  /**
+   * Returns an list of keys in the array
+   */
+  keys(): ArrayIterator<number>;
+
+  /**
+   * Returns an list of values in the array
+   */
+  values(): ArrayIterator<number>;
+
+  readonly [Symbol.toStringTag]: "Float16Array";
 }
 
 /**
@@ -3403,14 +3510,14 @@ interface Float16Array {
  * @experimental
  */
 interface Float16ArrayConstructor {
-  readonly prototype: Float16Array;
-  new (length: number): Float16Array;
-  new (array: ArrayLike<number> | ArrayBufferLike): Float16Array;
-  new (
-    buffer: ArrayBufferLike,
+  readonly prototype: Float16Array<ArrayBufferLike>;
+  new (length?: number): Float16Array<ArrayBuffer>;
+  new (array: ArrayLike<number> | Iterable<number>): Float16Array<ArrayBuffer>;
+  new <TArrayBuffer extends ArrayBufferLike = ArrayBuffer>(
+    buffer: TArrayBuffer,
     byteOffset?: number,
     length?: number,
-  ): Float16Array;
+  ): Float16Array<TArrayBuffer>;
 
   /**
    * The size in bytes of each element in the array.
@@ -3421,17 +3528,17 @@ interface Float16ArrayConstructor {
    * Returns a new array from a set of elements.
    * @param items A set of elements to include in the new array object.
    */
-  of(...items: number[]): Float16Array;
+  of(...items: number[]): Float16Array<ArrayBuffer>;
 
   /**
    * Creates an array from an array-like or iterable object.
-   * @param arrayLike An array-like or iterable object to convert to an array.
+   * @param arrayLike An array-like object to convert to an array.
    */
-  from(arrayLike: ArrayLike<number>): Float16Array;
+  from(arrayLike: ArrayLike<number>): Float16Array<ArrayBuffer>;
 
   /**
    * Creates an array from an array-like or iterable object.
-   * @param arrayLike An array-like or iterable object to convert to an array.
+   * @param arrayLike An array-like object to convert to an array.
    * @param mapfn A mapping function to call on every element of the array.
    * @param thisArg Value of 'this' used to invoke the mapfn.
    */
@@ -3439,8 +3546,27 @@ interface Float16ArrayConstructor {
     arrayLike: ArrayLike<T>,
     mapfn: (v: T, k: number) => number,
     thisArg?: any,
-  ): Float16Array;
+  ): Float16Array<ArrayBuffer>;
+
+  /**
+   * Creates an array from an array-like or iterable object.
+   * @param elements An iterable object to convert to an array.
+   */
+  from(elements: Iterable<number>): Float16Array<ArrayBuffer>;
+
+  /**
+   * Creates an array from an array-like or iterable object.
+   * @param elements An iterable object to convert to an array.
+   * @param mapfn A mapping function to call on every element of the array.
+   * @param thisArg Value of 'this' used to invoke the mapfn.
+   */
+  from<T>(
+    elements: Iterable<T>,
+    mapfn?: (v: T, k: number) => number,
+    thisArg?: any,
+  ): Float16Array<ArrayBuffer>;
 }
+
 /**
  * @category Platform
  * @experimental
@@ -3451,169 +3577,30 @@ declare var Float16Array: Float16ArrayConstructor;
  * @category Platform
  * @experimental
  */
-interface Float16Array {
-  [Symbol.iterator](): IterableIterator<number>;
+interface Math {
   /**
-   * Returns an array of key, value pairs for every entry in the array
+   * Returns the nearest half precision float representation of a number.
+   * @param x A numeric expression.
+   *
+   * @category Platform
+   * @experimental
    */
-  entries(): IterableIterator<[number, number]>;
-  /**
-   * Returns an list of keys in the array
-   */
-  keys(): IterableIterator<number>;
-  /**
-   * Returns an list of values in the array
-   */
-  values(): IterableIterator<number>;
+  f16round(x: number): number;
 }
 
 /**
  * @category Platform
  * @experimental
  */
-interface Float16Constructor {
-  new (elements: Iterable<number>): Float16Array;
-
-  /**
-   * Creates an array from an array-like or iterable object.
-   * @param arrayLike An array-like or iterable object to convert to an array.
-   * @param mapfn A mapping function to call on every element of the array.
-   * @param thisArg Value of 'this' used to invoke the mapfn.
-   */
-  from(
-    arrayLike: Iterable<number>,
-    mapfn?: (v: number, k: number) => number,
-    thisArg?: any,
-  ): Float16Array;
-}
-
-/**
- * @category Platform
- * @experimental
- */
-interface Float16Array {
-  readonly [Symbol.toStringTag]: "Float16Array";
-}
-
-/**
- * @category Platform
- * @experimental
- */
-interface Float16Array {
-  /**
-   * Determines whether an array includes a certain element, returning true or false as appropriate.
-   * @param searchElement The element to search for.
-   * @param fromIndex The position in this array at which to begin searching for searchElement.
-   */
-  includes(searchElement: number, fromIndex?: number): boolean;
-}
-
-/**
- * @category Platform
- * @experimental
- */
-interface Float16ArrayConstructor {
-  new (): Float16Array;
-}
-
-/**
- * @category Platform
- * @experimental
- */
-interface Float16Array {
-  /**
-   * Returns the item located at the specified index.
-   * @param index The zero-based index of the desired code unit. A negative index will count back from the last item.
-   */
-  at(index: number): number | undefined;
-}
-
-/**
- * @category Platform
- * @experimental
- */
-interface Float16Array {
-  /**
-   * Returns the value of the last element in the array where predicate is true, and undefined
-   * otherwise.
-   * @param predicate findLast calls predicate once for each element of the array, in descending
-   * order, until it finds one where predicate returns true. If such an element is found, findLast
-   * immediately returns that element value. Otherwise, findLast returns undefined.
-   * @param thisArg If provided, it will be used as the this value for each invocation of
-   * predicate. If it is not provided, undefined is used instead.
-   */
-  findLast<S extends number>(
-    predicate: (
-      value: number,
-      index: number,
-      array: Float16Array,
-    ) => value is S,
-    thisArg?: any,
-  ): S | undefined;
-  findLast(
-    predicate: (
-      value: number,
-      index: number,
-      array: Float16Array,
-    ) => unknown,
-    thisArg?: any,
-  ): number | undefined;
-
-  /**
-   * Returns the index of the last element in the array where predicate is true, and -1
-   * otherwise.
-   * @param predicate findLastIndex calls predicate once for each element of the array, in descending
-   * order, until it finds one where predicate returns true. If such an element is found,
-   * findLastIndex immediately returns that element index. Otherwise, findLastIndex returns -1.
-   * @param thisArg If provided, it will be used as the this value for each invocation of
-   * predicate. If it is not provided, undefined is used instead.
-   */
-  findLastIndex(
-    predicate: (
-      value: number,
-      index: number,
-      array: Float16Array,
-    ) => unknown,
-    thisArg?: any,
-  ): number;
-
-  /**
-   * Copies the array and returns the copy with the elements in reverse order.
-   */
-  toReversed(): Float16Array;
-
-  /**
-   * Copies and sorts the array.
-   * @param compareFn Function used to determine the order of the elements. It is expected to return
-   * a negative value if the first argument is less than the second argument, zero if they're equal, and a positive
-   * value otherwise. If omitted, the elements are sorted in ascending order.
-   * ```ts
-   * const myNums = Float16Array.from([11.25, 2, -22.5, 1]);
-   * myNums.toSorted((a, b) => a - b) // Float16Array(4) [-22.5, 1, 2, 11.5]
-   * ```
-   */
-  toSorted(compareFn?: (a: number, b: number) => number): Float16Array;
-
-  /**
-   * Copies the array and inserts the given number at the provided index.
-   * @param index The index of the value to overwrite. If the index is
-   * negative, then it replaces from the end of the array.
-   * @param value The value to insert into the copied array.
-   * @returns A copy of the original array with the inserted value.
-   */
-  with(index: number, value: number): Float16Array;
-}
-
-/**
- * @category Platform
- * @experimental
- */
-interface DataView {
+interface DataView<TArrayBuffer extends ArrayBufferLike> {
   /**
    * Gets the Float16 value at the specified byte offset from the start of the view. There is
    * no alignment constraint; multi-byte values may be fetched from any offset.
    * @param byteOffset The place in the buffer at which the value should be retrieved.
    * @param littleEndian If false or undefined, a big-endian value should be read.
+   *
+   * @category Platform
+   * @experimental
    */
   getFloat16(byteOffset: number, littleEndian?: boolean): number;
 
@@ -3622,6 +3609,9 @@ interface DataView {
    * @param byteOffset The place in the buffer at which the value should be set.
    * @param value The value to set.
    * @param littleEndian If false or undefined, a big-endian value should be written.
+   *
+   * @category Platform
+   * @experimental
    */
   setFloat16(byteOffset: number, value: number, littleEndian?: boolean): void;
 }
