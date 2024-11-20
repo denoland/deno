@@ -1,0 +1,59 @@
+{
+  "tests": {
+    "npm_all": {
+      "cwd": "./npm",
+      "args": "task --filter * dev",
+      "output": "npm_all.out"
+    },
+    "npm_exact": {
+      "cwd": "./npm",
+      "args": "task --filter foo dev",
+      "output": "npm_exact.out"
+    },
+    "npm_multi": {
+      "cwd": "./npm_multi",
+      "args": "task --filter multi-* dev",
+      "output": "npm_multi.out"
+    },
+    "npm_scoped_exact": {
+      "cwd": "./npm_scoped",
+      "args": "task --filter @foo/bar dev",
+      "output": "npm_scoped_exact.out"
+    },
+    "npm_scoped_multi": {
+      "cwd": "./npm_scoped",
+      "args": "task --filter @foo/* dev",
+      "output": "npm_scoped_multi.out"
+    },
+    "npm_workspace_order": {
+      "cwd": "./npm_workspace_order",
+      "args": "task --filter @foo/* dev",
+      "output": "npm_workspace_order.out"
+    },
+    "deno_all": {
+      "cwd": "./deno",
+      "args": "task --filter * dev",
+      "output": "deno_all.out"
+    },
+    "deno_exact": {
+      "cwd": "./deno",
+      "args": "task --filter foo dev",
+      "output": "deno_exact.out"
+    },
+    "deno_scoped_exact": {
+      "cwd": "./deno_scoped",
+      "args": "task --filter @foo/bar dev",
+      "output": "deno_scoped_exact.out"
+    },
+    "deno_scoped_multi": {
+      "cwd": "./deno_scoped",
+      "args": "task --filter @foo/* dev",
+      "output": "deno_scoped_multi.out"
+    },
+    "deno_workspace_order": {
+      "cwd": "./deno_workspace_order",
+      "args": "task --filter @foo/* dev",
+      "output": "deno_workspace_order.out"
+    }
+  }
+}

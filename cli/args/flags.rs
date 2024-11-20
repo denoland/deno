@@ -380,6 +380,8 @@ pub struct TaskFlags {
   pub cwd: Option<String>,
   pub task: Option<String>,
   pub is_run: bool,
+  pub recursive: bool,
+  pub filter: Option<String>,
   pub eval: bool,
 }
 
@@ -3047,12 +3049,26 @@ Evaluate a task from string
           .value_hint(ValueHint::DirPath),
       )
       .arg(
+        Arg::new("recursive")
+          .long("recursive")
+          .short('r')
+          .help("Run the task in all projects in the workspace")
+          .action(ArgAction::SetTrue),
+      )
+      .arg(
+        Arg::new("filter")
+        .long("filter")
+        .short('f')
+        .help("Filter members of the workspace by name - should be used with --recursive")
+        .value_parser(value_parser!(String)),
+      )
+      .arg(
         Arg::new("eval")
           .long("eval")
           .help(
             "Evaluate the passed value as if, it was a task in a configuration file",
           ).action(ArgAction::SetTrue)
-        )
+      )
       .arg(node_modules_dir_arg())
   })
 }
@@ -5212,10 +5228,15 @@ fn task_parse(
   unstable_args_parse(flags, matches, UnstableArgsConfig::ResolutionAndRuntime);
   node_modules_arg_parse(flags, matches);
 
+  let filter = matches.remove_one::<String>("filter");
+  let recursive = matches.get_flag("recursive") || filter.is_some();
+
   let mut task_flags = TaskFlags {
     cwd: matches.remove_one::<String>("cwd"),
     task: None,
     is_run: false,
+    recursive,
+    filter,
     eval: matches.get_flag("eval"),
   };
 
@@ -10418,6 +10439,8 @@ mod tests {
           cwd: None,
           task: Some("build".to_string()),
           is_run: false,
+          recursive: false,
+          filter: None,
           eval: false,
         }),
         argv: svec!["hello", "world"],
@@ -10433,6 +10456,8 @@ mod tests {
           cwd: None,
           task: Some("build".to_string()),
           is_run: false,
+          recursive: false,
+          filter: None,
           eval: false,
         }),
         ..Flags::default()
@@ -10447,6 +10472,56 @@ mod tests {
           cwd: Some("foo".to_string()),
           task: Some("build".to_string()),
           is_run: false,
+          recursive: false,
+          filter: None,
+          eval: false,
+        }),
+        ..Flags::default()
+      }
+    );
+
+    let r = flags_from_vec(svec!["deno", "task", "--filter", "*", "build"]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Task(TaskFlags {
+          cwd: None,
+          task: Some("build".to_string()),
+          is_run: false,
+          recursive: true,
+          filter: Some("*".to_string()),
+          eval: false,
+        }),
+        ..Flags::default()
+      }
+    );
+
+    let r = flags_from_vec(svec!["deno", "task", "--recursive", "build"]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Task(TaskFlags {
+          cwd: None,
+          task: Some("build".to_string()),
+          is_run: false,
+          recursive: true,
+          filter: None,
+          eval: false,
+        }),
+        ..Flags::default()
+      }
+    );
+
+    let r = flags_from_vec(svec!["deno", "task", "-r", "build"]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Task(TaskFlags {
+          cwd: None,
+          task: Some("build".to_string()),
+          is_run: false,
+          recursive: true,
+          filter: None,
           eval: false,
         }),
         ..Flags::default()
@@ -10461,6 +10536,8 @@ mod tests {
           cwd: None,
           task: Some("echo 1".to_string()),
           is_run: false,
+          recursive: false,
+          filter: None,
           eval: true,
         }),
         ..Flags::default()
@@ -10490,6 +10567,8 @@ mod tests {
           cwd: None,
           task: Some("build".to_string()),
           is_run: false,
+          recursive: false,
+          filter: None,
           eval: false,
         }),
         argv: svec!["--", "hello", "world"],
@@ -10508,6 +10587,8 @@ mod tests {
           cwd: Some("foo".to_string()),
           task: Some("build".to_string()),
           is_run: false,
+          recursive: false,
+          filter: None,
           eval: false,
         }),
         argv: svec!["--", "hello", "world"],
@@ -10527,6 +10608,8 @@ mod tests {
           cwd: None,
           task: Some("build".to_string()),
           is_run: false,
+          recursive: false,
+          filter: None,
           eval: false,
         }),
         argv: svec!["--"],
@@ -10545,6 +10628,8 @@ mod tests {
           cwd: None,
           task: Some("build".to_string()),
           is_run: false,
+          recursive: false,
+          filter: None,
           eval: false,
         }),
         argv: svec!["-1", "--test"],
@@ -10563,6 +10648,8 @@ mod tests {
           cwd: None,
           task: Some("build".to_string()),
           is_run: false,
+          recursive: false,
+          filter: None,
           eval: false,
         }),
         argv: svec!["--test"],
@@ -10582,6 +10669,8 @@ mod tests {
           cwd: None,
           task: Some("build".to_string()),
           is_run: false,
+          recursive: false,
+          filter: None,
           eval: false,
         }),
         log_level: Some(log::Level::Error),
@@ -10600,6 +10689,8 @@ mod tests {
           cwd: None,
           task: None,
           is_run: false,
+          recursive: false,
+          filter: None,
           eval: false,
         }),
         ..Flags::default()
@@ -10617,6 +10708,8 @@ mod tests {
           cwd: None,
           task: None,
           is_run: false,
+          recursive: false,
+          filter: None,
           eval: false,
         }),
         config_flag: ConfigFlag::Path("deno.jsonc".to_string()),
@@ -10635,6 +10728,8 @@ mod tests {
           cwd: None,
           task: None,
           is_run: false,
+          recursive: false,
+          filter: None,
           eval: false,
         }),
         config_flag: ConfigFlag::Path("deno.jsonc".to_string()),
