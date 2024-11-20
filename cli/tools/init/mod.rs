@@ -250,8 +250,8 @@ Deno.test(function addTest() {
 pub async fn init_npm(name: &str, args: Vec<String>) -> Result<i32, AnyError> {
   let script_name = format!("npm:create-{}", name);
 
-  fn print_manual_usage(script_name: &str) -> i32 {
-    log::info!("{}", cformat!("You can initialize project manually by running <u>deno run {}</> and applying desired permissions.", script_name));
+  fn print_manual_usage(script_name: &str, args: &[String]) -> i32 {
+    log::info!("{}", cformat!("You can initialize project manually by running <u>deno run {} {}</> and applying desired permissions.", script_name, args.join(" ")));
     1
   }
 
@@ -264,17 +264,17 @@ pub async fn init_npm(name: &str, args: Vec<String>) -> Result<i32, AnyError> {
       let _ = std::io::stdout().write(b"> ");
       let _ = std::io::stdout().flush();
       let mut answer = String::new();
-      if let Ok(_) = std::io::stdin().read_line(&mut answer) {
+      if std::io::stdin().read_line(&mut answer).is_ok() {
         let answer = answer.trim().to_ascii_lowercase();
         if answer != "y" {
-          return Ok(print_manual_usage(&script_name));
+          return Ok(print_manual_usage(&script_name, &args));
         } else {
           break;
         }
       }
     }
   } else {
-    return Ok(print_manual_usage(&script_name));
+    return Ok(print_manual_usage(&script_name, &args));
   }
 
   let new_flags = Flags {
