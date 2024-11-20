@@ -42,7 +42,7 @@ pub async fn execute_script(
   let factory = CliFactory::from_flags(flags);
   let cli_options = factory.cli_options()?;
   let start_dir = &cli_options.start_dir;
-  if !start_dir.has_deno_or_pkg_json() {
+  if !start_dir.has_deno_or_pkg_json() && !task_flags.eval {
     bail!("deno task couldn't find deno.json(c). See https://docs.deno.com/go/config")
   }
   let force_use_pkg_json =
@@ -90,6 +90,19 @@ pub async fn execute_script(
     concurrency: no_of_concurrent_tasks.into(),
   };
 
+  if task_flags.eval {
+    return task_runner
+      .run_deno_task(
+        &Url::from_directory_path(cli_options.initial_cwd()).unwrap(),
+        &"".to_string(),
+        &TaskDefinition {
+          command: task_flags.task.as_ref().unwrap().to_string(),
+          dependencies: vec![],
+          description: None,
+        },
+      )
+      .await;
+  }
   task_runner.run_task(task_name).await
 }
 

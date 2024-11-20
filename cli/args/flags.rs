@@ -380,6 +380,7 @@ pub struct TaskFlags {
   pub cwd: Option<String>,
   pub task: Option<String>,
   pub is_run: bool,
+  pub eval: bool,
 }
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
@@ -1386,7 +1387,7 @@ pub fn flags_from_vec(args: Vec<OsString>) -> clap::error::Result<Flags> {
       "repl" => repl_parse(&mut flags, &mut m)?,
       "run" => run_parse(&mut flags, &mut m, app, false)?,
       "serve" => serve_parse(&mut flags, &mut m, app)?,
-      "task" => task_parse(&mut flags, &mut m),
+      "task" => task_parse(&mut flags, &mut m, app)?,
       "test" => test_parse(&mut flags, &mut m)?,
       "types" => types_parse(&mut flags, &mut m),
       "uninstall" => uninstall_parse(&mut flags, &mut m),
@@ -2931,7 +2932,10 @@ fn task_subcommand() -> Command {
   <p(245)>deno task build</>
 
 List all available tasks:
-  <p(245)>deno task</>"
+  <p(245)>deno task</>
+  
+Evaluate a task from string
+  <p(245)>deno task --eval \"echo $(pwd)\"</>"
     ),
     UnstableArgsConfig::ResolutionAndRuntime,
   )
@@ -2947,6 +2951,13 @@ List all available tasks:
           .help("Specify the directory to run the task in")
           .value_hint(ValueHint::DirPath),
       )
+      .arg(
+        Arg::new("eval")
+          .long("eval")
+          .help(
+            "Evaluate the passed value as if, it was a task in a configuration file",
+          ).action(ArgAction::SetTrue)
+        )
       .arg(node_modules_dir_arg())
   })
 }
@@ -5066,7 +5077,11 @@ fn serve_parse(
   Ok(())
 }
 
-fn task_parse(flags: &mut Flags, matches: &mut ArgMatches) {
+fn task_parse(
+  flags: &mut Flags,
+  matches: &mut ArgMatches,
+  mut app: Command,
+) -> clap::error::Result<()> {
   flags.config_flag = matches
     .remove_one::<String>("config")
     .map(ConfigFlag::Path)
@@ -5079,6 +5094,7 @@ fn task_parse(flags: &mut Flags, matches: &mut ArgMatches) {
     cwd: matches.remove_one::<String>("cwd"),
     task: None,
     is_run: false,
+    eval: matches.get_flag("eval"),
   };
 
   if let Some((task, mut matches)) = matches.remove_subcommand() {
@@ -5091,9 +5107,15 @@ fn task_parse(flags: &mut Flags, matches: &mut ArgMatches) {
         .flatten()
         .filter_map(|arg| arg.into_string().ok()),
     );
+  } else if task_flags.eval {
+    return Err(app.find_subcommand_mut("task").unwrap().error(
+      clap::error::ErrorKind::MissingRequiredArgument,
+      "[TASK] must be specified when using --eval",
+    ));
   }
 
   flags.subcommand = DenoSubcommand::Task(task_flags);
+  Ok(())
 }
 
 fn parallel_arg_parse(matches: &mut ArgMatches) -> Option<NonZeroUsize> {
@@ -10274,6 +10296,7 @@ mod tests {
           cwd: None,
           task: Some("build".to_string()),
           is_run: false,
+          eval: false,
         }),
         argv: svec!["hello", "world"],
         ..Flags::default()
@@ -10288,6 +10311,7 @@ mod tests {
           cwd: None,
           task: Some("build".to_string()),
           is_run: false,
+          eval: false,
         }),
         ..Flags::default()
       }
@@ -10301,10 +10325,28 @@ mod tests {
           cwd: Some("foo".to_string()),
           task: Some("build".to_string()),
           is_run: false,
+          eval: false,
         }),
         ..Flags::default()
       }
     );
+
+    let r = flags_from_vec(svec!["deno", "task", "--eval", "echo 1"]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Task(TaskFlags {
+          cwd: None,
+          task: Some("echo 1".to_string()),
+          is_run: false,
+          eval: true,
+        }),
+        ..Flags::default()
+      }
+    );
+
+    let r = flags_from_vec(svec!["deno", "task", "--eval"]);
+    assert!(r.is_err());
   }
 
   #[test]
@@ -10326,6 +10368,7 @@ mod tests {
           cwd: None,
           task: Some("build".to_string()),
           is_run: false,
+          eval: false,
         }),
         argv: svec!["--", "hello", "world"],
         config_flag: ConfigFlag::Path("deno.json".to_owned()),
@@ -10343,6 +10386,7 @@ mod tests {
           cwd: Some("foo".to_string()),
           task: Some("build".to_string()),
           is_run: false,
+          eval: false,
         }),
         argv: svec!["--", "hello", "world"],
         ..Flags::default()
@@ -10361,6 +10405,7 @@ mod tests {
           cwd: None,
           task: Some("build".to_string()),
           is_run: false,
+          eval: false,
         }),
         argv: svec!["--"],
         ..Flags::default()
@@ -10378,6 +10423,7 @@ mod tests {
           cwd: None,
           task: Some("build".to_string()),
           is_run: false,
+          eval: false,
         }),
         argv: svec!["-1", "--test"],
         ..Flags::default()
@@ -10395,6 +10441,7 @@ mod tests {
           cwd: None,
           task: Some("build".to_string()),
           is_run: false,
+          eval: false,
         }),
         argv: svec!["--test"],
         ..Flags::default()
@@ -10413,6 +10460,7 @@ mod tests {
           cwd: None,
           task: Some("build".to_string()),
           is_run: false,
+          eval: false,
         }),
         log_level: Some(log::Level::Error),
         ..Flags::default()
@@ -10430,6 +10478,7 @@ mod tests {
           cwd: None,
           task: None,
           is_run: false,
+          eval: false,
         }),
         ..Flags::default()
       }
@@ -10446,6 +10495,7 @@ mod tests {
           cwd: None,
           task: None,
           is_run: false,
+          eval: false,
         }),
         config_flag: ConfigFlag::Path("deno.jsonc".to_string()),
         ..Flags::default()
@@ -10463,6 +10513,7 @@ mod tests {
           cwd: None,
           task: None,
           is_run: false,
+          eval: false,
         }),
         config_flag: ConfigFlag::Path("deno.jsonc".to_string()),
         ..Flags::default()
