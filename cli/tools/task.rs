@@ -46,6 +46,7 @@ enum TaskKind {
 #[derive(Debug, Clone)]
 struct TaskInfo {
   kind: TaskKind,
+  folder_url: Url,
   command: String,
   description: Option<String>,
   dependencies: Vec<String>,
@@ -262,7 +263,10 @@ pub async fn execute_script(
       .run_deno_task(
         &Url::from_directory_path(cli_options.initial_cwd()).unwrap(),
         &"".to_string(),
-        &TaskDefinition {
+        &TaskInfo {
+          kind: TaskKind::Deno,
+          folder_url: Url::from_directory_path(cli_options.initial_cwd())
+            .unwrap(),
           command: task_flags.task.as_ref().unwrap().to_string(),
           dependencies: vec![],
           description: None,
@@ -299,6 +303,7 @@ fn extract_tasks(
         name.to_string(),
         TaskInfo {
           kind: TaskKind::Deno,
+          folder_url: deno_json.folder_url.clone(),
           command: task.command.to_string(),
           dependencies: task.dependencies.clone(),
           description: task.description.clone(),
@@ -320,6 +325,7 @@ fn extract_tasks(
         name.to_string(),
         TaskInfo {
           kind: TaskKind::Npm,
+          folder_url: pkg_json.folder_url.clone(),
           command: task.to_string(),
           dependencies: vec![],
           description: None,
@@ -691,8 +697,8 @@ fn print_available_tasks(
   tasks_config: &PackageTaskInfo,
 ) -> Result<(), std::io::Error> {
   writeln!(writer, "{}", colors::green("Available tasks:"))?;
-  // let is_cwd_root_dir = tasks_config.root.is_none();
-  let is_cwd_root_dir = false;
+  let is_cwd_root_dir =
+    tasks_config.url.as_ref() == workspace_dir.workspace.root_dir().as_ref();
 
   if tasks_config.tasks.is_empty() {
     writeln!(
@@ -712,8 +718,8 @@ fn print_available_tasks(
   let mut task_descriptions = Vec::with_capacity(tasks_config.tasks.len());
 
   for (name, task) in &tasks_config.tasks {
-    let is_root = *tasks_config.url.as_ref()
-      == *workspace_dir.workspace.root_dir().as_ref();
+    let is_root = !is_cwd_root_dir
+      && task.folder_url == *workspace_dir.workspace.root_dir().as_ref();
 
     task_descriptions.push(AvailableTaskDescription {
       is_root,
@@ -726,6 +732,8 @@ fn print_available_tasks(
       task: task.clone(),
     });
   }
+
+  task_descriptions.sort_by_cached_key(|d| d.name.to_string());
 
   for desc in task_descriptions {
     writeln!(
