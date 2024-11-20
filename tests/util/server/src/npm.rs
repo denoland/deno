@@ -195,7 +195,7 @@ fn append_dir_all<W: std::io::Write>(
   builder: &mut tar::Builder<W>,
   path: &Path,
   src_path: &Path,
-) -> std::io::Result<()> {
+) -> Result<()> {
   builder.follow_symlinks(true);
   let mode = tar::HeaderMode::Deterministic;
   builder.mode(mode);
@@ -219,7 +219,27 @@ fn append_dir_all<W: std::io::Write>(
   }
   entries.sort_by(|(_, a), (_, b)| a.cmp(b));
   for (src, dest) in entries {
-    builder.append_path_with_name(src, dest)?;
+    let mut header = tar::Header::new_gnu();
+    let metadata = src.metadata().with_context(|| {
+      format!("trying to get metadata for {}", src.display())
+    })?;
+    header.set_metadata_in_mode(&metadata, mode);
+    // this is what `tar` sets the mtime to on unix in deterministic mode, on windows it uses a different
+    // value, which causes the tarball to have a different hash on windows. force it to be the same
+    // to ensure the same output on all platforms
+    header.set_mtime(1153704088);
+
+    let data = if src.is_file() {
+      Box::new(
+        fs::File::open(&src)
+          .with_context(|| format!("trying to open file {}", src.display()))?,
+      ) as Box<dyn std::io::Read>
+    } else {
+      Box::new(std::io::empty()) as Box<dyn std::io::Read>
+    };
+    builder
+      .append_data(&mut header, dest, data)
+      .with_context(|| "appending data")?;
   }
   Ok(())
 }
