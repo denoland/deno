@@ -18,7 +18,7 @@ use std::io::IsTerminal;
 use std::io::Write;
 use std::path::Path;
 
-pub async fn init_project(init_flags: InitFlags) -> Result<(), AnyError> {
+pub async fn init_project(init_flags: InitFlags) -> Result<i32, AnyError> {
   if let Some(package) = &init_flags.package {
     return init_npm(package, init_flags.package_args).await;
   }
@@ -248,7 +248,7 @@ Deno.test(function addTest() {
     info!("  {}", colors::gray("# Run the tests"));
     info!("  deno test");
   }
-  Ok(())
+  Ok(0)
 }
 
 async fn init_npm(name: &str, args: Vec<String>) -> Result<i32, AnyError> {
@@ -265,7 +265,7 @@ async fn init_npm(name: &str, args: Vec<String>) -> Result<i32, AnyError> {
       script_name
     );
     loop {
-      std::io::stdout().write(b"> ")?;
+      let _ = std::io::stdout().write(b"> ")?;
       std::io::stdout().flush()?;
       let mut answer = String::new();
       if std::io::stdin().read_line(&mut answer).is_ok() {
