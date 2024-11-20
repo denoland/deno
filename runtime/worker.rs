@@ -78,7 +78,7 @@ pub fn validate_import_attributes_callback(
   for (key, value) in attributes {
     let msg = if key != "type" {
       Some(format!("\"{key}\" attribute is not supported."))
-    } else if value != "json" {
+    } else if value != "json" && value != "$$deno-core-internal-wasm-module" {
       Some(format!("\"{value}\" is not a valid module type."))
     } else {
       None
@@ -407,7 +407,9 @@ impl MainWorker {
       ),
       deno_cron::deno_cron::init_ops_and_esm(LocalCronHandler::new()),
       deno_napi::deno_napi::init_ops_and_esm::<PermissionsContainer>(),
-      deno_http::deno_http::init_ops_and_esm::<DefaultHttpPropertyExtractor>(),
+      deno_http::deno_http::init_ops_and_esm::<DefaultHttpPropertyExtractor>(
+        deno_http::Options::default(),
+      ),
       deno_io::deno_io::init_ops_and_esm(Some(options.stdio)),
       deno_fs::deno_fs::init_ops_and_esm::<PermissionsContainer>(
         services.fs.clone(),

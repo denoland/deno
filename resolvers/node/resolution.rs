@@ -202,7 +202,7 @@ impl<TEnv: NodeResolverEnv> NodeResolver<TEnv> {
     mode: NodeResolutionMode,
   ) -> Result<Url, NodeResolveError> {
     if should_be_treated_as_relative_or_absolute_path(specifier) {
-      Ok(referrer.join(specifier).map_err(|err| {
+      Ok(node_join_url(referrer, specifier).map_err(|err| {
         NodeResolveRelativeJoinError {
           path: specifier.to_string(),
           base: referrer.clone(),
@@ -1761,6 +1761,17 @@ fn get_module_name_from_builtin_node_module_specifier(
 
   let (_, specifier) = specifier.as_str().split_once(':')?;
   Some(specifier)
+}
+
+/// Node is more lenient joining paths than the url crate is,
+/// so this function handles that.
+fn node_join_url(url: &Url, path: &str) -> Result<Url, url::ParseError> {
+  if let Some(suffix) = path.strip_prefix(".//") {
+    // specifier had two leading slashes
+    url.join(&format!("./{}", suffix))
+  } else {
+    url.join(path)
+  }
 }
 
 #[cfg(test)]

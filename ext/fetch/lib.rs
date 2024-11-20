@@ -67,6 +67,7 @@ use http_body_util::BodyExt;
 use hyper::body::Frame;
 use hyper_util::client::legacy::connect::HttpConnector;
 use hyper_util::client::legacy::connect::HttpInfo;
+use hyper_util::client::legacy::Builder as HyperClientBuilder;
 use hyper_util::rt::TokioExecutor;
 use hyper_util::rt::TokioTimer;
 use serde::Deserialize;
@@ -85,6 +86,16 @@ pub struct Options {
   pub user_agent: String,
   pub root_cert_store_provider: Option<Arc<dyn RootCertStoreProvider>>,
   pub proxy: Option<Proxy>,
+  /// A callback to customize HTTP client configuration.
+  ///
+  /// The settings applied with this hook may be overridden by the options
+  /// provided through `Deno.createHttpClient()` API. For instance, if the hook
+  /// calls [`hyper_util::client::legacy::Builder::pool_max_idle_per_host`] with
+  /// a value of 99, and a user calls `Deno.createHttpClient({ poolMaxIdlePerHost: 42 })`,
+  /// the value that will take effect is 42.
+  ///
+  /// For more info on what can be configured, see [`hyper_util::client::legacy::Builder`].
+  pub client_builder_hook: Option<fn(HyperClientBuilder) -> HyperClientBuilder>,
   #[allow(clippy::type_complexity)]
   pub request_builder_hook: Option<
     fn(&mut http::Request<ReqBody>) -> Result<(), deno_core::error::AnyError>,
@@ -112,6 +123,7 @@ impl Default for Options {
       user_agent: "".to_string(),
       root_cert_store_provider: None,
       proxy: None,
+      client_builder_hook: None,
       request_builder_hook: None,
       unsafely_ignore_certificate_errors: None,
       client_cert_chain_and_key: TlsKeys::Null,
@@ -271,6 +283,7 @@ pub fn create_client_from_options(
       pool_idle_timeout: None,
       http1: true,
       http2: true,
+      client_builder_hook: options.client_builder_hook,
     },
   )
 }
@@ -908,6 +921,7 @@ where
       ),
       http1: args.http1,
       http2: args.http2,
+      client_builder_hook: options.client_builder_hook,
     },
   )?;
 
@@ -929,6 +943,7 @@ pub struct CreateHttpClientOptions {
   pub pool_idle_timeout: Option<Option<u64>>,
   pub http1: bool,
   pub http2: bool,
+  pub client_builder_hook: Option<fn(HyperClientBuilder) -> HyperClientBuilder>,
 }
 
 impl Default for CreateHttpClientOptions {
@@ -944,6 +959,7 @@ impl Default for CreateHttpClientOptions {
       pool_idle_timeout: None,
       http1: true,
       http2: true,
+      client_builder_hook: None,
     }
   }
 }
@@ -999,10 +1015,13 @@ pub fn create_http_client(
     HttpClientCreateError::InvalidUserAgent(user_agent.to_string())
   })?;
 
-  let mut builder =
-    hyper_util::client::legacy::Builder::new(TokioExecutor::new());
+  let mut builder = HyperClientBuilder::new(TokioExecutor::new());
   builder.timer(TokioTimer::new());
   builder.pool_timer(TokioTimer::new());
+
+  if let Some(client_builder_hook) = options.client_builder_hook {
+    builder = client_builder_hook(builder);
+  }
 
   let mut proxies = proxy::from_env();
   if let Some(proxy) = options.proxy {

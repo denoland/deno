@@ -10,7 +10,7 @@ const server = Deno.serve(
     port: 0,
     onListen({ port }) {
       const command = new Deno.Command(Deno.execPath(), {
-        args: ["run", "-A", "--unstable-otel", Deno.args[0]],
+        args: ["run", "-A", "-q", "--unstable-otel", Deno.args[0]],
         env: {
           OTEL_EXPORTER_OTLP_PROTOCOL: "http/json",
           OTEL_EXPORTER_OTLP_ENDPOINT: `http://localhost:${port}`,
