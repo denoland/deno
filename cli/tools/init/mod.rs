@@ -7,11 +7,14 @@ use crate::args::PackagesAllowedScripts;
 use crate::args::PermissionFlags;
 use crate::args::RunFlags;
 use crate::colors;
+use color_print::cformat;
+use color_print::cstr;
 use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
 use deno_core::serde_json::json;
 use deno_runtime::WorkerExecutionMode;
 use log::info;
+use std::io::IsTerminal;
 use std::io::Write;
 use std::path::Path;
 
@@ -245,8 +248,35 @@ Deno.test(function addTest() {
 }
 
 pub async fn init_npm(name: &str, args: Vec<String>) -> Result<i32, AnyError> {
-  // TODO: do prompt
+  let name = name.strip_prefix("npm:").unwrap();
   let script_name = format!("npm:create-{}", name);
+
+  fn print_manual_usage(script_name: &str) -> i32 {
+    log::info!("{}", cformat!("You can initialize project manually by running <u>deno run {}</> and applying desired permissions.", script_name));
+    1
+  }
+
+  if std::io::stdin().is_terminal() {
+    log::info!(
+      cstr!("Deno requires <u>all permissions</> to create a new <g>{}</> project. Do you want to continue? <p(245)>[y/n]</>"),
+      name
+    );
+    loop {
+      let _ = std::io::stdout().write(b"> ");
+      let _ = std::io::stdout().flush();
+      let mut answer = String::new();
+      if let Ok(_) = std::io::stdin().read_line(&mut answer) {
+        let answer = answer.trim().to_ascii_lowercase();
+        if answer != "y" {
+          return Ok(print_manual_usage(&script_name));
+        } else {
+          break;
+        }
+      }
+    }
+  } else {
+    return Ok(print_manual_usage(&script_name));
+  }
 
   let new_flags = Flags {
     permissions: PermissionFlags {
