@@ -1166,6 +1166,7 @@ static ENV_VARIABLES_HELP: &str = cstr!(
   <g>DENO_NO_PACKAGE_JSON</>   Disables auto-resolution of package.json
   <g>DENO_NO_UPDATE_CHECK</>   Set to disable checking if a newer Deno version is available
   <g>DENO_TLS_CA_STORE</>      Comma-separated list of order dependent certificate stores.
+  <g>DENO_TRACE_PERMISSIONS</> Environmental variable to enable stack traces in permission prompts.
                          Possible values: "system", "mozilla".
                           <p(245)>(defaults to "mozilla")</>
   <g>HTTP_PROXY</>             Proxy address for HTTP requests
@@ -1175,8 +1176,7 @@ static ENV_VARIABLES_HELP: &str = cstr!(
   <g>NO_COLOR</>               Set to disable color
   <g>NO_PROXY</>               Comma-separated list of hosts which do not use a proxy
                           <p(245)>(module downloads, fetch)</>
-  <g>NPM_CONFIG_REGISTRY</>    URL to use for the npm registry.
-  <g>DENO_TRACE_PERMISSIONS</> Environmental variable to enable stack traces in permission prompts."#
+  <g>NPM_CONFIG_REGISTRY</>    URL to use for the npm registry."#
 );
 
 static DENO_HELP: &str = cstr!(

@@ -350,7 +350,7 @@ impl PermissionPrompter for TtyPrompter {
     };
 
     // output everything in one shot to make the tests more reliable
-    {
+    let stack_lines_count = {
       let mut output = String::new();
       write!(&mut output, "┏ {PERMISSION_EMOJI}  ").unwrap();
       write!(&mut output, "{}", colors::bold("Deno requests ")).unwrap();
@@ -364,7 +364,7 @@ impl PermissionPrompter for TtyPrompter {
         )
         .unwrap();
       }
-      if let Some(stack) = stack {
+      let stack_lines_count = if let Some(stack) = stack {
         let len = stack.len();
         for (idx, frame) in stack.into_iter().enumerate() {
           writeln!(
@@ -377,7 +377,14 @@ impl PermissionPrompter for TtyPrompter {
           )
           .unwrap();
         }
-      }
+        len
+      } else {
+        writeln!(
+          &mut output,
+          "┠─ To see a stack trace for this prompt, set the DENO_TRACE_PERMISSIONS environmental variable.",
+        ).unwrap();
+        1
+      };
       let msg = format!(
         "Learn more at: {}",
         colors::cyan_with_underline(&format!(
@@ -396,7 +403,9 @@ impl PermissionPrompter for TtyPrompter {
       write!(&mut output, " {opts} > ").unwrap();
 
       stderr_lock.write_all(output.as_bytes()).unwrap();
-    }
+
+      stack_lines_count
+    };
 
     let value = loop {
       // Clear stdin each time we loop around in case the user accidentally pasted
@@ -415,30 +424,24 @@ impl PermissionPrompter for TtyPrompter {
       if result.is_err() || input.len() != 1 {
         break PromptResponse::Deny;
       };
+
+      let clear_n = if api_name.is_some() { 5 } else { 4 } + stack_lines_count;
+
       match input.as_bytes()[0] as char {
         'y' | 'Y' => {
-          clear_n_lines(
-            &mut stderr_lock,
-            if api_name.is_some() { 5 } else { 4 },
-          );
+          clear_n_lines(&mut stderr_lock, clear_n);
           let msg = format!("Granted {message}.");
           writeln!(stderr_lock, "✅ {}", colors::bold(&msg)).unwrap();
           break PromptResponse::Allow;
         }
         'n' | 'N' | '\x1b' => {
-          clear_n_lines(
-            &mut stderr_lock,
-            if api_name.is_some() { 5 } else { 4 },
-          );
+          clear_n_lines(&mut stderr_lock, clear_n);
           let msg = format!("Denied {message}.");
           writeln!(stderr_lock, "❌ {}", colors::bold(&msg)).unwrap();
           break PromptResponse::Deny;
         }
         'A' if is_unary => {
-          clear_n_lines(
-            &mut stderr_lock,
-            if api_name.is_some() { 5 } else { 4 },
-          );
+          clear_n_lines(&mut stderr_lock, clear_n);
           let msg = format!("Granted all {name} access.");
           writeln!(stderr_lock, "✅ {}", colors::bold(&msg)).unwrap();
           break PromptResponse::AllowAll;
