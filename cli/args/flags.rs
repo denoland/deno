@@ -467,11 +467,25 @@ pub enum DenoSubcommand {
   Serve(ServeFlags),
   Task(TaskFlags),
   Test(TestFlags),
+  Outdated(OutdatedFlags),
   Types,
   Upgrade(UpgradeFlags),
   Vendor,
   Publish(PublishFlags),
   Help(HelpFlags),
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum OutdatedKind {
+  Update { latest: bool },
+  PrintOutdated { compatible: bool },
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct OutdatedFlags {
+  pub filters: Vec<String>,
+  pub recursive: bool,
+  pub kind: OutdatedKind,
 }
 
 impl DenoSubcommand {
@@ -1205,6 +1219,7 @@ static DENO_HELP: &str = cstr!(
                   <p(245)>deno add jsr:@std/assert  |  deno add npm:express</>
     <g>install</>      Installs dependencies either in the local project or globally to a bin directory
     <g>uninstall</>    Uninstalls a dependency or an executable script in the installation root's bin directory
+    <g>outdated</>     Find and update outdated dependencies
     <g>remove</>       Remove dependencies from the configuration file
 
   <y>Tooling:</>
@@ -1387,6 +1402,7 @@ pub fn flags_from_vec(args: Vec<OsString>) -> clap::error::Result<Flags> {
       "jupyter" => jupyter_parse(&mut flags, &mut m),
       "lint" => lint_parse(&mut flags, &mut m)?,
       "lsp" => lsp_parse(&mut flags, &mut m),
+      "outdated" => outdated_parse(&mut flags, &mut m)?,
       "repl" => repl_parse(&mut flags, &mut m)?,
       "run" => run_parse(&mut flags, &mut m, app, false)?,
       "serve" => serve_parse(&mut flags, &mut m, app)?,
@@ -1629,6 +1645,7 @@ pub fn clap_root() -> Command {
         .subcommand(json_reference_subcommand())
         .subcommand(jupyter_subcommand())
         .subcommand(uninstall_subcommand())
+        .subcommand(outdated_subcommand())
         .subcommand(lsp_subcommand())
         .subcommand(lint_subcommand())
         .subcommand(publish_subcommand())
@@ -2629,6 +2646,83 @@ fn jupyter_subcommand() -> Command {
         .value_parser(value_parser!(String))
         .value_hint(ValueHint::FilePath)
         .conflicts_with("install"))
+}
+
+fn outdated_subcommand() -> Command {
+  command(
+    "outdated",
+    cstr!("Find and update outdated dependencies.
+By default, outdated dependencies are only displayed.
+
+Display outdated dependencies:
+  <p(245)>deno outdated</>
+  <p(245)>deno outdated --compatible</>
+  
+Update dependencies:
+  <p(245)>deno outdated --update</>
+  <p(245)>deno outdated --update --latest</>
+  <p(245)>deno outdated --update</>
+
+Filters can be used to select which packages to act on. Filters can include wildcards (*) to match multiple packages.
+  <p(245)>deno outdated --update --latest \"@std/*\"</>
+  <p(245)>deno outdated --update --latest \"react*\"</>
+Note that filters act on their aliases configured in deno.json / package.json, not the actual package names:
+  Given \"foobar\": \"npm:react@17.0.0\" in deno.json or package.json, the filter \"foobar\" would update npm:react to
+  the latest version.
+  <p(245)>deno outdated --update --latest foobar</>
+Filters can be combined, and negative filters can be used to exclude results:
+  <p(245)>deno outdated --update --latest \"@std/*\" \"!@std/fmt*\"</>
+
+Specific version requirements to update to can be specified:
+  <p(245)>deno outdated --update @std/fmt@^1.0.2</>
+"),
+    UnstableArgsConfig::None,
+  )
+  .defer(|cmd| {
+    cmd
+      .arg(
+        Arg::new("filters")
+          .num_args(0..)
+          .action(ArgAction::Append)
+          .help(concat!("Filters selecting which packages to act on. Can include wildcards (*) to match multiple packages. ",
+                      "If a version requirement is specified, the matching packages will be updated to the given requirement."),
+          )
+      )
+      .arg(no_lock_arg())
+      .arg(lock_arg())
+      .arg(
+        Arg::new("latest")
+          .long("latest")
+          .action(ArgAction::SetTrue)
+          .help(
+            "Update to the latest version, regardless of semver constraints",
+          )
+          .requires("update")
+          .conflicts_with("compatible"),
+      )
+      .arg(
+        Arg::new("update")
+          .long("update")
+          .short('u')
+          .action(ArgAction::SetTrue)
+          .conflicts_with("compatible")
+          .help("Update dependency versions"),
+      )
+      .arg(
+        Arg::new("compatible")
+          .long("compatible")
+          .action(ArgAction::SetTrue)
+          .help("Only output versions that satisfy semver requirements")
+          .conflicts_with("update"),
+      )
+      .arg(
+        Arg::new("recursive")
+          .long("recursive")
+          .short('r')
+          .action(ArgAction::SetTrue)
+          .help("include all workspace members"),
+      )
+  })
 }
 
 fn uninstall_subcommand() -> Command {
@@ -4365,6 +4459,31 @@ fn remove_parse(flags: &mut Flags, matches: &mut ArgMatches) {
   flags.subcommand = DenoSubcommand::Remove(RemoveFlags {
     packages: matches.remove_many::<String>("packages").unwrap().collect(),
   });
+}
+
+fn outdated_parse(
+  flags: &mut Flags,
+  matches: &mut ArgMatches,
+) -> clap::error::Result<()> {
+  let filters = match matches.remove_many::<String>("filters") {
+    Some(f) => f.collect(),
+    None => vec![],
+  };
+  let recursive = matches.get_flag("recursive");
+  let update = matches.get_flag("update");
+  let kind = if update {
+    let latest = matches.get_flag("latest");
+    OutdatedKind::Update { latest }
+  } else {
+    let compatible = matches.get_flag("compatible");
+    OutdatedKind::PrintOutdated { compatible }
+  };
+  flags.subcommand = DenoSubcommand::Outdated(OutdatedFlags {
+    filters,
+    recursive,
+    kind,
+  });
+  Ok(())
 }
 
 fn bench_parse(
@@ -11406,6 +11525,79 @@ Usage: deno repl [OPTIONS] [-- [ARGS]...]\n"
       let r =
         flags_from_vec(svec!["deno", "run", "--allow-all", flag, "foo.ts"]);
       assert!(r.is_err());
+    }
+  }
+
+  #[test]
+  fn outdated_subcommand() {
+    let cases = [
+      (
+        svec![],
+        OutdatedFlags {
+          filters: vec![],
+          kind: OutdatedKind::PrintOutdated { compatible: false },
+          recursive: false,
+        },
+      ),
+      (
+        svec!["--recursive"],
+        OutdatedFlags {
+          filters: vec![],
+          kind: OutdatedKind::PrintOutdated { compatible: false },
+          recursive: true,
+        },
+      ),
+      (
+        svec!["--recursive", "--compatible"],
+        OutdatedFlags {
+          filters: vec![],
+          kind: OutdatedKind::PrintOutdated { compatible: true },
+          recursive: true,
+        },
+      ),
+      (
+        svec!["--update"],
+        OutdatedFlags {
+          filters: vec![],
+          kind: OutdatedKind::Update { latest: false },
+          recursive: false,
+        },
+      ),
+      (
+        svec!["--update", "--latest"],
+        OutdatedFlags {
+          filters: vec![],
+          kind: OutdatedKind::Update { latest: true },
+          recursive: false,
+        },
+      ),
+      (
+        svec!["--update", "--recursive"],
+        OutdatedFlags {
+          filters: vec![],
+          kind: OutdatedKind::Update { latest: false },
+          recursive: true,
+        },
+      ),
+      (
+        svec!["--update", "@foo/bar"],
+        OutdatedFlags {
+          filters: svec!["@foo/bar"],
+          kind: OutdatedKind::Update { latest: false },
+          recursive: false,
+        },
+      ),
+    ];
+    for (input, expected) in cases {
+      let mut args = svec!["deno", "outdated"];
+      args.extend(input);
+      let r = flags_from_vec(args.clone()).unwrap();
+      assert_eq!(
+        r.subcommand,
+        DenoSubcommand::Outdated(expected),
+        "incorrect result for args: {:?}",
+        args
+      );
     }
   }
 }
