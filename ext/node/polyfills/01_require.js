@@ -1061,6 +1061,8 @@ Module.prototype._compile = function (content, filename, format) {
 };
 
 Module._extensions[".js"] = function (module, filename) {
+  // We don't define everything on Module.extensions in
+  // order to prevent probing
   if (
     StringPrototypeEndsWith(filename, ".js") ||
     StringPrototypeEndsWith(filename, ".ts") ||
@@ -1077,6 +1079,10 @@ Module._extensions[".js"] = function (module, filename) {
   }
 };
 
+Module._extensions[".cjs"] = loadCjs;
+Module._extensions[".mjs"] = loadESMFromCJS;
+Module._extensions[".wasm"] = loadESMFromCJS;
+
 function loadMaybeCjs(module, filename) {
   const content = op_require_read_file(filename);
   const format = op_require_is_maybe_cjs(filename) ? undefined : "module";
@@ -1087,10 +1093,6 @@ function loadCjs(module, filename) {
   const content = op_require_read_file(filename);
   module._compile(content, filename, "commonjs");
 }
-
-Module._extensions[".cjs"] = loadCjs;
-Module._extensions[".mjs"] = loadESMFromCJS;
-Module._extensions[".wasm"] = loadESMFromCJS;
 
 function loadESMFromCJS(module, filename, code) {
   const namespace = op_import_sync(
