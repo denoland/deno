@@ -63,3 +63,15 @@ function foo(): number {
 let a:number
 </script>
 ```
+
+
+```sql
+  seLect * , biz, buz
+from baz;
+```
+
+```sql
+-- deno-fmt-ignore-file
+  seLect * , biz, buz
+from baz;
+```

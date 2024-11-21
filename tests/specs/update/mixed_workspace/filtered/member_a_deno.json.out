@@ -1,0 +1,10 @@
+{
+  "name": "@denotest/member-a",
+  "exports": "./mod.ts",
+  "imports": {
+    "@denotest/add": "jsr:@denotest/add@^1.0.0",
+    "@denotest/add/": "jsr:/@denotest/add@^1.0.0/",
+    "@denotest/with-subpath": "jsr:@denotest/multiple-exports@0.5.0/data-json",
+    "@denotest/breaking-change-between-versions": "npm:@denotest/breaking-change-between-versions@1.0.0"
+  }
+}

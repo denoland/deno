@@ -5609,7 +5609,7 @@ mod tests {
     let (_tx, rx) = mpsc::unbounded_channel();
     let state =
       State::new(state_snapshot, Default::default(), Default::default(), rx);
-    let mut op_state = OpState::new(None);
+    let mut op_state = OpState::new(None, None);
     op_state.put(state);
     op_state
   }
