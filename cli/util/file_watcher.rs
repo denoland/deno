@@ -186,12 +186,9 @@ impl WatcherCommunicator {
   pub fn show_path_changed(&self, changed_paths: Option<Vec<PathBuf>>) {
     if let Some(paths) = changed_paths {
       if !paths.is_empty() {
-        self.print(
-          format!("Restarting! File change detected: {:?}", paths[0])
-            .to_string(),
-        )
+        self.print(format!("Restarting! File change detected: {:?}", paths[0]))
       } else {
-        self.print(format!("Restarting! File change detected.").to_string())
+        self.print("Restarting! File change detected.".to_string())
       }
     }
   }
