@@ -1,0 +1,19 @@
+{
+  "imports": {
+    "@denotest/add": "jsr:@denotest/add@^0.2.0",
+    "@denotest/add/": "jsr:/@denotest/add@^0.2.0/",
+    "@denotest/subtract": "jsr:@denotest/subtract@^0.2.0",
+    "@denotest/with-subpath": "jsr:@denotest/multiple-exports@0.2.0/data-json",
+    "@denotest/breaking-change-between-versions": "npm:@denotest/breaking-change-between-versions@1.0.0",
+    "@denotest/bin": "npm:@denotest/bin@0.6.0",
+    "@denotest/has-patch-versions": "npm:@denotest/has-patch-versions@^0.1.0"
+  },
+  "scopes": {
+    "/foo/": {
+      "@denotest/add": "jsr:@denotest/add@^0.2.0",
+      "@denotest/add/": "jsr:/@denotest/add@^0.2.0/",
+      "@denotest/subtract": "jsr:@denotest/subtract@^0.2.0",
+      "@denotest/with-subpath": "jsr:@denotest/multiple-exports@0.2.0/data-json"
+    }
+  }
+}

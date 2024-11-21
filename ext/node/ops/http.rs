@@ -88,7 +88,7 @@ impl deno_core::Resource for NodeHttpClientResponse {
   }
 }
 
-#[op2(async)]
+#[op2(async, stack_trace)]
 #[serde]
 pub async fn op_node_http_request_with_conn<P>(
   state: Rc<RefCell<OpState>>,

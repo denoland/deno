@@ -397,7 +397,7 @@ impl FetchPermissions for deno_permissions::PermissionsContainer {
   }
 }
 
-#[op2]
+#[op2(stack_trace)]
 #[serde]
 #[allow(clippy::too_many_arguments)]
 pub fn op_fetch<FP>(
@@ -866,7 +866,7 @@ fn default_true() -> bool {
   true
 }
 
-#[op2]
+#[op2(stack_trace)]
 #[smi]
 pub fn op_fetch_custom_client<FP>(
   state: &mut OpState,
