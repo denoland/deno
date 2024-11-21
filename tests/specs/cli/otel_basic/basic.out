@@ -1,12 +1,70 @@
 {
   "spans": [
     {
-      "traceId": "10000000000000000000000000000002",
-      "spanId": "1000000000000003",
+      "traceId": "00000000000000000000000000000001",
+      "spanId": "0000000000000002",
       "traceState": "",
-      "parentSpanId": "1000000000000001",
+      "parentSpanId": "",
       "flags": 1,
-      "name": "inner span",
+      "name": "GET",
+      "kind": 1,
+      "startTimeUnixNano": "[WILDCARD]",
+      "endTimeUnixNano": "[WILDCARD]",
+      "attributes": [
+        {
+          "key": "http.request.method",
+          "value": {
+            "stringValue": "GET"
+          }
+        },
+        {
+          "key": "url.full",
+          "value": {
+            "stringValue": "http://localhost:[WILDCARD]/"
+          }
+        },
+        {
+          "key": "url.scheme",
+          "value": {
+            "stringValue": "http"
+          }
+        },
+        {
+          "key": "url.path",
+          "value": {
+            "stringValue": "/"
+          }
+        },
+        {
+          "key": "url.query",
+          "value": {
+            "stringValue": ""
+          }
+        },
+        {
+          "key": "http.response.status_code",
+          "value": {
+            "stringValue": "200"
+          }
+        }
+      ],
+      "droppedAttributesCount": 0,
+      "events": [],
+      "droppedEventsCount": 0,
+      "links": [],
+      "droppedLinksCount": 0,
+      "status": {
+        "message": "",
+        "code": 0
+      }
+    },
+    {
+      "traceId": "00000000000000000000000000000001",
+      "spanId": "1000000000000001",
+      "traceState": "",
+      "parentSpanId": "0000000000000002",
+      "flags": 1,
+      "name": "outer span",
       "kind": 1,
       "startTimeUnixNano": "[WILDCARD]",
       "endTimeUnixNano": "[WILDCARD]",
@@ -22,12 +80,12 @@
       }
     },
     {
-      "traceId": "10000000000000000000000000000002",
-      "spanId": "1000000000000001",
+      "traceId": "00000000000000000000000000000001",
+      "spanId": "1000000000000002",
       "traceState": "",
-      "parentSpanId": "",
+      "parentSpanId": "1000000000000001",
       "flags": 1,
-      "name": "outer span",
+      "name": "inner span",
       "kind": 1,
       "startTimeUnixNano": "[WILDCARD]",
       "endTimeUnixNano": "[WILDCARD]",
@@ -55,8 +113,8 @@
       "attributes": [],
       "droppedAttributesCount": 0,
       "flags": 1,
-      "traceId": "10000000000000000000000000000002",
-      "spanId": "1000000000000003"
+      "traceId": "00000000000000000000000000000001",
+      "spanId": "1000000000000002"
     },
     {
       "timeUnixNano": "0",
@@ -69,8 +127,8 @@
       "attributes": [],
       "droppedAttributesCount": 0,
       "flags": 1,
-      "traceId": "10000000000000000000000000000002",
-      "spanId": "1000000000000003"
+      "traceId": "00000000000000000000000000000001",
+      "spanId": "1000000000000002"
     }
   ]
 }
