@@ -178,7 +178,7 @@ pub enum KvErrorKind {
   InvalidRange,
 }
 
-#[op2(async)]
+#[op2(async, stack_trace)]
 #[smi]
 async fn op_kv_database_open<DBH>(
   state: Rc<RefCell<OpState>>,

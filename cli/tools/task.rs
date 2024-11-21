@@ -8,6 +8,7 @@ use std::path::PathBuf;
 use std::rc::Rc;
 use std::sync::Arc;
 
+use deno_config::workspace::FolderConfigs;
 use deno_config::workspace::TaskDefinition;
 use deno_config::workspace::TaskOrScript;
 use deno_config::workspace::WorkspaceDirectory;
@@ -25,6 +26,7 @@ use deno_path_util::normalize_path;
 use deno_runtime::deno_node::NodeResolver;
 use deno_task_shell::ShellCommand;
 use indexmap::IndexMap;
+use regex::Regex;
 
 use crate::args::CliOptions;
 use crate::args::Flags;
@@ -34,6 +36,12 @@ use crate::factory::CliFactory;
 use crate::npm::CliNpmResolver;
 use crate::task_runner;
 use crate::util::fs::canonicalize_path;
+
+#[derive(Debug)]
+struct PackageTaskInfo {
+  matched_tasks: Vec<String>,
+  tasks_config: WorkspaceTasksConfig,
+}
 
 pub async fn execute_script(
   flags: Arc<Flags>,
@@ -55,18 +63,145 @@ pub async fn execute_script(
         v == "1"
       })
       .unwrap_or(false);
-  let mut tasks_config = start_dir.to_tasks_config()?;
-  if force_use_pkg_json {
-    tasks_config = tasks_config.with_only_pkg_json()
+
+  fn arg_to_regex(input: &str) -> Result<regex::Regex, regex::Error> {
+    let mut regex_str = regex::escape(input);
+    regex_str = regex_str.replace("\\*", ".*");
+
+    Regex::new(&regex_str)
   }
 
-  let Some(task_name) = &task_flags.task else {
-    print_available_tasks(
-      &mut std::io::stdout(),
-      &cli_options.start_dir,
-      &tasks_config,
-    )?;
-    return Ok(0);
+  let packages_task_configs: Vec<PackageTaskInfo> = if let Some(filter) =
+    &task_flags.filter
+  {
+    let task_name = task_flags.task.as_ref().unwrap();
+
+    // Filter based on package name
+    let package_regex = arg_to_regex(filter)?;
+    let task_regex = arg_to_regex(task_name)?;
+
+    let mut packages_task_info: Vec<PackageTaskInfo> = vec![];
+
+    fn matches_package(
+      config: &FolderConfigs,
+      force_use_pkg_json: bool,
+      regex: &Regex,
+    ) -> bool {
+      if !force_use_pkg_json {
+        if let Some(deno_json) = &config.deno_json {
+          if let Some(name) = &deno_json.json.name {
+            if regex.is_match(name) {
+              return true;
+            }
+          }
+        }
+      }
+
+      if let Some(package_json) = &config.pkg_json {
+        if let Some(name) = &package_json.name {
+          if regex.is_match(name) {
+            return true;
+          }
+        }
+      }
+
+      false
+    }
+
+    let workspace = cli_options.workspace();
+    for folder in workspace.config_folders() {
+      if !matches_package(folder.1, force_use_pkg_json, &package_regex) {
+        continue;
+      }
+
+      let member_dir = workspace.resolve_member_dir(folder.0);
+      let mut tasks_config = member_dir.to_tasks_config()?;
+      if force_use_pkg_json {
+        tasks_config = tasks_config.with_only_pkg_json();
+      }
+
+      // Any of the matched tasks could be a child task of another matched
+      // one. Therefore we need to filter these out to ensure that every
+      // task is only run once.
+      let mut matched: HashSet<String> = HashSet::new();
+      let mut visited: HashSet<String> = HashSet::new();
+
+      fn visit_task(
+        tasks_config: &WorkspaceTasksConfig,
+        visited: &mut HashSet<String>,
+        name: &str,
+      ) {
+        if visited.contains(name) {
+          return;
+        }
+
+        visited.insert(name.to_string());
+
+        if let Some((_, TaskOrScript::Task(_, task))) = &tasks_config.task(name)
+        {
+          for dep in &task.dependencies {
+            visit_task(tasks_config, visited, dep);
+          }
+        }
+      }
+
+      // Match tasks in deno.json
+      for name in tasks_config.task_names() {
+        if task_regex.is_match(name) && !visited.contains(name) {
+          matched.insert(name.to_string());
+          visit_task(&tasks_config, &mut visited, name);
+        }
+      }
+
+      packages_task_info.push(PackageTaskInfo {
+        matched_tasks: matched
+          .iter()
+          .map(|s| s.to_string())
+          .collect::<Vec<_>>(),
+        tasks_config,
+      });
+    }
+
+    // Logging every task definition would be too spammy. Pnpm only
+    // logs a simple message too.
+    if packages_task_info
+      .iter()
+      .all(|config| config.matched_tasks.is_empty())
+    {
+      log::warn!(
+        "{}",
+        colors::red(format!(
+          "No matching task or script '{}' found in selected packages.",
+          task_name
+        ))
+      );
+      return Ok(0);
+    }
+
+    // FIXME: Sort packages topologically
+    //
+
+    packages_task_info
+  } else {
+    let mut tasks_config = start_dir.to_tasks_config()?;
+
+    if force_use_pkg_json {
+      tasks_config = tasks_config.with_only_pkg_json()
+    }
+
+    let Some(task_name) = &task_flags.task else {
+      print_available_tasks(
+        &mut std::io::stdout(),
+        &cli_options.start_dir,
+        &tasks_config,
+      )?;
+      return Ok(0);
+    };
+
+    vec![PackageTaskInfo {
+      tasks_config,
+      matched_tasks: vec![task_name.to_string()],
+    }]
   };
 
   let npm_resolver = factory.npm_resolver().await?;
@@ -81,7 +216,6 @@ pub async fn execute_script(
   .unwrap_or_else(|| NonZeroUsize::new(2).unwrap());
 
   let task_runner = TaskRunner {
-    tasks_config,
     task_flags: &task_flags,
     npm_resolver: npm_resolver.as_ref(),
     node_resolver: node_resolver.as_ref(),
@@ -94,7 +228,7 @@ pub async fn execute_script(
     return task_runner
       .run_deno_task(
         &Url::from_directory_path(cli_options.initial_cwd()).unwrap(),
-        &"".to_string(),
+        "",
         &TaskDefinition {
           command: task_flags.task.as_ref().unwrap().to_string(),
           dependencies: vec![],
@@ -103,7 +237,15 @@ pub async fn execute_script(
       )
       .await;
   }
-  task_runner.run_task(task_name).await
+
+  for task_config in &packages_task_configs {
+    let exit_code = task_runner.run_tasks(task_config).await?;
+    if exit_code > 0 {
+      return Ok(exit_code);
+    }
+  }
+
+  Ok(0)
 }
 
 struct RunSingleOptions<'a> {
@@ -114,7 +256,6 @@ struct RunSingleOptions<'a> {
 }
 
 struct TaskRunner<'a> {
-  tasks_config: WorkspaceTasksConfig,
   task_flags: &'a TaskFlags,
   npm_resolver: &'a dyn CliNpmResolver,
   node_resolver: &'a NodeResolver,
@@ -124,12 +265,16 @@ struct TaskRunner<'a> {
 }
 
 impl<'a> TaskRunner<'a> {
-  pub async fn run_task(
+  pub async fn run_tasks(
     &self,
-    task_name: &str,
+    pkg_tasks_config: &PackageTaskInfo,
   ) -> Result<i32, deno_core::anyhow::Error> {
-    match sort_tasks_topo(task_name, &self.tasks_config) {
-      Ok(sorted) => self.run_tasks_in_parallel(sorted).await,
+    match sort_tasks_topo(pkg_tasks_config) {
+      Ok(sorted) => {
+        self
+          .run_tasks_in_parallel(&pkg_tasks_config.tasks_config, sorted)
+          .await
+      }
       Err(err) => match err {
         TaskError::NotFound(name) => {
           if self.task_flags.is_run {
@@ -138,7 +283,7 @@ impl<'a> TaskRunner<'a> {
 
           log::error!("Task not found: {}", name);
           if log::log_enabled!(log::Level::Error) {
-            self.print_available_tasks()?;
+            self.print_available_tasks(&pkg_tasks_config.tasks_config)?;
           }
           Ok(1)
         }
@@ -150,16 +295,20 @@ impl<'a> TaskRunner<'a> {
     }
   }
 
-  pub fn print_available_tasks(&self) -> Result<(), std::io::Error> {
+  pub fn print_available_tasks(
+    &self,
+    tasks_config: &WorkspaceTasksConfig,
+  ) -> Result<(), std::io::Error> {
     print_available_tasks(
       &mut std::io::stderr(),
       &self.cli_options.start_dir,
-      &self.tasks_config,
+      tasks_config,
     )
   }
 
   async fn run_tasks_in_parallel(
     &self,
+    tasks_config: &WorkspaceTasksConfig,
     task_names: Vec<String>,
   ) -> Result<i32, deno_core::anyhow::Error> {
     struct PendingTasksContext {
@@ -181,22 +330,23 @@ impl<'a> TaskRunner<'a> {
       fn get_next_task<'a>(
         &mut self,
         runner: &'a TaskRunner<'a>,
+        tasks_config: &'a WorkspaceTasksConfig,
       ) -> Option<LocalBoxFuture<'a, Result<(i32, String), AnyError>>> {
         for name in &self.task_names {
           if self.completed.contains(name) || self.running.contains(name) {
             continue;
           }
 
-          let should_run = if let Ok((_, def)) = runner.get_task(name) {
-            match def {
-              TaskOrScript::Task(_, def) => def
-                .dependencies
-                .iter()
-                .all(|dep| self.completed.contains(dep)),
-              TaskOrScript::Script(_, _) => true,
-            }
-          } else {
-            false
+          let Some((folder_url, task_or_script)) = tasks_config.task(name)
+          else {
+            continue;
+          };
+          let should_run = match task_or_script {
+            TaskOrScript::Task(_, def) => def
+              .dependencies
+              .iter()
+              .all(|dep| self.completed.contains(dep)),
+            TaskOrScript::Script(_, _) => true,
           };
 
           if !should_run {
@@ -207,10 +357,15 @@ impl<'a> TaskRunner<'a> {
           let name = name.clone();
           return Some(
             async move {
-              runner
-                .run_task_no_dependencies(&name)
-                .await
-                .map(|exit_code| (exit_code, name))
+              match task_or_script {
+                TaskOrScript::Task(_, def) => {
+                  runner.run_deno_task(folder_url, &name, def).await
+                }
+                TaskOrScript::Script(scripts, _) => {
+                  runner.run_npm_script(folder_url, &name, scripts).await
+                }
+              }
+              .map(|exit_code| (exit_code, name))
             }
             .boxed_local(),
           );
@@ -229,7 +384,7 @@ impl<'a> TaskRunner<'a> {
 
     while context.has_remaining_tasks() {
       while queue.len() < self.concurrency {
-        if let Some(task) = context.get_next_task(self) {
+        if let Some(task) = context.get_next_task(self, tasks_config) {
           queue.push(task);
         } else {
           break;
@@ -253,37 +408,10 @@ impl<'a> TaskRunner<'a> {
     Ok(0)
   }
 
-  fn get_task(
-    &self,
-    task_name: &str,
-  ) -> Result<(&Url, TaskOrScript), TaskError> {
-    let Some(result) = self.tasks_config.task(task_name) else {
-      return Err(TaskError::NotFound(task_name.to_string()));
-    };
-
-    Ok(result)
-  }
-
-  async fn run_task_no_dependencies(
-    &self,
-    task_name: &String,
-  ) -> Result<i32, deno_core::anyhow::Error> {
-    let (dir_url, task_or_script) = self.get_task(task_name.as_str()).unwrap();
-
-    match task_or_script {
-      TaskOrScript::Task(_tasks, definition) => {
-        self.run_deno_task(dir_url, task_name, definition).await
-      }
-      TaskOrScript::Script(scripts, _script) => {
-        self.run_npm_script(dir_url, task_name, scripts).await
-      }
-    }
-  }
-
-  async fn run_deno_task(
+  pub async fn run_deno_task(
     &self,
     dir_url: &Url,
-    task_name: &String,
+    task_name: &str,
     definition: &TaskDefinition,
   ) -> Result<i32, deno_core::anyhow::Error> {
     let cwd = match &self.task_flags.cwd {
@@ -306,10 +434,10 @@ impl<'a> TaskRunner<'a> {
       .await
   }
 
-  async fn run_npm_script(
+  pub async fn run_npm_script(
     &self,
     dir_url: &Url,
-    task_name: &String,
+    task_name: &str,
     scripts: &IndexMap<String, String>,
   ) -> Result<i32, deno_core::anyhow::Error> {
     // ensure the npm packages are installed if using a managed resolver
@@ -327,7 +455,7 @@ impl<'a> TaskRunner<'a> {
     // dealing with package.json here and not deno.json
     let task_names = vec![
       format!("pre{}", task_name),
-      task_name.clone(),
+      task_name.to_string(),
       format!("post{}", task_name),
     ];
     let custom_commands = task_runner::resolve_custom_commands(
@@ -394,8 +522,7 @@ enum TaskError {
 }
 
 fn sort_tasks_topo(
-  name: &str,
-  task_config: &WorkspaceTasksConfig,
+  pkg_task_config: &PackageTaskInfo,
 ) -> Result<Vec<String>, TaskError> {
   fn sort_visit<'a>(
     name: &'a str,
@@ -416,12 +543,12 @@ fn sort_tasks_topo(
       });
     }
 
-    let Some(def) = tasks_config.task(name) else {
+    let Some((_, task_or_script)) = tasks_config.task(name) else {
       return Err(TaskError::NotFound(name.to_string()));
     };
 
-    if let TaskOrScript::Task(_, actual_def) = def.1 {
-      for dep in &actual_def.dependencies {
+    if let TaskOrScript::Task(_, task) = task_or_script {
+      for dep in &task.dependencies {
         let mut path = path.clone();
         path.push(name);
         sort_visit(dep, sorted, path, tasks_config)?
@@ -435,7 +562,9 @@ fn sort_tasks_topo(
 
   let mut sorted: Vec<String> = vec![];
 
-  sort_visit(name, &mut sorted, Vec::new(), task_config)?;
+  for name in &pkg_task_config.matched_tasks {
+    sort_visit(name, &mut sorted, Vec::new(), &pkg_task_config.tasks_config)?;
+  }
 
   Ok(sorted)
 }

@@ -125,7 +125,7 @@ pub fn op_require_init_paths() -> Vec<String> {
   vec![]
 }
 
-#[op2]
+#[op2(stack_trace)]
 #[serde]
 pub fn op_require_node_module_paths<P>(
   state: &mut OpState,
@@ -295,7 +295,7 @@ pub fn op_require_path_is_absolute(#[string] p: String) -> bool {
   PathBuf::from(p).is_absolute()
 }
 
-#[op2(fast)]
+#[op2(fast, stack_trace)]
 pub fn op_require_stat<P>(
   state: &mut OpState,
   #[string] path: String,
@@ -317,7 +317,7 @@ where
   Ok(-1)
 }
 
-#[op2]
+#[op2(stack_trace)]
 #[string]
 pub fn op_require_real_path<P>(
   state: &mut OpState,
@@ -381,7 +381,7 @@ pub fn op_require_path_basename(
   }
 }
 
-#[op2]
+#[op2(stack_trace)]
 #[string]
 pub fn op_require_try_self_parent_path<P>(
   state: &mut OpState,
@@ -412,7 +412,7 @@ where
   Ok(None)
 }
 
-#[op2]
+#[op2(stack_trace)]
 #[string]
 pub fn op_require_try_self<P>(
   state: &mut OpState,
@@ -476,7 +476,7 @@ where
   }
 }
 
-#[op2]
+#[op2(stack_trace)]
 #[string]
 pub fn op_require_read_file<P>(
   state: &mut OpState,
@@ -507,7 +507,7 @@ pub fn op_require_as_file_path(#[string] file_or_url: String) -> String {
   file_or_url
 }
 
-#[op2]
+#[op2(stack_trace)]
 #[string]
 pub fn op_require_resolve_exports<P>(
   state: &mut OpState,
@@ -583,7 +583,7 @@ pub fn op_require_is_maybe_cjs(
   loader.is_maybe_cjs(&url)
 }
 
-#[op2]
+#[op2(stack_trace)]
 #[serde]
 pub fn op_require_read_package_scope<P>(
   state: &mut OpState,
@@ -604,7 +604,7 @@ where
     .flatten()
 }
 
-#[op2]
+#[op2(stack_trace)]
 #[string]
 pub fn op_require_package_imports_resolve<P>(
   state: &mut OpState,

@@ -1628,8 +1628,10 @@ impl CliOptions {
       DenoSubcommand::Install(_)
         | DenoSubcommand::Add(_)
         | DenoSubcommand::Remove(_)
+        | DenoSubcommand::Init(_)
+        | DenoSubcommand::Outdated(_)
     ) {
-      // For `deno install/add/remove` we want to force the managed resolver so it can set up `node_modules/` directory.
+      // For `deno install/add/remove/init` we want to force the managed resolver so it can set up `node_modules/` directory.
       return false;
     }
     if self.node_modules_dir().ok().flatten().is_none()
@@ -1910,6 +1912,10 @@ impl StorageKeyResolver {
 /// Resolves the no_prompt value based on the cli flags and environment.
 pub fn resolve_no_prompt(flags: &PermissionFlags) -> bool {
   flags.no_prompt || has_flag_env_var("DENO_NO_PROMPT")
+}
+
+pub fn has_trace_permissions_enabled() -> bool {
+  has_flag_env_var("DENO_TRACE_PERMISSIONS")
 }
 
 pub fn has_flag_env_var(name: &str) -> bool {
