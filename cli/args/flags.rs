@@ -3073,7 +3073,7 @@ Evaluate a task from string
         Arg::new("filter")
         .long("filter")
         .short('f')
-        .help("Filter members of the workspace by name - should be used with --recursive")
+        .help("Filter members of the workspace by name, implies --recursive flag")
         .value_parser(value_parser!(String)),
       )
       .arg(
