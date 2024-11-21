@@ -37,6 +37,7 @@ use crate::util::v8::init_v8_flags;
 
 use args::TaskFlags;
 use deno_resolver::npm::ByonmResolvePkgFolderFromDenoReqError;
+use deno_resolver::npm::ResolvePkgFolderFromDenoReqError;
 use deno_runtime::WorkerExecutionMode;
 pub use deno_runtime::UNSTABLE_GRANULAR_FLAGS;
 
@@ -50,7 +51,6 @@ use deno_runtime::fmt_errors::format_js_error;
 use deno_runtime::tokio_util::create_and_run_current_thread_with_maybe_metrics;
 use deno_terminal::colors;
 use factory::CliFactory;
-use npm::ResolvePkgFolderFromDenoReqError;
 use standalone::MODULE_NOT_FOUND;
 use standalone::UNSUPPORTED_SCHEME;
 use std::env;
@@ -144,9 +144,7 @@ async fn run_subcommand(flags: Arc<Flags>) -> Result<i32, AnyError> {
     }
     DenoSubcommand::Init(init_flags) => {
       spawn_subcommand(async {
-        // make compiler happy since init_project is sync
-        tokio::task::yield_now().await;
-        tools::init::init_project(init_flags)
+        tools::init::init_project(init_flags).await
       })
     }
     DenoSubcommand::Info(info_flags) => {
@@ -188,6 +186,11 @@ async fn run_subcommand(flags: Arc<Flags>) -> Result<i32, AnyError> {
         tools::lint::lint(flags, lint_flags).await
       }
     }),
+    DenoSubcommand::Outdated(update_flags) => {
+      spawn_subcommand(async move {
+        tools::registry::outdated(flags, update_flags).await
+      })
+    }
     DenoSubcommand::Repl(repl_flags) => {
       spawn_subcommand(async move { tools::repl::run(flags, repl_flags).await })
     }
@@ -238,6 +241,9 @@ async fn run_subcommand(flags: Arc<Flags>) -> Result<i32, AnyError> {
                   cwd: None,
                   task: Some(run_flags.script.clone()),
                   is_run: true,
+                  recursive: false,
+                  filter: None,
+                  eval: false,
                 };
                 new_flags.subcommand = DenoSubcommand::Task(task_flags.clone());
                 let result = tools::task::execute_script(Arc::new(new_flags), task_flags.clone()).await;

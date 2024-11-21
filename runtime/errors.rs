@@ -41,12 +41,14 @@ use deno_ffi::IRError;
 use deno_ffi::ReprError;
 use deno_ffi::StaticError;
 use deno_fs::FsOpsError;
+use deno_fs::FsOpsErrorKind;
 use deno_http::HttpError;
 use deno_http::HttpNextError;
 use deno_http::WebSocketUpgradeError;
 use deno_io::fs::FsError;
 use deno_kv::KvCheckError;
 use deno_kv::KvError;
+use deno_kv::KvErrorKind;
 use deno_kv::KvMutationError;
 use deno_napi::NApiError;
 use deno_net::ops::NetError;
@@ -760,67 +762,67 @@ fn get_websocket_handshake_error(error: &HandshakeError) -> &'static str {
 }
 
 fn get_fs_ops_error(error: &FsOpsError) -> &'static str {
-  match error {
-    FsOpsError::Io(e) => get_io_error_class(e),
-    FsOpsError::OperationError(e) => get_fs_error(&e.err),
-    FsOpsError::Permission(e) => get_permission_check_error_class(e),
-    FsOpsError::Resource(e) | FsOpsError::Other(e) => {
-      get_error_class_name(e).unwrap_or("Error")
-    }
-    FsOpsError::InvalidUtf8(_) => "InvalidData",
-    FsOpsError::StripPrefix(_) => "Error",
-    FsOpsError::Canceled(e) => {
+  use FsOpsErrorKind::*;
+  match error.as_kind() {
+    Io(e) => get_io_error_class(e),
+    OperationError(e) => get_fs_error(&e.err),
+    Permission(e) => get_permission_check_error_class(e),
+    Resource(e) | Other(e) => get_error_class_name(e).unwrap_or("Error"),
+    InvalidUtf8(_) => "InvalidData",
+    StripPrefix(_) => "Error",
+    Canceled(e) => {
       let io_err: io::Error = e.to_owned().into();
       get_io_error_class(&io_err)
     }
-    FsOpsError::InvalidSeekMode(_) => "TypeError",
-    FsOpsError::InvalidControlCharacter(_) => "Error",
-    FsOpsError::InvalidCharacter(_) => "Error",
+    InvalidSeekMode(_) => "TypeError",
+    InvalidControlCharacter(_) => "Error",
+    InvalidCharacter(_) => "Error",
     #[cfg(windows)]
-    FsOpsError::InvalidTrailingCharacter => "Error",
-    FsOpsError::NotCapableAccess { .. } => "NotCapable",
-    FsOpsError::NotCapable(_) => "NotCapable",
+    InvalidTrailingCharacter => "Error",
+    NotCapableAccess { .. } => "NotCapable",
+    NotCapable(_) => "NotCapable",
   }
 }
 
 fn get_kv_error(error: &KvError) -> &'static str {
-  match error {
-    KvError::DatabaseHandler(e) | KvError::Resource(e) | KvError::Kv(e) => {
+  use KvErrorKind::*;
+  match error.as_kind() {
+    DatabaseHandler(e) | Resource(e) | Kv(e) => {
       get_error_class_name(e).unwrap_or("Error")
     }
-    KvError::TooManyRanges(_) => "TypeError",
-    KvError::TooManyEntries(_) => "TypeError",
-    KvError::TooManyChecks(_) => "TypeError",
-    KvError::TooManyMutations(_) => "TypeError",
-    KvError::TooManyKeys(_) => "TypeError",
-    KvError::InvalidLimit => "TypeError",
-    KvError::InvalidBoundaryKey => "TypeError",
-    KvError::KeyTooLargeToRead(_) => "TypeError",
-    KvError::KeyTooLargeToWrite(_) => "TypeError",
-    KvError::TotalMutationTooLarge(_) => "TypeError",
-    KvError::TotalKeyTooLarge(_) => "TypeError",
-    KvError::Io(e) => get_io_error_class(e),
-    KvError::QueueMessageNotFound => "TypeError",
-    KvError::StartKeyNotInKeyspace => "TypeError",
-    KvError::EndKeyNotInKeyspace => "TypeError",
-    KvError::StartKeyGreaterThanEndKey => "TypeError",
-    KvError::InvalidCheck(e) => match e {
+    TooManyRanges(_) => "TypeError",
+    TooManyEntries(_) => "TypeError",
+    TooManyChecks(_) => "TypeError",
+    TooManyMutations(_) => "TypeError",
+    TooManyKeys(_) => "TypeError",
+    InvalidLimit => "TypeError",
+    InvalidBoundaryKey => "TypeError",
+    KeyTooLargeToRead(_) => "TypeError",
+    KeyTooLargeToWrite(_) => "TypeError",
+    TotalMutationTooLarge(_) => "TypeError",
+    TotalKeyTooLarge(_) => "TypeError",
+    Io(e) => get_io_error_class(e),
+    QueueMessageNotFound => "TypeError",
+    StartKeyNotInKeyspace => "TypeError",
+    EndKeyNotInKeyspace => "TypeError",
+    StartKeyGreaterThanEndKey => "TypeError",
+    InvalidCheck(e) => match e {
       KvCheckError::InvalidVersionstamp => "TypeError",
       KvCheckError::Io(e) => get_io_error_class(e),
     },
-    KvError::InvalidMutation(e) => match e {
+    InvalidMutation(e) => match e {
       KvMutationError::BigInt(_) => "Error",
       KvMutationError::Io(e) => get_io_error_class(e),
       KvMutationError::InvalidMutationWithValue(_) => "TypeError",
       KvMutationError::InvalidMutationWithoutValue(_) => "TypeError",
     },
-    KvError::InvalidEnqueue(e) => get_io_error_class(e),
-    KvError::EmptyKey => "TypeError",
-    KvError::ValueTooLarge(_) => "TypeError",
-    KvError::EnqueuePayloadTooLarge(_) => "TypeError",
-    KvError::InvalidCursor => "TypeError",
-    KvError::CursorOutOfBounds => "TypeError",
-    KvError::InvalidRange => "TypeError",
+    InvalidEnqueue(e) => get_io_error_class(e),
+    EmptyKey => "TypeError",
+    ValueTooLarge(_) => "TypeError",
+    EnqueuePayloadTooLarge(_) => "TypeError",
+    InvalidCursor => "TypeError",
+    CursorOutOfBounds => "TypeError",
+    InvalidRange => "TypeError",
   }
 }
 
@@ -1087,6 +1089,7 @@ mod node {
   use deno_node::ops::os::priority::PriorityError;
   pub use deno_node::ops::os::OsError;
   pub use deno_node::ops::require::RequireError;
+  use deno_node::ops::require::RequireErrorKind;
   pub use deno_node::ops::worker_threads::WorkerThreadsFilenameError;
   pub use deno_node::ops::zlib::brotli::BrotliError;
   pub use deno_node::ops::zlib::mode::ModeError;
@@ -1158,19 +1161,18 @@ mod node {
   }
 
   pub fn get_require_error(error: &RequireError) -> &'static str {
-    match error {
-      RequireError::UrlParse(e) => get_url_parse_error_class(e),
-      RequireError::Permission(e) => get_error_class_name(e).unwrap_or("Error"),
-      RequireError::PackageExportsResolve(_)
-      | RequireError::PackageJsonLoad(_)
-      | RequireError::ClosestPkgJson(_)
-      | RequireError::FilePathConversion(_)
-      | RequireError::UrlConversion(_)
-      | RequireError::ReadModule(_)
-      | RequireError::PackageImportsResolve(_) => "Error",
-      RequireError::Fs(e) | RequireError::UnableToGetCwd(e) => {
-        super::get_fs_error(e)
-      }
+    use RequireErrorKind::*;
+    match error.as_kind() {
+      UrlParse(e) => get_url_parse_error_class(e),
+      Permission(e) => get_error_class_name(e).unwrap_or("Error"),
+      PackageExportsResolve(_)
+      | PackageJsonLoad(_)
+      | ClosestPkgJson(_)
+      | FilePathConversion(_)
+      | UrlConversion(_)
+      | ReadModule(_)
+      | PackageImportsResolve(_) => "Error",
+      Fs(e) | UnableToGetCwd(e) => super::get_fs_error(e),
     }
   }
 

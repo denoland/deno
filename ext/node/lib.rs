@@ -15,7 +15,7 @@ use deno_core::url::Url;
 use deno_core::v8;
 use deno_core::v8::ExternalReference;
 use node_resolver::errors::ClosestPkgJsonError;
-use node_resolver::NpmResolverRc;
+use node_resolver::NpmPackageFolderResolverRc;
 use once_cell::sync::Lazy;
 
 extern crate libz_sys as zlib;
@@ -183,7 +183,7 @@ fn op_node_build_os() -> String {
 pub struct NodeExtInitServices {
   pub node_require_loader: NodeRequireLoaderRc,
   pub node_resolver: NodeResolverRc,
-  pub npm_resolver: NpmResolverRc,
+  pub npm_resolver: NpmPackageFolderResolverRc,
   pub pkg_json_resolver: PackageJsonResolverRc,
 }
 
@@ -426,6 +426,9 @@ deno_core::extension!(deno_node,
     ops::inspector::op_inspector_disconnect,
     ops::inspector::op_inspector_emit_protocol_event,
     ops::inspector::op_inspector_enabled,
+  ],
+  objects = [
+    ops::perf_hooks::EldHistogram
   ],
   esm_entry_point = "ext:deno_node/02_init.js",
   esm = [

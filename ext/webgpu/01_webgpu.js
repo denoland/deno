@@ -7130,6 +7130,12 @@ webidl.converters.GPUComputePassEncoder = webidl.createInterfaceConverter(
   GPUComputePassEncoder.prototype,
 );
 
+// INTERFACE: GPUQuerySet
+webidl.converters.GPUQuerySet = webidl.createInterfaceConverter(
+  "GPUQuerySet",
+  GPUQuerySet.prototype,
+);
+
 // DICTIONARY: GPUComputePassTimestampWrites
 webidl.converters["GPUComputePassTimestampWrites"] = webidl
   .createDictionaryConverter(
@@ -7301,12 +7307,6 @@ webidl.converters["GPURenderPassDepthStencilAttachment"] = webidl
     "GPURenderPassDepthStencilAttachment",
     dictMembersGPURenderPassDepthStencilAttachment,
   );
-
-// INTERFACE: GPUQuerySet
-webidl.converters.GPUQuerySet = webidl.createInterfaceConverter(
-  "GPUQuerySet",
-  GPUQuerySet.prototype,
-);
 
 // DICTIONARY: GPURenderPassTimestampWrites
 webidl.converters["GPURenderPassTimestampWrites"] = webidl

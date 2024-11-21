@@ -1181,6 +1181,32 @@ declare namespace Deno {
     ): Displayable;
 
     /**
+     * Display a JPG or PNG image.
+     *
+     * ```
+     * Deno.jupyter.image("./cat.jpg");
+     * Deno.jupyter.image("./dog.png");
+     * ```
+     *
+     * @category Jupyter
+     * @experimental
+     */
+    export function image(path: string): Displayable;
+
+    /**
+     * Display a JPG or PNG image.
+     *
+     * ```
+     * const img = Deno.readFileSync("./cat.jpg");
+     * Deno.jupyter.image(img);
+     * ```
+     *
+     * @category Jupyter
+     * @experimental
+     */
+    export function image(data: Uint8Array): Displayable;
+
+    /**
      * Format an object for displaying in Deno
      *
      * @param obj - The object to be displayed
@@ -1226,80 +1252,53 @@ declare namespace Deno {
   }
 
   /**
+   * **UNSTABLE**: New API, yet to be vetted.
+   *
+   * APIs for working with the OpenTelemetry observability framework. Deno can
+   * export traces, metrics, and logs to OpenTelemetry compatible backends via
+   * the OTLP protocol.
+   *
+   * Deno automatically instruments the runtime with OpenTelemetry traces and
+   * metrics. This data is exported via OTLP to OpenTelemetry compatible
+   * backends. User logs from the `console` API are exported as OpenTelemetry
+   * logs via OTLP.
+   *
+   * User code can also create custom traces, metrics, and logs using the
+   * OpenTelemetry API. This is done using the official OpenTelemetry package
+   * for JavaScript:
+   * [`npm:@opentelemetry/api`](https://opentelemetry.io/docs/languages/js/).
+   * Deno integrates with this package to provide trace context propagation
+   * between native Deno APIs (like `Deno.serve` or `fetch`) and custom user
+   * code. Deno also provides APIs that allow exporting custom telemetry data
+   * via the same OTLP channel used by the Deno runtime. This is done using the
+   * [`jsr:@deno/otel`](https://jsr.io/@deno/otel) package.
+   *
+   * @example Using OpenTelemetry API to create custom traces
+   * ```ts,ignore
+   * import { trace } from "npm:@opentelemetry/api@1";
+   * import "jsr:@deno/otel@0.0.2/register";
+   *
+   * const tracer = trace.getTracer("example-tracer");
+   *
+   * async function doWork() {
+   *   return tracer.startActiveSpan("doWork", async (span) => {
+   *     span.setAttribute("key", "value");
+   *     await new Promise((resolve) => setTimeout(resolve, 1000));
+   *     span.end();
+   *   });
+   * }
+   *
+   * Deno.serve(async (req) => {
+   *   await doWork();
+   *   const resp = await fetch("https://example.com");
+   *   return resp;
+   * });
+   * ```
+   *
    * @category Telemetry
    * @experimental
    */
-  export namespace tracing {
-    /**
-     * Whether tracing is enabled.
-     * @category Telemetry
-     * @experimental
-     */
-    export const enabled: boolean;
-
-    /**
-     * Allowed attribute type.
-     * @category Telemetry
-     * @experimental
-     */
-    export type AttributeValue = string | number | boolean | bigint;
-
-    /**
-     * A tracing span.
-     * @category Telemetry
-     * @experimental
-     */
-    export class Span implements Disposable {
-      readonly traceId: string;
-      readonly spanId: string;
-      readonly parentSpanId: string;
-      readonly kind: string;
-      readonly name: string;
-      readonly startTime: number;
-      readonly endTime: number;
-      readonly status: null | { code: 1 } | { code: 2; message: string };
-      readonly attributes: Record<string, AttributeValue>;
-      readonly traceFlags: number;
-
-      /**
-       * Construct a new Span and enter it as the "current" span.
-       */
-      constructor(
-        name: string,
-        kind?: "internal" | "server" | "client" | "producer" | "consumer",
-      );
-
-      /**
-       * Set an attribute on this span.
-       */
-      setAttribute(
-        name: string,
-        value: AttributeValue,
-      ): void;
-
-      /**
-       * Enter this span as the "current" span.
-       */
-      enter(): void;
-
-      /**
-       * Exit this span as the "current" span and restore the previous one.
-       */
-      exit(): void;
-
-      /**
-       * End this span, and exit it as the "current" span.
-       */
-      end(): void;
-
-      [Symbol.dispose](): void;
-
-      /**
-       * Get the "current" span, if one exists.
-       */
-      static current(): Span | undefined | null;
-    }
-
+  export namespace telemetry {
     /**
      * A SpanExporter compatible with OpenTelemetry.js
      * https://open-telemetry.github.io/opentelemetry-js/interfaces/_opentelemetry_sdk_trace_base.SpanExporter.html
@@ -1316,14 +1315,6 @@ declare namespace Deno {
      */
     export class ContextManager {}
 
-    export {}; // only export exports
-  }
-
-  /**
-   * @category Telemetry
-   * @experimental
-   */
-  export namespace metrics {
     export {}; // only export exports
   }
 

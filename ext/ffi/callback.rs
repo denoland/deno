@@ -561,7 +561,7 @@ pub struct RegisterCallbackArgs {
   result: NativeType,
 }
 
-#[op2]
+#[op2(stack_trace)]
 pub fn op_ffi_unsafe_callback_create<FP, 'scope>(
   state: &mut OpState,
   scope: &mut v8::HandleScope<'scope>,
