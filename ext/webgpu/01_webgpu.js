@@ -1371,7 +1371,7 @@ class GPUDevice extends EventTarget {
       rid,
     );
     device.trackResource(pipelineLayout);
-    GPU_RESOURCE_REGISTRY.unregister(pipelineLayout, rid, pipelineLayout);
+    GPU_RESOURCE_REGISTRY.register(pipelineLayout, rid, pipelineLayout);
 
     return pipelineLayout;
   }
