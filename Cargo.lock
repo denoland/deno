@@ -1452,8 +1452,8 @@ dependencies = [
 
 [[package]]
 name = "deno_core"
-version = "0.320.0"
-source = "git+https://github.com/littledivy/deno_core?branch=reorder_self_isolate#414a51573052aec6e8c0a9ab3d85f02c351f819d"
+version = "0.321.0"
+source = "git+https://github.com/littledivy/deno_core?branch=required_args#d33a034b1d21c1ec5e38da36a4edd700bcf17e0e"
 dependencies = [
  "anyhow",
  "bincode",
@@ -1465,6 +1465,7 @@ dependencies = [
  "deno_ops",
  "deno_unsync",
  "futures",
+ "indexmap 2.3.0",
  "libc",
  "memoffset",
  "parking_lot",
@@ -1479,6 +1480,7 @@ dependencies = [
  "tokio",
  "url",
  "v8",
+ "wasm_dep_analyzer",
 ]
 
 [[package]]
@@ -1959,8 +1961,8 @@ dependencies = [
 
 [[package]]
 name = "deno_ops"
-version = "0.196.0"
-source = "git+https://github.com/littledivy/deno_core?branch=reorder_self_isolate#414a51573052aec6e8c0a9ab3d85f02c351f819d"
+version = "0.197.0"
+source = "git+https://github.com/littledivy/deno_core?branch=required_args#d33a034b1d21c1ec5e38da36a4edd700bcf17e0e"
 dependencies = [
  "proc-macro-rules",
  "proc-macro2",
@@ -6420,8 +6422,8 @@ dependencies = [
 
 [[package]]
 name = "serde_v8"
-version = "0.229.0"
-source = "git+https://github.com/littledivy/deno_core?branch=reorder_self_isolate#414a51573052aec6e8c0a9ab3d85f02c351f819d"
+version = "0.230.0"
+source = "git+https://github.com/littledivy/deno_core?branch=required_args#d33a034b1d21c1ec5e38da36a4edd700bcf17e0e"
 dependencies = [
  "num-bigint",
  "serde",
@@ -8162,6 +8164,15 @@ dependencies = [
  "wasm-bindgen",
  "wasm-bindgen-futures",
  "web-sys",
+]
+
+[[package]]
+name = "wasm_dep_analyzer"
+version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7f270206a91783fd90625c8bb0d8fbd459d0b1d1bf209b656f713f01ae7c04b8"
+dependencies = [
+ "thiserror",
 ]
 
 [[package]]

@@ -139,7 +139,7 @@ impl Storage {
     Ok(length)
   }
 
-  #[method]
+  #[required(1)]
   #[string]
   fn key(
     &self,
@@ -159,6 +159,7 @@ impl Storage {
   }
 
   #[fast]
+  #[required(2)]
   fn set_item(
     &self,
     state: &mut OpState,
@@ -183,7 +184,7 @@ impl Storage {
     Ok(())
   }
 
-  #[method]
+  #[required(1)]
   #[string]
   fn get_item(
     &self,
@@ -200,6 +201,7 @@ impl Storage {
   }
 
   #[fast]
+  #[required(1)]
   fn remove_item(
     &self,
     state: &mut OpState,
