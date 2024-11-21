@@ -1704,14 +1704,11 @@ fn add_subcommand() -> Command {
       "Add dependencies to your configuration file.
   <p(245)>deno add jsr:@std/path</>
 
-You can add multiple dependencies at once:
-  <p(245)>deno add jsr:@std/path jsr:@std/assert</>
-  
 You can also add npm packages:
   <p(245)>deno add npm:react</>
-  
-You can mix both jsr and npm packages:
-  <p(245)>deno add jsr:@std/path npm:node-emoji</>"
+
+Or multiple dependencies at once:
+  <p(245)>deno add jsr:@std/path jsr:@std/assert npm:chalk</>"
     ),
     UnstableArgsConfig::None,
   )
