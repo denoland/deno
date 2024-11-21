@@ -289,6 +289,7 @@ impl BenchOptions {
 #[derive(Clone, Debug, Default, PartialEq, Eq, Hash)]
 pub struct UnstableFmtOptions {
   pub component: bool,
+  pub sql: bool,
 }
 
 #[derive(Clone, Debug)]
@@ -322,6 +323,7 @@ impl FmtOptions {
       options: resolve_fmt_options(fmt_flags, fmt_config.options),
       unstable: UnstableFmtOptions {
         component: unstable.component || fmt_flags.unstable_component,
+        sql: unstable.sql || fmt_flags.unstable_sql,
       },
       files: fmt_config.files,
     }
@@ -1319,6 +1321,7 @@ impl CliOptions {
     let workspace = self.workspace();
     UnstableFmtOptions {
       component: workspace.has_unstable("fmt-component"),
+      sql: workspace.has_unstable("fmt-sql"),
     }
   }
 
@@ -1545,6 +1548,10 @@ impl CliOptions {
         }) => Url::parse(&flags.module_url)
           .ok()
           .map(|url| vec![Cow::Owned(url)]),
+        DenoSubcommand::Doc(DocFlags {
+          source_files: DocSourceFileFlag::Paths(paths),
+          ..
+        }) => Some(files_to_urls(paths)),
         _ => None,
       })
       .unwrap_or_default();
@@ -1621,8 +1628,10 @@ impl CliOptions {
       DenoSubcommand::Install(_)
         | DenoSubcommand::Add(_)
         | DenoSubcommand::Remove(_)
+        | DenoSubcommand::Init(_)
+        | DenoSubcommand::Outdated(_)
     ) {
-      // For `deno install/add/remove` we want to force the managed resolver so it can set up `node_modules/` directory.
+      // For `deno install/add/remove/init` we want to force the managed resolver so it can set up `node_modules/` directory.
       return false;
     }
     if self.node_modules_dir().ok().flatten().is_none()
@@ -1667,6 +1676,7 @@ impl CliOptions {
           "byonm",
           "bare-node-builtins",
           "fmt-component",
+          "fmt-sql",
         ])
         .collect();
 
@@ -1902,6 +1912,10 @@ impl StorageKeyResolver {
 /// Resolves the no_prompt value based on the cli flags and environment.
 pub fn resolve_no_prompt(flags: &PermissionFlags) -> bool {
   flags.no_prompt || has_flag_env_var("DENO_NO_PROMPT")
+}
+
+pub fn has_trace_permissions_enabled() -> bool {
+  has_flag_env_var("DENO_TRACE_PERMISSIONS")
 }
 
 pub fn has_flag_env_var(name: &str) -> bool {

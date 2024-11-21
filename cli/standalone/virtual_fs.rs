@@ -51,7 +51,8 @@ pub struct VfsBuilder {
 
 impl VfsBuilder {
   pub fn new(root_path: PathBuf) -> Result<Self, AnyError> {
-    let root_path = canonicalize_path(&root_path)?;
+    let root_path = canonicalize_path(&root_path)
+      .with_context(|| format!("Canonicalizing {}", root_path.display()))?;
     log::debug!("Building vfs with root '{}'", root_path.display());
     Ok(Self {
       root_dir: VirtualDirectory {

@@ -182,7 +182,7 @@ pub async fn op_net_recv_udp(
   Ok((nread, IpAddr::from(remote_addr)))
 }
 
-#[op2(async)]
+#[op2(async, stack_trace)]
 #[number]
 pub async fn op_net_send_udp<NP>(
   state: Rc<RefCell<OpState>>,
@@ -343,7 +343,7 @@ pub async fn op_net_set_multi_ttl_udp(
   Ok(())
 }
 
-#[op2(async)]
+#[op2(async, stack_trace)]
 #[serde]
 pub async fn op_net_connect_tcp<NP>(
   state: Rc<RefCell<OpState>>,
@@ -401,7 +401,7 @@ impl Resource for UdpSocketResource {
   }
 }
 
-#[op2]
+#[op2(stack_trace)]
 #[serde]
 pub fn op_net_listen_tcp<NP>(
   state: &mut OpState,
@@ -501,7 +501,7 @@ where
   Ok((rid, IpAddr::from(local_addr)))
 }
 
-#[op2]
+#[op2(stack_trace)]
 #[serde]
 pub fn op_net_listen_udp<NP>(
   state: &mut OpState,
@@ -516,7 +516,7 @@ where
   net_listen_udp::<NP>(state, addr, reuse_address, loopback)
 }
 
-#[op2]
+#[op2(stack_trace)]
 #[serde]
 pub fn op_node_unstable_net_listen_udp<NP>(
   state: &mut OpState,
@@ -601,7 +601,7 @@ pub struct NameServer {
   port: u16,
 }
 
-#[op2(async)]
+#[op2(async, stack_trace)]
 #[serde]
 pub async fn op_dns_resolve<NP>(
   state: Rc<RefCell<OpState>>,

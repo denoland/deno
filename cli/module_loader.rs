@@ -66,6 +66,7 @@ use deno_graph::JsonModule;
 use deno_graph::Module;
 use deno_graph::ModuleGraph;
 use deno_graph::Resolution;
+use deno_graph::WasmModule;
 use deno_runtime::code_cache;
 use deno_runtime::deno_fs::FileSystem;
 use deno_runtime::deno_node::create_host_defined_options;
@@ -368,7 +369,9 @@ impl<TGraphContainer: ModuleGraphContainer>
     requested_module_type: RequestedModuleType,
   ) -> Result<ModuleSource, AnyError> {
     let code_source = self.load_code_source(specifier, maybe_referrer).await?;
-    let code = if self.shared.is_inspecting {
+    let code = if self.shared.is_inspecting
+      || code_source.media_type == MediaType::Wasm
+    {
       // we need the code with the source map in order for
       // it to work with --inspect or --inspect-brk
       code_source.code
@@ -378,6 +381,7 @@ impl<TGraphContainer: ModuleGraphContainer>
     };
     let module_type = match code_source.media_type {
       MediaType::Json => ModuleType::Json,
+      MediaType::Wasm => ModuleType::Wasm,
       _ => ModuleType::JavaScript,
     };
 
@@ -545,6 +549,7 @@ impl<TGraphContainer: ModuleGraphContainer>
       Some(Module::Node(module)) => module.specifier.clone(),
       Some(Module::Js(module)) => module.specifier.clone(),
       Some(Module::Json(module)) => module.specifier.clone(),
+      Some(Module::Wasm(module)) => module.specifier.clone(),
       Some(Module::External(module)) => {
         node::resolve_specifier_into_node_modules(
           &module.specifier,
@@ -716,6 +721,13 @@ impl<TGraphContainer: ModuleGraphContainer>
           media_type: *media_type,
         })))
       }
+      Some(deno_graph::Module::Wasm(WasmModule {
+        source, specifier, ..
+      })) => Ok(Some(CodeOrDeferredEmit::Code(ModuleCodeStringSource {
+        code: ModuleSourceCode::Bytes(source.clone().into()),
+        found_url: specifier.clone(),
+        media_type: MediaType::Wasm,
+      }))),
       Some(
         deno_graph::Module::External(_)
         | deno_graph::Module::Node(_)

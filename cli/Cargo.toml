@@ -2,7 +2,7 @@
 
 [package]
 name = "deno"
-version = "2.0.6"
+version = "2.1.0"
 authors.workspace = true
 default-run = "deno"
 edition.workspace = true
@@ -72,8 +72,8 @@ deno_ast = { workspace = true, features = ["bundler", "cjs", "codegen", "proposa
 deno_cache_dir.workspace = true
 deno_config.workspace = true
 deno_core = { workspace = true, features = ["include_js_files_for_snapshotting"] }
-deno_doc = { version = "0.156.0", default-features = false, features = ["rust", "html", "syntect"] }
-deno_graph = { version = "=0.84.1" }
+deno_doc = { version = "0.160.0", features = ["rust", "comrak"] }
+deno_graph = { version = "=0.85.0" }
 deno_lint = { version = "=0.68.0", features = ["docs"] }
 deno_lockfile.workspace = true
 deno_npm.workspace = true
@@ -129,7 +129,7 @@ libz-sys.workspace = true
 log = { workspace = true, features = ["serde"] }
 lsp-types.workspace = true
 malva = "=0.11.0"
-markup_fmt = "=0.15.0"
+markup_fmt = "=0.16.0"
 memmem.workspace = true
 monch.workspace = true
 notify.workspace = true
@@ -151,6 +151,8 @@ serde_repr.workspace = true
 sha2.workspace = true
 shell-escape = "=0.1.5"
 spki = { version = "0.7", features = ["pem"] }
+# NOTE(bartlomieju): using temporary fork for now, revert back to `sqlformat-rs` later
+sqlformat = { package = "deno_sqlformat", version = "0.3.2" }
 strsim = "0.11.1"
 tar.workspace = true
 tempfile.workspace = true

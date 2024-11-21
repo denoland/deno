@@ -557,6 +557,7 @@
           "ffi",
           "fs",
           "fmt-component",
+          "fmt-sql",
           "http",
           "kv",
           "net",

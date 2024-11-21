@@ -802,7 +802,7 @@ fn get_requires_allow_all_env_vars(env: &RunEnv) -> Vec<&str> {
   found_envs
 }
 
-#[op2]
+#[op2(stack_trace)]
 #[serde]
 fn op_spawn_child(
   state: &mut OpState,
@@ -844,7 +844,7 @@ async fn op_spawn_wait(
   Ok(result)
 }
 
-#[op2]
+#[op2(stack_trace)]
 #[serde]
 fn op_spawn_sync(
   state: &mut OpState,
@@ -928,7 +928,7 @@ mod deprecated {
     stderr_rid: Option<ResourceId>,
   }
 
-  #[op2]
+  #[op2(stack_trace)]
   #[serde]
   pub fn op_run(
     state: &mut OpState,
@@ -1129,7 +1129,7 @@ mod deprecated {
     }
   }
 
-  #[op2(fast)]
+  #[op2(fast, stack_trace)]
   pub fn op_kill(
     state: &mut OpState,
     #[smi] pid: i32,

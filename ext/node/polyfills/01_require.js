@@ -1086,12 +1086,10 @@ function loadESMFromCJS(module, filename, code) {
   module.exports = namespace;
 }
 
-Module._extensions[".mjs"] = Module._extensions[".mts"] = function (
-  module,
-  filename,
-) {
-  loadESMFromCJS(module, filename);
-};
+Module._extensions[".mjs"] =
+  Module._extensions[".mts"] =
+  Module._extensions[".wasm"] =
+    loadESMFromCJS;
 
 function stripBOM(content) {
   if (StringPrototypeCharCodeAt(content, 0) === 0xfeff) {
