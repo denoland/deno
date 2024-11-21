@@ -1062,7 +1062,7 @@ Module.prototype._compile = function (content, filename, format) {
 
 Module._extensions[".js"] = function (module, filename) {
   // We don't define everything on Module.extensions in
-  // order to prevent probing
+  // order to prevent probing for these files
   if (
     StringPrototypeEndsWith(filename, ".js") ||
     StringPrototypeEndsWith(filename, ".ts") ||
