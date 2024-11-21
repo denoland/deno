@@ -25,6 +25,7 @@ deno_package_json.features = ["sync"]
 deno_path_util.workspace = true
 deno_semver.workspace = true
 node_resolver.workspace = true
+node_resolver.features = ["sync"]
 thiserror.workspace = true
 url.workspace = true
 
