@@ -6,6 +6,15 @@ https://github.com/denoland/deno/releases
 We also have one-line install commands at:
 https://github.com/denoland/deno_install
 
+### 2.1.1 / 2024.11.21
+
+- fix(cli): Fix typo in doc subcommand help output (#26321)
+- fix(node): regression where ts files were sometimes resolved instead of js
+  (#26971)
+- fix(task): ensure root config always looks up dependencies in root (#26959)
+- fix(watch): don't panic if there's no path provided (#26972)
+- fix: Buffer global in --unstable-node-globals (#26973)
+
 ### 2.1.0 / 2024.11.21
 
 - feat(cli): add `--unstable-node-globals` flag (#26617)
