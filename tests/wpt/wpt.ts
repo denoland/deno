@@ -1,4 +1,4 @@
-#!/usr/bin/env -S deno run --allow-write --allow-read --allow-net --allow-env --allow-run --config=tests/config/deno.json
+#!/usr/bin/env -S deno run --allow-write --allow-read --allow-net --allow-env --allow-run --config=tests/config/deno.json --cert tests/wpt/runner/certs/cacert.pem
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 // deno-lint-ignore-file no-console
@@ -764,6 +764,14 @@ function discoverTestsToRun(
           // encoding, which the WPT test server does not. Unfortunately this
           // also disables some useful fetch tests.
           if (url.pathname.includes("request-upload")) {
+            continue;
+          }
+          // We don't support shadow realm, service worker, or shared worker.
+          if (
+            url.pathname.includes("shadowrealm") ||
+            url.pathname.includes("serviceworker") ||
+            url.pathname.includes("sharedworker")
+          ) {
             continue;
           }
           const finalPath = url.pathname + url.search;
