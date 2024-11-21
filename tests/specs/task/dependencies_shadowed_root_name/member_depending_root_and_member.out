@@ -1,10 +1,10 @@
 [UNORDERED_START]
 Task build echo member
 member
+Task build echo root
+root
 Task root-depending-root echo test
 test
-Task root echo root
-root
 [UNORDERED_END]
-Task member-depending-root-and-member echo member-test
+Task member-dependending-root-and-member echo member-test
 member-test
