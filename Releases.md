@@ -8,7 +8,8 @@ https://github.com/denoland/deno_install
 
 ### 2.1.1 / 2024.11.21
 
-- fix(cli): Fix typo in doc subcommand help output (#26321)
+- docs(add): clarification to add command (#26968)
+- docs(doc): fix typo in doc subcommand help output (#26321)
 - fix(node): regression where ts files were sometimes resolved instead of js
   (#26971)
 - fix(task): ensure root config always looks up dependencies in root (#26959)
