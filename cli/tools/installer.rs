@@ -359,6 +359,7 @@ async fn install_global(
   // ensure the module is cached
   let factory = CliFactory::from_flags(flags.clone());
 
+  let cli_options = factory.cli_options()?;
   let http_client = factory.http_client_provider();
   let deps_http_cache = factory.global_http_cache()?;
   let mut deps_file_fetcher = FileFetcher::new(
@@ -381,20 +382,22 @@ async fn install_global(
   ));
 
   let entry_text = install_flags_global.module_url.as_str();
-  let req = super::registry::AddRmPackageReq::parse(entry_text);
-
-  // found a package requirement but missing the prefix
-  if let Ok(Err(package_req)) = req {
-    if jsr_resolver.req_to_nv(&package_req).await.is_some() {
-      bail!(
-        "{entry_text} is missing a prefix. Did you mean `{}`?",
-        crate::colors::yellow(format!("deno install -g jsr:{package_req}"))
-      );
-    } else if npm_resolver.req_to_nv(&package_req).await.is_some() {
-      bail!(
-        "{entry_text} is missing a prefix. Did you mean `{}`?",
-        crate::colors::yellow(format!("deno install -g npm:{package_req}"))
-      );
+  if !cli_options.initial_cwd().join(entry_text).exists() {
+    // check for package requirement missing prefix
+    if let Ok(Err(package_req)) =
+      super::registry::AddRmPackageReq::parse(entry_text)
+    {
+      if jsr_resolver.req_to_nv(&package_req).await.is_some() {
+        bail!(
+          "{entry_text} is missing a prefix. Did you mean `{}`?",
+          crate::colors::yellow(format!("deno install -g jsr:{package_req}"))
+        );
+      } else if npm_resolver.req_to_nv(&package_req).await.is_some() {
+        bail!(
+          "{entry_text} is missing a prefix. Did you mean `{}`?",
+          crate::colors::yellow(format!("deno install -g npm:{package_req}"))
+        );
+      }
     }
   }
 
