@@ -1,11 +1,16 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
+use std::collections::BTreeMap;
+use std::collections::BTreeSet;
 use std::collections::HashSet;
 use std::collections::VecDeque;
 use std::sync::Arc;
 
 use deno_ast::MediaType;
 use deno_ast::ModuleSpecifier;
+use deno_config::deno_json::get_ts_config_for_emit;
+use deno_config::glob::PathOrPattern;
+use deno_core::anyhow::anyhow;
 use deno_core::error::AnyError;
 use deno_graph::Module;
 use deno_graph::ModuleGraph;
@@ -15,9 +20,15 @@ use once_cell::sync::Lazy;
 use regex::Regex;
 
 use crate::args::check_warn_tsconfig;
+use crate::args::discover_npmrc_from_workspace;
 use crate::args::CheckFlags;
+use crate::args::CliLockfile;
 use crate::args::CliOptions;
+use crate::args::ConfigFlag;
+use crate::args::FileFlags;
 use crate::args::Flags;
+use crate::args::LintFlags;
+use crate::args::ScopeOptions;
 use crate::args::TsConfig;
 use crate::args::TsConfigType;
 use crate::args::TsTypeLib;
@@ -40,6 +51,159 @@ pub async fn check(
   flags: Arc<Flags>,
   check_flags: CheckFlags,
 ) -> Result<(), AnyError> {
+  let is_discovered_config = match flags.config_flag {
+    ConfigFlag::Discover => true,
+    ConfigFlag::Path(_) => false,
+    ConfigFlag::Disabled => false,
+  };
+  if is_discovered_config {
+    let factory = CliFactory::from_flags(flags.clone());
+    let cli_options = factory.cli_options()?;
+    let (remote_files, files) = check_flags
+      .files
+      .iter()
+      .cloned()
+      .partition::<Vec<_>, _>(|f| {
+        f.starts_with("http://")
+          || f.starts_with("https://")
+          || f.starts_with("npm:")
+          || f.starts_with("jsr:")
+      });
+    let cwd_prefix = format!(
+      "{}{}",
+      cli_options.initial_cwd().to_string_lossy(),
+      std::path::MAIN_SEPARATOR
+    );
+    // TODO(nayeemrmn): Using lint options for now. Add proper API to deno_config.
+    let mut by_workspace_directory = cli_options
+      .resolve_lint_options_for_members(&LintFlags {
+        files: FileFlags {
+          ignore: Default::default(),
+          include: files,
+        },
+        ..Default::default()
+      })?
+      .into_iter()
+      .map(|(d, o)| {
+        let files = o
+          .files
+          .include
+          .iter()
+          .flat_map(|p| {
+            p.inner().iter().flat_map(|p| match p {
+              PathOrPattern::NegatedPath(_) => None,
+              PathOrPattern::Path(p) => Some(p.to_string_lossy().to_string()),
+              PathOrPattern::Pattern(p) => {
+                // TODO(nayeemrmn): Absolute globs don't work for specifier
+                // collection, we make them relative here for now.
+                let s = p.as_str();
+                Some(s.strip_prefix(&cwd_prefix).unwrap_or(&s).to_string())
+              }
+              PathOrPattern::RemoteUrl(_) => None,
+            })
+          })
+          .collect::<Vec<_>>();
+        (d.dir_url().clone(), (Arc::new(d), files))
+      })
+      .collect::<BTreeMap<_, _>>();
+    if !remote_files.is_empty() {
+      by_workspace_directory
+        .entry(cli_options.start_dir.dir_url().clone())
+        .or_insert((cli_options.start_dir.clone(), vec![]))
+        .1
+        .extend(remote_files);
+    }
+    let all_scopes = Arc::new(
+      by_workspace_directory
+        .iter()
+        .filter(|(_, (d, _))| d.has_deno_or_pkg_json())
+        .map(|(s, (_, _))| s.clone())
+        .collect::<BTreeSet<_>>(),
+    );
+    let dir_count = by_workspace_directory.len();
+    let mut check_errors = vec![];
+    let mut found_specifiers = false;
+    for (dir_url, (workspace_directory, files)) in by_workspace_directory {
+      let check_flags = CheckFlags {
+        files,
+        doc: check_flags.doc,
+        doc_only: check_flags.doc_only,
+      };
+      let (npmrc, _) =
+        discover_npmrc_from_workspace(&workspace_directory.workspace)?;
+      let lockfile =
+        CliLockfile::discover(&flags, &workspace_directory.workspace)?;
+      let scope_options = (dir_count > 1).then(|| ScopeOptions {
+        scope: workspace_directory
+          .has_deno_or_pkg_json()
+          .then(|| dir_url.clone()),
+        all_scopes: all_scopes.clone(),
+      });
+      let cli_options = CliOptions::new(
+        flags.clone(),
+        cli_options.initial_cwd().to_path_buf(),
+        lockfile.map(Arc::new),
+        npmrc,
+        workspace_directory,
+        false,
+        scope_options.map(Arc::new),
+      )?;
+      let factory = CliFactory::from_cli_options(Arc::new(cli_options));
+      let main_graph_container = factory.main_module_graph_container().await?;
+      let specifiers =
+        main_graph_container.collect_specifiers(&check_flags.files)?;
+      if specifiers.is_empty() {
+        continue;
+      } else {
+        found_specifiers = true;
+      }
+      let specifiers_for_typecheck = if check_flags.doc || check_flags.doc_only
+      {
+        let file_fetcher = factory.file_fetcher()?;
+        let root_permissions = factory.root_permissions_container()?;
+        let mut specifiers_for_typecheck = if check_flags.doc {
+          specifiers.clone()
+        } else {
+          vec![]
+        };
+        for s in specifiers {
+          let file = file_fetcher.fetch(&s, root_permissions).await?;
+          let snippet_files = extract::extract_snippet_files(file)?;
+          for snippet_file in snippet_files {
+            specifiers_for_typecheck.push(snippet_file.specifier.clone());
+            file_fetcher.insert_memory_files(snippet_file);
+          }
+        }
+
+        specifiers_for_typecheck
+      } else {
+        specifiers
+      };
+      if let Err(err) = main_graph_container
+        .check_specifiers(&specifiers_for_typecheck, None)
+        .await
+      {
+        check_errors.push(err);
+      }
+    }
+    if !found_specifiers {
+      log::warn!("{} No matching files found.", colors::yellow("Warning"));
+    }
+    if !check_errors.is_empty() {
+      // TODO(nayeemrmn): More integrated way of concatenating diagnostics from
+      // different checks.
+      return Err(anyhow!(
+        "{}",
+        check_errors
+          .into_iter()
+          .map(|e| e.to_string())
+          .collect::<Vec<_>>()
+          .join("\n\n"),
+      ));
+    }
+    return Ok(());
+  }
+
   let factory = CliFactory::from_flags(flags);
 
   let main_graph_container = factory.main_module_graph_container().await?;
@@ -168,9 +332,22 @@ impl TypeChecker {
     }
 
     log::debug!("Type checking.");
-    let ts_config_result = self
+    // TODO(nayeemrmn): This is a hack to get member-specific compiler options.
+    let ts_config_result = if let Some(config_file) = self
       .cli_options
-      .resolve_ts_config_for_emit(TsConfigType::Check { lib: options.lib })?;
+      .start_dir
+      .maybe_deno_json()
+      .filter(|c| c.json.compiler_options.is_some())
+    {
+      get_ts_config_for_emit(
+        TsConfigType::Check { lib: options.lib },
+        Some(config_file),
+      )?
+    } else {
+      self
+        .cli_options
+        .resolve_ts_config_for_emit(TsConfigType::Check { lib: options.lib })?
+    };
     if options.log_ignored_options {
       check_warn_tsconfig(&ts_config_result);
     }
@@ -259,10 +436,33 @@ impl TypeChecker {
 
     let mut diagnostics = response.diagnostics.filter(|d| {
       if self.is_remote_diagnostic(d) {
-        type_check_mode == TypeCheckMode::All && d.include_when_remote()
-      } else {
-        true
+        return type_check_mode == TypeCheckMode::All
+          && d.include_when_remote()
+          && self
+            .cli_options
+            .scope_options
+            .as_ref()
+            .map(|o| o.scope.is_none())
+            .unwrap_or(true);
       }
+      let Some(scope_options) = &self.cli_options.scope_options else {
+        return true;
+      };
+      let Some(specifier) = d
+        .file_name
+        .as_ref()
+        .and_then(|s| ModuleSpecifier::parse(s).ok())
+      else {
+        return true;
+      };
+      if specifier.scheme() != "file" {
+        return true;
+      }
+      let scope = scope_options
+        .all_scopes
+        .iter()
+        .rfind(|s| specifier.as_str().starts_with(s.as_str()));
+      scope == scope_options.scope.as_ref()
     });
 
     diagnostics.apply_fast_check_source_maps(&graph);

@@ -1,0 +1,9 @@
+error: TS2304 [ERROR]: Cannot find name 'onmessage'.
+onmessage;
+~~~~~~~~~
+    at file:///[WILDCARD]/main.ts:8:1
+
+TS2304 [ERROR]: Cannot find name 'localStorage'.
+localStorage;
+~~~~~~~~~~~~
+    at file:///[WILDCARD]/member/mod.ts:2:1

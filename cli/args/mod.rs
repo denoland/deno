@@ -68,6 +68,7 @@ use once_cell::sync::Lazy;
 use serde::Deserialize;
 use serde::Serialize;
 use std::borrow::Cow;
+use std::collections::BTreeSet;
 use std::collections::HashMap;
 use std::env;
 use std::io::BufReader;
@@ -790,6 +791,15 @@ struct CliOptionOverrides {
   import_map_specifier: Option<Option<ModuleSpecifier>>,
 }
 
+/// Overrides for the options below that when set will
+/// use these values over the values derived from the
+/// CLI flags or config file.
+#[derive(Debug, Clone)]
+pub struct ScopeOptions {
+  pub scope: Option<Arc<ModuleSpecifier>>,
+  pub all_scopes: Arc<BTreeSet<Arc<ModuleSpecifier>>>,
+}
+
 /// Holds the resolved options of many sources used by subcommands
 /// and provides some helper function for creating common objects.
 pub struct CliOptions {
@@ -804,6 +814,7 @@ pub struct CliOptions {
   overrides: CliOptionOverrides,
   pub start_dir: Arc<WorkspaceDirectory>,
   pub deno_dir_provider: Arc<DenoDirProvider>,
+  pub scope_options: Option<Arc<ScopeOptions>>,
 }
 
 impl CliOptions {
@@ -814,6 +825,7 @@ impl CliOptions {
     npmrc: Arc<ResolvedNpmRc>,
     start_dir: Arc<WorkspaceDirectory>,
     force_global_cache: bool,
+    scope_options: Option<Arc<ScopeOptions>>,
   ) -> Result<Self, AnyError> {
     if let Some(insecure_allowlist) =
       flags.unsafely_ignore_certificate_errors.as_ref()
@@ -853,6 +865,7 @@ impl CliOptions {
       main_module_cell: std::sync::OnceLock::new(),
       start_dir,
       deno_dir_provider,
+      scope_options,
     })
   }
 
@@ -937,6 +950,7 @@ impl CliOptions {
       npmrc,
       Arc::new(start_dir),
       false,
+      None,
     )
   }
 

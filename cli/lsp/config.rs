@@ -1410,9 +1410,17 @@ impl ConfigData {
         .unwrap_or_default(),
     );
 
-    let ts_config = LspTsConfig::new(
-      member_dir.workspace.root_deno_json().map(|c| c.as_ref()),
-    );
+    // TODO(nayeemrmn): This is a hack to get member-specific compiler options.
+    let ts_config = if let Some(config_file) = member_dir
+      .maybe_deno_json()
+      .filter(|c| c.json.compiler_options.is_some())
+    {
+      LspTsConfig::new(Some(config_file))
+    } else {
+      LspTsConfig::new(
+        member_dir.workspace.root_deno_json().map(|c| c.as_ref()),
+      )
+    };
 
     let deno_lint_config =
       if ts_config.inner.0.get("jsx").and_then(|v| v.as_str()) == Some("react")

@@ -1,0 +1,11 @@
+error: TS2304 [ERROR]: Cannot find name 'onmessage'.
+onmessage;
+~~~~~~~~~
+    at file:///home/nayeem/projects/deno/tests/specs/check/check_workspace/main.ts:8:1
+
+TS2304 [ERROR]: Cannot find name 'onmessage'.
+onmessage;
+~~~~~~~~~
+    at file:///home/nayeem/projects/deno/tests/specs/check/check_workspace/member/mod.ts:5:1
+
+Found 2 errors.
