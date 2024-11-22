@@ -302,7 +302,7 @@ impl VfsBuilder {
     let dir = self.add_dir(path.parent().unwrap())?;
     let name = path.file_name().unwrap().to_string_lossy();
     match dir.entries.binary_search_by(|e| e.name().cmp(&name)) {
-      Ok(_) => unreachable!(),
+      Ok(_) => Ok(()), // previously inserted
       Err(insert_index) => {
         dir.entries.insert(
           insert_index,
@@ -314,9 +314,9 @@ impl VfsBuilder {
               .collect::<Vec<_>>(),
           }),
         );
+        Ok(())
       }
     }
-    Ok(())
   }
 
   pub fn into_dir_and_files(self) -> (VirtualDirectory, Vec<Vec<u8>>) {
