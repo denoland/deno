@@ -1,4 +1,4 @@
 {
-  "args": "main.js",
+  "args": "run --check main.js",
   "output": "main.out"
 }
