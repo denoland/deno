@@ -51,7 +51,8 @@ pub struct VfsBuilder {
 
 impl VfsBuilder {
   pub fn new(root_path: PathBuf) -> Result<Self, AnyError> {
-    let root_path = canonicalize_path(&root_path)?;
+    let root_path = canonicalize_path(&root_path)
+      .with_context(|| format!("Canonicalizing {}", root_path.display()))?;
     log::debug!("Building vfs with root '{}'", root_path.display());
     Ok(Self {
       root_dir: VirtualDirectory {
@@ -633,7 +634,7 @@ impl FileBackedVfsFile {
   }
 
   fn read_to_buf(&self, buf: &mut [u8]) -> FsResult<usize> {
-    let pos = {
+    let read_pos = {
       let mut pos = self.pos.lock();
       let read_pos = *pos;
       // advance the position due to the read
@@ -642,12 +643,12 @@ impl FileBackedVfsFile {
     };
     self
       .vfs
-      .read_file(&self.file, pos, buf)
+      .read_file(&self.file, read_pos, buf)
       .map_err(|err| err.into())
   }
 
   fn read_to_end(&self) -> FsResult<Vec<u8>> {
-    let pos = {
+    let read_pos = {
       let mut pos = self.pos.lock();
       let read_pos = *pos;
       // todo(dsherret): should this always set it to the end of the file?
@@ -657,12 +658,12 @@ impl FileBackedVfsFile {
       }
       read_pos
     };
-    if pos > self.file.len {
+    if read_pos > self.file.len {
       return Ok(Vec::new());
     }
-    let size = (self.file.len - pos) as usize;
+    let size = (self.file.len - read_pos) as usize;
     let mut buf = vec![0; size];
-    self.vfs.read_file(&self.file, pos, &mut buf)?;
+    self.vfs.read_file(&self.file, read_pos, &mut buf)?;
     Ok(buf)
   }
 }
@@ -892,8 +893,9 @@ impl FileBackedVfs {
     buf: &mut [u8],
   ) -> std::io::Result<usize> {
     let read_range = self.get_read_range(file, pos, buf.len() as u64)?;
-    buf.copy_from_slice(&self.vfs_data[read_range]);
-    Ok(buf.len())
+    let read_len = read_range.len();
+    buf[..read_len].copy_from_slice(&self.vfs_data[read_range]);
+    Ok(read_len)
   }
 
   fn get_read_range(
@@ -902,15 +904,15 @@ impl FileBackedVfs {
     pos: u64,
     len: u64,
   ) -> std::io::Result<Range<usize>> {
-    let data = &self.vfs_data;
-    let start = self.fs_root.start_file_offset + file.offset + pos;
-    let end = start + len;
-    if end > data.len() as u64 {
+    if pos > file.len {
       return Err(std::io::Error::new(
         std::io::ErrorKind::UnexpectedEof,
         "unexpected EOF",
       ));
     }
+    let file_offset = self.fs_root.start_file_offset + file.offset;
+    let start = file_offset + pos;
+    let end = file_offset + std::cmp::min(pos + len, file.len);
     Ok(start as usize..end as usize)
   }
 
