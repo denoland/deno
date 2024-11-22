@@ -7,7 +7,7 @@
     },
     "flag": {
       "args": "fmt --unstable-sql",
-      "output": "[UNORDERED_START]\n[WILDLINE]badly_formatted.sql\n[WILDLINE]well_formatted.sql\n[WILDLINE]wrong_file_ignore.sql\n[UNORDERED_END]\nChecked 7 files\n"
+      "output": "[UNORDERED_START]\n[WILDLINE]badly_formatted.sql\n[WILDLINE]wrong_file_ignore.sql\n[UNORDERED_END]\nChecked 7 files\n"
     },
     "config_file": {
       "steps": [{
@@ -18,8 +18,12 @@
         "output": "[WILDCARD]"
       }, {
         "args": "fmt",
-        "output": "[UNORDERED_START]\n[WILDLINE]badly_formatted.sql\n[WILDLINE]well_formatted.sql\n[WILDLINE]wrong_file_ignore.sql\n[UNORDERED_END]\nChecked 8 files\n"
+        "output": "[UNORDERED_START]\n[WILDLINE]badly_formatted.sql\n[WILDLINE]wrong_file_ignore.sql\n[UNORDERED_END]\nChecked 8 files\n"
       }]
+    },
+    "well_formatted_check": {
+      "args": "fmt --unstable-sql --check well_formatted.sql",
+      "output": "Checked 1 file\n"
     }
   }
 }
