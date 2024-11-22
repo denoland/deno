@@ -27,6 +27,7 @@ use deno_path_util::normalize_path;
 use deno_runtime::deno_node::NodeResolver;
 use deno_task_shell::ShellCommand;
 use indexmap::IndexMap;
+use indexmap::IndexSet;
 use regex::Regex;
 
 use crate::args::CliOptions;
@@ -65,145 +66,167 @@ pub async fn execute_script(
       })
       .unwrap_or(false);
 
-  fn arg_to_regex(input: &str) -> Result<regex::Regex, regex::Error> {
+  fn arg_to_regex(
+    input: &str,
+    exact: bool,
+  ) -> Result<regex::Regex, regex::Error> {
     let mut regex_str = regex::escape(input);
     regex_str = regex_str.replace("\\*", ".*");
+    let prefix = if exact && !regex_str.starts_with('^') {
+      "^"
+    } else {
+      ""
+    };
+    let suffix = if exact && !regex_str.ends_with('$') {
+      "$"
+    } else {
+      ""
+    };
 
-    Regex::new(&regex_str)
+    Regex::new(&format!("{}{}{}", prefix, regex_str, suffix))
   }
 
-  let packages_task_configs: Vec<PackageTaskInfo> = if let Some(filter) =
-    &task_flags.filter
-  {
-    let task_name = task_flags.task.as_ref().unwrap();
+  // Any of the matched tasks could be a child task of another matched
+  // one. Therefore we need to filter these out to ensure that every
+  // task is only run once.
+  fn match_tasks(
+    tasks_config: &WorkspaceTasksConfig,
+    task_regex: &Regex,
+  ) -> Vec<String> {
+    let mut matched: IndexSet<String> = IndexSet::new();
+    let mut visited: HashSet<String> = HashSet::new();
 
-    // Filter based on package name
-    let package_regex = arg_to_regex(filter)?;
-    let task_regex = arg_to_regex(task_name)?;
+    fn visit_task(
+      tasks_config: &WorkspaceTasksConfig,
+      visited: &mut HashSet<String>,
+      name: &str,
+    ) {
+      if visited.contains(name) {
+        return;
+      }
 
-    let mut packages_task_info: Vec<PackageTaskInfo> = vec![];
+      visited.insert(name.to_string());
 
-    fn matches_package(
-      config: &FolderConfigs,
-      force_use_pkg_json: bool,
-      regex: &Regex,
-    ) -> bool {
-      if !force_use_pkg_json {
-        if let Some(deno_json) = &config.deno_json {
-          if let Some(name) = &deno_json.json.name {
+      if let Some((_, TaskOrScript::Task(_, task))) = &tasks_config.task(name) {
+        for dep in &task.dependencies {
+          visit_task(tasks_config, visited, dep);
+        }
+      }
+    }
+
+    // Match tasks in deno.json
+    for name in tasks_config.task_names() {
+      if task_regex.is_match(name) && !visited.contains(name) {
+        matched.insert(name.to_string());
+        visit_task(&tasks_config, &mut visited, name);
+      }
+    }
+
+    matched.iter().map(|s| s.to_string()).collect::<Vec<_>>()
+  }
+
+  let (packages_task_configs, task_name): (Vec<PackageTaskInfo>, &str) =
+    if let Some(filter) = &task_flags.filter {
+      let task_name = task_flags.task.as_ref().unwrap();
+
+      // Filter based on package name
+      let package_regex = arg_to_regex(filter, false)?;
+      let task_regex = arg_to_regex(task_name, true)?;
+
+      let mut packages_task_info: Vec<PackageTaskInfo> = vec![];
+
+      fn matches_package(
+        config: &FolderConfigs,
+        force_use_pkg_json: bool,
+        regex: &Regex,
+      ) -> bool {
+        if !force_use_pkg_json {
+          if let Some(deno_json) = &config.deno_json {
+            if let Some(name) = &deno_json.json.name {
+              if regex.is_match(name) {
+                return true;
+              }
+            }
+          }
+        }
+
+        if let Some(package_json) = &config.pkg_json {
+          if let Some(name) = &package_json.name {
             if regex.is_match(name) {
               return true;
             }
           }
         }
+
+        false
       }
 
-      if let Some(package_json) = &config.pkg_json {
-        if let Some(name) = &package_json.name {
-          if regex.is_match(name) {
-            return true;
-          }
+      let workspace = cli_options.workspace();
+      for folder in workspace.config_folders() {
+        if !matches_package(folder.1, force_use_pkg_json, &package_regex) {
+          continue;
         }
+
+        let member_dir = workspace.resolve_member_dir(folder.0);
+        let mut tasks_config = member_dir.to_tasks_config()?;
+        if force_use_pkg_json {
+          tasks_config = tasks_config.with_only_pkg_json();
+        }
+
+        let matched_tasks = match_tasks(&tasks_config, &task_regex);
+
+        packages_task_info.push(PackageTaskInfo {
+          matched_tasks,
+          tasks_config,
+        });
       }
 
-      false
-    }
-
-    let workspace = cli_options.workspace();
-    for folder in workspace.config_folders() {
-      if !matches_package(folder.1, force_use_pkg_json, &package_regex) {
-        continue;
+      // Logging every task definition would be too spammy. Pnpm only
+      // logs a simple message too.
+      if packages_task_info
+        .iter()
+        .all(|config| config.matched_tasks.is_empty())
+      {
+        log::warn!(
+          "{}",
+          colors::red(format!(
+            "No matching task or script '{}' found in selected packages.",
+            task_name
+          ))
+        );
+        return Ok(0);
       }
 
-      let member_dir = workspace.resolve_member_dir(folder.0);
-      let mut tasks_config = member_dir.to_tasks_config()?;
+      // TODO: Sort packages topologically
+
+      (packages_task_info, task_name)
+    } else {
+      let mut tasks_config = start_dir.to_tasks_config()?;
+
       if force_use_pkg_json {
-        tasks_config = tasks_config.with_only_pkg_json();
+        tasks_config = tasks_config.with_only_pkg_json()
       }
 
-      // Any of the matched tasks could be a child task of another matched
-      // one. Therefore we need to filter these out to ensure that every
-      // task is only run once.
-      let mut matched: HashSet<String> = HashSet::new();
-      let mut visited: HashSet<String> = HashSet::new();
+      let Some(task_name) = &task_flags.task else {
+        print_available_tasks(
+          &mut std::io::stdout(),
+          &cli_options.start_dir,
+          &tasks_config,
+        )?;
+        return Ok(0);
+      };
 
-      fn visit_task(
-        tasks_config: &WorkspaceTasksConfig,
-        visited: &mut HashSet<String>,
-        name: &str,
-      ) {
-        if visited.contains(name) {
-          return;
-        }
+      let task_regex = arg_to_regex(task_name, true)?;
+      let matched_tasks = match_tasks(&tasks_config, &task_regex);
 
-        visited.insert(name.to_string());
-
-        if let Some((_, TaskOrScript::Task(_, task))) = &tasks_config.task(name)
-        {
-          for dep in &task.dependencies {
-            visit_task(tasks_config, visited, dep);
-          }
-        }
-      }
-
-      // Match tasks in deno.json
-      for name in tasks_config.task_names() {
-        if task_regex.is_match(name) && !visited.contains(name) {
-          matched.insert(name.to_string());
-          visit_task(&tasks_config, &mut visited, name);
-        }
-      }
-
-      packages_task_info.push(PackageTaskInfo {
-        matched_tasks: matched
-          .iter()
-          .map(|s| s.to_string())
-          .collect::<Vec<_>>(),
-        tasks_config,
-      });
-    }
-
-    // Logging every task definition would be too spammy. Pnpm only
-    // logs a simple message too.
-    if packages_task_info
-      .iter()
-      .all(|config| config.matched_tasks.is_empty())
-    {
-      log::warn!(
-        "{}",
-        colors::red(format!(
-          "No matching task or script '{}' found in selected packages.",
-          task_name
-        ))
-      );
-      return Ok(0);
-    }
-
-    // FIXME: Sort packages topologically
-    //
-
-    packages_task_info
-  } else {
-    let mut tasks_config = start_dir.to_tasks_config()?;
-
-    if force_use_pkg_json {
-      tasks_config = tasks_config.with_only_pkg_json()
-    }
-
-    let Some(task_name) = &task_flags.task else {
-      print_available_tasks(
-        &mut std::io::stdout(),
-        &cli_options.start_dir,
-        &tasks_config,
-      )?;
-      return Ok(0);
+      (
+        vec![PackageTaskInfo {
+          tasks_config,
+          matched_tasks,
+        }],
+        task_name,
+      )
     };
-
-    vec![PackageTaskInfo {
-      tasks_config,
-      matched_tasks: vec![task_name.to_string()],
-    }]
-  };
 
   let npm_resolver = factory.npm_resolver().await?;
   let node_resolver = factory.node_resolver().await?;
@@ -240,7 +263,7 @@ pub async fn execute_script(
   }
 
   for task_config in &packages_task_configs {
-    let exit_code = task_runner.run_tasks(task_config).await?;
+    let exit_code = task_runner.run_tasks(task_config, task_name).await?;
     if exit_code > 0 {
       return Ok(exit_code);
     }
@@ -269,8 +292,9 @@ impl<'a> TaskRunner<'a> {
   pub async fn run_tasks(
     &self,
     pkg_tasks_config: &PackageTaskInfo,
+    task_name: &str,
   ) -> Result<i32, deno_core::anyhow::Error> {
-    match sort_tasks_topo(pkg_tasks_config) {
+    match sort_tasks_topo(pkg_tasks_config, task_name) {
       Ok(sorted) => self.run_tasks_in_parallel(sorted).await,
       Err(err) => match err {
         TaskError::NotFound(name) => {
@@ -526,6 +550,7 @@ struct ResolvedTask<'a> {
 
 fn sort_tasks_topo<'a>(
   pkg_task_config: &'a PackageTaskInfo,
+  task_name: &str,
 ) -> Result<Vec<ResolvedTask<'a>>, TaskError> {
   trait TasksConfig {
     fn task(
@@ -618,6 +643,10 @@ fn sort_tasks_topo<'a>(
 
   for name in &pkg_task_config.matched_tasks {
     sort_visit(name, &mut sorted, Vec::new(), &pkg_task_config.tasks_config)?;
+  }
+
+  if sorted.is_empty() {
+    return Err(TaskError::NotFound(task_name.to_string()));
   }
 
   Ok(sorted)
