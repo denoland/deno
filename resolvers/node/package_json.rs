@@ -85,7 +85,9 @@ impl<TEnv: NodeResolverEnv> PackageJsonResolver<TEnv> {
       Ok(None)
     }
 
-    let parent_dir = file_path.parent().unwrap();
+    #[allow(clippy::disallowed_methods)]
+    let file_path = file_path.canonicalize().unwrap_or(file_path.to_path_buf());
+    let parent_dir = file_path.parent().unwrap_or(Path::new("/"));
     let Some(start_dir) = canonicalize_first_ancestor_exists(
       parent_dir, &self.env,
     )
