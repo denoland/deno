@@ -4454,11 +4454,7 @@ fn op_load<'s>(
           == NodeModuleKind::Cjs,
       })
     };
-
-  lsp_warn!("op_load {} {}", &specifier, maybe_load_response.is_some());
-
   let serialized = serde_v8::to_v8(scope, maybe_load_response)?;
-
   state.performance.measure(mark);
   Ok(serialized)
 }
