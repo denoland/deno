@@ -549,7 +549,11 @@ pub fn format_sql(
   // Add single new line to the end of file.
   formatted_str.push('\n');
 
-  Ok(Some(formatted_str))
+  Ok(if formatted_str == file_text {
+    None
+  } else {
+    Some(formatted_str)
+  })
 }
 
 /// Formats a single TS, TSX, JS, JSX, JSONC, JSON, MD, IPYNB or SQL file.
