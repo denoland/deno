@@ -11,7 +11,7 @@
     "if": "unix",
     "commandName": "./main",
     "args": [],
-    "output": "output.out",
+    "output": "[WILDCARD]",
     "exitCode": 0
   }, {
     "if": "windows",
@@ -21,7 +21,7 @@
     "if": "windows",
     "commandName": "./main.exe",
     "args": [],
-    "output": "output.out",
+    "output": "[WILDCARD]",
     "exitCode": 0
   }]
 }
