@@ -191,7 +191,6 @@ impl Storage {
     state: &mut OpState,
     #[string] key: &str,
   ) -> Result<Option<String>, WebStorageError> {
-    println!("get_item {}", key);
     let conn = get_webstorage(state, self.persistent)?;
 
     let mut stmt =

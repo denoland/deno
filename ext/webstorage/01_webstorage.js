@@ -57,7 +57,6 @@ function createStorage(persistent) {
           configurable: true,
         });
       }
-      console.log("set", key, value);
       target.setItem(key, value);
       return true;
     },
