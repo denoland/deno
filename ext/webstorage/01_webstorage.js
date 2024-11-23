@@ -42,7 +42,8 @@ function createStorage(persistent) {
       if (ReflectHas(target, key)) {
         const value = target[key];
         if (typeof value === "function") {
-          return FunctionPrototypeBind(value, target);
+          const func = FunctionPrototypeBind(value, target);
+	  func.toString = value.toString.bind(value);
         }
         return value;
       }
