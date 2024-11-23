@@ -11,15 +11,15 @@ use std::borrow::Cow;
 use std::rc::Rc;
 use wgpu_types::SurfaceStatus;
 
-#[derive(Debug, thiserror::Error, deno_core::JsError)]
+#[derive(Debug, thiserror::Error, deno_error::JsError)]
 pub enum SurfaceError {
   #[class(inherit)]
   #[error(transparent)]
   Resource(#[from] #[inherit] ResourceError),
-  #[class(GENERIC)]
+  #[class(generic)]
   #[error("Invalid Surface Status")]
   InvalidStatus,
-  #[class(GENERIC)]
+  #[class(generic)]
   #[error(transparent)]
   Surface(wgpu_core::present::SurfaceError),
 }

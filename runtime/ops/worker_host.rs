@@ -118,7 +118,7 @@ pub struct CreateWorkerArgs {
   close_on_idle: bool,
 }
 
-#[derive(Debug, thiserror::Error, deno_core::JsError)]
+#[derive(Debug, thiserror::Error, deno_error::JsError)]
 pub enum CreateWorkerError {
   #[class("DOMExceptionNotSupportedError")]
   #[error("Classic workers are not supported.")]
@@ -138,7 +138,7 @@ pub enum CreateWorkerError {
 }
 
 /// Create worker as the host
-#[op2]
+#[op2(stack_trace)]
 #[serde]
 fn op_create_worker(
   state: &mut OpState,

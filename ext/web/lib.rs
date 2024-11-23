@@ -129,27 +129,27 @@ deno_core::extension!(deno_web,
   }
 );
 
-#[derive(Debug, thiserror::Error, deno_core::JsError)]
+#[derive(Debug, thiserror::Error, deno_error::JsError)]
 pub enum WebError {
   #[class("DOMExceptionInvalidCharacterError")]
   #[error("Failed to decode base64")]
   Base64Decode,
-  #[class(RANGE)]
+  #[class(range)]
   #[error("The encoding label provided ('{0}') is invalid.")]
   InvalidEncodingLabel(String),
-  #[class(TYPE)]
+  #[class(type)]
   #[error("buffer exceeds maximum length")]
   BufferTooLong,
-  #[class(RANGE)]
+  #[class(range)]
   #[error("Value too large to decode")]
   ValueTooLarge,
-  #[class(RANGE)]
+  #[class(range)]
   #[error("Provided buffer too small")]
   BufferTooSmall,
-  #[class(TYPE)]
+  #[class(type)]
   #[error("The encoded data is not valid")]
   DataInvalid,
-  #[class(GENERIC)]
+  #[class(generic)]
   #[error(transparent)]
   DataError(#[from] v8::DataError),
 }

@@ -140,21 +140,21 @@ pub fn op_node_hash_clone(
   hasher.clone_inner(output_length.map(|l| l as usize))
 }
 
-#[derive(Debug, thiserror::Error, deno_core::JsError)]
+#[derive(Debug, thiserror::Error, deno_error::JsError)]
 pub enum PrivateEncryptDecryptError {
-  #[class(GENERIC)]
+  #[class(generic)]
   #[error(transparent)]
   Pkcs8(#[from] pkcs8::Error),
-  #[class(GENERIC)]
+  #[class(generic)]
   #[error(transparent)]
   Spki(#[from] spki::Error),
-  #[class(GENERIC)]
+  #[class(generic)]
   #[error(transparent)]
   Utf8(#[from] std::str::Utf8Error),
-  #[class(GENERIC)]
+  #[class(generic)]
   #[error(transparent)]
   Rsa(#[from] rsa::Error),
-  #[class(TYPE)]
+  #[class(type)]
   #[error("Unknown padding")]
   UnknownPadding,
 }
@@ -407,9 +407,9 @@ pub fn op_node_verify(
   )
 }
 
-#[derive(Debug, thiserror::Error, deno_core::JsError)]
+#[derive(Debug, thiserror::Error, deno_error::JsError)]
 pub enum Pbkdf2Error {
-  #[class(TYPE)]
+  #[class(type)]
   #[error("unsupported digest: {0}")]
   UnsupportedDigest(String),
   #[class(inherit)]
@@ -481,15 +481,15 @@ pub async fn op_node_fill_random_async(#[smi] len: i32) -> ToJsBuffer {
   .unwrap()
 }
 
-#[derive(Debug, thiserror::Error, deno_core::JsError)]
+#[derive(Debug, thiserror::Error, deno_error::JsError)]
 pub enum HkdfError {
-  #[class(TYPE)]
+  #[class(type)]
   #[error("expected secret key")]
   ExpectedSecretKey,
-  #[class(TYPE)]
+  #[class(type)]
   #[error("HKDF-Expand failed")]
   HkdfExpandFailed,
-  #[class(TYPE)]
+  #[class(type)]
   #[error("Unsupported digest: {0}")]
   UnsupportedDigest(String),
   #[class(inherit)]
@@ -630,7 +630,7 @@ pub fn op_node_scrypt_sync(
   )
 }
 
-#[derive(Debug, thiserror::Error, deno_core::JsError)]
+#[derive(Debug, thiserror::Error, deno_error::JsError)]
 pub enum ScryptAsyncError {
   #[class(inherit)]
   #[error(transparent)]
@@ -670,15 +670,15 @@ pub async fn op_node_scrypt_async(
   .await?
 }
 
-#[derive(Debug, thiserror::Error, deno_core::JsError)]
+#[derive(Debug, thiserror::Error, deno_error::JsError)]
 pub enum EcdhEncodePubKey {
-  #[class(TYPE)]
+  #[class(type)]
   #[error("Invalid public key")]
   InvalidPublicKey,
-  #[class(TYPE)]
+  #[class(type)]
   #[error("Unsupported curve")]
   UnsupportedCurve,
-  #[class(GENERIC)]
+  #[class(generic)]
   #[error(transparent)]
   Sec1(#[from] sec1::Error),
 }
@@ -928,8 +928,8 @@ pub async fn op_node_gen_prime_async(
   spawn_blocking(move || gen_prime(size)).await
 }
 
-#[derive(Debug, thiserror::Error, deno_core::JsError)]
-#[class(TYPE)]
+#[derive(Debug, thiserror::Error, deno_error::JsError)]
+#[class(type)]
 pub enum DiffieHellmanError {
   #[error("Expected private key")]
   ExpectedPrivateKey,
@@ -1021,8 +1021,8 @@ pub fn op_node_diffie_hellman(
   Ok(res)
 }
 
-#[derive(Debug, thiserror::Error, deno_core::JsError)]
-#[class(TYPE)]
+#[derive(Debug, thiserror::Error, deno_error::JsError)]
+#[class(type)]
 pub enum SignEd25519Error {
   #[error("Expected private key")]
   ExpectedPrivateKey,
@@ -1054,8 +1054,8 @@ pub fn op_node_sign_ed25519(
   Ok(())
 }
 
-#[derive(Debug, thiserror::Error, deno_core::JsError)]
-#[class(TYPE)]
+#[derive(Debug, thiserror::Error, deno_error::JsError)]
+#[class(type)]
 pub enum VerifyEd25519Error {
   #[error("Expected public key")]
   ExpectedPublicKey,

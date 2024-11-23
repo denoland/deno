@@ -7,7 +7,7 @@ pub mod ops_tls;
 pub mod ops_unix;
 pub mod raw;
 pub mod resolve_addr;
-mod tcp;
+pub mod tcp;
 
 use deno_core::OpState;
 use deno_permissions::PermissionCheckError;

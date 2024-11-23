@@ -44,7 +44,7 @@ deno_core::extension!(
   }
 );
 
-#[derive(Debug, thiserror::Error, deno_core::JsError)]
+#[derive(Debug, thiserror::Error, deno_error::JsError)]
 pub enum SignalError {
   #[cfg(any(
     target_os = "android",
@@ -55,7 +55,7 @@ pub enum SignalError {
     target_os = "solaris",
     target_os = "illumos"
   ))]
-  #[class(TYPE)]
+  #[class(type)]
   #[error("Invalid signal: {0}")]
   InvalidSignalStr(String),
   #[cfg(any(
@@ -67,18 +67,18 @@ pub enum SignalError {
     target_os = "solaris",
     target_os = "illumos"
   ))]
-  #[class(TYPE)]
+  #[class(type)]
   #[error("Invalid signal: {0}")]
   InvalidSignalInt(libc::c_int),
   #[cfg(target_os = "windows")]
-  #[class(TYPE)]
+  #[class(type)]
   #[error("Windows only supports ctrl-c (SIGINT) and ctrl-break (SIGBREAK), but got {0}")]
   InvalidSignalStr(String),
   #[cfg(target_os = "windows")]
-  #[class(TYPE)]
+  #[class(type)]
   #[error("Windows only supports ctrl-c (SIGINT) and ctrl-break (SIGBREAK), but got {0}")]
   InvalidSignalInt(libc::c_int),
-  #[class(TYPE)]
+  #[class(type)]
   #[error("Binding to signal '{0}' is not allowed")]
   SignalNotAllowed(String),
   #[class(inherit)]

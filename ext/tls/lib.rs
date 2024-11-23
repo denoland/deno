@@ -31,9 +31,9 @@ use deno_core::error::JsNativeError;
 mod tls_key;
 pub use tls_key::*;
 
-#[derive(Debug, thiserror::Error, deno_core::JsError)]
+#[derive(Debug, thiserror::Error, deno_error::JsError)]
 pub enum TlsError {
-  #[class(GENERIC)]
+  #[class(generic)]
   #[error(transparent)]
   Rustls(#[from] rustls::Error),
   #[class(inherit)]

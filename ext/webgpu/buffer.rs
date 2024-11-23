@@ -13,12 +13,12 @@ use std::time::Duration;
 
 use super::error::WebGpuResult;
 
-#[derive(Debug, thiserror::Error, deno_core::JsError)]
+#[derive(Debug, thiserror::Error, deno_error::JsError)]
 pub enum BufferError {
   #[class(inherit)]
   #[error(transparent)]
   Resource(#[from] #[inherit] deno_core::error::ResourceError),
-  #[class(TYPE)]
+  #[class(type)]
   #[error("usage is not valid")]
   InvalidUsage,
   #[class("DOMExceptionOperationError")]

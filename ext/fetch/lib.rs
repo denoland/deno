@@ -1,5 +1,6 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
+pub mod dns;
 mod fs_fetch_handler;
 mod proxy;
 #[cfg(test)]
@@ -67,6 +68,7 @@ use http_body_util::BodyExt;
 use hyper::body::Frame;
 use hyper_util::client::legacy::connect::HttpConnector;
 use hyper_util::client::legacy::connect::HttpInfo;
+use hyper_util::client::legacy::Builder as HyperClientBuilder;
 use hyper_util::rt::TokioExecutor;
 use hyper_util::rt::TokioTimer;
 use serde::Deserialize;
@@ -85,6 +87,16 @@ pub struct Options {
   pub user_agent: String,
   pub root_cert_store_provider: Option<Arc<dyn RootCertStoreProvider>>,
   pub proxy: Option<Proxy>,
+  /// A callback to customize HTTP client configuration.
+  ///
+  /// The settings applied with this hook may be overridden by the options
+  /// provided through `Deno.createHttpClient()` API. For instance, if the hook
+  /// calls [`hyper_util::client::legacy::Builder::pool_max_idle_per_host`] with
+  /// a value of 99, and a user calls `Deno.createHttpClient({ poolMaxIdlePerHost: 42 })`,
+  /// the value that will take effect is 42.
+  ///
+  /// For more info on what can be configured, see [`hyper_util::client::legacy::Builder`].
+  pub client_builder_hook: Option<fn(HyperClientBuilder) -> HyperClientBuilder>,
   #[allow(clippy::type_complexity)]
   pub request_builder_hook: Option<
     fn(&mut http::Request<ReqBody>) -> Result<(), JsNativeError>,
@@ -92,6 +104,7 @@ pub struct Options {
   pub unsafely_ignore_certificate_errors: Option<Vec<String>>,
   pub client_cert_chain_and_key: TlsKeys,
   pub file_fetch_handler: Rc<dyn FetchHandler>,
+  pub resolver: dns::Resolver,
 }
 
 impl Options {
@@ -111,10 +124,12 @@ impl Default for Options {
       user_agent: "".to_string(),
       root_cert_store_provider: None,
       proxy: None,
+      client_builder_hook: None,
       request_builder_hook: None,
       unsafely_ignore_certificate_errors: None,
       client_cert_chain_and_key: TlsKeys::Null,
       file_fetch_handler: Rc::new(DefaultFileFetchHandler),
+      resolver: dns::Resolver::default(),
     }
   }
 }
@@ -146,7 +161,7 @@ deno_core::extension!(deno_fetch,
   },
 );
 
-#[derive(Debug, thiserror::Error, deno_core::JsError)]
+#[derive(Debug, thiserror::Error, deno_error::JsError)]
 pub enum FetchError {
   #[class(inherit)]
   #[error(transparent)]
@@ -154,37 +169,37 @@ pub enum FetchError {
   #[class(inherit)]
   #[error(transparent)]
   Permission(#[from] #[inherit] PermissionCheckError),
-  #[class(TYPE)]
+  #[class(type)]
   #[error("NetworkError when attempting to fetch resource")]
   NetworkError,
-  #[class(TYPE)]
+  #[class(type)]
   #[error("Fetching files only supports the GET method: received {0}")]
   FsNotGet(Method),
-  #[class(TYPE)]
+  #[class(type)]
   #[error("Invalid URL {0}")]
   InvalidUrl(Url),
-  #[class(TYPE)]
+  #[class(type)]
   #[error(transparent)]
   InvalidHeaderName(#[from] http::header::InvalidHeaderName),
-  #[class(TYPE)]
+  #[class(type)]
   #[error(transparent)]
   InvalidHeaderValue(#[from] http::header::InvalidHeaderValue),
-  #[class(TYPE)]
+  #[class(type)]
   #[error("{0:?}")]
   DataUrl(data_url::DataUrlError),
-  #[class(TYPE)]
+  #[class(type)]
   #[error("{0:?}")]
   Base64(data_url::forgiving_base64::InvalidBase64),
-  #[class(TYPE)]
+  #[class(type)]
   #[error("Blob for the given URL not found.")]
   BlobNotFound,
-  #[class(TYPE)]
+  #[class(type)]
   #[error("Url scheme '{0}' not supported")]
   SchemeNotSupported(String),
-  #[class(TYPE)]
+  #[class(type)]
   #[error("Request was cancelled")]
   RequestCanceled,
-  #[class(GENERIC)]
+  #[class(generic)]
   #[error(transparent)]
   Http(#[from] http::Error),
   #[class(inherit)]
@@ -193,10 +208,10 @@ pub enum FetchError {
   #[class(inherit)]
   #[error(transparent)]
   Url(#[from] #[inherit] url::ParseError),
-  #[class(TYPE)]
+  #[class(type)]
   #[error(transparent)]
   Method(#[from] http::method::InvalidMethod),
-  #[class(TYPE)]
+  #[class(type)]
   #[error(transparent)]
   ClientSend(#[from] ClientSendError),
   #[class(inherit)]
@@ -276,6 +291,7 @@ pub fn create_client_from_options(
         .map_err(HttpClientCreateError::RootCertStore)?,
       ca_certs: vec![],
       proxy: options.proxy.clone(),
+      dns_resolver: options.resolver.clone(),
       unsafely_ignore_certificate_errors: options
         .unsafely_ignore_certificate_errors
         .clone(),
@@ -288,6 +304,7 @@ pub fn create_client_from_options(
       pool_idle_timeout: None,
       http1: true,
       http2: true,
+      client_builder_hook: options.client_builder_hook,
     },
   )
 }
@@ -399,7 +416,7 @@ impl FetchPermissions for deno_permissions::PermissionsContainer {
   }
 }
 
-#[op2]
+#[op2(stack_trace)]
 #[serde]
 #[allow(clippy::too_many_arguments)]
 pub fn op_fetch<FP>(
@@ -850,6 +867,8 @@ pub struct CreateHttpClientArgs {
   proxy: Option<Proxy>,
   pool_max_idle_per_host: Option<usize>,
   pool_idle_timeout: Option<serde_json::Value>,
+  #[serde(default)]
+  use_hickory_resolver: bool,
   #[serde(default = "default_true")]
   http1: bool,
   #[serde(default = "default_true")]
@@ -862,7 +881,7 @@ fn default_true() -> bool {
   true
 }
 
-#[op2]
+#[op2(stack_trace)]
 #[smi]
 pub fn op_fetch_custom_client<FP>(
   state: &mut OpState,
@@ -893,6 +912,13 @@ where
         .map_err(HttpClientCreateError::RootCertStore)?,
       ca_certs,
       proxy: args.proxy,
+      dns_resolver: if args.use_hickory_resolver {
+        dns::Resolver::hickory()
+          .map_err(deno_core::error::AnyError::new)
+          .map_err(FetchError::Resource)?
+      } else {
+        dns::Resolver::default()
+      },
       unsafely_ignore_certificate_errors: options
         .unsafely_ignore_certificate_errors
         .clone(),
@@ -910,6 +936,7 @@ where
       ),
       http1: args.http1,
       http2: args.http2,
+      client_builder_hook: options.client_builder_hook,
     },
   )?;
 
@@ -924,12 +951,14 @@ pub struct CreateHttpClientOptions {
   pub root_cert_store: Option<RootCertStore>,
   pub ca_certs: Vec<Vec<u8>>,
   pub proxy: Option<Proxy>,
+  pub dns_resolver: dns::Resolver,
   pub unsafely_ignore_certificate_errors: Option<Vec<String>>,
   pub client_cert_chain_and_key: Option<TlsKey>,
   pub pool_max_idle_per_host: Option<usize>,
   pub pool_idle_timeout: Option<Option<u64>>,
   pub http1: bool,
   pub http2: bool,
+  pub client_builder_hook: Option<fn(HyperClientBuilder) -> HyperClientBuilder>,
 }
 
 impl Default for CreateHttpClientOptions {
@@ -938,18 +967,20 @@ impl Default for CreateHttpClientOptions {
       root_cert_store: None,
       ca_certs: vec![],
       proxy: None,
+      dns_resolver: dns::Resolver::default(),
       unsafely_ignore_certificate_errors: None,
       client_cert_chain_and_key: None,
       pool_max_idle_per_host: None,
       pool_idle_timeout: None,
       http1: true,
       http2: true,
+      client_builder_hook: None,
     }
   }
 }
 
-#[derive(Debug, thiserror::Error, deno_core::JsError)]
-#[class(TYPE)]
+#[derive(Debug, thiserror::Error, deno_error::JsError)]
+#[class(type)]
 pub enum HttpClientCreateError {
   #[error(transparent)]
   Tls(deno_tls::TlsError),
@@ -993,17 +1024,21 @@ pub fn create_http_client(
   tls_config.alpn_protocols = alpn_protocols;
   let tls_config = Arc::from(tls_config);
 
-  let mut http_connector = HttpConnector::new();
+  let mut http_connector =
+    HttpConnector::new_with_resolver(options.dns_resolver.clone());
   http_connector.enforce_http(false);
 
   let user_agent = user_agent.parse::<HeaderValue>().map_err(|_| {
     HttpClientCreateError::InvalidUserAgent(user_agent.to_string())
   })?;
 
-  let mut builder =
-    hyper_util::client::legacy::Builder::new(TokioExecutor::new());
+  let mut builder = HyperClientBuilder::new(TokioExecutor::new());
   builder.timer(TokioTimer::new());
   builder.pool_timer(TokioTimer::new());
+
+  if let Some(client_builder_hook) = options.client_builder_hook {
+    builder = client_builder_hook(builder);
+  }
 
   let mut proxies = proxy::from_env();
   if let Some(proxy) = options.proxy {
@@ -1068,7 +1103,7 @@ pub struct Client {
   user_agent: HeaderValue,
 }
 
-type Connector = proxy::ProxyConnector<HttpConnector>;
+type Connector = proxy::ProxyConnector<HttpConnector<dns::Resolver>>;
 
 // clippy is wrong here
 #[allow(clippy::declare_interior_mutable_const)]

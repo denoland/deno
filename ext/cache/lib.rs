@@ -18,15 +18,15 @@ use deno_core::ResourceId;
 mod sqlite;
 pub use sqlite::SqliteBackedCache;
 
-#[derive(Debug, thiserror::Error, deno_core::JsError)]
+#[derive(Debug, thiserror::Error, deno_error::JsError)]
 pub enum CacheError {
-  #[class(TYPE)]
+  #[class(type)]
   #[error("CacheStorage is not available in this context")]
   ContextUnsupported,
-  #[class(GENERIC)]
+  #[class(generic)]
   #[error(transparent)]
   Sqlite(#[from] rusqlite::Error),
-  #[class(GENERIC)]
+  #[class(generic)]
   #[error(transparent)]
   JoinError(#[from] tokio::task::JoinError),
   #[class(inherit)]

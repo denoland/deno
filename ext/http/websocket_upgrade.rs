@@ -12,24 +12,24 @@ use memmem::Searcher;
 use memmem::TwoWaySearcher;
 use once_cell::sync::OnceCell;
 
-#[derive(Debug, thiserror::Error, deno_core::JsError)]
+#[derive(Debug, thiserror::Error, deno_error::JsError)]
 pub enum WebSocketUpgradeError {
   #[class("Http")]
   #[error("invalid headers")]
   InvalidHeaders,
-  #[class(GENERIC)]
+  #[class(generic)]
   #[error("{0}")]
   HttpParse(#[from] httparse::Error),
-  #[class(GENERIC)]
+  #[class(generic)]
   #[error("{0}")]
   Http(#[from] http::Error),
-  #[class(GENERIC)]
+  #[class(generic)]
   #[error("{0}")]
   Utf8(#[from] std::str::Utf8Error),
-  #[class(GENERIC)]
+  #[class(generic)]
   #[error("{0}")]
   InvalidHeaderName(#[from] http::header::InvalidHeaderName),
-  #[class(GENERIC)]
+  #[class(generic)]
   #[error("{0}")]
   InvalidHeaderValue(#[from] http::header::InvalidHeaderValue),
   #[class("Http")]

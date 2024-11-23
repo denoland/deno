@@ -45,23 +45,23 @@ impl From<PermissionState> for PermissionStatus {
   }
 }
 
-#[derive(Debug, thiserror::Error, deno_core::JsError)]
+#[derive(Debug, thiserror::Error, deno_error::JsError)]
 pub enum PermissionError {
   #[class("ReferenceError")]
   #[error("No such permission name: {0}")]
   InvalidPermissionName(String),
   #[class(inherit)]
   #[error("{0}")]
-  PathResolve(#[from] #[inherit] ::deno_permissions::PathResolveError),
-  #[class(URI)]
+  PathResolve(#[from] ::deno_permissions::PathResolveError),
+  #[class(uri)]
   #[error("{0}")]
   NetDescriptorParse(#[from] ::deno_permissions::NetDescriptorParseError),
   #[class(inherit)]
   #[error("{0}")]
-  SysDescriptorParse(#[from] #[inherit] ::deno_permissions::SysDescriptorParseError),
+  SysDescriptorParse(#[from] ::deno_permissions::SysDescriptorParseError),
   #[class(inherit)]
   #[error("{0}")]
-  RunDescriptorParse(#[from] #[inherit] ::deno_permissions::RunDescriptorParseError),
+  RunDescriptorParse(#[from] ::deno_permissions::RunDescriptorParseError),
 }
 
 #[op2]
@@ -104,7 +104,7 @@ pub fn op_revoke_permission(
   Ok(PermissionStatus::from(perm))
 }
 
-#[op2]
+#[op2(stack_trace)]
 #[serde]
 pub fn op_request_permission(
   state: &mut OpState,

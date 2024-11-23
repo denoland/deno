@@ -11,12 +11,12 @@ use std::path::PathBuf;
 
 pub use rusqlite;
 
-#[derive(Debug, thiserror::Error, deno_core::JsError)]
+#[derive(Debug, thiserror::Error, deno_error::JsError)]
 pub enum WebStorageError {
   #[class("DOMExceptionNotSupportedError")]
   #[error("LocalStorage is not supported in this context.")]
   ContextNotSupported,
-  #[class(GENERIC)]
+  #[class(generic)]
   #[error(transparent)]
   Sqlite(#[from] rusqlite::Error),
   #[class(inherit)]

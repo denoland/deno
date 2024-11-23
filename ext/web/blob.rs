@@ -17,18 +17,18 @@ use serde::Deserialize;
 use serde::Serialize;
 use uuid::Uuid;
 
-#[derive(Debug, thiserror::Error, deno_core::JsError)]
+#[derive(Debug, thiserror::Error, deno_error::JsError)]
 pub enum BlobError {
-  #[class(TYPE)]
+  #[class(type)]
   #[error("Blob part not found")]
   BlobPartNotFound,
-  #[class(TYPE)]
+  #[class(type)]
   #[error("start + len can not be larger than blob part size")]
   SizeLargerThanBlobPart,
-  #[class(TYPE)]
+  #[class(type)]
   #[error("Blob URLs are not supported in this context")]
   BlobURLsNotSupported,
-  #[class(GENERIC)]
+  #[class(generic)]
   #[error(transparent)]
   Url(#[from] deno_core::url::ParseError),
 }

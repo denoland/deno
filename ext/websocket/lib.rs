@@ -72,7 +72,7 @@ static USE_WRITEV: Lazy<bool> = Lazy::new(|| {
   false
 });
 
-#[derive(Debug, thiserror::Error, deno_core::JsError)]
+#[derive(Debug, thiserror::Error, deno_error::JsError)]
 pub enum WebsocketError {
   #[class(inherit)]
   #[error(transparent)]
@@ -83,13 +83,13 @@ pub enum WebsocketError {
   #[class(inherit)]
   #[error(transparent)]
   Resource(#[from] #[inherit] deno_core::error::ResourceError),
-  #[class(GENERIC)]
+  #[class(generic)]
   #[error(transparent)]
   Uri(#[from] http::uri::InvalidUri),
   #[class(inherit)]
   #[error("{0}")]
   Io(#[from] #[inherit] std::io::Error),
-  #[class(TYPE)]
+  #[class(type)]
   #[error(transparent)]
   WebSocket(#[from] fastwebsockets::WebSocketError),
   #[class("DOMExceptionNetworkError")]
@@ -157,7 +157,7 @@ impl Resource for WsCancelResource {
 // This op is needed because creating a WS instance in JavaScript is a sync
 // operation and should throw error when permissions are not fulfilled,
 // but actual op that connects WS is async.
-#[op2]
+#[op2(stack_trace)]
 #[smi]
 pub fn op_ws_check_permission_and_cancel_handle<WP>(
   state: &mut OpState,
@@ -191,33 +191,33 @@ pub struct CreateResponse {
   extensions: String,
 }
 
-#[derive(Debug, thiserror::Error, deno_core::JsError)]
+#[derive(Debug, thiserror::Error, deno_error::JsError)]
 pub enum HandshakeError {
-  #[class(TYPE)]
+  #[class(type)]
   #[error("Missing path in url")]
   MissingPath,
-  #[class(GENERIC)]
+  #[class(generic)]
   #[error("Invalid status code {0}")]
   InvalidStatusCode(StatusCode),
-  #[class(GENERIC)]
+  #[class(generic)]
   #[error(transparent)]
   Http(#[from] http::Error),
-  #[class(TYPE)]
+  #[class(type)]
   #[error(transparent)]
   WebSocket(#[from] fastwebsockets::WebSocketError),
-  #[class(GENERIC)]
+  #[class(generic)]
   #[error("Didn't receive h2 alpn, aborting connection")]
   NoH2Alpn,
-  #[class(GENERIC)]
+  #[class(generic)]
   #[error(transparent)]
   Rustls(#[from] deno_tls::rustls::Error),
   #[class(inherit)]
   #[error(transparent)]
   Io(#[from] #[inherit] std::io::Error),
-  #[class(GENERIC)]
+  #[class(generic)]
   #[error(transparent)]
   H2(#[from] h2::Error),
-  #[class(TYPE)]
+  #[class(type)]
   #[error("Invalid hostname: '{0}'")]
   InvalidHostname(String),
   #[class(inherit)]
@@ -226,10 +226,10 @@ pub enum HandshakeError {
   #[class(inherit)]
   #[error(transparent)]
   Tls(#[inherit] deno_tls::TlsError),
-  #[class(TYPE)]
+  #[class(type)]
   #[error(transparent)]
   HeaderName(#[from] http::header::InvalidHeaderName),
-  #[class(TYPE)]
+  #[class(type)]
   #[error(transparent)]
   HeaderValue(#[from] http::header::InvalidHeaderValue),
 }
@@ -465,7 +465,7 @@ fn populate_common_request_headers(
   Ok(request)
 }
 
-#[op2(async)]
+#[op2(async, stack_trace)]
 #[serde]
 pub async fn op_ws_create<WP>(
   state: Rc<RefCell<OpState>>,

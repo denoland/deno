@@ -35,10 +35,10 @@ use rand::thread_rng;
 use rand::Rng;
 use serde::Serialize;
 
-#[derive(Debug, Boxed, deno_core::JsError)]
+#[derive(Debug, Boxed, deno_error::JsError)]
 pub struct FsOpsError(pub Box<FsOpsErrorKind>);
 
-#[derive(Debug, thiserror::Error, deno_core::JsError)]
+#[derive(Debug, thiserror::Error, deno_error::JsError)]
 pub enum FsOpsErrorKind {
   #[class(inherit)]
   #[error("{0}")]
@@ -55,23 +55,23 @@ pub enum FsOpsErrorKind {
   #[class("InvalidData")]
   #[error("File name or path {0:?} is not valid UTF-8")]
   InvalidUtf8(std::ffi::OsString),
-  #[class(GENERIC)]
+  #[class(generic)]
   #[error("{0}")]
   StripPrefix(#[from] StripPrefixError),
   #[class(inherit)]
   #[error("{0}")]
   Canceled(#[from] #[inherit] deno_core::Canceled),
-  #[class(TYPE)]
+  #[class(type)]
   #[error("Invalid seek mode: {0}")]
   InvalidSeekMode(i32),
-  #[class(GENERIC)]
+  #[class(generic)]
   #[error("Invalid control character in prefix or suffix: {0:?}")]
   InvalidControlCharacter(String),
-  #[class(GENERIC)]
+  #[class(generic)]
   #[error("Invalid character in prefix or suffix: {0:?}")]
   InvalidCharacter(String),
   #[cfg(windows)]
-  #[class(GENERIC)]
+  #[class(generic)]
   #[error("Invalid trailing character in suffix")]
   InvalidTrailingCharacter,
   #[class("NotCapable")]
@@ -1670,7 +1670,7 @@ pub async fn op_fs_futime_async(
   Ok(())
 }
 
-#[derive(Debug, deno_core::JsError)]
+#[derive(Debug, deno_error::JsError)]
 #[class(inherit)]
 pub struct OperationError {
   operation: &'static str,

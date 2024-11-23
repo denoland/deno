@@ -9,20 +9,20 @@ use std::borrow::Cow;
 
 const PUNY_PREFIX: &str = "xn--";
 
-#[derive(Debug, thiserror::Error, deno_core::JsError)]
+#[derive(Debug, thiserror::Error, deno_error::JsError)]
 pub enum IdnaError {
-  #[class(RANGE)]
+  #[class(range)]
   #[error("Invalid input")]
   InvalidInput,
-  #[class(GENERIC)]
+  #[class(generic)]
   #[error("Input would take more than 63 characters to encode")]
   InputTooLong,
-  #[class(RANGE)]
+  #[class(range)]
   #[error("Illegal input >= 0x80 (not a basic code point)")]
   IllegalInput,
 }
 
-deno_core::js_error_wrapper!(idna::Errors, JsIdnaErrors, "Error");
+deno_error::js_error_wrapper!(idna::Errors, JsIdnaErrors, "Error");
 
 /// map a domain by mapping each label with the given function
 fn map_domain(

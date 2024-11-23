@@ -179,7 +179,7 @@ mod impl_ {
     ))
   }
 
-  #[derive(Debug, thiserror::Error, deno_core::JsError)]
+  #[derive(Debug, thiserror::Error, deno_error::JsError)]
   pub enum IpcError {
     #[class(inherit)]
     #[error(transparent)]
@@ -473,12 +473,12 @@ mod impl_ {
     }
   }
 
-  #[derive(Debug, thiserror::Error, deno_core::JsError)]
+  #[derive(Debug, thiserror::Error, deno_error::JsError)]
   pub enum IpcJsonStreamError {
     #[class(inherit)]
     #[error("{0}")]
     Io(#[source] #[inherit] std::io::Error),
-    #[class(GENERIC)]
+    #[class(generic)]
     #[error("{0}")]
     SimdJson(#[source] simd_json::Error),
   }

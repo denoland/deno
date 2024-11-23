@@ -14,7 +14,7 @@ use spki::der::Decode;
 
 use crate::shared::*;
 
-#[derive(Debug, thiserror::Error, deno_core::JsError)]
+#[derive(Debug, thiserror::Error, deno_error::JsError)]
 #[class("DOMExceptionDataError")]
 pub enum ImportKeyError {
   #[class(inherit)]

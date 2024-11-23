@@ -2,13 +2,13 @@
 
 pub use impl_::*;
 
-#[derive(Debug, thiserror::Error, deno_core::JsError)]
+#[derive(Debug, thiserror::Error, deno_error::JsError)]
 pub enum PriorityError {
   #[class(inherit)]
   #[error("{0}")]
   Io(#[from] #[inherit] std::io::Error),
   #[cfg(windows)]
-  #[class(TYPE)]
+  #[class(type)]
   #[error("Invalid priority")]
   InvalidPriority,
 }

@@ -364,72 +364,72 @@ impl<'a> TryFrom<rsa::pkcs8::der::asn1::AnyRef<'a>> for RsaPssParameters<'a> {
   }
 }
 
-#[derive(Debug, thiserror::Error, deno_core::JsError)]
+#[derive(Debug, thiserror::Error, deno_error::JsError)]
 pub enum X509PublicKeyError {
-  #[class(GENERIC)]
+  #[class(generic)]
   #[error(transparent)]
   X509(#[from] X509Error),
-  #[class(GENERIC)]
+  #[class(generic)]
   #[error(transparent)]
   Rsa(#[from] rsa::Error),
-  #[class(GENERIC)]
+  #[class(generic)]
   #[error(transparent)]
   Asn1(#[from] x509_parser::der_parser::asn1_rs::Error),
-  #[class(GENERIC)]
+  #[class(generic)]
   #[error(transparent)]
   Ec(#[from] elliptic_curve::Error),
-  #[class(TYPE)]
+  #[class(type)]
   #[error("unsupported ec named curve")]
   UnsupportedEcNamedCurve,
-  #[class(TYPE)]
+  #[class(type)]
   #[error("missing ec parameters")]
   MissingEcParameters,
-  #[class(TYPE)]
+  #[class(type)]
   #[error("malformed DSS public key")]
   MalformedDssPublicKey,
-  #[class(TYPE)]
+  #[class(type)]
   #[error("unsupported x509 public key type")]
   UnsupportedX509KeyType,
 }
 
-#[derive(Debug, thiserror::Error, deno_core::JsError)]
+#[derive(Debug, thiserror::Error, deno_error::JsError)]
 pub enum RsaJwkError {
-  #[class(GENERIC)]
+  #[class(generic)]
   #[error(transparent)]
   Base64(#[from] base64::DecodeError),
-  #[class(GENERIC)]
+  #[class(generic)]
   #[error(transparent)]
   Rsa(#[from] rsa::Error),
-  #[class(TYPE)]
+  #[class(type)]
   #[error("missing RSA private component")]
   MissingRsaPrivateComponent,
 }
 
-#[derive(Debug, thiserror::Error, deno_core::JsError)]
+#[derive(Debug, thiserror::Error, deno_error::JsError)]
 pub enum EcJwkError {
-  #[class(GENERIC)]
+  #[class(generic)]
   #[error(transparent)]
   Ec(#[from] elliptic_curve::Error),
-  #[class(TYPE)]
+  #[class(type)]
   #[error("unsupported curve: {0}")]
   UnsupportedCurve(String),
 }
 
-#[derive(Debug, thiserror::Error, deno_core::JsError)]
+#[derive(Debug, thiserror::Error, deno_error::JsError)]
 pub enum EdRawError {
-  #[class(GENERIC)]
+  #[class(generic)]
   #[error(transparent)]
   Ed25519Signature(#[from] ed25519_dalek::SignatureError),
-  #[class(TYPE)]
+  #[class(type)]
   #[error("invalid Ed25519 key")]
   InvalidEd25519Key,
-  #[class(TYPE)]
+  #[class(type)]
   #[error("unsupported curve")]
   UnsupportedCurve,
 }
 
-#[derive(Debug, thiserror::Error, deno_core::JsError)]
-#[class(TYPE)]
+#[derive(Debug, thiserror::Error, deno_error::JsError)]
+#[class(type)]
 pub enum AsymmetricPrivateKeyError {
   #[error("invalid PEM private key: not valid utf8 starting at byte {0}")]
   InvalidPemPrivateKeyInvalidUtf8(usize),
@@ -480,84 +480,84 @@ pub enum AsymmetricPrivateKeyError {
   UnsupportedPrivateKeyOid,
 }
 
-#[derive(Debug, thiserror::Error, deno_core::JsError)]
+#[derive(Debug, thiserror::Error, deno_error::JsError)]
 pub enum AsymmetricPublicKeyError {
-  #[class(TYPE)]
+  #[class(type)]
   #[error("invalid PEM private key: not valid utf8 starting at byte {0}")]
   InvalidPemPrivateKeyInvalidUtf8(usize),
-  #[class(TYPE)]
+  #[class(type)]
   #[error("invalid PEM public key")]
   InvalidPemPublicKey,
-  #[class(TYPE)]
+  #[class(type)]
   #[error("invalid PKCS#1 public key")]
   InvalidPkcs1PublicKey,
   #[class(inherit)]
   #[error(transparent)]
   AsymmetricPrivateKey(#[from] #[inherit] AsymmetricPrivateKeyError),
-  #[class(TYPE)]
+  #[class(type)]
   #[error("invalid x509 certificate")]
   InvalidX509Certificate,
-  #[class(GENERIC)]
+  #[class(generic)]
   #[error(transparent)]
   X509(#[from] x509_parser::nom::Err<X509Error>),
   #[class(inherit)]
   #[error(transparent)]
   X509PublicKey(#[from] #[inherit] X509PublicKeyError),
-  #[class(TYPE)]
+  #[class(type)]
   #[error("unsupported PEM label: {0}")]
   UnsupportedPemLabel(String),
-  #[class(TYPE)]
+  #[class(type)]
   #[error("invalid SPKI public key")]
   InvalidSpkiPublicKey,
-  #[class(TYPE)]
+  #[class(type)]
   #[error("unsupported key type: {0}")]
   UnsupportedKeyType(String),
-  #[class(TYPE)]
+  #[class(type)]
   #[error("unsupported key format: {0}")]
   UnsupportedKeyFormat(String),
-  #[class(GENERIC)]
+  #[class(generic)]
   #[error(transparent)]
   Spki(#[from] spki::Error),
-  #[class(GENERIC)]
+  #[class(generic)]
   #[error(transparent)]
   Pkcs1(#[from] rsa::pkcs1::Error),
   #[class(inherit)]
   #[error(transparent)]
   RsaPssParamsParse(#[from] #[inherit] RsaPssParamsParseError),
-  #[class(TYPE)]
+  #[class(type)]
   #[error("malformed DSS public key")]
   MalformedDssPublicKey,
-  #[class(TYPE)]
+  #[class(type)]
   #[error("malformed or missing named curve in ec parameters")]
   MalformedOrMissingNamedCurveInEcParameters,
-  #[class(TYPE)]
+  #[class(type)]
   #[error("malformed or missing public key in ec spki")]
   MalformedOrMissingPublicKeyInEcSpki,
-  #[class(GENERIC)]
+  #[class(generic)]
   #[error(transparent)]
   Ec(#[from] elliptic_curve::Error),
-  #[class(TYPE)]
+  #[class(type)]
   #[error("unsupported ec named curve")]
   UnsupportedEcNamedCurve,
-  #[class(TYPE)]
+  #[class(type)]
   #[error("malformed or missing public key in x25519 spki")]
   MalformedOrMissingPublicKeyInX25519Spki,
-  #[class(TYPE)]
+  #[class(type)]
   #[error("x25519 public key is too short")]
   X25519PublicKeyIsTooShort,
-  #[class(TYPE)]
+  #[class(type)]
   #[error("invalid Ed25519 public key")]
   InvalidEd25519PublicKey,
-  #[class(TYPE)]
+  #[class(type)]
   #[error("missing dh parameters")]
   MissingDhParameters,
-  #[class(TYPE)]
+  #[class(type)]
   #[error("malformed dh parameters")]
   MalformedDhParameters,
-  #[class(TYPE)]
+  #[class(type)]
   #[error("malformed or missing public key in dh spki")]
   MalformedOrMissingPublicKeyInDhSpki,
-  #[class(TYPE)]
+  #[class(type)]
   #[error("unsupported private key oid")]
   UnsupportedPrivateKeyOid,
 }
@@ -1076,8 +1076,8 @@ impl KeyObjectHandle {
   }
 }
 
-#[derive(Debug, thiserror::Error, deno_core::JsError)]
-#[class(TYPE)]
+#[derive(Debug, thiserror::Error, deno_error::JsError)]
+#[class(type)]
 pub enum RsaPssParamsParseError {
   #[error("malformed pss private key parameters")]
   MalformedPssPrivateKeyParameters,
@@ -1152,8 +1152,8 @@ fn bytes_to_b64(bytes: &[u8]) -> String {
   BASE64_URL_SAFE_NO_PAD.encode(bytes)
 }
 
-#[derive(Debug, thiserror::Error, deno_core::JsError)]
-#[class(TYPE)]
+#[derive(Debug, thiserror::Error, deno_error::JsError)]
+#[class(type)]
 pub enum AsymmetricPublicKeyJwkError {
   #[error("key is not an asymmetric public key")]
   KeyIsNotAsymmetricPublicKey,
@@ -1163,8 +1163,8 @@ pub enum AsymmetricPublicKeyJwkError {
   JwkExportNotImplementedForKeyType,
 }
 
-#[derive(Debug, thiserror::Error, deno_core::JsError)]
-#[class(TYPE)]
+#[derive(Debug, thiserror::Error, deno_error::JsError)]
+#[class(type)]
 pub enum AsymmetricPublicKeyDerError {
   #[error("key is not an asymmetric public key")]
   KeyIsNotAsymmetricPublicKey,
@@ -1349,8 +1349,8 @@ impl AsymmetricPublicKey {
   }
 }
 
-#[derive(Debug, thiserror::Error, deno_core::JsError)]
-#[class(TYPE)]
+#[derive(Debug, thiserror::Error, deno_error::JsError)]
+#[class(type)]
 pub enum AsymmetricPrivateKeyDerError {
   #[error("key is not an asymmetric private key")]
   KeyIsNotAsymmetricPrivateKey,
@@ -1362,7 +1362,7 @@ pub enum AsymmetricPrivateKeyDerError {
   InvalidEcPrivateKey,
   #[error("exporting non-EC private key as SEC1 is not supported")]
   ExportingNonEcPrivateKeyAsSec1Unsupported,
-  #[class(TYPE)]
+  #[class(type)]
   #[error("exporting RSA-PSS private key as PKCS#8 is not supported yet")]
   ExportingNonRsaPssPrivateKeyAsPkcs8Unsupported,
   #[error("invalid DSA private key")]
@@ -1874,8 +1874,8 @@ pub async fn op_node_generate_rsa_key_async(
     .unwrap()
 }
 
-#[derive(Debug, thiserror::Error, deno_core::JsError)]
-#[class(TYPE)]
+#[derive(Debug, thiserror::Error, deno_error::JsError)]
+#[class(type)]
 #[error("digest not allowed for RSA-PSS keys{}", .0.as_ref().map(|digest| format!(": {digest}")).unwrap_or_default())]
 pub struct GenerateRsaPssError(Option<String>);
 
@@ -2290,15 +2290,15 @@ pub fn op_node_export_public_key_jwk(
   public_key.export_jwk()
 }
 
-#[derive(Debug, thiserror::Error, deno_core::JsError)]
+#[derive(Debug, thiserror::Error, deno_error::JsError)]
 pub enum ExportPublicKeyPemError {
   #[class(inherit)]
   #[error(transparent)]
   AsymmetricPublicKeyDer(#[from] #[inherit] AsymmetricPublicKeyDerError),
-  #[class(TYPE)]
+  #[class(type)]
   #[error("very large data")]
   VeryLargeData,
-  #[class(GENERIC)]
+  #[class(generic)]
   #[error(transparent)]
   Der(#[from] der::Error),
 }
@@ -2343,15 +2343,15 @@ pub fn op_node_export_public_key_der(
   public_key.export_der(typ)
 }
 
-#[derive(Debug, thiserror::Error, deno_core::JsError)]
+#[derive(Debug, thiserror::Error, deno_error::JsError)]
 pub enum ExportPrivateKeyPemError {
   #[class(inherit)]
   #[error(transparent)]
   AsymmetricPublicKeyDer(#[from] #[inherit] AsymmetricPrivateKeyDerError),
-  #[class(TYPE)]
+  #[class(type)]
   #[error("very large data")]
   VeryLargeData,
-  #[class(GENERIC)]
+  #[class(generic)]
   #[error(transparent)]
   Der(#[from] der::Error),
 }

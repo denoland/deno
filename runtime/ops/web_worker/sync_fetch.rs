@@ -25,24 +25,24 @@ fn mime_type_essence(mime_type: &str) -> String {
   essence.trim().to_ascii_lowercase()
 }
 
-#[derive(Debug, thiserror::Error, deno_core::JsError)]
+#[derive(Debug, thiserror::Error, deno_error::JsError)]
 pub enum SyncFetchError {
-  #[class(TYPE)]
+  #[class(type)]
   #[error("Blob URLs are not supported in this context.")]
   BlobUrlsNotSupportedInContext,
   #[class(inherit)]
   #[error("{0}")]
   Io(#[from] #[inherit] std::io::Error),
-  #[class(TYPE)]
+  #[class(type)]
   #[error("Invalid script URL")]
   InvalidScriptUrl,
-  #[class(TYPE)]
+  #[class(type)]
   #[error("http status error: {0}")]
   InvalidStatusCode(http::StatusCode),
-  #[class(TYPE)]
+  #[class(type)]
   #[error("Classic scripts with scheme {0}: are not supported in workers")]
   ClassicScriptSchemeUnsupportedInWorkers(String),
-  #[class(GENERIC)]
+  #[class(generic)]
   #[error("{0}")]
   InvalidUri(#[from] http::uri::InvalidUri),
   #[class("DOMExceptionNetworkError")]

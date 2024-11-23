@@ -70,24 +70,24 @@ pub enum DecryptAlgorithm {
   },
 }
 
-#[derive(Debug, thiserror::Error, deno_core::JsError)]
+#[derive(Debug, thiserror::Error, deno_error::JsError)]
 pub enum DecryptError {
   #[class(inherit)]
   #[error(transparent)]
   General(#[from] #[inherit] SharedError),
-  #[class(GENERIC)]
+  #[class(generic)]
   #[error(transparent)]
   Pkcs1(#[from] rsa::pkcs1::Error),
   #[class("DOMExceptionOperationError")]
   #[error("Decryption failed")]
   Failed,
-  #[class(TYPE)]
+  #[class(type)]
   #[error("invalid length")]
   InvalidLength,
-  #[class(TYPE)]
+  #[class(type)]
   #[error("invalid counter length. Currently supported 32/64/128 bits")]
   InvalidCounterLength,
-  #[class(TYPE)]
+  #[class(type)]
   #[error("tag length not equal to 128")]
   InvalidTagLength,
   #[class("DOMExceptionOperationError")]
@@ -96,7 +96,7 @@ pub enum DecryptError {
   #[class("DOMExceptionOperationError")]
   #[error("tried to decrypt too much data")]
   TooMuchData,
-  #[class(TYPE)]
+  #[class(type)]
   #[error("iv length not equal to 12 or 16")]
   InvalidIvLength,
   #[class("DOMExceptionOperationError")]

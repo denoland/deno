@@ -196,6 +196,7 @@ impl<P: RemoteDbHandlerPermissions + 'static> DatabaseHandler
         root_cert_store: options.root_cert_store()?,
         ca_certs: vec![],
         proxy: options.proxy.clone(),
+        dns_resolver: Default::default(),
         unsafely_ignore_certificate_errors: options
           .unsafely_ignore_certificate_errors
           .clone(),
@@ -208,6 +209,7 @@ impl<P: RemoteDbHandlerPermissions + 'static> DatabaseHandler
         pool_idle_timeout: None,
         http1: false,
         http2: true,
+        client_builder_hook: None,
       },
     ).map_err(JsNativeError::from_err)?;
     let fetch_client = FetchClient(client);

@@ -8,15 +8,15 @@ use deno_core::OpState;
 use deno_core::ResourceId;
 use std::ptr;
 
-#[derive(Debug, thiserror::Error, deno_core::JsError)]
+#[derive(Debug, thiserror::Error, deno_error::JsError)]
 pub enum StaticError {
   #[class(inherit)]
   #[error(transparent)]
   Dlfcn(#[inherit] super::DlfcnError),
-  #[class(TYPE)]
+  #[class(type)]
   #[error("Invalid FFI static type 'void'")]
   InvalidTypeVoid,
-  #[class(TYPE)]
+  #[class(type)]
   #[error("Invalid FFI static type 'struct'")]
   InvalidTypeStruct,
   #[class(inherit)]

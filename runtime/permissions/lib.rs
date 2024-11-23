@@ -40,8 +40,8 @@ pub use prompter::PromptResponse;
 #[derive(Debug, thiserror::Error)]
 #[error("Requires {access}, {}", format_permission_error(.name))]
 pub struct PermissionDeniedError {
-  access: String,
-  name: &'static str,
+  pub access: String,
+  pub name: &'static str,
 }
 
 fn format_permission_error(name: &'static str) -> String {
@@ -294,7 +294,7 @@ impl UnitPermission {
 /// A normalized environment variable name. On Windows this will
 /// be uppercase and on other platforms it will stay as-is.
 #[derive(Clone, Eq, PartialEq, Hash, Debug)]
-struct EnvVarName {
+pub struct EnvVarName {
   inner: String,
 }
 
@@ -805,8 +805,8 @@ pub enum Host {
   Ip(IpAddr),
 }
 
-#[derive(Debug, thiserror::Error, deno_core::JsError)]
-#[class(URI)]
+#[derive(Debug, thiserror::Error, deno_error::JsError)]
+#[class(uri)]
 pub enum HostParseError {
   #[error("invalid IPv6 address: '{0}'")]
   InvalidIpv6(String),
@@ -941,9 +941,9 @@ pub enum NetDescriptorParseError {
   Host(#[from] HostParseError),
 }
 
-#[derive(Debug, thiserror::Error, deno_core::JsError)]
+#[derive(Debug, thiserror::Error, deno_error::JsError)]
 pub enum NetDescriptorFromUrlParseError {
-  #[class(TYPE)]
+  #[class(type)]
   #[error("Missing host in url: '{0}'")]
   MissingHost(Url),
   #[class(inherit)]
@@ -1117,15 +1117,37 @@ impl ImportDescriptor {
 pub struct EnvDescriptorParseError;
 
 #[derive(Clone, Eq, PartialEq, Hash, Debug)]
-pub struct EnvDescriptor(EnvVarName);
+pub enum EnvDescriptor {
+  Name(EnvVarName),
+  PrefixPattern(EnvVarName),
+}
 
 impl EnvDescriptor {
   pub fn new(env: impl AsRef<str>) -> Self {
-    Self(EnvVarName::new(env))
+    if let Some(prefix_pattern) = env.as_ref().strip_suffix('*') {
+      Self::PrefixPattern(EnvVarName::new(prefix_pattern))
+    } else {
+      Self::Name(EnvVarName::new(env))
+    }
   }
 }
 
-impl QueryDescriptor for EnvDescriptor {
+#[derive(Clone, Eq, PartialEq, Hash, Debug)]
+enum EnvQueryDescriptorInner {
+  Name(EnvVarName),
+  PrefixPattern(EnvVarName),
+}
+
+#[derive(Clone, Eq, PartialEq, Hash, Debug)]
+pub struct EnvQueryDescriptor(EnvQueryDescriptorInner);
+
+impl EnvQueryDescriptor {
+  pub fn new(env: impl AsRef<str>) -> Self {
+    Self(EnvQueryDescriptorInner::Name(EnvVarName::new(env)))
+  }
+}
+
+impl QueryDescriptor for EnvQueryDescriptor {
   type AllowDesc = EnvDescriptor;
   type DenyDesc = EnvDescriptor;
 
@@ -1134,19 +1156,45 @@ impl QueryDescriptor for EnvDescriptor {
   }
 
   fn display_name(&self) -> Cow<str> {
-    Cow::from(self.0.as_ref())
+    Cow::from(match &self.0 {
+      EnvQueryDescriptorInner::Name(env_var_name) => env_var_name.as_ref(),
+      EnvQueryDescriptorInner::PrefixPattern(env_var_name) => {
+        env_var_name.as_ref()
+      }
+    })
   }
 
   fn from_allow(allow: &Self::AllowDesc) -> Self {
-    allow.clone()
+    match allow {
+      Self::AllowDesc::Name(s) => {
+        Self(EnvQueryDescriptorInner::Name(s.clone()))
+      }
+      Self::AllowDesc::PrefixPattern(s) => {
+        Self(EnvQueryDescriptorInner::PrefixPattern(s.clone()))
+      }
+    }
   }
 
   fn as_allow(&self) -> Option<Self::AllowDesc> {
-    Some(self.clone())
+    Some(match &self.0 {
+      EnvQueryDescriptorInner::Name(env_var_name) => {
+        Self::AllowDesc::Name(env_var_name.clone())
+      }
+      EnvQueryDescriptorInner::PrefixPattern(env_var_name) => {
+        Self::AllowDesc::PrefixPattern(env_var_name.clone())
+      }
+    })
   }
 
   fn as_deny(&self) -> Self::DenyDesc {
-    self.clone()
+    match &self.0 {
+      EnvQueryDescriptorInner::Name(env_var_name) => {
+        Self::DenyDesc::Name(env_var_name.clone())
+      }
+      EnvQueryDescriptorInner::PrefixPattern(env_var_name) => {
+        Self::DenyDesc::PrefixPattern(env_var_name.clone())
+      }
+    }
   }
 
   fn check_in_permission(
@@ -1159,19 +1207,79 @@ impl QueryDescriptor for EnvDescriptor {
   }
 
   fn matches_allow(&self, other: &Self::AllowDesc) -> bool {
-    self == other
+    match other {
+      Self::AllowDesc::Name(n) => match &self.0 {
+        EnvQueryDescriptorInner::Name(env_var_name) => n == env_var_name,
+        EnvQueryDescriptorInner::PrefixPattern(env_var_name) => {
+          env_var_name.as_ref().starts_with(n.as_ref())
+        }
+      },
+      Self::AllowDesc::PrefixPattern(p) => match &self.0 {
+        EnvQueryDescriptorInner::Name(env_var_name) => {
+          env_var_name.as_ref().starts_with(p.as_ref())
+        }
+        EnvQueryDescriptorInner::PrefixPattern(env_var_name) => {
+          env_var_name.as_ref().starts_with(p.as_ref())
+        }
+      },
+    }
   }
 
   fn matches_deny(&self, other: &Self::DenyDesc) -> bool {
-    self == other
+    match other {
+      Self::AllowDesc::Name(n) => match &self.0 {
+        EnvQueryDescriptorInner::Name(env_var_name) => n == env_var_name,
+        EnvQueryDescriptorInner::PrefixPattern(env_var_name) => {
+          env_var_name.as_ref().starts_with(n.as_ref())
+        }
+      },
+      Self::AllowDesc::PrefixPattern(p) => match &self.0 {
+        EnvQueryDescriptorInner::Name(env_var_name) => {
+          env_var_name.as_ref().starts_with(p.as_ref())
+        }
+        EnvQueryDescriptorInner::PrefixPattern(env_var_name) => {
+          p == env_var_name
+        }
+      },
+    }
   }
 
   fn revokes(&self, other: &Self::AllowDesc) -> bool {
-    self == other
+    match other {
+      Self::AllowDesc::Name(n) => match &self.0 {
+        EnvQueryDescriptorInner::Name(env_var_name) => n == env_var_name,
+        EnvQueryDescriptorInner::PrefixPattern(env_var_name) => {
+          env_var_name.as_ref().starts_with(n.as_ref())
+        }
+      },
+      Self::AllowDesc::PrefixPattern(p) => match &self.0 {
+        EnvQueryDescriptorInner::Name(env_var_name) => {
+          env_var_name.as_ref().starts_with(p.as_ref())
+        }
+        EnvQueryDescriptorInner::PrefixPattern(env_var_name) => {
+          p == env_var_name
+        }
+      },
+    }
   }
 
   fn stronger_than_deny(&self, other: &Self::DenyDesc) -> bool {
-    self == other
+    match other {
+      Self::AllowDesc::Name(n) => match &self.0 {
+        EnvQueryDescriptorInner::Name(env_var_name) => n == env_var_name,
+        EnvQueryDescriptorInner::PrefixPattern(env_var_name) => {
+          env_var_name.as_ref().starts_with(n.as_ref())
+        }
+      },
+      Self::AllowDesc::PrefixPattern(p) => match &self.0 {
+        EnvQueryDescriptorInner::Name(env_var_name) => {
+          env_var_name.as_ref().starts_with(p.as_ref())
+        }
+        EnvQueryDescriptorInner::PrefixPattern(env_var_name) => {
+          p == env_var_name
+        }
+      },
+    }
   }
 
   fn overlaps_deny(&self, _other: &Self::DenyDesc) -> bool {
@@ -1179,9 +1287,14 @@ impl QueryDescriptor for EnvDescriptor {
   }
 }
 
-impl AsRef<str> for EnvDescriptor {
+impl AsRef<str> for EnvQueryDescriptor {
   fn as_ref(&self) -> &str {
-    self.0.as_ref()
+    match &self.0 {
+      EnvQueryDescriptorInner::Name(env_var_name) => env_var_name.as_ref(),
+      EnvQueryDescriptorInner::PrefixPattern(env_var_name) => {
+        env_var_name.as_ref()
+      }
+    }
   }
 }
 
@@ -1200,12 +1313,12 @@ pub enum RunQueryDescriptor {
   Name(String),
 }
 
-#[derive(Debug, thiserror::Error, deno_core::JsError)]
+#[derive(Debug, thiserror::Error, deno_error::JsError)]
 pub enum PathResolveError {
   #[class(inherit)]
   #[error("failed resolving cwd: {0}")]
   CwdResolve(#[source] #[inherit] std::io::Error),
-  #[class(GENERIC)]
+  #[class(generic)]
   #[error("Empty path is not allowed")]
   EmptyPath,
 }
@@ -1362,15 +1475,15 @@ pub enum AllowRunDescriptorParseResult {
   Descriptor(AllowRunDescriptor),
 }
 
-#[derive(Debug, thiserror::Error, deno_core::JsError)]
+#[derive(Debug, thiserror::Error, deno_error::JsError)]
 pub enum RunDescriptorParseError {
-  #[class(GENERIC)]
+  #[class(generic)]
   #[error("{0}")]
   Which(#[from] which::Error),
   #[class(inherit)]
   #[error("{0}")]
   PathResolve(#[from] #[inherit] PathResolveError),
-  #[class(GENERIC)]
+  #[class(generic)]
   #[error("Empty run query is not allowed")]
   EmptyRunQuery,
 }
@@ -1455,12 +1568,12 @@ fn denies_run_name(name: &str, cmd_path: &Path) -> bool {
   suffix.is_empty() || suffix.starts_with('.')
 }
 
-#[derive(Debug, thiserror::Error, deno_core::JsError)]
+#[derive(Debug, thiserror::Error, deno_error::JsError)]
 pub enum SysDescriptorParseError {
-  #[class(TYPE)]
+  #[class(type)]
   #[error("unknown system info kind \"{0}\"")]
   InvalidKind(String),
-  #[class(GENERIC)]
+  #[class(generic)]
   #[error("Empty sys not allowed")]
   Empty, // Error
 }
@@ -1471,7 +1584,7 @@ pub struct SysDescriptor(String);
 impl SysDescriptor {
   pub fn parse(kind: String) -> Result<Self, SysDescriptorParseError> {
     match kind.as_str() {
-      "hostname" | "osRelease" | "osUptime" | "loadavg"
+      "hostname" | "inspector" | "osRelease" | "osUptime" | "loadavg"
       | "networkInterfaces" | "systemMemoryInfo" | "uid" | "gid" | "cpus"
       | "homedir" | "getegid" | "statfs" | "getPriority" | "setPriority"
       | "userInfo" => Ok(Self(kind)),
@@ -1759,20 +1872,20 @@ impl UnaryPermission<ImportDescriptor> {
   }
 }
 
-impl UnaryPermission<EnvDescriptor> {
+impl UnaryPermission<EnvQueryDescriptor> {
   pub fn query(&self, env: Option<&str>) -> PermissionState {
     self.query_desc(
-      env.map(EnvDescriptor::new).as_ref(),
+      env.map(EnvQueryDescriptor::new).as_ref(),
       AllowPartial::TreatAsPartialGranted,
     )
   }
 
   pub fn request(&mut self, env: Option<&str>) -> PermissionState {
-    self.request_desc(env.map(EnvDescriptor::new).as_ref())
+    self.request_desc(env.map(EnvQueryDescriptor::new).as_ref())
   }
 
   pub fn revoke(&mut self, env: Option<&str>) -> PermissionState {
-    self.revoke_desc(env.map(EnvDescriptor::new).as_ref())
+    self.revoke_desc(env.map(EnvQueryDescriptor::new).as_ref())
   }
 
   pub fn check(
@@ -1781,7 +1894,7 @@ impl UnaryPermission<EnvDescriptor> {
     api_name: Option<&str>,
   ) -> Result<(), PermissionDeniedError> {
     skip_check_if_is_permission_fully_granted!(self);
-    self.check_desc(Some(&EnvDescriptor::new(env)), false, api_name)
+    self.check_desc(Some(&EnvQueryDescriptor::new(env)), false, api_name)
   }
 
   pub fn check_all(&mut self) -> Result<(), PermissionDeniedError> {
@@ -1915,7 +2028,7 @@ pub struct Permissions {
   pub read: UnaryPermission<ReadQueryDescriptor>,
   pub write: UnaryPermission<WriteQueryDescriptor>,
   pub net: UnaryPermission<NetDescriptor>,
-  pub env: UnaryPermission<EnvDescriptor>,
+  pub env: UnaryPermission<EnvQueryDescriptor>,
   pub sys: UnaryPermission<SysDescriptor>,
   pub run: UnaryPermission<RunQueryDescriptor>,
   pub ffi: UnaryPermission<FfiQueryDescriptor>,
@@ -2185,46 +2298,46 @@ pub enum CheckSpecifierKind {
   Dynamic,
 }
 
-#[derive(Debug, thiserror::Error, deno_core::JsError)]
+#[derive(Debug, thiserror::Error, deno_error::JsError)]
 pub enum ChildPermissionError {
   #[class("NotCapable")]
   #[error("Can't escalate parent thread permissions")]
   Escalation,
   #[class(inherit)]
   #[error("{0}")]
-  PathResolve(#[from] #[inherit] PathResolveError),
-  #[class(URI)]
+  PathResolve(#[from] PathResolveError),
+  #[class(uri)]
   #[error("{0}")]
   NetDescriptorParse(#[from] NetDescriptorParseError),
-  #[class(GENERIC)]
+  #[class(generic)]
   #[error("{0}")]
   EnvDescriptorParse(#[from] EnvDescriptorParseError),
   #[class(inherit)]
   #[error("{0}")]
-  SysDescriptorParse(#[from] #[inherit] SysDescriptorParseError),
+  SysDescriptorParse(#[from] SysDescriptorParseError),
   #[class(inherit)]
   #[error("{0}")]
-  RunDescriptorParse(#[from] #[inherit] RunDescriptorParseError),
+  RunDescriptorParse(#[from] RunDescriptorParseError),
 }
 
-#[derive(Debug, thiserror::Error, deno_core::JsError)]
+#[derive(Debug, thiserror::Error, deno_error::JsError)]
 pub enum PermissionCheckError {
   #[class("NotCapable")]
   #[error(transparent)]
   PermissionDenied(#[from] PermissionDeniedError),
-  #[class(URI)]
+  #[class(uri)]
   #[error("Invalid file path.\n  Specifier: {0}")]
   InvalidFilePath(Url),
   #[class(inherit)]
   #[error(transparent)]
-  NetDescriptorForUrlParse(#[from] #[inherit] NetDescriptorFromUrlParseError),
+  NetDescriptorForUrlParse(#[from] NetDescriptorFromUrlParseError),
   #[class(inherit)]
   #[error(transparent)]
-  SysDescriptorParse(#[from] #[inherit] SysDescriptorParseError),
+  SysDescriptorParse(#[from] SysDescriptorParseError),
   #[class(inherit)]
   #[error(transparent)]
-  PathResolve(#[from] #[inherit] PathResolveError),
-  #[class(URI)]
+  PathResolve(#[from] PathResolveError),
+  #[class(uri)]
   #[error(transparent)]
   HostParse(#[from] HostParseError),
 }
@@ -4584,6 +4697,56 @@ mod tests {
     assert!(perms.env.check("hOmE", None).is_ok());
 
     assert_eq!(perms.env.revoke(Some("HomE")), PermissionState::Prompt);
+  }
+
+  #[test]
+  fn test_env_wildcards() {
+    set_prompter(Box::new(TestPrompter));
+    let _prompt_value = PERMISSION_PROMPT_STUB_VALUE_SETTER.lock();
+    let mut perms = Permissions::allow_all();
+    perms.env = UnaryPermission {
+      granted_global: false,
+      ..Permissions::new_unary(
+        Some(HashSet::from([EnvDescriptor::new("HOME_*")])),
+        None,
+        false,
+      )
+    };
+    assert_eq!(perms.env.query(Some("HOME")), PermissionState::Prompt);
+    assert_eq!(perms.env.query(Some("HOME_")), PermissionState::Granted);
+    assert_eq!(perms.env.query(Some("HOME_TEST")), PermissionState::Granted);
+
+    // assert no privilege escalation
+    let parser = TestPermissionDescriptorParser;
+    assert!(perms
+      .env
+      .create_child_permissions(
+        ChildUnaryPermissionArg::GrantedList(vec!["HOME_SUB".to_string()]),
+        |value| parser.parse_env_descriptor(value).map(Some),
+      )
+      .is_ok());
+    assert!(perms
+      .env
+      .create_child_permissions(
+        ChildUnaryPermissionArg::GrantedList(vec!["HOME*".to_string()]),
+        |value| parser.parse_env_descriptor(value).map(Some),
+      )
+      .is_err());
+    assert!(perms
+      .env
+      .create_child_permissions(
+        ChildUnaryPermissionArg::GrantedList(vec!["OUTSIDE".to_string()]),
+        |value| parser.parse_env_descriptor(value).map(Some),
+      )
+      .is_err());
+    assert!(perms
+      .env
+      .create_child_permissions(
+        // ok because this is a subset of HOME_*
+        ChildUnaryPermissionArg::GrantedList(vec!["HOME_S*".to_string()]),
+        |value| parser.parse_env_descriptor(value).map(Some),
+      )
+      .is_ok());
   }
 
   #[test]

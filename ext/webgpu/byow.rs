@@ -13,23 +13,23 @@ use std::ffi::c_void;
 use std::ptr::NonNull;
 use crate::surface::WebGpuSurface;
 
-#[derive(Debug, thiserror::Error, deno_core::JsError)]
+#[derive(Debug, thiserror::Error, deno_error::JsError)]
 pub enum ByowError {
-  #[class(TYPE)]
+  #[class(type)]
   #[error("Cannot create surface outside of WebGPU context. Did you forget to call `navigator.gpu.requestAdapter()`?")]
   WebGPUNotInitiated,
-  #[class(TYPE)]
+  #[class(type)]
   #[error("Invalid parameters")]
   InvalidParameters,
-  #[class(GENERIC)]
+  #[class(generic)]
   #[error(transparent)]
   CreateSurface(wgpu_core::instance::CreateSurfaceError),
   #[cfg(target_os = "windows")]
-  #[class(TYPE)]
+  #[class(type)]
   #[error("Invalid system on Windows")]
   InvalidSystem,
   #[cfg(target_os = "macos")]
-  #[class(TYPE)]
+  #[class(type)]
   #[error("Invalid system on macOS")]
   InvalidSystem,
   #[cfg(any(
@@ -37,7 +37,7 @@ pub enum ByowError {
     target_os = "freebsd",
     target_os = "openbsd"
   ))]
-  #[class(TYPE)]
+  #[class(type)]
   #[error("Invalid system on Linux/BSD")]
   InvalidSystem,
   #[cfg(any(
@@ -46,7 +46,7 @@ pub enum ByowError {
     target_os = "freebsd",
     target_os = "openbsd"
   ))]
-  #[class(TYPE)]
+  #[class(type)]
   #[error("window is null")]
   NullWindow,
   #[cfg(any(
@@ -54,11 +54,11 @@ pub enum ByowError {
     target_os = "freebsd",
     target_os = "openbsd"
   ))]
-  #[class(TYPE)]
+  #[class(type)]
   #[error("display is null")]
   NullDisplay,
   #[cfg(target_os = "macos")]
-  #[class(TYPE)]
+  #[class(type)]
   #[error("ns_view is null")]
   NSViewDisplay,
 }

@@ -33,7 +33,7 @@ thread_local! {
   static LOCAL_THREAD_ID: RefCell<u32> = const { RefCell::new(0) };
 }
 
-#[derive(Debug, thiserror::Error, deno_core::JsError)]
+#[derive(Debug, thiserror::Error, deno_error::JsError)]
 pub enum CallbackError {
   #[class(inherit)]
   #[error(transparent)]
@@ -557,7 +557,7 @@ pub struct RegisterCallbackArgs {
   result: NativeType,
 }
 
-#[op2]
+#[op2(stack_trace)]
 pub fn op_ffi_unsafe_callback_create<FP, 'scope>(
   state: &mut OpState,
   scope: &mut v8::HandleScope<'scope>,

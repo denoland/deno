@@ -65,7 +65,7 @@ deno_core::extension!(
   },
 );
 
-#[derive(Debug, thiserror::Error, deno_core::JsError)]
+#[derive(Debug, thiserror::Error, deno_error::JsError)]
 pub enum TtyError {
   #[class(inherit)]
   #[error(transparent)]
@@ -442,7 +442,7 @@ mod tests {
   }
 }
 
-deno_core::js_error_wrapper!(ReadlineError, JsReadlineError, |err| {
+deno_error::js_error_wrapper!(ReadlineError, JsReadlineError, |err| {
   match err {
     ReadlineError::Io(e) => e.get_class(),
     ReadlineError::Eof => GENERIC_ERROR,

@@ -83,18 +83,18 @@ pub mod shader;
 pub mod surface;
 pub mod texture;
 
-#[derive(Debug, thiserror::Error, deno_core::JsError)]
+#[derive(Debug, thiserror::Error, deno_error::JsError)]
 pub enum InitError {
   #[class(inherit)]
   #[error(transparent)]
   Resource(#[from] #[inherit] deno_core::error::ResourceError),
-  #[class(GENERIC)]
+  #[class(generic)]
   #[error(transparent)]
   InvalidAdapter(wgpu_core::instance::InvalidAdapter),
   #[class("DOMExceptionOperationError")]
   #[error(transparent)]
   RequestDevice(wgpu_core::instance::RequestDeviceError),
-  #[class(GENERIC)]
+  #[class(generic)]
   #[error(transparent)]
   InvalidDevice(wgpu_core::device::InvalidDevice),
 }

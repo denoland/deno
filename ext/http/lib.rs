@@ -40,6 +40,8 @@ use deno_net::raw::NetworkStream;
 use deno_websocket::ws_create_server_stream;
 use flate2::write::GzEncoder;
 use flate2::Compression;
+use hyper::server::conn::http1;
+use hyper::server::conn::http2;
 use hyper_util::rt::TokioIo;
 use hyper_v014::body::Bytes;
 use hyper_v014::body::HttpBody;
@@ -97,6 +99,25 @@ pub use request_properties::HttpRequestProperties;
 pub use service::UpgradeUnavailableError;
 pub use websocket_upgrade::WebSocketUpgradeError;
 
+#[derive(Debug, Default, Clone, Copy)]
+pub struct Options {
+  /// By passing a hook function, the caller can customize various configuration
+  /// options for the HTTP/2 server.
+  /// See [`http2::Builder`] for what parameters can be customized.
+  ///
+  /// If `None`, the default configuration provided by hyper will be used. Note
+  /// that the default configuration is subject to change in future versions.
+  pub http2_builder_hook:
+    Option<fn(http2::Builder<LocalExecutor>) -> http2::Builder<LocalExecutor>>,
+  /// By passing a hook function, the caller can customize various configuration
+  /// options for the HTTP/1 server.
+  /// See [`http1::Builder`] for what parameters can be customized.
+  ///
+  /// If `None`, the default configuration provided by hyper will be used. Note
+  /// that the default configuration is subject to change in future versions.
+  pub http1_builder_hook: Option<fn(http1::Builder) -> http1::Builder>,
+}
+
 deno_core::extension!(
   deno_http,
   deps = [deno_web, deno_net, deno_fetch, deno_websocket],
@@ -136,9 +157,15 @@ deno_core::extension!(
     http_next::op_http_cancel,
   ],
   esm = ["00_serve.ts", "01_http.js", "02_websocket.ts"],
+  options = {
+    options: Options,
+  },
+  state = |state, options| {
+    state.put::<Options>(options.options);
+  }
 );
 
-#[derive(Debug, thiserror::Error, deno_core::JsError)]
+#[derive(Debug, thiserror::Error, deno_error::JsError)]
 pub enum HttpError {
   #[class(inherit)]
   #[error(transparent)]
@@ -149,13 +176,13 @@ pub enum HttpError {
   #[class("Http")]
   #[error("{0}")]
   HyperV014(#[source] Arc<hyper_v014::Error>),
-  #[class(GENERIC)]
+  #[class(generic)]
   #[error("{0}")]
   InvalidHeaderName(#[from] hyper_v014::header::InvalidHeaderName),
-  #[class(GENERIC)]
+  #[class(generic)]
   #[error("{0}")]
   InvalidHeaderValue(#[from] hyper_v014::header::InvalidHeaderValue),
-  #[class(GENERIC)]
+  #[class(generic)]
   #[error("{0}")]
   Http(#[from] hyper_v014::http::Error),
   #[class("Http")]
@@ -1114,7 +1141,7 @@ async fn op_http_upgrade_websocket(
 
 // Needed so hyper can use non Send futures
 #[derive(Clone)]
-struct LocalExecutor;
+pub struct LocalExecutor;
 
 impl<Fut> hyper_v014::rt::Executor<Fut> for LocalExecutor
 where

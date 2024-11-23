@@ -91,12 +91,12 @@ where
   }
 }
 
-#[derive(Debug, thiserror::Error, deno_core::JsError)]
+#[derive(Debug, thiserror::Error, deno_error::JsError)]
 pub enum MapError {
   #[class(inherit)]
   #[error("{0}")]
   Io(#[inherit] std::io::Error),
-  #[class(GENERIC)]
+  #[class(generic)]
   #[error("Unable to get resources")]
   NoResources,
 }

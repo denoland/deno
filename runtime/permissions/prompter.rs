@@ -1,5 +1,7 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
+use crate::is_standalone;
+use deno_core::error::JsStackFrame;
 use deno_core::parking_lot::Mutex;
 use deno_terminal::colors;
 use once_cell::sync::Lazy;
@@ -9,8 +11,6 @@ use std::io::IsTerminal;
 use std::io::StderrLock;
 use std::io::StdinLock;
 use std::io::Write as IoWrite;
-
-use crate::is_standalone;
 
 /// Helper function to make control characters visible so users can see the underlying filename.
 fn escape_control_characters(s: &str) -> std::borrow::Cow<str> {
@@ -53,6 +53,13 @@ static MAYBE_BEFORE_PROMPT_CALLBACK: Lazy<Mutex<Option<PromptCallback>>> =
 static MAYBE_AFTER_PROMPT_CALLBACK: Lazy<Mutex<Option<PromptCallback>>> =
   Lazy::new(|| Mutex::new(None));
 
+static MAYBE_CURRENT_STACKTRACE: Lazy<Mutex<Option<Vec<JsStackFrame>>>> =
+  Lazy::new(|| Mutex::new(None));
+
+pub fn set_current_stacktrace(trace: Vec<JsStackFrame>) {
+  *MAYBE_CURRENT_STACKTRACE.lock() = Some(trace);
+}
+
 pub fn permission_prompt(
   message: &str,
   flag: &str,
@@ -62,9 +69,10 @@ pub fn permission_prompt(
   if let Some(before_callback) = MAYBE_BEFORE_PROMPT_CALLBACK.lock().as_mut() {
     before_callback();
   }
+  let stack = MAYBE_CURRENT_STACKTRACE.lock().take();
   let r = PERMISSION_PROMPTER
     .lock()
-    .prompt(message, flag, api_name, is_unary);
+    .prompt(message, flag, api_name, is_unary, stack);
   if let Some(after_callback) = MAYBE_AFTER_PROMPT_CALLBACK.lock().as_mut() {
     after_callback();
   }
@@ -92,6 +100,7 @@ pub trait PermissionPrompter: Send + Sync {
     name: &str,
     api_name: Option<&str>,
     is_unary: bool,
+    stack: Option<Vec<JsStackFrame>>,
   ) -> PromptResponse;
 }
 
@@ -298,6 +307,7 @@ impl PermissionPrompter for TtyPrompter {
     name: &str,
     api_name: Option<&str>,
     is_unary: bool,
+    stack: Option<Vec<JsStackFrame>>,
   ) -> PromptResponse {
     if !std::io::stdin().is_terminal() || !std::io::stderr().is_terminal() {
       return PromptResponse::Deny;
@@ -340,7 +350,7 @@ impl PermissionPrompter for TtyPrompter {
     };
 
     // output everything in one shot to make the tests more reliable
-    {
+    let stack_lines_count = {
       let mut output = String::new();
       write!(&mut output, "┏ {PERMISSION_EMOJI}  ").unwrap();
       write!(&mut output, "{}", colors::bold("Deno requests ")).unwrap();
@@ -354,6 +364,27 @@ impl PermissionPrompter for TtyPrompter {
         )
         .unwrap();
       }
+      let stack_lines_count = if let Some(stack) = stack {
+        let len = stack.len();
+        for (idx, frame) in stack.into_iter().enumerate() {
+          writeln!(
+            &mut output,
+            "┃  {} {}",
+            colors::gray(if idx != len - 1 { "├─" } else { "└─" }),
+            colors::gray(deno_core::error::format_frame::<
+              deno_core::error::NoAnsiColors,
+            >(&frame))
+          )
+          .unwrap();
+        }
+        len
+      } else {
+        writeln!(
+          &mut output,
+          "┠─ To see a stack trace for this prompt, set the DENO_TRACE_PERMISSIONS environmental variable.",
+        ).unwrap();
+        1
+      };
       let msg = format!(
         "Learn more at: {}",
         colors::cyan_with_underline(&format!(
@@ -372,7 +403,9 @@ impl PermissionPrompter for TtyPrompter {
       write!(&mut output, " {opts} > ").unwrap();
 
       stderr_lock.write_all(output.as_bytes()).unwrap();
-    }
+
+      stack_lines_count
+    };
 
     let value = loop {
       // Clear stdin each time we loop around in case the user accidentally pasted
@@ -391,30 +424,24 @@ impl PermissionPrompter for TtyPrompter {
       if result.is_err() || input.len() != 1 {
         break PromptResponse::Deny;
       };
+
+      let clear_n = if api_name.is_some() { 5 } else { 4 } + stack_lines_count;
+
       match input.as_bytes()[0] as char {
         'y' | 'Y' => {
-          clear_n_lines(
-            &mut stderr_lock,
-            if api_name.is_some() { 5 } else { 4 },
-          );
+          clear_n_lines(&mut stderr_lock, clear_n);
           let msg = format!("Granted {message}.");
           writeln!(stderr_lock, "✅ {}", colors::bold(&msg)).unwrap();
           break PromptResponse::Allow;
         }
         'n' | 'N' | '\x1b' => {
-          clear_n_lines(
-            &mut stderr_lock,
-            if api_name.is_some() { 5 } else { 4 },
-          );
+          clear_n_lines(&mut stderr_lock, clear_n);
           let msg = format!("Denied {message}.");
           writeln!(stderr_lock, "❌ {}", colors::bold(&msg)).unwrap();
           break PromptResponse::Deny;
         }
         'A' if is_unary => {
-          clear_n_lines(
-            &mut stderr_lock,
-            if api_name.is_some() { 5 } else { 4 },
-          );
+          clear_n_lines(&mut stderr_lock, clear_n);
           let msg = format!("Granted all {name} access.");
           writeln!(stderr_lock, "✅ {}", colors::bold(&msg)).unwrap();
           break PromptResponse::AllowAll;
@@ -475,6 +502,7 @@ pub mod tests {
       _name: &str,
       _api_name: Option<&str>,
       _is_unary: bool,
+      _stack: Option<Vec<JsStackFrame>>,
     ) -> PromptResponse {
       if STUB_PROMPT_VALUE.load(Ordering::SeqCst) {
         PromptResponse::Allow

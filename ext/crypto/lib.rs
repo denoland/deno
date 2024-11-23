@@ -132,7 +132,7 @@ deno_core::extension!(deno_crypto,
   },
 );
 
-#[derive(Debug, thiserror::Error, deno_core::JsError)]
+#[derive(Debug, thiserror::Error, deno_error::JsError)]
 pub enum CryptoError {
   #[class(inherit)]
   #[error(transparent)]
@@ -140,58 +140,58 @@ pub enum CryptoError {
   #[class(inherit)]
   #[error(transparent)]
   JoinError(#[from] #[inherit] tokio::task::JoinError),
-  #[class(GENERIC)]
+  #[class(generic)]
   #[error(transparent)]
   Der(#[from] rsa::pkcs1::der::Error),
-  #[class(TYPE)]
+  #[class(type)]
   #[error("Missing argument hash")]
   MissingArgumentHash,
-  #[class(TYPE)]
+  #[class(type)]
   #[error("Missing argument saltLength")]
   MissingArgumentSaltLength,
-  #[class(TYPE)]
+  #[class(type)]
   #[error("unsupported algorithm")]
   UnsupportedAlgorithm,
-  #[class(GENERIC)]
+  #[class(generic)]
   #[error(transparent)]
   KeyRejected(#[from] ring::error::KeyRejected),
-  #[class(GENERIC)]
+  #[class(generic)]
   #[error(transparent)]
   RSA(#[from] rsa::Error),
-  #[class(GENERIC)]
+  #[class(generic)]
   #[error(transparent)]
   Pkcs1(#[from] rsa::pkcs1::Error),
-  #[class(GENERIC)]
+  #[class(generic)]
   #[error(transparent)]
   Unspecified(#[from] ring::error::Unspecified),
-  #[class(TYPE)]
+  #[class(type)]
   #[error("Invalid key format")]
   InvalidKeyFormat,
-  #[class(GENERIC)]
+  #[class(generic)]
   #[error(transparent)]
   P256Ecdsa(#[from] p256::ecdsa::Error),
-  #[class(TYPE)]
+  #[class(type)]
   #[error("Unexpected error decoding private key")]
   DecodePrivateKey,
-  #[class(TYPE)]
+  #[class(type)]
   #[error("Missing argument publicKey")]
   MissingArgumentPublicKey,
-  #[class(TYPE)]
+  #[class(type)]
   #[error("Missing argument namedCurve")]
   MissingArgumentNamedCurve,
-  #[class(TYPE)]
+  #[class(type)]
   #[error("Missing argument info")]
   MissingArgumentInfo,
   #[class("DOMExceptionOperationError")]
   #[error("The length provided for HKDF is too large")]
   HKDFLengthTooLarge,
-  #[class(GENERIC)]
+  #[class(generic)]
   #[error(transparent)]
   Base64Decode(#[from] base64::DecodeError),
-  #[class(TYPE)]
+  #[class(type)]
   #[error("Data must be multiple of 8 bytes")]
   DataInvalidSize,
-  #[class(TYPE)]
+  #[class(type)]
   #[error("Invalid key length")]
   InvalidKeyLength,
   #[class("DOMExceptionOperationError")]

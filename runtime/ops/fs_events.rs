@@ -110,7 +110,7 @@ fn starts_with_canonicalized(path: &Path, prefix: &str) -> bool {
   }
 }
 
-deno_core::js_error_wrapper!(NotifyError, JsNotifyError, |err| {
+deno_error::js_error_wrapper!(NotifyError, JsNotifyError, |err| {
   match &err.kind {
     notify::ErrorKind::Generic(_) => GENERIC_ERROR,
     notify::ErrorKind::Io(e) => e.get_class(),
@@ -121,7 +121,7 @@ deno_core::js_error_wrapper!(NotifyError, JsNotifyError, |err| {
   }
 });
 
-#[derive(Debug, thiserror::Error, deno_core::JsError)]
+#[derive(Debug, thiserror::Error, deno_error::JsError)]
 pub enum FsEventsError {
   #[class(inherit)]
   #[error(transparent)]
@@ -178,7 +178,7 @@ fn start_watcher(
   Ok(())
 }
 
-#[op2]
+#[op2(stack_trace)]
 #[smi]
 fn op_fs_events_open(
   state: &mut OpState,

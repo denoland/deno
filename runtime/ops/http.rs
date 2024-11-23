@@ -13,7 +13,7 @@ pub const UNSTABLE_FEATURE_NAME: &str = "http";
 
 deno_core::extension!(deno_http_runtime, ops = [op_http_start],);
 
-#[derive(Debug, thiserror::Error, deno_core::JsError)]
+#[derive(Debug, thiserror::Error, deno_error::JsError)]
 pub enum HttpStartError {
   #[class("Busy")]
   #[error("TCP stream is currently in use")]
@@ -24,11 +24,11 @@ pub enum HttpStartError {
   #[class("Busy")]
   #[error("Unix socket is currently in use")]
   UnixSocketInUse,
-  #[class(GENERIC)]
+  #[class(generic)]
   #[error(transparent)]
   ReuniteTcp(#[from] tokio::net::tcp::ReuniteError),
   #[cfg(unix)]
-  #[class(GENERIC)]
+  #[class(generic)]
   #[error(transparent)]
   ReuniteUnix(#[from] tokio::net::unix::ReuniteError),
   #[class(inherit)]

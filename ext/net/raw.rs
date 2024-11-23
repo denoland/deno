@@ -320,7 +320,7 @@ impl From<tokio::net::unix::SocketAddr> for NetworkStreamAddress {
   }
 }
 
-#[derive(Debug, thiserror::Error, deno_core::JsError)]
+#[derive(Debug, thiserror::Error, deno_error::JsError)]
 pub enum TakeNetworkStreamError {
   #[class("Busy")]
   #[error("TCP stream is currently in use")]
@@ -332,11 +332,11 @@ pub enum TakeNetworkStreamError {
   #[class("Busy")]
   #[error("Unix socket is currently in use")]
   UnixBusy,
-  #[class(GENERIC)]
+  #[class(generic)]
   #[error(transparent)]
   ReuniteTcp(#[from] tokio::net::tcp::ReuniteError),
   #[cfg(unix)]
-  #[class(GENERIC)]
+  #[class(generic)]
   #[error(transparent)]
   ReuniteUnix(#[from] tokio::net::unix::ReuniteError),
   #[class(inherit)]

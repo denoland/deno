@@ -30,12 +30,12 @@ use std::task::Context;
 use std::task::Poll;
 use std::task::Waker;
 
-#[derive(Debug, thiserror::Error, deno_core::JsError)]
+#[derive(Debug, thiserror::Error, deno_error::JsError)]
 pub enum StreamResourceError {
   #[class(inherit)]
   #[error(transparent)]
   Canceled(#[from] #[inherit] deno_core::Canceled),
-  #[class(TYPE)]
+  #[class(type)]
   #[error("{0}")]
   Js(String),
 }

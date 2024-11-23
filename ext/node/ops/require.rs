@@ -42,10 +42,10 @@ where
   loader.ensure_read_permission(permissions, file_path)
 }
 
-#[derive(Debug, Boxed, deno_core::JsError)]
+#[derive(Debug, Boxed, deno_error::JsError)]
 pub struct RequireError(pub Box<RequireErrorKind>);
 
-#[derive(Debug, thiserror::Error, deno_core::JsError)]
+#[derive(Debug, thiserror::Error, deno_error::JsError)]
 pub enum RequireErrorKind {
   #[class(inherit)]
   #[error(transparent)]
@@ -53,26 +53,26 @@ pub enum RequireErrorKind {
   #[class(inherit)]
   #[error(transparent)]
   Permission(#[from] #[inherit] PermissionCheckError),
-  #[class(GENERIC)]
+  #[class(generic)]
   #[error(transparent)]
   PackageExportsResolve(
     #[from] node_resolver::errors::PackageExportsResolveError,
   ),
-  #[class(GENERIC)]
+  #[class(generic)]
   #[error(transparent)]
   PackageJsonLoad(#[from] node_resolver::errors::PackageJsonLoadError),
-  #[class(GENERIC)]
+  #[class(generic)]
   #[error(transparent)]
   ClosestPkgJson(#[from] node_resolver::errors::ClosestPkgJsonError),
-  #[class(GENERIC)]
+  #[class(generic)]
   #[error(transparent)]
   PackageImportsResolve(
     #[from] node_resolver::errors::PackageImportsResolveError,
   ),
-  #[class(GENERIC)]
+  #[class(generic)]
   #[error(transparent)]
   FilePathConversion(#[from] deno_path_util::UrlToFilePathError),
-  #[class(GENERIC)]
+  #[class(generic)]
   #[error(transparent)]
   UrlConversion(#[from] deno_path_util::PathToUrlError),
   #[class(inherit)]
@@ -582,7 +582,7 @@ where
   }))
 }
 
-deno_core::js_error_wrapper!(node_resolver::errors::ClosestPkgJsonError, JsClosestPkgJsonError, "Error");
+deno_error::js_error_wrapper!(node_resolver::errors::ClosestPkgJsonError, JsClosestPkgJsonError, "Error");
 
 #[op2(fast)]
 pub fn op_require_is_maybe_cjs(

@@ -24,8 +24,8 @@ impl deno_core::GarbageCollected for BlockListResource {}
 #[derive(Serialize)]
 struct SocketAddressSerialization(String, String);
 
-#[derive(Debug, thiserror::Error, deno_core::JsError)]
-#[class(GENERIC)]
+#[derive(Debug, thiserror::Error, deno_error::JsError)]
+#[class(generic)]
 pub enum BlocklistError {
   #[error("{0}")]
   AddrParse(#[from] std::net::AddrParseError),

@@ -84,12 +84,12 @@ struct JSInspectorSession {
 
 impl GarbageCollected for JSInspectorSession {}
 
-#[derive(Debug, thiserror::Error, deno_core::JsError)]
+#[derive(Debug, thiserror::Error, deno_error::JsError)]
 pub enum InspectorConnectError {
   #[class(inherit)]
   #[error(transparent)]
   Permission(#[from] #[inherit] deno_permissions::PermissionCheckError),
-  #[class(GENERIC)]
+  #[class(generic)]
   #[error("connectToMainThread not supported")]
   ConnectToMainThreadUnsupported,
 }

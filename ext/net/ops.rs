@@ -65,7 +65,7 @@ impl From<SocketAddr> for IpAddr {
   }
 }
 
-#[derive(Debug, thiserror::Error, deno_core::JsError)]
+#[derive(Debug, thiserror::Error, deno_error::JsError)]
 pub enum NetError {
   #[class("BadResource")]
   #[error("Listener has been closed")]
@@ -94,10 +94,10 @@ pub enum NetError {
   #[class(inherit)]
   #[error("{0}")]
   Resource(#[from] #[inherit] deno_core::error::ResourceError),
-  #[class(GENERIC)]
+  #[class(generic)]
   #[error("No resolved address found")]
   NoResolvedAddress,
-  #[class(GENERIC)]
+  #[class(generic)]
   #[error("{0}")]
   AddrParse(#[from] std::net::AddrParseError),
   #[class(inherit)]
@@ -115,7 +115,7 @@ pub enum NetError {
   #[class("TimedOut")]
   #[error("{0}")]
   DnsTimedOut(ResolveError),
-  #[class(GENERIC)]
+  #[class(generic)]
   #[error("{0}")]
   Dns(#[from] ResolveError),
   #[class("NotSupported")]
@@ -124,16 +124,16 @@ pub enum NetError {
   #[class("InvalidData")]
   #[error("File name or path {0:?} is not valid UTF-8")]
   InvalidUtf8(std::ffi::OsString),
-  #[class(GENERIC)]
+  #[class(generic)]
   #[error("unexpected key type")]
   UnexpectedKeyType,
-  #[class(TYPE)]
+  #[class(type)]
   #[error("Invalid hostname: '{0}'")]
   InvalidHostname(String),
   #[class("Busy")]
   #[error("TCP stream is currently in use")]
   TcpStreamBusy,
-  #[class(GENERIC)]
+  #[class(generic)]
   #[error("{0}")]
   Rustls(#[from] deno_tls::rustls::Error),
   #[class(inherit)]
@@ -145,7 +145,7 @@ pub enum NetError {
   #[class(inherit)]
   #[error("{0}")]
   RootCertStore(#[inherit] deno_core::error::JsNativeError),
-  #[class(GENERIC)]
+  #[class(generic)]
   #[error("{0}")]
   Reunite(tokio::net::tcp::ReuniteError),
 }
@@ -209,7 +209,7 @@ pub async fn op_net_recv_udp(
   Ok((nread, IpAddr::from(remote_addr)))
 }
 
-#[op2(async)]
+#[op2(async, stack_trace)]
 #[number]
 pub async fn op_net_send_udp<NP>(
   state: Rc<RefCell<OpState>>,
@@ -370,7 +370,7 @@ pub async fn op_net_set_multi_ttl_udp(
   Ok(())
 }
 
-#[op2(async)]
+#[op2(async, stack_trace)]
 #[serde]
 pub async fn op_net_connect_tcp<NP>(
   state: Rc<RefCell<OpState>>,
@@ -428,7 +428,7 @@ impl Resource for UdpSocketResource {
   }
 }
 
-#[op2]
+#[op2(stack_trace)]
 #[serde]
 pub fn op_net_listen_tcp<NP>(
   state: &mut OpState,
@@ -528,7 +528,7 @@ where
   Ok((rid, IpAddr::from(local_addr)))
 }
 
-#[op2]
+#[op2(stack_trace)]
 #[serde]
 pub fn op_net_listen_udp<NP>(
   state: &mut OpState,
@@ -543,7 +543,7 @@ where
   net_listen_udp::<NP>(state, addr, reuse_address, loopback)
 }
 
-#[op2]
+#[op2(stack_trace)]
 #[serde]
 pub fn op_node_unstable_net_listen_udp<NP>(
   state: &mut OpState,
@@ -628,7 +628,7 @@ pub struct NameServer {
   port: u16,
 }
 
-#[op2(async)]
+#[op2(async, stack_trace)]
 #[serde]
 pub async fn op_dns_resolve<NP>(
   state: Rc<RefCell<OpState>>,

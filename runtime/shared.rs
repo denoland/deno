@@ -47,6 +47,7 @@ extension!(runtime,
     "40_signals.js",
     "40_tty.js",
     "41_prompt.js",
+    "telemetry.ts",
     "90_deno_ns.js",
     "98_global_scope_shared.js",
     "98_global_scope_window.js",
@@ -63,8 +64,8 @@ extension!(runtime,
   }
 );
 
-deno_core::js_error_wrapper!(deno_ast::ParseDiagnostic, JsParseDiagnostic, "Error");
-deno_core::js_error_wrapper!(deno_ast::TranspileError, JsTranspileError, "Error");
+deno_error::js_error_wrapper!(deno_ast::ParseDiagnostic, JsParseDiagnostic, "Error");
+deno_error::js_error_wrapper!(deno_ast::TranspileError, JsTranspileError, "Error");
 
 pub fn maybe_transpile_source(
   name: ModuleName,

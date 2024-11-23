@@ -23,15 +23,15 @@ use std::ffi::c_void;
 use std::future::Future;
 use std::rc::Rc;
 
-#[derive(Debug, thiserror::Error, deno_core::JsError)]
+#[derive(Debug, thiserror::Error, deno_error::JsError)]
 pub enum CallError {
-  #[class(TYPE)]
+  #[class(type)]
   #[error(transparent)]
   IR(#[from] IRError),
-  #[class(GENERIC)]
+  #[class(generic)]
   #[error("Nonblocking FFI call failed: {0}")]
   NonblockingCallFailure(#[source] tokio::task::JoinError),
-  #[class(TYPE)]
+  #[class(type)]
   #[error("Invalid FFI symbol name: '{0}'")]
   InvalidSymbol(String),
   #[class(inherit)]
@@ -293,7 +293,7 @@ fn ffi_call(
   }
 }
 
-#[op2(async)]
+#[op2(async, stack_trace)]
 #[serde]
 pub fn op_ffi_call_ptr_nonblocking<FP>(
   scope: &mut v8::HandleScope,
@@ -388,7 +388,7 @@ pub fn op_ffi_call_nonblocking(
   })
 }
 
-#[op2(reentrant)]
+#[op2(reentrant, stack_trace)]
 #[serde]
 pub fn op_ffi_call_ptr<FP>(
   scope: &mut v8::HandleScope,

@@ -61,7 +61,7 @@ impl<'a> Deref for CertificateView<'a> {
   }
 }
 
-deno_core::js_error_wrapper!(X509Error, JsX509Error, "Error");
+deno_error::js_error_wrapper!(X509Error, JsX509Error, "Error");
 
 #[op2]
 #[cppgc]

@@ -45,30 +45,30 @@ impl<EH: CronHandle + 'static> Resource for CronResource<EH> {
   }
 }
 
-#[derive(Debug, thiserror::Error, deno_core::JsError)]
+#[derive(Debug, thiserror::Error, deno_error::JsError)]
 pub enum CronError {
   #[class(inherit)]
   #[error(transparent)]
   Resource(#[from] #[inherit] deno_core::error::ResourceError),
-  #[class(TYPE)]
+  #[class(type)]
   #[error("Cron name cannot exceed 64 characters: current length {0}")]
   NameExceeded(usize),
-  #[class(TYPE)]
+  #[class(type)]
   #[error("Invalid cron name: only alphanumeric characters, whitespace, hyphens, and underscores are allowed")]
   NameInvalid,
-  #[class(TYPE)]
+  #[class(type)]
   #[error("Cron with this name already exists")]
   AlreadyExists,
-  #[class(TYPE)]
+  #[class(type)]
   #[error("Too many crons")]
   TooManyCrons,
-  #[class(TYPE)]
+  #[class(type)]
   #[error("Invalid cron schedule")]
   InvalidCron,
-  #[class(TYPE)]
+  #[class(type)]
   #[error("Invalid backoff schedule")]
   InvalidBackoff,
-  #[class(GENERIC)]
+  #[class(generic)]
   #[error(transparent)]
   AcquireError(#[from] tokio::sync::AcquireError),
   #[class(inherit)]

@@ -11,12 +11,12 @@ use std::cell::RefCell;
 
 use super::error::WebGpuResult;
 
-#[derive(Debug, thiserror::Error, deno_core::JsError)]
+#[derive(Debug, thiserror::Error, deno_error::JsError)]
 pub enum RenderPassError {
   #[class(inherit)]
   #[error(transparent)]
   Resource(#[from] #[inherit] ResourceError),
-  #[class(TYPE)]
+  #[class(type)]
   #[error("size must be larger than 0")]
   InvalidSize,
 }

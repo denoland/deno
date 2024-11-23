@@ -17,11 +17,12 @@ use dlopen2::raw::Library;
 use serde::Deserialize;
 use serde_value::ValueDeserializer;
 use std::borrow::Cow;
+use std::cell::RefCell;
 use std::collections::HashMap;
 use std::ffi::c_void;
 use std::rc::Rc;
 
-deno_core::js_error_wrapper!(dlopen2::Error, JsDlopen2Error, |err| {
+deno_error::js_error_wrapper!(dlopen2::Error, JsDlopen2Error, |err| {
   match err {
     dlopen2::Error::NullCharacter(_) => "InvalidData",
     dlopen2::Error::OpeningLibraryError(e) => e.get_class(),
@@ -30,16 +31,16 @@ deno_core::js_error_wrapper!(dlopen2::Error, JsDlopen2Error, |err| {
     dlopen2::Error::NullSymbol => "NotFound",
   }});
 
-#[derive(Debug, thiserror::Error, deno_core::JsError)]
+#[derive(Debug, thiserror::Error, deno_error::JsError)]
 pub enum DlfcnError {
-  #[class(GENERIC)]
+  #[class(generic)]
   #[error("Failed to register symbol {symbol}: {error}")]
   RegisterSymbol {
     symbol: String,
     #[source]
     error: dlopen2::Error,
   },
-  #[class(GENERIC)]
+  #[class(generic)]
   #[error(transparent)]
   Dlopen(#[from] dlopen2::Error),
   #[class(inherit)]
@@ -138,17 +139,20 @@ pub struct FfiLoadArgs {
   symbols: HashMap<String, ForeignSymbol>,
 }
 
-#[op2]
+#[op2(stack_trace)]
 pub fn op_ffi_load<'scope, FP>(
   scope: &mut v8::HandleScope<'scope>,
-  state: &mut OpState,
+  state: Rc<RefCell<OpState>>,
   #[serde] args: FfiLoadArgs,
 ) -> Result<v8::Local<'scope, v8::Value>, DlfcnError>
 where
   FP: FfiPermissions + 'static,
 {
-  let permissions = state.borrow_mut::<FP>();
-  let path = permissions.check_partial_with_path(&args.path)?;
+  let path = {
+    let mut state = state.borrow_mut();
+    let permissions = state.borrow_mut::<FP>();
+    permissions.check_partial_with_path(&args.path)?
+  };
 
   let lib = Library::open(&path).map_err(|e| {
     dlopen2::Error::OpeningLibraryError(std::io::Error::new(
@@ -225,6 +229,7 @@ where
     }
   }
 
+  let mut state = state.borrow_mut();
   let out = v8::Array::new(scope, 2);
   let rid = state.resource_table.add(resource);
   let rid_v8 = v8::Integer::new_from_unsigned(scope, rid);

@@ -17,15 +17,15 @@ use deno_core::ToJsBuffer;
 use std::cell::RefCell;
 use std::io::Read;
 
-#[derive(Debug, thiserror::Error, deno_core::JsError)]
+#[derive(Debug, thiserror::Error, deno_error::JsError)]
 pub enum BrotliError {
-  #[class(TYPE)]
+  #[class(type)]
   #[error("Invalid encoder mode")]
   InvalidEncoderMode,
-  #[class(TYPE)]
+  #[class(type)]
   #[error("Failed to compress")]
   CompressFailed,
-  #[class(TYPE)]
+  #[class(type)]
   #[error("Failed to decompress")]
   DecompressFailed,
   #[class(inherit)]

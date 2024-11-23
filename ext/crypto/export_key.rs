@@ -20,12 +20,12 @@ use spki::AlgorithmIdentifierOwned;
 
 use crate::shared::*;
 
-#[derive(Debug, thiserror::Error, deno_core::JsError)]
+#[derive(Debug, thiserror::Error, deno_error::JsError)]
 pub enum ExportKeyError {
   #[class(inherit)]
   #[error(transparent)]
   General(#[from] #[inherit] SharedError),
-  #[class(GENERIC)]
+  #[class(generic)]
   #[error(transparent)]
   Der(#[from] spki::der::Error),
   #[class("DOMExceptionNotSupportedError")]

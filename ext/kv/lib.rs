@@ -116,10 +116,10 @@ impl Resource for DatabaseWatcherResource {
   }
 }
 
-#[derive(Debug, Boxed, deno_core::JsError)]
+#[derive(Debug, Boxed, deno_error::JsError)]
 pub struct KvError(pub Box<KvErrorKind>);
 
-#[derive(Debug, thiserror::Error, deno_core::JsError)]
+#[derive(Debug, thiserror::Error, deno_error::JsError)]
 pub enum KvErrorKind {
   #[class(inherit)]
   #[error(transparent)]
@@ -127,55 +127,55 @@ pub enum KvErrorKind {
   #[class(inherit)]
   #[error(transparent)]
   Resource(#[from] #[inherit] deno_core::error::ResourceError),
-  #[class(TYPE)]
+  #[class(type)]
   #[error("Too many ranges (max {0})")]
   TooManyRanges(usize),
-  #[class(TYPE)]
+  #[class(type)]
   #[error("Too many entries (max {0})")]
   TooManyEntries(usize),
-  #[class(TYPE)]
+  #[class(type)]
   #[error("Too many checks (max {0})")]
   TooManyChecks(usize),
-  #[class(TYPE)]
+  #[class(type)]
   #[error("Too many mutations (max {0})")]
   TooManyMutations(usize),
-  #[class(TYPE)]
+  #[class(type)]
   #[error("Too many keys (max {0})")]
   TooManyKeys(usize),
-  #[class(TYPE)]
+  #[class(type)]
   #[error("limit must be greater than 0")]
   InvalidLimit,
-  #[class(TYPE)]
+  #[class(type)]
   #[error("Invalid boundary key")]
   InvalidBoundaryKey,
-  #[class(TYPE)]
+  #[class(type)]
   #[error("Key too large for read (max {0} bytes)")]
   KeyTooLargeToRead(usize),
-  #[class(TYPE)]
+  #[class(type)]
   #[error("Key too large for write (max {0} bytes)")]
   KeyTooLargeToWrite(usize),
-  #[class(TYPE)]
+  #[class(type)]
   #[error("Total mutation size too large (max {0} bytes)")]
   TotalMutationTooLarge(usize),
-  #[class(TYPE)]
+  #[class(type)]
   #[error("Total key size too large (max {0} bytes)")]
   TotalKeyTooLarge(usize),
-  #[class(GENERIC)]
+  #[class(generic)]
   #[error(transparent)]
   Kv(deno_core::error::AnyError),
   #[class(inherit)]
   #[error(transparent)]
   Io(#[from] #[inherit] std::io::Error),
-  #[class(TYPE)]
+  #[class(type)]
   #[error("Queue message not found")]
   QueueMessageNotFound,
-  #[class(TYPE)]
+  #[class(type)]
   #[error("Start key is not in the keyspace defined by prefix")]
   StartKeyNotInKeyspace,
-  #[class(TYPE)]
+  #[class(type)]
   #[error("End key is not in the keyspace defined by prefix")]
   EndKeyNotInKeyspace,
-  #[class(TYPE)]
+  #[class(type)]
   #[error("Start key is greater than end key")]
   StartKeyGreaterThanEndKey,
   #[class(inherit)]
@@ -187,22 +187,22 @@ pub enum KvErrorKind {
   #[class(inherit)]
   #[error("Invalid enqueue")]
   InvalidEnqueue(#[source] #[inherit] std::io::Error),
-  #[class(TYPE)]
+  #[class(type)]
   #[error("key cannot be empty")]
   EmptyKey,
-  #[class(TYPE)]
+  #[class(type)]
   #[error("Value too large (max {0} bytes)")]
   ValueTooLarge(usize),
-  #[class(TYPE)]
+  #[class(type)]
   #[error("enqueue payload too large (max {0} bytes)")]
   EnqueuePayloadTooLarge(usize),
-  #[class(TYPE)]
+  #[class(type)]
   #[error("invalid cursor")]
   InvalidCursor,
-  #[class(TYPE)]
+  #[class(type)]
   #[error("cursor out of bounds")]
   CursorOutOfBounds,
-  #[class(TYPE)]
+  #[class(type)]
   #[error("Invalid range")]
   InvalidRange,
 }
@@ -597,9 +597,9 @@ where
   Ok(())
 }
 
-#[derive(Debug, thiserror::Error, deno_core::JsError)]
+#[derive(Debug, thiserror::Error, deno_error::JsError)]
 pub enum KvCheckError {
-  #[class(TYPE)]
+  #[class(type)]
   #[error("invalid versionstamp")]
   InvalidVersionstamp,
   #[class(inherit)]
@@ -628,18 +628,18 @@ fn check_from_v8(value: V8KvCheck) -> Result<Check, KvCheckError> {
   })
 }
 
-#[derive(Debug, thiserror::Error, deno_core::JsError)]
+#[derive(Debug, thiserror::Error, deno_error::JsError)]
 pub enum KvMutationError {
-  #[class(GENERIC)]
+  #[class(generic)]
   #[error(transparent)]
   BigInt(#[from] num_bigint::TryFromBigIntError<num_bigint::BigInt>),
   #[class(inherit)]
   #[error(transparent)]
   Io(#[from] #[inherit] std::io::Error),
-  #[class(TYPE)]
+  #[class(type)]
   #[error("Invalid mutation '{0}' with value")]
   InvalidMutationWithValue(String),
-  #[class(TYPE)]
+  #[class(type)]
   #[error("Invalid mutation '{0}' without value")]
   InvalidMutationWithoutValue(String),
 }

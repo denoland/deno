@@ -47,9 +47,9 @@ pub struct DecipherContext {
   decipher: Rc<RefCell<Decipher>>,
 }
 
-#[derive(Debug, thiserror::Error, deno_core::JsError)]
+#[derive(Debug, thiserror::Error, deno_error::JsError)]
 pub enum CipherContextError {
-  #[class(TYPE)]
+  #[class(type)]
   #[error("Cipher context is already in use")]
   ContextInUse,
   #[class(inherit)]
@@ -97,9 +97,9 @@ impl CipherContext {
   }
 }
 
-#[derive(Debug, thiserror::Error, deno_core::JsError)]
+#[derive(Debug, thiserror::Error, deno_error::JsError)]
 pub enum DecipherContextError {
-  #[class(TYPE)]
+  #[class(type)]
   #[error("Decipher context is already in use")]
   ContextInUse,
   #[class(inherit)]
@@ -156,21 +156,21 @@ impl Resource for DecipherContext {
   }
 }
 
-#[derive(Debug, thiserror::Error, deno_core::JsError)]
+#[derive(Debug, thiserror::Error, deno_error::JsError)]
 pub enum CipherError {
-  #[class(TYPE)]
+  #[class(type)]
   #[error("IV length must be 12 bytes")]
   InvalidIvLength,
-  #[class(RANGE)]
+  #[class(range)]
   #[error("Invalid key length")]
   InvalidKeyLength,
-  #[class(TYPE)]
+  #[class(type)]
   #[error("Invalid initialization vector")]
   InvalidInitializationVector,
-  #[class(TYPE)]
+  #[class(type)]
   #[error("Cannot pad the input data")]
   CannotPadInputData,
-  #[class(TYPE)]
+  #[class(type)]
   #[error("Unknown cipher {0}")]
   UnknownCipher(String),
 }
@@ -371,30 +371,30 @@ impl Cipher {
   }
 }
 
-#[derive(Debug, thiserror::Error, deno_core::JsError)]
+#[derive(Debug, thiserror::Error, deno_error::JsError)]
 pub enum DecipherError {
-  #[class(TYPE)]
+  #[class(type)]
   #[error("IV length must be 12 bytes")]
   InvalidIvLength,
-  #[class(RANGE)]
+  #[class(range)]
   #[error("Invalid key length")]
   InvalidKeyLength,
-  #[class(TYPE)]
+  #[class(type)]
   #[error("Invalid initialization vector")]
   InvalidInitializationVector,
-  #[class(TYPE)]
+  #[class(type)]
   #[error("Cannot unpad the input data")]
   CannotUnpadInputData,
-  #[class(TYPE)]
+  #[class(type)]
   #[error("Failed to authenticate data")]
   DataAuthenticationFailed,
-  #[class(TYPE)]
+  #[class(type)]
   #[error("setAutoPadding(false) not supported for Aes128Gcm yet")]
   SetAutoPaddingFalseAes128GcmUnsupported,
-  #[class(TYPE)]
+  #[class(type)]
   #[error("setAutoPadding(false) not supported for Aes256Gcm yet")]
   SetAutoPaddingFalseAes256GcmUnsupported,
-  #[class(TYPE)]
+  #[class(type)]
   #[error("Unknown cipher {0}")]
   UnknownCipher(String),
 }

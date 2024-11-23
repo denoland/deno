@@ -15,13 +15,13 @@ use deno_core::ResourceHandleFd;
 use deno_core::ResourceId;
 use tokio::task::JoinError;
 
-#[derive(Debug, deno_core::JsError)]
+#[derive(Debug, deno_error::JsError)]
 pub enum FsError {
   #[class(inherit)]
   Io(#[inherit] io::Error),
   #[class("Busy")]
   FileBusy,
-  #[class("NotSupported")]
+  #[class(not_supported)]
   NotSupported,
   #[class("NotCapable")]
   NotCapable(&'static str),
@@ -99,6 +99,7 @@ pub struct FsStat {
   pub mtime: Option<u64>,
   pub atime: Option<u64>,
   pub birthtime: Option<u64>,
+  pub ctime: Option<u64>,
 
   pub dev: u64,
   pub ino: u64,
@@ -158,6 +159,16 @@ impl FsStat {
       }
     }
 
+    #[inline(always)]
+    fn get_ctime(ctime_or_0: i64) -> Option<u64> {
+      if ctime_or_0 > 0 {
+        // ctime return seconds since epoch, but we need milliseconds
+        return Some(ctime_or_0 as u64 * 1000);
+      }
+
+      None
+    }
+
     Self {
       is_file: metadata.is_file(),
       is_directory: metadata.is_dir(),
@@ -167,6 +178,7 @@ impl FsStat {
       mtime: to_msec(metadata.modified()),
       atime: to_msec(metadata.accessed()),
       birthtime: to_msec(metadata.created()),
+      ctime: get_ctime(unix_or_zero!(ctime)),
 
       dev: unix_or_zero!(dev),
       ino: unix_or_zero!(ino),

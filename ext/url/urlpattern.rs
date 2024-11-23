@@ -7,7 +7,7 @@ use urlpattern::quirks::MatchInput;
 use urlpattern::quirks::StringOrInit;
 use urlpattern::quirks::UrlPattern;
 
-deno_core::js_error_wrapper!(urlpattern::Error, UrlPatternError, "TypeError");
+deno_error::js_error_wrapper!(urlpattern::Error, UrlPatternError, "TypeError");
 
 #[op2]
 #[serde]

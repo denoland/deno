@@ -24,7 +24,7 @@ where
   loader.ensure_read_permission(permissions, file_path)
 }
 
-#[derive(Debug, thiserror::Error, deno_core::JsError)]
+#[derive(Debug, thiserror::Error, deno_error::JsError)]
 pub enum WorkerThreadsFilenameError {
   #[class(inherit)]
   #[error(transparent)]
@@ -32,19 +32,19 @@ pub enum WorkerThreadsFilenameError {
   #[class(inherit)]
   #[error("{0}")]
   UrlParse(#[from] #[inherit] url::ParseError),
-  #[class(GENERIC)]
+  #[class(generic)]
   #[error("Relative path entries must start with '.' or '..'")]
   InvalidRelativeUrl,
-  #[class(GENERIC)]
+  #[class(generic)]
   #[error("URL from Path-String")]
   UrlFromPathString,
-  #[class(GENERIC)]
+  #[class(generic)]
   #[error("URL to Path-String")]
   UrlToPathString,
-  #[class(GENERIC)]
+  #[class(generic)]
   #[error("URL to Path")]
   UrlToPath,
-  #[class(GENERIC)]
+  #[class(generic)]
   #[error("File not found [{0:?}]")]
   FileNotFound(PathBuf),
   #[class(inherit)]
@@ -53,7 +53,7 @@ pub enum WorkerThreadsFilenameError {
 }
 
 // todo(dsherret): we should remove this and do all this work inside op_create_worker
-#[op2]
+#[op2(stack_trace)]
 #[string]
 pub fn op_worker_threads_filename<P>(
   state: &mut OpState,

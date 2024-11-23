@@ -18,6 +18,7 @@ pub struct BinEntries<'a> {
   seen_names: HashMap<&'a str, &'a NpmPackageId>,
   /// The bin entries
   entries: Vec<(&'a NpmResolutionPackage, PathBuf)>,
+  sorted: bool,
 }
 
 /// Returns the name of the default binary for the given package.
@@ -31,6 +32,20 @@ fn default_bin_name(package: &NpmResolutionPackage) -> &str {
     .map_or(package.id.nv.name.as_str(), |(_, name)| name)
 }
 
+pub fn warn_missing_entrypoint(
+  bin_name: &str,
+  package_path: &Path,
+  entrypoint: &Path,
+) {
+  log::warn!(
+    "{} Trying to set up '{}' bin for \"{}\", but the entry point \"{}\" doesn't exist.",
+    deno_terminal::colors::yellow("Warning"),
+    bin_name,
+    package_path.display(),
+    entrypoint.display()
+  );
+}
+
 impl<'a> BinEntries<'a> {
   pub fn new() -> Self {
     Self::default()
@@ -42,6 +57,7 @@ impl<'a> BinEntries<'a> {
     package: &'a NpmResolutionPackage,
     package_path: PathBuf,
   ) {
+    self.sorted = false;
     // check for a new collision, if we haven't already
     // found one
     match package.bin.as_ref().unwrap() {
@@ -79,16 +95,21 @@ impl<'a> BinEntries<'a> {
       &str, // bin name
       &str, // bin script
     ) -> Result<(), AnyError>,
+    mut filter: impl FnMut(&NpmResolutionPackage) -> bool,
   ) -> Result<(), AnyError> {
-    if !self.collisions.is_empty() {
+    if !self.collisions.is_empty() && !self.sorted {
       // walking the dependency tree to find out the depth of each package
       // is sort of expensive, so we only do it if there's a collision
       sort_by_depth(snapshot, &mut self.entries, &mut self.collisions);
+      self.sorted = true;
     }
 
     let mut seen = HashSet::new();
 
     for (package, package_path) in &self.entries {
+      if !filter(package) {
+        continue;
+      }
       if let Some(bin_entries) = &package.bin {
         match bin_entries {
           deno_npm::registry::NpmPackageVersionBinEntry::String(script) => {
@@ -118,8 +139,8 @@ impl<'a> BinEntries<'a> {
   }
 
   /// Collect the bin entries into a vec of (name, script path)
-  pub fn into_bin_files(
-    mut self,
+  pub fn collect_bin_files(
+    &mut self,
     snapshot: &NpmResolutionSnapshot,
   ) -> Vec<(String, PathBuf)> {
     let mut bins = Vec::new();
@@ -131,17 +152,18 @@ impl<'a> BinEntries<'a> {
           bins.push((name.to_string(), package_path.join(script)));
           Ok(())
         },
+        |_| true,
       )
       .unwrap();
     bins
   }
 
-  /// Finish setting up the bin entries, writing the necessary files
-  /// to disk.
-  pub fn finish(
+  fn set_up_entries_filtered(
     mut self,
     snapshot: &NpmResolutionSnapshot,
     bin_node_modules_dir_path: &Path,
+    filter: impl FnMut(&NpmResolutionPackage) -> bool,
+    mut handler: impl FnMut(&EntrySetupOutcome<'_>),
   ) -> Result<(), AnyError> {
     if !self.entries.is_empty() && !bin_node_modules_dir_path.exists() {
       std::fs::create_dir_all(bin_node_modules_dir_path).with_context(
@@ -160,17 +182,53 @@ impl<'a> BinEntries<'a> {
         Ok(())
       },
       |package, package_path, name, script| {
-        set_up_bin_entry(
+        let outcome = set_up_bin_entry(
           package,
           name,
           script,
           package_path,
           bin_node_modules_dir_path,
-        )
+        )?;
+        handler(&outcome);
+        Ok(())
       },
+      filter,
     )?;
 
     Ok(())
+  }
+
+  /// Finish setting up the bin entries, writing the necessary files
+  /// to disk.
+  pub fn finish(
+    self,
+    snapshot: &NpmResolutionSnapshot,
+    bin_node_modules_dir_path: &Path,
+    handler: impl FnMut(&EntrySetupOutcome<'_>),
+  ) -> Result<(), AnyError> {
+    self.set_up_entries_filtered(
+      snapshot,
+      bin_node_modules_dir_path,
+      |_| true,
+      handler,
+    )
+  }
+
+  /// Finish setting up the bin entries, writing the necessary files
+  /// to disk.
+  pub fn finish_only(
+    self,
+    snapshot: &NpmResolutionSnapshot,
+    bin_node_modules_dir_path: &Path,
+    handler: impl FnMut(&EntrySetupOutcome<'_>),
+    only: &HashSet<&NpmPackageId>,
+  ) -> Result<(), AnyError> {
+    self.set_up_entries_filtered(
+      snapshot,
+      bin_node_modules_dir_path,
+      |package| only.contains(&package.id),
+      handler,
+    )
   }
 }
 
@@ -233,16 +291,17 @@ fn sort_by_depth(
   });
 }
 
-pub fn set_up_bin_entry(
-  package: &NpmResolutionPackage,
-  bin_name: &str,
+pub fn set_up_bin_entry<'a>(
+  package: &'a NpmResolutionPackage,
+  bin_name: &'a str,
   #[allow(unused_variables)] bin_script: &str,
-  #[allow(unused_variables)] package_path: &Path,
+  #[allow(unused_variables)] package_path: &'a Path,
   bin_node_modules_dir_path: &Path,
-) -> Result<(), AnyError> {
+) -> Result<EntrySetupOutcome<'a>, AnyError> {
   #[cfg(windows)]
   {
     set_up_bin_shim(package, bin_name, bin_node_modules_dir_path)?;
+    Ok(EntrySetupOutcome::Success)
   }
   #[cfg(unix)]
   {
@@ -252,9 +311,8 @@ pub fn set_up_bin_entry(
       bin_script,
       package_path,
       bin_node_modules_dir_path,
-    )?;
+    )
   }
-  Ok(())
 }
 
 #[cfg(windows)]
@@ -301,14 +359,39 @@ fn make_executable_if_exists(path: &Path) -> Result<bool, AnyError> {
   Ok(true)
 }
 
+pub enum EntrySetupOutcome<'a> {
+  #[cfg_attr(windows, allow(dead_code))]
+  MissingEntrypoint {
+    bin_name: &'a str,
+    package_path: &'a Path,
+    entrypoint: PathBuf,
+    package: &'a NpmResolutionPackage,
+  },
+  Success,
+}
+
+impl<'a> EntrySetupOutcome<'a> {
+  pub fn warn_if_failed(&self) {
+    match self {
+      EntrySetupOutcome::MissingEntrypoint {
+        bin_name,
+        package_path,
+        entrypoint,
+        ..
+      } => warn_missing_entrypoint(bin_name, package_path, entrypoint),
+      EntrySetupOutcome::Success => {}
+    }
+  }
+}
+
 #[cfg(unix)]
-fn symlink_bin_entry(
-  _package: &NpmResolutionPackage,
-  bin_name: &str,
+fn symlink_bin_entry<'a>(
+  package: &'a NpmResolutionPackage,
+  bin_name: &'a str,
   bin_script: &str,
-  package_path: &Path,
+  package_path: &'a Path,
   bin_node_modules_dir_path: &Path,
-) -> Result<(), AnyError> {
+) -> Result<EntrySetupOutcome<'a>, AnyError> {
   use std::io;
   use std::os::unix::fs::symlink;
   let link = bin_node_modules_dir_path.join(bin_name);
@@ -318,14 +401,12 @@ fn symlink_bin_entry(
     format!("Can't set up '{}' bin at {}", bin_name, original.display())
   })?;
   if !found {
-    log::warn!(
-      "{} Trying to set up '{}' bin for \"{}\", but the entry point \"{}\" doesn't exist.",
-      deno_terminal::colors::yellow("Warning"),
+    return Ok(EntrySetupOutcome::MissingEntrypoint {
       bin_name,
-      package_path.display(),
-      original.display()
-    );
-    return Ok(());
+      package_path,
+      entrypoint: original,
+      package,
+    });
   }
 
   let original_relative =
@@ -348,7 +429,7 @@ fn symlink_bin_entry(
           original_relative.display()
         )
       })?;
-      return Ok(());
+      return Ok(EntrySetupOutcome::Success);
     }
     return Err(err).with_context(|| {
       format!(
@@ -359,5 +440,5 @@ fn symlink_bin_entry(
     });
   }
 
-  Ok(())
+  Ok(EntrySetupOutcome::Success)
 }

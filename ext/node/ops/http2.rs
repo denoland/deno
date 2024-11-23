@@ -110,7 +110,7 @@ impl Resource for Http2ServerSendResponse {
   }
 }
 
-#[derive(Debug, thiserror::Error, deno_core::JsError)]
+#[derive(Debug, thiserror::Error, deno_error::JsError)]
 pub enum Http2Error {
   #[class(inherit)]
   #[error(transparent)]
@@ -118,7 +118,7 @@ pub enum Http2Error {
   #[class(inherit)]
   #[error(transparent)]
   UrlParse(#[from] #[inherit] url::ParseError),
-  #[class(GENERIC)]
+  #[class(generic)]
   #[error(transparent)]
   H2(#[from] h2::Error),
   #[class(inherit)]

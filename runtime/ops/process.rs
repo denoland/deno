@@ -191,7 +191,7 @@ pub struct SpawnArgs {
 }
 
 #[cfg(unix)]
-deno_core::js_error_wrapper!(nix::Error, JsNixError, |err| {
+deno_error::js_error_wrapper!(nix::Error, JsNixError, |err| {
     match err {
     nix::Error::ECHILD => "NotFound",
     nix::Error::EINVAL => "TypeError",
@@ -209,7 +209,7 @@ deno_core::js_error_wrapper!(nix::Error, JsNixError, |err| {
   }
 });
 
-#[derive(Debug, thiserror::Error, deno_core::JsError)]
+#[derive(Debug, thiserror::Error, deno_error::JsError)]
 pub enum ProcessError {
   #[class(inherit)]
   #[error("Failed to spawn '{command}': {error}")]
@@ -237,16 +237,16 @@ pub enum ProcessError {
   #[class(inherit)]
   #[error(transparent)]
   Resource(#[inherit] deno_core::error::ResourceError),
-  #[class(GENERIC)]
+  #[class(generic)]
   #[error(transparent)]
   BorrowMut(std::cell::BorrowMutError),
-  #[class(GENERIC)]
+  #[class(generic)]
   #[error(transparent)]
   Which(which::Error),
-  #[class(TYPE)]
+  #[class(type)]
   #[error("Child process has already terminated.")]
   ChildProcessAlreadyTerminated,
-  #[class(TYPE)]
+  #[class(type)]
   #[error("Invalid pid")]
   InvalidPid,
   #[class(inherit)]
@@ -255,7 +255,7 @@ pub enum ProcessError {
   #[class(inherit)]
   #[error(transparent)]
   Other(#[from] #[inherit] JsNativeError),
-  #[class(TYPE)]
+  #[class(type)]
   #[error("Missing cmd")]
   MissingCmd, // only for Deno.run
 }
@@ -770,7 +770,7 @@ fn resolve_path(path: &str, cwd: &Path) -> PathBuf {
   deno_path_util::normalize_path(cwd.join(path))
 }
 
-#[derive(Debug, thiserror::Error, deno_core::JsError)]
+#[derive(Debug, thiserror::Error, deno_error::JsError)]
 pub enum CheckRunPermissionError {
   #[class(inherit)]
   #[error(transparent)]

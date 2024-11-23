@@ -15,7 +15,7 @@ use serde::Deserialize;
 
 use crate::shared::*;
 
-#[derive(Debug, thiserror::Error, deno_core::JsError)]
+#[derive(Debug, thiserror::Error, deno_error::JsError)]
 #[class("DOMExceptionOperationError")]
 pub enum GenerateKeyError {
   #[class(inherit)]

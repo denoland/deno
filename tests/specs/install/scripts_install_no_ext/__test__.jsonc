@@ -1,0 +1,5 @@
+{
+  "tempDir": true,
+  "args": "install --allow-scripts",
+  "output": "output.out"
+}

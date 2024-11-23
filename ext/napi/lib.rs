@@ -53,15 +53,15 @@ pub use value::napi_value;
 pub mod function;
 mod value;
 
-#[derive(Debug, thiserror::Error, deno_core::JsError)]
+#[derive(Debug, thiserror::Error, deno_error::JsError)]
 pub enum NApiError {
-  #[class(TYPE)]
+  #[class(type)]
   #[error("Invalid path")]
   InvalidPath,
-  #[class(TYPE)]
+  #[class(type)]
   #[error(transparent)]
   LibLoading(#[from] libloading::Error),
-  #[class(TYPE)]
+  #[class(type)]
   #[error("Unable to find register Node-API module at {}", .0.display())]
   ModuleNotFound(PathBuf),
   #[class(inherit)]
@@ -534,7 +534,7 @@ static NAPI_LOADED_MODULES: std::sync::LazyLock<
   RwLock<HashMap<PathBuf, NapiModuleHandle>>,
 > = std::sync::LazyLock::new(|| RwLock::new(HashMap::new()));
 
-#[op2(reentrant)]
+#[op2(reentrant, stack_trace)]
 fn op_napi_open<NP, 'scope>(
   scope: &mut v8::HandleScope<'scope>,
   isolate: *mut v8::Isolate,

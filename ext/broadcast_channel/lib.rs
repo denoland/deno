@@ -21,15 +21,15 @@ use tokio::sync::mpsc::error::SendError as MpscSendError;
 
 pub const UNSTABLE_FEATURE_NAME: &str = "broadcast-channel";
 
-#[derive(Debug, thiserror::Error, deno_core::JsError)]
+#[derive(Debug, thiserror::Error, deno_error::JsError)]
 pub enum BroadcastChannelError {
   #[class(inherit)]
   #[error(transparent)]
   Resource(#[from] #[inherit] deno_core::error::ResourceError),
-  #[class(GENERIC)]
+  #[class(generic)]
   #[error(transparent)]
   MPSCSendError(MpscSendError<Box<dyn std::fmt::Debug + Send + Sync>>),
-  #[class(GENERIC)]
+  #[class(generic)]
   #[error(transparent)]
   BroadcastSendError(
     BroadcastSendError<Box<dyn std::fmt::Debug + Send + Sync>>,

@@ -60,27 +60,27 @@ pub enum RustRawKeyData {
   Public(ToJsBuffer),
 }
 
-#[derive(Debug, thiserror::Error, deno_core::JsError)]
+#[derive(Debug, thiserror::Error, deno_error::JsError)]
 pub enum SharedError {
-  #[class(TYPE)]
+  #[class(type)]
   #[error("expected valid private key")]
   ExpectedValidPrivateKey,
-  #[class(TYPE)]
+  #[class(type)]
   #[error("expected valid public key")]
   ExpectedValidPublicKey,
-  #[class(TYPE)]
+  #[class(type)]
   #[error("expected valid private EC key")]
   ExpectedValidPrivateECKey,
-  #[class(TYPE)]
+  #[class(type)]
   #[error("expected valid public EC key")]
   ExpectedValidPublicECKey,
-  #[class(TYPE)]
+  #[class(type)]
   #[error("expected private key")]
   ExpectedPrivateKey,
-  #[class(TYPE)]
+  #[class(type)]
   #[error("expected public key")]
   ExpectedPublicKey,
-  #[class(TYPE)]
+  #[class(type)]
   #[error("expected secret key")]
   ExpectedSecretKey,
   #[class("DOMExceptionOperationError")]
