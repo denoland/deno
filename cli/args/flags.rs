@@ -3083,7 +3083,7 @@ Evaluate a task from string
         Arg::new("eval")
           .long("eval")
           .help(
-            "Evaluate the passed value as if, it was a task in a configuration file",
+            "Evaluate the passed value as if it was a task in a configuration file",
           ).action(ArgAction::SetTrue)
       )
       .arg(node_modules_dir_arg())
