@@ -125,16 +125,16 @@ pub enum CreateWorkerError {
   ClassicWorkers,
   #[class(inherit)]
   #[error(transparent)]
-  Permission(#[inherit] deno_permissions::ChildPermissionError),
+  Permission(deno_permissions::ChildPermissionError),
   #[class(inherit)]
   #[error(transparent)]
-  ModuleResolution(#[from] #[inherit] deno_core::ModuleResolutionError),
+  ModuleResolution(#[from] deno_core::ModuleResolutionError),
   #[class(inherit)]
   #[error(transparent)]
-  MessagePort(#[from] #[inherit] MessagePortError),
+  MessagePort(#[from] MessagePortError),
   #[class(inherit)]
   #[error("{0}")]
-  Io(#[from] #[inherit] std::io::Error),
+  Io(#[from] std::io::Error),
 }
 
 /// Create worker as the host

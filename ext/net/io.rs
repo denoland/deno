@@ -95,7 +95,7 @@ where
 pub enum MapError {
   #[class(inherit)]
   #[error("{0}")]
-  Io(#[inherit] std::io::Error),
+  Io(std::io::Error),
   #[class(generic)]
   #[error("Unable to get resources")]
   NoResources,

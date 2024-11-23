@@ -37,13 +37,13 @@ thread_local! {
 pub enum CallbackError {
   #[class(inherit)]
   #[error(transparent)]
-  Resource(#[from] #[inherit] deno_core::error::ResourceError),
+  Resource(#[from] deno_core::error::ResourceError),
   #[class(inherit)]
   #[error(transparent)]
-  Permission(#[from] #[inherit] deno_permissions::PermissionCheckError),
+  Permission(#[from] deno_permissions::PermissionCheckError),
   #[class(inherit)]
   #[error(transparent)]
-  Other(#[from] #[inherit] deno_core::error::JsNativeError),
+  Other(#[from] deno_core::error::JsNativeError),
 }
 
 #[derive(Clone)]

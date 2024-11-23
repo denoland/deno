@@ -34,7 +34,7 @@ use std::task::Waker;
 pub enum StreamResourceError {
   #[class(inherit)]
   #[error(transparent)]
-  Canceled(#[from] #[inherit] deno_core::Canceled),
+  Canceled(#[from] deno_core::Canceled),
   #[class(type)]
   #[error("{0}")]
   Js(String),

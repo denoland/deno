@@ -18,7 +18,7 @@ use tokio::task::JoinError;
 #[derive(Debug, deno_error::JsError)]
 pub enum FsError {
   #[class(inherit)]
-  Io(#[inherit] io::Error),
+  Io(io::Error),
   #[class("Busy")]
   FileBusy,
   #[class(not_supported)]

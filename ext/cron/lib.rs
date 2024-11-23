@@ -6,12 +6,13 @@ pub mod local;
 use std::borrow::Cow;
 use std::cell::RefCell;
 use std::rc::Rc;
-use deno_core::error::{JsErrorClass, JsNativeError};
 pub use crate::interface::*;
 use deno_core::op2;
 use deno_core::OpState;
 use deno_core::Resource;
 use deno_core::ResourceId;
+use deno_core::error::JsNativeError;
+use deno_error::JsErrorClass;
 
 pub const UNSTABLE_FEATURE_NAME: &str = "cron";
 
@@ -49,7 +50,7 @@ impl<EH: CronHandle + 'static> Resource for CronResource<EH> {
 pub enum CronError {
   #[class(inherit)]
   #[error(transparent)]
-  Resource(#[from] #[inherit] deno_core::error::ResourceError),
+  Resource(#[from] deno_core::error::ResourceError),
   #[class(type)]
   #[error("Cron name cannot exceed 64 characters: current length {0}")]
   NameExceeded(usize),
@@ -73,7 +74,7 @@ pub enum CronError {
   AcquireError(#[from] tokio::sync::AcquireError),
   #[class(inherit)]
   #[error(transparent)]
-  Other(#[inherit] JsNativeError),
+  Other(JsNativeError),
 }
 
 #[op2]

@@ -24,7 +24,7 @@ pub enum CompressionError {
   IoTypeError(std::io::Error),
   #[class(inherit)]
   #[error(transparent)]
-  Io(#[inherit] std::io::Error),
+  Io(std::io::Error),
 }
 
 #[derive(Debug)]

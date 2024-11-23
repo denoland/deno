@@ -84,16 +84,16 @@ pub enum NetError {
   SocketBusy,
   #[class(inherit)]
   #[error("{0}")]
-  Io(#[from] #[inherit] std::io::Error),
+  Io(#[from] std::io::Error),
   #[class("Busy")]
   #[error("Another accept task is ongoing")]
   AcceptTaskOngoing,
   #[class(inherit)]
   #[error(transparent)]
-  Permission(#[from] #[inherit] deno_permissions::PermissionCheckError),
+  Permission(#[from] deno_permissions::PermissionCheckError),
   #[class(inherit)]
   #[error("{0}")]
-  Resource(#[from] #[inherit] deno_core::error::ResourceError),
+  Resource(#[from] deno_core::error::ResourceError),
   #[class(generic)]
   #[error("No resolved address found")]
   NoResolvedAddress,
@@ -102,10 +102,10 @@ pub enum NetError {
   AddrParse(#[from] std::net::AddrParseError),
   #[class(inherit)]
   #[error("{0}")]
-  Map(#[inherit] crate::io::MapError),
+  Map(crate::io::MapError),
   #[class(inherit)]
   #[error("{0}")]
-  Canceled(#[from] #[inherit] deno_core::Canceled),
+  Canceled(#[from] deno_core::Canceled),
   #[class("NotFound")]
   #[error("{0}")]
   DnsNotFound(ResolveError),
@@ -138,13 +138,13 @@ pub enum NetError {
   Rustls(#[from] deno_tls::rustls::Error),
   #[class(inherit)]
   #[error("{0}")]
-  Tls(#[from] #[inherit] deno_tls::TlsError),
+  Tls(#[from] deno_tls::TlsError),
   #[class("InvalidData")]
   #[error("Error creating TLS certificate: Deno.listenTls requires a key")]
   ListenTlsRequiresKey,
   #[class(inherit)]
   #[error("{0}")]
-  RootCertStore(#[inherit] deno_core::error::JsNativeError),
+  RootCertStore(deno_core::error::JsNativeError),
   #[class(generic)]
   #[error("{0}")]
   Reunite(tokio::net::tcp::ReuniteError),

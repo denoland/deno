@@ -12,7 +12,7 @@ use std::ptr;
 pub enum StaticError {
   #[class(inherit)]
   #[error(transparent)]
-  Dlfcn(#[inherit] super::DlfcnError),
+  Dlfcn(super::DlfcnError),
   #[class(type)]
   #[error("Invalid FFI static type 'void'")]
   InvalidTypeVoid,
@@ -21,7 +21,7 @@ pub enum StaticError {
   InvalidTypeStruct,
   #[class(inherit)]
   #[error(transparent)]
-  Resource(#[from] #[inherit] deno_core::error::ResourceError),
+  Resource(#[from] deno_core::error::ResourceError),
 }
 
 #[op2]

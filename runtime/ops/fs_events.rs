@@ -27,7 +27,8 @@ use std::path::Path;
 use std::path::PathBuf;
 use std::rc::Rc;
 use std::sync::Arc;
-use deno_core::error::GENERIC_ERROR;
+use deno_error::builtin_classes::GENERIC_ERROR;
+use deno_error::JsErrorClass;
 use tokio::sync::mpsc;
 
 deno_core::extension!(
@@ -125,16 +126,16 @@ deno_error::js_error_wrapper!(NotifyError, JsNotifyError, |err| {
 pub enum FsEventsError {
   #[class(inherit)]
   #[error(transparent)]
-  Resource(#[from] #[inherit] deno_core::error::ResourceError),
+  Resource(#[from] deno_core::error::ResourceError),
   #[class(inherit)]
   #[error(transparent)]
-  Permission(#[from] #[inherit] deno_permissions::PermissionCheckError),
+  Permission(#[from] deno_permissions::PermissionCheckError),
   #[class(inherit)]
   #[error(transparent)]
-  Notify(#[inherit] JsNotifyError),
+  Notify(JsNotifyError),
   #[class(inherit)]
   #[error(transparent)]
-  Canceled(#[from] #[inherit] deno_core::Canceled),
+  Canceled(#[from] deno_core::Canceled),
 }
 
 fn start_watcher(

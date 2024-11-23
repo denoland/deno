@@ -21,7 +21,7 @@ pub enum WebStorageError {
   Sqlite(#[from] rusqlite::Error),
   #[class(inherit)]
   #[error(transparent)]
-  Io(#[inherit] std::io::Error),
+  Io(std::io::Error),
   #[class("DOMExceptionQuotaExceededError")]
   #[error("Exceeded maximum storage size")]
   StorageExceeded,

@@ -36,13 +36,13 @@ pub enum CallError {
   InvalidSymbol(String),
   #[class(inherit)]
   #[error(transparent)]
-  Permission(#[from] #[inherit] deno_permissions::PermissionCheckError),
+  Permission(#[from] deno_permissions::PermissionCheckError),
   #[class(inherit)]
   #[error(transparent)]
-  Resource(#[from] #[inherit] deno_core::error::ResourceError),
+  Resource(#[from] deno_core::error::ResourceError),
   #[class(inherit)]
   #[error(transparent)]
-  Callback(#[from] #[inherit]  super::CallbackError),
+  Callback(#[from]  super::CallbackError),
 }
 
 // SAFETY: Makes an FFI call

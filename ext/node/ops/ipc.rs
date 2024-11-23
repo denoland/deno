@@ -183,16 +183,16 @@ mod impl_ {
   pub enum IpcError {
     #[class(inherit)]
     #[error(transparent)]
-    Resource(#[from] #[inherit] deno_core::error::ResourceError),
+    Resource(#[from] deno_core::error::ResourceError),
     #[class(inherit)]
     #[error(transparent)]
-    IpcJsonStream(#[from] #[inherit] IpcJsonStreamError),
+    IpcJsonStream(#[from] IpcJsonStreamError),
     #[class(inherit)]
     #[error(transparent)]
-    Canceled(#[from] #[inherit] deno_core::Canceled),
+    Canceled(#[from] deno_core::Canceled),
     #[class(inherit)]
     #[error("failed to serialize json value: {0}")]
-    SerdeJson(#[inherit] serde_json::Error),
+    SerdeJson(serde_json::Error),
   }
 
   #[op2(async)]
@@ -477,7 +477,7 @@ mod impl_ {
   pub enum IpcJsonStreamError {
     #[class(inherit)]
     #[error("{0}")]
-    Io(#[source] #[inherit] std::io::Error),
+    Io(#[source] std::io::Error),
     #[class(generic)]
     #[error("{0}")]
     SimdJson(#[source] simd_json::Error),

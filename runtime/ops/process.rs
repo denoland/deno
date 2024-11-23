@@ -220,23 +220,23 @@ pub enum ProcessError {
   },
   #[class(inherit)]
   #[error("{0}")]
-  Io(#[from] #[inherit] std::io::Error),
+  Io(#[from] std::io::Error),
   #[cfg(unix)]
   #[class(inherit)]
   #[error(transparent)]
-  Nix(#[inherit] JsNixError),
+  Nix(JsNixError),
   #[class(inherit)]
   #[error("failed resolving cwd: {0}")]
-  FailedResolvingCwd(#[source] #[inherit] std::io::Error),
+  FailedResolvingCwd(#[source] std::io::Error),
   #[class(inherit)]
   #[error(transparent)]
-  Permission(#[from] #[inherit] deno_permissions::PermissionCheckError),
+  Permission(#[from] deno_permissions::PermissionCheckError),
   #[class(inherit)]
   #[error(transparent)]
-  RunPermission(#[from] #[inherit] CheckRunPermissionError),
+  RunPermission(#[from] CheckRunPermissionError),
   #[class(inherit)]
   #[error(transparent)]
-  Resource(#[inherit] deno_core::error::ResourceError),
+  Resource(deno_core::error::ResourceError),
   #[class(generic)]
   #[error(transparent)]
   BorrowMut(std::cell::BorrowMutError),
@@ -251,10 +251,10 @@ pub enum ProcessError {
   InvalidPid,
   #[class(inherit)]
   #[error(transparent)]
-  Signal(#[from] #[inherit] SignalError),
+  Signal(#[from] SignalError),
   #[class(inherit)]
   #[error(transparent)]
-  Other(#[from] #[inherit] JsNativeError),
+  Other(#[from] JsNativeError),
   #[class(type)]
   #[error("Missing cmd")]
   MissingCmd, // only for Deno.run
@@ -774,10 +774,10 @@ fn resolve_path(path: &str, cwd: &Path) -> PathBuf {
 pub enum CheckRunPermissionError {
   #[class(inherit)]
   #[error(transparent)]
-  Permission(#[from] #[inherit] deno_permissions::PermissionCheckError),
+  Permission(#[from] deno_permissions::PermissionCheckError),
   #[class(inherit)]
   #[error("{0}")]
-  Other(#[inherit] JsNativeError),
+  Other(JsNativeError),
 }
 
 fn check_run_permission(

@@ -34,10 +34,10 @@ pub enum MessagePortError {
   TransferSelf,
   #[class(inherit)]
   #[error(transparent)]
-  Canceled(#[from] #[inherit] deno_core::Canceled),
+  Canceled(#[from] deno_core::Canceled),
   #[class(inherit)]
   #[error(transparent)]
-  Resource(#[inherit] deno_core::error::ResourceError),
+  Resource(deno_core::error::ResourceError),
 }
 
 pub enum Transferable {

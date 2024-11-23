@@ -948,7 +948,7 @@ pub enum NetDescriptorFromUrlParseError {
   MissingHost(Url),
   #[class(inherit)]
   #[error("{0}")]
-  Host(#[from] #[inherit] HostParseError),
+  Host(#[from] HostParseError),
 }
 
 impl NetDescriptor {
@@ -1317,7 +1317,7 @@ pub enum RunQueryDescriptor {
 pub enum PathResolveError {
   #[class(inherit)]
   #[error("failed resolving cwd: {0}")]
-  CwdResolve(#[source] #[inherit] std::io::Error),
+  CwdResolve(#[source] std::io::Error),
   #[class(generic)]
   #[error("Empty path is not allowed")]
   EmptyPath,
@@ -1482,7 +1482,7 @@ pub enum RunDescriptorParseError {
   Which(#[from] which::Error),
   #[class(inherit)]
   #[error("{0}")]
-  PathResolve(#[from] #[inherit] PathResolveError),
+  PathResolve(#[from] PathResolveError),
   #[class(generic)]
   #[error("Empty run query is not allowed")]
   EmptyRunQuery,

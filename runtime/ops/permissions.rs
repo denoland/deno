@@ -47,7 +47,7 @@ impl From<PermissionState> for PermissionStatus {
 
 #[derive(Debug, thiserror::Error, deno_error::JsError)]
 pub enum PermissionError {
-  #[class("ReferenceError")]
+  #[class(reference)]
   #[error("No such permission name: {0}")]
   InvalidPermissionName(String),
   #[class(inherit)]

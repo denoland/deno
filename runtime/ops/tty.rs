@@ -27,7 +27,9 @@ use nix::sys::termios;
 use std::cell::RefCell;
 #[cfg(unix)]
 use std::collections::HashMap;
-use deno_core::error::{JsNativeError, GENERIC_ERROR};
+use deno_core::error::{JsNativeError};
+use deno_error::builtin_classes::{GENERIC_ERROR};
+use deno_error::JsErrorClass;
 
 #[cfg(unix)]
 #[derive(Default, Clone)]

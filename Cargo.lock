@@ -504,7 +504,7 @@ dependencies = [
  "bitflags 2.6.0",
  "cexpr",
  "clang-sys",
- "itertools 0.10.5",
+ "itertools 0.13.0",
  "log",
  "prettyplease",
  "proc-macro2",
@@ -1119,7 +1119,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b28bfe653d79bd16c77f659305b195b82bb5ce0c0eb2a4846b82ddbd77586813"
 dependencies = [
  "bitflags 2.6.0",
- "libloading 0.7.4",
+ "libloading 0.8.5",
  "winapi",
 ]
 
@@ -1592,7 +1592,7 @@ dependencies = [
 
 [[package]]
 name = "deno_error"
-version = "0.5.1"
+version = "0.5.2"
 dependencies = [
  "deno_error_macro",
  "libc",
@@ -1604,7 +1604,7 @@ dependencies = [
 
 [[package]]
 name = "deno_error_macro"
-version = "0.5.1"
+version = "0.5.2"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -1675,6 +1675,7 @@ dependencies = [
  "base32",
  "boxed_error",
  "deno_core",
+ "deno_error",
  "deno_io",
  "deno_path_util",
  "deno_permissions",
@@ -1732,6 +1733,7 @@ dependencies = [
  "bytes",
  "cache_control",
  "deno_core",
+ "deno_error",
  "deno_net",
  "deno_websocket",
  "flate2",
@@ -1792,6 +1794,7 @@ dependencies = [
  "bytes",
  "chrono",
  "deno_core",
+ "deno_error",
  "deno_fetch",
  "deno_path_util",
  "deno_permissions",
@@ -1917,6 +1920,7 @@ dependencies = [
  "const-oid",
  "data-encoding",
  "deno_core",
+ "deno_error",
  "deno_fetch",
  "deno_fs",
  "deno_io",
@@ -2043,11 +2047,10 @@ dependencies = [
 [[package]]
 name = "deno_path_util"
 version = "0.2.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ff25f6e08e7a0214bbacdd6f7195c7f1ebcd850c87a624e4ff06326b68b42d99"
 dependencies = [
+ "deno_error",
  "percent-encoding",
- "thiserror 1.0.64",
+ "thiserror 2.0.3",
  "url",
 ]
 
@@ -2103,6 +2106,7 @@ dependencies = [
  "deno_core",
  "deno_cron",
  "deno_crypto",
+ "deno_error",
  "deno_fetch",
  "deno_ffi",
  "deno_fs",
@@ -5803,7 +5807,7 @@ checksum = "0c1318b19085f08681016926435853bbf7858f9c082d0999b80550ff5d9abe15"
 dependencies = [
  "bytes",
  "heck 0.5.0",
- "itertools 0.10.5",
+ "itertools 0.13.0",
  "log",
  "multimap",
  "once_cell",
@@ -5823,7 +5827,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e9552f850d5f0964a4e4d0bf306459ac29323ddfbae05e35a7c0d35cb0803cc5"
 dependencies = [
  "anyhow",
- "itertools 0.10.5",
+ "itertools 0.13.0",
  "proc-macro2",
  "quote",
  "syn 2.0.87",
@@ -8603,7 +8607,7 @@ dependencies = [
  "js-sys",
  "khronos-egl",
  "libc",
- "libloading 0.7.4",
+ "libloading 0.8.5",
  "log",
  "metal",
  "naga",

@@ -31,13 +31,19 @@ pub enum CacheError {
   JoinError(#[from] tokio::task::JoinError),
   #[class(inherit)]
   #[error(transparent)]
-  Resource(#[from] #[inherit] deno_core::error::ResourceError),
+  Resource(#[from] deno_core::error::ResourceError),
   #[class(inherit)]
   #[error(transparent)]
-  Other(#[inherit] JsNativeError),
+  Other(JsNativeError),
   #[class(inherit)]
   #[error("{0}")]
-  Io(#[from] #[inherit] std::io::Error),
+  Io(#[from] std::io::Error),
+  #[class(generic)]
+  #[error("Failed to create cache storage directory {}: {error}", .dir.display())]
+  CacheStorageDirectory {
+    dir: PathBuf,
+    error: std::io::Error,
+  },
 }
 
 #[derive(Clone)]

@@ -28,7 +28,7 @@ where
 pub enum WorkerThreadsFilenameError {
   #[class(inherit)]
   #[error(transparent)]
-  Permission(#[from] #[inherit] PermissionCheckError),
+  Permission(#[from] PermissionCheckError),
   #[class(inherit)]
   #[error("{0}")]
   UrlParse(#[from] #[inherit] url::ParseError),

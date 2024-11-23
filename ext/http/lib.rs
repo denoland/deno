@@ -169,10 +169,10 @@ deno_core::extension!(
 pub enum HttpError {
   #[class(inherit)]
   #[error(transparent)]
-  Resource(#[from] #[inherit] deno_core::error::ResourceError),
+  Resource(#[from] deno_core::error::ResourceError),
   #[class(inherit)]
   #[error(transparent)]
-  Canceled(#[from] #[inherit] deno_core::Canceled),
+  Canceled(#[from] deno_core::Canceled),
   #[class("Http")]
   #[error("{0}")]
   HyperV014(#[source] Arc<hyper_v014::Error>),
@@ -196,7 +196,7 @@ pub enum HttpError {
   AlreadyInUse,
   #[class(inherit)]
   #[error("{0}")]
-  Io(#[from] #[inherit] std::io::Error),
+  Io(#[from] std::io::Error),
   #[class("Http")]
   #[error("no response headers")]
   NoResponseHeaders,

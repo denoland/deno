@@ -6,7 +6,7 @@ pub use impl_::*;
 pub enum PriorityError {
   #[class(inherit)]
   #[error("{0}")]
-  Io(#[from] #[inherit] std::io::Error),
+  Io(#[from] std::io::Error),
   #[cfg(windows)]
   #[class(type)]
   #[error("Invalid priority")]

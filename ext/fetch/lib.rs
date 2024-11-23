@@ -165,10 +165,10 @@ deno_core::extension!(deno_fetch,
 pub enum FetchError {
   #[class(inherit)]
   #[error(transparent)]
-  Resource(#[from] #[inherit] deno_core::error::ResourceError),
+  Resource(#[from] deno_core::error::ResourceError),
   #[class(inherit)]
   #[error(transparent)]
-  Permission(#[from] #[inherit] PermissionCheckError),
+  Permission(#[from] PermissionCheckError),
   #[class(type)]
   #[error("NetworkError when attempting to fetch resource")]
   NetworkError,
@@ -204,10 +204,10 @@ pub enum FetchError {
   Http(#[from] http::Error),
   #[class(inherit)]
   #[error(transparent)]
-  ClientCreate(#[from] #[inherit] HttpClientCreateError),
+  ClientCreate(#[from] HttpClientCreateError),
   #[class(inherit)]
   #[error(transparent)]
-  Url(#[from] #[inherit] url::ParseError),
+  Url(#[from] url::ParseError),
   #[class(type)]
   #[error(transparent)]
   Method(#[from] http::method::InvalidMethod),
@@ -216,10 +216,13 @@ pub enum FetchError {
   ClientSend(#[from] ClientSendError),
   #[class(inherit)]
   #[error(transparent)]
-  RequestBuilderHook(#[inherit] JsNativeError),
+  RequestBuilderHook(JsNativeError),
   #[class(inherit)]
   #[error(transparent)]
-  Io(#[from] #[inherit] std::io::Error),
+  Io(#[from] std::io::Error),
+  #[class(generic)]
+  #[error(transparent)]
+  Dns(hickory_resolver::error::ResolveError),
   // Only used for node upgrade
   #[class("Http")]
   #[error(transparent)]
@@ -913,9 +916,7 @@ where
       ca_certs,
       proxy: args.proxy,
       dns_resolver: if args.use_hickory_resolver {
-        dns::Resolver::hickory()
-          .map_err(deno_core::error::AnyError::new)
-          .map_err(FetchError::Resource)?
+        dns::Resolver::hickory().map_err(FetchError::Dns)?
       } else {
         dns::Resolver::default()
       },
@@ -992,7 +993,7 @@ pub enum HttpClientCreateError {
   HttpVersionSelectionInvalid,
   #[class(inherit)]
   #[error(transparent)]
-  RootCertStore(#[inherit] JsNativeError),
+  RootCertStore(JsNativeError),
 }
 
 /// Create new instance of async Client. This client supports

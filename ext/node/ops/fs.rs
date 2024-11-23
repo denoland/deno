@@ -14,7 +14,7 @@ use crate::NodePermissions;
 pub enum FsError {
   #[class(inherit)]
   #[error(transparent)]
-  Permission(#[from] #[inherit] deno_permissions::PermissionCheckError),
+  Permission(#[from] deno_permissions::PermissionCheckError),
   #[class(inherit)]
   #[error("{0}")]
   Io(#[from] #[inherit] std::io::Error),

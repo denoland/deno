@@ -414,7 +414,7 @@ pub enum Pbkdf2Error {
   UnsupportedDigest(String),
   #[class(inherit)]
   #[error(transparent)]
-  Join(#[from] #[inherit] tokio::task::JoinError),
+  Join(#[from] tokio::task::JoinError),
 }
 
 fn pbkdf2_sync(
@@ -494,7 +494,7 @@ pub enum HkdfError {
   UnsupportedDigest(String),
   #[class(inherit)]
   #[error(transparent)]
-  Join(#[from] #[inherit] tokio::task::JoinError),
+  Join(#[from] tokio::task::JoinError),
 }
 
 fn hkdf_sync(
@@ -634,10 +634,10 @@ pub fn op_node_scrypt_sync(
 pub enum ScryptAsyncError {
   #[class(inherit)]
   #[error(transparent)]
-  Join(#[from] #[inherit] tokio::task::JoinError),
+  Join(#[from] tokio::task::JoinError),
   #[class(inherit)]
   #[error(transparent)]
-  Other(#[inherit] JsNativeError),
+  Other(JsNativeError),
 }
 
 #[op2(async)]

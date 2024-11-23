@@ -54,10 +54,10 @@ pub enum CipherContextError {
   ContextInUse,
   #[class(inherit)]
   #[error("{0}")]
-  Resource(#[from] #[inherit] deno_core::error::ResourceError),
+  Resource(#[from] deno_core::error::ResourceError),
   #[class(inherit)]
   #[error(transparent)]
-  Cipher(#[from] #[inherit] CipherError),
+  Cipher(#[from] CipherError),
 }
 
 impl CipherContext {
@@ -104,10 +104,10 @@ pub enum DecipherContextError {
   ContextInUse,
   #[class(inherit)]
   #[error("{0}")]
-  Resource(#[from] #[inherit] deno_core::error::ResourceError),
+  Resource(#[from] deno_core::error::ResourceError),
   #[class(inherit)]
   #[error(transparent)]
-  Decipher(#[from] #[inherit] DecipherError),
+  Decipher(#[from] DecipherError),
 }
 
 impl DecipherContext {

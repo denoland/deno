@@ -341,7 +341,7 @@ pub enum TakeNetworkStreamError {
   ReuniteUnix(#[from] tokio::net::unix::ReuniteError),
   #[class(inherit)]
   #[error(transparent)]
-  Resource(#[inherit] deno_core::error::ResourceError),
+  Resource(deno_core::error::ResourceError),
 }
 
 /// In some cases it may be more efficient to extract the resource from the resource table and use it directly (for example, an HTTP server).

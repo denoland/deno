@@ -73,7 +73,7 @@ deno_core::extension!(
 pub enum OsError {
   #[class(inherit)]
   #[error(transparent)]
-  Permission(#[from] #[inherit] PermissionCheckError),
+  Permission(#[from] PermissionCheckError),
   #[class("InvalidData")]
   #[error("File name or path {0:?} is not valid UTF-8")]
   InvalidUtf8(std::ffi::OsString),
@@ -88,10 +88,10 @@ pub enum OsError {
   EnvInvalidValue(String),
   #[class(inherit)]
   #[error(transparent)]
-  Var(#[from] #[inherit] env::VarError),
+  Var(#[from] env::VarError),
   #[class(inherit)]
   #[error("{0}")]
-  Io(#[from] #[inherit] std::io::Error),
+  Io(#[from] std::io::Error),
 }
 
 #[op2(stack_trace)]

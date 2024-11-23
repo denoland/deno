@@ -42,16 +42,16 @@ pub struct FsOpsError(pub Box<FsOpsErrorKind>);
 pub enum FsOpsErrorKind {
   #[class(inherit)]
   #[error("{0}")]
-  Io(#[source] #[inherit] std::io::Error),
+  Io(#[source] std::io::Error),
   #[class(inherit)]
   #[error("{0}")]
-  OperationError(#[source] #[inherit] OperationError),
+  OperationError(#[source] OperationError),
   #[class(inherit)]
   #[error(transparent)]
-  Permission(#[from] #[inherit] PermissionCheckError),
+  Permission(#[from] PermissionCheckError),
   #[class(inherit)]
   #[error(transparent)]
-  Resource(#[from] #[inherit] ResourceError),
+  Resource(#[from] ResourceError),
   #[class("InvalidData")]
   #[error("File name or path {0:?} is not valid UTF-8")]
   InvalidUtf8(std::ffi::OsString),
@@ -60,7 +60,7 @@ pub enum FsOpsErrorKind {
   StripPrefix(#[from] StripPrefixError),
   #[class(inherit)]
   #[error("{0}")]
-  Canceled(#[from] #[inherit] deno_core::Canceled),
+  Canceled(#[from] deno_core::Canceled),
   #[class(type)]
   #[error("Invalid seek mode: {0}")]
   InvalidSeekMode(i32),
@@ -87,7 +87,7 @@ pub enum FsOpsErrorKind {
   NotCapable(&'static str),
   #[class(inherit)]
   #[error(transparent)]
-  Other(#[inherit] JsNativeError),
+  Other(JsNativeError),
 }
 
 impl From<FsError> for FsOpsError {

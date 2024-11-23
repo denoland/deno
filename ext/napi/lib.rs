@@ -66,7 +66,7 @@ pub enum NApiError {
   ModuleNotFound(PathBuf),
   #[class(inherit)]
   #[error(transparent)]
-  Permission(#[from] #[inherit] PermissionCheckError),
+  Permission(#[from] PermissionCheckError),
 }
 
 pub type napi_status = i32;

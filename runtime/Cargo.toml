@@ -98,6 +98,7 @@ deno_webgpu.workspace = true
 deno_webidl.workspace = true
 deno_websocket.workspace = true
 deno_webstorage.workspace = true
+deno_error.workspace = true
 node_resolver = { workspace = true, features = ["sync"] }
 
 async-trait.workspace = true

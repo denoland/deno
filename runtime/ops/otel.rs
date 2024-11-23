@@ -667,6 +667,24 @@ fn op_otel_log(
 
 struct TemporarySpan(SpanData);
 
+#[derive(Debug, thiserror::Error, deno_error::JsError)]
+#[class(generic)]
+pub enum OtelError {
+  #[error("instrumentation scope not available")]
+  ScopeUnavailable,
+  #[error("invalid trace_id")]
+  InvalidTraceId,
+  #[error("invalid span_id")]
+  InvalidSpanId,
+  #[error("invalid span kind")]
+  InvalidSpanKind,
+  #[error("invalid start time")]
+  InvalidStartTime,
+  #[class(inherit)]
+  #[error("{0}")]
+  Data(deno_core::error::DataError),
+}
+
 #[allow(clippy::too_many_arguments)]
 #[op2(fast)]
 fn op_otel_span_start<'s>(
@@ -679,7 +697,7 @@ fn op_otel_span_start<'s>(
   name: v8::Local<'s, v8::Value>,
   start_time: f64,
   end_time: f64,
-) -> Result<(), anyhow::Error> {
+) -> Result<(), OtelError> {
   if let Some(temporary_span) = state.try_take::<TemporarySpan>() {
     let Some((span_processor, _)) = OTEL_PROCESSORS.get() else {
       return Ok(());
@@ -690,23 +708,23 @@ fn op_otel_span_start<'s>(
   let Some(InstrumentationScope(instrumentation_scope)) =
     state.try_borrow::<InstrumentationScope>()
   else {
-    return Err(anyhow!("instrumentation scope not available"));
+    return Err(OtelError::ScopeUnavailable);
   };
 
   let trace_id = parse_trace_id(scope, trace_id);
   if trace_id == TraceId::INVALID {
-    return Err(anyhow!("invalid trace_id"));
+    return Err(OtelError::InvalidTraceId);
   }
 
   let span_id = parse_span_id(scope, span_id);
   if span_id == SpanId::INVALID {
-    return Err(anyhow!("invalid span_id"));
+    return Err(OtelError::InvalidTraceId);
   }
 
   let parent_span_id = parse_span_id(scope, parent_span_id);
 
   let name = {
-    let x = v8::ValueView::new(scope, name.try_cast()?);
+    let x = v8::ValueView::new(scope, name.try_cast().map_err(|e: v8::DataError| OtelError::Data(e.into()))?);
     match x.data() {
       v8::ValueViewData::OneByte(bytes) => {
         String::from_utf8_lossy(bytes).into_owned()
@@ -730,15 +748,15 @@ fn op_otel_span_start<'s>(
       2 => SpanKind::Client,
       3 => SpanKind::Producer,
       4 => SpanKind::Consumer,
-      _ => return Err(anyhow!("invalid span kind")),
+      _ => return Err(OtelError::InvalidSpanKind),
     },
     name: Cow::Owned(name),
     start_time: SystemTime::UNIX_EPOCH
       .checked_add(std::time::Duration::from_secs_f64(start_time))
-      .ok_or_else(|| anyhow!("invalid start time"))?,
+      .ok_or_else(|| OtelError::InvalidStartTime)?,
     end_time: SystemTime::UNIX_EPOCH
       .checked_add(std::time::Duration::from_secs_f64(end_time))
-      .ok_or_else(|| anyhow!("invalid start time"))?,
+      .ok_or_else(|| OtelError::InvalidStartTime)?,
     attributes: Vec::new(),
     dropped_attributes_count: 0,
     events: Default::default(),

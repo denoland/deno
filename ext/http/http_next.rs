@@ -150,13 +150,13 @@ macro_rules! clone_external {
 pub enum HttpNextError {
   #[class(inherit)]
   #[error(transparent)]
-  Resource(#[from] #[inherit] deno_core::error::ResourceError),
+  Resource(#[from] deno_core::error::ResourceError),
   #[class(inherit)]
   #[error("{0}")]
-  Io(#[from] #[inherit] io::Error),
+  Io(#[from] io::Error),
   #[class(inherit)]
   #[error(transparent)]
-  WebSocketUpgrade(#[inherit] crate::websocket_upgrade::WebSocketUpgradeError),
+  WebSocketUpgrade(crate::websocket_upgrade::WebSocketUpgradeError),
   #[class("Http")]
   #[error("{0}")]
   Hyper(#[from] hyper::Error),

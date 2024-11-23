@@ -17,7 +17,7 @@ use base64::Engine;
 use boxed_error::Boxed;
 use chrono::DateTime;
 use chrono::Utc;
-use deno_core::error::JsErrorClass;
+use deno_error::JsErrorClass;
 use deno_core::error::JsNativeError;
 use deno_core::futures::StreamExt;
 use deno_core::op2;
@@ -123,10 +123,10 @@ pub struct KvError(pub Box<KvErrorKind>);
 pub enum KvErrorKind {
   #[class(inherit)]
   #[error(transparent)]
-  DatabaseHandler( #[inherit] JsNativeError),
+  DatabaseHandler( JsNativeError),
   #[class(inherit)]
   #[error(transparent)]
-  Resource(#[from] #[inherit] deno_core::error::ResourceError),
+  Resource(#[from] deno_core::error::ResourceError),
   #[class(type)]
   #[error("Too many ranges (max {0})")]
   TooManyRanges(usize),
@@ -165,7 +165,7 @@ pub enum KvErrorKind {
   Kv(deno_core::error::AnyError),
   #[class(inherit)]
   #[error(transparent)]
-  Io(#[from] #[inherit] std::io::Error),
+  Io(#[from] std::io::Error),
   #[class(type)]
   #[error("Queue message not found")]
   QueueMessageNotFound,
@@ -180,13 +180,13 @@ pub enum KvErrorKind {
   StartKeyGreaterThanEndKey,
   #[class(inherit)]
   #[error("Invalid check")]
-  InvalidCheck(#[source] #[inherit] KvCheckError),
+  InvalidCheck(#[source] KvCheckError),
   #[class(inherit)]
   #[error("Invalid mutation")]
-  InvalidMutation(#[source]#[inherit]  KvMutationError),
+  InvalidMutation(#[source] KvMutationError),
   #[class(inherit)]
   #[error("Invalid enqueue")]
-  InvalidEnqueue(#[source] #[inherit] std::io::Error),
+  InvalidEnqueue(#[source] std::io::Error),
   #[class(type)]
   #[error("key cannot be empty")]
   EmptyKey,
@@ -604,7 +604,7 @@ pub enum KvCheckError {
   InvalidVersionstamp,
   #[class(inherit)]
   #[error(transparent)]
-  Io(#[inherit] std::io::Error),
+  Io(std::io::Error),
 }
 
 type V8KvCheck = (KvKey, Option<ByteString>);

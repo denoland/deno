@@ -6,7 +6,6 @@ use crate::symbol::Symbol;
 use crate::turbocall;
 use crate::turbocall::Turbocall;
 use crate::FfiPermissions;
-use deno_core::error::{JsErrorClass};
 use deno_core::error::{JsNativeError};
 use deno_core::op2;
 use deno_core::v8;
@@ -21,6 +20,7 @@ use std::cell::RefCell;
 use std::collections::HashMap;
 use std::ffi::c_void;
 use std::rc::Rc;
+use deno_error::JsErrorClass;
 
 deno_error::js_error_wrapper!(dlopen2::Error, JsDlopen2Error, |err| {
   match err {
@@ -45,10 +45,10 @@ pub enum DlfcnError {
   Dlopen(#[from] dlopen2::Error),
   #[class(inherit)]
   #[error(transparent)]
-  Permission(#[from] #[inherit] deno_permissions::PermissionCheckError),
+  Permission(#[from] deno_permissions::PermissionCheckError),
   #[class(inherit)]
   #[error(transparent)]
-  Other(#[from] #[inherit] JsNativeError),
+  Other(#[from] JsNativeError),
 }
 
 pub struct DynamicLibraryResource {
@@ -312,7 +312,7 @@ fn sync_fn_impl<'s>(
             unsafe { result.to_v8(scope, data.symbol.result_type.clone()) };
       rv.set(result);
     }
-    Err(err) => err.throw(scope),
+    Err(err) => deno_core::error::throw_js_error_class(scope, &err),
   };
 }
 

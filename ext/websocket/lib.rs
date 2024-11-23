@@ -76,19 +76,19 @@ static USE_WRITEV: Lazy<bool> = Lazy::new(|| {
 pub enum WebsocketError {
   #[class(inherit)]
   #[error(transparent)]
-  Url(#[inherit] url::ParseError),
+  Url(url::ParseError),
   #[class(inherit)]
   #[error(transparent)]
-  Permission(#[from] #[inherit] PermissionCheckError),
+  Permission(#[from] PermissionCheckError),
   #[class(inherit)]
   #[error(transparent)]
-  Resource(#[from] #[inherit] deno_core::error::ResourceError),
+  Resource(#[from] deno_core::error::ResourceError),
   #[class(generic)]
   #[error(transparent)]
   Uri(#[from] http::uri::InvalidUri),
   #[class(inherit)]
   #[error("{0}")]
-  Io(#[from] #[inherit] std::io::Error),
+  Io(#[from] std::io::Error),
   #[class(type)]
   #[error(transparent)]
   WebSocket(#[from] fastwebsockets::WebSocketError),
@@ -97,7 +97,7 @@ pub enum WebsocketError {
   ConnectionFailed(#[from] HandshakeError),
   #[class(inherit)]
   #[error(transparent)]
-  Canceled(#[from] #[inherit] deno_core::Canceled),
+  Canceled(#[from] deno_core::Canceled),
 }
 
 #[derive(Clone)]
@@ -213,7 +213,7 @@ pub enum HandshakeError {
   Rustls(#[from] deno_tls::rustls::Error),
   #[class(inherit)]
   #[error(transparent)]
-  Io(#[from] #[inherit] std::io::Error),
+  Io(#[from] std::io::Error),
   #[class(generic)]
   #[error(transparent)]
   H2(#[from] h2::Error),
@@ -222,10 +222,10 @@ pub enum HandshakeError {
   InvalidHostname(String),
   #[class(inherit)]
   #[error(transparent)]
-  RootStoreError(#[inherit] JsNativeError),
+  RootStoreError(JsNativeError),
   #[class(inherit)]
   #[error(transparent)]
-  Tls(#[inherit] deno_tls::TlsError),
+  Tls(deno_tls::TlsError),
   #[class(type)]
   #[error(transparent)]
   HeaderName(#[from] http::header::InvalidHeaderName),

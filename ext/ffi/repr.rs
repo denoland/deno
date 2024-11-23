@@ -48,7 +48,7 @@ pub enum ReprError {
   InvalidPointer,
   #[class(inherit)]
   #[error(transparent)]
-  Permission(#[from] #[inherit] deno_permissions::PermissionCheckError),
+  Permission(#[from] deno_permissions::PermissionCheckError),
 }
 
 #[op2(fast, stack_trace)]

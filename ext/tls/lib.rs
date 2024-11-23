@@ -38,7 +38,7 @@ pub enum TlsError {
   Rustls(#[from] rustls::Error),
   #[class(inherit)]
   #[error("Unable to add pem file to certificate store: {0}")]
-  UnableAddPemFileToCert(#[inherit] std::io::Error),
+  UnableAddPemFileToCert(std::io::Error),
   #[class("InvalidData")]
   #[error("Unable to decode certificate")]
   CertInvalid,

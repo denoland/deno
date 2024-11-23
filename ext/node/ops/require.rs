@@ -1,7 +1,6 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 use boxed_error::Boxed;
-use deno_core::error::AnyError;
 use deno_core::op2;
 use deno_core::url::Url;
 use deno_core::v8;
@@ -63,7 +62,7 @@ pub enum RequireErrorKind {
   PackageJsonLoad(#[from] node_resolver::errors::PackageJsonLoadError),
   #[class(generic)]
   #[error(transparent)]
-  ClosestPkgJson(#[from] node_resolver::errors::ClosestPkgJsonError),
+  ClosestPkgJson(#[from] ClosestPkgJsonError),
   #[class(generic)]
   #[error(transparent)]
   PackageImportsResolve(
@@ -235,17 +234,16 @@ pub fn op_require_resolve_deno_dir(
   state: &mut OpState,
   #[string] request: String,
   #[string] parent_filename: String,
-) -> Result<Option<String>, AnyError> {
+) -> Result<Option<String>, deno_path_util::PathToUrlError> {
   let resolver = state.borrow::<NpmPackageFolderResolverRc>();
-  Ok(
-    resolver
-      .resolve_package_folder_from_package(
-        &request,
-        &url_from_file_path(&PathBuf::from(parent_filename))?,
-      )
-      .ok()
-      .map(|p| p.to_string_lossy().into_owned()),
-  )
+
+  Ok(resolver
+    .resolve_package_folder_from_package(
+      &request,
+      &url_from_file_path(&PathBuf::from(parent_filename))?,
+    )
+    .ok()
+    .map(|p| p.to_string_lossy().into_owned()))
 }
 
 #[op2(fast)]
@@ -582,7 +580,7 @@ where
   }))
 }
 
-deno_error::js_error_wrapper!(node_resolver::errors::ClosestPkgJsonError, JsClosestPkgJsonError, "Error");
+deno_error::js_error_wrapper!(ClosestPkgJsonError, JsClosestPkgJsonError, "Error");
 
 #[op2(fast)]
 pub fn op_require_is_maybe_cjs(
