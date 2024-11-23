@@ -5,6 +5,6 @@
       "args": "install",
       "output": ""
     },
-    { "args": "run ./packages/foo/mod.js", "output": "main.out" }
+    { "args": "run main.ts", "output": "main.out" }
   ]
 }
