@@ -36,7 +36,8 @@ use crate::util::fs::canonicalize_path;
 pub enum VfsFileSubDataKind {
   /// Raw bytes of the file.
   Raw,
-  /// Used for the module graph.
+  /// Bytes to use for module loading. For example, for TypeScript
+  /// files this will be the transpiled JavaScript source.
   ModuleGraph,
 }
 
