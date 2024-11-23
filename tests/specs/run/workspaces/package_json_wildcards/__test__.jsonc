@@ -1,0 +1,10 @@
+{
+  "tempDir": true,
+  "steps": [
+    {
+      "args": "install",
+      "output": ""
+    },
+    { "args": "run ./packages/foo/mod.js", "output": "main.out" }
+  ]
+}

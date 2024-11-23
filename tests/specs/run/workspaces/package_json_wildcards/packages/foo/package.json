@@ -1,0 +1,10 @@
+{
+  "name": "@foo/foo",
+  "version": "0.0.0",
+  "main": "main.js",
+  "dependencies": {
+    "@foo/bar": "workspace:*",
+    "@foo/buzz": "workspace:^",
+    "@foo/fizz": "workspace:~"
+  }
+}

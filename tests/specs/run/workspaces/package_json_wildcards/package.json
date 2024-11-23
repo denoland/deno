@@ -1,0 +1,8 @@
+{
+  "workspaces": [
+    "./packages/bar",
+    "./packages/buzz",
+    "./packages/fizz",
+    "./packages/foo"
+  ]
+}
