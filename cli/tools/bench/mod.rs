@@ -18,7 +18,6 @@ use crate::worker::CliMainWorkerFactory;
 use deno_config::glob::WalkEntry;
 use deno_core::error::AnyError;
 use deno_core::error::JsError;
-use deno_core::error::JsNativeError::generic;
 use deno_core::futures::future;
 use deno_core::futures::stream;
 use deno_core::futures::StreamExt;
@@ -42,6 +41,7 @@ use std::collections::HashSet;
 use std::path::Path;
 use std::sync::Arc;
 use std::time::Duration;
+use deno_core::anyhow::anyhow;
 use tokio::sync::mpsc::unbounded_channel;
 use tokio::sync::mpsc::UnboundedSender;
 
@@ -354,13 +354,13 @@ async fn bench_specifiers(
       reporter.report_end(&report);
 
       if used_only {
-        return Err(generic_error(
+        return Err(anyhow!(
           "Bench failed because the \"only\" option was used",
         ));
       }
 
       if report.failed > 0 {
-        return Err(generic_error("Bench failed"));
+        return Err(anyhow!("Bench failed"));
       }
 
       Ok(())
@@ -438,7 +438,7 @@ pub async fn run_benchmarks(
     .collect::<Vec<_>>();
 
   if specifiers.is_empty() {
-    return Err(generic_error("No bench modules found"));
+    return Err(anyhow!("No bench modules found"));
   }
 
   let main_graph_container = factory.main_module_graph_container().await?;

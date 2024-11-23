@@ -12,9 +12,7 @@ use crate::util::progress_bar::ProgressBar;
 
 use deno_ast::MediaType;
 use deno_core::anyhow::Context;
-use deno_core::error::custom_error;
-use deno_core::error::generic_error;
-use deno_core::error::uri_error;
+use deno_core::error::JsNativeError;
 use deno_core::error::AnyError;
 use deno_core::parking_lot::Mutex;
 use deno_core::url::Url;
@@ -135,11 +133,19 @@ impl MemoryFiles {
   }
 }
 
+#[derive(Debug, thiserror::Error, deno_error::JsError)]
+enum FetchLocalError {
+  #[class(uri)]
+  #[error("Invalid file path.\n  Specifier: {0}")]
+  InvalidFilePath(ModuleSpecifier),
+  #[class(inherit)]
+  #[error(transparent)]
+  Io(std::io::Error),
+}
+
 /// Fetch a source file from the local file system.
-fn fetch_local(specifier: &ModuleSpecifier) -> Result<File, AnyError> {
-  let local = url_to_file_path(specifier).map_err(|_| {
-    uri_error(format!("Invalid file path.\n  Specifier: {specifier}"))
-  })?;
+fn fetch_local(specifier: &ModuleSpecifier) -> Result<File, FetchLocalError> {
+  let local = url_to_file_path(specifier).map_err(|_| FetchLocalError::InvalidFilePath(specifier.clone()))?;
   // If it doesnt have a extension, we want to treat it as typescript by default
   let headers = if local.extension().is_none() {
     Some(HashMap::from([(
@@ -149,7 +155,7 @@ fn fetch_local(specifier: &ModuleSpecifier) -> Result<File, AnyError> {
   } else {
     None
   };
-  let bytes = fs::read(local)?;
+  let bytes = fs::read(local).map_err(FetchLocalError::Io)?;
 
   Ok(File {
     specifier: specifier.clone(),
@@ -175,7 +181,7 @@ fn get_validated_scheme(
       .collect::<Vec<_>>()
       .join("\n");
     Err(generic_error(format!(
-      "Unsupported scheme \"{scheme}\" for module \"{specifier}\". Supported schemes:\n{}", 
+      "Unsupported scheme \"{scheme}\" for module \"{specifier}\". Supported schemes:\n{}",
       scheme_list
     )))
   } else {

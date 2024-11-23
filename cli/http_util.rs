@@ -7,8 +7,7 @@ use crate::version;
 use cache_control::Cachability;
 use cache_control::CacheControl;
 use chrono::DateTime;
-use deno_core::error::custom_error;
-use deno_core::error::generic_error;
+use deno_core::error::JsNativeError;
 use deno_core::error::AnyError;
 use deno_core::futures::StreamExt;
 use deno_core::parking_lot::Mutex;
@@ -276,7 +275,7 @@ pub struct BadResponseError {
 #[derive(Debug, Error)]
 pub enum DownloadError {
   #[error(transparent)]
-  Fetch(AnyError),
+  Fetch(deno_fetch::ClientSendError),
   #[error(transparent)]
   UrlParse(#[from] deno_core::url::ParseError),
   #[error(transparent)]
@@ -291,6 +290,9 @@ pub enum DownloadError {
   TooManyRedirects,
   #[error(transparent)]
   BadResponse(#[from] BadResponseError),
+  #[class("Http")]
+  #[error("Not Found.")]
+  NotFound,
 }
 
 #[derive(Debug)]
@@ -466,11 +468,11 @@ impl HttpClient {
     Ok(String::from_utf8(bytes)?)
   }
 
-  pub async fn download(&self, url: Url) -> Result<Vec<u8>, AnyError> {
+  pub async fn download(&self, url: Url) -> Result<Vec<u8>, DownloadError> {
     let maybe_bytes = self.download_inner(url, None, None).await?;
     match maybe_bytes {
       Some(bytes) => Ok(bytes),
-      None => Err(custom_error("Http", "Not found.")),
+      None => Err(DownloadError::NotFound),
     }
   }
 
@@ -543,7 +545,7 @@ impl HttpClient {
       .clone()
       .send(req)
       .await
-      .map_err(|e| DownloadError::Fetch(e.into()))?;
+      .map_err(DownloadError::Fetch)?;
     let status = response.status();
     if status.is_redirection() {
       for _ in 0..5 {
@@ -563,7 +565,7 @@ impl HttpClient {
           .clone()
           .send(req)
           .await
-          .map_err(|e| DownloadError::Fetch(e.into()))?;
+          .map_err(DownloadError::Fetch)?;
         let status = new_response.status();
         if status.is_redirection() {
           response = new_response;
@@ -582,7 +584,7 @@ impl HttpClient {
 async fn get_response_body_with_progress(
   response: http::Response<deno_fetch::ResBody>,
   progress_guard: Option<&UpdateGuard>,
-) -> Result<Vec<u8>, AnyError> {
+) -> Result<Vec<u8>, JsNativeError> {
   use http_body::Body as _;
   if let Some(progress_guard) = progress_guard {
     let mut total_size = response.body().size_hint().exact();

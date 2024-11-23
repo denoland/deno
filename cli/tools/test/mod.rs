@@ -26,7 +26,8 @@ use deno_config::glob::WalkEntry;
 use deno_core::anyhow;
 use deno_core::anyhow::bail;
 use deno_core::anyhow::Context as _;
-use deno_core::error::generic_error;
+use deno_core::error::{generic_error};
+use deno_core::error::CoreError;
 use deno_core::error::AnyError;
 use deno_core::error::JsError;
 use deno_core::futures::future;
@@ -635,21 +636,17 @@ async fn configure_main_worker(
   let mut worker = worker.into_main_worker();
   match res {
     Ok(()) => Ok(()),
-    Err(error) => {
-      // TODO(mmastrac): It would be nice to avoid having this error pattern repeated
-      if error.is::<JsError>() {
-        send_test_event(
-          &worker.js_runtime.op_state(),
-          TestEvent::UncaughtError(
-            specifier.to_string(),
-            Box::new(error.downcast::<JsError>().unwrap()),
-          ),
-        )?;
-        Ok(())
-      } else {
-        Err(error)
-      }
+    Err(CoreError::Js(err)) => {
+      send_test_event(
+        &worker.js_runtime.op_state(),
+        TestEvent::UncaughtError(
+          specifier.to_string(),
+          Box::new(err),
+        ),
+      )?;
+      Ok(())
     }
+    Err(err) => Err(err)
   }?;
   Ok((coverage_collector, worker))
 }
@@ -760,7 +757,7 @@ pub fn worker_has_tests(worker: &mut MainWorker) -> bool {
 /// Yields to tokio to allow async work to process, and then polls
 /// the event loop once.
 #[must_use = "The event loop result should be checked"]
-pub async fn poll_event_loop(worker: &mut MainWorker) -> Result<(), AnyError> {
+pub async fn poll_event_loop(worker: &mut MainWorker) -> Result<(), CoreError> {
   // Allow any ops that to do work in the tokio event loop to do so
   tokio::task::yield_now().await;
   // Spin the event loop once

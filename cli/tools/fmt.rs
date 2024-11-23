@@ -28,7 +28,6 @@ use deno_config::glob::FilePatterns;
 use deno_core::anyhow::anyhow;
 use deno_core::anyhow::bail;
 use deno_core::anyhow::Context;
-use deno_core::error::generic_error;
 use deno_core::error::AnyError;
 use deno_core::futures;
 use deno_core::parking_lot::Mutex;
@@ -174,7 +173,7 @@ fn resolve_paths_with_options_batches(
     }
   }
   if paths_with_options_batches.is_empty() {
-    return Err(generic_error("No target files found."));
+    return Err(anyhow!("No target files found."));
   }
   Ok(paths_with_options_batches)
 }
@@ -479,7 +478,7 @@ pub fn format_html(
       }
 
       if let Some(error_msg) = inner(&error, file_path) {
-        AnyError::from(generic_error(error_msg))
+        AnyError::msg(error_msg)
       } else {
         AnyError::from(error)
       }
@@ -727,9 +726,9 @@ impl Formatter for CheckFormatter {
       Ok(())
     } else {
       let not_formatted_files_str = files_str(not_formatted_files_count);
-      Err(generic_error(format!(
+      Err(anyhow!(
         "Found {not_formatted_files_count} not formatted {not_formatted_files_str} in {checked_files_str}",
-      )))
+      ))
     }
   }
 }

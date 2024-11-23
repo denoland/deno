@@ -642,7 +642,8 @@ pub fn create_default_npmrc() -> Arc<ResolvedNpmRc> {
   })
 }
 
-#[derive(Error, Debug, Clone)]
+#[derive(Error, Debug, Clone, deno_error::JsError)]
+#[class(generic)]
 pub enum RootCertStoreLoadError {
   #[error(
     "Unknown certificate store \"{0}\" specified (allowed: \"system,mozilla\")"

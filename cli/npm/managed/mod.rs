@@ -713,7 +713,7 @@ impl CliNpmResolver for ManagedCliNpmResolver {
     &self,
     permissions: &mut dyn NodePermissions,
     path: &'a Path,
-  ) -> Result<Cow<'a, Path>, AnyError> {
+  ) -> Result<Cow<'a, Path>, deno_runtime::deno_permissions::PermissionCheckError> {
     self.fs_resolver.ensure_read_permission(permissions, path)
   }
 

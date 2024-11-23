@@ -45,7 +45,7 @@ license = "MIT"
 repository = "https://github.com/denoland/deno"
 
 [workspace.dependencies]
-deno_ast = { version = "=0.43.3", features = ["transpiling"] }
+deno_ast = { version = "=0.44.0", features = ["transpiling"] }
 deno_core = { version = "0.322.0" }
 
 deno_bench_util = { version = "0.173.0", path = "./bench_util" }
@@ -343,3 +343,7 @@ serde_v8 = { path = "../deno_core/serde_v8" }
 v8 = { path = "../rusty_v8" }
 deno_error = { path = "../deno_error" }
 deno_path_util = { path = "../deno_path_util" }
+deno_graph = { path = "../deno_graph" }
+deno_package_json = { path = "../deno_package_json" }
+deno_doc = { path = "../deno_doc" }
+deno_lint = { path = "../deno_lint" }

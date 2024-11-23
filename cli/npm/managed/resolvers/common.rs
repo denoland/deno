@@ -64,7 +64,7 @@ pub trait NpmPackageFsResolver: Send + Sync {
     &self,
     permissions: &mut dyn NodePermissions,
     path: &'a Path,
-  ) -> Result<Cow<'a, Path>, AnyError>;
+  ) -> Result<Cow<'a, Path>, deno_runtime::deno_permissions::PermissionCheckError>;
 }
 
 #[derive(Debug)]

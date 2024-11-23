@@ -5,6 +5,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use boxed_error::Boxed;
+use deno_error::JsError;
 use deno_semver::npm::NpmPackageReqReference;
 use deno_semver::package::PackageReq;
 use node_resolver::env::NodeResolverEnv;
@@ -34,49 +35,58 @@ pub use local::normalize_pkg_name_for_node_modules_deno_folder;
 mod byonm;
 mod local;
 
-#[derive(Debug, Error)]
+#[derive(Debug, Error, JsError)]
+#[class(generic)]
 #[error("Could not resolve \"{}\", but found it in a package.json. Deno expects the node_modules/ directory to be up to date. Did you forget to run `deno install`?", specifier)]
 pub struct NodeModulesOutOfDateError {
   pub specifier: String,
 }
 
-#[derive(Debug, Error)]
+#[derive(Debug, Error, JsError)]
+#[class(generic)]
 #[error("Could not find '{}'. Deno expects the node_modules/ directory to be up to date. Did you forget to run `deno install`?", package_json_path.display())]
 pub struct MissingPackageNodeModulesFolderError {
   pub package_json_path: PathBuf,
 }
 
-#[derive(Debug, Boxed)]
+#[derive(Debug, Boxed, JsError)]
 pub struct ResolveIfForNpmPackageError(
   pub Box<ResolveIfForNpmPackageErrorKind>,
 );
 
-#[derive(Debug, Error)]
+#[derive(Debug, Error, JsError)]
 pub enum ResolveIfForNpmPackageErrorKind {
+  #[class(inherit)]
   #[error(transparent)]
   NodeResolve(#[from] NodeResolveError),
+  #[class(inherit)]
   #[error(transparent)]
   NodeModulesOutOfDate(#[from] NodeModulesOutOfDateError),
 }
 
-#[derive(Debug, Boxed)]
+#[derive(Debug, Boxed, JsError)]
 pub struct ResolveReqWithSubPathError(pub Box<ResolveReqWithSubPathErrorKind>);
 
-#[derive(Debug, Error)]
+#[derive(Debug, Error, JsError)]
 pub enum ResolveReqWithSubPathErrorKind {
+  #[class(inherit)]
   #[error(transparent)]
   MissingPackageNodeModulesFolder(#[from] MissingPackageNodeModulesFolderError),
+  #[class(inherit)]
   #[error(transparent)]
   ResolvePkgFolderFromDenoReq(#[from] ResolvePkgFolderFromDenoReqError),
+  #[class(inherit)]
   #[error(transparent)]
   PackageSubpathResolve(#[from] PackageSubpathResolveError),
 }
 
-#[derive(Debug, Error)]
+#[derive(Debug, Error, JsError)]
 pub enum ResolvePkgFolderFromDenoReqError {
   // todo(dsherret): don't use anyhow here
+  #[class(generic)]
   #[error(transparent)]
   Managed(anyhow::Error),
+  #[class(inherit)]
   #[error(transparent)]
   Byonm(#[from] ByonmResolvePkgFolderFromDenoReqError),
 }

@@ -7,7 +7,7 @@ use std::sync::Arc;
 
 use deno_ast::ModuleSpecifier;
 use deno_core::anyhow::bail;
-use deno_core::error::AnyError;
+use deno_core::error::{AnyError, CoreError};
 use deno_core::futures::FutureExt;
 use deno_core::url::Url;
 use deno_core::v8;
@@ -214,7 +214,7 @@ impl CliMainWorker {
             result = hmr_result;
           },
           event_loop_result = event_loop_future => {
-            result = event_loop_result;
+            result = event_loop_result.map_err(Into::into);
           }
         }
         if let Err(e) = result {
@@ -326,12 +326,12 @@ impl CliMainWorker {
     executor.execute().await
   }
 
-  pub async fn execute_main_module(&mut self) -> Result<(), AnyError> {
+  pub async fn execute_main_module(&mut self) -> Result<(), CoreError> {
     let id = self.worker.preload_main_module(&self.main_module).await?;
     self.worker.evaluate_module(id).await
   }
 
-  pub async fn execute_side_module(&mut self) -> Result<(), AnyError> {
+  pub async fn execute_side_module(&mut self) -> Result<(), CoreError> {
     let id = self.worker.preload_side_module(&self.main_module).await?;
     self.worker.evaluate_module(id).await
   }
@@ -388,7 +388,7 @@ impl CliMainWorker {
     &mut self,
     name: &'static str,
     source_code: &'static str,
-  ) -> Result<v8::Global<v8::Value>, AnyError> {
+  ) -> Result<v8::Global<v8::Value>, CoreError> {
     self.worker.js_runtime.execute_script(name, source_code)
   }
 }
@@ -612,7 +612,6 @@ impl CliMainWorkerFactory {
       should_break_on_first_statement: shared.options.inspect_brk,
       should_wait_for_inspector_session: shared.options.inspect_wait,
       strace_ops: shared.options.strace_ops.clone(),
-      get_error_class_fn: Some(&errors::get_error_class_name),
       cache_storage_dir,
       origin_storage_dir,
       stdio,
@@ -809,7 +808,6 @@ fn create_web_worker_callback(
       create_web_worker_cb,
       format_js_error_fn: Some(Arc::new(format_js_error)),
       worker_type: args.worker_type,
-      get_error_class_fn: Some(&errors::get_error_class_name),
       stdio: stdio.clone(),
       cache_storage_dir,
       strace_ops: shared.options.strace_ops.clone(),

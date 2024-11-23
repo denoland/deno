@@ -15,8 +15,8 @@ use deno_config::workspace::MappedResolutionError;
 use deno_config::workspace::ResolverWorkspaceJsrPackage;
 use deno_config::workspace::WorkspaceResolver;
 use deno_core::anyhow::Context;
-use deno_core::error::generic_error;
-use deno_core::error::type_error;
+use deno_core::error::ModuleLoaderError;
+use deno_core::error::JsNativeError;
 use deno_core::error::AnyError;
 use deno_core::futures::future::LocalBoxFuture;
 use deno_core::futures::FutureExt;
@@ -170,25 +170,25 @@ impl ModuleLoader for EmbeddedModuleLoader {
     raw_specifier: &str,
     referrer: &str,
     kind: ResolutionKind,
-  ) -> Result<ModuleSpecifier, AnyError> {
+  ) -> Result<ModuleSpecifier, ModuleLoaderError> {
     let referrer = if referrer == "." {
       if kind != ResolutionKind::MainModule {
-        return Err(generic_error(format!(
+        return Err(JsNativeError::generic(format!(
           "Expected to resolve main module, got {:?} instead.",
           kind
-        )));
+        )).into());
       }
       let current_dir = std::env::current_dir().unwrap();
       deno_core::resolve_path(".", &current_dir)?
     } else {
       ModuleSpecifier::parse(referrer).map_err(|err| {
-        type_error(format!("Referrer uses invalid specifier: {}", err))
+        JsNativeError::type_error(format!("Referrer uses invalid specifier: {}", err))
       })?
     };
     let referrer_kind = if self
       .shared
       .cjs_tracker
-      .is_maybe_cjs(&referrer, MediaType::from_specifier(&referrer))?
+      .is_maybe_cjs(&referrer, MediaType::from_specifier(&referrer)).map_err(JsNativeError::from_err)?
     {
       NodeModuleKind::Cjs
     } else {
@@ -205,7 +205,7 @@ impl ModuleLoader for EmbeddedModuleLoader {
             &referrer,
             referrer_kind,
             NodeResolutionMode::Execution,
-          )?
+          ).map_err(JsNativeError::from_err)?
           .into_url(),
       );
     }
@@ -233,14 +233,14 @@ impl ModuleLoader for EmbeddedModuleLoader {
             Some(&referrer),
             referrer_kind,
             NodeResolutionMode::Execution,
-          )?,
+          ).map_err(JsNativeError::from_err)?,
       ),
       Ok(MappedResolution::PackageJson {
         dep_result,
         sub_path,
         alias,
         ..
-      }) => match dep_result.as_ref().map_err(|e| AnyError::from(e.clone()))? {
+      }) => match dep_result.as_ref().map_err(|e| JsNativeError::from_err(e.clone()))? {
         PackageJsonDepValue::Req(req) => self
           .shared
           .npm_req_resolver
@@ -251,7 +251,7 @@ impl ModuleLoader for EmbeddedModuleLoader {
             referrer_kind,
             NodeResolutionMode::Execution,
           )
-          .map_err(AnyError::from),
+          .map_err(|e| JsNativeError::from_err(e).into()),
         PackageJsonDepValue::Workspace(version_req) => {
           let pkg_folder = self
             .shared
@@ -259,7 +259,7 @@ impl ModuleLoader for EmbeddedModuleLoader {
             .resolve_workspace_pkg_json_folder_for_pkg_json_dep(
               alias,
               version_req,
-            )?;
+            ).map_err(JsNativeError::from_err)?;
           Ok(
             self
               .shared
@@ -270,7 +270,7 @@ impl ModuleLoader for EmbeddedModuleLoader {
                 Some(&referrer),
                 referrer_kind,
                 NodeResolutionMode::Execution,
-              )?,
+              ).map_err(JsNativeError::from_err)?,
           )
         }
       },
@@ -348,9 +348,9 @@ impl ModuleLoader for EmbeddedModuleLoader {
         {
           Ok(response) => response,
           Err(err) => {
-            return deno_core::ModuleLoadResponse::Sync(Err(type_error(
+            return deno_core::ModuleLoadResponse::Sync(Err(JsNativeError::type_error(
               format!("{:#}", err),
-            )));
+            ).into()));
           }
         };
       return deno_core::ModuleLoadResponse::Sync(Ok(
@@ -404,9 +404,9 @@ impl ModuleLoader for EmbeddedModuleLoader {
         {
           Ok(is_maybe_cjs) => is_maybe_cjs,
           Err(err) => {
-            return deno_core::ModuleLoadResponse::Sync(Err(type_error(
+            return deno_core::ModuleLoadResponse::Sync(Err(JsNativeError::type_error(
               format!("{:?}", err),
-            )));
+            ).into()));
           }
         };
         if is_maybe_cjs {
@@ -466,12 +466,12 @@ impl ModuleLoader for EmbeddedModuleLoader {
           ))
         }
       }
-      Ok(None) => deno_core::ModuleLoadResponse::Sync(Err(type_error(
+      Ok(None) => deno_core::ModuleLoadResponse::Sync(Err(JsNativeError::type_error(
         format!("{MODULE_NOT_FOUND}: {}", original_specifier),
-      ))),
-      Err(err) => deno_core::ModuleLoadResponse::Sync(Err(type_error(
+      ).into())),
+      Err(err) => deno_core::ModuleLoadResponse::Sync(Err(JsNativeError::type_error(
         format!("{:?}", err),
-      ))),
+      ).into())),
     }
   }
 
@@ -513,8 +513,8 @@ impl NodeRequireLoader for EmbeddedModuleLoader {
   fn load_text_file_lossy(
     &self,
     path: &std::path::Path,
-  ) -> Result<String, AnyError> {
-    Ok(self.shared.fs.read_text_file_lossy_sync(path, None)?)
+  ) -> Result<String, JsNativeError> {
+    Ok(self.shared.fs.read_text_file_lossy_sync(path, None).map_err(JsNativeError::from_err)?)
   }
 
   fn is_maybe_cjs(
@@ -566,10 +566,10 @@ struct StandaloneRootCertStoreProvider {
 }
 
 impl RootCertStoreProvider for StandaloneRootCertStoreProvider {
-  fn get_or_try_init(&self) -> Result<&RootCertStore, AnyError> {
+  fn get_or_try_init(&self) -> Result<&RootCertStore, JsNativeError> {
     self.cell.get_or_try_init(|| {
       get_root_cert_store(None, self.ca_stores.clone(), self.ca_data.clone())
-        .map_err(|err| err.into())
+        .map_err(JsNativeError::from_err)
     })
   }
 }

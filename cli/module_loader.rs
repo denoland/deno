@@ -44,8 +44,7 @@ use deno_ast::ModuleKind;
 use deno_core::anyhow::anyhow;
 use deno_core::anyhow::bail;
 use deno_core::anyhow::Context;
-use deno_core::error::custom_error;
-use deno_core::error::generic_error;
+use deno_core::error::{JsNativeError, ModuleLoaderError};
 use deno_core::error::AnyError;
 use deno_core::futures::future::FutureExt;
 use deno_core::futures::Future;
@@ -367,7 +366,7 @@ impl<TGraphContainer: ModuleGraphContainer>
     specifier: &ModuleSpecifier,
     maybe_referrer: Option<&ModuleSpecifier>,
     requested_module_type: RequestedModuleType,
-  ) -> Result<ModuleSource, AnyError> {
+  ) -> Result<ModuleSource, ModuleLoaderError> {
     let code_source = self.load_code_source(specifier, maybe_referrer).await?;
     let code = if self.shared.is_inspecting
       || code_source.media_type == MediaType::Wasm
@@ -390,7 +389,7 @@ impl<TGraphContainer: ModuleGraphContainer>
     if module_type == ModuleType::Json
       && requested_module_type != RequestedModuleType::Json
     {
-      return Err(generic_error("Attempted to load JSON module without specifying \"type\": \"json\" attribute in the import statement."));
+      return Err(JsNativeError::generic("Attempted to load JSON module without specifying \"type\": \"json\" attribute in the import statement.").into());
     }
 
     let code_cache = if module_type == ModuleType::JavaScript {
@@ -807,16 +806,16 @@ impl<TGraphContainer: ModuleGraphContainer> ModuleLoader
     specifier: &str,
     referrer: &str,
     _kind: ResolutionKind,
-  ) -> Result<ModuleSpecifier, AnyError> {
+  ) -> Result<ModuleSpecifier, ModuleLoaderError> {
     fn ensure_not_jsr_non_jsr_remote_import(
       specifier: &ModuleSpecifier,
       referrer: &ModuleSpecifier,
-    ) -> Result<(), AnyError> {
+    ) -> Result<(), JsNativeError> {
       if referrer.as_str().starts_with(jsr_url().as_str())
         && !specifier.as_str().starts_with(jsr_url().as_str())
         && matches!(specifier.scheme(), "http" | "https")
       {
-        bail!("Importing {} blocked. JSR packages cannot import non-JSR remote modules for security reasons.", specifier);
+        return Err(JsNativeError::generic(format!("Importing {} blocked. JSR packages cannot import non-JSR remote modules for security reasons.", specifier)));
       }
       Ok(())
     }

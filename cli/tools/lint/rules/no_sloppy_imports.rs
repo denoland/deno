@@ -188,7 +188,7 @@ impl<'a> deno_graph::source::Resolver for SloppyImportCaptureResolver<'a> {
     let resolution = self
       .workspace_resolver
       .resolve(specifier_text, &referrer_range.specifier)
-      .map_err(|err| ResolveError::Other(err.into()))?;
+      .map_err(|err| ResolveError::Other(Box::new(err)))?;
 
     match resolution {
       deno_config::workspace::MappedResolution::Normal {

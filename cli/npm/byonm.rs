@@ -4,7 +4,6 @@ use std::borrow::Cow;
 use std::path::Path;
 use std::sync::Arc;
 
-use deno_core::error::AnyError;
 use deno_core::serde_json;
 use deno_resolver::npm::ByonmNpmResolver;
 use deno_resolver::npm::ByonmNpmResolverCreateOptions;

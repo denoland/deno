@@ -5,7 +5,6 @@ mod auth_tokens;
 mod cache;
 mod cdp;
 mod emit;
-mod errors;
 mod factory;
 mod file_fetcher;
 mod graph_container;

@@ -68,7 +68,7 @@ use std::path::PathBuf;
 use deno_cache_dir::npm::NpmCacheDir;
 use deno_config::workspace::PackageJsonDepResolution;
 use deno_config::workspace::WorkspaceResolver;
-use deno_core::error::AnyError;
+use deno_core::error::{AnyError, JsNativeError};
 use deno_core::futures::FutureExt;
 use deno_core::FeatureChecker;
 
@@ -116,7 +116,7 @@ impl CliRootCertStoreProvider {
 }
 
 impl RootCertStoreProvider for CliRootCertStoreProvider {
-  fn get_or_try_init(&self) -> Result<&RootCertStore, AnyError> {
+  fn get_or_try_init(&self) -> Result<&RootCertStore, JsNativeError> {
     self
       .cell
       .get_or_try_init(|| {
@@ -126,7 +126,7 @@ impl RootCertStoreProvider for CliRootCertStoreProvider {
           self.maybe_ca_data.clone(),
         )
       })
-      .map_err(|e| e.into())
+      .map_err(JsNativeError::from_err)
   }
 }
 

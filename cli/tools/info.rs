@@ -12,6 +12,7 @@ use deno_core::error::AnyError;
 use deno_core::resolve_url_or_path;
 use deno_core::serde_json;
 use deno_core::url;
+use deno_error::JsErrorClass;
 use deno_graph::Dependency;
 use deno_graph::GraphKind;
 use deno_graph::Module;
@@ -665,9 +666,10 @@ impl<'a> GraphDisplayContext<'a> {
           HttpsChecksumIntegrity(_) => "(checksum integrity error)",
           Decode(_) => "(loading decode error)",
           Loader(err) => {
-            match deno_runtime::errors::get_error_class_name(err) {
-              Some("NotCapable") => "(not capable, requires --allow-import)",
-              _ => "(loading error)",
+            if err.get_class() == "NotCapable" {
+              "(not capable, requires --allow-import)"
+            } else {
+              "(loading error)"
             }
           }
           Jsr(_) => "(loading error)",

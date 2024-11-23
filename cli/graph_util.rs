@@ -10,7 +10,6 @@ use crate::cache::GlobalHttpCache;
 use crate::cache::ModuleInfoCache;
 use crate::cache::ParsedSourceCache;
 use crate::colors;
-use crate::errors::get_error_class_name;
 use crate::file_fetcher::FileFetcher;
 use crate::npm::CliNpmResolver;
 use crate::resolver::CjsTracker;
@@ -31,7 +30,7 @@ use deno_graph::JsrLoadError;
 use deno_graph::ModuleLoadError;
 use deno_graph::WorkspaceFastCheckOption;
 
-use deno_core::error::custom_error;
+use deno_core::error::JsNativeError;
 use deno_core::error::AnyError;
 use deno_core::parking_lot::Mutex;
 use deno_core::ModuleSpecifier;
@@ -57,6 +56,7 @@ use std::error::Error;
 use std::ops::Deref;
 use std::path::PathBuf;
 use std::sync::Arc;
+use deno_error::JsErrorClass;
 
 #[derive(Clone)]
 pub struct GraphValidOptions {
@@ -80,7 +80,7 @@ pub fn graph_valid(
   fs: &Arc<dyn FileSystem>,
   roots: &[ModuleSpecifier],
   options: GraphValidOptions,
-) -> Result<(), AnyError> {
+) -> Result<(), JsNativeError> {
   if options.exit_integrity_errors {
     graph_exit_integrity_errors(graph);
   }
@@ -99,9 +99,9 @@ pub fn graph_valid(
   } else {
     // finally surface the npm resolution result
     if let Err(err) = &graph.npm_dep_graph_result {
-      return Err(custom_error(
-        get_error_class_name(err),
-        format_deno_graph_error(err.as_ref().deref()),
+      return Err(JsNativeError::new(
+        err.get_class(),
+        format_deno_graph_error(err),
       ));
     }
     Ok(())
@@ -121,7 +121,7 @@ pub fn graph_walk_errors<'a>(
   fs: &'a Arc<dyn FileSystem>,
   roots: &'a [ModuleSpecifier],
   options: GraphWalkErrorsOptions,
-) -> impl Iterator<Item = AnyError> + 'a {
+) -> impl Iterator<Item = JsNativeError> + 'a {
   graph
     .walk(
       roots.iter(),
@@ -175,7 +175,7 @@ pub fn graph_walk_errors<'a>(
         return None;
       }
 
-      Some(custom_error(get_error_class_name(&error.into()), message))
+      Some(JsNativeError::new(error.get_class(), message))
     })
 }
 
@@ -350,7 +350,7 @@ impl ModuleGraphCreator {
     }
   }
 
-  pub fn graph_valid(&self, graph: &ModuleGraph) -> Result<(), AnyError> {
+  pub fn graph_valid(&self, graph: &ModuleGraph) -> Result<(), JsNativeError> {
     self.module_graph_builder.graph_valid(graph)
   }
 
@@ -718,7 +718,7 @@ impl ModuleGraphBuilder {
   /// Check if `roots` and their deps are available. Returns `Ok(())` if
   /// so. Returns `Err(_)` if there is a known module graph or resolution
   /// error statically reachable from `roots` and not a dynamic import.
-  pub fn graph_valid(&self, graph: &ModuleGraph) -> Result<(), AnyError> {
+  pub fn graph_valid(&self, graph: &ModuleGraph) -> Result<(), JsNativeError> {
     self.graph_roots_valid(
       graph,
       &graph.roots.iter().cloned().collect::<Vec<_>>(),
@@ -729,7 +729,7 @@ impl ModuleGraphBuilder {
     &self,
     graph: &ModuleGraph,
     roots: &[ModuleSpecifier],
-  ) -> Result<(), AnyError> {
+  ) -> Result<(), JsNativeError> {
     graph_valid(
       graph,
       &self.fs,
@@ -944,6 +944,7 @@ fn get_import_prefix_missing_error(error: &ResolutionError) -> Option<&str> {
             maybe_specifier = Some(specifier);
           }
         }
+        ResolveError::ImportMap(_) => {}
       }
     }
   }
@@ -1044,7 +1045,6 @@ impl<'a> deno_graph::source::FileSystem for DenoGraphFsAdapter<'a> {
     &self,
     dir_url: &deno_graph::ModuleSpecifier,
   ) -> Vec<deno_graph::source::DirEntry> {
-    use deno_core::anyhow;
     use deno_graph::source::DirEntry;
     use deno_graph::source::DirEntryKind;
 
@@ -1065,10 +1065,7 @@ impl<'a> deno_graph::source::FileSystem for DenoGraphFsAdapter<'a> {
       }
       Err(err) => {
         return vec![DirEntry {
-          kind: DirEntryKind::Error(
-            anyhow::Error::from(err)
-              .context("Failed to read directory.".to_string()),
-          ),
+          kind: DirEntryKind::Error(deno_graph::source::DirEntryError::Dir(err.into_io_error())),
           url: dir_url.clone(),
         }];
       }
