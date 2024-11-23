@@ -27,7 +27,16 @@ pub fn is_importable_ext(path: &Path) -> bool {
   if let Some(ext) = get_extension(path) {
     matches!(
       ext.as_str(),
-      "ts" | "tsx" | "js" | "jsx" | "mjs" | "mts" | "cjs" | "cts" | "json"
+      "ts"
+        | "tsx"
+        | "js"
+        | "jsx"
+        | "mjs"
+        | "mts"
+        | "cjs"
+        | "cts"
+        | "json"
+        | "wasm"
     )
   } else {
     false
@@ -222,6 +231,7 @@ mod test {
     assert!(is_script_ext(Path::new("foo.cjs")));
     assert!(is_script_ext(Path::new("foo.cts")));
     assert!(!is_script_ext(Path::new("foo.json")));
+    assert!(!is_script_ext(Path::new("foo.wasm")));
     assert!(!is_script_ext(Path::new("foo.mjsx")));
   }
 
@@ -243,6 +253,7 @@ mod test {
     assert!(is_importable_ext(Path::new("foo.cjs")));
     assert!(is_importable_ext(Path::new("foo.cts")));
     assert!(is_importable_ext(Path::new("foo.json")));
+    assert!(is_importable_ext(Path::new("foo.wasm")));
     assert!(!is_importable_ext(Path::new("foo.mjsx")));
   }
 
