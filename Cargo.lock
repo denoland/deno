@@ -408,6 +408,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "az"
+version = "1.2.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7b7e4c2464d97fe331d41de9d5db0def0a96f4d823b8b32a2efd503578988973"
+
+[[package]]
 name = "backtrace"
 version = "0.3.73"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1467,9 +1473,10 @@ dependencies = [
 [[package]]
 name = "deno_core"
 version = "0.322.0"
-source = "git+https://github.com/littledivy/deno_core?branch=string_validation#0428de9afc0ade49c5b2d37edef6cb0a7adaafdd"
+source = "git+https://github.com/littledivy/deno_core?branch=changes_for_webstorage#310bc673d71d9d168cfea96aa87f8e73651db8c0"
 dependencies = [
  "anyhow",
+ "az",
  "bincode",
  "bit-set",
  "bit-vec",
@@ -1983,7 +1990,7 @@ dependencies = [
 [[package]]
 name = "deno_ops"
 version = "0.198.0"
-source = "git+https://github.com/littledivy/deno_core?branch=string_validation#0428de9afc0ade49c5b2d37edef6cb0a7adaafdd"
+source = "git+https://github.com/littledivy/deno_core?branch=changes_for_webstorage#310bc673d71d9d168cfea96aa87f8e73651db8c0"
 dependencies = [
  "proc-macro-rules",
  "proc-macro2",
@@ -6665,7 +6672,7 @@ dependencies = [
 [[package]]
 name = "serde_v8"
 version = "0.231.0"
-source = "git+https://github.com/littledivy/deno_core?branch=string_validation#0428de9afc0ade49c5b2d37edef6cb0a7adaafdd"
+source = "git+https://github.com/littledivy/deno_core?branch=changes_for_webstorage#310bc673d71d9d168cfea96aa87f8e73651db8c0"
 dependencies = [
  "num-bigint",
  "serde",
