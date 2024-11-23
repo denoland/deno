@@ -8,8 +8,11 @@ use deno_core::serde_json;
 use deno_core::url::Url;
 use deno_package_json::PackageJsonDepValue;
 use deno_package_json::PackageJsonDepValueParseError;
+use deno_package_json::PackageJsonDepWorkspaceReq;
 use deno_semver::npm::NpmPackageReqReference;
 use deno_semver::package::PackageReq;
+use deno_semver::RangeSetOrTag;
+use deno_semver::VersionReq;
 use thiserror::Error;
 
 #[derive(Debug)]
@@ -137,7 +140,24 @@ impl NpmInstallDepsProvider {
                 });
               }
             }
-            PackageJsonDepValue::Workspace(version_req) => {
+            PackageJsonDepValue::Workspace(workspace_version_req) => {
+              let version_req = match workspace_version_req {
+                PackageJsonDepWorkspaceReq::VersionReq(version_req) => {
+                  version_req
+                }
+                PackageJsonDepWorkspaceReq::Tilde => {
+                  VersionReq::from_raw_text_and_inner(
+                    "workspace:~".to_string(),
+                    RangeSetOrTag::Tag("workspace".to_string()),
+                  )
+                }
+                PackageJsonDepWorkspaceReq::Caret => {
+                  VersionReq::from_raw_text_and_inner(
+                    "workspace:^".to_string(),
+                    RangeSetOrTag::Tag("workspace".to_string()),
+                  )
+                }
+              };
               if let Some(pkg) = workspace_npm_pkgs.iter().find(|pkg| {
                 pkg.matches_name_and_version_req(&alias, &version_req)
               }) {

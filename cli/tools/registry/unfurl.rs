@@ -12,8 +12,11 @@ use deno_graph::DynamicTemplatePart;
 use deno_graph::ParserModuleAnalyzer;
 use deno_graph::TypeScriptReference;
 use deno_package_json::PackageJsonDepValue;
+use deno_package_json::PackageJsonDepWorkspaceReq;
 use deno_resolver::sloppy_imports::SloppyImportsResolutionMode;
 use deno_runtime::deno_node::is_builtin_node_module;
+use deno_semver::VersionRangeSet;
+use deno_semver::VersionReq;
 
 use crate::resolver::CliSloppyImportsResolver;
 
@@ -120,7 +123,22 @@ impl SpecifierUnfurler {
               ))
               .ok()
             }
-            PackageJsonDepValue::Workspace(version_req) => {
+            PackageJsonDepValue::Workspace(workspace_version_req) => {
+              let version_req = match workspace_version_req {
+                PackageJsonDepWorkspaceReq::VersionReq(version_req) => {
+                  version_req
+                }
+                // TODO(bartlomieju): this is most likely not correct
+                PackageJsonDepWorkspaceReq::Caret
+                | PackageJsonDepWorkspaceReq::Tilde => {
+                  &VersionReq::from_raw_text_and_inner(
+                    "*".to_string(),
+                    deno_semver::RangeSetOrTag::RangeSet(VersionRangeSet(
+                      vec![],
+                    )),
+                  )
+                }
+              };
               // todo(#24612): consider warning or error when this is also a jsr package?
               ModuleSpecifier::parse(&format!(
                 "npm:{}@{}{}",
