@@ -1466,8 +1466,8 @@ dependencies = [
 
 [[package]]
 name = "deno_core"
-version = "0.321.0"
-source = "git+https://github.com/littledivy/deno_core?branch=required_args#d33a034b1d21c1ec5e38da36a4edd700bcf17e0e"
+version = "0.322.0"
+source = "git+https://github.com/littledivy/deno_core?branch=string_validation#0428de9afc0ade49c5b2d37edef6cb0a7adaafdd"
 dependencies = [
  "anyhow",
  "bincode",
@@ -1982,8 +1982,8 @@ dependencies = [
 
 [[package]]
 name = "deno_ops"
-version = "0.197.0"
-source = "git+https://github.com/littledivy/deno_core?branch=required_args#d33a034b1d21c1ec5e38da36a4edd700bcf17e0e"
+version = "0.198.0"
+source = "git+https://github.com/littledivy/deno_core?branch=string_validation#0428de9afc0ade49c5b2d37edef6cb0a7adaafdd"
 dependencies = [
  "proc-macro-rules",
  "proc-macro2",
@@ -6664,8 +6664,8 @@ dependencies = [
 
 [[package]]
 name = "serde_v8"
-version = "0.230.0"
-source = "git+https://github.com/littledivy/deno_core?branch=required_args#d33a034b1d21c1ec5e38da36a4edd700bcf17e0e"
+version = "0.231.0"
+source = "git+https://github.com/littledivy/deno_core?branch=string_validation#0428de9afc0ade49c5b2d37edef6cb0a7adaafdd"
 dependencies = [
  "num-bigint",
  "serde",
