@@ -1,0 +1,5 @@
+{
+  "args": "run --no-lock --node-modules-dir=none imports_package_json/sub_path_import_not_defined.js",
+  "output": "imports_package_json/sub_path_import_not_defined.out",
+  "exitCode": 1
+}

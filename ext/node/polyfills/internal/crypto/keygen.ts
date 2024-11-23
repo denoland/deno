@@ -10,7 +10,6 @@ import {
   PrivateKeyObject,
   PublicKeyObject,
   SecretKeyObject,
-  setOwnedKey,
 } from "ext:deno_node/internal/crypto/keys.ts";
 import { notImplemented } from "ext:deno_node/_utils.ts";
 import {
@@ -30,24 +29,30 @@ import {
 } from "ext:deno_node/internal/validators.mjs";
 import { Buffer } from "node:buffer";
 import { KeyFormat, KeyType } from "ext:deno_node/internal/crypto/types.ts";
+import process from "node:process";
+import { promisify } from "node:util";
 
 import {
-  op_node_dh_generate,
-  op_node_dh_generate_async,
-  op_node_dh_generate_group,
-  op_node_dh_generate_group_async,
-  op_node_dsa_generate,
-  op_node_dsa_generate_async,
-  op_node_ec_generate,
-  op_node_ec_generate_async,
-  op_node_ed25519_generate,
-  op_node_ed25519_generate_async,
-  op_node_generate_rsa,
-  op_node_generate_rsa_async,
-  op_node_generate_secret,
-  op_node_generate_secret_async,
-  op_node_x25519_generate,
-  op_node_x25519_generate_async,
+  op_node_generate_dh_group_key,
+  op_node_generate_dh_group_key_async,
+  op_node_generate_dh_key,
+  op_node_generate_dh_key_async,
+  op_node_generate_dsa_key,
+  op_node_generate_dsa_key_async,
+  op_node_generate_ec_key,
+  op_node_generate_ec_key_async,
+  op_node_generate_ed25519_key,
+  op_node_generate_ed25519_key_async,
+  op_node_generate_rsa_key,
+  op_node_generate_rsa_key_async,
+  op_node_generate_rsa_pss_key,
+  op_node_generate_rsa_pss_key_async,
+  op_node_generate_secret_key,
+  op_node_generate_secret_key_async,
+  op_node_generate_x25519_key,
+  op_node_generate_x25519_key_async,
+  op_node_get_private_key_from_pair,
+  op_node_get_public_key_from_pair,
 } from "ext:core/ops";
 
 function validateGenerateKey(
@@ -82,10 +87,11 @@ export function generateKeySync(
   validateGenerateKey(type, options);
   const { length } = options;
 
-  const key = new Uint8Array(Math.floor(length / 8));
-  op_node_generate_secret(key);
+  const len = Math.floor(length / 8);
 
-  return new SecretKeyObject(setOwnedKey(key));
+  const handle = op_node_generate_secret_key(len);
+
+  return new SecretKeyObject(handle);
 }
 
 export function generateKey(
@@ -99,11 +105,11 @@ export function generateKey(
   validateFunction(callback, "callback");
   const { length } = options;
 
-  op_node_generate_secret_async(Math.floor(length / 8)).then(
-    (key) => {
-      callback(null, new SecretKeyObject(setOwnedKey(key)));
-    },
-  );
+  const len = Math.floor(length / 8);
+
+  op_node_generate_secret_key_async(len).then((handle) => {
+    callback(null, new SecretKeyObject(handle));
+  });
 }
 
 export interface BasePrivateKeyEncodingOptions<T extends KeyFormat> {
@@ -565,9 +571,20 @@ export function generateKeyPair(
     privateKey: any,
   ) => void,
 ) {
-  createJob(kAsync, type, options).then(([privateKey, publicKey]) => {
-    privateKey = new PrivateKeyObject(setOwnedKey(privateKey), { type });
-    publicKey = new PublicKeyObject(setOwnedKey(publicKey), { type });
+  _generateKeyPair(type, options)
+    .then(
+      (res) => callback(null, res.publicKey, res.privateKey),
+      (err) => callback(err, null, null),
+    );
+}
+
+function _generateKeyPair(type: string, options: unknown) {
+  return createJob(kAsync, type, options).then((pair) => {
+    const privateKeyHandle = op_node_get_private_key_from_pair(pair);
+    const publicKeyHandle = op_node_get_public_key_from_pair(pair);
+
+    let privateKey = new PrivateKeyObject(privateKeyHandle);
+    let publicKey = new PublicKeyObject(publicKeyHandle);
 
     if (typeof options === "object" && options !== null) {
       const { publicKeyEncoding, privateKeyEncoding } = options as any;
@@ -581,11 +598,14 @@ export function generateKeyPair(
       }
     }
 
-    callback(null, publicKey, privateKey);
-  }).catch((err) => {
-    callback(err, null, null);
+    return { publicKey, privateKey };
   });
 }
+
+Object.defineProperty(generateKeyPair, promisify.custom, {
+  enumerable: false,
+  value: _generateKeyPair,
+});
 
 export interface KeyPairKeyObjectResult {
   publicKey: KeyObject;
@@ -766,10 +786,13 @@ export function generateKeyPairSync(
 ):
   | KeyPairKeyObjectResult
   | KeyPairSyncResult<string | Buffer, string | Buffer> {
-  let [privateKey, publicKey] = createJob(kSync, type, options);
+  const pair = createJob(kSync, type, options);
 
-  privateKey = new PrivateKeyObject(setOwnedKey(privateKey), { type });
-  publicKey = new PublicKeyObject(setOwnedKey(publicKey), { type });
+  const privateKeyHandle = op_node_get_private_key_from_pair(pair);
+  const publicKeyHandle = op_node_get_public_key_from_pair(pair);
+
+  let privateKey = new PrivateKeyObject(privateKeyHandle);
+  let publicKey = new PublicKeyObject(publicKeyHandle);
 
   if (typeof options === "object" && options !== null) {
     const { publicKeyEncoding, privateKeyEncoding } = options as any;
@@ -812,12 +835,12 @@ function createJob(mode, type, options) {
 
       if (type === "rsa") {
         if (mode === kSync) {
-          return op_node_generate_rsa(
+          return op_node_generate_rsa_key(
             modulusLength,
             publicExponent,
           );
         } else {
-          return op_node_generate_rsa_async(
+          return op_node_generate_rsa_key_async(
             modulusLength,
             publicExponent,
           );
@@ -867,14 +890,20 @@ function createJob(mode, type, options) {
       }
 
       if (mode === kSync) {
-        return op_node_generate_rsa(
+        return op_node_generate_rsa_pss_key(
           modulusLength,
           publicExponent,
+          hashAlgorithm,
+          mgf1HashAlgorithm ?? mgf1Hash,
+          saltLength,
         );
       } else {
-        return op_node_generate_rsa_async(
+        return op_node_generate_rsa_pss_key_async(
           modulusLength,
           publicExponent,
+          hashAlgorithm,
+          mgf1HashAlgorithm ?? mgf1Hash,
+          saltLength,
         );
       }
     }
@@ -891,12 +920,13 @@ function createJob(mode, type, options) {
       }
 
       if (mode === kSync) {
-        return op_node_dsa_generate(modulusLength, divisorLength);
+        return op_node_generate_dsa_key(modulusLength, divisorLength);
+      } else {
+        return op_node_generate_dsa_key_async(
+          modulusLength,
+          divisorLength,
+        );
       }
-      return op_node_dsa_generate_async(
-        modulusLength,
-        divisorLength,
-      );
     }
     case "ec": {
       validateObject(options, "options");
@@ -913,22 +943,22 @@ function createJob(mode, type, options) {
       }
 
       if (mode === kSync) {
-        return op_node_ec_generate(namedCurve);
+        return op_node_generate_ec_key(namedCurve);
       } else {
-        return op_node_ec_generate_async(namedCurve);
+        return op_node_generate_ec_key_async(namedCurve);
       }
     }
     case "ed25519": {
       if (mode === kSync) {
-        return op_node_ed25519_generate();
+        return op_node_generate_ed25519_key();
       }
-      return op_node_ed25519_generate_async();
+      return op_node_generate_ed25519_key_async();
     }
     case "x25519": {
       if (mode === kSync) {
-        return op_node_x25519_generate();
+        return op_node_generate_x25519_key();
       }
-      return op_node_x25519_generate_async();
+      return op_node_generate_x25519_key_async();
     }
     case "ed448":
     case "x448": {
@@ -952,9 +982,9 @@ function createJob(mode, type, options) {
         validateString(group, "options.group");
 
         if (mode === kSync) {
-          return op_node_dh_generate_group(group);
+          return op_node_generate_dh_group_key(group);
         } else {
-          return op_node_dh_generate_group_async(group);
+          return op_node_generate_dh_group_key_async(group);
         }
       }
 
@@ -979,9 +1009,9 @@ function createJob(mode, type, options) {
       const g = generator == null ? 2 : generator;
 
       if (mode === kSync) {
-        return op_node_dh_generate(prime, primeLength ?? 0, g);
+        return op_node_generate_dh_key(prime, primeLength ?? 0, g);
       } else {
-        return op_node_dh_generate_async(
+        return op_node_generate_dh_key_async(
           prime,
           primeLength ?? 0,
           g,

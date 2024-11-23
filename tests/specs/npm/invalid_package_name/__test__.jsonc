@@ -1,0 +1,5 @@
+{
+  "args": "run -A main.js",
+  "output": "main.out",
+  "exitCode": 1
+}

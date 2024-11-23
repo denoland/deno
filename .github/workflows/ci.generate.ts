@@ -5,15 +5,16 @@ import { stringify } from "jsr:@std/yaml@^0.221/stringify";
 // Bump this number when you want to purge the cache.
 // Note: the tools/release/01_bump_crate_versions.ts script will update this version
 // automatically via regex, so ensure that this line maintains this format.
-const cacheVersion = 9;
+const cacheVersion = 27;
 
-const ubuntuX86Runner = "ubuntu-22.04";
-const ubuntuX86XlRunner = "ubuntu-22.04-xl";
+const ubuntuX86Runner = "ubuntu-24.04";
+const ubuntuX86XlRunner = "ubuntu-24.04-xl";
 const ubuntuARMRunner = "ubicloud-standard-16-arm";
 const windowsX86Runner = "windows-2022";
 const windowsX86XlRunner = "windows-2022-xl";
 const macosX86Runner = "macos-13";
 const macosArmRunner = "macos-14";
+const selfHostedMacosArmRunner = "self-hosted";
 
 const Runners = {
   linuxX86: {
@@ -40,7 +41,8 @@ const Runners = {
   macosArm: {
     os: "macos",
     arch: "aarch64",
-    runner: macosArmRunner,
+    runner:
+      `\${{ github.repository == 'denoland/deno' && startsWith(github.ref, 'refs/tags/') && '${selfHostedMacosArmRunner}' || '${macosArmRunner}' }}`,
   },
   windowsX86: {
     os: "windows",
@@ -59,7 +61,7 @@ const prCacheKeyPrefix =
   `${cacheVersion}-cargo-target-\${{ matrix.os }}-\${{ matrix.arch }}-\${{ matrix.profile }}-\${{ matrix.job }}-`;
 
 // Note that you may need to add more version to the `apt-get remove` line below if you change this
-const llvmVersion = 18;
+const llvmVersion = 19;
 const installPkgsCommand =
   `sudo apt-get install --no-install-recommends clang-${llvmVersion} lld-${llvmVersion} clang-tools-${llvmVersion} clang-format-${llvmVersion} clang-tidy-${llvmVersion}`;
 const sysRootStep = {
@@ -71,7 +73,7 @@ export DEBIAN_FRONTEND=noninteractive
 sudo apt-get -qq remove --purge -y man-db  > /dev/null 2> /dev/null
 # Remove older clang before we install
 sudo apt-get -qq remove \
-  'clang-12*' 'clang-13*' 'clang-14*' 'clang-15*' 'clang-16*' 'llvm-12*' 'llvm-13*' 'llvm-14*' 'llvm-15*' 'llvm-16*' 'lld-12*' 'lld-13*' 'lld-14*' 'lld-15*' 'lld-16*' > /dev/null 2> /dev/null
+  'clang-12*' 'clang-13*' 'clang-14*' 'clang-15*' 'clang-16*' 'clang-17*' 'clang-18*' 'llvm-12*' 'llvm-13*' 'llvm-14*' 'llvm-15*' 'llvm-16*' 'lld-12*' 'lld-13*' 'lld-14*' 'lld-15*' 'lld-16*' 'lld-17*' 'lld-18*' > /dev/null 2> /dev/null
 
 # Install clang-XXX, lld-XXX, and debootstrap.
 echo "deb http://apt.llvm.org/jammy/ llvm-toolchain-jammy-${llvmVersion} main" |
@@ -86,7 +88,7 @@ ${installPkgsCommand} || echo 'Failed. Trying again.' && sudo apt-get clean && s
 (yes '' | sudo update-alternatives --force --all) > /dev/null 2> /dev/null || true
 
 echo "Decompressing sysroot..."
-wget -q https://github.com/denoland/deno_sysroot_build/releases/download/sysroot-20240528/sysroot-\`uname -m\`.tar.xz -O /tmp/sysroot.tar.xz
+wget -q https://github.com/denoland/deno_sysroot_build/releases/download/sysroot-20241030/sysroot-\`uname -m\`.tar.xz -O /tmp/sysroot.tar.xz
 cd /
 xzcat /tmp/sysroot.tar.xz | sudo tar -x
 sudo mount --rbind /dev /sysroot/dev
@@ -191,14 +193,9 @@ const installNodeStep = {
   uses: "actions/setup-node@v4",
   with: { "node-version": 18 },
 };
-const installProtocStep = {
-  name: "Install protoc",
-  uses: "arduino/setup-protoc@v3",
-  with: { "version": "21.12", "repo-token": "${{ secrets.GITHUB_TOKEN }}" },
-};
 const installDenoStep = {
   name: "Install Deno",
-  uses: "denoland/setup-deno@v1",
+  uses: "denoland/setup-deno@v2",
   with: { "deno-version": "v1.x" },
 };
 
@@ -354,7 +351,7 @@ const ci = {
       needs: ["pre_build"],
       if: "${{ needs.pre_build.outputs.skip_build != 'true' }}",
       "runs-on": "${{ matrix.runner }}",
-      "timeout-minutes": 150,
+      "timeout-minutes": 180,
       defaults: {
         run: {
           // GH actions does not fail fast by default on
@@ -494,7 +491,6 @@ const ci = {
           if: "matrix.job == 'bench' || matrix.job == 'test'",
           ...installNodeStep,
         },
-        installProtocStep,
         {
           if: [
             "matrix.profile == 'release' &&",
@@ -649,7 +645,7 @@ const ci = {
           name: "test_format.js",
           if: "matrix.job == 'lint' && matrix.os == 'linux'",
           run:
-            "deno run --unstable --allow-write --allow-read --allow-run --allow-net ./tools/format.js --check",
+            "deno run --allow-write --allow-read --allow-run --allow-net ./tools/format.js --check",
         },
         {
           name: "Lint PR title",
@@ -664,7 +660,7 @@ const ci = {
           name: "lint.js",
           if: "matrix.job == 'lint'",
           run:
-            "deno run --unstable --allow-write --allow-read --allow-run --allow-net ./tools/lint.js",
+            "deno run --allow-write --allow-read --allow-run --allow-net ./tools/lint.js",
         },
         {
           name: "jsdoc_checker.js",
@@ -768,8 +764,10 @@ const ci = {
           run: [
             "cd target/release",
             "zip -r deno-${{ matrix.arch }}-unknown-linux-gnu.zip deno",
+            "shasum -a 256 deno-${{ matrix.arch }}-unknown-linux-gnu.zip > deno-${{ matrix.arch }}-unknown-linux-gnu.zip.sha256sum",
             "strip denort",
             "zip -r denort-${{ matrix.arch }}-unknown-linux-gnu.zip denort",
+            "shasum -a 256 denort-${{ matrix.arch }}-unknown-linux-gnu.zip > denort-${{ matrix.arch }}-unknown-linux-gnu.zip.sha256sum",
             "./deno types > lib.deno.d.ts",
           ].join("\n"),
         },
@@ -794,8 +792,10 @@ const ci = {
             "--entitlements-xml-file=cli/entitlements.plist",
             "cd target/release",
             "zip -r deno-${{ matrix.arch }}-apple-darwin.zip deno",
+            "shasum -a 256 deno-${{ matrix.arch }}-apple-darwin.zip > deno-${{ matrix.arch }}-apple-darwin.zip.sha256sum",
             "strip denort",
             "zip -r denort-${{ matrix.arch }}-apple-darwin.zip denort",
+            "shasum -a 256 denort-${{ matrix.arch }}-apple-darwin.zip > denort-${{ matrix.arch }}-apple-darwin.zip.sha256sum",
           ]
             .join("\n"),
         },
@@ -810,7 +810,9 @@ const ci = {
           shell: "pwsh",
           run: [
             "Compress-Archive -CompressionLevel Optimal -Force -Path target/release/deno.exe -DestinationPath target/release/deno-${{ matrix.arch }}-pc-windows-msvc.zip",
+            "Get-FileHash target/release/deno-${{ matrix.arch }}-pc-windows-msvc.zip -Algorithm SHA256 | Format-List > target/release/deno-${{ matrix.arch }}-pc-windows-msvc.zip.sha256sum",
             "Compress-Archive -CompressionLevel Optimal -Force -Path target/release/denort.exe -DestinationPath target/release/denort-${{ matrix.arch }}-pc-windows-msvc.zip",
+            "Get-FileHash target/release/denort-${{ matrix.arch }}-pc-windows-msvc.zip -Algorithm SHA256 | Format-List > target/release/denort-${{ matrix.arch }}-pc-windows-msvc.zip.sha256sum",
           ].join("\n"),
         },
         {
@@ -823,6 +825,7 @@ const ci = {
           ].join("\n"),
           run: [
             'gsutil -h "Cache-Control: public, max-age=3600" cp ./target/release/*.zip gs://dl.deno.land/canary/$(git rev-parse HEAD)/',
+            'gsutil -h "Cache-Control: public, max-age=3600" cp ./target/release/*.sha256sum gs://dl.deno.land/canary/$(git rev-parse HEAD)/',
             "echo ${{ github.sha }} > canary-latest.txt",
             'gsutil -h "Cache-Control: no-cache" cp canary-latest.txt gs://dl.deno.land/canary-$(rustc -vV | sed -n "s|host: ||p")-latest.txt',
           ].join("\n"),
@@ -836,7 +839,7 @@ const ci = {
             "!startsWith(github.ref, 'refs/tags/')",
           ].join("\n"),
           run:
-            "target/release/deno run -A --unstable --config tests/config/deno.json ext/websocket/autobahn/fuzzingclient.js",
+            "target/release/deno run -A --config tests/config/deno.json ext/websocket/autobahn/fuzzingclient.js",
         },
         {
           name: "Test (full, debug)",
@@ -889,9 +892,9 @@ const ci = {
             DENO_BIN: "./target/debug/deno",
           },
           run: [
-            "deno run -A --unstable --lock=tools/deno.lock.json --config tests/config/deno.json\\",
+            "deno run -A --lock=tools/deno.lock.json --config tests/config/deno.json\\",
             "        ./tests/wpt/wpt.ts setup",
-            "deno run -A --unstable --lock=tools/deno.lock.json --config tests/config/deno.json\\",
+            "deno run -A --lock=tools/deno.lock.json --config tests/config/deno.json\\",
             '         ./tests/wpt/wpt.ts run --quiet --binary="$DENO_BIN"',
           ].join("\n"),
         },
@@ -902,9 +905,9 @@ const ci = {
             DENO_BIN: "./target/release/deno",
           },
           run: [
-            "deno run -A --unstable --lock=tools/deno.lock.json --config tests/config/deno.json\\",
+            "deno run -A --lock=tools/deno.lock.json --config tests/config/deno.json\\",
             "         ./tests/wpt/wpt.ts setup",
-            "deno run -A --unstable --lock=tools/deno.lock.json --config tests/config/deno.json\\",
+            "deno run -A --lock=tools/deno.lock.json --config tests/config/deno.json\\",
             "         ./tests/wpt/wpt.ts run --quiet --release         \\",
             '                            --binary="$DENO_BIN"          \\',
             "                            --json=wpt.json               \\",
@@ -968,8 +971,7 @@ const ci = {
             "git clone --depth 1 --branch gh-pages                             \\",
             "    https://${DENOBOT_PAT}@github.com/denoland/benchmark_data.git \\",
             "    gh-pages",
-            "./target/release/deno run --allow-all --unstable \\",
-            "    ./tools/build_benchmark_jsons.js --release",
+            "./target/release/deno run --allow-all ./tools/build_benchmark_jsons.js --release",
             "cd gh-pages",
             'git config user.email "propelml@gmail.com"',
             'git config user.name "denobot"',
@@ -1005,8 +1007,10 @@ const ci = {
             "github.repository == 'denoland/deno' &&",
             "startsWith(github.ref, 'refs/tags/')",
           ].join("\n"),
-          run:
+          run: [
             'gsutil -h "Cache-Control: public, max-age=3600" cp ./target/release/*.zip gs://dl.deno.land/release/${GITHUB_REF#refs/*/}/',
+            'gsutil -h "Cache-Control: public, max-age=3600" cp ./target/release/*.sha256sum gs://dl.deno.land/release/${GITHUB_REF#refs/*/}/',
+          ].join("\n"),
         },
         {
           name: "Upload release to dl.deno.land (windows)",
@@ -1020,8 +1024,10 @@ const ci = {
           env: {
             CLOUDSDK_PYTHON: "${{env.pythonLocation}}\\python.exe",
           },
-          run:
+          run: [
             'gsutil -h "Cache-Control: public, max-age=3600" cp ./target/release/*.zip gs://dl.deno.land/release/${GITHUB_REF#refs/*/}/',
+            'gsutil -h "Cache-Control: public, max-age=3600" cp ./target/release/*.sha256sum gs://dl.deno.land/release/${GITHUB_REF#refs/*/}/',
+          ].join("\n"),
         },
         {
           name: "Create release notes",
@@ -1051,15 +1057,25 @@ const ci = {
           with: {
             files: [
               "target/release/deno-x86_64-pc-windows-msvc.zip",
+              "target/release/deno-x86_64-pc-windows-msvc.zip.sha256sum",
               "target/release/denort-x86_64-pc-windows-msvc.zip",
+              "target/release/denort-x86_64-pc-windows-msvc.zip.sha256sum",
               "target/release/deno-x86_64-unknown-linux-gnu.zip",
+              "target/release/deno-x86_64-unknown-linux-gnu.zip.sha256sum",
               "target/release/denort-x86_64-unknown-linux-gnu.zip",
+              "target/release/denort-x86_64-unknown-linux-gnu.zip.sha256sum",
               "target/release/deno-x86_64-apple-darwin.zip",
+              "target/release/deno-x86_64-apple-darwin.zip.sha256sum",
               "target/release/denort-x86_64-apple-darwin.zip",
+              "target/release/denort-x86_64-apple-darwin.zip.sha256sum",
               "target/release/deno-aarch64-unknown-linux-gnu.zip",
+              "target/release/deno-aarch64-unknown-linux-gnu.zip.sha256sum",
               "target/release/denort-aarch64-unknown-linux-gnu.zip",
+              "target/release/denort-aarch64-unknown-linux-gnu.zip.sha256sum",
               "target/release/deno-aarch64-apple-darwin.zip",
+              "target/release/deno-aarch64-apple-darwin.zip.sha256sum",
               "target/release/denort-aarch64-apple-darwin.zip",
+              "target/release/denort-aarch64-apple-darwin.zip.sha256sum",
               "target/release/deno_src.tar.gz",
               "target/release/lib.deno.d.ts",
             ].join("\n"),
@@ -1078,6 +1094,7 @@ const ci = {
               "./target",
               "!./target/*/gn_out",
               "!./target/*/*.zip",
+              "!./target/*/*.sha256sum",
               "!./target/*/*.tar.gz",
             ].join("\n"),
             key: prCacheKeyPrefix + "${{ github.sha }}",

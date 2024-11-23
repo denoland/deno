@@ -1,0 +1,8 @@
+[UNORDERED_START]
+Add jsr:@std/testing@1.0.0
+Add npm:preact@10.19.6
+Download http://127.0.0.1:4250/@std/testing/1.0.0/bdd.ts
+Download http://127.0.0.1:4250/@std/testing/1.0.0/types.ts
+Download http://localhost:4260/preact
+Download http://localhost:4260/preact/preact-10.19.6.tgz
+[UNORDERED_END]

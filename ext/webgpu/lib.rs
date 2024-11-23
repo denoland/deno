@@ -2,7 +2,6 @@
 #![cfg(not(target_arch = "wasm32"))]
 #![warn(unsafe_op_in_unsafe_fn)]
 
-use deno_core::error::AnyError;
 use deno_core::op2;
 use deno_core::OpState;
 use deno_core::Resource;
@@ -16,7 +15,6 @@ use std::rc::Rc;
 pub use wgpu_core;
 pub use wgpu_types;
 
-use error::DomExceptionOperationError;
 use error::WebGpuResult;
 
 pub const UNSTABLE_FEATURE_NAME: &str = "webgpu";
@@ -44,7 +42,7 @@ mod macros {
         #[cfg(all(not(target_arch = "wasm32"), windows))]
         wgpu_types::Backend::Dx12 => $($c)*.$method::<wgpu_core::api::Dx12> $params,
         #[cfg(any(
-            all(unix, not(target_os = "macos"), not(target_os = "ios")),
+            all(not(target_os = "macos"), not(target_os = "ios")),
             feature = "angle",
             target_arch = "wasm32"
         ))]
@@ -84,6 +82,18 @@ pub mod sampler;
 pub mod shader;
 pub mod surface;
 pub mod texture;
+
+#[derive(Debug, thiserror::Error)]
+pub enum InitError {
+  #[error(transparent)]
+  Resource(deno_core::error::AnyError),
+  #[error(transparent)]
+  InvalidAdapter(wgpu_core::instance::InvalidAdapter),
+  #[error(transparent)]
+  RequestDevice(wgpu_core::instance::RequestDeviceError),
+  #[error(transparent)]
+  InvalidDevice(wgpu_core::device::InvalidDevice),
+}
 
 pub type Instance = std::sync::Arc<wgpu_core::global::Global>;
 
@@ -382,7 +392,7 @@ pub struct GpuAdapterRes {
   rid: ResourceId,
   limits: wgpu_types::Limits,
   features: Vec<&'static str>,
-  is_software: bool,
+  is_fallback: bool,
 }
 
 #[derive(Serialize)]
@@ -392,7 +402,6 @@ pub struct GpuDeviceRes {
   queue_rid: ResourceId,
   limits: wgpu_types::Limits,
   features: Vec<&'static str>,
-  is_software: bool,
 }
 
 #[op2]
@@ -401,15 +410,8 @@ pub fn op_webgpu_request_adapter(
   state: Rc<RefCell<OpState>>,
   #[serde] power_preference: Option<wgpu_types::PowerPreference>,
   force_fallback_adapter: bool,
-) -> Result<GpuAdapterResOrErr, AnyError> {
+) -> Result<GpuAdapterResOrErr, InitError> {
   let mut state = state.borrow_mut();
-
-  // TODO(bartlomieju): replace with `state.feature_checker.check_or_exit`
-  // once we phase out `check_or_exit_with_legacy_fallback`
-  state.feature_checker.check_or_exit_with_legacy_fallback(
-    UNSTABLE_FEATURE_NAME,
-    "navigator.gpu.requestAdapter",
-  );
 
   let backends = std::env::var("DENO_WEBGPU_BACKEND").map_or_else(
     |_| wgpu_types::Backends::all(),
@@ -449,10 +451,11 @@ pub fn op_webgpu_request_adapter(
     }
   };
   let adapter_features =
-    gfx_select!(adapter => instance.adapter_features(adapter))?;
+    gfx_select!(adapter => instance.adapter_features(adapter))
+      .map_err(InitError::InvalidAdapter)?;
   let features = deserialize_features(&adapter_features);
-  let adapter_limits =
-    gfx_select!(adapter => instance.adapter_limits(adapter))?;
+  let adapter_limits = gfx_select!(adapter => instance.adapter_limits(adapter))
+    .map_err(InitError::InvalidAdapter)?;
 
   let instance = instance.clone();
 
@@ -462,7 +465,8 @@ pub fn op_webgpu_request_adapter(
     rid,
     features,
     limits: adapter_limits,
-    is_software: false,
+    // TODO(lucacasonato): report correctly from wgpu
+    is_fallback: false,
   }))
 }
 
@@ -670,10 +674,12 @@ pub fn op_webgpu_request_device(
   #[string] label: String,
   #[serde] required_features: GpuRequiredFeatures,
   #[serde] required_limits: Option<wgpu_types::Limits>,
-) -> Result<GpuDeviceRes, AnyError> {
+) -> Result<GpuDeviceRes, InitError> {
   let mut state = state.borrow_mut();
-  let adapter_resource =
-    state.resource_table.take::<WebGpuAdapter>(adapter_rid)?;
+  let adapter_resource = state
+    .resource_table
+    .take::<WebGpuAdapter>(adapter_rid)
+    .map_err(InitError::Resource)?;
   let adapter = adapter_resource.1;
   let instance = state.borrow::<Instance>();
 
@@ -692,13 +698,14 @@ pub fn op_webgpu_request_device(
   ));
   adapter_resource.close();
   if let Some(err) = maybe_err {
-    return Err(DomExceptionOperationError::new(&err.to_string()).into());
+    return Err(InitError::RequestDevice(err));
   }
 
-  let device_features =
-    gfx_select!(device => instance.device_features(device))?;
+  let device_features = gfx_select!(device => instance.device_features(device))
+    .map_err(InitError::InvalidDevice)?;
   let features = deserialize_features(&device_features);
-  let limits = gfx_select!(device => instance.device_limits(device))?;
+  let limits = gfx_select!(device => instance.device_limits(device))
+    .map_err(InitError::InvalidDevice)?;
 
   let instance = instance.clone();
   let instance2 = instance.clone();
@@ -712,8 +719,6 @@ pub fn op_webgpu_request_device(
     queue_rid,
     features,
     limits,
-    // TODO(lucacasonato): report correctly from wgpu
-    is_software: false,
   })
 }
 
@@ -731,15 +736,17 @@ pub struct GPUAdapterInfo {
 pub fn op_webgpu_request_adapter_info(
   state: Rc<RefCell<OpState>>,
   #[smi] adapter_rid: ResourceId,
-) -> Result<GPUAdapterInfo, AnyError> {
-  let mut state = state.borrow_mut();
-  let adapter_resource =
-    state.resource_table.take::<WebGpuAdapter>(adapter_rid)?;
+) -> Result<GPUAdapterInfo, InitError> {
+  let state = state.borrow_mut();
+  let adapter_resource = state
+    .resource_table
+    .get::<WebGpuAdapter>(adapter_rid)
+    .map_err(InitError::Resource)?;
   let adapter = adapter_resource.1;
   let instance = state.borrow::<Instance>();
 
-  let info = gfx_select!(adapter => instance.adapter_get_info(adapter))?;
-  adapter_resource.close();
+  let info = gfx_select!(adapter => instance.adapter_get_info(adapter))
+    .map_err(InitError::InvalidAdapter)?;
 
   Ok(GPUAdapterInfo {
     vendor: info.vendor.to_string(),
@@ -780,9 +787,11 @@ impl From<GpuQueryType> for wgpu_types::QueryType {
 pub fn op_webgpu_create_query_set(
   state: &mut OpState,
   #[serde] args: CreateQuerySetArgs,
-) -> Result<WebGpuResult, AnyError> {
-  let device_resource =
-    state.resource_table.get::<WebGpuDevice>(args.device_rid)?;
+) -> Result<WebGpuResult, InitError> {
+  let device_resource = state
+    .resource_table
+    .get::<WebGpuDevice>(args.device_rid)
+    .map_err(InitError::Resource)?;
   let device = device_resource.1;
   let instance = state.borrow::<Instance>();
 

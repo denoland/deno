@@ -6,6 +6,11 @@ import {
   findSourceMap,
   isBuiltin,
   Module,
+  // @ts-ignore Our internal @types/node is at v18.16.19 which predates
+  // this change. Updating it is difficult due to different types in Node
+  // for `import.meta.filename` and `import.meta.dirname` that Deno
+  // provides.
+  register,
 } from "node:module";
 import { assert, assertEquals } from "@std/assert";
 import process from "node:process";
@@ -69,7 +74,7 @@ Deno.test("Built-in Node modules have `node:` prefix", () => {
     createRequire();
   } catch (e) {
     thrown = true;
-    const stackLines = e.stack.split("\n");
+    const stackLines = (e as Error).stack!.split("\n");
     // Assert that built-in node modules have `node:<mod_name>` specifiers.
     assert(stackLines.some((line: string) => line.includes("(node:module:")));
   }
@@ -98,4 +103,9 @@ Deno.test("[node/module builtinModules] has 'module' in builtins", () => {
 // https://github.com/denoland/deno/issues/18666
 Deno.test("[node/module findSourceMap] is a function", () => {
   assertEquals(findSourceMap("foo"), undefined);
+});
+
+// https://github.com/denoland/deno/issues/24902
+Deno.test("[node/module register] is a function", () => {
+  assertEquals(register("foo"), undefined);
 });

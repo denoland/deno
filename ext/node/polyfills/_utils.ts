@@ -17,6 +17,7 @@ const {
 import { TextDecoder, TextEncoder } from "ext:deno_web/08_text_encoding.js";
 import { errorMap } from "ext:deno_node/internal_binding/uv.ts";
 import { codes } from "ext:deno_node/internal/error_codes.ts";
+import { ERR_NOT_IMPLEMENTED } from "ext:deno_node/internal/errors.ts";
 
 export type BinaryEncodings = "binary";
 
@@ -34,14 +35,14 @@ export type TextEncodings =
 export type Encodings = BinaryEncodings | TextEncodings;
 
 export function notImplemented(msg: string): never {
-  const message = msg ? `Not implemented: ${msg}` : "Not implemented";
-  throw new Error(message);
+  throw new ERR_NOT_IMPLEMENTED(msg);
 }
 
 export function warnNotImplemented(msg?: string) {
   const message = msg
     ? `Warning: Not implemented: ${msg}`
     : "Warning: Not implemented";
+  // deno-lint-ignore no-console
   console.warn(message);
 }
 

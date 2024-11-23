@@ -1,0 +1,4 @@
+{
+  "args": "run --quiet --reload 002_hello.ts",
+  "output": "002_hello.ts.out"
+}

@@ -7,7 +7,7 @@ const serveUrl = `ws://localhost:${servePort}/`;
 Deno.test({ permissions: "none" }, function websocketPermissionless() {
   assertThrows(
     () => new WebSocket("ws://localhost"),
-    Deno.errors.PermissionDenied,
+    Deno.errors.NotCapable,
   );
 });
 
@@ -453,7 +453,8 @@ Deno.test("invalid server", async () => {
   const { promise, resolve } = Promise.withResolvers<void>();
   const ws = new WebSocket("ws://localhost:2121");
   let err = false;
-  ws.onerror = () => {
+  ws.onerror = (e) => {
+    assert("error" in e);
     err = true;
   };
   ws.onclose = () => {
@@ -804,4 +805,19 @@ Deno.test("Close connection", async () => {
 
   await server.finished;
   conn.close();
+});
+
+Deno.test("send to a closed socket", async () => {
+  const { promise, resolve } = Promise.withResolvers<void>();
+  const ws = new WebSocket("ws://localhost:4242");
+  const blob = new Blob(["foo"]);
+  ws.onerror = () => fail();
+  ws.onopen = () => {
+    ws.close();
+    ws.send(blob);
+  };
+  ws.onclose = () => {
+    resolve();
+  };
+  await promise;
 });

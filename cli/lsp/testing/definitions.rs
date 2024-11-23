@@ -5,10 +5,12 @@ use super::lsp_custom::TestData;
 
 use crate::lsp::client::TestingNotification;
 use crate::lsp::logging::lsp_warn;
+use crate::lsp::urls::url_to_uri;
 use crate::tools::test::TestDescription;
 use crate::tools::test::TestStepDescription;
 use crate::util::checksum;
 
+use deno_core::error::AnyError;
 use deno_core::ModuleSpecifier;
 use lsp::Range;
 use std::collections::HashMap;
@@ -143,21 +145,23 @@ impl TestModule {
   pub fn as_replace_notification(
     &self,
     maybe_root_uri: Option<&ModuleSpecifier>,
-  ) -> TestingNotification {
+  ) -> Result<TestingNotification, AnyError> {
     let label = self.label(maybe_root_uri);
-    TestingNotification::Module(lsp_custom::TestModuleNotificationParams {
-      text_document: lsp::TextDocumentIdentifier {
-        uri: self.specifier.clone(),
+    Ok(TestingNotification::Module(
+      lsp_custom::TestModuleNotificationParams {
+        text_document: lsp::TextDocumentIdentifier {
+          uri: url_to_uri(&self.specifier)?,
+        },
+        kind: lsp_custom::TestModuleNotificationKind::Replace,
+        label,
+        tests: self
+          .defs
+          .iter()
+          .filter(|(_, def)| def.parent_id.is_none())
+          .map(|(id, _)| self.get_test_data(id))
+          .collect(),
       },
-      kind: lsp_custom::TestModuleNotificationKind::Replace,
-      label,
-      tests: self
-        .defs
-        .iter()
-        .filter(|(_, def)| def.parent_id.is_none())
-        .map(|(id, _)| self.get_test_data(id))
-        .collect(),
-    })
+    ))
   }
 
   pub fn label(&self, maybe_root_uri: Option<&ModuleSpecifier>) -> String {

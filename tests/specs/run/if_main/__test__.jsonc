@@ -1,0 +1,4 @@
+{
+  "args": "run --quiet --reload if_main.ts",
+  "output": "if_main.ts.out"
+}

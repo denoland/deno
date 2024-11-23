@@ -1,0 +1,5 @@
+{
+  "tempDir": true,
+  "args": "run --allow-read --node-modules-dir=none main.ts",
+  "output": "main.out"
+}

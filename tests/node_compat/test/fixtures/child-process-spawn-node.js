@@ -1,7 +1,6 @@
 const assert = require("assert");
-// TODO(kt3k): Uncomment this when util.debuglog is added
-// const debug = require('util').debuglog('test');
-const debug = console.log;
+const debug = require('util').debuglog('test');
+const process = require("process");
 
 function onmessage(m) {
   debug("CHILD got message:", m);

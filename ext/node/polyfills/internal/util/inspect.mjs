@@ -1,4 +1,4 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 // Copyright Joyent, Inc. and other Node contributors.
 //
 // Permission is hereby granted, free of charge, to any person obtaining a
@@ -565,6 +565,19 @@ export function stripVTControlCharacters(str) {
 
 export function styleText(format, text) {
   validateString(text, "text");
+
+  if (Array.isArray(format)) {
+    for (let i = 0; i < format.length; i++) {
+      const item = format[i];
+      const formatCodes = inspect.colors[item];
+      if (formatCodes == null) {
+        validateOneOf(item, "format", Object.keys(inspect.colors));
+      }
+      text = `\u001b[${formatCodes[0]}m${text}\u001b[${formatCodes[1]}m`;
+    }
+    return text;
+  }
+
   const formatCodes = inspect.colors[format];
   if (formatCodes == null) {
     validateOneOf(format, "format", Object.keys(inspect.colors));

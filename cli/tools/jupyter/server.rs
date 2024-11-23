@@ -329,7 +329,12 @@ impl JupyterServer {
             })
             .collect();
 
-            (candidates, cursor_pos - prop_name.len())
+            if prop_name.len() > cursor_pos {
+              // TODO(bartlomieju): most likely not correct, but better than panicking because of sub with overflow
+              (candidates, cursor_pos)
+            } else {
+              (candidates, cursor_pos - prop_name.len())
+            }
           } else {
             // combine results of declarations and globalThis properties
             let mut candidates = get_expression_property_names(
@@ -349,7 +354,12 @@ impl JupyterServer {
             candidates.sort();
             candidates.dedup(); // make sure to sort first
 
-            (candidates, cursor_pos - expr.len())
+            if expr.len() > cursor_pos {
+              // TODO(bartlomieju): most likely not correct, but better than panicking because of sub with overflow
+              (candidates, cursor_pos)
+            } else {
+              (candidates, cursor_pos - expr.len())
+            }
           };
 
           connection
@@ -670,10 +680,10 @@ fn kernel_info() -> messaging::KernelInfoReply {
     status: ReplyStatus::Ok,
     protocol_version: "5.3".to_string(),
     implementation: "Deno kernel".to_string(),
-    implementation_version: crate::version::deno().to_string(),
+    implementation_version: crate::version::DENO_VERSION_INFO.deno.to_string(),
     language_info: messaging::LanguageInfo {
       name: "typescript".to_string(),
-      version: crate::version::TYPESCRIPT.to_string(),
+      version: crate::version::DENO_VERSION_INFO.typescript.to_string(),
       mimetype: "text/x.typescript".to_string(),
       file_extension: ".ts".to_string(),
       pygments_lexer: "typescript".to_string(),
@@ -683,7 +693,7 @@ fn kernel_info() -> messaging::KernelInfoReply {
     banner: "Welcome to Deno kernel".to_string(),
     help_links: vec![messaging::HelpLink {
       text: "Visit Deno manual".to_string(),
-      url: "https://deno.land/manual".to_string(),
+      url: "https://docs.deno.com".to_string(),
     }],
     debugger: false,
     error: None,

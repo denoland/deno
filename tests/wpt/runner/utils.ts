@@ -76,7 +76,10 @@ export function getManifest(): Manifest {
 
 /// WPT TEST EXPECTATIONS
 
-const EXPECTATION_PATH = join(ROOT_PATH, "./tests/wpt/runner/expectation.json");
+export const EXPECTATION_PATH = join(
+  ROOT_PATH,
+  "./tests/wpt/runner/expectation.json",
+);
 
 export interface Expectation {
   [key: string]: Expectation | boolean | string[] | { ignore: boolean };
@@ -87,9 +90,12 @@ export function getExpectation(): Expectation {
   return JSON.parse(expectationText);
 }
 
-export function saveExpectation(expectation: Expectation) {
+export function saveExpectation(
+  expectation: Expectation,
+  path: string = EXPECTATION_PATH,
+) {
   Deno.writeTextFileSync(
-    EXPECTATION_PATH,
+    path,
     JSON.stringify(expectation, undefined, "  ") + "\n",
   );
 }
@@ -132,6 +138,15 @@ export function runPy<T extends Omit<Deno.CommandOptions, "cwd">>(
     ...options,
     cwd: join(ROOT_PATH, "./tests/wpt/suite/"),
   }).spawn();
+}
+
+export async function runGitDiff(args: string[]): string {
+  await new Deno.Command("git", {
+    args: ["diff", ...args],
+    stdout: "inherit",
+    stderr: "inherit",
+    cwd: ROOT_PATH,
+  }).output();
 }
 
 export async function checkPy3Available() {

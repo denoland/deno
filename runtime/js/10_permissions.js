@@ -37,7 +37,7 @@ const illegalConstructorKey = Symbol("illegalConstructorKey");
  * @property {boolean} partial
  */
 
-/** @type {ReadonlyArray<"read" | "write" | "net" | "env" | "sys" | "run" | "ffi" | "hrtime">} */
+/** @type {ReadonlyArray<"read" | "write" | "net" | "env" | "sys" | "run" | "ffi">} */
 const permissionNames = [
   "read",
   "write",
@@ -46,7 +46,6 @@ const permissionNames = [
   "sys",
   "run",
   "ffi",
-  "hrtime",
 ];
 
 /**
@@ -96,7 +95,7 @@ class PermissionStatus extends EventTarget {
    */
   constructor(status = null, key = null) {
     if (key != illegalConstructorKey) {
-      throw new TypeError("Illegal constructor.");
+      throw new TypeError("Illegal constructor");
     }
     super();
     this.#status = status;
@@ -195,7 +194,7 @@ function formDescriptor(desc) {
 class Permissions {
   constructor(key = null) {
     if (key != illegalConstructorKey) {
-      throw new TypeError("Illegal constructor.");
+      throw new TypeError("Illegal constructor");
     }
   }
 
@@ -210,7 +209,7 @@ class Permissions {
   querySync(desc) {
     if (!isValidDescriptor(desc)) {
       throw new TypeError(
-        `The provided value "${desc?.name}" is not a valid permission name.`,
+        `The provided value "${desc?.name}" is not a valid permission name`,
       );
     }
 
@@ -231,7 +230,7 @@ class Permissions {
   revokeSync(desc) {
     if (!isValidDescriptor(desc)) {
       throw new TypeError(
-        `The provided value "${desc?.name}" is not a valid permission name.`,
+        `The provided value "${desc?.name}" is not a valid permission name`,
       );
     }
 
@@ -270,7 +269,13 @@ function serializePermissions(permissions) {
   if (typeof permissions == "object" && permissions != null) {
     const serializedPermissions = { __proto__: null };
     for (
-      const key of new SafeArrayIterator(["read", "write", "run", "ffi"])
+      const key of new SafeArrayIterator([
+        "read",
+        "write",
+        "run",
+        "ffi",
+        "import",
+      ])
     ) {
       if (ArrayIsArray(permissions[key])) {
         serializedPermissions[key] = ArrayPrototypeMap(
@@ -282,7 +287,7 @@ function serializePermissions(permissions) {
       }
     }
     for (
-      const key of new SafeArrayIterator(["env", "hrtime", "net", "sys"])
+      const key of new SafeArrayIterator(["env", "net", "sys"])
     ) {
       if (ArrayIsArray(permissions[key])) {
         serializedPermissions[key] = ArrayPrototypeSlice(permissions[key]);

@@ -1,8 +1,9 @@
 Check [WILDCARD]/bench_formatting.ts
-cpu: [WILDCARD]
-runtime: deno [WILDCARD] ([WILDCARD])
+    CPU | [WILDCARD]
+Runtime | Deno [WILDCARD] ([WILDCARD])
 
 [WILDCARD]/bench_formatting.ts
-benchmark      time (avg)        iter/s             (min … max)       p75       p99      p995
---------------------------------------------------------------- -----------------------------
-[WILDCARD] [WILDCARD] [WILDCARD]/iter[WILDCARD]([WILDCARD] … [WILDCARD]) [WILDCARD]
+
+benchmark   time/iter (avg)        iter/s      (min … max)           p75      p99     p995
+----------- ----------------------------- --------------------- --------------------------
+[WILDCARD] [WILDCARD] [WILDCARD] [WILDCARD] ([WILDCARD] … [WILDCARD]) [WILDCARD]

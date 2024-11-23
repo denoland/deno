@@ -23,6 +23,7 @@ use hyper_util::client::legacy::connect::Connected;
 use hyper_util::client::legacy::connect::Connection;
 use hyper_util::rt::TokioIo;
 use ipnet::IpNet;
+use percent_encoding::percent_decode_str;
 use tokio::net::TcpStream;
 use tokio_rustls::client::TlsStream;
 use tokio_rustls::TlsConnector;
@@ -96,7 +97,7 @@ pub(crate) fn from_env() -> Proxies {
   if env::var_os("REQUEST_METHOD").is_none() {
     if let Some(proxy) = parse_env_var("HTTP_PROXY", Filter::Http) {
       intercepts.push(proxy);
-    } else if let Some(proxy) = parse_env_var("http_proxy", Filter::Https) {
+    } else if let Some(proxy) = parse_env_var("http_proxy", Filter::Http) {
       intercepts.push(proxy);
     }
   }
@@ -192,10 +193,12 @@ impl Target {
 
     if let Some((userinfo, host_port)) = authority.as_str().split_once('@') {
       let (user, pass) = userinfo.split_once(':')?;
+      let user = percent_decode_str(user).decode_utf8_lossy();
+      let pass = percent_decode_str(pass).decode_utf8_lossy();
       if is_socks {
         socks_auth = Some((user.into(), pass.into()));
       } else {
-        http_auth = Some(basic_auth(user, Some(pass)));
+        http_auth = Some(basic_auth(&user, Some(&pass)));
       }
       builder = builder.authority(host_port);
     } else {
@@ -269,10 +272,10 @@ impl NoProxy {
   /// * If neither environment variable is set, `None` is returned
   /// * Entries are expected to be comma-separated (whitespace between entries is ignored)
   /// * IP addresses (both IPv4 and IPv6) are allowed, as are optional subnet masks (by adding /size,
-  /// for example "`192.168.1.0/24`").
+  ///   for example "`192.168.1.0/24`").
   /// * An entry "`*`" matches all hostnames (this is the only wildcard allowed)
   /// * Any other entry is considered a domain name (and may contain a leading dot, for example `google.com`
-  /// and `.google.com` are equivalent) and would match both that domain AND all subdomains.
+  ///   and `.google.com` are equivalent) and would match both that domain AND all subdomains.
   ///
   /// For example, if `"NO_PROXY=google.com, 192.168.1.0/24"` was set, all of the following would match
   /// (and therefore would bypass the proxy):
@@ -727,7 +730,14 @@ where
         }
       }
       Proxied::Socks(ref p) => p.connected(),
-      Proxied::SocksTls(ref p) => p.inner().get_ref().0.connected(),
+      Proxied::SocksTls(ref p) => {
+        let tunneled_tls = p.inner().get_ref();
+        if tunneled_tls.1.alpn_protocol() == Some(b"h2") {
+          tunneled_tls.0.connected().negotiated_h2()
+        } else {
+          tunneled_tls.0.connected()
+        }
+      }
     }
   }
 }
@@ -762,6 +772,16 @@ fn test_proxy_parse_from_env() {
       assert_eq!(dst, "http://127.0.0.1:6666");
       assert!(auth.is_some());
       assert!(auth.unwrap().is_sensitive());
+    }
+    _ => panic!("bad target"),
+  }
+
+  // percent encoded user info
+  match parse("us%2Fer:p%2Fass@127.0.0.1:6666") {
+    Target::Http { dst, auth } => {
+      assert_eq!(dst, "http://127.0.0.1:6666");
+      let auth = auth.unwrap();
+      assert_eq!(auth.to_str().unwrap(), "Basic dXMvZXI6cC9hc3M=");
     }
     _ => panic!("bad target"),
   }

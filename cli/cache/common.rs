@@ -12,7 +12,7 @@ impl FastInsecureHasher {
 
   pub fn new_deno_versioned() -> Self {
     let mut hasher = Self::new_without_deno_version();
-    hasher.write_str(crate::version::deno());
+    hasher.write_str(crate::version::DENO_VERSION_INFO.deno);
     hasher
   }
 

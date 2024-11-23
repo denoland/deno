@@ -1,9 +1,0 @@
-⚠️ Warning: `deno vendor` is deprecated and will be removed in Deno 2.0.
-Add `"vendor": true` to your `deno.json` or use the `--vendor` flag instead.
-Download http://localhost:4545/vendor/dynamic_non_existent.ts
-Download http://localhost:4545/vendor/non-existent.js
-Ignoring: Dynamic import not found "http://localhost:4545/vendor/non-existent.js".
-    at http://localhost:4545/vendor/dynamic_non_existent.ts:4:16
-Vendored 1 module into vendor/ directory.
-
-To use vendored modules, specify the `--import-map vendor/import_map.json` flag when invoking Deno subcommands or add an `"importMap": "<path_to_vendored_import_map>"` entry to a deno.json file.

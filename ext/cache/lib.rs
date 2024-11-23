@@ -7,7 +7,6 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 use deno_core::error::type_error;
-use deno_core::error::AnyError;
 use deno_core::op2;
 use deno_core::serde::Deserialize;
 use deno_core::serde::Serialize;
@@ -19,8 +18,24 @@ use deno_core::ResourceId;
 mod sqlite;
 pub use sqlite::SqliteBackedCache;
 
+#[derive(Debug, thiserror::Error)]
+pub enum CacheError {
+  #[error(transparent)]
+  Sqlite(#[from] rusqlite::Error),
+  #[error(transparent)]
+  JoinError(#[from] tokio::task::JoinError),
+  #[error(transparent)]
+  Resource(deno_core::error::AnyError),
+  #[error(transparent)]
+  Other(deno_core::error::AnyError),
+  #[error("{0}")]
+  Io(#[from] std::io::Error),
+}
+
 #[derive(Clone)]
-pub struct CreateCache<C: Cache + 'static>(pub Arc<dyn Fn() -> C>);
+pub struct CreateCache<C: Cache + 'static>(
+  pub Arc<dyn Fn() -> Result<C, CacheError>>,
+);
 
 deno_core::extension!(deno_cache,
   deps = [ deno_webidl, deno_web, deno_url, deno_fetch ],
@@ -92,26 +107,31 @@ pub struct CacheDeleteRequest {
 pub trait Cache: Clone + 'static {
   type CacheMatchResourceType: Resource;
 
-  async fn storage_open(&self, cache_name: String) -> Result<i64, AnyError>;
-  async fn storage_has(&self, cache_name: String) -> Result<bool, AnyError>;
-  async fn storage_delete(&self, cache_name: String) -> Result<bool, AnyError>;
+  async fn storage_open(&self, cache_name: String) -> Result<i64, CacheError>;
+  async fn storage_has(&self, cache_name: String) -> Result<bool, CacheError>;
+  async fn storage_delete(
+    &self,
+    cache_name: String,
+  ) -> Result<bool, CacheError>;
 
   /// Put a resource into the cache.
   async fn put(
     &self,
     request_response: CachePutRequest,
     resource: Option<Rc<dyn Resource>>,
-  ) -> Result<(), AnyError>;
+  ) -> Result<(), CacheError>;
 
   async fn r#match(
     &self,
     request: CacheMatchRequest,
   ) -> Result<
     Option<(CacheMatchResponseMeta, Option<Self::CacheMatchResourceType>)>,
-    AnyError,
+    CacheError,
   >;
-  async fn delete(&self, request: CacheDeleteRequest)
-    -> Result<bool, AnyError>;
+  async fn delete(
+    &self,
+    request: CacheDeleteRequest,
+  ) -> Result<bool, CacheError>;
 }
 
 #[op2(async)]
@@ -119,7 +139,7 @@ pub trait Cache: Clone + 'static {
 pub async fn op_cache_storage_open<CA>(
   state: Rc<RefCell<OpState>>,
   #[string] cache_name: String,
-) -> Result<i64, AnyError>
+) -> Result<i64, CacheError>
 where
   CA: Cache,
 {
@@ -131,7 +151,7 @@ where
 pub async fn op_cache_storage_has<CA>(
   state: Rc<RefCell<OpState>>,
   #[string] cache_name: String,
-) -> Result<bool, AnyError>
+) -> Result<bool, CacheError>
 where
   CA: Cache,
 {
@@ -143,7 +163,7 @@ where
 pub async fn op_cache_storage_delete<CA>(
   state: Rc<RefCell<OpState>>,
   #[string] cache_name: String,
-) -> Result<bool, AnyError>
+) -> Result<bool, CacheError>
 where
   CA: Cache,
 {
@@ -155,13 +175,19 @@ where
 pub async fn op_cache_put<CA>(
   state: Rc<RefCell<OpState>>,
   #[serde] request_response: CachePutRequest,
-) -> Result<(), AnyError>
+) -> Result<(), CacheError>
 where
   CA: Cache,
 {
   let cache = get_cache::<CA>(&state)?;
   let resource = match request_response.response_rid {
-    Some(rid) => Some(state.borrow_mut().resource_table.take_any(rid)?),
+    Some(rid) => Some(
+      state
+        .borrow_mut()
+        .resource_table
+        .take_any(rid)
+        .map_err(CacheError::Resource)?,
+    ),
     None => None,
   };
   cache.put(request_response, resource).await
@@ -172,7 +198,7 @@ where
 pub async fn op_cache_match<CA>(
   state: Rc<RefCell<OpState>>,
   #[serde] request: CacheMatchRequest,
-) -> Result<Option<CacheMatchResponse>, AnyError>
+) -> Result<Option<CacheMatchResponse>, CacheError>
 where
   CA: Cache,
 {
@@ -191,7 +217,7 @@ where
 pub async fn op_cache_delete<CA>(
   state: Rc<RefCell<OpState>>,
   #[serde] request: CacheDeleteRequest,
-) -> Result<bool, AnyError>
+) -> Result<bool, CacheError>
 where
   CA: Cache,
 {
@@ -199,7 +225,7 @@ where
   cache.delete(request).await
 }
 
-pub fn get_cache<CA>(state: &Rc<RefCell<OpState>>) -> Result<CA, AnyError>
+pub fn get_cache<CA>(state: &Rc<RefCell<OpState>>) -> Result<CA, CacheError>
 where
   CA: Cache,
 {
@@ -207,11 +233,13 @@ where
   if let Some(cache) = state.try_borrow::<CA>() {
     Ok(cache.clone())
   } else if let Some(create_cache) = state.try_borrow::<CreateCache<CA>>() {
-    let cache = create_cache.0();
+    let cache = create_cache.0()?;
     state.put(cache);
     Ok(state.borrow::<CA>().clone())
   } else {
-    Err(type_error("CacheStorage is not available in this context."))
+    Err(CacheError::Other(type_error(
+      "CacheStorage is not available in this context",
+    )))
   }
 }
 

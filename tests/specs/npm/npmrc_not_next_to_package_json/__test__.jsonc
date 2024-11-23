@@ -1,11 +1,10 @@
 {
   "envs": {
-    "DENO_FUTURE": "1",
     "USERPROFILE": "$DENO_DIR",
     "HOME": "$DENO_DIR"
   },
   "tempDir": true,
-  "args": "install -A -L debug",
+  "args": "install -L debug",
   "output": "main.out",
   "cwd": "subdir"
 }

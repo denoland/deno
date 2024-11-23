@@ -1,0 +1,7 @@
+Check [WILDCARD]/collect/include/test.ts
+Check [WILDCARD]/collect/test.ts
+running 0 tests from [WILDCARD]/collect/include/test.ts
+running 0 tests from [WILDCARD]/collect/test.ts
+
+ok | 0 passed | 0 failed ([WILDCARD])
+

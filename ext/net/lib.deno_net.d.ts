@@ -35,15 +35,6 @@ declare namespace Deno {
     /** Return the address of the `Listener`. */
     readonly addr: A;
 
-    /**
-     * Return the rid of the `Listener`.
-     *
-     * @deprecated This will be removed in Deno 2.0. See the
-     * {@link https://docs.deno.com/runtime/manual/advanced/migrate_deprecations | Deno 1.x to 2.x Migration Guide}
-     * for migration instructions.
-     */
-    readonly rid: number;
-
     [Symbol.asyncIterator](): AsyncIterableIterator<T>;
 
     /**
@@ -77,20 +68,61 @@ declare namespace Deno {
   export type UnixListener = Listener<UnixConn, UnixAddr>;
 
   /** @category Network */
-  export interface Conn<A extends Addr = Addr>
-    extends Reader, Writer, Closer, Disposable {
+  export interface Conn<A extends Addr = Addr> extends Disposable {
+    /** Read the incoming data from the connection into an array buffer (`p`).
+     *
+     * Resolves to either the number of bytes read during the operation or EOF
+     * (`null`) if there was nothing more to read.
+     *
+     * It is possible for a read to successfully return with `0` bytes. This
+     * does not indicate EOF.
+     *
+     * **It is not guaranteed that the full buffer will be read in a single
+     * call.**
+     *
+     * ```ts
+     * // If the text "hello world" is received by the client:
+     * const conn = await Deno.connect({ hostname: "example.com", port: 80 });
+     * const buf = new Uint8Array(100);
+     * const numberOfBytesRead = await conn.read(buf); // 11 bytes
+     * const text = new TextDecoder().decode(buf);  // "hello world"
+     * ```
+     *
+     * @category I/O
+     */
+    read(p: Uint8Array): Promise<number | null>;
+    /** Write the contents of the array buffer (`p`) to the connection.
+     *
+     * Resolves to the number of bytes written.
+     *
+     * **It is not guaranteed that the full buffer will be written in a single
+     * call.**
+     *
+     * ```ts
+     * const conn = await Deno.connect({ hostname: "example.com", port: 80 });
+     * const encoder = new TextEncoder();
+     * const data = encoder.encode("Hello world");
+     * const bytesWritten = await conn.write(data); // 11
+     * ```
+     *
+     * @category I/O
+     */
+    write(p: Uint8Array): Promise<number>;
+    /** Closes the connection, freeing the resource.
+     *
+     * ```ts
+     * const conn = await Deno.connect({ hostname: "example.com", port: 80 });
+     *
+     * // ...
+     *
+     * conn.close();
+     * ```
+     */
+    close(): void;
     /** The local address of the connection. */
     readonly localAddr: A;
     /** The remote address of the connection. */
     readonly remoteAddr: A;
-    /**
-     * The resource ID of the connection.
-     *
-     * @deprecated This will be removed in Deno 2.0. See the
-     * {@link https://docs.deno.com/runtime/manual/advanced/migrate_deprecations | Deno 1.x to 2.x Migration Guide}
-     * for migration instructions.
-     */
-    readonly rid: number;
     /** Shuts down (`shutdown(2)`) the write side of the connection. Most
      * callers should just use `close()`. */
     closeWrite(): Promise<void>;
@@ -123,14 +155,6 @@ declare namespace Deno {
      * not happened yet. Calling this method is optional; the TLS handshake
      * will be completed automatically as soon as data is sent or received. */
     handshake(): Promise<TlsHandshakeInfo>;
-    /**
-     * The resource ID of the connection.
-     *
-     * @deprecated This will be removed in Deno 2.0. See the
-     * {@link https://docs.deno.com/runtime/manual/advanced/migrate_deprecations | Deno 1.x to 2.x Migration Guide}
-     * for migration instructions.
-     */
-    readonly rid: number;
   }
 
   /** @category Network */
@@ -199,16 +223,6 @@ declare namespace Deno {
     options: UnixListenOptions & { transport: "unix" },
   ): UnixListener;
 
-  /** Provides TLS certified keys, ie: a key that has been certified by a trusted certificate authority.
-   * A certified key generally consists of a private key and certificate part.
-   *
-   * @category Network
-   */
-  export type TlsCertifiedKeyOptions =
-    | TlsCertifiedKeyPem
-    | TlsCertifiedKeyFromFile
-    | TlsCertifiedKeyConnectTls;
-
   /**
    * Provides certified key material from strings. The key material is provided in
    * `PEM`-format (Privacy Enhanced Mail, https://www.rfc-editor.org/rfc/rfc1422) which can be identified by having
@@ -233,59 +247,6 @@ declare namespace Deno {
     key: string;
     /** Certificate chain in `PEM` format. */
     cert: string;
-  }
-
-  /**
-   * @deprecated This will be removed in Deno 2.0. See the
-   * {@link https://docs.deno.com/runtime/manual/advanced/migrate_deprecations | Deno 1.x to 2.x Migration Guide}
-   * for migration instructions.
-   *
-   * @category Network
-   */
-  export interface TlsCertifiedKeyFromFile {
-    /** Path to a file containing a PEM formatted CA certificate. Requires
-     * `--allow-read`.
-     *
-     * @tags allow-read
-     * @deprecated This will be removed in Deno 2.0. See the
-     * {@link https://docs.deno.com/runtime/manual/advanced/migrate_deprecations | Deno 1.x to 2.x Migration Guide}
-     * for migration instructions.
-     */
-    certFile: string;
-    /** Path to a file containing a private key file. Requires `--allow-read`.
-     *
-     * @tags allow-read
-     * @deprecated This will be removed in Deno 2.0. See the
-     * {@link https://docs.deno.com/runtime/manual/advanced/migrate_deprecations | Deno 1.x to 2.x Migration Guide}
-     * for migration instructions.
-     */
-    keyFile: string;
-  }
-
-  /**
-   * @deprecated This will be removed in Deno 2.0. See the
-   * {@link https://docs.deno.com/runtime/manual/advanced/migrate_deprecations | Deno 1.x to 2.x Migration Guide}
-   * for migration instructions.
-   *
-   * @category Network
-   */
-  export interface TlsCertifiedKeyConnectTls {
-    /**
-     * Certificate chain in `PEM` format.
-     *
-     * @deprecated This will be removed in Deno 2.0. See the
-     * {@link https://docs.deno.com/runtime/manual/advanced/migrate_deprecations | Deno 1.x to 2.x Migration Guide}
-     * for migration instructions.
-     */
-    certChain: string;
-    /**
-     * Private key in `PEM` format. RSA, EC, and PKCS8-format keys are supported.
-     *
-     * @deprecated This will be removed in Deno 2.0. See the
-     * {@link https://docs.deno.com/runtime/manual/advanced/migrate_deprecations | Deno 1.x to 2.x Migration Guide}
-     * for migration instructions.
-     */
-    privateKey: string;
   }
 
   /** @category Network */
@@ -316,7 +277,7 @@ declare namespace Deno {
    * @category Network
    */
   export function listenTls(
-    options: ListenTlsOptions & TlsCertifiedKeyOptions,
+    options: ListenTlsOptions & TlsCertifiedKeyPem,
   ): TlsListener;
 
   /** @category Network */
@@ -359,14 +320,6 @@ declare namespace Deno {
     setNoDelay(noDelay?: boolean): void;
     /** Enable/disable keep-alive functionality. */
     setKeepAlive(keepAlive?: boolean): void;
-    /**
-     * The resource ID of the connection.
-     *
-     * @deprecated This will be removed in Deno 2.0. See the
-     * {@link https://docs.deno.com/runtime/manual/advanced/migrate_deprecations | Deno 1.x to 2.x Migration Guide}
-     * for migration instructions.
-     */
-    readonly rid: number;
   }
 
   /** @category Network */
@@ -376,16 +329,7 @@ declare namespace Deno {
   }
 
   /** @category Network */
-  export interface UnixConn extends Conn<UnixAddr> {
-    /**
-     * The resource ID of the connection.
-     *
-     * @deprecated This will be removed in Deno 2.0. See the
-     * {@link https://docs.deno.com/runtime/manual/advanced/migrate_deprecations | Deno 1.x to 2.x Migration Guide}
-     * for migration instructions.
-     */
-    readonly rid: number;
-  }
+  export interface UnixConn extends Conn<UnixAddr> {}
 
   /** Connects to the hostname (default is "127.0.0.1") and port on the named
    * transport (default is "tcp"), and resolves to the connection (`Conn`).
@@ -414,16 +358,6 @@ declare namespace Deno {
      *
      * @default {"127.0.0.1"} */
     hostname?: string;
-    /** Path to a file containing a PEM formatted list of root certificates that will
-     * be used in addition to the default root certificates to verify the peer's certificate. Requires
-     * `--allow-read`.
-     *
-     * @tags allow-read
-     * @deprecated This will be removed in Deno 2.0. See the
-     * {@link https://docs.deno.com/runtime/manual/advanced/migrate_deprecations | Deno 1.x to 2.x Migration Guide}
-     * for migration instructions.
-     */
-    certFile?: string;
     /** A list of root certificates that will be used in addition to the
      * default root certificates to verify the peer's certificate.
      *
@@ -437,9 +371,14 @@ declare namespace Deno {
   }
 
   /** Establishes a secure connection over TLS (transport layer security) using
-   * an optional cert file, hostname (default is "127.0.0.1") and port.  The
-   * cert file is optional and if not included Mozilla's root certificates will
-   * be used (see also https://github.com/ctz/webpki-roots for specifics)
+   * an optional list of CA certs, hostname (default is "127.0.0.1") and port.
+   *
+   * The CA cert list is optional and if not included Mozilla's root
+   * certificates will be used (see also https://github.com/ctz/webpki-roots for
+   * specifics).
+   *
+   * Mutual TLS (mTLS or client certificates) are supported by providing a
+   * `key` and `cert` in the options as PEM-encoded strings.
    *
    * ```ts
    * const caCert = await Deno.readTextFile("./certs/my_custom_root_CA.pem");
@@ -447,28 +386,10 @@ declare namespace Deno {
    * const conn2 = await Deno.connectTls({ caCerts: [caCert], hostname: "192.0.2.1", port: 80 });
    * const conn3 = await Deno.connectTls({ hostname: "[2001:db8::1]", port: 80 });
    * const conn4 = await Deno.connectTls({ caCerts: [caCert], hostname: "golang.org", port: 80});
-   * ```
    *
-   * Requires `allow-net` permission.
-   *
-   * @tags allow-net
-   * @category Network
-   */
-  export function connectTls(options: ConnectTlsOptions): Promise<TlsConn>;
-
-  /** Establishes a secure connection over TLS (transport layer security) using
-   * an optional cert file, client certificate, hostname (default is "127.0.0.1") and
-   * port.  The cert file is optional and if not included Mozilla's root certificates will
-   * be used (see also https://github.com/ctz/webpki-roots for specifics)
-   *
-   * ```ts
-   * const caCert = await Deno.readTextFile("./certs/my_custom_root_CA.pem");
    * const key = "----BEGIN PRIVATE KEY----...";
    * const cert = "----BEGIN CERTIFICATE----...";
-   * const conn1 = await Deno.connectTls({ port: 80, key, cert });
-   * const conn2 = await Deno.connectTls({ caCerts: [caCert], hostname: "192.0.2.1", port: 80, key, cert });
-   * const conn3 = await Deno.connectTls({ hostname: "[2001:db8::1]", port: 80, key, cert });
-   * const conn4 = await Deno.connectTls({ caCerts: [caCert], hostname: "golang.org", port: 80, key, cert });
+   * const conn5 = await Deno.connectTls({ port: 80, key, cert });
    * ```
    *
    * Requires `allow-net` permission.
@@ -477,7 +398,7 @@ declare namespace Deno {
    * @category Network
    */
   export function connectTls(
-    options: ConnectTlsOptions & TlsCertifiedKeyOptions,
+    options: ConnectTlsOptions | (ConnectTlsOptions & TlsCertifiedKeyPem),
   ): Promise<TlsConn>;
 
   /** @category Network */
@@ -529,21 +450,5 @@ declare namespace Deno {
     options?: StartTlsOptions,
   ): Promise<TlsConn>;
 
-  /** Shutdown socket send operations.
-   *
-   * Matches behavior of POSIX shutdown(3).
-   *
-   * ```ts
-   * const listener = Deno.listen({ port: 80 });
-   * const conn = await listener.accept();
-   * Deno.shutdown(conn.rid);
-   * ```
-   *
-   * @deprecated This will be removed in Deno 2.0. See the
-   * {@link https://docs.deno.com/runtime/manual/advanced/migrate_deprecations | Deno 1.x to 2.x Migration Guide}
-   * for migration instructions.
-   *
-   * @category Network
-   */
-  export function shutdown(rid: number): Promise<void>;
+  export {}; // only export exports
 }

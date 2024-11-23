@@ -1,0 +1,12 @@
+error[no-unused-vars]: `React` is never used
+ --> [WILDCARD]mod.tsx:1:7
+  | 
+1 | const React = { createElement() {} };
+  |       ^^^^^
+  = hint: If this is intentional, prefix it with an underscore like `_React`
+
+  docs: https://lint.deno.land/rules/no-unused-vars
+
+
+Found 1 problem
+Checked 1 file

@@ -1,5 +1,7 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
+// deno-lint-ignore-file no-console
+
 import * as net from "node:net";
 import { assert, assertEquals } from "@std/assert";
 import * as path from "@std/path";
@@ -77,6 +79,7 @@ Deno.test("[node/net] net.connect().unref() works", async () => {
     port: 0, // any available port will do
     handler: () => new Response("hello"),
     onListen: async ({ port, hostname }) => {
+      hostname = Deno.build.os === "windows" ? "localhost" : hostname;
       const { stdout, stderr } = await new Deno.Command(Deno.execPath(), {
         args: [
           "eval",
@@ -110,7 +113,7 @@ Deno.test({
       const s = new net.Server();
       s.listen(3000);
     } catch (e) {
-      assert(e instanceof Deno.errors.PermissionDenied);
+      assert(e instanceof Deno.errors.NotCapable);
     }
   },
 });
@@ -224,4 +227,23 @@ Deno.test("[node/net] BlockList doesn't leak resources", () => {
   const blockList = new net.BlockList();
   blockList.addAddress("1.1.1.1");
   assert(blockList.check("1.1.1.1"));
+});
+
+Deno.test("[node/net] net.Server can listen on the same port immediately after it's closed", async () => {
+  const serverClosed = Promise.withResolvers<void>();
+  const server = net.createServer();
+  server.on("error", (e) => {
+    console.error(e);
+  });
+  server.listen(0, () => {
+    // deno-lint-ignore no-explicit-any
+    const { port } = server.address() as any;
+    server.close();
+    server.listen(port, () => {
+      server.close(() => {
+        serverClosed.resolve();
+      });
+    });
+  });
+  await serverClosed.promise;
 });

@@ -1,9 +1,8 @@
 FROM mcr.microsoft.com/vscode/devcontainers/rust:1-bullseye
 
-# Install cmake and protobuf-compiler
+# Install cmake
 RUN apt-get update \
   && apt-get install -y cmake \
-  && apt-get install -y protobuf-compiler \
   && rm -rf /var/lib/apt/lists/*
 
 # Install Deno

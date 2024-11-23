@@ -1,25 +1,19 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 import { core, primordials } from "ext:core/mod.js";
-import { op_defer, op_now } from "ext:core/ops";
+import { op_defer } from "ext:core/ops";
 const {
-  Uint8Array,
-  Uint32Array,
   PromisePrototypeThen,
-  TypedArrayPrototypeGetBuffer,
   TypeError,
   indirectEval,
   ReflectApply,
 } = primordials;
+const {
+  getAsyncContext,
+  setAsyncContext,
+} = core;
 
 import * as webidl from "ext:deno_webidl/00_webidl.js";
-
-const hrU8 = new Uint8Array(8);
-const hr = new Uint32Array(TypedArrayPrototypeGetBuffer(hrU8));
-function opNow() {
-  op_now(hrU8);
-  return (hr[0] * 1000 + hr[1] / 1e6);
-}
 
 // ---------------------------------------------------------------------------
 
@@ -33,14 +27,16 @@ function checkThis(thisArg) {
  * Call a callback function immediately.
  */
 function setImmediate(callback, ...args) {
-  if (args.length > 0) {
-    const unboundCallback = callback;
-    callback = () => ReflectApply(unboundCallback, globalThis, args);
-  }
-
-  return core.queueImmediate(
-    callback,
-  );
+  const asyncContext = getAsyncContext();
+  return core.queueImmediate(() => {
+    const oldContext = getAsyncContext();
+    try {
+      setAsyncContext(asyncContext);
+      return ReflectApply(callback, globalThis, args);
+    } finally {
+      setAsyncContext(oldContext);
+    }
+  });
 }
 
 /**
@@ -53,10 +49,17 @@ function setTimeout(callback, timeout = 0, ...args) {
     const unboundCallback = webidl.converters.DOMString(callback);
     callback = () => indirectEval(unboundCallback);
   }
-  if (args.length > 0) {
-    const unboundCallback = callback;
-    callback = () => ReflectApply(unboundCallback, globalThis, args);
-  }
+  const unboundCallback = callback;
+  const asyncContext = getAsyncContext();
+  callback = () => {
+    const oldContext = getAsyncContext();
+    try {
+      setAsyncContext(asyncContext);
+      ReflectApply(unboundCallback, globalThis, args);
+    } finally {
+      setAsyncContext(oldContext);
+    }
+  };
   timeout = webidl.converters.long(timeout);
   return core.queueUserTimer(
     core.getTimerDepth() + 1,
@@ -75,10 +78,17 @@ function setInterval(callback, timeout = 0, ...args) {
     const unboundCallback = webidl.converters.DOMString(callback);
     callback = () => indirectEval(unboundCallback);
   }
-  if (args.length > 0) {
-    const unboundCallback = callback;
-    callback = () => ReflectApply(unboundCallback, globalThis, args);
-  }
+  const unboundCallback = callback;
+  const asyncContext = getAsyncContext();
+  callback = () => {
+    const oldContext = getAsyncContext(asyncContext);
+    try {
+      setAsyncContext(asyncContext);
+      ReflectApply(unboundCallback, globalThis, args);
+    } finally {
+      setAsyncContext(oldContext);
+    }
+  };
   timeout = webidl.converters.long(timeout);
   return core.queueUserTimer(
     core.getTimerDepth() + 1,
@@ -131,7 +141,6 @@ export {
   clearInterval,
   clearTimeout,
   defer,
-  opNow,
   refTimer,
   setImmediate,
   setInterval,

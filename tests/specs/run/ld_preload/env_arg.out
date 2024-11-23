@@ -1,0 +1,8 @@
+NotCapable: Requires --allow-run permissions to spawn subprocess with LD_PRELOAD environment variable. Alternatively, spawn with the environment variable unset.
+    [WILDCARD]
+  name: "NotCapable"
+}
+NotCapable: Requires --allow-run permissions to spawn subprocess with LD_PRELOAD environment variable. Alternatively, spawn with the environment variable unset.
+    [WILDCARD]
+  name: "NotCapable"
+}

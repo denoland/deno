@@ -1,9 +1,0 @@
-local: [WILDCARD]005_more_imports.ts
-type: TypeScript
-dependencies: 3 unique
-size: [WILDCARD]
-
-file://[WILDCARD]/005_more_imports.ts ([WILDCARD])
-└─┬ file://[WILDCARD]/subdir/mod1.ts ([WILDCARD])
-  └─┬ file://[WILDCARD]/subdir/subdir2/mod2.ts ([WILDCARD])
-    └── file://[WILDCARD]/subdir/print_hello.ts ([WILDCARD])

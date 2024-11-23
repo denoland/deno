@@ -140,7 +140,9 @@ impl Diagnostic {
   pub fn include_when_remote(&self) -> bool {
     /// TS6133: value is declared but its value is never read (noUnusedParameters and noUnusedLocals)
     const TS6133: u64 = 6133;
-    self.code != TS6133
+    /// TS4114: This member must have an 'override' modifier because it overrides a member in the base class 'X'.
+    const TS4114: u64 = 4114;
+    !matches!(self.code, TS6133 | TS4114)
   }
 
   fn fmt_category_and_code(&self, f: &mut fmt::Formatter) -> fmt::Result {
@@ -280,6 +282,17 @@ impl Diagnostics {
     Diagnostics(diagnostics)
   }
 
+  pub fn emit_warnings(&mut self) {
+    self.0.retain(|d| {
+      if d.category == DiagnosticCategory::Warning {
+        log::warn!("{}\n", d);
+        false
+      } else {
+        true
+      }
+    });
+  }
+
   /// Return a set of diagnostics where only the values where the predicate
   /// returns `true` are included.
   pub fn filter<P>(self, predicate: P) -> Self
@@ -310,7 +323,7 @@ impl Diagnostics {
             // todo(dsherret): use a short lived cache to prevent parsing
             // source maps so often
             if let Ok(source_map) =
-              SourceMap::from_slice(&fast_check_module.source_map)
+              SourceMap::from_slice(fast_check_module.source_map.as_bytes())
             {
               if let Some(start) = d.start.as_mut() {
                 let maybe_token = source_map

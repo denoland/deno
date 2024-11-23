@@ -26,6 +26,7 @@ const {
   Float32Array,
   Float64Array,
   FunctionPrototypeBind,
+  FunctionPrototypeCall,
   Int16Array,
   Int32Array,
   Int8Array,
@@ -77,6 +78,7 @@ const {
   StringPrototypeToWellFormed,
   Symbol,
   SymbolIterator,
+  SymbolAsyncIterator,
   SymbolToStringTag,
   TypedArrayPrototypeGetBuffer,
   TypedArrayPrototypeGetSymbolToStringTag,
@@ -95,7 +97,7 @@ function makeException(ErrorType, message, prefix, context) {
 
 function toNumber(value) {
   if (typeof value === "bigint") {
-    throw TypeError("Cannot convert a BigInt value to a number");
+    throw new TypeError("Cannot convert a BigInt value to a number");
   }
   return Number(value);
 }
@@ -712,7 +714,7 @@ function requiredArguments(length, required, prefix) {
   if (length < required) {
     const errMsg = `${prefix ? prefix + ": " : ""}${required} argument${
       required === 1 ? "" : "s"
-    } required, but only ${length} present.`;
+    } required, but only ${length} present`;
     throw new TypeError(errMsg);
   }
 }
@@ -753,6 +755,7 @@ function createDictionaryConverter(name, ...dictionaries) {
         defaultValues[member.key] = member.converter(idlMemberValue, {});
       } else {
         ObjectDefineProperty(defaultValues, member.key, {
+          __proto__: null,
           get() {
             return member.converter(idlMemberValue, member.defaultValue);
           },
@@ -817,7 +820,7 @@ function createDictionaryConverter(name, ...dictionaries) {
       } else if (member.required) {
         throw makeException(
           TypeError,
-          `can not be converted to '${name}' because '${key}' is required in '${name}'.`,
+          `can not be converted to '${name}' because '${key}' is required in '${name}'`,
           prefix,
           context,
         );
@@ -844,7 +847,7 @@ function createEnumConverter(name, values) {
       throw new TypeError(
         `${
           prefix ? prefix + ": " : ""
-        }The provided value '${S}' is not a valid enum value of type ${name}.`,
+        }The provided value '${S}' is not a valid enum value of type ${name}`,
       );
     }
 
@@ -919,12 +922,133 @@ function createSequenceConverter(converter) {
   };
 }
 
+function isAsyncIterable(obj) {
+  if (obj[SymbolAsyncIterator] === undefined) {
+    if (obj[SymbolIterator] === undefined) {
+      return false;
+    }
+  }
+
+  return true;
+}
+
+const AsyncIterable = Symbol("[[asyncIterable]]");
+
+function createAsyncIterableConverter(converter) {
+  return function (
+    V,
+    prefix = undefined,
+    context = undefined,
+    opts = { __proto__: null },
+  ) {
+    if (type(V) !== "Object") {
+      throw makeException(
+        TypeError,
+        "can not be converted to async iterable.",
+        prefix,
+        context,
+      );
+    }
+
+    let isAsync = true;
+    let method = V[SymbolAsyncIterator];
+    if (method === undefined) {
+      method = V[SymbolIterator];
+
+      if (method === undefined) {
+        throw makeException(
+          TypeError,
+          "is not iterable.",
+          prefix,
+          context,
+        );
+      }
+
+      isAsync = false;
+    }
+
+    return {
+      value: V,
+      [AsyncIterable]: AsyncIterable,
+      open(context) {
+        const iter = FunctionPrototypeCall(method, V);
+        if (type(iter) !== "Object") {
+          throw new TypeError(
+            `${context} could not be iterated because iterator method did not return object, but ${
+              type(iter)
+            }.`,
+          );
+        }
+
+        let asyncIterator = iter;
+
+        if (!isAsync) {
+          asyncIterator = {
+            // deno-lint-ignore require-await
+            async next() {
+              // deno-lint-ignore prefer-primordials
+              return iter.next();
+            },
+          };
+        }
+
+        return {
+          async next() {
+            // deno-lint-ignore prefer-primordials
+            const iterResult = await asyncIterator.next();
+            if (type(iterResult) !== "Object") {
+              throw TypeError(
+                `${context} failed to iterate next value because the next() method did not return an object, but ${
+                  type(iterResult)
+                }.`,
+              );
+            }
+
+            if (iterResult.done) {
+              return { done: true };
+            }
+
+            const iterValue = converter(
+              iterResult.value,
+              `${context} failed to iterate next value`,
+              `The value returned from the next() method`,
+              opts,
+            );
+
+            return { done: false, value: iterValue };
+          },
+          async return(reason) {
+            if (asyncIterator.return === undefined) {
+              return undefined;
+            }
+
+            // deno-lint-ignore prefer-primordials
+            const returnPromiseResult = await asyncIterator.return(reason);
+            if (type(returnPromiseResult) !== "Object") {
+              throw TypeError(
+                `${context} failed to close iterator because the return() method did not return an object, but ${
+                  type(returnPromiseResult)
+                }.`,
+              );
+            }
+
+            return undefined;
+          },
+          [SymbolAsyncIterator]() {
+            return this;
+          },
+        };
+      },
+    };
+  };
+}
+
 function createRecordConverter(keyConverter, valueConverter) {
   return (V, prefix, context, opts) => {
     if (type(V) !== "Object") {
       throw makeException(
         TypeError,
-        "can not be converted to dictionary.",
+        "can not be converted to dictionary",
         prefix,
         context,
       );
@@ -995,7 +1119,7 @@ function createInterfaceConverter(name, prototype) {
     if (!ObjectPrototypeIsPrototypeOf(prototype, V) || V[brand] !== brand) {
       throw makeException(
         TypeError,
-        `is not of type ${name}.`,
+        `is not of type ${name}`,
         prefix,
         context,
       );
@@ -1076,6 +1200,7 @@ function mixinPairIterable(name, prototype, dataSymbol, keyKey, valueKey) {
   function createDefaultIterator(target, kind) {
     const iterator = ObjectCreate(iteratorPrototype);
     ObjectDefineProperty(iterator, _iteratorInternal, {
+      __proto__: null,
       value: { target, kind, index: 0 },
       configurable: true,
     });
@@ -1149,6 +1274,7 @@ function configureInterface(interface_) {
   configureProperties(interface_);
   configureProperties(interface_.prototype);
   ObjectDefineProperty(interface_.prototype, SymbolToStringTag, {
+    __proto__: null,
     value: interface_.name,
     enumerable: false,
     configurable: true,
@@ -1170,12 +1296,14 @@ function configureProperties(obj) {
       typeof descriptor.value === "function"
     ) {
       ObjectDefineProperty(obj, key, {
+        __proto__: null,
         enumerable: true,
         writable: true,
         configurable: true,
       });
     } else if (ReflectHas(descriptor, "get")) {
       ObjectDefineProperty(obj, key, {
+        __proto__: null,
         enumerable: true,
         configurable: true,
       });
@@ -1189,6 +1317,7 @@ const setlikeInner = Symbol("[[set]]");
 function setlike(obj, objPrototype, readonly) {
   ObjectDefineProperties(obj, {
     size: {
+      __proto__: null,
       configurable: true,
       enumerable: true,
       get() {
@@ -1197,6 +1326,7 @@ function setlike(obj, objPrototype, readonly) {
       },
     },
     [SymbolIterator]: {
+      __proto__: null,
       configurable: true,
       enumerable: false,
       writable: true,
@@ -1206,6 +1336,7 @@ function setlike(obj, objPrototype, readonly) {
       },
     },
     entries: {
+      __proto__: null,
       configurable: true,
       enumerable: true,
       writable: true,
@@ -1215,6 +1346,7 @@ function setlike(obj, objPrototype, readonly) {
       },
     },
     keys: {
+      __proto__: null,
       configurable: true,
       enumerable: true,
       writable: true,
@@ -1224,6 +1356,7 @@ function setlike(obj, objPrototype, readonly) {
       },
     },
     values: {
+      __proto__: null,
       configurable: true,
       enumerable: true,
       writable: true,
@@ -1233,6 +1366,7 @@ function setlike(obj, objPrototype, readonly) {
       },
     },
     forEach: {
+      __proto__: null,
       configurable: true,
       enumerable: true,
       writable: true,
@@ -1242,6 +1376,7 @@ function setlike(obj, objPrototype, readonly) {
       },
     },
     has: {
+      __proto__: null,
       configurable: true,
       enumerable: true,
       writable: true,
@@ -1255,6 +1390,7 @@ function setlike(obj, objPrototype, readonly) {
   if (!readonly) {
     ObjectDefineProperties(obj, {
       add: {
+        __proto__: null,
         configurable: true,
         enumerable: true,
         writable: true,
@@ -1264,6 +1400,7 @@ function setlike(obj, objPrototype, readonly) {
         },
       },
       delete: {
+        __proto__: null,
         configurable: true,
         enumerable: true,
         writable: true,
@@ -1273,6 +1410,7 @@ function setlike(obj, objPrototype, readonly) {
         },
       },
       clear: {
+        __proto__: null,
         configurable: true,
         enumerable: true,
         writable: true,
@@ -1287,9 +1425,11 @@ function setlike(obj, objPrototype, readonly) {
 
 export {
   assertBranded,
+  AsyncIterable,
   brand,
   configureInterface,
   converters,
+  createAsyncIterableConverter,
   createBranded,
   createDictionaryConverter,
   createEnumConverter,
@@ -1300,6 +1440,7 @@ export {
   createSequenceConverter,
   illegalConstructor,
   invokeCallbackFunction,
+  isAsyncIterable,
   makeException,
   mixinPairIterable,
   requiredArguments,

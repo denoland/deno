@@ -1,6 +1,7 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 import { unwatchFile, watch, watchFile } from "node:fs";
-import { assertEquals } from "@std/assert";
+import { watch as watchPromise } from "node:fs/promises";
+import { assert, assertEquals } from "@std/assert";
 
 function wait(time: number) {
   return new Promise((resolve) => {
@@ -50,5 +51,48 @@ Deno.test({
     await wait(10);
     // @ts-ignore node types are outdated in deno.
     watcher.unref();
+  },
+});
+
+Deno.test({
+  name: "node [fs/promises] watch should return async iterable",
+  sanitizeOps: false,
+  sanitizeResources: false,
+  async fn() {
+    const file = Deno.makeTempFileSync();
+    Deno.writeTextFileSync(file, "foo");
+
+    const result: { eventType: string; filename: string | null }[] = [];
+
+    const controller = new AbortController();
+    const watcher = watchPromise(file, {
+      // Node types resolved by the LSP clash with ours
+      // deno-lint-ignore no-explicit-any
+      signal: controller.signal as any,
+    });
+
+    const deferred = Promise.withResolvers<void>();
+    let stopLength = 0;
+    setTimeout(async () => {
+      Deno.writeTextFileSync(file, "something");
+      controller.abort();
+      stopLength = result.length;
+      await wait(100);
+      Deno.writeTextFileSync(file, "something else");
+      await wait(100);
+      deferred.resolve();
+    }, 100);
+
+    for await (const event of watcher) {
+      result.push(event);
+    }
+    await deferred.promise;
+
+    assertEquals(result.length, stopLength);
+    assert(
+      result.every((item) =>
+        typeof item.eventType === "string" && typeof item.filename === "string"
+      ),
+    );
   },
 });

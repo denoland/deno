@@ -20,6 +20,7 @@ import {
   notImplemented,
   TextEncodings,
 } from "ext:deno_node/_utils.ts";
+import { type Buffer } from "node:buffer";
 
 export type CallbackWithError = (err: ErrnoException | null) => void;
 
@@ -38,7 +39,7 @@ export type BinaryOptionsArgument =
 export type FileOptionsArgument = Encodings | FileOptions;
 
 export type ReadOptions = {
-  buffer: Buffer | Uint8Array;
+  buffer: Buffer | ArrayBufferView;
   offset: number;
   length: number;
   position: number | null;

@@ -12,6 +12,7 @@ use std::sync::Arc;
 use base64::prelude::BASE64_STANDARD;
 use base64::Engine;
 use deno_ast::ModuleSpecifier;
+use deno_config::deno_json::ConfigFile;
 use deno_config::workspace::JsrPackageConfig;
 use deno_config::workspace::PackageJsonDepResolution;
 use deno_config::workspace::Workspace;
@@ -25,9 +26,9 @@ use deno_core::futures::StreamExt;
 use deno_core::serde_json;
 use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
+use deno_core::url::Url;
 use deno_terminal::colors;
 use http_body_util::BodyExt;
-use lsp_types::Url;
 use serde::Deserialize;
 use serde::Serialize;
 use sha2::Digest;
@@ -43,7 +44,8 @@ use crate::cache::ParsedSourceCache;
 use crate::factory::CliFactory;
 use crate::graph_util::ModuleGraphCreator;
 use crate::http_util::HttpClient;
-use crate::resolver::SloppyImportsResolver;
+use crate::resolver::CliSloppyImportsResolver;
+use crate::resolver::SloppyImportsCachedFs;
 use crate::tools::check::CheckOptions;
 use crate::tools::lint::collect_no_slow_type_diagnostics;
 use crate::tools::registry::diagnostics::PublishDiagnostic;
@@ -52,6 +54,7 @@ use crate::util::display::human_size;
 
 mod api;
 mod auth;
+
 mod diagnostics;
 mod graph;
 mod paths;
@@ -64,6 +67,11 @@ mod unfurl;
 use auth::get_auth_method;
 use auth::AuthMethod;
 pub use pm::add;
+pub use pm::cache_top_level_deps;
+pub use pm::outdated;
+pub use pm::remove;
+pub use pm::AddCommandName;
+pub use pm::AddRmPackageReq;
 use publish_order::PublishOrderGraph;
 use unfurl::SpecifierUnfurler;
 
@@ -84,13 +92,14 @@ pub async fn publish(
 
   let cli_options = cli_factory.cli_options()?;
   let directory_path = cli_options.initial_cwd();
-  let publish_configs = cli_options.start_dir.jsr_packages_for_publish();
+  let mut publish_configs = cli_options.start_dir.jsr_packages_for_publish();
   if publish_configs.is_empty() {
     match cli_options.start_dir.maybe_deno_json() {
       Some(deno_json) => {
         debug_assert!(!deno_json.is_package());
+        error_missing_exports_field(deno_json)?;
         bail!(
-          "Missing 'name', 'version' and 'exports' field in '{}'.",
+          "Missing 'name' or 'exports' field in '{}'.",
           deno_json.specifier
         );
       }
@@ -102,9 +111,23 @@ pub async fn publish(
       }
     }
   }
+
+  if let Some(version) = &publish_flags.set_version {
+    if publish_configs.len() > 1 {
+      bail!("Cannot use --set-version when publishing a workspace. Change your cwd to an individual package instead.");
+    }
+    if let Some(publish_config) = publish_configs.get_mut(0) {
+      let mut config_file = publish_config.config_file.as_ref().clone();
+      config_file.json.version = Some(version.clone());
+      publish_config.config_file = Arc::new(config_file);
+    }
+  }
+
   let specifier_unfurler = Arc::new(SpecifierUnfurler::new(
     if cli_options.unstable_sloppy_imports() {
-      Some(SloppyImportsResolver::new(cli_factory.fs().clone()))
+      Some(CliSloppyImportsResolver::new(SloppyImportsCachedFs::new(
+        cli_factory.fs().clone(),
+      )))
     } else {
       None
     },
@@ -165,7 +188,7 @@ pub async fn publish(
         log::info!("   {} ({})", file.specifier, human_size(file.size as f64),);
       }
     }
-    log::warn!("{} Aborting due to --dry-run", colors::yellow("Warning"));
+    log::warn!("{} Dry run complete", colors::green("Success"));
     return Ok(());
   }
 
@@ -337,13 +360,11 @@ impl PublishPreparer {
       bail!("Exiting due to DENO_INTERNAL_FAST_CHECK_OVERWRITE")
     } else {
       log::info!("Checking for slow types in the public API...");
-      let mut any_pkg_had_diagnostics = false;
       for package in package_configs {
         let export_urls = package.config_file.resolve_export_value_urls()?;
         let diagnostics =
           collect_no_slow_type_diagnostics(&graph, &export_urls);
         if !diagnostics.is_empty() {
-          any_pkg_had_diagnostics = true;
           for diagnostic in diagnostics {
             diagnostics_collector
               .push(PublishDiagnostic::FastCheck(diagnostic));
@@ -351,7 +372,9 @@ impl PublishPreparer {
         }
       }
 
-      if any_pkg_had_diagnostics {
+      // skip type checking the slow type graph if there are any errors because
+      // errors like remote modules existing will cause type checking to crash
+      if diagnostics_collector.has_error() {
         Ok(Arc::new(graph))
       } else {
         // fast check passed, type check the output as a temporary measure
@@ -396,43 +419,15 @@ impl PublishPreparer {
     graph: Arc<deno_graph::ModuleGraph>,
     diagnostics_collector: &PublishDiagnosticsCollector,
   ) -> Result<Rc<PreparedPublishPackage>, AnyError> {
-    static SUGGESTED_ENTRYPOINTS: [&str; 4] =
-      ["mod.ts", "mod.js", "index.ts", "index.js"];
-
     let deno_json = &package.config_file;
     let config_path = deno_json.specifier.to_file_path().unwrap();
     let root_dir = config_path.parent().unwrap().to_path_buf();
-    let Some(version) = deno_json.json.version.clone() else {
-      bail!("{} is missing 'version' field", deno_json.specifier);
-    };
-    if deno_json.json.exports.is_none() {
-      let mut suggested_entrypoint = None;
-
-      for entrypoint in SUGGESTED_ENTRYPOINTS {
-        if root_dir.join(entrypoint).exists() {
-          suggested_entrypoint = Some(entrypoint);
-          break;
-        }
-      }
-
-      let exports_content = format!(
-        r#"{{
-  "name": "{}",
-  "version": "{}",
-  "exports": "{}"
-}}"#,
-        package.name,
-        version,
-        suggested_entrypoint.unwrap_or("<path_to_entrypoint>")
-      );
-
-      bail!(
-      "You did not specify an entrypoint to \"{}\" package in {}. Add `exports` mapping in the configuration file, eg:\n{}",
-      package.name,
-      deno_json.specifier,
-      exports_content
-    );
-    }
+    let version = deno_json.json.version.clone().ok_or_else(|| {
+      deno_core::anyhow::anyhow!(
+        "{} is missing 'version' field",
+        deno_json.specifier
+      )
+    })?;
     let Some(name_no_at) = package.name.strip_prefix('@') else {
       bail!("Invalid package name, use '@<scope_name>/<package_name> format");
     };
@@ -447,6 +442,8 @@ impl PublishPreparer {
       let cli_options = self.cli_options.clone();
       let source_cache = self.source_cache.clone();
       let config_path = config_path.clone();
+      let config_url = deno_json.specifier.clone();
+      let has_license_field = package.license.is_some();
       move || {
         let root_specifier =
           ModuleSpecifier::from_directory_path(&root_dir).unwrap();
@@ -465,7 +462,9 @@ impl PublishPreparer {
           &diagnostics_collector,
         );
 
-        if !has_license_file(publish_paths.iter().map(|p| &p.specifier)) {
+        if !has_license_field
+          && !has_license_file(publish_paths.iter().map(|p| &p.specifier))
+        {
           if let Some(license_path) =
             resolve_license_file(&root_dir, cli_options.workspace())
           {
@@ -481,7 +480,7 @@ impl PublishPreparer {
             });
           } else {
             diagnostics_collector.push(PublishDiagnostic::MissingLicense {
-              expected_path: root_dir.join("LICENSE"),
+              config_specifier: config_url,
             });
           }
         }
@@ -1041,7 +1040,8 @@ async fn publish_package(
         sha256: faster_hex::hex_string(&sha2::Sha256::digest(&meta_bytes)),
       },
     };
-    let bundle = provenance::generate_provenance(http_client, subject).await?;
+    let bundle =
+      provenance::generate_provenance(http_client, vec![subject]).await?;
 
     let tlog_entry = &bundle.verification_material.tlog_entries[0];
     log::info!("{}",
@@ -1094,9 +1094,9 @@ fn collect_excluded_module_diagnostics(
   let graph_specifiers = graph
     .modules()
     .filter_map(|m| match m {
-      deno_graph::Module::Js(_) | deno_graph::Module::Json(_) => {
-        Some(m.specifier())
-      }
+      deno_graph::Module::Js(_)
+      | deno_graph::Module::Json(_)
+      | deno_graph::Module::Wasm(_) => Some(m.specifier()),
       deno_graph::Module::Npm(_)
       | deno_graph::Module::Node(_)
       | deno_graph::Module::External(_) => None,
@@ -1257,6 +1257,36 @@ fn has_license_file<'a>(
       })
       .unwrap_or(false)
   })
+}
+
+fn error_missing_exports_field(deno_json: &ConfigFile) -> Result<(), AnyError> {
+  static SUGGESTED_ENTRYPOINTS: [&str; 4] =
+    ["mod.ts", "mod.js", "index.ts", "index.js"];
+  let mut suggested_entrypoint = None;
+
+  for entrypoint in SUGGESTED_ENTRYPOINTS {
+    if deno_json.dir_path().join(entrypoint).exists() {
+      suggested_entrypoint = Some(entrypoint);
+      break;
+    }
+  }
+
+  let exports_content = format!(
+    r#"{{
+  "name": "{}",
+  "version": "{}",
+  "exports": "{}"
+}}"#,
+    deno_json.json.name.as_deref().unwrap_or("@scope/name"),
+    deno_json.json.name.as_deref().unwrap_or("0.0.0"),
+    suggested_entrypoint.unwrap_or("<path_to_entrypoint>")
+  );
+
+  bail!(
+    "You did not specify an entrypoint in {}. Add `exports` mapping in the configuration file, eg:\n{}",
+    deno_json.specifier,
+    exports_content
+  );
 }
 
 #[allow(clippy::print_stderr)]

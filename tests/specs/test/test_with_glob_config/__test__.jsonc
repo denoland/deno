@@ -1,0 +1,5 @@
+{
+  "args": "test --config deno.glob.json",
+  "output": "main.out",
+  "exitCode": 0
+}

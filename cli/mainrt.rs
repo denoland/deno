@@ -18,6 +18,7 @@ mod js;
 mod node;
 mod npm;
 mod resolver;
+mod shared;
 mod task_runner;
 mod util;
 mod version;
@@ -30,6 +31,7 @@ use deno_runtime::fmt_errors::format_js_error;
 use deno_runtime::tokio_util::create_and_run_current_thread_with_maybe_metrics;
 pub use deno_runtime::UNSTABLE_GRANULAR_FLAGS;
 use deno_terminal::colors;
+use indexmap::IndexMap;
 
 use std::borrow::Cow;
 use std::collections::HashMap;
@@ -38,23 +40,21 @@ use std::env::current_exe;
 
 use crate::args::Flags;
 
-#[allow(clippy::print_stderr)]
 pub(crate) fn unstable_exit_cb(feature: &str, api_name: &str) {
-  eprintln!(
+  log::error!(
     "Unstable API '{api_name}'. The `--unstable-{}` flag must be provided.",
     feature
   );
-  std::process::exit(70);
+  deno_runtime::exit(70);
 }
 
-#[allow(clippy::print_stderr)]
 fn exit_with_message(message: &str, code: i32) -> ! {
-  eprintln!(
+  log::error!(
     "{}: {}",
     colors::red_bold("error"),
     message.trim_start_matches("error: ")
   );
-  std::process::exit(code);
+  deno_runtime::exit(code);
 }
 
 fn unwrap_or_exit<T>(result: Result<T, AnyError>) -> T {
@@ -72,7 +72,7 @@ fn unwrap_or_exit<T>(result: Result<T, AnyError>) -> T {
   }
 }
 
-fn load_env_vars(env_vars: &HashMap<String, String>) {
+fn load_env_vars(env_vars: &IndexMap<String, String>) {
   env_vars.iter().for_each(|env_var| {
     if env::var(env_var.0).is_err() {
       std::env::set_var(env_var.0, env_var.1);
@@ -81,21 +81,25 @@ fn load_env_vars(env_vars: &HashMap<String, String>) {
 }
 
 fn main() {
+  deno_runtime::deno_permissions::mark_standalone();
   let args: Vec<_> = env::args_os().collect();
-  let current_exe_path = current_exe().unwrap();
-  let standalone =
-    standalone::extract_standalone(&current_exe_path, Cow::Owned(args));
+  let standalone = standalone::extract_standalone(Cow::Owned(args));
   let future = async move {
     match standalone {
-      Ok(Some(future)) => {
-        let (metadata, eszip) = future.await?;
-        util::logger::init(metadata.log_level);
-        load_env_vars(&metadata.env_vars_from_env_file);
-        let exit_code = standalone::run(eszip, metadata).await?;
-        std::process::exit(exit_code);
+      Ok(Some(data)) => {
+        if let Some(otel_config) = data.metadata.otel_config.clone() {
+          deno_runtime::ops::otel::init(otel_config)?;
+        }
+        util::logger::init(data.metadata.log_level);
+        load_env_vars(&data.metadata.env_vars_from_env_file);
+        let exit_code = standalone::run(data).await?;
+        deno_runtime::exit(exit_code);
       }
       Ok(None) => Ok(()),
-      Err(err) => Err(err),
+      Err(err) => {
+        util::logger::init(None);
+        Err(err)
+      }
     }
   };
 

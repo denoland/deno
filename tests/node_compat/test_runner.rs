@@ -14,7 +14,6 @@ fn node_compat_tests() {
     .arg("--config")
     .arg(deno_config_path())
     .arg("--no-lock")
-    .arg("--unstable")
     .arg("-A")
     .arg(util::tests_path().join("node_compat/test.ts"))
     .spawn()

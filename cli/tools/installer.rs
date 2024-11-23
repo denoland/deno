@@ -3,18 +3,25 @@
 use crate::args::resolve_no_prompt;
 use crate::args::AddFlags;
 use crate::args::CaData;
+use crate::args::CacheSetting;
 use crate::args::ConfigFlag;
 use crate::args::Flags;
 use crate::args::InstallFlags;
 use crate::args::InstallFlagsGlobal;
+use crate::args::InstallFlagsLocal;
 use crate::args::InstallKind;
 use crate::args::TypeCheckMode;
 use crate::args::UninstallFlags;
 use crate::args::UninstallKind;
 use crate::factory::CliFactory;
+use crate::file_fetcher::FileFetcher;
+use crate::graph_container::ModuleGraphContainer;
 use crate::http_util::HttpClientProvider;
+use crate::jsr::JsrFetchResolver;
+use crate::npm::NpmFetchResolver;
 use crate::util::fs::canonicalize_path_maybe_not_exists;
 
+use deno_core::anyhow::bail;
 use deno_core::anyhow::Context;
 use deno_core::error::generic_error;
 use deno_core::error::AnyError;
@@ -195,14 +202,15 @@ pub async fn infer_name_from_url(
   Some(stem.to_string())
 }
 
-pub fn uninstall(uninstall_flags: UninstallFlags) -> Result<(), AnyError> {
-  if !uninstall_flags.global {
-    log::warn!("⚠️ `deno install` behavior will change in Deno 2. To preserve the current behavior use the `-g` or `--global` flag.");
-  }
-
+pub async fn uninstall(
+  flags: Arc<Flags>,
+  uninstall_flags: UninstallFlags,
+) -> Result<(), AnyError> {
   let uninstall_flags = match uninstall_flags.kind {
     UninstallKind::Global(flags) => flags,
-    UninstallKind::Local => unreachable!(),
+    UninstallKind::Local(remove_flags) => {
+      return super::registry::remove(flags, remove_flags).await;
+    }
   };
 
   let cwd = std::env::current_dir().context("Unable to get CWD")?;
@@ -261,21 +269,69 @@ pub fn uninstall(uninstall_flags: UninstallFlags) -> Result<(), AnyError> {
   Ok(())
 }
 
+pub(crate) async fn install_from_entrypoints(
+  flags: Arc<Flags>,
+  entrypoints: &[String],
+) -> Result<(), AnyError> {
+  let factory = CliFactory::from_flags(flags.clone());
+  let emitter = factory.emitter()?;
+  let main_graph_container = factory.main_module_graph_container().await?;
+  main_graph_container
+    .load_and_type_check_files(entrypoints)
+    .await?;
+  emitter
+    .cache_module_emits(&main_graph_container.graph())
+    .await
+}
+
 async fn install_local(
   flags: Arc<Flags>,
-  maybe_add_flags: Option<AddFlags>,
+  install_flags: InstallFlagsLocal,
 ) -> Result<(), AnyError> {
-  if let Some(add_flags) = maybe_add_flags {
-    return super::registry::add(flags, add_flags).await;
+  match install_flags {
+    InstallFlagsLocal::Add(add_flags) => {
+      super::registry::add(
+        flags,
+        add_flags,
+        super::registry::AddCommandName::Install,
+      )
+      .await
+    }
+    InstallFlagsLocal::Entrypoints(entrypoints) => {
+      install_from_entrypoints(flags, &entrypoints).await
+    }
+    InstallFlagsLocal::TopLevel => {
+      let factory = CliFactory::from_flags(flags);
+      // surface any errors in the package.json
+      if let Some(npm_resolver) = factory.npm_resolver().await?.as_managed() {
+        npm_resolver.ensure_no_pkg_json_dep_errors()?;
+      }
+      crate::tools::registry::cache_top_level_deps(&factory, None).await?;
+
+      if let Some(lockfile) = factory.cli_options()?.maybe_lockfile() {
+        lockfile.write_if_changed()?;
+      }
+
+      Ok(())
+    }
   }
+}
 
-  let factory = CliFactory::from_flags(flags);
-  crate::module_loader::load_top_level_deps(&factory).await?;
-
-  if let Some(lockfile) = factory.cli_options()?.maybe_lockfile() {
-    lockfile.write_if_changed()?;
+fn check_if_installs_a_single_package_globally(
+  maybe_add_flags: Option<&AddFlags>,
+) -> Result<(), AnyError> {
+  let Some(add_flags) = maybe_add_flags else {
+    return Ok(());
+  };
+  if add_flags.packages.len() != 1 {
+    return Ok(());
   }
-
+  let Ok(url) = Url::parse(&add_flags.packages[0]) else {
+    return Ok(());
+  };
+  if matches!(url.scheme(), "http" | "https") {
+    bail!("Failed to install \"{}\" specifier. If you are trying to install {} globally, run again with `-g` flag:\n  deno install -g {}", url.scheme(), url.as_str(), url.as_str());
+  }
   Ok(())
 }
 
@@ -285,14 +341,13 @@ pub async fn install_command(
 ) -> Result<(), AnyError> {
   match install_flags.kind {
     InstallKind::Global(global_flags) => {
-      if !install_flags.global {
-        log::warn!("⚠️ `deno install` behavior will change in Deno 2. To preserve the current behavior use the `-g` or `--global` flag.");
-      }
-
       install_global(flags, global_flags).await
     }
-    InstallKind::Local(maybe_add_flags) => {
-      install_local(flags, maybe_add_flags).await
+    InstallKind::Local(local_flags) => {
+      if let InstallFlagsLocal::Add(add_flags) = &local_flags {
+        check_if_installs_a_single_package_globally(Some(add_flags))?;
+      }
+      install_local(flags, local_flags).await
     }
   }
 }
@@ -303,12 +358,54 @@ async fn install_global(
 ) -> Result<(), AnyError> {
   // ensure the module is cached
   let factory = CliFactory::from_flags(flags.clone());
+
+  let cli_options = factory.cli_options()?;
+  let http_client = factory.http_client_provider();
+  let deps_http_cache = factory.global_http_cache()?;
+  let mut deps_file_fetcher = FileFetcher::new(
+    deps_http_cache.clone(),
+    CacheSetting::ReloadAll,
+    true,
+    http_client.clone(),
+    Default::default(),
+    None,
+  );
+
+  let npmrc = factory.cli_options().unwrap().npmrc();
+
+  deps_file_fetcher.set_download_log_level(log::Level::Trace);
+  let deps_file_fetcher = Arc::new(deps_file_fetcher);
+  let jsr_resolver = Arc::new(JsrFetchResolver::new(deps_file_fetcher.clone()));
+  let npm_resolver = Arc::new(NpmFetchResolver::new(
+    deps_file_fetcher.clone(),
+    npmrc.clone(),
+  ));
+
+  let entry_text = install_flags_global.module_url.as_str();
+  if !cli_options.initial_cwd().join(entry_text).exists() {
+    // check for package requirement missing prefix
+    if let Ok(Err(package_req)) =
+      super::registry::AddRmPackageReq::parse(entry_text)
+    {
+      if jsr_resolver.req_to_nv(&package_req).await.is_some() {
+        bail!(
+          "{entry_text} is missing a prefix. Did you mean `{}`?",
+          crate::colors::yellow(format!("deno install -g jsr:{package_req}"))
+        );
+      } else if npm_resolver.req_to_nv(&package_req).await.is_some() {
+        bail!(
+          "{entry_text} is missing a prefix. Did you mean `{}`?",
+          crate::colors::yellow(format!("deno install -g npm:{package_req}"))
+        );
+      }
+    }
+  }
+
   factory
     .main_module_graph_container()
     .await?
     .load_and_type_check_files(&[install_flags_global.module_url.clone()])
     .await?;
-  let http_client = factory.http_client_provider();
 
   // create the install shim
   create_install_shim(http_client, &flags, install_flags_global).await
@@ -443,10 +540,6 @@ async fn resolve_shim_data(
     TypeCheckMode::Local => executable_args.push("--check".to_string()),
   }
 
-  if flags.unstable_config.legacy_flag_enabled {
-    executable_args.push("--unstable".to_string());
-  }
-
   for feature in &flags.unstable_config.features {
     executable_args.push(format!("--unstable-{}", feature));
   }
@@ -459,15 +552,11 @@ async fn resolve_shim_data(
     executable_args.push("--no-npm".to_string());
   }
 
-  if flags.lock_write {
-    executable_args.push("--lock-write".to_string());
-  }
-
   if flags.cached_only {
     executable_args.push("--cached-only".to_string());
   }
 
-  if flags.frozen_lockfile {
+  if flags.frozen_lockfile.unwrap_or(false) {
     executable_args.push("--frozen".to_string());
   }
 
@@ -779,13 +868,7 @@ mod tests {
 
     create_install_shim(
       &HttpClientProvider::new(None, None),
-      &Flags {
-        unstable_config: UnstableConfig {
-          legacy_flag_enabled: true,
-          ..Default::default()
-        },
-        ..Flags::default()
-      },
+      &Flags::default(),
       InstallFlagsGlobal {
         module_url: "http://localhost:4545/echo_server.ts".to_string(),
         args: vec![],
@@ -807,12 +890,11 @@ mod tests {
     let content = fs::read_to_string(file_path).unwrap();
     if cfg!(windows) {
       assert!(content.contains(
-        r#""run" "--unstable" "--no-config" "http://localhost:4545/echo_server.ts""#
+        r#""run" "--no-config" "http://localhost:4545/echo_server.ts""#
       ));
     } else {
-      assert!(content.contains(
-        r#"run --unstable --no-config 'http://localhost:4545/echo_server.ts'"#
-      ));
+      assert!(content
+        .contains(r#"run --no-config 'http://localhost:4545/echo_server.ts'"#));
     }
   }
 
@@ -843,13 +925,7 @@ mod tests {
   async fn install_unstable_legacy() {
     let shim_data = resolve_shim_data(
       &HttpClientProvider::new(None, None),
-      &Flags {
-        unstable_config: UnstableConfig {
-          legacy_flag_enabled: true,
-          ..Default::default()
-        },
-        ..Default::default()
-      },
+      &Default::default(),
       &InstallFlagsGlobal {
         module_url: "http://localhost:4545/echo_server.ts".to_string(),
         args: vec![],
@@ -864,12 +940,7 @@ mod tests {
     assert_eq!(shim_data.name, "echo_server");
     assert_eq!(
       shim_data.args,
-      vec![
-        "run",
-        "--unstable",
-        "--no-config",
-        "http://localhost:4545/echo_server.ts",
-      ]
+      vec!["run", "--no-config", "http://localhost:4545/echo_server.ts",]
     );
   }
 
@@ -1371,6 +1442,7 @@ mod tests {
       .env_clear()
       // use the deno binary in the target directory
       .env("PATH", test_util::target_dir())
+      .env("RUST_BACKTRACE", "1")
       .spawn()
       .unwrap()
       .wait()
@@ -1466,8 +1538,8 @@ mod tests {
     assert!(content.contains(&expected_string));
   }
 
-  #[test]
-  fn uninstall_basic() {
+  #[tokio::test]
+  async fn uninstall_basic() {
     let temp_dir = TempDir::new();
     let bin_dir = temp_dir.path().join("bin");
     std::fs::create_dir(&bin_dir).unwrap();
@@ -1494,13 +1566,16 @@ mod tests {
       File::create(file_path).unwrap();
     }
 
-    uninstall(UninstallFlags {
-      kind: UninstallKind::Global(UninstallFlagsGlobal {
-        name: "echo_test".to_string(),
-        root: Some(temp_dir.path().to_string()),
-      }),
-      global: false,
-    })
+    uninstall(
+      Default::default(),
+      UninstallFlags {
+        kind: UninstallKind::Global(UninstallFlagsGlobal {
+          name: "echo_test".to_string(),
+          root: Some(temp_dir.path().to_string()),
+        }),
+      },
+    )
+    .await
     .unwrap();
 
     assert!(!file_path.exists());

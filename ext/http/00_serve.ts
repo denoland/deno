@@ -14,6 +14,7 @@ import {
   op_http_get_request_headers,
   op_http_get_request_method_and_url,
   op_http_read_request_body,
+  op_http_request_on_cancel,
   op_http_serve,
   op_http_serve_on,
   op_http_set_promise_complete,
@@ -41,6 +42,10 @@ const {
   Uint8Array,
   Promise,
 } = primordials;
+const {
+  getAsyncContext,
+  setAsyncContext,
+} = core;
 
 import { InnerBody } from "ext:deno_fetch/22_body.js";
 import { Event } from "ext:deno_web/02_event.js";
@@ -76,7 +81,11 @@ import {
   ReadableStreamPrototype,
   resourceForReadableStream,
 } from "ext:deno_web/06_streams.js";
-import { listen, listenOptionApiName, TcpConn } from "ext:deno_net/01_net.js";
+import {
+  listen,
+  listenOptionApiName,
+  UpgradedConn,
+} from "ext:deno_net/01_net.js";
 import { hasTlsKeyPairOptions, listenTls } from "ext:deno_net/02_tls.js";
 import { SymbolAsyncDispose } from "ext:deno_web/00_infra.js";
 
@@ -123,7 +132,7 @@ function upgradeHttpRaw(req, conn) {
   if (inner._wantsUpgrade) {
     return inner._wantsUpgrade("upgradeHttpRaw", conn);
   }
-  throw new TypeError("upgradeHttpRaw may only be used with Deno.serve");
+  throw new TypeError("'upgradeHttpRaw' may only be used with Deno.serve");
 }
 
 function addTrailers(resp, headerList) {
@@ -170,10 +179,10 @@ class InnerRequest {
 
   _wantsUpgrade(upgradeType, ...originalArgs) {
     if (this.#upgraded) {
-      throw new Deno.errors.Http("already upgraded");
+      throw new Deno.errors.Http("Already upgraded");
     }
     if (this.#external === null) {
-      throw new Deno.errors.Http("already closed");
+      throw new Deno.errors.Http("Already closed");
     }
 
     // upgradeHttpRaw is sync
@@ -189,7 +198,7 @@ class InnerRequest {
 
       const upgradeRid = op_http_upgrade_raw(external);
 
-      const conn = new TcpConn(
+      const conn = new UpgradedConn(
         upgradeRid,
         underlyingConn?.remoteAddr,
         underlyingConn?.localAddr,
@@ -257,7 +266,7 @@ class InnerRequest {
 
     if (this.#methodAndUri === undefined) {
       if (this.#external === null) {
-        throw new TypeError("request closed");
+        throw new TypeError("Request closed");
       }
       // TODO(mmastrac): This is quite slow as we're serializing a large number of values. We may want to consider
       // splitting this up into multiple ops.
@@ -315,7 +324,7 @@ class InnerRequest {
     }
     if (this.#methodAndUri === undefined) {
       if (this.#external === null) {
-        throw new TypeError("request closed");
+        throw new TypeError("Request closed");
       }
       this.#methodAndUri = op_http_get_request_method_and_url(this.#external);
     }
@@ -329,7 +338,7 @@ class InnerRequest {
   get method() {
     if (this.#methodAndUri === undefined) {
       if (this.#external === null) {
-        throw new TypeError("request closed");
+        throw new TypeError("Request closed");
       }
       this.#methodAndUri = op_http_get_request_method_and_url(this.#external);
     }
@@ -338,7 +347,7 @@ class InnerRequest {
 
   get body() {
     if (this.#external === null) {
-      throw new TypeError("request closed");
+      throw new TypeError("Request closed");
     }
     if (this.#body !== undefined) {
       return this.#body;
@@ -356,7 +365,7 @@ class InnerRequest {
 
   get headerList() {
     if (this.#external === null) {
-      throw new TypeError("request closed");
+      throw new TypeError("Request closed");
     }
     const headers = [];
     const reqHeaders = op_http_get_request_headers(this.#external);
@@ -369,6 +378,18 @@ class InnerRequest {
   get external() {
     return this.#external;
   }
+
+  onCancel(callback) {
+    if (this.#external === null) {
+      callback();
+      return;
+    }
+
+    PromisePrototypeThen(
+      op_http_request_on_cancel(this.#external),
+      callback,
+    );
+  }
 }
 
 class CallbackContext {
@@ -380,8 +401,10 @@ class CallbackContext {
   /** @type {Promise<void> | undefined} */
   closing;
   listener;
+  asyncContext;
 
   constructor(signal, args, listener) {
+    this.asyncContext = getAsyncContext();
     // The abort signal triggers a non-graceful shutdown
     signal?.addEventListener(
       "abort",
@@ -436,6 +459,11 @@ function fastSyncResponseOrStream(
 
   const stream = respBody.streamOrStatic;
   const body = stream.body;
+  if (body !== undefined) {
+    // We ensure the response has not been consumed yet in the caller of this
+    // function.
+    stream.consumed = true;
+  }
 
   if (TypedArrayPrototypeGetSymbolToStringTag(body) === "Uint8Array") {
     innerRequest?.close();
@@ -452,7 +480,7 @@ function fastSyncResponseOrStream(
   // At this point in the response it needs to be a stream
   if (!ObjectPrototypeIsPrototypeOf(ReadableStreamPrototype, stream)) {
     innerRequest?.close();
-    throw TypeError("invalid response");
+    throw new TypeError("Invalid response");
   }
   const resourceBacking = getReadableStreamResourceBacking(stream);
   let rid, autoClose;
@@ -486,68 +514,89 @@ function fastSyncResponseOrStream(
  */
 function mapToCallback(context, callback, onError) {
   return async function (req) {
-    // Get the response from the user-provided callback. If that fails, use onError. If that fails, return a fallback
-    // 500 error.
-    let innerRequest;
-    let response;
-    try {
-      innerRequest = new InnerRequest(req, context);
-      const request = fromInnerRequest(innerRequest, "immutable");
-      innerRequest.request = request;
-      response = await callback(
-        request,
-        new ServeHandlerInfo(innerRequest),
-      );
+    const asyncContext = getAsyncContext();
+    setAsyncContext(context.asyncContext);
 
-      // Throwing Error if the handler return value is not a Response class
-      if (!ObjectPrototypeIsPrototypeOf(ResponsePrototype, response)) {
-        throw TypeError(
-          "Return value from serve handler must be a response or a promise resolving to a response",
-        );
-      }
-    } catch (error) {
+    try {
+      // Get the response from the user-provided callback. If that fails, use onError. If that fails, return a fallback
+      // 500 error.
+      let innerRequest;
+      let response;
       try {
-        response = await onError(error);
+        innerRequest = new InnerRequest(req, context);
+        const request = fromInnerRequest(innerRequest, "immutable");
+        innerRequest.request = request;
+        response = await callback(
+          request,
+          new ServeHandlerInfo(innerRequest),
+        );
+
+        // Throwing Error if the handler return value is not a Response class
         if (!ObjectPrototypeIsPrototypeOf(ResponsePrototype, response)) {
-          throw TypeError(
-            "Return value from onError handler must be a response or a promise resolving to a response",
+          throw new TypeError(
+            "Return value from serve handler must be a response or a promise resolving to a response",
+          );
+        }
+
+        if (response.type === "error") {
+          throw new TypeError(
+            "Return value from serve handler must not be an error response (like Response.error())",
+          );
+        }
+
+        if (response.bodyUsed) {
+          throw new TypeError(
+            "The body of the Response returned from the serve handler has already been consumed",
           );
         }
       } catch (error) {
-        console.error("Exception in onError while handling exception", error);
-        response = internalServerError();
+        try {
+          response = await onError(error);
+          if (!ObjectPrototypeIsPrototypeOf(ResponsePrototype, response)) {
+            throw new TypeError(
+              "Return value from onError handler must be a response or a promise resolving to a response",
+            );
+          }
+        } catch (error) {
+          // deno-lint-ignore no-console
+          console.error("Exception in onError while handling exception", error);
+          response = internalServerError();
+        }
       }
-    }
-    const inner = toInnerResponse(response);
-    if (innerRequest?.[_upgraded]) {
-      // We're done here as the connection has been upgraded during the callback and no longer requires servicing.
-      if (response !== UPGRADE_RESPONSE_SENTINEL) {
-        console.error("Upgrade response was not returned from callback");
-        context.close();
+      const inner = toInnerResponse(response);
+      if (innerRequest?.[_upgraded]) {
+        // We're done here as the connection has been upgraded during the callback and no longer requires servicing.
+        if (response !== UPGRADE_RESPONSE_SENTINEL) {
+          // deno-lint-ignore no-console
+          console.error("Upgrade response was not returned from callback");
+          context.close();
+        }
+        innerRequest?.[_upgraded]();
+        return;
       }
-      innerRequest?.[_upgraded]();
-      return;
-    }
 
-    // Did everything shut down while we were waiting?
-    if (context.closed) {
-      // We're shutting down, so this status shouldn't make it back to the client but "Service Unavailable" seems appropriate
-      innerRequest?.close();
-      op_http_set_promise_complete(req, 503);
-      return;
-    }
-
-    const status = inner.status;
-    const headers = inner.headerList;
-    if (headers && headers.length > 0) {
-      if (headers.length == 1) {
-        op_http_set_response_header(req, headers[0][0], headers[0][1]);
-      } else {
-        op_http_set_response_headers(req, headers);
+      // Did everything shut down while we were waiting?
+      if (context.closed) {
+        // We're shutting down, so this status shouldn't make it back to the client but "Service Unavailable" seems appropriate
+        innerRequest?.close();
+        op_http_set_promise_complete(req, 503);
+        return;
       }
-    }
 
-    fastSyncResponseOrStream(req, inner.body, status, innerRequest);
+      const status = inner.status;
+      const headers = inner.headerList;
+      if (headers && headers.length > 0) {
+        if (headers.length == 1) {
+          op_http_set_response_header(req, headers[0][0], headers[0][1]);
+        } else {
+          op_http_set_response_headers(req, headers);
+        }
+      }
+
+      fastSyncResponseOrStream(req, inner.body, status, innerRequest);
+    } finally {
+      setAsyncContext(asyncContext);
+    }
   };
 }
 
@@ -568,6 +617,23 @@ type RawServeOptions = {
   handler?: RawHandler;
 };
 
+const kLoadBalanced = Symbol("kLoadBalanced");
+
+function formatHostName(hostname: string): string {
+  // If the hostname is "0.0.0.0", we display "localhost" in console
+  // because browsers in Windows don't resolve "0.0.0.0".
+  // See the discussion in https://github.com/denoland/deno_std/issues/1165
+  if (
+    (Deno.build.os === "windows") &&
+    (hostname == "0.0.0.0" || hostname == "::")
+  ) {
+    return "localhost";
+  }
+
+  // Add brackets around ipv6 hostname
+  return StringPrototypeIncludes(hostname, ":") ? `[${hostname}]` : hostname;
+}
+
 function serve(arg1, arg2) {
   let options: RawServeOptions | undefined;
   let handler: RawHandler | undefined;
@@ -583,13 +649,15 @@ function serve(arg1, arg2) {
   if (handler === undefined) {
     if (options === undefined) {
       throw new TypeError(
-        "No handler was provided, so an options bag is mandatory.",
+        "Cannot serve HTTP requests: either a `handler` or `options` must be specified",
       );
     }
     handler = options.handler;
   }
   if (typeof handler !== "function") {
-    throw new TypeError("A handler function must be provided.");
+    throw new TypeError(
+      `Cannot serve HTTP requests: handler must be a function, received ${typeof handler}`,
+    );
   }
   if (options === undefined) {
     options = { __proto__: null };
@@ -599,6 +667,7 @@ function serve(arg1, arg2) {
   const wantsUnix = ObjectHasOwn(options, "path");
   const signal = options.signal;
   const onError = options.onError ?? function (error) {
+    // deno-lint-ignore no-console
     console.error(error);
     return internalServerError();
   };
@@ -614,7 +683,8 @@ function serve(arg1, arg2) {
       if (options.onListen) {
         options.onListen(listener.addr);
       } else {
-        console.log(`Listening on ${path}`);
+        // deno-lint-ignore no-console
+        console.error(`Listening on ${path}`);
       }
     });
   }
@@ -623,6 +693,7 @@ function serve(arg1, arg2) {
     hostname: options.hostname ?? "0.0.0.0",
     port: options.port ?? 8000,
     reusePort: options.reusePort ?? false,
+    loadBalanced: options[kLoadBalanced] ?? false,
   };
 
   if (options.certFile || options.keyFile) {
@@ -640,7 +711,7 @@ function serve(arg1, arg2) {
   if (wantsHttps) {
     if (!options.cert || !options.key) {
       throw new TypeError(
-        "Both cert and key must be provided to enable HTTPS.",
+        "Both 'cert' and 'key' must be provided to enable HTTPS",
       );
     }
     listenOpts.cert = options.cert;
@@ -654,23 +725,15 @@ function serve(arg1, arg2) {
   }
 
   const addr = listener.addr;
-  // If the hostname is "0.0.0.0", we display "localhost" in console
-  // because browsers in Windows don't resolve "0.0.0.0".
-  // See the discussion in https://github.com/denoland/deno_std/issues/1165
-  const hostname = (addr.hostname == "0.0.0.0" || addr.hostname == "::") &&
-      (Deno.build.os === "windows")
-    ? "localhost"
-    : addr.hostname;
-  addr.hostname = hostname;
 
   const onListen = (scheme) => {
     if (options.onListen) {
       options.onListen(addr);
     } else {
-      const host = StringPrototypeIncludes(addr.hostname, ":")
-        ? `[${addr.hostname}]`
-        : addr.hostname;
-      console.log(`Listening on ${scheme}${host}:${addr.port}/`);
+      const host = formatHostName(addr.hostname);
+
+      // deno-lint-ignore no-console
+      console.error(`Listening on ${scheme}${host}:${addr.port}/`);
     }
   };
 
@@ -715,6 +778,7 @@ function serveHttpOn(context, addr, callback) {
 
   const promiseErrorHandler = (error) => {
     // Abnormal exit
+    // deno-lint-ignore no-console
     console.error(
       "Terminating Deno.serve loop due to unexpected error",
       error,
@@ -831,21 +895,31 @@ function registerDeclarativeServer(exports) {
         "Invalid type for fetch: must be a function with a single or no parameter",
       );
     }
-    return ({ servePort, serveHost }) => {
+    return ({ servePort, serveHost, serveIsMain, serveWorkerCount }) => {
       Deno.serve({
         port: servePort,
         hostname: serveHost,
+        [kLoadBalanced]: (serveIsMain && serveWorkerCount > 1) ||
+          (serveWorkerCount !== null),
         onListen: ({ port, hostname }) => {
-          console.debug(
-            `%cdeno serve%c: Listening on %chttp://${hostname}:${port}/%c`,
-            "color: green",
-            "color: inherit",
-            "color: yellow",
-            "color: inherit",
-          );
+          if (serveIsMain) {
+            const nThreads = serveWorkerCount > 1
+              ? ` with ${serveWorkerCount} threads`
+              : "";
+            const host = formatHostName(hostname);
+
+            // deno-lint-ignore no-console
+            console.error(
+              `%cdeno serve%c: Listening on %chttp://${host}:${port}/%c${nThreads}`,
+              "color: green",
+              "color: inherit",
+              "color: yellow",
+              "color: inherit",
+            );
+          }
         },
-        handler: (req) => {
-          return exports.fetch(req);
+        handler: (req, connInfo) => {
+          return exports.fetch(req, connInfo);
         },
       });
     };

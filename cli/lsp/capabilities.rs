@@ -147,12 +147,14 @@ pub fn server_capabilities(
     moniker_provider: None,
     experimental: Some(json!({
       "denoConfigTasks": true,
-      "testingApi":true,
+      "testingApi": true,
+      "didRefreshDenoConfigurationTreeNotifications": true,
     })),
     inlay_hint_provider: Some(OneOf::Left(true)),
     position_encoding: None,
-    // TODO(nayeemrmn): Support pull-based diagnostics.
     diagnostic_provider: None,
     inline_value_provider: None,
+    inline_completion_provider: None,
+    notebook_document_sync: None,
   }
 }

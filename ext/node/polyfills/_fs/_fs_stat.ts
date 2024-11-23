@@ -290,8 +290,8 @@ export function convertFileInfoToStats(origin: Deno.FileInfo): Stats {
     isFIFO: () => false,
     isCharacterDevice: () => false,
     isSocket: () => false,
-    ctime: origin.mtime,
-    ctimeMs: origin.mtime?.getTime() || null,
+    ctime: origin.ctime,
+    ctimeMs: origin.ctime?.getTime() || null,
   });
 
   return stats;
@@ -336,9 +336,9 @@ export function convertFileInfoToBigIntStats(
     isFIFO: () => false,
     isCharacterDevice: () => false,
     isSocket: () => false,
-    ctime: origin.mtime,
-    ctimeMs: origin.mtime ? BigInt(origin.mtime.getTime()) : null,
-    ctimeNs: origin.mtime ? BigInt(origin.mtime.getTime()) * 1000000n : null,
+    ctime: origin.ctime,
+    ctimeMs: origin.ctime ? BigInt(origin.ctime.getTime()) : null,
+    ctimeNs: origin.ctime ? BigInt(origin.ctime.getTime()) * 1000000n : null,
   });
   return stats;
 }
@@ -383,7 +383,10 @@ export function stat(
 
   Deno.stat(path).then(
     (stat) => callback(null, CFISBIS(stat, options.bigint)),
-    (err) => callback(denoErrorToNodeError(err, { syscall: "stat" })),
+    (err) =>
+      callback(
+        denoErrorToNodeError(err, { syscall: "stat", path: getPathname(path) }),
+      ),
   );
 }
 
@@ -417,9 +420,16 @@ export function statSync(
       return;
     }
     if (err instanceof Error) {
-      throw denoErrorToNodeError(err, { syscall: "stat" });
+      throw denoErrorToNodeError(err, {
+        syscall: "stat",
+        path: getPathname(path),
+      });
     } else {
       throw err;
     }
   }
+}
+
+function getPathname(path: string | URL) {
+  return typeof path === "string" ? path : path.pathname;
 }

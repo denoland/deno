@@ -1,5 +1,0 @@
-Check [WILDCARD]/test/markdown_with_comment.md$34-37.ts
-error: TS2322 [ERROR]: Type 'number' is not assignable to type 'string'.
-const a: string = 42;
-      ^
-    at [WILDCARD]/test/markdown_with_comment.md$34-37.ts:1:7

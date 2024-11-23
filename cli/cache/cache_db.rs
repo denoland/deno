@@ -57,7 +57,7 @@ impl rusqlite::types::FromSql for CacheDBHash {
 }
 
 /// What should the cache should do on failure?
-#[derive(Default)]
+#[derive(Debug, Default)]
 pub enum CacheFailure {
   /// Return errors if failure mode otherwise unspecified.
   #[default]
@@ -69,6 +69,7 @@ pub enum CacheFailure {
 }
 
 /// Configuration SQL and other parameters for a [`CacheDB`].
+#[derive(Debug)]
 pub struct CacheDBConfiguration {
   /// SQL to run for a new database.
   pub table_initializer: &'static str,
@@ -98,6 +99,7 @@ impl CacheDBConfiguration {
   }
 }
 
+#[derive(Debug)]
 enum ConnectionState {
   Connected(Connection),
   Blackhole,
@@ -106,7 +108,7 @@ enum ConnectionState {
 
 /// A cache database that eagerly initializes itself off-thread, preventing initialization operations
 /// from blocking the main thread.
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub struct CacheDB {
   // TODO(mmastrac): We can probably simplify our thread-safe implementation here
   conn: Arc<Mutex<OnceCell<ConnectionState>>>,
@@ -470,7 +472,7 @@ mod tests {
   };
 
   static TEST_DB_BLACKHOLE: CacheDBConfiguration = CacheDBConfiguration {
-    table_initializer: "syntax error", // intentially cause an error
+    table_initializer: "syntax error", // intentionally cause an error
     on_version_change: "",
     preheat_queries: &[],
     on_failure: CacheFailure::Blackhole,

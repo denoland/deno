@@ -1,9 +1,9 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
-use crate::cdp;
-use crate::emit::Emitter;
-use crate::util::file_watcher::WatcherCommunicator;
-use crate::util::file_watcher::WatcherRestartMode;
+use std::collections::HashMap;
+use std::path::PathBuf;
+use std::sync::Arc;
+
 use deno_core::error::generic_error;
 use deno_core::error::AnyError;
 use deno_core::futures::StreamExt;
@@ -12,10 +12,12 @@ use deno_core::serde_json::{self};
 use deno_core::url::Url;
 use deno_core::LocalInspectorSession;
 use deno_terminal::colors;
-use std::collections::HashMap;
-use std::path::PathBuf;
-use std::sync::Arc;
 use tokio::select;
+
+use crate::cdp;
+use crate::emit::Emitter;
+use crate::util::file_watcher::WatcherCommunicator;
+use crate::util::file_watcher::WatcherRestartMode;
 
 fn explain(status: &cdp::Status) -> &'static str {
   match status {
@@ -117,7 +119,7 @@ impl crate::worker::HmrRunner for HmrRunner {
 
           // If after filtering there are no paths it means it's either a file
           // we can't HMR or an external file that was passed explicitly to
-          // `--unstable-hmr=<file>` path.
+          // `--watch-hmr=<file>` path.
           if filtered_paths.is_empty() {
             let _ = self.watcher_communicator.force_restart();
             continue;
@@ -139,7 +141,7 @@ impl crate::worker::HmrRunner for HmrRunner {
             };
 
             let source_code = self.emitter.load_and_emit_for_hmr(
-              &module_url
+              &module_url,
             ).await?;
 
             let mut tries = 1;

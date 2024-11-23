@@ -11,13 +11,13 @@ use std::path::Path;
 use std::path::PathBuf;
 use std::rc::Rc;
 
-use deno_core::normalize_path;
 use deno_core::unsync::spawn_blocking;
 use deno_io::fs::File;
 use deno_io::fs::FsError;
 use deno_io::fs::FsResult;
 use deno_io::fs::FsStat;
 use deno_io::StdFileResourceInner;
+use deno_path_util::normalize_path;
 
 use crate::interface::AccessCheckCb;
 use crate::interface::FsDirEntry;
@@ -101,7 +101,7 @@ impl FileSystem for RealFs {
     &self,
     path: &Path,
     recursive: bool,
-    mode: u32,
+    mode: Option<u32>,
   ) -> FsResult<()> {
     mkdir(path, recursive, mode)
   }
@@ -109,7 +109,7 @@ impl FileSystem for RealFs {
     &self,
     path: PathBuf,
     recursive: bool,
-    mode: u32,
+    mode: Option<u32>,
   ) -> FsResult<()> {
     spawn_blocking(move || mkdir(&path, recursive, mode)).await?
   }
@@ -407,11 +407,11 @@ impl FileSystem for RealFs {
   }
 }
 
-fn mkdir(path: &Path, recursive: bool, mode: u32) -> FsResult<()> {
+fn mkdir(path: &Path, recursive: bool, mode: Option<u32>) -> FsResult<()> {
   let mut builder = fs::DirBuilder::new();
   builder.recursive(recursive);
   #[cfg(unix)]
-  {
+  if let Some(mode) = mode {
     use std::os::unix::fs::DirBuilderExt;
     builder.mode(mode);
   }
@@ -821,24 +821,46 @@ fn stat_extra(
     Ok(info.dwVolumeSerialNumber as u64)
   }
 
+  const WINDOWS_TICK: i64 = 10_000; // 100-nanosecond intervals in a millisecond
+  const SEC_TO_UNIX_EPOCH: i64 = 11_644_473_600; // Seconds between Windows epoch and Unix epoch
+
+  fn windows_time_to_unix_time_msec(windows_time: &i64) -> i64 {
+    let milliseconds_since_windows_epoch = windows_time / WINDOWS_TICK;
+    milliseconds_since_windows_epoch - SEC_TO_UNIX_EPOCH * 1000
+  }
+
   use windows_sys::Wdk::Storage::FileSystem::FILE_ALL_INFORMATION;
+  use windows_sys::Win32::Foundation::NTSTATUS;
 
   unsafe fn query_file_information(
     handle: winapi::shared::ntdef::HANDLE,
-  ) -> std::io::Result<FILE_ALL_INFORMATION> {
+  ) -> Result<FILE_ALL_INFORMATION, NTSTATUS> {
     use windows_sys::Wdk::Storage::FileSystem::NtQueryInformationFile;
+    use windows_sys::Win32::Foundation::RtlNtStatusToDosError;
+    use windows_sys::Win32::Foundation::ERROR_MORE_DATA;
+    use windows_sys::Win32::System::IO::IO_STATUS_BLOCK;
 
     let mut info = std::mem::MaybeUninit::<FILE_ALL_INFORMATION>::zeroed();
+    let mut io_status_block =
+      std::mem::MaybeUninit::<IO_STATUS_BLOCK>::zeroed();
     let status = NtQueryInformationFile(
       handle as _,
-      std::ptr::null_mut(),
+      io_status_block.as_mut_ptr(),
       info.as_mut_ptr() as *mut _,
       std::mem::size_of::<FILE_ALL_INFORMATION>() as _,
       18, /* FileAllInformation */
     );
 
     if status < 0 {
-      return Err(std::io::Error::last_os_error());
+      let converted_status = RtlNtStatusToDosError(status);
+
+      // If error more data is returned, then it means that the buffer is too small to get full filename information
+      // to have that we should retry. However, since we only use BasicInformation and StandardInformation, it is fine to ignore it
+      // since struct is populated with other data anyway.
+      // https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/ntifs/nf-ntifs-ntqueryinformationfile#remarksdd
+      if converted_status != ERROR_MORE_DATA {
+        return Err(converted_status as NTSTATUS);
+      }
     }
 
     Ok(info.assume_init())
@@ -862,10 +884,13 @@ fn stat_extra(
     }
 
     let result = get_dev(file_handle);
-    CloseHandle(file_handle);
     fsstat.dev = result?;
 
     if let Ok(file_info) = query_file_information(file_handle) {
+      fsstat.ctime = Some(windows_time_to_unix_time_msec(
+        &file_info.BasicInformation.ChangeTime,
+      ) as u64);
+
       if file_info.BasicInformation.FileAttributes
         & winapi::um::winnt::FILE_ATTRIBUTE_REPARSE_POINT
         != 0
@@ -898,6 +923,7 @@ fn stat_extra(
       }
     }
 
+    CloseHandle(file_handle);
     Ok(())
   }
 }
@@ -929,7 +955,7 @@ fn exists(path: &Path) -> bool {
 }
 
 fn realpath(path: &Path) -> FsResult<PathBuf> {
-  Ok(deno_core::strip_unc_prefix(path.canonicalize()?))
+  Ok(deno_path_util::strip_unc_prefix(path.canonicalize()?))
 }
 
 fn read_dir(path: &Path) -> FsResult<Vec<FsDirEntry>> {
@@ -1069,8 +1095,10 @@ fn open_with_access_check(
     };
     (*access_check)(false, &path, &options)?;
     // On Linux, /proc may contain magic links that we don't want to resolve
-    let needs_canonicalization = !is_windows_device_path
-      && (!cfg!(target_os = "linux") || path.starts_with("/proc"));
+    let is_linux_special_path = cfg!(target_os = "linux")
+      && (path.starts_with("/proc") || path.starts_with("/dev"));
+    let needs_canonicalization =
+      !is_windows_device_path && !is_linux_special_path;
     let path = if needs_canonicalization {
       match path.canonicalize() {
         Ok(path) => path,

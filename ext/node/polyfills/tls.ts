@@ -5,8 +5,12 @@
 // deno-lint-ignore-file prefer-primordials
 
 import { notImplemented } from "ext:deno_node/_utils.ts";
-import tlsCommon from "ext:deno_node/_tls_common.ts";
-import tlsWrap from "ext:deno_node/_tls_wrap.ts";
+import tlsCommon from "node:_tls_common";
+import tlsWrap from "node:_tls_wrap";
+import { op_get_root_certificates } from "ext:core/ops";
+import { primordials } from "ext:core/mod.js";
+
+const { ObjectFreeze } = primordials;
 
 // openssl -> rustls
 const cipherMap = {
@@ -30,10 +34,63 @@ export function getCiphers() {
   return Object.keys(cipherMap).map((name) => name.toLowerCase());
 }
 
-export const rootCertificates = undefined;
+let lazyRootCertificates: string[] | null = null;
+function ensureLazyRootCertificates(target: string[]) {
+  if (lazyRootCertificates === null) {
+    lazyRootCertificates = op_get_root_certificates() as string[];
+    lazyRootCertificates.forEach((v) => target.push(v));
+    ObjectFreeze(target);
+  }
+}
+export const rootCertificates = new Proxy([] as string[], {
+  // @ts-ignore __proto__ is not in the types
+  __proto__: null,
+  get(target, prop) {
+    ensureLazyRootCertificates(target);
+    return Reflect.get(target, prop);
+  },
+  ownKeys(target) {
+    ensureLazyRootCertificates(target);
+    return Reflect.ownKeys(target);
+  },
+  has(target, prop) {
+    ensureLazyRootCertificates(target);
+    return Reflect.has(target, prop);
+  },
+  getOwnPropertyDescriptor(target, prop) {
+    ensureLazyRootCertificates(target);
+    return Reflect.getOwnPropertyDescriptor(target, prop);
+  },
+  set(target, prop, value) {
+    ensureLazyRootCertificates(target);
+    return Reflect.set(target, prop, value);
+  },
+  defineProperty(target, prop, descriptor) {
+    ensureLazyRootCertificates(target);
+    return Reflect.defineProperty(target, prop, descriptor);
+  },
+  deleteProperty(target, prop) {
+    ensureLazyRootCertificates(target);
+    return Reflect.deleteProperty(target, prop);
+  },
+  isExtensible(target) {
+    ensureLazyRootCertificates(target);
+    return Reflect.isExtensible(target);
+  },
+  preventExtensions(target) {
+    ensureLazyRootCertificates(target);
+    return Reflect.preventExtensions(target);
+  },
+  setPrototypeOf() {
+    return false;
+  },
+});
+
 export const DEFAULT_ECDH_CURVE = "auto";
 export const DEFAULT_MAX_VERSION = "TLSv1.3";
 export const DEFAULT_MIN_VERSION = "TLSv1.2";
+export const CLIENT_RENEG_LIMIT = 3;
+export const CLIENT_RENEG_WINDOW = 600;
 
 export class CryptoStream {}
 export class SecurePair {}
@@ -58,6 +115,8 @@ export default {
   DEFAULT_ECDH_CURVE,
   DEFAULT_MAX_VERSION,
   DEFAULT_MIN_VERSION,
+  CLIENT_RENEG_LIMIT,
+  CLIENT_RENEG_WINDOW,
 };
 
 export const checkServerIdentity = tlsWrap.checkServerIdentity;

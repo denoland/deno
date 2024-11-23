@@ -3,7 +3,6 @@
 use std::borrow::Cow;
 use std::path::PathBuf;
 use std::sync::Arc;
-use std::sync::Mutex;
 
 use deno_ast::diagnostics::Diagnostic;
 use deno_ast::diagnostics::DiagnosticLevel;
@@ -21,9 +20,10 @@ use deno_ast::SourceRanged;
 use deno_ast::SourceTextInfo;
 use deno_core::anyhow::anyhow;
 use deno_core::error::AnyError;
+use deno_core::parking_lot::Mutex;
+use deno_core::url::Url;
 use deno_graph::FastCheckDiagnostic;
 use deno_semver::Version;
-use lsp_types::Url;
 
 use super::unfurl::SpecifierUnfurlerDiagnostic;
 
@@ -36,7 +36,7 @@ impl PublishDiagnosticsCollector {
   pub fn print_and_error(&self) -> Result<(), AnyError> {
     let mut errors = 0;
     let mut has_slow_types_errors = false;
-    let mut diagnostics = self.diagnostics.lock().unwrap().take();
+    let mut diagnostics = self.diagnostics.lock().take();
 
     diagnostics.sort_by_cached_key(|d| d.sorting_key());
 
@@ -75,8 +75,16 @@ impl PublishDiagnosticsCollector {
     }
   }
 
+  pub fn has_error(&self) -> bool {
+    self
+      .diagnostics
+      .lock()
+      .iter()
+      .any(|d| matches!(d.level(), DiagnosticLevel::Error))
+  }
+
   pub fn push(&self, diagnostic: PublishDiagnostic) {
-    self.diagnostics.lock().unwrap().push(diagnostic);
+    self.diagnostics.lock().push(diagnostic);
   }
 }
 
@@ -120,8 +128,7 @@ pub enum PublishDiagnostic {
   },
   SyntaxError(ParseDiagnostic),
   MissingLicense {
-    /// This only exists because diagnostics require a location.
-    expected_path: PathBuf,
+    config_specifier: Url,
   },
 }
 
@@ -172,8 +179,7 @@ impl Diagnostic for PublishDiagnostic {
       MissingConstraint { .. } => DiagnosticLevel::Error,
       BannedTripleSlashDirectives { .. } => DiagnosticLevel::Error,
       SyntaxError { .. } => DiagnosticLevel::Error,
-      // todo(#24676): make this an error in Deno 1.46
-      MissingLicense { .. } => DiagnosticLevel::Warning,
+      MissingLicense { .. } => DiagnosticLevel::Error,
     }
   }
 
@@ -215,7 +221,7 @@ impl Diagnostic for PublishDiagnostic {
       MissingConstraint { specifier, .. } => Cow::Owned(format!("specifier '{}' is missing a version constraint", specifier)),
       BannedTripleSlashDirectives { .. } => Cow::Borrowed("triple slash directives that modify globals are not allowed"),
       SyntaxError(diagnostic) => diagnostic.message(),
-      MissingLicense { .. } => Cow::Borrowed("missing license file"),
+      MissingLicense { .. } => Cow::Borrowed("missing license field or file"),
     }
   }
 
@@ -283,8 +289,8 @@ impl Diagnostic for PublishDiagnostic {
         text_info: Cow::Borrowed(text_info),
       },
       SyntaxError(diagnostic) => diagnostic.location(),
-      MissingLicense { expected_path } => DiagnosticLocation::Path {
-        path: expected_path.clone(),
+      MissingLicense { config_specifier } => DiagnosticLocation::Module {
+        specifier: Cow::Borrowed(config_specifier),
       },
     }
   }
@@ -401,7 +407,7 @@ impl Diagnostic for PublishDiagnostic {
       ),
       SyntaxError(diagnostic) => diagnostic.hint(),
       MissingLicense { .. } => Some(
-        Cow::Borrowed("add a LICENSE file to the package and ensure it is not ignored from being published"),
+        Cow::Borrowed("add a \"license\" field. Alternatively, add a LICENSE file to the package and ensure it is not ignored from being published"),
       ),
     }
   }

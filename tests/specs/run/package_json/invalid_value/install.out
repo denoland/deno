@@ -1,0 +1,8 @@
+error: Failed to install '@denotest/cjs-default-export'
+    at file:///[WILDLINE]/package.json
+
+Caused by:
+    0: Invalid version requirement
+    1: Unexpected character.
+         invalid stuff that won't parse
+         ~

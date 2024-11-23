@@ -21,6 +21,7 @@ bytes.workspace = true
 console_static_text.workspace = true
 deno_unsync = "0"
 denokv_proto.workspace = true
+faster-hex.workspace = true
 fastwebsockets.workspace = true
 flate2 = { workspace = true, features = ["default"] }
 futures.workspace = true
@@ -35,7 +36,7 @@ lazy-regex.workspace = true
 libc.workspace = true
 lsp-types.workspace = true
 monch.workspace = true
-nix.workspace = true
+nix = { workspace = true, features = ["fs", "term", "signal"] }
 once_cell.workspace = true
 os_pipe.workspace = true
 parking_lot.workspace = true

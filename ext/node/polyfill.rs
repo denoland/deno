@@ -45,6 +45,7 @@ generate_builtin_node_module_lists! {
   "http",
   "http2",
   "https",
+  "inspector",
   "module",
   "net",
   "os",
@@ -74,6 +75,7 @@ generate_builtin_node_module_lists! {
   "util/types",
   "v8",
   "vm",
+  "wasi",
   "worker_threads",
   "zlib",
 }

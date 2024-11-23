@@ -1,0 +1,5 @@
+{
+  "args": "run mixed_case_package_name/global.ts",
+  "output": "mixed_case_package_name/global.out",
+  "exitCode": 0
+}

@@ -1,10 +1,10 @@
 Check [WILDCARD]
-cpu: [WILDCARD]
-runtime: [WILDCARD]
+    CPU | [WILDCARD]
+Runtime | [WILDCARD]
 
 [WILDCARD]
-benchmark      time (avg)        iter/s             (min … max)       p75       p99      p995
---------------------------------------------------------------- -----------------------------
+benchmark   time/iter (avg)        iter/s      (min … max)           p75      p99     p995
+----------- ----------------------------- --------------------- --------------------------
 
 group G1
 G1-B       [WILDCARD]

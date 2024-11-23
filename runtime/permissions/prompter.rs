@@ -1,6 +1,7 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
-use deno_core::error::AnyError;
+use crate::is_standalone;
+use deno_core::error::JsStackFrame;
 use deno_core::parking_lot::Mutex;
 use deno_terminal::colors;
 use once_cell::sync::Lazy;
@@ -52,6 +53,13 @@ static MAYBE_BEFORE_PROMPT_CALLBACK: Lazy<Mutex<Option<PromptCallback>>> =
 static MAYBE_AFTER_PROMPT_CALLBACK: Lazy<Mutex<Option<PromptCallback>>> =
   Lazy::new(|| Mutex::new(None));
 
+static MAYBE_CURRENT_STACKTRACE: Lazy<Mutex<Option<Vec<JsStackFrame>>>> =
+  Lazy::new(|| Mutex::new(None));
+
+pub fn set_current_stacktrace(trace: Vec<JsStackFrame>) {
+  *MAYBE_CURRENT_STACKTRACE.lock() = Some(trace);
+}
+
 pub fn permission_prompt(
   message: &str,
   flag: &str,
@@ -61,9 +69,10 @@ pub fn permission_prompt(
   if let Some(before_callback) = MAYBE_BEFORE_PROMPT_CALLBACK.lock().as_mut() {
     before_callback();
   }
+  let stack = MAYBE_CURRENT_STACKTRACE.lock().take();
   let r = PERMISSION_PROMPTER
     .lock()
-    .prompt(message, flag, api_name, is_unary);
+    .prompt(message, flag, api_name, is_unary, stack);
   if let Some(after_callback) = MAYBE_AFTER_PROMPT_CALLBACK.lock().as_mut() {
     after_callback();
   }
@@ -78,6 +87,10 @@ pub fn set_prompt_callbacks(
   *MAYBE_AFTER_PROMPT_CALLBACK.lock() = Some(after_callback);
 }
 
+pub fn set_prompter(prompter: Box<dyn PermissionPrompter>) {
+  *PERMISSION_PROMPTER.lock() = prompter;
+}
+
 pub type PromptCallback = Box<dyn FnMut() + Send + Sync>;
 
 pub trait PermissionPrompter: Send + Sync {
@@ -87,6 +100,7 @@ pub trait PermissionPrompter: Send + Sync {
     name: &str,
     api_name: Option<&str>,
     is_unary: bool,
+    stack: Option<Vec<JsStackFrame>>,
   ) -> PromptResponse;
 }
 
@@ -95,8 +109,7 @@ pub struct TtyPrompter;
 fn clear_stdin(
   _stdin_lock: &mut StdinLock,
   _stderr_lock: &mut StderrLock,
-) -> Result<(), AnyError> {
-  use deno_core::anyhow::bail;
+) -> Result<(), std::io::Error> {
   use std::mem::MaybeUninit;
 
   const STDIN_FD: i32 = 0;
@@ -111,7 +124,10 @@ fn clear_stdin(
     loop {
       let r = libc::tcflush(STDIN_FD, libc::TCIFLUSH);
       if r != 0 {
-        bail!("clear_stdin failed (tcflush)");
+        return Err(std::io::Error::new(
+          std::io::ErrorKind::Other,
+          "clear_stdin failed (tcflush)",
+        ));
       }
 
       // Initialize timeout for select to be 100ms
@@ -131,7 +147,10 @@ fn clear_stdin(
 
       // Check if select returned an error
       if r < 0 {
-        bail!("clear_stdin failed (select)");
+        return Err(std::io::Error::new(
+          std::io::ErrorKind::Other,
+          "clear_stdin failed (select)",
+        ));
       }
 
       // Check if select returned due to timeout (stdin is quiescent)
@@ -150,8 +169,7 @@ fn clear_stdin(
 fn clear_stdin(
   stdin_lock: &mut StdinLock,
   stderr_lock: &mut StderrLock,
-) -> Result<(), AnyError> {
-  use deno_core::anyhow::bail;
+) -> Result<(), std::io::Error> {
   use winapi::shared::minwindef::TRUE;
   use winapi::shared::minwindef::UINT;
   use winapi::shared::minwindef::WORD;
@@ -188,18 +206,23 @@ fn clear_stdin(
 
   return Ok(());
 
-  unsafe fn flush_input_buffer(stdin: HANDLE) -> Result<(), AnyError> {
+  unsafe fn flush_input_buffer(stdin: HANDLE) -> Result<(), std::io::Error> {
     let success = FlushConsoleInputBuffer(stdin);
     if success != TRUE {
-      bail!(
-        "Could not flush the console input buffer: {}",
-        std::io::Error::last_os_error()
-      )
+      return Err(std::io::Error::new(
+        std::io::ErrorKind::Other,
+        format!(
+          "Could not flush the console input buffer: {}",
+          std::io::Error::last_os_error()
+        ),
+      ));
     }
     Ok(())
   }
 
-  unsafe fn emulate_enter_key_press(stdin: HANDLE) -> Result<(), AnyError> {
+  unsafe fn emulate_enter_key_press(
+    stdin: HANDLE,
+  ) -> Result<(), std::io::Error> {
     // https://github.com/libuv/libuv/blob/a39009a5a9252a566ca0704d02df8dabc4ce328f/src/win/tty.c#L1121-L1131
     let mut input_record: INPUT_RECORD = std::mem::zeroed();
     input_record.EventType = KEY_EVENT;
@@ -214,34 +237,43 @@ fn clear_stdin(
     let success =
       WriteConsoleInputW(stdin, &input_record, 1, &mut record_written);
     if success != TRUE {
-      bail!(
-        "Could not emulate enter key press: {}",
-        std::io::Error::last_os_error()
-      );
+      return Err(std::io::Error::new(
+        std::io::ErrorKind::Other,
+        format!(
+          "Could not emulate enter key press: {}",
+          std::io::Error::last_os_error()
+        ),
+      ));
     }
     Ok(())
   }
 
-  unsafe fn is_input_buffer_empty(stdin: HANDLE) -> Result<bool, AnyError> {
+  unsafe fn is_input_buffer_empty(
+    stdin: HANDLE,
+  ) -> Result<bool, std::io::Error> {
     let mut buffer = Vec::with_capacity(1);
     let mut events_read = 0;
     let success =
       PeekConsoleInputW(stdin, buffer.as_mut_ptr(), 1, &mut events_read);
     if success != TRUE {
-      bail!(
-        "Could not peek the console input buffer: {}",
-        std::io::Error::last_os_error()
-      )
+      return Err(std::io::Error::new(
+        std::io::ErrorKind::Other,
+        format!(
+          "Could not peek the console input buffer: {}",
+          std::io::Error::last_os_error()
+        ),
+      ));
     }
     Ok(events_read == 0)
   }
 
-  fn move_cursor_up(stderr_lock: &mut StderrLock) -> Result<(), AnyError> {
-    write!(stderr_lock, "\x1B[1A")?;
-    Ok(())
+  fn move_cursor_up(
+    stderr_lock: &mut StderrLock,
+  ) -> Result<(), std::io::Error> {
+    write!(stderr_lock, "\x1B[1A")
   }
 
-  fn read_stdin_line(stdin_lock: &mut StdinLock) -> Result<(), AnyError> {
+  fn read_stdin_line(stdin_lock: &mut StdinLock) -> Result<(), std::io::Error> {
     let mut input = String::new();
     stdin_lock.read_line(&mut input)?;
     Ok(())
@@ -263,7 +295,7 @@ fn get_stdin_metadata() -> std::io::Result<std::fs::Metadata> {
   unsafe {
     let stdin = std::fs::File::from_raw_fd(0);
     let metadata = stdin.metadata().unwrap();
-    stdin.into_raw_fd();
+    let _ = stdin.into_raw_fd();
     Ok(metadata)
   }
 }
@@ -275,6 +307,7 @@ impl PermissionPrompter for TtyPrompter {
     name: &str,
     api_name: Option<&str>,
     is_unary: bool,
+    stack: Option<Vec<JsStackFrame>>,
   ) -> PromptResponse {
     if !std::io::stdin().is_terminal() || !std::io::stderr().is_terminal() {
       return PromptResponse::Deny;
@@ -317,22 +350,62 @@ impl PermissionPrompter for TtyPrompter {
     };
 
     // output everything in one shot to make the tests more reliable
-    {
+    let stack_lines_count = {
       let mut output = String::new();
-      write!(&mut output, "┌ {PERMISSION_EMOJI}  ").unwrap();
+      write!(&mut output, "┏ {PERMISSION_EMOJI}  ").unwrap();
       write!(&mut output, "{}", colors::bold("Deno requests ")).unwrap();
       write!(&mut output, "{}", colors::bold(message.clone())).unwrap();
       writeln!(&mut output, "{}", colors::bold(".")).unwrap();
       if let Some(api_name) = api_name.clone() {
-        writeln!(&mut output, "├ Requested by `{api_name}` API.").unwrap();
+        writeln!(
+          &mut output,
+          "┠─ Requested by `{}` API.",
+          colors::bold(api_name)
+        )
+        .unwrap();
       }
-      let msg = format!("Run again with --allow-{name} to bypass this prompt.");
-      writeln!(&mut output, "├ {}", colors::italic(&msg)).unwrap();
-      write!(&mut output, "└ {}", colors::bold("Allow?")).unwrap();
+      let stack_lines_count = if let Some(stack) = stack {
+        let len = stack.len();
+        for (idx, frame) in stack.into_iter().enumerate() {
+          writeln!(
+            &mut output,
+            "┃  {} {}",
+            colors::gray(if idx != len - 1 { "├─" } else { "└─" }),
+            colors::gray(deno_core::error::format_frame::<
+              deno_core::error::NoAnsiColors,
+            >(&frame))
+          )
+          .unwrap();
+        }
+        len
+      } else {
+        writeln!(
+          &mut output,
+          "┠─ To see a stack trace for this prompt, set the DENO_TRACE_PERMISSIONS environmental variable.",
+        ).unwrap();
+        1
+      };
+      let msg = format!(
+        "Learn more at: {}",
+        colors::cyan_with_underline(&format!(
+          "https://docs.deno.com/go/--allow-{}",
+          name
+        ))
+      );
+      writeln!(&mut output, "┠─ {}", colors::italic(&msg)).unwrap();
+      let msg = if is_standalone() {
+        format!("Specify the required permissions during compile time using `deno compile --allow-{name}`.")
+      } else {
+        format!("Run again with --allow-{name} to bypass this prompt.")
+      };
+      writeln!(&mut output, "┠─ {}", colors::italic(&msg)).unwrap();
+      write!(&mut output, "┗ {}", colors::bold("Allow?")).unwrap();
       write!(&mut output, " {opts} > ").unwrap();
 
       stderr_lock.write_all(output.as_bytes()).unwrap();
-    }
+
+      stack_lines_count
+    };
 
     let value = loop {
       // Clear stdin each time we loop around in case the user accidentally pasted
@@ -347,34 +420,28 @@ impl PermissionPrompter for TtyPrompter {
 
       let mut input = String::new();
       let result = stdin_lock.read_line(&mut input);
-      let input = input.trim_end_matches(|c| c == '\r' || c == '\n');
+      let input = input.trim_end_matches(['\r', '\n']);
       if result.is_err() || input.len() != 1 {
         break PromptResponse::Deny;
       };
+
+      let clear_n = if api_name.is_some() { 5 } else { 4 } + stack_lines_count;
+
       match input.as_bytes()[0] as char {
         'y' | 'Y' => {
-          clear_n_lines(
-            &mut stderr_lock,
-            if api_name.is_some() { 4 } else { 3 },
-          );
+          clear_n_lines(&mut stderr_lock, clear_n);
           let msg = format!("Granted {message}.");
           writeln!(stderr_lock, "✅ {}", colors::bold(&msg)).unwrap();
           break PromptResponse::Allow;
         }
         'n' | 'N' | '\x1b' => {
-          clear_n_lines(
-            &mut stderr_lock,
-            if api_name.is_some() { 4 } else { 3 },
-          );
+          clear_n_lines(&mut stderr_lock, clear_n);
           let msg = format!("Denied {message}.");
           writeln!(stderr_lock, "❌ {}", colors::bold(&msg)).unwrap();
           break PromptResponse::Deny;
         }
         'A' if is_unary => {
-          clear_n_lines(
-            &mut stderr_lock,
-            if api_name.is_some() { 4 } else { 3 },
-          );
+          clear_n_lines(&mut stderr_lock, clear_n);
           let msg = format!("Granted all {name} access.");
           writeln!(stderr_lock, "✅ {}", colors::bold(&msg)).unwrap();
           break PromptResponse::AllowAll;
@@ -384,7 +451,7 @@ impl PermissionPrompter for TtyPrompter {
           clear_n_lines(&mut stderr_lock, 1);
           write!(
             stderr_lock,
-            "└ {} {opts} > ",
+            "┗ {} {opts} > ",
             colors::bold("Unrecognized option. Allow?")
           )
           .unwrap();
@@ -435,6 +502,7 @@ pub mod tests {
       _name: &str,
       _api_name: Option<&str>,
       _is_unary: bool,
+      _stack: Option<Vec<JsStackFrame>>,
     ) -> PromptResponse {
       if STUB_PROMPT_VALUE.load(Ordering::SeqCst) {
         PromptResponse::Allow
@@ -456,9 +524,5 @@ pub mod tests {
     pub fn set(&self, value: bool) {
       STUB_PROMPT_VALUE.store(value, Ordering::SeqCst);
     }
-  }
-
-  pub fn set_prompter(prompter: Box<dyn PermissionPrompter>) {
-    *PERMISSION_PROMPTER.lock() = prompter;
   }
 }

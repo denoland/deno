@@ -15,7 +15,7 @@ Deno.test(function noNameTest() {
     // @ts-ignore test
     () => Deno.cron(),
     TypeError,
-    "Deno.cron requires a unique name",
+    "Cannot create cron job, a unique name is required: received 'undefined'",
   );
 });
 
@@ -24,7 +24,7 @@ Deno.test(function noSchedule() {
     // @ts-ignore test
     () => Deno.cron("foo"),
     TypeError,
-    "Deno.cron requires a valid schedule",
+    "Cannot create cron job, a schedule is required: received 'undefined'",
   );
 });
 
@@ -33,7 +33,7 @@ Deno.test(function noHandler() {
     // @ts-ignore test
     () => Deno.cron("foo", "*/1 * * * *"),
     TypeError,
-    "Deno.cron requires a handler",
+    "Cannot create cron job: a handler is required",
   );
 });
 
@@ -66,7 +66,7 @@ Deno.test(function invalidNameTest() {
         () => {},
       ),
     TypeError,
-    "Cron name is too long",
+    "Cron name cannot exceed 64 characters: current length 70",
   );
 });
 
@@ -388,7 +388,7 @@ Deno.test("error on two handlers", () => {
       Deno.cron("abc", "* * * * *", () => {}, () => {});
     },
     TypeError,
-    "Deno.cron requires a single handler",
+    "Cannot create cron job, a single handler is required: two handlers were specified",
   );
 });
 

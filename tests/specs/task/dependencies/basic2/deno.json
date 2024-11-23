@@ -1,0 +1,13 @@
+{
+  "tasks": {
+    "build1": "deno run ../build1.js",
+    "build2": {
+      "command": "deno run ../build2.js",
+      "dependencies": ["build1"]
+    },
+    "run": {
+      "command": "deno run ../run.js",
+      "dependencies": ["build2"]
+    }
+  }
+}

@@ -16,8 +16,11 @@ use deno_task_shell::ExecutableCommand;
 use deno_task_shell::ExecuteResult;
 use deno_task_shell::ShellCommand;
 use deno_task_shell::ShellCommandContext;
+use deno_task_shell::ShellPipeReader;
+use deno_task_shell::ShellPipeWriter;
 use lazy_regex::Lazy;
 use regex::Regex;
+use tokio::task::JoinHandle;
 use tokio::task::LocalSet;
 
 use crate::npm::CliNpmResolver;
@@ -36,6 +39,35 @@ pub fn get_script_with_args(script: &str, argv: &[String]) -> String {
   script.trim().to_owned()
 }
 
+pub struct TaskStdio(Option<ShellPipeReader>, ShellPipeWriter);
+
+impl TaskStdio {
+  pub fn stdout() -> Self {
+    Self(None, ShellPipeWriter::stdout())
+  }
+  pub fn stderr() -> Self {
+    Self(None, ShellPipeWriter::stderr())
+  }
+  pub fn piped() -> Self {
+    let (r, w) = deno_task_shell::pipe();
+    Self(Some(r), w)
+  }
+}
+
+pub struct TaskIo {
+  pub stdout: TaskStdio,
+  pub stderr: TaskStdio,
+}
+
+impl Default for TaskIo {
+  fn default() -> Self {
+    Self {
+      stderr: TaskStdio::stderr(),
+      stdout: TaskStdio::stdout(),
+    }
+  }
+}
+
 pub struct RunTaskOptions<'a> {
   pub task_name: &'a str,
   pub script: &'a str,
@@ -45,24 +77,69 @@ pub struct RunTaskOptions<'a> {
   pub argv: &'a [String],
   pub custom_commands: HashMap<String, Rc<dyn ShellCommand>>,
   pub root_node_modules_dir: Option<&'a Path>,
+  pub stdio: Option<TaskIo>,
 }
 
 pub type TaskCustomCommands = HashMap<String, Rc<dyn ShellCommand>>;
 
-pub async fn run_task(opts: RunTaskOptions<'_>) -> Result<i32, AnyError> {
+pub struct TaskResult {
+  pub exit_code: i32,
+  pub stdout: Option<Vec<u8>>,
+  pub stderr: Option<Vec<u8>>,
+}
+
+pub async fn run_task(
+  opts: RunTaskOptions<'_>,
+) -> Result<TaskResult, AnyError> {
   let script = get_script_with_args(opts.script, opts.argv);
   let seq_list = deno_task_shell::parser::parse(&script)
     .with_context(|| format!("Error parsing script '{}'.", opts.task_name))?;
   let env_vars =
     prepare_env_vars(opts.env_vars, opts.init_cwd, opts.root_node_modules_dir);
+  let state =
+    deno_task_shell::ShellState::new(env_vars, opts.cwd, opts.custom_commands);
+  let stdio = opts.stdio.unwrap_or_default();
+  let (
+    TaskStdio(stdout_read, stdout_write),
+    TaskStdio(stderr_read, stderr_write),
+  ) = (stdio.stdout, stdio.stderr);
+
+  fn read(reader: ShellPipeReader) -> JoinHandle<Result<Vec<u8>, AnyError>> {
+    tokio::task::spawn_blocking(move || {
+      let mut buf = Vec::new();
+      reader.pipe_to(&mut buf)?;
+      Ok(buf)
+    })
+  }
+
+  let stdout = stdout_read.map(read);
+  let stderr = stderr_read.map(read);
+
   let local = LocalSet::new();
-  let future = deno_task_shell::execute(
-    seq_list,
-    env_vars,
-    opts.cwd,
-    opts.custom_commands,
-  );
-  Ok(local.run_until(future).await)
+  let future = async move {
+    let exit_code = deno_task_shell::execute_with_pipes(
+      seq_list,
+      state,
+      ShellPipeReader::stdin(),
+      stdout_write,
+      stderr_write,
+    )
+    .await;
+    Ok::<_, AnyError>(TaskResult {
+      exit_code,
+      stdout: if let Some(stdout) = stdout {
+        Some(stdout.await??)
+      } else {
+        None
+      },
+      stderr: if let Some(stderr) = stderr {
+        Some(stderr.await??)
+      } else {
+        None
+      },
+    })
+  };
+  local.run_until(future).await
 }
 
 fn prepare_env_vars(
@@ -76,6 +153,12 @@ fn prepare_env_vars(
     env_vars.insert(
       INIT_CWD_NAME.to_string(),
       initial_cwd.to_string_lossy().to_string(),
+    );
+  }
+  if !env_vars.contains_key(crate::npm::NPM_CONFIG_USER_AGENT_ENV_VAR) {
+    env_vars.insert(
+      crate::npm::NPM_CONFIG_USER_AGENT_ENV_VAR.into(),
+      crate::npm::get_npm_config_user_agent(),
     );
   }
   if let Some(node_modules_dir) = node_modules_dir {
@@ -127,7 +210,7 @@ impl ShellCommand for NpmCommand {
     mut context: ShellCommandContext,
   ) -> LocalBoxFuture<'static, ExecuteResult> {
     if context.args.first().map(|s| s.as_str()) == Some("run")
-      && context.args.len() > 2
+      && context.args.len() >= 2
       // for now, don't run any npm scripts that have a flag because
       // we don't handle stuff like `--workspaces` properly
       && !context.args.iter().any(|s| s.starts_with('-'))
@@ -190,10 +273,12 @@ impl ShellCommand for NodeCommand {
       )
       .execute(context);
     }
+
     args.extend(["run", "-A"].into_iter().map(|s| s.to_string()));
     args.extend(context.args.iter().cloned());
 
     let mut state = context.state;
+
     state.apply_env_var(USE_PKG_JSON_HIDDEN_ENV_VAR_NAME, "1");
     ExecutableCommand::new("deno".to_string(), std::env::current_exe().unwrap())
       .execute(ShellCommandContext {
@@ -213,8 +298,8 @@ impl ShellCommand for NodeGypCommand {
   ) -> LocalBoxFuture<'static, ExecuteResult> {
     // at the moment this shell command is just to give a warning if node-gyp is not found
     // in the future, we could try to run/install node-gyp for the user with deno
-    if which::which("node-gyp").is_err() {
-      log::warn!("{}: node-gyp was used in a script, but was not listed as a dependency. Either add it as a dependency or install it globally (e.g. `npm install -g node-gyp`)", crate::colors::yellow("warning"));
+    if context.state.resolve_command_path("node-gyp").is_err() {
+      log::warn!("{} node-gyp was used in a script, but was not listed as a dependency. Either add it as a dependency or install it globally (e.g. `npm install -g node-gyp`)", crate::colors::yellow("Warning"));
     }
     ExecutableCommand::new(
       "node-gyp".to_string(),
@@ -398,20 +483,32 @@ fn resolve_execution_path_from_npx_shim(
   static SCRIPT_PATH_RE: Lazy<Regex> =
     lazy_regex::lazy_regex!(r#""\$basedir\/([^"]+)" "\$@""#);
 
-  if text.starts_with("#!/usr/bin/env node") {
-    // launch this file itself because it's a JS file
-    Some(file_path)
-  } else {
-    // Search for...
-    // > "$basedir/../next/dist/bin/next" "$@"
-    // ...which is what it will look like on Windows
-    SCRIPT_PATH_RE
-      .captures(text)
-      .and_then(|c| c.get(1))
-      .map(|relative_path| {
-        file_path.parent().unwrap().join(relative_path.as_str())
-      })
+  let maybe_first_line = {
+    let index = text.find("\n")?;
+    Some(&text[0..index])
+  };
+
+  if let Some(first_line) = maybe_first_line {
+    // NOTE(bartlomieju): this is not perfect, but handle two most common scenarios
+    // where Node is run without any args. If there are args then we use `NodeCommand`
+    // struct.
+    if first_line == "#!/usr/bin/env node"
+      || first_line == "#!/usr/bin/env -S node"
+    {
+      // launch this file itself because it's a JS file
+      return Some(file_path);
+    }
   }
+
+  // Search for...
+  // > "$basedir/../next/dist/bin/next" "$@"
+  // ...which is what it will look like on Windows
+  SCRIPT_PATH_RE
+    .captures(text)
+    .and_then(|c| c.get(1))
+    .map(|relative_path| {
+      file_path.parent().unwrap().join(relative_path.as_str())
+    })
 }
 
 fn resolve_managed_npm_commands(
@@ -477,6 +574,16 @@ mod test {
   fn test_resolve_execution_path_from_npx_shim() {
     // example shim on unix
     let unix_shim = r#"#!/usr/bin/env node
+"use strict";
+console.log('Hi!');
+"#;
+    let path = PathBuf::from("/node_modules/.bin/example");
+    assert_eq!(
+      resolve_execution_path_from_npx_shim(path.clone(), unix_shim).unwrap(),
+      path
+    );
+    // example shim on unix
+    let unix_shim = r#"#!/usr/bin/env -S node
 "use strict";
 console.log('Hi!');
 "#;
