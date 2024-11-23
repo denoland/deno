@@ -19,7 +19,7 @@ pub fn op_inspector_enabled() -> bool {
   false
 }
 
-#[op2]
+#[op2(stack_trace)]
 pub fn op_inspector_open<P>(
   _state: &mut OpState,
   _port: Option<u16>,
@@ -94,7 +94,7 @@ pub enum InspectorConnectError {
   ConnectToMainThreadUnsupported,
 }
 
-#[op2]
+#[op2(stack_trace)]
 #[cppgc]
 pub fn op_inspector_connect<'s, P>(
   isolate: *mut v8::Isolate,
