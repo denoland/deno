@@ -1473,7 +1473,7 @@ dependencies = [
 [[package]]
 name = "deno_core"
 version = "0.322.0"
-source = "git+https://github.com/littledivy/deno_core?branch=changes_for_webstorage#310bc673d71d9d168cfea96aa87f8e73651db8c0"
+source = "git+https://github.com/littledivy/deno_core?rev=93e91198c6d90892009ab8eb548eabb087f12873#93e91198c6d90892009ab8eb548eabb087f12873"
 dependencies = [
  "anyhow",
  "az",
@@ -1990,7 +1990,7 @@ dependencies = [
 [[package]]
 name = "deno_ops"
 version = "0.198.0"
-source = "git+https://github.com/littledivy/deno_core?branch=changes_for_webstorage#310bc673d71d9d168cfea96aa87f8e73651db8c0"
+source = "git+https://github.com/littledivy/deno_core?rev=93e91198c6d90892009ab8eb548eabb087f12873#93e91198c6d90892009ab8eb548eabb087f12873"
 dependencies = [
  "proc-macro-rules",
  "proc-macro2",
@@ -6672,7 +6672,7 @@ dependencies = [
 [[package]]
 name = "serde_v8"
 version = "0.231.0"
-source = "git+https://github.com/littledivy/deno_core?branch=changes_for_webstorage#310bc673d71d9d168cfea96aa87f8e73651db8c0"
+source = "git+https://github.com/littledivy/deno_core?rev=93e91198c6d90892009ab8eb548eabb087f12873#93e91198c6d90892009ab8eb548eabb087f12873"
 dependencies = [
  "num-bigint",
  "serde",

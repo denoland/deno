@@ -336,4 +336,4 @@ opt-level = 3
 opt-level = 3
 
 [patch.crates-io]
-deno_core = { git = "https://github.com/littledivy/deno_core", branch = "changes_for_webstorage" }
+deno_core = { git = "https://github.com/littledivy/deno_core", rev = "93e91198c6d90892009ab8eb548eabb087f12873" }
