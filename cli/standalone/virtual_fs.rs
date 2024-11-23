@@ -743,15 +743,12 @@ impl deno_io::fs::File for FileBackedVfsFile {
     Err(FsError::NotSupported)
   }
 
-  fn read_all_sync(self: Rc<Self>) -> FsResult<Vec<u8>> {
-    self.read_to_end().map(|bytes| bytes.into_owned())
+  fn read_all_sync(self: Rc<Self>) -> FsResult<Cow<'static, [u8]>> {
+    self.read_to_end()
   }
-  async fn read_all_async(self: Rc<Self>) -> FsResult<Vec<u8>> {
+  async fn read_all_async(self: Rc<Self>) -> FsResult<Cow<'static, [u8]>> {
     let inner = (*self).clone();
-    tokio::task::spawn_blocking(move || {
-      inner.read_to_end().map(|bytes| bytes.into_owned())
-    })
-    .await?
+    tokio::task::spawn_blocking(move || inner.read_to_end()).await?
   }
 
   fn chmod_sync(self: Rc<Self>, _pathmode: u32) -> FsResult<()> {

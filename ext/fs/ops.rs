@@ -1,5 +1,6 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
+use std::borrow::Cow;
 use std::cell::RefCell;
 use std::error::Error;
 use std::fmt::Formatter;
@@ -1333,7 +1334,8 @@ where
     .read_file_sync(&path, Some(&mut access_check))
     .map_err(|error| map_permission_error("readfile", error, &path))?;
 
-  Ok(buf.into())
+  // todo(THIS PR): how to not clone here?
+  Ok(buf.into_owned().into_boxed_slice().into())
 }
 
 #[op2(async, stack_trace)]
@@ -1375,7 +1377,8 @@ where
       .map_err(|error| map_permission_error("readfile", error, &path))?
   };
 
-  Ok(buf.into())
+  // todo(THIS PR): how to not clone here?
+  Ok(buf.into_owned().into_boxed_slice().into())
 }
 
 #[op2(stack_trace)]
@@ -1383,7 +1386,7 @@ where
 pub fn op_fs_read_file_text_sync<P>(
   state: &mut OpState,
   #[string] path: String,
-) -> Result<String, FsOpsError>
+) -> Result<Cow<'static, str>, FsOpsError>
 where
   P: FsPermissions + 'static,
 {
@@ -1405,7 +1408,7 @@ pub async fn op_fs_read_file_text_async<P>(
   state: Rc<RefCell<OpState>>,
   #[string] path: String,
   #[smi] cancel_rid: Option<ResourceId>,
-) -> Result<String, FsOpsError>
+) -> Result<Cow<'static, str>, FsOpsError>
 where
   P: FsPermissions + 'static,
 {

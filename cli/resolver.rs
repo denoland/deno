@@ -38,7 +38,7 @@ use crate::node::CliNodeCodeTranslator;
 use crate::npm::CliNpmResolver;
 use crate::npm::InnerCliNpmResolverRef;
 use crate::util::sync::AtomicFlag;
-use crate::util::text_encoding::from_utf8_lossy_owned;
+use crate::util::text_encoding::from_utf8_lossy_cow;
 
 pub type CjsTracker = deno_resolver::cjs::CjsTracker<DenoFsNodeResolverEnv>;
 pub type IsCjsResolver =
@@ -64,7 +64,10 @@ pub struct ModuleCodeStringSource {
 pub struct CliDenoResolverFs(pub Arc<dyn FileSystem>);
 
 impl deno_resolver::fs::DenoResolverFs for CliDenoResolverFs {
-  fn read_to_string_lossy(&self, path: &Path) -> std::io::Result<String> {
+  fn read_to_string_lossy(
+    &self,
+    path: &Path,
+  ) -> std::io::Result<Cow<'static, str>> {
     self
       .0
       .read_text_file_lossy_sync(path, None)
@@ -184,18 +187,21 @@ impl NpmModuleLoader {
 
     let code = if self.cjs_tracker.is_maybe_cjs(specifier, media_type)? {
       // translate cjs to esm if it's cjs and inject node globals
-      let code = from_utf8_lossy_owned(code);
+      let code = from_utf8_lossy_cow(code);
       ModuleSourceCode::String(
         self
           .node_code_translator
-          .translate_cjs_to_esm(specifier, Some(Cow::Owned(code)))
+          .translate_cjs_to_esm(specifier, Some(code))
           .await?
           .into_owned()
           .into(),
       )
     } else {
       // esm and json code is untouched
-      ModuleSourceCode::Bytes(code.into_boxed_slice().into())
+      ModuleSourceCode::Bytes(match code {
+        Cow::Owned(bytes) => bytes.into_boxed_slice().into(),
+        Cow::Borrowed(bytes) => bytes.into(),
+      })
     };
 
     Ok(ModuleCodeStringSource {

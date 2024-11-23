@@ -481,7 +481,7 @@ where
 pub fn op_require_read_file<P>(
   state: &mut OpState,
   #[string] file_path: String,
-) -> Result<String, RequireError>
+) -> Result<Cow<'static, str>, RequireError>
 where
   P: NodePermissions + 'static,
 {
