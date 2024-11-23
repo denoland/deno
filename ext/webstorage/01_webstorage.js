@@ -42,14 +42,7 @@ function createStorage(persistent) {
       if (ReflectHas(target, key)) {
         const value = target[key];
         if (typeof value === "function") {
-          const func = FunctionPrototypeBind(value, target);
-          // Remove "bound " prefix from function name
-          ReflectDefineProperty(func, "name", {
-            __proto__: null,
-            value: value.name,
-            configurable: true,
-          });
-          return func;
+          return FunctionPrototypeBind(value, target);
         }
         return value;
       }
