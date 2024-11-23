@@ -50,22 +50,27 @@ pub async fn info(
     let npm_resolver = factory.npm_resolver().await?;
     let maybe_lockfile = cli_options.maybe_lockfile();
     let npmrc = cli_options.npmrc();
-    let resolver = factory.workspace_resolver().await?;
 
     let cwd_url =
       url::Url::from_directory_path(cli_options.initial_cwd()).unwrap();
 
-    let maybe_import_specifier = if let Some(import_map) =
-      resolver.maybe_import_map()
-    {
-      if let Ok(imports_specifier) = import_map.resolve(&specifier, &cwd_url) {
-        Some(imports_specifier)
-      } else {
+    let deno_resolver = factory.deno_resolver().await?;
+    let maybe_import_specifier =
+      if specifier.starts_with("npm:") && cli_options.use_byonm() {
+        // Don't resolve this to a file path, just pass the `npm:` specifier along
+        // (it will error out later on)
         None
-      }
-    } else {
-      None
-    };
+      } else {
+        deno_resolver
+          .resolve(
+            &specifier,
+            &cwd_url,
+            deno_package_json::NodeModuleKind::Esm,
+            node_resolver::NodeResolutionMode::Execution,
+          )
+          .ok()
+          .map(|r| r.url)
+      };
 
     let specifier = match maybe_import_specifier {
       Some(specifier) => specifier,
