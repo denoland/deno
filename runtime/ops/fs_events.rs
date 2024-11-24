@@ -152,7 +152,12 @@ fn start_watcher(
             let _ = sender.try_send(Ok(event.clone()));
           } else {
             // If the event is a remove event, we need to check if the path that was deleted
-            if event.kind.eq("remove") && event.paths.iter().any(|event_path| !event_path.exists()) {
+            if event.kind.eq("remove")
+              && event
+                .paths
+                .iter()
+                .any(|event_path| std::fs::exists(event_path).unwrap_or(false))
+            {
               let remove_event = FsEvent {
                 kind: "remove",
                 paths: event.paths.iter().map(PathBuf::from).collect(),
