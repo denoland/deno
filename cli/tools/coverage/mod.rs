@@ -265,7 +265,7 @@ fn generate_coverage_report(
   };
 
   let coverage_ignore_next_directives =
-    parsed_source.with_view(|program| parse_next_ignore_directives(&program));
+    parse_next_ignore_directives(&parsed_source);
   let coverage_ignore_range_directives = parsed_source.with_view(|program| {
     parse_range_ignore_directives(
       options.cli_options.is_quiet(),

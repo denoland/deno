@@ -110,16 +110,19 @@ pub fn parse_range_ignore_directives(
 }
 
 pub fn parse_next_ignore_directives(
-  program: &ast_view::Program,
+  parsed_source: &ParsedSource,
 ) -> HashMap<usize, NextIgnoreDirective> {
-  program
-    .comment_container()
-    .all_comments()
+  let comments = parsed_source.comments().get_vec();
+
+  comments
+    .iter()
     .filter_map(|comment| {
       parse_ignore_comment(COVERAGE_IGNORE_NEXT_DIRECTIVE, comment).map(
         |directive| {
           (
-            program.text_info().line_index(directive.range().start),
+            parsed_source
+              .text_info_lazy()
+              .line_index(directive.range().start),
             directive,
           )
         },
@@ -303,12 +306,9 @@ mod tests {
             foo();
           }
       "#;
-
-      parse_and_then(source_code, |program| {
-        let line_directives = parse_next_ignore_directives(&program);
-
-        assert_eq!(line_directives.len(), 2);
-      });
+      let parsed_source = parse(source_code);
+      let line_directives = parse_next_ignore_directives(&parsed_source);
+      assert_eq!(line_directives.len(), 2);
     }
   }
 
