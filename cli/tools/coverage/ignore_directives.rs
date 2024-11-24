@@ -6,6 +6,7 @@ use deno_ast::swc::common::Spanned;
 use deno_ast::ParsedSource;
 use deno_ast::SourceRange;
 use deno_ast::SourceRangedForSpanned as _;
+use deno_ast::SourceTextInfo;
 use deno_core::url::Url;
 use std::collections::HashMap;
 
@@ -43,6 +44,7 @@ pub fn parse_range_ignore_directives(
   script_module_specifier: &Url,
   sorted_comments: &Vec<Comment>,
   parsed_source: &ParsedSource,
+  text_info: &SourceTextInfo,
 ) -> Vec<RangeIgnoreDirective> {
   let mut depth: usize = 0;
   let mut directives = Vec::<RangeIgnoreDirective>::new();
@@ -80,7 +82,6 @@ pub fn parse_range_ignore_directives(
   // then close it at the end of the program.
   if let Some(mut range) = current_range.take() {
     if !is_quiet {
-      let text_info = parsed_source.text_info_lazy();
       let loc = text_info.line_and_column_display(range.start);
       log::warn!(
         "WARNING: Unterminated {} comment at {}:{}:{}",
@@ -102,20 +103,13 @@ pub fn parse_range_ignore_directives(
 
 pub fn parse_next_ignore_directives(
   sorted_comments: &Vec<Comment>,
-  parsed_source: &ParsedSource,
+  text_info: &SourceTextInfo,
 ) -> HashMap<usize, NextIgnoreDirective> {
   sorted_comments
     .iter()
     .filter_map(|comment| {
       parse_ignore_comment(COVERAGE_IGNORE_NEXT_DIRECTIVE, comment).map(
-        |directive| {
-          (
-            parsed_source
-              .text_info_lazy()
-              .line_index(directive.range().start),
-            directive,
-          )
-        },
+        |directive| (text_info.line_index(directive.range().start), directive),
       )
     })
     .collect()
@@ -207,6 +201,15 @@ mod tests {
     (parsed_source, sorted_comments)
   }
 
+  pub fn parse_with_sorted_comments_and_text_info(
+    source_code: &str,
+  ) -> (ParsedSource, Vec<Comment>, SourceTextInfo) {
+    let parsed_source = parse(source_code);
+    let sorted_comments = parsed_source.comments().get_vec();
+    let text_info = SourceTextInfo::new(parsed_source.text().clone());
+    (parsed_source, sorted_comments, text_info)
+  }
+
   mod coverage_ignore_range {
     use super::*;
 
@@ -223,13 +226,14 @@ mod tests {
             // deno-coverage-ignore-stop
           }
       "#;
-      let (parsed_source, sorted_comments) =
-        parse_with_sorted_comments(source_code);
+      let (parsed_source, sorted_comments, text_info) =
+        parse_with_sorted_comments_and_text_info(source_code);
       let line_directives = parse_range_ignore_directives(
         true,
         &Url::from_str(TEST_FILE_NAME).unwrap(),
         &sorted_comments,
         &parsed_source,
+        &text_info,
       );
       assert_eq!(line_directives.len(), 2);
     }
@@ -244,13 +248,14 @@ mod tests {
             foo();
           }
       "#;
-      let (parsed_source, sorted_comments) =
-        parse_with_sorted_comments(source_code);
+      let (parsed_source, sorted_comments, text_info) =
+        parse_with_sorted_comments_and_text_info(source_code);
       let line_directives = parse_range_ignore_directives(
         true,
         &Url::from_str(TEST_FILE_NAME).unwrap(),
         &sorted_comments,
         &parsed_source,
+        &text_info,
       );
       assert_eq!(line_directives.len(), 1);
     }
@@ -268,13 +273,14 @@ mod tests {
           }
           // deno-coverage-ignore-stop
       "#;
-      let (parsed_source, sorted_comments) =
-        parse_with_sorted_comments(source_code);
+      let (parsed_source, sorted_comments, text_info) =
+        parse_with_sorted_comments_and_text_info(source_code);
       let line_directives = parse_range_ignore_directives(
         true,
         &Url::from_str(TEST_FILE_NAME).unwrap(),
         &sorted_comments,
         &parsed_source,
+        &text_info,
       );
       assert_eq!(line_directives.len(), 1);
     }
@@ -294,10 +300,10 @@ mod tests {
             foo();
           }
       "#;
-      let (parsed_source, sorted_comments) =
-        parse_with_sorted_comments(source_code);
+      let (_, sorted_comments, text_info) =
+        parse_with_sorted_comments_and_text_info(source_code);
       let line_directives =
-        parse_next_ignore_directives(&sorted_comments, &parsed_source);
+        parse_next_ignore_directives(&sorted_comments, &text_info);
       assert_eq!(line_directives.len(), 2);
     }
   }
