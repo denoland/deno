@@ -15,29 +15,12 @@ static COVERAGE_IGNORE_STOP_DIRECTIVE: &str = "deno-coverage-ignore-stop";
 static COVERAGE_IGNORE_NEXT_DIRECTIVE: &str = "deno-coverage-ignore-next";
 static COVERAGE_IGNORE_FILE_DIRECTIVE: &str = "deno-coverage-ignore-file";
 
-pub type RangeIgnoreDirective = IgnoreDirective<Range>;
-pub type NextIgnoreDirective = IgnoreDirective<Next>;
-pub type FileIgnoreDirective = IgnoreDirective<File>;
-
-pub enum Range {}
-pub enum Next {}
-pub enum File {}
-pub trait DirectiveKind {}
-impl DirectiveKind for Range {}
-impl DirectiveKind for Next {}
-impl DirectiveKind for File {}
-
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct IgnoreDirective<T: DirectiveKind> {
-  range: SourceRange,
-  _marker: std::marker::PhantomData<T>,
+pub struct RangeIgnoreDirective {
+  pub start_line_index: usize,
+  pub stop_line_index: usize,
 }
-
-impl<T: DirectiveKind> IgnoreDirective<T> {
-  pub fn range(&self) -> SourceRange {
-    self.range
-  }
-}
+pub struct NextIgnoreDirective;
+pub struct FileIgnoreDirective;
 
 pub fn parse_range_ignore_directives(
   is_quiet: bool,
@@ -81,11 +64,12 @@ pub fn parse_range_ignore_directives(
       } else if depth > 0 && prefix == COVERAGE_IGNORE_STOP_DIRECTIVE {
         depth -= 1;
         if depth == 0 {
-          let mut range = current_range.take().unwrap();
-          range.end = comment.range().end;
-          directives.push(IgnoreDirective {
-            range,
-            _marker: std::marker::PhantomData,
+          let start_line_index =
+            text_info.line_index(current_range.take().unwrap().start);
+          let stop_line_index = text_info.line_index(comment.range().end);
+          directives.push(RangeIgnoreDirective {
+            start_line_index,
+            stop_line_index,
           });
           current_range = None;
         }
@@ -131,9 +115,10 @@ pub fn parse_next_ignore_directives(
   sorted_comments
     .iter()
     .filter_map(|comment| {
-      parse_ignore_comment(COVERAGE_IGNORE_NEXT_DIRECTIVE, comment).map(
-        |directive| (text_info.line_index(directive.range().start), directive),
-      )
+      parse_ignore_comment(COVERAGE_IGNORE_NEXT_DIRECTIVE, comment, |comment| {
+        let line_index = text_info.line_index(comment.range().start);
+        (line_index, NextIgnoreDirective)
+      })
     })
     .collect()
 }
@@ -158,12 +143,18 @@ pub fn parse_file_ignore_directives(
 
   match (first_comment, first_module_item) {
     (None, _) => None,
-    (Some(first_comment), None) => {
-      parse_ignore_comment(COVERAGE_IGNORE_FILE_DIRECTIVE, first_comment)
-    }
+    (Some(first_comment), None) => parse_ignore_comment(
+      COVERAGE_IGNORE_FILE_DIRECTIVE,
+      first_comment,
+      |_| FileIgnoreDirective,
+    ),
     (Some(first_comment), Some(first_module_item)) => {
       if first_comment.span_hi() <= first_module_item.span_lo() {
-        parse_ignore_comment(COVERAGE_IGNORE_FILE_DIRECTIVE, first_comment)
+        parse_ignore_comment(
+          COVERAGE_IGNORE_FILE_DIRECTIVE,
+          first_comment,
+          |_| FileIgnoreDirective,
+        )
       } else {
         None
       }
@@ -171,26 +162,38 @@ pub fn parse_file_ignore_directives(
   }
 }
 
-fn parse_ignore_comment<T: DirectiveKind>(
+fn is_ignore_comment(
   ignore_diagnostic_directive: &str,
   comment: &Comment,
-) -> Option<IgnoreDirective<T>> {
+) -> bool {
   if comment.kind != CommentKind::Line {
-    return None;
+    return false;
   }
 
   let comment_text = comment.text.trim();
 
   if let Some(prefix) = comment_text.split_whitespace().next() {
     if prefix == ignore_diagnostic_directive {
-      return Some(IgnoreDirective::<T> {
-        range: comment.range(),
-        _marker: std::marker::PhantomData,
-      });
+      return true;
     }
   }
 
-  None
+  false
+}
+
+fn parse_ignore_comment<T, TMapper>(
+  ignore_diagnostic_directive: &str,
+  comment: &Comment,
+  mapper: TMapper,
+) -> Option<T>
+where
+  TMapper: FnOnce(&Comment) -> T,
+{
+  if is_ignore_comment(ignore_diagnostic_directive, comment) {
+    Some(mapper(comment))
+  } else {
+    None
+  }
 }
 
 #[cfg(test)]

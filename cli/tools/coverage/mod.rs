@@ -272,19 +272,7 @@ fn generate_coverage_report(
     parsed_source.specifier(),
     &sorted_comments,
     &text_info,
-  )
-  .iter()
-  .map(|directive| {
-    (
-      parsed_source
-        .text_info_lazy()
-        .line_index(directive.range().start),
-      parsed_source
-        .text_info_lazy()
-        .line_index(directive.range().end),
-    )
-  })
-  .collect::<Vec<_>>();
+  );
 
   for function in &options.script_coverage.functions {
     if function.function_name.is_empty() {
@@ -303,10 +291,10 @@ fn generate_coverage_report(
       continue;
     }
 
-    if coverage_ignore_range_directives
-      .iter()
-      .any(|(start, stop)| *start <= line_index && *stop >= line_index)
-    {
+    if coverage_ignore_range_directives.iter().any(|range| {
+      range.start_line_index <= line_index
+        && range.stop_line_index >= line_index
+    }) {
       continue;
     }
 
@@ -331,10 +319,10 @@ fn generate_coverage_report(
         continue;
       }
 
-      if coverage_ignore_range_directives
-        .iter()
-        .any(|(start, stop)| *start <= line_index && *stop >= line_index)
-      {
+      if coverage_ignore_range_directives.iter().any(|range| {
+        range.start_line_index <= line_index
+          && range.stop_line_index >= line_index
+      }) {
         continue;
       }
 
@@ -414,10 +402,9 @@ fn generate_coverage_report(
   }
 
   let found_lines_coverage_filter = |(line, _): &(usize, i64)| -> bool {
-    if coverage_ignore_range_directives
-      .iter()
-      .any(|(start, stop)| start <= line && stop >= line)
-    {
+    if coverage_ignore_range_directives.iter().any(|range| {
+      range.start_line_index <= *line && range.stop_line_index >= *line
+    }) {
       return false;
     }
 
