@@ -266,12 +266,12 @@ fn generate_coverage_report(
   };
 
   let coverage_ignore_next_directives =
-    parse_next_ignore_directives(&sorted_comments, &text_info);
+    parse_next_ignore_directives(&sorted_comments, text_info);
   let coverage_ignore_range_directives = parse_range_ignore_directives(
     options.cli_options.is_quiet(),
     parsed_source.specifier(),
     &sorted_comments,
-    &text_info,
+    text_info,
   );
 
   for function in &options.script_coverage.functions {

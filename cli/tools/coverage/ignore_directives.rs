@@ -25,7 +25,7 @@ pub struct FileIgnoreDirective;
 pub fn parse_range_ignore_directives(
   is_quiet: bool,
   script_module_specifier: &Url,
-  sorted_comments: &Vec<Comment>,
+  sorted_comments: &[Comment],
   text_info: &SourceTextInfo,
 ) -> Vec<RangeIgnoreDirective> {
   let mut depth: usize = 0;
@@ -109,7 +109,7 @@ pub fn parse_range_ignore_directives(
 }
 
 pub fn parse_next_ignore_directives(
-  sorted_comments: &Vec<Comment>,
+  sorted_comments: &[Comment],
   text_info: &SourceTextInfo,
 ) -> HashMap<usize, NextIgnoreDirective> {
   sorted_comments
@@ -124,7 +124,7 @@ pub fn parse_next_ignore_directives(
 }
 
 pub fn parse_file_ignore_directives(
-  sorted_comments: &Vec<Comment>,
+  sorted_comments: &[Comment],
   parsed_source: &ParsedSource,
 ) -> Option<FileIgnoreDirective> {
   // We want to find the files first comment before the code starts. There are
