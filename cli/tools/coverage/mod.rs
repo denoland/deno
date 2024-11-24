@@ -213,13 +213,12 @@ struct GenerateCoverageReportOptions<'a> {
 
 fn generate_coverage_report(
   options: GenerateCoverageReportOptions,
-) -> CoverageReport {
+) -> Result<CoverageReport, AnyError> {
   let parsed_source = parse_program(
     options.script_module_specifier,
     options.script_media_type,
     &options.script_original_source,
-  )
-  .expect("invalid source code");
+  )?;
   let text_info = parsed_source.text_info_lazy();
   let sorted_comments = parsed_source.comments().get_vec();
   let ignore_file_directive =
@@ -227,13 +226,13 @@ fn generate_coverage_report(
   let url = Url::parse(&options.script_coverage.url).unwrap();
 
   if ignore_file_directive.is_some() {
-    return CoverageReport {
+    return Ok(CoverageReport {
       url,
       named_functions: Vec::new(),
       branches: Vec::new(),
       found_lines: Vec::new(),
       output: options.output.clone(),
-    };
+    });
   }
 
   let maybe_source_map = options
@@ -493,7 +492,7 @@ fn generate_coverage_report(
         .collect::<Vec<(usize, i64)>>()
     };
 
-  coverage_report
+  Ok(coverage_report)
 }
 
 fn range_to_src_line_index(
@@ -740,14 +739,19 @@ pub fn cover_files(
     let coverage_report =
       generate_coverage_report(GenerateCoverageReportOptions {
         cli_options,
-        script_module_specifier: module_specifier,
+        script_module_specifier: module_specifier.clone(),
         script_media_type: file.media_type,
         script_coverage: &script_coverage,
         script_original_source: original_source.to_string(),
         script_runtime_source: runtime_code.as_str().to_owned(),
         maybe_source_map: &source_map,
         output: &out_mode,
-      });
+      })
+      .with_context(|| {
+        format!(
+          "Failed to generate coverage report for file ({module_specifier})"
+        )
+      })?;
 
     if !coverage_report.found_lines.is_empty() {
       reporter.report(&coverage_report, &original_source)?;
