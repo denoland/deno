@@ -167,16 +167,21 @@ Deno.test(
 Deno.test(
   { permissions: { read: true, write: true } },
   async function watchFsRemove() {
-    const testDir = await makeTempDir();
     const testFile = await makeTempFile();
-    using iter = Deno.watchFs(testDir);
+    using watcher = Deno.watchFs(testFile);
+    async function waitForRemove() {
+      for await (const event of watcher) {
+        if (event.kind === "remove") {
+          return event;
+        }
+      }
+    }
+    const eventsPromise = waitForRemove();
 
-    await Deno.remove(testFile, { recursive: true });
+    await Deno.remove(testFile);
 
-    const res = iter[Symbol.asyncIterator]().next();
-
-    iter.close();
-    const { done } = await res;
-    assert(done);
+    // Expect zero events.
+    const events = await eventsPromise;
+    assertEquals(events!.kind, "remove");
   },
 );
