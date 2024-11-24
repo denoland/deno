@@ -3,13 +3,9 @@
 use deno_ast::swc::common::comments::Comment;
 use deno_ast::swc::common::comments::CommentKind;
 use deno_ast::swc::common::Spanned;
-use deno_ast::view as ast_view;
 use deno_ast::ParsedSource;
-use deno_ast::RootNode as _;
 use deno_ast::SourceRange;
-use deno_ast::SourceRanged;
 use deno_ast::SourceRangedForSpanned as _;
-use deno_ast::SourceTextInfoProvider as _;
 use deno_core::url::Url;
 use std::collections::HashMap;
 
@@ -45,17 +41,13 @@ impl<T: DirectiveKind> IgnoreDirective<T> {
 pub fn parse_range_ignore_directives(
   is_quiet: bool,
   script_module_specifier: &Url,
-  program: &ast_view::Program,
+  parsed_source: &ParsedSource,
 ) -> Vec<RangeIgnoreDirective> {
   let mut depth: usize = 0;
   let mut directives = Vec::<RangeIgnoreDirective>::new();
   let mut current_range: Option<SourceRange> = None;
 
-  let mut comments_sorted = program
-    .comment_container()
-    .all_comments()
-    .collect::<Vec<_>>();
-  comments_sorted.sort_by(|a, b| a.range().start.cmp(&b.range().start));
+  let comments_sorted = parsed_source.comments().get_vec();
 
   for comment in comments_sorted.iter() {
     if comment.kind != CommentKind::Line {
@@ -89,7 +81,7 @@ pub fn parse_range_ignore_directives(
   // then close it at the end of the program.
   if let Some(mut range) = current_range.take() {
     if !is_quiet {
-      let text_info = program.text_info();
+      let text_info = parsed_source.text_info_lazy();
       let loc = text_info.line_and_column_display(range.start);
       log::warn!(
         "WARNING: Unterminated {} comment at {}:{}:{}",
@@ -99,7 +91,7 @@ pub fn parse_range_ignore_directives(
         loc.column_number,
       );
     }
-    range.end = program.range().end;
+    range.end = parsed_source.range().end;
     directives.push(IgnoreDirective {
       range,
       _marker: std::marker::PhantomData,
@@ -209,13 +201,6 @@ mod tests {
     .unwrap()
   }
 
-  pub fn parse_and_then(source_code: &str, test: impl Fn(ast_view::Program)) {
-    let parsed_source = parse(source_code);
-    parsed_source.with_view(|pg| {
-      test(pg);
-    });
-  }
-
   mod coverage_ignore_range {
     use super::*;
 
@@ -232,16 +217,13 @@ mod tests {
             // deno-coverage-ignore-stop
           }
       "#;
-
-      parse_and_then(source_code, |program| {
-        let line_directives = parse_range_ignore_directives(
-          true,
-          &Url::from_str(TEST_FILE_NAME).unwrap(),
-          &program,
-        );
-
-        assert_eq!(line_directives.len(), 2);
-      });
+      let parsed_source = parse(source_code);
+      let line_directives = parse_range_ignore_directives(
+        true,
+        &Url::from_str(TEST_FILE_NAME).unwrap(),
+        &parsed_source,
+      );
+      assert_eq!(line_directives.len(), 2);
     }
 
     #[test]
@@ -254,16 +236,13 @@ mod tests {
             foo();
           }
       "#;
-
-      parse_and_then(source_code, |program| {
-        let line_directives = parse_range_ignore_directives(
-          true,
-          &Url::from_str(TEST_FILE_NAME).unwrap(),
-          &program,
-        );
-
-        assert_eq!(line_directives.len(), 1);
-      });
+      let parsed_source = parse(source_code);
+      let line_directives = parse_range_ignore_directives(
+        true,
+        &Url::from_str(TEST_FILE_NAME).unwrap(),
+        &parsed_source,
+      );
+      assert_eq!(line_directives.len(), 1);
     }
 
     #[test]
@@ -279,16 +258,13 @@ mod tests {
           }
           // deno-coverage-ignore-stop
       "#;
-
-      parse_and_then(source_code, |program| {
-        let line_directives = parse_range_ignore_directives(
-          true,
-          &Url::from_str(TEST_FILE_NAME).unwrap(),
-          &program,
-        );
-
-        assert_eq!(line_directives.len(), 1);
-      });
+      let parsed_source = parse(source_code);
+      let line_directives = parse_range_ignore_directives(
+        true,
+        &Url::from_str(TEST_FILE_NAME).unwrap(),
+        &parsed_source,
+      );
+      assert_eq!(line_directives.len(), 1);
     }
   }
 

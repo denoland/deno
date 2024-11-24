@@ -14,7 +14,6 @@ use ast_parser::parse_program;
 use deno_ast::MediaType;
 use deno_ast::ModuleKind;
 use deno_ast::ModuleSpecifier;
-use deno_ast::SourceTextInfoProvider as _;
 use deno_config::glob::FileCollector;
 use deno_config::glob::FilePatterns;
 use deno_config::glob::PathOrPattern;
@@ -266,21 +265,23 @@ fn generate_coverage_report(
 
   let coverage_ignore_next_directives =
     parse_next_ignore_directives(&parsed_source);
-  let coverage_ignore_range_directives = parsed_source.with_view(|program| {
-    parse_range_ignore_directives(
-      options.cli_options.is_quiet(),
-      parsed_source.specifier(),
-      &program,
+  let coverage_ignore_range_directives = parse_range_ignore_directives(
+    options.cli_options.is_quiet(),
+    parsed_source.specifier(),
+    &parsed_source,
+  )
+  .iter()
+  .map(|directive| {
+    (
+      parsed_source
+        .text_info_lazy()
+        .line_index(directive.range().start),
+      parsed_source
+        .text_info_lazy()
+        .line_index(directive.range().end),
     )
-    .iter()
-    .map(|directive| {
-      (
-        program.text_info().line_index(directive.range().start),
-        program.text_info().line_index(directive.range().end),
-      )
-    })
-    .collect::<Vec<_>>()
-  });
+  })
+  .collect::<Vec<_>>();
 
   for function in &options.script_coverage.functions {
     if function.function_name.is_empty() {
