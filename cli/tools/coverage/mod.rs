@@ -271,7 +271,6 @@ fn generate_coverage_report(
     options.cli_options.is_quiet(),
     parsed_source.specifier(),
     &sorted_comments,
-    &parsed_source,
     &text_info,
   )
   .iter()

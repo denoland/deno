@@ -43,7 +43,6 @@ pub fn parse_range_ignore_directives(
   is_quiet: bool,
   script_module_specifier: &Url,
   sorted_comments: &Vec<Comment>,
-  parsed_source: &ParsedSource,
   text_info: &SourceTextInfo,
 ) -> Vec<RangeIgnoreDirective> {
   let mut depth: usize = 0;
@@ -80,22 +79,17 @@ pub fn parse_range_ignore_directives(
 
   // If the coverage ignore start directive has no corresponding close directive
   // then close it at the end of the program.
-  if let Some(mut range) = current_range.take() {
+  if let Some(range) = current_range.take() {
     if !is_quiet {
       let loc = text_info.line_and_column_display(range.start);
       log::warn!(
-        "WARNING: Unterminated {} comment at {}:{}:{}",
+        "WARNING: Unterminated {} comment at {}:{}:{} will be ignored",
         COVERAGE_IGNORE_START_DIRECTIVE,
         script_module_specifier,
         loc.line_number,
         loc.column_number,
       );
     }
-    range.end = parsed_source.range().end;
-    directives.push(IgnoreDirective {
-      range,
-      _marker: std::marker::PhantomData,
-    });
   }
 
   directives
@@ -226,13 +220,12 @@ mod tests {
             // deno-coverage-ignore-stop
           }
       "#;
-      let (parsed_source, sorted_comments, text_info) =
+      let (_, sorted_comments, text_info) =
         parse_with_sorted_comments_and_text_info(source_code);
       let line_directives = parse_range_ignore_directives(
         true,
         &Url::from_str(TEST_FILE_NAME).unwrap(),
         &sorted_comments,
-        &parsed_source,
         &text_info,
       );
       assert_eq!(line_directives.len(), 2);
@@ -248,16 +241,15 @@ mod tests {
             foo();
           }
       "#;
-      let (parsed_source, sorted_comments, text_info) =
+      let (_, sorted_comments, text_info) =
         parse_with_sorted_comments_and_text_info(source_code);
       let line_directives = parse_range_ignore_directives(
         true,
         &Url::from_str(TEST_FILE_NAME).unwrap(),
         &sorted_comments,
-        &parsed_source,
         &text_info,
       );
-      assert_eq!(line_directives.len(), 1);
+      assert!(line_directives.is_empty());
     }
 
     #[test]
@@ -273,13 +265,12 @@ mod tests {
           }
           // deno-coverage-ignore-stop
       "#;
-      let (parsed_source, sorted_comments, text_info) =
+      let (_, sorted_comments, text_info) =
         parse_with_sorted_comments_and_text_info(source_code);
       let line_directives = parse_range_ignore_directives(
         true,
         &Url::from_str(TEST_FILE_NAME).unwrap(),
         &sorted_comments,
-        &parsed_source,
         &text_info,
       );
       assert_eq!(line_directives.len(), 1);
