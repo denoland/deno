@@ -58,6 +58,22 @@ pub fn parse_range_ignore_directives(
 
     if let Some(prefix) = comment_text.split_whitespace().next() {
       if prefix == COVERAGE_IGNORE_START_DIRECTIVE {
+        if !is_quiet && depth > 0 {
+          let unterminated_loc =
+            text_info.line_and_column_display(current_range.unwrap().start);
+          let loc = text_info.line_and_column_display(comment.range().start);
+          log::warn!(
+            "WARNING: Nested {} comment at {}:{}:{}. A previous {} comment at {}:{}:{} is unterminated.",
+            COVERAGE_IGNORE_START_DIRECTIVE,
+            script_module_specifier,
+            loc.line_number,
+            loc.column_number,
+            COVERAGE_IGNORE_START_DIRECTIVE,
+            script_module_specifier,
+            unterminated_loc.line_number,
+            unterminated_loc.column_number,
+          );
+        }
         depth += 1;
         if current_range.is_none() {
           current_range = Some(comment.range());
@@ -73,17 +89,30 @@ pub fn parse_range_ignore_directives(
           });
           current_range = None;
         }
+      } else if !is_quiet
+        && depth == 0
+        && prefix == COVERAGE_IGNORE_STOP_DIRECTIVE
+      {
+        let loc = text_info.line_and_column_display(comment.range().start);
+        log::warn!(
+          "WARNING: {} comment with no corresponding {} comment at {}:{}:{} will be ignored.",
+          COVERAGE_IGNORE_STOP_DIRECTIVE,
+          COVERAGE_IGNORE_START_DIRECTIVE,
+          script_module_specifier,
+          loc.line_number,
+          loc.column_number,
+        );
       }
     }
   }
 
   // If the coverage ignore start directive has no corresponding close directive
-  // then close it at the end of the program.
+  // then log a warning and ignore the directive.
   if let Some(range) = current_range.take() {
     if !is_quiet {
       let loc = text_info.line_and_column_display(range.start);
       log::warn!(
-        "WARNING: Unterminated {} comment at {}:{}:{} will be ignored",
+        "WARNING: Unterminated {} comment at {}:{}:{} will be ignored.",
         COVERAGE_IGNORE_START_DIRECTIVE,
         script_module_specifier,
         loc.line_number,
