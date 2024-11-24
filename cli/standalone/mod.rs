@@ -73,6 +73,7 @@ use crate::cache::DenoDirProvider;
 use crate::cache::FastInsecureHasher;
 use crate::cache::NodeAnalysisCache;
 use crate::cache::RealDenoCacheEnv;
+use crate::graph_container::MainModuleGraphContainer;
 use crate::http_util::HttpClientProvider;
 use crate::node::CliCjsCodeAnalyzer;
 use crate::node::CliNodeCodeTranslator;
@@ -557,6 +558,12 @@ impl ModuleLoaderFactory for StandaloneModuleLoaderFactory {
     _root_permissions: PermissionsContainer,
   ) -> CreateModuleLoaderResult {
     self.create_result()
+  }
+
+  fn maybe_main_module_graph_container(
+    &self,
+  ) -> Option<&Arc<MainModuleGraphContainer>> {
+    None
   }
 
   fn create_for_worker(

@@ -325,6 +325,12 @@ impl ModuleLoaderFactory for CliModuleLoaderFactory {
     )
   }
 
+  fn maybe_main_module_graph_container(
+    &self,
+  ) -> Option<&Arc<MainModuleGraphContainer>> {
+    Some(&self.shared.main_module_graph_container)
+  }
+
   fn create_for_worker(
     &self,
     parent_permissions: PermissionsContainer,

@@ -73,6 +73,48 @@ impl<'a> FixSuggestion<'a> {
       message: FixSuggestionMessage::Single(url),
     }
   }
+
+  pub fn append_suggestion(s: &mut String, suggestions: Vec<FixSuggestion>) {
+    if suggestions.is_empty() {
+      return;
+    }
+    write!(s, "\n\n").unwrap();
+    for (index, suggestion) in suggestions.iter().enumerate() {
+      write!(s, "    ").unwrap();
+      match suggestion.kind {
+        FixSuggestionKind::Hint => {
+          write!(s, "{} ", colors::cyan("hint:")).unwrap()
+        }
+        FixSuggestionKind::Info => {
+          write!(s, "{} ", colors::yellow("info:")).unwrap()
+        }
+        FixSuggestionKind::Docs => {
+          write!(s, "{} ", colors::green("docs:")).unwrap()
+        }
+      };
+      match &suggestion.message {
+        FixSuggestionMessage::Single(msg) => {
+          if matches!(suggestion.kind, FixSuggestionKind::Docs) {
+            write!(s, "{}", cformat!("<u>{}</>", msg)).unwrap();
+          } else {
+            write!(s, "{}", msg).unwrap();
+          }
+        }
+        FixSuggestionMessage::Multiline(messages) => {
+          for (idx, message) in messages.iter().enumerate() {
+            if idx != 0 {
+              writeln!(s).unwrap();
+              write!(s, "          ").unwrap();
+            }
+            write!(s, "{}", message).unwrap();
+          }
+        }
+      }
+      if index != (suggestions.len() - 1) {
+        writeln!(s).unwrap();
+      }
+    }
+  }
 }
 
 struct AnsiColors;
@@ -259,49 +301,13 @@ fn format_js_error_inner(
     )
     .unwrap();
   }
-  if !suggestions.is_empty() {
-    write!(s, "\n\n").unwrap();
-    for (index, suggestion) in suggestions.iter().enumerate() {
-      write!(s, "    ").unwrap();
-      match suggestion.kind {
-        FixSuggestionKind::Hint => {
-          write!(s, "{} ", colors::cyan("hint:")).unwrap()
-        }
-        FixSuggestionKind::Info => {
-          write!(s, "{} ", colors::yellow("info:")).unwrap()
-        }
-        FixSuggestionKind::Docs => {
-          write!(s, "{} ", colors::green("docs:")).unwrap()
-        }
-      };
-      match suggestion.message {
-        FixSuggestionMessage::Single(msg) => {
-          if matches!(suggestion.kind, FixSuggestionKind::Docs) {
-            write!(s, "{}", cformat!("<u>{}</>", msg)).unwrap();
-          } else {
-            write!(s, "{}", msg).unwrap();
-          }
-        }
-        FixSuggestionMessage::Multiline(messages) => {
-          for (idx, message) in messages.iter().enumerate() {
-            if idx != 0 {
-              writeln!(s).unwrap();
-              write!(s, "          ").unwrap();
-            }
-            write!(s, "{}", message).unwrap();
-          }
-        }
-      }
-
-      if index != (suggestions.len() - 1) {
-        writeln!(s).unwrap();
-      }
-    }
-  }
+  FixSuggestion::append_suggestion(&mut s, suggestions);
 
   s
 }
 
+/// Keep in mind the function `map_err_run` in `cli/worker.rs`
+/// behaves almost identically to this function.
 fn get_suggestions_for_terminal_errors(e: &JsError) -> Vec<FixSuggestion> {
   if let Some(msg) = &e.message {
     if msg.contains("module is not defined")
