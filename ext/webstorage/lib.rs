@@ -32,6 +32,9 @@ const MAX_STORAGE_BYTES: usize = 10 * 1024 * 1024;
 
 deno_core::extension!(deno_webstorage,
   deps = [ deno_webidl ],
+  ops = [
+    op_webstorage_iterate_keys,
+  ],
   objects = [
     Storage
   ],
@@ -224,21 +227,21 @@ impl Storage {
 
     Ok(())
   }
+}
 
-  #[method]
-  #[serde]
-  fn iterate_keys(
-    &self,
-    state: &mut OpState,
-  ) -> Result<Vec<String>, WebStorageError> {
-    let conn = get_webstorage(state, self.persistent)?;
+#[op2]
+#[serde]
+fn op_webstorage_iterate_keys(
+  #[cppgc] storage: &Storage,
+  state: &mut OpState,
+) -> Result<Vec<String>, WebStorageError> {
+  let conn = get_webstorage(state, storage.persistent)?;
 
-    let mut stmt = conn.prepare_cached("SELECT key FROM data")?;
-    let keys = stmt
-      .query_map(params![], |row| row.get::<_, String>(0))?
-      .map(|r| r.unwrap())
-      .collect();
+  let mut stmt = conn.prepare_cached("SELECT key FROM data")?;
+  let keys = stmt
+    .query_map(params![], |row| row.get::<_, String>(0))?
+    .map(|r| r.unwrap())
+    .collect();
 
-    Ok(keys)
-  }
+  Ok(keys)
 }

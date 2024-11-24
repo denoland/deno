@@ -3,7 +3,7 @@
 /// <reference path="../../core/internal.d.ts" />
 
 import { primordials } from "ext:core/mod.js";
-import { Storage } from "ext:core/ops";
+import { op_webstorage_iterate_keys, Storage } from "ext:core/ops";
 const {
   SymbolFor,
   ObjectFromEntries,
@@ -69,7 +69,7 @@ function createStorage(persistent) {
     },
 
     ownKeys() {
-      return storage.iterateKeys();
+      return op_webstorage_iterate_keys(storage);
     },
 
     getOwnPropertyDescriptor(target, key) {
