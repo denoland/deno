@@ -2,7 +2,9 @@
 
 use deno_ast::swc::common::comments::Comment;
 use deno_ast::swc::common::comments::CommentKind;
+use deno_ast::swc::common::Spanned;
 use deno_ast::view as ast_view;
+use deno_ast::ParsedSource;
 use deno_ast::RootNode as _;
 use deno_ast::SourceRange;
 use deno_ast::SourceRanged;
@@ -127,37 +129,36 @@ pub fn parse_next_ignore_directives(
 }
 
 pub fn parse_file_ignore_directives(
-  program: &ast_view::Program,
+  parsed_source: &ParsedSource,
 ) -> Option<FileIgnoreDirective> {
-  // We want to get a file's leading comments, even if they come after a
-  // shebang. There are three cases:
-  // 1. No shebang. The file's leading comments are the program's leading
-  //    comments.
-  // 2. Shebang, and the program has statements or declarations. The file's
-  //    leading comments are really the first statment/declaration's leading
-  //    comments.
-  // 3. Shebang, and the program is empty. The file's leading comments are the
-  //    program's trailing comments.
-  let (has_shebang, first_item_range) = match program {
-    ast_view::Program::Module(module) => (
-      module.shebang().is_some(),
-      module.body.first().map(SourceRanged::range),
-    ),
-    ast_view::Program::Script(script) => (
-      script.shebang().is_some(),
-      script.body.first().map(SourceRanged::range),
-    ),
-  };
+  // We want to find the files first comment before the code starts. There are
+  // three cases:
+  // 1. No comments. There are no comments in the file, and therefore no
+  //    coverage directives.
+  // 2. No code. There is at least one comment in the file, but no code. We can
+  //    try to parse this as a file ignore directive.
+  // 3. Comments and code. There are comments and code in the file. We need to
+  //    check if the first comment comes before the first line of code. If it
+  //    does, we can try and parse it as a file ignore directive. Otherwise,
+  //    there is no valid file ignore directive.
 
-  let comments = program.comment_container();
-  let mut initial_comments = match (has_shebang, first_item_range) {
-    (false, _) => comments.leading_comments(program.start()),
-    (true, Some(range)) => comments.leading_comments(range.start),
-    (true, None) => comments.trailing_comments(program.end()),
-  };
-  initial_comments.find_map(|comment| {
-    parse_ignore_comment(COVERAGE_IGNORE_FILE_DIRECTIVE, comment)
-  })
+  let sorted_comments = parsed_source.comments().get_vec();
+  let first_comment = sorted_comments.first();
+  let first_module_item = parsed_source.program_ref().body().next();
+
+  match (first_comment, first_module_item) {
+    (None, _) => None,
+    (Some(first_comment), None) => {
+      parse_ignore_comment(COVERAGE_IGNORE_FILE_DIRECTIVE, first_comment)
+    }
+    (Some(first_comment), Some(first_module_item)) => {
+      if first_comment.span_hi() <= first_module_item.span_lo() {
+        parse_ignore_comment(COVERAGE_IGNORE_FILE_DIRECTIVE, first_comment)
+      } else {
+        None
+      }
+    }
+  }
 }
 
 fn parse_ignore_comment<T: DirectiveKind>(
@@ -212,170 +213,182 @@ mod tests {
     });
   }
 
-  #[test]
-  fn test_parse_range_ignore_comments() {
-    let source_code = r#"
-        // deno-coverage-ignore-start
-        function foo(): any {}
-        // deno-coverage-ignore-stop
+  mod coverage_ignore_range {
+    use super::*;
 
-        function bar(): any {
+    #[test]
+    fn test_parse_range_ignore_comments() {
+      let source_code = r#"
           // deno-coverage-ignore-start
-          foo();
+          function foo(): any {}
           // deno-coverage-ignore-stop
-        }
-    "#;
 
-    parse_and_then(source_code, |program| {
-      let line_directives = parse_range_ignore_directives(
-        true,
-        &Url::from_str(TEST_FILE_NAME).unwrap(),
-        &program,
-      );
+          function bar(): any {
+            // deno-coverage-ignore-start
+            foo();
+            // deno-coverage-ignore-stop
+          }
+      "#;
 
-      assert_eq!(line_directives.len(), 2);
-    });
-  }
+      parse_and_then(source_code, |program| {
+        let line_directives = parse_range_ignore_directives(
+          true,
+          &Url::from_str(TEST_FILE_NAME).unwrap(),
+          &program,
+        );
 
-  #[test]
-  fn test_parse_range_ignore_comments_unterminated() {
-    let source_code = r#"
-        // deno-coverage-ignore-start
-        function foo(): any {}
+        assert_eq!(line_directives.len(), 2);
+      });
+    }
 
-        function bar(): any {
-          foo();
-        }
-    "#;
-
-    parse_and_then(source_code, |program| {
-      let line_directives = parse_range_ignore_directives(
-        true,
-        &Url::from_str(TEST_FILE_NAME).unwrap(),
-        &program,
-      );
-
-      assert_eq!(line_directives.len(), 1);
-    });
-  }
-
-  #[test]
-  fn test_parse_range_ignore_comments_nested() {
-    let source_code = r#"
-        // deno-coverage-ignore-start
-        function foo(): any {}
-
-        function bar(): any {
+    #[test]
+    fn test_parse_range_ignore_comments_unterminated() {
+      let source_code = r#"
           // deno-coverage-ignore-start
-          foo();
+          function foo(): any {}
+
+          function bar(): any {
+            foo();
+          }
+      "#;
+
+      parse_and_then(source_code, |program| {
+        let line_directives = parse_range_ignore_directives(
+          true,
+          &Url::from_str(TEST_FILE_NAME).unwrap(),
+          &program,
+        );
+
+        assert_eq!(line_directives.len(), 1);
+      });
+    }
+
+    #[test]
+    fn test_parse_range_ignore_comments_nested() {
+      let source_code = r#"
+          // deno-coverage-ignore-start
+          function foo(): any {}
+
+          function bar(): any {
+            // deno-coverage-ignore-start
+            foo();
+            // deno-coverage-ignore-stop
+          }
           // deno-coverage-ignore-stop
-        }
-        // deno-coverage-ignore-stop
-    "#;
+      "#;
 
-    parse_and_then(source_code, |program| {
-      let line_directives = parse_range_ignore_directives(
-        true,
-        &Url::from_str(TEST_FILE_NAME).unwrap(),
-        &program,
-      );
+      parse_and_then(source_code, |program| {
+        let line_directives = parse_range_ignore_directives(
+          true,
+          &Url::from_str(TEST_FILE_NAME).unwrap(),
+          &program,
+        );
 
-      assert_eq!(line_directives.len(), 1);
-    });
+        assert_eq!(line_directives.len(), 1);
+      });
+    }
   }
 
-  #[test]
-  fn test_parse_next_ignore_comments() {
-    let source_code = r#"
-        // deno-coverage-ignore-next
-        function foo(): any {}
+  mod coverage_ignore_next {
+    use super::*;
 
-        function bar(): any {
+    #[test]
+    fn test_parse_next_ignore_comments() {
+      let source_code = r#"
           // deno-coverage-ignore-next
-          foo();
-        }
-    "#;
+          function foo(): any {}
 
-    parse_and_then(source_code, |program| {
-      let line_directives = parse_next_ignore_directives(&program);
+          function bar(): any {
+            // deno-coverage-ignore-next
+            foo();
+          }
+      "#;
 
-      assert_eq!(line_directives.len(), 2);
-    });
+      parse_and_then(source_code, |program| {
+        let line_directives = parse_next_ignore_directives(&program);
+
+        assert_eq!(line_directives.len(), 2);
+      });
+    }
   }
 
-  #[test]
-  fn test_parse_global_ignore_directives() {
-    parse_and_then("// deno-coverage-ignore-file", |program| {
-      let file_directive = parse_file_ignore_directives(&program);
+  mod coverage_ignore_file {
+    use super::*;
+
+    #[test]
+    fn test_parse_global_ignore_directives() {
+      let parsed_source = parse("// deno-coverage-ignore-file");
+      let file_directive = parse_file_ignore_directives(&parsed_source);
+      assert!(file_directive.is_some());
+    }
+
+    #[test]
+    fn test_parse_global_ignore_directives_with_explanation() {
+      let parsed_source =
+        parse("// deno-coverage-ignore-file -- reason for ignoring");
+      let file_directive = parse_file_ignore_directives(&parsed_source);
+      assert!(file_directive.is_some());
+    }
+
+    #[test]
+    fn test_parse_global_ignore_directives_argument_and_explanation() {
+      let parsed_source =
+        parse("// deno-coverage-ignore-file foo -- reason for ignoring");
+      let file_directive = parse_file_ignore_directives(&parsed_source);
+      assert!(file_directive.is_some());
+    }
+
+    #[test]
+    fn test_parse_global_ignore_directives_not_first_comment() {
+      let parsed_source = parse(
+        r#"
+        // The coverage ignore file comment must be first
+        // deno-coverage-ignore-file
+        const x = 42;
+      "#,
+      );
+      let file_directive = parse_file_ignore_directives(&parsed_source);
+      assert!(file_directive.is_none());
+    }
+
+    #[test]
+    fn test_parse_global_ignore_directives_not_before_code() {
+      let parsed_source = parse(
+        r#"
+        const x = 42;
+        // deno-coverage-ignore-file
+      "#,
+      );
+      let file_directive = parse_file_ignore_directives(&parsed_source);
+      assert!(file_directive.is_none());
+    }
+
+    #[test]
+    fn test_parse_global_ignore_directives_shebang() {
+      let parsed_source = parse(
+        r#"
+        #!/usr/bin/env -S deno run
+        // deno-coverage-ignore-file
+        const x = 42;
+      "#
+        .trim_start(),
+      );
+      let file_directive = parse_file_ignore_directives(&parsed_source);
+      assert!(file_directive.is_some());
+    }
+
+    #[test]
+    fn test_parse_global_ignore_directives_shebang_no_code() {
+      let parsed_source = parse(
+        r#"
+       #!/usr/bin/env -S deno run
+       // deno-coverage-ignore-file
+      "#
+        .trim_start(),
+      );
+      let file_directive = parse_file_ignore_directives(&parsed_source);
 
       assert!(file_directive.is_some());
-    });
-
-    parse_and_then(
-      "// deno-coverage-ignore-file -- reason for ignoring",
-      |program| {
-        let file_directive = parse_file_ignore_directives(&program);
-
-        assert!(file_directive.is_some());
-      },
-    );
-
-    parse_and_then(
-      "// deno-coverage-ignore-file foo -- reason for ignoring",
-      |program| {
-        let file_directive = parse_file_ignore_directives(&program);
-
-        assert!(file_directive.is_some());
-      },
-    );
-
-    parse_and_then(
-      r#"
-      const x = 42;
-      // deno-coverage-ignore-file
-      "#,
-      |program| {
-        let file_directive = parse_file_ignore_directives(&program);
-
-        assert!(file_directive.is_none());
-      },
-    );
-
-    parse_and_then(
-      "#!/usr/bin/env -S deno run\n// deno-coverage-ignore-file",
-      |program| {
-        let file_directive = parse_file_ignore_directives(&program);
-
-        assert!(file_directive.is_some());
-      },
-    );
-
-    parse_and_then(
-      "#!/usr/bin/env -S deno run\n// deno-coverage-ignore-file -- reason for ignoring",
-      |program| {
-        let file_directive =
-          parse_file_ignore_directives(&program);
-
-        assert!(file_directive.is_some());
-      },
-    );
-
-    parse_and_then(
-      "#!/usr/bin/env -S deno run\n// deno-coverage-ignore-file\nconst a = 42;",
-      |program| {
-        let file_directive = parse_file_ignore_directives(&program);
-
-        assert!(file_directive.is_some());
-      },
-    );
-
-    parse_and_then(
-      "#!/usr/bin/env -S deno run\n// deno-coverage-ignore-file -- reason for ignoring\nconst a = 42;",
-      |program| {
-        let file_directive = parse_file_ignore_directives(&program);
-
-        assert!(file_directive.is_some());
-      },
-    );
+    }
   }
 }

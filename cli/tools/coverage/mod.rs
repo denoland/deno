@@ -221,8 +221,7 @@ fn generate_coverage_report(
     &options.script_original_source,
   )
   .expect("invalid source code");
-  let ignore_file_directive =
-    parsed_source.with_view(|program| parse_file_ignore_directives(&program));
+  let ignore_file_directive = parse_file_ignore_directives(&parsed_source);
   let url = Url::parse(&options.script_coverage.url).unwrap();
 
   if ignore_file_directive.is_some() {
