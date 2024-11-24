@@ -362,6 +362,19 @@ impl ServeFlags {
   }
 }
 
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct BundleFlags {
+  pub files: FileFlags,
+  pub watch: Option<WatchFlags>,
+}
+
+impl BundleFlags {
+  #[cfg(test)]
+  pub fn new_default(files: FileFlags) -> Self {
+    Self { files, watch: None }
+  }
+}
+
 #[derive(Clone, Default, Debug, Eq, PartialEq)]
 pub struct WatchFlags {
   pub hmr: bool,
@@ -446,7 +459,7 @@ pub enum DenoSubcommand {
   Add(AddFlags),
   Remove(RemoveFlags),
   Bench(BenchFlags),
-  Bundle,
+  Bundle(BundleFlags),
   Cache(CacheFlags),
   Check(CheckFlags),
   Clean,
@@ -1227,6 +1240,8 @@ static DENO_HELP: &str = cstr!(
   <y>Tooling:</>
     <g>bench</>        Run benchmarks
                   <p(245)>deno bench bench.ts</>
+    <g>bundle</>        Bundle code
+                  <p(245)>deno bundle entry.ts</>
     <g>check</>        Type-check the dependencies
     <g>clean</>        Remove the cache directory
     <g>compile</>      Compile the script into a self contained executable
@@ -1387,7 +1402,7 @@ pub fn flags_from_vec(args: Vec<OsString>) -> clap::error::Result<Flags> {
       "add" => add_parse(&mut flags, &mut m)?,
       "remove" => remove_parse(&mut flags, &mut m),
       "bench" => bench_parse(&mut flags, &mut m)?,
-      "bundle" => bundle_parse(&mut flags, &mut m),
+      "bundle" => bundle_parse(&mut flags, &mut m)?,
       "cache" => cache_parse(&mut flags, &mut m)?,
       "check" => check_parse(&mut flags, &mut m)?,
       "clean" => clean_parse(&mut flags, &mut m),
@@ -1811,10 +1826,16 @@ If you specify a directory instead of a file, the path is expanded to all contai
 }
 
 fn bundle_subcommand() -> Command {
-  command("bundle",  "⚠️ `deno bundle` was removed in Deno 2.
-
-See the Deno 1.x to 2.x Migration Guide for migration instructions: https://docs.deno.com/runtime/manual/advanced/migrate_deprecations", UnstableArgsConfig::ResolutionOnly)
-    .hide(true)
+  command("bundle",  "Merge multiple files into one or more chunks. This is typically used to make code run in browsers", UnstableArgsConfig::ResolutionOnly)
+  .defer(|cmd| {
+    cmd.arg(
+      Arg::new("files")
+        .num_args(1..)
+        .action(ArgAction::Append)
+        .value_hint(ValueHint::AnyPath),
+    )
+    .arg(watch_arg(false))
+  })
 }
 
 fn cache_subcommand() -> Command {
@@ -2662,7 +2683,7 @@ By default, outdated dependencies are only displayed.
 Display outdated dependencies:
   <p(245)>deno outdated</>
   <p(245)>deno outdated --compatible</>
-  
+
 Update dependencies:
   <p(245)>deno outdated --update</>
   <p(245)>deno outdated --update --latest</>
@@ -3047,7 +3068,7 @@ fn task_subcommand() -> Command {
 
 List all available tasks:
   <p(245)>deno task</>
-  
+
 Evaluate a task from string
   <p(245)>deno task --eval \"echo $(pwd)\"</>"
     ),
@@ -4554,8 +4575,26 @@ fn bench_parse(
   Ok(())
 }
 
-fn bundle_parse(flags: &mut Flags, _matches: &mut ArgMatches) {
-  flags.subcommand = DenoSubcommand::Bundle;
+fn bundle_parse(
+  flags: &mut Flags,
+  matches: &mut ArgMatches,
+) -> clap::error::Result<()> {
+  unstable_args_parse(flags, matches, UnstableArgsConfig::ResolutionOnly);
+
+  let files = match matches.remove_many::<String>("files") {
+    Some(f) => f.collect(),
+    None => vec![],
+  };
+
+  flags.subcommand = DenoSubcommand::Bundle(BundleFlags {
+    files: FileFlags {
+      include: files,
+      ignore: vec![],
+    },
+    watch: watch_arg_parse(matches)?,
+  });
+
+  Ok(())
 }
 
 fn cache_parse(
