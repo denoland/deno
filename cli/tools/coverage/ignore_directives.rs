@@ -41,15 +41,14 @@ impl<T: DirectiveKind> IgnoreDirective<T> {
 pub fn parse_range_ignore_directives(
   is_quiet: bool,
   script_module_specifier: &Url,
+  sorted_comments: &Vec<Comment>,
   parsed_source: &ParsedSource,
 ) -> Vec<RangeIgnoreDirective> {
   let mut depth: usize = 0;
   let mut directives = Vec::<RangeIgnoreDirective>::new();
   let mut current_range: Option<SourceRange> = None;
 
-  let comments_sorted = parsed_source.comments().get_vec();
-
-  for comment in comments_sorted.iter() {
+  for comment in sorted_comments.iter() {
     if comment.kind != CommentKind::Line {
       continue;
     }
@@ -102,11 +101,10 @@ pub fn parse_range_ignore_directives(
 }
 
 pub fn parse_next_ignore_directives(
+  sorted_comments: &Vec<Comment>,
   parsed_source: &ParsedSource,
 ) -> HashMap<usize, NextIgnoreDirective> {
-  let comments = parsed_source.comments().get_vec();
-
-  comments
+  sorted_comments
     .iter()
     .filter_map(|comment| {
       parse_ignore_comment(COVERAGE_IGNORE_NEXT_DIRECTIVE, comment).map(
@@ -124,6 +122,7 @@ pub fn parse_next_ignore_directives(
 }
 
 pub fn parse_file_ignore_directives(
+  sorted_comments: &Vec<Comment>,
   parsed_source: &ParsedSource,
 ) -> Option<FileIgnoreDirective> {
   // We want to find the files first comment before the code starts. There are
@@ -137,7 +136,6 @@ pub fn parse_file_ignore_directives(
   //    does, we can try and parse it as a file ignore directive. Otherwise,
   //    there is no valid file ignore directive.
 
-  let sorted_comments = parsed_source.comments().get_vec();
   let first_comment = sorted_comments.first();
   let first_module_item = parsed_source.program_ref().body().next();
 
@@ -201,6 +199,14 @@ mod tests {
     .unwrap()
   }
 
+  pub fn parse_with_sorted_comments(
+    source_code: &str,
+  ) -> (ParsedSource, Vec<Comment>) {
+    let parsed_source = parse(source_code);
+    let sorted_comments = parsed_source.comments().get_vec();
+    (parsed_source, sorted_comments)
+  }
+
   mod coverage_ignore_range {
     use super::*;
 
@@ -217,10 +223,12 @@ mod tests {
             // deno-coverage-ignore-stop
           }
       "#;
-      let parsed_source = parse(source_code);
+      let (parsed_source, sorted_comments) =
+        parse_with_sorted_comments(source_code);
       let line_directives = parse_range_ignore_directives(
         true,
         &Url::from_str(TEST_FILE_NAME).unwrap(),
+        &sorted_comments,
         &parsed_source,
       );
       assert_eq!(line_directives.len(), 2);
@@ -236,10 +244,12 @@ mod tests {
             foo();
           }
       "#;
-      let parsed_source = parse(source_code);
+      let (parsed_source, sorted_comments) =
+        parse_with_sorted_comments(source_code);
       let line_directives = parse_range_ignore_directives(
         true,
         &Url::from_str(TEST_FILE_NAME).unwrap(),
+        &sorted_comments,
         &parsed_source,
       );
       assert_eq!(line_directives.len(), 1);
@@ -258,10 +268,12 @@ mod tests {
           }
           // deno-coverage-ignore-stop
       "#;
-      let parsed_source = parse(source_code);
+      let (parsed_source, sorted_comments) =
+        parse_with_sorted_comments(source_code);
       let line_directives = parse_range_ignore_directives(
         true,
         &Url::from_str(TEST_FILE_NAME).unwrap(),
+        &sorted_comments,
         &parsed_source,
       );
       assert_eq!(line_directives.len(), 1);
@@ -282,8 +294,10 @@ mod tests {
             foo();
           }
       "#;
-      let parsed_source = parse(source_code);
-      let line_directives = parse_next_ignore_directives(&parsed_source);
+      let (parsed_source, sorted_comments) =
+        parse_with_sorted_comments(source_code);
+      let line_directives =
+        parse_next_ignore_directives(&sorted_comments, &parsed_source);
       assert_eq!(line_directives.len(), 2);
     }
   }
@@ -293,55 +307,63 @@ mod tests {
 
     #[test]
     fn test_parse_global_ignore_directives() {
-      let parsed_source = parse("// deno-coverage-ignore-file");
-      let file_directive = parse_file_ignore_directives(&parsed_source);
+      let (parsed_source, sorted_comments) =
+        parse_with_sorted_comments("// deno-coverage-ignore-file");
+      let file_directive =
+        parse_file_ignore_directives(&sorted_comments, &parsed_source);
       assert!(file_directive.is_some());
     }
 
     #[test]
     fn test_parse_global_ignore_directives_with_explanation() {
-      let parsed_source =
-        parse("// deno-coverage-ignore-file -- reason for ignoring");
-      let file_directive = parse_file_ignore_directives(&parsed_source);
+      let (parsed_source, sorted_comments) = parse_with_sorted_comments(
+        "// deno-coverage-ignore-file -- reason for ignoring",
+      );
+      let file_directive =
+        parse_file_ignore_directives(&sorted_comments, &parsed_source);
       assert!(file_directive.is_some());
     }
 
     #[test]
     fn test_parse_global_ignore_directives_argument_and_explanation() {
-      let parsed_source =
-        parse("// deno-coverage-ignore-file foo -- reason for ignoring");
-      let file_directive = parse_file_ignore_directives(&parsed_source);
+      let (parsed_source, sorted_comments) = parse_with_sorted_comments(
+        "// deno-coverage-ignore-file foo -- reason for ignoring",
+      );
+      let file_directive =
+        parse_file_ignore_directives(&sorted_comments, &parsed_source);
       assert!(file_directive.is_some());
     }
 
     #[test]
     fn test_parse_global_ignore_directives_not_first_comment() {
-      let parsed_source = parse(
+      let (parsed_source, sorted_comments) = parse_with_sorted_comments(
         r#"
         // The coverage ignore file comment must be first
         // deno-coverage-ignore-file
         const x = 42;
       "#,
       );
-      let file_directive = parse_file_ignore_directives(&parsed_source);
+      let file_directive =
+        parse_file_ignore_directives(&sorted_comments, &parsed_source);
       assert!(file_directive.is_none());
     }
 
     #[test]
     fn test_parse_global_ignore_directives_not_before_code() {
-      let parsed_source = parse(
+      let (parsed_source, sorted_comments) = parse_with_sorted_comments(
         r#"
         const x = 42;
         // deno-coverage-ignore-file
       "#,
       );
-      let file_directive = parse_file_ignore_directives(&parsed_source);
+      let file_directive =
+        parse_file_ignore_directives(&sorted_comments, &parsed_source);
       assert!(file_directive.is_none());
     }
 
     #[test]
     fn test_parse_global_ignore_directives_shebang() {
-      let parsed_source = parse(
+      let (parsed_source, sorted_comments) = parse_with_sorted_comments(
         r#"
         #!/usr/bin/env -S deno run
         // deno-coverage-ignore-file
@@ -349,20 +371,22 @@ mod tests {
       "#
         .trim_start(),
       );
-      let file_directive = parse_file_ignore_directives(&parsed_source);
+      let file_directive =
+        parse_file_ignore_directives(&sorted_comments, &parsed_source);
       assert!(file_directive.is_some());
     }
 
     #[test]
     fn test_parse_global_ignore_directives_shebang_no_code() {
-      let parsed_source = parse(
+      let (parsed_source, sorted_comments) = parse_with_sorted_comments(
         r#"
        #!/usr/bin/env -S deno run
        // deno-coverage-ignore-file
       "#
         .trim_start(),
       );
-      let file_directive = parse_file_ignore_directives(&parsed_source);
+      let file_directive =
+        parse_file_ignore_directives(&sorted_comments, &parsed_source);
 
       assert!(file_directive.is_some());
     }

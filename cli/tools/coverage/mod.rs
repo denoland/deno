@@ -220,7 +220,9 @@ fn generate_coverage_report(
     &options.script_original_source,
   )
   .expect("invalid source code");
-  let ignore_file_directive = parse_file_ignore_directives(&parsed_source);
+  let sorted_comments = parsed_source.comments().get_vec();
+  let ignore_file_directive =
+    parse_file_ignore_directives(&sorted_comments, &parsed_source);
   let url = Url::parse(&options.script_coverage.url).unwrap();
 
   if ignore_file_directive.is_some() {
@@ -264,10 +266,11 @@ fn generate_coverage_report(
   };
 
   let coverage_ignore_next_directives =
-    parse_next_ignore_directives(&parsed_source);
+    parse_next_ignore_directives(&sorted_comments, &parsed_source);
   let coverage_ignore_range_directives = parse_range_ignore_directives(
     options.cli_options.is_quiet(),
     parsed_source.specifier(),
+    &sorted_comments,
     &parsed_source,
   )
   .iter()
