@@ -109,6 +109,14 @@ fn starts_with_canonicalized(path: &Path, prefix: &str) -> bool {
   }
 }
 
+fn is_file_removed(event_path: &PathBuf) -> bool {
+  let exists_path = std::fs::exists(event_path);
+  match exists_path {
+    Ok(res) => !res,
+    Err(_) => false,
+  }
+}
+
 #[derive(Debug, thiserror::Error)]
 pub enum FsEventsError {
   #[error(transparent)]
@@ -150,21 +158,13 @@ fn start_watcher(
             })
           }) {
             let _ = sender.try_send(Ok(event.clone()));
-          } else {
-            // If the event is a remove event, we need to check if the path that was deleted
-            if event.kind.eq("remove")
-              && event
-                .paths
-                .iter()
-                .any(|event_path| std::fs::exists(event_path).unwrap_or(false))
-            {
-              let remove_event = FsEvent {
-                kind: "remove",
-                paths: event.paths.iter().map(PathBuf::from).collect(),
-                flag: None,
-              };
-              let _ = sender.try_send(Ok(remove_event));
-            }
+          } else if event.paths.iter().any(is_file_removed) {
+            let remove_event = FsEvent {
+              kind: "remove",
+              paths: event.paths.clone(),
+              flag: None,
+            };
+            let _ = sender.try_send(Ok(remove_event));
           }
         }
       }

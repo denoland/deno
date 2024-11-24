@@ -176,12 +176,12 @@ Deno.test(
         }
       }
     }
-    const eventsPromise = waitForRemove();
+    const eventPromise = waitForRemove();
 
     await Deno.remove(testFile);
 
     // Expect zero events.
-    const events = await eventsPromise;
-    assertEquals(events!.kind, "remove");
+    const event = await eventPromise;
+    assertEquals(event!.kind, "remove");
   },
 );
