@@ -12,7 +12,7 @@ use std::collections::HashMap;
 
 static COVERAGE_IGNORE_START_DIRECTIVE: &str = "deno-coverage-ignore-start";
 static COVERAGE_IGNORE_STOP_DIRECTIVE: &str = "deno-coverage-ignore-stop";
-static COVERAGE_IGNORE_NEXT_DIRECTIVE: &str = "deno-coverage-ignore-next";
+static COVERAGE_IGNORE_NEXT_DIRECTIVE: &str = "deno-coverage-ignore";
 static COVERAGE_IGNORE_FILE_DIRECTIVE: &str = "deno-coverage-ignore-file";
 
 pub struct RangeIgnoreDirective {
@@ -321,11 +321,11 @@ mod tests {
     #[test]
     fn test_parse_next_ignore_comments() {
       let source_code = r#"
-        // deno-coverage-ignore-next
+        // deno-coverage-ignore
         function foo(): any {}
 
         function bar(): any {
-          // deno-coverage-ignore-next
+          // deno-coverage-ignore
           foo();
         }
       "#;
