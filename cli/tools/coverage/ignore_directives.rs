@@ -242,70 +242,76 @@ mod tests {
     #[test]
     fn test_parse_range_ignore_comments() {
       let source_code = r#"
-          // deno-coverage-ignore-start
-          function foo(): any {}
-          // deno-coverage-ignore-stop
+        // deno-coverage-ignore-start
+        function foo(): any {}
+        // deno-coverage-ignore-stop
 
-          function bar(): any {
-            // deno-coverage-ignore-start
-            foo();
-            // deno-coverage-ignore-stop
-          }
+        function bar(): any {
+          // deno-coverage-ignore-start
+          foo();
+          // deno-coverage-ignore-stop
+        }
       "#;
       let (_, sorted_comments, text_info) =
         parse_with_sorted_comments_and_text_info(source_code);
-      let line_directives = parse_range_ignore_directives(
+      let range_directives = parse_range_ignore_directives(
         true,
         &Url::from_str(TEST_FILE_NAME).unwrap(),
         &sorted_comments,
         &text_info,
       );
-      assert_eq!(line_directives.len(), 2);
+      assert_eq!(range_directives.len(), 2);
+      assert_eq!(range_directives[0].start_line_index, 1);
+      assert_eq!(range_directives[0].stop_line_index, 3);
+      assert_eq!(range_directives[1].start_line_index, 6);
+      assert_eq!(range_directives[1].stop_line_index, 8);
     }
 
     #[test]
     fn test_parse_range_ignore_comments_unterminated() {
       let source_code = r#"
-          // deno-coverage-ignore-start
-          function foo(): any {}
+        // deno-coverage-ignore-start
+        function foo(): any {}
 
-          function bar(): any {
-            foo();
-          }
+        function bar(): any {
+          foo();
+        }
       "#;
       let (_, sorted_comments, text_info) =
         parse_with_sorted_comments_and_text_info(source_code);
-      let line_directives = parse_range_ignore_directives(
+      let range_directives = parse_range_ignore_directives(
         true,
         &Url::from_str(TEST_FILE_NAME).unwrap(),
         &sorted_comments,
         &text_info,
       );
-      assert!(line_directives.is_empty());
+      assert!(range_directives.is_empty());
     }
 
     #[test]
     fn test_parse_range_ignore_comments_nested() {
       let source_code = r#"
-          // deno-coverage-ignore-start
-          function foo(): any {}
+        // deno-coverage-ignore-start
+        function foo(): any {}
 
-          function bar(): any {
-            // deno-coverage-ignore-start
-            foo();
-            // deno-coverage-ignore-stop
-          }
+        function bar(): any {
+          // deno-coverage-ignore-start
+          foo();
           // deno-coverage-ignore-stop
+        }
+        // deno-coverage-ignore-stop
       "#;
       let (_, sorted_comments, text_info) =
         parse_with_sorted_comments_and_text_info(source_code);
-      let line_directives = parse_range_ignore_directives(
+      let range_directives = parse_range_ignore_directives(
         true,
         &Url::from_str(TEST_FILE_NAME).unwrap(),
         &sorted_comments,
         &text_info,
       );
-      assert_eq!(line_directives.len(), 1);
+      assert_eq!(range_directives.len(), 1);
+      assert_eq!(range_directives[0].start_line_index, 1);
+      assert_eq!(range_directives[0].stop_line_index, 9);
     }
   }
 
@@ -315,19 +321,21 @@ mod tests {
     #[test]
     fn test_parse_next_ignore_comments() {
       let source_code = r#"
-          // deno-coverage-ignore-next
-          function foo(): any {}
+        // deno-coverage-ignore-next
+        function foo(): any {}
 
-          function bar(): any {
-            // deno-coverage-ignore-next
-            foo();
-          }
+        function bar(): any {
+          // deno-coverage-ignore-next
+          foo();
+        }
       "#;
       let (_, sorted_comments, text_info) =
         parse_with_sorted_comments_and_text_info(source_code);
       let line_directives =
         parse_next_ignore_directives(&sorted_comments, &text_info);
       assert_eq!(line_directives.len(), 2);
+      assert!(line_directives.contains_key(&1));
+      assert!(line_directives.contains_key(&5));
     }
   }
 
@@ -394,10 +402,10 @@ mod tests {
     fn test_parse_global_ignore_directives_shebang() {
       let (parsed_source, sorted_comments) = parse_with_sorted_comments(
         r#"
-        #!/usr/bin/env -S deno run
-        // deno-coverage-ignore-file
-        const x = 42;
-      "#
+          #!/usr/bin/env -S deno run
+          // deno-coverage-ignore-file
+          const x = 42;
+        "#
         .trim_start(),
       );
       let file_directive =
@@ -409,9 +417,9 @@ mod tests {
     fn test_parse_global_ignore_directives_shebang_no_code() {
       let (parsed_source, sorted_comments) = parse_with_sorted_comments(
         r#"
-       #!/usr/bin/env -S deno run
-       // deno-coverage-ignore-file
-      "#
+        #!/usr/bin/env -S deno run
+        // deno-coverage-ignore-file
+        "#
         .trim_start(),
       );
       let file_directive =
