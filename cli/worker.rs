@@ -1,6 +1,5 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
-use std::env;
 use std::path::Path;
 use std::path::PathBuf;
 use std::rc::Rc;
@@ -49,29 +48,16 @@ use node_resolver::NodeResolutionKind;
 use node_resolver::ResolutionMode;
 use tokio::select;
 
-use crate::args::flags_from_vec;
 use crate::args::CliLockfile;
 use crate::args::DenoSubcommand;
 use crate::args::StorageKeyResolver;
 use crate::errors;
-use crate::graph_container::MainModuleGraphContainer;
+use crate::fmt_errors::map_err_suggestions;
 use crate::npm::CliNpmResolver;
 use crate::util::checksum;
 use crate::util::file_watcher::WatcherCommunicator;
 use crate::util::file_watcher::WatcherRestartMode;
 use crate::version;
-
-use color_print::cformat;
-use color_print::cstr;
-use deno_ast::MediaType;
-use deno_core::anyhow::anyhow;
-use deno_core::ResolutionKind;
-use deno_runtime::fmt_errors::FixSuggestion;
-use regex::Regex;
-
-use crate::factory::CliFactory;
-use crate::graph_container::ModuleGraphContainer;
-use crate::util::fs::specifier_from_file_path;
 
 pub struct CreateModuleLoaderResult {
   pub module_loader: Rc<dyn ModuleLoader>,
@@ -83,10 +69,6 @@ pub trait ModuleLoaderFactory: Send + Sync {
     &self,
     root_permissions: PermissionsContainer,
   ) -> CreateModuleLoaderResult;
-
-  fn maybe_main_module_graph_container(
-    &self,
-  ) -> Option<&Arc<MainModuleGraphContainer>>;
 
   fn create_for_worker(
     &self,
@@ -247,7 +229,7 @@ impl CliMainWorker {
           .run_event_loop(maybe_coverage_collector.is_none())
           .await
           // to catch the error that caused by import call
-          .map_err(|e| self.get_suggestions_for_terminal_errors(e))?;
+          .map_err(|e| self.map_err_suggestions(e))?;
       }
 
       let web_continue = self.worker.dispatch_beforeunload_event()?;
@@ -314,9 +296,7 @@ impl CliMainWorker {
           match self.inner.worker.run_event_loop(false).await {
             Ok(()) => {}
             // to catch the error that caused by import call
-            Err(error) => {
-              break Err(self.inner.get_suggestions_for_terminal_errors(error))
-            }
+            Err(error) => break Err(self.inner.map_err_suggestions(error)),
           }
           let web_continue = self.inner.worker.dispatch_beforeunload_event()?;
           if !web_continue {
@@ -356,12 +336,17 @@ impl CliMainWorker {
       .preload_main_module(&self.main_module)
       .await
       // to catch the error that caused by static import
-      .map_err(|e| self.get_suggestions_for_terminal_errors(e))?;
+      .map_err(|e| self.map_err_suggestions(e))?;
     self.worker.evaluate_module(id).await
   }
 
   pub async fn execute_side_module(&mut self) -> Result<(), AnyError> {
-    let id = self.worker.preload_side_module(&self.main_module).await?;
+    let id = self
+      .worker
+      .preload_side_module(&self.main_module)
+      .await
+      // to catch the error that caused by static import
+      .map_err(|e| self.map_err_suggestions(e))?;
     self.worker.evaluate_module(id).await
   }
 
@@ -421,207 +406,14 @@ impl CliMainWorker {
     self.worker.js_runtime.execute_script(name, source_code)
   }
 
-  /// # Suggestions for non-explicit CommonJS imports
-  ///
-  /// A package may have CommonJS modules that are not all listed in the package.json exports.  
-  /// In this case, it cannot be statically resolved when imported from ESM unless you include the extension of the target module.  
-  /// So, this function suggests adding the extension of the target module to the imports or exports.
-  ///
-  /// reference: https://github.com/facebook/react/tree/f9e41e3a519f12cfdc3207e1df44e0d2d9602df9/packages/react-dom
-  ///
-  /// ```javascript
-  /// // ❌
-  /// import ReactDomServer from 'npm:react-dom@16.8.5/server';
-  /// // ✅
-  /// import ReactDomServer from 'npm:react-dom@16.8.5/server.js';
-  /// ```
-  ///
-  /// ## Known limitation
-  /// It cannot handle the case where the target module is an import call(dynamic import)
-  /// which argument is not a string literal due to needing of the runtime evaluation.
-  ///
-  /// ```javascript
-  /// // ❌
-  /// const specifier = 'react-dom/server';
-  /// import(specifier);
-  /// // ✅
-  /// import('react-dom/server');
-  /// ```
-  fn get_suggestions_for_non_explicit_cjs_import(
-    &self,
-    message: &str,
-  ) -> Result<AnyError, AnyError> {
-    // setup the utilities
-    let args: Vec<_> = env::args_os().collect();
-    let flags = Arc::new(flags_from_vec(args)?);
-    let factory = CliFactory::from_flags(flags);
-    let cjs_tracker = factory.cjs_tracker()?.clone();
-    let fs = factory.fs().clone();
-    let module_loader = self
+  fn map_err_suggestions(&self, e: AnyError) -> AnyError {
+    let permissions = self.shared.root_permissions.clone();
+    let module_loader = &self
       .shared
       .module_loader_factory
-      .create_for_main(self.shared.root_permissions.clone())
+      .create_for_main(permissions)
       .module_loader;
-    let main_module_graph_container = self
-      .shared
-      .module_loader_factory
-      .maybe_main_module_graph_container()
-      .ok_or_else(|| anyhow!("Cound not find ModuleGraphContainer"))?;
-
-    let re = Regex::new(r"Unable to load (\S+) imported from (\S+)")?;
-    let captures = re
-      .captures(message)
-      .ok_or_else(|| anyhow!("Could not capture the message"))?;
-    let unable_to_load_file_name = captures
-      .get(1)
-      .map(|m| m.as_str())
-      .ok_or_else(|| anyhow!("No matches the specifier"))?;
-
-    let unable_to_load_path = Path::new(unable_to_load_file_name);
-    let unable_to_load_specifier =
-      specifier_from_file_path(unable_to_load_path)?;
-    // TODO(Hajime-san): Use `with_added_extension` when it becomes stable.
-    //
-    // This extended implementation for `Path` defines an ad-hoc method with the same name,
-    // since `with_added_extension` is currently only available in the nightly version.
-    // This implementation should be replaced when it becomes stable.
-    // https://github.com/rust-lang/rust/issues/127292
-    trait PathExt {
-      fn _with_added_extension(&self, extension: &str) -> PathBuf;
-    }
-
-    impl PathExt for Path {
-      fn _with_added_extension(&self, extension: &str) -> PathBuf {
-        let mut path = self.to_path_buf();
-
-        let new_extension = match self.extension() {
-          Some(ext) => {
-            format!("{}.{}", ext.to_string_lossy(), extension)
-          }
-          None => extension.to_string(),
-        };
-
-        path.set_extension(new_extension);
-        path
-      }
-    }
-
-    // resolve the exact file that unable to load
-    let extension = ["js", "cjs"]
-      .iter()
-      .find(|e| unable_to_load_path._with_added_extension(e).is_file())
-      .ok_or_else(|| anyhow!("Cound not find the file"))?;
-    let resolved_path = unable_to_load_path._with_added_extension(extension);
-    let resolved_specifier = specifier_from_file_path(&resolved_path)?;
-
-    let parsed_source = deno_ast::parse_program(deno_ast::ParseParams {
-      specifier: resolved_specifier.clone(),
-      text: fs
-        .read_text_file_lossy_sync(&resolved_path, None)?
-        .as_str()
-        .into(),
-      media_type: MediaType::from_specifier(&resolved_specifier),
-      capture_tokens: false,
-      scope_analysis: false,
-      maybe_syntax: None,
-    })?;
-
-    // check the module that unable to load is CommonJS
-    let is_cjs = cjs_tracker.is_cjs_with_known_is_script(
-      &resolved_specifier,
-      parsed_source.media_type(),
-      parsed_source.compute_is_script(),
-    )?;
-    if !is_cjs {
-      return Err(anyhow!("The module is not a CommonJS"));
-    }
-
-    let referrer = captures
-      .get(2)
-      .map(|m| m.as_str())
-      .ok_or_else(|| anyhow!("No matches the referrer"))?;
-    let graph = main_module_graph_container.graph();
-
-    // search the raw specifier that causes the error in the graph
-    let raw_specifier = graph
-      .specifiers()
-      .filter_map(|(_, module)| module.ok())
-      .filter_map(|module| module.js())
-      .filter(|js| {
-        // check the referrer is ESM
-        let Ok(is_cjs) = cjs_tracker.is_cjs_with_known_is_script(
-          &js.specifier,
-          js.media_type,
-          js.is_script,
-        ) else {
-          return false;
-        };
-
-        !is_cjs
-      })
-      .map(|js| js.dependencies.clone())
-      .find_map(|dependencies| {
-        dependencies.iter().find_map(|(raw_specifier, dependency)| {
-          let kind = if dependency.is_dynamic {
-            ResolutionKind::DynamicImport
-          } else {
-            ResolutionKind::Import
-          };
-          let resolved_specifier =
-            module_loader.resolve(raw_specifier, referrer, kind);
-          if let Ok(resolved_specifier) = resolved_specifier {
-            // it matches the exact file that unable to load
-            if resolved_specifier == unable_to_load_specifier {
-              return Some(raw_specifier.to_string());
-            }
-          }
-          None
-        })
-      })
-      .ok_or_else(|| anyhow!("Could not find the raw specifier"))?;
-
-    // add the extension to the raw specifier
-    let suggest_specifier = Path::new(raw_specifier.as_str())
-      ._with_added_extension(extension)
-      .to_string_lossy()
-      .into_owned();
-    let hint =
-      cformat!("Did you mean to import <u>\"{}\"</>?", suggest_specifier);
-    let suggestions = vec![
-      FixSuggestion::info_multiline(&[
-        "The module that you are trying to import seems to be a CommonJS.",
-        cstr!(
-        "However it is not listed in the <i>exports</> of <u>package.json</>."
-      ),
-        "So it cannot be statically resolved when imported from ESM.",
-        "Consider to include an extension of the module.",
-      ]),
-      FixSuggestion::hint(&hint),
-    ];
-
-    let mut message = message.to_string();
-    FixSuggestion::append_suggestion(&mut message, suggestions);
-    let handled_error = anyhow!(message);
-
-    Ok(handled_error)
-  }
-
-  /// This function should only used to map to the place where the error could caught.
-  ///
-  /// Keep in mind the function `get_suggestions_for_terminal_errors` in `runtime/fmt_errors.rs`
-  /// behaves almost identically to this function.
-  fn get_suggestions_for_terminal_errors(&self, e: AnyError) -> AnyError {
-    let message = e.to_string();
-    if message.contains("Unable to load") && message.contains("imported from") {
-      let result = self.get_suggestions_for_non_explicit_cjs_import(&message);
-      match result {
-        Ok(handled_error) => handled_error,
-        // return the original error
-        Err(_) => e,
-      }
-    } else {
-      e
-    }
+    map_err_suggestions(e, module_loader)
   }
 }
 

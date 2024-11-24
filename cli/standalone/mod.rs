@@ -560,12 +560,6 @@ impl ModuleLoaderFactory for StandaloneModuleLoaderFactory {
     self.create_result()
   }
 
-  fn maybe_main_module_graph_container(
-    &self,
-  ) -> Option<&Arc<MainModuleGraphContainer>> {
-    None
-  }
-
   fn create_for_worker(
     &self,
     _parent_permissions: PermissionsContainer,
