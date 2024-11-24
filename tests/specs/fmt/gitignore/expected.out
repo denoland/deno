@@ -1,0 +1,10 @@
+
+from [WILDCARD]file2.ts:
+1 | -function foo(   ): any   {
+1 | +function foo(): any {
+2 | - console.log(  "hello")
+2 | +  console.log("hello");
+3 | -    }
+3 | +}
+
+error: Found 1 not formatted file in 1 file

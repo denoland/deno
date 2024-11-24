@@ -5427,7 +5427,8 @@ fn lsp_code_actions_deno_cache() {
 
   let res =
     client
-    .write_request(      "textDocument/codeAction",
+    .write_request(
+      "textDocument/codeAction",
       json!({
         "textDocument": {
           "uri": "file:///a/file.ts"
@@ -5453,8 +5454,7 @@ fn lsp_code_actions_deno_cache() {
           "only": ["quickfix"]
         }
       }),
-    )
-    ;
+    );
   assert_eq!(
     res,
     json!([{
@@ -8266,6 +8266,130 @@ fn lsp_npm_auto_import_and_quick_fix_byonm() {
         },
       },
     ]),
+  );
+  client.shutdown();
+}
+
+#[test]
+fn lsp_npm_auto_import_with_deno_types() {
+  let context = TestContextBuilder::new()
+    .use_http_server()
+    .use_temp_cwd()
+    .add_npm_env_vars()
+    .build();
+  let temp_dir = context.temp_dir();
+  temp_dir.write(
+    "deno.json",
+    json!({
+      "compilerOptions": {
+        "jsx": "react-jsx",
+        "jsxImportSource": "react",
+        "jsxImportSourceTypes": "@types/react",
+      },
+    })
+    .to_string(),
+  );
+  temp_dir.write(
+    "package.json",
+    json!({
+      "dependencies": {
+        "react": "*",
+        "@types/react": "*",
+        "lz-string": "1.3",
+        "@types/lz-string": "1.3",
+      },
+    })
+    .to_string(),
+  );
+  context.run_npm("install");
+  temp_dir.write(
+    "other.ts",
+    r#"
+      // @deno-types="@types/lz-string"
+      import "lz-string";
+    "#,
+  );
+  let mut client = context.new_lsp_command().build();
+  client.initialize_default();
+  client.did_open(json!({
+    "textDocument": {
+      "uri": temp_dir.url().join("file.ts").unwrap(),
+      "languageId": "typescript",
+      "version": 1,
+      "text": r#"
+        compressToBase64();
+        createRef();
+      "#,
+    },
+  }));
+  let list = client.get_completion_list(
+    temp_dir.url().join("file.ts").unwrap(),
+    (1, 24),
+    json!({ "triggerKind": 1 }),
+  );
+  let item = list
+    .items
+    .iter()
+    .find(|item| item.label == "compressToBase64")
+    .unwrap();
+  let res = client.write_request("completionItem/resolve", item);
+  assert_eq!(
+    res,
+    json!({
+      "label": "compressToBase64",
+      "labelDetails": {
+        "description": "lz-string",
+      },
+      "kind": 2,
+      "detail": "(method) LZString.LZStringStatic.compressToBase64(uncompressed: string): string",
+      "documentation": {
+        "kind": "markdown",
+        "value": "Compresses input string producing an instance of a ASCII UTF-16 string,\nwhich represents the original string encoded in Base64.\nThe result can be safely transported outside the browser with a\nguarantee that none of the characters produced need to be URL-encoded.\n\n*@param* - uncompressed A string which should be compressed.",
+      },
+      "sortText": "￿16_0",
+      "additionalTextEdits": [
+        {
+          "range": {
+            "start": { "line": 0, "character": 0 },
+            "end": { "line": 0, "character": 0 },
+          },
+          "newText": "// @deno-types=\"@types/lz-string\"\nimport { compressToBase64 } from \"lz-string\";\n",
+        },
+      ],
+    }),
+  );
+  let list = client.get_completion_list(
+    temp_dir.url().join("file.ts").unwrap(),
+    (2, 17),
+    json!({ "triggerKind": 1 }),
+  );
+  let item = list
+    .items
+    .iter()
+    .find(|item| item.label == "createRef")
+    .unwrap();
+  let res = client.write_request("completionItem/resolve", item);
+  assert_eq!(
+    res,
+    json!({
+      "label": "createRef",
+      "labelDetails": {
+        "description": "react",
+      },
+      "kind": 3,
+      "detail": "function React.createRef<T>(): React.RefObject<T>",
+      "documentation": { "kind": "markdown", "value": "" },
+      "sortText": "￿16_0",
+      "additionalTextEdits": [
+        {
+          "range": {
+            "start": { "line": 0, "character": 0 },
+            "end": { "line": 0, "character": 0 },
+          },
+          "newText": "// @deno-types=\"@types/react\"\nimport { createRef } from \"react\";\n",
+        },
+      ],
+    }),
   );
   client.shutdown();
 }
@@ -11556,7 +11680,7 @@ fn lsp_format_with_config() {
       },
       "options": {
         "tabSize": 2,
-        "insertSpaces": false
+        "insertSpaces": true,
       }
     }),
   );
@@ -16140,6 +16264,55 @@ fn lsp_cjs_import_dual() {
 }
 
 #[test]
+fn lsp_type_commonjs() {
+  let context = TestContextBuilder::new()
+    .use_http_server()
+    .use_temp_cwd()
+    .add_npm_env_vars()
+    .build();
+  let temp_dir = context.temp_dir();
+  temp_dir.write("deno.json", r#"{}"#);
+  temp_dir.write(
+    "package.json",
+    r#"{
+  "type": "commonjs",
+  "dependencies": {
+    "@denotest/dual-cjs-esm": "1"
+  }
+}"#,
+  );
+  context.run_npm("install");
+
+  let mut client = context.new_lsp_command().build();
+  client.initialize_default();
+  let main_url = temp_dir.path().join("main.ts").url_file();
+  let diagnostics = client.did_open(
+    json!({
+      "textDocument": {
+        "uri": main_url,
+        "languageId": "typescript",
+        "version": 1,
+        // getKind() should resolve as "cjs" and cause a type checker error
+        "text": "import mod = require('@denotest/dual-cjs-esm');\nconst kind: 'other' = mod.getKind(); console.log(kind);",
+      }
+    }),
+  );
+  assert_eq!(
+    json!(diagnostics.all()),
+    json!([{
+      "range": {
+          "start": { "line": 1, "character": 6, },
+          "end": { "line": 1, "character": 10, },
+      },
+      "severity": 1,
+      "code": 2322,
+      "source": "deno-ts",
+      "message": "Type '\"cjs\"' is not assignable to type '\"other\"'.",
+    }])
+  );
+}
+
+#[test]
 fn lsp_ts_code_fix_any_param() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let temp_dir = context.temp_dir();
@@ -16342,4 +16515,48 @@ fn lsp_jsdoc_named_example() {
       ]
     }),
   );
+}
+
+#[test]
+fn lsp_wasm_module() {
+  let context = TestContextBuilder::new()
+    .use_temp_cwd()
+    .use_http_server()
+    .build();
+  let mut client = context.new_lsp_command().build();
+  client.initialize_default();
+  client.did_open(json!({
+    "textDocument": {
+      "uri": "file:///a/file.ts",
+      "languageId": "typescript",
+      "version": 1,
+      "text": "import { add } from \"http://localhost:4545/wasm/math.wasm\";\nadd(1, '');\n"
+    }
+  }));
+
+  client.write_request(
+    "workspace/executeCommand",
+    json!({
+      "command": "deno.cache",
+      "arguments": [[], "file:///a/file.ts"],
+    }),
+  );
+
+  let diagnostics = client.read_diagnostics();
+  assert_eq!(
+    json!(diagnostics.all()),
+    json!([
+      {
+        "range": {
+          "start": { "line": 1, "character": 7 },
+          "end": { "line": 1, "character": 9 }
+        },
+        "severity": 1,
+        "code": 2345,
+        "source": "deno-ts",
+        "message": "Argument of type 'string' is not assignable to parameter of type 'number'."
+      }
+    ])
+  );
+  client.shutdown();
 }

@@ -6,6 +6,86 @@ https://github.com/denoland/deno/releases
 We also have one-line install commands at:
 https://github.com/denoland/deno_install
 
+### 2.1.1 / 2024.11.21
+
+- docs(add): clarification to add command (#26968)
+- docs(doc): fix typo in doc subcommand help output (#26321)
+- fix(node): regression where ts files were sometimes resolved instead of js
+  (#26971)
+- fix(task): ensure root config always looks up dependencies in root (#26959)
+- fix(watch): don't panic if there's no path provided (#26972)
+- fix: Buffer global in --unstable-node-globals (#26973)
+
+### 2.1.0 / 2024.11.21
+
+- feat(cli): add `--unstable-node-globals` flag (#26617)
+- feat(cli): support multiple env file argument (#26527)
+- feat(compile): ability to embed directory in executable (#26939)
+- feat(compile): ability to embed local data files (#26934)
+- feat(ext/fetch): Make fetch client parameters configurable (#26909)
+- feat(ext/fetch): allow embedders to use `hickory_dns_resolver` instead of
+  default `GaiResolver` (#26740)
+- feat(ext/fs): add ctime to Deno.stats and use it in node compat layer (#24801)
+- feat(ext/http): Make http server parameters configurable (#26785)
+- feat(ext/node): perf_hooks.monitorEventLoopDelay() (#26905)
+- feat(fetch): accept async iterables for body (#26882)
+- feat(fmt): support SQL (#26750)
+- feat(info): show location for Web Cache (#26205)
+- feat(init): add --npm flag to initialize npm projects (#26896)
+- feat(jupyter): Add `Deno.jupyter.image` API (#26284)
+- feat(lint): Add checked files list to the JSON output(#26936)
+- feat(lsp): auto-imports with @deno-types directives (#26821)
+- feat(node): stabilize detecting if CJS via `"type": "commonjs"` in a
+  package.json (#26439)
+- feat(permission): support suffix wildcards in `--allow-env` flag (#25255)
+- feat(publish): add `--set-version <version>` flag (#26141)
+- feat(runtime): remove public OTEL trace API (#26854)
+- feat(task): add --eval flag (#26943)
+- feat(task): dependencies (#26467)
+- feat(task): support object notation, remove support for JSDocs (#26886)
+- feat(task): workspace support with --filter and --recursive (#26949)
+- feat(watch): log which file changed on HMR or watch change (#25801)
+- feat: OpenTelemetry Tracing API and Exporting (#26710)
+- feat: Wasm module support (#26668)
+- feat: fmt and lint respect .gitignore file (#26897)
+- feat: permission stack traces in ops (#26938)
+- feat: subcommand to view and update outdated dependencies (#26942)
+- feat: upgrade V8 to 13.0 (#26851)
+- fix(cli): preserve comments in doc tests (#26828)
+- fix(cli): show prefix hint when installing a package globally (#26629)
+- fix(ext/cache): gracefully error when cache creation failed (#26895)
+- fix(ext/http): prefer brotli for `accept-encoding: gzip, deflate, br, zstd`
+  (#26814)
+- fix(ext/node): New async setInterval function to improve the nodejs
+  compatibility (#26703)
+- fix(ext/node): add autoSelectFamily option to net.createConnection (#26661)
+- fix(ext/node): handle `--allow-sys=inspector` (#26836)
+- fix(ext/node): increase tolerance for interval test (#26899)
+- fix(ext/node): process.getBuiltinModule (#26833)
+- fix(ext/node): use ERR_NOT_IMPLEMENTED for notImplemented (#26853)
+- fix(ext/node): zlib.crc32() (#26856)
+- fix(ext/webgpu): Create GPUQuerySet converter before usage (#26883)
+- fix(ext/websocket): initialize `error` attribute of WebSocket ErrorEvent
+  (#26796)
+- fix(ext/webstorage): use error class for sqlite error case (#26806)
+- fix(fmt): error instead of panic on unstable format (#26859)
+- fix(fmt): formatting of .svelte files (#26948)
+- fix(install): percent encodings in interactive progress bar (#26600)
+- fix(install): re-setup bin entries after running lifecycle scripts (#26752)
+- fix(lockfile): track dependencies specified in TypeScript compiler options
+  (#26551)
+- fix(lsp): ignore editor indent settings if deno.json is present (#26912)
+- fix(lsp): skip code action edits that can't be converted (#26831)
+- fix(node): handle resolving ".//<something>" in npm packages (#26920)
+- fix(node/crypto): support promisify on generateKeyPair (#26913)
+- fix(permissions): say to use --allow-run instead of --allow-all (#26842)
+- fix(publish): improve error message when missing exports (#26945)
+- fix: otel resiliency (#26857)
+- fix: update message for unsupported schemes with npm and jsr (#26884)
+- perf(compile): code cache (#26528)
+- perf(windows): delay load webgpu and some other dlls (#26917)
+- perf: use available system memory for v8 isolate memory limit (#26868)
+
 ### 2.0.6 / 2024.11.10
 
 - feat(ext/http): abort event when request is cancelled (#26781)

@@ -18,9 +18,11 @@ export function assertStats(actual: Stats, expected: Deno.FileInfo) {
   assertEquals(actual.atime?.getTime(), expected.atime?.getTime());
   assertEquals(actual.mtime?.getTime(), expected.mtime?.getTime());
   assertEquals(actual.birthtime?.getTime(), expected.birthtime?.getTime());
+  assertEquals(actual.ctime?.getTime(), expected.ctime?.getTime());
   assertEquals(actual.atimeMs ?? undefined, expected.atime?.getTime());
   assertEquals(actual.mtimeMs ?? undefined, expected.mtime?.getTime());
   assertEquals(actual.birthtimeMs ?? undefined, expected.birthtime?.getTime());
+  assertEquals(actual.ctimeMs ?? undefined, expected.ctime?.getTime());
   assertEquals(actual.isFile(), expected.isFile);
   assertEquals(actual.isDirectory(), expected.isDirectory);
   assertEquals(actual.isSymbolicLink(), expected.isSymlink);
@@ -49,6 +51,7 @@ export function assertStatsBigInt(
   assertEquals(actual.atime?.getTime(), expected.atime?.getTime());
   assertEquals(actual.mtime?.getTime(), expected.mtime?.getTime());
   assertEquals(actual.birthtime?.getTime(), expected.birthtime?.getTime());
+  assertEquals(actual.ctime?.getTime(), expected.ctime?.getTime());
   assertEquals(
     actual.atimeMs === null ? undefined : Number(actual.atimeMs),
     expected.atime?.getTime(),
@@ -60,6 +63,10 @@ export function assertStatsBigInt(
   assertEquals(
     actual.birthtimeMs === null ? undefined : Number(actual.birthtimeMs),
     expected.birthtime?.getTime(),
+  );
+  assertEquals(
+    actual.ctimeMs === null ? undefined : Number(actual.ctimeMs),
+    expected.ctime?.getTime(),
   );
   assertEquals(actual.atimeNs === null, actual.atime === null);
   assertEquals(actual.mtimeNs === null, actual.mtime === null);

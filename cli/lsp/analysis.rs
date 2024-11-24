@@ -39,6 +39,7 @@ use deno_semver::package::PackageReq;
 use deno_semver::package::PackageReqReference;
 use deno_semver::Version;
 use import_map::ImportMap;
+use node_resolver::NodeModuleKind;
 use once_cell::sync::Lazy;
 use regex::Regex;
 use std::borrow::Cow;
@@ -343,9 +344,8 @@ impl<'a> TsResponseImportMapper<'a> {
     {
       let in_npm_pkg = self
         .resolver
-        .maybe_node_resolver(Some(&self.file_referrer))
-        .map(|n| n.in_npm_package(specifier))
-        .unwrap_or(false);
+        .in_npm_pkg_checker(Some(&self.file_referrer))
+        .in_npm_package(specifier);
       if in_npm_pkg {
         if let Ok(Some(pkg_id)) =
           npm_resolver.resolve_pkg_id_from_specifier(specifier)
@@ -467,6 +467,7 @@ impl<'a> TsResponseImportMapper<'a> {
     &self,
     specifier: &str,
     referrer: &ModuleSpecifier,
+    referrer_kind: NodeModuleKind,
   ) -> Option<String> {
     let specifier_stem = specifier.strip_suffix(".js").unwrap_or(specifier);
     let specifiers = std::iter::once(Cow::Borrowed(specifier)).chain(
@@ -477,7 +478,7 @@ impl<'a> TsResponseImportMapper<'a> {
     for specifier in specifiers {
       if let Some(specifier) = self
         .resolver
-        .as_graph_resolver(Some(&self.file_referrer))
+        .as_cli_resolver(Some(&self.file_referrer))
         .resolve(
           &specifier,
           &deno_graph::Range {
@@ -485,6 +486,7 @@ impl<'a> TsResponseImportMapper<'a> {
             start: deno_graph::Position::zeroed(),
             end: deno_graph::Position::zeroed(),
           },
+          referrer_kind,
           ResolutionMode::Types,
         )
         .ok()
@@ -507,10 +509,11 @@ impl<'a> TsResponseImportMapper<'a> {
     &self,
     specifier_text: &str,
     referrer: &ModuleSpecifier,
+    referrer_kind: NodeModuleKind,
   ) -> bool {
     self
       .resolver
-      .as_graph_resolver(Some(&self.file_referrer))
+      .as_cli_resolver(Some(&self.file_referrer))
       .resolve(
         specifier_text,
         &deno_graph::Range {
@@ -518,6 +521,7 @@ impl<'a> TsResponseImportMapper<'a> {
           start: deno_graph::Position::zeroed(),
           end: deno_graph::Position::zeroed(),
         },
+        referrer_kind,
         deno_graph::source::ResolutionMode::Types,
       )
       .is_ok()
@@ -586,6 +590,7 @@ fn try_reverse_map_package_json_exports(
 /// like an import and rewrite the import specifier to include the extension
 pub fn fix_ts_import_changes(
   referrer: &ModuleSpecifier,
+  referrer_kind: NodeModuleKind,
   changes: &[tsc::FileTextChanges],
   language_server: &language_server::Inner,
 ) -> Result<Vec<tsc::FileTextChanges>, AnyError> {
@@ -602,8 +607,8 @@ pub fn fix_ts_import_changes(
           if let Some(captures) = IMPORT_SPECIFIER_RE.captures(line) {
             let specifier =
               captures.iter().skip(1).find_map(|s| s).unwrap().as_str();
-            if let Some(new_specifier) =
-              import_mapper.check_unresolved_specifier(specifier, referrer)
+            if let Some(new_specifier) = import_mapper
+              .check_unresolved_specifier(specifier, referrer, referrer_kind)
             {
               line.replace(specifier, &new_specifier)
             } else {
@@ -633,6 +638,7 @@ pub fn fix_ts_import_changes(
 /// resolution by Deno (includes the extension).
 fn fix_ts_import_action<'a>(
   referrer: &ModuleSpecifier,
+  referrer_kind: NodeModuleKind,
   action: &'a tsc::CodeFixAction,
   language_server: &language_server::Inner,
 ) -> Option<Cow<'a, tsc::CodeFixAction>> {
@@ -652,7 +658,7 @@ fn fix_ts_import_action<'a>(
   };
   let import_mapper = language_server.get_ts_response_import_mapper(referrer);
   if let Some(new_specifier) =
-    import_mapper.check_unresolved_specifier(specifier, referrer)
+    import_mapper.check_unresolved_specifier(specifier, referrer, referrer_kind)
   {
     let description = action.description.replace(specifier, &new_specifier);
     let changes = action
@@ -683,7 +689,7 @@ fn fix_ts_import_action<'a>(
       fix_id: None,
       fix_all_description: None,
     }))
-  } else if !import_mapper.is_valid_import(specifier, referrer) {
+  } else if !import_mapper.is_valid_import(specifier, referrer, referrer_kind) {
     None
   } else {
     Some(Cow::Borrowed(action))
@@ -1017,6 +1023,7 @@ impl CodeActionCollection {
   pub fn add_ts_fix_action(
     &mut self,
     specifier: &ModuleSpecifier,
+    specifier_kind: NodeModuleKind,
     action: &tsc::CodeFixAction,
     diagnostic: &lsp::Diagnostic,
     language_server: &language_server::Inner,
@@ -1034,7 +1041,8 @@ impl CodeActionCollection {
         "The action returned from TypeScript is unsupported.",
       ));
     }
-    let Some(action) = fix_ts_import_action(specifier, action, language_server)
+    let Some(action) =
+      fix_ts_import_action(specifier, specifier_kind, action, language_server)
     else {
       return Ok(());
     };
@@ -1276,6 +1284,9 @@ impl CodeActionCollection {
         import_start_from_specifier(document, i)
       })?;
       let referrer = document.specifier();
+      let referrer_kind = language_server
+        .is_cjs_resolver
+        .get_doc_module_kind(document);
       let file_referrer = document.file_referrer();
       let config_data = language_server
         .config
@@ -1298,10 +1309,11 @@ impl CodeActionCollection {
         if !config_data.byonm {
           return None;
         }
-        if !language_server
-          .resolver
-          .is_bare_package_json_dep(&dep_key, referrer)
-        {
+        if !language_server.resolver.is_bare_package_json_dep(
+          &dep_key,
+          referrer,
+          referrer_kind,
+        ) {
           return None;
         }
         NpmPackageReqReference::from_str(&format!("npm:{}", &dep_key)).ok()?
@@ -1320,7 +1332,7 @@ impl CodeActionCollection {
       }
       if language_server
         .resolver
-        .npm_to_file_url(&npm_ref, document.specifier(), file_referrer)
+        .npm_to_file_url(&npm_ref, referrer, referrer_kind, file_referrer)
         .is_some()
       {
         // The package import has types.

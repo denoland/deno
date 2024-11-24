@@ -4,6 +4,7 @@ pub mod bootstrap;
 pub mod fs_events;
 pub mod http;
 pub mod os;
+pub mod otel;
 pub mod permissions;
 pub mod process;
 pub mod runtime;
