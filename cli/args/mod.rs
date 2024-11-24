@@ -289,6 +289,7 @@ impl BenchOptions {
 #[derive(Clone, Debug, Default, PartialEq, Eq, Hash)]
 pub struct UnstableFmtOptions {
   pub component: bool,
+  pub sql: bool,
 }
 
 #[derive(Clone, Debug)]
@@ -322,6 +323,7 @@ impl FmtOptions {
       options: resolve_fmt_options(fmt_flags, fmt_config.options),
       unstable: UnstableFmtOptions {
         component: unstable.component || fmt_flags.unstable_component,
+        sql: unstable.sql || fmt_flags.unstable_sql,
       },
       files: fmt_config.files,
     }
@@ -823,10 +825,8 @@ impl CliOptions {
       };
       let msg =
         format!("DANGER: TLS certificate validation is disabled {}", domains);
-      #[allow(clippy::print_stderr)]
       {
-        // use eprintln instead of log::warn so this always gets shown
-        eprintln!("{}", colors::yellow(msg));
+        log::error!("{}", colors::yellow(msg));
       }
     }
 
@@ -870,12 +870,8 @@ impl CliOptions {
         } else {
           &[]
         };
-      let config_parse_options = deno_config::deno_json::ConfigParseOptions {
-        include_task_comments: matches!(
-          flags.subcommand,
-          DenoSubcommand::Task(..)
-        ),
-      };
+      let config_parse_options =
+        deno_config::deno_json::ConfigParseOptions::default();
       let discover_pkg_json = flags.config_flag != ConfigFlag::Disabled
         && !flags.no_npm
         && !has_flag_env_var("DENO_NO_PACKAGE_JSON");
@@ -1131,23 +1127,10 @@ impl CliOptions {
   }
 
   pub fn otel_config(&self) -> Option<OtelConfig> {
-    if self
-      .flags
-      .unstable_config
-      .features
-      .contains(&String::from("otel"))
-    {
-      Some(OtelConfig {
-        runtime_name: Cow::Borrowed("deno"),
-        runtime_version: Cow::Borrowed(crate::version::DENO_VERSION_INFO.deno),
-        ..Default::default()
-      })
-    } else {
-      None
-    }
+    self.flags.otel_config()
   }
 
-  pub fn env_file_name(&self) -> Option<&String> {
+  pub fn env_file_name(&self) -> Option<&Vec<String>> {
     self.flags.env_file.as_ref()
   }
 
@@ -1338,6 +1321,7 @@ impl CliOptions {
     let workspace = self.workspace();
     UnstableFmtOptions {
       component: workspace.has_unstable("fmt-component"),
+      sql: workspace.has_unstable("fmt-sql"),
     }
   }
 
@@ -1564,6 +1548,10 @@ impl CliOptions {
         }) => Url::parse(&flags.module_url)
           .ok()
           .map(|url| vec![Cow::Owned(url)]),
+        DenoSubcommand::Doc(DocFlags {
+          source_files: DocSourceFileFlag::Paths(paths),
+          ..
+        }) => Some(files_to_urls(paths)),
         _ => None,
       })
       .unwrap_or_default();
@@ -1640,8 +1628,10 @@ impl CliOptions {
       DenoSubcommand::Install(_)
         | DenoSubcommand::Add(_)
         | DenoSubcommand::Remove(_)
+        | DenoSubcommand::Init(_)
+        | DenoSubcommand::Outdated(_)
     ) {
-      // For `deno install/add/remove` we want to force the managed resolver so it can set up `node_modules/` directory.
+      // For `deno install/add/remove/init` we want to force the managed resolver so it can set up `node_modules/` directory.
       return false;
     }
     if self.node_modules_dir().ok().flatten().is_none()
@@ -1686,6 +1676,7 @@ impl CliOptions {
           "byonm",
           "bare-node-builtins",
           "fmt-component",
+          "fmt-sql",
         ])
         .collect();
 
@@ -1923,6 +1914,10 @@ pub fn resolve_no_prompt(flags: &PermissionFlags) -> bool {
   flags.no_prompt || has_flag_env_var("DENO_NO_PROMPT")
 }
 
+pub fn has_trace_permissions_enabled() -> bool {
+  has_flag_env_var("DENO_TRACE_PERMISSIONS")
+}
+
 pub fn has_flag_env_var(name: &str) -> bool {
   let value = env::var(name);
   matches!(value.as_ref().map(|s| s.as_str()), Ok("1"))
@@ -1954,19 +1949,22 @@ pub fn config_to_deno_graph_workspace_member(
   })
 }
 
-fn load_env_variables_from_env_file(filename: Option<&String>) {
-  let Some(env_file_name) = filename else {
+fn load_env_variables_from_env_file(filename: Option<&Vec<String>>) {
+  let Some(env_file_names) = filename else {
     return;
   };
-  match from_filename(env_file_name) {
-    Ok(_) => (),
-    Err(error) => {
-      match error {
+
+  for env_file_name in env_file_names.iter().rev() {
+    match from_filename(env_file_name) {
+      Ok(_) => (),
+      Err(error) => {
+        match error {
           dotenvy::Error::LineParse(line, index)=> log::info!("{} Parsing failed within the specified environment file: {} at index: {} of the value: {}",colors::yellow("Warning"), env_file_name, index, line),
           dotenvy::Error::Io(_)=> log::info!("{} The `--env-file` flag was used, but the environment file specified '{}' was not found.",colors::yellow("Warning"),env_file_name),
           dotenvy::Error::EnvVar(_)=> log::info!("{} One or more of the environment variables isn't present or not unicode within the specified environment file: {}",colors::yellow("Warning"),env_file_name),
           _ => log::info!("{} Unknown failure occurred with the specified environment file: {}", colors::yellow("Warning"), env_file_name),
         }
+      }
     }
   }
 }

@@ -1,5 +1,10 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
-import { assertEquals, assertRejects, fail } from "./test_util.ts";
+import {
+  assertEquals,
+  assertRejects,
+  assertThrows,
+  fail,
+} from "./test_util.ts";
 
 const {
   core,
@@ -531,5 +536,13 @@ Deno.test(async function decompressionStreamInvalidGzipStillReported() {
     },
     TypeError,
     "corrupt gzip stream does not have a matching checksum",
+  );
+});
+
+Deno.test(function readableStreamFromWithStringThrows() {
+  assertThrows(
+    () => ReadableStream.from("string"),
+    TypeError,
+    "Failed to execute 'ReadableStream.from': Argument 1 can not be converted to async iterable.",
   );
 });

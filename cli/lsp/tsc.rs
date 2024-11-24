@@ -34,6 +34,7 @@ use crate::util::path::relative_specifier;
 use crate::util::path::to_percent_decoded_str;
 use crate::util::result::InfallibleResultExt;
 use crate::util::v8::convert;
+use crate::worker::create_isolate_create_params;
 use deno_core::convert::Smi;
 use deno_core::convert::ToV8;
 use deno_core::error::StdAnyError;
@@ -3416,9 +3417,18 @@ fn parse_code_actions(
           additional_text_edits.extend(change.text_changes.iter().map(|tc| {
             let mut text_edit = tc.as_text_edit(asset_or_doc.line_index());
             if let Some(specifier_rewrite) = &data.specifier_rewrite {
-              text_edit.new_text = text_edit
-                .new_text
-                .replace(&specifier_rewrite.0, &specifier_rewrite.1);
+              text_edit.new_text = text_edit.new_text.replace(
+                &specifier_rewrite.old_specifier,
+                &specifier_rewrite.new_specifier,
+              );
+              if let Some(deno_types_specifier) =
+                &specifier_rewrite.new_deno_types_specifier
+              {
+                text_edit.new_text = format!(
+                  "// @deno-types=\"{}\"\n{}",
+                  deno_types_specifier, &text_edit.new_text
+                );
+              }
             }
             text_edit
           }));
@@ -3577,17 +3587,23 @@ impl CompletionEntryDetails {
     let mut text_edit = original_item.text_edit.clone();
     if let Some(specifier_rewrite) = &data.specifier_rewrite {
       if let Some(text_edit) = &mut text_edit {
-        match text_edit {
-          lsp::CompletionTextEdit::Edit(text_edit) => {
-            text_edit.new_text = text_edit
-              .new_text
-              .replace(&specifier_rewrite.0, &specifier_rewrite.1);
-          }
+        let new_text = match text_edit {
+          lsp::CompletionTextEdit::Edit(text_edit) => &mut text_edit.new_text,
           lsp::CompletionTextEdit::InsertAndReplace(insert_replace_edit) => {
-            insert_replace_edit.new_text = insert_replace_edit
-              .new_text
-              .replace(&specifier_rewrite.0, &specifier_rewrite.1);
+            &mut insert_replace_edit.new_text
           }
+        };
+        *new_text = new_text.replace(
+          &specifier_rewrite.old_specifier,
+          &specifier_rewrite.new_specifier,
+        );
+        if let Some(deno_types_specifier) =
+          &specifier_rewrite.new_deno_types_specifier
+        {
+          *new_text = format!(
+            "// @deno-types=\"{}\"\n{}",
+            deno_types_specifier, new_text
+          );
         }
       }
     }
@@ -3692,6 +3708,13 @@ impl CompletionInfo {
   }
 }
 
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct CompletionSpecifierRewrite {
+  old_specifier: String,
+  new_specifier: String,
+  new_deno_types_specifier: Option<String>,
+}
+
 #[derive(Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CompletionItemData {
@@ -3704,7 +3727,7 @@ pub struct CompletionItemData {
   /// be rewritten by replacing the first string with the second. Intended for
   /// auto-import specifiers to be reverse-import-mapped.
   #[serde(skip_serializing_if = "Option::is_none")]
-  pub specifier_rewrite: Option<(String, String)>,
+  pub specifier_rewrite: Option<CompletionSpecifierRewrite>,
   #[serde(skip_serializing_if = "Option::is_none")]
   pub data: Option<Value>,
   pub use_code_snippet: bool,
@@ -3926,20 +3949,40 @@ impl CompletionEntry {
     if let Some(source) = &self.source {
       let mut display_source = source.clone();
       if let Some(import_data) = &self.auto_import_data {
-        if let Some(new_module_specifier) = language_server
-          .get_ts_response_import_mapper(specifier)
+        let import_mapper =
+          language_server.get_ts_response_import_mapper(specifier);
+        if let Some(mut new_specifier) = import_mapper
           .check_specifier(&import_data.normalized, specifier)
           .or_else(|| relative_specifier(specifier, &import_data.normalized))
         {
-          if new_module_specifier.contains("/node_modules/") {
+          if new_specifier.contains("/node_modules/") {
             return None;
           }
-          display_source.clone_from(&new_module_specifier);
-          if new_module_specifier != import_data.raw.module_specifier {
-            specifier_rewrite = Some((
-              import_data.raw.module_specifier.clone(),
-              new_module_specifier,
-            ));
+          let mut new_deno_types_specifier = None;
+          if let Some(code_specifier) = language_server
+            .resolver
+            .deno_types_to_code_resolution(
+              &import_data.normalized,
+              Some(specifier),
+            )
+            .and_then(|s| {
+              import_mapper
+                .check_specifier(&s, specifier)
+                .or_else(|| relative_specifier(specifier, &s))
+            })
+          {
+            new_deno_types_specifier =
+              Some(std::mem::replace(&mut new_specifier, code_specifier));
+          }
+          display_source.clone_from(&new_specifier);
+          if new_specifier != import_data.raw.module_specifier
+            || new_deno_types_specifier.is_some()
+          {
+            specifier_rewrite = Some(CompletionSpecifierRewrite {
+              old_specifier: import_data.raw.module_specifier.clone(),
+              new_specifier,
+              new_deno_types_specifier,
+            });
           }
         } else if source.starts_with(jsr_url().as_str()) {
           return None;
@@ -4245,9 +4288,7 @@ impl TscSpecifierMap {
       return specifier.to_string();
     }
     let mut specifier = original.to_string();
-    if specifier.contains("/node_modules/.deno/")
-      && !specifier.contains("/node_modules/@types/node/")
-    {
+    if !specifier.contains("/node_modules/@types/node/") {
       // The ts server doesn't give completions from files in
       // `node_modules/.deno/`. We work around it like this.
       specifier = specifier.replace("/node_modules/", "/$node_modules/");
@@ -4413,9 +4454,7 @@ fn op_load<'s>(
           == NodeModuleKind::Cjs,
       })
     };
-
   let serialized = serde_v8::to_v8(scope, maybe_load_response)?;
-
   state.performance.measure(mark);
   Ok(serialized)
 }
@@ -4760,6 +4799,7 @@ fn run_tsc_thread(
       specifier_map,
       request_rx,
     )],
+    create_params: create_isolate_create_params(),
     startup_snapshot: Some(tsc::compiler_snapshot()),
     inspector: has_inspector_server,
     ..Default::default()
@@ -5565,7 +5605,7 @@ mod tests {
     let (_tx, rx) = mpsc::unbounded_channel();
     let state =
       State::new(state_snapshot, Default::default(), Default::default(), rx);
-    let mut op_state = OpState::new(None);
+    let mut op_state = OpState::new(None, None);
     op_state.put(state);
     op_state
   }

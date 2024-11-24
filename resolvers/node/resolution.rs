@@ -41,7 +41,7 @@ use crate::errors::TypesNotFoundErrorData;
 use crate::errors::UnsupportedDirImportError;
 use crate::errors::UnsupportedEsmUrlSchemeError;
 use crate::npm::InNpmPackageCheckerRc;
-use crate::NpmResolverRc;
+use crate::NpmPackageFolderResolverRc;
 use crate::PackageJsonResolverRc;
 use crate::PathClean;
 use deno_package_json::PackageJson;
@@ -101,7 +101,7 @@ pub type NodeResolverRc<TEnv> = crate::sync::MaybeArc<NodeResolver<TEnv>>;
 pub struct NodeResolver<TEnv: NodeResolverEnv> {
   env: TEnv,
   in_npm_pkg_checker: InNpmPackageCheckerRc,
-  npm_resolver: NpmResolverRc,
+  npm_pkg_folder_resolver: NpmPackageFolderResolverRc,
   pkg_json_resolver: PackageJsonResolverRc<TEnv>,
 }
 
@@ -109,13 +109,13 @@ impl<TEnv: NodeResolverEnv> NodeResolver<TEnv> {
   pub fn new(
     env: TEnv,
     in_npm_pkg_checker: InNpmPackageCheckerRc,
-    npm_resolver: NpmResolverRc,
+    npm_pkg_folder_resolver: NpmPackageFolderResolverRc,
     pkg_json_resolver: PackageJsonResolverRc<TEnv>,
   ) -> Self {
     Self {
       env,
       in_npm_pkg_checker,
-      npm_resolver,
+      npm_pkg_folder_resolver,
       pkg_json_resolver,
     }
   }
@@ -202,7 +202,7 @@ impl<TEnv: NodeResolverEnv> NodeResolver<TEnv> {
     mode: NodeResolutionMode,
   ) -> Result<Url, NodeResolveError> {
     if should_be_treated_as_relative_or_absolute_path(specifier) {
-      Ok(referrer.join(specifier).map_err(|err| {
+      Ok(node_join_url(referrer, specifier).map_err(|err| {
         NodeResolveRelativeJoinError {
           path: specifier.to_string(),
           base: referrer.clone(),
@@ -1126,7 +1126,7 @@ impl<TEnv: NodeResolverEnv> NodeResolver<TEnv> {
     mode: NodeResolutionMode,
   ) -> Result<Url, PackageResolveError> {
     let package_dir_path = self
-      .npm_resolver
+      .npm_pkg_folder_resolver
       .resolve_package_folder_from_package(package_name, referrer)?;
 
     // todo: error with this instead when can't find package
@@ -1412,6 +1412,25 @@ impl<TEnv: NodeResolverEnv> NodeResolver<TEnv> {
       )
     }
   }
+
+  /// Resolves a specifier that is pointing into a node_modules folder by canonicalizing it.
+  ///
+  /// Returns `None` when the specifier is not in a node_modules folder.
+  pub fn handle_if_in_node_modules(&self, specifier: &Url) -> Option<Url> {
+    // skip canonicalizing if we definitely know it's unnecessary
+    if specifier.scheme() == "file"
+      && specifier.path().contains("/node_modules/")
+    {
+      // Specifiers in the node_modules directory are canonicalized
+      // so canoncalize then check if it's in the node_modules directory.
+      let specifier = resolve_specifier_into_node_modules(specifier, &|path| {
+        self.env.realpath_sync(path)
+      });
+      return Some(specifier);
+    }
+
+    None
+  }
 }
 
 fn resolve_bin_entry_value<'a>(
@@ -1660,6 +1679,28 @@ pub fn parse_npm_pkg_name(
   Ok((package_name, package_subpath, is_scoped))
 }
 
+/// Resolves a specifier that is pointing into a node_modules folder.
+///
+/// Note: This should be called whenever getting the specifier from
+/// a Module::External(module) reference because that module might
+/// not be fully resolved at the time deno_graph is analyzing it
+/// because the node_modules folder might not exist at that time.
+pub fn resolve_specifier_into_node_modules(
+  specifier: &Url,
+  canonicalize: &impl Fn(&Path) -> std::io::Result<PathBuf>,
+) -> Url {
+  deno_path_util::url_to_file_path(specifier)
+    .ok()
+    // this path might not exist at the time the graph is being created
+    // because the node_modules folder might not yet exist
+    .and_then(|path| {
+      deno_path_util::canonicalize_path_maybe_not_exists(&path, canonicalize)
+        .ok()
+    })
+    .and_then(|path| deno_path_util::url_from_file_path(&path).ok())
+    .unwrap_or_else(|| specifier.clone())
+}
+
 fn pattern_key_compare(a: &str, b: &str) -> i32 {
   let a_pattern_index = a.find('*');
   let b_pattern_index = b.find('*');
@@ -1720,6 +1761,17 @@ fn get_module_name_from_builtin_node_module_specifier(
 
   let (_, specifier) = specifier.as_str().split_once(':')?;
   Some(specifier)
+}
+
+/// Node is more lenient joining paths than the url crate is,
+/// so this function handles that.
+fn node_join_url(url: &Url, path: &str) -> Result<Url, url::ParseError> {
+  if let Some(suffix) = path.strip_prefix(".//") {
+    // specifier had two leading slashes
+    url.join(&format!("./{}", suffix))
+  } else {
+    url.join(path)
+  }
 }
 
 #[cfg(test)]

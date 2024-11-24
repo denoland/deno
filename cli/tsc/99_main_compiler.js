@@ -450,6 +450,12 @@ delete Object.prototype.__proto__;
     // We specify the resolution mode to be CommonJS for some npm files and this
     // diagnostic gets generated even though we're using custom module resolution.
     1452,
+    // Module '...' cannot be imported using this construct. The specifier only resolves to an
+    // ES module, which cannot be imported with 'require'.
+    1471,
+    // TS1479: The current file is a CommonJS module whose imports will produce 'require' calls;
+    // however, the referenced file is an ECMAScript module and cannot be imported with 'require'.
+    1479,
     // TS2306: File '.../index.d.ts' is not a module.
     // We get this for `x-typescript-types` declaration files which don't export
     // anything. We prefer to treat these as modules with no exports.

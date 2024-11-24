@@ -162,7 +162,7 @@ fn start_watcher(
   Ok(())
 }
 
-#[op2]
+#[op2(stack_trace)]
 #[smi]
 fn op_fs_events_open(
   state: &mut OpState,

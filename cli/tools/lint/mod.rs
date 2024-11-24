@@ -80,6 +80,7 @@ pub async fn lint(
       file_watcher::PrintConfig::new("Lint", !watch_flags.no_clear_screen),
       move |flags, watcher_communicator, changed_paths| {
         let lint_flags = lint_flags.clone();
+        watcher_communicator.show_path_changed(changed_paths.clone());
         Ok(async move {
           let factory = CliFactory::from_flags(flags);
           let cli_options = factory.cli_options()?;
@@ -191,7 +192,7 @@ pub async fn lint(
       linter.finish()
     };
     if !success {
-      std::process::exit(1);
+      deno_runtime::exit(1);
     }
   }
 
@@ -435,6 +436,7 @@ fn collect_lint_files(
   })
   .ignore_git_folder()
   .ignore_node_modules()
+  .use_gitignore()
   .set_vendor_folder(cli_options.vendor_dir_path().map(ToOwned::to_owned))
   .collect_file_patterns(&deno_config::fs::RealDenoConfigFs, files)
 }
