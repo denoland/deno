@@ -148,7 +148,7 @@ export class FileHandle extends EventEmitter {
   stat(options: { bigint: true }): Promise<BigIntStats>;
   stat(options?: { bigint: boolean }): Promise<Stats | BigIntStats> {
     return fsCall(promises.fstat, this, options);
-  };
+  }
   // readLines(options?):Promise<InterfaceConstructor>
   sync():Promise<void>{
     return Promise.resolve(promises.sync());
