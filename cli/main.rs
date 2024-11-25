@@ -448,7 +448,7 @@ fn resolve_flags_and_init(
   };
 
   if let Some(otel_config) = flags.otel_config() {
-    deno_runtime::ops::otel::init(otel_config)?;
+    deno_telemetry::init(otel_config)?;
   }
   util::logger::init(flags.log_level);
 
