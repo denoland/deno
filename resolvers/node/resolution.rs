@@ -46,8 +46,9 @@ use crate::PackageJsonResolverRc;
 use crate::PathClean;
 use deno_package_json::PackageJson;
 
-pub static DEFAULT_CONDITIONS: &[&str] = &["deno", "node", "import"];
-pub static REQUIRE_CONDITIONS: &[&str] = &["require", "node"];
+// FIXME: Wire this through
+pub static DEFAULT_CONDITIONS: &[&str] = &["browser", "deno", "node", "import"];
+pub static REQUIRE_CONDITIONS: &[&str] = &["browser", "require", "node"];
 static TYPES_ONLY_CONDITIONS: &[&str] = &["types"];
 
 fn conditions_from_module_kind(

@@ -369,8 +369,16 @@ pub enum BundlePlatform {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
+pub enum BundleSourceMap {
+  Inline,
+  External,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct BundleFlags {
   pub files: FileFlags,
+  pub minify: bool,
+  pub source_map: Option<BundleSourceMap>,
   pub platform: BundlePlatform,
   pub out_dir: String,
   pub watch: Option<WatchFlags>,
@@ -387,6 +395,8 @@ impl BundleFlags {
       files,
       platform,
       out_dir,
+      minify: false,
+      source_map: None,
       watch: None,
     }
   }
@@ -1858,6 +1868,18 @@ fn bundle_subcommand() -> Command {
       Arg::new("platform")
       .long("platform")
       .help("Target platform. Must be one of: 'deno' or 'browser' (Default: 'deno')")
+      .action(ArgAction::Set)
+    )
+    .arg(
+      Arg::new("minify")
+      .long("minify")
+      .help("Minify bundled code")
+      .action(ArgAction::SetTrue)
+    )
+    .arg(
+      Arg::new("source-map")
+      .long("source-map")
+      .help("Minify bundled code")
       .action(ArgAction::Set)
     )
     .arg(
@@ -4631,6 +4653,20 @@ fn bundle_parse(
     None => Ok(BundlePlatform::Deno),
   }?;
 
+  let minify = matches.get_flag("minify");
+  let source_map =
+    if let Some(value) = matches.remove_one::<String>("source-map") {
+      match value.as_str() {
+        "inline" => Ok(Some(BundleSourceMap::Inline)),
+        "external" => Ok(Some(BundleSourceMap::External)),
+        _ => Err(clap::error::Error::new(
+          clap::error::ErrorKind::InvalidValue,
+        )),
+      }
+    } else {
+      Ok(None)
+    }?;
+
   flags.subcommand = DenoSubcommand::Bundle(BundleFlags {
     files: FileFlags {
       include: files,
@@ -4638,6 +4674,8 @@ fn bundle_parse(
     },
     platform,
     out_dir,
+    minify,
+    source_map,
     watch: watch_arg_parse(matches)?,
   });
 
