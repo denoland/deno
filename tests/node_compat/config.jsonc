@@ -1,5 +1,4 @@
 {
-  "nodeVersion": "18.12.1",
   "ignore": {
     "common": ["index.js", "internet.js"],
     "fixtures": [
