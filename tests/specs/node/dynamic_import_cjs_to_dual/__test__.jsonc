@@ -1,0 +1,13 @@
+{
+  "tests": {
+    "check": {
+      "args": "check index.cts",
+      "output": "check.out",
+      "exitCode": 1
+    },
+    "run": {
+      "args": "run index.cts",
+      "output": "run.out"
+    }
+  }
+}
