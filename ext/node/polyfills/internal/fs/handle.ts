@@ -150,7 +150,7 @@ export class FileHandle extends EventEmitter {
     return fsCall(promises.fstat, this, options);
   }
   // readLines(options?):Promise<InterfaceConstructor>
-  sync():Promise<void>{
+  sync(): Promise<void> {
     return Promise.resolve(promises.sync());
   }
 }
