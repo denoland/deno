@@ -87,6 +87,7 @@ use super::serialization::RemoteModulesStore;
 use super::serialization::RemoteModulesStoreBuilder;
 use super::virtual_fs::FileBackedVfs;
 use super::virtual_fs::VfsBuilder;
+use super::virtual_fs::VfsFileSubDataKind;
 use super::virtual_fs::VfsRoot;
 use super::virtual_fs::VirtualDirectory;
 
@@ -275,7 +276,9 @@ impl StandaloneModules {
     if specifier.scheme() == "file" {
       let path = deno_path_util::url_to_file_path(specifier)?;
       let bytes = match self.vfs.file_entry(&path) {
-        Ok(entry) => self.vfs.read_file_all(entry)?,
+        Ok(entry) => self
+          .vfs
+          .read_file_all(entry, VfsFileSubDataKind::ModuleGraph)?,
         Err(err) if err.kind() == ErrorKind::NotFound => {
           let bytes = match RealFs.read_file_sync(&path, None) {
             Ok(bytes) => bytes,
@@ -691,6 +694,7 @@ impl<'a> DenoCompileBinaryWriter<'a> {
               Some(source) => source,
               None => RealFs.read_file_sync(&file_path, None)?,
             },
+            VfsFileSubDataKind::ModuleGraph,
           )
           .with_context(|| {
             format!("Failed adding '{}'", file_path.display())

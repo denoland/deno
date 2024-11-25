@@ -835,9 +835,9 @@ fn op_otel_span_set_dropped(
   #[smi] dropped_events_count: u32,
 ) {
   if let Some(temporary_span) = state.try_borrow_mut::<TemporarySpan>() {
-    temporary_span.0.dropped_attributes_count = dropped_attributes_count;
-    temporary_span.0.links.dropped_count = dropped_links_count;
-    temporary_span.0.events.dropped_count = dropped_events_count;
+    temporary_span.0.dropped_attributes_count += dropped_attributes_count;
+    temporary_span.0.links.dropped_count += dropped_links_count;
+    temporary_span.0.events.dropped_count += dropped_events_count;
   }
 }
 
