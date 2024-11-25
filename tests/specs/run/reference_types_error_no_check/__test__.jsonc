@@ -1,0 +1,4 @@
+{
+  "args": "run --no-check reference_types_error.js",
+  "output": ""
+}

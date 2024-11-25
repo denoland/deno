@@ -6,6 +6,134 @@ https://github.com/denoland/deno/releases
 We also have one-line install commands at:
 https://github.com/denoland/deno_install
 
+### 2.1.1 / 2024.11.21
+
+- docs(add): clarification to add command (#26968)
+- docs(doc): fix typo in doc subcommand help output (#26321)
+- fix(node): regression where ts files were sometimes resolved instead of js
+  (#26971)
+- fix(task): ensure root config always looks up dependencies in root (#26959)
+- fix(watch): don't panic if there's no path provided (#26972)
+- fix: Buffer global in --unstable-node-globals (#26973)
+
+### 2.1.0 / 2024.11.21
+
+- feat(cli): add `--unstable-node-globals` flag (#26617)
+- feat(cli): support multiple env file argument (#26527)
+- feat(compile): ability to embed directory in executable (#26939)
+- feat(compile): ability to embed local data files (#26934)
+- feat(ext/fetch): Make fetch client parameters configurable (#26909)
+- feat(ext/fetch): allow embedders to use `hickory_dns_resolver` instead of
+  default `GaiResolver` (#26740)
+- feat(ext/fs): add ctime to Deno.stats and use it in node compat layer (#24801)
+- feat(ext/http): Make http server parameters configurable (#26785)
+- feat(ext/node): perf_hooks.monitorEventLoopDelay() (#26905)
+- feat(fetch): accept async iterables for body (#26882)
+- feat(fmt): support SQL (#26750)
+- feat(info): show location for Web Cache (#26205)
+- feat(init): add --npm flag to initialize npm projects (#26896)
+- feat(jupyter): Add `Deno.jupyter.image` API (#26284)
+- feat(lint): Add checked files list to the JSON output(#26936)
+- feat(lsp): auto-imports with @deno-types directives (#26821)
+- feat(node): stabilize detecting if CJS via `"type": "commonjs"` in a
+  package.json (#26439)
+- feat(permission): support suffix wildcards in `--allow-env` flag (#25255)
+- feat(publish): add `--set-version <version>` flag (#26141)
+- feat(runtime): remove public OTEL trace API (#26854)
+- feat(task): add --eval flag (#26943)
+- feat(task): dependencies (#26467)
+- feat(task): support object notation, remove support for JSDocs (#26886)
+- feat(task): workspace support with --filter and --recursive (#26949)
+- feat(watch): log which file changed on HMR or watch change (#25801)
+- feat: OpenTelemetry Tracing API and Exporting (#26710)
+- feat: Wasm module support (#26668)
+- feat: fmt and lint respect .gitignore file (#26897)
+- feat: permission stack traces in ops (#26938)
+- feat: subcommand to view and update outdated dependencies (#26942)
+- feat: upgrade V8 to 13.0 (#26851)
+- fix(cli): preserve comments in doc tests (#26828)
+- fix(cli): show prefix hint when installing a package globally (#26629)
+- fix(ext/cache): gracefully error when cache creation failed (#26895)
+- fix(ext/http): prefer brotli for `accept-encoding: gzip, deflate, br, zstd`
+  (#26814)
+- fix(ext/node): New async setInterval function to improve the nodejs
+  compatibility (#26703)
+- fix(ext/node): add autoSelectFamily option to net.createConnection (#26661)
+- fix(ext/node): handle `--allow-sys=inspector` (#26836)
+- fix(ext/node): increase tolerance for interval test (#26899)
+- fix(ext/node): process.getBuiltinModule (#26833)
+- fix(ext/node): use ERR_NOT_IMPLEMENTED for notImplemented (#26853)
+- fix(ext/node): zlib.crc32() (#26856)
+- fix(ext/webgpu): Create GPUQuerySet converter before usage (#26883)
+- fix(ext/websocket): initialize `error` attribute of WebSocket ErrorEvent
+  (#26796)
+- fix(ext/webstorage): use error class for sqlite error case (#26806)
+- fix(fmt): error instead of panic on unstable format (#26859)
+- fix(fmt): formatting of .svelte files (#26948)
+- fix(install): percent encodings in interactive progress bar (#26600)
+- fix(install): re-setup bin entries after running lifecycle scripts (#26752)
+- fix(lockfile): track dependencies specified in TypeScript compiler options
+  (#26551)
+- fix(lsp): ignore editor indent settings if deno.json is present (#26912)
+- fix(lsp): skip code action edits that can't be converted (#26831)
+- fix(node): handle resolving ".//<something>" in npm packages (#26920)
+- fix(node/crypto): support promisify on generateKeyPair (#26913)
+- fix(permissions): say to use --allow-run instead of --allow-all (#26842)
+- fix(publish): improve error message when missing exports (#26945)
+- fix: otel resiliency (#26857)
+- fix: update message for unsupported schemes with npm and jsr (#26884)
+- perf(compile): code cache (#26528)
+- perf(windows): delay load webgpu and some other dlls (#26917)
+- perf: use available system memory for v8 isolate memory limit (#26868)
+
+### 2.0.6 / 2024.11.10
+
+- feat(ext/http): abort event when request is cancelled (#26781)
+- feat(ext/http): abort signal when request is cancelled (#26761)
+- feat(lsp): auto-import completions from byonm dependencies (#26680)
+- fix(ext/cache): don't panic when creating cache (#26780)
+- fix(ext/node): better inspector support (#26471)
+- fix(fmt): don't use self-closing tags in HTML (#26754)
+- fix(install): cache jsr deps from all workspace config files (#26779)
+- fix(node:zlib): gzip & gzipSync should accept ArrayBuffer (#26762)
+- fix: performance.timeOrigin (#26787)
+
+### 2.0.5 / 2024.11.05
+
+- fix(add): better error message when adding package that only has pre-release
+  versions (#26724)
+- fix(add): only add npm deps to package.json if it's at least as close as
+  deno.json (#26683)
+- fix(cli): set `npm_config_user_agent` when running npm packages or tasks
+  (#26639)
+- fix(coverage): exclude comment lines from coverage reports (#25939)
+- fix(ext/node): add `findSourceMap` to the default export of `node:module`
+  (#26720)
+- fix(ext/node): convert errors from `fs.readFile/fs.readFileSync` to node
+  format (#26632)
+- fix(ext/node): resolve exports even if parent module filename isn't present
+  (#26553)
+- fix(ext/node): return `this` from `http.Server.ref/unref()` (#26647)
+- fix(fmt): do not panic for jsx ignore container followed by jsx text (#26723)
+- fix(fmt): fix several HTML and components issues (#26654)
+- fix(fmt): ignore file directive for YAML files (#26717)
+- fix(install): handle invalid function error, and fallback to junctions
+  regardless of the error (#26730)
+- fix(lsp): include unstable features from editor settings (#26655)
+- fix(lsp): scope attribution for lazily loaded assets (#26699)
+- fix(node): Implement `os.userInfo` properly, add missing `toPrimitive`
+  (#24702)
+- fix(serve): support serve hmr (#26078)
+- fix(types): missing `import` permission on `PermissionOptionsObject` (#26627)
+- fix(workspace): support wildcard packages (#26568)
+- fix: clamp smi in fast calls by default (#26506)
+- fix: improved support for cjs and cts modules (#26558)
+- fix: op_run_microtasks crash (#26718)
+- fix: panic_hook hangs without procfs (#26732)
+- fix: remove permission check in op_require_node_module_paths (#26645)
+- fix: surface package.json location on dep parse failure (#26665)
+- perf(lsp): don't walk coverage directory (#26715)
+
 ### 2.0.4 / 2024.10.29
 
 - Revert "fix(ext/node): fix dns.lookup result ordering (#26264)" (#26621)

@@ -38,6 +38,7 @@ fn get_module_graph_error_class(err: &ModuleGraphError) -> &'static str {
     ModuleGraphError::ModuleError(err) => match err {
       ModuleError::InvalidTypeAssertion { .. } => "SyntaxError",
       ModuleError::ParseErr(_, diagnostic) => get_diagnostic_class(diagnostic),
+      ModuleError::WasmParseErr(..) => "SyntaxError",
       ModuleError::UnsupportedMediaType { .. }
       | ModuleError::UnsupportedImportAttributeType { .. } => "TypeError",
       ModuleError::Missing(_, _) | ModuleError::MissingDynamic(_, _) => {
@@ -88,6 +89,10 @@ fn get_resolution_error_class(err: &ResolutionError) -> &'static str {
   }
 }
 
+fn get_try_from_int_error_class(_: &std::num::TryFromIntError) -> &'static str {
+  "TypeError"
+}
+
 pub fn get_error_class_name(e: &AnyError) -> &'static str {
   deno_runtime::errors::get_error_class_name(e)
     .or_else(|| {
@@ -105,6 +110,10 @@ pub fn get_error_class_name(e: &AnyError) -> &'static str {
     .or_else(|| {
       e.downcast_ref::<ResolutionError>()
         .map(get_resolution_error_class)
+    })
+    .or_else(|| {
+      e.downcast_ref::<std::num::TryFromIntError>()
+        .map(get_try_from_int_error_class)
     })
     .unwrap_or("Error")
 }

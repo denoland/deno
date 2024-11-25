@@ -49,7 +49,7 @@ use std::cmp::min;
 use tokio::io::AsyncReadExt;
 use tokio::io::AsyncWriteExt;
 
-#[op2]
+#[op2(stack_trace)]
 #[serde]
 pub fn op_node_http_request<P>(
   state: &mut OpState,

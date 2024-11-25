@@ -287,7 +287,7 @@ fn ffi_call(
   }
 }
 
-#[op2(async)]
+#[op2(async, stack_trace)]
 #[serde]
 pub fn op_ffi_call_ptr_nonblocking<FP>(
   scope: &mut v8::HandleScope,
@@ -385,7 +385,7 @@ pub fn op_ffi_call_nonblocking(
   })
 }
 
-#[op2(reentrant)]
+#[op2(reentrant, stack_trace)]
 #[serde]
 pub fn op_ffi_call_ptr<FP>(
   scope: &mut v8::HandleScope,

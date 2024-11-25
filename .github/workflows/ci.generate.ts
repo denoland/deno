@@ -5,7 +5,7 @@ import { stringify } from "jsr:@std/yaml@^0.221/stringify";
 // Bump this number when you want to purge the cache.
 // Note: the tools/release/01_bump_crate_versions.ts script will update this version
 // automatically via regex, so ensure that this line maintains this format.
-const cacheVersion = 23;
+const cacheVersion = 27;
 
 const ubuntuX86Runner = "ubuntu-24.04";
 const ubuntuX86XlRunner = "ubuntu-24.04-xl";
@@ -14,6 +14,7 @@ const windowsX86Runner = "windows-2022";
 const windowsX86XlRunner = "windows-2022-xl";
 const macosX86Runner = "macos-13";
 const macosArmRunner = "macos-14";
+const selfHostedMacosArmRunner = "self-hosted";
 
 const Runners = {
   linuxX86: {
@@ -40,7 +41,8 @@ const Runners = {
   macosArm: {
     os: "macos",
     arch: "aarch64",
-    runner: macosArmRunner,
+    runner:
+      `\${{ github.repository == 'denoland/deno' && startsWith(github.ref, 'refs/tags/') && '${selfHostedMacosArmRunner}' || '${macosArmRunner}' }}`,
   },
   windowsX86: {
     os: "windows",

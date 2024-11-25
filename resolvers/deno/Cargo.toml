@@ -2,7 +2,7 @@
 
 [package]
 name = "deno_resolver"
-version = "0.7.0"
+version = "0.11.0"
 authors.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -16,12 +16,16 @@ path = "lib.rs"
 [dependencies]
 anyhow.workspace = true
 base32.workspace = true
+boxed_error.workspace = true
+dashmap.workspace = true
+deno_config.workspace = true
 deno_media_type.workspace = true
 deno_package_json.workspace = true
 deno_package_json.features = ["sync"]
 deno_path_util.workspace = true
 deno_semver.workspace = true
 node_resolver.workspace = true
+node_resolver.features = ["sync"]
 thiserror.workspace = true
 url.workspace = true
 
