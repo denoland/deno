@@ -153,6 +153,12 @@ export class LibuvStreamWrap extends HandleWrap {
   readStop(): number {
     this.#reading = false;
 
+    // Unref any reads that are pending until this point.
+    if (this.unref) {
+      this.unref();
+      this.ref();
+    }
+
     return 0;
   }
 
