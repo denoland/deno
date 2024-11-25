@@ -906,31 +906,20 @@ impl<'a> DenoCompileBinaryWriter<'a> {
   }
 }
 
-fn get_denort(deno_exe: PathBuf) -> Option<OsString> {
+fn get_denort_path(deno_exe: PathBuf) -> Option<OsString> {
   let mut denort = deno_exe;
   denort.set_file_name("denort");
   denort.exists().then(|| denort.into_os_string())
 }
 
-fn is_in_target(path: &Path) -> bool {
-  path
-    .components()
-    .any(|component| component == Component::Normal("target".as_ref()))
-}
-
 fn get_dev_binary_path() -> Option<OsString> {
   env::var_os("DENORT_BIN").or_else(|| {
     env::current_exe().ok().and_then(|exec_path| {
-      if is_in_target(&exec_path) {
-        get_denort(exec_path)
-      } else if exec_path.is_symlink() {
-        fs::read_link(&exec_path).ok().and_then(|target_path| {
-          if is_in_target(&target_path) {
-            get_denort(target_path)
-          } else {
-            None
-          }
-        })
+      if exec_path
+        .components()
+        .any(|component| component == Component::Normal("target".as_ref()))
+      {
+        get_denort_path(exec_path)
       } else {
         None
       }
