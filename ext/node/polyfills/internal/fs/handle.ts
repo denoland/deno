@@ -150,7 +150,7 @@ export class FileHandle extends EventEmitter {
     return fsCall(promises.fstat, this, options);
   }
   sync(): Promise<void> {
-    return promises.fsync(this.fd);
+    return promises.sync();
   }
 }
 
