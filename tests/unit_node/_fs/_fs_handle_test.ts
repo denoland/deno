@@ -70,6 +70,7 @@ Deno.test("[node/fs filehandle.write] Write from Buffer", async function () {
 
   const buffer = Buffer.from("hello world");
   const res = await fileHandle.write(buffer, 0, 5, 0);
+  await fileHandle.sync();
 
   const data = Deno.readFileSync(tempFile);
   await Deno.remove(tempFile);
