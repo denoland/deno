@@ -17,6 +17,7 @@ use deno_runtime::deno_io::fs::FsResult;
 use deno_runtime::deno_io::fs::FsStat;
 
 use super::virtual_fs::FileBackedVfs;
+use super::virtual_fs::VfsFileSubDataKind;
 
 #[derive(Debug, Clone)]
 pub struct DenoCompileFileSystem(Arc<FileBackedVfs>);
@@ -36,7 +37,8 @@ impl DenoCompileFileSystem {
 
   fn copy_to_real_path(&self, oldpath: &Path, newpath: &Path) -> FsResult<()> {
     let old_file = self.0.file_entry(oldpath)?;
-    let old_file_bytes = self.0.read_file_all(old_file)?;
+    let old_file_bytes =
+      self.0.read_file_all(old_file, VfsFileSubDataKind::Raw)?;
     RealFs.write_file_sync(
       newpath,
       OpenOptions {
