@@ -41,6 +41,8 @@ const { AsyncVariable, setAsyncContext } = core;
 let TRACING_ENABLED = false;
 let DETERMINISTIC = false;
 
+// Note: These start at 0 in the JS library,
+// but start at 1 when serialized with JSON.
 enum SpanKind {
   INTERNAL = 0,
   SERVER = 1,
@@ -90,6 +92,11 @@ interface Attributes {
 }
 
 type SpanAttributes = Attributes;
+
+interface SpanOptions {
+  attributes?: Attributes;
+  kind?: SpanKind;
+}
 
 interface Link {
   context: SpanContext;
@@ -354,7 +361,7 @@ export class Span {
 
   #recording = TRACING_ENABLED;
 
-  #kind: number = 0;
+  #kind: number = SpanKind.INTERNAL;
   #name: string;
   #startTime: number;
   #status: { code: number; message?: string } | null = null;
@@ -429,7 +436,7 @@ export class Span {
 
   constructor(
     name: string,
-    attributes?: Attributes,
+    options?: SpanOptions,
   ) {
     if (!this.isRecording) {
       this.#name = "";
@@ -442,7 +449,8 @@ export class Span {
 
     this.#name = name;
     this.#startTime = now();
-    this.#attributes = attributes ?? { __proto__: null } as never;
+    this.#attributes = options?.attributes ?? { __proto__: null } as never;
+    this.#kind = options?.kind ?? SpanKind.INTERNAL;
 
     const currentSpan: Span | {
       spanContext(): { traceId: string; spanId: string };

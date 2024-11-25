@@ -10,9 +10,10 @@
 /// <reference path="./lib.deno_fetch.d.ts" />
 /// <reference lib="esnext" />
 
-import { core, primordials } from "ext:core/mod.js";
+import { core, internals, primordials } from "ext:core/mod.js";
 import {
   op_fetch,
+  op_fetch_promise_is_settled,
   op_fetch_send,
   op_wasm_streaming_feed,
   op_wasm_streaming_set_url,
@@ -28,7 +29,9 @@ const {
   PromisePrototypeThen,
   PromisePrototypeCatch,
   SafeArrayIterator,
+  SafePromisePrototypeFinally,
   String,
+  StringPrototypeSlice,
   StringPrototypeStartsWith,
   StringPrototypeToLowerCase,
   TypeError,
@@ -307,93 +310,150 @@ function httpRedirectFetch(request, response, terminator) {
  * @param {RequestInit} init
  */
 function fetch(input, init = { __proto__: null }) {
-  // There is an async dispatch later that causes a stack trace disconnect.
-  // We reconnect it by assigning the result of that dispatch to `opPromise`,
-  // awaiting `opPromise` in an inner function also named `fetch()` and
-  // returning the result from that.
-  let opPromise = undefined;
-  // 1.
-  const result = new Promise((resolve, reject) => {
-    const prefix = "Failed to execute 'fetch'";
-    webidl.requiredArguments(arguments.length, 1, prefix);
-    // 2.
-    const requestObject = new Request(input, init);
-    // 3.
-    const request = toInnerRequest(requestObject);
-    // 4.
-    if (requestObject.signal.aborted) {
-      reject(abortFetch(request, null, requestObject.signal.reason));
-      return;
+  let span;
+  try {
+    if (internals.telemetry?.tracingEnabled) {
+      span = new internals.telemetry.Span("fetch", { kind: 2 });
+      internals.telemetry.enterSpan(span);
     }
 
-    // 7.
-    let responseObject = null;
-    // 9.
-    let locallyAborted = false;
-    // 10.
-    function onabort() {
-      locallyAborted = true;
-      reject(
-        abortFetch(request, responseObject, requestObject.signal.reason),
-      );
-    }
-    requestObject.signal[abortSignal.add](onabort);
+    // There is an async dispatch later that causes a stack trace disconnect.
+    // We reconnect it by assigning the result of that dispatch to `opPromise`,
+    // awaiting `opPromise` in an inner function also named `fetch()` and
+    // returning the result from that.
+    let opPromise = undefined;
+    // 1.
+    const result = new Promise((resolve, reject) => {
+      const prefix = "Failed to execute 'fetch'";
+      webidl.requiredArguments(arguments.length, 1, prefix);
+      // 2.
+      const requestObject = new Request(input, init);
 
-    if (!requestObject.headers.has("Accept")) {
-      ArrayPrototypePush(request.headerList, ["Accept", "*/*"]);
-    }
+      if (span) {
+        span.updateName(requestObject.method);
+        span.setAttribute("http.request.method", requestObject.method);
+        const url = new URL(requestObject.url);
+        span.setAttribute("url.full", requestObject.url);
+        span.setAttribute(
+          "url.scheme",
+          StringPrototypeSlice(url.protocol, 0, -1),
+        );
+        span.setAttribute("url.path", url.pathname);
+        span.setAttribute("url.query", StringPrototypeSlice(url.search, 1));
+      }
 
-    if (!requestObject.headers.has("Accept-Language")) {
-      ArrayPrototypePush(request.headerList, ["Accept-Language", "*"]);
-    }
+      // 3.
+      const request = toInnerRequest(requestObject);
+      // 4.
+      if (requestObject.signal.aborted) {
+        reject(abortFetch(request, null, requestObject.signal.reason));
+        return;
+      }
+      // 7.
+      let responseObject = null;
+      // 9.
+      let locallyAborted = false;
+      // 10.
+      function onabort() {
+        locallyAborted = true;
+        reject(
+          abortFetch(request, responseObject, requestObject.signal.reason),
+        );
+      }
+      requestObject.signal[abortSignal.add](onabort);
 
-    // 12.
-    opPromise = PromisePrototypeCatch(
-      PromisePrototypeThen(
-        mainFetch(request, false, requestObject.signal),
-        (response) => {
-          // 12.1.
-          if (locallyAborted) return;
-          // 12.2.
-          if (response.aborted) {
-            reject(
-              abortFetch(
-                request,
-                responseObject,
-                requestObject.signal.reason,
-              ),
-            );
+      if (!requestObject.headers.has("Accept")) {
+        ArrayPrototypePush(request.headerList, ["Accept", "*/*"]);
+      }
+
+      if (!requestObject.headers.has("Accept-Language")) {
+        ArrayPrototypePush(request.headerList, ["Accept-Language", "*"]);
+      }
+
+      // 12.
+      opPromise = PromisePrototypeCatch(
+        PromisePrototypeThen(
+          mainFetch(request, false, requestObject.signal),
+          (response) => {
+            // 12.1.
+            if (locallyAborted) return;
+            // 12.2.
+            if (response.aborted) {
+              reject(
+                abortFetch(
+                  request,
+                  responseObject,
+                  requestObject.signal.reason,
+                ),
+              );
+              requestObject.signal[abortSignal.remove](onabort);
+              return;
+            }
+            // 12.3.
+            if (response.type === "error") {
+              const err = new TypeError(
+                "Fetch failed: " + (response.error ?? "unknown error"),
+              );
+              reject(err);
+              requestObject.signal[abortSignal.remove](onabort);
+              return;
+            }
+            responseObject = fromInnerResponse(response, "immutable");
+
+            if (span) {
+              span.setAttribute(
+                "http.response.status_code",
+                String(responseObject.status),
+              );
+            }
+
+            resolve(responseObject);
             requestObject.signal[abortSignal.remove](onabort);
-            return;
-          }
-          // 12.3.
-          if (response.type === "error") {
-            const err = new TypeError(
-              "Fetch failed: " + (response.error ?? "unknown error"),
-            );
-            reject(err);
-            requestObject.signal[abortSignal.remove](onabort);
-            return;
-          }
-          responseObject = fromInnerResponse(response, "immutable");
-          resolve(responseObject);
+          },
+        ),
+        (err) => {
+          reject(err);
           requestObject.signal[abortSignal.remove](onabort);
         },
-      ),
-      (err) => {
-        reject(err);
-        requestObject.signal[abortSignal.remove](onabort);
-      },
-    );
-  });
-  if (opPromise) {
-    PromisePrototypeCatch(result, () => {});
-    return (async function fetch() {
-      await opPromise;
-      return result;
-    })();
+      );
+    });
+
+    if (opPromise) {
+      PromisePrototypeCatch(result, () => {});
+      return (async function fetch() {
+        try {
+          await opPromise;
+          return result;
+        } finally {
+          if (span) {
+            internals.telemetry.endSpan(span);
+          }
+        }
+      })();
+    }
+    // We need to end the span when the promise settles.
+    // WPT has a test that aborted fetch is settled in the same tick.
+    // This means we cannot wrap the promise if it is already settled.
+    // But this is OK, because we can just immediately end the span
+    // in that case.
+    if (span) {
+      // XXX: This should always be true, otherwise `opPromise` would be present.
+      if (op_fetch_promise_is_settled(result)) {
+        // It's already settled.
+        internals.telemetry.endSpan(span);
+      } else {
+        // Not settled yet, we can return a new wrapper promise.
+        return SafePromisePrototypeFinally(result, () => {
+          internals.telemetry.endSpan(span);
+        });
+      }
+    }
+    return result;
+  } finally {
+    if (span) {
+      internals.telemetry.exitSpan(span);
+    }
   }
-  return result;
 }
 
 function abortFetch(request, responseObject, error) {
