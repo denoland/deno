@@ -1,8 +1,0 @@
-{
-  "name": "@foo/foo",
-  "workspaces": [
-    "./packages/bar",
-    "./packages/buzz",
-    "./packages/fizz"
-  ]
-}
