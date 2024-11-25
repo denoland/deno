@@ -56,6 +56,8 @@ use serialization::DenoCompileModuleSource;
 use std::borrow::Cow;
 use std::rc::Rc;
 use std::sync::Arc;
+use virtual_fs::FileBackedVfs;
+use virtual_fs::VfsFileSubDataKind;
 
 use crate::args::create_default_npmrc;
 use crate::args::get_root_cert_store;
@@ -111,6 +113,7 @@ use self::file_system::DenoCompileFileSystem;
 
 struct SharedModuleLoaderState {
   cjs_tracker: Arc<CjsTracker>,
+  code_cache: Option<Arc<dyn CliCodeCache>>,
   fs: Arc<dyn deno_fs::FileSystem>,
   modules: StandaloneModules,
   node_code_translator: Arc<CliNodeCodeTranslator>,
@@ -118,8 +121,8 @@ struct SharedModuleLoaderState {
   npm_module_loader: Arc<NpmModuleLoader>,
   npm_req_resolver: Arc<CliNpmReqResolver>,
   npm_resolver: Arc<dyn CliNpmResolver>,
+  vfs: Arc<FileBackedVfs>,
   workspace_resolver: WorkspaceResolver,
-  code_cache: Option<Arc<dyn CliCodeCache>>,
 }
 
 impl SharedModuleLoaderState {
@@ -514,7 +517,12 @@ impl NodeRequireLoader for EmbeddedModuleLoader {
     &self,
     path: &std::path::Path,
   ) -> Result<String, AnyError> {
-    Ok(self.shared.fs.read_text_file_lossy_sync(path, None)?)
+    let file_entry = self.shared.vfs.file_entry(path)?;
+    let file_bytes = self
+      .shared
+      .vfs
+      .read_file_all(file_entry, VfsFileSubDataKind::ModuleGraph)?;
+    Ok(String::from_utf8(file_bytes.into_owned())?)
   }
 
   fn is_maybe_cjs(
@@ -817,6 +825,7 @@ pub async fn run(data: StandaloneData) -> Result<i32, AnyError> {
   let module_loader_factory = StandaloneModuleLoaderFactory {
     shared: Arc::new(SharedModuleLoaderState {
       cjs_tracker: cjs_tracker.clone(),
+      code_cache: code_cache.clone(),
       fs: fs.clone(),
       modules,
       node_code_translator: node_code_translator.clone(),
@@ -826,10 +835,10 @@ pub async fn run(data: StandaloneData) -> Result<i32, AnyError> {
         fs.clone(),
         node_code_translator,
       )),
-      code_cache: code_cache.clone(),
       npm_resolver: npm_resolver.clone(),
-      workspace_resolver,
       npm_req_resolver,
+      vfs,
+      workspace_resolver,
     }),
   };
 
