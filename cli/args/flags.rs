@@ -363,15 +363,32 @@ impl ServeFlags {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
+pub enum BundlePlatform {
+  Deno,
+  Browser,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct BundleFlags {
   pub files: FileFlags,
+  pub platform: BundlePlatform,
+  pub out_dir: String,
   pub watch: Option<WatchFlags>,
 }
 
 impl BundleFlags {
   #[cfg(test)]
-  pub fn new_default(files: FileFlags) -> Self {
-    Self { files, watch: None }
+  pub fn new_default(
+    files: FileFlags,
+    platform: BundlePlatform,
+    out_dir: String,
+  ) -> Self {
+    Self {
+      files,
+      platform,
+      out_dir,
+      watch: None,
+    }
   }
 }
 
@@ -1829,6 +1846,21 @@ fn bundle_subcommand() -> Command {
   command("bundle",  "Merge multiple files into one or more chunks. This is typically used to make code run in browsers", UnstableArgsConfig::ResolutionOnly)
   .defer(|cmd| {
     cmd.arg(
+      Arg::new("out_dir")
+      .short('o')
+      .long("out-dir")
+      .help("Output directory")
+      .required_unless_present("help")
+      .action(ArgAction::Set)
+      .value_hint(ValueHint::AnyPath),
+    )
+    .arg(
+      Arg::new("platform")
+      .long("platform")
+      .help("Target platform. Must be one of: 'deno' or 'browser' (Default: 'deno')")
+      .action(ArgAction::Set)
+    )
+    .arg(
       Arg::new("files")
         .num_args(1..)
         .action(ArgAction::Append)
@@ -4586,11 +4618,26 @@ fn bundle_parse(
     None => vec![],
   };
 
+  let out_dir = matches.remove_one::<String>("out_dir").unwrap();
+
+  let platform = match matches.remove_one::<String>("platform") {
+    Some(value) => match value.as_str() {
+      "browser" => Ok(BundlePlatform::Browser),
+      "deno" => Ok(BundlePlatform::Deno),
+      _ => Err(clap::error::Error::new(
+        clap::error::ErrorKind::InvalidValue,
+      )),
+    },
+    None => Ok(BundlePlatform::Deno),
+  }?;
+
   flags.subcommand = DenoSubcommand::Bundle(BundleFlags {
     files: FileFlags {
       include: files,
       ignore: vec![],
     },
+    platform,
+    out_dir,
     watch: watch_arg_parse(matches)?,
   });
 
