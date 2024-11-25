@@ -23,6 +23,7 @@ use regex::Regex;
 use tokio::task::JoinHandle;
 use tokio::task::LocalSet;
 
+use crate::cache::home_dir;
 use crate::npm::CliNpmResolver;
 use crate::npm::InnerCliNpmResolverRef;
 use crate::npm::ManagedCliNpmResolver;
@@ -35,6 +36,10 @@ pub fn get_script_with_args(script: &str, argv: &[String]) -> String {
     .map(|a| format!("\"{}\"", a.replace('"', "\\\"").replace('$', "\\$")))
     .collect::<Vec<_>>()
     .join(" ");
+  let home_dir_path = home_dir().unwrap_or("!".into());
+  let home_dir_str = home_dir_path.to_str().unwrap();
+  let script = script.replace(" ~ ", format!(" {home_dir_str} ").as_str());
+  let script = script.replace("~/", format!("{home_dir_str}/").as_str());
   let script = format!("{script} {additional_args}");
   script.trim().to_owned()
 }
