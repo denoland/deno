@@ -110,7 +110,6 @@ Deno.test("[node/fs filehandle.writeFile] Write to file", async function () {
 
   const str = "hello world";
   await fileHandle.writeFile(str);
-  await fileHandle.sync();
 
   const data = Deno.readFileSync(tempFile);
   await Deno.remove(tempFile);
