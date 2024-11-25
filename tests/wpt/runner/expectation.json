@@ -12138,7 +12138,7 @@
           "007.html?default": false,
           "007.html?wpt_flags=h2": false,
           "007.html?wss": false,
-          "008.html?default": false,
+          "008.html?default": true,
           "008.html?wss": false,
           "009.html?default": {
             "ignore": true

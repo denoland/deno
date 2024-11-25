@@ -9,6 +9,7 @@ use crate::args::RunFlags;
 use crate::colors;
 use color_print::cformat;
 use color_print::cstr;
+use deno_config::deno_json::NodeModulesDirMode;
 use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
 use deno_core::serde_json::json;
@@ -288,6 +289,7 @@ async fn init_npm(name: &str, args: Vec<String>) -> Result<i32, AnyError> {
     },
     allow_scripts: PackagesAllowedScripts::All,
     argv: args,
+    node_modules_dir: Some(NodeModulesDirMode::Auto),
     subcommand: DenoSubcommand::Run(RunFlags {
       script: script_name,
       ..Default::default()

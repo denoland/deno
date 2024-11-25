@@ -42,7 +42,11 @@ impl DenoCompileCodeCache {
     // attempt to deserialize the cache data
     match deserialize(&file_path, cache_key) {
       Ok(data) => {
-        log::debug!("Loaded {} code cache entries", data.len());
+        log::debug!(
+          "Loaded {} code cache entries from {}",
+          data.len(),
+          file_path.display()
+        );
         Self {
           strategy: CodeCacheStrategy::SubsequentRun(
             SubsequentRunCodeCacheStrategy {
@@ -53,7 +57,11 @@ impl DenoCompileCodeCache {
         }
       }
       Err(err) => {
-        log::debug!("Failed to deserialize code cache: {:#}", err);
+        log::debug!(
+          "Failed to deserialize code cache from {}: {:#}",
+          file_path.display(),
+          err
+        );
         Self {
           strategy: CodeCacheStrategy::FirstRun(FirstRunCodeCacheStrategy {
             cache_key,
@@ -186,6 +194,7 @@ impl FirstRunCodeCacheStrategy {
       Ok(()) => {
         if let Err(err) = std::fs::rename(&temp_file, &self.file_path) {
           log::debug!("Failed to rename code cache: {}", err);
+          let _ = std::fs::remove_file(&temp_file);
         } else {
           log::debug!("Serialized {} code cache entries", count);
         }
