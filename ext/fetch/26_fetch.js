@@ -31,6 +31,7 @@ const {
   SafeArrayIterator,
   SafePromisePrototypeFinally,
   String,
+  StringPrototypeEndsWith,
   StringPrototypeSlice,
   StringPrototypeStartsWith,
   StringPrototypeToLowerCase,
@@ -64,6 +65,12 @@ const REQUEST_BODY_HEADER_NAMES = [
   "content-language",
   "content-location",
   "content-type",
+];
+
+const REDIRECT_SENSITIVE_HEADER_NAMES = [
+  "authorization",
+  "proxy-authorization",
+  "cookie",
 ];
 
 /**
@@ -253,12 +260,14 @@ function httpRedirectFetch(request, response, terminator) {
   if (locationHeaders.length === 0) {
     return response;
   }
+
+  const currentURL = new URL(request.currentUrl());
   const locationURL = new URL(
     locationHeaders[0][1],
     response.url() ?? undefined,
   );
   if (locationURL.hash === "") {
-    locationURL.hash = request.currentUrl().hash;
+    locationURL.hash = currentURL.hash;
   }
   if (locationURL.protocol !== "https:" && locationURL.protocol !== "http:") {
     return networkError("Can not redirect to a non HTTP(s) url");
@@ -297,6 +306,28 @@ function httpRedirectFetch(request, response, terminator) {
       }
     }
   }
+
+  // Drop confidential headers when redirecting to a less secure protocol
+  // or to a different domain that is not a superdomain
+  if (
+    locationURL.protocol !== currentURL.protocol &&
+      locationURL.protocol !== "https:" ||
+    locationURL.host !== currentURL.host &&
+      !isSubdomain(locationURL.host, currentURL.host)
+  ) {
+    for (let i = 0; i < request.headerList.length; i++) {
+      if (
+        ArrayPrototypeIncludes(
+          REDIRECT_SENSITIVE_HEADER_NAMES,
+          byteLowerCase(request.headerList[i][0]),
+        )
+      ) {
+        ArrayPrototypeSplice(request.headerList, i, 1);
+        i--;
+      }
+    }
+  }
+
   if (request.body !== null) {
     const res = extractBody(request.body.source);
     request.body = res.body;
@@ -468,6 +499,19 @@ function abortFetch(request, responseObject, error) {
     if (response.body !== null) response.body.error(error);
   }
   return error;
+}
+
+/**
+ * Checks if the given string is a subdomain of the given domain.
+ *
+ * @param {String} subdomain
+ * @param {String} domain
+ * @returns {Boolean}
+ */
+function isSubdomain(subdomain, domain) {
+  const dot = subdomain.length - domain.length - 1;
+  return dot > 0 && subdomain[dot] === "." &&
+    StringPrototypeEndsWith(subdomain, domain);
 }
 
 /**
