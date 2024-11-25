@@ -912,7 +912,11 @@ impl<'a> DenoCompileBinaryWriter<'a> {
 
 fn get_denort_path(deno_exe: PathBuf) -> Option<OsString> {
   let mut denort = deno_exe;
-  denort.set_file_name(if cfg!(windows) { "denort.exe" } else { "denort" });
+  denort.set_file_name(if cfg!(windows) {
+    "denort.exe"
+  } else {
+    "denort"
+  });
   denort.exists().then(|| denort.into_os_string())
 }
 
