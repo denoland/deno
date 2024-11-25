@@ -44,8 +44,8 @@ use deno_runtime::WorkerExecutionMode;
 use deno_runtime::WorkerLogLevel;
 use deno_semver::npm::NpmPackageReqReference;
 use deno_terminal::colors;
-use node_resolver::NodeModuleKind;
-use node_resolver::NodeResolutionMode;
+use node_resolver::NodeResolutionKind;
+use node_resolver::ResolutionMode;
 use tokio::select;
 
 use crate::args::CliLockfile;
@@ -698,8 +698,8 @@ impl CliMainWorkerFactory {
         package_folder,
         sub_path,
         /* referrer */ None,
-        NodeModuleKind::Esm,
-        NodeResolutionMode::Execution,
+        ResolutionMode::Import,
+        NodeResolutionKind::Execution,
       )?;
     if specifier
       .to_file_path()

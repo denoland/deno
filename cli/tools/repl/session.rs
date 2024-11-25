@@ -43,13 +43,14 @@ use deno_core::unsync::spawn;
 use deno_core::url::Url;
 use deno_core::LocalInspectorSession;
 use deno_core::PollEventLoopOptions;
-use deno_graph::source::ResolutionMode;
+use deno_graph::source::ResolutionKind;
 use deno_graph::Position;
 use deno_graph::PositionRange;
 use deno_graph::SpecifierWithRange;
 use deno_runtime::worker::MainWorker;
 use deno_semver::npm::NpmPackageReqReference;
-use node_resolver::NodeModuleKind;
+use node_resolver::NodeResolutionKind;
+use node_resolver::ResolutionMode;
 use once_cell::sync::Lazy;
 use regex::Match;
 use regex::Regex;
@@ -701,11 +702,6 @@ impl ReplSession {
     let mut collector = ImportCollector::new();
     program.visit_with(&mut collector);
 
-    let referrer_range = deno_graph::Range {
-      specifier: self.referrer.clone(),
-      start: deno_graph::Position::zeroed(),
-      end: deno_graph::Position::zeroed(),
-    };
     let resolved_imports = collector
       .imports
       .iter()
@@ -714,9 +710,10 @@ impl ReplSession {
           .resolver
           .resolve(
             i,
-            &referrer_range,
-            NodeModuleKind::Esm,
-            ResolutionMode::Execution,
+            &self.referrer,
+            deno_graph::Position::zeroed(),
+            ResolutionMode::Import,
+            NodeResolutionKind::Execution,
           )
           .ok()
           .or_else(|| ModuleSpecifier::parse(i).ok())

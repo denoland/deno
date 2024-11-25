@@ -57,9 +57,8 @@ use deno_core::ModuleSourceCode;
 use deno_core::ModuleSpecifier;
 use deno_core::ModuleType;
 use deno_core::RequestedModuleType;
-use deno_core::ResolutionKind;
 use deno_core::SourceCodeCacheInfo;
-use deno_graph::source::ResolutionMode;
+use deno_graph::source::ResolutionKind;
 use deno_graph::GraphKind;
 use deno_graph::JsModule;
 use deno_graph::JsonModule;
@@ -76,7 +75,7 @@ use deno_runtime::deno_permissions::PermissionsContainer;
 use deno_semver::npm::NpmPackageReqReference;
 use node_resolver::errors::ClosestPkgJsonError;
 use node_resolver::InNpmPackageChecker;
-use node_resolver::NodeResolutionMode;
+use node_resolver::NodeResolutionKind;
 
 pub struct ModuleLoadPreparer {
   options: Arc<CliOptions>,
@@ -498,13 +497,10 @@ impl<TGraphContainer: ModuleGraphContainer>
       }
       Resolution::None => Cow::Owned(self.shared.resolver.resolve(
         raw_specifier,
-        &deno_graph::Range {
-          specifier: referrer.clone(),
-          start: deno_graph::Position::zeroed(),
-          end: deno_graph::Position::zeroed(),
-        },
+        referrer,
+        deno_graph::Position::zeroed(),
         self.shared.cjs_tracker.get_referrer_kind(referrer),
-        ResolutionMode::Execution,
+        NodeResolutionKind::Execution,
       )?),
     };
 
@@ -518,7 +514,7 @@ impl<TGraphContainer: ModuleGraphContainer>
             &reference,
             referrer,
             self.shared.cjs_tracker.get_referrer_kind(referrer),
-            NodeResolutionMode::Execution,
+            NodeResolutionKind::Execution,
           )
           .map_err(AnyError::from);
       }
@@ -540,7 +536,7 @@ impl<TGraphContainer: ModuleGraphContainer>
             module.nv_reference.sub_path(),
             Some(referrer),
             self.shared.cjs_tracker.get_referrer_kind(referrer),
-            NodeResolutionMode::Execution,
+            NodeResolutionKind::Execution,
           )
           .with_context(|| {
             format!("Could not resolve '{}'.", module.nv_reference)
@@ -806,7 +802,7 @@ impl<TGraphContainer: ModuleGraphContainer> ModuleLoader
     &self,
     specifier: &str,
     referrer: &str,
-    _kind: ResolutionKind,
+    _kind: deno_core::ResolutionKind,
   ) -> Result<ModuleSpecifier, AnyError> {
     fn ensure_not_jsr_non_jsr_remote_import(
       specifier: &ModuleSpecifier,

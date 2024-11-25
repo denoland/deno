@@ -70,7 +70,7 @@ use indexmap::IndexMap;
 use indexmap::IndexSet;
 use lazy_regex::lazy_regex;
 use log::error;
-use node_resolver::NodeModuleKind;
+use node_resolver::ResolutionMode;
 use once_cell::sync::Lazy;
 use regex::Captures;
 use regex::Regex;
@@ -4449,9 +4449,14 @@ fn op_load<'s>(
         version: state.script_version(&specifier),
         is_cjs: doc
           .document()
-          .map(|d| state.state_snapshot.is_cjs_resolver.get_doc_module_kind(d))
-          .unwrap_or(NodeModuleKind::Esm)
-          == NodeModuleKind::Cjs,
+          .map(|d| {
+            state
+              .state_snapshot
+              .is_cjs_resolver
+              .get_doc_resolution_mode(d)
+          })
+          .unwrap_or(ResolutionMode::Import)
+          == ResolutionMode::Require,
       })
     };
   let serialized = serde_v8::to_v8(scope, maybe_load_response)?;
@@ -4695,7 +4700,7 @@ fn op_script_names(state: &mut OpState) -> ScriptNames {
           state
             .state_snapshot
             .is_cjs_resolver
-            .get_doc_module_kind(doc),
+            .get_doc_resolution_mode(doc),
           doc.file_referrer(),
         )?;
         let types_doc = documents.get_or_load(&types, doc.file_referrer())?;

@@ -16,10 +16,10 @@ use node_resolver::errors::PackageNotFoundError;
 use node_resolver::errors::PackageResolveErrorKind;
 use node_resolver::errors::PackageSubpathResolveError;
 use node_resolver::InNpmPackageChecker;
-use node_resolver::NodeModuleKind;
 use node_resolver::NodeResolution;
-use node_resolver::NodeResolutionMode;
+use node_resolver::NodeResolutionKind;
 use node_resolver::NodeResolver;
+use node_resolver::ResolutionMode;
 use thiserror::Error;
 use url::Url;
 
@@ -132,15 +132,15 @@ impl<Fs: DenoResolverFs, TNodeResolverEnv: NodeResolverEnv>
     &self,
     req_ref: &NpmPackageReqReference,
     referrer: &Url,
-    referrer_kind: NodeModuleKind,
-    mode: NodeResolutionMode,
+    referrer_kind: ResolutionMode,
+    resolution_kind: NodeResolutionKind,
   ) -> Result<Url, ResolveReqWithSubPathError> {
     self.resolve_req_with_sub_path(
       req_ref.req(),
       req_ref.sub_path(),
       referrer,
       referrer_kind,
-      mode,
+      resolution_kind,
     )
   }
 
@@ -149,8 +149,8 @@ impl<Fs: DenoResolverFs, TNodeResolverEnv: NodeResolverEnv>
     req: &PackageReq,
     sub_path: Option<&str>,
     referrer: &Url,
-    referrer_kind: NodeModuleKind,
-    mode: NodeResolutionMode,
+    referrer_kind: ResolutionMode,
+    resolution_kind: NodeResolutionKind,
   ) -> Result<Url, ResolveReqWithSubPathError> {
     let package_folder = self
       .npm_resolver
@@ -161,7 +161,7 @@ impl<Fs: DenoResolverFs, TNodeResolverEnv: NodeResolverEnv>
         sub_path,
         Some(referrer),
         referrer_kind,
-        mode,
+        resolution_kind,
       );
     match resolution_result {
       Ok(url) => Ok(url),
@@ -183,13 +183,15 @@ impl<Fs: DenoResolverFs, TNodeResolverEnv: NodeResolverEnv>
     &self,
     specifier: &str,
     referrer: &Url,
-    referrer_kind: NodeModuleKind,
-    mode: NodeResolutionMode,
+    referrer_kind: ResolutionMode,
+    resolution_kind: NodeResolutionKind,
   ) -> Result<Option<NodeResolution>, ResolveIfForNpmPackageError> {
-    let resolution_result =
-      self
-        .node_resolver
-        .resolve(specifier, referrer, referrer_kind, mode);
+    let resolution_result = self.node_resolver.resolve(
+      specifier,
+      referrer,
+      referrer_kind,
+      resolution_kind,
+    );
     match resolution_result {
       Ok(res) => Ok(Some(res)),
       Err(err) => {

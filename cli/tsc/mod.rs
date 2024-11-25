@@ -41,8 +41,8 @@ use deno_semver::npm::NpmPackageReqReference;
 use node_resolver::errors::NodeJsErrorCode;
 use node_resolver::errors::NodeJsErrorCoded;
 use node_resolver::errors::PackageSubpathResolveError;
-use node_resolver::NodeModuleKind;
-use node_resolver::NodeResolutionMode;
+use node_resolver::NodeResolutionKind;
+use node_resolver::ResolutionMode;
 use once_cell::sync::Lazy;
 use std::borrow::Cow;
 use std::collections::HashMap;
@@ -736,9 +736,9 @@ fn op_resolve_inner(
   let mut resolved: Vec<(String, &'static str)> =
     Vec::with_capacity(args.specifiers.len());
   let referrer_kind = if args.is_base_cjs {
-    NodeModuleKind::Cjs
+    ResolutionMode::Require
   } else {
-    NodeModuleKind::Esm
+    ResolutionMode::Import
   };
   let referrer = if let Some(remapped_specifier) =
     state.remapped_specifiers.get(&args.base)
@@ -852,7 +852,7 @@ fn op_resolve_inner(
 fn resolve_graph_specifier_types(
   specifier: &ModuleSpecifier,
   referrer: &ModuleSpecifier,
-  referrer_kind: NodeModuleKind,
+  referrer_kind: ResolutionMode,
   state: &State,
 ) -> Result<Option<(ModuleSpecifier, MediaType)>, AnyError> {
   let graph = &state.graph;
@@ -909,7 +909,7 @@ fn resolve_graph_specifier_types(
             module.nv_reference.sub_path(),
             Some(referrer),
             referrer_kind,
-            NodeResolutionMode::Types,
+            NodeResolutionKind::Types,
           );
         let maybe_url = match res_result {
           Ok(url) => Some(url),
@@ -949,7 +949,7 @@ enum ResolveNonGraphSpecifierTypesError {
 fn resolve_non_graph_specifier_types(
   raw_specifier: &str,
   referrer: &ModuleSpecifier,
-  referrer_kind: NodeModuleKind,
+  referrer_kind: ResolutionMode,
   state: &State,
 ) -> Result<
   Option<(ModuleSpecifier, MediaType)>,
@@ -968,7 +968,7 @@ fn resolve_non_graph_specifier_types(
           raw_specifier,
           referrer,
           referrer_kind,
-          NodeResolutionMode::Types,
+          NodeResolutionKind::Types,
         )
         .ok()
         .map(|res| res.into_url()),
@@ -976,7 +976,7 @@ fn resolve_non_graph_specifier_types(
   } else if let Ok(npm_req_ref) =
     NpmPackageReqReference::from_str(raw_specifier)
   {
-    debug_assert_eq!(referrer_kind, NodeModuleKind::Esm);
+    debug_assert_eq!(referrer_kind, ResolutionMode::Import);
     // todo(dsherret): add support for injecting this in the graph so
     // we don't need this special code here.
     // This could occur when resolving npm:@types/node when it is
@@ -989,7 +989,7 @@ fn resolve_non_graph_specifier_types(
       npm_req_ref.sub_path(),
       Some(referrer),
       referrer_kind,
-      NodeResolutionMode::Types,
+      NodeResolutionKind::Types,
     );
     let maybe_url = match res_result {
       Ok(url) => Some(url),
