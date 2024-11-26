@@ -589,10 +589,14 @@ Deno.test({
   assert(adapter);
 
   for (const limitName of limitNames) {
+    // deno-lint-ignore ban-ts-comment
+    // @ts-ignore
     assertEquals(typeof adapter.limits[limitName], "number");
   }
 
   const device = await adapter.requestDevice({
+    // deno-lint-ignore ban-ts-comment
+    // @ts-ignore
     requiredLimits: adapter.limits,
   });
   assert(device);
