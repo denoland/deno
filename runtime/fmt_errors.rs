@@ -404,6 +404,28 @@ fn get_suggestions_for_terminal_errors(e: &JsError) -> Vec<FixSuggestion> {
         ]),
       ];
     }
+    // See: ext/canvas/01_image.js
+    else if msg.contains("The MIME type of source image is not specified") {
+      return vec![
+        FixSuggestion::hint_multiline(&[
+          cstr!("When you want to get a <u>Blob</> from <u>fetch</>, make sure to go through a file server that returns the appropriate content-type response header,"),
+          cstr!("and specify the URL to the file server like <u>await(await fetch('http://localhost:8000/sample.png').blob()</>."),
+          cstr!("Alternatively, if you are reading a local file using <u>Deno.readFile</> etc.,"),
+          cstr!("set the appropriate MIME type like <u>new Blob([await Deno.readFile('sample.png')], { type: 'image/png' })</>.")
+        ]),
+      ];
+    }
+    // See: ext/canvas/01_image.js
+    else if msg.contains("The MIME type")
+      && msg.contains("of source image is not a supported format")
+    {
+      return vec![
+        FixSuggestion::info(
+          "The following MIME types are supported."
+        ),
+        FixSuggestion::docs("https://mimesniff.spec.whatwg.org/#image-type-pattern-matching-algorithm"),
+      ];
+    }
   }
 
   vec![]
