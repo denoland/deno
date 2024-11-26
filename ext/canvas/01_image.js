@@ -244,7 +244,7 @@ function createImageBitmap(
 
     let width = 0;
     let height = 0;
-    // If the of image doesn't have a MIME type, mark it as 0.
+    // If the image doesn't have a MIME type, mark it as 0.
     let mimeType = 0;
     let imageBitmapSource, buf;
     if (isBlob) {
