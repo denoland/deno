@@ -3,7 +3,16 @@
 
 // deno-lint-ignore-file no-console
 
-import { buildMode, getPrebuilt, getSources, join, ROOT_PATH } from "./util.js";
+import {
+  buildMode,
+  expandGlobSync,
+  extname,
+  getPrebuilt,
+  getSources,
+  join,
+  ROOT_PATH,
+  walk,
+} from "./util.js";
 import { checkCopyright } from "./copyright_checker.js";
 import * as ciFile from "../.github/workflows/ci.generate.ts";
 
@@ -25,6 +34,7 @@ if (js) {
   promises.push(dlintPreferPrimordials());
   promises.push(ensureCiYmlUpToDate());
   promises.push(ensureNoNewITests());
+  promises.push(ensureNoUnusedOutFiles());
 
   if (rs) {
     promises.push(checkCopyright());
@@ -249,5 +259,71 @@ async function ensureNoNewITests() {
           `Please update the count in tools/lint.js for this file to ${actualCount}.`,
       );
     }
+  }
+}
+
+async function ensureNoUnusedOutFiles() {
+  const excludedFiles = [
+    ...[
+      ...expandGlobSync(
+        join(ROOT_PATH, "tests", "testdata", "coverage", "*_expected.out"),
+      ),
+    ].map((file) => file.path),
+  ];
+
+  const integrationDir = join(ROOT_PATH, "tests");
+  const directoriesToCheck = new RegExp(
+    `${join(integrationDir, "specs")}|${join(integrationDir, "unit")}|${
+      join(integrationDir, "integration")
+    }|${join(integrationDir, "testdata")}`,
+    "g",
+  );
+
+  const outFiles = (await Array.fromAsync(
+    walk(join(integrationDir, "testdata"), { exts: [".out"] }),
+  ))
+    .concat(
+      await Array.fromAsync(
+        walk(join(integrationDir, "specs"), { exts: [".out"] }),
+      ),
+    )
+    .filter((outFile) => !excludedFiles.includes(outFile.path))
+    .filter((outFile) => {
+      // if a file without the .out exists next to an .out file, ignore it
+      try {
+        Deno.statSync(outFile.path.slice(0, -extname(outFile.path).length));
+        return false;
+      } catch (e) {
+        return true;
+      }
+    });
+
+  const outFileNames = new Set(outFiles.map((file) => file.name));
+
+  for await (
+    const entry of walk(integrationDir, {
+      includeDirs: false,
+      includeSymlinks: false,
+      match: [directoriesToCheck],
+    })
+  ) {
+    if (entry.path.endsWith(".out")) {
+      continue;
+    }
+
+    const fileContent = await Deno.readTextFile(entry.path);
+
+    for (const outFileName of outFileNames) {
+      if (fileContent.includes(outFileName)) {
+        outFileNames.delete(outFileName);
+      }
+    }
+  }
+
+  if (outFileNames.size > 0) {
+    for (const file of outFiles.filter((file) => outFileNames.has(file.name))) {
+      console.error(`Unreferenced .out file: ${file.path}`);
+    }
+    throw new Error(`${outFileNames.size} unreferenced .out files`);
   }
 }
