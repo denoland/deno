@@ -17,7 +17,6 @@ use file_test_runner::collection::CollectTestsError;
 use file_test_runner::collection::CollectedCategoryOrTest;
 use file_test_runner::collection::CollectedTest;
 use file_test_runner::collection::CollectedTestCategory;
-use file_test_runner::SubTestResult;
 use file_test_runner::TestResult;
 use once_cell::sync::Lazy;
 use serde::Deserialize;
