@@ -617,13 +617,13 @@ function mapToCallback(context, callback, onError) {
     fastSyncResponseOrStream(req, inner.body, status, innerRequest);
   };
 
-  if (internals.telemetry.tracingEnabled) {
+  if (internals.telemetry?.tracingEnabled) {
     const { Span, enterSpan, endSpan } = internals.telemetry;
     const origMapped = mapped;
     mapped = function (req, _span) {
       const oldCtx = getAsyncContext();
       setAsyncContext(context.asyncContext);
-      const span = new Span("deno.serve");
+      const span = new Span("deno.serve", { kind: 1 });
       try {
         enterSpan(span);
         return SafePromisePrototypeFinally(
