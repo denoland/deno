@@ -11,6 +11,7 @@
           "specifier": "./recursive_imports/A.ts",
           "code": {
             "specifier": "file://[WILDCARD]/recursive_imports/A.ts",
+            "resolutionMode": "import",
             "span": {
               "start": {
                 "line": 1,
@@ -36,6 +37,7 @@
           "specifier": "./B.ts",
           "code": {
             "specifier": "file://[WILDCARD]/recursive_imports/B.ts",
+            "resolutionMode": "import",
             "span": {
               "start": {
                 "line": 0,
@@ -52,6 +54,7 @@
           "specifier": "./common.ts",
           "code": {
             "specifier": "file://[WILDCARD]/recursive_imports/common.ts",
+            "resolutionMode": "import",
             "span": {
               "start": {
                 "line": 1,
@@ -77,6 +80,7 @@
           "specifier": "./C.ts",
           "code": {
             "specifier": "file://[WILDCARD]/recursive_imports/C.ts",
+            "resolutionMode": "import",
             "span": {
               "start": {
                 "line": 0,
@@ -93,6 +97,7 @@
           "specifier": "./common.ts",
           "code": {
             "specifier": "file://[WILDCARD]/recursive_imports/common.ts",
+            "resolutionMode": "import",
             "span": {
               "start": {
                 "line": 1,
@@ -118,6 +123,7 @@
           "specifier": "./A.ts",
           "code": {
             "specifier": "file://[WILDCARD]/recursive_imports/A.ts",
+            "resolutionMode": "import",
             "span": {
               "start": {
                 "line": 0,
@@ -134,6 +140,7 @@
           "specifier": "./common.ts",
           "code": {
             "specifier": "file://[WILDCARD]/recursive_imports/common.ts",
+            "resolutionMode": "import",
             "span": {
               "start": {
                 "line": 1,

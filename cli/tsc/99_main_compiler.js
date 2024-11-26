@@ -102,56 +102,6 @@ delete Object.prototype.__proto__;
     printStderr(`ERROR ${logSource} = ${stringifiedArgs}\n`);
   }
 
-  /**
-   * @param {ts.ImportAttributes | undefined} attribs
-   * @returns {ts.ResolutionMode | undefined}
-   */
-  function getResolutionMode(attribs) {
-    const lit = attribs?.elements
-      .find((e) => e.name.text === "resolution-mode")
-      ?.value;
-    if (!lit || !ts.isStringLiteral(lit)) {
-      return undefined;
-    }
-    switch (lit.text) {
-      case "import":
-        return ts.ModuleKind.ESNext;
-      case "require":
-        return ts.ModuleKind.CommonJS;
-      default:
-        return undefined;
-    }
-  }
-
-  /**
-   * @param {ts.SourceFile} file
-   * @param {ts.StringLiteralLike} usage
-   * @param {ts.CompilerOptions} compilerOptions
-   * @returns {ts.ResolutionMode}
-   */
-  function getModeForUsageLocation(file, usage, compilerOptions) {
-    // we're a bit stricter than TypeScript in that we consider all
-    // non-type import declarations as being import declarations
-    const parent = usage.parent;
-    if (ts.isImportDeclaration(parent)) {
-      if (file.isDeclarationFile || parent.importClause?.isTypeOnly) {
-        return getResolutionMode(parent.attributes) ?? ts.ModuleKind.ESNext;
-      } else {
-        return ts.ModuleKind.ESNext;
-      }
-    } else if (ts.isExportDeclaration(parent)) {
-      if (file.isDeclarationFile || parent.isTypeOnly) {
-        return getResolutionMode(parent.attributes) ?? ts.ModuleKind.ESNext;
-      } else {
-        return ts.ModuleKind.ESNext;
-      }
-    } else if (ts.isImportTypeNode(parent)) {
-      return getResolutionMode(parent.attributes) ?? ts.ModuleKind.ESNext;
-    } else {
-      return ts.getModeForUsageLocation(file, usage, compilerOptions);
-    }
-  }
-
   class AssertionError extends Error {
     /** @param msg {string} */
     constructor(msg) {
@@ -802,7 +752,7 @@ delete Object.prototype.__proto__;
       _reusedNames,
     ) {
       const specifiers = moduleLiterals.map((literal) => [
-        getModeForUsageLocation(
+        ts.getModeForUsageLocation(
           containingSourceFile,
           literal,
           compilerOptions,
