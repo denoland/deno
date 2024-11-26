@@ -2922,7 +2922,7 @@ function readableStreamPipeTo(
 }
 
 /**
- * @param {ReadableStreamGenericReader<any> | ReadableStreamBYOBReader} reader
+ * @param {ReadableStreamGenericReader | ReadableStreamBYOBReader} reader
  * @param {any} reason
  * @returns {Promise<void>}
  */
@@ -2955,7 +2955,7 @@ function readableStreamReaderGenericInitialize(reader, stream) {
 
 /**
  * @template R
- * @param {ReadableStreamGenericReader<R> | ReadableStreamBYOBReader} reader
+ * @param {ReadableStreamGenericReader | ReadableStreamBYOBReader} reader
  */
 function readableStreamReaderGenericRelease(reader) {
   const stream = reader[_stream];

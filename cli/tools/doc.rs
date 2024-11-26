@@ -427,33 +427,7 @@ fn generate_docs_directory(
     symbol_redirect_map,
     default_symbol_map,
     markdown_renderer: deno_doc::html::comrak::create_renderer(
-      None,
-      Some(Box::new(|ammonia| {
-        ammonia.add_allowed_classes(
-          "code",
-          &[
-            "language-ts",
-            "language-tsx",
-            "language-typescript",
-            "language-js",
-            "language-jsx",
-            "language-javascript",
-            "language-bash",
-            "language-shell",
-            "language-md",
-            "language-markdown",
-            "language-rs",
-            "language-rust",
-            "language-html",
-            "language-xml",
-            "language-css",
-            "language-json",
-            "language-regex",
-            "language-svg",
-          ],
-        );
-      })),
-      None,
+      None, None, None,
     ),
     markdown_stripper: Rc::new(deno_doc::html::comrak::strip),
     head_inject: Some(Rc::new(|root| {

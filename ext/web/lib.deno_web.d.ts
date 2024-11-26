@@ -882,7 +882,7 @@ declare var ReadableStream: {
     strategy?: QueuingStrategy<R>,
   ): ReadableStream<R>;
   from<R>(
-    asyncIterable: AsyncIterable<R> | Iterable<R | PromiseLike<R>>,
+    asyncIterable: AsyncIterable<R> | Iterable<R | PromiseLike<R>> & object,
   ): ReadableStream<R>;
 };
 
