@@ -323,7 +323,6 @@ info: The following MIME types are supported:
       resizeQuality = 3;
     }
 
-    // TODO(Hajime-san): this should be real async
     const processedImage = op_create_image_bitmap(
       buf,
       width,
