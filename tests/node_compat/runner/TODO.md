@@ -1,7 +1,7 @@
 <!-- deno-fmt-ignore-file -->
 # Remaining Node Tests
 
-594 tests out of 3681 have been ported from Node 18.12.1 (16.14% ported, 83.97% remaining).
+594 tests out of 3681 have been ported from Node 20.11.1 (16.14% ported, 83.97% remaining).
 
 NOTE: This file should not be manually edited. Please edit `tests/node_compat/config.json` and run `deno task setup` in `tests/node_compat/runner` dir instead.
 
