@@ -286,8 +286,13 @@ function mixinBody(prototype, bodySymbol, mimeTypeSymbol) {
        */
       get() {
         webidl.assertBranded(this, prototype);
-        if (this[bodySymbol] !== null) {
-          return this[bodySymbol].consumed();
+        try {
+          if (this[bodySymbol] !== null) {
+            return this[bodySymbol].consumed();
+          }
+        } catch (e) {
+          // Request is closed.
+          return true;
         }
         return false;
       },
