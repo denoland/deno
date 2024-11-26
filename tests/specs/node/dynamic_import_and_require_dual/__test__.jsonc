@@ -1,0 +1,17 @@
+{
+  "tests": {
+    "cjs::check": {
+      "args": "check index.cts",
+      "output": "check.out",
+      "exitCode": 1
+    },
+    "cjs::run": {
+      "args": "run index.cts",
+      "output": "run_cjs.out"
+    },
+    "mjs::run": {
+      "args": "run index.mjs",
+      "output": "run_mts.out"
+    }
+  }
+}

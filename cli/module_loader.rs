@@ -75,6 +75,7 @@ use deno_semver::npm::NpmPackageReqReference;
 use node_resolver::errors::ClosestPkgJsonError;
 use node_resolver::InNpmPackageChecker;
 use node_resolver::NodeResolutionKind;
+use node_resolver::ResolutionMode;
 
 pub struct ModuleLoadPreparer {
   options: Arc<CliOptions>,
@@ -498,7 +499,8 @@ impl<TGraphContainer: ModuleGraphContainer>
         raw_specifier,
         referrer,
         deno_graph::Position::zeroed(),
-        self.shared.cjs_tracker.get_referrer_kind(referrer),
+        // if we're here, that means it's resolving a dynamic import
+        ResolutionMode::Import,
         NodeResolutionKind::Execution,
       )?),
     };
@@ -512,7 +514,7 @@ impl<TGraphContainer: ModuleGraphContainer>
           .resolve_req_reference(
             &reference,
             referrer,
-            self.shared.cjs_tracker.get_referrer_kind(referrer),
+            ResolutionMode::Import,
             NodeResolutionKind::Execution,
           )
           .map_err(AnyError::from);
@@ -534,7 +536,7 @@ impl<TGraphContainer: ModuleGraphContainer>
             &package_folder,
             module.nv_reference.sub_path(),
             Some(referrer),
-            self.shared.cjs_tracker.get_referrer_kind(referrer),
+            ResolutionMode::Import,
             NodeResolutionKind::Execution,
           )
           .with_context(|| {

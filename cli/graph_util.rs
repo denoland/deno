@@ -1201,9 +1201,14 @@ impl<'a> deno_graph::source::Resolver for CliGraphResolver<'a> {
       raw_specifier,
       &referrer_range.specifier,
       referrer_range.range.start,
-      self
-        .cjs_tracker
-        .get_referrer_kind(&referrer_range.specifier),
+      referrer_range
+        .mode
+        .map(to_node_resolution_mode)
+        .unwrap_or_else(|| {
+          self
+            .cjs_tracker
+            .get_referrer_kind(&referrer_range.specifier)
+        }),
       to_node_resolution_kind(resolution_kind),
     )
   }
