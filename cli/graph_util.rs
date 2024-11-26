@@ -1263,7 +1263,7 @@ mod test {
         specifier: input.to_string(),
         range: Range {
           specifier,
-          mode: None,
+          resolution_mode: None,
           range: PositionRange::zeroed(),
         },
       };
@@ -1279,7 +1279,7 @@ mod test {
       let err = ResolutionError::InvalidSpecifier {
         range: Range {
           specifier,
-          mode: None,
+          resolution_mode: None,
           range: PositionRange::zeroed(),
         },
         error: SpecifierError::ImportPrefixMissing {
