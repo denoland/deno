@@ -5,11 +5,11 @@
 
 import {
   buildMode,
-  expandGlobSync,
-  extname,
+  dirname,
   getPrebuilt,
   getSources,
   join,
+  parseJSONC,
   ROOT_PATH,
   walk,
 } from "./util.js";
@@ -263,67 +263,45 @@ async function ensureNoNewITests() {
 }
 
 async function ensureNoUnusedOutFiles() {
-  const excludedFiles = [
-    ...[
-      ...expandGlobSync(
-        join(ROOT_PATH, "tests", "testdata", "coverage", "*_expected.out"),
-      ),
-    ].map((file) => file.path),
-  ];
-
-  const integrationDir = join(ROOT_PATH, "tests");
-  const directoriesToCheck = new RegExp(
-    `${join(integrationDir, "specs")}|${join(integrationDir, "unit")}|${
-      join(integrationDir, "integration")
-    }|${join(integrationDir, "testdata")}`,
-    "g",
+  const specsDir = join(ROOT_PATH, "tests", "specs");
+  const outFilePaths = new Set(
+    (await Array.fromAsync(
+      walk(specsDir, { exts: [".out"] }),
+    )).map((entry) => entry.path),
   );
+  const testFiles = (await Array.fromAsync(
+    walk(specsDir, { exts: [".jsonc"] }),
+  )).filter((entry) => {
+    return entry.path.endsWith("__test__.jsonc");
+  });
 
-  const outFiles = (await Array.fromAsync(
-    walk(join(integrationDir, "testdata"), { exts: [".out"] }),
-  ))
-    .concat(
-      await Array.fromAsync(
-        walk(join(integrationDir, "specs"), { exts: [".out"] }),
-      ),
-    )
-    .filter((outFile) => !excludedFiles.includes(outFile.path))
-    .filter((outFile) => {
-      // if a file without the .out exists next to an .out file, ignore it
-      try {
-        Deno.statSync(outFile.path.slice(0, -extname(outFile.path).length));
-        return false;
-      } catch (_) {
-        return true;
-      }
-    });
-
-  const outFileNames = new Set(outFiles.map((file) => file.name));
-
-  for await (
-    const entry of walk(integrationDir, {
-      includeDirs: false,
-      includeSymlinks: false,
-      match: [directoriesToCheck],
-    })
-  ) {
-    if (entry.path.endsWith(".out")) {
-      continue;
-    }
-
-    const fileContent = await Deno.readTextFile(entry.path);
-
-    for (const outFileName of outFileNames) {
-      if (fileContent.includes(outFileName)) {
-        outFileNames.delete(outFileName);
+  function checkObject(baseDirPath, obj) {
+    for (const [key, value] of Object.entries(obj)) {
+      if (typeof value === "object") {
+        checkObject(baseDirPath, value);
+      } else if (key === "output" && typeof value === "string") {
+        const outFilePath = join(baseDirPath, value);
+        outFilePaths.delete(outFilePath);
       }
     }
   }
 
-  if (outFileNames.size > 0) {
-    for (const file of outFiles.filter((file) => outFileNames.has(file.name))) {
-      console.error(`Unreferenced .out file: ${file.path}`);
+  for (const testFile of testFiles) {
+    try {
+      const text = await Deno.readTextFile(testFile.path);
+      const data = parseJSONC(text);
+      checkObject(dirname(testFile.path), data);
+    } catch (err) {
+      throw new Error("Failed reading: " + testFile.path, {
+        cause: err,
+      });
     }
-    throw new Error(`${outFileNames.size} unreferenced .out files`);
+  }
+
+  if (outFilePaths.size > 0) {
+    for (const file of outFilePaths) {
+      console.error(`Unreferenced .out file: ${file}`);
+    }
+    throw new Error(`${outFilePaths.size} unreferenced .out files`);
   }
 }

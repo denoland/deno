@@ -15,6 +15,7 @@ export { dirname, extname, fromFileUrl, join, resolve, toFileUrl };
 export { existsSync, expandGlobSync, walk } from "@std/fs";
 export { TextLineStream } from "@std/streams/text-line-stream";
 export { delay } from "@std/async/delay";
+export { parse as parseJSONC } from "@std/jsonc/parse";
 
 // [toolName] --version output
 const versions = {
