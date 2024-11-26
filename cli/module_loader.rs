@@ -33,6 +33,7 @@ use crate::resolver::ModuleCodeStringSource;
 use crate::resolver::NotSupportedKindInNpmError;
 use crate::resolver::NpmModuleLoader;
 use crate::tools::check;
+use crate::tools::check::MaybeDiagnostics;
 use crate::tools::check::TypeChecker;
 use crate::util::progress_bar::ProgressBar;
 use crate::util::text_encoding::code_without_source_map;
@@ -117,7 +118,7 @@ impl ModuleLoadPreparer {
     lib: TsTypeLib,
     permissions: PermissionsContainer,
     ext_overwrite: Option<&String>,
-  ) -> Result<(), AnyError> {
+  ) -> Result<(), MaybeDiagnostics> {
     log::debug!("Preparing module load.");
     let _pb_clear_guard = self.progress_bar.clear_guard();
 

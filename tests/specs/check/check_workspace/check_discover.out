@@ -7,3 +7,5 @@ TS2304 [ERROR]: Cannot find name 'localStorage'.
 localStorage;
 ~~~~~~~~~~~~
     at file:///[WILDCARD]/member/mod.ts:2:1
+
+Found 2 errors.

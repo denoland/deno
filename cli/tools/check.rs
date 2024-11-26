@@ -4,6 +4,8 @@ use std::collections::BTreeMap;
 use std::collections::BTreeSet;
 use std::collections::HashSet;
 use std::collections::VecDeque;
+use std::error::Error;
+use std::fmt;
 use std::sync::Arc;
 
 use deno_ast::MediaType;
@@ -107,7 +109,8 @@ pub async fn check(
     );
     let dir_count = by_workspace_directory.len();
     let initial_cwd = cli_options.initial_cwd().to_path_buf();
-    let mut check_errors = vec![];
+    let mut diagnostics = vec![];
+    let mut all_errors = vec![];
     let mut found_specifiers = false;
     for (dir_url, (workspace_directory, patterns)) in by_workspace_directory {
       let (npmrc, _) =
@@ -170,18 +173,24 @@ pub async fn check(
         .check_specifiers(&specifiers_for_typecheck, None)
         .await
       {
-        check_errors.push(err);
+        match err {
+          MaybeDiagnostics::Diagnostics(Diagnostics(d)) => {
+            diagnostics.extend(d)
+          }
+          MaybeDiagnostics::Other(err) => all_errors.push(err),
+        }
       }
     }
     if !found_specifiers {
       log::warn!("{} No matching files found.", colors::yellow("Warning"));
     }
-    if !check_errors.is_empty() {
-      // TODO(nayeemrmn): More integrated way of concatenating diagnostics from
-      // different checks.
+    if !diagnostics.is_empty() {
+      all_errors.push(AnyError::from(Diagnostics(diagnostics)));
+    }
+    if !all_errors.is_empty() {
       return Err(anyhow!(
         "{}",
-        check_errors
+        all_errors
           .into_iter()
           .map(|e| e.to_string())
           .collect::<Vec<_>>()
@@ -225,9 +234,11 @@ pub async fn check(
     specifiers
   };
 
-  main_graph_container
-    .check_specifiers(&specifiers_for_typecheck, None)
-    .await
+  Ok(
+    main_graph_container
+      .check_specifiers(&specifiers_for_typecheck, None)
+      .await?,
+  )
 }
 
 /// Options for performing a check of a module graph. Note that the decision to
@@ -247,6 +258,29 @@ pub struct CheckOptions {
   pub reload: bool,
   /// Mode to type check with.
   pub type_check_mode: TypeCheckMode,
+}
+
+#[derive(Debug)]
+pub enum MaybeDiagnostics {
+  Diagnostics(Diagnostics),
+  Other(AnyError),
+}
+
+impl fmt::Display for MaybeDiagnostics {
+  fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    match self {
+      MaybeDiagnostics::Diagnostics(d) => d.fmt(f),
+      MaybeDiagnostics::Other(err) => err.fmt(f),
+    }
+  }
+}
+
+impl Error for MaybeDiagnostics {}
+
+impl From<AnyError> for MaybeDiagnostics {
+  fn from(err: AnyError) -> Self {
+    MaybeDiagnostics::Other(err)
+  }
 }
 
 pub struct TypeChecker {
@@ -285,14 +319,14 @@ impl TypeChecker {
     &self,
     graph: ModuleGraph,
     options: CheckOptions,
-  ) -> Result<Arc<ModuleGraph>, AnyError> {
+  ) -> Result<Arc<ModuleGraph>, MaybeDiagnostics> {
     let (graph, mut diagnostics) =
       self.check_diagnostics(graph, options).await?;
     diagnostics.emit_warnings();
     if diagnostics.is_empty() {
       Ok(graph)
     } else {
-      Err(diagnostics.into())
+      Err(MaybeDiagnostics::Diagnostics(diagnostics))
     }
   }
 

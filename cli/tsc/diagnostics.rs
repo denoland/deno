@@ -274,7 +274,7 @@ impl fmt::Display for Diagnostic {
 }
 
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
-pub struct Diagnostics(Vec<Diagnostic>);
+pub struct Diagnostics(pub Vec<Diagnostic>);
 
 impl Diagnostics {
   #[cfg(test)]

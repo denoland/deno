@@ -371,6 +371,7 @@ impl ModuleGraphCreator {
         },
       )
       .await
+      .map_err(AnyError::from)
   }
 }
 
