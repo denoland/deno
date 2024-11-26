@@ -304,6 +304,6 @@ async function ensureNoUnusedOutFiles() {
     for (const file of notFoundPaths) {
       console.error(`Unreferenced .out file: ${file}`);
     }
-    throw new Error(`${notFoundPaths.size} unreferenced .out files`);
+    throw new Error(`${notFoundPaths.length} unreferenced .out files`);
   }
 }
