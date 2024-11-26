@@ -1360,26 +1360,31 @@ fn lsp_deno_task() {
   let temp_dir = context.temp_dir();
   temp_dir.write(
     "deno.jsonc",
-    r#"{
-    "tasks": {
-      "build": "deno test"
-    }
-  }"#,
+    json!({
+      "tasks": {
+        "build": "deno test",
+        "serve": {
+          "description": "Start the dev server",
+          "command": "deno run -RN server.ts",
+        },
+      },
+    })
+    .to_string(),
   );
-
   let mut client = context.new_lsp_command().build();
-  client.initialize(|builder| {
-    builder.set_config("./deno.jsonc");
-  });
-
-  let res = client.write_request("deno/task", json!(null));
-
+  client.initialize_default();
+  let res = client.write_request("deno/taskDefinitions", json!(null));
   assert_eq!(
     res,
     json!([
       {
         "name": "build",
-        "detail": "deno test",
+        "command": "deno test",
+        "sourceUri": temp_dir.url().join("deno.jsonc").unwrap(),
+      },
+      {
+        "name": "serve",
+        "command": "deno run -RN server.ts",
         "sourceUri": temp_dir.url().join("deno.jsonc").unwrap(),
       }
     ])

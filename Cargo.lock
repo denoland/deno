@@ -1232,7 +1232,6 @@ dependencies = [
  "deno_resolver",
  "deno_runtime",
  "deno_semver",
- "deno_sqlformat",
  "deno_task_shell",
  "deno_terminal 0.2.0",
  "deno_tower_lsp",
@@ -1292,6 +1291,7 @@ dependencies = [
  "sha2",
  "shell-escape",
  "spki",
+ "sqlformat",
  "strsim",
  "tar",
  "tempfile",
@@ -1664,9 +1664,9 @@ dependencies = [
 
 [[package]]
 name = "deno_graph"
-version = "0.85.0"
+version = "0.85.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9d097305aba3f119781fe82b4d5a85a1ad10c586a388ee4d754e5bf82901cc5c"
+checksum = "4c11027d9b4e9ff4f8bcb8316a1a5dd5241dc267380507e177457bc491696189"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -2145,18 +2145,6 @@ dependencies = [
  "serde",
  "thiserror",
  "url",
-]
-
-[[package]]
-name = "deno_sqlformat"
-version = "0.3.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0e196799ec0cc240fac1fb5c5bf813ef92a9602740a059cfcbb20593b2deee52"
-dependencies = [
- "nom 7.1.3",
- "once_cell",
- "regex",
- "unicode_categories",
 ]
 
 [[package]]
@@ -6942,6 +6930,18 @@ checksum = "d91ed6c858b01f942cd56b37a94b3e0a1798290327d1236e4d9cf4eaca44d29d"
 dependencies = [
  "base64ct",
  "der",
+]
+
+[[package]]
+name = "sqlformat"
+version = "0.3.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "44c38684453189293372e6fffa3bed1015d20488ce4cc09a23de050fd7411e46"
+dependencies = [
+ "nom 7.1.3",
+ "once_cell",
+ "regex",
+ "unicode_categories",
 ]
 
 [[package]]

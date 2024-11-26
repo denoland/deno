@@ -1,6 +1,6 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
-import { core, primordials } from "ext:core/mod.js";
+import { core, internals, primordials } from "ext:core/mod.js";
 import {
   op_crypto_get_random_values,
   op_otel_instrumentation_scope_create_and_enter,
@@ -32,17 +32,17 @@ const {
   ObjectDefineProperty,
   WeakRefPrototypeDeref,
   String,
+  StringPrototypePadStart,
   ObjectPrototypeIsPrototypeOf,
-  DataView,
-  DataViewPrototypeSetUint32,
   SafeWeakRef,
-  TypedArrayPrototypeGetBuffer,
 } = primordials;
 const { AsyncVariable, setAsyncContext } = core;
 
 let TRACING_ENABLED = false;
 let DETERMINISTIC = false;
 
+// Note: These start at 0 in the JS library,
+// but start at 1 when serialized with JSON.
 enum SpanKind {
   INTERNAL = 0,
   SERVER = 1,
@@ -92,6 +92,11 @@ interface Attributes {
 }
 
 type SpanAttributes = Attributes;
+
+interface SpanOptions {
+  attributes?: Attributes;
+  kind?: SpanKind;
+}
 
 interface Link {
   context: SpanContext;
@@ -356,7 +361,7 @@ export class Span {
 
   #recording = TRACING_ENABLED;
 
-  #kind: number = 0;
+  #kind: number = SpanKind.INTERNAL;
   #name: string;
   #startTime: number;
   #status: { code: number; message?: string } | null = null;
@@ -404,7 +409,7 @@ export class Span {
       span.#asyncContext = NO_ASYNC_CONTEXT;
     };
 
-    exitSpan = (span: Span) => {
+    endSpan = (span: Span) => {
       const endTime = now();
       submit(
         span.#spanId,
@@ -431,7 +436,7 @@ export class Span {
 
   constructor(
     name: string,
-    attributes?: Attributes,
+    options?: SpanOptions,
   ) {
     if (!this.isRecording) {
       this.#name = "";
@@ -444,44 +449,17 @@ export class Span {
 
     this.#name = name;
     this.#startTime = now();
-    this.#attributes = attributes ?? { __proto__: null } as never;
+    this.#attributes = options?.attributes ?? { __proto__: null } as never;
+    this.#kind = options?.kind ?? SpanKind.INTERNAL;
 
     const currentSpan: Span | {
       spanContext(): { traceId: string; spanId: string };
     } = CURRENT.get()?.getValue(SPAN_KEY);
-    if (!currentSpan) {
-      const buffer = new Uint8Array(TRACE_ID_BYTES + SPAN_ID_BYTES);
+    if (currentSpan) {
       if (DETERMINISTIC) {
-        DataViewPrototypeSetUint32(
-          new DataView(TypedArrayPrototypeGetBuffer(buffer)),
-          TRACE_ID_BYTES - 4,
-          COUNTER,
-          true,
-        );
-        COUNTER += 1;
-        DataViewPrototypeSetUint32(
-          new DataView(TypedArrayPrototypeGetBuffer(buffer)),
-          TRACE_ID_BYTES + SPAN_ID_BYTES - 4,
-          COUNTER,
-          true,
-        );
-        COUNTER += 1;
+        this.#spanId = StringPrototypePadStart(String(COUNTER++), 16, "0");
       } else {
-        op_crypto_get_random_values(buffer);
-      }
-      this.#traceId = TypedArrayPrototypeSubarray(buffer, 0, TRACE_ID_BYTES);
-      this.#spanId = TypedArrayPrototypeSubarray(buffer, TRACE_ID_BYTES);
-    } else {
-      this.#spanId = new Uint8Array(SPAN_ID_BYTES);
-      if (DETERMINISTIC) {
-        DataViewPrototypeSetUint32(
-          new DataView(TypedArrayPrototypeGetBuffer(this.#spanId)),
-          SPAN_ID_BYTES - 4,
-          COUNTER,
-          true,
-        );
-        COUNTER += 1;
-      } else {
+        this.#spanId = new Uint8Array(SPAN_ID_BYTES);
         op_crypto_get_random_values(this.#spanId);
       }
       // deno-lint-ignore prefer-primordials
@@ -492,6 +470,16 @@ export class Span {
         const context = currentSpan.spanContext();
         this.#traceId = context.traceId;
         this.#parentSpanId = context.spanId;
+      }
+    } else {
+      if (DETERMINISTIC) {
+        this.#traceId = StringPrototypePadStart(String(COUNTER++), 32, "0");
+        this.#spanId = StringPrototypePadStart(String(COUNTER++), 16, "0");
+      } else {
+        const buffer = new Uint8Array(TRACE_ID_BYTES + SPAN_ID_BYTES);
+        op_crypto_get_random_values(buffer);
+        this.#traceId = TypedArrayPrototypeSubarray(buffer, 0, TRACE_ID_BYTES);
+        this.#spanId = TypedArrayPrototypeSubarray(buffer, TRACE_ID_BYTES);
       }
     }
   }
@@ -717,4 +705,16 @@ export function bootstrap(
   }
 }
 
-export const telemetry = { SpanExporter, ContextManager };
+export const telemetry = {
+  SpanExporter,
+  ContextManager,
+};
+internals.telemetry = {
+  Span,
+  enterSpan,
+  exitSpan,
+  endSpan,
+  get tracingEnabled() {
+    return TRACING_ENABLED;
+  },
+};
