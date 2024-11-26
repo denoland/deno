@@ -299,7 +299,7 @@ async function ensureNoUnusedOutFiles() {
   }
 
   const notFoundPaths = Array.from(outFilePaths);
-  if (notFoundPaths.size > 0) {
+  if (notFoundPaths.length > 0) {
     notFoundPaths.sort(); // be deterministic
     for (const file of notFoundPaths) {
       console.error(`Unreferenced .out file: ${file}`);
