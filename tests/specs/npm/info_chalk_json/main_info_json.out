@@ -11,7 +11,6 @@
           "specifier": "npm:chalk@4",
           "code": {
             "specifier": "npm:chalk@4",
-            "resolutionMode": "import",
             "span": {
               "start": {
                 "line": 0,
@@ -29,7 +28,6 @@
           "specifier": "npm:chai@4.3",
           "code": {
             "specifier": "npm:chai@4.3",
-            "resolutionMode": "import",
             "span": {
               "start": {
                 "line": 1,

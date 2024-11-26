@@ -21,7 +21,6 @@ Initialize @denotest2/basic@1.0.0
           "specifier": "@denotest/basic",
           "code": {
             "specifier": "npm:@denotest/basic@1.0.0",
-            "resolutionMode": "import",
             "span": {
               "start": {
                 "line": 0,
@@ -38,7 +37,6 @@ Initialize @denotest2/basic@1.0.0
           "specifier": "@denotest2/basic",
           "code": {
             "specifier": "npm:@denotest2/basic@1.0.0",
-            "resolutionMode": "import",
             "span": {
               "start": {
                 "line": 1,

@@ -11,7 +11,6 @@
           "specifier": "../mod1.ts",
           "code": {
             "specifier": "file://[WILDCARD]/mod1.ts",
-            "resolutionMode": "import",
             "span": {
               "start": {
                 "line": 0,
@@ -37,7 +36,6 @@
           "specifier": "./subdir2/mod2.ts",
           "code": {
             "specifier": "file://[WILDCARD]/subdir2/mod2.ts",
-            "resolutionMode": "import",
             "span": {
               "start": {
                 "line": 0,
@@ -70,7 +68,6 @@
           "specifier": "../print_hello.ts",
           "code": {
             "specifier": "file://[WILDCARD]/print_hello.ts",
-            "resolutionMode": "import",
             "span": {
               "start": {
                 "line": 0,
