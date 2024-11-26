@@ -14,6 +14,7 @@ Download http://localhost:4545/subdir/redirects/redirect1.js
           "specifier": "http://localhost:4548/subdir/redirects/redirect1.js",
           "code": {
             "specifier": "http://localhost:4548/subdir/redirects/redirect1.js",
+            "mode": "import",
             "span": {
               "start": {
                 "line": 0,

@@ -4,6 +4,7 @@ use crate::args::TsConfig;
 use crate::args::TypeCheckMode;
 use crate::cache::FastInsecureHasher;
 use crate::cache::ModuleInfoCache;
+use crate::graph_util::to_node_resolution_mode;
 use crate::node;
 use crate::npm::CliNpmResolver;
 use crate::resolver::CjsTracker;
@@ -735,7 +736,7 @@ fn op_resolve_inner(
   let state = state.borrow_mut::<State>();
   let mut resolved: Vec<(String, &'static str)> =
     Vec::with_capacity(args.specifiers.len());
-  let referrer_kind = if args.is_base_cjs {
+  let referrer_resolution_mode = if args.is_base_cjs {
     ResolutionMode::Require
   } else {
     ResolutionMode::Import
@@ -773,19 +774,22 @@ fn op_resolve_inner(
       .and_then(|d| d.maybe_type.ok().or_else(|| d.maybe_code.ok()));
 
     let maybe_result = match resolved_dep {
-      Some(ResolutionResolved { specifier, .. }) => {
-        resolve_graph_specifier_types(
-          specifier,
-          &referrer,
-          referrer_kind,
-          state,
-        )?
-      }
+      Some(ResolutionResolved {
+        specifier, range, ..
+      }) => resolve_graph_specifier_types(
+        specifier,
+        &referrer,
+        range
+          .mode
+          .map(to_node_resolution_mode)
+          .unwrap_or(referrer_resolution_mode),
+        state,
+      )?,
       _ => {
         match resolve_non_graph_specifier_types(
           &specifier,
           &referrer,
-          referrer_kind,
+          referrer_resolution_mode,
           state,
         ) {
           Ok(maybe_result) => maybe_result,
@@ -852,7 +856,7 @@ fn op_resolve_inner(
 fn resolve_graph_specifier_types(
   specifier: &ModuleSpecifier,
   referrer: &ModuleSpecifier,
-  referrer_kind: ResolutionMode,
+  resolution_mode: ResolutionMode,
   state: &State,
 ) -> Result<Option<(ModuleSpecifier, MediaType)>, AnyError> {
   let graph = &state.graph;
@@ -908,7 +912,7 @@ fn resolve_graph_specifier_types(
             &package_folder,
             module.nv_reference.sub_path(),
             Some(referrer),
-            referrer_kind,
+            resolution_mode,
             NodeResolutionKind::Types,
           );
         let maybe_url = match res_result {
@@ -949,7 +953,7 @@ enum ResolveNonGraphSpecifierTypesError {
 fn resolve_non_graph_specifier_types(
   raw_specifier: &str,
   referrer: &ModuleSpecifier,
-  referrer_kind: ResolutionMode,
+  resolution_mode: ResolutionMode,
   state: &State,
 ) -> Result<
   Option<(ModuleSpecifier, MediaType)>,
@@ -967,7 +971,7 @@ fn resolve_non_graph_specifier_types(
         .resolve(
           raw_specifier,
           referrer,
-          referrer_kind,
+          resolution_mode,
           NodeResolutionKind::Types,
         )
         .ok()
@@ -976,7 +980,7 @@ fn resolve_non_graph_specifier_types(
   } else if let Ok(npm_req_ref) =
     NpmPackageReqReference::from_str(raw_specifier)
   {
-    debug_assert_eq!(referrer_kind, ResolutionMode::Import);
+    debug_assert_eq!(resolution_mode, ResolutionMode::Import);
     // todo(dsherret): add support for injecting this in the graph so
     // we don't need this special code here.
     // This could occur when resolving npm:@types/node when it is
@@ -988,7 +992,7 @@ fn resolve_non_graph_specifier_types(
       &package_folder,
       npm_req_ref.sub_path(),
       Some(referrer),
-      referrer_kind,
+      resolution_mode,
       NodeResolutionKind::Types,
     );
     let maybe_url = match res_result {

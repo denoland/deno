@@ -425,7 +425,7 @@ impl LspResolver {
     &self,
     req_ref: &NpmPackageReqReference,
     referrer: &ModuleSpecifier,
-    referrer_kind: ResolutionMode,
+    resolution_mode: ResolutionMode,
     file_referrer: Option<&ModuleSpecifier>,
   ) -> Option<(ModuleSpecifier, MediaType)> {
     let resolver = self.get_scope_resolver(file_referrer);
@@ -435,7 +435,7 @@ impl LspResolver {
         .resolve_req_reference(
           req_ref,
           referrer,
-          referrer_kind,
+          resolution_mode,
           NodeResolutionKind::Types,
         )
         .ok()?,
@@ -493,7 +493,7 @@ impl LspResolver {
     &self,
     specifier_text: &str,
     referrer: &ModuleSpecifier,
-    referrer_kind: ResolutionMode,
+    resolution_mode: ResolutionMode,
   ) -> bool {
     let resolver = self.get_scope_resolver(Some(referrer));
     let Some(npm_pkg_req_resolver) = resolver.npm_pkg_req_resolver.as_ref()
@@ -504,7 +504,7 @@ impl LspResolver {
       .resolve_if_for_npm_pkg(
         specifier_text,
         referrer,
-        referrer_kind,
+        resolution_mode,
         NodeResolutionKind::Types,
       )
       .ok()

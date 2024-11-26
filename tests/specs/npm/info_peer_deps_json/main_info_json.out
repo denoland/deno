@@ -11,6 +11,7 @@
           "specifier": "npm:@denotest/peer-dep-test-child@1",
           "code": {
             "specifier": "npm:@denotest/peer-dep-test-child@1",
+            "mode": "import",
             "span": {
               "start": {
                 "line": 0,
@@ -28,6 +29,7 @@
           "specifier": "npm:@denotest/peer-dep-test-child@2",
           "code": {
             "specifier": "npm:@denotest/peer-dep-test-child@2",
+            "mode": "import",
             "span": {
               "start": {
                 "line": 1,

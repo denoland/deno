@@ -584,7 +584,7 @@ fn try_reverse_map_package_json_exports(
 /// like an import and rewrite the import specifier to include the extension
 pub fn fix_ts_import_changes(
   referrer: &ModuleSpecifier,
-  referrer_kind: ResolutionMode,
+  resolution_mode: ResolutionMode,
   changes: &[tsc::FileTextChanges],
   language_server: &language_server::Inner,
 ) -> Result<Vec<tsc::FileTextChanges>, AnyError> {
@@ -602,7 +602,7 @@ pub fn fix_ts_import_changes(
             let specifier =
               captures.iter().skip(1).find_map(|s| s).unwrap().as_str();
             if let Some(new_specifier) = import_mapper
-              .check_unresolved_specifier(specifier, referrer, referrer_kind)
+              .check_unresolved_specifier(specifier, referrer, resolution_mode)
             {
               line.replace(specifier, &new_specifier)
             } else {
@@ -1020,7 +1020,7 @@ impl CodeActionCollection {
   pub fn add_ts_fix_action(
     &mut self,
     specifier: &ModuleSpecifier,
-    specifier_kind: ResolutionMode,
+    resolution_mode: ResolutionMode,
     action: &tsc::CodeFixAction,
     diagnostic: &lsp::Diagnostic,
     language_server: &language_server::Inner,
@@ -1039,7 +1039,7 @@ impl CodeActionCollection {
       ));
     }
     let Some(action) =
-      fix_ts_import_action(specifier, specifier_kind, action, language_server)
+      fix_ts_import_action(specifier, resolution_mode, action, language_server)
     else {
       return Ok(());
     };

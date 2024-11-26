@@ -58,7 +58,6 @@ use deno_core::ModuleSpecifier;
 use deno_core::ModuleType;
 use deno_core::RequestedModuleType;
 use deno_core::SourceCodeCacheInfo;
-use deno_graph::source::ResolutionKind;
 use deno_graph::GraphKind;
 use deno_graph::JsModule;
 use deno_graph::JsonModule;

@@ -18,7 +18,6 @@ use crate::graph_util::to_node_resolution_mode;
 use crate::jsr::JsrFetchResolver;
 use crate::util::path::is_importable_ext;
 use crate::util::path::relative_specifier;
-use deno_graph::source::ResolutionKind;
 use deno_runtime::deno_node::SUPPORTED_BUILTIN_NODE_MODULES;
 
 use deno_ast::LineAndColumnIndex;
@@ -829,7 +828,6 @@ mod tests {
   use crate::lsp::documents::LanguageId;
   use crate::lsp::search::tests::TestPackageSearchApi;
   use deno_core::resolve_url;
-  use deno_graph::Range;
   use pretty_assertions::assert_eq;
   use std::collections::HashMap;
   use test_util::TempDir;

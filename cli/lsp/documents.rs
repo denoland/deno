@@ -1537,7 +1537,7 @@ impl Documents {
     &self,
     specifier: &ModuleSpecifier,
     referrer: &ModuleSpecifier,
-    referrer_kind: ResolutionMode,
+    resolution_mode: ResolutionMode,
     file_referrer: Option<&ModuleSpecifier>,
   ) -> Option<(ModuleSpecifier, MediaType)> {
     if let Some(module_name) = specifier.as_str().strip_prefix("node:") {
@@ -1554,7 +1554,7 @@ impl Documents {
       let (s, mt) = self.resolver.npm_to_file_url(
         &npm_ref,
         referrer,
-        referrer_kind,
+        resolution_mode,
         file_referrer,
       )?;
       specifier = s;

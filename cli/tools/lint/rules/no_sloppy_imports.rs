@@ -9,7 +9,6 @@ use deno_ast::SourceRange;
 use deno_config::workspace::WorkspaceResolver;
 use deno_core::anyhow::anyhow;
 use deno_graph::source::ResolutionKind;
-use deno_graph::source::ResolutionMode;
 use deno_graph::source::ResolveError;
 use deno_graph::Range;
 use deno_lint::diagnostic::LintDiagnosticDetails;
