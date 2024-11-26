@@ -3,7 +3,10 @@
 // TODO(petamoriken): enable prefer-primordials for node polyfills
 // deno-lint-ignore-file prefer-primordials
 
-import { denoErrorToNodeError } from "ext:deno_node/internal/errors.ts";
+import {
+  denoErrorToNodeError,
+  ERR_INVALID_ARG_TYPE,
+} from "ext:deno_node/internal/errors.ts";
 import { promisify } from "ext:deno_node/internal/util.mjs";
 import { primordials } from "ext:core/mod.js";
 
@@ -379,6 +382,9 @@ export function stat(
     ? optionsOrCallback
     : { bigint: false };
 
+  if (typeof path !== "string" && !(path instanceof URL)) {
+    throw new ERR_INVALID_ARG_TYPE("path", ["string", "URL"], path);
+  }
   if (!callback) throw new Error("No callback function supplied");
 
   Deno.stat(path).then(
@@ -409,6 +415,10 @@ export function statSync(
   path: string | URL,
   options: statOptions = { bigint: false, throwIfNoEntry: true },
 ): Stats | BigIntStats | undefined {
+  if (typeof path !== "string" && !(path instanceof URL)) {
+    throw new ERR_INVALID_ARG_TYPE("path", ["string", "URL"], path);
+  }
+
   try {
     const origin = Deno.statSync(path);
     return CFISBIS(origin, options.bigint);
