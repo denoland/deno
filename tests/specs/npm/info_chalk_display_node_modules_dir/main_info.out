@@ -3,7 +3,7 @@ type: JavaScript
 dependencies: 14 unique
 size: [WILDCARD]
 
-file:///[WILDCARD]/cjs_with_deps/main.js ([WILDCARD])
+file:///[WILDCARD]/main.js ([WILDCARD])
 ├─┬ npm:/chalk@4.1.2 ([WILDCARD])
 │ ├─┬ npm:/ansi-styles@4.3.0 ([WILDCARD])
 │ │ └─┬ npm:/color-convert@2.0.1 ([WILDCARD])
