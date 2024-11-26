@@ -102,6 +102,62 @@ delete Object.prototype.__proto__;
     printStderr(`ERROR ${logSource} = ${stringifiedArgs}\n`);
   }
 
+  /**
+   * @param {ts.Expression | undefined} lit
+   * @returns {ts.ResolutionMode | undefined}
+   */
+  function getResolutionModeFromStringLit(lit) {
+    if (!lit || !ts.isStringLiteral(lit)) {
+      return undefined;
+    }
+    switch (lit.text) {
+      case "import":
+        return ts.ModuleKind.ESNext;
+      case "require":
+        return ts.ModuleKind.CommonJS;
+      default:
+        return undefined;
+    }
+  }
+
+  /**
+   * @param {ts.SourceFile} file
+   * @param {ts.StringLiteralLike} usage
+   * @param {ts.CompilerOptions} compilerOptions
+   * @returns {ts.ResolutionMode}
+   */
+  function getModeForUsageLocation(file, usage, compilerOptions) {
+    // we're a bit stricter than TypeScript in that we consider all
+    // non-type import declarations as being import declarations
+    const parent = usage.parent;
+    if (ts.isImportDeclaration(parent)) {
+      return getResolutionModeFromStringLit(
+        parent.attributes?.elements.find((e) =>
+          e.name.text === "resolution-mode"
+        )?.value,
+      ) ?? ts.ModuleKind.ESNext;
+    } else if (
+      ts.isCallExpression(parent) &&
+      parent.expression.kind === ts.SyntaxKind.ImportKeyword
+    ) {
+      const secondArg = parent.arguments[1];
+      const objArg = secondArg && ts.isObjectLiteralExpression(secondArg)
+        ? secondArg
+        : undefined;
+      const resolutionModeProp = objArg?.properties.find((e) =>
+        e.name && ts.isStringLiteral(e.name) &&
+        e.name.text === "resolution-mode"
+      );
+      return getResolutionModeFromStringLit(
+        resolutionModeProp && ts.isPropertyAssignment(resolutionModeProp)
+          ? resolutionModeProp.initializer
+          : undefined,
+      ) ?? ts.ModuleKind.ESNext;
+    } else {
+      return ts.getModeForUsageLocation(file, usage, compilerOptions);
+    }
+  }
+
   class AssertionError extends Error {
     /** @param msg {string} */
     constructor(msg) {
@@ -705,8 +761,14 @@ delete Object.prototype.__proto__;
           /** @type {[string, ts.Extension] | undefined} */
           const resolved = ops.op_resolve(
             containingFilePath,
-            isCjs,
-            [fileReference.fileName],
+            [
+              [
+                fileReference.resolutionMode == null
+                  ? isCjs
+                  : fileReference.resolutionMode === ts.ModuleKind.CommonJS,
+                fileReference.fileName,
+              ],
+            ],
           )?.[0];
           if (resolved) {
             return {
@@ -741,20 +803,26 @@ delete Object.prototype.__proto__;
       moduleLiterals,
       base,
       _redirectedReference,
-      _options,
+      compilerOptions,
       containingSourceFile,
       _reusedNames,
     ) {
-      const specifiers = moduleLiterals.map((literal) => literal.text);
+      const specifiers = moduleLiterals.map((literal) => [
+        getModeForUsageLocation(
+          containingSourceFile,
+          literal,
+          compilerOptions,
+        ) === ts.ModuleKind.CommonJS,
+        literal.text,
+      ]);
       if (logDebug) {
         debug(`host.resolveModuleNames()`);
         debug(`  base: ${base}`);
-        debug(`  specifiers: ${specifiers.join(", ")}`);
+        debug(`  specifiers: ${specifiers.map((s) => s[1]).join(", ")}`);
       }
       /** @type {Array<[string, ts.Extension] | undefined>} */
       const resolved = ops.op_resolve(
         base,
-        containingSourceFile?.impliedNodeFormat === ts.ModuleKind.CommonJS,
         specifiers,
       );
       if (resolved) {

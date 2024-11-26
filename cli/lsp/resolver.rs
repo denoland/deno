@@ -869,17 +869,6 @@ impl LspIsCjsResolver {
     }
   }
 
-  pub fn get_maybe_doc_module_kind(
-    &self,
-    specifier: &ModuleSpecifier,
-    maybe_document: Option<&Document>,
-  ) -> ResolutionMode {
-    self.get_lsp_resolution_mode(
-      specifier,
-      maybe_document.and_then(|d| d.is_script()),
-    )
-  }
-
   pub fn get_doc_resolution_mode(&self, document: &Document) -> ResolutionMode {
     self.get_lsp_resolution_mode(document.specifier(), document.is_script())
   }

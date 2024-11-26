@@ -1271,8 +1271,8 @@ impl Documents {
   /// tsc when type checking.
   pub fn resolve(
     &self,
-    // todo(THIS PR): UPDATE THIS TO HAVE A RESOLUTION MODE PER SPECIFIER!!!!
-    raw_specifiers: &[String],
+    // (is_cjs: bool, raw_specifier: String)
+    raw_specifiers: &[(bool, String)],
     referrer: &ModuleSpecifier,
     file_referrer: Option<&ModuleSpecifier>,
   ) -> Vec<Option<(ModuleSpecifier, MediaType)>> {
@@ -1282,11 +1282,12 @@ impl Documents {
       .and_then(|d| d.file_referrer())
       .or(file_referrer);
     let dependencies = referrer_doc.as_ref().map(|d| d.dependencies());
-    let resolution_mode = self
-      .is_cjs_resolver
-      .get_maybe_doc_module_kind(referrer, referrer_doc.as_deref());
     let mut results = Vec::new();
-    for raw_specifier in raw_specifiers {
+    for (is_cjs, raw_specifier) in raw_specifiers {
+      let resolution_mode = match is_cjs {
+        true => ResolutionMode::Require,
+        false => ResolutionMode::Import,
+      };
       if raw_specifier.starts_with("asset:") {
         if let Ok(specifier) = ModuleSpecifier::parse(raw_specifier) {
           let media_type = MediaType::from_specifier(&specifier);

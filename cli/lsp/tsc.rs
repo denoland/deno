@@ -4484,17 +4484,9 @@ fn op_release(
 fn op_resolve(
   state: &mut OpState,
   #[string] base: String,
-  is_base_cjs: bool,
-  #[serde] specifiers: Vec<String>,
+  #[serde] specifiers: Vec<(bool, String)>,
 ) -> Result<Vec<Option<(String, String)>>, AnyError> {
-  op_resolve_inner(
-    state,
-    ResolveArgs {
-      base,
-      is_base_cjs,
-      specifiers,
-    },
-  )
+  op_resolve_inner(state, ResolveArgs { base, specifiers })
 }
 
 struct TscRequestArray {
@@ -6435,8 +6427,7 @@ mod tests {
       &mut state,
       ResolveArgs {
         base: temp_dir.url().join("a.ts").unwrap().to_string(),
-        is_base_cjs: false,
-        specifiers: vec!["./b.ts".to_string()],
+        specifiers: vec![(false, "./b.ts".to_string())],
       },
     )
     .unwrap();

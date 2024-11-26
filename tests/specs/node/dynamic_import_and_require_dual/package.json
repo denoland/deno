@@ -1,4 +1,5 @@
 {
+  "type": "commonjs",
   "dependencies": {
     "package": "*"
   }

@@ -4,7 +4,6 @@ use crate::args::TsConfig;
 use crate::args::TypeCheckMode;
 use crate::cache::FastInsecureHasher;
 use crate::cache::ModuleInfoCache;
-use crate::graph_util::to_node_resolution_mode;
 use crate::node;
 use crate::npm::CliNpmResolver;
 use crate::resolver::CjsTracker;
@@ -704,10 +703,9 @@ pub struct ResolveArgs {
   /// The base specifier that the supplied specifier strings should be resolved
   /// relative to.
   pub base: String,
-  /// If the base is cjs.
-  pub is_base_cjs: bool,
   /// A list of specifiers that should be resolved.
-  pub specifiers: Vec<String>,
+  /// (is_cjs: bool, raw_specifier: String)
+  pub specifiers: Vec<(bool, String)>,
 }
 
 #[op2]
@@ -715,17 +713,9 @@ pub struct ResolveArgs {
 fn op_resolve(
   state: &mut OpState,
   #[string] base: String,
-  is_base_cjs: bool,
-  #[serde] specifiers: Vec<String>,
+  #[serde] specifiers: Vec<(bool, String)>,
 ) -> Result<Vec<(String, &'static str)>, AnyError> {
-  op_resolve_inner(
-    state,
-    ResolveArgs {
-      base,
-      is_base_cjs,
-      specifiers,
-    },
-  )
+  op_resolve_inner(state, ResolveArgs { base, specifiers })
 }
 
 #[inline]
@@ -736,11 +726,6 @@ fn op_resolve_inner(
   let state = state.borrow_mut::<State>();
   let mut resolved: Vec<(String, &'static str)> =
     Vec::with_capacity(args.specifiers.len());
-  let referrer_resolution_mode = if args.is_base_cjs {
-    ResolutionMode::Require
-  } else {
-    ResolutionMode::Import
-  };
   let referrer = if let Some(remapped_specifier) =
     state.remapped_specifiers.get(&args.base)
   {
@@ -753,7 +738,7 @@ fn op_resolve_inner(
     )?
   };
   let referrer_module = state.graph.get(&referrer);
-  for specifier in args.specifiers {
+  for (is_cjs, specifier) in args.specifiers {
     if specifier.starts_with("node:") {
       resolved.push((
         MISSING_DEPENDENCY_SPECIFIER.to_string(),
@@ -772,24 +757,28 @@ fn op_resolve_inner(
       .and_then(|m| m.js())
       .and_then(|m| m.dependencies_prefer_fast_check().get(&specifier))
       .and_then(|d| d.maybe_type.ok().or_else(|| d.maybe_code.ok()));
+    let resolution_mode = if is_cjs {
+      ResolutionMode::Require
+    } else {
+      ResolutionMode::Import
+    };
 
     let maybe_result = match resolved_dep {
-      Some(ResolutionResolved {
-        specifier, range, ..
-      }) => resolve_graph_specifier_types(
-        specifier,
-        &referrer,
-        range
-          .mode
-          .map(to_node_resolution_mode)
-          .unwrap_or(referrer_resolution_mode),
-        state,
-      )?,
+      Some(ResolutionResolved { specifier, .. }) => {
+        resolve_graph_specifier_types(
+          specifier,
+          &referrer,
+          // we could get this from the resolved dep, but for now assume
+          // the value resolved in TypeScript is better
+          resolution_mode,
+          state,
+        )?
+      }
       _ => {
         match resolve_non_graph_specifier_types(
           &specifier,
           &referrer,
-          referrer_resolution_mode,
+          resolution_mode,
           state,
         ) {
           Ok(maybe_result) => maybe_result,
@@ -1392,8 +1381,7 @@ mod tests {
       &mut state,
       ResolveArgs {
         base: "https://deno.land/x/a.ts".to_string(),
-        is_base_cjs: false,
-        specifiers: vec!["./b.ts".to_string()],
+        specifiers: vec![(false, "./b.ts".to_string())],
       },
     )
     .expect("should have invoked op");
@@ -1412,8 +1400,7 @@ mod tests {
       &mut state,
       ResolveArgs {
         base: "https://deno.land/x/a.ts".to_string(),
-        is_base_cjs: false,
-        specifiers: vec!["./bad.ts".to_string()],
+        specifiers: vec![(false, "./bad.ts".to_string())],
       },
     )
     .expect("should have not errored");
