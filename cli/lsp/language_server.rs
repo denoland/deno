@@ -3771,14 +3771,11 @@ impl Inner {
   fn task_definitions(&self) -> LspResult<Vec<TaskDefinition>> {
     let mut result = vec![];
     for config_file in self.config.tree.config_files() {
-      if let Some(tasks) = json!(&config_file.json.tasks).as_object() {
-        for (name, value) in tasks {
-          let Some(command) = value.as_str() else {
-            continue;
-          };
+      if let Some(tasks) = config_file.to_tasks_config().ok().flatten() {
+        for (name, def) in tasks {
           result.push(TaskDefinition {
             name: name.clone(),
-            command: command.to_string(),
+            command: def.command.clone(),
             source_uri: url_to_uri(&config_file.specifier)
               .map_err(|_| LspError::internal_error())?,
           });
