@@ -189,6 +189,7 @@ const promises = {
   appendFile: appendFilePromise,
   readFile: readFilePromise,
   watch: watchPromise,
+  sync: fsyncSync,
 };
 
 export default {

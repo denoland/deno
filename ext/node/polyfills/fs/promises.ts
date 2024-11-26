@@ -32,6 +32,6 @@ export const appendFile = fsPromises.appendFile;
 export const readFile = fsPromises.readFile;
 export const watch = fsPromises.watch;
 export const cp = fsPromises.cp;
-export const sync = fsPromises.sync;
+export const sync = fsPromises.fsyncSync;
 
 export default fsPromises;
