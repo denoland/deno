@@ -1473,7 +1473,7 @@ dependencies = [
 [[package]]
 name = "deno_core"
 version = "0.322.0"
-source = "git+https://github.com/littledivy/deno_core?rev=9561ab036587e3f26e9542c07ba0edd7310f8b32#9561ab036587e3f26e9542c07ba0edd7310f8b32"
+source = "git+https://github.com/denoland/deno_core?branch=main#2ef338dea9fefb3b1fcc39aed1d44ae21f56b20c"
 dependencies = [
  "anyhow",
  "az",
@@ -1990,7 +1990,7 @@ dependencies = [
 [[package]]
 name = "deno_ops"
 version = "0.198.0"
-source = "git+https://github.com/littledivy/deno_core?rev=9561ab036587e3f26e9542c07ba0edd7310f8b32#9561ab036587e3f26e9542c07ba0edd7310f8b32"
+source = "git+https://github.com/denoland/deno_core?branch=main#2ef338dea9fefb3b1fcc39aed1d44ae21f56b20c"
 dependencies = [
  "proc-macro-rules",
  "proc-macro2",
@@ -6672,7 +6672,7 @@ dependencies = [
 [[package]]
 name = "serde_v8"
 version = "0.231.0"
-source = "git+https://github.com/littledivy/deno_core?rev=9561ab036587e3f26e9542c07ba0edd7310f8b32#9561ab036587e3f26e9542c07ba0edd7310f8b32"
+source = "git+https://github.com/denoland/deno_core?branch=main#2ef338dea9fefb3b1fcc39aed1d44ae21f56b20c"
 dependencies = [
  "num-bigint",
  "serde",
