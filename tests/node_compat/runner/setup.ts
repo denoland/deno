@@ -11,12 +11,13 @@ import { ensureFile } from "@std/fs/ensure-file";
 import { writeAll } from "@std/io/write-all";
 import { withoutAll } from "@std/collections/without-all";
 import { relative } from "@std/path/posix/relative";
+import { version } from "./suite/node_version.ts";
 
 import { config, ignoreList } from "../common.ts";
 
 const encoder = new TextEncoder();
 
-const NODE_VERSION = config.nodeVersion;
+const NODE_VERSION = version;
 
 const NODE_IGNORED_TEST_DIRS = [
   "addons",

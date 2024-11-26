@@ -8,7 +8,7 @@ use crate::graph_container::ModuleGraphUpdatePermit;
 use deno_core::error::AnyError;
 use deno_core::futures::stream::FuturesUnordered;
 use deno_core::futures::StreamExt;
-use deno_semver::package::PackageReq;
+use deno_semver::jsr::JsrPackageReqReference;
 
 pub async fn cache_top_level_deps(
   // todo(dsherret): don't pass the factory into this function. Instead use ctor deps
@@ -56,15 +56,20 @@ pub async fn cache_top_level_deps(
       match specifier.scheme() {
         "jsr" => {
           let specifier_str = specifier.as_str();
-          let specifier_str =
-            specifier_str.strip_prefix("jsr:").unwrap_or(specifier_str);
-          if let Ok(req) = PackageReq::from_str(specifier_str) {
-            if !seen_reqs.insert(req.clone()) {
+          if let Ok(req) = JsrPackageReqReference::from_str(specifier_str) {
+            if let Some(sub_path) = req.sub_path() {
+              if sub_path.ends_with('/') {
+                continue;
+              }
+              roots.push(specifier.clone());
+              continue;
+            }
+            if !seen_reqs.insert(req.req().clone()) {
               continue;
             }
             let jsr_resolver = jsr_resolver.clone();
             info_futures.push(async move {
-              if let Some(nv) = jsr_resolver.req_to_nv(&req).await {
+              if let Some(nv) = jsr_resolver.req_to_nv(req.req()).await {
                 if let Some(info) = jsr_resolver.package_version_info(&nv).await
                 {
                   return Some((specifier.clone(), info));

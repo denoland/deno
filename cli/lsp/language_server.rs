@@ -1396,12 +1396,17 @@ impl Inner {
         .fmt_config_for_specifier(&specifier)
         .options
         .clone();
-      fmt_options.use_tabs = Some(!params.options.insert_spaces);
-      fmt_options.indent_width = Some(params.options.tab_size as u8);
       let config_data = self.config.tree.data_for_specifier(&specifier);
+      if !config_data.is_some_and(|d| d.maybe_deno_json().is_some()) {
+        fmt_options.use_tabs = Some(!params.options.insert_spaces);
+        fmt_options.indent_width = Some(params.options.tab_size as u8);
+      }
       let unstable_options = UnstableFmtOptions {
         component: config_data
           .map(|d| d.unstable.contains("fmt-component"))
+          .unwrap_or(false),
+        sql: config_data
+          .map(|d| d.unstable.contains("fmt-sql"))
           .unwrap_or(false),
       };
       let document = document.clone();
@@ -3632,9 +3637,8 @@ impl Inner {
           deno_json_cache: None,
           pkg_json_cache: None,
           workspace_cache: None,
-          config_parse_options: deno_config::deno_json::ConfigParseOptions {
-            include_task_comments: false,
-          },
+          config_parse_options:
+            deno_config::deno_json::ConfigParseOptions::default(),
           additional_config_file_names: &[],
           discover_pkg_json: !has_flag_env_var("DENO_NO_PACKAGE_JSON"),
           maybe_vendor_override: if force_global_cache {

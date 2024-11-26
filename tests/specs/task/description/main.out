@@ -1,0 +1,8 @@
+Available tasks:
+- echo_emoji
+    // This is some task
+    echo 1
+- multiline_description
+    // This is a multiline
+    // description
+    echo 2

@@ -806,3 +806,18 @@ Deno.test("Close connection", async () => {
   await server.finished;
   conn.close();
 });
+
+Deno.test("send to a closed socket", async () => {
+  const { promise, resolve } = Promise.withResolvers<void>();
+  const ws = new WebSocket("ws://localhost:4242");
+  const blob = new Blob(["foo"]);
+  ws.onerror = () => fail();
+  ws.onopen = () => {
+    ws.close();
+    ws.send(blob);
+  };
+  ws.onclose = () => {
+    resolve();
+  };
+  await promise;
+});
