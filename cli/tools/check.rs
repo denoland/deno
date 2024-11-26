@@ -9,6 +9,7 @@ use std::sync::Arc;
 use deno_ast::MediaType;
 use deno_ast::ModuleSpecifier;
 use deno_config::deno_json::get_ts_config_for_emit;
+use deno_config::glob::FilePatterns;
 use deno_config::glob::PathOrPattern;
 use deno_core::anyhow::anyhow;
 use deno_core::error::AnyError;
@@ -45,6 +46,8 @@ use crate::tsc;
 use crate::tsc::Diagnostics;
 use crate::tsc::TypeCheckingCjsTracker;
 use crate::util::extract;
+use crate::util::fs::collect_specifiers;
+use crate::util::path::is_script_ext;
 use crate::util::path::to_percent_decoded_str;
 
 pub async fn check(
@@ -69,11 +72,6 @@ pub async fn check(
           || f.starts_with("npm:")
           || f.starts_with("jsr:")
       });
-    let cwd_prefix = format!(
-      "{}{}",
-      cli_options.initial_cwd().to_string_lossy(),
-      std::path::MAIN_SEPARATOR
-    );
     // TODO(nayeemrmn): Using lint options for now. Add proper API to deno_config.
     let mut by_workspace_directory = cli_options
       .resolve_lint_options_for_members(&LintFlags {
@@ -84,34 +82,21 @@ pub async fn check(
         ..Default::default()
       })?
       .into_iter()
-      .map(|(d, o)| {
-        let files = o
-          .files
-          .include
-          .iter()
-          .flat_map(|p| {
-            p.inner().iter().flat_map(|p| match p {
-              PathOrPattern::NegatedPath(_) => None,
-              PathOrPattern::Path(p) => Some(p.to_string_lossy().to_string()),
-              PathOrPattern::Pattern(p) => {
-                // TODO(nayeemrmn): Absolute globs don't work for specifier
-                // collection, we make them relative here for now.
-                let s = p.as_str();
-                Some(s.strip_prefix(&cwd_prefix).unwrap_or(&s).to_string())
-              }
-              PathOrPattern::RemoteUrl(_) => None,
-            })
-          })
-          .collect::<Vec<_>>();
-        (d.dir_url().clone(), (Arc::new(d), files))
+      .flat_map(|(d, o)| {
+        Some((d.dir_url().clone(), (Arc::new(d), o.files.include?)))
       })
       .collect::<BTreeMap<_, _>>();
     if !remote_files.is_empty() {
       by_workspace_directory
         .entry(cli_options.start_dir.dir_url().clone())
-        .or_insert((cli_options.start_dir.clone(), vec![]))
+        .or_insert((cli_options.start_dir.clone(), Default::default()))
         .1
-        .extend(remote_files);
+        .append(
+          remote_files
+            .iter()
+            .flat_map(|s| ModuleSpecifier::parse(s).ok())
+            .map(PathOrPattern::RemoteUrl),
+        );
     }
     let all_scopes = Arc::new(
       by_workspace_directory
@@ -121,14 +106,10 @@ pub async fn check(
         .collect::<BTreeSet<_>>(),
     );
     let dir_count = by_workspace_directory.len();
+    let initial_cwd = cli_options.initial_cwd().to_path_buf();
     let mut check_errors = vec![];
     let mut found_specifiers = false;
-    for (dir_url, (workspace_directory, files)) in by_workspace_directory {
-      let check_flags = CheckFlags {
-        files,
-        doc: check_flags.doc,
-        doc_only: check_flags.doc_only,
-      };
+    for (dir_url, (workspace_directory, patterns)) in by_workspace_directory {
       let (npmrc, _) =
         discover_npmrc_from_workspace(&workspace_directory.workspace)?;
       let lockfile =
@@ -141,22 +122,29 @@ pub async fn check(
       });
       let cli_options = CliOptions::new(
         flags.clone(),
-        cli_options.initial_cwd().to_path_buf(),
+        initial_cwd.clone(),
         lockfile.map(Arc::new),
         npmrc,
         workspace_directory,
         false,
         scope_options.map(Arc::new),
       )?;
-      let factory = CliFactory::from_cli_options(Arc::new(cli_options));
-      let main_graph_container = factory.main_module_graph_container().await?;
-      let specifiers =
-        main_graph_container.collect_specifiers(&check_flags.files)?;
+      let specifiers = collect_specifiers(
+        FilePatterns {
+          include: Some(patterns),
+          exclude: cli_options.workspace().resolve_config_excludes()?,
+          base: initial_cwd.clone(),
+        },
+        cli_options.vendor_dir_path().map(ToOwned::to_owned),
+        |e| is_script_ext(e.path),
+      )?;
       if specifiers.is_empty() {
         continue;
       } else {
         found_specifiers = true;
       }
+      let factory = CliFactory::from_cli_options(Arc::new(cli_options));
+      let main_graph_container = factory.main_module_graph_container().await?;
       let specifiers_for_typecheck = if check_flags.doc || check_flags.doc_only
       {
         let file_fetcher = factory.file_fetcher()?;
@@ -174,7 +162,6 @@ pub async fn check(
             file_fetcher.insert_memory_files(snippet_file);
           }
         }
-
         specifiers_for_typecheck
       } else {
         specifiers
