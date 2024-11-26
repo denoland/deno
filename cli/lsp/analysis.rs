@@ -513,7 +513,7 @@ impl<'a> TsResponseImportMapper<'a> {
       .as_cli_resolver(Some(&self.file_referrer))
       .resolve(
         specifier_text,
-        &referrer,
+        referrer,
         deno_graph::Position::zeroed(),
         resolution_mode,
         NodeResolutionKind::Types,
