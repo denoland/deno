@@ -1396,7 +1396,7 @@ where
     .read_text_file_lossy_sync(&path, Some(&mut access_check))
     .map_err(|error| map_permission_error("readfile", error, &path))?;
 
-  Ok(str)
+  Ok(str.to_string())
 }
 
 #[op2(async, stack_trace)]

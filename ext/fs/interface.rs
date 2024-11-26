@@ -327,9 +327,9 @@ pub trait FileSystem: std::fmt::Debug + MaybeSend + MaybeSync {
     &self,
     path: &Path,
     access_check: Option<AccessCheckCb>,
-  ) -> FsResult<String> {
+  ) -> FsResult<Cow<'static, str>> {
     let buf = self.read_file_sync(path, access_check)?;
-    Ok(string_from_utf8_lossy(buf))
+    Ok(string_from_utf8_lossy(buf).into())
   }
   async fn read_text_file_lossy_async<'a>(
     &'a self,
