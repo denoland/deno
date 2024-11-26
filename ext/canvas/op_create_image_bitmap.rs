@@ -88,7 +88,6 @@ fn decode_bitmap_data(
           CanvasError::InvalidImage(error.to_string())
         }
         let (image, orientation, icc_profile) = match mime_type {
-          // Should we support the "image/apng" MIME type here?
           MimeType::Png => {
             let mut decoder: PngDecoder<ImageDecoderFromReaderType> =
               ImageDecoderFromReader::to_decoder(
