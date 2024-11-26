@@ -169,7 +169,7 @@ pub async fn get_import_completions(
   let file_referrer = document.file_referrer();
   let (text, _, graph_range) = document.get_maybe_dependency(position)?;
   let resolution_mode = graph_range
-    .mode
+    .resolution_mode
     .map(to_node_resolution_mode)
     .unwrap_or_else(|| is_cjs_resolver.get_doc_resolution_mode(&document));
   let range = to_narrow_lsp_range(document.text_info(), graph_range.range);

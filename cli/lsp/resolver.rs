@@ -924,7 +924,7 @@ impl<'a> deno_graph::source::Resolver for SingleReferrerGraphResolver<'a> {
       &referrer_range.specifier,
       referrer_range.range.start,
       referrer_range
-        .mode
+        .resolution_mode
         .map(to_node_resolution_mode)
         .unwrap_or(self.module_resolution_mode),
       to_node_resolution_kind(resolution_kind),

@@ -1202,7 +1202,7 @@ impl<'a> deno_graph::source::Resolver for CliGraphResolver<'a> {
       &referrer_range.specifier,
       referrer_range.range.start,
       referrer_range
-        .mode
+        .resolution_mode
         .map(to_node_resolution_mode)
         .unwrap_or_else(|| {
           self
