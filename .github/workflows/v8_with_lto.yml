@@ -1,0 +1,174 @@
+name: v8_with_lto
+
+on: workflow_dispatch
+
+permissions: write-all
+
+jobs:
+  build:
+    name: ${{ matrix.config.variant }} ${{ matrix.config.target }}
+    runs-on: ${{ matrix.config.os }}
+    timeout-minutes: 180
+    strategy:
+      # Always run main branch builds to completion. This allows the cache to
+      # stay mostly up-to-date in situations where a single job fails due to
+      # e.g. a flaky test.
+      # Don't fast-fail on tag build because publishing binaries shouldn't be
+      # prevented if 'cargo publish' fails (which can be a false negative).
+      fail-fast:
+        ${{ (github.event_name == 'pull_request' || (github.ref !=
+        'refs/heads/main' && !startsWith(github.ref, 'refs/tags/'))) &&
+        !contains(github.event.pull_request.labels.*.name, 'no-fail-fast') }}
+      matrix:
+        config:
+          - os: macos-13
+            target: x86_64-apple-darwin
+            variant: release
+            cargo: cargo
+
+          - os: macos-14
+            target: aarch64-apple-darwin
+            variant: release
+            cargo: cargo
+
+          - os: ${{ github.repository == 'denoland/deno' && 'ubuntu-22.04-xl' || 'ubuntu-22.04' }}
+            target: x86_64-unknown-linux-gnu
+            variant: release
+            cargo: cargo
+
+          - os: ${{ github.repository == 'denoland/deno' && 'windows-2022-xxl' || 'windows-2022' }}
+            target: x86_64-pc-windows-msvc
+            variant: release
+            cargo: cargo
+
+          - os: ${{ github.repository == 'denoland/deno' && 'ubuntu-22.04-xl' || 'ubuntu-22.04' }}
+            target: aarch64-unknown-linux-gnu
+            variant: release
+            cargo: cargo
+
+    env:
+      V8_FROM_SOURCE: true
+      CLANG_BASE_PATH: /usr
+      V8_FROM_SOURCE: 1
+      EXTRA_GN_ARGS: 'is_official_build=true chrome_pgo_phase=0 is_cfi=false clang_version=19'
+      CARGO_VARIANT_FLAG: ${{ matrix.config.variant == 'release' && '--release' || '' }}
+      LIB_NAME: ${{ contains(matrix.config.target, 'windows') && 'rusty_v8' || 'librusty_v8' }}
+      LIB_EXT: ${{ contains(matrix.config.target, 'windows') && 'lib' || 'a' }}
+      RUSTFLAGS: -D warnings
+
+    steps:
+      - name: Configure git
+        run: git config --global core.symlinks true
+
+      - name: Clone repository
+        uses: actions/checkout@v4
+        with:
+          repository: 'denoland/rusty_v8'
+          ref: 'v130.0.1'
+          fetch-depth: 10
+          submodules: recursive
+
+      - name: Install rust
+        uses: dsherret/rust-toolchain-file@v1
+
+      - name: Install python
+        uses: actions/setup-python@v5
+        with:
+          python-version: 3.11.x
+          architecture: x64
+
+      - name: Install cross compilation toolchain
+        if: matrix.config.target == 'aarch64-unknown-linux-gnu'
+        run: |
+          rustup target add aarch64-unknown-linux-gnu
+
+          sudo apt update
+          sudo apt install -yq --no-install-suggests --no-install-recommends \
+            binfmt-support g++-10-aarch64-linux-gnu g++-10-multilib \
+            gcc-10-aarch64-linux-gnu libc6-arm64-cross qemu qemu-user \
+            qemu-user-binfmt
+
+          sudo ln -s /usr/aarch64-linux-gnu/lib/ld-linux-aarch64.so.1 \
+                     /lib/ld-linux-aarch64.so.1
+
+          echo "CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER=/usr/bin/aarch64-linux-gnu-gcc-10" >> ${GITHUB_ENV}
+          echo "QEMU_LD_PREFIX=/usr/aarch64-linux-gnu" >> ${GITHUB_ENV}
+
+      - name: Write git_submodule_status.txt
+        run: git submodule status --recursive > git_submodule_status.txt
+
+      - name: Cache
+        uses: actions/cache@v4
+        with:
+          # Note: rusty_v8 targets always get get rebuilt, and their outputs
+          # ('librusty_v8.rlib', the whole 'gn_out' directory, etc.) can be
+          # quite big, so we cache only those subdirectories of
+          # target/{debug|release} that contain the build output for crates that
+          # come from the registry. By additionally saving the sccache cache
+          # directory it's still possible to build v8 fast.
+          path: |-
+            target/sccache
+            target/*/.*
+            target/*/build
+            target/*/deps
+          key:
+            cargo-${{ matrix.config.target }}-${{ matrix.config.variant }}-${{ hashFiles('Cargo.lock', 'build.rs', 'git_submodule_status.txt') }}
+          restore-keys:
+            cargo-${{ matrix.config.target }}-${{ matrix.config.variant }}-
+
+      - name: Install and start sccache
+        shell: pwsh
+        env:
+          SCCACHE_DIR: ${{ github.workspace }}/target/sccache
+          SCCACHE_CACHE_SIZE: 128M
+          SCCACHE_IDLE_TIMEOUT: 0
+        run: |
+          $version = "0.2.12"
+          $platform =
+            @{ "macOS"   = "x86_64-apple-darwin"
+               "Linux"   = "x86_64-unknown-linux-musl"
+               "Windows" = "x86_64-pc-windows-msvc"
+             }.${{ runner.os }}
+          $basename = "sccache-$version-$platform"
+          $url = "https://github.com/mozilla/sccache/releases/download/" +
+                 "$version/$basename.tar.gz"
+          cd ~
+          curl -LO $url
+          tar -xzvf "$basename.tar.gz"
+          . $basename/sccache --start-server
+          echo "$(pwd)/$basename" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+
+      - name: Install Clang
+        if: startsWith(matrix.config.os, 'ubuntu')
+        run: |
+          echo "deb http://apt.llvm.org/jammy/ llvm-toolchain-jammy-19 main" | sudo dd of=/etc/apt/sources.list.d/llvm-toolchain-jammy-19.list
+          curl https://apt.llvm.org/llvm-snapshot.gpg.key | gpg --dearmor | sudo dd of=/etc/apt/trusted.gpg.d/llvm-snapshot.gpg
+          sudo apt-get update
+          sudo apt-get -qq remove 'clang-*'
+          sudo apt-get install lld-19 clang-19 clang-tools-19 clang-tidy-19 clang-format-19 -y
+
+      - name: Test
+        env:
+          SCCACHE_IDLE_TIMEOUT: 0
+        if: matrix.config.variant == 'debug' || matrix.config.variant == 'release'
+        run:
+          ${{ matrix.config.cargo }} build -vv --release --locked ${{ env.CARGO_VARIANT_FLAG }} --target ${{ matrix.config.target }}
+
+      - name: Prepare binary publish
+        if: matrix.config.variant == 'debug' || matrix.config.variant == 'release'
+        run: |
+          gzip -9c target/${{ matrix.config.target }}/${{ matrix.config.variant }}/gn_out/obj/${{ env.LIB_NAME }}.${{ env.LIB_EXT }} > target/${{ env.LIB_NAME }}_${{ matrix.config.variant }}_${{ matrix.config.target }}.${{ env.LIB_EXT }}.gz
+          ls -l target/${{ env.LIB_NAME }}_${{ matrix.config.variant }}_${{ matrix.config.target }}.${{ env.LIB_EXT }}.gz
+
+          cp target/${{ matrix.config.target }}/${{ matrix.config.variant}}/gn_out/src_binding.rs target/src_binding_${{ matrix.config.variant }}_${{ matrix.config.target }}.rs
+          ls -l target/src_binding_${{ matrix.config.variant }}_${{ matrix.config.target }}.rs
+
+      - name: Binary publish
+        uses: softprops/action-gh-release@v0.1.15
+        if: github.repository == 'denoland/rusty_v8'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          files: |
+            target/${{ env.LIB_NAME }}_${{ matrix.config.variant }}_${{ matrix.config.target }}.${{ env.LIB_EXT }}.gz
+            target/src_binding_${{ matrix.config.variant }}_${{ matrix.config.target }}.rs
