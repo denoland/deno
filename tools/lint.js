@@ -298,10 +298,12 @@ async function ensureNoUnusedOutFiles() {
     }
   }
 
-  if (outFilePaths.size > 0) {
-    for (const file of outFilePaths) {
+  const notFoundPaths = Array.from(outFilePaths);
+  if (notFoundPaths.size > 0) {
+    notFoundPaths.sort(); // be deterministic
+    for (const file of notFoundPaths) {
       console.error(`Unreferenced .out file: ${file}`);
     }
-    throw new Error(`${outFilePaths.size} unreferenced .out files`);
+    throw new Error(`${notFoundPaths.size} unreferenced .out files`);
   }
 }
