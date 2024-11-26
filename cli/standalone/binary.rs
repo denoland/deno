@@ -4,6 +4,7 @@ use std::borrow::Cow;
 use std::collections::BTreeMap;
 use std::collections::HashMap;
 use std::collections::VecDeque;
+use std::env;
 use std::env::current_exe;
 use std::ffi::OsString;
 use std::fs;
@@ -15,6 +16,7 @@ use std::io::Seek;
 use std::io::SeekFrom;
 use std::io::Write;
 use std::ops::Range;
+use std::path::Component;
 use std::path::Path;
 use std::path::PathBuf;
 use std::process::Command;
@@ -457,7 +459,7 @@ impl<'a> DenoCompileBinaryWriter<'a> {
     //
     // Phase 2 of the 'min sized' deno compile RFC talks
     // about adding this as a flag.
-    if let Some(path) = std::env::var_os("DENORT_BIN") {
+    if let Some(path) = get_dev_binary_path() {
       return std::fs::read(&path).with_context(|| {
         format!("Could not find denort at '{}'", path.to_string_lossy())
       });
@@ -906,6 +908,31 @@ impl<'a> DenoCompileBinaryWriter<'a> {
       }
     }
   }
+}
+
+fn get_denort_path(deno_exe: PathBuf) -> Option<OsString> {
+  let mut denort = deno_exe;
+  denort.set_file_name(if cfg!(windows) {
+    "denort.exe"
+  } else {
+    "denort"
+  });
+  denort.exists().then(|| denort.into_os_string())
+}
+
+fn get_dev_binary_path() -> Option<OsString> {
+  env::var_os("DENORT_BIN").or_else(|| {
+    env::current_exe().ok().and_then(|exec_path| {
+      if exec_path
+        .components()
+        .any(|component| component == Component::Normal("target".as_ref()))
+      {
+        get_denort_path(exec_path)
+      } else {
+        None
+      }
+    })
+  })
 }
 
 /// This function returns the environment variables specified
