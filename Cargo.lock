@@ -799,7 +799,7 @@ version = "0.0.0"
 dependencies = [
  "bytes",
  "chrono",
- "deno_ast",
+ "deno_ast 0.43.3",
  "deno_bench_util",
  "deno_cache_dir",
  "deno_core",
@@ -1217,13 +1217,13 @@ dependencies = [
  "console_static_text",
  "dashmap",
  "data-encoding",
- "deno_ast",
+ "deno_ast 0.43.3",
  "deno_bench_util",
  "deno_cache_dir",
  "deno_config",
  "deno_core",
  "deno_doc",
- "deno_graph",
+ "deno_graph 0.86.1",
  "deno_lint",
  "deno_lockfile",
  "deno_npm",
@@ -1365,6 +1365,48 @@ dependencies = [
  "swc_visit_macros",
  "text_lines",
  "thiserror 1.0.64",
+ "unicode-width",
+ "url",
+]
+
+[[package]]
+name = "deno_ast"
+version = "0.44.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "eebc7aaabfdb3ddcad32aee1b62d250149dc8b35dfbdccbb125df2bdc62da952"
+dependencies = [
+ "base64 0.21.7",
+ "deno_error",
+ "deno_media_type",
+ "deno_terminal 0.2.0",
+ "dprint-swc-ext",
+ "once_cell",
+ "percent-encoding",
+ "serde",
+ "sourcemap 9.0.0",
+ "swc_atoms",
+ "swc_common",
+ "swc_config",
+ "swc_config_macro",
+ "swc_ecma_ast",
+ "swc_ecma_codegen",
+ "swc_ecma_codegen_macros",
+ "swc_ecma_loader",
+ "swc_ecma_parser",
+ "swc_ecma_transforms_base",
+ "swc_ecma_transforms_classes",
+ "swc_ecma_transforms_macros",
+ "swc_ecma_transforms_proposal",
+ "swc_ecma_transforms_react",
+ "swc_ecma_transforms_typescript",
+ "swc_ecma_utils",
+ "swc_ecma_visit",
+ "swc_eq_ignore_macros",
+ "swc_macros_common",
+ "swc_visit",
+ "swc_visit_macros",
+ "text_lines",
+ "thiserror 2.0.3",
  "unicode-width",
  "url",
 ]
@@ -1564,8 +1606,8 @@ dependencies = [
  "anyhow",
  "cfg-if",
  "comrak",
- "deno_ast",
- "deno_graph",
+ "deno_ast 0.43.3",
+ "deno_graph 0.85.1",
  "deno_path_util",
  "futures",
  "handlebars",
@@ -1694,7 +1736,7 @@ dependencies = [
  "anyhow",
  "async-trait",
  "data-url",
- "deno_ast",
+ "deno_ast 0.43.3",
  "deno_semver 0.5.16",
  "deno_unsync",
  "encoding_rs",
@@ -1710,6 +1752,35 @@ dependencies = [
  "serde_json",
  "sha2",
  "thiserror 1.0.64",
+ "url",
+ "wasm_dep_analyzer",
+]
+
+[[package]]
+name = "deno_graph"
+version = "0.86.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "471480f52e7aa2b04d96325aa0cbfe9847d93fd206f1ec6ef867c3929c328f92"
+dependencies = [
+ "anyhow",
+ "async-trait",
+ "data-url",
+ "deno_ast 0.44.0",
+ "deno_semver 0.6.0",
+ "deno_unsync",
+ "encoding_rs",
+ "futures",
+ "import_map",
+ "indexmap 2.3.0",
+ "log",
+ "monch",
+ "once_cell",
+ "parking_lot",
+ "regex",
+ "serde",
+ "serde_json",
+ "sha2",
+ "thiserror 2.0.3",
  "twox-hash",
  "url",
  "wasm_dep_analyzer",
@@ -1814,7 +1885,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "bb994e6d1b18223df0a756c7948143b35682941d615edffef60d5b38822f38ac"
 dependencies = [
  "anyhow",
- "deno_ast",
+ "deno_ast 0.43.3",
  "derive_more",
  "if_chain",
  "log",
@@ -1827,14 +1898,14 @@ dependencies = [
 
 [[package]]
 name = "deno_lockfile"
-version = "0.23.1"
+version = "0.23.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "579117d5815aa9bae0212637d6f4d5f45f9649bb2c8988dca434077545535039"
+checksum = "559c19feb00af0c34f0bd4a20e56e12463fafd5c5069d6005f3ce33008027eea"
 dependencies = [
- "deno_semver 0.5.16",
+ "deno_semver 0.6.0",
  "serde",
  "serde_json",
- "thiserror 1.0.64",
+ "thiserror 2.0.3",
 ]
 
 [[package]]
@@ -1987,20 +2058,20 @@ dependencies = [
 
 [[package]]
 name = "deno_npm"
-version = "0.25.4"
+version = "0.25.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e6b4dc4a9f1cff63d5638e7d93042f24f46300d1cc77b86f3caaa699a7ddccf7"
+checksum = "89ded7af9db5d9f2986a739d1b5fbe1c57f498e4f996ae4114728e7c6dad213f"
 dependencies = [
  "anyhow",
  "async-trait",
  "deno_lockfile",
- "deno_semver 0.5.16",
+ "deno_semver 0.6.0",
  "futures",
  "log",
  "monch",
  "serde",
  "serde_json",
- "thiserror 1.0.64",
+ "thiserror 2.0.3",
  "url",
 ]
 
@@ -2090,7 +2161,7 @@ version = "0.188.0"
 dependencies = [
  "async-trait",
  "color-print",
- "deno_ast",
+ "deno_ast 0.43.3",
  "deno_broadcast_channel",
  "deno_cache",
  "deno_canvas",
@@ -2726,7 +2797,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3ff29fd136541e59d51946f0d2d353fefc886776f61a799ebfb5838b06cef13b"
 dependencies = [
  "anyhow",
- "deno_ast",
+ "deno_ast 0.43.3",
  "dprint-core",
  "dprint-core-macros",
  "percent-encoding",
