@@ -699,11 +699,15 @@ class GPUSupportedLimits {
   }
   get maxDynamicUniformBuffersPerPipelineLayout() {
     webidl.assertBranded(this, GPUSupportedLimitsPrototype);
-    return normalizeLimit(this[_limits].maxDynamicUniformBuffersPerPipelineLayout);
+    return normalizeLimit(
+      this[_limits].maxDynamicUniformBuffersPerPipelineLayout,
+    );
   }
   get maxDynamicStorageBuffersPerPipelineLayout() {
     webidl.assertBranded(this, GPUSupportedLimitsPrototype);
-    return normalizeLimit(this[_limits].maxDynamicStorageBuffersPerPipelineLayout);
+    return normalizeLimit(
+      this[_limits].maxDynamicStorageBuffersPerPipelineLayout,
+    );
   }
   get maxSampledTexturesPerShaderStage() {
     webidl.assertBranded(this, GPUSupportedLimitsPrototype);
