@@ -10,7 +10,7 @@
 /// <reference path="./lib.deno_fetch.d.ts" />
 /// <reference lib="esnext" />
 
-import { core, internals, primordials } from "ext:core/mod.js";
+import { core, primordials } from "ext:core/mod.js";
 import {
   op_fetch,
   op_fetch_promise_is_settled,
@@ -32,7 +32,6 @@ const {
   SafePromisePrototypeFinally,
   String,
   StringPrototypeEndsWith,
-  StringPrototypeSlice,
   StringPrototypeStartsWith,
   StringPrototypeToLowerCase,
   TypeError,
@@ -59,6 +58,17 @@ import {
   toInnerResponse,
 } from "ext:deno_fetch/23_response.js";
 import * as abortSignal from "ext:deno_web/03_abort_signal.js";
+import {
+  endSpan,
+  enterSpan,
+  exitSpan,
+  Span,
+  TRACING_ENABLED,
+} from "ext:deno_telemetry/telemetry.ts";
+import {
+  updateSpanFromRequest,
+  updateSpanFromResponse,
+} from "ext:deno_telemetry/util.ts";
 
 const REQUEST_BODY_HEADER_NAMES = [
   "content-encoding",
@@ -343,9 +353,9 @@ function httpRedirectFetch(request, response, terminator) {
 function fetch(input, init = { __proto__: null }) {
   let span;
   try {
-    if (internals.telemetry?.tracingEnabled) {
-      span = new internals.telemetry.Span("fetch", { kind: 2 });
-      internals.telemetry.enterSpan(span);
+    if (TRACING_ENABLED) {
+      span = new Span("fetch", { kind: 2 });
+      enterSpan(span);
     }
 
     // There is an async dispatch later that causes a stack trace disconnect.
@@ -361,16 +371,7 @@ function fetch(input, init = { __proto__: null }) {
       const requestObject = new Request(input, init);
 
       if (span) {
-        span.updateName(requestObject.method);
-        span.setAttribute("http.request.method", requestObject.method);
-        const url = new URL(requestObject.url);
-        span.setAttribute("url.full", requestObject.url);
-        span.setAttribute(
-          "url.scheme",
-          StringPrototypeSlice(url.protocol, 0, -1),
-        );
-        span.setAttribute("url.path", url.pathname);
-        span.setAttribute("url.query", StringPrototypeSlice(url.search, 1));
+        updateSpanFromRequest(span, requestObject);
       }
 
       // 3.
@@ -432,10 +433,7 @@ function fetch(input, init = { __proto__: null }) {
             responseObject = fromInnerResponse(response, "immutable");
 
             if (span) {
-              span.setAttribute(
-                "http.response.status_code",
-                String(responseObject.status),
-              );
+              updateSpanFromResponse(span, responseObject);
             }
 
             resolve(responseObject);
@@ -457,7 +455,7 @@ function fetch(input, init = { __proto__: null }) {
           return result;
         } finally {
           if (span) {
-            internals.telemetry.endSpan(span);
+            endSpan(span);
           }
         }
       })();
@@ -471,18 +469,18 @@ function fetch(input, init = { __proto__: null }) {
       // XXX: This should always be true, otherwise `opPromise` would be present.
       if (op_fetch_promise_is_settled(result)) {
         // It's already settled.
-        internals.telemetry.endSpan(span);
+        endSpan(span);
       } else {
         // Not settled yet, we can return a new wrapper promise.
         return SafePromisePrototypeFinally(result, () => {
-          internals.telemetry.endSpan(span);
+          endSpan(span);
         });
       }
     }
     return result;
   } finally {
     if (span) {
-      internals.telemetry.exitSpan(span);
+      exitSpan(span);
     }
   }
 }

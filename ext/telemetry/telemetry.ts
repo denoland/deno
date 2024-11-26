@@ -1,6 +1,6 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
-import { core, internals, primordials } from "ext:core/mod.js";
+import { core, primordials } from "ext:core/mod.js";
 import {
   op_crypto_get_random_values,
   op_otel_instrumentation_scope_create_and_enter,
@@ -38,7 +38,7 @@ const {
 } = primordials;
 const { AsyncVariable, setAsyncContext } = core;
 
-let TRACING_ENABLED = false;
+export let TRACING_ENABLED = false;
 let DETERMINISTIC = false;
 
 // Note: These start at 0 in the JS library,
@@ -708,13 +708,4 @@ export function bootstrap(
 export const telemetry = {
   SpanExporter,
   ContextManager,
-};
-internals.telemetry = {
-  Span,
-  enterSpan,
-  exitSpan,
-  endSpan,
-  get tracingEnabled() {
-    return TRACING_ENABLED;
-  },
 };
