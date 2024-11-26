@@ -36,7 +36,7 @@ use deno_path_util::normalize_path;
 use deno_path_util::url_to_file_path;
 use deno_runtime::deno_permissions::PermissionsOptions;
 use deno_runtime::deno_permissions::SysDescriptor;
-use deno_runtime::ops::otel::OtelConfig;
+use deno_telemetry::OtelConfig;
 use log::debug;
 use log::Level;
 use serde::Deserialize;
@@ -2662,7 +2662,7 @@ By default, outdated dependencies are only displayed.
 Display outdated dependencies:
   <p(245)>deno outdated</>
   <p(245)>deno outdated --compatible</>
-  
+
 Update dependencies:
   <p(245)>deno outdated --update</>
   <p(245)>deno outdated --update --latest</>
@@ -3047,7 +3047,7 @@ fn task_subcommand() -> Command {
 
 List all available tasks:
   <p(245)>deno task</>
-  
+
 Evaluate a task from string
   <p(245)>deno task --eval \"echo $(pwd)\"</>"
     ),
