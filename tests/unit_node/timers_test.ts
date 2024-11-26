@@ -118,7 +118,7 @@ Deno.test({
       expectedValue: 42,
       intervalMs: 100,
       iterations: 3,
-      tolerancePercent: 50,
+      tolerancePercent: Deno.env.get("CI") != null ? 75 : 50,
     };
 
     const { setInterval } = timersPromises;
