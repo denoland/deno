@@ -293,7 +293,7 @@ async function ensureNoUnusedOutFiles() {
       try {
         Deno.statSync(outFile.path.slice(0, -extname(outFile.path).length));
         return false;
-      } catch (e) {
+      } catch (_) {
         return true;
       }
     });
