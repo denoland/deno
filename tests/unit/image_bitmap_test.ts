@@ -21,6 +21,21 @@ Deno.test(async function imageBitmapDirect() {
   );
 });
 
+Deno.test(async function imageBitmapRecivesImageBitmap() {
+  const imageData = new Blob(
+    [await Deno.readFile(`${prefix}/1x1-red16.png`)],
+    { type: "image/png" },
+  );
+  const imageBitmap1 = await createImageBitmap(imageData);
+  const imageBitmap2 = await createImageBitmap(imageBitmap1);
+  assertEquals(
+    // @ts-ignore: Deno[Deno.internal].core allowed
+    Deno[Deno.internal].getBitmapData(imageBitmap1),
+    // @ts-ignore: Deno[Deno.internal].core allowed
+    Deno[Deno.internal].getBitmapData(imageBitmap2),
+  );
+});
+
 Deno.test(async function imageBitmapCrop() {
   const data = generateNumberedData(3 * 3);
   const imageData = new ImageData(data, 3, 3);
@@ -39,8 +54,8 @@ Deno.test(async function imageBitmapCropPartialNegative() {
   // @ts-ignore: Deno[Deno.internal].core allowed
   // deno-fmt-ignore
   assertEquals(Deno[Deno.internal].getBitmapData(imageBitmap), new Uint8Array([
-    0, 0, 0, 0,   0, 0, 0, 0,
-    0, 0, 0, 0,   1, 0, 0, 1
+    0, 0, 0, 0, 0, 0, 0, 0,
+    0, 0, 0, 0, 1, 0, 0, 1
   ]));
 });
 
@@ -51,11 +66,11 @@ Deno.test(async function imageBitmapCropGreater() {
   // @ts-ignore: Deno[Deno.internal].core allowed
   // deno-fmt-ignore
   assertEquals(Deno[Deno.internal].getBitmapData(imageBitmap), new Uint8Array([
-    0, 0, 0, 0,   0, 0, 0, 0,   0, 0, 0, 0,   0, 0, 0, 0,   0, 0, 0, 0,
-    0, 0, 0, 0,   1, 0, 0, 1,   2, 0, 0, 1,   3, 0, 0, 1,   0, 0, 0, 0,
-    0, 0, 0, 0,   4, 0, 0, 1,   5, 0, 0, 1,   6, 0, 0, 1,   0, 0, 0, 0,
-    0, 0, 0, 0,   7, 0, 0, 1,   8, 0, 0, 1,   9, 0, 0, 1,   0, 0, 0, 0,
-    0, 0, 0, 0,   0, 0, 0, 0,   0, 0, 0, 0,   0, 0, 0, 0,   0, 0, 0, 0,
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    0, 0, 0, 0, 1, 0, 0, 1, 2, 0, 0, 1, 3, 0, 0, 1, 0, 0, 0, 0,
+    0, 0, 0, 0, 4, 0, 0, 1, 5, 0, 0, 1, 6, 0, 0, 1, 0, 0, 0, 0,
+    0, 0, 0, 0, 7, 0, 0, 1, 8, 0, 0, 1, 9, 0, 0, 1, 0, 0, 0, 0,
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
   ]));
 });
 
@@ -70,11 +85,11 @@ Deno.test(async function imageBitmapScale() {
   // @ts-ignore: Deno[Deno.internal].core allowed
   // deno-fmt-ignore
   assertEquals(Deno[Deno.internal].getBitmapData(imageBitmap), new Uint8Array([
-    1, 0, 0, 1,   1, 0, 0, 1,   2, 0, 0, 1,   3, 0, 0, 1,   3, 0, 0, 1,
-    1, 0, 0, 1,   1, 0, 0, 1,   2, 0, 0, 1,   3, 0, 0, 1,   3, 0, 0, 1,
-    1, 0, 0, 1,   1, 0, 0, 1,   2, 0, 0, 1,   3, 0, 0, 1,   3, 0, 0, 1,
-    1, 0, 0, 1,   1, 0, 0, 1,   2, 0, 0, 1,   3, 0, 0, 1,   3, 0, 0, 1,
-    1, 0, 0, 1,   1, 0, 0, 1,   2, 0, 0, 1,   3, 0, 0, 1,   3, 0, 0, 1
+    1, 0, 0, 1, 1, 0, 0, 1, 2, 0, 0, 1, 3, 0, 0, 1, 3, 0, 0, 1,
+    1, 0, 0, 1, 1, 0, 0, 1, 2, 0, 0, 1, 3, 0, 0, 1, 3, 0, 0, 1,
+    1, 0, 0, 1, 1, 0, 0, 1, 2, 0, 0, 1, 3, 0, 0, 1, 3, 0, 0, 1,
+    1, 0, 0, 1, 1, 0, 0, 1, 2, 0, 0, 1, 3, 0, 0, 1, 3, 0, 0, 1,
+    1, 0, 0, 1, 1, 0, 0, 1, 2, 0, 0, 1, 3, 0, 0, 1, 3, 0, 0, 1
   ]));
 });
 
@@ -181,8 +196,8 @@ Deno.test("imageBitmapPremultiplyAlpha", async (t) => {
     // @ts-ignore: Deno[Deno.internal].core allowed
     // deno-fmt-ignore
     assertEquals(Deno[Deno.internal].getBitmapData(imageBitmap), new Uint8Array([
-      255, 0, 0, 255,   0, 255, 0, 255,
-      0, 0, 255, 255,   255, 0, 0, 127
+      255, 0, 0, 255, 0, 255, 0, 255,
+      0, 0, 255, 255, 255, 0, 0, 127
     ]));
   });
 });
@@ -211,8 +226,8 @@ Deno.test("imageBitmapFromBlob", async (t) => {
       new Uint8Array(
         [
           255, 255, // R
-            0,   0, // G
-            0,   0, // B
+          0, 0, // G
+          0, 0, // B
           255, 255  // A
         ]
       )

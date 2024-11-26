@@ -166,6 +166,7 @@ function createImageBitmap(
   const imageBitmapSources = [
     "Blob",
     "ImageData",
+    "ImageBitmap",
   ];
 
   // Overload: createImageBitmap(image [, options ])
@@ -220,7 +221,11 @@ function createImageBitmap(
   // 3.
   const isBlob = ObjectPrototypeIsPrototypeOf(BlobPrototype, image);
   const isImageData = ObjectPrototypeIsPrototypeOf(ImageDataPrototype, image);
-  if (!isBlob && !isImageData) {
+  const isImageBitmap = ObjectPrototypeIsPrototypeOf(
+    ImageBitmapPrototype,
+    image,
+  );
+  if (!isBlob && !isImageData && !isImageBitmap) {
     return PromiseReject(
       new DOMException(
         `${prefix}: The provided value for 'image' is not of type '(${
@@ -279,6 +284,11 @@ function createImageBitmap(
       height = image[_height];
       imageBitmapSource = 1;
       buf = new Uint8Array(TypedArrayPrototypeGetBuffer(image[_data]));
+    } else if (isImageBitmap) {
+      width = image[_width];
+      height = image[_height];
+      imageBitmapSource = 2;
+      buf = new Uint8Array(TypedArrayPrototypeGetBuffer(image[_bitmapData]));
     }
 
     // If those options are not provided, assign 0 to mean undefined(None).

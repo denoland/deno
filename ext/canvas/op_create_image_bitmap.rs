@@ -19,6 +19,7 @@ use image::DynamicImage;
 use image::ImageDecoder;
 use image::RgbaImage;
 
+use crate::image_ops::create_image_from_raw_bytes;
 use crate::image_ops::premultiply_alpha as process_premultiply_alpha;
 use crate::image_ops::to_srgb_from_icc_profile;
 use crate::image_ops::unpremultiply_alpha;
@@ -28,6 +29,7 @@ use crate::CanvasError;
 enum ImageBitmapSource {
   Blob,
   ImageData,
+  ImageBitmap,
 }
 
 #[derive(Debug, PartialEq)]
@@ -193,6 +195,11 @@ fn decode_bitmap_data(
 
         (image, width, height, None, None)
       }
+      ImageBitmapSource::ImageBitmap => {
+        let image = create_image_from_raw_bytes(width, height, buf)?;
+
+        (image, width, height, None, None)
+      }
     };
 
   Ok((image, width, height, orientation, icc_profile))
@@ -326,6 +333,7 @@ fn parse_args(
   let image_bitmap_source = match image_bitmap_source {
     0 => ImageBitmapSource::Blob,
     1 => ImageBitmapSource::ImageData,
+    2 => ImageBitmapSource::ImageBitmap,
     _ => unreachable!(),
   };
   let mime_type = match mime_type {
@@ -502,10 +510,12 @@ pub(super) fn op_create_image_bitmap(
         ImageOrientation::FromImage => image,
       }
     }
-    ImageBitmapSource::ImageData => match image_orientation {
-      ImageOrientation::FlipY => image.flipv(),
-      ImageOrientation::FromImage => image,
-    },
+    ImageBitmapSource::ImageData | ImageBitmapSource::ImageBitmap => {
+      match image_orientation {
+        ImageOrientation::FlipY => image.flipv(),
+        ImageOrientation::FromImage => image,
+      }
+    }
   };
 
   // 9.

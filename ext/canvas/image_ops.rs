@@ -478,6 +478,97 @@ pub(crate) fn to_srgb_from_icc_profile(
   }
 }
 
+/// Create an image buffer from raw bytes.
+fn process_image_buffer_from_raw_bytes<P, S>(
+  width: u32,
+  height: u32,
+  buffer: &[u8],
+  bytes_per_pixel: usize,
+) -> ImageBuffer<P, Vec<S>>
+where
+  P: Pixel<Subpixel = S> + SliceToPixel + 'static,
+  S: Primitive + 'static,
+{
+  let mut out = ImageBuffer::new(width, height);
+  for (index, buffer) in buffer.chunks_exact(bytes_per_pixel).enumerate() {
+    let pixel = P::slice_to_pixel(buffer);
+
+    out.put_pixel(index as u32, index as u32, pixel);
+  }
+
+  out
+}
+
+pub(crate) fn create_image_from_raw_bytes(
+  width: u32,
+  height: u32,
+  buffer: &[u8],
+) -> Result<DynamicImage, CanvasError> {
+  let total_pixels = (width * height) as usize;
+  // avoid to divide by zero
+  let bytes_per_pixel = buffer
+    .len()
+    .checked_div(total_pixels)
+    .ok_or(CanvasError::InvalidSizeZero(width, height))?;
+  // convert from a bytes per pixel to the color type of the image
+  // https://github.com/image-rs/image/blob/2c986d353333d2604f0c3f1fcef262cc763c0001/src/color.rs#L38-L49
+  match bytes_per_pixel {
+    1 => Ok(DynamicImage::ImageLuma8(
+      process_image_buffer_from_raw_bytes(
+        width,
+        height,
+        buffer,
+        bytes_per_pixel,
+      ),
+    )),
+    2 => Ok(
+      // NOTE: ImageLumaA8 is also the same bytes per pixel.
+      DynamicImage::ImageLuma16(process_image_buffer_from_raw_bytes(
+        width,
+        height,
+        buffer,
+        bytes_per_pixel,
+      )),
+    ),
+    3 => Ok(DynamicImage::ImageRgb8(
+      process_image_buffer_from_raw_bytes(
+        width,
+        height,
+        buffer,
+        bytes_per_pixel,
+      ),
+    )),
+    4 => Ok(
+      // NOTE: ImageLumaA16 is also the same bytes per pixel.
+      DynamicImage::ImageRgba8(process_image_buffer_from_raw_bytes(
+        width,
+        height,
+        buffer,
+        bytes_per_pixel,
+      )),
+    ),
+    6 => Ok(DynamicImage::ImageRgb16(
+      process_image_buffer_from_raw_bytes(
+        width,
+        height,
+        buffer,
+        bytes_per_pixel,
+      ),
+    )),
+    8 => Ok(DynamicImage::ImageRgba16(
+      process_image_buffer_from_raw_bytes(
+        width,
+        height,
+        buffer,
+        bytes_per_pixel,
+      ),
+    )),
+    12 => Err(CanvasError::UnsupportedColorType(ColorType::Rgb32F)),
+    16 => Err(CanvasError::UnsupportedColorType(ColorType::Rgba32F)),
+    _ => Err(CanvasError::UnsupportedColorType(ColorType::L8)),
+  }
+}
+
 #[cfg(test)]
 mod tests {
   use super::*;
@@ -499,5 +590,20 @@ mod tests {
     let rgba = Rgba::<u8>([127, 0, 0, 127]);
     let rgba = rgba.unpremultiply_alpha();
     assert_eq!(rgba, Rgba::<u8>([255, 0, 0, 127]));
+  }
+
+  #[test]
+  fn test_process_image_buffer_from_raw_bytes() {
+    let buffer = &[255, 255, 0, 0, 0, 0, 255, 255];
+    let color = ColorType::Rgba16;
+    let bytes_per_pixel = color.bytes_per_pixel() as usize;
+    let image = DynamicImage::ImageRgba16(process_image_buffer_from_raw_bytes(
+      1,
+      1,
+      buffer,
+      bytes_per_pixel,
+    ))
+    .to_rgba16();
+    assert_eq!(image.get_pixel(0, 0), &Rgba::<u16>([65535, 0, 0, 65535]));
   }
 }
