@@ -1,6 +1,5 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
-use crate::tokio_util::create_basic_runtime;
 use deno_core::anyhow;
 use deno_core::anyhow::anyhow;
 use deno_core::futures::channel::mpsc;
@@ -59,7 +58,7 @@ type SpanProcessor = BatchSpanProcessor<OtelSharedRuntime>;
 type LogProcessor = BatchLogProcessor<OtelSharedRuntime>;
 
 deno_core::extension!(
-  deno_otel,
+  deno_telemetry,
   ops = [
     op_otel_log,
     op_otel_instrumentation_scope_create_and_enter,
@@ -73,6 +72,7 @@ deno_core::extension!(
     op_otel_span_set_dropped,
     op_otel_span_flush,
   ],
+  esm = ["telemetry.ts", "util.ts"],
 );
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -111,7 +111,26 @@ fn otel_create_shared_runtime() -> UnboundedSender<BoxFuture<'static, ()>> {
     mpsc::unbounded::<BoxFuture<'static, ()>>();
 
   thread::spawn(move || {
-    let rt = create_basic_runtime();
+    let rt = tokio::runtime::Builder::new_current_thread()
+      .enable_io()
+      .enable_time()
+      // This limits the number of threads for blocking operations (like for
+      // synchronous fs ops) or CPU bound tasks like when we run dprint in
+      // parallel for deno fmt.
+      // The default value is 512, which is an unhelpfully large thread pool. We
+      // don't ever want to have more than a couple dozen threads.
+      .max_blocking_threads(if cfg!(windows) {
+        // on windows, tokio uses blocking tasks for child process IO, make sure
+        // we have enough available threads for other tasks to run
+        4 * std::thread::available_parallelism()
+          .map(|n| n.get())
+          .unwrap_or(8)
+      } else {
+        32
+      })
+      .build()
+      .unwrap();
+
     rt.block_on(async move {
       while let Some(task) = spawn_task_rx.next().await {
         tokio::spawn(task);

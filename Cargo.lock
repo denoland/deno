@@ -1220,6 +1220,7 @@ dependencies = [
  "deno_runtime",
  "deno_semver",
  "deno_task_shell",
+ "deno_telemetry",
  "deno_terminal 0.2.0",
  "deno_tower_lsp",
  "dhat",
@@ -2048,7 +2049,6 @@ dependencies = [
 name = "deno_runtime"
 version = "0.188.0"
 dependencies = [
- "async-trait",
  "color-print",
  "deno_ast",
  "deno_broadcast_channel",
@@ -2069,6 +2069,7 @@ dependencies = [
  "deno_node",
  "deno_path_util",
  "deno_permissions",
+ "deno_telemetry",
  "deno_terminal 0.2.0",
  "deno_tls",
  "deno_url",
@@ -2094,13 +2095,7 @@ dependencies = [
  "notify",
  "ntapi",
  "once_cell",
- "opentelemetry",
- "opentelemetry-http",
- "opentelemetry-otlp",
- "opentelemetry-semantic-conventions",
- "opentelemetry_sdk",
  "percent-encoding",
- "pin-project",
  "regex",
  "rustyline",
  "same-file",
@@ -2147,6 +2142,27 @@ dependencies = [
  "thiserror",
  "tokio",
  "tokio-util",
+]
+
+[[package]]
+name = "deno_telemetry"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "deno_core",
+ "http-body-util",
+ "hyper 1.4.1",
+ "hyper-util",
+ "log",
+ "once_cell",
+ "opentelemetry",
+ "opentelemetry-http",
+ "opentelemetry-otlp",
+ "opentelemetry-semantic-conventions",
+ "opentelemetry_sdk",
+ "pin-project",
+ "serde",
+ "tokio",
 ]
 
 [[package]]
