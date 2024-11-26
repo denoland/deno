@@ -185,13 +185,11 @@ fn decode_bitmap_data(
         // >   Returns the one-dimensional array containing the data in RGBA order, as integers in the range 0 to 255.
         // https://html.spec.whatwg.org/multipage/canvas.html#pixel-manipulation
         let image = match RgbaImage::from_raw(width, height, buf.into()) {
-        Some(image) => image.into(),
-        None => {
-          return Err(CanvasError::InvalidImage(
-            "The Chunk Data is not big enough with the specified width and height.".to_string()
-          ))
-        }
-      };
+          Some(image) => image.into(),
+          None => {
+            return Err(CanvasError::NotBigEnoughChunk(width, height));
+          }
+        };
 
         (image, width, height, None, None)
       }

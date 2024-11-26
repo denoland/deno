@@ -20,6 +20,9 @@ pub enum CanvasError {
   /// This error will be mapped to DOMExceptionInvalidStateError.
   #[error("Cannot decode image '{0}'")]
   InvalidImage(String),
+  /// This error will be mapped to DOMExceptionInvalidStateError.
+  #[error("The chunk data is not big enough with the specified width: {0} and height: {1}.")]
+  NotBigEnoughChunk(u32, u32),
   #[error(transparent)]
   Lcms(#[from] lcms2::Error),
   #[error(transparent)]
