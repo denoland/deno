@@ -340,7 +340,7 @@ fn process_icc_profile_conversion<I, P, S>(
   color: ColorType,
   input_icc_profile: Profile,
   output_icc_profile: Profile,
-) -> ImageBuffer<P, Vec<S>>
+) -> Result<ImageBuffer<P, Vec<S>>, CanvasError>
 where
   I: GenericImageView<Pixel = P>,
   P: Pixel<Subpixel = S> + SliceToPixel + TransformColorProfile + 'static,
@@ -349,16 +349,16 @@ where
   let (width, height) = image.dimensions();
   let mut out = ImageBuffer::new(width, height);
   let pixel_format = match color {
-    ColorType::L8 => PixelFormat::GRAY_8,
-    ColorType::L16 => PixelFormat::GRAY_16,
-    ColorType::La8 => PixelFormat::GRAYA_8,
-    ColorType::La16 => PixelFormat::GRAYA_16,
-    ColorType::Rgb8 => PixelFormat::RGB_8,
-    ColorType::Rgb16 => PixelFormat::RGB_16,
-    ColorType::Rgba8 => PixelFormat::RGBA_8,
-    ColorType::Rgba16 => PixelFormat::RGBA_16,
-    _ => unreachable!("{}", CanvasError::UnsupportedColorType(color)),
-  };
+    ColorType::L8 => Ok(PixelFormat::GRAY_8),
+    ColorType::L16 => Ok(PixelFormat::GRAY_16),
+    ColorType::La8 => Ok(PixelFormat::GRAYA_8),
+    ColorType::La16 => Ok(PixelFormat::GRAYA_16),
+    ColorType::Rgb8 => Ok(PixelFormat::RGB_8),
+    ColorType::Rgb16 => Ok(PixelFormat::RGB_16),
+    ColorType::Rgba8 => Ok(PixelFormat::RGBA_8),
+    ColorType::Rgba16 => Ok(PixelFormat::RGBA_16),
+    _ => Err(CanvasError::UnsupportedColorType(color)),
+  }?;
   let transformer = Transform::new(
     &input_icc_profile,
     pixel_format,
@@ -366,8 +366,7 @@ where
     pixel_format,
     output_icc_profile.header_rendering_intent(),
   )
-  .map_err(CanvasError::Lcms)
-  .unwrap();
+  .map_err(CanvasError::Lcms)?;
 
   for (x, y, mut pixel) in image.pixels() {
     let pixel = pixel.transform_color_profile(&transformer);
@@ -375,7 +374,7 @@ where
     out.put_pixel(x, y, pixel);
   }
 
-  out
+  Ok(out)
 }
 
 /// Convert the color space of the image from the ICC profile to sRGB.
@@ -399,7 +398,7 @@ pub(crate) fn to_srgb_from_icc_profile(
               color,
               icc_profile,
               srgb_icc_profile,
-            )
+            )?
             .into(),
           ),
           DynamicImage::ImageLuma16(image) => Ok(
@@ -408,7 +407,7 @@ pub(crate) fn to_srgb_from_icc_profile(
               color,
               icc_profile,
               srgb_icc_profile,
-            )
+            )?
             .into(),
           ),
           DynamicImage::ImageLumaA8(image) => Ok(
@@ -417,7 +416,7 @@ pub(crate) fn to_srgb_from_icc_profile(
               color,
               icc_profile,
               srgb_icc_profile,
-            )
+            )?
             .into(),
           ),
           DynamicImage::ImageLumaA16(image) => Ok(
@@ -426,7 +425,7 @@ pub(crate) fn to_srgb_from_icc_profile(
               color,
               icc_profile,
               srgb_icc_profile,
-            )
+            )?
             .into(),
           ),
           DynamicImage::ImageRgb8(image) => Ok(
@@ -435,7 +434,7 @@ pub(crate) fn to_srgb_from_icc_profile(
               color,
               icc_profile,
               srgb_icc_profile,
-            )
+            )?
             .into(),
           ),
           DynamicImage::ImageRgb16(image) => Ok(
@@ -444,7 +443,7 @@ pub(crate) fn to_srgb_from_icc_profile(
               color,
               icc_profile,
               srgb_icc_profile,
-            )
+            )?
             .into(),
           ),
           DynamicImage::ImageRgba8(image) => Ok(
@@ -453,7 +452,7 @@ pub(crate) fn to_srgb_from_icc_profile(
               color,
               icc_profile,
               srgb_icc_profile,
-            )
+            )?
             .into(),
           ),
           DynamicImage::ImageRgba16(image) => Ok(
@@ -462,7 +461,7 @@ pub(crate) fn to_srgb_from_icc_profile(
               color,
               icc_profile,
               srgb_icc_profile,
-            )
+            )?
             .into(),
           ),
           DynamicImage::ImageRgb32F(_) => {
