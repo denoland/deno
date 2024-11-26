@@ -775,6 +775,7 @@ impl<'a> DenoCompileBinaryWriter<'a> {
       unstable_config: UnstableConfig {
         legacy_flag_enabled: false,
         bare_node_builtins: self.cli_options.unstable_bare_node_builtins(),
+        detect_cjs: self.cli_options.unstable_detect_cjs(),
         sloppy_imports: self.cli_options.unstable_sloppy_imports(),
         features: self.cli_options.unstable_features(),
       },

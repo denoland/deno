@@ -42,7 +42,6 @@ use crate::util::text_encoding::from_utf8_lossy_owned;
 pub type CjsTracker = deno_resolver::cjs::CjsTracker<DenoFsNodeResolverEnv>;
 pub type IsCjsResolver =
   deno_resolver::cjs::IsCjsResolver<DenoFsNodeResolverEnv>;
-pub type IsCjsResolverOptions = deno_resolver::cjs::IsCjsResolverOptions;
 pub type CliSloppyImportsResolver =
   SloppyImportsResolver<SloppyImportsCachedFs>;
 pub type CliDenoResolver = deno_resolver::DenoResolver<

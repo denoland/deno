@@ -1281,9 +1281,7 @@ impl CodeActionCollection {
         import_start_from_specifier(document, i)
       })?;
       let referrer = document.specifier();
-      let referrer_kind = language_server
-        .is_cjs_resolver
-        .get_doc_resolution_mode(document);
+      let resolution_mode = document.resolution_mode();
       let file_referrer = document.file_referrer();
       let config_data = language_server
         .config
@@ -1309,7 +1307,7 @@ impl CodeActionCollection {
         if !language_server.resolver.is_bare_package_json_dep(
           &dep_key,
           referrer,
-          referrer_kind,
+          resolution_mode,
         ) {
           return None;
         }
@@ -1329,7 +1327,7 @@ impl CodeActionCollection {
       }
       if language_server
         .resolver
-        .npm_to_file_url(&npm_ref, referrer, referrer_kind, file_referrer)
+        .npm_to_file_url(&npm_ref, referrer, resolution_mode, file_referrer)
         .is_some()
       {
         // The package import has types.

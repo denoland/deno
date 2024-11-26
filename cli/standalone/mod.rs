@@ -32,6 +32,7 @@ use deno_core::ResolutionKind;
 use deno_core::SourceCodeCacheInfo;
 use deno_npm::npm_rc::ResolvedNpmRc;
 use deno_package_json::PackageJsonDepValue;
+use deno_resolver::cjs::IsCjsResolutionMode;
 use deno_resolver::npm::NpmReqResolverOptions;
 use deno_runtime::deno_fs;
 use deno_runtime::deno_node::create_host_defined_options;
@@ -87,7 +88,6 @@ use crate::npm::CreateInNpmPkgCheckerOptions;
 use crate::resolver::CjsTracker;
 use crate::resolver::CliDenoResolverFs;
 use crate::resolver::CliNpmReqResolver;
-use crate::resolver::IsCjsResolverOptions;
 use crate::resolver::NpmModuleLoader;
 use crate::util::progress_bar::ProgressBar;
 use crate::util::progress_bar::ProgressBarStyle;
@@ -731,9 +731,12 @@ pub async fn run(data: StandaloneData) -> Result<i32, AnyError> {
   let cjs_tracker = Arc::new(CjsTracker::new(
     in_npm_pkg_checker.clone(),
     pkg_json_resolver.clone(),
-    IsCjsResolverOptions {
-      detect_cjs: !metadata.workspace_resolver.package_jsons.is_empty(),
-      is_node_main: false,
+    if metadata.unstable_config.detect_cjs {
+      IsCjsResolutionMode::ImplicitTypeCommonJs
+    } else if metadata.workspace_resolver.package_jsons.is_empty() {
+      IsCjsResolutionMode::Disabled
+    } else {
+      IsCjsResolutionMode::ExplicitTypeCommonJs
     },
   ));
   let cache_db = Caches::new(deno_dir_provider.clone());
