@@ -3,6 +3,10 @@
     "echo_emoji": {
       "description": "This is some task",
       "command": "echo 1"
+    },
+    "multiline_description": {
+      "description": "This is a multiline\ndescription",
+      "command": "echo 2"
     }
   }
 }
