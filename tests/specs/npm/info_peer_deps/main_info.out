@@ -3,7 +3,7 @@ type: TypeScript
 dependencies: 6 unique
 size: [WILDCARD]
 
-file:///[WILDCARD]/peer_deps_with_copied_folders/main.ts (171B)
+file:///[WILDCARD]/main.ts (171B)
 ├─┬ npm:/@denotest/peer-dep-test-child@1.0.0 ([WILDCARD])
 │ ├─┬ npm:/@denotest/peer-dep-test-grandchild@1.0.0_@denotest+peer-dep-test-peer@1.0.0 ([WILDCARD])
 │ │ └── npm:/@denotest/peer-dep-test-peer@1.0.0 ([WILDCARD])

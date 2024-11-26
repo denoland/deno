@@ -50,8 +50,8 @@ use deno_semver::npm::NpmPackageReqReference;
 use import_map::parse_from_json;
 use node_resolver::analyze::NodeCodeTranslator;
 use node_resolver::errors::ClosestPkgJsonError;
-use node_resolver::NodeModuleKind;
-use node_resolver::NodeResolutionMode;
+use node_resolver::NodeResolutionKind;
+use node_resolver::ResolutionMode;
 use serialization::DenoCompileModuleSource;
 use std::borrow::Cow;
 use std::rc::Rc;
@@ -193,9 +193,9 @@ impl ModuleLoader for EmbeddedModuleLoader {
       .cjs_tracker
       .is_maybe_cjs(&referrer, MediaType::from_specifier(&referrer))?
     {
-      NodeModuleKind::Cjs
+      ResolutionMode::Require
     } else {
-      NodeModuleKind::Esm
+      ResolutionMode::Import
     };
 
     if self.shared.node_resolver.in_npm_package(&referrer) {
@@ -207,7 +207,7 @@ impl ModuleLoader for EmbeddedModuleLoader {
             raw_specifier,
             &referrer,
             referrer_kind,
-            NodeResolutionMode::Execution,
+            NodeResolutionKind::Execution,
           )?
           .into_url(),
       );
@@ -235,7 +235,7 @@ impl ModuleLoader for EmbeddedModuleLoader {
             sub_path.as_deref(),
             Some(&referrer),
             referrer_kind,
-            NodeResolutionMode::Execution,
+            NodeResolutionKind::Execution,
           )?,
       ),
       Ok(MappedResolution::PackageJson {
@@ -252,7 +252,7 @@ impl ModuleLoader for EmbeddedModuleLoader {
             sub_path.as_deref(),
             &referrer,
             referrer_kind,
-            NodeResolutionMode::Execution,
+            NodeResolutionKind::Execution,
           )
           .map_err(AnyError::from),
         PackageJsonDepValue::Workspace(version_req) => {
@@ -272,7 +272,7 @@ impl ModuleLoader for EmbeddedModuleLoader {
                 sub_path.as_deref(),
                 Some(&referrer),
                 referrer_kind,
-                NodeResolutionMode::Execution,
+                NodeResolutionKind::Execution,
               )?,
           )
         }
@@ -286,7 +286,7 @@ impl ModuleLoader for EmbeddedModuleLoader {
             &reference,
             &referrer,
             referrer_kind,
-            NodeResolutionMode::Execution,
+            NodeResolutionKind::Execution,
           )?);
         }
 
@@ -313,7 +313,7 @@ impl ModuleLoader for EmbeddedModuleLoader {
           raw_specifier,
           &referrer,
           referrer_kind,
-          NodeResolutionMode::Execution,
+          NodeResolutionKind::Execution,
         )?;
         if let Some(res) = maybe_res {
           return Ok(res.into_url());

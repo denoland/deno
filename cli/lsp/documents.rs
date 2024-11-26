@@ -27,7 +27,6 @@ use deno_core::futures::future::Shared;
 use deno_core::futures::FutureExt;
 use deno_core::parking_lot::Mutex;
 use deno_core::ModuleSpecifier;
-use deno_graph::source::ResolutionMode;
 use deno_graph::Resolution;
 use deno_path_util::url_to_file_path;
 use deno_runtime::deno_node;
@@ -36,7 +35,8 @@ use deno_semver::npm::NpmPackageReqReference;
 use deno_semver::package::PackageReq;
 use indexmap::IndexMap;
 use indexmap::IndexSet;
-use node_resolver::NodeModuleKind;
+use node_resolver::NodeResolutionKind;
+use node_resolver::ResolutionMode;
 use std::borrow::Cow;
 use std::collections::BTreeMap;
 use std::collections::HashMap;
@@ -442,8 +442,8 @@ impl Document {
         config_data.and_then(|d| d.maybe_jsx_import_source_config());
       let resolver = SingleReferrerGraphResolver {
         valid_referrer: &self.specifier,
-        referrer_kind: is_cjs_resolver
-          .get_lsp_referrer_kind(&self.specifier, self.is_script),
+        module_resolution_mode: is_cjs_resolver
+          .get_lsp_resolution_mode(&self.specifier, self.is_script),
         cli_resolver,
         jsx_import_source_config: jsx_import_source_config.as_ref(),
       };
@@ -768,7 +768,7 @@ impl Document {
     };
     self.dependencies().iter().find_map(|(s, dep)| {
       dep
-        .includes(&position)
+        .includes(position)
         .map(|r| (s.clone(), dep.clone(), r.clone()))
     })
   }
@@ -809,15 +809,15 @@ fn resolve_media_type(
   MediaType::from_specifier(specifier)
 }
 
-pub fn to_lsp_range(range: &deno_graph::Range) -> lsp::Range {
+pub fn to_lsp_range(referrer: &deno_graph::Range) -> lsp::Range {
   lsp::Range {
     start: lsp::Position {
-      line: range.start.line as u32,
-      character: range.start.character as u32,
+      line: referrer.range.start.line as u32,
+      character: referrer.range.start.character as u32,
     },
     end: lsp::Position {
-      line: range.end.line as u32,
-      character: range.end.character as u32,
+      line: referrer.range.end.line as u32,
+      character: referrer.range.end.character as u32,
     },
   }
 }
@@ -1271,7 +1271,8 @@ impl Documents {
   /// tsc when type checking.
   pub fn resolve(
     &self,
-    raw_specifiers: &[String],
+    // (is_cjs: bool, raw_specifier: String)
+    raw_specifiers: &[(bool, String)],
     referrer: &ModuleSpecifier,
     file_referrer: Option<&ModuleSpecifier>,
   ) -> Vec<Option<(ModuleSpecifier, MediaType)>> {
@@ -1281,11 +1282,12 @@ impl Documents {
       .and_then(|d| d.file_referrer())
       .or(file_referrer);
     let dependencies = referrer_doc.as_ref().map(|d| d.dependencies());
-    let referrer_kind = self
-      .is_cjs_resolver
-      .get_maybe_doc_module_kind(referrer, referrer_doc.as_deref());
     let mut results = Vec::new();
-    for raw_specifier in raw_specifiers {
+    for (is_cjs, raw_specifier) in raw_specifiers {
+      let resolution_mode = match is_cjs {
+        true => ResolutionMode::Require,
+        false => ResolutionMode::Import,
+      };
       if raw_specifier.starts_with("asset:") {
         if let Ok(specifier) = ModuleSpecifier::parse(raw_specifier) {
           let media_type = MediaType::from_specifier(&specifier);
@@ -1300,14 +1302,14 @@ impl Documents {
           results.push(self.resolve_dependency(
             specifier,
             referrer,
-            referrer_kind,
+            resolution_mode,
             file_referrer,
           ));
         } else if let Some(specifier) = dep.maybe_code.maybe_specifier() {
           results.push(self.resolve_dependency(
             specifier,
             referrer,
-            referrer_kind,
+            resolution_mode,
             file_referrer,
           ));
         } else {
@@ -1316,19 +1318,16 @@ impl Documents {
       } else if let Ok(specifier) =
         self.resolver.as_cli_resolver(file_referrer).resolve(
           raw_specifier,
-          &deno_graph::Range {
-            specifier: referrer.clone(),
-            start: deno_graph::Position::zeroed(),
-            end: deno_graph::Position::zeroed(),
-          },
-          referrer_kind,
-          ResolutionMode::Types,
+          referrer,
+          deno_graph::Position::zeroed(),
+          resolution_mode,
+          NodeResolutionKind::Types,
         )
       {
         results.push(self.resolve_dependency(
           &specifier,
           referrer,
-          referrer_kind,
+          resolution_mode,
           file_referrer,
         ));
       } else {
@@ -1477,27 +1476,24 @@ impl Documents {
         let type_specifier = jsx_config.default_types_specifier.as_ref()?;
         let code_specifier = jsx_config.default_specifier.as_ref()?;
         let cli_resolver = self.resolver.as_cli_resolver(Some(scope));
-        let range = deno_graph::Range {
-          specifier: jsx_config.base_url.clone(),
-          start: deno_graph::Position::zeroed(),
-          end: deno_graph::Position::zeroed(),
-        };
         let type_specifier = cli_resolver
           .resolve(
             type_specifier,
-            &range,
+            &jsx_config.base_url,
+            deno_graph::Position::zeroed(),
             // todo(dsherret): this is wrong because it doesn't consider CJS referrers
-            deno_package_json::NodeModuleKind::Esm,
-            ResolutionMode::Types,
+            ResolutionMode::Import,
+            NodeResolutionKind::Types,
           )
           .ok()?;
         let code_specifier = cli_resolver
           .resolve(
             code_specifier,
-            &range,
+            &jsx_config.base_url,
+            deno_graph::Position::zeroed(),
             // todo(dsherret): this is wrong because it doesn't consider CJS referrers
-            deno_package_json::NodeModuleKind::Esm,
-            ResolutionMode::Execution,
+            ResolutionMode::Import,
+            NodeResolutionKind::Execution,
           )
           .ok()?;
         dep_info
@@ -1542,7 +1538,7 @@ impl Documents {
     &self,
     specifier: &ModuleSpecifier,
     referrer: &ModuleSpecifier,
-    referrer_kind: NodeModuleKind,
+    resolution_mode: ResolutionMode,
     file_referrer: Option<&ModuleSpecifier>,
   ) -> Option<(ModuleSpecifier, MediaType)> {
     if let Some(module_name) = specifier.as_str().strip_prefix("node:") {
@@ -1559,7 +1555,7 @@ impl Documents {
       let (s, mt) = self.resolver.npm_to_file_url(
         &npm_ref,
         referrer,
-        referrer_kind,
+        resolution_mode,
         file_referrer,
       )?;
       specifier = s;
@@ -1571,7 +1567,7 @@ impl Documents {
       return Some((specifier, media_type));
     };
     if let Some(types) = doc.maybe_types_dependency().maybe_specifier() {
-      let specifier_kind = self.is_cjs_resolver.get_doc_module_kind(&doc);
+      let specifier_kind = self.is_cjs_resolver.get_doc_resolution_mode(&doc);
       self.resolve_dependency(types, &specifier, specifier_kind, file_referrer)
     } else {
       Some((doc.specifier().clone(), doc.media_type()))
@@ -1688,7 +1684,7 @@ fn analyze_module(
         config_data.and_then(|d| d.maybe_jsx_import_source_config());
       let resolver = SingleReferrerGraphResolver {
         valid_referrer: &valid_referrer,
-        referrer_kind: is_cjs_resolver.get_lsp_referrer_kind(
+        module_resolution_mode: is_cjs_resolver.get_lsp_resolution_mode(
           &specifier,
           Some(parsed_source.compute_is_script()),
         ),
