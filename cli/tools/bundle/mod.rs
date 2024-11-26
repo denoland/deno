@@ -7,6 +7,7 @@ use std::{
   sync::Arc,
 };
 
+use bundle_graph::{BundleDep, BundleGraph, BundleJsModule, BundleMod};
 use deno_core::{anyhow::Context, error::AnyError, url::Url};
 use deno_graph::{GraphKind, Module, ModuleGraph, NpmModule, Resolution};
 use deno_runtime::{colors, deno_node::NodeResolver};
@@ -24,29 +25,14 @@ use crate::{
   util::{fs::collect_specifiers, path::matches_pattern_or_exact_path},
 };
 
+mod bundle_graph;
+
 #[derive(Debug)]
 struct BundleChunkStat {
   name: PathBuf,
   size: usize,
   gzip: usize,
   brotli: usize,
-}
-
-#[derive(Debug)]
-enum BundleGraphModKind {
-  Asset(String),
-  Js,
-  Json,
-  Wasm,
-  Node,
-}
-
-#[derive(Debug)]
-struct BundleGraphMod {
-  id: usize,
-  kind: BundleGraphModKind,
-  used_count: usize,
-  has_side_effects: bool,
 }
 
 pub async fn bundle(
@@ -87,7 +73,7 @@ pub async fn bundle(
 
   graph.valid()?;
 
-  let bundle_graph: HashMap<Url, BundleGraphMod> = HashMap::new();
+  let mut bundle_graph = BundleGraph::new();
 
   let mut id = 0;
   let mut all_modules: HashMap<Url, Module> = HashMap::new();
@@ -121,6 +107,8 @@ pub async fn bundle(
     resolved
   }
 
+  let mut pending_npm_dep_links: HashMap<usize, Url> = HashMap::new();
+
   // Hack: Create sub graphs for every npm module we encounter and
   // expand npm specifiers to the actual file
   for module in graph.modules() {
@@ -138,9 +126,49 @@ pub async fn bundle(
         let resolved = resolve_npm_module(&module, npm_resolver, node_resolver);
         npm_modules.insert(resolved.clone());
       }
-      _ => {
-        all_modules.insert(url.clone(), module.clone());
+      Module::Js(js_module) => {
+        let id = bundle_graph.insert(
+          url.clone(),
+          BundleMod::Js(BundleJsModule {
+            specifier: url.clone(),
+            media_type: js_module.media_type,
+            source: js_module.source.to_string(),
+            dependencies: vec![],
+          }),
+        );
+
+        for (raw, dep) in &js_module.dependencies {
+          if let Some(code) = dep.get_code() {
+            if code.scheme() == "npm" {
+              pending_npm_dep_links.insert(id, code.clone());
+            } else {
+              let dep_id = bundle_graph.register(code.clone());
+              bundle_graph.add_dependency(
+                id,
+                BundleDep {
+                  id: dep_id,
+                  raw: raw.to_string(),
+                  is_dyanmic: dep.is_dynamic,
+                },
+              );
+            }
+          }
+          eprintln!("JS dep {} {:#?}", raw, dep);
+        }
       }
+      Module::Json(json_module) => {
+        bundle_graph.insert(url.clone(), BundleMod::Json(json_module.clone()));
+      }
+      Module::Wasm(wasm_module) => {
+        bundle_graph.insert(url.clone(), BundleMod::Wasm(wasm_module.clone()));
+      }
+      Module::Node(built_in_node_module) => {
+        bundle_graph.insert(
+          url.clone(),
+          BundleMod::Node(built_in_node_module.module_name.to_string()),
+        );
+      }
+      Module::External(external_module) => todo!(),
     }
   }
 
