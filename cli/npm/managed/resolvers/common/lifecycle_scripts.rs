@@ -182,6 +182,12 @@ impl<'a> LifecycleScripts<'a> {
       );
 
       let mut env_vars = crate::task_runner::real_env_vars();
+      // so the subprocess can detect that it is running as part of a lifecycle script,
+      // and avoid trying to set up node_modules again
+      env_vars.insert(
+        LIFECYCLE_SCRIPTS_RUNNING_ENV_VAR.to_string(),
+        "1".to_string(),
+      );
       // we want to pass the current state of npm resolution down to the deno subprocess
       // (that may be running as part of the script). we do this with an inherited temp file
       //
@@ -301,6 +307,13 @@ impl<'a> LifecycleScripts<'a> {
       )))
     }
   }
+}
+
+const LIFECYCLE_SCRIPTS_RUNNING_ENV_VAR: &str =
+  "DENO_INTERNAL_IS_LIFECYCLE_SCRIPT";
+
+pub fn is_running_lifecycle_script() -> bool {
+  std::env::var(LIFECYCLE_SCRIPTS_RUNNING_ENV_VAR).is_ok()
 }
 
 // take in all (non copy) packages from snapshot,
