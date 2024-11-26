@@ -32,6 +32,13 @@
       "args": "check resolution_mode_require_jsdoc.js",
       "output": "resolution_mode_require_jsdoc.out",
       "exitCode": 1
+    },
+    "resolution_mode_require_import_type": {
+      // waiting on https://github.com/swc-project/swc/issues/9377
+      "ignore": true,
+      "args": "check resolution_mode_require_import_type.ts",
+      "output": "resolution_mode_require_import_type.out",
+      "exitCode": 1
     }
   }
 }

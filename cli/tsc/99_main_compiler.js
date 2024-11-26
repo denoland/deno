@@ -103,10 +103,13 @@ delete Object.prototype.__proto__;
   }
 
   /**
-   * @param {ts.Expression | undefined} lit
+   * @param {ts.ImportAttributes | undefined} attribs
    * @returns {ts.ResolutionMode | undefined}
    */
-  function getResolutionModeFromStringLit(lit) {
+  function getResolutionMode(attribs) {
+    const lit = attribs?.elements
+      .find((e) => e.name.text === "resolution-mode")
+      ?.value;
     if (!lit || !ts.isStringLiteral(lit)) {
       return undefined;
     }
@@ -131,28 +134,19 @@ delete Object.prototype.__proto__;
     // non-type import declarations as being import declarations
     const parent = usage.parent;
     if (ts.isImportDeclaration(parent)) {
-      return getResolutionModeFromStringLit(
-        parent.attributes?.elements.find((e) =>
-          e.name.text === "resolution-mode"
-        )?.value,
-      ) ?? ts.ModuleKind.ESNext;
-    } else if (
-      ts.isCallExpression(parent) &&
-      parent.expression.kind === ts.SyntaxKind.ImportKeyword
-    ) {
-      const secondArg = parent.arguments[1];
-      const objArg = secondArg && ts.isObjectLiteralExpression(secondArg)
-        ? secondArg
-        : undefined;
-      const resolutionModeProp = objArg?.properties.find((e) =>
-        e.name && ts.isStringLiteral(e.name) &&
-        e.name.text === "resolution-mode"
-      );
-      return getResolutionModeFromStringLit(
-        resolutionModeProp && ts.isPropertyAssignment(resolutionModeProp)
-          ? resolutionModeProp.initializer
-          : undefined,
-      ) ?? ts.ModuleKind.ESNext;
+      if (file.isDeclarationFile || parent.importClause?.isTypeOnly) {
+        return getResolutionMode(parent.attributes) ?? ts.ModuleKind.ESNext;
+      } else {
+        return ts.ModuleKind.ESNext;
+      }
+    } else if (ts.isExportDeclaration(parent)) {
+      if (file.isDeclarationFile || parent.isTypeOnly) {
+        return getResolutionMode(parent.attributes) ?? ts.ModuleKind.ESNext;
+      } else {
+        return ts.ModuleKind.ESNext;
+      }
+    } else if (ts.isImportTypeNode(parent)) {
+      return getResolutionMode(parent.attributes) ?? ts.ModuleKind.ESNext;
     } else {
       return ts.getModeForUsageLocation(file, usage, compilerOptions);
     }
