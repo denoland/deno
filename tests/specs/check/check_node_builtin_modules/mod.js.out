@@ -2,4 +2,4 @@ error: TS2769 [ERROR]: No overload matches this call.
   [WILDCARD]
 const _data = fs.readFileSync("./node_builtin.js", 123);
                                                    ~~~
-    at file:///[WILDCARD]/node_builtin_modules/mod.js:3:52
+    at file:///[WILDCARD]/mod.js:3:52
