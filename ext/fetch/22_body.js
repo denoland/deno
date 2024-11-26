@@ -290,7 +290,7 @@ function mixinBody(prototype, bodySymbol, mimeTypeSymbol) {
           if (this[bodySymbol] !== null) {
             return this[bodySymbol].consumed();
           }
-        } catch (e) {
+        } catch (_) {
           // Request is closed.
           return true;
         }
