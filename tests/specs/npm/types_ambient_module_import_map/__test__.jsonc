@@ -1,0 +1,5 @@
+{
+  "args": "check --quiet --import-map=types_ambient_module/import_map.json types_ambient_module/main_import_map.ts",
+  "output": "types_ambient_module/main_import_map.out",
+  "exitCode": 1
+}

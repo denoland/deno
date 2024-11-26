@@ -9,7 +9,7 @@ import {
   O_TRUNC,
   O_WRONLY,
 } from "node:constants";
-import { assertEquals, assertThrows, fail } from "@std/assert/mod.ts";
+import { assertEquals, assertThrows, fail } from "@std/assert";
 import { assertCallbackErrorUncaught } from "../_test_utils.ts";
 import { open, openSync } from "node:fs";
 import { join, parse } from "node:path";

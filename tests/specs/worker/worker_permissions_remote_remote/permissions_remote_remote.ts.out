@@ -1,0 +1,4 @@
+error: Uncaught (in worker "") Requires import access to "example.com:443", run again with the --allow-import flag
+    at http://localhost:4545/[WILDCARD]/static_remote.ts:2:8
+error: Uncaught (in promise) Error: Unhandled error in child worker.
+    at Worker.#pollControl [WILDCARD]

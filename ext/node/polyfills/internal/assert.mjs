@@ -1,4 +1,4 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 import { ERR_INTERNAL_ASSERTION } from "ext:deno_node/internal/errors.ts";
 
 function assert(value, message) {

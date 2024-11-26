@@ -1,0 +1,32 @@
+{
+  "name": "cli.ts",
+  "description": "Package with name like a file path",
+  "dist-tags": {
+    "latest": "2.2.0"
+  },
+  "versions": {
+    "2.2.0": {
+      "name": "cli.ts",
+      "version": "2.2.0",
+      "description": "Package with name like a file path",
+      "license": "MIT",
+      "author": {},
+      "engines": {
+        "node": ">=6"
+      },
+      "gitHead": "91440c5a1615354fb9419354650937c434eb9f49",
+      "_id": "cli.ts@2.2.0",
+      "_nodeVersion": "10.16.0",
+      "_npmVersion": "6.9.0",
+      "dist": {
+        "integrity": "sha512-4diC9HaTE+KRAMWhDhrGOECgWZxoevMc5TlkObMqNSsVU62PYzXZ/SMTjzyGAFF1YusgxGcSWTEXBhp0CPwQ1A==",
+        "shasum": "ee8472dbb129e727b31e8a10a427dee9dfe4008b",
+        "tarball": "http://localhost:4260/cli.ts/cli.ts-2.2.0.tgz",
+        "fileCount": 5,
+        "unpackedSize": 5508
+      },
+      "directories": {},
+      "_hasShrinkwrap": false
+    }
+  }
+}

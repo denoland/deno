@@ -8,13 +8,15 @@
 // std/fmt/colors auto determines whether to put colors in or not. We need
 // better infrastructure here so we can properly test the colors.
 
+// deno-lint-ignore-file no-console
+
 import {
   assert,
   assertEquals,
   assertStringIncludes,
   assertThrows,
 } from "./test_util.ts";
-import { stripColor } from "@std/fmt/colors.ts";
+import { stripAnsiCode } from "@std/fmt/colors";
 
 const customInspect = Symbol.for("Deno.customInspect");
 const {
@@ -27,7 +29,7 @@ const {
 } = Deno[Deno.internal];
 
 function stringify(...args: unknown[]): string {
-  return stripColor(inspectArgs(args).replace(/\n$/, ""));
+  return stripAnsiCode(inspectArgs(args).replace(/\n$/, ""));
 }
 
 interface Css {
@@ -372,7 +374,7 @@ Deno.test(function consoleTestStringifyCircular() {
 }`,
   );
   // test inspect is working the same
-  assertEquals(stripColor(Deno.inspect(nestedObj)), nestedObjExpected);
+  assertEquals(stripAnsiCode(Deno.inspect(nestedObj)), nestedObjExpected);
 });
 
 Deno.test(function consoleTestStringifyMultipleCircular() {
@@ -451,7 +453,7 @@ Deno.test(function consoleTestStringifyFunctionWithProperties() {
   );
 
   assertEquals(
-    stripColor(Deno.inspect(Array, { showHidden: true })),
+    stripAnsiCode(Deno.inspect(Array, { showHidden: true })),
     `<ref *1> [Function: Array] {
   [length]: 1,
   [name]: "Array",
@@ -518,8 +520,8 @@ Deno.test(function consoleTestStringifyFunctionWithProperties() {
   ],
   [isArray]: [Function: isArray] { [length]: 1, [name]: "isArray" },
   [from]: [Function: from] { [length]: 1, [name]: "from" },
-  [of]: [Function: of] { [length]: 0, [name]: "of" },
   [fromAsync]: [Function: fromAsync] { [length]: 1, [name]: "fromAsync" },
+  [of]: [Function: of] { [length]: 0, [name]: "of" },
   [Symbol(Symbol.species)]: [Getter]
 }`,
   );
@@ -529,24 +531,24 @@ Deno.test(function consoleTestStringifyWithDepth() {
   // deno-lint-ignore no-explicit-any
   const nestedObj: any = { a: { b: { c: { d: { e: { f: 42 } } } } } };
   assertEquals(
-    stripColor(inspectArgs([nestedObj], { depth: 3 })),
+    stripAnsiCode(inspectArgs([nestedObj], { depth: 3 })),
     "{\n  a: { b: { c: { d: [Object] } } }\n}",
   );
   assertEquals(
-    stripColor(inspectArgs([nestedObj], { depth: 4 })),
+    stripAnsiCode(inspectArgs([nestedObj], { depth: 4 })),
     "{\n  a: {\n    b: { c: { d: { e: [Object] } } }\n  }\n}",
   );
   assertEquals(
-    stripColor(inspectArgs([nestedObj], { depth: 0 })),
+    stripAnsiCode(inspectArgs([nestedObj], { depth: 0 })),
     "{ a: [Object] }",
   );
   assertEquals(
-    stripColor(inspectArgs([nestedObj])),
+    stripAnsiCode(inspectArgs([nestedObj])),
     "{\n  a: {\n    b: { c: { d: { e: [Object] } } }\n  }\n}",
   );
   // test inspect is working the same way
   assertEquals(
-    stripColor(Deno.inspect(nestedObj, { depth: 4 })),
+    stripAnsiCode(Deno.inspect(nestedObj, { depth: 4 })),
     "{\n  a: {\n    b: { c: { d: { e: [Object] } } }\n  }\n}",
   );
 });
@@ -1032,11 +1034,13 @@ Deno.test(function consoleTestIteratorValueAreNotConsumed() {
 
 Deno.test(function consoleTestWeakSetAndWeakMapWithShowHidden() {
   assertEquals(
-    stripColor(Deno.inspect(new WeakSet([{}]), { showHidden: true })),
+    stripAnsiCode(Deno.inspect(new WeakSet([{}]), { showHidden: true })),
     "WeakSet { {} }",
   );
   assertEquals(
-    stripColor(Deno.inspect(new WeakMap([[{}, "foo"]]), { showHidden: true })),
+    stripAnsiCode(
+      Deno.inspect(new WeakMap([[{}, "foo"]]), { showHidden: true }),
+    ),
     'WeakMap { {} => "foo" }',
   );
 });
@@ -1062,6 +1066,24 @@ Deno.test(async function consoleTestStringifyPromises() {
   const strLines = stringify(rejectedPromise).split("\n");
   assertEquals(strLines[0], "Promise {");
   assertEquals(strLines[1], "  <rejected> Error: Whoops");
+});
+
+Deno.test(function consoleTestStringifyIntlLocale() {
+  assertEquals(
+    stringify(new Intl.Locale("zh-Hant-TW", { hourCycle: "h12" })),
+    `Locale [Intl.Locale] {
+  baseName: "zh-Hant-TW",
+  calendar: undefined,
+  caseFirst: undefined,
+  collation: undefined,
+  hourCycle: "h12",
+  language: "zh",
+  numberingSystem: undefined,
+  numeric: false,
+  region: "TW",
+  script: "Hant"
+}`,
+  );
 });
 
 Deno.test(function consoleTestWithCustomInspector() {
@@ -1140,7 +1162,7 @@ Deno.test(function consoleTestWithIntegerFormatSpecifier() {
   assertEquals(stringify("%i"), "%i");
   assertEquals(stringify("%i", 42.0), "42");
   assertEquals(stringify("%i", 42), "42");
-  assertEquals(stringify("%i", "42"), "NaN");
+  assertEquals(stringify("%i", "42"), "42");
   assertEquals(stringify("%i", 1.5), "1");
   assertEquals(stringify("%i", -0.5), "0");
   assertEquals(stringify("%i", ""), "NaN");
@@ -1150,7 +1172,7 @@ Deno.test(function consoleTestWithIntegerFormatSpecifier() {
   assertEquals(stringify("%d", 12345678901234567890123), "1");
   assertEquals(
     stringify("%i", 12345678901234567890123n),
-    "12345678901234567890123n",
+    "1.2345678901234568e+22",
   );
 });
 
@@ -1158,13 +1180,13 @@ Deno.test(function consoleTestWithFloatFormatSpecifier() {
   assertEquals(stringify("%f"), "%f");
   assertEquals(stringify("%f", 42.0), "42");
   assertEquals(stringify("%f", 42), "42");
-  assertEquals(stringify("%f", "42"), "NaN");
+  assertEquals(stringify("%f", "42"), "42");
   assertEquals(stringify("%f", 1.5), "1.5");
   assertEquals(stringify("%f", -0.5), "-0.5");
   assertEquals(stringify("%f", Math.PI), "3.141592653589793");
   assertEquals(stringify("%f", ""), "NaN");
   assertEquals(stringify("%f", Symbol("foo")), "NaN");
-  assertEquals(stringify("%f", 5n), "NaN");
+  assertEquals(stringify("%f", 5n), "5");
   assertEquals(stringify("%f %f", 42, 43), "42 43");
   assertEquals(stringify("%f %f", 42), "42 %f");
 });
@@ -1195,13 +1217,17 @@ Deno.test(function consoleTestWithObjectFormatSpecifier() {
 Deno.test(function consoleTestWithStyleSpecifier() {
   assertEquals(stringify("%cfoo%cbar"), "%cfoo%cbar");
   assertEquals(stringify("%cfoo%cbar", ""), "foo%cbar");
-  assertEquals(stripColor(stringify("%cfoo%cbar", "", "color: red")), "foobar");
+  assertEquals(
+    stripAnsiCode(stringify("%cfoo%cbar", "", "color: red")),
+    "foobar",
+  );
 });
 
 Deno.test(function consoleParseCssColor() {
   assertEquals(parseCssColor("inherit"), null);
   assertEquals(parseCssColor("black"), [0, 0, 0]);
   assertEquals(parseCssColor("darkmagenta"), [139, 0, 139]);
+  assertEquals(parseCssColor("darkMaGenta"), [139, 0, 139]);
   assertEquals(parseCssColor("slateblue"), [106, 90, 205]);
   assertEquals(parseCssColor("#ffaa00"), [255, 170, 0]);
   assertEquals(parseCssColor("#ffAA00"), [255, 170, 0]);
@@ -1532,7 +1558,7 @@ Deno.test(function consoleTable() {
   mockConsole((console, out) => {
     console.table({ a: "test", b: 1 });
     assertEquals(
-      stripColor(out.toString()),
+      stripAnsiCode(out.toString()),
       `\
 ┌───────┬────────┐
 │ (idx) │ Values │
@@ -1546,7 +1572,7 @@ Deno.test(function consoleTable() {
   mockConsole((console, out) => {
     console.table({ a: { b: 10 }, b: { b: 20, c: 30 } }, ["c"]);
     assertEquals(
-      stripColor(out.toString()),
+      stripAnsiCode(out.toString()),
       `\
 ┌───────┬────┐
 │ (idx) │ c  │
@@ -1560,7 +1586,7 @@ Deno.test(function consoleTable() {
   mockConsole((console, out) => {
     console.table([[1, 1], [234, 2.34], [56789, 56.789]]);
     assertEquals(
-      stripColor(out.toString()),
+      stripAnsiCode(out.toString()),
       `\
 ┌───────┬───────┬────────┐
 │ (idx) │ 0     │ 1      │
@@ -1575,7 +1601,7 @@ Deno.test(function consoleTable() {
   mockConsole((console, out) => {
     console.table([1, 2, [3, [4]], [5, 6], [[7], [8]]]);
     assertEquals(
-      stripColor(out.toString()),
+      stripAnsiCode(out.toString()),
       `\
 ┌───────┬───────┬───────┬────────┐
 │ (idx) │ 0     │ 1     │ Values │
@@ -1592,7 +1618,7 @@ Deno.test(function consoleTable() {
   mockConsole((console, out) => {
     console.table(new Set([1, 2, 3, "test"]));
     assertEquals(
-      stripColor(out.toString()),
+      stripAnsiCode(out.toString()),
       `\
 ┌────────────┬────────┐
 │ (iter idx) │ Values │
@@ -1613,7 +1639,7 @@ Deno.test(function consoleTable() {
       ]),
     );
     assertEquals(
-      stripColor(out.toString()),
+      stripAnsiCode(out.toString()),
       `\
 ┌────────────┬─────┬────────┐
 │ (iter idx) │ Key │ Values │
@@ -1633,7 +1659,7 @@ Deno.test(function consoleTable() {
       h: new Map([[1, "one"]]),
     });
     assertEquals(
-      stripColor(out.toString()),
+      stripAnsiCode(out.toString()),
       `\
 ┌───────┬───────────┬────────────────────┬────────┐
 │ (idx) │ c         │ e                  │ Values │
@@ -1656,7 +1682,7 @@ Deno.test(function consoleTable() {
       ["test", { b: 20, c: "test" }],
     ]);
     assertEquals(
-      stripColor(out.toString()),
+      stripAnsiCode(out.toString()),
       `\
 ┌───────┬────────┬──────────────────────┬────┬────────┐
 │ (idx) │ 0      │ 1                    │ a  │ Values │
@@ -1673,7 +1699,7 @@ Deno.test(function consoleTable() {
   mockConsole((console, out) => {
     console.table([]);
     assertEquals(
-      stripColor(out.toString()),
+      stripAnsiCode(out.toString()),
       `\
 ┌───────┐
 │ (idx) │
@@ -1685,7 +1711,7 @@ Deno.test(function consoleTable() {
   mockConsole((console, out) => {
     console.table({});
     assertEquals(
-      stripColor(out.toString()),
+      stripAnsiCode(out.toString()),
       `\
 ┌───────┐
 │ (idx) │
@@ -1697,7 +1723,7 @@ Deno.test(function consoleTable() {
   mockConsole((console, out) => {
     console.table(new Set());
     assertEquals(
-      stripColor(out.toString()),
+      stripAnsiCode(out.toString()),
       `\
 ┌────────────┐
 │ (iter idx) │
@@ -1709,7 +1735,7 @@ Deno.test(function consoleTable() {
   mockConsole((console, out) => {
     console.table(new Map());
     assertEquals(
-      stripColor(out.toString()),
+      stripAnsiCode(out.toString()),
       `\
 ┌────────────┐
 │ (iter idx) │
@@ -1725,7 +1751,7 @@ Deno.test(function consoleTable() {
   mockConsole((console, out) => {
     console.table(["Hello", "你好", "Amapá"]);
     assertEquals(
-      stripColor(out.toString()),
+      stripAnsiCode(out.toString()),
       `\
 ┌───────┬─────────┐
 │ (idx) │ Values  │
@@ -1743,7 +1769,7 @@ Deno.test(function consoleTable() {
       [3, 4],
     ]);
     assertEquals(
-      stripColor(out.toString()),
+      stripAnsiCode(out.toString()),
       `\
 ┌───────┬───┬───┐
 │ (idx) │ 0 │ 1 │
@@ -1757,7 +1783,7 @@ Deno.test(function consoleTable() {
   mockConsole((console, out) => {
     console.table({ 1: { a: 4, b: 5 }, 2: null, 3: { b: 6, c: 7 } }, ["b"]);
     assertEquals(
-      stripColor(out.toString()),
+      stripAnsiCode(out.toString()),
       `\
 ┌───────┬───┐
 │ (idx) │ b │
@@ -1772,7 +1798,7 @@ Deno.test(function consoleTable() {
   mockConsole((console, out) => {
     console.table([{ a: 0 }, { a: 1, b: 1 }, { a: 2 }, { a: 3, b: 3 }]);
     assertEquals(
-      stripColor(out.toString()),
+      stripAnsiCode(out.toString()),
       `\
 ┌───────┬───┬───┐
 │ (idx) │ a │ b │
@@ -1791,7 +1817,7 @@ Deno.test(function consoleTable() {
       ["a", "b", "c"],
     );
     assertEquals(
-      stripColor(out.toString()),
+      stripAnsiCode(out.toString()),
       `\
 ┌───────┬───┬───┬───┐
 │ (idx) │ a │ b │ c │
@@ -1829,7 +1855,7 @@ Deno.test(function consoleLogShouldNotThrowError() {
 Deno.test(function consoleLogShouldNotThrowErrorWhenInvalidCssColorsAreGiven() {
   mockConsole((console, out) => {
     console.log("%cfoo", "color: foo; background-color: bar;");
-    assertEquals(stripColor(out.toString()), "foo\n");
+    assertEquals(stripAnsiCode(out.toString()), "foo\n");
   });
 });
 
@@ -1838,7 +1864,7 @@ Deno.test(function consoleLogShouldNotThrowErrorWhenInvalidDateIsPassed() {
   mockConsole((console, out) => {
     const invalidDate = new Date("test");
     console.log(invalidDate);
-    assertEquals(stripColor(out.toString()), "Invalid Date\n");
+    assertEquals(stripAnsiCode(out.toString()), "Invalid Date\n");
   });
 });
 
@@ -1847,7 +1873,7 @@ Deno.test(function consoleLogShouldNotThrowErrorWhenInputIsProxiedSet() {
   mockConsole((console, out) => {
     const proxiedSet = new Proxy(new Set([1, 2]), {});
     console.log(proxiedSet);
-    assertEquals(stripColor(out.toString()), "Set(2) { 1, 2 }\n");
+    assertEquals(stripAnsiCode(out.toString()), "Set(2) { 1, 2 }\n");
   });
 });
 
@@ -1856,7 +1882,7 @@ Deno.test(function consoleLogShouldNotThrowErrorWhenInputIsProxiedMap() {
   mockConsole((console, out) => {
     const proxiedMap = new Proxy(new Map([[1, 1], [2, 2]]), {});
     console.log(proxiedMap);
-    assertEquals(stripColor(out.toString()), "Map(2) { 1 => 1, 2 => 2 }\n");
+    assertEquals(stripAnsiCode(out.toString()), "Map(2) { 1 => 1, 2 => 2 }\n");
   });
 });
 
@@ -1865,7 +1891,41 @@ Deno.test(function consoleLogShouldNotThrowErrorWhenInputIsProxiedTypedArray() {
   mockConsole((console, out) => {
     const proxiedUint8Array = new Proxy(new Uint8Array([1, 2]), {});
     console.log(proxiedUint8Array);
-    assertEquals(stripColor(out.toString()), "Uint8Array(2) [ 1, 2 ]\n");
+    assertEquals(stripAnsiCode(out.toString()), "Uint8Array(2) [ 1, 2 ]\n");
+  });
+});
+
+Deno.test(function consoleLogWhenCauseIsAssignedShouldNotPrintCauseTwice() {
+  mockConsole((console, out) => {
+    const typeError = new TypeError("Type incorrect");
+    const syntaxError = new SyntaxError("Improper syntax");
+    typeError.cause = syntaxError;
+    console.log(typeError);
+    const result = stripAnsiCode(out.toString());
+    // Filter out stack trace lines, keeping only the first line and the cause line
+    const filteredOutput = result
+      .split("\n")
+      .filter((line) => !line.trim().startsWith("at"))
+      .join("\n");
+
+    const expectedResult =
+      "TypeError: Type incorrect\nCaused by SyntaxError: Improper syntax\n";
+    assertEquals(filteredOutput.trim(), expectedResult.trim());
+  });
+});
+
+Deno.test(function consoleLogCauseNotFilteredOnNonError() {
+  mockConsole((console, out) => {
+    const foo = {
+      a: 1,
+      b: 2,
+      cause: 3,
+    };
+    console.log(foo);
+
+    const result = stripAnsiCode(out.toString());
+    const expected = "{ a: 1, b: 2, cause: 3 }\n";
+    assertEquals(result.trim(), expected.trim());
   });
 });
 
@@ -1874,7 +1934,7 @@ Deno.test(function consoleLogShouldNotThrowErrorWhenInputIsProxiedRegExp() {
   mockConsole((console, out) => {
     const proxiedRegExp = new Proxy(/aaaa/, {});
     console.log(proxiedRegExp);
-    assertEquals(stripColor(out.toString()), "/aaaa/\n");
+    assertEquals(stripAnsiCode(out.toString()), "/aaaa/\n");
   });
 });
 
@@ -1883,7 +1943,7 @@ Deno.test(function consoleLogShouldNotThrowErrorWhenInputIsProxiedDate() {
   mockConsole((console, out) => {
     const proxiedDate = new Proxy(new Date("2022-09-24T15:59:39.529Z"), {});
     console.log(proxiedDate);
-    assertEquals(stripColor(out.toString()), "2022-09-24T15:59:39.529Z\n");
+    assertEquals(stripAnsiCode(out.toString()), "2022-09-24T15:59:39.529Z\n");
   });
 });
 
@@ -1892,7 +1952,7 @@ Deno.test(function consoleLogShouldNotThrowErrorWhenInputIsProxiedError() {
   mockConsole((console, out) => {
     const proxiedError = new Proxy(new Error("message"), {});
     console.log(proxiedError);
-    assertStringIncludes(stripColor(out.toString()), "Error: message\n");
+    assertStringIncludes(stripAnsiCode(out.toString()), "Error: message\n");
   });
 });
 
@@ -1931,18 +1991,18 @@ Deno.test(function consoleTrace() {
 
 Deno.test(function inspectString() {
   assertEquals(
-    stripColor(Deno.inspect("\0")),
+    stripAnsiCode(Deno.inspect("\0")),
     `"\\x00"`,
   );
   assertEquals(
-    stripColor(Deno.inspect("\x1b[2J")),
+    stripAnsiCode(Deno.inspect("\x1b[2J")),
     `"\\x1b[2J"`,
   );
 });
 
 Deno.test(function inspectGetters() {
   assertEquals(
-    stripColor(Deno.inspect({
+    stripAnsiCode(Deno.inspect({
       get foo() {
         return 0;
       },
@@ -1951,7 +2011,7 @@ Deno.test(function inspectGetters() {
   );
 
   assertEquals(
-    stripColor(Deno.inspect({
+    stripAnsiCode(Deno.inspect({
       get foo() {
         return 0;
       },
@@ -1976,15 +2036,15 @@ Deno.test(function inspectPrototype() {
 
 Deno.test(function inspectSorted() {
   assertEquals(
-    stripColor(Deno.inspect({ b: 2, a: 1 }, { sorted: true })),
+    stripAnsiCode(Deno.inspect({ b: 2, a: 1 }, { sorted: true })),
     "{ a: 1, b: 2 }",
   );
   assertEquals(
-    stripColor(Deno.inspect(new Set(["b", "a"]), { sorted: true })),
+    stripAnsiCode(Deno.inspect(new Set(["b", "a"]), { sorted: true })),
     `Set(2) { "a", "b" }`,
   );
   assertEquals(
-    stripColor(Deno.inspect(
+    stripAnsiCode(Deno.inspect(
       new Map([
         ["b", 2],
         ["a", 1],
@@ -1997,7 +2057,7 @@ Deno.test(function inspectSorted() {
 
 Deno.test(function inspectTrailingComma() {
   assertEquals(
-    stripColor(Deno.inspect(
+    stripAnsiCode(Deno.inspect(
       [
         "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
         "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
@@ -2010,7 +2070,7 @@ Deno.test(function inspectTrailingComma() {
 ]`,
   );
   assertEquals(
-    stripColor(Deno.inspect(
+    stripAnsiCode(Deno.inspect(
       {
         aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa: 1,
         bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb: 2,
@@ -2023,7 +2083,7 @@ Deno.test(function inspectTrailingComma() {
 }`,
   );
   assertEquals(
-    stripColor(Deno.inspect(
+    stripAnsiCode(Deno.inspect(
       new Set([
         "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
         "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
@@ -2036,7 +2096,7 @@ Deno.test(function inspectTrailingComma() {
 }`,
   );
   assertEquals(
-    stripColor(Deno.inspect(
+    stripAnsiCode(Deno.inspect(
       new Map([
         ["aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", 1],
         ["bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", 2],
@@ -2052,7 +2112,7 @@ Deno.test(function inspectTrailingComma() {
 
 Deno.test(function inspectCompact() {
   assertEquals(
-    stripColor(Deno.inspect({ a: 1, b: 2 }, { compact: false })),
+    stripAnsiCode(Deno.inspect({ a: 1, b: 2 }, { compact: false })),
     `{
   a: 1,
   b: 2
@@ -2062,15 +2122,15 @@ Deno.test(function inspectCompact() {
 
 Deno.test(function inspectIterableLimit() {
   assertEquals(
-    stripColor(Deno.inspect(["a", "b", "c"], { iterableLimit: 2 })),
+    stripAnsiCode(Deno.inspect(["a", "b", "c"], { iterableLimit: 2 })),
     `[ "a", "b", ... 1 more item ]`,
   );
   assertEquals(
-    stripColor(Deno.inspect(new Set(["a", "b", "c"]), { iterableLimit: 2 })),
+    stripAnsiCode(Deno.inspect(new Set(["a", "b", "c"]), { iterableLimit: 2 })),
     `Set(3) { "a", "b", ... 1 more item }`,
   );
   assertEquals(
-    stripColor(Deno.inspect(
+    stripAnsiCode(Deno.inspect(
       new Map([
         ["a", 1],
         ["b", 2],
@@ -2084,19 +2144,19 @@ Deno.test(function inspectIterableLimit() {
 
 Deno.test(function inspectProxy() {
   assertEquals(
-    stripColor(Deno.inspect(
+    stripAnsiCode(Deno.inspect(
       new Proxy([1, 2, 3], {}),
     )),
     "[ 1, 2, 3 ]",
   );
   assertEquals(
-    stripColor(Deno.inspect(
+    stripAnsiCode(Deno.inspect(
       new Proxy({ key: "value" }, {}),
     )),
     `{ key: "value" }`,
   );
   assertEquals(
-    stripColor(Deno.inspect(
+    stripAnsiCode(Deno.inspect(
       new Proxy({}, {
         get(_target, key) {
           if (key === Symbol.toStringTag) {
@@ -2120,14 +2180,14 @@ Deno.test(function inspectProxy() {
     `Object [MyProxy] { prop1: 5, prop2: 5 }`,
   );
   assertEquals(
-    stripColor(Deno.inspect(
+    stripAnsiCode(Deno.inspect(
       new Proxy([1, 2, 3], { get() {} }),
       { showProxy: true },
     )),
     "Proxy [ [ 1, 2, 3 ], { get: [Function: get] } ]",
   );
   assertEquals(
-    stripColor(Deno.inspect(
+    stripAnsiCode(Deno.inspect(
       new Proxy({ a: 1 }, {
         set(): boolean {
           return false;
@@ -2138,7 +2198,7 @@ Deno.test(function inspectProxy() {
     "Proxy [ { a: 1 }, { set: [Function: set] } ]",
   );
   assertEquals(
-    stripColor(Deno.inspect(
+    stripAnsiCode(Deno.inspect(
       new Proxy([1, 2, 3, 4, 5, 6, 7], { get() {} }),
       { showProxy: true },
     )),
@@ -2151,7 +2211,7 @@ Deno.test(function inspectProxy() {
 ]`,
   );
   assertEquals(
-    stripColor(Deno.inspect(
+    stripAnsiCode(Deno.inspect(
       new Proxy(function fn() {}, { get() {} }),
       { showProxy: true },
     )),
@@ -2166,15 +2226,15 @@ Deno.test(function inspectError() {
   });
 
   assertStringIncludes(
-    stripColor(Deno.inspect(error1)),
+    stripAnsiCode(Deno.inspect(error1)),
     "Error: This is an error",
   );
   assertStringIncludes(
-    stripColor(Deno.inspect(error2)),
+    stripAnsiCode(Deno.inspect(error2)),
     "Error: This is an error",
   );
   assertStringIncludes(
-    stripColor(Deno.inspect(error2)),
+    stripAnsiCode(Deno.inspect(error2)),
     "Caused by Error: This is a cause error",
   );
 });
@@ -2189,20 +2249,36 @@ Deno.test(function inspectErrorCircular() {
   error2.cause.cause = error2;
 
   assertStringIncludes(
-    stripColor(Deno.inspect(error1)),
+    stripAnsiCode(Deno.inspect(error1)),
     "Error: This is an error",
   );
   assertStringIncludes(
-    stripColor(Deno.inspect(error2)),
+    stripAnsiCode(Deno.inspect(error2)),
     "<ref *1> Error: This is an error",
   );
   assertStringIncludes(
-    stripColor(Deno.inspect(error2)),
+    stripAnsiCode(Deno.inspect(error2)),
     "Caused by Error: This is a cause error",
   );
   assertStringIncludes(
-    stripColor(Deno.inspect(error2)),
+    stripAnsiCode(Deno.inspect(error2)),
     "Caused by [Circular *1]",
+  );
+});
+
+Deno.test(function inspectErrorWithCauseFormat() {
+  const error = new Error("This is an error", {
+    cause: {
+      code: 100500,
+    },
+  });
+  assertStringIncludes(
+    stripAnsiCode(Deno.inspect(error)),
+    "Error: This is an error",
+  );
+  assertStringIncludes(
+    stripAnsiCode(Deno.inspect(error)),
+    "Caused by { code: 100500 }",
   );
 });
 

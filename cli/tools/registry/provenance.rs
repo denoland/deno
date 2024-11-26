@@ -1,5 +1,6 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
+use crate::http_util;
 use crate::http_util::HttpClient;
 
 use super::api::OidcTokenResponse;
@@ -12,6 +13,8 @@ use deno_core::anyhow;
 use deno_core::anyhow::bail;
 use deno_core::error::AnyError;
 use deno_core::serde_json;
+use deno_core::url::Url;
+use http_body_util::BodyExt;
 use once_cell::sync::Lazy;
 use p256::elliptic_curve;
 use p256::pkcs8::AssociatedOid;
@@ -226,16 +229,16 @@ impl Predicate {
 struct ProvenanceAttestation {
   #[serde(rename = "type")]
   _type: &'static str,
-  subject: Subject,
+  subject: Vec<Subject>,
   predicate_type: &'static str,
   predicate: Predicate,
 }
 
 impl ProvenanceAttestation {
-  pub fn new_github_actions(subject: Subject) -> Self {
+  pub fn new_github_actions(subjects: Vec<Subject>) -> Self {
     Self {
       _type: INTOTO_STATEMENT_TYPE,
-      subject,
+      subject: subjects,
       predicate_type: SLSA_PREDICATE_TYPE,
       predicate: Predicate::new_github_actions(),
     }
@@ -293,7 +296,7 @@ pub struct ProvenanceBundle {
 
 pub async fn generate_provenance(
   http_client: &HttpClient,
-  subject: Subject,
+  subjects: Vec<Subject>,
 ) -> Result<ProvenanceBundle, AnyError> {
   if !is_gha() {
     bail!("Automatic provenance is only available in GitHub Actions");
@@ -305,7 +308,7 @@ pub async fn generate_provenance(
     );
   };
 
-  let slsa = ProvenanceAttestation::new_github_actions(subject);
+  let slsa = ProvenanceAttestation::new_github_actions(subjects);
 
   let attestation = serde_json::to_string(&slsa)?;
   let bundle = attest(http_client, &attestation, INTOTO_PAYLOAD_TYPE).await?;
@@ -504,12 +507,12 @@ impl<'a> FulcioSigner<'a> {
 
     let response = self
       .http_client
-      .post(url)
-      .json(&request_body)
+      .post_json(url.parse()?, &request_body)?
       .send()
       .await?;
 
-    let body: SigningCertificateResponse = response.json().await?;
+    let body: SigningCertificateResponse =
+      http_util::body_to_json(response).await?;
 
     let key = body
       .signed_certificate_embedded_sct
@@ -527,15 +530,23 @@ impl<'a> FulcioSigner<'a> {
       bail!("No OIDC token available");
     };
 
-    let res = self
+    let mut url = req_url.parse::<Url>()?;
+    url.query_pairs_mut().append_pair("audience", aud);
+    let res_bytes = self
       .http_client
-      .get(&req_url)
-      .bearer_auth(token)
-      .query(&[("audience", aud)])
+      .get(url)?
+      .header(
+        http::header::AUTHORIZATION,
+        format!("Bearer {}", token)
+          .parse()
+          .map_err(http::Error::from)?,
+      )
       .send()
       .await?
-      .json::<OidcTokenResponse>()
-      .await?;
+      .collect()
+      .await?
+      .to_bytes();
+    let res: OidcTokenResponse = serde_json::from_slice(&res_bytes)?;
     Ok(res.value)
   }
 }
@@ -685,11 +696,10 @@ async fn testify(
 
   let url = format!("{}/api/v1/log/entries", *DEFAULT_REKOR_URL);
   let res = http_client
-    .post(&url)
-    .json(&proposed_intoto_entry)
+    .post_json(url.parse()?, &proposed_intoto_entry)?
     .send()
     .await?;
-  let body: RekorEntry = res.json().await?;
+  let body: RekorEntry = http_util::body_to_json(res).await?;
 
   Ok(body)
 }
@@ -728,8 +738,13 @@ mod tests {
         sha256: "yourmom".to_string(),
       },
     };
-    let slsa = ProvenanceAttestation::new_github_actions(subject);
-    assert_eq!(slsa.subject.name, "jsr:@divy/sdl2@0.0.1");
-    assert_eq!(slsa.subject.digest.sha256, "yourmom");
+    let slsa = ProvenanceAttestation::new_github_actions(vec![subject]);
+    assert_eq!(
+      slsa.subject.len(),
+      1,
+      "Subject should be an array per the in-toto specification"
+    );
+    assert_eq!(slsa.subject[0].name, "jsr:@divy/sdl2@0.0.1");
+    assert_eq!(slsa.subject[0].digest.sha256, "yourmom");
   }
 }

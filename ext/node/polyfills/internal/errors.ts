@@ -18,7 +18,7 @@
  */
 
 import { primordials } from "ext:core/mod.js";
-const { JSONStringify } = primordials;
+const { JSONStringify, SafeArrayIterator, SymbolFor } = primordials;
 import { format, inspect } from "ext:deno_node/internal/util/inspect.mjs";
 import { codes } from "ext:deno_node/internal/error_codes.ts";
 import {
@@ -421,8 +421,11 @@ export interface NodeSystemErrorCtx {
 // `err.info`.
 // The context passed into this error must have .code, .syscall and .message,
 // and may have .path and .dest.
-class NodeSystemError extends NodeErrorAbstraction {
+class NodeSystemError extends Error {
+  code: string;
   constructor(key: string, context: NodeSystemErrorCtx, msgPrefix: string) {
+    super();
+    this.code = key;
     let message = `${msgPrefix}: ${context.syscall} returned ` +
       `${context.code} (${context.message})`;
 
@@ -433,8 +436,6 @@ class NodeSystemError extends NodeErrorAbstraction {
       message += ` => ${context.dest}`;
     }
 
-    super("SystemError", key, message);
-
     captureLargerStackTrace(this);
 
     Object.defineProperties(this, {
@@ -442,6 +443,18 @@ class NodeSystemError extends NodeErrorAbstraction {
         value: true,
         enumerable: false,
         writable: false,
+        configurable: true,
+      },
+      name: {
+        value: "SystemError",
+        enumerable: false,
+        writable: true,
+        configurable: true,
+      },
+      message: {
+        value: message,
+        enumerable: false,
+        writable: true,
         configurable: true,
       },
       info: {
@@ -501,6 +514,15 @@ class NodeSystemError extends NodeErrorAbstraction {
 
   override toString() {
     return `${this.name} [${this.code}]: ${this.message}`;
+  }
+
+  // deno-lint-ignore no-explicit-any
+  [SymbolFor("nodejs.util.inspect.custom")](_recurseTimes: number, ctx: any) {
+    return inspect(this, {
+      ...ctx,
+      getters: true,
+      customInspect: false,
+    });
   }
 }
 
@@ -902,6 +924,12 @@ export class ERR_CRYPTO_INVALID_KEY_OBJECT_TYPE extends NodeTypeError {
       "ERR_CRYPTO_INVALID_KEY_OBJECT_TYPE",
       `Invalid key object type ${x}, expected ${y}.`,
     );
+  }
+}
+
+export class ERR_CRYPTO_INVALID_JWK extends NodeError {
+  constructor() {
+    super("ERR_CRYPTO_INVALID_JWK", "Invalid JWK");
   }
 }
 
@@ -1846,6 +1874,11 @@ export class ERR_SOCKET_CLOSED extends NodeError {
     super("ERR_SOCKET_CLOSED", `Socket is closed`);
   }
 }
+export class ERR_SOCKET_CONNECTION_TIMEOUT extends NodeError {
+  constructor() {
+    super("ERR_SOCKET_CONNECTION_TIMEOUT", `Socket connection timeout`);
+  }
+}
 export class ERR_SOCKET_DGRAM_IS_CONNECTED extends NodeError {
   constructor() {
     super("ERR_SOCKET_DGRAM_IS_CONNECTED", `Already connected`);
@@ -2267,10 +2300,10 @@ export class ERR_HTTP2_INVALID_SETTING_VALUE extends NodeRangeError {
 }
 export class ERR_HTTP2_STREAM_CANCEL extends NodeError {
   override cause?: Error;
-  constructor(error: Error) {
+  constructor(error?: Error) {
     super(
       "ERR_HTTP2_STREAM_CANCEL",
-      typeof error.message === "string"
+      error && typeof error.message === "string"
         ? `The pending stream has been canceled (caused by: ${error.message})`
         : "The pending stream has been canceled",
     );
@@ -2353,6 +2386,15 @@ export class ERR_INVALID_RETURN_VALUE extends NodeTypeError {
           value,
         )
       }.`,
+    );
+  }
+}
+
+export class ERR_NOT_IMPLEMENTED extends NodeError {
+  constructor(message?: string) {
+    super(
+      "ERR_NOT_IMPLEMENTED",
+      message ? `Not implemented: ${message}` : "Not implemented",
     );
   }
 }
@@ -2530,19 +2572,6 @@ export class ERR_FS_RMDIR_ENOTDIR extends NodeSystemError {
   }
 }
 
-export class ERR_OS_NO_HOMEDIR extends NodeSystemError {
-  constructor() {
-    const code = isWindows ? "ENOENT" : "ENOTDIR";
-    const ctx: NodeSystemErrorCtx = {
-      message: "not a directory",
-      syscall: "home",
-      code,
-      errno: isWindows ? osConstants.errno.ENOENT : osConstants.errno.ENOTDIR,
-    };
-    super(code, ctx, "Path is not a directory");
-  }
-}
-
 export class ERR_HTTP_SOCKET_ASSIGNED extends NodeError {
   constructor() {
     super(
@@ -2618,11 +2647,30 @@ export function aggregateTwoErrors(
   }
   return innerError || outerError;
 }
+
+export class NodeAggregateError extends AggregateError {
+  code: string;
+  constructor(errors, message) {
+    super(new SafeArrayIterator(errors), message);
+    this.code = errors[0]?.code;
+  }
+
+  get [kIsNodeError]() {
+    return true;
+  }
+
+  // deno-lint-ignore adjacent-overload-signatures
+  get ["constructor"]() {
+    return AggregateError;
+  }
+}
+
 codes.ERR_IPC_CHANNEL_CLOSED = ERR_IPC_CHANNEL_CLOSED;
 codes.ERR_INVALID_ARG_TYPE = ERR_INVALID_ARG_TYPE;
 codes.ERR_INVALID_ARG_VALUE = ERR_INVALID_ARG_VALUE;
 codes.ERR_OUT_OF_RANGE = ERR_OUT_OF_RANGE;
 codes.ERR_SOCKET_BAD_PORT = ERR_SOCKET_BAD_PORT;
+codes.ERR_SOCKET_CONNECTION_TIMEOUT = ERR_SOCKET_CONNECTION_TIMEOUT;
 codes.ERR_BUFFER_OUT_OF_BOUNDS = ERR_BUFFER_OUT_OF_BOUNDS;
 codes.ERR_UNKNOWN_ENCODING = ERR_UNKNOWN_ENCODING;
 codes.ERR_PARSE_ARGS_INVALID_OPTION_VALUE = ERR_PARSE_ARGS_INVALID_OPTION_VALUE;
@@ -2711,6 +2759,7 @@ export default {
   ERR_CRYPTO_INCOMPATIBLE_KEY_OPTIONS,
   ERR_CRYPTO_INVALID_DIGEST,
   ERR_CRYPTO_INVALID_KEY_OBJECT_TYPE,
+  ERR_CRYPTO_INVALID_JWK,
   ERR_CRYPTO_INVALID_STATE,
   ERR_CRYPTO_PBKDF2_ERROR,
   ERR_CRYPTO_SCRYPT_INVALID_PARAMETER,
@@ -2822,6 +2871,7 @@ export default {
   ERR_INVALID_SYNC_FORK_INPUT,
   ERR_INVALID_THIS,
   ERR_INVALID_TUPLE,
+  ERR_NOT_IMPLEMENTED,
   ERR_INVALID_URI,
   ERR_INVALID_URL,
   ERR_INVALID_URL_SCHEME,

@@ -32,28 +32,15 @@ delete Object.prototype.__proto__;
   /** @type {ReadonlySet<string>} */
   const unstableDenoProps = new Set([
     "AtomicOperation",
-    "CreateHttpClientOptions",
     "DatagramConn",
-    "HttpClient",
     "Kv",
     "KvListIterator",
     "KvU64",
-    "UnsafeCallback",
-    "UnsafePointer",
-    "UnsafePointerView",
-    "UnsafeFnPointer",
     "UnixConnectOptions",
     "UnixListenOptions",
-    "createHttpClient",
-    "dlopen",
-    "flock",
-    "flockSync",
-    "funlock",
-    "funlockSync",
     "listen",
     "listenDatagram",
     "openKv",
-    "umask",
   ]);
   const unstableMsgSuggestion =
     "If not, try changing the 'lib' compiler option to include 'deno.unstable' " +
@@ -130,33 +117,12 @@ delete Object.prototype.__proto__;
     }
   }
 
-  class SpecifierIsCjsCache {
-    /** @type {Set<string>} */
-    #cache = new Set();
-
-    /** @param {[string, ts.Extension]} param */
-    maybeAdd([specifier, ext]) {
-      if (ext === ".cjs" || ext === ".d.cts" || ext === ".cts") {
-        this.#cache.add(specifier);
-      }
-    }
-
-    add(specifier) {
-      this.#cache.add(specifier);
-    }
-
-    /** @param specifier {string} */
-    has(specifier) {
-      return this.#cache.has(specifier);
-    }
-  }
-
   // In the case of the LSP, this will only ever contain the assets.
   /** @type {Map<string, ts.SourceFile>} */
   const sourceFileCache = new Map();
 
-  /** @type {Map<string, string>} */
-  const sourceTextCache = new Map();
+  /** @type {Map<string, ts.IScriptSnapshot & { isCjs?: boolean; }>} */
+  const scriptSnapshotCache = new Map();
 
   /** @type {Map<string, number>} */
   const sourceRefCounts = new Map();
@@ -167,7 +133,9 @@ delete Object.prototype.__proto__;
   /** @type {Map<string, boolean>} */
   const isNodeSourceFileCache = new Map();
 
-  const isCjsCache = new SpecifierIsCjsCache();
+  // Maps asset specifiers to the first scope that the asset was loaded into.
+  /** @type {Map<string, string | null>} */
+  const assetScopes = new Map();
 
   /** @type {number | null} */
   let projectVersionCache = null;
@@ -239,12 +207,13 @@ delete Object.prototype.__proto__;
       const mapKey = path + key;
       let sourceFile = documentRegistrySourceFileCache.get(mapKey);
       if (!sourceFile || sourceFile.version !== version) {
+        const isCjs = /** @type {any} */ (scriptSnapshot).isCjs;
         sourceFile = ts.createLanguageServiceSourceFile(
           fileName,
           scriptSnapshot,
           {
             ...getCreateSourceFileOptions(sourceFileOptions),
-            impliedNodeFormat: isCjsCache.has(fileName)
+            impliedNodeFormat: isCjs
               ? ts.ModuleKind.CommonJS
               : ts.ModuleKind.ESNext,
             // in the lsp we want to be able to show documentation
@@ -349,7 +318,7 @@ delete Object.prototype.__proto__;
         if (lastRequestMethod != "cleanupSemanticCache") {
           const mapKey = path + key;
           documentRegistrySourceFileCache.delete(mapKey);
-          sourceTextCache.delete(path);
+          scriptSnapshotCache.delete(path);
           ops.op_release(path);
         }
       } else {
@@ -481,16 +450,24 @@ delete Object.prototype.__proto__;
     // We specify the resolution mode to be CommonJS for some npm files and this
     // diagnostic gets generated even though we're using custom module resolution.
     1452,
+    // Module '...' cannot be imported using this construct. The specifier only resolves to an
+    // ES module, which cannot be imported with 'require'.
+    1471,
+    // TS1479: The current file is a CommonJS module whose imports will produce 'require' calls;
+    // however, the referenced file is an ECMAScript module and cannot be imported with 'require'.
+    1479,
     // TS2306: File '.../index.d.ts' is not a module.
     // We get this for `x-typescript-types` declaration files which don't export
     // anything. We prefer to treat these as modules with no exports.
     2306,
     // TS2688: Cannot find type definition file for '...'.
-    // We ignore because type defintion files can end with '.ts'.
+    // We ignore because type definition files can end with '.ts'.
     2688,
     // TS2792: Cannot find module. Did you mean to set the 'moduleResolution'
     // option to 'node', or to add aliases to the 'paths' option?
     2792,
+    // TS2307: Cannot find module '{0}' or its corresponding type declarations.
+    2307,
     // TS5009: Cannot find the common subdirectory path for the input files.
     5009,
     // TS5055: Cannot write file
@@ -645,18 +622,11 @@ delete Object.prototype.__proto__;
       if (!fileInfo) {
         return undefined;
       }
-      let { data, scriptKind, version, isCjs } = fileInfo;
+      const { data, scriptKind, version, isCjs } = fileInfo;
       assert(
         data != null,
         `"data" is unexpectedly null for "${specifier}".`,
       );
-
-      // use the cache for non-lsp
-      if (isCjs == null) {
-        isCjs = isCjsCache.has(specifier);
-      } else if (isCjs) {
-        isCjsCache.add(specifier);
-      }
 
       sourceFile = ts.createSourceFile(
         specifier,
@@ -731,11 +701,10 @@ delete Object.prototype.__proto__;
           /** @type {[string, ts.Extension] | undefined} */
           const resolved = ops.op_resolve(
             containingFilePath,
-            isCjsCache.has(containingFilePath),
+            containingFileMode === ts.ModuleKind.CommonJS,
             [fileReference.fileName],
           )?.[0];
           if (resolved) {
-            isCjsCache.maybeAdd(resolved);
             return {
               primary: true,
               resolvedFileName: resolved[0],
@@ -756,7 +725,14 @@ delete Object.prototype.__proto__;
         }
       });
     },
-    resolveModuleNames(specifiers, base) {
+    resolveModuleNames(
+      specifiers,
+      base,
+      _reusedNames,
+      _redirectedReference,
+      _options,
+      containingSourceFile,
+    ) {
       if (logDebug) {
         debug(`host.resolveModuleNames()`);
         debug(`  base: ${base}`);
@@ -765,13 +741,12 @@ delete Object.prototype.__proto__;
       /** @type {Array<[string, ts.Extension] | undefined>} */
       const resolved = ops.op_resolve(
         base,
-        isCjsCache.has(base),
+        containingSourceFile?.impliedNodeFormat === ts.ModuleKind.CommonJS,
         specifiers,
       );
       if (resolved) {
         const result = resolved.map((item) => {
           if (item) {
-            isCjsCache.maybeAdd(item);
             const [resolvedFileName, extension] = item;
             return {
               resolvedFileName,
@@ -835,26 +810,32 @@ delete Object.prototype.__proto__;
       if (logDebug) {
         debug(`host.getScriptSnapshot("${specifier}")`);
       }
-      const sourceFile = sourceFileCache.get(specifier);
-      if (sourceFile) {
-        // This case only occurs for assets.
-        return ts.ScriptSnapshot.fromString(sourceFile.text);
+      if (specifier.startsWith(ASSETS_URL_PREFIX)) {
+        const sourceFile = this.getSourceFile(
+          specifier,
+          ts.ScriptTarget.ESNext,
+        );
+        if (sourceFile) {
+          if (!assetScopes.has(specifier)) {
+            assetScopes.set(specifier, lastRequestScope);
+          }
+          // This case only occurs for assets.
+          return ts.ScriptSnapshot.fromString(sourceFile.text);
+        }
       }
-      let sourceText = sourceTextCache.get(specifier);
-      if (sourceText == undefined) {
+      let scriptSnapshot = scriptSnapshotCache.get(specifier);
+      if (scriptSnapshot == undefined) {
         /** @type {{ data: string, version: string, isCjs: boolean }} */
         const fileInfo = ops.op_load(specifier);
         if (!fileInfo) {
           return undefined;
         }
-        if (fileInfo.isCjs) {
-          isCjsCache.add(specifier);
-        }
-        sourceTextCache.set(specifier, fileInfo.data);
+        scriptSnapshot = ts.ScriptSnapshot.fromString(fileInfo.data);
+        scriptSnapshot.isCjs = fileInfo.isCjs;
+        scriptSnapshotCache.set(specifier, scriptSnapshot);
         scriptVersionCache.set(specifier, fileInfo.version);
-        sourceText = fileInfo.data;
       }
-      return ts.ScriptSnapshot.fromString(sourceText);
+      return scriptSnapshot;
     },
   };
 
@@ -878,6 +859,8 @@ delete Object.prototype.__proto__;
         jqueryMessage,
       "Cannot_find_name_0_Do_you_need_to_install_type_definitions_for_jQuery_Try_npm_i_save_dev_types_Slash_2592":
         jqueryMessage,
+      "Module_0_was_resolved_to_1_but_allowArbitraryExtensions_is_not_set_6263":
+        "Module '{0}' was resolved to '{1}', but importing these modules is not supported.",
     };
   })());
 
@@ -977,6 +960,8 @@ delete Object.prototype.__proto__;
     Object.assign(options, {
       allowNonTsExtensions: true,
       allowImportingTsExtensions: true,
+      module: ts.ModuleKind.NodeNext,
+      moduleResolution: ts.ModuleResolutionKind.NodeNext,
     });
     if (errors.length > 0 && logDebug) {
       debug(ts.formatDiagnostics(errors, host));
@@ -1056,7 +1041,7 @@ delete Object.prototype.__proto__;
         : ts.sortAndDeduplicateDiagnostics(
           checkFiles.map((s) => program.getSemanticDiagnostics(s)).flat(),
         )),
-    ].filter((diagnostic) => !IGNORED_DIAGNOSTICS.includes(diagnostic.code));
+    ].filter(filterMapDiagnostic);
 
     // emit the tsbuildinfo file
     // @ts-ignore: emitBuildInfo is not exposed (https://github.com/microsoft/TypeScript/issues/49871)
@@ -1069,6 +1054,27 @@ delete Object.prototype.__proto__;
       stats: performanceEnd(),
     });
     debug("<<< exec stop");
+  }
+
+  /** @param {ts.Diagnostic} diagnostic */
+  function filterMapDiagnostic(diagnostic) {
+    if (IGNORED_DIAGNOSTICS.includes(diagnostic.code)) {
+      return false;
+    }
+    // make the diagnostic for using an `export =` in an es module a warning
+    if (diagnostic.code === 1203) {
+      diagnostic.category = ts.DiagnosticCategory.Warning;
+      if (typeof diagnostic.messageText === "string") {
+        const message =
+          " This will start erroring in a future version of Deno 2 " +
+          "in order to align with TypeScript.";
+        // seems typescript shares objects, so check if it's already been set
+        if (!diagnostic.messageText.endsWith(message)) {
+          diagnostic.messageText += message;
+        }
+      }
+    }
+    return true;
   }
 
   /**
@@ -1099,7 +1105,7 @@ delete Object.prototype.__proto__;
    * @param {any} data
    * @param {string | null} error
    */
-  // TODO(bartlomieju): this feels needlessly generic, both type chcking
+  // TODO(bartlomieju): this feels needlessly generic, both type checking
   // and language server use it with inefficient serialization. Id is not used
   // anyway...
   function respond(_id, data = null, error = null) {
@@ -1142,14 +1148,15 @@ delete Object.prototype.__proto__;
         "experimentalDecorators": false,
         "isolatedModules": true,
         "lib": ["deno.ns", "deno.window", "deno.unstable"],
-        "module": "esnext",
+        "module": "NodeNext",
+        "moduleResolution": "NodeNext",
         "moduleDetection": "force",
         "noEmit": true,
+        "noImplicitOverride": true,
         "resolveJsonModule": true,
         "strict": true,
         "target": "esnext",
         "useDefineForClassFields": true,
-        "useUnknownInCatchVariables": false,
         "jsx": "react",
         "jsxFactory": "React.createElement",
         "jsxFragmentFactory": "React.Fragment",
@@ -1210,6 +1217,7 @@ delete Object.prototype.__proto__;
       const newConfigsByScope = maybeChange[2];
       if (newConfigsByScope) {
         isNodeSourceFileCache.clear();
+        assetScopes.clear();
         /** @type { typeof languageServiceEntries.byScope } */
         const newByScope = new Map();
         for (const [scope, config] of newConfigsByScope) {
@@ -1239,7 +1247,7 @@ delete Object.prototype.__proto__;
           closed = true;
         }
         scriptVersionCache.delete(script);
-        sourceTextCache.delete(script);
+        scriptSnapshotCache.delete(script);
       }
 
       if (newConfigsByScope || opened || closed) {
@@ -1247,6 +1255,12 @@ delete Object.prototype.__proto__;
       }
     }
 
+    // For requests pertaining to an asset document, we make it so that the
+    // passed scope is just its own specifier. We map it to an actual scope here
+    // based on the first scope that the asset was loaded into.
+    if (scope?.startsWith(ASSETS_URL_PREFIX)) {
+      scope = assetScopes.get(scope) ?? null;
+    }
     lastRequestMethod = method;
     lastRequestScope = scope;
     const ls = (scope ? languageServiceEntries.byScope.get(scope)?.ls : null) ??
@@ -1278,7 +1292,7 @@ delete Object.prototype.__proto__;
               ...ls.getSemanticDiagnostics(specifier),
               ...ls.getSuggestionDiagnostics(specifier),
               ...ls.getSyntacticDiagnostics(specifier),
-            ].filter(({ code }) => !IGNORED_DIAGNOSTICS.includes(code)));
+            ].filter(filterMapDiagnostic));
           }
           return respond(id, diagnosticMap);
         } catch (e) {
@@ -1324,48 +1338,32 @@ delete Object.prototype.__proto__;
   // A build time only op that provides some setup information that is used to
   // ensure the snapshot is setup properly.
   /** @type {{ buildSpecifier: string; libs: string[]; nodeBuiltInModuleNames: string[] }} */
-  const { buildSpecifier, libs, nodeBuiltInModuleNames } = ops.op_build_info();
-
-  ts.deno.setNodeBuiltInModuleNames(nodeBuiltInModuleNames);
+  const { buildSpecifier, libs } = ops.op_build_info();
 
   // list of globals that should be kept in Node's globalThis
   ts.deno.setNodeOnlyGlobalNames([
-    // when bumping the @types/node version we should check if
-    // anything needs to be updated here
-    "NodeRequire",
-    "RequireResolve",
-    "RequireResolve",
-    "process",
-    "console",
-    "__filename",
     "__dirname",
-    "require",
-    "module",
-    "exports",
-    "gc",
-    "BufferEncoding",
-    "BufferConstructor",
-    "WithImplicitCoercion",
+    "__filename",
     "Buffer",
+    "BufferConstructor",
+    "BufferEncoding",
+    "clearImmediate",
+    "clearInterval",
+    "clearTimeout",
+    "console",
     "Console",
-    "ImportMeta",
-    "setTimeout",
-    "setInterval",
-    "setImmediate",
+    "ErrorConstructor",
+    "gc",
     "Global",
-    "AbortController",
-    "AbortSignal",
-    "Blob",
-    "BroadcastChannel",
-    "MessageChannel",
-    "MessagePort",
-    "Event",
-    "EventTarget",
-    "performance",
-    "TextDecoder",
-    "TextEncoder",
-    "URL",
-    "URLSearchParams",
+    "ImportMeta",
+    "localStorage",
+    "queueMicrotask",
+    "RequestInit",
+    "ResponseInit",
+    "sessionStorage",
+    "setImmediate",
+    "setInterval",
+    "setTimeout",
   ]);
 
   for (const lib of libs) {

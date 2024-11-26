@@ -1,29 +1,43 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 use crate::callback::PtrSymbol;
-use crate::check_unstable;
 use crate::dlfcn::DynamicLibraryResource;
 use crate::ir::*;
 use crate::symbol::NativeType;
 use crate::symbol::Symbol;
 use crate::FfiPermissions;
 use crate::ForeignFunction;
-use deno_core::anyhow::anyhow;
-use deno_core::error::type_error;
-use deno_core::error::AnyError;
 use deno_core::op2;
 use deno_core::serde_json::Value;
+use deno_core::serde_v8::BigInt as V8BigInt;
 use deno_core::serde_v8::ExternalPointer;
 use deno_core::unsync::spawn_blocking;
 use deno_core::v8;
 use deno_core::OpState;
 use deno_core::ResourceId;
 use libffi::middle::Arg;
+use num_bigint::BigInt;
 use serde::Serialize;
 use std::cell::RefCell;
 use std::ffi::c_void;
 use std::future::Future;
 use std::rc::Rc;
+
+#[derive(Debug, thiserror::Error)]
+pub enum CallError {
+  #[error(transparent)]
+  IR(#[from] IRError),
+  #[error("Nonblocking FFI call failed: {0}")]
+  NonblockingCallFailure(#[source] tokio::task::JoinError),
+  #[error("Invalid FFI symbol name: '{0}'")]
+  InvalidSymbol(String),
+  #[error(transparent)]
+  Permission(#[from] deno_permissions::PermissionCheckError),
+  #[error(transparent)]
+  Resource(deno_core::error::AnyError),
+  #[error(transparent)]
+  Callback(#[from] super::CallbackError),
+}
 
 // SAFETY: Makes an FFI call
 unsafe fn ffi_call_rtype_struct(
@@ -46,7 +60,7 @@ pub(crate) fn ffi_call_sync<'scope>(
   args: v8::FunctionCallbackArguments,
   symbol: &Symbol,
   out_buffer: Option<OutBuffer>,
-) -> Result<NativeValue, AnyError>
+) -> Result<NativeValue, CallError>
 where
   'scope: 'scope,
 {
@@ -192,6 +206,7 @@ where
 #[serde(untagged)]
 pub enum FfiValue {
   Value(Value),
+  BigInt(V8BigInt),
   External(ExternalPointer),
 }
 
@@ -202,7 +217,7 @@ fn ffi_call(
   parameter_types: &[NativeType],
   result_type: NativeType,
   out_buffer: Option<OutBuffer>,
-) -> Result<FfiValue, AnyError> {
+) -> FfiValue {
   let call_args: Vec<Arg> = call_args
     .iter()
     .enumerate()
@@ -215,7 +230,7 @@ fn ffi_call(
   // SAFETY: types in the `Cif` match the actual calling convention and
   // types of symbol.
   unsafe {
-    Ok(match result_type {
+    match result_type {
       NativeType::Void => {
         cif.call::<()>(fun_ptr, &call_args);
         FfiValue::Value(Value::from(()))
@@ -241,18 +256,18 @@ fn ffi_call(
       NativeType::I32 => {
         FfiValue::Value(Value::from(cif.call::<i32>(fun_ptr, &call_args)))
       }
-      NativeType::U64 => {
-        FfiValue::Value(Value::from(cif.call::<u64>(fun_ptr, &call_args)))
-      }
-      NativeType::I64 => {
-        FfiValue::Value(Value::from(cif.call::<i64>(fun_ptr, &call_args)))
-      }
-      NativeType::USize => {
-        FfiValue::Value(Value::from(cif.call::<usize>(fun_ptr, &call_args)))
-      }
-      NativeType::ISize => {
-        FfiValue::Value(Value::from(cif.call::<isize>(fun_ptr, &call_args)))
-      }
+      NativeType::U64 => FfiValue::BigInt(V8BigInt::from(BigInt::from(
+        cif.call::<u64>(fun_ptr, &call_args),
+      ))),
+      NativeType::I64 => FfiValue::BigInt(V8BigInt::from(BigInt::from(
+        cif.call::<i64>(fun_ptr, &call_args),
+      ))),
+      NativeType::USize => FfiValue::BigInt(V8BigInt::from(BigInt::from(
+        cif.call::<usize>(fun_ptr, &call_args),
+      ))),
+      NativeType::ISize => FfiValue::BigInt(V8BigInt::from(BigInt::from(
+        cif.call::<isize>(fun_ptr, &call_args),
+      ))),
       NativeType::F32 => {
         FfiValue::Value(Value::from(cif.call::<f32>(fun_ptr, &call_args)))
       }
@@ -268,11 +283,11 @@ fn ffi_call(
         ffi_call_rtype_struct(cif, &fun_ptr, call_args, out_buffer.unwrap().0);
         FfiValue::Value(Value::Null)
       }
-    })
+    }
   }
 }
 
-#[op2(async)]
+#[op2(async, stack_trace)]
 #[serde]
 pub fn op_ffi_call_ptr_nonblocking<FP>(
   scope: &mut v8::HandleScope,
@@ -281,15 +296,14 @@ pub fn op_ffi_call_ptr_nonblocking<FP>(
   #[serde] def: ForeignFunction,
   parameters: v8::Local<v8::Array>,
   out_buffer: Option<v8::Local<v8::TypedArray>>,
-) -> Result<impl Future<Output = Result<FfiValue, AnyError>>, AnyError>
+) -> Result<impl Future<Output = Result<FfiValue, CallError>>, CallError>
 where
   FP: FfiPermissions + 'static,
 {
-  check_unstable(&state.borrow(), "Deno.UnsafeFnPointer#call");
   {
     let mut state = state.borrow_mut();
     let permissions = state.borrow_mut::<FP>();
-    permissions.check_partial(None)?;
+    permissions.check_partial_no_path()?;
   };
 
   let symbol = PtrSymbol::new(pointer, &def)?;
@@ -311,7 +325,7 @@ where
   Ok(async move {
     let result = join_handle
       .await
-      .map_err(|err| anyhow!("Nonblocking FFI call failed: {}", err))??;
+      .map_err(CallError::NonblockingCallFailure)?;
     // SAFETY: Same return type declared to libffi; trust user to have it right beyond that.
     Ok(result)
   })
@@ -327,14 +341,17 @@ pub fn op_ffi_call_nonblocking(
   #[string] symbol: String,
   parameters: v8::Local<v8::Array>,
   out_buffer: Option<v8::Local<v8::TypedArray>>,
-) -> Result<impl Future<Output = Result<FfiValue, AnyError>>, AnyError> {
+) -> Result<impl Future<Output = Result<FfiValue, CallError>>, CallError> {
   let symbol = {
     let state = state.borrow();
-    let resource = state.resource_table.get::<DynamicLibraryResource>(rid)?;
+    let resource = state
+      .resource_table
+      .get::<DynamicLibraryResource>(rid)
+      .map_err(CallError::Resource)?;
     let symbols = &resource.symbols;
     *symbols
       .get(&symbol)
-      .ok_or_else(|| type_error("Invalid FFI symbol name"))?
+      .ok_or_else(|| CallError::InvalidSymbol(symbol))?
       .clone()
   };
 
@@ -362,13 +379,13 @@ pub fn op_ffi_call_nonblocking(
   Ok(async move {
     let result = join_handle
       .await
-      .map_err(|err| anyhow!("Nonblocking FFI call failed: {}", err))??;
+      .map_err(CallError::NonblockingCallFailure)?;
     // SAFETY: Same return type declared to libffi; trust user to have it right beyond that.
     Ok(result)
   })
 }
 
-#[op2(reentrant)]
+#[op2(reentrant, stack_trace)]
 #[serde]
 pub fn op_ffi_call_ptr<FP>(
   scope: &mut v8::HandleScope,
@@ -377,15 +394,14 @@ pub fn op_ffi_call_ptr<FP>(
   #[serde] def: ForeignFunction,
   parameters: v8::Local<v8::Array>,
   out_buffer: Option<v8::Local<v8::TypedArray>>,
-) -> Result<FfiValue, AnyError>
+) -> Result<FfiValue, CallError>
 where
   FP: FfiPermissions + 'static,
 {
-  check_unstable(&state.borrow(), "Deno.UnsafeFnPointer#call");
   {
     let mut state = state.borrow_mut();
     let permissions = state.borrow_mut::<FP>();
-    permissions.check_partial(None)?;
+    permissions.check_partial_no_path()?;
   };
 
   let symbol = PtrSymbol::new(pointer, &def)?;
@@ -400,7 +416,7 @@ where
     &def.parameters,
     def.result.clone(),
     out_buffer_ptr,
-  )?;
+  );
   // SAFETY: Same return type declared to libffi; trust user to have it right beyond that.
   Ok(result)
 }

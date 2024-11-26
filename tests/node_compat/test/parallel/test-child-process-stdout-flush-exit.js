@@ -27,7 +27,7 @@
 // USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 // TODO(PolarETech): The process.argv[3] check should be argv[2],
-// the args passed to spawn() should not need to include "require.ts",
+// the args passed to spawn() should not need to include "runner.ts",
 // and the process.argv[2] passed to spawn() should be argv[1].
 
 'use strict';
@@ -48,7 +48,7 @@ if (process.argv[3] === 'child') {
   const spawn = require('child_process').spawn;
 
   // spawn self as child
-  const child = spawn(process.argv[0], ['require.ts', process.argv[2], 'child']);
+  const child = spawn(process.argv[0], ['runner.ts', process.argv[2], 'child']);
 
   let stdout = '';
 

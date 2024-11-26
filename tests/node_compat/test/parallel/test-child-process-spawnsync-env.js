@@ -28,7 +28,7 @@
 
 // TODO(cjihrig): The process.argv[3] check should be argv[2], and the
 // arguments array passed to spawnSync() should not need to include
-// "require.ts".
+// "runner.ts".
 
 'use strict';
 require('../common');
@@ -39,7 +39,7 @@ if (process.argv[3] === 'child') {
   console.log(process.env.foo);
 } else {
   const expected = 'bar';
-  const child = cp.spawnSync(process.execPath, ["require.ts", __filename, 'child'], {
+  const child = cp.spawnSync(process.execPath, ["runner.ts", __filename, 'child'], {
     env: Object.assign(process.env, { foo: expected })
   });
 

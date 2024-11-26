@@ -1,0 +1,8 @@
+error: Uncaught (in promise) ReferenceError: setImmediate is not defined
+setImmediate;
+^
+    at [WILDCARD]set_immediate.js:1:1
+
+    info: setImmediate is not available in the global scope in Deno.
+    hint: Import it explicitly with import { setImmediate } from "node:timers";,
+          or run again with --unstable-node-globals flag to add this global.

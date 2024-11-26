@@ -4,5 +4,4 @@ about: Suggest a feature for the Deno CLI.
 title: ''
 labels: ''
 assignees: ''
-
 ---

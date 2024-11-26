@@ -1,0 +1,23 @@
+{
+  "tempDir": true,
+  "steps": [
+    {
+      "args": "run main.ts",
+      "output": "main.out",
+      "exitCode": 1
+    },
+    {
+      "args": "lint main.ts",
+      "output": "lint.out",
+      "exitCode": 1
+    },
+    {
+      "args": "lint --fix main.ts",
+      "output": "Checked 1 file\n"
+    },
+    {
+      "args": "run --allow-env main.ts",
+      "output": ""
+    }
+  ]
+}

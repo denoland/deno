@@ -3,7 +3,7 @@
 // TODO(petamoriken): enable prefer-primordials for node polyfills
 // deno-lint-ignore-file prefer-primordials
 
-import { op_node_fs_exists_sync } from "ext:core/ops";
+import { op_node_fs_exists, op_node_fs_exists_sync } from "ext:core/ops";
 
 import { pathFromURL } from "ext:deno_web/00_infra.js";
 
@@ -16,7 +16,7 @@ type ExistsCallback = (exists: boolean) => void;
  */
 export function exists(path: string | URL, callback: ExistsCallback) {
   path = path instanceof URL ? pathFromURL(path) : path;
-  Deno.lstat(path).then(() => callback(true), () => callback(false));
+  op_node_fs_exists(path).then(callback);
 }
 
 // The callback of fs.exists doesn't have standard callback signature.

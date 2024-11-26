@@ -3,7 +3,6 @@
 use std::borrow::Cow;
 use std::path::PathBuf;
 use std::sync::Arc;
-use std::sync::Mutex;
 
 use deno_ast::diagnostics::Diagnostic;
 use deno_ast::diagnostics::DiagnosticLevel;
@@ -14,15 +13,17 @@ use deno_ast::diagnostics::DiagnosticSnippetHighlightStyle;
 use deno_ast::diagnostics::DiagnosticSourcePos;
 use deno_ast::diagnostics::DiagnosticSourceRange;
 use deno_ast::swc::common::util::take::Take;
+use deno_ast::ParseDiagnostic;
 use deno_ast::SourcePos;
 use deno_ast::SourceRange;
 use deno_ast::SourceRanged;
 use deno_ast::SourceTextInfo;
 use deno_core::anyhow::anyhow;
 use deno_core::error::AnyError;
+use deno_core::parking_lot::Mutex;
+use deno_core::url::Url;
 use deno_graph::FastCheckDiagnostic;
 use deno_semver::Version;
-use lsp_types::Url;
 
 use super::unfurl::SpecifierUnfurlerDiagnostic;
 
@@ -35,7 +36,7 @@ impl PublishDiagnosticsCollector {
   pub fn print_and_error(&self) -> Result<(), AnyError> {
     let mut errors = 0;
     let mut has_slow_types_errors = false;
-    let mut diagnostics = self.diagnostics.lock().unwrap().take();
+    let mut diagnostics = self.diagnostics.lock().take();
 
     diagnostics.sort_by_cached_key(|d| d.sorting_key());
 
@@ -74,8 +75,16 @@ impl PublishDiagnosticsCollector {
     }
   }
 
+  pub fn has_error(&self) -> bool {
+    self
+      .diagnostics
+      .lock()
+      .iter()
+      .any(|d| matches!(d.level(), DiagnosticLevel::Error))
+  }
+
   pub fn push(&self, diagnostic: PublishDiagnostic) {
-    self.diagnostics.lock().unwrap().push(diagnostic);
+    self.diagnostics.lock().push(diagnostic);
   }
 }
 
@@ -116,6 +125,10 @@ pub enum PublishDiagnostic {
     specifier: Url,
     text_info: SourceTextInfo,
     range: SourceRange,
+  },
+  SyntaxError(ParseDiagnostic),
+  MissingLicense {
+    config_specifier: Url,
   },
 }
 
@@ -165,6 +178,8 @@ impl Diagnostic for PublishDiagnostic {
       ExcludedModule { .. } => DiagnosticLevel::Error,
       MissingConstraint { .. } => DiagnosticLevel::Error,
       BannedTripleSlashDirectives { .. } => DiagnosticLevel::Error,
+      SyntaxError { .. } => DiagnosticLevel::Error,
+      MissingLicense { .. } => DiagnosticLevel::Error,
     }
   }
 
@@ -183,6 +198,8 @@ impl Diagnostic for PublishDiagnostic {
       BannedTripleSlashDirectives { .. } => {
         Cow::Borrowed("banned-triple-slash-directives")
       }
+      SyntaxError { .. } => Cow::Borrowed("syntax-error"),
+      MissingLicense { .. } => Cow::Borrowed("missing-license"),
     }
   }
 
@@ -203,6 +220,8 @@ impl Diagnostic for PublishDiagnostic {
       ExcludedModule { .. } => Cow::Borrowed("module in package's module graph was excluded from publishing"),
       MissingConstraint { specifier, .. } => Cow::Owned(format!("specifier '{}' is missing a version constraint", specifier)),
       BannedTripleSlashDirectives { .. } => Cow::Borrowed("triple slash directives that modify globals are not allowed"),
+      SyntaxError(diagnostic) => diagnostic.message(),
+      MissingLicense { .. } => Cow::Borrowed("missing license field or file"),
     }
   }
 
@@ -268,6 +287,10 @@ impl Diagnostic for PublishDiagnostic {
         specifier: Cow::Borrowed(specifier),
         source_pos: DiagnosticSourcePos::SourcePos(range.start),
         text_info: Cow::Borrowed(text_info),
+      },
+      SyntaxError(diagnostic) => diagnostic.location(),
+      MissingLicense { config_specifier } => DiagnosticLocation::Module {
+        specifier: Cow::Borrowed(config_specifier),
       },
     }
   }
@@ -348,6 +371,8 @@ impl Diagnostic for PublishDiagnostic {
           description: Some("the triple slash directive".into()),
         }],
       }),
+      SyntaxError(diagnostic) => diagnostic.snippet(),
+      MissingLicense { .. } => None,
     }
   }
 
@@ -380,6 +405,10 @@ impl Diagnostic for PublishDiagnostic {
       BannedTripleSlashDirectives { .. } => Some(
         Cow::Borrowed("remove the triple slash directive"),
       ),
+      SyntaxError(diagnostic) => diagnostic.hint(),
+      MissingLicense { .. } => Some(
+        Cow::Borrowed("add a \"license\" field. Alternatively, add a LICENSE file to the package and ensure it is not ignored from being published"),
+      ),
     }
   }
 
@@ -407,7 +436,17 @@ impl Diagnostic for PublishDiagnostic {
           None => None,
         }
       }
-      _ => None,
+      SyntaxError(diagnostic) => diagnostic.snippet_fixed(),
+      FastCheck(_)
+      | SpecifierUnfurl(_)
+      | InvalidPath { .. }
+      | DuplicatePath { .. }
+      | UnsupportedFileType { .. }
+      | UnsupportedJsxTsx { .. }
+      | ExcludedModule { .. }
+      | MissingConstraint { .. }
+      | BannedTripleSlashDirectives { .. }
+      | MissingLicense { .. } => None,
     }
   }
 
@@ -456,6 +495,8 @@ impl Diagnostic for PublishDiagnostic {
         Cow::Borrowed("instead instruct the user of your package to specify these directives"),
         Cow::Borrowed("or set their 'lib' compiler option appropriately"),
       ]),
+      SyntaxError(diagnostic) => diagnostic.info(),
+      MissingLicense { .. } => Cow::Borrowed(&[]),
     }
   }
 
@@ -488,6 +529,10 @@ impl Diagnostic for PublishDiagnostic {
       BannedTripleSlashDirectives { .. } => Some(Cow::Borrowed(
         "https://jsr.io/go/banned-triple-slash-directives",
       )),
+      SyntaxError(diagnostic) => diagnostic.docs_url(),
+      MissingLicense { .. } => {
+        Some(Cow::Borrowed("https://jsr.io/go/missing-license"))
+      }
     }
   }
 }

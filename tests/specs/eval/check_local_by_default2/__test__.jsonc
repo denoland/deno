@@ -1,0 +1,4 @@
+{
+  "args": "eval --quiet import('./check_local_by_default2.ts').then(console.log);",
+  "output": "main.out"
+}

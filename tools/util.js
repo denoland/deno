@@ -1,20 +1,17 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
-import {
-  dirname,
-  fromFileUrl,
-  join,
-  resolve,
-  toFileUrl,
-} from "../tests/util/std/path/mod.ts";
+
+// deno-lint-ignore-file no-console
+
+import { dirname, fromFileUrl, join, resolve, toFileUrl } from "@std/path";
 import { wait } from "https://deno.land/x/wait@0.1.13/mod.ts";
 export { dirname, fromFileUrl, join, resolve, toFileUrl };
-export { existsSync, walk } from "../tests/util/std/fs/mod.ts";
-export { TextLineStream } from "../tests/util/std/streams/text_line_stream.ts";
-export { delay } from "../tests/util/std/async/delay.ts";
+export { existsSync, walk } from "@std/fs";
+export { TextLineStream } from "@std/streams/text-line-stream";
+export { delay } from "@std/async/delay";
 
 // [toolName] --version output
 const versions = {
-  "dlint": "dlint 0.60.0",
+  "dlint": "dlint 0.68.0",
 };
 
 const compressed = new Set(["ld64.lld", "rcodesign"]);
@@ -181,7 +178,7 @@ export function getPrebuiltToolPath(toolName) {
   return join(PREBUILT_TOOL_DIR, toolName + executableSuffix);
 }
 
-const commitId = "b8aac22e0cd7c1c6557a56a813fe0c25486fafee";
+const commitId = "7a3a6fee951b3381c59aa4c907274957f324ce8c";
 const downloadUrl =
   `https://raw.githubusercontent.com/denoland/deno_third_party/${commitId}/prebuilt/${platformDirName}`;
 

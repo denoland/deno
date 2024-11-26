@@ -2,6 +2,8 @@
 //
 // From https://github.com/just-js/benchmarks/tree/main/01-stdio
 
+// deno-lint-ignore-file no-console
+
 const blocksize = parseInt(Deno.args[0] || 65536);
 const buf = new Uint8Array(blocksize);
 let size = 0;

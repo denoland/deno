@@ -1,7 +1,5 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
-// deno-lint-ignore-file no-deprecated-deno-api
-
 import {
   assert,
   assertEquals,
@@ -9,32 +7,6 @@ import {
   assertThrows,
   pathToAbsoluteFileUrl,
 } from "./test_util.ts";
-
-Deno.test({ permissions: { read: true } }, function fstatSyncSuccess() {
-  using file = Deno.openSync("README.md");
-  const fileInfo = Deno.fstatSync(file.rid);
-  assert(fileInfo.isFile);
-  assert(!fileInfo.isSymlink);
-  assert(!fileInfo.isDirectory);
-  assert(fileInfo.size);
-  assert(fileInfo.atime);
-  assert(fileInfo.mtime);
-  // The `birthtime` field is not available on Linux before kernel version 4.11.
-  assert(fileInfo.birthtime || Deno.build.os === "linux");
-});
-
-Deno.test({ permissions: { read: true } }, async function fstatSuccess() {
-  using file = await Deno.open("README.md");
-  const fileInfo = await Deno.fstat(file.rid);
-  assert(fileInfo.isFile);
-  assert(!fileInfo.isSymlink);
-  assert(!fileInfo.isDirectory);
-  assert(fileInfo.size);
-  assert(fileInfo.atime);
-  assert(fileInfo.mtime);
-  // The `birthtime` field is not available on Linux before kernel version 4.11.
-  assert(fileInfo.birthtime || Deno.build.os === "linux");
-});
 
 Deno.test(
   { permissions: { read: true, write: true } },
@@ -59,6 +31,13 @@ Deno.test(
     assert(
       tempInfo.birthtime === null || now - tempInfo.birthtime.valueOf() < 1000,
     );
+    assert(tempInfo.ctime !== null && now - tempInfo.ctime.valueOf() < 1000);
+    const mode = tempInfo.mode! & 0o777;
+    if (Deno.build.os === "windows") {
+      assertEquals(mode, 0o666);
+    } else {
+      assertEquals(mode, 0o600);
+    }
 
     const readmeInfoByUrl = Deno.statSync(pathToAbsoluteFileUrl("README.md"));
     assert(readmeInfoByUrl.isFile);
@@ -93,6 +72,10 @@ Deno.test(
       tempInfoByUrl.birthtime === null ||
         now - tempInfoByUrl.birthtime.valueOf() < 1000,
     );
+    assert(
+      tempInfoByUrl.ctime !== null &&
+        now - tempInfoByUrl.ctime.valueOf() < 1000,
+    );
 
     Deno.removeSync(tempFile, { recursive: true });
     Deno.removeSync(tempFileForUrl, { recursive: true });
@@ -102,7 +85,7 @@ Deno.test(
 Deno.test({ permissions: { read: false } }, function statSyncPerm() {
   assertThrows(() => {
     Deno.statSync("README.md");
-  }, Deno.errors.PermissionDenied);
+  }, Deno.errors.NotCapable);
 });
 
 Deno.test({ permissions: { read: true } }, function statSyncNotFound() {
@@ -146,7 +129,7 @@ Deno.test({ permissions: { read: true } }, function lstatSyncSuccess() {
 Deno.test({ permissions: { read: false } }, function lstatSyncPerm() {
   assertThrows(() => {
     Deno.lstatSync("assets/hello.txt");
-  }, Deno.errors.PermissionDenied);
+  }, Deno.errors.NotCapable);
 });
 
 Deno.test({ permissions: { read: true } }, function lstatSyncNotFound() {
@@ -199,6 +182,7 @@ Deno.test(
     assert(
       tempInfo.birthtime === null || now - tempInfo.birthtime.valueOf() < 1000,
     );
+    assert(tempInfo.ctime !== null && now - tempInfo.ctime.valueOf() < 1000);
 
     const tempFileForUrl = await Deno.makeTempFile();
     const tempInfoByUrl = await Deno.stat(
@@ -219,7 +203,10 @@ Deno.test(
       tempInfoByUrl.birthtime === null ||
         now - tempInfoByUrl.birthtime.valueOf() < 1000,
     );
-
+    assert(
+      tempInfoByUrl.ctime !== null &&
+        now - tempInfoByUrl.ctime.valueOf() < 1000,
+    );
     Deno.removeSync(tempFile, { recursive: true });
     Deno.removeSync(tempFileForUrl, { recursive: true });
   },
@@ -228,7 +215,7 @@ Deno.test(
 Deno.test({ permissions: { read: false } }, async function statPerm() {
   await assertRejects(async () => {
     await Deno.stat("README.md");
-  }, Deno.errors.PermissionDenied);
+  }, Deno.errors.NotCapable);
 });
 
 Deno.test({ permissions: { read: true } }, async function statNotFound() {
@@ -272,7 +259,7 @@ Deno.test({ permissions: { read: true } }, async function lstatSuccess() {
 Deno.test({ permissions: { read: false } }, async function lstatPerm() {
   await assertRejects(async () => {
     await Deno.lstat("README.md");
-  }, Deno.errors.PermissionDenied);
+  }, Deno.errors.NotCapable);
 });
 
 Deno.test({ permissions: { read: true } }, async function lstatNotFound() {
@@ -299,7 +286,6 @@ Deno.test(
     const s = Deno.statSync(filename);
     assert(s.dev !== 0);
     assert(s.ino === null);
-    assert(s.mode === null);
     assert(s.nlink === null);
     assert(s.uid === null);
     assert(s.gid === null);

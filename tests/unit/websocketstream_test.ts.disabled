@@ -6,7 +6,7 @@ import {
   assertRejects,
   assertThrows,
   unreachable,
-} from "@std/assert/mod.ts";
+} from "@std/assert";
 
 Deno.test("fragment", () => {
   assertThrows(() => new WebSocketStream("ws://localhost:4242/#"));

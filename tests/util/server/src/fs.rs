@@ -1,5 +1,6 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
+use lsp_types::Uri;
 use pretty_assertions::assert_eq;
 use std::borrow::Cow;
 use std::collections::HashSet;
@@ -10,12 +11,13 @@ use std::io::Write;
 use std::path::Path;
 use std::path::PathBuf;
 use std::process::Command;
+use std::str::FromStr;
 use std::sync::Arc;
 
 use anyhow::Context;
-use lsp_types::Url;
 use serde::de::DeserializeOwned;
 use serde::Serialize;
+use url::Url;
 
 use crate::assertions::assert_wildcard_match;
 use crate::testdata_path;
@@ -52,12 +54,20 @@ impl PathRef {
     PathRef(self.as_path().parent().unwrap().to_path_buf())
   }
 
-  pub fn uri_dir(&self) -> Url {
+  pub fn url_dir(&self) -> Url {
     Url::from_directory_path(self.as_path()).unwrap()
   }
 
-  pub fn uri_file(&self) -> Url {
+  pub fn url_file(&self) -> Url {
     Url::from_file_path(self.as_path()).unwrap()
+  }
+
+  pub fn uri_dir(&self) -> Uri {
+    Uri::from_str(self.url_dir().as_str()).unwrap()
+  }
+
+  pub fn uri_file(&self) -> Uri {
+    Uri::from_str(self.url_file().as_str()).unwrap()
   }
 
   pub fn as_path(&self) -> &Path {
@@ -256,6 +266,13 @@ impl PathRef {
   }
 
   #[track_caller]
+  pub fn mark_executable(&self) {
+    if cfg!(unix) {
+      Command::new("chmod").arg("+x").arg(self).output().unwrap();
+    }
+  }
+
+  #[track_caller]
   pub fn make_dir_readonly(&self) {
     self.create_dir_all();
     if cfg!(windows) {
@@ -268,7 +285,10 @@ impl PathRef {
   #[track_caller]
   pub fn assert_matches_file(&self, wildcard_file: impl AsRef<Path>) -> &Self {
     let wildcard_file = testdata_path().join(wildcard_file);
-    println!("output path {}", wildcard_file);
+    #[allow(clippy::print_stdout)]
+    {
+      println!("output path {}", wildcard_file);
+    }
     let expected_text = wildcard_file.read_to_string();
     self.assert_matches_text(&expected_text)
   }
@@ -437,8 +457,12 @@ impl TempDir {
     }))
   }
 
-  pub fn uri(&self) -> Url {
+  pub fn url(&self) -> Url {
     Url::from_directory_path(self.path()).unwrap()
+  }
+
+  pub fn uri(&self) -> Uri {
+    Uri::from_str(self.url().as_str()).unwrap()
   }
 
   pub fn path(&self) -> &PathRef {

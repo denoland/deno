@@ -1,0 +1,22 @@
+{
+  "tempDir": true,
+  "tests": {
+    "npm_package": {
+      "steps": [
+        {
+          "args": "add npm:@denotest/unstable",
+          "output": "add.out"
+        }
+      ]
+    },
+    "jsr_package": {
+      "steps": [
+        {
+          "args": "add jsr:@denotest/unstable",
+          "output": "add_jsr.out",
+          "exitCode": 1
+        }
+      ]
+    }
+  }
+}

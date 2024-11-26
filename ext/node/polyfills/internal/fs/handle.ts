@@ -6,6 +6,7 @@
 import { EventEmitter } from "node:events";
 import { Buffer } from "node:buffer";
 import { promises, read, write } from "node:fs";
+export type { BigIntStats, Stats } from "ext:deno_node/_fs/_fs_stat.ts";
 import {
   BinaryOptionsArgument,
   FileOptionsArgument,
@@ -133,10 +134,33 @@ export class FileHandle extends EventEmitter {
     }
   }
 
+  writeFile(data, options): Promise<void> {
+    return fsCall(promises.writeFile, this, data, options);
+  }
+
   close(): Promise<void> {
     // Note that Deno.close is not async
     return Promise.resolve(core.close(this.fd));
   }
+
+  stat(): Promise<Stats>;
+  stat(options: { bigint: false }): Promise<Stats>;
+  stat(options: { bigint: true }): Promise<BigIntStats>;
+  stat(options?: { bigint: boolean }): Promise<Stats | BigIntStats> {
+    return fsCall(promises.fstat, this, options);
+  }
+}
+
+function fsCall(fn, handle, ...args) {
+  if (handle.fd === -1) {
+    const err = new Error("file closed");
+    throw Object.assign(err, {
+      code: "EBADF",
+      syscall: fn.name,
+    });
+  }
+
+  return fn(handle.fd, ...args);
 }
 
 export default {

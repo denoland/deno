@@ -1,5 +1,5 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
-import { assertEquals } from "@std/assert/mod.ts";
+import { assertEquals } from "@std/assert";
 
 Deno.test("BroadcastChannel worker", async () => {
   const intercom = new BroadcastChannel("intercom");

@@ -33,7 +33,7 @@ extern "C" fn call_fn(info: *const v8::FunctionCallbackInfo) {
   let mut rv = v8::ReturnValue::from_function_callback_info(callback_info);
   // SAFETY: create_function guarantees that the data is a CallbackInfo external.
   let info_ptr: *mut CallbackInfo = unsafe {
-    let external_value = v8::Local::<v8::External>::cast(args.data());
+    let external_value = v8::Local::<v8::External>::cast_unchecked(args.data());
     external_value.value() as _
   };
 

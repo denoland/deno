@@ -7,15 +7,12 @@ use std::borrow::Cow;
 use std::cell::RefCell;
 use std::rc::Rc;
 
+pub use crate::interface::*;
 use deno_core::error::get_custom_error_class;
-use deno_core::error::type_error;
-use deno_core::error::AnyError;
 use deno_core::op2;
 use deno_core::OpState;
 use deno_core::Resource;
 use deno_core::ResourceId;
-
-pub use crate::interface::*;
 
 pub const UNSTABLE_FEATURE_NAME: &str = "cron";
 
@@ -49,6 +46,28 @@ impl<EH: CronHandle + 'static> Resource for CronResource<EH> {
   }
 }
 
+#[derive(Debug, thiserror::Error)]
+pub enum CronError {
+  #[error(transparent)]
+  Resource(deno_core::error::AnyError),
+  #[error("Cron name cannot exceed 64 characters: current length {0}")]
+  NameExceeded(usize),
+  #[error("Invalid cron name: only alphanumeric characters, whitespace, hyphens, and underscores are allowed")]
+  NameInvalid,
+  #[error("Cron with this name already exists")]
+  AlreadyExists,
+  #[error("Too many crons")]
+  TooManyCrons,
+  #[error("Invalid cron schedule")]
+  InvalidCron,
+  #[error("Invalid backoff schedule")]
+  InvalidBackoff,
+  #[error(transparent)]
+  AcquireError(#[from] tokio::sync::AcquireError),
+  #[error(transparent)]
+  Other(deno_core::error::AnyError),
+}
+
 #[op2]
 #[smi]
 fn op_cron_create<C>(
@@ -56,17 +75,15 @@ fn op_cron_create<C>(
   #[string] name: String,
   #[string] cron_schedule: String,
   #[serde] backoff_schedule: Option<Vec<u32>>,
-) -> Result<ResourceId, AnyError>
+) -> Result<ResourceId, CronError>
 where
   C: CronHandler + 'static,
 {
   let cron_handler = {
     let state = state.borrow();
-    // TODO(bartlomieju): replace with `state.feature_checker.check_or_exit`
-    // once we phase out `check_or_exit_with_legacy_fallback`
     state
       .feature_checker
-      .check_or_exit_with_legacy_fallback(UNSTABLE_FEATURE_NAME, "Deno.cron");
+      .check_or_exit(UNSTABLE_FEATURE_NAME, "Deno.cron");
     state.borrow::<Rc<C>>().clone()
   };
 
@@ -92,7 +109,7 @@ async fn op_cron_next<C>(
   state: Rc<RefCell<OpState>>,
   #[smi] rid: ResourceId,
   prev_success: bool,
-) -> Result<bool, AnyError>
+) -> Result<bool, CronError>
 where
   C: CronHandler + 'static,
 {
@@ -104,7 +121,7 @@ where
         if get_custom_error_class(&err) == Some("BadResource") {
           return Ok(false);
         } else {
-          return Err(err);
+          return Err(CronError::Resource(err));
         }
       }
     };
@@ -114,14 +131,14 @@ where
   cron_handler.next(prev_success).await
 }
 
-fn validate_cron_name(name: &str) -> Result<(), AnyError> {
+fn validate_cron_name(name: &str) -> Result<(), CronError> {
   if name.len() > 64 {
-    return Err(type_error("Cron name is too long"));
+    return Err(CronError::NameExceeded(name.len()));
   }
   if !name.chars().all(|c| {
     c.is_ascii_whitespace() || c.is_ascii_alphanumeric() || c == '_' || c == '-'
   }) {
-    return Err(type_error("Invalid cron name"));
+    return Err(CronError::NameInvalid);
   }
   Ok(())
 }

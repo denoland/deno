@@ -531,15 +531,16 @@ export class Socket extends EventEmitter {
     healthCheck(this);
     stopReceiving(this);
 
-    state.handle!.close();
+    state.handle!.close(() => {
+      // Deviates from the Node implementation to avoid leaking the timer ops at 'close' event
+      defaultTriggerAsyncIdScope(
+        this[asyncIdSymbol],
+        nextTick,
+        socketCloseNT,
+        this,
+      );
+    });
     state.handle = null;
-
-    defaultTriggerAsyncIdScope(
-      this[asyncIdSymbol],
-      nextTick,
-      socketCloseNT,
-      this,
-    );
 
     return this;
   }

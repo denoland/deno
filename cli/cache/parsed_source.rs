@@ -7,9 +7,9 @@ use deno_ast::MediaType;
 use deno_ast::ModuleSpecifier;
 use deno_ast::ParsedSource;
 use deno_core::parking_lot::Mutex;
-use deno_graph::CapturingModuleParser;
-use deno_graph::DefaultModuleParser;
-use deno_graph::ModuleParser;
+use deno_graph::CapturingEsParser;
+use deno_graph::DefaultEsParser;
+use deno_graph::EsParser;
 use deno_graph::ParseOptions;
 use deno_graph::ParsedSourceStore;
 
@@ -46,7 +46,7 @@ impl<'a> LazyGraphSourceParser<'a> {
   }
 }
 
-#[derive(Default)]
+#[derive(Debug, Default)]
 pub struct ParsedSourceCache {
   sources: Mutex<HashMap<ModuleSpecifier, ParsedSource>>,
 }
@@ -57,12 +57,11 @@ impl ParsedSourceCache {
     module: &deno_graph::JsModule,
   ) -> Result<ParsedSource, deno_ast::ParseDiagnostic> {
     let parser = self.as_capturing_parser();
-    // this will conditionally parse because it's using a CapturingModuleParser
-    parser.parse_module(ParseOptions {
+    // this will conditionally parse because it's using a CapturingEsParser
+    parser.parse_program(ParseOptions {
       specifier: &module.specifier,
       source: module.source.clone(),
       media_type: module.media_type,
-      // don't bother enabling because this method is currently only used for vendoring
       scope_analysis: false,
     })
   }
@@ -86,10 +85,9 @@ impl ParsedSourceCache {
       specifier,
       source,
       media_type,
-      // don't bother enabling because this method is currently only used for emitting
       scope_analysis: false,
     };
-    DefaultModuleParser.parse_module(options)
+    DefaultEsParser.parse_program(options)
   }
 
   /// Frees the parsed source from memory.
@@ -99,8 +97,8 @@ impl ParsedSourceCache {
 
   /// Creates a parser that will reuse a ParsedSource from the store
   /// if it exists, or else parse.
-  pub fn as_capturing_parser(&self) -> CapturingModuleParser {
-    CapturingModuleParser::new(None, self)
+  pub fn as_capturing_parser(&self) -> CapturingEsParser {
+    CapturingEsParser::new(None, self)
   }
 }
 

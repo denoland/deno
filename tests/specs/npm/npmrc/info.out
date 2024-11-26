@@ -1,0 +1,87 @@
+[UNORDERED_START]
+Download http://localhost:4262/@denotest2%2fbasic
+Download http://localhost:4261/@denotest%2fbasic
+Download http://localhost:4261/@denotest/basic/1.0.0.tgz
+Download http://localhost:4262/@denotest2/basic/1.0.0.tgz
+[UNORDERED_END]
+[UNORDERED_START]
+Initialize @denotest/basic@1.0.0
+Initialize @denotest2/basic@1.0.0
+[UNORDERED_END]
+{
+  "version": 1,
+  "roots": [
+    "file://[WILDCARD]/main.js"
+  ],
+  "modules": [
+    {
+      "kind": "esm",
+      "dependencies": [
+        {
+          "specifier": "@denotest/basic",
+          "code": {
+            "specifier": "npm:@denotest/basic@1.0.0",
+            "span": {
+              "start": {
+                "line": 0,
+                "character": 35
+              },
+              "end": {
+                "line": 0,
+                "character": 52
+              }
+            }
+          }
+        },
+        {
+          "specifier": "@denotest2/basic",
+          "code": {
+            "specifier": "npm:@denotest2/basic@1.0.0",
+            "span": {
+              "start": {
+                "line": 1,
+                "character": 22
+              },
+              "end": {
+                "line": 1,
+                "character": 40
+              }
+            }
+          }
+        }
+      ],
+      "local": "[WILDCARD]main.js",
+      "size": 192,
+      "mediaType": "JavaScript",
+      "specifier": "file://[WILDCARD]/main.js"
+    },
+    {
+      "kind": "npm",
+      "specifier": "npm:/@denotest/basic@1.0.0",
+      "npmPackage": "@denotest/basic@1.0.0"
+    },
+    {
+      "kind": "npm",
+      "specifier": "npm:/@denotest2/basic@1.0.0",
+      "npmPackage": "@denotest2/basic@1.0.0"
+    }
+  ],
+  "redirects": {
+    "npm:@denotest/basic@1.0.0": "npm:/@denotest/basic@1.0.0",
+    "npm:@denotest2/basic@1.0.0": "npm:/@denotest2/basic@1.0.0"
+  },
+  "npmPackages": {
+    "@denotest/basic@1.0.0": {
+      "name": "@denotest/basic",
+      "version": "1.0.0",
+      "dependencies": [],
+      "registryUrl": "http://localhost:4261/"
+    },
+    "@denotest2/basic@1.0.0": {
+      "name": "@denotest2/basic",
+      "version": "1.0.0",
+      "dependencies": [],
+      "registryUrl": "http://localhost:4262/"
+    }
+  }
+}

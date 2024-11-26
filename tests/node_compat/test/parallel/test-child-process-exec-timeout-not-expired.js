@@ -7,7 +7,7 @@
 
 // TODO(PolarETech): The process.argv[3] check should be argv[2], and the
 // command passed to exec() should not need to include "run", "-A",
-// and "require.ts".
+// and "runner.ts".
 
 'use strict';
 
@@ -33,7 +33,7 @@ if (process.argv[3] === 'child') {
   return;
 }
 
-const cmd = `"${process.execPath}" run -A require.ts "${__filename}" child`;
+const cmd = `"${process.execPath}" run -A runner.ts "${__filename}" child`;
 
 cp.exec(cmd, {
   timeout: kTimeoutNotSupposedToExpire

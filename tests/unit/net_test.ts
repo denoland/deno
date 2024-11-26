@@ -2,7 +2,6 @@
 import {
   assert,
   assertEquals,
-  assertNotEquals,
   assertRejects,
   assertThrows,
   delay,
@@ -27,7 +26,6 @@ Deno.test({ permissions: { net: true } }, function netTcpListenClose() {
   assert(listener.addr.transport === "tcp");
   assertEquals(listener.addr.hostname, "127.0.0.1");
   assertEquals(listener.addr.port, listenPort);
-  assertNotEquals(listener.rid, 0);
   listener.close();
 });
 
@@ -97,7 +95,7 @@ Deno.test(
       assert(socket.addr.transport === "unix");
       assertEquals(socket.addr.path, filePath);
       socket.close();
-    }, Deno.errors.PermissionDenied);
+    }, Deno.errors.NotCapable);
   },
 );
 
@@ -116,7 +114,7 @@ Deno.test(
       assert(socket.addr.transport === "unixpacket");
       assertEquals(socket.addr.path, filePath);
       socket.close();
-    }, Deno.errors.PermissionDenied);
+    }, Deno.errors.NotCapable);
   },
 );
 
@@ -128,8 +126,6 @@ Deno.test(
     const listener = Deno.listen({ port: listenPort });
     const p = listener.accept();
     listener.close();
-    // TODO(piscisaureus): the error type should be `Interrupted` here, which
-    // gets thrown, but then ext/net catches it and rethrows `BadResource`.
     await assertRejects(
       () => p,
       Deno.errors.BadResource,
@@ -170,7 +166,7 @@ Deno.test(
       } else if (e.message === "Another accept task is ongoing") {
         acceptErrCount++;
       } else {
-        throw new Error("Unexpected error message");
+        throw e;
       }
     };
     const p = listener.accept().catch(checkErr);
@@ -233,7 +229,6 @@ Deno.test({ permissions: { net: true } }, async function netTcpDialListen() {
   assertEquals(1, buf[0]);
   assertEquals(2, buf[1]);
   assertEquals(3, buf[2]);
-  assert(conn.rid > 0);
 
   assert(readResult !== null);
 
@@ -269,7 +264,6 @@ Deno.test({ permissions: { net: true } }, async function netTcpSetNoDelay() {
   assertEquals(1, buf[0]);
   assertEquals(2, buf[1]);
   assertEquals(3, buf[2]);
-  assert(conn.rid > 0);
 
   assert(readResult !== null);
 
@@ -305,7 +299,6 @@ Deno.test({ permissions: { net: true } }, async function netTcpSetKeepAlive() {
   assertEquals(1, buf[0]);
   assertEquals(2, buf[1]);
   assertEquals(3, buf[2]);
-  assert(conn.rid > 0);
 
   assert(readResult !== null);
 
@@ -343,7 +336,6 @@ Deno.test(
     assertEquals(1, buf[0]);
     assertEquals(2, buf[1]);
     assertEquals(3, buf[2]);
-    assert(conn.rid > 0);
 
     assert(readResult !== null);
 
@@ -432,7 +424,7 @@ Deno.test(
         // Note: we have to do the test this way as different OS's have
         // different UDP size limits enabled, so we will just ensure if
         // an error is thrown it is the one we are expecting.
-        assert(err.message.match(rx));
+        assert((err as Error).message.match(rx));
         alice.close();
         bob.close();
         return;
@@ -839,7 +831,6 @@ Deno.test(
     assertEquals(1, buf[0]);
     assertEquals(2, buf[1]);
     assertEquals(3, buf[2]);
-    assert(conn.rid > 0);
 
     assert(readResult !== null);
 

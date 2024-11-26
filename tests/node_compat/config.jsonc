@@ -1,5 +1,4 @@
 {
-  "nodeVersion": "18.12.1",
   "ignore": {
     "common": ["index.js", "internet.js"],
     "fixtures": [
@@ -8,14 +7,17 @@
       "elipses.txt",
       "empty.txt",
       "exit.js",
+      "parent-process-nonpersistent.js",
       "print-chars.js",
       "x.txt"
     ],
     "internet": [
-      "test-dns-any.js",
-      "test-dns-ipv4.js",
-      "test-dns-ipv6.js",
-      "test-dns.js"
+      // TODO(bartlomieju): temporarily disabled as these tests were hitting nodejs.org
+      // server. We should have a setup that hits a local server instead.
+      // "test-dns-any.js",
+      // "test-dns-ipv4.js",
+      // "test-dns-ipv6.js",
+      // "test-dns.js"
     ],
     "parallel": [
       "test-assert.js",
@@ -25,6 +27,7 @@
       "test-buffer-from.js",
       "test-buffer-includes.js",
       "test-buffer-indexof.js",
+      "test-child-process-detached.js",
       "test-child-process-exec-abortcontroller-promisified.js",
       "test-child-process-exec-encoding.js",
       "test-child-process-exec-kill-throws.js",
@@ -35,14 +38,12 @@
       // TODO(bartlomieju): this test was flaky on macOS CI
       // "test-child-process-exec-timeout-kill.js",
       "test-child-process-exec-timeout-not-expired.js",
-      "test-child-process-execFile-promisified-abortController.js",
       "test-child-process-execfile.js",
       "test-child-process-execsync-maxbuf.js",
       "test-child-process-exit-code.js",
       // TODO(littledivy): windows ipc streams not yet implemented
       "test-child-process-fork-ref.js",
       "test-child-process-fork-ref2.js",
-      "test-child-process-ipc-next-tick.js",
       "test-child-process-ipc.js",
       "test-child-process-spawnsync-env.js",
       "test-child-process-stdio-inherit.js",
@@ -60,7 +61,6 @@
       "test-dgram-ipv6only.js",
       "test-dgram-send-cb-quelches-error.js",
       "test-dgram-socket-buffer-size.js",
-      "test-dgram-udp6-link-local-address.js",
       "test-dns-lookup.js",
       "test-dns-resolveany.js",
       "test-dns.js",
@@ -78,6 +78,7 @@
       "test-fs-rmdir-recursive.js",
       "test-fs-write-file.js",
       "test-http-url.parse-https.request.js",
+      "test-net-autoselectfamily.js",
       "test-net-better-error-messages-path.js",
       "test-net-connect-buffer.js",
       "test-net-connect-buffer2.js",
@@ -88,7 +89,6 @@
       "test-net-server-try-ports.js",
       "test-net-socket-timeout.js",
       "test-net-write-arguments.js",
-      "test-os.js",
       "test-path-resolve.js",
       "test-querystring.js",
       "test-readline-interface.js",
@@ -105,6 +105,7 @@
       "test-util-promisify.js",
       "test-util-types.js",
       "test-util.js",
+      "test-v8-serdes.js",
       "test-webcrypto-sign-verify.js",
       "test-whatwg-url-properties.js",
       // needs replace ".on" => ".addEventListener" in L29
@@ -135,6 +136,7 @@
     "fixtures": [
       "a.js",
       "child_process_should_emit_error.js",
+      "child-process-persistent.js",
       "child-process-spawn-node.js",
       "echo.js",
       "elipses.txt",
@@ -148,15 +150,15 @@
     ],
     "fixtures/keys": ["agent1-cert.pem", "agent1-key.pem", "ca1-cert.pem"],
     "internet": [
-      "test-dns-any.js",
+      // "test-dns-any.js",
       "test-dns-idna2008.js",
-      "test-dns-ipv4.js",
-      "test-dns-ipv6.js",
+      // "test-dns-ipv4.js",
+      // "test-dns-ipv6.js",
       "test-dns-lookup.js",
       "test-dns-promises-resolve.js",
       "test-dns-regress-6244.js",
       "test-dns-setserver-in-callback-of-resolve4.js",
-      "test-dns.js",
+      // "test-dns.js",
       "test-http-https-default-ports.js"
     ],
     "parallel": [
@@ -235,6 +237,7 @@
       "test-child-process-execfilesync-maxbuf.js",
       "test-child-process-execsync-maxbuf.js",
       "test-child-process-flush-stdio.js",
+      "test-child-process-ipc-next-tick.js",
       "test-child-process-kill.js",
       "test-child-process-set-blocking.js",
       "test-child-process-spawn-args.js",
@@ -335,6 +338,7 @@
       "test-fs-open-numeric-flags.js",
       "test-fs-open.js",
       "test-fs-opendir.js",
+      "test-fs-promises-writefile-with-fd.js",
       "test-fs-read-stream-autoClose.js",
       "test-fs-read-stream-concurrent-reads.js",
       "test-fs-read-stream-double-close.js",
@@ -400,7 +404,9 @@
       "test-http-outgoing-settimeout.js",
       "test-http-url.parse-https.request.js",
       "test-http-url.parse-only-support-http-https-protocol.js",
+      "test-icu-transcode.js",
       "test-net-access-byteswritten.js",
+      "test-net-autoselectfamily.js",
       "test-net-better-error-messages-listen-path.js",
       "test-net-better-error-messages-path.js",
       "test-net-better-error-messages-port-hostname.js",
@@ -432,6 +438,7 @@
       "test-net-server-unref.js",
       "test-net-socket-destroy-twice.js",
       "test-net-socket-no-halfopen-enforcer.js",
+      "test-net-socket-setnodelay.js",
       "test-net-timeout-no-handle.js",
       "test-net-write-arguments.js",
       "test-next-tick-doesnt-hang.js",
@@ -442,6 +449,7 @@
       "test-next-tick-when-exiting.js",
       "test-next-tick.js",
       "test-nodeeventtarget.js",
+      "test-os.js",
       "test-outgoing-message-destroy.js",
       "test-outgoing-message-pipe.js",
       "test-parse-args.mjs",
@@ -670,8 +678,50 @@
       "test-util-types-exists.js",
       "test-util-types.js",
       "test-util.js",
+      "test-vm-access-process-env.js",
+      "test-vm-attributes-property-not-on-sandbox.js",
+      "test-vm-codegen.js",
+      "test-vm-context-async-script.js",
+      "test-vm-context-property-forwarding.js",
+      "test-vm-create-and-run-in-context.js",
+      "test-vm-create-context-accessors.js",
+      "test-vm-create-context-arg.js",
+      "test-vm-create-context-circular-reference.js",
+      "test-vm-createcacheddata.js",
+      "test-vm-cross-context.js",
+      "test-vm-data-property-writable.js",
+      "test-vm-deleting-property.js",
+      "test-vm-function-declaration.js",
+      "test-vm-function-redefinition.js",
+      "test-vm-getters.js",
+      "test-vm-global-assignment.js",
+      "test-vm-global-define-property.js",
+      "test-vm-global-identity.js",
+      "test-vm-global-setter.js",
+      "test-vm-harmony-symbols.js",
+      "test-vm-indexed-properties.js",
+      "test-vm-inherited_properties.js",
+      "test-vm-is-context.js",
+      "test-vm-low-stack-space.js",
+      "test-vm-new-script-new-context.js",
       "test-vm-new-script-this-context.js",
+      "test-vm-not-strict.js",
+      "test-vm-options-validation.js",
+      "test-vm-parse-abort-on-uncaught-exception.js",
+      "test-vm-preserves-property.js",
+      "test-vm-property-not-on-sandbox.js",
+      "test-vm-proxies.js",
+      "test-vm-proxy-failure-CP.js",
+      "test-vm-script-throw-in-tostring.js",
+      "test-vm-set-property-proxy.js",
+      "test-vm-set-proto-null-on-globalthis.js",
+      "test-vm-source-map-url.js",
       "test-vm-static-this.js",
+      "test-vm-strict-mode.js",
+      "test-vm-symbols.js",
+      "test-vm-timeout-escape-promise-2.js",
+      "test-vm-timeout-escape-promise.js",
+      "test-vm-timeout.js",
       "test-webcrypto-sign-verify.js",
       "test-whatwg-encoding-custom-api-basics.js",
       "test-whatwg-encoding-custom-textdecoder-ignorebom.js",
@@ -685,6 +735,8 @@
       "test-whatwg-url-custom-tostringtag.js",
       "test-whatwg-url-override-hostname.js",
       "test-whatwg-url-properties.js",
+      "test-worker-message-port-infinite-message-loop.js",
+      "test-worker-message-port-multiple-sharedarraybuffers.js",
       "test-worker-message-port-receive-message.js",
       "test-zlib-close-after-error.js",
       "test-zlib-close-after-write.js",
@@ -715,10 +767,13 @@
       "test-tty-stdout-end.js"
     ],
     "pummel": [],
-    "sequential": ["test-child-process-exit.js"]
+    "sequential": [
+      "test-child-process-exit.js"
+    ]
   },
   "windowsIgnore": {
     "parallel": [
+      "test-child-process-detached.js",
       "test-child-process-exec-abortcontroller-promisified.js",
       "test-console-log-throw-primitive.js",
       "test-console-no-swallow-stack-overflow.js",
@@ -743,7 +798,8 @@
       "test-net-server-listen-path.js",
       "test-net-socket-close-after-end.js",
       "test-util-inspect-long-running.js",
-      "test-util-inspect.js"
+      "test-util-inspect.js",
+      "test-vm-low-stack-space.js"
     ]
   },
   "darwinIgnore": {

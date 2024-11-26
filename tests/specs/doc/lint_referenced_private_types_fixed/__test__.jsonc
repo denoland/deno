@@ -1,0 +1,4 @@
+{
+  "args": "doc --lint referenced_private_types_fixed.ts",
+  "output": "referenced_private_types_fixed.out"
+}

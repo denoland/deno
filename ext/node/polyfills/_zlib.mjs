@@ -1,4 +1,4 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 // Copyright (c) 2014-2015 Devon Govett <devongovett@gmail.com>
 // Forked from https://github.com/browserify/browserify-zlib
 
@@ -14,6 +14,7 @@ import { nextTick } from "ext:deno_node/_next_tick.ts";
 import {
   isAnyArrayBuffer,
   isArrayBufferView,
+  isUint8Array,
 } from "ext:deno_node/internal/util/types.ts";
 
 var kRangeErrorMessage = "Cannot create final Buffer. It would be larger " +
@@ -157,6 +158,12 @@ export const inflateRawSync = function (buffer, opts) {
 
 function sanitizeInput(input) {
   if (typeof input === "string") input = Buffer.from(input);
+
+  if (isArrayBufferView(input) && !isUint8Array(input)) {
+    input = Buffer.from(input.buffer, input.byteOffset, input.byteLength);
+  } else if (isAnyArrayBuffer(input)) {
+    input = Buffer.from(input);
+  }
 
   if (
     !Buffer.isBuffer(input) &&

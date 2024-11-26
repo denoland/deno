@@ -1,7 +1,7 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
-import { parse } from "../../../tests/util/std/flags/mod.ts";
+import { parseArgs } from "@std/cli/parse-args";
 
-const { port } = parse(Deno.args, {
+const { port } = parseArgs(Deno.args, {
   number: ["port"],
   default: {
     port: 6969,

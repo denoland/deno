@@ -1,6 +1,6 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 import { createInterface, Interface } from "node:readline";
-import { assertInstanceOf } from "@std/assert/mod.ts";
+import { assertInstanceOf } from "@std/assert";
 import { Readable, Writable } from "node:stream";
 
 Deno.test("[node/readline] createInstance", () => {

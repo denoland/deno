@@ -1,14 +1,18 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+
+// deno-lint-ignore-file no-console
+
 import {
   assert,
   assertEquals,
   assertRejects,
+  assertStringIncludes,
   assertThrows,
   delay,
   fail,
   unimplemented,
 } from "./test_util.ts";
-import { Buffer } from "@std/io/buffer.ts";
+import { Buffer } from "@std/io/buffer";
 
 const listenPort = 4506;
 
@@ -67,7 +71,7 @@ Deno.test(
         await fetch(`http://localhost:${port}`);
       },
       TypeError,
-      "error sending request for url",
+      "client error (Connect)",
     );
   },
 );
@@ -80,7 +84,7 @@ Deno.test(
         await fetch("http://nil/");
       },
       TypeError,
-      "error sending request for url",
+      "client error (Connect)",
     );
   },
 );
@@ -119,7 +123,7 @@ Deno.test({ permissions: { net: true } }, async function fetchJsonSuccess() {
 Deno.test({ permissions: { net: false } }, async function fetchPerm() {
   await assertRejects(async () => {
     await fetch("http://localhost:4545/assets/fixture.json");
-  }, Deno.errors.PermissionDenied);
+  }, Deno.errors.NotCapable);
 });
 
 Deno.test({ permissions: { net: true } }, async function fetchUrl() {
@@ -436,6 +440,58 @@ Deno.test(
 );
 
 Deno.test(
+  {
+    permissions: { net: true },
+  },
+  async function fetchWithAuthorizationHeaderRedirection() {
+    const response = await fetch("http://localhost:4546/echo_server", {
+      headers: { authorization: "Bearer foo" },
+    });
+    assertEquals(response.status, 200);
+    assertEquals(response.statusText, "OK");
+    assertEquals(response.url, "http://localhost:4545/echo_server");
+    assertEquals(response.headers.get("authorization"), null);
+    assertEquals(await response.text(), "");
+  },
+);
+
+Deno.test(
+  {
+    permissions: { net: true },
+  },
+  async function fetchWithCookieHeaderRedirection() {
+    const response = await fetch("http://localhost:4546/echo_server", {
+      headers: { Cookie: "sessionToken=verySecret" },
+    });
+    assertEquals(response.status, 200);
+    assertEquals(response.statusText, "OK");
+    assertEquals(response.url, "http://localhost:4545/echo_server");
+    assertEquals(response.headers.get("cookie"), null);
+    assertEquals(await response.text(), "");
+  },
+);
+
+Deno.test(
+  {
+    permissions: { net: true },
+  },
+  async function fetchWithProxyAuthorizationHeaderRedirection() {
+    const response = await fetch("http://localhost:4546/echo_server", {
+      headers: {
+        "proxy-authorization": "Basic ZXNwZW46a29rb3M=",
+        "accept": "application/json",
+      },
+    });
+    assertEquals(response.status, 200);
+    assertEquals(response.statusText, "OK");
+    assertEquals(response.url, "http://localhost:4545/echo_server");
+    assertEquals(response.headers.get("proxy-authorization"), null);
+    assertEquals(response.headers.get("accept"), "application/json");
+    assertEquals(await response.text(), "");
+  },
+);
+
+Deno.test(
   { permissions: { net: true } },
   async function fetchInitStringBody() {
     const data = "Hello World";
@@ -688,7 +744,7 @@ Deno.test(
       "accept: */*\r\n",
       "accept-language: *\r\n",
       `user-agent: Deno/${Deno.version.deno}\r\n`,
-      "accept-encoding: gzip, br\r\n",
+      "accept-encoding: gzip,br\r\n",
       `host: ${addr}\r\n\r\n`,
     ].join("");
     assertEquals(actual, expected);
@@ -720,7 +776,7 @@ Deno.test(
       "accept: text/html\r\n",
       "accept-language: en-US\r\n",
       `user-agent: Deno/${Deno.version.deno}\r\n`,
-      "accept-encoding: gzip, br\r\n",
+      "accept-encoding: gzip,br\r\n",
       `host: ${addr}\r\n\r\n`,
     ].join("");
     assertEquals(actual, expected);
@@ -750,15 +806,16 @@ Deno.test(
     const actual = new TextDecoder().decode((await bufPromise).bytes());
     const expected = [
       "POST /blah HTTP/1.1\r\n",
+      `content-length: ${body.length}\r\n`,
       "hello: World\r\n",
       "foo: Bar\r\n",
       "content-type: text/plain;charset=UTF-8\r\n",
       "accept: */*\r\n",
       "accept-language: *\r\n",
       `user-agent: Deno/${Deno.version.deno}\r\n`,
-      "accept-encoding: gzip, br\r\n",
+      "accept-encoding: gzip,br\r\n",
       `host: ${addr}\r\n`,
-      `content-length: ${body.length}\r\n\r\n`,
+      `\r\n`,
       body,
     ].join("");
     assertEquals(actual, expected);
@@ -789,14 +846,15 @@ Deno.test(
     const actual = new TextDecoder().decode((await bufPromise).bytes());
     const expected = [
       "POST /blah HTTP/1.1\r\n",
+      `content-length: ${body.byteLength}\r\n`,
       "hello: World\r\n",
       "foo: Bar\r\n",
       "accept: */*\r\n",
       "accept-language: *\r\n",
       `user-agent: Deno/${Deno.version.deno}\r\n`,
-      "accept-encoding: gzip, br\r\n",
+      "accept-encoding: gzip,br\r\n",
       `host: ${addr}\r\n`,
-      `content-length: ${body.byteLength}\r\n\r\n`,
+      `\r\n`,
       bodyStr,
     ].join("");
     assertEquals(actual, expected);
@@ -827,7 +885,7 @@ Deno.test(
       "accept: */*\r\n",
       "accept-language: *\r\n",
       `user-agent: Deno/${Deno.version.deno}\r\n`,
-      "accept-encoding: gzip, br\r\n",
+      "accept-encoding: gzip,br\r\n",
       `host: ${addr}\r\n\r\n`,
     ].join("");
     assertEquals(actual, expected);
@@ -859,7 +917,7 @@ Deno.test(
       "accept: */*\r\n",
       "accept-language: *\r\n",
       `user-agent: Deno/${Deno.version.deno}\r\n`,
-      "accept-encoding: gzip, br\r\n\r\n",
+      "accept-encoding: gzip,br\r\n\r\n",
     ].join("");
     assertEquals(actual, expected);
   },
@@ -1124,7 +1182,7 @@ Deno.test(function fetchResponseConstructorInvalidStatus() {
       assert(e instanceof RangeError);
       assert(
         e.message.endsWith(
-          "is not equal to 101 and outside the range [200, 599].",
+          "is not equal to 101 and outside the range [200, 599]",
         ),
       );
     }
@@ -1150,6 +1208,7 @@ Deno.test(
   > {
     const caCert = Deno.readTextFileSync("tests/testdata/tls/RootCA.pem");
     const client = Deno.createHttpClient({ caCerts: [caCert] });
+    assert(client instanceof Deno.HttpClient);
     const response = await fetch("https://localhost:5545/assets/fixture.json", {
       client,
     });
@@ -1226,7 +1285,7 @@ Deno.test(
       "accept: */*\r\n",
       "accept-language: *\r\n",
       `user-agent: Deno/${Deno.version.deno}\r\n`,
-      "accept-encoding: gzip, br\r\n",
+      "accept-encoding: gzip,br\r\n",
       `host: ${addr}\r\n`,
       `transfer-encoding: chunked\r\n\r\n`,
       "B\r\n",
@@ -1630,7 +1689,7 @@ Deno.test(
 Deno.test({ permissions: { read: false } }, async function fetchFilePerm() {
   await assertRejects(async () => {
     await fetch(import.meta.resolve("../testdata/subdir/json_1.json"));
-  }, Deno.errors.PermissionDenied);
+  }, Deno.errors.NotCapable);
 });
 
 Deno.test(
@@ -1638,7 +1697,7 @@ Deno.test(
   async function fetchFilePermDoesNotExist() {
     await assertRejects(async () => {
       await fetch(import.meta.resolve("./bad.json"));
-    }, Deno.errors.PermissionDenied);
+    }, Deno.errors.NotCapable);
   },
 );
 
@@ -1655,7 +1714,7 @@ Deno.test(
         );
       },
       TypeError,
-      "Fetching files only supports the GET method. Received POST.",
+      "Fetching files only supports the GET method: received POST",
     );
   },
 );
@@ -1824,7 +1883,7 @@ Deno.test(
         await fetch(`http://${addr}/`);
       },
       TypeError,
-      "error sending request",
+      "client error",
     );
 
     listener.close();
@@ -1880,7 +1939,7 @@ Deno.test(
         await response.arrayBuffer();
       },
       Error,
-      "error decoding response body",
+      "body",
     );
 
     listener.close();
@@ -1974,14 +2033,27 @@ Deno.test(
       },
     });
 
+    const url = `http://localhost:${listenPort}/`;
     const err = await assertRejects(() =>
-      fetch(`http://localhost:${listenPort}/`, {
+      fetch(url, {
         body: stream,
         method: "POST",
       })
     );
 
-    assert(err instanceof TypeError, `err was not a TypeError ${err}`);
+    assert(err instanceof TypeError, `err was ${err}`);
+
+    assertStringIncludes(
+      err.message,
+      "error sending request from 127.0.0.1:",
+      `err.message was ${err.message}`,
+    );
+    assertStringIncludes(
+      err.message,
+      ` for http://localhost:${listenPort}/ (127.0.0.1:${listenPort}): client error (SendRequest): error from user's Body stream`,
+      `err.message was ${err.message}`,
+    );
+
     assert(err.cause, `err.cause was null ${err}`);
     assert(
       err.cause instanceof Error,
@@ -2039,4 +2111,90 @@ Deno.test("Response with subarray TypedArray body", async () => {
   const actual = await req.bytes();
   const expected = new Uint8Array([2, 3, 4, 5]);
   assertEquals(actual, expected);
+});
+
+// Regression test for https://github.com/denoland/deno/issues/24697
+Deno.test("URL authority is used as 'Authorization' header", async () => {
+  const deferred = Promise.withResolvers<string | null | undefined>();
+  const ac = new AbortController();
+
+  const server = Deno.serve({ port: 4502, signal: ac.signal }, (req) => {
+    deferred.resolve(req.headers.get("authorization"));
+    return new Response("Hello world");
+  });
+
+  const res = await fetch("http://deno:land@localhost:4502");
+  await res.text();
+  const authHeader = await deferred.promise;
+  ac.abort();
+  await server.finished;
+  assertEquals(authHeader, "Basic ZGVubzpsYW5k");
+});
+
+Deno.test(
+  { permissions: { net: true } },
+  async function errorMessageIncludesUrlAndDetailsWithNoTcpInfo() {
+    await assertRejects(
+      () => fetch("http://example.invalid"),
+      TypeError,
+      "error sending request for url (http://example.invalid/): client error (Connect): dns error: ",
+    );
+  },
+);
+
+Deno.test(
+  { permissions: { net: true } },
+  async function errorMessageIncludesUrlAndDetailsWithTcpInfo() {
+    const listener = Deno.listen({ port: listenPort });
+    const server = (async () => {
+      const conn = await listener.accept();
+      listener.close();
+      // Immediately close the connection to simulate a connection error
+      conn.close();
+    })();
+
+    const url = `http://localhost:${listenPort}`;
+    const err = await assertRejects(() => fetch(url));
+
+    assert(err instanceof TypeError, `${err}`);
+    assertStringIncludes(
+      err.message,
+      "error sending request from 127.0.0.1:",
+      `${err.message}`,
+    );
+    assertStringIncludes(
+      err.message,
+      ` for http://localhost:${listenPort}/ (127.0.0.1:${listenPort}): client error (SendRequest): `,
+      `${err.message}`,
+    );
+
+    await server;
+  },
+);
+
+Deno.test("fetch async iterable", async () => {
+  const iterable = (async function* () {
+    yield new Uint8Array([1, 2, 3, 4, 5]);
+    yield new Uint8Array([6, 7, 8, 9, 10]);
+  })();
+  const res = new Response(iterable);
+  const actual = await res.bytes();
+  const expected = new Uint8Array([1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
+  assertEquals(actual, expected);
+});
+
+Deno.test("fetch iterable", async () => {
+  const iterable = (function* () {
+    yield new Uint8Array([1, 2, 3, 4, 5]);
+    yield new Uint8Array([6, 7, 8, 9, 10]);
+  })();
+  const res = new Response(iterable);
+  const actual = await res.bytes();
+  const expected = new Uint8Array([1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
+  assertEquals(actual, expected);
+});
+
+Deno.test("fetch string object", async () => {
+  const res = new Response(Object("hello"));
+  assertEquals(await res.text(), "hello");
 });

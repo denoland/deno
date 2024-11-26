@@ -19,6 +19,8 @@ use deno_core::serde_json::Value;
 use deno_core::unsync::spawn;
 use deno_core::url::Url;
 use deno_core::InspectorMsg;
+use deno_core::InspectorSessionKind;
+use deno_core::InspectorSessionOptions;
 use deno_core::InspectorSessionProxy;
 use deno_core::JsRuntime;
 use fastwebsockets::Frame;
@@ -192,6 +194,11 @@ fn handle_ws_request(
     let inspector_session_proxy = InspectorSessionProxy {
       tx: outbound_tx,
       rx: inbound_rx,
+      options: InspectorSessionOptions {
+        kind: InspectorSessionKind::NonBlocking {
+          wait_for_disconnect: true,
+        },
+      },
     };
 
     log::info!("Debugger session started.");
@@ -270,7 +277,7 @@ async fn server(
   let json_version_response = json!({
     "Browser": name,
     "Protocol-Version": "1.3",
-    "V8-Version": deno_core::v8_version(),
+    "V8-Version": deno_core::v8::VERSION_STRING,
   });
 
   // Create the server manually so it can use the Local Executor

@@ -1,8 +1,5 @@
 {
   "tempDir": true,
-  "envs": {
-    "DENO_FUTURE": "1"
-  },
   "steps": [
     {
       "args": "install --global --root ./bins --name deno-test-bin ./pkg/main.js",

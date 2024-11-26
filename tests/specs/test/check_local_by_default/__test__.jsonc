@@ -1,0 +1,4 @@
+{
+  "args": "test --allow-import --quiet main.ts",
+  "output": "main.out"
+}

@@ -1,5 +1,6 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
+use crate::create_host_defined_options;
 use deno_core::error::type_error;
 use deno_core::error::AnyError;
 use deno_core::v8;
@@ -19,11 +20,27 @@ impl ContextifyScript {
     scope: &mut v8::HandleScope,
     source_str: v8::Local<v8::String>,
   ) -> Result<Self, AnyError> {
-    let source = v8::script_compiler::Source::new(source_str, None);
+    let resource_name = v8::undefined(scope);
+    let host_defined_options = create_host_defined_options(scope);
+    let origin = v8::ScriptOrigin::new(
+      scope,
+      resource_name.into(),
+      0,
+      0,
+      false,
+      0,
+      None,
+      false,
+      false,
+      false,
+      Some(host_defined_options),
+    );
+    let mut source =
+      v8::script_compiler::Source::new(source_str, Some(&origin));
 
     let unbound_script = v8::script_compiler::compile_unbound_script(
       scope,
-      source,
+      &mut source,
       v8::script_compiler::CompileOptions::NoCompileOptions,
       v8::script_compiler::NoCacheReason::NoReason,
     )
@@ -76,7 +93,6 @@ impl ContextifyContext {
     sandbox_obj: v8::Local<v8::Object>,
   ) {
     let tmp = init_global_template(scope, ContextInitMode::UseSnapshot);
-
     let context = create_v8_context(scope, tmp, ContextInitMode::UseSnapshot);
     Self::from_context(scope, context, sandbox_obj);
   }
@@ -119,7 +135,7 @@ impl ContextifyContext {
     unsafe {
       v8_context.set_aligned_pointer_in_embedder_data(
         3,
-        ptr.borrow().unwrap() as *const ContextifyContext as _,
+        &*ptr.unwrap() as *const ContextifyContext as _,
       );
     }
 
@@ -142,11 +158,10 @@ impl ContextifyContext {
       .get_private(scope, private_symbol)
       .and_then(|wrapper| {
         deno_core::cppgc::try_unwrap_cppgc_object::<Self>(scope, wrapper)
-          .borrow()
           // SAFETY: the lifetime of the scope does not actually bind to
           // the lifetime of this reference at all, but the object we read
           // it from does, so it will be alive at least that long.
-          .map(|r| unsafe { &*(r as *const _) })
+          .map(|r| unsafe { &*(&*r as *const _) })
       })
   }
 
@@ -211,15 +226,22 @@ pub fn create_v8_context<'a>(
   let scope = &mut v8::EscapableHandleScope::new(scope);
 
   let context = if mode == ContextInitMode::UseSnapshot {
-    v8::Context::from_snapshot(scope, VM_CONTEXT_INDEX).unwrap()
+    v8::Context::from_snapshot(scope, VM_CONTEXT_INDEX, Default::default())
+      .unwrap()
   } else {
-    let ctx = v8::Context::new_from_template(scope, object_template);
+    let ctx = v8::Context::new(
+      scope,
+      v8::ContextOptions {
+        global_template: Some(object_template),
+        ..Default::default()
+      },
+    );
     // SAFETY: ContextifyContexts will update this to a pointer to the native object
     unsafe {
       ctx.set_aligned_pointer_in_embedder_data(1, std::ptr::null_mut());
       ctx.set_aligned_pointer_in_embedder_data(2, std::ptr::null_mut());
       ctx.set_aligned_pointer_in_embedder_data(3, std::ptr::null_mut());
-      ctx.clear_all_slots(scope);
+      ctx.clear_all_slots();
     };
     ctx
   };
@@ -261,7 +283,7 @@ pub fn init_global_template<'a>(
 thread_local! {
   pub static GETTER_MAP_FN: v8::NamedPropertyGetterCallback<'static> = property_getter.map_fn_to();
   pub static SETTER_MAP_FN: v8::NamedPropertySetterCallback<'static> = property_setter.map_fn_to();
-  pub static DELETER_MAP_FN: v8::NamedPropertyGetterCallback<'static> = property_deleter.map_fn_to();
+  pub static DELETER_MAP_FN: v8::NamedPropertyDeleterCallback<'static> = property_deleter.map_fn_to();
   pub static ENUMERATOR_MAP_FN: v8::NamedPropertyEnumeratorCallback<'static> = property_enumerator.map_fn_to();
   pub static DEFINER_MAP_FN: v8::NamedPropertyDefinerCallback<'static> = property_definer.map_fn_to();
   pub static DESCRIPTOR_MAP_FN: v8::NamedPropertyGetterCallback<'static> = property_descriptor.map_fn_to();
@@ -270,7 +292,7 @@ thread_local! {
 thread_local! {
   pub static INDEXED_GETTER_MAP_FN: v8::IndexedPropertyGetterCallback<'static> = indexed_property_getter.map_fn_to();
   pub static INDEXED_SETTER_MAP_FN: v8::IndexedPropertySetterCallback<'static> = indexed_property_setter.map_fn_to();
-  pub static INDEXED_DELETER_MAP_FN: v8::IndexedPropertyGetterCallback<'static> = indexed_property_deleter.map_fn_to();
+  pub static INDEXED_DELETER_MAP_FN: v8::IndexedPropertyDeleterCallback<'static> = indexed_property_deleter.map_fn_to();
   pub static INDEXED_DEFINER_MAP_FN: v8::IndexedPropertyDefinerCallback<'static> = indexed_property_definer.map_fn_to();
   pub static INDEXED_DESCRIPTOR_MAP_FN: v8::IndexedPropertyGetterCallback<'static> = indexed_property_descriptor.map_fn_to();
 }
@@ -363,7 +385,7 @@ fn property_setter<'s>(
   key: v8::Local<'s, v8::Name>,
   value: v8::Local<'s, v8::Value>,
   args: v8::PropertyCallbackArguments<'s>,
-  mut rv: v8::ReturnValue,
+  mut rv: v8::ReturnValue<()>,
 ) -> v8::Intercepted {
   let Some(ctx) = ContextifyContext::get(scope, args.this()) else {
     return v8::Intercepted::No;
@@ -442,7 +464,7 @@ fn property_setter<'s>(
             .has_own_property(scope, set_key.into())
             .unwrap_or(false)
         {
-          rv.set(value);
+          rv.set_bool(true);
           return v8::Intercepted::Yes;
         }
       }
@@ -456,7 +478,7 @@ fn property_deleter<'s>(
   scope: &mut v8::HandleScope<'s>,
   key: v8::Local<'s, v8::Name>,
   args: v8::PropertyCallbackArguments<'s>,
-  mut rv: v8::ReturnValue,
+  mut rv: v8::ReturnValue<v8::Boolean>,
 ) -> v8::Intercepted {
   let Some(ctx) = ContextifyContext::get(scope, args.this()) else {
     return v8::Intercepted::No;
@@ -476,7 +498,7 @@ fn property_deleter<'s>(
 fn property_enumerator<'s>(
   scope: &mut v8::HandleScope<'s>,
   args: v8::PropertyCallbackArguments<'s>,
-  mut rv: v8::ReturnValue,
+  mut rv: v8::ReturnValue<v8::Array>,
 ) {
   let Some(ctx) = ContextifyContext::get(scope, args.this()) else {
     return;
@@ -491,7 +513,7 @@ fn property_enumerator<'s>(
     return;
   };
 
-  rv.set(properties.into());
+  rv.set(properties);
 }
 
 fn property_definer<'s>(
@@ -499,7 +521,7 @@ fn property_definer<'s>(
   key: v8::Local<'s, v8::Name>,
   desc: &v8::PropertyDescriptor,
   args: v8::PropertyCallbackArguments<'s>,
-  _: v8::ReturnValue,
+  _: v8::ReturnValue<()>,
 ) -> v8::Intercepted {
   let Some(ctx) = ContextifyContext::get(scope, args.this()) else {
     return v8::Intercepted::No;
@@ -623,7 +645,7 @@ fn indexed_property_setter<'s>(
   index: u32,
   value: v8::Local<'s, v8::Value>,
   args: v8::PropertyCallbackArguments<'s>,
-  rv: v8::ReturnValue,
+  rv: v8::ReturnValue<()>,
 ) -> v8::Intercepted {
   let key = uint32_to_name(scope, index);
   property_setter(scope, key, value, args, rv)
@@ -633,7 +655,7 @@ fn indexed_property_deleter<'s>(
   scope: &mut v8::HandleScope<'s>,
   index: u32,
   args: v8::PropertyCallbackArguments<'s>,
-  mut rv: v8::ReturnValue,
+  mut rv: v8::ReturnValue<v8::Boolean>,
 ) -> v8::Intercepted {
   let Some(ctx) = ContextifyContext::get(scope, args.this()) else {
     return v8::Intercepted::No;
@@ -657,7 +679,7 @@ fn indexed_property_definer<'s>(
   index: u32,
   descriptor: &v8::PropertyDescriptor,
   args: v8::PropertyCallbackArguments<'s>,
-  rv: v8::ReturnValue,
+  rv: v8::ReturnValue<()>,
 ) -> v8::Intercepted {
   let key = uint32_to_name(scope, index);
   property_definer(scope, key, descriptor, args, rv)

@@ -1,28 +1,25 @@
 {
-  "version": "3",
-  "packages": {
-    "specifiers": {
-      "jsr:@denotest/add@1": "jsr:@denotest/add@1.0.0",
-      "jsr:@denotest/different-deps-per-export@1": "jsr:@denotest/different-deps-per-export@1.0.0",
-      "jsr:@denotest/subtract@1": "jsr:@denotest/subtract@1.0.0"
+  "version": "4",
+  "specifiers": {
+    "jsr:@denotest/add@1": "1.0.0",
+    "jsr:@denotest/different-deps-per-export@1": "1.0.0",
+    "jsr:@denotest/subtract@1": "1.0.0"
+  },
+  "jsr": {
+    "@denotest/add@1.0.0": {
+      "integrity": "[WILDLINE]"
     },
-    "jsr": {
-      "@denotest/add@1.0.0": {
-        "integrity": "[WILDLINE]"
-      },
-      "@denotest/different-deps-per-export@1.0.0": {
-        "integrity": "[WILDLINE]",
-        "dependencies": [
-          "jsr:@denotest/add@1",
-          "jsr:@denotest/subtract@1"
-        ]
-      },
-      "@denotest/subtract@1.0.0": {
-        "integrity": "[WILDLINE]"
-      }
+    "@denotest/different-deps-per-export@1.0.0": {
+      "integrity": "[WILDLINE]",
+      "dependencies": [
+        "jsr:@denotest/add",
+        "jsr:@denotest/subtract"
+      ]
+    },
+    "@denotest/subtract@1.0.0": {
+      "integrity": "[WILDLINE]"
     }
   },
-  "remote": {},
   "workspace": {
     "dependencies": [
       "jsr:@denotest/different-deps-per-export@1"

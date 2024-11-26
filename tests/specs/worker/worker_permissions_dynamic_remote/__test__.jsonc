@@ -1,0 +1,5 @@
+{
+  "args": "run --quiet --reload --allow-import --unstable-worker-options permissions_dynamic_remote.ts",
+  "output": "permissions_dynamic_remote.ts.out",
+  "exitCode": 1
+}

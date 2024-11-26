@@ -13,7 +13,7 @@ import { clearTimeout, setTimeout } from "ext:deno_web/02_timers.js";
 /** Resolve a Promise after a given amount of milliseconds. */
 export function delay(
   ms: number,
-  options: { signal?: AbortSignal } = {},
+  options: { signal?: AbortSignal } = { __proto__: null },
 ): Promise<void> {
   const { signal } = options;
   if (signal?.aborted) {

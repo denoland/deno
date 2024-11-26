@@ -1,0 +1,5 @@
+{
+  "tempDir": true,
+  "args": "fmt --unstable-component",
+  "output": "[WILDLINE]badly_formatted.njk\nChecked 1 file\n"
+}

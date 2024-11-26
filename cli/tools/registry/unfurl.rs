@@ -3,7 +3,6 @@
 use deno_ast::ParsedSource;
 use deno_ast::SourceRange;
 use deno_ast::SourceTextInfo;
-use deno_config::package_json::PackageJsonDepValue;
 use deno_config::workspace::MappedResolution;
 use deno_config::workspace::PackageJsonDepResolution;
 use deno_config::workspace::WorkspaceResolver;
@@ -12,9 +11,11 @@ use deno_graph::DependencyDescriptor;
 use deno_graph::DynamicTemplatePart;
 use deno_graph::ParserModuleAnalyzer;
 use deno_graph::TypeScriptReference;
+use deno_package_json::PackageJsonDepValue;
+use deno_resolver::sloppy_imports::SloppyImportsResolutionMode;
 use deno_runtime::deno_node::is_builtin_node_module;
 
-use crate::resolver::SloppyImportsResolver;
+use crate::resolver::CliSloppyImportsResolver;
 
 #[derive(Debug, Clone)]
 pub enum SpecifierUnfurlerDiagnostic {
@@ -42,14 +43,14 @@ impl SpecifierUnfurlerDiagnostic {
 }
 
 pub struct SpecifierUnfurler {
-  sloppy_imports_resolver: Option<SloppyImportsResolver>,
+  sloppy_imports_resolver: Option<CliSloppyImportsResolver>,
   workspace_resolver: WorkspaceResolver,
   bare_node_builtins: bool,
 }
 
 impl SpecifierUnfurler {
   pub fn new(
-    sloppy_imports_resolver: Option<SloppyImportsResolver>,
+    sloppy_imports_resolver: Option<CliSloppyImportsResolver>,
     workspace_resolver: WorkspaceResolver,
     bare_node_builtins: bool,
   ) -> Self {
@@ -73,28 +74,64 @@ impl SpecifierUnfurler {
       self.workspace_resolver.resolve(specifier, referrer)
     {
       match resolved {
-        MappedResolution::Normal(specifier)
-        | MappedResolution::ImportMap(specifier) => Some(specifier),
+        MappedResolution::Normal { specifier, .. }
+        | MappedResolution::ImportMap { specifier, .. } => Some(specifier),
+        MappedResolution::WorkspaceJsrPackage { pkg_req_ref, .. } => {
+          Some(ModuleSpecifier::parse(&pkg_req_ref.to_string()).unwrap())
+        }
+        MappedResolution::WorkspaceNpmPackage {
+          target_pkg_json: pkg_json,
+          pkg_name,
+          sub_path,
+        } => {
+          // todo(#24612): consider warning or error when this is also a jsr package?
+          ModuleSpecifier::parse(&format!(
+            "npm:{}{}{}",
+            pkg_name,
+            pkg_json
+              .version
+              .as_ref()
+              .map(|v| format!("@^{}", v))
+              .unwrap_or_default(),
+            sub_path
+              .as_ref()
+              .map(|s| format!("/{}", s))
+              .unwrap_or_default()
+          ))
+          .ok()
+        }
         MappedResolution::PackageJson {
+          alias,
           sub_path,
           dep_result,
           ..
         } => match dep_result {
           Ok(dep) => match dep {
-            PackageJsonDepValue::Req(req) => ModuleSpecifier::parse(&format!(
-              "npm:{}{}",
-              req,
-              sub_path
-                .as_ref()
-                .map(|s| format!("/{}", s))
-                .unwrap_or_default()
-            ))
-            .ok(),
-            PackageJsonDepValue::Workspace(_) => {
-              log::warn!(
-                "package.json workspace entries are not implemented yet for publishing."
-              );
-              None
+            PackageJsonDepValue::Req(pkg_req) => {
+              // todo(#24612): consider warning or error when this is an npm workspace
+              // member that's also a jsr package?
+              ModuleSpecifier::parse(&format!(
+                "npm:{}{}",
+                pkg_req,
+                sub_path
+                  .as_ref()
+                  .map(|s| format!("/{}", s))
+                  .unwrap_or_default()
+              ))
+              .ok()
+            }
+            PackageJsonDepValue::Workspace(version_req) => {
+              // todo(#24612): consider warning or error when this is also a jsr package?
+              ModuleSpecifier::parse(&format!(
+                "npm:{}@{}{}",
+                alias,
+                version_req,
+                sub_path
+                  .as_ref()
+                  .map(|s| format!("/{}", s))
+                  .unwrap_or_default()
+              ))
+              .ok()
             }
           },
           Err(err) => {
@@ -143,9 +180,9 @@ impl SpecifierUnfurler {
     let resolved =
       if let Some(sloppy_imports_resolver) = &self.sloppy_imports_resolver {
         sloppy_imports_resolver
-          .resolve(&resolved, deno_graph::source::ResolutionMode::Execution)
-          .as_specifier()
-          .clone()
+          .resolve(&resolved, SloppyImportsResolutionMode::Execution)
+          .map(|res| res.into_specifier())
+          .unwrap_or(resolved)
       } else {
         resolved
       };
@@ -167,7 +204,7 @@ impl SpecifierUnfurler {
   /// or `false` when the import was not analyzable.
   fn try_unfurl_dynamic_dep(
     &self,
-    module_url: &lsp_types::Url,
+    module_url: &ModuleSpecifier,
     text_info: &SourceTextInfo,
     dep: &deno_graph::DynamicDependencyDescriptor,
     text_changes: &mut Vec<deno_ast::TextChange>,
@@ -352,14 +389,19 @@ fn to_range(
 mod tests {
   use std::sync::Arc;
 
+  use crate::resolver::SloppyImportsCachedFs;
+
   use super::*;
   use deno_ast::MediaType;
   use deno_ast::ModuleSpecifier;
+  use deno_config::workspace::ResolverWorkspaceJsrPackage;
   use deno_core::serde_json::json;
   use deno_core::url::Url;
   use deno_runtime::deno_fs::RealFs;
   use deno_runtime::deno_node::PackageJson;
+  use deno_semver::Version;
   use import_map::ImportMapWithDiagnostics;
+  use indexmap::IndexMap;
   use pretty_assertions::assert_eq;
   use test_util::testdata_path;
 
@@ -401,13 +443,24 @@ mod tests {
       }),
     );
     let workspace_resolver = WorkspaceResolver::new_raw(
+      Arc::new(ModuleSpecifier::from_directory_path(&cwd).unwrap()),
       Some(import_map),
+      vec![ResolverWorkspaceJsrPackage {
+        is_patch: false,
+        base: ModuleSpecifier::from_directory_path(cwd.join("jsr-package"))
+          .unwrap(),
+        name: "@denotest/example".to_string(),
+        version: Some(Version::parse_standard("1.0.0").unwrap()),
+        exports: IndexMap::from([(".".to_string(), "mod.ts".to_string())]),
+      }],
       vec![Arc::new(package_json)],
       deno_config::workspace::PackageJsonDepResolution::Enabled,
     );
     let fs = Arc::new(RealFs);
     let unfurler = SpecifierUnfurler::new(
-      Some(SloppyImportsResolver::new(fs)),
+      Some(CliSloppyImportsResolver::new(SloppyImportsCachedFs::new(
+        fs,
+      ))),
       workspace_resolver,
       true,
     );
@@ -424,6 +477,7 @@ import b from "./b.js";
 import b2 from "./b";
 import "./mod.ts";
 import url from "url";
+import "@denotest/example";
 // TODO: unfurl these to jsr
 // import "npm:@jsr/std__fs@1/file";
 // import "npm:@jsr/std__fs@1";
@@ -473,6 +527,7 @@ import b from "./b.ts";
 import b2 from "./b.ts";
 import "./mod.ts";
 import url from "node:url";
+import "jsr:@denotest/example@^1.0.0";
 // TODO: unfurl these to jsr
 // import "npm:@jsr/std__fs@1/file";
 // import "npm:@jsr/std__fs@1";

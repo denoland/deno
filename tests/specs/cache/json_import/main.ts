@@ -1,2 +1,2 @@
-import asdf from "./test.json" assert { type: "json" };
+import asdf from "./test.json" with { type: "json" };
 console.log(asdf);

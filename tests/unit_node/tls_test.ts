@@ -1,19 +1,24 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
-import { assertEquals, assertInstanceOf } from "@std/assert/mod.ts";
-import { delay } from "@std/async/delay.ts";
-import { fromFileUrl, join } from "@std/path/mod.ts";
+import {
+  assert,
+  assertEquals,
+  assertInstanceOf,
+  assertStringIncludes,
+  assertThrows,
+} from "@std/assert";
+import { delay } from "@std/async/delay";
+import { fromFileUrl, join } from "@std/path";
 import * as tls from "node:tls";
 import * as net from "node:net";
 import * as stream from "node:stream";
+import { execCode } from "../unit/test_util.ts";
 
 const tlsTestdataDir = fromFileUrl(
   new URL("../testdata/tls", import.meta.url),
 );
-const keyFile = join(tlsTestdataDir, "localhost.key");
-const certFile = join(tlsTestdataDir, "localhost.crt");
-const key = Deno.readTextFileSync(keyFile);
-const cert = Deno.readTextFileSync(certFile);
+const key = Deno.readTextFileSync(join(tlsTestdataDir, "localhost.key"));
+const cert = Deno.readTextFileSync(join(tlsTestdataDir, "localhost.crt"));
 const rootCaCert = Deno.readTextFileSync(join(tlsTestdataDir, "RootCA.pem"));
 
 for (
@@ -48,6 +53,7 @@ for (
     conn.close();
     outgoing.destroy();
     listener.close();
+    await new Promise((resolve) => outgoing.on("close", resolve));
   });
 }
 
@@ -93,6 +99,7 @@ Connection: close
 
 // https://github.com/denoland/deno/pull/20120
 Deno.test("tls.connect mid-read tcp->tls upgrade", async () => {
+  const { promise, resolve } = Promise.withResolvers<void>();
   const ctl = new AbortController();
   const serve = Deno.serve({
     port: 8443,
@@ -119,8 +126,10 @@ Deno.test("tls.connect mid-read tcp->tls upgrade", async () => {
     conn.destroy();
     ctl.abort();
   });
+  conn.on("close", resolve);
 
   await serve.finished;
+  await promise;
 });
 
 Deno.test("tls.createServer creates a TLS server", async () => {
@@ -136,13 +145,16 @@ Deno.test("tls.createServer creates a TLS server", async () => {
           socket.destroy();
         }
       });
+      socket.on("close", () => deferred.resolve());
     },
   );
   server.listen(0, async () => {
-    const conn = await Deno.connectTls({
-      hostname: "127.0.0.1",
+    const tcpConn = await Deno.connect({
       // deno-lint-ignore no-explicit-any
       port: (server.address() as any).port,
+    });
+    const conn = await Deno.startTls(tcpConn, {
+      hostname: "localhost",
       caCerts: [rootCaCert],
     });
 
@@ -166,7 +178,6 @@ Deno.test("tls.createServer creates a TLS server", async () => {
 
     conn.close();
     server.close();
-    deferred.resolve();
   });
   await deferred.promise;
 });
@@ -186,4 +197,63 @@ Deno.test("tlssocket._handle._parentWrap is set", () => {
       ._handle as any)!
       ._parentWrap;
   assertInstanceOf(parentWrap, stream.PassThrough);
+});
+
+Deno.test("tls.connect() throws InvalidData when there's error in certificate", async () => {
+  // Uses execCode to avoid `--unsafely-ignore-certificate-errors` option applied
+  const [status, output] = await execCode(`
+    import tls from "node:tls";
+    const conn = tls.connect({
+      host: "localhost",
+      port: 4557,
+    });
+
+    conn.on("error", (err) => {
+      console.log(err);
+    });
+  `);
+
+  assertEquals(status, 0);
+  assertStringIncludes(
+    output,
+    "InvalidData: invalid peer certificate: UnknownIssuer",
+  );
+});
+
+Deno.test("tls.rootCertificates is not empty", () => {
+  assert(tls.rootCertificates.length > 0);
+  assert(Object.isFrozen(tls.rootCertificates));
+  assert(tls.rootCertificates instanceof Array);
+  assert(tls.rootCertificates.every((cert) => typeof cert === "string"));
+  assertThrows(() => {
+    (tls.rootCertificates as string[]).push("new cert");
+  }, TypeError);
+});
+
+Deno.test("TLSSocket.alpnProtocol is set for client", async () => {
+  const listener = Deno.listenTls({
+    hostname: "localhost",
+    port: 0,
+    key,
+    cert,
+    alpnProtocols: ["a"],
+  });
+  const outgoing = tls.connect({
+    host: "::1",
+    servername: "localhost",
+    port: listener.addr.port,
+    ALPNProtocols: ["a"],
+    secureContext: {
+      ca: rootCaCert,
+      // deno-lint-ignore no-explicit-any
+    } as any,
+  });
+
+  const conn = await listener.accept();
+  const handshake = await conn.handshake();
+  assertEquals(handshake.alpnProtocol, "a");
+  conn.close();
+  outgoing.destroy();
+  listener.close();
+  await new Promise((resolve) => outgoing.on("close", resolve));
 });

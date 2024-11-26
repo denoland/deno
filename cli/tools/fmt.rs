@@ -13,6 +13,7 @@ use crate::args::FmtFlags;
 use crate::args::FmtOptions;
 use crate::args::FmtOptionsConfig;
 use crate::args::ProseWrap;
+use crate::args::UnstableFmtOptions;
 use crate::cache::Caches;
 use crate::colors;
 use crate::factory::CliFactory;
@@ -32,9 +33,11 @@ use deno_core::error::AnyError;
 use deno_core::futures;
 use deno_core::parking_lot::Mutex;
 use deno_core::unsync::spawn_blocking;
+use deno_core::url::Url;
 use log::debug;
 use log::info;
 use log::warn;
+use std::borrow::Cow;
 use std::fs;
 use std::io::stdin;
 use std::io::stdout;
@@ -49,13 +52,20 @@ use std::sync::Arc;
 use crate::cache::IncrementalCache;
 
 /// Format JavaScript/TypeScript files.
-pub async fn format(flags: Flags, fmt_flags: FmtFlags) -> Result<(), AnyError> {
+pub async fn format(
+  flags: Arc<Flags>,
+  fmt_flags: FmtFlags,
+) -> Result<(), AnyError> {
   if fmt_flags.is_stdin() {
     let cli_options = CliOptions::from_flags(flags)?;
-    let start_ctx = cli_options.workspace.resolve_start_ctx();
-    let fmt_config = start_ctx
-      .to_fmt_config(FilePatterns::new_with_base(start_ctx.dir_path()))?;
-    let fmt_options = FmtOptions::resolve(fmt_config, &fmt_flags);
+    let start_dir = &cli_options.start_dir;
+    let fmt_config = start_dir
+      .to_fmt_config(FilePatterns::new_with_base(start_dir.dir_path()))?;
+    let fmt_options = FmtOptions::resolve(
+      fmt_config,
+      cli_options.resolve_config_unstable_fmt_options(),
+      &fmt_flags,
+    );
     return format_stdin(
       &fmt_flags,
       fmt_options,
@@ -73,9 +83,10 @@ pub async fn format(flags: Flags, fmt_flags: FmtFlags) -> Result<(), AnyError> {
       file_watcher::PrintConfig::new("Fmt", !watch_flags.no_clear_screen),
       move |flags, watcher_communicator, changed_paths| {
         let fmt_flags = fmt_flags.clone();
+        watcher_communicator.show_path_changed(changed_paths.clone());
         Ok(async move {
-          let factory = CliFactory::from_flags(flags)?;
-          let cli_options = factory.cli_options();
+          let factory = CliFactory::from_flags(flags);
+          let cli_options = factory.cli_options()?;
           let caches = factory.caches()?;
           let mut paths_with_options_batches =
             resolve_paths_with_options_batches(cli_options, &fmt_flags)?;
@@ -111,7 +122,13 @@ pub async fn format(flags: Flags, fmt_flags: FmtFlags) -> Result<(), AnyError> {
             };
           }
 
-          format_files(caches, &fmt_flags, paths_with_options_batches).await?;
+          format_files(
+            caches,
+            cli_options,
+            &fmt_flags,
+            paths_with_options_batches,
+          )
+          .await?;
 
           Ok(())
         })
@@ -119,12 +136,13 @@ pub async fn format(flags: Flags, fmt_flags: FmtFlags) -> Result<(), AnyError> {
     )
     .await?;
   } else {
-    let factory = CliFactory::from_flags(flags)?;
+    let factory = CliFactory::from_flags(flags);
+    let cli_options = factory.cli_options()?;
     let caches = factory.caches()?;
-    let cli_options = factory.cli_options();
     let paths_with_options_batches =
       resolve_paths_with_options_batches(cli_options, &fmt_flags)?;
-    format_files(caches, &fmt_flags, paths_with_options_batches).await?;
+    format_files(caches, cli_options, &fmt_flags, paths_with_options_batches)
+      .await?;
   }
 
   Ok(())
@@ -163,6 +181,7 @@ fn resolve_paths_with_options_batches(
 
 async fn format_files(
   caches: &Arc<Caches>,
+  cli_options: &Arc<CliOptions>,
   fmt_flags: &FmtFlags,
   paths_with_options_batches: Vec<PathsWithOptions>,
 ) -> Result<(), AnyError> {
@@ -181,11 +200,17 @@ async fn format_files(
     let paths = paths_with_options.paths;
     let incremental_cache = Arc::new(IncrementalCache::new(
       caches.fmt_incremental_cache_db(),
-      &fmt_options.options,
+      &(&fmt_options.options, &fmt_options.unstable), // cache key
       &paths,
     ));
     formatter
-      .handle_files(paths, fmt_options.options, incremental_cache.clone())
+      .handle_files(
+        paths,
+        fmt_options.options,
+        fmt_options.unstable,
+        incremental_cache.clone(),
+        cli_options.ext_flag().clone(),
+      )
       .await?;
     incremental_cache.wait_completion().await;
   }
@@ -197,11 +222,15 @@ fn collect_fmt_files(
   cli_options: &CliOptions,
   files: FilePatterns,
 ) -> Result<Vec<PathBuf>, AnyError> {
-  FileCollector::new(|e| is_supported_ext_fmt(e.path))
-    .ignore_git_folder()
-    .ignore_node_modules()
-    .set_vendor_folder(cli_options.vendor_dir_path().map(ToOwned::to_owned))
-    .collect_file_patterns(&deno_config::fs::RealDenoConfigFs, files)
+  FileCollector::new(|e| {
+    is_supported_ext_fmt(e.path)
+      || (e.path.extension().is_none() && cli_options.ext_flag().is_some())
+  })
+  .ignore_git_folder()
+  .ignore_node_modules()
+  .use_gitignore()
+  .set_vendor_folder(cli_options.vendor_dir_path().map(ToOwned::to_owned))
+  .collect_file_patterns(&deno_config::fs::RealDenoConfigFs, files)
 }
 
 /// Formats markdown (using <https://github.com/dprint/dprint-plugin-markdown>) and its code blocks
@@ -209,6 +238,7 @@ fn collect_fmt_files(
 fn format_markdown(
   file_text: &str,
   fmt_options: &FmtOptionsConfig,
+  unstable_options: &UnstableFmtOptions,
 ) -> Result<Option<String>, AnyError> {
   let markdown_config = get_resolved_markdown_config(fmt_options);
   dprint_plugin_markdown::format_text(
@@ -230,6 +260,19 @@ fn format_markdown(
           | "typescript"
           | "json"
           | "jsonc"
+          | "css"
+          | "scss"
+          | "sass"
+          | "less"
+          | "html"
+          | "svelte"
+          | "vue"
+          | "astro"
+          | "vto"
+          | "njk"
+          | "yml"
+          | "yaml"
+          | "sql"
       ) {
         // It's important to tell dprint proper file extension, otherwise
         // it might parse the file twice.
@@ -241,19 +284,42 @@ fn format_markdown(
 
         let fake_filename =
           PathBuf::from(format!("deno_fmt_stdin.{extension}"));
-        if matches!(extension, "json" | "jsonc") {
-          let mut json_config = get_resolved_json_config(fmt_options);
-          json_config.line_width = line_width;
-          dprint_plugin_json::format_text(&fake_filename, text, &json_config)
-        } else {
-          let mut codeblock_config =
-            get_resolved_typescript_config(fmt_options);
-          codeblock_config.line_width = line_width;
-          dprint_plugin_typescript::format_text(
-            &fake_filename,
-            text.to_string(),
-            &codeblock_config,
-          )
+        match extension {
+          "json" | "jsonc" => {
+            let mut json_config = get_resolved_json_config(fmt_options);
+            json_config.line_width = line_width;
+            dprint_plugin_json::format_text(&fake_filename, text, &json_config)
+          }
+          "css" | "scss" | "sass" | "less" => {
+            format_css(&fake_filename, text, fmt_options)
+          }
+          "html" => format_html(&fake_filename, text, fmt_options),
+          "svelte" | "vue" | "astro" | "vto" | "njk" => {
+            if unstable_options.component {
+              format_html(&fake_filename, text, fmt_options)
+            } else {
+              Ok(None)
+            }
+          }
+          "yml" | "yaml" => format_yaml(text, fmt_options),
+          "sql" => {
+            if unstable_options.sql {
+              format_sql(text, fmt_options)
+            } else {
+              Ok(None)
+            }
+          }
+          _ => {
+            let mut codeblock_config =
+              get_resolved_typescript_config(fmt_options);
+            codeblock_config.line_width = line_width;
+            dprint_plugin_typescript::format_text(
+              &fake_filename,
+              None,
+              text.to_string(),
+              &codeblock_config,
+            )
+          }
         }
       } else {
         Ok(None)
@@ -274,29 +340,269 @@ pub fn format_json(
   dprint_plugin_json::format_text(file_path, file_text, &config)
 }
 
-/// Formats a single TS, TSX, JS, JSX, JSONC, JSON, MD, or IPYNB file.
-pub fn format_file(
+pub fn format_css(
   file_path: &Path,
   file_text: &str,
   fmt_options: &FmtOptionsConfig,
 ) -> Result<Option<String>, AnyError> {
-  let ext = get_extension(file_path).unwrap_or_default();
+  let formatted_str = malva::format_text(
+    file_text,
+    malva::detect_syntax(file_path).unwrap_or(malva::Syntax::Css),
+    &get_resolved_malva_config(fmt_options),
+  )
+  .map_err(AnyError::from)?;
+
+  Ok(if formatted_str == file_text {
+    None
+  } else {
+    Some(formatted_str)
+  })
+}
+
+fn format_yaml(
+  file_text: &str,
+  fmt_options: &FmtOptionsConfig,
+) -> Result<Option<String>, AnyError> {
+  let ignore_file = file_text
+    .lines()
+    .take_while(|line| line.starts_with('#'))
+    .any(|line| {
+      line
+        .strip_prefix('#')
+        .unwrap()
+        .trim()
+        .starts_with("deno-fmt-ignore-file")
+    });
+
+  if ignore_file {
+    return Ok(None);
+  }
+
+  let formatted_str =
+    pretty_yaml::format_text(file_text, &get_resolved_yaml_config(fmt_options))
+      .map_err(AnyError::from)?;
+
+  Ok(if formatted_str == file_text {
+    None
+  } else {
+    Some(formatted_str)
+  })
+}
+
+pub fn format_html(
+  file_path: &Path,
+  file_text: &str,
+  fmt_options: &FmtOptionsConfig,
+) -> Result<Option<String>, AnyError> {
+  let format_result = markup_fmt::format_text(
+    file_text,
+    markup_fmt::detect_language(file_path)
+      .unwrap_or(markup_fmt::Language::Html),
+    &get_resolved_markup_fmt_config(fmt_options),
+    |text, hints| {
+      let mut file_name =
+        file_path.file_name().expect("missing file name").to_owned();
+      file_name.push(".");
+      file_name.push(hints.ext);
+      let path = file_path.with_file_name(file_name);
+      match hints.ext {
+        "css" | "scss" | "sass" | "less" => {
+          let mut malva_config = get_resolved_malva_config(fmt_options);
+          malva_config.layout.print_width = hints.print_width;
+          if hints.attr {
+            malva_config.language.quotes =
+              if let Some(true) = fmt_options.single_quote {
+                malva::config::Quotes::AlwaysDouble
+              } else {
+                malva::config::Quotes::AlwaysSingle
+              };
+            malva_config.language.single_line_top_level_declarations = true;
+          }
+          malva::format_text(
+            text,
+            malva::detect_syntax(path).unwrap_or(malva::Syntax::Css),
+            &malva_config,
+          )
+          .map(Cow::from)
+          .map_err(AnyError::from)
+        }
+        "json" | "jsonc" => {
+          let mut json_config = get_resolved_json_config(fmt_options);
+          json_config.line_width = hints.print_width as u32;
+          dprint_plugin_json::format_text(&path, text, &json_config).map(
+            |formatted| {
+              if let Some(formatted) = formatted {
+                Cow::from(formatted)
+              } else {
+                Cow::from(text)
+              }
+            },
+          )
+        }
+        _ => {
+          let mut typescript_config =
+            get_resolved_typescript_config(fmt_options);
+          typescript_config.line_width = hints.print_width as u32;
+          dprint_plugin_typescript::format_text(
+            &path,
+            None,
+            text.to_string(),
+            &typescript_config,
+          )
+          .map(|formatted| {
+            if let Some(formatted) = formatted {
+              Cow::from(formatted)
+            } else {
+              Cow::from(text)
+            }
+          })
+        }
+      }
+    },
+  )
+  .map_err(|error| match error {
+    markup_fmt::FormatError::Syntax(error) => {
+      fn inner(
+        error: &markup_fmt::SyntaxError,
+        file_path: &Path,
+      ) -> Option<String> {
+        let url = Url::from_file_path(file_path).ok()?;
+
+        let error_msg = format!(
+          "Syntax error ({}) at {}:{}:{}\n",
+          error.kind,
+          url.as_str(),
+          error.line,
+          error.column
+        );
+        Some(error_msg)
+      }
+
+      if let Some(error_msg) = inner(&error, file_path) {
+        AnyError::from(generic_error(error_msg))
+      } else {
+        AnyError::from(error)
+      }
+    }
+    markup_fmt::FormatError::External(errors) => {
+      let last = errors.len() - 1;
+      AnyError::msg(
+        errors
+          .into_iter()
+          .enumerate()
+          .map(|(i, error)| {
+            if i == last {
+              format!("{error}")
+            } else {
+              format!("{error}\n\n")
+            }
+          })
+          .collect::<String>(),
+      )
+    }
+  });
+
+  let formatted_str = format_result?;
+
+  Ok(if formatted_str == file_text {
+    None
+  } else {
+    Some(formatted_str)
+  })
+}
+
+pub fn format_sql(
+  file_text: &str,
+  fmt_options: &FmtOptionsConfig,
+) -> Result<Option<String>, AnyError> {
+  let ignore_file = file_text
+    .lines()
+    .take_while(|line| line.starts_with("--"))
+    .any(|line| {
+      line
+        .strip_prefix("--")
+        .unwrap()
+        .trim()
+        .starts_with("deno-fmt-ignore-file")
+    });
+
+  if ignore_file {
+    return Ok(None);
+  }
+
+  let mut formatted_str = sqlformat::format(
+    file_text,
+    &sqlformat::QueryParams::None,
+    &sqlformat::FormatOptions {
+      ignore_case_convert: None,
+      indent: if fmt_options.use_tabs.unwrap_or_default() {
+        sqlformat::Indent::Tabs
+      } else {
+        sqlformat::Indent::Spaces(fmt_options.indent_width.unwrap_or(2))
+      },
+      // leave one blank line between queries.
+      lines_between_queries: 2,
+      uppercase: Some(true),
+    },
+  );
+
+  // Add single new line to the end of file.
+  formatted_str.push('\n');
+
+  Ok(if formatted_str == file_text {
+    None
+  } else {
+    Some(formatted_str)
+  })
+}
+
+/// Formats a single TS, TSX, JS, JSX, JSONC, JSON, MD, IPYNB or SQL file.
+pub fn format_file(
+  file_path: &Path,
+  file_text: &str,
+  fmt_options: &FmtOptionsConfig,
+  unstable_options: &UnstableFmtOptions,
+  ext: Option<String>,
+) -> Result<Option<String>, AnyError> {
+  let ext = ext
+    .or_else(|| get_extension(file_path))
+    .unwrap_or("ts".to_string());
 
   match ext.as_str() {
     "md" | "mkd" | "mkdn" | "mdwn" | "mdown" | "markdown" => {
-      format_markdown(file_text, fmt_options)
+      format_markdown(file_text, fmt_options, unstable_options)
     }
     "json" | "jsonc" => format_json(file_path, file_text, fmt_options),
+    "css" | "scss" | "sass" | "less" => {
+      format_css(file_path, file_text, fmt_options)
+    }
+    "html" => format_html(file_path, file_text, fmt_options),
+    "svelte" | "vue" | "astro" | "vto" | "njk" => {
+      if unstable_options.component {
+        format_html(file_path, file_text, fmt_options)
+      } else {
+        Ok(None)
+      }
+    }
+    "yml" | "yaml" => format_yaml(file_text, fmt_options),
     "ipynb" => dprint_plugin_jupyter::format_text(
       file_text,
       |file_path: &Path, file_text: String| {
-        format_file(file_path, &file_text, fmt_options)
+        format_file(file_path, &file_text, fmt_options, unstable_options, None)
       },
     ),
+    "sql" => {
+      if unstable_options.sql {
+        format_sql(file_text, fmt_options)
+      } else {
+        Ok(None)
+      }
+    }
     _ => {
       let config = get_resolved_typescript_config(fmt_options);
       dprint_plugin_typescript::format_text(
         file_path,
+        Some(&ext),
         file_text.to_string(),
         &config,
       )
@@ -320,7 +626,9 @@ trait Formatter {
     &self,
     paths: Vec<PathBuf>,
     fmt_options: FmtOptionsConfig,
+    unstable_options: UnstableFmtOptions,
     incremental_cache: Arc<IncrementalCache>,
+    ext: Option<String>,
   ) -> Result<(), AnyError>;
 
   fn finish(&self) -> Result<(), AnyError>;
@@ -338,7 +646,9 @@ impl Formatter for CheckFormatter {
     &self,
     paths: Vec<PathBuf>,
     fmt_options: FmtOptionsConfig,
+    unstable_options: UnstableFmtOptions,
     incremental_cache: Arc<IncrementalCache>,
+    ext: Option<String>,
   ) -> Result<(), AnyError> {
     // prevent threads outputting at the same time
     let output_lock = Arc::new(Mutex::new(0));
@@ -355,7 +665,13 @@ impl Formatter for CheckFormatter {
           return Ok(());
         }
 
-        match format_file(&file_path, &file_text, &fmt_options) {
+        match format_file(
+          &file_path,
+          &file_text,
+          &fmt_options,
+          &unstable_options,
+          ext.clone(),
+        ) {
           Ok(Some(formatted_text)) => {
             not_formatted_files_count.fetch_add(1, Ordering::Relaxed);
             let _g = output_lock.lock();
@@ -430,7 +746,9 @@ impl Formatter for RealFormatter {
     &self,
     paths: Vec<PathBuf>,
     fmt_options: FmtOptionsConfig,
+    unstable_options: UnstableFmtOptions,
     incremental_cache: Arc<IncrementalCache>,
+    ext: Option<String>,
   ) -> Result<(), AnyError> {
     let output_lock = Arc::new(Mutex::new(0)); // prevent threads outputting at the same time
 
@@ -449,8 +767,15 @@ impl Formatter for RealFormatter {
         match format_ensure_stable(
           &file_path,
           &file_contents.text,
-          &fmt_options,
-          format_file,
+          |file_path, file_text| {
+            format_file(
+              file_path,
+              file_text,
+              &fmt_options,
+              &unstable_options,
+              ext.clone(),
+            )
+          },
         ) {
           Ok(Some(formatted_text)) => {
             incremental_cache.update_file(&file_path, &formatted_text);
@@ -507,20 +832,15 @@ impl Formatter for RealFormatter {
 fn format_ensure_stable(
   file_path: &Path,
   file_text: &str,
-  fmt_options: &FmtOptionsConfig,
-  fmt_func: impl Fn(
-    &Path,
-    &str,
-    &FmtOptionsConfig,
-  ) -> Result<Option<String>, AnyError>,
+  fmt_func: impl Fn(&Path, &str) -> Result<Option<String>, AnyError>,
 ) -> Result<Option<String>, AnyError> {
-  let formatted_text = fmt_func(file_path, file_text, fmt_options)?;
+  let formatted_text = fmt_func(file_path, file_text)?;
 
   match formatted_text {
     Some(mut current_text) => {
       let mut count = 0;
       loop {
-        match fmt_func(file_path, &current_text, fmt_options) {
+        match fmt_func(file_path, &current_text) {
           Ok(Some(next_pass_text)) => {
             // just in case
             if next_pass_text == current_text {
@@ -532,28 +852,26 @@ fn format_ensure_stable(
             return Ok(Some(current_text));
           }
           Err(err) => {
-            panic!(
+            bail!(
               concat!(
                 "Formatting succeeded initially, but failed when ensuring a ",
                 "stable format. This indicates a bug in the formatter where ",
                 "the text it produces is not syntactically correct. As a temporary ",
-                "workaround you can ignore this file ({}).\n\n{:#}"
+                "workaround you can ignore this file.\n\n{:#}"
               ),
-              file_path.display(),
               err,
             )
           }
         }
         count += 1;
         if count == 5 {
-          panic!(
+          bail!(
             concat!(
               "Formatting not stable. Bailed after {} tries. This indicates a bug ",
-              "in the formatter where it formats the file ({}) differently each time. As a ",
+              "in the formatter where it formats the file differently each time. As a ",
               "temporary workaround you can ignore this file."
             ),
             count,
-            file_path.display(),
           )
         }
       }
@@ -575,7 +893,13 @@ fn format_stdin(
     bail!("Failed to read from stdin");
   }
   let file_path = PathBuf::from(format!("_stdin.{ext}"));
-  let formatted_text = format_file(&file_path, &source, &fmt_options.options)?;
+  let formatted_text = format_file(
+    &file_path,
+    &source,
+    &fmt_options.options,
+    &fmt_options.unstable,
+    None,
+  )?;
   if fmt_flags.check {
     #[allow(clippy::print_stdout)]
     if formatted_text.is_some() {
@@ -684,6 +1008,156 @@ fn get_resolved_json_config(
   builder.build()
 }
 
+fn get_resolved_malva_config(
+  options: &FmtOptionsConfig,
+) -> malva::config::FormatOptions {
+  use malva::config::*;
+
+  let layout_options = LayoutOptions {
+    print_width: options.line_width.unwrap_or(80) as usize,
+    use_tabs: options.use_tabs.unwrap_or_default(),
+    indent_width: options.indent_width.unwrap_or(2) as usize,
+    line_break: LineBreak::Lf,
+  };
+
+  let language_options = LanguageOptions {
+    align_comments: true,
+    hex_case: HexCase::Lower,
+    hex_color_length: None,
+    quotes: if let Some(true) = options.single_quote {
+      Quotes::PreferSingle
+    } else {
+      Quotes::PreferDouble
+    },
+    operator_linebreak: OperatorLineBreak::Before,
+    block_selector_linebreak: BlockSelectorLineBreak::Consistent,
+    omit_number_leading_zero: false,
+    trailing_comma: true,
+    format_comments: false,
+    linebreak_in_pseudo_parens: true,
+    declaration_order: None,
+    single_line_block_threshold: None,
+    keyframe_selector_notation: None,
+    attr_value_quotes: AttrValueQuotes::Always,
+    prefer_single_line: false,
+    selectors_prefer_single_line: None,
+    function_args_prefer_single_line: None,
+    sass_content_at_rule_prefer_single_line: None,
+    sass_include_at_rule_prefer_single_line: None,
+    sass_map_prefer_single_line: None,
+    sass_module_config_prefer_single_line: None,
+    sass_params_prefer_single_line: None,
+    less_import_options_prefer_single_line: None,
+    less_mixin_args_prefer_single_line: None,
+    less_mixin_params_prefer_single_line: None,
+    single_line_top_level_declarations: false,
+    selector_override_comment_directive: "deno-fmt-selector-override".into(),
+    ignore_comment_directive: "deno-fmt-ignore".into(),
+    ignore_file_comment_directive: "deno-fmt-ignore-file".into(),
+  };
+
+  FormatOptions {
+    layout: layout_options,
+    language: language_options,
+  }
+}
+
+fn get_resolved_markup_fmt_config(
+  options: &FmtOptionsConfig,
+) -> markup_fmt::config::FormatOptions {
+  use markup_fmt::config::*;
+
+  let layout_options = LayoutOptions {
+    print_width: options.line_width.unwrap_or(80) as usize,
+    use_tabs: options.use_tabs.unwrap_or_default(),
+    indent_width: options.indent_width.unwrap_or(2) as usize,
+    line_break: LineBreak::Lf,
+  };
+
+  let language_options = LanguageOptions {
+    quotes: Quotes::Double,
+    format_comments: false,
+    script_indent: true,
+    html_script_indent: None,
+    vue_script_indent: Some(false),
+    svelte_script_indent: None,
+    astro_script_indent: None,
+    style_indent: true,
+    html_style_indent: None,
+    vue_style_indent: Some(false),
+    svelte_style_indent: None,
+    astro_style_indent: None,
+    closing_bracket_same_line: false,
+    closing_tag_line_break_for_empty: ClosingTagLineBreakForEmpty::Fit,
+    max_attrs_per_line: None,
+    prefer_attrs_single_line: false,
+    html_normal_self_closing: None,
+    html_void_self_closing: None,
+    component_self_closing: None,
+    svg_self_closing: None,
+    mathml_self_closing: None,
+    whitespace_sensitivity: WhitespaceSensitivity::Css,
+    component_whitespace_sensitivity: None,
+    doctype_keyword_case: DoctypeKeywordCase::Upper,
+    v_bind_style: None,
+    v_on_style: None,
+    v_for_delimiter_style: None,
+    v_slot_style: None,
+    component_v_slot_style: None,
+    default_v_slot_style: None,
+    named_v_slot_style: None,
+    v_bind_same_name_short_hand: None,
+    strict_svelte_attr: false,
+    svelte_attr_shorthand: Some(true),
+    svelte_directive_shorthand: Some(true),
+    astro_attr_shorthand: Some(true),
+    ignore_comment_directive: "deno-fmt-ignore".into(),
+    ignore_file_comment_directive: "deno-fmt-ignore-file".into(),
+  };
+
+  FormatOptions {
+    layout: layout_options,
+    language: language_options,
+  }
+}
+
+fn get_resolved_yaml_config(
+  options: &FmtOptionsConfig,
+) -> pretty_yaml::config::FormatOptions {
+  use pretty_yaml::config::*;
+
+  let layout_options = LayoutOptions {
+    print_width: options.line_width.unwrap_or(80) as usize,
+    indent_width: options.indent_width.unwrap_or(2) as usize,
+    line_break: LineBreak::Lf,
+  };
+
+  let language_options = LanguageOptions {
+    quotes: if let Some(true) = options.single_quote {
+      Quotes::PreferSingle
+    } else {
+      Quotes::PreferDouble
+    },
+    trailing_comma: true,
+    format_comments: false,
+    indent_block_sequence_in_map: true,
+    brace_spacing: true,
+    bracket_spacing: false,
+    dash_spacing: DashSpacing::OneSpace,
+    prefer_single_line: false,
+    flow_sequence_prefer_single_line: None,
+    flow_map_prefer_single_line: None,
+    trim_trailing_whitespaces: true,
+    trim_trailing_zero: false,
+    ignore_comment_directive: "deno-fmt-ignore".into(),
+  };
+
+  FormatOptions {
+    layout: layout_options,
+    language: language_options,
+  }
+}
+
 struct FileContents {
   text: String,
   had_bom: bool,
@@ -776,19 +1250,34 @@ fn is_supported_ext_fmt(path: &Path) -> bool {
         | "mts"
         | "json"
         | "jsonc"
+        | "css"
+        | "scss"
+        | "sass"
+        | "less"
+        | "html"
+        | "svelte"
+        | "vue"
+        | "astro"
+        | "vto"
+        | "njk"
         | "md"
         | "mkd"
         | "mkdn"
         | "mdwn"
         | "mdown"
         | "markdown"
+        | "yml"
+        | "yaml"
         | "ipynb"
+        | "sql"
     )
   })
 }
 
 #[cfg(test)]
 mod test {
+  use test_util::assert_starts_with;
+
   use super::*;
 
   #[test]
@@ -816,59 +1305,82 @@ mod test {
     assert!(is_supported_ext_fmt(Path::new("foo.JSONC")));
     assert!(is_supported_ext_fmt(Path::new("foo.json")));
     assert!(is_supported_ext_fmt(Path::new("foo.JsON")));
+    assert!(is_supported_ext_fmt(Path::new("foo.css")));
+    assert!(is_supported_ext_fmt(Path::new("foo.Css")));
+    assert!(is_supported_ext_fmt(Path::new("foo.scss")));
+    assert!(is_supported_ext_fmt(Path::new("foo.SCSS")));
+    assert!(is_supported_ext_fmt(Path::new("foo.sass")));
+    assert!(is_supported_ext_fmt(Path::new("foo.Sass")));
+    assert!(is_supported_ext_fmt(Path::new("foo.less")));
+    assert!(is_supported_ext_fmt(Path::new("foo.LeSS")));
+    assert!(is_supported_ext_fmt(Path::new("foo.html")));
+    assert!(is_supported_ext_fmt(Path::new("foo.HTML")));
+    assert!(is_supported_ext_fmt(Path::new("foo.svelte")));
+    assert!(is_supported_ext_fmt(Path::new("foo.Svelte")));
+    assert!(is_supported_ext_fmt(Path::new("foo.vue")));
+    assert!(is_supported_ext_fmt(Path::new("foo.VUE")));
+    assert!(is_supported_ext_fmt(Path::new("foo.astro")));
+    assert!(is_supported_ext_fmt(Path::new("foo.AsTrO")));
+    assert!(is_supported_ext_fmt(Path::new("foo.vto")));
+    assert!(is_supported_ext_fmt(Path::new("foo.Vto")));
+    assert!(is_supported_ext_fmt(Path::new("foo.njk")));
+    assert!(is_supported_ext_fmt(Path::new("foo.NJk")));
+    assert!(is_supported_ext_fmt(Path::new("foo.yml")));
+    assert!(is_supported_ext_fmt(Path::new("foo.Yml")));
+    assert!(is_supported_ext_fmt(Path::new("foo.yaml")));
+    assert!(is_supported_ext_fmt(Path::new("foo.YaML")));
     assert!(is_supported_ext_fmt(Path::new("foo.ipynb")));
+    assert!(is_supported_ext_fmt(Path::new("foo.sql")));
+    assert!(is_supported_ext_fmt(Path::new("foo.Sql")));
+    assert!(is_supported_ext_fmt(Path::new("foo.sQl")));
+    assert!(is_supported_ext_fmt(Path::new("foo.sqL")));
+    assert!(is_supported_ext_fmt(Path::new("foo.SQL")));
   }
 
   #[test]
-  #[should_panic(expected = "Formatting not stable. Bailed after 5 tries.")]
   fn test_format_ensure_stable_unstable_format() {
-    format_ensure_stable(
-      &PathBuf::from("mod.ts"),
-      "1",
-      &Default::default(),
-      |_, file_text, _| Ok(Some(format!("1{file_text}"))),
-    )
-    .unwrap();
+    let err =
+      format_ensure_stable(&PathBuf::from("mod.ts"), "1", |_, file_text| {
+        Ok(Some(format!("1{file_text}")))
+      })
+      .unwrap_err();
+    assert_starts_with!(
+      err.to_string(),
+      "Formatting not stable. Bailed after 5 tries."
+    );
   }
 
   #[test]
   fn test_format_ensure_stable_error_first() {
-    let err = format_ensure_stable(
-      &PathBuf::from("mod.ts"),
-      "1",
-      &Default::default(),
-      |_, _, _| bail!("Error formatting."),
-    )
+    let err = format_ensure_stable(&PathBuf::from("mod.ts"), "1", |_, _| {
+      bail!("Error formatting.")
+    })
     .unwrap_err();
 
     assert_eq!(err.to_string(), "Error formatting.");
   }
 
   #[test]
-  #[should_panic(expected = "Formatting succeeded initially, but failed when")]
   fn test_format_ensure_stable_error_second() {
-    format_ensure_stable(
-      &PathBuf::from("mod.ts"),
-      "1",
-      &Default::default(),
-      |_, file_text, _| {
+    let err =
+      format_ensure_stable(&PathBuf::from("mod.ts"), "1", |_, file_text| {
         if file_text == "1" {
           Ok(Some("11".to_string()))
         } else {
           bail!("Error formatting.")
         }
-      },
-    )
-    .unwrap();
+      })
+      .unwrap_err();
+    assert_starts_with!(
+      err.to_string(),
+      "Formatting succeeded initially, but failed when"
+    );
   }
 
   #[test]
   fn test_format_stable_after_two() {
-    let result = format_ensure_stable(
-      &PathBuf::from("mod.ts"),
-      "1",
-      &Default::default(),
-      |_, file_text, _| {
+    let result =
+      format_ensure_stable(&PathBuf::from("mod.ts"), "1", |_, file_text| {
         if file_text == "1" {
           Ok(Some("11".to_string()))
         } else if file_text == "11" {
@@ -876,9 +1388,8 @@ mod test {
         } else {
           unreachable!();
         }
-      },
-    )
-    .unwrap();
+      })
+      .unwrap();
 
     assert_eq!(result, Some("11".to_string()));
   }
@@ -892,6 +1403,8 @@ mod test {
         single_quote: Some(true),
         ..Default::default()
       },
+      &UnstableFmtOptions::default(),
+      None,
     )
     .unwrap()
     .unwrap();

@@ -11,12 +11,12 @@ use deno_core::error::AnyError;
 use deno_core::futures::future::LocalBoxFuture;
 use deno_core::futures::FutureExt;
 use deno_core::parking_lot::Mutex;
+use deno_core::url::Url;
 use deno_npm::npm_rc::ResolvedNpmRc;
 use deno_npm::registry::NpmPackageVersionDistInfo;
 use deno_runtime::deno_fs::FileSystem;
 use deno_semver::package::PackageNv;
-use reqwest::StatusCode;
-use reqwest::Url;
+use http::StatusCode;
 
 use crate::args::CacheSetting;
 use crate::http_util::DownloadError;
@@ -167,12 +167,12 @@ impl TarballCache {
       let tarball_uri = Url::parse(&dist.tarball)?;
       let maybe_registry_config =
         tarball_cache.npmrc.tarball_config(&tarball_uri);
-      let maybe_auth_header = maybe_registry_config.and_then(|c| maybe_auth_header_for_npm_registry(c));
+      let maybe_auth_header = maybe_registry_config.and_then(|c| maybe_auth_header_for_npm_registry(c).ok()?);
 
       let guard = tarball_cache.progress_bar.update(&dist.tarball);
       let result = tarball_cache.http_client_provider
         .get_or_create()?
-        .download_with_progress(tarball_uri, maybe_auth_header, &guard)
+        .download_with_progress_and_retries(tarball_uri, maybe_auth_header, &guard)
         .await;
       let maybe_bytes = match result {
         Ok(maybe_bytes) => maybe_bytes,

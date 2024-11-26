@@ -1,5 +1,6 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
+import { op_bootstrap_color_depth } from "ext:core/ops";
 import { core, primordials } from "ext:core/mod.js";
 const {
   Error,
@@ -104,6 +105,35 @@ export class WriteStream extends Socket {
     this.columns = columns;
     this.rows = rows;
     this.isTTY = true;
+  }
+
+  /**
+   * @param {number | Record<string, string>} [count]
+   * @param {Record<string, string>} [env]
+   * @returns {boolean}
+   */
+  hasColors(count, env) {
+    if (
+      env === undefined &&
+      (count === undefined || typeof count === "object" && count !== null)
+    ) {
+      env = count;
+      count = 16;
+    }
+
+    const depth = this.getColorDepth(env);
+    return count <= 2 ** depth;
+  }
+
+  /**
+   * @param {Record<string, string} [env]
+   * @returns {1 | 4 | 8 | 24}
+   */
+  getColorDepth(_env) {
+    // TODO(@marvinhagemeister): Ignore env parameter.
+    // Haven't seen it used anywhere, seems more done
+    // to make testing easier in Node
+    return op_bootstrap_color_depth();
   }
 }
 

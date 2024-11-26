@@ -1,6 +1,5 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
-use deno_core::error::AnyError;
 use deno_core::op2;
 use deno_core::unsync::spawn_blocking;
 use deno_core::unsync::TaskQueue;
@@ -48,6 +47,7 @@ use winapi::um::processenv::GetStdHandle;
 #[cfg(windows)]
 use winapi::um::winbase;
 
+use deno_core::futures::TryFutureExt;
 #[cfg(windows)]
 use parking_lot::Condvar;
 #[cfg(windows)]
@@ -60,11 +60,127 @@ mod pipe;
 #[cfg(windows)]
 mod winpipe;
 
+mod bi_pipe;
+
 pub use pipe::pipe;
 pub use pipe::AsyncPipeRead;
 pub use pipe::AsyncPipeWrite;
 pub use pipe::PipeRead;
 pub use pipe::PipeWrite;
+pub use pipe::RawPipeHandle;
+
+pub use bi_pipe::bi_pipe_pair_raw;
+pub use bi_pipe::BiPipe;
+pub use bi_pipe::BiPipeRead;
+pub use bi_pipe::BiPipeResource;
+pub use bi_pipe::BiPipeWrite;
+pub use bi_pipe::RawBiPipeHandle;
+
+/// Abstraction over `AsRawFd` (unix) and `AsRawHandle` (windows)
+pub trait AsRawIoHandle {
+  fn as_raw_io_handle(&self) -> RawIoHandle;
+}
+
+#[cfg(unix)]
+impl<T> AsRawIoHandle for T
+where
+  T: std::os::unix::io::AsRawFd,
+{
+  fn as_raw_io_handle(&self) -> RawIoHandle {
+    self.as_raw_fd()
+  }
+}
+
+#[cfg(windows)]
+impl<T> AsRawIoHandle for T
+where
+  T: std::os::windows::io::AsRawHandle,
+{
+  fn as_raw_io_handle(&self) -> RawIoHandle {
+    self.as_raw_handle()
+  }
+}
+
+/// Abstraction over `IntoRawFd` (unix) and `IntoRawHandle` (windows)
+pub trait IntoRawIoHandle {
+  fn into_raw_io_handle(self) -> RawIoHandle;
+}
+
+#[cfg(unix)]
+impl<T> IntoRawIoHandle for T
+where
+  T: std::os::unix::io::IntoRawFd,
+{
+  fn into_raw_io_handle(self) -> RawIoHandle {
+    self.into_raw_fd()
+  }
+}
+
+#[cfg(windows)]
+impl<T> IntoRawIoHandle for T
+where
+  T: std::os::windows::io::IntoRawHandle,
+{
+  fn into_raw_io_handle(self) -> RawIoHandle {
+    self.into_raw_handle()
+  }
+}
+
+/// Abstraction over `FromRawFd` (unix) and `FromRawHandle` (windows)
+pub trait FromRawIoHandle: Sized {
+  /// Constructs a type from a raw io handle (fd/HANDLE).
+  ///
+  /// # Safety
+  ///
+  /// Refer to the standard library docs ([unix](https://doc.rust-lang.org/stable/std/os/windows/io/trait.FromRawHandle.html#tymethod.from_raw_handle)) ([windows](https://doc.rust-lang.org/stable/std/os/fd/trait.FromRawFd.html#tymethod.from_raw_fd))
+  ///
+  unsafe fn from_raw_io_handle(handle: RawIoHandle) -> Self;
+}
+
+#[cfg(unix)]
+impl<T> FromRawIoHandle for T
+where
+  T: std::os::unix::io::FromRawFd,
+{
+  unsafe fn from_raw_io_handle(fd: RawIoHandle) -> T {
+    // SAFETY: upheld by caller
+    unsafe { T::from_raw_fd(fd) }
+  }
+}
+
+#[cfg(windows)]
+impl<T> FromRawIoHandle for T
+where
+  T: std::os::windows::io::FromRawHandle,
+{
+  unsafe fn from_raw_io_handle(fd: RawIoHandle) -> T {
+    // SAFETY: upheld by caller
+    unsafe { T::from_raw_handle(fd) }
+  }
+}
+
+#[cfg(unix)]
+pub type RawIoHandle = std::os::fd::RawFd;
+
+#[cfg(windows)]
+pub type RawIoHandle = std::os::windows::io::RawHandle;
+
+pub fn close_raw_handle(handle: RawIoHandle) {
+  #[cfg(unix)]
+  {
+    // SAFETY: libc call
+    unsafe {
+      libc::close(handle);
+    }
+  }
+  #[cfg(windows)]
+  {
+    // SAFETY: win32 call
+    unsafe {
+      windows_sys::Win32::Foundation::CloseHandle(handle as _);
+    }
+  }
+}
 
 // Store the stdio fd/handles in global statics in order to keep them
 // alive for the duration of the application since the last handle/fd
@@ -232,13 +348,13 @@ where
     RcRef::map(self, |r| &r.stream).borrow_mut()
   }
 
-  async fn write(self: Rc<Self>, data: &[u8]) -> Result<usize, AnyError> {
+  async fn write(self: Rc<Self>, data: &[u8]) -> Result<usize, io::Error> {
     let mut stream = self.borrow_mut().await;
     let nwritten = stream.write(data).await?;
     Ok(nwritten)
   }
 
-  async fn shutdown(self: Rc<Self>) -> Result<(), AnyError> {
+  async fn shutdown(self: Rc<Self>) -> Result<(), io::Error> {
     let mut stream = self.borrow_mut().await;
     stream.shutdown().await?;
     Ok(())
@@ -280,7 +396,7 @@ where
     self.cancel_handle.cancel()
   }
 
-  async fn read(self: Rc<Self>, data: &mut [u8]) -> Result<usize, AnyError> {
+  async fn read(self: Rc<Self>, data: &mut [u8]) -> Result<usize, io::Error> {
     let mut rd = self.borrow_mut().await;
     let nread = rd.read(data).try_or_cancel(self.cancel_handle()).await?;
     Ok(nread)
@@ -301,7 +417,7 @@ impl Resource for ChildStdinResource {
   deno_core::impl_writable!();
 
   fn shutdown(self: Rc<Self>) -> AsyncResult<()> {
-    Box::pin(self.shutdown())
+    Box::pin(self.shutdown().map_err(|e| e.into()))
   }
 }
 
@@ -894,7 +1010,7 @@ pub fn op_print(
   state: &mut OpState,
   #[string] msg: &str,
   is_err: bool,
-) -> Result<(), AnyError> {
+) -> Result<(), deno_core::error::AnyError> {
   let rid = if is_err { 2 } else { 1 };
   FileResource::with_file(state, rid, move |file| {
     Ok(file.write_all_sync(msg.as_bytes())?)

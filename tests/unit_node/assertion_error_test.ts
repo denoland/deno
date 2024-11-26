@@ -1,6 +1,6 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
-import { stripColor } from "@std/fmt/colors.ts";
-import { assert, assertStrictEquals } from "@std/assert/mod.ts";
+import { stripAnsiCode } from "@std/fmt/colors";
+import { assert, assertStrictEquals } from "@std/assert";
 import { AssertionError } from "node:assert";
 
 Deno.test({
@@ -31,7 +31,7 @@ Deno.test({
       { actual: 1, expected: 2, operator: "equal" },
     );
     assertStrictEquals(err.name, "AssertionError");
-    assertStrictEquals(stripColor(err.message), "1 equal 2");
+    assertStrictEquals(stripAnsiCode(err.message), "1 equal 2");
     assertStrictEquals(err.generatedMessage, true);
     assertStrictEquals(err.code, "ERR_ASSERTION");
     assertStrictEquals(err.actual, 1);
@@ -51,7 +51,7 @@ Deno.test({
       stackStartFn,
     });
     assertStrictEquals(err.name, "AssertionError");
-    assertStrictEquals(stripColor(err.message), `'deno' match /node/`);
+    assertStrictEquals(stripAnsiCode(err.message), `'deno' match /node/`);
     assertStrictEquals(err.generatedMessage, true);
     assertStrictEquals(err.code, "ERR_ASSERTION");
     assertStrictEquals(err.actual, "deno");

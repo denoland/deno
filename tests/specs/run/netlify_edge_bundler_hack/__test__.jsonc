@@ -1,9 +1,0 @@
-{
-  "args": [
-    "run",
-    "--allow-read",
-    "--allow-write",
-    "node_modules/@netlify/edge-bundler/deno/config.ts"
-  ],
-  "output": "main.out"
-}

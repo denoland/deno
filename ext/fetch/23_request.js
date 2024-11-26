@@ -122,7 +122,7 @@ function newInnerRequest(method, url, headerList, body, maybeBlob) {
         try {
           this.headerListInner = headerList();
         } catch {
-          throw new TypeError("cannot read headers: request closed");
+          throw new TypeError("Cannot read headers: request closed");
         }
       }
       return this.headerListInner;
@@ -153,7 +153,7 @@ function newInnerRequest(method, url, headerList, body, maybeBlob) {
         try {
           this.urlListProcessed[currentIndex] = this.urlList[currentIndex]();
         } catch {
-          throw new TypeError("cannot read url: request closed");
+          throw new TypeError("Cannot read url: request closed");
         }
       }
       return this.urlListProcessed[currentIndex];
@@ -193,7 +193,7 @@ function cloneInnerRequest(request, skipBody = false) {
         try {
           this.urlListProcessed[0] = this.urlList[0]();
         } catch {
-          throw new TypeError("cannot read url: request closed");
+          throw new TypeError("Cannot read url: request closed");
         }
       }
       return this.urlListProcessed[0];
@@ -204,7 +204,7 @@ function cloneInnerRequest(request, skipBody = false) {
         try {
           this.urlListProcessed[currentIndex] = this.urlList[currentIndex]();
         } catch {
-          throw new TypeError("cannot read url: request closed");
+          throw new TypeError("Cannot read url: request closed");
         }
       }
       return this.urlListProcessed[currentIndex];
@@ -236,13 +236,13 @@ const KNOWN_METHODS = {
  */
 function validateAndNormalizeMethod(m) {
   if (RegExpPrototypeExec(HTTP_TOKEN_CODE_POINT_RE, m) === null) {
-    throw new TypeError("Method is not valid.");
+    throw new TypeError("Method is not valid");
   }
   const upperCase = byteUpperCase(m);
   if (
     upperCase === "CONNECT" || upperCase === "TRACE" || upperCase === "TRACK"
   ) {
-    throw new TypeError("Method is forbidden.");
+    throw new TypeError("Method is forbidden");
   }
   return upperCase;
 }
@@ -269,12 +269,6 @@ class Request {
   /** @type {AbortSignal} */
   get [_signal]() {
     const signal = this[_signalCache];
-    // This signal not been created yet, and the request is still in progress
-    if (signal === undefined) {
-      const signal = newSignal();
-      this[_signalCache] = signal;
-      return signal;
-    }
     // This signal has not been created yet, but the request has already completed
     if (signal === false) {
       const signal = newSignal();
@@ -282,6 +276,18 @@ class Request {
       signal[signalAbort](signalAbortError);
       return signal;
     }
+
+    // This signal not been created yet, and the request is still in progress
+    if (signal === undefined) {
+      const signal = newSignal();
+      this[_signalCache] = signal;
+      this[_request].onCancel?.(() => {
+        signal[signalAbort](signalAbortError);
+      });
+
+      return signal;
+    }
+
     return signal;
   }
   get [_mimeType]() {
@@ -418,7 +424,7 @@ class Request {
       ((init.body !== undefined && init.body !== null) ||
         inputBody !== null)
     ) {
-      throw new TypeError("Request with GET/HEAD method cannot have body.");
+      throw new TypeError("Request with GET/HEAD method cannot have body");
     }
 
     // 36.
@@ -442,7 +448,7 @@ class Request {
     // 41.
     if (initBody === null && inputBody !== null) {
       if (input[_body] && input[_body].unusable()) {
-        throw new TypeError("Input request's body is unusable.");
+        throw new TypeError("Input request's body is unusable");
       }
       finalBody = inputBody.createProxy();
     }
@@ -489,7 +495,7 @@ class Request {
     const prefix = "Failed to execute 'Request.clone'";
     webidl.assertBranded(this, RequestPrototype);
     if (this[_body] && this[_body].unusable()) {
-      throw new TypeError("Body is unusable.");
+      throw new TypeError("Body is unusable");
     }
     const clonedReq = cloneInnerRequest(this[_request]);
 

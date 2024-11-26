@@ -4,6 +4,7 @@ use std::collections::HashMap;
 use std::collections::HashSet;
 use std::io::IsTerminal;
 use std::path::Path;
+use std::path::PathBuf;
 use std::process::Stdio;
 use std::rc::Rc;
 use std::sync::Arc;
@@ -11,8 +12,10 @@ use std::sync::Arc;
 use base64::prelude::BASE64_STANDARD;
 use base64::Engine;
 use deno_ast::ModuleSpecifier;
+use deno_config::deno_json::ConfigFile;
 use deno_config::workspace::JsrPackageConfig;
 use deno_config::workspace::PackageJsonDepResolution;
+use deno_config::workspace::Workspace;
 use deno_core::anyhow::bail;
 use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
@@ -23,9 +26,9 @@ use deno_core::futures::StreamExt;
 use deno_core::serde_json;
 use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
-use deno_runtime::deno_fetch::reqwest;
+use deno_core::url::Url;
 use deno_terminal::colors;
-use lsp_types::Url;
+use http_body_util::BodyExt;
 use serde::Deserialize;
 use serde::Serialize;
 use sha2::Digest;
@@ -41,15 +44,17 @@ use crate::cache::ParsedSourceCache;
 use crate::factory::CliFactory;
 use crate::graph_util::ModuleGraphCreator;
 use crate::http_util::HttpClient;
-use crate::resolver::SloppyImportsResolver;
+use crate::resolver::CliSloppyImportsResolver;
+use crate::resolver::SloppyImportsCachedFs;
 use crate::tools::check::CheckOptions;
-use crate::tools::lint::no_slow_types;
+use crate::tools::lint::collect_no_slow_type_diagnostics;
 use crate::tools::registry::diagnostics::PublishDiagnostic;
 use crate::tools::registry::diagnostics::PublishDiagnosticsCollector;
 use crate::util::display::human_size;
 
 mod api;
 mod auth;
+
 mod diagnostics;
 mod graph;
 mod paths;
@@ -62,6 +67,11 @@ mod unfurl;
 use auth::get_auth_method;
 use auth::AuthMethod;
 pub use pm::add;
+pub use pm::cache_top_level_deps;
+pub use pm::outdated;
+pub use pm::remove;
+pub use pm::AddCommandName;
+pub use pm::AddRmPackageReq;
 use publish_order::PublishOrderGraph;
 use unfurl::SpecifierUnfurler;
 
@@ -72,23 +82,24 @@ use self::paths::CollectedPublishPath;
 use self::tar::PublishableTarball;
 
 pub async fn publish(
-  flags: Flags,
+  flags: Arc<Flags>,
   publish_flags: PublishFlags,
 ) -> Result<(), AnyError> {
-  let cli_factory = CliFactory::from_flags(flags)?;
+  let cli_factory = CliFactory::from_flags(flags);
 
   let auth_method =
     get_auth_method(publish_flags.token, publish_flags.dry_run)?;
 
-  let directory_path = cli_factory.cli_options().initial_cwd();
-  let cli_options = cli_factory.cli_options();
-  let publish_configs = cli_options.workspace.jsr_packages_for_publish();
+  let cli_options = cli_factory.cli_options()?;
+  let directory_path = cli_options.initial_cwd();
+  let mut publish_configs = cli_options.start_dir.jsr_packages_for_publish();
   if publish_configs.is_empty() {
-    match cli_options.workspace.resolve_start_ctx().maybe_deno_json() {
+    match cli_options.start_dir.maybe_deno_json() {
       Some(deno_json) => {
         debug_assert!(!deno_json.is_package());
+        error_missing_exports_field(deno_json)?;
         bail!(
-          "Missing 'name', 'version' and 'exports' field in '{}'.",
+          "Missing 'name' or 'exports' field in '{}'.",
           deno_json.specifier
         );
       }
@@ -100,9 +111,23 @@ pub async fn publish(
       }
     }
   }
+
+  if let Some(version) = &publish_flags.set_version {
+    if publish_configs.len() > 1 {
+      bail!("Cannot use --set-version when publishing a workspace. Change your cwd to an individual package instead.");
+    }
+    if let Some(publish_config) = publish_configs.get_mut(0) {
+      let mut config_file = publish_config.config_file.as_ref().clone();
+      config_file.json.version = Some(version.clone());
+      publish_config.config_file = Arc::new(config_file);
+    }
+  }
+
   let specifier_unfurler = Arc::new(SpecifierUnfurler::new(
     if cli_options.unstable_sloppy_imports() {
-      Some(SloppyImportsResolver::new(cli_factory.fs().clone()))
+      Some(CliSloppyImportsResolver::new(SloppyImportsCachedFs::new(
+        cli_factory.fs().clone(),
+      )))
     } else {
       None
     },
@@ -121,7 +146,7 @@ pub async fn publish(
     cli_factory.module_graph_creator().await?.clone(),
     cli_factory.parsed_source_cache().clone(),
     cli_factory.type_checker().await?.clone(),
-    cli_factory.cli_options().clone(),
+    cli_options.clone(),
     specifier_unfurler,
   );
 
@@ -163,7 +188,7 @@ pub async fn publish(
         log::info!("   {} ({})", file.specifier, human_size(file.size as f64),);
       }
     }
-    log::warn!("{} Aborting due to --dry-run", colors::yellow("Warning"));
+    log::warn!("{} Dry run complete", colors::green("Success"));
     return Ok(());
   }
 
@@ -335,13 +360,11 @@ impl PublishPreparer {
       bail!("Exiting due to DENO_INTERNAL_FAST_CHECK_OVERWRITE")
     } else {
       log::info!("Checking for slow types in the public API...");
-      let mut any_pkg_had_diagnostics = false;
       for package in package_configs {
         let export_urls = package.config_file.resolve_export_value_urls()?;
         let diagnostics =
-          no_slow_types::collect_no_slow_type_diagnostics(&export_urls, &graph);
+          collect_no_slow_type_diagnostics(&graph, &export_urls);
         if !diagnostics.is_empty() {
-          any_pkg_had_diagnostics = true;
           for diagnostic in diagnostics {
             diagnostics_collector
               .push(PublishDiagnostic::FastCheck(diagnostic));
@@ -349,7 +372,9 @@ impl PublishPreparer {
         }
       }
 
-      if any_pkg_had_diagnostics {
+      // skip type checking the slow type graph if there are any errors because
+      // errors like remote modules existing will cause type checking to crash
+      if diagnostics_collector.has_error() {
         Ok(Arc::new(graph))
       } else {
         // fast check passed, type check the output as a temporary measure
@@ -394,50 +419,22 @@ impl PublishPreparer {
     graph: Arc<deno_graph::ModuleGraph>,
     diagnostics_collector: &PublishDiagnosticsCollector,
   ) -> Result<Rc<PreparedPublishPackage>, AnyError> {
-    static SUGGESTED_ENTRYPOINTS: [&str; 4] =
-      ["mod.ts", "mod.js", "index.ts", "index.js"];
-
     let deno_json = &package.config_file;
     let config_path = deno_json.specifier.to_file_path().unwrap();
     let root_dir = config_path.parent().unwrap().to_path_buf();
-    let Some(version) = deno_json.json.version.clone() else {
-      bail!("{} is missing 'version' field", deno_json.specifier);
-    };
-    if deno_json.json.exports.is_none() {
-      let mut suggested_entrypoint = None;
-
-      for entrypoint in SUGGESTED_ENTRYPOINTS {
-        if root_dir.join(entrypoint).exists() {
-          suggested_entrypoint = Some(entrypoint);
-          break;
-        }
-      }
-
-      let exports_content = format!(
-        r#"{{
-  "name": "{}",
-  "version": "{}",
-  "exports": "{}"
-}}"#,
-        package.name,
-        version,
-        suggested_entrypoint.unwrap_or("<path_to_entrypoint>")
-      );
-
-      bail!(
-      "You did not specify an entrypoint to \"{}\" package in {}. Add `exports` mapping in the configuration file, eg:\n{}",
-      package.name,
-      deno_json.specifier,
-      exports_content
-    );
-    }
+    let version = deno_json.json.version.clone().ok_or_else(|| {
+      deno_core::anyhow::anyhow!(
+        "{} is missing 'version' field",
+        deno_json.specifier
+      )
+    })?;
     let Some(name_no_at) = package.name.strip_prefix('@') else {
       bail!("Invalid package name, use '@<scope_name>/<package_name> format");
     };
     let Some((scope, name_no_scope)) = name_no_at.split_once('/') else {
       bail!("Invalid package name, use '@<scope_name>/<package_name> format");
     };
-    let file_patterns = package.member_ctx.to_publish_config()?.files;
+    let file_patterns = package.member_dir.to_publish_config()?.files;
 
     let tarball = deno_core::unsync::spawn_blocking({
       let diagnostics_collector = diagnostics_collector.clone();
@@ -445,10 +442,12 @@ impl PublishPreparer {
       let cli_options = self.cli_options.clone();
       let source_cache = self.source_cache.clone();
       let config_path = config_path.clone();
+      let config_url = deno_json.specifier.clone();
+      let has_license_field = package.license.is_some();
       move || {
         let root_specifier =
           ModuleSpecifier::from_directory_path(&root_dir).unwrap();
-        let publish_paths =
+        let mut publish_paths =
           paths::collect_publish_paths(paths::CollectPublishPathsOptions {
             root_dir: &root_dir,
             cli_options: &cli_options,
@@ -462,8 +461,32 @@ impl PublishPreparer {
           &publish_paths,
           &diagnostics_collector,
         );
+
+        if !has_license_field
+          && !has_license_file(publish_paths.iter().map(|p| &p.specifier))
+        {
+          if let Some(license_path) =
+            resolve_license_file(&root_dir, cli_options.workspace())
+          {
+            // force including the license file from the package or workspace root
+            publish_paths.push(CollectedPublishPath {
+              specifier: ModuleSpecifier::from_file_path(&license_path)
+                .unwrap(),
+              relative_path: "/LICENSE".to_string(),
+              maybe_content: Some(std::fs::read(&license_path).with_context(
+                || format!("failed reading '{}'.", license_path.display()),
+              )?),
+              path: license_path,
+            });
+          } else {
+            diagnostics_collector.push(PublishDiagnostic::MissingLicense {
+              config_specifier: config_url,
+            });
+          }
+        }
+
         tar::create_gzipped_tarball(
-          &publish_paths,
+          publish_paths,
           LazyGraphSourceParser::new(&source_cache, &graph),
           &diagnostics_collector,
           &unfurler,
@@ -539,11 +562,13 @@ async fn get_auth_headers(
       let challenge = BASE64_STANDARD.encode(sha2::Sha256::digest(&verifier));
 
       let response = client
-        .post(format!("{}authorizations", registry_url))
-        .json(&serde_json::json!({
-          "challenge": challenge,
-          "permissions": permissions,
-        }))
+        .post_json(
+          format!("{}authorizations", registry_url).parse()?,
+          &serde_json::json!({
+            "challenge": challenge,
+            "permissions": permissions,
+          }),
+        )?
         .send()
         .await
         .context("Failed to create interactive authorization")?;
@@ -573,11 +598,13 @@ async fn get_auth_headers(
       loop {
         tokio::time::sleep(interval).await;
         let response = client
-          .post(format!("{}authorizations/exchange", registry_url))
-          .json(&serde_json::json!({
-            "exchangeToken": auth.exchange_token,
-            "verifier": verifier,
-          }))
+          .post_json(
+            format!("{}authorizations/exchange", registry_url).parse()?,
+            &serde_json::json!({
+              "exchangeToken": auth.exchange_token,
+              "verifier": verifier,
+            }),
+          )?
           .send()
           .await
           .context("Failed to exchange authorization")?;
@@ -634,15 +661,20 @@ async fn get_auth_headers(
         );
 
         let response = client
-          .get(url)
-          .bearer_auth(&oidc_config.token)
+          .get(url.parse()?)?
+          .header(
+            http::header::AUTHORIZATION,
+            format!("Bearer {}", oidc_config.token).parse()?,
+          )
           .send()
           .await
           .context("Failed to get OIDC token")?;
         let status = response.status();
-        let text = response.text().await.with_context(|| {
-          format!("Failed to get OIDC token: status {}", status)
-        })?;
+        let text = crate::http_util::body_to_string(response)
+          .await
+          .with_context(|| {
+            format!("Failed to get OIDC token: status {}", status)
+          })?;
         if !status.is_success() {
           bail!(
             "Failed to get OIDC token: status {}, response: '{}'",
@@ -770,7 +802,7 @@ async fn ensure_scopes_and_packages_exist(
 
     loop {
       tokio::time::sleep(std::time::Duration::from_secs(3)).await;
-      let response = client.get(&package_api_url).send().await?;
+      let response = client.get(package_api_url.parse()?)?.send().await?;
       if response.status() == 200 {
         let name = format!("@{}/{}", package.scope, package.package);
         log::info!("Package {} created", colors::green(name));
@@ -894,11 +926,19 @@ async fn publish_package(
     package.config
   );
 
+  let body = http_body_util::Full::new(package.tarball.bytes.clone())
+    .map_err(|never| match never {})
+    .boxed();
   let response = http_client
-    .post(url)
-    .header(reqwest::header::AUTHORIZATION, authorization)
-    .header(reqwest::header::CONTENT_ENCODING, "gzip")
-    .body(package.tarball.bytes.clone())
+    .post(url.parse()?, body)?
+    .header(
+      http::header::AUTHORIZATION,
+      authorization.parse().map_err(http::Error::from)?,
+    )
+    .header(
+      http::header::CONTENT_ENCODING,
+      "gzip".parse().map_err(http::Error::from)?,
+    )
     .send()
     .await?;
 
@@ -943,7 +983,7 @@ async fn publish_package(
   while task.status != "success" && task.status != "failure" {
     tokio::time::sleep(interval).await;
     let resp = http_client
-      .get(format!("{}publish_status/{}", registry_api_url, task.id))
+      .get(format!("{}publish_status/{}", registry_api_url, task.id).parse()?)?
       .send()
       .await
       .with_context(|| {
@@ -973,14 +1013,6 @@ async fn publish_package(
     );
   }
 
-  log::info!(
-    "{} @{}/{}@{}",
-    colors::green("Successfully published"),
-    package.scope,
-    package.package,
-    package.version
-  );
-
   let enable_provenance = std::env::var("DISABLE_JSR_PROVENANCE").is_err()
     && (auth::is_gha() && auth::gha_oidc_token().is_some() && provenance);
 
@@ -992,7 +1024,8 @@ async fn publish_package(
       package.scope, package.package, package.version
     ))?;
 
-    let meta_bytes = http_client.get(meta_url).send().await?.bytes().await?;
+    let resp = http_client.get(meta_url)?.send().await?;
+    let meta_bytes = resp.collect().await?.to_bytes();
 
     if std::env::var("DISABLE_JSR_MANIFEST_VERIFICATION_FOR_TESTING").is_err() {
       verify_version_manifest(&meta_bytes, &package)?;
@@ -1007,7 +1040,8 @@ async fn publish_package(
         sha256: faster_hex::hex_string(&sha2::Sha256::digest(&meta_bytes)),
       },
     };
-    let bundle = provenance::generate_provenance(http_client, subject).await?;
+    let bundle =
+      provenance::generate_provenance(http_client, vec![subject]).await?;
 
     let tlog_entry = &bundle.verification_material.tlog_entries[0];
     log::info!("{}",
@@ -1023,12 +1057,19 @@ async fn publish_package(
       registry_api_url, package.scope, package.package, package.version
     );
     http_client
-      .post(provenance_url)
-      .header(reqwest::header::AUTHORIZATION, authorization)
-      .json(&json!({ "bundle": bundle }))
+      .post_json(provenance_url.parse()?, &json!({ "bundle": bundle }))?
+      .header(http::header::AUTHORIZATION, authorization.parse()?)
       .send()
       .await?;
   }
+
+  log::info!(
+    "{} @{}/{}@{}",
+    colors::green("Successfully published"),
+    package.scope,
+    package.package,
+    package.version
+  );
 
   log::info!(
     "{}",
@@ -1053,9 +1094,9 @@ fn collect_excluded_module_diagnostics(
   let graph_specifiers = graph
     .modules()
     .filter_map(|m| match m {
-      deno_graph::Module::Js(_) | deno_graph::Module::Json(_) => {
-        Some(m.specifier())
-      }
+      deno_graph::Module::Js(_)
+      | deno_graph::Module::Json(_)
+      | deno_graph::Module::Wasm(_) => Some(m.specifier()),
       deno_graph::Module::Npm(_)
       | deno_graph::Module::Node(_)
       | deno_graph::Module::External(_) => None,
@@ -1170,6 +1211,84 @@ async fn check_if_git_repo_dirty(cwd: &Path) -> Option<String> {
   }
 }
 
+static SUPPORTED_LICENSE_FILE_NAMES: [&str; 6] = [
+  "LICENSE",
+  "LICENSE.md",
+  "LICENSE.txt",
+  "LICENCE",
+  "LICENCE.md",
+  "LICENCE.txt",
+];
+
+fn resolve_license_file(
+  pkg_root_dir: &Path,
+  workspace: &Workspace,
+) -> Option<PathBuf> {
+  let workspace_root_dir = workspace.root_dir_path();
+  let mut dirs = Vec::with_capacity(2);
+  dirs.push(pkg_root_dir);
+  if workspace_root_dir != pkg_root_dir {
+    dirs.push(&workspace_root_dir);
+  }
+  for dir in dirs {
+    for file_name in &SUPPORTED_LICENSE_FILE_NAMES {
+      let file_path = dir.join(file_name);
+      if file_path.exists() {
+        return Some(file_path);
+      }
+    }
+  }
+  None
+}
+
+fn has_license_file<'a>(
+  mut specifiers: impl Iterator<Item = &'a ModuleSpecifier>,
+) -> bool {
+  let supported_license_files = SUPPORTED_LICENSE_FILE_NAMES
+    .iter()
+    .map(|s| s.to_lowercase())
+    .collect::<HashSet<_>>();
+  specifiers.any(|specifier| {
+    specifier
+      .path()
+      .rsplit_once('/')
+      .map(|(_, file)| {
+        supported_license_files.contains(file.to_lowercase().as_str())
+      })
+      .unwrap_or(false)
+  })
+}
+
+fn error_missing_exports_field(deno_json: &ConfigFile) -> Result<(), AnyError> {
+  static SUGGESTED_ENTRYPOINTS: [&str; 4] =
+    ["mod.ts", "mod.js", "index.ts", "index.js"];
+  let mut suggested_entrypoint = None;
+
+  for entrypoint in SUGGESTED_ENTRYPOINTS {
+    if deno_json.dir_path().join(entrypoint).exists() {
+      suggested_entrypoint = Some(entrypoint);
+      break;
+    }
+  }
+
+  let exports_content = format!(
+    r#"{{
+  "name": "{}",
+  "version": "{}",
+  "exports": "{}"
+}}"#,
+    deno_json.json.name.as_deref().unwrap_or("@scope/name"),
+    deno_json.json.name.as_deref().unwrap_or("0.0.0"),
+    suggested_entrypoint.unwrap_or("<path_to_entrypoint>")
+  );
+
+  bail!(
+    "You did not specify an entrypoint in {}. Add `exports` mapping in the configuration file, eg:\n{}",
+    deno_json.specifier,
+    exports_content
+  );
+}
+
 #[allow(clippy::print_stderr)]
 fn ring_bell() {
   // ASCII code for the bell character.
@@ -1178,6 +1297,10 @@ fn ring_bell() {
 
 #[cfg(test)]
 mod tests {
+  use deno_ast::ModuleSpecifier;
+
+  use crate::tools::registry::has_license_file;
+
   use super::tar::PublishableTarball;
   use super::tar::PublishableTarballFile;
   use super::verify_version_manifest;
@@ -1278,5 +1401,32 @@ mod tests {
     };
 
     assert!(verify_version_manifest(meta_bytes, &package).is_err());
+  }
+
+  #[test]
+  fn test_has_license_files() {
+    fn has_license_file_str(expected: &[&str]) -> bool {
+      let specifiers = expected
+        .iter()
+        .map(|s| ModuleSpecifier::parse(s).unwrap())
+        .collect::<Vec<_>>();
+      has_license_file(specifiers.iter())
+    }
+
+    assert!(has_license_file_str(&["file:///LICENSE"]));
+    assert!(has_license_file_str(&["file:///license"]));
+    assert!(has_license_file_str(&["file:///LICENSE.txt"]));
+    assert!(has_license_file_str(&["file:///LICENSE.md"]));
+    assert!(has_license_file_str(&["file:///LICENCE"]));
+    assert!(has_license_file_str(&["file:///LICENCE.txt"]));
+    assert!(has_license_file_str(&["file:///LICENCE.md"]));
+    assert!(has_license_file_str(&[
+      "file:///other",
+      "file:///test/LICENCE.md"
+    ]),);
+    assert!(!has_license_file_str(&[
+      "file:///other",
+      "file:///test/tLICENSE"
+    ]),);
   }
 }

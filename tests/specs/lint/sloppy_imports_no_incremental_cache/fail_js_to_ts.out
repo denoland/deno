@@ -1,0 +1,11 @@
+error[no-sloppy-imports]: Sloppy imports are not allowed.
+ --> [WILDLINE]main.ts:1:23
+  | 
+1 | import * as file from "./file.js";
+  |                       ^^^^^^^^^^^
+
+  docs: https://docs.deno.com/runtime/manual/tools/unstable_flags/#--unstable-sloppy-imports
+
+
+Found 1 problem (1 fixable via --fix)
+Checked 1 file

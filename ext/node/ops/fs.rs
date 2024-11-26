@@ -1,11 +1,8 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 use std::cell::RefCell;
-use std::path::Path;
-use std::path::PathBuf;
 use std::rc::Rc;
 
-use deno_core::error::AnyError;
 use deno_core::op2;
 use deno_core::OpState;
 use deno_fs::FileSystemRc;
@@ -13,67 +10,95 @@ use serde::Serialize;
 
 use crate::NodePermissions;
 
-#[op2(fast)]
+#[derive(Debug, thiserror::Error)]
+pub enum FsError {
+  #[error(transparent)]
+  Permission(#[from] deno_permissions::PermissionCheckError),
+  #[error("{0}")]
+  Io(#[from] std::io::Error),
+  #[cfg(windows)]
+  #[error("Path has no root.")]
+  PathHasNoRoot,
+  #[cfg(not(any(unix, windows)))]
+  #[error("Unsupported platform.")]
+  UnsupportedPlatform,
+  #[error(transparent)]
+  Fs(#[from] deno_io::fs::FsError),
+}
+
+#[op2(fast, stack_trace)]
 pub fn op_node_fs_exists_sync<P>(
   state: &mut OpState,
   #[string] path: String,
-) -> Result<bool, AnyError>
+) -> Result<bool, deno_core::error::AnyError>
 where
   P: NodePermissions + 'static,
 {
-  let path = PathBuf::from(path);
-  state
+  let path = state
     .borrow_mut::<P>()
     .check_read_with_api_name(&path, Some("node:fs.existsSync()"))?;
   let fs = state.borrow::<FileSystemRc>();
-  Ok(fs.lstat_sync(&path).is_ok())
+  Ok(fs.exists_sync(&path))
 }
 
-#[op2(fast)]
+#[op2(async, stack_trace)]
+pub async fn op_node_fs_exists<P>(
+  state: Rc<RefCell<OpState>>,
+  #[string] path: String,
+) -> Result<bool, FsError>
+where
+  P: NodePermissions + 'static,
+{
+  let (fs, path) = {
+    let mut state = state.borrow_mut();
+    let path = state
+      .borrow_mut::<P>()
+      .check_read_with_api_name(&path, Some("node:fs.exists()"))?;
+    (state.borrow::<FileSystemRc>().clone(), path)
+  };
+
+  Ok(fs.exists_async(path).await?)
+}
+
+#[op2(fast, stack_trace)]
 pub fn op_node_cp_sync<P>(
   state: &mut OpState,
   #[string] path: &str,
   #[string] new_path: &str,
-) -> Result<(), AnyError>
+) -> Result<(), FsError>
 where
   P: NodePermissions + 'static,
 {
-  let path = Path::new(path);
-  let new_path = Path::new(new_path);
-
-  state
+  let path = state
     .borrow_mut::<P>()
     .check_read_with_api_name(path, Some("node:fs.cpSync"))?;
-  state
+  let new_path = state
     .borrow_mut::<P>()
     .check_write_with_api_name(new_path, Some("node:fs.cpSync"))?;
 
   let fs = state.borrow::<FileSystemRc>();
-  fs.cp_sync(path, new_path)?;
+  fs.cp_sync(&path, &new_path)?;
   Ok(())
 }
 
-#[op2(async)]
+#[op2(async, stack_trace)]
 pub async fn op_node_cp<P>(
   state: Rc<RefCell<OpState>>,
   #[string] path: String,
   #[string] new_path: String,
-) -> Result<(), AnyError>
+) -> Result<(), FsError>
 where
   P: NodePermissions + 'static,
 {
-  let path = PathBuf::from(path);
-  let new_path = PathBuf::from(new_path);
-
-  let fs = {
+  let (fs, path, new_path) = {
     let mut state = state.borrow_mut();
-    state
+    let path = state
       .borrow_mut::<P>()
       .check_read_with_api_name(&path, Some("node:fs.cpSync"))?;
-    state
+    let new_path = state
       .borrow_mut::<P>()
       .check_write_with_api_name(&new_path, Some("node:fs.cpSync"))?;
-    state.borrow::<FileSystemRc>().clone()
+    (state.borrow::<FileSystemRc>().clone(), path, new_path)
   };
 
   fs.cp_async(path, new_path).await?;
@@ -92,41 +117,49 @@ pub struct StatFs {
   pub ffree: u64,
 }
 
-#[op2]
+#[op2(stack_trace)]
 #[serde]
 pub fn op_node_statfs<P>(
   state: Rc<RefCell<OpState>>,
   #[string] path: String,
   bigint: bool,
-) -> Result<StatFs, AnyError>
+) -> Result<StatFs, FsError>
 where
   P: NodePermissions + 'static,
 {
-  {
+  let path = {
     let mut state = state.borrow_mut();
-    state
+    let path = state
       .borrow_mut::<P>()
-      .check_read_with_api_name(Path::new(&path), Some("node:fs.statfs"))?;
+      .check_read_with_api_name(&path, Some("node:fs.statfs"))?;
     state
       .borrow_mut::<P>()
       .check_sys("statfs", "node:fs.statfs")?;
-  }
+    path
+  };
   #[cfg(unix)]
   {
-    use std::ffi::OsStr;
     use std::os::unix::ffi::OsStrExt;
 
-    let path = OsStr::new(&path);
+    let path = path.as_os_str();
     let mut cpath = path.as_bytes().to_vec();
     cpath.push(0);
     if bigint {
-      #[cfg(not(target_os = "macos"))]
+      #[cfg(not(any(
+        target_os = "macos",
+        target_os = "freebsd",
+        target_os = "openbsd"
+      )))]
       // SAFETY: `cpath` is NUL-terminated and result is pointer to valid statfs memory.
       let (code, result) = unsafe {
         let mut result: libc::statfs64 = std::mem::zeroed();
         (libc::statfs64(cpath.as_ptr() as _, &mut result), result)
       };
-      #[cfg(target_os = "macos")]
+      #[cfg(any(
+        target_os = "macos",
+        target_os = "freebsd",
+        target_os = "openbsd"
+      ))]
       // SAFETY: `cpath` is NUL-terminated and result is pointer to valid statfs memory.
       let (code, result) = unsafe {
         let mut result: libc::statfs = std::mem::zeroed();
@@ -136,7 +169,10 @@ where
         return Err(std::io::Error::last_os_error().into());
       }
       Ok(StatFs {
+        #[cfg(not(target_os = "openbsd"))]
         typ: result.f_type as _,
+        #[cfg(target_os = "openbsd")]
+        typ: 0 as _,
         bsize: result.f_bsize as _,
         blocks: result.f_blocks as _,
         bfree: result.f_bfree as _,
@@ -154,7 +190,10 @@ where
         return Err(std::io::Error::last_os_error().into());
       }
       Ok(StatFs {
+        #[cfg(not(target_os = "openbsd"))]
         typ: result.f_type as _,
+        #[cfg(target_os = "openbsd")]
+        typ: 0 as _,
         bsize: result.f_bsize as _,
         blocks: result.f_blocks as _,
         bfree: result.f_bfree as _,
@@ -166,7 +205,6 @@ where
   }
   #[cfg(windows)]
   {
-    use deno_core::anyhow::anyhow;
     use std::ffi::OsStr;
     use std::os::windows::ffi::OsStrExt;
     use windows_sys::Win32::Storage::FileSystem::GetDiskFreeSpaceW;
@@ -175,11 +213,8 @@ where
     // Using a vfs here doesn't make sense, it won't align with the windows API
     // call below.
     #[allow(clippy::disallowed_methods)]
-    let path = Path::new(&path).canonicalize()?;
-    let root = path
-      .ancestors()
-      .last()
-      .ok_or(anyhow!("Path has no root."))?;
+    let path = path.canonicalize()?;
+    let root = path.ancestors().last().ok_or(FsError::PathHasNoRoot)?;
     let mut root = OsStr::new(root).encode_wide().collect::<Vec<_>>();
     root.push(0);
     let mut sectors_per_cluster = 0;
@@ -219,11 +254,11 @@ where
   {
     let _ = path;
     let _ = bigint;
-    Err(anyhow!("Unsupported platform."))
+    Err(FsError::UnsupportedPlatform)
   }
 }
 
-#[op2(fast)]
+#[op2(fast, stack_trace)]
 pub fn op_node_lutimes_sync<P>(
   state: &mut OpState,
   #[string] path: &str,
@@ -231,22 +266,20 @@ pub fn op_node_lutimes_sync<P>(
   #[smi] atime_nanos: u32,
   #[number] mtime_secs: i64,
   #[smi] mtime_nanos: u32,
-) -> Result<(), AnyError>
+) -> Result<(), FsError>
 where
   P: NodePermissions + 'static,
 {
-  let path = Path::new(path);
-
-  state
+  let path = state
     .borrow_mut::<P>()
     .check_write_with_api_name(path, Some("node:fs.lutimes"))?;
 
   let fs = state.borrow::<FileSystemRc>();
-  fs.lutime_sync(path, atime_secs, atime_nanos, mtime_secs, mtime_nanos)?;
+  fs.lutime_sync(&path, atime_secs, atime_nanos, mtime_secs, mtime_nanos)?;
   Ok(())
 }
 
-#[op2(async)]
+#[op2(async, stack_trace)]
 pub async fn op_node_lutimes<P>(
   state: Rc<RefCell<OpState>>,
   #[string] path: String,
@@ -254,18 +287,16 @@ pub async fn op_node_lutimes<P>(
   #[smi] atime_nanos: u32,
   #[number] mtime_secs: i64,
   #[smi] mtime_nanos: u32,
-) -> Result<(), AnyError>
+) -> Result<(), FsError>
 where
   P: NodePermissions + 'static,
 {
-  let path = PathBuf::from(path);
-
-  let fs = {
+  let (fs, path) = {
     let mut state = state.borrow_mut();
-    state
+    let path = state
       .borrow_mut::<P>()
       .check_write_with_api_name(&path, Some("node:fs.lutimesSync"))?;
-    state.borrow::<FileSystemRc>().clone()
+    (state.borrow::<FileSystemRc>().clone(), path)
   };
 
   fs.lutime_async(path, atime_secs, atime_nanos, mtime_secs, mtime_nanos)
@@ -274,18 +305,17 @@ where
   Ok(())
 }
 
-#[op2]
+#[op2(stack_trace)]
 pub fn op_node_lchown_sync<P>(
   state: &mut OpState,
   #[string] path: String,
   uid: Option<u32>,
   gid: Option<u32>,
-) -> Result<(), AnyError>
+) -> Result<(), FsError>
 where
   P: NodePermissions + 'static,
 {
-  let path = PathBuf::from(path);
-  state
+  let path = state
     .borrow_mut::<P>()
     .check_write_with_api_name(&path, Some("node:fs.lchownSync"))?;
   let fs = state.borrow::<FileSystemRc>();
@@ -293,23 +323,22 @@ where
   Ok(())
 }
 
-#[op2(async)]
+#[op2(async, stack_trace)]
 pub async fn op_node_lchown<P>(
   state: Rc<RefCell<OpState>>,
   #[string] path: String,
   uid: Option<u32>,
   gid: Option<u32>,
-) -> Result<(), AnyError>
+) -> Result<(), FsError>
 where
   P: NodePermissions + 'static,
 {
-  let path = PathBuf::from(path);
-  let fs = {
+  let (fs, path) = {
     let mut state = state.borrow_mut();
-    state
+    let path = state
       .borrow_mut::<P>()
       .check_write_with_api_name(&path, Some("node:fs.lchown"))?;
-    state.borrow::<FileSystemRc>().clone()
+    (state.borrow::<FileSystemRc>().clone(), path)
   };
   fs.lchown_async(path, uid, gid).await?;
   Ok(())

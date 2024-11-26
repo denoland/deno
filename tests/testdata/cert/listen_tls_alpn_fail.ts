@@ -1,4 +1,4 @@
-import { assertRejects } from "../../../tests/util/std/assert/mod.ts";
+import { assertRejects } from "@std/assert";
 
 const listener = Deno.listenTls({
   port: Number(Deno.args[0]),

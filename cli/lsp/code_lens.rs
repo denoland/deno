@@ -107,7 +107,7 @@ impl DenoTestCollector {
           for prop in &obj_lit.props {
             if let ast::PropOrSpread::Prop(prop) = prop {
               if let ast::Prop::KeyValue(key_value_prop) = prop.as_ref() {
-                if let ast::PropName::Ident(ast::Ident { sym, .. }) =
+                if let ast::PropName::Ident(ast::IdentName { sym, .. }) =
                   &key_value_prop.key
                 {
                   if sym == "name" {
@@ -421,7 +421,7 @@ pub fn collect_test(
 ) -> Result<Vec<lsp::CodeLens>, AnyError> {
   let mut collector =
     DenoTestCollector::new(specifier.clone(), parsed_source.clone());
-  parsed_source.module().visit_with(&mut collector);
+  parsed_source.program().visit_with(&mut collector);
   Ok(collector.take())
 }
 
@@ -581,7 +581,7 @@ mod tests {
     .unwrap();
     let mut collector =
       DenoTestCollector::new(specifier, parsed_module.clone());
-    parsed_module.module().visit_with(&mut collector);
+    parsed_module.program().visit_with(&mut collector);
     assert_eq!(
       collector.take(),
       vec![

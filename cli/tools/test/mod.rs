@@ -7,24 +7,20 @@ use crate::args::TestReporterConfig;
 use crate::colors;
 use crate::display;
 use crate::factory::CliFactory;
-use crate::factory::CliFactoryBuilder;
 use crate::file_fetcher::File;
 use crate::file_fetcher::FileFetcher;
-use crate::graph_container::MainModuleGraphContainer;
 use crate::graph_util::has_graph_root_local_dependent_changed;
 use crate::ops;
+use crate::util::extract::extract_doc_tests;
 use crate::util::file_watcher;
 use crate::util::fs::collect_specifiers;
 use crate::util::path::get_extension;
 use crate::util::path::is_script_ext;
-use crate::util::path::mapped_specifier_for_tsc;
 use crate::util::path::matches_pattern_or_exact_path;
 use crate::worker::CliMainWorkerFactory;
 use crate::worker::CoverageCollector;
 
-use deno_ast::swc::common::comments::CommentKind;
 use deno_ast::MediaType;
-use deno_ast::SourceRangedForSpanned;
 use deno_config::glob::FilePatterns;
 use deno_config::glob::WalkEntry;
 use deno_core::anyhow;
@@ -57,6 +53,7 @@ use deno_runtime::deno_io::StdioPipe;
 use deno_runtime::deno_permissions::Permissions;
 use deno_runtime::deno_permissions::PermissionsContainer;
 use deno_runtime::fmt_errors::format_js_error;
+use deno_runtime::permissions::RuntimePermissionDescriptorParser;
 use deno_runtime::tokio_util::create_and_run_current_thread;
 use deno_runtime::worker::MainWorker;
 use deno_runtime::WorkerExecutionMode;
@@ -149,6 +146,20 @@ pub enum TestMode {
   Executable,
   /// Test as both documentation and an executable module.
   Both,
+}
+
+impl TestMode {
+  /// Returns `true` if the test mode indicates that code snippet extraction is
+  /// needed.
+  fn needs_test_extraction(&self) -> bool {
+    matches!(self, Self::Documentation | Self::Both)
+  }
+
+  /// Returns `true` if the test mode indicates that the test should be
+  /// type-checked and run.
+  fn needs_test_run(&self) -> bool {
+    matches!(self, Self::Executable | Self::Both)
+  }
 }
 
 #[derive(Clone, Debug, Default)]
@@ -289,6 +300,11 @@ impl From<&TestDescription> for TestFailureDescription {
   }
 }
 
+#[derive(Debug, Default, Clone, PartialEq)]
+pub struct TestFailureFormatOptions {
+  pub hide_stacktraces: bool,
+}
+
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Debug, Clone, PartialEq, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -303,52 +319,55 @@ pub enum TestFailure {
   HasSanitizersAndOverlaps(IndexSet<String>), // Long names of overlapped tests
 }
 
-impl std::fmt::Display for TestFailure {
-  fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl TestFailure {
+  pub fn format(
+    &self,
+    options: &TestFailureFormatOptions,
+  ) -> Cow<'static, str> {
     match self {
       TestFailure::JsError(js_error) => {
-        write!(f, "{}", format_test_error(js_error))
+        Cow::Owned(format_test_error(js_error, options))
       }
-      TestFailure::FailedSteps(1) => write!(f, "1 test step failed."),
-      TestFailure::FailedSteps(n) => write!(f, "{n} test steps failed."),
+      TestFailure::FailedSteps(1) => Cow::Borrowed("1 test step failed."),
+      TestFailure::FailedSteps(n) => {
+        Cow::Owned(format!("{} test steps failed.", n))
+      }
       TestFailure::IncompleteSteps => {
-        write!(f, "Completed while steps were still running. Ensure all steps are awaited with `await t.step(...)`.")
+        Cow::Borrowed("Completed while steps were still running. Ensure all steps are awaited with `await t.step(...)`.")
       }
       TestFailure::Incomplete => {
-        write!(
-          f,
-          "Didn't complete before parent. Await step with `await t.step(...)`."
-        )
+        Cow::Borrowed("Didn't complete before parent. Await step with `await t.step(...)`.")
       }
       TestFailure::Leaked(details, trailer_notes) => {
-        write!(f, "Leaks detected:")?;
+        let mut f = String::new();
+        write!(f, "Leaks detected:").unwrap();
         for detail in details {
-          write!(f, "\n  - {}", detail)?;
+          write!(f, "\n  - {}", detail).unwrap();
         }
         for trailer in trailer_notes {
-          write!(f, "\n{}", trailer)?;
+          write!(f, "\n{}", trailer).unwrap();
         }
-        Ok(())
+        Cow::Owned(f)
       }
       TestFailure::OverlapsWithSanitizers(long_names) => {
-        write!(f, "Started test step while another test step with sanitizers was running:")?;
+        let mut f = String::new();
+        write!(f, "Started test step while another test step with sanitizers was running:").unwrap();
         for long_name in long_names {
-          write!(f, "\n  * {}", long_name)?;
+          write!(f, "\n  * {}", long_name).unwrap();
         }
-        Ok(())
+        Cow::Owned(f)
       }
       TestFailure::HasSanitizersAndOverlaps(long_names) => {
-        write!(f, "Started test step with sanitizers while another test step was running:")?;
+        let mut f = String::new();
+        write!(f, "Started test step with sanitizers while another test step was running:").unwrap();
         for long_name in long_names {
-          write!(f, "\n  * {}", long_name)?;
+          write!(f, "\n  * {}", long_name).unwrap();
         }
-        Ok(())
+        Cow::Owned(f)
       }
     }
   }
-}
 
-impl TestFailure {
   pub fn overview(&self) -> String {
     match self {
       TestFailure::JsError(js_error) => js_error.exception_message.clone(),
@@ -368,10 +387,6 @@ impl TestFailure {
           .to_string()
       }
     }
-  }
-
-  pub fn detail(&self) -> String {
-    self.to_string()
   }
 
   fn format_label(&self) -> String {
@@ -513,6 +528,7 @@ struct TestSpecifiersOptions {
   specifier: TestSpecifierOptions,
   reporter: TestReporterConfig,
   junit_path: Option<String>,
+  hide_stacktraces: bool,
 }
 
 #[derive(Debug, Default, Clone)]
@@ -546,23 +562,31 @@ impl TestSummary {
 
 fn get_test_reporter(options: &TestSpecifiersOptions) -> Box<dyn TestReporter> {
   let parallel = options.concurrent_jobs.get() > 1;
+  let failure_format_options = TestFailureFormatOptions {
+    hide_stacktraces: options.hide_stacktraces,
+  };
   let reporter: Box<dyn TestReporter> = match &options.reporter {
-    TestReporterConfig::Dot => {
-      Box::new(DotTestReporter::new(options.cwd.clone()))
-    }
+    TestReporterConfig::Dot => Box::new(DotTestReporter::new(
+      options.cwd.clone(),
+      failure_format_options,
+    )),
     TestReporterConfig::Pretty => Box::new(PrettyTestReporter::new(
       parallel,
       options.log_level != Some(Level::Error),
       options.filter,
       false,
       options.cwd.clone(),
+      failure_format_options,
     )),
-    TestReporterConfig::Junit => {
-      Box::new(JunitTestReporter::new(options.cwd.clone(), "-".to_string()))
-    }
+    TestReporterConfig::Junit => Box::new(JunitTestReporter::new(
+      options.cwd.clone(),
+      "-".to_string(),
+      failure_format_options,
+    )),
     TestReporterConfig::Tap => Box::new(TapTestReporter::new(
       options.cwd.clone(),
       options.concurrent_jobs > NonZeroUsize::new(1).unwrap(),
+      failure_format_options,
     )),
   };
 
@@ -570,6 +594,9 @@ fn get_test_reporter(options: &TestSpecifiersOptions) -> Box<dyn TestReporter> {
     let junit = Box::new(JunitTestReporter::new(
       options.cwd.clone(),
       junit_path.to_string(),
+      TestFailureFormatOptions {
+        hide_stacktraces: options.hide_stacktraces,
+      },
     ));
     return Box::new(CompoundTestReporter::new(vec![reporter, junit]));
   }
@@ -580,7 +607,7 @@ fn get_test_reporter(options: &TestSpecifiersOptions) -> Box<dyn TestReporter> {
 async fn configure_main_worker(
   worker_factory: Arc<CliMainWorkerFactory>,
   specifier: &Url,
-  permissions: Permissions,
+  permissions_container: PermissionsContainer,
   worker_sender: TestEventWorkerSender,
   options: &TestSpecifierOptions,
 ) -> Result<(Option<Box<dyn CoverageCollector>>, MainWorker), anyhow::Error> {
@@ -588,7 +615,7 @@ async fn configure_main_worker(
     .create_custom_worker(
       WorkerExecutionMode::Test,
       specifier.clone(),
-      PermissionsContainer::new(permissions),
+      permissions_container,
       vec![ops::testing::deno_test::init_ops(worker_sender.sender)],
       Stdio {
         stdin: StdioPipe::inherit(),
@@ -604,7 +631,7 @@ async fn configure_main_worker(
       "Deno[Deno.internal].core.setLeakTracingEnabled(true);",
     )?;
   }
-  let res = worker.execute_side_module_possibly_with_npm().await;
+  let res = worker.execute_side_module().await;
   let mut worker = worker.into_main_worker();
   match res {
     Ok(()) => Ok(()),
@@ -631,7 +658,7 @@ async fn configure_main_worker(
 /// both.
 pub async fn test_specifier(
   worker_factory: Arc<CliMainWorkerFactory>,
-  permissions: Permissions,
+  permissions_container: PermissionsContainer,
   specifier: ModuleSpecifier,
   worker_sender: TestEventWorkerSender,
   fail_fast_tracker: FailFastTracker,
@@ -643,7 +670,7 @@ pub async fn test_specifier(
   let (coverage_collector, mut worker) = configure_main_worker(
     worker_factory,
     &specifier,
-    permissions,
+    permissions_container,
     worker_sender,
     &options,
   )
@@ -881,12 +908,11 @@ async fn run_tests_for_worker_inner(
     // failing. If we don't do this, a connection to a test server we just tore down might be re-used in
     // the next test.
     // TODO(mmastrac): this should be some sort of callback that we can implement for any subsystem
-    #[allow(clippy::disallowed_types)] // allow using reqwest::Client here
     worker
       .js_runtime
       .op_state()
       .borrow_mut()
-      .try_take::<deno_runtime::deno_fetch::reqwest::Client>();
+      .try_take::<deno_runtime::deno_fetch::Client>();
 
     if desc.ignore {
       send_test_event(
@@ -1159,240 +1185,13 @@ async fn wait_for_activity_to_stabilize(
   })
 }
 
-fn extract_files_from_regex_blocks(
-  specifier: &ModuleSpecifier,
-  source: &str,
-  media_type: MediaType,
-  file_line_index: usize,
-  blocks_regex: &Regex,
-  lines_regex: &Regex,
-) -> Result<Vec<File>, AnyError> {
-  let files = blocks_regex
-    .captures_iter(source)
-    .filter_map(|block| {
-      block.get(1)?;
-
-      let maybe_attributes: Option<Vec<_>> = block
-        .get(1)
-        .map(|attributes| attributes.as_str().split(' ').collect());
-
-      let file_media_type = if let Some(attributes) = maybe_attributes {
-        if attributes.contains(&"ignore") {
-          return None;
-        }
-
-        match attributes.first() {
-          Some(&"js") => MediaType::JavaScript,
-          Some(&"javascript") => MediaType::JavaScript,
-          Some(&"mjs") => MediaType::Mjs,
-          Some(&"cjs") => MediaType::Cjs,
-          Some(&"jsx") => MediaType::Jsx,
-          Some(&"ts") => MediaType::TypeScript,
-          Some(&"typescript") => MediaType::TypeScript,
-          Some(&"mts") => MediaType::Mts,
-          Some(&"cts") => MediaType::Cts,
-          Some(&"tsx") => MediaType::Tsx,
-          _ => MediaType::Unknown,
-        }
-      } else {
-        media_type
-      };
-
-      if file_media_type == MediaType::Unknown {
-        return None;
-      }
-
-      let line_offset = source[0..block.get(0).unwrap().start()]
-        .chars()
-        .filter(|c| *c == '\n')
-        .count();
-
-      let line_count = block.get(0).unwrap().as_str().split('\n').count();
-
-      let body = block.get(2).unwrap();
-      let text = body.as_str();
-
-      // TODO(caspervonb) generate an inline source map
-      let mut file_source = String::new();
-      for line in lines_regex.captures_iter(text) {
-        let text = line.get(1).unwrap();
-        writeln!(file_source, "{}", text.as_str()).unwrap();
-      }
-
-      let file_specifier = ModuleSpecifier::parse(&format!(
-        "{}${}-{}",
-        specifier,
-        file_line_index + line_offset + 1,
-        file_line_index + line_offset + line_count + 1,
-      ))
-      .unwrap();
-      let file_specifier =
-        mapped_specifier_for_tsc(&file_specifier, file_media_type)
-          .map(|s| ModuleSpecifier::parse(&s).unwrap())
-          .unwrap_or(file_specifier);
-
-      Some(File {
-        specifier: file_specifier,
-        maybe_headers: None,
-        source: file_source.into_bytes().into(),
-      })
-    })
-    .collect();
-
-  Ok(files)
-}
-
-fn extract_files_from_source_comments(
-  specifier: &ModuleSpecifier,
-  source: Arc<str>,
-  media_type: MediaType,
-) -> Result<Vec<File>, AnyError> {
-  let parsed_source = deno_ast::parse_module(deno_ast::ParseParams {
-    specifier: specifier.clone(),
-    text: source,
-    media_type,
-    capture_tokens: false,
-    maybe_syntax: None,
-    scope_analysis: false,
-  })?;
-  let comments = parsed_source.comments().get_vec();
-  let blocks_regex = lazy_regex::regex!(r"```([^\r\n]*)\r?\n([\S\s]*?)```");
-  let lines_regex = lazy_regex::regex!(r"(?:\* ?)(?:\# ?)?(.*)");
-
-  let files = comments
-    .iter()
-    .filter(|comment| {
-      if comment.kind != CommentKind::Block || !comment.text.starts_with('*') {
-        return false;
-      }
-
-      true
-    })
-    .flat_map(|comment| {
-      extract_files_from_regex_blocks(
-        specifier,
-        &comment.text,
-        media_type,
-        parsed_source.text_info_lazy().line_index(comment.start()),
-        blocks_regex,
-        lines_regex,
-      )
-    })
-    .flatten()
-    .collect();
-
-  Ok(files)
-}
-
-fn extract_files_from_fenced_blocks(
-  specifier: &ModuleSpecifier,
-  source: &str,
-  media_type: MediaType,
-) -> Result<Vec<File>, AnyError> {
-  // The pattern matches code blocks as well as anything in HTML comment syntax,
-  // but it stores the latter without any capturing groups. This way, a simple
-  // check can be done to see if a block is inside a comment (and skip typechecking)
-  // or not by checking for the presence of capturing groups in the matches.
-  let blocks_regex =
-    lazy_regex::regex!(r"(?s)<!--.*?-->|```([^\r\n]*)\r?\n([\S\s]*?)```");
-  let lines_regex = lazy_regex::regex!(r"(?:\# ?)?(.*)");
-
-  extract_files_from_regex_blocks(
-    specifier,
-    source,
-    media_type,
-    /* file line index */ 0,
-    blocks_regex,
-    lines_regex,
-  )
-}
-
-async fn fetch_inline_files(
-  file_fetcher: &FileFetcher,
-  specifiers: Vec<ModuleSpecifier>,
-) -> Result<Vec<File>, AnyError> {
-  let mut files = Vec::new();
-  for specifier in specifiers {
-    let fetch_permissions = PermissionsContainer::allow_all();
-    let file = file_fetcher
-      .fetch(&specifier, &fetch_permissions)
-      .await?
-      .into_text_decoded()?;
-
-    let inline_files = if file.media_type == MediaType::Unknown {
-      extract_files_from_fenced_blocks(
-        &file.specifier,
-        &file.source,
-        file.media_type,
-      )
-    } else {
-      extract_files_from_source_comments(
-        &file.specifier,
-        file.source,
-        file.media_type,
-      )
-    };
-
-    files.extend(inline_files?);
-  }
-
-  Ok(files)
-}
-
-/// Type check a collection of module and document specifiers.
-pub async fn check_specifiers(
-  file_fetcher: &FileFetcher,
-  main_graph_container: &Arc<MainModuleGraphContainer>,
-  specifiers: Vec<(ModuleSpecifier, TestMode)>,
-) -> Result<(), AnyError> {
-  let inline_files = fetch_inline_files(
-    file_fetcher,
-    specifiers
-      .iter()
-      .filter_map(|(specifier, mode)| {
-        if *mode != TestMode::Executable {
-          Some(specifier.clone())
-        } else {
-          None
-        }
-      })
-      .collect(),
-  )
-  .await?;
-
-  let mut module_specifiers = specifiers
-    .into_iter()
-    .filter_map(|(specifier, mode)| {
-      if mode != TestMode::Documentation {
-        Some(specifier)
-      } else {
-        None
-      }
-    })
-    .collect::<Vec<_>>();
-
-  if !inline_files.is_empty() {
-    module_specifiers
-      .extend(inline_files.iter().map(|file| file.specifier.clone()));
-
-    for file in inline_files {
-      file_fetcher.insert_memory_files(file);
-    }
-  }
-
-  main_graph_container
-    .check_specifiers(&module_specifiers)
-    .await?;
-
-  Ok(())
-}
-
 static HAS_TEST_RUN_SIGINT_HANDLER: AtomicBool = AtomicBool::new(false);
 
 /// Test a collection of specifiers with test modes concurrently.
 async fn test_specifiers(
   worker_factory: Arc<CliMainWorkerFactory>,
   permissions: &Permissions,
+  permission_desc_parser: &Arc<RuntimePermissionDescriptorParser>,
   specifiers: Vec<ModuleSpecifier>,
   options: TestSpecifiersOptions,
 ) -> Result<(), AnyError> {
@@ -1420,14 +1219,17 @@ async fn test_specifiers(
 
   let join_handles = specifiers.into_iter().map(move |specifier| {
     let worker_factory = worker_factory.clone();
-    let permissions = permissions.clone();
+    let permissions_container = PermissionsContainer::new(
+      permission_desc_parser.clone(),
+      permissions.clone(),
+    );
     let worker_sender = test_event_sender_factory.worker();
     let fail_fast_tracker = fail_fast_tracker.clone();
     let specifier_options = options.specifier.clone();
     spawn_blocking(move || {
       create_and_run_current_thread(test_specifier(
         worker_factory,
-        permissions,
+        permissions_container,
         specifier,
         worker_sender,
         fail_fast_tracker,
@@ -1555,6 +1357,7 @@ pub async fn report_tests(
         if let Err(err) = reporter.flush_report(&elapsed, &tests, &test_steps) {
           eprint!("Test reporter failed to flush: {}", err)
         }
+        #[allow(clippy::disallowed_methods)]
         std::process::exit(130);
       }
     }
@@ -1655,7 +1458,7 @@ fn is_supported_test_ext(path: &Path) -> bool {
 /// input order.
 ///
 /// - Specifiers matching the `is_supported_test_ext` predicate are marked as
-/// `TestMode::Documentation`.
+///   `TestMode::Documentation`.
 /// - Specifiers matching the `is_supported_test_path` are marked as `TestMode::Executable`.
 /// - Specifiers matching both predicates are marked as `TestMode::Both`
 fn collect_specifiers_with_test_mode(
@@ -1725,9 +1528,7 @@ async fn fetch_specifiers_with_test_mode(
     .collect::<Vec<_>>();
 
   for (specifier, mode) in &mut specifiers_with_mode {
-    let file = file_fetcher
-      .fetch(specifier, &PermissionsContainer::allow_all())
-      .await?;
+    let file = file_fetcher.fetch_bypass_permissions(specifier).await?;
 
     let (media_type, _) = file.resolve_media_type_and_charset();
     if matches!(media_type, MediaType::Unknown | MediaType::Dts) {
@@ -1739,19 +1540,22 @@ async fn fetch_specifiers_with_test_mode(
 }
 
 pub async fn run_tests(
-  flags: Flags,
+  flags: Arc<Flags>,
   test_flags: TestFlags,
 ) -> Result<(), AnyError> {
-  let factory = CliFactory::from_flags(flags)?;
-  let cli_options = factory.cli_options();
+  let factory = CliFactory::from_flags(flags);
+  let cli_options = factory.cli_options()?;
   let workspace_test_options =
     cli_options.resolve_workspace_test_options(&test_flags);
   let file_fetcher = factory.file_fetcher()?;
   // Various test files should not share the same permissions in terms of
   // `PermissionsContainer` - otherwise granting/revoking permissions in one
   // file would have impact on other files, which is undesirable.
-  let permissions =
-    Permissions::from_options(&cli_options.permissions_options()?)?;
+  let permission_desc_parser = factory.permission_desc_parser()?;
+  let permissions = Permissions::from_options(
+    permission_desc_parser.as_ref(),
+    &cli_options.permissions_options(),
+  )?;
   let log_level = cli_options.log_level();
 
   let members_with_test_options =
@@ -1764,18 +1568,27 @@ pub async fn run_tests(
   )
   .await?;
 
-  if !workspace_test_options.allow_none && specifiers_with_mode.is_empty() {
+  if !workspace_test_options.permit_no_files && specifiers_with_mode.is_empty()
+  {
     return Err(generic_error("No test modules found"));
+  }
+
+  let doc_tests = get_doc_tests(&specifiers_with_mode, file_fetcher).await?;
+  let specifiers_for_typecheck_and_test =
+    get_target_specifiers(specifiers_with_mode, &doc_tests);
+  for doc_test in doc_tests {
+    file_fetcher.insert_memory_files(doc_test);
   }
 
   let main_graph_container = factory.main_module_graph_container().await?;
 
-  check_specifiers(
-    file_fetcher,
-    main_graph_container,
-    specifiers_with_mode.clone(),
-  )
-  .await?;
+  // Typecheck
+  main_graph_container
+    .check_specifiers(
+      &specifiers_for_typecheck_and_test,
+      cli_options.ext_flag().as_ref(),
+    )
+    .await?;
 
   if workspace_test_options.no_run {
     return Ok(());
@@ -1784,16 +1597,12 @@ pub async fn run_tests(
   let worker_factory =
     Arc::new(factory.create_cli_main_worker_factory().await?);
 
+  // Run tests
   test_specifiers(
     worker_factory,
     &permissions,
-    specifiers_with_mode
-      .into_iter()
-      .filter_map(|(s, m)| match m {
-        TestMode::Documentation => None,
-        _ => Some(s),
-      })
-      .collect(),
+    permission_desc_parser,
+    specifiers_for_typecheck_and_test,
     TestSpecifiersOptions {
       cwd: Url::from_directory_path(cli_options.initial_cwd()).map_err(
         |_| {
@@ -1809,6 +1618,7 @@ pub async fn run_tests(
       filter: workspace_test_options.filter.is_some(),
       reporter: workspace_test_options.reporter,
       junit_path: workspace_test_options.junit_path,
+      hide_stacktraces: workspace_test_options.hide_stacktraces,
       specifier: TestSpecifierOptions {
         filter: TestFilter::from_flag(&workspace_test_options.filter),
         shuffle: workspace_test_options.shuffle,
@@ -1822,7 +1632,7 @@ pub async fn run_tests(
 }
 
 pub async fn run_tests_with_watch(
-  flags: Flags,
+  flags: Arc<Flags>,
   test_flags: TestFlags,
 ) -> Result<(), AnyError> {
   // On top of the sigint handlers which are added and unbound for each test
@@ -1833,6 +1643,7 @@ pub async fn run_tests_with_watch(
     loop {
       signal::ctrl_c().await.unwrap();
       if !HAS_TEST_RUN_SIGINT_HANDLER.load(Ordering::Relaxed) {
+        #[allow(clippy::disallowed_methods)]
         std::process::exit(130);
       }
     }
@@ -1850,10 +1661,13 @@ pub async fn run_tests_with_watch(
     ),
     move |flags, watcher_communicator, changed_paths| {
       let test_flags = test_flags.clone();
+      watcher_communicator.show_path_changed(changed_paths.clone());
       Ok(async move {
-        let factory = CliFactoryBuilder::new()
-          .build_from_flags_for_watcher(flags, watcher_communicator.clone())?;
-        let cli_options = factory.cli_options();
+        let factory = CliFactory::from_flags_for_watcher(
+          flags,
+          watcher_communicator.clone(),
+        );
+        let cli_options = factory.cli_options()?;
         let workspace_test_options =
           cli_options.resolve_workspace_test_options(&test_flags);
 
@@ -1896,8 +1710,11 @@ pub async fn run_tests_with_watch(
           .flatten()
           .collect::<Vec<_>>();
 
-        let permissions =
-          Permissions::from_options(&cli_options.permissions_options()?)?;
+        let permission_desc_parser = factory.permission_desc_parser()?;
+        let permissions = Permissions::from_options(
+          permission_desc_parser.as_ref(),
+          &cli_options.permissions_options(),
+        )?;
         let graph = module_graph_creator
           .create_graph(graph_kind, test_modules)
           .await?;
@@ -1922,8 +1739,6 @@ pub async fn run_tests_with_watch(
           test_modules.clone()
         };
 
-        let worker_factory =
-          Arc::new(factory.create_cli_main_worker_factory().await?);
         let specifiers_with_mode = fetch_specifiers_with_test_mode(
           &cli_options,
           file_fetcher,
@@ -1935,29 +1750,37 @@ pub async fn run_tests_with_watch(
         .filter(|(specifier, _)| test_modules_to_reload.contains(specifier))
         .collect::<Vec<(ModuleSpecifier, TestMode)>>();
 
+        let doc_tests =
+          get_doc_tests(&specifiers_with_mode, file_fetcher).await?;
+        let specifiers_for_typecheck_and_test =
+          get_target_specifiers(specifiers_with_mode, &doc_tests);
+        for doc_test in doc_tests {
+          file_fetcher.insert_memory_files(doc_test);
+        }
+
         let main_graph_container =
           factory.main_module_graph_container().await?;
-        check_specifiers(
-          file_fetcher,
-          main_graph_container,
-          specifiers_with_mode.clone(),
-        )
-        .await?;
+
+        // Typecheck
+        main_graph_container
+          .check_specifiers(
+            &specifiers_for_typecheck_and_test,
+            cli_options.ext_flag().as_ref(),
+          )
+          .await?;
 
         if workspace_test_options.no_run {
           return Ok(());
         }
 
+        let worker_factory =
+          Arc::new(factory.create_cli_main_worker_factory().await?);
+
         test_specifiers(
           worker_factory,
           &permissions,
-          specifiers_with_mode
-            .into_iter()
-            .filter_map(|(s, m)| match m {
-              TestMode::Documentation => None,
-              _ => Some(s),
-            })
-            .collect(),
+          permission_desc_parser,
+          specifiers_for_typecheck_and_test,
           TestSpecifiersOptions {
             cwd: Url::from_directory_path(cli_options.initial_cwd()).map_err(
               |_| {
@@ -1973,6 +1796,7 @@ pub async fn run_tests_with_watch(
             filter: workspace_test_options.filter.is_some(),
             reporter: workspace_test_options.reporter,
             junit_path: workspace_test_options.junit_path,
+            hide_stacktraces: workspace_test_options.hide_stacktraces,
             specifier: TestSpecifierOptions {
               filter: TestFilter::from_flag(&workspace_test_options.filter),
               shuffle: workspace_test_options.shuffle,
@@ -1989,6 +1813,38 @@ pub async fn run_tests_with_watch(
   .await?;
 
   Ok(())
+}
+
+/// Extracts doc tests from files specified by the given specifiers.
+async fn get_doc_tests(
+  specifiers_with_mode: &[(Url, TestMode)],
+  file_fetcher: &FileFetcher,
+) -> Result<Vec<File>, AnyError> {
+  let specifiers_needing_extraction = specifiers_with_mode
+    .iter()
+    .filter(|(_, mode)| mode.needs_test_extraction())
+    .map(|(s, _)| s);
+
+  let mut doc_tests = Vec::new();
+  for s in specifiers_needing_extraction {
+    let file = file_fetcher.fetch_bypass_permissions(s).await?;
+    doc_tests.extend(extract_doc_tests(file)?);
+  }
+
+  Ok(doc_tests)
+}
+
+/// Get a list of specifiers that we need to perform typecheck and run tests on.
+/// The result includes "pseudo specifiers" for doc tests.
+fn get_target_specifiers(
+  specifiers_with_mode: Vec<(Url, TestMode)>,
+  doc_tests: &[File],
+) -> Vec<Url> {
+  specifiers_with_mode
+    .into_iter()
+    .filter_map(|(s, mode)| mode.needs_test_run().then_some(s))
+    .chain(doc_tests.iter().map(|d| d.specifier.clone()))
+    .collect()
 }
 
 /// Tracks failures for the `--fail-fast` argument in

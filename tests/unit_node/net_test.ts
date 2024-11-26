@@ -1,12 +1,33 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
+// deno-lint-ignore-file no-console
+
 import * as net from "node:net";
-import { assert, assertEquals } from "@std/assert/mod.ts";
-import * as path from "@std/path/mod.ts";
+import { assert, assertEquals } from "@std/assert";
+import * as path from "@std/path";
 import * as http from "node:http";
 
-Deno.test("[node/net] close event emits after error event", async () => {
+Deno.test("[node/net] close event emits after error event - when host is not found", async () => {
   const socket = net.createConnection(27009, "doesnotexist");
+  const events: ("error" | "close")[] = [];
+  const errorEmitted = Promise.withResolvers<void>();
+  const closeEmitted = Promise.withResolvers<void>();
+  socket.once("error", () => {
+    events.push("error");
+    errorEmitted.resolve();
+  });
+  socket.once("close", () => {
+    events.push("close");
+    closeEmitted.resolve();
+  });
+  await Promise.all([errorEmitted.promise, closeEmitted.promise]);
+
+  // `error` happens before `close`
+  assertEquals(events, ["error", "close"]);
+});
+
+Deno.test("[node/net] close event emits after error event - when connection is refused", async () => {
+  const socket = net.createConnection(27009, "127.0.0.1");
   const events: ("error" | "close")[] = [];
   const errorEmitted = Promise.withResolvers<void>();
   const closeEmitted = Promise.withResolvers<void>();
@@ -58,6 +79,7 @@ Deno.test("[node/net] net.connect().unref() works", async () => {
     port: 0, // any available port will do
     handler: () => new Response("hello"),
     onListen: async ({ port, hostname }) => {
+      hostname = Deno.build.os === "windows" ? "localhost" : hostname;
       const { stdout, stderr } = await new Deno.Command(Deno.execPath(), {
         args: [
           "eval",
@@ -91,7 +113,7 @@ Deno.test({
       const s = new net.Server();
       s.listen(3000);
     } catch (e) {
-      assert(e instanceof Deno.errors.PermissionDenied);
+      assert(e instanceof Deno.errors.NotCapable);
     }
   },
 });
@@ -205,4 +227,23 @@ Deno.test("[node/net] BlockList doesn't leak resources", () => {
   const blockList = new net.BlockList();
   blockList.addAddress("1.1.1.1");
   assert(blockList.check("1.1.1.1"));
+});
+
+Deno.test("[node/net] net.Server can listen on the same port immediately after it's closed", async () => {
+  const serverClosed = Promise.withResolvers<void>();
+  const server = net.createServer();
+  server.on("error", (e) => {
+    console.error(e);
+  });
+  server.listen(0, () => {
+    // deno-lint-ignore no-explicit-any
+    const { port } = server.address() as any;
+    server.close();
+    server.listen(port, () => {
+      server.close(() => {
+        serverClosed.resolve();
+      });
+    });
+  });
+  await serverClosed.promise;
 });

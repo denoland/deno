@@ -15,7 +15,7 @@ type _TestHasProcessGlobal = AssertTrue<
 export function deleteSetTimeout(): void;
 export function getSetTimeout(): typeof setTimeout;
 
-export function checkProcessGlobal(): void;
 export function checkWindowGlobal(): void;
+export function checkSelfGlobal(): void;
 
 export function getFoo(): string;

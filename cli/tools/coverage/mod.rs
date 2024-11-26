@@ -6,12 +6,12 @@ use crate::args::FileFlags;
 use crate::args::Flags;
 use crate::cdp;
 use crate::factory::CliFactory;
-use crate::npm::CliNpmResolver;
 use crate::tools::fmt::format_json;
 use crate::tools::test::is_supported_test_path;
 use crate::util::text_encoding::source_map_from_code;
 
 use deno_ast::MediaType;
+use deno_ast::ModuleKind;
 use deno_ast::ModuleSpecifier;
 use deno_config::glob::FileCollector;
 use deno_config::glob::FilePatterns;
@@ -25,6 +25,7 @@ use deno_core::serde_json;
 use deno_core::sourcemap::SourceMap;
 use deno_core::url::Url;
 use deno_core::LocalInspectorSession;
+use node_resolver::InNpmPackageChecker;
 use regex::Regex;
 use std::fs;
 use std::fs::File;
@@ -32,6 +33,7 @@ use std::io::BufWriter;
 use std::io::Write;
 use std::path::Path;
 use std::path::PathBuf;
+use std::sync::Arc;
 use text_lines::TextLines;
 use uuid::Uuid;
 
@@ -326,6 +328,7 @@ fn generate_coverage_report(
 
   coverage_report.found_lines =
     if let Some(source_map) = maybe_source_map.as_ref() {
+      let script_source_lines = script_source.lines().collect::<Vec<_>>();
       let mut found_lines = line_counts
         .iter()
         .enumerate()
@@ -333,7 +336,23 @@ fn generate_coverage_report(
           // get all the mappings from this destination line to a different src line
           let mut results = source_map
             .tokens()
-            .filter(move |token| token.get_dst_line() as usize == index)
+            .filter(|token| {
+              let dst_line = token.get_dst_line() as usize;
+              dst_line == index && {
+                let dst_col = token.get_dst_col() as usize;
+                let content = script_source_lines
+                  .get(dst_line)
+                  .and_then(|line| {
+                    line.get(dst_col..std::cmp::min(dst_col + 2, line.len()))
+                  })
+                  .unwrap_or("");
+
+                !content.is_empty()
+                  && content != "/*"
+                  && content != "*/"
+                  && content != "//"
+              }
+            })
             .map(move |token| (token.get_src_line() as usize, *count))
             .collect::<Vec<_>>();
           // only keep the results that point at different src lines
@@ -443,7 +462,7 @@ fn filter_coverages(
   coverages: Vec<cdp::ScriptCoverage>,
   include: Vec<String>,
   exclude: Vec<String>,
-  npm_resolver: &dyn CliNpmResolver,
+  in_npm_pkg_checker: &dyn InNpmPackageChecker,
 ) -> Vec<cdp::ScriptCoverage> {
   let include: Vec<Regex> =
     include.iter().map(|e| Regex::new(e).unwrap()).collect();
@@ -451,17 +470,23 @@ fn filter_coverages(
   let exclude: Vec<Regex> =
     exclude.iter().map(|e| Regex::new(e).unwrap()).collect();
 
+  // Matches virtual file paths for doc testing
+  // e.g. file:///path/to/mod.ts$23-29.ts
+  let doc_test_re =
+    Regex::new(r"\$\d+-\d+\.(js|mjs|cjs|jsx|ts|mts|cts|tsx)$").unwrap();
+
   coverages
     .into_iter()
     .filter(|e| {
       let is_internal = e.url.starts_with("ext:")
         || e.url.ends_with("__anonymous__")
-        || e.url.ends_with("$deno$test.js")
+        || e.url.ends_with("$deno$test.mjs")
         || e.url.ends_with(".snap")
         || is_supported_test_path(Path::new(e.url.as_str()))
+        || doc_test_re.is_match(e.url.as_str())
         || Url::parse(&e.url)
           .ok()
-          .map(|url| npm_resolver.in_npm_package(&url))
+          .map(|url| in_npm_pkg_checker.in_npm_package(&url))
           .unwrap_or(false);
 
       let is_included = include.iter().any(|p| p.is_match(&e.url));
@@ -472,19 +497,20 @@ fn filter_coverages(
     .collect::<Vec<cdp::ScriptCoverage>>()
 }
 
-pub async fn cover_files(
-  flags: Flags,
+pub fn cover_files(
+  flags: Arc<Flags>,
   coverage_flags: CoverageFlags,
 ) -> Result<(), AnyError> {
   if coverage_flags.files.include.is_empty() {
     return Err(generic_error("No matching coverage profiles found"));
   }
 
-  let factory = CliFactory::from_flags(flags)?;
-  let npm_resolver = factory.npm_resolver().await?;
+  let factory = CliFactory::from_flags(flags);
+  let cli_options = factory.cli_options()?;
+  let in_npm_pkg_checker = factory.in_npm_pkg_checker()?;
   let file_fetcher = factory.file_fetcher()?;
-  let cli_options = factory.cli_options();
   let emitter = factory.emitter()?;
+  let cjs_tracker = factory.cjs_tracker()?;
 
   assert!(!coverage_flags.files.include.is_empty());
 
@@ -504,7 +530,7 @@ pub async fn cover_files(
     script_coverages,
     coverage_flags.include,
     coverage_flags.exclude,
-    npm_resolver.as_ref(),
+    in_npm_pkg_checker.as_ref(),
   );
   if script_coverages.is_empty() {
     return Err(generic_error("No covered files included in the report"));
@@ -561,16 +587,21 @@ pub async fn cover_files(
     let transpiled_code = match file.media_type {
       MediaType::JavaScript
       | MediaType::Unknown
+      | MediaType::Css
+      | MediaType::Wasm
       | MediaType::Cjs
       | MediaType::Mjs
       | MediaType::Json => None,
-      MediaType::Dts | MediaType::Dmts | MediaType::Dcts => Some(Vec::new()),
+      MediaType::Dts | MediaType::Dmts | MediaType::Dcts => Some(String::new()),
       MediaType::TypeScript
       | MediaType::Jsx
       | MediaType::Mts
       | MediaType::Cts
       | MediaType::Tsx => {
-        Some(match emitter.maybe_cached_emit(&file.specifier, &file.source) {
+        let module_kind = ModuleKind::from_is_cjs(
+          cjs_tracker.is_maybe_cjs(&file.specifier, file.media_type)?,
+        );
+        Some(match emitter.maybe_cached_emit(&file.specifier, module_kind, &file.source) {
           Some(code) => code,
           None => {
             return Err(anyhow!(
@@ -581,13 +612,12 @@ pub async fn cover_files(
           }
         })
       }
-      MediaType::Wasm | MediaType::TsBuildInfo | MediaType::SourceMap => {
+      MediaType::SourceMap => {
         unreachable!()
       }
     };
     let runtime_code: String = match transpiled_code {
-      Some(code) => String::from_utf8(code)
-        .with_context(|| format!("Failed decoding {}", file.specifier))?,
+      Some(code) => code,
       None => original_source.to_string(),
     };
 

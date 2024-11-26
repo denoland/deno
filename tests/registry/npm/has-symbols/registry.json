@@ -1,1 +1,120 @@
-{"_id":"has-symbols","_rev":"9-4d7f5f8fd9b1e0675ff88a8f88b1f511","name":"has-symbols","description":"Determine if the JS environment has Symbol support. Supports spec, or shams.","dist-tags":{"latest":"1.0.3"},"versions":{"1.0.0":{"name":"has-symbols","version":"1.0.0","author":{"name":"Jordan Harband","email":"ljharb@gmail.com","url":"http://ljharb.codes"},"contributors":[{"name":"Jordan Harband","email":"ljharb@gmail.com","url":"http://ljharb.codes"}],"description":"Determine if the JS environment has Symbol support. Supports spec, or shams.","license":"MIT","main":"index.js","scripts":{"prepublish":"safe-publish-latest","pretest":"npm run --silent lint","test":"npm run --silent tests-only","posttest":"npm run --silent security","tests-only":"npm run --silent test:stock && npm run --silent test:staging && npm run --silent test:shams","test:stock":"node test","test:staging":"node --harmony --es-staging test","test:shams":"npm run --silent test:shams:getownpropertysymbols && npm run --silent test:shams:corejs","test:shams:corejs":"node test/shams/core-js.js","test:shams:getownpropertysymbols":"node test/shams/get-own-property-symbols.js","lint":"eslint *.js","security":"nsp check"},"repository":{"type":"git","url":"git://github.com/ljharb/has-symbols.git"},"keywords":["Symbol","symbols","typeof","sham","polyfill","native","core-js","ES6"],"dependencies":{},"devDependencies":{"tape":"^4.6.0","nsp":"^2.6.1","safe-publish-latest":"^1.0.1","eslint":"^3.5.0","@ljharb/eslint-config":"^8.0.0","get-own-property-symbols":"^0.9.2","core-js":"^2.4.1"},"testling":{"files":"test/index.js","browsers":["iexplore/6.0..latest","firefox/3.0..6.0","firefox/15.0..latest","firefox/nightly","chrome/4.0..10.0","chrome/20.0..latest","chrome/canary","opera/10.0..latest","opera/next","safari/4.0..latest","ipad/6.0..latest","iphone/6.0..latest","android-browser/4.2"]},"engines":{"node":">= 0.4"},"gitHead":"e4a5e7028c87d509902ff292f4da3ea45c7c50cf","bugs":{"url":"https://github.com/ljharb/has-symbols/issues"},"homepage":"https://github.com/ljharb/has-symbols#readme","_id":"has-symbols@1.0.0","_shasum":"ba1a8f1af2a0fc39650f5c850367704122063b44","_from":".","_npmVersion":"3.10.3","_nodeVersion":"6.6.0","_npmUser":{"name":"ljharb","email":"ljharb@gmail.com"},"dist":{"shasum":"ba1a8f1af2a0fc39650f5c850367704122063b44","tarball":"http://localhost:4260/has-symbols/has-symbols-1.0.0.tgz","integrity":"sha512-QfcgWpH8qn5qhNMg3wfXf2FD/rSA4TwNiDDthKqXe7v6oBW0YKWcnfwMAApgWq9Lh+Yu+fQWVhHPohlD/S6uoQ==","signatures":[{"keyid":"SHA256:jl3bwswu80PjjokCgh0o2w5c2U4LhQAE57gj9cz1kzA","sig":"MEUCIQCraijP8TUgset3RP/0apBanH6US79uNIP6cuXhcXO2XAIgcC1SUirdAx9l8oZX/ALh1KkxopaC+SvsCad2NUwNfMs="}]},"maintainers":[{"name":"ljharb","email":"ljharb@gmail.com"}],"_npmOperationalInternal":{"host":"packages-12-west.internal.npmjs.com","tmp":"tmp/has-symbols-1.0.0.tgz_1474328796481_0.2780582248233259"},"directories":{}},"1.0.1":{"name":"has-symbols","version":"1.0.1","author":{"name":"Jordan Harband","email":"ljharb@gmail.com","url":"http://ljharb.codes"},"funding":{"url":"https://github.com/sponsors/ljharb"},"contributors":[{"name":"Jordan Harband","email":"ljharb@gmail.com","url":"http://ljharb.codes"}],"description":"Determine if the JS environment has Symbol support. Supports spec, or shams.","license":"MIT","main":"index.js","scripts":{"prepublish":"safe-publish-latest","pretest":"npm run --silent lint","test":"npm run --silent tests-only","posttest":"npx aud","tests-only":"npm run --silent test:stock && npm run --silent test:staging && npm run --silent test:shams","test:stock":"node test","test:staging":"node --harmony --es-staging test","test:shams":"npm run --silent test:shams:getownpropertysymbols && npm run --silent test:shams:corejs","test:shams:corejs":"node test/shams/core-js.js","test:shams:getownpropertysymbols":"node test/shams/get-own-property-symbols.js","lint":"eslint *.js","version":"auto-changelog && git add CHANGELOG.md","postversion":"auto-changelog && git add CHANGELOG.md && git commit --no-edit --amend && git tag -f \"v$(node -e \"console.log(require('./package.json').version)\")\""},"repository":{"type":"git","url":"git://github.com/ljharb/has-symbols.git"},"keywords":["Symbol","symbols","typeof","sham","polyfill","native","core-js","ES6"],"dependencies":{},"devDependencies":{"@ljharb/eslint-config":"^15.0.1","auto-changelog":"^1.16.2","core-js":"^2.6.10","eslint":"^6.6.0","get-own-property-symbols":"^0.9.4","safe-publish-latest":"^1.1.4","tape":"^4.11.0"},"testling":{"files":"test/index.js","browsers":["iexplore/6.0..latest","firefox/3.0..6.0","firefox/15.0..latest","firefox/nightly","chrome/4.0..10.0","chrome/20.0..latest","chrome/canary","opera/10.0..latest","opera/next","safari/4.0..latest","ipad/6.0..latest","iphone/6.0..latest","android-browser/4.2"]},"engines":{"node":">= 0.4"},"auto-changelog":{"output":"CHANGELOG.md","template":"keepachangelog","unreleased":false,"commitLimit":false,"backfillLimit":false},"gitHead":"132fe9ce5c2e443e0570606d4568a242eb86b5f5","bugs":{"url":"https://github.com/ljharb/has-symbols/issues"},"homepage":"https://github.com/ljharb/has-symbols#readme","_id":"has-symbols@1.0.1","_nodeVersion":"13.1.0","_npmVersion":"6.12.1","dist":{"integrity":"sha512-PLcsoqu++dmEIZB+6totNFKq/7Do+Z0u4oT0zKOJNl3lYK6vGwwu2hjHs+68OEZbTjiUE9bgOABXbP/GvrS0Kg==","shasum":"9f5214758a44196c406d9bd76cebf81ec2dd31e8","tarball":"http://localhost:4260/has-symbols/has-symbols-1.0.1.tgz","fileCount":14,"unpackedSize":15474,"npm-signature":"-----BEGIN PGP SIGNATURE-----\r\nVersion: OpenPGP.js v3.0.4\r\nComment: https://openpgpjs.org\r\n\r\nwsFcBAEBCAAQBQJd0I28CRA9TVsSAnZWagAAt2AP/jan/+oerqF7TJJ1/7C0\nDib5YuePKj9dBimLNNxyNbDCo9+XGPPXoDd5OuGVQ8hePAe0pFxsenbtyT+Y\n+empPCZMrgUJfP7Umo6FYPE7EChp7ES7pPua2oeoKzMhK3xH+sBXj9MQ60Al\nunwIhq1k0idyeHT/9iJegP+wGF5pDe/EZUVbzt9r6JU4WhCNopdta+BZwIRP\nmE/NCdPjZ2jHbjYVJlT7b7uFrA4KXtRXtaJKhy97biek3xfgP4WLKvRaPTKo\nlTXtw/UXk8L42RYfJFlIJ2nyLeorwS6QObZPi9tB8BmIogvrSjthvcVL6DSN\nWJTjxpu43zbRS6mHK5nBAnXcshB/mvM9E8hTxrhG2jfSwAR3RexMLsOqgEsH\nTUTxRdB4Zox0nUD7rSahulvEtjl0bCRwo+oeuNfNDgf34sAjhIsaBMzH1rQY\nuTI8DKB4s1wKbth7YWUvacPay0+vvIbJnq4AMjoIDXezAKdDVIG6zB5rt5vN\nPxaAnRkB2htFP8MEHbqAvhk2ibqGdQvdVW2QPeTjDc7bXeymiXI93nrZyiw6\nq5alXDWN8ubB8A9A7HvKa+XU3dsOoYW/Ypx/h/ca17m0Gc0LwfJ2o0lC4sLQ\n3akrlFDjuBdlt2tWWzCRD5e7av8jJZ5C5ZKBeRkL2Xod4iyMFAD5wtefsXvR\nELxD\r\n=shCA\r\n-----END PGP SIGNATURE-----\r\n","signatures":[{"keyid":"SHA256:jl3bwswu80PjjokCgh0o2w5c2U4LhQAE57gj9cz1kzA","sig":"MEUCIQCCFSo29lhXirX0Rs+Cuj11qyhheYjpANIVYXAMEcNrhwIgGt53b4yRyWBuEHwcnk8h23iA8dpWARLe+Ojp9kyWxO8="}]},"maintainers":[{"email":"ljharb@gmail.com","name":"ljharb"}],"_npmUser":{"name":"ljharb","email":"ljharb@gmail.com"},"directories":{},"_npmOperationalInternal":{"host":"s3://npm-registry-packages","tmp":"tmp/has-symbols_1.0.1_1573948860346_0.7408930604026625"},"_hasShrinkwrap":false},"1.0.2":{"name":"has-symbols","version":"1.0.2","author":{"name":"Jordan Harband","email":"ljharb@gmail.com","url":"http://ljharb.codes"},"funding":{"url":"https://github.com/sponsors/ljharb"},"contributors":[{"name":"Jordan Harband","email":"ljharb@gmail.com","url":"http://ljharb.codes"}],"description":"Determine if the JS environment has Symbol support. Supports spec, or shams.","license":"MIT","main":"index.js","scripts":{"prepublish":"safe-publish-latest","pretest":"npm run --silent lint","test":"npm run tests-only","posttest":"aud --production","tests-only":"npm run test:stock && npm run test:staging && npm run test:shams","test:stock":"nyc node test","test:staging":"nyc node --harmony --es-staging test","test:shams":"npm run --silent test:shams:getownpropertysymbols && npm run --silent test:shams:corejs","test:shams:corejs":"nyc node test/shams/core-js.js","test:shams:getownpropertysymbols":"nyc node test/shams/get-own-property-symbols.js","lint":"eslint --ext=js,mjs .","version":"auto-changelog && git add CHANGELOG.md","postversion":"auto-changelog && git add CHANGELOG.md && git commit --no-edit --amend && git tag -f \"v$(node -e \"console.log(require('./package.json').version)\")\""},"repository":{"type":"git","url":"git://github.com/inspect-js/has-symbols.git"},"keywords":["Symbol","symbols","typeof","sham","polyfill","native","core-js","ES6"],"devDependencies":{"@ljharb/eslint-config":"^17.5.1","aud":"^1.1.4","auto-changelog":"^2.2.1","core-js":"^2.6.12","eslint":"^7.20.0","get-own-property-symbols":"^0.9.5","nyc":"^10.3.2","safe-publish-latest":"^1.1.4","tape":"^5.2.0"},"testling":{"files":"test/index.js","browsers":["iexplore/6.0..latest","firefox/3.0..6.0","firefox/15.0..latest","firefox/nightly","chrome/4.0..10.0","chrome/20.0..latest","chrome/canary","opera/10.0..latest","opera/next","safari/4.0..latest","ipad/6.0..latest","iphone/6.0..latest","android-browser/4.2"]},"engines":{"node":">= 0.4"},"auto-changelog":{"output":"CHANGELOG.md","template":"keepachangelog","unreleased":false,"commitLimit":false,"backfillLimit":false,"hideCredit":true},"greenkeeper":{"ignore":["core-js"]},"gitHead":"32b16a3809db3bbb463df501c3984a333f1979f3","bugs":{"url":"https://github.com/inspect-js/has-symbols/issues"},"homepage":"https://github.com/inspect-js/has-symbols#readme","_id":"has-symbols@1.0.2","_nodeVersion":"15.10.0","_npmVersion":"7.5.6","dist":{"integrity":"sha512-chXa79rL/UC2KlX17jo3vRGz0azaWEx5tGqZg5pO3NUyEJVB17dMruQlzCCOfUvElghKcm5194+BCRvi2Rv/Gw==","shasum":"165d3070c00309752a1236a479331e3ac56f1423","tarball":"http://localhost:4260/has-symbols/has-symbols-1.0.2.tgz","fileCount":14,"unpackedSize":18056,"npm-signature":"-----BEGIN PGP SIGNATURE-----\r\nVersion: OpenPGP.js v3.0.13\r\nComment: https://openpgpjs.org\r\n\r\nwsFcBAEBCAAQBQJgOnPHCRA9TVsSAnZWagAA+tEP/296p4+KYc4qJLrX0uxY\nDA8r08WOCWwnIEHw6X1O12XSFB4d0bMTA1vIZEAl/GosbM4wvVdO4JWYaxL+\nAe8m2GxNjz3KXswq4SELhwf8c6xk3Q294qHiUeByfvxK4OwfyKyZ7iI4YnV/\n4jT/FE+AOlNqdAO3izGfm94UW8X1g/6S2X82JTxKngl1/YoAOraEjtD+XF2f\nPTcL4SmyoL7xTTMtPEOSXRAB73Y2KeNbFC8Ee1r/vU0C62MscsFD6Whc3lH4\naxT1ccSUO8YUftLzdMJY3R6jqF8ZKAx7rYdPPDEkm4fJ/MAsw9pQKKf71Dnf\nDAYBAGsFByUVGraRgWXx01w6NnVNbHqBBbLlTK1e0JpCvrSpkFpX/kfERpEB\nhaFUc8n7SDIeAFgBidagI5HYHwbUmlPkZ46NXZcL0xLMx8SNXyRvImsXOR5m\nnV6ReVLSJP/VmTFYjOVuFsteXU2Ot7ZtnHy/eOP8WXYuWn02CuqFC+i8xFxn\nEXCqT3wC1ObdFkV9E2WGVQpB6U2UoJCiRQJO0KjP+arqcS22zL+IXDgGxr/a\nw8f4erWtCTSJquDY9+P7VCSbjGTxfmkunAXUcwMCEiVfLc8wwrg+vHJF3Sgi\n2QqXRdNu1JKHGXfnpnJm1rj2oZV9/5ZjYQFB+CeWM70TyKrYeTgysG0pa8y5\nc8++\r\n=JCcn\r\n-----END PGP SIGNATURE-----\r\n","signatures":[{"keyid":"SHA256:jl3bwswu80PjjokCgh0o2w5c2U4LhQAE57gj9cz1kzA","sig":"MEUCICmk/GnP0bgLMLKwOsqmi85pgPZF8i7IN0E1zAWz8kQIAiEA7agW7tNwD7vJ3WADcThU+35O/hHKm2DzykwgXewNWdU="}]},"_npmUser":{"name":"ljharb","email":"ljharb@gmail.com"},"directories":{},"maintainers":[{"name":"ljharb","email":"ljharb@gmail.com"}],"_npmOperationalInternal":{"host":"s3://npm-registry-packages","tmp":"tmp/has-symbols_1.0.2_1614443462507_0.38046500905605685"},"_hasShrinkwrap":false},"1.0.3":{"name":"has-symbols","version":"1.0.3","description":"Determine if the JS environment has Symbol support. Supports spec, or shams.","main":"index.js","scripts":{"prepublishOnly":"safe-publish-latest","prepublish":"not-in-publish || npm run prepublishOnly","pretest":"npm run --silent lint","test":"npm run tests-only","posttest":"aud --production","tests-only":"npm run test:stock && npm run test:staging && npm run test:shams","test:stock":"nyc node test","test:staging":"nyc node --harmony --es-staging test","test:shams":"npm run --silent test:shams:getownpropertysymbols && npm run --silent test:shams:corejs","test:shams:corejs":"nyc node test/shams/core-js.js","test:shams:getownpropertysymbols":"nyc node test/shams/get-own-property-symbols.js","lint":"eslint --ext=js,mjs .","version":"auto-changelog && git add CHANGELOG.md","postversion":"auto-changelog && git add CHANGELOG.md && git commit --no-edit --amend && git tag -f \"v$(node -e \"console.log(require('./package.json').version)\")\""},"repository":{"type":"git","url":"git://github.com/inspect-js/has-symbols.git"},"keywords":["Symbol","symbols","typeof","sham","polyfill","native","core-js","ES6"],"author":{"name":"Jordan Harband","email":"ljharb@gmail.com","url":"http://ljharb.codes"},"contributors":[{"name":"Jordan Harband","email":"ljharb@gmail.com","url":"http://ljharb.codes"}],"funding":{"url":"https://github.com/sponsors/ljharb"},"license":"MIT","bugs":{"url":"https://github.com/ljharb/has-symbols/issues"},"homepage":"https://github.com/ljharb/has-symbols#readme","devDependencies":{"@ljharb/eslint-config":"^20.2.3","aud":"^2.0.0","auto-changelog":"^2.4.0","core-js":"^2.6.12","eslint":"=8.8.0","get-own-property-symbols":"^0.9.5","nyc":"^10.3.2","safe-publish-latest":"^2.0.0","tape":"^5.5.2"},"testling":{"files":"test/index.js","browsers":["iexplore/6.0..latest","firefox/3.0..6.0","firefox/15.0..latest","firefox/nightly","chrome/4.0..10.0","chrome/20.0..latest","chrome/canary","opera/10.0..latest","opera/next","safari/4.0..latest","ipad/6.0..latest","iphone/6.0..latest","android-browser/4.2"]},"engines":{"node":">= 0.4"},"auto-changelog":{"output":"CHANGELOG.md","template":"keepachangelog","unreleased":false,"commitLimit":false,"backfillLimit":false,"hideCredit":true},"greenkeeper":{"ignore":["core-js"]},"gitHead":"444dc14d035df9891743a28cbc5d6ecdb0cb3b01","_id":"has-symbols@1.0.3","_nodeVersion":"17.6.0","_npmVersion":"8.5.2","dist":{"integrity":"sha512-l3LCuF6MgDNwTDKkdYGEihYjt5pRPbEg46rtlmnSPlUbgmB8LOIrKJbYYFBSbnPaJexMKtiPO8hmeRjRz2Td+A==","shasum":"bb7b2c4349251dce87b125f7bdf874aa7c8b39f8","tarball":"http://localhost:4260/has-symbols/has-symbols-1.0.3.tgz","fileCount":13,"unpackedSize":20603,"npm-signature":"-----BEGIN PGP SIGNATURE-----\r\nVersion: OpenPGP.js v4.10.10\r\nComment: https://openpgpjs.org\r\n\r\nwsFzBAEBCAAGBQJiHo7dACEJED1NWxICdlZqFiEECWMYAoorWMhJKdjhPU1b\r\nEgJ2VmoJTg//VKZyTT/GxVMPZNQFC6Q05AQ+zwFmm1ePSsyP3+hebhjz0KMZ\r\nZh8Z3oaFj53lk6p6hl6wJgJh8v+4H8tYi90zewuk2/sv/r4gS8KKOJkEU5hS\r\nExpiO/FlpW1EBW0kHcPOLiYkyvhm5iNX17o0qUXw62EVu9pFdzLuMLtoVch9\r\n0RC3armyFU5YXjpr4lQCbHCAK6okYFFh6BGQYB0k/to/o1YZ3QijFZ7cDlyl\r\nUSH33b6VFsD9gVT6pVYGmhwPfbxrUzvgpmMeJqdL940V3BgVDu9h/lXFDpvC\r\nyf9vmUEiVkcxeiIbJuusCQjMbPT31uYDaAYY+W+v4pbD552jb/7Gm2ttl1uV\r\n1yx9J3M5aKbjZWMVfRinlfGoyUIs0rpxhSsQTp84skwPLkXC1YfODYNhy4+o\r\nVR5GNTIDDOB4i4y7lGVvx7Vd4ySP+Tz9YpmFI9ZrCnEVXggUn9y+PU8R19UJ\r\nrOVAYikVzsyC5PT9PKr2lvITXDb8siGUNt8YmJhZupzv3K+I5sEojmpqCGvP\r\nW748lmzXQAFYUY/BL1/zChahtp6w5mBaX79uF/xO7h/owukFCK2Y1Seyz4HP\r\nFzn6kDQM+TcUD9GlOhy1OsSLVhuK+gbGupNtSG52OaR9JVtmxSzd83TujaTF\r\ncDmeevwmNQi4Gnt70AILlnaCxXanGrp0epk=\r\n=B5Gh\r\n-----END PGP SIGNATURE-----\r\n","signatures":[{"keyid":"SHA256:jl3bwswu80PjjokCgh0o2w5c2U4LhQAE57gj9cz1kzA","sig":"MEUCIQDwzczMy98ycY151XrPoURp8chFzfXRYegRhpOydLT8UgIgb/6c33xTl81h3biIUwEWPJAVPlOf6E2AEaWCvLmPOck="}]},"_npmUser":{"name":"ljharb","email":"ljharb@gmail.com"},"directories":{},"maintainers":[{"name":"ljharb","email":"ljharb@gmail.com"}],"_npmOperationalInternal":{"host":"s3://npm-registry-packages","tmp":"tmp/has-symbols_1.0.3_1646169820978_0.6668045837242529"},"_hasShrinkwrap":false}},"readme":"# has-symbols <sup>[![Version Badge][2]][1]</sup>\n\n[![github actions][actions-image]][actions-url]\n[![coverage][codecov-image]][codecov-url]\n[![dependency status][5]][6]\n[![dev dependency status][7]][8]\n[![License][license-image]][license-url]\n[![Downloads][downloads-image]][downloads-url]\n\n[![npm badge][11]][1]\n\nDetermine if the JS environment has Symbol support. Supports spec, or shams.\n\n## Example\n\n```js\nvar hasSymbols = require('has-symbols');\n\nhasSymbols() === true; // if the environment has native Symbol support. Not polyfillable, not forgeable.\n\nvar hasSymbolsKinda = require('has-symbols/shams');\nhasSymbolsKinda() === true; // if the environment has a Symbol sham that mostly follows the spec.\n```\n\n## Supported Symbol shams\n - get-own-property-symbols [npm](https://www.npmjs.com/package/get-own-property-symbols) | [github](https://github.com/WebReflection/get-own-property-symbols)\n - core-js [npm](https://www.npmjs.com/package/core-js) | [github](https://github.com/zloirock/core-js)\n\n## Tests\nSimply clone the repo, `npm install`, and run `npm test`\n\n[1]: https://npmjs.org/package/has-symbols\n[2]: https://versionbadg.es/inspect-js/has-symbols.svg\n[5]: https://david-dm.org/inspect-js/has-symbols.svg\n[6]: https://david-dm.org/inspect-js/has-symbols\n[7]: https://david-dm.org/inspect-js/has-symbols/dev-status.svg\n[8]: https://david-dm.org/inspect-js/has-symbols#info=devDependencies\n[11]: https://nodei.co/npm/has-symbols.png?downloads=true&stars=true\n[license-image]: https://img.shields.io/npm/l/has-symbols.svg\n[license-url]: LICENSE\n[downloads-image]: https://img.shields.io/npm/dm/has-symbols.svg\n[downloads-url]: https://npm-stat.com/charts.html?package=has-symbols\n[codecov-image]: https://codecov.io/gh/inspect-js/has-symbols/branch/main/graphs/badge.svg\n[codecov-url]: https://app.codecov.io/gh/inspect-js/has-symbols/\n[actions-image]: https://img.shields.io/endpoint?url=https://github-actions-badge-u3jn4tfpocch.runkit.sh/inspect-js/has-symbols\n[actions-url]: https://github.com/inspect-js/has-symbols/actions\n","maintainers":[{"name":"ljharb","email":"ljharb@gmail.com"}],"time":{"modified":"2022-06-18T19:26:17.135Z","created":"2016-09-19T23:46:36.740Z","1.0.0":"2016-09-19T23:46:36.740Z","1.0.1":"2019-11-17T00:01:00.460Z","1.0.2":"2021-02-27T16:31:02.668Z","1.0.3":"2022-03-01T21:23:41.133Z"},"homepage":"https://github.com/ljharb/has-symbols#readme","keywords":["Symbol","symbols","typeof","sham","polyfill","native","core-js","ES6"],"repository":{"type":"git","url":"git://github.com/inspect-js/has-symbols.git"},"contributors":[{"name":"Jordan Harband","email":"ljharb@gmail.com","url":"http://ljharb.codes"}],"author":{"name":"Jordan Harband","email":"ljharb@gmail.com","url":"http://ljharb.codes"},"bugs":{"url":"https://github.com/ljharb/has-symbols/issues"},"license":"MIT","readmeFilename":"README.md"}
+{
+  "name": "has-symbols",
+  "description": "Determine if the JS environment has Symbol support. Supports spec, or shams.",
+  "dist-tags": {
+    "latest": "1.0.3"
+  },
+  "versions": {
+    "1.0.3": {
+      "name": "has-symbols",
+      "version": "1.0.3",
+      "description": "Determine if the JS environment has Symbol support. Supports spec, or shams.",
+      "main": "index.js",
+      "scripts": {
+        "prepublishOnly": "safe-publish-latest",
+        "prepublish": "not-in-publish || npm run prepublishOnly",
+        "pretest": "npm run --silent lint",
+        "test": "npm run tests-only",
+        "posttest": "aud --production",
+        "tests-only": "npm run test:stock && npm run test:staging && npm run test:shams",
+        "test:stock": "nyc node test",
+        "test:staging": "nyc node --harmony --es-staging test",
+        "test:shams": "npm run --silent test:shams:getownpropertysymbols && npm run --silent test:shams:corejs",
+        "test:shams:corejs": "nyc node test/shams/core-js.js",
+        "test:shams:getownpropertysymbols": "nyc node test/shams/get-own-property-symbols.js",
+        "lint": "eslint --ext=js,mjs .",
+        "version": "auto-changelog && git add CHANGELOG.md",
+        "postversion": "auto-changelog && git add CHANGELOG.md && git commit --no-edit --amend && git tag -f \"v$(node -e \"console.log(require('./package.json').version)\")\""
+      },
+      "repository": {
+        "type": "git",
+        "url": "git://github.com/inspect-js/has-symbols.git"
+      },
+      "author": {
+        "name": "Jordan Harband",
+        "email": "ljharb@gmail.com",
+        "url": "http://ljharb.codes"
+      },
+      "funding": {
+        "url": "https://github.com/sponsors/ljharb"
+      },
+      "license": "MIT",
+      "bugs": {
+        "url": "https://github.com/ljharb/has-symbols/issues"
+      },
+      "devDependencies": {
+        "@ljharb/eslint-config": "^20.2.3",
+        "aud": "^2.0.0",
+        "auto-changelog": "^2.4.0",
+        "core-js": "^2.6.12",
+        "eslint": "=8.8.0",
+        "get-own-property-symbols": "^0.9.5",
+        "nyc": "^10.3.2",
+        "safe-publish-latest": "^2.0.0",
+        "tape": "^5.5.2"
+      },
+      "testling": {
+        "files": "test/index.js",
+        "browsers": [
+          "iexplore/6.0..latest",
+          "firefox/3.0..6.0",
+          "firefox/15.0..latest",
+          "firefox/nightly",
+          "chrome/4.0..10.0",
+          "chrome/20.0..latest",
+          "chrome/canary",
+          "opera/10.0..latest",
+          "opera/next",
+          "safari/4.0..latest",
+          "ipad/6.0..latest",
+          "iphone/6.0..latest",
+          "android-browser/4.2"
+        ]
+      },
+      "engines": {
+        "node": ">= 0.4"
+      },
+      "auto-changelog": {
+        "output": "CHANGELOG.md",
+        "template": "keepachangelog",
+        "unreleased": false,
+        "commitLimit": false,
+        "backfillLimit": false,
+        "hideCredit": true
+      },
+      "greenkeeper": {
+        "ignore": [
+          "core-js"
+        ]
+      },
+      "gitHead": "444dc14d035df9891743a28cbc5d6ecdb0cb3b01",
+      "_id": "has-symbols@1.0.3",
+      "_nodeVersion": "17.6.0",
+      "_npmVersion": "8.5.2",
+      "dist": {
+        "integrity": "sha512-l3LCuF6MgDNwTDKkdYGEihYjt5pRPbEg46rtlmnSPlUbgmB8LOIrKJbYYFBSbnPaJexMKtiPO8hmeRjRz2Td+A==",
+        "shasum": "bb7b2c4349251dce87b125f7bdf874aa7c8b39f8",
+        "tarball": "http://localhost:4260/has-symbols/has-symbols-1.0.3.tgz",
+        "fileCount": 13,
+        "unpackedSize": 20603
+      },
+      "directories": {},
+      "_hasShrinkwrap": false
+    }
+  },
+  "homepage": "https://github.com/ljharb/has-symbols#readme",
+  "repository": {
+    "type": "git",
+    "url": "git://github.com/inspect-js/has-symbols.git"
+  },
+  "author": {
+    "name": "Jordan Harband",
+    "email": "ljharb@gmail.com",
+    "url": "http://ljharb.codes"
+  },
+  "bugs": {
+    "url": "https://github.com/ljharb/has-symbols/issues"
+  },
+  "license": "MIT",
+  "readmeFilename": "README.md"
+}

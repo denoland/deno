@@ -1,0 +1,5 @@
+{
+  "args": "check --quiet node_builtin_modules/mod.ts",
+  "output": "node_builtin_modules/mod.ts.out",
+  "exitCode": 1
+}

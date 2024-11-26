@@ -7,7 +7,7 @@
 
 // TODO(PolarETech): The process.argv[3] check should be argv[2], and the
 // command passed to exec() should not need to include "run", "-A",
-// and "require.ts".
+// and "runner.ts".
 
 'use strict';
 const common = require('../common');
@@ -23,7 +23,7 @@ if (process.argv[3] === 'child') {
   console.log(stdoutData);
   console.error(stderrData);
 } else {
-  const cmd = `"${process.execPath}" run -A require.ts "${__filename}" child`;
+  const cmd = `"${process.execPath}" run -A runner.ts "${__filename}" child`;
   const child = cp.exec(cmd, common.mustSucceed((stdout, stderr) => {
     assert.strictEqual(stdout, expectedStdout);
     assert.strictEqual(stderr, expectedStderr);

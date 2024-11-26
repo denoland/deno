@@ -1,12 +1,7 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
-export {
-  assert,
-  assertEquals,
-  assertRejects,
-  assertThrows,
-} from "@std/assert/mod.ts";
-export { fromFileUrl } from "@std/path/mod.ts";
+export { assert, assertEquals, assertRejects, assertThrows } from "@std/assert";
+export { fromFileUrl } from "@std/path";
 import process from "node:process";
 
 const targetDir = Deno.execPath().replace(/[^\/\\]+$/, "");

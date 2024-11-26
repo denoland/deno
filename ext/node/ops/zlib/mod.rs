@@ -1,14 +1,14 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
-use deno_core::error::type_error;
-use deno_core::error::AnyError;
+
 use deno_core::op2;
+use libc::c_ulong;
 use std::borrow::Cow;
 use std::cell::RefCell;
 use zlib::*;
 
 mod alloc;
 pub mod brotli;
-mod mode;
+pub mod mode;
 mod stream;
 
 use mode::Flush;
@@ -17,11 +17,11 @@ use mode::Mode;
 use self::stream::StreamWrapper;
 
 #[inline]
-fn check(condition: bool, msg: &str) -> Result<(), AnyError> {
+fn check(condition: bool, msg: &str) -> Result<(), deno_core::error::AnyError> {
   if condition {
     Ok(())
   } else {
-    Err(type_error(msg.to_string()))
+    Err(deno_core::error::type_error(msg.to_string()))
   }
 }
 
@@ -56,7 +56,7 @@ impl ZlibInner {
     out_off: u32,
     out_len: u32,
     flush: Flush,
-  ) -> Result<(), AnyError> {
+  ) -> Result<(), deno_core::error::AnyError> {
     check(self.init_done, "write before init")?;
     check(!self.write_in_progress, "write already in progress")?;
     check(!self.pending_close, "close already in progress")?;
@@ -65,11 +65,11 @@ impl ZlibInner {
 
     let next_in = input
       .get(in_off as usize..in_off as usize + in_len as usize)
-      .ok_or_else(|| type_error("invalid input range"))?
+      .ok_or_else(|| deno_core::error::type_error("invalid input range"))?
       .as_ptr() as *mut _;
     let next_out = out
       .get_mut(out_off as usize..out_off as usize + out_len as usize)
-      .ok_or_else(|| type_error("invalid output range"))?
+      .ok_or_else(|| deno_core::error::type_error("invalid output range"))?
       .as_mut_ptr();
 
     self.strm.avail_in = in_len;
@@ -81,7 +81,10 @@ impl ZlibInner {
     Ok(())
   }
 
-  fn do_write(&mut self, flush: Flush) -> Result<(), AnyError> {
+  fn do_write(
+    &mut self,
+    flush: Flush,
+  ) -> Result<(), deno_core::error::AnyError> {
     self.flush = flush;
     match self.mode {
       Mode::Deflate | Mode::Gzip | Mode::DeflateRaw => {
@@ -127,7 +130,7 @@ impl ZlibInner {
             self.mode = Mode::Inflate;
           }
         } else if next_expected_header_byte.is_some() {
-          return Err(type_error(
+          return Err(deno_core::error::type_error(
             "invalid number of gzip magic number bytes read",
           ));
         }
@@ -181,7 +184,7 @@ impl ZlibInner {
     Ok(())
   }
 
-  fn init_stream(&mut self) -> Result<(), AnyError> {
+  fn init_stream(&mut self) -> Result<(), deno_core::error::AnyError> {
     match self.mode {
       Mode::Gzip | Mode::Gunzip => self.window_bits += 16,
       Mode::Unzip => self.window_bits += 32,
@@ -199,7 +202,7 @@ impl ZlibInner {
       Mode::Inflate | Mode::Gunzip | Mode::InflateRaw | Mode::Unzip => {
         self.strm.inflate_init(self.window_bits)
       }
-      Mode::None => return Err(type_error("Unknown mode")),
+      Mode::None => return Err(deno_core::error::type_error("Unknown mode")),
     };
 
     self.write_in_progress = false;
@@ -208,7 +211,7 @@ impl ZlibInner {
     Ok(())
   }
 
-  fn close(&mut self) -> Result<bool, AnyError> {
+  fn close(&mut self) -> Result<bool, deno_core::error::AnyError> {
     if self.write_in_progress {
       self.pending_close = true;
       return Ok(false);
@@ -222,10 +225,8 @@ impl ZlibInner {
     Ok(true)
   }
 
-  fn reset_stream(&mut self) -> Result<(), AnyError> {
+  fn reset_stream(&mut self) {
     self.err = self.strm.reset(self.mode);
-
-    Ok(())
   }
 }
 
@@ -243,7 +244,7 @@ impl deno_core::Resource for Zlib {
 
 #[op2]
 #[cppgc]
-pub fn op_zlib_new(#[smi] mode: i32) -> Result<Zlib, AnyError> {
+pub fn op_zlib_new(#[smi] mode: i32) -> Result<Zlib, mode::ModeError> {
   let mode = Mode::try_from(mode)?;
 
   let inner = ZlibInner {
@@ -256,12 +257,20 @@ pub fn op_zlib_new(#[smi] mode: i32) -> Result<Zlib, AnyError> {
   })
 }
 
+#[derive(Debug, thiserror::Error)]
+pub enum ZlibError {
+  #[error("zlib not initialized")]
+  NotInitialized,
+  #[error(transparent)]
+  Mode(#[from] mode::ModeError),
+  #[error(transparent)]
+  Other(#[from] deno_core::error::AnyError),
+}
+
 #[op2(fast)]
-pub fn op_zlib_close(#[cppgc] resource: &Zlib) -> Result<(), AnyError> {
+pub fn op_zlib_close(#[cppgc] resource: &Zlib) -> Result<(), ZlibError> {
   let mut resource = resource.inner.borrow_mut();
-  let zlib = resource
-    .as_mut()
-    .ok_or_else(|| type_error("zlib not initialized"))?;
+  let zlib = resource.as_mut().ok_or(ZlibError::NotInitialized)?;
 
   // If there is a pending write, defer the close until the write is done.
   zlib.close()?;
@@ -282,11 +291,9 @@ pub fn op_zlib_write(
   #[smi] out_off: u32,
   #[smi] out_len: u32,
   #[buffer] result: &mut [u32],
-) -> Result<i32, AnyError> {
+) -> Result<i32, ZlibError> {
   let mut zlib = resource.inner.borrow_mut();
-  let zlib = zlib
-    .as_mut()
-    .ok_or_else(|| type_error("zlib not initialized"))?;
+  let zlib = zlib.as_mut().ok_or(ZlibError::NotInitialized)?;
 
   let flush = Flush::try_from(flush)?;
   zlib.start_write(input, in_off, in_len, out, out_off, out_len, flush)?;
@@ -307,11 +314,9 @@ pub fn op_zlib_init(
   #[smi] mem_level: i32,
   #[smi] strategy: i32,
   #[buffer] dictionary: &[u8],
-) -> Result<i32, AnyError> {
+) -> Result<i32, ZlibError> {
   let mut zlib = resource.inner.borrow_mut();
-  let zlib = zlib
-    .as_mut()
-    .ok_or_else(|| type_error("zlib not initialized"))?;
+  let zlib = zlib.as_mut().ok_or(ZlibError::NotInitialized)?;
 
   check((8..=15).contains(&window_bits), "invalid windowBits")?;
   check((-1..=9).contains(&level), "invalid level")?;
@@ -348,13 +353,11 @@ pub fn op_zlib_init(
 
 #[op2(fast)]
 #[smi]
-pub fn op_zlib_reset(#[cppgc] resource: &Zlib) -> Result<i32, AnyError> {
+pub fn op_zlib_reset(#[cppgc] resource: &Zlib) -> Result<i32, ZlibError> {
   let mut zlib = resource.inner.borrow_mut();
-  let zlib = zlib
-    .as_mut()
-    .ok_or_else(|| type_error("zlib not initialized"))?;
+  let zlib = zlib.as_mut().ok_or(ZlibError::NotInitialized)?;
 
-  zlib.reset_stream()?;
+  zlib.reset_stream();
 
   Ok(zlib.err)
 }
@@ -362,12 +365,10 @@ pub fn op_zlib_reset(#[cppgc] resource: &Zlib) -> Result<i32, AnyError> {
 #[op2(fast)]
 pub fn op_zlib_close_if_pending(
   #[cppgc] resource: &Zlib,
-) -> Result<(), AnyError> {
+) -> Result<(), ZlibError> {
   let pending_close = {
     let mut zlib = resource.inner.borrow_mut();
-    let zlib = zlib
-      .as_mut()
-      .ok_or_else(|| type_error("zlib not initialized"))?;
+    let zlib = zlib.as_mut().ok_or(ZlibError::NotInitialized)?;
 
     zlib.write_in_progress = false;
     zlib.pending_close
@@ -379,6 +380,15 @@ pub fn op_zlib_close_if_pending(
   }
 
   Ok(())
+}
+
+#[op2(fast)]
+#[smi]
+pub fn op_zlib_crc32(#[buffer] data: &[u8], #[smi] value: u32) -> u32 {
+  // SAFETY: `data` is a valid buffer.
+  unsafe {
+    zlib::crc32(value as c_ulong, data.as_ptr(), data.len() as u32) as u32
+  }
 }
 
 #[cfg(test)]

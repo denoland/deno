@@ -8,13 +8,13 @@ use deno_ast::ParsedSource;
 use deno_ast::SourceRangedForSpanned;
 use deno_ast::SourceTextInfo;
 use deno_core::error::AnyError;
+use deno_core::url::Url;
 use deno_graph::ModuleEntryRef;
 use deno_graph::ModuleGraph;
 use deno_graph::ResolutionResolved;
 use deno_graph::WalkOptions;
 use deno_semver::jsr::JsrPackageReqReference;
 use deno_semver::npm::NpmPackageReqReference;
-use lsp_types::Url;
 
 use crate::cache::ParsedSourceCache;
 
@@ -128,7 +128,7 @@ impl GraphDiagnosticsCollector {
       follow_dynamic: true,
       // search the entire graph and not just the fast check subset
       prefer_fast_check_graph: false,
-      follow_type_only: true,
+      kind: deno_graph::GraphKind::All,
     };
     let mut iter = graph.walk(graph.roots.iter(), options);
     while let Some((specifier, entry)) = iter.next() {
@@ -147,6 +147,13 @@ impl GraphDiagnosticsCollector {
       let parsed_source = self
         .parsed_source_cache
         .get_parsed_source_from_js_module(module)?;
+
+      // surface syntax errors
+      for diagnostic in parsed_source.diagnostics() {
+        diagnostics_collector
+          .push(PublishDiagnostic::SyntaxError(diagnostic.clone()));
+      }
+
       check_for_banned_triple_slash_directives(
         &parsed_source,
         diagnostics_collector,
