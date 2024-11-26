@@ -4374,7 +4374,7 @@ impl CommandExt for Command {
     ).arg(
       Arg::new("unstable-detect-cjs")
         .long("unstable-detect-cjs")
-        .help("Treats ambiguous .js/.jsx/.ts/.tsx files as CommonJS modules in more cases")
+        .help("Treats ambiguous .js, .jsx, .ts, .tsx files as CommonJS modules in more cases")
         .value_parser(FalseyValueParser::new())
         .action(ArgAction::SetTrue)
         .hide(true)
