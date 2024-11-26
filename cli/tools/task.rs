@@ -721,11 +721,9 @@ fn print_available_tasks(
     )?;
     if let Some(description) = &desc.task.description {
       let slash_slash = colors::italic_gray("//");
-      writeln!(
-        writer,
-        "    {slash_slash} {}",
-        colors::italic_gray(description)
-      )?;
+      for line in description.split('\n') {
+        writeln!(writer, "    {slash_slash} {}", colors::italic_gray(line))?;
+      }
     }
     writeln!(writer, "    {}", desc.task.command)?;
     if !desc.task.dependencies.is_empty() {

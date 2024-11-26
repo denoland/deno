@@ -9,7 +9,6 @@ use deno_config::workspace::PackageJsonDepResolution;
 use deno_config::workspace::WorkspaceResolver;
 use deno_core::parking_lot::Mutex;
 use deno_core::url::Url;
-use deno_graph::source::ResolutionMode;
 use deno_graph::GraphImport;
 use deno_graph::ModuleSpecifier;
 use deno_graph::Range;
@@ -30,8 +29,8 @@ use deno_semver::package::PackageReq;
 use indexmap::IndexMap;
 use node_resolver::errors::ClosestPkgJsonError;
 use node_resolver::InNpmPackageChecker;
-use node_resolver::NodeModuleKind;
-use node_resolver::NodeResolutionMode;
+use node_resolver::NodeResolutionKind;
+use node_resolver::ResolutionMode;
 use std::borrow::Cow;
 use std::collections::BTreeMap;
 use std::collections::BTreeSet;
@@ -48,6 +47,8 @@ use crate::args::CliLockfile;
 use crate::args::NpmInstallDepsProvider;
 use crate::cache::DenoCacheEnvFsAdapter;
 use crate::factory::Deferred;
+use crate::graph_util::to_node_resolution_kind;
+use crate::graph_util::to_node_resolution_mode;
 use crate::graph_util::CliJsrUrlProvider;
 use crate::http_util::HttpClientProvider;
 use crate::lsp::config::Config;
@@ -146,7 +147,7 @@ impl LspScopeResolver {
             .map(|(referrer, imports)| {
               let resolver = SingleReferrerGraphResolver {
                 valid_referrer: &referrer,
-                referrer_kind: NodeModuleKind::Esm,
+                module_resolution_mode: ResolutionMode::Import,
                 cli_resolver: &cli_resolver,
                 jsx_import_source_config: maybe_jsx_import_source_config
                   .as_ref(),
@@ -180,16 +181,16 @@ impl LspScopeResolver {
                 &req_ref,
                 &referrer,
                 // todo(dsherret): this is wrong because it doesn't consider CJS referrers
-                NodeModuleKind::Esm,
-                NodeResolutionMode::Types,
+                ResolutionMode::Import,
+                NodeResolutionKind::Types,
               )
               .or_else(|_| {
                 npm_pkg_req_resolver.resolve_req_reference(
                   &req_ref,
                   &referrer,
                   // todo(dsherret): this is wrong because it doesn't consider CJS referrers
-                  NodeModuleKind::Esm,
-                  NodeResolutionMode::Execution,
+                  ResolutionMode::Import,
+                  NodeResolutionKind::Execution,
                 )
               })
               .ok()?,
@@ -424,7 +425,7 @@ impl LspResolver {
     &self,
     req_ref: &NpmPackageReqReference,
     referrer: &ModuleSpecifier,
-    referrer_kind: NodeModuleKind,
+    resolution_mode: ResolutionMode,
     file_referrer: Option<&ModuleSpecifier>,
   ) -> Option<(ModuleSpecifier, MediaType)> {
     let resolver = self.get_scope_resolver(file_referrer);
@@ -434,8 +435,8 @@ impl LspResolver {
         .resolve_req_reference(
           req_ref,
           referrer,
-          referrer_kind,
-          NodeResolutionMode::Types,
+          resolution_mode,
+          NodeResolutionKind::Types,
         )
         .ok()?,
     )))
@@ -492,7 +493,7 @@ impl LspResolver {
     &self,
     specifier_text: &str,
     referrer: &ModuleSpecifier,
-    referrer_kind: NodeModuleKind,
+    resolution_mode: ResolutionMode,
   ) -> bool {
     let resolver = self.get_scope_resolver(Some(referrer));
     let Some(npm_pkg_req_resolver) = resolver.npm_pkg_req_resolver.as_ref()
@@ -503,8 +504,8 @@ impl LspResolver {
       .resolve_if_for_npm_pkg(
         specifier_text,
         referrer,
-        referrer_kind,
-        NodeResolutionMode::Types,
+        resolution_mode,
+        NodeResolutionKind::Types,
       )
       .ok()
       .flatten()
@@ -868,34 +869,23 @@ impl LspIsCjsResolver {
     }
   }
 
-  pub fn get_maybe_doc_module_kind(
-    &self,
-    specifier: &ModuleSpecifier,
-    maybe_document: Option<&Document>,
-  ) -> NodeModuleKind {
-    self.get_lsp_referrer_kind(
-      specifier,
-      maybe_document.and_then(|d| d.is_script()),
-    )
+  pub fn get_doc_resolution_mode(&self, document: &Document) -> ResolutionMode {
+    self.get_lsp_resolution_mode(document.specifier(), document.is_script())
   }
 
-  pub fn get_doc_module_kind(&self, document: &Document) -> NodeModuleKind {
-    self.get_lsp_referrer_kind(document.specifier(), document.is_script())
-  }
-
-  pub fn get_lsp_referrer_kind(
+  pub fn get_lsp_resolution_mode(
     &self,
     specifier: &ModuleSpecifier,
     is_script: Option<bool>,
-  ) -> NodeModuleKind {
-    self.inner.get_lsp_referrer_kind(specifier, is_script)
+  ) -> ResolutionMode {
+    self.inner.get_lsp_resolution_mode(specifier, is_script)
   }
 }
 
 #[derive(Debug)]
 pub struct SingleReferrerGraphResolver<'a> {
   pub valid_referrer: &'a ModuleSpecifier,
-  pub referrer_kind: NodeModuleKind,
+  pub module_resolution_mode: ResolutionMode,
   pub cli_resolver: &'a CliResolver,
   pub jsx_import_source_config: Option<&'a JsxImportSourceConfig>,
 }
@@ -924,16 +914,20 @@ impl<'a> deno_graph::source::Resolver for SingleReferrerGraphResolver<'a> {
     &self,
     specifier_text: &str,
     referrer_range: &Range,
-    mode: ResolutionMode,
+    resolution_kind: deno_graph::source::ResolutionKind,
   ) -> Result<ModuleSpecifier, deno_graph::source::ResolveError> {
     // this resolver assumes it will only be used with a single referrer
     // with the provided referrer kind
     debug_assert_eq!(referrer_range.specifier, *self.valid_referrer);
     self.cli_resolver.resolve(
       specifier_text,
-      referrer_range,
-      self.referrer_kind,
-      mode,
+      &referrer_range.specifier,
+      referrer_range.range.start,
+      referrer_range
+        .resolution_mode
+        .map(to_node_resolution_mode)
+        .unwrap_or(self.module_resolution_mode),
+      to_node_resolution_kind(resolution_kind),
     )
   }
 }
