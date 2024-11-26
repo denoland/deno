@@ -49,28 +49,65 @@ pub async fn info(
     let module_graph_creator = factory.module_graph_creator().await?;
     let npm_resolver = factory.npm_resolver().await?;
     let maybe_lockfile = cli_options.maybe_lockfile();
+    let resolver = factory.workspace_resolver().await?.clone();
     let npmrc = cli_options.npmrc();
+    let node_resolver = factory.node_resolver().await?;
 
     let cwd_url =
       url::Url::from_directory_path(cli_options.initial_cwd()).unwrap();
 
-    let deno_resolver = factory.deno_resolver().await?;
-    let maybe_import_specifier =
-      if specifier.starts_with("npm:") && cli_options.use_byonm() {
-        // Don't resolve this to a file path, just pass the `npm:` specifier along
-        // (it will error out later on)
-        None
-      } else {
-        deno_resolver
-          .resolve(
-            &specifier,
-            &cwd_url,
-            deno_package_json::NodeModuleKind::Esm,
-            node_resolver::NodeResolutionMode::Execution,
-          )
-          .ok()
-          .map(|r| r.url)
-      };
+    let maybe_import_specifier = if let Ok(resolved) =
+      resolver.resolve(&specifier, &cwd_url)
+    {
+      match resolved {
+        deno_config::workspace::MappedResolution::Normal {
+          specifier, ..
+        }
+        | deno_config::workspace::MappedResolution::ImportMap {
+          specifier,
+          ..
+        }
+        | deno_config::workspace::MappedResolution::WorkspaceJsrPackage {
+          specifier,
+          ..
+        } => Some(specifier),
+        deno_config::workspace::MappedResolution::WorkspaceNpmPackage {
+          target_pkg_json,
+          sub_path,
+          ..
+        } => Some(node_resolver.resolve_package_subpath_from_deno_module(
+          target_pkg_json.clone().dir_path(),
+          sub_path.as_deref(),
+          Some(&cwd_url),
+          deno_package_json::NodeModuleKind::Esm,
+          node_resolver::NodeResolutionMode::Execution,
+        )?),
+        deno_config::workspace::MappedResolution::PackageJson {
+          alias,
+          sub_path,
+          dep_result,
+          ..
+        } => match dep_result.as_ref().map_err(|e| e.clone())? {
+          deno_package_json::PackageJsonDepValue::Workspace(version_req) => {
+            let pkg_folder = resolver
+              .resolve_workspace_pkg_json_folder_for_pkg_json_dep(
+                alias,
+                version_req,
+              )?;
+            Some(node_resolver.resolve_package_subpath_from_deno_module(
+              pkg_folder,
+              sub_path.as_deref(),
+              Some(&cwd_url),
+              deno_package_json::NodeModuleKind::Esm,
+              node_resolver::NodeResolutionMode::Execution,
+            )?)
+          }
+          _ => None,
+        },
+      }
+    } else {
+      None
+    };
 
     let specifier = match maybe_import_specifier {
       Some(specifier) => specifier,
