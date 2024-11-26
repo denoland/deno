@@ -2,7 +2,6 @@
 
 use std::path::PathBuf;
 
-mod image_decoder;
 mod image_ops;
 mod op_create_image_bitmap;
 use image::ColorType;
@@ -26,6 +25,13 @@ pub enum CanvasError {
   #[error(transparent)]
   /// This error will be mapped to TypeError.
   Image(#[from] image::ImageError),
+}
+
+impl CanvasError {
+  /// Convert an [`image::ImageError`] to an [`CanvasError::InvalidImage`].
+  fn image_error_to_invalid_image(error: image::ImageError) -> Self {
+    Self::InvalidImage(error.to_string())
+  }
 }
 
 deno_core::extension!(

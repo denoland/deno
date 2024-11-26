@@ -17,11 +17,8 @@ use image::imageops::FilterType;
 use image::metadata::Orientation;
 use image::DynamicImage;
 use image::ImageDecoder;
-use image::ImageError;
 use image::RgbaImage;
 
-use crate::image_decoder::ImageDecoderFromReader;
-use crate::image_decoder::ImageDecoderFromReaderType;
 use crate::image_ops::premultiply_alpha as process_premultiply_alpha;
 use crate::image_ops::to_srgb_from_icc_profile;
 use crate::image_ops::unpremultiply_alpha;
@@ -84,90 +81,91 @@ fn decode_bitmap_data(
   let (image, width, height, orientation, icc_profile) =
     match image_bitmap_source {
       ImageBitmapSource::Blob => {
-        fn image_decoding_error(error: ImageError) -> CanvasError {
-          CanvasError::InvalidImage(error.to_string())
-        }
+        //
+        // About the animated image
+        // > Blob .4
+        // > ... If this is an animated image, imageBitmap's bitmap data must only be taken from
+        // > the default image of the animation (the one that the format defines is to be used when animation is
+        // > not supported or is disabled), or, if there is no such image, the first frame of the animation.
+        // https://html.spec.whatwg.org/multipage/imagebitmap-and-animations.html
+        //
+        // see also browser implementations: (The implementation of Gecko and WebKit is hard to read.)
+        // https://source.chromium.org/chromium/chromium/src/+/bdbc054a6cabbef991904b5df9066259505cc686:third_party/blink/renderer/platform/image-decoders/image_decoder.h;l=175-189
+        //
         let (image, orientation, icc_profile) = match mime_type {
           MimeType::Png => {
-            let mut decoder: PngDecoder<ImageDecoderFromReaderType> =
-              ImageDecoderFromReader::to_decoder(
-                BufReader::new(Cursor::new(buf)),
-                image_decoding_error,
-              )?;
+            // If PngDecoder decodes an animated image, it returns the default image if one is set, or the first frame if not.
+            let mut decoder = PngDecoder::new(BufReader::new(Cursor::new(buf)))
+              .map_err(CanvasError::image_error_to_invalid_image)?;
             let orientation = decoder.orientation()?;
             let icc_profile = decoder.icc_profile()?;
             (
-              decoder.to_intermediate_image(image_decoding_error)?,
+              DynamicImage::from_decoder(decoder)
+                .map_err(CanvasError::image_error_to_invalid_image)?,
               orientation,
               icc_profile,
             )
           }
           MimeType::Jpeg => {
-            let mut decoder: JpegDecoder<ImageDecoderFromReaderType> =
-              ImageDecoderFromReader::to_decoder(
-                BufReader::new(Cursor::new(buf)),
-                image_decoding_error,
-              )?;
+            let mut decoder =
+              JpegDecoder::new(BufReader::new(Cursor::new(buf)))
+                .map_err(CanvasError::image_error_to_invalid_image)?;
             let orientation = decoder.orientation()?;
             let icc_profile = decoder.icc_profile()?;
             (
-              decoder.to_intermediate_image(image_decoding_error)?,
+              DynamicImage::from_decoder(decoder)
+                .map_err(CanvasError::image_error_to_invalid_image)?,
               orientation,
               icc_profile,
             )
           }
           MimeType::Gif => {
-            let mut decoder: GifDecoder<ImageDecoderFromReaderType> =
-              ImageDecoderFromReader::to_decoder(
-                BufReader::new(Cursor::new(buf)),
-                image_decoding_error,
-              )?;
+            // The GifDecoder decodes the first frame.
+            let mut decoder = GifDecoder::new(BufReader::new(Cursor::new(buf)))
+              .map_err(CanvasError::image_error_to_invalid_image)?;
             let orientation = decoder.orientation()?;
             let icc_profile = decoder.icc_profile()?;
             (
-              decoder.to_intermediate_image(image_decoding_error)?,
+              DynamicImage::from_decoder(decoder)
+                .map_err(CanvasError::image_error_to_invalid_image)?,
               orientation,
               icc_profile,
             )
           }
           MimeType::Bmp => {
-            let mut decoder: BmpDecoder<ImageDecoderFromReaderType> =
-              ImageDecoderFromReader::to_decoder(
-                BufReader::new(Cursor::new(buf)),
-                image_decoding_error,
-              )?;
+            let mut decoder = BmpDecoder::new(BufReader::new(Cursor::new(buf)))
+              .map_err(CanvasError::image_error_to_invalid_image)?;
             let orientation = decoder.orientation()?;
             let icc_profile = decoder.icc_profile()?;
             (
-              decoder.to_intermediate_image(image_decoding_error)?,
+              DynamicImage::from_decoder(decoder)
+                .map_err(CanvasError::image_error_to_invalid_image)?,
               orientation,
               icc_profile,
             )
           }
           MimeType::Ico => {
-            let mut decoder: IcoDecoder<ImageDecoderFromReaderType> =
-              ImageDecoderFromReader::to_decoder(
-                BufReader::new(Cursor::new(buf)),
-                image_decoding_error,
-              )?;
+            let mut decoder = IcoDecoder::new(BufReader::new(Cursor::new(buf)))
+              .map_err(CanvasError::image_error_to_invalid_image)?;
             let orientation = decoder.orientation()?;
             let icc_profile = decoder.icc_profile()?;
             (
-              decoder.to_intermediate_image(image_decoding_error)?,
+              DynamicImage::from_decoder(decoder)
+                .map_err(CanvasError::image_error_to_invalid_image)?,
               orientation,
               icc_profile,
             )
           }
           MimeType::Webp => {
-            let mut decoder: WebPDecoder<ImageDecoderFromReaderType> =
-              ImageDecoderFromReader::to_decoder(
-                BufReader::new(Cursor::new(buf)),
-                image_decoding_error,
-              )?;
+            // The WebPDecoder decodes the first frame.
+            let mut decoder =
+              WebPDecoder::new(BufReader::new(Cursor::new(buf)))
+                .map_err(CanvasError::image_error_to_invalid_image)?;
             let orientation = decoder.orientation()?;
             let icc_profile = decoder.icc_profile()?;
             (
-              decoder.to_intermediate_image(image_decoding_error)?,
+              DynamicImage::from_decoder(decoder)
+                .map_err(CanvasError::image_error_to_invalid_image)?,
               orientation,
               icc_profile,
             )
