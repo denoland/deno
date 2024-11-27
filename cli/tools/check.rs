@@ -87,7 +87,7 @@ pub async fn check(
           cli_options.start_dir.clone(),
           FilePatterns {
             base: cli_options.initial_cwd().to_path_buf(),
-            include: None,
+            include: Some(Default::default()),
             exclude: Default::default(),
           },
         ))
