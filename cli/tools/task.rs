@@ -721,7 +721,7 @@ fn print_available_tasks(
     )?;
     if let Some(description) = &desc.task.description {
       let slash_slash = colors::italic_gray("//");
-      for line in description.split('\n') {
+      for line in description.lines() {
         writeln!(writer, "    {slash_slash} {}", colors::italic_gray(line))?;
       }
     }
