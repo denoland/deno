@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use deno_ast::MediaType;
+use deno_ast::{MediaType, ParsedSource};
 use deno_core::url::Url;
 use deno_graph::{ExternalModule, JsonModule, WasmModule};
 
@@ -16,11 +16,12 @@ pub struct BundleJsModule {
   pub specifier: Url,
   pub media_type: MediaType,
   pub source: String,
+  pub ast: Option<ParsedSource>,
   pub dependencies: Vec<BundleDep>,
 }
 
 #[derive(Debug)]
-pub enum BundleMod {
+pub enum BundleModule {
   Js(BundleJsModule),
   Json(JsonModule),
   Wasm(WasmModule),
@@ -32,7 +33,7 @@ pub enum BundleMod {
 pub struct BundleGraph {
   id: usize,
   url_to_id: HashMap<Url, usize>,
-  modules: HashMap<usize, BundleMod>,
+  modules: HashMap<usize, BundleModule>,
 }
 
 /// The bundle graph only contains fully resolved modules.
@@ -45,7 +46,29 @@ impl BundleGraph {
     }
   }
 
-  pub fn insert(&mut self, specifier: Url, module: BundleMod) -> usize {
+  pub fn get_specifier(&self, id: usize) -> Option<Url> {
+    if let Some(module) = self.modules.get(&id) {
+      match module {
+        BundleModule::Js(m) => Some(m.specifier.clone()),
+        BundleModule::Json(m) => Some(m.specifier.clone()),
+        BundleModule::Wasm(m) => Some(m.specifier.clone()),
+        BundleModule::Node(_) => None, // FIXME
+        BundleModule::External(external_module) => todo!(),
+      }
+    } else {
+      None
+    }
+  }
+
+  pub fn get(&self, url: &Url) -> Option<&BundleModule> {
+    if let Some(id) = self.url_to_id.get(&url) {
+      return self.modules.get(&id);
+    }
+
+    None
+  }
+
+  pub fn insert(&mut self, specifier: Url, module: BundleModule) -> usize {
     let id = self.register(specifier);
     self.modules.insert(id, module);
     id
@@ -63,7 +86,7 @@ impl BundleGraph {
   }
 
   pub fn add_dependency(&mut self, id: usize, dep: BundleDep) {
-    if let Some(BundleMod::Js(module)) = self.modules.get_mut(&id) {
+    if let Some(BundleModule::Js(module)) = self.modules.get_mut(&id) {
       module.dependencies.push(dep)
     }
   }
