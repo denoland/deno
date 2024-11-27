@@ -1,5 +1,0 @@
-{
-  "args": "run directory_import/folder_no_index.ts",
-  "output": "directory_import/folder_no_index.out",
-  "exitCode": 1
-}

@@ -5,6 +5,7 @@
 use std::path::PathBuf;
 
 use deno_core::op2;
+use deno_core::GarbageCollected;
 use deno_core::OpState;
 use rusqlite::params;
 use rusqlite::Connection;
@@ -32,17 +33,14 @@ const MAX_STORAGE_BYTES: usize = 10 * 1024 * 1024;
 deno_core::extension!(deno_webstorage,
   deps = [ deno_webidl ],
   ops = [
-    op_webstorage_length,
-    op_webstorage_key,
-    op_webstorage_set,
-    op_webstorage_get,
-    op_webstorage_remove,
-    op_webstorage_clear,
     op_webstorage_iterate_keys,
+  ],
+  objects = [
+    Storage
   ],
   esm = [ "01_webstorage.js" ],
   options = {
-    origin_storage_dir: Option<PathBuf>
+      origin_storage_dir: Option<PathBuf>
   },
   state = |state, options| {
     if let Some(origin_storage_dir) = options.origin_storage_dir {
@@ -110,38 +108,6 @@ fn get_webstorage(
   Ok(conn)
 }
 
-#[op2(fast)]
-pub fn op_webstorage_length(
-  state: &mut OpState,
-  persistent: bool,
-) -> Result<u32, WebStorageError> {
-  let conn = get_webstorage(state, persistent)?;
-
-  let mut stmt = conn.prepare_cached("SELECT COUNT(*) FROM data")?;
-  let length: u32 = stmt.query_row(params![], |row| row.get(0))?;
-
-  Ok(length)
-}
-
-#[op2]
-#[string]
-pub fn op_webstorage_key(
-  state: &mut OpState,
-  #[smi] index: u32,
-  persistent: bool,
-) -> Result<Option<String>, WebStorageError> {
-  let conn = get_webstorage(state, persistent)?;
-
-  let mut stmt =
-    conn.prepare_cached("SELECT key FROM data LIMIT 1 OFFSET ?")?;
-
-  let key: Option<String> = stmt
-    .query_row(params![index], |row| row.get(0))
-    .optional()?;
-
-  Ok(key)
-}
-
 #[inline]
 fn size_check(input: usize) -> Result<(), WebStorageError> {
   if input >= MAX_STORAGE_BYTES {
@@ -151,81 +117,125 @@ fn size_check(input: usize) -> Result<(), WebStorageError> {
   Ok(())
 }
 
-#[op2(fast)]
-pub fn op_webstorage_set(
-  state: &mut OpState,
-  #[string] key: &str,
-  #[string] value: &str,
+struct Storage {
   persistent: bool,
-) -> Result<(), WebStorageError> {
-  let conn = get_webstorage(state, persistent)?;
-
-  size_check(key.len() + value.len())?;
-
-  let mut stmt = conn
-    .prepare_cached("SELECT SUM(pgsize) FROM dbstat WHERE name = 'data'")?;
-  let size: u32 = stmt.query_row(params![], |row| row.get(0))?;
-
-  size_check(size as usize)?;
-
-  let mut stmt = conn
-    .prepare_cached("INSERT OR REPLACE INTO data (key, value) VALUES (?, ?)")?;
-  stmt.execute(params![key, value])?;
-
-  Ok(())
 }
+
+impl GarbageCollected for Storage {}
 
 #[op2]
-#[string]
-pub fn op_webstorage_get(
-  state: &mut OpState,
-  #[string] key_name: String,
-  persistent: bool,
-) -> Result<Option<String>, WebStorageError> {
-  let conn = get_webstorage(state, persistent)?;
+impl Storage {
+  #[constructor]
+  #[cppgc]
+  fn new(persistent: bool) -> Storage {
+    Storage { persistent }
+  }
 
-  let mut stmt = conn.prepare_cached("SELECT value FROM data WHERE key = ?")?;
-  let val = stmt
-    .query_row(params![key_name], |row| row.get(0))
-    .optional()?;
+  #[getter]
+  #[smi]
+  fn length(&self, state: &mut OpState) -> Result<u32, WebStorageError> {
+    let conn = get_webstorage(state, self.persistent)?;
 
-  Ok(val)
-}
+    let mut stmt = conn.prepare_cached("SELECT COUNT(*) FROM data")?;
+    let length: u32 = stmt.query_row(params![], |row| row.get(0))?;
 
-#[op2(fast)]
-pub fn op_webstorage_remove(
-  state: &mut OpState,
-  #[string] key_name: &str,
-  persistent: bool,
-) -> Result<(), WebStorageError> {
-  let conn = get_webstorage(state, persistent)?;
+    Ok(length)
+  }
 
-  let mut stmt = conn.prepare_cached("DELETE FROM data WHERE key = ?")?;
-  stmt.execute(params![key_name])?;
+  #[required(1)]
+  #[string]
+  fn key(
+    &self,
+    state: &mut OpState,
+    #[smi] index: u32,
+  ) -> Result<Option<String>, WebStorageError> {
+    let conn = get_webstorage(state, self.persistent)?;
 
-  Ok(())
-}
+    let mut stmt =
+      conn.prepare_cached("SELECT key FROM data LIMIT 1 OFFSET ?")?;
 
-#[op2(fast)]
-pub fn op_webstorage_clear(
-  state: &mut OpState,
-  persistent: bool,
-) -> Result<(), WebStorageError> {
-  let conn = get_webstorage(state, persistent)?;
+    let key: Option<String> = stmt
+      .query_row(params![index], |row| row.get(0))
+      .optional()?;
 
-  let mut stmt = conn.prepare_cached("DELETE FROM data")?;
-  stmt.execute(params![])?;
+    Ok(key)
+  }
 
-  Ok(())
+  #[fast]
+  #[required(2)]
+  fn set_item(
+    &self,
+    state: &mut OpState,
+    #[string] key: &str,
+    #[string] value: &str,
+  ) -> Result<(), WebStorageError> {
+    let conn = get_webstorage(state, self.persistent)?;
+
+    size_check(key.len() + value.len())?;
+
+    let mut stmt = conn
+      .prepare_cached("SELECT SUM(pgsize) FROM dbstat WHERE name = 'data'")?;
+    let size: u32 = stmt.query_row(params![], |row| row.get(0))?;
+
+    size_check(size as usize)?;
+
+    let mut stmt = conn.prepare_cached(
+      "INSERT OR REPLACE INTO data (key, value) VALUES (?, ?)",
+    )?;
+    stmt.execute(params![key, value])?;
+
+    Ok(())
+  }
+
+  #[required(1)]
+  #[string]
+  fn get_item(
+    &self,
+    state: &mut OpState,
+    #[string] key: &str,
+  ) -> Result<Option<String>, WebStorageError> {
+    let conn = get_webstorage(state, self.persistent)?;
+
+    let mut stmt =
+      conn.prepare_cached("SELECT value FROM data WHERE key = ?")?;
+    let val = stmt.query_row(params![key], |row| row.get(0)).optional()?;
+
+    Ok(val)
+  }
+
+  #[fast]
+  #[required(1)]
+  fn remove_item(
+    &self,
+    state: &mut OpState,
+    #[string] key: &str,
+  ) -> Result<(), WebStorageError> {
+    let conn = get_webstorage(state, self.persistent)?;
+
+    let mut stmt = conn.prepare_cached("DELETE FROM data WHERE key = ?")?;
+    stmt.execute(params![key])?;
+
+    Ok(())
+  }
+
+  #[fast]
+  fn clear(&self, state: &mut OpState) -> Result<(), WebStorageError> {
+    let conn = get_webstorage(state, self.persistent)?;
+
+    let mut stmt = conn.prepare_cached("DELETE FROM data")?;
+    stmt.execute(params![])?;
+
+    Ok(())
+  }
 }
 
 #[op2]
 #[serde]
-pub fn op_webstorage_iterate_keys(
+fn op_webstorage_iterate_keys(
+  #[cppgc] storage: &Storage,
   state: &mut OpState,
-  persistent: bool,
 ) -> Result<Vec<String>, WebStorageError> {
-  let conn = get_webstorage(state, persistent)?;
+  let conn = get_webstorage(state, storage.persistent)?;
 
   let mut stmt = conn.prepare_cached("SELECT key FROM data")?;
   let keys = stmt

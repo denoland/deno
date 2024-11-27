@@ -1151,6 +1151,7 @@ Deno.test("[node/http] ServerResponse header names case insensitive", async () =
   const { promise, resolve } = Promise.withResolvers<void>();
   const server = http.createServer((_req, res) => {
     res.setHeader("Content-Length", "12345");
+    assert(res.hasHeader("Content-Length"));
     res.removeHeader("content-length");
     assertEquals(res.getHeader("Content-Length"), undefined);
     assert(!res.hasHeader("Content-Length"));

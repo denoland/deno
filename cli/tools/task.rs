@@ -8,6 +8,7 @@ use std::path::PathBuf;
 use std::rc::Rc;
 use std::sync::Arc;
 
+use console_static_text::ansi::strip_ansi_codes;
 use deno_config::workspace::FolderConfigs;
 use deno_config::workspace::TaskDefinition;
 use deno_config::workspace::TaskOrScript;
@@ -721,20 +722,48 @@ fn print_available_tasks(
     )?;
     if let Some(description) = &desc.task.description {
       let slash_slash = colors::italic_gray("//");
-      for line in description.split('\n') {
-        writeln!(writer, "    {slash_slash} {}", colors::italic_gray(line))?;
+      for line in description.lines() {
+        writeln!(
+          writer,
+          "    {slash_slash} {}",
+          colors::italic_gray(strip_ansi_codes_and_escape_control_chars(line))
+        )?;
       }
     }
-    writeln!(writer, "    {}", desc.task.command)?;
+    writeln!(
+      writer,
+      "    {}",
+      strip_ansi_codes_and_escape_control_chars(&desc.task.command)
+    )?;
     if !desc.task.dependencies.is_empty() {
+      let dependencies = desc
+        .task
+        .dependencies
+        .into_iter()
+        .map(|d| strip_ansi_codes_and_escape_control_chars(&d))
+        .collect::<Vec<_>>()
+        .join(", ");
       writeln!(
         writer,
         "    {} {}",
         colors::gray("depends on:"),
-        colors::cyan(desc.task.dependencies.join(", "))
+        colors::cyan(dependencies)
       )?;
     }
   }
 
   Ok(())
+}
+
+fn strip_ansi_codes_and_escape_control_chars(s: &str) -> String {
+  strip_ansi_codes(s)
+    .chars()
+    .map(|c| match c {
+      '\n' => "\\n".to_string(),
+      '\r' => "\\r".to_string(),
+      '\t' => "\\t".to_string(),
+      c if c.is_control() => format!("\\x{:02x}", c as u8),
+      c => c.to_string(),
+    })
+    .collect()
 }
