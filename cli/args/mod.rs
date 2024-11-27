@@ -679,21 +679,20 @@ fn discover_npmrc(
   match (home_npmrc, project_npmrc) {
     (None, None) => {
       log::debug!("No .npmrc file found");
-      return Ok((create_default_npmrc(), None));
+      Ok((create_default_npmrc(), None))
     }
     (None, Some(project_rc)) => {
       log::debug!("Only project file found");
-      return Ok((project_rc.into(), npmrc_path));
+      Ok((project_rc.into(), npmrc_path))
     }
     (Some(home_rc), None) => {
       log::debug!("Only home file found");
-      return Ok((home_rc.into(), npmrc_path));
+      Ok((home_rc.into(), npmrc_path))
     }
     (Some(home_rc), Some(project_rc)) => {
       log::debug!("Both home and project files found");
       let merged_npmrc = merge_resolved_npm_rc(project_rc, home_rc);
-      // println!("Merged .npmrc files: {:#?}", merged_npmrc);
-      return Ok((merged_npmrc.into(), npmrc_path));
+      Ok((merged_npmrc.into(), npmrc_path))
     }
   }
 }
