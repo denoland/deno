@@ -722,7 +722,13 @@ fn print_available_tasks(
     if let Some(description) = &desc.task.description {
       let slash_slash = colors::italic_gray("//");
       for line in description.lines() {
-        writeln!(writer, "    {slash_slash} {}", colors::italic_gray(line))?;
+        writeln!(
+          writer,
+          "    {slash_slash} {}",
+          colors::italic_gray(console_static_text::ansi::strip_ansi_codes(
+            line
+          ))
+        )?;
       }
     }
     writeln!(
@@ -731,11 +737,18 @@ fn print_available_tasks(
       console_static_text::ansi::strip_ansi_codes(&desc.task.command)
     )?;
     if !desc.task.dependencies.is_empty() {
+      let dependencies = desc
+        .task
+        .dependencies
+        .into_iter()
+        .map(|d| console_static_text::ansi::strip_ansi_codes(&d).to_string())
+        .collect::<Vec<_>>()
+        .join(", ");
       writeln!(
         writer,
         "    {} {}",
         colors::gray("depends on:"),
-        colors::cyan(desc.task.dependencies.join(", "))
+        colors::cyan(dependencies)
       )?;
     }
   }
