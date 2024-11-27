@@ -402,9 +402,7 @@ where
     .ok_or_else(|| NetError::NoResolvedAddress)?;
   let tcp_stream = match TcpStream::connect_timeout(&addr, timeout).await {
     Ok(tcp_stream) => tcp_stream,
-    Err(e) => {
-      return Err(NetError::Io(e))
-    },
+    Err(e) => return Err(NetError::Io(e)),
   };
   let local_addr = tcp_stream.local_addr()?;
   let remote_addr = tcp_stream.peer_addr()?;
