@@ -102,7 +102,13 @@ pub async fn info(
               node_resolver::NodeResolutionKind::Execution,
             )?)
           }
-          _ => None,
+          deno_package_json::PackageJsonDepValue::Req(req) => {
+            Some(ModuleSpecifier::parse(&format!(
+              "npm:{}{}",
+              req,
+              sub_path.map(|s| format!("/{}", s)).unwrap_or_default()
+            ))?)
+          }
         },
       }
     } else {
