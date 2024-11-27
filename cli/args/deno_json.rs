@@ -1,5 +1,7 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
+#[cfg(test)]
+use std::borrow::Cow;
 use std::collections::HashSet;
 
 use deno_config::deno_json::TsConfigForEmit;
@@ -18,7 +20,7 @@ impl<'a> deno_config::fs::DenoConfigFs for DenoConfigFsAdapter<'a> {
   fn read_to_string_lossy(
     &self,
     path: &std::path::Path,
-  ) -> Result<String, std::io::Error> {
+  ) -> Result<Cow<'static, str>, std::io::Error> {
     self
       .0
       .read_text_file_lossy_sync(path, None)
