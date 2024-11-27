@@ -1334,7 +1334,7 @@ where
     .read_file_sync(&path, Some(&mut access_check))
     .map_err(|error| map_permission_error("readfile", error, &path))?;
 
-  // todo(THIS PR): how to not clone here?
+  // todo(https://github.com/denoland/deno/issues/27107): do not clone here
   Ok(buf.into_owned().into_boxed_slice().into())
 }
 
@@ -1377,7 +1377,7 @@ where
       .map_err(|error| map_permission_error("readfile", error, &path))?
   };
 
-  // todo(THIS PR): how to not clone here?
+  // todo(https://github.com/denoland/deno/issues/27107): do not clone here
   Ok(buf.into_owned().into_boxed_slice().into())
 }
 
