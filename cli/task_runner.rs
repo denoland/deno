@@ -22,6 +22,7 @@ use lazy_regex::Lazy;
 use regex::Regex;
 use tokio::task::JoinHandle;
 use tokio::task::LocalSet;
+use tokio_util::sync::CancellationToken;
 
 use crate::npm::CliNpmResolver;
 use crate::npm::InnerCliNpmResolverRef;
@@ -78,6 +79,7 @@ pub struct RunTaskOptions<'a> {
   pub custom_commands: HashMap<String, Rc<dyn ShellCommand>>,
   pub root_node_modules_dir: Option<&'a Path>,
   pub stdio: Option<TaskIo>,
+  pub token: CancellationToken,
 }
 
 pub type TaskCustomCommands = HashMap<String, Rc<dyn ShellCommand>>;
@@ -96,8 +98,12 @@ pub async fn run_task(
     .with_context(|| format!("Error parsing script '{}'.", opts.task_name))?;
   let env_vars =
     prepare_env_vars(opts.env_vars, opts.init_cwd, opts.root_node_modules_dir);
-  let state =
-    deno_task_shell::ShellState::new(env_vars, opts.cwd, opts.custom_commands);
+  let state = deno_task_shell::ShellState::new(
+    env_vars,
+    opts.cwd,
+    opts.custom_commands,
+    opts.token,
+  );
   let stdio = opts.stdio.unwrap_or_default();
   let (
     TaskStdio(stdout_read, stdout_write),
