@@ -36,9 +36,7 @@ const {
   PromisePrototypeCatch,
   SafePromisePrototypeFinally,
   PromisePrototypeThen,
-  String,
   StringPrototypeIncludes,
-  StringPrototypeSlice,
   Symbol,
   TypeError,
   TypedArrayPrototypeGetSymbolToStringTag,
@@ -91,6 +89,16 @@ import {
 } from "ext:deno_net/01_net.js";
 import { hasTlsKeyPairOptions, listenTls } from "ext:deno_net/02_tls.js";
 import { SymbolAsyncDispose } from "ext:deno_web/00_infra.js";
+import {
+  endSpan,
+  enterSpan,
+  Span,
+  TRACING_ENABLED,
+} from "ext:deno_telemetry/telemetry.ts";
+import {
+  updateSpanFromRequest,
+  updateSpanFromResponse,
+} from "ext:deno_telemetry/util.ts";
 
 const _upgraded = Symbol("_upgraded");
 
@@ -527,16 +535,7 @@ function mapToCallback(context, callback, onError) {
       innerRequest.request = request;
 
       if (span) {
-        span.updateName(request.method);
-        span.setAttribute("http.request.method", request.method);
-        const url = new URL(request.url);
-        span.setAttribute("url.full", request.url);
-        span.setAttribute(
-          "url.scheme",
-          StringPrototypeSlice(url.protocol, 0, -1),
-        );
-        span.setAttribute("url.path", url.pathname);
-        span.setAttribute("url.query", StringPrototypeSlice(url.search, 1));
+        updateSpanFromRequest(span, request);
       }
 
       response = await callback(
@@ -578,10 +577,7 @@ function mapToCallback(context, callback, onError) {
     }
 
     if (span) {
-      span.setAttribute(
-        "http.response.status_code",
-        String(response.status),
-      );
+      updateSpanFromResponse(span, response);
     }
 
     const inner = toInnerResponse(response);
@@ -617,13 +613,12 @@ function mapToCallback(context, callback, onError) {
     fastSyncResponseOrStream(req, inner.body, status, innerRequest);
   };
 
-  if (internals.telemetry.tracingEnabled) {
-    const { Span, enterSpan, endSpan } = internals.telemetry;
+  if (TRACING_ENABLED) {
     const origMapped = mapped;
     mapped = function (req, _span) {
       const oldCtx = getAsyncContext();
       setAsyncContext(context.asyncContext);
-      const span = new Span("deno.serve");
+      const span = new Span("deno.serve", { kind: 1 });
       try {
         enterSpan(span);
         return SafePromisePrototypeFinally(

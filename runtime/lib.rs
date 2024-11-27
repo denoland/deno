@@ -148,7 +148,7 @@ pub static UNSTABLE_GRANULAR_FLAGS: &[UnstableGranularFlag] = &[
 ];
 
 pub fn exit(code: i32) -> ! {
-  crate::ops::otel::flush();
+  deno_telemetry::flush();
   #[allow(clippy::disallowed_methods)]
   std::process::exit(code);
 }

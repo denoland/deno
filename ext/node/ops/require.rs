@@ -8,13 +8,13 @@ use deno_core::v8;
 use deno_core::JsRuntimeInspector;
 use deno_core::OpState;
 use deno_fs::FileSystemRc;
-use deno_package_json::NodeModuleKind;
 use deno_package_json::PackageJsonRc;
 use deno_path_util::normalize_path;
 use deno_path_util::url_from_file_path;
 use deno_path_util::url_to_file_path;
 use node_resolver::errors::ClosestPkgJsonError;
-use node_resolver::NodeResolutionMode;
+use node_resolver::NodeResolutionKind;
+use node_resolver::ResolutionMode;
 use node_resolver::REQUIRE_CONDITIONS;
 use std::borrow::Cow;
 use std::cell::RefCell;
@@ -462,9 +462,9 @@ where
       &expansion,
       exports,
       Some(&referrer),
-      NodeModuleKind::Cjs,
+      ResolutionMode::Require,
       REQUIRE_CONDITIONS,
-      NodeResolutionMode::Execution,
+      NodeResolutionKind::Execution,
     )?;
     Ok(Some(if r.scheme() == "file" {
       url_to_file_path_string(&r)?
@@ -559,9 +559,9 @@ where
     &format!(".{expansion}"),
     exports,
     referrer.as_ref(),
-    NodeModuleKind::Cjs,
+    ResolutionMode::Require,
     REQUIRE_CONDITIONS,
-    NodeResolutionMode::Execution,
+    NodeResolutionKind::Execution,
   )?;
   Ok(Some(if r.scheme() == "file" {
     url_to_file_path_string(&r)?
@@ -630,10 +630,10 @@ where
     let url = node_resolver.package_imports_resolve(
       &request,
       Some(&referrer_url),
-      NodeModuleKind::Cjs,
+      ResolutionMode::Require,
       Some(&pkg),
       REQUIRE_CONDITIONS,
-      NodeResolutionMode::Execution,
+      NodeResolutionKind::Execution,
     )?;
     Ok(Some(url_to_file_path_string(&url)?))
   } else {

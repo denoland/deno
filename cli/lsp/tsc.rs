@@ -70,7 +70,7 @@ use indexmap::IndexMap;
 use indexmap::IndexSet;
 use lazy_regex::lazy_regex;
 use log::error;
-use node_resolver::NodeModuleKind;
+use node_resolver::ResolutionMode;
 use once_cell::sync::Lazy;
 use regex::Captures;
 use regex::Regex;
@@ -4449,9 +4449,9 @@ fn op_load<'s>(
         version: state.script_version(&specifier),
         is_cjs: doc
           .document()
-          .map(|d| state.state_snapshot.is_cjs_resolver.get_doc_module_kind(d))
-          .unwrap_or(NodeModuleKind::Esm)
-          == NodeModuleKind::Cjs,
+          .map(|d| d.resolution_mode())
+          .unwrap_or(ResolutionMode::Import)
+          == ResolutionMode::Require,
       })
     };
   let serialized = serde_v8::to_v8(scope, maybe_load_response)?;
@@ -4479,17 +4479,9 @@ fn op_release(
 fn op_resolve(
   state: &mut OpState,
   #[string] base: String,
-  is_base_cjs: bool,
-  #[serde] specifiers: Vec<String>,
+  #[serde] specifiers: Vec<(bool, String)>,
 ) -> Result<Vec<Option<(String, String)>>, AnyError> {
-  op_resolve_inner(
-    state,
-    ResolveArgs {
-      base,
-      is_base_cjs,
-      specifiers,
-    },
-  )
+  op_resolve_inner(state, ResolveArgs { base, specifiers })
 }
 
 struct TscRequestArray {
@@ -4692,10 +4684,7 @@ fn op_script_names(state: &mut OpState) -> ScriptNames {
         let (types, _) = documents.resolve_dependency(
           types,
           specifier,
-          state
-            .state_snapshot
-            .is_cjs_resolver
-            .get_doc_module_kind(doc),
+          doc.resolution_mode(),
           doc.file_referrer(),
         )?;
         let types_doc = documents.get_or_load(&types, doc.file_referrer())?;
@@ -5579,7 +5568,6 @@ mod tests {
       documents: Arc::new(documents),
       assets: Default::default(),
       config: Arc::new(config),
-      is_cjs_resolver: Default::default(),
       resolver,
     });
     let performance = Arc::new(Performance::default());
@@ -6430,8 +6418,7 @@ mod tests {
       &mut state,
       ResolveArgs {
         base: temp_dir.url().join("a.ts").unwrap().to_string(),
-        is_base_cjs: false,
-        specifiers: vec!["./b.ts".to_string()],
+        specifiers: vec![(false, "./b.ts".to_string())],
       },
     )
     .unwrap();
