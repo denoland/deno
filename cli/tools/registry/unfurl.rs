@@ -128,7 +128,8 @@ impl SpecifierUnfurler {
                 PackageJsonDepWorkspaceReq::VersionReq(version_req) => {
                   version_req
                 }
-                // TODO(bartlomieju): this is most likely not correct
+                // TODO(bartlomieju): this is not correct, but doesn't really matter until we
+                // start supporting publishing of npm packages
                 PackageJsonDepWorkspaceReq::Caret
                 | PackageJsonDepWorkspaceReq::Tilde => {
                   &VersionReq::from_raw_text_and_inner(
