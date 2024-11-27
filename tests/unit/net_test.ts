@@ -1277,6 +1277,22 @@ Deno.test({
   }
 });
 
+Deno.test(
+  { permissions: { net: true } },
+  async function netTcpSetTimeout() {
+    try {
+      const conn = await Deno.connect({
+        hostname: "example.com",
+        port: 50000,
+        timeout: 1000,
+      });
+      conn.close();
+    } catch (error) {
+      assert(error instanceof Deno.errors.TimedOut);
+    }
+  },
+);
+
 Deno.test({
   ignore: Deno.build.os === "linux",
   permissions: { net: true },

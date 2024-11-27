@@ -36,6 +36,7 @@ use socket2::Socket;
 use socket2::Type;
 use std::borrow::Cow;
 use std::cell::RefCell;
+use std::future::Future;
 use std::net::Ipv4Addr;
 use std::net::Ipv6Addr;
 use std::net::SocketAddr;
@@ -43,6 +44,7 @@ use std::rc::Rc;
 use std::str::FromStr;
 use tokio::net::TcpStream;
 use tokio::net::UdpSocket;
+use tokio::time::timeout;
 
 #[derive(Serialize, Clone, Debug)]
 #[serde(rename_all = "camelCase")]
@@ -61,6 +63,28 @@ impl From<SocketAddr> for IpAddr {
     Self {
       hostname: addr.ip().to_string(),
       port: addr.port(),
+    }
+  }
+}
+
+pub trait TcpStreamTimeout {
+  fn connect_timeout(
+    addr: &SocketAddr,
+    tcp_timeout: Option<u64>,
+  ) -> impl Future<Output = Result<TcpStream, std::io::Error>>;
+}
+
+impl TcpStreamTimeout for TcpStream {
+  async fn connect_timeout(
+    addr: &SocketAddr,
+    tcp_timeout: Option<u64>,
+  ) -> Result<TcpStream, std::io::Error> {
+    if tcp_timeout.is_none() {
+      TcpStream::connect(addr).await
+    } else {
+      let timeout_duration =
+        std::time::Duration::from_millis(tcp_timeout.unwrap());
+      timeout(timeout_duration, TcpStream::connect(addr)).await?
     }
   }
 }
@@ -348,17 +372,19 @@ pub async fn op_net_set_multi_ttl_udp(
 pub async fn op_net_connect_tcp<NP>(
   state: Rc<RefCell<OpState>>,
   #[serde] addr: IpAddr,
+  #[serde] timeout: Option<u64>,
 ) -> Result<(ResourceId, IpAddr, IpAddr), NetError>
 where
   NP: NetPermissions + 'static,
 {
-  op_net_connect_tcp_inner::<NP>(state, addr).await
+  op_net_connect_tcp_inner::<NP>(state, addr, timeout).await
 }
 
 #[inline]
 pub async fn op_net_connect_tcp_inner<NP>(
   state: Rc<RefCell<OpState>>,
   addr: IpAddr,
+  timeout: Option<u64>,
 ) -> Result<(ResourceId, IpAddr, IpAddr), NetError>
 where
   NP: NetPermissions + 'static,
@@ -374,7 +400,12 @@ where
     .await?
     .next()
     .ok_or_else(|| NetError::NoResolvedAddress)?;
-  let tcp_stream = TcpStream::connect(&addr).await?;
+  let tcp_stream = match TcpStream::connect_timeout(&addr, timeout).await {
+    Ok(tcp_stream) => tcp_stream,
+    Err(e) => {
+      return Err(NetError::Io(e))
+    },
+  };
   let local_addr = tcp_stream.local_addr()?;
   let remote_addr = tcp_stream.peer_addr()?;
 
@@ -1127,7 +1158,7 @@ mod tests {
     };
 
     let mut connect_fut =
-      op_net_connect_tcp_inner::<TestPermission>(conn_state, ip_addr)
+      op_net_connect_tcp_inner::<TestPermission>(conn_state, ip_addr, None)
         .boxed_local();
     let mut rid = None;
 
