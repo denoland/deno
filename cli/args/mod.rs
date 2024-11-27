@@ -590,11 +590,6 @@ fn discover_npmrc(
     rc1: ResolvedNpmRc,
     rc2: ResolvedNpmRc,
   ) -> ResolvedNpmRc {
-    let mut merged_scopes = rc1.scopes.clone();
-    for (key, value) in rc2.scopes {
-      merged_scopes.entry(key).or_insert(value);
-    }
-
     let mut merged_registry_configs = rc1.registry_configs.clone();
     for (key, value) in rc2.registry_configs {
       merged_registry_configs.entry(key).or_insert(value);
@@ -608,6 +603,20 @@ fn discover_npmrc(
         merged_registry_configs.get(format!("{}/", host).as_str())
       {
         merged_default_config.config = config.clone();
+      }
+    }
+
+    let mut merged_scopes = rc1.scopes.clone();
+    for (key, value) in rc2.scopes {
+      merged_scopes.entry(key).or_insert(value);
+    }
+    for data in merged_scopes.values_mut() {
+      let host = data.registry_url.host_str().unwrap();
+      let port = data.registry_url.port().unwrap_or(4873);
+      let path = data.registry_url.path();
+      let url = format!("{}:{}{}", host, port, path);
+      if let Some(config) = merged_registry_configs.get(&url) {
+        data.config = config.clone();
       }
     }
 
