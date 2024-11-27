@@ -3,7 +3,6 @@
 use std::cell::RefCell;
 use std::rc::Rc;
 
-use deno_core::error::AnyError;
 use deno_core::op2;
 use deno_core::OpState;
 use deno_fs::FileSystemRc;
@@ -11,11 +10,27 @@ use serde::Serialize;
 
 use crate::NodePermissions;
 
-#[op2(fast)]
+#[derive(Debug, thiserror::Error)]
+pub enum FsError {
+  #[error(transparent)]
+  Permission(#[from] deno_permissions::PermissionCheckError),
+  #[error("{0}")]
+  Io(#[from] std::io::Error),
+  #[cfg(windows)]
+  #[error("Path has no root.")]
+  PathHasNoRoot,
+  #[cfg(not(any(unix, windows)))]
+  #[error("Unsupported platform.")]
+  UnsupportedPlatform,
+  #[error(transparent)]
+  Fs(#[from] deno_io::fs::FsError),
+}
+
+#[op2(fast, stack_trace)]
 pub fn op_node_fs_exists_sync<P>(
   state: &mut OpState,
   #[string] path: String,
-) -> Result<bool, AnyError>
+) -> Result<bool, deno_core::error::AnyError>
 where
   P: NodePermissions + 'static,
 {
@@ -26,11 +41,11 @@ where
   Ok(fs.exists_sync(&path))
 }
 
-#[op2(async)]
+#[op2(async, stack_trace)]
 pub async fn op_node_fs_exists<P>(
   state: Rc<RefCell<OpState>>,
   #[string] path: String,
-) -> Result<bool, AnyError>
+) -> Result<bool, FsError>
 where
   P: NodePermissions + 'static,
 {
@@ -45,12 +60,12 @@ where
   Ok(fs.exists_async(path).await?)
 }
 
-#[op2(fast)]
+#[op2(fast, stack_trace)]
 pub fn op_node_cp_sync<P>(
   state: &mut OpState,
   #[string] path: &str,
   #[string] new_path: &str,
-) -> Result<(), AnyError>
+) -> Result<(), FsError>
 where
   P: NodePermissions + 'static,
 {
@@ -66,12 +81,12 @@ where
   Ok(())
 }
 
-#[op2(async)]
+#[op2(async, stack_trace)]
 pub async fn op_node_cp<P>(
   state: Rc<RefCell<OpState>>,
   #[string] path: String,
   #[string] new_path: String,
-) -> Result<(), AnyError>
+) -> Result<(), FsError>
 where
   P: NodePermissions + 'static,
 {
@@ -102,13 +117,13 @@ pub struct StatFs {
   pub ffree: u64,
 }
 
-#[op2]
+#[op2(stack_trace)]
 #[serde]
 pub fn op_node_statfs<P>(
   state: Rc<RefCell<OpState>>,
   #[string] path: String,
   bigint: bool,
-) -> Result<StatFs, AnyError>
+) -> Result<StatFs, FsError>
 where
   P: NodePermissions + 'static,
 {
@@ -130,13 +145,21 @@ where
     let mut cpath = path.as_bytes().to_vec();
     cpath.push(0);
     if bigint {
-      #[cfg(not(target_os = "macos"))]
+      #[cfg(not(any(
+        target_os = "macos",
+        target_os = "freebsd",
+        target_os = "openbsd"
+      )))]
       // SAFETY: `cpath` is NUL-terminated and result is pointer to valid statfs memory.
       let (code, result) = unsafe {
         let mut result: libc::statfs64 = std::mem::zeroed();
         (libc::statfs64(cpath.as_ptr() as _, &mut result), result)
       };
-      #[cfg(target_os = "macos")]
+      #[cfg(any(
+        target_os = "macos",
+        target_os = "freebsd",
+        target_os = "openbsd"
+      ))]
       // SAFETY: `cpath` is NUL-terminated and result is pointer to valid statfs memory.
       let (code, result) = unsafe {
         let mut result: libc::statfs = std::mem::zeroed();
@@ -146,7 +169,10 @@ where
         return Err(std::io::Error::last_os_error().into());
       }
       Ok(StatFs {
+        #[cfg(not(target_os = "openbsd"))]
         typ: result.f_type as _,
+        #[cfg(target_os = "openbsd")]
+        typ: 0 as _,
         bsize: result.f_bsize as _,
         blocks: result.f_blocks as _,
         bfree: result.f_bfree as _,
@@ -164,7 +190,10 @@ where
         return Err(std::io::Error::last_os_error().into());
       }
       Ok(StatFs {
+        #[cfg(not(target_os = "openbsd"))]
         typ: result.f_type as _,
+        #[cfg(target_os = "openbsd")]
+        typ: 0 as _,
         bsize: result.f_bsize as _,
         blocks: result.f_blocks as _,
         bfree: result.f_bfree as _,
@@ -176,7 +205,6 @@ where
   }
   #[cfg(windows)]
   {
-    use deno_core::anyhow::anyhow;
     use std::ffi::OsStr;
     use std::os::windows::ffi::OsStrExt;
     use windows_sys::Win32::Storage::FileSystem::GetDiskFreeSpaceW;
@@ -186,10 +214,7 @@ where
     // call below.
     #[allow(clippy::disallowed_methods)]
     let path = path.canonicalize()?;
-    let root = path
-      .ancestors()
-      .last()
-      .ok_or(anyhow!("Path has no root."))?;
+    let root = path.ancestors().last().ok_or(FsError::PathHasNoRoot)?;
     let mut root = OsStr::new(root).encode_wide().collect::<Vec<_>>();
     root.push(0);
     let mut sectors_per_cluster = 0;
@@ -229,11 +254,11 @@ where
   {
     let _ = path;
     let _ = bigint;
-    Err(anyhow!("Unsupported platform."))
+    Err(FsError::UnsupportedPlatform)
   }
 }
 
-#[op2(fast)]
+#[op2(fast, stack_trace)]
 pub fn op_node_lutimes_sync<P>(
   state: &mut OpState,
   #[string] path: &str,
@@ -241,7 +266,7 @@ pub fn op_node_lutimes_sync<P>(
   #[smi] atime_nanos: u32,
   #[number] mtime_secs: i64,
   #[smi] mtime_nanos: u32,
-) -> Result<(), AnyError>
+) -> Result<(), FsError>
 where
   P: NodePermissions + 'static,
 {
@@ -254,7 +279,7 @@ where
   Ok(())
 }
 
-#[op2(async)]
+#[op2(async, stack_trace)]
 pub async fn op_node_lutimes<P>(
   state: Rc<RefCell<OpState>>,
   #[string] path: String,
@@ -262,7 +287,7 @@ pub async fn op_node_lutimes<P>(
   #[smi] atime_nanos: u32,
   #[number] mtime_secs: i64,
   #[smi] mtime_nanos: u32,
-) -> Result<(), AnyError>
+) -> Result<(), FsError>
 where
   P: NodePermissions + 'static,
 {
@@ -280,13 +305,13 @@ where
   Ok(())
 }
 
-#[op2]
+#[op2(stack_trace)]
 pub fn op_node_lchown_sync<P>(
   state: &mut OpState,
   #[string] path: String,
   uid: Option<u32>,
   gid: Option<u32>,
-) -> Result<(), AnyError>
+) -> Result<(), FsError>
 where
   P: NodePermissions + 'static,
 {
@@ -298,13 +323,13 @@ where
   Ok(())
 }
 
-#[op2(async)]
+#[op2(async, stack_trace)]
 pub async fn op_node_lchown<P>(
   state: Rc<RefCell<OpState>>,
   #[string] path: String,
   uid: Option<u32>,
   gid: Option<u32>,
-) -> Result<(), AnyError>
+) -> Result<(), FsError>
 where
   P: NodePermissions + 'static,
 {

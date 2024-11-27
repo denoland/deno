@@ -5,6 +5,22 @@
 #![allow(clippy::undocumented_unsafe_blocks)]
 #![deny(clippy::missing_safety_doc)]
 
+//! Symbols to be exported are now defined in this JSON file.
+//! The `#[napi_sym]` macro checks for missing entries and panics.
+//!
+//! `./tools/napi/generate_symbols_list.js` is used to generate the LINK `cli/exports.def` on Windows,
+//! which is also checked into git.
+//!
+//! To add a new napi function:
+//! 1. Place `#[napi_sym]` on top of your implementation.
+//! 2. Add the function's identifier to this JSON list.
+//! 3. Finally, run `tools/napi/generate_symbols_list.js` to update `ext/napi/generated_symbol_exports_list_*.def`.
+
+pub mod js_native_api;
+pub mod node_api;
+pub mod util;
+pub mod uv;
+
 use core::ptr::NonNull;
 use deno_core::op2;
 use deno_core::parking_lot::RwLock;
@@ -27,7 +43,7 @@ pub enum NApiError {
   #[error("Unable to find register Node-API module at {}", .0.display())]
   ModuleNotFound(PathBuf),
   #[error(transparent)]
-  Permission(deno_core::error::AnyError),
+  Permission(#[from] PermissionCheckError),
 }
 
 #[cfg(unix)]
@@ -39,6 +55,7 @@ use libloading::os::windows::*;
 // Expose common stuff for ease of use.
 // `use deno_napi::*`
 pub use deno_core::v8;
+use deno_permissions::PermissionCheckError;
 pub use std::ffi::CStr;
 pub use std::os::raw::c_char;
 pub use std::os::raw::c_void;
@@ -492,20 +509,14 @@ deno_core::extension!(deno_napi,
 
 pub trait NapiPermissions {
   #[must_use = "the resolved return value to mitigate time-of-check to time-of-use issues"]
-  fn check(
-    &mut self,
-    path: &str,
-  ) -> Result<PathBuf, deno_core::error::AnyError>;
+  fn check(&mut self, path: &str) -> Result<PathBuf, PermissionCheckError>;
 }
 
 // NOTE(bartlomieju): for now, NAPI uses `--allow-ffi` flag, but that might
 // change in the future.
 impl NapiPermissions for deno_permissions::PermissionsContainer {
   #[inline(always)]
-  fn check(
-    &mut self,
-    path: &str,
-  ) -> Result<PathBuf, deno_core::error::AnyError> {
+  fn check(&mut self, path: &str) -> Result<PathBuf, PermissionCheckError> {
     deno_permissions::PermissionsContainer::check_ffi(self, path)
   }
 }
@@ -519,7 +530,7 @@ static NAPI_LOADED_MODULES: std::sync::LazyLock<
   RwLock<HashMap<PathBuf, NapiModuleHandle>>,
 > = std::sync::LazyLock::new(|| RwLock::new(HashMap::new()));
 
-#[op2(reentrant)]
+#[op2(reentrant, stack_trace)]
 fn op_napi_open<NP, 'scope>(
   scope: &mut v8::HandleScope<'scope>,
   isolate: *mut v8::Isolate,
@@ -537,7 +548,7 @@ where
   let (async_work_sender, cleanup_hooks, external_ops_tracker, path) = {
     let mut op_state = op_state.borrow_mut();
     let permissions = op_state.borrow_mut::<NP>();
-    let path = permissions.check(&path).map_err(NApiError::Permission)?;
+    let path = permissions.check(&path)?;
     let napi_state = op_state.borrow::<NapiState>();
     (
       op_state.borrow::<V8CrossThreadTaskSpawner>().clone(),
@@ -630,4 +641,35 @@ where
   std::mem::forget(library);
 
   Ok(exports)
+}
+
+#[allow(clippy::print_stdout)]
+pub fn print_linker_flags(name: &str) {
+  let symbols_path =
+    include_str!(concat!(env!("OUT_DIR"), "/napi_symbol_path.txt"));
+
+  #[cfg(target_os = "windows")]
+  println!("cargo:rustc-link-arg-bin={name}=/DEF:{}", symbols_path);
+
+  #[cfg(target_os = "macos")]
+  println!(
+    "cargo:rustc-link-arg-bin={name}=-Wl,-exported_symbols_list,{}",
+    symbols_path,
+  );
+
+  #[cfg(any(
+    target_os = "linux",
+    target_os = "freebsd",
+    target_os = "openbsd"
+  ))]
+  println!(
+    "cargo:rustc-link-arg-bin={name}=-Wl,--export-dynamic-symbol-list={}",
+    symbols_path,
+  );
+
+  #[cfg(target_os = "android")]
+  println!(
+    "cargo:rustc-link-arg-bin={name}=-Wl,--export-dynamic-symbol-list={}",
+    symbols_path,
+  );
 }

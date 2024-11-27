@@ -52,7 +52,8 @@ pub use crate::message_port::Transferable;
 
 use crate::timers::op_defer;
 use crate::timers::op_now;
-use crate::timers::StartTime;
+use crate::timers::op_time_origin;
+pub use crate::timers::StartTime;
 pub use crate::timers::TimersPermission;
 
 deno_core::extension!(deno_web,
@@ -84,6 +85,7 @@ deno_core::extension!(deno_web,
     compression::op_compression_write,
     compression::op_compression_finish,
     op_now<P>,
+    op_time_origin<P>,
     op_defer,
     stream_resource::op_readable_stream_resource_allocate,
     stream_resource::op_readable_stream_resource_allocate_sized,
@@ -123,7 +125,7 @@ deno_core::extension!(deno_web,
     if let Some(location) = options.maybe_location {
       state.put(Location(location));
     }
-    state.put(StartTime::now());
+    state.put(StartTime::default());
   }
 );
 

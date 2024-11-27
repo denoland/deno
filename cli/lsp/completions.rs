@@ -13,11 +13,10 @@ use super::resolver::LspResolver;
 use super::search::PackageSearchApi;
 use super::tsc;
 
+use crate::graph_util::to_node_resolution_mode;
 use crate::jsr::JsrFetchResolver;
 use crate::util::path::is_importable_ext;
 use crate::util::path::relative_specifier;
-use deno_graph::source::ResolutionMode;
-use deno_graph::Range;
 use deno_runtime::deno_node::SUPPORTED_BUILTIN_NODE_MODULES;
 
 use deno_ast::LineAndColumnIndex;
@@ -35,6 +34,8 @@ use deno_semver::package::PackageNv;
 use import_map::ImportMap;
 use indexmap::IndexSet;
 use lsp_types::CompletionList;
+use node_resolver::NodeResolutionKind;
+use node_resolver::ResolutionMode;
 use once_cell::sync::Lazy;
 use regex::Regex;
 use tower_lsp::lsp_types as lsp;
@@ -111,7 +112,7 @@ async fn check_auto_config_registry(
 /// which we want to ignore when replacing text.
 fn to_narrow_lsp_range(
   text_info: &SourceTextInfo,
-  range: &deno_graph::Range,
+  range: deno_graph::PositionRange,
 ) -> lsp::Range {
   let end_byte_index = text_info
     .loc_to_source_pos(LineAndColumnIndex {
@@ -164,18 +165,20 @@ pub async fn get_import_completions(
 ) -> Option<lsp::CompletionResponse> {
   let document = documents.get(specifier)?;
   let file_referrer = document.file_referrer();
-  let (text, _, range) = document.get_maybe_dependency(position)?;
-  let range = to_narrow_lsp_range(document.text_info(), &range);
+  let (text, _, graph_range) = document.get_maybe_dependency(position)?;
+  let resolution_mode = graph_range
+    .resolution_mode
+    .map(to_node_resolution_mode)
+    .unwrap_or_else(|| document.resolution_mode());
+  let range = to_narrow_lsp_range(document.text_info(), graph_range.range);
   let resolved = resolver
-    .as_graph_resolver(file_referrer)
+    .as_cli_resolver(file_referrer)
     .resolve(
       &text,
-      &Range {
-        specifier: specifier.clone(),
-        start: deno_graph::Position::zeroed(),
-        end: deno_graph::Position::zeroed(),
-      },
-      ResolutionMode::Execution,
+      specifier,
+      deno_graph::Position::zeroed(),
+      resolution_mode,
+      NodeResolutionKind::Execution,
     )
     .ok();
   if let Some(completion_list) = get_jsr_completions(
@@ -201,7 +204,7 @@ pub async fn get_import_completions(
     // completions for import map specifiers
     Some(lsp::CompletionResponse::List(completion_list))
   } else if let Some(completion_list) =
-    get_local_completions(specifier, &text, &range, resolver)
+    get_local_completions(specifier, resolution_mode, &text, &range, resolver)
   {
     // completions for local relative modules
     Some(lsp::CompletionResponse::List(completion_list))
@@ -355,25 +358,24 @@ fn get_import_map_completions(
 
 /// Return local completions that are relative to the base specifier.
 fn get_local_completions(
-  base: &ModuleSpecifier,
+  referrer: &ModuleSpecifier,
+  resolution_mode: ResolutionMode,
   text: &str,
   range: &lsp::Range,
   resolver: &LspResolver,
 ) -> Option<CompletionList> {
-  if base.scheme() != "file" {
+  if referrer.scheme() != "file" {
     return None;
   }
   let parent = &text[..text.char_indices().rfind(|(_, c)| *c == '/')?.0 + 1];
   let resolved_parent = resolver
-    .as_graph_resolver(Some(base))
+    .as_cli_resolver(Some(referrer))
     .resolve(
       parent,
-      &Range {
-        specifier: base.clone(),
-        start: deno_graph::Position::zeroed(),
-        end: deno_graph::Position::zeroed(),
-      },
-      ResolutionMode::Execution,
+      referrer,
+      deno_graph::Position::zeroed(),
+      resolution_mode,
+      NodeResolutionKind::Execution,
     )
     .ok()?;
   let resolved_parent_path = url_to_file_path(&resolved_parent).ok()?;
@@ -385,7 +387,7 @@ fn get_local_completions(
         let de = de.ok()?;
         let label = de.path().file_name()?.to_string_lossy().to_string();
         let entry_specifier = resolve_path(de.path().to_str()?, &cwd).ok()?;
-        if entry_specifier == *base {
+        if entry_specifier == *referrer {
           return None;
         }
         let full_text = format!("{parent}{label}");
@@ -824,7 +826,6 @@ mod tests {
   use crate::lsp::documents::LanguageId;
   use crate::lsp::search::tests::TestPackageSearchApi;
   use deno_core::resolve_url;
-  use deno_graph::Range;
   use pretty_assertions::assert_eq;
   use std::collections::HashMap;
   use test_util::TempDir;
@@ -905,6 +906,7 @@ mod tests {
       ModuleSpecifier::from_file_path(file_c).expect("could not create");
     let actual = get_local_completions(
       &specifier,
+      ResolutionMode::Import,
       "./",
       &lsp::Range {
         start: lsp::Position {
@@ -1600,8 +1602,7 @@ mod tests {
     let text_info = SourceTextInfo::from_string(r#""te""#.to_string());
     let range = to_narrow_lsp_range(
       &text_info,
-      &Range {
-        specifier: ModuleSpecifier::parse("https://deno.land").unwrap(),
+      deno_graph::PositionRange {
         start: deno_graph::Position {
           line: 0,
           character: 0,
@@ -1624,8 +1625,7 @@ mod tests {
     let text_info = SourceTextInfo::from_string(r#""te"#.to_string());
     let range = to_narrow_lsp_range(
       &text_info,
-      &Range {
-        specifier: ModuleSpecifier::parse("https://deno.land").unwrap(),
+      deno_graph::PositionRange {
         start: deno_graph::Position {
           line: 0,
           character: 0,

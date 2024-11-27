@@ -1,0 +1,5 @@
+{
+  "args": "run --quiet --reload exit_error42.ts",
+  "output": "exit_error42.ts.out",
+  "exitCode": 42
+}

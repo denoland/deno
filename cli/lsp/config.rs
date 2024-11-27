@@ -4,6 +4,7 @@ use deno_ast::MediaType;
 use deno_config::deno_json::DenoJsonCache;
 use deno_config::deno_json::FmtConfig;
 use deno_config::deno_json::FmtOptionsConfig;
+use deno_config::deno_json::JsxImportSourceConfig;
 use deno_config::deno_json::LintConfig;
 use deno_config::deno_json::NodeModulesDirMode;
 use deno_config::deno_json::TestConfig;
@@ -41,6 +42,7 @@ use deno_runtime::deno_node::PackageJson;
 use indexmap::IndexSet;
 use lsp_types::ClientCapabilities;
 use std::collections::BTreeMap;
+use std::collections::BTreeSet;
 use std::collections::HashMap;
 use std::ops::Deref;
 use std::ops::DerefMut;
@@ -439,6 +441,8 @@ pub struct LanguagePreferences {
   pub use_aliases_for_renames: bool,
   #[serde(default)]
   pub quote_style: QuoteStyle,
+  #[serde(default)]
+  pub prefer_type_only_auto_imports: bool,
 }
 
 impl Default for LanguagePreferences {
@@ -449,6 +453,7 @@ impl Default for LanguagePreferences {
       auto_import_file_exclude_patterns: vec![],
       use_aliases_for_renames: true,
       quote_style: Default::default(),
+      prefer_type_only_auto_imports: false,
     }
   }
 }
@@ -981,7 +986,7 @@ impl Config {
       | MediaType::Tsx => Some(&workspace_settings.typescript),
       MediaType::Json
       | MediaType::Wasm
-      | MediaType::TsBuildInfo
+      | MediaType::Css
       | MediaType::SourceMap
       | MediaType::Unknown => None,
     }
@@ -1187,6 +1192,7 @@ pub struct ConfigData {
   pub resolver: Arc<WorkspaceResolver>,
   pub sloppy_imports_resolver: Option<Arc<CliSloppyImportsResolver>>,
   pub import_map_from_settings: Option<ModuleSpecifier>,
+  pub unstable: BTreeSet<String>,
   watched_files: HashMap<ModuleSpecifier, ConfigWatchedFileType>,
 }
 
@@ -1584,9 +1590,16 @@ impl ConfigData {
           .join("\n")
       );
     }
+    let unstable = member_dir
+      .workspace
+      .unstable_features()
+      .iter()
+      .chain(settings.unstable.as_deref())
+      .cloned()
+      .collect::<BTreeSet<_>>();
     let unstable_sloppy_imports = std::env::var("DENO_UNSTABLE_SLOPPY_IMPORTS")
       .is_ok()
-      || member_dir.workspace.has_unstable("sloppy-imports");
+      || unstable.contains("sloppy-imports");
     let sloppy_imports_resolver = unstable_sloppy_imports.then(|| {
       Arc::new(CliSloppyImportsResolver::new(
         SloppyImportsCachedFs::new_without_stat_cache(Arc::new(
@@ -1627,6 +1640,7 @@ impl ConfigData {
       lockfile,
       npmrc,
       import_map_from_settings,
+      unstable,
       watched_files,
     }
   }
@@ -1639,6 +1653,17 @@ impl ConfigData {
 
   pub fn maybe_pkg_json(&self) -> Option<&Arc<deno_package_json::PackageJson>> {
     self.member_dir.maybe_pkg_json()
+  }
+
+  pub fn maybe_jsx_import_source_config(
+    &self,
+  ) -> Option<JsxImportSourceConfig> {
+    self
+      .member_dir
+      .workspace
+      .to_maybe_jsx_import_source_config()
+      .ok()
+      .flatten()
   }
 
   pub fn scope_contains_specifier(&self, specifier: &ModuleSpecifier) -> bool {
@@ -2251,6 +2276,7 @@ mod tests {
             auto_import_file_exclude_patterns: vec![],
             use_aliases_for_renames: true,
             quote_style: QuoteStyle::Auto,
+            prefer_type_only_auto_imports: false,
           },
           suggest: CompletionSettings {
             complete_function_calls: false,
@@ -2296,6 +2322,7 @@ mod tests {
             auto_import_file_exclude_patterns: vec![],
             use_aliases_for_renames: true,
             quote_style: QuoteStyle::Auto,
+            prefer_type_only_auto_imports: false,
           },
           suggest: CompletionSettings {
             complete_function_calls: false,

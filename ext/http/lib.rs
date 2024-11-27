@@ -39,6 +39,8 @@ use deno_net::raw::NetworkStream;
 use deno_websocket::ws_create_server_stream;
 use flate2::write::GzEncoder;
 use flate2::Compression;
+use hyper::server::conn::http1;
+use hyper::server::conn::http2;
 use hyper_util::rt::TokioIo;
 use hyper_v014::body::Bytes;
 use hyper_v014::body::HttpBody;
@@ -96,6 +98,25 @@ pub use request_properties::HttpRequestProperties;
 pub use service::UpgradeUnavailableError;
 pub use websocket_upgrade::WebSocketUpgradeError;
 
+#[derive(Debug, Default, Clone, Copy)]
+pub struct Options {
+  /// By passing a hook function, the caller can customize various configuration
+  /// options for the HTTP/2 server.
+  /// See [`http2::Builder`] for what parameters can be customized.
+  ///
+  /// If `None`, the default configuration provided by hyper will be used. Note
+  /// that the default configuration is subject to change in future versions.
+  pub http2_builder_hook:
+    Option<fn(http2::Builder<LocalExecutor>) -> http2::Builder<LocalExecutor>>,
+  /// By passing a hook function, the caller can customize various configuration
+  /// options for the HTTP/1 server.
+  /// See [`http1::Builder`] for what parameters can be customized.
+  ///
+  /// If `None`, the default configuration provided by hyper will be used. Note
+  /// that the default configuration is subject to change in future versions.
+  pub http1_builder_hook: Option<fn(http1::Builder) -> http1::Builder>,
+}
+
 deno_core::extension!(
   deno_http,
   deps = [deno_web, deno_net, deno_fetch, deno_websocket],
@@ -112,7 +133,9 @@ deno_core::extension!(
     http_next::op_http_close_after_finish,
     http_next::op_http_get_request_header,
     http_next::op_http_get_request_headers,
+    http_next::op_http_request_on_cancel,
     http_next::op_http_get_request_method_and_url<HTTP>,
+    http_next::op_http_get_request_cancelled,
     http_next::op_http_read_request_body,
     http_next::op_http_serve_on<HTTP>,
     http_next::op_http_serve<HTTP>,
@@ -133,6 +156,12 @@ deno_core::extension!(
     http_next::op_http_cancel,
   ],
   esm = ["00_serve.ts", "01_http.js", "02_websocket.ts"],
+  options = {
+    options: Options,
+  },
+  state = |state, options| {
+    state.put::<Options>(options.options);
+  }
 );
 
 #[derive(Debug, thiserror::Error)]
@@ -1115,7 +1144,7 @@ async fn op_http_upgrade_websocket(
 
 // Needed so hyper can use non Send futures
 #[derive(Clone)]
-struct LocalExecutor;
+pub struct LocalExecutor;
 
 impl<Fut> hyper_v014::rt::Executor<Fut> for LocalExecutor
 where

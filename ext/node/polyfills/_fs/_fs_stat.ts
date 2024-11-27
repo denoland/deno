@@ -6,6 +6,7 @@
 import { denoErrorToNodeError } from "ext:deno_node/internal/errors.ts";
 import { promisify } from "ext:deno_node/internal/util.mjs";
 import { primordials } from "ext:core/mod.js";
+import { getValidatedPath } from "ext:deno_node/internal/fs/utils.mjs";
 
 const { ObjectCreate, ObjectAssign } = primordials;
 
@@ -290,8 +291,8 @@ export function convertFileInfoToStats(origin: Deno.FileInfo): Stats {
     isFIFO: () => false,
     isCharacterDevice: () => false,
     isSocket: () => false,
-    ctime: origin.mtime,
-    ctimeMs: origin.mtime?.getTime() || null,
+    ctime: origin.ctime,
+    ctimeMs: origin.ctime?.getTime() || null,
   });
 
   return stats;
@@ -336,9 +337,9 @@ export function convertFileInfoToBigIntStats(
     isFIFO: () => false,
     isCharacterDevice: () => false,
     isSocket: () => false,
-    ctime: origin.mtime,
-    ctimeMs: origin.mtime ? BigInt(origin.mtime.getTime()) : null,
-    ctimeNs: origin.mtime ? BigInt(origin.mtime.getTime()) * 1000000n : null,
+    ctime: origin.ctime,
+    ctimeMs: origin.ctime ? BigInt(origin.ctime.getTime()) : null,
+    ctimeNs: origin.ctime ? BigInt(origin.ctime.getTime()) * 1000000n : null,
   });
   return stats;
 }
@@ -379,11 +380,15 @@ export function stat(
     ? optionsOrCallback
     : { bigint: false };
 
+  path = getValidatedPath(path).toString();
   if (!callback) throw new Error("No callback function supplied");
 
   Deno.stat(path).then(
     (stat) => callback(null, CFISBIS(stat, options.bigint)),
-    (err) => callback(denoErrorToNodeError(err, { syscall: "stat" })),
+    (err) =>
+      callback(
+        denoErrorToNodeError(err, { syscall: "stat", path: getPathname(path) }),
+      ),
   );
 }
 
@@ -406,6 +411,8 @@ export function statSync(
   path: string | URL,
   options: statOptions = { bigint: false, throwIfNoEntry: true },
 ): Stats | BigIntStats | undefined {
+  path = getValidatedPath(path).toString();
+
   try {
     const origin = Deno.statSync(path);
     return CFISBIS(origin, options.bigint);
@@ -417,9 +424,16 @@ export function statSync(
       return;
     }
     if (err instanceof Error) {
-      throw denoErrorToNodeError(err, { syscall: "stat" });
+      throw denoErrorToNodeError(err, {
+        syscall: "stat",
+        path: getPathname(path),
+      });
     } else {
       throw err;
     }
   }
+}
+
+function getPathname(path: string | URL) {
+  return typeof path === "string" ? path : path.pathname;
 }

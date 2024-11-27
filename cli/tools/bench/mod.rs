@@ -193,7 +193,7 @@ async fn bench_specifier_inner(
     .await?;
 
   // We execute the main module as a side module so that import.meta.main is not set.
-  worker.execute_side_module_possibly_with_npm().await?;
+  worker.execute_side_module().await?;
 
   let mut worker = worker.into_main_worker();
 
@@ -486,6 +486,7 @@ pub async fn run_benchmarks_with_watch(
     ),
     move |flags, watcher_communicator, changed_paths| {
       let bench_flags = bench_flags.clone();
+      watcher_communicator.show_path_changed(changed_paths.clone());
       Ok(async move {
         let factory = CliFactory::from_flags_for_watcher(
           flags,

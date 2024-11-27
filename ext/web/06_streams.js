@@ -70,7 +70,6 @@ const {
   String,
   Symbol,
   SymbolAsyncIterator,
-  SymbolIterator,
   SymbolFor,
   TypeError,
   TypedArrayPrototypeGetBuffer,
@@ -2923,7 +2922,7 @@ function readableStreamPipeTo(
 }
 
 /**
- * @param {ReadableStreamGenericReader<any> | ReadableStreamBYOBReader} reader
+ * @param {ReadableStreamGenericReader | ReadableStreamBYOBReader} reader
  * @param {any} reason
  * @returns {Promise<void>}
  */
@@ -2956,7 +2955,7 @@ function readableStreamReaderGenericInitialize(reader, stream) {
 
 /**
  * @template R
- * @param {ReadableStreamGenericReader<R> | ReadableStreamBYOBReader} reader
+ * @param {ReadableStreamGenericReader | ReadableStreamBYOBReader} reader
  */
 function readableStreamReaderGenericRelease(reader) {
   const stream = reader[_stream];
@@ -5084,34 +5083,6 @@ function initializeCountSizeFunction(globalObject) {
   WeakMapPrototypeSet(countSizeFunctionWeakMap, globalObject, size);
 }
 
-// Ref: https://tc39.es/ecma262/#sec-getiterator
-function getAsyncOrSyncIterator(obj) {
-  let iterator;
-  if (obj[SymbolAsyncIterator] != null) {
-    iterator = obj[SymbolAsyncIterator]();
-    if (!isObject(iterator)) {
-      throw new TypeError(
-        "[Symbol.asyncIterator] returned a non-object value",
-      );
-    }
-  } else if (obj[SymbolIterator] != null) {
-    iterator = obj[SymbolIterator]();
-    if (!isObject(iterator)) {
-      throw new TypeError("[Symbol.iterator] returned a non-object value");
-    }
-  } else {
-    throw new TypeError("No iterator found");
-  }
-  if (typeof iterator.next !== "function") {
-    throw new TypeError("iterator.next is not a function");
-  }
-  return iterator;
-}
-
-function isObject(x) {
-  return (typeof x === "object" && x != null) || typeof x === "function";
-}
-
 const _resourceBacking = Symbol("[[resourceBacking]]");
 // This distinction exists to prevent unrefable streams being used in
 // regular fast streams that are unaware of refability
@@ -5197,21 +5168,22 @@ class ReadableStream {
   }
 
   static from(asyncIterable) {
+    const prefix = "Failed to execute 'ReadableStream.from'";
     webidl.requiredArguments(
       arguments.length,
       1,
-      "Failed to execute 'ReadableStream.from'",
+      prefix,
     );
-    asyncIterable = webidl.converters.any(asyncIterable);
-
-    const iterator = getAsyncOrSyncIterator(asyncIterable);
+    asyncIterable = webidl.converters["async iterable<any>"](
+      asyncIterable,
+      prefix,
+      "Argument 1",
+    );
+    const iter = asyncIterable.open();
 
     const stream = createReadableStream(noop, async () => {
       // deno-lint-ignore prefer-primordials
-      const res = await iterator.next();
-      if (!isObject(res)) {
-        throw new TypeError("iterator.next value is not an object");
-      }
+      const res = await iter.next();
       if (res.done) {
         readableStreamDefaultControllerClose(stream[_controller]);
       } else {
@@ -5221,17 +5193,8 @@ class ReadableStream {
         );
       }
     }, async (reason) => {
-      if (iterator.return == null) {
-        return undefined;
-      } else {
-        // deno-lint-ignore prefer-primordials
-        const res = await iterator.return(reason);
-        if (!isObject(res)) {
-          throw new TypeError("iterator.return value is not an object");
-        } else {
-          return undefined;
-        }
-      }
+      // deno-lint-ignore prefer-primordials
+      await iter.return(reason);
     }, 0);
     return stream;
   }
@@ -6891,6 +6854,10 @@ webidl.converters.StreamPipeOptions = webidl
     },
     { key: "signal", converter: webidl.converters.AbortSignal },
   ]);
+
+webidl.converters["async iterable<any>"] = webidl.createAsyncIterableConverter(
+  webidl.converters.any,
+);
 
 internals.resourceForReadableStream = resourceForReadableStream;
 

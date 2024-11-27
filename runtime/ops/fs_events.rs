@@ -109,12 +109,20 @@ fn starts_with_canonicalized(path: &Path, prefix: &str) -> bool {
   }
 }
 
+fn is_file_removed(event_path: &PathBuf) -> bool {
+  let exists_path = std::fs::exists(event_path);
+  match exists_path {
+    Ok(res) => !res,
+    Err(_) => false,
+  }
+}
+
 #[derive(Debug, thiserror::Error)]
 pub enum FsEventsError {
   #[error(transparent)]
   Resource(deno_core::error::AnyError),
   #[error(transparent)]
-  Permission(deno_core::error::AnyError),
+  Permission(#[from] deno_permissions::PermissionCheckError),
   #[error(transparent)]
   Notify(#[from] NotifyError),
   #[error(transparent)]
@@ -150,6 +158,13 @@ fn start_watcher(
             })
           }) {
             let _ = sender.try_send(Ok(event.clone()));
+          } else if event.paths.iter().any(is_file_removed) {
+            let remove_event = FsEvent {
+              kind: "remove",
+              paths: event.paths.clone(),
+              flag: None,
+            };
+            let _ = sender.try_send(Ok(remove_event));
           }
         }
       }
@@ -162,7 +177,7 @@ fn start_watcher(
   Ok(())
 }
 
-#[op2]
+#[op2(stack_trace)]
 #[smi]
 fn op_fs_events_open(
   state: &mut OpState,
@@ -181,8 +196,7 @@ fn op_fs_events_open(
   for path in &paths {
     let path = state
       .borrow_mut::<PermissionsContainer>()
-      .check_read(path, "Deno.watchFs()")
-      .map_err(FsEventsError::Permission)?;
+      .check_read(path, "Deno.watchFs()")?;
 
     let watcher = state.borrow_mut::<WatcherState>();
     watcher.watcher.watch(&path, recursive_mode)?;

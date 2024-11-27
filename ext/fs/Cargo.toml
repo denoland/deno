@@ -2,7 +2,7 @@
 
 [package]
 name = "deno_fs"
-version = "0.83.0"
+version = "0.89.0"
 authors.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -19,6 +19,7 @@ sync_fs = []
 [dependencies]
 async-trait.workspace = true
 base32.workspace = true
+boxed_error.workspace = true
 deno_core.workspace = true
 deno_io.workspace = true
 deno_path_util.workspace = true
@@ -31,7 +32,7 @@ serde.workspace = true
 thiserror.workspace = true
 
 [target.'cfg(unix)'.dependencies]
-nix = { workspace = true, features = ["user"] }
+nix = { workspace = true, features = ["fs", "user"] }
 
 [target.'cfg(windows)'.dependencies]
 winapi = { workspace = true, features = ["winbase"] }

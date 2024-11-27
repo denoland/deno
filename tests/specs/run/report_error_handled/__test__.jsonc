@@ -1,0 +1,4 @@
+{
+  "args": "run --quiet report_error_handled.ts",
+  "output": "report_error_handled.ts.out"
+}

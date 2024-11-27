@@ -72,6 +72,7 @@ util::unit_test_factory!(
     dgram_test,
     domain_test,
     fs_test,
+    fetch_test,
     http_test,
     http2_test,
     inspector_test,
@@ -212,3 +213,7 @@ itest!(unhandled_rejection_web_process {
   envs: env_vars_for_npm_tests(),
   http_server: true,
 });
+
+// !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+// The itest macro is deprecated. Please move your new test to ~/tests/specs.
+// !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!

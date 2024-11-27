@@ -1,0 +1,42 @@
+{
+  "tests": {
+    "top_level_for_await": {
+      "args": "run --quiet top_level_for_await.js",
+      "output": "top_level_for_await.out"
+    },
+    "top_level_for_await_ts": {
+      "args": "run --quiet top_level_for_await.ts",
+      "output": "top_level_for_await.out"
+    },
+    "top_level_await_unresolved": {
+      "args": "run unresolved.js",
+      "output": "unresolved.out",
+      "exitCode": 1
+    },
+    "top_level_await": {
+      "args": "run --allow-read top_level_await.js",
+      "output": "top_level_await.out"
+    },
+    "top_level_await_ts": {
+      "args": "run --quiet --allow-read top_level_await.ts",
+      "output": "top_level_await.out"
+    },
+    "top_level_await_order": {
+      "args": "run --allow-read order.js",
+      "output": "order.out"
+    },
+    "top_level_await_nested": {
+      "args": "run --allow-read nested/main.js",
+      "output": "nested.out"
+    },
+    "top_level_await_loop": {
+      "args": "run --allow-read loop.js",
+      "output": "loop.out"
+    },
+    "top_level_await_circular": {
+      "args": "run --allow-read circular.js",
+      "output": "circular.out",
+      "exitCode": 1
+    }
+  }
+}

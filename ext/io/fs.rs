@@ -1,6 +1,7 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 use std::borrow::Cow;
+use std::fmt::Formatter;
 use std::io;
 use std::rc::Rc;
 use std::time::SystemTime;
@@ -20,6 +21,21 @@ pub enum FsError {
   NotSupported,
   NotCapable(&'static str),
 }
+
+impl std::fmt::Display for FsError {
+  fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+    match self {
+      FsError::Io(err) => std::fmt::Display::fmt(err, f),
+      FsError::FileBusy => f.write_str("file busy"),
+      FsError::NotSupported => f.write_str("not supported"),
+      FsError::NotCapable(err) => {
+        f.write_str(&format!("requires {err} access"))
+      }
+    }
+  }
+}
+
+impl std::error::Error for FsError {}
 
 impl FsError {
   pub fn kind(&self) -> io::ErrorKind {
@@ -55,20 +71,6 @@ impl From<io::ErrorKind> for FsError {
   }
 }
 
-impl From<FsError> for deno_core::error::AnyError {
-  fn from(err: FsError) -> Self {
-    match err {
-      FsError::Io(err) => err.into(),
-      FsError::FileBusy => deno_core::error::resource_unavailable(),
-      FsError::NotSupported => deno_core::error::not_supported(),
-      FsError::NotCapable(err) => deno_core::error::custom_error(
-        "NotCapable",
-        format!("permission denied: {err}"),
-      ),
-    }
-  }
-}
-
 impl From<JoinError> for FsError {
   fn from(err: JoinError) -> Self {
     if err.is_cancelled() {
@@ -92,6 +94,7 @@ pub struct FsStat {
   pub mtime: Option<u64>,
   pub atime: Option<u64>,
   pub birthtime: Option<u64>,
+  pub ctime: Option<u64>,
 
   pub dev: u64,
   pub ino: u64,
@@ -151,6 +154,16 @@ impl FsStat {
       }
     }
 
+    #[inline(always)]
+    fn get_ctime(ctime_or_0: i64) -> Option<u64> {
+      if ctime_or_0 > 0 {
+        // ctime return seconds since epoch, but we need milliseconds
+        return Some(ctime_or_0 as u64 * 1000);
+      }
+
+      None
+    }
+
     Self {
       is_file: metadata.is_file(),
       is_directory: metadata.is_dir(),
@@ -160,6 +173,7 @@ impl FsStat {
       mtime: to_msec(metadata.modified()),
       atime: to_msec(metadata.accessed()),
       birthtime: to_msec(metadata.created()),
+      ctime: get_ctime(unix_or_zero!(ctime)),
 
       dev: unix_or_zero!(dev),
       ino: unix_or_zero!(ino),

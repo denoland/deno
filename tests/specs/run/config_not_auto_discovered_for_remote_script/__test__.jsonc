@@ -1,0 +1,4 @@
+{
+  "args": "run --allow-import --quiet server_side_work.ts",
+  "output": "ok\n"
+}

@@ -565,7 +565,9 @@ pub fn symlink_dir(oldpath: &Path, newpath: &Path) -> Result<(), Error> {
     use std::os::windows::fs::symlink_dir;
     symlink_dir(oldpath, newpath).map_err(|err| {
       if let Some(code) = err.raw_os_error() {
-        if code as u32 == winapi::shared::winerror::ERROR_PRIVILEGE_NOT_HELD {
+        if code as u32 == winapi::shared::winerror::ERROR_PRIVILEGE_NOT_HELD
+          || code as u32 == winapi::shared::winerror::ERROR_INVALID_FUNCTION
+        {
           return err_mapper(err, Some(ErrorKind::PermissionDenied));
         }
       }
@@ -657,7 +659,7 @@ impl LaxSingleProcessFsFlag {
               //
               // This uses a blocking task because we use a single threaded
               // runtime and this is time sensitive so we don't want it to update
-              // at the whims of of whatever is occurring on the runtime thread.
+              // at the whims of whatever is occurring on the runtime thread.
               spawn_blocking({
                 let token = token.clone();
                 let last_updated_path = last_updated_path.clone();
