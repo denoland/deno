@@ -611,14 +611,14 @@ fn discover_npmrc(
       merged_scopes.entry(key).or_insert(value);
     }
     for data in merged_scopes.values_mut() {
-      let host = data.registry_url.host_str().unwrap();
-      let port = data.registry_url.port().unwrap_or(4873);
-      let path = data.registry_url.path();
-      let url = format!("{}:{}{}", host, port, path);
-      if let Some(config) = merged_registry_configs.get(&url) {
-        data.config = config.clone();
+      if let (Some(host), Some(port)) = (data.registry_url.host_str(), data.registry_url.port()) {
+          let path = data.registry_url.path();
+          let url = format!("{}:{}{}", host, port, path);
+          if let Some(config) = merged_registry_configs.get(&url) {
+              data.config = config.clone();
+          }
       }
-    }
+  }
 
     ResolvedNpmRc {
       default_config: merged_default_config,
