@@ -277,21 +277,30 @@ fn add_npm_packages_to_json(
         .get_mut("dependencies")
         .and_then(|d| d.as_array_mut());
       if let Some(dependencies) = dependencies {
-        for dep in dependencies.iter_mut() {
-          if let serde_json::Value::Object(dep) = dep {
-            let specifier = dep.get("specifier").and_then(|s| s.as_str());
-            if let Some(specifier) = specifier {
-              if let Ok(npm_ref) = NpmPackageReqReference::from_str(specifier) {
-                if let Ok(pkg) =
-                  snapshot.resolve_pkg_from_pkg_req(npm_ref.req())
-                {
-                  dep.insert(
-                    "npmPackage".to_string(),
-                    pkg.id.as_serialized().into(),
-                  );
-                }
+        for dep in dependencies.iter_mut().flat_map(|d| d.as_object_mut()) {
+          if let Some(specifier) = dep.get("specifier").and_then(|s| s.as_str())
+          {
+            if let Ok(npm_ref) = NpmPackageReqReference::from_str(specifier) {
+              if let Ok(pkg) = snapshot.resolve_pkg_from_pkg_req(npm_ref.req())
+              {
+                dep.insert(
+                  "npmPackage".to_string(),
+                  pkg.id.as_serialized().into(),
+                );
               }
             }
+          }
+
+          // don't show this in the output unless someone needs it
+          if let Some(code) =
+            dep.get_mut("code").and_then(|c| c.as_object_mut())
+          {
+            code.remove("resolutionMode");
+          }
+          if let Some(types) =
+            dep.get_mut("types").and_then(|c| c.as_object_mut())
+          {
+            types.remove("resolutionMode");
           }
         }
       }

@@ -144,9 +144,7 @@ async fn run_subcommand(flags: Arc<Flags>) -> Result<i32, AnyError> {
     }
     DenoSubcommand::Init(init_flags) => {
       spawn_subcommand(async {
-        // make compiler happy since init_project is sync
-        tokio::task::yield_now().await;
-        tools::init::init_project(init_flags)
+        tools::init::init_project(init_flags).await
       })
     }
     DenoSubcommand::Info(info_flags) => {
@@ -450,7 +448,7 @@ fn resolve_flags_and_init(
   };
 
   if let Some(otel_config) = flags.otel_config() {
-    deno_runtime::ops::otel::init(otel_config)?;
+    deno_telemetry::init(otel_config)?;
   }
   util::logger::init(flags.log_level);
 

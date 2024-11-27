@@ -13,6 +13,7 @@
 import { core, primordials } from "ext:core/mod.js";
 import {
   op_fetch,
+  op_fetch_promise_is_settled,
   op_fetch_send,
   op_wasm_streaming_feed,
   op_wasm_streaming_set_url,
@@ -28,7 +29,9 @@ const {
   PromisePrototypeThen,
   PromisePrototypeCatch,
   SafeArrayIterator,
+  SafePromisePrototypeFinally,
   String,
+  StringPrototypeEndsWith,
   StringPrototypeStartsWith,
   StringPrototypeToLowerCase,
   TypeError,
@@ -55,12 +58,29 @@ import {
   toInnerResponse,
 } from "ext:deno_fetch/23_response.js";
 import * as abortSignal from "ext:deno_web/03_abort_signal.js";
+import {
+  endSpan,
+  enterSpan,
+  exitSpan,
+  Span,
+  TRACING_ENABLED,
+} from "ext:deno_telemetry/telemetry.ts";
+import {
+  updateSpanFromRequest,
+  updateSpanFromResponse,
+} from "ext:deno_telemetry/util.ts";
 
 const REQUEST_BODY_HEADER_NAMES = [
   "content-encoding",
   "content-language",
   "content-location",
   "content-type",
+];
+
+const REDIRECT_SENSITIVE_HEADER_NAMES = [
+  "authorization",
+  "proxy-authorization",
+  "cookie",
 ];
 
 /**
@@ -250,12 +270,14 @@ function httpRedirectFetch(request, response, terminator) {
   if (locationHeaders.length === 0) {
     return response;
   }
+
+  const currentURL = new URL(request.currentUrl());
   const locationURL = new URL(
     locationHeaders[0][1],
     response.url() ?? undefined,
   );
   if (locationURL.hash === "") {
-    locationURL.hash = request.currentUrl().hash;
+    locationURL.hash = currentURL.hash;
   }
   if (locationURL.protocol !== "https:" && locationURL.protocol !== "http:") {
     return networkError("Can not redirect to a non HTTP(s) url");
@@ -294,6 +316,28 @@ function httpRedirectFetch(request, response, terminator) {
       }
     }
   }
+
+  // Drop confidential headers when redirecting to a less secure protocol
+  // or to a different domain that is not a superdomain
+  if (
+    locationURL.protocol !== currentURL.protocol &&
+      locationURL.protocol !== "https:" ||
+    locationURL.host !== currentURL.host &&
+      !isSubdomain(locationURL.host, currentURL.host)
+  ) {
+    for (let i = 0; i < request.headerList.length; i++) {
+      if (
+        ArrayPrototypeIncludes(
+          REDIRECT_SENSITIVE_HEADER_NAMES,
+          byteLowerCase(request.headerList[i][0]),
+        )
+      ) {
+        ArrayPrototypeSplice(request.headerList, i, 1);
+        i--;
+      }
+    }
+  }
+
   if (request.body !== null) {
     const res = extractBody(request.body.source);
     request.body = res.body;
@@ -307,93 +351,138 @@ function httpRedirectFetch(request, response, terminator) {
  * @param {RequestInit} init
  */
 function fetch(input, init = { __proto__: null }) {
-  // There is an async dispatch later that causes a stack trace disconnect.
-  // We reconnect it by assigning the result of that dispatch to `opPromise`,
-  // awaiting `opPromise` in an inner function also named `fetch()` and
-  // returning the result from that.
-  let opPromise = undefined;
-  // 1.
-  const result = new Promise((resolve, reject) => {
-    const prefix = "Failed to execute 'fetch'";
-    webidl.requiredArguments(arguments.length, 1, prefix);
-    // 2.
-    const requestObject = new Request(input, init);
-    // 3.
-    const request = toInnerRequest(requestObject);
-    // 4.
-    if (requestObject.signal.aborted) {
-      reject(abortFetch(request, null, requestObject.signal.reason));
-      return;
+  let span;
+  try {
+    if (TRACING_ENABLED) {
+      span = new Span("fetch", { kind: 2 });
+      enterSpan(span);
     }
 
-    // 7.
-    let responseObject = null;
-    // 9.
-    let locallyAborted = false;
-    // 10.
-    function onabort() {
-      locallyAborted = true;
-      reject(
-        abortFetch(request, responseObject, requestObject.signal.reason),
-      );
-    }
-    requestObject.signal[abortSignal.add](onabort);
+    // There is an async dispatch later that causes a stack trace disconnect.
+    // We reconnect it by assigning the result of that dispatch to `opPromise`,
+    // awaiting `opPromise` in an inner function also named `fetch()` and
+    // returning the result from that.
+    let opPromise = undefined;
+    // 1.
+    const result = new Promise((resolve, reject) => {
+      const prefix = "Failed to execute 'fetch'";
+      webidl.requiredArguments(arguments.length, 1, prefix);
+      // 2.
+      const requestObject = new Request(input, init);
 
-    if (!requestObject.headers.has("Accept")) {
-      ArrayPrototypePush(request.headerList, ["Accept", "*/*"]);
-    }
+      if (span) {
+        updateSpanFromRequest(span, requestObject);
+      }
 
-    if (!requestObject.headers.has("Accept-Language")) {
-      ArrayPrototypePush(request.headerList, ["Accept-Language", "*"]);
-    }
+      // 3.
+      const request = toInnerRequest(requestObject);
+      // 4.
+      if (requestObject.signal.aborted) {
+        reject(abortFetch(request, null, requestObject.signal.reason));
+        return;
+      }
+      // 7.
+      let responseObject = null;
+      // 9.
+      let locallyAborted = false;
+      // 10.
+      function onabort() {
+        locallyAborted = true;
+        reject(
+          abortFetch(request, responseObject, requestObject.signal.reason),
+        );
+      }
+      requestObject.signal[abortSignal.add](onabort);
 
-    // 12.
-    opPromise = PromisePrototypeCatch(
-      PromisePrototypeThen(
-        mainFetch(request, false, requestObject.signal),
-        (response) => {
-          // 12.1.
-          if (locallyAborted) return;
-          // 12.2.
-          if (response.aborted) {
-            reject(
-              abortFetch(
-                request,
-                responseObject,
-                requestObject.signal.reason,
-              ),
-            );
+      if (!requestObject.headers.has("Accept")) {
+        ArrayPrototypePush(request.headerList, ["Accept", "*/*"]);
+      }
+
+      if (!requestObject.headers.has("Accept-Language")) {
+        ArrayPrototypePush(request.headerList, ["Accept-Language", "*"]);
+      }
+
+      // 12.
+      opPromise = PromisePrototypeCatch(
+        PromisePrototypeThen(
+          mainFetch(request, false, requestObject.signal),
+          (response) => {
+            // 12.1.
+            if (locallyAborted) return;
+            // 12.2.
+            if (response.aborted) {
+              reject(
+                abortFetch(
+                  request,
+                  responseObject,
+                  requestObject.signal.reason,
+                ),
+              );
+              requestObject.signal[abortSignal.remove](onabort);
+              return;
+            }
+            // 12.3.
+            if (response.type === "error") {
+              const err = new TypeError(
+                "Fetch failed: " + (response.error ?? "unknown error"),
+              );
+              reject(err);
+              requestObject.signal[abortSignal.remove](onabort);
+              return;
+            }
+            responseObject = fromInnerResponse(response, "immutable");
+
+            if (span) {
+              updateSpanFromResponse(span, responseObject);
+            }
+
+            resolve(responseObject);
             requestObject.signal[abortSignal.remove](onabort);
-            return;
-          }
-          // 12.3.
-          if (response.type === "error") {
-            const err = new TypeError(
-              "Fetch failed: " + (response.error ?? "unknown error"),
-            );
-            reject(err);
-            requestObject.signal[abortSignal.remove](onabort);
-            return;
-          }
-          responseObject = fromInnerResponse(response, "immutable");
-          resolve(responseObject);
+          },
+        ),
+        (err) => {
+          reject(err);
           requestObject.signal[abortSignal.remove](onabort);
         },
-      ),
-      (err) => {
-        reject(err);
-        requestObject.signal[abortSignal.remove](onabort);
-      },
-    );
-  });
-  if (opPromise) {
-    PromisePrototypeCatch(result, () => {});
-    return (async function fetch() {
-      await opPromise;
-      return result;
-    })();
+      );
+    });
+
+    if (opPromise) {
+      PromisePrototypeCatch(result, () => {});
+      return (async function fetch() {
+        try {
+          await opPromise;
+          return result;
+        } finally {
+          if (span) {
+            endSpan(span);
+          }
+        }
+      })();
+    }
+    // We need to end the span when the promise settles.
+    // WPT has a test that aborted fetch is settled in the same tick.
+    // This means we cannot wrap the promise if it is already settled.
+    // But this is OK, because we can just immediately end the span
+    // in that case.
+    if (span) {
+      // XXX: This should always be true, otherwise `opPromise` would be present.
+      if (op_fetch_promise_is_settled(result)) {
+        // It's already settled.
+        endSpan(span);
+      } else {
+        // Not settled yet, we can return a new wrapper promise.
+        return SafePromisePrototypeFinally(result, () => {
+          endSpan(span);
+        });
+      }
+    }
+    return result;
+  } finally {
+    if (span) {
+      exitSpan(span);
+    }
   }
-  return result;
 }
 
 function abortFetch(request, responseObject, error) {
@@ -408,6 +497,19 @@ function abortFetch(request, responseObject, error) {
     if (response.body !== null) response.body.error(error);
   }
   return error;
+}
+
+/**
+ * Checks if the given string is a subdomain of the given domain.
+ *
+ * @param {String} subdomain
+ * @param {String} domain
+ * @returns {Boolean}
+ */
+function isSubdomain(subdomain, domain) {
+  const dot = subdomain.length - domain.length - 1;
+  return dot > 0 && subdomain[dot] === "." &&
+    StringPrototypeEndsWith(subdomain, domain);
 }
 
 /**

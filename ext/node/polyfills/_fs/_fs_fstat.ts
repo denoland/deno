@@ -63,3 +63,24 @@ export function fstatSync(
   const origin = new FsFile(fd, Symbol.for("Deno.internal.FsFile")).statSync();
   return CFISBIS(origin, options?.bigint || false);
 }
+
+export function fstatPromise(fd: number): Promise<Stats>;
+export function fstatPromise(
+  fd: number,
+  options: { bigint: false },
+): Promise<Stats>;
+export function fstatPromise(
+  fd: number,
+  options: { bigint: true },
+): Promise<BigIntStats>;
+export function fstatPromise(
+  fd: number,
+  options?: statOptions,
+): Stats | BigIntStats {
+  return new Promise((resolve, reject) => {
+    fstat(fd, options, (err, stats) => {
+      if (err) reject(err);
+      else resolve(stats);
+    });
+  });
+}

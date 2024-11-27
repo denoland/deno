@@ -36,7 +36,7 @@ use deno_path_util::normalize_path;
 use deno_path_util::url_to_file_path;
 use deno_runtime::deno_permissions::PermissionsOptions;
 use deno_runtime::deno_permissions::SysDescriptor;
-use deno_runtime::ops::otel::OtelConfig;
+use deno_telemetry::OtelConfig;
 use log::debug;
 use log::Level;
 use serde::Deserialize;
@@ -222,6 +222,8 @@ impl FmtFlags {
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct InitFlags {
+  pub package: Option<String>,
+  pub package_args: Vec<String>,
   pub dir: Option<String>,
   pub lib: bool,
   pub serve: bool,
@@ -1230,7 +1232,7 @@ static DENO_HELP: &str = cstr!(
     <g>compile</>      Compile the script into a self contained executable
                   <p(245)>deno compile main.ts  |  deno compile --target=x86_64-unknown-linux-gnu</>
     <g>coverage</>     Print coverage reports
-    <g>doc</>          Genereate and show documentation for a module or built-ins
+    <g>doc</>          Generate and show documentation for a module or built-ins
                   <p(245)>deno doc  |  deno doc --json  |  deno doc --html mod.ts</>
     <g>fmt</>          Format source files
                   <p(245)>deno fmt  |  deno fmt main.ts</>
@@ -1395,7 +1397,7 @@ pub fn flags_from_vec(args: Vec<OsString>) -> clap::error::Result<Flags> {
       "doc" => doc_parse(&mut flags, &mut m)?,
       "eval" => eval_parse(&mut flags, &mut m)?,
       "fmt" => fmt_parse(&mut flags, &mut m)?,
-      "init" => init_parse(&mut flags, &mut m),
+      "init" => init_parse(&mut flags, &mut m)?,
       "info" => info_parse(&mut flags, &mut m)?,
       "install" => install_parse(&mut flags, &mut m)?,
       "json_reference" => json_reference_parse(&mut flags, &mut m, app),
@@ -1702,8 +1704,11 @@ fn add_subcommand() -> Command {
       "Add dependencies to your configuration file.
   <p(245)>deno add jsr:@std/path</>
 
-You can add multiple dependencies at once:
-  <p(245)>deno add jsr:@std/path jsr:@std/assert</>"
+You can also add npm packages:
+  <p(245)>deno add npm:react</>
+
+Or multiple dependencies at once:
+  <p(245)>deno add jsr:@std/path jsr:@std/assert npm:chalk</>"
     ),
     UnstableArgsConfig::None,
   )
@@ -2448,7 +2453,19 @@ fn init_subcommand() -> Command {
   command("init", "scaffolds a basic Deno project with a script, test, and configuration file", UnstableArgsConfig::None).defer(
     |cmd| {
       cmd
-        .arg(Arg::new("dir").value_hint(ValueHint::DirPath))
+        .arg(Arg::new("args")
+          .num_args(0..)
+          .action(ArgAction::Append)
+          .value_name("DIRECTORY OR PACKAGE")
+          .trailing_var_arg(true)
+        )
+        .arg(
+          Arg::new("npm")
+            .long("npm")
+            .help("Generate a npm create-* project")
+            .conflicts_with_all(["lib", "serve"])
+            .action(ArgAction::SetTrue),
+        )
         .arg(
           Arg::new("lib")
             .long("lib")
@@ -2645,7 +2662,7 @@ By default, outdated dependencies are only displayed.
 Display outdated dependencies:
   <p(245)>deno outdated</>
   <p(245)>deno outdated --compatible</>
-  
+
 Update dependencies:
   <p(245)>deno outdated --update</>
   <p(245)>deno outdated --update --latest</>
@@ -3030,7 +3047,7 @@ fn task_subcommand() -> Command {
 
 List all available tasks:
   <p(245)>deno task</>
-  
+
 Evaluate a task from string
   <p(245)>deno task --eval \"echo $(pwd)\"</>"
     ),
@@ -3059,14 +3076,14 @@ Evaluate a task from string
         Arg::new("filter")
         .long("filter")
         .short('f')
-        .help("Filter members of the workspace by name - should be used with --recursive")
+        .help("Filter members of the workspace by name, implies --recursive flag")
         .value_parser(value_parser!(String)),
       )
       .arg(
         Arg::new("eval")
           .long("eval")
           .help(
-            "Evaluate the passed value as if, it was a task in a configuration file",
+            "Evaluate the passed value as if it was a task in a configuration file",
           ).action(ArgAction::SetTrue)
       )
       .arg(node_modules_dir_arg())
@@ -4820,12 +4837,44 @@ fn fmt_parse(
   Ok(())
 }
 
-fn init_parse(flags: &mut Flags, matches: &mut ArgMatches) {
+fn init_parse(
+  flags: &mut Flags,
+  matches: &mut ArgMatches,
+) -> Result<(), clap::Error> {
+  let mut lib = matches.get_flag("lib");
+  let mut serve = matches.get_flag("serve");
+  let mut dir = None;
+  let mut package = None;
+  let mut package_args = vec![];
+
+  if let Some(mut args) = matches.remove_many::<String>("args") {
+    let name = args.next().unwrap();
+    let mut args = args.collect::<Vec<_>>();
+
+    if matches.get_flag("npm") {
+      package = Some(name);
+      package_args = args;
+    } else {
+      dir = Some(name);
+
+      if !args.is_empty() {
+        args.insert(0, "init".to_string());
+        let inner_matches = init_subcommand().try_get_matches_from_mut(args)?;
+        lib = inner_matches.get_flag("lib");
+        serve = inner_matches.get_flag("serve");
+      }
+    }
+  }
+
   flags.subcommand = DenoSubcommand::Init(InitFlags {
-    dir: matches.remove_one::<String>("dir"),
-    lib: matches.get_flag("lib"),
-    serve: matches.get_flag("serve"),
+    package,
+    package_args,
+    dir,
+    lib,
+    serve,
   });
+
+  Ok(())
 }
 
 fn info_parse(
@@ -10907,6 +10956,8 @@ mod tests {
       r.unwrap(),
       Flags {
         subcommand: DenoSubcommand::Init(InitFlags {
+          package: None,
+          package_args: vec![],
           dir: None,
           lib: false,
           serve: false,
@@ -10920,6 +10971,8 @@ mod tests {
       r.unwrap(),
       Flags {
         subcommand: DenoSubcommand::Init(InitFlags {
+          package: None,
+          package_args: vec![],
           dir: Some(String::from("foo")),
           lib: false,
           serve: false,
@@ -10933,6 +10986,8 @@ mod tests {
       r.unwrap(),
       Flags {
         subcommand: DenoSubcommand::Init(InitFlags {
+          package: None,
+          package_args: vec![],
           dir: None,
           lib: false,
           serve: false,
@@ -10947,6 +11002,8 @@ mod tests {
       r.unwrap(),
       Flags {
         subcommand: DenoSubcommand::Init(InitFlags {
+          package: None,
+          package_args: vec![],
           dir: None,
           lib: true,
           serve: false,
@@ -10960,6 +11017,8 @@ mod tests {
       r.unwrap(),
       Flags {
         subcommand: DenoSubcommand::Init(InitFlags {
+          package: None,
+          package_args: vec![],
           dir: None,
           lib: false,
           serve: true,
@@ -10973,8 +11032,61 @@ mod tests {
       r.unwrap(),
       Flags {
         subcommand: DenoSubcommand::Init(InitFlags {
+          package: None,
+          package_args: vec![],
           dir: Some(String::from("foo")),
           lib: true,
+          serve: false,
+        }),
+        ..Flags::default()
+      }
+    );
+
+    let r = flags_from_vec(svec!["deno", "init", "--lib", "--npm", "vite"]);
+    assert!(r.is_err());
+
+    let r = flags_from_vec(svec!["deno", "init", "--serve", "--npm", "vite"]);
+    assert!(r.is_err());
+
+    let r = flags_from_vec(svec!["deno", "init", "--npm", "vite", "--lib"]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Init(InitFlags {
+          package: Some("vite".to_string()),
+          package_args: svec!["--lib"],
+          dir: None,
+          lib: false,
+          serve: false,
+        }),
+        ..Flags::default()
+      }
+    );
+
+    let r = flags_from_vec(svec!["deno", "init", "--npm", "vite", "--serve"]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Init(InitFlags {
+          package: Some("vite".to_string()),
+          package_args: svec!["--serve"],
+          dir: None,
+          lib: false,
+          serve: false,
+        }),
+        ..Flags::default()
+      }
+    );
+
+    let r = flags_from_vec(svec!["deno", "init", "--npm", "vite", "new_dir"]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Init(InitFlags {
+          package: Some("vite".to_string()),
+          package_args: svec!["new_dir"],
+          dir: None,
+          lib: false,
           serve: false,
         }),
         ..Flags::default()
