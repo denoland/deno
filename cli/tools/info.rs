@@ -126,6 +126,7 @@ fn print_cache_info(
   let registry_cache = dir.registries_folder_path();
   let mut origin_dir = dir.origin_data_folder_path();
   let deno_dir = dir.root_path_for_display().to_string();
+  let web_cache_dir = crate::worker::get_cache_storage_dir();
 
   if let Some(location) = &location {
     origin_dir =
@@ -143,6 +144,7 @@ fn print_cache_info(
       "typescriptCache": typescript_cache,
       "registryCache": registry_cache,
       "originStorage": origin_dir,
+      "webCacheStorage": web_cache_dir,
     });
 
     if location.is_some() {
@@ -176,6 +178,11 @@ fn print_cache_info(
       "{} {}",
       colors::bold("Origin storage:"),
       origin_dir.display()
+    );
+    println!(
+      "{} {}",
+      colors::bold("Web cache storage:"),
+      web_cache_dir.display()
     );
     if location.is_some() {
       println!(
@@ -228,21 +235,30 @@ fn add_npm_packages_to_json(
         .get_mut("dependencies")
         .and_then(|d| d.as_array_mut());
       if let Some(dependencies) = dependencies {
-        for dep in dependencies.iter_mut() {
-          if let serde_json::Value::Object(dep) = dep {
-            let specifier = dep.get("specifier").and_then(|s| s.as_str());
-            if let Some(specifier) = specifier {
-              if let Ok(npm_ref) = NpmPackageReqReference::from_str(specifier) {
-                if let Ok(pkg) =
-                  snapshot.resolve_pkg_from_pkg_req(npm_ref.req())
-                {
-                  dep.insert(
-                    "npmPackage".to_string(),
-                    pkg.id.as_serialized().into(),
-                  );
-                }
+        for dep in dependencies.iter_mut().flat_map(|d| d.as_object_mut()) {
+          if let Some(specifier) = dep.get("specifier").and_then(|s| s.as_str())
+          {
+            if let Ok(npm_ref) = NpmPackageReqReference::from_str(specifier) {
+              if let Ok(pkg) = snapshot.resolve_pkg_from_pkg_req(npm_ref.req())
+              {
+                dep.insert(
+                  "npmPackage".to_string(),
+                  pkg.id.as_serialized().into(),
+                );
               }
             }
+          }
+
+          // don't show this in the output unless someone needs it
+          if let Some(code) =
+            dep.get_mut("code").and_then(|c| c.as_object_mut())
+          {
+            code.remove("resolutionMode");
+          }
+          if let Some(types) =
+            dep.get_mut("types").and_then(|c| c.as_object_mut())
+          {
+            types.remove("resolutionMode");
           }
         }
       }
@@ -446,6 +462,7 @@ impl<'a> GraphDisplayContext<'a> {
         let maybe_cache_info = match root {
           Module::Js(module) => module.maybe_cache_info.as_ref(),
           Module::Json(module) => module.maybe_cache_info.as_ref(),
+          Module::Wasm(module) => module.maybe_cache_info.as_ref(),
           Module::Node(_) | Module::Npm(_) | Module::External(_) => None,
         };
         if let Some(cache_info) = maybe_cache_info {
@@ -468,6 +485,7 @@ impl<'a> GraphDisplayContext<'a> {
             let size = match m {
               Module::Js(module) => module.size(),
               Module::Json(module) => module.size(),
+              Module::Wasm(module) => module.size(),
               Module::Node(_) | Module::Npm(_) | Module::External(_) => 0,
             };
             size as f64
@@ -530,7 +548,7 @@ impl<'a> GraphDisplayContext<'a> {
 
   fn build_module_info(&mut self, module: &Module, type_dep: bool) -> TreeNode {
     enum PackageOrSpecifier {
-      Package(NpmResolutionPackage),
+      Package(Box<NpmResolutionPackage>),
       Specifier(ModuleSpecifier),
     }
 
@@ -538,7 +556,7 @@ impl<'a> GraphDisplayContext<'a> {
 
     let package_or_specifier = match module.npm() {
       Some(npm) => match self.npm_info.resolve_package(npm.nv_reference.nv()) {
-        Some(package) => Package(package.clone()),
+        Some(package) => Package(Box::new(package.clone())),
         None => Specifier(module.specifier().clone()), // should never happen
       },
       None => Specifier(module.specifier().clone()),
@@ -567,6 +585,7 @@ impl<'a> GraphDisplayContext<'a> {
         Specifier(_) => match module {
           Module::Js(module) => Some(module.size() as u64),
           Module::Json(module) => Some(module.size() as u64),
+          Module::Wasm(module) => Some(module.size() as u64),
           Module::Node(_) | Module::Npm(_) | Module::External(_) => None,
         },
       };
@@ -580,8 +599,8 @@ impl<'a> GraphDisplayContext<'a> {
         Package(package) => {
           tree_node.children.extend(self.build_npm_deps(package));
         }
-        Specifier(_) => {
-          if let Some(module) = module.js() {
+        Specifier(_) => match module {
+          Module::Js(module) => {
             if let Some(types_dep) = &module.maybe_types_dependency {
               if let Some(child) =
                 self.build_resolved_info(&types_dep.dependency, true)
@@ -593,7 +612,16 @@ impl<'a> GraphDisplayContext<'a> {
               tree_node.children.extend(self.build_dep_info(dep));
             }
           }
-        }
+          Module::Wasm(module) => {
+            for dep in module.dependencies.values() {
+              tree_node.children.extend(self.build_dep_info(dep));
+            }
+          }
+          Module::Json(_)
+          | Module::Npm(_)
+          | Module::Node(_)
+          | Module::External(_) => {}
+        },
       }
     }
     tree_node
@@ -645,10 +673,12 @@ impl<'a> GraphDisplayContext<'a> {
         let message = match err {
           HttpsChecksumIntegrity(_) => "(checksum integrity error)",
           Decode(_) => "(loading decode error)",
-          Loader(err) => match deno_core::error::get_custom_error_class(err) {
-            Some("NotCapable") => "(not capable, requires --allow-import)",
-            _ => "(loading error)",
-          },
+          Loader(err) => {
+            match deno_runtime::errors::get_error_class_name(err) {
+              Some("NotCapable") => "(not capable, requires --allow-import)",
+              _ => "(loading error)",
+            }
+          }
           Jsr(_) => "(loading error)",
           NodeUnknownBuiltinModule(_) => "(unknown node built-in error)",
           Npm(_) => "(npm loading error)",
@@ -656,7 +686,7 @@ impl<'a> GraphDisplayContext<'a> {
         };
         self.build_error_msg(specifier, message.as_ref())
       }
-      ModuleError::ParseErr(_, _) => {
+      ModuleError::ParseErr(_, _) | ModuleError::WasmParseErr(_, _) => {
         self.build_error_msg(specifier, "(parsing error)")
       }
       ModuleError::UnsupportedImportAttributeType { .. } => {

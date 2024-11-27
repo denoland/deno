@@ -1,6 +1,8 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 use std::net::SocketAddr;
+use std::sync::atomic::AtomicUsize;
+use std::sync::atomic::Ordering::SeqCst;
 use std::sync::Arc;
 
 use bytes::Bytes;
@@ -10,12 +12,61 @@ use http_body_util::BodyExt;
 use tokio::io::AsyncReadExt;
 use tokio::io::AsyncWriteExt;
 
+use crate::dns;
+
 use super::create_http_client;
 use super::CreateHttpClientOptions;
 
 static EXAMPLE_CRT: &[u8] = include_bytes!("../tls/testdata/example1_cert.der");
 static EXAMPLE_KEY: &[u8] =
   include_bytes!("../tls/testdata/example1_prikey.der");
+
+#[test]
+fn test_userspace_resolver() {
+  let thread_counter = Arc::new(AtomicUsize::new(0));
+
+  let thread_counter_ref = thread_counter.clone();
+  let rt = tokio::runtime::Builder::new_current_thread()
+    .enable_all()
+    .on_thread_start(move || {
+      thread_counter_ref.fetch_add(1, SeqCst);
+    })
+    .build()
+    .unwrap();
+
+  rt.block_on(async move {
+    assert_eq!(thread_counter.load(SeqCst), 0);
+    let src_addr = create_https_server(true).await;
+    assert_eq!(src_addr.ip().to_string(), "127.0.0.1");
+    // use `localhost` to ensure dns step happens.
+    let addr = format!("localhost:{}", src_addr.port());
+
+    let hickory = hickory_resolver::AsyncResolver::tokio(
+      Default::default(),
+      Default::default(),
+    );
+
+    assert_eq!(thread_counter.load(SeqCst), 0);
+    rust_test_client_with_resolver(
+      None,
+      addr.clone(),
+      "https",
+      http::Version::HTTP_2,
+      dns::Resolver::hickory_from_async_resolver(hickory),
+    )
+    .await;
+    assert_eq!(thread_counter.load(SeqCst), 0, "userspace resolver shouldn't spawn new threads.");
+    rust_test_client_with_resolver(
+      None,
+      addr.clone(),
+      "https",
+      http::Version::HTTP_2,
+      dns::Resolver::gai(),
+    )
+    .await;
+    assert_eq!(thread_counter.load(SeqCst), 1, "getaddrinfo is called inside spawn_blocking, so tokio spawn a new worker thread for it.");
+  });
+}
 
 #[tokio::test]
 async fn test_https_proxy_http11() {
@@ -52,27 +103,30 @@ async fn test_socks_proxy_h2() {
   run_test_client(prx_addr, src_addr, "socks5", http::Version::HTTP_2).await;
 }
 
-async fn run_test_client(
-  prx_addr: SocketAddr,
-  src_addr: SocketAddr,
+async fn rust_test_client_with_resolver(
+  prx_addr: Option<SocketAddr>,
+  src_addr: String,
   proto: &str,
   ver: http::Version,
+  resolver: dns::Resolver,
 ) {
   let client = create_http_client(
     "fetch/test",
     CreateHttpClientOptions {
       root_cert_store: None,
       ca_certs: vec![],
-      proxy: Some(deno_tls::Proxy {
-        url: format!("{}://{}", proto, prx_addr),
+      proxy: prx_addr.map(|p| deno_tls::Proxy {
+        url: format!("{}://{}", proto, p),
         basic_auth: None,
       }),
       unsafely_ignore_certificate_errors: Some(vec![]),
       client_cert_chain_and_key: None,
       pool_max_idle_per_host: None,
       pool_idle_timeout: None,
+      dns_resolver: resolver,
       http1: true,
       http2: true,
+      client_builder_hook: None,
     },
   )
   .unwrap();
@@ -90,6 +144,22 @@ async fn run_test_client(
   assert_eq!(resp.version(), ver);
   let hello = resp.collect().await.unwrap().to_bytes();
   assert_eq!(hello, "hello from server");
+}
+
+async fn run_test_client(
+  prx_addr: SocketAddr,
+  src_addr: SocketAddr,
+  proto: &str,
+  ver: http::Version,
+) {
+  rust_test_client_with_resolver(
+    Some(prx_addr),
+    src_addr.to_string(),
+    proto,
+    ver,
+    Default::default(),
+  )
+  .await
 }
 
 async fn create_https_server(allow_h2: bool) -> SocketAddr {

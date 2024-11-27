@@ -27,7 +27,16 @@ pub fn is_importable_ext(path: &Path) -> bool {
   if let Some(ext) = get_extension(path) {
     matches!(
       ext.as_str(),
-      "ts" | "tsx" | "js" | "jsx" | "mjs" | "mts" | "cjs" | "cts" | "json"
+      "ts"
+        | "tsx"
+        | "js"
+        | "jsx"
+        | "mjs"
+        | "mts"
+        | "cjs"
+        | "cts"
+        | "json"
+        | "wasm"
     )
   } else {
     false
@@ -40,21 +49,6 @@ pub fn get_extension(file_path: &Path) -> Option<String> {
     .extension()
     .and_then(|e| e.to_str())
     .map(|e| e.to_lowercase());
-}
-
-pub fn specifier_has_extension(
-  specifier: &ModuleSpecifier,
-  searching_ext: &str,
-) -> bool {
-  let Some((_, ext)) = specifier.path().rsplit_once('.') else {
-    return false;
-  };
-  let searching_ext = searching_ext.strip_prefix('.').unwrap_or(searching_ext);
-  debug_assert!(!searching_ext.contains('.')); // exts like .d.ts are not implemented here
-  if ext.len() != searching_ext.len() {
-    return false;
-  }
-  ext.eq_ignore_ascii_case(searching_ext)
 }
 
 pub fn get_atomic_dir_path(file_path: &Path) -> PathBuf {
@@ -237,6 +231,7 @@ mod test {
     assert!(is_script_ext(Path::new("foo.cjs")));
     assert!(is_script_ext(Path::new("foo.cts")));
     assert!(!is_script_ext(Path::new("foo.json")));
+    assert!(!is_script_ext(Path::new("foo.wasm")));
     assert!(!is_script_ext(Path::new("foo.mjsx")));
   }
 
@@ -258,6 +253,7 @@ mod test {
     assert!(is_importable_ext(Path::new("foo.cjs")));
     assert!(is_importable_ext(Path::new("foo.cts")));
     assert!(is_importable_ext(Path::new("foo.json")));
+    assert!(is_importable_ext(Path::new("foo.wasm")));
     assert!(!is_importable_ext(Path::new("foo.mjsx")));
   }
 
@@ -348,18 +344,6 @@ mod test {
         "from: \"{from_str}\" to: \"{to_str}\""
       );
     }
-  }
-
-  #[test]
-  fn test_specifier_has_extension() {
-    fn get(specifier: &str, ext: &str) -> bool {
-      specifier_has_extension(&ModuleSpecifier::parse(specifier).unwrap(), ext)
-    }
-
-    assert!(get("file:///a/b/c.ts", "ts"));
-    assert!(get("file:///a/b/c.ts", ".ts"));
-    assert!(!get("file:///a/b/c.ts", ".cts"));
-    assert!(get("file:///a/b/c.CtS", ".cts"));
   }
 
   #[test]

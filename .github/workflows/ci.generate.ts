@@ -5,15 +5,16 @@ import { stringify } from "jsr:@std/yaml@^0.221/stringify";
 // Bump this number when you want to purge the cache.
 // Note: the tools/release/01_bump_crate_versions.ts script will update this version
 // automatically via regex, so ensure that this line maintains this format.
-const cacheVersion = 22;
+const cacheVersion = 27;
 
-const ubuntuX86Runner = "ubuntu-22.04";
-const ubuntuX86XlRunner = "ubuntu-22.04-xl";
+const ubuntuX86Runner = "ubuntu-24.04";
+const ubuntuX86XlRunner = "ubuntu-24.04-xl";
 const ubuntuARMRunner = "ubicloud-standard-16-arm";
 const windowsX86Runner = "windows-2022";
 const windowsX86XlRunner = "windows-2022-xl";
 const macosX86Runner = "macos-13";
 const macosArmRunner = "macos-14";
+const selfHostedMacosArmRunner = "self-hosted";
 
 const Runners = {
   linuxX86: {
@@ -40,7 +41,8 @@ const Runners = {
   macosArm: {
     os: "macos",
     arch: "aarch64",
-    runner: macosArmRunner,
+    runner:
+      `\${{ github.repository == 'denoland/deno' && startsWith(github.ref, 'refs/tags/') && '${selfHostedMacosArmRunner}' || '${macosArmRunner}' }}`,
   },
   windowsX86: {
     os: "windows",
@@ -59,7 +61,7 @@ const prCacheKeyPrefix =
   `${cacheVersion}-cargo-target-\${{ matrix.os }}-\${{ matrix.arch }}-\${{ matrix.profile }}-\${{ matrix.job }}-`;
 
 // Note that you may need to add more version to the `apt-get remove` line below if you change this
-const llvmVersion = 18;
+const llvmVersion = 19;
 const installPkgsCommand =
   `sudo apt-get install --no-install-recommends clang-${llvmVersion} lld-${llvmVersion} clang-tools-${llvmVersion} clang-format-${llvmVersion} clang-tidy-${llvmVersion}`;
 const sysRootStep = {
@@ -71,7 +73,7 @@ export DEBIAN_FRONTEND=noninteractive
 sudo apt-get -qq remove --purge -y man-db  > /dev/null 2> /dev/null
 # Remove older clang before we install
 sudo apt-get -qq remove \
-  'clang-12*' 'clang-13*' 'clang-14*' 'clang-15*' 'clang-16*' 'llvm-12*' 'llvm-13*' 'llvm-14*' 'llvm-15*' 'llvm-16*' 'lld-12*' 'lld-13*' 'lld-14*' 'lld-15*' 'lld-16*' > /dev/null 2> /dev/null
+  'clang-12*' 'clang-13*' 'clang-14*' 'clang-15*' 'clang-16*' 'clang-17*' 'clang-18*' 'llvm-12*' 'llvm-13*' 'llvm-14*' 'llvm-15*' 'llvm-16*' 'lld-12*' 'lld-13*' 'lld-14*' 'lld-15*' 'lld-16*' 'lld-17*' 'lld-18*' > /dev/null 2> /dev/null
 
 # Install clang-XXX, lld-XXX, and debootstrap.
 echo "deb http://apt.llvm.org/jammy/ llvm-toolchain-jammy-${llvmVersion} main" |
@@ -86,7 +88,7 @@ ${installPkgsCommand} || echo 'Failed. Trying again.' && sudo apt-get clean && s
 (yes '' | sudo update-alternatives --force --all) > /dev/null 2> /dev/null || true
 
 echo "Decompressing sysroot..."
-wget -q https://github.com/denoland/deno_sysroot_build/releases/download/sysroot-20240528/sysroot-\`uname -m\`.tar.xz -O /tmp/sysroot.tar.xz
+wget -q https://github.com/denoland/deno_sysroot_build/releases/download/sysroot-20241030/sysroot-\`uname -m\`.tar.xz -O /tmp/sysroot.tar.xz
 cd /
 xzcat /tmp/sysroot.tar.xz | sudo tar -x
 sudo mount --rbind /dev /sysroot/dev

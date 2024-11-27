@@ -28,6 +28,7 @@ const {
   ArrayPrototypePush,
   ArrayPrototypeShift,
   ArrayPrototypeSome,
+  Error,
   ErrorPrototypeToString,
   ObjectDefineProperties,
   ObjectPrototypeIsPrototypeOf,
@@ -329,8 +330,12 @@ class WebSocket extends EventTarget {
     webidl.requiredArguments(arguments.length, 1, prefix);
     data = webidl.converters.WebSocketSend(data, prefix, "Argument 1");
 
-    if (this[_readyState] !== OPEN) {
+    if (this[_readyState] === CONNECTING) {
       throw new DOMException("'readyState' not OPEN", "InvalidStateError");
+    }
+
+    if (this[_readyState] !== OPEN) {
+      return;
     }
 
     if (this[_sendQueue].length === 0) {
@@ -488,8 +493,11 @@ class WebSocket extends EventTarget {
           /* error */
           this[_readyState] = CLOSED;
 
+          const message = op_ws_get_error(rid);
+          const error = new Error(message);
           const errorEv = new ErrorEvent("error", {
-            message: op_ws_get_error(rid),
+            error,
+            message,
           });
           this.dispatchEvent(errorEv);
 

@@ -43,7 +43,7 @@ pub enum NApiError {
   #[error("Unable to find register Node-API module at {}", .0.display())]
   ModuleNotFound(PathBuf),
   #[error(transparent)]
-  Permission(deno_core::error::AnyError),
+  Permission(#[from] PermissionCheckError),
 }
 
 #[cfg(unix)]
@@ -55,6 +55,7 @@ use libloading::os::windows::*;
 // Expose common stuff for ease of use.
 // `use deno_napi::*`
 pub use deno_core::v8;
+use deno_permissions::PermissionCheckError;
 pub use std::ffi::CStr;
 pub use std::os::raw::c_char;
 pub use std::os::raw::c_void;
@@ -508,20 +509,14 @@ deno_core::extension!(deno_napi,
 
 pub trait NapiPermissions {
   #[must_use = "the resolved return value to mitigate time-of-check to time-of-use issues"]
-  fn check(
-    &mut self,
-    path: &str,
-  ) -> Result<PathBuf, deno_core::error::AnyError>;
+  fn check(&mut self, path: &str) -> Result<PathBuf, PermissionCheckError>;
 }
 
 // NOTE(bartlomieju): for now, NAPI uses `--allow-ffi` flag, but that might
 // change in the future.
 impl NapiPermissions for deno_permissions::PermissionsContainer {
   #[inline(always)]
-  fn check(
-    &mut self,
-    path: &str,
-  ) -> Result<PathBuf, deno_core::error::AnyError> {
+  fn check(&mut self, path: &str) -> Result<PathBuf, PermissionCheckError> {
     deno_permissions::PermissionsContainer::check_ffi(self, path)
   }
 }
@@ -535,7 +530,7 @@ static NAPI_LOADED_MODULES: std::sync::LazyLock<
   RwLock<HashMap<PathBuf, NapiModuleHandle>>,
 > = std::sync::LazyLock::new(|| RwLock::new(HashMap::new()));
 
-#[op2(reentrant)]
+#[op2(reentrant, stack_trace)]
 fn op_napi_open<NP, 'scope>(
   scope: &mut v8::HandleScope<'scope>,
   isolate: *mut v8::Isolate,
@@ -553,7 +548,7 @@ where
   let (async_work_sender, cleanup_hooks, external_ops_tracker, path) = {
     let mut op_state = op_state.borrow_mut();
     let permissions = op_state.borrow_mut::<NP>();
-    let path = permissions.check(&path).map_err(NApiError::Permission)?;
+    let path = permissions.check(&path)?;
     let napi_state = op_state.borrow::<NapiState>();
     (
       op_state.borrow::<V8CrossThreadTaskSpawner>().clone(),
@@ -662,7 +657,11 @@ pub fn print_linker_flags(name: &str) {
     symbols_path,
   );
 
-  #[cfg(target_os = "linux")]
+  #[cfg(any(
+    target_os = "linux",
+    target_os = "freebsd",
+    target_os = "openbsd"
+  ))]
   println!(
     "cargo:rustc-link-arg-bin={name}=-Wl,--export-dynamic-symbol-list={}",
     symbols_path,

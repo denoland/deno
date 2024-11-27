@@ -2,7 +2,7 @@
 
 [package]
 name = "deno"
-version = "2.0.3"
+version = "2.1.1"
 authors.workspace = true
 default-run = "deno"
 edition.workspace = true
@@ -69,12 +69,12 @@ winres.workspace = true
 
 [dependencies]
 deno_ast = { workspace = true, features = ["bundler", "cjs", "codegen", "proposal", "react", "sourcemap", "transforms", "typescript", "view", "visit"] }
-deno_cache_dir = { workspace = true }
-deno_config = { version = "=0.37.2", features = ["workspace", "sync"] }
+deno_cache_dir.workspace = true
+deno_config.workspace = true
 deno_core = { workspace = true, features = ["include_js_files_for_snapshotting"] }
-deno_doc = { version = "0.154.0", default-features = false, features = ["rust", "html", "syntect"] }
-deno_graph = { version = "=0.83.4" }
-deno_lint = { version = "=0.67.0", features = ["docs"] }
+deno_doc = { version = "=0.161.1", features = ["rust", "comrak"] }
+deno_graph = { version = "=0.86.2" }
+deno_lint = { version = "=0.68.0", features = ["docs"] }
 deno_lockfile.workspace = true
 deno_npm.workspace = true
 deno_package_json.workspace = true
@@ -83,8 +83,9 @@ deno_resolver.workspace = true
 deno_runtime = { workspace = true, features = ["include_js_files_for_snapshotting"] }
 deno_semver.workspace = true
 deno_task_shell = "=0.18.1"
+deno_telemetry.workspace = true
 deno_terminal.workspace = true
-libsui = "0.4.0"
+libsui = "0.5.0"
 node_resolver.workspace = true
 
 anstream = "0.6.14"
@@ -107,7 +108,7 @@ dotenvy = "0.15.7"
 dprint-plugin-json = "=0.19.4"
 dprint-plugin-jupyter = "=0.1.5"
 dprint-plugin-markdown = "=0.17.8"
-dprint-plugin-typescript = "=0.93.0"
+dprint-plugin-typescript = "=0.93.2"
 env_logger = "=0.10.0"
 fancy-regex = "=0.10.0"
 faster-hex.workspace = true
@@ -122,14 +123,14 @@ hyper-util.workspace = true
 import_map = { version = "=0.20.1", features = ["ext"] }
 indexmap.workspace = true
 jsonc-parser = { workspace = true, features = ["cst", "serde"] }
-jupyter_runtime = { package = "runtimelib", version = "=0.14.0" }
+jupyter_runtime = { package = "runtimelib", version = "=0.19.0", features = ["tokio-runtime"] }
 lazy-regex.workspace = true
 libc.workspace = true
 libz-sys.workspace = true
 log = { workspace = true, features = ["serde"] }
 lsp-types.workspace = true
 malva = "=0.11.0"
-markup_fmt = "=0.14.0"
+markup_fmt = "=0.16.0"
 memmem.workspace = true
 monch.workspace = true
 notify.workspace = true
@@ -151,6 +152,7 @@ serde_repr.workspace = true
 sha2.workspace = true
 shell-escape = "=0.1.5"
 spki = { version = "0.7", features = ["pem"] }
+sqlformat = "=0.3.2"
 strsim = "0.11.1"
 tar.workspace = true
 tempfile.workspace = true

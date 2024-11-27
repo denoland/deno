@@ -31,6 +31,7 @@ import {
   isIP,
   isIPv4,
   isIPv6,
+  kReinitializeHandle,
   normalizedArgsSymbol,
 } from "ext:deno_node/internal/net.ts";
 import { Duplex } from "node:stream";
@@ -50,9 +51,11 @@ import {
   ERR_SERVER_ALREADY_LISTEN,
   ERR_SERVER_NOT_RUNNING,
   ERR_SOCKET_CLOSED,
+  ERR_SOCKET_CONNECTION_TIMEOUT,
   errnoException,
   exceptionWithHostPort,
   genericNodeError,
+  NodeAggregateError,
   uvExceptionWithHostPort,
 } from "ext:deno_node/internal/errors.ts";
 import type { ErrnoException } from "ext:deno_node/internal/errors.ts";
@@ -80,6 +83,7 @@ import { Buffer } from "node:buffer";
 import type { LookupOneOptions } from "ext:deno_node/internal/dns/utils.ts";
 import {
   validateAbortSignal,
+  validateBoolean,
   validateFunction,
   validateInt32,
   validateNumber,
@@ -100,13 +104,25 @@ import { ShutdownWrap } from "ext:deno_node/internal_binding/stream_wrap.ts";
 import { assert } from "ext:deno_node/_util/asserts.ts";
 import { isWindows } from "ext:deno_node/_util/os.ts";
 import { ADDRCONFIG, lookup as dnsLookup } from "node:dns";
-import { codeMap } from "ext:deno_node/internal_binding/uv.ts";
+import {
+  codeMap,
+  UV_ECANCELED,
+  UV_ETIMEDOUT,
+} from "ext:deno_node/internal_binding/uv.ts";
 import { guessHandleType } from "ext:deno_node/internal_binding/util.ts";
 import { debuglog } from "ext:deno_node/internal/util/debuglog.ts";
 import type { DuplexOptions } from "ext:deno_node/_stream.d.ts";
 import type { BufferEncoding } from "ext:deno_node/_global.d.ts";
 import type { Abortable } from "ext:deno_node/_events.d.ts";
 import { channel } from "node:diagnostics_channel";
+import { primordials } from "ext:core/mod.js";
+
+const {
+  ArrayPrototypeIncludes,
+  ArrayPrototypePush,
+  FunctionPrototypeBind,
+  MathMax,
+} = primordials;
 
 let debug = debuglog("net", (fn) => {
   debug = fn;
@@ -119,6 +135,9 @@ const kBytesWritten = Symbol("kBytesWritten");
 
 const DEFAULT_IPV4_ADDR = "0.0.0.0";
 const DEFAULT_IPV6_ADDR = "::";
+
+let autoSelectFamilyDefault = true;
+let autoSelectFamilyAttemptTimeoutDefault = 250;
 
 type Handle = TCP | Pipe;
 
@@ -214,6 +233,8 @@ interface TcpSocketConnectOptions extends ConnectOptions {
   hints?: number;
   family?: number;
   lookup?: LookupFunction;
+  autoSelectFamily?: boolean | undefined;
+  autoSelectFamilyAttemptTimeout?: number | undefined;
 }
 
 interface IpcSocketConnectOptions extends ConnectOptions {
@@ -316,12 +337,6 @@ export function _normalizeArgs(args: unknown[]): NormalizedArgs {
   return arr;
 }
 
-function _isTCPConnectWrap(
-  req: TCPConnectWrap | PipeConnectWrap,
-): req is TCPConnectWrap {
-  return "localAddress" in req && "localPort" in req;
-}
-
 function _afterConnect(
   status: number,
   // deno-lint-ignore no-explicit-any
@@ -372,7 +387,7 @@ function _afterConnect(
     socket.connecting = false;
     let details;
 
-    if (_isTCPConnectWrap(req)) {
+    if (req.localAddress && req.localPort) {
       details = req.localAddress + ":" + req.localPort;
     }
 
@@ -384,12 +399,113 @@ function _afterConnect(
       details,
     );
 
-    if (_isTCPConnectWrap(req)) {
+    if (details) {
       ex.localAddress = req.localAddress;
       ex.localPort = req.localPort;
     }
 
     socket.destroy(ex);
+  }
+}
+
+function _createConnectionError(req, status) {
+  let details;
+
+  if (req.localAddress && req.localPort) {
+    details = req.localAddress + ":" + req.localPort;
+  }
+
+  const ex = exceptionWithHostPort(
+    status,
+    "connect",
+    req.address,
+    req.port,
+    details,
+  );
+  if (details) {
+    ex.localAddress = req.localAddress;
+    ex.localPort = req.localPort;
+  }
+
+  return ex;
+}
+
+function _afterConnectMultiple(
+  context,
+  current,
+  status,
+  handle,
+  req,
+  readable,
+  writable,
+) {
+  debug(
+    "connect/multiple: connection attempt to %s:%s completed with status %s",
+    req.address,
+    req.port,
+    status,
+  );
+
+  // Make sure another connection is not spawned
+  clearTimeout(context[kTimeout]);
+
+  // One of the connection has completed and correctly dispatched but after timeout, ignore this one
+  if (status === 0 && current !== context.current - 1) {
+    debug(
+      "connect/multiple: ignoring successful but timedout connection to %s:%s",
+      req.address,
+      req.port,
+    );
+    handle.close();
+    return;
+  }
+
+  const self = context.socket;
+
+  // Some error occurred, add to the list of exceptions
+  if (status !== 0) {
+    const ex = _createConnectionError(req, status);
+    ArrayPrototypePush(context.errors, ex);
+
+    self.emit(
+      "connectionAttemptFailed",
+      req.address,
+      req.port,
+      req.addressType,
+      ex,
+    );
+
+    // Try the next address, unless we were aborted
+    if (context.socket.connecting) {
+      _internalConnectMultiple(context, status === UV_ECANCELED);
+    }
+
+    return;
+  }
+
+  _afterConnect(status, self._handle, req, readable, writable);
+}
+
+function _internalConnectMultipleTimeout(context, req, handle) {
+  debug(
+    "connect/multiple: connection to %s:%s timed out",
+    req.address,
+    req.port,
+  );
+  context.socket.emit(
+    "connectionAttemptTimeout",
+    req.address,
+    req.port,
+    req.addressType,
+  );
+
+  req.oncomplete = undefined;
+  ArrayPrototypePush(context.errors, _createConnectionError(req, UV_ETIMEDOUT));
+  handle.close();
+
+  // Try the next address, unless we were aborted
+  if (context.socket.connecting) {
+    _internalConnectMultiple(context);
   }
 }
 
@@ -495,6 +611,131 @@ function _internalConnect(
   }
 }
 
+function _internalConnectMultiple(context, canceled?: boolean) {
+  clearTimeout(context[kTimeout]);
+  const self = context.socket;
+
+  // We were requested to abort. Stop all operations
+  if (self._aborted) {
+    return;
+  }
+
+  // All connections have been tried without success, destroy with error
+  if (canceled || context.current === context.addresses.length) {
+    if (context.errors.length === 0) {
+      self.destroy(new ERR_SOCKET_CONNECTION_TIMEOUT());
+      return;
+    }
+
+    self.destroy(new NodeAggregateError(context.errors));
+    return;
+  }
+
+  assert(self.connecting);
+
+  const current = context.current++;
+
+  if (current > 0) {
+    self[kReinitializeHandle](new TCP(TCPConstants.SOCKET));
+  }
+
+  const { localPort, port, flags } = context;
+  const { address, family: addressType } = context.addresses[current];
+  let localAddress;
+  let err;
+
+  if (localPort) {
+    if (addressType === 4) {
+      localAddress = DEFAULT_IPV4_ADDR;
+      err = self._handle.bind(localAddress, localPort);
+    } else { // addressType === 6
+      localAddress = DEFAULT_IPV6_ADDR;
+      err = self._handle.bind6(localAddress, localPort, flags);
+    }
+
+    debug(
+      "connect/multiple: binding to localAddress: %s and localPort: %d (addressType: %d)",
+      localAddress,
+      localPort,
+      addressType,
+    );
+
+    err = _checkBindError(err, localPort, self._handle);
+    if (err) {
+      ArrayPrototypePush(
+        context.errors,
+        exceptionWithHostPort(err, "bind", localAddress, localPort),
+      );
+      _internalConnectMultiple(context);
+      return;
+    }
+  }
+
+  debug(
+    "connect/multiple: attempting to connect to %s:%d (addressType: %d)",
+    address,
+    port,
+    addressType,
+  );
+  self.emit("connectionAttempt", address, port, addressType);
+
+  const req = new TCPConnectWrap();
+  req.oncomplete = FunctionPrototypeBind(
+    _afterConnectMultiple,
+    undefined,
+    context,
+    current,
+  );
+  req.address = address;
+  req.port = port;
+  req.localAddress = localAddress;
+  req.localPort = localPort;
+  req.addressType = addressType;
+
+  ArrayPrototypePush(
+    self.autoSelectFamilyAttemptedAddresses,
+    `${address}:${port}`,
+  );
+
+  if (addressType === 4) {
+    err = self._handle.connect(req, address, port);
+  } else {
+    err = self._handle.connect6(req, address, port);
+  }
+
+  if (err) {
+    const sockname = self._getsockname();
+    let details;
+
+    if (sockname) {
+      details = sockname.address + ":" + sockname.port;
+    }
+
+    const ex = exceptionWithHostPort(err, "connect", address, port, details);
+    ArrayPrototypePush(context.errors, ex);
+
+    self.emit("connectionAttemptFailed", address, port, addressType, ex);
+    _internalConnectMultiple(context);
+    return;
+  }
+
+  if (current < context.addresses.length - 1) {
+    debug(
+      "connect/multiple: setting the attempt timeout to %d ms",
+      context.timeout,
+    );
+
+    // If the attempt has not returned an error, start the connection timer
+    context[kTimeout] = setTimeout(
+      _internalConnectMultipleTimeout,
+      context.timeout,
+      context,
+      req,
+      self._handle,
+    );
+  }
+}
+
 // Provide a better error message when we call end() as a result
 // of the other side sending a FIN.  The standard "write after end"
 // is overly vague, and makes it seem like the user's code is to blame.
@@ -597,7 +838,7 @@ function _lookupAndConnect(
 ) {
   const { localAddress, localPort } = options;
   const host = options.host || "localhost";
-  let { port } = options;
+  let { port, autoSelectFamilyAttemptTimeout, autoSelectFamily } = options;
 
   if (localAddress && !isIP(localAddress)) {
     throw new ERR_INVALID_IP_ADDRESS(localAddress);
@@ -620,6 +861,22 @@ function _lookupAndConnect(
   }
 
   port |= 0;
+
+  if (autoSelectFamily != null) {
+    validateBoolean(autoSelectFamily, "options.autoSelectFamily");
+  } else {
+    autoSelectFamily = autoSelectFamilyDefault;
+  }
+
+  if (autoSelectFamilyAttemptTimeout !== undefined) {
+    validateInt32(autoSelectFamilyAttemptTimeout);
+
+    if (autoSelectFamilyAttemptTimeout < 10) {
+      autoSelectFamilyAttemptTimeout = 10;
+    }
+  } else {
+    autoSelectFamilyAttemptTimeout = autoSelectFamilyAttemptTimeoutDefault;
+  }
 
   // If host is an IP, skip performing a lookup
   const addressType = isIP(host);
@@ -649,6 +906,7 @@ function _lookupAndConnect(
   const dnsOpts = {
     family: options.family,
     hints: options.hints || 0,
+    all: false,
   };
 
   if (
@@ -664,6 +922,31 @@ function _lookupAndConnect(
   debug("connect: dns options", dnsOpts);
   self._host = host;
   const lookup = options.lookup || dnsLookup;
+
+  if (
+    dnsOpts.family !== 4 && dnsOpts.family !== 6 && !localAddress &&
+    autoSelectFamily
+  ) {
+    debug("connect: autodetecting");
+
+    dnsOpts.all = true;
+    defaultTriggerAsyncIdScope(self[asyncIdSymbol], function () {
+      _lookupAndConnectMultiple(
+        self,
+        asyncIdSymbol,
+        lookup,
+        host,
+        options,
+        dnsOpts,
+        port,
+        localAddress,
+        localPort,
+        autoSelectFamilyAttemptTimeout,
+      );
+    });
+
+    return;
+  }
 
   defaultTriggerAsyncIdScope(self[asyncIdSymbol], function () {
     lookup(
@@ -716,6 +999,143 @@ function _lookupAndConnect(
         }
       },
     );
+  });
+}
+
+function _lookupAndConnectMultiple(
+  self: Socket,
+  asyncIdSymbol: number,
+  // deno-lint-ignore no-explicit-any
+  lookup: any,
+  host: string,
+  options: TcpSocketConnectOptions,
+  dnsopts,
+  port: number,
+  localAddress: string,
+  localPort: number,
+  timeout: number | undefined,
+) {
+  defaultTriggerAsyncIdScope(self[asyncIdSymbol], function emitLookup() {
+    lookup(host, dnsopts, function emitLookup(err, addresses) {
+      // It's possible we were destroyed while looking this up.
+      // XXX it would be great if we could cancel the promise returned by
+      // the look up.
+      if (!self.connecting) {
+        return;
+      } else if (err) {
+        self.emit("lookup", err, undefined, undefined, host);
+
+        // net.createConnection() creates a net.Socket object and immediately
+        // calls net.Socket.connect() on it (that's us). There are no event
+        // listeners registered yet so defer the error event to the next tick.
+        nextTick(_connectErrorNT, self, err);
+        return;
+      }
+
+      // Filter addresses by only keeping the one which are either IPv4 or IPV6.
+      // The first valid address determines which group has preference on the
+      // alternate family sorting which happens later.
+      const validAddresses = [[], []];
+      const validIps = [[], []];
+      let destinations;
+      for (let i = 0, l = addresses.length; i < l; i++) {
+        const address = addresses[i];
+        const { address: ip, family: addressType } = address;
+        self.emit("lookup", err, ip, addressType, host);
+        // It's possible we were destroyed while looking this up.
+        if (!self.connecting) {
+          return;
+        }
+        if (isIP(ip) && (addressType === 4 || addressType === 6)) {
+          destinations ||= addressType === 6 ? { 6: 0, 4: 1 } : { 4: 0, 6: 1 };
+
+          const destination = destinations[addressType];
+
+          // Only try an address once
+          if (!ArrayPrototypeIncludes(validIps[destination], ip)) {
+            ArrayPrototypePush(validAddresses[destination], address);
+            ArrayPrototypePush(validIps[destination], ip);
+          }
+        }
+      }
+
+      // When no AAAA or A records are available, fail on the first one
+      if (!validAddresses[0].length && !validAddresses[1].length) {
+        const { address: firstIp, family: firstAddressType } = addresses[0];
+
+        if (!isIP(firstIp)) {
+          err = new ERR_INVALID_IP_ADDRESS(firstIp);
+          nextTick(_connectErrorNT, self, err);
+        } else if (firstAddressType !== 4 && firstAddressType !== 6) {
+          err = new ERR_INVALID_ADDRESS_FAMILY(
+            firstAddressType,
+            options.host,
+            options.port,
+          );
+          nextTick(_connectErrorNT, self, err);
+        }
+
+        return;
+      }
+
+      // Sort addresses alternating families
+      const toAttempt = [];
+      for (
+        let i = 0,
+          l = MathMax(validAddresses[0].length, validAddresses[1].length);
+        i < l;
+        i++
+      ) {
+        if (i in validAddresses[0]) {
+          ArrayPrototypePush(toAttempt, validAddresses[0][i]);
+        }
+        if (i in validAddresses[1]) {
+          ArrayPrototypePush(toAttempt, validAddresses[1][i]);
+        }
+      }
+
+      if (toAttempt.length === 1) {
+        debug(
+          "connect/multiple: only one address found, switching back to single connection",
+        );
+        const { address: ip, family: addressType } = toAttempt[0];
+
+        self._unrefTimer();
+        defaultTriggerAsyncIdScope(
+          self[asyncIdSymbol],
+          _internalConnect,
+          self,
+          ip,
+          port,
+          addressType,
+          localAddress,
+          localPort,
+        );
+
+        return;
+      }
+
+      self.autoSelectFamilyAttemptedAddresses = [];
+      debug("connect/multiple: will try the following addresses", toAttempt);
+
+      const context = {
+        socket: self,
+        addresses: toAttempt,
+        current: 0,
+        port,
+        localPort,
+        timeout,
+        [kTimeout]: null,
+        errors: [],
+      };
+
+      self._unrefTimer();
+      defaultTriggerAsyncIdScope(
+        self[asyncIdSymbol],
+        _internalConnectMultiple,
+        context,
+      );
+    });
   });
 }
 
@@ -777,6 +1197,7 @@ export class Socket extends Duplex {
   _host: string | null = null;
   // deno-lint-ignore no-explicit-any
   _parent: any = null;
+  autoSelectFamilyAttemptedAddresses: AddressInfo[] | undefined = undefined;
 
   constructor(options: SocketOptions | number) {
     if (typeof options === "number") {
@@ -1546,6 +1967,16 @@ export class Socket extends Duplex {
   set _handle(v: Handle | null) {
     this[kHandle] = v;
   }
+
+  // deno-lint-ignore no-explicit-any
+  [kReinitializeHandle](handle: any) {
+    this._handle?.close();
+
+    this._handle = handle;
+    this._handle[ownerSymbol] = this;
+
+    _initSocketHandle(this);
+  }
 }
 
 export const Stream = Socket;
@@ -1592,6 +2023,33 @@ export function connect(...args: unknown[]) {
 }
 
 export const createConnection = connect;
+
+/** https://docs.deno.com/api/node/net/#namespace_getdefaultautoselectfamily */
+export function getDefaultAutoSelectFamily() {
+  return autoSelectFamilyDefault;
+}
+
+/** https://docs.deno.com/api/node/net/#namespace_setdefaultautoselectfamily */
+export function setDefaultAutoSelectFamily(value: boolean) {
+  validateBoolean(value, "value");
+  autoSelectFamilyDefault = value;
+}
+
+/** https://docs.deno.com/api/node/net/#namespace_getdefaultautoselectfamilyattempttimeout */
+export function getDefaultAutoSelectFamilyAttemptTimeout() {
+  return autoSelectFamilyAttemptTimeoutDefault;
+}
+
+/** https://docs.deno.com/api/node/net/#namespace_setdefaultautoselectfamilyattempttimeout */
+export function setDefaultAutoSelectFamilyAttemptTimeout(value: number) {
+  validateInt32(value, "value", 1);
+
+  if (value < 10) {
+    value = 10;
+  }
+
+  autoSelectFamilyAttemptTimeoutDefault = value;
+}
 
 export interface ListenOptions extends Abortable {
   fd?: number;
@@ -1871,13 +2329,23 @@ function _setupListenHandle(
 
     // Try to bind to the unspecified IPv6 address, see if IPv6 is available
     if (!address && typeof fd !== "number") {
-      if (isWindows) {
-        address = DEFAULT_IPV4_ADDR;
-        addressType = 4;
-      } else {
-        address = DEFAULT_IPV6_ADDR;
-        addressType = 6;
-      }
+      // TODO(@bartlomieju): differs from Node which tries to bind to IPv6 first
+      // when no address is provided.
+      //
+      // Forcing IPv4 as a workaround for Deno not aligning with Node on
+      // implicit binding on Windows.
+      //
+      // REF: https://github.com/denoland/deno/issues/10762
+      // rval = _createServerHandle(DEFAULT_IPV6_ADDR, port, 6, fd, flags);
+
+      // if (typeof rval === "number") {
+      //   rval = null;
+      address = DEFAULT_IPV4_ADDR;
+      addressType = 4;
+      // } else {
+      //   address = DEFAULT_IPV6_ADDR;
+      //   addressType = 6;
+      // }
     }
 
     if (rval === null) {
@@ -2468,15 +2936,19 @@ export { BlockList, isIP, isIPv4, isIPv6, SocketAddress };
 export default {
   _createServerHandle,
   _normalizeArgs,
-  isIP,
-  isIPv4,
-  isIPv6,
   BlockList,
-  SocketAddress,
   connect,
   createConnection,
   createServer,
+  getDefaultAutoSelectFamily,
+  getDefaultAutoSelectFamilyAttemptTimeout,
+  isIP,
+  isIPv4,
+  isIPv6,
   Server,
+  setDefaultAutoSelectFamily,
+  setDefaultAutoSelectFamilyAttemptTimeout,
   Socket,
+  SocketAddress,
   Stream,
 };

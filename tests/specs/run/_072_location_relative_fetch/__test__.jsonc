@@ -1,0 +1,4 @@
+{
+  "args": "run --location http://127.0.0.1:4545/ --allow-net 072_location_relative_fetch.ts",
+  "output": "072_location_relative_fetch.ts.out"
+}

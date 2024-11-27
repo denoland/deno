@@ -182,6 +182,7 @@ function getContextOptions(options) {
 
 let defaultContextNameIndex = 1;
 export function createContext(
+  // deno-lint-ignore prefer-primordials
   contextObject = {},
   options = { __proto__: null },
 ) {

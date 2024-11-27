@@ -4,14 +4,12 @@ use deno_core::op2;
 use deno_core::url::Url;
 use deno_core::OpState;
 use deno_fs::FileSystemRc;
-use node_resolver::NodeResolution;
 use std::borrow::Cow;
 use std::path::Path;
 use std::path::PathBuf;
 
 use crate::NodePermissions;
-use crate::NodeRequireResolverRc;
-use crate::NodeResolverRc;
+use crate::NodeRequireLoaderRc;
 
 #[must_use = "the resolved return value to mitigate time-of-check to time-of-use issues"]
 fn ensure_read_permission<'a, P>(
@@ -21,9 +19,9 @@ fn ensure_read_permission<'a, P>(
 where
   P: NodePermissions + 'static,
 {
-  let resolver = state.borrow::<NodeRequireResolverRc>().clone();
+  let loader = state.borrow::<NodeRequireLoaderRc>().clone();
   let permissions = state.borrow_mut::<P>();
-  resolver.ensure_read_permission(permissions, file_path)
+  loader.ensure_read_permission(permissions, file_path)
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -42,15 +40,12 @@ pub enum WorkerThreadsFilenameError {
   UrlToPath,
   #[error("File not found [{0:?}]")]
   FileNotFound(PathBuf),
-  #[error("Neither ESM nor CJS")]
-  NeitherEsmNorCjs,
-  #[error("{0}")]
-  UrlToNodeResolution(node_resolver::errors::UrlToNodeResolutionError),
   #[error(transparent)]
   Fs(#[from] deno_io::fs::FsError),
 }
 
-#[op2]
+// todo(dsherret): we should remove this and do all this work inside op_create_worker
+#[op2(stack_trace)]
 #[string]
 pub fn op_worker_threads_filename<P>(
   state: &mut OpState,
@@ -88,30 +83,5 @@ where
       url_path.to_path_buf(),
     ));
   }
-  let node_resolver = state.borrow::<NodeResolverRc>();
-  match node_resolver
-    .url_to_node_resolution(url)
-    .map_err(WorkerThreadsFilenameError::UrlToNodeResolution)?
-  {
-    NodeResolution::Esm(u) => Ok(u.to_string()),
-    NodeResolution::CommonJs(u) => wrap_cjs(u),
-    NodeResolution::BuiltIn(_) => {
-      Err(WorkerThreadsFilenameError::NeitherEsmNorCjs)
-    }
-  }
-}
-
-///
-/// Wrap a CJS file-URL and the required setup in a stringified `data:`-URL
-///
-fn wrap_cjs(url: Url) -> Result<String, WorkerThreadsFilenameError> {
-  let path = url
-    .to_file_path()
-    .map_err(|_| WorkerThreadsFilenameError::UrlToPath)?;
-  let filename = path.file_name().unwrap().to_string_lossy();
-  Ok(format!(
-    "data:text/javascript,import {{ createRequire }} from \"node:module\";\
-    const require = createRequire(\"{}\"); require(\"./{}\");",
-    url, filename,
-  ))
+  Ok(url.to_string())
 }

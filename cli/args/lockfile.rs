@@ -126,11 +126,7 @@ impl CliLockfile {
       maybe_deno_json: Option<&ConfigFile>,
     ) -> HashSet<JsrDepPackageReq> {
       maybe_deno_json
-        .map(|c| {
-          crate::args::deno_json::deno_json_deps(c)
-            .into_iter()
-            .collect()
-        })
+        .map(crate::args::deno_json::deno_json_deps)
         .unwrap_or_default()
     }
 
