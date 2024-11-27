@@ -27,6 +27,7 @@ use deno_core::futures::TryFutureExt;
 use deno_core::op2;
 use deno_core::url;
 use deno_core::url::Url;
+use deno_core::v8;
 use deno_core::AsyncRefCell;
 use deno_core::AsyncResult;
 use deno_core::BufView;
@@ -141,6 +142,7 @@ deno_core::extension!(deno_fetch,
     op_fetch_send,
     op_utf8_to_byte_string,
     op_fetch_custom_client<FP>,
+    op_fetch_promise_is_settled,
   ],
   esm = [
     "20_headers.js",
@@ -1205,4 +1207,9 @@ pub fn extract_authority(url: &mut Url) -> Option<(String, Option<String>)> {
   }
 
   None
+}
+
+#[op2(fast)]
+fn op_fetch_promise_is_settled(promise: v8::Local<v8::Promise>) -> bool {
+  promise.state() != v8::PromiseState::Pending
 }
