@@ -750,7 +750,7 @@ impl ModuleGraphBuilder {
   fn create_graph_resolver(&self) -> Result<CliGraphResolver, AnyError> {
     let jsx_import_source_config = self
       .cli_options
-      .workspace()
+      .start_dir
       .to_maybe_jsx_import_source_config()?;
     Ok(CliGraphResolver {
       cjs_tracker: &self.cjs_tracker,

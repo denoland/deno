@@ -1266,7 +1266,7 @@ impl CliOptions {
     &self,
     config_type: TsConfigType,
   ) -> Result<TsConfigForEmit, AnyError> {
-    self.workspace().resolve_ts_config_for_emit(config_type)
+    self.start_dir.to_ts_config_for_emit(config_type)
   }
 
   pub fn resolve_inspector_server(
@@ -1296,7 +1296,7 @@ impl CliOptions {
     &self,
   ) -> Result<Vec<deno_graph::ReferrerImports>, AnyError> {
     self
-      .workspace()
+      .start_dir
       .to_compiler_option_types()
       .map(|maybe_imports| {
         maybe_imports
@@ -1345,6 +1345,17 @@ impl CliOptions {
   ) -> Result<WorkspaceLintOptions, AnyError> {
     let lint_config = self.workspace().to_lint_config()?;
     WorkspaceLintOptions::resolve(&lint_config, lint_flags)
+  }
+
+  pub fn resolve_file_flags_for_members(
+    &self,
+    file_flags: &FileFlags,
+  ) -> Result<Vec<(WorkspaceDirectory, FilePatterns)>, AnyError> {
+    let cli_arg_patterns = file_flags.as_file_patterns(self.initial_cwd())?;
+    let member_patterns = self
+      .workspace()
+      .resolve_file_patterns_for_members(&cli_arg_patterns)?;
+    Ok(member_patterns)
   }
 
   pub fn resolve_lint_options_for_members(
@@ -1445,7 +1456,7 @@ impl CliOptions {
   }
 
   pub fn check_js(&self) -> bool {
-    self.workspace().check_js()
+    self.start_dir.check_js()
   }
 
   pub fn coverage_dir(&self) -> Option<String> {

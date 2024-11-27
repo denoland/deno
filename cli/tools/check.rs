@@ -10,7 +10,6 @@ use std::sync::Arc;
 
 use deno_ast::MediaType;
 use deno_ast::ModuleSpecifier;
-use deno_config::deno_json::get_ts_config_for_emit;
 use deno_config::glob::FilePatterns;
 use deno_config::glob::PathOrPattern;
 use deno_core::anyhow::anyhow;
@@ -30,7 +29,6 @@ use crate::args::CliOptions;
 use crate::args::ConfigFlag;
 use crate::args::FileFlags;
 use crate::args::Flags;
-use crate::args::LintFlags;
 use crate::args::ScopeOptions;
 use crate::args::TsConfig;
 use crate::args::TsConfigType;
@@ -74,25 +72,28 @@ pub async fn check(
           || f.starts_with("npm:")
           || f.starts_with("jsr:")
       });
-    // TODO(nayeemrmn): Using lint options for now. Add proper API to deno_config.
     let mut by_workspace_directory = cli_options
-      .resolve_lint_options_for_members(&LintFlags {
-        files: FileFlags {
-          ignore: Default::default(),
-          include: files,
-        },
-        ..Default::default()
+      .resolve_file_flags_for_members(&FileFlags {
+        ignore: Default::default(),
+        include: files,
       })?
       .into_iter()
-      .flat_map(|(d, o)| {
-        Some((d.dir_url().clone(), (Arc::new(d), o.files.include?)))
-      })
+      .map(|(d, p)| (d.dir_url().clone(), (Arc::new(d), p)))
       .collect::<BTreeMap<_, _>>();
     if !remote_files.is_empty() {
       by_workspace_directory
         .entry(cli_options.start_dir.dir_url().clone())
-        .or_insert((cli_options.start_dir.clone(), Default::default()))
+        .or_insert((
+          cli_options.start_dir.clone(),
+          FilePatterns {
+            base: cli_options.initial_cwd().to_path_buf(),
+            include: None,
+            exclude: Default::default(),
+          },
+        ))
         .1
+        .include
+        .get_or_insert_with(Default::default)
         .append(
           remote_files
             .iter()
@@ -108,7 +109,6 @@ pub async fn check(
         .collect::<BTreeSet<_>>(),
     );
     let dir_count = by_workspace_directory.len();
-    let initial_cwd = cli_options.initial_cwd().to_path_buf();
     let mut diagnostics = vec![];
     let mut all_errors = vec![];
     let mut found_specifiers = false;
@@ -125,7 +125,7 @@ pub async fn check(
       });
       let cli_options = CliOptions::new(
         flags.clone(),
-        initial_cwd.clone(),
+        cli_options.initial_cwd().to_path_buf(),
         lockfile.map(Arc::new),
         npmrc,
         workspace_directory,
@@ -133,11 +133,7 @@ pub async fn check(
         scope_options.map(Arc::new),
       )?;
       let specifiers = collect_specifiers(
-        FilePatterns {
-          include: Some(patterns),
-          exclude: cli_options.workspace().resolve_config_excludes()?,
-          base: initial_cwd.clone(),
-        },
+        patterns,
         cli_options.vendor_dir_path().map(ToOwned::to_owned),
         |e| is_script_ext(e.path),
       )?;
@@ -353,22 +349,9 @@ impl TypeChecker {
     }
 
     log::debug!("Type checking.");
-    // TODO(nayeemrmn): This is a hack to get member-specific compiler options.
-    let ts_config_result = if let Some(config_file) = self
+    let ts_config_result = self
       .cli_options
-      .start_dir
-      .maybe_deno_json()
-      .filter(|c| c.json.compiler_options.is_some())
-    {
-      get_ts_config_for_emit(
-        TsConfigType::Check { lib: options.lib },
-        Some(config_file),
-      )?
-    } else {
-      self
-        .cli_options
-        .resolve_ts_config_for_emit(TsConfigType::Check { lib: options.lib })?
-    };
+      .resolve_ts_config_for_emit(TsConfigType::Check { lib: options.lib })?;
     if options.log_ignored_options {
       check_warn_tsconfig(&ts_config_result);
     }

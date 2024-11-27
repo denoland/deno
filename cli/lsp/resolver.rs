@@ -139,7 +139,7 @@ impl LspScopeResolver {
     let maybe_jsx_import_source_config =
       config_data.and_then(|d| d.maybe_jsx_import_source_config());
     let graph_imports = config_data
-      .and_then(|d| d.member_dir.workspace.to_compiler_option_types().ok())
+      .and_then(|d| d.member_dir.to_compiler_option_types().ok())
       .map(|imports| {
         Arc::new(
           imports
