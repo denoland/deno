@@ -1,4 +1,0 @@
-{
-  "args": "run --allow-read top_level_await/order.js",
-  "output": "top_level_await/order.out"
-}

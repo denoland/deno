@@ -21,6 +21,7 @@ members = [
   "ext/napi/sym",
   "ext/net",
   "ext/node",
+  "ext/telemetry",
   "ext/url",
   "ext/web",
   "ext/webgpu",
@@ -46,7 +47,7 @@ repository = "https://github.com/denoland/deno"
 
 [workspace.dependencies]
 deno_ast = { version = "=0.43.3", features = ["transpiling"] }
-deno_core = { version = "0.322.0" }
+deno_core = { version = "0.323.0" }
 
 deno_bench_util = { version = "0.173.0", path = "./bench_util" }
 deno_config = { version = "=0.39.2", features = ["workspace", "sync"] }
@@ -82,6 +83,7 @@ deno_kv = { version = "0.87.0", path = "./ext/kv" }
 deno_napi = { version = "0.110.0", path = "./ext/napi" }
 deno_net = { version = "0.171.0", path = "./ext/net" }
 deno_node = { version = "0.116.0", path = "./ext/node" }
+deno_telemetry = { version = "0.1.0", path = "./ext/telemetry" }
 deno_tls = { version = "0.166.0", path = "./ext/tls" }
 deno_url = { version = "0.179.0", path = "./ext/url" }
 deno_web = { version = "0.210.0", path = "./ext/web" }
