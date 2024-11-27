@@ -79,8 +79,8 @@ pub async fn info(
           target_pkg_json.clone().dir_path(),
           sub_path.as_deref(),
           Some(&cwd_url),
-          deno_package_json::NodeModuleKind::Esm,
-          node_resolver::NodeResolutionMode::Execution,
+          node_resolver::ResolutionMode::Import,
+          node_resolver::NodeResolutionKind::Execution,
         )?),
         deno_config::workspace::MappedResolution::PackageJson {
           alias,
@@ -98,8 +98,8 @@ pub async fn info(
               pkg_folder,
               sub_path.as_deref(),
               Some(&cwd_url),
-              deno_package_json::NodeModuleKind::Esm,
-              node_resolver::NodeResolutionMode::Execution,
+              node_resolver::ResolutionMode::Import,
+              node_resolver::NodeResolutionKind::Execution,
             )?)
           }
           _ => None,
