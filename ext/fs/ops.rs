@@ -2,6 +2,7 @@
 
 use std::borrow::Cow;
 use std::cell::RefCell;
+use std::convert::Infallible;
 use std::error::Error;
 use std::fmt::Formatter;
 use std::io;
@@ -19,12 +20,15 @@ use crate::FsPermissions;
 use crate::OpenOptions;
 use boxed_error::Boxed;
 use deno_core::op2;
+use deno_core::v8;
 use deno_core::CancelFuture;
 use deno_core::CancelHandle;
+use deno_core::FastString;
 use deno_core::JsBuffer;
 use deno_core::OpState;
 use deno_core::ResourceId;
 use deno_core::ToJsBuffer;
+use deno_core::ToV8;
 use deno_io::fs::FileResource;
 use deno_io::fs::FsError;
 use deno_io::fs::FsStat;
@@ -1381,12 +1385,34 @@ where
   Ok(buf.into_owned().into_boxed_slice().into())
 }
 
+/// Maintains a static reference to the string if possible.
+struct V8MaybeStaticStr(Cow<'static, str>);
+
+impl<'s> ToV8<'s> for V8MaybeStaticStr {
+  type Error = Infallible;
+
+  #[inline]
+  fn to_v8(
+    self,
+    scope: &mut v8::HandleScope<'s>,
+  ) -> Result<v8::Local<'s, v8::Value>, Self::Error> {
+    Ok(
+      match self.0 {
+        Cow::Borrowed(text) => FastString::from_static(text),
+        Cow::Owned(value) => value.into(),
+      }
+      .v8_string(scope)
+      .into(),
+    )
+  }
+}
+
 #[op2(stack_trace)]
-#[string]
+#[to_v8]
 pub fn op_fs_read_file_text_sync<P>(
   state: &mut OpState,
   #[string] path: String,
-) -> Result<Cow<'static, str>, FsOpsError>
+) -> Result<V8MaybeStaticStr, FsOpsError>
 where
   P: FsPermissions + 'static,
 {
@@ -1398,17 +1424,16 @@ where
   let str = fs
     .read_text_file_lossy_sync(&path, Some(&mut access_check))
     .map_err(|error| map_permission_error("readfile", error, &path))?;
-
-  Ok(str)
+  Ok(V8MaybeStaticStr(str))
 }
 
 #[op2(async, stack_trace)]
-#[string]
+#[to_v8]
 pub async fn op_fs_read_file_text_async<P>(
   state: Rc<RefCell<OpState>>,
   #[string] path: String,
   #[smi] cancel_rid: Option<ResourceId>,
-) -> Result<Cow<'static, str>, FsOpsError>
+) -> Result<V8MaybeStaticStr, FsOpsError>
 where
   P: FsPermissions + 'static,
 {
@@ -1442,7 +1467,7 @@ where
       .map_err(|error| map_permission_error("readfile", error, &path))?
   };
 
-  Ok(str)
+  Ok(V8MaybeStaticStr(str))
 }
 
 fn to_seek_from(offset: i64, whence: i32) -> Result<SeekFrom, FsOpsError> {
