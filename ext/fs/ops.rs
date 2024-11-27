@@ -1386,7 +1386,7 @@ where
 }
 
 /// Maintains a static reference to the string if possible.
-struct V8MaybeStaticStr(Cow<'static, str>);
+pub struct V8MaybeStaticStr(pub Cow<'static, str>);
 
 impl<'s> ToV8<'s> for V8MaybeStaticStr {
   type Error = Infallible;
