@@ -4449,12 +4449,7 @@ fn op_load<'s>(
         version: state.script_version(&specifier),
         is_cjs: doc
           .document()
-          .map(|d| {
-            state
-              .state_snapshot
-              .is_cjs_resolver
-              .get_doc_resolution_mode(d)
-          })
+          .map(|d| d.resolution_mode())
           .unwrap_or(ResolutionMode::Import)
           == ResolutionMode::Require,
       })
@@ -4689,10 +4684,7 @@ fn op_script_names(state: &mut OpState) -> ScriptNames {
         let (types, _) = documents.resolve_dependency(
           types,
           specifier,
-          state
-            .state_snapshot
-            .is_cjs_resolver
-            .get_doc_resolution_mode(doc),
+          doc.resolution_mode(),
           doc.file_referrer(),
         )?;
         let types_doc = documents.get_or_load(&types, doc.file_referrer())?;
@@ -5576,7 +5568,6 @@ mod tests {
       documents: Arc::new(documents),
       assets: Default::default(),
       config: Arc::new(config),
-      is_cjs_resolver: Default::default(),
       resolver,
     });
     let performance = Arc::new(Performance::default());
