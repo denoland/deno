@@ -620,7 +620,7 @@ function createGPUSupportedLimits(limits) {
 }
 
 function normalizeLimit(limit) {
-  if (typeof num === "bigint") {
+  if (typeof limit === "bigint") {
     limit = Number(limit);
     if (limit === NumberPOSITIVE_INFINITY) {
       limit = NumberMAX_SAFE_INTEGER;
