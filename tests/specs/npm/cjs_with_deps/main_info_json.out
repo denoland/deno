@@ -42,7 +42,7 @@
           "npmPackage": "chai@4.3.6"
         }
       ],
-      "local": "[WILDCARD]/main.js",
+      "local": "[WILDCARD]main.js",
       "size": 325,
       "mediaType": "JavaScript",
       "specifier": "file:///[WILDCARD]/main.js"
