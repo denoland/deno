@@ -208,10 +208,14 @@ pub async fn doc(
     } else {
       Default::default()
     };
+    
+    let mut main_entrypoint = None;
 
     let rewrite_map =
       if let Some(config_file) = cli_options.start_dir.maybe_deno_json() {
         let config = config_file.to_exports_config()?;
+
+        main_entrypoint = config.get_resolved(".").ok().flatten();
 
         let rewrite_map = config
           .clone()
@@ -240,6 +244,7 @@ pub async fn doc(
       html_options,
       deno_ns,
       rewrite_map,
+      main_entrypoint,
     )
   } else {
     let modules_len = doc_nodes_by_url.len();
@@ -383,6 +388,7 @@ fn generate_docs_directory(
   html_options: &DocHtmlFlag,
   deno_ns: std::collections::HashMap<Vec<String>, Option<Rc<ShortPath>>>,
   rewrite_map: Option<IndexMap<ModuleSpecifier, String>>,
+  main_entrypoint: Option<ModuleSpecifier>,
 ) -> Result<(), AnyError> {
   let cwd = std::env::current_dir().context("Failed to get CWD")?;
   let output_dir_resolved = cwd.join(&html_options.output);
@@ -415,7 +421,7 @@ fn generate_docs_directory(
 
   let options = deno_doc::html::GenerateOptions {
     package_name: html_options.name.clone(),
-    main_entrypoint: None,
+    main_entrypoint,
     rewrite_map,
     href_resolver: Rc::new(DocResolver {
       deno_ns,
