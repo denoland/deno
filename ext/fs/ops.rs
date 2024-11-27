@@ -1413,7 +1413,8 @@ impl<'s> ToV8<'s> for V8MaybeStaticStr {
   ) -> Result<v8::Local<'s, v8::Value>, Self::Error> {
     // todo(https://github.com/denoland/deno_core/pull/986): remove this check
     // when upgrading deno_core
-    if self.0.len() > (i32::MAX as usize) {
+    const MAX_V8_STRING_LENGTH: usize = 536870888;
+    if self.0.len() > MAX_V8_STRING_LENGTH {
       return Err(FastStringV8AllocationError);
     }
 
