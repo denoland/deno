@@ -725,7 +725,11 @@ fn print_available_tasks(
         writeln!(writer, "    {slash_slash} {}", colors::italic_gray(line))?;
       }
     }
-    writeln!(writer, "    {}", desc.task.command)?;
+    writeln!(
+      writer,
+      "    {}",
+      console_static_text::ansi::strip_ansi_codes(&desc.task.command)
+    )?;
     if !desc.task.dependencies.is_empty() {
       writeln!(
         writer,
