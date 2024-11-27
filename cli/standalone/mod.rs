@@ -516,13 +516,13 @@ impl NodeRequireLoader for EmbeddedModuleLoader {
   fn load_text_file_lossy(
     &self,
     path: &std::path::Path,
-  ) -> Result<String, AnyError> {
+  ) -> Result<Cow<'static, str>, AnyError> {
     let file_entry = self.shared.vfs.file_entry(path)?;
     let file_bytes = self
       .shared
       .vfs
       .read_file_all(file_entry, VfsFileSubDataKind::ModuleGraph)?;
-    Ok(String::from_utf8(file_bytes.into_owned())?)
+    Ok(String::from_utf8(file_bytes.into_owned())?.into())
   }
 
   fn is_maybe_cjs(

@@ -157,7 +157,10 @@ pub trait NodeRequireLoader {
     path: &'a Path,
   ) -> Result<Cow<'a, Path>, AnyError>;
 
-  fn load_text_file_lossy(&self, path: &Path) -> Result<String, AnyError>;
+  fn load_text_file_lossy(
+    &self,
+    path: &Path,
+  ) -> Result<Cow<'static, str>, AnyError>;
 
   /// Get if the module kind is maybe CJS and loading should determine
   /// if its CJS or ESM.

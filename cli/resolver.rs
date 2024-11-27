@@ -63,7 +63,10 @@ pub struct ModuleCodeStringSource {
 pub struct CliDenoResolverFs(pub Arc<dyn FileSystem>);
 
 impl deno_resolver::fs::DenoResolverFs for CliDenoResolverFs {
-  fn read_to_string_lossy(&self, path: &Path) -> std::io::Result<String> {
+  fn read_to_string_lossy(
+    &self,
+    path: &Path,
+  ) -> std::io::Result<Cow<'static, str>> {
     self
       .0
       .read_text_file_lossy_sync(path, None)

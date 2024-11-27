@@ -492,6 +492,7 @@ where
   let loader = state.borrow::<NodeRequireLoaderRc>();
   loader
     .load_text_file_lossy(&file_path)
+    .map(String::from)
     .map_err(|e| RequireErrorKind::ReadModule(e).into_box())
 }
 
