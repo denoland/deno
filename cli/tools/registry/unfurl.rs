@@ -12,7 +12,7 @@ use deno_graph::DynamicTemplatePart;
 use deno_graph::ParserModuleAnalyzer;
 use deno_graph::TypeScriptReference;
 use deno_package_json::PackageJsonDepValue;
-use deno_resolver::sloppy_imports::SloppyImportsResolutionMode;
+use deno_resolver::sloppy_imports::SloppyImportsResolutionKind;
 use deno_runtime::deno_node::is_builtin_node_module;
 
 use crate::resolver::CliSloppyImportsResolver;
@@ -180,7 +180,7 @@ impl SpecifierUnfurler {
     let resolved =
       if let Some(sloppy_imports_resolver) = &self.sloppy_imports_resolver {
         sloppy_imports_resolver
-          .resolve(&resolved, SloppyImportsResolutionMode::Execution)
+          .resolve(&resolved, SloppyImportsResolutionKind::Execution)
           .map(|res| res.into_specifier())
           .unwrap_or(resolved)
       } else {
@@ -319,8 +319,8 @@ impl SpecifierUnfurler {
     }
     for ts_ref in &module_info.ts_references {
       let specifier_with_range = match ts_ref {
-        TypeScriptReference::Path(range) => range,
-        TypeScriptReference::Types(range) => range,
+        TypeScriptReference::Path(s) => s,
+        TypeScriptReference::Types { specifier, .. } => specifier,
       };
       analyze_specifier(
         &specifier_with_range.text,
@@ -328,10 +328,10 @@ impl SpecifierUnfurler {
         &mut text_changes,
       );
     }
-    for specifier_with_range in &module_info.jsdoc_imports {
+    for jsdoc in &module_info.jsdoc_imports {
       analyze_specifier(
-        &specifier_with_range.text,
-        &specifier_with_range.range,
+        &jsdoc.specifier.text,
+        &jsdoc.specifier.range,
         &mut text_changes,
       );
     }

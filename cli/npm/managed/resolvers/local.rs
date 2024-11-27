@@ -298,6 +298,12 @@ async fn sync_resolution_with_fs(
     return Ok(()); // don't create the directory
   }
 
+  // don't set up node_modules (and more importantly try to acquire the file lock)
+  // if we're running as part of a lifecycle script
+  if super::common::lifecycle_scripts::is_running_lifecycle_script() {
+    return Ok(());
+  }
+
   let deno_local_registry_dir = root_node_modules_dir_path.join(".deno");
   let deno_node_modules_dir = deno_local_registry_dir.join("node_modules");
   fs::create_dir_all(&deno_node_modules_dir).with_context(|| {

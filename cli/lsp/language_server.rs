@@ -22,7 +22,8 @@ use deno_semver::jsr::JsrPackageReqReference;
 use indexmap::Equivalent;
 use indexmap::IndexSet;
 use log::error;
-use node_resolver::NodeModuleKind;
+use node_resolver::NodeResolutionKind;
+use node_resolver::ResolutionMode;
 use serde::Deserialize;
 use serde_json::from_value;
 use std::collections::BTreeMap;
@@ -993,13 +994,10 @@ impl Inner {
               let resolver = inner.resolver.as_cli_resolver(Some(&referrer));
               let Ok(specifier) = resolver.resolve(
                 &specifier,
-                &deno_graph::Range {
-                  specifier: referrer.clone(),
-                  start: deno_graph::Position::zeroed(),
-                  end: deno_graph::Position::zeroed(),
-                },
-                NodeModuleKind::Esm,
-                deno_graph::source::ResolutionMode::Types,
+                &referrer,
+                deno_graph::Position::zeroed(),
+                ResolutionMode::Import,
+                NodeResolutionKind::Types,
               ) else {
                 return;
               };
@@ -1640,8 +1638,8 @@ impl Inner {
         .get_ts_diagnostics(&specifier, asset_or_doc.document_lsp_version());
       let specifier_kind = asset_or_doc
         .document()
-        .map(|d| self.is_cjs_resolver.get_doc_module_kind(d))
-        .unwrap_or(NodeModuleKind::Esm);
+        .map(|d| self.is_cjs_resolver.get_doc_resolution_mode(d))
+        .unwrap_or(ResolutionMode::Import);
       let mut includes_no_cache = false;
       for diagnostic in &fixable_diagnostics {
         match diagnostic.source.as_deref() {
@@ -1864,8 +1862,8 @@ impl Inner {
           maybe_asset_or_doc
             .as_ref()
             .and_then(|d| d.document())
-            .map(|d| self.is_cjs_resolver.get_doc_module_kind(d))
-            .unwrap_or(NodeModuleKind::Esm),
+            .map(|d| self.is_cjs_resolver.get_doc_resolution_mode(d))
+            .unwrap_or(ResolutionMode::Import),
           &combined_code_actions.changes,
           self,
         )
@@ -1921,8 +1919,8 @@ impl Inner {
           &action_data.specifier,
           asset_or_doc
             .document()
-            .map(|d| self.is_cjs_resolver.get_doc_module_kind(d))
-            .unwrap_or(NodeModuleKind::Esm),
+            .map(|d| self.is_cjs_resolver.get_doc_resolution_mode(d))
+            .unwrap_or(ResolutionMode::Import),
           &refactor_edit_info.edits,
           self,
         )
@@ -3781,14 +3779,11 @@ impl Inner {
   fn task_definitions(&self) -> LspResult<Vec<TaskDefinition>> {
     let mut result = vec![];
     for config_file in self.config.tree.config_files() {
-      if let Some(tasks) = json!(&config_file.json.tasks).as_object() {
-        for (name, value) in tasks {
-          let Some(command) = value.as_str() else {
-            continue;
-          };
+      if let Some(tasks) = config_file.to_tasks_config().ok().flatten() {
+        for (name, def) in tasks {
           result.push(TaskDefinition {
             name: name.clone(),
-            command: command.to_string(),
+            command: def.command.clone(),
             source_uri: url_to_uri(&config_file.specifier)
               .map_err(|_| LspError::internal_error())?,
           });
