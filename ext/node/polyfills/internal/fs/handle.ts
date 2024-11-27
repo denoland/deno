@@ -149,6 +149,9 @@ export class FileHandle extends EventEmitter {
   stat(options?: { bigint: boolean }): Promise<Stats | BigIntStats> {
     return fsCall(promises.fstat, this, options);
   }
+  sync(): Promise<void> {
+    return Promise.resolve(promises.sync(this.fd));
+  }
 }
 
 function fsCall(fn, handle, ...args) {
