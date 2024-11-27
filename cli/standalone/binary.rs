@@ -4,6 +4,7 @@ use std::borrow::Cow;
 use std::collections::BTreeMap;
 use std::collections::HashMap;
 use std::collections::VecDeque;
+use std::env;
 use std::env::current_exe;
 use std::ffi::OsString;
 use std::fs;
@@ -15,6 +16,7 @@ use std::io::Seek;
 use std::io::SeekFrom;
 use std::io::Write;
 use std::ops::Range;
+use std::path::Component;
 use std::path::Path;
 use std::path::PathBuf;
 use std::process::Command;
@@ -47,11 +49,11 @@ use deno_runtime::deno_fs::FileSystem;
 use deno_runtime::deno_fs::RealFs;
 use deno_runtime::deno_io::fs::FsError;
 use deno_runtime::deno_node::PackageJson;
-use deno_runtime::ops::otel::OtelConfig;
 use deno_semver::npm::NpmVersionReqParseError;
 use deno_semver::package::PackageReq;
 use deno_semver::Version;
 use deno_semver::VersionReqSpecifierParseError;
+use deno_telemetry::OtelConfig;
 use indexmap::IndexMap;
 use log::Level;
 use serde::Deserialize;
@@ -87,6 +89,7 @@ use super::serialization::RemoteModulesStore;
 use super::serialization::RemoteModulesStoreBuilder;
 use super::virtual_fs::FileBackedVfs;
 use super::virtual_fs::VfsBuilder;
+use super::virtual_fs::VfsFileSubDataKind;
 use super::virtual_fs::VfsRoot;
 use super::virtual_fs::VirtualDirectory;
 
@@ -275,7 +278,9 @@ impl StandaloneModules {
     if specifier.scheme() == "file" {
       let path = deno_path_util::url_to_file_path(specifier)?;
       let bytes = match self.vfs.file_entry(&path) {
-        Ok(entry) => self.vfs.read_file_all(entry)?,
+        Ok(entry) => self
+          .vfs
+          .read_file_all(entry, VfsFileSubDataKind::ModuleGraph)?,
         Err(err) if err.kind() == ErrorKind::NotFound => {
           let bytes = match RealFs.read_file_sync(&path, None) {
             Ok(bytes) => bytes,
@@ -454,7 +459,7 @@ impl<'a> DenoCompileBinaryWriter<'a> {
     //
     // Phase 2 of the 'min sized' deno compile RFC talks
     // about adding this as a flag.
-    if let Some(path) = std::env::var_os("DENORT_BIN") {
+    if let Some(path) = get_dev_binary_path() {
       return std::fs::read(&path).with_context(|| {
         format!("Could not find denort at '{}'", path.to_string_lossy())
       });
@@ -691,6 +696,7 @@ impl<'a> DenoCompileBinaryWriter<'a> {
               Some(source) => source,
               None => RealFs.read_file_sync(&file_path, None)?,
             },
+            VfsFileSubDataKind::ModuleGraph,
           )
           .with_context(|| {
             format!("Failed adding '{}'", file_path.display())
@@ -902,6 +908,31 @@ impl<'a> DenoCompileBinaryWriter<'a> {
       }
     }
   }
+}
+
+fn get_denort_path(deno_exe: PathBuf) -> Option<OsString> {
+  let mut denort = deno_exe;
+  denort.set_file_name(if cfg!(windows) {
+    "denort.exe"
+  } else {
+    "denort"
+  });
+  denort.exists().then(|| denort.into_os_string())
+}
+
+fn get_dev_binary_path() -> Option<OsString> {
+  env::var_os("DENORT_BIN").or_else(|| {
+    env::current_exe().ok().and_then(|exec_path| {
+      if exec_path
+        .components()
+        .any(|component| component == Component::Normal("target".as_ref()))
+      {
+        get_denort_path(exec_path)
+      } else {
+        None
+      }
+    })
+  })
 }
 
 /// This function returns the environment variables specified

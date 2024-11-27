@@ -8,8 +8,8 @@ use boxed_error::Boxed;
 use thiserror::Error;
 use url::Url;
 
-use crate::NodeModuleKind;
-use crate::NodeResolutionMode;
+use crate::NodeResolutionKind;
+use crate::ResolutionMode;
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
 #[allow(non_camel_case_types)]
@@ -203,24 +203,24 @@ pub enum PackageSubpathResolveErrorKind {
   maybe_referrer.as_ref().map(|r|
     format!(
       " from{} referrer {}",
-      match referrer_kind {
-        NodeModuleKind::Esm => "",
-        NodeModuleKind::Cjs => " cjs",
+      match resolution_mode {
+        ResolutionMode::Import => "",
+        ResolutionMode::Require => " cjs",
       },
       r
     )
   ).unwrap_or_default(),
-  match mode {
-    NodeResolutionMode::Execution => "",
-    NodeResolutionMode::Types => " for types",
+  match resolution_kind {
+    NodeResolutionKind::Execution => "",
+    NodeResolutionKind::Types => " for types",
   }
 )]
 pub struct PackageTargetNotFoundError {
   pub pkg_json_path: PathBuf,
   pub target: String,
   pub maybe_referrer: Option<Url>,
-  pub referrer_kind: NodeModuleKind,
-  pub mode: NodeResolutionMode,
+  pub resolution_mode: ResolutionMode,
+  pub resolution_kind: NodeResolutionKind,
 }
 
 impl NodeJsErrorCoded for PackageTargetNotFoundError {
@@ -586,7 +586,7 @@ pub struct PackagePathNotExportedError {
   pub pkg_json_path: PathBuf,
   pub subpath: String,
   pub maybe_referrer: Option<Url>,
-  pub mode: NodeResolutionMode,
+  pub resolution_kind: NodeResolutionKind,
 }
 
 impl NodeJsErrorCoded for PackagePathNotExportedError {
@@ -603,9 +603,9 @@ impl std::fmt::Display for PackagePathNotExportedError {
     f.write_str(self.code().as_str())?;
     f.write_char(']')?;
 
-    let types_msg = match self.mode {
-      NodeResolutionMode::Execution => String::new(),
-      NodeResolutionMode::Types => " for types".to_string(),
+    let types_msg = match self.resolution_kind {
+      NodeResolutionKind::Execution => String::new(),
+      NodeResolutionKind::Types => " for types".to_string(),
     };
     if self.subpath == "." {
       write!(
@@ -678,7 +678,7 @@ mod test {
         pkg_json_path: PathBuf::from("test_path").join("package.json"),
         subpath: "./jsx-runtime".to_string(), 
         maybe_referrer: None,
-        mode: NodeResolutionMode::Types
+        resolution_kind: NodeResolutionKind::Types
       }.to_string(),
       format!("[ERR_PACKAGE_PATH_NOT_EXPORTED] Package subpath './jsx-runtime' is not defined for types by \"exports\" in 'test_path{separator_char}package.json'")
     );
@@ -687,7 +687,7 @@ mod test {
         pkg_json_path: PathBuf::from("test_path").join("package.json"),
         subpath: ".".to_string(), 
         maybe_referrer: None,
-        mode: NodeResolutionMode::Types
+        resolution_kind: NodeResolutionKind::Types
       }.to_string(),
       format!("[ERR_PACKAGE_PATH_NOT_EXPORTED] No \"exports\" main defined for types in 'test_path{separator_char}package.json'")
     );

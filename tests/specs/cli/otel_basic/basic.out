@@ -7,7 +7,7 @@
       "parentSpanId": "",
       "flags": 1,
       "name": "GET",
-      "kind": 1,
+      "kind": 3,
       "startTimeUnixNano": "[WILDCARD]",
       "endTimeUnixNano": "[WILDCARD]",
       "attributes": [
@@ -59,10 +59,68 @@
       }
     },
     {
-      "traceId": "00000000000000000000000000000001",
+      "traceId": "00000000000000000000000000000003",
+      "spanId": "0000000000000004",
+      "traceState": "",
+      "parentSpanId": "",
+      "flags": 1,
+      "name": "GET",
+      "kind": 2,
+      "startTimeUnixNano": "[WILDCARD]",
+      "endTimeUnixNano": "[WILDCARD]",
+      "attributes": [
+        {
+          "key": "http.request.method",
+          "value": {
+            "stringValue": "GET"
+          }
+        },
+        {
+          "key": "url.full",
+          "value": {
+            "stringValue": "http://localhost:[WILDCARD]/"
+          }
+        },
+        {
+          "key": "url.scheme",
+          "value": {
+            "stringValue": "http"
+          }
+        },
+        {
+          "key": "url.path",
+          "value": {
+            "stringValue": "/"
+          }
+        },
+        {
+          "key": "url.query",
+          "value": {
+            "stringValue": ""
+          }
+        },
+        {
+          "key": "http.response.status_code",
+          "value": {
+            "stringValue": "200"
+          }
+        }
+      ],
+      "droppedAttributesCount": 0,
+      "events": [],
+      "droppedEventsCount": 0,
+      "links": [],
+      "droppedLinksCount": 0,
+      "status": {
+        "message": "",
+        "code": 0
+      }
+    },
+    {
+      "traceId": "00000000000000000000000000000003",
       "spanId": "1000000000000001",
       "traceState": "",
-      "parentSpanId": "0000000000000002",
+      "parentSpanId": "0000000000000004",
       "flags": 1,
       "name": "outer span",
       "kind": 1,
@@ -80,7 +138,7 @@
       }
     },
     {
-      "traceId": "00000000000000000000000000000001",
+      "traceId": "00000000000000000000000000000003",
       "spanId": "1000000000000002",
       "traceState": "",
       "parentSpanId": "1000000000000001",
@@ -113,7 +171,7 @@
       "attributes": [],
       "droppedAttributesCount": 0,
       "flags": 1,
-      "traceId": "00000000000000000000000000000001",
+      "traceId": "00000000000000000000000000000003",
       "spanId": "1000000000000002"
     },
     {
@@ -127,7 +185,7 @@
       "attributes": [],
       "droppedAttributesCount": 0,
       "flags": 1,
-      "traceId": "00000000000000000000000000000001",
+      "traceId": "00000000000000000000000000000003",
       "spanId": "1000000000000002"
     }
   ]

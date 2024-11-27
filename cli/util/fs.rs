@@ -659,7 +659,7 @@ impl LaxSingleProcessFsFlag {
               //
               // This uses a blocking task because we use a single threaded
               // runtime and this is time sensitive so we don't want it to update
-              // at the whims of of whatever is occurring on the runtime thread.
+              // at the whims of whatever is occurring on the runtime thread.
               spawn_blocking({
                 let token = token.clone();
                 let last_updated_path = last_updated_path.clone();

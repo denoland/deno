@@ -25,7 +25,7 @@ use deno_config::deno_json::JsxImportSourceConfig;
 use deno_config::workspace::JsrPackageConfig;
 use deno_core::anyhow::bail;
 use deno_graph::source::LoaderChecksum;
-use deno_graph::source::ResolutionMode;
+use deno_graph::source::ResolutionKind;
 use deno_graph::FillFromLockfileOptions;
 use deno_graph::JsrLoadError;
 use deno_graph::ModuleLoadError;
@@ -44,7 +44,7 @@ use deno_graph::ModuleGraphError;
 use deno_graph::ResolutionError;
 use deno_graph::SpecifierError;
 use deno_path_util::url_to_file_path;
-use deno_resolver::sloppy_imports::SloppyImportsResolutionMode;
+use deno_resolver::sloppy_imports::SloppyImportsResolutionKind;
 use deno_runtime::deno_fs::FileSystem;
 use deno_runtime::deno_node;
 use deno_runtime::deno_permissions::PermissionsContainer;
@@ -795,7 +795,7 @@ fn enhanced_sloppy_imports_error_message(
     ModuleError::LoadingErr(specifier, _, ModuleLoadError::Loader(_)) // ex. "Is a directory" error
     | ModuleError::Missing(specifier, _) => {
       let additional_message = CliSloppyImportsResolver::new(SloppyImportsCachedFs::new(fs.clone()))
-        .resolve(specifier, SloppyImportsResolutionMode::Execution)?
+        .resolve(specifier, SloppyImportsResolutionKind::Execution)?
         .as_suggestion_message();
       Some(format!(
         "{} {} or run with --unstable-sloppy-imports",
@@ -1100,12 +1100,12 @@ impl<'a> deno_graph::source::FileSystem for DenoGraphFsAdapter<'a> {
   }
 }
 
-pub fn format_range_with_colors(range: &deno_graph::Range) -> String {
+pub fn format_range_with_colors(referrer: &deno_graph::Range) -> String {
   format!(
     "{}:{}:{}",
-    colors::cyan(range.specifier.as_str()),
-    colors::yellow(&(range.start.line + 1).to_string()),
-    colors::yellow(&(range.start.character + 1).to_string())
+    colors::cyan(referrer.specifier.as_str()),
+    colors::yellow(&(referrer.range.start.line + 1).to_string()),
+    colors::yellow(&(referrer.range.start.character + 1).to_string())
   )
 }
 
@@ -1195,16 +1195,44 @@ impl<'a> deno_graph::source::Resolver for CliGraphResolver<'a> {
     &self,
     raw_specifier: &str,
     referrer_range: &deno_graph::Range,
-    mode: ResolutionMode,
+    resolution_kind: ResolutionKind,
   ) -> Result<ModuleSpecifier, ResolveError> {
     self.resolver.resolve(
       raw_specifier,
-      referrer_range,
-      self
-        .cjs_tracker
-        .get_referrer_kind(&referrer_range.specifier),
-      mode,
+      &referrer_range.specifier,
+      referrer_range.range.start,
+      referrer_range
+        .resolution_mode
+        .map(to_node_resolution_mode)
+        .unwrap_or_else(|| {
+          self
+            .cjs_tracker
+            .get_referrer_kind(&referrer_range.specifier)
+        }),
+      to_node_resolution_kind(resolution_kind),
     )
+  }
+}
+
+pub fn to_node_resolution_kind(
+  kind: ResolutionKind,
+) -> node_resolver::NodeResolutionKind {
+  match kind {
+    ResolutionKind::Execution => node_resolver::NodeResolutionKind::Execution,
+    ResolutionKind::Types => node_resolver::NodeResolutionKind::Types,
+  }
+}
+
+pub fn to_node_resolution_mode(
+  mode: deno_graph::source::ResolutionMode,
+) -> node_resolver::ResolutionMode {
+  match mode {
+    deno_graph::source::ResolutionMode::Import => {
+      node_resolver::ResolutionMode::Import
+    }
+    deno_graph::source::ResolutionMode::Require => {
+      node_resolver::ResolutionMode::Require
+    }
   }
 }
 
@@ -1214,7 +1242,7 @@ mod test {
 
   use deno_ast::ModuleSpecifier;
   use deno_graph::source::ResolveError;
-  use deno_graph::Position;
+  use deno_graph::PositionRange;
   use deno_graph::Range;
   use deno_graph::ResolutionError;
   use deno_graph::SpecifierError;
@@ -1235,8 +1263,8 @@ mod test {
         specifier: input.to_string(),
         range: Range {
           specifier,
-          start: Position::zeroed(),
-          end: Position::zeroed(),
+          resolution_mode: None,
+          range: PositionRange::zeroed(),
         },
       };
       assert_eq!(get_resolution_error_bare_node_specifier(&err), output);
@@ -1251,8 +1279,8 @@ mod test {
       let err = ResolutionError::InvalidSpecifier {
         range: Range {
           specifier,
-          start: Position::zeroed(),
-          end: Position::zeroed(),
+          resolution_mode: None,
+          range: PositionRange::zeroed(),
         },
         error: SpecifierError::ImportPrefixMissing {
           specifier: input.to_string(),

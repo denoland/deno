@@ -45,7 +45,7 @@ use deno_graph::Resolution;
 use deno_graph::ResolutionError;
 use deno_graph::SpecifierError;
 use deno_resolver::sloppy_imports::SloppyImportsResolution;
-use deno_resolver::sloppy_imports::SloppyImportsResolutionMode;
+use deno_resolver::sloppy_imports::SloppyImportsResolutionKind;
 use deno_runtime::deno_fs;
 use deno_runtime::deno_node;
 use deno_runtime::tokio_util::create_basic_runtime;
@@ -1266,7 +1266,7 @@ impl DenoDiagnostic {
       Self::NoLocal(specifier) => {
         let maybe_sloppy_resolution = CliSloppyImportsResolver::new(
           SloppyImportsCachedFs::new(Arc::new(deno_fs::RealFs))
-        ).resolve(specifier, SloppyImportsResolutionMode::Execution);
+        ).resolve(specifier, SloppyImportsResolutionKind::Execution);
         let data = maybe_sloppy_resolution.as_ref().map(|res| {
           json!({
             "specifier": specifier,
@@ -1531,7 +1531,7 @@ fn diagnose_dependency(
     && !dependency.imports.iter().any(|i| {
       dependency
         .maybe_type
-        .includes(&i.specifier_range.start)
+        .includes(i.specifier_range.range.start)
         .is_some()
     });
 
