@@ -52,6 +52,38 @@ fn deno_task_ansi_escape_codes() {
       console.expect("- dev");
       console.expect("    echo 'BOOO!!!'");
       console.expect("- next");
-      console.expect("    - dev    echo 'I am your friend.'")
+      console.expect("    - dev    echo 'I am your friend.'");
+    });
+}
+
+#[test]
+fn deno_task_control_chars() {
+  let context = TestContextBuilder::default().use_temp_cwd().build();
+  let temp_dir = context.temp_dir();
+  temp_dir.write(
+    "deno.json",
+    r#"{
+  "tasks": {
+    "dev": "echo 'BOOO!!!' && \r    echo hi there is my command",
+    "serve": {
+      "description": "this is a\tm\rangled description",
+      "command": "echo hello"
+    }
+  }
+}
+"#,
+  );
+
+  context
+    .new_command()
+    .args_vec(["task"])
+    .with_pty(|mut console| {
+      console.expect("Available tasks:");
+      console.expect("- dev");
+      console
+        .expect("    echo 'BOOO!!!' && \\r    echo hi there is my command");
+      console.expect("- serve");
+      console.expect("    // this is a\\tm\\rangled description");
+      console.expect("    echo hello");
     });
 }
