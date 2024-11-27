@@ -1,5 +1,5 @@
 {
-  "tests":{
+  "tests": {
     "imports_package_json": {
       "args": "run --no-lock --node-modules-dir=none main.js",
       "output": "main.out"
