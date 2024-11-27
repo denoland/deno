@@ -208,7 +208,7 @@ pub async fn doc(
     } else {
       Default::default()
     };
-    
+
     let mut main_entrypoint = None;
 
     let rewrite_map =
