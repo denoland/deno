@@ -9,7 +9,6 @@ use super::jsr::CliJsrSearchApi;
 use super::lsp_custom;
 use super::npm::CliNpmSearchApi;
 use super::registries::ModuleRegistry;
-use super::resolver::LspIsCjsResolver;
 use super::resolver::LspResolver;
 use super::search::PackageSearchApi;
 use super::tsc;
@@ -161,7 +160,6 @@ pub async fn get_import_completions(
   jsr_search_api: &CliJsrSearchApi,
   npm_search_api: &CliNpmSearchApi,
   documents: &Documents,
-  is_cjs_resolver: &LspIsCjsResolver,
   resolver: &LspResolver,
   maybe_import_map: Option<&ImportMap>,
 ) -> Option<lsp::CompletionResponse> {
@@ -171,7 +169,7 @@ pub async fn get_import_completions(
   let resolution_mode = graph_range
     .resolution_mode
     .map(to_node_resolution_mode)
-    .unwrap_or_else(|| is_cjs_resolver.get_doc_resolution_mode(&document));
+    .unwrap_or_else(|| document.resolution_mode());
   let range = to_narrow_lsp_range(document.text_info(), graph_range.range);
   let resolved = resolver
     .as_cli_resolver(file_referrer)

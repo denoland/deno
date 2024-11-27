@@ -26,13 +26,13 @@ impl<TEnv: NodeResolverEnv> CjsTracker<TEnv> {
   pub fn new(
     in_npm_pkg_checker: Arc<dyn InNpmPackageChecker>,
     pkg_json_resolver: Arc<PackageJsonResolver<TEnv>>,
-    options: IsCjsResolverOptions,
+    mode: IsCjsResolutionMode,
   ) -> Self {
     Self {
       is_cjs_resolver: IsCjsResolver::new(
         in_npm_pkg_checker,
         pkg_json_resolver,
-        options,
+        mode,
       ),
       known: Default::default(),
     }
@@ -114,10 +114,14 @@ impl<TEnv: NodeResolverEnv> CjsTracker<TEnv> {
   }
 }
 
-#[derive(Debug)]
-pub struct IsCjsResolverOptions {
-  pub detect_cjs: bool,
-  pub is_node_main: bool,
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum IsCjsResolutionMode {
+  /// Requires an explicit `"type": "commonjs"` in the package.json.
+  ExplicitTypeCommonJs,
+  /// Implicitly uses `"type": "commonjs"` if no `"type"` is specified.
+  ImplicitTypeCommonJs,
+  /// Does not respect `"type": "commonjs"` and always treats ambiguous files as ESM.
+  Disabled,
 }
 
 /// Resolves whether a module is CJS or ESM.
@@ -125,19 +129,19 @@ pub struct IsCjsResolverOptions {
 pub struct IsCjsResolver<TEnv: NodeResolverEnv> {
   in_npm_pkg_checker: Arc<dyn InNpmPackageChecker>,
   pkg_json_resolver: Arc<PackageJsonResolver<TEnv>>,
-  options: IsCjsResolverOptions,
+  mode: IsCjsResolutionMode,
 }
 
 impl<TEnv: NodeResolverEnv> IsCjsResolver<TEnv> {
   pub fn new(
     in_npm_pkg_checker: Arc<dyn InNpmPackageChecker>,
     pkg_json_resolver: Arc<PackageJsonResolver<TEnv>>,
-    options: IsCjsResolverOptions,
+    mode: IsCjsResolutionMode,
   ) -> Self {
     Self {
       in_npm_pkg_checker,
       pkg_json_resolver,
-      options,
+      mode,
     }
   }
 
@@ -249,18 +253,19 @@ impl<TEnv: NodeResolverEnv> IsCjsResolver<TEnv> {
       } else {
         Ok(ResolutionMode::Require)
       }
-    } else if self.options.detect_cjs || self.options.is_node_main {
+    } else if self.mode != IsCjsResolutionMode::Disabled {
       if let Some(pkg_json) =
         self.pkg_json_resolver.get_closest_package_json(specifier)?
       {
         let is_cjs_type = pkg_json.typ == "commonjs"
-          || self.options.is_node_main && pkg_json.typ == "none";
+          || self.mode == IsCjsResolutionMode::ImplicitTypeCommonJs
+            && pkg_json.typ == "none";
         Ok(if is_cjs_type {
           ResolutionMode::Require
         } else {
           ResolutionMode::Import
         })
-      } else if self.options.is_node_main {
+      } else if self.mode == IsCjsResolutionMode::ImplicitTypeCommonJs {
         Ok(ResolutionMode::Require)
       } else {
         Ok(ResolutionMode::Import)

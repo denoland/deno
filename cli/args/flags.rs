@@ -598,6 +598,7 @@ pub struct UnstableConfig {
   // TODO(bartlomieju): remove in Deno 2.5
   pub legacy_flag_enabled: bool, // --unstable
   pub bare_node_builtins: bool,
+  pub detect_cjs: bool,
   pub sloppy_imports: bool,
   pub features: Vec<String>, // --unstabe-kv --unstable-cron
 }
@@ -4373,7 +4374,7 @@ impl CommandExt for Command {
     ).arg(
       Arg::new("unstable-detect-cjs")
         .long("unstable-detect-cjs")
-        .help("Reads the package.json type field in a project to treat .js files as .cjs")
+        .help("Treats ambiguous .js, .jsx, .ts, .tsx files as CommonJS modules in more cases")
         .value_parser(FalseyValueParser::new())
         .action(ArgAction::SetTrue)
         .hide(true)
@@ -5986,6 +5987,7 @@ fn unstable_args_parse(
 
   flags.unstable_config.bare_node_builtins =
     matches.get_flag("unstable-bare-node-builtins");
+  flags.unstable_config.detect_cjs = matches.get_flag("unstable-detect-cjs");
   flags.unstable_config.sloppy_imports =
     matches.get_flag("unstable-sloppy-imports");
 

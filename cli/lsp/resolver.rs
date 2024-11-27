@@ -13,8 +13,8 @@ use deno_graph::GraphImport;
 use deno_graph::ModuleSpecifier;
 use deno_graph::Range;
 use deno_npm::NpmSystemInfo;
-use deno_path_util::url_from_directory_path;
 use deno_path_util::url_to_file_path;
+use deno_resolver::cjs::IsCjsResolutionMode;
 use deno_resolver::npm::NpmReqResolverOptions;
 use deno_resolver::DenoResolverOptions;
 use deno_resolver::NodeAndNpmReqResolver;
@@ -39,7 +39,6 @@ use std::collections::HashSet;
 use std::sync::Arc;
 
 use super::cache::LspCache;
-use super::documents::Document;
 use super::jsr::JsrCacheResolver;
 use crate::args::create_default_npmrc;
 use crate::args::CacheSetting;
@@ -71,7 +70,6 @@ use crate::resolver::CliResolverOptions;
 use crate::resolver::IsCjsResolver;
 use crate::resolver::WorkerCliNpmGraphResolver;
 use crate::tsc::into_specifier_and_media_type;
-use crate::util::fs::canonicalize_path_maybe_not_exists;
 use crate::util::progress_bar::ProgressBar;
 use crate::util::progress_bar::ProgressBarStyle;
 
@@ -79,6 +77,7 @@ use crate::util::progress_bar::ProgressBarStyle;
 struct LspScopeResolver {
   resolver: Arc<CliResolver>,
   in_npm_pkg_checker: Arc<dyn InNpmPackageChecker>,
+  is_cjs_resolver: Arc<IsCjsResolver>,
   jsr_resolver: Option<Arc<JsrCacheResolver>>,
   npm_resolver: Option<Arc<dyn CliNpmResolver>>,
   node_resolver: Option<Arc<NodeResolver>>,
@@ -97,6 +96,7 @@ impl Default for LspScopeResolver {
     Self {
       resolver: factory.cli_resolver().clone(),
       in_npm_pkg_checker: factory.in_npm_pkg_checker().clone(),
+      is_cjs_resolver: factory.is_cjs_resolver().clone(),
       jsr_resolver: None,
       npm_resolver: None,
       node_resolver: None,
@@ -206,6 +206,7 @@ impl LspScopeResolver {
     Self {
       resolver: cli_resolver,
       in_npm_pkg_checker,
+      is_cjs_resolver: factory.is_cjs_resolver().clone(),
       jsr_resolver,
       npm_pkg_req_resolver,
       npm_resolver,
@@ -229,6 +230,7 @@ impl LspScopeResolver {
     Arc::new(Self {
       resolver: factory.cli_resolver().clone(),
       in_npm_pkg_checker: factory.in_npm_pkg_checker().clone(),
+      is_cjs_resolver: factory.is_cjs_resolver().clone(),
       jsr_resolver: self.jsr_resolver.clone(),
       npm_pkg_req_resolver: factory.npm_pkg_req_resolver().cloned(),
       npm_resolver: factory.npm_resolver().cloned(),
@@ -344,6 +346,14 @@ impl LspResolver {
   ) -> WorkerCliNpmGraphResolver {
     let resolver = self.get_scope_resolver(file_referrer);
     resolver.resolver.create_graph_npm_resolver()
+  }
+
+  pub fn as_is_cjs_resolver(
+    &self,
+    file_referrer: Option<&ModuleSpecifier>,
+  ) -> &IsCjsResolver {
+    let resolver = self.get_scope_resolver(file_referrer);
+    resolver.is_cjs_resolver.as_ref()
   }
 
   pub fn as_config_data(
@@ -582,6 +592,7 @@ pub struct ScopeDepInfo {
 struct ResolverFactoryServices {
   cli_resolver: Deferred<Arc<CliResolver>>,
   in_npm_pkg_checker: Deferred<Arc<dyn InNpmPackageChecker>>,
+  is_cjs_resolver: Deferred<Arc<IsCjsResolver>>,
   node_resolver: Deferred<Option<Arc<NodeResolver>>>,
   npm_pkg_req_resolver: Deferred<Option<Arc<CliNpmReqResolver>>>,
   npm_resolver: Option<Arc<dyn CliNpmResolver>>,
@@ -745,6 +756,23 @@ impl<'a> ResolverFactory<'a> {
     })
   }
 
+  pub fn is_cjs_resolver(&self) -> &Arc<IsCjsResolver> {
+    self.services.is_cjs_resolver.get_or_init(|| {
+      Arc::new(IsCjsResolver::new(
+        self.in_npm_pkg_checker().clone(),
+        self.pkg_json_resolver().clone(),
+        if self
+          .config_data
+          .is_some_and(|d| d.unstable.contains("detect-cjs"))
+        {
+          IsCjsResolutionMode::ImplicitTypeCommonJs
+        } else {
+          IsCjsResolutionMode::ExplicitTypeCommonJs
+        },
+      ))
+    })
+  }
+
   pub fn node_resolver(&self) -> Option<&Arc<NodeResolver>> {
     self
       .services
@@ -801,84 +829,6 @@ impl std::fmt::Debug for RedirectResolver {
       .field("get_headers", &"Box(|_| { ... })")
       .field("entries", &self.entries)
       .finish()
-  }
-}
-
-#[derive(Debug)]
-pub struct LspIsCjsResolver {
-  inner: IsCjsResolver,
-}
-
-impl Default for LspIsCjsResolver {
-  fn default() -> Self {
-    LspIsCjsResolver::new(&Default::default())
-  }
-}
-
-impl LspIsCjsResolver {
-  pub fn new(cache: &LspCache) -> Self {
-    #[derive(Debug)]
-    struct LspInNpmPackageChecker {
-      global_cache_dir: ModuleSpecifier,
-    }
-
-    impl LspInNpmPackageChecker {
-      pub fn new(cache: &LspCache) -> Self {
-        let npm_folder_path = cache.deno_dir().npm_folder_path();
-        Self {
-          global_cache_dir: url_from_directory_path(
-            &canonicalize_path_maybe_not_exists(&npm_folder_path)
-              .unwrap_or(npm_folder_path),
-          )
-          .unwrap_or_else(|_| {
-            ModuleSpecifier::parse("file:///invalid/").unwrap()
-          }),
-        }
-      }
-    }
-
-    impl InNpmPackageChecker for LspInNpmPackageChecker {
-      fn in_npm_package(&self, specifier: &ModuleSpecifier) -> bool {
-        if specifier.scheme() != "file" {
-          return false;
-        }
-        if specifier
-          .as_str()
-          .starts_with(self.global_cache_dir.as_str())
-        {
-          return true;
-        }
-        specifier.as_str().contains("/node_modules/")
-      }
-    }
-
-    let fs = Arc::new(deno_fs::RealFs);
-    let pkg_json_resolver = Arc::new(PackageJsonResolver::new(
-      deno_runtime::deno_node::DenoFsNodeResolverEnv::new(fs.clone()),
-    ));
-
-    LspIsCjsResolver {
-      inner: IsCjsResolver::new(
-        Arc::new(LspInNpmPackageChecker::new(cache)),
-        pkg_json_resolver,
-        crate::resolver::IsCjsResolverOptions {
-          detect_cjs: true,
-          is_node_main: false,
-        },
-      ),
-    }
-  }
-
-  pub fn get_doc_resolution_mode(&self, document: &Document) -> ResolutionMode {
-    self.get_lsp_resolution_mode(document.specifier(), document.is_script())
-  }
-
-  pub fn get_lsp_resolution_mode(
-    &self,
-    specifier: &ModuleSpecifier,
-    is_script: Option<bool>,
-  ) -> ResolutionMode {
-    self.inner.get_lsp_resolution_mode(specifier, is_script)
   }
 }
 
