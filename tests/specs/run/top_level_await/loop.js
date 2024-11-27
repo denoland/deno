@@ -1,11 +1,11 @@
 const importsDir = Deno.readDirSync(
-  Deno.realPathSync("./run/top_level_await/tla2"),
+  Deno.realPathSync("./tla2"),
 );
 
 const resolvedPaths = [];
 
 for (const { name } of importsDir) {
-  const filePath = Deno.realPathSync(`./run/top_level_await/tla2/${name}`);
+  const filePath = Deno.realPathSync(`./tla2/${name}`);
   resolvedPaths.push(filePath);
 }
 

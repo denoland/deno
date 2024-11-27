@@ -9,12 +9,28 @@
       "output": "main_node_modules.out"
     },
     "cjs_with_deps_info": {
-      "args": "info main.js",
-      "output": "main_info.out"
+      "steps": [
+        {
+          "args": "cache main.js",
+          "output": "[WILDCARD]"
+        },
+        {
+          "args": "info main.js",
+          "output": "main_info.out"
+        }
+      ]
     },
     "cjs_with_deps_info_json": {
-      "args": "info --json main.js",
-      "output": "main_info_json.out"
+      "steps": [
+        {
+          "args": "cache main.js",
+          "output": "[WILDCARD]"
+        },
+        {
+          "args": "info --json main.js",
+          "output": "main_info_json.out"
+        }
+      ]
     }
   }
 }
