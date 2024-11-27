@@ -12,7 +12,6 @@ use deno_core::error::AnyError;
 use deno_core::url::Url;
 use deno_core::ModuleSourceCode;
 use deno_core::ModuleSpecifier;
-use deno_graph::source::ResolutionMode;
 use deno_graph::source::ResolveError;
 use deno_graph::source::UnknownBuiltInNodeModuleError;
 use deno_graph::NpmLoadError;
@@ -25,8 +24,8 @@ use deno_runtime::deno_fs::FileSystem;
 use deno_runtime::deno_node::is_builtin_node_module;
 use deno_runtime::deno_node::DenoFsNodeResolverEnv;
 use deno_semver::package::PackageReq;
-use node_resolver::NodeModuleKind;
-use node_resolver::NodeResolutionMode;
+use node_resolver::NodeResolutionKind;
+use node_resolver::ResolutionMode;
 use std::borrow::Cow;
 use std::path::Path;
 use std::path::PathBuf;
@@ -43,7 +42,6 @@ use crate::util::text_encoding::from_utf8_lossy_owned;
 pub type CjsTracker = deno_resolver::cjs::CjsTracker<DenoFsNodeResolverEnv>;
 pub type IsCjsResolver =
   deno_resolver::cjs::IsCjsResolver<DenoFsNodeResolverEnv>;
-pub type IsCjsResolverOptions = deno_resolver::cjs::IsCjsResolverOptions;
 pub type CliSloppyImportsResolver =
   SloppyImportsResolver<SloppyImportsCachedFs>;
 pub type CliDenoResolver = deno_resolver::DenoResolver<
@@ -247,25 +245,14 @@ impl CliResolver {
   pub fn resolve(
     &self,
     raw_specifier: &str,
-    referrer_range: &deno_graph::Range,
-    referrer_kind: NodeModuleKind,
-    mode: ResolutionMode,
+    referrer: &ModuleSpecifier,
+    referrer_range_start: deno_graph::Position,
+    resolution_mode: ResolutionMode,
+    resolution_kind: NodeResolutionKind,
   ) -> Result<ModuleSpecifier, ResolveError> {
-    fn to_node_mode(mode: ResolutionMode) -> NodeResolutionMode {
-      match mode {
-        ResolutionMode::Execution => NodeResolutionMode::Execution,
-        ResolutionMode::Types => NodeResolutionMode::Types,
-      }
-    }
-
     let resolution = self
       .deno_resolver
-      .resolve(
-        raw_specifier,
-        &referrer_range.specifier,
-        referrer_kind,
-        to_node_mode(mode),
-      )
+      .resolve(raw_specifier, referrer, resolution_mode, resolution_kind)
       .map_err(|err| match err.into_kind() {
         deno_resolver::DenoResolveErrorKind::MappedResolution(
           mapped_resolution_error,
@@ -291,10 +278,11 @@ impl CliResolver {
         } => {
           if self.warned_pkgs.insert(reference.req().clone()) {
             log::warn!(
-              "{} {}\n    at {}",
+              "{} {}\n    at {}:{}",
               colors::yellow("Warning"),
               diagnostic,
-              referrer_range
+              referrer,
+              referrer_range_start,
             );
           }
         }
@@ -335,13 +323,10 @@ impl<'a> deno_graph::source::NpmResolver for WorkerCliNpmGraphResolver<'a> {
     module_name: &str,
     range: &deno_graph::Range,
   ) {
-    let deno_graph::Range {
-      start, specifier, ..
-    } = range;
-    let line = start.line + 1;
-    let column = start.character + 1;
+    let start = range.range.start;
+    let specifier = &range.specifier;
     if !*DENO_DISABLE_PEDANTIC_NODE_WARNINGS {
-      log::warn!("{} Resolving \"{module_name}\" as \"node:{module_name}\" at {specifier}:{line}:{column}. If you want to use a built-in Node module, add a \"node:\" prefix.", colors::yellow("Warning"))
+      log::warn!("{} Resolving \"{module_name}\" as \"node:{module_name}\" at {specifier}:{start}. If you want to use a built-in Node module, add a \"node:\" prefix.", colors::yellow("Warning"))
     }
   }
 

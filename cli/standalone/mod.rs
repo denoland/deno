@@ -32,6 +32,7 @@ use deno_core::ResolutionKind;
 use deno_core::SourceCodeCacheInfo;
 use deno_npm::npm_rc::ResolvedNpmRc;
 use deno_package_json::PackageJsonDepValue;
+use deno_resolver::cjs::IsCjsResolutionMode;
 use deno_resolver::npm::NpmReqResolverOptions;
 use deno_runtime::deno_fs;
 use deno_runtime::deno_node::create_host_defined_options;
@@ -50,12 +51,14 @@ use deno_semver::npm::NpmPackageReqReference;
 use import_map::parse_from_json;
 use node_resolver::analyze::NodeCodeTranslator;
 use node_resolver::errors::ClosestPkgJsonError;
-use node_resolver::NodeModuleKind;
-use node_resolver::NodeResolutionMode;
+use node_resolver::NodeResolutionKind;
+use node_resolver::ResolutionMode;
 use serialization::DenoCompileModuleSource;
 use std::borrow::Cow;
 use std::rc::Rc;
 use std::sync::Arc;
+use virtual_fs::FileBackedVfs;
+use virtual_fs::VfsFileSubDataKind;
 
 use crate::args::create_default_npmrc;
 use crate::args::get_root_cert_store;
@@ -85,7 +88,6 @@ use crate::npm::CreateInNpmPkgCheckerOptions;
 use crate::resolver::CjsTracker;
 use crate::resolver::CliDenoResolverFs;
 use crate::resolver::CliNpmReqResolver;
-use crate::resolver::IsCjsResolverOptions;
 use crate::resolver::NpmModuleLoader;
 use crate::util::progress_bar::ProgressBar;
 use crate::util::progress_bar::ProgressBarStyle;
@@ -111,6 +113,7 @@ use self::file_system::DenoCompileFileSystem;
 
 struct SharedModuleLoaderState {
   cjs_tracker: Arc<CjsTracker>,
+  code_cache: Option<Arc<dyn CliCodeCache>>,
   fs: Arc<dyn deno_fs::FileSystem>,
   modules: StandaloneModules,
   node_code_translator: Arc<CliNodeCodeTranslator>,
@@ -118,8 +121,8 @@ struct SharedModuleLoaderState {
   npm_module_loader: Arc<NpmModuleLoader>,
   npm_req_resolver: Arc<CliNpmReqResolver>,
   npm_resolver: Arc<dyn CliNpmResolver>,
+  vfs: Arc<FileBackedVfs>,
   workspace_resolver: WorkspaceResolver,
-  code_cache: Option<Arc<dyn CliCodeCache>>,
 }
 
 impl SharedModuleLoaderState {
@@ -190,9 +193,9 @@ impl ModuleLoader for EmbeddedModuleLoader {
       .cjs_tracker
       .is_maybe_cjs(&referrer, MediaType::from_specifier(&referrer))?
     {
-      NodeModuleKind::Cjs
+      ResolutionMode::Require
     } else {
-      NodeModuleKind::Esm
+      ResolutionMode::Import
     };
 
     if self.shared.node_resolver.in_npm_package(&referrer) {
@@ -204,7 +207,7 @@ impl ModuleLoader for EmbeddedModuleLoader {
             raw_specifier,
             &referrer,
             referrer_kind,
-            NodeResolutionMode::Execution,
+            NodeResolutionKind::Execution,
           )?
           .into_url(),
       );
@@ -232,7 +235,7 @@ impl ModuleLoader for EmbeddedModuleLoader {
             sub_path.as_deref(),
             Some(&referrer),
             referrer_kind,
-            NodeResolutionMode::Execution,
+            NodeResolutionKind::Execution,
           )?,
       ),
       Ok(MappedResolution::PackageJson {
@@ -249,7 +252,7 @@ impl ModuleLoader for EmbeddedModuleLoader {
             sub_path.as_deref(),
             &referrer,
             referrer_kind,
-            NodeResolutionMode::Execution,
+            NodeResolutionKind::Execution,
           )
           .map_err(AnyError::from),
         PackageJsonDepValue::Workspace(version_req) => {
@@ -269,7 +272,7 @@ impl ModuleLoader for EmbeddedModuleLoader {
                 sub_path.as_deref(),
                 Some(&referrer),
                 referrer_kind,
-                NodeResolutionMode::Execution,
+                NodeResolutionKind::Execution,
               )?,
           )
         }
@@ -283,7 +286,7 @@ impl ModuleLoader for EmbeddedModuleLoader {
             &reference,
             &referrer,
             referrer_kind,
-            NodeResolutionMode::Execution,
+            NodeResolutionKind::Execution,
           )?);
         }
 
@@ -310,7 +313,7 @@ impl ModuleLoader for EmbeddedModuleLoader {
           raw_specifier,
           &referrer,
           referrer_kind,
-          NodeResolutionMode::Execution,
+          NodeResolutionKind::Execution,
         )?;
         if let Some(res) = maybe_res {
           return Ok(res.into_url());
@@ -514,7 +517,12 @@ impl NodeRequireLoader for EmbeddedModuleLoader {
     &self,
     path: &std::path::Path,
   ) -> Result<String, AnyError> {
-    Ok(self.shared.fs.read_text_file_lossy_sync(path, None)?)
+    let file_entry = self.shared.vfs.file_entry(path)?;
+    let file_bytes = self
+      .shared
+      .vfs
+      .read_file_all(file_entry, VfsFileSubDataKind::ModuleGraph)?;
+    Ok(String::from_utf8(file_bytes.into_owned())?)
   }
 
   fn is_maybe_cjs(
@@ -723,9 +731,12 @@ pub async fn run(data: StandaloneData) -> Result<i32, AnyError> {
   let cjs_tracker = Arc::new(CjsTracker::new(
     in_npm_pkg_checker.clone(),
     pkg_json_resolver.clone(),
-    IsCjsResolverOptions {
-      detect_cjs: !metadata.workspace_resolver.package_jsons.is_empty(),
-      is_node_main: false,
+    if metadata.unstable_config.detect_cjs {
+      IsCjsResolutionMode::ImplicitTypeCommonJs
+    } else if metadata.workspace_resolver.package_jsons.is_empty() {
+      IsCjsResolutionMode::Disabled
+    } else {
+      IsCjsResolutionMode::ExplicitTypeCommonJs
     },
   ));
   let cache_db = Caches::new(deno_dir_provider.clone());
@@ -817,6 +828,7 @@ pub async fn run(data: StandaloneData) -> Result<i32, AnyError> {
   let module_loader_factory = StandaloneModuleLoaderFactory {
     shared: Arc::new(SharedModuleLoaderState {
       cjs_tracker: cjs_tracker.clone(),
+      code_cache: code_cache.clone(),
       fs: fs.clone(),
       modules,
       node_code_translator: node_code_translator.clone(),
@@ -826,10 +838,10 @@ pub async fn run(data: StandaloneData) -> Result<i32, AnyError> {
         fs.clone(),
         node_code_translator,
       )),
-      code_cache: code_cache.clone(),
       npm_resolver: npm_resolver.clone(),
-      workspace_resolver,
       npm_req_resolver,
+      vfs,
+      workspace_resolver,
     }),
   };
 
