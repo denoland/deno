@@ -48,9 +48,11 @@ impl TaskStdio {
   pub fn stdout() -> Self {
     Self(None, ShellPipeWriter::stdout())
   }
+
   pub fn stderr() -> Self {
     Self(None, ShellPipeWriter::stderr())
   }
+
   pub fn piped() -> Self {
     let (r, w) = deno_task_shell::pipe();
     Self(Some(r), w)
@@ -65,8 +67,8 @@ pub struct TaskIo {
 impl Default for TaskIo {
   fn default() -> Self {
     Self {
-      stderr: TaskStdio::stderr(),
       stdout: TaskStdio::stdout(),
+      stderr: TaskStdio::stderr(),
     }
   }
 }
@@ -545,6 +547,9 @@ fn resolve_managed_npm_commands(
   Ok(result)
 }
 
+/// Runs a deno task future with the specified kill signal.
+///
+/// Signal listeners and ctrl+c listening will be setup.
 pub async fn run_future_with_kill_signal<TOutput>(
   kill_signal: KillSignal,
   future: impl std::future::Future<Output = TOutput>,
@@ -571,8 +576,8 @@ pub async fn run_future_with_kill_signal<TOutput>(
   );
   #[cfg(unix)]
   spawn_future_with_cancellation(
-    listen_and_forward_all_signals(kill_signal.clone()),
-    token.clone(),
+    listen_and_forward_all_signals(kill_signal),
+    token,
   );
 
   future.await
@@ -586,12 +591,13 @@ async fn listen_ctrl_c(kill_signal: KillSignal) {
 
 #[cfg(unix)]
 async fn listen_and_forward_all_signals(kill_signal: KillSignal) {
-  const START_SIGNAL: i32 = 1;
-  const END_SIGNAL: i32 = 31;
-  let mut futures = Vec::with_capacity((END_SIGNAL - START_SIGNAL) as usize);
-  for signo in START_SIGNAL..=END_SIGNAL {
+  use deno_runtime::signal::SIGNAL_NUMS;
+
+  // listen and forward every signal we support
+  let mut futures = Vec::with_capacity(SIGNAL_NUMS.len());
+  for signo in SIGNAL_NUMS.iter().copied() {
     if signo == libc::SIGKILL || signo == libc::SIGSTOP {
-      continue; // skip
+      continue; // skip, can't listen to these
     }
 
     let kill_signal = kill_signal.clone();
