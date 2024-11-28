@@ -2,18 +2,18 @@
 
 use super::bin_entries::BinEntries;
 use crate::args::LifecycleScriptsConfig;
+use crate::task_runner::run_future_with_kill_signal;
 use crate::task_runner::TaskStdio;
 use crate::util::progress_bar::ProgressBar;
-use crate::util::task::run_future_with_ctrl_c_cancellation;
 use deno_core::anyhow::Context;
 use deno_npm::resolution::NpmResolutionSnapshot;
 use deno_runtime::deno_io::FromRawIoHandle;
 use deno_semver::package::PackageNv;
 use deno_semver::Version;
+use deno_task_shell::KillSignal;
 use std::borrow::Cow;
 use std::collections::HashSet;
 use std::rc::Rc;
-use tokio_util::sync::CancellationToken;
 
 use std::path::Path;
 use std::path::PathBuf;
@@ -158,15 +158,15 @@ impl<'a> LifecycleScripts<'a> {
     root_node_modules_dir_path: &Path,
     progress_bar: &ProgressBar,
   ) -> Result<(), AnyError> {
-    let token = CancellationToken::default();
-    run_future_with_ctrl_c_cancellation(
-      token.clone(),
+    let kill_signal = KillSignal::default();
+    run_future_with_kill_signal(
+      kill_signal.clone(),
       self.finish_with_cancellation(
         snapshot,
         packages,
         root_node_modules_dir_path,
         progress_bar,
-        token,
+        kill_signal,
       ),
     )
     .await
@@ -178,7 +178,7 @@ impl<'a> LifecycleScripts<'a> {
     packages: &[NpmResolutionPackage],
     root_node_modules_dir_path: &Path,
     progress_bar: &ProgressBar,
-    token: CancellationToken,
+    kill_signal: KillSignal,
   ) -> Result<(), AnyError> {
     self.warn_not_run_scripts()?;
     let get_package_path =
@@ -270,7 +270,7 @@ impl<'a> LifecycleScripts<'a> {
                   stderr: TaskStdio::piped(),
                   stdout: TaskStdio::piped(),
                 }),
-                token: token.clone(),
+                kill_signal: kill_signal.clone(),
               },
             )
             .await?;

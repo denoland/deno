@@ -14,6 +14,7 @@ use deno_runtime::deno_node::NodeResolver;
 use deno_semver::package::PackageNv;
 use deno_task_shell::ExecutableCommand;
 use deno_task_shell::ExecuteResult;
+use deno_task_shell::KillSignal;
 use deno_task_shell::ShellCommand;
 use deno_task_shell::ShellCommandContext;
 use deno_task_shell::ShellPipeReader;
@@ -22,7 +23,6 @@ use lazy_regex::Lazy;
 use regex::Regex;
 use tokio::task::JoinHandle;
 use tokio::task::LocalSet;
-use tokio_util::sync::CancellationToken;
 
 use crate::npm::CliNpmResolver;
 use crate::npm::InnerCliNpmResolverRef;
@@ -38,6 +38,25 @@ pub fn get_script_with_args(script: &str, argv: &[String]) -> String {
     .join(" ");
   let script = format!("{script} {additional_args}");
   script.trim().to_owned()
+}
+
+pub async fn run_future_with_kill_signal<TOutput>(
+  signal: KillSignal,
+  future: impl std::future::Future<Output = TOutput>,
+) -> TOutput {
+  let drop_guard = signal.drop_guard();
+  tokio::pin!(future);
+  tokio::select! {
+    result = &mut future => {
+      drop_guard.disarm();
+      result
+    }
+    _ = tokio::signal::ctrl_c() => {
+      drop(drop_guard); // send the signal
+      future.await
+    }
+
+  }
 }
 
 pub struct TaskStdio(Option<ShellPipeReader>, ShellPipeWriter);
@@ -79,7 +98,7 @@ pub struct RunTaskOptions<'a> {
   pub custom_commands: HashMap<String, Rc<dyn ShellCommand>>,
   pub root_node_modules_dir: Option<&'a Path>,
   pub stdio: Option<TaskIo>,
-  pub token: CancellationToken,
+  pub kill_signal: KillSignal,
 }
 
 pub type TaskCustomCommands = HashMap<String, Rc<dyn ShellCommand>>;
@@ -102,7 +121,7 @@ pub async fn run_task(
     env_vars,
     opts.cwd,
     opts.custom_commands,
-    opts.token,
+    opts.kill_signal,
   );
   let stdio = opts.stdio.unwrap_or_default();
   let (
