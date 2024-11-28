@@ -817,6 +817,7 @@ dependencies = [
  "file_test_runner",
  "flaky_test",
  "hickory-client",
+ "hickory-proto",
  "hickory-server",
  "http 1.1.0",
  "http-body-util",
