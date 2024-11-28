@@ -172,7 +172,9 @@ export class TLSSocket extends net.Socket {
           // Assign the TLS connection to the handle and resume reading.
           handle[kStreamBaseField] = conn;
           handle.upgrading = false;
-          handle.readStart();
+          if (!handle.pauseOnCreate) {
+            handle.readStart();
+          }
 
           resolve();
 
