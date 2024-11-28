@@ -124,7 +124,9 @@ await copyTests();
 await updateToDo();
 
 if (Deno.args[0] === "--check") {
-  const cmd = new Deno.Command("git", { args: ["status", "-s", "tests/node_compat/test"] });
+  const cmd = new Deno.Command("git", {
+    args: ["status", "-s", "tests/node_compat/test"],
+  });
   const { stdout } = await cmd.output();
 
   if (stdout.length > 0) {
