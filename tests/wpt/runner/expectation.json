@@ -10477,7 +10477,7 @@
     "event_constructor.window.html": false,
     "event_initstorageevent.window.html": false,
     "missing_arguments.window.html": true,
-    "storage_builtins.window.html": true,
+    "storage_builtins.window.html": false,
     "storage_clear.window.html": true,
     "storage_functions_not_overwritten.window.html": true,
     "storage_getitem.window.html": true,

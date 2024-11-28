@@ -57,9 +57,7 @@ use deno_core::ModuleSourceCode;
 use deno_core::ModuleSpecifier;
 use deno_core::ModuleType;
 use deno_core::RequestedModuleType;
-use deno_core::ResolutionKind;
 use deno_core::SourceCodeCacheInfo;
-use deno_graph::source::ResolutionMode;
 use deno_graph::GraphKind;
 use deno_graph::JsModule;
 use deno_graph::JsonModule;
@@ -76,7 +74,8 @@ use deno_runtime::deno_permissions::PermissionsContainer;
 use deno_semver::npm::NpmPackageReqReference;
 use node_resolver::errors::ClosestPkgJsonError;
 use node_resolver::InNpmPackageChecker;
-use node_resolver::NodeResolutionMode;
+use node_resolver::NodeResolutionKind;
+use node_resolver::ResolutionMode;
 
 pub struct ModuleLoadPreparer {
   options: Arc<CliOptions>,
@@ -498,13 +497,11 @@ impl<TGraphContainer: ModuleGraphContainer>
       }
       Resolution::None => Cow::Owned(self.shared.resolver.resolve(
         raw_specifier,
-        &deno_graph::Range {
-          specifier: referrer.clone(),
-          start: deno_graph::Position::zeroed(),
-          end: deno_graph::Position::zeroed(),
-        },
-        self.shared.cjs_tracker.get_referrer_kind(referrer),
-        ResolutionMode::Execution,
+        referrer,
+        deno_graph::Position::zeroed(),
+        // if we're here, that means it's resolving a dynamic import
+        ResolutionMode::Import,
+        NodeResolutionKind::Execution,
       )?),
     };
 
@@ -517,8 +514,8 @@ impl<TGraphContainer: ModuleGraphContainer>
           .resolve_req_reference(
             &reference,
             referrer,
-            self.shared.cjs_tracker.get_referrer_kind(referrer),
-            NodeResolutionMode::Execution,
+            ResolutionMode::Import,
+            NodeResolutionKind::Execution,
           )
           .map_err(AnyError::from);
       }
@@ -539,8 +536,8 @@ impl<TGraphContainer: ModuleGraphContainer>
             &package_folder,
             module.nv_reference.sub_path(),
             Some(referrer),
-            self.shared.cjs_tracker.get_referrer_kind(referrer),
-            NodeResolutionMode::Execution,
+            ResolutionMode::Import,
+            NodeResolutionKind::Execution,
           )
           .with_context(|| {
             format!("Could not resolve '{}'.", module.nv_reference)
@@ -806,7 +803,7 @@ impl<TGraphContainer: ModuleGraphContainer> ModuleLoader
     &self,
     specifier: &str,
     referrer: &str,
-    _kind: ResolutionKind,
+    _kind: deno_core::ResolutionKind,
   ) -> Result<ModuleSpecifier, AnyError> {
     fn ensure_not_jsr_non_jsr_remote_import(
       specifier: &ModuleSpecifier,
@@ -1063,7 +1060,10 @@ impl<TGraphContainer: ModuleGraphContainer> NodeRequireLoader
     self.npm_resolver.ensure_read_permission(permissions, path)
   }
 
-  fn load_text_file_lossy(&self, path: &Path) -> Result<String, AnyError> {
+  fn load_text_file_lossy(
+    &self,
+    path: &Path,
+  ) -> Result<Cow<'static, str>, AnyError> {
     // todo(dsherret): use the preloaded module from the graph if available?
     let media_type = MediaType::from_path(path);
     let text = self.fs.read_text_file_lossy_sync(path, None)?;
@@ -1078,15 +1078,18 @@ impl<TGraphContainer: ModuleGraphContainer> NodeRequireLoader
           .into(),
         );
       }
-      self.emitter.emit_parsed_source_sync(
-        &specifier,
-        media_type,
-        // this is probably not super accurate due to require esm, but probably ok.
-        // If we find this causes a lot of churn in the emit cache then we should
-        // investigate how we can make this better
-        ModuleKind::Cjs,
-        &text.into(),
-      )
+      self
+        .emitter
+        .emit_parsed_source_sync(
+          &specifier,
+          media_type,
+          // this is probably not super accurate due to require esm, but probably ok.
+          // If we find this causes a lot of churn in the emit cache then we should
+          // investigate how we can make this better
+          ModuleKind::Cjs,
+          &text.into(),
+        )
+        .map(Cow::Owned)
     } else {
       Ok(text)
     }

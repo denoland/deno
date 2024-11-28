@@ -11,6 +11,15 @@ use deno_core::ModuleSourceCode;
 static SOURCE_MAP_PREFIX: &[u8] =
   b"//# sourceMappingURL=data:application/json;base64,";
 
+#[inline(always)]
+pub fn from_utf8_lossy_cow(bytes: Cow<[u8]>) -> Cow<str> {
+  match bytes {
+    Cow::Borrowed(bytes) => String::from_utf8_lossy(bytes),
+    Cow::Owned(bytes) => Cow::Owned(from_utf8_lossy_owned(bytes)),
+  }
+}
+
+#[inline(always)]
 pub fn from_utf8_lossy_owned(bytes: Vec<u8>) -> String {
   match String::from_utf8_lossy(&bytes) {
     Cow::Owned(code) => code,

@@ -88,7 +88,7 @@ fn main() {
     match standalone {
       Ok(Some(data)) => {
         if let Some(otel_config) = data.metadata.otel_config.clone() {
-          deno_runtime::ops::otel::init(otel_config)?;
+          deno_telemetry::init(otel_config)?;
         }
         util::logger::init(data.metadata.log_level);
         load_env_vars(&data.metadata.env_vars_from_env_file);
