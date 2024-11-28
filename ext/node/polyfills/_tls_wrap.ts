@@ -148,6 +148,8 @@ export class TLSSocket extends net.Socket {
           : new TCP(TCPConstants.SOCKET);
       }
 
+      const { promise, resolve } = Promise.withResolvers();
+
       // Patches `afterConnect` hook to replace TCP conn with TLS conn
       const afterConnect = handle.afterConnect;
       handle.afterConnect = async (req: any, status: number) => {
@@ -172,16 +174,17 @@ export class TLSSocket extends net.Socket {
           handle.upgrading = false;
           handle.readStart();
 
+          resolve();
+
           tlssock.emit("secure");
           tlssock.removeListener("end", onConnectEnd);
-        } catch (e) {
+        } catch {
           // TODO(kt3k): Handle this
-          console.error(e);
         }
         return afterConnect.call(handle, req, status);
       };
 
-      handle.upgrading = true;
+      handle.upgrading = promise;
       (handle as any).verifyError = function () {
         return null; // Never fails, rejectUnauthorized is always true in Deno.
       };
