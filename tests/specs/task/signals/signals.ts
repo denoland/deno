@@ -47,11 +47,15 @@ const osSpecificSignals = signals.filter((s) => {
     case "SIGEMT":
       return Deno.build.os === "darwin";
     case "SIGINFO":
-      return Deno.build.os === "freebsd";
     case "SIGFPE":
     case "SIGILL":
     case "SIGSEGV":
-      return Deno.build.os === "freebsd" || Deno.build.os === "darwin";
+      return Deno.build.os === "freebsd";
+    case "SIGPOLL":
+    case "SIGUNUSED":
+    case "SIGPWR":
+    case "SIGSTKFLT":
+      return Deno.build.os === "linux";
     default:
       return true;
   }
