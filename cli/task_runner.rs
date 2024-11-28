@@ -10,7 +10,6 @@ use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
 use deno_core::futures;
 use deno_core::futures::future::LocalBoxFuture;
-use deno_core::futures::FutureExt;
 use deno_runtime::deno_node::NodeResolver;
 use deno_semver::package::PackageNv;
 use deno_task_shell::ExecutableCommand;
@@ -591,6 +590,7 @@ async fn listen_ctrl_c(kill_signal: KillSignal) {
 
 #[cfg(unix)]
 async fn listen_and_forward_all_signals(kill_signal: KillSignal) {
+  use deno_core::futures::FutureExt;
   use deno_runtime::signal::SIGNAL_NUMS;
 
   // listen and forward every signal we support

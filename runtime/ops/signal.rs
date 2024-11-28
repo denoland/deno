@@ -201,7 +201,7 @@ fn op_signal_bind(
   state: &mut OpState,
   #[string] sig: &str,
 ) -> Result<ResourceId, SignalError> {
-  let signo = signal_str_to_int(sig)?;
+  let signo = crate::signal::signal_str_to_int(sig)?;
   let resource = SignalStreamResource {
     signal: AsyncRefCell::new(match signo {
       // SIGINT

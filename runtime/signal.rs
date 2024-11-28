@@ -3,7 +3,7 @@
 #[cfg(target_os = "windows")]
 #[derive(Debug, thiserror::Error)]
 #[error("Windows only supports ctrl-c (SIGINT) and ctrl-break (SIGBREAK), but got {0}")]
-pub struct InvalidSignalStrError(String);
+pub struct InvalidSignalStrError(pub String);
 
 #[cfg(any(
   target_os = "android",
@@ -34,7 +34,7 @@ pub struct InvalidSignalIntError(pub libc::c_int);
 ))]
 #[derive(Debug, thiserror::Error)]
 #[error("Invalid signal: {0}")]
-pub struct InvalidSignalIntError(libc::c_int);
+pub struct InvalidSignalIntError(pub libc::c_int);
 
 macro_rules! first_literal {
   ($head:literal $(, $tail:literal)*) => {
