@@ -116,6 +116,8 @@ impl<'a> deno_cache_dir::DenoCacheEnv for DenoCacheEnvFsAdapter<'a> {
     self
       .0
       .read_file_sync(path, None)
+      // todo(https://github.com/denoland/deno_cache_dir/pull/66): avoid clone
+      .map(|bytes| bytes.into_owned())
       .map_err(|err| err.into_io_error())
   }
 

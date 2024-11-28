@@ -157,7 +157,10 @@ pub trait NodeRequireLoader {
     path: &'a Path,
   ) -> Result<Cow<'a, Path>, AnyError>;
 
-  fn load_text_file_lossy(&self, path: &Path) -> Result<String, AnyError>;
+  fn load_text_file_lossy(
+    &self,
+    path: &Path,
+  ) -> Result<Cow<'static, str>, AnyError>;
 
   /// Get if the module kind is maybe CJS and loading should determine
   /// if its CJS or ESM.
@@ -873,6 +876,8 @@ impl deno_package_json::fs::DenoPkgJsonFs for DenoFsNodeResolverEnv {
     self
       .fs
       .read_text_file_lossy_sync(path, None)
+      // todo(https://github.com/denoland/deno_package_json/pull/9): don't clone
+      .map(|text| text.into_owned())
       .map_err(|err| err.into_io_error())
   }
 }
@@ -887,6 +892,8 @@ impl<'a> deno_package_json::fs::DenoPkgJsonFs for DenoPkgJsonFsAdapter<'a> {
     self
       .0
       .read_text_file_lossy_sync(path, None)
+      // todo(https://github.com/denoland/deno_package_json/pull/9): don't clone
+      .map(|text| text.into_owned())
       .map_err(|err| err.into_io_error())
   }
 }
