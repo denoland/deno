@@ -479,13 +479,13 @@ export class ClientHttp2Session extends Http2Session {
 
     socket.on("error", socketOnError);
     socket.on("close", socketOnClose);
+
+    socket[kHandle].pauseOnCreate = true;
     const connPromise = new Promise((resolve) => {
       const eventName = url.startsWith("https") ? "secureConnect" : "connect";
       socket.once(eventName, () => {
         const rid = socket[kHandle][kStreamBaseField][internalRidSymbol];
-        nextTick(() => {
-          resolve(rid);
-        });
+        nextTick(() => resolve(rid));
       });
     });
     socket[kSession] = this;
