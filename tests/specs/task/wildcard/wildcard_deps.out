@@ -1,0 +1,6 @@
+Task foo-1 echo 'foo-1'
+foo-1
+Task dep-2 echo 'dep-2'
+dep-2
+Task dep-1 echo 'dep-1'
+dep-1
