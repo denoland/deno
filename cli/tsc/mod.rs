@@ -656,17 +656,21 @@ fn op_load_inner(
         }
         Module::Npm(_) | Module::Node(_) => None,
         Module::External(module) => {
-          // means it's Deno code importing an npm module
-          let specifier = node::resolve_specifier_into_node_modules(
-            &module.specifier,
-            &deno_fs::RealFs,
-          );
-          Some(Cow::Owned(load_from_node_modules(
-            &specifier,
-            state.maybe_npm.as_ref(),
-            &mut media_type,
-            &mut is_cjs,
-          )?))
+          if module.specifier.scheme() != "file" {
+            None
+          } else {
+            // means it's Deno code importing an npm module
+            let specifier = node::resolve_specifier_into_node_modules(
+              &module.specifier,
+              &deno_fs::RealFs,
+            );
+            Some(Cow::Owned(load_from_node_modules(
+              &specifier,
+              state.maybe_npm.as_ref(),
+              &mut media_type,
+              &mut is_cjs,
+            )?))
+          }
         }
       }
     } else if let Some(npm) = state
