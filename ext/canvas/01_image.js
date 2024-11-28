@@ -230,7 +230,7 @@ function createImageBitmap(
       new DOMException(
         `${prefix}: The provided value for 'image' is not of type '(${
           ArrayPrototypeJoin(imageBitmapSources, " or ")
-        })'.`,
+        })'`,
         "InvalidStateError",
       ),
     );
@@ -267,14 +267,14 @@ function createImageBitmap(
       } else if (mimeTypeString === "") {
         return PromiseReject(
           new DOMException(
-            `The MIME type of source image is not specified.`,
+            `The MIME type of source image is not specified`,
             "InvalidStateError",
           ),
         );
       } else {
         return PromiseReject(
           new DOMException(
-            `The MIME type ${mimeTypeString} of source image is not a supported format.`,
+            `The MIME type ${mimeTypeString} of source image is not a supported format`,
             "InvalidStateError",
           ),
         );

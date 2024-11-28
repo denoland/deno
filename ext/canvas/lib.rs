@@ -21,10 +21,10 @@ pub enum CanvasError {
   #[error("Cannot decode image '{0}'")]
   InvalidImage(image::ImageError),
   /// This error will be mapped to DOMExceptionInvalidStateError.
-  #[error("The chunk data is not big enough with the specified width: {0} and height: {1}.")]
+  #[error("The chunk data is not big enough with the specified width: {0} and height: {1}")]
   NotBigEnoughChunk(u32, u32),
   /// This error will be mapped to DOMExceptionInvalidStateError.
-  #[error("The width: {0} or height: {1} could not be zero.")]
+  #[error("The width: {0} or height: {1} could not be zero")]
   InvalidSizeZero(u32, u32),
   /// This error will be mapped to TypeError.
   #[error(transparent)]
