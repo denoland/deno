@@ -269,4 +269,5 @@ Deno.test("tls connect upgrade tcp", async () => {
   });
 
   await promise;
+  socket.destroy();
 });
