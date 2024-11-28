@@ -10,6 +10,7 @@ use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
 use deno_core::futures;
 use deno_core::futures::future::LocalBoxFuture;
+use deno_core::futures::FutureExt;
 use deno_runtime::deno_node::NodeResolver;
 use deno_semver::package::PackageNv;
 use deno_task_shell::ExecutableCommand;
@@ -23,6 +24,7 @@ use lazy_regex::Lazy;
 use regex::Regex;
 use tokio::task::JoinHandle;
 use tokio::task::LocalSet;
+use tokio_util::sync::CancellationToken;
 
 use crate::npm::CliNpmResolver;
 use crate::npm::InnerCliNpmResolverRef;
@@ -38,25 +40,6 @@ pub fn get_script_with_args(script: &str, argv: &[String]) -> String {
     .join(" ");
   let script = format!("{script} {additional_args}");
   script.trim().to_owned()
-}
-
-pub async fn run_future_with_kill_signal<TOutput>(
-  signal: KillSignal,
-  future: impl std::future::Future<Output = TOutput>,
-) -> TOutput {
-  let drop_guard = signal.drop_guard();
-  tokio::pin!(future);
-  tokio::select! {
-    result = &mut future => {
-      drop_guard.disarm();
-      result
-    }
-    _ = tokio::signal::ctrl_c() => {
-      drop(drop_guard); // send the signal
-      future.await
-    }
-
-  }
 }
 
 pub struct TaskStdio(Option<ShellPipeReader>, ShellPipeWriter);
@@ -560,6 +543,74 @@ fn resolve_managed_npm_commands(
     result.insert("npx".to_string(), Rc::new(NpxCommand));
   }
   Ok(result)
+}
+
+pub async fn run_future_with_kill_signal<TOutput>(
+  kill_signal: KillSignal,
+  future: impl std::future::Future<Output = TOutput>,
+) -> TOutput {
+  fn spawn_future_with_cancellation(
+    future: impl std::future::Future<Output = ()> + 'static,
+    token: CancellationToken,
+  ) {
+    deno_core::unsync::spawn(async move {
+      tokio::select! {
+        _ = future => {}
+        _ = token.cancelled() => {}
+      }
+    });
+  }
+
+  let token = CancellationToken::new();
+  let _token_drop_guard = token.clone().drop_guard();
+  let _drop_guard = kill_signal.clone().drop_guard();
+
+  spawn_future_with_cancellation(
+    listen_ctrl_c(kill_signal.clone()),
+    token.clone(),
+  );
+  #[cfg(unix)]
+  spawn_future_with_cancellation(
+    listen_and_forward_all_signals(kill_signal.clone()),
+    token.clone(),
+  );
+
+  future.await
+}
+
+async fn listen_ctrl_c(kill_signal: KillSignal) {
+  while let Ok(()) = tokio::signal::ctrl_c().await {
+    kill_signal.send(deno_task_shell::SignalKind::SIGINT)
+  }
+}
+
+#[cfg(unix)]
+async fn listen_and_forward_all_signals(kill_signal: KillSignal) {
+  const START_SIGNAL: i32 = 1;
+  const END_SIGNAL: i32 = 31;
+  let mut futures = Vec::with_capacity((END_SIGNAL - START_SIGNAL) as usize);
+  for signo in START_SIGNAL..=END_SIGNAL {
+    if signo == libc::SIGKILL || signo == libc::SIGSTOP {
+      continue; // skip
+    }
+
+    let kill_signal = kill_signal.clone();
+    futures.push(
+      async move {
+        let Ok(mut stream) = tokio::signal::unix::signal(
+          tokio::signal::unix::SignalKind::from_raw(signo),
+        ) else {
+          return;
+        };
+        let signal_kind: deno_task_shell::SignalKind = signo.into();
+        while let Some(()) = stream.recv().await {
+          kill_signal.send(signal_kind);
+        }
+      }
+      .boxed_local(),
+    )
+  }
+  futures::future::join_all(futures).await;
 }
 
 #[cfg(test)]

@@ -82,7 +82,7 @@ deno_path_util.workspace = true
 deno_resolver.workspace = true
 deno_runtime = { workspace = true, features = ["include_js_files_for_snapshotting"] }
 deno_semver.workspace = true
-deno_task_shell = "=0.19.0"
+deno_task_shell = "=0.20.0"
 deno_telemetry.workspace = true
 deno_terminal.workspace = true
 libsui = "0.5.0"
