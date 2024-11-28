@@ -1,10 +1,12 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
+use std::borrow::Cow;
 use std::sync::Arc;
 
 use deno_ast::MediaType;
 use deno_ast::ModuleSpecifier;
 use deno_core::error::AnyError;
+use deno_graph::ParsedSourceStore;
 use deno_runtime::deno_fs;
 use deno_runtime::deno_node::DenoFsNodeResolverEnv;
 use node_resolver::analyze::CjsAnalysis as ExtNodeCjsAnalysis;
@@ -16,8 +18,8 @@ use serde::Serialize;
 
 use crate::cache::CacheDBHash;
 use crate::cache::NodeAnalysisCache;
-use crate::resolver::CliNodeResolver;
-use crate::util::fs::canonicalize_path_maybe_not_exists;
+use crate::cache::ParsedSourceCache;
+use crate::resolver::CjsTracker;
 
 pub type CliNodeCodeTranslator =
   NodeCodeTranslator<CliCjsCodeAnalyzer, DenoFsNodeResolverEnv>;
@@ -30,15 +32,11 @@ pub type CliNodeCodeTranslator =
 /// because the node_modules folder might not exist at that time.
 pub fn resolve_specifier_into_node_modules(
   specifier: &ModuleSpecifier,
+  fs: &dyn deno_fs::FileSystem,
 ) -> ModuleSpecifier {
-  specifier
-    .to_file_path()
-    .ok()
-    // this path might not exist at the time the graph is being created
-    // because the node_modules folder might not yet exist
-    .and_then(|path| canonicalize_path_maybe_not_exists(&path).ok())
-    .and_then(|path| ModuleSpecifier::from_file_path(path).ok())
-    .unwrap_or_else(|| specifier.clone())
+  node_resolver::resolve_specifier_into_node_modules(specifier, &|path| {
+    fs.realpath_sync(path).map_err(|err| err.into_io_error())
+  })
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -54,20 +52,23 @@ pub enum CliCjsAnalysis {
 
 pub struct CliCjsCodeAnalyzer {
   cache: NodeAnalysisCache,
+  cjs_tracker: Arc<CjsTracker>,
   fs: deno_fs::FileSystemRc,
-  node_resolver: Arc<CliNodeResolver>,
+  parsed_source_cache: Option<Arc<ParsedSourceCache>>,
 }
 
 impl CliCjsCodeAnalyzer {
   pub fn new(
     cache: NodeAnalysisCache,
+    cjs_tracker: Arc<CjsTracker>,
     fs: deno_fs::FileSystemRc,
-    node_resolver: Arc<CliNodeResolver>,
+    parsed_source_cache: Option<Arc<ParsedSourceCache>>,
   ) -> Self {
     Self {
       cache,
+      cjs_tracker,
       fs,
-      node_resolver,
+      parsed_source_cache,
     }
   }
 
@@ -83,7 +84,7 @@ impl CliCjsCodeAnalyzer {
       return Ok(analysis);
     }
 
-    let mut media_type = MediaType::from_specifier(specifier);
+    let media_type = MediaType::from_specifier(specifier);
     if media_type == MediaType::Json {
       return Ok(CliCjsAnalysis::Cjs {
         exports: vec![],
@@ -91,54 +92,51 @@ impl CliCjsCodeAnalyzer {
       });
     }
 
-    if media_type == MediaType::JavaScript {
-      if let Some(package_json) =
-        self.node_resolver.get_closest_package_json(specifier)?
-      {
-        match package_json.typ.as_str() {
-          "commonjs" => {
-            media_type = MediaType::Cjs;
-          }
-          "module" => {
-            media_type = MediaType::Mjs;
-          }
-          _ => {}
-        }
-      }
-    }
+    let cjs_tracker = self.cjs_tracker.clone();
+    let is_maybe_cjs = cjs_tracker.is_maybe_cjs(specifier, media_type)?;
+    let analysis = if is_maybe_cjs {
+      let maybe_parsed_source = self
+        .parsed_source_cache
+        .as_ref()
+        .and_then(|c| c.remove_parsed_source(specifier));
 
-    let analysis = deno_core::unsync::spawn_blocking({
-      let specifier = specifier.clone();
-      let source: Arc<str> = source.into();
-      move || -> Result<_, deno_ast::ParseDiagnostic> {
-        let parsed_source = deno_ast::parse_program(deno_ast::ParseParams {
-          specifier,
-          text: source,
-          media_type,
-          capture_tokens: true,
-          scope_analysis: false,
-          maybe_syntax: None,
-        })?;
-        if parsed_source.is_script() {
-          let analysis = parsed_source.analyze_cjs();
-          Ok(CliCjsAnalysis::Cjs {
-            exports: analysis.exports,
-            reexports: analysis.reexports,
-          })
-        } else if media_type == MediaType::Cjs {
-          // FIXME: `deno_ast` should internally handle MediaType::Cjs implying that
-          // the result must never be Esm
-          Ok(CliCjsAnalysis::Cjs {
-            exports: vec![],
-            reexports: vec![],
-          })
-        } else {
-          Ok(CliCjsAnalysis::Esm)
+      deno_core::unsync::spawn_blocking({
+        let specifier = specifier.clone();
+        let source: Arc<str> = source.into();
+        move || -> Result<_, AnyError> {
+          let parsed_source =
+            maybe_parsed_source.map(Ok).unwrap_or_else(|| {
+              deno_ast::parse_program(deno_ast::ParseParams {
+                specifier,
+                text: source,
+                media_type,
+                capture_tokens: true,
+                scope_analysis: false,
+                maybe_syntax: None,
+              })
+            })?;
+          let is_script = parsed_source.compute_is_script();
+          let is_cjs = cjs_tracker.is_cjs_with_known_is_script(
+            parsed_source.specifier(),
+            media_type,
+            is_script,
+          )?;
+          if is_cjs {
+            let analysis = parsed_source.analyze_cjs();
+            Ok(CliCjsAnalysis::Cjs {
+              exports: analysis.exports,
+              reexports: analysis.reexports,
+            })
+          } else {
+            Ok(CliCjsAnalysis::Esm)
+          }
         }
-      }
-    })
-    .await
-    .unwrap()?;
+      })
+      .await
+      .unwrap()?
+    } else {
+      CliCjsAnalysis::Esm
+    };
 
     self
       .cache
@@ -150,11 +148,11 @@ impl CliCjsCodeAnalyzer {
 
 #[async_trait::async_trait(?Send)]
 impl CjsCodeAnalyzer for CliCjsCodeAnalyzer {
-  async fn analyze_cjs(
+  async fn analyze_cjs<'a>(
     &self,
     specifier: &ModuleSpecifier,
-    source: Option<String>,
-  ) -> Result<ExtNodeCjsAnalysis, AnyError> {
+    source: Option<Cow<'a, str>>,
+  ) -> Result<ExtNodeCjsAnalysis<'a>, AnyError> {
     let source = match source {
       Some(source) => source,
       None => {

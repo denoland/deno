@@ -19,6 +19,7 @@ use crate::args::LifecycleScriptsConfig;
 use crate::colors;
 use async_trait::async_trait;
 use deno_ast::ModuleSpecifier;
+use deno_cache_dir::npm::mixed_case_package_name_decode;
 use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
 use deno_core::futures::stream::FuturesUnordered;
@@ -30,6 +31,7 @@ use deno_npm::NpmPackageCacheFolderId;
 use deno_npm::NpmPackageId;
 use deno_npm::NpmResolutionPackage;
 use deno_npm::NpmSystemInfo;
+use deno_resolver::npm::normalize_pkg_name_for_node_modules_deno_folder;
 use deno_runtime::deno_fs;
 use deno_runtime::deno_node::NodePermissions;
 use deno_semver::package::PackageNv;
@@ -42,8 +44,6 @@ use serde::Serialize;
 
 use crate::args::NpmInstallDepsProvider;
 use crate::cache::CACHE_PERM;
-use crate::npm::cache_dir::mixed_case_package_name_decode;
-use crate::npm::cache_dir::mixed_case_package_name_encode;
 use crate::util::fs::atomic_write_file_with_retries;
 use crate::util::fs::canonicalize_path_maybe_not_exists_with_fs;
 use crate::util::fs::clone_dir_recursive;
@@ -55,6 +55,7 @@ use crate::util::progress_bar::ProgressMessagePrompt;
 use super::super::cache::NpmCache;
 use super::super::cache::TarballCache;
 use super::super::resolution::NpmResolution;
+use super::common::bin_entries;
 use super::common::NpmPackageFsResolver;
 use super::common::RegistryReadPermissionChecker;
 
@@ -155,12 +156,8 @@ impl LocalNpmPackageResolver {
 
 #[async_trait(?Send)]
 impl NpmPackageFsResolver for LocalNpmPackageResolver {
-  fn root_dir_url(&self) -> &Url {
-    &self.root_node_modules_url
-  }
-
-  fn node_modules_path(&self) -> Option<&PathBuf> {
-    Some(&self.root_node_modules_path)
+  fn node_modules_path(&self) -> Option<&Path> {
+    Some(self.root_node_modules_path.as_ref())
   }
 
   fn maybe_package_folder(&self, id: &NpmPackageId) -> Option<PathBuf> {
@@ -257,11 +254,11 @@ impl NpmPackageFsResolver for LocalNpmPackageResolver {
     .await
   }
 
-  fn ensure_read_permission(
+  fn ensure_read_permission<'a>(
     &self,
     permissions: &mut dyn NodePermissions,
-    path: &Path,
-  ) -> Result<(), AnyError> {
+    path: &'a Path,
+  ) -> Result<Cow<'a, Path>, AnyError> {
     self
       .registry_read_permission_checker
       .ensure_registry_read_permission(permissions, path)
@@ -301,6 +298,12 @@ async fn sync_resolution_with_fs(
     return Ok(()); // don't create the directory
   }
 
+  // don't set up node_modules (and more importantly try to acquire the file lock)
+  // if we're running as part of a lifecycle script
+  if super::common::lifecycle_scripts::is_running_lifecycle_script() {
+    return Ok(());
+  }
+
   let deno_local_registry_dir = root_node_modules_dir_path.join(".deno");
   let deno_node_modules_dir = deno_local_registry_dir.join("node_modules");
   fs::create_dir_all(&deno_node_modules_dir).with_context(|| {
@@ -333,8 +336,7 @@ async fn sync_resolution_with_fs(
   let mut cache_futures = FuturesUnordered::new();
   let mut newest_packages_by_name: HashMap<&String, &NpmResolutionPackage> =
     HashMap::with_capacity(package_partitions.packages.len());
-  let bin_entries =
-    Rc::new(RefCell::new(super::common::bin_entries::BinEntries::new()));
+  let bin_entries = Rc::new(RefCell::new(bin_entries::BinEntries::new()));
   let mut lifecycle_scripts =
     super::common::lifecycle_scripts::LifecycleScripts::new(
       lifecycle_scripts,
@@ -343,6 +345,14 @@ async fn sync_resolution_with_fs(
       },
     );
   let packages_with_deprecation_warnings = Arc::new(Mutex::new(Vec::new()));
+
+  let mut package_tags: HashMap<&PackageNv, Vec<&str>> = HashMap::new();
+  for (package_req, package_nv) in snapshot.package_reqs() {
+    if let Some(tag) = package_req.version_req.tag() {
+      package_tags.entry(package_nv).or_default().push(tag);
+    }
+  }
+
   for package in &package_partitions.packages {
     if let Some(current_pkg) =
       newest_packages_by_name.get_mut(&package.id.nv.name)
@@ -357,11 +367,29 @@ async fn sync_resolution_with_fs(
     let package_folder_name =
       get_package_folder_id_folder_name(&package.get_package_cache_folder_id());
     let folder_path = deno_local_registry_dir.join(&package_folder_name);
+    let tags = package_tags
+      .get(&package.id.nv)
+      .map(|tags| tags.join(","))
+      .unwrap_or_default();
+    enum PackageFolderState {
+      UpToDate,
+      Uninitialized,
+      TagsOutdated,
+    }
     let initialized_file = folder_path.join(".initialized");
+    let package_state = std::fs::read_to_string(&initialized_file)
+      .map(|s| {
+        if s != tags {
+          PackageFolderState::TagsOutdated
+        } else {
+          PackageFolderState::UpToDate
+        }
+      })
+      .unwrap_or(PackageFolderState::Uninitialized);
     if !cache
       .cache_setting()
       .should_use_for_npm_package(&package.id.nv.name)
-      || !initialized_file.exists()
+      || matches!(package_state, PackageFolderState::Uninitialized)
     {
       // cache bust the dep from the dep setup cache so the symlinks
       // are forced to be recreated
@@ -371,6 +399,7 @@ async fn sync_resolution_with_fs(
       let bin_entries_to_setup = bin_entries.clone();
       let packages_with_deprecation_warnings =
         packages_with_deprecation_warnings.clone();
+
       cache_futures.push(async move {
         tarball_cache
           .ensure_package(&package.id.nv, &package.dist)
@@ -389,7 +418,7 @@ async fn sync_resolution_with_fs(
           move || {
             clone_dir_recursive(&cache_folder, &package_path)?;
             // write out a file that indicates this folder has been initialized
-            fs::write(initialized_file, "")?;
+            fs::write(initialized_file, tags)?;
 
             Ok::<_, AnyError>(())
           }
@@ -410,6 +439,8 @@ async fn sync_resolution_with_fs(
         drop(pb_guard); // explicit for clarity
         Ok::<_, AnyError>(())
       });
+    } else if matches!(package_state, PackageFolderState::TagsOutdated) {
+      fs::write(initialized_file, tags)?;
     }
 
     let sub_node_modules = folder_path.join("node_modules");
@@ -518,9 +549,9 @@ async fn sync_resolution_with_fs(
         // linked into the root
         match found_names.entry(remote_alias) {
           Entry::Occupied(nv) => {
-            alias_clashes
-              || remote.req.name != nv.get().name // alias to a different package (in case of duplicate aliases)
-              || !remote.req.version_req.matches(&nv.get().version) // incompatible version
+            // alias to a different package (in case of duplicate aliases)
+            // or the version doesn't match the version in the root node_modules
+            alias_clashes || &remote_pkg.id.nv != *nv.get()
           }
           Entry::Vacant(entry) => {
             entry.insert(&remote_pkg.id.nv);
@@ -633,7 +664,28 @@ async fn sync_resolution_with_fs(
   // 7. Set up `node_modules/.bin` entries for packages that need it.
   {
     let bin_entries = std::mem::take(&mut *bin_entries.borrow_mut());
-    bin_entries.finish(snapshot, &bin_node_modules_dir_path)?;
+    bin_entries.finish(
+      snapshot,
+      &bin_node_modules_dir_path,
+      |setup_outcome| {
+        match setup_outcome {
+          bin_entries::EntrySetupOutcome::MissingEntrypoint {
+            package,
+            package_path,
+            ..
+          } if super::common::lifecycle_scripts::has_lifecycle_scripts(
+            package,
+            package_path,
+          ) && lifecycle_scripts.can_run_scripts(&package.id.nv)
+            && !lifecycle_scripts.has_run_scripts(package) =>
+          {
+            // ignore, it might get fixed when the lifecycle scripts run.
+            // if not, we'll warn then
+          }
+          outcome => outcome.warn_if_failed(),
+        }
+      },
+    )?;
   }
 
   // 8. Create symlinks for the workspace packages
@@ -683,7 +735,8 @@ async fn sync_resolution_with_fs(
     .finish(
       snapshot,
       &package_partitions.packages,
-      Some(root_node_modules_dir_path),
+      root_node_modules_dir_path,
+      progress_bar,
     )
     .await?;
 
@@ -920,20 +973,6 @@ impl SetupCache {
   }
 }
 
-/// Normalizes a package name for use at `node_modules/.deno/<pkg-name>@<version>[_<copy_index>]`
-pub fn normalize_pkg_name_for_node_modules_deno_folder(name: &str) -> Cow<str> {
-  let name = if name.to_lowercase() == name {
-    Cow::Borrowed(name)
-  } else {
-    Cow::Owned(format!("_{}", mixed_case_package_name_encode(name)))
-  };
-  if name.starts_with('@') {
-    name.replace('/', "+").into()
-  } else {
-    name
-  }
-}
-
 fn get_package_folder_id_folder_name(
   folder_id: &NpmPackageCacheFolderId,
 ) -> String {
@@ -1023,12 +1062,18 @@ fn junction_or_symlink_dir(
       if symlink_err.kind() == std::io::ErrorKind::PermissionDenied =>
     {
       USE_JUNCTIONS.store(true, std::sync::atomic::Ordering::Relaxed);
-      junction::create(old_path, new_path).map_err(Into::into)
+      junction::create(old_path, new_path)
+        .context("Failed creating junction in node_modules folder")
     }
-    Err(symlink_err) => Err(
-      AnyError::from(symlink_err)
-        .context("Failed creating symlink in node_modules folder"),
-    ),
+    Err(symlink_err) => {
+      log::warn!(
+        "{} Unexpected error symlinking node_modules: {symlink_err}",
+        colors::yellow("Warning")
+      );
+      USE_JUNCTIONS.store(true, std::sync::atomic::Ordering::Relaxed);
+      junction::create(old_path, new_path)
+        .context("Failed creating junction in node_modules folder")
+    }
   }
 }
 

@@ -15,6 +15,7 @@ import { maybeCallback } from "ext:deno_node/_fs/_fs_common.ts";
 import { validateInteger } from "ext:deno_node/internal/validators.mjs";
 import * as io from "ext:deno_io/12_io.js";
 import { op_fs_seek_async, op_fs_seek_sync } from "ext:core/ops";
+import process from "node:process";
 
 type Callback = (
   err: ErrnoException | null,

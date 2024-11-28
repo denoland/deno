@@ -83,6 +83,7 @@ pub async fn format(
       file_watcher::PrintConfig::new("Fmt", !watch_flags.no_clear_screen),
       move |flags, watcher_communicator, changed_paths| {
         let fmt_flags = fmt_flags.clone();
+        watcher_communicator.show_path_changed(changed_paths.clone());
         Ok(async move {
           let factory = CliFactory::from_flags(flags);
           let cli_options = factory.cli_options()?;
@@ -227,6 +228,7 @@ fn collect_fmt_files(
   })
   .ignore_git_folder()
   .ignore_node_modules()
+  .use_gitignore()
   .set_vendor_folder(cli_options.vendor_dir_path().map(ToOwned::to_owned))
   .collect_file_patterns(&deno_config::fs::RealDenoConfigFs, files)
 }
@@ -270,6 +272,7 @@ fn format_markdown(
           | "njk"
           | "yml"
           | "yaml"
+          | "sql"
       ) {
         // It's important to tell dprint proper file extension, otherwise
         // it might parse the file twice.
@@ -299,6 +302,13 @@ fn format_markdown(
             }
           }
           "yml" | "yaml" => format_yaml(text, fmt_options),
+          "sql" => {
+            if unstable_options.sql {
+              format_sql(text, fmt_options)
+            } else {
+              Ok(None)
+            }
+          }
           _ => {
             let mut codeblock_config =
               get_resolved_typescript_config(fmt_options);
@@ -353,6 +363,21 @@ fn format_yaml(
   file_text: &str,
   fmt_options: &FmtOptionsConfig,
 ) -> Result<Option<String>, AnyError> {
+  let ignore_file = file_text
+    .lines()
+    .take_while(|line| line.starts_with('#'))
+    .any(|line| {
+      line
+        .strip_prefix('#')
+        .unwrap()
+        .trim()
+        .starts_with("deno-fmt-ignore-file")
+    });
+
+  if ignore_file {
+    return Ok(None);
+  }
+
   let formatted_str =
     pretty_yaml::format_text(file_text, &get_resolved_yaml_config(fmt_options))
       .map_err(AnyError::from)?;
@@ -437,25 +462,15 @@ pub fn format_html(
   )
   .map_err(|error| match error {
     markup_fmt::FormatError::Syntax(error) => {
-      // TODO(bartlomieju): rework when better error support in `markup_fmt` lands
       fn inner(
         error: &markup_fmt::SyntaxError,
         file_path: &Path,
       ) -> Option<String> {
-        let error_str = format!("{}", error);
-        let error_str = error_str.strip_prefix("syntax error '")?;
-
-        let reason = error_str
-          .split("' at")
-          .collect::<Vec<_>>()
-          .first()
-          .map(|s| s.to_string())?;
-
         let url = Url::from_file_path(file_path).ok()?;
 
         let error_msg = format!(
           "Syntax error ({}) at {}:{}:{}\n",
-          reason,
+          error.kind,
           url.as_str(),
           error.line,
           error.column
@@ -496,7 +511,52 @@ pub fn format_html(
   })
 }
 
-/// Formats a single TS, TSX, JS, JSX, JSONC, JSON, MD, or IPYNB file.
+pub fn format_sql(
+  file_text: &str,
+  fmt_options: &FmtOptionsConfig,
+) -> Result<Option<String>, AnyError> {
+  let ignore_file = file_text
+    .lines()
+    .take_while(|line| line.starts_with("--"))
+    .any(|line| {
+      line
+        .strip_prefix("--")
+        .unwrap()
+        .trim()
+        .starts_with("deno-fmt-ignore-file")
+    });
+
+  if ignore_file {
+    return Ok(None);
+  }
+
+  let mut formatted_str = sqlformat::format(
+    file_text,
+    &sqlformat::QueryParams::None,
+    &sqlformat::FormatOptions {
+      ignore_case_convert: None,
+      indent: if fmt_options.use_tabs.unwrap_or_default() {
+        sqlformat::Indent::Tabs
+      } else {
+        sqlformat::Indent::Spaces(fmt_options.indent_width.unwrap_or(2))
+      },
+      // leave one blank line between queries.
+      lines_between_queries: 2,
+      uppercase: Some(true),
+    },
+  );
+
+  // Add single new line to the end of file.
+  formatted_str.push('\n');
+
+  Ok(if formatted_str == file_text {
+    None
+  } else {
+    Some(formatted_str)
+  })
+}
+
+/// Formats a single TS, TSX, JS, JSX, JSONC, JSON, MD, IPYNB or SQL file.
 pub fn format_file(
   file_path: &Path,
   file_text: &str,
@@ -531,6 +591,13 @@ pub fn format_file(
         format_file(file_path, &file_text, fmt_options, unstable_options, None)
       },
     ),
+    "sql" => {
+      if unstable_options.sql {
+        format_sql(file_text, fmt_options)
+      } else {
+        Ok(None)
+      }
+    }
     _ => {
       let config = get_resolved_typescript_config(fmt_options);
       dprint_plugin_typescript::format_text(
@@ -785,28 +852,26 @@ fn format_ensure_stable(
             return Ok(Some(current_text));
           }
           Err(err) => {
-            panic!(
+            bail!(
               concat!(
                 "Formatting succeeded initially, but failed when ensuring a ",
                 "stable format. This indicates a bug in the formatter where ",
                 "the text it produces is not syntactically correct. As a temporary ",
-                "workaround you can ignore this file ({}).\n\n{:#}"
+                "workaround you can ignore this file.\n\n{:#}"
               ),
-              file_path.display(),
               err,
             )
           }
         }
         count += 1;
         if count == 5 {
-          panic!(
+          bail!(
             concat!(
               "Formatting not stable. Bailed after {} tries. This indicates a bug ",
-              "in the formatter where it formats the file ({}) differently each time. As a ",
+              "in the formatter where it formats the file differently each time. As a ",
               "temporary workaround you can ignore this file."
             ),
             count,
-            file_path.display(),
           )
         }
       }
@@ -988,6 +1053,7 @@ fn get_resolved_malva_config(
     single_line_top_level_declarations: false,
     selector_override_comment_directive: "deno-fmt-selector-override".into(),
     ignore_comment_directive: "deno-fmt-ignore".into(),
+    ignore_file_comment_directive: "deno-fmt-ignore-file".into(),
   };
 
   FormatOptions {
@@ -1026,7 +1092,7 @@ fn get_resolved_markup_fmt_config(
     max_attrs_per_line: None,
     prefer_attrs_single_line: false,
     html_normal_self_closing: None,
-    html_void_self_closing: Some(true),
+    html_void_self_closing: None,
     component_self_closing: None,
     svg_self_closing: None,
     mathml_self_closing: None,
@@ -1046,6 +1112,7 @@ fn get_resolved_markup_fmt_config(
     svelte_directive_shorthand: Some(true),
     astro_attr_shorthand: Some(true),
     ignore_comment_directive: "deno-fmt-ignore".into(),
+    ignore_file_comment_directive: "deno-fmt-ignore-file".into(),
   };
 
   FormatOptions {
@@ -1202,12 +1269,15 @@ fn is_supported_ext_fmt(path: &Path) -> bool {
         | "yml"
         | "yaml"
         | "ipynb"
+        | "sql"
     )
   })
 }
 
 #[cfg(test)]
 mod test {
+  use test_util::assert_starts_with;
+
   use super::*;
 
   #[test]
@@ -1260,15 +1330,24 @@ mod test {
     assert!(is_supported_ext_fmt(Path::new("foo.yaml")));
     assert!(is_supported_ext_fmt(Path::new("foo.YaML")));
     assert!(is_supported_ext_fmt(Path::new("foo.ipynb")));
+    assert!(is_supported_ext_fmt(Path::new("foo.sql")));
+    assert!(is_supported_ext_fmt(Path::new("foo.Sql")));
+    assert!(is_supported_ext_fmt(Path::new("foo.sQl")));
+    assert!(is_supported_ext_fmt(Path::new("foo.sqL")));
+    assert!(is_supported_ext_fmt(Path::new("foo.SQL")));
   }
 
   #[test]
-  #[should_panic(expected = "Formatting not stable. Bailed after 5 tries.")]
   fn test_format_ensure_stable_unstable_format() {
-    format_ensure_stable(&PathBuf::from("mod.ts"), "1", |_, file_text| {
-      Ok(Some(format!("1{file_text}")))
-    })
-    .unwrap();
+    let err =
+      format_ensure_stable(&PathBuf::from("mod.ts"), "1", |_, file_text| {
+        Ok(Some(format!("1{file_text}")))
+      })
+      .unwrap_err();
+    assert_starts_with!(
+      err.to_string(),
+      "Formatting not stable. Bailed after 5 tries."
+    );
   }
 
   #[test]
@@ -1282,16 +1361,20 @@ mod test {
   }
 
   #[test]
-  #[should_panic(expected = "Formatting succeeded initially, but failed when")]
   fn test_format_ensure_stable_error_second() {
-    format_ensure_stable(&PathBuf::from("mod.ts"), "1", |_, file_text| {
-      if file_text == "1" {
-        Ok(Some("11".to_string()))
-      } else {
-        bail!("Error formatting.")
-      }
-    })
-    .unwrap();
+    let err =
+      format_ensure_stable(&PathBuf::from("mod.ts"), "1", |_, file_text| {
+        if file_text == "1" {
+          Ok(Some("11".to_string()))
+        } else {
+          bail!("Error formatting.")
+        }
+      })
+      .unwrap_err();
+    assert_starts_with!(
+      err.to_string(),
+      "Formatting succeeded initially, but failed when"
+    );
   }
 
   #[test]

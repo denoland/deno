@@ -1181,6 +1181,32 @@ declare namespace Deno {
     ): Displayable;
 
     /**
+     * Display a JPG or PNG image.
+     *
+     * ```
+     * Deno.jupyter.image("./cat.jpg");
+     * Deno.jupyter.image("./dog.png");
+     * ```
+     *
+     * @category Jupyter
+     * @experimental
+     */
+    export function image(path: string): Displayable;
+
+    /**
+     * Display a JPG or PNG image.
+     *
+     * ```
+     * const img = Deno.readFileSync("./cat.jpg");
+     * Deno.jupyter.image(img);
+     * ```
+     *
+     * @category Jupyter
+     * @experimental
+     */
+    export function image(data: Uint8Array): Displayable;
+
+    /**
      * Format an object for displaying in Deno
      *
      * @param obj - The object to be displayed
@@ -1221,6 +1247,73 @@ declare namespace Deno {
         buffers?: Uint8Array[];
       },
     ): Promise<void>;
+
+    export {}; // only export exports
+  }
+
+  /**
+   * **UNSTABLE**: New API, yet to be vetted.
+   *
+   * APIs for working with the OpenTelemetry observability framework. Deno can
+   * export traces, metrics, and logs to OpenTelemetry compatible backends via
+   * the OTLP protocol.
+   *
+   * Deno automatically instruments the runtime with OpenTelemetry traces and
+   * metrics. This data is exported via OTLP to OpenTelemetry compatible
+   * backends. User logs from the `console` API are exported as OpenTelemetry
+   * logs via OTLP.
+   *
+   * User code can also create custom traces, metrics, and logs using the
+   * OpenTelemetry API. This is done using the official OpenTelemetry package
+   * for JavaScript:
+   * [`npm:@opentelemetry/api`](https://opentelemetry.io/docs/languages/js/).
+   * Deno integrates with this package to provide trace context propagation
+   * between native Deno APIs (like `Deno.serve` or `fetch`) and custom user
+   * code. Deno also provides APIs that allow exporting custom telemetry data
+   * via the same OTLP channel used by the Deno runtime. This is done using the
+   * [`jsr:@deno/otel`](https://jsr.io/@deno/otel) package.
+   *
+   * @example Using OpenTelemetry API to create custom traces
+   * ```ts,ignore
+   * import { trace } from "npm:@opentelemetry/api@1";
+   * import "jsr:@deno/otel@0.0.2/register";
+   *
+   * const tracer = trace.getTracer("example-tracer");
+   *
+   * async function doWork() {
+   *   return tracer.startActiveSpan("doWork", async (span) => {
+   *     span.setAttribute("key", "value");
+   *     await new Promise((resolve) => setTimeout(resolve, 1000));
+   *     span.end();
+   *   });
+   * }
+   *
+   * Deno.serve(async (req) => {
+   *   await doWork();
+   *   const resp = await fetch("https://example.com");
+   *   return resp;
+   * });
+   * ```
+   *
+   * @category Telemetry
+   * @experimental
+   */
+  export namespace telemetry {
+    /**
+     * A SpanExporter compatible with OpenTelemetry.js
+     * https://open-telemetry.github.io/opentelemetry-js/interfaces/_opentelemetry_sdk_trace_base.SpanExporter.html
+     * @category Telemetry
+     * @experimental
+     */
+    export class SpanExporter {}
+
+    /**
+     * A ContextManager compatible with OpenTelemetry.js
+     * https://open-telemetry.github.io/opentelemetry-js/interfaces/_opentelemetry_api.ContextManager.html
+     * @category Telemetry
+     * @experimental
+     */
+    export class ContextManager {}
 
     export {}; // only export exports
   }

@@ -10,7 +10,6 @@ import { internals } from "ext:core/mod.js";
 import {
   op_bootstrap_unstable_args,
   op_node_child_ipc_pipe,
-  op_npm_process_state,
 } from "ext:core/ops";
 
 import {
@@ -54,6 +53,7 @@ import {
   convertToValidSignal,
   kEmptyObject,
 } from "ext:deno_node/internal/util.mjs";
+import { kNeedsNpmProcessState } from "ext:runtime/40_process.js";
 
 const MAX_BUFFER = 1024 * 1024;
 
@@ -132,6 +132,8 @@ export function fork(
           rm = 2;
         }
         execArgv.splice(index, rm);
+      } else if (flag.startsWith("--no-warnings")) {
+        execArgv[index] = "--quiet";
       } else {
         index++;
       }
@@ -168,9 +170,8 @@ export function fork(
   options.execPath = options.execPath || Deno.execPath();
   options.shell = false;
 
-  Object.assign(options.env ??= {}, {
-    DENO_DONT_USE_INTERNAL_NODE_COMPAT_STATE: op_npm_process_state(),
-  });
+  // deno-lint-ignore no-explicit-any
+  (options as any)[kNeedsNpmProcessState] = true;
 
   return spawn(options.execPath, args, options);
 }

@@ -3,7 +3,6 @@
 use std::borrow::Cow;
 use std::path::PathBuf;
 use std::sync::Arc;
-use std::sync::Mutex;
 
 use deno_ast::diagnostics::Diagnostic;
 use deno_ast::diagnostics::DiagnosticLevel;
@@ -21,6 +20,7 @@ use deno_ast::SourceRanged;
 use deno_ast::SourceTextInfo;
 use deno_core::anyhow::anyhow;
 use deno_core::error::AnyError;
+use deno_core::parking_lot::Mutex;
 use deno_core::url::Url;
 use deno_graph::FastCheckDiagnostic;
 use deno_semver::Version;
@@ -36,7 +36,7 @@ impl PublishDiagnosticsCollector {
   pub fn print_and_error(&self) -> Result<(), AnyError> {
     let mut errors = 0;
     let mut has_slow_types_errors = false;
-    let mut diagnostics = self.diagnostics.lock().unwrap().take();
+    let mut diagnostics = self.diagnostics.lock().take();
 
     diagnostics.sort_by_cached_key(|d| d.sorting_key());
 
@@ -75,8 +75,16 @@ impl PublishDiagnosticsCollector {
     }
   }
 
+  pub fn has_error(&self) -> bool {
+    self
+      .diagnostics
+      .lock()
+      .iter()
+      .any(|d| matches!(d.level(), DiagnosticLevel::Error))
+  }
+
   pub fn push(&self, diagnostic: PublishDiagnostic) {
-    self.diagnostics.lock().unwrap().push(diagnostic);
+    self.diagnostics.lock().push(diagnostic);
   }
 }
 
@@ -226,8 +234,8 @@ impl Diagnostic for PublishDiagnostic {
         specifier: Cow::Borrowed(&referrer.specifier),
         text_info: Cow::Borrowed(text_info),
         source_pos: DiagnosticSourcePos::LineAndCol {
-          line: referrer.start.line,
-          column: referrer.start.character,
+          line: referrer.range.start.line,
+          column: referrer.range.start.character,
         },
       }
     }
@@ -292,7 +300,7 @@ impl Diagnostic for PublishDiagnostic {
       text_info: &'a SourceTextInfo,
       referrer: &'a deno_graph::Range,
     ) -> Option<DiagnosticSnippet<'a>> {
-      if referrer.start.line == 0 && referrer.start.character == 0 {
+      if referrer.range.start.line == 0 && referrer.range.start.character == 0 {
         return None; // no range, probably a jsxImportSource import
       }
 
@@ -302,12 +310,12 @@ impl Diagnostic for PublishDiagnostic {
           style: DiagnosticSnippetHighlightStyle::Error,
           range: DiagnosticSourceRange {
             start: DiagnosticSourcePos::LineAndCol {
-              line: referrer.start.line,
-              column: referrer.start.character,
+              line: referrer.range.start.line,
+              column: referrer.range.start.character,
             },
             end: DiagnosticSourcePos::LineAndCol {
-              line: referrer.end.line,
-              column: referrer.end.character,
+              line: referrer.range.end.line,
+              column: referrer.range.end.character,
             },
           },
           description: Some("the specifier".into()),
@@ -468,7 +476,7 @@ impl Diagnostic for PublishDiagnostic {
       InvalidExternalImport { imported, .. } => Cow::Owned(vec![
         Cow::Owned(format!("the import was resolved to '{}'", imported)),
         Cow::Borrowed("this specifier is not allowed to be imported on jsr"),
-        Cow::Borrowed("jsr only supports importing `jsr:`, `npm:`, and `data:` specifiers"),
+        Cow::Borrowed("jsr only supports importing `jsr:`, `npm:`, `data:`, `bun:`, and `node:` specifiers"),
       ]),
       UnsupportedJsxTsx { .. } => Cow::Owned(vec![
         Cow::Borrowed("follow https://github.com/jsr-io/jsr/issues/24 for updates"),

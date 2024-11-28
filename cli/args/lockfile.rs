@@ -25,10 +25,19 @@ use crate::args::InstallKind;
 use deno_lockfile::Lockfile;
 
 #[derive(Debug)]
+pub struct CliLockfileReadFromPathOptions {
+  pub file_path: PathBuf,
+  pub frozen: bool,
+  /// Causes the lockfile to only be read from, but not written to.
+  pub skip_write: bool,
+}
+
+#[derive(Debug)]
 pub struct CliLockfile {
   lockfile: Mutex<Lockfile>,
   pub filename: PathBuf,
-  pub frozen: bool,
+  frozen: bool,
+  skip_write: bool,
 }
 
 pub struct Guard<'a, T> {
@@ -50,15 +59,6 @@ impl<'a, T> std::ops::DerefMut for Guard<'a, T> {
 }
 
 impl CliLockfile {
-  pub fn new(lockfile: Lockfile, frozen: bool) -> Self {
-    let filename = lockfile.filename.clone();
-    Self {
-      lockfile: Mutex::new(lockfile),
-      filename,
-      frozen,
-    }
-  }
-
   /// Get the inner deno_lockfile::Lockfile.
   pub fn lock(&self) -> Guard<Lockfile> {
     Guard {
@@ -78,6 +78,10 @@ impl CliLockfile {
   }
 
   pub fn write_if_changed(&self) -> Result<(), AnyError> {
+    if self.skip_write {
+      return Ok(());
+    }
+
     self.error_if_changed()?;
     let mut lockfile = self.lockfile.lock();
     let Some(bytes) = lockfile.resolve_write_bytes() else {
@@ -122,11 +126,7 @@ impl CliLockfile {
       maybe_deno_json: Option<&ConfigFile>,
     ) -> HashSet<JsrDepPackageReq> {
       maybe_deno_json
-        .map(|c| {
-          crate::args::deno_json::deno_json_deps(c)
-            .into_iter()
-            .collect()
-        })
+        .map(crate::args::deno_json::deno_json_deps)
         .unwrap_or_default()
     }
 
@@ -142,7 +142,7 @@ impl CliLockfile {
       return Ok(None);
     }
 
-    let filename = match flags.lock {
+    let file_path = match flags.lock {
       Some(ref lock) => PathBuf::from(lock),
       None => match workspace.resolve_lockfile_path()? {
         Some(path) => path,
@@ -160,7 +160,11 @@ impl CliLockfile {
         .unwrap_or(false)
     });
 
-    let lockfile = Self::read_from_path(filename, frozen)?;
+    let lockfile = Self::read_from_path(CliLockfileReadFromPathOptions {
+      file_path,
+      frozen,
+      skip_write: flags.internal.lockfile_skip_write,
+    })?;
 
     // initialize the lockfile with the workspace's configuration
     let root_url = workspace.root_dir();
@@ -212,25 +216,29 @@ impl CliLockfile {
   }
 
   pub fn read_from_path(
-    file_path: PathBuf,
-    frozen: bool,
+    opts: CliLockfileReadFromPathOptions,
   ) -> Result<CliLockfile, AnyError> {
-    match std::fs::read_to_string(&file_path) {
-      Ok(text) => Ok(CliLockfile::new(
-        Lockfile::new(deno_lockfile::NewLockfileOptions {
-          file_path,
-          content: &text,
-          overwrite: false,
-        })?,
-        frozen,
-      )),
-      Err(err) if err.kind() == std::io::ErrorKind::NotFound => Ok(
-        CliLockfile::new(Lockfile::new_empty(file_path, false), frozen),
-      ),
-      Err(err) => Err(err).with_context(|| {
-        format!("Failed reading lockfile '{}'", file_path.display())
-      }),
-    }
+    let lockfile = match std::fs::read_to_string(&opts.file_path) {
+      Ok(text) => Lockfile::new(deno_lockfile::NewLockfileOptions {
+        file_path: opts.file_path,
+        content: &text,
+        overwrite: false,
+      })?,
+      Err(err) if err.kind() == std::io::ErrorKind::NotFound => {
+        Lockfile::new_empty(opts.file_path, false)
+      }
+      Err(err) => {
+        return Err(err).with_context(|| {
+          format!("Failed reading lockfile '{}'", opts.file_path.display())
+        });
+      }
+    };
+    Ok(CliLockfile {
+      filename: lockfile.filename.clone(),
+      lockfile: Mutex::new(lockfile),
+      frozen: opts.frozen,
+      skip_write: opts.skip_write,
+    })
   }
 
   pub fn error_if_changed(&self) -> Result<(), AnyError> {

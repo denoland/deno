@@ -556,14 +556,23 @@ declare namespace Deno {
      */
     env?: "inherit" | boolean | string[];
 
-    /** Specifies if the `sys` permission should be requested or revoked.
-     * If set to `"inherit"`, the current `sys` permission will be inherited.
-     * If set to `true`, the global `sys` permission will be requested.
-     * If set to `false`, the global `sys` permission will be revoked.
+    /** Specifies if the `ffi` permission should be requested or revoked.
+     * If set to `"inherit"`, the current `ffi` permission will be inherited.
+     * If set to `true`, the global `ffi` permission will be requested.
+     * If set to `false`, the global `ffi` permission will be revoked.
      *
      * @default {false}
      */
-    sys?: "inherit" | boolean | string[];
+    ffi?: "inherit" | boolean | Array<string | URL>;
+
+    /** Specifies if the `import` permission should be requested or revoked.
+     * If set to `"inherit"` the current `import` permission will be inherited.
+     * If set to `true`, the global `import` permission will be requested.
+     * If set to `false`, the global `import` permission will be revoked.
+     * If set to `Array<string>`, the `import` permissions will be requested with the
+     * specified domains.
+     */
+    import?: "inherit" | boolean | Array<string>;
 
     /** Specifies if the `net` permission should be requested or revoked.
      * if set to `"inherit"`, the current `net` permission will be inherited.
@@ -638,15 +647,6 @@ declare namespace Deno {
      */
     net?: "inherit" | boolean | string[];
 
-    /** Specifies if the `ffi` permission should be requested or revoked.
-     * If set to `"inherit"`, the current `ffi` permission will be inherited.
-     * If set to `true`, the global `ffi` permission will be requested.
-     * If set to `false`, the global `ffi` permission will be revoked.
-     *
-     * @default {false}
-     */
-    ffi?: "inherit" | boolean | Array<string | URL>;
-
     /** Specifies if the `read` permission should be requested or revoked.
      * If set to `"inherit"`, the current `read` permission will be inherited.
      * If set to `true`, the global `read` permission will be requested.
@@ -666,6 +666,15 @@ declare namespace Deno {
      * @default {false}
      */
     run?: "inherit" | boolean | Array<string | URL>;
+
+    /** Specifies if the `sys` permission should be requested or revoked.
+     * If set to `"inherit"`, the current `sys` permission will be inherited.
+     * If set to `true`, the global `sys` permission will be requested.
+     * If set to `false`, the global `sys` permission will be revoked.
+     *
+     * @default {false}
+     */
+    sys?: "inherit" | boolean | string[];
 
     /** Specifies if the `write` permission should be requested or revoked.
      * If set to `"inherit"`, the current `write` permission will be inherited.
@@ -2962,6 +2971,10 @@ declare namespace Deno {
      * field from `stat` on Mac/BSD and `ftCreationTime` on Windows. This may
      * not be available on all platforms. */
     birthtime: Date | null;
+    /** The last change time of the file. This corresponds to the `ctime`
+     * field from `stat` on Mac/BSD and `ChangeTime` on Windows. This may
+     * not be available on all platforms. */
+    ctime: Date | null;
     /** ID of the device containing the file. */
     dev: number;
     /** Inode number.
@@ -2970,8 +2983,7 @@ declare namespace Deno {
     ino: number | null;
     /** The underlying raw `st_mode` bits that contain the standard Unix
      * permissions for this file/directory.
-     *
-     * _Linux/Mac OS only._ */
+     */
     mode: number | null;
     /** Number of hard links pointing to this file.
      *
@@ -4523,7 +4535,7 @@ declare namespace Deno {
   /** The object that is returned from a {@linkcode Deno.upgradeWebSocket}
    * request.
    *
-   * @category Web Sockets */
+   * @category WebSockets */
   export interface WebSocketUpgrade {
     /** The response object that represents the HTTP response to the client,
      * which should be used to the {@linkcode RequestEvent} `.respondWith()` for
@@ -4537,7 +4549,7 @@ declare namespace Deno {
   /** Options which can be set when performing a
    * {@linkcode Deno.upgradeWebSocket} upgrade of a {@linkcode Request}
    *
-   * @category Web Sockets */
+   * @category WebSockets */
   export interface UpgradeWebSocketOptions {
     /** Sets the `.protocol` property on the client side web socket to the
      * value provided here, which should be one of the strings specified in the
@@ -4585,7 +4597,7 @@ declare namespace Deno {
    * This operation does not yet consume the request or open the websocket. This
    * only happens once the returned response has been passed to `respondWith()`.
    *
-   * @category Web Sockets
+   * @category WebSockets
    */
   export function upgradeWebSocket(
     request: Request,

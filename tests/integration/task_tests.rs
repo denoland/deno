@@ -3,6 +3,9 @@
 // Most of the tests for this are in deno_task_shell.
 // These tests are intended to only test integration.
 
+use test_util as util;
+use util::TestContextBuilder;
+
 // use test_util::env_vars_for_npm_tests;
 // use test_util::itest;
 // use test_util::TestContext;
@@ -18,19 +21,6 @@
 //   http_server: true,
 // });
 
-// TODO(2.0): decide what to do with this test
-// should not auto-install the packages in the package.json
-// when using nodeModulesDir: false
-// itest!(task_package_json_node_modules_dir_false {
-//   args: "task echo",
-//   cwd: Some("task/package_json_node_modules_dir_false/"),
-//   output: "task/package_json_node_modules_dir_false/bin.out",
-//   copy_temp_dir: Some("task/package_json_node_modules_dir_false/"),
-//   envs: env_vars_for_npm_tests(),
-//   exit_code: 0,
-//   http_server: true,
-// });
-
 // TODO(2.0): not entirely clear what's wrong with this test but it hangs for more than 60s
 // itest!(task_npx_on_own {
 //   args: "task on-own",
@@ -41,3 +31,59 @@
 //   exit_code: 1,
 //   http_server: true,
 // });
+
+#[test]
+fn deno_task_ansi_escape_codes() {
+  let context = TestContextBuilder::default().use_temp_cwd().build();
+  let temp_dir = context.temp_dir();
+  temp_dir.write("deno.json", r#"{
+  "tasks": {
+    "dev": "echo 'BOOO!!!'",
+    "next": "\u001b[3F\u001b[0G- dev\u001b[1E\u001b[2K    echo 'I am your friend.'"
+  }
+}
+"#);
+
+  context
+    .new_command()
+    .args_vec(["task"])
+    .with_pty(|mut console| {
+      console.expect("Available tasks:");
+      console.expect("- dev");
+      console.expect("    echo 'BOOO!!!'");
+      console.expect("- next");
+      console.expect("    - dev    echo 'I am your friend.'");
+    });
+}
+
+#[test]
+fn deno_task_control_chars() {
+  let context = TestContextBuilder::default().use_temp_cwd().build();
+  let temp_dir = context.temp_dir();
+  temp_dir.write(
+    "deno.json",
+    r#"{
+  "tasks": {
+    "dev": "echo 'BOOO!!!' && \r    echo hi there is my command",
+    "serve": {
+      "description": "this is a\tm\rangled description",
+      "command": "echo hello"
+    }
+  }
+}
+"#,
+  );
+
+  context
+    .new_command()
+    .args_vec(["task"])
+    .with_pty(|mut console| {
+      console.expect("Available tasks:");
+      console.expect("- dev");
+      console
+        .expect("    echo 'BOOO!!!' && \\r    echo hi there is my command");
+      console.expect("- serve");
+      console.expect("    // this is a\\tm\\rangled description");
+      console.expect("    echo hello");
+    });
+}

@@ -269,12 +269,6 @@ class Request {
   /** @type {AbortSignal} */
   get [_signal]() {
     const signal = this[_signalCache];
-    // This signal not been created yet, and the request is still in progress
-    if (signal === undefined) {
-      const signal = newSignal();
-      this[_signalCache] = signal;
-      return signal;
-    }
     // This signal has not been created yet, but the request has already completed
     if (signal === false) {
       const signal = newSignal();
@@ -282,6 +276,18 @@ class Request {
       signal[signalAbort](signalAbortError);
       return signal;
     }
+
+    // This signal not been created yet, and the request is still in progress
+    if (signal === undefined) {
+      const signal = newSignal();
+      this[_signalCache] = signal;
+      this[_request].onCancel?.(() => {
+        signal[signalAbort](signalAbortError);
+      });
+
+      return signal;
+    }
+
     return signal;
   }
   get [_mimeType]() {

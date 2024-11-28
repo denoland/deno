@@ -1,6 +1,9 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
+use std::borrow::Cow;
 use std::cell::RefCell;
+use std::error::Error;
+use std::fmt::Formatter;
 use std::io;
 use std::io::SeekFrom;
 use std::path::Path;
@@ -8,31 +11,96 @@ use std::path::PathBuf;
 use std::path::StripPrefixError;
 use std::rc::Rc;
 
-use deno_core::anyhow::bail;
-use deno_core::error::custom_error;
-use deno_core::error::type_error;
-use deno_core::error::AnyError;
-use deno_core::op2;
-use deno_core::CancelFuture;
-use deno_core::CancelHandle;
-use deno_core::JsBuffer;
-use deno_core::OpState;
-use deno_core::ResourceId;
-use deno_core::ToJsBuffer;
-use deno_io::fs::FileResource;
-use deno_io::fs::FsError;
-use deno_io::fs::FsStat;
-use rand::rngs::ThreadRng;
-use rand::thread_rng;
-use rand::Rng;
-use serde::Serialize;
-
 use crate::interface::AccessCheckFn;
 use crate::interface::FileSystemRc;
 use crate::interface::FsDirEntry;
 use crate::interface::FsFileType;
 use crate::FsPermissions;
 use crate::OpenOptions;
+use boxed_error::Boxed;
+use deno_core::op2;
+use deno_core::v8;
+use deno_core::CancelFuture;
+use deno_core::CancelHandle;
+use deno_core::FastString;
+use deno_core::JsBuffer;
+use deno_core::OpState;
+use deno_core::ResourceId;
+use deno_core::ToJsBuffer;
+use deno_core::ToV8;
+use deno_io::fs::FileResource;
+use deno_io::fs::FsError;
+use deno_io::fs::FsStat;
+use deno_permissions::PermissionCheckError;
+use rand::rngs::ThreadRng;
+use rand::thread_rng;
+use rand::Rng;
+use serde::Serialize;
+
+#[derive(Debug, Boxed)]
+pub struct FsOpsError(pub Box<FsOpsErrorKind>);
+
+#[derive(Debug, thiserror::Error)]
+pub enum FsOpsErrorKind {
+  #[error("{0}")]
+  Io(#[source] std::io::Error),
+  #[error("{0}")]
+  OperationError(#[source] OperationError),
+  #[error(transparent)]
+  Permission(#[from] PermissionCheckError),
+  #[error(transparent)]
+  Resource(deno_core::error::AnyError),
+  #[error("File name or path {0:?} is not valid UTF-8")]
+  InvalidUtf8(std::ffi::OsString),
+  #[error("{0}")]
+  StripPrefix(#[from] StripPrefixError),
+  #[error("{0}")]
+  Canceled(#[from] deno_core::Canceled),
+  #[error("Invalid seek mode: {0}")]
+  InvalidSeekMode(i32),
+  #[error("Invalid control character in prefix or suffix: {0:?}")]
+  InvalidControlCharacter(String),
+  #[error("Invalid character in prefix or suffix: {0:?}")]
+  InvalidCharacter(String),
+  #[cfg(windows)]
+  #[error("Invalid trailing character in suffix")]
+  InvalidTrailingCharacter,
+  #[error("Requires {err} access to {path}, {}", print_not_capable_info(*.standalone, .err))]
+  NotCapableAccess {
+    // NotCapable
+    standalone: bool,
+    err: &'static str,
+    path: String,
+  },
+  #[error("permission denied: {0}")]
+  NotCapable(&'static str), // NotCapable
+  #[error(transparent)]
+  Other(deno_core::error::AnyError),
+}
+
+impl From<FsError> for FsOpsError {
+  fn from(err: FsError) -> Self {
+    match err {
+      FsError::Io(err) => FsOpsErrorKind::Io(err),
+      FsError::FileBusy => {
+        FsOpsErrorKind::Other(deno_core::error::resource_unavailable())
+      }
+      FsError::NotSupported => {
+        FsOpsErrorKind::Other(deno_core::error::not_supported())
+      }
+      FsError::NotCapable(err) => FsOpsErrorKind::NotCapable(err),
+    }
+    .into_box()
+  }
+}
+
+fn print_not_capable_info(standalone: bool, err: &'static str) -> String {
+  if standalone {
+    format!("specify the required permissions during compilation using `deno compile --allow-{err}`")
+  } else {
+    format!("run again with the --allow-{err} flag")
+  }
+}
 
 fn sync_permission_check<'a, P: FsPermissions + 'static>(
   permissions: &'a mut P,
@@ -58,7 +126,7 @@ fn map_permission_error(
   operation: &'static str,
   error: FsError,
   path: &Path,
-) -> AnyError {
+) -> FsOpsError {
   match error {
     FsError::NotCapable(err) => {
       let path = format!("{path:?}");
@@ -67,14 +135,13 @@ fn map_permission_error(
       } else {
         (path.as_str(), "")
       };
-      let msg = if deno_permissions::is_standalone() {
-        format!(
-          "Requires {err} access to {path}{truncated}, specify the required permissions during compilation using `deno compile --allow-{err}`")
-      } else {
-        format!(
-          "Requires {err} access to {path}{truncated}, run again with the --allow-{err} flag")
-      };
-      custom_error("NotCapable", msg)
+
+      FsOpsErrorKind::NotCapableAccess {
+        standalone: deno_permissions::is_standalone(),
+        err,
+        path: format!("{path}{truncated}"),
+      }
+      .into_box()
     }
     err => Err::<(), _>(err)
       .context_path(operation, path)
@@ -83,9 +150,9 @@ fn map_permission_error(
   }
 }
 
-#[op2]
+#[op2(stack_trace)]
 #[string]
-pub fn op_fs_cwd<P>(state: &mut OpState) -> Result<String, AnyError>
+pub fn op_fs_cwd<P>(state: &mut OpState) -> Result<String, FsOpsError>
 where
   P: FsPermissions + 'static,
 {
@@ -98,11 +165,11 @@ where
   Ok(path_str)
 }
 
-#[op2(fast)]
+#[op2(fast, stack_trace)]
 pub fn op_fs_chdir<P>(
   state: &mut OpState,
   #[string] directory: &str,
-) -> Result<(), AnyError>
+) -> Result<(), FsOpsError>
 where
   P: FsPermissions + 'static,
 {
@@ -119,19 +186,19 @@ where
 pub fn op_fs_umask(
   state: &mut OpState,
   mask: Option<u32>,
-) -> Result<u32, AnyError>
+) -> Result<u32, FsOpsError>
 where
 {
   state.borrow::<FileSystemRc>().umask(mask).context("umask")
 }
 
-#[op2]
+#[op2(stack_trace)]
 #[smi]
 pub fn op_fs_open_sync<P>(
   state: &mut OpState,
   #[string] path: String,
   #[serde] options: Option<OpenOptions>,
-) -> Result<ResourceId, AnyError>
+) -> Result<ResourceId, FsOpsError>
 where
   P: FsPermissions + 'static,
 {
@@ -152,13 +219,13 @@ where
   Ok(rid)
 }
 
-#[op2(async)]
+#[op2(async, stack_trace)]
 #[smi]
 pub async fn op_fs_open_async<P>(
   state: Rc<RefCell<OpState>>,
   #[string] path: String,
   #[serde] options: Option<OpenOptions>,
-) -> Result<ResourceId, AnyError>
+) -> Result<ResourceId, FsOpsError>
 where
   P: FsPermissions + 'static,
 {
@@ -180,13 +247,13 @@ where
   Ok(rid)
 }
 
-#[op2]
+#[op2(stack_trace)]
 pub fn op_fs_mkdir_sync<P>(
   state: &mut OpState,
   #[string] path: String,
   recursive: bool,
   mode: Option<u32>,
-) -> Result<(), AnyError>
+) -> Result<(), FsOpsError>
 where
   P: FsPermissions + 'static,
 {
@@ -197,19 +264,19 @@ where
     .check_write(&path, "Deno.mkdirSync()")?;
 
   let fs = state.borrow::<FileSystemRc>();
-  fs.mkdir_sync(&path, recursive, mode)
+  fs.mkdir_sync(&path, recursive, Some(mode))
     .context_path("mkdir", &path)?;
 
   Ok(())
 }
 
-#[op2(async)]
+#[op2(async, stack_trace)]
 pub async fn op_fs_mkdir_async<P>(
   state: Rc<RefCell<OpState>>,
   #[string] path: String,
   recursive: bool,
   mode: Option<u32>,
-) -> Result<(), AnyError>
+) -> Result<(), FsOpsError>
 where
   P: FsPermissions + 'static,
 {
@@ -221,19 +288,19 @@ where
     (state.borrow::<FileSystemRc>().clone(), path)
   };
 
-  fs.mkdir_async(path.clone(), recursive, mode)
+  fs.mkdir_async(path.clone(), recursive, Some(mode))
     .await
     .context_path("mkdir", &path)?;
 
   Ok(())
 }
 
-#[op2(fast)]
+#[op2(fast, stack_trace)]
 pub fn op_fs_chmod_sync<P>(
   state: &mut OpState,
   #[string] path: String,
   mode: u32,
-) -> Result<(), AnyError>
+) -> Result<(), FsOpsError>
 where
   P: FsPermissions + 'static,
 {
@@ -245,12 +312,12 @@ where
   Ok(())
 }
 
-#[op2(async)]
+#[op2(async, stack_trace)]
 pub async fn op_fs_chmod_async<P>(
   state: Rc<RefCell<OpState>>,
   #[string] path: String,
   mode: u32,
-) -> Result<(), AnyError>
+) -> Result<(), FsOpsError>
 where
   P: FsPermissions + 'static,
 {
@@ -265,13 +332,13 @@ where
   Ok(())
 }
 
-#[op2]
+#[op2(stack_trace)]
 pub fn op_fs_chown_sync<P>(
   state: &mut OpState,
   #[string] path: String,
   uid: Option<u32>,
   gid: Option<u32>,
-) -> Result<(), AnyError>
+) -> Result<(), FsOpsError>
 where
   P: FsPermissions + 'static,
 {
@@ -284,13 +351,13 @@ where
   Ok(())
 }
 
-#[op2(async)]
+#[op2(async, stack_trace)]
 pub async fn op_fs_chown_async<P>(
   state: Rc<RefCell<OpState>>,
   #[string] path: String,
   uid: Option<u32>,
   gid: Option<u32>,
-) -> Result<(), AnyError>
+) -> Result<(), FsOpsError>
 where
   P: FsPermissions + 'static,
 {
@@ -305,12 +372,12 @@ where
   Ok(())
 }
 
-#[op2(fast)]
+#[op2(fast, stack_trace)]
 pub fn op_fs_remove_sync<P>(
   state: &mut OpState,
   #[string] path: &str,
   recursive: bool,
-) -> Result<(), AnyError>
+) -> Result<(), FsOpsError>
 where
   P: FsPermissions + 'static,
 {
@@ -325,12 +392,12 @@ where
   Ok(())
 }
 
-#[op2(async)]
+#[op2(async, stack_trace)]
 pub async fn op_fs_remove_async<P>(
   state: Rc<RefCell<OpState>>,
   #[string] path: String,
   recursive: bool,
-) -> Result<(), AnyError>
+) -> Result<(), FsOpsError>
 where
   P: FsPermissions + 'static,
 {
@@ -356,12 +423,12 @@ where
   Ok(())
 }
 
-#[op2(fast)]
+#[op2(fast, stack_trace)]
 pub fn op_fs_copy_file_sync<P>(
   state: &mut OpState,
   #[string] from: &str,
   #[string] to: &str,
-) -> Result<(), AnyError>
+) -> Result<(), FsOpsError>
 where
   P: FsPermissions + 'static,
 {
@@ -376,12 +443,12 @@ where
   Ok(())
 }
 
-#[op2(async)]
+#[op2(async, stack_trace)]
 pub async fn op_fs_copy_file_async<P>(
   state: Rc<RefCell<OpState>>,
   #[string] from: String,
   #[string] to: String,
-) -> Result<(), AnyError>
+) -> Result<(), FsOpsError>
 where
   P: FsPermissions + 'static,
 {
@@ -400,12 +467,12 @@ where
   Ok(())
 }
 
-#[op2(fast)]
+#[op2(fast, stack_trace)]
 pub fn op_fs_stat_sync<P>(
   state: &mut OpState,
   #[string] path: String,
   #[buffer] stat_out_buf: &mut [u32],
-) -> Result<(), AnyError>
+) -> Result<(), FsOpsError>
 where
   P: FsPermissions + 'static,
 {
@@ -419,12 +486,12 @@ where
   Ok(())
 }
 
-#[op2(async)]
+#[op2(async, stack_trace)]
 #[serde]
 pub async fn op_fs_stat_async<P>(
   state: Rc<RefCell<OpState>>,
   #[string] path: String,
-) -> Result<SerializableStat, AnyError>
+) -> Result<SerializableStat, FsOpsError>
 where
   P: FsPermissions + 'static,
 {
@@ -441,12 +508,12 @@ where
   Ok(SerializableStat::from(stat))
 }
 
-#[op2(fast)]
+#[op2(fast, stack_trace)]
 pub fn op_fs_lstat_sync<P>(
   state: &mut OpState,
   #[string] path: String,
   #[buffer] stat_out_buf: &mut [u32],
-) -> Result<(), AnyError>
+) -> Result<(), FsOpsError>
 where
   P: FsPermissions + 'static,
 {
@@ -460,12 +527,12 @@ where
   Ok(())
 }
 
-#[op2(async)]
+#[op2(async, stack_trace)]
 #[serde]
 pub async fn op_fs_lstat_async<P>(
   state: Rc<RefCell<OpState>>,
   #[string] path: String,
-) -> Result<SerializableStat, AnyError>
+) -> Result<SerializableStat, FsOpsError>
 where
   P: FsPermissions + 'static,
 {
@@ -482,12 +549,12 @@ where
   Ok(SerializableStat::from(stat))
 }
 
-#[op2]
+#[op2(stack_trace)]
 #[string]
 pub fn op_fs_realpath_sync<P>(
   state: &mut OpState,
   #[string] path: String,
-) -> Result<String, AnyError>
+) -> Result<String, FsOpsError>
 where
   P: FsPermissions + 'static,
 {
@@ -505,12 +572,12 @@ where
   Ok(path_string)
 }
 
-#[op2(async)]
+#[op2(async, stack_trace)]
 #[string]
 pub async fn op_fs_realpath_async<P>(
   state: Rc<RefCell<OpState>>,
   #[string] path: String,
-) -> Result<String, AnyError>
+) -> Result<String, FsOpsError>
 where
   P: FsPermissions + 'static,
 {
@@ -533,12 +600,12 @@ where
   Ok(path_string)
 }
 
-#[op2]
+#[op2(stack_trace)]
 #[serde]
 pub fn op_fs_read_dir_sync<P>(
   state: &mut OpState,
   #[string] path: String,
-) -> Result<Vec<FsDirEntry>, AnyError>
+) -> Result<Vec<FsDirEntry>, FsOpsError>
 where
   P: FsPermissions + 'static,
 {
@@ -552,12 +619,12 @@ where
   Ok(entries)
 }
 
-#[op2(async)]
+#[op2(async, stack_trace)]
 #[serde]
 pub async fn op_fs_read_dir_async<P>(
   state: Rc<RefCell<OpState>>,
   #[string] path: String,
-) -> Result<Vec<FsDirEntry>, AnyError>
+) -> Result<Vec<FsDirEntry>, FsOpsError>
 where
   P: FsPermissions + 'static,
 {
@@ -577,12 +644,12 @@ where
   Ok(entries)
 }
 
-#[op2(fast)]
+#[op2(fast, stack_trace)]
 pub fn op_fs_rename_sync<P>(
   state: &mut OpState,
   #[string] oldpath: String,
   #[string] newpath: String,
-) -> Result<(), AnyError>
+) -> Result<(), FsOpsError>
 where
   P: FsPermissions + 'static,
 {
@@ -598,12 +665,12 @@ where
   Ok(())
 }
 
-#[op2(async)]
+#[op2(async, stack_trace)]
 pub async fn op_fs_rename_async<P>(
   state: Rc<RefCell<OpState>>,
   #[string] oldpath: String,
   #[string] newpath: String,
-) -> Result<(), AnyError>
+) -> Result<(), FsOpsError>
 where
   P: FsPermissions + 'static,
 {
@@ -623,12 +690,12 @@ where
   Ok(())
 }
 
-#[op2(fast)]
+#[op2(fast, stack_trace)]
 pub fn op_fs_link_sync<P>(
   state: &mut OpState,
   #[string] oldpath: &str,
   #[string] newpath: &str,
-) -> Result<(), AnyError>
+) -> Result<(), FsOpsError>
 where
   P: FsPermissions + 'static,
 {
@@ -645,12 +712,12 @@ where
   Ok(())
 }
 
-#[op2(async)]
+#[op2(async, stack_trace)]
 pub async fn op_fs_link_async<P>(
   state: Rc<RefCell<OpState>>,
   #[string] oldpath: String,
   #[string] newpath: String,
-) -> Result<(), AnyError>
+) -> Result<(), FsOpsError>
 where
   P: FsPermissions + 'static,
 {
@@ -671,13 +738,13 @@ where
   Ok(())
 }
 
-#[op2]
+#[op2(stack_trace)]
 pub fn op_fs_symlink_sync<P>(
   state: &mut OpState,
   #[string] oldpath: &str,
   #[string] newpath: &str,
   #[serde] file_type: Option<FsFileType>,
-) -> Result<(), AnyError>
+) -> Result<(), FsOpsError>
 where
   P: FsPermissions + 'static,
 {
@@ -695,13 +762,13 @@ where
   Ok(())
 }
 
-#[op2(async)]
+#[op2(async, stack_trace)]
 pub async fn op_fs_symlink_async<P>(
   state: Rc<RefCell<OpState>>,
   #[string] oldpath: String,
   #[string] newpath: String,
   #[serde] file_type: Option<FsFileType>,
-) -> Result<(), AnyError>
+) -> Result<(), FsOpsError>
 where
   P: FsPermissions + 'static,
 {
@@ -723,12 +790,12 @@ where
   Ok(())
 }
 
-#[op2]
+#[op2(stack_trace)]
 #[string]
 pub fn op_fs_read_link_sync<P>(
   state: &mut OpState,
   #[string] path: String,
-) -> Result<String, AnyError>
+) -> Result<String, FsOpsError>
 where
   P: FsPermissions + 'static,
 {
@@ -743,12 +810,12 @@ where
   Ok(target_string)
 }
 
-#[op2(async)]
+#[op2(async, stack_trace)]
 #[string]
 pub async fn op_fs_read_link_async<P>(
   state: Rc<RefCell<OpState>>,
   #[string] path: String,
-) -> Result<String, AnyError>
+) -> Result<String, FsOpsError>
 where
   P: FsPermissions + 'static,
 {
@@ -768,12 +835,12 @@ where
   Ok(target_string)
 }
 
-#[op2(fast)]
+#[op2(fast, stack_trace)]
 pub fn op_fs_truncate_sync<P>(
   state: &mut OpState,
   #[string] path: &str,
   #[number] len: u64,
-) -> Result<(), AnyError>
+) -> Result<(), FsOpsError>
 where
   P: FsPermissions + 'static,
 {
@@ -788,12 +855,12 @@ where
   Ok(())
 }
 
-#[op2(async)]
+#[op2(async, stack_trace)]
 pub async fn op_fs_truncate_async<P>(
   state: Rc<RefCell<OpState>>,
   #[string] path: String,
   #[number] len: u64,
-) -> Result<(), AnyError>
+) -> Result<(), FsOpsError>
 where
   P: FsPermissions + 'static,
 {
@@ -812,7 +879,7 @@ where
   Ok(())
 }
 
-#[op2(fast)]
+#[op2(fast, stack_trace)]
 pub fn op_fs_utime_sync<P>(
   state: &mut OpState,
   #[string] path: &str,
@@ -820,7 +887,7 @@ pub fn op_fs_utime_sync<P>(
   #[smi] atime_nanos: u32,
   #[number] mtime_secs: i64,
   #[smi] mtime_nanos: u32,
-) -> Result<(), AnyError>
+) -> Result<(), FsOpsError>
 where
   P: FsPermissions + 'static,
 {
@@ -833,7 +900,7 @@ where
   Ok(())
 }
 
-#[op2(async)]
+#[op2(async, stack_trace)]
 pub async fn op_fs_utime_async<P>(
   state: Rc<RefCell<OpState>>,
   #[string] path: String,
@@ -841,7 +908,7 @@ pub async fn op_fs_utime_async<P>(
   #[smi] atime_nanos: u32,
   #[number] mtime_secs: i64,
   #[smi] mtime_nanos: u32,
-) -> Result<(), AnyError>
+) -> Result<(), FsOpsError>
 where
   P: FsPermissions + 'static,
 {
@@ -864,14 +931,14 @@ where
   Ok(())
 }
 
-#[op2]
+#[op2(stack_trace)]
 #[string]
 pub fn op_fs_make_temp_dir_sync<P>(
   state: &mut OpState,
   #[string] dir_arg: Option<String>,
   #[string] prefix: Option<String>,
   #[string] suffix: Option<String>,
-) -> Result<String, AnyError>
+) -> Result<String, FsOpsError>
 where
   P: FsPermissions + 'static,
 {
@@ -886,7 +953,7 @@ where
   const MAX_TRIES: u32 = 10;
   for _ in 0..MAX_TRIES {
     let path = tmp_name(&mut rng, &dir, prefix.as_deref(), suffix.as_deref())?;
-    match fs.mkdir_sync(&path, false, 0o700) {
+    match fs.mkdir_sync(&path, false, Some(0o700)) {
       Ok(_) => {
         // PERMISSIONS: ensure the absolute path is not leaked
         let path = strip_dir_prefix(&dir, dir_arg.as_deref(), path)?;
@@ -906,14 +973,14 @@ where
   .context("tmpdir")
 }
 
-#[op2(async)]
+#[op2(async, stack_trace)]
 #[string]
 pub async fn op_fs_make_temp_dir_async<P>(
   state: Rc<RefCell<OpState>>,
   #[string] dir_arg: Option<String>,
   #[string] prefix: Option<String>,
   #[string] suffix: Option<String>,
-) -> Result<String, AnyError>
+) -> Result<String, FsOpsError>
 where
   P: FsPermissions + 'static,
 {
@@ -928,7 +995,11 @@ where
   const MAX_TRIES: u32 = 10;
   for _ in 0..MAX_TRIES {
     let path = tmp_name(&mut rng, &dir, prefix.as_deref(), suffix.as_deref())?;
-    match fs.clone().mkdir_async(path.clone(), false, 0o700).await {
+    match fs
+      .clone()
+      .mkdir_async(path.clone(), false, Some(0o700))
+      .await
+    {
       Ok(_) => {
         // PERMISSIONS: ensure the absolute path is not leaked
         let path = strip_dir_prefix(&dir, dir_arg.as_deref(), path)?;
@@ -948,14 +1019,14 @@ where
   .context("tmpdir")
 }
 
-#[op2]
+#[op2(stack_trace)]
 #[string]
 pub fn op_fs_make_temp_file_sync<P>(
   state: &mut OpState,
   #[string] dir_arg: Option<String>,
   #[string] prefix: Option<String>,
   #[string] suffix: Option<String>,
-) -> Result<String, AnyError>
+) -> Result<String, FsOpsError>
 where
   P: FsPermissions + 'static,
 {
@@ -996,14 +1067,14 @@ where
   .context("tmpfile")
 }
 
-#[op2(async)]
+#[op2(async, stack_trace)]
 #[string]
 pub async fn op_fs_make_temp_file_async<P>(
   state: Rc<RefCell<OpState>>,
   #[string] dir_arg: Option<String>,
   #[string] prefix: Option<String>,
   #[string] suffix: Option<String>,
-) -> Result<String, AnyError>
+) -> Result<String, FsOpsError>
 where
   P: FsPermissions + 'static,
 {
@@ -1065,7 +1136,7 @@ fn make_temp_check_sync<P>(
   state: &mut OpState,
   dir: Option<&str>,
   api_name: &str,
-) -> Result<(PathBuf, FileSystemRc), AnyError>
+) -> Result<(PathBuf, FileSystemRc), FsOpsError>
 where
   P: FsPermissions + 'static,
 {
@@ -1087,7 +1158,7 @@ fn make_temp_check_async<P>(
   state: Rc<RefCell<OpState>>,
   dir: Option<&str>,
   api_name: &str,
-) -> Result<(PathBuf, FileSystemRc), AnyError>
+) -> Result<(PathBuf, FileSystemRc), FsOpsError>
 where
   P: FsPermissions + 'static,
 {
@@ -1112,10 +1183,12 @@ where
 fn validate_temporary_filename_component(
   component: &str,
   #[allow(unused_variables)] suffix: bool,
-) -> Result<(), AnyError> {
+) -> Result<(), FsOpsError> {
   // Ban ASCII and Unicode control characters: these will often fail
   if let Some(c) = component.matches(|c: char| c.is_control()).next() {
-    bail!("Invalid control character in prefix or suffix: {:?}", c);
+    return Err(
+      FsOpsErrorKind::InvalidControlCharacter(c.to_string()).into_box(),
+    );
   }
   // Windows has the most restrictive filenames. As temp files aren't normal files, we just
   // use this set of banned characters for all platforms because wildcard-like files can also
@@ -1131,13 +1204,13 @@ fn validate_temporary_filename_component(
     .matches(|c: char| "<>:\"/\\|?*".contains(c))
     .next()
   {
-    bail!("Invalid character in prefix or suffix: {:?}", c);
+    return Err(FsOpsErrorKind::InvalidCharacter(c.to_string()).into_box());
   }
 
   // This check is only for Windows
   #[cfg(windows)]
   if suffix && component.ends_with(|c: char| ". ".contains(c)) {
-    bail!("Invalid trailing character in suffix");
+    return Err(FsOpsErrorKind::InvalidTrailingCharacter.into_box());
   }
 
   Ok(())
@@ -1148,7 +1221,7 @@ fn tmp_name(
   dir: &Path,
   prefix: Option<&str>,
   suffix: Option<&str>,
-) -> Result<PathBuf, AnyError> {
+) -> Result<PathBuf, FsOpsError> {
   let prefix = prefix.unwrap_or("");
   validate_temporary_filename_component(prefix, false)?;
   let suffix = suffix.unwrap_or("");
@@ -1166,7 +1239,7 @@ fn tmp_name(
   Ok(path)
 }
 
-#[op2]
+#[op2(stack_trace)]
 pub fn op_fs_write_file_sync<P>(
   state: &mut OpState,
   #[string] path: String,
@@ -1175,7 +1248,7 @@ pub fn op_fs_write_file_sync<P>(
   create: bool,
   create_new: bool,
   #[buffer] data: JsBuffer,
-) -> Result<(), AnyError>
+) -> Result<(), FsOpsError>
 where
   P: FsPermissions + 'static,
 {
@@ -1192,7 +1265,7 @@ where
   Ok(())
 }
 
-#[op2(async)]
+#[op2(async, stack_trace)]
 #[allow(clippy::too_many_arguments)]
 pub async fn op_fs_write_file_async<P>(
   state: Rc<RefCell<OpState>>,
@@ -1203,7 +1276,7 @@ pub async fn op_fs_write_file_async<P>(
   create_new: bool,
   #[buffer] data: JsBuffer,
   #[smi] cancel_rid: Option<ResourceId>,
-) -> Result<(), AnyError>
+) -> Result<(), FsOpsError>
 where
   P: FsPermissions + 'static,
 {
@@ -1246,12 +1319,12 @@ where
   Ok(())
 }
 
-#[op2]
+#[op2(stack_trace)]
 #[serde]
 pub fn op_fs_read_file_sync<P>(
   state: &mut OpState,
   #[string] path: String,
-) -> Result<ToJsBuffer, AnyError>
+) -> Result<ToJsBuffer, FsOpsError>
 where
   P: FsPermissions + 'static,
 {
@@ -1264,16 +1337,17 @@ where
     .read_file_sync(&path, Some(&mut access_check))
     .map_err(|error| map_permission_error("readfile", error, &path))?;
 
-  Ok(buf.into())
+  // todo(https://github.com/denoland/deno/issues/27107): do not clone here
+  Ok(buf.into_owned().into_boxed_slice().into())
 }
 
-#[op2(async)]
+#[op2(async, stack_trace)]
 #[serde]
 pub async fn op_fs_read_file_async<P>(
   state: Rc<RefCell<OpState>>,
   #[string] path: String,
   #[smi] cancel_rid: Option<ResourceId>,
-) -> Result<ToJsBuffer, AnyError>
+) -> Result<ToJsBuffer, FsOpsError>
 where
   P: FsPermissions + 'static,
 {
@@ -1306,15 +1380,61 @@ where
       .map_err(|error| map_permission_error("readfile", error, &path))?
   };
 
-  Ok(buf.into())
+  // todo(https://github.com/denoland/deno/issues/27107): do not clone here
+  Ok(buf.into_owned().into_boxed_slice().into())
 }
 
-#[op2]
-#[string]
+// todo(https://github.com/denoland/deno_core/pull/986): remove
+// when upgrading deno_core
+#[derive(Debug)]
+pub struct FastStringV8AllocationError;
+
+impl std::error::Error for FastStringV8AllocationError {}
+
+impl std::fmt::Display for FastStringV8AllocationError {
+  fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+    write!(
+      f,
+      "failed to allocate string; buffer exceeds maximum length"
+    )
+  }
+}
+
+/// Maintains a static reference to the string if possible.
+pub struct V8MaybeStaticStr(pub Cow<'static, str>);
+
+impl<'s> ToV8<'s> for V8MaybeStaticStr {
+  type Error = FastStringV8AllocationError;
+
+  #[inline]
+  fn to_v8(
+    self,
+    scope: &mut v8::HandleScope<'s>,
+  ) -> Result<v8::Local<'s, v8::Value>, Self::Error> {
+    // todo(https://github.com/denoland/deno_core/pull/986): remove this check
+    // when upgrading deno_core
+    const MAX_V8_STRING_LENGTH: usize = 536870888;
+    if self.0.len() > MAX_V8_STRING_LENGTH {
+      return Err(FastStringV8AllocationError);
+    }
+
+    Ok(
+      match self.0 {
+        Cow::Borrowed(text) => FastString::from_static(text),
+        Cow::Owned(value) => value.into(),
+      }
+      .v8_string(scope)
+      .into(),
+    )
+  }
+}
+
+#[op2(stack_trace)]
+#[to_v8]
 pub fn op_fs_read_file_text_sync<P>(
   state: &mut OpState,
   #[string] path: String,
-) -> Result<String, AnyError>
+) -> Result<V8MaybeStaticStr, FsOpsError>
 where
   P: FsPermissions + 'static,
 {
@@ -1326,17 +1446,16 @@ where
   let str = fs
     .read_text_file_lossy_sync(&path, Some(&mut access_check))
     .map_err(|error| map_permission_error("readfile", error, &path))?;
-
-  Ok(str)
+  Ok(V8MaybeStaticStr(str))
 }
 
-#[op2(async)]
-#[string]
+#[op2(async, stack_trace)]
+#[to_v8]
 pub async fn op_fs_read_file_text_async<P>(
   state: Rc<RefCell<OpState>>,
   #[string] path: String,
   #[smi] cancel_rid: Option<ResourceId>,
-) -> Result<String, AnyError>
+) -> Result<V8MaybeStaticStr, FsOpsError>
 where
   P: FsPermissions + 'static,
 {
@@ -1370,16 +1489,16 @@ where
       .map_err(|error| map_permission_error("readfile", error, &path))?
   };
 
-  Ok(str)
+  Ok(V8MaybeStaticStr(str))
 }
 
-fn to_seek_from(offset: i64, whence: i32) -> Result<SeekFrom, AnyError> {
+fn to_seek_from(offset: i64, whence: i32) -> Result<SeekFrom, FsOpsError> {
   let seek_from = match whence {
     0 => SeekFrom::Start(offset as u64),
     1 => SeekFrom::Current(offset),
     2 => SeekFrom::End(offset),
     _ => {
-      return Err(type_error(format!("Invalid seek mode: {whence}")));
+      return Err(FsOpsErrorKind::InvalidSeekMode(whence).into_box());
     }
   };
   Ok(seek_from)
@@ -1392,9 +1511,10 @@ pub fn op_fs_seek_sync(
   #[smi] rid: ResourceId,
   #[number] offset: i64,
   #[smi] whence: i32,
-) -> Result<u64, AnyError> {
+) -> Result<u64, FsOpsError> {
   let pos = to_seek_from(offset, whence)?;
-  let file = FileResource::get_file(state, rid)?;
+  let file =
+    FileResource::get_file(state, rid).map_err(FsOpsErrorKind::Resource)?;
   let cursor = file.seek_sync(pos)?;
   Ok(cursor)
 }
@@ -1406,9 +1526,10 @@ pub async fn op_fs_seek_async(
   #[smi] rid: ResourceId,
   #[number] offset: i64,
   #[smi] whence: i32,
-) -> Result<u64, AnyError> {
+) -> Result<u64, FsOpsError> {
   let pos = to_seek_from(offset, whence)?;
-  let file = FileResource::get_file(&state.borrow(), rid)?;
+  let file = FileResource::get_file(&state.borrow(), rid)
+    .map_err(FsOpsErrorKind::Resource)?;
   let cursor = file.seek_async(pos).await?;
   Ok(cursor)
 }
@@ -1417,8 +1538,9 @@ pub async fn op_fs_seek_async(
 pub fn op_fs_file_sync_data_sync(
   state: &mut OpState,
   #[smi] rid: ResourceId,
-) -> Result<(), AnyError> {
-  let file = FileResource::get_file(state, rid)?;
+) -> Result<(), FsOpsError> {
+  let file =
+    FileResource::get_file(state, rid).map_err(FsOpsErrorKind::Resource)?;
   file.datasync_sync()?;
   Ok(())
 }
@@ -1427,8 +1549,9 @@ pub fn op_fs_file_sync_data_sync(
 pub async fn op_fs_file_sync_data_async(
   state: Rc<RefCell<OpState>>,
   #[smi] rid: ResourceId,
-) -> Result<(), AnyError> {
-  let file = FileResource::get_file(&state.borrow(), rid)?;
+) -> Result<(), FsOpsError> {
+  let file = FileResource::get_file(&state.borrow(), rid)
+    .map_err(FsOpsErrorKind::Resource)?;
   file.datasync_async().await?;
   Ok(())
 }
@@ -1437,8 +1560,9 @@ pub async fn op_fs_file_sync_data_async(
 pub fn op_fs_file_sync_sync(
   state: &mut OpState,
   #[smi] rid: ResourceId,
-) -> Result<(), AnyError> {
-  let file = FileResource::get_file(state, rid)?;
+) -> Result<(), FsOpsError> {
+  let file =
+    FileResource::get_file(state, rid).map_err(FsOpsErrorKind::Resource)?;
   file.sync_sync()?;
   Ok(())
 }
@@ -1447,8 +1571,9 @@ pub fn op_fs_file_sync_sync(
 pub async fn op_fs_file_sync_async(
   state: Rc<RefCell<OpState>>,
   #[smi] rid: ResourceId,
-) -> Result<(), AnyError> {
-  let file = FileResource::get_file(&state.borrow(), rid)?;
+) -> Result<(), FsOpsError> {
+  let file = FileResource::get_file(&state.borrow(), rid)
+    .map_err(FsOpsErrorKind::Resource)?;
   file.sync_async().await?;
   Ok(())
 }
@@ -1458,8 +1583,9 @@ pub fn op_fs_file_stat_sync(
   state: &mut OpState,
   #[smi] rid: ResourceId,
   #[buffer] stat_out_buf: &mut [u32],
-) -> Result<(), AnyError> {
-  let file = FileResource::get_file(state, rid)?;
+) -> Result<(), FsOpsError> {
+  let file =
+    FileResource::get_file(state, rid).map_err(FsOpsErrorKind::Resource)?;
   let stat = file.stat_sync()?;
   let serializable_stat = SerializableStat::from(stat);
   serializable_stat.write(stat_out_buf);
@@ -1471,8 +1597,9 @@ pub fn op_fs_file_stat_sync(
 pub async fn op_fs_file_stat_async(
   state: Rc<RefCell<OpState>>,
   #[smi] rid: ResourceId,
-) -> Result<SerializableStat, AnyError> {
-  let file = FileResource::get_file(&state.borrow(), rid)?;
+) -> Result<SerializableStat, FsOpsError> {
+  let file = FileResource::get_file(&state.borrow(), rid)
+    .map_err(FsOpsErrorKind::Resource)?;
   let stat = file.stat_async().await?;
   Ok(stat.into())
 }
@@ -1482,8 +1609,9 @@ pub fn op_fs_flock_sync(
   state: &mut OpState,
   #[smi] rid: ResourceId,
   exclusive: bool,
-) -> Result<(), AnyError> {
-  let file = FileResource::get_file(state, rid)?;
+) -> Result<(), FsOpsError> {
+  let file =
+    FileResource::get_file(state, rid).map_err(FsOpsErrorKind::Resource)?;
   file.lock_sync(exclusive)?;
   Ok(())
 }
@@ -1493,8 +1621,9 @@ pub async fn op_fs_flock_async(
   state: Rc<RefCell<OpState>>,
   #[smi] rid: ResourceId,
   exclusive: bool,
-) -> Result<(), AnyError> {
-  let file = FileResource::get_file(&state.borrow(), rid)?;
+) -> Result<(), FsOpsError> {
+  let file = FileResource::get_file(&state.borrow(), rid)
+    .map_err(FsOpsErrorKind::Resource)?;
   file.lock_async(exclusive).await?;
   Ok(())
 }
@@ -1503,8 +1632,9 @@ pub async fn op_fs_flock_async(
 pub fn op_fs_funlock_sync(
   state: &mut OpState,
   #[smi] rid: ResourceId,
-) -> Result<(), AnyError> {
-  let file = FileResource::get_file(state, rid)?;
+) -> Result<(), FsOpsError> {
+  let file =
+    FileResource::get_file(state, rid).map_err(FsOpsErrorKind::Resource)?;
   file.unlock_sync()?;
   Ok(())
 }
@@ -1513,8 +1643,9 @@ pub fn op_fs_funlock_sync(
 pub async fn op_fs_funlock_async(
   state: Rc<RefCell<OpState>>,
   #[smi] rid: ResourceId,
-) -> Result<(), AnyError> {
-  let file = FileResource::get_file(&state.borrow(), rid)?;
+) -> Result<(), FsOpsError> {
+  let file = FileResource::get_file(&state.borrow(), rid)
+    .map_err(FsOpsErrorKind::Resource)?;
   file.unlock_async().await?;
   Ok(())
 }
@@ -1524,8 +1655,9 @@ pub fn op_fs_ftruncate_sync(
   state: &mut OpState,
   #[smi] rid: ResourceId,
   #[number] len: u64,
-) -> Result<(), AnyError> {
-  let file = FileResource::get_file(state, rid)?;
+) -> Result<(), FsOpsError> {
+  let file =
+    FileResource::get_file(state, rid).map_err(FsOpsErrorKind::Resource)?;
   file.truncate_sync(len)?;
   Ok(())
 }
@@ -1535,8 +1667,9 @@ pub async fn op_fs_file_truncate_async(
   state: Rc<RefCell<OpState>>,
   #[smi] rid: ResourceId,
   #[number] len: u64,
-) -> Result<(), AnyError> {
-  let file = FileResource::get_file(&state.borrow(), rid)?;
+) -> Result<(), FsOpsError> {
+  let file = FileResource::get_file(&state.borrow(), rid)
+    .map_err(FsOpsErrorKind::Resource)?;
   file.truncate_async(len).await?;
   Ok(())
 }
@@ -1549,8 +1682,9 @@ pub fn op_fs_futime_sync(
   #[smi] atime_nanos: u32,
   #[number] mtime_secs: i64,
   #[smi] mtime_nanos: u32,
-) -> Result<(), AnyError> {
-  let file = FileResource::get_file(state, rid)?;
+) -> Result<(), FsOpsError> {
+  let file =
+    FileResource::get_file(state, rid).map_err(FsOpsErrorKind::Resource)?;
   file.utime_sync(atime_secs, atime_nanos, mtime_secs, mtime_nanos)?;
   Ok(())
 }
@@ -1563,42 +1697,64 @@ pub async fn op_fs_futime_async(
   #[smi] atime_nanos: u32,
   #[number] mtime_secs: i64,
   #[smi] mtime_nanos: u32,
-) -> Result<(), AnyError> {
-  let file = FileResource::get_file(&state.borrow(), rid)?;
+) -> Result<(), FsOpsError> {
+  let file = FileResource::get_file(&state.borrow(), rid)
+    .map_err(FsOpsErrorKind::Resource)?;
   file
     .utime_async(atime_secs, atime_nanos, mtime_secs, mtime_nanos)
     .await?;
   Ok(())
 }
 
-trait WithContext {
-  fn context<E: Into<Box<dyn std::error::Error + Send + Sync>>>(
-    self,
-    desc: E,
-  ) -> AnyError;
+#[derive(Debug)]
+pub struct OperationError {
+  operation: &'static str,
+  kind: OperationErrorKind,
+  pub err: FsError,
 }
 
-impl WithContext for FsError {
-  fn context<E: Into<Box<dyn std::error::Error + Send + Sync>>>(
-    self,
-    desc: E,
-  ) -> AnyError {
-    match self {
-      FsError::Io(io) => {
-        AnyError::new(io::Error::new(io.kind(), desc)).context(io)
+impl std::fmt::Display for OperationError {
+  fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+    if let FsError::Io(e) = &self.err {
+      std::fmt::Display::fmt(&e, f)?;
+      f.write_str(": ")?;
+    }
+
+    f.write_str(self.operation)?;
+
+    match &self.kind {
+      OperationErrorKind::Bare => Ok(()),
+      OperationErrorKind::WithPath(path) => write!(f, " '{}'", path.display()),
+      OperationErrorKind::WithTwoPaths(from, to) => {
+        write!(f, " '{}' -> '{}'", from.display(), to.display())
       }
-      _ => self.into(),
     }
   }
+}
+
+impl std::error::Error for OperationError {
+  fn source(&self) -> Option<&(dyn Error + 'static)> {
+    if let FsError::Io(err) = &self.err {
+      Some(err)
+    } else {
+      None
+    }
+  }
+}
+
+#[derive(Debug)]
+pub enum OperationErrorKind {
+  Bare,
+  WithPath(PathBuf),
+  WithTwoPaths(PathBuf, PathBuf),
 }
 
 trait MapErrContext {
   type R;
 
-  fn context_fn<F, E>(self, f: F) -> Self::R
+  fn context_fn<F>(self, f: F) -> Self::R
   where
-    F: FnOnce() -> E,
-    E: Into<Box<dyn std::error::Error + Send + Sync>>;
+    F: FnOnce(FsError) -> OperationError;
 
   fn context(self, desc: &'static str) -> Self::R;
 
@@ -1613,25 +1769,29 @@ trait MapErrContext {
 }
 
 impl<T> MapErrContext for Result<T, FsError> {
-  type R = Result<T, AnyError>;
+  type R = Result<T, FsOpsError>;
 
-  fn context_fn<F, E>(self, f: F) -> Self::R
+  fn context_fn<F>(self, f: F) -> Self::R
   where
-    F: FnOnce() -> E,
-    E: Into<Box<dyn std::error::Error + Send + Sync>>,
+    F: FnOnce(FsError) -> OperationError,
   {
-    self.map_err(|err| {
-      let message = f();
-      err.context(message)
+    self.map_err(|err| FsOpsErrorKind::OperationError(f(err)).into_box())
+  }
+
+  fn context(self, operation: &'static str) -> Self::R {
+    self.context_fn(move |err| OperationError {
+      operation,
+      kind: OperationErrorKind::Bare,
+      err,
     })
   }
 
-  fn context(self, desc: &'static str) -> Self::R {
-    self.context_fn(move || desc)
-  }
-
   fn context_path(self, operation: &'static str, path: &Path) -> Self::R {
-    self.context_fn(|| format!("{operation} '{}'", path.display()))
+    self.context_fn(|err| OperationError {
+      operation,
+      kind: OperationErrorKind::WithPath(path.to_path_buf()),
+      err,
+    })
   }
 
   fn context_two_path(
@@ -1640,21 +1800,20 @@ impl<T> MapErrContext for Result<T, FsError> {
     oldpath: &Path,
     newpath: &Path,
   ) -> Self::R {
-    self.context_fn(|| {
-      format!(
-        "{operation} '{}' -> '{}'",
-        oldpath.display(),
-        newpath.display()
-      )
+    self.context_fn(|err| OperationError {
+      operation,
+      kind: OperationErrorKind::WithTwoPaths(
+        oldpath.to_path_buf(),
+        newpath.to_path_buf(),
+      ),
+      err,
     })
   }
 }
 
-fn path_into_string(s: std::ffi::OsString) -> Result<String, AnyError> {
-  s.into_string().map_err(|s| {
-    let message = format!("File name or path {s:?} is not valid UTF-8");
-    custom_error("InvalidData", message)
-  })
+fn path_into_string(s: std::ffi::OsString) -> Result<String, FsOpsError> {
+  s.into_string()
+    .map_err(|e| FsOpsErrorKind::InvalidUtf8(e).into_box())
 }
 
 macro_rules! create_struct_writer {
@@ -1695,6 +1854,8 @@ create_struct_writer! {
     atime: u64,
     birthtime_set: bool,
     birthtime: u64,
+    ctime_set: bool,
+    ctime: u64,
     // Following are only valid under Unix.
     dev: u64,
     ino: u64,
@@ -1726,6 +1887,8 @@ impl From<FsStat> for SerializableStat {
       atime: stat.atime.unwrap_or(0),
       birthtime_set: stat.birthtime.is_some(),
       birthtime: stat.birthtime.unwrap_or(0),
+      ctime_set: stat.ctime.is_some(),
+      ctime: stat.ctime.unwrap_or(0),
 
       dev: stat.dev,
       ino: stat.ino,

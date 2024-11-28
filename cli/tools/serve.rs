@@ -5,7 +5,6 @@ use std::sync::Arc;
 use deno_core::error::AnyError;
 use deno_core::futures::TryFutureExt;
 use deno_core::ModuleSpecifier;
-use deno_runtime::deno_permissions::PermissionsContainer;
 
 use super::run::check_permission_before_script;
 use super::run::maybe_npm_install;
@@ -44,15 +43,16 @@ pub async fn serve(
 
   maybe_npm_install(&factory).await?;
 
-  let permissions = factory.create_permissions_container()?;
   let worker_factory = factory.create_cli_main_worker_factory().await?;
-
+  let hmr = serve_flags
+    .watch
+    .map(|watch_flags| watch_flags.hmr)
+    .unwrap_or(false);
   do_serve(
     worker_factory,
-    main_module,
-    permissions,
+    main_module.clone(),
     serve_flags.worker_count,
-    false,
+    hmr,
   )
   .await
 }
@@ -60,7 +60,6 @@ pub async fn serve(
 async fn do_serve(
   worker_factory: CliMainWorkerFactory,
   main_module: ModuleSpecifier,
-  permissions: PermissionsContainer,
   worker_count: Option<usize>,
   hmr: bool,
 ) -> Result<i32, AnyError> {
@@ -71,7 +70,6 @@ async fn do_serve(
         worker_count,
       },
       main_module.clone(),
-      permissions.clone(),
     )
     .await?;
   let worker_count = match worker_count {
@@ -87,15 +85,13 @@ async fn do_serve(
   for i in 0..extra_workers {
     let worker_factory = worker_factory.clone();
     let main_module = main_module.clone();
-    let permissions = permissions.clone();
     let (tx, rx) = tokio::sync::oneshot::channel();
     channels.push(rx);
     std::thread::Builder::new()
       .name(format!("serve-worker-{i}"))
       .spawn(move || {
         deno_runtime::tokio_util::create_and_run_current_thread(async move {
-          let result =
-            run_worker(i, worker_factory, main_module, permissions, hmr).await;
+          let result = run_worker(i, worker_factory, main_module, hmr).await;
           let _ = tx.send(result);
         });
       })?;
@@ -116,25 +112,21 @@ async fn do_serve(
     }
   }
   Ok(exit_code)
-
-  // main.await?
 }
 
 async fn run_worker(
   worker_count: usize,
   worker_factory: CliMainWorkerFactory,
   main_module: ModuleSpecifier,
-  permissions: PermissionsContainer,
   hmr: bool,
 ) -> Result<i32, AnyError> {
-  let mut worker = worker_factory
+  let mut worker: crate::worker::CliMainWorker = worker_factory
     .create_main_worker(
       deno_runtime::WorkerExecutionMode::Serve {
         is_main: false,
         worker_count: Some(worker_count),
       },
       main_module,
-      permissions,
     )
     .await?;
   if hmr {
@@ -159,7 +151,8 @@ async fn serve_with_watch(
       !watch_flags.no_clear_screen,
     ),
     WatcherRestartMode::Automatic,
-    move |flags, watcher_communicator, _changed_paths| {
+    move |flags, watcher_communicator, changed_paths| {
+      watcher_communicator.show_path_changed(changed_paths.clone());
       Ok(async move {
         let factory = CliFactory::from_flags_for_watcher(
           flags,
@@ -171,11 +164,9 @@ async fn serve_with_watch(
         maybe_npm_install(&factory).await?;
 
         let _ = watcher_communicator.watch_paths(cli_options.watch_paths());
-
-        let permissions = factory.create_permissions_container()?;
         let worker_factory = factory.create_cli_main_worker_factory().await?;
 
-        do_serve(worker_factory, main_module, permissions, worker_count, hmr)
+        do_serve(worker_factory, main_module.clone(), worker_count, hmr)
           .await?;
 
         Ok(())

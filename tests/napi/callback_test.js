@@ -1,6 +1,6 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
-import { assertEquals, loadTestLibrary } from "./common.js";
+import { assertEquals, assertThrows, loadTestLibrary } from "./common.js";
 
 const callback = loadTestLibrary();
 
@@ -35,4 +35,13 @@ Deno.test("napi callback run with args & recv", function () {
     69,
   );
   assertEquals(result, 69);
+});
+
+Deno.test("napi callback handles errors correctly", function () {
+  const e = new Error("hi!");
+  assertThrows(() => {
+    callback.test_callback_throws(() => {
+      throw e;
+    });
+  }, e);
 });

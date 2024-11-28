@@ -1,0 +1,7 @@
+error: Uncaught (in worker "") (in promise) TypeError: JSR package manifest for '@std/assert' failed to load. Requires import access to "127.0.0.1:4250", run again with the --allow-import flag
+await import(specifier);
+^
+    at async file:///[WILDLINE]
+error: Uncaught (in promise) Error: Unhandled error in child worker.
+    at [WILDLINE]
+    at [WILDLINE]

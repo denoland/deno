@@ -1,0 +1,14 @@
+{
+  "tests": {
+    "types_ambient_module": {
+      "args": "check --quiet types_ambient_module/main.ts",
+      "output": "types_ambient_module/main.out",
+      "exitCode": 1
+    },
+    "types_ambient_module_import_map": {
+      "args": "check --quiet --import-map=types_ambient_module/import_map.json types_ambient_module/main_import_map.ts",
+      "output": "types_ambient_module/main_import_map.out",
+      "exitCode": 1
+    }
+  }
+}

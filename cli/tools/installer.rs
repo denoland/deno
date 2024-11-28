@@ -3,6 +3,7 @@
 use crate::args::resolve_no_prompt;
 use crate::args::AddFlags;
 use crate::args::CaData;
+use crate::args::CacheSetting;
 use crate::args::ConfigFlag;
 use crate::args::Flags;
 use crate::args::InstallFlags;
@@ -13,8 +14,11 @@ use crate::args::TypeCheckMode;
 use crate::args::UninstallFlags;
 use crate::args::UninstallKind;
 use crate::factory::CliFactory;
+use crate::file_fetcher::FileFetcher;
 use crate::graph_container::ModuleGraphContainer;
 use crate::http_util::HttpClientProvider;
+use crate::jsr::JsrFetchResolver;
+use crate::npm::NpmFetchResolver;
 use crate::util::fs::canonicalize_path_maybe_not_exists;
 
 use deno_core::anyhow::bail;
@@ -298,6 +302,10 @@ async fn install_local(
     }
     InstallFlagsLocal::TopLevel => {
       let factory = CliFactory::from_flags(flags);
+      // surface any errors in the package.json
+      if let Some(npm_resolver) = factory.npm_resolver().await?.as_managed() {
+        npm_resolver.ensure_no_pkg_json_dep_errors()?;
+      }
       crate::tools::registry::cache_top_level_deps(&factory, None).await?;
 
       if let Some(lockfile) = factory.cli_options()?.maybe_lockfile() {
@@ -350,12 +358,54 @@ async fn install_global(
 ) -> Result<(), AnyError> {
   // ensure the module is cached
   let factory = CliFactory::from_flags(flags.clone());
+
+  let cli_options = factory.cli_options()?;
+  let http_client = factory.http_client_provider();
+  let deps_http_cache = factory.global_http_cache()?;
+  let mut deps_file_fetcher = FileFetcher::new(
+    deps_http_cache.clone(),
+    CacheSetting::ReloadAll,
+    true,
+    http_client.clone(),
+    Default::default(),
+    None,
+  );
+
+  let npmrc = factory.cli_options().unwrap().npmrc();
+
+  deps_file_fetcher.set_download_log_level(log::Level::Trace);
+  let deps_file_fetcher = Arc::new(deps_file_fetcher);
+  let jsr_resolver = Arc::new(JsrFetchResolver::new(deps_file_fetcher.clone()));
+  let npm_resolver = Arc::new(NpmFetchResolver::new(
+    deps_file_fetcher.clone(),
+    npmrc.clone(),
+  ));
+
+  let entry_text = install_flags_global.module_url.as_str();
+  if !cli_options.initial_cwd().join(entry_text).exists() {
+    // check for package requirement missing prefix
+    if let Ok(Err(package_req)) =
+      super::registry::AddRmPackageReq::parse(entry_text)
+    {
+      if jsr_resolver.req_to_nv(&package_req).await.is_some() {
+        bail!(
+          "{entry_text} is missing a prefix. Did you mean `{}`?",
+          crate::colors::yellow(format!("deno install -g jsr:{package_req}"))
+        );
+      } else if npm_resolver.req_to_nv(&package_req).await.is_some() {
+        bail!(
+          "{entry_text} is missing a prefix. Did you mean `{}`?",
+          crate::colors::yellow(format!("deno install -g npm:{package_req}"))
+        );
+      }
+    }
+  }
+
   factory
     .main_module_graph_container()
     .await?
     .load_and_type_check_files(&[install_flags_global.module_url.clone()])
     .await?;
-  let http_client = factory.http_client_provider();
 
   // create the install shim
   create_install_shim(http_client, &flags, install_flags_global).await
@@ -1392,6 +1442,7 @@ mod tests {
       .env_clear()
       // use the deno binary in the target directory
       .env("PATH", test_util::target_dir())
+      .env("RUST_BACKTRACE", "1")
       .spawn()
       .unwrap()
       .wait()

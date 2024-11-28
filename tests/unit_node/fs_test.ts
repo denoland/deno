@@ -1,25 +1,33 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
-import { assert, assertEquals, assertThrows } from "@std/assert";
+/// <reference lib="deno.ns" />
+import { assert, assertEquals, assertRejects, assertThrows } from "@std/assert";
 import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { tmpdir } from "node:os";
 import {
+  closeSync,
   constants,
+  copyFileSync,
   createWriteStream,
   existsSync,
   lstatSync,
   mkdtempSync,
+  openSync,
   promises,
   readFileSync,
+  readSync,
   Stats,
   statSync,
   writeFileSync,
 } from "node:fs";
 import {
   constants as fsPromiseConstants,
+  copyFile,
   cp,
   FileHandle,
   open,
+  stat,
   writeFile,
 } from "node:fs/promises";
 import process from "node:process";
@@ -118,6 +126,50 @@ Deno.test(
 );
 
 Deno.test(
+  "[node/fs statSync] throw error with path information",
+  () => {
+    const file = "non-exist-file";
+    const fileUrl = new URL(file, import.meta.url);
+
+    assertThrows(() => {
+      statSync(file);
+    }, "Error: ENOENT: no such file or directory, stat 'non-exist-file'");
+
+    assertThrows(() => {
+      statSync(fileUrl);
+    }, `Error: ENOENT: no such file or directory, stat '${fileUrl.pathname}'`);
+  },
+);
+
+Deno.test(
+  "[node/fs/promises stat] throw error with path information",
+  async () => {
+    const file = "non-exist-file";
+    const fileUrl = new URL(file, import.meta.url);
+
+    try {
+      await stat(file);
+    } catch (error: unknown) {
+      assertEquals(
+        `${error}`,
+        "Error: ENOENT: no such file or directory, stat 'non-exist-file'",
+      );
+    }
+
+    try {
+      await stat(fileUrl);
+    } catch (error: unknown) {
+      assertEquals(
+        `${error}`,
+        `Error: ENOENT: no such file or directory, stat '${
+          fileURLToPath(fileUrl)
+        }'`,
+      );
+    }
+  },
+);
+
+Deno.test(
   "[node/fs/promises cp] copy file",
   async () => {
     const src = mkdtempSync(join(tmpdir(), "foo-")) + "/test.txt";
@@ -201,3 +253,40 @@ Deno.test(
     assertEquals(res, [0, 1, 2, 3, 4, 5]);
   },
 );
+
+Deno.test("[node/fs] readSync works", () => {
+  const fd = openSync("tests/testdata/assets/hello.txt", "r");
+  const buf = new Uint8Array(256);
+  const bytesRead = readSync(fd!, buf);
+  assertEquals(bytesRead, 12);
+  closeSync(fd!);
+});
+
+Deno.test("[node/fs] copyFile COPYFILE_EXCL works", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "foo-"));
+  const src = join(dir, "src.txt");
+  const dest = join(dir, "dest.txt");
+  await writeFile(src, "");
+  await copyFile(src, dest, fsPromiseConstants.COPYFILE_EXCL);
+  assert(existsSync(dest));
+  await assertRejects(() =>
+    copyFile(src, dest, fsPromiseConstants.COPYFILE_EXCL)
+  );
+  const dest2 = join(dir, "dest2.txt");
+  copyFileSync(src, dest2, fsPromiseConstants.COPYFILE_EXCL);
+  assert(existsSync(dest2));
+  assertThrows(() =>
+    copyFileSync(src, dest2, fsPromiseConstants.COPYFILE_EXCL)
+  );
+});
+
+Deno.test("[node/fs] statSync throws ENOENT for invalid path containing colon in it", () => {
+  // deno-lint-ignore no-explicit-any
+  const err: any = assertThrows(() => {
+    // Note: Deno.stat throws ERROR_INVALID_NAME (os error 123) instead of
+    // ERROR_FILE_NOT_FOUND (os error 2) on windows. This case checks that
+    // ERROR_INVALID_NAME is mapped to ENOENT correctly on node compat layer.
+    statSync("jsr:@std/assert");
+  });
+  assertEquals(err.code, "ENOENT");
+});

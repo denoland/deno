@@ -3,6 +3,7 @@
 // Allow using Arc for this module.
 #![allow(clippy::disallowed_types)]
 
+use std::borrow::Cow;
 use std::collections::hash_map::Entry;
 use std::collections::HashMap;
 use std::io::Error;
@@ -12,12 +13,12 @@ use std::path::PathBuf;
 use std::rc::Rc;
 use std::sync::Arc;
 
-use deno_core::normalize_path;
 use deno_core::parking_lot::Mutex;
 use deno_io::fs::File;
 use deno_io::fs::FsError;
 use deno_io::fs::FsResult;
 use deno_io::fs::FsStat;
+use deno_path_util::normalize_path;
 
 use crate::interface::AccessCheckCb;
 use crate::interface::FsDirEntry;
@@ -44,7 +45,7 @@ impl InMemoryFs {
   pub fn setup_text_files(&self, files: Vec<(String, String)>) {
     for (path, text) in files {
       let path = PathBuf::from(path);
-      self.mkdir_sync(path.parent().unwrap(), true, 0).unwrap();
+      self.mkdir_sync(path.parent().unwrap(), true, None).unwrap();
       self
         .write_file_sync(
           &path,
@@ -101,7 +102,7 @@ impl FileSystem for InMemoryFs {
     &self,
     path: &Path,
     recursive: bool,
-    _mode: u32,
+    _mode: Option<u32>,
   ) -> FsResult<()> {
     let path = normalize_path(path);
 
@@ -119,7 +120,7 @@ impl FileSystem for InMemoryFs {
         },
         None => {
           if recursive {
-            self.mkdir_sync(parent, true, 0)?;
+            self.mkdir_sync(parent, true, None)?;
           } else {
             return Err(FsError::Io(Error::new(
               ErrorKind::NotFound,
@@ -149,7 +150,7 @@ impl FileSystem for InMemoryFs {
     &self,
     path: PathBuf,
     recursive: bool,
-    mode: u32,
+    mode: Option<u32>,
   ) -> FsResult<()> {
     self.mkdir_sync(&path, recursive, mode)
   }
@@ -229,6 +230,7 @@ impl FileSystem for InMemoryFs {
           mtime: None,
           atime: None,
           birthtime: None,
+          ctime: None,
           dev: 0,
           ino: 0,
           mode: 0,
@@ -251,6 +253,7 @@ impl FileSystem for InMemoryFs {
           mtime: None,
           atime: None,
           birthtime: None,
+          ctime: None,
           dev: 0,
           ino: 0,
           mode: 0,
@@ -455,11 +458,11 @@ impl FileSystem for InMemoryFs {
     &self,
     path: &Path,
     _access_check: Option<AccessCheckCb>,
-  ) -> FsResult<Vec<u8>> {
+  ) -> FsResult<Cow<'static, [u8]>> {
     let entry = self.get_entry(path);
     match entry {
       Some(entry) => match &*entry {
-        PathEntry::File(data) => Ok(data.clone()),
+        PathEntry::File(data) => Ok(Cow::Owned(data.clone())),
         PathEntry::Dir => Err(FsError::Io(Error::new(
           ErrorKind::InvalidInput,
           "Is a directory",
@@ -472,7 +475,7 @@ impl FileSystem for InMemoryFs {
     &'a self,
     path: PathBuf,
     access_check: Option<AccessCheckCb<'a>>,
-  ) -> FsResult<Vec<u8>> {
+  ) -> FsResult<Cow<'static, [u8]>> {
     self.read_file_sync(&path, access_check)
   }
 }

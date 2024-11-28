@@ -5,7 +5,7 @@
       "steps": [
         {
           "args": "cache --allow-scripts=npm:@denotest/node-addon main.js",
-          "output": "[WILDCARD]gyp info ok \n"
+          "output": "[WILDCARD]Initialize @denotest/node-addon@1.0.0: running 'install' script\n"
         },
         {
           "args": "run -A main.js",
@@ -38,7 +38,7 @@
       "steps": [
         {
           // without running scripts (should warn)
-          "args": "cache all_lifecycles.js",
+          "args": "run all_lifecycles.js",
           "output": "all_lifecycles_not_run.out"
         },
         {
@@ -48,6 +48,23 @@
           // it also exercises running bin packages (esbuild in this case), using `node` in a script
           // (with and without node-only CLI flags), and using `npx` in a script
           "output": "all_lifecycles.out"
+        }
+      ]
+    },
+    "deno_run_lifecycle_scripts": {
+      "steps": [
+        {
+          // without running scripts (should warn)
+          "args": "run all_lifecycles.js",
+          "output": "all_lifecycles_not_run.out"
+        },
+        {
+          // now run scripts
+          "args": "run --allow-scripts all_lifecycles.js",
+          // this test package covers running preinstall, install, and postinstall scripts
+          // it also exercises running bin packages (esbuild in this case), using `node` in a script
+          // (with and without node-only CLI flags), and using `npx` in a script
+          "output": "all_lifecycles_deno_run.out"
         }
       ]
     },
@@ -64,24 +81,32 @@
         },
         {
           // should not warn
-          "args": "install -e all_lifecycles.js",
+          "args": "run all_lifecycles_global.js",
           "output": ""
+        },
+        {
+          // should warn still
+          "args": "install -e all_lifecycles.js",
+          "output": "all_lifecycles_not_run_global_cached.out"
         }
       ]
     },
-    "only_warns_first": {
+    "only_warns_first_run": {
       "steps": [
         {
           // without running scripts (should warn)
           "args": "run all_lifecycles.js",
-          "output": "only_warns_first1.out",
-          "exitCode": 1
+          "output": "only_warns_first1.out"
         },
         {
           // without running scripts (does not warn)
           "args": "run all_lifecycles.js",
-          "output": "only_warns_first2.out",
-          "exitCode": 1
+          "output": "only_warns_first2.out"
+        },
+        {
+          // should warn because this is an explicit install
+          "args": "install -e all_lifecycles.js",
+          "output": "warns_again_on_install.out"
         }
       ]
     },
@@ -118,6 +143,13 @@
           // we run the install script, we should use the correct binary (relative to the package)
           "args": "cache --allow-scripts conflicting_bin.js",
           "output": "conflicting_bin.out"
+        },
+        {
+          "args": [
+            "eval",
+            "console.log(Deno.readTextFileSync('./say-hello-output.txt'))"
+          ],
+          "output": "conflicting_bin2.out"
         }
       ]
     },

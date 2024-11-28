@@ -126,8 +126,6 @@ Deno.test(
     const listener = Deno.listen({ port: listenPort });
     const p = listener.accept();
     listener.close();
-    // TODO(piscisaureus): the error type should be `Interrupted` here, which
-    // gets thrown, but then ext/net catches it and rethrows `BadResource`.
     await assertRejects(
       () => p,
       Deno.errors.BadResource,
@@ -168,7 +166,7 @@ Deno.test(
       } else if (e.message === "Another accept task is ongoing") {
         acceptErrCount++;
       } else {
-        throw new Error("Unexpected error message");
+        throw e;
       }
     };
     const p = listener.accept().catch(checkErr);

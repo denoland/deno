@@ -2,6 +2,7 @@
 
 use super::diagnostics::DenoDiagnostic;
 use super::diagnostics::DiagnosticSource;
+use super::documents::Document;
 use super::documents::Documents;
 use super::language_server;
 use super::resolver::LspResolver;
@@ -9,13 +10,16 @@ use super::tsc;
 use super::urls::url_to_uri;
 
 use crate::args::jsr_url;
+use crate::lsp::logging::lsp_warn;
+use crate::lsp::search::PackageSearchApi;
 use crate::tools::lint::CliLinter;
+use crate::util::path::relative_specifier;
+use deno_config::workspace::MappedResolution;
 use deno_lint::diagnostic::LintDiagnosticRange;
 
 use deno_ast::SourceRange;
 use deno_ast::SourceRangedForSpanned;
 use deno_ast::SourceTextInfo;
-use deno_core::anyhow::anyhow;
 use deno_core::error::custom_error;
 use deno_core::error::AnyError;
 use deno_core::serde::Deserialize;
@@ -23,8 +27,8 @@ use deno_core::serde::Serialize;
 use deno_core::serde_json;
 use deno_core::serde_json::json;
 use deno_core::ModuleSpecifier;
+use deno_path_util::url_to_file_path;
 use deno_runtime::deno_node::PathClean;
-use deno_runtime::fs_util::specifier_to_file_path;
 use deno_semver::jsr::JsrPackageNvReference;
 use deno_semver::jsr::JsrPackageReqReference;
 use deno_semver::npm::NpmPackageReqReference;
@@ -34,13 +38,16 @@ use deno_semver::package::PackageReq;
 use deno_semver::package::PackageReqReference;
 use deno_semver::Version;
 use import_map::ImportMap;
-use node_resolver::NpmResolver;
+use node_resolver::NodeResolutionKind;
+use node_resolver::ResolutionMode;
 use once_cell::sync::Lazy;
 use regex::Regex;
+use std::borrow::Cow;
 use std::cmp::Ordering;
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::path::Path;
+use text_lines::LineAndColumnIndex;
 use tower_lsp::lsp_types as lsp;
 use tower_lsp::lsp_types::Position;
 use tower_lsp::lsp_types::Range;
@@ -225,6 +232,8 @@ pub struct TsResponseImportMapper<'a> {
   documents: &'a Documents,
   maybe_import_map: Option<&'a ImportMap>,
   resolver: &'a LspResolver,
+  tsc_specifier_map: &'a tsc::TscSpecifierMap,
+  file_referrer: ModuleSpecifier,
 }
 
 impl<'a> TsResponseImportMapper<'a> {
@@ -232,11 +241,15 @@ impl<'a> TsResponseImportMapper<'a> {
     documents: &'a Documents,
     maybe_import_map: Option<&'a ImportMap>,
     resolver: &'a LspResolver,
+    tsc_specifier_map: &'a tsc::TscSpecifierMap,
+    file_referrer: &ModuleSpecifier,
   ) -> Self {
     Self {
       documents,
       maybe_import_map,
       resolver,
+      tsc_specifier_map,
+      file_referrer: file_referrer.clone(),
     }
   }
 
@@ -257,8 +270,6 @@ impl<'a> TsResponseImportMapper<'a> {
       }
     }
 
-    let file_referrer = self.documents.get_file_referrer(referrer);
-
     if let Some(jsr_path) = specifier.as_str().strip_prefix(jsr_url().as_str())
     {
       let mut segments = jsr_path.split('/');
@@ -273,7 +284,7 @@ impl<'a> TsResponseImportMapper<'a> {
       let export = self.resolver.jsr_lookup_export_for_path(
         &nv,
         &path,
-        file_referrer.as_deref(),
+        Some(&self.file_referrer),
       )?;
       let sub_path = (export != ".").then_some(export);
       let mut req = None;
@@ -299,7 +310,7 @@ impl<'a> TsResponseImportMapper<'a> {
       req = req.or_else(|| {
         self
           .resolver
-          .jsr_lookup_req_for_nv(&nv, file_referrer.as_deref())
+          .jsr_lookup_req_for_nv(&nv, Some(&self.file_referrer))
       });
       let spec_str = if let Some(req) = req {
         let req_ref = PackageReqReference { req, sub_path };
@@ -329,9 +340,13 @@ impl<'a> TsResponseImportMapper<'a> {
 
     if let Some(npm_resolver) = self
       .resolver
-      .maybe_managed_npm_resolver(file_referrer.as_deref())
+      .maybe_managed_npm_resolver(Some(&self.file_referrer))
     {
-      if npm_resolver.in_npm_package(specifier) {
+      let in_npm_pkg = self
+        .resolver
+        .in_npm_pkg_checker(Some(&self.file_referrer))
+        .in_npm_package(specifier);
+      if in_npm_pkg {
         if let Ok(Some(pkg_id)) =
           npm_resolver.resolve_pkg_id_from_specifier(specifier)
         {
@@ -378,6 +393,11 @@ impl<'a> TsResponseImportMapper<'a> {
           }
         }
       }
+    } else if let Some(dep_name) = self
+      .resolver
+      .file_url_to_package_json_dep(specifier, Some(&self.file_referrer))
+    {
+      return Some(dep_name);
     }
 
     // check if the import map has this specifier
@@ -401,7 +421,7 @@ impl<'a> TsResponseImportMapper<'a> {
       .flatten()?;
     let root_folder = package_json.path.parent()?;
 
-    let specifier_path = specifier_to_file_path(specifier).ok()?;
+    let specifier_path = url_to_file_path(specifier).ok()?;
     let mut search_paths = vec![specifier_path.clone()];
     // TypeScript will provide a .js extension for quick fixes, so do
     // a search for the .d.ts file instead
@@ -447,23 +467,58 @@ impl<'a> TsResponseImportMapper<'a> {
     &self,
     specifier: &str,
     referrer: &ModuleSpecifier,
+    resolution_mode: ResolutionMode,
   ) -> Option<String> {
-    if let Ok(specifier) = referrer.join(specifier) {
-      if let Some(specifier) = self.check_specifier(&specifier, referrer) {
-        return Some(specifier);
-      }
-    }
-    let specifier = specifier.strip_suffix(".js").unwrap_or(specifier);
-    for ext in SUPPORTED_EXTENSIONS {
-      let specifier_with_ext = format!("{specifier}{ext}");
-      if self
-        .documents
-        .contains_import(&specifier_with_ext, referrer)
+    let specifier_stem = specifier.strip_suffix(".js").unwrap_or(specifier);
+    let specifiers = std::iter::once(Cow::Borrowed(specifier)).chain(
+      SUPPORTED_EXTENSIONS
+        .iter()
+        .map(|ext| Cow::Owned(format!("{specifier_stem}{ext}"))),
+    );
+    for specifier in specifiers {
+      if let Some(specifier) = self
+        .resolver
+        .as_cli_resolver(Some(&self.file_referrer))
+        .resolve(
+          &specifier,
+          referrer,
+          deno_graph::Position::zeroed(),
+          resolution_mode,
+          NodeResolutionKind::Types,
+        )
+        .ok()
+        .and_then(|s| self.tsc_specifier_map.normalize(s.as_str()).ok())
+        .filter(|s| self.documents.exists(s, Some(&self.file_referrer)))
       {
-        return Some(specifier_with_ext);
+        if let Some(specifier) = self
+          .check_specifier(&specifier, referrer)
+          .or_else(|| relative_specifier(referrer, &specifier))
+          .filter(|s| !s.contains("/node_modules/"))
+        {
+          return Some(specifier);
+        }
       }
     }
     None
+  }
+
+  pub fn is_valid_import(
+    &self,
+    specifier_text: &str,
+    referrer: &ModuleSpecifier,
+    resolution_mode: ResolutionMode,
+  ) -> bool {
+    self
+      .resolver
+      .as_cli_resolver(Some(&self.file_referrer))
+      .resolve(
+        specifier_text,
+        referrer,
+        deno_graph::Position::zeroed(),
+        resolution_mode,
+        NodeResolutionKind::Types,
+      )
+      .is_ok()
   }
 }
 
@@ -529,9 +584,11 @@ fn try_reverse_map_package_json_exports(
 /// like an import and rewrite the import specifier to include the extension
 pub fn fix_ts_import_changes(
   referrer: &ModuleSpecifier,
+  resolution_mode: ResolutionMode,
   changes: &[tsc::FileTextChanges],
-  import_mapper: &TsResponseImportMapper,
+  language_server: &language_server::Inner,
 ) -> Result<Vec<tsc::FileTextChanges>, AnyError> {
+  let import_mapper = language_server.get_ts_response_import_mapper(referrer);
   let mut r = Vec::new();
   for change in changes {
     let mut text_changes = Vec::new();
@@ -544,8 +601,8 @@ pub fn fix_ts_import_changes(
           if let Some(captures) = IMPORT_SPECIFIER_RE.captures(line) {
             let specifier =
               captures.iter().skip(1).find_map(|s| s).unwrap().as_str();
-            if let Some(new_specifier) =
-              import_mapper.check_unresolved_specifier(specifier, referrer)
+            if let Some(new_specifier) = import_mapper
+              .check_unresolved_specifier(specifier, referrer, resolution_mode)
             {
               line.replace(specifier, &new_specifier)
             } else {
@@ -573,66 +630,67 @@ pub fn fix_ts_import_changes(
 
 /// Fix tsc import code actions so that the module specifier is correct for
 /// resolution by Deno (includes the extension).
-fn fix_ts_import_action(
+fn fix_ts_import_action<'a>(
   referrer: &ModuleSpecifier,
-  action: &tsc::CodeFixAction,
-  import_mapper: &TsResponseImportMapper,
-) -> Result<tsc::CodeFixAction, AnyError> {
-  if matches!(
+  resolution_mode: ResolutionMode,
+  action: &'a tsc::CodeFixAction,
+  language_server: &language_server::Inner,
+) -> Option<Cow<'a, tsc::CodeFixAction>> {
+  if !matches!(
     action.fix_name.as_str(),
     "import" | "fixMissingFunctionDeclaration"
   ) {
-    let change = action
+    return Some(Cow::Borrowed(action));
+  }
+  let specifier = (|| {
+    let text_change = action.changes.first()?.text_changes.first()?;
+    let captures = IMPORT_SPECIFIER_RE.captures(&text_change.new_text)?;
+    Some(captures.get(1)?.as_str())
+  })();
+  let Some(specifier) = specifier else {
+    return Some(Cow::Borrowed(action));
+  };
+  let import_mapper = language_server.get_ts_response_import_mapper(referrer);
+  if let Some(new_specifier) = import_mapper.check_unresolved_specifier(
+    specifier,
+    referrer,
+    resolution_mode,
+  ) {
+    let description = action.description.replace(specifier, &new_specifier);
+    let changes = action
       .changes
-      .first()
-      .ok_or_else(|| anyhow!("Unexpected action changes."))?;
-    let text_change = change
-      .text_changes
-      .first()
-      .ok_or_else(|| anyhow!("Missing text change."))?;
-    if let Some(captures) = IMPORT_SPECIFIER_RE.captures(&text_change.new_text)
-    {
-      let specifier = captures
-        .get(1)
-        .ok_or_else(|| anyhow!("Missing capture."))?
-        .as_str();
-      if let Some(new_specifier) =
-        import_mapper.check_unresolved_specifier(specifier, referrer)
-      {
-        let description = action.description.replace(specifier, &new_specifier);
-        let changes = action
-          .changes
+      .iter()
+      .map(|c| {
+        let text_changes = c
+          .text_changes
           .iter()
-          .map(|c| {
-            let text_changes = c
-              .text_changes
-              .iter()
-              .map(|tc| tsc::TextChange {
-                span: tc.span.clone(),
-                new_text: tc.new_text.replace(specifier, &new_specifier),
-              })
-              .collect();
-            tsc::FileTextChanges {
-              file_name: c.file_name.clone(),
-              text_changes,
-              is_new_file: c.is_new_file,
-            }
+          .map(|tc| tsc::TextChange {
+            span: tc.span.clone(),
+            new_text: tc.new_text.replace(specifier, &new_specifier),
           })
           .collect();
+        tsc::FileTextChanges {
+          file_name: c.file_name.clone(),
+          text_changes,
+          is_new_file: c.is_new_file,
+        }
+      })
+      .collect();
 
-        return Ok(tsc::CodeFixAction {
-          description,
-          changes,
-          commands: None,
-          fix_name: action.fix_name.clone(),
-          fix_id: None,
-          fix_all_description: None,
-        });
-      }
-    }
+    Some(Cow::Owned(tsc::CodeFixAction {
+      description,
+      changes,
+      commands: None,
+      fix_name: action.fix_name.clone(),
+      fix_id: None,
+      fix_all_description: None,
+    }))
+  } else if !import_mapper.is_valid_import(specifier, referrer, resolution_mode)
+  {
+    None
+  } else {
+    Some(Cow::Borrowed(action))
   }
-
-  Ok(action.clone())
 }
 
 /// Determines if two TypeScript diagnostic codes are effectively equivalent.
@@ -693,8 +751,14 @@ pub fn ts_changes_to_edit(
 ) -> Result<Option<lsp::WorkspaceEdit>, AnyError> {
   let mut text_document_edits = Vec::new();
   for change in changes {
-    let text_document_edit = change.to_text_document_edit(language_server)?;
-    text_document_edits.push(text_document_edit);
+    let edit = match change.to_text_document_edit(language_server) {
+      Ok(e) => e,
+      Err(err) => {
+        lsp_warn!("Couldn't covert text document edit: {:#}", err);
+        continue;
+      }
+    };
+    text_document_edits.push(edit);
   }
   Ok(Some(lsp::WorkspaceEdit {
     changes: None,
@@ -703,7 +767,7 @@ pub fn ts_changes_to_edit(
   }))
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CodeActionData {
   pub specifier: ModuleSpecifier,
@@ -956,6 +1020,7 @@ impl CodeActionCollection {
   pub fn add_ts_fix_action(
     &mut self,
     specifier: &ModuleSpecifier,
+    resolution_mode: ResolutionMode,
     action: &tsc::CodeFixAction,
     diagnostic: &lsp::Diagnostic,
     language_server: &language_server::Inner,
@@ -973,11 +1038,11 @@ impl CodeActionCollection {
         "The action returned from TypeScript is unsupported.",
       ));
     }
-    let action = fix_ts_import_action(
-      specifier,
-      action,
-      &language_server.get_ts_response_import_mapper(specifier),
-    )?;
+    let Some(action) =
+      fix_ts_import_action(specifier, resolution_mode, action, language_server)
+    else {
+      return Ok(());
+    };
     let edit = ts_changes_to_edit(&action.changes, language_server)?;
     let code_action = lsp::CodeAction {
       title: action.description.clone(),
@@ -997,7 +1062,7 @@ impl CodeActionCollection {
     });
     self
       .actions
-      .push(CodeActionKind::Tsc(code_action, action.clone()));
+      .push(CodeActionKind::Tsc(code_action, action.as_ref().clone()));
 
     if let Some(fix_id) = &action.fix_id {
       if let Some(CodeActionKind::Tsc(existing_fix_all, existing_action)) =
@@ -1024,10 +1089,12 @@ impl CodeActionCollection {
     specifier: &ModuleSpecifier,
     diagnostic: &lsp::Diagnostic,
   ) {
-    let data = Some(json!({
-      "specifier": specifier,
-      "fixId": action.fix_id,
-    }));
+    let data = action.fix_id.as_ref().map(|fix_id| {
+      json!(CodeActionData {
+        specifier: specifier.clone(),
+        fix_id: fix_id.clone(),
+      })
+    });
     let title = if let Some(description) = &action.fix_all_description {
       description.clone()
     } else {
@@ -1150,6 +1217,190 @@ impl CodeActionCollection {
       }),
       ..Default::default()
     }));
+  }
+
+  pub async fn add_source_actions(
+    &mut self,
+    document: &Document,
+    range: &lsp::Range,
+    language_server: &language_server::Inner,
+  ) {
+    fn import_start_from_specifier(
+      document: &Document,
+      import: &deno_graph::Import,
+    ) -> Option<LineAndColumnIndex> {
+      // find the top level statement that contains the specifier
+      let parsed_source = document.maybe_parsed_source()?.as_ref().ok()?;
+      let text_info = parsed_source.text_info_lazy();
+      let specifier_range = SourceRange::new(
+        text_info.loc_to_source_pos(LineAndColumnIndex {
+          line_index: import.specifier_range.range.start.line,
+          column_index: import.specifier_range.range.start.character,
+        }),
+        text_info.loc_to_source_pos(LineAndColumnIndex {
+          line_index: import.specifier_range.range.end.line,
+          column_index: import.specifier_range.range.end.character,
+        }),
+      );
+
+      parsed_source
+        .program_ref()
+        .body()
+        .find(|i| i.range().contains(&specifier_range))
+        .map(|i| text_info.line_and_column_index(i.range().start))
+    }
+
+    async fn deno_types_for_npm_action(
+      document: &Document,
+      range: &lsp::Range,
+      language_server: &language_server::Inner,
+    ) -> Option<lsp::CodeAction> {
+      let (dep_key, dependency, _) =
+        document.get_maybe_dependency(&range.end)?;
+      if dependency.maybe_deno_types_specifier.is_some() {
+        return None;
+      }
+      if dependency.maybe_code.maybe_specifier().is_none()
+        && dependency.maybe_type.maybe_specifier().is_none()
+      {
+        // We're using byonm and the package is not cached.
+        return None;
+      }
+      let position = deno_graph::Position::new(
+        range.end.line as usize,
+        range.end.character as usize,
+      );
+      let import_start = dependency.imports.iter().find_map(|i| {
+        if json!(i.kind) != json!("es") && json!(i.kind) != json!("tsType") {
+          return None;
+        }
+        if !i.specifier_range.includes(position) {
+          return None;
+        }
+
+        import_start_from_specifier(document, i)
+      })?;
+      let referrer = document.specifier();
+      let resolution_mode = document.resolution_mode();
+      let file_referrer = document.file_referrer();
+      let config_data = language_server
+        .config
+        .tree
+        .data_for_specifier(file_referrer?)?;
+      let workspace_resolver = config_data.resolver.clone();
+      let npm_ref = if let Ok(resolution) =
+        workspace_resolver.resolve(&dep_key, document.specifier())
+      {
+        let specifier = match resolution {
+          MappedResolution::Normal { specifier, .. }
+          | MappedResolution::ImportMap { specifier, .. } => specifier,
+          _ => {
+            return None;
+          }
+        };
+        NpmPackageReqReference::from_specifier(&specifier).ok()?
+      } else {
+        // Only resolve bare package.json deps for byonm.
+        if !config_data.byonm {
+          return None;
+        }
+        if !language_server.resolver.is_bare_package_json_dep(
+          &dep_key,
+          referrer,
+          resolution_mode,
+        ) {
+          return None;
+        }
+        NpmPackageReqReference::from_str(&format!("npm:{}", &dep_key)).ok()?
+      };
+      let package_name = &npm_ref.req().name;
+      if package_name.starts_with("@types/") {
+        return None;
+      }
+      let managed_npm_resolver = language_server
+        .resolver
+        .maybe_managed_npm_resolver(file_referrer);
+      if let Some(npm_resolver) = managed_npm_resolver {
+        if !npm_resolver.is_pkg_req_folder_cached(npm_ref.req()) {
+          return None;
+        }
+      }
+      if language_server
+        .resolver
+        .npm_to_file_url(&npm_ref, referrer, resolution_mode, file_referrer)
+        .is_some()
+      {
+        // The package import has types.
+        return None;
+      }
+      let types_package_name = format!("@types/{package_name}");
+      let types_package_version = language_server
+        .npm_search_api
+        .versions(&types_package_name)
+        .await
+        .ok()
+        .and_then(|versions| versions.first().cloned())?;
+      let types_specifier_text =
+        if let Some(npm_resolver) = managed_npm_resolver {
+          let mut specifier_text = if let Some(req) =
+            npm_resolver.top_package_req_for_name(&types_package_name)
+          {
+            format!("npm:{req}")
+          } else {
+            format!("npm:{}@^{}", &types_package_name, types_package_version)
+          };
+          let specifier = ModuleSpecifier::parse(&specifier_text).ok()?;
+          if let Some(file_referrer) = file_referrer {
+            if let Some(text) = language_server
+              .get_ts_response_import_mapper(file_referrer)
+              .check_specifier(&specifier, referrer)
+            {
+              specifier_text = text;
+            }
+          }
+          specifier_text
+        } else {
+          types_package_name.clone()
+        };
+      let uri = language_server
+        .url_map
+        .specifier_to_uri(referrer, file_referrer)
+        .ok()?;
+      let position = lsp::Position {
+        line: import_start.line_index as u32,
+        character: import_start.column_index as u32,
+      };
+      let new_text = format!(
+        "{}// @deno-types=\"{}\"\n",
+        if position.character == 0 { "" } else { "\n" },
+        &types_specifier_text
+      );
+      let text_edit = lsp::TextEdit {
+        range: lsp::Range {
+          start: position,
+          end: position,
+        },
+        new_text,
+      };
+      Some(lsp::CodeAction {
+        title: format!(
+          "Add @deno-types directive for \"{}\"",
+          &types_specifier_text
+        ),
+        kind: Some(lsp::CodeActionKind::QUICKFIX),
+        diagnostics: None,
+        edit: Some(lsp::WorkspaceEdit {
+          changes: Some([(uri, vec![text_edit])].into_iter().collect()),
+          ..Default::default()
+        }),
+        ..Default::default()
+      })
+    }
+    if let Some(action) =
+      deno_types_for_npm_action(document, range, language_server).await
+    {
+      self.actions.push(CodeActionKind::Deno(action));
+    }
   }
 }
 

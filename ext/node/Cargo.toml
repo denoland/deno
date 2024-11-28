@@ -2,7 +2,7 @@
 
 [package]
 name = "deno_node"
-version = "0.105.0"
+version = "0.117.0"
 authors.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -22,6 +22,7 @@ aes.workspace = true
 async-trait.workspace = true
 base64.workspace = true
 blake2 = "0.10.6"
+boxed_error.workspace = true
 brotli.workspace = true
 bytes.workspace = true
 cbc.workspace = true
@@ -34,6 +35,7 @@ deno_io.workspace = true
 deno_media_type.workspace = true
 deno_net.workspace = true
 deno_package_json.workspace = true
+deno_path_util.workspace = true
 deno_permissions.workspace = true
 deno_whoami = "0.1.0"
 der = { version = "0.7.9", features = ["derive"] }
@@ -52,7 +54,7 @@ http.workspace = true
 http-body-util.workspace = true
 hyper.workspace = true
 hyper-util.workspace = true
-idna = "0.3.0"
+idna = "1.0.3"
 indexmap.workspace = true
 ipnetwork = "0.20.0"
 k256 = "0.13.1"
@@ -87,12 +89,13 @@ sha1.workspace = true
 sha2.workspace = true
 sha3 = { version = "0.10.8", features = ["oid"] }
 signature.workspace = true
-simd-json = "0.13.4"
+simd-json = "0.14.0"
 sm3 = "0.4.2"
 spki.workspace = true
 stable_deref_trait = "1.2.0"
 thiserror.workspace = true
 tokio.workspace = true
+tokio-eld = "0.2"
 url.workspace = true
 webpki-root-certs.workspace = true
 winapi.workspace = true

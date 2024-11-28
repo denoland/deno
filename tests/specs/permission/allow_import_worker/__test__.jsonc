@@ -1,0 +1,13 @@
+{
+  "tests": {
+    "allowed": {
+      "args": "run -A --unstable-worker-options --quiet main.ts",
+      "output": "1\n"
+    },
+    "denied": {
+      "args": "run -A --unstable-worker-options --quiet main_denied.ts",
+      "output": "denied.out",
+      "exitCode": 1
+    }
+  }
+}

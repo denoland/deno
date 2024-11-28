@@ -1,0 +1,4 @@
+{
+  "args": "run --quiet --allow-read --reload 016_double_await.ts",
+  "output": "016_double_await.ts.out"
+}

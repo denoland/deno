@@ -14,6 +14,7 @@ import {
   op_http_get_request_headers,
   op_http_get_request_method_and_url,
   op_http_read_request_body,
+  op_http_request_on_cancel,
   op_http_serve,
   op_http_serve_on,
   op_http_set_promise_complete,
@@ -33,6 +34,7 @@ const {
   ObjectHasOwn,
   ObjectPrototypeIsPrototypeOf,
   PromisePrototypeCatch,
+  SafePromisePrototypeFinally,
   PromisePrototypeThen,
   StringPrototypeIncludes,
   Symbol,
@@ -41,6 +43,10 @@ const {
   Uint8Array,
   Promise,
 } = primordials;
+const {
+  getAsyncContext,
+  setAsyncContext,
+} = core;
 
 import { InnerBody } from "ext:deno_fetch/22_body.js";
 import { Event } from "ext:deno_web/02_event.js";
@@ -76,9 +82,23 @@ import {
   ReadableStreamPrototype,
   resourceForReadableStream,
 } from "ext:deno_web/06_streams.js";
-import { listen, listenOptionApiName, TcpConn } from "ext:deno_net/01_net.js";
+import {
+  listen,
+  listenOptionApiName,
+  UpgradedConn,
+} from "ext:deno_net/01_net.js";
 import { hasTlsKeyPairOptions, listenTls } from "ext:deno_net/02_tls.js";
 import { SymbolAsyncDispose } from "ext:deno_web/00_infra.js";
+import {
+  endSpan,
+  enterSpan,
+  Span,
+  TRACING_ENABLED,
+} from "ext:deno_telemetry/telemetry.ts";
+import {
+  updateSpanFromRequest,
+  updateSpanFromResponse,
+} from "ext:deno_telemetry/util.ts";
 
 const _upgraded = Symbol("_upgraded");
 
@@ -189,7 +209,7 @@ class InnerRequest {
 
       const upgradeRid = op_http_upgrade_raw(external);
 
-      const conn = new TcpConn(
+      const conn = new UpgradedConn(
         upgradeRid,
         underlyingConn?.remoteAddr,
         underlyingConn?.localAddr,
@@ -369,6 +389,18 @@ class InnerRequest {
   get external() {
     return this.#external;
   }
+
+  onCancel(callback) {
+    if (this.#external === null) {
+      callback();
+      return;
+    }
+
+    PromisePrototypeThen(
+      op_http_request_on_cancel(this.#external),
+      callback,
+    );
+  }
 }
 
 class CallbackContext {
@@ -380,8 +412,10 @@ class CallbackContext {
   /** @type {Promise<void> | undefined} */
   closing;
   listener;
+  asyncContext;
 
   constructor(signal, args, listener) {
+    this.asyncContext = getAsyncContext();
     // The abort signal triggers a non-graceful shutdown
     signal?.addEventListener(
       "abort",
@@ -490,7 +524,7 @@ function fastSyncResponseOrStream(
  * This function returns a promise that will only reject in the case of abnormal exit.
  */
 function mapToCallback(context, callback, onError) {
-  return async function (req) {
+  let mapped = async function (req, span) {
     // Get the response from the user-provided callback. If that fails, use onError. If that fails, return a fallback
     // 500 error.
     let innerRequest;
@@ -499,6 +533,11 @@ function mapToCallback(context, callback, onError) {
       innerRequest = new InnerRequest(req, context);
       const request = fromInnerRequest(innerRequest, "immutable");
       innerRequest.request = request;
+
+      if (span) {
+        updateSpanFromRequest(span, request);
+      }
+
       response = await callback(
         request,
         new ServeHandlerInfo(innerRequest),
@@ -536,6 +575,11 @@ function mapToCallback(context, callback, onError) {
         response = internalServerError();
       }
     }
+
+    if (span) {
+      updateSpanFromResponse(span, response);
+    }
+
     const inner = toInnerResponse(response);
     if (innerRequest?.[_upgraded]) {
       // We're done here as the connection has been upgraded during the callback and no longer requires servicing.
@@ -568,6 +612,38 @@ function mapToCallback(context, callback, onError) {
 
     fastSyncResponseOrStream(req, inner.body, status, innerRequest);
   };
+
+  if (TRACING_ENABLED) {
+    const origMapped = mapped;
+    mapped = function (req, _span) {
+      const oldCtx = getAsyncContext();
+      setAsyncContext(context.asyncContext);
+      const span = new Span("deno.serve", { kind: 1 });
+      try {
+        enterSpan(span);
+        return SafePromisePrototypeFinally(
+          origMapped(req, span),
+          () => endSpan(span),
+        );
+      } finally {
+        // equiv to exitSpan.
+        setAsyncContext(oldCtx);
+      }
+    };
+  } else {
+    const origMapped = mapped;
+    mapped = function (req, span) {
+      const oldCtx = getAsyncContext();
+      setAsyncContext(context.asyncContext);
+      try {
+        return origMapped(req, span);
+      } finally {
+        setAsyncContext(oldCtx);
+      }
+    };
+  }
+
+  return mapped;
 }
 
 type RawHandler = (
@@ -765,7 +841,7 @@ function serveHttpOn(context, addr, callback) {
         // Attempt to pull as many requests out of the queue as possible before awaiting. This API is
         // a synchronous, non-blocking API that returns u32::MAX if anything goes wrong.
         while ((req = op_http_try_wait(rid)) !== null) {
-          PromisePrototypeCatch(callback(req), promiseErrorHandler);
+          PromisePrototypeCatch(callback(req, undefined), promiseErrorHandler);
         }
         currentPromise = op_http_wait(rid);
         if (!ref) {
@@ -785,7 +861,7 @@ function serveHttpOn(context, addr, callback) {
       if (req === null) {
         break;
       }
-      PromisePrototypeCatch(callback(req), promiseErrorHandler);
+      PromisePrototypeCatch(callback(req, undefined), promiseErrorHandler);
     }
 
     try {

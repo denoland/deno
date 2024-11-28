@@ -5,7 +5,9 @@ use crate::args::CompileFlags;
 use crate::args::Flags;
 use crate::factory::CliFactory;
 use crate::http_util::HttpClientProvider;
+use crate::standalone::binary::StandaloneRelativeFileBaseUrl;
 use crate::standalone::is_standalone_binary;
+use deno_ast::MediaType;
 use deno_ast::ModuleSpecifier;
 use deno_core::anyhow::bail;
 use deno_core::anyhow::Context;
@@ -14,7 +16,6 @@ use deno_core::error::AnyError;
 use deno_core::resolve_url_or_path;
 use deno_graph::GraphKind;
 use deno_terminal::colors;
-use eszip::EszipRelativeFileBaseUrl;
 use rand::Rng;
 use std::path::Path;
 use std::path::PathBuf;
@@ -29,18 +30,14 @@ pub async fn compile(
   let factory = CliFactory::from_flags(flags);
   let cli_options = factory.cli_options()?;
   let module_graph_creator = factory.module_graph_creator().await?;
-  let parsed_source_cache = factory.parsed_source_cache();
   let binary_writer = factory.create_compile_binary_writer().await?;
   let http_client = factory.http_client_provider();
-  let module_specifier = cli_options.resolve_main_module()?;
-  let module_roots = {
-    let mut vec = Vec::with_capacity(compile_flags.include.len() + 1);
-    vec.push(module_specifier.clone());
-    for side_module in &compile_flags.include {
-      vec.push(resolve_url_or_path(side_module, cli_options.initial_cwd())?);
-    }
-    vec
-  };
+  let entrypoint = cli_options.resolve_main_module()?;
+  let (module_roots, include_files) = get_module_roots_and_include_files(
+    entrypoint,
+    &compile_flags,
+    cli_options.initial_cwd(),
+  )?;
 
   // this is not supported, so show a warning about it, but don't error in order
   // to allow someone to still run `deno compile` when this is in a deno.json
@@ -70,7 +67,7 @@ pub async fn compile(
   let graph = if cli_options.type_check_mode().is_true() {
     // In this case, the previous graph creation did type checking, which will
     // create a module graph with types information in it. We don't want to
-    // store that in the eszip so create a code only module graph from scratch.
+    // store that in the binary so create a code only module graph from scratch.
     module_graph_creator
       .create_graph(GraphKind::CodeOnly, module_roots)
       .await?
@@ -81,36 +78,24 @@ pub async fn compile(
   let ts_config_for_emit = cli_options
     .resolve_ts_config_for_emit(deno_config::deno_json::TsConfigType::Emit)?;
   check_warn_tsconfig(&ts_config_for_emit);
-  let (transpile_options, emit_options) =
-    crate::args::ts_config_to_transpile_and_emit_options(
-      ts_config_for_emit.ts_config,
-    )?;
-  let parser = parsed_source_cache.as_capturing_parser();
   let root_dir_url = resolve_root_dir_from_specifiers(
     cli_options.workspace().root_dir(),
-    graph.specifiers().map(|(s, _)| s).chain(
-      cli_options
-        .node_modules_dir_path()
-        .and_then(|p| ModuleSpecifier::from_directory_path(p).ok())
-        .iter(),
-    ),
+    graph
+      .specifiers()
+      .map(|(s, _)| s)
+      .chain(
+        cli_options
+          .node_modules_dir_path()
+          .and_then(|p| ModuleSpecifier::from_directory_path(p).ok())
+          .iter(),
+      )
+      .chain(include_files.iter()),
   );
   log::debug!("Binary root dir: {}", root_dir_url);
-  let root_dir_url = EszipRelativeFileBaseUrl::new(&root_dir_url);
-  let eszip = eszip::EszipV2::from_graph(eszip::FromGraphOptions {
-    graph,
-    parser,
-    transpile_options,
-    emit_options,
-    // make all the modules relative to the root folder
-    relative_file_base: Some(root_dir_url),
-    npm_packages: None,
-  })?;
-
   log::info!(
     "{} {} to {}",
     colors::green("Compile"),
-    module_specifier.to_string(),
+    entrypoint,
     output_path.display(),
   );
   validate_output_path(&output_path)?;
@@ -133,15 +118,18 @@ pub async fn compile(
   let write_result = binary_writer
     .write_bin(
       file,
-      eszip,
-      root_dir_url,
-      &module_specifier,
+      &graph,
+      StandaloneRelativeFileBaseUrl::from(&root_dir_url),
+      entrypoint,
+      &include_files,
       &compile_flags,
-      cli_options,
     )
     .await
     .with_context(|| {
-      format!("Writing temporary file '{}'", temp_path.display())
+      format!(
+        "Writing deno compile executable to temporary file '{}'",
+        temp_path.display()
+      )
     });
 
   // set it as executable
@@ -224,6 +212,48 @@ fn validate_output_path(output_path: &Path) -> Result<(), AnyError> {
   }
 
   Ok(())
+}
+
+fn get_module_roots_and_include_files(
+  entrypoint: &ModuleSpecifier,
+  compile_flags: &CompileFlags,
+  initial_cwd: &Path,
+) -> Result<(Vec<ModuleSpecifier>, Vec<ModuleSpecifier>), AnyError> {
+  fn is_module_graph_module(url: &ModuleSpecifier) -> bool {
+    if url.scheme() != "file" {
+      return true;
+    }
+    let media_type = MediaType::from_specifier(url);
+    match media_type {
+      MediaType::JavaScript
+      | MediaType::Jsx
+      | MediaType::Mjs
+      | MediaType::Cjs
+      | MediaType::TypeScript
+      | MediaType::Mts
+      | MediaType::Cts
+      | MediaType::Dts
+      | MediaType::Dmts
+      | MediaType::Dcts
+      | MediaType::Tsx
+      | MediaType::Json
+      | MediaType::Wasm => true,
+      MediaType::Css | MediaType::SourceMap | MediaType::Unknown => false,
+    }
+  }
+
+  let mut module_roots = Vec::with_capacity(compile_flags.include.len() + 1);
+  let mut include_files = Vec::with_capacity(compile_flags.include.len());
+  module_roots.push(entrypoint.clone());
+  for side_module in &compile_flags.include {
+    let url = resolve_url_or_path(side_module, initial_cwd)?;
+    if is_module_graph_module(&url) {
+      module_roots.push(url);
+    } else {
+      include_files.push(url);
+    }
+  }
+  Ok((module_roots, include_files))
 }
 
 async fn resolve_compile_executable_output_path(

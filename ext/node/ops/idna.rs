@@ -1,7 +1,5 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
-use deno_core::anyhow::Error;
-use deno_core::error::range_error;
 use deno_core::op2;
 
 use std::borrow::Cow;
@@ -11,19 +9,21 @@ use std::borrow::Cow;
 
 const PUNY_PREFIX: &str = "xn--";
 
-fn invalid_input_err() -> Error {
-  range_error("Invalid input")
-}
-
-fn not_basic_err() -> Error {
-  range_error("Illegal input >= 0x80 (not a basic code point)")
+#[derive(Debug, thiserror::Error)]
+pub enum IdnaError {
+  #[error("Invalid input")]
+  InvalidInput,
+  #[error("Input would take more than 63 characters to encode")]
+  InputTooLong,
+  #[error("Illegal input >= 0x80 (not a basic code point)")]
+  IllegalInput,
 }
 
 /// map a domain by mapping each label with the given function
-fn map_domain<E>(
+fn map_domain(
   domain: &str,
-  f: impl Fn(&str) -> Result<Cow<'_, str>, E>,
-) -> Result<String, E> {
+  f: impl Fn(&str) -> Result<Cow<'_, str>, IdnaError>,
+) -> Result<String, IdnaError> {
   let mut result = String::with_capacity(domain.len());
   let mut domain = domain;
 
@@ -48,7 +48,7 @@ fn map_domain<E>(
 /// Maps a unicode domain to ascii by punycode encoding each label
 ///
 /// Note this is not IDNA2003 or IDNA2008 compliant, rather it matches node.js's punycode implementation
-fn to_ascii(input: &str) -> Result<String, Error> {
+fn to_ascii(input: &str) -> Result<String, IdnaError> {
   if input.is_ascii() {
     return Ok(input.into());
   }
@@ -61,9 +61,7 @@ fn to_ascii(input: &str) -> Result<String, Error> {
     } else {
       idna::punycode::encode_str(label)
         .map(|encoded| [PUNY_PREFIX, &encoded].join("").into()) // add the prefix
-        .ok_or_else(|| {
-          Error::msg("Input would take more than 63 characters to encode") // only error possible per the docs
-        })
+        .ok_or(IdnaError::InputTooLong) // only error possible per the docs
     }
   })?;
 
@@ -74,13 +72,13 @@ fn to_ascii(input: &str) -> Result<String, Error> {
 /// Maps an ascii domain to unicode by punycode decoding each label
 ///
 /// Note this is not IDNA2003 or IDNA2008 compliant, rather it matches node.js's punycode implementation
-fn to_unicode(input: &str) -> Result<String, Error> {
+fn to_unicode(input: &str) -> Result<String, IdnaError> {
   map_domain(input, |s| {
     if let Some(puny) = s.strip_prefix(PUNY_PREFIX) {
       // it's a punycode encoded label
       Ok(
         idna::punycode::decode_to_string(&puny.to_lowercase())
-          .ok_or_else(invalid_input_err)?
+          .ok_or(IdnaError::InvalidInput)?
           .into(),
       )
     } else {
@@ -95,7 +93,7 @@ fn to_unicode(input: &str) -> Result<String, Error> {
 #[string]
 pub fn op_node_idna_punycode_to_ascii(
   #[string] domain: String,
-) -> Result<String, Error> {
+) -> Result<String, IdnaError> {
   to_ascii(&domain)
 }
 
@@ -105,7 +103,7 @@ pub fn op_node_idna_punycode_to_ascii(
 #[string]
 pub fn op_node_idna_punycode_to_unicode(
   #[string] domain: String,
-) -> Result<String, Error> {
+) -> Result<String, IdnaError> {
   to_unicode(&domain)
 }
 
@@ -115,8 +113,8 @@ pub fn op_node_idna_punycode_to_unicode(
 #[string]
 pub fn op_node_idna_domain_to_ascii(
   #[string] domain: String,
-) -> Result<String, Error> {
-  idna::domain_to_ascii(&domain).map_err(|e| e.into())
+) -> Result<String, idna::Errors> {
+  idna::domain_to_ascii(&domain)
 }
 
 /// Converts a domain to Unicode as per the IDNA spec
@@ -131,7 +129,7 @@ pub fn op_node_idna_domain_to_unicode(#[string] domain: String) -> String {
 #[string]
 pub fn op_node_idna_punycode_decode(
   #[string] domain: String,
-) -> Result<String, Error> {
+) -> Result<String, IdnaError> {
   if domain.is_empty() {
     return Ok(domain);
   }
@@ -147,11 +145,10 @@ pub fn op_node_idna_punycode_decode(
       .unwrap_or(domain.len() - 1);
 
   if !domain[..last_dash].is_ascii() {
-    return Err(not_basic_err());
+    return Err(IdnaError::IllegalInput);
   }
 
-  idna::punycode::decode_to_string(&domain)
-    .ok_or_else(|| deno_core::error::range_error("Invalid input"))
+  idna::punycode::decode_to_string(&domain).ok_or(IdnaError::InvalidInput)
 }
 
 #[op2]

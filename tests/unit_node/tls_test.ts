@@ -149,10 +149,12 @@ Deno.test("tls.createServer creates a TLS server", async () => {
     },
   );
   server.listen(0, async () => {
-    const conn = await Deno.connectTls({
-      hostname: "127.0.0.1",
+    const tcpConn = await Deno.connect({
       // deno-lint-ignore no-explicit-any
       port: (server.address() as any).port,
+    });
+    const conn = await Deno.startTls(tcpConn, {
+      hostname: "localhost",
       caCerts: [rootCaCert],
     });
 
@@ -226,4 +228,46 @@ Deno.test("tls.rootCertificates is not empty", () => {
   assertThrows(() => {
     (tls.rootCertificates as string[]).push("new cert");
   }, TypeError);
+});
+
+Deno.test("TLSSocket.alpnProtocol is set for client", async () => {
+  const listener = Deno.listenTls({
+    hostname: "localhost",
+    port: 0,
+    key,
+    cert,
+    alpnProtocols: ["a"],
+  });
+  const outgoing = tls.connect({
+    host: "::1",
+    servername: "localhost",
+    port: listener.addr.port,
+    ALPNProtocols: ["a"],
+    secureContext: {
+      ca: rootCaCert,
+      // deno-lint-ignore no-explicit-any
+    } as any,
+  });
+
+  const conn = await listener.accept();
+  const handshake = await conn.handshake();
+  assertEquals(handshake.alpnProtocol, "a");
+  conn.close();
+  outgoing.destroy();
+  listener.close();
+  await new Promise((resolve) => outgoing.on("close", resolve));
+});
+
+Deno.test("tls connect upgrade tcp", async () => {
+  const { promise, resolve } = Promise.withResolvers<void>();
+
+  const socket = new net.Socket();
+  socket.connect(443, "google.com");
+  socket.on("connect", () => {
+    const secure = tls.connect({ socket });
+    secure.on("secureConnect", () => resolve());
+  });
+
+  await promise;
+  socket.destroy();
 });

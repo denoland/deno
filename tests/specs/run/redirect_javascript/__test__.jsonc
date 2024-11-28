@@ -1,4 +1,4 @@
 {
-  "args": "run --quiet --reload main.js",
+  "args": "run --allow-import --quiet --reload main.js",
   "output": "main.out"
 }

@@ -4,19 +4,26 @@ use std::borrow::Cow;
 use std::collections::BTreeMap;
 use std::collections::HashMap;
 use std::collections::VecDeque;
+use std::env;
 use std::env::current_exe;
 use std::ffi::OsString;
 use std::fs;
 use std::fs::File;
 use std::future::Future;
+use std::io::ErrorKind;
 use std::io::Read;
 use std::io::Seek;
 use std::io::SeekFrom;
 use std::io::Write;
+use std::ops::Range;
+use std::path::Component;
 use std::path::Path;
 use std::path::PathBuf;
 use std::process::Command;
+use std::sync::Arc;
 
+use deno_ast::MediaType;
+use deno_ast::ModuleKind;
 use deno_ast::ModuleSpecifier;
 use deno_config::workspace::PackageJsonDepResolution;
 use deno_config::workspace::ResolverWorkspaceJsrPackage;
@@ -30,13 +37,23 @@ use deno_core::futures::AsyncReadExt;
 use deno_core::futures::AsyncSeekExt;
 use deno_core::serde_json;
 use deno_core::url::Url;
+use deno_graph::source::RealFileSystem;
+use deno_graph::ModuleGraph;
+use deno_npm::resolution::SerializedNpmResolutionSnapshot;
+use deno_npm::resolution::SerializedNpmResolutionSnapshotPackage;
+use deno_npm::resolution::ValidSerializedNpmResolutionSnapshot;
+use deno_npm::NpmPackageId;
 use deno_npm::NpmSystemInfo;
+use deno_runtime::deno_fs;
+use deno_runtime::deno_fs::FileSystem;
+use deno_runtime::deno_fs::RealFs;
+use deno_runtime::deno_io::fs::FsError;
 use deno_runtime::deno_node::PackageJson;
 use deno_semver::npm::NpmVersionReqParseError;
 use deno_semver::package::PackageReq;
 use deno_semver::Version;
 use deno_semver::VersionReqSpecifierParseError;
-use eszip::EszipRelativeFileBaseUrl;
+use deno_telemetry::OtelConfig;
 use indexmap::IndexMap;
 use log::Level;
 use serde::Deserialize;
@@ -49,10 +66,13 @@ use crate::args::NpmInstallDepsProvider;
 use crate::args::PermissionFlags;
 use crate::args::UnstableConfig;
 use crate::cache::DenoDir;
+use crate::cache::FastInsecureHasher;
+use crate::emit::Emitter;
 use crate::file_fetcher::FileFetcher;
 use crate::http_util::HttpClientProvider;
 use crate::npm::CliNpmResolver;
 use crate::npm::InnerCliNpmResolverRef;
+use crate::resolver::CjsTracker;
 use crate::shared::ReleaseChannel;
 use crate::standalone::virtual_fs::VfsEntry;
 use crate::util::archive;
@@ -60,12 +80,64 @@ use crate::util::fs::canonicalize_path_maybe_not_exists;
 use crate::util::progress_bar::ProgressBar;
 use crate::util::progress_bar::ProgressBarStyle;
 
+use super::file_system::DenoCompileFileSystem;
+use super::serialization::deserialize_binary_data_section;
+use super::serialization::serialize_binary_data_section;
+use super::serialization::DenoCompileModuleData;
+use super::serialization::DeserializedDataSection;
+use super::serialization::RemoteModulesStore;
+use super::serialization::RemoteModulesStoreBuilder;
 use super::virtual_fs::FileBackedVfs;
 use super::virtual_fs::VfsBuilder;
+use super::virtual_fs::VfsFileSubDataKind;
 use super::virtual_fs::VfsRoot;
 use super::virtual_fs::VirtualDirectory;
 
-const MAGIC_TRAILER: &[u8; 8] = b"d3n0l4nd";
+/// A URL that can be designated as the base for relative URLs.
+///
+/// After creation, this URL may be used to get the key for a
+/// module in the binary.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct StandaloneRelativeFileBaseUrl<'a>(&'a Url);
+
+impl<'a> From<&'a Url> for StandaloneRelativeFileBaseUrl<'a> {
+  fn from(url: &'a Url) -> Self {
+    Self(url)
+  }
+}
+
+impl<'a> StandaloneRelativeFileBaseUrl<'a> {
+  pub fn new(url: &'a Url) -> Self {
+    debug_assert_eq!(url.scheme(), "file");
+    Self(url)
+  }
+
+  /// Gets the module map key of the provided specifier.
+  ///
+  /// * Descendant file specifiers will be made relative to the base.
+  /// * Non-descendant file specifiers will stay as-is (absolute).
+  /// * Non-file specifiers will stay as-is.
+  pub fn specifier_key<'b>(&self, target: &'b Url) -> Cow<'b, str> {
+    if target.scheme() != "file" {
+      return Cow::Borrowed(target.as_str());
+    }
+
+    match self.0.make_relative(target) {
+      Some(relative) => {
+        if relative.starts_with("../") {
+          Cow::Borrowed(target.as_str())
+        } else {
+          Cow::Owned(relative)
+        }
+      }
+      None => Cow::Borrowed(target.as_str()),
+    }
+  }
+
+  pub fn inner(&self) -> &Url {
+    self.0
+  }
+}
 
 #[derive(Deserialize, Serialize)]
 pub enum NodeModules {
@@ -106,6 +178,7 @@ pub struct SerializedWorkspaceResolver {
 pub struct Metadata {
   pub argv: Vec<String>,
   pub seed: Option<u64>,
+  pub code_cache_key: Option<u64>,
   pub permissions: PermissionFlags,
   pub location: Option<Url>,
   pub v8_flags: Vec<String>,
@@ -118,80 +191,27 @@ pub struct Metadata {
   pub entrypoint_key: String,
   pub node_modules: Option<NodeModules>,
   pub unstable_config: UnstableConfig,
-}
-
-pub fn load_npm_vfs(root_dir_path: PathBuf) -> Result<FileBackedVfs, AnyError> {
-  let data = libsui::find_section("d3n0l4nd").unwrap();
-
-  // We do the first part sync so it can complete quickly
-  let trailer: [u8; TRAILER_SIZE] = data[0..TRAILER_SIZE].try_into().unwrap();
-  let trailer = match Trailer::parse(&trailer)? {
-    None => panic!("Could not find trailer"),
-    Some(trailer) => trailer,
-  };
-  let data = &data[TRAILER_SIZE..];
-
-  let vfs_data =
-    &data[trailer.npm_vfs_pos as usize..trailer.npm_files_pos as usize];
-  let mut dir: VirtualDirectory = serde_json::from_slice(vfs_data)?;
-
-  // align the name of the directory with the root dir
-  dir.name = root_dir_path
-    .file_name()
-    .unwrap()
-    .to_string_lossy()
-    .to_string();
-
-  let fs_root = VfsRoot {
-    dir,
-    root_path: root_dir_path,
-    start_file_offset: trailer.npm_files_pos,
-  };
-  Ok(FileBackedVfs::new(data.to_vec(), fs_root))
+  pub otel_config: Option<OtelConfig>, // None means disabled.
 }
 
 fn write_binary_bytes(
   mut file_writer: File,
   original_bin: Vec<u8>,
   metadata: &Metadata,
-  eszip: eszip::EszipV2,
-  npm_vfs: Option<&VirtualDirectory>,
-  npm_files: &Vec<Vec<u8>>,
+  npm_snapshot: Option<SerializedNpmResolutionSnapshot>,
+  remote_modules: &RemoteModulesStoreBuilder,
+  vfs: VfsBuilder,
   compile_flags: &CompileFlags,
 ) -> Result<(), AnyError> {
-  let metadata = serde_json::to_string(metadata)?.as_bytes().to_vec();
-  let npm_vfs = serde_json::to_string(&npm_vfs)?.as_bytes().to_vec();
-  let eszip_archive = eszip.into_bytes();
-
-  let mut writer = Vec::new();
-
-  // write the trailer, which includes the positions
-  // of the data blocks in the file
-  writer.write_all(&{
-    let metadata_pos = eszip_archive.len() as u64;
-    let npm_vfs_pos = metadata_pos + (metadata.len() as u64);
-    let npm_files_pos = npm_vfs_pos + (npm_vfs.len() as u64);
-    Trailer {
-      eszip_pos: 0,
-      metadata_pos,
-      npm_vfs_pos,
-      npm_files_pos,
-    }
-    .as_bytes()
-  })?;
-
-  writer.write_all(&eszip_archive)?;
-  writer.write_all(&metadata)?;
-  writer.write_all(&npm_vfs)?;
-  for file in npm_files {
-    writer.write_all(file)?;
-  }
+  let data_section_bytes =
+    serialize_binary_data_section(metadata, npm_snapshot, remote_modules, vfs)
+      .context("Serializing binary data section.")?;
 
   let target = compile_flags.resolve_target();
   if target.contains("linux") {
     libsui::Elf::new(&original_bin).append(
       "d3n0l4nd",
-      &writer,
+      &data_section_bytes,
       &mut file_writer,
     )?;
   } else if target.contains("windows") {
@@ -201,11 +221,11 @@ fn write_binary_bytes(
       pe = pe.set_icon(&icon)?;
     }
 
-    pe.write_resource("d3n0l4nd", writer)?
+    pe.write_resource("d3n0l4nd", data_section_bytes)?
       .build(&mut file_writer)?;
   } else if target.contains("darwin") {
     libsui::Macho::from(original_bin)?
-      .write_section("d3n0l4nd", writer)?
+      .write_section("d3n0l4nd", data_section_bytes)?
       .build_and_sign(&mut file_writer)?;
   }
   Ok(())
@@ -221,6 +241,68 @@ pub fn is_standalone_binary(exe_path: &Path) -> bool {
     || libsui::utils::is_macho(&data)
 }
 
+pub struct StandaloneData {
+  pub fs: Arc<dyn deno_fs::FileSystem>,
+  pub metadata: Metadata,
+  pub modules: StandaloneModules,
+  pub npm_snapshot: Option<ValidSerializedNpmResolutionSnapshot>,
+  pub root_path: PathBuf,
+  pub vfs: Arc<FileBackedVfs>,
+}
+
+pub struct StandaloneModules {
+  remote_modules: RemoteModulesStore,
+  vfs: Arc<FileBackedVfs>,
+}
+
+impl StandaloneModules {
+  pub fn resolve_specifier<'a>(
+    &'a self,
+    specifier: &'a ModuleSpecifier,
+  ) -> Result<Option<&'a ModuleSpecifier>, AnyError> {
+    if specifier.scheme() == "file" {
+      Ok(Some(specifier))
+    } else {
+      self.remote_modules.resolve_specifier(specifier)
+    }
+  }
+
+  pub fn has_file(&self, path: &Path) -> bool {
+    self.vfs.file_entry(path).is_ok()
+  }
+
+  pub fn read<'a>(
+    &'a self,
+    specifier: &'a ModuleSpecifier,
+  ) -> Result<Option<DenoCompileModuleData<'a>>, AnyError> {
+    if specifier.scheme() == "file" {
+      let path = deno_path_util::url_to_file_path(specifier)?;
+      let bytes = match self.vfs.file_entry(&path) {
+        Ok(entry) => self
+          .vfs
+          .read_file_all(entry, VfsFileSubDataKind::ModuleGraph)?,
+        Err(err) if err.kind() == ErrorKind::NotFound => {
+          match RealFs.read_file_sync(&path, None) {
+            Ok(bytes) => bytes,
+            Err(FsError::Io(err)) if err.kind() == ErrorKind::NotFound => {
+              return Ok(None)
+            }
+            Err(err) => return Err(err.into()),
+          }
+        }
+        Err(err) => return Err(err.into()),
+      };
+      Ok(Some(DenoCompileModuleData {
+        media_type: MediaType::from_specifier(specifier),
+        specifier,
+        data: bytes,
+      }))
+    } else {
+      self.remote_modules.read(specifier)
+    }
+  }
+}
+
 /// This function will try to run this binary as a standalone binary
 /// produced by `deno compile`. It determines if this is a standalone
 /// binary by skipping over the trailer width at the end of the file,
@@ -228,110 +310,68 @@ pub fn is_standalone_binary(exe_path: &Path) -> bool {
 /// the bundle is executed. If not, this function exits with `Ok(None)`.
 pub fn extract_standalone(
   cli_args: Cow<Vec<OsString>>,
-) -> Result<
-  Option<impl Future<Output = Result<(Metadata, eszip::EszipV2), AnyError>>>,
-  AnyError,
-> {
+) -> Result<Option<StandaloneData>, AnyError> {
   let Some(data) = libsui::find_section("d3n0l4nd") else {
     return Ok(None);
   };
 
-  // We do the first part sync so it can complete quickly
-  let trailer = match Trailer::parse(&data[0..TRAILER_SIZE])? {
+  let DeserializedDataSection {
+    mut metadata,
+    npm_snapshot,
+    remote_modules,
+    mut vfs_dir,
+    vfs_files_data,
+  } = match deserialize_binary_data_section(data)? {
+    Some(data_section) => data_section,
     None => return Ok(None),
-    Some(trailer) => trailer,
   };
 
+  let root_path = {
+    let maybe_current_exe = std::env::current_exe().ok();
+    let current_exe_name = maybe_current_exe
+      .as_ref()
+      .and_then(|p| p.file_name())
+      .map(|p| p.to_string_lossy())
+      // should never happen
+      .unwrap_or_else(|| Cow::Borrowed("binary"));
+    std::env::temp_dir().join(format!("deno-compile-{}", current_exe_name))
+  };
   let cli_args = cli_args.into_owned();
-  // If we have an eszip, read it out
-  Ok(Some(async move {
-    let bufreader =
-      deno_core::futures::io::BufReader::new(&data[TRAILER_SIZE..]);
+  metadata.argv.reserve(cli_args.len() - 1);
+  for arg in cli_args.into_iter().skip(1) {
+    metadata.argv.push(arg.into_string().unwrap());
+  }
+  let vfs = {
+    // align the name of the directory with the root dir
+    vfs_dir.name = root_path.file_name().unwrap().to_string_lossy().to_string();
 
-    let (eszip, loader) = eszip::EszipV2::parse(bufreader)
-      .await
-      .context("Failed to parse eszip header")?;
-
-    let bufreader = loader.await.context("Failed to parse eszip archive")?;
-
-    let mut metadata = String::new();
-
-    bufreader
-      .take(trailer.metadata_len())
-      .read_to_string(&mut metadata)
-      .await
-      .context("Failed to read metadata from the current executable")?;
-
-    let mut metadata: Metadata = serde_json::from_str(&metadata).unwrap();
-    metadata.argv.reserve(cli_args.len() - 1);
-    for arg in cli_args.into_iter().skip(1) {
-      metadata.argv.push(arg.into_string().unwrap());
-    }
-
-    Ok((metadata, eszip))
+    let fs_root = VfsRoot {
+      dir: vfs_dir,
+      root_path: root_path.clone(),
+      start_file_offset: 0,
+    };
+    Arc::new(FileBackedVfs::new(Cow::Borrowed(vfs_files_data), fs_root))
+  };
+  let fs: Arc<dyn deno_fs::FileSystem> =
+    Arc::new(DenoCompileFileSystem::new(vfs.clone()));
+  Ok(Some(StandaloneData {
+    fs,
+    metadata,
+    modules: StandaloneModules {
+      remote_modules,
+      vfs: vfs.clone(),
+    },
+    npm_snapshot,
+    root_path,
+    vfs,
   }))
 }
 
-const TRAILER_SIZE: usize = std::mem::size_of::<Trailer>() + 8; // 8 bytes for the magic trailer string
-
-struct Trailer {
-  eszip_pos: u64,
-  metadata_pos: u64,
-  npm_vfs_pos: u64,
-  npm_files_pos: u64,
-}
-
-impl Trailer {
-  pub fn parse(trailer: &[u8]) -> Result<Option<Trailer>, AnyError> {
-    let (magic_trailer, rest) = trailer.split_at(8);
-    if magic_trailer != MAGIC_TRAILER {
-      return Ok(None);
-    }
-
-    let (eszip_archive_pos, rest) = rest.split_at(8);
-    let (metadata_pos, rest) = rest.split_at(8);
-    let (npm_vfs_pos, npm_files_pos) = rest.split_at(8);
-    let eszip_archive_pos = u64_from_bytes(eszip_archive_pos)?;
-    let metadata_pos = u64_from_bytes(metadata_pos)?;
-    let npm_vfs_pos = u64_from_bytes(npm_vfs_pos)?;
-    let npm_files_pos = u64_from_bytes(npm_files_pos)?;
-    Ok(Some(Trailer {
-      eszip_pos: eszip_archive_pos,
-      metadata_pos,
-      npm_vfs_pos,
-      npm_files_pos,
-    }))
-  }
-
-  pub fn metadata_len(&self) -> u64 {
-    self.npm_vfs_pos - self.metadata_pos
-  }
-
-  pub fn npm_vfs_len(&self) -> u64 {
-    self.npm_files_pos - self.npm_vfs_pos
-  }
-
-  pub fn as_bytes(&self) -> Vec<u8> {
-    let mut trailer = MAGIC_TRAILER.to_vec();
-    trailer.write_all(&self.eszip_pos.to_be_bytes()).unwrap();
-    trailer.write_all(&self.metadata_pos.to_be_bytes()).unwrap();
-    trailer.write_all(&self.npm_vfs_pos.to_be_bytes()).unwrap();
-    trailer
-      .write_all(&self.npm_files_pos.to_be_bytes())
-      .unwrap();
-    trailer
-  }
-}
-
-fn u64_from_bytes(arr: &[u8]) -> Result<u64, AnyError> {
-  let fixed_arr: &[u8; 8] = arr
-    .try_into()
-    .context("Failed to convert the buffer into a fixed-size array")?;
-  Ok(u64::from_be_bytes(*fixed_arr))
-}
-
 pub struct DenoCompileBinaryWriter<'a> {
+  cjs_tracker: &'a CjsTracker,
+  cli_options: &'a CliOptions,
   deno_dir: &'a DenoDir,
+  emitter: &'a Emitter,
   file_fetcher: &'a FileFetcher,
   http_client_provider: &'a HttpClientProvider,
   npm_resolver: &'a dyn CliNpmResolver,
@@ -342,7 +382,10 @@ pub struct DenoCompileBinaryWriter<'a> {
 impl<'a> DenoCompileBinaryWriter<'a> {
   #[allow(clippy::too_many_arguments)]
   pub fn new(
+    cjs_tracker: &'a CjsTracker,
+    cli_options: &'a CliOptions,
     deno_dir: &'a DenoDir,
+    emitter: &'a Emitter,
     file_fetcher: &'a FileFetcher,
     http_client_provider: &'a HttpClientProvider,
     npm_resolver: &'a dyn CliNpmResolver,
@@ -350,7 +393,10 @@ impl<'a> DenoCompileBinaryWriter<'a> {
     npm_system_info: NpmSystemInfo,
   ) -> Self {
     Self {
+      cjs_tracker,
+      cli_options,
       deno_dir,
+      emitter,
       file_fetcher,
       http_client_provider,
       npm_resolver,
@@ -362,11 +408,11 @@ impl<'a> DenoCompileBinaryWriter<'a> {
   pub async fn write_bin(
     &self,
     writer: File,
-    eszip: eszip::EszipV2,
-    root_dir_url: EszipRelativeFileBaseUrl<'_>,
+    graph: &ModuleGraph,
+    root_dir_url: StandaloneRelativeFileBaseUrl<'_>,
     entrypoint: &ModuleSpecifier,
+    include_files: &[ModuleSpecifier],
     compile_flags: &CompileFlags,
-    cli_options: &CliOptions,
   ) -> Result<(), AnyError> {
     // Select base binary based on target
     let mut original_binary = self.get_base_binary(compile_flags).await?;
@@ -379,7 +425,8 @@ impl<'a> DenoCompileBinaryWriter<'a> {
           target,
         )
       }
-      set_windows_binary_to_gui(&mut original_binary)?;
+      set_windows_binary_to_gui(&mut original_binary)
+        .context("Setting windows binary to GUI.")?;
     }
     if compile_flags.icon.is_some() {
       let target = compile_flags.resolve_target();
@@ -390,15 +437,17 @@ impl<'a> DenoCompileBinaryWriter<'a> {
         )
       }
     }
-    self.write_standalone_binary(
-      writer,
-      original_binary,
-      eszip,
-      root_dir_url,
-      entrypoint,
-      cli_options,
-      compile_flags,
-    )
+    self
+      .write_standalone_binary(
+        writer,
+        original_binary,
+        graph,
+        root_dir_url,
+        entrypoint,
+        include_files,
+        compile_flags,
+      )
+      .await
   }
 
   async fn get_base_binary(
@@ -409,7 +458,7 @@ impl<'a> DenoCompileBinaryWriter<'a> {
     //
     // Phase 2 of the 'min sized' deno compile RFC talks
     // about adding this as a flag.
-    if let Some(path) = std::env::var_os("DENORT_BIN") {
+    if let Some(path) = get_dev_binary_path() {
       return std::fs::read(&path).with_context(|| {
         format!("Could not find denort at '{}'", path.to_string_lossy())
       });
@@ -427,13 +476,9 @@ impl<'a> DenoCompileBinaryWriter<'a> {
             binary_name
           )
         }
-        ReleaseChannel::Stable => {
+        _ => {
           format!("release/v{}/{}", env!("CARGO_PKG_VERSION"), binary_name)
         }
-        _ => bail!(
-          "`deno compile` current doesn't support {} release channel",
-          crate::version::DENO_VERSION_INFO.release_channel.name()
-        ),
       };
 
     let download_directory = self.deno_dir.dl_folder_path();
@@ -442,10 +487,14 @@ impl<'a> DenoCompileBinaryWriter<'a> {
     if !binary_path.exists() {
       self
         .download_base_binary(&download_directory, &binary_path_suffix)
-        .await?;
+        .await
+        .context("Setting up base binary.")?;
     }
 
-    let archive_data = std::fs::read(binary_path)?;
+    let read_file = |path: &Path| -> Result<Vec<u8>, AnyError> {
+      std::fs::read(path).with_context(|| format!("Reading {}", path.display()))
+    };
+    let archive_data = read_file(&binary_path)?;
     let temp_dir = tempfile::TempDir::new()?;
     let base_binary_path = archive::unpack_into_dir(archive::UnpackArgs {
       exe_name: "denort",
@@ -454,7 +503,7 @@ impl<'a> DenoCompileBinaryWriter<'a> {
       is_windows: target.contains("windows"),
       dest_path: temp_dir.path(),
     })?;
-    let base_binary = std::fs::read(base_binary_path)?;
+    let base_binary = read_file(&base_binary_path)?;
     drop(temp_dir); // delete the temp dir
     Ok(base_binary)
   }
@@ -472,117 +521,218 @@ impl<'a> DenoCompileBinaryWriter<'a> {
       self
         .http_client_provider
         .get_or_create()?
-        .download_with_progress(download_url.parse()?, None, &progress)
+        .download_with_progress_and_retries(
+          download_url.parse()?,
+          None,
+          &progress,
+        )
         .await?
     };
     let bytes = match maybe_bytes {
       Some(bytes) => bytes,
       None => {
-        log::info!("Download could not be found, aborting");
-        std::process::exit(1)
+        bail!("Download could not be found, aborting");
       }
     };
 
-    std::fs::create_dir_all(output_directory)?;
+    let create_dir_all = |dir: &Path| {
+      std::fs::create_dir_all(dir)
+        .with_context(|| format!("Creating {}", dir.display()))
+    };
+    create_dir_all(output_directory)?;
     let output_path = output_directory.join(binary_path_suffix);
-    std::fs::create_dir_all(output_path.parent().unwrap())?;
-    tokio::fs::write(output_path, bytes).await?;
+    create_dir_all(output_path.parent().unwrap())?;
+    std::fs::write(&output_path, bytes)
+      .with_context(|| format!("Writing {}", output_path.display()))?;
     Ok(())
   }
 
   /// This functions creates a standalone deno binary by appending a bundle
   /// and magic trailer to the currently executing binary.
   #[allow(clippy::too_many_arguments)]
-  fn write_standalone_binary(
+  async fn write_standalone_binary(
     &self,
     writer: File,
     original_bin: Vec<u8>,
-    mut eszip: eszip::EszipV2,
-    root_dir_url: EszipRelativeFileBaseUrl<'_>,
+    graph: &ModuleGraph,
+    root_dir_url: StandaloneRelativeFileBaseUrl<'_>,
     entrypoint: &ModuleSpecifier,
-    cli_options: &CliOptions,
+    include_files: &[ModuleSpecifier],
     compile_flags: &CompileFlags,
   ) -> Result<(), AnyError> {
-    let ca_data = match cli_options.ca_data() {
+    let ca_data = match self.cli_options.ca_data() {
       Some(CaData::File(ca_file)) => Some(
-        std::fs::read(ca_file)
-          .with_context(|| format!("Reading: {ca_file}"))?,
+        std::fs::read(ca_file).with_context(|| format!("Reading {ca_file}"))?,
       ),
       Some(CaData::Bytes(bytes)) => Some(bytes.clone()),
       None => None,
     };
     let root_path = root_dir_url.inner().to_file_path().unwrap();
-    let (npm_vfs, npm_files, node_modules) = match self.npm_resolver.as_inner()
-    {
-      InnerCliNpmResolverRef::Managed(managed) => {
-        let snapshot =
-          managed.serialized_valid_snapshot_for_system(&self.npm_system_info);
-        if !snapshot.as_serialized().packages.is_empty() {
-          let (root_dir, files) = self
-            .build_vfs(&root_path, cli_options)?
-            .into_dir_and_files();
-          eszip.add_npm_snapshot(snapshot);
+    let (maybe_npm_vfs, node_modules, npm_snapshot) =
+      match self.npm_resolver.as_inner() {
+        InnerCliNpmResolverRef::Managed(managed) => {
+          let snapshot =
+            managed.serialized_valid_snapshot_for_system(&self.npm_system_info);
+          if !snapshot.as_serialized().packages.is_empty() {
+            let npm_vfs_builder = self
+              .build_npm_vfs(&root_path)
+              .context("Building npm vfs.")?;
+            (
+              Some(npm_vfs_builder),
+              Some(NodeModules::Managed {
+                node_modules_dir: self
+                  .npm_resolver
+                  .root_node_modules_path()
+                  .map(|path| {
+                    root_dir_url
+                      .specifier_key(
+                        &ModuleSpecifier::from_directory_path(path).unwrap(),
+                      )
+                      .into_owned()
+                  }),
+              }),
+              Some(snapshot),
+            )
+          } else {
+            (None, None, None)
+          }
+        }
+        InnerCliNpmResolverRef::Byonm(resolver) => {
+          let npm_vfs_builder = self.build_npm_vfs(&root_path)?;
           (
-            Some(root_dir),
-            files,
-            Some(NodeModules::Managed {
-              node_modules_dir: self.npm_resolver.root_node_modules_path().map(
-                |path| {
+            Some(npm_vfs_builder),
+            Some(NodeModules::Byonm {
+              root_node_modules_dir: resolver.root_node_modules_path().map(
+                |node_modules_dir| {
                   root_dir_url
                     .specifier_key(
-                      &ModuleSpecifier::from_directory_path(path).unwrap(),
+                      &ModuleSpecifier::from_directory_path(node_modules_dir)
+                        .unwrap(),
                     )
                     .into_owned()
                 },
               ),
             }),
+            None,
           )
-        } else {
-          (None, Vec::new(), None)
+        }
+      };
+    let mut vfs = if let Some(npm_vfs) = maybe_npm_vfs {
+      npm_vfs
+    } else {
+      VfsBuilder::new(root_path.clone())?
+    };
+    for include_file in include_files {
+      let path = deno_path_util::url_to_file_path(include_file)?;
+      if path.is_dir() {
+        // TODO(#26941): we should analyze if any of these are
+        // modules in order to include their dependencies
+        vfs
+          .add_dir_recursive(&path)
+          .with_context(|| format!("Including {}", path.display()))?;
+      } else {
+        vfs
+          .add_file_at_path(&path)
+          .with_context(|| format!("Including {}", path.display()))?;
+      }
+    }
+    let mut remote_modules_store = RemoteModulesStoreBuilder::default();
+    let mut code_cache_key_hasher = if self.cli_options.code_cache_enabled() {
+      Some(FastInsecureHasher::new_deno_versioned())
+    } else {
+      None
+    };
+    for module in graph.modules() {
+      if module.specifier().scheme() == "data" {
+        continue; // don't store data urls as an entry as they're in the code
+      }
+      if let Some(hasher) = &mut code_cache_key_hasher {
+        if let Some(source) = module.source() {
+          hasher.write(module.specifier().as_str().as_bytes());
+          hasher.write(source.as_bytes());
         }
       }
-      InnerCliNpmResolverRef::Byonm(resolver) => {
-        let (root_dir, files) = self
-          .build_vfs(&root_path, cli_options)?
-          .into_dir_and_files();
-        (
-          Some(root_dir),
-          files,
-          Some(NodeModules::Byonm {
-            root_node_modules_dir: resolver.root_node_modules_path().map(
-              |node_modules_dir| {
-                root_dir_url
-                  .specifier_key(
-                    &ModuleSpecifier::from_directory_path(node_modules_dir)
-                      .unwrap(),
-                  )
-                  .into_owned()
-              },
-            ),
-          }),
-        )
+      let (maybe_source, media_type) = match module {
+        deno_graph::Module::Js(m) => {
+          let source = if m.media_type.is_emittable() {
+            let is_cjs = self.cjs_tracker.is_cjs_with_known_is_script(
+              &m.specifier,
+              m.media_type,
+              m.is_script,
+            )?;
+            let module_kind = ModuleKind::from_is_cjs(is_cjs);
+            let source = self
+              .emitter
+              .emit_parsed_source(
+                &m.specifier,
+                m.media_type,
+                module_kind,
+                &m.source,
+              )
+              .await?;
+            source.into_bytes()
+          } else {
+            m.source.as_bytes().to_vec()
+          };
+          (Some(source), m.media_type)
+        }
+        deno_graph::Module::Json(m) => {
+          (Some(m.source.as_bytes().to_vec()), m.media_type)
+        }
+        deno_graph::Module::Wasm(m) => {
+          (Some(m.source.to_vec()), MediaType::Wasm)
+        }
+        deno_graph::Module::Npm(_)
+        | deno_graph::Module::Node(_)
+        | deno_graph::Module::External(_) => (None, MediaType::Unknown),
+      };
+      if module.specifier().scheme() == "file" {
+        let file_path = deno_path_util::url_to_file_path(module.specifier())?;
+        vfs
+          .add_file_with_data(
+            &file_path,
+            match maybe_source {
+              Some(source) => source,
+              None => RealFs.read_file_sync(&file_path, None)?.into_owned(),
+            },
+            VfsFileSubDataKind::ModuleGraph,
+          )
+          .with_context(|| {
+            format!("Failed adding '{}'", file_path.display())
+          })?;
+      } else if let Some(source) = maybe_source {
+        remote_modules_store.add(module.specifier(), media_type, source);
       }
-    };
+    }
+    remote_modules_store.add_redirects(&graph.redirects);
 
-    let env_vars_from_env_file = match cli_options.env_file_name() {
-      Some(env_filename) => {
-        log::info!("{} Environment variables from the file \"{}\" were embedded in the generated executable file", crate::colors::yellow("Warning"), env_filename);
-        get_file_env_vars(env_filename.to_string())?
+    let env_vars_from_env_file = match self.cli_options.env_file_name() {
+      Some(env_filenames) => {
+        let mut aggregated_env_vars = IndexMap::new();
+        for env_filename in env_filenames.iter().rev() {
+          log::info!("{} Environment variables from the file \"{}\" were embedded in the generated executable file", crate::colors::yellow("Warning"), env_filename);
+
+          let env_vars = get_file_env_vars(env_filename.to_string())?;
+          aggregated_env_vars.extend(env_vars);
+        }
+        aggregated_env_vars
       }
       None => Default::default(),
     };
 
     let metadata = Metadata {
       argv: compile_flags.args.clone(),
-      seed: cli_options.seed(),
-      location: cli_options.location_flag().clone(),
-      permissions: cli_options.permission_flags().clone(),
-      v8_flags: cli_options.v8_flags().clone(),
-      unsafely_ignore_certificate_errors: cli_options
+      seed: self.cli_options.seed(),
+      code_cache_key: code_cache_key_hasher.map(|h| h.finish()),
+      location: self.cli_options.location_flag().clone(),
+      permissions: self.cli_options.permission_flags().clone(),
+      v8_flags: self.cli_options.v8_flags().clone(),
+      unsafely_ignore_certificate_errors: self
+        .cli_options
         .unsafely_ignore_certificate_errors()
         .clone(),
-      log_level: cli_options.log_level(),
-      ca_stores: cli_options.ca_stores().clone(),
+      log_level: self.cli_options.log_level(),
+      ca_stores: self.cli_options.ca_stores().clone(),
       ca_data,
       env_vars_from_env_file,
       entrypoint_key: root_dir_url.specifier_key(entrypoint).into_owned(),
@@ -625,28 +775,27 @@ impl<'a> DenoCompileBinaryWriter<'a> {
       node_modules,
       unstable_config: UnstableConfig {
         legacy_flag_enabled: false,
-        bare_node_builtins: cli_options.unstable_bare_node_builtins(),
-        sloppy_imports: cli_options.unstable_sloppy_imports(),
-        features: cli_options.unstable_features(),
+        bare_node_builtins: self.cli_options.unstable_bare_node_builtins(),
+        detect_cjs: self.cli_options.unstable_detect_cjs(),
+        sloppy_imports: self.cli_options.unstable_sloppy_imports(),
+        features: self.cli_options.unstable_features(),
       },
+      otel_config: self.cli_options.otel_config(),
     };
 
     write_binary_bytes(
       writer,
       original_bin,
       &metadata,
-      eszip,
-      npm_vfs.as_ref(),
-      &npm_files,
+      npm_snapshot.map(|s| s.into_serialized()),
+      &remote_modules_store,
+      vfs,
       compile_flags,
     )
+    .context("Writing binary bytes")
   }
 
-  fn build_vfs(
-    &self,
-    root_path: &Path,
-    cli_options: &CliOptions,
-  ) -> Result<VfsBuilder, AnyError> {
+  fn build_npm_vfs(&self, root_path: &Path) -> Result<VfsBuilder, AnyError> {
     fn maybe_warn_different_system(system_info: &NpmSystemInfo) {
       if system_info != &NpmSystemInfo::default() {
         log::warn!("{} The node_modules directory may be incompatible with the target system.", crate::colors::yellow("Warning"));
@@ -663,8 +812,9 @@ impl<'a> DenoCompileBinaryWriter<'a> {
         } else {
           // DO NOT include the user's registry url as it may contain credentials,
           // but also don't make this dependent on the registry url
-          let root_path = npm_resolver.global_cache_root_folder();
-          let mut builder = VfsBuilder::new(root_path)?;
+          let global_cache_root_path = npm_resolver.global_cache_root_path();
+          let mut builder =
+            VfsBuilder::new(global_cache_root_path.to_path_buf())?;
           let mut packages =
             npm_resolver.all_system_packages(&self.npm_system_info);
           packages.sort_by(|a, b| a.id.cmp(&b.id)); // determinism
@@ -674,12 +824,12 @@ impl<'a> DenoCompileBinaryWriter<'a> {
             builder.add_dir_recursive(&folder)?;
           }
 
-          // Flatten all the registries folders into a single "node_modules/localhost" folder
+          // Flatten all the registries folders into a single ".deno_compile_node_modules/localhost" folder
           // that will be used by denort when loading the npm cache. This avoids us exposing
           // the user's private registry information and means we don't have to bother
           // serializing all the different registry config into the binary.
           builder.with_root_dir(|root_dir| {
-            root_dir.name = "node_modules".to_string();
+            root_dir.name = ".deno_compile_node_modules".to_string();
             let mut new_entries = Vec::with_capacity(root_dir.entries.len());
             let mut localhost_entries = IndexMap::new();
             for entry in std::mem::take(&mut root_dir.entries) {
@@ -714,19 +864,26 @@ impl<'a> DenoCompileBinaryWriter<'a> {
             root_dir.entries = new_entries;
           });
 
+          builder.set_new_root_path(root_path.to_path_buf())?;
+
           Ok(builder)
         }
       }
       InnerCliNpmResolverRef::Byonm(_) => {
         maybe_warn_different_system(&self.npm_system_info);
         let mut builder = VfsBuilder::new(root_path.to_path_buf())?;
-        for pkg_json in cli_options.workspace().package_jsons() {
+        for pkg_json in self.cli_options.workspace().package_jsons() {
           builder.add_file_at_path(&pkg_json.path)?;
         }
         // traverse and add all the node_modules directories in the workspace
         let mut pending_dirs = VecDeque::new();
         pending_dirs.push_back(
-          cli_options.workspace().root_dir().to_file_path().unwrap(),
+          self
+            .cli_options
+            .workspace()
+            .root_dir()
+            .to_file_path()
+            .unwrap(),
         );
         while let Some(pending_dir) = pending_dirs.pop_front() {
           let mut entries = fs::read_dir(&pending_dir)
@@ -751,6 +908,31 @@ impl<'a> DenoCompileBinaryWriter<'a> {
       }
     }
   }
+}
+
+fn get_denort_path(deno_exe: PathBuf) -> Option<OsString> {
+  let mut denort = deno_exe;
+  denort.set_file_name(if cfg!(windows) {
+    "denort.exe"
+  } else {
+    "denort"
+  });
+  denort.exists().then(|| denort.into_os_string())
+}
+
+fn get_dev_binary_path() -> Option<OsString> {
+  env::var_os("DENORT_BIN").or_else(|| {
+    env::current_exe().ok().and_then(|exec_path| {
+      if exec_path
+        .components()
+        .any(|component| component == Component::Normal("target".as_ref()))
+      {
+        get_denort_path(exec_path)
+      } else {
+        None
+      }
+    })
+  })
 }
 
 /// This function returns the environment variables specified

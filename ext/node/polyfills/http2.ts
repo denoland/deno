@@ -479,13 +479,13 @@ export class ClientHttp2Session extends Http2Session {
 
     socket.on("error", socketOnError);
     socket.on("close", socketOnClose);
+
+    socket[kHandle].pauseOnCreate = true;
     const connPromise = new Promise((resolve) => {
       const eventName = url.startsWith("https") ? "secureConnect" : "connect";
       socket.once(eventName, () => {
         const rid = socket[kHandle][kStreamBaseField][internalRidSymbol];
-        nextTick(() => {
-          resolve(rid);
-        });
+        nextTick(() => resolve(rid));
       });
     });
     socket[kSession] = this;
@@ -882,6 +882,7 @@ export class ClientHttp2Stream extends Duplex {
       trailersReady: false,
       endAfterHeaders: false,
       shutdownWritableCalled: false,
+      serverEndedCall: false,
     };
     this[kDenoResponse] = undefined;
     this[kDenoRid] = undefined;
@@ -1109,7 +1110,9 @@ export class ClientHttp2Stream extends Duplex {
       }
 
       debugHttp2(">>> chunk", chunk, finished, this[kDenoResponse].bodyRid);
-      if (chunk === null) {
+      if (finished || chunk === null) {
+        this[kState].serverEndedCall = true;
+
         const trailerList = await op_http2_client_get_response_trailers(
           this[kDenoResponse].bodyRid,
         );
@@ -1237,7 +1240,9 @@ export class ClientHttp2Stream extends Duplex {
     this[kSession] = undefined;
 
     session[kMaybeDestroy]();
-    callback(err);
+    if (callback) {
+      callback(err);
+    }
   }
 
   [kMaybeDestroy](code = constants.NGHTTP2_NO_ERROR) {
@@ -1279,6 +1284,9 @@ function shutdownWritable(stream, callback, streamRid) {
   state.shutdownWritableCalled = true;
   if (state.flags & STREAM_FLAGS_HAS_TRAILERS) {
     onStreamTrailers(stream);
+    callback();
+  } else if (state.serverEndedCall) {
+    debugHttp2(">>> stream finished");
     callback();
   } else {
     op_http2_client_send_data(streamRid, new Uint8Array(), true)

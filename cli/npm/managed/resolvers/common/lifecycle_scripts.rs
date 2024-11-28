@@ -2,9 +2,15 @@
 
 use super::bin_entries::BinEntries;
 use crate::args::LifecycleScriptsConfig;
+use crate::task_runner::TaskStdio;
+use crate::util::progress_bar::ProgressBar;
+use deno_core::anyhow::Context;
 use deno_npm::resolution::NpmResolutionSnapshot;
+use deno_runtime::deno_io::FromRawIoHandle;
 use deno_semver::package::PackageNv;
+use deno_semver::Version;
 use std::borrow::Cow;
+use std::collections::HashSet;
 use std::rc::Rc;
 
 use std::path::Path;
@@ -56,7 +62,7 @@ impl<'a> LifecycleScripts<'a> {
   }
 }
 
-fn has_lifecycle_scripts(
+pub fn has_lifecycle_scripts(
   package: &NpmResolutionPackage,
   package_path: &Path,
 ) -> bool {
@@ -78,7 +84,7 @@ fn is_broken_default_install_script(script: &str, package_path: &Path) -> bool {
 }
 
 impl<'a> LifecycleScripts<'a> {
-  fn can_run_scripts(&self, package_nv: &PackageNv) -> bool {
+  pub fn can_run_scripts(&self, package_nv: &PackageNv) -> bool {
     if !self.strategy.can_run_scripts() {
       return false;
     }
@@ -93,6 +99,9 @@ impl<'a> LifecycleScripts<'a> {
       PackagesAllowedScripts::None => false,
     }
   }
+  pub fn has_run_scripts(&self, package: &NpmResolutionPackage) -> bool {
+    self.strategy.has_run(package)
+  }
   /// Register a package for running lifecycle scripts, if applicable.
   ///
   /// `package_path` is the path containing the package's code (its root dir).
@@ -105,14 +114,25 @@ impl<'a> LifecycleScripts<'a> {
   ) {
     if has_lifecycle_scripts(package, &package_path) {
       if self.can_run_scripts(&package.id.nv) {
-        if !self.strategy.has_run(package) {
+        if !self.has_run_scripts(package) {
           self
             .packages_with_scripts
             .push((package, package_path.into_owned()));
         }
-      } else if !self.strategy.has_run(package)
-        && !self.strategy.has_warned(package)
+      } else if !self.has_run_scripts(package)
+        && (self.config.explicit_install || !self.strategy.has_warned(package))
       {
+        // Skip adding `esbuild` as it is known that it can work properly without lifecycle script
+        // being run, and it's also very popular - any project using Vite would raise warnings.
+        {
+          let nv = &package.id.nv;
+          if nv.name == "esbuild"
+            && nv.version >= Version::parse_standard("0.18.0").unwrap()
+          {
+            return;
+          }
+        }
+
         self
           .packages_with_scripts_not_run
           .push((package, package_path.into_owned()));
@@ -133,27 +153,59 @@ impl<'a> LifecycleScripts<'a> {
     self,
     snapshot: &NpmResolutionSnapshot,
     packages: &[NpmResolutionPackage],
-    root_node_modules_dir_path: Option<&Path>,
+    root_node_modules_dir_path: &Path,
+    progress_bar: &ProgressBar,
   ) -> Result<(), AnyError> {
     self.warn_not_run_scripts()?;
     let get_package_path =
       |p: &NpmResolutionPackage| self.strategy.package_path(p);
     let mut failed_packages = Vec::new();
+    let mut bin_entries = BinEntries::new();
     if !self.packages_with_scripts.is_empty() {
+      let package_ids = self
+        .packages_with_scripts
+        .iter()
+        .map(|(p, _)| &p.id)
+        .collect::<HashSet<_>>();
       // get custom commands for each bin available in the node_modules dir (essentially
       // the scripts that are in `node_modules/.bin`)
-      let base =
-        resolve_baseline_custom_commands(snapshot, packages, get_package_path)?;
+      let base = resolve_baseline_custom_commands(
+        &mut bin_entries,
+        snapshot,
+        packages,
+        get_package_path,
+      )?;
       let init_cwd = &self.config.initial_cwd;
       let process_state = crate::npm::managed::npm_process_state(
         snapshot.as_valid_serialized(),
-        root_node_modules_dir_path,
+        Some(root_node_modules_dir_path),
       );
 
       let mut env_vars = crate::task_runner::real_env_vars();
+      // so the subprocess can detect that it is running as part of a lifecycle script,
+      // and avoid trying to set up node_modules again
       env_vars.insert(
-        crate::args::NPM_RESOLUTION_STATE_ENV_VAR_NAME.to_string(),
-        process_state,
+        LIFECYCLE_SCRIPTS_RUNNING_ENV_VAR.to_string(),
+        "1".to_string(),
+      );
+      // we want to pass the current state of npm resolution down to the deno subprocess
+      // (that may be running as part of the script). we do this with an inherited temp file
+      //
+      // SAFETY: we are sharing a single temp file across all of the scripts. the file position
+      // will be shared among these, which is okay since we run only one script at a time.
+      // However, if we concurrently run scripts in the future we will
+      // have to have multiple temp files.
+      let temp_file_fd =
+        deno_runtime::ops::process::npm_process_state_tempfile(
+          process_state.as_bytes(),
+        ).context("failed to create npm process state tempfile for running lifecycle scripts")?;
+      // SAFETY: fd/handle is valid
+      let _temp_file =
+        unsafe { std::fs::File::from_raw_io_handle(temp_file_fd) }; // make sure the file gets closed
+      env_vars.insert(
+        deno_runtime::ops::process::NPM_RESOLUTION_STATE_FD_ENV_VAR_NAME
+          .to_string(),
+        (temp_file_fd as usize).to_string(),
       );
       for (package, package_path) in self.packages_with_scripts {
         // add custom commands for binaries from the package's dependencies. this will take precedence over the
@@ -172,7 +224,15 @@ impl<'a> LifecycleScripts<'a> {
             {
               continue;
             }
-            let exit_code = crate::task_runner::run_task(
+            let _guard = progress_bar.update_with_prompt(
+              crate::util::progress_bar::ProgressMessagePrompt::Initialize,
+              &format!("{}: running '{script_name}' script", package.id.nv),
+            );
+            let crate::task_runner::TaskResult {
+              exit_code,
+              stderr,
+              stdout,
+            } = crate::task_runner::run_task(
               crate::task_runner::RunTaskOptions {
                 task_name: script_name,
                 script,
@@ -181,16 +241,38 @@ impl<'a> LifecycleScripts<'a> {
                 custom_commands: custom_commands.clone(),
                 init_cwd,
                 argv: &[],
-                root_node_modules_dir: root_node_modules_dir_path,
+                root_node_modules_dir: Some(root_node_modules_dir_path),
+                stdio: Some(crate::task_runner::TaskIo {
+                  stderr: TaskStdio::piped(),
+                  stdout: TaskStdio::piped(),
+                }),
               },
             )
             .await?;
+            let stdout = stdout.unwrap();
+            let stderr = stderr.unwrap();
             if exit_code != 0 {
               log::warn!(
-                "error: script '{}' in '{}' failed with exit code {}",
+                "error: script '{}' in '{}' failed with exit code {}{}{}",
                 script_name,
                 package.id.nv,
                 exit_code,
+                if !stdout.trim_ascii().is_empty() {
+                  format!(
+                    "\nstdout:\n{}\n",
+                    String::from_utf8_lossy(&stdout).trim()
+                  )
+                } else {
+                  String::new()
+                },
+                if !stderr.trim_ascii().is_empty() {
+                  format!(
+                    "\nstderr:\n{}\n",
+                    String::from_utf8_lossy(&stderr).trim()
+                  )
+                } else {
+                  String::new()
+                },
               );
               failed_packages.push(&package.id.nv);
               // assume if earlier script fails, later ones will fail too
@@ -200,6 +282,17 @@ impl<'a> LifecycleScripts<'a> {
         }
         self.strategy.did_run_scripts(package)?;
       }
+
+      // re-set up bin entries for the packages which we've run scripts for.
+      // lifecycle scripts can create files that are linked to by bin entries,
+      // and the only reliable way to handle this is to re-link bin entries
+      // (this is what PNPM does as well)
+      bin_entries.finish_only(
+        snapshot,
+        &root_node_modules_dir_path.join(".bin"),
+        |outcome| outcome.warn_if_failed(),
+        &package_ids,
+      )?;
     }
     if failed_packages.is_empty() {
       Ok(())
@@ -216,12 +309,20 @@ impl<'a> LifecycleScripts<'a> {
   }
 }
 
+const LIFECYCLE_SCRIPTS_RUNNING_ENV_VAR: &str =
+  "DENO_INTERNAL_IS_LIFECYCLE_SCRIPT";
+
+pub fn is_running_lifecycle_script() -> bool {
+  std::env::var(LIFECYCLE_SCRIPTS_RUNNING_ENV_VAR).is_ok()
+}
+
 // take in all (non copy) packages from snapshot,
 // and resolve the set of available binaries to create
 // custom commands available to the task runner
-fn resolve_baseline_custom_commands(
-  snapshot: &NpmResolutionSnapshot,
-  packages: &[NpmResolutionPackage],
+fn resolve_baseline_custom_commands<'a>(
+  bin_entries: &mut BinEntries<'a>,
+  snapshot: &'a NpmResolutionSnapshot,
+  packages: &'a [NpmResolutionPackage],
   get_package_path: impl Fn(&NpmResolutionPackage) -> PathBuf,
 ) -> Result<crate::task_runner::TaskCustomCommands, AnyError> {
   let mut custom_commands = crate::task_runner::TaskCustomCommands::new();
@@ -244,6 +345,7 @@ fn resolve_baseline_custom_commands(
   // doing it for packages that are set up already.
   // realistically, scripts won't be run very often so it probably isn't too big of an issue.
   resolve_custom_commands_from_packages(
+    bin_entries,
     custom_commands,
     snapshot,
     packages,
@@ -258,12 +360,12 @@ fn resolve_custom_commands_from_packages<
   'a,
   P: IntoIterator<Item = &'a NpmResolutionPackage>,
 >(
+  bin_entries: &mut BinEntries<'a>,
   mut commands: crate::task_runner::TaskCustomCommands,
   snapshot: &'a NpmResolutionSnapshot,
   packages: P,
   get_package_path: impl Fn(&'a NpmResolutionPackage) -> PathBuf,
 ) -> Result<crate::task_runner::TaskCustomCommands, AnyError> {
-  let mut bin_entries = BinEntries::new();
   for package in packages {
     let package_path = get_package_path(package);
 
@@ -271,7 +373,7 @@ fn resolve_custom_commands_from_packages<
       bin_entries.add(package, package_path);
     }
   }
-  let bins = bin_entries.into_bin_files(snapshot);
+  let bins: Vec<(String, PathBuf)> = bin_entries.collect_bin_files(snapshot);
   for (bin_name, script_path) in bins {
     commands.insert(
       bin_name.clone(),
@@ -294,7 +396,9 @@ fn resolve_custom_commands_from_deps(
   snapshot: &NpmResolutionSnapshot,
   get_package_path: impl Fn(&NpmResolutionPackage) -> PathBuf,
 ) -> Result<crate::task_runner::TaskCustomCommands, AnyError> {
+  let mut bin_entries = BinEntries::new();
   resolve_custom_commands_from_packages(
+    &mut bin_entries,
     baseline,
     snapshot,
     package

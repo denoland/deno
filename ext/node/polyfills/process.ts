@@ -15,7 +15,7 @@ import {
 
 import { warnNotImplemented } from "ext:deno_node/_utils.ts";
 import { EventEmitter } from "node:events";
-import Module from "node:module";
+import Module, { getBuiltinModule } from "node:module";
 import { report } from "ext:deno_node/internal/process/report.ts";
 import { validateString } from "ext:deno_node/internal/validators.mjs";
 import {
@@ -38,7 +38,15 @@ import {
   versions,
 } from "ext:deno_node/_process/process.ts";
 import { _exiting } from "ext:deno_node/_process/exiting.ts";
-export { _nextTick as nextTick, chdir, cwd, env, version, versions };
+export {
+  _nextTick as nextTick,
+  chdir,
+  cwd,
+  env,
+  getBuiltinModule,
+  version,
+  versions,
+};
 import {
   createWritableStdioStream,
   initStdin,
@@ -520,9 +528,7 @@ Process.prototype.on = function (
     } else if (
       event !== "SIGBREAK" && event !== "SIGINT" && Deno.build.os === "windows"
     ) {
-      // Ignores all signals except SIGBREAK and SIGINT on windows.
-      // deno-lint-ignore no-console
-      console.warn(`Ignoring signal "${event}" on Windows`);
+      // TODO(#26331): Ignores all signals except SIGBREAK and SIGINT on windows.
     } else {
       EventEmitter.prototype.on.call(this, event, listener);
       Deno.addSignalListener(event as Deno.Signal, listener);
@@ -730,6 +736,8 @@ Process.prototype.getegid = getegid;
 /** This method is removed on Windows */
 Process.prototype.geteuid = geteuid;
 
+Process.prototype.getBuiltinModule = getBuiltinModule;
+
 // TODO(kt3k): Implement this when we added -e option to node compat mode
 Process.prototype._eval = undefined;
 
@@ -911,7 +919,7 @@ Object.defineProperty(argv, "1", {
     if (Deno.mainModule?.startsWith("file:")) {
       return pathFromURL(new URL(Deno.mainModule));
     } else {
-      return join(Deno.cwd(), "$deno$node.js");
+      return join(Deno.cwd(), "$deno$node.mjs");
     }
   },
 });

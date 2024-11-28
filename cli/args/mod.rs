@@ -7,6 +7,7 @@ mod import_map;
 mod lockfile;
 mod package_json;
 
+use deno_ast::MediaType;
 use deno_ast::SourceMapOption;
 use deno_config::deno_json::NodeModulesDirMode;
 use deno_config::workspace::CreateResolverOptions;
@@ -20,20 +21,20 @@ use deno_config::workspace::WorkspaceDiscoverOptions;
 use deno_config::workspace::WorkspaceDiscoverStart;
 use deno_config::workspace::WorkspaceLintConfig;
 use deno_config::workspace::WorkspaceResolver;
-use deno_core::normalize_path;
 use deno_core::resolve_url_or_path;
 use deno_graph::GraphKind;
 use deno_npm::npm_rc::NpmRc;
 use deno_npm::npm_rc::ResolvedNpmRc;
 use deno_npm::resolution::ValidSerializedNpmResolutionSnapshot;
 use deno_npm::NpmSystemInfo;
+use deno_path_util::normalize_path;
 use deno_semver::npm::NpmPackageReqReference;
+use deno_telemetry::OtelConfig;
 use import_map::resolve_import_map_value_from_specifier;
 
 pub use deno_config::deno_json::BenchConfig;
 pub use deno_config::deno_json::ConfigFile;
 pub use deno_config::deno_json::FmtOptionsConfig;
-pub use deno_config::deno_json::JsxImportSourceConfig;
 pub use deno_config::deno_json::LintRulesConfig;
 pub use deno_config::deno_json::ProseWrap;
 pub use deno_config::deno_json::TsConfig;
@@ -44,7 +45,9 @@ pub use deno_config::glob::FilePatterns;
 pub use deno_json::check_warn_tsconfig;
 pub use flags::*;
 pub use lockfile::CliLockfile;
+pub use lockfile::CliLockfileReadFromPathOptions;
 pub use package_json::NpmInstallDepsProvider;
+pub use package_json::PackageJsonDepValueParseWithLocationError;
 
 use deno_ast::ModuleSpecifier;
 use deno_core::anyhow::bail;
@@ -69,6 +72,8 @@ use std::collections::HashMap;
 use std::env;
 use std::io::BufReader;
 use std::io::Cursor;
+use std::io::Read;
+use std::io::Seek;
 use std::net::SocketAddr;
 use std::num::NonZeroUsize;
 use std::path::Path;
@@ -197,6 +202,8 @@ pub fn ts_config_to_transpile_and_emit_options(
       precompile_jsx_dynamic_props: None,
       transform_jsx,
       var_decl_imports: false,
+      // todo(dsherret): support verbatim_module_syntax here properly
+      verbatim_module_syntax: false,
     },
     deno_ast::EmitOptions {
       inline_sources: options.inline_sources,
@@ -282,6 +289,7 @@ impl BenchOptions {
 #[derive(Clone, Debug, Default, PartialEq, Eq, Hash)]
 pub struct UnstableFmtOptions {
   pub component: bool,
+  pub sql: bool,
 }
 
 #[derive(Clone, Debug)]
@@ -315,6 +323,7 @@ impl FmtOptions {
       options: resolve_fmt_options(fmt_flags, fmt_config.options),
       unstable: UnstableFmtOptions {
         component: unstable.component || fmt_flags.unstable_component,
+        sql: unstable.sql || fmt_flags.unstable_sql,
       },
       files: fmt_config.files,
     }
@@ -575,6 +584,7 @@ fn discover_npmrc(
     let resolved = npmrc
       .as_resolved(npm_registry_url())
       .context("Failed to resolve .npmrc options")?;
+    log::debug!(".npmrc found at: '{}'", path.display());
     Ok(Arc::new(resolved))
   }
 
@@ -742,15 +752,33 @@ pub enum NpmProcessStateKind {
   Byonm,
 }
 
-pub(crate) const NPM_RESOLUTION_STATE_ENV_VAR_NAME: &str =
-  "DENO_DONT_USE_INTERNAL_NODE_COMPAT_STATE";
-
 static NPM_PROCESS_STATE: Lazy<Option<NpmProcessState>> = Lazy::new(|| {
-  let state = std::env::var(NPM_RESOLUTION_STATE_ENV_VAR_NAME).ok()?;
-  let state: NpmProcessState = serde_json::from_str(&state).ok()?;
-  // remove the environment variable so that sub processes
-  // that are spawned do not also use this.
-  std::env::remove_var(NPM_RESOLUTION_STATE_ENV_VAR_NAME);
+  use deno_runtime::ops::process::NPM_RESOLUTION_STATE_FD_ENV_VAR_NAME;
+  let fd = std::env::var(NPM_RESOLUTION_STATE_FD_ENV_VAR_NAME).ok()?;
+  std::env::remove_var(NPM_RESOLUTION_STATE_FD_ENV_VAR_NAME);
+  let fd = fd.parse::<usize>().ok()?;
+  let mut file = {
+    use deno_runtime::deno_io::FromRawIoHandle;
+    unsafe { std::fs::File::from_raw_io_handle(fd as _) }
+  };
+  let mut buf = Vec::new();
+  // seek to beginning. after the file is written the position will be inherited by this subprocess,
+  // and also this file might have been read before
+  file.seek(std::io::SeekFrom::Start(0)).unwrap();
+  file
+    .read_to_end(&mut buf)
+    .inspect_err(|e| {
+      log::error!("failed to read npm process state from fd {fd}: {e}");
+    })
+    .ok()?;
+  let state: NpmProcessState = serde_json::from_slice(&buf)
+    .inspect_err(|e| {
+      log::error!(
+        "failed to deserialize npm process state: {e} {}",
+        String::from_utf8_lossy(&buf)
+      )
+    })
+    .ok()?;
   Some(state)
 });
 
@@ -769,6 +797,7 @@ pub struct CliOptions {
   // application need not concern itself with, so keep these private
   flags: Arc<Flags>,
   initial_cwd: PathBuf,
+  main_module_cell: std::sync::OnceLock<Result<ModuleSpecifier, AnyError>>,
   maybe_node_modules_folder: Option<PathBuf>,
   npmrc: Arc<ResolvedNpmRc>,
   maybe_lockfile: Option<Arc<CliLockfile>>,
@@ -796,18 +825,14 @@ impl CliOptions {
       };
       let msg =
         format!("DANGER: TLS certificate validation is disabled {}", domains);
-      #[allow(clippy::print_stderr)]
       {
-        // use eprintln instead of log::warn so this always gets shown
-        eprintln!("{}", colors::yellow(msg));
+        log::error!("{}", colors::yellow(msg));
       }
     }
 
-    warn_insecure_allow_run_flags(&flags);
-
     let maybe_lockfile = maybe_lockfile.filter(|_| !force_global_cache);
     let deno_dir_provider =
-      Arc::new(DenoDirProvider::new(flags.cache_path.clone()));
+      Arc::new(DenoDirProvider::new(flags.internal.cache_path.clone()));
     let maybe_node_modules_folder = resolve_node_modules_folder(
       &initial_cwd,
       &flags,
@@ -825,6 +850,7 @@ impl CliOptions {
       npmrc,
       maybe_node_modules_folder,
       overrides: Default::default(),
+      main_module_cell: std::sync::OnceLock::new(),
       start_dir,
       deno_dir_provider,
     })
@@ -844,12 +870,8 @@ impl CliOptions {
         } else {
           &[]
         };
-      let config_parse_options = deno_config::deno_json::ConfigParseOptions {
-        include_task_comments: matches!(
-          flags.subcommand,
-          DenoSubcommand::Task(..)
-        ),
-      };
+      let config_parse_options =
+        deno_config::deno_json::ConfigParseOptions::default();
       let discover_pkg_json = flags.config_flag != ConfigFlag::Disabled
         && !flags.no_npm
         && !has_flag_env_var("DENO_NO_PACKAGE_JSON");
@@ -942,6 +964,9 @@ impl CliOptions {
     match self.sub_command() {
       DenoSubcommand::Cache(_) => GraphKind::All,
       DenoSubcommand::Check(_) => GraphKind::TypesOnly,
+      DenoSubcommand::Install(InstallFlags {
+        kind: InstallKind::Local(_),
+      }) => GraphKind::All,
       _ => self.type_check_mode().as_graph_kind(),
     }
   }
@@ -1101,44 +1126,58 @@ impl CliOptions {
     }
   }
 
-  pub fn env_file_name(&self) -> Option<&String> {
+  pub fn otel_config(&self) -> Option<OtelConfig> {
+    self.flags.otel_config()
+  }
+
+  pub fn env_file_name(&self) -> Option<&Vec<String>> {
     self.flags.env_file.as_ref()
   }
 
-  pub fn resolve_main_module(&self) -> Result<ModuleSpecifier, AnyError> {
-    let main_module = match &self.flags.subcommand {
-      DenoSubcommand::Compile(compile_flags) => {
-        resolve_url_or_path(&compile_flags.source_file, self.initial_cwd())?
-      }
-      DenoSubcommand::Eval(_) => {
-        resolve_url_or_path("./$deno$eval.ts", self.initial_cwd())?
-      }
-      DenoSubcommand::Repl(_) => {
-        resolve_url_or_path("./$deno$repl.ts", self.initial_cwd())?
-      }
-      DenoSubcommand::Run(run_flags) => {
-        if run_flags.is_stdin() {
-          std::env::current_dir()
-            .context("Unable to get CWD")
-            .and_then(|cwd| {
-              resolve_url_or_path("./$deno$stdin.ts", &cwd)
-                .map_err(AnyError::from)
-            })?
-        } else if NpmPackageReqReference::from_str(&run_flags.script).is_ok() {
-          ModuleSpecifier::parse(&run_flags.script)?
-        } else {
-          resolve_url_or_path(&run_flags.script, self.initial_cwd())?
-        }
-      }
-      DenoSubcommand::Serve(run_flags) => {
-        resolve_url_or_path(&run_flags.script, self.initial_cwd())?
-      }
-      _ => {
-        bail!("No main module.")
-      }
-    };
-
-    Ok(main_module)
+  pub fn resolve_main_module(&self) -> Result<&ModuleSpecifier, AnyError> {
+    self
+      .main_module_cell
+      .get_or_init(|| {
+        Ok(match &self.flags.subcommand {
+          DenoSubcommand::Compile(compile_flags) => {
+            resolve_url_or_path(&compile_flags.source_file, self.initial_cwd())?
+          }
+          DenoSubcommand::Eval(_) => {
+            resolve_url_or_path("./$deno$eval.mts", self.initial_cwd())?
+          }
+          DenoSubcommand::Repl(_) => {
+            resolve_url_or_path("./$deno$repl.mts", self.initial_cwd())?
+          }
+          DenoSubcommand::Run(run_flags) => {
+            if run_flags.is_stdin() {
+              resolve_url_or_path("./$deno$stdin.mts", self.initial_cwd())?
+            } else {
+              let url =
+                resolve_url_or_path(&run_flags.script, self.initial_cwd())?;
+              if self.is_node_main()
+                && url.scheme() == "file"
+                && MediaType::from_specifier(&url) == MediaType::Unknown
+              {
+                try_resolve_node_binary_main_entrypoint(
+                  &run_flags.script,
+                  self.initial_cwd(),
+                )?
+                .unwrap_or(url)
+              } else {
+                url
+              }
+            }
+          }
+          DenoSubcommand::Serve(run_flags) => {
+            resolve_url_or_path(&run_flags.script, self.initial_cwd())?
+          }
+          _ => {
+            bail!("No main module.")
+          }
+        })
+      })
+      .as_ref()
+      .map_err(|err| deno_core::anyhow::anyhow!("{}", err))
   }
 
   pub fn resolve_file_header_overrides(
@@ -1159,7 +1198,7 @@ impl CliOptions {
       (maybe_main_specifier, maybe_content_type)
     {
       HashMap::from([(
-        main_specifier,
+        main_specifier.clone(),
         HashMap::from([("content-type".to_string(), content_type.to_string())]),
       )])
     } else {
@@ -1184,7 +1223,7 @@ impl CliOptions {
   // This is triggered via a secret environment variable which is used
   // for functionality like child_process.fork. Users should NOT depend
   // on this functionality.
-  pub fn is_npm_main(&self) -> bool {
+  pub fn is_node_main(&self) -> bool {
     NPM_PROCESS_STATE.is_some()
   }
 
@@ -1282,6 +1321,7 @@ impl CliOptions {
     let workspace = self.workspace();
     UnstableFmtOptions {
       component: workspace.has_unstable("fmt-component"),
+      sql: workspace.has_unstable("fmt-sql"),
     }
   }
 
@@ -1322,11 +1362,9 @@ impl CliOptions {
       )?;
 
     Ok(deno_lint::linter::LintConfig {
-      default_jsx_factory: transpile_options
-        .jsx_automatic
+      default_jsx_factory: (!transpile_options.jsx_automatic)
         .then(|| transpile_options.jsx_factory.clone()),
-      default_jsx_fragment_factory: transpile_options
-        .jsx_automatic
+      default_jsx_fragment_factory: (!transpile_options.jsx_automatic)
         .then(|| transpile_options.jsx_fragment_factory.clone()),
     })
   }
@@ -1432,6 +1470,12 @@ impl CliOptions {
     }) = &self.flags.subcommand
     {
       *hmr
+    } else if let DenoSubcommand::Serve(ServeFlags {
+      watch: Some(WatchFlagsWithPaths { hmr, .. }),
+      ..
+    }) = &self.flags.subcommand
+    {
+      *hmr
     } else {
       false
     }
@@ -1480,7 +1524,38 @@ impl CliOptions {
   }
 
   pub fn permissions_options(&self) -> PermissionsOptions {
-    self.flags.permissions.to_options()
+    fn files_to_urls(files: &[String]) -> Vec<Cow<'_, Url>> {
+      files
+        .iter()
+        .filter_map(|f| Url::parse(f).ok().map(Cow::Owned))
+        .collect()
+    }
+
+    // get a list of urls to imply for --allow-import
+    let cli_arg_urls = self
+      .resolve_main_module()
+      .ok()
+      .map(|url| vec![Cow::Borrowed(url)])
+      .or_else(|| match &self.flags.subcommand {
+        DenoSubcommand::Cache(cache_flags) => {
+          Some(files_to_urls(&cache_flags.files))
+        }
+        DenoSubcommand::Check(check_flags) => {
+          Some(files_to_urls(&check_flags.files))
+        }
+        DenoSubcommand::Install(InstallFlags {
+          kind: InstallKind::Global(flags),
+        }) => Url::parse(&flags.module_url)
+          .ok()
+          .map(|url| vec![Cow::Owned(url)]),
+        DenoSubcommand::Doc(DocFlags {
+          source_files: DocSourceFileFlag::Paths(paths),
+          ..
+        }) => Some(files_to_urls(paths)),
+        _ => None,
+      })
+      .unwrap_or_default();
+    self.flags.permissions.to_options(&cli_arg_urls)
   }
 
   pub fn reload_flag(&self) -> bool {
@@ -1531,6 +1606,18 @@ impl CliOptions {
       || self.workspace().has_unstable("bare-node-builtins")
   }
 
+  pub fn unstable_detect_cjs(&self) -> bool {
+    self.flags.unstable_config.detect_cjs
+      || self.workspace().has_unstable("detect-cjs")
+  }
+
+  pub fn detect_cjs(&self) -> bool {
+    // only enabled when there's a package.json in order to not have a
+    // perf penalty for non-npm Deno projects of searching for the closest
+    // package.json beside each module
+    self.workspace().package_jsons().next().is_some() || self.is_node_main()
+  }
+
   fn byonm_enabled(&self) -> bool {
     // check if enabled via unstable
     self.node_modules_dir().ok().flatten() == Some(NodeModulesDirMode::Manual)
@@ -1541,6 +1628,17 @@ impl CliOptions {
   }
 
   pub fn use_byonm(&self) -> bool {
+    if matches!(
+      self.sub_command(),
+      DenoSubcommand::Install(_)
+        | DenoSubcommand::Add(_)
+        | DenoSubcommand::Remove(_)
+        | DenoSubcommand::Init(_)
+        | DenoSubcommand::Outdated(_)
+    ) {
+      // For `deno install/add/remove/init` we want to force the managed resolver so it can set up `node_modules/` directory.
+      return false;
+    }
     if self.node_modules_dir().ok().flatten().is_none()
       && self.maybe_node_modules_folder.is_some()
       && self
@@ -1575,21 +1673,18 @@ impl CliOptions {
       });
 
     if !from_config_file.is_empty() {
-      // collect unstable granular flags
-      let mut all_valid_unstable_flags: Vec<&str> =
-        crate::UNSTABLE_GRANULAR_FLAGS
-          .iter()
-          .map(|granular_flag| granular_flag.name)
-          .collect();
-
-      let mut another_unstable_flags = Vec::from([
-        "sloppy-imports",
-        "byonm",
-        "bare-node-builtins",
-        "fmt-component",
-      ]);
-      // add more unstable flags to the same vector holding granular flags
-      all_valid_unstable_flags.append(&mut another_unstable_flags);
+      let all_valid_unstable_flags: Vec<&str> = crate::UNSTABLE_GRANULAR_FLAGS
+        .iter()
+        .map(|granular_flag| granular_flag.name)
+        .chain([
+          "sloppy-imports",
+          "byonm",
+          "bare-node-builtins",
+          "detect-cjs",
+          "fmt-component",
+          "fmt-sql",
+        ])
+        .collect();
 
       // check and warn if the unstable flag of config file isn't supported, by
       // iterating through the vector holding the unstable flags
@@ -1620,6 +1715,10 @@ impl CliOptions {
   pub fn watch_paths(&self) -> Vec<PathBuf> {
     let mut full_paths = Vec::new();
     if let DenoSubcommand::Run(RunFlags {
+      watch: Some(WatchFlagsWithPaths { paths, .. }),
+      ..
+    })
+    | DenoSubcommand::Serve(ServeFlags {
       watch: Some(WatchFlagsWithPaths { paths, .. }),
       ..
     }) = &self.flags.subcommand
@@ -1654,28 +1753,13 @@ impl CliOptions {
       allowed: self.flags.allow_scripts.clone(),
       initial_cwd: self.initial_cwd.clone(),
       root_dir: self.workspace().root_dir_path(),
+      explicit_install: matches!(
+        self.sub_command(),
+        DenoSubcommand::Install(_)
+          | DenoSubcommand::Cache(_)
+          | DenoSubcommand::Add(_)
+      ),
     }
-  }
-}
-
-/// Warns for specific uses of `--allow-run`. This function is not
-/// intended to catch every single possible insecure use of `--allow-run`,
-/// but is just an attempt to discourage some common pitfalls.
-fn warn_insecure_allow_run_flags(flags: &Flags) {
-  let permissions = &flags.permissions;
-  if permissions.allow_all {
-    return;
-  }
-  let Some(allow_run_list) = permissions.allow_run.as_ref() else {
-    return;
-  };
-
-  // discourage using --allow-run without an allow list
-  if allow_run_list.is_empty() {
-    log::warn!(
-      "{} --allow-run without an allow list is susceptible to exploits. Prefer specifying an allow list (https://docs.deno.com/runtime/fundamentals/security/#running-subprocesses)",
-      colors::yellow("Warning")
-    );
   }
 }
 
@@ -1734,6 +1818,36 @@ fn resolve_node_modules_folder(
     resolve_from_root(root_folder, cwd)
   };
   Ok(Some(canonicalize_path_maybe_not_exists(&path)?))
+}
+
+fn try_resolve_node_binary_main_entrypoint(
+  specifier: &str,
+  initial_cwd: &Path,
+) -> Result<Option<Url>, AnyError> {
+  // node allows running files at paths without a `.js` extension
+  // or at directories with an index.js file
+  let path = deno_core::normalize_path(initial_cwd.join(specifier));
+  if path.is_dir() {
+    let index_file = path.join("index.js");
+    Ok(if index_file.is_file() {
+      Some(deno_path_util::url_from_file_path(&index_file)?)
+    } else {
+      None
+    })
+  } else {
+    let path = path.with_extension(
+      path
+        .extension()
+        .and_then(|s| s.to_str())
+        .map(|s| format!("{}.js", s))
+        .unwrap_or("js".to_string()),
+    );
+    if path.is_file() {
+      Ok(Some(deno_path_util::url_from_file_path(&path)?))
+    } else {
+      Ok(None)
+    }
+  }
 }
 
 fn resolve_import_map_specifier(
@@ -1806,6 +1920,10 @@ pub fn resolve_no_prompt(flags: &PermissionFlags) -> bool {
   flags.no_prompt || has_flag_env_var("DENO_NO_PROMPT")
 }
 
+pub fn has_trace_permissions_enabled() -> bool {
+  has_flag_env_var("DENO_TRACE_PERMISSIONS")
+}
+
 pub fn has_flag_env_var(name: &str) -> bool {
   let value = env::var(name);
   matches!(value.as_ref().map(|s| s.as_str()), Ok("1"))
@@ -1837,19 +1955,22 @@ pub fn config_to_deno_graph_workspace_member(
   })
 }
 
-fn load_env_variables_from_env_file(filename: Option<&String>) {
-  let Some(env_file_name) = filename else {
+fn load_env_variables_from_env_file(filename: Option<&Vec<String>>) {
+  let Some(env_file_names) = filename else {
     return;
   };
-  match from_filename(env_file_name) {
-    Ok(_) => (),
-    Err(error) => {
-      match error {
+
+  for env_file_name in env_file_names.iter().rev() {
+    match from_filename(env_file_name) {
+      Ok(_) => (),
+      Err(error) => {
+        match error {
           dotenvy::Error::LineParse(line, index)=> log::info!("{} Parsing failed within the specified environment file: {} at index: {} of the value: {}",colors::yellow("Warning"), env_file_name, index, line),
           dotenvy::Error::Io(_)=> log::info!("{} The `--env-file` flag was used, but the environment file specified '{}' was not found.",colors::yellow("Warning"),env_file_name),
           dotenvy::Error::EnvVar(_)=> log::info!("{} One or more of the environment variables isn't present or not unicode within the specified environment file: {}",colors::yellow("Warning"),env_file_name),
           _ => log::info!("{} Unknown failure occurred with the specified environment file: {}", colors::yellow("Warning"), env_file_name),
         }
+      }
     }
   }
 }

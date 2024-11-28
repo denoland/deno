@@ -1,0 +1,4 @@
+{
+  "args": "run -A --quiet child_process_fork_test/main.ts",
+  "output": "child_process_fork_test/main.out"
+}

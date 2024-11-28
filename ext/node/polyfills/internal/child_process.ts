@@ -56,7 +56,12 @@ import { StringPrototypeSlice } from "ext:deno_node/internal/primordials.mjs";
 import { StreamBase } from "ext:deno_node/internal_binding/stream_wrap.ts";
 import { Pipe, socketType } from "ext:deno_node/internal_binding/pipe_wrap.ts";
 import { Socket } from "node:net";
-import { kDetached, kExtraStdio, kIpc } from "ext:runtime/40_process.js";
+import {
+  kDetached,
+  kExtraStdio,
+  kIpc,
+  kNeedsNpmProcessState,
+} from "ext:runtime/40_process.js";
 
 export function mapValues<T, O>(
   record: Readonly<Record<string, T>>,
@@ -281,6 +286,8 @@ export class ChildProcess extends EventEmitter {
         [kIpc]: ipc, // internal
         [kExtraStdio]: extraStdioNormalized,
         [kDetached]: detached,
+        // deno-lint-ignore no-explicit-any
+        [kNeedsNpmProcessState]: (options ?? {} as any)[kNeedsNpmProcessState],
       }).spawn();
       this.pid = this.#process.pid;
 
@@ -1184,8 +1191,12 @@ function toDenoArgs(args: string[]): string[] {
     }
 
     if (flagInfo === undefined) {
-      // Not a known flag that expects a value. Just copy it to the output.
-      denoArgs.push(arg);
+      if (arg === "--no-warnings") {
+        denoArgs.push("--quiet");
+      } else {
+        // Not a known flag that expects a value. Just copy it to the output.
+        denoArgs.push(arg);
+      }
       continue;
     }
 
@@ -1328,7 +1339,7 @@ export function setupChannel(target: any, ipc: number) {
           }
         }
 
-        process.nextTick(handleMessage, msg);
+        nextTick(handleMessage, msg);
       }
     } catch (err) {
       if (
@@ -1389,7 +1400,7 @@ export function setupChannel(target: any, ipc: number) {
     if (!target.connected) {
       const err = new ERR_IPC_CHANNEL_CLOSED();
       if (typeof callback === "function") {
-        process.nextTick(callback, err);
+        nextTick(callback, err);
       } else {
         nextTick(() => target.emit("error", err));
       }
@@ -1405,7 +1416,18 @@ export function setupChannel(target: any, ipc: number) {
       .then(() => {
         control.unrefCounted();
         if (callback) {
-          process.nextTick(callback, null);
+          nextTick(callback, null);
+        }
+      }, (err: Error) => {
+        control.unrefCounted();
+        if (err instanceof Deno.errors.Interrupted) {
+          // Channel closed on us mid-write.
+        } else {
+          if (typeof callback === "function") {
+            nextTick(callback, err);
+          } else {
+            nextTick(() => target.emit("error", err));
+          }
         }
       });
     return queueOk[0];
@@ -1422,7 +1444,7 @@ export function setupChannel(target: any, ipc: number) {
     target.connected = false;
     target[kCanDisconnect] = false;
     control[kControlDisconnect]();
-    process.nextTick(() => {
+    nextTick(() => {
       target.channel = null;
       core.close(ipc);
       target.emit("disconnect");
