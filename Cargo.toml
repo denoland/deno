@@ -336,6 +336,3 @@ opt-level = 3
 opt-level = 3
 [profile.release.package.zstd-sys]
 opt-level = 3
-
-[patch.crates-io]
-deno_task_shell = { path = "../deno_task_shell" }
