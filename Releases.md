@@ -8,11 +8,10 @@ https://github.com/denoland/deno_install
 
 ### 2.1.2 / 2024.11.28
 
-- Merge commit from fork
+- feat(unstable): Instrument Deno.serve (#26964)
 - feat(unstable): Instrument fetch (#27057)
 - feat(unstable): repurpose `--unstable-detect-cjs` to attempt loading more
   modules as cjs (#27094)
-- feat: Instrument Deno.serve (#26964)
 - fix(check): support jsdoc `@import` tag (#26991)
 - fix(compile): correct buffered reading of assets and files (#27008)
 - fix(compile): do not error embedding same symlink via multiple methods
