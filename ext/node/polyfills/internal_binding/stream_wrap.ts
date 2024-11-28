@@ -322,6 +322,13 @@ export class LibuvStreamWrap extends HandleWrap {
     let buf = this.#buf;
     let nread: number | null;
     const ridBefore = this[kStreamBaseField]![internalRidSymbol];
+
+    if (this.upgrading) {
+      // Starting an upgrade, stop reading. Upgrading will resume reading.
+      this.#reading = false;
+      return;
+    }
+
     try {
       nread = await this[kStreamBaseField]!.read(buf);
     } catch (e) {
@@ -381,6 +388,11 @@ export class LibuvStreamWrap extends HandleWrap {
     const { byteLength } = data;
 
     const ridBefore = this[kStreamBaseField]![internalRidSymbol];
+
+    if (this.upgrading) {
+      // Stop writes during an upgrade.
+      return;
+    }
 
     let nwritten = 0;
     try {

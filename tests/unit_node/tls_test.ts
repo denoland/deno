@@ -257,3 +257,16 @@ Deno.test("TLSSocket.alpnProtocol is set for client", async () => {
   listener.close();
   await new Promise((resolve) => outgoing.on("close", resolve));
 });
+
+Deno.test("tls connect upgrade tcp", async () => {
+  const { promise, resolve } = Promise.withResolvers<void>();
+
+  const socket = new net.Socket();
+  socket.connect(443, "google.com");
+  socket.on("connect", () => {
+    const secure = tls.connect({ socket });
+    secure.on("secureConnect", () => resolve());
+  });
+
+  await promise;
+});
