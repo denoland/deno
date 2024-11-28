@@ -19,7 +19,7 @@ pub enum CanvasError {
   UnsupportedColorType(ColorType),
   /// This error will be mapped to DOMExceptionInvalidStateError.
   #[error("Cannot decode image '{0}'")]
-  InvalidImage(String),
+  InvalidImage(image::ImageError),
   /// This error will be mapped to DOMExceptionInvalidStateError.
   #[error("The chunk data is not big enough with the specified width: {0} and height: {1}.")]
   NotBigEnoughChunk(u32, u32),
@@ -37,7 +37,7 @@ pub enum CanvasError {
 impl CanvasError {
   /// Convert an [`image::ImageError`] to an [`CanvasError::InvalidImage`].
   fn image_error_to_invalid_image(error: image::ImageError) -> Self {
-    Self::InvalidImage(error.to_string())
+    CanvasError::InvalidImage(error)
   }
 }
 
