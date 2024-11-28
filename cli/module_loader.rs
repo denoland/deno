@@ -1089,7 +1089,7 @@ impl<TGraphContainer: ModuleGraphContainer> NodeRequireLoader
           ModuleKind::Cjs,
           &text.into(),
         )
-        .map(Cow::from)
+        .map(Cow::Owned)
     } else {
       Ok(text)
     }

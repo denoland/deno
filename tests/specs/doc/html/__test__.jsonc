@@ -1,12 +1,21 @@
 {
   "tempDir": true,
-  "args": [
-    "doc",
-    "--html",
-    "--name=MyLib",
-    "--output=temp_dir_path_here",
-    "referenced_private_types_fixed.ts"
-  ],
-  "output": "[WILDCARD]",
-  "exitCode": 0
+  "steps": [
+    {
+      "args": [
+        "doc",
+        "--html",
+        "--name=MyLib",
+        "a.ts",
+        "b.ts"
+      ],
+      "output": "Written 23 files to \"./docs/\"\n",
+      "exitCode": 0
+    },
+    {
+      "args": "run --allow-read check_file.ts",
+      "output": "",
+      "exitCode": 0
+    }
+  ]
 }
