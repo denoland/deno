@@ -268,6 +268,7 @@ pub fn create_runtime_snapshot(
   // `runtime/worker.rs`, `runtime/web_worker.rs` and `runtime/snapshot.rs`!
   let fs = std::sync::Arc::new(deno_fs::RealFs);
   let mut extensions: Vec<Extension> = vec![
+    deno_telemetry::deno_telemetry::init_ops_and_esm(),
     deno_webidl::deno_webidl::init_ops_and_esm(),
     deno_console::deno_console::init_ops_and_esm(),
     deno_url::deno_url::init_ops_and_esm(),
@@ -300,7 +301,9 @@ pub fn create_runtime_snapshot(
       deno_cron::local::LocalCronHandler::new(),
     ),
     deno_napi::deno_napi::init_ops_and_esm::<Permissions>(),
-    deno_http::deno_http::init_ops_and_esm::<DefaultHttpPropertyExtractor>(),
+    deno_http::deno_http::init_ops_and_esm::<DefaultHttpPropertyExtractor>(
+      deno_http::Options::default(),
+    ),
     deno_io::deno_io::init_ops_and_esm(Default::default()),
     deno_fs::deno_fs::init_ops_and_esm::<Permissions>(fs.clone()),
     deno_node::deno_node::init_ops_and_esm::<Permissions>(None, fs.clone()),
@@ -312,7 +315,6 @@ pub fn create_runtime_snapshot(
     ),
     ops::fs_events::deno_fs_events::init_ops(),
     ops::os::deno_os::init_ops(Default::default()),
-    ops::otel::deno_otel::init_ops(),
     ops::permissions::deno_permissions::init_ops(),
     ops::process::deno_process::init_ops(None),
     ops::signal::deno_signal::init_ops(),

@@ -483,20 +483,32 @@ fn resolve_execution_path_from_npx_shim(
   static SCRIPT_PATH_RE: Lazy<Regex> =
     lazy_regex::lazy_regex!(r#""\$basedir\/([^"]+)" "\$@""#);
 
-  if text.starts_with("#!/usr/bin/env node") {
-    // launch this file itself because it's a JS file
-    Some(file_path)
-  } else {
-    // Search for...
-    // > "$basedir/../next/dist/bin/next" "$@"
-    // ...which is what it will look like on Windows
-    SCRIPT_PATH_RE
-      .captures(text)
-      .and_then(|c| c.get(1))
-      .map(|relative_path| {
-        file_path.parent().unwrap().join(relative_path.as_str())
-      })
+  let maybe_first_line = {
+    let index = text.find("\n")?;
+    Some(&text[0..index])
+  };
+
+  if let Some(first_line) = maybe_first_line {
+    // NOTE(bartlomieju): this is not perfect, but handle two most common scenarios
+    // where Node is run without any args. If there are args then we use `NodeCommand`
+    // struct.
+    if first_line == "#!/usr/bin/env node"
+      || first_line == "#!/usr/bin/env -S node"
+    {
+      // launch this file itself because it's a JS file
+      return Some(file_path);
+    }
   }
+
+  // Search for...
+  // > "$basedir/../next/dist/bin/next" "$@"
+  // ...which is what it will look like on Windows
+  SCRIPT_PATH_RE
+    .captures(text)
+    .and_then(|c| c.get(1))
+    .map(|relative_path| {
+      file_path.parent().unwrap().join(relative_path.as_str())
+    })
 }
 
 fn resolve_managed_npm_commands(
@@ -562,6 +574,16 @@ mod test {
   fn test_resolve_execution_path_from_npx_shim() {
     // example shim on unix
     let unix_shim = r#"#!/usr/bin/env node
+"use strict";
+console.log('Hi!');
+"#;
+    let path = PathBuf::from("/node_modules/.bin/example");
+    assert_eq!(
+      resolve_execution_path_from_npx_shim(path.clone(), unix_shim).unwrap(),
+      path
+    );
+    // example shim on unix
+    let unix_shim = r#"#!/usr/bin/env -S node
 "use strict";
 console.log('Hi!');
 "#;

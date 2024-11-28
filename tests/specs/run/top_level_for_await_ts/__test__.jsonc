@@ -1,4 +1,0 @@
-{
-  "args": "run --quiet top_level_await/top_level_for_await.ts",
-  "output": "top_level_await/top_level_for_await.out"
-}

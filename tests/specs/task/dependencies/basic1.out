@@ -1,0 +1,12 @@
+Task build1 deno run ../build1.js
+Task build2 deno run ../build2.js
+[UNORDERED_START]
+Starting build1
+build1 performing more work...
+build1 finished
+Starting build2
+build2 performing more work...
+build2 finished
+[UNORDERED_END]
+Task run deno run ../run.js
+run finished

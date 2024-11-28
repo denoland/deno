@@ -3,91 +3,20 @@
 /// <reference path="../../core/internal.d.ts" />
 
 import { primordials } from "ext:core/mod.js";
-import {
-  op_webstorage_clear,
-  op_webstorage_get,
-  op_webstorage_iterate_keys,
-  op_webstorage_key,
-  op_webstorage_length,
-  op_webstorage_remove,
-  op_webstorage_set,
-} from "ext:core/ops";
+import { op_webstorage_iterate_keys, Storage } from "ext:core/ops";
 const {
-  Symbol,
   SymbolFor,
   ObjectFromEntries,
   ObjectEntries,
   ReflectDefineProperty,
   ReflectDeleteProperty,
-  ReflectGet,
+  FunctionPrototypeBind,
   ReflectHas,
   Proxy,
 } = primordials;
 
-import * as webidl from "ext:deno_webidl/00_webidl.js";
-
-const _persistent = Symbol("[[persistent]]");
-
-class Storage {
-  [_persistent];
-
-  constructor() {
-    webidl.illegalConstructor();
-  }
-
-  get length() {
-    webidl.assertBranded(this, StoragePrototype);
-    return op_webstorage_length(this[_persistent]);
-  }
-
-  key(index) {
-    webidl.assertBranded(this, StoragePrototype);
-    const prefix = "Failed to execute 'key' on 'Storage'";
-    webidl.requiredArguments(arguments.length, 1, prefix);
-    index = webidl.converters["unsigned long"](index, prefix, "Argument 1");
-
-    return op_webstorage_key(index, this[_persistent]);
-  }
-
-  setItem(key, value) {
-    webidl.assertBranded(this, StoragePrototype);
-    const prefix = "Failed to execute 'setItem' on 'Storage'";
-    webidl.requiredArguments(arguments.length, 2, prefix);
-    key = webidl.converters.DOMString(key, prefix, "Argument 1");
-    value = webidl.converters.DOMString(value, prefix, "Argument 2");
-
-    op_webstorage_set(key, value, this[_persistent]);
-  }
-
-  getItem(key) {
-    webidl.assertBranded(this, StoragePrototype);
-    const prefix = "Failed to execute 'getItem' on 'Storage'";
-    webidl.requiredArguments(arguments.length, 1, prefix);
-    key = webidl.converters.DOMString(key, prefix, "Argument 1");
-
-    return op_webstorage_get(key, this[_persistent]);
-  }
-
-  removeItem(key) {
-    webidl.assertBranded(this, StoragePrototype);
-    const prefix = "Failed to execute 'removeItem' on 'Storage'";
-    webidl.requiredArguments(arguments.length, 1, prefix);
-    key = webidl.converters.DOMString(key, prefix, "Argument 1");
-
-    op_webstorage_remove(key, this[_persistent]);
-  }
-
-  clear() {
-    webidl.assertBranded(this, StoragePrototype);
-    op_webstorage_clear(this[_persistent]);
-  }
-}
-
-const StoragePrototype = Storage.prototype;
-
 function createStorage(persistent) {
-  const storage = webidl.createBranded(Storage);
-  storage[_persistent] = persistent;
+  const storage = new Storage(persistent);
 
   const proxy = new Proxy(storage, {
     deleteProperty(target, key) {
@@ -106,12 +35,16 @@ function createStorage(persistent) {
       return true;
     },
 
-    get(target, key, receiver) {
+    get(target, key) {
       if (typeof key === "symbol") {
         return target[key];
       }
       if (ReflectHas(target, key)) {
-        return ReflectGet(target, key, receiver);
+        const value = target[key];
+        if (typeof value === "function") {
+          return FunctionPrototypeBind(value, target);
+        }
+        return value;
       }
       return target.getItem(key) ?? undefined;
     },
@@ -136,7 +69,7 @@ function createStorage(persistent) {
     },
 
     ownKeys() {
-      return op_webstorage_iterate_keys(persistent);
+      return op_webstorage_iterate_keys(storage);
     },
 
     getOwnPropertyDescriptor(target, key) {
@@ -163,7 +96,7 @@ function createStorage(persistent) {
     inspect,
     inspectOptions,
   ) {
-    return `${this.constructor.name} ${
+    return `Storage ${
       inspect({
         ...ObjectFromEntries(ObjectEntries(proxy)),
         length: this.length,

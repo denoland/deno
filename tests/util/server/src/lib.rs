@@ -919,6 +919,11 @@ pub fn wildcard_match_detailed(
 
   if was_last_wildcard || was_last_wildline || current_text.is_empty() {
     WildcardMatchResult::Success
+  } else if current_text == "\n" {
+    WildcardMatchResult::Fail(
+      "<matched everything>\n!!!! PROBLEM: Missing final newline at end of expected output !!!!"
+        .to_string(),
+    )
   } else {
     output_lines.push("==== HAD TEXT AT END OF FILE ====".to_string());
     output_lines.push(colors::red(annotate_whitespace(current_text)));

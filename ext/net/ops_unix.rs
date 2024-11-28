@@ -85,7 +85,7 @@ pub async fn op_net_accept_unix(
   Ok((rid, local_addr_path, remote_addr_path))
 }
 
-#[op2(async)]
+#[op2(async, stack_trace)]
 #[serde]
 pub async fn op_net_connect_unix<NP>(
   state: Rc<RefCell<OpState>>,
@@ -118,7 +118,7 @@ where
   Ok((rid, local_addr_path, remote_addr_path))
 }
 
-#[op2(async)]
+#[op2(async, stack_trace)]
 #[serde]
 pub async fn op_net_recv_unixpacket(
   state: Rc<RefCell<OpState>>,
@@ -140,7 +140,7 @@ pub async fn op_net_recv_unixpacket(
   Ok((nread, path))
 }
 
-#[op2(async)]
+#[op2(async, stack_trace)]
 #[number]
 pub async fn op_net_send_unixpacket<NP>(
   state: Rc<RefCell<OpState>>,
@@ -171,7 +171,7 @@ where
   Ok(nwritten)
 }
 
-#[op2]
+#[op2(stack_trace)]
 #[serde]
 pub fn op_net_listen_unix<NP>(
   state: &mut OpState,
@@ -222,7 +222,7 @@ where
   Ok((rid, pathname))
 }
 
-#[op2]
+#[op2(stack_trace)]
 #[serde]
 pub fn op_net_listen_unixpacket<NP>(
   state: &mut OpState,
@@ -235,7 +235,7 @@ where
   net_listen_unixpacket::<NP>(state, path)
 }
 
-#[op2]
+#[op2(stack_trace)]
 #[serde]
 pub fn op_node_unstable_net_listen_unixpacket<NP>(
   state: &mut OpState,

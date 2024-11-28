@@ -86,7 +86,7 @@ import {
   workerRuntimeGlobalProperties,
 } from "ext:runtime/98_global_scope_worker.js";
 import { SymbolDispose, SymbolMetadata } from "ext:deno_web/00_infra.js";
-import { bootstrap as bootstrapOtel } from "ext:runtime/telemetry.js";
+import { bootstrap as bootstrapOtel } from "ext:deno_telemetry/telemetry.ts";
 
 // deno-lint-ignore prefer-primordials
 if (Symbol.metadata) {
@@ -471,6 +471,8 @@ const NOT_IMPORTED_OPS = [
   // Related to `Deno.jupyter` API
   "op_jupyter_broadcast",
   "op_jupyter_input",
+  // Used in jupyter API
+  "op_base64_encode",
 
   // Related to `Deno.test()` API
   "op_test_event_step_result_failed",

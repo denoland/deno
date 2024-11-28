@@ -22,7 +22,8 @@ use deno_semver::jsr::JsrPackageReqReference;
 use indexmap::Equivalent;
 use indexmap::IndexSet;
 use log::error;
-use node_resolver::NodeModuleKind;
+use node_resolver::NodeResolutionKind;
+use node_resolver::ResolutionMode;
 use serde::Deserialize;
 use serde_json::from_value;
 use std::collections::BTreeMap;
@@ -78,7 +79,6 @@ use super::parent_process_checker;
 use super::performance::Performance;
 use super::refactor;
 use super::registries::ModuleRegistry;
-use super::resolver::LspIsCjsResolver;
 use super::resolver::LspResolver;
 use super::testing;
 use super::text;
@@ -146,7 +146,6 @@ pub struct StateSnapshot {
   pub project_version: usize,
   pub assets: AssetsSnapshot,
   pub config: Arc<Config>,
-  pub is_cjs_resolver: Arc<LspIsCjsResolver>,
   pub documents: Arc<Documents>,
   pub resolver: Arc<LspResolver>,
 }
@@ -206,7 +205,6 @@ pub struct Inner {
   pub documents: Documents,
   http_client_provider: Arc<HttpClientProvider>,
   initial_cwd: PathBuf,
-  pub is_cjs_resolver: Arc<LspIsCjsResolver>,
   jsr_search_api: CliJsrSearchApi,
   /// Handles module registries, which allow discovery of modules
   module_registry: ModuleRegistry,
@@ -484,7 +482,6 @@ impl Inner {
     let initial_cwd = std::env::current_dir().unwrap_or_else(|_| {
       panic!("Could not resolve current working directory")
     });
-    let is_cjs_resolver = Arc::new(LspIsCjsResolver::new(&cache));
 
     Self {
       assets,
@@ -496,7 +493,6 @@ impl Inner {
       documents,
       http_client_provider,
       initial_cwd: initial_cwd.clone(),
-      is_cjs_resolver,
       jsr_search_api,
       project_version: 0,
       task_queue: Default::default(),
@@ -607,7 +603,6 @@ impl Inner {
       project_version: self.project_version,
       assets: self.assets.snapshot(),
       config: Arc::new(self.config.clone()),
-      is_cjs_resolver: self.is_cjs_resolver.clone(),
       documents: Arc::new(self.documents.clone()),
       resolver: self.resolver.snapshot(),
     })
@@ -629,7 +624,6 @@ impl Inner {
       }
     });
     self.cache = LspCache::new(global_cache_url);
-    self.is_cjs_resolver = Arc::new(LspIsCjsResolver::new(&self.cache));
     let deno_dir = self.cache.deno_dir();
     let workspace_settings = self.config.workspace_settings();
     let maybe_root_path = self
@@ -993,13 +987,10 @@ impl Inner {
               let resolver = inner.resolver.as_cli_resolver(Some(&referrer));
               let Ok(specifier) = resolver.resolve(
                 &specifier,
-                &deno_graph::Range {
-                  specifier: referrer.clone(),
-                  start: deno_graph::Position::zeroed(),
-                  end: deno_graph::Position::zeroed(),
-                },
-                NodeModuleKind::Esm,
-                deno_graph::source::ResolutionMode::Types,
+                &referrer,
+                deno_graph::Position::zeroed(),
+                ResolutionMode::Import,
+                NodeResolutionKind::Types,
               ) else {
                 return;
               };
@@ -1036,7 +1027,7 @@ impl Inner {
 
     // refresh the npm specifiers because it might have discovered
     // a @types/node package and now's a good time to do that anyway
-    self.refresh_npm_specifiers().await;
+    self.refresh_dep_info().await;
 
     self.project_changed([], true);
   }
@@ -1082,7 +1073,7 @@ impl Inner {
     );
     if document.is_diagnosable() {
       self.project_changed([(document.specifier(), ChangeKind::Opened)], false);
-      self.refresh_npm_specifiers().await;
+      self.refresh_dep_info().await;
       self.diagnostics_server.invalidate(&[specifier]);
       self.send_diagnostics_update();
       self.send_testing_update();
@@ -1103,8 +1094,8 @@ impl Inner {
       Ok(document) => {
         if document.is_diagnosable() {
           let old_scopes_with_node_specifier =
-            self.documents.scopes_with_node_specifier().clone();
-          self.refresh_npm_specifiers().await;
+            self.documents.scopes_with_node_specifier();
+          self.refresh_dep_info().await;
           let mut config_changed = false;
           if !self
             .documents
@@ -1155,13 +1146,15 @@ impl Inner {
     }));
   }
 
-  async fn refresh_npm_specifiers(&mut self) {
-    let package_reqs = self.documents.npm_reqs_by_scope();
+  async fn refresh_dep_info(&mut self) {
+    let dep_info_by_scope = self.documents.dep_info_by_scope();
     let resolver = self.resolver.clone();
     // spawn due to the lsp's `Send` requirement
-    spawn(async move { resolver.set_npm_reqs(&package_reqs).await })
-      .await
-      .ok();
+    spawn(
+      async move { resolver.set_dep_info_by_scope(&dep_info_by_scope).await },
+    )
+    .await
+    .ok();
   }
 
   async fn did_close(&mut self, params: DidCloseTextDocumentParams) {
@@ -1180,7 +1173,7 @@ impl Inner {
       .uri_to_specifier(&params.text_document.uri, LspUrlKind::File);
     self.diagnostics_state.clear(&specifier);
     if self.is_diagnosable(&specifier) {
-      self.refresh_npm_specifiers().await;
+      self.refresh_dep_info().await;
       self.diagnostics_server.invalidate(&[specifier.clone()]);
       self.send_diagnostics_update();
       self.send_testing_update();
@@ -1394,12 +1387,17 @@ impl Inner {
         .fmt_config_for_specifier(&specifier)
         .options
         .clone();
-      fmt_options.use_tabs = Some(!params.options.insert_spaces);
-      fmt_options.indent_width = Some(params.options.tab_size as u8);
       let config_data = self.config.tree.data_for_specifier(&specifier);
+      if !config_data.is_some_and(|d| d.maybe_deno_json().is_some()) {
+        fmt_options.use_tabs = Some(!params.options.insert_spaces);
+        fmt_options.indent_width = Some(params.options.tab_size as u8);
+      }
       let unstable_options = UnstableFmtOptions {
         component: config_data
           .map(|d| d.unstable.contains("fmt-component"))
+          .unwrap_or(false),
+        sql: config_data
+          .map(|d| d.unstable.contains("fmt-sql"))
           .unwrap_or(false),
       };
       let document = document.clone();
@@ -1633,8 +1631,8 @@ impl Inner {
         .get_ts_diagnostics(&specifier, asset_or_doc.document_lsp_version());
       let specifier_kind = asset_or_doc
         .document()
-        .map(|d| self.is_cjs_resolver.get_doc_module_kind(d))
-        .unwrap_or(NodeModuleKind::Esm);
+        .map(|d| d.resolution_mode())
+        .unwrap_or(ResolutionMode::Import);
       let mut includes_no_cache = false;
       for diagnostic in &fixable_diagnostics {
         match diagnostic.source.as_deref() {
@@ -1857,8 +1855,8 @@ impl Inner {
           maybe_asset_or_doc
             .as_ref()
             .and_then(|d| d.document())
-            .map(|d| self.is_cjs_resolver.get_doc_module_kind(d))
-            .unwrap_or(NodeModuleKind::Esm),
+            .map(|d| d.resolution_mode())
+            .unwrap_or(ResolutionMode::Import),
           &combined_code_actions.changes,
           self,
         )
@@ -1914,8 +1912,8 @@ impl Inner {
           &action_data.specifier,
           asset_or_doc
             .document()
-            .map(|d| self.is_cjs_resolver.get_doc_module_kind(d))
-            .unwrap_or(NodeModuleKind::Esm),
+            .map(|d| d.resolution_mode())
+            .unwrap_or(ResolutionMode::Import),
           &refactor_edit_info.edits,
           self,
         )
@@ -2265,7 +2263,6 @@ impl Inner {
         &self.jsr_search_api,
         &self.npm_search_api,
         &self.documents,
-        &self.is_cjs_resolver,
         self.resolver.as_ref(),
         self
           .config
@@ -3600,15 +3597,16 @@ impl Inner {
 
     if byonm {
       roots.retain(|s| s.scheme() != "npm");
-    } else if let Some(npm_reqs) = self
+    } else if let Some(dep_info) = self
       .documents
-      .npm_reqs_by_scope()
+      .dep_info_by_scope()
       .get(&config_data.map(|d| d.scope.as_ref().clone()))
     {
       // always include the npm packages since resolution of one npm package
       // might affect the resolution of other npm packages
       roots.extend(
-        npm_reqs
+        dep_info
+          .npm_reqs
           .iter()
           .map(|req| ModuleSpecifier::parse(&format!("npm:{}", req)).unwrap()),
       );
@@ -3629,9 +3627,8 @@ impl Inner {
           deno_json_cache: None,
           pkg_json_cache: None,
           workspace_cache: None,
-          config_parse_options: deno_config::deno_json::ConfigParseOptions {
-            include_task_comments: false,
-          },
+          config_parse_options:
+            deno_config::deno_json::ConfigParseOptions::default(),
           additional_config_file_names: &[],
           discover_pkg_json: !has_flag_env_var("DENO_NO_PACKAGE_JSON"),
           maybe_vendor_override: if force_global_cache {
@@ -3686,7 +3683,7 @@ impl Inner {
 
   async fn post_cache(&mut self) {
     self.resolver.did_cache();
-    self.refresh_npm_specifiers().await;
+    self.refresh_dep_info().await;
     self.diagnostics_server.invalidate_all();
     self.project_changed([], true);
     self.ts_server.cleanup_semantic_cache(self.snapshot()).await;
@@ -3774,14 +3771,11 @@ impl Inner {
   fn task_definitions(&self) -> LspResult<Vec<TaskDefinition>> {
     let mut result = vec![];
     for config_file in self.config.tree.config_files() {
-      if let Some(tasks) = json!(&config_file.json.tasks).as_object() {
-        for (name, value) in tasks {
-          let Some(command) = value.as_str() else {
-            continue;
-          };
+      if let Some(tasks) = config_file.to_tasks_config().ok().flatten() {
+        for (name, def) in tasks {
           result.push(TaskDefinition {
             name: name.clone(),
-            command: command.to_string(),
+            command: def.command.clone(),
             source_uri: url_to_uri(&config_file.specifier)
               .map_err(|_| LspError::internal_error())?,
           });

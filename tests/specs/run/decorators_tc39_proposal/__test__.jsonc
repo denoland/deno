@@ -1,4 +1,0 @@
-{
-  "args": "run --quiet --reload --check decorators/tc39_proposal/main.ts",
-  "output": "decorators/tc39_proposal/main.out"
-}

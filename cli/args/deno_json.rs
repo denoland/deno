@@ -22,6 +22,8 @@ impl<'a> deno_config::fs::DenoConfigFs for DenoConfigFsAdapter<'a> {
     self
       .0
       .read_text_file_lossy_sync(path, None)
+      // todo(https://github.com/denoland/deno_config/pull/140): avoid clone
+      .map(|s| s.into_owned())
       .map_err(|err| err.into_io_error())
   }
 
@@ -70,7 +72,41 @@ pub fn deno_json_deps(
   let values = imports_values(config.json.imports.as_ref())
     .into_iter()
     .chain(scope_values(config.json.scopes.as_ref()));
-  values_to_set(values)
+  let mut set = values_to_set(values);
+
+  if let Some(serde_json::Value::Object(compiler_options)) =
+    &config.json.compiler_options
+  {
+    // add jsxImportSource
+    if let Some(serde_json::Value::String(value)) =
+      compiler_options.get("jsxImportSource")
+    {
+      if let Some(dep_req) = value_to_dep_req(value) {
+        set.insert(dep_req);
+      }
+    }
+    // add jsxImportSourceTypes
+    if let Some(serde_json::Value::String(value)) =
+      compiler_options.get("jsxImportSourceTypes")
+    {
+      if let Some(dep_req) = value_to_dep_req(value) {
+        set.insert(dep_req);
+      }
+    }
+    // add the dependencies in the types array
+    if let Some(serde_json::Value::Array(types)) = compiler_options.get("types")
+    {
+      for value in types {
+        if let serde_json::Value::String(value) = value {
+          if let Some(dep_req) = value_to_dep_req(value) {
+            set.insert(dep_req);
+          }
+        }
+      }
+    }
+  }
+
+  set
 }
 
 fn imports_values(value: Option<&serde_json::Value>) -> Vec<&String> {
@@ -98,13 +134,21 @@ fn values_to_set<'a>(
 ) -> HashSet<JsrDepPackageReq> {
   let mut entries = HashSet::new();
   for value in values {
-    if let Ok(req_ref) = JsrPackageReqReference::from_str(value) {
-      entries.insert(JsrDepPackageReq::jsr(req_ref.into_inner().req));
-    } else if let Ok(req_ref) = NpmPackageReqReference::from_str(value) {
-      entries.insert(JsrDepPackageReq::npm(req_ref.into_inner().req));
+    if let Some(dep_req) = value_to_dep_req(value) {
+      entries.insert(dep_req);
     }
   }
   entries
+}
+
+fn value_to_dep_req(value: &str) -> Option<JsrDepPackageReq> {
+  if let Ok(req_ref) = JsrPackageReqReference::from_str(value) {
+    Some(JsrDepPackageReq::jsr(req_ref.into_inner().req))
+  } else if let Ok(req_ref) = NpmPackageReqReference::from_str(value) {
+    Some(JsrDepPackageReq::npm(req_ref.into_inner().req))
+  } else {
+    None
+  }
 }
 
 pub fn check_warn_tsconfig(ts_config: &TsConfigForEmit) {

@@ -8,6 +8,7 @@ import {
   performance as shimPerformance,
   PerformanceEntry,
 } from "ext:deno_web/15_performance.js";
+import { EldHistogram } from "ext:core/ops";
 
 class PerformanceObserver {
   static supportedEntryTypes: string[] = [];
@@ -89,10 +90,11 @@ const performance:
     ) => shimPerformance.dispatchEvent(...args),
   };
 
-const monitorEventLoopDelay = () =>
-  notImplemented(
-    "monitorEventLoopDelay from performance",
-  );
+function monitorEventLoopDelay(options = {}) {
+  const { resolution = 10 } = options;
+
+  return new EldHistogram(resolution);
+}
 
 export default {
   performance,
