@@ -6,6 +6,51 @@ https://github.com/denoland/deno/releases
 We also have one-line install commands at:
 https://github.com/denoland/deno_install
 
+### 2.1.2 / 2024.11.28
+
+- Merge commit from fork
+- feat(unstable): Instrument fetch (#27057)
+- feat(unstable): repurpose `--unstable-detect-cjs` to attempt loading more
+  modules as cjs (#27094)
+- feat: Instrument Deno.serve (#26964)
+- fix(check): support jsdoc `@import` tag (#26991)
+- fix(compile): correct buffered reading of assets and files (#27008)
+- fix(compile): do not error embedding same symlink via multiple methods
+  (#27015)
+- fix(compile): handle TypeScript file included as asset (#27032)
+- fix(ext/fetch): don't throw when `bodyUsed` inspect after upgrade (#27088)
+- fix(ext/node): `tls.connect` socket upgrades (#27125)
+- fix(ext/node): add `fs.promises.fstat` and `FileHandle#stat` (#26719)
+- fix(ext/webgpu): normalize limits to number (#27072)
+- fix(ext/webgpu): use correct variable name (#27108)
+- fix(ext/websocket): don't throw exception when sending to closed socket
+  (#26932)
+- fix(fmt): return `None` if sql fmt result is the same (#27014)
+- fix(info): resolve bare specifier pointing to workspace member (#27020)
+- fix(init): always force managed node modules (#27047)
+- fix(init): support scoped npm packages (#27128)
+- fix(install): don't re-set up node_modules if running lifecycle script
+  (#26984)
+- fix(lsp): remove stray debug output (#27010)
+- fix(lsp): support task object notation for tasks request (#27076)
+- fix(lsp): wasm file import completions (#27018)
+- fix(node): correct resolution of dynamic import of esm from cjs (#27071)
+- fix(node/fs): add missing stat path argument validation (#27086)
+- fix(node/fs): missing uv error context for readFile (#27011)
+- fix(node/http): casing ignored in ServerResponse.hasHeader() (#27105)
+- fix(node/timers): error when passing id to clearTimeout/clearInterval (#27130)
+- fix(runtime/ops): Fix watchfs remove event (#27041)
+- fix(streams): reject `string` in `ReadableStream.from` type (#25116)
+- fix(task): handle carriage return in task description (#27099)
+- fix(task): handle multiline descriptions properly (#27069)
+- fix(task): strip ansi codes and control chars when printing tasks (#27100)
+- fix(tools/doc): HTML resolve main entrypoint from config file (#27103)
+- fix: support bun specifiers in JSR publish (#24588)
+- fix: support non-function exports in Wasm modules (#26992)
+- perf(compile): read embedded files as static references when UTF-8 and reading
+  as strings (#27033)
+- perf(ext/webstorage): use object wrap for `Storage` (#26931)
+
 ### 2.1.1 / 2024.11.21
 
 - docs(add): clarification to add command (#26968)
