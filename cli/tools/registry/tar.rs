@@ -142,7 +142,7 @@ fn resolve_content_maybe_unfurling(
   let mut reporter = |diagnostic| {
     diagnostics_collector.push(PublishDiagnostic::SpecifierUnfurl(diagnostic));
   };
-  let content = unfurler.unfurl(specifier, &parsed_source, &mut reporter)?;
+  let content = unfurler.unfurl(specifier, &parsed_source, &mut reporter);
   Ok(content.into_bytes())
 }
 
