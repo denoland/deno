@@ -1,7 +1,7 @@
 <!-- deno-fmt-ignore-file -->
 # Remaining Node Tests
 
-1140 tests out of 3681 have been ported from Node 20.11.1 (30.97% ported, 69.14% remaining).
+1137 tests out of 3681 have been ported from Node 20.11.1 (30.89% ported, 69.22% remaining).
 
 NOTE: This file should not be manually edited. Please edit `tests/node_compat/config.json` and run `deno task setup` in `tests/node_compat/runner` dir instead.
 
@@ -795,6 +795,7 @@ NOTE: This file should not be manually edited. Please edit `tests/node_compat/co
 - [parallel/test-heapdump-async-hooks-init-promise.js](https://github.com/nodejs/node/tree/v20.11.1/test/parallel/test-heapdump-async-hooks-init-promise.js)
 - [parallel/test-heapsnapshot-near-heap-limit-by-api-in-worker.js](https://github.com/nodejs/node/tree/v20.11.1/test/parallel/test-heapsnapshot-near-heap-limit-by-api-in-worker.js)
 - [parallel/test-heapsnapshot-near-heap-limit-worker.js](https://github.com/nodejs/node/tree/v20.11.1/test/parallel/test-heapsnapshot-near-heap-limit-worker.js)
+- [parallel/test-http-1.0-keep-alive.js](https://github.com/nodejs/node/tree/v20.11.1/test/parallel/test-http-1.0-keep-alive.js)
 - [parallel/test-http-1.0.js](https://github.com/nodejs/node/tree/v20.11.1/test/parallel/test-http-1.0.js)
 - [parallel/test-http-abort-client.js](https://github.com/nodejs/node/tree/v20.11.1/test/parallel/test-http-abort-client.js)
 - [parallel/test-http-abort-queued.js](https://github.com/nodejs/node/tree/v20.11.1/test/parallel/test-http-abort-queued.js)
@@ -1465,6 +1466,7 @@ NOTE: This file should not be manually edited. Please edit `tests/node_compat/co
 - [parallel/test-net-connect-reset-until-connected.js](https://github.com/nodejs/node/tree/v20.11.1/test/parallel/test-net-connect-reset-until-connected.js)
 - [parallel/test-net-connect-reset.js](https://github.com/nodejs/node/tree/v20.11.1/test/parallel/test-net-connect-reset.js)
 - [parallel/test-net-deprecated-setsimultaneousaccepts.js](https://github.com/nodejs/node/tree/v20.11.1/test/parallel/test-net-deprecated-setsimultaneousaccepts.js)
+- [parallel/test-net-end-destroyed.js](https://github.com/nodejs/node/tree/v20.11.1/test/parallel/test-net-end-destroyed.js)
 - [parallel/test-net-large-string.js](https://github.com/nodejs/node/tree/v20.11.1/test/parallel/test-net-large-string.js)
 - [parallel/test-net-listen-exclusive-random-ports.js](https://github.com/nodejs/node/tree/v20.11.1/test/parallel/test-net-listen-exclusive-random-ports.js)
 - [parallel/test-net-listen-fd0.js](https://github.com/nodejs/node/tree/v20.11.1/test/parallel/test-net-listen-fd0.js)
@@ -1492,6 +1494,7 @@ NOTE: This file should not be manually edited. Please edit `tests/node_compat/co
 - [parallel/test-net-socket-timeout.js](https://github.com/nodejs/node/tree/v20.11.1/test/parallel/test-net-socket-timeout.js)
 - [parallel/test-net-throttle.js](https://github.com/nodejs/node/tree/v20.11.1/test/parallel/test-net-throttle.js)
 - [parallel/test-net-write-after-close.js](https://github.com/nodejs/node/tree/v20.11.1/test/parallel/test-net-write-after-close.js)
+- [parallel/test-net-write-after-end-nt.js](https://github.com/nodejs/node/tree/v20.11.1/test/parallel/test-net-write-after-end-nt.js)
 - [parallel/test-net-write-cb-on-destroy-before-connect.js](https://github.com/nodejs/node/tree/v20.11.1/test/parallel/test-net-write-cb-on-destroy-before-connect.js)
 - [parallel/test-no-addons-resolution-condition.js](https://github.com/nodejs/node/tree/v20.11.1/test/parallel/test-no-addons-resolution-condition.js)
 - [parallel/test-npm-install.js](https://github.com/nodejs/node/tree/v20.11.1/test/parallel/test-npm-install.js)
