@@ -356,9 +356,8 @@ class ChildProcess {
     }
     try {
       op_spawn_kill(this.#rid, signo);
-    }
-    catch (e){
-       // issue #27124
+    } catch (e) {
+      // issue #27124
       void e;
     }
   }
