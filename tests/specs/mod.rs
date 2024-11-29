@@ -431,12 +431,9 @@ fn run_step(
   let command = match metadata.timeout {
     Some(timeout_seconds) => {
       let timeout = std::time::Duration::from_secs(timeout_seconds as u64);
-      let remaining_timeout = match timeout.checked_sub(start_time.elapsed()) {
-        Some(timeout) => timeout,
-        None => {
-          panic!("Timed out after: {}s", timeout_seconds);
-        }
-      };
+      let remaining_timeout = timeout
+        .checked_sub(start_time.elapsed())
+        .ok_or_else(|| panic!("Timed out after: {}s", timeout_seconds));
       command.timeout(remaining_timeout)
     }
     None => command,
