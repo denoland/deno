@@ -100,6 +100,16 @@ Deno.test("[node/timers refresh cancelled timer]", () => {
   p.refresh();
 });
 
+Deno.test("[node/timers] clearTimeout with number", () => {
+  const timer = +timers.setTimeout(() => fail(), 10);
+  timers.clearTimeout(timer);
+});
+
+Deno.test("[node/timers] clearInterval with number", () => {
+  const timer = +timers.setInterval(() => fail(), 10);
+  timers.clearInterval(timer);
+});
+
 Deno.test("[node/timers setImmediate returns Immediate object]", () => {
   const { clearImmediate, setImmediate } = timers;
 

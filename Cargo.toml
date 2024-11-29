@@ -49,18 +49,18 @@ repository = "https://github.com/denoland/deno"
 deno_ast = { version = "=0.43.3", features = ["transpiling"] }
 deno_core = { version = "0.323.0" }
 
-deno_bench_util = { version = "0.173.0", path = "./bench_util" }
+deno_bench_util = { version = "0.174.0", path = "./bench_util" }
 # TODO(nayeemrmn): Use proper version when https://github.com/denoland/deno_config/pull/143 lands!
 deno_config = { git = "https://github.com/denoland/deno_config.git", rev = "485e7a71f1057437d2a2c4adddbfbe348a812667", features = ["workspace", "sync"] }
 deno_lockfile = "=0.23.1"
 deno_media_type = { version = "0.2.0", features = ["module_specifier"] }
 deno_npm = "=0.25.4"
 deno_path_util = "=0.2.1"
-deno_permissions = { version = "0.39.0", path = "./runtime/permissions" }
-deno_runtime = { version = "0.188.0", path = "./runtime" }
+deno_permissions = { version = "0.40.0", path = "./runtime/permissions" }
+deno_runtime = { version = "0.189.0", path = "./runtime" }
 deno_semver = "=0.5.16"
 deno_terminal = "0.2.0"
-napi_sym = { version = "0.109.0", path = "./ext/napi/sym" }
+napi_sym = { version = "0.110.0", path = "./ext/napi/sym" }
 test_util = { package = "test_server", path = "./tests/util/server" }
 
 denokv_proto = "0.8.4"
@@ -69,33 +69,33 @@ denokv_remote = "0.8.4"
 denokv_sqlite = { default-features = false, version = "0.8.4" }
 
 # exts
-deno_broadcast_channel = { version = "0.173.0", path = "./ext/broadcast_channel" }
-deno_cache = { version = "0.111.0", path = "./ext/cache" }
-deno_canvas = { version = "0.48.0", path = "./ext/canvas" }
-deno_console = { version = "0.179.0", path = "./ext/console" }
-deno_cron = { version = "0.59.0", path = "./ext/cron" }
-deno_crypto = { version = "0.193.0", path = "./ext/crypto" }
-deno_fetch = { version = "0.203.0", path = "./ext/fetch" }
-deno_ffi = { version = "0.166.0", path = "./ext/ffi" }
-deno_fs = { version = "0.89.0", path = "./ext/fs" }
-deno_http = { version = "0.177.0", path = "./ext/http" }
-deno_io = { version = "0.89.0", path = "./ext/io" }
-deno_kv = { version = "0.87.0", path = "./ext/kv" }
-deno_napi = { version = "0.110.0", path = "./ext/napi" }
-deno_net = { version = "0.171.0", path = "./ext/net" }
-deno_node = { version = "0.116.0", path = "./ext/node" }
-deno_telemetry = { version = "0.1.0", path = "./ext/telemetry" }
-deno_tls = { version = "0.166.0", path = "./ext/tls" }
-deno_url = { version = "0.179.0", path = "./ext/url" }
-deno_web = { version = "0.210.0", path = "./ext/web" }
-deno_webgpu = { version = "0.146.0", path = "./ext/webgpu" }
-deno_webidl = { version = "0.179.0", path = "./ext/webidl" }
-deno_websocket = { version = "0.184.0", path = "./ext/websocket" }
-deno_webstorage = { version = "0.174.0", path = "./ext/webstorage" }
+deno_broadcast_channel = { version = "0.174.0", path = "./ext/broadcast_channel" }
+deno_cache = { version = "0.112.0", path = "./ext/cache" }
+deno_canvas = { version = "0.49.0", path = "./ext/canvas" }
+deno_console = { version = "0.180.0", path = "./ext/console" }
+deno_cron = { version = "0.60.0", path = "./ext/cron" }
+deno_crypto = { version = "0.194.0", path = "./ext/crypto" }
+deno_fetch = { version = "0.204.0", path = "./ext/fetch" }
+deno_ffi = { version = "0.167.0", path = "./ext/ffi" }
+deno_fs = { version = "0.90.0", path = "./ext/fs" }
+deno_http = { version = "0.178.0", path = "./ext/http" }
+deno_io = { version = "0.90.0", path = "./ext/io" }
+deno_kv = { version = "0.88.0", path = "./ext/kv" }
+deno_napi = { version = "0.111.0", path = "./ext/napi" }
+deno_net = { version = "0.172.0", path = "./ext/net" }
+deno_node = { version = "0.117.0", path = "./ext/node" }
+deno_telemetry = { version = "0.2.0", path = "./ext/telemetry" }
+deno_tls = { version = "0.167.0", path = "./ext/tls" }
+deno_url = { version = "0.180.0", path = "./ext/url" }
+deno_web = { version = "0.211.0", path = "./ext/web" }
+deno_webgpu = { version = "0.147.0", path = "./ext/webgpu" }
+deno_webidl = { version = "0.180.0", path = "./ext/webidl" }
+deno_websocket = { version = "0.185.0", path = "./ext/websocket" }
+deno_webstorage = { version = "0.175.0", path = "./ext/webstorage" }
 
 # resolvers
-deno_resolver = { version = "0.11.0", path = "./resolvers/deno" }
-node_resolver = { version = "0.18.0", path = "./resolvers/node" }
+deno_resolver = { version = "0.12.0", path = "./resolvers/deno" }
+node_resolver = { version = "0.19.0", path = "./resolvers/node" }
 
 aes = "=0.8.3"
 anyhow = "1.0.57"

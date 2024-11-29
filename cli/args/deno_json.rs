@@ -22,6 +22,8 @@ impl<'a> deno_config::fs::DenoConfigFs for DenoConfigFsAdapter<'a> {
     self
       .0
       .read_text_file_lossy_sync(path, None)
+      // todo(https://github.com/denoland/deno_config/pull/140): avoid clone
+      .map(|s| s.into_owned())
       .map_err(|err| err.into_io_error())
   }
 

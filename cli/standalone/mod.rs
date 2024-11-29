@@ -91,6 +91,7 @@ use crate::resolver::CliNpmReqResolver;
 use crate::resolver::NpmModuleLoader;
 use crate::util::progress_bar::ProgressBar;
 use crate::util::progress_bar::ProgressBarStyle;
+use crate::util::text_encoding::from_utf8_lossy_cow;
 use crate::util::v8::construct_v8_flags;
 use crate::worker::CliCodeCache;
 use crate::worker::CliMainWorkerFactory;
@@ -516,13 +517,13 @@ impl NodeRequireLoader for EmbeddedModuleLoader {
   fn load_text_file_lossy(
     &self,
     path: &std::path::Path,
-  ) -> Result<String, AnyError> {
+  ) -> Result<Cow<'static, str>, AnyError> {
     let file_entry = self.shared.vfs.file_entry(path)?;
     let file_bytes = self
       .shared
       .vfs
       .read_file_all(file_entry, VfsFileSubDataKind::ModuleGraph)?;
-    Ok(String::from_utf8(file_bytes.into_owned())?)
+    Ok(from_utf8_lossy_cow(file_bytes))
   }
 
   fn is_maybe_cjs(

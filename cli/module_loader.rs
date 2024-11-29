@@ -1061,7 +1061,10 @@ impl<TGraphContainer: ModuleGraphContainer> NodeRequireLoader
     self.npm_resolver.ensure_read_permission(permissions, path)
   }
 
-  fn load_text_file_lossy(&self, path: &Path) -> Result<String, AnyError> {
+  fn load_text_file_lossy(
+    &self,
+    path: &Path,
+  ) -> Result<Cow<'static, str>, AnyError> {
     // todo(dsherret): use the preloaded module from the graph if available?
     let media_type = MediaType::from_path(path);
     let text = self.fs.read_text_file_lossy_sync(path, None)?;
@@ -1076,15 +1079,18 @@ impl<TGraphContainer: ModuleGraphContainer> NodeRequireLoader
           .into(),
         );
       }
-      self.emitter.emit_parsed_source_sync(
-        &specifier,
-        media_type,
-        // this is probably not super accurate due to require esm, but probably ok.
-        // If we find this causes a lot of churn in the emit cache then we should
-        // investigate how we can make this better
-        ModuleKind::Cjs,
-        &text.into(),
-      )
+      self
+        .emitter
+        .emit_parsed_source_sync(
+          &specifier,
+          media_type,
+          // this is probably not super accurate due to require esm, but probably ok.
+          // If we find this causes a lot of churn in the emit cache then we should
+          // investigate how we can make this better
+          ModuleKind::Cjs,
+          &text.into(),
+        )
+        .map(Cow::Owned)
     } else {
       Ok(text)
     }
