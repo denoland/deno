@@ -1,2 +1,2 @@
-process.stdin.on("data", () => {});
+process.stdin.resume();
 process.stdin.pause();
