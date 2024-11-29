@@ -150,7 +150,7 @@ export class LibuvStreamWrap extends HandleWrap {
   }
 
   set reading(value) {
-    this.#reading = value;
+    // no-op
   }
 
   /**
