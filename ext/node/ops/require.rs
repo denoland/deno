@@ -8,6 +8,7 @@ use deno_core::v8;
 use deno_core::JsRuntimeInspector;
 use deno_core::OpState;
 use deno_fs::FileSystemRc;
+use deno_fs::V8MaybeStaticStr;
 use deno_package_json::PackageJsonRc;
 use deno_path_util::normalize_path;
 use deno_path_util::url_from_file_path;
@@ -477,11 +478,11 @@ where
 }
 
 #[op2(stack_trace)]
-#[string]
+#[to_v8]
 pub fn op_require_read_file<P>(
   state: &mut OpState,
   #[string] file_path: String,
-) -> Result<String, RequireError>
+) -> Result<V8MaybeStaticStr, RequireError>
 where
   P: NodePermissions + 'static,
 {
@@ -492,6 +493,7 @@ where
   let loader = state.borrow::<NodeRequireLoaderRc>();
   loader
     .load_text_file_lossy(&file_path)
+    .map(V8MaybeStaticStr)
     .map_err(|e| RequireErrorKind::ReadModule(e).into_box())
 }
 
