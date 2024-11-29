@@ -12,7 +12,6 @@ const signals = [
   "SIGINT",
   "SIGIO",
   "SIGPOLL",
-  "SIGUNUSED",
   "SIGPIPE",
   "SIGPROF",
   "SIGPWR",
@@ -34,8 +33,8 @@ const signals = [
   "SIGXFSZ",
 ] as const;
 
-// SIGKILL and SIGSTOP are not stoppable and SIGBREAK is for windows
-type SignalsToTest = Exclude<Deno.Signal, "SIGKILL" | "SIGSTOP" | "SIGBREAK">;
+// SIGKILL and SIGSTOP are not stoppable, SIGBREAK is for windows, and SIGUNUSED is not defined
+type SignalsToTest = Exclude<Deno.Signal, "SIGKILL" | "SIGSTOP" | "SIGBREAK" | "SIGUNUSED">;
 type EnsureAllSignalsIncluded = SignalsToTest extends typeof signals[number]
   ? typeof signals[number] extends SignalsToTest ? true
   : never
@@ -52,7 +51,6 @@ const osSpecificSignals = signals.filter((s) => {
     case "SIGSEGV":
       return Deno.build.os === "freebsd";
     case "SIGPOLL":
-    case "SIGUNUSED":
     case "SIGPWR":
     case "SIGSTKFLT":
       return Deno.build.os === "linux";
