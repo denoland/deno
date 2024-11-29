@@ -1,7 +1,7 @@
 <!-- deno-fmt-ignore-file -->
 # Remaining Node Tests
 
-1136 tests out of 3681 have been ported from Node 20.11.1 (30.86% ported, 69.25% remaining).
+1135 tests out of 3681 have been ported from Node 20.11.1 (30.83% ported, 69.27% remaining).
 
 NOTE: This file should not be manually edited. Please edit `tests/node_compat/config.json` and run `deno task setup` in `tests/node_compat/runner` dir instead.
 
@@ -847,6 +847,7 @@ NOTE: This file should not be manually edited. Please edit `tests/node_compat/co
 - [parallel/test-http-client-headers-host-array.js](https://github.com/nodejs/node/tree/v20.11.1/test/parallel/test-http-client-headers-host-array.js)
 - [parallel/test-http-client-immediate-error.js](https://github.com/nodejs/node/tree/v20.11.1/test/parallel/test-http-client-immediate-error.js)
 - [parallel/test-http-client-incomingmessage-destroy.js](https://github.com/nodejs/node/tree/v20.11.1/test/parallel/test-http-client-incomingmessage-destroy.js)
+- [parallel/test-http-client-keep-alive-release-before-finish.js](https://github.com/nodejs/node/tree/v20.11.1/test/parallel/test-http-client-keep-alive-release-before-finish.js)
 - [parallel/test-http-client-override-global-agent.js](https://github.com/nodejs/node/tree/v20.11.1/test/parallel/test-http-client-override-global-agent.js)
 - [parallel/test-http-client-parse-error.js](https://github.com/nodejs/node/tree/v20.11.1/test/parallel/test-http-client-parse-error.js)
 - [parallel/test-http-client-pipe-end.js](https://github.com/nodejs/node/tree/v20.11.1/test/parallel/test-http-client-pipe-end.js)

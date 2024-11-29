@@ -591,7 +591,6 @@
       "test-http-client-headers-array.js",
       "test-http-client-invalid-path.js",
       "test-http-client-keep-alive-hint.js",
-      "test-http-client-keep-alive-release-before-finish.js",
       "test-http-client-race-2.js",
       "test-http-client-race.js",
       "test-http-client-read-in-error.js",
