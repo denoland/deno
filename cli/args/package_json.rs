@@ -11,7 +11,6 @@ use deno_package_json::PackageJsonDepValueParseError;
 use deno_package_json::PackageJsonDepWorkspaceReq;
 use deno_semver::npm::NpmPackageReqReference;
 use deno_semver::package::PackageReq;
-use deno_semver::RangeSetOrTag;
 use deno_semver::VersionReq;
 use thiserror::Error;
 
@@ -145,17 +144,9 @@ impl NpmInstallDepsProvider {
                 PackageJsonDepWorkspaceReq::VersionReq(version_req) => {
                   version_req
                 }
-                PackageJsonDepWorkspaceReq::Tilde => {
-                  VersionReq::from_raw_text_and_inner(
-                    "workspace:~".to_string(),
-                    RangeSetOrTag::Tag("workspace".to_string()),
-                  )
-                }
-                PackageJsonDepWorkspaceReq::Caret => {
-                  VersionReq::from_raw_text_and_inner(
-                    "workspace:^".to_string(),
-                    RangeSetOrTag::Tag("workspace".to_string()),
-                  )
+                PackageJsonDepWorkspaceReq::Tilde
+                | PackageJsonDepWorkspaceReq::Caret => {
+                  VersionReq::parse_from_npm("*").unwrap()
                 }
               };
               if let Some(pkg) = workspace_npm_pkgs.iter().find(|pkg| {

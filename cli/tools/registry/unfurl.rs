@@ -1,11 +1,16 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
+use std::borrow::Cow;
+use std::sync::Arc;
+
 use deno_ast::ParsedSource;
 use deno_ast::SourceRange;
 use deno_ast::SourceTextInfo;
 use deno_config::workspace::MappedResolution;
 use deno_config::workspace::PackageJsonDepResolution;
 use deno_config::workspace::WorkspaceResolver;
+use deno_core::anyhow;
+use deno_core::error::AnyError;
 use deno_core::ModuleSpecifier;
 use deno_graph::DependencyDescriptor;
 use deno_graph::DynamicTemplatePart;
@@ -15,7 +20,7 @@ use deno_package_json::PackageJsonDepValue;
 use deno_package_json::PackageJsonDepWorkspaceReq;
 use deno_resolver::sloppy_imports::SloppyImportsResolutionKind;
 use deno_runtime::deno_node::is_builtin_node_module;
-use deno_semver::VersionRangeSet;
+use deno_semver::Version;
 use deno_semver::VersionReq;
 
 use crate::resolver::CliSloppyImportsResolver;
@@ -46,15 +51,15 @@ impl SpecifierUnfurlerDiagnostic {
 }
 
 pub struct SpecifierUnfurler {
-  sloppy_imports_resolver: Option<CliSloppyImportsResolver>,
-  workspace_resolver: WorkspaceResolver,
+  sloppy_imports_resolver: Option<Arc<CliSloppyImportsResolver>>,
+  workspace_resolver: Arc<WorkspaceResolver>,
   bare_node_builtins: bool,
 }
 
 impl SpecifierUnfurler {
   pub fn new(
-    sloppy_imports_resolver: Option<CliSloppyImportsResolver>,
-    workspace_resolver: WorkspaceResolver,
+    sloppy_imports_resolver: Option<Arc<CliSloppyImportsResolver>>,
+    workspace_resolver: Arc<WorkspaceResolver>,
     bare_node_builtins: bool,
   ) -> Self {
     debug_assert_eq!(
@@ -72,7 +77,7 @@ impl SpecifierUnfurler {
     &self,
     referrer: &ModuleSpecifier,
     specifier: &str,
-  ) -> Option<String> {
+  ) -> Result<Option<String>, AnyError> {
     let resolved = if let Ok(resolved) =
       self.workspace_resolver.resolve(specifier, referrer)
     {
@@ -126,17 +131,22 @@ impl SpecifierUnfurler {
             PackageJsonDepValue::Workspace(workspace_version_req) => {
               let version_req = match workspace_version_req {
                 PackageJsonDepWorkspaceReq::VersionReq(version_req) => {
-                  version_req
+                  Cow::Borrowed(version_req)
                 }
-                // TODO(bartlomieju): this is not correct, but doesn't really matter until we
-                // start supporting publishing of npm packages
-                PackageJsonDepWorkspaceReq::Caret
-                | PackageJsonDepWorkspaceReq::Tilde => {
-                  &VersionReq::from_raw_text_and_inner(
-                    "*".to_string(),
-                    deno_semver::RangeSetOrTag::RangeSet(VersionRangeSet(
-                      vec![],
-                    )),
+                PackageJsonDepWorkspaceReq::Caret => {
+                  let version = self.find_workspace_npm_dep_version(&alias)?;
+                  // version was validated, so ok to unwrap
+                  Cow::Owned(
+                    VersionReq::parse_from_npm(&format!("^{}", version))
+                      .unwrap(),
+                  )
+                }
+                PackageJsonDepWorkspaceReq::Tilde => {
+                  let version = self.find_workspace_npm_dep_version(&alias)?;
+                  // version was validated, so ok to unwrap
+                  Cow::Owned(
+                    VersionReq::parse_from_npm(&format!("~{}", version))
+                      .unwrap(),
                   )
                 }
               };
@@ -172,8 +182,7 @@ impl SpecifierUnfurler {
       }
       None => ModuleSpecifier::options()
         .base_url(Some(referrer))
-        .parse(specifier)
-        .ok()?,
+        .parse(specifier)?,
     };
     // TODO(lucacasonato): this requires integration in deno_graph first
     // let resolved = if let Ok(specifier) =
@@ -207,7 +216,7 @@ impl SpecifierUnfurler {
       };
     let relative_resolved = relative_url(&resolved, referrer);
     if relative_resolved == specifier {
-      None // nothing to unfurl
+      Ok(None) // nothing to unfurl
     } else {
       log::debug!(
         "Unfurled specifier: {} from {} -> {}",
@@ -215,7 +224,31 @@ impl SpecifierUnfurler {
         referrer,
         relative_resolved
       );
-      Some(relative_resolved)
+      Ok(Some(relative_resolved))
+    }
+  }
+
+  fn find_workspace_npm_dep_version(
+    &self,
+    pkg_name: &str,
+  ) -> Result<Version, AnyError> {
+    let pkg_json = self
+      .workspace_resolver
+      .package_jsons()
+      .find(|pkg| pkg.name.as_deref() == Some(pkg_name))
+      .ok_or_else(|| {
+        anyhow::anyhow!(
+          "Unable to find npm package '{}' in workspace",
+          pkg_name
+        )
+      })?;
+    if let Some(version) = &pkg_json.version {
+      Ok(Version::parse_from_npm(version)?)
+    } else {
+      Err(anyhow::anyhow!(
+        "Missing version in package.json of npm package '{}'",
+        pkg_name
+      ))
     }
   }
 
@@ -227,16 +260,16 @@ impl SpecifierUnfurler {
     text_info: &SourceTextInfo,
     dep: &deno_graph::DynamicDependencyDescriptor,
     text_changes: &mut Vec<deno_ast::TextChange>,
-  ) -> bool {
+  ) -> Result<bool, AnyError> {
     match &dep.argument {
       deno_graph::DynamicArgument::String(specifier) => {
         let range = to_range(text_info, &dep.argument_range);
         let maybe_relative_index =
           text_info.text_str()[range.start..range.end].find(specifier);
         let Some(relative_index) = maybe_relative_index else {
-          return true; // always say it's analyzable for a string
+          return Ok(true); // always say it's analyzable for a string
         };
-        let unfurled = self.unfurl_specifier(module_url, specifier);
+        let unfurled = self.unfurl_specifier(module_url, specifier)?;
         if let Some(unfurled) = unfurled {
           let start = range.start + relative_index;
           text_changes.push(deno_ast::TextChange {
@@ -244,7 +277,7 @@ impl SpecifierUnfurler {
             new_text: unfurled,
           });
         }
-        true
+        Ok(true)
       }
       deno_graph::DynamicArgument::Template(parts) => match parts.first() {
         Some(DynamicTemplatePart::String { value: specifier }) => {
@@ -252,37 +285,37 @@ impl SpecifierUnfurler {
           let is_relative =
             specifier.starts_with("./") || specifier.starts_with("../");
           if is_relative {
-            return true;
+            return Ok(true);
           }
           if !specifier.ends_with('/') {
-            return false;
+            return Ok(false);
           }
-          let unfurled = self.unfurl_specifier(module_url, specifier);
+          let unfurled = self.unfurl_specifier(module_url, specifier)?;
           let Some(unfurled) = unfurled else {
-            return true; // nothing to unfurl
+            return Ok(true); // nothing to unfurl
           };
           let range = to_range(text_info, &dep.argument_range);
           let maybe_relative_index =
             text_info.text_str()[range.start..].find(specifier);
           let Some(relative_index) = maybe_relative_index else {
-            return false;
+            return Ok(false);
           };
           let start = range.start + relative_index;
           text_changes.push(deno_ast::TextChange {
             range: start..start + specifier.len(),
             new_text: unfurled,
           });
-          true
+          Ok(true)
         }
         Some(DynamicTemplatePart::Expr) => {
-          false // failed analyzing
+          Ok(false) // failed analyzing
         }
         None => {
-          true // ignore
+          Ok(true) // ignore
         }
       },
       deno_graph::DynamicArgument::Expr => {
-        false // failed analyzing
+        Ok(false) // failed analyzing
       }
     }
   }
@@ -292,21 +325,22 @@ impl SpecifierUnfurler {
     url: &ModuleSpecifier,
     parsed_source: &ParsedSource,
     diagnostic_reporter: &mut dyn FnMut(SpecifierUnfurlerDiagnostic),
-  ) -> String {
+  ) -> Result<String, AnyError> {
     let mut text_changes = Vec::new();
     let text_info = parsed_source.text_info_lazy();
     let module_info = ParserModuleAnalyzer::module_info(parsed_source);
-    let analyze_specifier =
-      |specifier: &str,
-       range: &deno_graph::PositionRange,
-       text_changes: &mut Vec<deno_ast::TextChange>| {
-        if let Some(unfurled) = self.unfurl_specifier(url, specifier) {
-          text_changes.push(deno_ast::TextChange {
-            range: to_range(text_info, range),
-            new_text: unfurled,
-          });
-        }
-      };
+    let analyze_specifier = |specifier: &str,
+                             range: &deno_graph::PositionRange,
+                             text_changes: &mut Vec<deno_ast::TextChange>|
+     -> Result<(), AnyError> {
+      if let Some(unfurled) = self.unfurl_specifier(url, specifier)? {
+        text_changes.push(deno_ast::TextChange {
+          range: to_range(text_info, range),
+          new_text: unfurled,
+        });
+      }
+      Ok(())
+    };
     for dep in &module_info.dependencies {
       match dep {
         DependencyDescriptor::Static(dep) => {
@@ -314,11 +348,15 @@ impl SpecifierUnfurler {
             &dep.specifier,
             &dep.specifier_range,
             &mut text_changes,
-          );
+          )?;
         }
         DependencyDescriptor::Dynamic(dep) => {
-          let success =
-            self.try_unfurl_dynamic_dep(url, text_info, dep, &mut text_changes);
+          let success = self.try_unfurl_dynamic_dep(
+            url,
+            text_info,
+            dep,
+            &mut text_changes,
+          )?;
 
           if !success {
             let start_pos = text_info.line_start(dep.argument_range.start.line)
@@ -345,26 +383,26 @@ impl SpecifierUnfurler {
         &specifier_with_range.text,
         &specifier_with_range.range,
         &mut text_changes,
-      );
+      )?;
     }
     for jsdoc in &module_info.jsdoc_imports {
       analyze_specifier(
         &jsdoc.specifier.text,
         &jsdoc.specifier.range,
         &mut text_changes,
-      );
+      )?;
     }
     if let Some(specifier_with_range) = &module_info.jsx_import_source {
       analyze_specifier(
         &specifier_with_range.text,
         &specifier_with_range.range,
         &mut text_changes,
-      );
+      )?;
     }
 
     let rewritten_text =
       deno_ast::apply_text_changes(text_info.text_str(), text_changes);
-    rewritten_text
+    Ok(rewritten_text)
   }
 }
 
@@ -477,10 +515,10 @@ mod tests {
     );
     let fs = Arc::new(RealFs);
     let unfurler = SpecifierUnfurler::new(
-      Some(CliSloppyImportsResolver::new(SloppyImportsCachedFs::new(
-        fs,
+      Some(Arc::new(CliSloppyImportsResolver::new(
+        SloppyImportsCachedFs::new(fs),
       ))),
-      workspace_resolver,
+      Arc::new(workspace_resolver),
       true,
     );
 
@@ -518,7 +556,8 @@ const warn2 = await import(`${expr}`);
       let source = parse_ast(&specifier, source_code);
       let mut d = Vec::new();
       let mut reporter = |diagnostic| d.push(diagnostic);
-      let unfurled_source = unfurler.unfurl(&specifier, &source, &mut reporter);
+      let unfurled_source =
+        unfurler.unfurl(&specifier, &source, &mut reporter).unwrap();
       assert_eq!(d.len(), 2);
       assert!(
         matches!(
