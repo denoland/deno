@@ -46,18 +46,18 @@ license = "MIT"
 repository = "https://github.com/denoland/deno"
 
 [workspace.dependencies]
-deno_ast = { version = "=0.43.3", features = ["transpiling"] }
+deno_ast = { version = "=0.44.0", features = ["transpiling"] }
 deno_core = { version = "0.323.0" }
 
 deno_bench_util = { version = "0.174.0", path = "./bench_util" }
-deno_config = { version = "=0.39.2", features = ["workspace", "sync"] }
-deno_lockfile = "=0.23.1"
+deno_config = { version = "=0.39.3", features = ["workspace", "sync"] }
+deno_lockfile = "=0.23.2"
 deno_media_type = { version = "0.2.0", features = ["module_specifier"] }
-deno_npm = "=0.25.4"
+deno_npm = "=0.25.5"
 deno_path_util = "=0.2.1"
 deno_permissions = { version = "0.40.0", path = "./runtime/permissions" }
 deno_runtime = { version = "0.189.0", path = "./runtime" }
-deno_semver = "=0.5.16"
+deno_semver = "=0.6.0"
 deno_terminal = "0.2.0"
 napi_sym = { version = "0.110.0", path = "./ext/napi/sym" }
 test_util = { package = "test_server", path = "./tests/util/server" }
@@ -115,8 +115,8 @@ console_static_text = "=0.8.1"
 dashmap = "5.5.3"
 data-encoding = "2.3.3"
 data-url = "=0.3.0"
-deno_cache_dir = "=0.13.2"
-deno_package_json = { version = "0.1.2", default-features = false }
+deno_cache_dir = "=0.14.0"
+deno_package_json = { version = "0.2.1", default-features = false }
 dlopen2 = "0.6.1"
 ecb = "=0.1.2"
 elliptic-curve = { version = "0.13.4", features = ["alloc", "arithmetic", "ecdh", "std", "pem", "jwk"] }
