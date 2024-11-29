@@ -9001,3 +9001,8 @@ dependencies = [
  "cc",
  "pkg-config",
 ]
+
+[[patch.unused]]
+name = "deno_lint"
+version = "0.68.1"
+source = "git+https://github.com/denoland/deno_lint.git?branch=main#3aca2e723ba1fc98504ea25340414e31224a980d"
