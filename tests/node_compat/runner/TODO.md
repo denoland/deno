@@ -1,7 +1,7 @@
 <!-- deno-fmt-ignore-file -->
 # Remaining Node Tests
 
-1137 tests out of 3681 have been ported from Node 20.11.1 (30.89% ported, 69.22% remaining).
+1136 tests out of 3681 have been ported from Node 20.11.1 (30.86% ported, 69.25% remaining).
 
 NOTE: This file should not be manually edited. Please edit `tests/node_compat/config.json` and run `deno task setup` in `tests/node_compat/runner` dir instead.
 
@@ -921,6 +921,7 @@ NOTE: This file should not be manually edited. Please edit `tests/node_compat/co
 - [parallel/test-http-multi-line-headers.js](https://github.com/nodejs/node/tree/v20.11.1/test/parallel/test-http-multi-line-headers.js)
 - [parallel/test-http-multiple-headers.js](https://github.com/nodejs/node/tree/v20.11.1/test/parallel/test-http-multiple-headers.js)
 - [parallel/test-http-mutable-headers.js](https://github.com/nodejs/node/tree/v20.11.1/test/parallel/test-http-mutable-headers.js)
+- [parallel/test-http-no-content-length.js](https://github.com/nodejs/node/tree/v20.11.1/test/parallel/test-http-no-content-length.js)
 - [parallel/test-http-no-read-no-dump.js](https://github.com/nodejs/node/tree/v20.11.1/test/parallel/test-http-no-read-no-dump.js)
 - [parallel/test-http-nodelay.js](https://github.com/nodejs/node/tree/v20.11.1/test/parallel/test-http-nodelay.js)
 - [parallel/test-http-outgoing-buffer.js](https://github.com/nodejs/node/tree/v20.11.1/test/parallel/test-http-outgoing-buffer.js)

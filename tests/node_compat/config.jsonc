@@ -638,7 +638,6 @@
       "test-http-localaddress-bind-error.js",
       "test-http-localaddress.js",
       "test-http-methods.js",
-      "test-http-no-content-length.js",
       "test-http-outgoing-end-types.js",
       "test-http-outgoing-finished.js",
       // TODO(bartlomieju): temporarily disabled while we iterate on the HTTP client
