@@ -75,7 +75,14 @@
               "type": "string"
             }
           },
+          "ignore": {
+            "type": "boolean"
+          },
           "repeat": {
+            "type": "number"
+          },
+          "timeout": {
+            "description": "Number of seconds to wait before timing out the test.",
             "type": "number"
           },
           "steps": {
@@ -83,9 +90,6 @@
             "items": {
               "$ref": "#/definitions/single_test"
             }
-          },
-          "ignore": {
-            "type": "boolean"
           }
         }
       }, {
@@ -104,6 +108,10 @@
               }
             },
             "repeat": {
+              "type": "number"
+            },
+            "timeout": {
+              "description": "Number of seconds to wait before timing out the test.",
               "type": "number"
             }
           }
@@ -127,7 +135,14 @@
             "type": "string"
           }
         },
+        "ignore": {
+          "type": "boolean"
+        },
         "repeat": {
+          "type": "number"
+        },
+        "timeout": {
+          "description": "Number of seconds to wait before timing out the test.",
           "type": "number"
         },
         "tests": {
@@ -135,9 +150,6 @@
           "additionalProperties": {
             "$ref": "#/definitions/single_or_multi_step_test"
           }
-        },
-        "ignore": {
-          "type": "boolean"
         }
       }
     }

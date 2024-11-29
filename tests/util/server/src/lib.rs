@@ -31,6 +31,7 @@ mod https;
 pub mod lsp;
 mod macros;
 mod npm;
+mod process;
 pub mod pty;
 pub mod servers;
 pub mod spawn;

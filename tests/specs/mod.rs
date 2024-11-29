@@ -129,6 +129,8 @@ struct MultiStepMetaData {
   #[serde(default)]
   pub envs: HashMap<String, String>,
   #[serde(default)]
+  pub timeout: Option<usize>,
+  #[serde(default)]
   pub repeat: Option<usize>,
   #[serde(default)]
   pub steps: Vec<StepMetaData>,
@@ -146,6 +148,8 @@ struct SingleTestMetaData {
   #[serde(default)]
   pub symlinked_temp_dir: bool,
   #[serde(default)]
+  pub timeout: Option<usize>,
+  #[serde(default)]
   pub repeat: Option<usize>,
   #[serde(flatten)]
   pub step: StepMetaData,
@@ -161,6 +165,7 @@ impl SingleTestMetaData {
       temp_dir: self.temp_dir,
       symlinked_temp_dir: self.symlinked_temp_dir,
       repeat: self.repeat,
+      timeout: self.timeout,
       envs: Default::default(),
       steps: vec![self.step],
       ignore: self.ignore,
@@ -285,8 +290,9 @@ fn run_test_inner(
   diagnostic_logger: Rc<RefCell<Vec<u8>>>,
 ) {
   let context = test_context_from_metadata(metadata, cwd, diagnostic_logger);
+  let start_time = std::time::Instant::now();
   for step in metadata.steps.iter().filter(|s| should_run_step(s)) {
-    let run_func = || run_step(step, metadata, cwd, &context);
+    let run_func = || run_step(step, metadata, cwd, &context, start_time);
     if step.flaky {
       run_flaky(run_func);
     } else {
@@ -395,6 +401,7 @@ fn run_step(
   metadata: &MultiStepMetaData,
   cwd: &PathRef,
   context: &test_util::TestContext,
+  start_time: std::time::Instant,
 ) {
   let command = context
     .new_command()
@@ -419,6 +426,19 @@ fn run_step(
   };
   let command = match &step.input {
     Some(input) => command.stdin_text(input),
+    None => command,
+  };
+  let command = match metadata.timeout {
+    Some(timeout_seconds) => {
+      let timeout = std::time::Duration::from_secs(timeout_seconds as u64);
+      let remaining_timeout = match timeout.checked_sub(start_time.elapsed()) {
+        Some(timeout) => timeout,
+        None => {
+          panic!("Timed out after: {}s", timeout_seconds);
+        }
+      };
+      command.timeout(remaining_timeout)
+    }
     None => command,
   };
   let output = command.run();

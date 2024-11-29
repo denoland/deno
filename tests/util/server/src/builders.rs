@@ -30,6 +30,7 @@ use crate::jsr_registry_unset_url;
 use crate::lsp::LspClientBuilder;
 use crate::nodejs_org_mirror_unset_url;
 use crate::npm_registry_unset_url;
+use crate::process::wait_on_child_with_timeout;
 use crate::pty::Pty;
 use crate::strip_ansi_codes;
 use crate::testdata_path;
@@ -412,6 +413,7 @@ pub struct TestCommandBuilder {
   args_vec: Vec<String>,
   split_output: bool,
   show_output: bool,
+  timeout: Option<std::time::Duration>,
 }
 
 impl TestCommandBuilder {
@@ -432,6 +434,7 @@ impl TestCommandBuilder {
       args_text: "".to_string(),
       args_vec: Default::default(),
       show_output: false,
+      timeout: None,
     }
   }
 
@@ -542,6 +545,11 @@ impl TestCommandBuilder {
     self
   }
 
+  pub fn timeout(mut self, timeout: std::time::Duration) -> Self {
+    self.timeout = Some(timeout);
+    self
+  }
+
   pub fn stdin_piped(self) -> Self {
     self.stdin(std::process::Stdio::piped())
   }
@@ -599,6 +607,8 @@ impl TestCommandBuilder {
       }
     }
 
+    assert!(self.timeout.is_none(), "not implemented");
+
     let command_path = self.build_command_path();
 
     self.diagnostic_logger.writeln(format!(
@@ -614,15 +624,18 @@ impl TestCommandBuilder {
 
   pub fn output(&self) -> Result<std::process::Output, std::io::Error> {
     assert!(self.stdin_text.is_none(), "use spawn instead");
+    assert!(self.timeout.is_none(), "not implemented");
     self.build_command().output()
   }
 
   pub fn status(&self) -> Result<std::process::ExitStatus, std::io::Error> {
     assert!(self.stdin_text.is_none(), "use spawn instead");
+    assert!(self.timeout.is_none(), "not implemented");
     self.build_command().status()
   }
 
   pub fn spawn(&self) -> Result<DenoChild, std::io::Error> {
+    assert!(self.timeout.is_none(), "not implemented");
     let child = self.build_command().spawn()?;
     let mut child = DenoChild {
       _deno_dir: self.deno_dir.clone(),
@@ -681,7 +694,7 @@ impl TestCommandBuilder {
       .get_args()
       .map(ToOwned::to_owned)
       .collect::<Vec<_>>();
-    let (combined_reader, std_out_err_handle) = if self.split_output {
+    let (combined_handle, std_out_err_handle) = if self.split_output {
       let (stdout_reader, stdout_writer) = pipe().unwrap();
       let (stderr_reader, stderr_writer) = pipe().unwrap();
       command.stdout(stdout_writer);
@@ -699,10 +712,14 @@ impl TestCommandBuilder {
         )),
       )
     } else {
+      let show_output = self.show_output;
       let (combined_reader, combined_writer) = pipe().unwrap();
       command.stdout(combined_writer.try_clone().unwrap());
       command.stderr(combined_writer);
-      (Some(combined_reader), None)
+      let combined_handle = std::thread::spawn(move || {
+        read_pipe_to_string(combined_reader, show_output)
+      });
+      (Some(combined_handle), None)
     };
 
     let mut process = command.spawn().expect("Failed spawning command");
@@ -718,17 +735,18 @@ impl TestCommandBuilder {
     // and dropping it closes them.
     drop(command);
 
-    let combined = combined_reader.map(|pipe| {
-      sanitize_output(read_pipe_to_string(pipe, self.show_output), &args)
-    });
-
-    let status = process.wait().unwrap();
+    let status = match self.timeout {
+      Some(timeout) => wait_on_child_with_timeout(process, timeout).unwrap(),
+      None => process.wait().unwrap(),
+    };
     let std_out_err = std_out_err_handle.map(|(stdout, stderr)| {
       (
         sanitize_output(stdout.join().unwrap(), &args),
         sanitize_output(stderr.join().unwrap(), &args),
       )
     });
+    let combined = combined_handle
+      .map(|handle| sanitize_output(handle.join().unwrap(), &args));
     let exit_code = status.code();
     #[cfg(unix)]
     let signal = {
