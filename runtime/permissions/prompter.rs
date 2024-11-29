@@ -44,20 +44,22 @@ pub enum PromptResponse {
   AllowAll,
 }
 
-static PERMISSION_PROMPTER: Lazy<Mutex<Box<dyn PermissionPrompter>>> =
-  Lazy::new(|| Mutex::new(Box::new(TtyPrompter)));
+thread_local! {
+  static PERMISSION_PROMPTER: Lazy<Mutex<Box<dyn PermissionPrompter>>> =
+    Lazy::new(|| Mutex::new(Box::new(TtyPrompter)));
 
-static MAYBE_BEFORE_PROMPT_CALLBACK: Lazy<Mutex<Option<PromptCallback>>> =
-  Lazy::new(|| Mutex::new(None));
+  static MAYBE_BEFORE_PROMPT_CALLBACK: Lazy<Mutex<Option<PromptCallback>>> =
+    Lazy::new(|| Mutex::new(None));
 
-static MAYBE_AFTER_PROMPT_CALLBACK: Lazy<Mutex<Option<PromptCallback>>> =
-  Lazy::new(|| Mutex::new(None));
+  static MAYBE_AFTER_PROMPT_CALLBACK: Lazy<Mutex<Option<PromptCallback>>> =
+    Lazy::new(|| Mutex::new(None));
 
-static MAYBE_CURRENT_STACKTRACE: Lazy<Mutex<Option<Vec<JsStackFrame>>>> =
-  Lazy::new(|| Mutex::new(None));
+  static MAYBE_CURRENT_STACKTRACE: Lazy<Mutex<Option<Vec<JsStackFrame>>>> =
+    Lazy::new(|| Mutex::new(None));
+}
 
 pub fn set_current_stacktrace(trace: Vec<JsStackFrame>) {
-  *MAYBE_CURRENT_STACKTRACE.lock() = Some(trace);
+  MAYBE_CURRENT_STACKTRACE.with(|t| *t.lock() = Some(trace));
 }
 
 pub fn permission_prompt(
@@ -66,16 +68,19 @@ pub fn permission_prompt(
   api_name: Option<&str>,
   is_unary: bool,
 ) -> PromptResponse {
-  if let Some(before_callback) = MAYBE_BEFORE_PROMPT_CALLBACK.lock().as_mut() {
-    before_callback();
-  }
-  let stack = MAYBE_CURRENT_STACKTRACE.lock().take();
+  MAYBE_BEFORE_PROMPT_CALLBACK.with(|cb| {
+    if let Some(before_callback) = cb.lock().as_mut() {
+      before_callback();
+    }
+  });
+  let stack = MAYBE_CURRENT_STACKTRACE.with(|t| t.lock().take());
   let r = PERMISSION_PROMPTER
-    .lock()
-    .prompt(message, flag, api_name, is_unary, stack);
-  if let Some(after_callback) = MAYBE_AFTER_PROMPT_CALLBACK.lock().as_mut() {
-    after_callback();
-  }
+    .with(|p| p.lock().prompt(message, flag, api_name, is_unary, stack));
+  MAYBE_AFTER_PROMPT_CALLBACK.with(|cb| {
+    if let Some(after_callback) = cb.lock().as_mut() {
+      after_callback();
+    }
+  });
   r
 }
 
@@ -83,12 +88,12 @@ pub fn set_prompt_callbacks(
   before_callback: PromptCallback,
   after_callback: PromptCallback,
 ) {
-  *MAYBE_BEFORE_PROMPT_CALLBACK.lock() = Some(before_callback);
-  *MAYBE_AFTER_PROMPT_CALLBACK.lock() = Some(after_callback);
+  MAYBE_BEFORE_PROMPT_CALLBACK.with(|cb| *cb.lock() = Some(before_callback));
+  MAYBE_AFTER_PROMPT_CALLBACK.with(|cb| *cb.lock() = Some(after_callback));
 }
 
 pub fn set_prompter(prompter: Box<dyn PermissionPrompter>) {
-  *PERMISSION_PROMPTER.lock() = prompter;
+  PERMISSION_PROMPTER.with(|p| *p.lock() = prompter);
 }
 
 pub type PromptCallback = Box<dyn FnMut() + Send + Sync>;
