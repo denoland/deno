@@ -3235,7 +3235,7 @@ fn node_process_stdin_unref_with_pty() {
     ])
     .with_pty(|mut console| {
       // if process.stdin.unref is called, the program immediately ends by skipping reading from stdin.
-      console.expect("START\r\nEND\r\n");
+      console.expect("START\r\nEND\r\n^J");
     });
 }
 
