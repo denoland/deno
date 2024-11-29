@@ -148,9 +148,12 @@ export class TLSSocket extends net.Socket {
           : new TCP(TCPConstants.SOCKET);
       }
 
+      const { promise, resolve } = Promise.withResolvers();
+
       // Patches `afterConnect` hook to replace TCP conn with TLS conn
       const afterConnect = handle.afterConnect;
       handle.afterConnect = async (req: any, status: number) => {
+        options.hostname ??= undefined; // coerce to undefined if null, startTls expects hostname to be undefined
         if (tlssock._isNpmAgent) {
           // skips the TLS handshake for @npmcli/agent as it's handled by
           // onSocket handler of ClientRequest object.
@@ -158,6 +161,7 @@ export class TLSSocket extends net.Socket {
           tlssock.removeListener("end", onConnectEnd);
           return afterConnect.call(handle, req, status);
         }
+
         try {
           const conn = await Deno.startTls(handle[kStreamBaseField], options);
           try {
@@ -171,15 +175,25 @@ export class TLSSocket extends net.Socket {
             // Don't interrupt "secure" event to let the first read/write
             // operation emit the error.
           }
+
+          // Assign the TLS connection to the handle and resume reading.
           handle[kStreamBaseField] = conn;
+          handle.upgrading = false;
+          if (!handle.pauseOnCreate) {
+            handle.readStart();
+          }
+
+          resolve();
+
           tlssock.emit("secure");
           tlssock.removeListener("end", onConnectEnd);
-        } catch (_) {
+        } catch {
           // TODO(kt3k): Handle this
         }
         return afterConnect.call(handle, req, status);
       };
 
+      handle.upgrading = promise;
       (handle as any).verifyError = function () {
         return null; // Never fails, rejectUnauthorized is always true in Deno.
       };

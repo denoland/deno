@@ -6,6 +6,7 @@
 import { EventEmitter } from "node:events";
 import { Buffer } from "node:buffer";
 import { promises, read, write } from "node:fs";
+export type { BigIntStats, Stats } from "ext:deno_node/_fs/_fs_stat.ts";
 import {
   BinaryOptionsArgument,
   FileOptionsArgument,
@@ -141,6 +142,13 @@ export class FileHandle extends EventEmitter {
     // Note that Deno.close is not async
     return Promise.resolve(core.close(this.fd));
   }
+
+  stat(): Promise<Stats>;
+  stat(options: { bigint: false }): Promise<Stats>;
+  stat(options: { bigint: true }): Promise<BigIntStats>;
+  stat(options?: { bigint: boolean }): Promise<Stats | BigIntStats> {
+    return fsCall(promises.fstat, this, options);
+  }
 }
 
 function fsCall(fn, handle, ...args) {
@@ -152,7 +160,7 @@ function fsCall(fn, handle, ...args) {
     });
   }
 
-  return fn(handle, ...args);
+  return fn(handle.fd, ...args);
 }
 
 export default {

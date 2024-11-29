@@ -234,8 +234,8 @@ impl Diagnostic for PublishDiagnostic {
         specifier: Cow::Borrowed(&referrer.specifier),
         text_info: Cow::Borrowed(text_info),
         source_pos: DiagnosticSourcePos::LineAndCol {
-          line: referrer.start.line,
-          column: referrer.start.character,
+          line: referrer.range.start.line,
+          column: referrer.range.start.character,
         },
       }
     }
@@ -300,7 +300,7 @@ impl Diagnostic for PublishDiagnostic {
       text_info: &'a SourceTextInfo,
       referrer: &'a deno_graph::Range,
     ) -> Option<DiagnosticSnippet<'a>> {
-      if referrer.start.line == 0 && referrer.start.character == 0 {
+      if referrer.range.start.line == 0 && referrer.range.start.character == 0 {
         return None; // no range, probably a jsxImportSource import
       }
 
@@ -310,12 +310,12 @@ impl Diagnostic for PublishDiagnostic {
           style: DiagnosticSnippetHighlightStyle::Error,
           range: DiagnosticSourceRange {
             start: DiagnosticSourcePos::LineAndCol {
-              line: referrer.start.line,
-              column: referrer.start.character,
+              line: referrer.range.start.line,
+              column: referrer.range.start.character,
             },
             end: DiagnosticSourcePos::LineAndCol {
-              line: referrer.end.line,
-              column: referrer.end.character,
+              line: referrer.range.end.line,
+              column: referrer.range.end.character,
             },
           },
           description: Some("the specifier".into()),
@@ -476,7 +476,7 @@ impl Diagnostic for PublishDiagnostic {
       InvalidExternalImport { imported, .. } => Cow::Owned(vec![
         Cow::Owned(format!("the import was resolved to '{}'", imported)),
         Cow::Borrowed("this specifier is not allowed to be imported on jsr"),
-        Cow::Borrowed("jsr only supports importing `jsr:`, `npm:`, and `data:` specifiers"),
+        Cow::Borrowed("jsr only supports importing `jsr:`, `npm:`, `data:`, `bun:`, and `node:` specifiers"),
       ]),
       UnsupportedJsxTsx { .. } => Cow::Owned(vec![
         Cow::Borrowed("follow https://github.com/jsr-io/jsr/issues/24 for updates"),

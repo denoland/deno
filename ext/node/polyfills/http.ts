@@ -1459,7 +1459,7 @@ ServerResponse.prototype.hasHeader = function (
   this: ServerResponse,
   name: string,
 ) {
-  return Object.hasOwn(this._headers, name);
+  return Object.hasOwn(this._headers, StringPrototypeToLowerCase(name));
 };
 
 ServerResponse.prototype.writeHead = function (

@@ -4327,3 +4327,55 @@ Deno.test({
 
   await server.shutdown();
 });
+
+// https://github.com/denoland/deno/issues/27083
+Deno.test(
+  { permissions: { net: true } },
+  async function httpServerWebSocketInspectRequest() {
+    const ac = new AbortController();
+    const listeningDeferred = Promise.withResolvers<void>();
+    const doneDeferred = Promise.withResolvers<void>();
+    const server = Deno.serve({
+      handler: (request) => {
+        const {
+          response,
+          socket,
+        } = Deno.upgradeWebSocket(request);
+
+        socket.onopen = () => {
+          Deno.inspect(request); // should not throw
+        };
+        socket.onerror = (e) => {
+          console.error(e);
+          fail();
+        };
+        socket.onmessage = (m) => {
+          socket.send(m.data);
+          socket.close(1001);
+        };
+        socket.onclose = () => doneDeferred.resolve();
+        return response;
+      },
+      port: servePort,
+      signal: ac.signal,
+      onListen: onListen(listeningDeferred.resolve),
+      onError: createOnErrorCb(ac),
+    });
+
+    await listeningDeferred.promise;
+    const def = Promise.withResolvers<void>();
+    const ws = new WebSocket(`ws://localhost:${servePort}`);
+    ws.onmessage = (m) => assertEquals(m.data, "foo");
+    ws.onerror = (e) => {
+      console.error(e);
+      fail();
+    };
+    ws.onclose = () => def.resolve();
+    ws.onopen = () => ws.send("foo");
+
+    await def.promise;
+    await doneDeferred.promise;
+    ac.abort();
+    await server.finished;
+  },
+);

@@ -8,6 +8,7 @@ use std::path::PathBuf;
 use std::rc::Rc;
 use std::sync::Arc;
 
+use console_static_text::ansi::strip_ansi_codes;
 use deno_config::workspace::FolderConfigs;
 use deno_config::workspace::TaskDefinition;
 use deno_config::workspace::TaskOrScript;
@@ -25,6 +26,7 @@ use deno_core::futures::StreamExt;
 use deno_core::url::Url;
 use deno_path_util::normalize_path;
 use deno_runtime::deno_node::NodeResolver;
+use deno_task_shell::KillSignal;
 use deno_task_shell::ShellCommand;
 use indexmap::IndexMap;
 use regex::Regex;
@@ -36,6 +38,7 @@ use crate::colors;
 use crate::factory::CliFactory;
 use crate::npm::CliNpmResolver;
 use crate::task_runner;
+use crate::task_runner::run_future_forwarding_signals;
 use crate::util::fs::canonicalize_path;
 
 #[derive(Debug)]
@@ -225,28 +228,33 @@ pub async fn execute_script(
     concurrency: no_of_concurrent_tasks.into(),
   };
 
-  if task_flags.eval {
-    return task_runner
-      .run_deno_task(
-        &Url::from_directory_path(cli_options.initial_cwd()).unwrap(),
-        "",
-        &TaskDefinition {
-          command: task_flags.task.as_ref().unwrap().to_string(),
-          dependencies: vec![],
-          description: None,
-        },
-      )
-      .await;
-  }
-
-  for task_config in &packages_task_configs {
-    let exit_code = task_runner.run_tasks(task_config).await?;
-    if exit_code > 0 {
-      return Ok(exit_code);
+  let kill_signal = KillSignal::default();
+  run_future_forwarding_signals(kill_signal.clone(), async {
+    if task_flags.eval {
+      return task_runner
+        .run_deno_task(
+          &Url::from_directory_path(cli_options.initial_cwd()).unwrap(),
+          "",
+          &TaskDefinition {
+            command: task_flags.task.as_ref().unwrap().to_string(),
+            dependencies: vec![],
+            description: None,
+          },
+          kill_signal,
+        )
+        .await;
     }
-  }
 
-  Ok(0)
+    for task_config in &packages_task_configs {
+      let exit_code = task_runner.run_tasks(task_config, &kill_signal).await?;
+      if exit_code > 0 {
+        return Ok(exit_code);
+      }
+    }
+
+    Ok(0)
+  })
+  .await
 }
 
 struct RunSingleOptions<'a> {
@@ -254,6 +262,7 @@ struct RunSingleOptions<'a> {
   script: &'a str,
   cwd: &'a Path,
   custom_commands: HashMap<String, Rc<dyn ShellCommand>>,
+  kill_signal: KillSignal,
 }
 
 struct TaskRunner<'a> {
@@ -269,9 +278,10 @@ impl<'a> TaskRunner<'a> {
   pub async fn run_tasks(
     &self,
     pkg_tasks_config: &PackageTaskInfo,
+    kill_signal: &KillSignal,
   ) -> Result<i32, deno_core::anyhow::Error> {
     match sort_tasks_topo(pkg_tasks_config) {
-      Ok(sorted) => self.run_tasks_in_parallel(sorted).await,
+      Ok(sorted) => self.run_tasks_in_parallel(sorted, kill_signal).await,
       Err(err) => match err {
         TaskError::NotFound(name) => {
           if self.task_flags.is_run {
@@ -306,6 +316,7 @@ impl<'a> TaskRunner<'a> {
   async fn run_tasks_in_parallel(
     &self,
     tasks: Vec<ResolvedTask<'a>>,
+    kill_signal: &KillSignal,
   ) -> Result<i32, deno_core::anyhow::Error> {
     struct PendingTasksContext<'a> {
       completed: HashSet<usize>,
@@ -326,6 +337,7 @@ impl<'a> TaskRunner<'a> {
       fn get_next_task<'b>(
         &mut self,
         runner: &'b TaskRunner<'b>,
+        kill_signal: &KillSignal,
       ) -> Option<
         LocalBoxFuture<'b, Result<(i32, &'a ResolvedTask<'a>), AnyError>>,
       >
@@ -348,15 +360,23 @@ impl<'a> TaskRunner<'a> {
           }
 
           self.running.insert(task.id);
+          let kill_signal = kill_signal.clone();
           return Some(
             async move {
               match task.task_or_script {
                 TaskOrScript::Task(_, def) => {
-                  runner.run_deno_task(task.folder_url, task.name, def).await
+                  runner
+                    .run_deno_task(task.folder_url, task.name, def, kill_signal)
+                    .await
                 }
                 TaskOrScript::Script(scripts, _) => {
                   runner
-                    .run_npm_script(task.folder_url, task.name, scripts)
+                    .run_npm_script(
+                      task.folder_url,
+                      task.name,
+                      scripts,
+                      kill_signal,
+                    )
                     .await
                 }
               }
@@ -379,7 +399,7 @@ impl<'a> TaskRunner<'a> {
 
     while context.has_remaining_tasks() {
       while queue.len() < self.concurrency {
-        if let Some(task) = context.get_next_task(self) {
+        if let Some(task) = context.get_next_task(self, kill_signal) {
           queue.push(task);
         } else {
           break;
@@ -408,6 +428,7 @@ impl<'a> TaskRunner<'a> {
     dir_url: &Url,
     task_name: &str,
     definition: &TaskDefinition,
+    kill_signal: KillSignal,
   ) -> Result<i32, deno_core::anyhow::Error> {
     let cwd = match &self.task_flags.cwd {
       Some(path) => canonicalize_path(&PathBuf::from(path))
@@ -425,6 +446,7 @@ impl<'a> TaskRunner<'a> {
         script: &definition.command,
         cwd: &cwd,
         custom_commands,
+        kill_signal,
       })
       .await
   }
@@ -434,6 +456,7 @@ impl<'a> TaskRunner<'a> {
     dir_url: &Url,
     task_name: &str,
     scripts: &IndexMap<String, String>,
+    kill_signal: KillSignal,
   ) -> Result<i32, deno_core::anyhow::Error> {
     // ensure the npm packages are installed if using a managed resolver
     if let Some(npm_resolver) = self.npm_resolver.as_managed() {
@@ -465,6 +488,7 @@ impl<'a> TaskRunner<'a> {
             script,
             cwd: &cwd,
             custom_commands: custom_commands.clone(),
+            kill_signal: kill_signal.clone(),
           })
           .await?;
         if exit_code > 0 {
@@ -485,6 +509,7 @@ impl<'a> TaskRunner<'a> {
       script,
       cwd,
       custom_commands,
+      kill_signal,
     } = opts;
 
     output_task(
@@ -503,6 +528,7 @@ impl<'a> TaskRunner<'a> {
         argv: self.cli_options.argv(),
         root_node_modules_dir: self.npm_resolver.root_node_modules_path(),
         stdio: None,
+        kill_signal,
       })
       .await?
       .exit_code,
@@ -721,22 +747,48 @@ fn print_available_tasks(
     )?;
     if let Some(description) = &desc.task.description {
       let slash_slash = colors::italic_gray("//");
-      writeln!(
-        writer,
-        "    {slash_slash} {}",
-        colors::italic_gray(description)
-      )?;
+      for line in description.lines() {
+        writeln!(
+          writer,
+          "    {slash_slash} {}",
+          colors::italic_gray(strip_ansi_codes_and_escape_control_chars(line))
+        )?;
+      }
     }
-    writeln!(writer, "    {}", desc.task.command)?;
+    writeln!(
+      writer,
+      "    {}",
+      strip_ansi_codes_and_escape_control_chars(&desc.task.command)
+    )?;
     if !desc.task.dependencies.is_empty() {
+      let dependencies = desc
+        .task
+        .dependencies
+        .into_iter()
+        .map(|d| strip_ansi_codes_and_escape_control_chars(&d))
+        .collect::<Vec<_>>()
+        .join(", ");
       writeln!(
         writer,
         "    {} {}",
         colors::gray("depends on:"),
-        colors::cyan(desc.task.dependencies.join(", "))
+        colors::cyan(dependencies)
       )?;
     }
   }
 
   Ok(())
+}
+
+fn strip_ansi_codes_and_escape_control_chars(s: &str) -> String {
+  strip_ansi_codes(s)
+    .chars()
+    .map(|c| match c {
+      '\n' => "\\n".to_string(),
+      '\r' => "\\r".to_string(),
+      '\t' => "\\t".to_string(),
+      c if c.is_control() => format!("\\x{:02x}", c as u8),
+      c => c.to_string(),
+    })
+    .collect()
 }

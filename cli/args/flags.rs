@@ -36,7 +36,7 @@ use deno_path_util::normalize_path;
 use deno_path_util::url_to_file_path;
 use deno_runtime::deno_permissions::PermissionsOptions;
 use deno_runtime::deno_permissions::SysDescriptor;
-use deno_runtime::ops::otel::OtelConfig;
+use deno_telemetry::OtelConfig;
 use log::debug;
 use log::Level;
 use serde::Deserialize;
@@ -598,6 +598,7 @@ pub struct UnstableConfig {
   // TODO(bartlomieju): remove in Deno 2.5
   pub legacy_flag_enabled: bool, // --unstable
   pub bare_node_builtins: bool,
+  pub detect_cjs: bool,
   pub sloppy_imports: bool,
   pub features: Vec<String>, // --unstabe-kv --unstable-cron
 }
@@ -2662,7 +2663,7 @@ By default, outdated dependencies are only displayed.
 Display outdated dependencies:
   <p(245)>deno outdated</>
   <p(245)>deno outdated --compatible</>
-  
+
 Update dependencies:
   <p(245)>deno outdated --update</>
   <p(245)>deno outdated --update --latest</>
@@ -3047,7 +3048,7 @@ fn task_subcommand() -> Command {
 
 List all available tasks:
   <p(245)>deno task</>
-  
+
 Evaluate a task from string
   <p(245)>deno task --eval \"echo $(pwd)\"</>"
     ),
@@ -3083,7 +3084,7 @@ Evaluate a task from string
         Arg::new("eval")
           .long("eval")
           .help(
-            "Evaluate the passed value as if, it was a task in a configuration file",
+            "Evaluate the passed value as if it was a task in a configuration file",
           ).action(ArgAction::SetTrue)
       )
       .arg(node_modules_dir_arg())
@@ -4373,7 +4374,7 @@ impl CommandExt for Command {
     ).arg(
       Arg::new("unstable-detect-cjs")
         .long("unstable-detect-cjs")
-        .help("Reads the package.json type field in a project to treat .js files as .cjs")
+        .help("Treats ambiguous .js, .jsx, .ts, .tsx files as CommonJS modules in more cases")
         .value_parser(FalseyValueParser::new())
         .action(ArgAction::SetTrue)
         .hide(true)
@@ -5986,6 +5987,7 @@ fn unstable_args_parse(
 
   flags.unstable_config.bare_node_builtins =
     matches.get_flag("unstable-bare-node-builtins");
+  flags.unstable_config.detect_cjs = matches.get_flag("unstable-detect-cjs");
   flags.unstable_config.sloppy_imports =
     matches.get_flag("unstable-sloppy-imports");
 

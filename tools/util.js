@@ -2,12 +2,20 @@
 
 // deno-lint-ignore-file no-console
 
-import { dirname, fromFileUrl, join, resolve, toFileUrl } from "@std/path";
+import {
+  dirname,
+  extname,
+  fromFileUrl,
+  join,
+  resolve,
+  toFileUrl,
+} from "@std/path";
 import { wait } from "https://deno.land/x/wait@0.1.13/mod.ts";
-export { dirname, fromFileUrl, join, resolve, toFileUrl };
-export { existsSync, walk } from "@std/fs";
+export { dirname, extname, fromFileUrl, join, resolve, toFileUrl };
+export { existsSync, expandGlobSync, walk } from "@std/fs";
 export { TextLineStream } from "@std/streams/text-line-stream";
 export { delay } from "@std/async/delay";
+export { parse as parseJSONC } from "@std/jsonc/parse";
 
 // [toolName] --version output
 const versions = {

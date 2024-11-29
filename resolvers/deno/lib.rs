@@ -20,10 +20,10 @@ use node_resolver::env::NodeResolverEnv;
 use node_resolver::errors::NodeResolveError;
 use node_resolver::errors::PackageSubpathResolveError;
 use node_resolver::InNpmPackageChecker;
-use node_resolver::NodeModuleKind;
 use node_resolver::NodeResolution;
-use node_resolver::NodeResolutionMode;
+use node_resolver::NodeResolutionKind;
 use node_resolver::NodeResolver;
+use node_resolver::ResolutionMode;
 use npm::MissingPackageNodeModulesFolderError;
 use npm::NodeModulesOutOfDateError;
 use npm::NpmReqResolver;
@@ -31,7 +31,7 @@ use npm::ResolveIfForNpmPackageErrorKind;
 use npm::ResolvePkgFolderFromDenoReqError;
 use npm::ResolveReqWithSubPathErrorKind;
 use sloppy_imports::SloppyImportResolverFs;
-use sloppy_imports::SloppyImportsResolutionMode;
+use sloppy_imports::SloppyImportsResolutionKind;
 use sloppy_imports::SloppyImportsResolver;
 use thiserror::Error;
 use url::Url;
@@ -145,8 +145,8 @@ impl<
     &self,
     raw_specifier: &str,
     referrer: &Url,
-    referrer_kind: NodeModuleKind,
-    mode: NodeResolutionMode,
+    resolution_mode: ResolutionMode,
+    resolution_kind: NodeResolutionKind,
   ) -> Result<DenoResolution, DenoResolveError> {
     let mut found_package_json_dep = false;
     let mut maybe_diagnostic = None;
@@ -157,7 +157,7 @@ impl<
         && self.in_npm_pkg_checker.in_npm_package(referrer)
       {
         return node_resolver
-          .resolve(raw_specifier, referrer, referrer_kind, mode)
+          .resolve(raw_specifier, referrer, resolution_mode, resolution_kind)
           .map(|res| DenoResolution {
             url: res.into_url(),
             found_package_json_dep,
@@ -189,12 +189,12 @@ impl<
               sloppy_imports_resolver
                 .resolve(
                   &specifier,
-                  match mode {
-                    NodeResolutionMode::Execution => {
-                      SloppyImportsResolutionMode::Execution
+                  match resolution_kind {
+                    NodeResolutionKind::Execution => {
+                      SloppyImportsResolutionKind::Execution
                     }
-                    NodeResolutionMode::Types => {
-                      SloppyImportsResolutionMode::Types
+                    NodeResolutionKind::Types => {
+                      SloppyImportsResolutionKind::Types
                     }
                   },
                 )
@@ -221,8 +221,8 @@ impl<
             pkg_json.dir_path(),
             sub_path.as_deref(),
             Some(referrer),
-            referrer_kind,
-            mode,
+            resolution_mode,
+            resolution_kind,
           )
           .map_err(|e| e.into()),
         MappedResolution::PackageJson {
@@ -272,8 +272,8 @@ impl<
                       pkg_folder,
                       sub_path.as_deref(),
                       Some(referrer),
-                      referrer_kind,
-                      mode,
+                      resolution_mode,
+                      resolution_kind,
                     )
                     .map_err(|e| {
                       DenoResolveErrorKind::PackageSubpathResolve(e).into_box()
@@ -328,8 +328,8 @@ impl<
                 pkg_folder,
                 npm_req_ref.sub_path(),
                 Some(referrer),
-                referrer_kind,
-                mode,
+                resolution_mode,
+                resolution_kind,
               )
               .map(|url| DenoResolution {
                 url,
@@ -345,8 +345,8 @@ impl<
               .resolve_req_reference(
                 &npm_req_ref,
                 referrer,
-                referrer_kind,
-                mode,
+                resolution_mode,
+                resolution_kind,
               )
               .map(|url| DenoResolution {
                 url,
@@ -384,8 +384,8 @@ impl<
             .resolve_if_for_npm_pkg(
               raw_specifier,
               referrer,
-              referrer_kind,
-              mode,
+              resolution_mode,
+              resolution_kind,
             )
             .map_err(|e| match e.into_kind() {
               ResolveIfForNpmPackageErrorKind::NodeResolve(e) => {
