@@ -115,7 +115,6 @@ const SUGGESTED_SIZE = 64 * 1024;
 export class LibuvStreamWrap extends HandleWrap {
   [kStreamBaseField]?: Reader & Writer & Closer & Ref;
 
-  reading!: boolean;
   #reading = false;
   destroyed = false;
   writeQueueSize = 0;
@@ -144,6 +143,14 @@ export class LibuvStreamWrap extends HandleWrap {
     }
 
     return 0;
+  }
+
+  get reading() {
+    return this.#reading;
+  }
+
+  set reading(value) {
+    this.#reading = value;
   }
 
   /**
