@@ -1293,6 +1293,21 @@ Deno.test(
   },
 );
 
+Deno.test(
+  { permissions: { net: true } },
+  async function netTcpAbortSignal() {
+    const controller = new AbortController();
+    await Deno.connect({
+      hostname: "deno.com",
+      port: 80,
+      transport: "tcp",
+      signal: controller.signal,
+    });
+    controller.abort();
+    assertEquals(controller.signal.aborted, true);
+  },
+);
+
 Deno.test({
   ignore: Deno.build.os === "linux",
   permissions: { net: true },

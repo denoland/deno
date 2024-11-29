@@ -589,7 +589,13 @@ async function connect(args) {
       );
       localAddr.transport = "tcp";
       remoteAddr.transport = "tcp";
-      return new TcpConn(rid, remoteAddr, localAddr);
+
+      const tcpConn = new TcpConn(rid, remoteAddr, localAddr);
+      if (args.signal) {
+        args.signal.addEventListener("abort", () => tcpConn.close());
+      }
+
+      return tcpConn;
     }
     case "unix": {
       const { 0: rid, 1: localAddr, 2: remoteAddr } = await op_net_connect_unix(

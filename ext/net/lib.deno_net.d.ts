@@ -291,6 +291,7 @@ declare namespace Deno {
     hostname?: string;
     transport?: "tcp";
     timeout?: number;
+    signal?: AbortSignal | null;
   }
 
   /**
