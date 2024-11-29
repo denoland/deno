@@ -546,10 +546,11 @@ fn resolve_managed_npm_commands(
   Ok(result)
 }
 
-/// Runs a deno task future with the specified kill signal.
+/// Runs a deno task future forwarding any signals received
+/// to the process.
 ///
 /// Signal listeners and ctrl+c listening will be setup.
-pub async fn run_future_with_kill_signal<TOutput>(
+pub async fn run_future_forwarding_signals<TOutput>(
   kill_signal: KillSignal,
   future: impl std::future::Future<Output = TOutput>,
 ) -> TOutput {

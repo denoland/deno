@@ -2,7 +2,6 @@
 
 use super::bin_entries::BinEntries;
 use crate::args::LifecycleScriptsConfig;
-use crate::task_runner::run_future_with_kill_signal;
 use crate::task_runner::TaskStdio;
 use crate::util::progress_bar::ProgressBar;
 use deno_core::anyhow::Context;
@@ -159,17 +158,18 @@ impl<'a> LifecycleScripts<'a> {
     progress_bar: &ProgressBar,
   ) -> Result<(), AnyError> {
     let kill_signal = KillSignal::default();
-    run_future_with_kill_signal(
-      kill_signal.clone(),
-      self.finish_with_cancellation(
+    let _drop_signal = kill_signal.clone().drop_guard();
+    // we don't run with signals forwarded because once signals
+    // are setup then they're process wide.
+    self
+      .finish_with_cancellation(
         snapshot,
         packages,
         root_node_modules_dir_path,
         progress_bar,
         kill_signal,
-      ),
-    )
-    .await
+      )
+      .await
   }
 
   async fn finish_with_cancellation(

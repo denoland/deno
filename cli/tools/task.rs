@@ -38,7 +38,7 @@ use crate::colors;
 use crate::factory::CliFactory;
 use crate::npm::CliNpmResolver;
 use crate::task_runner;
-use crate::task_runner::run_future_with_kill_signal;
+use crate::task_runner::run_future_forwarding_signals;
 use crate::util::fs::canonicalize_path;
 
 #[derive(Debug)]
@@ -229,7 +229,7 @@ pub async fn execute_script(
   };
 
   let kill_signal = KillSignal::default();
-  run_future_with_kill_signal(kill_signal.clone(), async {
+  run_future_forwarding_signals(kill_signal.clone(), async {
     if task_flags.eval {
       return task_runner
         .run_deno_task(
