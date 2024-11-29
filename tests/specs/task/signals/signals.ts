@@ -34,7 +34,10 @@ const signals = [
 ] as const;
 
 // SIGKILL and SIGSTOP are not stoppable, SIGBREAK is for windows, and SIGUNUSED is not defined
-type SignalsToTest = Exclude<Deno.Signal, "SIGKILL" | "SIGSTOP" | "SIGBREAK" | "SIGUNUSED">;
+type SignalsToTest = Exclude<
+  Deno.Signal,
+  "SIGKILL" | "SIGSTOP" | "SIGBREAK" | "SIGUNUSED"
+>;
 type EnsureAllSignalsIncluded = SignalsToTest extends typeof signals[number]
   ? typeof signals[number] extends SignalsToTest ? true
   : never
