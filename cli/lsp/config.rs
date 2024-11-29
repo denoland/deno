@@ -41,6 +41,7 @@ use deno_path_util::url_to_file_path;
 use deno_runtime::deno_node::PackageJson;
 use indexmap::IndexSet;
 use lsp_types::ClientCapabilities;
+use std::borrow::Cow;
 use std::collections::BTreeMap;
 use std::collections::BTreeSet;
 use std::collections::HashMap;
@@ -2092,7 +2093,7 @@ impl<T: Clone> CachedFsItems<T> {
 #[derive(Default)]
 struct InnerData {
   stat_calls: CachedFsItems<deno_config::fs::FsMetadata>,
-  read_to_string_calls: CachedFsItems<String>,
+  read_to_string_calls: CachedFsItems<Cow<'static, str>>,
 }
 
 #[derive(Default)]
@@ -2113,7 +2114,7 @@ impl DenoConfigFs for CachedDenoConfigFs {
   fn read_to_string_lossy(
     &self,
     path: &Path,
-  ) -> Result<String, std::io::Error> {
+  ) -> Result<Cow<'static, str>, std::io::Error> {
     self
       .0
       .lock()
