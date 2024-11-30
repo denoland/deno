@@ -1,0 +1,20 @@
+<!-- demo.html -->
+<!DOCTYPE html>
+<html lang="en-US">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Demo</title>
+  </head>
+  <body>
+    <script type="module">
+      const supportedFormats =
+        await globalThis.BarcodeDetector?.getSupportedFormats() ?? [];
+      if (!supportedFormats.includes("qr_code")) {
+        document.body.innerHTML +=
+          '<p><a \
+href="https://developer.mozilla.org/en-US/docs/Web/API/BarcodeDetector">QR Code detection</a> is not natively supported by your web browser. 😔</p>';
+      }
+    </script>
+  </body>
+</html>

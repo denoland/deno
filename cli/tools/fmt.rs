@@ -440,8 +440,11 @@ pub fn format_html(
           )
         }
         _ => {
-          let mut typescript_config =
-            get_resolved_typescript_config(fmt_options);
+          let mut typescript_config_builder =
+            get_typescript_config_builder(fmt_options);
+          typescript_config_builder
+            .file_indent_level(hints.indent_level.try_into().unwrap_or(0));
+          let mut typescript_config = typescript_config_builder.build();
           typescript_config.line_width = hints.print_width as u32;
           dprint_plugin_typescript::format_text(
             &path,
@@ -549,11 +552,7 @@ pub fn format_sql(
   // Add single new line to the end of file.
   formatted_str.push('\n');
 
-  Ok(if formatted_str == file_text {
-    None
-  } else {
-    Some(formatted_str)
-  })
+  Ok(Some(formatted_str))
 }
 
 /// Formats a single TS, TSX, JS, JSX, JSONC, JSON, MD, IPYNB or SQL file.
@@ -846,6 +845,8 @@ fn format_ensure_stable(
             if next_pass_text == current_text {
               return Ok(Some(next_pass_text));
             }
+            eprintln!("current text {}", current_text);
+            eprintln!("next pass test {}", next_pass_text);
             current_text = next_pass_text;
           }
           Ok(None) => {
@@ -919,9 +920,9 @@ fn files_str(len: usize) -> &'static str {
   }
 }
 
-fn get_resolved_typescript_config(
+fn get_typescript_config_builder(
   options: &FmtOptionsConfig,
-) -> dprint_plugin_typescript::configuration::Configuration {
+) -> dprint_plugin_typescript::configuration::ConfigurationBuilder {
   let mut builder =
     dprint_plugin_typescript::configuration::ConfigurationBuilder::new();
   builder.deno();
@@ -953,7 +954,13 @@ fn get_resolved_typescript_config(
     });
   }
 
-  builder.build()
+  builder
+}
+
+fn get_resolved_typescript_config(
+  options: &FmtOptionsConfig,
+) -> dprint_plugin_typescript::configuration::Configuration {
+  get_typescript_config_builder(options).build()
 }
 
 fn get_resolved_markdown_config(
