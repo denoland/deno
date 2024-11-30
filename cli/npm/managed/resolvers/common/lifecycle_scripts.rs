@@ -9,6 +9,7 @@ use deno_npm::resolution::NpmResolutionSnapshot;
 use deno_runtime::deno_io::FromRawIoHandle;
 use deno_semver::package::PackageNv;
 use deno_semver::Version;
+use deno_task_shell::KillSignal;
 use std::borrow::Cow;
 use std::collections::HashSet;
 use std::rc::Rc;
@@ -156,6 +157,29 @@ impl<'a> LifecycleScripts<'a> {
     root_node_modules_dir_path: &Path,
     progress_bar: &ProgressBar,
   ) -> Result<(), AnyError> {
+    let kill_signal = KillSignal::default();
+    let _drop_signal = kill_signal.clone().drop_guard();
+    // we don't run with signals forwarded because once signals
+    // are setup then they're process wide.
+    self
+      .finish_with_cancellation(
+        snapshot,
+        packages,
+        root_node_modules_dir_path,
+        progress_bar,
+        kill_signal,
+      )
+      .await
+  }
+
+  async fn finish_with_cancellation(
+    self,
+    snapshot: &NpmResolutionSnapshot,
+    packages: &[NpmResolutionPackage],
+    root_node_modules_dir_path: &Path,
+    progress_bar: &ProgressBar,
+    kill_signal: KillSignal,
+  ) -> Result<(), AnyError> {
     self.warn_not_run_scripts()?;
     let get_package_path =
       |p: &NpmResolutionPackage| self.strategy.package_path(p);
@@ -246,6 +270,7 @@ impl<'a> LifecycleScripts<'a> {
                   stderr: TaskStdio::piped(),
                   stdout: TaskStdio::piped(),
                 }),
+                kill_signal: kill_signal.clone(),
               },
             )
             .await?;
