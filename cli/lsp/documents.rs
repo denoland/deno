@@ -925,7 +925,7 @@ impl FileSystemDocuments {
       let content = bytes_to_content(
         specifier,
         media_type,
-        cached_file.content,
+        cached_file.content.into_owned(),
         maybe_charset,
       )
       .ok()?;
