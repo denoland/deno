@@ -45,7 +45,7 @@ deno_semver.workspace = true
 deno_terminal.workspace = true
 deno_tls.workspace = true
 fastwebsockets = { workspace = true, features = ["upgrade", "unstable-split"] }
-file_test_runner = "0.7.2"
+file_test_runner = "0.7.3"
 flaky_test = "=0.2.2"
 hickory-client = "=0.24"
 hickory-server = "=0.24"

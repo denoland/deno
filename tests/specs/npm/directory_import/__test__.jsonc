@@ -1,0 +1,14 @@
+{
+  "tests": {
+    "directory_import": {
+      "args": "run folder_index_js.ts",
+      "output": "folder_index_js.out",
+      "exitCode": 1
+    },
+    "directory_import_folder_no_index": {
+      "args": "run folder_no_index.ts",
+      "output": "folder_no_index.out",
+      "exitCode": 1
+    }
+  }
+}

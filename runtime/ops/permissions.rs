@@ -99,7 +99,7 @@ pub fn op_revoke_permission(
   Ok(PermissionStatus::from(perm))
 }
 
-#[op2]
+#[op2(stack_trace)]
 #[serde]
 pub fn op_request_permission(
   state: &mut OpState,

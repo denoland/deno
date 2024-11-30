@@ -17,7 +17,6 @@ use file_test_runner::collection::CollectTestsError;
 use file_test_runner::collection::CollectedCategoryOrTest;
 use file_test_runner::collection::CollectedTest;
 use file_test_runner::collection::CollectedTestCategory;
-use file_test_runner::SubTestResult;
 use file_test_runner::TestResult;
 use once_cell::sync::Lazy;
 use serde::Deserialize;
@@ -256,19 +255,10 @@ fn run_test(test: &CollectedTest<serde_json::Value>) -> TestResult {
     if metadata.ignore {
       TestResult::Ignored
     } else if let Some(repeat) = metadata.repeat {
-      TestResult::SubTests(
-        (0..repeat)
-          .map(|i| {
-            let diagnostic_logger = diagnostic_logger.clone();
-            SubTestResult {
-              name: format!("run {}", i + 1),
-              result: TestResult::from_maybe_panic(AssertUnwindSafe(|| {
-                run_test_inner(&metadata, &cwd, diagnostic_logger);
-              })),
-            }
-          })
-          .collect(),
-      )
+      for _ in 0..repeat {
+        run_test_inner(&metadata, &cwd, diagnostic_logger.clone());
+      }
+      TestResult::Passed
     } else {
       run_test_inner(&metadata, &cwd, diagnostic_logger.clone());
       TestResult::Passed

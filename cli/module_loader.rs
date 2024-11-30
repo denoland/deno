@@ -27,7 +27,7 @@ use crate::node;
 use crate::node::CliNodeCodeTranslator;
 use crate::npm::CliNpmResolver;
 use crate::resolver::CjsTracker;
-use crate::resolver::CliNodeResolver;
+use crate::resolver::CliNpmReqResolver;
 use crate::resolver::CliResolver;
 use crate::resolver::ModuleCodeStringSource;
 use crate::resolver::NotSupportedKindInNpmError;
@@ -57,24 +57,25 @@ use deno_core::ModuleSourceCode;
 use deno_core::ModuleSpecifier;
 use deno_core::ModuleType;
 use deno_core::RequestedModuleType;
-use deno_core::ResolutionKind;
 use deno_core::SourceCodeCacheInfo;
-use deno_graph::source::ResolutionMode;
 use deno_graph::GraphKind;
 use deno_graph::JsModule;
 use deno_graph::JsonModule;
 use deno_graph::Module;
 use deno_graph::ModuleGraph;
 use deno_graph::Resolution;
+use deno_graph::WasmModule;
 use deno_runtime::code_cache;
 use deno_runtime::deno_fs::FileSystem;
 use deno_runtime::deno_node::create_host_defined_options;
 use deno_runtime::deno_node::NodeRequireLoader;
+use deno_runtime::deno_node::NodeResolver;
 use deno_runtime::deno_permissions::PermissionsContainer;
 use deno_semver::npm::NpmPackageReqReference;
 use node_resolver::errors::ClosestPkgJsonError;
 use node_resolver::InNpmPackageChecker;
-use node_resolver::NodeResolutionMode;
+use node_resolver::NodeResolutionKind;
+use node_resolver::ResolutionMode;
 
 pub struct ModuleLoadPreparer {
   options: Arc<CliOptions>,
@@ -215,7 +216,8 @@ struct SharedCliModuleLoaderState {
   main_module_graph_container: Arc<MainModuleGraphContainer>,
   module_load_preparer: Arc<ModuleLoadPreparer>,
   node_code_translator: Arc<CliNodeCodeTranslator>,
-  node_resolver: Arc<CliNodeResolver>,
+  node_resolver: Arc<NodeResolver>,
+  npm_req_resolver: Arc<CliNpmReqResolver>,
   npm_resolver: Arc<dyn CliNpmResolver>,
   npm_module_loader: NpmModuleLoader,
   parsed_source_cache: Arc<ParsedSourceCache>,
@@ -238,7 +240,8 @@ impl CliModuleLoaderFactory {
     main_module_graph_container: Arc<MainModuleGraphContainer>,
     module_load_preparer: Arc<ModuleLoadPreparer>,
     node_code_translator: Arc<CliNodeCodeTranslator>,
-    node_resolver: Arc<CliNodeResolver>,
+    node_resolver: Arc<NodeResolver>,
+    npm_req_resolver: Arc<CliNpmReqResolver>,
     npm_resolver: Arc<dyn CliNpmResolver>,
     npm_module_loader: NpmModuleLoader,
     parsed_source_cache: Arc<ParsedSourceCache>,
@@ -264,6 +267,7 @@ impl CliModuleLoaderFactory {
         module_load_preparer,
         node_code_translator,
         node_resolver,
+        npm_req_resolver,
         npm_resolver,
         npm_module_loader,
         parsed_source_cache,
@@ -364,7 +368,9 @@ impl<TGraphContainer: ModuleGraphContainer>
     requested_module_type: RequestedModuleType,
   ) -> Result<ModuleSource, AnyError> {
     let code_source = self.load_code_source(specifier, maybe_referrer).await?;
-    let code = if self.shared.is_inspecting {
+    let code = if self.shared.is_inspecting
+      || code_source.media_type == MediaType::Wasm
+    {
       // we need the code with the source map in order for
       // it to work with --inspect or --inspect-brk
       code_source.code
@@ -374,6 +380,7 @@ impl<TGraphContainer: ModuleGraphContainer>
     };
     let module_type = match code_source.media_type {
       MediaType::Json => ModuleType::Json,
+      MediaType::Wasm => ModuleType::Wasm,
       _ => ModuleType::JavaScript,
     };
 
@@ -425,7 +432,7 @@ impl<TGraphContainer: ModuleGraphContainer>
     if let Some(code_source) = self.load_prepared_module(specifier).await? {
       return Ok(code_source);
     }
-    if self.shared.node_resolver.in_npm_package(specifier) {
+    if self.shared.in_npm_pkg_checker.in_npm_package(specifier) {
       return self
         .shared
         .npm_module_loader
@@ -470,21 +477,6 @@ impl<TGraphContainer: ModuleGraphContainer>
     raw_specifier: &str,
     referrer: &ModuleSpecifier,
   ) -> Result<ModuleSpecifier, AnyError> {
-    if self.shared.node_resolver.in_npm_package(referrer) {
-      return Ok(
-        self
-          .shared
-          .node_resolver
-          .resolve(
-            raw_specifier,
-            referrer,
-            self.shared.cjs_tracker.get_referrer_kind(referrer),
-            NodeResolutionMode::Execution,
-          )?
-          .into_url(),
-      );
-    }
-
     let graph = self.graph_container.graph();
     let resolution = match graph.get(referrer) {
       Some(Module::Js(module)) => module
@@ -505,25 +497,27 @@ impl<TGraphContainer: ModuleGraphContainer>
       }
       Resolution::None => Cow::Owned(self.shared.resolver.resolve(
         raw_specifier,
-        &deno_graph::Range {
-          specifier: referrer.clone(),
-          start: deno_graph::Position::zeroed(),
-          end: deno_graph::Position::zeroed(),
-        },
-        self.shared.cjs_tracker.get_referrer_kind(referrer),
-        ResolutionMode::Execution,
+        referrer,
+        deno_graph::Position::zeroed(),
+        // if we're here, that means it's resolving a dynamic import
+        ResolutionMode::Import,
+        NodeResolutionKind::Execution,
       )?),
     };
 
     if self.shared.is_repl {
       if let Ok(reference) = NpmPackageReqReference::from_specifier(&specifier)
       {
-        return self.shared.node_resolver.resolve_req_reference(
-          &reference,
-          referrer,
-          self.shared.cjs_tracker.get_referrer_kind(referrer),
-          NodeResolutionMode::Execution,
-        );
+        return self
+          .shared
+          .npm_req_resolver
+          .resolve_req_reference(
+            &reference,
+            referrer,
+            ResolutionMode::Import,
+            NodeResolutionKind::Execution,
+          )
+          .map_err(AnyError::from);
       }
     }
 
@@ -538,12 +532,12 @@ impl<TGraphContainer: ModuleGraphContainer>
         self
           .shared
           .node_resolver
-          .resolve_package_sub_path_from_deno_module(
+          .resolve_package_subpath_from_deno_module(
             &package_folder,
             module.nv_reference.sub_path(),
             Some(referrer),
-            self.shared.cjs_tracker.get_referrer_kind(referrer),
-            NodeResolutionMode::Execution,
+            ResolutionMode::Import,
+            NodeResolutionKind::Execution,
           )
           .with_context(|| {
             format!("Could not resolve '{}'.", module.nv_reference)
@@ -552,6 +546,7 @@ impl<TGraphContainer: ModuleGraphContainer>
       Some(Module::Node(module)) => module.specifier.clone(),
       Some(Module::Js(module)) => module.specifier.clone(),
       Some(Module::Json(module)) => module.specifier.clone(),
+      Some(Module::Wasm(module)) => module.specifier.clone(),
       Some(Module::External(module)) => {
         node::resolve_specifier_into_node_modules(
           &module.specifier,
@@ -723,6 +718,13 @@ impl<TGraphContainer: ModuleGraphContainer>
           media_type: *media_type,
         })))
       }
+      Some(deno_graph::Module::Wasm(WasmModule {
+        source, specifier, ..
+      })) => Ok(Some(CodeOrDeferredEmit::Code(ModuleCodeStringSource {
+        code: ModuleSourceCode::Bytes(source.clone().into()),
+        found_url: specifier.clone(),
+        media_type: MediaType::Wasm,
+      }))),
       Some(
         deno_graph::Module::External(_)
         | deno_graph::Module::Node(_)
@@ -801,7 +803,7 @@ impl<TGraphContainer: ModuleGraphContainer> ModuleLoader
     &self,
     specifier: &str,
     referrer: &str,
-    _kind: ResolutionKind,
+    _kind: deno_core::ResolutionKind,
   ) -> Result<ModuleSpecifier, AnyError> {
     fn ensure_not_jsr_non_jsr_remote_import(
       specifier: &ModuleSpecifier,
@@ -828,7 +830,7 @@ impl<TGraphContainer: ModuleGraphContainer> ModuleLoader
     name: &str,
   ) -> Option<deno_core::v8::Local<'s, deno_core::v8::Data>> {
     let name = deno_core::ModuleSpecifier::parse(name).ok()?;
-    if self.0.shared.node_resolver.in_npm_package(&name) {
+    if self.0.shared.in_npm_pkg_checker.in_npm_package(&name) {
       Some(create_host_defined_options(scope))
     } else {
       None
@@ -865,7 +867,7 @@ impl<TGraphContainer: ModuleGraphContainer> ModuleLoader
     _maybe_referrer: Option<String>,
     is_dynamic: bool,
   ) -> Pin<Box<dyn Future<Output = Result<(), AnyError>>>> {
-    if self.0.shared.node_resolver.in_npm_package(specifier) {
+    if self.0.shared.in_npm_pkg_checker.in_npm_package(specifier) {
       return Box::pin(deno_core::futures::future::ready(Ok(())));
     }
 
@@ -1058,7 +1060,10 @@ impl<TGraphContainer: ModuleGraphContainer> NodeRequireLoader
     self.npm_resolver.ensure_read_permission(permissions, path)
   }
 
-  fn load_text_file_lossy(&self, path: &Path) -> Result<String, AnyError> {
+  fn load_text_file_lossy(
+    &self,
+    path: &Path,
+  ) -> Result<Cow<'static, str>, AnyError> {
     // todo(dsherret): use the preloaded module from the graph if available?
     let media_type = MediaType::from_path(path);
     let text = self.fs.read_text_file_lossy_sync(path, None)?;
@@ -1073,15 +1078,18 @@ impl<TGraphContainer: ModuleGraphContainer> NodeRequireLoader
           .into(),
         );
       }
-      self.emitter.emit_parsed_source_sync(
-        &specifier,
-        media_type,
-        // this is probably not super accurate due to require esm, but probably ok.
-        // If we find this causes a lot of churn in the emit cache then we should
-        // investigate how we can make this better
-        ModuleKind::Cjs,
-        &text.into(),
-      )
+      self
+        .emitter
+        .emit_parsed_source_sync(
+          &specifier,
+          media_type,
+          // this is probably not super accurate due to require esm, but probably ok.
+          // If we find this causes a lot of churn in the emit cache then we should
+          // investigate how we can make this better
+          ModuleKind::Cjs,
+          &text.into(),
+        )
+        .map(Cow::Owned)
     } else {
       Ok(text)
     }

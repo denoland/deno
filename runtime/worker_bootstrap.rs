@@ -1,8 +1,8 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
-use crate::ops::otel::OtelConfig;
 use deno_core::v8;
 use deno_core::ModuleSpecifier;
+use deno_telemetry::OtelConfig;
 use serde::Serialize;
 use std::cell::RefCell;
 use std::thread;
@@ -226,7 +226,7 @@ impl BootstrapOptions {
       serve_is_main,
       serve_worker_count,
       if let Some(otel_config) = self.otel_config.as_ref() {
-        Box::new([otel_config.console as u8])
+        Box::new([otel_config.console as u8, otel_config.deterministic as u8])
       } else {
         Box::new([])
       },

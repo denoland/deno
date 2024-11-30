@@ -431,8 +431,34 @@
       "type": "object",
       "patternProperties": {
         "^[A-Za-z][A-Za-z0-9_\\-:]*$": {
-          "type": "string",
-          "description": "Command to execute for this task name."
+          "oneOf": [
+            {
+              "type": "string",
+              "description": "Command to execute for this task name."
+            },
+            {
+              "type": "object",
+              "description": "A definition of a task to execute",
+              "properties": {
+                "description": {
+                  "type": "string",
+                  "description": "Description of a task that will be shown when running `deno task` without a task name"
+                },
+                "command": {
+                  "type": "string",
+                  "required": true,
+                  "description": "The task to execute"
+                },
+                "dependencies": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  },
+                  "description": "Tasks that should be executed before this task"
+                }
+              }
+            }
+          ]
         }
       },
       "additionalProperties": false
@@ -528,12 +554,15 @@
           "bare-node-builtins",
           "byonm",
           "cron",
+          "detect-cjs",
           "ffi",
           "fs",
           "fmt-component",
+          "fmt-sql",
           "http",
           "kv",
           "net",
+          "node-globals",
           "sloppy-imports",
           "temporal",
           "unsafe-proto",

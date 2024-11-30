@@ -61,5 +61,10 @@
       "file_path": "[WILDCARD]malformed.js",
       "message": "Expected '{', got 'B' at [WILDCARD]malformed.js:4:16\n\n  export class A B C\n                 ~"
     }
+  ],
+  "checked_files": [
+    "[WILDCARD]file1.js",
+    "[WILDCARD]file2.ts",
+    "[WILDCARD]malformed.js"
   ]
 }

@@ -1,5 +1,6 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
+use boxed_error::Boxed;
 use deno_core::error::AnyError;
 use deno_core::op2;
 use deno_core::url::Url;
@@ -7,13 +8,14 @@ use deno_core::v8;
 use deno_core::JsRuntimeInspector;
 use deno_core::OpState;
 use deno_fs::FileSystemRc;
-use deno_package_json::NodeModuleKind;
+use deno_fs::V8MaybeStaticStr;
 use deno_package_json::PackageJsonRc;
 use deno_path_util::normalize_path;
 use deno_path_util::url_from_file_path;
 use deno_path_util::url_to_file_path;
 use node_resolver::errors::ClosestPkgJsonError;
-use node_resolver::NodeResolutionMode;
+use node_resolver::NodeResolutionKind;
+use node_resolver::ResolutionMode;
 use node_resolver::REQUIRE_CONDITIONS;
 use std::borrow::Cow;
 use std::cell::RefCell;
@@ -24,7 +26,7 @@ use std::rc::Rc;
 use crate::NodePermissions;
 use crate::NodeRequireLoaderRc;
 use crate::NodeResolverRc;
-use crate::NpmResolverRc;
+use crate::NpmPackageFolderResolverRc;
 use crate::PackageJsonResolverRc;
 
 #[must_use = "the resolved return value to mitigate time-of-check to time-of-use issues"]
@@ -40,8 +42,11 @@ where
   loader.ensure_read_permission(permissions, file_path)
 }
 
+#[derive(Debug, Boxed)]
+pub struct RequireError(pub Box<RequireErrorKind>);
+
 #[derive(Debug, thiserror::Error)]
-pub enum RequireError {
+pub enum RequireErrorKind {
   #[error(transparent)]
   UrlParse(#[from] url::ParseError),
   #[error(transparent)]
@@ -121,7 +126,7 @@ pub fn op_require_init_paths() -> Vec<String> {
   vec![]
 }
 
-#[op2]
+#[op2(stack_trace)]
 #[serde]
 pub fn op_require_node_module_paths<P>(
   state: &mut OpState,
@@ -135,7 +140,7 @@ where
   let from = if from.starts_with("file:///") {
     url_to_file_path(&Url::parse(&from)?)?
   } else {
-    let current_dir = &fs.cwd().map_err(RequireError::UnableToGetCwd)?;
+    let current_dir = &fs.cwd().map_err(RequireErrorKind::UnableToGetCwd)?;
     normalize_path(current_dir.join(from))
   };
 
@@ -220,7 +225,7 @@ pub fn op_require_resolve_deno_dir(
   #[string] request: String,
   #[string] parent_filename: String,
 ) -> Result<Option<String>, AnyError> {
-  let resolver = state.borrow::<NpmResolverRc>();
+  let resolver = state.borrow::<NpmPackageFolderResolverRc>();
   Ok(
     resolver
       .resolve_package_folder_from_package(
@@ -291,7 +296,7 @@ pub fn op_require_path_is_absolute(#[string] p: String) -> bool {
   PathBuf::from(p).is_absolute()
 }
 
-#[op2(fast)]
+#[op2(fast, stack_trace)]
 pub fn op_require_stat<P>(
   state: &mut OpState,
   #[string] path: String,
@@ -313,7 +318,7 @@ where
   Ok(-1)
 }
 
-#[op2]
+#[op2(stack_trace)]
 #[string]
 pub fn op_require_real_path<P>(
   state: &mut OpState,
@@ -324,7 +329,7 @@ where
 {
   let path = PathBuf::from(request);
   let path = ensure_read_permission::<P>(state, &path)
-    .map_err(RequireError::Permission)?;
+    .map_err(RequireErrorKind::Permission)?;
   let fs = state.borrow::<FileSystemRc>();
   let canonicalized_path =
     deno_path_util::strip_unc_prefix(fs.realpath_sync(&path)?);
@@ -377,7 +382,7 @@ pub fn op_require_path_basename(
   }
 }
 
-#[op2]
+#[op2(stack_trace)]
 #[string]
 pub fn op_require_try_self_parent_path<P>(
   state: &mut OpState,
@@ -408,7 +413,7 @@ where
   Ok(None)
 }
 
-#[op2]
+#[op2(stack_trace)]
 #[string]
 pub fn op_require_try_self<P>(
   state: &mut OpState,
@@ -458,9 +463,9 @@ where
       &expansion,
       exports,
       Some(&referrer),
-      NodeModuleKind::Cjs,
+      ResolutionMode::Require,
       REQUIRE_CONDITIONS,
-      NodeResolutionMode::Execution,
+      NodeResolutionKind::Execution,
     )?;
     Ok(Some(if r.scheme() == "file" {
       url_to_file_path_string(&r)?
@@ -472,23 +477,24 @@ where
   }
 }
 
-#[op2]
-#[string]
+#[op2(stack_trace)]
+#[to_v8]
 pub fn op_require_read_file<P>(
   state: &mut OpState,
   #[string] file_path: String,
-) -> Result<String, RequireError>
+) -> Result<V8MaybeStaticStr, RequireError>
 where
   P: NodePermissions + 'static,
 {
   let file_path = PathBuf::from(file_path);
   // todo(dsherret): there's multiple borrows to NodeRequireLoaderRc here
   let file_path = ensure_read_permission::<P>(state, &file_path)
-    .map_err(RequireError::Permission)?;
+    .map_err(RequireErrorKind::Permission)?;
   let loader = state.borrow::<NodeRequireLoaderRc>();
   loader
     .load_text_file_lossy(&file_path)
-    .map_err(RequireError::ReadModule)
+    .map(V8MaybeStaticStr)
+    .map_err(|e| RequireErrorKind::ReadModule(e).into_box())
 }
 
 #[op2]
@@ -503,7 +509,7 @@ pub fn op_require_as_file_path(#[string] file_or_url: String) -> String {
   file_or_url
 }
 
-#[op2]
+#[op2(stack_trace)]
 #[string]
 pub fn op_require_resolve_exports<P>(
   state: &mut OpState,
@@ -555,9 +561,9 @@ where
     &format!(".{expansion}"),
     exports,
     referrer.as_ref(),
-    NodeModuleKind::Cjs,
+    ResolutionMode::Require,
     REQUIRE_CONDITIONS,
-    NodeResolutionMode::Execution,
+    NodeResolutionKind::Execution,
   )?;
   Ok(Some(if r.scheme() == "file" {
     url_to_file_path_string(&r)?
@@ -579,7 +585,7 @@ pub fn op_require_is_maybe_cjs(
   loader.is_maybe_cjs(&url)
 }
 
-#[op2]
+#[op2(stack_trace)]
 #[serde]
 pub fn op_require_read_package_scope<P>(
   state: &mut OpState,
@@ -600,7 +606,7 @@ where
     .flatten()
 }
 
-#[op2]
+#[op2(stack_trace)]
 #[string]
 pub fn op_require_package_imports_resolve<P>(
   state: &mut OpState,
@@ -612,7 +618,7 @@ where
 {
   let referrer_path = PathBuf::from(&referrer_filename);
   let referrer_path = ensure_read_permission::<P>(state, &referrer_path)
-    .map_err(RequireError::Permission)?;
+    .map_err(RequireErrorKind::Permission)?;
   let pkg_json_resolver = state.borrow::<PackageJsonResolverRc>();
   let Some(pkg) =
     pkg_json_resolver.get_closest_package_json_from_path(&referrer_path)?
@@ -626,10 +632,10 @@ where
     let url = node_resolver.package_imports_resolve(
       &request,
       Some(&referrer_url),
-      NodeModuleKind::Cjs,
+      ResolutionMode::Require,
       Some(&pkg),
       REQUIRE_CONDITIONS,
-      NodeResolutionMode::Execution,
+      NodeResolutionKind::Execution,
     )?;
     Ok(Some(url_to_file_path_string(&url)?))
   } else {

@@ -15,7 +15,7 @@ use deno_core::url::Url;
 use deno_core::v8;
 use deno_core::v8::ExternalReference;
 use node_resolver::errors::ClosestPkgJsonError;
-use node_resolver::NpmResolverRc;
+use node_resolver::NpmPackageFolderResolverRc;
 use once_cell::sync::Lazy;
 
 extern crate libz_sys as zlib;
@@ -157,7 +157,10 @@ pub trait NodeRequireLoader {
     path: &'a Path,
   ) -> Result<Cow<'a, Path>, AnyError>;
 
-  fn load_text_file_lossy(&self, path: &Path) -> Result<String, AnyError>;
+  fn load_text_file_lossy(
+    &self,
+    path: &Path,
+  ) -> Result<Cow<'static, str>, AnyError>;
 
   /// Get if the module kind is maybe CJS and loading should determine
   /// if its CJS or ESM.
@@ -183,7 +186,7 @@ fn op_node_build_os() -> String {
 pub struct NodeExtInitServices {
   pub node_require_loader: NodeRequireLoaderRc,
   pub node_resolver: NodeResolverRc,
-  pub npm_resolver: NpmResolverRc,
+  pub npm_resolver: NpmPackageFolderResolverRc,
   pub pkg_json_resolver: PackageJsonResolverRc,
 }
 
@@ -426,6 +429,9 @@ deno_core::extension!(deno_node,
     ops::inspector::op_inspector_disconnect,
     ops::inspector::op_inspector_emit_protocol_event,
     ops::inspector::op_inspector_enabled,
+  ],
+  objects = [
+    ops::perf_hooks::EldHistogram
   ],
   esm_entry_point = "ext:deno_node/02_init.js",
   esm = [
@@ -866,7 +872,7 @@ impl deno_package_json::fs::DenoPkgJsonFs for DenoFsNodeResolverEnv {
   fn read_to_string_lossy(
     &self,
     path: &std::path::Path,
-  ) -> Result<String, std::io::Error> {
+  ) -> Result<Cow<'static, str>, std::io::Error> {
     self
       .fs
       .read_text_file_lossy_sync(path, None)
@@ -880,7 +886,7 @@ impl<'a> deno_package_json::fs::DenoPkgJsonFs for DenoPkgJsonFsAdapter<'a> {
   fn read_to_string_lossy(
     &self,
     path: &Path,
-  ) -> Result<String, std::io::Error> {
+  ) -> Result<Cow<'static, str>, std::io::Error> {
     self
       .0
       .read_text_file_lossy_sync(path, None)

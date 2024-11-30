@@ -440,6 +440,58 @@ Deno.test(
 );
 
 Deno.test(
+  {
+    permissions: { net: true },
+  },
+  async function fetchWithAuthorizationHeaderRedirection() {
+    const response = await fetch("http://localhost:4546/echo_server", {
+      headers: { authorization: "Bearer foo" },
+    });
+    assertEquals(response.status, 200);
+    assertEquals(response.statusText, "OK");
+    assertEquals(response.url, "http://localhost:4545/echo_server");
+    assertEquals(response.headers.get("authorization"), null);
+    assertEquals(await response.text(), "");
+  },
+);
+
+Deno.test(
+  {
+    permissions: { net: true },
+  },
+  async function fetchWithCookieHeaderRedirection() {
+    const response = await fetch("http://localhost:4546/echo_server", {
+      headers: { Cookie: "sessionToken=verySecret" },
+    });
+    assertEquals(response.status, 200);
+    assertEquals(response.statusText, "OK");
+    assertEquals(response.url, "http://localhost:4545/echo_server");
+    assertEquals(response.headers.get("cookie"), null);
+    assertEquals(await response.text(), "");
+  },
+);
+
+Deno.test(
+  {
+    permissions: { net: true },
+  },
+  async function fetchWithProxyAuthorizationHeaderRedirection() {
+    const response = await fetch("http://localhost:4546/echo_server", {
+      headers: {
+        "proxy-authorization": "Basic ZXNwZW46a29rb3M=",
+        "accept": "application/json",
+      },
+    });
+    assertEquals(response.status, 200);
+    assertEquals(response.statusText, "OK");
+    assertEquals(response.url, "http://localhost:4545/echo_server");
+    assertEquals(response.headers.get("proxy-authorization"), null);
+    assertEquals(response.headers.get("accept"), "application/json");
+    assertEquals(await response.text(), "");
+  },
+);
+
+Deno.test(
   { permissions: { net: true } },
   async function fetchInitStringBody() {
     const data = "Hello World";
@@ -2119,3 +2171,30 @@ Deno.test(
     await server;
   },
 );
+
+Deno.test("fetch async iterable", async () => {
+  const iterable = (async function* () {
+    yield new Uint8Array([1, 2, 3, 4, 5]);
+    yield new Uint8Array([6, 7, 8, 9, 10]);
+  })();
+  const res = new Response(iterable);
+  const actual = await res.bytes();
+  const expected = new Uint8Array([1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
+  assertEquals(actual, expected);
+});
+
+Deno.test("fetch iterable", async () => {
+  const iterable = (function* () {
+    yield new Uint8Array([1, 2, 3, 4, 5]);
+    yield new Uint8Array([6, 7, 8, 9, 10]);
+  })();
+  const res = new Response(iterable);
+  const actual = await res.bytes();
+  const expected = new Uint8Array([1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
+  assertEquals(actual, expected);
+});
+
+Deno.test("fetch string object", async () => {
+  const res = new Response(Object("hello"));
+  assertEquals(await res.text(), "hello");
+});

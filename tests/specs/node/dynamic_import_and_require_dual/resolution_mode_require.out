@@ -1,0 +1,5 @@
+Check file:///[WILDLINE]/resolution_mode_require.mts
+error: TS2322 [ERROR]: Type '"other"' is not assignable to type '"cjs"'.
+const test: typeof kind = "other";
+      ~~~~
+    at file:///[WILDLINE]/resolution_mode_require.mts:5:7
