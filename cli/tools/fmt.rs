@@ -442,6 +442,7 @@ pub fn format_html(
         _ => {
           let mut typescript_config_builder =
             get_typescript_config_builder(fmt_options);
+          eprintln!("indent level {}", hints.indent_level);
           typescript_config_builder
             .file_indent_level(hints.indent_level.try_into().unwrap_or(0));
           let mut typescript_config = typescript_config_builder.build();
