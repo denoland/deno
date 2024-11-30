@@ -444,7 +444,7 @@ fn collect_lint_files(
 #[allow(clippy::print_stdout)]
 pub fn print_rules_list(json: bool, maybe_rules_tags: Option<Vec<String>>) {
   let rule_provider = LintRuleProvider::new(None, None);
-  let lint_rules = rule_provider
+  let mut lint_rules = rule_provider
     .resolve_lint_rules(
       LintRulesConfig {
         tags: maybe_rules_tags.clone(),
@@ -454,6 +454,7 @@ pub fn print_rules_list(json: bool, maybe_rules_tags: Option<Vec<String>>) {
       None,
     )
     .rules;
+  lint_rules.sort_by_cached_key(|rule| rule.code().to_string());
 
   if json {
     let json_output = serde_json::json!({
