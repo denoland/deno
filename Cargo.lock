@@ -1804,8 +1804,7 @@ dependencies = [
 [[package]]
 name = "deno_lint"
 version = "0.68.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ce2a040657166e39c7d59ad34230f0cc829f8ea8b7b2377038cc012ec1a1ef16"
+source = "git+https://github.com/denoland/deno_lint.git?branch=main#3aca2e723ba1fc98504ea25340414e31224a980d"
 dependencies = [
  "anyhow",
  "deno_ast",
@@ -9048,8 +9047,3 @@ dependencies = [
  "cc",
  "pkg-config",
 ]
-
-[[patch.unused]]
-name = "deno_lint"
-version = "0.68.1"
-source = "git+https://github.com/denoland/deno_lint.git?branch=main#3aca2e723ba1fc98504ea25340414e31224a980d"
