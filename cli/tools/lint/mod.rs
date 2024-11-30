@@ -552,8 +552,8 @@ fn handle_lint_result(
         }
         diagnostics.is_empty()
       }
-      LintResult::Skipped { diagnostic } => {
-        reporter.visit_diagnostic(&diagnostic);
+      LintResult::Skipped { reason } => {
+        reporter.visit_skipped(file_path, &reason);
         true
       }
     },
@@ -566,6 +566,12 @@ fn handle_lint_result(
 
 #[derive(Serialize)]
 struct LintError {
+  file_path: String,
+  message: String,
+}
+
+#[derive(Serialize)]
+struct LintSkipped {
   file_path: String,
   message: String,
 }

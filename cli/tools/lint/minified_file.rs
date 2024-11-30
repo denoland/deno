@@ -19,7 +19,8 @@ impl FileMetrics {
   }
 }
 
-pub fn analyze_content(content: &str) -> FileMetrics {
+/// Analyze the content and tell if the file is most likely a minified file or not.
+pub fn is_likely_minified(content: &str) -> bool {
   const LONG_LINE_LEN: usize = 250;
   let mut total_lines = 0;
   let mut long_lines_count = 0;
@@ -27,6 +28,12 @@ pub fn analyze_content(content: &str) -> FileMetrics {
   let mut total_chars = 0;
   let mut has_license = false;
   let mut in_multiline_comment = false;
+
+  // If total len of a file is shorter than the "long line" length, don't bother analyzing
+  // and consider non-minified.
+  if content.len() < LONG_LINE_LEN {
+    return false;
+  }
 
   // Preallocate a line buffer to avoid per-line allocations
   let mut line_buffer = String::with_capacity(1024);
@@ -93,12 +100,14 @@ pub fn analyze_content(content: &str) -> FileMetrics {
     0.0
   };
 
-  FileMetrics {
+  let metrics = FileMetrics {
     long_lines_count,
     total_lines,
     whitespace_ratio,
     has_license_comment: has_license,
-  }
+  };
+
+  metrics.is_likely_minified()
 }
 
 #[cfg(test)]
@@ -119,31 +128,32 @@ const x = 42;
 /* Multi-line
     comment */
 "#;
-    let metrics = analyze_content(content);
-    assert!(!metrics.is_likely_minified());
+    assert!(!is_likely_minified(content));
+  }
+
+  #[test]
+  fn empty_file() {
+    assert!(!is_likely_minified(""));
   }
 
   #[test]
   fn test_minified_file_col_length() {
     let content =
       "const LOREM_IPSUM = `Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat. Duis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla pariatur.`";
-    let metrics = analyze_content(content);
-    assert!(metrics.is_likely_minified());
+    assert!(is_likely_minified(content));
   }
 
   #[test]
   fn test_minified_js() {
     let content = "function hello(){console.log(\"Hello, world!\")}const x=42;function veryLongFunction(){return\"This is a very long line that exceeds 250 characters and contains lots of code and stuff and more code and even more stuff until we definitely exceed the limit we set for considering a line to be very long in our minification detection algorithm\"}";
-    let metrics = analyze_content(content);
-    assert!(metrics.is_likely_minified());
+    assert!(is_likely_minified(content));
   }
 
   #[test]
   fn test_minified_file_whitespace() {
     let content =
       "function f(a,b){return a.concat(b)}var x=function(n){return n+1};";
-    let metrics = analyze_content(content);
-    assert!(!metrics.is_likely_minified());
+    assert!(!is_likely_minified(content));
   }
 
   #[test]
@@ -153,8 +163,7 @@ const x = 42;
 * Licensed under MIT License
 */
 "#;
-    let metrics = analyze_content(content);
-    assert!(!metrics.is_likely_minified());
+    assert!(!is_likely_minified(content));
   }
 
   #[test]
@@ -167,7 +176,6 @@ function concatenateArrays(array1, array2) {
 const incrementNumber = function(number) {
     return number + 1;
 };"#;
-    let metrics = analyze_content(content);
-    assert!(!metrics.is_likely_minified());
+    assert!(!is_likely_minified(content));
   }
 }
