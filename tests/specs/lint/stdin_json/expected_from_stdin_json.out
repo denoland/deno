@@ -20,6 +20,7 @@
       "hint": [WILDCARD]
     }
   ],
+  "skipped": [],
   "errors": [],
   "checked_files": [
     "[WILDCARD]main.ts"
