@@ -60,6 +60,23 @@ pub async fn load_plugins() -> Result<(), AnyError> {
   for key in container.plugins.keys() {
     eprintln!(" - {}", key);
   }
+
+  for (name, plugin) in container.plugins.iter() {
+    // TODO(bartlomieju): pass context object
+    let call = runtime.call_with_args(&plugin.create, &[]);
+    let result = runtime
+      .with_event_loop_promise(call, PollEventLoopOptions::default())
+      .await;
+    match result {
+      Ok(r) => {
+        eprintln!("plugin finished")
+      }
+      Err(error) => {
+        eprintln!("error running plugin {}", error);
+      }
+    }
+  }
+
   Ok(())
 }
 
