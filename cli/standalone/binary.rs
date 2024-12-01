@@ -282,14 +282,13 @@ impl StandaloneModules {
           .vfs
           .read_file_all(entry, VfsFileSubDataKind::ModuleGraph)?,
         Err(err) if err.kind() == ErrorKind::NotFound => {
-          let bytes = match RealFs.read_file_sync(&path, None) {
+          match RealFs.read_file_sync(&path, None) {
             Ok(bytes) => bytes,
             Err(FsError::Io(err)) if err.kind() == ErrorKind::NotFound => {
               return Ok(None)
             }
             Err(err) => return Err(err.into()),
-          };
-          Cow::Owned(bytes)
+          }
         }
         Err(err) => return Err(err.into()),
       };
@@ -694,7 +693,7 @@ impl<'a> DenoCompileBinaryWriter<'a> {
             &file_path,
             match maybe_source {
               Some(source) => source,
-              None => RealFs.read_file_sync(&file_path, None)?,
+              None => RealFs.read_file_sync(&file_path, None)?.into_owned(),
             },
             VfsFileSubDataKind::ModuleGraph,
           )
@@ -777,6 +776,7 @@ impl<'a> DenoCompileBinaryWriter<'a> {
       unstable_config: UnstableConfig {
         legacy_flag_enabled: false,
         bare_node_builtins: self.cli_options.unstable_bare_node_builtins(),
+        detect_cjs: self.cli_options.unstable_detect_cjs(),
         sloppy_imports: self.cli_options.unstable_sloppy_imports(),
         features: self.cli_options.unstable_features(),
       },

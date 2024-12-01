@@ -48,7 +48,6 @@ use crate::resolver::CliNpmReqResolver;
 use crate::resolver::CliResolver;
 use crate::resolver::CliResolverOptions;
 use crate::resolver::CliSloppyImportsResolver;
-use crate::resolver::IsCjsResolverOptions;
 use crate::resolver::NpmModuleLoader;
 use crate::resolver::SloppyImportsCachedFs;
 use crate::standalone::DenoCompileBinaryWriter;
@@ -72,6 +71,7 @@ use deno_core::error::AnyError;
 use deno_core::futures::FutureExt;
 use deno_core::FeatureChecker;
 
+use deno_resolver::cjs::IsCjsResolutionMode;
 use deno_resolver::npm::NpmReqResolverOptions;
 use deno_resolver::DenoResolverOptions;
 use deno_resolver::NodeAndNpmReqResolver;
@@ -504,7 +504,12 @@ impl CliFactory {
         let resolver = cli_options
           .create_workspace_resolver(
             self.file_fetcher()?,
-            if cli_options.use_byonm() {
+            if cli_options.use_byonm()
+              && !matches!(
+                cli_options.sub_command(),
+                DenoSubcommand::Publish(_)
+              )
+            {
               PackageJsonDepResolution::Disabled
             } else {
               // todo(dsherret): this should be false for nodeModulesDir: true
@@ -845,9 +850,12 @@ impl CliFactory {
       Ok(Arc::new(CjsTracker::new(
         self.in_npm_pkg_checker()?.clone(),
         self.pkg_json_resolver().clone(),
-        IsCjsResolverOptions {
-          detect_cjs: options.detect_cjs(),
-          is_node_main: options.is_node_main(),
+        if options.is_node_main() || options.unstable_detect_cjs() {
+          IsCjsResolutionMode::ImplicitTypeCommonJs
+        } else if options.detect_cjs() {
+          IsCjsResolutionMode::ExplicitTypeCommonJs
+        } else {
+          IsCjsResolutionMode::Disabled
         },
       )))
     })
