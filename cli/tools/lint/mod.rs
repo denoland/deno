@@ -52,6 +52,7 @@ use crate::util::path::is_script_ext;
 use crate::util::sync::AtomicFlag;
 
 mod linter;
+mod plugins;
 mod reporters;
 mod rules;
 
@@ -176,6 +177,7 @@ pub async fn lint(
         cli_options.start_dir.clone(),
         &workspace_lint_options,
       );
+      plugins::load_plugins().await?;
       let paths_with_options_batches =
         resolve_paths_with_options_batches(cli_options, &lint_flags)?;
       for paths_with_options in paths_with_options_batches {
