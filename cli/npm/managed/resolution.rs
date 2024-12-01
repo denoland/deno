@@ -91,7 +91,7 @@ impl NpmResolution {
   ) -> AddPkgReqsResult {
     // only allow one thread in here at a time
     let snapshot_lock = self.snapshot.acquire().await;
-    let result = add_package_reqs(
+    let result = add_package_reqs_to_snapshot(
       &self.api,
       package_reqs,
       self.maybe_lockfile.clone(),
@@ -119,7 +119,7 @@ impl NpmResolution {
     let snapshot_lock = self.snapshot.acquire().await;
 
     let reqs_set = package_reqs.iter().collect::<HashSet<_>>();
-    let snapshot = add_package_reqs(
+    let snapshot = add_package_reqs_to_snapshot(
       &self.api,
       package_reqs,
       self.maybe_lockfile.clone(),
@@ -259,7 +259,7 @@ impl NpmResolution {
   }
 }
 
-async fn add_package_reqs(
+async fn add_package_reqs_to_snapshot(
   api: &CliNpmRegistryApi,
   package_reqs: &[PackageReq],
   maybe_lockfile: Option<Arc<CliLockfile>>,
