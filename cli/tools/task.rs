@@ -78,14 +78,6 @@ pub async fn execute_script(
   let packages_task_configs: Vec<PackageTaskInfo> = if let Some(filter) =
     &task_flags.filter
   {
-    let task_name = task_flags.task.as_ref().unwrap();
-
-    // Filter based on package name
-    let package_regex = arg_to_regex(filter)?;
-    let task_regex = arg_to_regex(task_name)?;
-
-    let mut packages_task_info: Vec<PackageTaskInfo> = vec![];
-
     fn matches_package(
       config: &FolderConfigs,
       force_use_pkg_json: bool,
@@ -112,7 +104,46 @@ pub async fn execute_script(
       false
     }
 
+    // Filter based on package name
+    let package_regex = arg_to_regex(filter)?;
     let workspace = cli_options.workspace();
+
+    let Some(task_name) = &task_flags.task else {
+      log::warn!("{}", colors::red("Missing task argument."));
+
+      let mut matched = false;
+      for folder in workspace.config_folders() {
+        if !matches_package(folder.1, force_use_pkg_json, &package_regex) {
+          continue;
+        }
+        matched = true;
+
+        let member_dir = workspace.resolve_member_dir(folder.0);
+        let mut tasks_config = member_dir.to_tasks_config()?;
+        if force_use_pkg_json {
+          tasks_config = tasks_config.with_only_pkg_json();
+        }
+
+        print_available_tasks(
+          &mut std::io::stdout(),
+          &cli_options.start_dir,
+          &tasks_config,
+        )?;
+      }
+
+      if !matched {
+        log::warn!(
+          "{}",
+          colors::red(format!("No package name matched the filter '{}' in available 'deno.json' or 'package.json' files.", filter))
+        );
+      }
+
+      return Ok(0);
+    };
+
+    let task_regex = arg_to_regex(task_name)?;
+    let mut packages_task_info: Vec<PackageTaskInfo> = vec![];
+
     for folder in workspace.config_folders() {
       if !matches_package(folder.1, force_use_pkg_json, &package_regex) {
         continue;
