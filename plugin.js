@@ -15,6 +15,7 @@ Deno.core.ops.op_lint_register_lint_plugin_rule(
         some: "Data",
       },
     });
+    return {};
   },
 );
 
