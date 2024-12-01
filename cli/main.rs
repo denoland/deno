@@ -241,7 +241,6 @@ async fn run_subcommand(flags: Arc<Flags>) -> Result<i32, AnyError> {
                   cwd: None,
                   task: Some(run_flags.script.clone()),
                   is_run: true,
-                  recursive: false,
                   filter: None,
                   eval: false,
                 };

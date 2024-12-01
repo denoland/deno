@@ -79,7 +79,7 @@ pub async fn execute_script(
     &task_flags.filter
   {
     // Filter based on package name
-    let package_regex = arg_to_regex(filter)?;
+    let package_regex = arg_to_regex(&filter)?;
     let workspace = cli_options.workspace();
 
     let Some(task_name) = &task_flags.task else {
