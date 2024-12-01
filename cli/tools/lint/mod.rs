@@ -21,6 +21,7 @@ use deno_core::unsync::future::SharedLocal;
 use deno_graph::ModuleGraph;
 use deno_lint::diagnostic::LintDiagnostic;
 use deno_lint::linter::LintConfig;
+use deno_runtime::tokio_util;
 use log::debug;
 use reporters::create_reporter;
 use reporters::LintReporter;
@@ -177,7 +178,7 @@ pub async fn lint(
         cli_options.start_dir.clone(),
         &workspace_lint_options,
       );
-      plugins::load_plugins().await?;
+      // plugins::load_plugins().await?;
       let paths_with_options_batches =
         resolve_paths_with_options_batches(cli_options, &lint_flags)?;
       for paths_with_options in paths_with_options_batches {
@@ -374,6 +375,15 @@ impl WorkspaceLinter {
               cli_options.ext_flag().as_deref(),
             );
             if let Ok((file_source, file_diagnostics)) = &r {
+              let ast_string =
+                serde_json::to_string(&file_source.program()).unwrap();
+              tokio_util::create_and_run_current_thread(
+                async move {
+                  plugins::load_plugins(ast_string).await.unwrap();
+                }
+                .boxed_local(),
+              );
+
               if let Some(incremental_cache) = &maybe_incremental_cache {
                 if file_diagnostics.is_empty() {
                   // update the incremental cache if there were no diagnostics

@@ -1,3 +1,1 @@
-function bar() {
-  
-}
+const foo = "baz123";

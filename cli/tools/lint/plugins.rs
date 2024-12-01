@@ -13,7 +13,7 @@ use deno_core::RuntimeOptions;
 use indexmap::IndexMap;
 use std::rc::Rc;
 
-pub async fn load_plugins() -> Result<(), AnyError> {
+pub async fn load_plugins(ast_string: String) -> Result<(), AnyError> {
   let plugin_file_path = "./plugin.js";
 
   let mut runtime = JsRuntime::new(RuntimeOptions {
@@ -74,7 +74,7 @@ pub async fn load_plugins() -> Result<(), AnyError> {
   };
 
   for (plugin_name, rule_name) in rules_to_run {
-    let (file_name, plugin_name_v8, rule_name_v8) = {
+    let (file_name, plugin_name_v8, rule_name_v8, ast_string_v8) = {
       let scope = &mut runtime.handle_scope();
       let file_name: v8::Local<v8::Value> =
         v8::String::new(scope, "foo.js").unwrap().into();
@@ -82,15 +82,18 @@ pub async fn load_plugins() -> Result<(), AnyError> {
         v8::String::new(scope, &plugin_name).unwrap().into();
       let rule_name_v8: v8::Local<v8::Value> =
         v8::String::new(scope, &rule_name).unwrap().into();
+      let ast_string_v8: v8::Local<v8::Value> =
+        v8::String::new(scope, &ast_string).unwrap().into();
       (
         v8::Global::new(scope, file_name),
         v8::Global::new(scope, plugin_name_v8),
         v8::Global::new(scope, rule_name_v8),
+        v8::Global::new(scope, ast_string_v8),
       )
     };
     let call = runtime.call_with_args(
       &run_plugin_rule_fn,
-      &[file_name, plugin_name_v8, rule_name_v8],
+      &[file_name, plugin_name_v8, rule_name_v8, ast_string_v8],
     );
     let result = runtime
       .with_event_loop_promise(call, PollEventLoopOptions::default())

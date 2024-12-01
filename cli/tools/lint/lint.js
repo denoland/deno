@@ -22,7 +22,9 @@ export function runPluginRule(fileName, pluginName, ruleName, ast) {
   const rule = op_lint_get_rule(pluginName, ruleName);
 
   console.log(ctx, typeof rule);
-  rule(ctx);
+  const visitor = rule(ctx);
+  console.log("ast", ast);
+  console.log("visitor", Object.keys(visitor));
   // const visitor = new Visitor();
   // visitor.visitProgram(ast);
 }
