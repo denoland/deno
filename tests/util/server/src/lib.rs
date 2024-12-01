@@ -52,6 +52,7 @@ static GUARD: Lazy<Mutex<HttpServerCount>> = Lazy::new(Default::default);
 pub fn env_vars_for_npm_tests() -> Vec<(String, String)> {
   vec![
     ("NPM_CONFIG_REGISTRY".to_string(), npm_registry_url()),
+    ("NODEJS_ORG_MIRROR".to_string(), nodejs_org_mirror_url()),
     ("NO_COLOR".to_string(), "1".to_string()),
   ]
 }
@@ -130,6 +131,7 @@ pub fn env_vars_for_jsr_npm_tests() -> Vec<(String, String)> {
     ),
     ("DISABLE_JSR_PROVENANCE".to_string(), "true".to_string()),
     ("NO_COLOR".to_string(), "1".to_string()),
+    ("NODEJS_ORG_MIRROR".to_string(), nodejs_org_mirror_url()),
   ]
 }
 
@@ -175,27 +177,41 @@ pub fn deno_config_path() -> PathRef {
 
 /// Test server registry url.
 pub fn npm_registry_url() -> String {
-  "http://localhost:4260/".to_string()
+  format!("http://localhost:{}/", servers::PUBLIC_NPM_REGISTRY_PORT)
 }
 
 pub fn npm_registry_unset_url() -> String {
   "http://NPM_CONFIG_REGISTRY.is.unset".to_string()
 }
 
+pub fn nodejs_org_mirror_url() -> String {
+  format!(
+    "http://127.0.0.1:{}/",
+    servers::NODEJS_ORG_MIRROR_SERVER_PORT
+  )
+}
+
+pub fn nodejs_org_mirror_unset_url() -> String {
+  "http://NODEJS_ORG_MIRROR.is.unset".to_string()
+}
+
 pub fn jsr_registry_url() -> String {
-  "http://127.0.0.1:4250/".to_string()
+  format!("http://127.0.0.1:{}/", servers::JSR_REGISTRY_SERVER_PORT)
 }
 
 pub fn rekor_url() -> String {
-  "http://127.0.0.1:4251".to_string()
+  format!("http://127.0.0.1:{}", servers::PROVENANCE_MOCK_SERVER_PORT)
 }
 
 pub fn fulcio_url() -> String {
-  "http://127.0.0.1:4251".to_string()
+  format!("http://127.0.0.1:{}", servers::PROVENANCE_MOCK_SERVER_PORT)
 }
 
 pub fn gha_token_url() -> String {
-  "http://127.0.0.1:4251/gha_oidc?test=true".to_string()
+  format!(
+    "http://127.0.0.1:{}/gha_oidc?test=true",
+    servers::PROVENANCE_MOCK_SERVER_PORT
+  )
 }
 
 pub fn jsr_registry_unset_url() -> String {
@@ -307,7 +323,7 @@ async fn get_tcp_listener_stream(
   futures::stream::select_all(listeners)
 }
 
-pub const TEST_SERVERS_COUNT: usize = 32;
+pub const TEST_SERVERS_COUNT: usize = 33;
 
 #[derive(Default)]
 struct HttpServerCount {
@@ -565,6 +581,7 @@ pub fn deno_cmd_with_deno_dir(deno_dir: &TempDir) -> TestCommandBuilder {
   TestCommandBuilder::new(deno_dir.clone())
     .env("DENO_DIR", deno_dir.path())
     .env("NPM_CONFIG_REGISTRY", npm_registry_unset_url())
+    .env("NODEJS_ORG_MIRROR", nodejs_org_mirror_unset_url())
     .env("JSR_URL", jsr_registry_unset_url())
 }
 
@@ -902,6 +919,11 @@ pub fn wildcard_match_detailed(
 
   if was_last_wildcard || was_last_wildline || current_text.is_empty() {
     WildcardMatchResult::Success
+  } else if current_text == "\n" {
+    WildcardMatchResult::Fail(
+      "<matched everything>\n!!!! PROBLEM: Missing final newline at end of expected output !!!!"
+        .to_string(),
+    )
   } else {
     output_lines.push("==== HAD TEXT AT END OF FILE ====".to_string());
     output_lines.push(colors::red(annotate_whitespace(current_text)));

@@ -1,0 +1,4 @@
+{
+  "args": "run  --reload --allow-read error_014_catch_dynamic_import_error.js",
+  "output": "error_014_catch_dynamic_import_error.js.out"
+}

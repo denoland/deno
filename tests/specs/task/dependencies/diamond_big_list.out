@@ -1,0 +1,15 @@
+Available tasks:
+- a
+    deno run a.js
+    depends on: b, c
+- b
+    deno run b.js
+    depends on: e
+- c
+    deno run c.js
+    depends on: d
+- d
+    deno run d.js
+    depends on: e
+- e
+    deno run e.js

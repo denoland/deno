@@ -56,9 +56,6 @@ pub async fn start() -> Result<(), AnyError> {
     LanguageServer::performance_request,
   )
   .custom_method(lsp_custom::TASK_REQUEST, LanguageServer::task_definitions)
-  // TODO(nayeemrmn): Rename this to `deno/taskDefinitions` in vscode_deno and
-  // remove this alias.
-  .custom_method("deno/task", LanguageServer::task_definitions)
   .custom_method(testing::TEST_RUN_REQUEST, LanguageServer::test_run_request)
   .custom_method(
     testing::TEST_RUN_CANCEL_REQUEST,

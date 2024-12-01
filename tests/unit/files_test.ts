@@ -137,7 +137,7 @@ Deno.test(async function openOptions() {
       await Deno.open(filename, { write: false });
     },
     Error,
-    "OpenOptions requires at least one option to be true",
+    "'options' requires at least one option to be true",
   );
 
   await assertRejects(
@@ -145,7 +145,7 @@ Deno.test(async function openOptions() {
       await Deno.open(filename, { truncate: true, write: false });
     },
     Error,
-    "'truncate' option requires 'write' option",
+    "'truncate' option requires 'write' to be true",
   );
 
   await assertRejects(
@@ -153,7 +153,7 @@ Deno.test(async function openOptions() {
       await Deno.open(filename, { create: true, write: false });
     },
     Error,
-    "'create' or 'createNew' options require 'write' or 'append' option",
+    "'create' or 'createNew' options require 'write' or 'append' to be true",
   );
 
   await assertRejects(
@@ -161,7 +161,7 @@ Deno.test(async function openOptions() {
       await Deno.open(filename, { createNew: true, append: false });
     },
     Error,
-    "'create' or 'createNew' options require 'write' or 'append' option",
+    "'create' or 'createNew' options require 'write' or 'append' to be true",
   );
 });
 

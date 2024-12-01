@@ -8,8 +8,10 @@ use deno_core::serde_json;
 use deno_core::url::Url;
 use deno_package_json::PackageJsonDepValue;
 use deno_package_json::PackageJsonDepValueParseError;
+use deno_package_json::PackageJsonDepWorkspaceReq;
 use deno_semver::npm::NpmPackageReqReference;
 use deno_semver::package::PackageReq;
+use deno_semver::VersionReq;
 use thiserror::Error;
 
 #[derive(Debug)]
@@ -95,8 +97,14 @@ impl NpmInstallDepsProvider {
 
       if let Some(pkg_json) = &folder.pkg_json {
         let deps = pkg_json.resolve_local_package_json_deps();
-        let mut pkg_pkgs = Vec::with_capacity(deps.len());
-        for (alias, dep) in deps {
+        let mut pkg_pkgs = Vec::with_capacity(
+          deps.dependencies.len() + deps.dev_dependencies.len(),
+        );
+        for (alias, dep) in deps
+          .dependencies
+          .into_iter()
+          .chain(deps.dev_dependencies.into_iter())
+        {
           let dep = match dep {
             Ok(dep) => dep,
             Err(err) => {
@@ -131,7 +139,16 @@ impl NpmInstallDepsProvider {
                 });
               }
             }
-            PackageJsonDepValue::Workspace(version_req) => {
+            PackageJsonDepValue::Workspace(workspace_version_req) => {
+              let version_req = match workspace_version_req {
+                PackageJsonDepWorkspaceReq::VersionReq(version_req) => {
+                  version_req
+                }
+                PackageJsonDepWorkspaceReq::Tilde
+                | PackageJsonDepWorkspaceReq::Caret => {
+                  VersionReq::parse_from_npm("*").unwrap()
+                }
+              };
               if let Some(pkg) = workspace_npm_pkgs.iter().find(|pkg| {
                 pkg.matches_name_and_version_req(&alias, &version_req)
               }) {

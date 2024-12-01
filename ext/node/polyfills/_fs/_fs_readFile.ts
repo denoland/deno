@@ -88,7 +88,7 @@ export function readFile(
       }
       const buffer = maybeDecode(data, encoding);
       (cb as BinaryCallback)(null, buffer);
-    }, (err) => cb && cb(denoErrorToNodeError(err)));
+    }, (err) => cb && cb(denoErrorToNodeError(err, { path, syscall: "open" })));
   }
 }
 
@@ -122,7 +122,7 @@ export function readFileSync(
   try {
     data = Deno.readFileSync(path);
   } catch (err) {
-    throw denoErrorToNodeError(err);
+    throw denoErrorToNodeError(err, { path, syscall: "open" });
   }
   const encoding = getEncoding(opt);
   if (encoding && encoding !== "binary") {

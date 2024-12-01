@@ -50,6 +50,7 @@ use tokio::io::ReadHalf;
 use tokio::io::WriteHalf;
 use tokio::net::TcpStream;
 
+use deno_permissions::PermissionCheckError;
 use fastwebsockets::CloseCode;
 use fastwebsockets::FragmentCollectorRead;
 use fastwebsockets::Frame;
@@ -75,7 +76,7 @@ pub enum WebsocketError {
   #[error(transparent)]
   Url(url::ParseError),
   #[error(transparent)]
-  Permission(deno_core::error::AnyError),
+  Permission(#[from] PermissionCheckError),
   #[error(transparent)]
   Resource(deno_core::error::AnyError),
   #[error(transparent)]
@@ -112,7 +113,7 @@ pub trait WebSocketPermissions {
     &mut self,
     _url: &url::Url,
     _api_name: &str,
-  ) -> Result<(), deno_core::error::AnyError>;
+  ) -> Result<(), PermissionCheckError>;
 }
 
 impl WebSocketPermissions for deno_permissions::PermissionsContainer {
@@ -121,7 +122,7 @@ impl WebSocketPermissions for deno_permissions::PermissionsContainer {
     &mut self,
     url: &url::Url,
     api_name: &str,
-  ) -> Result<(), deno_core::error::AnyError> {
+  ) -> Result<(), PermissionCheckError> {
     deno_permissions::PermissionsContainer::check_net_url(self, url, api_name)
   }
 }
@@ -147,7 +148,7 @@ impl Resource for WsCancelResource {
 // This op is needed because creating a WS instance in JavaScript is a sync
 // operation and should throw error when permissions are not fulfilled,
 // but actual op that connects WS is async.
-#[op2]
+#[op2(stack_trace)]
 #[smi]
 pub fn op_ws_check_permission_and_cancel_handle<WP>(
   state: &mut OpState,
@@ -158,13 +159,10 @@ pub fn op_ws_check_permission_and_cancel_handle<WP>(
 where
   WP: WebSocketPermissions + 'static,
 {
-  state
-    .borrow_mut::<WP>()
-    .check_net_url(
-      &url::Url::parse(&url).map_err(WebsocketError::Url)?,
-      &api_name,
-    )
-    .map_err(WebsocketError::Permission)?;
+  state.borrow_mut::<WP>().check_net_url(
+    &url::Url::parse(&url).map_err(WebsocketError::Url)?,
+    &api_name,
+  )?;
 
   if cancel_handle {
     let rid = state
@@ -445,7 +443,7 @@ fn populate_common_request_headers(
   Ok(request)
 }
 
-#[op2(async)]
+#[op2(async, stack_trace)]
 #[serde]
 pub async fn op_ws_create<WP>(
   state: Rc<RefCell<OpState>>,

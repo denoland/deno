@@ -3,6 +3,7 @@
 // Allow using Arc for this module.
 #![allow(clippy::disallowed_types)]
 
+use std::borrow::Cow;
 use std::collections::hash_map::Entry;
 use std::collections::HashMap;
 use std::io::Error;
@@ -229,6 +230,7 @@ impl FileSystem for InMemoryFs {
           mtime: None,
           atime: None,
           birthtime: None,
+          ctime: None,
           dev: 0,
           ino: 0,
           mode: 0,
@@ -251,6 +253,7 @@ impl FileSystem for InMemoryFs {
           mtime: None,
           atime: None,
           birthtime: None,
+          ctime: None,
           dev: 0,
           ino: 0,
           mode: 0,
@@ -455,11 +458,11 @@ impl FileSystem for InMemoryFs {
     &self,
     path: &Path,
     _access_check: Option<AccessCheckCb>,
-  ) -> FsResult<Vec<u8>> {
+  ) -> FsResult<Cow<'static, [u8]>> {
     let entry = self.get_entry(path);
     match entry {
       Some(entry) => match &*entry {
-        PathEntry::File(data) => Ok(data.clone()),
+        PathEntry::File(data) => Ok(Cow::Owned(data.clone())),
         PathEntry::Dir => Err(FsError::Io(Error::new(
           ErrorKind::InvalidInput,
           "Is a directory",
@@ -472,7 +475,7 @@ impl FileSystem for InMemoryFs {
     &'a self,
     path: PathBuf,
     access_check: Option<AccessCheckCb<'a>>,
-  ) -> FsResult<Vec<u8>> {
+  ) -> FsResult<Cow<'static, [u8]>> {
     self.read_file_sync(&path, access_check)
   }
 }

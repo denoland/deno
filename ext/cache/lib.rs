@@ -33,7 +33,9 @@ pub enum CacheError {
 }
 
 #[derive(Clone)]
-pub struct CreateCache<C: Cache + 'static>(pub Arc<dyn Fn() -> C>);
+pub struct CreateCache<C: Cache + 'static>(
+  pub Arc<dyn Fn() -> Result<C, CacheError>>,
+);
 
 deno_core::extension!(deno_cache,
   deps = [ deno_webidl, deno_web, deno_url, deno_fetch ],
@@ -231,7 +233,7 @@ where
   if let Some(cache) = state.try_borrow::<CA>() {
     Ok(cache.clone())
   } else if let Some(create_cache) = state.try_borrow::<CreateCache<CA>>() {
-    let cache = create_cache.0();
+    let cache = create_cache.0()?;
     state.put(cache);
     Ok(state.borrow::<CA>().clone())
   } else {

@@ -21,11 +21,11 @@ use url::Url;
 use crate::env::NodeResolverEnv;
 use crate::npm::InNpmPackageCheckerRc;
 use crate::resolution::NodeResolverRc;
-use crate::NodeModuleKind;
-use crate::NodeResolutionMode;
-use crate::NpmResolverRc;
+use crate::NodeResolutionKind;
+use crate::NpmPackageFolderResolverRc;
 use crate::PackageJsonResolverRc;
 use crate::PathClean;
+use crate::ResolutionMode;
 
 #[derive(Debug, Clone)]
 pub enum CjsAnalysis<'a> {
@@ -66,7 +66,7 @@ pub struct NodeCodeTranslator<
   env: TNodeResolverEnv,
   in_npm_pkg_checker: InNpmPackageCheckerRc,
   node_resolver: NodeResolverRc<TNodeResolverEnv>,
-  npm_resolver: NpmResolverRc,
+  npm_resolver: NpmPackageFolderResolverRc,
   pkg_json_resolver: PackageJsonResolverRc<TNodeResolverEnv>,
 }
 
@@ -78,7 +78,7 @@ impl<TCjsCodeAnalyzer: CjsCodeAnalyzer, TNodeResolverEnv: NodeResolverEnv>
     env: TNodeResolverEnv,
     in_npm_pkg_checker: InNpmPackageCheckerRc,
     node_resolver: NodeResolverRc<TNodeResolverEnv>,
-    npm_resolver: NpmResolverRc,
+    npm_resolver: NpmPackageFolderResolverRc,
     pkg_json_resolver: PackageJsonResolverRc<TNodeResolverEnv>,
   ) -> Self {
     Self {
@@ -209,7 +209,7 @@ impl<TCjsCodeAnalyzer: CjsCodeAnalyzer, TNodeResolverEnv: NodeResolverEnv>
             // FIXME(bartlomieju): check if these conditions are okay, probably
             // should be `deno-require`, because `deno` is already used in `esm_resolver.rs`
             &["deno", "node", "require", "default"],
-            NodeResolutionMode::Execution,
+            NodeResolutionKind::Execution,
           );
           let reexport_specifier = match result {
             Ok(Some(specifier)) => specifier,
@@ -303,7 +303,7 @@ impl<TCjsCodeAnalyzer: CjsCodeAnalyzer, TNodeResolverEnv: NodeResolverEnv>
     specifier: &str,
     referrer: &Url,
     conditions: &[&str],
-    mode: NodeResolutionMode,
+    resolution_kind: NodeResolutionKind,
   ) -> Result<Option<Url>, AnyError> {
     if specifier.starts_with('/') {
       todo!();
@@ -354,9 +354,9 @@ impl<TCjsCodeAnalyzer: CjsCodeAnalyzer, TNodeResolverEnv: NodeResolverEnv>
               &package_subpath,
               exports,
               Some(referrer),
-              NodeModuleKind::Esm,
+              ResolutionMode::Import,
               conditions,
-              mode,
+              resolution_kind,
             )
             .map_err(AnyError::from),
         )
@@ -373,7 +373,9 @@ impl<TCjsCodeAnalyzer: CjsCodeAnalyzer, TNodeResolverEnv: NodeResolverEnv>
             .pkg_json_resolver
             .load_package_json(&package_json_path)?;
           if let Some(package_json) = maybe_package_json {
-            if let Some(main) = package_json.main(NodeModuleKind::Cjs) {
+            if let Some(main) =
+              package_json.main(deno_package_json::NodeModuleKind::Cjs)
+            {
               return Ok(Some(url_from_file_path(&d.join(main).clean())?));
             }
           }
@@ -384,7 +386,9 @@ impl<TCjsCodeAnalyzer: CjsCodeAnalyzer, TNodeResolverEnv: NodeResolverEnv>
           .file_extension_probe(d, &referrer_path)
           .and_then(|p| url_from_file_path(&p).map_err(AnyError::from))
           .map(Some);
-      } else if let Some(main) = package_json.main(NodeModuleKind::Cjs) {
+      } else if let Some(main) =
+        package_json.main(deno_package_json::NodeModuleKind::Cjs)
+      {
         return Ok(Some(url_from_file_path(&module_dir.join(main).clean())?));
       } else {
         return Ok(Some(url_from_file_path(

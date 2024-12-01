@@ -164,8 +164,19 @@ fn get_validated_scheme(
 ) -> Result<String, AnyError> {
   let scheme = specifier.scheme();
   if !SUPPORTED_SCHEMES.contains(&scheme) {
+    // NOTE(bartlomieju): this message list additional `npm` and `jsr` schemes, but they should actually be handled
+    // before `file_fetcher.rs` APIs are even hit.
+    let mut all_supported_schemes = SUPPORTED_SCHEMES.to_vec();
+    all_supported_schemes.extend_from_slice(&["npm", "jsr"]);
+    all_supported_schemes.sort();
+    let scheme_list = all_supported_schemes
+      .iter()
+      .map(|scheme| format!(" - \"{}\"", scheme))
+      .collect::<Vec<_>>()
+      .join("\n");
     Err(generic_error(format!(
-      "Unsupported scheme \"{scheme}\" for module \"{specifier}\". Supported schemes: {SUPPORTED_SCHEMES:#?}"
+      "Unsupported scheme \"{scheme}\" for module \"{specifier}\". Supported schemes:\n{}", 
+      scheme_list
     )))
   } else {
     Ok(scheme.to_string())
@@ -1529,7 +1540,7 @@ mod tests {
       .unwrap()
       .unwrap()
       .content;
-    String::from_utf8(bytes).unwrap()
+    String::from_utf8(bytes.into_owned()).unwrap()
   }
 
   #[track_caller]

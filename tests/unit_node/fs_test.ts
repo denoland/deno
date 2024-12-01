@@ -3,6 +3,7 @@
 /// <reference lib="deno.ns" />
 import { assert, assertEquals, assertRejects, assertThrows } from "@std/assert";
 import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { tmpdir } from "node:os";
 import {
   closeSync,
@@ -160,7 +161,9 @@ Deno.test(
     } catch (error: unknown) {
       assertEquals(
         `${error}`,
-        `Error: ENOENT: no such file or directory, stat '${fileUrl.pathname}'`,
+        `Error: ENOENT: no such file or directory, stat '${
+          fileURLToPath(fileUrl)
+        }'`,
       );
     }
   },

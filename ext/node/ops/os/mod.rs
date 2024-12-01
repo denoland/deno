@@ -14,14 +14,14 @@ pub enum OsError {
   #[error(transparent)]
   Priority(priority::PriorityError),
   #[error(transparent)]
-  Permission(deno_core::error::AnyError),
+  Permission(#[from] deno_permissions::PermissionCheckError),
   #[error("Failed to get cpu info")]
   FailedToGetCpuInfo,
   #[error("Failed to get user info")]
   FailedToGetUserInfo(#[source] std::io::Error),
 }
 
-#[op2(fast)]
+#[op2(fast, stack_trace)]
 pub fn op_node_os_get_priority<P>(
   state: &mut OpState,
   pid: u32,
@@ -31,15 +31,13 @@ where
 {
   {
     let permissions = state.borrow_mut::<P>();
-    permissions
-      .check_sys("getPriority", "node:os.getPriority()")
-      .map_err(OsError::Permission)?;
+    permissions.check_sys("getPriority", "node:os.getPriority()")?;
   }
 
   priority::get_priority(pid).map_err(OsError::Priority)
 }
 
-#[op2(fast)]
+#[op2(fast, stack_trace)]
 pub fn op_node_os_set_priority<P>(
   state: &mut OpState,
   pid: u32,
@@ -50,9 +48,7 @@ where
 {
   {
     let permissions = state.borrow_mut::<P>();
-    permissions
-      .check_sys("setPriority", "node:os.setPriority()")
-      .map_err(OsError::Permission)?;
+    permissions.check_sys("setPriority", "node:os.setPriority()")?;
   }
 
   priority::set_priority(pid, priority).map_err(OsError::Priority)
@@ -197,7 +193,7 @@ fn get_user_info(_uid: u32) -> Result<UserInfo, OsError> {
   })
 }
 
-#[op2]
+#[op2(stack_trace)]
 #[serde]
 pub fn op_node_os_user_info<P>(
   state: &mut OpState,
@@ -216,7 +212,7 @@ where
   get_user_info(uid)
 }
 
-#[op2(fast)]
+#[op2(fast, stack_trace)]
 pub fn op_geteuid<P>(
   state: &mut OpState,
 ) -> Result<u32, deno_core::error::AnyError>
@@ -237,7 +233,7 @@ where
   Ok(euid)
 }
 
-#[op2(fast)]
+#[op2(fast, stack_trace)]
 pub fn op_getegid<P>(
   state: &mut OpState,
 ) -> Result<u32, deno_core::error::AnyError>
@@ -258,7 +254,7 @@ where
   Ok(egid)
 }
 
-#[op2]
+#[op2(stack_trace)]
 #[serde]
 pub fn op_cpus<P>(state: &mut OpState) -> Result<Vec<cpus::CpuInfo>, OsError>
 where
@@ -266,15 +262,13 @@ where
 {
   {
     let permissions = state.borrow_mut::<P>();
-    permissions
-      .check_sys("cpus", "node:os.cpus()")
-      .map_err(OsError::Permission)?;
+    permissions.check_sys("cpus", "node:os.cpus()")?;
   }
 
   cpus::cpu_info().ok_or(OsError::FailedToGetCpuInfo)
 }
 
-#[op2]
+#[op2(stack_trace)]
 #[string]
 pub fn op_homedir<P>(
   state: &mut OpState,

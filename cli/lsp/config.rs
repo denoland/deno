@@ -4,6 +4,7 @@ use deno_ast::MediaType;
 use deno_config::deno_json::DenoJsonCache;
 use deno_config::deno_json::FmtConfig;
 use deno_config::deno_json::FmtOptionsConfig;
+use deno_config::deno_json::JsxImportSourceConfig;
 use deno_config::deno_json::LintConfig;
 use deno_config::deno_json::NodeModulesDirMode;
 use deno_config::deno_json::TestConfig;
@@ -40,6 +41,7 @@ use deno_path_util::url_to_file_path;
 use deno_runtime::deno_node::PackageJson;
 use indexmap::IndexSet;
 use lsp_types::ClientCapabilities;
+use std::borrow::Cow;
 use std::collections::BTreeMap;
 use std::collections::BTreeSet;
 use std::collections::HashMap;
@@ -1654,6 +1656,17 @@ impl ConfigData {
     self.member_dir.maybe_pkg_json()
   }
 
+  pub fn maybe_jsx_import_source_config(
+    &self,
+  ) -> Option<JsxImportSourceConfig> {
+    self
+      .member_dir
+      .workspace
+      .to_maybe_jsx_import_source_config()
+      .ok()
+      .flatten()
+  }
+
   pub fn scope_contains_specifier(&self, specifier: &ModuleSpecifier) -> bool {
     specifier.as_str().starts_with(self.scope.as_str())
       || self
@@ -2080,7 +2093,7 @@ impl<T: Clone> CachedFsItems<T> {
 #[derive(Default)]
 struct InnerData {
   stat_calls: CachedFsItems<deno_config::fs::FsMetadata>,
-  read_to_string_calls: CachedFsItems<String>,
+  read_to_string_calls: CachedFsItems<Cow<'static, str>>,
 }
 
 #[derive(Default)]
@@ -2101,7 +2114,7 @@ impl DenoConfigFs for CachedDenoConfigFs {
   fn read_to_string_lossy(
     &self,
     path: &Path,
-  ) -> Result<String, std::io::Error> {
+  ) -> Result<Cow<'static, str>, std::io::Error> {
     self
       .0
       .lock()

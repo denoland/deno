@@ -320,8 +320,16 @@ export class LibuvStreamWrap extends HandleWrap {
   /** Internal method for reading from the attached stream. */
   async #read() {
     let buf = this.#buf;
+
     let nread: number | null;
     const ridBefore = this[kStreamBaseField]![internalRidSymbol];
+
+    if (this.upgrading) {
+      // Starting an upgrade, stop reading. Upgrading will resume reading.
+      this.readStop();
+      return;
+    }
+
     try {
       nread = await this[kStreamBaseField]!.read(buf);
     } catch (e) {
@@ -382,6 +390,11 @@ export class LibuvStreamWrap extends HandleWrap {
 
     const ridBefore = this[kStreamBaseField]![internalRidSymbol];
 
+    if (this.upgrading) {
+      // There is an upgrade in progress, queue the write request.
+      await this.upgrading;
+    }
+
     let nwritten = 0;
     try {
       // TODO(crowlKats): duplicate from runtime/js/13_buffer.js
@@ -400,7 +413,6 @@ export class LibuvStreamWrap extends HandleWrap {
       }
 
       let status: number;
-
       // TODO(cmorten): map err to status codes
       if (
         e instanceof Deno.errors.BadResource ||

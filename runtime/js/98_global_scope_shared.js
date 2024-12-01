@@ -32,6 +32,8 @@ import { DOMException } from "ext:deno_web/01_dom_exception.js";
 import * as abortSignal from "ext:deno_web/03_abort_signal.js";
 import * as imageData from "ext:deno_web/16_image_data.js";
 import process from "node:process";
+import { Buffer } from "node:buffer";
+import { clearImmediate, setImmediate } from "node:timers";
 import { loadWebGPU } from "ext:deno_webgpu/00_init.js";
 import * as webgpuSurface from "ext:deno_webgpu/02_surface.js";
 import { unstableIds } from "ext:runtime/90_deno_ns.js";
@@ -299,5 +301,16 @@ unstableForWindowOrWorkerGlobalScope[unstableIds.net] = {
 };
 
 unstableForWindowOrWorkerGlobalScope[unstableIds.webgpu] = {};
+
+unstableForWindowOrWorkerGlobalScope[unstableIds.nodeGlobals] = {
+  Buffer: core.propWritable(Buffer),
+  setImmediate: core.propWritable(setImmediate),
+  clearImmediate: core.propWritable(clearImmediate),
+  global: {
+    enumerable: true,
+    configurable: true,
+    get: () => globalThis,
+  },
+};
 
 export { unstableForWindowOrWorkerGlobalScope, windowOrWorkerGlobalScope };

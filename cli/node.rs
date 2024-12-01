@@ -7,8 +7,6 @@ use deno_ast::MediaType;
 use deno_ast::ModuleSpecifier;
 use deno_core::error::AnyError;
 use deno_graph::ParsedSourceStore;
-use deno_path_util::url_from_file_path;
-use deno_path_util::url_to_file_path;
 use deno_runtime::deno_fs;
 use deno_runtime::deno_node::DenoFsNodeResolverEnv;
 use node_resolver::analyze::CjsAnalysis as ExtNodeCjsAnalysis;
@@ -22,7 +20,6 @@ use crate::cache::CacheDBHash;
 use crate::cache::NodeAnalysisCache;
 use crate::cache::ParsedSourceCache;
 use crate::resolver::CjsTracker;
-use crate::util::fs::canonicalize_path_maybe_not_exists_with_fs;
 
 pub type CliNodeCodeTranslator =
   NodeCodeTranslator<CliCjsCodeAnalyzer, DenoFsNodeResolverEnv>;
@@ -37,13 +34,9 @@ pub fn resolve_specifier_into_node_modules(
   specifier: &ModuleSpecifier,
   fs: &dyn deno_fs::FileSystem,
 ) -> ModuleSpecifier {
-  url_to_file_path(specifier)
-    .ok()
-    // this path might not exist at the time the graph is being created
-    // because the node_modules folder might not yet exist
-    .and_then(|path| canonicalize_path_maybe_not_exists_with_fs(&path, fs).ok())
-    .and_then(|path| url_from_file_path(&path).ok())
-    .unwrap_or_else(|| specifier.clone())
+  node_resolver::resolve_specifier_into_node_modules(specifier, &|path| {
+    fs.realpath_sync(path).map_err(|err| err.into_io_error())
+  })
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -62,10 +55,6 @@ pub struct CliCjsCodeAnalyzer {
   cjs_tracker: Arc<CjsTracker>,
   fs: deno_fs::FileSystemRc,
   parsed_source_cache: Option<Arc<ParsedSourceCache>>,
-  // todo(dsherret): hack, remove in https://github.com/denoland/deno/pull/26439
-  // For example, this does not properly handle if cjs analysis was already done
-  // and has been cached.
-  is_npm_main: bool,
 }
 
 impl CliCjsCodeAnalyzer {
@@ -74,14 +63,12 @@ impl CliCjsCodeAnalyzer {
     cjs_tracker: Arc<CjsTracker>,
     fs: deno_fs::FileSystemRc,
     parsed_source_cache: Option<Arc<ParsedSourceCache>>,
-    is_npm_main: bool,
   ) -> Self {
     Self {
       cache,
       cjs_tracker,
       fs,
       parsed_source_cache,
-      is_npm_main,
     }
   }
 
@@ -106,9 +93,7 @@ impl CliCjsCodeAnalyzer {
     }
 
     let cjs_tracker = self.cjs_tracker.clone();
-    let is_npm_main = self.is_npm_main;
-    let is_maybe_cjs =
-      cjs_tracker.is_maybe_cjs(specifier, media_type)? || is_npm_main;
+    let is_maybe_cjs = cjs_tracker.is_maybe_cjs(specifier, media_type)?;
     let analysis = if is_maybe_cjs {
       let maybe_parsed_source = self
         .parsed_source_cache
@@ -135,7 +120,7 @@ impl CliCjsCodeAnalyzer {
             parsed_source.specifier(),
             media_type,
             is_script,
-          )? || is_script && is_npm_main;
+          )?;
           if is_cjs {
             let analysis = parsed_source.analyze_cjs();
             Ok(CliCjsAnalysis::Cjs {
@@ -175,7 +160,7 @@ impl CjsCodeAnalyzer for CliCjsCodeAnalyzer {
           if let Ok(source_from_file) =
             self.fs.read_text_file_lossy_async(path, None).await
           {
-            Cow::Owned(source_from_file)
+            source_from_file
           } else {
             return Ok(ExtNodeCjsAnalysis::Cjs(CjsAnalysisExports {
               exports: vec![],
