@@ -579,23 +579,36 @@ function createListenDatagram(udpOpFn, unixOpFn) {
 async function connect(args) {
   switch (args.transport ?? "tcp") {
     case "tcp": {
-      const port = validatePort(args.port);
-      const { 0: rid, 1: localAddr, 2: remoteAddr } = await op_net_connect_tcp(
-        {
-          hostname: args.hostname ?? "127.0.0.1",
-          port,
-        },
-        args.timeout,
-      );
-      localAddr.transport = "tcp";
-      remoteAddr.transport = "tcp";
-
-      const tcpConn = new TcpConn(rid, remoteAddr, localAddr);
-      if (args.signal) {
-        args.signal.addEventListener("abort", () => tcpConn.close());
+      let cancelRid;
+      let abortHandler;
+      if (args?.signal) {
+        args.signal.throwIfAborted();
+        cancelRid = createCancelHandle();
+        abortHandler = () => core.tryClose(cancelRid);
+        args.signal[abortSignal.add](abortHandler);
       }
+      const port = validatePort(args.port);
 
-      return tcpConn;
+      try {
+        const { 0: rid, 1: localAddr, 2: remoteAddr } =
+          await op_net_connect_tcp(
+            {
+              hostname: args.hostname ?? "127.0.0.1",
+              port,
+            },
+            args.timeout,
+            cancelRid,
+          );
+        localAddr.transport = "tcp";
+        remoteAddr.transport = "tcp";
+
+        return new TcpConn(rid, remoteAddr, localAddr);
+      } finally {
+        if (args?.signal) {
+          args.signal[abortSignal.remove](abortHandler);
+          args.signal.throwIfAborted();
+        }
+      }
     }
     case "unix": {
       const { 0: rid, 1: localAddr, 2: remoteAddr } = await op_net_connect_unix(

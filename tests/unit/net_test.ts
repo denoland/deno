@@ -1295,16 +1295,21 @@ Deno.test(
 
 Deno.test(
   { permissions: { net: true } },
-  async function netTcpAbortSignal() {
+  async function netTcpWithAbortSignal() {
     const controller = new AbortController();
-    await Deno.connect({
-      hostname: "deno.com",
-      port: 80,
-      transport: "tcp",
-      signal: controller.signal,
-    });
-    controller.abort();
-    assertEquals(controller.signal.aborted, true);
+    setTimeout(() => controller.abort(), 1000);
+    const error = await assertRejects(
+      async () => {
+        await Deno.connect({
+          hostname: "deno.com",
+          port: 50000,
+          transport: "tcp",
+          signal: controller.signal,
+        });
+      },
+    );
+    assert(error instanceof DOMException);
+    assertEquals(error.name, "AbortError");
   },
 );
 
