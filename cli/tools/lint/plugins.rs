@@ -286,16 +286,6 @@ impl PluginRunner {
         plugin_desc.rules.insert(name, global_fn);
       }
       let _ = container.register(def.name, plugin_desc);
-
-      // let name_str = v8::String::new(scope, "name").unwrap();
-      // let plugin_name = module_local.get(scope, name.into()).unwrap();
-      // if plugin_name.is_undefined() {
-      //   bail!("Missing 'name' for a plugin");
-      // }
-      // let plugin_name: v8::Local<v8::String> = plugin_name.try_into().unwrap();
-      // let plugin_name = plugin_name.to_rust_string_lossy(scope);
-
-      // let rules_str =
     }
 
     Ok(())
