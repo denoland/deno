@@ -922,21 +922,6 @@ fn compile_npm_vfs_implicit_read_permissions() {
 }
 
 #[test]
-fn compile_npm_no_permissions() {
-  run_npm_bin_compile_test(RunNpmBinCompileOptions {
-    input_specifier: "npm:cowsay@1.5.0",
-    copy_temp_dir: None,
-    compile_args: vec![],
-    run_args: vec!["Hello"],
-    output_file: "npm/deno_run_cowsay_no_permissions.out",
-    node_modules_local: false,
-    input_name: None,
-    expected_name: "cowsay",
-    exit_code: 1,
-  });
-}
-
-#[test]
 fn compile_npm_cowsay_explicit() {
   run_npm_bin_compile_test(RunNpmBinCompileOptions {
     input_specifier: "npm:cowsay@1.5.0/cowsay",

@@ -361,10 +361,12 @@ fn permissions_prompt_allow_all_2() {
       console.write_line_raw("A");
       console.expect("✅ Granted all sys access.");
 
+      let text = console.read_until("Allow? [y/n/A] (y = yes, allow; n = no, deny; A = allow all read permissions)");
       // "read" permissions
-      console.expect(concat!(
-        "┏ ⚠️  Deno requests read access to <CWD>.\r\n",
-        "┠─ Requested by `Deno.cwd()` API.\r\n",
+      test_util::assertions::assert_wildcard_match(&text, concat!(
+        "\r\n",
+        "┏ ⚠️  Deno requests read access to \"[WILDCARD]/tests/testdata/\".\r\n",
+        "┠─ Requested by `Deno.lstatSync()` API.\r\n",
         "┠─ To see a stack trace for this prompt, set the DENO_TRACE_PERMISSIONS environmental variable.\r\n",
         "┠─ Learn more at: https://docs.deno.com/go/--allow-read\r\n",
         "┠─ Run again with --allow-read to bypass this prompt.\r\n",
