@@ -14,7 +14,7 @@
       "output": "broken.out"
     },
     "with_js": {
-      "args": "fmt with_js.html",
+      "args": "fmt --check with_js.html",
       "output": "Checked 1 file\n"
     }
   }

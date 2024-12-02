@@ -442,7 +442,6 @@ pub fn format_html(
         _ => {
           let mut typescript_config_builder =
             get_typescript_config_builder(fmt_options);
-          eprintln!("indent level {}", hints.indent_level);
           typescript_config_builder.file_indent_level(hints.indent_level);
           let mut typescript_config = typescript_config_builder.build();
           typescript_config.line_width = hints.print_width as u32;
@@ -845,8 +844,6 @@ fn format_ensure_stable(
             if next_pass_text == current_text {
               return Ok(Some(next_pass_text));
             }
-            eprintln!("current text {}", current_text);
-            eprintln!("next pass test {}", next_pass_text);
             current_text = next_pass_text;
           }
           Ok(None) => {
