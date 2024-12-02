@@ -1621,6 +1621,7 @@ impl ConfigData {
       ),
       fix: false,
       deno_lint_config,
+      maybe_plugin_runner: None,
     }));
 
     ConfigData {

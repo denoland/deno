@@ -15,6 +15,7 @@ use deno_core::JsRuntime;
 use deno_core::OpState;
 use deno_core::PollEventLoopOptions;
 use deno_core::RuntimeOptions;
+use deno_runtime::tokio_util;
 use indexmap::IndexMap;
 use std::rc::Rc;
 use std::sync::Arc;
@@ -24,17 +25,20 @@ use tokio::sync::mpsc::channel;
 use tokio::sync::mpsc::Receiver;
 use tokio::sync::mpsc::Sender;
 
+#[derive(Debug)]
 pub enum PluginRunnerRequest {
   LoadPlugins(Vec<ModuleSpecifier>),
   Run(String),
 }
 
+#[derive(Debug)]
 pub enum PluginRunnerResponse {
   LoadPlugin(Result<(), AnyError>),
   // TODO: should return diagnostics
   Run(Result<(), AnyError>),
 }
 
+#[derive(Debug)]
 pub struct PluginRunnerProxy {
   tx: Sender<PluginRunnerRequest>,
   rx: Arc<tokio::sync::Mutex<Receiver<PluginRunnerResponse>>>,
@@ -94,22 +98,34 @@ impl PluginRunner {
     Ok(proxy)
   }
 
-  fn run_loop(&mut self) -> Result<(), AnyError> {
-    todo!()
+  fn run_loop(mut self) -> Result<(), AnyError> {
+    let fut = async move {
+      while let Some(req) = self.rx.recv().await {
+        match req {
+          PluginRunnerRequest::LoadPlugins(specifiers) => {
+            let r = self.load_plugins(specifiers).await;
+            let _ = self.tx.send(PluginRunnerResponse::LoadPlugin(r)).await;
+          }
+          PluginRunnerRequest::Run(serialized_ast) => {
+            let rules_to_run = self.get_rules_to_run();
 
-    //   let rules_to_run = runner.get_rules_to_run();
+            eprintln!("Loaded plugins:");
+            for (plugin_name, rules) in rules_to_run.iter() {
+              eprintln!(" - {}", plugin_name);
+              for rule in rules {
+                eprintln!("   - {}", rule);
+              }
+            }
 
-    // eprintln!("Loaded plugins:");
-    // for (plugin_name, rules) in rules_to_run.iter() {
-    //   eprintln!(" - {}", plugin_name);
-    //   for rule in rules {
-    //     eprintln!("   - {}", rule);
-    //   }
-    // }
-
-    // runner_proxy.run_rules(serialized_ast).await?;
-
-    // Ok(())
+            let r = self.run_rules(rules_to_run, serialized_ast).await;
+            let _ = self.tx.send(PluginRunnerResponse::Run(r)).await;
+          }
+        }
+      }
+      Ok(())
+    }
+    .boxed_local();
+    tokio_util::create_and_run_current_thread(fut)
   }
 
   fn get_rules_to_run(&mut self) -> IndexMap<String, Vec<String>> {

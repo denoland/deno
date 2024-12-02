@@ -22,6 +22,7 @@ use crate::util::fs::atomic_write_file_with_retries;
 use crate::util::fs::specifier_from_file_path;
 
 use super::plugins;
+use super::plugins::PluginRunnerProxy;
 use super::rules::FileOrPackageLintRule;
 use super::rules::PackageLintRule;
 use super::ConfiguredRules;
@@ -30,6 +31,7 @@ pub struct CliLinterOptions {
   pub configured_rules: ConfiguredRules,
   pub fix: bool,
   pub deno_lint_config: DenoLintConfig,
+  pub maybe_plugin_runner: Option<Arc<Mutex<PluginRunnerProxy>>>,
 }
 
 #[derive(Debug)]
@@ -38,6 +40,7 @@ pub struct CliLinter {
   package_rules: Vec<Box<dyn PackageLintRule>>,
   linter: DenoLintLinter,
   deno_lint_config: DenoLintConfig,
+  maybe_plugin_runner: Option<Arc<Mutex<PluginRunnerProxy>>>,
 }
 
 impl CliLinter {
@@ -65,7 +68,12 @@ impl CliLinter {
         custom_ignore_diagnostic_directive: None,
       }),
       deno_lint_config: options.deno_lint_config,
+      maybe_plugin_runner: options.maybe_plugin_runner,
     }
+  }
+
+  pub fn get_plugin_runner(&self) -> Option<Arc<Mutex<PluginRunnerProxy>>> {
+    self.maybe_plugin_runner.clone()
   }
 
   pub fn has_package_rules(&self) -> bool {

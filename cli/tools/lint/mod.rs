@@ -180,6 +180,7 @@ pub async fn lint(
       );
       let paths_with_options_batches =
         resolve_paths_with_options_batches(cli_options, &lint_flags)?;
+
       for paths_with_options in paths_with_options_batches {
         linter
           .lint_files(
@@ -296,12 +297,15 @@ impl WorkspaceLinter {
     )
     .unwrap()];
     let maybe_plugin_runner = Some(Arc::new(Mutex::new(
-      plugins::create_runner_and_load_plugins(plugin_specifiers),
+      plugins::create_runner_and_load_plugins(plugin_specifiers)
+        .await
+        .unwrap(),
     )));
     let linter = Arc::new(CliLinter::new(CliLinterOptions {
       configured_rules: lint_rules,
       fix: lint_options.fix,
       deno_lint_config: lint_config,
+      maybe_plugin_runner,
     }));
 
     let mut futures = Vec::with_capacity(2);
@@ -382,17 +386,21 @@ impl WorkspaceLinter {
               cli_options.ext_flag().as_deref(),
             );
             if let Ok((file_source, file_diagnostics)) = &r {
-              // let file_source_ = file_source.clone();
-              // tokio_util::create_and_run_current_thread(
-              //   async move {
-              //     let plugin_runner = linter.get_plugin_runner().unwrap();
-              //     let serialized_ast =
-              //       plugins::get_estree_from_parsed_source(file_source_)?;
-              //     plugins::run_rules_for_ast(plugin_runner, serialized_ast)
-              //       .await
-              //   }
-              //   .boxed_local(),
-              // )?;
+              let file_source_ = file_source.clone();
+              tokio_util::create_and_run_current_thread(
+                async move {
+                  let plugin_runner = linter.get_plugin_runner().unwrap();
+                  let mut plugin_runner = plugin_runner.lock();
+                  let serialized_ast =
+                    plugins::get_estree_from_parsed_source(file_source_)?;
+                  plugins::run_rules_for_ast(
+                    &mut *plugin_runner,
+                    serialized_ast,
+                  )
+                  .await
+                }
+                .boxed_local(),
+              )?;
 
               if let Some(incremental_cache) = &maybe_incremental_cache {
                 if file_diagnostics.is_empty() {
@@ -529,6 +537,7 @@ fn lint_stdin(
     fix: false,
     configured_rules,
     deno_lint_config,
+    maybe_plugin_runner: None,
   });
 
   linter
