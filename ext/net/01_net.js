@@ -596,7 +596,6 @@ async function connect(args) {
               hostname: args.hostname ?? "127.0.0.1",
               port,
             },
-            args.timeout,
             cancelRid,
           );
         localAddr.transport = "tcp";

@@ -36,7 +36,6 @@ use socket2::Socket;
 use socket2::Type;
 use std::borrow::Cow;
 use std::cell::RefCell;
-use std::future::Future;
 use std::net::Ipv4Addr;
 use std::net::Ipv6Addr;
 use std::net::SocketAddr;
@@ -44,7 +43,6 @@ use std::rc::Rc;
 use std::str::FromStr;
 use tokio::net::TcpStream;
 use tokio::net::UdpSocket;
-use tokio::time::timeout;
 
 #[derive(Serialize, Clone, Debug)]
 #[serde(rename_all = "camelCase")]
@@ -63,28 +61,6 @@ impl From<SocketAddr> for IpAddr {
     Self {
       hostname: addr.ip().to_string(),
       port: addr.port(),
-    }
-  }
-}
-
-pub trait TcpStreamTimeout {
-  fn connect_timeout(
-    addr: &SocketAddr,
-    tcp_timeout: Option<u64>,
-  ) -> impl Future<Output = Result<TcpStream, std::io::Error>>;
-}
-
-impl TcpStreamTimeout for TcpStream {
-  async fn connect_timeout(
-    addr: &SocketAddr,
-    tcp_timeout: Option<u64>,
-  ) -> Result<TcpStream, std::io::Error> {
-    if tcp_timeout.is_none() {
-      TcpStream::connect(addr).await
-    } else {
-      let timeout_duration =
-        std::time::Duration::from_millis(tcp_timeout.unwrap());
-      timeout(timeout_duration, TcpStream::connect(addr)).await?
     }
   }
 }
@@ -372,20 +348,18 @@ pub async fn op_net_set_multi_ttl_udp(
 pub async fn op_net_connect_tcp<NP>(
   state: Rc<RefCell<OpState>>,
   #[serde] addr: IpAddr,
-  #[serde] timeout: Option<u64>,
   #[smi] resource_abort_id: Option<ResourceId>,
 ) -> Result<(ResourceId, IpAddr, IpAddr), NetError>
 where
   NP: NetPermissions + 'static,
 {
-  op_net_connect_tcp_inner::<NP>(state, addr, timeout, resource_abort_id).await
+  op_net_connect_tcp_inner::<NP>(state, addr, resource_abort_id).await
 }
 
 #[inline]
 pub async fn op_net_connect_tcp_inner<NP>(
   state: Rc<RefCell<OpState>>,
   addr: IpAddr,
-  timeout: Option<u64>,
   resource_abort_id: Option<ResourceId>,
 ) -> Result<(ResourceId, IpAddr, IpAddr), NetError>
 where
@@ -412,12 +386,16 @@ where
   });
 
   let tcp_stream_result = if let Some(cancel_handle) = &cancel_handle {
-    TcpStream::connect_timeout(&addr, timeout)
-      .or_cancel(cancel_handle)
-      .await?
+    TcpStream::connect(&addr).or_cancel(cancel_handle).await?
   } else {
-    TcpStream::connect_timeout(&addr, timeout).await
+    TcpStream::connect(&addr).await
   };
+
+  if let Some(cancel_rid) = resource_abort_id {
+    if let Ok(res) = state.borrow_mut().resource_table.take_any(cancel_rid) {
+      res.close();
+    }
+  }
 
   let tcp_stream = match tcp_stream_result {
     Ok(tcp_stream) => tcp_stream,
@@ -1175,10 +1153,9 @@ mod tests {
       port: server_addr[1].parse().unwrap(),
     };
 
-    let mut connect_fut = op_net_connect_tcp_inner::<TestPermission>(
-      conn_state, ip_addr, None, None,
-    )
-    .boxed_local();
+    let mut connect_fut =
+      op_net_connect_tcp_inner::<TestPermission>(conn_state, ip_addr, None)
+        .boxed_local();
     let mut rid = None;
 
     tokio::select! {
