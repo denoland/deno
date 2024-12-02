@@ -75,7 +75,7 @@ impl PackageSearchApi for CliNpmSearchApi {
     let info = self
       .resolver
       .package_info(name)
-      .await
+      .await?
       .ok_or_else(|| anyhow!("npm package info not found: {}", name))?;
     let mut versions = info.versions.keys().cloned().collect::<Vec<_>>();
     versions.sort();

@@ -27,6 +27,7 @@ use deno_npm::npm_rc::NpmRc;
 use deno_npm::npm_rc::ResolvedNpmRc;
 use deno_npm::resolution::ValidSerializedNpmResolutionSnapshot;
 use deno_npm::NpmSystemInfo;
+use deno_npm_cache::NpmCacheSetting;
 use deno_path_util::normalize_path;
 use deno_semver::npm::NpmPackageReqReference;
 use deno_telemetry::OtelConfig;
@@ -238,20 +239,19 @@ pub enum CacheSetting {
 }
 
 impl CacheSetting {
-  pub fn should_use_for_npm_package(&self, package_name: &str) -> bool {
+  pub fn as_npm_cache_setting(&self) -> NpmCacheSetting {
     match self {
-      CacheSetting::ReloadAll => false,
-      CacheSetting::ReloadSome(list) => {
-        if list.iter().any(|i| i == "npm:") {
-          return false;
-        }
-        let specifier = format!("npm:{package_name}");
-        if list.contains(&specifier) {
-          return false;
-        }
-        true
-      }
-      _ => true,
+      CacheSetting::Only => NpmCacheSetting::Only,
+      CacheSetting::ReloadAll => NpmCacheSetting::ReloadAll,
+      CacheSetting::ReloadSome(some) => NpmCacheSetting::ReloadSome {
+        npm_package_names: some
+          .iter()
+          .filter_map(|v| v.strip_prefix("npm:"))
+          .map(|n| n.to_string())
+          .collect(),
+      },
+      CacheSetting::RespectHeaders => unreachable!(), // not supported
+      CacheSetting::Use => NpmCacheSetting::Use,
     }
   }
 }

@@ -1220,6 +1220,7 @@ dependencies = [
  "deno_lint",
  "deno_lockfile",
  "deno_npm",
+ "deno_npm_cache",
  "deno_package_json",
  "deno_path_util",
  "deno_resolver",
@@ -1999,6 +2000,35 @@ dependencies = [
 ]
 
 [[package]]
+name = "deno_npm_cache"
+version = "0.0.1"
+dependencies = [
+ "anyhow",
+ "async-trait",
+ "base64 0.21.7",
+ "boxed_error",
+ "deno_cache_dir",
+ "deno_core",
+ "deno_npm",
+ "deno_semver",
+ "deno_unsync",
+ "faster-hex",
+ "flate2",
+ "futures",
+ "http 1.1.0",
+ "log",
+ "parking_lot",
+ "percent-encoding",
+ "rand",
+ "ring",
+ "serde_json",
+ "tar",
+ "tempfile",
+ "thiserror 1.0.64",
+ "url",
+]
+
+[[package]]
 name = "deno_ops"
 version = "0.199.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2260,10 +2290,11 @@ dependencies = [
 
 [[package]]
 name = "deno_unsync"
-version = "0.4.1"
+version = "0.4.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2f36b4ef61a04ce201b925a5dffa90f88437d37fee4836c758470dd15ba7f05e"
+checksum = "d774fd83f26b24f0805a6ab8b26834a0d06ceac0db517b769b1e4633c96a2057"
 dependencies = [
+ "futures",
  "parking_lot",
  "tokio",
 ]

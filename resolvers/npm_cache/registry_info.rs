@@ -1,30 +1,22 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
-
 use std::collections::HashMap;
 use std::sync::Arc;
 
-use deno_core::anyhow::anyhow;
-use deno_core::anyhow::bail;
-use deno_core::anyhow::Context;
-use deno_core::error::custom_error;
-use deno_core::error::AnyError;
-use deno_core::futures::future::LocalBoxFuture;
-use deno_core::futures::FutureExt;
-use deno_core::parking_lot::Mutex;
-use deno_core::serde_json;
-use deno_core::url::Url;
+use anyhow::anyhow;
+use anyhow::bail;
+use anyhow::Context;
+use anyhow::Error as AnyError;
 use deno_npm::npm_rc::ResolvedNpmRc;
 use deno_npm::registry::NpmPackageInfo;
+use deno_unsync::sync::MultiRuntimeAsyncValueCreator;
+use futures::future::LocalBoxFuture;
+use futures::FutureExt;
+use parking_lot::Mutex;
+use url::Url;
 
-use crate::args::CacheSetting;
-use crate::http_util::HttpClientProvider;
-use crate::npm::common::maybe_auth_header_for_npm_registry;
-use crate::util::progress_bar::ProgressBar;
-use crate::util::sync::MultiRuntimeAsyncValueCreator;
-
-use super::NpmCache;
-
-// todo(dsherret): create seams and unit test this
+use crate::remote::maybe_auth_header_for_npm_registry;
+use crate::NpmCache;
+use crate::NpmCacheEnv;
+use crate::NpmCacheSetting;
 
 type LoadResult = Result<FutureResult, Arc<AnyError>>;
 type LoadFuture = LocalBoxFuture<'static, LoadResult>;
@@ -53,26 +45,23 @@ enum MemoryCacheItem {
 ///
 /// This is shared amongst all the workers.
 #[derive(Debug)]
-pub struct RegistryInfoDownloader {
-  cache: Arc<NpmCache>,
-  http_client_provider: Arc<HttpClientProvider>,
+pub struct RegistryInfoDownloader<TEnv: NpmCacheEnv> {
+  cache: Arc<NpmCache<TEnv>>,
+  env: Arc<TEnv>,
   npmrc: Arc<ResolvedNpmRc>,
-  progress_bar: ProgressBar,
   memory_cache: Mutex<HashMap<String, MemoryCacheItem>>,
 }
 
-impl RegistryInfoDownloader {
+impl<TEnv: NpmCacheEnv> RegistryInfoDownloader<TEnv> {
   pub fn new(
-    cache: Arc<NpmCache>,
-    http_client_provider: Arc<HttpClientProvider>,
+    cache: Arc<NpmCache<TEnv>>,
+    env: Arc<TEnv>,
     npmrc: Arc<ResolvedNpmRc>,
-    progress_bar: ProgressBar,
   ) -> Self {
     Self {
       cache,
-      http_client_provider,
+      env,
       npmrc,
-      progress_bar,
       memory_cache: Default::default(),
     }
   }
@@ -94,8 +83,8 @@ impl RegistryInfoDownloader {
     self: &Arc<Self>,
     name: &str,
   ) -> Result<Option<Arc<NpmPackageInfo>>, AnyError> {
-    if *self.cache.cache_setting() == CacheSetting::Only {
-      return Err(custom_error(
+    if *self.cache.cache_setting() == NpmCacheSetting::Only {
+      return Err(deno_core::error::custom_error(
         "NotCached",
         format!(
           "An npm specifier not found in cache: \"{name}\", --cached-only is specified."
@@ -167,7 +156,7 @@ impl RegistryInfoDownloader {
   ) -> Result<NpmPackageInfo, AnyError> {
     // this scenario failing should be exceptionally rare so let's
     // deal with improving it only when anyone runs into an issue
-    let maybe_package_info = deno_core::unsync::spawn_blocking({
+    let maybe_package_info = deno_unsync::spawn_blocking({
       let cache = self.cache.clone();
       let name = name.to_string();
       move || cache.load_package_info(&name)
@@ -199,20 +188,18 @@ impl RegistryInfoDownloader {
           return std::future::ready(Err(Arc::new(err))).boxed_local()
         }
       };
-    let guard = self.progress_bar.update(package_url.as_str());
     let name = name.to_string();
     async move {
-      let client = downloader.http_client_provider.get_or_create()?;
-      let maybe_bytes = client
-        .download_with_progress_and_retries(
+      let maybe_bytes = downloader
+        .env
+        .download_with_retries_on_any_tokio_runtime(
           package_url,
           maybe_auth_header,
-          &guard,
         )
         .await?;
       match maybe_bytes {
         Some(bytes) => {
-          let future_result = deno_core::unsync::spawn_blocking(
+          let future_result = deno_unsync::spawn_blocking(
             move || -> Result<FutureResult, AnyError> {
               let package_info = serde_json::from_slice(&bytes)?;
               match downloader.cache.save_package_info(&name, &package_info) {
@@ -241,7 +228,7 @@ impl RegistryInfoDownloader {
   }
 }
 
-pub fn get_package_url(npmrc: &ResolvedNpmRc, name: &str) -> Url {
+fn get_package_url(npmrc: &ResolvedNpmRc, name: &str) -> Url {
   let registry_url = npmrc.get_registry_url(name);
   // The '/' character in scoped package names "@scope/name" must be
   // encoded for older third party registries. Newer registries and

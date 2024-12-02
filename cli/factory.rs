@@ -37,10 +37,14 @@ use crate::npm::create_in_npm_pkg_checker;
 use crate::npm::CliByonmNpmResolverCreateOptions;
 use crate::npm::CliManagedInNpmPkgCheckerCreateOptions;
 use crate::npm::CliManagedNpmResolverCreateOptions;
+use crate::npm::CliNpmCache;
+use crate::npm::CliNpmCacheEnv;
+use crate::npm::CliNpmRegistryInfoDownloader;
 use crate::npm::CliNpmResolver;
 use crate::npm::CliNpmResolverCreateOptions;
 use crate::npm::CliNpmResolverManagedSnapshotOption;
 use crate::npm::CreateInNpmPkgCheckerOptions;
+use crate::npm::NpmFetchResolver;
 use crate::resolver::CjsTracker;
 use crate::resolver::CliDenoResolver;
 use crate::resolver::CliDenoResolverFs;
@@ -200,7 +204,11 @@ struct CliFactoryServices {
   module_load_preparer: Deferred<Arc<ModuleLoadPreparer>>,
   node_code_translator: Deferred<Arc<CliNodeCodeTranslator>>,
   node_resolver: Deferred<Arc<NodeResolver>>,
+  npm_cache: Deferred<Arc<CliNpmCache>>,
   npm_cache_dir: Deferred<Arc<NpmCacheDir>>,
+  npm_cache_env: Deferred<Arc<CliNpmCacheEnv>>,
+  npm_fetch_resolver: Deferred<Arc<NpmFetchResolver>>,
+  npm_registry_info_downloader: Deferred<Arc<CliNpmRegistryInfoDownloader>>,
   npm_req_resolver: Deferred<Arc<CliNpmReqResolver>>,
   npm_resolver: Deferred<Arc<dyn CliNpmResolver>>,
   parsed_source_cache: Deferred<Arc<ParsedSourceCache>>,
@@ -400,6 +408,54 @@ impl CliFactory {
         cli_options.npmrc().get_all_known_registries_urls(),
       )))
     })
+  }
+
+  pub fn npm_cache(&self) -> Result<&Arc<CliNpmCache>, AnyError> {
+    self.services.npm_cache.get_or_try_init(|| {
+      let cli_options = self.cli_options()?;
+      Ok(Arc::new(CliNpmCache::new(
+        self.npm_cache_dir()?.clone(),
+        cli_options.cache_setting().as_npm_cache_setting(),
+        self.npm_cache_env().clone(),
+        cli_options.npmrc().clone(),
+      )))
+    })
+  }
+
+  pub fn npm_cache_env(&self) -> &Arc<CliNpmCacheEnv> {
+    self.services.npm_cache_env.get_or_init(|| {
+      Arc::new(CliNpmCacheEnv::new(
+        self.fs().clone(),
+        self.http_client_provider().clone(),
+        self.text_only_progress_bar().clone(),
+      ))
+    })
+  }
+
+  pub fn npm_fetch_resolver(&self) -> Result<&Arc<NpmFetchResolver>, AnyError> {
+    self.services.npm_fetch_resolver.get_or_try_init(|| {
+      let cli_options = self.cli_options()?;
+      Ok(Arc::new(NpmFetchResolver::new(
+        cli_options.npmrc().clone(),
+        self.npm_registry_info_downloader()?.clone(),
+      )))
+    })
+  }
+
+  pub fn npm_registry_info_downloader(
+    &self,
+  ) -> Result<&Arc<CliNpmRegistryInfoDownloader>, AnyError> {
+    self
+      .services
+      .npm_registry_info_downloader
+      .get_or_try_init(|| {
+        let cli_options = self.cli_options()?;
+        Ok(Arc::new(CliNpmRegistryInfoDownloader::new(
+          self.npm_cache()?.clone(),
+          self.npm_cache_env().clone(),
+          cli_options.npmrc().clone(),
+        )))
+      })
   }
 
   pub async fn npm_resolver(

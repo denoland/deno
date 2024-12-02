@@ -362,6 +362,7 @@ async fn install_global(
   let cli_options = factory.cli_options()?;
   let http_client = factory.http_client_provider();
   let deps_http_cache = factory.global_http_cache()?;
+  // todo(dsherret): too much factory code here
   let mut deps_file_fetcher = FileFetcher::new(
     deps_http_cache.clone(),
     CacheSetting::ReloadAll,
@@ -371,15 +372,9 @@ async fn install_global(
     None,
   );
 
-  let npmrc = factory.cli_options().unwrap().npmrc();
-
   deps_file_fetcher.set_download_log_level(log::Level::Trace);
   let deps_file_fetcher = Arc::new(deps_file_fetcher);
   let jsr_resolver = Arc::new(JsrFetchResolver::new(deps_file_fetcher.clone()));
-  let npm_resolver = Arc::new(NpmFetchResolver::new(
-    deps_file_fetcher.clone(),
-    npmrc.clone(),
-  ));
 
   let entry_text = install_flags_global.module_url.as_str();
   if !cli_options.initial_cwd().join(entry_text).exists() {
@@ -392,7 +387,14 @@ async fn install_global(
           "{entry_text} is missing a prefix. Did you mean `{}`?",
           crate::colors::yellow(format!("deno install -g jsr:{package_req}"))
         );
-      } else if npm_resolver.req_to_nv(&package_req).await.is_some() {
+      } else if factory
+        .npm_fetch_resolver()?
+        .req_to_nv(&package_req)
+        .await
+        .ok()
+        .flatten()
+        .is_some()
+      {
         bail!(
           "{entry_text} is missing a prefix. Did you mean `{}`?",
           crate::colors::yellow(format!("deno install -g npm:{package_req}"))

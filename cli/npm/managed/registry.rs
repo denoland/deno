@@ -14,20 +14,21 @@ use deno_core::parking_lot::Mutex;
 use deno_npm::registry::NpmPackageInfo;
 use deno_npm::registry::NpmRegistryApi;
 use deno_npm::registry::NpmRegistryPackageInfoLoadError;
+use deno_npm_cache::NpmCacheSetting;
 
-use crate::args::CacheSetting;
+use crate::npm::CliNpmCache;
+use crate::npm::CliNpmRegistryInfoDownloader;
 use crate::util::sync::AtomicFlag;
 
-use super::cache::NpmCache;
-use super::cache::RegistryInfoDownloader;
-
+// todo(dsherret): Remove this and move functionality down into
+// RegistryInfoDownloader, which already does most of this.
 #[derive(Debug)]
 pub struct CliNpmRegistryApi(Option<Arc<CliNpmRegistryApiInner>>);
 
 impl CliNpmRegistryApi {
   pub fn new(
-    cache: Arc<NpmCache>,
-    registry_info_downloader: Arc<RegistryInfoDownloader>,
+    cache: Arc<CliNpmCache>,
+    registry_info_downloader: Arc<CliNpmRegistryInfoDownloader>,
   ) -> Self {
     Self(Some(Arc::new(CliNpmRegistryApiInner {
       cache,
@@ -83,11 +84,11 @@ enum CacheItem {
 
 #[derive(Debug)]
 struct CliNpmRegistryApiInner {
-  cache: Arc<NpmCache>,
+  cache: Arc<CliNpmCache>,
   force_reload_flag: AtomicFlag,
   mem_cache: Mutex<HashMap<String, CacheItem>>,
   previously_reloaded_packages: Mutex<HashSet<String>>,
-  registry_info_downloader: Arc<RegistryInfoDownloader>,
+  registry_info_downloader: Arc<CliNpmRegistryInfoDownloader>,
 }
 
 impl CliNpmRegistryApiInner {
@@ -159,7 +160,7 @@ impl CliNpmRegistryApiInner {
     // is disabled or if we're already reloading
     if matches!(
       self.cache.cache_setting(),
-      CacheSetting::Only | CacheSetting::ReloadAll
+      NpmCacheSetting::Only | NpmCacheSetting::ReloadAll
     ) {
       return false;
     }

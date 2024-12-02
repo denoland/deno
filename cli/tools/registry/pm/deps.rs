@@ -675,12 +675,12 @@ impl DepManager {
             };
             let _permit = npm_sema.acquire().await;
             let semver_compatible =
-              self.npm_fetch_resolver.req_to_nv(semver_req).await;
-            let latest = self.npm_fetch_resolver.req_to_nv(&latest_req).await;
-            PackageLatestVersion {
+              self.npm_fetch_resolver.req_to_nv(semver_req).await?;
+            let latest = self.npm_fetch_resolver.req_to_nv(&latest_req).await?;
+            Ok(PackageLatestVersion {
               latest,
               semver_compatible,
-            }
+            })
           }
           .boxed_local(),
         ),
@@ -695,17 +695,17 @@ impl DepManager {
             let semver_compatible =
               self.jsr_fetch_resolver.req_to_nv(semver_req).await;
             let latest = self.jsr_fetch_resolver.req_to_nv(&latest_req).await;
-            PackageLatestVersion {
+            Result::<_, AnyError>::Ok(PackageLatestVersion {
               latest,
               semver_compatible,
-            }
+            })
           }
           .boxed_local(),
         ),
       }
     }
     while let Some(nv) = futs.next().await {
-      latest_versions.push(nv);
+      latest_versions.push(nv?);
     }
 
     Ok(latest_versions)
