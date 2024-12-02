@@ -98,6 +98,11 @@ const {
   ArrayPrototypePush,
   DataViewPrototypeGetBuffer,
   Error,
+  Number,
+  NumberPOSITIVE_INFINITY,
+  NumberMAX_SAFE_INTEGER,
+  NumberNEGATIVE_INFINITY,
+  NumberMIN_SAFE_INTEGER,
   MathMax,
   ObjectDefineProperty,
   ObjectHasOwn,
@@ -650,6 +655,19 @@ function createGPUSupportedLimits(limits) {
   return adapterFeatures;
 }
 
+function normalizeLimit(limit) {
+  if (typeof limit === "bigint") {
+    limit = Number(limit);
+    if (limit === NumberPOSITIVE_INFINITY) {
+      limit = NumberMAX_SAFE_INTEGER;
+    } else if (limit === NumberNEGATIVE_INFINITY) {
+      limit = NumberMIN_SAFE_INTEGER;
+    }
+  }
+
+  return limit;
+}
+
 /**
  * @typedef InnerAdapterLimits
  * @property {number} maxTextureDimension1D
@@ -690,123 +708,127 @@ class GPUSupportedLimits {
 
   get maxTextureDimension1D() {
     webidl.assertBranded(this, GPUSupportedLimitsPrototype);
-    return this[_limits].maxTextureDimension1D;
+    return normalizeLimit(this[_limits].maxTextureDimension1D);
   }
   get maxTextureDimension2D() {
     webidl.assertBranded(this, GPUSupportedLimitsPrototype);
-    return this[_limits].maxTextureDimension2D;
+    return normalizeLimit(this[_limits].maxTextureDimension2D);
   }
   get maxTextureDimension3D() {
     webidl.assertBranded(this, GPUSupportedLimitsPrototype);
-    return this[_limits].maxTextureDimension3D;
+    return normalizeLimit(this[_limits].maxTextureDimension3D);
   }
   get maxTextureArrayLayers() {
     webidl.assertBranded(this, GPUSupportedLimitsPrototype);
-    return this[_limits].maxTextureArrayLayers;
+    return normalizeLimit(this[_limits].maxTextureArrayLayers);
   }
   get maxBindGroups() {
     webidl.assertBranded(this, GPUSupportedLimitsPrototype);
-    return this[_limits].maxBindGroups;
+    return normalizeLimit(this[_limits].maxBindGroups);
   }
   get maxBindingsPerBindGroup() {
     webidl.assertBranded(this, GPUSupportedLimitsPrototype);
-    return this[_limits].maxBindingsPerBindGroup;
+    return normalizeLimit(this[_limits].maxBindingsPerBindGroup);
   }
   get maxBufferSize() {
     webidl.assertBranded(this, GPUSupportedLimitsPrototype);
-    return this[_limits].maxBufferSize;
+    return normalizeLimit(this[_limits].maxBufferSize);
   }
   get maxDynamicUniformBuffersPerPipelineLayout() {
     webidl.assertBranded(this, GPUSupportedLimitsPrototype);
-    return this[_limits].maxDynamicUniformBuffersPerPipelineLayout;
+    return normalizeLimit(
+      this[_limits].maxDynamicUniformBuffersPerPipelineLayout,
+    );
   }
   get maxDynamicStorageBuffersPerPipelineLayout() {
     webidl.assertBranded(this, GPUSupportedLimitsPrototype);
-    return this[_limits].maxDynamicStorageBuffersPerPipelineLayout;
+    return normalizeLimit(
+      this[_limits].maxDynamicStorageBuffersPerPipelineLayout,
+    );
   }
   get maxSampledTexturesPerShaderStage() {
     webidl.assertBranded(this, GPUSupportedLimitsPrototype);
-    return this[_limits].maxSampledTexturesPerShaderStage;
+    return normalizeLimit(this[_limits].maxSampledTexturesPerShaderStage);
   }
   get maxSamplersPerShaderStage() {
     webidl.assertBranded(this, GPUSupportedLimitsPrototype);
-    return this[_limits].maxSamplersPerShaderStage;
+    return normalizeLimit(this[_limits].maxSamplersPerShaderStage);
   }
   get maxStorageBuffersPerShaderStage() {
     webidl.assertBranded(this, GPUSupportedLimitsPrototype);
-    return this[_limits].maxStorageBuffersPerShaderStage;
+    return normalizeLimit(this[_limits].maxStorageBuffersPerShaderStage);
   }
   get maxStorageTexturesPerShaderStage() {
     webidl.assertBranded(this, GPUSupportedLimitsPrototype);
-    return this[_limits].maxStorageTexturesPerShaderStage;
+    return normalizeLimit(this[_limits].maxStorageTexturesPerShaderStage);
   }
   get maxUniformBuffersPerShaderStage() {
     webidl.assertBranded(this, GPUSupportedLimitsPrototype);
-    return this[_limits].maxUniformBuffersPerShaderStage;
+    return normalizeLimit(this[_limits].maxUniformBuffersPerShaderStage);
   }
   get maxUniformBufferBindingSize() {
     webidl.assertBranded(this, GPUSupportedLimitsPrototype);
-    return this[_limits].maxUniformBufferBindingSize;
+    return normalizeLimit(this[_limits].maxUniformBufferBindingSize);
   }
   get maxStorageBufferBindingSize() {
     webidl.assertBranded(this, GPUSupportedLimitsPrototype);
-    return this[_limits].maxStorageBufferBindingSize;
+    return normalizeLimit(this[_limits].maxStorageBufferBindingSize);
   }
   get minUniformBufferOffsetAlignment() {
     webidl.assertBranded(this, GPUSupportedLimitsPrototype);
-    return this[_limits].minUniformBufferOffsetAlignment;
+    return normalizeLimit(this[_limits].minUniformBufferOffsetAlignment);
   }
   get minStorageBufferOffsetAlignment() {
     webidl.assertBranded(this, GPUSupportedLimitsPrototype);
-    return this[_limits].minStorageBufferOffsetAlignment;
+    return normalizeLimit(this[_limits].minStorageBufferOffsetAlignment);
   }
   get maxVertexBuffers() {
     webidl.assertBranded(this, GPUSupportedLimitsPrototype);
-    return this[_limits].maxVertexBuffers;
+    return normalizeLimit(this[_limits].maxVertexBuffers);
   }
   get maxVertexAttributes() {
     webidl.assertBranded(this, GPUSupportedLimitsPrototype);
-    return this[_limits].maxVertexAttributes;
+    return normalizeLimit(this[_limits].maxVertexAttributes);
   }
   get maxVertexBufferArrayStride() {
     webidl.assertBranded(this, GPUSupportedLimitsPrototype);
-    return this[_limits].maxVertexBufferArrayStride;
+    return normalizeLimit(this[_limits].maxVertexBufferArrayStride);
   }
   get maxInterStageShaderComponents() {
     webidl.assertBranded(this, GPUSupportedLimitsPrototype);
-    return this[_limits].maxInterStageShaderComponents;
+    return normalizeLimit(this[_limits].maxInterStageShaderComponents);
   }
   get maxColorAttachments() {
     webidl.assertBranded(this, GPUSupportedLimitsPrototype);
-    return this[_limits].maxColorAttachments;
+    return normalizeLimit(this[_limits].maxColorAttachments);
   }
   get maxColorAttachmentBytesPerSample() {
     webidl.assertBranded(this, GPUSupportedLimitsPrototype);
-    return this[_limits].maxColorAttachmentBytesPerSample;
+    return normalizeLimit(this[_limits].maxColorAttachmentBytesPerSample);
   }
   get maxComputeWorkgroupStorageSize() {
     webidl.assertBranded(this, GPUSupportedLimitsPrototype);
-    return this[_limits].maxComputeWorkgroupStorageSize;
+    return normalizeLimit(this[_limits].maxComputeWorkgroupStorageSize);
   }
   get maxComputeInvocationsPerWorkgroup() {
     webidl.assertBranded(this, GPUSupportedLimitsPrototype);
-    return this[_limits].maxComputeInvocationsPerWorkgroup;
+    return normalizeLimit(this[_limits].maxComputeInvocationsPerWorkgroup);
   }
   get maxComputeWorkgroupSizeX() {
     webidl.assertBranded(this, GPUSupportedLimitsPrototype);
-    return this[_limits].maxComputeWorkgroupSizeX;
+    return normalizeLimit(this[_limits].maxComputeWorkgroupSizeX);
   }
   get maxComputeWorkgroupSizeY() {
     webidl.assertBranded(this, GPUSupportedLimitsPrototype);
-    return this[_limits].maxComputeWorkgroupSizeY;
+    return normalizeLimit(this[_limits].maxComputeWorkgroupSizeY);
   }
   get maxComputeWorkgroupSizeZ() {
     webidl.assertBranded(this, GPUSupportedLimitsPrototype);
-    return this[_limits].maxComputeWorkgroupSizeZ;
+    return normalizeLimit(this[_limits].maxComputeWorkgroupSizeZ);
   }
   get maxComputeWorkgroupsPerDimension() {
     webidl.assertBranded(this, GPUSupportedLimitsPrototype);
-    return this[_limits].maxComputeWorkgroupsPerDimension;
+    return normalizeLimit(this[_limits].maxComputeWorkgroupsPerDimension);
   }
 
   [SymbolFor("Deno.privateCustomInspect")](inspect, inspectOptions) {

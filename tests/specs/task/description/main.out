@@ -6,3 +6,7 @@ Available tasks:
     // This is a multiline
     // description
     echo 2
+- multiline_description_carriage_return
+    // This is a multiline
+    // description
+    echo 3

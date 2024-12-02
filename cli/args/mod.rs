@@ -28,8 +28,8 @@ use deno_npm::npm_rc::ResolvedNpmRc;
 use deno_npm::resolution::ValidSerializedNpmResolutionSnapshot;
 use deno_npm::NpmSystemInfo;
 use deno_path_util::normalize_path;
-use deno_runtime::ops::otel::OtelConfig;
 use deno_semver::npm::NpmPackageReqReference;
+use deno_telemetry::OtelConfig;
 use import_map::resolve_import_map_value_from_specifier;
 
 pub use deno_config::deno_json::BenchConfig;
@@ -1606,6 +1606,11 @@ impl CliOptions {
       || self.workspace().has_unstable("bare-node-builtins")
   }
 
+  pub fn unstable_detect_cjs(&self) -> bool {
+    self.flags.unstable_config.detect_cjs
+      || self.workspace().has_unstable("detect-cjs")
+  }
+
   pub fn detect_cjs(&self) -> bool {
     // only enabled when there's a package.json in order to not have a
     // perf penalty for non-npm Deno projects of searching for the closest
@@ -1675,6 +1680,7 @@ impl CliOptions {
           "sloppy-imports",
           "byonm",
           "bare-node-builtins",
+          "detect-cjs",
           "fmt-component",
           "fmt-sql",
         ])
