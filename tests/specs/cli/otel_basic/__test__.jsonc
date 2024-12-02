@@ -15,6 +15,10 @@
     {
       "args": "run -A main.ts uncaught.ts",
       "output": "uncaught.out"
+    },
+    {
+      "args": "run -A main.ts metric.ts",
+      "output": "metric.out"
     }
   ]
 }
