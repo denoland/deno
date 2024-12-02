@@ -443,8 +443,7 @@ pub fn format_html(
           let mut typescript_config_builder =
             get_typescript_config_builder(fmt_options);
           eprintln!("indent level {}", hints.indent_level);
-          typescript_config_builder
-            .file_indent_level(hints.indent_level.try_into().unwrap_or(0));
+          typescript_config_builder.file_indent_level(hints.indent_level);
           let mut typescript_config = typescript_config_builder.build();
           typescript_config.line_width = hints.print_width as u32;
           dprint_plugin_typescript::format_text(
@@ -1083,6 +1082,7 @@ fn get_resolved_markup_fmt_config(
   };
 
   let language_options = LanguageOptions {
+    script_formatter: Some(markup_fmt::config::ScriptFormatter::Dprint),
     quotes: Quotes::Double,
     format_comments: false,
     script_indent: true,
