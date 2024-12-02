@@ -23,7 +23,6 @@ use deno_graph::source::Loader;
 use deno_runtime::deno_fs;
 use deno_runtime::deno_permissions::PermissionsContainer;
 use node_resolver::InNpmPackageChecker;
-use std::borrow::Cow;
 use std::collections::HashMap;
 use std::path::Path;
 use std::path::PathBuf;
@@ -68,11 +67,8 @@ pub const CACHE_PERM: u32 = 0o644;
 pub struct RealDenoCacheEnv;
 
 impl deno_cache_dir::DenoCacheEnv for RealDenoCacheEnv {
-  fn read_file_bytes(
-    &self,
-    path: &Path,
-  ) -> std::io::Result<Cow<'static, [u8]>> {
-    std::fs::read(path).map(Cow::Owned)
+  fn read_file_bytes(&self, path: &Path) -> std::io::Result<Vec<u8>> {
+    std::fs::read(path)
   }
 
   fn atomic_write_file(
@@ -116,13 +112,12 @@ pub struct DenoCacheEnvFsAdapter<'a>(
 );
 
 impl<'a> deno_cache_dir::DenoCacheEnv for DenoCacheEnvFsAdapter<'a> {
-  fn read_file_bytes(
-    &self,
-    path: &Path,
-  ) -> std::io::Result<Cow<'static, [u8]>> {
+  fn read_file_bytes(&self, path: &Path) -> std::io::Result<Vec<u8>> {
     self
       .0
       .read_file_sync(path, None)
+      // todo(https://github.com/denoland/deno_cache_dir/pull/66): avoid clone
+      .map(|bytes| bytes.into_owned())
       .map_err(|err| err.into_io_error())
   }
 

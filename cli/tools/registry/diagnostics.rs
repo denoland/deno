@@ -169,7 +169,7 @@ impl Diagnostic for PublishDiagnostic {
         ..
       }) => DiagnosticLevel::Warning,
       FastCheck(_) => DiagnosticLevel::Error,
-      SpecifierUnfurl(d) => d.level(),
+      SpecifierUnfurl(_) => DiagnosticLevel::Warning,
       InvalidPath { .. } => DiagnosticLevel::Error,
       DuplicatePath { .. } => DiagnosticLevel::Error,
       UnsupportedFileType { .. } => DiagnosticLevel::Warning,
@@ -187,7 +187,7 @@ impl Diagnostic for PublishDiagnostic {
     use PublishDiagnostic::*;
     match &self {
       FastCheck(diagnostic) => diagnostic.code(),
-      SpecifierUnfurl(diagnostic) => diagnostic.code(),
+      SpecifierUnfurl(diagnostic) => Cow::Borrowed(diagnostic.code()),
       InvalidPath { .. } => Cow::Borrowed("invalid-path"),
       DuplicatePath { .. } => Cow::Borrowed("case-insensitive-duplicate-path"),
       UnsupportedFileType { .. } => Cow::Borrowed("unsupported-file-type"),
@@ -207,7 +207,7 @@ impl Diagnostic for PublishDiagnostic {
     use PublishDiagnostic::*;
     match &self {
       FastCheck(diagnostic) => diagnostic.message(),
-      SpecifierUnfurl(diagnostic) => diagnostic.message(),
+      SpecifierUnfurl(diagnostic) => Cow::Borrowed(diagnostic.message()),
       InvalidPath { message, .. } => Cow::Borrowed(message.as_str()),
       DuplicatePath { .. } => {
         Cow::Borrowed("package path is a case insensitive duplicate of another path in the package")
@@ -243,7 +243,17 @@ impl Diagnostic for PublishDiagnostic {
     use PublishDiagnostic::*;
     match &self {
       FastCheck(diagnostic) => diagnostic.location(),
-      SpecifierUnfurl(diagnostic) => diagnostic.location(),
+      SpecifierUnfurl(diagnostic) => match diagnostic {
+        SpecifierUnfurlerDiagnostic::UnanalyzableDynamicImport {
+          specifier,
+          text_info,
+          range,
+        } => DiagnosticLocation::ModulePosition {
+          specifier: Cow::Borrowed(specifier),
+          text_info: Cow::Borrowed(text_info),
+          source_pos: DiagnosticSourcePos::SourcePos(range.start),
+        },
+      },
       InvalidPath { path, .. } => {
         DiagnosticLocation::Path { path: path.clone() }
       }
@@ -315,8 +325,24 @@ impl Diagnostic for PublishDiagnostic {
 
     use PublishDiagnostic::*;
     match &self {
-      FastCheck(d) => d.snippet(),
-      SpecifierUnfurl(d) => d.snippet(),
+      FastCheck(diagnostic) => diagnostic.snippet(),
+      SpecifierUnfurl(diagnostic) => match diagnostic {
+        SpecifierUnfurlerDiagnostic::UnanalyzableDynamicImport {
+          text_info,
+          range,
+          ..
+        } => Some(DiagnosticSnippet {
+          source: Cow::Borrowed(text_info),
+          highlights: vec![DiagnosticSnippetHighlight {
+            style: DiagnosticSnippetHighlightStyle::Warning,
+            range: DiagnosticSourceRange {
+              start: DiagnosticSourcePos::SourcePos(range.start),
+              end: DiagnosticSourcePos::SourcePos(range.end),
+            },
+            description: Some("the unanalyzable dynamic import".into()),
+          }],
+        }),
+      },
       InvalidPath { .. } => None,
       DuplicatePath { .. } => None,
       UnsupportedFileType { .. } => None,
@@ -354,7 +380,7 @@ impl Diagnostic for PublishDiagnostic {
     use PublishDiagnostic::*;
     match &self {
       FastCheck(diagnostic) => diagnostic.hint(),
-      SpecifierUnfurl(d) => d.hint(),
+      SpecifierUnfurl(_) => None,
       InvalidPath { .. } => Some(
         Cow::Borrowed("rename or remove the file, or add it to 'publish.exclude' in the config file"),
       ),
@@ -410,9 +436,9 @@ impl Diagnostic for PublishDiagnostic {
           None => None,
         }
       }
-      SyntaxError(d) => d.snippet_fixed(),
-      SpecifierUnfurl(d) => d.snippet_fixed(),
+      SyntaxError(diagnostic) => diagnostic.snippet_fixed(),
       FastCheck(_)
+      | SpecifierUnfurl(_)
       | InvalidPath { .. }
       | DuplicatePath { .. }
       | UnsupportedFileType { .. }
@@ -427,8 +453,16 @@ impl Diagnostic for PublishDiagnostic {
   fn info(&self) -> Cow<'_, [Cow<'_, str>]> {
     use PublishDiagnostic::*;
     match &self {
-      FastCheck(d) => d.info(),
-      SpecifierUnfurl(d) => d.info(),
+      FastCheck(diagnostic) => {
+        diagnostic.info()
+      }
+      SpecifierUnfurl(diagnostic) => match diagnostic {
+        SpecifierUnfurlerDiagnostic::UnanalyzableDynamicImport { .. } => Cow::Borrowed(&[
+          Cow::Borrowed("after publishing this package, imports from the local import map / package.json do not work"),
+          Cow::Borrowed("dynamic imports that can not be analyzed at publish time will not be rewritten automatically"),
+          Cow::Borrowed("make sure the dynamic import is resolvable at runtime without an import map / package.json")
+        ]),
+      },
       InvalidPath { .. } => Cow::Borrowed(&[
         Cow::Borrowed("to portably support all platforms, including windows, the allowed characters in package paths are limited"),
       ]),
@@ -469,8 +503,10 @@ impl Diagnostic for PublishDiagnostic {
   fn docs_url(&self) -> Option<Cow<'_, str>> {
     use PublishDiagnostic::*;
     match &self {
-      FastCheck(d) => d.docs_url(),
-      SpecifierUnfurl(d) => d.docs_url(),
+      FastCheck(diagnostic) => diagnostic.docs_url(),
+      SpecifierUnfurl(diagnostic) => match diagnostic {
+        SpecifierUnfurlerDiagnostic::UnanalyzableDynamicImport { .. } => None,
+      },
       InvalidPath { .. } => {
         Some(Cow::Borrowed("https://jsr.io/go/invalid-path"))
       }

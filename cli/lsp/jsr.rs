@@ -262,7 +262,7 @@ fn read_cached_url(
   cache
     .get(&cache.cache_item_key(url).ok()?, None)
     .ok()?
-    .map(|f| f.content.into_owned())
+    .map(|f| f.content)
 }
 
 #[derive(Debug)]

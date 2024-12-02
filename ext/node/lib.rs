@@ -872,10 +872,12 @@ impl deno_package_json::fs::DenoPkgJsonFs for DenoFsNodeResolverEnv {
   fn read_to_string_lossy(
     &self,
     path: &std::path::Path,
-  ) -> Result<Cow<'static, str>, std::io::Error> {
+  ) -> Result<String, std::io::Error> {
     self
       .fs
       .read_text_file_lossy_sync(path, None)
+      // todo(https://github.com/denoland/deno_package_json/pull/9): don't clone
+      .map(|text| text.into_owned())
       .map_err(|err| err.into_io_error())
   }
 }
@@ -886,10 +888,12 @@ impl<'a> deno_package_json::fs::DenoPkgJsonFs for DenoPkgJsonFsAdapter<'a> {
   fn read_to_string_lossy(
     &self,
     path: &Path,
-  ) -> Result<Cow<'static, str>, std::io::Error> {
+  ) -> Result<String, std::io::Error> {
     self
       .0
       .read_text_file_lossy_sync(path, None)
+      // todo(https://github.com/denoland/deno_package_json/pull/9): don't clone
+      .map(|text| text.into_owned())
       .map_err(|err| err.into_io_error())
   }
 }

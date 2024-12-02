@@ -72,9 +72,9 @@ deno_ast = { workspace = true, features = ["bundler", "cjs", "codegen", "proposa
 deno_cache_dir.workspace = true
 deno_config.workspace = true
 deno_core = { workspace = true, features = ["include_js_files_for_snapshotting"] }
-deno_doc = { version = "=0.161.2", features = ["rust", "comrak"] }
-deno_graph = { version = "=0.86.3" }
-deno_lint = { version = "=0.68.1", features = ["docs"] }
+deno_doc = { version = "=0.161.1", features = ["rust", "comrak"] }
+deno_graph = { version = "=0.86.2" }
+deno_lint = { version = "=0.68.0", features = ["docs"] }
 deno_lockfile.workspace = true
 deno_npm.workspace = true
 deno_package_json.workspace = true
@@ -108,7 +108,7 @@ dotenvy = "0.15.7"
 dprint-plugin-json = "=0.19.4"
 dprint-plugin-jupyter = "=0.1.5"
 dprint-plugin-markdown = "=0.17.8"
-dprint-plugin-typescript = "=0.93.3"
+dprint-plugin-typescript = "=0.93.2"
 env_logger = "=0.10.0"
 fancy-regex = "=0.10.0"
 faster-hex.workspace = true

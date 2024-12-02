@@ -19,7 +19,8 @@ use deno_core::futures::FutureExt;
 use deno_core::futures::StreamExt;
 use deno_core::serde_json;
 use deno_graph::FillFromLockfileOptions;
-use deno_package_json::PackageJsonDepsMap;
+use deno_package_json::PackageJsonDepValue;
+use deno_package_json::PackageJsonDepValueParseError;
 use deno_package_json::PackageJsonRc;
 use deno_runtime::deno_permissions::PermissionsContainer;
 use deno_semver::jsr::JsrPackageReqReference;
@@ -31,6 +32,7 @@ use deno_semver::VersionReq;
 use import_map::ImportMap;
 use import_map::ImportMapWithDiagnostics;
 use import_map::SpecifierMapEntry;
+use indexmap::IndexMap;
 use tokio::sync::Semaphore;
 
 use crate::args::CliLockfile;
@@ -267,6 +269,94 @@ enum PackageJsonDepKind {
   Dev,
 }
 
+type PackageJsonDeps = IndexMap<
+  String,
+  Result<
+    (PackageJsonDepKind, PackageJsonDepValue),
+    PackageJsonDepValueParseError,
+  >,
+>;
+
+/// Resolve the package.json's dependencies.
+// TODO(nathanwhit): Remove once we update deno_package_json with dev deps split out
+fn resolve_local_package_json_deps(
+  package_json: &PackageJsonRc,
+) -> PackageJsonDeps {
+  /// Gets the name and raw version constraint for a registry info or
+  /// package.json dependency entry taking into account npm package aliases.
+  fn parse_dep_entry_name_and_raw_version<'a>(
+    key: &'a str,
+    value: &'a str,
+  ) -> (&'a str, &'a str) {
+    if let Some(package_and_version) = value.strip_prefix("npm:") {
+      if let Some((name, version)) = package_and_version.rsplit_once('@') {
+        // if empty, then the name was scoped and there's no version
+        if name.is_empty() {
+          (package_and_version, "*")
+        } else {
+          (name, version)
+        }
+      } else {
+        (package_and_version, "*")
+      }
+    } else {
+      (key, value)
+    }
+  }
+
+  fn parse_entry(
+    key: &str,
+    value: &str,
+  ) -> Result<PackageJsonDepValue, PackageJsonDepValueParseError> {
+    if let Some(workspace_key) = value.strip_prefix("workspace:") {
+      let version_req = VersionReq::parse_from_npm(workspace_key)?;
+      return Ok(PackageJsonDepValue::Workspace(version_req));
+    }
+    if value.starts_with("file:")
+      || value.starts_with("git:")
+      || value.starts_with("http:")
+      || value.starts_with("https:")
+    {
+      return Err(PackageJsonDepValueParseError::Unsupported {
+        scheme: value.split(':').next().unwrap().to_string(),
+      });
+    }
+    let (name, version_req) = parse_dep_entry_name_and_raw_version(key, value);
+    let result = VersionReq::parse_from_npm(version_req);
+    match result {
+      Ok(version_req) => Ok(PackageJsonDepValue::Req(PackageReq {
+        name: name.to_string(),
+        version_req,
+      })),
+      Err(err) => Err(PackageJsonDepValueParseError::VersionReq(err)),
+    }
+  }
+
+  fn insert_deps(
+    deps: Option<&IndexMap<String, String>>,
+    result: &mut PackageJsonDeps,
+    kind: PackageJsonDepKind,
+  ) {
+    if let Some(deps) = deps {
+      for (key, value) in deps {
+        result.entry(key.to_string()).or_insert_with(|| {
+          parse_entry(key, value).map(|entry| (kind, entry))
+        });
+      }
+    }
+  }
+
+  let deps = package_json.dependencies.as_ref();
+  let dev_deps = package_json.dev_dependencies.as_ref();
+  let mut result = IndexMap::new();
+
+  // favors the deps over dev_deps
+  insert_deps(deps, &mut result, PackageJsonDepKind::Normal);
+  insert_deps(dev_deps, &mut result, PackageJsonDepKind::Dev);
+
+  result
+}
+
 fn add_deps_from_deno_json(
   deno_json: &Arc<ConfigFile>,
   mut filter: impl DepFilter,
@@ -316,64 +406,40 @@ fn add_deps_from_deno_json(
 
 fn add_deps_from_package_json(
   package_json: &PackageJsonRc,
-  filter: impl DepFilter,
+  mut filter: impl DepFilter,
   deps: &mut Vec<Dep>,
 ) {
-  let package_json_deps = package_json.resolve_local_package_json_deps();
-
-  fn iterate(
-    package_json: &PackageJsonRc,
-    mut filter: impl DepFilter,
-    package_dep_kind: PackageJsonDepKind,
-    package_json_deps: PackageJsonDepsMap,
-    deps: &mut Vec<Dep>,
-  ) {
-    for (k, v) in package_json_deps {
-      let v = match v {
-        Ok(v) => v,
-        Err(e) => {
-          log::warn!("bad package json dep value: {e}");
+  let package_json_deps = resolve_local_package_json_deps(package_json);
+  for (k, v) in package_json_deps {
+    let (package_dep_kind, v) = match v {
+      Ok((k, v)) => (k, v),
+      Err(e) => {
+        log::warn!("bad package json dep value: {e}");
+        continue;
+      }
+    };
+    match v {
+      deno_package_json::PackageJsonDepValue::Req(req) => {
+        let alias = k.as_str();
+        let alias = (alias != req.name).then(|| alias.to_string());
+        if !filter.should_include(alias.as_deref(), &req, DepKind::Npm) {
           continue;
         }
-      };
-      match v {
-        deno_package_json::PackageJsonDepValue::Req(req) => {
-          let alias = k.as_str();
-          let alias = (alias != req.name).then(|| alias.to_string());
-          if !filter.should_include(alias.as_deref(), &req, DepKind::Npm) {
-            continue;
-          }
-          let id = DepId(deps.len());
-          deps.push(Dep {
-            id,
-            kind: DepKind::Npm,
-            location: DepLocation::PackageJson(
-              package_json.clone(),
-              KeyPath::from_parts([package_dep_kind.into(), k.into()]),
-            ),
-            req,
-            alias,
-          })
-        }
-        deno_package_json::PackageJsonDepValue::Workspace(_) => continue,
+        let id = DepId(deps.len());
+        deps.push(Dep {
+          id,
+          kind: DepKind::Npm,
+          location: DepLocation::PackageJson(
+            package_json.clone(),
+            KeyPath::from_parts([package_dep_kind.into(), k.into()]),
+          ),
+          req,
+          alias,
+        })
       }
+      deno_package_json::PackageJsonDepValue::Workspace(_) => continue,
     }
   }
-
-  iterate(
-    package_json,
-    filter,
-    PackageJsonDepKind::Normal,
-    package_json_deps.dependencies,
-    deps,
-  );
-  iterate(
-    package_json,
-    filter,
-    PackageJsonDepKind::Dev,
-    package_json_deps.dev_dependencies,
-    deps,
-  );
 }
 
 fn deps_from_workspace(

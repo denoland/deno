@@ -504,12 +504,7 @@ impl CliFactory {
         let resolver = cli_options
           .create_workspace_resolver(
             self.file_fetcher()?,
-            if cli_options.use_byonm()
-              && !matches!(
-                cli_options.sub_command(),
-                DenoSubcommand::Publish(_)
-              )
-            {
+            if cli_options.use_byonm() {
               PackageJsonDepResolution::Disabled
             } else {
               // todo(dsherret): this should be false for nodeModulesDir: true

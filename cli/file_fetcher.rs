@@ -1540,7 +1540,7 @@ mod tests {
       .unwrap()
       .unwrap()
       .content;
-    String::from_utf8(bytes.into_owned()).unwrap()
+    String::from_utf8(bytes).unwrap()
   }
 
   #[track_caller]

@@ -179,11 +179,7 @@ impl<Fs: DenoResolverFs, TEnv: NodeResolverEnv> ByonmNpmResolver<Fs, TEnv> {
       pkg_json: &PackageJson,
     ) -> Option<String> {
       let deps = pkg_json.resolve_local_package_json_deps();
-      for (key, value) in deps
-        .dependencies
-        .into_iter()
-        .chain(deps.dev_dependencies.into_iter())
-      {
+      for (key, value) in deps {
         if let Ok(value) = value {
           match value {
             PackageJsonDepValue::Req(dep_req) => {
