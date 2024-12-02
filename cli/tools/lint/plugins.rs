@@ -4,11 +4,13 @@ use deno_ast::swc::common as swc_common;
 use deno_ast::swc::common::BytePos;
 use deno_ast::ModuleSpecifier;
 use deno_ast::ParsedSource;
+use deno_core::anyhow::Context;
 use deno_core::error::custom_error;
 use deno_core::error::AnyError;
 use deno_core::futures::FutureExt;
 use deno_core::op2;
 use deno_core::serde_json;
+use deno_core::serde_v8;
 use deno_core::url::Url;
 use deno_core::v8;
 use deno_core::JsRuntime;
@@ -19,6 +21,7 @@ use deno_lint::diagnostic::LintDiagnostic;
 use deno_lint::diagnostic::LintDiagnosticDetails;
 use deno_runtime::tokio_util;
 use indexmap::IndexMap;
+use serde::Deserialize;
 use std::rc::Rc;
 use std::sync::Arc;
 use swc_estree_compat::babelify;
@@ -233,7 +236,7 @@ impl PluginRunner {
     for specifier in plugin_specifiers {
       let mod_id = self.runtime.load_side_es_module(&specifier).await?;
       let mod_future = self.runtime.mod_evaluate(mod_id).boxed_local();
-      load_futures.push(mod_future);
+      load_futures.push((mod_future, mod_id));
     }
 
     self
@@ -241,12 +244,73 @@ impl PluginRunner {
       .run_event_loop(PollEventLoopOptions::default())
       .await?;
 
-    for fut in load_futures {
-      let _module = fut.await?;
+    let state = self.runtime.op_state();
+
+    for (fut, mod_id) in load_futures {
+      let _ = fut.await?;
+      let module = self.runtime.get_module_namespace(mod_id).unwrap();
+      let scope = &mut self.runtime.handle_scope();
+      let module_local = v8::Local::new(scope, module);
+      let default_export_str = v8::String::new(scope, "default").unwrap();
+      eprintln!(
+        "has default export {:?}",
+        module_local.has_own_property(scope, default_export_str.into())
+      );
+      let default_export =
+        module_local.get(scope, default_export_str.into()).unwrap();
+      let name_str = v8::String::new(scope, "name").unwrap();
+      let name_val: v8::Local<v8::Object> = default_export.try_into().unwrap();
+
+      let name_val = name_val.get(scope, name_str.into()).unwrap();
+
+      eprintln!(
+        "default export name {:?}",
+        name_val.to_rust_string_lossy(scope)
+      );
+      eprintln!("deserializing plugin");
+
+      let def: PluginDefinition = serde_v8::from_v8(scope, default_export)
+        .context("Failed to deserialize plugin")?;
+
+      eprintln!("deserialized plugin {} {:?}", def.name, def.rules.keys());
+
+      let mut state = state.borrow_mut();
+      let mut container = state.borrow_mut::<LintPluginContainer>();
+      let mut plugin_desc = LintPluginDesc {
+        rules: IndexMap::with_capacity(def.rules.len()),
+      };
+      for (name, rule_def) in def.rules.into_iter() {
+        let local_val = v8::Local::new(scope, rule_def.create.v8_value);
+        let local_fn: v8::Local<v8::Function> = local_val.try_into().unwrap();
+        let global_fn = v8::Global::new(scope, local_fn);
+        plugin_desc.rules.insert(name, global_fn);
+      }
+      let _ = container.register(def.name, plugin_desc);
+
+      // let name_str = v8::String::new(scope, "name").unwrap();
+      // let plugin_name = module_local.get(scope, name.into()).unwrap();
+      // if plugin_name.is_undefined() {
+      //   bail!("Missing 'name' for a plugin");
+      // }
+      // let plugin_name: v8::Local<v8::String> = plugin_name.try_into().unwrap();
+      // let plugin_name = plugin_name.to_rust_string_lossy(scope);
+
+      // let rules_str =
     }
 
     Ok(())
   }
+}
+
+#[derive(Deserialize)]
+struct RuleDefinition {
+  create: serde_v8::GlobalValue,
+}
+
+#[derive(Deserialize)]
+struct PluginDefinition {
+  name: String,
+  rules: IndexMap<String, RuleDefinition>,
 }
 
 impl PluginRunnerProxy {
@@ -260,7 +324,11 @@ impl PluginRunnerProxy {
       .await?;
     let mut rx = self.rx.lock().await;
     eprintln!("receiving load plugins");
-    if let Some(_val) = rx.recv().await {
+    if let Some(val) = rx.recv().await {
+      let PluginRunnerResponse::LoadPlugin(result) = val else {
+        unreachable!()
+      };
+      eprintln!("load plugins response {:#?}", result);
       return Ok(());
     }
     Err(custom_error("AlreadyClosed", "Plugin host has closed"))
@@ -375,48 +443,11 @@ impl LintPluginContainer {
 
 deno_core::extension!(
   deno_lint_ext,
-  ops = [
-    op_lint_register_lint_plugin,
-    op_lint_register_lint_plugin_rule,
-    op_lint_get_rule,
-    op_lint_report,
-  ],
+  ops = [op_lint_get_rule, op_lint_report,],
   state = |state| {
     state.put(LintPluginContainer::default());
   },
 );
-
-#[op2(fast)]
-fn op_lint_register_lint_plugin(
-  state: &mut OpState,
-  #[string] name: String,
-) -> Result<(), AnyError> {
-  let plugin_desc = LintPluginDesc {
-    rules: IndexMap::new(),
-  };
-  let container = state.borrow_mut::<LintPluginContainer>();
-  container.register(name, plugin_desc)?;
-  Ok(())
-}
-
-#[op2]
-fn op_lint_register_lint_plugin_rule(
-  state: &mut OpState,
-  #[string] plugin_name: &str,
-  #[string] name: String,
-  #[global] create: v8::Global<v8::Function>,
-) -> Result<(), AnyError> {
-  let container = state.borrow_mut::<LintPluginContainer>();
-  let mut plugin_desc = container.plugins.get_mut(plugin_name).unwrap();
-  if plugin_desc.rules.contains_key(&name) {
-    return Err(custom_error(
-      "AlreadyExists",
-      format!("{} plugin already exists", name),
-    ));
-  }
-  plugin_desc.rules.insert(name, create);
-  Ok(())
-}
 
 #[op2]
 #[global]
@@ -448,6 +479,6 @@ fn op_lint_report(
   #[string] specifier: String,
   #[string] message: String,
 ) {
-  let mut container = state.borrow_mut::<LintPluginContainer>();
+  let container = state.borrow_mut::<LintPluginContainer>();
   container.report(id, specifier, message);
 }

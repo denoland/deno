@@ -413,7 +413,7 @@ impl WorkspaceLinter {
                       let serialized_ast =
                         plugins::get_estree_from_parsed_source(file_source_)?;
                       plugins::run_rules_for_ast(
-                        &mut *plugin_runner,
+                        &mut plugin_runner,
                         serialized_ast,
                       )
                       .await
