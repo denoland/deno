@@ -236,7 +236,7 @@ pub async fn execute_script(
           &Url::from_directory_path(cli_options.initial_cwd()).unwrap(),
           "",
           &TaskDefinition {
-            command: task_flags.task.as_ref().unwrap().to_string(),
+            command: Some(task_flags.task.as_ref().unwrap().to_string()),
             dependencies: vec![],
             description: None,
           },
@@ -430,6 +430,16 @@ impl<'a> TaskRunner<'a> {
     definition: &TaskDefinition,
     kill_signal: KillSignal,
   ) -> Result<i32, deno_core::anyhow::Error> {
+    let Some(command) = &definition.command else {
+      log::info!(
+        "{} {} {}",
+        colors::green("Task"),
+        colors::cyan(task_name),
+        colors::gray("(no command)")
+      );
+      return Ok(0);
+    };
+
     let cwd = match &self.task_flags.cwd {
       Some(path) => canonicalize_path(&PathBuf::from(path))
         .context("failed canonicalizing --cwd")?,
@@ -443,7 +453,7 @@ impl<'a> TaskRunner<'a> {
     self
       .run_single(RunSingleOptions {
         task_name,
-        script: &definition.command,
+        script: command,
         cwd: &cwd,
         custom_commands,
         kill_signal,
@@ -719,7 +729,7 @@ fn print_available_tasks(
           is_deno: false,
           name: name.to_string(),
           task: deno_config::deno_json::TaskDefinition {
-            command: script.to_string(),
+            command: Some(script.to_string()),
             dependencies: vec![],
             description: None,
           },
@@ -755,11 +765,13 @@ fn print_available_tasks(
         )?;
       }
     }
-    writeln!(
-      writer,
-      "    {}",
-      strip_ansi_codes_and_escape_control_chars(&desc.task.command)
-    )?;
+    if let Some(command) = &desc.task.command {
+      writeln!(
+        writer,
+        "    {}",
+        strip_ansi_codes_and_escape_control_chars(command)
+      )?;
+    };
     if !desc.task.dependencies.is_empty() {
       let dependencies = desc
         .task

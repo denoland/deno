@@ -3787,7 +3787,7 @@ impl Inner {
         for (name, command) in scripts {
           result.push(TaskDefinition {
             name: name.clone(),
-            command: command.clone(),
+            command: Some(command.clone()),
             source_uri: url_to_uri(&package_json.specifier())
               .map_err(|_| LspError::internal_error())?,
           });
