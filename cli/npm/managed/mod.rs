@@ -52,7 +52,7 @@ use self::resolvers::NpmPackageFsResolver;
 
 use super::CliNpmCache;
 use super::CliNpmCacheEnv;
-use super::CliNpmRegistryInfoDownloader;
+use super::CliNpmRegistryInfoProvider;
 use super::CliNpmResolver;
 use super::CliNpmTarballCache;
 use super::InnerCliNpmResolverRef;
@@ -222,7 +222,7 @@ fn create_api(
 ) -> Arc<CliNpmRegistryApi> {
   Arc::new(CliNpmRegistryApi::new(
     cache.clone(),
-    Arc::new(CliNpmRegistryInfoDownloader::new(
+    Arc::new(CliNpmRegistryInfoProvider::new(
       cache,
       env,
       options.npmrc.clone(),

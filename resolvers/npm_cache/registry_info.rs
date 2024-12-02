@@ -41,18 +41,22 @@ enum MemoryCacheItem {
   MemoryCached(Result<Option<Arc<NpmPackageInfo>>, Arc<AnyError>>),
 }
 
+// todo(#27198): refactor to store this only in the http cache and also
+// consolidate with CliNpmRegistryApi.
+
 /// Downloads packuments from the npm registry.
 ///
 /// This is shared amongst all the workers.
 #[derive(Debug)]
-pub struct RegistryInfoDownloader<TEnv: NpmCacheEnv> {
+pub struct RegistryInfoProvider<TEnv: NpmCacheEnv> {
+  // todo(#27198): remove this
   cache: Arc<NpmCache<TEnv>>,
   env: Arc<TEnv>,
   npmrc: Arc<ResolvedNpmRc>,
   memory_cache: Mutex<HashMap<String, MemoryCacheItem>>,
 }
 
-impl<TEnv: NpmCacheEnv> RegistryInfoDownloader<TEnv> {
+impl<TEnv: NpmCacheEnv> RegistryInfoProvider<TEnv> {
   pub fn new(
     cache: Arc<NpmCache<TEnv>>,
     env: Arc<TEnv>,
@@ -228,7 +232,9 @@ impl<TEnv: NpmCacheEnv> RegistryInfoDownloader<TEnv> {
   }
 }
 
-fn get_package_url(npmrc: &ResolvedNpmRc, name: &str) -> Url {
+// todo(#27198): make this private and only use RegistryInfoProvider in the rest of
+// the code
+pub fn get_package_url(npmrc: &ResolvedNpmRc, name: &str) -> Url {
   let registry_url = npmrc.get_registry_url(name);
   // The '/' character in scoped package names "@scope/name" must be
   // encoded for older third party registries. Newer registries and

@@ -17,25 +17,25 @@ use deno_npm::registry::NpmRegistryPackageInfoLoadError;
 use deno_npm_cache::NpmCacheSetting;
 
 use crate::npm::CliNpmCache;
-use crate::npm::CliNpmRegistryInfoDownloader;
+use crate::npm::CliNpmRegistryInfoProvider;
 use crate::util::sync::AtomicFlag;
 
-// todo(dsherret): Remove this and move functionality down into
-// RegistryInfoDownloader, which already does most of this.
+// todo(#27198): Remove this and move functionality down into
+// RegistryInfoProvider, which already does most of this.
 #[derive(Debug)]
 pub struct CliNpmRegistryApi(Option<Arc<CliNpmRegistryApiInner>>);
 
 impl CliNpmRegistryApi {
   pub fn new(
     cache: Arc<CliNpmCache>,
-    registry_info_downloader: Arc<CliNpmRegistryInfoDownloader>,
+    registry_info_provider: Arc<CliNpmRegistryInfoProvider>,
   ) -> Self {
     Self(Some(Arc::new(CliNpmRegistryApiInner {
       cache,
       force_reload_flag: Default::default(),
       mem_cache: Default::default(),
       previously_reloaded_packages: Default::default(),
-      registry_info_downloader,
+      registry_info_provider,
     })))
   }
 
@@ -88,7 +88,7 @@ struct CliNpmRegistryApiInner {
   force_reload_flag: AtomicFlag,
   mem_cache: Mutex<HashMap<String, CacheItem>>,
   previously_reloaded_packages: Mutex<HashSet<String>>,
-  registry_info_downloader: Arc<CliNpmRegistryInfoDownloader>,
+  registry_info_provider: Arc<CliNpmRegistryInfoProvider>,
 }
 
 impl CliNpmRegistryApiInner {
@@ -119,7 +119,7 @@ impl CliNpmRegistryApiInner {
                   return Ok(result);
                 }
               }
-              api.registry_info_downloader
+              api.registry_info_provider
                 .load_package_info(&name)
                 .await
                 .map_err(Arc::new)

@@ -10,6 +10,7 @@ use std::sync::Arc;
 
 use dashmap::DashMap;
 use deno_core::error::AnyError;
+use deno_core::serde_json;
 use deno_core::url::Url;
 use deno_npm::npm_rc::ResolvedNpmRc;
 use deno_npm::registry::NpmPackageInfo;
@@ -28,6 +29,7 @@ use managed::create_managed_in_npm_pkg_checker;
 use node_resolver::InNpmPackageChecker;
 use node_resolver::NpmPackageFolderResolver;
 
+use crate::file_fetcher::FileFetcher;
 use crate::http_util::HttpClientProvider;
 use crate::util::fs::atomic_write_file_with_retries_and_fs;
 use crate::util::fs::hard_link_dir_recursive;
@@ -43,8 +45,8 @@ pub use self::managed::ManagedCliNpmResolver;
 
 pub type CliNpmTarballCache = deno_npm_cache::TarballCache<CliNpmCacheEnv>;
 pub type CliNpmCache = deno_npm_cache::NpmCache<CliNpmCacheEnv>;
-pub type CliNpmRegistryInfoDownloader =
-  deno_npm_cache::RegistryInfoDownloader<CliNpmCacheEnv>;
+pub type CliNpmRegistryInfoProvider =
+  deno_npm_cache::RegistryInfoProvider<CliNpmCacheEnv>;
 
 #[derive(Debug)]
 pub struct CliNpmCacheEnv {
@@ -229,62 +231,80 @@ pub trait CliNpmResolver: NpmPackageFolderResolver + CliNpmReqResolver {
 #[derive(Debug)]
 pub struct NpmFetchResolver {
   nv_by_req: DashMap<PackageReq, Option<PackageNv>>,
-  registry_info_downloader: Arc<CliNpmRegistryInfoDownloader>,
+  info_by_name: DashMap<String, Option<Arc<NpmPackageInfo>>>,
+  file_fetcher: Arc<FileFetcher>,
   npmrc: Arc<ResolvedNpmRc>,
 }
 
 impl NpmFetchResolver {
   pub fn new(
+    file_fetcher: Arc<FileFetcher>,
     npmrc: Arc<ResolvedNpmRc>,
-    registry_info_downloader: Arc<CliNpmRegistryInfoDownloader>,
   ) -> Self {
     Self {
       nv_by_req: Default::default(),
-      registry_info_downloader,
+      info_by_name: Default::default(),
+      file_fetcher,
       npmrc,
     }
   }
 
-  pub async fn req_to_nv(
-    &self,
-    req: &PackageReq,
-  ) -> Result<Option<PackageNv>, AnyError> {
+  pub async fn req_to_nv(&self, req: &PackageReq) -> Option<PackageNv> {
     if let Some(nv) = self.nv_by_req.get(req) {
-      return Ok(nv.value().clone());
+      return nv.value().clone();
     }
-    let maybe_get_version = || async {
-      let Some(package_info) = self.package_info(&req.name).await? else {
-        return Result::<_, AnyError>::Ok(None);
-      };
+    let maybe_get_nv = || async {
+      let name = req.name.clone();
+      let package_info = self.package_info(&name).await?;
       if let Some(dist_tag) = req.version_req.tag() {
-        return Ok(package_info.dist_tags.get(dist_tag).cloned());
+        let version = package_info.dist_tags.get(dist_tag)?.clone();
+        return Some(PackageNv { name, version });
       }
       // Find the first matching version of the package.
       let mut versions = package_info.versions.keys().collect::<Vec<_>>();
       versions.sort();
-      Ok(
-        versions
-          .into_iter()
-          .rev()
-          .find(|v| {
-            req.version_req.tag().is_none() && req.version_req.matches(v)
-          })
-          .cloned(),
-      )
+      let version = versions
+        .into_iter()
+        .rev()
+        .find(|v| req.version_req.tag().is_none() && req.version_req.matches(v))
+        .cloned()?;
+      Some(PackageNv { name, version })
     };
-    let maybe_nv = maybe_get_version().await?.map(|version| PackageNv {
-      name: req.name.clone(),
-      version,
-    });
-    self.nv_by_req.insert(req.clone(), maybe_nv.clone());
-    Ok(maybe_nv)
+    let nv = maybe_get_nv().await;
+    self.nv_by_req.insert(req.clone(), nv.clone());
+    nv
   }
 
-  pub async fn package_info(
-    &self,
-    name: &str,
-  ) -> Result<Option<Arc<NpmPackageInfo>>, AnyError> {
-    self.registry_info_downloader.load_package_info(name).await
+  pub async fn package_info(&self, name: &str) -> Option<Arc<NpmPackageInfo>> {
+    if let Some(info) = self.info_by_name.get(name) {
+      return info.value().clone();
+    }
+    // todo(#27198): use RegistryInfoProvider instead
+    let fetch_package_info = || async {
+      let info_url = deno_npm_cache::get_package_url(&self.npmrc, name);
+      let file_fetcher = self.file_fetcher.clone();
+      let registry_config = self.npmrc.get_registry_config(name);
+      // TODO(bartlomieju): this should error out, not use `.ok()`.
+      let maybe_auth_header =
+        deno_npm_cache::maybe_auth_header_for_npm_registry(registry_config)
+          .ok()?;
+      // spawn due to the lsp's `Send` requirement
+      let file = deno_core::unsync::spawn(async move {
+        file_fetcher
+          .fetch_bypass_permissions_with_maybe_auth(
+            &info_url,
+            maybe_auth_header,
+          )
+          .await
+          .ok()
+      })
+      .await
+      .ok()??;
+      serde_json::from_slice::<NpmPackageInfo>(&file.source).ok()
+    };
+    let info = fetch_package_info().await.map(Arc::new);
+    self.info_by_name.insert(name.to_string(), info.clone());
+    info
   }
 }
 

@@ -369,6 +369,7 @@ pub async fn remove_dir_all_if_exists(path: &Path) -> std::io::Result<()> {
 }
 
 mod clone_dir_imp {
+
   #[cfg(target_vendor = "apple")]
   mod apple {
     use super::super::copy_dir_recursive;
