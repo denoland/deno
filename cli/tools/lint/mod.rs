@@ -380,39 +380,45 @@ impl WorkspaceLinter {
               }
             }
 
-            let r = linter.lint_file(
+            let mut r = linter.lint_file(
               &file_path,
               file_text,
               cli_options.ext_flag().as_deref(),
             );
-            if let Ok((file_source, file_diagnostics)) = &r {
-              let file_source_ = file_source.clone();
-              tokio_util::create_and_run_current_thread(
-                async move {
-                  let plugin_runner = linter.get_plugin_runner().unwrap();
-                  let mut plugin_runner = plugin_runner.lock();
-                  let serialized_ast =
-                    plugins::get_estree_from_parsed_source(file_source_)?;
-                  plugins::run_rules_for_ast(
-                    &mut *plugin_runner,
-                    serialized_ast,
-                  )
-                  .await
-                }
-                .boxed_local(),
-              )?;
+            let r = match r {
+              Ok((file_source, mut file_diagnostics)) => {
+                let file_source_ = file_source.clone();
+                let plugin_diagnostics =
+                  tokio_util::create_and_run_current_thread(
+                    async move {
+                      let plugin_runner = linter.get_plugin_runner().unwrap();
+                      let mut plugin_runner = plugin_runner.lock();
+                      let serialized_ast =
+                        plugins::get_estree_from_parsed_source(file_source_)?;
+                      plugins::run_rules_for_ast(
+                        &mut *plugin_runner,
+                        serialized_ast,
+                      )
+                      .await
+                    }
+                    .boxed_local(),
+                  )?;
 
-              if let Some(incremental_cache) = &maybe_incremental_cache {
-                if file_diagnostics.is_empty() {
-                  // update the incremental cache if there were no diagnostics
-                  incremental_cache.update_file(
-                    &file_path,
-                    // ensure the returned text is used here as it may have been modified via --fix
-                    file_source.text(),
-                  )
+                file_diagnostics.extend_from_slice(&plugin_diagnostics);
+                if let Some(incremental_cache) = &maybe_incremental_cache {
+                  if file_diagnostics.is_empty() {
+                    // update the incremental cache if there were no diagnostics
+                    incremental_cache.update_file(
+                      &file_path,
+                      // ensure the returned text is used here as it may have been modified via --fix
+                      file_source.text(),
+                    )
+                  }
                 }
+                Ok((file_source, file_diagnostics))
               }
-            }
+              Err(err) => Err(err),
+            };
 
             let success = handle_lint_result(
               &file_path.to_string_lossy(),

@@ -1,4 +1,4 @@
-import { op_lint_get_rule } from "ext:core/ops";
+import { op_lint_get_rule, op_lint_report } from "ext:core/ops";
 
 export class Context {
   id;
@@ -10,8 +10,8 @@ export class Context {
     this.fileName = fileName;
   }
 
-  report() {
-    console.log("Not implemented report");
+  report(data) {
+    op_lint_report(this.id, this.fileName, data.message);
   }
 }
 

@@ -15,6 +15,8 @@ use deno_core::JsRuntime;
 use deno_core::OpState;
 use deno_core::PollEventLoopOptions;
 use deno_core::RuntimeOptions;
+use deno_lint::diagnostic::LintDiagnostic;
+use deno_lint::diagnostic::LintDiagnosticDetails;
 use deno_runtime::tokio_util;
 use indexmap::IndexMap;
 use std::rc::Rc;
@@ -31,11 +33,18 @@ pub enum PluginRunnerRequest {
   Run(String),
 }
 
-#[derive(Debug)]
 pub enum PluginRunnerResponse {
   LoadPlugin(Result<(), AnyError>),
-  // TODO: should return diagnostics
-  Run(Result<(), AnyError>),
+  Run(Result<Vec<LintDiagnostic>, AnyError>),
+}
+
+impl std::fmt::Debug for PluginRunnerResponse {
+  fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    match self {
+      Self::LoadPlugin(_arg0) => f.debug_tuple("LoadPlugin").finish(),
+      Self::Run(_arg0) => f.debug_tuple("Run").finish(),
+    }
+  }
 }
 
 #[derive(Debug)]
@@ -57,17 +66,24 @@ impl PluginRunner {
     let (tx_req, rx_req) = channel(10);
     let (tx_res, rx_res) = channel(10);
 
+    eprintln!("spawning thread");
     let join_handle = std::thread::spawn(move || {
+      eprintln!("thread spawned");
       let mut runtime = JsRuntime::new(RuntimeOptions {
         extensions: vec![deno_lint_ext::init_ops()],
         module_loader: Some(Rc::new(deno_core::FsModuleLoader)),
         ..Default::default()
       });
 
-      let obj = runtime.lazy_load_es_module_with_code(
+      eprintln!("before loaded");
+
+      let obj_result = runtime.lazy_load_es_module_with_code(
         "ext:cli/lint.js",
         deno_core::ascii_str_include!(concat!("lint.js")),
-      )?;
+      );
+
+      eprintln!("after loaded {}", obj_result.is_err());
+      let obj = obj_result?;
 
       let run_plugin_rule_fn = {
         let scope = &mut runtime.handle_scope();
@@ -85,10 +101,13 @@ impl PluginRunner {
         tx: tx_res,
         rx: rx_req,
       };
-
-      runner.run_loop()
+      // TODO(bartlomieju): send "host ready" message to the proxy
+      eprintln!("running host loop");
+      runner.run_loop()?;
+      Ok(())
     });
 
+    eprintln!("is thread finished {}", join_handle.is_finished());
     let proxy = PluginRunnerProxy {
       tx: tx_req,
       rx: Arc::new(tokio::sync::Mutex::new(rx_res)),
@@ -100,7 +119,9 @@ impl PluginRunner {
 
   fn run_loop(mut self) -> Result<(), AnyError> {
     let fut = async move {
+      eprintln!("waiting for message");
       while let Some(req) = self.rx.recv().await {
+        eprintln!("received message");
         match req {
           PluginRunnerRequest::LoadPlugins(specifiers) => {
             let r = self.load_plugins(specifiers).await;
@@ -117,15 +138,26 @@ impl PluginRunner {
               }
             }
 
-            let r = self.run_rules(rules_to_run, serialized_ast).await;
+            let r = match self.run_rules(rules_to_run, serialized_ast).await {
+              Ok(()) => Ok(self.take_diagnostics()),
+              Err(err) => Err(err),
+            };
             let _ = self.tx.send(PluginRunnerResponse::Run(r)).await;
           }
         }
       }
+      eprintln!("breaking loop");
       Ok(())
     }
     .boxed_local();
     tokio_util::create_and_run_current_thread(fut)
+  }
+
+  fn take_diagnostics(&mut self) -> Vec<LintDiagnostic> {
+    let op_state = self.runtime.op_state();
+    let mut state = op_state.borrow_mut();
+    let mut container = state.borrow_mut::<LintPluginContainer>();
+    std::mem::take(&mut container.diagnostics)
   }
 
   fn get_rules_to_run(&mut self) -> IndexMap<String, Vec<String>> {
@@ -227,6 +259,7 @@ impl PluginRunnerProxy {
       .send(PluginRunnerRequest::LoadPlugins(plugin_specifiers))
       .await?;
     let mut rx = self.rx.lock().await;
+    eprintln!("receiving load plugins");
     if let Some(_val) = rx.recv().await {
       return Ok(());
     }
@@ -236,14 +269,16 @@ impl PluginRunnerProxy {
   pub async fn run_rules(
     &self,
     serialized_ast: String,
-  ) -> Result<(), AnyError> {
+  ) -> Result<Vec<LintDiagnostic>, AnyError> {
     self
       .tx
       .send(PluginRunnerRequest::Run(serialized_ast))
       .await?;
     let mut rx = self.rx.lock().await;
-    if let Some(_val) = rx.recv().await {
-      return Ok(());
+    eprintln!("receiving diagnostics");
+    if let Some(PluginRunnerResponse::Run(diagnostics_result)) = rx.recv().await
+    {
+      return diagnostics_result;
     }
     Err(custom_error("AlreadyClosed", "Plugin host has closed"))
   }
@@ -260,9 +295,9 @@ pub async fn create_runner_and_load_plugins(
 pub async fn run_rules_for_ast(
   runner_proxy: &mut PluginRunnerProxy,
   serialized_ast: String,
-) -> Result<(), AnyError> {
-  runner_proxy.run_rules(serialized_ast).await?;
-  Ok(())
+) -> Result<Vec<LintDiagnostic>, AnyError> {
+  let d = runner_proxy.run_rules(serialized_ast).await?;
+  Ok(d)
 }
 
 pub fn get_estree_from_parsed_source(
@@ -299,6 +334,7 @@ struct LintPluginDesc {
 #[derive(Default)]
 struct LintPluginContainer {
   plugins: IndexMap<String, LintPluginDesc>,
+  diagnostics: Vec<LintDiagnostic>,
 }
 
 impl LintPluginContainer {
@@ -317,6 +353,24 @@ impl LintPluginContainer {
     self.plugins.insert(name, desc);
     Ok(())
   }
+
+  fn report(&mut self, id: String, specifier: String, message: String) {
+    let lint_diagnostic = LintDiagnostic {
+      // TODO: fix
+      specifier: ModuleSpecifier::parse(&format!("file:///{}", specifier))
+        .unwrap(),
+      range: None,
+      details: LintDiagnosticDetails {
+        message,
+        code: id,
+        hint: None,
+        fixes: vec![],
+        custom_docs_url: None,
+        info: vec![],
+      },
+    };
+    self.diagnostics.push(lint_diagnostic);
+  }
 }
 
 deno_core::extension!(
@@ -324,7 +378,8 @@ deno_core::extension!(
   ops = [
     op_lint_register_lint_plugin,
     op_lint_register_lint_plugin_rule,
-    op_lint_get_rule
+    op_lint_get_rule,
+    op_lint_report,
   ],
   state = |state| {
     state.put(LintPluginContainer::default());
@@ -384,4 +439,15 @@ fn op_lint_get_rule(
     ));
   };
   Ok(rule.clone())
+}
+
+#[op2(fast)]
+fn op_lint_report(
+  state: &mut OpState,
+  #[string] id: String,
+  #[string] specifier: String,
+  #[string] message: String,
+) {
+  let mut container = state.borrow_mut::<LintPluginContainer>();
+  container.report(id, specifier, message);
 }
