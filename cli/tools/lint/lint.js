@@ -32,8 +32,8 @@ export function runPluginRule(fileName, pluginName, ruleName, serializedAst) {
   console.log(ctx, typeof rule);
   const visitor = rule(ctx);
   const ast = JSON.parse(serializedAst);
-  console.log("ast", ast);
-  console.log("visitor", Object.keys(visitor));
+  // console.log("ast", ast);
+  // console.log("visitor", Object.keys(visitor));
   // const visitor = new Visitor();
   // visitor.visitProgram(ast);
 }

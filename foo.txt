@@ -1,0 +1,2505 @@
+spawning thread
+is thread finished false
+thread spawned
+receiving load plugins
+before loaded
+after loaded false
+running host loop
+waiting for message
+received message
+has default export Some(true)
+default export name "test-plugin"
+deserializing plugin
+deserialized plugin test-plugin ["first-rule"]
+load plugins response Ok(
+    (),
+)
+serialize using serde_json took 37.112917ms
+receiving diagnostics
+received message
+Loaded plugins:
+ - test-plugin
+   - first-rule
+plugin finished
+Running rules took 18.270459ms
+[0m[1m[31merror[no-var][0m: [0m[1m`var` keyword is not allowed.[0m
+  [0m[38;5;12m-->[0m [0m[36m/Users/ib/dev/deno/ext/node/polyfills/_stream.mjs[0m[0m[33m:57:1[0m
+  [0m[38;5;12m | [0m
+[0m[38;5;12m57 | [0mvar __getOwnPropNames = Object.getOwnPropertyNames;
+  [0m[38;5;12m | [0m[0m[1m[31m^^^[0m
+
+  [0m[38;5;12mdocs[0m: https://lint.deno.land/rules/no-var
+
+
+[0m[1m[31merror[no-var][0m: [0m[1m`var` keyword is not allowed.[0m
+  [0m[38;5;12m-->[0m [0m[36m/Users/ib/dev/deno/ext/node/polyfills/_stream.mjs[0m[0m[33m:58:1[0m
+  [0m[38;5;12m | [0m
+[0m[38;5;12m58 | [0mvar __commonJS = (cb, mod) =>
+  [0m[38;5;12m | [0m[0m[1m[31m^^^[0m
+
+  [0m[38;5;12mdocs[0m: https://lint.deno.land/rules/no-var
+
+
+[0m[1m[31merror[no-var][0m: [0m[1m`var` keyword is not allowed.[0m
+  [0m[38;5;12m-->[0m [0m[36m/Users/ib/dev/deno/ext/node/polyfills/_stream.mjs[0m[0m[33m:66:1[0m
+  [0m[38;5;12m | [0m
+[0m[38;5;12m66 | [0mvar require_buffer = () => {
+  [0m[38;5;12m | [0m[0m[1m[31m^^^[0m
+
+  [0m[38;5;12mdocs[0m: https://lint.deno.land/rules/no-var
+
+
+[0m[1m[31merror[no-var][0m: [0m[1m`var` keyword is not allowed.[0m
+  [0m[38;5;12m-->[0m [0m[36m/Users/ib/dev/deno/ext/node/polyfills/_stream.mjs[0m[0m[33m:71:1[0m
+  [0m[38;5;12m | [0m
+[0m[38;5;12m71 | [0mvar require_primordials = __commonJS({
+  [0m[38;5;12m | [0m[0m[1m[31m^^^[0m
+
+  [0m[38;5;12mdocs[0m: https://lint.deno.land/rules/no-var
+
+
+[0m[1m[31merror[no-unused-vars][0m: [0m[1m`exports2` is never used[0m
+  [0m[38;5;12m-->[0m [0m[36m/Users/ib/dev/deno/ext/node/polyfills/_stream.mjs[0m[0m[33m:72:29[0m
+  [0m[38;5;12m | [0m
+[0m[38;5;12m72 | [0m  "lib/ours/primordials.js"(exports2, module2) {
+  [0m[38;5;12m | [0m                            [0m[1m[31m^^^^^^^^[0m
+   [0m[38;5;12m=[0m [0m[1mhint[0m: If this is intentional, prefix it with an underscore like `_exports2`
+
+  [0m[38;5;12mdocs[0m: https://lint.deno.land/rules/no-unused-vars
+
+
+[0m[1m[31merror[no-var][0m: [0m[1m`var` keyword is not allowed.[0m
+   [0m[38;5;12m-->[0m [0m[36m/Users/ib/dev/deno/ext/node/polyfills/_stream.mjs[0m[0m[33m:169:1[0m
+   [0m[38;5;12m | [0m
+[0m[38;5;12m169 | [0mvar require_validators = __commonJS({
+   [0m[38;5;12m | [0m[0m[1m[31m^^^[0m
+
+  [0m[38;5;12mdocs[0m: https://lint.deno.land/rules/no-var
+
+
+[0m[1m[31merror[no-unused-vars][0m: [0m[1m`exports` is never used[0m
+   [0m[38;5;12m-->[0m [0m[36m/Users/ib/dev/deno/ext/node/polyfills/_stream.mjs[0m[0m[33m:170:32[0m
+   [0m[38;5;12m | [0m
+[0m[38;5;12m170 | [0m  "lib/internal/validators.js"(exports, module) {
+   [0m[38;5;12m | [0m                               [0m[1m[31m^^^^^^^[0m
+    [0m[38;5;12m=[0m [0m[1mhint[0m: If this is intentional, prefix it with an underscore like `_exports`
+
+  [0m[38;5;12mdocs[0m: https://lint.deno.land/rules/no-unused-vars
+
+
+[0m[1m[31merror[no-var][0m: [0m[1m`var` keyword is not allowed.[0m
+   [0m[38;5;12m-->[0m [0m[36m/Users/ib/dev/deno/ext/node/polyfills/_stream.mjs[0m[0m[33m:172:5[0m
+   [0m[38;5;12m | [0m
+[0m[38;5;12m172 | [0m    var {
+   [0m[38;5;12m | [0m    [0m[1m[31m^^^[0m
+
+  [0m[38;5;12mdocs[0m: https://lint.deno.land/rules/no-var
+
+
+[0m[1m[31merror[no-var][0m: [0m[1m`var` keyword is not allowed.[0m
+   [0m[38;5;12m-->[0m [0m[36m/Users/ib/dev/deno/ext/node/polyfills/_stream.mjs[0m[0m[33m:188:5[0m
+   [0m[38;5;12m | [0m
+[0m[38;5;12m188 | [0m    var signals = {};
+   [0m[38;5;12m | [0m    [0m[1m[31m^^^[0m
+
+  [0m[38;5;12mdocs[0m: https://lint.deno.land/rules/no-var
+
+
+[0m[1m[31merror[no-var][0m: [0m[1m`var` keyword is not allowed.[0m
+   [0m[38;5;12m-->[0m [0m[36m/Users/ib/dev/deno/ext/node/polyfills/_stream.mjs[0m[0m[33m:195:5[0m
+   [0m[38;5;12m | [0m
+[0m[38;5;12m195 | [0m    var octalReg = /^[0-7]+$/;
+   [0m[38;5;12m | [0m    [0m[1m[31m^^^[0m
+
+  [0m[38;5;12mdocs[0m: https://lint.deno.land/rules/no-var
+
+
+[0m[1m[31merror[no-var][0m: [0m[1m`var` keyword is not allowed.[0m
+   [0m[38;5;12m-->[0m [0m[36m/Users/ib/dev/deno/ext/node/polyfills/_stream.mjs[0m[0m[33m:196:5[0m
+   [0m[38;5;12m | [0m
+[0m[38;5;12m196 | [0m    var modeDesc = "must be a 32-bit unsigned integer or an octal string";
+   [0m[38;5;12m | [0m    [0m[1m[31m^^^[0m
+
+  [0m[38;5;12mdocs[0m: https://lint.deno.land/rules/no-var
+
+
+[0m[1m[31merror[no-var][0m: [0m[1m`var` keyword is not allowed.[0m
+   [0m[38;5;12m-->[0m [0m[36m/Users/ib/dev/deno/ext/node/polyfills/_stream.mjs[0m[0m[33m:210:5[0m
+   [0m[38;5;12m | [0m
+[0m[38;5;12m210 | [0m    var validateInteger = hideStackFrames(
+   [0m[38;5;12m | [0m    [0m[1m[31m^^^[0m
+
+  [0m[38;5;12mdocs[0m: https://lint.deno.land/rules/no-var
+
+
+[0m[1m[31merror[no-var][0m: [0m[1m`var` keyword is not allowed.[0m
+   [0m[38;5;12m-->[0m [0m[36m/Users/ib/dev/deno/ext/node/polyfills/_stream.mjs[0m[0m[33m:228:5[0m
+   [0m[38;5;12m | [0m
+[0m[38;5;12m228 | [0m    var validateInt32 = hideStackFrames(
+   [0m[38;5;12m | [0m    [0m[1m[31m^^^[0m
+
+  [0m[38;5;12mdocs[0m: https://lint.deno.land/rules/no-var
+
+
+[0m[1m[31merror[no-var][0m: [0m[1m`var` keyword is not allowed.[0m
+   [0m[38;5;12m-->[0m [0m[36m/Users/ib/dev/deno/ext/node/polyfills/_stream.mjs[0m[0m[33m:241:5[0m
+   [0m[38;5;12m | [0m
+[0m[38;5;12m241 | [0m    var validateUint32 = hideStackFrames((value, name, positive = false) => {
+   [0m[38;5;12m | [0m    [0m[1m[31m^^^[0m
+
+  [0m[38;5;12mdocs[0m: https://lint.deno.land/rules/no-var
+
+
+[0m[1m[31merror[no-var][0m: [0m[1m`var` keyword is not allowed.[0m
+   [0m[38;5;12m-->[0m [0m[36m/Users/ib/dev/deno/ext/node/polyfills/_stream.mjs[0m[0m[33m:276:5[0m
+   [0m[38;5;12m | [0m
+[0m[38;5;12m276 | [0m    var validateOneOf = hideStackFrames((value, name, oneOf) => {
+   [0m[38;5;12m | [0m    [0m[1m[31m^^^[0m
+
+  [0m[38;5;12mdocs[0m: https://lint.deno.land/rules/no-var
+
+
+[0m[1m[31merror[no-var][0m: [0m[1m`var` keyword is not allowed.[0m
+   [0m[38;5;12m-->[0m [0m[36m/Users/ib/dev/deno/ext/node/polyfills/_stream.mjs[0m[0m[33m:299:5[0m
+   [0m[38;5;12m | [0m
+[0m[38;5;12m299 | [0m    var validateObject = hideStackFrames((value, name, options = null) => {
+   [0m[38;5;12m | [0m    [0m[1m[31m^^^[0m
+
+  [0m[38;5;12mdocs[0m: https://lint.deno.land/rules/no-var
+
+
+[0m[1m[31merror[no-var][0m: [0m[1m`var` keyword is not allowed.[0m
+   [0m[38;5;12m-->[0m [0m[36m/Users/ib/dev/deno/ext/node/polyfills/_stream.mjs[0m[0m[33m:319:5[0m
+   [0m[38;5;12m | [0m
+[0m[38;5;12m319 | [0m    var validateArray = hideStackFrames((value, name, minLength = 0) => {
+   [0m[38;5;12m | [0m    [0m[1m[31m^^^[0m
+
+  [0m[38;5;12mdocs[0m: https://lint.deno.land/rules/no-var
+
+
+[0m[1m[31merror[no-var][0m: [0m[1m`var` keyword is not allowed.[0m
+   [0m[38;5;12m-->[0m [0m[36m/Users/ib/dev/deno/ext/node/polyfills/_stream.mjs[0m[0m[33m:339:5[0m
+   [0m[38;5;12m | [0m
+[0m[38;5;12m339 | [0m    var validateBuffer = hideStackFrames((buffer, name = "buffer") => {
+   [0m[38;5;12m | [0m    [0m[1m[31m^^^[0m
+
+  [0m[38;5;12mdocs[0m: https://lint.deno.land/rules/no-var
+
+
+[0m[1m[31merror[no-var][0m: [0m[1m`var` keyword is not allowed.[0m
+   [0m[38;5;12m-->[0m [0m[36m/Users/ib/dev/deno/ext/node/polyfills/_stream.mjs[0m[0m[33m:369:5[0m
+   [0m[38;5;12m | [0m
+[0m[38;5;12m369 | [0m    var validateAbortSignal = hideStackFrames((signal, name) => {
+   [0m[38;5;12m | [0m    [0m[1m[31m^^^[0m
+
+  [0m[38;5;12mdocs[0m: https://lint.deno.land/rules/no-var
+
+
+[0m[1m[31merror[no-var][0m: [0m[1m`var` keyword is not allowed.[0m
+   [0m[38;5;12m-->[0m [0m[36m/Users/ib/dev/deno/ext/node/polyfills/_stream.mjs[0m[0m[33m:378:5[0m
+   [0m[38;5;12m | [0m
+[0m[38;5;12m378 | [0m    var validateFunction = hideStackFrames((value, name) => {
+   [0m[38;5;12m | [0m    [0m[1m[31m^^^[0m
+
+  [0m[38;5;12mdocs[0m: https://lint.deno.land/rules/no-var
+
+
+[0m[1m[31merror[no-var][0m: [0m[1m`var` keyword is not allowed.[0m
+   [0m[38;5;12m-->[0m [0m[36m/Users/ib/dev/deno/ext/node/polyfills/_stream.mjs[0m[0m[33m:383:5[0m
+   [0m[38;5;12m | [0m
+[0m[38;5;12m383 | [0m    var validatePlainFunction = hideStackFrames((value, name) => {
+   [0m[38;5;12m | [0m    [0m[1m[31m^^^[0m
+
+  [0m[38;5;12mdocs[0m: https://lint.deno.land/rules/no-var
+
+
+[0m[1m[31merror[no-var][0m: [0m[1m`var` keyword is not allowed.[0m
+   [0m[38;5;12m-->[0m [0m[36m/Users/ib/dev/deno/ext/node/polyfills/_stream.mjs[0m[0m[33m:388:5[0m
+   [0m[38;5;12m | [0m
+[0m[38;5;12m388 | [0m    var validateUndefined = hideStackFrames((value, name) => {
+   [0m[38;5;12m | [0m    [0m[1m[31m^^^[0m
+
+  [0m[38;5;12mdocs[0m: https://lint.deno.land/rules/no-var
+
+
+[0m[1m[31merror[no-var][0m: [0m[1m`var` keyword is not allowed.[0m
+   [0m[38;5;12m-->[0m [0m[36m/Users/ib/dev/deno/ext/node/polyfills/_stream.mjs[0m[0m[33m:429:1[0m
+   [0m[38;5;12m | [0m
+[0m[38;5;12m429 | [0mvar require_browser2 = () => {
+   [0m[38;5;12m | [0m[0m[1m[31m^^^[0m
+
+  [0m[38;5;12mdocs[0m: https://lint.deno.land/rules/no-var
+
+
+[0m[1m[31merror[no-var][0m: [0m[1m`var` keyword is not allowed.[0m
+   [0m[38;5;12m-->[0m [0m[36m/Users/ib/dev/deno/ext/node/polyfills/_stream.mjs[0m[0m[33m:434:1[0m
+   [0m[38;5;12m | [0m
+[0m[38;5;12m434 | [0mvar require_utils = __commonJS({
+   [0m[38;5;12m | [0m[0m[1m[31m^^^[0m
+
+  [0m[38;5;12mdocs[0m: https://lint.deno.land/rules/no-var
+
+
+[0m[1m[31merror[no-unused-vars][0m: [0m[1m`exports` is never used[0m
+   [0m[38;5;12m-->[0m [0m[36m/Users/ib/dev/deno/ext/node/polyfills/_stream.mjs[0m[0m[33m:435:35[0m
+   [0m[38;5;12m | [0m
+[0m[38;5;12m435 | [0m  "lib/internal/streams/utils.js"(exports, module) {
+   [0m[38;5;12m | [0m                                  [0m[1m[31m^^^^^^^[0m
+    [0m[38;5;12m=[0m [0m[1mhint[0m: If this is intentional, prefix it with an underscore like `_exports`
+
+  [0m[38;5;12mdocs[0m: https://lint.deno.land/rules/no-unused-vars
+
+
+[0m[1m[31merror[no-var][0m: [0m[1m`var` keyword is not allowed.[0m
+   [0m[38;5;12m-->[0m [0m[36m/Users/ib/dev/deno/ext/node/polyfills/_stream.mjs[0m[0m[33m:437:5[0m
+   [0m[38;5;12m | [0m
+[0m[38;5;12m437 | [0m    var { Symbol: Symbol2, SymbolAsyncIterator, SymbolIterator } =
+   [0m[38;5;12m | [0m    [0m[1m[31m^^^[0m
+
+  [0m[38;5;12mdocs[0m: https://lint.deno.land/rules/no-var
+
+
+[0m[1m[31merror[no-var][0m: [0m[1m`var` keyword is not allowed.[0m
+   [0m[38;5;12m-->[0m [0m[36m/Users/ib/dev/deno/ext/node/polyfills/_stream.mjs[0m[0m[33m:439:5[0m
+   [0m[38;5;12m | [0m
+[0m[38;5;12m439 | [0m    var kDestroyed = Symbol2("kDestroyed");
+   [0m[38;5;12m | [0m    [0m[1m[31m^^^[0m
+
+  [0m[38;5;12mdocs[0m: https://lint.deno.land/rules/no-var
+
+
+[0m[1m[31merror[no-var][0m: [0m[1m`var` keyword is not allowed.[0m
+   [0m[38;5;12m-->[0m [0m[36m/Users/ib/dev/deno/ext/node/polyfills/_stream.mjs[0m[0m[33m:440:5[0m
+   [0m[38;5;12m | [0m
+[0m[38;5;12m440 | [0m    var kIsErrored = Symbol2("kIsErrored");
+   [0m[38;5;12m | [0m    [0m[1m[31m^^^[0m
+
+  [0m[38;5;12mdocs[0m: https://lint.deno.land/rules/no-var
+
+
+[0m[1m[31merror[no-var][0m: [0m[1m`var` keyword is not allowed.[0m
+   [0m[38;5;12m-->[0m [0m[36m/Users/ib/dev/deno/ext/node/polyfills/_stream.mjs[0m[0m[33m:441:5[0m
+   [0m[38;5;12m | [0m
+[0m[38;5;12m441 | [0m    var kIsReadable = Symbol2("kIsReadable");
+   [0m[38;5;12m | [0m    [0m[1m[31m^^^[0m
+
+  [0m[38;5;12mdocs[0m: https://lint.deno.land/rules/no-var
+
+
+[0m[1m[31merror[no-var][0m: [0m[1m`var` keyword is not allowed.[0m
+   [0m[38;5;12m-->[0m [0m[36m/Users/ib/dev/deno/ext/node/polyfills/_stream.mjs[0m[0m[33m:442:5[0m
+   [0m[38;5;12m | [0m
+[0m[38;5;12m442 | [0m    var kIsDisturbed = Symbol2("kIsDisturbed");
+   [0m[38;5;12m | [0m    [0m[1m[31m^^^[0m
+
+  [0m[38;5;12mdocs[0m: https://lint.deno.land/rules/no-var
+
+
+[0m[1m[31merror[no-var][0m: [0m[1m`var` keyword is not allowed.[0m
+   [0m[38;5;12m-->[0m [0m[36m/Users/ib/dev/deno/ext/node/polyfills/_stream.mjs[0m[0m[33m:444:7[0m
+   [0m[38;5;12m | [0m
+[0m[38;5;12m444 | [0m      var _obj$_readableState;
+   [0m[38;5;12m | [0m      [0m[1m[31m^^^[0m
+
+  [0m[38;5;12mdocs[0m: https://lint.deno.land/rules/no-var
+
+
+[0m[1m[31merror[no-var][0m: [0m[1m`var` keyword is not allowed.[0m
+   [0m[38;5;12m-->[0m [0m[36m/Users/ib/dev/deno/ext/node/polyfills/_stream.mjs[0m[0m[33m:458:7[0m
+   [0m[38;5;12m | [0m
+[0m[38;5;12m458 | [0m      var _obj$_writableState;
+   [0m[38;5;12m | [0m      [0m[1m[31m^^^[0m
+
+  [0m[38;5;12mdocs[0m: https://lint.deno.land/rules/no-var
+
+
+[0m[1m[31merror[no-var][0m: [0m[1m`var` keyword is not allowed.[0m
+   [0m[38;5;12m-->[0m [0m[36m/Users/ib/dev/deno/ext/node/polyfills/_stream.mjs[0m[0m[33m:632:7[0m
+   [0m[38;5;12m | [0m
+[0m[38;5;12m632 | [0m      var _stream$_writableStat, _stream$_writableStat2;
+   [0m[38;5;12m | [0m      [0m[1m[31m^^^[0m
+
+  [0m[38;5;12mdocs[0m: https://lint.deno.land/rules/no-var
+
+
+[0m[1m[31merror[no-var][0m: [0m[1m`var` keyword is not allowed.[0m
+   [0m[38;5;12m-->[0m [0m[36m/Users/ib/dev/deno/ext/node/polyfills/_stream.mjs[0m[0m[33m:649:7[0m
+   [0m[38;5;12m | [0m
+[0m[38;5;12m649 | [0m      var _stream$_readableStat, _stream$_readableStat2;
+   [0m[38;5;12m | [0m      [0m[1m[31m^^^[0m
+
+  [0m[38;5;12mdocs[0m: https://lint.deno.land/rules/no-var
+
+
+[0m[1m[31merror[no-var][0m: [0m[1m`var` keyword is not allowed.[0m
+   [0m[38;5;12m-->[0m [0m[36m/Users/ib/dev/deno/ext/node/polyfills/_stream.mjs[0m[0m[33m:702:7[0m
+   [0m[38;5;12m | [0m
+[0m[38;5;12m702 | [0m      var _stream$req;
+   [0m[38;5;12m | [0m      [0m[1m[31m^^^[0m
+
+  [0m[38;5;12mdocs[0m: https://lint.deno.land/rules/no-var
+
+
+[0m[1m[31merror[no-var][0m: [0m[1m`var` keyword is not allowed.[0m
+   [0m[38;5;12m-->[0m [0m[36m/Users/ib/dev/deno/ext/node/polyfills/_stream.mjs[0m[0m[33m:721:7[0m
+   [0m[38;5;12m | [0m
+[0m[38;5;12m721 | [0m      var _stream$kIsDisturbed;
+   [0m[38;5;12m | [0m      [0m[1m[31m^^^[0m
+
+  [0m[38;5;12mdocs[0m: https://lint.deno.land/rules/no-var
+
+
+[0m[1m[31merror[no-var][0m: [0m[1m`var` keyword is not allowed.[0m
+   [0m[38;5;12m-->[0m [0m[36m/Users/ib/dev/deno/ext/node/polyfills/_stream.mjs[0m[0m[33m:729:7[0m
+   [0m[38;5;12m | [0m
+[0m[38;5;12m729 | [0m      var _ref,
+   [0m[38;5;12m | [0m      [0m[1m[31m^^^[0m
+
+  [0m[38;5;12mdocs[0m: https://lint.deno.land/rules/no-var
+
+
+[0m[1m[31merror[no-var][0m: [0m[1m`var` keyword is not allowed.[0m
+   [0m[38;5;12m-->[0m [0m[36m/Users/ib/dev/deno/ext/node/polyfills/_stream.mjs[0m[0m[33m:809:1[0m
+   [0m[38;5;12m | [0m
+[0m[38;5;12m809 | [0mvar require_end_of_stream = __commonJS({
+   [0m[38;5;12m | [0m[0m[1m[31m^^^[0m
+
+  [0m[38;5;12mdocs[0m: https://lint.deno.land/rules/no-var
+
+
+[0m[1m[31merror[no-unused-vars][0m: [0m[1m`exports` is never used[0m
+   [0m[38;5;12m-->[0m [0m[36m/Users/ib/dev/deno/ext/node/polyfills/_stream.mjs[0m[0m[33m:810:43[0m
+   [0m[38;5;12m | [0m
+[0m[38;5;12m810 | [0m  "lib/internal/streams/end-of-stream.js"(exports, module) {
+   [0m[38;5;12m | [0m                                          [0m[1m[31m^^^^^^^[0m
+    [0m[38;5;12m=[0m [0m[1mhint[0m: If this is intentional, prefix it with an underscore like `_exports`
+
+  [0m[38;5;12mdocs[0m: https://lint.deno.land/rules/no-unused-vars
+
+
+[0m[1m[31merror[no-var][0m: [0m[1m`var` keyword is not allowed.[0m
+   [0m[38;5;12m-->[0m [0m[36m/Users/ib/dev/deno/ext/node/polyfills/_stream.mjs[0m[0m[33m:811:5[0m
+   [0m[38;5;12m | [0m
+[0m[38;5;12m811 | [0m    var process = require_browser2();
+   [0m[38;5;12m | [0m    [0m[1m[31m^^^[0m
+
+  [0m[38;5;12mdocs[0m: https://lint.deno.land/rules/no-var
+
+
+[0m[1m[31merror[no-var][0m: [0m[1m`var` keyword is not allowed.[0m
+   [0m[38;5;12m-->[0m [0m[36m/Users/ib/dev/deno/ext/node/polyfills/_stream.mjs[0m[0m[33m:812:5[0m
+   [0m[38;5;12m | [0m
+[0m[38;5;12m812 | [0m    var { validateAbortSignal, validateFunction, validateObject } =
+   [0m[38;5;12m | [0m    [0m[1m[31m^^^[0m
+
+  [0m[38;5;12mdocs[0m: https://lint.deno.land/rules/no-var
+
+
+[0m[1m[31merror[no-var][0m: [0m[1m`var` keyword is not allowed.[0m
+   [0m[38;5;12m-->[0m [0m[36m/Users/ib/dev/deno/ext/node/polyfills/_stream.mjs[0m[0m[33m:814:5[0m
+   [0m[38;5;12m | [0m
+[0m[38;5;12m814 | [0m    var { Promise: Promise2 } = require_primordials();
+   [0m[38;5;12m | [0m    [0m[1m[31m^^^[0m
+
+  [0m[38;5;12mdocs[0m: https://lint.deno.land/rules/no-var
+
+
+[0m[1m[31merror[no-var][0m: [0m[1m`var` keyword is not allowed.[0m
+   [0m[38;5;12m-->[0m [0m[36m/Users/ib/dev/deno/ext/node/polyfills/_stream.mjs[0m[0m[33m:815:5[0m
+   [0m[38;5;12m | [0m
+[0m[38;5;12m815 | [0m    var {
+   [0m[38;5;12m | [0m    [0m[1m[31m^^^[0m
+
+  [0m[38;5;12mdocs[0m: https://lint.deno.land/rules/no-var
+
+
+[0m[1m[31merror[no-var][0m: [0m[1m`var` keyword is not allowed.[0m
+   [0m[38;5;12m-->[0m [0m[36m/Users/ib/dev/deno/ext/node/polyfills/_stream.mjs[0m[0m[33m:831:5[0m
+   [0m[38;5;12m | [0m
+[0m[38;5;12m831 | [0m    var nop = () => {
+   [0m[38;5;12m | [0m    [0m[1m[31m^^^[0m
+
+  [0m[38;5;12mdocs[0m: https://lint.deno.land/rules/no-var
+
+
+[0m[1m[31merror[no-var][0m: [0m[1m`var` keyword is not allowed.[0m
+   [0m[38;5;12m-->[0m [0m[36m/Users/ib/dev/deno/ext/node/polyfills/_stream.mjs[0m[0m[33m:834:7[0m
+   [0m[38;5;12m | [0m
+[0m[38;5;12m834 | [0m      var _options$readable, _options$writable;
+   [0m[38;5;12m | [0m      [0m[1m[31m^^^[0m
+
+  [0m[38;5;12mdocs[0m: https://lint.deno.land/rules/no-var
+
+
+[0m[1m[31merror[no-var][0m: [0m[1m`var` keyword is not allowed.[0m
+    [0m[38;5;12m-->[0m [0m[36m/Users/ib/dev/deno/ext/node/polyfills/_stream.mjs[0m[0m[33m:1022:1[0m
+    [0m[38;5;12m | [0m
+[0m[38;5;12m1022 | [0mvar require_operators = __commonJS({
+    [0m[38;5;12m | [0m[0m[1m[31m^^^[0m
+
+  [0m[38;5;12mdocs[0m: https://lint.deno.land/rules/no-var
+
+
+[0m[1m[31merror[no-unused-vars][0m: [0m[1m`exports` is never used[0m
+    [0m[38;5;12m-->[0m [0m[36m/Users/ib/dev/deno/ext/node/polyfills/_stream.mjs[0m[0m[33m:1023:39[0m
+    [0m[38;5;12m | [0m
+[0m[38;5;12m1023 | [0m  "lib/internal/streams/operators.js"(exports, module) {
+    [0m[38;5;12m | [0m                                      [0m[1m[31m^^^^^^^[0m
+     [0m[38;5;12m=[0m [0m[1mhint[0m: If this is intentional, prefix it with an underscore like `_exports`
+
+  [0m[38;5;12mdocs[0m: https://lint.deno.land/rules/no-unused-vars
+
+
+[0m[1m[31merror[no-var][0m: [0m[1m`var` keyword is not allowed.[0m
+    [0m[38;5;12m-->[0m [0m[36m/Users/ib/dev/deno/ext/node/polyfills/_stream.mjs[0m[0m[33m:1025:5[0m
+    [0m[38;5;12m | [0m
+[0m[38;5;12m1025 | [0m    var { validateAbortSignal, validateInteger, validateObject } =
+    [0m[38;5;12m | [0m    [0m[1m[31m^^^[0m
+
+  [0m[38;5;12mdocs[0m: https://lint.deno.land/rules/no-var
+
+
+[0m[1m[31merror[no-var][0m: [0m[1m`var` keyword is not allowed.[0m
+    [0m[38;5;12m-->[0m [0m[36m/Users/ib/dev/deno/ext/node/polyfills/_stream.mjs[0m[0m[33m:1027:5[0m
+    [0m[38;5;12m | [0m
+[0m[38;5;12m1027 | [0m    var kWeakHandler = require_primordials().Symbol("kWeak");
+    [0m[38;5;12m | [0m    [0m[1m[31m^^^[0m
+
+  [0m[38;5;12mdocs[0m: https://lint.deno.land/rules/no-var
+
+
+[0m[1m[31merror[no-var][0m: [0m[1m`var` keyword is not allowed.[0m
+    [0m[38;5;12m-->[0m [0m[36m/Users/ib/dev/deno/ext/node/polyfills/_stream.mjs[0m[0m[33m:1028:5[0m
+    [0m[38;5;12m | [0m
+[0m[38;5;12m1028 | [0m    var { finished } = require_end_of_stream();
+    [0m[38;5;12m | [0m    [0m[1m[31m^^^[0m
+
+  [0m[38;5;12mdocs[0m: https://lint.deno.land/rules/no-var
+
+
+[0m[1m[31merror[no-var][0m: [0m[1m`var` keyword is not allowed.[0m
+    [0m[38;5;12m-->[0m [0m[36m/Users/ib/dev/deno/ext/node/polyfills/_stream.mjs[0m[0m[33m:1029:5[0m
+    [0m[38;5;12m | [0m
+[0m[38;5;12m1029 | [0m    var {
+    [0m[38;5;12m | [0m    [0m[1m[31m^^^[0m
+
+  [0m[38;5;12mdocs[0m: https://lint.deno.land/rules/no-var
+
+
+[0m[1m[31merror[no-var][0m: [0m[1m`var` keyword is not allowed.[0m
+    [0m[38;5;12m-->[0m [0m[36m/Users/ib/dev/deno/ext/node/polyfills/_stream.mjs[0m[0m[33m:1039:5[0m
+    [0m[38;5;12m | [0m
+[0m[38;5;12m1039 | [0m    var kEmpty = Symbol2("kEmpty");
+    [0m[38;5;12m | [0m    [0m[1m[31m^^^[0m
+
+  [0m[38;5;12mdocs[0m: https://lint.deno.land/rules/no-var
+
+
+[0m[1m[31merror[no-var][0m: [0m[1m`var` keyword is not allowed.[0m
+    [0m[38;5;12m-->[0m [0m[36m/Users/ib/dev/deno/ext/node/polyfills/_stream.mjs[0m[0m[33m:1040:5[0m
+    [0m[38;5;12m | [0m
+[0m[38;5;12m1040 | [0m    var kEof = Symbol2("kEof");
+    [0m[38;5;12m | [0m    [0m[1m[31m^^^[0m
+
+  [0m[38;5;12mdocs[0m: https://lint.deno.land/rules/no-var
+
+
+[0m[1m[31merror[no-var][0m: [0m[1m`var` keyword is not allowed.[0m
+    [0m[38;5;12m-->[0m [0m[36m/Users/ib/dev/deno/ext/node/polyfills/_stream.mjs[0m[0m[33m:1064:9[0m
+    [0m[38;5;12m | [0m
+[0m[38;5;12m1064 | [0m        var _options$signal, _options$signal2;
+    [0m[38;5;12m | [0m        [0m[1m[31m^^^[0m
+
+  [0m[38;5;12mdocs[0m: https://lint.deno.land/rules/no-var
+
+
+[0m[1m[31merror[no-this-alias][0m: [0m[1massign `this` to declare a value is not allowed[0m
+    [0m[38;5;12m-->[0m [0m[36m/Users/ib/dev/deno/ext/node/polyfills/_stream.mjs[0m[0m[33m:1066:9[0m
+    [0m[38;5;12m | [0m
+[0m[38;5;12m1066 | [0m        const stream = this;
+    [0m[38;5;12m | [0m        [0m[1m[31m^^^^^^^^^^^^^^^^^^^^[0m
+
+  [0m[38;5;12mdocs[0m: https://lint.deno.land/rules/no-this-alias
+
+
+[0m[1m[31merror[no-inner-declarations][0m: [0m[1mMove variable declaration to function root[0m
+    [0m[38;5;12m-->[0m [0m[36m/Users/ib/dev/deno/ext/node/polyfills/_stream.mjs[0m[0m[33m:1095:15[0m
+    [0m[38;5;12m | [0m
+[0m[38;5;12m1095 | [0m              var _val;
+    [0m[38;5;12m | [0m              [0m[1m[31m^^^^^^^^^[0m
+     [0m[38;5;12m=[0m [0m[1mhint[0m: Move the declaration up into the correct scope
+
+  [0m[38;5;12mdocs[0m: https://lint.deno.land/rules/no-inner-declarations
+
+
+[0m[1m[31merror[no-var][0m: [0m[1m`var` keyword is not allowed.[0m
+    [0m[38;5;12m-->[0m [0m[36m/Users/ib/dev/deno/ext/node/polyfills/_stream.mjs[0m[0m[33m:1095:15[0m
+    [0m[38;5;12m | [0m
+[0m[38;5;12m1095 | [0m              var _val;
+    [0m[38;5;12m | [0m              [0m[1m[31m^^^[0m
+
+  [0m[38;5;12mdocs[0m: https://lint.deno.land/rules/no-var
+
+
+[0m[1m[31merror[no-inner-declarations][0m: [0m[1mMove variable declaration to function root[0m
+    [0m[38;5;12m-->[0m [0m[36m/Users/ib/dev/deno/ext/node/polyfills/_stream.mjs[0m[0m[33m:1134:13[0m
+    [0m[38;5;12m | [0m
+[0m[38;5;12m1134 | [0m            var _options$signal3;
+    [0m[38;5;12m | [0m            [0m[1m[31m^^^^^^^^^^^^^^^^^^^^^[0m
+     [0m[38;5;12m=[0m [0m[1mhint[0m: Move the declaration up into the correct scope
+
+  [0m[38;5;12mdocs[0m: https://lint.deno.land/rules/no-inner-declarations
+
+
+[0m[1m[31merror[no-var][0m: [0m[1m`var` keyword is not allowed.[0m
+    [0m[38;5;12m-->[0m [0m[36m/Users/ib/dev/deno/ext/node/polyfills/_stream.mjs[0m[0m[33m:1134:13[0m
+    [0m[38;5;12m | [0m
+[0m[38;5;12m1134 | [0m            var _options$signal3;
+    [0m[38;5;12m | [0m            [0m[1m[31m^^^[0m
+
+  [0m[38;5;12mdocs[0m: https://lint.deno.land/rules/no-var
+
+
+[0m[1m[31merror[no-inner-declarations][0m: [0m[1mMove variable declaration to function root[0m
+    [0m[38;5;12m-->[0m [0m[36m/Users/ib/dev/deno/ext/node/polyfills/_stream.mjs[0m[0m[33m:1195:11[0m
+    [0m[38;5;12m | [0m
+[0m[38;5;12m1195 | [0m          var _options$signal4;
+    [0m[38;5;12m | [0m          [0m[1m[31m^^^^^^^^^^^^^^^^^^^^^[0m
+     [0m[38;5;12m=[0m [0m[1mhint[0m: Move the declaration up into the correct scope
+
+  [0m[38;5;12mdocs[0m: https://lint.deno.land/rules/no-inner-declarations
+
+
+[0m[1m[31merror[no-var][0m: [0m[1m`var` keyword is not allowed.[0m
+    [0m[38;5;12m-->[0m [0m[36m/Users/ib/dev/deno/ext/node/polyfills/_stream.mjs[0m[0m[33m:1195:11[0m
+    [0m[38;5;12m | [0m
+[0m[38;5;12m1195 | [0m          var _options$signal4;
+    [0m[38;5;12m | [0m          [0m[1m[31m^^^[0m
+
+  [0m[38;5;12mdocs[0m: https://lint.deno.land/rules/no-var
+
+
+[0m[1m[31merror[no-unused-vars][0m: [0m[1m`unused` is never used[0m
+    [0m[38;5;12m-->[0m [0m[36m/Users/ib/dev/deno/ext/node/polyfills/_stream.mjs[0m[0m[33m:1210:24[0m
+    [0m[38;5;12m | [0m
+[0m[38;5;12m1210 | [0m      for await (const unused of filter.call(this, fn, options)) {
+    [0m[38;5;12m | [0m                       [0m[1m[31m^^^^^^[0m
+     [0m[38;5;12m=[0m [0m[1mhint[0m: If this is intentional, prefix it with an underscore like `_unused`
+
+  [0m[38;5;12mdocs[0m: https://lint.deno.land/rules/no-unused-vars
+
+
+[0m[1m[31merror[no-unused-vars][0m: [0m[1m`unused` is never used[0m
+    [0m[38;5;12m-->[0m [0m[36m/Users/ib/dev/deno/ext/node/polyfills/_stream.mjs[0m[0m[33m:1241:24[0m
+    [0m[38;5;12m | [0m
+[0m[38;5;12m1241 | [0m      for await (const unused of map.call(this, forEachFn, options));
+    [0m[38;5;12m | [0m                       [0m[1m[31m^^^^^^[0m
+     [0m[38;5;12m=[0m [0m[1mhint[0m: If this is intentional, prefix it with an underscore like `_unused`
+
+  [0m[38;5;12mdocs[0m: https://lint.deno.land/rules/no-unused-vars
+
+
+[0m[1m[31merror[no-var][0m: [0m[1m`var` keyword is not allowed.[0m
+    [0m[38;5;12m-->[0m [0m[36m/Users/ib/dev/deno/ext/node/polyfills/_stream.mjs[0m[0m[33m:1255:5[0m
+    [0m[38;5;12m | [0m
+[0m[38;5;12m1255 | [0m    var ReduceAwareErrMissingArgs = class extends ERR_MISSING_ARGS {
+    [0m[38;5;12m | [0m    [0m[1m[31m^^^[0m
+
+  [0m[38;5;12mdocs[0m: https://lint.deno.land/rules/no-var
+
+
+[0m[1m[31merror[no-var][0m: [0m[1m`var` keyword is not allowed.[0m
+    [0m[38;5;12m-->[0m [0m[36m/Users/ib/dev/deno/ext/node/polyfills/_stream.mjs[0m[0m[33m:1262:7[0m
+    [0m[38;5;12m | [0m
+[0m[38;5;12m1262 | [0m      var _options$signal5;
+    [0m[38;5;12m | [0m      [0m[1m[31m^^^[0m
+
+  [0m[38;5;12mdocs[0m: https://lint.deno.land/rules/no-var
+
+
+[0m[1m[31merror[no-inner-declarations][0m: [0m[1mMove variable declaration to function root[0m
+    [0m[38;5;12m-->[0m [0m[36m/Users/ib/dev/deno/ext/node/polyfills/_stream.mjs[0m[0m[33m:1305:11[0m
+    [0m[38;5;12m | [0m
+[0m[38;5;12m1305 | [0m          var _options$signal6;
+    [0m[38;5;12m | [0m          [0m[1m[31m^^^^^^^^^^^^^^^^^^^^^[0m
+     [0m[38;5;12m=[0m [0m[1mhint[0m: Move the declaration up into the correct scope
+
+  [0m[38;5;12mdocs[0m: https://lint.deno.land/rules/no-inner-declarations
+
+
+[0m[1m[31merror[no-var][0m: [0m[1m`var` keyword is not allowed.[0m
+    [0m[38;5;12m-->[0m [0m[36m/Users/ib/dev/deno/ext/node/polyfills/_stream.mjs[0m[0m[33m:1305:11[0m
+    [0m[38;5;12m | [0m
+[0m[38;5;12m1305 | [0m          var _options$signal6;
+    [0m[38;5;12m | [0m          [0m[1m[31m^^^[0m
+
+  [0m[38;5;12mdocs[0m: https://lint.deno.land/rules/no-var
+
+
+[0m[1m[31merror[no-inner-declarations][0m: [0m[1mMove variable declaration to function root[0m
+    [0m[38;5;12m-->[0m [0m[36m/Users/ib/dev/deno/ext/node/polyfills/_stream.mjs[0m[0m[33m:1343:9[0m
+    [0m[38;5;12m | [0m
+[0m[38;5;12m1343 | [0m        var _options$signal7;
+    [0m[38;5;12m | [0m        [0m[1m[31m^^^^^^^^^^^^^^^^^^^^^[0m
+     [0m[38;5;12m=[0m [0m[1mhint[0m: Move the declaration up into the correct scope
+
+  [0m[38;5;12mdocs[0m: https://lint.deno.land/rules/no-inner-declarations
+
+
+[0m[1m[31merror[no-var][0m: [0m[1m`var` keyword is not allowed.[0m
+    [0m[38;5;12m-->[0m [0m[36m/Users/ib/dev/deno/ext/node/polyfills/_stream.mjs[0m[0m[33m:1343:9[0m
+    [0m[38;5;12m | [0m
+[0m[38;5;12m1343 | [0m        var _options$signal7;
+    [0m[38;5;12m | [0m        [0m[1m[31m^^^[0m
+
+  [0m[38;5;12mdocs[0m: https://lint.deno.land/rules/no-var
+
+
+[0m[1m[31merror[no-var][0m: [0m[1m`var` keyword is not allowed.[0m
+    [0m[38;5;12m-->[0m [0m[36m/Users/ib/dev/deno/ext/node/polyfills/_stream.mjs[0m[0m[33m:1387:9[0m
+    [0m[38;5;12m | [0m
+[0m[38;5;12m1387 | [0m        var _options$signal8;
+    [0m[38;5;12m | [0m        [0m[1m[31m^^^[0m
+
+  [0m[38;5;12mdocs[0m: https://lint.deno.land/rules/no-var
+
+
+[0m[1m[31merror[no-inner-declarations][0m: [0m[1mMove variable declaration to function root[0m
+    [0m[38;5;12m-->[0m [0m[36m/Users/ib/dev/deno/ext/node/polyfills/_stream.mjs[0m[0m[33m:1396:11[0m
+    [0m[38;5;12m | [0m
+[0m[38;5;12m1396 | [0m          var _options$signal9;
+    [0m[38;5;12m | [0m          [0m[1m[31m^^^^^^^^^^^^^^^^^^^^^[0m
+     [0m[38;5;12m=[0m [0m[1mhint[0m: Move the declaration up into the correct scope
+
+  [0m[38;5;12mdocs[0m: https://lint.deno.land/rules/no-inner-declarations
+
+
+[0m[1m[31merror[no-var][0m: [0m[1m`var` keyword is not allowed.[0m
+    [0m[38;5;12m-->[0m [0m[36m/Users/ib/dev/deno/ext/node/polyfills/_stream.mjs[0m[0m[33m:1396:11[0m
+    [0m[38;5;12m | [0m
+[0m[38;5;12m1396 | [0m          var _options$signal9;
+    [0m[38;5;12m | [0m          [0m[1m[31m^^^[0m
+
+  [0m[38;5;12mdocs[0m: https://lint.deno.land/rules/no-var
+
+
+[0m[1m[31merror[no-var][0m: [0m[1m`var` keyword is not allowed.[0m
+    [0m[38;5;12m-->[0m [0m[36m/Users/ib/dev/deno/ext/node/polyfills/_stream.mjs[0m[0m[33m:1422:9[0m
+    [0m[38;5;12m | [0m
+[0m[38;5;12m1422 | [0m        var _options$signal10;
+    [0m[38;5;12m | [0m        [0m[1m[31m^^^[0m
+
+  [0m[38;5;12mdocs[0m: https://lint.deno.land/rules/no-var
+
+
+[0m[1m[31merror[no-inner-declarations][0m: [0m[1mMove variable declaration to function root[0m
+    [0m[38;5;12m-->[0m [0m[36m/Users/ib/dev/deno/ext/node/polyfills/_stream.mjs[0m[0m[33m:1431:11[0m
+    [0m[38;5;12m | [0m
+[0m[38;5;12m1431 | [0m          var _options$signal11;
+    [0m[38;5;12m | [0m          [0m[1m[31m^^^^^^^^^^^^^^^^^^^^^^[0m
+     [0m[38;5;12m=[0m [0m[1mhint[0m: Move the declaration up into the correct scope
+
+  [0m[38;5;12mdocs[0m: https://lint.deno.land/rules/no-inner-declarations
+
+
+[0m[1m[31merror[no-var][0m: [0m[1m`var` keyword is not allowed.[0m
+    [0m[38;5;12m-->[0m [0m[36m/Users/ib/dev/deno/ext/node/polyfills/_stream.mjs[0m[0m[33m:1431:11[0m
+    [0m[38;5;12m | [0m
+[0m[38;5;12m1431 | [0m          var _options$signal11;
+    [0m[38;5;12m | [0m          [0m[1m[31m^^^[0m
+
+  [0m[38;5;12mdocs[0m: https://lint.deno.land/rules/no-var
+
+
+[0m[1m[31merror[no-var][0m: [0m[1m`var` keyword is not allowed.[0m
+    [0m[38;5;12m-->[0m [0m[36m/Users/ib/dev/deno/ext/node/polyfills/_stream.mjs[0m[0m[33m:1467:1[0m
+    [0m[38;5;12m | [0m
+[0m[38;5;12m1467 | [0mvar require_destroy = __commonJS({
+    [0m[38;5;12m | [0m[0m[1m[31m^^^[0m
+
+  [0m[38;5;12mdocs[0m: https://lint.deno.land/rules/no-var
+
+
+[0m[1m[31merror[no-unused-vars][0m: [0m[1m`exports` is never used[0m
+    [0m[38;5;12m-->[0m [0m[36m/Users/ib/dev/deno/ext/node/polyfills/_stream.mjs[0m[0m[33m:1468:37[0m
+    [0m[38;5;12m | [0m
+[0m[38;5;12m1468 | [0m  "lib/internal/streams/destroy.js"(exports, module) {
+    [0m[38;5;12m | [0m                                    [0m[1m[31m^^^^^^^[0m
+     [0m[38;5;12m=[0m [0m[1mhint[0m: If this is intentional, prefix it with an underscore like `_exports`
+
+  [0m[38;5;12mdocs[0m: https://lint.deno.land/rules/no-unused-vars
+
+
+[0m[1m[31merror[no-var][0m: [0m[1m`var` keyword is not allowed.[0m
+    [0m[38;5;12m-->[0m [0m[36m/Users/ib/dev/deno/ext/node/polyfills/_stream.mjs[0m[0m[33m:1470:5[0m
+    [0m[38;5;12m | [0m
+[0m[38;5;12m1470 | [0m    var process = require_browser2();
+    [0m[38;5;12m | [0m    [0m[1m[31m^^^[0m
+
+  [0m[38;5;12mdocs[0m: https://lint.deno.land/rules/no-var
+
+
+[0m[1m[31merror[no-var][0m: [0m[1m`var` keyword is not allowed.[0m
+    [0m[38;5;12m-->[0m [0m[36m/Users/ib/dev/deno/ext/node/polyfills/_stream.mjs[0m[0m[33m:1471:5[0m
+    [0m[38;5;12m | [0m
+[0m[38;5;12m1471 | [0m    var { Symbol: Symbol2 } = require_primordials();
+    [0m[38;5;12m | [0m    [0m[1m[31m^^^[0m
+
+  [0m[38;5;12mdocs[0m: https://lint.deno.land/rules/no-var
+
+
+[0m[1m[31merror[no-var][0m: [0m[1m`var` keyword is not allowed.[0m
+    [0m[38;5;12m-->[0m [0m[36m/Users/ib/dev/deno/ext/node/polyfills/_stream.mjs[0m[0m[33m:1472:5[0m
+    [0m[38;5;12m | [0m
+[0m[38;5;12m1472 | [0m    var { kDestroyed, isDestroyed, isFinished, isServerRequest } =
+    [0m[38;5;12m | [0m    [0m[1m[31m^^^[0m
+
+  [0m[38;5;12mdocs[0m: https://lint.deno.land/rules/no-var
+
+
+[0m[1m[31merror[no-var][0m: [0m[1m`var` keyword is not allowed.[0m
+    [0m[38;5;12m-->[0m [0m[36m/Users/ib/dev/deno/ext/node/polyfills/_stream.mjs[0m[0m[33m:1474:5[0m
+    [0m[38;5;12m | [0m
+[0m[38;5;12m1474 | [0m    var kDestroy = Symbol2("kDestroy");
+    [0m[38;5;12m | [0m    [0m[1m[31m^^^[0m
+
+  [0m[38;5;12mdocs[0m: https://lint.deno.land/rules/no-var
+
+
+[0m[1m[31merror[no-var][0m: [0m[1m`var` keyword is not allowed.[0m
+    [0m[38;5;12m-->[0m [0m[36m/Users/ib/dev/deno/ext/node/polyfills/_stream.mjs[0m[0m[33m:1475:5[0m
+    [0m[38;5;12m | [0m
+[0m[38;5;12m1475 | [0m    var kConstruct = Symbol2("kConstruct");
+    [0m[38;5;12m | [0m    [0m[1m[31m^^^[0m
+
+  [0m[38;5;12mdocs[0m: https://lint.deno.land/rules/no-var
+
+
+[0m[1m[31merror[no-var][0m: [0m[1m`var` keyword is not allowed.[0m
+    [0m[38;5;12m-->[0m [0m[36m/Users/ib/dev/deno/ext/node/polyfills/_stream.mjs[0m[0m[33m:1728:1[0m
+    [0m[38;5;12m | [0m
+[0m[38;5;12m1728 | [0mvar require_legacy = __commonJS({
+    [0m[38;5;12m | [0m[0m[1m[31m^^^[0m
+
+  [0m[38;5;12mdocs[0m: https://lint.deno.land/rules/no-var
+
+
+[0m[1m[31merror[no-unused-vars][0m: [0m[1m`exports` is never used[0m
+    [0m[38;5;12m-->[0m [0m[36m/Users/ib/dev/deno/ext/node/polyfills/_stream.mjs[0m[0m[33m:1729:36[0m
+    [0m[38;5;12m | [0m
+[0m[38;5;12m1729 | [0m  "lib/internal/streams/legacy.js"(exports, module) {
+    [0m[38;5;12m | [0m                                   [0m[1m[31m^^^^^^^[0m
+     [0m[38;5;12m=[0m [0m[1mhint[0m: If this is intentional, prefix it with an underscore like `_exports`
+
+  [0m[38;5;12mdocs[0m: https://lint.deno.land/rules/no-unused-vars
+
+
+[0m[1m[31merror[no-var][0m: [0m[1m`var` keyword is not allowed.[0m
+    [0m[38;5;12m-->[0m [0m[36m/Users/ib/dev/deno/ext/node/polyfills/_stream.mjs[0m[0m[33m:1731:5[0m
+    [0m[38;5;12m | [0m
+[0m[38;5;12m1731 | [0m    var { ArrayIsArray, ObjectSetPrototypeOf } = require_primordials();
+    [0m[38;5;12m | [0m    [0m[1m[31m^^^[0m
+
+  [0m[38;5;12mdocs[0m: https://lint.deno.land/rules/no-var
+
+
+[0m[1m[31merror[no-this-alias][0m: [0m[1massign `this` to declare a value is not allowed[0m
+    [0m[38;5;12m-->[0m [0m[36m/Users/ib/dev/deno/ext/node/polyfills/_stream.mjs[0m[0m[33m:1738:7[0m
+    [0m[38;5;12m | [0m
+[0m[38;5;12m1738 | [0m      const source = this;
+    [0m[38;5;12m | [0m      [0m[1m[31m^^^^^^^^^^^^^^^^^^^^[0m
+
+  [0m[38;5;12mdocs[0m: https://lint.deno.land/rules/no-this-alias
+
+
+[0m[1m[31merror[no-var][0m: [0m[1m`var` keyword is not allowed.[0m
+    [0m[38;5;12m-->[0m [0m[36m/Users/ib/dev/deno/ext/node/polyfills/_stream.mjs[0m[0m[33m:1817:1[0m
+    [0m[38;5;12m | [0m
+[0m[38;5;12m1817 | [0mvar require_add_abort_signal = __commonJS({
+    [0m[38;5;12m | [0m[0m[1m[31m^^^[0m
+
+  [0m[38;5;12mdocs[0m: https://lint.deno.land/rules/no-var
+
+
+[0m[1m[31merror[no-unused-vars][0m: [0m[1m`exports` is never used[0m
+    [0m[38;5;12m-->[0m [0m[36m/Users/ib/dev/deno/ext/node/polyfills/_stream.mjs[0m[0m[33m:1818:46[0m
+    [0m[38;5;12m | [0m
+[0m[38;5;12m1818 | [0m  "lib/internal/streams/add-abort-signal.js"(exports, module) {
+    [0m[38;5;12m | [0m                                             [0m[1m[31m^^^^^^^[0m
+     [0m[38;5;12m=[0m [0m[1mhint[0m: If this is intentional, prefix it with an underscore like `_exports`
+
+  [0m[38;5;12mdocs[0m: https://lint.deno.land/rules/no-unused-vars
+
+
+[0m[1m[31merror[no-var][0m: [0m[1m`var` keyword is not allowed.[0m
+    [0m[38;5;12m-->[0m [0m[36m/Users/ib/dev/deno/ext/node/polyfills/_stream.mjs[0m[0m[33m:1820:5[0m
+    [0m[38;5;12m | [0m
+[0m[38;5;12m1820 | [0m    var eos = require_end_of_stream();
+    [0m[38;5;12m | [0m    [0m[1m[31m^^^[0m
+
+  [0m[38;5;12mdocs[0m: https://lint.deno.land/rules/no-var
+
+
+[0m[1m[31merror[no-var][0m: [0m[1m`var` keyword is not allowed.[0m
+    [0m[38;5;12m-->[0m [0m[36m/Users/ib/dev/deno/ext/node/polyfills/_stream.mjs[0m[0m[33m:1821:5[0m
+    [0m[38;5;12m | [0m
+[0m[38;5;12m1821 | [0m    var validateAbortSignal = (signal, name) => {
+    [0m[38;5;12m | [0m    [0m[1m[31m^^^[0m
+
+  [0m[38;5;12mdocs[0m: https://lint.deno.land/rules/no-var
+
+
+[0m[1m[31merror[no-var][0m: [0m[1m`var` keyword is not allowed.[0m
+    [0m[38;5;12m-->[0m [0m[36m/Users/ib/dev/deno/ext/node/polyfills/_stream.mjs[0m[0m[33m:1859:1[0m
+    [0m[38;5;12m | [0m
+[0m[38;5;12m1859 | [0mvar require_buffer_list = __commonJS({
+    [0m[38;5;12m | [0m[0m[1m[31m^^^[0m
+
+  [0m[38;5;12mdocs[0m: https://lint.deno.land/rules/no-var
+
+
+[0m[1m[31merror[no-unused-vars][0m: [0m[1m`exports` is never used[0m
+    [0m[38;5;12m-->[0m [0m[36m/Users/ib/dev/deno/ext/node/polyfills/_stream.mjs[0m[0m[33m:1860:41[0m
+    [0m[38;5;12m | [0m
+[0m[38;5;12m1860 | [0m  "lib/internal/streams/buffer_list.js"(exports, module) {
+    [0m[38;5;12m | [0m                                        [0m[1m[31m^^^^^^^[0m
+     [0m[38;5;12m=[0m [0m[1mhint[0m: If this is intentional, prefix it with an underscore like `_exports`
+
+  [0m[38;5;12mdocs[0m: https://lint.deno.land/rules/no-unused-vars
+
+
+[0m[1m[31merror[no-var][0m: [0m[1m`var` keyword is not allowed.[0m
+    [0m[38;5;12m-->[0m [0m[36m/Users/ib/dev/deno/ext/node/polyfills/_stream.mjs[0m[0m[33m:1862:5[0m
+    [0m[38;5;12m | [0m
+[0m[38;5;12m1862 | [0m    var {
+    [0m[38;5;12m | [0m    [0m[1m[31m^^^[0m
+
+  [0m[38;5;12mdocs[0m: https://lint.deno.land/rules/no-var
+
+
+[0m[1m[31merror[no-var][0m: [0m[1m`var` keyword is not allowed.[0m
+    [0m[38;5;12m-->[0m [0m[36m/Users/ib/dev/deno/ext/node/polyfills/_stream.mjs[0m[0m[33m:1868:5[0m
+    [0m[38;5;12m | [0m
+[0m[38;5;12m1868 | [0m    var { Buffer: Buffer2 } = require_buffer();
+    [0m[38;5;12m | [0m    [0m[1m[31m^^^[0m
+
+  [0m[38;5;12mdocs[0m: https://lint.deno.land/rules/no-var
+
+
+[0m[1m[31merror[no-var][0m: [0m[1m`var` keyword is not allowed.[0m
+    [0m[38;5;12m-->[0m [0m[36m/Users/ib/dev/deno/ext/node/polyfills/_stream.mjs[0m[0m[33m:2044:1[0m
+    [0m[38;5;12m | [0m
+[0m[38;5;12m2044 | [0mvar require_state = __commonJS({
+    [0m[38;5;12m | [0m[0m[1m[31m^^^[0m
+
+  [0m[38;5;12mdocs[0m: https://lint.deno.land/rules/no-var
+
+
+[0m[1m[31merror[no-unused-vars][0m: [0m[1m`exports` is never used[0m
+    [0m[38;5;12m-->[0m [0m[36m/Users/ib/dev/deno/ext/node/polyfills/_stream.mjs[0m[0m[33m:2045:35[0m
+    [0m[38;5;12m | [0m
+[0m[38;5;12m2045 | [0m  "lib/internal/streams/state.js"(exports, module) {
+    [0m[38;5;12m | [0m                                  [0m[1m[31m^^^^^^^[0m
+     [0m[38;5;12m=[0m [0m[1mhint[0m: If this is intentional, prefix it with an underscore like `_exports`
+
+  [0m[38;5;12mdocs[0m: https://lint.deno.land/rules/no-unused-vars
+
+
+[0m[1m[31merror[no-var][0m: [0m[1m`var` keyword is not allowed.[0m
+    [0m[38;5;12m-->[0m [0m[36m/Users/ib/dev/deno/ext/node/polyfills/_stream.mjs[0m[0m[33m:2047:5[0m
+    [0m[38;5;12m | [0m
+[0m[38;5;12m2047 | [0m    var { MathFloor, NumberIsInteger } = require_primordials();
+    [0m[38;5;12m | [0m    [0m[1m[31m^^^[0m
+
+  [0m[38;5;12mdocs[0m: https://lint.deno.land/rules/no-var
+
+
+[0m[1m[31merror[no-var][0m: [0m[1m`var` keyword is not allowed.[0m
+    [0m[38;5;12m-->[0m [0m[36m/Users/ib/dev/deno/ext/node/polyfills/_stream.mjs[0m[0m[33m:2079:1[0m
+    [0m[38;5;12m | [0m
+[0m[38;5;12m2079 | [0mvar require_safe_buffer = __commonJS({
+    [0m[38;5;12m | [0m[0m[1m[31m^^^[0m
+
+  [0m[38;5;12mdocs[0m: https://lint.deno.land/rules/no-var
+
+
+[0m[1m[31merror[no-unused-vars][0m: [0m[1m`require_safe_buffer` is never used[0m
+    [0m[38;5;12m-->[0m [0m[36m/Users/ib/dev/deno/ext/node/polyfills/_stream.mjs[0m[0m[33m:2079:5[0m
+    [0m[38;5;12m | [0m
+[0m[38;5;12m2079 | [0mvar require_safe_buffer = __commonJS({
+    [0m[38;5;12m | [0m    [0m[1m[31m^^^^^^^^^^^^^^^^^^^[0m
+     [0m[38;5;12m=[0m [0m[1mhint[0m: If this is intentional, prefix it with an underscore like `_require_safe_buffer`
+
+  [0m[38;5;12mdocs[0m: https://lint.deno.land/rules/no-unused-vars
+
+
+[0m[1m[31merror[no-var][0m: [0m[1m`var` keyword is not allowed.[0m
+    [0m[38;5;12m-->[0m [0m[36m/Users/ib/dev/deno/ext/node/polyfills/_stream.mjs[0m[0m[33m:2081:5[0m
+    [0m[38;5;12m | [0m
+[0m[38;5;12m2081 | [0m    var buffer = require_buffer();
+    [0m[38;5;12m | [0m    [0m[1m[31m^^^[0m
+
+  [0m[38;5;12mdocs[0m: https://lint.deno.land/rules/no-var
+
+
+[0m[1m[31merror[no-var][0m: [0m[1m`var` keyword is not allowed.[0m
+    [0m[38;5;12m-->[0m [0m[36m/Users/ib/dev/deno/ext/node/polyfills/_stream.mjs[0m[0m[33m:2082:5[0m
+    [0m[38;5;12m | [0m
+[0m[38;5;12m2082 | [0m    var Buffer2 = buffer.Buffer;
+    [0m[38;5;12m | [0m    [0m[1m[31m^^^[0m
+
+  [0m[38;5;12mdocs[0m: https://lint.deno.land/rules/no-var
+
+
+[0m[1m[31merror[no-inner-declarations][0m: [0m[1mMove variable declaration to function root[0m
+    [0m[38;5;12m-->[0m [0m[36m/Users/ib/dev/deno/ext/node/polyfills/_stream.mjs[0m[0m[33m:2084:12[0m
+    [0m[38;5;12m | [0m
+[0m[38;5;12m2084 | [0m      for (var key in src) {
+    [0m[38;5;12m | [0m           [0m[1m[31m^^^^^^^[0m
+     [0m[38;5;12m=[0m [0m[1mhint[0m: Move the declaration up into the correct scope
+
+  [0m[38;5;12mdocs[0m: https://lint.deno.land/rules/no-inner-declarations
+
+
+[0m[1m[31merror[no-var][0m: [0m[1m`var` keyword is not allowed.[0m
+    [0m[38;5;12m-->[0m [0m[36m/Users/ib/dev/deno/ext/node/polyfills/_stream.mjs[0m[0m[33m:2084:12[0m
+    [0m[38;5;12m | [0m
+[0m[38;5;12m2084 | [0m      for (var key in src) {
+    [0m[38;5;12m | [0m           [0m[1m[31m^^^[0m
+
+  [0m[38;5;12mdocs[0m: https://lint.deno.land/rules/no-var
+
+
+[0m[1m[31merror[no-var][0m: [0m[1m`var` keyword is not allowed.[0m
+    [0m[38;5;12m-->[0m [0m[36m/Users/ib/dev/deno/ext/node/polyfills/_stream.mjs[0m[0m[33m:2112:7[0m
+    [0m[38;5;12m | [0m
+[0m[38;5;12m2112 | [0m      var buf = Buffer2(size);
+    [0m[38;5;12m | [0m      [0m[1m[31m^^^[0m
+
+  [0m[38;5;12mdocs[0m: https://lint.deno.land/rules/no-var
+
+
+[0m[1m[31merror[no-var][0m: [0m[1m`var` keyword is not allowed.[0m
+    [0m[38;5;12m-->[0m [0m[36m/Users/ib/dev/deno/ext/node/polyfills/_stream.mjs[0m[0m[33m:2140:1[0m
+    [0m[38;5;12m | [0m
+[0m[38;5;12m2140 | [0mvar require_from = __commonJS({
+    [0m[38;5;12m | [0m[0m[1m[31m^^^[0m
+
+  [0m[38;5;12mdocs[0m: https://lint.deno.land/rules/no-var
+
+
+[0m[1m[31merror[no-unused-vars][0m: [0m[1m`exports` is never used[0m
+    [0m[38;5;12m-->[0m [0m[36m/Users/ib/dev/deno/ext/node/polyfills/_stream.mjs[0m[0m[33m:2141:34[0m
+    [0m[38;5;12m | [0m
+[0m[38;5;12m2141 | [0m  "lib/internal/streams/from.js"(exports, module) {
+    [0m[38;5;12m | [0m                                 [0m[1m[31m^^^^^^^[0m
+     [0m[38;5;12m=[0m [0m[1mhint[0m: If this is intentional, prefix it with an underscore like `_exports`
+
+  [0m[38;5;12mdocs[0m: https://lint.deno.land/rules/no-unused-vars
+
+
+[0m[1m[31merror[no-var][0m: [0m[1m`var` keyword is not allowed.[0m
+    [0m[38;5;12m-->[0m [0m[36m/Users/ib/dev/deno/ext/node/polyfills/_stream.mjs[0m[0m[33m:2143:5[0m
+    [0m[38;5;12m | [0m
+[0m[38;5;12m2143 | [0m    var process = require_browser2();
+    [0m[38;5;12m | [0m    [0m[1m[31m^^^[0m
+
+  [0m[38;5;12mdocs[0m: https://lint.deno.land/rules/no-var
+
+
+[0m[1m[31merror[no-var][0m: [0m[1m`var` keyword is not allowed.[0m
+    [0m[38;5;12m-->[0m [0m[36m/Users/ib/dev/deno/ext/node/polyfills/_stream.mjs[0m[0m[33m:2144:5[0m
+    [0m[38;5;12m | [0m
+[0m[38;5;12m2144 | [0m    var { PromisePrototypeThen, SymbolAsyncIterator, SymbolIterator } =
+    [0m[38;5;12m | [0m    [0m[1m[31m^^^[0m
+
+  [0m[38;5;12mdocs[0m: https://lint.deno.land/rules/no-var
+
+
+[0m[1m[31merror[no-var][0m: [0m[1m`var` keyword is not allowed.[0m
+    [0m[38;5;12m-->[0m [0m[36m/Users/ib/dev/deno/ext/node/polyfills/_stream.mjs[0m[0m[33m:2146:5[0m
+    [0m[38;5;12m | [0m
+[0m[38;5;12m2146 | [0m    var { Buffer: Buffer2 } = require_buffer();
+    [0m[38;5;12m | [0m    [0m[1m[31m^^^[0m
+
+  [0m[38;5;12mdocs[0m: https://lint.deno.land/rules/no-var
+
+
+[0m[1m[31merror[no-var][0m: [0m[1m`var` keyword is not allowed.[0m
+    [0m[38;5;12m-->[0m [0m[36m/Users/ib/dev/deno/ext/node/polyfills/_stream.mjs[0m[0m[33m:2239:1[0m
+    [0m[38;5;12m | [0m
+[0m[38;5;12m2239 | [0mvar require_readable = __commonJS({
+    [0m[38;5;12m | [0m[0m[1m[31m^^^[0m
+
+  [0m[38;5;12mdocs[0m: https://lint.deno.land/rules/no-var
+
+
+[0m[1m[31merror[no-unused-vars][0m: [0m[1m`exports` is never used[0m
+    [0m[38;5;12m-->[0m [0m[36m/Users/ib/dev/deno/ext/node/polyfills/_stream.mjs[0m[0m[33m:2240:38[0m
+    [0m[38;5;12m | [0m
+[0m[38;5;12m2240 | [0m  "lib/internal/streams/readable.js"(exports, module) {
+    [0m[38;5;12m | [0m                                     [0m[1m[31m^^^^^^^[0m
+     [0m[38;5;12m=[0m [0m[1mhint[0m: If this is intentional, prefix it with an underscore like `_exports`
+
+  [0m[38;5;12mdocs[0m: https://lint.deno.land/rules/no-unused-vars
+
+
+[0m[1m[31merror[no-var][0m: [0m[1m`var` keyword is not allowed.[0m
+    [0m[38;5;12m-->[0m [0m[36m/Users/ib/dev/deno/ext/node/polyfills/_stream.mjs[0m[0m[33m:2241:5[0m
+    [0m[38;5;12m | [0m
+[0m[38;5;12m2241 | [0m    var process = require_browser2();
+    [0m[38;5;12m | [0m    [0m[1m[31m^^^[0m
+
+  [0m[38;5;12mdocs[0m: https://lint.deno.land/rules/no-var
+
+
+[0m[1m[31merror[no-var][0m: [0m[1m`var` keyword is not allowed.[0m
+    [0m[38;5;12m-->[0m [0m[36m/Users/ib/dev/deno/ext/node/polyfills/_stream.mjs[0m[0m[33m:2242:5[0m
+    [0m[38;5;12m | [0m
+[0m[38;5;12m2242 | [0m    var {
+    [0m[38;5;12m | [0m    [0m[1m[31m^^^[0m
+
+  [0m[38;5;12mdocs[0m: https://lint.deno.land/rules/no-var
+
+
+[0m[1m[31merror[no-var][0m: [0m[1m`var` keyword is not allowed.[0m
+    [0m[38;5;12m-->[0m [0m[36m/Users/ib/dev/deno/ext/node/polyfills/_stream.mjs[0m[0m[33m:2257:5[0m
+    [0m[38;5;12m | [0m
+[0m[38;5;12m2257 | [0m    var { Stream, prependListener } = require_legacy();
+    [0m[38;5;12m | [0m    [0m[1m[31m^^^[0m
+
+  [0m[38;5;12mdocs[0m: https://lint.deno.land/rules/no-var
+
+
+[0m[1m[31merror[no-var][0m: [0m[1m`var` keyword is not allowed.[0m
+    [0m[38;5;12m-->[0m [0m[36m/Users/ib/dev/deno/ext/node/polyfills/_stream.mjs[0m[0m[33m:2258:5[0m
+    [0m[38;5;12m | [0m
+[0m[38;5;12m2258 | [0m    var { Buffer: Buffer2 } = require_buffer();
+    [0m[38;5;12m | [0m    [0m[1m[31m^^^[0m
+
+  [0m[38;5;12mdocs[0m: https://lint.deno.land/rules/no-var
+
+
+[0m[1m[31merror[no-var][0m: [0m[1m`var` keyword is not allowed.[0m
+    [0m[38;5;12m-->[0m [0m[36m/Users/ib/dev/deno/ext/node/polyfills/_stream.mjs[0m[0m[33m:2259:5[0m
+    [0m[38;5;12m | [0m
+[0m[38;5;12m2259 | [0m    var { addAbortSignal } = require_add_abort_signal();
+    [0m[38;5;12m | [0m    [0m[1m[31m^^^[0m
+
+  [0m[38;5;12mdocs[0m: https://lint.deno.land/rules/no-var
+
+
+[0m[1m[31merror[no-var][0m: [0m[1m`var` keyword is not allowed.[0m
+    [0m[38;5;12m-->[0m [0m[36m/Users/ib/dev/deno/ext/node/polyfills/_stream.mjs[0m[0m[33m:2260:5[0m
+    [0m[38;5;12m | [0m
+[0m[38;5;12m2260 | [0m    var eos = require_end_of_stream();
+    [0m[38;5;12m | [0m    [0m[1m[31m^^^[0m
+
+  [0m[38;5;12mdocs[0m: https://lint.deno.land/rules/no-var
+
+
+[0m[1m[31merror[no-var][0m: [0m[1m`var` keyword is not allowed.[0m
+    [0m[38;5;12m-->[0m [0m[36m/Users/ib/dev/deno/ext/node/polyfills/_stream.mjs[0m[0m[33m:2261:5[0m
+    [0m[38;5;12m | [0m
+[0m[38;5;12m2261 | [0m    var debug = debuglog("stream", (fn) => {
+    [0m[38;5;12m | [0m    [0m[1m[31m^^^[0m
+
+  [0m[38;5;12mdocs[0m: https://lint.deno.land/rules/no-var
+
+
+[0m[1m[31merror[no-var][0m: [0m[1m`var` keyword is not allowed.[0m
+    [0m[38;5;12m-->[0m [0m[36m/Users/ib/dev/deno/ext/node/polyfills/_stream.mjs[0m[0m[33m:2264:5[0m
+    [0m[38;5;12m | [0m
+[0m[38;5;12m2264 | [0m    var BufferList = require_buffer_list();
+    [0m[38;5;12m | [0m    [0m[1m[31m^^^[0m
+
+  [0m[38;5;12mdocs[0m: https://lint.deno.land/rules/no-var
+
+
+[0m[1m[31merror[no-var][0m: [0m[1m`var` keyword is not allowed.[0m
+    [0m[38;5;12m-->[0m [0m[36m/Users/ib/dev/deno/ext/node/polyfills/_stream.mjs[0m[0m[33m:2265:5[0m
+    [0m[38;5;12m | [0m
+[0m[38;5;12m2265 | [0m    var destroyImpl = require_destroy();
+    [0m[38;5;12m | [0m    [0m[1m[31m^^^[0m
+
+  [0m[38;5;12mdocs[0m: https://lint.deno.land/rules/no-var
+
+
+[0m[1m[31merror[no-var][0m: [0m[1m`var` keyword is not allowed.[0m
+    [0m[38;5;12m-->[0m [0m[36m/Users/ib/dev/deno/ext/node/polyfills/_stream.mjs[0m[0m[33m:2266:5[0m
+    [0m[38;5;12m | [0m
+[0m[38;5;12m2266 | [0m    var { getHighWaterMark, getDefaultHighWaterMark } = require_state();
+    [0m[38;5;12m | [0m    [0m[1m[31m^^^[0m
+
+  [0m[38;5;12mdocs[0m: https://lint.deno.land/rules/no-var
+
+
+[0m[1m[31merror[no-var][0m: [0m[1m`var` keyword is not allowed.[0m
+    [0m[38;5;12m-->[0m [0m[36m/Users/ib/dev/deno/ext/node/polyfills/_stream.mjs[0m[0m[33m:2267:5[0m
+    [0m[38;5;12m | [0m
+[0m[38;5;12m2267 | [0m    var { validateObject } = require_validators();
+    [0m[38;5;12m | [0m    [0m[1m[31m^^^[0m
+
+  [0m[38;5;12mdocs[0m: https://lint.deno.land/rules/no-var
+
+
+[0m[1m[31merror[no-var][0m: [0m[1m`var` keyword is not allowed.[0m
+    [0m[38;5;12m-->[0m [0m[36m/Users/ib/dev/deno/ext/node/polyfills/_stream.mjs[0m[0m[33m:2268:5[0m
+    [0m[38;5;12m | [0m
+[0m[38;5;12m2268 | [0m    var kPaused = Symbol2("kPaused");
+    [0m[38;5;12m | [0m    [0m[1m[31m^^^[0m
+
+  [0m[38;5;12mdocs[0m: https://lint.deno.land/rules/no-var
+
+
+[0m[1m[31merror[no-var][0m: [0m[1m`var` keyword is not allowed.[0m
+    [0m[38;5;12m-->[0m [0m[36m/Users/ib/dev/deno/ext/node/polyfills/_stream.mjs[0m[0m[33m:2269:5[0m
+    [0m[38;5;12m | [0m
+[0m[38;5;12m2269 | [0m    var from = require_from();
+    [0m[38;5;12m | [0m    [0m[1m[31m^^^[0m
+
+  [0m[38;5;12mdocs[0m: https://lint.deno.land/rules/no-var
+
+
+[0m[1m[31merror[no-var][0m: [0m[1m`var` keyword is not allowed.[0m
+    [0m[38;5;12m-->[0m [0m[36m/Users/ib/dev/deno/ext/node/polyfills/_stream.mjs[0m[0m[33m:2272:5[0m
+    [0m[38;5;12m | [0m
+[0m[38;5;12m2272 | [0m    var nop = () => {
+    [0m[38;5;12m | [0m    [0m[1m[31m^^^[0m
+
+  [0m[38;5;12mdocs[0m: https://lint.deno.land/rules/no-var
+
+
+[0m[1m[31merror[no-var][0m: [0m[1m`var` keyword is not allowed.[0m
+    [0m[38;5;12m-->[0m [0m[36m/Users/ib/dev/deno/ext/node/polyfills/_stream.mjs[0m[0m[33m:2274:5[0m
+    [0m[38;5;12m | [0m
+[0m[38;5;12m2274 | [0m    var { errorOrDestroy } = destroyImpl;
+    [0m[38;5;12m | [0m    [0m[1m[31m^^^[0m
+
+  [0m[38;5;12mdocs[0m: https://lint.deno.land/rules/no-var
+
+
+[0m[1m[31merror[no-var][0m: [0m[1m`var` keyword is not allowed.[0m
+    [0m[38;5;12m-->[0m [0m[36m/Users/ib/dev/deno/ext/node/polyfills/_stream.mjs[0m[0m[33m:2472:5[0m
+    [0m[38;5;12m | [0m
+[0m[38;5;12m2472 | [0m    var MAX_HWM = 1073741824;
+    [0m[38;5;12m | [0m    [0m[1m[31m^^^[0m
+
+  [0m[38;5;12mdocs[0m: https://lint.deno.land/rules/no-var
+
+
+[0m[1m[31merror[no-unused-vars][0m: [0m[1m`n` is never used[0m
+    [0m[38;5;12m-->[0m [0m[36m/Users/ib/dev/deno/ext/node/polyfills/_stream.mjs[0m[0m[33m:2664:42[0m
+    [0m[38;5;12m | [0m
+[0m[38;5;12m2664 | [0m    Readable.prototype._read = function (n) {
+    [0m[38;5;12m | [0m                                         [0m[1m[31m^[0m
+     [0m[38;5;12m=[0m [0m[1mhint[0m: If this is intentional, prefix it with an underscore like `_n`
+
+  [0m[38;5;12mdocs[0m: https://lint.deno.land/rules/no-unused-vars
+
+
+[0m[1m[31merror[no-this-alias][0m: [0m[1massign `this` to declare a value is not allowed[0m
+    [0m[38;5;12m-->[0m [0m[36m/Users/ib/dev/deno/ext/node/polyfills/_stream.mjs[0m[0m[33m:2668:7[0m
+    [0m[38;5;12m | [0m
+[0m[38;5;12m2668 | [0m      const src = this;
+    [0m[38;5;12m | [0m      [0m[1m[31m^^^^^^^^^^^^^^^^^[0m
+
+  [0m[38;5;12mdocs[0m: https://lint.deno.land/rules/no-this-alias
+
+
+[0m[1m[31merror[no-var][0m: [0m[1m`var` keyword is not allowed.[0m
+    [0m[38;5;12m-->[0m [0m[36m/Users/ib/dev/deno/ext/node/polyfills/_stream.mjs[0m[0m[33m:3234:5[0m
+    [0m[38;5;12m | [0m
+[0m[38;5;12m3234 | [0m    var webStreamsAdapters;
+    [0m[38;5;12m | [0m    [0m[1m[31m^^^[0m
+
+  [0m[38;5;12mdocs[0m: https://lint.deno.land/rules/no-var
+
+
+[0m[1m[31merror[no-var][0m: [0m[1m`var` keyword is not allowed.[0m
+    [0m[38;5;12m-->[0m [0m[36m/Users/ib/dev/deno/ext/node/polyfills/_stream.mjs[0m[0m[33m:3254:7[0m
+    [0m[38;5;12m | [0m
+[0m[38;5;12m3254 | [0m      var _ref, _src$readableObjectMo;
+    [0m[38;5;12m | [0m      [0m[1m[31m^^^[0m
+
+  [0m[38;5;12mdocs[0m: https://lint.deno.land/rules/no-var
+
+
+[0m[1m[31merror[no-var][0m: [0m[1m`var` keyword is not allowed.[0m
+    [0m[38;5;12m-->[0m [0m[36m/Users/ib/dev/deno/ext/node/polyfills/_stream.mjs[0m[0m[33m:3274:1[0m
+    [0m[38;5;12m | [0m
+[0m[38;5;12m3274 | [0mvar require_writable = __commonJS({
+    [0m[38;5;12m | [0m[0m[1m[31m^^^[0m
+
+  [0m[38;5;12mdocs[0m: https://lint.deno.land/rules/no-var
+
+
+[0m[1m[31merror[no-unused-vars][0m: [0m[1m`exports` is never used[0m
+    [0m[38;5;12m-->[0m [0m[36m/Users/ib/dev/deno/ext/node/polyfills/_stream.mjs[0m[0m[33m:3275:38[0m
+    [0m[38;5;12m | [0m
+[0m[38;5;12m3275 | [0m  "lib/internal/streams/writable.js"(exports, module) {
+    [0m[38;5;12m | [0m                                     [0m[1m[31m^^^^^^^[0m
+     [0m[38;5;12m=[0m [0m[1mhint[0m: If this is intentional, prefix it with an underscore like `_exports`
+
+  [0m[38;5;12mdocs[0m: https://lint.deno.land/rules/no-unused-vars
+
+
+[0m[1m[31merror[no-var][0m: [0m[1m`var` keyword is not allowed.[0m
+    [0m[38;5;12m-->[0m [0m[36m/Users/ib/dev/deno/ext/node/polyfills/_stream.mjs[0m[0m[33m:3276:5[0m
+    [0m[38;5;12m | [0m
+[0m[38;5;12m3276 | [0m    var process = require_browser2();
+    [0m[38;5;12m | [0m    [0m[1m[31m^^^[0m
+
+  [0m[38;5;12mdocs[0m: https://lint.deno.land/rules/no-var
+
+
+[0m[1m[31merror[no-var][0m: [0m[1m`var` keyword is not allowed.[0m
+    [0m[38;5;12m-->[0m [0m[36m/Users/ib/dev/deno/ext/node/polyfills/_stream.mjs[0m[0m[33m:3277:5[0m
+    [0m[38;5;12m | [0m
+[0m[38;5;12m3277 | [0m    var {
+    [0m[38;5;12m | [0m    [0m[1m[31m^^^[0m
+
+  [0m[38;5;12mdocs[0m: https://lint.deno.land/rules/no-var
+
+
+[0m[1m[31merror[no-var][0m: [0m[1m`var` keyword is not allowed.[0m
+    [0m[38;5;12m-->[0m [0m[36m/Users/ib/dev/deno/ext/node/polyfills/_stream.mjs[0m[0m[33m:3290:5[0m
+    [0m[38;5;12m | [0m
+[0m[38;5;12m3290 | [0m    var Stream = require_legacy().Stream;
+    [0m[38;5;12m | [0m    [0m[1m[31m^^^[0m
+
+  [0m[38;5;12mdocs[0m: https://lint.deno.land/rules/no-var
+
+
+[0m[1m[31merror[no-var][0m: [0m[1m`var` keyword is not allowed.[0m
+    [0m[38;5;12m-->[0m [0m[36m/Users/ib/dev/deno/ext/node/polyfills/_stream.mjs[0m[0m[33m:3291:5[0m
+    [0m[38;5;12m | [0m
+[0m[38;5;12m3291 | [0m    var { Buffer: Buffer2 } = require_buffer();
+    [0m[38;5;12m | [0m    [0m[1m[31m^^^[0m
+
+  [0m[38;5;12mdocs[0m: https://lint.deno.land/rules/no-var
+
+
+[0m[1m[31merror[no-var][0m: [0m[1m`var` keyword is not allowed.[0m
+    [0m[38;5;12m-->[0m [0m[36m/Users/ib/dev/deno/ext/node/polyfills/_stream.mjs[0m[0m[33m:3292:5[0m
+    [0m[38;5;12m | [0m
+[0m[38;5;12m3292 | [0m    var destroyImpl = require_destroy();
+    [0m[38;5;12m | [0m    [0m[1m[31m^^^[0m
+
+  [0m[38;5;12mdocs[0m: https://lint.deno.land/rules/no-var
+
+
+[0m[1m[31merror[no-var][0m: [0m[1m`var` keyword is not allowed.[0m
+    [0m[38;5;12m-->[0m [0m[36m/Users/ib/dev/deno/ext/node/polyfills/_stream.mjs[0m[0m[33m:3293:5[0m
+    [0m[38;5;12m | [0m
+[0m[38;5;12m3293 | [0m    var { addAbortSignal } = require_add_abort_signal();
+    [0m[38;5;12m | [0m    [0m[1m[31m^^^[0m
+
+  [0m[38;5;12mdocs[0m: https://lint.deno.land/rules/no-var
+
+
+[0m[1m[31merror[no-var][0m: [0m[1m`var` keyword is not allowed.[0m
+    [0m[38;5;12m-->[0m [0m[36m/Users/ib/dev/deno/ext/node/polyfills/_stream.mjs[0m[0m[33m:3294:5[0m
+    [0m[38;5;12m | [0m
+[0m[38;5;12m3294 | [0m    var { getHighWaterMark, getDefaultHighWaterMark } = require_state();
+    [0m[38;5;12m | [0m    [0m[1m[31m^^^[0m
+
+  [0m[38;5;12mdocs[0m: https://lint.deno.land/rules/no-var
+
+
+[0m[1m[31merror[no-var][0m: [0m[1m`var` keyword is not allowed.[0m
+    [0m[38;5;12m-->[0m [0m[36m/Users/ib/dev/deno/ext/node/polyfills/_stream.mjs[0m[0m[33m:3295:5[0m
+    [0m[38;5;12m | [0m
+[0m[38;5;12m3295 | [0m    var { errorOrDestroy } = destroyImpl;
+    [0m[38;5;12m | [0m    [0m[1m[31m^^^[0m
+
+  [0m[38;5;12mdocs[0m: https://lint.deno.land/rules/no-var
+
+
+[0m[1m[31merror[no-var][0m: [0m[1m`var` keyword is not allowed.[0m
+    [0m[38;5;12m-->[0m [0m[36m/Users/ib/dev/deno/ext/node/polyfills/_stream.mjs[0m[0m[33m:3300:5[0m
+    [0m[38;5;12m | [0m
+[0m[38;5;12m3300 | [0m    var kOnFinished = Symbol2("kOnFinished");
+    [0m[38;5;12m | [0m    [0m[1m[31m^^^[0m
+
+  [0m[38;5;12mdocs[0m: https://lint.deno.land/rules/no-var
+
+
+[0m[1m[31merror[no-inner-declarations][0m: [0m[1mMove variable declaration to function root[0m
+    [0m[38;5;12m-->[0m [0m[36m/Users/ib/dev/deno/ext/node/polyfills/_stream.mjs[0m[0m[33m:3619:9[0m
+    [0m[38;5;12m | [0m
+[0m[38;5;12m3619 | [0m        var _state$errored;
+    [0m[38;5;12m | [0m        [0m[1m[31m^^^^^^^^^^^^^^^^^^^[0m
+     [0m[38;5;12m=[0m [0m[1mhint[0m: Move the declaration up into the correct scope
+
+  [0m[38;5;12mdocs[0m: https://lint.deno.land/rules/no-inner-declarations
+
+
+[0m[1m[31merror[no-var][0m: [0m[1m`var` keyword is not allowed.[0m
+    [0m[38;5;12m-->[0m [0m[36m/Users/ib/dev/deno/ext/node/polyfills/_stream.mjs[0m[0m[33m:3619:9[0m
+    [0m[38;5;12m | [0m
+[0m[38;5;12m3619 | [0m        var _state$errored;
+    [0m[38;5;12m | [0m        [0m[1m[31m^^^[0m
+
+  [0m[38;5;12mdocs[0m: https://lint.deno.land/rules/no-var
+
+
+[0m[1m[31merror[no-inner-declarations][0m: [0m[1mMove variable declaration to function root[0m
+    [0m[38;5;12m-->[0m [0m[36m/Users/ib/dev/deno/ext/node/polyfills/_stream.mjs[0m[0m[33m:3631:9[0m
+    [0m[38;5;12m | [0m
+[0m[38;5;12m3631 | [0m        var _state$errored2;
+    [0m[38;5;12m | [0m        [0m[1m[31m^^^^^^^^^^^^^^^^^^^^[0m
+     [0m[38;5;12m=[0m [0m[1mhint[0m: Move the declaration up into the correct scope
+
+  [0m[38;5;12mdocs[0m: https://lint.deno.land/rules/no-inner-declarations
+
+
+[0m[1m[31merror[no-var][0m: [0m[1m`var` keyword is not allowed.[0m
+    [0m[38;5;12m-->[0m [0m[36m/Users/ib/dev/deno/ext/node/polyfills/_stream.mjs[0m[0m[33m:3631:9[0m
+    [0m[38;5;12m | [0m
+[0m[38;5;12m3631 | [0m        var _state$errored2;
+    [0m[38;5;12m | [0m        [0m[1m[31m^^^[0m
+
+  [0m[38;5;12mdocs[0m: https://lint.deno.land/rules/no-var
+
+
+[0m[1m[31merror[no-empty][0m: [0m[1mEmpty block statement[0m
+    [0m[38;5;12m-->[0m [0m[36m/Users/ib/dev/deno/ext/node/polyfills/_stream.mjs[0m[0m[33m:3723:16[0m
+    [0m[38;5;12m | [0m
+[0m[38;5;12m3723 | [0m      if (err) {
+    [0m[38;5;12m | [0m               [0m[1m[31m^[0m
+    [0m[38;5;12m | [0m
+[0m[38;5;12m3724 | [0m      } else if (!state.errored && !state.ending) {
+    [0m[38;5;12m | [0m[0m[1m[31m^^^^^^^[0m
+     [0m[38;5;12m=[0m [0m[1mhint[0m: Add code or comment to the empty block
+
+  [0m[38;5;12mdocs[0m: https://lint.deno.land/rules/no-empty
+
+
+[0m[1m[31merror[no-var][0m: [0m[1m`var` keyword is not allowed.[0m
+    [0m[38;5;12m-->[0m [0m[36m/Users/ib/dev/deno/ext/node/polyfills/_stream.mjs[0m[0m[33m:3937:5[0m
+    [0m[38;5;12m | [0m
+[0m[38;5;12m3937 | [0m    var destroy = destroyImpl.destroy;
+    [0m[38;5;12m | [0m    [0m[1m[31m^^^[0m
+
+  [0m[38;5;12mdocs[0m: https://lint.deno.land/rules/no-var
+
+
+[0m[1m[31merror[no-var][0m: [0m[1m`var` keyword is not allowed.[0m
+    [0m[38;5;12m-->[0m [0m[36m/Users/ib/dev/deno/ext/node/polyfills/_stream.mjs[0m[0m[33m:3957:5[0m
+    [0m[38;5;12m | [0m
+[0m[38;5;12m3957 | [0m    var webStreamsAdapters;
+    [0m[38;5;12m | [0m    [0m[1m[31m^^^[0m
+
+  [0m[38;5;12mdocs[0m: https://lint.deno.land/rules/no-var
+
+
+[0m[1m[31merror[no-var][0m: [0m[1m`var` keyword is not allowed.[0m
+    [0m[38;5;12m-->[0m [0m[36m/Users/ib/dev/deno/ext/node/polyfills/_stream.mjs[0m[0m[33m:3979:1[0m
+    [0m[38;5;12m | [0m
+[0m[38;5;12m3979 | [0mvar require_duplexify = __commonJS({
+    [0m[38;5;12m | [0m[0m[1m[31m^^^[0m
+
+  [0m[38;5;12mdocs[0m: https://lint.deno.land/rules/no-var
+
+
+[0m[1m[31merror[no-unused-vars][0m: [0m[1m`exports` is never used[0m
+    [0m[38;5;12m-->[0m [0m[36m/Users/ib/dev/deno/ext/node/polyfills/_stream.mjs[0m[0m[33m:3980:39[0m
+    [0m[38;5;12m | [0m
+[0m[38;5;12m3980 | [0m  "lib/internal/streams/duplexify.js"(exports, module) {
+    [0m[38;5;12m | [0m                                      [0m[1m[31m^^^^^^^[0m
+     [0m[38;5;12m=[0m [0m[1mhint[0m: If this is intentional, prefix it with an underscore like `_exports`
+
+  [0m[38;5;12mdocs[0m: https://lint.deno.land/rules/no-unused-vars
+
+
+[0m[1m[31merror[no-var][0m: [0m[1m`var` keyword is not allowed.[0m
+    [0m[38;5;12m-->[0m [0m[36m/Users/ib/dev/deno/ext/node/polyfills/_stream.mjs[0m[0m[33m:3981:5[0m
+    [0m[38;5;12m | [0m
+[0m[38;5;12m3981 | [0m    var process = require_browser2();
+    [0m[38;5;12m | [0m    [0m[1m[31m^^^[0m
+
+  [0m[38;5;12mdocs[0m: https://lint.deno.land/rules/no-var
+
+
+[0m[1m[31merror[no-var][0m: [0m[1m`var` keyword is not allowed.[0m
+    [0m[38;5;12m-->[0m [0m[36m/Users/ib/dev/deno/ext/node/polyfills/_stream.mjs[0m[0m[33m:3982:5[0m
+    [0m[38;5;12m | [0m
+[0m[38;5;12m3982 | [0m    var bufferModule = require_buffer();
+    [0m[38;5;12m | [0m    [0m[1m[31m^^^[0m
+
+  [0m[38;5;12mdocs[0m: https://lint.deno.land/rules/no-var
+
+
+[0m[1m[31merror[no-unused-vars][0m: [0m[1m`bufferModule` is never used[0m
+    [0m[38;5;12m-->[0m [0m[36m/Users/ib/dev/deno/ext/node/polyfills/_stream.mjs[0m[0m[33m:3982:9[0m
+    [0m[38;5;12m | [0m
+[0m[38;5;12m3982 | [0m    var bufferModule = require_buffer();
+    [0m[38;5;12m | [0m        [0m[1m[31m^^^^^^^^^^^^[0m
+     [0m[38;5;12m=[0m [0m[1mhint[0m: If this is intentional, prefix it with an underscore like `_bufferModule`
+
+  [0m[38;5;12mdocs[0m: https://lint.deno.land/rules/no-unused-vars
+
+
+[0m[1m[31merror[no-var][0m: [0m[1m`var` keyword is not allowed.[0m
+    [0m[38;5;12m-->[0m [0m[36m/Users/ib/dev/deno/ext/node/polyfills/_stream.mjs[0m[0m[33m:3983:5[0m
+    [0m[38;5;12m | [0m
+[0m[38;5;12m3983 | [0m    var {
+    [0m[38;5;12m | [0m    [0m[1m[31m^^^[0m
+
+  [0m[38;5;12mdocs[0m: https://lint.deno.land/rules/no-var
+
+
+[0m[1m[31merror[no-var][0m: [0m[1m`var` keyword is not allowed.[0m
+    [0m[38;5;12m-->[0m [0m[36m/Users/ib/dev/deno/ext/node/polyfills/_stream.mjs[0m[0m[33m:3992:5[0m
+    [0m[38;5;12m | [0m
+[0m[38;5;12m3992 | [0m    var eos = require_end_of_stream();
+    [0m[38;5;12m | [0m    [0m[1m[31m^^^[0m
+
+  [0m[38;5;12mdocs[0m: https://lint.deno.land/rules/no-var
+
+
+[0m[1m[31merror[no-var][0m: [0m[1m`var` keyword is not allowed.[0m
+    [0m[38;5;12m-->[0m [0m[36m/Users/ib/dev/deno/ext/node/polyfills/_stream.mjs[0m[0m[33m:3993:5[0m
+    [0m[38;5;12m | [0m
+[0m[38;5;12m3993 | [0m    var { destroyer } = require_destroy();
+    [0m[38;5;12m | [0m    [0m[1m[31m^^^[0m
+
+  [0m[38;5;12mdocs[0m: https://lint.deno.land/rules/no-var
+
+
+[0m[1m[31merror[no-var][0m: [0m[1m`var` keyword is not allowed.[0m
+    [0m[38;5;12m-->[0m [0m[36m/Users/ib/dev/deno/ext/node/polyfills/_stream.mjs[0m[0m[33m:3994:5[0m
+    [0m[38;5;12m | [0m
+[0m[38;5;12m3994 | [0m    var Duplex = require_duplex();
+    [0m[38;5;12m | [0m    [0m[1m[31m^^^[0m
+
+  [0m[38;5;12mdocs[0m: https://lint.deno.land/rules/no-var
+
+
+[0m[1m[31merror[no-var][0m: [0m[1m`var` keyword is not allowed.[0m
+    [0m[38;5;12m-->[0m [0m[36m/Users/ib/dev/deno/ext/node/polyfills/_stream.mjs[0m[0m[33m:3995:5[0m
+    [0m[38;5;12m | [0m
+[0m[38;5;12m3995 | [0m    var Readable = require_readable();
+    [0m[38;5;12m | [0m    [0m[1m[31m^^^[0m
+
+  [0m[38;5;12mdocs[0m: https://lint.deno.land/rules/no-var
+
+
+[0m[1m[31merror[no-var][0m: [0m[1m`var` keyword is not allowed.[0m
+    [0m[38;5;12m-->[0m [0m[36m/Users/ib/dev/deno/ext/node/polyfills/_stream.mjs[0m[0m[33m:3996:5[0m
+    [0m[38;5;12m | [0m
+[0m[38;5;12m3996 | [0m    var from = require_from();
+    [0m[38;5;12m | [0m    [0m[1m[31m^^^[0m
+
+  [0m[38;5;12mdocs[0m: https://lint.deno.land/rules/no-var
+
+
+[0m[1m[31merror[no-var][0m: [0m[1m`var` keyword is not allowed.[0m
+    [0m[38;5;12m-->[0m [0m[36m/Users/ib/dev/deno/ext/node/polyfills/_stream.mjs[0m[0m[33m:3997:5[0m
+    [0m[38;5;12m | [0m
+[0m[38;5;12m3997 | [0m    var isBlob = typeof Blob !== "undefined"
+    [0m[38;5;12m | [0m    [0m[1m[31m^^^[0m
+
+  [0m[38;5;12mdocs[0m: https://lint.deno.land/rules/no-var
+
+
+[0m[1m[31merror[no-unused-vars][0m: [0m[1m`b` is never used[0m
+    [0m[38;5;12m-->[0m [0m[36m/Users/ib/dev/deno/ext/node/polyfills/_stream.mjs[0m[0m[33m:4001:26[0m
+    [0m[38;5;12m | [0m
+[0m[38;5;12m4001 | [0m      : function isBlob2(b) {
+    [0m[38;5;12m | [0m                         [0m[1m[31m^[0m
+     [0m[38;5;12m=[0m [0m[1mhint[0m: If this is intentional, prefix it with an underscore like `_b`
+
+  [0m[38;5;12mdocs[0m: https://lint.deno.land/rules/no-unused-vars
+
+
+[0m[1m[31merror[no-var][0m: [0m[1m`var` keyword is not allowed.[0m
+    [0m[38;5;12m-->[0m [0m[36m/Users/ib/dev/deno/ext/node/polyfills/_stream.mjs[0m[0m[33m:4004:5[0m
+    [0m[38;5;12m | [0m
+[0m[38;5;12m4004 | [0m    var { FunctionPrototypeCall } = require_primordials();
+    [0m[38;5;12m | [0m    [0m[1m[31m^^^[0m
+
+  [0m[38;5;12mdocs[0m: https://lint.deno.land/rules/no-var
+
+
+[0m[1m[31merror[no-var][0m: [0m[1m`var` keyword is not allowed.[0m
+    [0m[38;5;12m-->[0m [0m[36m/Users/ib/dev/deno/ext/node/polyfills/_stream.mjs[0m[0m[33m:4005:5[0m
+    [0m[38;5;12m | [0m
+[0m[38;5;12m4005 | [0m    var Duplexify = class extends Duplex {
+    [0m[38;5;12m | [0m    [0m[1m[31m^^^[0m
+
+  [0m[38;5;12mdocs[0m: https://lint.deno.land/rules/no-var
+
+
+[0m[1m[31merror[no-unused-vars][0m: [0m[1m`encoding` is never used[0m
+    [0m[38;5;12m-->[0m [0m[36m/Users/ib/dev/deno/ext/node/polyfills/_stream.mjs[0m[0m[33m:4203:22[0m
+    [0m[38;5;12m | [0m
+[0m[38;5;12m4203 | [0m        write(chunk, encoding, cb) {
+    [0m[38;5;12m | [0m                     [0m[1m[31m^^^^^^^^[0m
+     [0m[38;5;12m=[0m [0m[1mhint[0m: If this is intentional, prefix it with an underscore like `_encoding`
+
+  [0m[38;5;12mdocs[0m: https://lint.deno.land/rules/no-unused-vars
+
+
+[0m[1m[31merror[prefer-const][0m: [0m[1m`d` is never reassigned[0m
+    [0m[38;5;12m-->[0m [0m[36m/Users/ib/dev/deno/ext/node/polyfills/_stream.mjs[0m[0m[33m:4237:11[0m
+    [0m[38;5;12m | [0m
+[0m[38;5;12m4237 | [0m      let d;
+    [0m[38;5;12m | [0m          [0m[1m[31m^[0m
+     [0m[38;5;12m=[0m [0m[1mhint[0m: Use `const` instead
+
+  [0m[38;5;12mdocs[0m: https://lint.deno.land/rules/prefer-const
+
+
+[0m[1m[31merror[no-var][0m: [0m[1m`var` keyword is not allowed.[0m
+    [0m[38;5;12m-->[0m [0m[36m/Users/ib/dev/deno/ext/node/polyfills/_stream.mjs[0m[0m[33m:4342:1[0m
+    [0m[38;5;12m | [0m
+[0m[38;5;12m4342 | [0mvar require_duplex = __commonJS({
+    [0m[38;5;12m | [0m[0m[1m[31m^^^[0m
+
+  [0m[38;5;12mdocs[0m: https://lint.deno.land/rules/no-var
+
+
+[0m[1m[31merror[no-unused-vars][0m: [0m[1m`exports` is never used[0m
+    [0m[38;5;12m-->[0m [0m[36m/Users/ib/dev/deno/ext/node/polyfills/_stream.mjs[0m[0m[33m:4343:36[0m
+    [0m[38;5;12m | [0m
+[0m[38;5;12m4343 | [0m  "lib/internal/streams/duplex.js"(exports, module) {
+    [0m[38;5;12m | [0m                                   [0m[1m[31m^^^^^^^[0m
+     [0m[38;5;12m=[0m [0m[1mhint[0m: If this is intentional, prefix it with an underscore like `_exports`
+
+  [0m[38;5;12mdocs[0m: https://lint.deno.land/rules/no-unused-vars
+
+
+[0m[1m[31merror[no-var][0m: [0m[1m`var` keyword is not allowed.[0m
+    [0m[38;5;12m-->[0m [0m[36m/Users/ib/dev/deno/ext/node/polyfills/_stream.mjs[0m[0m[33m:4345:5[0m
+    [0m[38;5;12m | [0m
+[0m[38;5;12m4345 | [0m    var {
+    [0m[38;5;12m | [0m    [0m[1m[31m^^^[0m
+
+  [0m[38;5;12mdocs[0m: https://lint.deno.land/rules/no-var
+
+
+[0m[1m[31merror[no-var][0m: [0m[1m`var` keyword is not allowed.[0m
+    [0m[38;5;12m-->[0m [0m[36m/Users/ib/dev/deno/ext/node/polyfills/_stream.mjs[0m[0m[33m:4352:5[0m
+    [0m[38;5;12m | [0m
+[0m[38;5;12m4352 | [0m    var Readable = require_readable();
+    [0m[38;5;12m | [0m    [0m[1m[31m^^^[0m
+
+  [0m[38;5;12mdocs[0m: https://lint.deno.land/rules/no-var
+
+
+[0m[1m[31merror[no-var][0m: [0m[1m`var` keyword is not allowed.[0m
+    [0m[38;5;12m-->[0m [0m[36m/Users/ib/dev/deno/ext/node/polyfills/_stream.mjs[0m[0m[33m:4353:5[0m
+    [0m[38;5;12m | [0m
+[0m[38;5;12m4353 | [0m    var Writable = require_writable();
+    [0m[38;5;12m | [0m    [0m[1m[31m^^^[0m
+
+  [0m[38;5;12mdocs[0m: https://lint.deno.land/rules/no-var
+
+
+[0m[1m[31merror[no-var][0m: [0m[1m`var` keyword is not allowed.[0m
+    [0m[38;5;12m-->[0m [0m[36m/Users/ib/dev/deno/ext/node/polyfills/_stream.mjs[0m[0m[33m:4455:5[0m
+    [0m[38;5;12m | [0m
+[0m[38;5;12m4455 | [0m    var webStreamsAdapters;
+    [0m[38;5;12m | [0m    [0m[1m[31m^^^[0m
+
+  [0m[38;5;12mdocs[0m: https://lint.deno.land/rules/no-var
+
+
+[0m[1m[31merror[no-var][0m: [0m[1m`var` keyword is not allowed.[0m
+    [0m[38;5;12m-->[0m [0m[36m/Users/ib/dev/deno/ext/node/polyfills/_stream.mjs[0m[0m[33m:4471:5[0m
+    [0m[38;5;12m | [0m
+[0m[38;5;12m4471 | [0m    var duplexify;
+    [0m[38;5;12m | [0m    [0m[1m[31m^^^[0m
+
+  [0m[38;5;12mdocs[0m: https://lint.deno.land/rules/no-var
+
+
+[0m[1m[31merror[no-var][0m: [0m[1m`var` keyword is not allowed.[0m
+    [0m[38;5;12m-->[0m [0m[36m/Users/ib/dev/deno/ext/node/polyfills/_stream.mjs[0m[0m[33m:4482:1[0m
+    [0m[38;5;12m | [0m
+[0m[38;5;12m4482 | [0mvar require_transform = __commonJS({
+    [0m[38;5;12m | [0m[0m[1m[31m^^^[0m
+
+  [0m[38;5;12mdocs[0m: https://lint.deno.land/rules/no-var
+
+
+[0m[1m[31merror[no-unused-vars][0m: [0m[1m`exports` is never used[0m
+    [0m[38;5;12m-->[0m [0m[36m/Users/ib/dev/deno/ext/node/polyfills/_stream.mjs[0m[0m[33m:4483:39[0m
+    [0m[38;5;12m | [0m
+[0m[38;5;12m4483 | [0m  "lib/internal/streams/transform.js"(exports, module) {
+    [0m[38;5;12m | [0m                                      [0m[1m[31m^^^^^^^[0m
+     [0m[38;5;12m=[0m [0m[1mhint[0m: If this is intentional, prefix it with an underscore like `_exports`
+
+  [0m[38;5;12mdocs[0m: https://lint.deno.land/rules/no-unused-vars
+
+
+[0m[1m[31merror[no-var][0m: [0m[1m`var` keyword is not allowed.[0m
+    [0m[38;5;12m-->[0m [0m[36m/Users/ib/dev/deno/ext/node/polyfills/_stream.mjs[0m[0m[33m:4485:5[0m
+    [0m[38;5;12m | [0m
+[0m[38;5;12m4485 | [0m    var { ObjectSetPrototypeOf, Symbol: Symbol2 } = require_primordials();
+    [0m[38;5;12m | [0m    [0m[1m[31m^^^[0m
+
+  [0m[38;5;12mdocs[0m: https://lint.deno.land/rules/no-var
+
+
+[0m[1m[31merror[no-var][0m: [0m[1m`var` keyword is not allowed.[0m
+    [0m[38;5;12m-->[0m [0m[36m/Users/ib/dev/deno/ext/node/polyfills/_stream.mjs[0m[0m[33m:4487:5[0m
+    [0m[38;5;12m | [0m
+[0m[38;5;12m4487 | [0m    var Duplex = require_duplex();
+    [0m[38;5;12m | [0m    [0m[1m[31m^^^[0m
+
+  [0m[38;5;12mdocs[0m: https://lint.deno.land/rules/no-var
+
+
+[0m[1m[31merror[no-var][0m: [0m[1m`var` keyword is not allowed.[0m
+    [0m[38;5;12m-->[0m [0m[36m/Users/ib/dev/deno/ext/node/polyfills/_stream.mjs[0m[0m[33m:4488:5[0m
+    [0m[38;5;12m | [0m
+[0m[38;5;12m4488 | [0m    var { getHighWaterMark } = require_state();
+    [0m[38;5;12m | [0m    [0m[1m[31m^^^[0m
+
+  [0m[38;5;12mdocs[0m: https://lint.deno.land/rules/no-var
+
+
+[0m[1m[31merror[no-var][0m: [0m[1m`var` keyword is not allowed.[0m
+    [0m[38;5;12m-->[0m [0m[36m/Users/ib/dev/deno/ext/node/polyfills/_stream.mjs[0m[0m[33m:4491:5[0m
+    [0m[38;5;12m | [0m
+[0m[38;5;12m4491 | [0m    var kCallback = Symbol2("kCallback");
+    [0m[38;5;12m | [0m    [0m[1m[31m^^^[0m
+
+  [0m[38;5;12mdocs[0m: https://lint.deno.land/rules/no-var
+
+
+[0m[1m[31merror[no-unused-vars][0m: [0m[1m`chunk` is never used[0m
+    [0m[38;5;12m-->[0m [0m[36m/Users/ib/dev/deno/ext/node/polyfills/_stream.mjs[0m[0m[33m:4556:48[0m
+    [0m[38;5;12m | [0m
+[0m[38;5;12m4556 | [0m    Transform.prototype._transform = function (chunk, encoding, callback) {
+    [0m[38;5;12m | [0m                                               [0m[1m[31m^^^^^[0m
+     [0m[38;5;12m=[0m [0m[1mhint[0m: If this is intentional, prefix it with an underscore like `_chunk`
+
+  [0m[38;5;12mdocs[0m: https://lint.deno.land/rules/no-unused-vars
+
+
+[0m[1m[31merror[no-unused-vars][0m: [0m[1m`encoding` is never used[0m
+    [0m[38;5;12m-->[0m [0m[36m/Users/ib/dev/deno/ext/node/polyfills/_stream.mjs[0m[0m[33m:4556:55[0m
+    [0m[38;5;12m | [0m
+[0m[38;5;12m4556 | [0m    Transform.prototype._transform = function (chunk, encoding, callback) {
+    [0m[38;5;12m | [0m                                                      [0m[1m[31m^^^^^^^^[0m
+     [0m[38;5;12m=[0m [0m[1mhint[0m: If this is intentional, prefix it with an underscore like `_encoding`
+
+  [0m[38;5;12mdocs[0m: https://lint.deno.land/rules/no-unused-vars
+
+
+[0m[1m[31merror[no-unused-vars][0m: [0m[1m`callback` is never used[0m
+    [0m[38;5;12m-->[0m [0m[36m/Users/ib/dev/deno/ext/node/polyfills/_stream.mjs[0m[0m[33m:4556:65[0m
+    [0m[38;5;12m | [0m
+[0m[38;5;12m4556 | [0m    Transform.prototype._transform = function (chunk, encoding, callback) {
+    [0m[38;5;12m | [0m                                                                [0m[1m[31m^^^^^^^^[0m
+     [0m[38;5;12m=[0m [0m[1mhint[0m: If this is intentional, prefix it with an underscore like `_callback`
+
+  [0m[38;5;12mdocs[0m: https://lint.deno.land/rules/no-unused-vars
+
+
+[0m[1m[31merror[no-var][0m: [0m[1m`var` keyword is not allowed.[0m
+    [0m[38;5;12m-->[0m [0m[36m/Users/ib/dev/deno/ext/node/polyfills/_stream.mjs[0m[0m[33m:4593:1[0m
+    [0m[38;5;12m | [0m
+[0m[38;5;12m4593 | [0mvar require_passthrough = __commonJS({
+    [0m[38;5;12m | [0m[0m[1m[31m^^^[0m
+
+  [0m[38;5;12mdocs[0m: https://lint.deno.land/rules/no-var
+
+
+[0m[1m[31merror[no-unused-vars][0m: [0m[1m`exports` is never used[0m
+    [0m[38;5;12m-->[0m [0m[36m/Users/ib/dev/deno/ext/node/polyfills/_stream.mjs[0m[0m[33m:4594:41[0m
+    [0m[38;5;12m | [0m
+[0m[38;5;12m4594 | [0m  "lib/internal/streams/passthrough.js"(exports, module) {
+    [0m[38;5;12m | [0m                                        [0m[1m[31m^^^^^^^[0m
+     [0m[38;5;12m=[0m [0m[1mhint[0m: If this is intentional, prefix it with an underscore like `_exports`
+
+  [0m[38;5;12mdocs[0m: https://lint.deno.land/rules/no-unused-vars
+
+
+[0m[1m[31merror[no-var][0m: [0m[1m`var` keyword is not allowed.[0m
+    [0m[38;5;12m-->[0m [0m[36m/Users/ib/dev/deno/ext/node/polyfills/_stream.mjs[0m[0m[33m:4596:5[0m
+    [0m[38;5;12m | [0m
+[0m[38;5;12m4596 | [0m    var { ObjectSetPrototypeOf } = require_primordials();
+    [0m[38;5;12m | [0m    [0m[1m[31m^^^[0m
+
+  [0m[38;5;12mdocs[0m: https://lint.deno.land/rules/no-var
+
+
+[0m[1m[31merror[no-var][0m: [0m[1m`var` keyword is not allowed.[0m
+    [0m[38;5;12m-->[0m [0m[36m/Users/ib/dev/deno/ext/node/polyfills/_stream.mjs[0m[0m[33m:4598:5[0m
+    [0m[38;5;12m | [0m
+[0m[38;5;12m4598 | [0m    var Transform = require_transform();
+    [0m[38;5;12m | [0m    [0m[1m[31m^^^[0m
+
+  [0m[38;5;12mdocs[0m: https://lint.deno.land/rules/no-var
+
+
+[0m[1m[31merror[no-unused-vars][0m: [0m[1m`encoding` is never used[0m
+    [0m[38;5;12m-->[0m [0m[36m/Users/ib/dev/deno/ext/node/polyfills/_stream.mjs[0m[0m[33m:4607:57[0m
+    [0m[38;5;12m | [0m
+[0m[38;5;12m4607 | [0m    PassThrough.prototype._transform = function (chunk, encoding, cb) {
+    [0m[38;5;12m | [0m                                                        [0m[1m[31m^^^^^^^^[0m
+     [0m[38;5;12m=[0m [0m[1mhint[0m: If this is intentional, prefix it with an underscore like `_encoding`
+
+  [0m[38;5;12mdocs[0m: https://lint.deno.land/rules/no-unused-vars
+
+
+[0m[1m[31merror[no-var][0m: [0m[1m`var` keyword is not allowed.[0m
+    [0m[38;5;12m-->[0m [0m[36m/Users/ib/dev/deno/ext/node/polyfills/_stream.mjs[0m[0m[33m:4614:1[0m
+    [0m[38;5;12m | [0m
+[0m[38;5;12m4614 | [0mvar require_pipeline = __commonJS({
+    [0m[38;5;12m | [0m[0m[1m[31m^^^[0m
+
+  [0m[38;5;12mdocs[0m: https://lint.deno.land/rules/no-var
+
+
+[0m[1m[31merror[no-unused-vars][0m: [0m[1m`exports` is never used[0m
+    [0m[38;5;12m-->[0m [0m[36m/Users/ib/dev/deno/ext/node/polyfills/_stream.mjs[0m[0m[33m:4615:38[0m
+    [0m[38;5;12m | [0m
+[0m[38;5;12m4615 | [0m  "lib/internal/streams/pipeline.js"(exports, module) {
+    [0m[38;5;12m | [0m                                     [0m[1m[31m^^^^^^^[0m
+     [0m[38;5;12m=[0m [0m[1mhint[0m: If this is intentional, prefix it with an underscore like `_exports`
+
+  [0m[38;5;12mdocs[0m: https://lint.deno.land/rules/no-unused-vars
+
+
+[0m[1m[31merror[no-var][0m: [0m[1m`var` keyword is not allowed.[0m
+    [0m[38;5;12m-->[0m [0m[36m/Users/ib/dev/deno/ext/node/polyfills/_stream.mjs[0m[0m[33m:4616:5[0m
+    [0m[38;5;12m | [0m
+[0m[38;5;12m4616 | [0m    var process = require_browser2();
+    [0m[38;5;12m | [0m    [0m[1m[31m^^^[0m
+
+  [0m[38;5;12mdocs[0m: https://lint.deno.land/rules/no-var
+
+
+[0m[1m[31merror[no-var][0m: [0m[1m`var` keyword is not allowed.[0m
+    [0m[38;5;12m-->[0m [0m[36m/Users/ib/dev/deno/ext/node/polyfills/_stream.mjs[0m[0m[33m:4617:5[0m
+    [0m[38;5;12m | [0m
+[0m[38;5;12m4617 | [0m    var { ArrayIsArray, Promise: Promise2, SymbolAsyncIterator } =
+    [0m[38;5;12m | [0m    [0m[1m[31m^^^[0m
+
+  [0m[38;5;12mdocs[0m: https://lint.deno.land/rules/no-var
+
+
+[0m[1m[31merror[no-var][0m: [0m[1m`var` keyword is not allowed.[0m
+    [0m[38;5;12m-->[0m [0m[36m/Users/ib/dev/deno/ext/node/polyfills/_stream.mjs[0m[0m[33m:4619:5[0m
+    [0m[38;5;12m | [0m
+[0m[38;5;12m4619 | [0m    var eos = require_end_of_stream();
+    [0m[38;5;12m | [0m    [0m[1m[31m^^^[0m
+
+  [0m[38;5;12mdocs[0m: https://lint.deno.land/rules/no-var
+
+
+[0m[1m[31merror[no-var][0m: [0m[1m`var` keyword is not allowed.[0m
+    [0m[38;5;12m-->[0m [0m[36m/Users/ib/dev/deno/ext/node/polyfills/_stream.mjs[0m[0m[33m:4620:5[0m
+    [0m[38;5;12m | [0m
+[0m[38;5;12m4620 | [0m    var destroyImpl = require_destroy();
+    [0m[38;5;12m | [0m    [0m[1m[31m^^^[0m
+
+  [0m[38;5;12mdocs[0m: https://lint.deno.land/rules/no-var
+
+
+[0m[1m[31merror[no-var][0m: [0m[1m`var` keyword is not allowed.[0m
+    [0m[38;5;12m-->[0m [0m[36m/Users/ib/dev/deno/ext/node/polyfills/_stream.mjs[0m[0m[33m:4621:5[0m
+    [0m[38;5;12m | [0m
+[0m[38;5;12m4621 | [0m    var Duplex = require_duplex();
+    [0m[38;5;12m | [0m    [0m[1m[31m^^^[0m
+
+  [0m[38;5;12mdocs[0m: https://lint.deno.land/rules/no-var
+
+
+[0m[1m[31merror[no-var][0m: [0m[1m`var` keyword is not allowed.[0m
+    [0m[38;5;12m-->[0m [0m[36m/Users/ib/dev/deno/ext/node/polyfills/_stream.mjs[0m[0m[33m:4622:5[0m
+    [0m[38;5;12m | [0m
+[0m[38;5;12m4622 | [0m    var { validateFunction, validateAbortSignal } = require_validators();
+    [0m[38;5;12m | [0m    [0m[1m[31m^^^[0m
+
+  [0m[38;5;12mdocs[0m: https://lint.deno.land/rules/no-var
+
+
+[0m[1m[31merror[no-var][0m: [0m[1m`var` keyword is not allowed.[0m
+    [0m[38;5;12m-->[0m [0m[36m/Users/ib/dev/deno/ext/node/polyfills/_stream.mjs[0m[0m[33m:4623:5[0m
+    [0m[38;5;12m | [0m
+[0m[38;5;12m4623 | [0m    var { isIterable, isReadable, isReadableNodeStream, isNodeStream } =
+    [0m[38;5;12m | [0m    [0m[1m[31m^^^[0m
+
+  [0m[38;5;12mdocs[0m: https://lint.deno.land/rules/no-var
+
+
+[0m[1m[31merror[no-var][0m: [0m[1m`var` keyword is not allowed.[0m
+    [0m[38;5;12m-->[0m [0m[36m/Users/ib/dev/deno/ext/node/polyfills/_stream.mjs[0m[0m[33m:4625:5[0m
+    [0m[38;5;12m | [0m
+[0m[38;5;12m4625 | [0m    var PassThrough;
+    [0m[38;5;12m | [0m    [0m[1m[31m^^^[0m
+
+  [0m[38;5;12mdocs[0m: https://lint.deno.land/rules/no-var
+
+
+[0m[1m[31merror[no-var][0m: [0m[1m`var` keyword is not allowed.[0m
+    [0m[38;5;12m-->[0m [0m[36m/Users/ib/dev/deno/ext/node/polyfills/_stream.mjs[0m[0m[33m:4626:5[0m
+    [0m[38;5;12m | [0m
+[0m[38;5;12m4626 | [0m    var Readable;
+    [0m[38;5;12m | [0m    [0m[1m[31m^^^[0m
+
+  [0m[38;5;12mdocs[0m: https://lint.deno.land/rules/no-var
+
+
+[0m[1m[31merror[prefer-const][0m: [0m[1m`onError2` is never reassigned[0m
+    [0m[38;5;12m-->[0m [0m[36m/Users/ib/dev/deno/ext/node/polyfills/_stream.mjs[0m[0m[33m:4797:15[0m
+    [0m[38;5;12m | [0m
+[0m[38;5;12m4797 | [0m          let onError2 = function (err) {
+    [0m[38;5;12m | [0m              [0m[1m[31m^^^^^^^^[0m
+     [0m[38;5;12m=[0m [0m[1mhint[0m: Use `const` instead
+
+  [0m[38;5;12mdocs[0m: https://lint.deno.land/rules/prefer-const
+
+
+[0m[1m[31merror[no-inner-declarations][0m: [0m[1mMove variable declaration to function root[0m
+    [0m[38;5;12m-->[0m [0m[36m/Users/ib/dev/deno/ext/node/polyfills/_stream.mjs[0m[0m[33m:4805:11[0m
+    [0m[38;5;12m | [0m
+[0m[38;5;12m4805 | [0m          var onError = onError2;
+    [0m[38;5;12m | [0m          [0m[1m[31m^^^^^^^^^^^^^^^^^^^^^^^[0m
+     [0m[38;5;12m=[0m [0m[1mhint[0m: Move the declaration up into the correct scope
+
+  [0m[38;5;12mdocs[0m: https://lint.deno.land/rules/no-inner-declarations
+
+
+[0m[1m[31merror[no-var][0m: [0m[1m`var` keyword is not allowed.[0m
+    [0m[38;5;12m-->[0m [0m[36m/Users/ib/dev/deno/ext/node/polyfills/_stream.mjs[0m[0m[33m:4805:11[0m
+    [0m[38;5;12m | [0m
+[0m[38;5;12m4805 | [0m          var onError = onError2;
+    [0m[38;5;12m | [0m          [0m[1m[31m^^^[0m
+
+  [0m[38;5;12mdocs[0m: https://lint.deno.land/rules/no-var
+
+
+[0m[1m[31merror[no-unused-vars][0m: [0m[1m`onError` is never used[0m
+    [0m[38;5;12m-->[0m [0m[36m/Users/ib/dev/deno/ext/node/polyfills/_stream.mjs[0m[0m[33m:4805:15[0m
+    [0m[38;5;12m | [0m
+[0m[38;5;12m4805 | [0m          var onError = onError2;
+    [0m[38;5;12m | [0m              [0m[1m[31m^^^^^^^[0m
+     [0m[38;5;12m=[0m [0m[1mhint[0m: If this is intentional, prefix it with an underscore like `_onError`
+
+  [0m[38;5;12mdocs[0m: https://lint.deno.land/rules/no-unused-vars
+
+
+[0m[1m[31merror[no-inner-declarations][0m: [0m[1mMove variable declaration to function root[0m
+    [0m[38;5;12m-->[0m [0m[36m/Users/ib/dev/deno/ext/node/polyfills/_stream.mjs[0m[0m[33m:4851:13[0m
+    [0m[38;5;12m | [0m
+[0m[38;5;12m4851 | [0m            var _ret;
+    [0m[38;5;12m | [0m            [0m[1m[31m^^^^^^^^^[0m
+     [0m[38;5;12m=[0m [0m[1mhint[0m: Move the declaration up into the correct scope
+
+  [0m[38;5;12mdocs[0m: https://lint.deno.land/rules/no-inner-declarations
+
+
+[0m[1m[31merror[no-var][0m: [0m[1m`var` keyword is not allowed.[0m
+    [0m[38;5;12m-->[0m [0m[36m/Users/ib/dev/deno/ext/node/polyfills/_stream.mjs[0m[0m[33m:4851:13[0m
+    [0m[38;5;12m | [0m
+[0m[38;5;12m4851 | [0m            var _ret;
+    [0m[38;5;12m | [0m            [0m[1m[31m^^^[0m
+
+  [0m[38;5;12mdocs[0m: https://lint.deno.land/rules/no-var
+
+
+[0m[1m[31merror[no-var][0m: [0m[1m`var` keyword is not allowed.[0m
+    [0m[38;5;12m-->[0m [0m[36m/Users/ib/dev/deno/ext/node/polyfills/_stream.mjs[0m[0m[33m:4986:1[0m
+    [0m[38;5;12m | [0m
+[0m[38;5;12m4986 | [0mvar require_compose = __commonJS({
+    [0m[38;5;12m | [0m[0m[1m[31m^^^[0m
+
+  [0m[38;5;12mdocs[0m: https://lint.deno.land/rules/no-var
+
+
+[0m[1m[31merror[no-unused-vars][0m: [0m[1m`exports` is never used[0m
+    [0m[38;5;12m-->[0m [0m[36m/Users/ib/dev/deno/ext/node/polyfills/_stream.mjs[0m[0m[33m:4987:37[0m
+    [0m[38;5;12m | [0m
+[0m[38;5;12m4987 | [0m  "lib/internal/streams/compose.js"(exports, module) {
+    [0m[38;5;12m | [0m                                    [0m[1m[31m^^^^^^^[0m
+     [0m[38;5;12m=[0m [0m[1mhint[0m: If this is intentional, prefix it with an underscore like `_exports`
+
+  [0m[38;5;12mdocs[0m: https://lint.deno.land/rules/no-unused-vars
+
+
+[0m[1m[31merror[no-var][0m: [0m[1m`var` keyword is not allowed.[0m
+    [0m[38;5;12m-->[0m [0m[36m/Users/ib/dev/deno/ext/node/polyfills/_stream.mjs[0m[0m[33m:4989:5[0m
+    [0m[38;5;12m | [0m
+[0m[38;5;12m4989 | [0m    var { pipeline } = require_pipeline();
+    [0m[38;5;12m | [0m    [0m[1m[31m^^^[0m
+
+  [0m[38;5;12mdocs[0m: https://lint.deno.land/rules/no-var
+
+
+[0m[1m[31merror[no-var][0m: [0m[1m`var` keyword is not allowed.[0m
+    [0m[38;5;12m-->[0m [0m[36m/Users/ib/dev/deno/ext/node/polyfills/_stream.mjs[0m[0m[33m:4990:5[0m
+    [0m[38;5;12m | [0m
+[0m[38;5;12m4990 | [0m    var Duplex = require_duplex();
+    [0m[38;5;12m | [0m    [0m[1m[31m^^^[0m
+
+  [0m[38;5;12mdocs[0m: https://lint.deno.land/rules/no-var
+
+
+[0m[1m[31merror[no-var][0m: [0m[1m`var` keyword is not allowed.[0m
+    [0m[38;5;12m-->[0m [0m[36m/Users/ib/dev/deno/ext/node/polyfills/_stream.mjs[0m[0m[33m:4991:5[0m
+    [0m[38;5;12m | [0m
+[0m[38;5;12m4991 | [0m    var { destroyer } = require_destroy();
+    [0m[38;5;12m | [0m    [0m[1m[31m^^^[0m
+
+  [0m[38;5;12mdocs[0m: https://lint.deno.land/rules/no-var
+
+
+[0m[1m[31merror[no-var][0m: [0m[1m`var` keyword is not allowed.[0m
+    [0m[38;5;12m-->[0m [0m[36m/Users/ib/dev/deno/ext/node/polyfills/_stream.mjs[0m[0m[33m:4992:5[0m
+    [0m[38;5;12m | [0m
+[0m[38;5;12m4992 | [0m    var { isNodeStream, isReadable, isWritable } = require_utils();
+    [0m[38;5;12m | [0m    [0m[1m[31m^^^[0m
+
+  [0m[38;5;12mdocs[0m: https://lint.deno.land/rules/no-var
+
+
+[0m[1m[31merror[prefer-const][0m: [0m[1m`d` is never reassigned[0m
+    [0m[38;5;12m-->[0m [0m[36m/Users/ib/dev/deno/ext/node/polyfills/_stream.mjs[0m[0m[33m:5031:11[0m
+    [0m[38;5;12m | [0m
+[0m[38;5;12m5031 | [0m      let d;
+    [0m[38;5;12m | [0m          [0m[1m[31m^[0m
+     [0m[38;5;12m=[0m [0m[1mhint[0m: Use `const` instead
+
+  [0m[38;5;12mdocs[0m: https://lint.deno.land/rules/prefer-const
+
+
+[0m[1m[31merror[no-var][0m: [0m[1m`var` keyword is not allowed.[0m
+    [0m[38;5;12m-->[0m [0m[36m/Users/ib/dev/deno/ext/node/polyfills/_stream.mjs[0m[0m[33m:5127:1[0m
+    [0m[38;5;12m | [0m
+[0m[38;5;12m5127 | [0mvar require_promises = __commonJS({
+    [0m[38;5;12m | [0m[0m[1m[31m^^^[0m
+
+  [0m[38;5;12mdocs[0m: https://lint.deno.land/rules/no-var
+
+
+[0m[1m[31merror[no-unused-vars][0m: [0m[1m`exports` is never used[0m
+    [0m[38;5;12m-->[0m [0m[36m/Users/ib/dev/deno/ext/node/polyfills/_stream.mjs[0m[0m[33m:5128:28[0m
+    [0m[38;5;12m | [0m
+[0m[38;5;12m5128 | [0m  "lib/stream/promises.js"(exports, module) {
+    [0m[38;5;12m | [0m                           [0m[1m[31m^^^^^^^[0m
+     [0m[38;5;12m=[0m [0m[1mhint[0m: If this is intentional, prefix it with an underscore like `_exports`
+
+  [0m[38;5;12mdocs[0m: https://lint.deno.land/rules/no-unused-vars
+
+
+[0m[1m[31merror[no-var][0m: [0m[1m`var` keyword is not allowed.[0m
+    [0m[38;5;12m-->[0m [0m[36m/Users/ib/dev/deno/ext/node/polyfills/_stream.mjs[0m[0m[33m:5130:5[0m
+    [0m[38;5;12m | [0m
+[0m[38;5;12m5130 | [0m    var { ArrayPrototypePop, Promise: Promise2 } = require_primordials();
+    [0m[38;5;12m | [0m    [0m[1m[31m^^^[0m
+
+  [0m[38;5;12mdocs[0m: https://lint.deno.land/rules/no-var
+
+
+[0m[1m[31merror[no-var][0m: [0m[1m`var` keyword is not allowed.[0m
+    [0m[38;5;12m-->[0m [0m[36m/Users/ib/dev/deno/ext/node/polyfills/_stream.mjs[0m[0m[33m:5131:5[0m
+    [0m[38;5;12m | [0m
+[0m[38;5;12m5131 | [0m    var { isIterable, isNodeStream } = require_utils();
+    [0m[38;5;12m | [0m    [0m[1m[31m^^^[0m
+
+  [0m[38;5;12mdocs[0m: https://lint.deno.land/rules/no-var
+
+
+[0m[1m[31merror[no-var][0m: [0m[1m`var` keyword is not allowed.[0m
+    [0m[38;5;12m-->[0m [0m[36m/Users/ib/dev/deno/ext/node/polyfills/_stream.mjs[0m[0m[33m:5132:5[0m
+    [0m[38;5;12m | [0m
+[0m[38;5;12m5132 | [0m    var { pipelineImpl: pl } = require_pipeline();
+    [0m[38;5;12m | [0m    [0m[1m[31m^^^[0m
+
+  [0m[38;5;12mdocs[0m: https://lint.deno.land/rules/no-var
+
+
+[0m[1m[31merror[no-var][0m: [0m[1m`var` keyword is not allowed.[0m
+    [0m[38;5;12m-->[0m [0m[36m/Users/ib/dev/deno/ext/node/polyfills/_stream.mjs[0m[0m[33m:5133:5[0m
+    [0m[38;5;12m | [0m
+[0m[38;5;12m5133 | [0m    var { finished } = require_end_of_stream();
+    [0m[38;5;12m | [0m    [0m[1m[31m^^^[0m
+
+  [0m[38;5;12mdocs[0m: https://lint.deno.land/rules/no-var
+
+
+[0m[1m[31merror[no-var][0m: [0m[1m`var` keyword is not allowed.[0m
+    [0m[38;5;12m-->[0m [0m[36m/Users/ib/dev/deno/ext/node/polyfills/_stream.mjs[0m[0m[33m:5171:1[0m
+    [0m[38;5;12m | [0m
+[0m[38;5;12m5171 | [0mvar require_stream = __commonJS({
+    [0m[38;5;12m | [0m[0m[1m[31m^^^[0m
+
+  [0m[38;5;12mdocs[0m: https://lint.deno.land/rules/no-var
+
+
+[0m[1m[31merror[no-unused-vars][0m: [0m[1m`exports` is never used[0m
+    [0m[38;5;12m-->[0m [0m[36m/Users/ib/dev/deno/ext/node/polyfills/_stream.mjs[0m[0m[33m:5172:19[0m
+    [0m[38;5;12m | [0m
+[0m[38;5;12m5172 | [0m  "lib/stream.js"(exports, module) {
+    [0m[38;5;12m | [0m                  [0m[1m[31m^^^^^^^[0m
+     [0m[38;5;12m=[0m [0m[1mhint[0m: If this is intentional, prefix it with an underscore like `_exports`
+
+  [0m[38;5;12mdocs[0m: https://lint.deno.land/rules/no-unused-vars
+
+
+[0m[1m[31merror[no-var][0m: [0m[1m`var` keyword is not allowed.[0m
+    [0m[38;5;12m-->[0m [0m[36m/Users/ib/dev/deno/ext/node/polyfills/_stream.mjs[0m[0m[33m:5173:5[0m
+    [0m[38;5;12m | [0m
+[0m[38;5;12m5173 | [0m    var { Buffer: Buffer2 } = require_buffer();
+    [0m[38;5;12m | [0m    [0m[1m[31m^^^[0m
+
+  [0m[38;5;12mdocs[0m: https://lint.deno.land/rules/no-var
+
+
+[0m[1m[31merror[no-var][0m: [0m[1m`var` keyword is not allowed.[0m
+    [0m[38;5;12m-->[0m [0m[36m/Users/ib/dev/deno/ext/node/polyfills/_stream.mjs[0m[0m[33m:5174:5[0m
+    [0m[38;5;12m | [0m
+[0m[38;5;12m5174 | [0m    var { ObjectDefineProperty, ObjectKeys, ReflectApply } =
+    [0m[38;5;12m | [0m    [0m[1m[31m^^^[0m
+
+  [0m[38;5;12mdocs[0m: https://lint.deno.land/rules/no-var
+
+
+[0m[1m[31merror[no-var][0m: [0m[1m`var` keyword is not allowed.[0m
+    [0m[38;5;12m-->[0m [0m[36m/Users/ib/dev/deno/ext/node/polyfills/_stream.mjs[0m[0m[33m:5176:5[0m
+    [0m[38;5;12m | [0m
+[0m[38;5;12m5176 | [0m    var { streamReturningOperators, promiseReturningOperators } =
+    [0m[38;5;12m | [0m    [0m[1m[31m^^^[0m
+
+  [0m[38;5;12mdocs[0m: https://lint.deno.land/rules/no-var
+
+
+[0m[1m[31merror[no-var][0m: [0m[1m`var` keyword is not allowed.[0m
+    [0m[38;5;12m-->[0m [0m[36m/Users/ib/dev/deno/ext/node/polyfills/_stream.mjs[0m[0m[33m:5178:5[0m
+    [0m[38;5;12m | [0m
+[0m[38;5;12m5178 | [0m    var compose = require_compose();
+    [0m[38;5;12m | [0m    [0m[1m[31m^^^[0m
+
+  [0m[38;5;12mdocs[0m: https://lint.deno.land/rules/no-var
+
+
+[0m[1m[31merror[no-var][0m: [0m[1m`var` keyword is not allowed.[0m
+    [0m[38;5;12m-->[0m [0m[36m/Users/ib/dev/deno/ext/node/polyfills/_stream.mjs[0m[0m[33m:5179:5[0m
+    [0m[38;5;12m | [0m
+[0m[38;5;12m5179 | [0m    var { pipeline } = require_pipeline();
+    [0m[38;5;12m | [0m    [0m[1m[31m^^^[0m
+
+  [0m[38;5;12mdocs[0m: https://lint.deno.land/rules/no-var
+
+
+[0m[1m[31merror[no-var][0m: [0m[1m`var` keyword is not allowed.[0m
+    [0m[38;5;12m-->[0m [0m[36m/Users/ib/dev/deno/ext/node/polyfills/_stream.mjs[0m[0m[33m:5180:5[0m
+    [0m[38;5;12m | [0m
+[0m[38;5;12m5180 | [0m    var { destroyer } = require_destroy();
+    [0m[38;5;12m | [0m    [0m[1m[31m^^^[0m
+
+  [0m[38;5;12mdocs[0m: https://lint.deno.land/rules/no-var
+
+
+[0m[1m[31merror[no-var][0m: [0m[1m`var` keyword is not allowed.[0m
+    [0m[38;5;12m-->[0m [0m[36m/Users/ib/dev/deno/ext/node/polyfills/_stream.mjs[0m[0m[33m:5181:5[0m
+    [0m[38;5;12m | [0m
+[0m[38;5;12m5181 | [0m    var eos = require_end_of_stream();
+    [0m[38;5;12m | [0m    [0m[1m[31m^^^[0m
+
+  [0m[38;5;12mdocs[0m: https://lint.deno.land/rules/no-var
+
+
+[0m[1m[31merror[no-var][0m: [0m[1m`var` keyword is not allowed.[0m
+    [0m[38;5;12m-->[0m [0m[36m/Users/ib/dev/deno/ext/node/polyfills/_stream.mjs[0m[0m[33m:5182:5[0m
+    [0m[38;5;12m | [0m
+[0m[38;5;12m5182 | [0m    var promises = require_promises();
+    [0m[38;5;12m | [0m    [0m[1m[31m^^^[0m
+
+  [0m[38;5;12mdocs[0m: https://lint.deno.land/rules/no-var
+
+
+[0m[1m[31merror[no-var][0m: [0m[1m`var` keyword is not allowed.[0m
+    [0m[38;5;12m-->[0m [0m[36m/Users/ib/dev/deno/ext/node/polyfills/_stream.mjs[0m[0m[33m:5183:5[0m
+    [0m[38;5;12m | [0m
+[0m[38;5;12m5183 | [0m    var utils = require_utils();
+    [0m[38;5;12m | [0m    [0m[1m[31m^^^[0m
+
+  [0m[38;5;12mdocs[0m: https://lint.deno.land/rules/no-var
+
+
+[0m[1m[31merror[no-var][0m: [0m[1m`var` keyword is not allowed.[0m
+    [0m[38;5;12m-->[0m [0m[36m/Users/ib/dev/deno/ext/node/polyfills/_stream.mjs[0m[0m[33m:5184:5[0m
+    [0m[38;5;12m | [0m
+[0m[38;5;12m5184 | [0m    var Stream = module.exports = require_legacy().Stream;
+    [0m[38;5;12m | [0m    [0m[1m[31m^^^[0m
+
+  [0m[38;5;12mdocs[0m: https://lint.deno.land/rules/no-var
+
+
+[0m[1m[31merror[prefer-const][0m: [0m[1m`fn2` is never reassigned[0m
+    [0m[38;5;12m-->[0m [0m[36m/Users/ib/dev/deno/ext/node/polyfills/_stream.mjs[0m[0m[33m:5190:11[0m
+    [0m[38;5;12m | [0m
+[0m[38;5;12m5190 | [0m      let fn2 = function (...args) {
+    [0m[38;5;12m | [0m          [0m[1m[31m^^^[0m
+     [0m[38;5;12m=[0m [0m[1mhint[0m: Use `const` instead
+
+  [0m[38;5;12mdocs[0m: https://lint.deno.land/rules/prefer-const
+
+
+[0m[1m[31merror[no-var][0m: [0m[1m`var` keyword is not allowed.[0m
+    [0m[38;5;12m-->[0m [0m[36m/Users/ib/dev/deno/ext/node/polyfills/_stream.mjs[0m[0m[33m:5214:5[0m
+    [0m[38;5;12m | [0m
+[0m[38;5;12m5214 | [0m    var fn;
+    [0m[38;5;12m | [0m    [0m[1m[31m^^^[0m
+
+  [0m[38;5;12mdocs[0m: https://lint.deno.land/rules/no-var
+
+
+[0m[1m[31merror[no-unused-vars][0m: [0m[1m`fn` is never used[0m
+    [0m[38;5;12m-->[0m [0m[36m/Users/ib/dev/deno/ext/node/polyfills/_stream.mjs[0m[0m[33m:5214:9[0m
+    [0m[38;5;12m | [0m
+[0m[38;5;12m5214 | [0m    var fn;
+    [0m[38;5;12m | [0m        [0m[1m[31m^^[0m
+     [0m[38;5;12m=[0m [0m[1mhint[0m: If this is intentional, prefix it with an underscore like `_fn`
+
+  [0m[38;5;12mdocs[0m: https://lint.deno.land/rules/no-unused-vars
+
+
+[0m[1m[31merror[prefer-const][0m: [0m[1m`fn2` is never reassigned[0m
+    [0m[38;5;12m-->[0m [0m[36m/Users/ib/dev/deno/ext/node/polyfills/_stream.mjs[0m[0m[33m:5216:11[0m
+    [0m[38;5;12m | [0m
+[0m[38;5;12m5216 | [0m      let fn2 = function (...args) {
+    [0m[38;5;12m | [0m          [0m[1m[31m^^^[0m
+     [0m[38;5;12m=[0m [0m[1mhint[0m: Use `const` instead
+
+  [0m[38;5;12mdocs[0m: https://lint.deno.land/rules/prefer-const
+
+
+[0m[1m[31merror[no-var][0m: [0m[1m`var` keyword is not allowed.[0m
+    [0m[38;5;12m-->[0m [0m[36m/Users/ib/dev/deno/ext/node/polyfills/_stream.mjs[0m[0m[33m:5240:5[0m
+    [0m[38;5;12m | [0m
+[0m[38;5;12m5240 | [0m    var fn;
+    [0m[38;5;12m | [0m    [0m[1m[31m^^^[0m
+
+  [0m[38;5;12mdocs[0m: https://lint.deno.land/rules/no-var
+
+
+[0m[1m[31merror[no-unused-vars][0m: [0m[1m`fn` is never used[0m
+    [0m[38;5;12m-->[0m [0m[36m/Users/ib/dev/deno/ext/node/polyfills/_stream.mjs[0m[0m[33m:5240:9[0m
+    [0m[38;5;12m | [0m
+[0m[38;5;12m5240 | [0m    var fn;
+    [0m[38;5;12m | [0m        [0m[1m[31m^^[0m
+     [0m[38;5;12m=[0m [0m[1mhint[0m: If this is intentional, prefix it with an underscore like `_fn`
+
+  [0m[38;5;12mdocs[0m: https://lint.deno.land/rules/no-unused-vars
+
+
+[0m[1m[31merror[no-var][0m: [0m[1m`var` keyword is not allowed.[0m
+    [0m[38;5;12m-->[0m [0m[36m/Users/ib/dev/deno/ext/node/polyfills/_stream.mjs[0m[0m[33m:5246:5[0m
+    [0m[38;5;12m | [0m
+[0m[38;5;12m5246 | [0m    var { addAbortSignal } = require_add_abort_signal();
+    [0m[38;5;12m | [0m    [0m[1m[31m^^^[0m
+
+  [0m[38;5;12mdocs[0m: https://lint.deno.land/rules/no-var
+
+
+[0m[1m[31merror[no-unused-vars][0m: [0m[1m`options` is never used[0m
+    [0m[38;5;12m-->[0m [0m[36m/Users/ib/dev/deno/ext/node/polyfills/_stream.mjs[0m[0m[33m:5792:3[0m
+    [0m[38;5;12m | [0m
+[0m[38;5;12m5792 | [0m  options = kEmptyObject,
+    [0m[38;5;12m | [0m  [0m[1m[31m^^^^^^^[0m
+     [0m[38;5;12m=[0m [0m[1mhint[0m: If this is intentional, prefix it with an underscore like `_options`
+
+  [0m[38;5;12mdocs[0m: https://lint.deno.land/rules/no-unused-vars
+
+
+[0m[1m[31merror[no-unreachable][0m: [0m[1mThis statement is unreachable[0m
+    [0m[38;5;12m-->[0m [0m[36m/Users/ib/dev/deno/ext/node/polyfills/_stream.mjs[0m[0m[33m:5806:3[0m
+    [0m[38;5;12m | [0m
+[0m[38;5;12m5806 | [0m  if (isDestroyed(streamReadable) || !isReadable(streamReadable)) {
+    [0m[38;5;12m | [0m  [0m[1m[31m^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^[0m
+    [0m[38;5;12m | [0m
+[0m[38;5;12m5807 | [0m    const readable = new ReadableStream();
+    [0m[38;5;12m | [0m[0m[1m[31m^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^[0m
+    [0m[38;5;12m | [0m
+[0m[38;5;12m5808 | [0m    readable.cancel();
+    [0m[38;5;12m | [0m[0m[1m[31m^^^^^^^^^^^^^^^^^^^^^^[0m
+    [0m[38;5;12m | [0m
+[0m[38;5;12m5809 | [0m    return readable;
+    [0m[38;5;12m | [0m[0m[1m[31m^^^^^^^^^^^^^^^^^^^^[0m
+    [0m[38;5;12m | [0m
+[0m[38;5;12m5810 | [0m  }
+    [0m[38;5;12m | [0m[0m[1m[31m^^^[0m
+
+  [0m[38;5;12mdocs[0m: https://lint.deno.land/rules/no-unreachable
+
+
+[0m[1m[31merror[no-unreachable][0m: [0m[1mThis statement is unreachable[0m
+    [0m[38;5;12m-->[0m [0m[36m/Users/ib/dev/deno/ext/node/polyfills/_stream.mjs[0m[0m[33m:5807:5[0m
+    [0m[38;5;12m | [0m
+[0m[38;5;12m5807 | [0m    const readable = new ReadableStream();
+    [0m[38;5;12m | [0m    [0m[1m[31m^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^[0m
+
+  [0m[38;5;12mdocs[0m: https://lint.deno.land/rules/no-unreachable
+
+
+[0m[1m[31merror[no-unreachable][0m: [0m[1mThis statement is unreachable[0m
+    [0m[38;5;12m-->[0m [0m[36m/Users/ib/dev/deno/ext/node/polyfills/_stream.mjs[0m[0m[33m:5808:5[0m
+    [0m[38;5;12m | [0m
+[0m[38;5;12m5808 | [0m    readable.cancel();
+    [0m[38;5;12m | [0m    [0m[1m[31m^^^^^^^^^^^^^^^^^^[0m
+
+  [0m[38;5;12mdocs[0m: https://lint.deno.land/rules/no-unreachable
+
+
+[0m[1m[31merror[no-unreachable][0m: [0m[1mThis statement is unreachable[0m
+    [0m[38;5;12m-->[0m [0m[36m/Users/ib/dev/deno/ext/node/polyfills/_stream.mjs[0m[0m[33m:5809:5[0m
+    [0m[38;5;12m | [0m
+[0m[38;5;12m5809 | [0m    return readable;
+    [0m[38;5;12m | [0m    [0m[1m[31m^^^^^^^^^^^^^^^^[0m
+
+  [0m[38;5;12mdocs[0m: https://lint.deno.land/rules/no-unreachable
+
+
+[0m[1m[31merror[no-unreachable][0m: [0m[1mThis statement is unreachable[0m
+    [0m[38;5;12m-->[0m [0m[36m/Users/ib/dev/deno/ext/node/polyfills/_stream.mjs[0m[0m[33m:5812:3[0m
+    [0m[38;5;12m | [0m
+[0m[38;5;12m5812 | [0m  const objectMode = streamReadable.readableObjectMode;
+    [0m[38;5;12m | [0m  [0m[1m[31m^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^[0m
+
+  [0m[38;5;12mdocs[0m: https://lint.deno.land/rules/no-unreachable
+
+
+[0m[1m[31merror[no-unreachable][0m: [0m[1mThis statement is unreachable[0m
+    [0m[38;5;12m-->[0m [0m[36m/Users/ib/dev/deno/ext/node/polyfills/_stream.mjs[0m[0m[33m:5813:3[0m
+    [0m[38;5;12m | [0m
+[0m[38;5;12m5813 | [0m  const highWaterMark = streamReadable.readableHighWaterMark;
+    [0m[38;5;12m | [0m  [0m[1m[31m^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^[0m
+
+  [0m[38;5;12mdocs[0m: https://lint.deno.land/rules/no-unreachable
+
+
+[0m[1m[31merror[no-unreachable][0m: [0m[1mThis statement is unreachable[0m
+    [0m[38;5;12m-->[0m [0m[36m/Users/ib/dev/deno/ext/node/polyfills/_stream.mjs[0m[0m[33m:5815:3[0m
+    [0m[38;5;12m | [0m
+[0m[38;5;12m5815 | [0m  const evaluateStrategyOrFallback = (strategy) => {
+    [0m[38;5;12m | [0m  [0m[1m[31m^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^[0m
+    [0m[38;5;12m | [0m
+[0m[38;5;12m5816 | [0m    // If there is a strategy available, use it
+    [0m[38;5;12m | [0m[0m[1m[31m^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^[0m
+    [0m[38;5;12m | [0m
+[0m[38;5;12m5817 | [0m    if (strategy) {
+    [0m[38;5;12m | [0m[0m[1m[31m^^^^^^^^^^^^^^^^^^^[0m
+    [0m[38;5;12m | [0m
+[0m[38;5;12m5818 | [0m      return strategy;
+    [0m[38;5;12m | [0m[0m[1m[31m^^^^^^^^^^^^^^^^^^^^^^[0m
+    [0m[38;5;12m | [0m
+[0m[38;5;12m5819 | [0m    }
+    [0m[38;5;12m | [0m[0m[1m[31m^^^^^[0m
+    [0m[38;5;12m | [0m
+[0m[38;5;12m5820 | [0m
+    [0m[38;5;12m | [0m[0m[1m[31m[0m
+    [0m[38;5;12m | [0m
+[0m[38;5;12m5821 | [0m    if (objectMode) {
+    [0m[38;5;12m | [0m[0m[1m[31m^^^^^^^^^^^^^^^^^^^^^[0m
+    [0m[38;5;12m | [0m
+[0m[38;5;12m5822 | [0m      // When running in objectMode explicitly but no strategy, we just fall
+    [0m[38;5;12m | [0m[0m[1m[31m^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^[0m
+    [0m[38;5;12m | [0m
+[0m[38;5;12m5823 | [0m      // back to CountQueuingStrategy
+    [0m[38;5;12m | [0m[0m[1m[31m^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^[0m
+    [0m[38;5;12m | [0m
+[0m[38;5;12m5824 | [0m      return new CountQueuingStrategy({ highWaterMark });
+    [0m[38;5;12m | [0m[0m[1m[31m^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^[0m
+    [0m[38;5;12m | [0m
+[0m[38;5;12m5825 | [0m    }
+    [0m[38;5;12m | [0m[0m[1m[31m^^^^^[0m
+    [0m[38;5;12m | [0m
+[0m[38;5;12m5826 | [0m
+    [0m[38;5;12m | [0m[0m[1m[31m[0m
+    [0m[38;5;12m | [0m
+[0m[38;5;12m5827 | [0m    // When not running in objectMode explicitly, we just fall
+    [0m[38;5;12m | [0m[0m[1m[31m^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^[0m
+    [0m[38;5;12m | [0m
+[0m[38;5;12m5828 | [0m    // back to a minimal strategy that just specifies the highWaterMark
+    [0m[38;5;12m | [0m[0m[1m[31m^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^[0m
+    [0m[38;5;12m | [0m
+[0m[38;5;12m5829 | [0m    // and no size algorithm. Using a ByteLengthQueuingStrategy here
+    [0m[38;5;12m | [0m[0m[1m[31m^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^[0m
+    [0m[38;5;12m | [0m
+[0m[38;5;12m5830 | [0m    // is unnecessary.
+    [0m[38;5;12m | [0m[0m[1m[31m^^^^^^^^^^^^^^^^^^^^^^[0m
+    [0m[38;5;12m | [0m
+[0m[38;5;12m5831 | [0m    return { highWaterMark };
+    [0m[38;5;12m | [0m[0m[1m[31m^^^^^^^^^^^^^^^^^^^^^^^^^^^^^[0m
+    [0m[38;5;12m | [0m
+[0m[38;5;12m5832 | [0m  };
+    [0m[38;5;12m | [0m[0m[1m[31m^^^^[0m
+
+  [0m[38;5;12mdocs[0m: https://lint.deno.land/rules/no-unreachable
+
+
+[0m[1m[31merror[no-unused-vars][0m: [0m[1m`evaluateStrategyOrFallback` is never used[0m
+    [0m[38;5;12m-->[0m [0m[36m/Users/ib/dev/deno/ext/node/polyfills/_stream.mjs[0m[0m[33m:5815:9[0m
+    [0m[38;5;12m | [0m
+[0m[38;5;12m5815 | [0m  const evaluateStrategyOrFallback = (strategy) => {
+    [0m[38;5;12m | [0m        [0m[1m[31m^^^^^^^^^^^^^^^^^^^^^^^^^^[0m
+     [0m[38;5;12m=[0m [0m[1mhint[0m: If this is intentional, prefix it with an underscore like `_evaluateStrategyOrFallback`
+
+  [0m[38;5;12mdocs[0m: https://lint.deno.land/rules/no-unused-vars
+
+
+[0m[1m[31merror[no-unreachable][0m: [0m[1mThis statement is unreachable[0m
+    [0m[38;5;12m-->[0m [0m[36m/Users/ib/dev/deno/ext/node/polyfills/_stream.mjs[0m[0m[33m:5836:3[0m
+    [0m[38;5;12m | [0m
+[0m[38;5;12m5836 | [0m  let controller;
+    [0m[38;5;12m | [0m  [0m[1m[31m^^^^^^^^^^^^^^^[0m
+
+  [0m[38;5;12mdocs[0m: https://lint.deno.land/rules/no-unreachable
+
+
+[0m[1m[31merror[no-unreachable][0m: [0m[1mThis statement is unreachable[0m
+    [0m[38;5;12m-->[0m [0m[36m/Users/ib/dev/deno/ext/node/polyfills/_stream.mjs[0m[0m[33m:5849:3[0m
+    [0m[38;5;12m | [0m
+[0m[38;5;12m5849 | [0m  streamReadable.pause();
+    [0m[38;5;12m | [0m  [0m[1m[31m^^^^^^^^^^^^^^^^^^^^^^^[0m
+
+  [0m[38;5;12mdocs[0m: https://lint.deno.land/rules/no-unreachable
+
+
+[0m[1m[31merror[no-unreachable][0m: [0m[1mThis statement is unreachable[0m
+    [0m[38;5;12m-->[0m [0m[36m/Users/ib/dev/deno/ext/node/polyfills/_stream.mjs[0m[0m[33m:5851:3[0m
+    [0m[38;5;12m | [0m
+[0m[38;5;12m5851 | [0m  const cleanup = finished(streamReadable, (error) => {
+    [0m[38;5;12m | [0m  [0m[1m[31m^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^[0m
+    [0m[38;5;12m | [0m
+[0m[38;5;12m5852 | [0m    // if (error?.code === "ERR_STREAM_PREMATURE_CLOSE") {
+    [0m[38;5;12m | [0m[0m[1m[31m^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^[0m
+    [0m[38;5;12m | [0m
+[0m[38;5;12m5853 | [0m    //   const err = new AbortError(undefined, { cause: error });
+    [0m[38;5;12m | [0m[0m[1m[31m^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^[0m
+    [0m[38;5;12m | [0m
+[0m[38;5;12m5854 | [0m    //   error = err;
+    [0m[38;5;12m | [0m[0m[1m[31m^^^^^^^^^^^^^^^^^^^^^[0m
+    [0m[38;5;12m | [0m
+[0m[38;5;12m5855 | [0m    // }
+    [0m[38;5;12m | [0m[0m[1m[31m^^^^^^^^[0m
+    [0m[38;5;12m | [0m
+[0m[38;5;12m5856 | [0m
+    [0m[38;5;12m | [0m[0m[1m[31m[0m
+    [0m[38;5;12m | [0m
+[0m[38;5;12m5857 | [0m    cleanup();
+    [0m[38;5;12m | [0m[0m[1m[31m^^^^^^^^^^^^^^[0m
+    [0m[38;5;12m | [0m
+[0m[38;5;12m5858 | [0m    // This is a protection against non-standard, legacy streams
+    [0m[38;5;12m | [0m[0m[1m[31m^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^[0m
+    [0m[38;5;12m | [0m
+[0m[38;5;12m5859 | [0m    // that happen to emit an error event again after finished is called.
+    [0m[38;5;12m | [0m[0m[1m[31m^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^[0m
+    [0m[38;5;12m | [0m
+[0m[38;5;12m5860 | [0m    streamReadable.on("error", () => {});
+    [0m[38;5;12m | [0m[0m[1m[31m^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^[0m
+    [0m[38;5;12m | [0m
+[0m[38;5;12m5861 | [0m    if (error) {
+    [0m[38;5;12m | [0m[0m[1m[31m^^^^^^^^^^^^^^^^[0m
+    [0m[38;5;12m | [0m
+[0m[38;5;12m5862 | [0m      return controller.error(error);
+    [0m[38;5;12m | [0m[0m[1m[31m^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^[0m
+    [0m[38;5;12m | [0m
+[0m[38;5;12m5863 | [0m    }
+    [0m[38;5;12m | [0m[0m[1m[31m^^^^^[0m
+    [0m[38;5;12m | [0m
+[0m[38;5;12m5864 | [0m    controller.close();
+    [0m[38;5;12m | [0m[0m[1m[31m^^^^^^^^^^^^^^^^^^^^^^^[0m
+    [0m[38;5;12m | [0m
+[0m[38;5;12m5865 | [0m  });
+    [0m[38;5;12m | [0m[0m[1m[31m^^^^^[0m
+
+  [0m[38;5;12mdocs[0m: https://lint.deno.land/rules/no-unreachable
+
+
+[0m[1m[31merror[no-unreachable][0m: [0m[1mThis statement is unreachable[0m
+    [0m[38;5;12m-->[0m [0m[36m/Users/ib/dev/deno/ext/node/polyfills/_stream.mjs[0m[0m[33m:5867:3[0m
+    [0m[38;5;12m | [0m
+[0m[38;5;12m5867 | [0m  streamReadable.on("data", onData);
+    [0m[38;5;12m | [0m  [0m[1m[31m^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^[0m
+
+  [0m[38;5;12mdocs[0m: https://lint.deno.land/rules/no-unreachable
+
+
+[0m[1m[31merror[no-unreachable][0m: [0m[1mThis statement is unreachable[0m
+    [0m[38;5;12m-->[0m [0m[36m/Users/ib/dev/deno/ext/node/polyfills/_stream.mjs[0m[0m[33m:5869:3[0m
+    [0m[38;5;12m | [0m
+[0m[38;5;12m5869 | [0m  return new ReadableStream({
+    [0m[38;5;12m | [0m  [0m[1m[31m^^^^^^^^^^^^^^^^^^^^^^^^^^^[0m
+    [0m[38;5;12m | [0m
+[0m[38;5;12m5870 | [0m    start(c) {
+    [0m[38;5;12m | [0m[0m[1m[31m^^^^^^^^^^^^^^[0m
+    [0m[38;5;12m | [0m
+[0m[38;5;12m5871 | [0m      controller = c;
+    [0m[38;5;12m | [0m[0m[1m[31m^^^^^^^^^^^^^^^^^^^^^[0m
+    [0m[38;5;12m | [0m
+[0m[38;5;12m5872 | [0m    },
+    [0m[38;5;12m | [0m[0m[1m[31m^^^^^^[0m
+    [0m[38;5;12m | [0m
+[0m[38;5;12m5873 | [0m
+    [0m[38;5;12m | [0m[0m[1m[31m[0m
+    [0m[38;5;12m | [0m
+[0m[38;5;12m5874 | [0m    pull() {
+    [0m[38;5;12m | [0m[0m[1m[31m^^^^^^^^^^^^[0m
+    [0m[38;5;12m | [0m
+[0m[38;5;12m5875 | [0m      streamReadable.resume();
+    [0m[38;5;12m | [0m[0m[1m[31m^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^[0m
+    [0m[38;5;12m | [0m
+[0m[38;5;12m5876 | [0m    },
+    [0m[38;5;12m | [0m[0m[1m[31m^^^^^^[0m
+    [0m[38;5;12m | [0m
+[0m[38;5;12m5877 | [0m
+    [0m[38;5;12m | [0m[0m[1m[31m[0m
+    [0m[38;5;12m | [0m
+[0m[38;5;12m5878 | [0m    cancel(reason) {
+    [0m[38;5;12m | [0m[0m[1m[31m^^^^^^^^^^^^^^^^^^^^[0m
+    [0m[38;5;12m | [0m
+[0m[38;5;12m5879 | [0m      destroy(streamReadable, reason);
+    [0m[38;5;12m | [0m[0m[1m[31m^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^[0m
+    [0m[38;5;12m | [0m
+[0m[38;5;12m5880 | [0m    },
+    [0m[38;5;12m | [0m[0m[1m[31m^^^^^^[0m
+    [0m[38;5;12m | [0m
+[0m[38;5;12m5881 | [0m  }, strategy);
+    [0m[38;5;12m | [0m[0m[1m[31m^^^^^^^^^^^^^^^[0m
+
+  [0m[38;5;12mdocs[0m: https://lint.deno.land/rules/no-unreachable
+
+
+[0m[1m[31merror[require-await][0m: [0m[1mAsync method 'write' has no 'await' expression or 'await using' declaration.[0m
+    [0m[38;5;12m-->[0m [0m[36m/Users/ib/dev/deno/ext/node/polyfills/_stream.mjs[0m[0m[33m:5960:5[0m
+    [0m[38;5;12m | [0m
+[0m[38;5;12m5960 | [0m    async write(chunk) {
+    [0m[38;5;12m | [0m    [0m[1m[31m^^^^^[0m
+     [0m[38;5;12m=[0m [0m[1mhint[0m: Remove 'async' keyword from the function or use 'await' expression or 'await using' declaration inside.
+
+  [0m[38;5;12mdocs[0m: https://lint.deno.land/rules/require-await
+
+
+[0m[1m[31merror[no-constant-condition][0m: [0m[1mUse of a constant expressions as conditions is not allowed.[0m
+    [0m[38;5;12m-->[0m [0m[36m/Users/ib/dev/deno/ext/node/polyfills/_stream.mjs[0m[0m[33m:5994:5[0m
+    [0m[38;5;12m | [0m
+[0m[38;5;12m5994 | [0m    false
+    [0m[38;5;12m | [0m    [0m[1m[31m^^^^^[0m
+     [0m[38;5;12m=[0m [0m[1mhint[0m: Remove the constant expression
+
+  [0m[38;5;12mdocs[0m: https://lint.deno.land/rules/no-constant-condition
+
+
+[0m[1m[31merror[test-plugin/first-rule][0m: [0m[1mError from test-plugin/first-rule[0m
+ [0m[38;5;12m-->[0m [0m[36m/foo.js[0m[0m[33m:1:7[0m
+ [0m[38;5;12m | [0m
+[0m[38;5;12m1 | [0m// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+ [0m[38;5;12m | [0m      [0m[1m[31m^^^[0m
+
+  [0m[38;5;12mdocs[0m: https://lint.deno.land/rules/test-plugin/first-rule
+
+
+breaking loop
+Found 253 problems
+Checked 1 file
