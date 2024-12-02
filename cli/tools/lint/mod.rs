@@ -10,6 +10,7 @@ use deno_config::glob::FileCollector;
 use deno_config::glob::FilePatterns;
 use deno_config::workspace::WorkspaceDirectory;
 use deno_core::anyhow::anyhow;
+use deno_core::error::custom_error;
 use deno_core::error::generic_error;
 use deno_core::error::AnyError;
 use deno_core::futures::future::LocalBoxFuture;
@@ -125,6 +126,7 @@ pub async fn lint(
                 lint_config.clone(),
                 paths_with_options.dir,
                 paths_with_options.paths,
+                lint_flags.maybe_plugins.clone(),
               )
               .await?;
           }
@@ -189,6 +191,7 @@ pub async fn lint(
             deno_lint_config.clone(),
             paths_with_options.dir,
             paths_with_options.paths,
+            lint_flags.maybe_plugins.clone(),
           )
           .await?;
       }
@@ -275,6 +278,7 @@ impl WorkspaceLinter {
     lint_config: LintConfig,
     member_dir: WorkspaceDirectory,
     paths: Vec<PathBuf>,
+    maybe_plugins: Option<Vec<String>>,
   ) -> Result<(), AnyError> {
     self.file_count += paths.len();
 
@@ -291,11 +295,24 @@ impl WorkspaceLinter {
         ))
       });
 
-    // TODO: pass from the caller
-    let plugin_specifiers = vec![ModuleSpecifier::from_file_path(
-      &std::env::current_dir().unwrap().join("./plugin.js"),
-    )
-    .unwrap()];
+    let plugin_specifiers = if let Some(plugins) = maybe_plugins {
+      let mut plugin_specifiers = Vec::with_capacity(plugins.len());
+      let cwd = cli_options.initial_cwd();
+      for plugin in plugins {
+        let path = cwd.join(plugin);
+        let url = ModuleSpecifier::from_file_path(&path).map_err(|_| {
+          custom_error(
+            "NotFound",
+            format!("Bad plugin path: {}", path.display()),
+          )
+        })?;
+        plugin_specifiers.push(url);
+      }
+      plugin_specifiers
+    } else {
+      vec![]
+    };
+
     let maybe_plugin_runner = Some(Arc::new(Mutex::new(
       plugins::create_runner_and_load_plugins(plugin_specifiers)
         .await

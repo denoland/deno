@@ -302,6 +302,7 @@ pub struct LintFlags {
   pub json: bool,
   pub compact: bool,
   pub watch: Option<WatchFlags>,
+  pub maybe_plugins: Option<Vec<String>>,
 }
 
 impl LintFlags {
@@ -2850,6 +2851,16 @@ To ignore linting on an entire file, you can add an ignore comment at the top of
           .help_heading(LINT_HEADING),
       )
       .arg(
+        Arg::new("plugins")
+          .long("plugins")
+          .require_equals(true)
+          .num_args(1..)
+          .action(ArgAction::Append)
+          .use_value_delimiter(true)
+          .help("Plugins to run, relative or absolute paths")
+          .help_heading(LINT_HEADING),
+      )
+      .arg(
         Arg::new("rules-include")
           .long("rules-include")
           .require_equals(true)
@@ -5109,6 +5120,10 @@ fn lint_parse(
     .remove_many::<String>("rules-exclude")
     .map(|f| f.collect());
 
+  let maybe_plugins = matches
+    .remove_many::<String>("plugins")
+    .map(|f| f.collect());
+
   let json = matches.get_flag("json");
   let compact = matches.get_flag("compact");
 
@@ -5125,6 +5140,7 @@ fn lint_parse(
     json,
     compact,
     watch: watch_arg_parse(matches)?,
+    maybe_plugins,
   });
   Ok(())
 }
@@ -7127,6 +7143,7 @@ mod tests {
           json: false,
           compact: false,
           watch: Default::default(),
+          maybe_plugins: None,
         }),
         ..Flags::default()
       }
@@ -7155,6 +7172,7 @@ mod tests {
           json: false,
           compact: false,
           watch: Some(Default::default()),
+          maybe_plugins: None,
         }),
         ..Flags::default()
       }
@@ -7188,6 +7206,7 @@ mod tests {
             no_clear_screen: true,
             exclude: vec![],
           }),
+          maybe_plugins: None,
         }),
         ..Flags::default()
       }
@@ -7215,6 +7234,7 @@ mod tests {
           json: false,
           compact: false,
           watch: Default::default(),
+          maybe_plugins: None,
         }),
         ..Flags::default()
       }
@@ -7237,6 +7257,7 @@ mod tests {
           json: false,
           compact: false,
           watch: Default::default(),
+          maybe_plugins: None,
         }),
         ..Flags::default()
       }
@@ -7264,6 +7285,7 @@ mod tests {
           json: false,
           compact: false,
           watch: Default::default(),
+          maybe_plugins: None,
         }),
         ..Flags::default()
       }
@@ -7292,6 +7314,7 @@ mod tests {
           json: false,
           compact: false,
           watch: Default::default(),
+          maybe_plugins: None,
         }),
         ..Flags::default()
       }
@@ -7314,6 +7337,7 @@ mod tests {
           json: true,
           compact: false,
           watch: Default::default(),
+          maybe_plugins: None,
         }),
         ..Flags::default()
       }
@@ -7343,6 +7367,7 @@ mod tests {
           json: true,
           compact: false,
           watch: Default::default(),
+          maybe_plugins: None,
         }),
         config_flag: ConfigFlag::Path("Deno.jsonc".to_string()),
         ..Flags::default()
@@ -7373,8 +7398,39 @@ mod tests {
           json: false,
           compact: true,
           watch: Default::default(),
+          maybe_plugins: None,
         }),
         config_flag: ConfigFlag::Path("Deno.jsonc".to_string()),
+        ..Flags::default()
+      }
+    );
+
+    let r = flags_from_vec(svec![
+      "deno",
+      "lint",
+      "--plugins=./plugins/plugin1.js,/dev/plugins/plugin2.js",
+    ]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Lint(LintFlags {
+          files: FileFlags {
+            include: vec![],
+            ignore: vec![],
+          },
+          fix: false,
+          rules: false,
+          maybe_rules_tags: None,
+          maybe_rules_include: None,
+          maybe_rules_exclude: None,
+          json: false,
+          compact: false,
+          watch: Default::default(),
+          maybe_plugins: Some(vec![
+            "./plugins/plugin1.js".to_string(),
+            "/dev/plugins/plugin2.js".to_string()
+          ]),
+        }),
         ..Flags::default()
       }
     );
