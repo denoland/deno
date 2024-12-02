@@ -405,6 +405,7 @@ impl WorkspaceLinter {
             let r = match r {
               Ok((file_source, mut file_diagnostics)) => {
                 let file_source_ = file_source.clone();
+                let source_text_info = file_source.text_info_lazy().clone();
                 let plugin_diagnostics =
                   tokio_util::create_and_run_current_thread(
                     async move {
@@ -415,6 +416,7 @@ impl WorkspaceLinter {
                       plugins::run_rules_for_ast(
                         &mut plugin_runner,
                         serialized_ast,
+                        source_text_info,
                       )
                       .await
                     }

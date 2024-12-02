@@ -2,8 +2,11 @@
 
 use deno_ast::swc::common as swc_common;
 use deno_ast::swc::common::BytePos;
+use deno_ast::LineAndColumnIndex;
 use deno_ast::ModuleSpecifier;
 use deno_ast::ParsedSource;
+use deno_ast::SourceRange;
+use deno_ast::SourceTextInfo;
 use deno_core::anyhow::Context;
 use deno_core::error::custom_error;
 use deno_core::error::AnyError;
@@ -19,6 +22,7 @@ use deno_core::PollEventLoopOptions;
 use deno_core::RuntimeOptions;
 use deno_lint::diagnostic::LintDiagnostic;
 use deno_lint::diagnostic::LintDiagnosticDetails;
+use deno_lint::diagnostic::LintDiagnosticRange;
 use deno_runtime::tokio_util;
 use indexmap::IndexMap;
 use serde::Deserialize;
@@ -33,7 +37,7 @@ use tokio::sync::mpsc::Sender;
 #[derive(Debug)]
 pub enum PluginRunnerRequest {
   LoadPlugins(Vec<ModuleSpecifier>),
-  Run(String),
+  Run(String, SourceTextInfo),
 }
 
 pub enum PluginRunnerResponse {
@@ -130,7 +134,7 @@ impl PluginRunner {
             let r = self.load_plugins(specifiers).await;
             let _ = self.tx.send(PluginRunnerResponse::LoadPlugin(r)).await;
           }
-          PluginRunnerRequest::Run(serialized_ast) => {
+          PluginRunnerRequest::Run(serialized_ast, source_text_info) => {
             let rules_to_run = self.get_rules_to_run();
 
             eprintln!("Loaded plugins:");
@@ -141,7 +145,10 @@ impl PluginRunner {
               }
             }
 
-            let r = match self.run_rules(rules_to_run, serialized_ast).await {
+            let r = match self
+              .run_rules(rules_to_run, serialized_ast, source_text_info)
+              .await
+            {
               Ok(()) => Ok(self.take_diagnostics()),
               Err(err) => Err(err),
             };
@@ -185,7 +192,14 @@ impl PluginRunner {
     &mut self,
     rules_to_run: IndexMap<String, Vec<String>>,
     ast_string: String,
+    source_text_info: SourceTextInfo,
   ) -> Result<(), AnyError> {
+    {
+      let state = self.runtime.op_state();
+      let mut state = state.borrow_mut();
+      let container = state.borrow_mut::<LintPluginContainer>();
+      container.source_text_info = Some(source_text_info);
+    }
     for (plugin_name, rules) in rules_to_run {
       for rule_name in rules {
         // TODO(bartlomieju): filename and ast_string can be made into global only once, not on every iteration
@@ -327,10 +341,11 @@ impl PluginRunnerProxy {
   pub async fn run_rules(
     &self,
     serialized_ast: String,
+    source_text_info: SourceTextInfo,
   ) -> Result<Vec<LintDiagnostic>, AnyError> {
     self
       .tx
-      .send(PluginRunnerRequest::Run(serialized_ast))
+      .send(PluginRunnerRequest::Run(serialized_ast, source_text_info))
       .await?;
     let mut rx = self.rx.lock().await;
     eprintln!("receiving diagnostics");
@@ -353,8 +368,11 @@ pub async fn create_runner_and_load_plugins(
 pub async fn run_rules_for_ast(
   runner_proxy: &mut PluginRunnerProxy,
   serialized_ast: String,
+  source_text_info: SourceTextInfo,
 ) -> Result<Vec<LintDiagnostic>, AnyError> {
-  let d = runner_proxy.run_rules(serialized_ast).await?;
+  let d = runner_proxy
+    .run_rules(serialized_ast, source_text_info)
+    .await?;
   Ok(d)
 }
 
@@ -393,6 +411,7 @@ struct LintPluginDesc {
 struct LintPluginContainer {
   plugins: IndexMap<String, LintPluginDesc>,
   diagnostics: Vec<LintDiagnostic>,
+  source_text_info: Option<SourceTextInfo>,
 }
 
 impl LintPluginContainer {
@@ -412,12 +431,36 @@ impl LintPluginContainer {
     Ok(())
   }
 
-  fn report(&mut self, id: String, specifier: String, message: String) {
+  fn report(
+    &mut self,
+    id: String,
+    specifier: String,
+    message: String,
+    start_line: usize,
+    start_column: usize,
+    end_line: usize,
+    end_column: usize,
+  ) {
+    let source_text_info = self.source_text_info.as_ref().unwrap();
+    let start_range = source_text_info.loc_to_source_pos(LineAndColumnIndex {
+      line_index: start_line,
+      column_index: start_column,
+    });
+    let end_range = source_text_info.loc_to_source_pos(LineAndColumnIndex {
+      line_index: end_line,
+      column_index: end_column,
+    });
+    let source_range = SourceRange::new(start_range, end_range);
+    let range = LintDiagnosticRange {
+      range: source_range,
+      description: None,
+      text_info: source_text_info.clone(),
+    };
     let lint_diagnostic = LintDiagnostic {
       // TODO: fix
       specifier: ModuleSpecifier::parse(&format!("file:///{}", specifier))
         .unwrap(),
-      range: None,
+      range: Some(range),
       details: LintDiagnosticDetails {
         message,
         code: id,
@@ -468,7 +511,19 @@ fn op_lint_report(
   #[string] id: String,
   #[string] specifier: String,
   #[string] message: String,
+  #[smi] start_line: usize,
+  #[smi] start_column: usize,
+  #[smi] end_line: usize,
+  #[smi] end_column: usize,
 ) {
   let container = state.borrow_mut::<LintPluginContainer>();
-  container.report(id, specifier, message);
+  container.report(
+    id,
+    specifier,
+    message,
+    start_line,
+    start_column,
+    end_line,
+    end_column,
+  );
 }

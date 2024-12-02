@@ -6,6 +6,10 @@ const rule = {
   create(context) {
     console.log("Hello from", `${PLUGIN_NAME}/${RULE1_NAME}`);
     context.report({
+      startLine: 0,
+      startColumn: 6,
+      endLine: 0,
+      endColumn: 9,
       message: "Error from " + `${PLUGIN_NAME}/${RULE1_NAME}`,
       data: {
         some: "Data",
@@ -52,7 +56,7 @@ const rule = {
 export default {
   name: PLUGIN_NAME,
   rules: {
-    RULE1_NAME: rule,
+    [RULE1_NAME]: rule,
   },
 };
 

@@ -11,7 +11,15 @@ export class Context {
   }
 
   report(data) {
-    op_lint_report(this.id, this.fileName, data.message);
+    op_lint_report(
+      this.id,
+      this.fileName,
+      data.message,
+      data.startLine,
+      data.startColumn,
+      data.endLine,
+      data.endColumn,
+    );
   }
 }
 
