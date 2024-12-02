@@ -62,6 +62,12 @@
       "args": "task a",
       "output": "./no_command.out",
       "exitCode": 0
+    },
+    "no_command_list": {
+      "cwd": "no_command",
+      "args": "task",
+      "output": "./no_command_list.out",
+      "exitCode": 0
     }
   }
 }
