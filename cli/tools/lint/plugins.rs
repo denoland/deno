@@ -145,6 +145,7 @@ impl PluginRunner {
               }
             }
 
+            let start = std::time::Instant::now();
             let r = match self
               .run_rules(rules_to_run, serialized_ast, source_text_info)
               .await
@@ -152,6 +153,10 @@ impl PluginRunner {
               Ok(()) => Ok(self.take_diagnostics()),
               Err(err) => Err(err),
             };
+            eprintln!(
+              "Running rules took {:?}",
+              std::time::Instant::now() - start
+            );
             let _ = self.tx.send(PluginRunnerResponse::Run(r)).await;
           }
         }

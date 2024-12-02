@@ -23,7 +23,7 @@ export class Context {
   }
 }
 
-export function runPluginRule(fileName, pluginName, ruleName, ast) {
+export function runPluginRule(fileName, pluginName, ruleName, serializedAst) {
   const id = `${pluginName}/${ruleName}`;
 
   const ctx = new Context(id, fileName);
@@ -31,6 +31,7 @@ export function runPluginRule(fileName, pluginName, ruleName, ast) {
 
   console.log(ctx, typeof rule);
   const visitor = rule(ctx);
+  const ast = JSON.parse(serializedAst);
   console.log("ast", ast);
   console.log("visitor", Object.keys(visitor));
   // const visitor = new Visitor();
