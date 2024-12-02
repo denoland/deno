@@ -178,7 +178,6 @@ pub async fn lint(
         cli_options.start_dir.clone(),
         &workspace_lint_options,
       );
-      // plugins::load_plugins().await?;
       let paths_with_options_batches =
         resolve_paths_with_options_batches(cli_options, &lint_flags)?;
       for paths_with_options in paths_with_options_batches {
@@ -291,6 +290,14 @@ impl WorkspaceLinter {
         ))
       });
 
+    // TODO: pass from the caller
+    let plugin_specifiers = vec![ModuleSpecifier::from_file_path(
+      &std::env::current_dir().unwrap().join("./plugin.js"),
+    )
+    .unwrap()];
+    let maybe_plugin_runner = Some(Arc::new(Mutex::new(
+      plugins::create_runner_and_load_plugins(plugin_specifiers),
+    )));
     let linter = Arc::new(CliLinter::new(CliLinterOptions {
       configured_rules: lint_rules,
       fix: lint_options.fix,
@@ -375,14 +382,17 @@ impl WorkspaceLinter {
               cli_options.ext_flag().as_deref(),
             );
             if let Ok((file_source, file_diagnostics)) = &r {
-              let ast_string =
-                serde_json::to_string(&file_source.program()).unwrap();
-              tokio_util::create_and_run_current_thread(
-                async move {
-                  plugins::load_plugins(ast_string).await.unwrap();
-                }
-                .boxed_local(),
-              );
+              // let file_source_ = file_source.clone();
+              // tokio_util::create_and_run_current_thread(
+              //   async move {
+              //     let plugin_runner = linter.get_plugin_runner().unwrap();
+              //     let serialized_ast =
+              //       plugins::get_estree_from_parsed_source(file_source_)?;
+              //     plugins::run_rules_for_ast(plugin_runner, serialized_ast)
+              //       .await
+              //   }
+              //   .boxed_local(),
+              // )?;
 
               if let Some(incremental_cache) = &maybe_incremental_cache {
                 if file_diagnostics.is_empty() {

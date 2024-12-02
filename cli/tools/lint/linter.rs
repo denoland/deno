@@ -2,6 +2,7 @@
 
 use std::collections::HashSet;
 use std::path::Path;
+use std::sync::Arc;
 
 use deno_ast::MediaType;
 use deno_ast::ModuleSpecifier;
@@ -9,6 +10,7 @@ use deno_ast::ParsedSource;
 use deno_ast::SourceTextInfo;
 use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
+use deno_core::parking_lot::Mutex;
 use deno_graph::ModuleGraph;
 use deno_lint::diagnostic::LintDiagnostic;
 use deno_lint::linter::LintConfig as DenoLintConfig;
@@ -19,6 +21,7 @@ use deno_lint::linter::LinterOptions;
 use crate::util::fs::atomic_write_file_with_retries;
 use crate::util::fs::specifier_from_file_path;
 
+use super::plugins;
 use super::rules::FileOrPackageLintRule;
 use super::rules::PackageLintRule;
 use super::ConfiguredRules;

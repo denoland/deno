@@ -1,9 +1,14 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
+use deno_ast::swc::common as swc_common;
+use deno_ast::swc::common::BytePos;
+use deno_ast::ModuleSpecifier;
+use deno_ast::ParsedSource;
 use deno_core::error::custom_error;
 use deno_core::error::AnyError;
 use deno_core::futures::FutureExt;
 use deno_core::op2;
+use deno_core::serde_json;
 use deno_core::url::Url;
 use deno_core::v8;
 use deno_core::JsRuntime;
@@ -12,103 +17,263 @@ use deno_core::PollEventLoopOptions;
 use deno_core::RuntimeOptions;
 use indexmap::IndexMap;
 use std::rc::Rc;
+use std::sync::Arc;
+use swc_estree_compat::babelify;
+use swc_estree_compat::babelify::Babelify;
+use tokio::sync::mpsc::channel;
+use tokio::sync::mpsc::Receiver;
+use tokio::sync::mpsc::Sender;
 
-pub async fn load_plugins(ast_string: String) -> Result<(), AnyError> {
-  let plugin_file_path = "./plugin.js";
+pub enum PluginRunnerRequest {
+  LoadPlugins(Vec<ModuleSpecifier>),
+  Run(String),
+}
 
-  let mut runtime = JsRuntime::new(RuntimeOptions {
-    extensions: vec![deno_lint_ext::init_ops()],
-    module_loader: Some(Rc::new(deno_core::FsModuleLoader)),
-    ..Default::default()
-  });
+pub enum PluginRunnerResponse {
+  LoadPlugin(Result<(), AnyError>),
+  // TODO: should return diagnostics
+  Run(Result<(), AnyError>),
+}
 
-  let obj = runtime.lazy_load_es_module_with_code(
-    "ext:cli/lint.js",
-    deno_core::ascii_str_include!(concat!("lint.js")),
-  )?;
+pub struct PluginRunnerProxy {
+  tx: Sender<PluginRunnerRequest>,
+  rx: Arc<tokio::sync::Mutex<Receiver<PluginRunnerResponse>>>,
+  join_handle: std::thread::JoinHandle<Result<(), AnyError>>,
+}
 
-  let run_plugin_rule_fn = {
-    let scope = &mut runtime.handle_scope();
-    let fn_name = v8::String::new(scope, "runPluginRule").unwrap();
-    let obj_local: v8::Local<v8::Object> =
-      v8::Local::new(scope, obj).try_into().unwrap();
-    let run_fn_val = obj_local.get(scope, fn_name.into()).unwrap();
-    let run_fn: v8::Local<v8::Function> = run_fn_val.try_into().unwrap();
-    v8::Global::new(scope, run_fn)
-  };
+pub struct PluginRunner {
+  runtime: JsRuntime,
+  run_plugin_rule_fn: v8::Global<v8::Function>,
+  tx: Sender<PluginRunnerResponse>,
+  rx: Receiver<PluginRunnerRequest>,
+}
 
-  let mut specifier =
-    Url::from_directory_path(std::env::current_dir().unwrap())
-      .unwrap()
-      .join(&plugin_file_path)
-      .unwrap();
-  let mod_id = runtime.load_side_es_module(&specifier).await?;
-  let mod_future = runtime.mod_evaluate(mod_id).boxed_local();
-  runtime
-    .run_event_loop(PollEventLoopOptions::default())
-    .await?;
-  let module = mod_future.await?;
+impl PluginRunner {
+  async fn create() -> Result<PluginRunnerProxy, AnyError> {
+    let (tx_req, rx_req) = channel(10);
+    let (tx_res, rx_res) = channel(10);
 
-  let rules_to_run = {
-    let op_state = runtime.op_state();
+    let join_handle = std::thread::spawn(move || {
+      let mut runtime = JsRuntime::new(RuntimeOptions {
+        extensions: vec![deno_lint_ext::init_ops()],
+        module_loader: Some(Rc::new(deno_core::FsModuleLoader)),
+        ..Default::default()
+      });
+
+      let obj = runtime.lazy_load_es_module_with_code(
+        "ext:cli/lint.js",
+        deno_core::ascii_str_include!(concat!("lint.js")),
+      )?;
+
+      let run_plugin_rule_fn = {
+        let scope = &mut runtime.handle_scope();
+        let fn_name = v8::String::new(scope, "runPluginRule").unwrap();
+        let obj_local: v8::Local<v8::Object> =
+          v8::Local::new(scope, obj).try_into().unwrap();
+        let run_fn_val = obj_local.get(scope, fn_name.into()).unwrap();
+        let run_fn: v8::Local<v8::Function> = run_fn_val.try_into().unwrap();
+        v8::Global::new(scope, run_fn)
+      };
+
+      let mut runner = Self {
+        runtime,
+        run_plugin_rule_fn,
+        tx: tx_res,
+        rx: rx_req,
+      };
+
+      runner.run_loop()
+    });
+
+    let proxy = PluginRunnerProxy {
+      tx: tx_req,
+      rx: Arc::new(tokio::sync::Mutex::new(rx_res)),
+      join_handle,
+    };
+
+    Ok(proxy)
+  }
+
+  fn run_loop(&mut self) -> Result<(), AnyError> {
+    todo!()
+
+    //   let rules_to_run = runner.get_rules_to_run();
+
+    // eprintln!("Loaded plugins:");
+    // for (plugin_name, rules) in rules_to_run.iter() {
+    //   eprintln!(" - {}", plugin_name);
+    //   for rule in rules {
+    //     eprintln!("   - {}", rule);
+    //   }
+    // }
+
+    // runner_proxy.run_rules(serialized_ast).await?;
+
+    // Ok(())
+  }
+
+  fn get_rules_to_run(&mut self) -> IndexMap<String, Vec<String>> {
+    let op_state = self.runtime.op_state();
     let state = op_state.borrow();
     let container = state.borrow::<LintPluginContainer>();
 
-    eprintln!("Loaded plugins:");
-    for (key, plugin) in container.plugins.iter() {
-      eprintln!(" - {}", key);
-      for rule in plugin.rules.keys() {
-        eprintln!("   - {}", rule);
-      }
-    }
-
-    let mut to_run = vec![];
-
+    let mut to_run = IndexMap::with_capacity(container.plugins.len());
     for (plugin_name, plugin) in container.plugins.iter() {
-      for rule_name in plugin.rules.keys() {
-        to_run.push((plugin_name.to_string(), rule_name.to_string()));
-      }
+      let rules = plugin
+        .rules
+        .keys()
+        .map(String::from)
+        .collect::<Vec<String>>();
+      to_run.insert(plugin_name.to_string(), rules);
     }
 
     to_run
-  };
-
-  for (plugin_name, rule_name) in rules_to_run {
-    let (file_name, plugin_name_v8, rule_name_v8, ast_string_v8) = {
-      let scope = &mut runtime.handle_scope();
-      let file_name: v8::Local<v8::Value> =
-        v8::String::new(scope, "foo.js").unwrap().into();
-      let plugin_name_v8: v8::Local<v8::Value> =
-        v8::String::new(scope, &plugin_name).unwrap().into();
-      let rule_name_v8: v8::Local<v8::Value> =
-        v8::String::new(scope, &rule_name).unwrap().into();
-      let ast_string_v8: v8::Local<v8::Value> =
-        v8::String::new(scope, &ast_string).unwrap().into();
-      (
-        v8::Global::new(scope, file_name),
-        v8::Global::new(scope, plugin_name_v8),
-        v8::Global::new(scope, rule_name_v8),
-        v8::Global::new(scope, ast_string_v8),
-      )
-    };
-    let call = runtime.call_with_args(
-      &run_plugin_rule_fn,
-      &[file_name, plugin_name_v8, rule_name_v8, ast_string_v8],
-    );
-    let result = runtime
-      .with_event_loop_promise(call, PollEventLoopOptions::default())
-      .await;
-    match result {
-      Ok(r) => {
-        eprintln!("plugin finished")
-      }
-      Err(error) => {
-        eprintln!("error running plugin {}", error);
-      }
-    }
   }
 
+  async fn run_rules(
+    &mut self,
+    rules_to_run: IndexMap<String, Vec<String>>,
+    ast_string: String,
+  ) -> Result<(), AnyError> {
+    for (plugin_name, rules) in rules_to_run {
+      for rule_name in rules {
+        // TODO(bartlomieju): filename and ast_string can be made into global only once, not on every iteration
+        let (file_name, plugin_name_v8, rule_name_v8, ast_string_v8) = {
+          let scope = &mut self.runtime.handle_scope();
+          let file_name: v8::Local<v8::Value> =
+            v8::String::new(scope, "foo.js").unwrap().into();
+          let plugin_name_v8: v8::Local<v8::Value> =
+            v8::String::new(scope, &plugin_name).unwrap().into();
+          let rule_name_v8: v8::Local<v8::Value> =
+            v8::String::new(scope, &rule_name).unwrap().into();
+          let ast_string_v8: v8::Local<v8::Value> =
+            v8::String::new(scope, &ast_string).unwrap().into();
+          (
+            v8::Global::new(scope, file_name),
+            v8::Global::new(scope, plugin_name_v8),
+            v8::Global::new(scope, rule_name_v8),
+            v8::Global::new(scope, ast_string_v8),
+          )
+        };
+        let call = self.runtime.call_with_args(
+          &self.run_plugin_rule_fn,
+          &[file_name, plugin_name_v8, rule_name_v8, ast_string_v8],
+        );
+        let result = self
+          .runtime
+          .with_event_loop_promise(call, PollEventLoopOptions::default())
+          .await;
+        match result {
+          Ok(r) => {
+            eprintln!("plugin finished")
+          }
+          Err(error) => {
+            eprintln!("error running plugin {}", error);
+          }
+        }
+      }
+    }
+
+    Ok(())
+  }
+
+  async fn load_plugins(
+    &mut self,
+    plugin_specifiers: Vec<ModuleSpecifier>,
+  ) -> Result<(), AnyError> {
+    let mut load_futures = Vec::with_capacity(plugin_specifiers.len());
+    for specifier in plugin_specifiers {
+      let mod_id = self.runtime.load_side_es_module(&specifier).await?;
+      let mod_future = self.runtime.mod_evaluate(mod_id).boxed_local();
+      load_futures.push(mod_future);
+    }
+
+    self
+      .runtime
+      .run_event_loop(PollEventLoopOptions::default())
+      .await?;
+
+    for fut in load_futures {
+      let _module = fut.await?;
+    }
+
+    Ok(())
+  }
+}
+
+impl PluginRunnerProxy {
+  pub async fn load_plugins(
+    &self,
+    plugin_specifiers: Vec<ModuleSpecifier>,
+  ) -> Result<(), AnyError> {
+    self
+      .tx
+      .send(PluginRunnerRequest::LoadPlugins(plugin_specifiers))
+      .await?;
+    let mut rx = self.rx.lock().await;
+    if let Some(_val) = rx.recv().await {
+      return Ok(());
+    }
+    Err(custom_error("AlreadyClosed", "Plugin host has closed"))
+  }
+
+  pub async fn run_rules(
+    &self,
+    serialized_ast: String,
+  ) -> Result<(), AnyError> {
+    self
+      .tx
+      .send(PluginRunnerRequest::Run(serialized_ast))
+      .await?;
+    let mut rx = self.rx.lock().await;
+    if let Some(_val) = rx.recv().await {
+      return Ok(());
+    }
+    Err(custom_error("AlreadyClosed", "Plugin host has closed"))
+  }
+}
+
+pub async fn create_runner_and_load_plugins(
+  plugin_specifiers: Vec<ModuleSpecifier>,
+) -> Result<PluginRunnerProxy, AnyError> {
+  let mut runner_proxy = PluginRunner::create().await?;
+  runner_proxy.load_plugins(plugin_specifiers).await?;
+  Ok(runner_proxy)
+}
+
+pub async fn run_rules_for_ast(
+  runner_proxy: &mut PluginRunnerProxy,
+  serialized_ast: String,
+) -> Result<(), AnyError> {
+  runner_proxy.run_rules(serialized_ast).await?;
   Ok(())
+}
+
+pub fn get_estree_from_parsed_source(
+  parsed_source: ParsedSource,
+) -> Result<String, AnyError> {
+  let cm = Rc::new(swc_common::SourceMap::new(
+    swc_common::FilePathMapping::empty(),
+  ));
+  let fm = Rc::new(swc_common::SourceFile::new(
+    Rc::new(swc_common::FileName::Anon),
+    false,
+    Rc::new(swc_common::FileName::Anon),
+    parsed_source.text().to_string(),
+    BytePos(1),
+  ));
+  let babelify_ctx = babelify::Context {
+    fm,
+    cm,
+    comments: swc_node_comments::SwcComments::default(),
+  };
+  let program = parsed_source.program();
+  let start = std::time::Instant::now();
+  let program = &*program;
+  let r = serde_json::to_string(&program.clone().babelify(&babelify_ctx))?;
+  let end = std::time::Instant::now();
+  eprintln!("serialize using serde_json took {:?}", end - start);
+  Ok(r)
 }
 
 struct LintPluginDesc {
