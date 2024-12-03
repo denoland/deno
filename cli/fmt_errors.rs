@@ -49,6 +49,7 @@ use crate::util::fs::specifier_from_file_path;
 /// import('react-dom/server');
 /// ```
 fn get_suggestions_for_non_explicit_cjs_import(
+  error: &AnyError,
   message: &str,
   module_loader: &Rc<dyn ModuleLoader>,
 ) -> Result<AnyError, AnyError> {
@@ -217,7 +218,7 @@ fn get_suggestions_for_non_explicit_cjs_import(
     FixSuggestion::hint(&hint),
   ];
 
-  let mut message = message.to_string();
+  let mut message = format!("{error:?}");
   FixSuggestion::append_suggestion(&mut message, suggestions);
   let handled_error = anyhow!(message);
 
@@ -235,7 +236,7 @@ pub fn map_err_suggestions(
   let message = e.to_string();
   if message.contains("Unable to load") && message.contains("imported from") {
     let result =
-      get_suggestions_for_non_explicit_cjs_import(&message, module_loader);
+      get_suggestions_for_non_explicit_cjs_import(&e, &message, module_loader);
     match result {
       Ok(handled_error) => handled_error,
       // return the original error

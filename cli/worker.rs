@@ -337,16 +337,16 @@ impl CliMainWorker {
       .await
       // to catch the error that caused by static import
       .map_err(|e| self.map_err_suggestions(e))?;
-    self.worker.evaluate_module(id).await
+    self
+      .worker
+      .evaluate_module(id)
+      .await
+      // to catch the error that caused by evaluating import call
+      .map_err(|e| self.map_err_suggestions(e))
   }
 
   pub async fn execute_side_module(&mut self) -> Result<(), AnyError> {
-    let id = self
-      .worker
-      .preload_side_module(&self.main_module)
-      .await
-      // to catch the error that caused by static import
-      .map_err(|e| self.map_err_suggestions(e))?;
+    let id = self.worker.preload_side_module(&self.main_module).await?;
     self.worker.evaluate_module(id).await
   }
 
