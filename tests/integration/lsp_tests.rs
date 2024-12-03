@@ -6009,7 +6009,7 @@ fn lsp_code_actions_deno_cache_npm() {
         "severity": 1,
         "code": "not-installed-npm",
         "source": "deno",
-        "message": "NPM package \"chalk\" is not installed or doesn't exist.",
+        "message": "npm package \"chalk\" is not installed or doesn't exist.",
         "data": { "specifier": "npm:chalk" }
       }],
       "version": 1
@@ -6036,7 +6036,7 @@ fn lsp_code_actions_deno_cache_npm() {
           "severity": 1,
           "code": "not-installed-npm",
           "source": "deno",
-          "message": "NPM package \"chalk\" is not installed or doesn't exist.",
+          "message": "npm package \"chalk\" is not installed or doesn't exist.",
           "data": { "specifier": "npm:chalk" }
         }],
         "only": ["quickfix"]
@@ -6056,7 +6056,7 @@ fn lsp_code_actions_deno_cache_npm() {
         "severity": 1,
         "code": "not-installed-npm",
         "source": "deno",
-        "message": "NPM package \"chalk\" is not installed or doesn't exist.",
+        "message": "npm package \"chalk\" is not installed or doesn't exist.",
         "data": { "specifier": "npm:chalk" }
       }],
       "command": {
@@ -6111,7 +6111,7 @@ fn lsp_code_actions_deno_cache_all() {
           "severity": 1,
           "code": "not-installed-npm",
           "source": "deno",
-          "message": "NPM package \"chalk\" is not installed or doesn't exist.",
+          "message": "npm package \"chalk\" is not installed or doesn't exist.",
           "data": { "specifier": "npm:chalk" },
         },
       ],
@@ -6199,7 +6199,7 @@ fn lsp_code_actions_deno_cache_all() {
             "severity": 1,
             "code": "not-installed-npm",
             "source": "deno",
-            "message": "NPM package \"chalk\" is not installed or doesn't exist.",
+            "message": "npm package \"chalk\" is not installed or doesn't exist.",
             "data": { "specifier": "npm:chalk" },
           },
         ],
@@ -9860,7 +9860,7 @@ fn lsp_completions_node_builtin() {
         "severity": 1,
         "code": "not-installed-npm",
         "source": "deno",
-        "message": "NPM package \"@types/node\" is not installed or doesn't exist."
+        "message": "npm package \"@types/node\" is not installed or doesn't exist."
       }
     ])
   );
