@@ -9,3 +9,6 @@ Vue.component("todo-item", {
 Vue.component("Todo", {
   // ...
 });
+
+describe("foo", () => {});
+describe("foo", () => {});

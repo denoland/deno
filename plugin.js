@@ -65,6 +65,51 @@ export default {
   name: PLUGIN_NAME,
   rules: {
     [RULE1_NAME]: rule,
+    "jsx-style-string": {
+      create(context) {
+        return {
+          VariableDeclaration(node) {
+            console.log("INTERFAcE", { ...node, parent: null });
+          },
+          JSXAttribute(node) {
+            if (
+              node.name.type === "Identifier" && node.name.value === "style" &&
+              node.value.type !== "StringLiteral"
+            ) {
+              context.report({
+                node: node.value,
+                message: "Use a string literal for 'style'",
+              });
+            }
+          },
+        };
+      },
+    },
+    "jest/no-identical-title": {
+      create(context) {
+        console.log(context.source());
+        const seen = new Set();
+        return {
+          CallExpression(node) {
+            if (
+              node.callee.type === "Identifier" &&
+              node.callee.value === "describe" && node.arguments.length > 0 &&
+              node.arguments[0].expression.type === "StringLiteral"
+            ) {
+              const name = node.arguments[0].expression.value;
+              if (seen.has(name)) {
+                context.report({
+                  node,
+                  message: `Duplicate describe title found`,
+                });
+              }
+
+              seen.add(name);
+            }
+          },
+        };
+      },
+    },
     "vue/multi-word-component-names": {
       create(context) {
         return {

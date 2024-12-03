@@ -1,0 +1,23 @@
+{
+  "lint": {
+    "plugins2": ["npm:foo"],
+    "rules": {
+      "exclude": [
+        "ban-ts-comment",
+        "prefix/whatever"
+      ]
+    },
+    "plugins": {
+      "foo/bar": {
+        "url": "./foo.js",
+        "rules": {
+          "exclude": {}
+        }
+      },
+      "specifier": "npm:foo/url",
+      "rules": {
+        "exclude": ""
+      }
+    }
+  }
+}
