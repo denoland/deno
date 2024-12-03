@@ -213,31 +213,44 @@ impl PluginRunner {
       let container = state.borrow_mut::<LintPluginContainer>();
       container.source_text_info = Some(source_text_info);
     }
+
+    let (file_name_v8, ast_string_v8) = {
+      let scope = &mut self.runtime.handle_scope();
+      let file_name_v8: v8::Local<v8::Value> =
+        v8::String::new(scope, &specifier.display().to_string())
+          .unwrap()
+          .into();
+      let ast_string_v8: v8::Local<v8::Value> =
+        v8::String::new(scope, &ast_string).unwrap().into();
+      (
+        v8::Global::new(scope, file_name_v8),
+        v8::Global::new(scope, ast_string_v8),
+      )
+    };
+
+    // TODO(bartlomieju): this could be optimized by having JS side keep track of all plugins and rules and only
+    // forwarding file name and ast string.
     for (plugin_name, rules) in rules_to_run {
       for rule_name in rules {
-        // TODO(bartlomieju): filename and ast_string can be made into global only once, not on every iteration
-        let (file_name, plugin_name_v8, rule_name_v8, ast_string_v8) = {
+        let (plugin_name_v8, rule_name_v8) = {
           let scope = &mut self.runtime.handle_scope();
-          let file_name: v8::Local<v8::Value> =
-            v8::String::new(scope, &specifier.display().to_string())
-              .unwrap()
-              .into();
           let plugin_name_v8: v8::Local<v8::Value> =
             v8::String::new(scope, &plugin_name).unwrap().into();
           let rule_name_v8: v8::Local<v8::Value> =
             v8::String::new(scope, &rule_name).unwrap().into();
-          let ast_string_v8: v8::Local<v8::Value> =
-            v8::String::new(scope, &ast_string).unwrap().into();
           (
-            v8::Global::new(scope, file_name),
             v8::Global::new(scope, plugin_name_v8),
             v8::Global::new(scope, rule_name_v8),
-            v8::Global::new(scope, ast_string_v8),
           )
         };
         let call = self.runtime.call_with_args(
           &self.run_plugin_rule_fn,
-          &[file_name, plugin_name_v8, rule_name_v8, ast_string_v8],
+          &[
+            file_name_v8.clone(),
+            plugin_name_v8,
+            rule_name_v8,
+            ast_string_v8.clone(),
+          ],
         );
         let result = self
           .runtime
