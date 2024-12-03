@@ -391,11 +391,11 @@ impl WorkspaceLinter {
               deno_ast::strip_bom(fs::read_to_string(&file_path)?);
 
             // don't bother rechecking this file if it didn't have any diagnostics before
-            if let Some(incremental_cache) = &maybe_incremental_cache {
-              if incremental_cache.is_file_same(&file_path, &file_text) {
-                return Ok(());
-              }
-            }
+            // if let Some(incremental_cache) = &maybe_incremental_cache {
+            //   if incremental_cache.is_file_same(&file_path, &file_text) {
+            //     return Ok(());
+            //   }
+            // }
 
             let r = linter.lint_file(
               &file_path,
