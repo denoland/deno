@@ -243,13 +243,19 @@ impl CacheSetting {
     match self {
       CacheSetting::Only => NpmCacheSetting::Only,
       CacheSetting::ReloadAll => NpmCacheSetting::ReloadAll,
-      CacheSetting::ReloadSome(some) => NpmCacheSetting::ReloadSome {
-        npm_package_names: some
-          .iter()
-          .filter_map(|v| v.strip_prefix("npm:"))
-          .map(|n| n.to_string())
-          .collect(),
-      },
+      CacheSetting::ReloadSome(values) => {
+        if values.iter().any(|v| v == "npm:") {
+          NpmCacheSetting::ReloadAll
+        } else {
+          NpmCacheSetting::ReloadSome {
+            npm_package_names: values
+              .iter()
+              .filter_map(|v| v.strip_prefix("npm:"))
+              .map(|n| n.to_string())
+              .collect(),
+          }
+        }
+      }
       CacheSetting::RespectHeaders => unreachable!(), // not supported
       CacheSetting::Use => NpmCacheSetting::Use,
     }
