@@ -40,7 +40,6 @@ use crate::args::NpmProcessState;
 use crate::args::NpmProcessStateKind;
 use crate::args::PackageJsonDepValueParseWithLocationError;
 use crate::cache::FastInsecureHasher;
-use crate::http_util::HttpClientProvider;
 use crate::util::fs::canonicalize_path_maybe_not_exists_with_fs;
 use crate::util::progress_bar::ProgressBar;
 use crate::util::sync::AtomicFlag;
@@ -100,7 +99,6 @@ pub async fn create_managed_npm_resolver_for_lsp(
     create_inner(
       cache_env,
       options.fs,
-      options.http_client_provider,
       options.maybe_lockfile,
       npm_api,
       npm_cache,
@@ -127,7 +125,6 @@ pub async fn create_managed_npm_resolver(
   Ok(create_inner(
     npm_cache_env,
     options.fs,
-    options.http_client_provider,
     options.maybe_lockfile,
     npm_api,
     npm_cache,
@@ -145,7 +142,6 @@ pub async fn create_managed_npm_resolver(
 fn create_inner(
   env: Arc<CliNpmCacheEnv>,
   fs: Arc<dyn deno_runtime::deno_fs::FileSystem>,
-  http_client_provider: Arc<HttpClientProvider>,
   maybe_lockfile: Option<Arc<CliLockfile>>,
   npm_api: Arc<CliNpmRegistryApi>,
   npm_cache: Arc<CliNpmCache>,

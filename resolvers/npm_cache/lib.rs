@@ -1,3 +1,5 @@
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+
 use std::collections::HashSet;
 use std::io::ErrorKind;
 use std::path::Path;

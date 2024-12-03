@@ -1,7 +1,6 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 mod byonm;
-mod common;
 mod managed;
 
 use std::borrow::Cow;
