@@ -411,8 +411,10 @@ impl WorkspaceLinter {
                     async move {
                       let plugin_runner = linter.get_plugin_runner().unwrap();
                       let mut plugin_runner = plugin_runner.lock();
+                      // let serialized_ast =
+                      //   plugins::get_estree_from_parsed_source(file_source_)?;
                       let serialized_ast =
-                        plugins::get_estree_from_parsed_source(file_source_)?;
+                        plugins::serialize_ast(file_source_)?;
                       plugins::run_rules_for_ast(
                         &mut plugin_runner,
                         serialized_ast,

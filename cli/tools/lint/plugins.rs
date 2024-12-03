@@ -381,6 +381,16 @@ pub async fn run_rules_for_ast(
   Ok(d)
 }
 
+pub fn serialize_ast(parsed_source: ParsedSource) -> Result<String, AnyError> {
+  let start = std::time::Instant::now();
+  let r = serde_json::to_string(&parsed_source.program())?;
+  eprintln!(
+    "serialize using serde_json took {:?}",
+    std::time::Instant::now() - start
+  );
+  Ok(r)
+}
+
 pub fn get_estree_from_parsed_source(
   parsed_source: ParsedSource,
 ) -> Result<String, AnyError> {

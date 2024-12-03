@@ -17,7 +17,11 @@ const rule = {
     });
     return {
       // Performs action in the function on every variable declarator
+      StringLiteral(node) {
+        // console.log("string literal", node);
+      },
       VariableDeclarator(node) {
+        // console.log("variable declarator", node);
         // Check if a `const` variable declaration
         if (node.parent.kind === "const") {
           // Check if variable name is `foo`
