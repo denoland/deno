@@ -7,6 +7,7 @@ use deno_ast::ModuleSpecifier;
 use deno_ast::ParsedSource;
 use deno_ast::SourceRange;
 use deno_ast::SourceTextInfo;
+use deno_ast::SourceTextProvider;
 use deno_core::anyhow::Context;
 use deno_core::error::custom_error;
 use deno_core::error::AnyError;
@@ -451,21 +452,12 @@ impl LintPluginContainer {
     id: String,
     specifier: String,
     message: String,
-    start_line: usize,
-    start_column: usize,
-    end_line: usize,
-    end_column: usize,
+    start: usize,
+    end: usize,
   ) {
     let source_text_info = self.source_text_info.as_ref().unwrap();
-    let start_range = source_text_info.loc_to_source_pos(LineAndColumnIndex {
-      line_index: start_line,
-      column_index: start_column,
-    });
-    let end_range = source_text_info.loc_to_source_pos(LineAndColumnIndex {
-      line_index: end_line,
-      column_index: end_column,
-    });
-    let source_range = SourceRange::new(start_range, end_range);
+    let start_pos = source_text_info.start_pos();
+    let source_range = SourceRange::new(start_pos + start, start_pos + end);
     let range = LintDiagnosticRange {
       range: source_range,
       description: None,
@@ -526,19 +518,9 @@ fn op_lint_report(
   #[string] id: String,
   #[string] specifier: String,
   #[string] message: String,
-  #[smi] start_line: usize,
-  #[smi] start_column: usize,
-  #[smi] end_line: usize,
-  #[smi] end_column: usize,
+  #[smi] start: usize,
+  #[smi] end: usize,
 ) {
   let container = state.borrow_mut::<LintPluginContainer>();
-  container.report(
-    id,
-    specifier,
-    message,
-    start_line,
-    start_column,
-    end_line,
-    end_column,
-  );
+  container.report(id, specifier, message, start, end);
 }

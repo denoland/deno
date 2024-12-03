@@ -6,10 +6,10 @@ const rule = {
   create(context) {
     console.log("Hello from", `${PLUGIN_NAME}/${RULE1_NAME}`);
     context.report({
-      startLine: 0,
-      startColumn: 6,
-      endLine: 0,
-      endColumn: 9,
+      span: {
+        start: 6,
+        end: 9,
+      },
       message: "Error from " + `${PLUGIN_NAME}/${RULE1_NAME}`,
       data: {
         some: "Data",
@@ -23,12 +23,15 @@ const rule = {
       VariableDeclarator(node) {
         // console.log("variable declarator", node);
         // Check if a `const` variable declaration
+        console.log("node.parent.kind", node.parent.kind);
         if (node.parent.kind === "const") {
           // Check if variable name is `foo`
-          if (node.id.type === "Identifier" && node.id.name === "foo") {
+          console.log("node.id.type", node.id.type, node.id.value);
+          if (node.id.type === "Identifier" && node.id.value === "foo") {
             // Check if value of variable is "bar"
+            console.log("node.init", node.init);
             if (
-              node.init && node.init.type === "Literal" &&
+              node.init && node.init.type === "StringLiteral" &&
               node.init.value !== "bar"
             ) {
               /*

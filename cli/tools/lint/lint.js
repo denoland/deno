@@ -11,14 +11,28 @@ export class Context {
   }
 
   report(data) {
+    // TODO(bartlomieju): if there's `node` then convert position automatically
+    // otherwise lookup `location`
+    let start, end;
+
+    if (data.node) {
+      start = data.node.span.start - 1;
+      end = data.node.span.end - 1;
+    } else if (data.span) {
+      start = data.span.start - 1;
+      end = data.span.end - 1;
+    } else {
+      throw new Error(
+        "Either `node` or `span` must be provided when reporting an error",
+      );
+    }
+
     op_lint_report(
       this.id,
       this.fileName,
       data.message,
-      data.startLine,
-      data.startColumn,
-      data.endLine,
-      data.endColumn,
+      start,
+      end,
     );
   }
 }
@@ -61,12 +75,12 @@ function traverse(ast, visitor, parent = null) {
   ast.parent = parent;
   // Call visitor if it exists for this node type
   if (visitor[nodeType] && typeof visitor[nodeType] === "function") {
-    visitor[nodeType](ast, parent);
+    visitor[nodeType](ast);
   }
 
   // Traverse child nodes
   for (const key in ast) {
-    if (key === "parent" || key === "type" || key === "span") {
+    if (key === "parent" || key === "type") {
       continue;
     }
 
