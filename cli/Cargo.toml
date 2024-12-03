@@ -77,6 +77,7 @@ deno_graph = { version = "=0.86.3" }
 deno_lint = { version = "=0.68.2", features = ["docs"] }
 deno_lockfile.workspace = true
 deno_npm.workspace = true
+deno_npm_cache.workspace = true
 deno_package_json.workspace = true
 deno_path_util.workspace = true
 deno_resolver.workspace = true
