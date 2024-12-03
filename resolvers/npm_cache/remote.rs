@@ -1,10 +1,10 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
+use anyhow::bail;
+use anyhow::Context;
+use anyhow::Error as AnyError;
 use base64::prelude::BASE64_STANDARD;
 use base64::Engine;
-use deno_core::anyhow::bail;
-use deno_core::anyhow::Context;
-use deno_core::error::AnyError;
 use deno_npm::npm_rc::RegistryConfig;
 use http::header;
 

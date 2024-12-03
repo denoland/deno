@@ -8,11 +8,10 @@ use deno_core::error::AnyError;
 use deno_lockfile::NpmPackageDependencyLockfileInfo;
 use deno_lockfile::NpmPackageLockfileInfo;
 use deno_npm::registry::NpmRegistryApi;
+use deno_npm::resolution::AddPkgReqsOptions;
 use deno_npm::resolution::NpmPackagesPartitioned;
 use deno_npm::resolution::NpmResolutionError;
 use deno_npm::resolution::NpmResolutionSnapshot;
-use deno_npm::resolution::NpmResolutionSnapshotPendingResolver;
-use deno_npm::resolution::NpmResolutionSnapshotPendingResolverOptions;
 use deno_npm::resolution::PackageCacheFolderIdNotFoundError;
 use deno_npm::resolution::PackageNotFoundFromReferrerError;
 use deno_npm::resolution::PackageNvNotFoundError;
@@ -283,8 +282,9 @@ async fn add_package_reqs_to_snapshot(
     /* this string is used in tests */
     "Running npm resolution."
   );
-  let pending_resolver = get_npm_pending_resolver(api);
-  let result = pending_resolver.add_pkg_reqs(snapshot, package_reqs).await;
+  let result = snapshot
+    .add_pkg_reqs(api, get_add_pkg_reqs_options(package_reqs))
+    .await;
   api.clear_memory_cache();
   let result = match &result.dep_graph_result {
     Err(NpmResolutionError::Resolution(err)) if api.mark_force_reload() => {
@@ -293,7 +293,9 @@ async fn add_package_reqs_to_snapshot(
 
       // try again
       let snapshot = get_new_snapshot();
-      let result = pending_resolver.add_pkg_reqs(snapshot, package_reqs).await;
+      let result = snapshot
+        .add_pkg_reqs(api, get_add_pkg_reqs_options(package_reqs))
+        .await;
       api.clear_memory_cache();
       result
     }
@@ -309,19 +311,15 @@ async fn add_package_reqs_to_snapshot(
   result
 }
 
-fn get_npm_pending_resolver(
-  api: &CliNpmRegistryApi,
-) -> NpmResolutionSnapshotPendingResolver<CliNpmRegistryApi> {
-  NpmResolutionSnapshotPendingResolver::new(
-    NpmResolutionSnapshotPendingResolverOptions {
-      api,
-      // WARNING: When bumping this version, check if anything needs to be
-      // updated in the `setNodeOnlyGlobalNames` call in 99_main_compiler.js
-      types_node_version_req: Some(
-        VersionReq::parse_from_npm("22.0.0 - 22.5.4").unwrap(),
-      ),
-    },
-  )
+fn get_add_pkg_reqs_options(package_reqs: &[PackageReq]) -> AddPkgReqsOptions {
+  AddPkgReqsOptions {
+    package_reqs,
+    // WARNING: When bumping this version, check if anything needs to be
+    // updated in the `setNodeOnlyGlobalNames` call in 99_main_compiler.js
+    types_node_version_req: Some(
+      VersionReq::parse_from_npm("22.0.0 - 22.5.4").unwrap(),
+    ),
+  }
 }
 
 fn populate_lockfile_from_snapshot(

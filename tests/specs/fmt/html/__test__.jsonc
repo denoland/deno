@@ -12,6 +12,10 @@
     "broken": {
       "args": "fmt broken.html",
       "output": "broken.out"
+    },
+    "with_js": {
+      "args": "fmt --check with_js.html",
+      "output": "Checked 1 file\n"
     }
   }
 }
