@@ -241,12 +241,16 @@ pub async fn execute_script(
             description: None,
           },
           kill_signal,
+          cli_options.argv().clone(),
         )
         .await;
     }
 
-    for task_config in &packages_task_configs {
-      let exit_code = task_runner.run_tasks(task_config, &kill_signal).await?;
+    let mut task_iter = packages_task_configs.iter().peekable();
+    while let Some(task_config) = task_iter.next() {
+      let exit_code = task_runner
+        .run_tasks(task_config, &kill_signal, cli_options.argv())
+        .await?;
       if exit_code > 0 {
         return Ok(exit_code);
       }
@@ -263,6 +267,7 @@ struct RunSingleOptions<'a> {
   cwd: &'a Path,
   custom_commands: HashMap<String, Rc<dyn ShellCommand>>,
   kill_signal: KillSignal,
+  argv: Vec<String>,
 }
 
 struct TaskRunner<'a> {
@@ -279,9 +284,10 @@ impl<'a> TaskRunner<'a> {
     &self,
     pkg_tasks_config: &PackageTaskInfo,
     kill_signal: &KillSignal,
+    argv: &Vec<String>,
   ) -> Result<i32, deno_core::anyhow::Error> {
     match sort_tasks_topo(pkg_tasks_config) {
-      Ok(sorted) => self.run_tasks_in_parallel(sorted, kill_signal).await,
+      Ok(sorted) => self.run_tasks_in_parallel(sorted, kill_signal, argv).await,
       Err(err) => match err {
         TaskError::NotFound(name) => {
           if self.task_flags.is_run {
@@ -317,6 +323,7 @@ impl<'a> TaskRunner<'a> {
     &self,
     tasks: Vec<ResolvedTask<'a>>,
     kill_signal: &KillSignal,
+    args: &Vec<String>,
   ) -> Result<i32, deno_core::anyhow::Error> {
     struct PendingTasksContext<'a> {
       completed: HashSet<usize>,
@@ -338,13 +345,21 @@ impl<'a> TaskRunner<'a> {
         &mut self,
         runner: &'b TaskRunner<'b>,
         kill_signal: &KillSignal,
+        argv: Vec<String>,
       ) -> Option<
         LocalBoxFuture<'b, Result<(i32, &'a ResolvedTask<'a>), AnyError>>,
       >
       where
         'a: 'b,
       {
-        for task in self.tasks.iter() {
+        let mut tasks_iter = self.tasks.iter().peekable();
+        while let Some(task) = tasks_iter.next() {
+          let args = if tasks_iter.peek().is_none() {
+            argv.clone()
+          } else {
+            vec![]
+          };
+
           if self.completed.contains(&task.id)
             || self.running.contains(&task.id)
           {
@@ -366,7 +381,13 @@ impl<'a> TaskRunner<'a> {
               match task.task_or_script {
                 TaskOrScript::Task(_, def) => {
                   runner
-                    .run_deno_task(task.folder_url, task.name, def, kill_signal)
+                    .run_deno_task(
+                      task.folder_url,
+                      task.name,
+                      def,
+                      kill_signal,
+                      args,
+                    )
                     .await
                 }
                 TaskOrScript::Script(scripts, _) => {
@@ -376,6 +397,7 @@ impl<'a> TaskRunner<'a> {
                       task.name,
                       scripts,
                       kill_signal,
+                      args,
                     )
                     .await
                 }
@@ -399,7 +421,9 @@ impl<'a> TaskRunner<'a> {
 
     while context.has_remaining_tasks() {
       while queue.len() < self.concurrency {
-        if let Some(task) = context.get_next_task(self, kill_signal) {
+        if let Some(task) =
+          context.get_next_task(self, kill_signal, args.clone())
+        {
           queue.push(task);
         } else {
           break;
@@ -429,6 +453,7 @@ impl<'a> TaskRunner<'a> {
     task_name: &str,
     definition: &TaskDefinition,
     kill_signal: KillSignal,
+    argv: Vec<String>,
   ) -> Result<i32, deno_core::anyhow::Error> {
     let cwd = match &self.task_flags.cwd {
       Some(path) => canonicalize_path(&PathBuf::from(path))
@@ -447,6 +472,7 @@ impl<'a> TaskRunner<'a> {
         cwd: &cwd,
         custom_commands,
         kill_signal,
+        argv,
       })
       .await
   }
@@ -457,6 +483,7 @@ impl<'a> TaskRunner<'a> {
     task_name: &str,
     scripts: &IndexMap<String, String>,
     kill_signal: KillSignal,
+    argv: Vec<String>,
   ) -> Result<i32, deno_core::anyhow::Error> {
     // ensure the npm packages are installed if using a managed resolver
     if let Some(npm_resolver) = self.npm_resolver.as_managed() {
@@ -489,6 +516,7 @@ impl<'a> TaskRunner<'a> {
             cwd: &cwd,
             custom_commands: custom_commands.clone(),
             kill_signal: kill_signal.clone(),
+            argv: argv.clone(),
           })
           .await?;
         if exit_code > 0 {
@@ -510,11 +538,12 @@ impl<'a> TaskRunner<'a> {
       cwd,
       custom_commands,
       kill_signal,
+      argv,
     } = opts;
 
     output_task(
       opts.task_name,
-      &task_runner::get_script_with_args(script, self.cli_options.argv()),
+      &task_runner::get_script_with_args(script, &argv),
     );
 
     Ok(
@@ -525,7 +554,7 @@ impl<'a> TaskRunner<'a> {
         env_vars: self.env_vars.clone(),
         custom_commands,
         init_cwd: self.cli_options.initial_cwd(),
-        argv: self.cli_options.argv(),
+        argv: &argv,
         root_node_modules_dir: self.npm_resolver.root_node_modules_path(),
         stdio: None,
         kill_signal,
