@@ -30,6 +30,7 @@ members = [
   "ext/webstorage",
   "resolvers/deno",
   "resolvers/node",
+  "resolvers/npm_cache",
   "runtime",
   "runtime/permissions",
   "tests",
@@ -93,6 +94,7 @@ deno_websocket = { version = "0.185.0", path = "./ext/websocket" }
 deno_webstorage = { version = "0.175.0", path = "./ext/webstorage" }
 
 # resolvers
+deno_npm_cache = { version = "0.0.1", path = "./resolvers/npm_cache" }
 deno_resolver = { version = "0.12.0", path = "./resolvers/deno" }
 node_resolver = { version = "0.19.0", path = "./resolvers/node" }
 
@@ -117,6 +119,7 @@ data-encoding = "2.3.3"
 data-url = "=0.3.0"
 deno_cache_dir = "=0.14.0"
 deno_package_json = { version = "0.2.1", default-features = false }
+deno_unsync = "0.4.2"
 dlopen2 = "0.6.1"
 ecb = "=0.1.2"
 elliptic-curve = { version = "0.13.4", features = ["alloc", "arithmetic", "ecdh", "std", "pem", "jwk"] }

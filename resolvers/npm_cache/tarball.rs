@@ -3,33 +3,26 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 
-use deno_core::anyhow::anyhow;
-use deno_core::anyhow::bail;
-use deno_core::anyhow::Context;
-use deno_core::error::custom_error;
-use deno_core::error::AnyError;
-use deno_core::futures::future::LocalBoxFuture;
-use deno_core::futures::FutureExt;
-use deno_core::parking_lot::Mutex;
-use deno_core::url::Url;
+use anyhow::anyhow;
+use anyhow::bail;
+use anyhow::Context;
+use anyhow::Error as AnyError;
 use deno_npm::npm_rc::ResolvedNpmRc;
 use deno_npm::registry::NpmPackageVersionDistInfo;
-use deno_runtime::deno_fs::FileSystem;
 use deno_semver::package::PackageNv;
+use deno_unsync::sync::MultiRuntimeAsyncValueCreator;
+use futures::future::LocalBoxFuture;
+use futures::FutureExt;
 use http::StatusCode;
+use parking_lot::Mutex;
+use url::Url;
 
-use crate::args::CacheSetting;
-use crate::http_util::DownloadError;
-use crate::http_util::HttpClientProvider;
-use crate::npm::common::maybe_auth_header_for_npm_registry;
-use crate::util::progress_bar::ProgressBar;
-use crate::util::sync::MultiRuntimeAsyncValueCreator;
-
-use super::tarball_extract::verify_and_extract_tarball;
-use super::tarball_extract::TarballExtractionMode;
-use super::NpmCache;
-
-// todo(dsherret): create seams and unit test this
+use crate::remote::maybe_auth_header_for_npm_registry;
+use crate::tarball_extract::verify_and_extract_tarball;
+use crate::tarball_extract::TarballExtractionMode;
+use crate::NpmCache;
+use crate::NpmCacheEnv;
+use crate::NpmCacheSetting;
 
 type LoadResult = Result<(), Arc<AnyError>>;
 type LoadFuture = LocalBoxFuture<'static, LoadResult>;
@@ -49,29 +42,23 @@ enum MemoryCacheItem {
 ///
 /// This is shared amongst all the workers.
 #[derive(Debug)]
-pub struct TarballCache {
-  cache: Arc<NpmCache>,
-  fs: Arc<dyn FileSystem>,
-  http_client_provider: Arc<HttpClientProvider>,
+pub struct TarballCache<TEnv: NpmCacheEnv> {
+  cache: Arc<NpmCache<TEnv>>,
+  env: Arc<TEnv>,
   npmrc: Arc<ResolvedNpmRc>,
-  progress_bar: ProgressBar,
   memory_cache: Mutex<HashMap<PackageNv, MemoryCacheItem>>,
 }
 
-impl TarballCache {
+impl<TEnv: NpmCacheEnv> TarballCache<TEnv> {
   pub fn new(
-    cache: Arc<NpmCache>,
-    fs: Arc<dyn FileSystem>,
-    http_client_provider: Arc<HttpClientProvider>,
+    cache: Arc<NpmCache<TEnv>>,
+    env: Arc<TEnv>,
     npmrc: Arc<ResolvedNpmRc>,
-    progress_bar: ProgressBar,
   ) -> Self {
     Self {
       cache,
-      fs,
-      http_client_provider,
+      env,
       npmrc,
-      progress_bar,
       memory_cache: Default::default(),
     }
   }
@@ -144,11 +131,11 @@ impl TarballCache {
       let package_folder =
         tarball_cache.cache.package_folder_for_nv_and_url(&package_nv, registry_url);
       let should_use_cache = tarball_cache.cache.should_use_cache_for_package(&package_nv);
-      let package_folder_exists = tarball_cache.fs.exists_sync(&package_folder);
+      let package_folder_exists = tarball_cache.env.exists(&package_folder);
       if should_use_cache && package_folder_exists {
         return Ok(());
-      } else if tarball_cache.cache.cache_setting() == &CacheSetting::Only {
-        return Err(custom_error(
+      } else if tarball_cache.cache.cache_setting() == &NpmCacheSetting::Only {
+        return Err(deno_core::error::custom_error(
           "NotCached",
           format!(
             "An npm specifier not found in cache: \"{}\", --cached-only is specified.",
@@ -169,15 +156,13 @@ impl TarballCache {
         tarball_cache.npmrc.tarball_config(&tarball_uri);
       let maybe_auth_header = maybe_registry_config.and_then(|c| maybe_auth_header_for_npm_registry(c).ok()?);
 
-      let guard = tarball_cache.progress_bar.update(&dist.tarball);
-      let result = tarball_cache.http_client_provider
-        .get_or_create()?
-        .download_with_progress_and_retries(tarball_uri, maybe_auth_header, &guard)
+      let result = tarball_cache.env
+        .download_with_retries_on_any_tokio_runtime(tarball_uri, maybe_auth_header)
         .await;
       let maybe_bytes = match result {
         Ok(maybe_bytes) => maybe_bytes,
-        Err(DownloadError::BadResponse(err)) => {
-          if err.status_code == StatusCode::UNAUTHORIZED
+        Err(err) => {
+          if err.status_code == Some(StatusCode::UNAUTHORIZED)
             && maybe_registry_config.is_none()
             && tarball_cache.npmrc.get_registry_config(&package_nv.name).auth_token.is_some()
           {
@@ -194,7 +179,6 @@ impl TarballCache {
           }
           return Err(err.into())
         },
-        Err(err) => return Err(err.into()),
       };
       match maybe_bytes {
         Some(bytes) => {
@@ -213,7 +197,7 @@ impl TarballCache {
           };
           let dist = dist.clone();
           let package_nv = package_nv.clone();
-          deno_core::unsync::spawn_blocking(move || {
+          deno_unsync::spawn_blocking(move || {
             verify_and_extract_tarball(
               &package_nv,
               &bytes,
