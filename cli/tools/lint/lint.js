@@ -1,4 +1,8 @@
-import { op_lint_get_rule, op_lint_report } from "ext:core/ops";
+import {
+  op_lint_get_rule,
+  op_lint_get_source,
+  op_lint_report,
+} from "ext:core/ops";
 
 export class Context {
   id;
@@ -8,6 +12,10 @@ export class Context {
   constructor(id, fileName) {
     this.id = id;
     this.fileName = fileName;
+  }
+
+  source() {
+    return op_lint_get_source();
   }
 
   report(data) {

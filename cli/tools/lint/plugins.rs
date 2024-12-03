@@ -483,7 +483,7 @@ impl LintPluginContainer {
 
 deno_core::extension!(
   deno_lint_ext,
-  ops = [op_lint_get_rule, op_lint_report,],
+  ops = [op_lint_get_rule, op_lint_report, op_lint_get_source],
   state = |state| {
     state.put(LintPluginContainer::default());
   },
@@ -523,4 +523,16 @@ fn op_lint_report(
 ) {
   let container = state.borrow_mut::<LintPluginContainer>();
   container.report(id, specifier, message, start, end);
+}
+
+#[op2]
+#[string]
+fn op_lint_get_source(state: &mut OpState) -> String {
+  let container = state.borrow_mut::<LintPluginContainer>();
+  container
+    .source_text_info
+    .as_ref()
+    .unwrap()
+    .text_str()
+    .to_string()
 }
