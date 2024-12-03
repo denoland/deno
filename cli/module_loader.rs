@@ -7,6 +7,8 @@ use std::path::PathBuf;
 use std::pin::Pin;
 use std::rc::Rc;
 use std::str;
+use std::sync::atomic::AtomicU16;
+use std::sync::atomic::Ordering;
 use std::sync::Arc;
 
 use crate::args::jsr_url;
@@ -49,6 +51,7 @@ use deno_core::error::generic_error;
 use deno_core::error::AnyError;
 use deno_core::futures::future::FutureExt;
 use deno_core::futures::Future;
+use deno_core::parking_lot::Mutex;
 use deno_core::resolve_url;
 use deno_core::ModuleCodeString;
 use deno_core::ModuleLoader;
@@ -295,6 +298,8 @@ impl CliModuleLoaderFactory {
         emitter: self.shared.emitter.clone(),
         parsed_source_cache: self.shared.parsed_source_cache.clone(),
         shared: self.shared.clone(),
+        in_flight_loads: AtomicU16::new(0),
+        cleanup_task_handle: Arc::new(Mutex::new(None)),
       })));
     let node_require_loader = Rc::new(CliNodeRequireLoader {
       cjs_tracker: self.shared.cjs_tracker.clone(),
@@ -356,6 +361,8 @@ struct CliModuleLoaderInner<TGraphContainer: ModuleGraphContainer> {
   node_code_translator: Arc<CliNodeCodeTranslator>,
   parsed_source_cache: Arc<ParsedSourceCache>,
   graph_container: TGraphContainer,
+  in_flight_loads: AtomicU16,
+  cleanup_task_handle: Arc<Mutex<Option<tokio::task::JoinHandle<()>>>>,
 }
 
 impl<TGraphContainer: ModuleGraphContainer>
@@ -867,6 +874,7 @@ impl<TGraphContainer: ModuleGraphContainer> ModuleLoader
     _maybe_referrer: Option<String>,
     is_dynamic: bool,
   ) -> Pin<Box<dyn Future<Output = Result<(), AnyError>>>> {
+    self.0.in_flight_loads.fetch_add(1, Ordering::Relaxed);
     if self.0.shared.in_npm_pkg_checker.in_npm_package(specifier) {
       return Box::pin(deno_core::futures::future::ready(Ok(())));
     }
@@ -919,6 +927,25 @@ impl<TGraphContainer: ModuleGraphContainer> ModuleLoader
       Ok(())
     }
     .boxed_local()
+  }
+
+  fn finish_load(&self) -> Pin<Box<dyn Future<Output = Result<(), AnyError>>>> {
+    let prev = self.0.in_flight_loads.fetch_sub(1, Ordering::Relaxed);
+
+    if prev == 0 {
+      let parsed_source_cache = self.0.shared.parsed_source_cache.clone();
+      let task_handle = tokio::spawn(async move {
+        tokio::time::sleep(std::time::Duration::from_secs(10)).await;
+        parsed_source_cache.free_all();
+      });
+      let maybe_prev_task =
+        self.0.cleanup_task_handle.lock().replace(task_handle);
+      if let Some(prev_task) = maybe_prev_task {
+        prev_task.abort();
+      }
+    }
+
+    std::future::ready(Ok(())).boxed_local()
   }
 
   fn code_cache_ready(
