@@ -43,7 +43,6 @@ export function runPluginRule(fileName, pluginName, ruleName, serializedAst) {
   const ctx = new Context(id, fileName);
   const rule = op_lint_get_rule(pluginName, ruleName);
 
-  console.log(ctx, typeof rule);
   const visitor = rule(ctx);
   const ast = JSON.parse(serializedAst, (key, value) => {
     if (key === "ctxt") {
@@ -52,11 +51,8 @@ export function runPluginRule(fileName, pluginName, ruleName, serializedAst) {
     return value;
   });
 
-  console.log("ast", ast);
+  // console.log("ast", ast);
   traverse(ast, visitor);
-  // console.log("visitor", Object.keys(visitor));
-  // const visitor = new Visitor();
-  // visitor.visitProgram(ast);
 }
 
 function traverse(ast, visitor, parent = null) {
