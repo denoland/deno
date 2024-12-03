@@ -14,27 +14,28 @@ use deno_core::parking_lot::Mutex;
 use deno_npm::registry::NpmPackageInfo;
 use deno_npm::registry::NpmRegistryApi;
 use deno_npm::registry::NpmRegistryPackageInfoLoadError;
+use deno_npm_cache::NpmCacheSetting;
 
-use crate::args::CacheSetting;
+use crate::npm::CliNpmCache;
+use crate::npm::CliNpmRegistryInfoProvider;
 use crate::util::sync::AtomicFlag;
 
-use super::cache::NpmCache;
-use super::cache::RegistryInfoDownloader;
-
+// todo(#27198): Remove this and move functionality down into
+// RegistryInfoProvider, which already does most of this.
 #[derive(Debug)]
 pub struct CliNpmRegistryApi(Option<Arc<CliNpmRegistryApiInner>>);
 
 impl CliNpmRegistryApi {
   pub fn new(
-    cache: Arc<NpmCache>,
-    registry_info_downloader: Arc<RegistryInfoDownloader>,
+    cache: Arc<CliNpmCache>,
+    registry_info_provider: Arc<CliNpmRegistryInfoProvider>,
   ) -> Self {
     Self(Some(Arc::new(CliNpmRegistryApiInner {
       cache,
       force_reload_flag: Default::default(),
       mem_cache: Default::default(),
       previously_reloaded_packages: Default::default(),
-      registry_info_downloader,
+      registry_info_provider,
     })))
   }
 
@@ -83,11 +84,11 @@ enum CacheItem {
 
 #[derive(Debug)]
 struct CliNpmRegistryApiInner {
-  cache: Arc<NpmCache>,
+  cache: Arc<CliNpmCache>,
   force_reload_flag: AtomicFlag,
   mem_cache: Mutex<HashMap<String, CacheItem>>,
   previously_reloaded_packages: Mutex<HashSet<String>>,
-  registry_info_downloader: Arc<RegistryInfoDownloader>,
+  registry_info_provider: Arc<CliNpmRegistryInfoProvider>,
 }
 
 impl CliNpmRegistryApiInner {
@@ -118,7 +119,7 @@ impl CliNpmRegistryApiInner {
                   return Ok(result);
                 }
               }
-              api.registry_info_downloader
+              api.registry_info_provider
                 .load_package_info(&name)
                 .await
                 .map_err(Arc::new)
@@ -159,7 +160,7 @@ impl CliNpmRegistryApiInner {
     // is disabled or if we're already reloading
     if matches!(
       self.cache.cache_setting(),
-      CacheSetting::Only | CacheSetting::ReloadAll
+      NpmCacheSetting::Only | NpmCacheSetting::ReloadAll
     ) {
       return false;
     }

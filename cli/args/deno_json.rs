@@ -18,12 +18,10 @@ impl<'a> deno_config::fs::DenoConfigFs for DenoConfigFsAdapter<'a> {
   fn read_to_string_lossy(
     &self,
     path: &std::path::Path,
-  ) -> Result<String, std::io::Error> {
+  ) -> Result<std::borrow::Cow<'static, str>, std::io::Error> {
     self
       .0
       .read_text_file_lossy_sync(path, None)
-      // todo(https://github.com/denoland/deno_config/pull/140): avoid clone
-      .map(|s| s.into_owned())
       .map_err(|err| err.into_io_error())
   }
 

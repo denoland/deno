@@ -1,63 +1,133 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 use std::collections::HashSet;
-use std::fs;
 use std::io::ErrorKind;
 use std::path::Path;
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use deno_ast::ModuleSpecifier;
+use anyhow::bail;
+use anyhow::Context;
+use anyhow::Error as AnyError;
 use deno_cache_dir::npm::NpmCacheDir;
-use deno_core::anyhow::bail;
-use deno_core::anyhow::Context;
-use deno_core::error::AnyError;
-use deno_core::parking_lot::Mutex;
-use deno_core::serde_json;
-use deno_core::url::Url;
 use deno_npm::npm_rc::ResolvedNpmRc;
 use deno_npm::registry::NpmPackageInfo;
 use deno_npm::NpmPackageCacheFolderId;
 use deno_semver::package::PackageNv;
 use deno_semver::Version;
+use http::HeaderName;
+use http::HeaderValue;
+use http::StatusCode;
+use parking_lot::Mutex;
+use url::Url;
 
-use crate::args::CacheSetting;
-use crate::cache::CACHE_PERM;
-use crate::util::fs::atomic_write_file_with_retries;
-use crate::util::fs::hard_link_dir_recursive;
-
-pub mod registry_info;
+mod registry_info;
+mod remote;
 mod tarball;
 mod tarball_extract;
 
-pub use registry_info::RegistryInfoDownloader;
+pub use registry_info::RegistryInfoProvider;
 pub use tarball::TarballCache;
+
+// todo(#27198): make both of these private and get the rest of the code
+// using RegistryInfoProvider.
+pub use registry_info::get_package_url;
+pub use remote::maybe_auth_header_for_npm_registry;
+
+#[derive(Debug)]
+pub struct DownloadError {
+  pub status_code: Option<StatusCode>,
+  pub error: AnyError,
+}
+
+impl std::error::Error for DownloadError {
+  fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+    Some(self.error.as_ref())
+  }
+}
+
+impl std::fmt::Display for DownloadError {
+  fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+    self.error.fmt(f)
+  }
+}
+
+#[async_trait::async_trait(?Send)]
+pub trait NpmCacheEnv: Send + Sync + 'static {
+  fn exists(&self, path: &Path) -> bool;
+  fn hard_link_dir_recursive(
+    &self,
+    from: &Path,
+    to: &Path,
+  ) -> Result<(), AnyError>;
+  fn atomic_write_file_with_retries(
+    &self,
+    file_path: &Path,
+    data: &[u8],
+  ) -> std::io::Result<()>;
+  async fn download_with_retries_on_any_tokio_runtime(
+    &self,
+    url: Url,
+    maybe_auth_header: Option<(HeaderName, HeaderValue)>,
+  ) -> Result<Option<Vec<u8>>, DownloadError>;
+}
+
+/// Indicates how cached source files should be handled.
+#[derive(Debug, Clone, Eq, PartialEq)]
+pub enum NpmCacheSetting {
+  /// Only the cached files should be used. Any files not in the cache will
+  /// error. This is the equivalent of `--cached-only` in the CLI.
+  Only,
+  /// No cached source files should be used, and all files should be reloaded.
+  /// This is the equivalent of `--reload` in the CLI.
+  ReloadAll,
+  /// Only some cached resources should be used. This is the equivalent of
+  /// `--reload=npm:chalk`
+  ReloadSome { npm_package_names: Vec<String> },
+  /// The cached source files should be used for local modules. This is the
+  /// default behavior of the CLI.
+  Use,
+}
+
+impl NpmCacheSetting {
+  pub fn should_use_for_npm_package(&self, package_name: &str) -> bool {
+    match self {
+      NpmCacheSetting::ReloadAll => false,
+      NpmCacheSetting::ReloadSome { npm_package_names } => {
+        !npm_package_names.iter().any(|n| n == package_name)
+      }
+      _ => true,
+    }
+  }
+}
 
 /// Stores a single copy of npm packages in a cache.
 #[derive(Debug)]
-pub struct NpmCache {
+pub struct NpmCache<TEnv: NpmCacheEnv> {
+  env: Arc<TEnv>,
   cache_dir: Arc<NpmCacheDir>,
-  cache_setting: CacheSetting,
+  cache_setting: NpmCacheSetting,
   npmrc: Arc<ResolvedNpmRc>,
-  /// ensures a package is only downloaded once per run
   previously_reloaded_packages: Mutex<HashSet<PackageNv>>,
 }
 
-impl NpmCache {
+impl<TEnv: NpmCacheEnv> NpmCache<TEnv> {
   pub fn new(
     cache_dir: Arc<NpmCacheDir>,
-    cache_setting: CacheSetting,
+    cache_setting: NpmCacheSetting,
+    env: Arc<TEnv>,
     npmrc: Arc<ResolvedNpmRc>,
   ) -> Self {
     Self {
       cache_dir,
       cache_setting,
+      env,
       previously_reloaded_packages: Default::default(),
       npmrc,
     }
   }
 
-  pub fn cache_setting(&self) -> &CacheSetting {
+  pub fn cache_setting(&self) -> &NpmCacheSetting {
     &self.cache_setting
   }
 
@@ -118,7 +188,9 @@ impl NpmCache {
     // it seems Windows does an "AccessDenied" error when moving a
     // directory with hard links, so that's why this solution is done
     with_folder_sync_lock(&folder_id.nv, &package_folder, || {
-      hard_link_dir_recursive(&original_package_folder, &package_folder)
+      self
+        .env
+        .hard_link_dir_recursive(&original_package_folder, &package_folder)
     })?;
     Ok(())
   }
@@ -158,7 +230,7 @@ impl NpmCache {
 
   pub fn resolve_package_folder_id_from_specifier(
     &self,
-    specifier: &ModuleSpecifier,
+    specifier: &Url,
   ) -> Option<NpmPackageCacheFolderId> {
     self
       .cache_dir
@@ -180,7 +252,7 @@ impl NpmCache {
   ) -> Result<Option<NpmPackageInfo>, AnyError> {
     let file_cache_path = self.get_registry_package_info_file_cache_path(name);
 
-    let file_text = match fs::read_to_string(file_cache_path) {
+    let file_text = match std::fs::read_to_string(file_cache_path) {
       Ok(file_text) => file_text,
       Err(err) if err.kind() == ErrorKind::NotFound => return Ok(None),
       Err(err) => return Err(err.into()),
@@ -195,7 +267,9 @@ impl NpmCache {
   ) -> Result<(), AnyError> {
     let file_cache_path = self.get_registry_package_info_file_cache_path(name);
     let file_text = serde_json::to_string(&package_info)?;
-    atomic_write_file_with_retries(&file_cache_path, file_text, CACHE_PERM)?;
+    self
+      .env
+      .atomic_write_file_with_retries(&file_cache_path, file_text.as_bytes())?;
     Ok(())
   }
 
@@ -216,7 +290,7 @@ fn with_folder_sync_lock(
     output_folder: &Path,
     action: impl FnOnce() -> Result<(), AnyError>,
   ) -> Result<(), AnyError> {
-    fs::create_dir_all(output_folder).with_context(|| {
+    std::fs::create_dir_all(output_folder).with_context(|| {
       format!("Error creating '{}'.", output_folder.display())
     })?;
 
@@ -229,7 +303,7 @@ fn with_folder_sync_lock(
     // then wait until the other process finishes with a timeout), but
     // for now this is good enough.
     let sync_lock_path = output_folder.join(NPM_PACKAGE_SYNC_LOCK_FILENAME);
-    match fs::OpenOptions::new()
+    match std::fs::OpenOptions::new()
       .write(true)
       .create(true)
       .truncate(false)
@@ -257,7 +331,7 @@ fn with_folder_sync_lock(
   match inner(output_folder, action) {
     Ok(()) => Ok(()),
     Err(err) => {
-      if let Err(remove_err) = fs::remove_dir_all(output_folder) {
+      if let Err(remove_err) = std::fs::remove_dir_all(output_folder) {
         if remove_err.kind() != std::io::ErrorKind::NotFound {
           bail!(
             concat!(
