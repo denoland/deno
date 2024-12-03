@@ -69,6 +69,7 @@ deno_core::extension!(
     op_get_exit_code,
     op_system_memory_info,
     op_uid,
+    op_runtime_cpu_usage,
     op_runtime_memory_usage,
     ops::signal::op_signal_bind,
     ops::signal::op_signal_unbind,
@@ -106,6 +107,7 @@ deno_core::extension!(
     op_get_exit_code,
     op_system_memory_info,
     op_uid,
+    op_runtime_cpu_usage,
     op_runtime_memory_usage,
     ops::signal::op_signal_bind,
     ops::signal::op_signal_unbind,
@@ -418,6 +420,120 @@ fn op_uid(state: &mut OpState) -> Result<Option<u32>, PermissionCheckError> {
     .borrow_mut::<PermissionsContainer>()
     .check_sys("uid", "Deno.uid()")?;
   Ok(None)
+}
+
+#[derive(Serialize)]
+struct CpuUsage {
+  system: usize,
+  user: usize,
+}
+
+#[op2]
+#[serde]
+fn op_runtime_cpu_usage() -> CpuUsage {
+  let (sys, user) = get_cpu_usage();
+  CpuUsage {
+    system: sys.as_micros() as usize,
+    user: user.as_micros() as usize,
+  }
+}
+
+#[cfg(unix)]
+fn get_cpu_usage() -> (std::time::Duration, std::time::Duration) {
+  let mut rusage = std::mem::MaybeUninit::uninit();
+
+  // Uses POSIX getrusage from libc
+  // to retrieve user and system times
+  // SAFETY: libc call
+  let ret = unsafe { libc::getrusage(libc::RUSAGE_SELF, rusage.as_mut_ptr()) };
+  if ret != 0 {
+    return Default::default();
+  }
+
+  // SAFETY: already checked the result
+  let rusage = unsafe { rusage.assume_init() };
+
+  let sys = std::time::Duration::from_micros(rusage.ru_stime.tv_usec as u64)
+    + std::time::Duration::from_secs(rusage.ru_stime.tv_sec as u64);
+  let user = std::time::Duration::from_micros(rusage.ru_utime.tv_usec as u64)
+    + std::time::Duration::from_secs(rusage.ru_utime.tv_sec as u64);
+
+  (sys, user)
+}
+
+#[cfg(windows)]
+fn get_cpu_usage() -> (std::time::Duration, std::time::Duration) {
+  use winapi::shared::minwindef::FALSE;
+  use winapi::shared::minwindef::FILETIME;
+  use winapi::shared::minwindef::TRUE;
+  use winapi::um::minwinbase::SYSTEMTIME;
+  use winapi::um::processthreadsapi::GetCurrentProcess;
+  use winapi::um::processthreadsapi::GetProcessTimes;
+  use winapi::um::timezoneapi::FileTimeToSystemTime;
+
+  fn convert_system_time(system_time: SYSTEMTIME) -> std::time::Duration {
+    std::time::Duration::from_secs(
+      system_time.wHour as u64 * 3600
+        + system_time.wMinute as u64 * 60
+        + system_time.wSecond as u64,
+    ) + std::time::Duration::from_millis(system_time.wMilliseconds as u64)
+  }
+
+  let mut creation_time = std::mem::MaybeUninit::<FILETIME>::uninit();
+  let mut exit_time = std::mem::MaybeUninit::<FILETIME>::uninit();
+  let mut kernel_time = std::mem::MaybeUninit::<FILETIME>::uninit();
+  let mut user_time = std::mem::MaybeUninit::<FILETIME>::uninit();
+
+  // SAFETY: winapi calls
+  let ret = unsafe {
+    GetProcessTimes(
+      GetCurrentProcess(),
+      creation_time.as_mut_ptr(),
+      exit_time.as_mut_ptr(),
+      kernel_time.as_mut_ptr(),
+      user_time.as_mut_ptr(),
+    )
+  };
+
+  if ret != TRUE {
+    return std::default::Default::default();
+  }
+
+  let mut kernel_system_time = std::mem::MaybeUninit::<SYSTEMTIME>::uninit();
+  let mut user_system_time = std::mem::MaybeUninit::<SYSTEMTIME>::uninit();
+
+  // SAFETY: convert to system time
+  unsafe {
+    let sys_ret = FileTimeToSystemTime(
+      kernel_time.assume_init_mut(),
+      kernel_system_time.as_mut_ptr(),
+    );
+    let user_ret = FileTimeToSystemTime(
+      user_time.assume_init_mut(),
+      user_system_time.as_mut_ptr(),
+    );
+
+    match (sys_ret, user_ret) {
+      (TRUE, TRUE) => (
+        convert_system_time(kernel_system_time.assume_init()),
+        convert_system_time(user_system_time.assume_init()),
+      ),
+      (TRUE, FALSE) => (
+        convert_system_time(kernel_system_time.assume_init()),
+        Default::default(),
+      ),
+      (FALSE, TRUE) => (
+        Default::default(),
+        convert_system_time(user_system_time.assume_init()),
+      ),
+      (_, _) => Default::default(),
+    }
+  }
+}
+
+#[cfg(not(any(windows, unix)))]
+fn get_cpu_usage() -> (std::time::Duration, std::time::Duration) {
+  Default::default()
 }
 
 // HeapStats stores values from a isolate.get_heap_statistics() call

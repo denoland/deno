@@ -32,3 +32,13 @@ This crate implements OS specific APIs for Deno
 | Linux         | sysinfo and `/proc/meminfo`                                                                                                                   | -           |
 | Windows       | `sysinfoapi::GlobalMemoryStatusEx`                                                                                                            | -           |
 | macOS         | <br> <pre> sysctl([CTL_HW, HW_MEMSIZE]); <br> sysctl([CTL_VM, VM_SWAPUSAGE]); <br> host_statistics64(mach_host_self(), HOST_VM_INFO64) </pre> | -           |
+
+`cpu_usage`
+
+| Target family | Syscall                                        | Description |
+| ------------- |------------------------------------------------| ----------- |
+| Linux         | getrusage                                      | -           |
+| Windows       | `processthreadsapi::GetProcessTimes`           | -           |
+| macOS         | getrusage                                      | -           |
+
+
