@@ -123,7 +123,7 @@ pub enum CreateWorkerError {
   #[error("Classic workers are not supported.")]
   ClassicWorkers,
   #[error(transparent)]
-  Permission(deno_core::error::AnyError),
+  Permission(deno_permissions::ChildPermissionError),
   #[error(transparent)]
   ModuleResolution(#[from] deno_core::ModuleResolutionError),
   #[error(transparent)]
@@ -133,7 +133,7 @@ pub enum CreateWorkerError {
 }
 
 /// Create worker as the host
-#[op2]
+#[op2(stack_trace)]
 #[serde]
 fn op_create_worker(
   state: &mut OpState,

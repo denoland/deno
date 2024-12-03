@@ -17,6 +17,8 @@ use std::sync::Arc;
 
 use crate::args::LifecycleScriptsConfig;
 use crate::colors;
+use crate::npm::CliNpmCache;
+use crate::npm::CliNpmTarballCache;
 use async_trait::async_trait;
 use deno_ast::ModuleSpecifier;
 use deno_cache_dir::npm::mixed_case_package_name_decode;
@@ -52,9 +54,8 @@ use crate::util::fs::LaxSingleProcessFsFlag;
 use crate::util::progress_bar::ProgressBar;
 use crate::util::progress_bar::ProgressMessagePrompt;
 
-use super::super::cache::NpmCache;
-use super::super::cache::TarballCache;
 use super::super::resolution::NpmResolution;
+use super::common::bin_entries;
 use super::common::NpmPackageFsResolver;
 use super::common::RegistryReadPermissionChecker;
 
@@ -62,12 +63,12 @@ use super::common::RegistryReadPermissionChecker;
 /// and resolves packages from it.
 #[derive(Debug)]
 pub struct LocalNpmPackageResolver {
-  cache: Arc<NpmCache>,
+  cache: Arc<CliNpmCache>,
   fs: Arc<dyn deno_fs::FileSystem>,
   npm_install_deps_provider: Arc<NpmInstallDepsProvider>,
   progress_bar: ProgressBar,
   resolution: Arc<NpmResolution>,
-  tarball_cache: Arc<TarballCache>,
+  tarball_cache: Arc<CliNpmTarballCache>,
   root_node_modules_path: PathBuf,
   root_node_modules_url: Url,
   system_info: NpmSystemInfo,
@@ -78,12 +79,12 @@ pub struct LocalNpmPackageResolver {
 impl LocalNpmPackageResolver {
   #[allow(clippy::too_many_arguments)]
   pub fn new(
-    cache: Arc<NpmCache>,
+    cache: Arc<CliNpmCache>,
     fs: Arc<dyn deno_fs::FileSystem>,
     npm_install_deps_provider: Arc<NpmInstallDepsProvider>,
     progress_bar: ProgressBar,
     resolution: Arc<NpmResolution>,
-    tarball_cache: Arc<TarballCache>,
+    tarball_cache: Arc<CliNpmTarballCache>,
     node_modules_folder: PathBuf,
     system_info: NpmSystemInfo,
     lifecycle_scripts: LifecycleScriptsConfig,
@@ -283,10 +284,10 @@ fn local_node_modules_package_contents_path(
 #[allow(clippy::too_many_arguments)]
 async fn sync_resolution_with_fs(
   snapshot: &NpmResolutionSnapshot,
-  cache: &Arc<NpmCache>,
+  cache: &Arc<CliNpmCache>,
   npm_install_deps_provider: &NpmInstallDepsProvider,
   progress_bar: &ProgressBar,
-  tarball_cache: &Arc<TarballCache>,
+  tarball_cache: &Arc<CliNpmTarballCache>,
   root_node_modules_dir_path: &Path,
   system_info: &NpmSystemInfo,
   lifecycle_scripts: &LifecycleScriptsConfig,
@@ -295,6 +296,12 @@ async fn sync_resolution_with_fs(
     && npm_install_deps_provider.workspace_pkgs().is_empty()
   {
     return Ok(()); // don't create the directory
+  }
+
+  // don't set up node_modules (and more importantly try to acquire the file lock)
+  // if we're running as part of a lifecycle script
+  if super::common::lifecycle_scripts::is_running_lifecycle_script() {
+    return Ok(());
   }
 
   let deno_local_registry_dir = root_node_modules_dir_path.join(".deno");
@@ -329,8 +336,7 @@ async fn sync_resolution_with_fs(
   let mut cache_futures = FuturesUnordered::new();
   let mut newest_packages_by_name: HashMap<&String, &NpmResolutionPackage> =
     HashMap::with_capacity(package_partitions.packages.len());
-  let bin_entries =
-    Rc::new(RefCell::new(super::common::bin_entries::BinEntries::new()));
+  let bin_entries = Rc::new(RefCell::new(bin_entries::BinEntries::new()));
   let mut lifecycle_scripts =
     super::common::lifecycle_scripts::LifecycleScripts::new(
       lifecycle_scripts,
@@ -658,7 +664,28 @@ async fn sync_resolution_with_fs(
   // 7. Set up `node_modules/.bin` entries for packages that need it.
   {
     let bin_entries = std::mem::take(&mut *bin_entries.borrow_mut());
-    bin_entries.finish(snapshot, &bin_node_modules_dir_path)?;
+    bin_entries.finish(
+      snapshot,
+      &bin_node_modules_dir_path,
+      |setup_outcome| {
+        match setup_outcome {
+          bin_entries::EntrySetupOutcome::MissingEntrypoint {
+            package,
+            package_path,
+            ..
+          } if super::common::lifecycle_scripts::has_lifecycle_scripts(
+            package,
+            package_path,
+          ) && lifecycle_scripts.can_run_scripts(&package.id.nv)
+            && !lifecycle_scripts.has_run_scripts(package) =>
+          {
+            // ignore, it might get fixed when the lifecycle scripts run.
+            // if not, we'll warn then
+          }
+          outcome => outcome.warn_if_failed(),
+        }
+      },
+    )?;
   }
 
   // 8. Create symlinks for the workspace packages
@@ -708,7 +735,7 @@ async fn sync_resolution_with_fs(
     .finish(
       snapshot,
       &package_partitions.packages,
-      Some(root_node_modules_dir_path),
+      root_node_modules_dir_path,
       progress_bar,
     )
     .await?;
@@ -1035,12 +1062,18 @@ fn junction_or_symlink_dir(
       if symlink_err.kind() == std::io::ErrorKind::PermissionDenied =>
     {
       USE_JUNCTIONS.store(true, std::sync::atomic::Ordering::Relaxed);
-      junction::create(old_path, new_path).map_err(Into::into)
+      junction::create(old_path, new_path)
+        .context("Failed creating junction in node_modules folder")
     }
-    Err(symlink_err) => Err(
-      AnyError::from(symlink_err)
-        .context("Failed creating symlink in node_modules folder"),
-    ),
+    Err(symlink_err) => {
+      log::warn!(
+        "{} Unexpected error symlinking node_modules: {symlink_err}",
+        colors::yellow("Warning")
+      );
+      USE_JUNCTIONS.store(true, std::sync::atomic::Ordering::Relaxed);
+      junction::create(old_path, new_path)
+        .context("Failed creating junction in node_modules folder")
+    }
   }
 }
 

@@ -1,35 +1,39 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 mod byonm;
-mod common;
 mod managed;
 
 use std::borrow::Cow;
 use std::path::Path;
-use std::path::PathBuf;
 use std::sync::Arc;
 
-use common::maybe_auth_header_for_npm_registry;
 use dashmap::DashMap;
-use deno_ast::ModuleSpecifier;
 use deno_core::error::AnyError;
 use deno_core::serde_json;
+use deno_core::url::Url;
 use deno_npm::npm_rc::ResolvedNpmRc;
 use deno_npm::registry::NpmPackageInfo;
 use deno_resolver::npm::ByonmInNpmPackageChecker;
 use deno_resolver::npm::ByonmNpmResolver;
-use deno_resolver::npm::ByonmResolvePkgFolderFromDenoReqError;
+use deno_resolver::npm::CliNpmReqResolver;
+use deno_resolver::npm::ResolvePkgFolderFromDenoReqError;
+use deno_runtime::deno_fs::FileSystem;
 use deno_runtime::deno_node::NodePermissions;
 use deno_runtime::ops::process::NpmProcessStateProvider;
 use deno_semver::package::PackageNv;
 use deno_semver::package::PackageReq;
-use managed::cache::registry_info::get_package_url;
+use http::HeaderName;
+use http::HeaderValue;
 use managed::create_managed_in_npm_pkg_checker;
 use node_resolver::InNpmPackageChecker;
-use node_resolver::NpmResolver;
-use thiserror::Error;
+use node_resolver::NpmPackageFolderResolver;
 
 use crate::file_fetcher::FileFetcher;
+use crate::http_util::HttpClientProvider;
+use crate::util::fs::atomic_write_file_with_retries_and_fs;
+use crate::util::fs::hard_link_dir_recursive;
+use crate::util::fs::AtomicWriteFileFsAdapter;
+use crate::util::progress_bar::ProgressBar;
 
 pub use self::byonm::CliByonmNpmResolver;
 pub use self::byonm::CliByonmNpmResolverCreateOptions;
@@ -38,12 +42,97 @@ pub use self::managed::CliManagedNpmResolverCreateOptions;
 pub use self::managed::CliNpmResolverManagedSnapshotOption;
 pub use self::managed::ManagedCliNpmResolver;
 
-#[derive(Debug, Error)]
-pub enum ResolvePkgFolderFromDenoReqError {
-  #[error(transparent)]
-  Managed(deno_core::error::AnyError),
-  #[error(transparent)]
-  Byonm(#[from] ByonmResolvePkgFolderFromDenoReqError),
+pub type CliNpmTarballCache = deno_npm_cache::TarballCache<CliNpmCacheEnv>;
+pub type CliNpmCache = deno_npm_cache::NpmCache<CliNpmCacheEnv>;
+pub type CliNpmRegistryInfoProvider =
+  deno_npm_cache::RegistryInfoProvider<CliNpmCacheEnv>;
+
+#[derive(Debug)]
+pub struct CliNpmCacheEnv {
+  fs: Arc<dyn FileSystem>,
+  http_client_provider: Arc<HttpClientProvider>,
+  progress_bar: ProgressBar,
+}
+
+impl CliNpmCacheEnv {
+  pub fn new(
+    fs: Arc<dyn FileSystem>,
+    http_client_provider: Arc<HttpClientProvider>,
+    progress_bar: ProgressBar,
+  ) -> Self {
+    Self {
+      fs,
+      http_client_provider,
+      progress_bar,
+    }
+  }
+}
+
+#[async_trait::async_trait(?Send)]
+impl deno_npm_cache::NpmCacheEnv for CliNpmCacheEnv {
+  fn exists(&self, path: &Path) -> bool {
+    self.fs.exists_sync(path)
+  }
+
+  fn hard_link_dir_recursive(
+    &self,
+    from: &Path,
+    to: &Path,
+  ) -> Result<(), AnyError> {
+    // todo(dsherret): use self.fs here instead
+    hard_link_dir_recursive(from, to)
+  }
+
+  fn atomic_write_file_with_retries(
+    &self,
+    file_path: &Path,
+    data: &[u8],
+  ) -> std::io::Result<()> {
+    atomic_write_file_with_retries_and_fs(
+      &AtomicWriteFileFsAdapter {
+        fs: self.fs.as_ref(),
+        write_mode: crate::cache::CACHE_PERM,
+      },
+      file_path,
+      data,
+    )
+  }
+
+  async fn download_with_retries_on_any_tokio_runtime(
+    &self,
+    url: Url,
+    maybe_auth_header: Option<(HeaderName, HeaderValue)>,
+  ) -> Result<Option<Vec<u8>>, deno_npm_cache::DownloadError> {
+    let guard = self.progress_bar.update(url.as_str());
+    let client = self.http_client_provider.get_or_create().map_err(|err| {
+      deno_npm_cache::DownloadError {
+        status_code: None,
+        error: err,
+      }
+    })?;
+    client
+      .download_with_progress_and_retries(url, maybe_auth_header, &guard)
+      .await
+      .map_err(|err| {
+        use crate::http_util::DownloadError::*;
+        let status_code = match &err {
+          Fetch { .. }
+          | UrlParse { .. }
+          | HttpParse { .. }
+          | Json { .. }
+          | ToStr { .. }
+          | NoRedirectHeader { .. }
+          | TooManyRedirects => None,
+          BadResponse(bad_response_error) => {
+            Some(bad_response_error.status_code)
+          }
+        };
+        deno_npm_cache::DownloadError {
+          status_code,
+          error: err.into(),
+        }
+      })
+  }
 }
 
 pub enum CliNpmResolverCreateOptions {
@@ -95,11 +184,17 @@ pub enum InnerCliNpmResolverRef<'a> {
   Byonm(&'a CliByonmNpmResolver),
 }
 
-pub trait CliNpmResolver: NpmResolver {
-  fn into_npm_resolver(self: Arc<Self>) -> Arc<dyn NpmResolver>;
+pub trait CliNpmResolver: NpmPackageFolderResolver + CliNpmReqResolver {
+  fn into_npm_pkg_folder_resolver(
+    self: Arc<Self>,
+  ) -> Arc<dyn NpmPackageFolderResolver>;
+  fn into_npm_req_resolver(self: Arc<Self>) -> Arc<dyn CliNpmReqResolver>;
   fn into_process_state_provider(
     self: Arc<Self>,
   ) -> Arc<dyn NpmProcessStateProvider>;
+  fn into_maybe_byonm(self: Arc<Self>) -> Option<Arc<CliByonmNpmResolver>> {
+    None
+  }
 
   fn clone_snapshotted(&self) -> Arc<dyn CliNpmResolver>;
 
@@ -120,12 +215,6 @@ pub trait CliNpmResolver: NpmResolver {
   }
 
   fn root_node_modules_path(&self) -> Option<&Path>;
-
-  fn resolve_pkg_folder_from_deno_module_req(
-    &self,
-    req: &PackageReq,
-    referrer: &ModuleSpecifier,
-  ) -> Result<PathBuf, ResolvePkgFolderFromDenoReqError>;
 
   fn ensure_read_permission<'a>(
     &self,
@@ -189,13 +278,15 @@ impl NpmFetchResolver {
     if let Some(info) = self.info_by_name.get(name) {
       return info.value().clone();
     }
+    // todo(#27198): use RegistryInfoProvider instead
     let fetch_package_info = || async {
-      let info_url = get_package_url(&self.npmrc, name);
+      let info_url = deno_npm_cache::get_package_url(&self.npmrc, name);
       let file_fetcher = self.file_fetcher.clone();
       let registry_config = self.npmrc.get_registry_config(name);
       // TODO(bartlomieju): this should error out, not use `.ok()`.
       let maybe_auth_header =
-        maybe_auth_header_for_npm_registry(registry_config).ok()?;
+        deno_npm_cache::maybe_auth_header_for_npm_registry(registry_config)
+          .ok()?;
       // spawn due to the lsp's `Send` requirement
       let file = deno_core::unsync::spawn(async move {
         file_fetcher

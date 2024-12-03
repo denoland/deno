@@ -3,8 +3,5 @@
   "compilerOptions": {
     "jsx": "react-jsx",
     "jsxImportSource": "react"
-  },
-  "unstable": [
-    "detect-cjs"
-  ]
+  }
 }

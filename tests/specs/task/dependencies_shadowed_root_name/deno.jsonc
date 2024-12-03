@@ -1,0 +1,12 @@
+{
+  "tasks": {
+    "build": "echo root",
+    "root-depending-root": {
+      "dependencies": [
+        "build"
+      ],
+      "command": "echo test"
+    }
+  },
+  "workspace": ["./member"]
+}

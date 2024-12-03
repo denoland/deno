@@ -4,38 +4,12 @@ use std::borrow::Cow;
 use std::fmt::Write;
 use std::path::PathBuf;
 
+use boxed_error::Boxed;
 use thiserror::Error;
 use url::Url;
 
-use crate::NodeModuleKind;
-use crate::NodeResolutionMode;
-
-macro_rules! kinded_err {
-  ($name:ident, $kind_name:ident) => {
-    #[derive(Error, Debug)]
-    #[error(transparent)]
-    pub struct $name(pub Box<$kind_name>);
-
-    impl $name {
-      pub fn as_kind(&self) -> &$kind_name {
-        &self.0
-      }
-
-      pub fn into_kind(self) -> $kind_name {
-        *self.0
-      }
-    }
-
-    impl<E> From<E> for $name
-    where
-      $kind_name: From<E>,
-    {
-      fn from(err: E) -> Self {
-        $name(Box::new($kind_name::from(err)))
-      }
-    }
-  };
-}
+use crate::NodeResolutionKind;
+use crate::ResolutionMode;
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
 #[allow(non_camel_case_types)]
@@ -102,7 +76,8 @@ impl NodeJsErrorCoded for InvalidModuleSpecifierError {
   }
 }
 
-kinded_err!(LegacyResolveError, LegacyResolveErrorKind);
+#[derive(Debug, Boxed)]
+pub struct LegacyResolveError(pub Box<LegacyResolveErrorKind>);
 
 #[derive(Debug, Error)]
 pub enum LegacyResolveErrorKind {
@@ -120,8 +95,6 @@ impl NodeJsErrorCoded for LegacyResolveError {
     }
   }
 }
-
-kinded_err!(PackageFolderResolveError, PackageFolderResolveErrorKind);
 
 #[derive(Debug, Error)]
 #[error(
@@ -186,6 +159,9 @@ impl NodeJsErrorCoded for PackageFolderResolveError {
   }
 }
 
+#[derive(Debug, Boxed)]
+pub struct PackageFolderResolveError(pub Box<PackageFolderResolveErrorKind>);
+
 #[derive(Debug, Error)]
 pub enum PackageFolderResolveErrorKind {
   #[error(transparent)]
@@ -196,8 +172,6 @@ pub enum PackageFolderResolveErrorKind {
   Io(#[from] PackageFolderResolveIoError),
 }
 
-kinded_err!(PackageSubpathResolveError, PackageSubpathResolveErrorKind);
-
 impl NodeJsErrorCoded for PackageSubpathResolveError {
   fn code(&self) -> NodeJsErrorCode {
     match self.as_kind() {
@@ -207,6 +181,9 @@ impl NodeJsErrorCoded for PackageSubpathResolveError {
     }
   }
 }
+
+#[derive(Debug, Boxed)]
+pub struct PackageSubpathResolveError(pub Box<PackageSubpathResolveErrorKind>);
 
 #[derive(Debug, Error)]
 pub enum PackageSubpathResolveErrorKind {
@@ -226,24 +203,24 @@ pub enum PackageSubpathResolveErrorKind {
   maybe_referrer.as_ref().map(|r|
     format!(
       " from{} referrer {}",
-      match referrer_kind {
-        NodeModuleKind::Esm => "",
-        NodeModuleKind::Cjs => " cjs",
+      match resolution_mode {
+        ResolutionMode::Import => "",
+        ResolutionMode::Require => " cjs",
       },
       r
     )
   ).unwrap_or_default(),
-  match mode {
-    NodeResolutionMode::Execution => "",
-    NodeResolutionMode::Types => " for types",
+  match resolution_kind {
+    NodeResolutionKind::Execution => "",
+    NodeResolutionKind::Types => " for types",
   }
 )]
 pub struct PackageTargetNotFoundError {
   pub pkg_json_path: PathBuf,
   pub target: String,
   pub maybe_referrer: Option<Url>,
-  pub referrer_kind: NodeModuleKind,
-  pub mode: NodeResolutionMode,
+  pub resolution_mode: ResolutionMode,
+  pub resolution_kind: NodeResolutionKind,
 }
 
 impl NodeJsErrorCoded for PackageTargetNotFoundError {
@@ -251,8 +228,6 @@ impl NodeJsErrorCoded for PackageTargetNotFoundError {
     NodeJsErrorCode::ERR_MODULE_NOT_FOUND
   }
 }
-
-kinded_err!(PackageTargetResolveError, PackageTargetResolveErrorKind);
 
 impl NodeJsErrorCoded for PackageTargetResolveError {
   fn code(&self) -> NodeJsErrorCode {
@@ -265,6 +240,9 @@ impl NodeJsErrorCoded for PackageTargetResolveError {
     }
   }
 }
+
+#[derive(Debug, Boxed)]
+pub struct PackageTargetResolveError(pub Box<PackageTargetResolveErrorKind>);
 
 #[derive(Debug, Error)]
 pub enum PackageTargetResolveErrorKind {
@@ -280,8 +258,6 @@ pub enum PackageTargetResolveErrorKind {
   TypesNotFound(#[from] TypesNotFoundError),
 }
 
-kinded_err!(PackageExportsResolveError, PackageExportsResolveErrorKind);
-
 impl NodeJsErrorCoded for PackageExportsResolveError {
   fn code(&self) -> NodeJsErrorCode {
     match self.as_kind() {
@@ -290,6 +266,9 @@ impl NodeJsErrorCoded for PackageExportsResolveError {
     }
   }
 }
+
+#[derive(Debug, Boxed)]
+pub struct PackageExportsResolveError(pub Box<PackageExportsResolveErrorKind>);
 
 #[derive(Debug, Error)]
 pub enum PackageExportsResolveErrorKind {
@@ -338,8 +317,6 @@ impl NodeJsErrorCoded for PackageJsonLoadError {
   }
 }
 
-kinded_err!(ClosestPkgJsonError, ClosestPkgJsonErrorKind);
-
 impl NodeJsErrorCoded for ClosestPkgJsonError {
   fn code(&self) -> NodeJsErrorCode {
     match self.as_kind() {
@@ -348,6 +325,9 @@ impl NodeJsErrorCoded for ClosestPkgJsonError {
     }
   }
 }
+
+#[derive(Debug, Boxed)]
+pub struct ClosestPkgJsonError(pub Box<ClosestPkgJsonErrorKind>);
 
 #[derive(Debug, Error)]
 pub enum ClosestPkgJsonErrorKind {
@@ -392,7 +372,8 @@ impl NodeJsErrorCoded for PackageImportNotDefinedError {
   }
 }
 
-kinded_err!(PackageImportsResolveError, PackageImportsResolveErrorKind);
+#[derive(Debug, Boxed)]
+pub struct PackageImportsResolveError(pub Box<PackageImportsResolveErrorKind>);
 
 #[derive(Debug, Error)]
 pub enum PackageImportsResolveErrorKind {
@@ -417,8 +398,6 @@ impl NodeJsErrorCoded for PackageImportsResolveErrorKind {
   }
 }
 
-kinded_err!(PackageResolveError, PackageResolveErrorKind);
-
 impl NodeJsErrorCoded for PackageResolveError {
   fn code(&self) -> NodeJsErrorCode {
     match self.as_kind() {
@@ -430,6 +409,9 @@ impl NodeJsErrorCoded for PackageResolveError {
     }
   }
 }
+
+#[derive(Debug, Boxed)]
+pub struct PackageResolveError(pub Box<PackageResolveErrorKind>);
 
 #[derive(Debug, Error)]
 pub enum PackageResolveErrorKind {
@@ -461,7 +443,8 @@ pub struct DataUrlReferrerError {
   pub source: url::ParseError,
 }
 
-kinded_err!(NodeResolveError, NodeResolveErrorKind);
+#[derive(Debug, Boxed)]
+pub struct NodeResolveError(pub Box<NodeResolveErrorKind>);
 
 #[derive(Debug, Error)]
 pub enum NodeResolveErrorKind {
@@ -481,7 +464,8 @@ pub enum NodeResolveErrorKind {
   FinalizeResolution(#[from] FinalizeResolutionError),
 }
 
-kinded_err!(FinalizeResolutionError, FinalizeResolutionErrorKind);
+#[derive(Debug, Boxed)]
+pub struct FinalizeResolutionError(pub Box<FinalizeResolutionErrorKind>);
 
 #[derive(Debug, Error)]
 pub enum FinalizeResolutionErrorKind {
@@ -602,7 +586,7 @@ pub struct PackagePathNotExportedError {
   pub pkg_json_path: PathBuf,
   pub subpath: String,
   pub maybe_referrer: Option<Url>,
-  pub mode: NodeResolutionMode,
+  pub resolution_kind: NodeResolutionKind,
 }
 
 impl NodeJsErrorCoded for PackagePathNotExportedError {
@@ -619,9 +603,9 @@ impl std::fmt::Display for PackagePathNotExportedError {
     f.write_str(self.code().as_str())?;
     f.write_char(']')?;
 
-    let types_msg = match self.mode {
-      NodeResolutionMode::Execution => String::new(),
-      NodeResolutionMode::Types => " for types".to_string(),
+    let types_msg = match self.resolution_kind {
+      NodeResolutionKind::Execution => String::new(),
+      NodeResolutionKind::Types => " for types".to_string(),
     };
     if self.subpath == "." {
       write!(
@@ -694,7 +678,7 @@ mod test {
         pkg_json_path: PathBuf::from("test_path").join("package.json"),
         subpath: "./jsx-runtime".to_string(), 
         maybe_referrer: None,
-        mode: NodeResolutionMode::Types
+        resolution_kind: NodeResolutionKind::Types
       }.to_string(),
       format!("[ERR_PACKAGE_PATH_NOT_EXPORTED] Package subpath './jsx-runtime' is not defined for types by \"exports\" in 'test_path{separator_char}package.json'")
     );
@@ -703,7 +687,7 @@ mod test {
         pkg_json_path: PathBuf::from("test_path").join("package.json"),
         subpath: ".".to_string(), 
         maybe_referrer: None,
-        mode: NodeResolutionMode::Types
+        resolution_kind: NodeResolutionKind::Types
       }.to_string(),
       format!("[ERR_PACKAGE_PATH_NOT_EXPORTED] No \"exports\" main defined for types in 'test_path{separator_char}package.json'")
     );

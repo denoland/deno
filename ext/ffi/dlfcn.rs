@@ -15,6 +15,7 @@ use dlopen2::raw::Library;
 use serde::Deserialize;
 use serde_value::ValueDeserializer;
 use std::borrow::Cow;
+use std::cell::RefCell;
 use std::collections::HashMap;
 use std::ffi::c_void;
 use std::rc::Rc;
@@ -30,7 +31,7 @@ pub enum DlfcnError {
   #[error(transparent)]
   Dlopen(#[from] dlopen2::Error),
   #[error(transparent)]
-  Permission(deno_core::error::AnyError),
+  Permission(#[from] deno_permissions::PermissionCheckError),
   #[error(transparent)]
   Other(deno_core::error::AnyError),
 }
@@ -123,19 +124,20 @@ pub struct FfiLoadArgs {
   symbols: HashMap<String, ForeignSymbol>,
 }
 
-#[op2]
+#[op2(stack_trace)]
 pub fn op_ffi_load<'scope, FP>(
   scope: &mut v8::HandleScope<'scope>,
-  state: &mut OpState,
+  state: Rc<RefCell<OpState>>,
   #[serde] args: FfiLoadArgs,
 ) -> Result<v8::Local<'scope, v8::Value>, DlfcnError>
 where
   FP: FfiPermissions + 'static,
 {
-  let permissions = state.borrow_mut::<FP>();
-  let path = permissions
-    .check_partial_with_path(&args.path)
-    .map_err(DlfcnError::Permission)?;
+  let path = {
+    let mut state = state.borrow_mut();
+    let permissions = state.borrow_mut::<FP>();
+    permissions.check_partial_with_path(&args.path)?
+  };
 
   let lib = Library::open(&path).map_err(|e| {
     dlopen2::Error::OpeningLibraryError(std::io::Error::new(
@@ -217,6 +219,7 @@ where
     }
   }
 
+  let mut state = state.borrow_mut();
   let out = v8::Array::new(scope, 2);
   let rid = state.resource_table.add(resource);
   let rid_v8 = v8::Integer::new_from_unsigned(scope, rid);

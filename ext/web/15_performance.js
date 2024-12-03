@@ -1,6 +1,7 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 import { primordials } from "ext:core/mod.js";
+import { op_now, op_time_origin } from "ext:core/ops";
 const {
   ArrayPrototypeFilter,
   ArrayPrototypePush,
@@ -10,18 +11,33 @@ const {
   Symbol,
   SymbolFor,
   TypeError,
+  TypedArrayPrototypeGetBuffer,
+  Uint8Array,
+  Uint32Array,
 } = primordials;
 
 import * as webidl from "ext:deno_webidl/00_webidl.js";
 import { structuredClone } from "./02_structured_clone.js";
 import { createFilteredInspectProxy } from "ext:deno_console/01_console.js";
 import { EventTarget } from "./02_event.js";
-import { opNow } from "./02_timers.js";
 import { DOMException } from "./01_dom_exception.js";
 
 const illegalConstructorKey = Symbol("illegalConstructorKey");
 let performanceEntries = [];
 let timeOrigin;
+
+const hrU8 = new Uint8Array(8);
+const hr = new Uint32Array(TypedArrayPrototypeGetBuffer(hrU8));
+
+function setTimeOrigin() {
+  op_time_origin(hrU8);
+  timeOrigin = hr[0] * 1000 + hr[1] / 1e6;
+}
+
+function now() {
+  op_now(hrU8);
+  return hr[0] * 1000 + hr[1] / 1e6;
+}
 
 webidl.converters["PerformanceMarkOptions"] = webidl
   .createDictionaryConverter(
@@ -90,10 +106,6 @@ webidl.converters["DOMString or PerformanceMeasureOptions"] = (
   return webidl.converters.DOMString(V, prefix, context, opts);
 };
 
-function setTimeOrigin(origin) {
-  timeOrigin = origin;
-}
-
 function findMostRecent(
   name,
   type,
@@ -111,14 +123,14 @@ function convertMarkToTimestamp(mark) {
     const entry = findMostRecent(mark, "mark");
     if (!entry) {
       throw new DOMException(
-        `Cannot find mark: "${mark}".`,
+        `Cannot find mark: "${mark}"`,
         "SyntaxError",
       );
     }
     return entry.startTime;
   }
   if (mark < 0) {
-    throw new TypeError("Mark cannot be negative.");
+    throw new TypeError(`Mark cannot be negative: received ${mark}`);
   }
   return mark;
 }
@@ -134,8 +146,6 @@ function filterByNameType(
       (type ? entry.entryType === type : true),
   );
 }
-
-const now = opNow;
 
 const _name = Symbol("[[name]]");
 const _entryType = Symbol("[[entryType]]");
@@ -251,7 +261,9 @@ class PerformanceMark extends PerformanceEntry {
     super(name, "mark", startTime, 0, illegalConstructorKey);
     this[webidl.brand] = webidl.brand;
     if (startTime < 0) {
-      throw new TypeError("startTime cannot be negative");
+      throw new TypeError(
+        `Cannot construct PerformanceMark: startTime cannot be negative, received ${startTime}`,
+      );
     }
     this[_detail] = structuredClone(detail);
   }
@@ -494,14 +506,14 @@ class Performance extends EventTarget {
       ObjectKeys(startOrMeasureOptions).length > 0
     ) {
       if (endMark) {
-        throw new TypeError("Options cannot be passed with endMark.");
+        throw new TypeError('Options cannot be passed with "endMark"');
       }
       if (
         !ReflectHas(startOrMeasureOptions, "start") &&
         !ReflectHas(startOrMeasureOptions, "end")
       ) {
         throw new TypeError(
-          "A start or end mark must be supplied in options.",
+          'A "start" or "end" mark must be supplied in options',
         );
       }
       if (
@@ -510,7 +522,7 @@ class Performance extends EventTarget {
         ReflectHas(startOrMeasureOptions, "end")
       ) {
         throw new TypeError(
-          "Cannot specify start, end, and duration together in options.",
+          'Cannot specify "start", "end", and "duration" together in options',
         );
       }
     }

@@ -11,14 +11,15 @@ import { ensureFile } from "@std/fs/ensure-file";
 import { writeAll } from "@std/io/write-all";
 import { withoutAll } from "@std/collections/without-all";
 import { relative } from "@std/path/posix/relative";
+import { version } from "./suite/node_version.ts";
 
 import { config, ignoreList } from "../common.ts";
 
 const encoder = new TextEncoder();
 
-const NODE_VERSION = config.nodeVersion;
+const NODE_VERSION = version;
 
-const NODE_IGNORED_TEST_DIRS = [
+export const NODE_IGNORED_TEST_DIRS = [
   "addons",
   "async-hooks",
   "cctest",
@@ -39,13 +40,13 @@ const NODE_IGNORED_TEST_DIRS = [
   "wpt",
 ];
 
-const VENDORED_NODE_TEST = new URL("./suite/test/", import.meta.url);
-const NODE_COMPAT_TEST_DEST_URL = new URL(
+export const VENDORED_NODE_TEST = new URL("./suite/test/", import.meta.url);
+export const NODE_COMPAT_TEST_DEST_URL = new URL(
   "../test/",
   import.meta.url,
 );
 
-async function getNodeTests(): Promise<string[]> {
+export async function getNodeTests(): Promise<string[]> {
   const paths: string[] = [];
   const rootPath = VENDORED_NODE_TEST.href.slice(7);
   for await (
@@ -60,7 +61,7 @@ async function getNodeTests(): Promise<string[]> {
   return paths.sort();
 }
 
-function getDenoTests() {
+export function getDenoTests() {
   return Object.entries(config.tests)
     .filter(([testDir]) => !NODE_IGNORED_TEST_DIRS.includes(testDir))
     .flatMap(([testDir, tests]) => tests.map((test) => testDir + "/" + test));
@@ -73,15 +74,24 @@ async function updateToDo() {
     truncate: true,
   });
 
-  const missingTests = withoutAll(await getNodeTests(), await getDenoTests());
+  const nodeTests = await getNodeTests();
+  const portedTests = getDenoTests();
+  const remainingTests = withoutAll(nodeTests, portedTests);
+  const numPorted = portedTests.length;
+  const numMissing = remainingTests.length;
+  const numTotal = nodeTests.length;
+  const portedPercentage = (numPorted / numTotal * 100).toFixed(2);
+  const remainingPercentage = (numMissing / numTotal * 100).toFixed(2);
 
   await file.write(encoder.encode(`<!-- deno-fmt-ignore-file -->
 # Remaining Node Tests
 
+${numPorted} tests out of ${numTotal} have been ported from Node ${NODE_VERSION} (${portedPercentage}% ported, ${remainingPercentage}% remaining).
+
 NOTE: This file should not be manually edited. Please edit \`tests/node_compat/config.json\` and run \`deno task setup\` in \`tests/node_compat/runner\` dir instead.
 
 `));
-  for (const test of missingTests) {
+  for (const test of remainingTests) {
     await file.write(
       encoder.encode(
         `- [${test}](https://github.com/nodejs/node/tree/v${NODE_VERSION}/test/${test})\n`,

@@ -55,7 +55,7 @@ where
   let mut str = String::new();
   while let Some(t) = next_line(stderr_lines).await {
     let t = util::strip_ansi_codes(&t);
-    if t.starts_with("Watcher File change detected") {
+    if t.starts_with("Watcher Restarting! File change detected") {
       continue;
     }
     if t.starts_with("Watcher") {
@@ -572,16 +572,19 @@ async fn serve_watch_all() {
   let main_file_to_watch = t.path().join("main_file_to_watch.js");
   main_file_to_watch.write(
     "export default {
-      fetch(_request: Request) {
+      fetch(_request) {
         return new Response(\"aaaaaaqqq!\");
       },
     };",
   );
 
+  let another_file = t.path().join("another_file.js");
+  another_file.write("");
+
   let mut child = util::deno_cmd()
     .current_dir(t.path())
     .arg("serve")
-    .arg("--watch=another_file.js")
+    .arg(format!("--watch={another_file}"))
     .arg("-L")
     .arg("debug")
     .arg(&main_file_to_watch)
@@ -596,7 +599,7 @@ async fn serve_watch_all() {
   // Change content of the file
   main_file_to_watch.write(
     "export default {
-      fetch(_request: Request) {
+      fetch(_request) {
         return new Response(\"aaaaaaqqq123!\");
       },
     };",
@@ -604,18 +607,20 @@ async fn serve_watch_all() {
   wait_contains("Restarting", &mut stderr_lines).await;
   wait_for_watcher("main_file_to_watch.js", &mut stderr_lines).await;
 
-  let another_file = t.path().join("another_file.js");
   another_file.write("export const foo = 0;");
   // Confirm that the added file is watched as well
   wait_contains("Restarting", &mut stderr_lines).await;
+  wait_for_watcher("main_file_to_watch.js", &mut stderr_lines).await;
 
   main_file_to_watch
     .write("import { foo } from './another_file.js'; console.log(foo);");
   wait_contains("Restarting", &mut stderr_lines).await;
+  wait_for_watcher("main_file_to_watch.js", &mut stderr_lines).await;
   wait_contains("0", &mut stdout_lines).await;
 
   another_file.write("export const foo = 42;");
   wait_contains("Restarting", &mut stderr_lines).await;
+  wait_for_watcher("main_file_to_watch.js", &mut stderr_lines).await;
   wait_contains("42", &mut stdout_lines).await;
 
   // Confirm that watch continues even with wrong syntax error
@@ -623,10 +628,11 @@ async fn serve_watch_all() {
 
   wait_contains("Restarting", &mut stderr_lines).await;
   wait_contains("error:", &mut stderr_lines).await;
+  wait_for_watcher("main_file_to_watch.js", &mut stderr_lines).await;
 
   main_file_to_watch.write(
     "export default {
-      fetch(_request: Request) {
+      fetch(_request) {
         return new Response(\"aaaaaaqqq!\");
       },
     };",

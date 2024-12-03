@@ -8,6 +8,7 @@ use std::time::SystemTime;
 use std::time::UNIX_EPOCH;
 
 use async_trait::async_trait;
+use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
 use deno_core::futures::future::poll_fn;
 use deno_core::parking_lot::Mutex;
@@ -42,10 +43,16 @@ pub struct SqliteBackedCache {
 }
 
 impl SqliteBackedCache {
-  pub fn new(cache_storage_dir: PathBuf) -> Self {
+  pub fn new(cache_storage_dir: PathBuf) -> Result<Self, CacheError> {
     {
       std::fs::create_dir_all(&cache_storage_dir)
-        .expect("failed to create cache dir");
+        .with_context(|| {
+          format!(
+            "Failed to create cache storage directory {}",
+            cache_storage_dir.display()
+          )
+        })
+        .map_err(CacheError::Other)?;
       let path = cache_storage_dir.join("cache_metadata.db");
       let connection = rusqlite::Connection::open(&path).unwrap_or_else(|_| {
         panic!("failed to open cache db at {}", path.display())
@@ -57,18 +64,14 @@ impl SqliteBackedCache {
         PRAGMA synchronous=NORMAL;
         PRAGMA optimize;
       ";
-      connection
-        .execute_batch(initial_pragmas)
-        .expect("failed to execute pragmas");
-      connection
-        .execute(
-          "CREATE TABLE IF NOT EXISTS cache_storage (
+      connection.execute_batch(initial_pragmas)?;
+      connection.execute(
+        "CREATE TABLE IF NOT EXISTS cache_storage (
                     id              INTEGER PRIMARY KEY,
                     cache_name      TEXT NOT NULL UNIQUE
                 )",
-          (),
-        )
-        .expect("failed to create cache_storage table");
+        (),
+      )?;
       connection
         .execute(
           "CREATE TABLE IF NOT EXISTS request_response_list (
@@ -86,12 +89,11 @@ impl SqliteBackedCache {
                     UNIQUE (cache_id, request_url)
                 )",
           (),
-        )
-        .expect("failed to create request_response_list table");
-      SqliteBackedCache {
+        )?;
+      Ok(SqliteBackedCache {
         connection: Arc::new(Mutex::new(connection)),
         cache_storage_dir,
-      }
+      })
     }
   }
 }
