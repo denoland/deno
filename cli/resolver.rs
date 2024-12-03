@@ -373,7 +373,12 @@ impl<'a> deno_graph::source::NpmResolver for WorkerCliNpmGraphResolver<'a> {
           Ok(())
         };
 
-        let result = npm_resolver.add_package_reqs_raw(package_reqs).await;
+        let result = npm_resolver
+          .add_package_reqs_raw(
+            package_reqs,
+            Some(crate::npm::PackageCaching::Only(package_reqs.into())),
+          )
+          .await;
 
         NpmResolvePkgReqsResult {
           results: result

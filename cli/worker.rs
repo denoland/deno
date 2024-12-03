@@ -487,8 +487,9 @@ impl CliMainWorkerFactory {
       NpmPackageReqReference::from_specifier(&main_module)
     {
       if let Some(npm_resolver) = shared.npm_resolver.as_managed() {
+        let reqs = &[package_ref.req().clone()];
         npm_resolver
-          .add_package_reqs(&[package_ref.req().clone()])
+          .add_package_reqs(reqs, crate::npm::PackageCaching::Only(reqs.into()))
           .await?;
       }
 

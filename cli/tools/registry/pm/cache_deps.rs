@@ -25,7 +25,9 @@ pub async fn cache_top_level_deps(
         lockfile.error_if_changed()?;
       }
 
-      npm_resolver.cache_packages().await?;
+      npm_resolver
+        .cache_packages(crate::npm::PackageCaching::All)
+        .await?;
     }
   }
   // cache as many entries in the import map as we can
