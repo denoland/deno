@@ -29,8 +29,6 @@ use indexmap::IndexMap;
 use serde::Deserialize;
 use std::rc::Rc;
 use std::sync::Arc;
-use swc_estree_compat::babelify;
-use swc_estree_compat::babelify::Babelify;
 use tokio::sync::mpsc::channel;
 use tokio::sync::mpsc::Receiver;
 use tokio::sync::mpsc::Sender;
@@ -389,33 +387,6 @@ pub fn serialize_ast(parsed_source: ParsedSource) -> Result<String, AnyError> {
     "serialize using serde_json took {:?}",
     std::time::Instant::now() - start
   );
-  Ok(r)
-}
-
-pub fn get_estree_from_parsed_source(
-  parsed_source: ParsedSource,
-) -> Result<String, AnyError> {
-  let cm = Rc::new(swc_common::SourceMap::new(
-    swc_common::FilePathMapping::empty(),
-  ));
-  let fm = Rc::new(swc_common::SourceFile::new(
-    Rc::new(swc_common::FileName::Anon),
-    false,
-    Rc::new(swc_common::FileName::Anon),
-    parsed_source.text().to_string(),
-    BytePos(1),
-  ));
-  let babelify_ctx = babelify::Context {
-    fm,
-    cm,
-    comments: swc_node_comments::SwcComments::default(),
-  };
-  let program = parsed_source.program();
-  let start = std::time::Instant::now();
-  let program = &*program;
-  let r = serde_json::to_string(&program.clone().babelify(&babelify_ctx))?;
-  let end = std::time::Instant::now();
-  eprintln!("serialize using serde_json took {:?}", end - start);
   Ok(r)
 }
 
