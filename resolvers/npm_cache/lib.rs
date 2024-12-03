@@ -108,10 +108,7 @@ pub struct NpmCache<TEnv: NpmCacheEnv> {
   cache_dir: Arc<NpmCacheDir>,
   cache_setting: NpmCacheSetting,
   npmrc: Arc<ResolvedNpmRc>,
-  /// Ensures a package is only downloaded once per run.
-  /// In an Arc<_> because it's possible to get this struct with
-  /// a different cache setting.
-  previously_reloaded_packages: Arc<Mutex<HashSet<PackageNv>>>,
+  previously_reloaded_packages: Mutex<HashSet<PackageNv>>,
 }
 
 impl<TEnv: NpmCacheEnv> NpmCache<TEnv> {
@@ -127,17 +124,6 @@ impl<TEnv: NpmCacheEnv> NpmCache<TEnv> {
       env,
       previously_reloaded_packages: Default::default(),
       npmrc,
-    }
-  }
-
-  /// Gets this cache with a new cache setting.
-  pub fn with_cache_setting(&self, cache_setting: NpmCacheSetting) -> Self {
-    Self {
-      cache_dir: self.cache_dir.clone(),
-      cache_setting,
-      env: self.env.clone(),
-      npmrc: self.npmrc.clone(),
-      previously_reloaded_packages: self.previously_reloaded_packages.clone(),
     }
   }
 
