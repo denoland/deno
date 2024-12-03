@@ -397,7 +397,7 @@ impl WorkspaceLinter {
               }
             }
 
-            let mut r = linter.lint_file(
+            let r = linter.lint_file(
               &file_path,
               file_text,
               cli_options.ext_flag().as_deref(),
@@ -410,9 +410,8 @@ impl WorkspaceLinter {
                   tokio_util::create_and_run_current_thread(
                     async move {
                       let plugin_runner = linter.get_plugin_runner().unwrap();
+                      #[allow(clippy::await_holding_lock)]
                       let mut plugin_runner = plugin_runner.lock();
-                      // let serialized_ast =
-                      //   plugins::get_estree_from_parsed_source(file_source_)?;
                       let serialized_ast =
                         plugins::serialize_ast(file_source_)?;
                       plugins::run_rules_for_ast(

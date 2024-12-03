@@ -1,8 +1,5 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
-use deno_ast::swc::common as swc_common;
-use deno_ast::swc::common::BytePos;
-use deno_ast::LineAndColumnIndex;
 use deno_ast::ModuleSpecifier;
 use deno_ast::ParsedSource;
 use deno_ast::SourceRange;
@@ -15,7 +12,6 @@ use deno_core::futures::FutureExt;
 use deno_core::op2;
 use deno_core::serde_json;
 use deno_core::serde_v8;
-use deno_core::url::Url;
 use deno_core::v8;
 use deno_core::JsRuntime;
 use deno_core::OpState;
@@ -57,6 +53,7 @@ impl std::fmt::Debug for PluginRunnerResponse {
 pub struct PluginRunnerProxy {
   tx: Sender<PluginRunnerRequest>,
   rx: Arc<tokio::sync::Mutex<Receiver<PluginRunnerResponse>>>,
+  #[allow(unused)]
   join_handle: std::thread::JoinHandle<Result<(), AnyError>>,
 }
 
@@ -68,27 +65,28 @@ pub struct PluginRunner {
 }
 
 impl PluginRunner {
+  #[allow(clippy::unused_async)]
   async fn create() -> Result<PluginRunnerProxy, AnyError> {
     let (tx_req, rx_req) = channel(10);
     let (tx_res, rx_res) = channel(10);
 
-    eprintln!("spawning thread");
+    log::debug!("spawning thread");
     let join_handle = std::thread::spawn(move || {
-      eprintln!("thread spawned");
+      log::debug!("thread spawned");
       let mut runtime = JsRuntime::new(RuntimeOptions {
         extensions: vec![deno_lint_ext::init_ops()],
         module_loader: Some(Rc::new(deno_core::FsModuleLoader)),
         ..Default::default()
       });
 
-      eprintln!("before loaded");
+      log::debug!("before loaded");
 
       let obj_result = runtime.lazy_load_es_module_with_code(
         "ext:cli/lint.js",
         deno_core::ascii_str_include!(concat!("lint.js")),
       );
 
-      eprintln!("after loaded {}", obj_result.is_err());
+      log::debug!("after loaded {}", obj_result.is_err());
       let obj = obj_result?;
 
       let run_plugin_rule_fn = {
@@ -101,19 +99,19 @@ impl PluginRunner {
         v8::Global::new(scope, run_fn)
       };
 
-      let mut runner = Self {
+      let runner = Self {
         runtime,
         run_plugin_rule_fn,
         tx: tx_res,
         rx: rx_req,
       };
       // TODO(bartlomieju): send "host ready" message to the proxy
-      eprintln!("running host loop");
+      log::debug!("running host loop");
       runner.run_loop()?;
       Ok(())
     });
 
-    eprintln!("is thread finished {}", join_handle.is_finished());
+    log::debug!("is thread finished {}", join_handle.is_finished());
     let proxy = PluginRunnerProxy {
       tx: tx_req,
       rx: Arc::new(tokio::sync::Mutex::new(rx_res)),
@@ -125,9 +123,9 @@ impl PluginRunner {
 
   fn run_loop(mut self) -> Result<(), AnyError> {
     let fut = async move {
-      eprintln!("waiting for message");
+      log::debug!("waiting for message");
       while let Some(req) = self.rx.recv().await {
-        eprintln!("received message");
+        log::debug!("received message");
         match req {
           PluginRunnerRequest::LoadPlugins(specifiers) => {
             let r = self.load_plugins(specifiers).await;
@@ -136,11 +134,11 @@ impl PluginRunner {
           PluginRunnerRequest::Run(serialized_ast, source_text_info) => {
             let rules_to_run = self.get_rules_to_run();
 
-            eprintln!("Loaded plugins:");
+            log::debug!("Loaded plugins:");
             for (plugin_name, rules) in rules_to_run.iter() {
-              eprintln!(" - {}", plugin_name);
+              log::debug!(" - {}", plugin_name);
               for rule in rules {
-                eprintln!("   - {}", rule);
+                log::debug!("   - {}", rule);
               }
             }
 
@@ -152,7 +150,7 @@ impl PluginRunner {
               Ok(()) => Ok(self.take_diagnostics()),
               Err(err) => Err(err),
             };
-            eprintln!(
+            log::debug!(
               "Running rules took {:?}",
               std::time::Instant::now() - start
             );
@@ -160,7 +158,7 @@ impl PluginRunner {
           }
         }
       }
-      eprintln!("breaking loop");
+      log::debug!("breaking loop");
       Ok(())
     }
     .boxed_local();
@@ -170,7 +168,7 @@ impl PluginRunner {
   fn take_diagnostics(&mut self) -> Vec<LintDiagnostic> {
     let op_state = self.runtime.op_state();
     let mut state = op_state.borrow_mut();
-    let mut container = state.borrow_mut::<LintPluginContainer>();
+    let container = state.borrow_mut::<LintPluginContainer>();
     std::mem::take(&mut container.diagnostics)
   }
 
@@ -233,11 +231,11 @@ impl PluginRunner {
           .with_event_loop_promise(call, PollEventLoopOptions::default())
           .await;
         match result {
-          Ok(r) => {
-            eprintln!("plugin finished")
+          Ok(_r) => {
+            log::debug!("plugin finished")
           }
           Err(error) => {
-            eprintln!("error running plugin {}", error);
+            log::debug!("error running plugin {}", error);
           }
         }
       }
@@ -265,12 +263,12 @@ impl PluginRunner {
     let state = self.runtime.op_state();
 
     for (fut, mod_id) in load_futures {
-      let _ = fut.await?;
+      fut.await?;
       let module = self.runtime.get_module_namespace(mod_id).unwrap();
       let scope = &mut self.runtime.handle_scope();
       let module_local = v8::Local::new(scope, module);
       let default_export_str = v8::String::new(scope, "default").unwrap();
-      eprintln!(
+      log::debug!(
         "has default export {:?}",
         module_local.has_own_property(scope, default_export_str.into())
       );
@@ -281,19 +279,19 @@ impl PluginRunner {
 
       let name_val = name_val.get(scope, name_str.into()).unwrap();
 
-      eprintln!(
+      log::debug!(
         "default export name {:?}",
         name_val.to_rust_string_lossy(scope)
       );
-      eprintln!("deserializing plugin");
+      log::debug!("deserializing plugin");
 
       let def: PluginDefinition = serde_v8::from_v8(scope, default_export)
         .context("Failed to deserialize plugin")?;
 
-      eprintln!("deserialized plugin {} {:?}", def.name, def.rules.keys());
+      log::debug!("deserialized plugin {} {:?}", def.name, def.rules.keys());
 
       let mut state = state.borrow_mut();
-      let mut container = state.borrow_mut::<LintPluginContainer>();
+      let container = state.borrow_mut::<LintPluginContainer>();
       let mut plugin_desc = LintPluginDesc {
         rules: IndexMap::with_capacity(def.rules.len()),
       };
@@ -331,12 +329,12 @@ impl PluginRunnerProxy {
       .send(PluginRunnerRequest::LoadPlugins(plugin_specifiers))
       .await?;
     let mut rx = self.rx.lock().await;
-    eprintln!("receiving load plugins");
+    log::debug!("receiving load plugins");
     if let Some(val) = rx.recv().await {
       let PluginRunnerResponse::LoadPlugin(result) = val else {
         unreachable!()
       };
-      eprintln!("load plugins response {:#?}", result);
+      log::debug!("load plugins response {:#?}", result);
       return Ok(());
     }
     Err(custom_error("AlreadyClosed", "Plugin host has closed"))
@@ -352,7 +350,7 @@ impl PluginRunnerProxy {
       .send(PluginRunnerRequest::Run(serialized_ast, source_text_info))
       .await?;
     let mut rx = self.rx.lock().await;
-    eprintln!("receiving diagnostics");
+    log::debug!("receiving diagnostics");
     if let Some(PluginRunnerResponse::Run(diagnostics_result)) = rx.recv().await
     {
       return diagnostics_result;
@@ -364,7 +362,7 @@ impl PluginRunnerProxy {
 pub async fn create_runner_and_load_plugins(
   plugin_specifiers: Vec<ModuleSpecifier>,
 ) -> Result<PluginRunnerProxy, AnyError> {
-  let mut runner_proxy = PluginRunner::create().await?;
+  let runner_proxy = PluginRunner::create().await?;
   runner_proxy.load_plugins(plugin_specifiers).await?;
   Ok(runner_proxy)
 }
@@ -383,7 +381,7 @@ pub async fn run_rules_for_ast(
 pub fn serialize_ast(parsed_source: ParsedSource) -> Result<String, AnyError> {
   let start = std::time::Instant::now();
   let r = serde_json::to_string(&parsed_source.program())?;
-  eprintln!(
+  log::debug!(
     "serialize using serde_json took {:?}",
     std::time::Instant::now() - start
   );

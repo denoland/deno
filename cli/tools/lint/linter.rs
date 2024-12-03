@@ -21,7 +21,6 @@ use deno_lint::linter::LinterOptions;
 use crate::util::fs::atomic_write_file_with_retries;
 use crate::util::fs::specifier_from_file_path;
 
-use super::plugins;
 use super::plugins::PluginRunnerProxy;
 use super::rules::FileOrPackageLintRule;
 use super::rules::PackageLintRule;

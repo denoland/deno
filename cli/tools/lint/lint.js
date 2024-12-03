@@ -19,8 +19,6 @@ export class Context {
   }
 
   report(data) {
-    // TODO(bartlomieju): if there's `node` then convert position automatically
-    // otherwise lookup `location`
     let start, end;
 
     if (data.node) {
