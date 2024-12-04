@@ -105,6 +105,11 @@ impl ParsedSourceCache {
   pub fn as_capturing_parser(&self) -> CapturingEsParser {
     CapturingEsParser::new(None, self)
   }
+
+  #[cfg(test)]
+  pub fn len(&self) -> usize {
+    self.sources.lock().len()
+  }
 }
 
 /// It's ok that this is racy since in non-LSP situations

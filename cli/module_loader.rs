@@ -230,6 +230,7 @@ struct SharedCliModuleLoaderState {
 
 struct InFlightModuleLoadsTracker {
   loads_number: Arc<AtomicU16>,
+  cleanup_task_timeout: u64,
   cleanup_task_handle: Arc<Mutex<Option<tokio::task::JoinHandle<()>>>>,
 }
 
@@ -243,11 +244,11 @@ impl InFlightModuleLoadsTracker {
 
   pub fn decrease(&self, parsed_source_cache: &Arc<ParsedSourceCache>) {
     let prev = self.loads_number.fetch_sub(1, Ordering::Relaxed);
-
     if prev == 1 {
       let parsed_source_cache = parsed_source_cache.clone();
+      let timeout = self.cleanup_task_timeout;
       let task_handle = tokio::spawn(async move {
-        tokio::time::sleep(std::time::Duration::from_secs(10)).await;
+        tokio::time::sleep(std::time::Duration::from_millis(timeout)).await;
         parsed_source_cache.free_all();
       });
       let maybe_prev_task =
@@ -309,6 +310,7 @@ impl CliModuleLoaderFactory {
         resolver,
         in_flight_loads_tracker: InFlightModuleLoadsTracker {
           loads_number: Arc::new(AtomicU16::new(0)),
+          cleanup_task_timeout: 10_000,
           cleanup_task_handle: Arc::new(Mutex::new(None)),
         },
       }),
@@ -961,13 +963,12 @@ impl<TGraphContainer: ModuleGraphContainer> ModuleLoader
     .boxed_local()
   }
 
-  fn finish_load(&self) -> Pin<Box<dyn Future<Output = Result<(), AnyError>>>> {
+  fn finish_load(&self) {
     self
       .0
       .shared
       .in_flight_loads_tracker
       .decrease(&self.0.shared.parsed_source_cache);
-    std::future::ready(Ok(())).boxed_local()
   }
 
   fn code_cache_ready(
@@ -1150,5 +1151,45 @@ impl<TGraphContainer: ModuleGraphContainer> NodeRequireLoader
   ) -> Result<bool, ClosestPkgJsonError> {
     let media_type = MediaType::from_specifier(specifier);
     self.cjs_tracker.is_maybe_cjs(specifier, media_type)
+  }
+}
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+  use deno_graph::ParsedSourceStore;
+
+  #[tokio::test]
+  async fn test_inflight_module_loads_tracker() {
+    let tracker = InFlightModuleLoadsTracker {
+      loads_number: Default::default(),
+      cleanup_task_timeout: 10,
+      cleanup_task_handle: Default::default(),
+    };
+
+    let specifier = ModuleSpecifier::parse("file:///a.js").unwrap();
+    let source = "const a = 'hello';";
+    let parsed_source_cache = Arc::new(ParsedSourceCache::default());
+    let parsed_source = parsed_source_cache
+      .remove_or_parse_module(&specifier, source.into(), MediaType::JavaScript)
+      .unwrap();
+    parsed_source_cache.set_parsed_source(specifier, parsed_source);
+
+    assert_eq!(parsed_source_cache.len(), 1);
+    assert!(tracker.cleanup_task_handle.lock().is_none());
+    tracker.increase();
+    tracker.increase();
+    assert!(tracker.cleanup_task_handle.lock().is_none());
+    tracker.decrease(&parsed_source_cache);
+    assert!(tracker.cleanup_task_handle.lock().is_none());
+    tracker.decrease(&parsed_source_cache);
+    assert!(tracker.cleanup_task_handle.lock().is_some());
+    assert_eq!(parsed_source_cache.len(), 1);
+    tracker.increase();
+    assert!(tracker.cleanup_task_handle.lock().is_none());
+    assert_eq!(parsed_source_cache.len(), 1);
+    tracker.decrease(&parsed_source_cache);
+    tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+    assert_eq!(parsed_source_cache.len(), 0);
   }
 }
