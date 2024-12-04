@@ -78,41 +78,24 @@ pub async fn execute_script(
   let packages_task_configs: Vec<PackageTaskInfo> = if let Some(filter) =
     &task_flags.filter
   {
-    let task_name = task_flags.task.as_ref().unwrap();
-
     // Filter based on package name
     let package_regex = arg_to_regex(filter)?;
-    let task_regex = arg_to_regex(task_name)?;
+    let workspace = cli_options.workspace();
 
+    let Some(task_name) = &task_flags.task else {
+      print_available_tasks_workspace(
+        cli_options,
+        &package_regex,
+        filter,
+        force_use_pkg_json,
+      )?;
+
+      return Ok(0);
+    };
+
+    let task_regex = arg_to_regex(task_name)?;
     let mut packages_task_info: Vec<PackageTaskInfo> = vec![];
 
-    fn matches_package(
-      config: &FolderConfigs,
-      force_use_pkg_json: bool,
-      regex: &Regex,
-    ) -> bool {
-      if !force_use_pkg_json {
-        if let Some(deno_json) = &config.deno_json {
-          if let Some(name) = &deno_json.json.name {
-            if regex.is_match(name) {
-              return true;
-            }
-          }
-        }
-      }
-
-      if let Some(package_json) = &config.pkg_json {
-        if let Some(name) = &package_json.name {
-          if regex.is_match(name) {
-            return true;
-          }
-        }
-      }
-
-      false
-    }
-
-    let workspace = cli_options.workspace();
     for folder in workspace.config_folders() {
       if !matches_package(folder.1, force_use_pkg_json, &package_regex) {
         continue;
@@ -198,6 +181,7 @@ pub async fn execute_script(
         &mut std::io::stdout(),
         &cli_options.start_dir,
         &tasks_config,
+        None,
       )?;
       return Ok(0);
     };
@@ -315,6 +299,7 @@ impl<'a> TaskRunner<'a> {
       &mut std::io::stderr(),
       &self.cli_options.start_dir,
       tasks_config,
+      None,
     )
   }
 
@@ -675,6 +660,32 @@ fn sort_tasks_topo<'a>(
   Ok(sorted)
 }
 
+fn matches_package(
+  config: &FolderConfigs,
+  force_use_pkg_json: bool,
+  regex: &Regex,
+) -> bool {
+  if !force_use_pkg_json {
+    if let Some(deno_json) = &config.deno_json {
+      if let Some(name) = &deno_json.json.name {
+        if regex.is_match(name) {
+          return true;
+        }
+      }
+    }
+  }
+
+  if let Some(package_json) = &config.pkg_json {
+    if let Some(name) = &package_json.name {
+      if regex.is_match(name) {
+        return true;
+      }
+    }
+  }
+
+  false
+}
+
 fn output_task(task_name: &str, script: &str) {
   log::info!(
     "{} {} {}",
@@ -684,12 +695,67 @@ fn output_task(task_name: &str, script: &str) {
   );
 }
 
+fn print_available_tasks_workspace(
+  cli_options: &Arc<CliOptions>,
+  package_regex: &Regex,
+  filter: &str,
+  force_use_pkg_json: bool,
+) -> Result<(), AnyError> {
+  let workspace = cli_options.workspace();
+
+  let mut matched = false;
+  for folder in workspace.config_folders() {
+    if !matches_package(folder.1, force_use_pkg_json, package_regex) {
+      continue;
+    }
+    matched = true;
+
+    let member_dir = workspace.resolve_member_dir(folder.0);
+    let mut tasks_config = member_dir.to_tasks_config()?;
+
+    let mut pkg_name = folder
+      .1
+      .deno_json
+      .as_ref()
+      .and_then(|deno| deno.json.name.clone())
+      .or(folder.1.pkg_json.as_ref().and_then(|pkg| pkg.name.clone()));
+
+    if force_use_pkg_json {
+      tasks_config = tasks_config.with_only_pkg_json();
+      pkg_name = folder.1.pkg_json.as_ref().and_then(|pkg| pkg.name.clone());
+    }
+
+    print_available_tasks(
+      &mut std::io::stdout(),
+      &cli_options.start_dir,
+      &tasks_config,
+      pkg_name,
+    )?;
+  }
+
+  if !matched {
+    log::warn!(
+      "{}",
+      colors::red(format!("No package name matched the filter '{}' in available 'deno.json' or 'package.json' files.", filter))
+    );
+  }
+
+  Ok(())
+}
+
 fn print_available_tasks(
   writer: &mut dyn std::io::Write,
   workspace_dir: &Arc<WorkspaceDirectory>,
   tasks_config: &WorkspaceTasksConfig,
+  pkg_name: Option<String>,
 ) -> Result<(), std::io::Error> {
-  writeln!(writer, "{}", colors::green("Available tasks:"))?;
+  let heading = if let Some(s) = pkg_name {
+    format!("Available tasks ({}):", colors::cyan(s))
+  } else {
+    "Available tasks:".to_string()
+  };
+
+  writeln!(writer, "{}", colors::green(heading))?;
   let is_cwd_root_dir = tasks_config.root.is_none();
 
   if tasks_config.is_empty() {
