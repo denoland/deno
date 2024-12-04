@@ -10,6 +10,7 @@ use deno_core::error::custom_error;
 use deno_core::error::AnyError;
 use deno_core::futures::FutureExt;
 use deno_core::op2;
+use deno_core::resolve_url_or_path;
 use deno_core::serde_json;
 use deno_core::serde_v8;
 use deno_core::v8;
@@ -20,7 +21,11 @@ use deno_core::RuntimeOptions;
 use deno_lint::diagnostic::LintDiagnostic;
 use deno_lint::diagnostic::LintDiagnosticDetails;
 use deno_lint::diagnostic::LintDiagnosticRange;
+use deno_runtime::deno_permissions::Permissions;
+use deno_runtime::deno_permissions::PermissionsContainer;
 use deno_runtime::tokio_util;
+use deno_runtime::worker::MainWorker;
+use deno_runtime::WorkerExecutionMode;
 use indexmap::IndexMap;
 use serde::Deserialize;
 use std::path::PathBuf;
@@ -29,6 +34,9 @@ use std::sync::Arc;
 use tokio::sync::mpsc::channel;
 use tokio::sync::mpsc::Receiver;
 use tokio::sync::mpsc::Sender;
+
+use crate::args::Flags;
+use crate::factory::CliFactory;
 
 #[derive(Debug)]
 pub enum PluginRunnerRequest {
@@ -59,60 +67,91 @@ pub struct PluginRunnerProxy {
 }
 
 pub struct PluginRunner {
-  runtime: JsRuntime,
+  worker: MainWorker,
   run_plugin_rule_fn: v8::Global<v8::Function>,
   tx: Sender<PluginRunnerResponse>,
   rx: Receiver<PluginRunnerRequest>,
 }
 
 impl PluginRunner {
-  #[allow(clippy::unused_async)]
-  async fn create() -> Result<PluginRunnerProxy, AnyError> {
+  fn create() -> Result<PluginRunnerProxy, AnyError> {
     let (tx_req, rx_req) = channel(10);
     let (tx_res, rx_res) = channel(10);
 
-    log::debug!("spawning thread");
+    log::info!("spawning thread");
     let join_handle = std::thread::spawn(move || {
-      log::debug!("thread spawned");
-      let mut runtime = JsRuntime::new(RuntimeOptions {
-        extensions: vec![deno_lint_ext::init_ops()],
-        module_loader: Some(Rc::new(deno_core::FsModuleLoader)),
-        ..Default::default()
-      });
+      log::info!("thread spawned");
+      let fut = async move {
+        let flags = Arc::new(Flags::default());
+        let factory = CliFactory::from_flags(flags);
+        let cli_options = factory.cli_options()?;
+        let main_module =
+          resolve_url_or_path("./$deno$lint.mts", cli_options.initial_cwd())
+            .unwrap();
+        // TODO(bartlomieju): should we run with all permissions?
+        let permissions = PermissionsContainer::new(
+          factory.permission_desc_parser()?.clone(),
+          Permissions::none(false),
+        );
+        // let npm_resolver = factory.npm_resolver().await?.clone();
+        // let resolver = factory.resolver().await?.clone();
+        let worker_factory = factory.create_cli_main_worker_factory().await?;
 
-      log::debug!("before loaded");
+        let worker = worker_factory
+          .create_custom_worker(
+            // TODO(bartlomieju): add "lint" execution mode
+            WorkerExecutionMode::Run,
+            main_module.clone(),
+            permissions,
+            vec![deno_lint_ext::init_ops()],
+            Default::default(),
+          )
+          .await?;
 
-      let obj_result = runtime.lazy_load_es_module_with_code(
-        "ext:cli/lint.js",
-        deno_core::ascii_str_include!(concat!("lint.js")),
-      );
+        let mut worker = worker.into_main_worker();
+        let runtime = &mut worker.js_runtime;
 
-      log::debug!("after loaded {}", obj_result.is_err());
-      let obj = obj_result?;
+        log::info!("before loaded");
 
-      let run_plugin_rule_fn = {
-        let scope = &mut runtime.handle_scope();
-        let fn_name = v8::String::new(scope, "runPluginRule").unwrap();
-        let obj_local: v8::Local<v8::Object> =
-          v8::Local::new(scope, obj).try_into().unwrap();
-        let run_fn_val = obj_local.get(scope, fn_name.into()).unwrap();
-        let run_fn: v8::Local<v8::Function> = run_fn_val.try_into().unwrap();
-        v8::Global::new(scope, run_fn)
-      };
+        let obj_result = runtime.lazy_load_es_module_with_code(
+          "ext:cli/lint.js",
+          deno_core::ascii_str_include!(concat!("lint.js")),
+        );
 
-      let runner = Self {
-        runtime,
-        run_plugin_rule_fn,
-        tx: tx_res,
-        rx: rx_req,
-      };
-      // TODO(bartlomieju): send "host ready" message to the proxy
-      log::debug!("running host loop");
-      runner.run_loop()?;
-      Ok(())
+        let obj = match obj_result {
+          Ok(obj) => obj,
+          Err(err) => {
+            eprintln!("after load error {:#?}", err);
+            return Err(err);
+          }
+        };
+
+        let run_plugin_rule_fn = {
+          let scope = &mut runtime.handle_scope();
+          let fn_name = v8::String::new(scope, "runPluginRule").unwrap();
+          let obj_local: v8::Local<v8::Object> =
+            v8::Local::new(scope, obj).try_into().unwrap();
+          let run_fn_val = obj_local.get(scope, fn_name.into()).unwrap();
+          let run_fn: v8::Local<v8::Function> = run_fn_val.try_into().unwrap();
+          v8::Global::new(scope, run_fn)
+        };
+
+        let runner = Self {
+          worker,
+          run_plugin_rule_fn,
+          tx: tx_res,
+          rx: rx_req,
+        };
+        // TODO(bartlomieju): send "host ready" message to the proxy
+        log::info!("running host loop");
+        runner.run_loop().await?;
+        Ok(())
+      }
+      .boxed_local();
+      tokio_util::create_and_run_current_thread(fut)
     });
 
-    log::debug!("is thread finished {}", join_handle.is_finished());
+    log::info!("is thread finished {}", join_handle.is_finished());
     let proxy = PluginRunnerProxy {
       tx: tx_req,
       rx: Arc::new(tokio::sync::Mutex::new(rx_res)),
@@ -122,68 +161,64 @@ impl PluginRunner {
     Ok(proxy)
   }
 
-  fn run_loop(mut self) -> Result<(), AnyError> {
-    let fut = async move {
-      log::debug!("waiting for message");
-      while let Some(req) = self.rx.recv().await {
-        log::debug!("received message");
-        match req {
-          PluginRunnerRequest::LoadPlugins(specifiers) => {
-            let r = self.load_plugins(specifiers).await;
-            let _ = self.tx.send(PluginRunnerResponse::LoadPlugin(r)).await;
-          }
-          PluginRunnerRequest::Run(
-            serialized_ast,
-            specifier,
-            source_text_info,
-          ) => {
-            let rules_to_run = self.get_rules_to_run();
+  async fn run_loop(mut self) -> Result<(), AnyError> {
+    log::info!("waiting for message");
+    while let Some(req) = self.rx.recv().await {
+      log::info!("received message");
+      match req {
+        PluginRunnerRequest::LoadPlugins(specifiers) => {
+          let r = self.load_plugins(specifiers).await;
+          let _ = self.tx.send(PluginRunnerResponse::LoadPlugin(r)).await;
+        }
+        PluginRunnerRequest::Run(
+          serialized_ast,
+          specifier,
+          source_text_info,
+        ) => {
+          let rules_to_run = self.get_rules_to_run();
 
-            log::debug!("Loaded plugins:");
-            for (plugin_name, rules) in rules_to_run.iter() {
-              log::debug!(" - {}", plugin_name);
-              for rule in rules {
-                log::debug!("   - {}", rule);
-              }
+          log::info!("Loaded plugins:");
+          for (plugin_name, rules) in rules_to_run.iter() {
+            log::info!(" - {}", plugin_name);
+            for rule in rules {
+              log::info!("   - {}", rule);
             }
-
-            let start = std::time::Instant::now();
-            let r = match self
-              .run_rules(
-                &specifier,
-                rules_to_run,
-                serialized_ast,
-                source_text_info,
-              )
-              .await
-            {
-              Ok(()) => Ok(self.take_diagnostics()),
-              Err(err) => Err(err),
-            };
-            log::debug!(
-              "Running rules took {:?}",
-              std::time::Instant::now() - start
-            );
-            let _ = self.tx.send(PluginRunnerResponse::Run(r)).await;
           }
+
+          let start = std::time::Instant::now();
+          let r = match self
+            .run_rules(
+              &specifier,
+              rules_to_run,
+              serialized_ast,
+              source_text_info,
+            )
+            .await
+          {
+            Ok(()) => Ok(self.take_diagnostics()),
+            Err(err) => Err(err),
+          };
+          log::info!(
+            "Running rules took {:?}",
+            std::time::Instant::now() - start
+          );
+          let _ = self.tx.send(PluginRunnerResponse::Run(r)).await;
         }
       }
-      log::debug!("breaking loop");
-      Ok(())
     }
-    .boxed_local();
-    tokio_util::create_and_run_current_thread(fut)
+    log::info!("breaking loop");
+    Ok(())
   }
 
   fn take_diagnostics(&mut self) -> Vec<LintDiagnostic> {
-    let op_state = self.runtime.op_state();
+    let op_state = self.worker.js_runtime.op_state();
     let mut state = op_state.borrow_mut();
     let container = state.borrow_mut::<LintPluginContainer>();
     std::mem::take(&mut container.diagnostics)
   }
 
   fn get_rules_to_run(&mut self) -> IndexMap<String, Vec<String>> {
-    let op_state = self.runtime.op_state();
+    let op_state = self.worker.js_runtime.op_state();
     let state = op_state.borrow();
     let container = state.borrow::<LintPluginContainer>();
 
@@ -208,14 +243,14 @@ impl PluginRunner {
     source_text_info: SourceTextInfo,
   ) -> Result<(), AnyError> {
     {
-      let state = self.runtime.op_state();
+      let state = self.worker.js_runtime.op_state();
       let mut state = state.borrow_mut();
       let container = state.borrow_mut::<LintPluginContainer>();
       container.source_text_info = Some(source_text_info);
     }
 
     let (file_name_v8, ast_string_v8) = {
-      let scope = &mut self.runtime.handle_scope();
+      let scope = &mut self.worker.js_runtime.handle_scope();
       let file_name_v8: v8::Local<v8::Value> =
         v8::String::new(scope, &specifier.display().to_string())
           .unwrap()
@@ -233,7 +268,7 @@ impl PluginRunner {
     for (plugin_name, rules) in rules_to_run {
       for rule_name in rules {
         let (plugin_name_v8, rule_name_v8) = {
-          let scope = &mut self.runtime.handle_scope();
+          let scope = &mut self.worker.js_runtime.handle_scope();
           let plugin_name_v8: v8::Local<v8::Value> =
             v8::String::new(scope, &plugin_name).unwrap().into();
           let rule_name_v8: v8::Local<v8::Value> =
@@ -243,7 +278,7 @@ impl PluginRunner {
             v8::Global::new(scope, rule_name_v8),
           )
         };
-        let call = self.runtime.call_with_args(
+        let call = self.worker.js_runtime.call_with_args(
           &self.run_plugin_rule_fn,
           &[
             file_name_v8.clone(),
@@ -253,15 +288,16 @@ impl PluginRunner {
           ],
         );
         let result = self
-          .runtime
+          .worker
+          .js_runtime
           .with_event_loop_promise(call, PollEventLoopOptions::default())
           .await;
         match result {
           Ok(_r) => {
-            log::debug!("plugin finished")
+            log::info!("plugin finished")
           }
           Err(error) => {
-            log::debug!("error running plugin {}", error);
+            log::info!("error running plugin {}", error);
           }
         }
       }
@@ -276,25 +312,31 @@ impl PluginRunner {
   ) -> Result<(), AnyError> {
     let mut load_futures = Vec::with_capacity(plugin_specifiers.len());
     for specifier in plugin_specifiers {
-      let mod_id = self.runtime.load_side_es_module(&specifier).await?;
-      let mod_future = self.runtime.mod_evaluate(mod_id).boxed_local();
+      let mod_id = self
+        .worker
+        .js_runtime
+        .load_side_es_module(&specifier)
+        .await?;
+      let mod_future =
+        self.worker.js_runtime.mod_evaluate(mod_id).boxed_local();
       load_futures.push((mod_future, mod_id));
     }
 
     self
-      .runtime
+      .worker
+      .js_runtime
       .run_event_loop(PollEventLoopOptions::default())
       .await?;
 
-    let state = self.runtime.op_state();
+    let state = self.worker.js_runtime.op_state();
 
     for (fut, mod_id) in load_futures {
       fut.await?;
-      let module = self.runtime.get_module_namespace(mod_id).unwrap();
-      let scope = &mut self.runtime.handle_scope();
+      let module = self.worker.js_runtime.get_module_namespace(mod_id).unwrap();
+      let scope = &mut self.worker.js_runtime.handle_scope();
       let module_local = v8::Local::new(scope, module);
       let default_export_str = v8::String::new(scope, "default").unwrap();
-      log::debug!(
+      log::info!(
         "has default export {:?}",
         module_local.has_own_property(scope, default_export_str.into())
       );
@@ -305,16 +347,16 @@ impl PluginRunner {
 
       let name_val = name_val.get(scope, name_str.into()).unwrap();
 
-      log::debug!(
+      log::info!(
         "default export name {:?}",
         name_val.to_rust_string_lossy(scope)
       );
-      log::debug!("deserializing plugin");
+      log::info!("deserializing plugin");
 
       let def: PluginDefinition = serde_v8::from_v8(scope, default_export)
         .context("Failed to deserialize plugin")?;
 
-      log::debug!("deserialized plugin {} {:?}", def.name, def.rules.keys());
+      log::info!("deserialized plugin {} {:?}", def.name, def.rules.keys());
 
       let mut state = state.borrow_mut();
       let container = state.borrow_mut::<LintPluginContainer>();
@@ -355,12 +397,12 @@ impl PluginRunnerProxy {
       .send(PluginRunnerRequest::LoadPlugins(plugin_specifiers))
       .await?;
     let mut rx = self.rx.lock().await;
-    log::debug!("receiving load plugins");
+    log::info!("receiving load plugins");
     if let Some(val) = rx.recv().await {
       let PluginRunnerResponse::LoadPlugin(result) = val else {
         unreachable!()
       };
-      log::debug!("load plugins response {:#?}", result);
+      log::info!("load plugins response {:#?}", result);
       return Ok(());
     }
     Err(custom_error("AlreadyClosed", "Plugin host has closed"))
@@ -381,7 +423,7 @@ impl PluginRunnerProxy {
       ))
       .await?;
     let mut rx = self.rx.lock().await;
-    log::debug!("receiving diagnostics");
+    log::info!("receiving diagnostics");
     if let Some(PluginRunnerResponse::Run(diagnostics_result)) = rx.recv().await
     {
       return diagnostics_result;
@@ -393,7 +435,7 @@ impl PluginRunnerProxy {
 pub async fn create_runner_and_load_plugins(
   plugin_specifiers: Vec<ModuleSpecifier>,
 ) -> Result<PluginRunnerProxy, AnyError> {
-  let runner_proxy = PluginRunner::create().await?;
+  let runner_proxy = PluginRunner::create()?;
   runner_proxy.load_plugins(plugin_specifiers).await?;
   Ok(runner_proxy)
 }
@@ -413,7 +455,7 @@ pub async fn run_rules_for_ast(
 pub fn serialize_ast(parsed_source: ParsedSource) -> Result<String, AnyError> {
   let start = std::time::Instant::now();
   let r = serde_json::to_string(&parsed_source.program())?;
-  log::debug!(
+  log::info!(
     "serialize using serde_json took {:?}",
     std::time::Instant::now() - start
   );

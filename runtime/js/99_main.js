@@ -474,6 +474,11 @@ const NOT_IMPORTED_OPS = [
   // Used in jupyter API
   "op_base64_encode",
 
+  // Used in lint API
+  "op_lint_get_rule",
+  "op_lint_report",
+  "op_lint_get_source",
+
   // Related to `Deno.test()` API
   "op_test_event_step_result_failed",
   "op_test_event_step_result_ignored",

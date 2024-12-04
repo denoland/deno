@@ -322,11 +322,11 @@ impl WorkspaceLinter {
       vec![]
     };
 
-    let maybe_plugin_runner = Some(Arc::new(Mutex::new(
-      plugins::create_runner_and_load_plugins(plugin_specifiers)
-        .await
-        .unwrap(),
-    )));
+    let maybe_plugin_runner = Some(Arc::new(Mutex::new({
+      let r = plugins::create_runner_and_load_plugins(plugin_specifiers).await;
+      eprintln!("r {:#?}", r);
+      r?
+    })));
     let linter = Arc::new(CliLinter::new(CliLinterOptions {
       configured_rules: lint_rules,
       fix: lint_options.fix,
