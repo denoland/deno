@@ -941,9 +941,7 @@ impl RedirectResolver {
         if chain.len() > 10 {
           break None;
         }
-        let Ok(target) =
-          deno_core::resolve_import(location, specifier.as_str())
-        else {
+        let Ok(target) = specifier.join(location) else {
           break None;
         };
         chain.push((
