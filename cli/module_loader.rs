@@ -248,7 +248,7 @@ impl InFlightModuleLoadsTracker {
       let parsed_source_cache = parsed_source_cache.clone();
       let timeout = self.cleanup_task_timeout;
       let task_handle = tokio::spawn(async move {
-        // NB(bartlomieju): we use a timeout here, which is defined to 10s,
+        // We use a timeout here, which is defined to 10s,
         // so that in situations when dynamic imports are loaded after the startup,
         // we don't need to recompute and analyze multiple modules.
         tokio::time::sleep(std::time::Duration::from_millis(timeout)).await;
