@@ -7,8 +7,11 @@ const {
   op_lint_report,
 } = core.ops;
 
+/** @typedef {{ plugins: Array<{ name: string, rules: Record<string, Deno.LintRule}> }} LintState */
+
+/** @type {LintState} */
 const state = {
-  plugins: {},
+  plugins: [],
 };
 
 export class Context {
@@ -16,14 +19,18 @@ export class Context {
 
   fileName;
 
+  #source = null;
+
   constructor(id, fileName) {
     this.id = id;
     this.fileName = fileName;
   }
 
   source() {
-    // TODO(bartlomieju): cache it on the state - it won't change between files, but callers can mutate it.
-    return op_lint_get_source();
+    if (this.#source === null) {
+      this.#source = op_lint_get_source();
+    }
+    return this.#source;
   }
 
   report(data) {
@@ -77,32 +84,68 @@ export function runPluginsForFile(fileName, serializedAst) {
     return value;
   });
 
-  for (const pluginName of Object.keys(state.plugins)) {
-    runRulesFromPlugin(pluginName, state.plugins[pluginName], fileName, ast);
+  /** @type {Record<string, (node: any) => void} */
+  const mergedVisitor = {};
+  const destroyFns = [];
+
+  // Instantiate and merge visitors. This allows us to only traverse
+  // the AST once instead of per plugin.
+  for (let i = 0; i < state.plugins; i++) {
+    const plugin = state.plugins[i];
+
+    for (const name of Object.keys(plugin)) {
+      const rule = plugin.rules[name];
+      const id = `${plugin.name}/${ruleName}`;
+      const ctx = new Context(id, fileName);
+      const visitor = rule.create(ctx);
+
+      for (const name in visitor) {
+        const prev = mergedVisitor[name];
+        mergedVisitor[name] = (node) => {
+          if (typeof prev === "function") {
+            prev(node);
+          }
+
+          try {
+            visitor[name](node);
+          } catch (err) {
+            throw new Error(`Visitor "${name}" of plugin "${id}" errored`, {
+              cause: err,
+            });
+          }
+        };
+      }
+      mergedVisitor.push({ ctx, visitor, rule });
+
+      if (typeof rule.destroy === "function") {
+        destroyFns.push(() => {
+          try {
+            rule.destroy(ctx);
+          } catch (err) {
+            throw new Error(`Destroy hook of "${id}" errored`, { cause: err });
+          }
+        });
+      }
+    }
+  }
+
+  // Traverse ast with all visitors at the same time to avoid traversing
+  // multiple times.
+  traverse(ast, mergedVisitor, null);
+
+  // Optional: Destroy rules
+  for (let i = 0; i < destroyFns.length; i++) {
+    destroyFns[i]();
   }
 }
 
-function runRulesFromPlugin(pluginName, plugin, fileName, ast) {
-  for (const ruleName of Object.keys(plugin)) {
-    const rule = plugin[ruleName];
-
-    if (typeof rule.create !== "function") {
-      throw new Error("Rule's `create` property must be a function");
-    }
-
-    // TODO(bartlomieju): can context be created less often, maybe once per plugin or even once per `runRulesForFile` invocation?
-    const id = `${pluginName}/${ruleName}`;
-    const ctx = new Context(id, fileName);
-    const visitor = rule.create(ctx);
-    traverse(ast, visitor);
-
-    if (typeof rule.destroy === "function") {
-      rule.destroy(ctx);
-    }
-  }
-}
-
-function traverse(ast, visitor, parent = null) {
+/**
+ * @param {Record<string, any>} ast
+ * @param {*} visitor
+ * @param {any | null} parent
+ * @returns {void}
+ */
+function traverse(ast, visitor, parent) {
   if (!ast || typeof ast !== "object") {
     return;
   }
@@ -116,10 +159,9 @@ function traverse(ast, visitor, parent = null) {
   }
 
   ast.parent = parent;
+
   // Call visitor if it exists for this node type
-  if (visitor[nodeType] && typeof visitor[nodeType] === "function") {
-    visitor[nodeType](ast);
-  }
+  visitor[nodeType]?.(ast);
 
   // Traverse child nodes
   for (const key in ast) {
@@ -130,8 +172,11 @@ function traverse(ast, visitor, parent = null) {
     const child = ast[key];
 
     if (Array.isArray(child)) {
-      child.forEach((item) => traverse(item, visitor, ast));
-    } else if (child && typeof child === "object") {
+      for (let i = 0; i < child.length; i++) {
+        const item = child[i];
+        traverse(item, visitor, ast);
+      }
+    } else if (child !== null && typeof child === "object") {
       traverse(child, visitor, ast);
     }
   }

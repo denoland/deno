@@ -6161,21 +6161,29 @@ declare namespace Deno {
 
   export {}; // only export exports
 
-  // export interface LintRuleContext {
-  //   report(
-  //     data: { span: { start: number; end: number }; message: string },
-  //   ): void;
-  //   source(): string;
-  // }
+  export interface SpanNode {
+    span: { start: number; end: number };
+  }
 
-  // export interface LintRule {
-  //   // TODO(bartlomieju): proper return type
-  //   create(context: LintRuleContext);
-  //   destroy?(context: LintRuleContext): void;
-  // }
+  export interface LintRuleContext {
+    report(
+      data: { node: SpanNode; message: string },
+    ): void;
+    source(): string;
+  }
 
-  // export interface LintPlugin {
-  //   name: string;
-  //   rules: Record<string, LintRule>;
-  // }
+  // deno-lint-ignore no-empty-interface
+  export interface LintVisitor {
+    // TODO
+  }
+
+  export interface LintRule {
+    create(context: LintRuleContext): LintVisitor;
+    destroy?(context: LintRuleContext): void;
+  }
+
+  export interface LintPlugin {
+    name: string;
+    rules: Record<string, LintRule>;
+  }
 }
