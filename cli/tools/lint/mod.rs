@@ -322,14 +322,19 @@ impl WorkspaceLinter {
       vec![]
     };
 
-    let plugin_runner =
-      plugins::create_runner_and_load_plugins(plugin_specifiers).await?;
+    let plugin_runner = if !plugin_specifiers.is_empty() {
+      let runner =
+        plugins::create_runner_and_load_plugins(plugin_specifiers).await?;
+      Some(Arc::new(Mutex::new(runner)))
+    } else {
+      None
+    };
 
     let linter = Arc::new(CliLinter::new(CliLinterOptions {
       configured_rules: lint_rules,
       fix: lint_options.fix,
       deno_lint_config: lint_config,
-      maybe_plugin_runner: Some(Arc::new(Mutex::new(plugin_runner))),
+      maybe_plugin_runner: plugin_runner,
     }));
 
     let mut futures = Vec::with_capacity(2);
@@ -414,7 +419,8 @@ impl WorkspaceLinter {
                 let file_source_ = file_source.clone();
                 let source_text_info = file_source.text_info_lazy().clone();
                 let tmp_file_path = file_path.clone();
-                let plugin_diagnostics =
+                let plugin_diagnostics = if linter.get_plugin_runner().is_some()
+                {
                   tokio_util::create_and_run_current_thread(
                     async move {
                       let plugin_runner = linter.get_plugin_runner().unwrap();
@@ -431,7 +437,10 @@ impl WorkspaceLinter {
                       .await
                     }
                     .boxed_local(),
-                  )?;
+                  )?
+                } else {
+                  vec![]
+                };
 
                 file_diagnostics.extend_from_slice(&plugin_diagnostics);
                 if let Some(incremental_cache) = &maybe_incremental_cache {
