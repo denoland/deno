@@ -14,9 +14,13 @@ use color_print::cformat;
 use color_print::cstr;
 use deno_ast::MediaType;
 use deno_core::anyhow::anyhow;
+use deno_core::error::JsError;
 use deno_core::ModuleLoader;
 use deno_core::ResolutionKind;
+use deno_runtime::fmt_errors::find_recursive_cause;
+use deno_runtime::fmt_errors::format_js_error_inner;
 use deno_runtime::fmt_errors::FixSuggestion;
+use deno_runtime::fmt_errors::IndexedErrorReference;
 use regex::Regex;
 
 use crate::factory::CliFactory;
@@ -48,11 +52,10 @@ use crate::util::fs::specifier_from_file_path;
 /// // ✅
 /// import('react-dom/server');
 /// ```
-fn get_suggestions_for_non_explicit_cjs_import(
-  error: &AnyError,
+fn get_message_for_non_explicit_cjs_import(
   message: &str,
   module_loader: &Rc<dyn ModuleLoader>,
-) -> Result<AnyError, AnyError> {
+) -> Result<String, AnyError> {
   // setup the utilities
   let args: Vec<_> = env::args_os().collect();
   let flags = Arc::new(flags_from_vec(args)?);
@@ -82,7 +85,6 @@ fn get_suggestions_for_non_explicit_cjs_import(
       specifier: referrer_specifier.clone(),
       text: fs
         .read_text_file_lossy_sync(&referrer_path, None)?
-        .as_str()
         .into(),
       media_type: MediaType::from_specifier(&referrer_specifier),
       capture_tokens: false,
@@ -139,7 +141,6 @@ fn get_suggestions_for_non_explicit_cjs_import(
     specifier: resolved_specifier.clone(),
     text: fs
       .read_text_file_lossy_sync(&resolved_path, None)?
-      .as_str()
       .into(),
     media_type: MediaType::from_specifier(&resolved_specifier),
     capture_tokens: false,
@@ -218,31 +219,69 @@ fn get_suggestions_for_non_explicit_cjs_import(
     FixSuggestion::hint(&hint),
   ];
 
-  let mut message = format!("{error:?}");
+  let mut message = String::new();
   FixSuggestion::append_suggestion(&mut message, suggestions);
-  let handled_error = anyhow!(message);
 
-  Ok(handled_error)
+  Ok(message)
+}
+
+/// Keep in mind the function `get_message_for_terminal_errors` in `runtime/fmt_errors.rs`
+/// behaves almost identically to this function.
+fn get_message_for_terminal_errors(
+  message: &str,
+  module_loader: &Rc<dyn ModuleLoader>,
+) -> String {
+  if message.contains("Unable to load") && message.contains("imported from") {
+    let result =
+      get_message_for_non_explicit_cjs_import(&message, module_loader);
+    match result {
+      Ok(suggestion) => suggestion,
+      Err(_) => message.to_string(),
+    }
+  } else {
+    message.to_string()
+  }
+}
+
+/// Keep in mind the function `format_js_error` in `runtime/fmt_errors.rs`
+/// behaves almost identically to this function.
+fn format_js_error(
+  js_error: &JsError,
+  module_loader: &Rc<dyn ModuleLoader>,
+) -> String {
+  let circular =
+    find_recursive_cause(js_error).map(|reference| IndexedErrorReference {
+      reference,
+      index: 1,
+    });
+  let mut message = format_js_error_inner(js_error, circular, true, vec![]);
+  message.push_str(&get_message_for_terminal_errors(&message, module_loader));
+
+  message
+}
+
+fn format_error(
+  error: &AnyError,
+  module_loader: &Rc<dyn ModuleLoader>,
+) -> String {
+  let mut message = format!("{error:?}");
+  message.push_str(&get_message_for_terminal_errors(&message, module_loader));
+
+  message
 }
 
 /// This function should only used to map to the place where the error could caught.
-///
-/// Keep in mind the function `get_suggestions_for_terminal_errors` in `runtime/fmt_errors.rs`
-/// behaves almost identically to this function.
 pub fn map_err_suggestions(
-  e: AnyError,
+  error: AnyError,
   module_loader: &Rc<dyn ModuleLoader>,
 ) -> AnyError {
-  let message = e.to_string();
-  if message.contains("Unable to load") && message.contains("imported from") {
-    let result =
-      get_suggestions_for_non_explicit_cjs_import(&e, &message, module_loader);
-    match result {
-      Ok(handled_error) => handled_error,
-      // return the original error
-      Err(_) => e,
-    }
+  if let Some(js_error) = error.downcast_ref::<JsError>() {
+    let message = format_js_error(js_error, module_loader);
+
+    anyhow!(message)
   } else {
-    e
+    let message = format_error(&error, module_loader);
+
+    anyhow!(message)
   }
 }

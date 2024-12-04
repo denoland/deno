@@ -8,15 +8,15 @@ use deno_terminal::colors;
 use std::fmt::Write as _;
 
 #[derive(Debug, Clone)]
-struct ErrorReference<'a> {
+pub struct ErrorReference<'a> {
   from: &'a JsError,
   to: &'a JsError,
 }
 
 #[derive(Debug, Clone)]
-struct IndexedErrorReference<'a> {
-  reference: ErrorReference<'a>,
-  index: usize,
+pub struct IndexedErrorReference<'a> {
+  pub reference: ErrorReference<'a>,
+  pub index: usize,
 }
 
 #[derive(Debug)]
@@ -186,7 +186,7 @@ fn format_maybe_source_line(
   format!("\n{indent}{source_line}\n{indent}{color_underline}")
 }
 
-fn find_recursive_cause(js_error: &JsError) -> Option<ErrorReference> {
+pub fn find_recursive_cause(js_error: &JsError) -> Option<ErrorReference> {
   let mut history = Vec::<&JsError>::new();
 
   let mut current_error: &JsError = js_error;
@@ -237,7 +237,7 @@ fn format_aggregated_error(
   s
 }
 
-fn format_js_error_inner(
+pub fn format_js_error_inner(
   js_error: &JsError,
   circular: Option<IndexedErrorReference>,
   include_source_code: bool,
@@ -306,7 +306,7 @@ fn format_js_error_inner(
   s
 }
 
-/// Keep in mind the function `map_err_run` in `cli/worker.rs`
+/// Keep in mind the function `get_message_for_terminal_errors` in `cli/fmt_errors.rs`
 /// behaves almost identically to this function.
 fn get_suggestions_for_terminal_errors(e: &JsError) -> Vec<FixSuggestion> {
   if let Some(msg) = &e.message {
