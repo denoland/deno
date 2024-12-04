@@ -5,7 +5,6 @@ use deno_ast::ParsedSource;
 use deno_ast::SourceRange;
 use deno_ast::SourceTextInfo;
 use deno_ast::SourceTextProvider;
-use deno_core::anyhow::Context;
 use deno_core::error::custom_error;
 use deno_core::error::AnyError;
 use deno_core::futures::FutureExt;
@@ -68,7 +67,7 @@ pub struct PluginRunnerProxy {
 pub struct PluginRunner {
   worker: MainWorker,
   run_plugin_rule_fn: v8::Global<v8::Function>,
-  install_plugins_fn: v8::Global<v8::Function>,
+  install_plugin_fn: v8::Global<v8::Function>,
   run_plugins_for_file_fn: v8::Global<v8::Function>,
   tx: Sender<PluginRunnerResponse>,
   rx: Receiver<PluginRunnerRequest>,
@@ -81,7 +80,8 @@ impl PluginRunner {
 
     log::info!("spawning thread");
     let join_handle = std::thread::spawn(move || {
-      log::info!("thread spawned");
+      log::info!("PluginRunner thread spawned");
+      let start = std::time::Instant::now();
       let fut = async move {
         let mut flags = Flags::default();
         flags.subcommand = DenoSubcommand::Lint(LintFlags::default());
@@ -129,7 +129,8 @@ impl PluginRunner {
           }
         };
 
-        let (install_plugins_fn, run_plugins_for_file_fn, run_plugin_rule_fn) = {
+        log::info!("After plugin loaded, capturing exports");
+        let (run_plugin_rule_fn, install_plugin_fn, run_plugins_for_file_fn) = {
           let scope = &mut runtime.handle_scope();
           let module_exports: v8::Local<v8::Object> =
             v8::Local::new(scope, obj).try_into().unwrap();
@@ -144,17 +145,17 @@ impl PluginRunner {
             run_plugin_rule_fn_val.try_into().unwrap();
 
           // TODO(bartlomieju): use v8::OneByteConst and `v8_static_strings!` macro from `deno_core`.
-          let install_plugins_fn_name =
-            v8::String::new(scope, "installPlugins").unwrap();
-          let install_plugins_fn_val = module_exports
-            .get(scope, install_plugins_fn_name.into())
+          let install_plugin_fn_name =
+            v8::String::new(scope, "installPlugin").unwrap();
+          let install_plugin_fn_val = module_exports
+            .get(scope, install_plugin_fn_name.into())
             .unwrap();
-          let install_plugins_fn: v8::Local<v8::Function> =
-            install_plugins_fn_val.try_into().unwrap();
+          let install_plugin_fn: v8::Local<v8::Function> =
+            install_plugin_fn_val.try_into().unwrap();
 
           // TODO(bartlomieju): use v8::OneByteConst and `v8_static_strings!` macro from `deno_core`.
           let run_plugins_for_file_fn_name =
-            v8::String::new(scope, "runPluginRule").unwrap();
+            v8::String::new(scope, "runPluginsForFile").unwrap();
           let run_plugins_for_file_fn_val = module_exports
             .get(scope, run_plugins_for_file_fn_name.into())
             .unwrap();
@@ -163,7 +164,7 @@ impl PluginRunner {
 
           (
             v8::Global::new(scope, run_plugin_rule_fn),
-            v8::Global::new(scope, install_plugins_fn),
+            v8::Global::new(scope, install_plugin_fn),
             v8::Global::new(scope, run_plugins_for_file_fn),
           )
         };
@@ -171,7 +172,7 @@ impl PluginRunner {
         let runner = Self {
           worker,
           run_plugin_rule_fn,
-          install_plugins_fn,
+          install_plugin_fn,
           run_plugins_for_file_fn,
           tx: tx_res,
           rx: rx_req,
@@ -179,6 +180,10 @@ impl PluginRunner {
         // TODO(bartlomieju): send "host ready" message to the proxy
         log::info!("running host loop");
         runner.run_loop().await?;
+        log::info!(
+          "PluginRunner thread finished, took {:?}",
+          std::time::Instant::now() - start
+        );
         Ok(())
       }
       .boxed_local();
@@ -209,24 +214,9 @@ impl PluginRunner {
           specifier,
           source_text_info,
         ) => {
-          let rules_to_run = self.get_rules_to_run();
-
-          log::info!("Loaded plugins:");
-          for (plugin_name, rules) in rules_to_run.iter() {
-            log::info!(" - {}", plugin_name);
-            for rule in rules {
-              log::info!("   - {}", rule);
-            }
-          }
-
           let start = std::time::Instant::now();
           let r = match self
-            .run_rules(
-              &specifier,
-              rules_to_run,
-              serialized_ast,
-              source_text_info,
-            )
+            .run_plugins(&specifier, serialized_ast, source_text_info)
             .await
           {
             Ok(()) => Ok(self.take_diagnostics()),
@@ -251,28 +241,9 @@ impl PluginRunner {
     std::mem::take(&mut container.diagnostics)
   }
 
-  fn get_rules_to_run(&mut self) -> IndexMap<String, Vec<String>> {
-    let op_state = self.worker.js_runtime.op_state();
-    let state = op_state.borrow();
-    let container = state.borrow::<LintPluginContainer>();
-
-    let mut to_run = IndexMap::with_capacity(container.plugins.len());
-    for (plugin_name, plugin) in container.plugins.iter() {
-      let rules = plugin
-        .rules
-        .keys()
-        .map(String::from)
-        .collect::<Vec<String>>();
-      to_run.insert(plugin_name.to_string(), rules);
-    }
-
-    to_run
-  }
-
-  async fn run_rules(
+  async fn run_plugins(
     &mut self,
     specifier: &PathBuf,
-    rules_to_run: IndexMap<String, Vec<String>>,
     ast_string: String,
     source_text_info: SourceTextInfo,
   ) -> Result<(), AnyError> {
@@ -297,43 +268,21 @@ impl PluginRunner {
       )
     };
 
-    // TODO(bartlomieju): this could be optimized by having JS side keep track of all plugins and rules and only
-    // forwarding file name and ast string.
-    for (plugin_name, rules) in rules_to_run {
-      for rule_name in rules {
-        let (plugin_name_v8, rule_name_v8) = {
-          let scope = &mut self.worker.js_runtime.handle_scope();
-          let plugin_name_v8: v8::Local<v8::Value> =
-            v8::String::new(scope, &plugin_name).unwrap().into();
-          let rule_name_v8: v8::Local<v8::Value> =
-            v8::String::new(scope, &rule_name).unwrap().into();
-          (
-            v8::Global::new(scope, plugin_name_v8),
-            v8::Global::new(scope, rule_name_v8),
-          )
-        };
-        let call = self.worker.js_runtime.call_with_args(
-          &self.run_plugin_rule_fn,
-          &[
-            file_name_v8.clone(),
-            plugin_name_v8,
-            rule_name_v8,
-            ast_string_v8.clone(),
-          ],
-        );
-        let result = self
-          .worker
-          .js_runtime
-          .with_event_loop_promise(call, PollEventLoopOptions::default())
-          .await;
-        match result {
-          Ok(_r) => {
-            log::info!("plugin finished")
-          }
-          Err(error) => {
-            log::info!("error running plugin {}", error);
-          }
-        }
+    let call = self.worker.js_runtime.call_with_args(
+      &self.run_plugins_for_file_fn,
+      &[file_name_v8, ast_string_v8],
+    );
+    let result = self
+      .worker
+      .js_runtime
+      .with_event_loop_promise(call, PollEventLoopOptions::default())
+      .await;
+    match result {
+      Ok(_r) => {
+        log::info!("plugins finished")
+      }
+      Err(error) => {
+        log::info!("error running plugins {}", error);
       }
     }
 
@@ -362,63 +311,27 @@ impl PluginRunner {
       .run_event_loop(PollEventLoopOptions::default())
       .await?;
 
-    let state = self.worker.js_runtime.op_state();
-
     for (fut, mod_id) in load_futures {
       fut.await?;
       let module = self.worker.js_runtime.get_module_namespace(mod_id).unwrap();
       let scope = &mut self.worker.js_runtime.handle_scope();
       let module_local = v8::Local::new(scope, module);
       let default_export_str = v8::String::new(scope, "default").unwrap();
-      log::info!(
-        "has default export {:?}",
-        module_local.has_own_property(scope, default_export_str.into())
-      );
       let default_export =
         module_local.get(scope, default_export_str.into()).unwrap();
-      let name_str = v8::String::new(scope, "name").unwrap();
-      let name_val: v8::Local<v8::Object> = default_export.try_into().unwrap();
-
-      let name_val = name_val.get(scope, name_str.into()).unwrap();
-
-      log::info!(
-        "default export name {:?}",
-        name_val.to_rust_string_lossy(scope)
-      );
-      log::info!("deserializing plugin");
-
-      let def: PluginDefinition = serde_v8::from_v8(scope, default_export)
-        .context("Failed to deserialize plugin")?;
-
-      log::info!("deserialized plugin {} {:?}", def.name, def.rules.keys());
-
-      let mut state = state.borrow_mut();
-      let container = state.borrow_mut::<LintPluginContainer>();
-      let mut plugin_desc = LintPluginDesc {
-        rules: IndexMap::with_capacity(def.rules.len()),
-      };
-      for (name, rule_def) in def.rules.into_iter() {
-        let local_val = v8::Local::new(scope, rule_def.create.v8_value);
-        let local_fn: v8::Local<v8::Function> = local_val.try_into().unwrap();
-        let global_fn = v8::Global::new(scope, local_fn);
-        plugin_desc.rules.insert(name, global_fn);
-      }
-      let _ = container.register(def.name, plugin_desc);
+      // TODO(bartlomieju): put `install_plugin_fn` behind na `Rc``
+      let install_plugins_local =
+        v8::Local::new(scope, self.install_plugin_fn.clone());
+      let undefined = v8::undefined(scope);
+      let args = &[default_export];
+      log::info!("Installing plugin...");
+      // TODO(bartlomieju): do it in a try/catch scope
+      install_plugins_local.call(scope, undefined.into(), args);
+      log::info!("Plugin installed");
     }
 
     Ok(())
   }
-}
-
-#[derive(Deserialize)]
-struct RuleDefinition {
-  create: serde_v8::GlobalValue,
-}
-
-#[derive(Deserialize)]
-struct PluginDefinition {
-  name: String,
-  rules: IndexMap<String, RuleDefinition>,
 }
 
 impl PluginRunnerProxy {
@@ -496,34 +409,13 @@ pub fn serialize_ast(parsed_source: ParsedSource) -> Result<String, AnyError> {
   Ok(r)
 }
 
-struct LintPluginDesc {
-  rules: IndexMap<String, v8::Global<v8::Function>>,
-}
-
 #[derive(Default)]
 struct LintPluginContainer {
-  plugins: IndexMap<String, LintPluginDesc>,
   diagnostics: Vec<LintDiagnostic>,
   source_text_info: Option<SourceTextInfo>,
 }
 
 impl LintPluginContainer {
-  fn register(
-    &mut self,
-    name: String,
-    desc: LintPluginDesc,
-  ) -> Result<(), AnyError> {
-    if self.plugins.contains_key(&name) {
-      return Err(custom_error(
-        "AlreadyExists",
-        format!("{} plugin already exists", name),
-      ));
-    }
-
-    self.plugins.insert(name, desc);
-    Ok(())
-  }
-
   fn report(
     &mut self,
     id: String,
@@ -560,34 +452,11 @@ impl LintPluginContainer {
 
 deno_core::extension!(
   deno_lint_ext,
-  ops = [op_lint_get_rule, op_lint_report, op_lint_get_source],
+  ops = [op_lint_report, op_lint_get_source],
   state = |state| {
     state.put(LintPluginContainer::default());
   },
 );
-
-#[op2]
-#[global]
-fn op_lint_get_rule(
-  state: &mut OpState,
-  #[string] plugin_name: &str,
-  #[string] rule_name: &str,
-) -> Result<v8::Global<v8::Function>, AnyError> {
-  let container = state.borrow::<LintPluginContainer>();
-  let Some(plugin) = container.plugins.get(plugin_name) else {
-    return Err(custom_error(
-      "NotFound",
-      format!("{} plugin is not registered", plugin_name),
-    ));
-  };
-  let Some(rule) = plugin.rules.get(rule_name) else {
-    return Err(custom_error(
-      "NotFound",
-      format!("Plugin {}, does not have {} rule", plugin_name, rule_name),
-    ));
-  };
-  Ok(rule.clone())
-}
 
 #[op2(fast)]
 fn op_lint_report(

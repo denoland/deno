@@ -92,6 +92,9 @@ import { bootstrap as bootstrapOtel } from "ext:deno_telemetry/telemetry.ts";
 if (Symbol.metadata) {
   throw "V8 supports Symbol.metadata now, no need to shim it";
 }
+
+/// REMOVE
+
 ObjectDefineProperties(Symbol, {
   dispose: {
     __proto__: null,

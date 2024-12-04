@@ -51,8 +51,25 @@ export class Context {
   }
 }
 
-export function installPlugins(plugins) {
-  state.plugins = plugins;
+// TODO(bartlomieju): remove
+export function runPluginRule() {}
+
+export function installPlugin(plugin) {
+  console.log("plugin", plugin);
+  if (typeof plugin !== "object") {
+    throw new Error("Linter plugin must be an object");
+  }
+  if (typeof plugin.name !== "string") {
+    throw new Error("Linter plugin name must be a string");
+  }
+  if (typeof plugin.rules !== "object") {
+    throw new Error("Linter plugin rules must be an object");
+  }
+  if (typeof state.plugins[plugin.name] !== "undefined") {
+    throw new Error(`Linter plugin ${plugin.name} has already been registered`);
+  }
+  state.plugins[plugin.name] = plugin.rules;
+  console.log("Installed plugin", plugin.name, plugin.rules);
 }
 
 export function runPluginsForFile(fileName, serializedAst) {
@@ -63,12 +80,12 @@ export function runPluginsForFile(fileName, serializedAst) {
     return value;
   });
 
-  for (const plugin of state.plugins) {
-    runRulesFromPlugin(plugin, fileName, ast);
+  for (const pluginName of Object.keys(state.plugins)) {
+    runRulesFromPlugin(pluginName, state.plugins[pluginName], fileName, ast);
   }
 }
 
-function runRulesFromPlugin(plugin, fileName, ast) {
+function runRulesFromPlugin(pluginName, plugin, fileName, ast) {
   for (const ruleName of Object.keys(plugin)) {
     const rule = plugin[ruleName];
 
@@ -77,7 +94,7 @@ function runRulesFromPlugin(plugin, fileName, ast) {
     }
 
     // TODO(bartlomieju): can context be created less often, maybe once per plugin or even once per `runRulesForFile` invocation?
-    const id = `${plugin.name}/${ruleName};`;
+    const id = `${pluginName}/${ruleName}`;
     const ctx = new Context(id, fileName);
     const visitor = rule.create(ctx);
     traverse(ast, visitor);
@@ -86,24 +103,6 @@ function runRulesFromPlugin(plugin, fileName, ast) {
       rule.destroy(ctx);
     }
   }
-}
-
-export function runPluginRule(fileName, pluginName, ruleName, serializedAst) {
-  const id = `${pluginName}/${ruleName}`;
-
-  const ctx = new Context(id, fileName);
-  const rule = op_lint_get_rule(pluginName, ruleName);
-
-  const visitor = rule(ctx);
-  const ast = JSON.parse(serializedAst, (key, value) => {
-    if (key === "ctxt") {
-      return undefined;
-    }
-    return value;
-  });
-
-  // console.log("ast", ast);
-  traverse(ast, visitor);
 }
 
 function traverse(ast, visitor, parent = null) {
