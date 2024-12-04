@@ -353,12 +353,21 @@ impl<'a> TsResponseImportMapper<'a> {
           let pkg_reqs = npm_resolver.resolve_pkg_reqs_from_pkg_id(&pkg_id);
           // check if any pkg reqs match what is found in an import map
           if !pkg_reqs.is_empty() {
-            let sub_path = self.resolve_package_path(specifier);
+            let sub_path = npm_resolver
+              .resolve_pkg_folder_from_pkg_id(&pkg_id)
+              .ok()
+              .and_then(|package_folder| {
+                self.resolve_package_path(specifier, &package_folder)
+              });
             if let Some(import_map) = self.maybe_import_map {
               let pkg_reqs = pkg_reqs.iter().collect::<HashSet<_>>();
               let mut matches = Vec::new();
               for entry in import_map.entries_for_referrer(referrer) {
                 if let Some(value) = entry.raw_value {
+                  if !value.ends_with('/') {
+                    // keys that don't end in a slash can't be mapped to a subpath
+                    continue;
+                  }
                   if let Ok(package_ref) =
                     NpmPackageReqReference::from_str(value)
                   {
@@ -413,10 +422,16 @@ impl<'a> TsResponseImportMapper<'a> {
   fn resolve_package_path(
     &self,
     specifier: &ModuleSpecifier,
+    package_folder: &Path,
   ) -> Option<String> {
     let package_json = self
       .resolver
-      .get_closest_package_json(specifier)
+      .pkg_json_resolver(specifier)
+      // the specifier might have a closer package.json, but we
+      // want the package folder's package.json
+      .get_closest_package_json_from_file_path(
+        &package_folder.join("package.json"),
+      )
       .ok()
       .flatten()?;
     let root_folder = package_json.path.parent()?;
