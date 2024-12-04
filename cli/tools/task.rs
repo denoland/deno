@@ -84,7 +84,7 @@ pub async fn execute_script(
 
     let Some(task_name) = &task_flags.task else {
       print_available_tasks_workspace(
-        &cli_options,
+        cli_options,
         &package_regex,
         filter,
         force_use_pkg_json,
@@ -679,7 +679,7 @@ fn print_available_tasks_workspace(
 
   let mut matched = false;
   for folder in workspace.config_folders() {
-    if !matches_package(folder.1, force_use_pkg_json, &package_regex) {
+    if !matches_package(folder.1, force_use_pkg_json, package_regex) {
       continue;
     }
     matched = true;
