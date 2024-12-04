@@ -42,7 +42,7 @@ pub struct DownloadError {
 
 impl std::error::Error for DownloadError {
   fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
-    Some(self.error.as_ref())
+    self.error.source()
   }
 }
 
