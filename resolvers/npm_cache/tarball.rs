@@ -65,13 +65,13 @@ impl<TEnv: NpmCacheEnv> TarballCache<TEnv> {
 
   pub async fn ensure_package(
     self: &Arc<Self>,
-    package: &PackageNv,
+    package_nv: &PackageNv,
     dist: &NpmPackageVersionDistInfo,
   ) -> Result<(), AnyError> {
     self
-      .ensure_package_inner(package, dist)
+      .ensure_package_inner(package_nv, dist)
       .await
-      .with_context(|| format!("Failed caching npm package '{}'.", package))
+      .with_context(|| format!("Failed caching npm package '{}'.", package_nv))
   }
 
   async fn ensure_package_inner(
@@ -100,7 +100,7 @@ impl<TEnv: NpmCacheEnv> TarballCache<TEnv> {
 
     match cache_item {
       MemoryCacheItem::Cached => Ok(()),
-      MemoryCacheItem::Errored(err) => Err(anyhow!("{}", err)),
+      MemoryCacheItem::Errored(err) => Err(anyhow!("{:#}", err)),
       MemoryCacheItem::Pending(creator) => {
         let result = creator.get().await;
         match result {
@@ -110,7 +110,7 @@ impl<TEnv: NpmCacheEnv> TarballCache<TEnv> {
             Ok(())
           }
           Err(err) => {
-            let result_err = anyhow!("{}", err);
+            let result_err = anyhow!("{:#}", err);
             *self.memory_cache.lock().get_mut(package_nv).unwrap() =
               MemoryCacheItem::Errored(err);
             Err(result_err)
@@ -138,7 +138,7 @@ impl<TEnv: NpmCacheEnv> TarballCache<TEnv> {
         return Err(deno_core::error::custom_error(
           "NotCached",
           format!(
-            "An npm specifier not found in cache: \"{}\", --cached-only is specified.",
+            "npm package not found in cache: \"{}\", --cached-only is specified.",
             &package_nv.name
           )
         )
