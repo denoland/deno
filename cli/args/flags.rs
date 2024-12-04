@@ -2664,10 +2664,10 @@ Display outdated dependencies:
   <p(245)>deno outdated</>
   <p(245)>deno outdated --compatible</>
 
-Update dependencies:
+Update dependencies to latest semver compatible versions:
   <p(245)>deno outdated --update</>
+Update dependencies to latest versions, ignoring semver requirements:
   <p(245)>deno outdated --update --latest</>
-  <p(245)>deno outdated --update</>
 
 Filters can be used to select which packages to act on. Filters can include wildcards (*) to match multiple packages.
   <p(245)>deno outdated --update --latest \"@std/*\"</>
@@ -2703,7 +2703,6 @@ Specific version requirements to update to can be specified:
           .help(
             "Update to the latest version, regardless of semver constraints",
           )
-          .requires("update")
           .conflicts_with("compatible"),
       )
       .arg(
@@ -11684,6 +11683,14 @@ Usage: deno repl [OPTIONS] [-- [ARGS]...]\n"
         OutdatedFlags {
           filters: svec!["@foo/bar"],
           kind: OutdatedKind::Update { latest: false },
+          recursive: false,
+        },
+      ),
+      (
+        svec!["--latest"],
+        OutdatedFlags {
+          filters: svec![],
+          kind: OutdatedKind::PrintOutdated { compatible: false },
           recursive: false,
         },
       ),
