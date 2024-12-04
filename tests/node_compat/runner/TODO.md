@@ -1,7 +1,7 @@
 <!-- deno-fmt-ignore-file -->
 # Remaining Node Tests
 
-1115 tests out of 3681 have been ported from Node 20.11.1 (30.29% ported, 69.82% remaining).
+1112 tests out of 3681 have been ported from Node 20.11.1 (30.21% ported, 69.90% remaining).
 
 NOTE: This file should not be manually edited. Please edit `tests/node_compat/config.json` and run `deno task setup` in `tests/node_compat/runner` dir instead.
 
@@ -2541,9 +2541,12 @@ NOTE: This file should not be manually edited. Please edit `tests/node_compat/co
 - [sequential/test-inspector-port-cluster.js](https://github.com/nodejs/node/tree/v20.11.1/test/sequential/test-inspector-port-cluster.js)
 - [sequential/test-module-loading.js](https://github.com/nodejs/node/tree/v20.11.1/test/sequential/test-module-loading.js)
 - [sequential/test-net-GH-5504.js](https://github.com/nodejs/node/tree/v20.11.1/test/sequential/test-net-GH-5504.js)
+- [sequential/test-net-better-error-messages-port.js](https://github.com/nodejs/node/tree/v20.11.1/test/sequential/test-net-better-error-messages-port.js)
 - [sequential/test-net-connect-econnrefused.js](https://github.com/nodejs/node/tree/v20.11.1/test/sequential/test-net-connect-econnrefused.js)
+- [sequential/test-net-connect-handle-econnrefused.js](https://github.com/nodejs/node/tree/v20.11.1/test/sequential/test-net-connect-handle-econnrefused.js)
 - [sequential/test-net-listen-shared-ports.js](https://github.com/nodejs/node/tree/v20.11.1/test/sequential/test-net-listen-shared-ports.js)
 - [sequential/test-net-localport.js](https://github.com/nodejs/node/tree/v20.11.1/test/sequential/test-net-localport.js)
+- [sequential/test-net-reconnect-error.js](https://github.com/nodejs/node/tree/v20.11.1/test/sequential/test-net-reconnect-error.js)
 - [sequential/test-net-server-address.js](https://github.com/nodejs/node/tree/v20.11.1/test/sequential/test-net-server-address.js)
 - [sequential/test-next-tick-error-spin.js](https://github.com/nodejs/node/tree/v20.11.1/test/sequential/test-next-tick-error-spin.js)
 - [sequential/test-perf-hooks.js](https://github.com/nodejs/node/tree/v20.11.1/test/sequential/test-perf-hooks.js)
