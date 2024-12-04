@@ -62,9 +62,11 @@ export default {
     [RULE1_NAME]: rule,
     "jsx-style-string": {
       create(context) {
+        console.log("context", context);
         return {
           VariableDeclaration(node) {
-            console.log("INTERFAcE", { ...node, parent: null });
+            console.log("node", node);
+            // console.log("INTERFAcE", { ...node, parent: null });
           },
           JSXAttribute(node) {
             if (
@@ -82,7 +84,7 @@ export default {
     },
     "jest/no-identical-title": {
       create(context) {
-        console.log(context.source());
+        // console.log(context.source());
         const seen = new Set();
         return {
           CallExpression(node) {

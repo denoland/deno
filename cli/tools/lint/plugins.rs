@@ -68,6 +68,8 @@ pub struct PluginRunnerProxy {
 pub struct PluginRunner {
   worker: MainWorker,
   run_plugin_rule_fn: v8::Global<v8::Function>,
+  install_plugins_fn: v8::Global<v8::Function>,
+  run_plugins_for_file_fn: v8::Global<v8::Function>,
   tx: Sender<PluginRunnerResponse>,
   rx: Receiver<PluginRunnerRequest>,
 }
@@ -127,19 +129,50 @@ impl PluginRunner {
           }
         };
 
-        let run_plugin_rule_fn = {
+        let (install_plugins_fn, run_plugins_for_file_fn, run_plugin_rule_fn) = {
           let scope = &mut runtime.handle_scope();
-          let fn_name = v8::String::new(scope, "runPluginRule").unwrap();
-          let obj_local: v8::Local<v8::Object> =
+          let module_exports: v8::Local<v8::Object> =
             v8::Local::new(scope, obj).try_into().unwrap();
-          let run_fn_val = obj_local.get(scope, fn_name.into()).unwrap();
-          let run_fn: v8::Local<v8::Function> = run_fn_val.try_into().unwrap();
-          v8::Global::new(scope, run_fn)
+
+          // TODO(bartlomieju): use v8::OneByteConst and `v8_static_strings!` macro from `deno_core`.
+          let run_plugin_rule_fn_name =
+            v8::String::new(scope, "runPluginRule").unwrap();
+          let run_plugin_rule_fn_val = module_exports
+            .get(scope, run_plugin_rule_fn_name.into())
+            .unwrap();
+          let run_plugin_rule_fn: v8::Local<v8::Function> =
+            run_plugin_rule_fn_val.try_into().unwrap();
+
+          // TODO(bartlomieju): use v8::OneByteConst and `v8_static_strings!` macro from `deno_core`.
+          let install_plugins_fn_name =
+            v8::String::new(scope, "installPlugins").unwrap();
+          let install_plugins_fn_val = module_exports
+            .get(scope, install_plugins_fn_name.into())
+            .unwrap();
+          let install_plugins_fn: v8::Local<v8::Function> =
+            install_plugins_fn_val.try_into().unwrap();
+
+          // TODO(bartlomieju): use v8::OneByteConst and `v8_static_strings!` macro from `deno_core`.
+          let run_plugins_for_file_fn_name =
+            v8::String::new(scope, "runPluginRule").unwrap();
+          let run_plugins_for_file_fn_val = module_exports
+            .get(scope, run_plugins_for_file_fn_name.into())
+            .unwrap();
+          let run_plugins_for_file_fn: v8::Local<v8::Function> =
+            run_plugins_for_file_fn_val.try_into().unwrap();
+
+          (
+            v8::Global::new(scope, run_plugin_rule_fn),
+            v8::Global::new(scope, install_plugins_fn),
+            v8::Global::new(scope, run_plugins_for_file_fn),
+          )
         };
 
         let runner = Self {
           worker,
           run_plugin_rule_fn,
+          install_plugins_fn,
+          run_plugins_for_file_fn,
           tx: tx_res,
           rx: rx_req,
         };

@@ -7,6 +7,10 @@ const {
   op_lint_report,
 } = core.ops;
 
+const state = {
+  plugins: {},
+};
+
 export class Context {
   id;
 
@@ -18,6 +22,7 @@ export class Context {
   }
 
   source() {
+    // TODO(bartlomieju): cache it on the state - it won't change between files, but callers can mutate it.
     return op_lint_get_source();
   }
 
@@ -43,6 +48,43 @@ export class Context {
       start,
       end,
     );
+  }
+}
+
+export function installPlugins(plugins) {
+  state.plugins = plugins;
+}
+
+export function runPluginsForFile(fileName, serializedAst) {
+  const ast = JSON.parse(serializedAst, (key, value) => {
+    if (key === "ctxt") {
+      return undefined;
+    }
+    return value;
+  });
+
+  for (const plugin of state.plugins) {
+    runRulesFromPlugin(plugin, fileName, ast);
+  }
+}
+
+function runRulesFromPlugin(plugin, fileName, ast) {
+  for (const ruleName of Object.keys(plugin)) {
+    const rule = plugin[ruleName];
+
+    if (typeof rule.create !== "function") {
+      throw new Error("Rule's `create` property must be a function");
+    }
+
+    // TODO(bartlomieju): can context be created less often, maybe once per plugin or even once per `runRulesForFile` invocation?
+    const id = `${plugin.name}/${ruleName};`;
+    const ctx = new Context(id, fileName);
+    const visitor = rule.create(ctx);
+    traverse(ast, visitor);
+
+    if (typeof rule.destroy === "function") {
+      rule.destroy(ctx);
+    }
   }
 }
 
