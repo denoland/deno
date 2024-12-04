@@ -76,7 +76,34 @@ export function installPlugin(plugin) {
   console.log("Installed plugin", plugin.name, plugin.rules);
 }
 
-export function runPluginsForFile(fileName, serializedAst) {
+const PROGRAM = 1;
+const Program = 1;
+
+const ast = {
+  Program() {
+    return {
+      type: "Program",
+      moduleOrScript: null,
+    };
+  },
+};
+
+/**
+ * @param {Uint8Array} ast
+ */
+function buildAstFromBinary(ast) {
+  console.log(ast);
+  const stack = [];
+  for (let i = 0; i < ast.length; i += 5) {
+    const kind = ast[i];
+    if (kind === 0) {
+      throw new Error("FAIL");
+    }
+  }
+}
+
+export function runPluginsForFile(fileName, serializedAst, binary) {
+  const binaryAst = buildAstFromBinary(binary);
   const ast = JSON.parse(serializedAst, (key, value) => {
     if (key === "ctxt") {
       return undefined;
