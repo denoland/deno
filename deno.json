@@ -1,0 +1,7 @@
+{
+  "lint": {
+    "plugins": [
+      "./plugin.js"
+    ]
+  }
+}
