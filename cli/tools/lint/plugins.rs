@@ -11,7 +11,6 @@ use deno_core::futures::FutureExt;
 use deno_core::op2;
 use deno_core::resolve_url_or_path;
 use deno_core::serde_json;
-use deno_core::serde_v8;
 use deno_core::v8;
 use deno_core::OpState;
 use deno_core::PollEventLoopOptions;
@@ -23,8 +22,6 @@ use deno_runtime::deno_permissions::PermissionsContainer;
 use deno_runtime::tokio_util;
 use deno_runtime::worker::MainWorker;
 use deno_runtime::WorkerExecutionMode;
-use indexmap::IndexMap;
-use serde::Deserialize;
 use std::path::PathBuf;
 use std::sync::Arc;
 use tokio::sync::mpsc::channel;
@@ -66,7 +63,6 @@ pub struct PluginRunnerProxy {
 
 pub struct PluginRunner {
   worker: MainWorker,
-  run_plugin_rule_fn: v8::Global<v8::Function>,
   install_plugin_fn: v8::Global<v8::Function>,
   run_plugins_for_file_fn: v8::Global<v8::Function>,
   tx: Sender<PluginRunnerResponse>,
@@ -130,19 +126,10 @@ impl PluginRunner {
         };
 
         log::info!("After plugin loaded, capturing exports");
-        let (run_plugin_rule_fn, install_plugin_fn, run_plugins_for_file_fn) = {
+        let (install_plugin_fn, run_plugins_for_file_fn) = {
           let scope = &mut runtime.handle_scope();
           let module_exports: v8::Local<v8::Object> =
             v8::Local::new(scope, obj).try_into().unwrap();
-
-          // TODO(bartlomieju): use v8::OneByteConst and `v8_static_strings!` macro from `deno_core`.
-          let run_plugin_rule_fn_name =
-            v8::String::new(scope, "runPluginRule").unwrap();
-          let run_plugin_rule_fn_val = module_exports
-            .get(scope, run_plugin_rule_fn_name.into())
-            .unwrap();
-          let run_plugin_rule_fn: v8::Local<v8::Function> =
-            run_plugin_rule_fn_val.try_into().unwrap();
 
           // TODO(bartlomieju): use v8::OneByteConst and `v8_static_strings!` macro from `deno_core`.
           let install_plugin_fn_name =
@@ -163,7 +150,6 @@ impl PluginRunner {
             run_plugins_for_file_fn_val.try_into().unwrap();
 
           (
-            v8::Global::new(scope, run_plugin_rule_fn),
             v8::Global::new(scope, install_plugin_fn),
             v8::Global::new(scope, run_plugins_for_file_fn),
           )
@@ -171,7 +157,6 @@ impl PluginRunner {
 
         let runner = Self {
           worker,
-          run_plugin_rule_fn,
           install_plugin_fn,
           run_plugins_for_file_fn,
           tx: tx_res,

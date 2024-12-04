@@ -51,9 +51,6 @@ export class Context {
   }
 }
 
-// TODO(bartlomieju): remove
-export function runPluginRule() {}
-
 export function installPlugin(plugin) {
   console.log("plugin", plugin);
   if (typeof plugin !== "object") {
