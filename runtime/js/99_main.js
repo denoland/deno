@@ -629,7 +629,7 @@ function bootstrapMainRuntime(runtimeOptions, warmup = false) {
         if (serve) {
           if (mode === executionModes.run) {
             // deno-lint-ignore no-console
-            console.error(
+            console.warn(
               `%cwarning: %cDetected %cexport default { fetch }%c, did you mean to run \"deno serve\"?`,
               "color: yellow;",
               "color: inherit;",
