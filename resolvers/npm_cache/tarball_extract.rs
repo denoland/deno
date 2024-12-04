@@ -1,24 +1,23 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
+use std::borrow::Cow;
 use std::collections::HashSet;
 use std::fs;
 use std::io::ErrorKind;
 use std::path::Path;
 use std::path::PathBuf;
 
+use anyhow::bail;
+use anyhow::Context;
+use anyhow::Error as AnyError;
 use base64::prelude::BASE64_STANDARD;
 use base64::Engine;
-use deno_core::anyhow::bail;
-use deno_core::anyhow::Context;
-use deno_core::error::AnyError;
 use deno_npm::registry::NpmPackageVersionDistInfo;
 use deno_npm::registry::NpmPackageVersionDistInfoIntegrity;
 use deno_semver::package::PackageNv;
 use flate2::read::GzDecoder;
 use tar::Archive;
 use tar::EntryType;
-
-use crate::util::path::get_atomic_dir_path;
 
 #[derive(Debug, Copy, Clone)]
 pub enum TarballExtractionMode {
@@ -206,10 +205,30 @@ fn extract_tarball(data: &[u8], output_folder: &Path) -> Result<(), AnyError> {
   Ok(())
 }
 
+fn get_atomic_dir_path(file_path: &Path) -> PathBuf {
+  let rand = gen_rand_path_component();
+  let new_file_name = format!(
+    ".{}_{}",
+    file_path
+      .file_name()
+      .map(|f| f.to_string_lossy())
+      .unwrap_or(Cow::Borrowed("")),
+    rand
+  );
+  file_path.with_file_name(new_file_name)
+}
+
+fn gen_rand_path_component() -> String {
+  (0..4).fold(String::new(), |mut output, _| {
+    output.push_str(&format!("{:02x}", rand::random::<u8>()));
+    output
+  })
+}
+
 #[cfg(test)]
 mod test {
   use deno_semver::Version;
-  use test_util::TempDir;
+  use tempfile::TempDir;
 
   use super::*;
 
@@ -303,21 +322,21 @@ mod test {
 
   #[test]
   fn rename_with_retries_succeeds_exists() {
-    let temp_dir = TempDir::new();
+    let temp_dir = TempDir::new().unwrap();
     let folder_1 = temp_dir.path().join("folder_1");
     let folder_2 = temp_dir.path().join("folder_2");
 
-    folder_1.create_dir_all();
-    folder_1.join("a.txt").write("test");
-    folder_2.create_dir_all();
+    std::fs::create_dir_all(&folder_1).unwrap();
+    std::fs::write(folder_1.join("a.txt"), "test").unwrap();
+    std::fs::create_dir_all(&folder_2).unwrap();
     // this will not end up in the output as rename_with_retries assumes
     // the folders ending up at the destination are the same
-    folder_2.join("b.txt").write("test2");
+    std::fs::write(folder_2.join("b.txt"), "test2").unwrap();
 
     let dest_folder = temp_dir.path().join("dest_folder");
 
-    rename_with_retries(folder_1.as_path(), dest_folder.as_path()).unwrap();
-    rename_with_retries(folder_2.as_path(), dest_folder.as_path()).unwrap();
+    rename_with_retries(folder_1.as_path(), &dest_folder).unwrap();
+    rename_with_retries(folder_2.as_path(), &dest_folder).unwrap();
     assert!(dest_folder.join("a.txt").exists());
     assert!(!dest_folder.join("b.txt").exists());
   }
