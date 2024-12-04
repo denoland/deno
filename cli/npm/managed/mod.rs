@@ -44,7 +44,6 @@ use crate::util::fs::canonicalize_path_maybe_not_exists_with_fs;
 use crate::util::progress_bar::ProgressBar;
 use crate::util::sync::AtomicFlag;
 
-use self::registry::CliNpmRegistryApi;
 use self::resolution::NpmResolution;
 use self::resolvers::create_npm_fs_resolver;
 use self::resolvers::NpmPackageFsResolver;
@@ -57,7 +56,6 @@ use super::CliNpmTarballCache;
 use super::InnerCliNpmResolverRef;
 use super::ResolvePkgFolderFromDenoReqError;
 
-mod registry;
 mod resolution;
 mod resolvers;
 
@@ -120,13 +118,13 @@ pub async fn create_managed_npm_resolver(
 ) -> Result<Arc<dyn CliNpmResolver>, AnyError> {
   let npm_cache_env = create_cache_env(&options);
   let npm_cache = create_cache(npm_cache_env.clone(), &options);
-  let npm_api = create_api(npm_cache.clone(), npm_cache_env.clone(), &options);
-  let snapshot = resolve_snapshot(&npm_api, options.snapshot).await?;
+  let api = create_api(npm_cache.clone(), npm_cache_env.clone(), &options);
+  let snapshot = resolve_snapshot(&api, options.snapshot).await?;
   Ok(create_inner(
     npm_cache_env,
     options.fs,
     options.maybe_lockfile,
-    npm_api,
+    api,
     npm_cache,
     options.npmrc,
     options.npm_install_deps_provider,
@@ -143,7 +141,7 @@ fn create_inner(
   env: Arc<CliNpmCacheEnv>,
   fs: Arc<dyn deno_runtime::deno_fs::FileSystem>,
   maybe_lockfile: Option<Arc<CliLockfile>>,
-  npm_api: Arc<CliNpmRegistryApi>,
+  registry_info_provider: Arc<CliNpmRegistryInfoProvider>,
   npm_cache: Arc<CliNpmCache>,
   npm_rc: Arc<ResolvedNpmRc>,
   npm_install_deps_provider: Arc<NpmInstallDepsProvider>,
@@ -154,7 +152,7 @@ fn create_inner(
   lifecycle_scripts: LifecycleScriptsConfig,
 ) -> Arc<dyn CliNpmResolver> {
   let resolution = Arc::new(NpmResolution::from_serialized(
-    npm_api.clone(),
+    registry_info_provider.clone(),
     snapshot,
     maybe_lockfile.clone(),
   ));
@@ -178,7 +176,7 @@ fn create_inner(
     fs,
     fs_resolver,
     maybe_lockfile,
-    npm_api,
+    registry_info_provider,
     npm_cache,
     npm_install_deps_provider,
     resolution,
@@ -215,29 +213,29 @@ fn create_api(
   cache: Arc<CliNpmCache>,
   env: Arc<CliNpmCacheEnv>,
   options: &CliManagedNpmResolverCreateOptions,
-) -> Arc<CliNpmRegistryApi> {
-  Arc::new(CliNpmRegistryApi::new(
-    cache.clone(),
-    Arc::new(CliNpmRegistryInfoProvider::new(
-      cache,
-      env,
-      options.npmrc.clone(),
-    )),
+) -> Arc<CliNpmRegistryInfoProvider> {
+  Arc::new(CliNpmRegistryInfoProvider::new(
+    cache,
+    env,
+    options.npmrc.clone(),
   ))
 }
 
 async fn resolve_snapshot(
-  api: &CliNpmRegistryApi,
+  registry_info_provider: &Arc<CliNpmRegistryInfoProvider>,
   snapshot: CliNpmResolverManagedSnapshotOption,
 ) -> Result<Option<ValidSerializedNpmResolutionSnapshot>, AnyError> {
   match snapshot {
     CliNpmResolverManagedSnapshotOption::ResolveFromLockfile(lockfile) => {
       if !lockfile.overwrite() {
-        let snapshot = snapshot_from_lockfile(lockfile.clone(), api)
-          .await
-          .with_context(|| {
-            format!("failed reading lockfile '{}'", lockfile.filename.display())
-          })?;
+        let snapshot = snapshot_from_lockfile(
+          lockfile.clone(),
+          &registry_info_provider.as_npm_registry_api(),
+        )
+        .await
+        .with_context(|| {
+          format!("failed reading lockfile '{}'", lockfile.filename.display())
+        })?;
         Ok(Some(snapshot))
       } else {
         Ok(None)
@@ -304,7 +302,7 @@ pub struct ManagedCliNpmResolver {
   fs: Arc<dyn FileSystem>,
   fs_resolver: Arc<dyn NpmPackageFsResolver>,
   maybe_lockfile: Option<Arc<CliLockfile>>,
-  npm_api: Arc<CliNpmRegistryApi>,
+  registry_info_provider: Arc<CliNpmRegistryInfoProvider>,
   npm_cache: Arc<CliNpmCache>,
   npm_install_deps_provider: Arc<NpmInstallDepsProvider>,
   resolution: Arc<NpmResolution>,
@@ -329,7 +327,7 @@ impl ManagedCliNpmResolver {
     fs: Arc<dyn FileSystem>,
     fs_resolver: Arc<dyn NpmPackageFsResolver>,
     maybe_lockfile: Option<Arc<CliLockfile>>,
-    npm_api: Arc<CliNpmRegistryApi>,
+    registry_info_provider: Arc<CliNpmRegistryInfoProvider>,
     npm_cache: Arc<CliNpmCache>,
     npm_install_deps_provider: Arc<NpmInstallDepsProvider>,
     resolution: Arc<NpmResolution>,
@@ -342,7 +340,7 @@ impl ManagedCliNpmResolver {
       fs,
       fs_resolver,
       maybe_lockfile,
-      npm_api,
+      registry_info_provider,
       npm_cache,
       npm_install_deps_provider,
       text_only_progress_bar,
@@ -588,7 +586,7 @@ impl ManagedCliNpmResolver {
   ) -> Result<Arc<NpmPackageInfo>, AnyError> {
     // this will internally cache the package information
     self
-      .npm_api
+      .registry_info_provider
       .package_info(package_name)
       .await
       .map_err(|err| err.into())
@@ -684,7 +682,7 @@ impl CliNpmResolver for ManagedCliNpmResolver {
   fn clone_snapshotted(&self) -> Arc<dyn CliNpmResolver> {
     // create a new snapshotted npm resolution and resolver
     let npm_resolution = Arc::new(NpmResolution::new(
-      self.npm_api.clone(),
+      self.registry_info_provider.clone(),
       self.resolution.snapshot(),
       self.maybe_lockfile.clone(),
     ));
@@ -703,7 +701,7 @@ impl CliNpmResolver for ManagedCliNpmResolver {
         self.lifecycle_scripts.clone(),
       ),
       self.maybe_lockfile.clone(),
-      self.npm_api.clone(),
+      self.registry_info_provider.clone(),
       self.npm_cache.clone(),
       self.npm_install_deps_provider.clone(),
       npm_resolution,
