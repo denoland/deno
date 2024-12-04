@@ -11686,6 +11686,14 @@ Usage: deno repl [OPTIONS] [-- [ARGS]...]\n"
           recursive: false,
         },
       ),
+      (
+        svec!["--latest"],
+        OutdatedFlags {
+          filters: svec![],
+          kind: OutdatedKind::PrintOutdated { compatible: false },
+          recursive: false,
+        },
+      ),
     ];
     for (input, expected) in cases {
       let mut args = svec!["deno", "outdated"];
