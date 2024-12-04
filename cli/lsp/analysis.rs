@@ -353,7 +353,12 @@ impl<'a> TsResponseImportMapper<'a> {
           let pkg_reqs = npm_resolver.resolve_pkg_reqs_from_pkg_id(&pkg_id);
           // check if any pkg reqs match what is found in an import map
           if !pkg_reqs.is_empty() {
-            let sub_path = self.resolve_package_path(specifier);
+            let sub_path = npm_resolver
+              .resolve_pkg_folder_from_pkg_id(&pkg_id)
+              .ok()
+              .and_then(|pkg_folder| {
+                self.resolve_package_path(specifier, &pkg_folder)
+              });
             if let Some(import_map) = self.maybe_import_map {
               let pkg_reqs = pkg_reqs.iter().collect::<HashSet<_>>();
               let mut matches = Vec::new();
@@ -368,8 +373,13 @@ impl<'a> TsResponseImportMapper<'a> {
                       if let Some(key_sub_path) =
                         sub_path.strip_prefix(value_sub_path)
                       {
-                        matches
-                          .push(format!("{}{}", entry.raw_key, key_sub_path));
+                        // keys that don't end in a slash can't be mapped to a subpath
+                        if entry.raw_key.ends_with('/')
+                          || key_sub_path.is_empty()
+                        {
+                          matches
+                            .push(format!("{}{}", entry.raw_key, key_sub_path));
+                        }
                       }
                     }
                   }
@@ -413,10 +423,16 @@ impl<'a> TsResponseImportMapper<'a> {
   fn resolve_package_path(
     &self,
     specifier: &ModuleSpecifier,
+    package_root_folder: &Path,
   ) -> Option<String> {
     let package_json = self
       .resolver
-      .get_closest_package_json(specifier)
+      .pkg_json_resolver(specifier)
+      // the specifier might have a closer package.json, but we
+      // want the root of the package's package.json
+      .get_closest_package_json_from_file_path(
+        &package_root_folder.join("package.json"),
+      )
       .ok()
       .flatten()?;
     let root_folder = package_json.path.parent()?;
