@@ -322,16 +322,14 @@ impl WorkspaceLinter {
       vec![]
     };
 
-    let maybe_plugin_runner = Some(Arc::new(Mutex::new({
-      let r = plugins::create_runner_and_load_plugins(plugin_specifiers).await;
-      eprintln!("r {:#?}", r);
-      r?
-    })));
+    let plugin_runner =
+      plugins::create_runner_and_load_plugins(plugin_specifiers).await?;
+
     let linter = Arc::new(CliLinter::new(CliLinterOptions {
       configured_rules: lint_rules,
       fix: lint_options.fix,
       deno_lint_config: lint_config,
-      maybe_plugin_runner,
+      maybe_plugin_runner: Some(Arc::new(Mutex::new(plugin_runner))),
     }));
 
     let mut futures = Vec::with_capacity(2);

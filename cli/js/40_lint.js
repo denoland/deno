@@ -1,8 +1,11 @@
-import {
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+
+import { core } from "ext:core/mod.js";
+const {
   op_lint_get_rule,
   op_lint_get_source,
   op_lint_report,
-} from "ext:core/ops";
+} = core.ops;
 
 export class Context {
   id;

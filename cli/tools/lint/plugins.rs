@@ -14,10 +14,8 @@ use deno_core::resolve_url_or_path;
 use deno_core::serde_json;
 use deno_core::serde_v8;
 use deno_core::v8;
-use deno_core::JsRuntime;
 use deno_core::OpState;
 use deno_core::PollEventLoopOptions;
-use deno_core::RuntimeOptions;
 use deno_lint::diagnostic::LintDiagnostic;
 use deno_lint::diagnostic::LintDiagnosticDetails;
 use deno_lint::diagnostic::LintDiagnosticRange;
@@ -29,13 +27,14 @@ use deno_runtime::WorkerExecutionMode;
 use indexmap::IndexMap;
 use serde::Deserialize;
 use std::path::PathBuf;
-use std::rc::Rc;
 use std::sync::Arc;
 use tokio::sync::mpsc::channel;
 use tokio::sync::mpsc::Receiver;
 use tokio::sync::mpsc::Sender;
 
+use crate::args::DenoSubcommand;
 use crate::args::Flags;
+use crate::args::LintFlags;
 use crate::factory::CliFactory;
 
 #[derive(Debug)]
@@ -82,7 +81,9 @@ impl PluginRunner {
     let join_handle = std::thread::spawn(move || {
       log::info!("thread spawned");
       let fut = async move {
-        let flags = Arc::new(Flags::default());
+        let mut flags = Flags::default();
+        flags.subcommand = DenoSubcommand::Lint(LintFlags::default());
+        let flags = Arc::new(flags);
         let factory = CliFactory::from_flags(flags);
         let cli_options = factory.cli_options()?;
         let main_module =
@@ -115,7 +116,7 @@ impl PluginRunner {
 
         let obj_result = runtime.lazy_load_es_module_with_code(
           "ext:cli/lint.js",
-          deno_core::ascii_str_include!(concat!("lint.js")),
+          deno_core::ascii_str_include!(concat!("../../js/40_lint.js")),
         );
 
         let obj = match obj_result {

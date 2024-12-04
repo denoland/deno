@@ -1,4 +1,3 @@
-// TODO(bartlomieju): this should be rule name, not plugin name
 const PLUGIN_NAME = "test-plugin";
 const RULE1_NAME = "first-rule";
 
@@ -17,10 +16,6 @@ const rule = {
       },
     });
     return {
-      // Performs action in the function on every variable declarator
-      StringLiteral(node) {
-        // console.log("string literal", node);
-      },
       VariableDeclarator(node) {
         // console.log("variable declarator", node);
         // Check if a `const` variable declaration
