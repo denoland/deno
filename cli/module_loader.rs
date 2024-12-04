@@ -225,6 +225,38 @@ struct SharedCliModuleLoaderState {
   npm_module_loader: NpmModuleLoader,
   parsed_source_cache: Arc<ParsedSourceCache>,
   resolver: Arc<CliResolver>,
+  in_flight_loads_tracker: InFlightModuleLoadsTracker,
+}
+
+struct InFlightModuleLoadsTracker {
+  loads_number: Arc<AtomicU16>,
+  cleanup_task_handle: Arc<Mutex<Option<tokio::task::JoinHandle<()>>>>,
+}
+
+impl InFlightModuleLoadsTracker {
+  pub fn increase(&self) {
+    self.loads_number.fetch_add(1, Ordering::Relaxed);
+    if let Some(task) = self.cleanup_task_handle.lock().take() {
+      task.abort();
+    }
+  }
+
+  pub fn decrease(&self, parsed_source_cache: &Arc<ParsedSourceCache>) {
+    let prev = self.loads_number.fetch_sub(1, Ordering::Relaxed);
+
+    if prev == 1 {
+      let parsed_source_cache = parsed_source_cache.clone();
+      let task_handle = tokio::spawn(async move {
+        tokio::time::sleep(std::time::Duration::from_secs(10)).await;
+        parsed_source_cache.free_all();
+      });
+      let maybe_prev_task =
+        self.cleanup_task_handle.lock().replace(task_handle);
+      if let Some(prev_task) = maybe_prev_task {
+        prev_task.abort();
+      }
+    }
+  }
 }
 
 pub struct CliModuleLoaderFactory {
@@ -275,6 +307,10 @@ impl CliModuleLoaderFactory {
         npm_module_loader,
         parsed_source_cache,
         resolver,
+        in_flight_loads_tracker: InFlightModuleLoadsTracker {
+          loads_number: Arc::new(AtomicU16::new(0)),
+          cleanup_task_handle: Arc::new(Mutex::new(None)),
+        },
       }),
     }
   }
@@ -298,8 +334,6 @@ impl CliModuleLoaderFactory {
         emitter: self.shared.emitter.clone(),
         parsed_source_cache: self.shared.parsed_source_cache.clone(),
         shared: self.shared.clone(),
-        in_flight_loads: AtomicU16::new(0),
-        cleanup_task_handle: Arc::new(Mutex::new(None)),
       })));
     let node_require_loader = Rc::new(CliNodeRequireLoader {
       cjs_tracker: self.shared.cjs_tracker.clone(),
@@ -361,8 +395,6 @@ struct CliModuleLoaderInner<TGraphContainer: ModuleGraphContainer> {
   node_code_translator: Arc<CliNodeCodeTranslator>,
   parsed_source_cache: Arc<ParsedSourceCache>,
   graph_container: TGraphContainer,
-  in_flight_loads: AtomicU16,
-  cleanup_task_handle: Arc<Mutex<Option<tokio::task::JoinHandle<()>>>>,
 }
 
 impl<TGraphContainer: ModuleGraphContainer>
@@ -874,7 +906,7 @@ impl<TGraphContainer: ModuleGraphContainer> ModuleLoader
     _maybe_referrer: Option<String>,
     is_dynamic: bool,
   ) -> Pin<Box<dyn Future<Output = Result<(), AnyError>>>> {
-    self.0.in_flight_loads.fetch_add(1, Ordering::Relaxed);
+    self.0.shared.in_flight_loads_tracker.increase();
     if self.0.shared.in_npm_pkg_checker.in_npm_package(specifier) {
       return Box::pin(deno_core::futures::future::ready(Ok(())));
     }
@@ -930,21 +962,11 @@ impl<TGraphContainer: ModuleGraphContainer> ModuleLoader
   }
 
   fn finish_load(&self) -> Pin<Box<dyn Future<Output = Result<(), AnyError>>>> {
-    let prev = self.0.in_flight_loads.fetch_sub(1, Ordering::Relaxed);
-
-    if prev == 0 {
-      let parsed_source_cache = self.0.shared.parsed_source_cache.clone();
-      let task_handle = tokio::spawn(async move {
-        tokio::time::sleep(std::time::Duration::from_secs(10)).await;
-        parsed_source_cache.free_all();
-      });
-      let maybe_prev_task =
-        self.0.cleanup_task_handle.lock().replace(task_handle);
-      if let Some(prev_task) = maybe_prev_task {
-        prev_task.abort();
-      }
-    }
-
+    self
+      .0
+      .shared
+      .in_flight_loads_tracker
+      .decrease(&self.0.shared.parsed_source_cache);
     std::future::ready(Ok(())).boxed_local()
   }
 
