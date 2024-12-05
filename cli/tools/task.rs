@@ -88,6 +88,7 @@ pub async fn execute_script(
         &package_regex,
         filter,
         force_use_pkg_json,
+        task_flags.recursive,
       )?;
 
       return Ok(0);
@@ -97,7 +98,9 @@ pub async fn execute_script(
     let mut packages_task_info: Vec<PackageTaskInfo> = vec![];
 
     for folder in workspace.config_folders() {
-      if !matches_package(folder.1, force_use_pkg_json, &package_regex) {
+      if !task_flags.recursive
+        && !matches_package(folder.1, force_use_pkg_json, &package_regex)
+      {
         continue;
       }
 
@@ -700,12 +703,15 @@ fn print_available_tasks_workspace(
   package_regex: &Regex,
   filter: &str,
   force_use_pkg_json: bool,
+  recursive: bool,
 ) -> Result<(), AnyError> {
   let workspace = cli_options.workspace();
 
   let mut matched = false;
   for folder in workspace.config_folders() {
-    if !matches_package(folder.1, force_use_pkg_json, package_regex) {
+    if !recursive
+      && !matches_package(folder.1, force_use_pkg_json, package_regex)
+    {
       continue;
     }
     matched = true;
