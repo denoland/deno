@@ -30,6 +30,16 @@
       "args": "task --filter @foo/* dev",
       "output": "npm_workspace_order.out"
     },
+    "npm_filter_no_match_no_task": {
+      "cwd": "./npm",
+      "args": "task --filter @asdf",
+      "output": "npm_filter_no_match_no_task.out"
+    },
+    "npm_filter_no_task": {
+      "cwd": "./npm",
+      "args": "task --filter *",
+      "output": "npm_filter_no_task.out"
+    },
     "deno_all": {
       "cwd": "./deno",
       "args": "task --filter * dev",
@@ -54,6 +64,16 @@
       "cwd": "./deno_workspace_order",
       "args": "task --filter @foo/* dev",
       "output": "deno_workspace_order.out"
+    },
+    "deno_filter_no_match_no_task": {
+      "cwd": "./deno",
+      "args": "task --filter @asdf",
+      "output": "deno_filter_no_match_no_task.out"
+    },
+    "deno_filter_no_task": {
+      "cwd": "./deno",
+      "args": "task --filter *",
+      "output": "deno_filter_no_task.out"
     }
   }
 }
