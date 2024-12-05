@@ -60,10 +60,10 @@ impl<TEnv: NodeResolverEnv> PackageJsonResolver<TEnv> {
     let Ok(file_path) = deno_path_util::url_to_file_path(url) else {
       return Ok(None);
     };
-    self.get_closest_package_json_from_path(&file_path)
+    self.get_closest_package_json_from_file_path(&file_path)
   }
 
-  pub fn get_closest_package_json_from_path(
+  pub fn get_closest_package_json_from_file_path(
     &self,
     file_path: &Path,
   ) -> Result<Option<PackageJsonRc>, ClosestPkgJsonError> {

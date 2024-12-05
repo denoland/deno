@@ -1,14 +1,19 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 use std::collections::HashMap;
+use std::collections::HashSet;
 use std::sync::Arc;
 
 use anyhow::anyhow;
 use anyhow::bail;
 use anyhow::Context;
 use anyhow::Error as AnyError;
+use async_trait::async_trait;
 use deno_npm::npm_rc::ResolvedNpmRc;
 use deno_npm::registry::NpmPackageInfo;
+use deno_npm::registry::NpmRegistryApi;
+use deno_npm::registry::NpmRegistryPackageInfoLoadError;
+use deno_unsync::sync::AtomicFlag;
 use deno_unsync::sync::MultiRuntimeAsyncValueCreator;
 use futures::future::LocalBoxFuture;
 use futures::FutureExt;
@@ -43,8 +48,49 @@ enum MemoryCacheItem {
   MemoryCached(Result<Option<Arc<NpmPackageInfo>>, Arc<AnyError>>),
 }
 
-// todo(#27198): refactor to store this only in the http cache and also
-// consolidate with CliNpmRegistryApi.
+#[derive(Debug, Default)]
+struct MemoryCache {
+  clear_id: usize,
+  items: HashMap<String, MemoryCacheItem>,
+}
+
+impl MemoryCache {
+  #[inline(always)]
+  pub fn clear(&mut self) {
+    self.clear_id += 1;
+    self.items.clear();
+  }
+
+  #[inline(always)]
+  pub fn get(&self, key: &str) -> Option<&MemoryCacheItem> {
+    self.items.get(key)
+  }
+
+  #[inline(always)]
+  pub fn insert(&mut self, key: String, value: MemoryCacheItem) {
+    self.items.insert(key, value);
+  }
+
+  #[inline(always)]
+  pub fn try_insert(
+    &mut self,
+    clear_id: usize,
+    key: &str,
+    value: MemoryCacheItem,
+  ) -> bool {
+    if clear_id != self.clear_id {
+      return false;
+    }
+    // if the clear_id is the same then the item should exist
+    debug_assert!(self.items.contains_key(key));
+    if let Some(item) = self.items.get_mut(key) {
+      *item = value;
+    }
+    true
+  }
+}
+
+// todo(#27198): refactor to store this only in the http cache
 
 /// Downloads packuments from the npm registry.
 ///
@@ -55,7 +101,9 @@ pub struct RegistryInfoProvider<TEnv: NpmCacheEnv> {
   cache: Arc<NpmCache<TEnv>>,
   env: Arc<TEnv>,
   npmrc: Arc<ResolvedNpmRc>,
-  memory_cache: Mutex<HashMap<String, MemoryCacheItem>>,
+  force_reload_flag: AtomicFlag,
+  memory_cache: Mutex<MemoryCache>,
+  previously_loaded_packages: Mutex<HashSet<String>>,
 }
 
 impl<TEnv: NpmCacheEnv> RegistryInfoProvider<TEnv> {
@@ -68,17 +116,60 @@ impl<TEnv: NpmCacheEnv> RegistryInfoProvider<TEnv> {
       cache,
       env,
       npmrc,
+      force_reload_flag: AtomicFlag::lowered(),
       memory_cache: Default::default(),
+      previously_loaded_packages: Default::default(),
     }
   }
 
-  pub async fn load_package_info(
+  /// Clears the internal memory cache.
+  pub fn clear_memory_cache(&self) {
+    self.memory_cache.lock().clear();
+  }
+
+  fn mark_force_reload(&self) -> bool {
+    // never force reload the registry information if reloading
+    // is disabled or if we're already reloading
+    if matches!(
+      self.cache.cache_setting(),
+      NpmCacheSetting::Only | NpmCacheSetting::ReloadAll
+    ) {
+      return false;
+    }
+    if self.force_reload_flag.raise() {
+      self.clear_memory_cache();
+      true
+    } else {
+      false
+    }
+  }
+
+  pub fn as_npm_registry_api(self: &Arc<Self>) -> NpmRegistryApiAdapter<TEnv> {
+    NpmRegistryApiAdapter(self.clone())
+  }
+
+  pub async fn package_info(
+    self: &Arc<Self>,
+    name: &str,
+  ) -> Result<Arc<NpmPackageInfo>, NpmRegistryPackageInfoLoadError> {
+    match self.maybe_package_info(name).await {
+      Ok(Some(info)) => Ok(info),
+      Ok(None) => Err(NpmRegistryPackageInfoLoadError::PackageNotExists {
+        package_name: name.to_string(),
+      }),
+      Err(err) => {
+        Err(NpmRegistryPackageInfoLoadError::LoadError(Arc::new(err)))
+      }
+    }
+  }
+
+  pub async fn maybe_package_info(
     self: &Arc<Self>,
     name: &str,
   ) -> Result<Option<Arc<NpmPackageInfo>>, AnyError> {
     self.load_package_info_inner(name).await.with_context(|| {
       format!(
-        "Error getting response at {} for package \"{}\"",
+        "Failed loading {} for package \"{}\"",
         get_package_url(&self.npmrc, name),
         name
       )
@@ -89,18 +180,9 @@ impl<TEnv: NpmCacheEnv> RegistryInfoProvider<TEnv> {
     self: &Arc<Self>,
     name: &str,
   ) -> Result<Option<Arc<NpmPackageInfo>>, AnyError> {
-    if *self.cache.cache_setting() == NpmCacheSetting::Only {
-      return Err(deno_core::error::custom_error(
-        "NotCached",
-        format!(
-          "An npm specifier not found in cache: \"{name}\", --cached-only is specified."
-        )
-      ));
-    }
-
-    let cache_item = {
+    let (cache_item, clear_id) = {
       let mut mem_cache = self.memory_cache.lock();
-      if let Some(cache_item) = mem_cache.get(name) {
+      let cache_item = if let Some(cache_item) = mem_cache.get(name) {
         cache_item.clone()
       } else {
         let value_creator = MultiRuntimeAsyncValueCreator::new({
@@ -111,7 +193,8 @@ impl<TEnv: NpmCacheEnv> RegistryInfoProvider<TEnv> {
         let cache_item = MemoryCacheItem::Pending(Arc::new(value_creator));
         mem_cache.insert(name.to_string(), cache_item.clone());
         cache_item
-      }
+      };
+      (cache_item, mem_cache.clear_id)
     };
 
     match cache_item {
@@ -130,25 +213,37 @@ impl<TEnv: NpmCacheEnv> RegistryInfoProvider<TEnv> {
           Ok(FutureResult::SavedFsCache(info)) => {
             // return back the future and mark this package as having
             // been saved in the cache for next time it's requested
-            *self.memory_cache.lock().get_mut(name).unwrap() =
-              MemoryCacheItem::FsCached;
+            self.memory_cache.lock().try_insert(
+              clear_id,
+              name,
+              MemoryCacheItem::FsCached,
+            );
             Ok(Some(info))
           }
           Ok(FutureResult::ErroredFsCache(info)) => {
             // since saving to the fs cache failed, keep the package information in memory
-            *self.memory_cache.lock().get_mut(name).unwrap() =
-              MemoryCacheItem::MemoryCached(Ok(Some(info.clone())));
+            self.memory_cache.lock().try_insert(
+              clear_id,
+              name,
+              MemoryCacheItem::MemoryCached(Ok(Some(info.clone()))),
+            );
             Ok(Some(info))
           }
           Ok(FutureResult::PackageNotExists) => {
-            *self.memory_cache.lock().get_mut(name).unwrap() =
-              MemoryCacheItem::MemoryCached(Ok(None));
+            self.memory_cache.lock().try_insert(
+              clear_id,
+              name,
+              MemoryCacheItem::MemoryCached(Ok(None)),
+            );
             Ok(None)
           }
           Err(err) => {
-            let return_err = anyhow!("{}", err);
-            *self.memory_cache.lock().get_mut(name).unwrap() =
-              MemoryCacheItem::MemoryCached(Err(err));
+            let return_err = anyhow!("{:#}", err);
+            self.memory_cache.lock().try_insert(
+              clear_id,
+              name,
+              MemoryCacheItem::MemoryCached(Err(err)),
+            );
             Err(return_err)
           }
         }
@@ -196,6 +291,29 @@ impl<TEnv: NpmCacheEnv> RegistryInfoProvider<TEnv> {
       };
     let name = name.to_string();
     async move {
+      if (downloader.cache.cache_setting().should_use_for_npm_package(&name) && !downloader.force_reload_flag.is_raised())
+        // if this has been previously reloaded, then try loading from the
+        // file system cache
+        || downloader.previously_loaded_packages.lock().contains(&name)
+      {
+        // attempt to load from the file cache
+        if let Some(info) = downloader.cache.load_package_info(&name)? {
+          let result = Arc::new(info);
+          return Ok(FutureResult::SavedFsCache(result));
+        }
+      }
+
+      if *downloader.cache.cache_setting() == NpmCacheSetting::Only {
+        return Err(deno_core::error::custom_error(
+          "NotCached",
+          format!(
+            "npm package not found in cache: \"{name}\", --cached-only is specified."
+          )
+        ));
+      }
+
+      downloader.previously_loaded_packages.lock().insert(name.to_string());
+
       let maybe_bytes = downloader
         .env
         .download_with_retries_on_any_tokio_runtime(
@@ -231,6 +349,24 @@ impl<TEnv: NpmCacheEnv> RegistryInfoProvider<TEnv> {
     }
     .map(|r| r.map_err(Arc::new))
     .boxed_local()
+  }
+}
+
+pub struct NpmRegistryApiAdapter<TEnv: NpmCacheEnv>(
+  Arc<RegistryInfoProvider<TEnv>>,
+);
+
+#[async_trait(?Send)]
+impl<TEnv: NpmCacheEnv> NpmRegistryApi for NpmRegistryApiAdapter<TEnv> {
+  async fn package_info(
+    &self,
+    name: &str,
+  ) -> Result<Arc<NpmPackageInfo>, NpmRegistryPackageInfoLoadError> {
+    self.0.package_info(name).await
+  }
+
+  fn mark_force_reload(&self) -> bool {
+    self.0.mark_force_reload()
   }
 }
 

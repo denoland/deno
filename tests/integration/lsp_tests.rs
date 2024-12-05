@@ -6009,7 +6009,7 @@ fn lsp_code_actions_deno_cache_npm() {
         "severity": 1,
         "code": "not-installed-npm",
         "source": "deno",
-        "message": "NPM package \"chalk\" is not installed or doesn't exist.",
+        "message": "npm package \"chalk\" is not installed or doesn't exist.",
         "data": { "specifier": "npm:chalk" }
       }],
       "version": 1
@@ -6036,7 +6036,7 @@ fn lsp_code_actions_deno_cache_npm() {
           "severity": 1,
           "code": "not-installed-npm",
           "source": "deno",
-          "message": "NPM package \"chalk\" is not installed or doesn't exist.",
+          "message": "npm package \"chalk\" is not installed or doesn't exist.",
           "data": { "specifier": "npm:chalk" }
         }],
         "only": ["quickfix"]
@@ -6056,7 +6056,7 @@ fn lsp_code_actions_deno_cache_npm() {
         "severity": 1,
         "code": "not-installed-npm",
         "source": "deno",
-        "message": "NPM package \"chalk\" is not installed or doesn't exist.",
+        "message": "npm package \"chalk\" is not installed or doesn't exist.",
         "data": { "specifier": "npm:chalk" }
       }],
       "command": {
@@ -6111,7 +6111,7 @@ fn lsp_code_actions_deno_cache_all() {
           "severity": 1,
           "code": "not-installed-npm",
           "source": "deno",
-          "message": "NPM package \"chalk\" is not installed or doesn't exist.",
+          "message": "npm package \"chalk\" is not installed or doesn't exist.",
           "data": { "specifier": "npm:chalk" },
         },
       ],
@@ -6199,7 +6199,7 @@ fn lsp_code_actions_deno_cache_all() {
             "severity": 1,
             "code": "not-installed-npm",
             "source": "deno",
-            "message": "NPM package \"chalk\" is not installed or doesn't exist.",
+            "message": "npm package \"chalk\" is not installed or doesn't exist.",
             "data": { "specifier": "npm:chalk" },
           },
         ],
@@ -9611,6 +9611,69 @@ fn lsp_completions_npm() {
 }
 
 #[test]
+fn lsp_auto_imports_npm_auto() {
+  let context = TestContextBuilder::for_npm().use_temp_cwd().build();
+  let temp_dir_path = context.temp_dir().path();
+  temp_dir_path.join("deno.json").write_json(&json!({
+    "nodeModulesDir": "auto",
+    "imports": {
+      "preact": "npm:preact@^10.19.6",
+    },
+  }));
+  // add a file that uses the import so that typescript knows about it
+  temp_dir_path
+    .join("mod.ts")
+    .write("import { useEffect } from 'preact/hooks'; console.log(useEffect);");
+  context.run_deno("cache mod.ts");
+  let mut client = context.new_lsp_command().build();
+  client.initialize_default();
+  let file_uri = temp_dir_path.join("file.ts").url_file();
+  let mut diagnostics = client
+    .did_open(json!({
+      "textDocument": {
+        "uri": file_uri,
+        "languageId": "typescript",
+        "version": 1,
+        "text": "useEffect",
+      }
+    }))
+    .all();
+  assert_eq!(diagnostics.len(), 1);
+  let diagnostic = diagnostics.remove(0);
+  let res = client.write_request(
+    "textDocument/codeAction",
+    json!({
+      "textDocument": {
+        "uri": file_uri,
+      },
+      "range": {
+        "start": { "line": 0, "character": 0 },
+        "end": { "line": 0, "character": 9 }
+      },
+      "context": {
+        "diagnostics": [diagnostic],
+        "only": ["quickfix"]
+      }
+    }),
+  );
+  assert_eq!(
+    res
+      .as_array()
+      .unwrap()
+      .first()
+      .unwrap()
+      .as_object()
+      .unwrap()
+      .get("title")
+      .unwrap()
+      .as_str()
+      .unwrap(),
+    "Add import from \"preact/hooks\""
+  );
+  client.shutdown();
+}
+
+#[test]
 fn lsp_npm_specifier_unopened_file() {
   let context = TestContextBuilder::new()
     .use_http_server()
@@ -9860,7 +9923,7 @@ fn lsp_completions_node_builtin() {
         "severity": 1,
         "code": "not-installed-npm",
         "source": "deno",
-        "message": "NPM package \"@types/node\" is not installed or doesn't exist."
+        "message": "npm package \"@types/node\" is not installed or doesn't exist."
       }
     ])
   );
