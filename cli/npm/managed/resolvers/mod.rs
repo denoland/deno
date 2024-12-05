@@ -12,6 +12,8 @@ use deno_runtime::deno_fs::FileSystem;
 
 use crate::args::LifecycleScriptsConfig;
 use crate::args::NpmInstallDepsProvider;
+use crate::npm::CliNpmCache;
+use crate::npm::CliNpmTarballCache;
 use crate::util::progress_bar::ProgressBar;
 
 pub use self::common::NpmPackageFsResolver;
@@ -19,18 +21,16 @@ pub use self::common::NpmPackageFsResolver;
 use self::global::GlobalNpmPackageResolver;
 use self::local::LocalNpmPackageResolver;
 
-use super::cache::NpmCache;
-use super::cache::TarballCache;
 use super::resolution::NpmResolution;
 
 #[allow(clippy::too_many_arguments)]
 pub fn create_npm_fs_resolver(
   fs: Arc<dyn FileSystem>,
-  npm_cache: Arc<NpmCache>,
+  npm_cache: Arc<CliNpmCache>,
   npm_install_deps_provider: &Arc<NpmInstallDepsProvider>,
   progress_bar: &ProgressBar,
   resolution: Arc<NpmResolution>,
-  tarball_cache: Arc<TarballCache>,
+  tarball_cache: Arc<CliNpmTarballCache>,
   maybe_node_modules_path: Option<PathBuf>,
   system_info: NpmSystemInfo,
   lifecycle_scripts: LifecycleScriptsConfig,

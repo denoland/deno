@@ -7,6 +7,23 @@ import {
   op_otel_instrumentation_scope_enter,
   op_otel_instrumentation_scope_enter_builtin,
   op_otel_log,
+  op_otel_metrics_data_point_attribute,
+  op_otel_metrics_data_point_attribute2,
+  op_otel_metrics_data_point_attribute3,
+  op_otel_metrics_gauge,
+  op_otel_metrics_histogram,
+  op_otel_metrics_histogram_data_point,
+  op_otel_metrics_histogram_data_point_entry1,
+  op_otel_metrics_histogram_data_point_entry2,
+  op_otel_metrics_histogram_data_point_entry3,
+  op_otel_metrics_histogram_data_point_entry_final,
+  op_otel_metrics_resource_attribute,
+  op_otel_metrics_resource_attribute2,
+  op_otel_metrics_resource_attribute3,
+  op_otel_metrics_scope,
+  op_otel_metrics_submit,
+  op_otel_metrics_sum,
+  op_otel_metrics_sum_or_gauge_data_point,
   op_otel_span_attribute,
   op_otel_span_attribute2,
   op_otel_span_attribute3,
@@ -22,7 +39,6 @@ const {
   SafeWeakMap,
   Array,
   ObjectEntries,
-  SafeMap,
   ReflectApply,
   SymbolFor,
   Error,
@@ -186,7 +202,7 @@ const instrumentationScopes = new SafeWeakMap<
 >();
 let activeInstrumentationLibrary: WeakRef<InstrumentationLibrary> | null = null;
 
-function submit(
+function submitSpan(
   spanId: string | Uint8Array,
   traceId: string | Uint8Array,
   traceFlags: number,
@@ -411,7 +427,7 @@ export class Span {
 
     endSpan = (span: Span) => {
       const endTime = now();
-      submit(
+      submitSpan(
         span.#spanId,
         span.#traceId,
         span.#traceFlags,
@@ -571,7 +587,7 @@ class SpanExporter {
       for (let i = 0; i < spans.length; i += 1) {
         const span = spans[i];
         const context = span.spanContext();
-        submit(
+        submitSpan(
           context.spanId,
           context.traceId,
           context.traceFlags,
@@ -600,26 +616,25 @@ class SpanExporter {
 const CURRENT = new AsyncVariable();
 
 class Context {
-  #data = new SafeMap();
+  #data: Record<symbol, unknown> = { __proto__: null };
 
-  // deno-lint-ignore no-explicit-any
-  constructor(data?: Iterable<readonly [any, any]> | null | undefined) {
-    this.#data = data ? new SafeMap(data) : new SafeMap();
+  constructor(data?: Record<symbol, unknown> | null | undefined) {
+    this.#data = { __proto__: null, ...data };
   }
 
   getValue(key: symbol): unknown {
-    return this.#data.get(key);
+    return this.#data[key];
   }
 
   setValue(key: symbol, value: unknown): Context {
     const c = new Context(this.#data);
-    c.#data.set(key, value);
+    c.#data[key] = value;
     return c;
   }
 
   deleteValue(key: symbol): Context {
     const c = new Context(this.#data);
-    c.#data.delete(key);
+    delete c.#data[key];
     return c;
   }
 }
@@ -671,6 +686,262 @@ class ContextManager {
   }
 }
 
+function attributeValue(value: IAnyValue) {
+  return value.boolValue ?? value.stringValue ?? value.doubleValue ??
+    value.intValue;
+}
+
+function submitMetrics(resource, scopeMetrics) {
+  let i = 0;
+  while (i < resource.attributes.length) {
+    if (i + 2 < resource.attributes.length) {
+      op_otel_metrics_resource_attribute3(
+        resource.attributes.length,
+        resource.attributes[i].key,
+        attributeValue(resource.attributes[i].value),
+        resource.attributes[i + 1].key,
+        attributeValue(resource.attributes[i + 1].value),
+        resource.attributes[i + 2].key,
+        attributeValue(resource.attributes[i + 2].value),
+      );
+      i += 3;
+    } else if (i + 1 < resource.attributes.length) {
+      op_otel_metrics_resource_attribute2(
+        resource.attributes.length,
+        resource.attributes[i].key,
+        attributeValue(resource.attributes[i].value),
+        resource.attributes[i + 1].key,
+        attributeValue(resource.attributes[i + 1].value),
+      );
+      i += 2;
+    } else {
+      op_otel_metrics_resource_attribute(
+        resource.attributes.length,
+        resource.attributes[i].key,
+        attributeValue(resource.attributes[i].value),
+      );
+      i += 1;
+    }
+  }
+
+  for (let smi = 0; smi < scopeMetrics.length; smi += 1) {
+    const { scope, metrics } = scopeMetrics[smi];
+
+    op_otel_metrics_scope(scope.name, scope.schemaUrl, scope.version);
+
+    for (let mi = 0; mi < metrics.length; mi += 1) {
+      const metric = metrics[mi];
+      switch (metric.dataPointType) {
+        case 3:
+          op_otel_metrics_sum(
+            metric.descriptor.name,
+            // deno-lint-ignore prefer-primordials
+            metric.descriptor.description,
+            metric.descriptor.unit,
+            metric.aggregationTemporality,
+            metric.isMonotonic,
+          );
+          for (let di = 0; di < metric.dataPoints.length; di += 1) {
+            const dataPoint = metric.dataPoints[di];
+            op_otel_metrics_sum_or_gauge_data_point(
+              dataPoint.value,
+              hrToSecs(dataPoint.startTime),
+              hrToSecs(dataPoint.endTime),
+            );
+            const attributes = ObjectEntries(dataPoint.attributes);
+            let i = 0;
+            while (i < attributes.length) {
+              if (i + 2 < attributes.length) {
+                op_otel_metrics_data_point_attribute3(
+                  attributes.length,
+                  attributes[i][0],
+                  attributes[i][1],
+                  attributes[i + 1][0],
+                  attributes[i + 1][1],
+                  attributes[i + 2][0],
+                  attributes[i + 2][1],
+                );
+                i += 3;
+              } else if (i + 1 < attributes.length) {
+                op_otel_metrics_data_point_attribute2(
+                  attributes.length,
+                  attributes[i][0],
+                  attributes[i][1],
+                  attributes[i + 1][0],
+                  attributes[i + 1][1],
+                );
+                i += 2;
+              } else {
+                op_otel_metrics_data_point_attribute(
+                  attributes.length,
+                  attributes[i][0],
+                  attributes[i][1],
+                );
+                i += 1;
+              }
+            }
+          }
+          break;
+        case 2:
+          op_otel_metrics_gauge(
+            metric.descriptor.name,
+            // deno-lint-ignore prefer-primordials
+            metric.descriptor.description,
+            metric.descriptor.unit,
+          );
+          for (let di = 0; di < metric.dataPoints.length; di += 1) {
+            const dataPoint = metric.dataPoints[di];
+            op_otel_metrics_sum_or_gauge_data_point(
+              dataPoint.value,
+              hrToSecs(dataPoint.startTime),
+              hrToSecs(dataPoint.endTime),
+            );
+            const attributes = ObjectEntries(dataPoint.attributes);
+            let i = 0;
+            while (i < attributes.length) {
+              if (i + 2 < attributes.length) {
+                op_otel_metrics_data_point_attribute3(
+                  attributes.length,
+                  attributes[i][0],
+                  attributes[i][1],
+                  attributes[i + 1][0],
+                  attributes[i + 1][1],
+                  attributes[i + 2][0],
+                  attributes[i + 2][1],
+                );
+                i += 3;
+              } else if (i + 1 < attributes.length) {
+                op_otel_metrics_data_point_attribute2(
+                  attributes.length,
+                  attributes[i][0],
+                  attributes[i][1],
+                  attributes[i + 1][0],
+                  attributes[i + 1][1],
+                );
+                i += 2;
+              } else {
+                op_otel_metrics_data_point_attribute(
+                  attributes.length,
+                  attributes[i][0],
+                  attributes[i][1],
+                );
+                i += 1;
+              }
+            }
+          }
+          break;
+        case 0:
+          op_otel_metrics_histogram(
+            metric.descriptor.name,
+            // deno-lint-ignore prefer-primordials
+            metric.descriptor.description,
+            metric.descriptor.unit,
+            metric.aggregationTemporality,
+          );
+          for (let di = 0; di < metric.dataPoints.length; di += 1) {
+            const dataPoint = metric.dataPoints[di];
+            const { boundaries, counts } = dataPoint.value.buckets;
+            op_otel_metrics_histogram_data_point(
+              dataPoint.value.count,
+              dataPoint.value.min ?? NaN,
+              dataPoint.value.max ?? NaN,
+              dataPoint.value.sum,
+              hrToSecs(dataPoint.startTime),
+              hrToSecs(dataPoint.endTime),
+              boundaries.length,
+            );
+            let j = 0;
+            while (j < boundaries.length) {
+              if (j + 3 < boundaries.length) {
+                op_otel_metrics_histogram_data_point_entry3(
+                  counts[j],
+                  boundaries[j],
+                  counts[j + 1],
+                  boundaries[j + 1],
+                  counts[j + 2],
+                  boundaries[j + 2],
+                );
+                j += 3;
+              } else if (j + 2 < boundaries.length) {
+                op_otel_metrics_histogram_data_point_entry2(
+                  counts[j],
+                  boundaries[j],
+                  counts[j + 1],
+                  boundaries[j + 1],
+                );
+                j += 2;
+              } else {
+                op_otel_metrics_histogram_data_point_entry1(
+                  counts[j],
+                  boundaries[j],
+                );
+                j += 1;
+              }
+            }
+            op_otel_metrics_histogram_data_point_entry_final(counts[j]);
+            const attributes = ObjectEntries(dataPoint.attributes);
+            let i = 0;
+            while (i < attributes.length) {
+              if (i + 2 < attributes.length) {
+                op_otel_metrics_data_point_attribute3(
+                  attributes.length,
+                  attributes[i][0],
+                  attributes[i][1],
+                  attributes[i + 1][0],
+                  attributes[i + 1][1],
+                  attributes[i + 2][0],
+                  attributes[i + 2][1],
+                );
+                i += 3;
+              } else if (i + 1 < attributes.length) {
+                op_otel_metrics_data_point_attribute2(
+                  attributes.length,
+                  attributes[i][0],
+                  attributes[i][1],
+                  attributes[i + 1][0],
+                  attributes[i + 1][1],
+                );
+                i += 2;
+              } else {
+                op_otel_metrics_data_point_attribute(
+                  attributes.length,
+                  attributes[i][0],
+                  attributes[i][1],
+                );
+                i += 1;
+              }
+            }
+          }
+          break;
+        default:
+          continue;
+      }
+    }
+  }
+
+  op_otel_metrics_submit();
+}
+
+class MetricExporter {
+  export(metrics, resultCallback: (result: ExportResult) => void) {
+    try {
+      submitMetrics(metrics.resource, metrics.scopeMetrics);
+      resultCallback({ code: 0 });
+    } catch (error) {
+      resultCallback({
+        code: 1,
+        error: ObjectPrototypeIsPrototypeOf(error, Error)
+          ? error as Error
+          : new Error(String(error)),
+      });
+    }
+  }
+
+  async forceFlush() {}
+
+  async shutdown() {}
+}
+
 const otelConsoleConfig = {
   ignore: 0,
   capture: 1,
@@ -708,4 +979,5 @@ export function bootstrap(
 export const telemetry = {
   SpanExporter,
   ContextManager,
+  MetricExporter,
 };

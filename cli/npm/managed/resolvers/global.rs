@@ -8,6 +8,8 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use crate::colors;
+use crate::npm::CliNpmCache;
+use crate::npm::CliNpmTarballCache;
 use async_trait::async_trait;
 use deno_ast::ModuleSpecifier;
 use deno_core::error::AnyError;
@@ -24,8 +26,6 @@ use node_resolver::errors::ReferrerNotFoundError;
 use crate::args::LifecycleScriptsConfig;
 use crate::cache::FastInsecureHasher;
 
-use super::super::cache::NpmCache;
-use super::super::cache::TarballCache;
 use super::super::resolution::NpmResolution;
 use super::common::cache_packages;
 use super::common::lifecycle_scripts::LifecycleScriptsStrategy;
@@ -35,8 +35,8 @@ use super::common::RegistryReadPermissionChecker;
 /// Resolves packages from the global npm cache.
 #[derive(Debug)]
 pub struct GlobalNpmPackageResolver {
-  cache: Arc<NpmCache>,
-  tarball_cache: Arc<TarballCache>,
+  cache: Arc<CliNpmCache>,
+  tarball_cache: Arc<CliNpmTarballCache>,
   resolution: Arc<NpmResolution>,
   system_info: NpmSystemInfo,
   registry_read_permission_checker: RegistryReadPermissionChecker,
@@ -45,9 +45,9 @@ pub struct GlobalNpmPackageResolver {
 
 impl GlobalNpmPackageResolver {
   pub fn new(
-    cache: Arc<NpmCache>,
+    cache: Arc<CliNpmCache>,
     fs: Arc<dyn FileSystem>,
-    tarball_cache: Arc<TarballCache>,
+    tarball_cache: Arc<CliNpmTarballCache>,
     resolution: Arc<NpmResolution>,
     system_info: NpmSystemInfo,
     lifecycle_scripts: LifecycleScriptsConfig,

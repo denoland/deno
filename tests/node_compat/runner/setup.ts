@@ -19,7 +19,7 @@ const encoder = new TextEncoder();
 
 const NODE_VERSION = version;
 
-const NODE_IGNORED_TEST_DIRS = [
+export const NODE_IGNORED_TEST_DIRS = [
   "addons",
   "async-hooks",
   "cctest",
@@ -40,13 +40,13 @@ const NODE_IGNORED_TEST_DIRS = [
   "wpt",
 ];
 
-const VENDORED_NODE_TEST = new URL("./suite/test/", import.meta.url);
-const NODE_COMPAT_TEST_DEST_URL = new URL(
+export const VENDORED_NODE_TEST = new URL("./suite/test/", import.meta.url);
+export const NODE_COMPAT_TEST_DEST_URL = new URL(
   "../test/",
   import.meta.url,
 );
 
-async function getNodeTests(): Promise<string[]> {
+export async function getNodeTests(): Promise<string[]> {
   const paths: string[] = [];
   const rootPath = VENDORED_NODE_TEST.href.slice(7);
   for await (
@@ -61,7 +61,7 @@ async function getNodeTests(): Promise<string[]> {
   return paths.sort();
 }
 
-function getDenoTests() {
+export function getDenoTests() {
   return Object.entries(config.tests)
     .filter(([testDir]) => !NODE_IGNORED_TEST_DIRS.includes(testDir))
     .flatMap(([testDir, tests]) => tests.map((test) => testDir + "/" + test));
