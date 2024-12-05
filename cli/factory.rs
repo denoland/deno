@@ -1,12 +1,15 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 use crate::args::check_warn_tsconfig;
+use crate::args::discover_npmrc_from_workspace;
 use crate::args::get_root_cert_store;
 use crate::args::CaData;
+use crate::args::CliLockfile;
 use crate::args::CliOptions;
 use crate::args::DenoSubcommand;
 use crate::args::Flags;
 use crate::args::NpmInstallDepsProvider;
+use crate::args::ScopeOptions;
 use crate::args::StorageKeyResolver;
 use crate::args::TsConfigType;
 use crate::cache::Caches;
@@ -51,22 +54,30 @@ use crate::resolver::CliSloppyImportsResolver;
 use crate::resolver::NpmModuleLoader;
 use crate::resolver::SloppyImportsCachedFs;
 use crate::standalone::DenoCompileBinaryWriter;
+use crate::tools::check::MaybeDiagnostics;
 use crate::tools::check::TypeChecker;
 use crate::tools::coverage::CoverageCollector;
 use crate::tools::lint::LintRuleProvider;
 use crate::tools::run::hmr::HmrRunner;
+use crate::tsc::Diagnostics;
 use crate::tsc::TypeCheckingCjsTracker;
+use crate::util::extract;
 use crate::util::file_watcher::WatcherCommunicator;
 use crate::util::fs::canonicalize_path_maybe_not_exists;
 use crate::util::progress_bar::ProgressBar;
 use crate::util::progress_bar::ProgressBarStyle;
 use crate::worker::CliMainWorkerFactory;
 use crate::worker::CliMainWorkerOptions;
+use std::collections::BTreeSet;
 use std::path::PathBuf;
 
+use deno_ast::ModuleSpecifier;
 use deno_cache_dir::npm::NpmCacheDir;
+use deno_config::glob::FilePatterns;
 use deno_config::workspace::PackageJsonDepResolution;
+use deno_config::workspace::WorkspaceDirectory;
 use deno_config::workspace::WorkspaceResolver;
+use deno_core::anyhow::anyhow;
 use deno_core::error::AnyError;
 use deno_core::futures::FutureExt;
 use deno_core::FeatureChecker;
@@ -1050,5 +1061,136 @@ impl CliFactory {
       serve_port: cli_options.serve_port(),
       serve_host: cli_options.serve_host(),
     })
+  }
+}
+
+pub struct WorkspaceFileContainerEntry<T> {
+  main_graph_container: Arc<MainModuleGraphContainer>,
+  specifiers: Vec<(ModuleSpecifier, T)>,
+  snippet_file_specifiers: Option<Vec<ModuleSpecifier>>,
+}
+
+pub struct WorkspaceFileContainer<T> {
+  entries: Vec<WorkspaceFileContainerEntry<T>>,
+}
+
+impl<T> WorkspaceFileContainer<T> {
+  #[allow(clippy::type_complexity)]
+  pub async fn from_workspace_dirs_with_files(
+    mut workspace_dirs_with_files: Vec<(Arc<WorkspaceDirectory>, FilePatterns)>,
+    collect_files: fn(
+      FilePatterns,
+      Arc<CliOptions>,
+      Arc<FileFetcher>,
+    ) -> std::pin::Pin<
+      Box<dyn Future<Output = Result<Vec<(ModuleSpecifier, T)>, AnyError>>>,
+    >,
+    cli_options: &CliOptions,
+    check_doc: bool,
+  ) -> Result<Self, AnyError> {
+    workspace_dirs_with_files.sort_by_cached_key(|(d, _)| d.dir_url().clone());
+    let all_scopes = Arc::new(
+      workspace_dirs_with_files
+        .iter()
+        .filter(|(d, _)| d.has_deno_or_pkg_json())
+        .map(|(d, _)| d.dir_url().clone())
+        .collect::<BTreeSet<_>>(),
+    );
+    let dir_count = workspace_dirs_with_files.len();
+    let mut entries = Vec::with_capacity(dir_count);
+    for (workspace_dir, files) in workspace_dirs_with_files {
+      let (npmrc, _) = discover_npmrc_from_workspace(&workspace_dir.workspace)?;
+      let lockfile =
+        CliLockfile::discover(&cli_options.flags, &workspace_dir.workspace)?;
+      let scope_options = (dir_count > 1).then(|| ScopeOptions {
+        scope: workspace_dir
+          .has_deno_or_pkg_json()
+          .then(|| workspace_dir.dir_url().clone()),
+        all_scopes: all_scopes.clone(),
+      });
+      let cli_options = Arc::new(CliOptions::new(
+        cli_options.flags.clone(),
+        cli_options.initial_cwd().to_path_buf(),
+        lockfile.map(Arc::new),
+        npmrc,
+        workspace_dir,
+        false,
+        scope_options.map(Arc::new),
+      )?);
+      let factory = CliFactory::from_cli_options(cli_options.clone());
+      let file_fetcher = factory.file_fetcher()?;
+      let main_graph_container =
+        factory.main_module_graph_container().await?.clone();
+      let specifiers =
+        collect_files(files, cli_options, file_fetcher.clone()).await?;
+      let snippet_file_specifiers = if check_doc {
+        let root_permissions = factory.root_permissions_container()?;
+        let mut snippet_file_specifiers = Vec::new();
+        for (s, _) in specifiers.iter() {
+          let file = file_fetcher.fetch(s, root_permissions).await?;
+          let snippet_files = extract::extract_snippet_files(file)?;
+          for snippet_file in snippet_files {
+            snippet_file_specifiers.push(snippet_file.specifier.clone());
+            file_fetcher.insert_memory_files(snippet_file);
+          }
+        }
+        Some(snippet_file_specifiers)
+      } else {
+        None
+      };
+      entries.push(WorkspaceFileContainerEntry {
+        main_graph_container,
+        specifiers,
+        snippet_file_specifiers,
+      });
+    }
+    Ok(Self { entries })
+  }
+
+  pub async fn check(&self) -> Result<(), AnyError> {
+    let mut diagnostics = vec![];
+    let mut all_errors = vec![];
+    for entry in &self.entries {
+      let specifiers_for_typecheck = entry
+        .specifiers
+        .iter()
+        .map(|(s, _)| s)
+        .chain(entry.snippet_file_specifiers.iter().flatten())
+        .cloned()
+        .collect::<Vec<_>>();
+      if specifiers_for_typecheck.is_empty() {
+        continue;
+      }
+      if let Err(err) = entry
+        .main_graph_container
+        .check_specifiers(&specifiers_for_typecheck, None)
+        .await
+      {
+        match err {
+          MaybeDiagnostics::Diagnostics(Diagnostics(d)) => {
+            diagnostics.extend(d)
+          }
+          MaybeDiagnostics::Other(err) => all_errors.push(err),
+        }
+      }
+    }
+    if !diagnostics.is_empty() {
+      all_errors.push(AnyError::from(Diagnostics(diagnostics)));
+    }
+    if !all_errors.is_empty() {
+      return Err(anyhow!(
+        "{}",
+        all_errors
+          .into_iter()
+          .map(|e| e.to_string())
+          .collect::<Vec<_>>()
+          .join("\n\n"),
+      ));
+    }
+    Ok(())
+  }
+
+  pub fn has_specifiers(&self) -> bool {
+    self.entries.iter().any(|e| !e.specifiers.is_empty())
   }
 }

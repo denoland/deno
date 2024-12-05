@@ -811,7 +811,7 @@ pub struct ScopeOptions {
 pub struct CliOptions {
   // the source of the options is a detail the rest of the
   // application need not concern itself with, so keep these private
-  flags: Arc<Flags>,
+  pub flags: Arc<Flags>,
   initial_cwd: PathBuf,
   main_module_cell: std::sync::OnceLock<Result<ModuleSpecifier, AnyError>>,
   maybe_node_modules_folder: Option<PathBuf>,

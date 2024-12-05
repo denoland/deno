@@ -1432,7 +1432,7 @@ dependencies = [
 [[package]]
 name = "deno_config"
 version = "0.39.3"
-source = "git+https://github.com/denoland/deno_config.git?branch=compiler-options-from-workspace-member#81d8e844624a8f6b3961213d1480dcc923d08b11"
+source = "git+https://github.com/denoland/deno_config.git?rev=81d8e844624a8f6b3961213d1480dcc923d08b11#81d8e844624a8f6b3961213d1480dcc923d08b11"
 dependencies = [
  "anyhow",
  "deno_package_json",

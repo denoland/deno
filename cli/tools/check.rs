@@ -1,7 +1,6 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 use std::collections::BTreeMap;
-use std::collections::BTreeSet;
 use std::collections::HashSet;
 use std::collections::VecDeque;
 use std::error::Error;
@@ -12,8 +11,8 @@ use deno_ast::MediaType;
 use deno_ast::ModuleSpecifier;
 use deno_config::glob::FilePatterns;
 use deno_config::glob::PathOrPattern;
-use deno_core::anyhow::anyhow;
 use deno_core::error::AnyError;
+use deno_core::futures::FutureExt;
 use deno_graph::Module;
 use deno_graph::ModuleGraph;
 use deno_runtime::deno_node::NodeResolver;
@@ -22,14 +21,11 @@ use once_cell::sync::Lazy;
 use regex::Regex;
 
 use crate::args::check_warn_tsconfig;
-use crate::args::discover_npmrc_from_workspace;
 use crate::args::CheckFlags;
-use crate::args::CliLockfile;
 use crate::args::CliOptions;
 use crate::args::ConfigFlag;
 use crate::args::FileFlags;
 use crate::args::Flags;
-use crate::args::ScopeOptions;
 use crate::args::TsConfig;
 use crate::args::TsConfigType;
 use crate::args::TsTypeLib;
@@ -39,6 +35,7 @@ use crate::cache::Caches;
 use crate::cache::FastInsecureHasher;
 use crate::cache::TypeCheckCache;
 use crate::factory::CliFactory;
+use crate::factory::WorkspaceFileContainer;
 use crate::graph_util::BuildFastCheckGraphOptions;
 use crate::graph_util::ModuleGraphBuilder;
 use crate::npm::CliNpmResolver;
@@ -101,99 +98,27 @@ pub async fn check(
             .map(PathOrPattern::RemoteUrl),
         );
     }
-    let all_scopes = Arc::new(
-      by_workspace_directory
-        .iter()
-        .filter(|(_, (d, _))| d.has_deno_or_pkg_json())
-        .map(|(s, (_, _))| s.clone())
-        .collect::<BTreeSet<_>>(),
-    );
-    let dir_count = by_workspace_directory.len();
-    let mut diagnostics = vec![];
-    let mut all_errors = vec![];
-    let mut found_specifiers = false;
-    for (dir_url, (workspace_directory, patterns)) in by_workspace_directory {
-      let (npmrc, _) =
-        discover_npmrc_from_workspace(&workspace_directory.workspace)?;
-      let lockfile =
-        CliLockfile::discover(&flags, &workspace_directory.workspace)?;
-      let scope_options = (dir_count > 1).then(|| ScopeOptions {
-        scope: workspace_directory
-          .has_deno_or_pkg_json()
-          .then(|| dir_url.clone()),
-        all_scopes: all_scopes.clone(),
-      });
-      let cli_options = CliOptions::new(
-        flags.clone(),
-        cli_options.initial_cwd().to_path_buf(),
-        lockfile.map(Arc::new),
-        npmrc,
-        workspace_directory,
-        false,
-        scope_options.map(Arc::new),
-      )?;
-      let specifiers = collect_specifiers(
-        patterns,
-        cli_options.vendor_dir_path().map(ToOwned::to_owned),
-        |e| is_script_ext(e.path),
-      )?;
-      if specifiers.is_empty() {
-        continue;
-      } else {
-        found_specifiers = true;
-      }
-      let factory = CliFactory::from_cli_options(Arc::new(cli_options));
-      let main_graph_container = factory.main_module_graph_container().await?;
-      let specifiers_for_typecheck = if check_flags.doc || check_flags.doc_only
-      {
-        let file_fetcher = factory.file_fetcher()?;
-        let root_permissions = factory.root_permissions_container()?;
-        let mut specifiers_for_typecheck = if check_flags.doc {
-          specifiers.clone()
-        } else {
-          vec![]
-        };
-        for s in specifiers {
-          let file = file_fetcher.fetch(&s, root_permissions).await?;
-          let snippet_files = extract::extract_snippet_files(file)?;
-          for snippet_file in snippet_files {
-            specifiers_for_typecheck.push(snippet_file.specifier.clone());
-            file_fetcher.insert_memory_files(snippet_file);
-          }
+    let container = WorkspaceFileContainer::from_workspace_dirs_with_files(
+      by_workspace_directory.into_values().collect(),
+      |patterns, cli_options, _| {
+        async move {
+          collect_specifiers(
+            patterns,
+            cli_options.vendor_dir_path().map(ToOwned::to_owned),
+            |e| is_script_ext(e.path),
+          )
+          .map(|s| s.into_iter().map(|s| (s, ())).collect())
         }
-        specifiers_for_typecheck
-      } else {
-        specifiers
-      };
-      if let Err(err) = main_graph_container
-        .check_specifiers(&specifiers_for_typecheck, None)
-        .await
-      {
-        match err {
-          MaybeDiagnostics::Diagnostics(Diagnostics(d)) => {
-            diagnostics.extend(d)
-          }
-          MaybeDiagnostics::Other(err) => all_errors.push(err),
-        }
-      }
-    }
-    if !found_specifiers {
+        .boxed_local()
+      },
+      cli_options,
+      check_flags.doc || check_flags.doc_only,
+    )
+    .await?;
+    if !container.has_specifiers() {
       log::warn!("{} No matching files found.", colors::yellow("Warning"));
     }
-    if !diagnostics.is_empty() {
-      all_errors.push(AnyError::from(Diagnostics(diagnostics)));
-    }
-    if !all_errors.is_empty() {
-      return Err(anyhow!(
-        "{}",
-        all_errors
-          .into_iter()
-          .map(|e| e.to_string())
-          .collect::<Vec<_>>()
-          .join("\n\n"),
-      ));
-    }
-    return Ok(());
+    return container.check().await;
   }
 
   let factory = CliFactory::from_flags(flags);
