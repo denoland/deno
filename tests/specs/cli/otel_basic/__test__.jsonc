@@ -19,6 +19,10 @@
     {
       "args": "run -A main.ts metric.ts",
       "output": "metric.out"
+    },
+    {
+      "args": "run -A --unstable-otel context.ts",
+      "output": ""
     }
   ]
 }

@@ -2664,10 +2664,10 @@ Display outdated dependencies:
   <p(245)>deno outdated</>
   <p(245)>deno outdated --compatible</>
 
-Update dependencies:
+Update dependencies to latest semver compatible versions:
   <p(245)>deno outdated --update</>
+Update dependencies to latest versions, ignoring semver requirements:
   <p(245)>deno outdated --update --latest</>
-  <p(245)>deno outdated --update</>
 
 Filters can be used to select which packages to act on. Filters can include wildcards (*) to match multiple packages.
   <p(245)>deno outdated --update --latest \"@std/*\"</>
@@ -2703,7 +2703,6 @@ Specific version requirements to update to can be specified:
           .help(
             "Update to the latest version, regardless of semver constraints",
           )
-          .requires("update")
           .conflicts_with("compatible"),
       )
       .arg(
@@ -5278,8 +5277,15 @@ fn task_parse(
   unstable_args_parse(flags, matches, UnstableArgsConfig::ResolutionAndRuntime);
   node_modules_arg_parse(flags, matches);
 
-  let filter = matches.remove_one::<String>("filter");
-  let recursive = matches.get_flag("recursive") || filter.is_some();
+  let mut recursive = matches.get_flag("recursive");
+  let filter = if let Some(filter) = matches.remove_one::<String>("filter") {
+    recursive = false;
+    Some(filter)
+  } else if recursive {
+    Some("*".to_string())
+  } else {
+    None
+  };
 
   let mut task_flags = TaskFlags {
     cwd: matches.remove_one::<String>("cwd"),
@@ -10539,7 +10545,7 @@ mod tests {
           cwd: None,
           task: Some("build".to_string()),
           is_run: false,
-          recursive: true,
+          recursive: false,
           filter: Some("*".to_string()),
           eval: false,
         }),
@@ -10556,7 +10562,7 @@ mod tests {
           task: Some("build".to_string()),
           is_run: false,
           recursive: true,
-          filter: None,
+          filter: Some("*".to_string()),
           eval: false,
         }),
         ..Flags::default()
@@ -10572,7 +10578,7 @@ mod tests {
           task: Some("build".to_string()),
           is_run: false,
           recursive: true,
-          filter: None,
+          filter: Some("*".to_string()),
           eval: false,
         }),
         ..Flags::default()
@@ -11684,6 +11690,14 @@ Usage: deno repl [OPTIONS] [-- [ARGS]...]\n"
         OutdatedFlags {
           filters: svec!["@foo/bar"],
           kind: OutdatedKind::Update { latest: false },
+          recursive: false,
+        },
+      ),
+      (
+        svec!["--latest"],
+        OutdatedFlags {
+          filters: svec![],
+          kind: OutdatedKind::PrintOutdated { compatible: false },
           recursive: false,
         },
       ),

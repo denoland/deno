@@ -137,6 +137,25 @@ Deno.test({
 });
 
 Deno.test({
+  name: "[node/worker_threads] Worker eval",
+  async fn() {
+    // Check that newlines are encoded properly
+    const worker = new workerThreads.Worker(
+      `
+      import { parentPort } from "node:worker_threads"
+      console.log("hey, foo") // comment
+      parentPort.postMessage("It works!");
+      `,
+      {
+        eval: true,
+      },
+    );
+    assertEquals((await once(worker, "message"))[0], "It works!");
+    worker.terminate();
+  },
+});
+
+Deno.test({
   name: "[node/worker_threads] worker thread with type module",
   async fn() {
     function p() {
