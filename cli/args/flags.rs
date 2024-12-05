@@ -383,6 +383,7 @@ pub struct TaskFlags {
   pub task: Option<String>,
   pub is_run: bool,
   pub filter: Option<String>,
+  pub recursive: bool,
   pub eval: bool,
 }
 
@@ -5276,9 +5277,10 @@ fn task_parse(
   unstable_args_parse(flags, matches, UnstableArgsConfig::ResolutionAndRuntime);
   node_modules_arg_parse(flags, matches);
 
+  let recursive = matches.get_flag("recursive");
   let filter = if let Some(filter) = matches.remove_one::<String>("filter") {
     Some(filter)
-  } else if matches.get_flag("recursive") {
+  } else if recursive {
     Some("*".to_string())
   } else {
     None
@@ -5289,6 +5291,7 @@ fn task_parse(
     task: None,
     is_run: false,
     filter,
+    recursive,
     eval: matches.get_flag("eval"),
   };
 
@@ -10493,6 +10496,7 @@ mod tests {
           task: Some("build".to_string()),
           is_run: false,
           filter: None,
+          recursive: false,
           eval: false,
         }),
         argv: svec!["hello", "world"],
@@ -10509,6 +10513,7 @@ mod tests {
           task: Some("build".to_string()),
           is_run: false,
           filter: None,
+          recursive: false,
           eval: false,
         }),
         ..Flags::default()
@@ -10524,6 +10529,7 @@ mod tests {
           task: Some("build".to_string()),
           is_run: false,
           filter: None,
+          recursive: false,
           eval: false,
         }),
         ..Flags::default()
@@ -10539,6 +10545,7 @@ mod tests {
           task: Some("build".to_string()),
           is_run: false,
           filter: Some("*".to_string()),
+          recursive: false,
           eval: false,
         }),
         ..Flags::default()
@@ -10554,6 +10561,7 @@ mod tests {
           task: Some("build".to_string()),
           is_run: false,
           filter: Some("*".to_string()),
+          recursive: true,
           eval: false,
         }),
         ..Flags::default()
@@ -10569,6 +10577,7 @@ mod tests {
           task: Some("build".to_string()),
           is_run: false,
           filter: Some("*".to_string()),
+          recursive: true,
           eval: false,
         }),
         ..Flags::default()
@@ -10584,6 +10593,7 @@ mod tests {
           task: Some("echo 1".to_string()),
           is_run: false,
           filter: None,
+          recursive: false,
           eval: true,
         }),
         ..Flags::default()
@@ -10614,6 +10624,7 @@ mod tests {
           task: Some("build".to_string()),
           is_run: false,
           filter: None,
+          recursive: false,
           eval: false,
         }),
         argv: svec!["--", "hello", "world"],
@@ -10633,6 +10644,7 @@ mod tests {
           task: Some("build".to_string()),
           is_run: false,
           filter: None,
+          recursive: false,
           eval: false,
         }),
         argv: svec!["--", "hello", "world"],
@@ -10653,6 +10665,7 @@ mod tests {
           task: Some("build".to_string()),
           is_run: false,
           filter: None,
+          recursive: false,
           eval: false,
         }),
         argv: svec!["--"],
@@ -10672,6 +10685,7 @@ mod tests {
           task: Some("build".to_string()),
           is_run: false,
           filter: None,
+          recursive: false,
           eval: false,
         }),
         argv: svec!["-1", "--test"],
@@ -10691,6 +10705,7 @@ mod tests {
           task: Some("build".to_string()),
           is_run: false,
           filter: None,
+          recursive: false,
           eval: false,
         }),
         argv: svec!["--test"],
@@ -10711,6 +10726,7 @@ mod tests {
           task: Some("build".to_string()),
           is_run: false,
           filter: None,
+          recursive: false,
           eval: false,
         }),
         log_level: Some(log::Level::Error),
@@ -10730,6 +10746,7 @@ mod tests {
           task: None,
           is_run: false,
           filter: None,
+          recursive: false,
           eval: false,
         }),
         ..Flags::default()
@@ -10748,6 +10765,7 @@ mod tests {
           task: None,
           is_run: false,
           filter: None,
+          recursive: false,
           eval: false,
         }),
         config_flag: ConfigFlag::Path("deno.jsonc".to_string()),
@@ -10767,6 +10785,7 @@ mod tests {
           task: None,
           is_run: false,
           filter: None,
+          recursive: false,
           eval: false,
         }),
         config_flag: ConfigFlag::Path("deno.jsonc".to_string()),

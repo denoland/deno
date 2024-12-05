@@ -45,6 +45,11 @@
       "args": "task -r dev",
       "output": "npm_recursive.out"
     },
+    "npm_recursive_no_pkg": {
+      "cwd": "./npm_recursive_no_pkg",
+      "args": "task -r dev",
+      "output": "npm_recursive_no_pkg.out"
+    },
     "deno_all": {
       "cwd": "./deno",
       "args": "task --filter * dev",
@@ -84,6 +89,11 @@
       "cwd": "./deno",
       "args": "task -r dev",
       "output": "deno_recursive.out"
+    },
+    "deno_recursive_no_pkg": {
+      "cwd": "./deno_recursive_no_pkg",
+      "args": "task -r dev",
+      "output": "deno_recursive_no_pkg.out"
     }
   }
 }
