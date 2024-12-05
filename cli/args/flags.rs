@@ -5277,8 +5277,9 @@ fn task_parse(
   unstable_args_parse(flags, matches, UnstableArgsConfig::ResolutionAndRuntime);
   node_modules_arg_parse(flags, matches);
 
-  let recursive = matches.get_flag("recursive");
+  let mut recursive = matches.get_flag("recursive");
   let filter = if let Some(filter) = matches.remove_one::<String>("filter") {
+    recursive = false;
     Some(filter)
   } else if recursive {
     Some("*".to_string())
