@@ -229,7 +229,7 @@ fn get_message_for_terminal_errors(
 ) -> String {
   if message.contains("Unable to load") && message.contains("imported from") {
     let result =
-      get_message_for_non_explicit_cjs_import(&message, module_loader);
+      get_message_for_non_explicit_cjs_import(message, module_loader);
     match result {
       Ok(suggestion) => suggestion,
       Err(_) => message.to_string(),
