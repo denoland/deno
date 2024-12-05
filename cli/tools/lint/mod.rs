@@ -464,7 +464,7 @@ pub fn print_rules_list(json: bool, maybe_rules_tags: Option<Vec<String>>) {
           serde_json::json!({
             "code": rule.code(),
             "tags": rule.tags(),
-            "docs": rule.docs(),
+            "docs": rule.help_docs_url(),
           })
         })
         .collect::<Vec<serde_json::Value>>(),

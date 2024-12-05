@@ -29,8 +29,6 @@ pub trait PackageLintRule: std::fmt::Debug + Send + Sync {
     &[]
   }
 
-  fn docs(&self) -> &'static str;
-
   fn help_docs_url(&self) -> Cow<'static, str>;
 
   fn lint_package(
@@ -80,15 +78,6 @@ impl CliLintRule {
       DenoLint(rule) => rule.tags(),
       Extended(rule) => rule.tags(),
       Package(rule) => rule.tags(),
-    }
-  }
-
-  pub fn docs(&self) -> &'static str {
-    use CliLintRuleKind::*;
-    match &self.0 {
-      DenoLint(rule) => rule.docs(),
-      Extended(rule) => rule.docs(),
-      Package(rule) => rule.docs(),
     }
   }
 
