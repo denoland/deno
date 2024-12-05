@@ -83,9 +83,7 @@ fn get_message_for_non_explicit_cjs_import(
   let referrer_parsed_source =
     deno_ast::parse_program(deno_ast::ParseParams {
       specifier: referrer_specifier.clone(),
-      text: fs
-        .read_text_file_lossy_sync(&referrer_path, None)?
-        .into(),
+      text: fs.read_text_file_lossy_sync(&referrer_path, None)?.into(),
       media_type: MediaType::from_specifier(&referrer_specifier),
       capture_tokens: false,
       scope_analysis: false,
@@ -139,9 +137,7 @@ fn get_message_for_non_explicit_cjs_import(
 
   let target_parsed_source = deno_ast::parse_program(deno_ast::ParseParams {
     specifier: resolved_specifier.clone(),
-    text: fs
-      .read_text_file_lossy_sync(&resolved_path, None)?
-      .into(),
+    text: fs.read_text_file_lossy_sync(&resolved_path, None)?.into(),
     media_type: MediaType::from_specifier(&resolved_specifier),
     capture_tokens: false,
     scope_analysis: false,
