@@ -113,6 +113,7 @@ enum AstNode {
   Spread,
   ObjProperty,
   VarDeclarator,
+  CatchClause,
 }
 
 impl From<AstNode> for u8 {
@@ -433,6 +434,23 @@ fn serialize_stmt(result: &mut Vec<u8>, stmt: &Stmt) {
       );
 
       serialize_stmt(result, &Stmt::Block(try_stmt.block.clone()));
+
+      if let Some(catch_clause) = &try_stmt.handler {
+        let count = if catch_clause.param.is_some() { 2 } else { 1 };
+        push_node(
+          result,
+          AstNode::CatchClause.into(),
+          Flags::None.into(),
+          count,
+          &catch_clause.span,
+        );
+
+        if let Some(param) = &catch_clause.param {
+          // FIXME
+        }
+
+        serialize_stmt(result, &Stmt::Block(catch_clause.body.clone()));
+      }
     }
     Stmt::While(while_stmt) => {
       push_node(
@@ -862,7 +880,15 @@ fn serialize_expr(result: &mut Vec<u8>, expr: &Expr) {
       serialize_expr(result, member_expr.obj.as_ref());
 
       match &member_expr.prop {
-        MemberProp::Ident(ident_name) => {}
+        MemberProp::Ident(ident_name) => {
+          push_node(
+            result,
+            AstNode::Ident.into(),
+            Flags::None.into(),
+            0,
+            &member_expr.span,
+          );
+        }
         MemberProp::PrivateName(private_name) => {}
         MemberProp::Computed(computed_prop_name) => {
           serialize_expr(result, computed_prop_name.expr.as_ref());
@@ -897,7 +923,11 @@ fn serialize_expr(result: &mut Vec<u8>, expr: &Expr) {
       serialize_expr(result, cond_expr.alt.as_ref());
     }
     Expr::Call(call_expr) => {
-      let count = 1 + call_expr.args.len();
+      let mut count = 1 + call_expr.args.len();
+      if call_expr.type_args.is_some() {
+        count += 1;
+      }
+
       push_node(
         result,
         AstNode::Call.into(),
@@ -905,14 +935,6 @@ fn serialize_expr(result: &mut Vec<u8>, expr: &Expr) {
         count,
         &call_expr.span,
       );
-
-      match &call_expr.callee {
-        Callee::Super(_) => {}
-        Callee::Import(import) => {}
-        Callee::Expr(expr) => {
-          serialize_expr(result, expr);
-        }
-      }
 
       for arg in &call_expr.args {
         if let Some(spread) = &arg.spread {
@@ -926,6 +948,14 @@ fn serialize_expr(result: &mut Vec<u8>, expr: &Expr) {
         }
 
         serialize_expr(result, arg.expr.as_ref());
+      }
+
+      match &call_expr.callee {
+        Callee::Super(_) => {}
+        Callee::Import(import) => {}
+        Callee::Expr(expr) => {
+          serialize_expr(result, expr);
+        }
       }
     }
     Expr::New(new_expr) => {

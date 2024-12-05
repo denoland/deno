@@ -127,6 +127,7 @@ const AstNode = {
   Seq: 53,
   Ident: 54,
   Tpl: 55,
+  TaggedTpl: 56,
   Arrow: 57,
   Yield: 59,
 
@@ -138,9 +139,11 @@ const AstNode = {
   Regex: 75,
 
   // Custom
+  EmptyExpr: 82,
   Spread: 83,
   ObjProperty: 84,
   VarDeclarator: 85,
+  CatchClause: 86,
 };
 
 const _ID = Symbol.for("__astId");
@@ -298,6 +301,31 @@ class ClassDeclaration {
   [_ID] = AstNode.Class;
   id = null;
   superClass = null;
+  body = null;
+  loc;
+
+  constructor(span) {
+    this.loc = span;
+  }
+}
+
+class TryStatement {
+  type = "TryStatement";
+  [_ID] = AstNode.Try;
+  block = null;
+  handler = null;
+  finalizer = null;
+  loc;
+
+  constructor(span) {
+    this.loc = span;
+  }
+}
+
+class CatchClause {
+  type = "CatchClause";
+  [_ID] = AstNode.CatchClause;
+  param = null;
   body = null;
   loc;
 
@@ -491,7 +519,6 @@ class DebuggerStatement {
 
 class MemberExpression {
   type = "MemberExpression";
-  properties = [];
   [_ID] = AstNode.Member;
   computed = false;
   property = null;
@@ -624,6 +651,33 @@ class TemplateLiteral {
   }
 }
 
+class TaggedTemplateExpression {
+  type = "TaggedTemplateExpression";
+  tag = null;
+  quasi = null;
+  [_ID] = AstNode.TaggedTpl;
+
+  loc;
+  constructor(span) {
+    this.loc = span;
+  }
+}
+
+class FunctionExpression {
+  type = "FunctionExpression";
+  generator = false;
+  async = false;
+  id = null;
+  params = [];
+  body = null;
+  [_ID] = AstNode.FnExpr;
+
+  loc;
+  constructor(span) {
+    this.loc = span;
+  }
+}
+
 class Identifier {
   type = "Identifier";
   [_ID] = AstNode.Ident;
@@ -664,7 +718,7 @@ class SpreadElement {
  * @param {Uint8Array} ast
  */
 function buildAstFromBinary(ast) {
-  console.log(ast);
+  // console.log(ast);
   const counts = [];
   const stack = [];
   for (let i = 0; i < ast.length; i += 14) {
@@ -810,6 +864,24 @@ function buildAstFromBinary(ast) {
       case AstNode.Class:
         node = new ClassDeclaration(span);
         break;
+      case AstNode.Try:
+        node = new TryStatement(span);
+        break;
+      case AstNode.CatchClause:
+        node = new CatchClause(span);
+        break;
+      case AstNode.TaggedTpl:
+        node = new TaggedTemplateExpression(span);
+        break;
+      case AstNode.FnExpr:
+        node = new FunctionExpression(span);
+        break;
+      case AstNode.Empty:
+        // Ignore empty statements
+        break;
+      case AstNode.EmptyExpr:
+        // Nothing, AST defaults to null
+        break;
       default:
         throw new Error(`Unknown node: ${kind}`);
     }
@@ -820,6 +892,7 @@ function buildAstFromBinary(ast) {
       const id = last[_ID];
       const lastCount = counts[counts.length - 1];
 
+      // console.log({ last, node });
       switch (id) {
         case AstNode.Program:
         case AstNode.Block:
@@ -943,6 +1016,12 @@ function buildAstFromBinary(ast) {
         case AstNode.Class:
           // FIXME
           break;
+        case AstNode.Try:
+          // FIXME
+          break;
+        case AstNode.CatchClause:
+          // FIXME
+          break;
         // Can't happen
         case AstNode.Ident:
         case AstNode.StringLiteral:
@@ -956,22 +1035,36 @@ function buildAstFromBinary(ast) {
           break;
       }
 
+      // console.log("APPENDED");
+      // console.log(last);
+      // console.log("======");
+
       // Decrease count
-      counts[counts.length - 1] = lastCount - 1;
+      const newCount = lastCount - 1;
+      counts[counts.length - 1] = newCount;
     }
 
     if (count > 0) {
       stack.push(node);
       counts.push(count);
+    } else if (stack.length > 0) {
+      let lastCount = counts[counts.length - 1];
+      while (stack.length > 1 && lastCount === 0) {
+        // console.log({ counts, s: stack.map((x) => x.type) });
+        const l = stack.pop();
+        // console.log("POP", l);
+        lastCount = counts.pop();
+      }
     }
   }
 
+  // console.log(JSON.stringify(stack, null, 2));
   return stack[0];
 }
 
 export function runPluginsForFile(fileName, serializedAst, binary) {
   const ast = buildAstFromBinary(binary);
-  console.log(ast);
+  // console.log(ast);
   // const ast = JSON.parse(serializedAst, (key, value) => {
   //   if (key === "ctxt") {
   //     return undefined;
