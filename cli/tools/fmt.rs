@@ -440,8 +440,10 @@ pub fn format_html(
           )
         }
         _ => {
-          let mut typescript_config =
-            get_resolved_typescript_config(fmt_options);
+          let mut typescript_config_builder =
+            get_typescript_config_builder(fmt_options);
+          typescript_config_builder.file_indent_level(hints.indent_level);
+          let mut typescript_config = typescript_config_builder.build();
           typescript_config.line_width = hints.print_width as u32;
           dprint_plugin_typescript::format_text(
             &path,
@@ -919,9 +921,9 @@ fn files_str(len: usize) -> &'static str {
   }
 }
 
-fn get_resolved_typescript_config(
+fn get_typescript_config_builder(
   options: &FmtOptionsConfig,
-) -> dprint_plugin_typescript::configuration::Configuration {
+) -> dprint_plugin_typescript::configuration::ConfigurationBuilder {
   let mut builder =
     dprint_plugin_typescript::configuration::ConfigurationBuilder::new();
   builder.deno();
@@ -953,7 +955,13 @@ fn get_resolved_typescript_config(
     });
   }
 
-  builder.build()
+  builder
+}
+
+fn get_resolved_typescript_config(
+  options: &FmtOptionsConfig,
+) -> dprint_plugin_typescript::configuration::Configuration {
+  get_typescript_config_builder(options).build()
 }
 
 fn get_resolved_markdown_config(
@@ -1075,6 +1083,7 @@ fn get_resolved_markup_fmt_config(
   };
 
   let language_options = LanguageOptions {
+    script_formatter: Some(markup_fmt::config::ScriptFormatter::Dprint),
     quotes: Quotes::Double,
     format_comments: false,
     script_indent: true,

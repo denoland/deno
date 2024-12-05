@@ -22,7 +22,8 @@ use deno_semver::jsr::JsrPackageReqReference;
 use indexmap::Equivalent;
 use indexmap::IndexSet;
 use log::error;
-use node_resolver::NodeModuleKind;
+use node_resolver::NodeResolutionKind;
+use node_resolver::ResolutionMode;
 use serde::Deserialize;
 use serde_json::from_value;
 use std::collections::BTreeMap;
@@ -78,7 +79,6 @@ use super::parent_process_checker;
 use super::performance::Performance;
 use super::refactor;
 use super::registries::ModuleRegistry;
-use super::resolver::LspIsCjsResolver;
 use super::resolver::LspResolver;
 use super::testing;
 use super::text;
@@ -146,7 +146,6 @@ pub struct StateSnapshot {
   pub project_version: usize,
   pub assets: AssetsSnapshot,
   pub config: Arc<Config>,
-  pub is_cjs_resolver: Arc<LspIsCjsResolver>,
   pub documents: Arc<Documents>,
   pub resolver: Arc<LspResolver>,
 }
@@ -206,7 +205,6 @@ pub struct Inner {
   pub documents: Documents,
   http_client_provider: Arc<HttpClientProvider>,
   initial_cwd: PathBuf,
-  pub is_cjs_resolver: Arc<LspIsCjsResolver>,
   jsr_search_api: CliJsrSearchApi,
   /// Handles module registries, which allow discovery of modules
   module_registry: ModuleRegistry,
@@ -484,7 +482,6 @@ impl Inner {
     let initial_cwd = std::env::current_dir().unwrap_or_else(|_| {
       panic!("Could not resolve current working directory")
     });
-    let is_cjs_resolver = Arc::new(LspIsCjsResolver::new(&cache));
 
     Self {
       assets,
@@ -496,7 +493,6 @@ impl Inner {
       documents,
       http_client_provider,
       initial_cwd: initial_cwd.clone(),
-      is_cjs_resolver,
       jsr_search_api,
       project_version: 0,
       task_queue: Default::default(),
@@ -607,7 +603,6 @@ impl Inner {
       project_version: self.project_version,
       assets: self.assets.snapshot(),
       config: Arc::new(self.config.clone()),
-      is_cjs_resolver: self.is_cjs_resolver.clone(),
       documents: Arc::new(self.documents.clone()),
       resolver: self.resolver.snapshot(),
     })
@@ -629,7 +624,6 @@ impl Inner {
       }
     });
     self.cache = LspCache::new(global_cache_url);
-    self.is_cjs_resolver = Arc::new(LspIsCjsResolver::new(&self.cache));
     let deno_dir = self.cache.deno_dir();
     let workspace_settings = self.config.workspace_settings();
     let maybe_root_path = self
@@ -993,13 +987,10 @@ impl Inner {
               let resolver = inner.resolver.as_cli_resolver(Some(&referrer));
               let Ok(specifier) = resolver.resolve(
                 &specifier,
-                &deno_graph::Range {
-                  specifier: referrer.clone(),
-                  start: deno_graph::Position::zeroed(),
-                  end: deno_graph::Position::zeroed(),
-                },
-                NodeModuleKind::Esm,
-                deno_graph::source::ResolutionMode::Types,
+                &referrer,
+                deno_graph::Position::zeroed(),
+                ResolutionMode::Import,
+                NodeResolutionKind::Types,
               ) else {
                 return;
               };
@@ -1640,8 +1631,8 @@ impl Inner {
         .get_ts_diagnostics(&specifier, asset_or_doc.document_lsp_version());
       let specifier_kind = asset_or_doc
         .document()
-        .map(|d| self.is_cjs_resolver.get_doc_module_kind(d))
-        .unwrap_or(NodeModuleKind::Esm);
+        .map(|d| d.resolution_mode())
+        .unwrap_or(ResolutionMode::Import);
       let mut includes_no_cache = false;
       for diagnostic in &fixable_diagnostics {
         match diagnostic.source.as_deref() {
@@ -1864,8 +1855,8 @@ impl Inner {
           maybe_asset_or_doc
             .as_ref()
             .and_then(|d| d.document())
-            .map(|d| self.is_cjs_resolver.get_doc_module_kind(d))
-            .unwrap_or(NodeModuleKind::Esm),
+            .map(|d| d.resolution_mode())
+            .unwrap_or(ResolutionMode::Import),
           &combined_code_actions.changes,
           self,
         )
@@ -1921,8 +1912,8 @@ impl Inner {
           &action_data.specifier,
           asset_or_doc
             .document()
-            .map(|d| self.is_cjs_resolver.get_doc_module_kind(d))
-            .unwrap_or(NodeModuleKind::Esm),
+            .map(|d| d.resolution_mode())
+            .unwrap_or(ResolutionMode::Import),
           &refactor_edit_info.edits,
           self,
         )
@@ -2272,7 +2263,6 @@ impl Inner {
         &self.jsr_search_api,
         &self.npm_search_api,
         &self.documents,
-        &self.is_cjs_resolver,
         self.resolver.as_ref(),
         self
           .config
@@ -3781,14 +3771,11 @@ impl Inner {
   fn task_definitions(&self) -> LspResult<Vec<TaskDefinition>> {
     let mut result = vec![];
     for config_file in self.config.tree.config_files() {
-      if let Some(tasks) = json!(&config_file.json.tasks).as_object() {
-        for (name, value) in tasks {
-          let Some(command) = value.as_str() else {
-            continue;
-          };
+      if let Some(tasks) = config_file.to_tasks_config().ok().flatten() {
+        for (name, def) in tasks {
           result.push(TaskDefinition {
             name: name.clone(),
-            command: command.to_string(),
+            command: def.command.clone(),
             source_uri: url_to_uri(&config_file.specifier)
               .map_err(|_| LspError::internal_error())?,
           });

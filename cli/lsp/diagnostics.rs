@@ -45,7 +45,7 @@ use deno_graph::Resolution;
 use deno_graph::ResolutionError;
 use deno_graph::SpecifierError;
 use deno_resolver::sloppy_imports::SloppyImportsResolution;
-use deno_resolver::sloppy_imports::SloppyImportsResolutionMode;
+use deno_resolver::sloppy_imports::SloppyImportsResolutionKind;
 use deno_runtime::deno_fs;
 use deno_runtime::deno_node;
 use deno_runtime::tokio_util::create_basic_runtime;
@@ -1262,11 +1262,11 @@ impl DenoDiagnostic {
       Self::NoAttributeType => (lsp::DiagnosticSeverity::ERROR, "The module is a JSON module and not being imported with an import attribute. Consider adding `with { type: \"json\" }` to the import statement.".to_string(), None),
       Self::NoCache(specifier) => (lsp::DiagnosticSeverity::ERROR, format!("Uncached or missing remote URL: {specifier}"), Some(json!({ "specifier": specifier }))),
       Self::NotInstalledJsr(pkg_req, specifier) => (lsp::DiagnosticSeverity::ERROR, format!("JSR package \"{pkg_req}\" is not installed or doesn't exist."), Some(json!({ "specifier": specifier }))),
-      Self::NotInstalledNpm(pkg_req, specifier) => (lsp::DiagnosticSeverity::ERROR, format!("NPM package \"{pkg_req}\" is not installed or doesn't exist."), Some(json!({ "specifier": specifier }))),
+      Self::NotInstalledNpm(pkg_req, specifier) => (lsp::DiagnosticSeverity::ERROR, format!("npm package \"{pkg_req}\" is not installed or doesn't exist."), Some(json!({ "specifier": specifier }))),
       Self::NoLocal(specifier) => {
         let maybe_sloppy_resolution = CliSloppyImportsResolver::new(
           SloppyImportsCachedFs::new(Arc::new(deno_fs::RealFs))
-        ).resolve(specifier, SloppyImportsResolutionMode::Execution);
+        ).resolve(specifier, SloppyImportsResolutionKind::Execution);
         let data = maybe_sloppy_resolution.as_ref().map(|res| {
           json!({
             "specifier": specifier,
@@ -1531,7 +1531,7 @@ fn diagnose_dependency(
     && !dependency.imports.iter().any(|i| {
       dependency
         .maybe_type
-        .includes(&i.specifier_range.start)
+        .includes(i.specifier_range.range.start)
         .is_some()
     });
 
@@ -1707,7 +1707,6 @@ mod tests {
         documents: Arc::new(documents),
         assets: Default::default(),
         config: Arc::new(config),
-        is_cjs_resolver: Default::default(),
         resolver,
       },
     )

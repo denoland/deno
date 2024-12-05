@@ -9,6 +9,7 @@ use crate::args::RunFlags;
 use crate::colors;
 use color_print::cformat;
 use color_print::cstr;
+use deno_config::deno_json::NodeModulesDirMode;
 use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
 use deno_core::serde_json::json;
@@ -251,8 +252,46 @@ Deno.test(function addTest() {
   Ok(0)
 }
 
+fn npm_name_to_create_package(name: &str) -> String {
+  let mut s = "npm:".to_string();
+
+  let mut scoped = false;
+  let mut create = false;
+
+  for (i, ch) in name.char_indices() {
+    if i == 0 {
+      if ch == '@' {
+        scoped = true;
+      } else {
+        create = true;
+        s.push_str("create-");
+      }
+    } else if scoped {
+      if ch == '/' {
+        scoped = false;
+        create = true;
+        s.push_str("/create-");
+        continue;
+      } else if ch == '@' && !create {
+        scoped = false;
+        create = true;
+        s.push_str("/create@");
+        continue;
+      }
+    }
+
+    s.push(ch);
+  }
+
+  if !create {
+    s.push_str("/create");
+  }
+
+  s
+}
+
 async fn init_npm(name: &str, args: Vec<String>) -> Result<i32, AnyError> {
-  let script_name = format!("npm:create-{}", name);
+  let script_name = npm_name_to_create_package(name);
 
   fn print_manual_usage(script_name: &str, args: &[String]) -> i32 {
     log::info!("{}", cformat!("You can initialize project manually by running <u>deno run {} {}</> and applying desired permissions.", script_name, args.join(" ")));
@@ -288,6 +327,7 @@ async fn init_npm(name: &str, args: Vec<String>) -> Result<i32, AnyError> {
     },
     allow_scripts: PackagesAllowedScripts::All,
     argv: args,
+    node_modules_dir: Some(NodeModulesDirMode::Auto),
     subcommand: DenoSubcommand::Run(RunFlags {
       script: script_name,
       ..Default::default()
@@ -332,5 +372,39 @@ fn create_file(
       .with_context(|| format!("Failed to create {filename} file"))?;
     file.write_all(content.as_bytes())?;
     Ok(())
+  }
+}
+
+#[cfg(test)]
+mod test {
+  use crate::tools::init::npm_name_to_create_package;
+
+  #[test]
+  fn npm_name_to_create_package_test() {
+    // See https://docs.npmjs.com/cli/v8/commands/npm-init#description
+    assert_eq!(
+      npm_name_to_create_package("foo"),
+      "npm:create-foo".to_string()
+    );
+    assert_eq!(
+      npm_name_to_create_package("foo@1.0.0"),
+      "npm:create-foo@1.0.0".to_string()
+    );
+    assert_eq!(
+      npm_name_to_create_package("@foo"),
+      "npm:@foo/create".to_string()
+    );
+    assert_eq!(
+      npm_name_to_create_package("@foo@1.0.0"),
+      "npm:@foo/create@1.0.0".to_string()
+    );
+    assert_eq!(
+      npm_name_to_create_package("@foo/bar"),
+      "npm:@foo/create-bar".to_string()
+    );
+    assert_eq!(
+      npm_name_to_create_package("@foo/bar@1.0.0"),
+      "npm:@foo/create-bar@1.0.0".to_string()
+    );
   }
 }

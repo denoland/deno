@@ -51,19 +51,6 @@ pub fn get_extension(file_path: &Path) -> Option<String> {
     .map(|e| e.to_lowercase());
 }
 
-pub fn get_atomic_dir_path(file_path: &Path) -> PathBuf {
-  let rand = gen_rand_path_component();
-  let new_file_name = format!(
-    ".{}_{}",
-    file_path
-      .file_name()
-      .map(|f| f.to_string_lossy())
-      .unwrap_or(Cow::Borrowed("")),
-    rand
-  );
-  file_path.with_file_name(new_file_name)
-}
-
 pub fn get_atomic_file_path(file_path: &Path) -> PathBuf {
   let rand = gen_rand_path_component();
   let extension = format!("{rand}.tmp");
