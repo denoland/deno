@@ -109,6 +109,25 @@ pub fn graph_valid(
   }
 }
 
+pub fn fill_graph_from_lockfile(
+  graph: &mut ModuleGraph,
+  lockfile: &deno_lockfile::Lockfile,
+) {
+  graph.fill_from_lockfile(FillFromLockfileOptions {
+    redirects: lockfile
+      .content
+      .redirects
+      .iter()
+      .map(|(from, to)| (from.as_str(), to.as_str())),
+    package_specifiers: lockfile
+      .content
+      .packages
+      .specifiers
+      .iter()
+      .map(|(dep, id)| (dep, id.as_str())),
+  });
+}
+
 #[derive(Clone)]
 pub struct GraphWalkErrorsOptions {
   pub check_js: bool,
@@ -603,19 +622,7 @@ impl ModuleGraphBuilder {
       // populate the information from the lockfile
       if let Some(lockfile) = &self.lockfile {
         let lockfile = lockfile.lock();
-        graph.fill_from_lockfile(FillFromLockfileOptions {
-          redirects: lockfile
-            .content
-            .redirects
-            .iter()
-            .map(|(from, to)| (from.as_str(), to.as_str())),
-          package_specifiers: lockfile
-            .content
-            .packages
-            .specifiers
-            .iter()
-            .map(|(dep, id)| (dep, id.as_str())),
-        });
+        fill_graph_from_lockfile(graph, &lockfile);
       }
     }
 
