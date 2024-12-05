@@ -1081,6 +1081,7 @@ fn serialize_expr(ctx: &mut SerializeCtx, expr: &Expr) {
       );
     }
     Expr::Arrow(arrow_expr) => {
+      // body + return_type + type_params
       let mut count = 1 + arrow_expr.params.len();
       if arrow_expr.return_type.is_some() {
         count += 1;

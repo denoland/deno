@@ -770,8 +770,7 @@ function buildAstFromBinary(ast) {
       (ast[i + 12] << 8) +
       ast[i + 13];
 
-    // TODO: Test if array is faster
-    const span = { start, end };
+    const span = [start, end];
 
     let node = null;
     switch (kind) {
@@ -1108,7 +1107,7 @@ function buildAstFromBinary(ast) {
 
 export function runPluginsForFile(fileName, serializedAst) {
   const ast = buildAstFromBinary(serializedAst);
-  console.log(ast);
+  console.log(JSON.stringify(ast, null, 2));
 
   /** @type {Record<string, (node: any) => void} */
   const mergedVisitor = {};
