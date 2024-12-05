@@ -1370,6 +1370,7 @@ Deno.test("[node/http] client closing a streaming request doesn't terminate serv
   let interval: number;
   let uploadedData = "";
   let requestError: Error | null = null;
+  const deferred1 = Promise.withResolvers<void>();
   const server = http.createServer((req, res) => {
     res.writeHead(200, { "Content-Type": "text/plain" });
     interval = setInterval(() => {
@@ -1382,13 +1383,13 @@ Deno.test("[node/http] client closing a streaming request doesn't terminate serv
       clearInterval(interval);
     });
     req.on("error", (err) => {
+      deferred1.resolve();
       requestError = err;
       clearInterval(interval);
       res.end();
     });
   });
 
-  const deferred1 = Promise.withResolvers<void>();
   server.listen(0, () => {
     // deno-lint-ignore no-explicit-any
     const port = (server.address() as any).port;
@@ -1418,9 +1419,6 @@ Deno.test("[node/http] client closing a streaming request doesn't terminate serv
 
         if (sentChunks >= 3) {
           client.destroy();
-          setTimeout(() => {
-            deferred1.resolve();
-          }, 40);
         } else {
           setTimeout(writeChunk, 10);
         }

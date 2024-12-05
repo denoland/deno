@@ -39,7 +39,6 @@ const {
   SafeWeakMap,
   Array,
   ObjectEntries,
-  SafeMap,
   ReflectApply,
   SymbolFor,
   Error,
@@ -617,26 +616,25 @@ class SpanExporter {
 const CURRENT = new AsyncVariable();
 
 class Context {
-  #data = new SafeMap();
+  #data: Record<symbol, unknown> = { __proto__: null };
 
-  // deno-lint-ignore no-explicit-any
-  constructor(data?: Iterable<readonly [any, any]> | null | undefined) {
-    this.#data = data ? new SafeMap(data) : new SafeMap();
+  constructor(data?: Record<symbol, unknown> | null | undefined) {
+    this.#data = { __proto__: null, ...data };
   }
 
   getValue(key: symbol): unknown {
-    return this.#data.get(key);
+    return this.#data[key];
   }
 
   setValue(key: symbol, value: unknown): Context {
     const c = new Context(this.#data);
-    c.#data.set(key, value);
+    c.#data[key] = value;
     return c;
   }
 
   deleteValue(key: symbol): Context {
     const c = new Context(this.#data);
-    c.#data.delete(key);
+    delete c.#data[key];
     return c;
   }
 }

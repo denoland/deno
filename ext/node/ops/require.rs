@@ -429,7 +429,9 @@ where
 
   let pkg_json_resolver = state.borrow::<PackageJsonResolverRc>();
   let pkg = pkg_json_resolver
-    .get_closest_package_json_from_path(&PathBuf::from(parent_path.unwrap()))
+    .get_closest_package_json_from_file_path(&PathBuf::from(
+      parent_path.unwrap(),
+    ))
     .ok()
     .flatten();
   if pkg.is_none() {
@@ -620,8 +622,8 @@ where
   let referrer_path = ensure_read_permission::<P>(state, &referrer_path)
     .map_err(RequireErrorKind::Permission)?;
   let pkg_json_resolver = state.borrow::<PackageJsonResolverRc>();
-  let Some(pkg) =
-    pkg_json_resolver.get_closest_package_json_from_path(&referrer_path)?
+  let Some(pkg) = pkg_json_resolver
+    .get_closest_package_json_from_file_path(&referrer_path)?
   else {
     return Ok(None);
   };
