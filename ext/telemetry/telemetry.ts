@@ -1147,7 +1147,7 @@ async function observe(): Promise<void> {
   for (const [observable, callbacks] of INDIVIDUAL_CALLBACKS) {
     const result = getObservableResult(observable);
     for (const callback of callbacks) {
-      promises.push(Promise.try(() => callback(result)));
+      promises.push(Promise.try(callback, result));
     }
   }
   for (const [callback, result] of BATCH_CALLBACKS) {
