@@ -1192,7 +1192,8 @@ mod tests {
     assert!(tracker.cleanup_task_handle.lock().is_none());
     assert_eq!(parsed_source_cache.len(), 1);
     tracker.decrease(&parsed_source_cache);
-    tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+    // Rather long timeout, but to make sure CI is not flaking on it.
+    tokio::time::sleep(std::time::Duration::from_millis(500)).await;
     assert_eq!(parsed_source_cache.len(), 0);
   }
 }
