@@ -2,7 +2,7 @@
 
 [package]
 name = "node_resolver"
-version = "0.19.0"
+version = "0.20.0"
 authors.workspace = true
 edition.workspace = true
 license.workspace = true
