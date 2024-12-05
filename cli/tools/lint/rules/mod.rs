@@ -62,6 +62,12 @@ enum CliLintRuleKind {
 #[derive(Debug)]
 pub struct CliLintRule(CliLintRuleKind);
 
+impl PartialEq for CliLintRule {
+  fn eq(&self, other: &Self) -> bool {
+    self.code() == other.code()
+  }
+}
+
 impl CliLintRule {
   pub fn code(&self) -> &'static str {
     use CliLintRuleKind::*;
@@ -160,11 +166,7 @@ impl LintRuleProvider {
     Ok(lint_rules)
   }
 
-  pub fn resolve_lint_rules(
-    &self,
-    rules: LintRulesConfig,
-    maybe_config_file: Option<&ConfigFile>,
-  ) -> ConfiguredRules {
+  pub fn all_rules(&self) -> Vec<CliLintRule> {
     let deno_lint_rules = deno_lint::rules::get_all_rules();
     let cli_lint_rules = vec![CliLintRule(CliLintRuleKind::Extended(
       Box::new(no_sloppy_imports::NoSloppyImportsRule::new(
@@ -175,19 +177,26 @@ impl LintRuleProvider {
     let cli_graph_rules = vec![CliLintRule(CliLintRuleKind::Package(
       Box::new(no_slow_types::NoSlowTypesRule),
     ))];
-    let mut all_rule_names = HashSet::with_capacity(
-      deno_lint_rules.len() + cli_lint_rules.len() + cli_graph_rules.len(),
-    );
-    let all_rules = deno_lint_rules
+    deno_lint_rules
       .into_iter()
       .map(|rule| CliLintRule(CliLintRuleKind::DenoLint(rule)))
       .chain(cli_lint_rules)
       .chain(cli_graph_rules)
-      .inspect(|rule| {
-        all_rule_names.insert(rule.code());
-      });
+      .collect()
+  }
+
+  pub fn resolve_lint_rules(
+    &self,
+    rules: LintRulesConfig,
+    maybe_config_file: Option<&ConfigFile>,
+  ) -> ConfiguredRules {
+    let all_rules = self.all_rules();
+    let mut all_rule_names = HashSet::with_capacity(all_rules.len());
+    for rule in &all_rules {
+      all_rule_names.insert(rule.code());
+    }
     let rules = filtered_rules(
-      all_rules,
+      all_rules.into_iter(),
       rules
         .tags
         .or_else(|| Some(get_default_tags(maybe_config_file))),

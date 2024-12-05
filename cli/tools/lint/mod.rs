@@ -444,23 +444,23 @@ fn collect_lint_files(
 #[allow(clippy::print_stdout)]
 pub fn print_rules_list(json: bool, maybe_rules_tags: Option<Vec<String>>) {
   let rule_provider = LintRuleProvider::new(None, None);
-  let lint_rules = rule_provider
-    .resolve_lint_rules(
-      LintRulesConfig {
-        tags: maybe_rules_tags.clone(),
-        include: None,
-        exclude: None,
-      },
-      None,
-    )
-    .rules;
+  let all_rules = rule_provider.all_rules();
+  let configured_rules = rule_provider.resolve_lint_rules(
+    LintRulesConfig {
+      tags: maybe_rules_tags.clone(),
+      include: None,
+      exclude: None,
+    },
+    None,
+  );
 
   if json {
     let json_output = serde_json::json!({
       "version": JSON_SCHEMA_VERSION,
-      "rules": lint_rules
+      "rules": all_rules
         .iter()
         .map(|rule| {
+          // TODO(bartlomieju): print if rule enabled
           serde_json::json!({
             "code": rule.code(),
             "tags": rule.tags(),
@@ -474,17 +474,26 @@ pub fn print_rules_list(json: bool, maybe_rules_tags: Option<Vec<String>>) {
     // The rules should still be printed even if `--quiet` option is enabled,
     // so use `println!` here instead of `info!`.
     println!("Available rules:");
-    for rule in lint_rules.iter() {
-      print!(" - {}", colors::cyan(rule.code()));
-      if rule.tags().is_empty() {
-        println!();
+    for rule in all_rules.iter() {
+      // TODO(bartlomieju): this is O(n) search, fix before landing
+      let enabled = if configured_rules.rules.contains(rule) {
+        "✓"
       } else {
-        println!(" [{}]", colors::gray(rule.tags().join(", ")))
-      }
+        " "
+      };
+      println!("- {} {}", rule.code(), colors::green(enabled),);
       println!(
         "{}",
-        colors::gray(format!("   help: {}", rule.help_docs_url()))
+        colors::gray(format!("  help: {}", rule.help_docs_url()))
       );
+      if rule.tags().is_empty() {
+        println!("  {}", colors::gray("tags:"));
+      } else {
+        println!(
+          "  {}",
+          colors::gray(format!("tags: {}", rule.tags().join(", ")))
+        );
+      }
       println!();
     }
   }
