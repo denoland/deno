@@ -1,4 +1,5 @@
 {
+  "tempDir": true,
   "tests": {
     "cjs_with_deps": {
       "args": "run --allow-read --allow-env main.js",

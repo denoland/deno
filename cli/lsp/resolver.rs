@@ -20,14 +20,12 @@ use deno_resolver::DenoResolverOptions;
 use deno_resolver::NodeAndNpmReqResolver;
 use deno_runtime::deno_fs;
 use deno_runtime::deno_node::NodeResolver;
-use deno_runtime::deno_node::PackageJson;
 use deno_runtime::deno_node::PackageJsonResolver;
 use deno_semver::jsr::JsrPackageReqReference;
 use deno_semver::npm::NpmPackageReqReference;
 use deno_semver::package::PackageNv;
 use deno_semver::package::PackageReq;
 use indexmap::IndexMap;
-use node_resolver::errors::ClosestPkgJsonError;
 use node_resolver::InNpmPackageChecker;
 use node_resolver::NodeResolutionKind;
 use node_resolver::ResolutionMode;
@@ -380,6 +378,14 @@ impl LspResolver {
     resolver.npm_resolver.as_ref().and_then(|r| r.as_managed())
   }
 
+  pub fn pkg_json_resolver(
+    &self,
+    referrer: &ModuleSpecifier,
+  ) -> &Arc<PackageJsonResolver> {
+    let resolver = self.get_scope_resolver(Some(referrer));
+    &resolver.pkg_json_resolver
+  }
+
   pub fn graph_imports_by_referrer(
     &self,
     file_referrer: &ModuleSpecifier,
@@ -520,16 +526,6 @@ impl LspResolver {
       .ok()
       .flatten()
       .is_some()
-  }
-
-  pub fn get_closest_package_json(
-    &self,
-    referrer: &ModuleSpecifier,
-  ) -> Result<Option<Arc<PackageJson>>, ClosestPkgJsonError> {
-    let resolver = self.get_scope_resolver(Some(referrer));
-    resolver
-      .pkg_json_resolver
-      .get_closest_package_json(referrer)
   }
 
   pub fn resolve_redirects(
@@ -945,9 +941,7 @@ impl RedirectResolver {
         if chain.len() > 10 {
           break None;
         }
-        let Ok(target) =
-          deno_core::resolve_import(location, specifier.as_str())
-        else {
+        let Ok(target) = specifier.join(location) else {
           break None;
         };
         chain.push((

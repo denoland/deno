@@ -59,8 +59,7 @@ impl FileOrRedirect {
     cache_entry: deno_cache_dir::CacheEntry,
   ) -> Result<Self, AnyError> {
     if let Some(redirect_to) = cache_entry.metadata.headers.get("location") {
-      let redirect =
-        deno_core::resolve_import(redirect_to, specifier.as_str())?;
+      let redirect = specifier.join(redirect_to)?;
       Ok(FileOrRedirect::Redirect(redirect))
     } else {
       Ok(FileOrRedirect::File(File {
@@ -1540,7 +1539,7 @@ mod tests {
       .unwrap()
       .unwrap()
       .content;
-    String::from_utf8(bytes).unwrap()
+    String::from_utf8(bytes.into_owned()).unwrap()
   }
 
   #[track_caller]
