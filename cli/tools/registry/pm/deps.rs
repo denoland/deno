@@ -18,7 +18,6 @@ use deno_core::futures::stream::FuturesUnordered;
 use deno_core::futures::FutureExt;
 use deno_core::futures::StreamExt;
 use deno_core::serde_json;
-use deno_graph::FillFromLockfileOptions;
 use deno_package_json::PackageJsonDepsMap;
 use deno_package_json::PackageJsonRc;
 use deno_runtime::deno_permissions::PermissionsContainer;
@@ -533,19 +532,8 @@ impl DepManager {
     // populate the information from the lockfile
     if let Some(lockfile) = &self.lockfile {
       let lockfile = lockfile.lock();
-      graph.fill_from_lockfile(FillFromLockfileOptions {
-        redirects: lockfile
-          .content
-          .redirects
-          .iter()
-          .map(|(from, to)| (from.as_str(), to.as_str())),
-        package_specifiers: lockfile
-          .content
-          .packages
-          .specifiers
-          .iter()
-          .map(|(dep, id)| (dep, id.as_str())),
-      });
+
+      crate::graph_util::fill_graph_from_lockfile(graph, &lockfile);
     }
 
     let npm_resolver = self.npm_resolver.as_managed().unwrap();
