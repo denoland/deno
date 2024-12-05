@@ -382,8 +382,8 @@ pub struct TaskFlags {
   pub cwd: Option<String>,
   pub task: Option<String>,
   pub is_run: bool,
-  pub filter: Option<String>,
   pub recursive: bool,
+  pub filter: Option<String>,
   pub eval: bool,
 }
 
