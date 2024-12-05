@@ -599,8 +599,9 @@ class BooleanLiteral {
   [_ID] = AstNode.Bool;
 
   loc;
-  constructor(span) {
+  constructor(span, value) {
     this.loc = span;
+    this.value = value;
   }
 }
 
@@ -683,8 +684,10 @@ class Identifier {
   [_ID] = AstNode.Ident;
 
   loc;
-  constructor(span) {
+  name = "";
+  constructor(span, name) {
     this.loc = span;
+    this.name = name;
   }
 }
 
@@ -714,26 +717,66 @@ class SpreadElement {
   }
 }
 
+const DECODER = new TextDecoder();
+
 /**
  * @param {Uint8Array} ast
  */
 function buildAstFromBinary(ast) {
-  // console.log(ast);
+  console.log(ast);
+
+  // Extract string table
+  /** @type {Map<number, string>} */
+  const strTable = new Map();
+
+  let start = 0;
+  const stringCount = (ast[0] << 24) + (ast[1] << 16) + (ast[2] << 8) +
+    ast[3];
+  start += 4;
+
+  let id = 0;
+  while (id < stringCount) {
+    const len = (ast[start] << 24) + (ast[start + 1] << 16) +
+      (ast[start + 2] << 8) +
+      ast[start + 3];
+    start += 4;
+
+    const strBytes = ast.slice(start, start + len);
+    console.log({ strBytes });
+    start += len;
+    const s = DECODER.decode(strBytes);
+    strTable.set(id, s);
+    id++;
+  }
+
+  console.log({ stringCount, strTable });
+
+  if (strTable.size !== stringCount) {
+    throw new Error(
+      `Could not deserialize string table. Expected ${stringCount} items, but got ${strTable.size}`,
+    );
+  }
+
   const counts = [];
   const stack = [];
-  for (let i = 0; i < ast.length; i += 14) {
+  for (let i = start; i < ast.length; i += 14) {
     const kind = ast[i];
     const flags = ast[i + 1];
-    const count = ast[i + 2] << ast[i + 3] << ast[i + 4] << ast[i + 5];
-    const start = ast[i + 6] << ast[i + 7] << ast[i + 8] << ast[i + 9];
-    const end = ast[i + 10] << ast[i + 11] << ast[i + 12] << ast[i + 13];
+    let count = (ast[i + 2] << 24) + (ast[i + 3] << 16) + (ast[i + 4] << 8) +
+      ast[i + 5];
+    const start = (ast[i + 6] << 24) + (ast[i + 7] << 16) + (ast[i + 8] << 8) +
+      ast[i + 9];
+    const end = (ast[i + 10] << 24) + (ast[i + 11] << 16) +
+      (ast[i + 12] << 8) +
+      ast[i + 13];
 
-    const span = [start, end];
+    // TODO: Test if array is faster
+    const span = { start, end };
 
     let node = null;
     switch (kind) {
       case AstNode.Program:
-        node = new Program(span);
+        node = new Program(span, flags === 1 ? "module" : "script");
         break;
       case AstNode.Var:
         node = new VariableDeclaration(span);
@@ -778,7 +821,8 @@ function buildAstFromBinary(ast) {
         node = new StringLiteral(span);
         break;
       case AstNode.Ident:
-        node = new Identifier(span);
+        node = new Identifier(span, strTable.get(count));
+        count = 0;
         break;
       case AstNode.Fn:
         node = new FunctionDeclaration(span);
@@ -802,7 +846,7 @@ function buildAstFromBinary(ast) {
         node = new ForStatement(span);
         break;
       case AstNode.Bool:
-        node = new BooleanLiteral(span);
+        node = new BooleanLiteral(span, flags === 1);
         break;
       case AstNode.Null:
         node = new NullLiteral(span);
@@ -1062,15 +1106,9 @@ function buildAstFromBinary(ast) {
   return stack[0];
 }
 
-export function runPluginsForFile(fileName, serializedAst, binary) {
-  const ast = buildAstFromBinary(binary);
-  // console.log(ast);
-  // const ast = JSON.parse(serializedAst, (key, value) => {
-  //   if (key === "ctxt") {
-  //     return undefined;
-  //   }
-  //   return value;
-  // });
+export function runPluginsForFile(fileName, serializedAst) {
+  const ast = buildAstFromBinary(serializedAst);
+  console.log(ast);
 
   /** @type {Record<string, (node: any) => void} */
   const mergedVisitor = {};

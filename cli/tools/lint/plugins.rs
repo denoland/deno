@@ -10,7 +10,6 @@ use deno_core::error::AnyError;
 use deno_core::futures::FutureExt;
 use deno_core::op2;
 use deno_core::resolve_url_or_path;
-use deno_core::serde_json;
 use deno_core::v8;
 use deno_core::OpState;
 use deno_core::PollEventLoopOptions;
@@ -37,7 +36,7 @@ use crate::tools::lint::ast::serialize_ast_bin;
 #[derive(Debug)]
 pub enum PluginRunnerRequest {
   LoadPlugins(Vec<ModuleSpecifier>),
-  Run(String, Vec<u8>, PathBuf, SourceTextInfo),
+  Run(Vec<u8>, PathBuf, SourceTextInfo),
 }
 
 pub enum PluginRunnerResponse {
@@ -197,18 +196,12 @@ impl PluginRunner {
         }
         PluginRunnerRequest::Run(
           serialized_ast,
-          binary_ast,
           specifier,
           source_text_info,
         ) => {
           let start = std::time::Instant::now();
           let r = match self
-            .run_plugins(
-              &specifier,
-              serialized_ast,
-              binary_ast,
-              source_text_info,
-            )
+            .run_plugins(&specifier, serialized_ast, source_text_info)
             .await
           {
             Ok(()) => Ok(self.take_diagnostics()),
@@ -236,8 +229,7 @@ impl PluginRunner {
   async fn run_plugins(
     &mut self,
     specifier: &PathBuf,
-    ast_string: String,
-    binary_ast: Vec<u8>,
+    serialized_ast: Vec<u8>,
     source_text_info: SourceTextInfo,
   ) -> Result<(), AnyError> {
     {
@@ -247,16 +239,14 @@ impl PluginRunner {
       container.source_text_info = Some(source_text_info);
     }
 
-    let (file_name_v8, ast_string_v8, ast_uint8arr_v8) = {
+    let (file_name_v8, ast_uint8arr_v8) = {
       let scope = &mut self.worker.js_runtime.handle_scope();
       let file_name_v8: v8::Local<v8::Value> =
         v8::String::new(scope, &specifier.display().to_string())
           .unwrap()
           .into();
-      let ast_string_v8: v8::Local<v8::Value> =
-        v8::String::new(scope, &ast_string).unwrap().into();
 
-      let store = v8::ArrayBuffer::new_backing_store_from_vec(binary_ast);
+      let store = v8::ArrayBuffer::new_backing_store_from_vec(serialized_ast);
       let ast_buf =
         v8::ArrayBuffer::with_backing_store(scope, &store.make_shared());
       let ast_bin_v8: v8::Local<v8::Value> =
@@ -265,14 +255,13 @@ impl PluginRunner {
           .into();
       (
         v8::Global::new(scope, file_name_v8),
-        v8::Global::new(scope, ast_string_v8),
         v8::Global::new(scope, ast_bin_v8),
       )
     };
 
     let call = self.worker.js_runtime.call_with_args(
       &self.run_plugins_for_file_fn,
-      &[file_name_v8, ast_string_v8, ast_uint8arr_v8],
+      &[file_name_v8, ast_uint8arr_v8],
     );
     let result = self
       .worker
@@ -360,14 +349,13 @@ impl PluginRunnerProxy {
   pub async fn run_rules(
     &self,
     specifier: &PathBuf,
-    serialized_ast: (String, Vec<u8>),
+    serialized_ast: Vec<u8>,
     source_text_info: SourceTextInfo,
   ) -> Result<Vec<LintDiagnostic>, AnyError> {
     self
       .tx
       .send(PluginRunnerRequest::Run(
-        serialized_ast.0,
-        serialized_ast.1,
+        serialized_ast,
         specifier.to_path_buf(),
         source_text_info,
       ))
@@ -393,7 +381,7 @@ pub async fn create_runner_and_load_plugins(
 pub async fn run_rules_for_ast(
   runner_proxy: &mut PluginRunnerProxy,
   specifier: &PathBuf,
-  serialized_ast: (String, Vec<u8>),
+  serialized_ast: Vec<u8>,
   source_text_info: SourceTextInfo,
 ) -> Result<Vec<LintDiagnostic>, AnyError> {
   let d = runner_proxy
@@ -402,22 +390,14 @@ pub async fn run_rules_for_ast(
   Ok(d)
 }
 
-pub fn serialize_ast(
-  parsed_source: ParsedSource,
-) -> Result<(String, Vec<u8>), AnyError> {
-  let start2 = std::time::Instant::now();
-  let r2 = serialize_ast_bin(&parsed_source);
-  log::info!(
-    "serialize custom took {:?}",
-    std::time::Instant::now() - start2
-  );
+pub fn serialize_ast(parsed_source: ParsedSource) -> Result<Vec<u8>, AnyError> {
   let start = std::time::Instant::now();
-  let r = serde_json::to_string(&parsed_source.program())?;
+  let r = serialize_ast_bin(&parsed_source);
   log::info!(
-    "serialize using serde_json took {:?}",
+    "serialize custom ast took {:?}",
     std::time::Instant::now() - start
   );
-  Ok((r, r2))
+  Ok(r)
 }
 
 #[derive(Default)]
