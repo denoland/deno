@@ -37,23 +37,27 @@ import { Console } from "ext:deno_console/01_console.js";
 import { performance } from "ext:deno_web/15_performance.js";
 
 const {
-  SafeWeakSet,
-  SafeSet,
-  SafeWeakMap,
   Array,
-  ObjectEntries,
-  ReflectApply,
-  SymbolFor,
+  ArrayPrototypePush,
   Error,
-  Uint8Array,
-  TypedArrayPrototypeSubarray,
   ObjectAssign,
   ObjectDefineProperty,
-  WeakRefPrototypeDeref,
+  ObjectEntries,
+  ObjectPrototypeIsPrototypeOf,
+  ReflectApply,
+  SafeIterator,
+  SafeMap,
+  SafePromiseAll,
+  SafeSet,
+  SafeWeakMap,
+  SafeWeakRef,
+  SafeWeakSet,
   String,
   StringPrototypePadStart,
-  ObjectPrototypeIsPrototypeOf,
-  SafeWeakRef,
+  SymbolFor,
+  TypedArrayPrototypeSubarray,
+  Uint8Array,
+  WeakRefPrototypeDeref,
 } = primordials;
 const { AsyncVariable, setAsyncContext } = core;
 
@@ -748,7 +752,7 @@ class BatchObservableResult {
 
   static {
     batchResultHasObservables = (cb, observables) => {
-      for (const observable of observables) {
+      for (const observable of new SafeIterator(observables)) {
         if (!cb.#observables.has(observable)) return false;
       }
       return true;
@@ -788,6 +792,7 @@ class Meter {
     activateInstrumentationLibrary(this.#instrumentationLibrary);
     const instrument = op_otel_metric_create_counter(
       name,
+      // deno-lint-ignore prefer-primordials
       options?.description,
       options?.unit,
     ) as Instrument;
@@ -804,6 +809,7 @@ class Meter {
     activateInstrumentationLibrary(this.#instrumentationLibrary);
     const instrument = op_otel_metric_create_up_down_counter(
       name,
+      // deno-lint-ignore prefer-primordials
       options?.description,
       options?.unit,
     ) as Instrument;
@@ -820,6 +826,7 @@ class Meter {
     activateInstrumentationLibrary(this.#instrumentationLibrary);
     const instrument = op_otel_metric_create_gauge(
       name,
+      // deno-lint-ignore prefer-primordials
       options?.description,
       options?.unit,
     ) as Instrument;
@@ -836,6 +843,7 @@ class Meter {
     activateInstrumentationLibrary(this.#instrumentationLibrary);
     const instrument = op_otel_metric_create_histogram(
       name,
+      // deno-lint-ignore prefer-primordials
       options?.description,
       options?.unit,
       options?.advice?.explicitBucketBoundaries,
@@ -853,6 +861,7 @@ class Meter {
     activateInstrumentationLibrary(this.#instrumentationLibrary);
     const instrument = op_otel_metric_create_observable_counter(
       name,
+      // deno-lint-ignore prefer-primordials
       options?.description,
       options?.unit,
     ) as Instrument;
@@ -869,6 +878,7 @@ class Meter {
     activateInstrumentationLibrary(this.#instrumentationLibrary);
     const instrument = op_otel_metric_create_observable_gauge(
       name,
+      // deno-lint-ignore prefer-primordials
       options?.description,
       options?.unit,
     ) as Instrument;
@@ -885,6 +895,7 @@ class Meter {
     activateInstrumentationLibrary(this.#instrumentationLibrary);
     const instrument = op_otel_metric_create_observable_up_down_counter(
       name,
+      // deno-lint-ignore prefer-primordials
       options?.description,
       options?.unit,
     ) as Instrument;
@@ -895,7 +906,7 @@ class Meter {
     callback: BatchObservableCallback,
     observables: Observable[],
   ): void {
-    const result = new BatchObservableResult(new WeakSet(observables));
+    const result = new BatchObservableResult(new SafeWeakSet(observables));
     startObserving();
     BATCH_CALLBACKS.set(callback, result);
   }
@@ -1048,7 +1059,7 @@ class Counter {
     this.#upDown = upDown;
   }
 
-  add(value: number, attributes?: MetricAttributes, context?: Context): void {
+  add(value: number, attributes?: MetricAttributes, _context?: Context): void {
     if (value < 0 && !this.#upDown) {
       throw new Error("Counter can only be incremented");
     }
@@ -1066,7 +1077,7 @@ class Gauge {
   record(
     value: number,
     attributes?: MetricAttributes,
-    context?: Context,
+    _context?: Context,
   ): void {
     record(this.#instrument, value, attributes);
   }
@@ -1082,7 +1093,7 @@ class Histogram {
   record(
     value: number,
     attributes?: MetricAttributes,
-    context?: Context,
+    _context?: Context,
   ): void {
     record(this.#instrument, value, attributes);
   }
@@ -1144,16 +1155,22 @@ class ObservableResult {
 
 async function observe(): Promise<void> {
   const promises: Promise<void>[] = [];
-  for (const [observable, callbacks] of INDIVIDUAL_CALLBACKS) {
+  // Primordials are not needed, because this is a SafeMap.
+  // deno-lint-ignore prefer-primordials
+  for (const { 0: observable, 1: callbacks } of INDIVIDUAL_CALLBACKS) {
     const result = getObservableResult(observable);
+    // Primordials are not needed, because this is a SafeSet.
+    // deno-lint-ignore prefer-primordials
     for (const callback of callbacks) {
-      promises.push(Promise.try(callback, result));
+      ArrayPrototypePush(promises, PromiseTry(callback, result));
     }
   }
-  for (const [callback, result] of BATCH_CALLBACKS) {
-    promises.push(Promise.try(() => callback(result)));
+  // Primordials are not needed, because this is a SafeMap.
+  // deno-lint-ignore prefer-primordials
+  for (const { 0: callback, 1: result } of BATCH_CALLBACKS) {
+    ArrayPrototypePush(promises, PromiseTry(callback, result));
   }
-  await Promise.all(promises);
+  await SafePromiseAll(promises);
 }
 
 let isObserving = false;

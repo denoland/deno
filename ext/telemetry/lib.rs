@@ -357,27 +357,33 @@ impl DenoPeriodicReader {
         .with_temporality(PushMetricExporter::temporality(&exporter))
         .build();
 
-      let collect_and_export = || async {
-        let mut resource_metrics =
-          opentelemetry_sdk::metrics::data::ResourceMetrics {
-            resource: Default::default(),
-            scope_metrics: Default::default(),
-          };
-        let callbacks = {
-          let mut callbacks = OTEL_PRE_COLLECT_CALLBACKS.lock().unwrap();
-          std::mem::take(&mut *callbacks)
-        };
-        let mut futures = JoinSet::new();
-        for callback in callbacks {
-          let (tx, rx) = oneshot::channel();
-          if let Ok(()) = callback.send(tx) {
-            futures.spawn(rx);
+      let collect_and_export = |collect_observed: bool| {
+        let inner = &inner;
+        let exporter = &exporter;
+        async move {
+          let mut resource_metrics =
+            opentelemetry_sdk::metrics::data::ResourceMetrics {
+              resource: Default::default(),
+              scope_metrics: Default::default(),
+            };
+          if collect_observed {
+            let callbacks = {
+              let mut callbacks = OTEL_PRE_COLLECT_CALLBACKS.lock().unwrap();
+              std::mem::take(&mut *callbacks)
+            };
+            let mut futures = JoinSet::new();
+            for callback in callbacks {
+              let (tx, rx) = oneshot::channel();
+              if let Ok(()) = callback.send(tx) {
+                futures.spawn(rx);
+              }
+            }
+            while futures.join_next().await.is_some() {}
           }
+          inner.collect(&mut resource_metrics)?;
+          exporter.export(&mut resource_metrics).await?;
+          Ok(())
         }
-        while let Some(_) = futures.join_next().await {}
-        inner.collect(&mut resource_metrics)?;
-        exporter.export(&mut resource_metrics).await?;
-        Ok(())
       };
 
       let mut ticker = tokio::time::interval(interval);
@@ -403,7 +409,7 @@ impl DenoPeriodicReader {
                 name: "DenoPeriodicReader.ExportTriggered",
                 message = "Export message received.",
             );
-            if let Err(err) = collect_and_export().await {
+            if let Err(err) = collect_and_export(true).await {
               otel_error!(
                 name: "DenoPeriodicReader.ExportFailed",
                 message = "Failed to export metrics",
@@ -415,7 +421,7 @@ impl DenoPeriodicReader {
                 name: "DenoPeriodicReader.ForceFlushCalled",
                 message = "Flush message received.",
             );
-            let res = collect_and_export().await;
+            let res = collect_and_export(false).await;
             if let Err(send_error) = sender.send(res) {
               otel_debug!(
                   name: "DenoPeriodicReader.Flush.SendResultError",
@@ -429,7 +435,7 @@ impl DenoPeriodicReader {
                 name: "DenoPeriodicReader.ShutdownCalled",
                 message = "Shutdown message received",
             );
-            let res = collect_and_export().await;
+            let res = collect_and_export(false).await;
             let _ = exporter.shutdown();
             if let Err(send_error) = sender.send(res) {
               otel_debug!(
@@ -1409,7 +1415,7 @@ fn op_otel_metric_record0(
     Instrument::UpDownCounter(counter) => counter.add(value, attributes),
     Instrument::Gauge(gauge) => gauge.record(value, attributes),
     Instrument::Histogram(histogram) => histogram.record(value, attributes),
-    _ => return,
+    _ => {}
   }
 }
 
@@ -1448,10 +1454,11 @@ fn op_otel_metric_record1(
     Instrument::UpDownCounter(counter) => counter.add(value, attributes),
     Instrument::Gauge(gauge) => gauge.record(value, attributes),
     Instrument::Histogram(histogram) => histogram.record(value, attributes),
-    _ => return,
+    _ => {}
   }
 }
 
+#[allow(clippy::too_many_arguments)]
 #[op2(fast)]
 fn op_otel_metric_record2(
   state: &mut OpState,
@@ -1495,10 +1502,11 @@ fn op_otel_metric_record2(
     Instrument::UpDownCounter(counter) => counter.add(value, attributes),
     Instrument::Gauge(gauge) => gauge.record(value, attributes),
     Instrument::Histogram(histogram) => histogram.record(value, attributes),
-    _ => return,
+    _ => {}
   }
 }
 
+#[allow(clippy::too_many_arguments)]
 #[op2(fast)]
 fn op_otel_metric_record3(
   state: &mut OpState,
@@ -1552,7 +1560,7 @@ fn op_otel_metric_record3(
     Instrument::UpDownCounter(counter) => counter.add(value, attributes),
     Instrument::Gauge(gauge) => gauge.record(value, attributes),
     Instrument::Histogram(histogram) => histogram.record(value, attributes),
-    _ => return,
+    _ => {}
   }
 }
 
@@ -1564,12 +1572,9 @@ fn op_otel_metric_observable_record0(
 ) {
   let values = state.try_take::<MetricAttributes>();
   let attributes = values.map(|attr| attr.attributes).unwrap_or_default();
-  match instrument {
-    Instrument::Observable(data_share) => {
-      let mut data = data_share.lock().unwrap();
-      data.insert(attributes, value);
-    }
-    _ => return,
+  if let Instrument::Observable(data_share) = instrument {
+    let mut data = data_share.lock().unwrap();
+    data.insert(attributes, value);
   }
 }
 
@@ -1599,15 +1604,13 @@ fn op_otel_metric_observable_record1(
   if let Some(kv1) = attr1 {
     attributes.push(kv1);
   }
-  match &*instrument {
-    Instrument::Observable(data_share) => {
-      let mut data = data_share.lock().unwrap();
-      data.insert(attributes, value);
-    }
-    _ => return,
+  if let Instrument::Observable(data_share) = &*instrument {
+    let mut data = data_share.lock().unwrap();
+    data.insert(attributes, value);
   }
 }
 
+#[allow(clippy::too_many_arguments)]
 #[op2(fast)]
 fn op_otel_metric_observable_record2(
   state: &mut OpState,
@@ -1640,15 +1643,13 @@ fn op_otel_metric_observable_record2(
   if let Some(kv2) = attr2 {
     attributes.push(kv2);
   }
-  match &*instrument {
-    Instrument::Observable(data_share) => {
-      let mut data = data_share.lock().unwrap();
-      data.insert(attributes, value);
-    }
-    _ => return,
+  if let Instrument::Observable(data_share) = &*instrument {
+    let mut data = data_share.lock().unwrap();
+    data.insert(attributes, value);
   }
 }
 
+#[allow(clippy::too_many_arguments)]
 #[op2(fast)]
 fn op_otel_metric_observable_record3(
   state: &mut OpState,
@@ -1687,15 +1688,13 @@ fn op_otel_metric_observable_record3(
   if let Some(kv3) = attr3 {
     attributes.push(kv3);
   }
-  match &*instrument {
-    Instrument::Observable(data_share) => {
-      let mut data = data_share.lock().unwrap();
-      data.insert(attributes, value);
-    }
-    _ => return,
+  if let Instrument::Observable(data_share) = &*instrument {
+    let mut data = data_share.lock().unwrap();
+    data.insert(attributes, value);
   }
 }
 
+#[allow(clippy::too_many_arguments)]
 #[op2(fast)]
 fn op_otel_metric_attribute3<'s>(
   scope: &mut v8::HandleScope<'s>,
