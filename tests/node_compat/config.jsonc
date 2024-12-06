@@ -348,7 +348,6 @@
       "test-dgram-connect-send-default-host.js",
       "test-dgram-connect-send-empty-array.js",
       "test-dgram-connect-send-empty-buffer.js",
-      "test-dgram-connect-send-empty-packet.js",
       "test-dgram-connect-send-multi-buffer-copy.js",
       "test-dgram-connect-send-multi-string-array.js",
       "test-dgram-connect.js",
