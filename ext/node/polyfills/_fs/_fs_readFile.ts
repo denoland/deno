@@ -10,7 +10,7 @@ import {
   TextOptionsArgument,
 } from "ext:deno_node/_fs/_fs_common.ts";
 import { Buffer } from "node:buffer";
-import { readAll } from "ext:deno_io/12_io.js";
+import { readAll, readAllSync } from "ext:deno_io/12_io.js";
 import { FileHandle } from "ext:deno_node/internal/fs/handle.ts";
 import { pathFromURL } from "ext:deno_web/00_infra.js";
 import {
@@ -39,7 +39,7 @@ type TextCallback = (err: Error | null, data?: string) => void;
 type BinaryCallback = (err: Error | null, data?: Buffer) => void;
 type GenericCallback = (err: Error | null, data?: string | Buffer) => void;
 type Callback = TextCallback | BinaryCallback | GenericCallback;
-type Path = string | URL | FileHandle;
+type Path = string | URL | FileHandle | number;
 
 export function readFile(
   path: Path,
@@ -76,6 +76,9 @@ export function readFile(
   if (path instanceof FileHandle) {
     const fsFile = new FsFile(path.fd, Symbol.for("Deno.internal.FsFile"));
     p = readAll(fsFile);
+  } else if (typeof path === "number") {
+    const fsFile = new FsFile(path, Symbol.for("Deno.internal.FsFile"));
+    p = readAll(fsFile);
   } else {
     p = Deno.readFile(path);
   }
@@ -106,23 +109,28 @@ export function readFilePromise(
 }
 
 export function readFileSync(
-  path: string | URL,
+  path: string | URL | number,
   opt: TextOptionsArgument,
 ): string;
 export function readFileSync(
-  path: string | URL,
+  path: string | URL | number,
   opt?: BinaryOptionsArgument,
 ): Buffer;
 export function readFileSync(
-  path: string | URL,
+  path: string | URL | number,
   opt?: FileOptionsArgument,
 ): string | Buffer {
   path = path instanceof URL ? pathFromURL(path) : path;
   let data;
-  try {
-    data = Deno.readFileSync(path);
-  } catch (err) {
-    throw denoErrorToNodeError(err, { path, syscall: "open" });
+  if (typeof path === "number") {
+    const fsFile = new FsFile(path, Symbol.for("Deno.internal.FsFile"));
+    data = readAllSync(fsFile);
+  } else {
+    try {
+      data = Deno.readFileSync(path);
+    } catch (err) {
+      throw denoErrorToNodeError(err, { path, syscall: "open" });
+    }
   }
   const encoding = getEncoding(opt);
   if (encoding && encoding !== "binary") {

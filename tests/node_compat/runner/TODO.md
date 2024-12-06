@@ -1,7 +1,7 @@
 <!-- deno-fmt-ignore-file -->
 # Remaining Node Tests
 
-1163 tests out of 3681 have been ported from Node 20.11.1 (31.59% ported, 68.92% remaining).
+1164 tests out of 3681 have been ported from Node 20.11.1 (31.62% ported, 68.89% remaining).
 
 NOTE: This file should not be manually edited. Please edit `tests/node_compat/config.json` and run `deno task setup` in `tests/node_compat/runner` dir instead.
 
@@ -691,7 +691,6 @@ NOTE: This file should not be manually edited. Please edit `tests/node_compat/co
 - [parallel/test-fs-readdir-types.js](https://github.com/nodejs/node/tree/v20.11.1/test/parallel/test-fs-readdir-types.js)
 - [parallel/test-fs-readdir-ucs2.js](https://github.com/nodejs/node/tree/v20.11.1/test/parallel/test-fs-readdir-ucs2.js)
 - [parallel/test-fs-readfile-error.js](https://github.com/nodejs/node/tree/v20.11.1/test/parallel/test-fs-readfile-error.js)
-- [parallel/test-fs-readfile-fd.js](https://github.com/nodejs/node/tree/v20.11.1/test/parallel/test-fs-readfile-fd.js)
 - [parallel/test-fs-readfile-flags.js](https://github.com/nodejs/node/tree/v20.11.1/test/parallel/test-fs-readfile-flags.js)
 - [parallel/test-fs-readfile-pipe-large.js](https://github.com/nodejs/node/tree/v20.11.1/test/parallel/test-fs-readfile-pipe-large.js)
 - [parallel/test-fs-readfile-pipe.js](https://github.com/nodejs/node/tree/v20.11.1/test/parallel/test-fs-readfile-pipe.js)
