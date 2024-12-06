@@ -9,6 +9,7 @@ use std::sync::Arc;
 use anyhow::bail;
 use anyhow::Context;
 use anyhow::Error as AnyError;
+use deno_cache_dir::file_fetcher::CacheSetting;
 use deno_cache_dir::npm::NpmCacheDir;
 use deno_npm::npm_rc::ResolvedNpmRc;
 use deno_npm::registry::NpmPackageInfo;
@@ -90,6 +91,27 @@ pub enum NpmCacheSetting {
 }
 
 impl NpmCacheSetting {
+  pub fn from_cache_setting(cache_setting: &CacheSetting) -> NpmCacheSetting {
+    match cache_setting {
+      CacheSetting::Only => NpmCacheSetting::Only,
+      CacheSetting::ReloadAll => NpmCacheSetting::ReloadAll,
+      CacheSetting::ReloadSome(values) => {
+        if values.iter().any(|v| v == "npm:") {
+          NpmCacheSetting::ReloadAll
+        } else {
+          NpmCacheSetting::ReloadSome {
+            npm_package_names: values
+              .iter()
+              .filter_map(|v| v.strip_prefix("npm:"))
+              .map(|n| n.to_string())
+              .collect(),
+          }
+        }
+      }
+      CacheSetting::RespectHeaders => panic!("not supported"),
+      CacheSetting::Use => NpmCacheSetting::Use,
+    }
+  }
   pub fn should_use_for_npm_package(&self, package_name: &str) -> bool {
     match self {
       NpmCacheSetting::ReloadAll => false,

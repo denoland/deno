@@ -1,12 +1,12 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
-use crate::auth_tokens::AuthToken;
 use crate::util::progress_bar::UpdateGuard;
 use crate::version;
 
 use cache_control::Cachability;
 use cache_control::CacheControl;
 use chrono::DateTime;
+use deno_cache_dir::file_fetcher::AuthToken;
 use deno_core::error::custom_error;
 use deno_core::error::generic_error;
 use deno_core::error::AnyError;
@@ -18,6 +18,7 @@ use deno_core::url::Url;
 use deno_runtime::deno_fetch;
 use deno_runtime::deno_fetch::create_http_client;
 use deno_runtime::deno_fetch::CreateHttpClientOptions;
+use deno_runtime::deno_fetch::ResBody;
 use deno_runtime::deno_tls::RootCertStoreProvider;
 use http::header;
 use http::header::HeaderName;
@@ -27,6 +28,7 @@ use http::header::AUTHORIZATION;
 use http::header::CONTENT_LENGTH;
 use http::header::IF_NONE_MATCH;
 use http::header::LOCATION;
+use http::HeaderMap;
 use http::StatusCode;
 use http_body_util::BodyExt;
 
@@ -50,16 +52,12 @@ pub type HeadersMap = HashMap<String, String>;
 pub struct CacheSemantics {
   cache_control: CacheControl,
   cached: SystemTime,
-  headers: HashMap<String, String>,
+  headers: HeadersMap,
   now: SystemTime,
 }
 
 impl CacheSemantics {
-  pub fn new(
-    headers: HashMap<String, String>,
-    cached: SystemTime,
-    now: SystemTime,
-  ) -> Self {
+  pub fn new(headers: HeadersMap, cached: SystemTime, now: SystemTime) -> Self {
     let cache_control = headers
       .get("cache-control")
       .map(|v| CacheControl::from_value(v).unwrap_or_default())
@@ -190,6 +188,14 @@ impl CacheSemantics {
   }
 }
 
+#[derive(Debug, Error)]
+pub enum SendError {
+  #[error(transparent)]
+  Send(#[from] deno_fetch::ClientSendError),
+  #[error(transparent)]
+  InvalidUri(#[from] http::uri::InvalidUri),
+}
+
 #[derive(Debug, Eq, PartialEq)]
 pub enum FetchOnceResult {
   Code(Vec<u8>, HeadersMap),
@@ -201,10 +207,10 @@ pub enum FetchOnceResult {
 
 #[derive(Debug)]
 pub struct FetchOnceArgs<'a> {
-  pub url: Url,
-  pub maybe_accept: Option<String>,
-  pub maybe_etag: Option<String>,
-  pub maybe_auth_token: Option<AuthToken>,
+  pub url: &'a Url,
+  pub maybe_accept: Option<&'a str>,
+  pub maybe_etag: Option<&'a str>,
+  pub maybe_auth_token: Option<&'a AuthToken>,
   pub maybe_auth: Option<(header::HeaderName, header::HeaderValue)>,
   pub maybe_progress_guard: Option<&'a UpdateGuard>,
 }
@@ -358,107 +364,24 @@ impl HttpClient {
     ))
   }
 
-  /// Asynchronously fetches the given HTTP URL one pass only.
-  /// If no redirect is present and no error occurs,
-  /// yields Code(ResultPayload).
-  /// If redirect occurs, does not follow and
-  /// yields Redirect(url).
-  pub async fn fetch_no_follow<'a>(
+  pub async fn send(
     &self,
-    args: FetchOnceArgs<'a>,
-  ) -> Result<FetchOnceResult, AnyError> {
+    url: &Url,
+    headers: HeaderMap,
+  ) -> Result<http::Response<ResBody>, SendError> {
     let body = http_body_util::Empty::new()
       .map_err(|never| match never {})
       .boxed();
     let mut request = http::Request::new(body);
-    *request.uri_mut() = args.url.as_str().parse()?;
+    *request.uri_mut() = http::Uri::try_from(url.as_str())?;
+    *request.headers_mut() = headers;
 
-    if let Some(etag) = args.maybe_etag {
-      let if_none_match_val = HeaderValue::from_str(&etag)?;
-      request
-        .headers_mut()
-        .insert(IF_NONE_MATCH, if_none_match_val);
-    }
-    if let Some(auth_token) = args.maybe_auth_token {
-      let authorization_val = HeaderValue::from_str(&auth_token.to_string())?;
-      request
-        .headers_mut()
-        .insert(AUTHORIZATION, authorization_val);
-    } else if let Some((header, value)) = args.maybe_auth {
-      request.headers_mut().insert(header, value);
-    }
-    if let Some(accept) = args.maybe_accept {
-      let accepts_val = HeaderValue::from_str(&accept)?;
-      request.headers_mut().insert(ACCEPT, accepts_val);
-    }
-    let response = match self.client.clone().send(request).await {
-      Ok(resp) => resp,
-      Err(err) => {
-        if err.is_connect_error() {
-          return Ok(FetchOnceResult::RequestError(err.to_string()));
-        }
-        return Err(err.into());
-      }
-    };
-
-    if response.status() == StatusCode::NOT_MODIFIED {
-      return Ok(FetchOnceResult::NotModified);
-    }
-
-    let mut result_headers = HashMap::new();
-    let response_headers = response.headers();
-
-    if let Some(warning) = response_headers.get("X-Deno-Warning") {
-      log::warn!(
-        "{} {}",
-        crate::colors::yellow("Warning"),
-        warning.to_str().unwrap()
-      );
-    }
-
-    for key in response_headers.keys() {
-      let key_str = key.to_string();
-      let values = response_headers.get_all(key);
-      let values_str = values
-        .iter()
-        .map(|e| e.to_str().unwrap().to_string())
-        .collect::<Vec<String>>()
-        .join(",");
-      result_headers.insert(key_str, values_str);
-    }
-
-    if response.status().is_redirection() {
-      let new_url = resolve_redirect_from_response(&args.url, &response)?;
-      return Ok(FetchOnceResult::Redirect(new_url, result_headers));
-    }
-
-    let status = response.status();
-
-    if status.is_server_error() {
-      return Ok(FetchOnceResult::ServerError(status));
-    }
-
-    if status.is_client_error() {
-      let err = if response.status() == StatusCode::NOT_FOUND {
-        custom_error(
-          "NotFound",
-          format!("Import '{}' failed, not found.", args.url),
-        )
-      } else {
-        generic_error(format!(
-          "Import '{}' failed: {}",
-          args.url,
-          response.status()
-        ))
-      };
-      return Err(err);
-    }
-
-    let body =
-      get_response_body_with_progress(response, args.maybe_progress_guard)
-        .await?;
-
-    Ok(FetchOnceResult::Code(body, result_headers))
+    self
+      .client
+      .clone()
+      .send(request)
+      .await
+      .map_err(SendError::Send)
   }
 
   pub async fn download_text(&self, url: Url) -> Result<String, AnyError> {
@@ -525,7 +448,7 @@ impl HttpClient {
 
     get_response_body_with_progress(response, progress_guard)
       .await
-      .map(Some)
+      .map(|(_, body)| Some(body))
       .map_err(DownloadError::Fetch)
   }
 
@@ -579,10 +502,10 @@ impl HttpClient {
   }
 }
 
-async fn get_response_body_with_progress(
+pub async fn get_response_body_with_progress(
   response: http::Response<deno_fetch::ResBody>,
   progress_guard: Option<&UpdateGuard>,
-) -> Result<Vec<u8>, AnyError> {
+) -> Result<(HeaderMap, Vec<u8>), AnyError> {
   use http_body::Body as _;
   if let Some(progress_guard) = progress_guard {
     let mut total_size = response.body().size_hint().exact();
@@ -597,18 +520,21 @@ async fn get_response_body_with_progress(
       progress_guard.set_total_size(total_size);
       let mut current_size = 0;
       let mut data = Vec::with_capacity(total_size as usize);
-      let mut stream = response.into_body().into_data_stream();
+      let (parts, body) = response.into_parts();
+      let mut stream = body.into_data_stream();
       while let Some(item) = stream.next().await {
         let bytes = item?;
         current_size += bytes.len() as u64;
         progress_guard.set_position(current_size);
         data.extend(bytes.into_iter());
       }
-      return Ok(data);
+      return Ok((parts.headers, data));
     }
   }
-  let bytes = response.collect().await?.to_bytes();
-  Ok(bytes.into())
+
+  let (parts, body) = response.into_parts();
+  let bytes = body.collect().await?.to_bytes();
+  Ok((parts.headers, bytes.into()))
 }
 
 /// Construct the next uri based on base uri and location header fragment
@@ -791,7 +717,7 @@ mod test {
     let client = create_test_client();
     let result = client
       .fetch_no_follow(FetchOnceArgs {
-        url,
+        url: &url,
         maybe_accept: None,
         maybe_etag: None,
         maybe_auth_token: None,

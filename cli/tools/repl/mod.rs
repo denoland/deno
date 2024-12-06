@@ -11,7 +11,7 @@ use crate::args::ReplFlags;
 use crate::cdp;
 use crate::colors;
 use crate::factory::CliFactory;
-use crate::file_fetcher::FileFetcher;
+use crate::file_fetcher::CliFileFetcher;
 use deno_core::error::AnyError;
 use deno_core::futures::StreamExt;
 use deno_core::serde_json;
@@ -143,7 +143,7 @@ async fn read_line_and_poll(
 
 async fn read_eval_file(
   cli_options: &CliOptions,
-  file_fetcher: &FileFetcher,
+  file_fetcher: &CliFileFetcher,
   eval_file: &str,
 ) -> Result<Arc<str>, AnyError> {
   let specifier =

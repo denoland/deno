@@ -2,7 +2,7 @@
 
 use crate::args::jsr_api_url;
 use crate::args::jsr_url;
-use crate::file_fetcher::FileFetcher;
+use crate::file_fetcher::CliFileFetcher;
 use crate::jsr::partial_jsr_package_version_info_from_slice;
 use crate::jsr::JsrFetchResolver;
 use dashmap::DashMap;
@@ -267,7 +267,7 @@ fn read_cached_url(
 
 #[derive(Debug)]
 pub struct CliJsrSearchApi {
-  file_fetcher: Arc<FileFetcher>,
+  file_fetcher: Arc<CliFileFetcher>,
   resolver: JsrFetchResolver,
   search_cache: DashMap<String, Arc<Vec<String>>>,
   versions_cache: DashMap<String, Arc<Vec<Version>>>,
@@ -275,7 +275,7 @@ pub struct CliJsrSearchApi {
 }
 
 impl CliJsrSearchApi {
-  pub fn new(file_fetcher: Arc<FileFetcher>) -> Self {
+  pub fn new(file_fetcher: Arc<CliFileFetcher>) -> Self {
     let resolver = JsrFetchResolver::new(file_fetcher.clone());
     Self {
       file_fetcher,

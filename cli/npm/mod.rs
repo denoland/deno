@@ -28,7 +28,7 @@ use managed::create_managed_in_npm_pkg_checker;
 use node_resolver::InNpmPackageChecker;
 use node_resolver::NpmPackageFolderResolver;
 
-use crate::file_fetcher::FileFetcher;
+use crate::file_fetcher::CliFileFetcher;
 use crate::http_util::HttpClientProvider;
 use crate::util::fs::atomic_write_file_with_retries_and_fs;
 use crate::util::fs::hard_link_dir_recursive;
@@ -231,13 +231,13 @@ pub trait CliNpmResolver: NpmPackageFolderResolver + CliNpmReqResolver {
 pub struct NpmFetchResolver {
   nv_by_req: DashMap<PackageReq, Option<PackageNv>>,
   info_by_name: DashMap<String, Option<Arc<NpmPackageInfo>>>,
-  file_fetcher: Arc<FileFetcher>,
+  file_fetcher: Arc<CliFileFetcher>,
   npmrc: Arc<ResolvedNpmRc>,
 }
 
 impl NpmFetchResolver {
   pub fn new(
-    file_fetcher: Arc<FileFetcher>,
+    file_fetcher: Arc<CliFileFetcher>,
     npmrc: Arc<ResolvedNpmRc>,
   ) -> Self {
     Self {

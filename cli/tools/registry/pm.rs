@@ -4,6 +4,7 @@ use std::path::Path;
 use std::path::PathBuf;
 use std::sync::Arc;
 
+use deno_cache_dir::file_fetcher::CacheSetting;
 use deno_core::anyhow::bail;
 use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
@@ -23,12 +24,11 @@ use jsonc_parser::cst::CstRootNode;
 use jsonc_parser::json;
 
 use crate::args::AddFlags;
-use crate::args::CacheSetting;
 use crate::args::CliOptions;
 use crate::args::Flags;
 use crate::args::RemoveFlags;
 use crate::factory::CliFactory;
-use crate::file_fetcher::FileFetcher;
+use crate::file_fetcher::CliFileFetcher;
 use crate::jsr::JsrFetchResolver;
 use crate::npm::NpmFetchResolver;
 
@@ -411,18 +411,18 @@ pub async fn add(
 
   let http_client = cli_factory.http_client_provider();
   let deps_http_cache = cli_factory.global_http_cache()?;
-  let mut deps_file_fetcher = FileFetcher::new(
+  let mut deps_file_fetcher = CliFileFetcher::new(
     deps_http_cache.clone(),
     CacheSetting::ReloadAll,
     true,
     http_client.clone(),
     Default::default(),
     None,
+    log::Level::Trace,
   );
 
   let npmrc = cli_factory.cli_options().unwrap().npmrc();
 
-  deps_file_fetcher.set_download_log_level(log::Level::Trace);
   let deps_file_fetcher = Arc::new(deps_file_fetcher);
   let jsr_resolver = Arc::new(JsrFetchResolver::new(deps_file_fetcher.clone()));
   let npm_resolver =

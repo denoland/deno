@@ -3,10 +3,10 @@
 use crate::args::jsr_url;
 use crate::args::CacheSetting;
 use crate::errors::get_error_class_name;
+use crate::file_fetcher::CliFileFetcher;
 use crate::file_fetcher::FetchNoFollowOptions;
 use crate::file_fetcher::FetchOptions;
 use crate::file_fetcher::FetchPermissionsOptionRef;
-use crate::file_fetcher::FileFetcher;
 use crate::file_fetcher::FileOrRedirect;
 use crate::util::fs::atomic_write_file_with_retries;
 use crate::util::fs::atomic_write_file_with_retries_and_fs;
@@ -190,7 +190,7 @@ pub struct FetchCacherOptions {
 /// a concise interface to the DENO_DIR when building module graphs.
 pub struct FetchCacher {
   pub file_header_overrides: HashMap<ModuleSpecifier, HashMap<String, String>>,
-  file_fetcher: Arc<FileFetcher>,
+  file_fetcher: Arc<CliFileFetcher>,
   fs: Arc<dyn deno_fs::FileSystem>,
   global_http_cache: Arc<GlobalHttpCache>,
   in_npm_pkg_checker: Arc<dyn InNpmPackageChecker>,
@@ -202,7 +202,7 @@ pub struct FetchCacher {
 
 impl FetchCacher {
   pub fn new(
-    file_fetcher: Arc<FileFetcher>,
+    file_fetcher: Arc<CliFileFetcher>,
     fs: Arc<dyn deno_fs::FileSystem>,
     global_http_cache: Arc<GlobalHttpCache>,
     in_npm_pkg_checker: Arc<dyn InNpmPackageChecker>,
@@ -319,15 +319,18 @@ impl Loader for FetchCacher {
         }
         LoaderCacheSetting::Only => Some(CacheSetting::Only),
       };
+      permissions.check_specifier(
+        &specifier,
+        if is_statically_analyzable {
+          deno_runtime::deno_permissions::CheckSpecifierKind::Static
+        } else {
+          deno_runtime::deno_permissions::CheckSpecifierKind::Dynamic
+        }
+      )?;
       file_fetcher
         .fetch_no_follow_with_options(FetchNoFollowOptions {
           fetch_options: FetchOptions {
             specifier: &specifier,
-            permissions: if is_statically_analyzable {
-              FetchPermissionsOptionRef::StaticContainer(&permissions)
-            } else {
-              FetchPermissionsOptionRef::DynamicContainer(&permissions)
-            },
             maybe_auth: None,
             maybe_accept: None,
             maybe_cache_setting: maybe_cache_setting.as_ref(),

@@ -11,21 +11,21 @@ use serde::Deserialize;
 use std::sync::Arc;
 
 use crate::args::npm_registry_url;
-use crate::file_fetcher::FileFetcher;
+use crate::file_fetcher::CliFileFetcher;
 use crate::npm::NpmFetchResolver;
 
 use super::search::PackageSearchApi;
 
 #[derive(Debug)]
 pub struct CliNpmSearchApi {
-  file_fetcher: Arc<FileFetcher>,
+  file_fetcher: Arc<CliFileFetcher>,
   resolver: NpmFetchResolver,
   search_cache: DashMap<String, Arc<Vec<String>>>,
   versions_cache: DashMap<String, Arc<Vec<Version>>>,
 }
 
 impl CliNpmSearchApi {
-  pub fn new(file_fetcher: Arc<FileFetcher>) -> Self {
+  pub fn new(file_fetcher: Arc<CliFileFetcher>) -> Self {
     let resolver = NpmFetchResolver::new(
       file_fetcher.clone(),
       Arc::new(NpmRc::default().as_resolved(npm_registry_url()).unwrap()),

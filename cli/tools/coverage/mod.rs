@@ -566,21 +566,20 @@ pub fn cover_files(
       cli_options.initial_cwd(),
     )?;
 
-    let maybe_file = if module_specifier.scheme() == "file" {
-      file_fetcher.get_source(&module_specifier)
-    } else {
-      file_fetcher
-        .fetch_cached(&module_specifier, 10)
-        .with_context(|| {
-          format!("Failed to fetch \"{module_specifier}\" from cache.")
-        })?
+    let maybe_file_result = file_fetcher
+      .get_cached_source_or_local(&module_specifier)
+      .map_err(AnyError::from);
+    let get_message = |specifier: &ModuleSpecifier| -> String {
+      format!("Failed to fetch \"{}\" from cache.
+        Before generating coverage report, run `deno test --coverage` to ensure consistent state.",
+        module_specifier
+      )
     };
-    let file = maybe_file.ok_or_else(|| {
-      anyhow!("Failed to fetch \"{}\" from cache.
-          Before generating coverage report, run `deno test --coverage` to ensure consistent state.",
-          module_specifier
-        )
-    })?.into_text_decoded()?;
+    let file = match maybe_file_result {
+      Ok(Some(file)) => file.into_decoded()?,
+      Ok(None) => anyhow!("{}", get_message(&module_specifier)),
+      Err(err) => return Err(err).context(get_message(&module_specifier)),
+    };
 
     let original_source = file.source.clone();
     // Check if file was transpiled

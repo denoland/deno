@@ -13,6 +13,7 @@ use deno_ast::swc::visit::VisitMut;
 use deno_ast::swc::visit::VisitWith as _;
 use deno_ast::MediaType;
 use deno_ast::SourceRangedForSpanned as _;
+use deno_cache_dir::file_fetcher::File;
 use deno_core::error::AnyError;
 use deno_core::ModuleSpecifier;
 use regex::Regex;
@@ -20,7 +21,7 @@ use std::collections::BTreeSet;
 use std::fmt::Write as _;
 use std::sync::Arc;
 
-use crate::file_fetcher::File;
+use crate::file_fetcher::TextDecodedFile;
 use crate::util::path::mapped_specifier_for_tsc;
 
 /// Extracts doc tests from a given file, transforms them into pseudo test
@@ -52,7 +53,7 @@ fn extract_inner(
   file: File,
   wrap_kind: WrapKind,
 ) -> Result<Vec<File>, AnyError> {
-  let file = file.into_text_decoded()?;
+  let file = TextDecodedFile::decode(file)?;
 
   let exports = match deno_ast::parse_program(deno_ast::ParseParams {
     specifier: file.specifier.clone(),
@@ -558,7 +559,7 @@ fn generate_pseudo_file(
   exports: &ExportCollector,
   wrap_kind: WrapKind,
 ) -> Result<File, AnyError> {
-  let file = file.into_text_decoded()?;
+  let file = TextDecodedFile::decode(file)?;
 
   let parsed = deno_ast::parse_program(deno_ast::ParseParams {
     specifier: file.specifier.clone(),
@@ -1206,7 +1207,7 @@ Deno.test("file:///main.ts$3-7.ts", async ()=>{
       let got_decoded = extract_doc_tests(file)
         .unwrap()
         .into_iter()
-        .map(|f| f.into_text_decoded().unwrap())
+        .map(|f| TextDecodedFile::decode(f).unwrap())
         .collect::<Vec<_>>();
       let expected = test
         .expected
@@ -1442,7 +1443,7 @@ add('1', '2');
       let got_decoded = extract_snippet_files(file)
         .unwrap()
         .into_iter()
-        .map(|f| f.into_text_decoded().unwrap())
+        .map(|f| TextDecodedFile::decode(f).unwrap())
         .collect::<Vec<_>>();
       let expected = test
         .expected

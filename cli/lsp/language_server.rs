@@ -101,7 +101,7 @@ use crate::args::Flags;
 use crate::args::InternalFlags;
 use crate::args::UnstableFmtOptions;
 use crate::factory::CliFactory;
-use crate::file_fetcher::FileFetcher;
+use crate::file_fetcher::CliFileFetcher;
 use crate::graph_util;
 use crate::http_util::HttpClientProvider;
 use crate::lsp::config::ConfigWatchedFileType;
@@ -953,15 +953,15 @@ impl Inner {
   }
 
   async fn refresh_config_tree(&mut self) {
-    let mut file_fetcher = FileFetcher::new(
+    let mut file_fetcher = CliFileFetcher::new(
       self.cache.global().clone(),
       CacheSetting::RespectHeaders,
       true,
       self.http_client_provider.clone(),
       Default::default(),
       None,
+      super::logging::lsp_log_level(),
     );
-    file_fetcher.set_download_log_level(super::logging::lsp_log_level());
     let file_fetcher = Arc::new(file_fetcher);
     self
       .config

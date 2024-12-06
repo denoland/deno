@@ -68,7 +68,7 @@ use crate::args::UnstableConfig;
 use crate::cache::DenoDir;
 use crate::cache::FastInsecureHasher;
 use crate::emit::Emitter;
-use crate::file_fetcher::FileFetcher;
+use crate::file_fetcher::CliFileFetcher;
 use crate::http_util::HttpClientProvider;
 use crate::npm::CliNpmResolver;
 use crate::npm::InnerCliNpmResolverRef;
@@ -372,7 +372,7 @@ pub struct DenoCompileBinaryWriter<'a> {
   cli_options: &'a CliOptions,
   deno_dir: &'a DenoDir,
   emitter: &'a Emitter,
-  file_fetcher: &'a FileFetcher,
+  file_fetcher: &'a CliFileFetcher,
   http_client_provider: &'a HttpClientProvider,
   npm_resolver: &'a dyn CliNpmResolver,
   workspace_resolver: &'a WorkspaceResolver,
@@ -386,7 +386,7 @@ impl<'a> DenoCompileBinaryWriter<'a> {
     cli_options: &'a CliOptions,
     deno_dir: &'a DenoDir,
     emitter: &'a Emitter,
-    file_fetcher: &'a FileFetcher,
+    file_fetcher: &'a CliFileFetcher,
     http_client_provider: &'a HttpClientProvider,
     npm_resolver: &'a dyn CliNpmResolver,
     workspace_resolver: &'a WorkspaceResolver,

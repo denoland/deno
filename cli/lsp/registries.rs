@@ -15,9 +15,9 @@ use super::path_to_regex::Token;
 use crate::args::CacheSetting;
 use crate::cache::GlobalHttpCache;
 use crate::cache::HttpCache;
+use crate::file_fetcher::CliFileFetcher;
 use crate::file_fetcher::FetchOptions;
 use crate::file_fetcher::FetchPermissionsOptionRef;
-use crate::file_fetcher::FileFetcher;
 use crate::http_util::HttpClientProvider;
 
 use deno_core::anyhow::anyhow;
@@ -418,7 +418,7 @@ enum VariableItems {
 pub struct ModuleRegistry {
   origins: HashMap<String, Vec<RegistryConfiguration>>,
   pub location: PathBuf,
-  pub file_fetcher: Arc<FileFetcher>,
+  pub file_fetcher: Arc<CliFileFetcher>,
   http_cache: Arc<GlobalHttpCache>,
 }
 
@@ -432,15 +432,15 @@ impl ModuleRegistry {
       location.clone(),
       crate::cache::RealDenoCacheEnv,
     ));
-    let mut file_fetcher = FileFetcher::new(
+    let mut file_fetcher = CliFileFetcher::new(
       http_cache.clone(),
       CacheSetting::RespectHeaders,
       true,
       http_client_provider,
       Default::default(),
       None,
+      super::logging::lsp_log_level(),
     );
-    file_fetcher.set_download_log_level(super::logging::lsp_log_level());
 
     Self {
       origins: HashMap::new(),
@@ -479,13 +479,15 @@ impl ModuleRegistry {
       let specifier = specifier.clone();
       async move {
         file_fetcher
-        .fetch_with_options(FetchOptions {
-          specifier: &specifier,
-          permissions: FetchPermissionsOptionRef::AllowAll,
-          maybe_auth: None,
-          maybe_accept: Some("application/vnd.deno.reg.v2+json, application/vnd.deno.reg.v1+json;q=0.9, application/json;q=0.8"),
-          maybe_cache_setting: None,
-        })
+        .fetch_with_options(
+          FetchPermissionsOptionRef::AllowAll,
+          FetchOptions {
+            specifier: &specifier,
+            maybe_auth: None,
+            maybe_accept: Some("application/vnd.deno.reg.v2+json, application/vnd.deno.reg.v1+json;q=0.9, application/json;q=0.8"),
+            maybe_cache_setting: None,
+          }
+        )
         .await
       }
     }).await?;
