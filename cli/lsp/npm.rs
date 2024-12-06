@@ -12,6 +12,7 @@ use std::sync::Arc;
 
 use crate::args::npm_registry_url;
 use crate::file_fetcher::CliFileFetcher;
+use crate::file_fetcher::TextDecodedFile;
 use crate::npm::NpmFetchResolver;
 
 use super::search::PackageSearchApi;
@@ -57,10 +58,8 @@ impl PackageSearchApi for CliNpmSearchApi {
       .append_pair("text", &format!("{} boost-exact:false", query));
     let file_fetcher = self.file_fetcher.clone();
     let file = deno_core::unsync::spawn(async move {
-      file_fetcher
-        .fetch_bypass_permissions(&search_url)
-        .await?
-        .into_text_decoded()
+      let file = file_fetcher.fetch_bypass_permissions(&search_url).await?;
+      TextDecodedFile::decode(file)
     })
     .await??;
     let names = Arc::new(parse_npm_search_response(&file.source)?);

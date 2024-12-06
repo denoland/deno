@@ -362,13 +362,13 @@ async fn install_global(
   let cli_options = factory.cli_options()?;
   let http_client = factory.http_client_provider();
   let deps_http_cache = factory.global_http_cache()?;
-  let mut deps_file_fetcher = CliFileFetcher::new(
+  let deps_file_fetcher = CliFileFetcher::new(
     deps_http_cache.clone(),
-    CacheSetting::ReloadAll,
-    true,
     http_client.clone(),
     Default::default(),
     None,
+    true,
+    CacheSetting::ReloadAll,
     log::Level::Trace,
   );
 

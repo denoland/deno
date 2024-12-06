@@ -162,13 +162,13 @@ pub async fn outdated(
   let workspace = cli_options.workspace();
   let http_client = factory.http_client_provider();
   let deps_http_cache = factory.global_http_cache()?;
-  let mut file_fetcher = CliFileFetcher::new(
+  let file_fetcher = CliFileFetcher::new(
     deps_http_cache.clone(),
-    CacheSetting::RespectHeaders,
-    true,
     http_client.clone(),
     Default::default(),
     None,
+    true,
+    CacheSetting::RespectHeaders,
     log::Level::Trace,
   );
   let file_fetcher = Arc::new(file_fetcher);

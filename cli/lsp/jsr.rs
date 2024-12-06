@@ -3,6 +3,7 @@
 use crate::args::jsr_api_url;
 use crate::args::jsr_url;
 use crate::file_fetcher::CliFileFetcher;
+use crate::file_fetcher::TextDecodedFile;
 use crate::jsr::partial_jsr_package_version_info_from_slice;
 use crate::jsr::JsrFetchResolver;
 use dashmap::DashMap;
@@ -309,10 +310,8 @@ impl PackageSearchApi for CliJsrSearchApi {
     let file_fetcher = self.file_fetcher.clone();
     // spawn due to the lsp's `Send` requirement
     let file = deno_core::unsync::spawn(async move {
-      file_fetcher
-        .fetch_bypass_permissions(&search_url)
-        .await?
-        .into_text_decoded()
+      let file = file_fetcher.fetch_bypass_permissions(&search_url).await?;
+      TextDecodedFile::decode(file)
     })
     .await??;
     let names = Arc::new(parse_jsr_search_response(&file.source)?);

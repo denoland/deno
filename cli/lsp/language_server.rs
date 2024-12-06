@@ -1,6 +1,7 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 use deno_ast::MediaType;
+use deno_cache_dir::file_fetcher::CacheSetting;
 use deno_config::workspace::WorkspaceDirectory;
 use deno_config::workspace::WorkspaceDiscoverOptions;
 use deno_core::anyhow::anyhow;
@@ -95,7 +96,6 @@ use crate::args::create_default_npmrc;
 use crate::args::get_root_cert_store;
 use crate::args::has_flag_env_var;
 use crate::args::CaData;
-use crate::args::CacheSetting;
 use crate::args::CliOptions;
 use crate::args::Flags;
 use crate::args::InternalFlags;
@@ -953,13 +953,13 @@ impl Inner {
   }
 
   async fn refresh_config_tree(&mut self) {
-    let mut file_fetcher = CliFileFetcher::new(
+    let file_fetcher = CliFileFetcher::new(
       self.cache.global().clone(),
-      CacheSetting::RespectHeaders,
-      true,
       self.http_client_provider.clone(),
       Default::default(),
       None,
+      true,
+      CacheSetting::RespectHeaders,
       super::logging::lsp_log_level(),
     );
     let file_fetcher = Arc::new(file_fetcher);

@@ -355,11 +355,11 @@ impl CliFactory {
       let cli_options = self.cli_options()?;
       Ok(Arc::new(CliFileFetcher::new(
         self.http_cache()?.clone(),
-        cli_options.cache_setting(),
-        !cli_options.no_remote(),
         self.http_client_provider().clone(),
         self.blob_store().clone(),
         Some(self.text_only_progress_bar().clone()),
+        !cli_options.no_remote(),
+        cli_options.cache_setting(),
         log::Level::Info,
       )))
     })

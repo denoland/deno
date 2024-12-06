@@ -1,18 +1,19 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 use crate::args::jsr_url;
-use crate::args::CacheSetting;
-use crate::errors::get_error_class_name;
+use crate::file_fetcher::CliFetchNoFollowErrorKind;
 use crate::file_fetcher::CliFileFetcher;
 use crate::file_fetcher::FetchNoFollowOptions;
-use crate::file_fetcher::FetchOptions;
 use crate::file_fetcher::FetchPermissionsOptionRef;
-use crate::file_fetcher::FileOrRedirect;
 use crate::util::fs::atomic_write_file_with_retries;
 use crate::util::fs::atomic_write_file_with_retries_and_fs;
 use crate::util::fs::AtomicWriteFileFsAdapter;
 
 use deno_ast::MediaType;
+use deno_cache_dir::file_fetcher::CacheSetting;
+use deno_cache_dir::file_fetcher::FetchNoFollowErrorKind;
+use deno_cache_dir::file_fetcher::FileOrRedirect;
+use deno_core::error::AnyError;
 use deno_core::futures;
 use deno_core::futures::FutureExt;
 use deno_core::ModuleSpecifier;
@@ -319,22 +320,19 @@ impl Loader for FetchCacher {
         }
         LoaderCacheSetting::Only => Some(CacheSetting::Only),
       };
-      permissions.check_specifier(
-        &specifier,
-        if is_statically_analyzable {
-          deno_runtime::deno_permissions::CheckSpecifierKind::Static
-        } else {
-          deno_runtime::deno_permissions::CheckSpecifierKind::Dynamic
-        }
-      )?;
       file_fetcher
-        .fetch_no_follow_with_options(FetchNoFollowOptions {
-          fetch_options: FetchOptions {
-            specifier: &specifier,
-            maybe_auth: None,
-            maybe_accept: None,
-            maybe_cache_setting: maybe_cache_setting.as_ref(),
-          },
+        .fetch_no_follow(
+          &specifier,
+          FetchPermissionsOptionRef::Restricted(&permissions,
+          if is_statically_analyzable {
+            deno_runtime::deno_permissions::CheckSpecifierKind::Static
+          } else {
+            deno_runtime::deno_permissions::CheckSpecifierKind::Dynamic
+          }),
+          FetchNoFollowOptions {
+          maybe_auth: None,
+          maybe_accept: None,
+          maybe_cache_setting: maybe_cache_setting.as_ref(),
           maybe_checksum: options.maybe_checksum.as_ref(),
         })
         .await
@@ -364,18 +362,46 @@ impl Loader for FetchCacher {
           }
         })
         .unwrap_or_else(|err| {
-          if let Some(io_err) = err.downcast_ref::<std::io::Error>() {
-            if io_err.kind() == std::io::ErrorKind::NotFound {
-              return Ok(None);
-            } else {
-              return Err(err);
-            }
-          }
-          let error_class_name = get_error_class_name(&err);
-          match error_class_name {
-            "NotFound" => Ok(None),
-            "NotCached" if options.cache_setting == LoaderCacheSetting::Only => Ok(None),
-            _ => Err(err),
+          let err = err.into_kind();
+          match err {
+            CliFetchNoFollowErrorKind::FetchNoFollow(err) => {
+              let err = err.into_kind();
+              match err {
+                FetchNoFollowErrorKind::NotFound(_) => Ok(None),
+                FetchNoFollowErrorKind::UrlToFilePath { .. } |
+                FetchNoFollowErrorKind::ReadingBlobUrl { .. } |
+                FetchNoFollowErrorKind::ReadingFile { .. } |
+                FetchNoFollowErrorKind::FetchingRemote { .. } |
+                FetchNoFollowErrorKind::ClientError { .. } |
+                FetchNoFollowErrorKind::NoRemote { .. } |
+                FetchNoFollowErrorKind::DataUrlDecode { .. } |
+                FetchNoFollowErrorKind::RedirectResolution { .. } |
+                FetchNoFollowErrorKind::CacheRead { .. } |
+                FetchNoFollowErrorKind::CacheSave  { .. } |
+                FetchNoFollowErrorKind::UnsupportedScheme  { .. } |
+                FetchNoFollowErrorKind::FailedReadingRedirectHeader { .. } |
+                FetchNoFollowErrorKind::InvalidHeader { .. } => Err(AnyError::from(err)),
+                FetchNoFollowErrorKind::NotCached { .. } => {
+                  if options.cache_setting == LoaderCacheSetting::Only {
+                    Ok(None)
+                  } else {
+                    Err(AnyError::from(err))
+                  }
+                },
+                FetchNoFollowErrorKind::ChecksumIntegrity(err) => {
+                  // convert to the equivalent deno_graph error so that it
+                  // enhances it if this is passed to deno_graph
+                  Err(
+                    deno_graph::source::ChecksumIntegrityError {
+                      actual: err.actual,
+                      expected: err.expected,
+                    }
+                    .into(),
+                  )
+                }
+              }
+            },
+            CliFetchNoFollowErrorKind::PermissionCheck(permission_check_error) => Err(AnyError::from(permission_check_error)),
           }
         })
     }

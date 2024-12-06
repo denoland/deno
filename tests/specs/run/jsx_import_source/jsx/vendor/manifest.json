@@ -1,0 +1,9 @@
+{
+  "modules": {
+    "http://localhost:4545/jsx/jsx-runtime": {
+      "headers": {
+        "content-type": "application/javascript"
+      }
+    }
+  }
+}
