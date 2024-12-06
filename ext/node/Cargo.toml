@@ -2,7 +2,7 @@
 
 [package]
 name = "deno_node"
-version = "0.114.0"
+version = "0.118.0"
 authors.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -54,7 +54,7 @@ http.workspace = true
 http-body-util.workspace = true
 hyper.workspace = true
 hyper-util.workspace = true
-idna = "0.3.0"
+idna = "1.0.3"
 indexmap.workspace = true
 ipnetwork = "0.20.0"
 k256 = "0.13.1"
@@ -95,6 +95,7 @@ spki.workspace = true
 stable_deref_trait = "1.2.0"
 thiserror.workspace = true
 tokio.workspace = true
+tokio-eld = "0.2"
 url.workspace = true
 webpki-root-certs.workspace = true
 winapi.workspace = true

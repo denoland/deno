@@ -256,9 +256,7 @@ impl TryFrom<ExitStatus> for ChildStatus {
         success: false,
         code: 128 + signal,
         #[cfg(unix)]
-        signal: Some(
-          crate::ops::signal::signal_int_to_str(signal)?.to_string(),
-        ),
+        signal: Some(crate::signal::signal_int_to_str(signal)?.to_string()),
         #[cfg(not(unix))]
         signal: None,
       }
@@ -802,7 +800,7 @@ fn get_requires_allow_all_env_vars(env: &RunEnv) -> Vec<&str> {
   found_envs
 }
 
-#[op2]
+#[op2(stack_trace)]
 #[serde]
 fn op_spawn_child(
   state: &mut OpState,
@@ -844,7 +842,7 @@ async fn op_spawn_wait(
   Ok(result)
 }
 
-#[op2]
+#[op2(stack_trace)]
 #[serde]
 fn op_spawn_sync(
   state: &mut OpState,
@@ -928,7 +926,7 @@ mod deprecated {
     stderr_rid: Option<ResourceId>,
   }
 
-  #[op2]
+  #[op2(stack_trace)]
   #[serde]
   pub fn op_run(
     state: &mut OpState,
@@ -1076,7 +1074,8 @@ mod deprecated {
 
   #[cfg(unix)]
   pub fn kill(pid: i32, signal: &str) -> Result<(), ProcessError> {
-    let signo = super::super::signal::signal_str_to_int(signal)?;
+    let signo = crate::signal::signal_str_to_int(signal)
+      .map_err(SignalError::InvalidSignalStr)?;
     use nix::sys::signal::kill as unix_kill;
     use nix::sys::signal::Signal;
     use nix::unistd::Pid;
@@ -1099,7 +1098,12 @@ mod deprecated {
     use winapi::um::winnt::PROCESS_TERMINATE;
 
     if !matches!(signal, "SIGKILL" | "SIGTERM") {
-      Err(SignalError::InvalidSignalStr(signal.to_string()).into())
+      Err(
+        SignalError::InvalidSignalStr(crate::signal::InvalidSignalStrError(
+          signal.to_string(),
+        ))
+        .into(),
+      )
     } else if pid <= 0 {
       Err(ProcessError::InvalidPid)
     } else {
@@ -1129,7 +1133,7 @@ mod deprecated {
     }
   }
 
-  #[op2(fast)]
+  #[op2(fast, stack_trace)]
   pub fn op_kill(
     state: &mut OpState,
     #[smi] pid: i32,

@@ -37,6 +37,7 @@ const {
   ObjectHasOwn,
   ObjectKeys,
   ObjectGetOwnPropertyDescriptor,
+  ObjectGetOwnPropertyDescriptors,
   ObjectPrototypeIsPrototypeOf,
   ObjectSetPrototypeOf,
   PromisePrototypeThen,
@@ -45,6 +46,7 @@ const {
   Symbol,
   SymbolIterator,
   TypeError,
+  uncurryThis,
 } = primordials;
 const {
   isNativeError,
@@ -86,7 +88,7 @@ import {
   workerRuntimeGlobalProperties,
 } from "ext:runtime/98_global_scope_worker.js";
 import { SymbolDispose, SymbolMetadata } from "ext:deno_web/00_infra.js";
-import { bootstrap as bootstrapOtel } from "ext:runtime/telemetry.js";
+import { bootstrap as bootstrapOtel } from "ext:deno_telemetry/telemetry.ts";
 
 // deno-lint-ignore prefer-primordials
 if (Symbol.metadata) {
@@ -459,6 +461,51 @@ function exposeUnstableFeaturesForWindowOrWorkerGlobalScope(unstableFeatures) {
   }
 }
 
+function shimTemporalDurationToLocaleString() {
+  const DurationFormat = Intl.DurationFormat;
+  if (!DurationFormat) {
+    // Intl.DurationFormat can be disabled with --v8-flags=--no-harmony-intl-duration-format
+    return;
+  }
+  const DurationFormatPrototype = DurationFormat.prototype;
+  const formatDuration = uncurryThis(DurationFormatPrototype.format);
+
+  const Duration = Temporal.Duration;
+  const DurationPrototype = Duration.prototype;
+  const desc = ObjectGetOwnPropertyDescriptors(DurationPrototype);
+  const assertDuration = uncurryThis(desc.toLocaleString.value);
+  const getYears = uncurryThis(desc.years.get);
+  const getMonths = uncurryThis(desc.months.get);
+  const getWeeks = uncurryThis(desc.weeks.get);
+  const getDays = uncurryThis(desc.days.get);
+  const getHours = uncurryThis(desc.hours.get);
+  const getMinutes = uncurryThis(desc.minutes.get);
+  const getSeconds = uncurryThis(desc.seconds.get);
+  const getMilliseconds = uncurryThis(desc.milliseconds.get);
+  const getMicroseconds = uncurryThis(desc.microseconds.get);
+  const getNanoseconds = uncurryThis(desc.nanoseconds.get);
+
+  ObjectAssign(DurationPrototype, {
+    toLocaleString(locales = undefined, options) {
+      assertDuration(this);
+      const durationFormat = new DurationFormat(locales, options);
+      const duration = {
+        years: getYears(this),
+        months: getMonths(this),
+        weeks: getWeeks(this),
+        days: getDays(this),
+        hours: getHours(this),
+        minutes: getMinutes(this),
+        seconds: getSeconds(this),
+        milliseconds: getMilliseconds(this),
+        microseconds: getMicroseconds(this),
+        nanoseconds: getNanoseconds(this),
+      };
+      return formatDuration(durationFormat, duration);
+    },
+  });
+}
+
 // NOTE(bartlomieju): remove all the ops that have already been imported using
 // "virtual op module" (`ext:core/ops`).
 const NOT_IMPORTED_OPS = [
@@ -471,6 +518,8 @@ const NOT_IMPORTED_OPS = [
   // Related to `Deno.jupyter` API
   "op_jupyter_broadcast",
   "op_jupyter_input",
+  // Used in jupyter API
+  "op_base64_encode",
 
   // Related to `Deno.test()` API
   "op_test_event_step_result_failed",
@@ -819,6 +868,12 @@ function bootstrapMainRuntime(runtimeOptions, warmup = false) {
         });
         delete globalThis.Temporal.Now.timeZone;
       }
+
+      // deno-lint-ignore prefer-primordials
+      if (new Temporal.Duration().toLocaleString("en-US") !== "PT0S") {
+        throw "V8 supports Temporal.Duration.prototype.toLocaleString now, no need to shim it";
+      }
+      shimTemporalDurationToLocaleString();
     }
 
     // Setup `Deno` global - we're actually overriding already existing global
@@ -1022,6 +1077,8 @@ function bootstrapWorkerRuntime(
         });
         delete globalThis.Temporal.Now.timeZone;
       }
+
+      shimTemporalDurationToLocaleString();
     }
 
     // Setup `Deno` global - we're actually overriding already existing global

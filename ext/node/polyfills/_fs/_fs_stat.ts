@@ -6,6 +6,7 @@
 import { denoErrorToNodeError } from "ext:deno_node/internal/errors.ts";
 import { promisify } from "ext:deno_node/internal/util.mjs";
 import { primordials } from "ext:core/mod.js";
+import { getValidatedPath } from "ext:deno_node/internal/fs/utils.mjs";
 
 const { ObjectCreate, ObjectAssign } = primordials;
 
@@ -379,6 +380,7 @@ export function stat(
     ? optionsOrCallback
     : { bigint: false };
 
+  path = getValidatedPath(path).toString();
   if (!callback) throw new Error("No callback function supplied");
 
   Deno.stat(path).then(
@@ -409,6 +411,8 @@ export function statSync(
   path: string | URL,
   options: statOptions = { bigint: false, throwIfNoEntry: true },
 ): Stats | BigIntStats | undefined {
+  path = getValidatedPath(path).toString();
+
   try {
     const origin = Deno.statSync(path);
     return CFISBIS(origin, options.bigint);

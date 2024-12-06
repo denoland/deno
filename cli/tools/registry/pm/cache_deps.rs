@@ -1,5 +1,6 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
+use std::borrow::Cow;
 use std::sync::Arc;
 
 use crate::factory::CliFactory;
@@ -8,7 +9,7 @@ use crate::graph_container::ModuleGraphUpdatePermit;
 use deno_core::error::AnyError;
 use deno_core::futures::stream::FuturesUnordered;
 use deno_core::futures::StreamExt;
-use deno_semver::package::PackageReq;
+use deno_semver::jsr::JsrPackageReqReference;
 
 pub async fn cache_top_level_deps(
   // todo(dsherret): don't pass the factory into this function. Instead use ctor deps
@@ -37,6 +38,16 @@ pub async fn cache_top_level_deps(
         factory.file_fetcher()?.clone(),
       ))
     };
+    let mut graph_permit = factory
+      .main_module_graph_container()
+      .await?
+      .acquire_update_permit()
+      .await;
+    let graph = graph_permit.graph_mut();
+    if let Some(lockfile) = cli_options.maybe_lockfile() {
+      let lockfile = lockfile.lock();
+      crate::graph_util::fill_graph_from_lockfile(graph, &lockfile);
+    }
 
     let mut roots = Vec::new();
 
@@ -56,19 +67,27 @@ pub async fn cache_top_level_deps(
       match specifier.scheme() {
         "jsr" => {
           let specifier_str = specifier.as_str();
-          let specifier_str =
-            specifier_str.strip_prefix("jsr:").unwrap_or(specifier_str);
-          if let Ok(req) = PackageReq::from_str(specifier_str) {
-            if !seen_reqs.insert(req.clone()) {
+          if let Ok(req) = JsrPackageReqReference::from_str(specifier_str) {
+            if let Some(sub_path) = req.sub_path() {
+              if sub_path.ends_with('/') {
+                continue;
+              }
+              roots.push(specifier.clone());
               continue;
             }
+            if !seen_reqs.insert(req.req().clone()) {
+              continue;
+            }
+            let resolved_req = graph.packages.mappings().get(req.req());
             let jsr_resolver = jsr_resolver.clone();
             info_futures.push(async move {
-              if let Some(nv) = jsr_resolver.req_to_nv(&req).await {
-                if let Some(info) = jsr_resolver.package_version_info(&nv).await
-                {
-                  return Some((specifier.clone(), info));
-                }
+              let nv = if let Some(req) = resolved_req {
+                Cow::Borrowed(req)
+              } else {
+                Cow::Owned(jsr_resolver.req_to_nv(req.req()).await?)
+              };
+              if let Some(info) = jsr_resolver.package_version_info(&nv).await {
+                return Some((specifier.clone(), info));
               }
               None
             });
@@ -101,12 +120,8 @@ pub async fn cache_top_level_deps(
         }
       }
     }
-    let mut graph_permit = factory
-      .main_module_graph_container()
-      .await?
-      .acquire_update_permit()
-      .await;
-    let graph = graph_permit.graph_mut();
+    drop(info_futures);
+
     factory
       .module_load_preparer()
       .await?

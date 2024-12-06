@@ -70,7 +70,7 @@ use indexmap::IndexMap;
 use indexmap::IndexSet;
 use lazy_regex::lazy_regex;
 use log::error;
-use node_resolver::NodeModuleKind;
+use node_resolver::ResolutionMode;
 use once_cell::sync::Lazy;
 use regex::Captures;
 use regex::Regex;
@@ -1297,16 +1297,10 @@ impl TsServer {
   {
     // When an LSP request is cancelled by the client, the future this is being
     // executed under and any local variables here will be dropped at the next
-    // await point. To pass on that cancellation to the TS thread, we make this
-    // wrapper which cancels the request's token on drop.
-    struct DroppableToken(CancellationToken);
-    impl Drop for DroppableToken {
-      fn drop(&mut self) {
-        self.0.cancel();
-      }
-    }
+    // await point. To pass on that cancellation to the TS thread, we use drop_guard
+    // which cancels the request's token on drop.
     let token = token.child_token();
-    let droppable_token = DroppableToken(token.clone());
+    let droppable_token = token.clone().drop_guard();
     let (tx, mut rx) = oneshot::channel::<Result<String, AnyError>>();
     let change = self.pending_change.lock().take();
 
@@ -1320,7 +1314,7 @@ impl TsServer {
     tokio::select! {
       value = &mut rx => {
         let value = value??;
-        drop(droppable_token);
+        droppable_token.disarm();
         Ok(serde_json::from_str(&value)?)
       }
       _ = token.cancelled() => {
@@ -4449,16 +4443,12 @@ fn op_load<'s>(
         version: state.script_version(&specifier),
         is_cjs: doc
           .document()
-          .map(|d| state.state_snapshot.is_cjs_resolver.get_doc_module_kind(d))
-          .unwrap_or(NodeModuleKind::Esm)
-          == NodeModuleKind::Cjs,
+          .map(|d| d.resolution_mode())
+          .unwrap_or(ResolutionMode::Import)
+          == ResolutionMode::Require,
       })
     };
-
-  lsp_warn!("op_load {} {}", &specifier, maybe_load_response.is_some());
-
   let serialized = serde_v8::to_v8(scope, maybe_load_response)?;
-
   state.performance.measure(mark);
   Ok(serialized)
 }
@@ -4483,17 +4473,9 @@ fn op_release(
 fn op_resolve(
   state: &mut OpState,
   #[string] base: String,
-  is_base_cjs: bool,
-  #[serde] specifiers: Vec<String>,
+  #[serde] specifiers: Vec<(bool, String)>,
 ) -> Result<Vec<Option<(String, String)>>, AnyError> {
-  op_resolve_inner(
-    state,
-    ResolveArgs {
-      base,
-      is_base_cjs,
-      specifiers,
-    },
-  )
+  op_resolve_inner(state, ResolveArgs { base, specifiers })
 }
 
 struct TscRequestArray {
@@ -4696,10 +4678,7 @@ fn op_script_names(state: &mut OpState) -> ScriptNames {
         let (types, _) = documents.resolve_dependency(
           types,
           specifier,
-          state
-            .state_snapshot
-            .is_cjs_resolver
-            .get_doc_module_kind(doc),
+          doc.resolution_mode(),
           doc.file_referrer(),
         )?;
         let types_doc = documents.get_or_load(&types, doc.file_referrer())?;
@@ -5583,7 +5562,6 @@ mod tests {
       documents: Arc::new(documents),
       assets: Default::default(),
       config: Arc::new(config),
-      is_cjs_resolver: Default::default(),
       resolver,
     });
     let performance = Arc::new(Performance::default());
@@ -5609,7 +5587,7 @@ mod tests {
     let (_tx, rx) = mpsc::unbounded_channel();
     let state =
       State::new(state_snapshot, Default::default(), Default::default(), rx);
-    let mut op_state = OpState::new(None);
+    let mut op_state = OpState::new(None, None);
     op_state.put(state);
     op_state
   }
@@ -6434,8 +6412,7 @@ mod tests {
       &mut state,
       ResolveArgs {
         base: temp_dir.url().join("a.ts").unwrap().to_string(),
-        is_base_cjs: false,
-        specifiers: vec!["./b.ts".to_string()],
+        specifiers: vec![(false, "./b.ts".to_string())],
       },
     )
     .unwrap();
