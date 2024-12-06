@@ -1623,6 +1623,7 @@ dependencies = [
  "bytes",
  "data-url",
  "deno_core",
+ "deno_path_util",
  "deno_permissions",
  "deno_tls",
  "dyn-clone",
