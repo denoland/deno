@@ -280,16 +280,22 @@ impl<TEnv: NpmCacheEnv> NpmCache<TEnv> {
     }
 
     let index_bytes = std::fs::read(version_index_path)?;
-    let index = PackageInfoIndex::from_bytes(&index_bytes)
-      .with_context(|| format!("loading package {package:?}"))?;
+    // let index = PackageInfoIndex::from_bytes(&index_bytes)
+    //   .with_context(|| format!("loading package {package:?}"))?;
+    // let Some((version_start, version_end)) =
+    //   index.versions.get(&package.version)
+    // else {
+    //   return Ok(None);
+    // };
     let Some((version_start, version_end)) =
-      index.versions.get(&package.version)
+      PackageInfoIndex::only_version(&index_bytes, &package.version)?
     else {
+      eprintln!("miss {package}");
       return Ok(None);
     };
     let mut file = std::fs::File::open(file_cache_path)?;
-    file.seek(std::io::SeekFrom::Start(*version_start as u64))?;
-    let mut buf = vec![0u8; *version_end - *version_start];
+    file.seek(std::io::SeekFrom::Start(version_start as u64))?;
+    let mut buf = vec![0u8; version_end - version_start];
 
     file
       .read_exact(&mut buf)
@@ -330,10 +336,12 @@ struct PackageInfoIndexSer {
 
 #[derive(Debug)]
 struct PackageInfoIndex {
+  #[allow(dead_code)]
   versions: HashMap<Version, (usize, usize)>,
 }
 
 impl PackageInfoIndex {
+  #[allow(dead_code)]
   fn from_bytes(bytes: &[u8]) -> Result<Self, AnyError> {
     let mut versions = HashMap::new();
     let mut i = 0;
@@ -365,6 +373,44 @@ impl PackageInfoIndex {
     }
 
     Ok(Self { versions })
+  }
+
+  fn only_version(
+    bytes: &[u8],
+    version: &Version,
+  ) -> Result<Option<(usize, usize)>, AnyError> {
+    let version_string = version.to_string();
+    let mut i = 0;
+    loop {
+      let version_start = i;
+      let Some(version_end_offset) = memchr::memchr(b':', &bytes[i..]) else {
+        break;
+      };
+      let version_end = version_start + version_end_offset;
+      let start_start = version_end + 1;
+      let start_end = start_start + 8;
+      let end_start = start_end;
+      let end_end = end_start + 8;
+
+      // eprintln!(
+      //         "{i} {version_start} {version_end} {start_start} {start_end} {end_start} {end_end}"
+      //     );
+
+      let version = core::str::from_utf8(&bytes[version_start..version_end])?;
+      // eprintln!("version {version}");
+      // let version = Version::parse_standard(version)?;
+      if version == version_string {
+        let start = usize::from_le_bytes(
+          bytes[start_start..start_end].try_into().unwrap(),
+        );
+        let end =
+          usize::from_le_bytes(bytes[end_start..end_end].try_into().unwrap());
+        return Ok(Some((start, end)));
+      }
+      // eprintln!("version {version} : {start} {end}");
+      i = end_end;
+    }
+    Ok(None)
   }
 }
 

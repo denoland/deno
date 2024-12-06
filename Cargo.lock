@@ -1995,6 +1995,7 @@ dependencies = [
 [[package]]
 name = "deno_npm"
 version = "0.26.0"
+source = "git+https://github.com/nathanwhit/deno_npm?branch=version-info-lockfile#a3602f1daddad91da52359948dab6757062dc69f"
 dependencies = [
  "anyhow",
  "async-trait",
