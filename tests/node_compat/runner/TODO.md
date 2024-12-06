@@ -1,7 +1,7 @@
 <!-- deno-fmt-ignore-file -->
 # Remaining Node Tests
 
-1120 tests out of 3681 have been ported from Node 20.11.1 (30.43% ported, 69.68% remaining).
+1119 tests out of 3681 have been ported from Node 20.11.1 (30.40% ported, 69.71% remaining).
 
 NOTE: This file should not be manually edited. Please edit `tests/node_compat/config.json` and run `deno task setup` in `tests/node_compat/runner` dir instead.
 
@@ -503,6 +503,7 @@ NOTE: This file should not be manually edited. Please edit `tests/node_compat/co
 - [parallel/test-dgram-cluster-bind-error.js](https://github.com/nodejs/node/tree/v20.11.1/test/parallel/test-dgram-cluster-bind-error.js)
 - [parallel/test-dgram-cluster-close-during-bind.js](https://github.com/nodejs/node/tree/v20.11.1/test/parallel/test-dgram-cluster-close-during-bind.js)
 - [parallel/test-dgram-cluster-close-in-listening.js](https://github.com/nodejs/node/tree/v20.11.1/test/parallel/test-dgram-cluster-close-in-listening.js)
+- [parallel/test-dgram-connect-send-empty-packet.js](https://github.com/nodejs/node/tree/v20.11.1/test/parallel/test-dgram-connect-send-empty-packet.js)
 - [parallel/test-dgram-create-socket-handle-fd.js](https://github.com/nodejs/node/tree/v20.11.1/test/parallel/test-dgram-create-socket-handle-fd.js)
 - [parallel/test-dgram-create-socket-handle.js](https://github.com/nodejs/node/tree/v20.11.1/test/parallel/test-dgram-create-socket-handle.js)
 - [parallel/test-dgram-custom-lookup.js](https://github.com/nodejs/node/tree/v20.11.1/test/parallel/test-dgram-custom-lookup.js)
