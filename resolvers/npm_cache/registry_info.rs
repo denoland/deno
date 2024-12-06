@@ -11,8 +11,10 @@ use anyhow::Error as AnyError;
 use async_trait::async_trait;
 use deno_npm::npm_rc::ResolvedNpmRc;
 use deno_npm::registry::NpmPackageInfo;
+use deno_npm::registry::NpmPackageVersionInfo;
 use deno_npm::registry::NpmRegistryApi;
 use deno_npm::registry::NpmRegistryPackageInfoLoadError;
+use deno_semver::package::PackageNv;
 use deno_unsync::sync::AtomicFlag;
 use deno_unsync::sync::MultiRuntimeAsyncValueCreator;
 use futures::future::LocalBoxFuture;
@@ -167,6 +169,10 @@ impl<TEnv: NpmCacheEnv> RegistryInfoProvider<TEnv> {
     self: &Arc<Self>,
     name: &str,
   ) -> Result<Option<Arc<NpmPackageInfo>>, AnyError> {
+    // eprintln!(
+    //   "maybe_package_info({name}): {}",
+    //   std::backtrace::Backtrace::capture()
+    // );
     self.load_package_info_inner(name).await.with_context(|| {
       format!(
         "Failed loading {} for package \"{}\"",
@@ -183,8 +189,10 @@ impl<TEnv: NpmCacheEnv> RegistryInfoProvider<TEnv> {
     let (cache_item, clear_id) = {
       let mut mem_cache = self.memory_cache.lock();
       let cache_item = if let Some(cache_item) = mem_cache.get(name) {
+        // eprintln!("mem cache hit: {name}");
         cache_item.clone()
       } else {
+        // eprintln!("mem cache miss: {name}");
         let value_creator = MultiRuntimeAsyncValueCreator::new({
           let downloader = self.clone();
           let name = name.to_string();
@@ -199,6 +207,7 @@ impl<TEnv: NpmCacheEnv> RegistryInfoProvider<TEnv> {
 
     match cache_item {
       MemoryCacheItem::FsCached => {
+        // eprintln!("cached: fs {name}");
         // this struct previously loaded from the registry, so we can load it from the file system cache
         self
           .load_file_cached_package_info(name)
@@ -206,11 +215,14 @@ impl<TEnv: NpmCacheEnv> RegistryInfoProvider<TEnv> {
           .map(|info| Some(Arc::new(info)))
       }
       MemoryCacheItem::MemoryCached(maybe_info) => {
+        // eprintln!("cached: memory {name}");
         maybe_info.clone().map_err(|e| anyhow!("{}", e))
       }
       MemoryCacheItem::Pending(value_creator) => {
+        // eprintln!("cached: pending {name}");
         match value_creator.get().await {
           Ok(FutureResult::SavedFsCache(info)) => {
+            // eprintln!("pending cached: fs");
             // return back the future and mark this package as having
             // been saved in the cache for next time it's requested
             self.memory_cache.lock().try_insert(
@@ -367,6 +379,20 @@ impl<TEnv: NpmCacheEnv> NpmRegistryApi for NpmRegistryApiAdapter<TEnv> {
 
   fn mark_force_reload(&self) -> bool {
     self.0.mark_force_reload()
+  }
+
+  async fn version_info(
+    &self,
+    package: &PackageNv,
+  ) -> Result<NpmPackageVersionInfo, NpmRegistryPackageInfoLoadError> {
+    if let Some(info) =
+      self.0.cache.load_version_info(&package).map_err(Arc::new)?
+    {
+      return Ok(info);
+    } else {
+      let package_info = self.0.package_info(&package.name).await?;
+      Ok(package_info.version_info(package)?)
+    }
   }
 }
 

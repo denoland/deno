@@ -1,7 +1,10 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
+use std::collections::HashMap;
 use std::collections::HashSet;
 use std::io::ErrorKind;
+use std::io::Read;
+use std::io::Seek;
 use std::path::Path;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -12,6 +15,7 @@ use anyhow::Error as AnyError;
 use deno_cache_dir::npm::NpmCacheDir;
 use deno_npm::npm_rc::ResolvedNpmRc;
 use deno_npm::registry::NpmPackageInfo;
+use deno_npm::registry::NpmPackageVersionInfo;
 use deno_npm::NpmPackageCacheFolderId;
 use deno_semver::package::PackageNv;
 use deno_semver::Version;
@@ -260,6 +264,41 @@ impl<TEnv: NpmCacheEnv> NpmCache<TEnv> {
     Ok(serde_json::from_str(&file_text)?)
   }
 
+  pub fn load_version_info(
+    &self,
+    package: &PackageNv,
+  ) -> Result<Option<NpmPackageVersionInfo>, AnyError> {
+    let file_cache_path =
+      self.get_registry_package_info_file_cache_path(&package.name);
+    if !file_cache_path.exists() {
+      return Ok(None);
+    }
+    let version_index_path =
+      file_cache_path.parent().unwrap().join("version-index");
+    if !version_index_path.exists() {
+      return Ok(None);
+    }
+
+    let index_bytes = std::fs::read(version_index_path)?;
+    let index = PackageInfoIndex::from_bytes(&index_bytes)
+      .with_context(|| format!("loading package {package:?}"))?;
+    let Some((version_start, version_end)) =
+      index.versions.get(&package.version)
+    else {
+      return Ok(None);
+    };
+    let mut file = std::fs::File::open(file_cache_path)?;
+    file.seek(std::io::SeekFrom::Start(*version_start as u64))?;
+    let mut buf = vec![0u8; *version_end - *version_start];
+
+    file
+      .read_exact(&mut buf)
+      .with_context(|| format!("on package {package:?}"))?;
+
+    let info = serde_json::from_slice(&buf)?;
+    Ok(Some(info))
+  }
+
   pub fn save_package_info(
     &self,
     name: &str,
@@ -267,9 +306,16 @@ impl<TEnv: NpmCacheEnv> NpmCache<TEnv> {
   ) -> Result<(), AnyError> {
     let file_cache_path = self.get_registry_package_info_file_cache_path(name);
     let file_text = serde_json::to_string(&package_info)?;
+    let index = index_package_info(&file_text);
+    let index_bytes = index.to_bytes();
+    let version_index_path =
+      file_cache_path.parent().unwrap().join("version-index");
     self
       .env
       .atomic_write_file_with_retries(&file_cache_path, file_text.as_bytes())?;
+    self
+      .env
+      .atomic_write_file_with_retries(&version_index_path, &index_bytes)?;
     Ok(())
   }
 
@@ -277,6 +323,103 @@ impl<TEnv: NpmCacheEnv> NpmCache<TEnv> {
     let name_folder_path = self.package_name_folder(name);
     name_folder_path.join("registry.json")
   }
+}
+struct PackageInfoIndexSer {
+  versions: Vec<(String, usize, usize)>,
+}
+
+#[derive(Debug)]
+struct PackageInfoIndex {
+  versions: HashMap<Version, (usize, usize)>,
+}
+
+impl PackageInfoIndex {
+  fn from_bytes(bytes: &[u8]) -> Result<Self, AnyError> {
+    let mut versions = HashMap::new();
+    let mut i = 0;
+    loop {
+      let version_start = i;
+      let Some(version_end_offset) = memchr::memchr(b':', &bytes[i..]) else {
+        break;
+      };
+      let version_end = version_start + version_end_offset;
+      let start_start = version_end + 1;
+      let start_end = start_start + 8;
+      let end_start = start_end;
+      let end_end = end_start + 8;
+
+      // eprintln!(
+      //         "{i} {version_start} {version_end} {start_start} {start_end} {end_start} {end_end}"
+      //     );
+
+      let version = core::str::from_utf8(&bytes[version_start..version_end])?;
+      // eprintln!("version {version}");
+      let version = Version::parse_standard(version)?;
+      let start =
+        usize::from_le_bytes(bytes[start_start..start_end].try_into().unwrap());
+      let end =
+        usize::from_le_bytes(bytes[end_start..end_end].try_into().unwrap());
+      // eprintln!("version {version} : {start} {end}");
+      versions.insert(version, (start, end));
+      i = end_end;
+    }
+
+    Ok(Self { versions })
+  }
+}
+
+impl PackageInfoIndexSer {
+  fn to_bytes(&self) -> Vec<u8> {
+    let mut bytes = Vec::with_capacity(self.versions.len() * 24);
+    for (version, start, end) in &self.versions {
+      // eprintln!("writing {version} | {start} {end}");
+      bytes.extend(version.as_bytes());
+      bytes.push(b':');
+      bytes.extend(start.to_le_bytes());
+      bytes.extend(end.to_le_bytes());
+    }
+    bytes
+  }
+}
+fn index_package_info(text: &str) -> PackageInfoIndexSer {
+  let mut versions = Vec::new();
+  let version_key = "\"version\"";
+  let bytes = text.as_bytes();
+  for (index, _) in text.match_indices(version_key) {
+    let mut start = None;
+    let mut version = None;
+    let mut braces = 1;
+    let mut end = None;
+    let search_idx = index + version_key.len();
+    for (i, &b) in bytes[search_idx..].iter().enumerate() {
+      if b == b'"' && version.is_none() {
+        match start {
+          Some(start) => version = Some(&bytes[start..search_idx + i]),
+          None => start = Some(search_idx + i + 1),
+        }
+      }
+      match b {
+        b'{' => braces += 1,
+        b'}' => braces -= 1,
+        _ => {}
+      }
+
+      if braces == 0 {
+        end = Some(search_idx + i + 1);
+        break;
+      }
+    }
+    let version_start = index - 1;
+    let version_end = end.unwrap();
+    let version = version.unwrap();
+    let version = String::from_utf8(version.to_vec()).unwrap();
+    if Version::parse_standard(&version).is_err() {
+      continue;
+    }
+    versions.push((version, version_start, version_end))
+  }
+
+  PackageInfoIndexSer { versions }
 }
 
 const NPM_PACKAGE_SYNC_LOCK_FILENAME: &str = ".deno_sync_lock";
