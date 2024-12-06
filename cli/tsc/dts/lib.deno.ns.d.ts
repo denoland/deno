@@ -6280,12 +6280,14 @@ declare namespace Deno {
     callee: Expression;
     arguments: Array<Expression | SpreadElement>;
     optional: boolean; // FIXME only in TSEstree
-    typeArguments: TSTypeParameter | null;
+    // FIXME
+    // typeArguments: TSTypeParameter | null;
   }
 
   export interface ChainExpression extends BaseNode {
     type: "ChainExpression";
-    expression: CallExpression | MemberExpression | TsNonNullExpression;
+    // FIXME
+    // expression: CallExpression | MemberExpression | TsNonNullExpression;
   }
 
   // FIXME
@@ -6344,7 +6346,8 @@ declare namespace Deno {
     type: "NewExpression";
     arguments: Array<Expression | SpreadElement>;
     callee: Expression;
-    typeArguments: TSTypeParameterInstantiation | null;
+    // FIXME
+    // typeArguments: TSTypeParameterInstantiation | null;
   }
 
   export interface ObjectExpression extends BaseNode {
@@ -6367,8 +6370,9 @@ declare namespace Deno {
       | AssignmentPattern
       | ObjectPattern
       | Identifier
-      | Expression
-      | TSEmptyBodyFunctionExpression;
+      | Expression;
+    // FIXME
+    // | TSEmptyBodyFunctionExpression;
   }
 
   export interface SpreadElement extends BaseNode {
@@ -6394,7 +6398,7 @@ declare namespace Deno {
     type: "TaggedTemplateExpression";
     quasi: TemplateLiteral;
     tag: Expression;
-    typeArguments: TSTypeParameterInstantiation | undefined; // FIXME
+    // typeArguments: TSTypeParameterInstantiation | undefined; // FIXME
   }
 
   export interface TemplateLiteral extends BaseNode {
@@ -6811,7 +6815,8 @@ declare namespace Deno {
     attributes: Array<JSXAttribute | JSXSpreadAttribute>;
     name: JSXIdentifier | JSXMemberExpression | JSXNamespacedName;
     selfClosing: boolean;
-    typeArguments: TSTypeParameter | null;
+    // FIXME
+    // typeArguments: TSTypeParameter | null;
   }
 
   export interface JSXOpeningFragment extends BaseNode {
