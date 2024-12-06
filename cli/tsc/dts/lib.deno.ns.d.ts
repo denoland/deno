@@ -6165,6 +6165,733 @@ declare namespace Deno {
     span: { start: number; end: number };
   }
 
+  export interface BaseNode {
+    range: [number, number];
+  }
+
+  export interface AssignmentPattern extends BaseNode {
+    type: "AssignmentPattern";
+    // FIXME
+  }
+
+  export interface ArrayPattern extends BaseNode {
+    type: "ArrayPattern";
+    elements: any[];
+    typeAnnotation: TSTypeAnnotation | null;
+  }
+
+  export interface ObjectPattern extends BaseNode {
+    type: "ObjectPattern";
+    // FIXME
+  }
+
+  export interface PrivateIdentifier extends BaseNode {
+    type: "PrivateIdentifier";
+    name: string;
+  }
+
+  export interface RestElement extends BaseNode {
+    type: "RestElement";
+    argument: Expression;
+  }
+
+  // Expressions
+  export interface ArrayExpression extends BaseNode {
+    type: "ArrayExpression";
+    elements: Array<Expression | SpreadElement | null>;
+  }
+
+  export interface ArrowFunctionExpression extends BaseNode {
+    type: "ArrowFunctionExpression";
+    async: boolean;
+    generator: boolean;
+    body: BlockStatement | Expression;
+    params: Array<
+      | ArrayPattern
+      | AssignmentPattern
+      | Identifier
+      | ObjectPattern
+      | RestElement
+      | TSParameterProperty
+    >;
+    returnType: TSTypeAnnotation | null;
+    typeParameters: any | null;
+  }
+
+  export interface AssignmentExpression extends BaseNode {
+    type: "AssignmentExpression";
+    operator:
+      | "&&="
+      | "&="
+      | "**="
+      | "*="
+      | "||="
+      | "|="
+      | "^="
+      | "="
+      | ">>="
+      | ">>>="
+      | "<<="
+      | "-="
+      | "%="
+      | "+="
+      | "??="
+      | "/=";
+    left: Expression;
+    right: Expression;
+  }
+
+  export interface AwaitExpression extends BaseNode {
+    type: "AwaitExpression";
+    argument: Expression;
+  }
+
+  export interface BinaryExpression extends BaseNode {
+    type: "BinaryExpression";
+    operator:
+      | "&"
+      | "**"
+      | "*"
+      | "|"
+      | "^"
+      | "==="
+      | "=="
+      | "!=="
+      | "!="
+      | ">="
+      | ">>>"
+      | ">>"
+      | ">"
+      | "in"
+      | "instanceof"
+      | "<="
+      | "<<"
+      | "<"
+      | "-"
+      | "%"
+      | "+"
+      | "/";
+    left: Expression | PrivateIdentifier;
+    right: Expression;
+  }
+
+  export interface CallExpression extends BaseNode {
+    type: "CallExpression";
+    callee: Expression;
+    arguments: Array<Expression | SpreadElement>;
+    optional: boolean; // FIXME only in TSEstree
+    typeArguments: TSTypeParameter | null;
+  }
+
+  export interface ChainExpression extends BaseNode {
+    type: "ChainExpression";
+    expression: CallExpression | MemberExpression | TsNonNullExpression;
+  }
+
+  // FIXME
+  export interface ClassExpression extends BaseNode {
+    type: "ClassExpression";
+    abstract: boolean;
+    declare: boolean;
+  }
+
+  export interface ConditionalExpression extends BaseNode {
+    type: "ConditionalExpression";
+    test: Expression;
+    consequent: Expression;
+    alternate: Expression;
+  }
+
+  // FIXME
+  export interface FunctionExpression extends BaseNode {
+    type: "FunctionExpression";
+    body: BlockStatement;
+    expression: boolean; // FIXME: TSEStree
+  }
+
+  export interface Identifier extends BaseNode {
+    type: "Identifier";
+    name: string;
+  }
+
+  // FIXME: ONLY EXISTS IN TSESTREE
+  export interface ImportExpression extends BaseNode {
+    type: "ImportExpression";
+    attributes: Expression | null;
+    source: Expression;
+  }
+
+  export interface LogicalExpression extends BaseNode {
+    type: "LogicalExpression";
+    left: Expression;
+    operator: "&&" | "??" | "||";
+    right: Expression;
+  }
+
+  export interface MemberExpression extends BaseNode {
+    type: "MemberExpression";
+    computed: boolean;
+    property: Expression | Identifier | PrivateIdentifier;
+  }
+
+  export interface MetaProperty extends BaseNode {
+    type: "MetaProperty";
+    meta: Identifier;
+    property: Identifier;
+  }
+
+  export interface NewExpression extends BaseNode {
+    type: "NewExpression";
+    arguments: Array<Expression | SpreadElement>;
+    callee: Expression;
+    typeArguments: TSTypeParameterInstantiation | null;
+  }
+
+  export interface ObjectExpression extends BaseNode {
+    type: "ObjectExpression";
+    properties: Array<Property | SpreadElement>;
+  }
+
+  // TODO: Babel calls this ObjectProperty
+  export interface Property extends BaseNode {
+    type: "Property";
+    computed: boolean;
+    kind: "get" | "set" | "init";
+    method: boolean;
+    shorthand: boolean;
+    key:
+      | PrivateIdentifier
+      | Expression;
+    value:
+      | ArrayPattern
+      | AssignmentPattern
+      | ObjectPattern
+      | Identifier
+      | Expression
+      | TSEmptyBodyFunctionExpression;
+  }
+
+  export interface SpreadElement extends BaseNode {
+    type: "SpreadElement";
+    argument: Expression;
+  }
+
+  export interface StaticBlock extends BaseNode {
+    type: "StaticBlock";
+    body: Statement[];
+  }
+
+  export interface SequenceExpression extends BaseNode {
+    type: "SequenceExpression";
+    expressions: Expression[];
+  }
+
+  export interface Super extends BaseNode {
+    type: "Super";
+  }
+
+  export interface TaggedTemplateExpression extends BaseNode {
+    type: "TaggedTemplateExpression";
+    quasi: TemplateLiteral;
+    tag: Expression;
+    typeArguments: TSTypeParameterInstantiation | undefined; // FIXME
+  }
+
+  export interface TemplateLiteral extends BaseNode {
+    type: "TemplateLiteral";
+    expressions: Expression[];
+    quasis: TemplateElement[];
+  }
+
+  export interface TemplateElement extends BaseNode {
+    type: "TemplateElement";
+    tail: boolean;
+    value: {
+      cooked: string;
+      raw: string;
+    };
+  }
+
+  // Literals
+  export interface BigIntLiteral extends BaseNode {
+    type: "BigIntLiteral";
+    value: bigint | null;
+  }
+  export interface BooleanLiteral extends BaseNode {
+    type: "BooleanLiteral";
+    value: boolean;
+  }
+  export interface NullLiteral extends BaseNode {
+    type: "NullLiteral";
+    value: null;
+  }
+  export interface NumericLiteral extends BaseNode {
+    type: "NumericLiteral";
+    value: number;
+  }
+  export interface RegExpLiteral extends BaseNode {
+    type: "RegExpLiteral";
+    pattern: string;
+    flags: string;
+  }
+  export interface StringLiteral extends BaseNode {
+    type: "StringLiteral";
+    value: string;
+  }
+
+  export type Literal =
+    | BigIntLiteral
+    | BooleanLiteral
+    | NullLiteral
+    | NumericLiteral
+    | RegExpLiteral
+    | StringLiteral;
+
+  export type Expression =
+    | ArrayExpression
+    | ArrowFunctionExpression
+    | AssignmentExpression
+    | AwaitExpression
+    | BinaryExpression
+    | CallExpression
+    | ChainExpression
+    | ClassExpression
+    | ConditionalExpression
+    | FunctionExpression
+    | Identifier
+    | LogicalExpression
+    | MemberExpression
+    | MetaProperty
+    | NewExpression
+    | ObjectExpression
+    | StaticBlock
+    | SequenceExpression
+    | Super
+    | TaggedTemplateExpression
+    | TemplateLiteral
+    | Literal
+    // JSX
+    | JSXElement
+    | JSXFragment;
+
+  export interface BlockStatement extends BaseNode {
+    type: "BlockStatement";
+    body: Statement[];
+  }
+
+  export interface BreakStatement extends BaseNode {
+    type: "BreakStatement";
+    label: Identifier | null;
+  }
+
+  export interface ContinueStatement extends BaseNode {
+    type: "ContinueStatement";
+    label: Identifier | null;
+  }
+
+  export interface DebuggerStatement extends BaseNode {
+    type: "DebuggerStatement";
+  }
+
+  export interface DoWhileStatement extends BaseNode {
+    type: "DoWhileStatement";
+    test: Expression;
+    body: Statement;
+  }
+
+  export interface ExpressionStatement extends BaseNode {
+    type: "ExpressionStatement";
+    expression: Expression;
+  }
+
+  export interface ForInStatement extends BaseNode {
+    type: "ForInStatement";
+    left: VariableDeclaration | Expression;
+    right: Expression;
+    body: Statement;
+  }
+
+  export interface ForOfStatement extends BaseNode {
+    type: "ForOfStatement";
+    left: VariableDeclaration | UsingDeclaration | Expression;
+    right: Expression;
+    body: Statement;
+    await: boolean;
+  }
+
+  export interface ForStatement extends BaseNode {
+    type: "ForStatement";
+    init: VariableDeclaration | Expression | null;
+    test: Expression | null;
+    update: Expression | null;
+    body: Statement;
+  }
+
+  export interface IfStatement extends BaseNode {
+    type: "IfStatement";
+    test: Expression;
+    consequent: Statement;
+    alternate: Statement | null;
+  }
+
+  export interface LabeledStatement extends BaseNode {
+    type: "LabeledStatement";
+    label: Identifier;
+    body: Statement;
+  }
+
+  export interface ReturnStatement extends BaseNode {
+    type: "ReturnStatement";
+    argument: Expression | null;
+  }
+
+  export interface SwitchStatement extends BaseNode {
+    type: "SwitchStatement";
+    discriminant: Expression;
+    cases: SwitchCase[];
+  }
+
+  export interface SwitchCase extends BaseNode {
+    type: "SwitchCase";
+    test: Expression | null;
+    consequent: Statement[];
+  }
+
+  export interface ThrowStatement extends BaseNode {
+    type: "ThrowStatement";
+    argument: Expression;
+  }
+
+  export interface TryStatement extends BaseNode {
+    type: "TryStatement";
+    block: BlockStatement;
+    finalizer: BlockStatement | null;
+    handler: CatchClause | null;
+  }
+
+  export interface CatchClause extends BaseNode {
+    type: "CatchClause";
+    body: BlockStatement;
+    param: ArrayPattern | ObjectPattern | Identifier | null;
+  }
+
+  export interface WhileStatement extends BaseNode {
+    type: "WhileStatement";
+    body: Statement;
+    test: Expression;
+  }
+
+  export interface WithStatement extends BaseNode {
+    type: "WithStatement";
+    body: Statement;
+    object: Expression;
+  }
+
+  // Declarations
+  export interface ClassDeclaration extends BaseNode {
+    type: "ClassDeclaration";
+    id: Identifier | null;
+    // FIXME
+  }
+
+  // FIXME: Babel uses separate types for:
+  // export * from "foo"
+  // export * as bar from "foo"
+  export interface ExportAllDeclaration extends BaseNode {
+    type: "ExportAllDeclaration";
+    source: StringLiteral;
+    exportKind: "type" | "value";
+    attributes: ImportAttribute[];
+  }
+
+  export interface ImportAttribute extends BaseNode {
+    type: "ImportAttribute";
+    key: Identifier | Literal;
+    value: Literal;
+  }
+
+  export interface ExportDefaultDeclaration extends BaseNode {
+    type: "ExportDefaultDeclaration";
+    declaration:
+      | ClassDeclaration
+      | Expression
+      | FunctionDeclaration
+      | TSDeclareFunction
+      | TSEnumDeclaration
+      | TSInterfaceDeclaration
+      | TSModuleDeclaration
+      | TSTypeAliasDeclaration
+      | VariableDeclaration;
+    exportKind: "value";
+  }
+
+  export interface ExportNamedDeclaration extends BaseNode {
+    type: "ExportNamedDeclaration";
+    specifiers: ExportSpecifier[];
+    source: StringLiteral | null;
+  }
+
+  export interface ExportSpecifier extends BaseNode {
+    type: "ExportSpecifier";
+    local: Identifier | StringLiteral;
+    exportKind: "value" | "type";
+    exported: Identifier | StringLiteral;
+  }
+
+  export interface FunctionDeclaration extends BaseNode {
+    type: "FunctionDeclaration";
+    id: Identifier | null;
+    declare: boolean;
+    expression: false; // FIXME TSTREE
+  }
+
+  export interface ImportDeclaration extends BaseNode {
+    type: "ImportDeclaration";
+    attributes: ImportAttribute[];
+    importKind: "value" | "type";
+    source: StringLiteral;
+    specifiers: Array<
+      | ImportDefaultSpecifier
+      | ImportNamespaceSpecifier
+      | ImportSpecifier
+    >;
+  }
+
+  export interface ImportDefaultSpecifier extends BaseNode {
+    type: "ImportDefaultSpecifier";
+    local: Identifier;
+  }
+  export interface ImportNamespaceSpecifier extends BaseNode {
+    type: "ImportNamespaceSpecifier";
+    local: Identifier;
+  }
+  export interface ImportSpecifier extends BaseNode {
+    type: "ImportSpecifier";
+    local: Identifier;
+    imported: Identifier | StringLiteral;
+    importKind: "value" | "type";
+  }
+
+  export interface UsingDeclaration extends BaseNode {
+    type: "UsingDeclaration";
+    // FIXME: Not present in TSEstree
+  }
+  export interface VariableDeclarator extends BaseNode {
+    type: "VariableDeclarator";
+    definite: boolean; // TSEstree
+    id: Identifier | ArrayPattern | ObjectPattern;
+    init: Expression | null;
+  }
+
+  export interface VariableDeclaration extends BaseNode {
+    type: "VariableDeclaration";
+    kind: "const" | "let" | "var";
+    declarations: VariableDeclarator[];
+  }
+
+  export type Statement =
+    | BlockStatement
+    | BreakStatement
+    | ContinueStatement
+    | DebuggerStatement
+    | DoWhileStatement
+    | ExpressionStatement
+    | ForInStatement
+    | ForOfStatement
+    | ForStatement
+    | IfStatement
+    | LabeledStatement
+    | ReturnStatement
+    | SwitchStatement
+    | ThrowStatement
+    | TryStatement
+    | UsingDeclaration
+    | VariableDeclaration
+    | WhileStatement
+    | WithStatement
+    // Declarations
+    | ClassDeclaration
+    | ExportAllDeclaration
+    | ExportDefaultDeclaration
+    | ExportNamedDeclaration
+    | FunctionDeclaration
+    | ImportDeclaration
+    | VariableDeclaration
+    // TypeScript
+    | TSEnumDeclaration
+    | TSExportAssignment;
+
+  export interface Program extends BaseNode {
+    type: "Program";
+    body: Statement[];
+    sourceType: "module" | "script";
+  }
+
+  // JSX
+  export interface JSXAttribute extends BaseNode {
+    type: "JSXAttribute";
+    name: JSXIdentifier | JSXNamespacedName;
+    value:
+      | JSXElement
+      | JSXExpressionContainer
+      | JSXSpreadChild
+      | Literal
+      | null;
+  }
+
+  export interface JSXClosingElement extends BaseNode {
+    type: "JSXClosingElement";
+    name: JSXIdentifier | JSXMemberExpression | JSXNamespacedName;
+  }
+
+  export interface JSXClosingFragment extends BaseNode {
+    type: "JSXClosingFragment";
+  }
+
+  export interface JSXElement extends BaseNode {
+    type: "JSXElement";
+    children: Array<
+      | JSXElement
+      | JSXExpressionContainer
+      | JSXSpreadChild
+      | JSXFragment
+      | JSXText
+    >;
+    openingElement: JSXOpeningElement;
+    closingElement: JSXClosingElement;
+  }
+
+  export interface JSXEmptyExpression extends BaseNode {
+    type: "JSXEmptyExpression";
+  }
+
+  export interface JSXExpressionContainer extends BaseNode {
+    type: "JSXExpressionContainer";
+    expression: Expression | JSXEmptyExpression;
+  }
+
+  export interface JSXFragment extends BaseNode {
+    type: "JSXFragment";
+    children: Array<
+      | JSXElement
+      | JSXExpressionContainer
+      | JSXSpreadChild
+      | JSXFragment
+      | JSXText
+    >;
+    closingFragment: JSXClosingFragment;
+    openingFragment: JSXOpeningFragment;
+  }
+
+  export interface JSXIdentifier extends BaseNode {
+    type: "JSXIdentifier";
+    name: string;
+  }
+
+  export interface JSXMemberExpression extends BaseNode {
+    type: "JSXMemberExpression";
+    object: JSXIdentifier | JSXMemberExpression | JSXNamespacedName;
+    property: JSXIdentifier;
+  }
+
+  export interface JSXNamespacedName extends BaseNode {
+    type: "JSXNamespacedName";
+    name: JSXIdentifier;
+    namespace: JSXIdentifier;
+  }
+
+  export interface JSXOpeningElement extends BaseNode {
+    type: "JSXOpeningElement";
+    attributes: Array<JSXAttribute | JSXSpreadAttribute>;
+    name: JSXIdentifier | JSXMemberExpression | JSXNamespacedName;
+    selfClosing: boolean;
+    typeArguments: TSTypeParameter | null;
+  }
+
+  export interface JSXOpeningFragment extends BaseNode {
+    type: "JSXOpeningFragment";
+  }
+
+  export interface JSXSpreadAttribute extends BaseNode {
+    type: "JSXSpreadAttribute";
+    argument: Expression;
+  }
+
+  export interface JSXSpreadChild extends BaseNode {
+    type: "JSXSpreadChild";
+    expression: Expression | JSXEmptyExpression;
+  }
+
+  export interface JSXText extends BaseNode {
+    type: "JSXText";
+    raw: string;
+    value: string;
+  }
+
+  // TypeScript
+  export interface TSEnumDeclaration extends BaseNode {
+    type: "TSEnumDeclaration";
+    body: any; // FIXME?
+    const: boolean;
+    declare: boolean;
+    id: Identifier;
+    members: TSEnumMember[];
+  }
+
+  export interface TSEnumMember extends BaseNode {
+    type: "TSEnumMember";
+    computed: boolean;
+    id: Identifier | NumericLiteral | StringLiteral | Expression;
+    initializer: Expression | undefined; // FIXME
+  }
+
+  // FIXME: Difference in casing `TsTupleType` vs `TSTupleType`
+
+  export interface TSExportAssignment extends BaseNode {
+    type: "TSExportAssignment";
+    expression: Expression;
+  }
+
+  export interface TSAnyKeyword extends BaseNode {
+    type: "TSAnyKeyword";
+  }
+
+  export interface TSBooleanLiteral extends BaseNode {
+    type: "TSBooleanLiteral";
+    value: boolean;
+  }
+
+  export interface TSParameterProperty extends BaseNode {
+    type: "TSParameterProperty";
+    // FIXME
+  }
+
+  export interface TSTupleType extends BaseNode {
+    type: "TSTupleType";
+    elementTypes: any[];
+  }
+
+  export interface TSTypeReference extends BaseNode {
+    type: "TSTypeReference";
+    typeParameters: any[];
+  }
+
+  export interface TSUnknownKeyword extends BaseNode {
+    type: "TSUnknownKeyword";
+  }
+
+  export type TSType =
+    | TSAnyKeyword
+    | TSBooleanLiteral
+    | TSTupleType
+    | TSTypeReference
+    | TSUnknownKeyword;
+
+  export interface TSTypeAnnotation extends BaseNode {
+    type: "TSTypeAnnotation";
+    typeAnnotation: TSType;
+  }
+
   export interface LintRuleContext {
     report(
       data: { node: SpanNode; message: string },
@@ -6172,9 +6899,86 @@ declare namespace Deno {
     source(): string;
   }
 
-  // deno-lint-ignore no-empty-interface
+  // FIXME: Directives?
+
   export interface LintVisitor {
-    // TODO
+    Program?(node: Program): void;
+
+    // Expressions
+    ArrayExpression?(node: ArrayExpression): void;
+    ArrowFunctionExpression?(node: ArrowFunctionExpression): void;
+    AssignmentExpression?(node: AssignmentExpression): void;
+    AwaitExpression?(node: AwaitExpression): void;
+    BinaryExpression?(node: BinaryExpression): void;
+    BooleanLiteral?(node: BooleanLiteral): void;
+    CallExpression?(node: CallExpression): void;
+    Identifier?(node: Identifier): void;
+    NullLiteral?(node: NullLiteral): void;
+    NumericLiteral?(node: NumericLiteral): void;
+    StringLiteral?(node: StringLiteral): void;
+
+    // Declarations
+    ClassDeclaration?(node: ClassDeclaration): void;
+    ExportAllDeclaration?(node: ExportAllDeclaration): void;
+    ExportDefaultDeclaration?(node: ExportDefaultDeclaration): void;
+    ExportNamedDeclaration?(node: ExportNamedDeclaration): void;
+    FunctionDeclaration?(node: FunctionDeclaration): void;
+    ImportDeclaration?(node: ImportDeclaration): void;
+    UsingDeclaration?(node: UsingDeclaration): void;
+    VariableDeclaration?(node: VariableDeclaration): void;
+
+    // Statements
+    BlockStatement?(node: BlockStatement): void;
+    BreakStatement?(node: BreakStatement): void;
+    ContinueStatement?(node: ContinueStatement): void;
+    DebuggerStatement?(node: DebuggerStatement): void;
+    DoWhileStatement?(node: DoWhileStatement): void;
+    ExpressionStatement?(node: ExpressionStatement): void;
+    ForInStatement?(node: ForInStatement): void;
+    ForOfStatement?(node: ForOfStatement): void;
+    ForStatement?(node: ForStatement): void;
+    IfStatement?(node: IfStatement): void;
+    LabeledStatement?(node: LabeledStatement): void;
+    ReturnStatement?(node: ReturnStatement): void;
+    SwitchStatement?(node: SwitchStatement): void;
+    ThrowStatement?(node: ThrowStatement): void;
+    TryStatement?(node: TryStatement): void;
+    WhileStatement?(node: WhileStatement): void;
+    WithStatement?(node: WithStatement): void;
+
+    // Other
+    ExportSpecifier?(node: ExportSpecifier): void;
+    ImportAttribute?(node: ImportAttribute): void;
+    ImportDefaultSpecifier?(node: ImportDefaultSpecifier): void;
+    ImportNamespaceSpecifier?(node: ImportNamespaceSpecifier): void;
+    ImportSpecifier?(node: ImportSpecifier): void;
+    SwitchCase?(node: SwitchCase): void;
+    SpreadElement?(node: SpreadElement): void;
+    VariableDeclarator?(node: VariableDeclarator): void;
+
+    // JSX
+    JSXAttribute?(node: JSXAttribute): void;
+    JSXClosingElement?(node: JSXClosingElement): void;
+    JSXClosingFragment?(node: JSXClosingFragment): void;
+    JSXElement?(node: JSXElement): void;
+    JSXExpressionContainer?(node: JSXExpressionContainer): void;
+    JSXFragment?(node: JSXFragment): void;
+    JSXMemberExpression?(node: JSXMemberExpression): void;
+    JSXNamespacedName?(node: JSXNamespacedName): void;
+    JSXOpeningElement?(node: JSXOpeningElement): void;
+    JSXOpeningFragment?(node: JSXOpeningFragment): void;
+    JSXSpreadAttribute?(node: JSXSpreadAttribute): void;
+    JSXSpreadChild?(node: JSXSpreadChild): void;
+    JSXText?(node: JSXText): void;
+
+    // TypeScript
+    TSAnyKeyword?(node: TSAnyKeyword): void;
+    TSEnumDeclaration?(node: TSEnumDeclaration): void;
+    TSExportAssignment?(node: TSExportAssignment): void;
+    TSTupleType?(node: TSTupleType): void;
+    TSTypeAnnotation?(node: TSTypeAnnotation): void;
+    TSTypeReference?(node: TSTypeReference): void;
+    TSUnknownKeyword?(node: TSUnknownKeyword): void;
   }
 
   export interface LintRule {
