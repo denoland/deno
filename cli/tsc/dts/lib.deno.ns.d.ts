@@ -6843,6 +6843,22 @@ declare namespace Deno {
     value: string;
   }
 
+  export type JSXNode =
+    | JSXAttribute
+    | JSXClosingElement
+    | JSXClosingFragment
+    | JSXElement
+    | JSXExpressionContainer
+    | JSXFragment
+    | JSXIdentifier
+    | JSXMemberExpression
+    | JSXNamespacedName
+    | JSXOpeningElement
+    | JSXOpeningFragment
+    | JSXSpreadAttribute
+    | JSXSpreadChild
+    | JSXText;
+
   // TypeScript
   export interface TSEnumDeclaration extends BaseNode {
     type: "TSEnumDeclaration";
@@ -6942,7 +6958,8 @@ declare namespace Deno {
     | Expression
     | Statement
     | CatchClause
-    | PrivateIdentifier;
+    | PrivateIdentifier
+    | JSXNode;
 
   export interface LintRuleContext {
     report(
@@ -7032,6 +7049,7 @@ declare namespace Deno {
     JSXElement?(node: JSXElement): void;
     JSXExpressionContainer?(node: JSXExpressionContainer): void;
     JSXFragment?(node: JSXFragment): void;
+    JSXIdentifier?(node: JSXIdentifier): void;
     JSXMemberExpression?(node: JSXMemberExpression): void;
     JSXNamespacedName?(node: JSXNamespacedName): void;
     JSXOpeningElement?(node: JSXOpeningElement): void;

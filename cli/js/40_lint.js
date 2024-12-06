@@ -18,6 +18,7 @@ const state = {
   plugins: [],
 };
 
+/** @implements {Deno.LintRuleContext} */
 export class Context {
   id;
 
@@ -38,7 +39,7 @@ export class Context {
     if (this.#source === null) {
       this.#source = op_lint_get_source();
     }
-    return this.#source;
+    return /** @type {*} */ (this.#source);
   }
 
   report(data) {
@@ -131,16 +132,17 @@ const AstNodeId = {
   BinaryExpression: 46,
   AssignmentExpression: 47,
   MemberExpression: 48,
-  SuperProp: 49,
+  Super: 49,
   ConditionalExpression: 50,
   CallExpression: 51,
   NewExpression: 52,
   SequenceExpression: 53,
   Identifier: 54,
-  Tpl: 55,
+  TemplateLiteral: 55,
   TaggedTemplateExpression: 56,
   ArrowFunctionExpression: 57,
   Yield: 59,
+  MetaProperty: 60,
   AwaitExpression: 61,
 
   StringLiteral: 70,
@@ -156,6 +158,23 @@ const AstNodeId = {
   ObjProperty: 84,
   VarDeclarator: 85,
   CatchClause: 86,
+
+  // JSX
+  // FIXME
+  JSXAttribute: Infinity,
+  JSXClosingElement: Infinity,
+  JSXClosingFragment: Infinity,
+  JSXElement: Infinity,
+  JSXExpressionContainer: Infinity,
+  JSXFragment: Infinity,
+  JSXIdentifier: Infinity,
+  JSXMemberExpression: Infinity,
+  JSXNamespacedName: Infinity,
+  JSXOpeningElement: Infinity,
+  JSXOpeningFragment: Infinity,
+  JSXSpreadAttribute: Infinity,
+  JSXSpreadChild: Infinity,
+  JSXText: Infinity,
 };
 
 const _ID = Symbol.for("__astId");
@@ -170,7 +189,7 @@ class Program {
   #ctx;
 
   /**
-   * @param {ParseContext} ctx
+   * @param {AstContext} ctx
    * @param {Deno.Range} range
    * @param {Deno.Program["sourceType"]} sourceType
    */
@@ -190,7 +209,7 @@ class BlockStatement {
   #ctx;
 
   /**
-   * @param {ParseContext} ctx
+   * @param {AstContext} ctx
    * @param {Deno.Range} range
    */
   constructor(ctx, range) {
@@ -215,7 +234,7 @@ class BreakStatement {
   #labelId;
 
   /**
-   * @param {ParseContext} ctx
+   * @param {AstContext} ctx
    * @param {Deno.Range} range
    * @param {number} labelId
    */
@@ -241,7 +260,7 @@ class ContinueStatement {
   #labelId = 0;
 
   /**
-   * @param {ParseContext} ctx
+   * @param {AstContext} ctx
    * @param {Deno.Range} range
    * @param {number} labelId
    */
@@ -260,7 +279,7 @@ class DebuggerStatement {
   #ctx;
 
   /**
-   * @param {ParseContext} ctx
+   * @param {AstContext} ctx
    * @param {Deno.Range} range
    */
   constructor(ctx, range) {
@@ -291,7 +310,7 @@ class DoWhileStatement {
   #bodyId = 0;
 
   /**
-   * @param {ParseContext} ctx
+   * @param {AstContext} ctx
    * @param {Deno.Range} range
    * @param {number} exprId
    * @param {number} bodyId
@@ -319,7 +338,7 @@ class ExpressionStatement {
   #exprId = 0;
 
   /**
-   * @param {ParseContext} ctx
+   * @param {AstContext} ctx
    * @param {Deno.Range} range
    * @param {number} exprId
    */
@@ -359,7 +378,7 @@ class ForInStatement {
   #bodyId = 0;
 
   /**
-   * @param {ParseContext} ctx
+   * @param {AstContext} ctx
    * @param {Deno.Range} range
    * @param {number} leftId
    * @param {number} rightId
@@ -405,7 +424,7 @@ class ForOfStatement {
   #bodyId = 0;
 
   /**
-   * @param {ParseContext} ctx
+   * @param {AstContext} ctx
    * @param {Deno.Range} range
    * @param {boolean} isAwait
    * @param {number} leftId
@@ -462,7 +481,7 @@ class ForStatement {
   #bodyId = 0;
 
   /**
-   * @param {ParseContext} ctx
+   * @param {AstContext} ctx
    * @param {Deno.Range} range
    * @param {number} initId
    * @param {number} testId
@@ -509,7 +528,7 @@ class IfStatement {
   #alternateId = 0;
 
   /**
-   * @param {ParseContext} ctx
+   * @param {AstContext} ctx
    * @param {Deno.Range} range
    * @param {number} testId
    * @param {number} updateId
@@ -546,7 +565,7 @@ class LabeledStatement {
   #bodyId = 0;
 
   /**
-   * @param {ParseContext} ctx
+   * @param {AstContext} ctx
    * @param {Deno.Range} range
    * @param {number} testId
    * @param {number} bodyId
@@ -575,7 +594,7 @@ class ReturnStatement {
   #exprId = 0;
 
   /**
-   * @param {ParseContext} ctx
+   * @param {AstContext} ctx
    * @param {Deno.Range} range
    * @param {number} argId
    */
@@ -604,7 +623,7 @@ class SwitchStatement {
   #discriminantId = 0;
 
   /**
-   * @param {ParseContext} ctx
+   * @param {AstContext} ctx
    * @param {Deno.Range} range
    * @param {number} discriminantId
    */
@@ -630,7 +649,7 @@ class ThrowStatement {
   #argId = 0;
 
   /**
-   * @param {ParseContext} ctx
+   * @param {AstContext} ctx
    * @param {Deno.Range} range
    * @param {number} argId
    */
@@ -672,7 +691,7 @@ class TryStatement {
   #handlerId = 0;
 
   /**
-   * @param {ParseContext} ctx
+   * @param {AstContext} ctx
    * @param {Deno.Range} range
    * @param {number} blockId
    * @param {number} finalizerId
@@ -709,7 +728,7 @@ class WhileStatement {
   #bodyId = 0;
 
   /**
-   * @param {ParseContext} ctx
+   * @param {AstContext} ctx
    * @param {Deno.Range} range
    * @param {number} testId
    * @param {number} bodyId
@@ -744,7 +763,7 @@ class WithStatement {
   #objectId = 0;
 
   /**
-   * @param {ParseContext} ctx
+   * @param {AstContext} ctx
    * @param {Deno.Range} range
    * @param {number} bodyId
    * @param {number} objectId
@@ -770,7 +789,7 @@ class ArrayExpression {
   #ctx;
 
   /**
-   * @param {ParseContext} ctx
+   * @param {AstContext} ctx
    * @param {Deno.Range} range
    */
   constructor(ctx, range) {
@@ -809,7 +828,7 @@ class ArrowFunctionExpression {
   #bodyId;
 
   /**
-   * @param {ParseContext} ctx
+   * @param {AstContext} ctx
    * @param {Deno.Range} range
    * @param {boolean} isAsync
    * @param {boolean} isGenerator
@@ -848,7 +867,7 @@ class AssignmentExpression {
   #rightId = 0;
 
   /**
-   * @param {ParseContext} ctx
+   * @param {AstContext} ctx
    * @param {Deno.Range} range
    * @param {number} flags
    * @param {number} leftId
@@ -921,7 +940,7 @@ class AwaitExpression {
   #argId = 0;
 
   /**
-   * @param {ParseContext} ctx
+   * @param {AstContext} ctx
    * @param {Deno.Range} range
    * @param {number} argId
    */
@@ -955,7 +974,7 @@ class BinaryExpression {
   #rightId;
 
   /**
-   * @param {ParseContext} ctx
+   * @param {AstContext} ctx
    * @param {Deno.Range} range
    * @param {number} flags
    * @param {number} leftId
@@ -1048,7 +1067,7 @@ class CallExpression {
   #calleeId;
 
   /**
-   * @param {ParseContext} ctx
+   * @param {AstContext} ctx
    * @param {Deno.Range} range
    * @param {number} calleeId
    */
@@ -1067,7 +1086,7 @@ class ChainExpression {
   #ctx;
 
   /**
-   * @param {ParseContext} ctx
+   * @param {AstContext} ctx
    * @param {Deno.Range} range
    */
   constructor(ctx, range) {
@@ -1105,7 +1124,7 @@ class ConditionalExpression {
   #alternateId;
 
   /**
-   * @param {ParseContext} ctx
+   * @param {AstContext} ctx
    * @param {Deno.Range} range
    * @param {number} testId
    * @param {number} consequentId
@@ -1128,7 +1147,7 @@ class FunctionExpression {
   #ctx;
 
   /**
-   * @param {ParseContext} ctx
+   * @param {AstContext} ctx
    * @param {Deno.Range} range
    */
   constructor(ctx, range) {
@@ -1146,13 +1165,13 @@ class Identifier {
   #ctx;
 
   /**
-   * @param {ParseContext} ctx
+   * @param {AstContext} ctx
    * @param {Deno.Range} range
-   * @param {number} flags
+   * @param {number} nameId
    */
-  constructor(ctx, range, flags) {
+  constructor(ctx, range, nameId) {
     this.#ctx = ctx;
-    this.name = getString(ctx, flags);
+    this.name = getString(ctx, nameId);
     this.range = range;
   }
 }
@@ -1179,7 +1198,7 @@ class LogicalExpression {
   #rightId;
 
   /**
-   * @param {ParseContext} ctx
+   * @param {AstContext} ctx
    * @param {Deno.Range} range
    * @param {number} flags
    * @param {number} leftId
@@ -1191,6 +1210,23 @@ class LogicalExpression {
     this.#leftId = leftId;
     this.#rightId = rightId;
     this.range = range;
+  }
+}
+
+/**
+ * @param {number} n
+ * @returns {Deno.LogicalExpression["operator"]}
+ */
+function getLogicalOperator(n) {
+  switch (n) {
+    case 0:
+      return "&&";
+    case 1:
+      return "||";
+    case 2:
+      return "??";
+    default:
+      throw new Error(`Unknown operator: ${n}`);
   }
 }
 
@@ -1218,7 +1254,7 @@ class MemberExpression {
   #propId;
 
   /**
-   * @param {ParseContext} ctx
+   * @param {AstContext} ctx
    * @param {Deno.Range} range
    * @param {number} flags
    * @param {number} objId
@@ -1233,20 +1269,83 @@ class MemberExpression {
   }
 }
 
-/**
- * @param {number} n
- * @returns {Deno.LogicalExpression["operator"]}
- */
-function getLogicalOperator(n) {
-  switch (n) {
-    case 0:
-      return "&&";
-    case 1:
-      return "||";
-    case 2:
-      return "??";
-    default:
-      throw new Error(`Unknown operator: ${n}`);
+/** @implements {Deno.MetaProperty} */
+class MetaProperty {
+  type = /** @type {const} */ ("MetaProperty");
+  range;
+  get meta() {
+    return /** @type {Deno.Identifier} */ (createAstNode(
+      this.#ctx,
+      this.#metaId,
+    ));
+  }
+  get property() {
+    return /** @type {Deno.Identifier} */ (createAstNode(
+      this.#ctx,
+      this.#propId,
+    ));
+  }
+
+  #ctx;
+  #metaId;
+  #propId;
+
+  /**
+   * @param {AstContext} ctx
+   * @param {Deno.Range} range
+   * @param {number} metaId
+   * @param {number} propId
+   */
+  constructor(ctx, range, metaId, propId) {
+    this.#ctx = ctx;
+    this.#metaId = metaId;
+    this.#propId = propId;
+    this.range = range;
+  }
+}
+
+/** @implements {Deno.NewExpression} */
+class NewExpression {
+  type = /** @type {const} */ ("NewExpression");
+  range;
+  get arguments() {
+    return []; // FIXME
+  }
+  get callee() {
+    return /** @type {Deno.Expression} */ (createAstNode(
+      this.#ctx,
+      this.#calleeId,
+    ));
+  }
+
+  #ctx;
+  #calleeId;
+
+  /**
+   * @param {AstContext} ctx
+   * @param {Deno.Range} range
+   * @param {number} calleeId
+   */
+  constructor(ctx, range, calleeId) {
+    this.#ctx = ctx;
+    this.#calleeId = calleeId;
+    this.range = range;
+  }
+}
+
+/** @implements {Deno.Super} */
+class Super {
+  type = /** @type {const} */ ("Super");
+  range;
+  #ctx;
+
+  /**
+   * @param {AstContext} ctx
+   * @param {Deno.Range} range
+   */
+  constructor(ctx, range) {
+    this.#ctx = ctx;
+    this.range = range;
   }
 }
 
@@ -1260,7 +1359,7 @@ class BooleanLiteral {
   #ctx;
 
   /**
-   * @param {ParseContext} ctx
+   * @param {AstContext} ctx
    * @param {Deno.Range} range
    * @param {number} flags
    */
@@ -1280,7 +1379,7 @@ class NullLiteral {
   #ctx;
 
   /**
-   * @param {ParseContext} ctx
+   * @param {AstContext} ctx
    * @param {Deno.Range} range
    */
   constructor(ctx, range) {
@@ -1298,7 +1397,7 @@ class NumericLiteral {
   #ctx;
 
   /**
-   * @param {ParseContext} ctx
+   * @param {AstContext} ctx
    * @param {Deno.Range} range
    * @param {number} flags
    */
@@ -1319,7 +1418,7 @@ class RegExpLiteral {
   #ctx;
 
   /**
-   * @param {ParseContext} ctx
+   * @param {AstContext} ctx
    * @param {Deno.Range} range
    * @param {number} patternId
    * @param {number} flagsId
@@ -1341,14 +1440,414 @@ class StringLiteral {
   #ctx;
 
   /**
-   * @param {ParseContext} ctx
+   * @param {AstContext} ctx
    * @param {Deno.Range} range
-   * @param {number} flags
+   * @param {number} valueId
    */
-  constructor(ctx, range, flags) {
+  constructor(ctx, range, valueId) {
     this.#ctx = ctx;
     this.range = range;
-    this.value = getString(ctx, flags);
+    this.value = getString(ctx, valueId);
+  }
+}
+
+// JSX
+
+/** @implements {Deno.JSXAttribute} */
+class JSXAttribute {
+  type = /** @type {const} */ ("JSXAttribute");
+  range;
+  get name() {
+    return /** @type {Deno.JSXIdentifier | Deno.JSXNamespacedName} */ (createAstNode(
+      this.#ctx,
+      this.#nameId,
+    ));
+  }
+  get value() {
+    if (this.#valueId === 0) return null;
+    return /** @type {Deno.JSXElement | Deno.JSXExpressionContainer | Deno.JSXSpreadChild | Deno.Literal} */ (createAstNode(
+      this.#ctx,
+      this.#valueId,
+    ));
+  }
+
+  #ctx;
+  #nameId;
+  #valueId;
+
+  /**
+   * @param {AstContext} ctx
+   * @param {Deno.Range} range
+   * @param {number} nameId
+   * @param {number} valueId
+   */
+  constructor(ctx, range, nameId, valueId) {
+    this.#ctx = ctx;
+    this.range = range;
+    this.#nameId = nameId;
+    this.#valueId = valueId;
+  }
+}
+
+/** @implements {Deno.JSXClosingElement} */
+class JSXClosingElement {
+  type = /** @type {const} */ ("JSXClosingElement");
+  range;
+  get name() {
+    return /** @type {Deno.JSXIdentifier | Deno.JSXMemberExpression | Deno.JSXNamespacedName} */ (createAstNode(
+      this.#ctx,
+      this.#nameId,
+    ));
+  }
+
+  #ctx;
+  #nameId;
+
+  /**
+   * @param {AstContext} ctx
+   * @param {Deno.Range} range
+   * @param {number} nameId
+   */
+  constructor(ctx, range, nameId) {
+    this.#ctx = ctx;
+    this.range = range;
+    this.#nameId = nameId;
+  }
+}
+
+/** @implements {Deno.JSXClosingFragment} */
+class JSXClosingFragment {
+  type = /** @type {const} */ ("JSXClosingFragment");
+  range;
+
+  #ctx;
+
+  /**
+   * @param {AstContext} ctx
+   * @param {Deno.Range} range
+   */
+  constructor(ctx, range) {
+    this.#ctx = ctx;
+    this.range = range;
+  }
+}
+
+/** @implements {Deno.JSXElement} */
+class JSXElement {
+  type = /** @type {const} */ ("JSXElement");
+  range;
+  get children() {
+    return []; // FIXME
+  }
+
+  get openingElement() {
+    return /** @type {Deno.JSXOpeningElement} */ (createAstNode(
+      this.#ctx,
+      this.#openId,
+    ));
+  }
+  get closingElement() {
+    return /** @type {Deno.JSXClosingElement} */ (createAstNode(
+      this.#ctx,
+      this.#closingId,
+    ));
+  }
+
+  #ctx;
+  #openId;
+  #closingId;
+
+  /**
+   * @param {AstContext} ctx
+   * @param {Deno.Range} range
+   * @param {number} openId
+   * @param {number} closingId
+   */
+  constructor(ctx, range, openId, closingId) {
+    this.#ctx = ctx;
+    this.range = range;
+    this.#openId = openId;
+    this.#closingId = closingId;
+  }
+}
+
+/** @implements {Deno.JSXExpressionContainer} */
+class JSXExpressionContainer {
+  type = /** @type {const} */ ("JSXExpressionContainer");
+  range;
+  get expression() {
+    return /** @type {Deno.Expression | Deno.JSXEmptyExpression} */ (createAstNode(
+      this.#ctx,
+      this.#exprId,
+    ));
+  }
+
+  #ctx;
+  #exprId;
+
+  /**
+   * @param {AstContext} ctx
+   * @param {Deno.Range} range
+   * @param {number} exprId
+   */
+  constructor(ctx, range, exprId) {
+    this.#ctx = ctx;
+    this.range = range;
+    this.#exprId = exprId;
+  }
+}
+
+/** @implements {Deno.JSXFragment} */
+class JSXFragment {
+  type = /** @type {const} */ ("JSXFragment");
+  range;
+  get children() {
+    return []; // FIXME
+  }
+  get closingFragment() {
+    return /** @type {Deno.JSXClosingFragment} */ (createAstNode(
+      this.#ctx,
+      this.#closingId,
+    ));
+  }
+  get openingFragment() {
+    return /** @type {Deno.JSXOpeningFragment} */ (createAstNode(
+      this.#ctx,
+      this.#openingId,
+    ));
+  }
+
+  #ctx;
+  #closingId;
+  #openingId;
+
+  /**
+   * @param {AstContext} ctx
+   * @param {Deno.Range} range
+   * @param {number} closingId
+   * @param {number} openingId
+   */
+  constructor(ctx, range, closingId, openingId) {
+    this.#ctx = ctx;
+    this.range = range;
+    this.#closingId = closingId;
+    this.#openingId = openingId;
+  }
+}
+
+/** @implements {Deno.JSXIdentifier} */
+class JSXIdentifier {
+  type = /** @type {const} */ ("JSXIdentifier");
+  range;
+  name;
+
+  #ctx;
+
+  /**
+   * @param {AstContext} ctx
+   * @param {Deno.Range} range
+   * @param {number} nameId
+   */
+  constructor(ctx, range, nameId) {
+    this.#ctx = ctx;
+    this.range = range;
+    this.name = getString(ctx, nameId);
+  }
+}
+
+/** @implements {Deno.JSXMemberExpression} */
+class JSXMemberExpression {
+  type = /** @type {const} */ ("JSXMemberExpression");
+  range;
+  get object() {
+    return /** @type {Deno.JSXMemberExpression["object"]} */ (createAstNode(
+      this.#ctx,
+      this.#objId,
+    ));
+  }
+  get property() {
+    return /** @type {Deno.JSXIdentifier} */ (createAstNode(
+      this.#ctx,
+      this.#propertyId,
+    ));
+  }
+
+  #ctx;
+  #objId;
+  #propertyId;
+
+  /**
+   * @param {AstContext} ctx
+   * @param {Deno.Range} range
+   * @param {number} objId
+   * @param {number} propId
+   */
+  constructor(ctx, range, objId, propId) {
+    this.#ctx = ctx;
+    this.range = range;
+    this.#objId = objId;
+    this.#propertyId = propId;
+  }
+}
+
+/** @implements {Deno.JSXNamespacedName} */
+class JSXNamespacedName {
+  type = /** @type {const} */ ("JSXNamespacedName");
+  range;
+  get name() {
+    return /** @type {Deno.JSXIdentifier} */ (createAstNode(
+      this.#ctx,
+      this.#nameId,
+    ));
+  }
+  get namespace() {
+    return /** @type {Deno.JSXIdentifier} */ (createAstNode(
+      this.#ctx,
+      this.#namespaceId,
+    ));
+  }
+
+  #ctx;
+  #nameId;
+  #namespaceId;
+
+  /**
+   * @param {AstContext} ctx
+   * @param {Deno.Range} range
+   * @param {number} nameId
+   * @param {number} nsId
+   */
+  constructor(ctx, range, nameId, nsId) {
+    this.#ctx = ctx;
+    this.range = range;
+    this.#nameId = nameId;
+    this.#namespaceId = nsId;
+  }
+}
+
+/** @implements {Deno.JSXOpeningElement} */
+class JSXOpeningElement {
+  type = /** @type {const} */ ("JSXOpeningElement");
+  range;
+  get attributes() {
+    return []; // FIXME
+  }
+  get name() {
+    return /** @type {Deno.JSXIdentifier} */ (createAstNode(
+      this.#ctx,
+      this.#nameId,
+    ));
+  }
+
+  #ctx;
+  #nameId;
+  selfClosing = false;
+
+  /**
+   * @param {AstContext} ctx
+   * @param {Deno.Range} range
+   * @param {number} flags
+   * @param {number} nameId
+   */
+  constructor(ctx, range, flags, nameId) {
+    this.#ctx = ctx;
+    this.selfClosing = flags === 1;
+    this.#nameId = nameId;
+    this.range = range;
+  }
+}
+
+/** @implements {Deno.JSXOpeningFragment} */
+class JSXOpeningFragment {
+  type = /** @type {const} */ ("JSXOpeningFragment");
+  range;
+
+  #ctx;
+
+  /**
+   * @param {AstContext} ctx
+   * @param {Deno.Range} range
+   */
+  constructor(ctx, range) {
+    this.#ctx = ctx;
+    this.range = range;
+  }
+}
+
+/** @implements {Deno.JSXSpreadAttribute} */
+class JSXSpreadAttribute {
+  type = /** @type {const} */ ("JSXSpreadAttribute");
+  range;
+
+  get argument() {
+    return /** @type {Deno.Expression} */ (createAstNode(
+      this.#ctx,
+      this.#argId,
+    ));
+  }
+
+  #ctx;
+  #argId;
+
+  /**
+   * @param {AstContext} ctx
+   * @param {Deno.Range} range
+   * @param {number} argId
+   */
+  constructor(ctx, range, argId) {
+    this.#ctx = ctx;
+    this.range = range;
+    this.#argId = argId;
+  }
+}
+
+/** @implements {Deno.JSXSpreadChild} */
+class JSXSpreadChild {
+  type = /** @type {const} */ ("JSXSpreadChild");
+  range;
+
+  get expression() {
+    return /** @type {Deno.Expression | Deno.JSXEmptyExpression} */ (createAstNode(
+      this.#ctx,
+      this.#exprid,
+    ));
+  }
+
+  #ctx;
+  #exprid;
+
+  /**
+   * @param {AstContext} ctx
+   * @param {Deno.Range} range
+   * @param {number} exprId
+   */
+  constructor(ctx, range, exprId) {
+    this.#ctx = ctx;
+    this.range = range;
+    this.#exprid = exprId;
+  }
+}
+
+/** @implements {Deno.JSXText} */
+class JSXText {
+  type = /** @type {const} */ ("JSXText");
+  range;
+
+  #ctx;
+  value = "";
+  raw = "";
+
+  /**
+   * @param {AstContext} ctx
+   * @param {Deno.Range} range
+   * @param {number} valueId
+   * @param {number} rawId
+   */
+  constructor(ctx, range, valueId, rawId) {
+    this.#ctx = ctx;
+    this.range = range;
+    this.value = getString(ctx, valueId);
+    this.raw = getString(ctx, rawId);
   }
 }
 
@@ -1358,8 +1857,9 @@ const DECODER = new TextDecoder();
  * @typedef {{
  *   buf: Uint8Array,
  *   strTable: Map<number, string>,
- *   idTable: number[]
- * }} ParseContext
+ *   idTable: number[],
+ *   astStart: number,
+ * }} AstContext
  */
 
 /**
@@ -1373,7 +1873,7 @@ function readU32(buf, i) {
 }
 
 /**
- * @param {ParseContext} ctx
+ * @param {AstContext} ctx
  * @param {number} id
  * @returns {string}
  */
@@ -1387,7 +1887,7 @@ function getString(ctx, id) {
 }
 
 /**
- * @param {ParseContext} ctx
+ * @param {AstContext} ctx
  * @param {number} id
  * @returns {Deno.AstNode}
  */
@@ -1397,7 +1897,7 @@ function createAstNode(ctx, id) {
   /** @type {AstNodeId} */
   const kind = buf[i];
 
-  const flags = buf[i];
+  const flags = buf[i + 1];
   const count = readU32(buf, i + 2);
   const rangeStart = readU32(buf, i + 6);
   const rangeEnd = readU32(buf, i + 10);
@@ -1476,9 +1976,9 @@ function createAstNode(ctx, id) {
     case AstNodeId.MemberExpression:
       throw new MemberExpression(ctx, range, flags, 0, 0); // FIXME
     case AstNodeId.MetaProperty:
-      throw new Error("TODO");
+      throw new MetaProperty(ctx, range, 0, 0); // FIXME
     case AstNodeId.NewExpression:
-      throw new Error("TODO");
+      throw new NewExpression(ctx, range, 0); // FIXME
     case AstNodeId.ObjectExpression:
       throw new Error("TODO");
     case AstNodeId.StaticBlock:
@@ -1486,7 +1986,7 @@ function createAstNode(ctx, id) {
     case AstNodeId.SequenceExpression:
       throw new Error("TODO");
     case AstNodeId.Super:
-      throw new Error("TODO");
+      throw new Super(ctx, range); // FIXME
     case AstNodeId.TaggedTemplateExpression:
       throw new Error("TODO");
     case AstNodeId.TemplateLiteral:
@@ -1500,39 +2000,70 @@ function createAstNode(ctx, id) {
     case AstNodeId.NumericLiteral:
       throw new NumericLiteral(ctx, range, flags); // FIXME
     case AstNodeId.RegExpLiteral:
-      throw new RegExpLiteral(ctx, range, flags); // FIXME
+      throw new RegExpLiteral(ctx, range, 0, 0); // FIXME
     case AstNodeId.StringLiteral:
-      throw new StringLiteral(ctx, range, flags); // FIXME
+      throw new StringLiteral(ctx, range, flags);
+
+      // JSX
+      // FIXME
+    case AstNodeId.JSXAttribute:
+      throw new JSXAttribute(ctx, range, 0, 0); // FIXME
+    case AstNodeId.JSXClosingElement:
+      throw new JSXClosingElement(ctx, range, 0); // FIXME
+    case AstNodeId.JSXClosingFragment:
+      throw new JSXClosingFragment(ctx, range); // FIXME
+    case AstNodeId.JSXElement:
+      throw new JSXElement(ctx, range, 0, 0); // FIXME
+    case AstNodeId.JSXExpressionContainer:
+      throw new JSXExpressionContainer(ctx, range, 0); // FIXME
+    case AstNodeId.JSXFragment:
+      throw new JSXFragment(ctx, range, 0, 0); // FIXME
+    case AstNodeId.JSXIdentifier:
+      throw new JSXIdentifier(ctx, range, 0); // FIXME
+    case AstNodeId.JSXMemberExpression:
+      throw new JSXMemberExpression(ctx, range, 0, 0); // FIXME
+    case AstNodeId.JSXNamespacedName:
+      throw new JSXNamespacedName(ctx, range, 0, 0); // FIXME
+    case AstNodeId.JSXOpeningElement:
+      throw new JSXOpeningElement(ctx, range, flags, 0); // FIXME
+    case AstNodeId.JSXOpeningFragment:
+      throw new JSXOpeningFragment(ctx, range); // FIXME
+    case AstNodeId.JSXSpreadAttribute:
+      throw new JSXSpreadAttribute(ctx, range, flags); // FIXME
+    case AstNodeId.JSXSpreadChild:
+      throw new JSXSpreadChild(ctx, range, flags); // FIXME
+    case AstNodeId.JSXText:
+      throw new JSXText(ctx, range, 0, 0); // FIXME
+
     default:
       throw new Error(`Unknown ast node ${kind}`);
   }
 }
 
 /**
- * @param {Uint8Array} ast
+ * @param {Uint8Array} buf
+ * @param {AstContext} buf
  */
-function buildAstFromBinary(ast) {
-  console.log(ast);
+function createAstContext(buf) {
+  console.log(buf);
 
   // Extract string table
   /** @type {Map<number, string>} */
   const strTable = new Map();
 
-  let start = 0;
-  const stringCount = (ast[0] << 24) + (ast[1] << 16) + (ast[2] << 8) +
-    ast[3];
-  start += 4;
+  let i = 0;
+  const stringCount = (buf[0] << 24) + (buf[1] << 16) + (buf[2] << 8) +
+    buf[3];
+  i += 4;
 
   let id = 0;
   while (id < stringCount) {
-    const len = (ast[start] << 24) + (ast[start + 1] << 16) +
-      (ast[start + 2] << 8) +
-      ast[start + 3];
-    start += 4;
+    const len = readU32(buf, i);
+    i += 4;
 
-    const strBytes = ast.slice(start, start + len);
+    const strBytes = buf.slice(i, i + len);
     console.log({ strBytes });
-    start += len;
+    i += len;
     const s = DECODER.decode(strBytes);
     strTable.set(id, s);
     id++;
@@ -1546,357 +2077,19 @@ function buildAstFromBinary(ast) {
     );
   }
 
-  const counts = [];
-  const stack = [];
-  for (let i = start; i < ast.length; i += 14) {
-    const kind = ast[i];
-    const flags = ast[i + 1];
-    let count = (ast[i + 2] << 24) + (ast[i + 3] << 16) + (ast[i + 4] << 8) +
-      ast[i + 5];
-    const start = (ast[i + 6] << 24) + (ast[i + 7] << 16) + (ast[i + 8] << 8) +
-      ast[i + 9];
-    const end = (ast[i + 10] << 24) + (ast[i + 11] << 16) +
-      (ast[i + 12] << 8) +
-      ast[i + 13];
+  /** @type {AstContext} */
+  const ctx = { buf, idTable: [], strTable, astStart: i };
 
-    const span = [start, end];
-
-    let node = null;
-    switch (kind) {
-      case AstNodeId.Program:
-        node = new Program(span, flags === 1 ? "module" : "script");
-        break;
-      case AstNodeId.Var:
-        node = new VariableDeclaration(span);
-        break;
-      case AstNodeId.VarDeclarator:
-        node = new VariableDeclarator(span);
-        break;
-      case AstNodeId.ExpressionStatement:
-        node = new ExpressionStatement(span);
-        break;
-      case AstNodeId.This:
-        node = new ThisExpression(span);
-        break;
-      case AstNodeId.ArrayExpression:
-        node = new ArrayExpression(span);
-        break;
-      case AstNodeId.ObjectExpression:
-        node = new ObjectExpression(span);
-        break;
-      case AstNodeId.AssignmentExpression:
-        node = new ObjectExpression(span);
-        break;
-      case AstNodeId.MemberExpression:
-        node = new MemberExpression(span);
-        break;
-      case AstNodeId.CallExpression:
-        node = new CallExpression(span);
-        break;
-      case AstNodeId.SequenceExpression:
-        node = new SequenceExpression(span);
-        break;
-      case AstNodeId.ObjProperty:
-        node = new ObjectProperty(span);
-        break;
-      case AstNodeId.ArrowFunctionExpression:
-        node = new ArrowFunctionExpression(span);
-        break;
-      case AstNodeId.BlockStatement:
-        node = new BlockStatement(span);
-        break;
-      case AstNodeId.StringLiteral:
-        node = new StringLiteral(span);
-        break;
-      case AstNodeId.Identifier:
-        node = new Identifier(span, strTable.get(count));
-        count = 0;
-        break;
-      case AstNodeId.Fn:
-        node = new FunctionDeclaration(span);
-        break;
-      case AstNodeId.ReturnStatement:
-        node = new ReturnStatement(span);
-        break;
-      case AstNodeId.IfStatement:
-        node = new IfStatement(span);
-        break;
-      case AstNodeId.BinaryExpression:
-        node = new LogicalExpression(span);
-        break;
-      case AstNodeId.Unary:
-        node = new UnaryExpression(span);
-        break;
-      case AstNodeId.Update:
-        node = new UpdateExpression(span);
-        break;
-      case AstNodeId.ForStatement:
-        node = new ForStatement(span);
-        break;
-      case AstNodeId.BooleanLiteral:
-        node = new BooleanLiteral(span, flags === 1);
-        break;
-      case AstNodeId.NullLiteral:
-        node = new NullLiteral(span);
-        break;
-      case AstNodeId.NumericLiteral:
-        node = new NumericLiteral(span);
-        break;
-      case AstNodeId.RegExpLiteral:
-        node = new RegExpLiteral(span);
-        break;
-      case AstNodeId.ForInStatement:
-        node = new ForInStatement(span);
-        break;
-      case AstNodeId.ForOfStatement:
-        node = new ForOfStatement(span);
-        break;
-      case AstNodeId.WhileStatement:
-        node = new WhileStatement(span);
-        break;
-      case AstNodeId.Yield:
-        node = new YieldExpression(span);
-        break;
-      case AstNodeId.ContinueStatement:
-        node = new ContinueStatement(span);
-        break;
-      case AstNodeId.BreakStatement:
-        node = new BreakStatement(span);
-        break;
-      case AstNodeId.ConditionalExpression:
-        node = new ConditionalExpression(span);
-        break;
-      case AstNodeId.SwitchStatement:
-        node = new SwitchStatement(span);
-        break;
-      case AstNodeId.SwitchCase:
-        node = new SwitchCase(span);
-        break;
-      case AstNodeId.LabeledStatement:
-        node = new LabeledStatement(span);
-        break;
-      case AstNodeId.DoWhileStatement:
-        node = new DoWhileStatement(span);
-        break;
-      case AstNodeId.Spread:
-        node = new SpreadElement(span);
-        break;
-      case AstNodeId.ThrowStatement:
-        node = new ThrowStatement(span);
-        break;
-      case AstNodeId.DebuggerStatement:
-        node = new DebuggerStatement(span);
-        break;
-      case AstNodeId.Tpl:
-        node = new TemplateLiteral(span);
-        break;
-      case AstNodeId.NewExpression:
-        node = new NewExpression(span);
-        break;
-      case AstNodeId.Class:
-        node = new ClassDeclaration(span);
-        break;
-      case AstNodeId.TryStatement:
-        node = new TryStatement(span);
-        break;
-      case AstNodeId.CatchClause:
-        node = new CatchClause(span);
-        break;
-      case AstNodeId.TaggedTemplateExpression:
-        node = new TaggedTemplateExpression(span);
-        break;
-      case AstNodeId.FunctionExpression:
-        node = new FunctionExpression(span);
-        break;
-      case AstNodeId.Empty:
-        // Ignore empty statements
-        break;
-      case AstNodeId.EmptyExpr:
-        // Nothing, AST defaults to null
-        break;
-      default:
-        throw new Error(`Unknown node: ${kind}`);
-    }
-
-    // append node
-    if (stack.length > 0) {
-      const last = stack[stack.length - 1];
-      const id = last[_ID];
-      const lastCount = counts[counts.length - 1];
-
-      // console.log({ last, node });
-      switch (id) {
-        case AstNodeId.Program:
-        case AstNodeId.BlockStatement:
-          last.body.push(node);
-          break;
-        case AstNodeId.ExpressionStatement:
-          last.expression = node;
-          break;
-        case AstNodeId.ObjProperty:
-          if (lastCount > 1) {
-            last.value = node;
-          } else {
-            last.key = node;
-          }
-          break;
-        case AstNodeId.MemberExpression:
-          if (lastCount > 1) {
-            last.property = node;
-          } else {
-            last.object = node;
-          }
-          break;
-        case AstNodeId.CallExpression:
-          if (lastCount > 1) {
-            last.arguments.push(node);
-          } else {
-            last.callee = node;
-          }
-          break;
-        case AstNodeId.SequenceExpression:
-          last.expressions.push(node);
-          break;
-        case AstNodeId.ArrowFunctionExpression:
-          // FIXME
-          break;
-        case AstNodeId.ReturnStatement:
-        case AstNodeId.Spread:
-        case AstNodeId.ThrowStatement:
-        case AstNodeId.Unary:
-        case AstNodeId.Update:
-        case AstNodeId.Yield:
-          last.argument = node;
-          break;
-        case AstNodeId.IfStatement:
-        case AstNodeId.ConditionalExpression:
-          if (lastCount === 3) {
-            last.alternate = node;
-          } else if (lastCount === 2) {
-            last.consequent = node;
-          } else {
-            last.test = node;
-          }
-          break;
-        case AstNodeId.BinaryExpression:
-          if (lastCount === 2) {
-            last.right = node;
-          } else {
-            last.left = node;
-          }
-          break;
-        case AstNodeId.ForStatement:
-          if (lastCount === 4) {
-            last.body = node;
-          } else if (lastCount === 3) {
-            last.update = node;
-          } else if (lastCount === 2) {
-            last.test = node;
-          } else if (lastCount === 1) {
-            last.init = node;
-          }
-          break;
-        case AstNodeId.ForInStatement:
-        case AstNodeId.ForOfStatement:
-          if (lastCount === 3) {
-            last.body = node;
-          } else if (lastCount === 2) {
-            last.right = node;
-          } else {
-            last.left = node;
-          }
-          break;
-        case AstNodeId.DoWhileStatement:
-        case AstNodeId.WhileStatement:
-          if (lastCount === 2) {
-            last.body = node;
-          } else {
-            last.test = node;
-          }
-          break;
-        case AstNodeId.BreakStatement:
-        case AstNodeId.ContinueStatement:
-          last.label = node;
-          break;
-        case AstNodeId.SwitchStatement:
-          if (lastCount > 1) {
-            last.cases.push(node);
-          } else {
-            last.discriminant = node;
-          }
-          break;
-        case AstNodeId.SwitchCase:
-          if (lastCount > 1) {
-            last.consequent = node;
-          } else {
-            last.test = node;
-          }
-          break;
-        case AstNodeId.LabeledStatement:
-          last.body = node;
-          break;
-        case AstNodeId.VarDeclarator:
-          if (lastCount > 1) {
-            last.init = node;
-          } else {
-            last.id = node;
-          }
-          break;
-        case AstNodeId.NewExpression:
-          // FIXME
-          break;
-        case AstNodeId.Class:
-          // FIXME
-          break;
-        case AstNodeId.TryStatement:
-          // FIXME
-          break;
-        case AstNodeId.CatchClause:
-          // FIXME
-          break;
-        // Can't happen
-        case AstNodeId.Identifier:
-        case AstNodeId.StringLiteral:
-        case AstNodeId.BigInt:
-        case AstNodeId.BooleanLiteral:
-        case AstNodeId.NullLiteral:
-        case AstNodeId.NumericLiteral:
-        case AstNodeId.RegExpLiteral:
-        case AstNodeId.This:
-        case AstNodeId.DebuggerStatement:
-          break;
-      }
-
-      // console.log("APPENDED");
-      // console.log(last);
-      // console.log("======");
-
-      // Decrease count
-      const newCount = lastCount - 1;
-      counts[counts.length - 1] = newCount;
-    }
-
-    if (count > 0) {
-      stack.push(node);
-      counts.push(count);
-    } else if (stack.length > 0) {
-      let lastCount = counts[counts.length - 1];
-      while (stack.length > 1 && lastCount === 0) {
-        // console.log({ counts, s: stack.map((x) => x.type) });
-        const l = stack.pop();
-        // console.log("POP", l);
-        lastCount = counts.pop();
-      }
-    }
-  }
-
-  // console.log(JSON.stringify(stack, null, 2));
-  return stack[0];
+  return ctx;
 }
 
+/**
+ * @param {string} fileName
+ * @param {Uint8Array} serializedAst
+ */
 export function runPluginsForFile(fileName, serializedAst) {
-  const ast = buildAstFromBinary(serializedAst);
-  console.log(JSON.stringify(ast, null, 2));
+  const ctx = createAstContext(serializedAst);
+  console.log(JSON.stringify(ctx, null, 2));
 
   /** @type {Record<string, (node: any) => void} */
   const mergedVisitor = {};
@@ -1904,12 +2097,12 @@ export function runPluginsForFile(fileName, serializedAst) {
 
   // Instantiate and merge visitors. This allows us to only traverse
   // the AST once instead of per plugin.
-  for (let i = 0; i < state.plugins; i++) {
+  for (let i = 0; i < state.plugins.length; i++) {
     const plugin = state.plugins[i];
 
     for (const name of Object.keys(plugin)) {
       const rule = plugin.rules[name];
-      const id = `${plugin.name}/${ruleName}`;
+      const id = `${plugin.name}/${name}`;
       const ctx = new Context(id, fileName);
       const visitor = rule.create(ctx);
 
@@ -1945,53 +2138,41 @@ export function runPluginsForFile(fileName, serializedAst) {
 
   // Traverse ast with all visitors at the same time to avoid traversing
   // multiple times.
-  traverse(ast, mergedVisitor, null);
-
-  // Optional: Destroy rules
-  for (let i = 0; i < destroyFns.length; i++) {
-    destroyFns[i]();
+  try {
+    traverse(ctx, mergedVisitor);
+  } finally {
+    // Optional: Destroy rules
+    for (let i = 0; i < destroyFns.length; i++) {
+      destroyFns[i]();
+    }
   }
 }
 
 /**
- * @param {Record<string, any>} ast
+ * @param {AstContext} ctx
  * @param {*} visitor
- * @param {any | null} parent
  * @returns {void}
  */
-function traverse(ast, visitor, parent) {
-  if (!ast || typeof ast !== "object") {
-    return;
-  }
+function traverse(ctx, visitor) {
+  const { astStart, buf } = ctx;
+  const visitingTypes = new Map();
 
-  // Get node type, accounting for SWC's type property naming
-  const nodeType = ast.type || (ast.nodeType ? ast.nodeType : null);
+  // TODO: create visiting types
 
-  // Skip if not a valid AST node
-  if (!nodeType) {
-    return;
-  }
+  // All nodes are in depth first sorted order, so we can just loop
+  // forward in an iterative style to visit all nodes in the correct
+  // order.
+  for (let i = astStart; i < buf.length; i++) {
+    const id = buf[i];
+    const nodeLen = buf[i + 1];
+    const type = buf[i + 1];
 
-  ast.parent = parent;
-
-  // Call visitor if it exists for this node type
-  visitor[nodeType]?.(ast);
-
-  // Traverse child nodes
-  for (const key in ast) {
-    if (key === "parent" || key === "type") {
-      continue;
+    const name = visitingTypes.get(type);
+    if (name !== undefined) {
+      const node = createAstNode(ctx, id);
+      visitor[name](node);
     }
 
-    const child = ast[key];
-
-    if (Array.isArray(child)) {
-      for (let i = 0; i < child.length; i++) {
-        const item = child[i];
-        traverse(item, visitor, ast);
-      }
-    } else if (child !== null && typeof child === "object") {
-      traverse(child, visitor, ast);
-    }
+    i += nodeLen;
   }
 }
