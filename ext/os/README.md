@@ -35,10 +35,8 @@ This crate implements OS specific APIs for Deno
 
 `cpu_usage`
 
-| Target family | Syscall                                        | Description |
-| ------------- |------------------------------------------------| ----------- |
-| Linux         | getrusage                                      | -           |
-| Windows       | `processthreadsapi::GetProcessTimes`           | -           |
-| macOS         | getrusage                                      | -           |
-
-
+| Target family | Syscall                              | Description |
+| ------------- | ------------------------------------ | ----------- |
+| Linux         | getrusage                            | -           |
+| Windows       | `processthreadsapi::GetProcessTimes` | -           |
+| macOS         | getrusage                            | -           |
