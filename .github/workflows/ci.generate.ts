@@ -114,6 +114,7 @@ cat /sysroot/.env
 #   2. RUSTFLAGS and RUSTDOCFLAGS must be specified, otherwise the doctests fail
 #      to build because the object formats are not compatible.
 echo "
+RUSTY_V8_MIRROR=https://github.com/denoland/v8_with_lto/releases/download
 CARGO_PROFILE_BENCH_INCREMENTAL=false
 CARGO_PROFILE_BENCH_LTO=false
 CARGO_PROFILE_RELEASE_INCREMENTAL=false
