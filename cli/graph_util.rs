@@ -6,6 +6,7 @@ use crate::args::CliLockfile;
 use crate::args::CliOptions;
 use crate::args::DENO_DISABLE_PEDANTIC_NODE_WARNINGS;
 use crate::cache;
+use crate::cache::FetchCacher;
 use crate::cache::GlobalHttpCache;
 use crate::cache::ModuleInfoCache;
 use crate::cache::ParsedSourceCache;
@@ -106,6 +107,25 @@ pub fn graph_valid(
     }
     Ok(())
   }
+}
+
+pub fn fill_graph_from_lockfile(
+  graph: &mut ModuleGraph,
+  lockfile: &deno_lockfile::Lockfile,
+) {
+  graph.fill_from_lockfile(FillFromLockfileOptions {
+    redirects: lockfile
+      .content
+      .redirects
+      .iter()
+      .map(|(from, to)| (from.as_str(), to.as_str())),
+    package_specifiers: lockfile
+      .content
+      .packages
+      .specifiers
+      .iter()
+      .map(|(dep, id)| (dep, id.as_str())),
+  });
 }
 
 #[derive(Clone)]
@@ -254,6 +274,23 @@ impl ModuleGraphCreator {
     package_configs: &[JsrPackageConfig],
     build_fast_check_graph: bool,
   ) -> Result<ModuleGraph, AnyError> {
+    struct PublishLoader(FetchCacher);
+    impl Loader for PublishLoader {
+      fn load(
+        &self,
+        specifier: &deno_ast::ModuleSpecifier,
+        options: deno_graph::source::LoadOptions,
+      ) -> deno_graph::source::LoadFuture {
+        if specifier.scheme() == "bun" {
+          return Box::pin(std::future::ready(Ok(Some(
+            deno_graph::source::LoadResponse::External {
+              specifier: specifier.clone(),
+            },
+          ))));
+        }
+        self.0.load(specifier, options)
+      }
+    }
     fn graph_has_external_remote(graph: &ModuleGraph) -> bool {
       // Earlier on, we marked external non-JSR modules as external.
       // If the graph contains any of those, it would cause type checking
@@ -271,12 +308,15 @@ impl ModuleGraphCreator {
     for package_config in package_configs {
       roots.extend(package_config.config_file.resolve_export_value_urls()?);
     }
+
+    let loader = self.module_graph_builder.create_graph_loader();
+    let mut publish_loader = PublishLoader(loader);
     let mut graph = self
       .create_graph_with_options(CreateGraphOptions {
         is_dynamic: false,
         graph_kind: deno_graph::GraphKind::All,
         roots,
-        loader: None,
+        loader: Some(&mut publish_loader),
       })
       .await?;
     self.graph_valid(&graph)?;
@@ -582,19 +622,7 @@ impl ModuleGraphBuilder {
       // populate the information from the lockfile
       if let Some(lockfile) = &self.lockfile {
         let lockfile = lockfile.lock();
-        graph.fill_from_lockfile(FillFromLockfileOptions {
-          redirects: lockfile
-            .content
-            .redirects
-            .iter()
-            .map(|(from, to)| (from.as_str(), to.as_str())),
-          package_specifiers: lockfile
-            .content
-            .packages
-            .specifiers
-            .iter()
-            .map(|(dep, id)| (dep, id.as_str())),
-        });
+        fill_graph_from_lockfile(graph, &lockfile);
       }
     }
 

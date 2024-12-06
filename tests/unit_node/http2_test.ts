@@ -152,6 +152,7 @@ Deno.test("[node/http2.createServer()]", {
   // TODO(satyarohith): enable the test on windows.
   ignore: Deno.build.os === "windows",
 }, async () => {
+  const serverListening = Promise.withResolvers<number>();
   const server = http2.createServer((_req, res) => {
     res.setHeader("Content-Type", "text/html");
     res.setHeader("X-Foo", "bar");
@@ -159,8 +160,10 @@ Deno.test("[node/http2.createServer()]", {
     res.write("Hello, World!");
     res.end();
   });
-  server.listen(0);
-  const port = (server.address() as net.AddressInfo).port;
+  server.listen(0, () => {
+    serverListening.resolve((server.address() as net.AddressInfo).port);
+  });
+  const port = await serverListening.promise;
   const endpoint = `http://localhost:${port}`;
 
   const response = await curlRequest([

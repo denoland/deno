@@ -41,7 +41,7 @@ fn test_userspace_resolver() {
     // use `localhost` to ensure dns step happens.
     let addr = format!("localhost:{}", src_addr.port());
 
-    let hickory = hickory_resolver::AsyncResolver::tokio(
+    let hickory = hickory_resolver::Resolver::tokio(
       Default::default(),
       Default::default(),
     );
@@ -52,7 +52,7 @@ fn test_userspace_resolver() {
       addr.clone(),
       "https",
       http::Version::HTTP_2,
-      dns::Resolver::hickory_from_async_resolver(hickory),
+      dns::Resolver::hickory_from_resolver(hickory),
     )
     .await;
     assert_eq!(thread_counter.load(SeqCst), 0, "userspace resolver shouldn't spawn new threads.");
