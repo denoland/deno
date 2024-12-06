@@ -114,14 +114,14 @@ impl deno_npm_cache::NpmCacheEnv for CliNpmCacheEnv {
       .download_with_progress_and_retries(url, maybe_auth_header, &guard)
       .await
       .map_err(|err| {
-        use crate::http_util::DownloadError::*;
-        let status_code = match &err {
+        use crate::http_util::DownloadErrorKind::*;
+        let status_code = match err.as_kind() {
           Fetch { .. }
           | UrlParse { .. }
           | HttpParse { .. }
           | Json { .. }
           | ToStr { .. }
-          | NoRedirectHeader { .. }
+          | RedirectHeaderParse { .. }
           | TooManyRedirects => None,
           BadResponse(bad_response_error) => {
             Some(bad_response_error.status_code)

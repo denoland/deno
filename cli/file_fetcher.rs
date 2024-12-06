@@ -184,32 +184,30 @@ impl deno_cache_dir::file_fetcher::HttpClient for HttpClientAdapter {
         )
         .await
         .map_err(|()| SendError::StatusCode(response.status()))?;
-      }
-
-      if response.status().is_client_error() {
+      } else if response.status().is_client_error() {
         let err = if response.status() == StatusCode::NOT_FOUND {
           SendError::NotFound
         } else {
           SendError::StatusCode(response.status())
         };
         return Err(err);
-      }
+      } else {
+        let body_result = get_response_body_with_progress(
+          response,
+          maybe_progress_guard.as_ref(),
+        )
+        .await;
 
-      let body_result = get_response_body_with_progress(
-        response,
-        maybe_progress_guard.as_ref(),
-      )
-      .await;
-
-      match body_result {
-        Ok((headers, body)) => {
-          return Ok(SendResponse::Success(headers, body));
-        }
-        Err(err) => {
-          handle_request_or_server_error(&mut retried, url, err.to_string())
-            .await
-            .map_err(|()| SendError::Failed(err.into()))?;
-          continue;
+        match body_result {
+          Ok((headers, body)) => {
+            return Ok(SendResponse::Success(headers, body));
+          }
+          Err(err) => {
+            handle_request_or_server_error(&mut retried, url, err.to_string())
+              .await
+              .map_err(|()| SendError::Failed(err.into()))?;
+            continue;
+          }
         }
       }
     }
@@ -434,7 +432,7 @@ impl CliFileFetcher {
     permissions: FetchPermissionsOptionRef<'_>,
     options: FetchNoFollowOptions<'_>,
   ) -> Result<FileOrRedirect, CliFetchNoFollowError> {
-    validate_scheme(&specifier).map_err(|err| {
+    validate_scheme(specifier).map_err(|err| {
       CliFetchNoFollowErrorKind::FetchNoFollow(err.into()).into_box()
     })?;
     match permissions {
@@ -442,7 +440,7 @@ impl CliFileFetcher {
         // allow
       }
       FetchPermissionsOptionRef::Restricted(permissions, kind) => {
-        permissions.check_specifier(&specifier, kind)?;
+        permissions.check_specifier(specifier, kind)?;
       }
     }
     self
@@ -504,6 +502,7 @@ mod tests {
 
   use super::*;
   use deno_cache_dir::file_fetcher::FetchNoFollowErrorKind;
+  use deno_cache_dir::file_fetcher::HttpClient;
   use deno_core::resolve_url;
   use deno_runtime::deno_web::Blob;
   use deno_runtime::deno_web::InMemoryBlobPart;
@@ -1259,6 +1258,169 @@ mod tests {
     let expected = "console.log(\"\u{5E9}\u{5DC}\u{5D5}\u{5DD} \
                    \u{5E2}\u{5D5}\u{5DC}\u{5DD}\");\u{A}";
     test_fetch_remote_encoded("windows-1255", "windows-1255", expected).await;
+  }
+
+  fn create_http_client_adapter() -> HttpClientAdapter {
+    HttpClientAdapter {
+      http_client_provider: Arc::new(HttpClientProvider::new(None, None)),
+      download_log_level: log::Level::Info,
+      progress_bar: None,
+    }
+  }
+
+  #[tokio::test]
+  async fn test_fetch_string() {
+    let _http_server_guard = test_util::http_server();
+    let url = Url::parse("http://127.0.0.1:4545/assets/fixture.json").unwrap();
+    let client = create_http_client_adapter();
+    let result = client.send_no_follow(&url, HeaderMap::new()).await;
+    if let Ok(SendResponse::Success(headers, body)) = result {
+      assert!(!body.is_empty());
+      assert_eq!(headers.get("content-type").unwrap(), "application/json");
+      assert_eq!(headers.get("etag"), None);
+      assert_eq!(headers.get("x-typescript-types"), None);
+    } else {
+      panic!();
+    }
+  }
+
+  #[tokio::test]
+  async fn test_fetch_gzip() {
+    let _http_server_guard = test_util::http_server();
+    let url = Url::parse("http://127.0.0.1:4545/run/import_compression/gziped")
+      .unwrap();
+    let client = create_http_client_adapter();
+    let result = client.send_no_follow(&url, HeaderMap::new()).await;
+    if let Ok(SendResponse::Success(headers, body)) = result {
+      assert_eq!(String::from_utf8(body).unwrap(), "console.log('gzip')");
+      assert_eq!(
+        headers.get("content-type").unwrap(),
+        "application/javascript"
+      );
+      assert_eq!(headers.get("etag"), None);
+      assert_eq!(headers.get("x-typescript-types"), None);
+    } else {
+      panic!();
+    }
+  }
+
+  #[tokio::test]
+  async fn test_fetch_with_etag() {
+    let _http_server_guard = test_util::http_server();
+    let url = Url::parse("http://127.0.0.1:4545/etag_script.ts").unwrap();
+    let client = create_http_client_adapter();
+    let result = client.send_no_follow(&url, HeaderMap::new()).await;
+    if let Ok(SendResponse::Success(headers, body)) = result {
+      assert!(!body.is_empty());
+      assert_eq!(String::from_utf8(body).unwrap(), "console.log('etag')");
+      assert_eq!(
+        headers.get("content-type").unwrap(),
+        "application/typescript"
+      );
+      assert_eq!(headers.get("etag").unwrap(), "33a64df551425fcc55e");
+    } else {
+      panic!();
+    }
+
+    let mut headers = HeaderMap::new();
+    headers.insert("if-none-match", "33a64df551425fcc55e".parse().unwrap());
+    let res = client.send_no_follow(&url, headers).await;
+    assert_eq!(res.unwrap(), SendResponse::NotModified);
+  }
+
+  #[tokio::test]
+  async fn test_fetch_brotli() {
+    let _http_server_guard = test_util::http_server();
+    let url = Url::parse("http://127.0.0.1:4545/run/import_compression/brotli")
+      .unwrap();
+    let client = create_http_client_adapter();
+    let result = client.send_no_follow(&url, HeaderMap::new()).await;
+    if let Ok(SendResponse::Success(headers, body)) = result {
+      assert!(!body.is_empty());
+      assert_eq!(String::from_utf8(body).unwrap(), "console.log('brotli');");
+      assert_eq!(
+        headers.get("content-type").unwrap(),
+        "application/javascript"
+      );
+      assert_eq!(headers.get("etag"), None);
+      assert_eq!(headers.get("x-typescript-types"), None);
+    } else {
+      panic!();
+    }
+  }
+
+  #[tokio::test]
+  async fn test_fetch_accept() {
+    let _http_server_guard = test_util::http_server();
+    let url = Url::parse("http://127.0.0.1:4545/echo_accept").unwrap();
+    let client = create_http_client_adapter();
+    let mut headers = HeaderMap::new();
+    headers.insert("accept", "application/json".parse().unwrap());
+    let result = client.send_no_follow(&url, headers).await;
+    if let Ok(SendResponse::Success(_, body)) = result {
+      assert_eq!(body, r#"{"accept":"application/json"}"#.as_bytes());
+    } else {
+      panic!();
+    }
+  }
+
+  #[tokio::test]
+  async fn test_fetch_no_follow_with_redirect() {
+    let _http_server_guard = test_util::http_server();
+    let url = Url::parse("http://127.0.0.1:4546/assets/fixture.json").unwrap();
+    // Dns resolver substitutes `127.0.0.1` with `localhost`
+    let target_url =
+      Url::parse("http://localhost:4545/assets/fixture.json").unwrap();
+    let client = create_http_client_adapter();
+    let result = client.send_no_follow(&url, Default::default()).await;
+    if let Ok(SendResponse::Redirect(headers)) = result {
+      assert_eq!(headers.get("location").unwrap(), target_url.as_str());
+    } else {
+      panic!();
+    }
+  }
+
+  #[tokio::test]
+  async fn bad_redirect() {
+    let _g = test_util::http_server();
+    let url_str = "http://127.0.0.1:4545/bad_redirect";
+    let url = Url::parse(url_str).unwrap();
+    let client = create_http_client_adapter();
+    let result = client.send_no_follow(&url, Default::default()).await;
+    let err = result.unwrap_err();
+    match err {
+      SendError::Failed(error) => {
+        // Check that the error message contains the original URL
+        assert!(error.to_string().contains(url_str));
+      }
+      _ => unreachable!(),
+    }
+  }
+
+  #[tokio::test]
+  async fn server_error() {
+    let _g = test_util::http_server();
+    let url_str = "http://127.0.0.1:4545/server_error";
+    let url = Url::parse(url_str).unwrap();
+    let client = create_http_client_adapter();
+    let result = client.send_no_follow(&url, Default::default()).await;
+
+    if let Err(SendError::StatusCode(status)) = result {
+      assert_eq!(status, 500);
+    } else {
+      panic!("{:?}", result);
+    }
+  }
+
+  #[tokio::test]
+  async fn request_error() {
+    let _g = test_util::http_server();
+    let url_str = "http://127.0.0.1:9999/";
+    let url = Url::parse(url_str).unwrap();
+    let client = create_http_client_adapter();
+    let result = client.send_no_follow(&url, Default::default()).await;
+
+    assert!(matches!(result, Err(SendError::Failed(_))));
   }
 
   #[track_caller]

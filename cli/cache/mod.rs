@@ -379,7 +379,7 @@ impl Loader for FetchCacher {
                 FetchNoFollowErrorKind::CacheRead { .. } |
                 FetchNoFollowErrorKind::CacheSave  { .. } |
                 FetchNoFollowErrorKind::UnsupportedScheme  { .. } |
-                FetchNoFollowErrorKind::FailedReadingRedirectHeader { .. } |
+                FetchNoFollowErrorKind::RedirectHeaderParse { .. } |
                 FetchNoFollowErrorKind::InvalidHeader { .. } => Err(AnyError::from(err)),
                 FetchNoFollowErrorKind::NotCached { .. } => {
                   if options.cache_setting == LoaderCacheSetting::Only {
