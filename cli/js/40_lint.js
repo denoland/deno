@@ -1,6 +1,10 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
+// @ts-check
+
+import exp from "constants";
 import { core } from "ext:core/mod.js";
+import { deno } from "../tsc/dts/typescript.d.ts";
 const {
   op_lint_get_rule,
   op_lint_get_source,
@@ -21,6 +25,10 @@ export class Context {
 
   #source = null;
 
+  /**
+   * @param {string} id
+   * @param {string} fileName
+   */
   constructor(id, fileName) {
     this.id = id;
     this.fileName = fileName;
@@ -77,7 +85,10 @@ export function installPlugin(plugin) {
 }
 
 // Keep in sync with Rust
-const AstNode = {
+/**
+ * @enum {number}
+ */
+const AstNodeId = {
   Invalid: 0,
   Program: 1,
 
@@ -89,54 +100,55 @@ const AstNode = {
   Var: 14,
 
   // Statements
-  Block: 20,
+  BlockStatement: 20,
   Empty: 21,
-  Debugger: 22,
-  With: 23,
-  Return: 24,
-  Labeled: 25,
-  Break: 26,
-  Continue: 27,
-  If: 28,
-  Switch: 29,
+  DebuggerStatement: 22,
+  WithStatement: 23,
+  ReturnStatement: 24,
+  LabeledStatement: 25,
+  BreakStatement: 26,
+  ContinueStatement: 27,
+  IfStatement: 28,
+  SwitchStatement: 29,
   SwitchCase: 30,
-  Throw: 31,
-  Try: 32,
-  While: 33,
-  DoWhile: 34,
-  For: 35,
-  ForIn: 36,
-  ForOf: 37,
+  ThrowStatement: 31,
+  TryStatement: 32,
+  WhileStatement: 33,
+  DoWhileStatement: 34,
+  ForStatement: 35,
+  ForInStatement: 36,
+  ForOfStatement: 37,
   Decl: 38,
-  Expr: 39,
+  ExpressionStatement: 39,
 
   // Expressions
   This: 40,
-  Array: 41,
-  Object: 42,
-  FnExpr: 43,
+  ArrayExpression: 41,
+  ObjectExpression: 42,
+  FunctionExpression: 43,
   Unary: 44,
   Update: 45,
-  Bin: 46,
-  Assign: 47,
-  Member: 48,
+  BinaryExpression: 46,
+  AssignmentExpression: 47,
+  MemberExpression: 48,
   SuperProp: 49,
-  Cond: 50,
-  Call: 51,
-  New: 52,
-  Seq: 53,
-  Ident: 54,
+  ConditionalExpression: 50,
+  CallExpression: 51,
+  NewExpression: 52,
+  SequenceExpression: 53,
+  Identifier: 54,
   Tpl: 55,
-  TaggedTpl: 56,
-  Arrow: 57,
+  TaggedTemplateExpression: 56,
+  ArrowFunctionExpression: 57,
   Yield: 59,
+  AwaitExpression: 61,
 
   StringLiteral: 70,
-  Bool: 71,
-  Null: 72,
-  Num: 73,
+  BooleanLiteral: 71,
+  NullLiteral: 72,
+  NumericLiteral: 73,
   BigInt: 74,
-  Regex: 75,
+  RegExpLiteral: 75,
 
   // Custom
   EmptyExpr: 82,
@@ -148,576 +160,1353 @@ const AstNode = {
 
 const _ID = Symbol.for("__astId");
 
+/** @implements {Deno.Program} */
 class Program {
-  type = "Program";
-  body = [];
-  [_ID] = AstNode.Program;
-  loc;
+  type = /** @type {const} */ ("Program");
+  range;
+  get body() {
+    return [];
+  }
+  #ctx;
 
-  constructor(span) {
-    this.loc = span;
+  /**
+   * @param {ParseContext} ctx
+   * @param {Deno.Range} range
+   * @param {Deno.Program["sourceType"]} sourceType
+   */
+  constructor(ctx, range, sourceType) {
+    this.#ctx = ctx;
+    this.range = range;
+    this.sourceType = sourceType;
   }
 }
 
-class VariableDeclaration {
-  type = "VariableDeclaration";
-  declarations = [];
-  [_ID] = AstNode.Var;
-  loc;
-
-  constructor(span) {
-    this.loc = span;
-  }
-}
-
-class VariableDeclarator {
-  type = "VariableDeclarator";
-  id = null;
-  init = null;
-  [_ID] = AstNode.VarDeclarator;
-  loc;
-
-  constructor(span) {
-    this.loc = span;
-  }
-}
-
-class FunctionDeclaration {
-  type = "FunctionDeclaration";
-  [_ID] = AstNode.Fn;
-  generator = false;
-  async = false;
-  id = null;
-  params = [];
-  body = null;
-  loc;
-
-  constructor(span) {
-    this.loc = span;
-  }
-}
-
-class ReturnStatement {
-  type = "ReturnStatement";
-  [_ID] = AstNode.Return;
-  argument = null;
-  loc;
-
-  constructor(span) {
-    this.loc = span;
-  }
-}
-
-class IfStatement {
-  type = "IfStatement";
-  [_ID] = AstNode.If;
-  test = null;
-  consequent = null;
-  alternate = null;
-  loc;
-
-  constructor(span) {
-    this.loc = span;
-  }
-}
-
-class LabeledStatement {
-  type = "LabeledStatement";
-  [_ID] = AstNode.Labeled;
-  body = null;
-  loc;
-
-  constructor(span) {
-    this.loc = span;
-  }
-}
-
-class ThrowStatement {
-  type = "ThrowStatement";
-  [_ID] = AstNode.Throw;
-  argument = null;
-  loc;
-
-  constructor(span) {
-    this.loc = span;
-  }
-}
-
-class ForStatement {
-  type = "ForStatement";
-  [_ID] = AstNode.For;
-  init = null;
-  test = null;
-  update = null;
-  body = null;
-  loc;
-
-  constructor(span) {
-    this.loc = span;
-  }
-}
-
-class ForInStatement {
-  type = "ForInStatement";
-  [_ID] = AstNode.ForIn;
-  left = null;
-  right = null;
-  body = null;
-  loc;
-
-  constructor(span) {
-    this.loc = span;
-  }
-}
-
-class ForOfStatement {
-  type = "ForOfStatement";
-  [_ID] = AstNode.ForOf;
-  await = false;
-  left = null;
-  right = null;
-  body = null;
-  loc;
-
-  constructor(span) {
-    this.loc = span;
-  }
-}
-
-class WhileStatement {
-  type = "WhileStatement";
-  [_ID] = AstNode.While;
-  test = null;
-  body = null;
-  loc;
-
-  constructor(span) {
-    this.loc = span;
-  }
-}
-
-class ClassDeclaration {
-  type = "ClassDeclaration";
-  [_ID] = AstNode.Class;
-  id = null;
-  superClass = null;
-  body = null;
-  loc;
-
-  constructor(span) {
-    this.loc = span;
-  }
-}
-
-class TryStatement {
-  type = "TryStatement";
-  [_ID] = AstNode.Try;
-  block = null;
-  handler = null;
-  finalizer = null;
-  loc;
-
-  constructor(span) {
-    this.loc = span;
-  }
-}
-
-class CatchClause {
-  type = "CatchClause";
-  [_ID] = AstNode.CatchClause;
-  param = null;
-  body = null;
-  loc;
-
-  constructor(span) {
-    this.loc = span;
-  }
-}
-
-class DoWhileStatement {
-  type = "DoWhileStatement";
-  [_ID] = AstNode.DoWhile;
-  test = null;
-  body = null;
-  loc;
-
-  constructor(span) {
-    this.loc = span;
-  }
-}
-
-class SwitchStatement {
-  type = "SwitchStatement";
-  [_ID] = AstNode.Switch;
-  discriminant = null;
-  cases = [];
-  loc;
-
-  constructor(span) {
-    this.loc = span;
-  }
-}
-
-class SwitchCase {
-  type = "SwitchCase";
-  [_ID] = AstNode.SwitchCase;
-  test = null;
-  consequent = null;
-  loc;
-
-  constructor(span) {
-    this.loc = span;
-  }
-}
-
-class ExpressionStatement {
-  type = "ExpressionStatement";
-  expression = null;
-  [_ID] = AstNode.Expr;
-  loc;
-
-  constructor(span) {
-    this.loc = span;
-  }
-}
-
-class NewExpression {
-  type = "NewExpression";
-  callee = null;
-  typeArguments = null;
-  arguments = [];
-  [_ID] = AstNode.New;
-  loc;
-
-  constructor(span) {
-    this.loc = span;
-  }
-}
-
-class UnaryExpression {
-  type = "UnaryExpression";
-  argument = null;
-  operator = null;
-  [_ID] = AstNode.Unary;
-  loc;
-
-  constructor(span) {
-    this.loc = span;
-  }
-}
-
-class UpdateExpression {
-  type = "UpdateExpression";
-  argument = null;
-  operator = null;
-  prefix = false;
-  [_ID] = AstNode.Update;
-  loc;
-
-  constructor(span) {
-    this.loc = span;
-  }
-}
-
-class ThisExpression {
-  type = "ThisExpression";
-  [_ID] = AstNode.This;
-  loc;
-
-  constructor(span) {
-    this.loc = span;
-  }
-}
-
-class ArrayExpression {
-  type = "ArrayExpression";
-  elements = [];
-  [_ID] = AstNode.Array;
-
-  loc;
-  constructor(span) {
-    this.loc = span;
-  }
-}
-
-class ObjectExpression {
-  type = "ObjectExpression";
-  properties = [];
-  [_ID] = AstNode.Object;
-
-  loc;
-  constructor(span) {
-    this.loc = span;
-  }
-}
-
-class LogicalExpression {
-  type = "LogicalExpression";
-  [_ID] = AstNode.Bin;
-  operator = null;
-  left = null;
-  right = null;
-
-  loc;
-  constructor(span) {
-    this.loc = span;
-  }
-}
-
-class SequenceExpression {
-  type = "SequenceExpression";
-  expressions = [];
-  [_ID] = AstNode.Seq;
-
-  loc;
-  constructor(span) {
-    this.loc = span;
-  }
-}
-
+/** @implements {Deno.BlockStatement} */
 class BlockStatement {
-  type = "BlockStatement";
+  type = /** @type {const} */ ("BlockStatement");
   body = [];
-  [_ID] = AstNode.Block;
+  range;
 
-  loc;
-  constructor(span) {
-    this.loc = span;
+  #ctx;
+
+  /**
+   * @param {ParseContext} ctx
+   * @param {Deno.Range} range
+   */
+  constructor(ctx, range) {
+    this.#ctx = ctx;
+    this.range = range;
   }
 }
 
-class ContinueStatement {
-  type = "ContinueStatement";
-  label = null;
-  [_ID] = AstNode.Continue;
-
-  loc;
-  constructor(span) {
-    this.loc = span;
-  }
-}
+/** @implements {Deno.BreakStatement} */
 class BreakStatement {
-  type = "BreakStatement";
-  label = null;
-  [_ID] = AstNode.Break;
+  type = /** @type {const} */ ("BreakStatement");
+  get label() {
+    if (this.#labelId === 0) return null;
+    return /** @type {Deno.Identifier} */ (createAstNode(
+      this.#ctx,
+      this.#labelId,
+    ));
+  }
+  range;
 
-  loc;
-  constructor(span) {
-    this.loc = span;
+  #ctx;
+  #labelId;
+
+  /**
+   * @param {ParseContext} ctx
+   * @param {Deno.Range} range
+   * @param {number} labelId
+   */
+  constructor(ctx, range, labelId) {
+    this.#ctx = ctx;
+    this.#labelId = labelId;
+    this.range = range;
   }
 }
 
+/** @implements {Deno.ContinueStatement} */
+class ContinueStatement {
+  type = /** @type {const} */ ("ContinueStatement");
+  range;
+  get label() {
+    return /** @type {Deno.Identifier} */ (createAstNode(
+      this.#ctx,
+      this.#labelId,
+    ));
+  }
+
+  #ctx;
+  #labelId = 0;
+
+  /**
+   * @param {ParseContext} ctx
+   * @param {Deno.Range} range
+   * @param {number} labelId
+   */
+  constructor(ctx, range, labelId) {
+    this.#ctx = ctx;
+    this.#labelId = labelId;
+    this.range = range;
+  }
+}
+
+/** @implements {Deno.DebuggerStatement} */
 class DebuggerStatement {
-  type = "DebuggerStatement";
-  [_ID] = AstNode.Debugger;
+  type = /** @type {const} */ ("DebuggerStatement");
+  range;
 
-  loc;
-  constructor(span) {
-    this.loc = span;
+  #ctx;
+
+  /**
+   * @param {ParseContext} ctx
+   * @param {Deno.Range} range
+   */
+  constructor(ctx, range) {
+    this.#ctx = ctx;
+    this.range = range;
   }
 }
 
-class MemberExpression {
-  type = "MemberExpression";
-  [_ID] = AstNode.Member;
-  computed = false;
-  property = null;
-  object = null;
+/** @implements {Deno.DoWhileStatement} */
+class DoWhileStatement {
+  type = /** @type {const} */ ("DoWhileStatement");
+  range;
+  get test() {
+    return /** @type {Deno.Expression} */ (createAstNode(
+      this.#ctx,
+      this.#exprId,
+    ));
+  }
+  get body() {
+    return /** @type {Deno.Statement} */ (createAstNode(
+      this.#ctx,
+      this.#bodyId,
+    ));
+  }
 
-  loc;
-  constructor(span) {
-    this.loc = span;
+  #ctx;
+  #exprId = 0;
+  #bodyId = 0;
+
+  /**
+   * @param {ParseContext} ctx
+   * @param {Deno.Range} range
+   * @param {number} exprId
+   * @param {number} bodyId
+   */
+  constructor(ctx, range, exprId, bodyId) {
+    this.#ctx = ctx;
+    this.#exprId = exprId;
+    this.#bodyId = bodyId;
+    this.range = range;
   }
 }
 
-class CallExpression {
-  type = "CallExpression";
-  properties = [];
-  [_ID] = AstNode.Call;
-  callee = null;
-  arguments = [];
+/** @implements {Deno.ExpressionStatement} */
+class ExpressionStatement {
+  type = /** @type {const} */ ("ExpressionStatement");
+  range;
+  get expression() {
+    return /** @type {Deno.Expression} */ (createAstNode(
+      this.#ctx,
+      this.#exprId,
+    ));
+  }
 
-  loc;
-  constructor(span) {
-    this.loc = span;
+  #ctx;
+  #exprId = 0;
+
+  /**
+   * @param {ParseContext} ctx
+   * @param {Deno.Range} range
+   * @param {number} exprId
+   */
+  constructor(ctx, range, exprId) {
+    this.#ctx = ctx;
+    this.#exprId = exprId;
+    this.range = range;
   }
 }
 
+/** @implements {Deno.ForInStatement} */
+class ForInStatement {
+  type = /** @type {const} */ ("ForInStatement");
+  range;
+  get left() {
+    return /** @type {Deno.Expression | Deno.VariableDeclaration} */ (createAstNode(
+      this.#ctx,
+      this.#leftId,
+    ));
+  }
+  get right() {
+    return /** @type {Deno.Expression} */ (createAstNode(
+      this.#ctx,
+      this.#rightId,
+    ));
+  }
+  get body() {
+    return /** @type {Deno.Statement} */ (createAstNode(
+      this.#ctx,
+      this.#bodyId,
+    ));
+  }
+
+  #ctx;
+  #leftId = 0;
+  #rightId = 0;
+  #bodyId = 0;
+
+  /**
+   * @param {ParseContext} ctx
+   * @param {Deno.Range} range
+   * @param {number} leftId
+   * @param {number} rightId
+   * @param {number} bodyId
+   */
+  constructor(ctx, range, leftId, rightId, bodyId) {
+    this.#ctx = ctx;
+    this.#leftId = leftId;
+    this.#rightId = rightId;
+    this.#bodyId = bodyId;
+    this.range = range;
+  }
+}
+
+/** @implements {Deno.ForOfStatement} */
+class ForOfStatement {
+  type = /** @type {const} */ ("ForOfStatement");
+  range;
+  get left() {
+    return /** @type {Deno.Expression | Deno.VariableDeclaration | Deno.UsingDeclaration} */ (createAstNode(
+      this.#ctx,
+      this.#leftId,
+    ));
+  }
+  get right() {
+    return /** @type {Deno.Expression} */ (createAstNode(
+      this.#ctx,
+      this.#rightId,
+    ));
+  }
+  get body() {
+    return /** @type {Deno.Statement} */ (createAstNode(
+      this.#ctx,
+      this.#bodyId,
+    ));
+  }
+
+  await;
+
+  #ctx;
+  #leftId = 0;
+  #rightId = 0;
+  #bodyId = 0;
+
+  /**
+   * @param {ParseContext} ctx
+   * @param {Deno.Range} range
+   * @param {boolean} isAwait
+   * @param {number} leftId
+   * @param {number} rightId
+   * @param {number} bodyId
+   */
+  constructor(ctx, range, isAwait, leftId, rightId, bodyId) {
+    this.#ctx = ctx;
+    this.#leftId = leftId;
+    this.#rightId = rightId;
+    this.#bodyId = bodyId;
+    this.range = range;
+    this.await = isAwait;
+  }
+}
+
+/** @implements {Deno.ForStatement} */
+class ForStatement {
+  type = /** @type {const} */ ("ForStatement");
+  range;
+  get init() {
+    if (this.#initId === 0) return null;
+
+    return /** @type {Deno.Expression | Deno.VariableDeclaration} */ (createAstNode(
+      this.#ctx,
+      this.#initId,
+    ));
+  }
+  get test() {
+    if (this.#initId === 0) return null;
+    return /** @type {Deno.Expression} */ (createAstNode(
+      this.#ctx,
+      this.#testId,
+    ));
+  }
+  get update() {
+    if (this.#updateId === 0) return null;
+    return /** @type {Deno.Expression} */ (createAstNode(
+      this.#ctx,
+      this.#updateId,
+    ));
+  }
+  get body() {
+    return /** @type {Deno.Statement} */ (createAstNode(
+      this.#ctx,
+      this.#bodyId,
+    ));
+  }
+
+  #ctx;
+  #initId = 0;
+  #testId = 0;
+  #updateId = 0;
+  #bodyId = 0;
+
+  /**
+   * @param {ParseContext} ctx
+   * @param {Deno.Range} range
+   * @param {number} initId
+   * @param {number} testId
+   * @param {number} updateId
+   * @param {number} bodyId
+   */
+  constructor(ctx, range, initId, testId, updateId, bodyId) {
+    this.#ctx = ctx;
+    this.#initId = initId;
+    this.#testId = testId;
+    this.#updateId = updateId;
+    this.#bodyId = bodyId;
+    this.range = range;
+  }
+}
+
+/** @implements {Deno.IfStatement} */
+class IfStatement {
+  type = /** @type {const} */ ("IfStatement");
+  range;
+  get test() {
+    return /** @type {Deno.Expression} */ (createAstNode(
+      this.#ctx,
+      this.#testId,
+    ));
+  }
+  get consequent() {
+    return /** @type {Deno.Statement} */ (createAstNode(
+      this.#ctx,
+      this.#consequentId,
+    ));
+  }
+  get alternate() {
+    if (this.#alternateId === 0) return null;
+    return /** @type {Deno.Statement} */ (createAstNode(
+      this.#ctx,
+      this.#alternateId,
+    ));
+  }
+
+  #ctx;
+  #testId = 0;
+  #consequentId = 0;
+  #alternateId = 0;
+
+  /**
+   * @param {ParseContext} ctx
+   * @param {Deno.Range} range
+   * @param {number} testId
+   * @param {number} updateId
+   * @param {number} alternateId
+   */
+  constructor(ctx, range, testId, updateId, alternateId) {
+    this.#ctx = ctx;
+    this.#testId = testId;
+    this.#consequentId = updateId;
+    this.#alternateId = alternateId;
+    this.range = range;
+  }
+}
+
+/** @implements {Deno.LabeledStatement} */
+class LabeledStatement {
+  type = /** @type {const} */ ("LabeledStatement");
+  range;
+  get label() {
+    return /** @type {Deno.Identifier} */ (createAstNode(
+      this.#ctx,
+      this.#labelId,
+    ));
+  }
+  get body() {
+    return /** @type {Deno.Statement} */ (createAstNode(
+      this.#ctx,
+      this.#bodyId,
+    ));
+  }
+
+  #ctx;
+  #labelId = 0;
+  #bodyId = 0;
+
+  /**
+   * @param {ParseContext} ctx
+   * @param {Deno.Range} range
+   * @param {number} testId
+   * @param {number} bodyId
+   */
+  constructor(ctx, range, testId, bodyId) {
+    this.#ctx = ctx;
+    this.#labelId = testId;
+    this.#bodyId = bodyId;
+    this.range = range;
+  }
+}
+
+/** @implements {Deno.ReturnStatement} */
+class ReturnStatement {
+  type = /** @type {const} */ ("ReturnStatement");
+  range;
+  get argument() {
+    if (this.#exprId === 0) return null;
+    return /** @type {Deno.Expression} */ (createAstNode(
+      this.#ctx,
+      this.#exprId,
+    ));
+  }
+
+  #ctx;
+  #exprId = 0;
+
+  /**
+   * @param {ParseContext} ctx
+   * @param {Deno.Range} range
+   * @param {number} argId
+   */
+  constructor(ctx, range, argId) {
+    this.#ctx = ctx;
+    this.#exprId = argId;
+    this.range = range;
+  }
+}
+
+/** @implements {Deno.SwitchStatement} */
+class SwitchStatement {
+  type = /** @type {const} */ ("SwitchStatement");
+  range;
+  get discriminant() {
+    return /** @type {Deno.Expression} */ (createAstNode(
+      this.#ctx,
+      this.#discriminantId,
+    ));
+  }
+  get cases() {
+    return []; // FIXME
+  }
+
+  #ctx;
+  #discriminantId = 0;
+
+  /**
+   * @param {ParseContext} ctx
+   * @param {Deno.Range} range
+   * @param {number} discriminantId
+   */
+  constructor(ctx, range, discriminantId) {
+    this.#ctx = ctx;
+    this.#discriminantId = discriminantId;
+    this.range = range;
+  }
+}
+
+/** @implements {Deno.ThrowStatement} */
+class ThrowStatement {
+  type = /** @type {const} */ ("ThrowStatement");
+  range;
+  get argument() {
+    return /** @type {Deno.Expression} */ (createAstNode(
+      this.#ctx,
+      this.#argId,
+    ));
+  }
+
+  #ctx;
+  #argId = 0;
+
+  /**
+   * @param {ParseContext} ctx
+   * @param {Deno.Range} range
+   * @param {number} argId
+   */
+  constructor(ctx, range, argId) {
+    this.#ctx = ctx;
+    this.#argId = argId;
+    this.range = range;
+  }
+}
+
+/** @implements {Deno.TryStatement} */
+class TryStatement {
+  type = /** @type {const} */ ("TryStatement");
+  range;
+  get block() {
+    return /** @type {Deno.BlockStatement} */ (createAstNode(
+      this.#ctx,
+      this.#blockId,
+    ));
+  }
+  get finalizer() {
+    if (this.#finalizerId === 0) return null;
+    return /** @type {Deno.BlockStatement} */ (createAstNode(
+      this.#ctx,
+      this.#finalizerId,
+    ));
+  }
+  get handler() {
+    if (this.#handlerId === 0) return null;
+    return /** @type {Deno.CatchClause} */ (createAstNode(
+      this.#ctx,
+      this.#handlerId,
+    ));
+  }
+
+  #ctx;
+  #blockId = 0;
+  #finalizerId = 0;
+  #handlerId = 0;
+
+  /**
+   * @param {ParseContext} ctx
+   * @param {Deno.Range} range
+   * @param {number} blockId
+   * @param {number} finalizerId
+   * @param {number} handlerId
+   */
+  constructor(ctx, range, blockId, finalizerId, handlerId) {
+    this.#ctx = ctx;
+    this.#blockId = blockId;
+    this.#finalizerId = finalizerId;
+    this.#handlerId = handlerId;
+    this.range = range;
+  }
+}
+
+/** @implements {Deno.WhileStatement} */
+class WhileStatement {
+  type = /** @type {const} */ ("WhileStatement");
+  range;
+  get test() {
+    return /** @type {Deno.Expression} */ (createAstNode(
+      this.#ctx,
+      this.#testId,
+    ));
+  }
+  get body() {
+    return /** @type {Deno.Statement} */ (createAstNode(
+      this.#ctx,
+      this.#bodyId,
+    ));
+  }
+
+  #ctx;
+  #testId = 0;
+  #bodyId = 0;
+
+  /**
+   * @param {ParseContext} ctx
+   * @param {Deno.Range} range
+   * @param {number} testId
+   * @param {number} bodyId
+   */
+  constructor(ctx, range, testId, bodyId) {
+    this.#ctx = ctx;
+    this.#testId = testId;
+    this.#bodyId = bodyId;
+    this.range = range;
+  }
+}
+
+/** @implements {Deno.WithStatement} */
+class WithStatement {
+  type = /** @type {const} */ ("WithStatement");
+  range;
+  get body() {
+    return /** @type {Deno.Statement} */ (createAstNode(
+      this.#ctx,
+      this.#bodyId,
+    ));
+  }
+  get object() {
+    return /** @type {Deno.Expression} */ (createAstNode(
+      this.#ctx,
+      this.#objectId,
+    ));
+  }
+
+  #ctx;
+  #bodyId = 0;
+  #objectId = 0;
+
+  /**
+   * @param {ParseContext} ctx
+   * @param {Deno.Range} range
+   * @param {number} bodyId
+   * @param {number} objectId
+   */
+  constructor(ctx, range, bodyId, objectId) {
+    this.#ctx = ctx;
+    this.#bodyId = bodyId;
+    this.#objectId = objectId;
+    this.range = range;
+  }
+}
+
+// Expressions
+
+/** @implements {Deno.ArrayExpression} */
+class ArrayExpression {
+  type = /** @type {const} */ ("ArrayExpression");
+  range;
+  get elements() {
+    return []; // FIXME
+  }
+
+  #ctx;
+
+  /**
+   * @param {ParseContext} ctx
+   * @param {Deno.Range} range
+   */
+  constructor(ctx, range) {
+    this.#ctx = ctx;
+    this.range = range;
+  }
+}
+
+/** @implements {Deno.ArrowFunctionExpression} */
 class ArrowFunctionExpression {
-  type = "ArrowFunctionExpression";
-  [_ID] = AstNode.Arrow;
-  generator = false;
+  type = /** @type {const} */ ("ArrowFunctionExpression");
+  range;
   async = false;
-  id = null;
-  params = [];
-  body = null;
+  generator = false;
 
-  loc;
-  constructor(span) {
-    this.loc = span;
+  get body() {
+    return /** @type {Deno.BlockStatement| Deno.Expression} */ (createAstNode(
+      this.#ctx,
+      this.#bodyId,
+    ));
+  }
+
+  get params() {
+    return []; // FIXME
+  }
+
+  get returnType() {
+    return null; // FIXME
+  }
+
+  get typeParameters() {
+    return null; // FIXME
+  }
+
+  #ctx;
+  #bodyId;
+
+  /**
+   * @param {ParseContext} ctx
+   * @param {Deno.Range} range
+   * @param {boolean} isAsync
+   * @param {boolean} isGenerator
+   * @param {number} bodyId
+   */
+  constructor(ctx, range, isAsync, isGenerator, bodyId) {
+    this.#ctx = ctx;
+    this.#bodyId = bodyId;
+    this.asnyc = isAsync;
+    this.generator = isGenerator;
+    this.range = range;
   }
 }
 
-class YieldExpression {
-  type = "YieldExpression";
-  [_ID] = AstNode.Yield;
-  delegate = false;
-  argument = null;
+/** @implements {Deno.AssignmentExpression} */
+class AssignmentExpression {
+  type = /** @type {const} */ ("AssignmentExpression");
+  range;
+  get left() {
+    return /** @type {Deno.Expression} */ (createAstNode(
+      this.#ctx,
+      this.#leftId,
+    ));
+  }
+  get right() {
+    return /** @type {Deno.Expression} */ (createAstNode(
+      this.#ctx,
+      this.#rightId,
+    ));
+  }
 
-  loc;
-  constructor(span) {
-    this.loc = span;
+  operator;
+
+  #ctx;
+  #leftId = 0;
+  #rightId = 0;
+
+  /**
+   * @param {ParseContext} ctx
+   * @param {Deno.Range} range
+   * @param {number} flags
+   * @param {number} leftId
+   * @param {number} rightId
+   */
+  constructor(ctx, range, flags, leftId, rightId) {
+    this.#ctx = ctx;
+    this.#leftId = leftId;
+    this.#rightId = rightId;
+    this.range = range;
+    this.operator = getAssignOperator(flags);
   }
 }
 
+/**
+ * @param {number} n
+ * @returns {Deno.AssignmentExpression["operator"]}
+ */
+function getAssignOperator(n) {
+  switch (n) {
+    case 0:
+      return "&&=";
+    case 1:
+      return "&=";
+    case 2:
+      return "**=";
+    case 3:
+      return "*=";
+    case 4:
+      return "||=";
+    case 5:
+      return "|=";
+    case 6:
+      return "^=";
+    case 7:
+      return "=";
+    case 8:
+      return ">>=";
+    case 9:
+      return ">>>=";
+    case 10:
+      return "<<=";
+    case 11:
+      return "-=";
+    case 12:
+      return "%=";
+    case 13:
+      return "+=";
+    case 14:
+      return "??=";
+    case 15:
+      return "/=";
+    default:
+      throw new Error(`Unknown operator: ${n}`);
+  }
+}
+
+/** @implements {Deno.AwaitExpression} */
+class AwaitExpression {
+  type = /** @type {const} */ ("AwaitExpression");
+  range;
+  get argument() {
+    return /** @type {Deno.Expression} */ (createAstNode(
+      this.#ctx,
+      this.#argId,
+    ));
+  }
+
+  #ctx;
+  #argId = 0;
+
+  /**
+   * @param {ParseContext} ctx
+   * @param {Deno.Range} range
+   * @param {number} argId
+   */
+  constructor(ctx, range, argId) {
+    this.#ctx = ctx;
+    this.#argId = argId;
+    this.range = range;
+  }
+}
+
+/** @implements {Deno.BinaryExpression} */
+class BinaryExpression {
+  type = /** @type {const} */ ("BinaryExpression");
+  range;
+  get left() {
+    return /** @type {Deno.Expression | Deno.PrivateIdentifier} */ (createAstNode(
+      this.#ctx,
+      this.#leftId,
+    ));
+  }
+  get right() {
+    return /** @type {Deno.Expression} */ (createAstNode(
+      this.#ctx,
+      this.#rightId,
+    ));
+  }
+
+  operator;
+  #ctx;
+  #leftId;
+  #rightId;
+
+  /**
+   * @param {ParseContext} ctx
+   * @param {Deno.Range} range
+   * @param {number} flags
+   * @param {number} leftId
+   * @param {number} rightId
+   */
+  constructor(ctx, range, flags, leftId, rightId) {
+    this.#ctx = ctx;
+    this.#leftId = leftId;
+    this.#rightId = rightId;
+    this.operator = getBinaryOperator(flags);
+    this.range = range;
+  }
+}
+
+/**
+ * @param {number} n
+ * @returns {Deno.BinaryExpression["operator"]}
+ */
+function getBinaryOperator(n) {
+  switch (n) {
+    case 0:
+      return "&";
+    case 1:
+      return "**";
+    case 2:
+      return "*";
+    case 3:
+      return "|";
+    case 4:
+      return "^";
+    case 5:
+      return "===";
+    case 6:
+      return "==";
+    case 7:
+      return "!==";
+    case 8:
+      return "!=";
+    case 9:
+      return ">=";
+    case 10:
+      return ">>>";
+    case 11:
+      return ">>";
+    case 12:
+      return ">";
+    case 13:
+      return "in";
+    case 14:
+      return "instanceof";
+    case 15:
+      return "<=";
+    case 16:
+      return "<<";
+    case 17:
+      return "<";
+    case 18:
+      return "-";
+    case 19:
+      return "%";
+    case 20:
+      return "+";
+    case 21:
+      return "/";
+    default:
+      throw new Error(`Unknown operator: ${n}`);
+  }
+}
+
+/** @implements {Deno.CallExpression} */
+class CallExpression {
+  type = /** @type {const} */ ("CallExpression");
+  range;
+  get callee() {
+    return /** @type {Deno.Expression} */ (createAstNode(
+      this.#ctx,
+      this.#calleeId,
+    ));
+  }
+  get arguments() {
+    return []; // FIXME
+  }
+  get typeArguments() {
+    return null; // FIXME
+  }
+
+  optional = false; // FIXME
+
+  #ctx;
+  #calleeId;
+
+  /**
+   * @param {ParseContext} ctx
+   * @param {Deno.Range} range
+   * @param {number} calleeId
+   */
+  constructor(ctx, range, calleeId) {
+    this.#ctx = ctx;
+    this.#calleeId = calleeId;
+    this.range = range;
+  }
+}
+
+/** @implements {Deno.ChainExpression} */
+class ChainExpression {
+  type = /** @type {const} */ ("ChainExpression");
+  range;
+
+  #ctx;
+
+  /**
+   * @param {ParseContext} ctx
+   * @param {Deno.Range} range
+   */
+  constructor(ctx, range) {
+    this.#ctx = ctx;
+    this.range = range;
+  }
+}
+
+/** @implements {Deno.ConditionalExpression} */
 class ConditionalExpression {
-  type = "ConditionalExpression";
-  [_ID] = AstNode.Cond;
-  test = null;
-  consequent = null;
-  alternate = null;
+  type = /** @type {const} */ ("ConditionalExpression");
+  range;
+  get test() {
+    return /** @type {Deno.Expression} */ (createAstNode(
+      this.#ctx,
+      this.#testId,
+    ));
+  }
+  get consequent() {
+    return /** @type {Deno.Expression} */ (createAstNode(
+      this.#ctx,
+      this.#consequentId,
+    ));
+  }
+  get alternate() {
+    return /** @type {Deno.Expression} */ (createAstNode(
+      this.#ctx,
+      this.#alternateId,
+    ));
+  }
 
-  loc;
-  constructor(span) {
-    this.loc = span;
+  #ctx;
+  #testId;
+  #consequentId;
+  #alternateId;
+
+  /**
+   * @param {ParseContext} ctx
+   * @param {Deno.Range} range
+   * @param {number} testId
+   * @param {number} consequentId
+   * @param {number} alternateId
+   */
+  constructor(ctx, range, testId, consequentId, alternateId) {
+    this.#ctx = ctx;
+    this.#testId = testId;
+    this.#consequentId = consequentId;
+    this.#alternateId = alternateId;
+    this.range = range;
   }
 }
 
-class StringLiteral {
-  type = "StringLiteral";
-  [_ID] = AstNode.StringLiteral;
+/** @implements {Deno.FunctionExpression} */
+class FunctionExpression {
+  type = /** @type {const} */ ("FunctionExpression");
+  range;
 
-  loc;
-  constructor(span) {
-    this.loc = span;
+  #ctx;
+
+  /**
+   * @param {ParseContext} ctx
+   * @param {Deno.Range} range
+   */
+  constructor(ctx, range) {
+    this.#ctx = ctx;
+    this.range = range;
   }
 }
 
+/** @implements {Deno.Identifier} */
+class Identifier {
+  type = /** @type {const} */ ("Identifier");
+  range;
+  name = "";
+
+  #ctx;
+
+  /**
+   * @param {ParseContext} ctx
+   * @param {Deno.Range} range
+   * @param {number} flags
+   */
+  constructor(ctx, range, flags) {
+    this.#ctx = ctx;
+    this.name = getString(ctx, flags);
+    this.range = range;
+  }
+}
+
+/** @implements {Deno.LogicalExpression} */
+class LogicalExpression {
+  type = /** @type {const} */ ("LogicalExpression");
+  range;
+  get left() {
+    return /** @type {Deno.Expression} */ (createAstNode(
+      this.#ctx,
+      this.#leftId,
+    ));
+  }
+  get right() {
+    return /** @type {Deno.Expression} */ (createAstNode(
+      this.#ctx,
+      this.#rightId,
+    ));
+  }
+
+  #ctx;
+  #leftId;
+  #rightId;
+
+  /**
+   * @param {ParseContext} ctx
+   * @param {Deno.Range} range
+   * @param {number} flags
+   * @param {number} leftId
+   * @param {number} rightId
+   */
+  constructor(ctx, range, flags, leftId, rightId) {
+    this.#ctx = ctx;
+    this.operator = getLogicalOperator(flags);
+    this.#leftId = leftId;
+    this.#rightId = rightId;
+    this.range = range;
+  }
+}
+
+/** @implements {Deno.MemberExpression} */
+class MemberExpression {
+  type = /** @type {const} */ ("MemberExpression");
+  range;
+  get object() {
+    return /** @type {Deno.Expression} */ (createAstNode(
+      this.#ctx,
+      this.#objId,
+    ));
+  }
+  get property() {
+    return /** @type {Deno.Expression | Deno.Identifier | Deno.PrivateIdentifier} */ (createAstNode(
+      this.#ctx,
+      this.#propId,
+    ));
+  }
+  optional = false; // FIXME
+  computed = false; // FIXME
+
+  #ctx;
+  #objId;
+  #propId;
+
+  /**
+   * @param {ParseContext} ctx
+   * @param {Deno.Range} range
+   * @param {number} flags
+   * @param {number} objId
+   * @param {number} propId
+   */
+  constructor(ctx, range, flags, objId, propId) {
+    this.#ctx = ctx;
+    this.computed = flags === 1;
+    this.#objId = objId;
+    this.#propId = propId;
+    this.range = range;
+  }
+}
+
+/**
+ * @param {number} n
+ * @returns {Deno.LogicalExpression["operator"]}
+ */
+function getLogicalOperator(n) {
+  switch (n) {
+    case 0:
+      return "&&";
+    case 1:
+      return "||";
+    case 2:
+      return "??";
+    default:
+      throw new Error(`Unknown operator: ${n}`);
+  }
+}
+
+// Literals
+
+/** @implements {Deno.BooleanLiteral} */
 class BooleanLiteral {
-  type = "BooleanLiteral";
+  type = /** @type {const} */ ("BooleanLiteral");
+  range;
   value = false;
-  [_ID] = AstNode.Bool;
+  #ctx;
 
-  loc;
-  constructor(span, value) {
-    this.loc = span;
-    this.value = value;
+  /**
+   * @param {ParseContext} ctx
+   * @param {Deno.Range} range
+   * @param {number} flags
+   */
+  constructor(ctx, range, flags) {
+    this.#ctx = ctx;
+    this.value = flags === 1;
+    this.range = range;
   }
 }
 
+/** @implements {Deno.NullLiteral} */
 class NullLiteral {
-  type = "NullLiteral";
-  value = false;
-  [_ID] = AstNode.Null;
-
-  loc;
-  constructor(span) {
-    this.loc = span;
-  }
-}
-
-class NumericLiteral {
-  type = "NumericLiteral";
-  value = 0;
-  [_ID] = AstNode.Num;
-
-  loc;
-  constructor(span) {
-    this.loc = span;
-  }
-}
-
-class RegExpLiteral {
-  type = "RegExpLiteral";
+  type = /** @type {const} */ ("NullLiteral");
+  range;
   value = null;
+
+  #ctx;
+
+  /**
+   * @param {ParseContext} ctx
+   * @param {Deno.Range} range
+   */
+  constructor(ctx, range) {
+    this.#ctx = ctx;
+    this.range = range;
+  }
+}
+
+/** @implements {Deno.NumericLiteral} */
+class NumericLiteral {
+  type = /** @type {const} */ ("NumericLiteral");
+  range;
+  value = 0;
+
+  #ctx;
+
+  /**
+   * @param {ParseContext} ctx
+   * @param {Deno.Range} range
+   * @param {number} flags
+   */
+  constructor(ctx, range, flags) {
+    this.#ctx = ctx;
+    this.range = range;
+    this.value = flags;
+  }
+}
+
+/** @implements {Deno.RegExpLiteral} */
+class RegExpLiteral {
+  type = /** @type {const} */ ("RegExpLiteral");
+  range;
   pattern = "";
   flags = "";
-  [_ID] = AstNode.Regex;
 
-  loc;
-  constructor(span) {
-    this.loc = span;
+  #ctx;
+
+  /**
+   * @param {ParseContext} ctx
+   * @param {Deno.Range} range
+   * @param {number} patternId
+   * @param {number} flagsId
+   */
+  constructor(ctx, range, patternId, flagsId) {
+    this.#ctx = ctx;
+    this.range = range;
+    this.pattern = getString(ctx, patternId);
+    this.flags = getString(ctx, flagsId);
   }
 }
 
-class TemplateLiteral {
-  type = "TemplateLiteral";
-  expressions = [];
-  quasis = [];
-  [_ID] = AstNode.Tpl;
+/** @implements {Deno.StringLiteral} */
+class StringLiteral {
+  type = /** @type {const} */ ("StringLiteral");
+  range;
+  value = "";
 
-  loc;
-  constructor(span) {
-    this.loc = span;
-  }
-}
+  #ctx;
 
-class TaggedTemplateExpression {
-  type = "TaggedTemplateExpression";
-  tag = null;
-  quasi = null;
-  [_ID] = AstNode.TaggedTpl;
-
-  loc;
-  constructor(span) {
-    this.loc = span;
-  }
-}
-
-class FunctionExpression {
-  type = "FunctionExpression";
-  generator = false;
-  async = false;
-  id = null;
-  params = [];
-  body = null;
-  [_ID] = AstNode.FnExpr;
-
-  loc;
-  constructor(span) {
-    this.loc = span;
-  }
-}
-
-class Identifier {
-  type = "Identifier";
-  [_ID] = AstNode.Ident;
-
-  loc;
-  name = "";
-  constructor(span, name) {
-    this.loc = span;
-    this.name = name;
-  }
-}
-
-class ObjectProperty {
-  type = "ObjectProperty";
-  method = false;
-  computed = false;
-  shorthand = false;
-  key = null;
-  value = null;
-  [_ID] = AstNode.ObjProperty;
-
-  loc;
-  constructor(span) {
-    this.loc = span;
-  }
-}
-
-class SpreadElement {
-  type = "SpreadElement";
-  argument = null;
-  [_ID] = AstNode.Spread;
-
-  loc;
-  constructor(span) {
-    this.loc = span;
+  /**
+   * @param {ParseContext} ctx
+   * @param {Deno.Range} range
+   * @param {number} flags
+   */
+  constructor(ctx, range, flags) {
+    this.#ctx = ctx;
+    this.range = range;
+    this.value = getString(ctx, flags);
   }
 }
 
 const DECODER = new TextDecoder();
+
+/**
+ * @typedef {{
+ *   buf: Uint8Array,
+ *   strTable: Map<number, string>,
+ *   idTable: number[]
+ * }} ParseContext
+ */
+
+/**
+ * @param {Uint8Array} buf
+ * @param {number} i
+ * @returns {number}
+ */
+function readU32(buf, i) {
+  return (buf[i] << 24) + (buf[i + 1] << 16) + (buf[i + 2] << 8) +
+    buf[i + 3];
+}
+
+/**
+ * @param {ParseContext} ctx
+ * @param {number} id
+ * @returns {string}
+ */
+function getString(ctx, id) {
+  const name = ctx.strTable.get(id);
+  if (name === undefined) {
+    throw new Error(`Missing string id: ${id}`);
+  }
+
+  return name;
+}
+
+/**
+ * @param {ParseContext} ctx
+ * @param {number} id
+ * @returns {Deno.AstNode}
+ */
+function createAstNode(ctx, id) {
+  const { buf, idTable } = ctx;
+  const i = idTable[id];
+  /** @type {AstNodeId} */
+  const kind = buf[i];
+
+  const flags = buf[i];
+  const count = readU32(buf, i + 2);
+  const rangeStart = readU32(buf, i + 6);
+  const rangeEnd = readU32(buf, i + 10);
+  const range = /** @type {Deno.Range} */ ([rangeStart, rangeEnd]);
+
+  switch (kind) {
+    case AstNodeId.Program:
+      return new Program(ctx, range, flags === 1 ? "module" : "script");
+    case AstNodeId.Import:
+      // case AstNodeId.ImportDecl:
+      // case AstNodeId.ExportDecl:
+      // case AstNodeId.ExportNamed:
+      // case AstNodeId.ExportDefaultDecl:
+      // case AstNodeId.ExportDefaultExpr:
+      // case AstNodeId.ExportAll:
+
+    // Statements
+    case AstNodeId.BlockStatement:
+      throw new BlockStatement(ctx, range); // FIXME
+    case AstNodeId.BreakStatement:
+      throw new BreakStatement(ctx, range, 0); // FIXME
+    case AstNodeId.ContinueStatement:
+      throw new ContinueStatement(ctx, range, 0); // FIXME
+    case AstNodeId.DebuggerStatement:
+      throw new DebuggerStatement(ctx, range);
+    case AstNodeId.DoWhileStatement:
+      throw new DoWhileStatement(ctx, range, 0, 0); // FIXME
+    case AstNodeId.ExpressionStatement:
+      return new ExpressionStatement(ctx, range, 0); // FIXME
+    case AstNodeId.ForInStatement:
+      throw new ForInStatement(ctx, range, 0, 0, 0); // FIXME
+    case AstNodeId.ForOfStatement:
+      throw new ForOfStatement(ctx, range, false, 0, 0, 0); // FIXME
+    case AstNodeId.ForStatement:
+      throw new ForStatement(ctx, range, 0, 0, 0, 0); // FIXME
+    case AstNodeId.IfStatement:
+      throw new IfStatement(ctx, range, 0, 0, 0); // FIXME
+    case AstNodeId.LabeledStatement:
+      throw new LabeledStatement(ctx, range, 0, 0); // FIXME
+    case AstNodeId.ReturnStatement:
+      throw new ReturnStatement(ctx, range, 0); // FIXME
+    case AstNodeId.SwitchStatement:
+      throw new SwitchStatement(ctx, range, 0); // FIXME
+    case AstNodeId.ThrowStatement:
+      throw new ThrowStatement(ctx, range, 0); // FIXME
+    case AstNodeId.TryStatement:
+      throw new TryStatement(ctx, range, 0, 0, 0); // FIXME
+    case AstNodeId.WhileStatement:
+      throw new WhileStatement(ctx, range, 0, 0); // FIXME
+    case AstNodeId.WithStatement:
+      throw new WithStatement(ctx, range, 0, 0);
+
+    // Expressions
+    case AstNodeId.ArrayExpression:
+      throw new ArrayExpression(ctx, range); // FIXME
+    case AstNodeId.ArrowFunctionExpression:
+      throw new ArrowFunctionExpression(ctx, range, false, false, 0); // FIXME
+    case AstNodeId.AssignmentExpression:
+      throw new AssignmentExpression(ctx, range, flags, 0, 0); // FIXME
+    case AstNodeId.AwaitExpression:
+      throw new AwaitExpression(ctx, range, 0); // FIXME
+    case AstNodeId.BinaryExpression:
+      throw new BinaryExpression(ctx, range, flags, 0, 0); // FIXME
+    case AstNodeId.CallExpression:
+      throw new CallExpression(ctx, range, 0); // FIXME
+    case AstNodeId.ChainExpression:
+      throw new ChainExpression(ctx, range); // FIXME
+    case AstNodeId.ConditionalExpression:
+      throw new ConditionalExpression(ctx, range, 0, 0, 0); // FIXME
+    case AstNodeId.FunctionExpression:
+      throw new FunctionExpression(ctx, range); // FIXME
+    case AstNodeId.Identifier:
+      throw new Identifier(ctx, range, flags); // FIXME
+    case AstNodeId.LogicalExpression:
+      throw new LogicalExpression(ctx, range, flags, 0, 0); // FIXME
+    case AstNodeId.MemberExpression:
+      throw new MemberExpression(ctx, range, flags, 0, 0); // FIXME
+    case AstNodeId.MetaProperty:
+      throw new Error("TODO");
+    case AstNodeId.NewExpression:
+      throw new Error("TODO");
+    case AstNodeId.ObjectExpression:
+      throw new Error("TODO");
+    case AstNodeId.StaticBlock:
+      throw new Error("TODO");
+    case AstNodeId.SequenceExpression:
+      throw new Error("TODO");
+    case AstNodeId.Super:
+      throw new Error("TODO");
+    case AstNodeId.TaggedTemplateExpression:
+      throw new Error("TODO");
+    case AstNodeId.TemplateLiteral:
+      throw new Error("TODO");
+
+    // Literals
+    case AstNodeId.BooleanLiteral:
+      throw new BooleanLiteral(ctx, range, flags); // FIXME
+    case AstNodeId.NullLiteral:
+      throw new NullLiteral(ctx, range); // FIXME
+    case AstNodeId.NumericLiteral:
+      throw new NumericLiteral(ctx, range, flags); // FIXME
+    case AstNodeId.RegExpLiteral:
+      throw new RegExpLiteral(ctx, range, flags); // FIXME
+    case AstNodeId.StringLiteral:
+      throw new StringLiteral(ctx, range, flags); // FIXME
+    default:
+      throw new Error(`Unknown ast node ${kind}`);
+  }
+}
 
 /**
  * @param {Uint8Array} ast
@@ -774,155 +1563,155 @@ function buildAstFromBinary(ast) {
 
     let node = null;
     switch (kind) {
-      case AstNode.Program:
+      case AstNodeId.Program:
         node = new Program(span, flags === 1 ? "module" : "script");
         break;
-      case AstNode.Var:
+      case AstNodeId.Var:
         node = new VariableDeclaration(span);
         break;
-      case AstNode.VarDeclarator:
+      case AstNodeId.VarDeclarator:
         node = new VariableDeclarator(span);
         break;
-      case AstNode.Expr:
+      case AstNodeId.ExpressionStatement:
         node = new ExpressionStatement(span);
         break;
-      case AstNode.This:
+      case AstNodeId.This:
         node = new ThisExpression(span);
         break;
-      case AstNode.Array:
+      case AstNodeId.ArrayExpression:
         node = new ArrayExpression(span);
         break;
-      case AstNode.Object:
+      case AstNodeId.ObjectExpression:
         node = new ObjectExpression(span);
         break;
-      case AstNode.Assign:
+      case AstNodeId.AssignmentExpression:
         node = new ObjectExpression(span);
         break;
-      case AstNode.Member:
+      case AstNodeId.MemberExpression:
         node = new MemberExpression(span);
         break;
-      case AstNode.Call:
+      case AstNodeId.CallExpression:
         node = new CallExpression(span);
         break;
-      case AstNode.Seq:
+      case AstNodeId.SequenceExpression:
         node = new SequenceExpression(span);
         break;
-      case AstNode.ObjProperty:
+      case AstNodeId.ObjProperty:
         node = new ObjectProperty(span);
         break;
-      case AstNode.Arrow:
+      case AstNodeId.ArrowFunctionExpression:
         node = new ArrowFunctionExpression(span);
         break;
-      case AstNode.Block:
+      case AstNodeId.BlockStatement:
         node = new BlockStatement(span);
         break;
-      case AstNode.StringLiteral:
+      case AstNodeId.StringLiteral:
         node = new StringLiteral(span);
         break;
-      case AstNode.Ident:
+      case AstNodeId.Identifier:
         node = new Identifier(span, strTable.get(count));
         count = 0;
         break;
-      case AstNode.Fn:
+      case AstNodeId.Fn:
         node = new FunctionDeclaration(span);
         break;
-      case AstNode.Return:
+      case AstNodeId.ReturnStatement:
         node = new ReturnStatement(span);
         break;
-      case AstNode.If:
+      case AstNodeId.IfStatement:
         node = new IfStatement(span);
         break;
-      case AstNode.Bin:
+      case AstNodeId.BinaryExpression:
         node = new LogicalExpression(span);
         break;
-      case AstNode.Unary:
+      case AstNodeId.Unary:
         node = new UnaryExpression(span);
         break;
-      case AstNode.Update:
+      case AstNodeId.Update:
         node = new UpdateExpression(span);
         break;
-      case AstNode.For:
+      case AstNodeId.ForStatement:
         node = new ForStatement(span);
         break;
-      case AstNode.Bool:
+      case AstNodeId.BooleanLiteral:
         node = new BooleanLiteral(span, flags === 1);
         break;
-      case AstNode.Null:
+      case AstNodeId.NullLiteral:
         node = new NullLiteral(span);
         break;
-      case AstNode.Num:
+      case AstNodeId.NumericLiteral:
         node = new NumericLiteral(span);
         break;
-      case AstNode.Regex:
+      case AstNodeId.RegExpLiteral:
         node = new RegExpLiteral(span);
         break;
-      case AstNode.ForIn:
+      case AstNodeId.ForInStatement:
         node = new ForInStatement(span);
         break;
-      case AstNode.ForOf:
+      case AstNodeId.ForOfStatement:
         node = new ForOfStatement(span);
         break;
-      case AstNode.While:
+      case AstNodeId.WhileStatement:
         node = new WhileStatement(span);
         break;
-      case AstNode.Yield:
+      case AstNodeId.Yield:
         node = new YieldExpression(span);
         break;
-      case AstNode.Continue:
+      case AstNodeId.ContinueStatement:
         node = new ContinueStatement(span);
         break;
-      case AstNode.Break:
+      case AstNodeId.BreakStatement:
         node = new BreakStatement(span);
         break;
-      case AstNode.Cond:
+      case AstNodeId.ConditionalExpression:
         node = new ConditionalExpression(span);
         break;
-      case AstNode.Switch:
+      case AstNodeId.SwitchStatement:
         node = new SwitchStatement(span);
         break;
-      case AstNode.SwitchCase:
+      case AstNodeId.SwitchCase:
         node = new SwitchCase(span);
         break;
-      case AstNode.Labeled:
+      case AstNodeId.LabeledStatement:
         node = new LabeledStatement(span);
         break;
-      case AstNode.DoWhile:
+      case AstNodeId.DoWhileStatement:
         node = new DoWhileStatement(span);
         break;
-      case AstNode.Spread:
+      case AstNodeId.Spread:
         node = new SpreadElement(span);
         break;
-      case AstNode.Throw:
+      case AstNodeId.ThrowStatement:
         node = new ThrowStatement(span);
         break;
-      case AstNode.Debugger:
+      case AstNodeId.DebuggerStatement:
         node = new DebuggerStatement(span);
         break;
-      case AstNode.Tpl:
+      case AstNodeId.Tpl:
         node = new TemplateLiteral(span);
         break;
-      case AstNode.New:
+      case AstNodeId.NewExpression:
         node = new NewExpression(span);
         break;
-      case AstNode.Class:
+      case AstNodeId.Class:
         node = new ClassDeclaration(span);
         break;
-      case AstNode.Try:
+      case AstNodeId.TryStatement:
         node = new TryStatement(span);
         break;
-      case AstNode.CatchClause:
+      case AstNodeId.CatchClause:
         node = new CatchClause(span);
         break;
-      case AstNode.TaggedTpl:
+      case AstNodeId.TaggedTemplateExpression:
         node = new TaggedTemplateExpression(span);
         break;
-      case AstNode.FnExpr:
+      case AstNodeId.FunctionExpression:
         node = new FunctionExpression(span);
         break;
-      case AstNode.Empty:
+      case AstNodeId.Empty:
         // Ignore empty statements
         break;
-      case AstNode.EmptyExpr:
+      case AstNodeId.EmptyExpr:
         // Nothing, AST defaults to null
         break;
       default:
@@ -937,50 +1726,50 @@ function buildAstFromBinary(ast) {
 
       // console.log({ last, node });
       switch (id) {
-        case AstNode.Program:
-        case AstNode.Block:
+        case AstNodeId.Program:
+        case AstNodeId.BlockStatement:
           last.body.push(node);
           break;
-        case AstNode.Expr:
+        case AstNodeId.ExpressionStatement:
           last.expression = node;
           break;
-        case AstNode.ObjProperty:
+        case AstNodeId.ObjProperty:
           if (lastCount > 1) {
             last.value = node;
           } else {
             last.key = node;
           }
           break;
-        case AstNode.Member:
+        case AstNodeId.MemberExpression:
           if (lastCount > 1) {
             last.property = node;
           } else {
             last.object = node;
           }
           break;
-        case AstNode.Call:
+        case AstNodeId.CallExpression:
           if (lastCount > 1) {
             last.arguments.push(node);
           } else {
             last.callee = node;
           }
           break;
-        case AstNode.Seq:
+        case AstNodeId.SequenceExpression:
           last.expressions.push(node);
           break;
-        case AstNode.Arrow:
+        case AstNodeId.ArrowFunctionExpression:
           // FIXME
           break;
-        case AstNode.Return:
-        case AstNode.Spread:
-        case AstNode.Throw:
-        case AstNode.Unary:
-        case AstNode.Update:
-        case AstNode.Yield:
+        case AstNodeId.ReturnStatement:
+        case AstNodeId.Spread:
+        case AstNodeId.ThrowStatement:
+        case AstNodeId.Unary:
+        case AstNodeId.Update:
+        case AstNodeId.Yield:
           last.argument = node;
           break;
-        case AstNode.If:
-        case AstNode.Cond:
+        case AstNodeId.IfStatement:
+        case AstNodeId.ConditionalExpression:
           if (lastCount === 3) {
             last.alternate = node;
           } else if (lastCount === 2) {
@@ -989,14 +1778,14 @@ function buildAstFromBinary(ast) {
             last.test = node;
           }
           break;
-        case AstNode.Bin:
+        case AstNodeId.BinaryExpression:
           if (lastCount === 2) {
             last.right = node;
           } else {
             last.left = node;
           }
           break;
-        case AstNode.For:
+        case AstNodeId.ForStatement:
           if (lastCount === 4) {
             last.body = node;
           } else if (lastCount === 3) {
@@ -1007,8 +1796,8 @@ function buildAstFromBinary(ast) {
             last.init = node;
           }
           break;
-        case AstNode.ForIn:
-        case AstNode.ForOf:
+        case AstNodeId.ForInStatement:
+        case AstNodeId.ForOfStatement:
           if (lastCount === 3) {
             last.body = node;
           } else if (lastCount === 2) {
@@ -1017,64 +1806,64 @@ function buildAstFromBinary(ast) {
             last.left = node;
           }
           break;
-        case AstNode.DoWhile:
-        case AstNode.While:
+        case AstNodeId.DoWhileStatement:
+        case AstNodeId.WhileStatement:
           if (lastCount === 2) {
             last.body = node;
           } else {
             last.test = node;
           }
           break;
-        case AstNode.Break:
-        case AstNode.Continue:
+        case AstNodeId.BreakStatement:
+        case AstNodeId.ContinueStatement:
           last.label = node;
           break;
-        case AstNode.Switch:
+        case AstNodeId.SwitchStatement:
           if (lastCount > 1) {
             last.cases.push(node);
           } else {
             last.discriminant = node;
           }
           break;
-        case AstNode.SwitchCase:
+        case AstNodeId.SwitchCase:
           if (lastCount > 1) {
             last.consequent = node;
           } else {
             last.test = node;
           }
           break;
-        case AstNode.Labeled:
+        case AstNodeId.LabeledStatement:
           last.body = node;
           break;
-        case AstNode.VarDeclarator:
+        case AstNodeId.VarDeclarator:
           if (lastCount > 1) {
             last.init = node;
           } else {
             last.id = node;
           }
           break;
-        case AstNode.New:
+        case AstNodeId.NewExpression:
           // FIXME
           break;
-        case AstNode.Class:
+        case AstNodeId.Class:
           // FIXME
           break;
-        case AstNode.Try:
+        case AstNodeId.TryStatement:
           // FIXME
           break;
-        case AstNode.CatchClause:
+        case AstNodeId.CatchClause:
           // FIXME
           break;
         // Can't happen
-        case AstNode.Ident:
-        case AstNode.StringLiteral:
-        case AstNode.BigInt:
-        case AstNode.Bool:
-        case AstNode.Null:
-        case AstNode.Num:
-        case AstNode.Regex:
-        case AstNode.This:
-        case AstNode.Debugger:
+        case AstNodeId.Identifier:
+        case AstNodeId.StringLiteral:
+        case AstNodeId.BigInt:
+        case AstNodeId.BooleanLiteral:
+        case AstNodeId.NullLiteral:
+        case AstNodeId.NumericLiteral:
+        case AstNodeId.RegExpLiteral:
+        case AstNodeId.This:
+        case AstNodeId.DebuggerStatement:
           break;
       }
 

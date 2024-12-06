@@ -6165,8 +6165,10 @@ declare namespace Deno {
     span: { start: number; end: number };
   }
 
+  export type Range = [number, number];
+
   export interface BaseNode {
-    range: [number, number];
+    range: Range;
   }
 
   export interface AssignmentPattern extends BaseNode {
@@ -6281,7 +6283,7 @@ declare namespace Deno {
     arguments: Array<Expression | SpreadElement>;
     optional: boolean; // FIXME only in TSEstree
     // FIXME
-    // typeArguments: TSTypeParameter | null;
+    typeArguments: null; // FIXME
   }
 
   export interface ChainExpression extends BaseNode {
@@ -6332,6 +6334,8 @@ declare namespace Deno {
 
   export interface MemberExpression extends BaseNode {
     type: "MemberExpression";
+    object: Expression;
+    optional: boolean; // FIXME: TSTREE
     computed: boolean;
     property: Expression | Identifier | PrivateIdentifier;
   }
@@ -6933,6 +6937,13 @@ declare namespace Deno {
     typeAnnotation: TSType;
   }
 
+  export type AstNode =
+    | Program
+    | Expression
+    | Statement
+    | CatchClause
+    | PrivateIdentifier;
+
   export interface LintRuleContext {
     report(
       data: { node: SpanNode; message: string },
@@ -6944,19 +6955,6 @@ declare namespace Deno {
 
   export interface LintVisitor {
     Program?(node: Program): void;
-
-    // Expressions
-    ArrayExpression?(node: ArrayExpression): void;
-    ArrowFunctionExpression?(node: ArrowFunctionExpression): void;
-    AssignmentExpression?(node: AssignmentExpression): void;
-    AwaitExpression?(node: AwaitExpression): void;
-    BinaryExpression?(node: BinaryExpression): void;
-    BooleanLiteral?(node: BooleanLiteral): void;
-    CallExpression?(node: CallExpression): void;
-    Identifier?(node: Identifier): void;
-    NullLiteral?(node: NullLiteral): void;
-    NumericLiteral?(node: NumericLiteral): void;
-    StringLiteral?(node: StringLiteral): void;
 
     // Declarations
     ClassDeclaration?(node: ClassDeclaration): void;
@@ -6986,6 +6984,36 @@ declare namespace Deno {
     TryStatement?(node: TryStatement): void;
     WhileStatement?(node: WhileStatement): void;
     WithStatement?(node: WithStatement): void;
+
+    // Expressions
+    ArrayExpression?(node: ArrayExpression): void;
+    ArrowFunctionExpression?(node: ArrowFunctionExpression): void;
+    AssignmentExpression?(node: AssignmentExpression): void;
+    AwaitExpression?(node: AwaitExpression): void;
+    BinaryExpression?(node: BinaryExpression): void;
+    CallExpression?(node: CallExpression): void;
+    ChainExpression?(node: ChainExpression): void;
+    ClassExpression?(node: ClassExpression): void;
+    ConditionalExpression?(node: ConditionalExpression): void;
+    FunctionExpression?(node: FunctionExpression): void;
+    Identifier?(node: Identifier): void;
+    LogicalExpression?(node: LogicalExpression): void;
+    MemberExpression?(node: MemberExpression): void;
+    MetaProperty?(node: MetaProperty): void;
+    NewExpression?(node: NewExpression): void;
+    ObjectExpression?(node: ObjectExpression): void;
+    StaticBlock?(node: StaticBlock): void;
+    SequenceExpression?(node: SequenceExpression): void;
+    Super?(node: Super): void;
+    TaggedTemplateExpression?(node: TaggedTemplateExpression): void;
+    TemplateLiteral?(node: TemplateLiteral): void;
+
+    // Literals
+    BooleanLiteral?(node: BooleanLiteral): void;
+    NullLiteral?(node: NullLiteral): void;
+    NumericLiteral?(node: NumericLiteral): void;
+    RegExpLiteral?(node: RegExpLiteral): void;
+    StringLiteral?(node: StringLiteral): void;
 
     // Other
     ExportSpecifier?(node: ExportSpecifier): void;
