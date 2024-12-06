@@ -6718,8 +6718,14 @@ declare namespace Deno {
     | ImportDeclaration
     | VariableDeclaration
     // TypeScript
+    | TSDeclareFunction
     | TSEnumDeclaration
-    | TSExportAssignment;
+    | TSExportAssignment
+    | TSImportEqualsDeclaration
+    | TSInterfaceDeclaration
+    | TSNamespaceExportDeclaration
+    | TSModuleDeclaration
+    | TSTypeAliasDeclaration;
 
   export interface Program extends BaseNode {
     type: "Program";
@@ -6852,6 +6858,32 @@ declare namespace Deno {
     expression: Expression;
   }
 
+  export interface TSImportEqualsDeclaration extends BaseNode {
+    type: "TSImportEqualsDeclaration";
+    // FIXME
+  }
+
+  export interface TSInterfaceDeclaration extends BaseNode {
+    type: "TSInterfaceDeclaration";
+    // FIXME
+  }
+  export interface TSDeclareFunction extends BaseNode {
+    type: "TSDeclareFunction";
+    // FIXME
+  }
+  export interface TSModuleDeclaration extends BaseNode {
+    type: "TSModuleDeclaration";
+    // FIXME
+  }
+  export interface TSNamespaceExportDeclaration extends BaseNode {
+    type: "TSNamespaceExportDeclaration";
+    // FIXME
+  }
+  export interface TSTypeAliasDeclaration extends BaseNode {
+    type: "TSTypeAliasDeclaration";
+    // FIXME
+  }
+
   export interface TSAnyKeyword extends BaseNode {
     type: "TSAnyKeyword";
   }
@@ -6868,11 +6900,15 @@ declare namespace Deno {
 
   export interface TSTupleType extends BaseNode {
     type: "TSTupleType";
+    // FIXME
+    // deno-lint-ignore no-explicit-any
     elementTypes: any[];
   }
 
   export interface TSTypeReference extends BaseNode {
     type: "TSTypeReference";
+    // FIXME
+    // deno-lint-ignore no-explicit-any
     typeParameters: any[];
   }
 
@@ -6972,9 +7008,17 @@ declare namespace Deno {
     JSXText?(node: JSXText): void;
 
     // TypeScript
-    TSAnyKeyword?(node: TSAnyKeyword): void;
+    // Statements
+    TSDeclareFunction?(node: TSDeclareFunction): void;
     TSEnumDeclaration?(node: TSEnumDeclaration): void;
     TSExportAssignment?(node: TSExportAssignment): void;
+    TSImportEqualsDeclaration?(node: TSImportEqualsDeclaration): void;
+    TSInterfaceDeclaration?(node: TSInterfaceDeclaration): void;
+    TSNamespaceExportDeclaration?(node: TSNamespaceExportDeclaration): void;
+    TSModuleDeclaration?(node: TSModuleDeclaration): void;
+    TSTypeAliasDeclaration?(node: TSTypeAliasDeclaration): void;
+
+    TSAnyKeyword?(node: TSAnyKeyword): void;
     TSTupleType?(node: TSTupleType): void;
     TSTypeAnnotation?(node: TSTypeAnnotation): void;
     TSTypeReference?(node: TSTypeReference): void;
