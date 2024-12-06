@@ -16,7 +16,8 @@ use deno_tls::rustls;
 use deno_tls::rustls::ClientConnection;
 use deno_tls::rustls_pemfile;
 use deno_tls::TlsStream;
-use hickory_client::serialize::txt::Parser;
+use hickory_proto::serialize::txt::Parser;
+use hickory_server::authority::AuthorityObject;
 use pretty_assertions::assert_eq;
 use test_util as util;
 use test_util::itest;
@@ -2245,10 +2246,10 @@ async fn test_resolve_dns() {
       panic!("failed to parse: {:?}", records.err())
     }
     let (origin, records) = records.unwrap();
-    let authority = Box::new(Arc::new(
+    let authority: Vec<Arc<dyn AuthorityObject>> = vec![Arc::new(
       InMemoryAuthority::new(origin, records, ZoneType::Primary, false)
         .unwrap(),
-    ));
+    )];
     let mut catalog: Catalog = Catalog::new();
     catalog.upsert(Name::root().into(), authority);
 

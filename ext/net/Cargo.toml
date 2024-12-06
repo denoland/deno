@@ -2,7 +2,7 @@
 
 [package]
 name = "deno_net"
-version = "0.172.0"
+version = "0.173.0"
 authors.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -17,7 +17,7 @@ path = "lib.rs"
 deno_core.workspace = true
 deno_permissions.workspace = true
 deno_tls.workspace = true
-hickory-proto = "0.24"
+hickory-proto = "0.25.0-alpha.4"
 hickory-resolver.workspace = true
 pin-project.workspace = true
 rustls-tokio-stream.workspace = true
