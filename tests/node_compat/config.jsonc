@@ -503,6 +503,7 @@
       "test-fs-readdir-stack-overflow.js",
       "test-fs-readdir.js",
       "test-fs-readfile-empty.js",
+      "test-fs-readfile-fd.js",
       "test-fs-readfile-unlink.js",
       "test-fs-readfile-zero-byte-liar.js",
       "test-fs-readfilesync-enoent.js",
