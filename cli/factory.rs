@@ -1079,7 +1079,7 @@ impl<T> WorkspaceFileContainer<T> {
   #[allow(clippy::type_complexity)]
   pub async fn from_workspace_dirs_with_files(
     mut workspace_dirs_with_files: Vec<(Arc<WorkspaceDirectory>, FilePatterns)>,
-    collect_files: fn(
+    collect_specifiers: fn(
       FilePatterns,
       Arc<CliOptions>,
       Arc<FileFetcher>,
@@ -1124,7 +1124,7 @@ impl<T> WorkspaceFileContainer<T> {
       let main_graph_container =
         factory.main_module_graph_container().await?.clone();
       let specifiers =
-        collect_files(files, cli_options, file_fetcher.clone()).await?;
+        collect_specifiers(files, cli_options, file_fetcher.clone()).await?;
       let doc_snippet_specifiers = if check_doc || check_doc_only {
         let root_permissions = factory.root_permissions_container()?;
         let mut doc_snippet_specifiers = Vec::new();

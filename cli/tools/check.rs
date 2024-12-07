@@ -39,7 +39,6 @@ use crate::npm::CliNpmResolver;
 use crate::tsc;
 use crate::tsc::Diagnostics;
 use crate::tsc::TypeCheckingCjsTracker;
-use crate::util::extract;
 use crate::util::fs::collect_specifiers;
 use crate::util::path::is_script_ext;
 use crate::util::path::to_percent_decoded_str;
@@ -53,80 +52,48 @@ pub async fn check(
     ConfigFlag::Path(_) => false,
     ConfigFlag::Disabled => false,
   };
-  if is_discovered_config {
-    let factory = CliFactory::from_flags(flags.clone());
-    let cli_options = factory.cli_options()?;
-    let workspace_dirs_with_files = cli_options
+  let factory = CliFactory::from_flags(flags);
+  let cli_options = factory.cli_options()?;
+  let workspace_dirs_with_files = if is_discovered_config {
+    cli_options
       .resolve_file_flags_for_members(&FileFlags {
         ignore: Default::default(),
         include: check_flags.files,
       })?
       .into_iter()
       .map(|(d, p)| (Arc::new(d), p))
-      .collect();
-    let container = WorkspaceFileContainer::from_workspace_dirs_with_files(
-      workspace_dirs_with_files,
-      |patterns, cli_options, _| {
-        async move {
-          collect_specifiers(
-            patterns,
-            cli_options.vendor_dir_path().map(ToOwned::to_owned),
-            |e| is_script_ext(e.path),
-          )
-          .map(|s| s.into_iter().map(|s| (s, ())).collect())
-        }
-        .boxed_local()
-      },
-      cli_options,
-      check_flags.doc,
-      check_flags.doc_only,
-    )
-    .await?;
-    if !container.has_specifiers() {
-      log::warn!("{} No matching files found.", colors::yellow("Warning"));
-    }
-    return container.check().await;
-  }
-
-  let factory = CliFactory::from_flags(flags);
-
-  let main_graph_container = factory.main_module_graph_container().await?;
-
-  let specifiers =
-    main_graph_container.collect_specifiers(&check_flags.files)?;
-  if specifiers.is_empty() {
+      .collect()
+  } else {
+    let file_flags = FileFlags {
+      ignore: Default::default(),
+      include: check_flags.files,
+    };
+    let patterns = file_flags.as_file_patterns(cli_options.initial_cwd())?;
+    let patterns = cli_options.start_dir.to_resolved_file_patterns(patterns)?;
+    vec![(cli_options.start_dir.clone(), patterns)]
+  };
+  let container = WorkspaceFileContainer::from_workspace_dirs_with_files(
+    workspace_dirs_with_files,
+    |patterns, cli_options, _| {
+      async move {
+        collect_specifiers(
+          patterns,
+          cli_options.vendor_dir_path().map(ToOwned::to_owned),
+          |e| is_script_ext(e.path),
+        )
+        .map(|s| s.into_iter().map(|s| (s, ())).collect())
+      }
+      .boxed_local()
+    },
+    cli_options,
+    check_flags.doc,
+    check_flags.doc_only,
+  )
+  .await?;
+  if !container.has_specifiers() {
     log::warn!("{} No matching files found.", colors::yellow("Warning"));
   }
-
-  let specifiers_for_typecheck = if check_flags.doc || check_flags.doc_only {
-    let file_fetcher = factory.file_fetcher()?;
-    let root_permissions = factory.root_permissions_container()?;
-
-    let mut specifiers_for_typecheck = if check_flags.doc {
-      specifiers.clone()
-    } else {
-      vec![]
-    };
-
-    for s in specifiers {
-      let file = file_fetcher.fetch(&s, root_permissions).await?;
-      let snippet_files = extract::extract_snippet_files(file)?;
-      for snippet_file in snippet_files {
-        specifiers_for_typecheck.push(snippet_file.specifier.clone());
-        file_fetcher.insert_memory_files(snippet_file);
-      }
-    }
-
-    specifiers_for_typecheck
-  } else {
-    specifiers
-  };
-
-  Ok(
-    main_graph_container
-      .check_specifiers(&specifiers_for_typecheck, None)
-      .await?,
-  )
+  container.check().await
 }
 
 /// Options for performing a check of a module graph. Note that the decision to
