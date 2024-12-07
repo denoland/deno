@@ -4,15 +4,18 @@ use std::collections::HashSet;
 use std::sync::Arc;
 
 use deno_core::error::AnyError;
+use deno_core::serde_json;
 use deno_semver::package::PackageNv;
 use deno_semver::package::PackageReq;
 use deno_semver::VersionReq;
 use deno_terminal::colors;
+use serde::Serialize;
 
 use crate::args::CacheSetting;
 use crate::args::CliOptions;
 use crate::args::Flags;
 use crate::args::OutdatedFlags;
+use crate::args::OutdatedOutputFmt;
 use crate::factory::CliFactory;
 use crate::file_fetcher::FileFetcher;
 use crate::jsr::JsrFetchResolver;
@@ -24,12 +27,16 @@ use super::deps::DepManager;
 use super::deps::DepManagerArgs;
 use super::deps::PackageLatestVersion;
 
-#[derive(Debug, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Serialize)]
 struct OutdatedPackage {
+  #[serde(rename = "specifier")]
   kind: DepKind,
+  #[serde(rename = "latest")]
   latest: String,
+  #[serde(rename = "update")]
   semver_compatible: String,
   current: String,
+  #[serde(rename = "package")]
   name: String,
 }
 
@@ -103,6 +110,7 @@ fn print_outdated_table(packages: &[OutdatedPackage]) {
 fn print_outdated(
   deps: &mut DepManager,
   compatible: bool,
+  output_fmt: OutdatedOutputFmt,
 ) -> Result<(), AnyError> {
   let mut outdated = Vec::new();
   let mut seen = std::collections::BTreeSet::new();
@@ -147,7 +155,13 @@ fn print_outdated(
 
   if !outdated.is_empty() {
     outdated.sort();
-    print_outdated_table(&outdated);
+    match output_fmt {
+      OutdatedOutputFmt::Table => print_outdated_table(&outdated),
+      OutdatedOutputFmt::Json => {
+        let json = serde_json::to_string_pretty(&outdated)?;
+        log::info!("{json}");
+      }
+    }
   }
 
   Ok(())
@@ -214,8 +228,11 @@ pub async fn outdated(
     crate::args::OutdatedKind::Update { latest } => {
       update(deps, latest, &filter_set, flags).await?;
     }
-    crate::args::OutdatedKind::PrintOutdated { compatible } => {
-      print_outdated(&mut deps, compatible)?;
+    crate::args::OutdatedKind::PrintOutdated {
+      compatible,
+      output_fmt,
+    } => {
+      print_outdated(&mut deps, compatible, output_fmt)?;
     }
   }
 
