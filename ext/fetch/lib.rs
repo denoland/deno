@@ -41,6 +41,8 @@ use deno_core::OpState;
 use deno_core::RcRef;
 use deno_core::Resource;
 use deno_core::ResourceId;
+use deno_path_util::url_from_file_path;
+use deno_path_util::PathToUrlError;
 use deno_permissions::PermissionCheckError;
 use deno_tls::rustls::RootCertStore;
 use deno_tls::Proxy;
@@ -172,6 +174,8 @@ pub enum FetchError {
   NetworkError,
   #[error("Fetching files only supports the GET method: received {0}")]
   FsNotGet(Method),
+  #[error(transparent)]
+  PathToUrl(#[from] PathToUrlError),
   #[error("Invalid URL {0}")]
   InvalidUrl(Url),
   #[error(transparent)]
@@ -436,7 +440,7 @@ where
       let permissions = state.borrow_mut::<FP>();
       let path = permissions.check_read(&path, "fetch()")?;
       let url = match path {
-        Cow::Owned(path) => Url::from_file_path(path).unwrap(),
+        Cow::Owned(path) => url_from_file_path(&path)?,
         Cow::Borrowed(_) => url,
       };
 
