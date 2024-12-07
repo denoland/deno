@@ -588,12 +588,12 @@ impl ManagedCliNpmResolver {
     &self,
   ) -> Result<bool, AnyError> {
     if !self.top_level_install_flag.raise() {
-      return Ok(false); // already did this
+      return Ok(true); // already did this
     }
 
     let pkg_json_remote_pkgs = self.npm_install_deps_provider.remote_pkgs();
     if pkg_json_remote_pkgs.is_empty() {
-      return Ok(false);
+      return Ok(true);
     }
 
     // check if something needs resolving before bothering to load all
@@ -607,7 +607,7 @@ impl ManagedCliNpmResolver {
       log::debug!(
         "All package.json deps resolvable. Skipping top level install."
       );
-      return Ok(false); // everything is already resolvable
+      return Ok(true); // everything is already resolvable
     }
 
     let pkg_reqs = pkg_json_remote_pkgs
