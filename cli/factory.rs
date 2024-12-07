@@ -1067,7 +1067,8 @@ impl CliFactory {
 pub struct WorkspaceFileContainerEntry<T> {
   main_graph_container: Arc<MainModuleGraphContainer>,
   specifiers: Vec<(ModuleSpecifier, T)>,
-  snippet_file_specifiers: Option<Vec<ModuleSpecifier>>,
+  doc_snippet_specifiers: Option<Vec<ModuleSpecifier>>,
+  check_doc_only: bool,
 }
 
 pub struct WorkspaceFileContainer<T> {
@@ -1087,6 +1088,7 @@ impl<T> WorkspaceFileContainer<T> {
     >,
     cli_options: &CliOptions,
     check_doc: bool,
+    check_doc_only: bool,
   ) -> Result<Self, AnyError> {
     workspace_dirs_with_files.sort_by_cached_key(|(d, _)| d.dir_url().clone());
     let all_scopes = Arc::new(
@@ -1123,25 +1125,26 @@ impl<T> WorkspaceFileContainer<T> {
         factory.main_module_graph_container().await?.clone();
       let specifiers =
         collect_files(files, cli_options, file_fetcher.clone()).await?;
-      let snippet_file_specifiers = if check_doc {
+      let doc_snippet_specifiers = if check_doc || check_doc_only {
         let root_permissions = factory.root_permissions_container()?;
-        let mut snippet_file_specifiers = Vec::new();
+        let mut doc_snippet_specifiers = Vec::new();
         for (s, _) in specifiers.iter() {
           let file = file_fetcher.fetch(s, root_permissions).await?;
           let snippet_files = extract::extract_snippet_files(file)?;
           for snippet_file in snippet_files {
-            snippet_file_specifiers.push(snippet_file.specifier.clone());
+            doc_snippet_specifiers.push(snippet_file.specifier.clone());
             file_fetcher.insert_memory_files(snippet_file);
           }
         }
-        Some(snippet_file_specifiers)
+        Some(doc_snippet_specifiers)
       } else {
         None
       };
       entries.push(WorkspaceFileContainerEntry {
         main_graph_container,
         specifiers,
-        snippet_file_specifiers,
+        doc_snippet_specifiers,
+        check_doc_only,
       });
     }
     Ok(Self { entries })
@@ -1151,13 +1154,14 @@ impl<T> WorkspaceFileContainer<T> {
     let mut diagnostics = vec![];
     let mut all_errors = vec![];
     for entry in &self.entries {
-      let specifiers_for_typecheck = entry
-        .specifiers
-        .iter()
-        .map(|(s, _)| s)
-        .chain(entry.snippet_file_specifiers.iter().flatten())
-        .cloned()
-        .collect::<Vec<_>>();
+      let mut specifiers_for_typecheck = vec![];
+      if !entry.check_doc_only {
+        specifiers_for_typecheck
+          .extend(entry.specifiers.iter().map(|(s, _)| s.clone()));
+      }
+      if let Some(doc_snippet_specifiers) = &entry.doc_snippet_specifiers {
+        specifiers_for_typecheck.extend(doc_snippet_specifiers.clone());
+      }
       if specifiers_for_typecheck.is_empty() {
         continue;
       }

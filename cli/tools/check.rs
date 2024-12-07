@@ -78,7 +78,8 @@ pub async fn check(
         .boxed_local()
       },
       cli_options,
-      check_flags.doc || check_flags.doc_only,
+      check_flags.doc,
+      check_flags.doc_only,
     )
     .await?;
     if !container.has_specifiers() {
