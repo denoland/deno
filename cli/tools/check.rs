@@ -1,6 +1,5 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
-use std::collections::BTreeMap;
 use std::collections::HashSet;
 use std::collections::VecDeque;
 use std::error::Error;
@@ -57,16 +56,16 @@ pub async fn check(
   if is_discovered_config {
     let factory = CliFactory::from_flags(flags.clone());
     let cli_options = factory.cli_options()?;
-    let by_workspace_directory = cli_options
+    let workspace_dirs_with_files = cli_options
       .resolve_file_flags_for_members(&FileFlags {
         ignore: Default::default(),
         include: check_flags.files,
       })?
       .into_iter()
-      .map(|(d, p)| (d.dir_url().clone(), (Arc::new(d), p)))
-      .collect::<BTreeMap<_, _>>();
+      .map(|(d, p)| (Arc::new(d), p))
+      .collect();
     let container = WorkspaceFileContainer::from_workspace_dirs_with_files(
-      by_workspace_directory.into_values().collect(),
+      workspace_dirs_with_files,
       |patterns, cli_options, _| {
         async move {
           collect_specifiers(
