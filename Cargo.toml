@@ -52,7 +52,7 @@ deno_core = { version = "0.324.0" }
 
 deno_bench_util = { version = "0.175.0", path = "./bench_util" }
 # TODO(nayeemrmn): Use proper version when https://github.com/denoland/deno_config/pull/143 lands!
-deno_config = { git = "https://github.com/denoland/deno_config.git", rev = "81d8e844624a8f6b3961213d1480dcc923d08b11", features = ["workspace", "sync"] }
+deno_config = { git = "https://github.com/denoland/deno_config.git", rev = "0d588fb1831bf4d33d3279a1a75db6138d81a75b", features = ["workspace", "sync"] }
 deno_lockfile = "=0.23.2"
 deno_media_type = { version = "0.2.0", features = ["module_specifier"] }
 deno_npm = "=0.26.0"

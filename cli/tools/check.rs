@@ -9,8 +9,6 @@ use std::sync::Arc;
 
 use deno_ast::MediaType;
 use deno_ast::ModuleSpecifier;
-use deno_config::glob::FilePatterns;
-use deno_config::glob::PathOrPattern;
 use deno_core::error::AnyError;
 use deno_core::futures::FutureExt;
 use deno_graph::Module;
@@ -59,45 +57,14 @@ pub async fn check(
   if is_discovered_config {
     let factory = CliFactory::from_flags(flags.clone());
     let cli_options = factory.cli_options()?;
-    let (remote_files, files) = check_flags
-      .files
-      .iter()
-      .cloned()
-      .partition::<Vec<_>, _>(|f| {
-        f.starts_with("http://")
-          || f.starts_with("https://")
-          || f.starts_with("npm:")
-          || f.starts_with("jsr:")
-      });
-    let mut by_workspace_directory = cli_options
+    let by_workspace_directory = cli_options
       .resolve_file_flags_for_members(&FileFlags {
         ignore: Default::default(),
-        include: files,
+        include: check_flags.files,
       })?
       .into_iter()
       .map(|(d, p)| (d.dir_url().clone(), (Arc::new(d), p)))
       .collect::<BTreeMap<_, _>>();
-    if !remote_files.is_empty() {
-      by_workspace_directory
-        .entry(cli_options.start_dir.dir_url().clone())
-        .or_insert((
-          cli_options.start_dir.clone(),
-          FilePatterns {
-            base: cli_options.initial_cwd().to_path_buf(),
-            include: Some(Default::default()),
-            exclude: Default::default(),
-          },
-        ))
-        .1
-        .include
-        .get_or_insert_with(Default::default)
-        .append(
-          remote_files
-            .iter()
-            .flat_map(|s| ModuleSpecifier::parse(s).ok())
-            .map(PathOrPattern::RemoteUrl),
-        );
-    }
     let container = WorkspaceFileContainer::from_workspace_dirs_with_files(
       by_workspace_directory.into_values().collect(),
       |patterns, cli_options, _| {
