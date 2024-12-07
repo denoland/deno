@@ -64,7 +64,7 @@ fn extract_inner(
   }) {
     Ok(parsed) => {
       let mut c = ExportCollector::default();
-      c.visit_program(parsed.program_ref());
+      c.visit_program(parsed.program().as_ref());
       c
     }
     Err(_) => ExportCollector::default(),
@@ -570,14 +570,14 @@ fn generate_pseudo_file(
   })?;
 
   let top_level_atoms = swc_utils::collect_decls_with_ctxt::<Atom, _>(
-    parsed.program_ref(),
+    &parsed.program_ref(),
     parsed.top_level_context(),
   );
 
   let transformed =
     parsed
       .program_ref()
-      .clone()
+      .to_owned()
       .fold_with(&mut as_folder(Transform {
         specifier: &file.specifier,
         base_file_specifier,
@@ -586,7 +586,10 @@ fn generate_pseudo_file(
         wrap_kind,
       }));
 
-  let source = deno_ast::swc::codegen::to_code(&transformed);
+  let source = deno_ast::swc::codegen::to_code_with_comments(
+    Some(&parsed.comments().as_single_threaded()),
+    &transformed,
+  );
 
   log::debug!("{}:\n{}", file.specifier, source);
 
@@ -1165,6 +1168,33 @@ Deno.test("file:///main.ts$3-6.ts", async ()=>{
           media_type: MediaType::TypeScript,
         }],
       },
+      // https://github.com/denoland/deno/issues/26728
+      Test {
+        input: Input {
+          source: r#"
+/**
+ * ```ts
+ * // @ts-expect-error: can only add numbers
+ * add('1', '2');
+ * ```
+ */
+export function add(first: number, second: number) {
+  return first + second;
+}
+"#,
+          specifier: "file:///main.ts",
+        },
+        expected: vec![Expected {
+          source: r#"import { add } from "file:///main.ts";
+Deno.test("file:///main.ts$3-7.ts", async ()=>{
+    // @ts-expect-error: can only add numbers
+    add('1', '2');
+});
+"#,
+          specifier: "file:///main.ts$3-7.ts",
+          media_type: MediaType::TypeScript,
+        }],
+      },
     ];
 
     for test in tests {
@@ -1376,6 +1406,31 @@ console.log(Foo);
           media_type: MediaType::TypeScript,
         }],
       },
+      // https://github.com/denoland/deno/issues/26728
+      Test {
+        input: Input {
+          source: r#"
+/**
+ * ```ts
+ * // @ts-expect-error: can only add numbers
+ * add('1', '2');
+ * ```
+ */
+export function add(first: number, second: number) {
+  return first + second;
+}
+"#,
+          specifier: "file:///main.ts",
+        },
+        expected: vec![Expected {
+          source: r#"import { add } from "file:///main.ts";
+// @ts-expect-error: can only add numbers
+add('1', '2');
+"#,
+          specifier: "file:///main.ts$3-7.ts",
+          media_type: MediaType::TypeScript,
+        }],
+      },
     ];
 
     for test in tests {
@@ -1416,7 +1471,7 @@ console.log(Foo);
       })
       .unwrap();
 
-      collector.visit_program(parsed.program_ref());
+      parsed.program_ref().visit_with(&mut collector);
       collector
     }
 

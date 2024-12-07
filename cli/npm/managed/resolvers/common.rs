@@ -17,7 +17,6 @@ use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
 use deno_core::futures;
 use deno_core::futures::StreamExt;
-use deno_core::url::Url;
 use deno_npm::NpmPackageCacheFolderId;
 use deno_npm::NpmPackageId;
 use deno_npm::NpmResolutionPackage;
@@ -25,14 +24,11 @@ use deno_runtime::deno_fs::FileSystem;
 use deno_runtime::deno_node::NodePermissions;
 use node_resolver::errors::PackageFolderResolveError;
 
-use crate::npm::managed::cache::TarballCache;
+use crate::npm::CliNpmTarballCache;
 
 /// Part of the resolution that interacts with the file system.
 #[async_trait(?Send)]
 pub trait NpmPackageFsResolver: Send + Sync {
-  /// Specifier for the root directory.
-  fn root_dir_url(&self) -> &Url;
-
   /// The local node_modules folder if it is applicable to the implementation.
   fn node_modules_path(&self) -> Option<&Path>;
 
@@ -137,14 +133,14 @@ impl RegistryReadPermissionChecker {
       }
     }
 
-    permissions.check_read_path(path)
+    permissions.check_read_path(path).map_err(Into::into)
   }
 }
 
 /// Caches all the packages in parallel.
 pub async fn cache_packages(
   packages: &[NpmResolutionPackage],
-  tarball_cache: &Arc<TarballCache>,
+  tarball_cache: &Arc<CliNpmTarballCache>,
 ) -> Result<(), AnyError> {
   let mut futures_unordered = futures::stream::FuturesUnordered::new();
   for package in packages {

@@ -4270,3 +4270,112 @@ Deno.test({
   assertEquals(hostname, "0.0.0.0");
   await server.shutdown();
 });
+
+Deno.test({
+  name: "AbortSignal aborted when request is cancelled",
+}, async () => {
+  const { promise, resolve } = Promise.withResolvers<void>();
+
+  let cancelled = false;
+
+  const server = Deno.serve({
+    hostname: "0.0.0.0",
+    port: servePort,
+    onListen: () => resolve(),
+  }, async (request) => {
+    request.signal.addEventListener("abort", () => cancelled = true);
+    assert(!request.signal.aborted);
+    await new Promise((resolve) => setTimeout(resolve, 3000)); // abort during waiting
+    assert(request.signal.aborted);
+    return new Response("Ok");
+  });
+
+  await promise;
+  await fetch(`http://localhost:${servePort}/`, {
+    signal: AbortSignal.timeout(1000),
+  }).catch(() => {});
+
+  await server.shutdown();
+
+  assert(cancelled);
+});
+
+Deno.test({
+  name: "AbortSignal event aborted when request is cancelled",
+}, async () => {
+  const { promise, resolve } = Promise.withResolvers<void>();
+
+  const server = Deno.serve({
+    hostname: "0.0.0.0",
+    port: servePort,
+    onListen: () => resolve(),
+  }, async (request) => {
+    const { promise: promiseAbort, resolve: resolveAbort } = Promise
+      .withResolvers<void>();
+    request.signal.addEventListener("abort", () => resolveAbort());
+    assert(!request.signal.aborted);
+
+    await promiseAbort;
+
+    return new Response("Ok");
+  });
+
+  await promise;
+  await fetch(`http://localhost:${servePort}/`, {
+    signal: AbortSignal.timeout(100),
+  }).catch(() => {});
+
+  await server.shutdown();
+});
+
+// https://github.com/denoland/deno/issues/27083
+Deno.test(
+  { permissions: { net: true } },
+  async function httpServerWebSocketInspectRequest() {
+    const ac = new AbortController();
+    const listeningDeferred = Promise.withResolvers<void>();
+    const doneDeferred = Promise.withResolvers<void>();
+    const server = Deno.serve({
+      handler: (request) => {
+        const {
+          response,
+          socket,
+        } = Deno.upgradeWebSocket(request);
+
+        socket.onopen = () => {
+          Deno.inspect(request); // should not throw
+        };
+        socket.onerror = (e) => {
+          console.error(e);
+          fail();
+        };
+        socket.onmessage = (m) => {
+          socket.send(m.data);
+          socket.close(1001);
+        };
+        socket.onclose = () => doneDeferred.resolve();
+        return response;
+      },
+      port: servePort,
+      signal: ac.signal,
+      onListen: onListen(listeningDeferred.resolve),
+      onError: createOnErrorCb(ac),
+    });
+
+    await listeningDeferred.promise;
+    const def = Promise.withResolvers<void>();
+    const ws = new WebSocket(`ws://localhost:${servePort}`);
+    ws.onmessage = (m) => assertEquals(m.data, "foo");
+    ws.onerror = (e) => {
+      console.error(e);
+      fail();
+    };
+    ws.onclose = () => def.resolve();
+    ws.onopen = () => ws.send("foo");
+
+    await def.promise;
+    await doneDeferred.promise;
+    ac.abort();
+    await server.finished;
+  },
+);

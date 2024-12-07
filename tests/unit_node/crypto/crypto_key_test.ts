@@ -677,3 +677,26 @@ Deno.test("generateKeyPair large pem", function () {
     },
   });
 });
+
+Deno.test("generateKeyPair promisify", async () => {
+  const passphrase = "mypassphrase";
+  const cipher = "aes-256-cbc";
+  const modulusLength = 4096;
+
+  const { privateKey, publicKey } = await promisify(generateKeyPair)("rsa", {
+    modulusLength,
+    publicKeyEncoding: {
+      type: "spki",
+      format: "pem",
+    },
+    privateKeyEncoding: {
+      type: "pkcs8",
+      format: "pem",
+      cipher,
+      passphrase,
+    },
+  });
+
+  assert(publicKey.startsWith("-----BEGIN PUBLIC KEY-----"));
+  assert(privateKey.startsWith("-----BEGIN PRIVATE KEY-----"));
+});

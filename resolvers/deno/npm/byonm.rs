@@ -10,19 +10,22 @@ use deno_package_json::PackageJsonDepValue;
 use deno_path_util::url_to_file_path;
 use deno_semver::package::PackageReq;
 use deno_semver::Version;
+use node_resolver::env::NodeResolverEnv;
 use node_resolver::errors::PackageFolderResolveError;
 use node_resolver::errors::PackageFolderResolveIoError;
 use node_resolver::errors::PackageJsonLoadError;
 use node_resolver::errors::PackageNotFoundError;
-use node_resolver::load_pkg_json;
-use node_resolver::NpmResolver;
+use node_resolver::InNpmPackageChecker;
+use node_resolver::NpmPackageFolderResolver;
+use node_resolver::PackageJsonResolverRc;
 use thiserror::Error;
 use url::Url;
 
-use crate::fs::DenoPkgJsonFsAdapter;
 use crate::fs::DenoResolverFs;
 
 use super::local::normalize_pkg_name_for_node_modules_deno_folder;
+use super::CliNpmReqResolver;
+use super::ResolvePkgFolderFromDenoReqError;
 
 #[derive(Debug, Error)]
 pub enum ByonmResolvePkgFolderFromDenoReqError {
@@ -36,32 +39,41 @@ pub enum ByonmResolvePkgFolderFromDenoReqError {
   Io(#[from] std::io::Error),
 }
 
-pub struct ByonmNpmResolverCreateOptions<Fs: DenoResolverFs> {
-  pub fs: Fs,
+pub struct ByonmNpmResolverCreateOptions<
+  Fs: DenoResolverFs,
+  TEnv: NodeResolverEnv,
+> {
   // todo(dsherret): investigate removing this
   pub root_node_modules_dir: Option<PathBuf>,
+  pub fs: Fs,
+  pub pkg_json_resolver: PackageJsonResolverRc<TEnv>,
 }
 
 #[derive(Debug)]
-pub struct ByonmNpmResolver<Fs: DenoResolverFs> {
+pub struct ByonmNpmResolver<Fs: DenoResolverFs, TEnv: NodeResolverEnv> {
   fs: Fs,
+  pkg_json_resolver: PackageJsonResolverRc<TEnv>,
   root_node_modules_dir: Option<PathBuf>,
 }
 
-impl<Fs: DenoResolverFs + Clone> Clone for ByonmNpmResolver<Fs> {
+impl<Fs: DenoResolverFs + Clone, TEnv: NodeResolverEnv> Clone
+  for ByonmNpmResolver<Fs, TEnv>
+{
   fn clone(&self) -> Self {
     Self {
       fs: self.fs.clone(),
+      pkg_json_resolver: self.pkg_json_resolver.clone(),
       root_node_modules_dir: self.root_node_modules_dir.clone(),
     }
   }
 }
 
-impl<Fs: DenoResolverFs> ByonmNpmResolver<Fs> {
-  pub fn new(options: ByonmNpmResolverCreateOptions<Fs>) -> Self {
+impl<Fs: DenoResolverFs, TEnv: NodeResolverEnv> ByonmNpmResolver<Fs, TEnv> {
+  pub fn new(options: ByonmNpmResolverCreateOptions<Fs, TEnv>) -> Self {
     Self {
-      fs: options.fs,
       root_node_modules_dir: options.root_node_modules_dir,
+      fs: options.fs,
+      pkg_json_resolver: options.pkg_json_resolver,
     }
   }
 
@@ -73,7 +85,7 @@ impl<Fs: DenoResolverFs> ByonmNpmResolver<Fs> {
     &self,
     path: &Path,
   ) -> Result<Option<Arc<PackageJson>>, PackageJsonLoadError> {
-    load_pkg_json(&DenoPkgJsonFsAdapter(&self.fs), path)
+    self.pkg_json_resolver.load_package_json(path)
   }
 
   /// Finds the ancestor package.json that contains the specified dependency.
@@ -167,7 +179,11 @@ impl<Fs: DenoResolverFs> ByonmNpmResolver<Fs> {
       pkg_json: &PackageJson,
     ) -> Option<String> {
       let deps = pkg_json.resolve_local_package_json_deps();
-      for (key, value) in deps {
+      for (key, value) in deps
+        .dependencies
+        .into_iter()
+        .chain(deps.dev_dependencies.into_iter())
+      {
         if let Ok(value) = value {
           match value {
             PackageJsonDepValue::Req(dep_req) => {
@@ -290,8 +306,27 @@ impl<Fs: DenoResolverFs> ByonmNpmResolver<Fs> {
   }
 }
 
-impl<Fs: DenoResolverFs + Send + Sync + std::fmt::Debug> NpmResolver
-  for ByonmNpmResolver<Fs>
+impl<
+    Fs: DenoResolverFs + Send + Sync + std::fmt::Debug,
+    TEnv: NodeResolverEnv,
+  > CliNpmReqResolver for ByonmNpmResolver<Fs, TEnv>
+{
+  fn resolve_pkg_folder_from_deno_module_req(
+    &self,
+    req: &PackageReq,
+    referrer: &Url,
+  ) -> Result<PathBuf, ResolvePkgFolderFromDenoReqError> {
+    ByonmNpmResolver::resolve_pkg_folder_from_deno_module_req(
+      self, req, referrer,
+    )
+    .map_err(ResolvePkgFolderFromDenoReqError::Byonm)
+  }
+}
+
+impl<
+    Fs: DenoResolverFs + Send + Sync + std::fmt::Debug,
+    TEnv: NodeResolverEnv,
+  > NpmPackageFolderResolver for ByonmNpmResolver<Fs, TEnv>
 {
   fn resolve_package_folder_from_package(
     &self,
@@ -342,7 +377,12 @@ impl<Fs: DenoResolverFs + Send + Sync + std::fmt::Debug> NpmResolver
       .into()
     })
   }
+}
 
+#[derive(Debug)]
+pub struct ByonmInNpmPackageChecker;
+
+impl InNpmPackageChecker for ByonmInNpmPackageChecker {
   fn in_npm_package(&self, specifier: &Url) -> bool {
     specifier.scheme() == "file"
       && specifier

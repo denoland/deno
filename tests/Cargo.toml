@@ -45,8 +45,11 @@ deno_semver.workspace = true
 deno_terminal.workspace = true
 deno_tls.workspace = true
 fastwebsockets = { workspace = true, features = ["upgrade", "unstable-split"] }
-file_test_runner = "0.7.2"
+file_test_runner = "0.7.3"
 flaky_test = "=0.2.2"
+hickory-client = "0.25.0-alpha.4"
+hickory-proto = "0.25.0-alpha.4"
+hickory-server = "0.25.0-alpha.4"
 http.workspace = true
 http-body-util.workspace = true
 hyper.workspace = true
@@ -60,8 +63,6 @@ serde.workspace = true
 test_util.workspace = true
 tokio.workspace = true
 tower-lsp.workspace = true
-trust-dns-client = "=0.23.2"
-trust-dns-server = "=0.23.2"
 url.workspace = true
 uuid = { workspace = true, features = ["serde"] }
 zeromq.workspace = true

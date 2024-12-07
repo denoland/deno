@@ -11,6 +11,15 @@ use deno_core::ModuleSourceCode;
 static SOURCE_MAP_PREFIX: &[u8] =
   b"//# sourceMappingURL=data:application/json;base64,";
 
+#[inline(always)]
+pub fn from_utf8_lossy_cow(bytes: Cow<[u8]>) -> Cow<str> {
+  match bytes {
+    Cow::Borrowed(bytes) => String::from_utf8_lossy(bytes),
+    Cow::Owned(bytes) => Cow::Owned(from_utf8_lossy_owned(bytes)),
+  }
+}
+
+#[inline(always)]
 pub fn from_utf8_lossy_owned(bytes: Vec<u8>) -> String {
   match String::from_utf8_lossy(&bytes) {
     Cow::Owned(code) => code,
@@ -97,6 +106,7 @@ fn find_source_map_range(code: &[u8]) -> Option<Range<usize>> {
 }
 
 /// Converts an `Arc<str>` to an `Arc<[u8]>`.
+#[allow(dead_code)]
 pub fn arc_str_to_bytes(arc_str: Arc<str>) -> Arc<[u8]> {
   let raw = Arc::into_raw(arc_str);
   // SAFETY: This is safe because they have the same memory layout.

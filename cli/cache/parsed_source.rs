@@ -5,12 +5,11 @@ use std::sync::Arc;
 
 use deno_ast::MediaType;
 use deno_ast::ModuleSpecifier;
-use deno_ast::ParseDiagnostic;
 use deno_ast::ParsedSource;
 use deno_core::parking_lot::Mutex;
-use deno_graph::CapturingModuleParser;
-use deno_graph::DefaultModuleParser;
-use deno_graph::ModuleParser;
+use deno_graph::CapturingEsParser;
+use deno_graph::DefaultEsParser;
+use deno_graph::EsParser;
 use deno_graph::ParseOptions;
 use deno_graph::ParsedSourceStore;
 
@@ -47,7 +46,7 @@ impl<'a> LazyGraphSourceParser<'a> {
   }
 }
 
-#[derive(Default)]
+#[derive(Debug, Default)]
 pub struct ParsedSourceCache {
   sources: Mutex<HashMap<ModuleSpecifier, ParsedSource>>,
 }
@@ -58,12 +57,11 @@ impl ParsedSourceCache {
     module: &deno_graph::JsModule,
   ) -> Result<ParsedSource, deno_ast::ParseDiagnostic> {
     let parser = self.as_capturing_parser();
-    // this will conditionally parse because it's using a CapturingModuleParser
-    parser.parse_module(ParseOptions {
+    // this will conditionally parse because it's using a CapturingEsParser
+    parser.parse_program(ParseOptions {
       specifier: &module.specifier,
       source: module.source.clone(),
       media_type: module.media_type,
-      // don't bother enabling because this method is currently only used for vendoring
       scope_analysis: false,
     })
   }
@@ -87,10 +85,9 @@ impl ParsedSourceCache {
       specifier,
       source,
       media_type,
-      // don't bother enabling because this method is currently only used for emitting
       scope_analysis: false,
     };
-    DefaultModuleParser.parse_module(options)
+    DefaultEsParser.parse_program(options)
   }
 
   /// Frees the parsed source from memory.
@@ -98,10 +95,20 @@ impl ParsedSourceCache {
     self.sources.lock().remove(specifier);
   }
 
+  /// Fress all parsed sources from memory.
+  pub fn free_all(&self) {
+    self.sources.lock().clear();
+  }
+
   /// Creates a parser that will reuse a ParsedSource from the store
   /// if it exists, or else parse.
-  pub fn as_capturing_parser(&self) -> CapturingModuleParser {
-    CapturingModuleParser::new(None, self)
+  pub fn as_capturing_parser(&self) -> CapturingEsParser {
+    CapturingEsParser::new(None, self)
+  }
+
+  #[cfg(test)]
+  pub fn len(&self) -> usize {
+    self.sources.lock().len()
   }
 }
 
@@ -148,44 +155,5 @@ impl deno_graph::ParsedSourceStore for ParsedSourceCache {
       sources.insert(specifier.clone(), parsed_source.clone());
       Some(parsed_source)
     }
-  }
-}
-
-pub struct EsmOrCjsChecker {
-  parsed_source_cache: Arc<ParsedSourceCache>,
-}
-
-impl EsmOrCjsChecker {
-  pub fn new(parsed_source_cache: Arc<ParsedSourceCache>) -> Self {
-    Self {
-      parsed_source_cache,
-    }
-  }
-
-  pub fn is_esm(
-    &self,
-    specifier: &ModuleSpecifier,
-    source: Arc<str>,
-    media_type: MediaType,
-  ) -> Result<bool, ParseDiagnostic> {
-    // todo(dsherret): add a file cache here to avoid parsing with swc on each run
-    let source = match self.parsed_source_cache.get_parsed_source(specifier) {
-      Some(source) => source.clone(),
-      None => {
-        let source = deno_ast::parse_program(deno_ast::ParseParams {
-          specifier: specifier.clone(),
-          text: source,
-          media_type,
-          capture_tokens: true, // capture because it's used for cjs export analysis
-          scope_analysis: false,
-          maybe_syntax: None,
-        })?;
-        self
-          .parsed_source_cache
-          .set_parsed_source(specifier.clone(), source.clone());
-        source
-      }
-    };
-    Ok(source.is_module())
   }
 }

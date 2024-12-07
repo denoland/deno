@@ -1,0 +1,16 @@
+{
+  "tasks": {
+    "echo_emoji": {
+      "description": "This is some task",
+      "command": "echo 1"
+    },
+    "multiline_description": {
+      "description": "This is a multiline\ndescription",
+      "command": "echo 2"
+    },
+    "multiline_description_carriage_return": {
+      "description": "This is a multiline\r\ndescription\r\n",
+      "command": "echo 3"
+    }
+  }
+}

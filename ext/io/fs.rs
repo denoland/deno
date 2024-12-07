@@ -94,6 +94,7 @@ pub struct FsStat {
   pub mtime: Option<u64>,
   pub atime: Option<u64>,
   pub birthtime: Option<u64>,
+  pub ctime: Option<u64>,
 
   pub dev: u64,
   pub ino: u64,
@@ -153,6 +154,16 @@ impl FsStat {
       }
     }
 
+    #[inline(always)]
+    fn get_ctime(ctime_or_0: i64) -> Option<u64> {
+      if ctime_or_0 > 0 {
+        // ctime return seconds since epoch, but we need milliseconds
+        return Some(ctime_or_0 as u64 * 1000);
+      }
+
+      None
+    }
+
     Self {
       is_file: metadata.is_file(),
       is_directory: metadata.is_dir(),
@@ -162,6 +173,7 @@ impl FsStat {
       mtime: to_msec(metadata.modified()),
       atime: to_msec(metadata.accessed()),
       birthtime: to_msec(metadata.created()),
+      ctime: get_ctime(unix_or_zero!(ctime)),
 
       dev: unix_or_zero!(dev),
       ino: unix_or_zero!(ino),
@@ -203,8 +215,8 @@ pub trait File {
   fn write_all_sync(self: Rc<Self>, buf: &[u8]) -> FsResult<()>;
   async fn write_all(self: Rc<Self>, buf: BufView) -> FsResult<()>;
 
-  fn read_all_sync(self: Rc<Self>) -> FsResult<Vec<u8>>;
-  async fn read_all_async(self: Rc<Self>) -> FsResult<Vec<u8>>;
+  fn read_all_sync(self: Rc<Self>) -> FsResult<Cow<'static, [u8]>>;
+  async fn read_all_async(self: Rc<Self>) -> FsResult<Cow<'static, [u8]>>;
 
   fn chmod_sync(self: Rc<Self>, pathmode: u32) -> FsResult<()>;
   async fn chmod_async(self: Rc<Self>, mode: u32) -> FsResult<()>;

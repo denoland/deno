@@ -1,0 +1,22 @@
+{
+  //   a
+  //  / \
+  // b   c
+  //  \ /
+  //   d
+  "tasks": {
+    "a": {
+      "command": "deno run a.js",
+      "dependencies": ["b", "c"]
+    },
+    "b": {
+      "command": "deno run b.js",
+      "dependencies": ["d"]
+    },
+    "c": {
+      "command": "deno run c.js",
+      "dependencies": ["d"]
+    },
+    "d": "deno run d.js"
+  }
+}

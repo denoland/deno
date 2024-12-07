@@ -5,10 +5,14 @@ use std::sync::Arc;
 
 use deno_config::workspace::Workspace;
 use deno_core::serde_json;
+use deno_core::url::Url;
 use deno_package_json::PackageJsonDepValue;
 use deno_package_json::PackageJsonDepValueParseError;
+use deno_package_json::PackageJsonDepWorkspaceReq;
 use deno_semver::npm::NpmPackageReqReference;
 use deno_semver::package::PackageReq;
+use deno_semver::VersionReq;
+use thiserror::Error;
 
 #[derive(Debug)]
 pub struct InstallNpmRemotePkg {
@@ -23,11 +27,20 @@ pub struct InstallNpmWorkspacePkg {
   pub target_dir: PathBuf,
 }
 
+#[derive(Debug, Error, Clone)]
+#[error("Failed to install '{}'\n    at {}", alias, location)]
+pub struct PackageJsonDepValueParseWithLocationError {
+  pub location: Url,
+  pub alias: String,
+  #[source]
+  pub source: PackageJsonDepValueParseError,
+}
+
 #[derive(Debug, Default)]
 pub struct NpmInstallDepsProvider {
   remote_pkgs: Vec<InstallNpmRemotePkg>,
   workspace_pkgs: Vec<InstallNpmWorkspacePkg>,
-  pkg_json_dep_errors: Vec<PackageJsonDepValueParseError>,
+  pkg_json_dep_errors: Vec<PackageJsonDepValueParseWithLocationError>,
 }
 
 impl NpmInstallDepsProvider {
@@ -84,12 +97,24 @@ impl NpmInstallDepsProvider {
 
       if let Some(pkg_json) = &folder.pkg_json {
         let deps = pkg_json.resolve_local_package_json_deps();
-        let mut pkg_pkgs = Vec::with_capacity(deps.len());
-        for (alias, dep) in deps {
+        let mut pkg_pkgs = Vec::with_capacity(
+          deps.dependencies.len() + deps.dev_dependencies.len(),
+        );
+        for (alias, dep) in deps
+          .dependencies
+          .into_iter()
+          .chain(deps.dev_dependencies.into_iter())
+        {
           let dep = match dep {
             Ok(dep) => dep,
             Err(err) => {
-              pkg_json_dep_errors.push(err);
+              pkg_json_dep_errors.push(
+                PackageJsonDepValueParseWithLocationError {
+                  location: pkg_json.specifier(),
+                  alias,
+                  source: err,
+                },
+              );
               continue;
             }
           };
@@ -114,7 +139,16 @@ impl NpmInstallDepsProvider {
                 });
               }
             }
-            PackageJsonDepValue::Workspace(version_req) => {
+            PackageJsonDepValue::Workspace(workspace_version_req) => {
+              let version_req = match workspace_version_req {
+                PackageJsonDepWorkspaceReq::VersionReq(version_req) => {
+                  version_req
+                }
+                PackageJsonDepWorkspaceReq::Tilde
+                | PackageJsonDepWorkspaceReq::Caret => {
+                  VersionReq::parse_from_npm("*").unwrap()
+                }
+              };
               if let Some(pkg) = workspace_npm_pkgs.iter().find(|pkg| {
                 pkg.matches_name_and_version_req(&alias, &version_req)
               }) {
@@ -150,7 +184,9 @@ impl NpmInstallDepsProvider {
     &self.workspace_pkgs
   }
 
-  pub fn pkg_json_dep_errors(&self) -> &[PackageJsonDepValueParseError] {
+  pub fn pkg_json_dep_errors(
+    &self,
+  ) -> &[PackageJsonDepValueParseWithLocationError] {
     &self.pkg_json_dep_errors
   }
 }

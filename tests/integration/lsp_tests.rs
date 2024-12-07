@@ -1360,26 +1360,31 @@ fn lsp_deno_task() {
   let temp_dir = context.temp_dir();
   temp_dir.write(
     "deno.jsonc",
-    r#"{
-    "tasks": {
-      "build": "deno test"
-    }
-  }"#,
+    json!({
+      "tasks": {
+        "build": "deno test",
+        "serve": {
+          "description": "Start the dev server",
+          "command": "deno run -RN server.ts",
+        },
+      },
+    })
+    .to_string(),
   );
-
   let mut client = context.new_lsp_command().build();
-  client.initialize(|builder| {
-    builder.set_config("./deno.jsonc");
-  });
-
-  let res = client.write_request("deno/task", json!(null));
-
+  client.initialize_default();
+  let res = client.write_request("deno/taskDefinitions", json!(null));
   assert_eq!(
     res,
     json!([
       {
         "name": "build",
-        "detail": "deno test",
+        "command": "deno test",
+        "sourceUri": temp_dir.url().join("deno.jsonc").unwrap(),
+      },
+      {
+        "name": "serve",
+        "command": "deno run -RN server.ts",
         "sourceUri": temp_dir.url().join("deno.jsonc").unwrap(),
       }
     ])
@@ -5427,7 +5432,8 @@ fn lsp_code_actions_deno_cache() {
 
   let res =
     client
-    .write_request(      "textDocument/codeAction",
+    .write_request(
+      "textDocument/codeAction",
       json!({
         "textDocument": {
           "uri": "file:///a/file.ts"
@@ -5453,8 +5459,7 @@ fn lsp_code_actions_deno_cache() {
           "only": ["quickfix"]
         }
       }),
-    )
-    ;
+    );
   assert_eq!(
     res,
     json!([{
@@ -6004,7 +6009,7 @@ fn lsp_code_actions_deno_cache_npm() {
         "severity": 1,
         "code": "not-installed-npm",
         "source": "deno",
-        "message": "NPM package \"chalk\" is not installed or doesn't exist.",
+        "message": "npm package \"chalk\" is not installed or doesn't exist.",
         "data": { "specifier": "npm:chalk" }
       }],
       "version": 1
@@ -6031,7 +6036,7 @@ fn lsp_code_actions_deno_cache_npm() {
           "severity": 1,
           "code": "not-installed-npm",
           "source": "deno",
-          "message": "NPM package \"chalk\" is not installed or doesn't exist.",
+          "message": "npm package \"chalk\" is not installed or doesn't exist.",
           "data": { "specifier": "npm:chalk" }
         }],
         "only": ["quickfix"]
@@ -6051,7 +6056,7 @@ fn lsp_code_actions_deno_cache_npm() {
         "severity": 1,
         "code": "not-installed-npm",
         "source": "deno",
-        "message": "NPM package \"chalk\" is not installed or doesn't exist.",
+        "message": "npm package \"chalk\" is not installed or doesn't exist.",
         "data": { "specifier": "npm:chalk" }
       }],
       "command": {
@@ -6106,7 +6111,7 @@ fn lsp_code_actions_deno_cache_all() {
           "severity": 1,
           "code": "not-installed-npm",
           "source": "deno",
-          "message": "NPM package \"chalk\" is not installed or doesn't exist.",
+          "message": "npm package \"chalk\" is not installed or doesn't exist.",
           "data": { "specifier": "npm:chalk" },
         },
       ],
@@ -6194,7 +6199,7 @@ fn lsp_code_actions_deno_cache_all() {
             "severity": 1,
             "code": "not-installed-npm",
             "source": "deno",
-            "message": "NPM package \"chalk\" is not installed or doesn't exist.",
+            "message": "npm package \"chalk\" is not installed or doesn't exist.",
             "data": { "specifier": "npm:chalk" },
           },
         ],
@@ -6396,6 +6401,45 @@ fn lsp_cache_on_save() {
   client.shutdown();
 }
 
+// Regression test for https://github.com/denoland/deno/issues/25999.
+#[test]
+fn lsp_asset_document_dom_code_action() {
+  let context = TestContextBuilder::new().use_temp_cwd().build();
+  let temp_dir = context.temp_dir();
+  temp_dir.write(
+    "deno.json",
+    json!({
+      "compilerOptions": {
+        "lib": ["deno.window", "dom"],
+      },
+    })
+    .to_string(),
+  );
+  let mut client = context.new_lsp_command().build();
+  client.initialize_default();
+  client.did_open(json!({
+    "textDocument": {
+      "uri": temp_dir.url().join("file.ts").unwrap(),
+      "languageId": "typescript",
+      "version": 1,
+      "text": r#""#,
+    },
+  }));
+  let res = client.write_request(
+    "textDocument/codeAction",
+    json!({
+      "textDocument": { "uri": "asset:///lib.dom.d.ts" },
+      "range": {
+        "start": { "line": 0, "character": 0 },
+        "end": { "line": 0, "character": 0 },
+      },
+      "context": { "diagnostics": [], "only": ["quickfix"] },
+    }),
+  );
+  assert_eq!(res, json!(null));
+  client.shutdown();
+}
+
 // Regression test for https://github.com/denoland/deno/issues/22122.
 #[test]
 fn lsp_cache_then_definition() {
@@ -6590,6 +6634,23 @@ export class DuckConfig {
         }]
       }
     }, {
+      "title": "Add all missing imports",
+      "kind": "quickfix",
+      "diagnostics": [{
+        "range": {
+          "start": { "line": 0, "character": 50 },
+          "end": { "line": 0, "character": 67 }
+        },
+        "severity": 1,
+        "code": 2304,
+        "source": "deno-ts",
+        "message": "Cannot find name 'DuckConfigOptions'."
+      }],
+      "data": {
+        "specifier": "file:///a/file00.ts",
+        "fixId": "fixMissingImport"
+      }
+    }, {
       "title": "Add import from \"./file01.ts\"",
       "kind": "quickfix",
       "diagnostics": [{
@@ -6616,23 +6677,6 @@ export class DuckConfig {
             "newText": "import { DuckConfig } from \"./file01.ts\";\n\n"
           }]
         }]
-      }
-    }, {
-      "title": "Add all missing imports",
-      "kind": "quickfix",
-      "diagnostics": [{
-        "range": {
-          "start": { "line": 0, "character": 50 },
-          "end": { "line": 0, "character": 67 }
-        },
-        "severity": 1,
-        "code": 2304,
-        "source": "deno-ts",
-        "message": "Cannot find name 'DuckConfigOptions'."
-      }],
-      "data": {
-        "specifier": "file:///a/file00.ts",
-        "fixId": "fixMissingImport"
       }
     }])
   );
@@ -8087,6 +8131,275 @@ fn lsp_npm_completions_auto_import_and_quick_fix_no_import_map() {
 }
 
 #[test]
+fn lsp_npm_auto_import_and_quick_fix_byonm() {
+  let context = TestContextBuilder::new()
+    .use_http_server()
+    .use_temp_cwd()
+    .add_npm_env_vars()
+    .build();
+  let temp_dir = context.temp_dir();
+  temp_dir.write("deno.json", json!({}).to_string());
+  temp_dir.write(
+    "package.json",
+    json!({
+      "dependencies": {
+        "cowsay": "*",
+      },
+    })
+    .to_string(),
+  );
+  context
+    .new_command()
+    .args("install")
+    .run()
+    .skip_output_check();
+  temp_dir.write("other.ts", "import \"cowsay\";\n");
+  let mut client = context.new_lsp_command().build();
+  client.initialize_default();
+  let diagnostics = client.did_open(json!({
+    "textDocument": {
+      "uri": temp_dir.url().join("file.ts").unwrap(),
+      "languageId": "typescript",
+      "version": 1,
+      "text": "think({ text: \"foo\" });\n",
+    },
+  }));
+  let list = client.get_completion_list(
+    temp_dir.url().join("file.ts").unwrap(),
+    (0, 5),
+    json!({ "triggerKind": 1 }),
+  );
+  assert!(!list.is_incomplete);
+  let item = list
+    .items
+    .iter()
+    .find(|item| item.label == "think")
+    .unwrap();
+  let res = client.write_request("completionItem/resolve", item);
+  assert_eq!(
+    res,
+    json!({
+      "label": "think",
+      "labelDetails": {
+        "description": "cowsay",
+      },
+      "kind": 3,
+      "detail": "function think(options: IOptions): string",
+      "documentation": {
+        "kind": "markdown",
+        "value": "\n\n*@param*  \noptions ## Face :\nEither choose a mode (set the value as true) **_or_**\nset your own defined eyes and tongue to `e` and `T`.\n- ### `e` : eyes\n- ### `T` : tongue\n\n## Cow :\nEither specify a cow name (e.g. \"fox\") **_or_**\nset the value of `r` to true which selects a random cow.\n- ### `r` : random selection\n- ### `f` : cow name - from `cows` folder\n\n## Modes :\nModes are just ready-to-use faces, here's their list:\n- #### `b` : borg\n- #### `d` : dead      \n- #### `g` : greedy\n- #### `p` : paranoia\n- #### `s` : stoned\n- #### `t` : tired\n- #### `w` : youthful\n- #### `y` : wired  \n\n*@example*  \n```\n// custom cow and face\ncowsay.think({\n    text: 'Hello world!',\n    e: '^^', // eyes\n    T: 'U ', // tongue\n    f: 'USA' // name of the cow from `cows` folder\n})\n\n// using a random cow\ncowsay.think({\n    text: 'Hello world!',\n    e: 'xx', // eyes\n    r: true, // random mode - use a random cow.\n})\n\n// using a mode\ncowsay.think({\n    text: 'Hello world!',\n    y: true, // using y mode - youthful mode\n})\n```",
+      },
+      "sortText": "￿16_0",
+      "additionalTextEdits": [
+        {
+          "range": {
+            "start": { "line": 0, "character": 0 },
+            "end": { "line": 0, "character": 0 },
+          },
+          "newText": "import { think } from \"cowsay\";\n\n",
+        },
+      ],
+    }),
+  );
+  let diagnostics = diagnostics
+    .messages_with_file_and_source(
+      temp_dir.url().join("file.ts").unwrap().as_str(),
+      "deno-ts",
+    )
+    .diagnostics;
+  let res = client.write_request(
+    "textDocument/codeAction",
+    json!(json!({
+      "textDocument": {
+        "uri": temp_dir.url().join("file.ts").unwrap(),
+      },
+      "range": {
+        "start": { "line": 0, "character": 0 },
+        "end": { "line": 0, "character": 5 },
+      },
+      "context": {
+        "diagnostics": &diagnostics,
+        "only": ["quickfix"],
+      },
+    })),
+  );
+  assert_eq!(
+    res,
+    json!([
+      {
+        "title": "Add import from \"cowsay\"",
+        "kind": "quickfix",
+        "diagnostics": &diagnostics,
+        "edit": {
+          "documentChanges": [{
+            "textDocument": {
+              "uri": temp_dir.url().join("file.ts").unwrap(),
+              "version": 1,
+            },
+            "edits": [{
+              "range": {
+                "start": { "line": 0, "character": 0 },
+                "end": { "line": 0, "character": 0 },
+              },
+              "newText": "import { think } from \"cowsay\";\n\n",
+            }],
+          }],
+        },
+      },
+      {
+        "title": "Add missing function declaration 'think'",
+        "kind": "quickfix",
+        "diagnostics": &diagnostics,
+        "edit": {
+          "documentChanges": [
+            {
+              "textDocument": {
+                "uri": temp_dir.url().join("file.ts").unwrap(),
+                "version": 1,
+              },
+              "edits": [
+                {
+                  "range": {
+                    "start": { "line": 1, "character": 0 },
+                    "end": { "line": 1, "character": 0 },
+                  },
+                  "newText": "\nfunction think(arg0: { text: string; }) {\n  throw new Error(\"Function not implemented.\");\n}\n",
+                },
+              ],
+            },
+          ],
+        },
+      },
+    ]),
+  );
+  client.shutdown();
+}
+
+#[test]
+fn lsp_npm_auto_import_with_deno_types() {
+  let context = TestContextBuilder::new()
+    .use_http_server()
+    .use_temp_cwd()
+    .add_npm_env_vars()
+    .build();
+  let temp_dir = context.temp_dir();
+  temp_dir.write(
+    "deno.json",
+    json!({
+      "compilerOptions": {
+        "jsx": "react-jsx",
+        "jsxImportSource": "react",
+        "jsxImportSourceTypes": "@types/react",
+      },
+    })
+    .to_string(),
+  );
+  temp_dir.write(
+    "package.json",
+    json!({
+      "dependencies": {
+        "react": "*",
+        "@types/react": "*",
+        "lz-string": "1.3",
+        "@types/lz-string": "1.3",
+      },
+    })
+    .to_string(),
+  );
+  context.run_npm("install");
+  temp_dir.write(
+    "other.ts",
+    r#"
+      // @deno-types="@types/lz-string"
+      import "lz-string";
+    "#,
+  );
+  let mut client = context.new_lsp_command().build();
+  client.initialize_default();
+  client.did_open(json!({
+    "textDocument": {
+      "uri": temp_dir.url().join("file.ts").unwrap(),
+      "languageId": "typescript",
+      "version": 1,
+      "text": r#"
+        compressToBase64();
+        createRef();
+      "#,
+    },
+  }));
+  let list = client.get_completion_list(
+    temp_dir.url().join("file.ts").unwrap(),
+    (1, 24),
+    json!({ "triggerKind": 1 }),
+  );
+  let item = list
+    .items
+    .iter()
+    .find(|item| item.label == "compressToBase64")
+    .unwrap();
+  let res = client.write_request("completionItem/resolve", item);
+  assert_eq!(
+    res,
+    json!({
+      "label": "compressToBase64",
+      "labelDetails": {
+        "description": "lz-string",
+      },
+      "kind": 2,
+      "detail": "(method) LZString.LZStringStatic.compressToBase64(uncompressed: string): string",
+      "documentation": {
+        "kind": "markdown",
+        "value": "Compresses input string producing an instance of a ASCII UTF-16 string,\nwhich represents the original string encoded in Base64.\nThe result can be safely transported outside the browser with a\nguarantee that none of the characters produced need to be URL-encoded.\n\n*@param* - uncompressed A string which should be compressed.",
+      },
+      "sortText": "￿16_0",
+      "additionalTextEdits": [
+        {
+          "range": {
+            "start": { "line": 0, "character": 0 },
+            "end": { "line": 0, "character": 0 },
+          },
+          "newText": "// @deno-types=\"@types/lz-string\"\nimport { compressToBase64 } from \"lz-string\";\n",
+        },
+      ],
+    }),
+  );
+  let list = client.get_completion_list(
+    temp_dir.url().join("file.ts").unwrap(),
+    (2, 17),
+    json!({ "triggerKind": 1 }),
+  );
+  let item = list
+    .items
+    .iter()
+    .find(|item| item.label == "createRef")
+    .unwrap();
+  let res = client.write_request("completionItem/resolve", item);
+  assert_eq!(
+    res,
+    json!({
+      "label": "createRef",
+      "labelDetails": {
+        "description": "react",
+      },
+      "kind": 3,
+      "detail": "function React.createRef<T>(): React.RefObject<T>",
+      "documentation": { "kind": "markdown", "value": "" },
+      "sortText": "￿16_0",
+      "additionalTextEdits": [
+        {
+          "range": {
+            "start": { "line": 0, "character": 0 },
+            "end": { "line": 0, "character": 0 },
+          },
+          "newText": "// @deno-types=\"@types/react\"\nimport { createRef } from \"react\";\n",
+        },
+      ],
+    }),
+  );
+  client.shutdown();
+}
+
+#[test]
 fn lsp_completions_node_specifier() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let temp_dir = context.temp_dir();
@@ -8198,8 +8511,8 @@ fn lsp_infer_return_type() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let temp_dir = context.temp_dir();
   temp_dir.write("deno.json", json!({}).to_string());
-  let types_file = source_file(
-    temp_dir.path().join("types.d.ts"),
+  temp_dir.write(
+    "types.d.ts",
     r#"
       export interface SomeInterface {
         someField: number;
@@ -8280,7 +8593,7 @@ fn lsp_infer_return_type() {
                   "start": { "line": 1, "character": 20 },
                   "end": { "line": 1, "character": 20 },
                 },
-                "newText": format!(": import(\"{}\").SomeInterface", types_file.url()),
+                "newText": ": import(\"./types.d.ts\").SomeInterface",
               },
             ],
           },
@@ -9298,6 +9611,69 @@ fn lsp_completions_npm() {
 }
 
 #[test]
+fn lsp_auto_imports_npm_auto() {
+  let context = TestContextBuilder::for_npm().use_temp_cwd().build();
+  let temp_dir_path = context.temp_dir().path();
+  temp_dir_path.join("deno.json").write_json(&json!({
+    "nodeModulesDir": "auto",
+    "imports": {
+      "preact": "npm:preact@^10.19.6",
+    },
+  }));
+  // add a file that uses the import so that typescript knows about it
+  temp_dir_path
+    .join("mod.ts")
+    .write("import { useEffect } from 'preact/hooks'; console.log(useEffect);");
+  context.run_deno("cache mod.ts");
+  let mut client = context.new_lsp_command().build();
+  client.initialize_default();
+  let file_uri = temp_dir_path.join("file.ts").url_file();
+  let mut diagnostics = client
+    .did_open(json!({
+      "textDocument": {
+        "uri": file_uri,
+        "languageId": "typescript",
+        "version": 1,
+        "text": "useEffect",
+      }
+    }))
+    .all();
+  assert_eq!(diagnostics.len(), 1);
+  let diagnostic = diagnostics.remove(0);
+  let res = client.write_request(
+    "textDocument/codeAction",
+    json!({
+      "textDocument": {
+        "uri": file_uri,
+      },
+      "range": {
+        "start": { "line": 0, "character": 0 },
+        "end": { "line": 0, "character": 9 }
+      },
+      "context": {
+        "diagnostics": [diagnostic],
+        "only": ["quickfix"]
+      }
+    }),
+  );
+  assert_eq!(
+    res
+      .as_array()
+      .unwrap()
+      .first()
+      .unwrap()
+      .as_object()
+      .unwrap()
+      .get("title")
+      .unwrap()
+      .as_str()
+      .unwrap(),
+    "Add import from \"preact/hooks\""
+  );
+  client.shutdown();
+}
+
+#[test]
 fn lsp_npm_specifier_unopened_file() {
   let context = TestContextBuilder::new()
     .use_http_server()
@@ -9547,7 +9923,7 @@ fn lsp_completions_node_builtin() {
         "severity": 1,
         "code": "not-installed-npm",
         "source": "deno",
-        "message": "NPM package \"@types/node\" is not installed or doesn't exist."
+        "message": "npm package \"@types/node\" is not installed or doesn't exist."
       }
     ])
   );
@@ -11372,7 +11748,7 @@ fn lsp_format_with_config() {
       },
       "options": {
         "tabSize": 2,
-        "insertSpaces": false
+        "insertSpaces": true,
       }
     }),
   );
@@ -15484,25 +15860,23 @@ fn lsp_sloppy_imports() {
 fn lsp_sloppy_imports_prefers_dts() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let temp_dir = context.temp_dir();
-  let temp_dir = temp_dir.path();
-
-  temp_dir
-    .join("deno.json")
-    .write(r#"{ "unstable": ["sloppy-imports"] }"#);
-
-  let mut client: LspClient = context
-    .new_lsp_command()
-    .set_root_dir(temp_dir.clone())
-    .build();
-  client.initialize_default();
-
-  temp_dir.join("a.js").write("export const foo: number;");
-
-  let a_dts = source_file(temp_dir.join("a.d.ts"), "export const foo = 3;");
+  temp_dir.write("deno.json", json!({}).to_string());
+  temp_dir.write("a.js", "export const foo: number;");
+  let a_dts =
+    source_file(temp_dir.path().join("a.d.ts"), "export const foo = 3;");
   let file = source_file(
-    temp_dir.join("file.ts"),
+    temp_dir.path().join("file.ts"),
     "import { foo } from './a.js';\nconsole.log(foo);",
   );
+  let mut client: LspClient = context.new_lsp_command().build();
+  client.initialize_default();
+  client.change_configuration(json!({
+    "deno": {
+      "enable": true,
+      "unstable": ["sloppy-imports"],
+    },
+  }));
+
   let diagnostics = client.did_open_file(&file);
   // no other warnings because "a.js" exists
   assert_eq!(
@@ -15958,6 +16332,55 @@ fn lsp_cjs_import_dual() {
 }
 
 #[test]
+fn lsp_type_commonjs() {
+  let context = TestContextBuilder::new()
+    .use_http_server()
+    .use_temp_cwd()
+    .add_npm_env_vars()
+    .build();
+  let temp_dir = context.temp_dir();
+  temp_dir.write("deno.json", r#"{}"#);
+  temp_dir.write(
+    "package.json",
+    r#"{
+  "type": "commonjs",
+  "dependencies": {
+    "@denotest/dual-cjs-esm": "1"
+  }
+}"#,
+  );
+  context.run_npm("install");
+
+  let mut client = context.new_lsp_command().build();
+  client.initialize_default();
+  let main_url = temp_dir.path().join("main.ts").url_file();
+  let diagnostics = client.did_open(
+    json!({
+      "textDocument": {
+        "uri": main_url,
+        "languageId": "typescript",
+        "version": 1,
+        // getKind() should resolve as "cjs" and cause a type checker error
+        "text": "import mod = require('@denotest/dual-cjs-esm');\nconst kind: 'other' = mod.getKind(); console.log(kind);",
+      }
+    }),
+  );
+  assert_eq!(
+    json!(diagnostics.all()),
+    json!([{
+      "range": {
+          "start": { "line": 1, "character": 6, },
+          "end": { "line": 1, "character": 10, },
+      },
+      "severity": 1,
+      "code": 2322,
+      "source": "deno-ts",
+      "message": "Type '\"cjs\"' is not assignable to type '\"other\"'.",
+    }])
+  );
+}
+
+#[test]
 fn lsp_ts_code_fix_any_param() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let temp_dir = context.temp_dir();
@@ -16160,4 +16583,48 @@ fn lsp_jsdoc_named_example() {
       ]
     }),
   );
+}
+
+#[test]
+fn lsp_wasm_module() {
+  let context = TestContextBuilder::new()
+    .use_temp_cwd()
+    .use_http_server()
+    .build();
+  let mut client = context.new_lsp_command().build();
+  client.initialize_default();
+  client.did_open(json!({
+    "textDocument": {
+      "uri": "file:///a/file.ts",
+      "languageId": "typescript",
+      "version": 1,
+      "text": "import { add } from \"http://localhost:4545/wasm/math.wasm\";\nadd(1, '');\n"
+    }
+  }));
+
+  client.write_request(
+    "workspace/executeCommand",
+    json!({
+      "command": "deno.cache",
+      "arguments": [[], "file:///a/file.ts"],
+    }),
+  );
+
+  let diagnostics = client.read_diagnostics();
+  assert_eq!(
+    json!(diagnostics.all()),
+    json!([
+      {
+        "range": {
+          "start": { "line": 1, "character": 7 },
+          "end": { "line": 1, "character": 9 }
+        },
+        "severity": 1,
+        "code": 2345,
+        "source": "deno-ts",
+        "message": "Argument of type 'string' is not assignable to parameter of type 'number'."
+      }
+    ])
+  );
+  client.shutdown();
 }

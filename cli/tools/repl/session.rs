@@ -7,7 +7,7 @@ use crate::cdp;
 use crate::colors;
 use crate::lsp::ReplLanguageServer;
 use crate::npm::CliNpmResolver;
-use crate::resolver::CliGraphResolver;
+use crate::resolver::CliResolver;
 use crate::tools::test::report_tests;
 use crate::tools::test::reporters::PrettyTestReporter;
 use crate::tools::test::reporters::TestReporter;
@@ -25,6 +25,7 @@ use deno_ast::swc::visit::noop_visit_type;
 use deno_ast::swc::visit::Visit;
 use deno_ast::swc::visit::VisitWith;
 use deno_ast::ImportsNotUsedAsValues;
+use deno_ast::ModuleKind;
 use deno_ast::ModuleSpecifier;
 use deno_ast::ParseDiagnosticsError;
 use deno_ast::ParsedSource;
@@ -42,13 +43,13 @@ use deno_core::unsync::spawn;
 use deno_core::url::Url;
 use deno_core::LocalInspectorSession;
 use deno_core::PollEventLoopOptions;
-use deno_graph::source::ResolutionMode;
-use deno_graph::source::Resolver;
 use deno_graph::Position;
 use deno_graph::PositionRange;
 use deno_graph::SpecifierWithRange;
 use deno_runtime::worker::MainWorker;
 use deno_semver::npm::NpmPackageReqReference;
+use node_resolver::NodeResolutionKind;
+use node_resolver::ResolutionMode;
 use once_cell::sync::Lazy;
 use regex::Match;
 use regex::Regex;
@@ -179,7 +180,7 @@ struct ReplJsxState {
 
 pub struct ReplSession {
   npm_resolver: Arc<dyn CliNpmResolver>,
-  resolver: Arc<CliGraphResolver>,
+  resolver: Arc<CliResolver>,
   pub worker: MainWorker,
   session: LocalInspectorSession,
   pub context_id: u64,
@@ -198,7 +199,7 @@ impl ReplSession {
   pub async fn initialize(
     cli_options: &CliOptions,
     npm_resolver: Arc<dyn CliNpmResolver>,
-    resolver: Arc<CliGraphResolver>,
+    resolver: Arc<CliResolver>,
     mut worker: MainWorker,
     main_module: ModuleSpecifier,
     test_event_receiver: TestEventReceiver,
@@ -244,7 +245,7 @@ impl ReplSession {
     assert_ne!(context_id, 0);
 
     let referrer =
-      deno_core::resolve_path("./$deno$repl.ts", cli_options.initial_cwd())
+      deno_core::resolve_path("./$deno$repl.mts", cli_options.initial_cwd())
         .unwrap();
 
     let cwd_url =
@@ -641,6 +642,10 @@ impl ReplSession {
           jsx_fragment_factory: self.jsx.frag_factory.clone(),
           jsx_import_source: self.jsx.import_source.clone(),
           var_decl_imports: true,
+          verbatim_module_syntax: false,
+        },
+        &deno_ast::TranspileModuleOptions {
+          module_kind: Some(ModuleKind::Esm),
         },
         &deno_ast::EmitOptions {
           source_map: deno_ast::SourceMapOption::None,
@@ -651,7 +656,6 @@ impl ReplSession {
         },
       )?
       .into_source()
-      .into_string()?
       .text;
 
     let value = self
@@ -697,18 +701,19 @@ impl ReplSession {
     let mut collector = ImportCollector::new();
     program.visit_with(&mut collector);
 
-    let referrer_range = deno_graph::Range {
-      specifier: self.referrer.clone(),
-      start: deno_graph::Position::zeroed(),
-      end: deno_graph::Position::zeroed(),
-    };
     let resolved_imports = collector
       .imports
       .iter()
       .flat_map(|i| {
         self
           .resolver
-          .resolve(i, &referrer_range, ResolutionMode::Execution)
+          .resolve(
+            i,
+            &self.referrer,
+            deno_graph::Position::zeroed(),
+            ResolutionMode::Import,
+            NodeResolutionKind::Execution,
+          )
           .ok()
           .or_else(|| ModuleSpecifier::parse(i).ok())
       })

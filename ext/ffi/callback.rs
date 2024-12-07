@@ -38,7 +38,7 @@ pub enum CallbackError {
   #[error(transparent)]
   Resource(deno_core::error::AnyError),
   #[error(transparent)]
-  Permission(deno_core::error::AnyError),
+  Permission(#[from] deno_permissions::PermissionCheckError),
   #[error(transparent)]
   Other(deno_core::error::AnyError),
 }
@@ -561,7 +561,7 @@ pub struct RegisterCallbackArgs {
   result: NativeType,
 }
 
-#[op2]
+#[op2(stack_trace)]
 pub fn op_ffi_unsafe_callback_create<FP, 'scope>(
   state: &mut OpState,
   scope: &mut v8::HandleScope<'scope>,
@@ -572,9 +572,7 @@ where
   FP: FfiPermissions + 'static,
 {
   let permissions = state.borrow_mut::<FP>();
-  permissions
-    .check_partial_no_path()
-    .map_err(CallbackError::Permission)?;
+  permissions.check_partial_no_path()?;
 
   let thread_id: u32 = LOCAL_THREAD_ID.with(|s| {
     let value = *s.borrow();

@@ -12,6 +12,8 @@
 use crate::ops::fs_events::FsEventsError;
 use crate::ops::http::HttpStartError;
 use crate::ops::os::OsError;
+use crate::ops::permissions::PermissionError;
+use crate::ops::process::CheckRunPermissionError;
 use crate::ops::process::ProcessError;
 use crate::ops::signal::SignalError;
 use crate::ops::tty::TtyError;
@@ -39,15 +41,23 @@ use deno_ffi::IRError;
 use deno_ffi::ReprError;
 use deno_ffi::StaticError;
 use deno_fs::FsOpsError;
+use deno_fs::FsOpsErrorKind;
 use deno_http::HttpError;
 use deno_http::HttpNextError;
 use deno_http::WebSocketUpgradeError;
 use deno_io::fs::FsError;
 use deno_kv::KvCheckError;
 use deno_kv::KvError;
+use deno_kv::KvErrorKind;
 use deno_kv::KvMutationError;
 use deno_napi::NApiError;
 use deno_net::ops::NetError;
+use deno_permissions::ChildPermissionError;
+use deno_permissions::NetDescriptorFromUrlParseError;
+use deno_permissions::PathResolveError;
+use deno_permissions::PermissionCheckError;
+use deno_permissions::RunDescriptorParseError;
+use deno_permissions::SysDescriptorParseError;
 use deno_tls::TlsError;
 use deno_web::BlobError;
 use deno_web::CompressionError;
@@ -62,6 +72,54 @@ use std::env;
 use std::error::Error;
 use std::io;
 use std::sync::Arc;
+
+fn get_run_descriptor_parse_error(e: &RunDescriptorParseError) -> &'static str {
+  match e {
+    RunDescriptorParseError::Which(_) => "Error",
+    RunDescriptorParseError::PathResolve(e) => get_path_resolve_error(e),
+    RunDescriptorParseError::EmptyRunQuery => "Error",
+  }
+}
+
+fn get_sys_descriptor_parse_error(e: &SysDescriptorParseError) -> &'static str {
+  match e {
+    SysDescriptorParseError::InvalidKind(_) => "TypeError",
+    SysDescriptorParseError::Empty => "Error",
+  }
+}
+
+fn get_path_resolve_error(e: &PathResolveError) -> &'static str {
+  match e {
+    PathResolveError::CwdResolve(e) => get_io_error_class(e),
+    PathResolveError::EmptyPath => "Error",
+  }
+}
+
+fn get_permission_error_class(e: &PermissionError) -> &'static str {
+  match e {
+    PermissionError::InvalidPermissionName(_) => "ReferenceError",
+    PermissionError::PathResolve(e) => get_path_resolve_error(e),
+    PermissionError::NetDescriptorParse(_) => "URIError",
+    PermissionError::SysDescriptorParse(e) => get_sys_descriptor_parse_error(e),
+    PermissionError::RunDescriptorParse(e) => get_run_descriptor_parse_error(e),
+  }
+}
+
+fn get_permission_check_error_class(e: &PermissionCheckError) -> &'static str {
+  match e {
+    PermissionCheckError::PermissionDenied(_) => "NotCapable",
+    PermissionCheckError::InvalidFilePath(_) => "URIError",
+    PermissionCheckError::NetDescriptorForUrlParse(e) => match e {
+      NetDescriptorFromUrlParseError::MissingHost(_) => "TypeError",
+      NetDescriptorFromUrlParseError::Host(_) => "URIError",
+    },
+    PermissionCheckError::SysDescriptorParse(e) => {
+      get_sys_descriptor_parse_error(e)
+    }
+    PermissionCheckError::PathResolve(e) => get_path_resolve_error(e),
+    PermissionCheckError::HostParse(_) => "URIError",
+  }
+}
 
 fn get_dlopen_error_class(error: &dlopen2::Error) -> &'static str {
   use dlopen2::Error::*;
@@ -445,7 +503,7 @@ fn get_napi_error_class(e: &NApiError) -> &'static str {
     NApiError::InvalidPath
     | NApiError::LibLoading(_)
     | NApiError::ModuleNotFound(_) => "TypeError",
-    NApiError::Permission(e) => get_error_class_name(e).unwrap_or("Error"),
+    NApiError::Permission(e) => get_permission_check_error_class(e),
   }
 }
 
@@ -523,7 +581,7 @@ fn get_ffi_repr_error_class(e: &ReprError) -> &'static str {
     ReprError::InvalidF32 => "TypeError",
     ReprError::InvalidF64 => "TypeError",
     ReprError::InvalidPointer => "TypeError",
-    ReprError::Permission(e) => get_error_class_name(e).unwrap_or("Error"),
+    ReprError::Permission(e) => get_permission_check_error_class(e),
   }
 }
 
@@ -531,7 +589,7 @@ fn get_ffi_dlfcn_error_class(e: &DlfcnError) -> &'static str {
   match e {
     DlfcnError::RegisterSymbol { .. } => "Error",
     DlfcnError::Dlopen(_) => "Error",
-    DlfcnError::Permission(e) => get_error_class_name(e).unwrap_or("Error"),
+    DlfcnError::Permission(e) => get_permission_check_error_class(e),
     DlfcnError::Other(e) => get_error_class_name(e).unwrap_or("Error"),
   }
 }
@@ -549,7 +607,7 @@ fn get_ffi_callback_error_class(e: &CallbackError) -> &'static str {
   match e {
     CallbackError::Resource(e) => get_error_class_name(e).unwrap_or("Error"),
     CallbackError::Other(e) => get_error_class_name(e).unwrap_or("Error"),
-    CallbackError::Permission(e) => get_error_class_name(e).unwrap_or("Error"),
+    CallbackError::Permission(e) => get_permission_check_error_class(e),
   }
 }
 
@@ -558,15 +616,16 @@ fn get_ffi_call_error_class(e: &CallError) -> &'static str {
     CallError::IR(_) => "TypeError",
     CallError::NonblockingCallFailure(_) => "Error",
     CallError::InvalidSymbol(_) => "TypeError",
-    CallError::Permission(e) => get_error_class_name(e).unwrap_or("Error"),
+    CallError::Permission(e) => get_permission_check_error_class(e),
     CallError::Callback(e) => get_ffi_callback_error_class(e),
+    CallError::Resource(e) => get_error_class_name(e).unwrap_or("Error"),
   }
 }
 
 fn get_webstorage_class_name(e: &WebStorageError) -> &'static str {
   match e {
     WebStorageError::ContextNotSupported => "DOMExceptionNotSupportedError",
-    WebStorageError::Sqlite(_) => todo!(),
+    WebStorageError::Sqlite(_) => "Error",
     WebStorageError::Io(e) => get_io_error_class(e),
     WebStorageError::StorageExceeded => "DOMExceptionQuotaExceededError",
   }
@@ -633,11 +692,11 @@ fn get_broadcast_channel_error(error: &BroadcastChannelError) -> &'static str {
 
 fn get_fetch_error(error: &FetchError) -> &'static str {
   match error {
-    FetchError::Resource(e) | FetchError::Permission(e) => {
-      get_error_class_name(e).unwrap_or("Error")
-    }
+    FetchError::Resource(e) => get_error_class_name(e).unwrap_or("Error"),
+    FetchError::Permission(e) => get_permission_check_error_class(e),
     FetchError::NetworkError => "TypeError",
     FetchError::FsNotGet(_) => "TypeError",
+    FetchError::PathToUrl(_) => "TypeError",
     FetchError::InvalidUrl(_) => "TypeError",
     FetchError::InvalidHeaderName(_) => "TypeError",
     FetchError::InvalidHeaderValue(_) => "TypeError",
@@ -669,9 +728,8 @@ fn get_http_client_create_error(error: &HttpClientCreateError) -> &'static str {
 
 fn get_websocket_error(error: &WebsocketError) -> &'static str {
   match error {
-    WebsocketError::Permission(e) | WebsocketError::Resource(e) => {
-      get_error_class_name(e).unwrap_or("Error")
-    }
+    WebsocketError::Resource(e) => get_error_class_name(e).unwrap_or("Error"),
+    WebsocketError::Permission(e) => get_permission_check_error_class(e),
     WebsocketError::Url(e) => get_url_parse_error_class(e),
     WebsocketError::Io(e) => get_io_error_class(e),
     WebsocketError::WebSocket(_) => "TypeError",
@@ -705,66 +763,67 @@ fn get_websocket_handshake_error(error: &HandshakeError) -> &'static str {
 }
 
 fn get_fs_ops_error(error: &FsOpsError) -> &'static str {
-  match error {
-    FsOpsError::Io(e) => get_io_error_class(e),
-    FsOpsError::OperationError(e) => get_fs_error(&e.err),
-    FsOpsError::Permission(e)
-    | FsOpsError::Resource(e)
-    | FsOpsError::Other(e) => get_error_class_name(e).unwrap_or("Error"),
-    FsOpsError::InvalidUtf8(_) => "InvalidData",
-    FsOpsError::StripPrefix(_) => "Error",
-    FsOpsError::Canceled(e) => {
+  use FsOpsErrorKind::*;
+  match error.as_kind() {
+    Io(e) => get_io_error_class(e),
+    OperationError(e) => get_fs_error(&e.err),
+    Permission(e) => get_permission_check_error_class(e),
+    Resource(e) | Other(e) => get_error_class_name(e).unwrap_or("Error"),
+    InvalidUtf8(_) => "InvalidData",
+    StripPrefix(_) => "Error",
+    Canceled(e) => {
       let io_err: io::Error = e.to_owned().into();
       get_io_error_class(&io_err)
     }
-    FsOpsError::InvalidSeekMode(_) => "TypeError",
-    FsOpsError::InvalidControlCharacter(_) => "Error",
-    FsOpsError::InvalidCharacter(_) => "Error",
+    InvalidSeekMode(_) => "TypeError",
+    InvalidControlCharacter(_) => "Error",
+    InvalidCharacter(_) => "Error",
     #[cfg(windows)]
-    FsOpsError::InvalidTrailingCharacter => "Error",
-    FsOpsError::NotCapableAccess { .. } => "NotCapable",
-    FsOpsError::NotCapable(_) => "NotCapable",
+    InvalidTrailingCharacter => "Error",
+    NotCapableAccess { .. } => "NotCapable",
+    NotCapable(_) => "NotCapable",
   }
 }
 
 fn get_kv_error(error: &KvError) -> &'static str {
-  match error {
-    KvError::DatabaseHandler(e) | KvError::Resource(e) | KvError::Kv(e) => {
+  use KvErrorKind::*;
+  match error.as_kind() {
+    DatabaseHandler(e) | Resource(e) | Kv(e) => {
       get_error_class_name(e).unwrap_or("Error")
     }
-    KvError::TooManyRanges(_) => "TypeError",
-    KvError::TooManyEntries(_) => "TypeError",
-    KvError::TooManyChecks(_) => "TypeError",
-    KvError::TooManyMutations(_) => "TypeError",
-    KvError::TooManyKeys(_) => "TypeError",
-    KvError::InvalidLimit => "TypeError",
-    KvError::InvalidBoundaryKey => "TypeError",
-    KvError::KeyTooLargeToRead(_) => "TypeError",
-    KvError::KeyTooLargeToWrite(_) => "TypeError",
-    KvError::TotalMutationTooLarge(_) => "TypeError",
-    KvError::TotalKeyTooLarge(_) => "TypeError",
-    KvError::Io(e) => get_io_error_class(e),
-    KvError::QueueMessageNotFound => "TypeError",
-    KvError::StartKeyNotInKeyspace => "TypeError",
-    KvError::EndKeyNotInKeyspace => "TypeError",
-    KvError::StartKeyGreaterThanEndKey => "TypeError",
-    KvError::InvalidCheck(e) => match e {
+    TooManyRanges(_) => "TypeError",
+    TooManyEntries(_) => "TypeError",
+    TooManyChecks(_) => "TypeError",
+    TooManyMutations(_) => "TypeError",
+    TooManyKeys(_) => "TypeError",
+    InvalidLimit => "TypeError",
+    InvalidBoundaryKey => "TypeError",
+    KeyTooLargeToRead(_) => "TypeError",
+    KeyTooLargeToWrite(_) => "TypeError",
+    TotalMutationTooLarge(_) => "TypeError",
+    TotalKeyTooLarge(_) => "TypeError",
+    Io(e) => get_io_error_class(e),
+    QueueMessageNotFound => "TypeError",
+    StartKeyNotInKeyspace => "TypeError",
+    EndKeyNotInKeyspace => "TypeError",
+    StartKeyGreaterThanEndKey => "TypeError",
+    InvalidCheck(e) => match e {
       KvCheckError::InvalidVersionstamp => "TypeError",
       KvCheckError::Io(e) => get_io_error_class(e),
     },
-    KvError::InvalidMutation(e) => match e {
+    InvalidMutation(e) => match e {
       KvMutationError::BigInt(_) => "Error",
       KvMutationError::Io(e) => get_io_error_class(e),
       KvMutationError::InvalidMutationWithValue(_) => "TypeError",
       KvMutationError::InvalidMutationWithoutValue(_) => "TypeError",
     },
-    KvError::InvalidEnqueue(e) => get_io_error_class(e),
-    KvError::EmptyKey => "TypeError",
-    KvError::ValueTooLarge(_) => "TypeError",
-    KvError::EnqueuePayloadTooLarge(_) => "TypeError",
-    KvError::InvalidCursor => "TypeError",
-    KvError::CursorOutOfBounds => "TypeError",
-    KvError::InvalidRange => "TypeError",
+    InvalidEnqueue(e) => get_io_error_class(e),
+    EmptyKey => "TypeError",
+    ValueTooLarge(_) => "TypeError",
+    EnqueuePayloadTooLarge(_) => "TypeError",
+    InvalidCursor => "TypeError",
+    CursorOutOfBounds => "TypeError",
+    InvalidRange => "TypeError",
   }
 }
 
@@ -777,9 +836,10 @@ fn get_net_error(error: &NetError) -> &'static str {
     NetError::SocketBusy => "Busy",
     NetError::Io(e) => get_io_error_class(e),
     NetError::AcceptTaskOngoing => "Busy",
-    NetError::RootCertStore(e)
-    | NetError::Permission(e)
-    | NetError::Resource(e) => get_error_class_name(e).unwrap_or("Error"),
+    NetError::RootCertStore(e) | NetError::Resource(e) => {
+      get_error_class_name(e).unwrap_or("Error")
+    }
+    NetError::Permission(e) => get_permission_check_error_class(e),
     NetError::NoResolvedAddress => "Error",
     NetError::AddrParse(_) => "Error",
     NetError::Map(e) => get_net_map_error(e),
@@ -810,12 +870,25 @@ fn get_net_map_error(error: &deno_net::io::MapError) -> &'static str {
   }
 }
 
+fn get_child_permission_error(e: &ChildPermissionError) -> &'static str {
+  match e {
+    ChildPermissionError::Escalation => "NotCapable",
+    ChildPermissionError::PathResolve(e) => get_path_resolve_error(e),
+    ChildPermissionError::NetDescriptorParse(_) => "URIError",
+    ChildPermissionError::EnvDescriptorParse(_) => "Error",
+    ChildPermissionError::SysDescriptorParse(e) => {
+      get_sys_descriptor_parse_error(e)
+    }
+    ChildPermissionError::RunDescriptorParse(e) => {
+      get_run_descriptor_parse_error(e)
+    }
+  }
+}
+
 fn get_create_worker_error(error: &CreateWorkerError) -> &'static str {
   match error {
     CreateWorkerError::ClassicWorkers => "DOMExceptionNotSupportedError",
-    CreateWorkerError::Permission(e) => {
-      get_error_class_name(e).unwrap_or("Error")
-    }
+    CreateWorkerError::Permission(e) => get_child_permission_error(e),
     CreateWorkerError::ModuleResolution(e) => {
       get_module_resolution_error_class(e)
     }
@@ -862,9 +935,8 @@ fn get_signal_error(error: &SignalError) -> &'static str {
 
 fn get_fs_events_error(error: &FsEventsError) -> &'static str {
   match error {
-    FsEventsError::Resource(e) | FsEventsError::Permission(e) => {
-      get_error_class_name(e).unwrap_or("Error")
-    }
+    FsEventsError::Resource(e) => get_error_class_name(e).unwrap_or("Error"),
+    FsEventsError::Permission(e) => get_permission_check_error_class(e),
     FsEventsError::Notify(e) => get_notify_error_class(e),
     FsEventsError::Canceled(e) => {
       let io_err: io::Error = e.to_owned().into();
@@ -892,9 +964,8 @@ fn get_process_error(error: &ProcessError) -> &'static str {
     ProcessError::FailedResolvingCwd(e) | ProcessError::Io(e) => {
       get_io_error_class(e)
     }
-    ProcessError::Permission(e) | ProcessError::Resource(e) => {
-      get_error_class_name(e).unwrap_or("Error")
-    }
+    ProcessError::Permission(e) => get_permission_check_error_class(e),
+    ProcessError::Resource(e) => get_error_class_name(e).unwrap_or("Error"),
     ProcessError::BorrowMut(_) => "Error",
     ProcessError::Which(_) => "Error",
     ProcessError::ChildProcessAlreadyTerminated => "TypeError",
@@ -903,6 +974,14 @@ fn get_process_error(error: &ProcessError) -> &'static str {
     ProcessError::InvalidPid => "TypeError",
     #[cfg(unix)]
     ProcessError::Nix(e) => get_nix_error_class(e),
+    ProcessError::RunPermission(e) => match e {
+      CheckRunPermissionError::Permission(e) => {
+        get_permission_check_error_class(e)
+      }
+      CheckRunPermissionError::Other(e) => {
+        get_error_class_name(e).unwrap_or("Error")
+      }
+    },
   }
 }
 
@@ -971,9 +1050,38 @@ fn get_fs_error(e: &FsError) -> &'static str {
 mod node {
   use super::get_error_class_name;
   use super::get_io_error_class;
+  use super::get_permission_check_error_class;
   use super::get_serde_json_error_class;
   use super::get_url_parse_error_class;
   pub use deno_node::ops::blocklist::BlocklistError;
+  pub use deno_node::ops::crypto::cipher::CipherContextError;
+  pub use deno_node::ops::crypto::cipher::CipherError;
+  pub use deno_node::ops::crypto::cipher::DecipherContextError;
+  pub use deno_node::ops::crypto::cipher::DecipherError;
+  pub use deno_node::ops::crypto::digest::HashError;
+  pub use deno_node::ops::crypto::keys::AsymmetricPrivateKeyDerError;
+  pub use deno_node::ops::crypto::keys::AsymmetricPrivateKeyError;
+  pub use deno_node::ops::crypto::keys::AsymmetricPublicKeyDerError;
+  pub use deno_node::ops::crypto::keys::AsymmetricPublicKeyError;
+  pub use deno_node::ops::crypto::keys::AsymmetricPublicKeyJwkError;
+  pub use deno_node::ops::crypto::keys::EcJwkError;
+  pub use deno_node::ops::crypto::keys::EdRawError;
+  pub use deno_node::ops::crypto::keys::ExportPrivateKeyPemError;
+  pub use deno_node::ops::crypto::keys::ExportPublicKeyPemError;
+  pub use deno_node::ops::crypto::keys::GenerateRsaPssError;
+  pub use deno_node::ops::crypto::keys::RsaJwkError;
+  pub use deno_node::ops::crypto::keys::RsaPssParamsParseError;
+  pub use deno_node::ops::crypto::keys::X509PublicKeyError;
+  pub use deno_node::ops::crypto::sign::KeyObjectHandlePrehashedSignAndVerifyError;
+  pub use deno_node::ops::crypto::x509::X509Error;
+  pub use deno_node::ops::crypto::DiffieHellmanError;
+  pub use deno_node::ops::crypto::EcdhEncodePubKey;
+  pub use deno_node::ops::crypto::HkdfError;
+  pub use deno_node::ops::crypto::Pbkdf2Error;
+  pub use deno_node::ops::crypto::PrivateEncryptDecryptError;
+  pub use deno_node::ops::crypto::ScryptAsyncError;
+  pub use deno_node::ops::crypto::SignEd25519Error;
+  pub use deno_node::ops::crypto::VerifyEd25519Error;
   pub use deno_node::ops::fs::FsError;
   pub use deno_node::ops::http2::Http2Error;
   pub use deno_node::ops::idna::IdnaError;
@@ -982,6 +1090,7 @@ mod node {
   use deno_node::ops::os::priority::PriorityError;
   pub use deno_node::ops::os::OsError;
   pub use deno_node::ops::require::RequireError;
+  use deno_node::ops::require::RequireErrorKind;
   pub use deno_node::ops::worker_threads::WorkerThreadsFilenameError;
   pub use deno_node::ops::zlib::brotli::BrotliError;
   pub use deno_node::ops::zlib::mode::ModeError;
@@ -998,7 +1107,7 @@ mod node {
 
   pub fn get_fs_error(error: &FsError) -> &'static str {
     match error {
-      FsError::Permission(e) => get_error_class_name(e).unwrap_or("Error"),
+      FsError::Permission(e) => get_permission_check_error_class(e),
       FsError::Io(e) => get_io_error_class(e),
       #[cfg(windows)]
       FsError::PathHasNoRoot => "Error",
@@ -1048,24 +1157,23 @@ mod node {
       WorkerThreadsFilenameError::UrlToPathString => "Error",
       WorkerThreadsFilenameError::UrlToPath => "Error",
       WorkerThreadsFilenameError::FileNotFound(_) => "Error",
-      WorkerThreadsFilenameError::NeitherEsmNorCjs => "Error",
-      WorkerThreadsFilenameError::UrlToNodeResolution(_) => "Error",
       WorkerThreadsFilenameError::Fs(e) => super::get_fs_error(e),
     }
   }
 
   pub fn get_require_error(error: &RequireError) -> &'static str {
-    match error {
-      RequireError::UrlParse(e) => get_url_parse_error_class(e),
-      RequireError::Permission(e) => get_error_class_name(e).unwrap_or("Error"),
-      RequireError::PackageExportsResolve(_) => "Error",
-      RequireError::PackageJsonLoad(_) => "Error",
-      RequireError::ClosestPkgJson(_) => "Error",
-      RequireError::FilePathConversion(_) => "Error",
-      RequireError::PackageImportsResolve(_) => "Error",
-      RequireError::Fs(e) | RequireError::UnableToGetCwd(e) => {
-        super::get_fs_error(e)
-      }
+    use RequireErrorKind::*;
+    match error.as_kind() {
+      UrlParse(e) => get_url_parse_error_class(e),
+      Permission(e) => get_error_class_name(e).unwrap_or("Error"),
+      PackageExportsResolve(_)
+      | PackageJsonLoad(_)
+      | ClosestPkgJson(_)
+      | FilePathConversion(_)
+      | UrlConversion(_)
+      | ReadModule(_)
+      | PackageImportsResolve(_) => "Error",
+      Fs(e) | UnableToGetCwd(e) => super::get_fs_error(e),
     }
   }
 
@@ -1084,8 +1192,9 @@ mod node {
         #[cfg(windows)]
         PriorityError::InvalidPriority => "TypeError",
       },
-      OsError::Permission(e) => get_error_class_name(e).unwrap_or("Error"),
+      OsError::Permission(e) => get_permission_check_error_class(e),
       OsError::FailedToGetCpuInfo => "TypeError",
+      OsError::FailedToGetUserInfo(e) => get_io_error_class(e),
     }
   }
 
@@ -1111,11 +1220,329 @@ mod node {
       ZlibError::Other(e) => get_error_class_name(e).unwrap_or("Error"),
     }
   }
+
+  pub fn get_crypto_cipher_context_error(
+    e: &CipherContextError,
+  ) -> &'static str {
+    match e {
+      CipherContextError::ContextInUse => "TypeError",
+      CipherContextError::Cipher(e) => get_crypto_cipher_error(e),
+      CipherContextError::Resource(e) => {
+        get_error_class_name(e).unwrap_or("Error")
+      }
+    }
+  }
+
+  pub fn get_crypto_cipher_error(e: &CipherError) -> &'static str {
+    match e {
+      CipherError::InvalidIvLength => "TypeError",
+      CipherError::InvalidKeyLength => "RangeError",
+      CipherError::InvalidInitializationVector => "TypeError",
+      CipherError::CannotPadInputData => "TypeError",
+      CipherError::UnknownCipher(_) => "TypeError",
+    }
+  }
+
+  pub fn get_crypto_decipher_context_error(
+    e: &DecipherContextError,
+  ) -> &'static str {
+    match e {
+      DecipherContextError::ContextInUse => "TypeError",
+      DecipherContextError::Decipher(e) => get_crypto_decipher_error(e),
+      DecipherContextError::Resource(e) => {
+        get_error_class_name(e).unwrap_or("Error")
+      }
+    }
+  }
+
+  pub fn get_crypto_decipher_error(e: &DecipherError) -> &'static str {
+    match e {
+      DecipherError::InvalidIvLength => "TypeError",
+      DecipherError::InvalidKeyLength => "RangeError",
+      DecipherError::InvalidInitializationVector => "TypeError",
+      DecipherError::CannotUnpadInputData => "TypeError",
+      DecipherError::DataAuthenticationFailed => "TypeError",
+      DecipherError::SetAutoPaddingFalseAes128GcmUnsupported => "TypeError",
+      DecipherError::SetAutoPaddingFalseAes256GcmUnsupported => "TypeError",
+      DecipherError::UnknownCipher(_) => "TypeError",
+    }
+  }
+
+  pub fn get_x509_error(_: &X509Error) -> &'static str {
+    "Error"
+  }
+
+  pub fn get_crypto_key_object_handle_prehashed_sign_and_verify_error(
+    e: &KeyObjectHandlePrehashedSignAndVerifyError,
+  ) -> &'static str {
+    match e {
+      KeyObjectHandlePrehashedSignAndVerifyError::InvalidDsaSignatureEncoding => "TypeError",
+      KeyObjectHandlePrehashedSignAndVerifyError::KeyIsNotPrivate => "TypeError",
+      KeyObjectHandlePrehashedSignAndVerifyError::DigestNotAllowedForRsaSignature(_) => "TypeError",
+      KeyObjectHandlePrehashedSignAndVerifyError::FailedToSignDigestWithRsa => "Error",
+      KeyObjectHandlePrehashedSignAndVerifyError::DigestNotAllowedForRsaPssSignature(_) => "TypeError",
+      KeyObjectHandlePrehashedSignAndVerifyError::FailedToSignDigestWithRsaPss => "Error",
+      KeyObjectHandlePrehashedSignAndVerifyError::FailedToSignDigestWithDsa => "TypeError",
+      KeyObjectHandlePrehashedSignAndVerifyError::RsaPssHashAlgorithmUnsupported => "TypeError",
+      KeyObjectHandlePrehashedSignAndVerifyError::PrivateKeyDisallowsUsage { .. } => "TypeError",
+      KeyObjectHandlePrehashedSignAndVerifyError::FailedToSignDigest => "TypeError",
+      KeyObjectHandlePrehashedSignAndVerifyError::X25519KeyCannotBeUsedForSigning => "TypeError",
+      KeyObjectHandlePrehashedSignAndVerifyError::Ed25519KeyCannotBeUsedForPrehashedSigning => "TypeError",
+      KeyObjectHandlePrehashedSignAndVerifyError::DhKeyCannotBeUsedForSigning => "TypeError",
+      KeyObjectHandlePrehashedSignAndVerifyError::KeyIsNotPublicOrPrivate => "TypeError",
+      KeyObjectHandlePrehashedSignAndVerifyError::InvalidDsaSignature => "TypeError",
+      KeyObjectHandlePrehashedSignAndVerifyError::X25519KeyCannotBeUsedForVerification => "TypeError",
+      KeyObjectHandlePrehashedSignAndVerifyError::Ed25519KeyCannotBeUsedForPrehashedVerification => "TypeError",
+      KeyObjectHandlePrehashedSignAndVerifyError::DhKeyCannotBeUsedForVerification => "TypeError",
+    }
+  }
+
+  pub fn get_crypto_hash_error(_: &HashError) -> &'static str {
+    "Error"
+  }
+
+  pub fn get_asymmetric_public_key_jwk_error(
+    e: &AsymmetricPublicKeyJwkError,
+  ) -> &'static str {
+    match e {
+      AsymmetricPublicKeyJwkError::UnsupportedJwkEcCurveP224 => "TypeError",
+      AsymmetricPublicKeyJwkError::JwkExportNotImplementedForKeyType => {
+        "TypeError"
+      }
+      AsymmetricPublicKeyJwkError::KeyIsNotAsymmetricPublicKey => "TypeError",
+    }
+  }
+
+  pub fn get_generate_rsa_pss_error(_: &GenerateRsaPssError) -> &'static str {
+    "TypeError"
+  }
+
+  pub fn get_asymmetric_private_key_der_error(
+    e: &AsymmetricPrivateKeyDerError,
+  ) -> &'static str {
+    match e {
+      AsymmetricPrivateKeyDerError::KeyIsNotAsymmetricPrivateKey => "TypeError",
+      AsymmetricPrivateKeyDerError::InvalidRsaPrivateKey => "TypeError",
+      AsymmetricPrivateKeyDerError::ExportingNonRsaPrivateKeyAsPkcs1Unsupported => "TypeError",
+      AsymmetricPrivateKeyDerError::InvalidEcPrivateKey => "TypeError",
+      AsymmetricPrivateKeyDerError::ExportingNonEcPrivateKeyAsSec1Unsupported => "TypeError",
+      AsymmetricPrivateKeyDerError::ExportingNonRsaPssPrivateKeyAsPkcs8Unsupported => "Error",
+      AsymmetricPrivateKeyDerError::InvalidDsaPrivateKey => "TypeError",
+      AsymmetricPrivateKeyDerError::InvalidX25519PrivateKey => "TypeError",
+      AsymmetricPrivateKeyDerError::InvalidEd25519PrivateKey => "TypeError",
+      AsymmetricPrivateKeyDerError::InvalidDhPrivateKey => "TypeError",
+      AsymmetricPrivateKeyDerError::UnsupportedKeyType(_) => "TypeError",
+    }
+  }
+
+  pub fn get_asymmetric_public_key_der_error(
+    _: &AsymmetricPublicKeyDerError,
+  ) -> &'static str {
+    "TypeError"
+  }
+
+  pub fn get_export_public_key_pem_error(
+    e: &ExportPublicKeyPemError,
+  ) -> &'static str {
+    match e {
+      ExportPublicKeyPemError::AsymmetricPublicKeyDer(e) => {
+        get_asymmetric_public_key_der_error(e)
+      }
+      ExportPublicKeyPemError::VeryLargeData => "TypeError",
+      ExportPublicKeyPemError::Der(_) => "Error",
+    }
+  }
+
+  pub fn get_export_private_key_pem_error(
+    e: &ExportPrivateKeyPemError,
+  ) -> &'static str {
+    match e {
+      ExportPrivateKeyPemError::AsymmetricPublicKeyDer(e) => {
+        get_asymmetric_private_key_der_error(e)
+      }
+      ExportPrivateKeyPemError::VeryLargeData => "TypeError",
+      ExportPrivateKeyPemError::Der(_) => "Error",
+    }
+  }
+
+  pub fn get_x509_public_key_error(e: &X509PublicKeyError) -> &'static str {
+    match e {
+      X509PublicKeyError::X509(_) => "Error",
+      X509PublicKeyError::Rsa(_) => "Error",
+      X509PublicKeyError::Asn1(_) => "Error",
+      X509PublicKeyError::Ec(_) => "Error",
+      X509PublicKeyError::UnsupportedEcNamedCurve => "TypeError",
+      X509PublicKeyError::MissingEcParameters => "TypeError",
+      X509PublicKeyError::MalformedDssPublicKey => "TypeError",
+      X509PublicKeyError::UnsupportedX509KeyType => "TypeError",
+    }
+  }
+
+  pub fn get_rsa_jwk_error(e: &RsaJwkError) -> &'static str {
+    match e {
+      RsaJwkError::Base64(_) => "Error",
+      RsaJwkError::Rsa(_) => "Error",
+      RsaJwkError::MissingRsaPrivateComponent => "TypeError",
+    }
+  }
+
+  pub fn get_ec_jwk_error(e: &EcJwkError) -> &'static str {
+    match e {
+      EcJwkError::Ec(_) => "Error",
+      EcJwkError::UnsupportedCurve(_) => "TypeError",
+    }
+  }
+
+  pub fn get_ed_raw_error(e: &EdRawError) -> &'static str {
+    match e {
+      EdRawError::Ed25519Signature(_) => "Error",
+      EdRawError::InvalidEd25519Key => "TypeError",
+      EdRawError::UnsupportedCurve => "TypeError",
+    }
+  }
+
+  pub fn get_pbkdf2_error(e: &Pbkdf2Error) -> &'static str {
+    match e {
+      Pbkdf2Error::UnsupportedDigest(_) => "TypeError",
+      Pbkdf2Error::Join(_) => "Error",
+    }
+  }
+
+  pub fn get_scrypt_async_error(e: &ScryptAsyncError) -> &'static str {
+    match e {
+      ScryptAsyncError::Join(_) => "Error",
+      ScryptAsyncError::Other(e) => get_error_class_name(e).unwrap_or("Error"),
+    }
+  }
+
+  pub fn get_hkdf_error_error(e: &HkdfError) -> &'static str {
+    match e {
+      HkdfError::ExpectedSecretKey => "TypeError",
+      HkdfError::HkdfExpandFailed => "TypeError",
+      HkdfError::UnsupportedDigest(_) => "TypeError",
+      HkdfError::Join(_) => "Error",
+    }
+  }
+
+  pub fn get_rsa_pss_params_parse_error(
+    _: &RsaPssParamsParseError,
+  ) -> &'static str {
+    "TypeError"
+  }
+
+  pub fn get_asymmetric_private_key_error(
+    e: &AsymmetricPrivateKeyError,
+  ) -> &'static str {
+    match e {
+      AsymmetricPrivateKeyError::InvalidPemPrivateKeyInvalidUtf8(_) => "TypeError",
+      AsymmetricPrivateKeyError::InvalidEncryptedPemPrivateKey => "TypeError",
+      AsymmetricPrivateKeyError::InvalidPemPrivateKey => "TypeError",
+      AsymmetricPrivateKeyError::EncryptedPrivateKeyRequiresPassphraseToDecrypt => "TypeError",
+      AsymmetricPrivateKeyError::InvalidPkcs1PrivateKey => "TypeError",
+      AsymmetricPrivateKeyError::InvalidSec1PrivateKey => "TypeError",
+      AsymmetricPrivateKeyError::UnsupportedPemLabel(_) => "TypeError",
+      AsymmetricPrivateKeyError::RsaPssParamsParse(e) => get_rsa_pss_params_parse_error(e),
+      AsymmetricPrivateKeyError::InvalidEncryptedPkcs8PrivateKey => "TypeError",
+      AsymmetricPrivateKeyError::InvalidPkcs8PrivateKey => "TypeError",
+      AsymmetricPrivateKeyError::Pkcs1PrivateKeyDoesNotSupportEncryptionWithPassphrase => "TypeError",
+      AsymmetricPrivateKeyError::Sec1PrivateKeyDoesNotSupportEncryptionWithPassphrase => "TypeError",
+      AsymmetricPrivateKeyError::UnsupportedEcNamedCurve => "TypeError",
+      AsymmetricPrivateKeyError::InvalidPrivateKey => "TypeError",
+      AsymmetricPrivateKeyError::InvalidDsaPrivateKey => "TypeError",
+      AsymmetricPrivateKeyError::MalformedOrMissingNamedCurveInEcParameters => "TypeError",
+      AsymmetricPrivateKeyError::UnsupportedKeyType(_) => "TypeError",
+      AsymmetricPrivateKeyError::UnsupportedKeyFormat(_) => "TypeError",
+      AsymmetricPrivateKeyError::InvalidX25519PrivateKey => "TypeError",
+      AsymmetricPrivateKeyError::X25519PrivateKeyIsWrongLength => "TypeError",
+      AsymmetricPrivateKeyError::InvalidEd25519PrivateKey => "TypeError",
+      AsymmetricPrivateKeyError::MissingDhParameters => "TypeError",
+      AsymmetricPrivateKeyError::UnsupportedPrivateKeyOid => "TypeError",
+    }
+  }
+
+  pub fn get_asymmetric_public_key_error(
+    e: &AsymmetricPublicKeyError,
+  ) -> &'static str {
+    match e {
+      AsymmetricPublicKeyError::InvalidPemPrivateKeyInvalidUtf8(_) => {
+        "TypeError"
+      }
+      AsymmetricPublicKeyError::InvalidPemPublicKey => "TypeError",
+      AsymmetricPublicKeyError::InvalidPkcs1PublicKey => "TypeError",
+      AsymmetricPublicKeyError::AsymmetricPrivateKey(e) => {
+        get_asymmetric_private_key_error(e)
+      }
+      AsymmetricPublicKeyError::InvalidX509Certificate => "TypeError",
+      AsymmetricPublicKeyError::X509(_) => "Error",
+      AsymmetricPublicKeyError::X509PublicKey(e) => {
+        get_x509_public_key_error(e)
+      }
+      AsymmetricPublicKeyError::UnsupportedPemLabel(_) => "TypeError",
+      AsymmetricPublicKeyError::InvalidSpkiPublicKey => "TypeError",
+      AsymmetricPublicKeyError::UnsupportedKeyType(_) => "TypeError",
+      AsymmetricPublicKeyError::UnsupportedKeyFormat(_) => "TypeError",
+      AsymmetricPublicKeyError::Spki(_) => "Error",
+      AsymmetricPublicKeyError::Pkcs1(_) => "Error",
+      AsymmetricPublicKeyError::RsaPssParamsParse(_) => "TypeError",
+      AsymmetricPublicKeyError::MalformedDssPublicKey => "TypeError",
+      AsymmetricPublicKeyError::MalformedOrMissingNamedCurveInEcParameters => {
+        "TypeError"
+      }
+      AsymmetricPublicKeyError::MalformedOrMissingPublicKeyInEcSpki => {
+        "TypeError"
+      }
+      AsymmetricPublicKeyError::Ec(_) => "Error",
+      AsymmetricPublicKeyError::UnsupportedEcNamedCurve => "TypeError",
+      AsymmetricPublicKeyError::MalformedOrMissingPublicKeyInX25519Spki => {
+        "TypeError"
+      }
+      AsymmetricPublicKeyError::X25519PublicKeyIsTooShort => "TypeError",
+      AsymmetricPublicKeyError::InvalidEd25519PublicKey => "TypeError",
+      AsymmetricPublicKeyError::MissingDhParameters => "TypeError",
+      AsymmetricPublicKeyError::MalformedDhParameters => "TypeError",
+      AsymmetricPublicKeyError::MalformedOrMissingPublicKeyInDhSpki => {
+        "TypeError"
+      }
+      AsymmetricPublicKeyError::UnsupportedPrivateKeyOid => "TypeError",
+    }
+  }
+
+  pub fn get_private_encrypt_decrypt_error(
+    e: &PrivateEncryptDecryptError,
+  ) -> &'static str {
+    match e {
+      PrivateEncryptDecryptError::Pkcs8(_) => "Error",
+      PrivateEncryptDecryptError::Spki(_) => "Error",
+      PrivateEncryptDecryptError::Utf8(_) => "Error",
+      PrivateEncryptDecryptError::Rsa(_) => "Error",
+      PrivateEncryptDecryptError::UnknownPadding => "TypeError",
+    }
+  }
+
+  pub fn get_ecdh_encode_pub_key_error(e: &EcdhEncodePubKey) -> &'static str {
+    match e {
+      EcdhEncodePubKey::InvalidPublicKey => "TypeError",
+      EcdhEncodePubKey::UnsupportedCurve => "TypeError",
+      EcdhEncodePubKey::Sec1(_) => "Error",
+    }
+  }
+
+  pub fn get_diffie_hellman_error(_: &DiffieHellmanError) -> &'static str {
+    "TypeError"
+  }
+
+  pub fn get_sign_ed25519_error(_: &SignEd25519Error) -> &'static str {
+    "TypeError"
+  }
+
+  pub fn get_verify_ed25519_error(_: &VerifyEd25519Error) -> &'static str {
+    "TypeError"
+  }
 }
 
 fn get_os_error(error: &OsError) -> &'static str {
   match error {
-    OsError::Permission(e) => get_error_class_name(e).unwrap_or("Error"),
+    OsError::Permission(e) => get_permission_check_error_class(e),
     OsError::InvalidUtf8(_) => "InvalidData",
     OsError::EnvEmptyKey => "TypeError",
     OsError::EnvInvalidKey(_) => "TypeError",
@@ -1143,6 +1570,18 @@ fn get_sync_fetch_error(error: &SyncFetchError) -> &'static str {
 
 pub fn get_error_class_name(e: &AnyError) -> Option<&'static str> {
   deno_core::error::get_custom_error_class(e)
+    .or_else(|| {
+      e.downcast_ref::<ChildPermissionError>()
+        .map(get_child_permission_error)
+    })
+    .or_else(|| {
+      e.downcast_ref::<PermissionCheckError>()
+        .map(get_permission_check_error_class)
+    })
+    .or_else(|| {
+      e.downcast_ref::<PermissionError>()
+        .map(get_permission_error_class)
+    })
     .or_else(|| e.downcast_ref::<FsError>().map(get_fs_error))
     .or_else(|| {
       e.downcast_ref::<node::BlocklistError>()
@@ -1182,6 +1621,114 @@ pub fn get_error_class_name(e: &AnyError) -> Option<&'static str> {
     .or_else(|| {
       e.downcast_ref::<node::ZlibError>()
         .map(node::get_zlib_error)
+    })
+    .or_else(|| {
+      e.downcast_ref::<node::CipherError>()
+        .map(node::get_crypto_cipher_error)
+    })
+    .or_else(|| {
+      e.downcast_ref::<node::CipherContextError>()
+        .map(node::get_crypto_cipher_context_error)
+    })
+    .or_else(|| {
+      e.downcast_ref::<node::DecipherError>()
+        .map(node::get_crypto_decipher_error)
+    })
+    .or_else(|| {
+      e.downcast_ref::<node::DecipherContextError>()
+        .map(node::get_crypto_decipher_context_error)
+    })
+    .or_else(|| {
+      e.downcast_ref::<node::X509Error>()
+        .map(node::get_x509_error)
+    })
+    .or_else(|| {
+      e.downcast_ref::<node::KeyObjectHandlePrehashedSignAndVerifyError>()
+        .map(node::get_crypto_key_object_handle_prehashed_sign_and_verify_error)
+    })
+    .or_else(|| {
+      e.downcast_ref::<node::HashError>()
+        .map(node::get_crypto_hash_error)
+    })
+    .or_else(|| {
+      e.downcast_ref::<node::AsymmetricPublicKeyJwkError>()
+        .map(node::get_asymmetric_public_key_jwk_error)
+    })
+    .or_else(|| {
+      e.downcast_ref::<node::GenerateRsaPssError>()
+        .map(node::get_generate_rsa_pss_error)
+    })
+    .or_else(|| {
+      e.downcast_ref::<node::AsymmetricPrivateKeyDerError>()
+        .map(node::get_asymmetric_private_key_der_error)
+    })
+    .or_else(|| {
+      e.downcast_ref::<node::AsymmetricPublicKeyDerError>()
+        .map(node::get_asymmetric_public_key_der_error)
+    })
+    .or_else(|| {
+      e.downcast_ref::<node::ExportPublicKeyPemError>()
+        .map(node::get_export_public_key_pem_error)
+    })
+    .or_else(|| {
+      e.downcast_ref::<node::ExportPrivateKeyPemError>()
+        .map(node::get_export_private_key_pem_error)
+    })
+    .or_else(|| {
+      e.downcast_ref::<node::RsaJwkError>()
+        .map(node::get_rsa_jwk_error)
+    })
+    .or_else(|| {
+      e.downcast_ref::<node::EcJwkError>()
+        .map(node::get_ec_jwk_error)
+    })
+    .or_else(|| {
+      e.downcast_ref::<node::EdRawError>()
+        .map(node::get_ed_raw_error)
+    })
+    .or_else(|| {
+      e.downcast_ref::<node::Pbkdf2Error>()
+        .map(node::get_pbkdf2_error)
+    })
+    .or_else(|| {
+      e.downcast_ref::<node::ScryptAsyncError>()
+        .map(node::get_scrypt_async_error)
+    })
+    .or_else(|| {
+      e.downcast_ref::<node::HkdfError>()
+        .map(node::get_hkdf_error_error)
+    })
+    .or_else(|| {
+      e.downcast_ref::<node::RsaPssParamsParseError>()
+        .map(node::get_rsa_pss_params_parse_error)
+    })
+    .or_else(|| {
+      e.downcast_ref::<node::AsymmetricPrivateKeyError>()
+        .map(node::get_asymmetric_private_key_error)
+    })
+    .or_else(|| {
+      e.downcast_ref::<node::AsymmetricPublicKeyError>()
+        .map(node::get_asymmetric_public_key_error)
+    })
+    .or_else(|| {
+      e.downcast_ref::<node::PrivateEncryptDecryptError>()
+        .map(node::get_private_encrypt_decrypt_error)
+    })
+    .or_else(|| {
+      e.downcast_ref::<node::EcdhEncodePubKey>()
+        .map(node::get_ecdh_encode_pub_key_error)
+    })
+    .or_else(|| {
+      e.downcast_ref::<node::DiffieHellmanError>()
+        .map(node::get_diffie_hellman_error)
+    })
+    .or_else(|| {
+      e.downcast_ref::<node::SignEd25519Error>()
+        .map(node::get_sign_ed25519_error)
+    })
+    .or_else(|| {
+      e.downcast_ref::<node::VerifyEd25519Error>()
+        .map(node::get_verify_ed25519_error)
     })
     .or_else(|| e.downcast_ref::<NApiError>().map(get_napi_error_class))
     .or_else(|| e.downcast_ref::<WebError>().map(get_web_error_class))

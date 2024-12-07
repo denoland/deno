@@ -1409,7 +1409,7 @@ ServerResponse.prototype.hasHeader = function (
   this: ServerResponse,
   name: string,
 ) {
-  return Object.hasOwn(this._headers, name);
+  return Object.hasOwn(this._headers, StringPrototypeToLowerCase(name));
 };
 
 ServerResponse.prototype.writeHead = function (
@@ -1802,6 +1802,8 @@ export class ServerImpl extends EventEmitter {
       this.#server.ref();
     }
     this.#unref = false;
+
+    return this;
   }
 
   unref() {
@@ -1809,6 +1811,8 @@ export class ServerImpl extends EventEmitter {
       this.#server.unref();
     }
     this.#unref = true;
+
+    return this;
   }
 
   close(cb?: (err?: Error) => void): this {
