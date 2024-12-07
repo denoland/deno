@@ -267,14 +267,20 @@ function createImageBitmap(
       } else if (mimeTypeString === "") {
         return PromiseReject(
           new DOMException(
-            `The MIME type of source image is not specified`,
+            `The MIME type of source image is not specified\n
+hint: When you want to get a "Blob" from "fetch", make sure to go through a file server that returns the appropriate content-type response header,
+      and specify the URL to the file server like "await(await fetch('http://localhost:8000/sample.png').blob()".
+      Alternatively, if you are reading a local file using 'Deno.readFile' etc.,
+      set the appropriate MIME type like "new Blob([await Deno.readFile('sample.png')], { type: 'image/png' })".\n`,
             "InvalidStateError",
           ),
         );
       } else {
         return PromiseReject(
           new DOMException(
-            `The MIME type ${mimeTypeString} of source image is not a supported format`,
+            `The the MIME type ${mimeTypeString} of source image is not a supported format\n
+info: The following MIME types are supported.
+docs: https://mimesniff.spec.whatwg.org/#image-type-pattern-matching-algorithm\n`,
             "InvalidStateError",
           ),
         );
