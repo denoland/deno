@@ -1,0 +1,5 @@
+{
+  "scripts": {
+    "dev": "echo 'bar'"
+  }
+}

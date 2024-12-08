@@ -2,6 +2,9 @@
 import { partition } from "@std/collections/partition";
 import { join } from "@std/path";
 import * as JSONC from "@std/jsonc";
+import { walk } from "@std/fs/walk";
+import { relative } from "@std/path/posix/relative";
+
 /**
  * The test suite matches the folders inside the `test` folder inside the
  * node repo
@@ -60,4 +63,131 @@ export function partitionParallelTestPaths(
 ): { parallel: string[]; sequential: string[] } {
   const partitions = partition(testPaths, (p) => !!p.match(PARALLEL_PATTERN));
   return { parallel: partitions[0], sequential: partitions[1] };
+}
+
+export const NODE_IGNORED_TEST_DIRS = [
+  "addons",
+  "async-hooks",
+  "cctest",
+  "common",
+  "doctool",
+  "embedding",
+  "fixtures",
+  "fuzzers",
+  "js-native-api",
+  "node-api",
+  "overlapped-checker",
+  "report",
+  "testpy",
+  "tick-processor",
+  "tools",
+  "v8-updates",
+  "wasi",
+  "wpt",
+];
+
+export const VENDORED_NODE_TEST = new URL(
+  "./runner/suite/test/",
+  import.meta.url,
+);
+export const NODE_COMPAT_TEST_DEST_URL = new URL(
+  "./test/",
+  import.meta.url,
+);
+
+export async function getNodeTests(): Promise<string[]> {
+  const paths: string[] = [];
+  const rootPath = VENDORED_NODE_TEST.href.slice(7);
+  for await (
+    const item of walk(VENDORED_NODE_TEST, { exts: [".js"] })
+  ) {
+    const path = relative(rootPath, item.path);
+    if (NODE_IGNORED_TEST_DIRS.every((dir) => !path.startsWith(dir))) {
+      paths.push(path);
+    }
+  }
+
+  return paths.sort();
+}
+
+export async function getDenoTests() {
+  const paths: string[] = [];
+  const rootPath = NODE_COMPAT_TEST_DEST_URL.href.slice(7);
+  for await (
+    const item of walk(NODE_COMPAT_TEST_DEST_URL, { exts: [".js"] })
+  ) {
+    const path = relative(rootPath, item.path);
+    paths.push(path);
+  }
+
+  return paths.sort();
+}
+
+let testSerialId = 0;
+const cwd = new URL(".", import.meta.url);
+
+export async function runNodeCompatTestCase(
+  testCase: string,
+  signal?: AbortSignal,
+) {
+  const v8Flags = ["--stack-size=4000"];
+  const testSource = await Deno.readTextFile(testCase);
+  const envVars: Record<string, string> = {};
+  const knownGlobals: string[] = [];
+  parseFlags(testSource).forEach((flag) => {
+    switch (flag) {
+      case "--expose_externalize_string":
+        v8Flags.push("--expose-externalize-string");
+        knownGlobals.push("createExternalizableString");
+        break;
+      case "--expose-gc":
+        v8Flags.push("--expose-gc");
+        knownGlobals.push("gc");
+        break;
+      default:
+        break;
+    }
+  });
+  if (knownGlobals.length > 0) {
+    envVars["NODE_TEST_KNOWN_GLOBALS"] = knownGlobals.join(",");
+  }
+  // TODO(nathanwhit): once we match node's behavior on executing
+  // `node:test` tests when we run a file, we can remove this
+  const usesNodeTest = testSource.includes("node:test");
+  const args = [
+    usesNodeTest ? "test" : "run",
+    "-A",
+    "--quiet",
+    "--unstable-unsafe-proto",
+    "--unstable-bare-node-builtins",
+    "--unstable-fs",
+    "--v8-flags=" + v8Flags.join(),
+  ];
+  if (usesNodeTest) {
+    // deno test typechecks by default + we want to pass script args
+    args.push("--no-check", "runner.ts", "--", testCase);
+  } else {
+    args.push("runner.ts", testCase);
+  }
+
+  // Pipe stdout in order to output each test result as Deno.test output
+  // That way the tests will respect the `--quiet` option when provided
+  return new Deno.Command(Deno.execPath(), {
+    args,
+    env: {
+      TEST_SERIAL_ID: String(testSerialId++),
+      ...envVars,
+    },
+    cwd,
+    stdout: "piped",
+    stderr: "piped",
+    signal,
+  }).spawn();
+}
+
+/** Parses the special "Flags:"" syntax in Node.js test files */
+function parseFlags(source: string): string[] {
+  const line = /^\/\/ Flags: (.+)$/um.exec(source);
+  if (line == null) return [];
+  return line[1].split(" ");
 }
