@@ -10,6 +10,7 @@ use deno_semver::package::PackageReq;
 use deno_semver::VersionReq;
 use deno_terminal::colors;
 use serde::Serialize;
+use serde::Serializer;
 
 use crate::args::CacheSetting;
 use crate::args::CliOptions;
@@ -29,7 +30,7 @@ use super::deps::PackageLatestVersion;
 
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Serialize)]
 struct OutdatedPackage {
-  #[serde(rename = "specifier")]
+  #[serde(rename = "specifier", serialize_with = "lowercase_serializer")]
   kind: DepKind,
   #[serde(rename = "latest")]
   latest: String,
@@ -38,6 +39,16 @@ struct OutdatedPackage {
   current: String,
   #[serde(rename = "package")]
   name: String,
+}
+
+fn lowercase_serializer<S>(kind: &DepKind, s: S) -> Result<S::Ok, S::Error>
+where
+  S: Serializer,
+{
+  match kind {
+    DepKind::Npm => s.serialize_str("npm"),
+    DepKind::Jsr => s.serialize_str("jsr"),
+  }
 }
 
 #[allow(clippy::print_stdout)]
