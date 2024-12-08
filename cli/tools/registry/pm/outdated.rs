@@ -170,7 +170,7 @@ fn print_outdated(
       OutdatedOutputFmt::Table => print_outdated_table(&outdated),
       OutdatedOutputFmt::Json => {
         let json = serde_json::to_string_pretty(&outdated)?;
-        log::info!("{json}");
+        println!("{json}");
       }
     }
   }
