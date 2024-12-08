@@ -2736,17 +2736,13 @@ Specific version requirements to update to can be specified:
           .long("recursive")
           .short('r')
           .action(ArgAction::SetTrue)
-          .help("include all workspace members"),
+          .help("Include all workspace members"),
       )
       .arg(
-        Arg::new("output")
-          .long("output")
-          .short('o')
-          .value_parser([
-            "json", "table"
-          ])
-          .default_value("table")
-          .help("specify the output format"),
+        Arg::new("json")
+          .long("json")
+          .action(ArgAction::SetTrue)
+          .help("Output outdated packages in JSON format")
       )
   })
 }
@@ -4516,11 +4512,11 @@ fn outdated_parse(
     OutdatedKind::Update { latest }
   } else {
     let compatible = matches.get_flag("compatible");
-    let output = matches.get_one::<String>("output").unwrap();
-    let output_fmt = match output.as_str() {
-      "json" => OutdatedOutputFmt::Json,
-      "table" => OutdatedOutputFmt::Table,
-      _ => unreachable!(),
+    let json = matches.get_flag("json");
+    let output_fmt = if json {
+      OutdatedOutputFmt::Json
+    } else {
+      OutdatedOutputFmt::Table
     };
     OutdatedKind::PrintOutdated {
       compatible,
@@ -11679,7 +11675,7 @@ Usage: deno repl [OPTIONS] [-- [ARGS]...]\n"
         },
       ),
       (
-        svec!["--output", "json"],
+        svec!["--json"],
         OutdatedFlags {
           filters: vec![],
           kind: OutdatedKind::PrintOutdated {
