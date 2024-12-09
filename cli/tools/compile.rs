@@ -15,8 +15,11 @@ use deno_core::error::generic_error;
 use deno_core::error::AnyError;
 use deno_core::resolve_url_or_path;
 use deno_graph::GraphKind;
+use deno_path_util::url_from_file_path;
+use deno_path_util::url_to_file_path;
 use deno_terminal::colors;
 use rand::Rng;
+use std::collections::HashSet;
 use std::path::Path;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -242,7 +245,44 @@ fn get_module_roots_and_include_files(
     }
   }
 
-  let mut module_roots = Vec::with_capacity(compile_flags.include.len() + 1);
+  fn extract_modules_if_directory(
+    url: &ModuleSpecifier,
+    module_roots: &mut Vec<ModuleSpecifier>,
+    searched_directories: &mut HashSet<PathBuf>,
+  ) -> Result<(), AnyError> {
+    let Ok(path) = url_to_file_path(url) else {
+      return Ok(());
+    };
+    if !path.is_dir() {
+      return Ok(());
+    }
+    let mut pending_dirs = vec![path];
+    while let Some(dir) = pending_dirs.pop() {
+      if !searched_directories.insert(dir.clone()) {
+        continue;
+      }
+      for entry in std::fs::read_dir(&dir).with_context(|| {
+        format!("Failed reading directory '{}'", dir.display())
+      })? {
+        let entry = entry.with_context(|| {
+          format!("Failed reading entry in directory '{}'", dir.display())
+        })?;
+        let path = entry.path();
+        if path.is_dir() {
+          pending_dirs.push(path);
+        } else if path.is_file() {
+          let url = url_from_file_path(&path)?;
+          if is_module_graph_module(&url) {
+            module_roots.push(url);
+          }
+        }
+      }
+    }
+    Ok(())
+  }
+
+  let mut searched_directories = HashSet::new();
+  let mut module_roots = Vec::new();
   let mut include_files = Vec::with_capacity(compile_flags.include.len());
   module_roots.push(entrypoint.clone());
   for side_module in &compile_flags.include {
@@ -250,6 +290,11 @@ fn get_module_roots_and_include_files(
     if is_module_graph_module(&url) {
       module_roots.push(url);
     } else {
+      extract_modules_if_directory(
+        &url,
+        &mut module_roots,
+        &mut searched_directories,
+      )?;
       include_files.push(url);
     }
   }
