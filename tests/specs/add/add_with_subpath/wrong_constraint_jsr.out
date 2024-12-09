@@ -1,4 +1,4 @@
-error: Failed to parse package required: jsr:@std/testing/bdd@1
+error: Failed to parse package: jsr:@std/testing/bdd@1
 
 Caused by:
-    Invalid package specifier 'jsr:@std/testing/bdd@1'. Did you mean to write 'jsr:@std/testing@1/bdd'?
+    Invalid package specifier 'jsr:@std/testing/bdd@1'. Did you mean to write 'jsr:@std/testing@1/bdd'? If not, add a version requirement to the specifier.
