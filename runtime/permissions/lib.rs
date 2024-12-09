@@ -493,11 +493,12 @@ impl<TQuery: QueryDescriptor> UnaryPermission<TQuery> {
     if !self.prompt {
       return PermissionState::Denied;
     }
-    let maybe_display_name = desc.map(|d| d.display_name());
+    let maybe_formatted_display_name =
+      desc.map(|d| format_display_name(d.display_name()));
     let message = StringBuilder::build(|builder| {
       builder.append(TQuery::flag_name());
       builder.append(" access");
-      if let Some(display_name) = &maybe_display_name {
+      if let Some(display_name) = &maybe_formatted_display_name {
         builder.append(" to ");
         builder.append(display_name)
       }
