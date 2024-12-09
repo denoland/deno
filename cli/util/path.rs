@@ -1,6 +1,7 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 use std::borrow::Cow;
+use std::fmt::Write;
 use std::path::Path;
 use std::path::PathBuf;
 
@@ -58,8 +59,8 @@ pub fn get_atomic_file_path(file_path: &Path) -> PathBuf {
 }
 
 fn gen_rand_path_component() -> String {
-  (0..4).fold(String::new(), |mut output, _| {
-    output.push_str(&format!("{:02x}", rand::random::<u8>()));
+  (0..4).fold(String::with_capacity(8), |mut output, _| {
+    write!(&mut output, "{:02x}", rand::random::<u8>()).unwrap();
     output
   })
 }
