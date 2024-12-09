@@ -614,7 +614,7 @@ impl ManagedCliNpmResolver {
       .iter()
       .map(|pkg| pkg.req.clone())
       .collect::<Vec<_>>();
-    let _ = self.add_package_reqs_no_cache(&pkg_reqs).await;
+    let _ = self.add_package_reqs_no_cache(&pkg_reqs).await?;
 
     Ok(false)
   }
