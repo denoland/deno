@@ -1078,6 +1078,7 @@ struct WorkspaceFileContainerEntry {
   doc_snippet_specifiers: Vec<ModuleSpecifier>,
   main_graph_container: Arc<MainModuleGraphContainer>,
   worker_factory: Arc<CliMainWorkerFactory>,
+  ext_flag: Option<String>,
 }
 
 impl WorkspaceFileContainerEntry {
@@ -1143,6 +1144,7 @@ impl WorkspaceFileContainer {
         false,
         scope_options.map(Arc::new),
       )?);
+      let ext_flag = cli_options.ext_flag().clone();
       let factory = CliFactory::from_cli_options(cli_options.clone());
       let file_fetcher = factory.file_fetcher()?;
       let specifiers = collect_specifiers(
@@ -1171,6 +1173,7 @@ impl WorkspaceFileContainer {
         doc_snippet_specifiers,
         main_graph_container,
         worker_factory,
+        ext_flag,
       });
     }
     Ok(Self { entries })
@@ -1187,7 +1190,7 @@ impl WorkspaceFileContainer {
       }
       if let Err(err) = entry
         .main_graph_container
-        .check_specifiers(&specifiers_for_typecheck, None)
+        .check_specifiers(&specifiers_for_typecheck, entry.ext_flag.as_ref())
         .await
       {
         match err {
