@@ -1,6 +1,7 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 use std::borrow::Cow;
+use std::cell::RefCell;
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::fs::File;
@@ -637,10 +638,9 @@ impl VfsRoot {
   }
 }
 
-#[derive(Clone)]
 struct FileBackedVfsFile {
   file: VirtualFile,
-  pos: Arc<Mutex<u64>>,
+  pos: RefCell<u64>,
   vfs: Arc<FileBackedVfs>,
 }
 
@@ -648,7 +648,7 @@ impl FileBackedVfsFile {
   fn seek(&self, pos: SeekFrom) -> FsResult<u64> {
     match pos {
       SeekFrom::Start(pos) => {
-        *self.pos.lock() = pos;
+        *self.pos.borrow_mut() = pos;
         Ok(pos)
       }
       SeekFrom::End(offset) => {
@@ -659,7 +659,7 @@ impl FileBackedVfsFile {
               .into(),
           )
         } else {
-          let mut current_pos = self.pos.lock();
+          let mut current_pos = self.pos.borrow_mut();
           *current_pos = if offset >= 0 {
             self.file.offset.len - (offset as u64)
           } else {
@@ -669,7 +669,7 @@ impl FileBackedVfsFile {
         }
       }
       SeekFrom::Current(offset) => {
-        let mut current_pos = self.pos.lock();
+        let mut current_pos = self.pos.borrow_mut();
         if offset >= 0 {
           *current_pos += offset as u64;
         } else if -offset as u64 > *current_pos {
@@ -684,7 +684,7 @@ impl FileBackedVfsFile {
 
   fn read_to_buf(&self, buf: &mut [u8]) -> FsResult<usize> {
     let read_pos = {
-      let mut pos = self.pos.lock();
+      let mut pos = self.pos.borrow_mut();
       let read_pos = *pos;
       // advance the position due to the read
       *pos = std::cmp::min(self.file.offset.len, *pos + buf.len() as u64);
@@ -698,7 +698,7 @@ impl FileBackedVfsFile {
 
   fn read_to_end(&self) -> FsResult<Cow<'static, [u8]>> {
     let read_pos = {
-      let mut pos = self.pos.lock();
+      let mut pos = self.pos.borrow_mut();
       let read_pos = *pos;
       // todo(dsherret): should this always set it to the end of the file?
       if *pos < self.file.offset.len {
@@ -734,12 +734,8 @@ impl deno_io::fs::File for FileBackedVfsFile {
     self: Rc<Self>,
     mut buf: BufMutView,
   ) -> FsResult<(usize, BufMutView)> {
-    let inner = (*self).clone();
-    tokio::task::spawn(async move {
-      let nread = inner.read_to_buf(&mut buf)?;
-      Ok((nread, buf))
-    })
-    .await?
+    let nread = self.read_to_buf(&mut buf)?;
+    Ok((nread, buf))
   }
 
   fn write_sync(self: Rc<Self>, _buf: &[u8]) -> FsResult<usize> {
@@ -763,8 +759,7 @@ impl deno_io::fs::File for FileBackedVfsFile {
     self.read_to_end()
   }
   async fn read_all_async(self: Rc<Self>) -> FsResult<Cow<'static, [u8]>> {
-    let inner = (*self).clone();
-    tokio::task::spawn_blocking(move || inner.read_to_end()).await?
+    self.read_to_end()
   }
 
   fn chmod_sync(self: Rc<Self>, _pathmode: u32) -> FsResult<()> {
