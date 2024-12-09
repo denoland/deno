@@ -82,9 +82,9 @@ impl ProgressBarRenderer for BarProgressBarRenderer {
     let elapsed_text = get_elapsed_text(data.duration);
     let mut text = String::new();
     if !display_entry.message.is_empty() {
-      write!(
+      writeln!(
         &mut text,
-        "{} {}{}\n",
+        "{} {}{}",
         colors::green("Download"),
         display_entry.message,
         bytes_text,
