@@ -9145,3 +9145,7 @@ dependencies = [
  "cc",
  "pkg-config",
 ]
+
+[[patch.unused]]
+name = "deno_core"
+version = "0.325.0"

@@ -13,6 +13,7 @@ pub mod os;
 pub mod perf_hooks;
 pub mod process;
 pub mod require;
+pub mod sqlite;
 pub mod tls;
 pub mod util;
 pub mod v8;
