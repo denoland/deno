@@ -46,7 +46,7 @@ pub use worker_bootstrap::BootstrapOptions;
 pub use worker_bootstrap::WorkerExecutionMode;
 pub use worker_bootstrap::WorkerLogLevel;
 
-mod shared;
+pub mod shared;
 pub use shared::runtime;
 
 pub struct UnstableGranularFlag {
