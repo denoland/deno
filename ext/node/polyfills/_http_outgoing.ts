@@ -108,8 +108,6 @@ export function OutgoingMessage() {
   this._onPendingData = nop;
 
   this._bodyWriter = null;
-
-  this._listenerSet = false;
 }
 
 Object.setPrototypeOf(OutgoingMessage.prototype, Stream.prototype);
