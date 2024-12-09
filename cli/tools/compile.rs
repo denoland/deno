@@ -20,6 +20,7 @@ use deno_path_util::url_to_file_path;
 use deno_terminal::colors;
 use rand::Rng;
 use std::collections::HashSet;
+use std::collections::VecDeque;
 use std::path::Path;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -245,57 +246,56 @@ fn get_module_roots_and_include_files(
     }
   }
 
-  fn extract_modules_if_directory(
+  fn analyze_path(
     url: &ModuleSpecifier,
     module_roots: &mut Vec<ModuleSpecifier>,
-    searched_directories: &mut HashSet<PathBuf>,
+    include_files: &mut Vec<ModuleSpecifier>,
+    searched_paths: &mut HashSet<PathBuf>,
   ) -> Result<(), AnyError> {
     let Ok(path) = url_to_file_path(url) else {
       return Ok(());
     };
-    if !path.is_dir() {
-      return Ok(());
-    }
-    let mut pending_dirs = vec![path];
-    while let Some(dir) = pending_dirs.pop() {
-      if !searched_directories.insert(dir.clone()) {
+    let mut pending = VecDeque::from([path]);
+    while let Some(path) = pending.pop_front() {
+      if !searched_paths.insert(path.clone()) {
         continue;
       }
-      for entry in std::fs::read_dir(&dir).with_context(|| {
-        format!("Failed reading directory '{}'", dir.display())
+      if !path.is_dir() {
+        let url = url_from_file_path(&path)?;
+        include_files.push(url.clone());
+        if is_module_graph_module(&url) {
+          module_roots.push(url);
+        }
+        continue;
+      }
+      for entry in std::fs::read_dir(&path).with_context(|| {
+        format!("Failed reading directory '{}'", path.display())
       })? {
         let entry = entry.with_context(|| {
-          format!("Failed reading entry in directory '{}'", dir.display())
+          format!("Failed reading entry in directory '{}'", path.display())
         })?;
-        let path = entry.path();
-        if path.is_dir() {
-          pending_dirs.push(path);
-        } else if path.is_file() {
-          let url = url_from_file_path(&path)?;
-          if is_module_graph_module(&url) {
-            module_roots.push(url);
-          }
-        }
+        pending.push_back(entry.path());
       }
     }
     Ok(())
   }
 
-  let mut searched_directories = HashSet::new();
+  let mut searched_paths = HashSet::new();
   let mut module_roots = Vec::new();
-  let mut include_files = Vec::with_capacity(compile_flags.include.len());
+  let mut include_files = Vec::new();
   module_roots.push(entrypoint.clone());
   for side_module in &compile_flags.include {
     let url = resolve_url_or_path(side_module, initial_cwd)?;
     if is_module_graph_module(&url) {
-      module_roots.push(url);
+      module_roots.push(url.clone());
+      include_files.push(url);
     } else {
-      extract_modules_if_directory(
+      analyze_path(
         &url,
         &mut module_roots,
-        &mut searched_directories,
+        &mut include_files,
+        &mut searched_paths,
       )?;
-      include_files.push(url);
     }
   }
   Ok((module_roots, include_files))

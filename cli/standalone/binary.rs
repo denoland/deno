@@ -624,15 +624,9 @@ impl<'a> DenoCompileBinaryWriter<'a> {
     };
     for include_file in include_files {
       let path = deno_path_util::url_to_file_path(include_file)?;
-      if path.is_dir() {
-        vfs
-          .add_dir_recursive(&path)
-          .with_context(|| format!("Including {}", path.display()))?;
-      } else {
-        vfs
-          .add_file_at_path(&path)
-          .with_context(|| format!("Including {}", path.display()))?;
-      }
+      vfs
+        .add_file_at_path(&path)
+        .with_context(|| format!("Including {}", path.display()))?;
     }
     let mut remote_modules_store = RemoteModulesStoreBuilder::default();
     let mut code_cache_key_hasher = if self.cli_options.code_cache_enabled() {
