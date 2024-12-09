@@ -471,8 +471,7 @@ class ClientRequest extends OutgoingMessage {
           baseConnRid,
           this._encrypted,
         );
-        // Emit request ready to let the request body to be written.
-        this.emit("requestReady");
+        this._flushBuffer();
         const res = await op_node_http_await_response(rid);
         const incoming = new IncomingMessageForClient(this.socket);
         incoming.req = this;
@@ -621,12 +620,7 @@ class ClientRequest extends OutgoingMessage {
         // Note: this code is specific to deno to initiate a request.
         const onConnect = () => {
           // Flush the internal buffers once socket is ready.
-          // Note: the order is important, as the headers flush
-          // sets up the request.
           this._flushHeaders();
-          this.once("requestReady", () => {
-            this._flushBuffer();
-          });
         };
         this.socket = socket;
         this.emit("socket", socket);
