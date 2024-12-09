@@ -302,6 +302,7 @@ pub struct LintFlags {
   pub json: bool,
   pub compact: bool,
   pub watch: Option<WatchFlags>,
+  pub internal_print_all_rules: bool,
 }
 
 impl LintFlags {
@@ -2901,6 +2902,12 @@ To ignore linting on an entire file, you can add an ignore comment at the top of
           .action(ArgAction::Append)
           .value_hint(ValueHint::AnyPath),
       )
+      .arg(
+        Arg::new("internal-print-all-rules")
+        .long("internal-print-all-rules")
+        .action(ArgAction::SetTrue)
+        .hide(true)
+      )
       .arg(watch_arg(false))
       .arg(watch_exclude_arg())
       .arg(no_clear_screen_arg())
@@ -5110,6 +5117,7 @@ fn lint_parse(
 
   let json = matches.get_flag("json");
   let compact = matches.get_flag("compact");
+  let internal_print_all_rules = matches.get_flag("internal-print-all-rules");
 
   flags.subcommand = DenoSubcommand::Lint(LintFlags {
     files: FileFlags {
@@ -5124,6 +5132,7 @@ fn lint_parse(
     json,
     compact,
     watch: watch_arg_parse(matches)?,
+    internal_print_all_rules,
   });
   Ok(())
 }
@@ -7133,6 +7142,7 @@ mod tests {
           json: false,
           compact: false,
           watch: Default::default(),
+          internal_print_all_rules: false,
         }),
         ..Flags::default()
       }
@@ -7161,6 +7171,7 @@ mod tests {
           json: false,
           compact: false,
           watch: Some(Default::default()),
+          internal_print_all_rules: false,
         }),
         ..Flags::default()
       }
@@ -7194,6 +7205,7 @@ mod tests {
             no_clear_screen: true,
             exclude: vec![],
           }),
+          internal_print_all_rules: false,
         }),
         ..Flags::default()
       }
@@ -7221,6 +7233,7 @@ mod tests {
           json: false,
           compact: false,
           watch: Default::default(),
+          internal_print_all_rules: false,
         }),
         ..Flags::default()
       }
@@ -7243,6 +7256,7 @@ mod tests {
           json: false,
           compact: false,
           watch: Default::default(),
+          internal_print_all_rules: false,
         }),
         ..Flags::default()
       }
@@ -7270,6 +7284,7 @@ mod tests {
           json: false,
           compact: false,
           watch: Default::default(),
+          internal_print_all_rules: false,
         }),
         ..Flags::default()
       }
@@ -7298,6 +7313,7 @@ mod tests {
           json: false,
           compact: false,
           watch: Default::default(),
+          internal_print_all_rules: false,
         }),
         ..Flags::default()
       }
@@ -7320,6 +7336,7 @@ mod tests {
           json: true,
           compact: false,
           watch: Default::default(),
+          internal_print_all_rules: false,
         }),
         ..Flags::default()
       }
@@ -7349,6 +7366,7 @@ mod tests {
           json: true,
           compact: false,
           watch: Default::default(),
+          internal_print_all_rules: false,
         }),
         config_flag: ConfigFlag::Path("Deno.jsonc".to_string()),
         ..Flags::default()
@@ -7379,8 +7397,30 @@ mod tests {
           json: false,
           compact: true,
           watch: Default::default(),
+          internal_print_all_rules: false,
         }),
         config_flag: ConfigFlag::Path("Deno.jsonc".to_string()),
+        ..Flags::default()
+      }
+    );
+
+    let r =
+      flags_from_vec(svec!["deno", "lint", "--internal-print-all-rules",]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Lint(LintFlags {
+          files: FileFlags::default(),
+          fix: false,
+          rules: false,
+          maybe_rules_tags: None,
+          maybe_rules_include: None,
+          maybe_rules_exclude: None,
+          json: false,
+          compact: false,
+          watch: Default::default(),
+          internal_print_all_rules: true,
+        }),
         ..Flags::default()
       }
     );

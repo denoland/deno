@@ -442,6 +442,18 @@ fn collect_lint_files(
 }
 
 #[allow(clippy::print_stdout)]
+pub fn internal_print_all_rules() {
+  let rule_provider = LintRuleProvider::new(None, None);
+  let all_rules = rule_provider
+    .resolve_lint_rules(LintRulesConfig::default(), None)
+    .all_rule_codes;
+
+  for rule in all_rules {
+    println!("{}", rule);
+  }
+}
+
+#[allow(clippy::print_stdout)]
 pub fn print_rules_list(json: bool, maybe_rules_tags: Option<Vec<String>>) {
   let rule_provider = LintRuleProvider::new(None, None);
   let lint_rules = rule_provider

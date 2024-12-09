@@ -176,7 +176,10 @@ async fn run_subcommand(flags: Arc<Flags>) -> Result<i32, AnyError> {
       lsp::start().await
     }),
     DenoSubcommand::Lint(lint_flags) => spawn_subcommand(async {
-      if lint_flags.rules {
+      if lint_flags.internal_print_all_rules {
+        tools::lint::internal_print_all_rules();
+        Ok(())
+      } else if lint_flags.rules {
         tools::lint::print_rules_list(
           lint_flags.json,
           lint_flags.maybe_rules_tags,
