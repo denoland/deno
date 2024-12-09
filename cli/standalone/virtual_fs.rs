@@ -734,6 +734,7 @@ impl deno_io::fs::File for FileBackedVfsFile {
     self: Rc<Self>,
     mut buf: BufMutView,
   ) -> FsResult<(usize, BufMutView)> {
+    // this is fast, no need to spawn a task
     let nread = self.read_to_buf(&mut buf)?;
     Ok((nread, buf))
   }
@@ -759,6 +760,7 @@ impl deno_io::fs::File for FileBackedVfsFile {
     self.read_to_end()
   }
   async fn read_all_async(self: Rc<Self>) -> FsResult<Cow<'static, [u8]>> {
+    // this is fast, no need to spawn a task
     self.read_to_end()
   }
 
