@@ -25,6 +25,17 @@ macro_rules! generate_builtin_node_module_lists {
 
 // NOTE(bartlomieju): keep this list in sync with `ext/node/polyfills/01_require.js`
 generate_builtin_node_module_lists! {
+  "_http_agent",
+  "_http_common",
+  "_http_outgoing",
+  "_http_server",
+  "_stream_duplex",
+  "_stream_passthrough",
+  "_stream_readable",
+  "_stream_transform",
+  "_stream_writable",
+  "_tls_common",
+  "_tls_wrap",
   "assert",
   "assert/strict",
   "async_hooks",
