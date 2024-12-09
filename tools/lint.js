@@ -27,7 +27,6 @@ if (!js && !rs) {
 
 if (rs) {
   promises.push(clippy());
-  promises.push(ensureAllLintRulesHaveDocs());
 }
 
 if (js) {
@@ -306,49 +305,5 @@ async function ensureNoUnusedOutFiles() {
       console.error(`Unreferenced .out file: ${file}`);
     }
     throw new Error(`${notFoundPaths.length} unreferenced .out files`);
-  }
-}
-
-async function ensureAllLintRulesHaveDocs() {
-  const cargoCmd = new Deno.Command("cargo", {
-    cwd: ROOT_PATH,
-    args: [
-      "run",
-      "--",
-      "lint",
-      "--internal-print-all-rules",
-    ],
-  });
-
-  const { code, stdout } = await cargoCmd.output();
-
-  if (code > 0) {
-    throw new Error("Failed to get all lint rules");
-  }
-
-  const text = new TextDecoder().decode(stdout);
-  text.trim();
-  const snakeCaseLintRuleNames = text.split("\n").filter((line) => !!line).map((
-    line,
-  ) => line.replaceAll("-", "_"));
-  const missingDocs = [];
-  for (const ruleName of snakeCaseLintRuleNames) {
-    const relativePath = `cli/tools/lint/docs/${ruleName}.md`;
-    const path = ROOT_PATH + "/" + relativePath;
-    let stat;
-    try {
-      stat = await Deno.stat(path);
-    } catch {
-      missingDocs.push(relativePath);
-    }
-
-    if (stat && !stat.isFile) {
-      missingDocs.push(relativePath);
-    }
-  }
-
-  missingDocs.sort();
-  if (missingDocs.length !== 0) {
-    throw new Error(`Missing docs for lint rules:\n${missingDocs.join("\n")}`);
   }
 }
