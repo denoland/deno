@@ -32,6 +32,7 @@ use crate::cache::Caches;
 use crate::cache::FastInsecureHasher;
 use crate::cache::TypeCheckCache;
 use crate::factory::CliFactory;
+use crate::factory::SpecifierInfo;
 use crate::factory::WorkspaceFileContainer;
 use crate::graph_util::BuildFastCheckGraphOptions;
 use crate::graph_util::ModuleGraphBuilder;
@@ -39,6 +40,7 @@ use crate::npm::CliNpmResolver;
 use crate::tsc;
 use crate::tsc::Diagnostics;
 use crate::tsc::TypeCheckingCjsTracker;
+use crate::util::extract::extract_snippet_files;
 use crate::util::fs::collect_specifiers;
 use crate::util::path::is_script_ext;
 use crate::util::path::to_percent_decoded_str;
@@ -72,28 +74,32 @@ pub async fn check(
     let patterns = cli_options.start_dir.to_resolved_file_patterns(patterns)?;
     vec![(cli_options.start_dir.clone(), patterns)]
   };
-  let container = WorkspaceFileContainer::from_workspace_dirs_with_files(
+  let file_container = WorkspaceFileContainer::from_workspace_dirs_with_files(
     workspace_dirs_with_files,
-    |patterns, cli_options, _| {
+    cli_options,
+    extract_snippet_files,
+    |patterns, cli_options, _, (doc, doc_only)| {
       async move {
+        let info = SpecifierInfo {
+          check: !doc_only,
+          check_doc: doc || doc_only,
+        };
         collect_specifiers(
           patterns,
           cli_options.vendor_dir_path().map(ToOwned::to_owned),
           |e| is_script_ext(e.path),
         )
-        .map(|s| s.into_iter().map(|s| (s, ())).collect())
+        .map(|s| s.into_iter().map(|s| (s, info)).collect())
       }
       .boxed_local()
     },
-    cli_options,
-    check_flags.doc,
-    check_flags.doc_only,
+    (check_flags.doc, check_flags.doc_only),
   )
   .await?;
-  if !container.has_specifiers() {
+  if !file_container.found_specifiers() {
     log::warn!("{} No matching files found.", colors::yellow("Warning"));
   }
-  container.check().await
+  file_container.check().await
 }
 
 /// Options for performing a check of a module graph. Note that the decision to

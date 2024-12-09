@@ -25,6 +25,7 @@ use crate::cache::ModuleInfoCache;
 use crate::cache::NodeAnalysisCache;
 use crate::cache::ParsedSourceCache;
 use crate::emit::Emitter;
+use crate::file_fetcher::File;
 use crate::file_fetcher::FileFetcher;
 use crate::graph_container::MainModuleGraphContainer;
 use crate::graph_util::FileWatcherReporter;
@@ -61,7 +62,6 @@ use crate::tools::lint::LintRuleProvider;
 use crate::tools::run::hmr::HmrRunner;
 use crate::tsc::Diagnostics;
 use crate::tsc::TypeCheckingCjsTracker;
-use crate::util::extract;
 use crate::util::file_watcher::WatcherCommunicator;
 use crate::util::fs::canonicalize_path_maybe_not_exists;
 use crate::util::progress_bar::ProgressBar;
@@ -1064,31 +1064,55 @@ impl CliFactory {
   }
 }
 
-pub struct WorkspaceFileContainerEntry<T> {
+#[derive(Debug, Copy, Clone)]
+pub struct SpecifierInfo {
+  /// Type check as an ES module.
+  pub check: bool,
+  /// Type check virtual modules from doc snippets. If this is set but `check`
+  /// is not, this may be a markdown file for example.
+  pub check_doc: bool,
+}
+
+struct WorkspaceFileContainerEntry {
+  specifiers: Vec<(ModuleSpecifier, SpecifierInfo)>,
+  doc_snippet_specifiers: Vec<ModuleSpecifier>,
   main_graph_container: Arc<MainModuleGraphContainer>,
-  specifiers: Vec<(ModuleSpecifier, T)>,
-  doc_snippet_specifiers: Option<Vec<ModuleSpecifier>>,
-  check_doc_only: bool,
+  worker_factory: Arc<CliMainWorkerFactory>,
 }
 
-pub struct WorkspaceFileContainer<T> {
-  entries: Vec<WorkspaceFileContainerEntry<T>>,
+impl WorkspaceFileContainerEntry {
+  fn checked_specifiers(&self) -> impl Iterator<Item = &ModuleSpecifier> {
+    self
+      .specifiers
+      .iter()
+      .filter_map(|(s, i)| i.check.then_some(s))
+      .chain(self.doc_snippet_specifiers.iter())
+  }
 }
 
-impl<T> WorkspaceFileContainer<T> {
+pub struct WorkspaceFileContainer {
+  entries: Vec<WorkspaceFileContainerEntry>,
+}
+
+impl WorkspaceFileContainer {
   #[allow(clippy::type_complexity)]
-  pub async fn from_workspace_dirs_with_files(
+  pub async fn from_workspace_dirs_with_files<T: Clone>(
     mut workspace_dirs_with_files: Vec<(Arc<WorkspaceDirectory>, FilePatterns)>,
+    cli_options: &CliOptions,
+    extract_doc_files: fn(File) -> Result<Vec<File>, AnyError>,
     collect_specifiers: fn(
       FilePatterns,
       Arc<CliOptions>,
       Arc<FileFetcher>,
+      T,
     ) -> std::pin::Pin<
-      Box<dyn Future<Output = Result<Vec<(ModuleSpecifier, T)>, AnyError>>>,
+      Box<
+        dyn Future<
+          Output = Result<Vec<(ModuleSpecifier, SpecifierInfo)>, AnyError>,
+        >,
+      >,
     >,
-    cli_options: &CliOptions,
-    check_doc: bool,
-    check_doc_only: bool,
+    args: T,
   ) -> Result<Self, AnyError> {
     workspace_dirs_with_files.sort_by_cached_key(|(d, _)| d.dir_url().clone());
     let all_scopes = Arc::new(
@@ -1121,30 +1145,32 @@ impl<T> WorkspaceFileContainer<T> {
       )?);
       let factory = CliFactory::from_cli_options(cli_options.clone());
       let file_fetcher = factory.file_fetcher()?;
+      let specifiers = collect_specifiers(
+        files,
+        cli_options,
+        file_fetcher.clone(),
+        args.clone(),
+      )
+      .await?;
+      let mut doc_snippet_specifiers = vec![];
+      let root_permissions = factory.root_permissions_container()?;
+      for (s, _) in specifiers.iter().filter(|(_, i)| i.check_doc) {
+        let file = file_fetcher.fetch(s, root_permissions).await?;
+        let snippet_files = extract_doc_files(file)?;
+        for snippet_file in snippet_files {
+          doc_snippet_specifiers.push(snippet_file.specifier.clone());
+          file_fetcher.insert_memory_files(snippet_file);
+        }
+      }
       let main_graph_container =
         factory.main_module_graph_container().await?.clone();
-      let specifiers =
-        collect_specifiers(files, cli_options, file_fetcher.clone()).await?;
-      let doc_snippet_specifiers = if check_doc || check_doc_only {
-        let root_permissions = factory.root_permissions_container()?;
-        let mut doc_snippet_specifiers = Vec::new();
-        for (s, _) in specifiers.iter() {
-          let file = file_fetcher.fetch(s, root_permissions).await?;
-          let snippet_files = extract::extract_snippet_files(file)?;
-          for snippet_file in snippet_files {
-            doc_snippet_specifiers.push(snippet_file.specifier.clone());
-            file_fetcher.insert_memory_files(snippet_file);
-          }
-        }
-        Some(doc_snippet_specifiers)
-      } else {
-        None
-      };
+      let worker_factory =
+        Arc::new(factory.create_cli_main_worker_factory().await?);
       entries.push(WorkspaceFileContainerEntry {
-        main_graph_container,
         specifiers,
         doc_snippet_specifiers,
-        check_doc_only,
+        main_graph_container,
+        worker_factory,
       });
     }
     Ok(Self { entries })
@@ -1154,14 +1180,8 @@ impl<T> WorkspaceFileContainer<T> {
     let mut diagnostics = vec![];
     let mut all_errors = vec![];
     for entry in &self.entries {
-      let mut specifiers_for_typecheck = vec![];
-      if !entry.check_doc_only {
-        specifiers_for_typecheck
-          .extend(entry.specifiers.iter().map(|(s, _)| s.clone()));
-      }
-      if let Some(doc_snippet_specifiers) = &entry.doc_snippet_specifiers {
-        specifiers_for_typecheck.extend(doc_snippet_specifiers.clone());
-      }
+      let specifiers_for_typecheck =
+        entry.checked_specifiers().cloned().collect::<Vec<_>>();
       if specifiers_for_typecheck.is_empty() {
         continue;
       }
@@ -1194,7 +1214,22 @@ impl<T> WorkspaceFileContainer<T> {
     Ok(())
   }
 
-  pub fn has_specifiers(&self) -> bool {
+  pub fn found_specifiers(&self) -> bool {
     self.entries.iter().any(|e| !e.specifiers.is_empty())
+  }
+
+  pub fn checked_specifiers_with_worker_factories(
+    &self,
+  ) -> Vec<(Vec<ModuleSpecifier>, Arc<CliMainWorkerFactory>)> {
+    self
+      .entries
+      .iter()
+      .map(|e| {
+        (
+          e.checked_specifiers().cloned().collect(),
+          e.worker_factory.clone(),
+        )
+      })
+      .collect()
   }
 }

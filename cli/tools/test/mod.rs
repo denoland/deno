@@ -7,6 +7,8 @@ use crate::args::TestReporterConfig;
 use crate::colors;
 use crate::display;
 use crate::factory::CliFactory;
+use crate::factory::SpecifierInfo;
+use crate::factory::WorkspaceFileContainer;
 use crate::file_fetcher::File;
 use crate::file_fetcher::FileFetcher;
 use crate::graph_util::has_graph_root_local_dependent_changed;
@@ -1255,6 +1257,77 @@ async fn test_specifiers(
   Ok(())
 }
 
+/// Test a collection of specifiers with test modes concurrently.
+async fn test_specifiers2(
+  file_container: WorkspaceFileContainer,
+  permissions: &Permissions,
+  permission_desc_parser: &Arc<RuntimePermissionDescriptorParser>,
+  options: TestSpecifiersOptions,
+) -> Result<(), AnyError> {
+  let mut specifiers_with_factory = file_container
+    .checked_specifiers_with_worker_factories()
+    .into_iter()
+    .flat_map(|(s, f)| {
+      s.into_iter().map(|s| (s, f.clone())).collect::<Vec<_>>()
+    })
+    .collect::<Vec<_>>();
+  if let Some(seed) = options.specifier.shuffle {
+    let mut rng = SmallRng::seed_from_u64(seed);
+    specifiers_with_factory.sort_by_cached_key(|(s, _)| s.to_string());
+    specifiers_with_factory.shuffle(&mut rng);
+  }
+
+  let (test_event_sender_factory, receiver) = create_test_event_channel();
+  let concurrent_jobs = options.concurrent_jobs;
+
+  let mut cancel_sender = test_event_sender_factory.weak_sender();
+  let sigint_handler_handle = spawn(async move {
+    signal::ctrl_c().await.unwrap();
+    cancel_sender.send(TestEvent::Sigint).ok();
+  });
+  HAS_TEST_RUN_SIGINT_HANDLER.store(true, Ordering::Relaxed);
+  let reporter = get_test_reporter(&options);
+  let fail_fast_tracker = FailFastTracker::new(options.fail_fast);
+
+  let join_handles = specifiers_with_factory.into_iter().map(
+    move |(specifier, worker_factory)| {
+      let permissions_container = PermissionsContainer::new(
+        permission_desc_parser.clone(),
+        permissions.clone(),
+      );
+      let worker_sender = test_event_sender_factory.worker();
+      let fail_fast_tracker = fail_fast_tracker.clone();
+      let specifier_options = options.specifier.clone();
+      spawn_blocking(move || {
+        create_and_run_current_thread(test_specifier(
+          worker_factory,
+          permissions_container,
+          specifier,
+          worker_sender,
+          fail_fast_tracker,
+          specifier_options,
+        ))
+      })
+    },
+  );
+
+  let join_stream = stream::iter(join_handles)
+    .buffer_unordered(concurrent_jobs.get())
+    .collect::<Vec<Result<Result<(), AnyError>, tokio::task::JoinError>>>();
+
+  let handler = spawn(async move { report_tests(receiver, reporter).await.0 });
+
+  let (join_results, result) = future::join(join_stream, handler).await;
+  sigint_handler_handle.abort();
+  HAS_TEST_RUN_SIGINT_HANDLER.store(false, Ordering::Relaxed);
+  for join_result in join_results {
+    join_result??;
+  }
+  result??;
+
+  Ok(())
+}
+
 /// Gives receiver back in case it was ended with `TestEvent::ForceEndReport`.
 pub async fn report_tests(
   mut receiver: TestEventReceiver,
@@ -1539,6 +1612,54 @@ async fn fetch_specifiers_with_test_mode(
   Ok(specifiers_with_mode)
 }
 
+pub async fn collect_specifiers_for_tests(
+  patterns: FilePatterns,
+  cli_options: Arc<CliOptions>,
+  file_fetcher: Arc<FileFetcher>,
+  doc: bool,
+) -> Result<Vec<(ModuleSpecifier, SpecifierInfo)>, AnyError> {
+  let vendor_folder = cli_options.vendor_dir_path();
+  let module_specifiers = collect_specifiers(
+    patterns.clone(),
+    vendor_folder.map(ToOwned::to_owned),
+    is_supported_test_path_predicate,
+  )?;
+  let mut specifiers = if doc {
+    collect_specifiers(patterns, vendor_folder.map(ToOwned::to_owned), |e| {
+      is_supported_test_ext(e.path)
+    })
+    .map(|specifiers| {
+      specifiers
+        .into_iter()
+        .map(|specifier| {
+          let info = SpecifierInfo {
+            check: module_specifiers.contains(&specifier),
+            check_doc: true,
+          };
+          (specifier, info)
+        })
+        .collect::<Vec<_>>()
+    })?
+  } else {
+    let info = SpecifierInfo {
+      check: true,
+      check_doc: false,
+    };
+    module_specifiers
+      .into_iter()
+      .map(|specifier| (specifier, info))
+      .collect::<Vec<_>>()
+  };
+  for (specifier, info) in &mut specifiers {
+    let file = file_fetcher.fetch_bypass_permissions(specifier).await?;
+    let (media_type, _) = file.resolve_media_type_and_charset();
+    if matches!(media_type, MediaType::Unknown | MediaType::Dts) {
+      info.check = false;
+    }
+  }
+  Ok(specifiers)
+}
+
 pub async fn run_tests(
   flags: Arc<Flags>,
   test_flags: TestFlags,
@@ -1547,7 +1668,6 @@ pub async fn run_tests(
   let cli_options = factory.cli_options()?;
   let workspace_test_options =
     cli_options.resolve_workspace_test_options(&test_flags);
-  let file_fetcher = factory.file_fetcher()?;
   // Various test files should not share the same permissions in terms of
   // `PermissionsContainer` - otherwise granting/revoking permissions in one
   // file would have impact on other files, which is undesirable.
@@ -1558,51 +1678,38 @@ pub async fn run_tests(
   )?;
   let log_level = cli_options.log_level();
 
-  let members_with_test_options =
-    cli_options.resolve_test_options_for_members(&test_flags)?;
-  let specifiers_with_mode = fetch_specifiers_with_test_mode(
+  let workspace_dirs_with_files = cli_options
+    .resolve_test_options_for_members(&test_flags)?
+    .into_iter()
+    .map(|(d, o)| (Arc::new(d), o.files))
+    .collect();
+  let file_container = WorkspaceFileContainer::from_workspace_dirs_with_files(
+    workspace_dirs_with_files,
     cli_options,
-    file_fetcher,
-    members_with_test_options.into_iter().map(|(_, v)| v.files),
-    &workspace_test_options.doc,
+    extract_doc_tests,
+    |patterns, cli_options, file_fetcher, doc| {
+      collect_specifiers_for_tests(patterns, cli_options, file_fetcher, doc)
+        .boxed_local()
+    },
+    workspace_test_options.doc,
   )
   .await?;
-
-  if !workspace_test_options.permit_no_files && specifiers_with_mode.is_empty()
+  if !workspace_test_options.permit_no_files
+    && !file_container.found_specifiers()
   {
     return Err(generic_error("No test modules found"));
   }
 
-  let doc_tests = get_doc_tests(&specifiers_with_mode, file_fetcher).await?;
-  let specifiers_for_typecheck_and_test =
-    get_target_specifiers(specifiers_with_mode, &doc_tests);
-  for doc_test in doc_tests {
-    file_fetcher.insert_memory_files(doc_test);
-  }
-
-  let main_graph_container = factory.main_module_graph_container().await?;
-
-  // Typecheck
-  main_graph_container
-    .check_specifiers(
-      &specifiers_for_typecheck_and_test,
-      cli_options.ext_flag().as_ref(),
-    )
-    .await?;
+  file_container.check().await?;
 
   if workspace_test_options.no_run {
     return Ok(());
   }
 
-  let worker_factory =
-    Arc::new(factory.create_cli_main_worker_factory().await?);
-
-  // Run tests
-  test_specifiers(
-    worker_factory,
+  test_specifiers2(
+    file_container,
     &permissions,
     permission_desc_parser,
-    specifiers_for_typecheck_and_test,
     TestSpecifiersOptions {
       cwd: Url::from_directory_path(cli_options.initial_cwd()).map_err(
         |_| {
