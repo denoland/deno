@@ -10,61 +10,19 @@ import { SEPARATOR } from "@std/path/constants";
 import { ensureFile } from "@std/fs/ensure-file";
 import { writeAll } from "@std/io/write-all";
 import { withoutAll } from "@std/collections/without-all";
-import { relative } from "@std/path/posix/relative";
-
-import { config, ignoreList } from "../common.ts";
+import { version } from "./suite/node_version.ts";
+import {
+  config,
+  getDenoTests,
+  getNodeTests,
+  ignoreList,
+  NODE_COMPAT_TEST_DEST_URL,
+  VENDORED_NODE_TEST,
+} from "../common.ts";
 
 const encoder = new TextEncoder();
 
-const NODE_VERSION = config.nodeVersion;
-
-const NODE_IGNORED_TEST_DIRS = [
-  "addons",
-  "async-hooks",
-  "cctest",
-  "common",
-  "doctool",
-  "embedding",
-  "fixtures",
-  "fuzzers",
-  "js-native-api",
-  "node-api",
-  "overlapped-checker",
-  "report",
-  "testpy",
-  "tick-processor",
-  "tools",
-  "v8-updates",
-  "wasi",
-  "wpt",
-];
-
-const VENDORED_NODE_TEST = new URL("./suite/test/", import.meta.url);
-const NODE_COMPAT_TEST_DEST_URL = new URL(
-  "../test/",
-  import.meta.url,
-);
-
-async function getNodeTests(): Promise<string[]> {
-  const paths: string[] = [];
-  const rootPath = VENDORED_NODE_TEST.href.slice(7);
-  for await (
-    const item of walk(VENDORED_NODE_TEST, { exts: [".js"] })
-  ) {
-    const path = relative(rootPath, item.path);
-    if (NODE_IGNORED_TEST_DIRS.every((dir) => !path.startsWith(dir))) {
-      paths.push(path);
-    }
-  }
-
-  return paths.sort();
-}
-
-function getDenoTests() {
-  return Object.entries(config.tests)
-    .filter(([testDir]) => !NODE_IGNORED_TEST_DIRS.includes(testDir))
-    .flatMap(([testDir, tests]) => tests.map((test) => testDir + "/" + test));
-}
+const NODE_VERSION = version;
 
 async function updateToDo() {
   using file = await Deno.open(new URL("./TODO.md", import.meta.url), {
@@ -73,15 +31,24 @@ async function updateToDo() {
     truncate: true,
   });
 
-  const missingTests = withoutAll(await getNodeTests(), await getDenoTests());
+  const nodeTests = await getNodeTests();
+  const portedTests = await getDenoTests();
+  const remainingTests = withoutAll(nodeTests, portedTests);
+  const numPorted = portedTests.length;
+  const numMissing = remainingTests.length;
+  const numTotal = nodeTests.length;
+  const portedPercentage = (numPorted / numTotal * 100).toFixed(2);
+  const remainingPercentage = (numMissing / numTotal * 100).toFixed(2);
 
   await file.write(encoder.encode(`<!-- deno-fmt-ignore-file -->
 # Remaining Node Tests
 
+${numPorted} tests out of ${numTotal} have been ported from Node ${NODE_VERSION} (${portedPercentage}% ported, ${remainingPercentage}% remaining).
+
 NOTE: This file should not be manually edited. Please edit \`tests/node_compat/config.json\` and run \`deno task setup\` in \`tests/node_compat/runner\` dir instead.
 
 `));
-  for (const test of missingTests) {
+  for (const test of remainingTests) {
     await file.write(
       encoder.encode(
         `- [${test}](https://github.com/nodejs/node/tree/v${NODE_VERSION}/test/${test})\n`,
@@ -157,7 +124,9 @@ await copyTests();
 await updateToDo();
 
 if (Deno.args[0] === "--check") {
-  const cmd = new Deno.Command("git", { args: ["status", "-s"] });
+  const cmd = new Deno.Command("git", {
+    args: ["status", "-s", "tests/node_compat/test"],
+  });
   const { stdout } = await cmd.output();
 
   if (stdout.length > 0) {

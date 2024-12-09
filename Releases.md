@@ -6,6 +6,80 @@ https://github.com/denoland/deno/releases
 We also have one-line install commands at:
 https://github.com/denoland/deno_install
 
+### 2.1.3 / 2024.12.05
+
+- feat(unstable): add metrics to otel (#27143)
+- fix(fmt): stable formatting of HTML files with JS (#27164)
+- fix(install): use locked version of jsr package when fetching exports (#27237)
+- fix(node/fs): support `recursive` option in readdir (#27179)
+- fix(node/worker_threads): data url not encoded properly with eval (#27184)
+- fix(outdated): allow `--latest` without `--update` (#27227)
+- fix(task): `--recursive` option not working (#27183)
+- fix(task): don't panic with filter on missing task argument (#27180)
+- fix(task): forward signals to spawned sub-processes on unix (#27141)
+- fix(task): kill descendants when killing task process on Windows (#27163)
+- fix(task): only pass args to root task (#27213)
+- fix(unstable): otel context with multiple keys (#27230)
+- fix(unstable/temporal): respect locale in `Duration.prototype.toLocaleString`
+  (#27000)
+- fix: clear dep analysis when module loading is done (#27204)
+- fix: improve auto-imports for npm packages (#27224)
+- fix: support `workspace:^` and `workspace:~` version constraints (#27096)
+
+### 2.1.2 / 2024.11.28
+
+- feat(unstable): Instrument Deno.serve (#26964)
+- feat(unstable): Instrument fetch (#27057)
+- feat(unstable): repurpose `--unstable-detect-cjs` to attempt loading more
+  modules as cjs (#27094)
+- fix(check): support jsdoc `@import` tag (#26991)
+- fix(compile): correct buffered reading of assets and files (#27008)
+- fix(compile): do not error embedding same symlink via multiple methods
+  (#27015)
+- fix(compile): handle TypeScript file included as asset (#27032)
+- fix(ext/fetch): don't throw when `bodyUsed` inspect after upgrade (#27088)
+- fix(ext/node): `tls.connect` socket upgrades (#27125)
+- fix(ext/node): add `fs.promises.fstat` and `FileHandle#stat` (#26719)
+- fix(ext/webgpu): normalize limits to number (#27072)
+- fix(ext/webgpu): use correct variable name (#27108)
+- fix(ext/websocket): don't throw exception when sending to closed socket
+  (#26932)
+- fix(fmt): return `None` if sql fmt result is the same (#27014)
+- fix(info): resolve bare specifier pointing to workspace member (#27020)
+- fix(init): always force managed node modules (#27047)
+- fix(init): support scoped npm packages (#27128)
+- fix(install): don't re-set up node_modules if running lifecycle script
+  (#26984)
+- fix(lsp): remove stray debug output (#27010)
+- fix(lsp): support task object notation for tasks request (#27076)
+- fix(lsp): wasm file import completions (#27018)
+- fix(node): correct resolution of dynamic import of esm from cjs (#27071)
+- fix(node/fs): add missing stat path argument validation (#27086)
+- fix(node/fs): missing uv error context for readFile (#27011)
+- fix(node/http): casing ignored in ServerResponse.hasHeader() (#27105)
+- fix(node/timers): error when passing id to clearTimeout/clearInterval (#27130)
+- fix(runtime/ops): Fix watchfs remove event (#27041)
+- fix(streams): reject `string` in `ReadableStream.from` type (#25116)
+- fix(task): handle carriage return in task description (#27099)
+- fix(task): handle multiline descriptions properly (#27069)
+- fix(task): strip ansi codes and control chars when printing tasks (#27100)
+- fix(tools/doc): HTML resolve main entrypoint from config file (#27103)
+- fix: support bun specifiers in JSR publish (#24588)
+- fix: support non-function exports in Wasm modules (#26992)
+- perf(compile): read embedded files as static references when UTF-8 and reading
+  as strings (#27033)
+- perf(ext/webstorage): use object wrap for `Storage` (#26931)
+
+### 2.1.1 / 2024.11.21
+
+- docs(add): clarification to add command (#26968)
+- docs(doc): fix typo in doc subcommand help output (#26321)
+- fix(node): regression where ts files were sometimes resolved instead of js
+  (#26971)
+- fix(task): ensure root config always looks up dependencies in root (#26959)
+- fix(watch): don't panic if there's no path provided (#26972)
+- fix: Buffer global in --unstable-node-globals (#26973)
+
 ### 2.1.0 / 2024.11.21
 
 - feat(cli): add `--unstable-node-globals` flag (#26617)

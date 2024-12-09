@@ -1,4 +1,6 @@
 {
+  "name": "@denotest/workspace-member",
+  "exports": "./mod.ts",
   "imports": {
     "foo": "./sub/file.ts"
   }

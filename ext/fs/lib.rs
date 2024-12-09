@@ -17,6 +17,7 @@ pub use crate::interface::OpenOptions;
 pub use crate::ops::FsOpsError;
 pub use crate::ops::FsOpsErrorKind;
 pub use crate::ops::OperationError;
+pub use crate::ops::V8MaybeStaticStr;
 pub use crate::std_fs::RealFs;
 pub use crate::sync::MaybeSend;
 pub use crate::sync::MaybeSync;

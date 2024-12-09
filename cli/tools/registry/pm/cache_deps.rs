@@ -1,5 +1,6 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
+use std::borrow::Cow;
 use std::sync::Arc;
 
 use crate::factory::CliFactory;
@@ -37,6 +38,16 @@ pub async fn cache_top_level_deps(
         factory.file_fetcher()?.clone(),
       ))
     };
+    let mut graph_permit = factory
+      .main_module_graph_container()
+      .await?
+      .acquire_update_permit()
+      .await;
+    let graph = graph_permit.graph_mut();
+    if let Some(lockfile) = cli_options.maybe_lockfile() {
+      let lockfile = lockfile.lock();
+      crate::graph_util::fill_graph_from_lockfile(graph, &lockfile);
+    }
 
     let mut roots = Vec::new();
 
@@ -67,13 +78,16 @@ pub async fn cache_top_level_deps(
             if !seen_reqs.insert(req.req().clone()) {
               continue;
             }
+            let resolved_req = graph.packages.mappings().get(req.req());
             let jsr_resolver = jsr_resolver.clone();
             info_futures.push(async move {
-              if let Some(nv) = jsr_resolver.req_to_nv(req.req()).await {
-                if let Some(info) = jsr_resolver.package_version_info(&nv).await
-                {
-                  return Some((specifier.clone(), info));
-                }
+              let nv = if let Some(req) = resolved_req {
+                Cow::Borrowed(req)
+              } else {
+                Cow::Owned(jsr_resolver.req_to_nv(req.req()).await?)
+              };
+              if let Some(info) = jsr_resolver.package_version_info(&nv).await {
+                return Some((specifier.clone(), info));
               }
               None
             });
@@ -106,12 +120,8 @@ pub async fn cache_top_level_deps(
         }
       }
     }
-    let mut graph_permit = factory
-      .main_module_graph_container()
-      .await?
-      .acquire_update_permit()
-      .await;
-    let graph = graph_permit.graph_mut();
+    drop(info_futures);
+
     factory
       .module_load_preparer()
       .await?

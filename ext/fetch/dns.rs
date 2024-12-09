@@ -7,10 +7,7 @@ use std::task::Poll;
 use std::task::{self};
 use std::vec;
 
-use hickory_resolver::error::ResolveError;
-use hickory_resolver::name_server::GenericConnector;
-use hickory_resolver::name_server::TokioRuntimeProvider;
-use hickory_resolver::AsyncResolver;
+use hickory_resolver::name_server::TokioConnectionProvider;
 use hyper_util::client::legacy::connect::dns::GaiResolver;
 use hyper_util::client::legacy::connect::dns::Name;
 use tokio::task::JoinHandle;
@@ -21,7 +18,7 @@ pub enum Resolver {
   /// A resolver using blocking `getaddrinfo` calls in a threadpool.
   Gai(GaiResolver),
   /// hickory-resolver's userspace resolver.
-  Hickory(AsyncResolver<GenericConnector<TokioRuntimeProvider>>),
+  Hickory(hickory_resolver::Resolver<TokioConnectionProvider>),
 }
 
 impl Default for Resolver {
@@ -36,14 +33,14 @@ impl Resolver {
   }
 
   /// Create a [`AsyncResolver`] from system conf.
-  pub fn hickory() -> Result<Self, ResolveError> {
+  pub fn hickory() -> Result<Self, hickory_resolver::ResolveError> {
     Ok(Self::Hickory(
-      hickory_resolver::AsyncResolver::tokio_from_system_conf()?,
+      hickory_resolver::Resolver::tokio_from_system_conf()?,
     ))
   }
 
-  pub fn hickory_from_async_resolver(
-    resolver: AsyncResolver<GenericConnector<TokioRuntimeProvider>>,
+  pub fn hickory_from_resolver(
+    resolver: hickory_resolver::Resolver<TokioConnectionProvider>,
   ) -> Self {
     Self::Hickory(resolver)
   }

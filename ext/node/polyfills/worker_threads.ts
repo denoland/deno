@@ -42,6 +42,7 @@ const {
   SafeWeakMap,
   SafeMap,
   TypeError,
+  encodeURIComponent,
 } = primordials;
 
 const debugWorkerThreads = false;
@@ -123,7 +124,11 @@ class NodeWorker extends EventEmitter {
       );
     }
     if (options?.eval) {
-      specifier = `data:text/javascript,${specifier}`;
+      const code = typeof specifier === "string"
+        ? encodeURIComponent(specifier)
+        // deno-lint-ignore prefer-primordials
+        : specifier.toString();
+      specifier = `data:text/javascript,${code}`;
     } else if (
       !(typeof specifier === "object" && specifier.protocol === "data:")
     ) {

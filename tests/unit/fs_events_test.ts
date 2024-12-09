@@ -45,6 +45,14 @@ async function makeTempDir(): Promise<string> {
   return testDir;
 }
 
+async function makeTempFile(): Promise<string> {
+  const testFile = await Deno.makeTempFile();
+  // The watcher sometimes witnesses the creation of it's own root
+  // directory. Delay a bit.
+  await delay(100);
+  return testFile;
+}
+
 Deno.test(
   { permissions: { read: true, write: true } },
   async function watchFsBasic() {
@@ -153,5 +161,27 @@ Deno.test(
     iter.close();
     const { done } = await res;
     assert(done);
+  },
+);
+
+Deno.test(
+  { permissions: { read: true, write: true } },
+  async function watchFsRemove() {
+    const testFile = await makeTempFile();
+    using watcher = Deno.watchFs(testFile);
+    async function waitForRemove() {
+      for await (const event of watcher) {
+        if (event.kind === "remove") {
+          return event;
+        }
+      }
+    }
+    const eventPromise = waitForRemove();
+
+    await Deno.remove(testFile);
+
+    // Expect zero events.
+    const event = await eventPromise;
+    assertEquals(event!.kind, "remove");
   },
 );
