@@ -66,6 +66,9 @@
           "tempDir": {
             "type": "boolean"
           },
+          "symlinkedTempDir": {
+            "type": "boolean"
+          },
           "base": {
             "type": "string"
           },
@@ -92,6 +95,9 @@
         "allOf": [{
           "properties": {
             "tempDir": {
+              "type": "boolean"
+            },
+            "symlinkedTempDir": {
               "type": "boolean"
             },
             "base": {
