@@ -2052,8 +2052,7 @@ function createAstContext(buf) {
   const strTable = new Map();
 
   let i = 0;
-  const stringCount = (buf[0] << 24) + (buf[1] << 16) + (buf[2] << 8) +
-    buf[3];
+  const stringCount = readU32(buf, 0);
   i += 4;
 
   let id = 0;
