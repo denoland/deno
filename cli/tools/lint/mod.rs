@@ -463,7 +463,7 @@ pub fn print_rules_list(json: bool, maybe_rules_tags: Option<Vec<String>>) {
         .map(|rule| {
           serde_json::json!({
             "code": rule.code(),
-            "tags": rule.tags(),
+            "tags": rule.tags().iter().map(|t| t.to_string()).collect::<Vec<String>>(),
             "docs": rule.docs(),
           })
         })
@@ -479,7 +479,9 @@ pub fn print_rules_list(json: bool, maybe_rules_tags: Option<Vec<String>>) {
       if rule.tags().is_empty() {
         println!();
       } else {
-        println!(" [{}]", colors::gray(rule.tags().join(", ")))
+        let tags: Vec<String> =
+          rule.tags().iter().map(ToString::to_string).collect();
+        println!(" [{}]", colors::gray(tags.join(", ")));
       }
       println!(
         "{}",

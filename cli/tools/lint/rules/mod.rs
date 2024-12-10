@@ -13,6 +13,7 @@ use deno_core::error::AnyError;
 use deno_graph::ModuleGraph;
 use deno_lint::diagnostic::LintDiagnostic;
 use deno_lint::rules::LintRule;
+use deno_lint::tags;
 
 use crate::resolver::CliSloppyImportsResolver;
 
@@ -25,7 +26,7 @@ pub use no_slow_types::collect_no_slow_type_diagnostics;
 pub trait PackageLintRule: std::fmt::Debug + Send + Sync {
   fn code(&self) -> &'static str;
 
-  fn tags(&self) -> &'static [&'static str] {
+  fn tags(&self) -> tags::Tags {
     &[]
   }
 
@@ -74,7 +75,7 @@ impl CliLintRule {
     }
   }
 
-  pub fn tags(&self) -> &'static [&'static str] {
+  pub fn tags(&self) -> tags::Tags {
     use CliLintRuleKind::*;
     match &self.0 {
       DenoLint(rule) => rule.tags(),
