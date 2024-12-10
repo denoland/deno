@@ -8,7 +8,6 @@ use crate::display::write_json_to_stdout;
 use crate::factory::CliFactory;
 use crate::factory::SpecifierInfo;
 use crate::factory::WorkspaceFileContainer;
-use crate::graph_util::has_graph_root_local_dependent_changed;
 use crate::ops;
 use crate::tools::test::format_test_error;
 use crate::tools::test::TestFilter;
@@ -42,7 +41,6 @@ use indexmap::IndexSet;
 use log::Level;
 use serde::Deserialize;
 use serde::Serialize;
-use std::collections::HashSet;
 use std::path::Path;
 use std::sync::Arc;
 use std::time::Duration;
@@ -267,124 +265,6 @@ async fn bench_specifier_inner(
 
 /// Test a collection of specifiers with test modes concurrently.
 async fn bench_specifiers(
-  worker_factory: Arc<CliMainWorkerFactory>,
-  permissions: &Permissions,
-  permissions_desc_parser: &Arc<RuntimePermissionDescriptorParser>,
-  specifiers: Vec<ModuleSpecifier>,
-  options: BenchSpecifierOptions,
-) -> Result<(), AnyError> {
-  let (sender, mut receiver) = unbounded_channel::<BenchEvent>();
-  let log_level = options.log_level;
-  let option_for_handles = options.clone();
-
-  let join_handles = specifiers.into_iter().map(move |specifier| {
-    let worker_factory = worker_factory.clone();
-    let permissions_container = PermissionsContainer::new(
-      permissions_desc_parser.clone(),
-      permissions.clone(),
-    );
-    let sender = sender.clone();
-    let options = option_for_handles.clone();
-    spawn_blocking(move || {
-      let future = bench_specifier(
-        worker_factory,
-        permissions_container,
-        specifier,
-        sender,
-        options.filter,
-      );
-      create_and_run_current_thread(future)
-    })
-  });
-
-  let join_stream = stream::iter(join_handles)
-    .buffer_unordered(1)
-    .collect::<Vec<Result<Result<(), AnyError>, tokio::task::JoinError>>>();
-
-  let handler = {
-    spawn(async move {
-      let mut used_only = false;
-      let mut report = BenchReport::new();
-      let mut reporter =
-        create_reporter(log_level != Some(Level::Error), options.json);
-      let mut benches = IndexMap::new();
-
-      while let Some(event) = receiver.recv().await {
-        match event {
-          BenchEvent::Plan(plan) => {
-            report.total += plan.total;
-            if plan.used_only {
-              used_only = true;
-            }
-
-            reporter.report_plan(&plan);
-          }
-
-          BenchEvent::Register(desc) => {
-            reporter.report_register(&desc);
-            benches.insert(desc.id, desc);
-          }
-
-          BenchEvent::Wait(id) => {
-            reporter.report_wait(benches.get(&id).unwrap());
-          }
-
-          BenchEvent::Output(output) => {
-            reporter.report_output(&output);
-          }
-
-          BenchEvent::Result(id, result) => {
-            let desc = benches.get(&id).unwrap();
-            reporter.report_result(desc, &result);
-            match result {
-              BenchResult::Ok(stats) => {
-                report.measurements.push((desc.clone(), stats));
-              }
-
-              BenchResult::Failed(failure) => {
-                report.failed += 1;
-                report.failures.push((desc.clone(), failure));
-              }
-            };
-          }
-
-          BenchEvent::UncaughtError(origin, error) => {
-            report.failed += 1;
-            reporter.report_uncaught_error(&origin, error);
-          }
-        }
-      }
-
-      reporter.report_end(&report);
-
-      if used_only {
-        return Err(generic_error(
-          "Bench failed because the \"only\" option was used",
-        ));
-      }
-
-      if report.failed > 0 {
-        return Err(generic_error("Bench failed"));
-      }
-
-      Ok(())
-    })
-  };
-
-  let (join_results, result) = future::join(join_stream, handler).await;
-
-  // propagate any errors
-  for join_result in join_results {
-    join_result??;
-  }
-
-  result??;
-
-  Ok(())
-}
-
-/// Test a collection of specifiers with test modes concurrently.
-async fn bench_specifiers2(
   factories_with_specifiers: Vec<(
     Arc<CliMainWorkerFactory>,
     Vec<ModuleSpecifier>,
@@ -599,7 +479,7 @@ pub async fn run_benchmarks(
     return Ok(());
   }
 
-  bench_specifiers2(
+  bench_specifiers(
     file_container.worker_factories_with_checked_specifiers(),
     &permissions,
     &permission_desc_parser,
@@ -614,7 +494,6 @@ pub async fn run_benchmarks(
   Ok(())
 }
 
-// TODO(bartlomieju): heavy duplication of code with `cli/tools/test.rs`
 pub async fn run_benchmarks_with_watch(
   flags: Arc<Flags>,
   bench_flags: BenchFlags,
@@ -640,96 +519,81 @@ pub async fn run_benchmarks_with_watch(
         let cli_options = factory.cli_options()?;
         let workspace_bench_options =
           cli_options.resolve_workspace_bench_options(&bench_flags);
-
-        let _ = watcher_communicator.watch_paths(cli_options.watch_paths());
-
-        let graph_kind = cli_options.type_check_mode().as_graph_kind();
-        let module_graph_creator = factory.module_graph_creator().await?;
-        let members_with_bench_options =
-          cli_options.resolve_bench_options_for_members(&bench_flags)?;
-        let watch_paths = members_with_bench_options
-          .iter()
-          .filter_map(|(_, bench_options)| {
-            bench_options
-              .files
-              .include
-              .as_ref()
-              .map(|set| set.base_paths())
-          })
-          .flatten()
-          .collect::<Vec<_>>();
-        let _ = watcher_communicator.watch_paths(watch_paths);
-        let collected_bench_modules = members_with_bench_options
-          .iter()
-          .map(|(_, bench_options)| {
-            collect_specifiers(
-              bench_options.files.clone(),
-              cli_options.vendor_dir_path().map(ToOwned::to_owned),
-              is_supported_bench_path,
-            )
-          })
-          .collect::<Result<Vec<_>, _>>()?
-          .into_iter()
-          .flatten()
-          .collect::<Vec<_>>();
-
-        // Various bench files should not share the same permissions in terms of
-        // `PermissionsContainer` - otherwise granting/revoking permissions in one
-        // file would have impact on other files, which is undesirable.
-        let permission_desc_parser = factory.permission_desc_parser()?.clone();
+        let permission_desc_parser = factory.permission_desc_parser()?;
         let permissions = Permissions::from_options(
           permission_desc_parser.as_ref(),
           &cli_options.permissions_options(),
         )?;
+        let log_level = cli_options.log_level();
 
-        let graph = module_graph_creator
-          .create_graph(graph_kind, collected_bench_modules.clone())
-          .await?;
-        module_graph_creator.graph_valid(&graph)?;
-        let bench_modules = &graph.roots;
-
-        let bench_modules_to_reload = if let Some(changed_paths) = changed_paths
-        {
-          let changed_paths = changed_paths.into_iter().collect::<HashSet<_>>();
-          let mut result = IndexSet::with_capacity(bench_modules.len());
-          for bench_module_specifier in bench_modules {
-            if has_graph_root_local_dependent_changed(
-              &graph,
-              bench_module_specifier,
-              &changed_paths,
-            ) {
-              result.insert(bench_module_specifier.clone());
-            }
-          }
-          result
+        let _ = watcher_communicator.watch_paths(cli_options.watch_paths());
+        let workspace_dirs_with_files = if cli_options.is_discovered_config() {
+          cli_options
+            .resolve_bench_options_for_members(&bench_flags)?
+            .into_iter()
+            .map(|(d, o)| (Arc::new(d), o.files))
+            .collect()
         } else {
-          bench_modules.clone()
+          let patterns = bench_flags
+            .files
+            .as_file_patterns(cli_options.initial_cwd())?;
+          let config = cli_options.start_dir.to_bench_config(patterns)?;
+          let options = BenchOptions::resolve(config, &bench_flags);
+          vec![(cli_options.start_dir.clone(), options.files)]
         };
-
-        let worker_factory =
-          Arc::new(factory.create_cli_main_worker_factory().await?);
-
-        let specifiers = collected_bench_modules
-          .into_iter()
-          .filter(|specifier| bench_modules_to_reload.contains(specifier))
-          .collect::<Vec<ModuleSpecifier>>();
-
-        factory
-          .main_module_graph_container()
-          .await?
-          .check_specifiers(&specifiers, cli_options.ext_flag().as_ref())
+        let watch_paths = workspace_dirs_with_files
+          .iter()
+          .filter_map(|(_, files)| {
+            files.include.as_ref().map(|set| set.base_paths())
+          })
+          .flatten()
+          .collect::<Vec<_>>();
+        let _ = watcher_communicator.watch_paths(watch_paths);
+        let file_container =
+          WorkspaceFileContainer::from_workspace_dirs_with_files(
+            workspace_dirs_with_files,
+            &factory,
+            None,
+            |patterns, cli_options, _, _| {
+              async move {
+                let info = SpecifierInfo {
+                  check: true,
+                  check_doc: false,
+                };
+                collect_specifiers(
+                  patterns,
+                  cli_options.vendor_dir_path().map(ToOwned::to_owned),
+                  is_supported_bench_path,
+                )
+                .map(|s| s.into_iter().map(|s| (s, info)).collect())
+              }
+              .boxed_local()
+            },
+            (),
+          )
           .await?;
+
+        file_container.check().await?;
 
         if workspace_bench_options.no_run {
           return Ok(());
         }
 
-        let log_level = cli_options.log_level();
+        let factories_with_specifiers =
+          if let Some(changed_paths) = changed_paths {
+            file_container
+              .worker_factories_with_dependent_checked_specifiers(
+                &changed_paths.into_iter().collect(),
+              )
+              .await?
+          } else {
+            file_container.worker_factories_with_checked_specifiers()
+          };
+
         bench_specifiers(
-          worker_factory,
+          factories_with_specifiers,
           &permissions,
           &permission_desc_parser,
-          specifiers,
           BenchSpecifierOptions {
             filter: TestFilter::from_flag(&workspace_bench_options.filter),
             json: workspace_bench_options.json,

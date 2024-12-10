@@ -21,7 +21,6 @@ use crate::resolver::SloppyImportsCachedFs;
 use crate::tools::check;
 use crate::tools::check::TypeChecker;
 use crate::util::file_watcher::WatcherCommunicator;
-use crate::util::fs::canonicalize_path;
 use deno_config::deno_json::JsxImportSourceConfig;
 use deno_config::workspace::JsrPackageConfig;
 use deno_core::anyhow::bail;
@@ -44,7 +43,6 @@ use deno_graph::ModuleGraph;
 use deno_graph::ModuleGraphError;
 use deno_graph::ResolutionError;
 use deno_graph::SpecifierError;
-use deno_path_util::url_to_file_path;
 use deno_resolver::sloppy_imports::SloppyImportsResolutionKind;
 use deno_runtime::deno_fs::FileSystem;
 use deno_runtime::deno_node;
@@ -53,7 +51,6 @@ use deno_semver::jsr::JsrDepPackageReq;
 use deno_semver::package::PackageNv;
 use import_map::ImportMapError;
 use node_resolver::InNpmPackageChecker;
-use std::collections::HashSet;
 use std::error::Error;
 use std::ops::Deref;
 use std::path::PathBuf;
@@ -987,37 +984,6 @@ fn get_import_prefix_missing_error(error: &ResolutionError) -> Option<&str> {
   }
 
   maybe_specifier.map(|s| s.as_str())
-}
-
-/// Gets if any of the specified root's "file:" dependents are in the
-/// provided changed set.
-pub fn has_graph_root_local_dependent_changed(
-  graph: &ModuleGraph,
-  root: &ModuleSpecifier,
-  canonicalized_changed_paths: &HashSet<PathBuf>,
-) -> bool {
-  let mut dependent_specifiers = graph.walk(
-    std::iter::once(root),
-    deno_graph::WalkOptions {
-      follow_dynamic: true,
-      kind: GraphKind::All,
-      prefer_fast_check_graph: true,
-      check_js: true,
-    },
-  );
-  while let Some((s, _)) = dependent_specifiers.next() {
-    if let Ok(path) = url_to_file_path(s) {
-      if let Ok(path) = canonicalize_path(&path) {
-        if canonicalized_changed_paths.contains(&path) {
-          return true;
-        }
-      }
-    } else {
-      // skip walking this remote module's dependencies
-      dependent_specifiers.skip_previous_dependencies();
-    }
-  }
-  false
 }
 
 #[derive(Clone, Debug)]
