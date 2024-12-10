@@ -322,7 +322,7 @@ impl ModuleGraphCreator {
         graph_kind: deno_graph::GraphKind::All,
         roots,
         loader: Some(&mut publish_loader),
-        npm_caching: NpmCachingStrategy::Eager,
+        npm_caching: self.options.default_npm_caching_strategy(),
       })
       .await?;
     self.graph_valid(&graph)?;
@@ -717,8 +717,9 @@ impl ModuleGraphBuilder {
     let parser = self.parsed_source_cache.as_capturing_parser();
     let cli_resolver = &self.resolver;
     let graph_resolver = self.create_graph_resolver()?;
-    let graph_npm_resolver =
-      cli_resolver.create_graph_npm_resolver(NpmCachingStrategy::Eager);
+    let graph_npm_resolver = cli_resolver.create_graph_npm_resolver(
+      self.cli_options.default_npm_caching_strategy(),
+    );
 
     graph.build_fast_check_type_graph(
       deno_graph::BuildFastCheckTypeGraphOptions {
