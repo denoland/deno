@@ -51,6 +51,7 @@ pub struct StripRootError {
   target: PathBuf,
 }
 
+#[derive(Debug)]
 pub struct VfsBuilder {
   root_path: PathBuf,
   root_dir: VirtualDirectory,
@@ -363,6 +364,28 @@ impl VfsBuilder {
 }
 
 pub fn output_vfs(builder: &VfsBuilder, executable_name: &str) {
+  if !log::log_enabled!(log::Level::Info) {
+    return; // no need to compute if won't output
+  }
+
+  if builder.root_dir.entries.is_empty() {
+    return; // nothing to output
+  }
+
+  let mut text = String::new();
+  let display_tree = vfs_as_display_tree(builder, executable_name);
+  display_tree.print(&mut text).unwrap(); // unwrap ok because it's writing to a string
+  log::info!(
+    "\n{}\n",
+    deno_terminal::colors::bold("Embedded File System")
+  );
+  log::info!("{}\n", text.trim());
+}
+
+fn vfs_as_display_tree(
+  builder: &VfsBuilder,
+  executable_name: &str,
+) -> DisplayTreeNode {
   enum EntryOutput<'a> {
     All,
     Subset(Vec<DirEntryOutput<'a>>),
@@ -452,27 +475,11 @@ pub fn output_vfs(builder: &VfsBuilder, executable_name: &str) {
     }
   }
 
-  if !log::log_enabled!(log::Level::Info) {
-    return; // no need to compute if won't output
-  }
-
-  if builder.root_dir.entries.is_empty() {
-    return; // nothing to output
-  }
-
   // always include all the entries for the root directory, otherwise the
   // user might not have context about what's being shown
   let output = include_all_entries(&builder.root_path, &builder.root_dir);
-  let mut text = String::new();
   output
     .as_display_tree(deno_terminal::colors::italic(executable_name).to_string())
-    .print(&mut text)
-    .unwrap(); // unwrap ok because it's writing to a string
-  log::info!(
-    "\n{}\n",
-    deno_terminal::colors::bold("Embedded File System")
-  );
-  log::info!("{}\n", text.trim());
 }
 
 #[derive(Debug)]
@@ -1109,6 +1116,7 @@ impl FileBackedVfs {
 
 #[cfg(test)]
 mod test {
+  use console_static_text::ansi::strip_ansi_codes;
   use std::io::Write;
   use test_util::TempDir;
 
@@ -1394,5 +1402,51 @@ mod test {
       .await
       .unwrap();
     assert_eq!(all_buf.to_vec(), b"123456789");
+  }
+
+  #[test]
+  fn test_vfs_as_display_tree() {
+    let temp_dir = TempDir::new();
+    temp_dir.write("root.txt", "");
+    temp_dir.create_dir_all("a");
+    temp_dir.write("a/a.txt", "");
+    temp_dir.write("a/b.txt", "");
+    temp_dir.create_dir_all("b");
+    temp_dir.write("b/a.txt", "");
+    temp_dir.write("b/b.txt", "");
+    temp_dir.create_dir_all("c");
+    temp_dir.write("c/a.txt", "contents");
+    temp_dir.symlink_file("c/a.txt", "c/b.txt");
+    assert_eq!(temp_dir.read_to_string("c/b.txt"), "contents"); // ensure the symlink works
+    let mut vfs_builder =
+      VfsBuilder::new(temp_dir.path().to_path_buf()).unwrap();
+    // full dir
+    vfs_builder
+      .add_dir_recursive(&temp_dir.path().join("a").as_path())
+      .unwrap();
+    // part of the dir
+    vfs_builder
+      .add_file_at_path(&temp_dir.path().join("b/a.txt").as_path())
+      .unwrap();
+    // symlink
+    vfs_builder
+      .add_dir_recursive(&temp_dir.path().join("c").as_path())
+      .unwrap();
+    temp_dir.write("c/c.txt", ""); // write an extra file so it shows the whole directory
+    let node = vfs_as_display_tree(&vfs_builder, "executable");
+    let mut text = String::new();
+    node.print(&mut text).unwrap();
+    assert_eq!(
+      strip_ansi_codes(&text),
+      r#"executable
+├─┬ a
+│ └── *
+├─┬ b
+│ └── a.txt
+└─┬ c
+  ├── a.txt
+  └── b.txt --> c/a.txt
+"#
+    );
   }
 }

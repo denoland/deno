@@ -3,11 +3,4 @@ Compile file:///[WILDLINE]
 
 Embedded File System
 
-main[WILDLINE]
-├── add.js
-├── main.js
-├─┬ node_modules
-│ └── *
-├── package.json
-└── subtract.ts
-
+[WILDCARD]
