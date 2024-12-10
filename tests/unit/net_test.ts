@@ -1281,7 +1281,7 @@ Deno.test(
   { permissions: { net: true } },
   async function netTcpWithAbortSignal() {
     const controller = new AbortController();
-    setTimeout(() => controller.abort(), 1000);
+    setTimeout(() => controller.abort(), 100);
     const error = await assertRejects(
       async () => {
         await Deno.connect({

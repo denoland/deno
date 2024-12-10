@@ -290,7 +290,7 @@ declare namespace Deno {
      * @default {"127.0.0.1"} */
     hostname?: string;
     transport?: "tcp";
-    signal?: AbortSignal | null;
+    signal?: AbortSignal;
   }
 
   /**
