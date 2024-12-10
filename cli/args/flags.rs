@@ -4405,7 +4405,7 @@ impl CommandExt for Command {
     ).arg(
       Arg::new("unstable-npm-lazy-caching")
         .long("unstable-npm-lazy-caching")
-        .help("Enable unstable lazy caching of npm dependencies, downloading them only as needed")
+        .help("Enable unstable lazy caching of npm dependencies, downloading them only as needed (disabled: all npm packages in package.json are installed on startup; enabled: only npm packages that are actually referenced in an import are installed")
         .env("DENO_UNSTABLE_NPM_LAZY_CACHING")
         .value_parser(FalseyValueParser::new())
         .action(ArgAction::SetTrue)
