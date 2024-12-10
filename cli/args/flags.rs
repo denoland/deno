@@ -2904,6 +2904,7 @@ To ignore linting on an entire file, you can add an ignore comment at the top of
       .arg(watch_arg(false))
       .arg(watch_exclude_arg())
       .arg(no_clear_screen_arg())
+      .arg(allow_import_arg())
   })
 }
 
@@ -5083,6 +5084,7 @@ fn lint_parse(
   unstable_args_parse(flags, matches, UnstableArgsConfig::ResolutionOnly);
   ext_arg_parse(flags, matches);
   config_args_parse(flags, matches);
+  allow_import_parse(flags, matches);
 
   let files = match matches.remove_many::<String>("files") {
     Some(f) => f.collect(),
@@ -7141,6 +7143,7 @@ mod tests {
     let r = flags_from_vec(svec![
       "deno",
       "lint",
+      "--allow-import",
       "--watch",
       "script_1.ts",
       "script_2.ts"
@@ -7162,6 +7165,10 @@ mod tests {
           compact: false,
           watch: Some(Default::default()),
         }),
+        permissions: PermissionFlags {
+          allow_import: Some(vec![]),
+          ..Default::default()
+        },
         ..Flags::default()
       }
     );
