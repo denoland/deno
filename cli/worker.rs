@@ -504,7 +504,7 @@ impl CliMainWorkerFactory {
               crate::npm::PackageCaching::All
             },
           )
-          .await?;  
+          .await?;
       }
 
       // use a fake referrer that can be used to discover the package.json if necessary
