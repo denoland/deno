@@ -9,18 +9,13 @@ use std::task::Context;
 use std::task::Poll;
 
 use bytes::Bytes;
-use deno_core::anyhow;
-use deno_core::anyhow::Error;
 use deno_core::error::bad_resource;
-use deno_core::error::custom_error;
 use deno_core::error::type_error;
-use deno_core::error::AnyError;
 use deno_core::futures::stream::Peekable;
 use deno_core::futures::Future;
 use deno_core::futures::FutureExt;
 use deno_core::futures::Stream;
 use deno_core::futures::StreamExt;
-use deno_core::futures::TryFutureExt;
 use deno_core::op2;
 use deno_core::serde::Serialize;
 use deno_core::unsync::spawn;
@@ -38,11 +33,11 @@ use deno_core::RcRef;
 use deno_core::Resource;
 use deno_core::ResourceId;
 use deno_fetch::FetchCancelHandle;
-use deno_fetch::FetchError;
 use deno_fetch::FetchReturn;
 use deno_fetch::ResBody;
 use deno_net::io::TcpStreamResource;
 use deno_net::ops_tls::TlsStreamResource;
+use deno_permissions::PermissionCheckError;
 use http::header::HeaderMap;
 use http::header::HeaderName;
 use http::header::HeaderValue;
@@ -72,7 +67,7 @@ pub struct NodeHttpResponse {
 }
 
 type CancelableResponseResult =
-  Result<Result<http::Response<Incoming>, Error>, Canceled>;
+  Result<Result<http::Response<Incoming>, hyper::Error>, Canceled>;
 
 pub struct NodeHttpClientResponse {
   response: Pin<Box<dyn Future<Output = CancelableResponseResult>>>,
@@ -93,6 +88,36 @@ impl deno_core::Resource for NodeHttpClientResponse {
   }
 }
 
+#[derive(Debug, thiserror::Error)]
+pub enum ConnError {
+  #[error(transparent)]
+  Resource(deno_core::error::AnyError),
+  #[error(transparent)]
+  Permission(#[from] PermissionCheckError),
+  #[error("Invalid URL {0}")]
+  InvalidUrl(Url),
+  #[error(transparent)]
+  InvalidHeaderName(#[from] http::header::InvalidHeaderName),
+  #[error(transparent)]
+  InvalidHeaderValue(#[from] http::header::InvalidHeaderValue),
+  #[error(transparent)]
+  Url(#[from] url::ParseError),
+  #[error(transparent)]
+  Method(#[from] http::method::InvalidMethod),
+  #[error(transparent)]
+  Io(#[from] std::io::Error),
+  #[error("TLS stream is currently in use")]
+  TlsStreamBusy,
+  #[error("TCP stream is currently in use")]
+  TcpStreamBusy,
+  #[error(transparent)]
+  ReuniteTcp(#[from] tokio::net::tcp::ReuniteError),
+  #[error(transparent)]
+  Canceled(#[from] deno_core::Canceled),
+  #[error(transparent)]
+  Hyper(#[from] hyper::Error),
+}
+
 #[op2(async, stack_trace)]
 #[serde]
 pub async fn op_node_http_request_with_conn<P>(
@@ -103,7 +128,7 @@ pub async fn op_node_http_request_with_conn<P>(
   #[smi] body: Option<ResourceId>,
   #[smi] conn_rid: ResourceId,
   encrypted: bool,
-) -> Result<FetchReturn, AnyError>
+) -> Result<FetchReturn, ConnError>
 where
   P: crate::NodePermissions + 'static,
 {
@@ -111,29 +136,26 @@ where
     let resource_rc = state
       .borrow_mut()
       .resource_table
-      .take::<TlsStreamResource>(conn_rid)?;
-    let resource = Rc::try_unwrap(resource_rc)
-      .map_err(|_e| custom_error("Busy", "TLS stream is currently in use"));
-    let resource = resource?;
+      .take::<TlsStreamResource>(conn_rid)
+      .map_err(ConnError::Resource)?;
+    let resource =
+      Rc::try_unwrap(resource_rc).map_err(|_e| ConnError::TlsStreamBusy)?;
     let (read_half, write_half) = resource.into_inner();
     let tcp_stream = read_half.unsplit(write_half);
     let io = TokioIo::new(tcp_stream);
     let (sender, conn) = hyper::client::conn::http1::handshake(io).await?;
     (
-      tokio::task::spawn(async move {
-        conn.with_upgrades().await?;
-        Ok::<_, AnyError>(())
-      }),
+      tokio::task::spawn(async move { conn.with_upgrades().await }),
       sender,
     )
   } else {
     let resource_rc = state
       .borrow_mut()
       .resource_table
-      .take::<TcpStreamResource>(conn_rid)?;
-    let resource = Rc::try_unwrap(resource_rc)
-      .map_err(|_| custom_error("Busy", "TCP stream is currently in use"));
-    let resource = resource?;
+      .take::<TcpStreamResource>(conn_rid)
+      .map_err(ConnError::Resource)?;
+    let resource =
+      Rc::try_unwrap(resource_rc).map_err(|_| ConnError::TcpStreamBusy)?;
     let (read_half, write_half) = resource.into_inner();
     let tcp_stream = read_half.reunite(write_half)?;
     let io = TokioIo::new(tcp_stream);
@@ -143,7 +165,7 @@ where
     (
       tokio::task::spawn(async move {
         conn.with_upgrades().await?;
-        Ok::<_, AnyError>(())
+        Ok::<_, _>(())
       }),
       sender,
     )
@@ -162,10 +184,8 @@ where
 
   let mut header_map = HeaderMap::new();
   for (key, value) in headers {
-    let name = HeaderName::from_bytes(&key)
-      .map_err(|err| type_error(err.to_string()))?;
-    let v = HeaderValue::from_bytes(&value)
-      .map_err(|err| type_error(err.to_string()))?;
+    let name = HeaderName::from_bytes(&key)?;
+    let v = HeaderValue::from_bytes(&value)?;
 
     header_map.append(name, v);
   }
@@ -177,7 +197,7 @@ where
           .borrow_mut()
           .resource_table
           .take_any(body)
-          .map_err(FetchError::Resource)?,
+          .map_err(ConnError::Resource)?,
       )),
       None,
     )
@@ -205,7 +225,7 @@ where
     .map(|q| format!("{}?{}", path, q))
     .unwrap_or_else(|| path.to_string())
     .parse()
-    .map_err(|_| FetchError::InvalidUrl(url_parsed.clone()))?;
+    .map_err(|_| ConnError::InvalidUrl(url_parsed.clone()))?;
   *request.headers_mut() = header_map;
 
   if let Some((username, password)) = maybe_authority {
@@ -221,13 +241,8 @@ where
   let cancel_handle = CancelHandle::new_rc();
   let cancel_handle_ = cancel_handle.clone();
 
-  let fut = async move {
-    sender
-      .send_request(request)
-      .map_err(Error::from)
-      .or_cancel(cancel_handle_)
-      .await
-  };
+  let fut =
+    async move { sender.send_request(request).or_cancel(cancel_handle_).await };
 
   let rid = state
     .borrow_mut()
@@ -253,13 +268,14 @@ where
 pub async fn op_node_http_await_response(
   state: Rc<RefCell<OpState>>,
   #[smi] rid: ResourceId,
-) -> Result<NodeHttpResponse, AnyError> {
+) -> Result<NodeHttpResponse, ConnError> {
   let resource = state
     .borrow_mut()
     .resource_table
-    .take::<NodeHttpClientResponse>(rid)?;
+    .take::<NodeHttpClientResponse>(rid)
+    .map_err(ConnError::Resource)?;
   let resource = Rc::try_unwrap(resource)
-    .map_err(|_| bad_resource("NodeHttpClientResponse"))?;
+    .map_err(|_| ConnError::Resource(bad_resource("NodeHttpClientResponse")))?;
 
   let res = resource.response.await??;
   let status = res.status();
@@ -308,11 +324,12 @@ pub async fn op_node_http_await_response(
 pub async fn op_node_http_fetch_response_upgrade(
   state: Rc<RefCell<OpState>>,
   #[smi] rid: ResourceId,
-) -> Result<ResourceId, AnyError> {
+) -> Result<ResourceId, ConnError> {
   let raw_response = state
     .borrow_mut()
     .resource_table
-    .take::<NodeHttpResponseResource>(rid)?;
+    .take::<NodeHttpResponseResource>(rid)
+    .map_err(ConnError::Resource)?;
   let raw_response = Rc::try_unwrap(raw_response)
     .expect("Someone is holding onto NodeHttpFetchResponseResource");
 
@@ -335,7 +352,7 @@ pub async fn op_node_http_fetch_response_upgrade(
         }
         read_tx.write_all(&buf[..read]).await?;
       }
-      Ok::<_, AnyError>(())
+      Ok::<_, ConnError>(())
     });
     spawn(async move {
       let mut buf = [0; 1024];
@@ -346,7 +363,7 @@ pub async fn op_node_http_fetch_response_upgrade(
         }
         upgraded_tx.write_all(&buf[..read]).await?;
       }
-      Ok::<_, AnyError>(())
+      Ok::<_, ConnError>(())
     });
   }
 
@@ -448,11 +465,11 @@ impl NodeHttpResponseResource {
     }
   }
 
-  pub async fn upgrade(self) -> Result<hyper::upgrade::Upgraded, AnyError> {
+  pub async fn upgrade(self) -> Result<hyper::upgrade::Upgraded, hyper::Error> {
     let reader = self.response_reader.into_inner();
     match reader {
       NodeHttpFetchResponseReader::Start(resp) => {
-        Ok(hyper::upgrade::on(resp).await?)
+        hyper::upgrade::on(resp).await
       }
       _ => unreachable!(),
     }
@@ -530,7 +547,9 @@ impl Resource for NodeHttpResponseResource {
 #[allow(clippy::type_complexity)]
 pub struct NodeHttpResourceToBodyAdapter(
   Rc<dyn Resource>,
-  Option<Pin<Box<dyn Future<Output = Result<BufView, anyhow::Error>>>>>,
+  Option<
+    Pin<Box<dyn Future<Output = Result<BufView, deno_core::anyhow::Error>>>>,
+  >,
 );
 
 impl NodeHttpResourceToBodyAdapter {
@@ -546,7 +565,7 @@ unsafe impl Send for NodeHttpResourceToBodyAdapter {}
 unsafe impl Sync for NodeHttpResourceToBodyAdapter {}
 
 impl Stream for NodeHttpResourceToBodyAdapter {
-  type Item = Result<Bytes, anyhow::Error>;
+  type Item = Result<Bytes, deno_core::anyhow::Error>;
 
   fn poll_next(
     self: Pin<&mut Self>,
@@ -577,7 +596,7 @@ impl Stream for NodeHttpResourceToBodyAdapter {
 
 impl hyper::body::Body for NodeHttpResourceToBodyAdapter {
   type Data = Bytes;
-  type Error = anyhow::Error;
+  type Error = deno_core::anyhow::Error;
 
   fn poll_frame(
     self: Pin<&mut Self>,
