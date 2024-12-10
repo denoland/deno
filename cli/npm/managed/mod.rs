@@ -582,8 +582,8 @@ impl ManagedCliNpmResolver {
   /// Ensures that the top level `package.json` dependencies are installed.
   /// This may set up the `node_modules` directory.
   ///
-  /// Returns `true` if any changes (such as caching packages) were made.
-  /// If this returns `false`, `node_modules` has _not_ been set up.
+  /// Returns `true` if the top level packages are already installed. A
+  /// return value of `false` means that new packages were added to the NPM resolution.
   pub async fn ensure_top_level_package_json_install(
     &self,
   ) -> Result<bool, AnyError> {
