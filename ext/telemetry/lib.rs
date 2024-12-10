@@ -732,9 +732,9 @@ fn op_otel_instrumentation_scope_enter(
 
 #[op2(fast)]
 fn op_otel_instrumentation_scope_enter_builtin(state: &mut OpState) {
-  state.put(InstrumentationScope(
-    BUILT_IN_INSTRUMENTATION_SCOPE.get().unwrap().clone(),
-  ));
+  if let Some(scope) = BUILT_IN_INSTRUMENTATION_SCOPE.get() {
+    state.put(InstrumentationScope(scope.clone()));
+  }
 }
 
 #[op2(fast)]
@@ -747,6 +747,9 @@ fn op_otel_log(
   #[smi] trace_flags: u8,
 ) {
   let Some(Processors { logs, .. }) = OTEL_PROCESSORS.get() else {
+    return;
+  };
+  let Some(instrumentation_scope) = BUILT_IN_INSTRUMENTATION_SCOPE.get() else {
     return;
   };
 
@@ -776,10 +779,7 @@ fn op_otel_log(
     );
   }
 
-  logs.emit(
-    &mut log_record,
-    BUILT_IN_INSTRUMENTATION_SCOPE.get().unwrap(),
-  );
+  logs.emit(&mut log_record, instrumentation_scope);
 }
 
 fn owned_string<'s>(
