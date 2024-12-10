@@ -595,6 +595,7 @@ pub struct UnstableConfig {
   pub bare_node_builtins: bool,
   pub detect_cjs: bool,
   pub sloppy_imports: bool,
+  pub npm_lazy_caching: bool,
   pub features: Vec<String>, // --unstabe-kv --unstable-cron
 }
 
@@ -4401,6 +4402,15 @@ impl CommandExt for Command {
       })
       .help_heading(UNSTABLE_HEADING)
       .display_order(next_display_order())
+    ).arg(
+      Arg::new("unstable-npm-lazy-caching")
+        .long("unstable-npm-lazy-caching")
+        .help("Enable unstable lazy caching of npm dependencies, downloading them only as needed")
+        .value_parser(FalseyValueParser::new())
+        .action(ArgAction::SetTrue)
+        .hide(true)
+        .help_heading(UNSTABLE_HEADING)
+        .display_order(next_display_order()),
     );
 
     for granular_flag in crate::UNSTABLE_GRANULAR_FLAGS.iter() {
@@ -5987,6 +5997,8 @@ fn unstable_args_parse(
   flags.unstable_config.detect_cjs = matches.get_flag("unstable-detect-cjs");
   flags.unstable_config.sloppy_imports =
     matches.get_flag("unstable-sloppy-imports");
+  flags.unstable_config.npm_lazy_caching =
+    matches.get_flag("unstable-npm-lazy-caching");
 
   if matches!(cfg, UnstableArgsConfig::ResolutionAndRuntime) {
     for granular_flag in crate::UNSTABLE_GRANULAR_FLAGS {

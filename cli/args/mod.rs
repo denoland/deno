@@ -1687,6 +1687,7 @@ impl CliOptions {
           "detect-cjs",
           "fmt-component",
           "fmt-sql",
+          "lazy-npm-caching",
         ])
         .collect();
 
@@ -1766,17 +1767,18 @@ impl CliOptions {
     }
   }
 
+  pub fn unstable_npm_lazy_caching(&self) -> bool {
+    self.flags.unstable_config.npm_lazy_caching
+      || self.workspace().has_unstable("npm-lazy-caching")
+  }
+
   pub fn default_npm_caching_strategy(&self) -> NpmCachingStrategy {
     match self.sub_command() {
       DenoSubcommand::Install(InstallFlags::Local(
         InstallFlagsLocal::Entrypoints(_),
       )) => NpmCachingStrategy::Lazy,
       _ => {
-        if self
-          .unstable_features()
-          .iter()
-          .any(|v| v == "lazy-npm-caching")
-        {
+        if self.flags.unstable_config.npm_lazy_caching {
           NpmCachingStrategy::Lazy
         } else {
           NpmCachingStrategy::Eager

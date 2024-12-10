@@ -779,6 +779,7 @@ impl<'a> DenoCompileBinaryWriter<'a> {
         detect_cjs: self.cli_options.unstable_detect_cjs(),
         sloppy_imports: self.cli_options.unstable_sloppy_imports(),
         features: self.cli_options.unstable_features(),
+        npm_lazy_caching: self.cli_options.unstable_npm_lazy_caching(),
       },
       otel_config: self.cli_options.otel_config(),
     };
