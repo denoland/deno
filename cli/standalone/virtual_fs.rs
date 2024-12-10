@@ -1422,15 +1422,15 @@ mod test {
       VfsBuilder::new(temp_dir.path().to_path_buf()).unwrap();
     // full dir
     vfs_builder
-      .add_dir_recursive(&temp_dir.path().join("a").as_path())
+      .add_dir_recursive(temp_dir.path().join("a").as_path())
       .unwrap();
     // part of the dir
     vfs_builder
-      .add_file_at_path(&temp_dir.path().join("b/a.txt").as_path())
+      .add_file_at_path(temp_dir.path().join("b/a.txt").as_path())
       .unwrap();
     // symlink
     vfs_builder
-      .add_dir_recursive(&temp_dir.path().join("c").as_path())
+      .add_dir_recursive(temp_dir.path().join("c").as_path())
       .unwrap();
     temp_dir.write("c/c.txt", ""); // write an extra file so it shows the whole directory
     let node = vfs_as_display_tree(&vfs_builder, "executable");
