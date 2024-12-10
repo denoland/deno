@@ -26,6 +26,11 @@
         {
           "args": "outdated",
           "output": "outdated.out"
+        },
+        {
+          // Respect `--quiet flag and don't print hint how to update
+          "args": "outdated --quiet",
+          "output": "outdated_quiet.out"
         }
       ]
     },
