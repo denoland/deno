@@ -6968,6 +6968,7 @@ declare namespace Deno {
     | Property
     | SpreadElement
     | VariableDeclarator
+    | TemplateElement
     | JSXNode;
 
   export interface LintRuleContext {

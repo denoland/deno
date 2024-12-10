@@ -107,6 +107,8 @@ const Flags = {
   VarConst: 0b00000010,
   VarLet: 0b00000100,
   VarDeclare: 0b00001000,
+  ExportType: 0b000000001,
+  TplTail: 0b000000001,
 };
 
 // Keep in sync with Rust
@@ -208,11 +210,13 @@ const AstType = {
   VariableDeclarator: 87,
   CatchClause: 88,
   RestElement: 89,
+  ExportSpecifier: 90,
+  TemplateElement: 91,
 
   // Patterns
-  ArrayPattern: 90,
-  AssignmentPattern: 91,
-  ObjectPattern: 92,
+  ArrayPattern: 92,
+  AssignmentPattern: 93,
+  ObjectPattern: 94,
 
   // JSX
   // FIXME
@@ -351,6 +355,7 @@ class VariableDeclarator extends BaseNode {
   #ctx;
   #nameId;
   #initId;
+  definite = false;
 
   /**
    * @param {AstContext} ctx
@@ -1775,17 +1780,17 @@ class SpreadElement extends BaseNode {
 }
 
 /** @implements {Deno.Super} */
-class Super {
+class Super extends BaseNode {
   type = /** @type {const} */ ("Super");
   range;
-  #ctx;
 
   /**
    * @param {AstContext} ctx
+   * @param {number} parentId
    * @param {Deno.Range} range
    */
-  constructor(ctx, range) {
-    this.#ctx = ctx;
+  constructor(ctx, parentId, range) {
+    super(ctx, parentId);
     this.range = range;
   }
 }
@@ -1905,6 +1910,68 @@ class StringLiteral extends BaseNode {
     super(ctx, parentId);
     this.range = range;
     this.value = getString(ctx, strId);
+  }
+}
+
+/** @implements {Deno.TemplateLiteral} */
+class TemplateLiteral extends BaseNode {
+  type = /** @type {const} */ ("TemplateLiteral");
+  range;
+
+  #ctx;
+  #exprIds;
+  #quasiIds;
+
+  get expressions() {
+    return createChildNodes(this.#ctx, this.#exprIds);
+  }
+
+  get quasis() {
+    return createChildNodes(this.#ctx, this.#quasiIds);
+  }
+
+  /**
+   * @param {AstContext} ctx
+   * @param {number} parentId
+   * @param {Deno.Range} range
+   * @param {number[]} quasiIds
+   * @param {number[]} exprIds
+   */
+  constructor(ctx, parentId, range, quasiIds, exprIds) {
+    super(ctx, parentId);
+    this.#ctx = ctx;
+    this.#quasiIds = quasiIds;
+    this.#exprIds = exprIds;
+    this.range = range;
+  }
+}
+
+/** @implements {Deno.TemplateElement} */
+class TemplateElement extends BaseNode {
+  type = /** @type {const} */ ("TemplateElement");
+  range;
+
+  tail = false;
+  value;
+
+  /**
+   * @param {AstContext} ctx
+   * @param {number} parentId
+   * @param {Deno.Range} range
+   * @param {number} rawId
+   * @param {number} cookedId
+   * @param {boolean} tail
+   */
+  constructor(ctx, parentId, range, rawId, cookedId, tail) {
+    super(ctx, parentId);
+
+    const raw = getString(ctx, rawId);
+    this.value = {
+      raw,
+      cooked: cookedId === 0 ? raw : getString(ctx, cookedId),
+    };
+    this.tail = tail;
+    this.range = range;
   }
 }
 
@@ -2374,6 +2441,12 @@ function createAstNode(ctx, id) {
   const { buf, idTable } = ctx;
 
   let offset = idTable[id];
+  if (offset >= buf.length) {
+    throw new Error(
+      `Could not find id: ${id}. Offset ${offset} bigger than buffer length: ${buf.length}`,
+    );
+  }
+
   // console.log({ id, offset });
   /** @type {AstType} */
   const kind = buf[offset];
@@ -2515,6 +2588,7 @@ function createAstNode(ctx, id) {
       const typeParamId = readU32(buf, offset);
       offset += 4;
       const paramIds = readChildIds(buf, offset);
+      offset += 4;
       offset += paramIds.length * 4;
 
       const bodyId = readU32(buf, offset);
@@ -2565,8 +2639,6 @@ function createAstNode(ctx, id) {
         childIds,
       );
     }
-    case AstType.ChainExpression:
-      throw new ChainExpression(ctx, range); // FIXME
     case AstType.ConditionalExpression:
       throw new ConditionalExpression(ctx, range, 0, 0, 0); // FIXME
     case AstType.FunctionExpression:
@@ -2607,8 +2679,6 @@ function createAstNode(ctx, id) {
       const valueId = readU32(buf, offset + 5);
       return new Property(ctx, parentId, range, keyId, valueId);
     }
-    case AstType.StaticBlock:
-      throw new Error("TODO");
     case AstType.SequenceExpression: {
       const childIds = readChildIds(buf, offset);
       return new SequenceExpression(ctx, parentId, range, childIds);
@@ -2618,11 +2688,24 @@ function createAstNode(ctx, id) {
       return new SpreadElement(ctx, parentId, range, exprId);
     }
     case AstType.Super:
-      throw new Super(ctx, range); // FIXME
+      throw new Super(ctx, parentId, range);
     case AstType.TaggedTemplateExpression:
-      throw new Error("TODO");
-    case AstType.TemplateLiteral:
-      throw new Error("TODO");
+      throw new Error("FIXME");
+
+    case AstType.TemplateElement: {
+      const flags = buf[offset];
+      const tail = (flags & Flags.TplTail) !== 0;
+      const rawId = readU32(buf, offset + 1);
+      const cookedId = readU32(buf, offset + 5);
+      return new TemplateElement(ctx, parentId, range, rawId, cookedId, tail);
+    }
+    case AstType.TemplateLiteral: {
+      const quasiIds = readChildIds(buf, offset);
+      offset += 4;
+      offset += quasiIds.length * 4;
+      const exprIds = readChildIds(buf, offset);
+      return new TemplateLiteral(ctx, parentId, range, quasiIds, exprIds);
+    }
 
     // Literals
     case AstType.BooleanLiteral: {
@@ -2830,8 +2913,8 @@ function traverse(ctx, visitor) {
     visitTypes.set(id, name);
   }
 
-  // console.log("merged visitor", visitor);
-  // console.log("visiting types", visitTypes);
+  console.log("merged visitor", visitor);
+  console.log("visiting types", visitTypes);
 
   // Program is always id 1
   const id = 1;
@@ -2919,6 +3002,7 @@ function traverseInner(ctx, visitTypes, visitor, id) {
       }
 
       const childIds = readChildIds(buf, offset);
+      offset += 4;
       offset += childIds.length * 4;
       traverseChildren(ctx, visitTypes, visitor, childIds);
 

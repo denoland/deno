@@ -39,3 +39,11 @@ for await (const a of b) foo;
 for (let i = 0; i < 10; i++) {
   foo;
 }
+
+switch (foo) {
+  case 1:
+  case 2:
+    break;
+  default:
+    foo;
+}

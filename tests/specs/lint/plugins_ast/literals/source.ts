@@ -34,3 +34,6 @@ a = {
   // *barGen() {},
   // async *barAsyncGen() {},
 };
+
+a = `foo`;
+a = `foo${" "}bar`;

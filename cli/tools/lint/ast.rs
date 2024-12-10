@@ -1,10 +1,11 @@
 use deno_ast::{
   swc::{
     ast::{
-      AssignTarget, BlockStmtOrExpr, Callee, Decl, Expr, FnExpr, ForHead,
-      Function, Ident, KeyValuePatProp, Lit, MemberProp, ModuleDecl,
-      ModuleItem, ObjectPatProp, Param, Pat, Program, Prop, PropName,
-      PropOrSpread, SimpleAssignTarget, Stmt, SuperProp, TsType, VarDeclOrExpr,
+      AssignTarget, BlockStmtOrExpr, Callee, Decl, ExportSpecifier, Expr,
+      ExprOrSpread, FnExpr, ForHead, Function, Ident, Lit, MemberProp,
+      ModuleDecl, ModuleExportName, ModuleItem, ObjectPatProp, Param, Pat,
+      Program, Prop, PropName, PropOrSpread, SimpleAssignTarget, Stmt,
+      SuperProp, TsType, VarDeclOrExpr,
     },
     common::{Span, Spanned, SyntaxContext, DUMMY_SP},
   },
@@ -23,7 +24,7 @@ enum AstNode {
   Import,
   ImportDecl,
   ExportDecl,
-  ExportNamed,
+  ExportNamedDeclaration,
   ExportDefaultDecl,
   ExportDefaultExpr,
   ExportAll,
@@ -80,7 +81,7 @@ enum AstNode {
   Paren,
   Seq,
   Ident,
-  Tpl,
+  TemplateLiteral,
   TaggedTpl,
   Arrow,
   ClassExpr,
@@ -101,9 +102,9 @@ enum AstNode {
   StringLiteral,
   Bool,
   Null,
-  Num,
-  BigInt,
-  Regex,
+  NumericLiteral,
+  BigIntLiteral,
+  RegExpLiteral,
 
   // JSX
   JSXMember,
@@ -120,6 +121,8 @@ enum AstNode {
   VariableDeclarator,
   CatchClause,
   RestElement,
+  ExportSpecifier,
+  TemplateElement,
 
   // Patterns
   ArrayPattern,
@@ -186,6 +189,8 @@ enum Flag {
   VarConst,
   VarLet,
   VarDeclare,
+  ExportType,
+  TplTail,
 }
 
 fn assign_op_to_flag(m: AssignOp) -> u8 {
@@ -228,6 +233,8 @@ impl From<Flag> for u8 {
       Flag::VarConst => 0b00000010,
       Flag::VarLet => 0b00000100,
       Flag::VarDeclare => 0b00001000,
+      Flag::ExportType => 0b000000001,
+      Flag::TplTail => 0b000000001,
     }
   }
 }
@@ -303,6 +310,8 @@ impl SerializeCtx {
       result: vec![],
       str_table: StringTable::new(),
     };
+
+    ctx.str_table.insert("");
 
     ctx.push_node(AstNode::Empty, 0, &DUMMY_SP);
 
@@ -410,7 +419,7 @@ pub fn serialize_ast_bin(parsed_source: &ParsedSource) -> Vec<u8> {
 
   let offset = result.len() + (ctx.id_to_offset.len() * 4);
 
-  for (i, value) in ctx.id_to_offset {
+  for (_i, value) in ctx.id_to_offset {
     append_usize(&mut result, value + offset);
   }
 
@@ -432,7 +441,58 @@ fn serialize_module_decl(
       ctx.push_node(AstNode::ExportDecl, parent_id, &node.span)
     }
     ModuleDecl::ExportNamed(node) => {
-      ctx.push_node(AstNode::ExportNamed, parent_id, &node.span)
+      let id =
+        ctx.push_node(AstNode::ExportNamedDeclaration, parent_id, &node.span);
+
+      let mut flags = FlagValue::new();
+      flags.set(Flag::ExportType);
+      ctx.result.push(flags.0);
+
+      let offset = ctx.reserve_child_ids(2);
+      if let Some(src) = &node.src {
+        let child_id = serialize_lit(ctx, &Lit::Str(*src.clone()), id);
+        ctx.set_child(offset, child_id, 0);
+      }
+
+      // FIXME: I don't think these are valid
+      if let Some(attributes) = &node.with {
+        let child_id =
+          serialize_expr(ctx, &Expr::Object(*attributes.clone()), id);
+        ctx.set_child(offset, child_id, 1);
+      }
+
+      for (i, spec) in node.specifiers.iter().enumerate() {
+        match spec {
+          ExportSpecifier::Named(child) => {
+            let export_id =
+              ctx.push_node(AstNode::ExportSpecifier, id, &child.span);
+
+            let mut flags = FlagValue::new();
+            flags.set(Flag::ExportType);
+            ctx.result.push(flags.0);
+
+            let export_offset = ctx.reserve_child_ids(2);
+
+            let org_id =
+              serialize_module_exported_name(ctx, &child.orig, export_id);
+            ctx.set_child(export_offset, org_id, 0);
+
+            if let Some(exported) = &child.exported {
+              let exported_id =
+                serialize_module_exported_name(ctx, exported, export_id);
+              ctx.set_child(export_offset, exported_id, 1);
+            }
+
+            ctx.set_child(offset, export_id, i);
+          }
+
+          // These two aren't syntactically valid
+          ExportSpecifier::Namespace(_) => todo!(),
+          ExportSpecifier::Default(_) => todo!(),
+        };
+      }
+
+      id
     }
     ModuleDecl::ExportDefaultDecl(node) => {
       ctx.push_node(AstNode::ExportDefaultDecl, parent_id, &node.span)
@@ -451,6 +511,19 @@ fn serialize_module_decl(
     }
     ModuleDecl::TsNamespaceExport(node) => {
       ctx.push_node(AstNode::TsNamespaceExport, parent_id, &node.span)
+    }
+  }
+}
+
+fn serialize_module_exported_name(
+  ctx: &mut SerializeCtx,
+  name: &ModuleExportName,
+  parent_id: usize,
+) -> usize {
+  match &name {
+    ModuleExportName::Ident(ident) => serialize_ident(ctx, &ident, parent_id),
+    ModuleExportName::Str(lit) => {
+      serialize_lit(ctx, &Lit::Str(lit.clone()), parent_id)
     }
   }
 }
@@ -550,7 +623,12 @@ fn serialize_stmt(
 
         let child_offset =
           ctx.reserve_child_ids_with_count(case.cons.len() + 1);
-        // ctx.set_child(child_offset, child_id, i);
+
+        for (j, cons) in case.cons.iter().enumerate() {
+          let cons_id = serialize_stmt(ctx, cons, child_id);
+          ctx.set_child(child_offset, cons_id, j);
+        }
+
         ctx.set_child(offset, child_id, i);
       }
 
@@ -583,7 +661,8 @@ fn serialize_stmt(
         let clause_offset = ctx.reserve_child_ids(2); // Param + Body
 
         if let Some(param) = &catch_clause.param {
-          // FIXME
+          let param_id = serialize_pat(ctx, param, clause_id);
+          ctx.set_child(clause_offset, param_id, 0);
         }
 
         let body_id =
@@ -660,14 +739,7 @@ fn serialize_stmt(
       let id = ctx.push_node(AstNode::ForIn, parent_id, &node.span);
       let offset = ctx.reserve_child_ids(3); // Left + Right + Body
 
-      let left_id = match &node.left {
-        ForHead::VarDecl(var_decl) => {
-          serialize_decl(ctx, &Decl::Var(var_decl.clone()), id)
-        }
-        ForHead::UsingDecl(using_decl) => todo!(),
-        ForHead::Pat(pat) => serialize_pat(ctx, pat, id),
-      };
-
+      let left_id = serialize_for_head(ctx, &node.left, id);
       let right_id = serialize_expr(ctx, node.right.as_ref(), id);
       let body_id = serialize_stmt(ctx, node.body.as_ref(), id);
 
@@ -681,14 +753,9 @@ fn serialize_stmt(
       let id = ctx.push_node(AstNode::ForOf, parent_id, &node.span);
       let offset = ctx.reserve_child_ids(3);
 
-      let left_id = match &node.left {
-        ForHead::VarDecl(var_decl) => {
-          serialize_decl(ctx, &Decl::Var(var_decl.clone()), id)
-        }
-        ForHead::UsingDecl(using_decl) => todo!(),
-        ForHead::Pat(pat) => serialize_pat(ctx, pat, id),
-      };
+      // FIXME: await
 
+      let left_id = serialize_for_head(ctx, &node.left, id);
       let right_id = serialize_expr(ctx, node.right.as_ref(), id);
       let body_id = serialize_stmt(ctx, node.body.as_ref(), id);
 
@@ -866,8 +933,8 @@ fn serialize_expr(
 
       for (i, maybe_item) in node.elems.iter().enumerate() {
         if let Some(item) = maybe_item {
-          // FIXME
-          ctx.set_child(offset, 0, i);
+          let child_id = serialize_expr_or_spread(ctx, item, id);
+          ctx.set_child(offset, child_id, i);
         }
       }
 
@@ -879,18 +946,12 @@ fn serialize_expr(
 
       for (i, prop) in node.props.iter().enumerate() {
         let child_id = match prop {
-          PropOrSpread::Spread(spread_element) => {
-            let child_id =
-              ctx.push_node(AstNode::Spread, id, &spread_element.dot3_token);
-
-            let child_offset = ctx.reserve_child_ids(1);
-            let expr_id =
-              serialize_expr(ctx, spread_element.expr.as_ref(), child_id);
-
-            ctx.set_child(child_offset, expr_id, 0);
-
-            child_id
-          }
+          PropOrSpread::Spread(spread_element) => serialize_spread(
+            ctx,
+            spread_element.expr.as_ref(),
+            &spread_element.dot3_token,
+            parent_id,
+          ),
           PropOrSpread::Prop(prop) => {
             let mut flags = FlagValue::new();
             let prop_id = ctx.push_node(AstNode::Property, id, &prop.span());
@@ -1223,14 +1284,14 @@ fn serialize_expr(
       let offset = ctx.reserve_child_ids(2);
       let arg_offset = ctx.reserve_child_ids_with_count(node.args.len());
 
-      match &node.callee {
-        Callee::Super(_) => todo!(),
-        Callee::Import(import) => todo!(),
-        Callee::Expr(expr) => {
-          let expr_id = serialize_expr(ctx, expr, id);
-          ctx.set_child(offset, expr_id, 0);
+      let callee_id = match &node.callee {
+        Callee::Super(super_node) => {
+          ctx.push_node(AstNode::SuperProp, id, &super_node.span)
         }
-      }
+        Callee::Import(import) => todo!(),
+        Callee::Expr(expr) => serialize_expr(ctx, expr, id),
+      };
+      ctx.set_child(offset, callee_id, 0);
 
       if let Some(type_args) = &node.type_args {
         // FIXME
@@ -1238,18 +1299,8 @@ fn serialize_expr(
       }
 
       for (i, arg) in node.args.iter().enumerate() {
-        if let Some(spread) = &arg.spread {
-          let spread_id = ctx.push_node(AstNode::Spread, id, spread);
-          let child_offset = ctx.reserve_child_ids(1);
-
-          let expr_id = serialize_expr(ctx, &arg.expr, spread_id);
-          ctx.set_child(child_offset, expr_id, 0);
-
-          ctx.set_child(arg_offset, spread_id, i);
-        } else {
-          let child_id = serialize_expr(ctx, arg.expr.as_ref(), id);
-          ctx.set_child(arg_offset, child_id, i);
-        }
+        let child_id = serialize_expr_or_spread(ctx, arg, id);
+        ctx.set_child(arg_offset, child_id, i);
       }
 
       id
@@ -1265,13 +1316,9 @@ fn serialize_expr(
       ctx.set_child(offset, expr_id, 0);
 
       if let Some(args) = &node.args {
-        for arg in args {
-          // FIXME
-          //   if let Some(spread) = &arg.spread {
-          //     ctx.push_node(AstNode::Spread.into(), None)
-          //   }
-
-          //   serialize_expr(ctx, arg.expr.as_ref());
+        for (i, arg) in args.iter().enumerate() {
+          let arg_id = serialize_expr_or_spread(ctx, arg, id);
+          ctx.set_child(child_offset, arg_id, i);
         }
       }
 
@@ -1297,8 +1344,34 @@ fn serialize_expr(
     Expr::Ident(node) => serialize_ident(ctx, node, parent_id),
     Expr::Lit(node) => serialize_lit(ctx, node, parent_id),
     Expr::Tpl(node) => {
-      let id = ctx.push_node(AstNode::Tpl, parent_id, &node.span);
-      //
+      eprintln!("NODE {:#?}", node);
+      let id = ctx.push_node(AstNode::TemplateLiteral, parent_id, &node.span);
+
+      let quasi_offset = ctx.reserve_child_ids_with_count(node.quasis.len());
+      let expr_offset = ctx.reserve_child_ids_with_count(node.exprs.len());
+
+      for (i, quasi) in node.quasis.iter().enumerate() {
+        let child_id = ctx.push_node(AstNode::TemplateElement, id, &quasi.span);
+        let mut flags = FlagValue::new();
+        flags.set(Flag::TplTail);
+        ctx.result.push(flags.0);
+
+        let raw_str_id = ctx.str_table.insert(quasi.raw.as_str());
+        append_usize(&mut ctx.result, raw_str_id);
+
+        let cooked_str_id = if let Some(cooked) = &quasi.cooked {
+          ctx.str_table.insert(cooked.as_str())
+        } else {
+          0
+        };
+        append_usize(&mut ctx.result, cooked_str_id);
+
+        ctx.set_child(quasi_offset, child_id, i);
+      }
+      for (i, expr) in node.exprs.iter().enumerate() {
+        let child_id = serialize_expr(ctx, expr, id);
+        ctx.set_child(expr_offset, child_id, i);
+      }
 
       id
     }
@@ -1595,6 +1668,48 @@ fn serialize_pat(ctx: &mut SerializeCtx, pat: &Pat, parent_id: usize) -> usize {
   }
 }
 
+fn serialize_for_head(
+  ctx: &mut SerializeCtx,
+  for_head: &ForHead,
+  parent_id: usize,
+) -> usize {
+  match for_head {
+    ForHead::VarDecl(var_decl) => {
+      serialize_decl(ctx, &Decl::Var(var_decl.clone()), parent_id)
+    }
+    ForHead::UsingDecl(using_decl) => todo!(),
+    ForHead::Pat(pat) => serialize_pat(ctx, pat, parent_id),
+  }
+}
+
+fn serialize_expr_or_spread(
+  ctx: &mut SerializeCtx,
+  arg: &ExprOrSpread,
+  parent_id: usize,
+) -> usize {
+  if let Some(spread) = &arg.spread {
+    serialize_spread(ctx, &arg.expr, spread, parent_id)
+  } else {
+    serialize_expr(ctx, arg.expr.as_ref(), parent_id)
+  }
+}
+
+fn serialize_spread(
+  ctx: &mut SerializeCtx,
+  expr: &Expr,
+  span: &Span,
+  parent_id: usize,
+) -> usize {
+  let id = ctx.push_node(AstNode::Spread, parent_id, span);
+
+  let child_offset = ctx.reserve_child_ids(1);
+  let expr_id = serialize_expr(ctx, expr, id);
+
+  ctx.set_child(child_offset, expr_id, 0);
+
+  id
+}
+
 fn serialize_prop_name(
   ctx: &mut SerializeCtx,
   prop_name: &PropName,
@@ -1660,7 +1775,7 @@ fn serialize_lit(ctx: &mut SerializeCtx, lit: &Lit, parent_id: usize) -> usize {
     }
     Lit::Null(node) => ctx.push_node(AstNode::Null, parent_id, &node.span),
     Lit::Num(node) => {
-      let id = ctx.push_node(AstNode::Num, parent_id, &node.span);
+      let id = ctx.push_node(AstNode::NumericLiteral, parent_id, &node.span);
 
       let value = node.raw.as_ref().unwrap();
       let str_id = ctx.str_table.insert(&value.as_str());
@@ -1669,7 +1784,7 @@ fn serialize_lit(ctx: &mut SerializeCtx, lit: &Lit, parent_id: usize) -> usize {
       id
     }
     Lit::BigInt(node) => {
-      let id = ctx.push_node(AstNode::BigInt, parent_id, &node.span);
+      let id = ctx.push_node(AstNode::BigIntLiteral, parent_id, &node.span);
 
       let str_id = ctx.str_table.insert(&node.value.to_string());
       append_usize(&mut ctx.result, str_id);
@@ -1677,7 +1792,7 @@ fn serialize_lit(ctx: &mut SerializeCtx, lit: &Lit, parent_id: usize) -> usize {
       id
     }
     Lit::Regex(node) => {
-      let id = ctx.push_node(AstNode::Regex, parent_id, &node.span);
+      let id = ctx.push_node(AstNode::RegExpLiteral, parent_id, &node.span);
 
       let pattern_id = ctx.str_table.insert(&node.exp.as_str());
       let flag_id = ctx.str_table.insert(&node.flags.as_str());

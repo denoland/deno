@@ -11,3 +11,15 @@ function foo4(a, ...rest: any[]) {}
 function foo5({ a = 2 }) {}
 function foo6([a, b]) {}
 function foo7<T, U>(a: T, b: U) {}
+
+export const e = 2;
+export let e2 = 2;
+export function e3() {}
+export default () => {};
+
+export * from "./foo.ts";
+
+import * as imp1 from "./foo.ts";
+import imp2 from "./foo.ts";
+import { imp3, imp4 as imp5 } from "./foo.ts";
+import json from "./json.json" with { type: "json" };
