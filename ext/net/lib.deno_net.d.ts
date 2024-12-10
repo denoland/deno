@@ -289,7 +289,9 @@ declare namespace Deno {
      *
      * @default {"127.0.0.1"} */
     hostname?: string;
+    /** The transport layer protocol to use. */
     transport?: "tcp";
+    /** An {@linkcode AbortSignal} to close the tcp connection. */
     signal?: AbortSignal;
   }
 
