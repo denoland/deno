@@ -2005,11 +2005,11 @@ let c: number = "a";
           "range": {
             "start": {
               "line": 1,
-              "character": 23
+              "character": 21
             },
             "end": {
               "line": 1,
-              "character": 33
+              "character": 31
             }
           },
           "severity": 1,
