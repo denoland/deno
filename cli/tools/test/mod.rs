@@ -1656,6 +1656,12 @@ pub async fn run_tests_with_watch(
           )
           .await?;
 
+        file_container.check().await?;
+
+        if workspace_test_options.no_run {
+          return Ok(());
+        }
+
         let factories_with_specifiers =
           if let Some(changed_paths) = changed_paths {
             file_container
