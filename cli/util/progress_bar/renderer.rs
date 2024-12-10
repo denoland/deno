@@ -1,5 +1,6 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
+use std::fmt::Write;
 use std::sync::atomic::AtomicUsize;
 use std::sync::atomic::Ordering;
 use std::time::Duration;
@@ -81,12 +82,14 @@ impl ProgressBarRenderer for BarProgressBarRenderer {
     let elapsed_text = get_elapsed_text(data.duration);
     let mut text = String::new();
     if !display_entry.message.is_empty() {
-      text.push_str(&format!(
-        "{} {}{}\n",
+      writeln!(
+        &mut text,
+        "{} {}{}",
         colors::green("Download"),
         display_entry.message,
         bytes_text,
-      ));
+      )
+      .unwrap();
     }
     text.push_str(&elapsed_text);
     let max_width = (data.terminal_width as i32 - 5).clamp(10, 75) as usize;
