@@ -669,6 +669,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1bf2a5fb3207c12b5d208ebc145f967fea5cac41a021c37417ccc31ba40f39ee"
 
 [[package]]
+name = "capacity_builder"
+version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a2c0f637033edd76ceb881faaee372868a383f0ed7a4a59e8fdf90db2502f3d3"
+dependencies = [
+ "itoa",
+]
+
+[[package]]
 name = "caseless"
 version = "0.2.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2088,6 +2097,7 @@ dependencies = [
 name = "deno_permissions"
 version = "0.41.0"
 dependencies = [
+ "capacity_builder",
  "deno_core",
  "deno_path_util",
  "deno_terminal 0.2.0",
@@ -4375,9 +4385,9 @@ dependencies = [
 
 [[package]]
 name = "itoa"
-version = "1.0.11"
+version = "1.0.14"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "49f1f14873335454500d59611f1cf4a4b0f786f9ac11f4312a78e4cf2566695b"
+checksum = "d75a2a4b1b190afb6f5425f10f6a8f959d2ea0b9c2b1d79553551850539e4674"
 
 [[package]]
 name = "jni-sys"
