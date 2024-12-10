@@ -696,6 +696,7 @@ fn get_fetch_error(error: &FetchError) -> &'static str {
     FetchError::Permission(e) => get_permission_check_error_class(e),
     FetchError::NetworkError => "TypeError",
     FetchError::FsNotGet(_) => "TypeError",
+    FetchError::PathToUrl(_) => "TypeError",
     FetchError::InvalidUrl(_) => "TypeError",
     FetchError::InvalidHeaderName(_) => "TypeError",
     FetchError::InvalidHeaderValue(_) => "TypeError",

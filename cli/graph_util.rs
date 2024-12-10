@@ -6,6 +6,7 @@ use crate::args::CliLockfile;
 use crate::args::CliOptions;
 use crate::args::DENO_DISABLE_PEDANTIC_NODE_WARNINGS;
 use crate::cache;
+use crate::cache::FetchCacher;
 use crate::cache::GlobalHttpCache;
 use crate::cache::ModuleInfoCache;
 use crate::cache::ParsedSourceCache;
@@ -25,7 +26,7 @@ use deno_config::deno_json::JsxImportSourceConfig;
 use deno_config::workspace::JsrPackageConfig;
 use deno_core::anyhow::bail;
 use deno_graph::source::LoaderChecksum;
-use deno_graph::source::ResolutionMode;
+use deno_graph::source::ResolutionKind;
 use deno_graph::FillFromLockfileOptions;
 use deno_graph::JsrLoadError;
 use deno_graph::ModuleLoadError;
@@ -44,7 +45,7 @@ use deno_graph::ModuleGraphError;
 use deno_graph::ResolutionError;
 use deno_graph::SpecifierError;
 use deno_path_util::url_to_file_path;
-use deno_resolver::sloppy_imports::SloppyImportsResolutionMode;
+use deno_resolver::sloppy_imports::SloppyImportsResolutionKind;
 use deno_runtime::deno_fs::FileSystem;
 use deno_runtime::deno_node;
 use deno_runtime::deno_permissions::PermissionsContainer;
@@ -106,6 +107,25 @@ pub fn graph_valid(
     }
     Ok(())
   }
+}
+
+pub fn fill_graph_from_lockfile(
+  graph: &mut ModuleGraph,
+  lockfile: &deno_lockfile::Lockfile,
+) {
+  graph.fill_from_lockfile(FillFromLockfileOptions {
+    redirects: lockfile
+      .content
+      .redirects
+      .iter()
+      .map(|(from, to)| (from.as_str(), to.as_str())),
+    package_specifiers: lockfile
+      .content
+      .packages
+      .specifiers
+      .iter()
+      .map(|(dep, id)| (dep, id.as_str())),
+  });
 }
 
 #[derive(Clone)]
@@ -254,6 +274,23 @@ impl ModuleGraphCreator {
     package_configs: &[JsrPackageConfig],
     build_fast_check_graph: bool,
   ) -> Result<ModuleGraph, AnyError> {
+    struct PublishLoader(FetchCacher);
+    impl Loader for PublishLoader {
+      fn load(
+        &self,
+        specifier: &deno_ast::ModuleSpecifier,
+        options: deno_graph::source::LoadOptions,
+      ) -> deno_graph::source::LoadFuture {
+        if specifier.scheme() == "bun" {
+          return Box::pin(std::future::ready(Ok(Some(
+            deno_graph::source::LoadResponse::External {
+              specifier: specifier.clone(),
+            },
+          ))));
+        }
+        self.0.load(specifier, options)
+      }
+    }
     fn graph_has_external_remote(graph: &ModuleGraph) -> bool {
       // Earlier on, we marked external non-JSR modules as external.
       // If the graph contains any of those, it would cause type checking
@@ -271,12 +308,15 @@ impl ModuleGraphCreator {
     for package_config in package_configs {
       roots.extend(package_config.config_file.resolve_export_value_urls()?);
     }
+
+    let loader = self.module_graph_builder.create_graph_loader();
+    let mut publish_loader = PublishLoader(loader);
     let mut graph = self
       .create_graph_with_options(CreateGraphOptions {
         is_dynamic: false,
         graph_kind: deno_graph::GraphKind::All,
         roots,
-        loader: None,
+        loader: Some(&mut publish_loader),
       })
       .await?;
     self.graph_valid(&graph)?;
@@ -582,19 +622,7 @@ impl ModuleGraphBuilder {
       // populate the information from the lockfile
       if let Some(lockfile) = &self.lockfile {
         let lockfile = lockfile.lock();
-        graph.fill_from_lockfile(FillFromLockfileOptions {
-          redirects: lockfile
-            .content
-            .redirects
-            .iter()
-            .map(|(from, to)| (from.as_str(), to.as_str())),
-          package_specifiers: lockfile
-            .content
-            .packages
-            .specifiers
-            .iter()
-            .map(|(dep, id)| (dep, id.as_str())),
-        });
+        fill_graph_from_lockfile(graph, &lockfile);
       }
     }
 
@@ -795,7 +823,7 @@ fn enhanced_sloppy_imports_error_message(
     ModuleError::LoadingErr(specifier, _, ModuleLoadError::Loader(_)) // ex. "Is a directory" error
     | ModuleError::Missing(specifier, _) => {
       let additional_message = CliSloppyImportsResolver::new(SloppyImportsCachedFs::new(fs.clone()))
-        .resolve(specifier, SloppyImportsResolutionMode::Execution)?
+        .resolve(specifier, SloppyImportsResolutionKind::Execution)?
         .as_suggestion_message();
       Some(format!(
         "{} {} or run with --unstable-sloppy-imports",
@@ -1100,12 +1128,12 @@ impl<'a> deno_graph::source::FileSystem for DenoGraphFsAdapter<'a> {
   }
 }
 
-pub fn format_range_with_colors(range: &deno_graph::Range) -> String {
+pub fn format_range_with_colors(referrer: &deno_graph::Range) -> String {
   format!(
     "{}:{}:{}",
-    colors::cyan(range.specifier.as_str()),
-    colors::yellow(&(range.start.line + 1).to_string()),
-    colors::yellow(&(range.start.character + 1).to_string())
+    colors::cyan(referrer.specifier.as_str()),
+    colors::yellow(&(referrer.range.start.line + 1).to_string()),
+    colors::yellow(&(referrer.range.start.character + 1).to_string())
   )
 }
 
@@ -1195,16 +1223,44 @@ impl<'a> deno_graph::source::Resolver for CliGraphResolver<'a> {
     &self,
     raw_specifier: &str,
     referrer_range: &deno_graph::Range,
-    mode: ResolutionMode,
+    resolution_kind: ResolutionKind,
   ) -> Result<ModuleSpecifier, ResolveError> {
     self.resolver.resolve(
       raw_specifier,
-      referrer_range,
-      self
-        .cjs_tracker
-        .get_referrer_kind(&referrer_range.specifier),
-      mode,
+      &referrer_range.specifier,
+      referrer_range.range.start,
+      referrer_range
+        .resolution_mode
+        .map(to_node_resolution_mode)
+        .unwrap_or_else(|| {
+          self
+            .cjs_tracker
+            .get_referrer_kind(&referrer_range.specifier)
+        }),
+      to_node_resolution_kind(resolution_kind),
     )
+  }
+}
+
+pub fn to_node_resolution_kind(
+  kind: ResolutionKind,
+) -> node_resolver::NodeResolutionKind {
+  match kind {
+    ResolutionKind::Execution => node_resolver::NodeResolutionKind::Execution,
+    ResolutionKind::Types => node_resolver::NodeResolutionKind::Types,
+  }
+}
+
+pub fn to_node_resolution_mode(
+  mode: deno_graph::source::ResolutionMode,
+) -> node_resolver::ResolutionMode {
+  match mode {
+    deno_graph::source::ResolutionMode::Import => {
+      node_resolver::ResolutionMode::Import
+    }
+    deno_graph::source::ResolutionMode::Require => {
+      node_resolver::ResolutionMode::Require
+    }
   }
 }
 
@@ -1214,7 +1270,7 @@ mod test {
 
   use deno_ast::ModuleSpecifier;
   use deno_graph::source::ResolveError;
-  use deno_graph::Position;
+  use deno_graph::PositionRange;
   use deno_graph::Range;
   use deno_graph::ResolutionError;
   use deno_graph::SpecifierError;
@@ -1235,8 +1291,8 @@ mod test {
         specifier: input.to_string(),
         range: Range {
           specifier,
-          start: Position::zeroed(),
-          end: Position::zeroed(),
+          resolution_mode: None,
+          range: PositionRange::zeroed(),
         },
       };
       assert_eq!(get_resolution_error_bare_node_specifier(&err), output);
@@ -1251,8 +1307,8 @@ mod test {
       let err = ResolutionError::InvalidSpecifier {
         range: Range {
           specifier,
-          start: Position::zeroed(),
-          end: Position::zeroed(),
+          resolution_mode: None,
+          range: PositionRange::zeroed(),
         },
         error: SpecifierError::ImportPrefixMissing {
           specifier: input.to_string(),

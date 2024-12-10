@@ -1,3 +1,5 @@
 Download http://localhost:4261/@denotest%2fbasic
-error: Error getting response at http://localhost:4261/@denotest%2fbasic for package "@denotest/basic": Bad response: 401
-[WILDCARD]
+error: Failed loading http://localhost:4261/@denotest%2fbasic for package "@denotest/basic"
+
+Caused by:
+    Bad response: 401

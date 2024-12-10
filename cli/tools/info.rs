@@ -49,19 +49,67 @@ pub async fn info(
     let module_graph_creator = factory.module_graph_creator().await?;
     let npm_resolver = factory.npm_resolver().await?;
     let maybe_lockfile = cli_options.maybe_lockfile();
+    let resolver = factory.workspace_resolver().await?.clone();
     let npmrc = cli_options.npmrc();
-    let resolver = factory.workspace_resolver().await?;
+    let node_resolver = factory.node_resolver().await?;
 
     let cwd_url =
       url::Url::from_directory_path(cli_options.initial_cwd()).unwrap();
 
-    let maybe_import_specifier = if let Some(import_map) =
-      resolver.maybe_import_map()
+    let maybe_import_specifier = if let Ok(resolved) =
+      resolver.resolve(&specifier, &cwd_url)
     {
-      if let Ok(imports_specifier) = import_map.resolve(&specifier, &cwd_url) {
-        Some(imports_specifier)
-      } else {
-        None
+      match resolved {
+        deno_config::workspace::MappedResolution::Normal {
+          specifier, ..
+        }
+        | deno_config::workspace::MappedResolution::ImportMap {
+          specifier,
+          ..
+        }
+        | deno_config::workspace::MappedResolution::WorkspaceJsrPackage {
+          specifier,
+          ..
+        } => Some(specifier),
+        deno_config::workspace::MappedResolution::WorkspaceNpmPackage {
+          target_pkg_json,
+          sub_path,
+          ..
+        } => Some(node_resolver.resolve_package_subpath_from_deno_module(
+          target_pkg_json.clone().dir_path(),
+          sub_path.as_deref(),
+          Some(&cwd_url),
+          node_resolver::ResolutionMode::Import,
+          node_resolver::NodeResolutionKind::Execution,
+        )?),
+        deno_config::workspace::MappedResolution::PackageJson {
+          alias,
+          sub_path,
+          dep_result,
+          ..
+        } => match dep_result.as_ref().map_err(|e| e.clone())? {
+          deno_package_json::PackageJsonDepValue::Workspace(version_req) => {
+            let pkg_folder = resolver
+              .resolve_workspace_pkg_json_folder_for_pkg_json_dep(
+                alias,
+                version_req,
+              )?;
+            Some(node_resolver.resolve_package_subpath_from_deno_module(
+              pkg_folder,
+              sub_path.as_deref(),
+              Some(&cwd_url),
+              node_resolver::ResolutionMode::Import,
+              node_resolver::NodeResolutionKind::Execution,
+            )?)
+          }
+          deno_package_json::PackageJsonDepValue::Req(req) => {
+            Some(ModuleSpecifier::parse(&format!(
+              "npm:{}{}",
+              req,
+              sub_path.map(|s| format!("/{}", s)).unwrap_or_default()
+            ))?)
+          }
+        },
       }
     } else {
       None
@@ -235,21 +283,30 @@ fn add_npm_packages_to_json(
         .get_mut("dependencies")
         .and_then(|d| d.as_array_mut());
       if let Some(dependencies) = dependencies {
-        for dep in dependencies.iter_mut() {
-          if let serde_json::Value::Object(dep) = dep {
-            let specifier = dep.get("specifier").and_then(|s| s.as_str());
-            if let Some(specifier) = specifier {
-              if let Ok(npm_ref) = NpmPackageReqReference::from_str(specifier) {
-                if let Ok(pkg) =
-                  snapshot.resolve_pkg_from_pkg_req(npm_ref.req())
-                {
-                  dep.insert(
-                    "npmPackage".to_string(),
-                    pkg.id.as_serialized().into(),
-                  );
-                }
+        for dep in dependencies.iter_mut().flat_map(|d| d.as_object_mut()) {
+          if let Some(specifier) = dep.get("specifier").and_then(|s| s.as_str())
+          {
+            if let Ok(npm_ref) = NpmPackageReqReference::from_str(specifier) {
+              if let Ok(pkg) = snapshot.resolve_pkg_from_pkg_req(npm_ref.req())
+              {
+                dep.insert(
+                  "npmPackage".to_string(),
+                  pkg.id.as_serialized().into(),
+                );
               }
             }
+          }
+
+          // don't show this in the output unless someone needs it
+          if let Some(code) =
+            dep.get_mut("code").and_then(|c| c.as_object_mut())
+          {
+            code.remove("resolutionMode");
+          }
+          if let Some(types) =
+            dep.get_mut("types").and_then(|c| c.as_object_mut())
+          {
+            types.remove("resolutionMode");
           }
         }
       }

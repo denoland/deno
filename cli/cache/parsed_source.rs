@@ -95,10 +95,20 @@ impl ParsedSourceCache {
     self.sources.lock().remove(specifier);
   }
 
+  /// Fress all parsed sources from memory.
+  pub fn free_all(&self) {
+    self.sources.lock().clear();
+  }
+
   /// Creates a parser that will reuse a ParsedSource from the store
   /// if it exists, or else parse.
   pub fn as_capturing_parser(&self) -> CapturingEsParser {
     CapturingEsParser::new(None, self)
+  }
+
+  #[cfg(test)]
+  pub fn len(&self) -> usize {
+    self.sources.lock().len()
   }
 }
 
