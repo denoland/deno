@@ -1,5 +1,6 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
+use capacity_builder::StringBuilder;
 use deno_core::parking_lot::Mutex;
 use deno_core::serde::de;
 use deno_core::serde::Deserialize;
@@ -179,13 +180,18 @@ impl PermissionState {
         (Ok(()), false, false)
       }
       PermissionState::Prompt if prompt => {
-        let msg = format!(
-          "{} access{}",
-          name,
-          info()
-            .map(|info| { format!(" to {info}") })
-            .unwrap_or_default(),
-        );
+        let msg = {
+          let info = info();
+          StringBuilder::build(|builder| {
+            builder.append(name);
+            builder.append(" access");
+            if let Some(info) = &info {
+              builder.append(" to ");
+              builder.append(info);
+            }
+          })
+          .unwrap()
+        };
         match permission_prompt(&msg, name, api_name, true) {
           PromptResponse::Allow => {
             Self::log_perm_access(name, info);
@@ -344,11 +350,11 @@ pub trait QueryDescriptor: Debug {
   fn overlaps_deny(&self, other: &Self::DenyDesc) -> bool;
 }
 
-fn format_display_name(display_name: Cow<str>) -> String {
+fn format_display_name(display_name: Cow<str>) -> Cow<str> {
   if display_name.starts_with('<') && display_name.ends_with('>') {
-    display_name.into_owned()
+    display_name
   } else {
-    format!("\"{}\"", display_name)
+    Cow::Owned(format!("\"{}\"", display_name))
   }
 }
 
@@ -424,7 +430,7 @@ impl<TQuery: QueryDescriptor> UnaryPermission<TQuery> {
       .check2(
         TQuery::flag_name(),
         api_name,
-        || desc.map(|d| format_display_name(d.display_name())),
+        || desc.map(|d| format_display_name(d.display_name()).into_owned()),
         self.prompt,
       );
     if prompted {
@@ -487,12 +493,17 @@ impl<TQuery: QueryDescriptor> UnaryPermission<TQuery> {
     if !self.prompt {
       return PermissionState::Denied;
     }
-    let mut message = String::with_capacity(40);
-    message.push_str(&format!("{} access", TQuery::flag_name()));
-    if let Some(desc) = desc {
-      message
-        .push_str(&format!(" to {}", format_display_name(desc.display_name())));
-    }
+    let maybe_formatted_display_name =
+      desc.map(|d| format_display_name(d.display_name()));
+    let message = StringBuilder::build(|builder| {
+      builder.append(TQuery::flag_name());
+      builder.append(" access");
+      if let Some(display_name) = &maybe_formatted_display_name {
+        builder.append(" to ");
+        builder.append(display_name)
+      }
+    })
+    .unwrap();
     match permission_prompt(
       &message,
       TQuery::flag_name(),
