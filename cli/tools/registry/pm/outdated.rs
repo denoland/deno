@@ -196,9 +196,12 @@ pub async fn outdated(
 
   if !lockfile_exists {
     bail!(
-      "No lockfile in {:?}. Run {} to generate one.",
-      cli_options.initial_cwd(),
-      colors::underline("deno install")
+      "{}",
+      color_print::cformat!(
+        "No lockfile in {:?}. Run <u>{}</> to generate one.",
+        cli_options.initial_cwd(),
+        "deno install"
+      )
     );
   }
 
