@@ -77,7 +77,7 @@ pub async fn check(
   let file_container = WorkspaceFileContainer::from_workspace_dirs_with_files(
     workspace_dirs_with_files,
     &factory,
-    extract_snippet_files,
+    Some(extract_snippet_files),
     |patterns, cli_options, _, (doc, doc_only)| {
       async move {
         let info = SpecifierInfo {

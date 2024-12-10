@@ -5,6 +5,8 @@ use crate::args::Flags;
 use crate::colors;
 use crate::display::write_json_to_stdout;
 use crate::factory::CliFactory;
+use crate::factory::SpecifierInfo;
+use crate::factory::WorkspaceFileContainer;
 use crate::graph_util::has_graph_root_local_dependent_changed;
 use crate::ops;
 use crate::tools::test::format_test_error;
@@ -21,6 +23,7 @@ use deno_core::error::AnyError;
 use deno_core::error::JsError;
 use deno_core::futures::future;
 use deno_core::futures::stream;
+use deno_core::futures::FutureExt;
 use deno_core::futures::StreamExt;
 use deno_core::serde_v8;
 use deno_core::unsync::spawn;
@@ -379,6 +382,133 @@ async fn bench_specifiers(
   Ok(())
 }
 
+/// Test a collection of specifiers with test modes concurrently.
+async fn bench_specifiers2(
+  factories_with_specifiers: Vec<(
+    Arc<CliMainWorkerFactory>,
+    Vec<ModuleSpecifier>,
+  )>,
+  permissions: &Permissions,
+  permissions_desc_parser: &Arc<RuntimePermissionDescriptorParser>,
+  options: BenchSpecifierOptions,
+) -> Result<(), AnyError> {
+  let specifiers_with_factory = factories_with_specifiers
+    .into_iter()
+    .flat_map(|(f, s)| {
+      s.into_iter().map(|s| (s, f.clone())).collect::<Vec<_>>()
+    })
+    .collect::<Vec<_>>();
+  let (sender, mut receiver) = unbounded_channel::<BenchEvent>();
+  let log_level = options.log_level;
+  let option_for_handles = options.clone();
+
+  let join_handles = specifiers_with_factory.into_iter().map(
+    move |(specifier, worker_factory)| {
+      let permissions_container = PermissionsContainer::new(
+        permissions_desc_parser.clone(),
+        permissions.clone(),
+      );
+      let sender = sender.clone();
+      let options = option_for_handles.clone();
+      spawn_blocking(move || {
+        let future = bench_specifier(
+          worker_factory,
+          permissions_container,
+          specifier,
+          sender,
+          options.filter,
+        );
+        create_and_run_current_thread(future)
+      })
+    },
+  );
+
+  let join_stream = stream::iter(join_handles)
+    .buffer_unordered(1)
+    .collect::<Vec<Result<Result<(), AnyError>, tokio::task::JoinError>>>();
+
+  let handler = {
+    spawn(async move {
+      let mut used_only = false;
+      let mut report = BenchReport::new();
+      let mut reporter =
+        create_reporter(log_level != Some(Level::Error), options.json);
+      let mut benches = IndexMap::new();
+
+      while let Some(event) = receiver.recv().await {
+        match event {
+          BenchEvent::Plan(plan) => {
+            report.total += plan.total;
+            if plan.used_only {
+              used_only = true;
+            }
+
+            reporter.report_plan(&plan);
+          }
+
+          BenchEvent::Register(desc) => {
+            reporter.report_register(&desc);
+            benches.insert(desc.id, desc);
+          }
+
+          BenchEvent::Wait(id) => {
+            reporter.report_wait(benches.get(&id).unwrap());
+          }
+
+          BenchEvent::Output(output) => {
+            reporter.report_output(&output);
+          }
+
+          BenchEvent::Result(id, result) => {
+            let desc = benches.get(&id).unwrap();
+            reporter.report_result(desc, &result);
+            match result {
+              BenchResult::Ok(stats) => {
+                report.measurements.push((desc.clone(), stats));
+              }
+
+              BenchResult::Failed(failure) => {
+                report.failed += 1;
+                report.failures.push((desc.clone(), failure));
+              }
+            };
+          }
+
+          BenchEvent::UncaughtError(origin, error) => {
+            report.failed += 1;
+            reporter.report_uncaught_error(&origin, error);
+          }
+        }
+      }
+
+      reporter.report_end(&report);
+
+      if used_only {
+        return Err(generic_error(
+          "Bench failed because the \"only\" option was used",
+        ));
+      }
+
+      if report.failed > 0 {
+        return Err(generic_error("Bench failed"));
+      }
+
+      Ok(())
+    })
+  };
+
+  let (join_results, result) = future::join(join_stream, handler).await;
+
+  // propagate any errors
+  for join_result in join_results {
+    join_result??;
+  }
+
+  result??;
+
+  Ok(())
+}
+
 /// Checks if the path has a basename and extension Deno supports for benches.
 fn is_supported_bench_path(entry: WalkEntry) -> bool {
   if !is_script_ext(entry.path) {
@@ -420,44 +550,49 @@ pub async fn run_benchmarks(
     permission_desc_parser.as_ref(),
     &cli_options.permissions_options(),
   )?;
+  let log_level = cli_options.log_level();
 
-  let members_with_bench_options =
-    cli_options.resolve_bench_options_for_members(&bench_flags)?;
-  let specifiers = members_with_bench_options
-    .iter()
-    .map(|(_, bench_options)| {
-      collect_specifiers(
-        bench_options.files.clone(),
-        cli_options.vendor_dir_path().map(ToOwned::to_owned),
-        is_supported_bench_path,
-      )
-    })
-    .collect::<Result<Vec<_>, _>>()?
+  let workspace_dirs_with_files = cli_options
+    .resolve_bench_options_for_members(&bench_flags)?
     .into_iter()
-    .flatten()
-    .collect::<Vec<_>>();
-
-  if specifiers.is_empty() {
-    return Err(generic_error("No bench modules found"));
+    .map(|(d, o)| (Arc::new(d), o.files))
+    .collect();
+  let file_container = WorkspaceFileContainer::from_workspace_dirs_with_files(
+    workspace_dirs_with_files,
+    &factory,
+    None,
+    |patterns, cli_options, _, _| {
+      async move {
+        let info = SpecifierInfo {
+          check: true,
+          check_doc: false,
+        };
+        collect_specifiers(
+          patterns,
+          cli_options.vendor_dir_path().map(ToOwned::to_owned),
+          is_supported_bench_path,
+        )
+        .map(|s| s.into_iter().map(|s| (s, info)).collect())
+      }
+      .boxed_local()
+    },
+    (),
+  )
+  .await?;
+  if !file_container.found_specifiers() {
+    return Err(generic_error("No test modules found"));
   }
 
-  let main_graph_container = factory.main_module_graph_container().await?;
-  main_graph_container
-    .check_specifiers(&specifiers, cli_options.ext_flag().as_ref())
-    .await?;
+  file_container.check().await?;
 
   if workspace_bench_options.no_run {
     return Ok(());
   }
 
-  let log_level = cli_options.log_level();
-  let worker_factory =
-    Arc::new(factory.create_cli_main_worker_factory().await?);
-  bench_specifiers(
-    worker_factory,
+  bench_specifiers2(
+    file_container.worker_factories_with_checked_specifiers(),
     &permissions,
     &permission_desc_parser,
-    specifiers,
     BenchSpecifierOptions {
       filter: TestFilter::from_flag(&workspace_bench_options.filter),
       json: workspace_bench_options.json,

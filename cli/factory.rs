@@ -1102,7 +1102,7 @@ impl WorkspaceFileContainer {
   pub async fn from_workspace_dirs_with_files<T: Clone>(
     mut workspace_dirs_with_files: Vec<(Arc<WorkspaceDirectory>, FilePatterns)>,
     factory: &CliFactory,
-    extract_doc_files: fn(File) -> Result<Vec<File>, AnyError>,
+    extract_doc_files: Option<fn(File) -> Result<Vec<File>, AnyError>>,
     collect_specifiers: fn(
       FilePatterns,
       Arc<CliOptions>,
@@ -1159,13 +1159,15 @@ impl WorkspaceFileContainer {
       )
       .await?;
       let mut doc_snippet_specifiers = vec![];
-      let root_permissions = factory.root_permissions_container()?;
-      for (s, _) in specifiers.iter().filter(|(_, i)| i.check_doc) {
-        let file = file_fetcher.fetch(s, root_permissions).await?;
-        let snippet_files = extract_doc_files(file)?;
-        for snippet_file in snippet_files {
-          doc_snippet_specifiers.push(snippet_file.specifier.clone());
-          file_fetcher.insert_memory_files(snippet_file);
+      if let Some(extract_doc_files) = extract_doc_files {
+        let root_permissions = factory.root_permissions_container()?;
+        for (s, _) in specifiers.iter().filter(|(_, i)| i.check_doc) {
+          let file = file_fetcher.fetch(s, root_permissions).await?;
+          let snippet_files = extract_doc_files(file)?;
+          for snippet_file in snippet_files {
+            doc_snippet_specifiers.push(snippet_file.specifier.clone());
+            file_fetcher.insert_memory_files(snippet_file);
+          }
         }
       }
       let worker_factory =

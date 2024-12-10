@@ -1507,7 +1507,7 @@ pub async fn run_tests(
   let file_container = WorkspaceFileContainer::from_workspace_dirs_with_files(
     workspace_dirs_with_files,
     &factory,
-    extract_doc_tests,
+    Some(extract_doc_tests),
     |patterns, cli_options, file_fetcher, doc| {
       collect_specifiers_for_tests(patterns, cli_options, file_fetcher, doc)
         .boxed_local()
@@ -1627,7 +1627,7 @@ pub async fn run_tests_with_watch(
           WorkspaceFileContainer::from_workspace_dirs_with_files(
             workspace_dirs_with_files,
             &factory,
-            extract_doc_tests,
+            Some(extract_doc_tests),
             |patterns, cli_options, file_fetcher, doc| {
               collect_specifiers_for_tests(
                 patterns,
