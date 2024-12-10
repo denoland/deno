@@ -1,6 +1,0 @@
-{
-  "tempDir": true,
-  "args": "outdated",
-  "exitCode": 1,
-  "output": "error: No lockfile in \"[WILDLINE]\". Run deno install to generate one.\n"
-}

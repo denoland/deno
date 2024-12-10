@@ -207,22 +207,6 @@ pub async fn outdated(
     );
   }
 
-  let lockfile_exists = match &cli_options.maybe_lockfile() {
-    Some(lockfile) => lockfile.filename.exists(),
-    None => false,
-  };
-
-  if !lockfile_exists {
-    bail!(
-      "{}",
-      color_print::cformat!(
-        "No lockfile in {:?}. Run <u>{}</> to generate one.",
-        cli_options.initial_cwd(),
-        "deno install"
-      )
-    );
-  }
-
   let args = dep_manager_args(
     &factory,
     cli_options,
