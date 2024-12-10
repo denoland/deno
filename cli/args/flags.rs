@@ -4406,6 +4406,7 @@ impl CommandExt for Command {
       Arg::new("unstable-npm-lazy-caching")
         .long("unstable-npm-lazy-caching")
         .help("Enable unstable lazy caching of npm dependencies, downloading them only as needed")
+        .env("DENO_UNSTABLE_NPM_LAZY_CACHING")
         .value_parser(FalseyValueParser::new())
         .action(ArgAction::SetTrue)
         .hide(true)
