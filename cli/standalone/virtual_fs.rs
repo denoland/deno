@@ -266,17 +266,20 @@ impl VfsBuilder {
 
     let dir = self.add_dir(path.parent().unwrap())?;
     let name = path.file_name().unwrap().to_string_lossy();
-    let data_len = data.len();
+    let offset_and_len = OffsetWithLength {
+      offset,
+      len: data.len() as u64,
+    };
     match dir.entries.binary_search_by(|e| e.name().cmp(&name)) {
       Ok(index) => {
         let entry = &mut dir.entries[index];
         match entry {
           VfsEntry::File(virtual_file) => match sub_data_kind {
             VfsFileSubDataKind::Raw => {
-              virtual_file.offset = offset;
+              virtual_file.offset = offset_and_len;
             }
             VfsFileSubDataKind::ModuleGraph => {
-              virtual_file.module_graph_offset = offset;
+              virtual_file.module_graph_offset = offset_and_len;
             }
           },
           VfsEntry::Dir(_) | VfsEntry::Symlink(_) => unreachable!(),
@@ -287,9 +290,8 @@ impl VfsBuilder {
           insert_index,
           VfsEntry::File(VirtualFile {
             name: name.to_string(),
-            offset,
-            module_graph_offset: offset,
-            len: data.len() as u64,
+            offset: offset_and_len,
+            module_graph_offset: offset_and_len,
           }),
         );
       }
@@ -298,7 +300,7 @@ impl VfsBuilder {
     // new file, update the list of files
     if self.current_offset == offset {
       self.files.push(data);
-      self.current_offset += data_len as u64;
+      self.current_offset += offset_and_len.len;
     }
 
     Ok(())
@@ -403,7 +405,7 @@ impl<'a> VfsEntryRef<'a> {
         mtime: None,
         ctime: None,
         blksize: 0,
-        size: file.len,
+        size: file.offset.len,
         dev: 0,
         ino: 0,
         mode: 0,
@@ -472,27 +474,41 @@ impl VfsEntry {
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct VirtualDirectory {
+  #[serde(rename = "n")]
   pub name: String,
   // should be sorted by name
+  #[serde(rename = "e")]
   pub entries: Vec<VfsEntry>,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+pub struct OffsetWithLength {
+  #[serde(rename = "o")]
+  pub offset: u64,
+  #[serde(rename = "l")]
+  pub len: u64,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct VirtualFile {
+  #[serde(rename = "n")]
   pub name: String,
-  pub offset: u64,
+  #[serde(rename = "o")]
+  pub offset: OffsetWithLength,
   /// Offset file to use for module loading when it differs from the
   /// raw file. Often this will be the same offset as above for data
   /// such as JavaScript files, but for TypeScript files the `offset`
   /// will be the original raw bytes when included as an asset and this
   /// offset will be to the transpiled JavaScript source.
-  pub module_graph_offset: u64,
-  pub len: u64,
+  #[serde(rename = "m")]
+  pub module_graph_offset: OffsetWithLength,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct VirtualSymlink {
+  #[serde(rename = "n")]
   pub name: String,
+  #[serde(rename = "p")]
   pub dest_parts: Vec<String>,
 }
 
@@ -636,7 +652,7 @@ impl FileBackedVfsFile {
         Ok(pos)
       }
       SeekFrom::End(offset) => {
-        if offset < 0 && -offset as u64 > self.file.len {
+        if offset < 0 && -offset as u64 > self.file.offset.len {
           let msg = "An attempt was made to move the file pointer before the beginning of the file.";
           Err(
             std::io::Error::new(std::io::ErrorKind::PermissionDenied, msg)
@@ -645,9 +661,9 @@ impl FileBackedVfsFile {
         } else {
           let mut current_pos = self.pos.lock();
           *current_pos = if offset >= 0 {
-            self.file.len - (offset as u64)
+            self.file.offset.len - (offset as u64)
           } else {
-            self.file.len + (-offset as u64)
+            self.file.offset.len + (-offset as u64)
           };
           Ok(*current_pos)
         }
@@ -671,7 +687,7 @@ impl FileBackedVfsFile {
       let mut pos = self.pos.lock();
       let read_pos = *pos;
       // advance the position due to the read
-      *pos = std::cmp::min(self.file.len, *pos + buf.len() as u64);
+      *pos = std::cmp::min(self.file.offset.len, *pos + buf.len() as u64);
       read_pos
     };
     self
@@ -685,13 +701,13 @@ impl FileBackedVfsFile {
       let mut pos = self.pos.lock();
       let read_pos = *pos;
       // todo(dsherret): should this always set it to the end of the file?
-      if *pos < self.file.len {
+      if *pos < self.file.offset.len {
         // advance the position due to the read
-        *pos = self.file.len;
+        *pos = self.file.offset.len;
       }
       read_pos
     };
-    if read_pos > self.file.len {
+    if read_pos > self.file.offset.len {
       return Ok(Cow::Borrowed(&[]));
     }
     if read_pos == 0 {
@@ -701,7 +717,7 @@ impl FileBackedVfsFile {
           .read_file_all(&self.file, VfsFileSubDataKind::Raw)?,
       )
     } else {
-      let size = (self.file.len - read_pos) as usize;
+      let size = (self.file.offset.len - read_pos) as usize;
       let mut buf = vec![0; size];
       self.vfs.read_file(&self.file, read_pos, &mut buf)?;
       Ok(Cow::Owned(buf))
@@ -921,7 +937,11 @@ impl FileBackedVfs {
     file: &VirtualFile,
     sub_data_kind: VfsFileSubDataKind,
   ) -> std::io::Result<Cow<'static, [u8]>> {
-    let read_range = self.get_read_range(file, sub_data_kind, 0, file.len)?;
+    let read_len = match sub_data_kind {
+      VfsFileSubDataKind::Raw => file.offset.len,
+      VfsFileSubDataKind::ModuleGraph => file.module_graph_offset.len,
+    };
+    let read_range = self.get_read_range(file, sub_data_kind, 0, read_len)?;
     match &self.vfs_data {
       Cow::Borrowed(data) => Ok(Cow::Borrowed(&data[read_range])),
       Cow::Owned(data) => Ok(Cow::Owned(data[read_range].to_vec())),
@@ -952,19 +972,20 @@ impl FileBackedVfs {
     pos: u64,
     len: u64,
   ) -> std::io::Result<Range<usize>> {
-    if pos > file.len {
+    let file_offset_and_len = match sub_data_kind {
+      VfsFileSubDataKind::Raw => file.offset,
+      VfsFileSubDataKind::ModuleGraph => file.module_graph_offset,
+    };
+    if pos > file_offset_and_len.len {
       return Err(std::io::Error::new(
         std::io::ErrorKind::UnexpectedEof,
         "unexpected EOF",
       ));
     }
-    let offset = match sub_data_kind {
-      VfsFileSubDataKind::Raw => file.offset,
-      VfsFileSubDataKind::ModuleGraph => file.module_graph_offset,
-    };
-    let file_offset = self.fs_root.start_file_offset + offset;
+    let file_offset =
+      self.fs_root.start_file_offset + file_offset_and_len.offset;
     let start = file_offset + pos;
-    let end = file_offset + std::cmp::min(pos + len, file.len);
+    let end = file_offset + std::cmp::min(pos + len, file_offset_and_len.len);
     Ok(start as usize..end as usize)
   }
 
