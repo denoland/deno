@@ -1172,6 +1172,14 @@ impl Flags {
       Ok(PathOrPatternSet::default())
     }
   }
+
+  pub fn is_discovered_config(&self) -> bool {
+    match self.config_flag {
+      ConfigFlag::Discover => true,
+      ConfigFlag::Path(_) => false,
+      ConfigFlag::Disabled => false,
+    }
+  }
 }
 
 static ENV_VARIABLES_HELP: &str = cstr!(

@@ -20,7 +20,6 @@ use regex::Regex;
 use crate::args::check_warn_tsconfig;
 use crate::args::CheckFlags;
 use crate::args::CliOptions;
-use crate::args::ConfigFlag;
 use crate::args::FileFlags;
 use crate::args::Flags;
 use crate::args::TsConfig;
@@ -49,14 +48,9 @@ pub async fn check(
   flags: Arc<Flags>,
   check_flags: CheckFlags,
 ) -> Result<(), AnyError> {
-  let is_discovered_config = match flags.config_flag {
-    ConfigFlag::Discover => true,
-    ConfigFlag::Path(_) => false,
-    ConfigFlag::Disabled => false,
-  };
   let factory = CliFactory::from_flags(flags);
   let cli_options = factory.cli_options()?;
-  let workspace_dirs_with_files = if is_discovered_config {
+  let workspace_dirs_with_files = if cli_options.is_discovered_config() {
     cli_options
       .resolve_file_flags_for_members(&FileFlags {
         ignore: Default::default(),

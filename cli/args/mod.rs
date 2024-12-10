@@ -1011,6 +1011,10 @@ impl CliOptions {
     }
   }
 
+  pub fn is_discovered_config(&self) -> bool {
+    self.flags.is_discovered_config()
+  }
+
   pub fn npm_system_info(&self) -> NpmSystemInfo {
     match self.sub_command() {
       DenoSubcommand::Compile(CompileFlags {

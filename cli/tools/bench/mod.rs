@@ -1,6 +1,7 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 use crate::args::BenchFlags;
+use crate::args::BenchOptions;
 use crate::args::Flags;
 use crate::colors;
 use crate::display::write_json_to_stdout;
@@ -552,11 +553,20 @@ pub async fn run_benchmarks(
   )?;
   let log_level = cli_options.log_level();
 
-  let workspace_dirs_with_files = cli_options
-    .resolve_bench_options_for_members(&bench_flags)?
-    .into_iter()
-    .map(|(d, o)| (Arc::new(d), o.files))
-    .collect();
+  let workspace_dirs_with_files = if cli_options.is_discovered_config() {
+    cli_options
+      .resolve_bench_options_for_members(&bench_flags)?
+      .into_iter()
+      .map(|(d, o)| (Arc::new(d), o.files))
+      .collect()
+  } else {
+    let patterns = bench_flags
+      .files
+      .as_file_patterns(cli_options.initial_cwd())?;
+    let config = cli_options.start_dir.to_bench_config(patterns)?;
+    let options = BenchOptions::resolve(config, &bench_flags);
+    vec![(cli_options.start_dir.clone(), options.files)]
+  };
   let file_container = WorkspaceFileContainer::from_workspace_dirs_with_files(
     workspace_dirs_with_files,
     &factory,
