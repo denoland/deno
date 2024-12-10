@@ -63,12 +63,14 @@ use crate::tools::run::hmr::HmrRunner;
 use crate::tsc::Diagnostics;
 use crate::tsc::TypeCheckingCjsTracker;
 use crate::util::file_watcher::WatcherCommunicator;
+use crate::util::fs::canonicalize_path;
 use crate::util::fs::canonicalize_path_maybe_not_exists;
 use crate::util::progress_bar::ProgressBar;
 use crate::util::progress_bar::ProgressBarStyle;
 use crate::worker::CliMainWorkerFactory;
 use crate::worker::CliMainWorkerOptions;
 use std::collections::BTreeSet;
+use std::collections::HashSet;
 use std::path::PathBuf;
 
 use deno_ast::ModuleSpecifier;
@@ -82,6 +84,7 @@ use deno_core::error::AnyError;
 use deno_core::futures::FutureExt;
 use deno_core::FeatureChecker;
 
+use deno_path_util::url_to_file_path;
 use deno_resolver::cjs::IsCjsResolutionMode;
 use deno_resolver::npm::NpmReqResolverOptions;
 use deno_resolver::DenoResolverOptions;
@@ -1076,9 +1079,8 @@ pub struct SpecifierInfo {
 struct WorkspaceFileContainerEntry {
   specifiers: Vec<(ModuleSpecifier, SpecifierInfo)>,
   doc_snippet_specifiers: Vec<ModuleSpecifier>,
-  main_graph_container: Arc<MainModuleGraphContainer>,
+  factory: CliFactory,
   worker_factory: Arc<CliMainWorkerFactory>,
-  ext_flag: Option<String>,
 }
 
 impl WorkspaceFileContainerEntry {
@@ -1099,7 +1101,7 @@ impl WorkspaceFileContainer {
   #[allow(clippy::type_complexity)]
   pub async fn from_workspace_dirs_with_files<T: Clone>(
     mut workspace_dirs_with_files: Vec<(Arc<WorkspaceDirectory>, FilePatterns)>,
-    cli_options: &CliOptions,
+    factory: &CliFactory,
     extract_doc_files: fn(File) -> Result<Vec<File>, AnyError>,
     collect_specifiers: fn(
       FilePatterns,
@@ -1116,6 +1118,8 @@ impl WorkspaceFileContainer {
     args: T,
   ) -> Result<Self, AnyError> {
     workspace_dirs_with_files.sort_by_cached_key(|(d, _)| d.dir_url().clone());
+    let cli_options = factory.cli_options()?;
+    let watcher_communicator = &factory.watcher_communicator;
     let all_scopes = Arc::new(
       workspace_dirs_with_files
         .iter()
@@ -1144,8 +1148,8 @@ impl WorkspaceFileContainer {
         false,
         scope_options.map(Arc::new),
       )?);
-      let ext_flag = cli_options.ext_flag().clone();
-      let factory = CliFactory::from_cli_options(cli_options.clone());
+      let mut factory = CliFactory::from_cli_options(cli_options.clone());
+      factory.watcher_communicator = watcher_communicator.clone();
       let file_fetcher = factory.file_fetcher()?;
       let specifiers = collect_specifiers(
         files,
@@ -1164,16 +1168,13 @@ impl WorkspaceFileContainer {
           file_fetcher.insert_memory_files(snippet_file);
         }
       }
-      let main_graph_container =
-        factory.main_module_graph_container().await?.clone();
       let worker_factory =
         Arc::new(factory.create_cli_main_worker_factory().await?);
       entries.push(WorkspaceFileContainerEntry {
         specifiers,
         doc_snippet_specifiers,
-        main_graph_container,
+        factory,
         worker_factory,
-        ext_flag,
       });
     }
     Ok(Self { entries })
@@ -1183,14 +1184,16 @@ impl WorkspaceFileContainer {
     let mut diagnostics = vec![];
     let mut all_errors = vec![];
     for entry in &self.entries {
+      let main_graph_container =
+        entry.factory.main_module_graph_container().await?.clone();
       let specifiers_for_typecheck =
         entry.checked_specifiers().cloned().collect::<Vec<_>>();
       if specifiers_for_typecheck.is_empty() {
         continue;
       }
-      if let Err(err) = entry
-        .main_graph_container
-        .check_specifiers(&specifiers_for_typecheck, entry.ext_flag.as_ref())
+      let ext_flag = entry.factory.cli_options()?.ext_flag().as_ref();
+      if let Err(err) = main_graph_container
+        .check_specifiers(&specifiers_for_typecheck, ext_flag)
         .await
       {
         match err {
@@ -1221,18 +1224,70 @@ impl WorkspaceFileContainer {
     self.entries.iter().any(|e| !e.specifiers.is_empty())
   }
 
-  pub fn checked_specifiers_with_worker_factories(
+  pub fn worker_factories_with_checked_specifiers(
     &self,
-  ) -> Vec<(Vec<ModuleSpecifier>, Arc<CliMainWorkerFactory>)> {
+  ) -> Vec<(Arc<CliMainWorkerFactory>, Vec<ModuleSpecifier>)> {
     self
       .entries
       .iter()
       .map(|e| {
         (
-          e.checked_specifiers().cloned().collect(),
           e.worker_factory.clone(),
+          e.checked_specifiers().cloned().collect(),
         )
       })
       .collect()
+  }
+
+  /// Per workspace directory, return a list of included checked specifiers
+  /// which depend on the modules at the passed paths.
+  pub async fn worker_factories_with_dependent_checked_specifiers(
+    &self,
+    canonicalized_dep_paths: &HashSet<PathBuf>,
+  ) -> Result<Vec<(Arc<CliMainWorkerFactory>, Vec<ModuleSpecifier>)>, AnyError>
+  {
+    let mut result = Vec::with_capacity(self.entries.len());
+    for entry in &self.entries {
+      let graph_kind = entry
+        .factory
+        .cli_options()?
+        .type_check_mode()
+        .as_graph_kind();
+      let module_graph_creator = entry.factory.module_graph_creator().await?;
+      let specifiers = entry.checked_specifiers().cloned().collect::<Vec<_>>();
+      let graph = module_graph_creator
+        .create_graph(graph_kind, specifiers.clone())
+        .await?;
+      module_graph_creator.graph_valid(&graph)?;
+      let dependent_specifiers = specifiers
+        .into_iter()
+        .filter(|s| {
+          let mut dependency_specifiers = graph.walk(
+            std::iter::once(s),
+            deno_graph::WalkOptions {
+              follow_dynamic: true,
+              kind: deno_graph::GraphKind::All,
+              prefer_fast_check_graph: true,
+              check_js: true,
+            },
+          );
+          while let Some((s, _)) = dependency_specifiers.next() {
+            if let Ok(path) = url_to_file_path(s) {
+              if let Ok(path) = canonicalize_path(&path) {
+                if canonicalized_dep_paths.contains(&path) {
+                  return true;
+                }
+              }
+            } else {
+              // skip walking this remote module's dependencies
+              dependency_specifiers.skip_previous_dependencies();
+            }
+          }
+          false
+        })
+        .collect::<Vec<_>>();
+      result.push((entry.worker_factory.clone(), dependent_specifiers));
+    }
+    Ok(result)
   }
 }

@@ -9,9 +9,7 @@ use crate::display;
 use crate::factory::CliFactory;
 use crate::factory::SpecifierInfo;
 use crate::factory::WorkspaceFileContainer;
-use crate::file_fetcher::File;
 use crate::file_fetcher::FileFetcher;
-use crate::graph_util::has_graph_root_local_dependent_changed;
 use crate::ops;
 use crate::util::extract::extract_doc_tests;
 use crate::util::file_watcher;
@@ -135,32 +133,6 @@ fn get_sanitizer_item_ref(
     RuntimeActivity::Resource(_, _, name) => (activity_type, name.into()),
     RuntimeActivity::Interval(_, _) => (activity_type, "".into()),
     RuntimeActivity::Timer(_, _) => (activity_type, "".into()),
-  }
-}
-
-/// The test mode is used to determine how a specifier is to be tested.
-#[derive(Debug, Clone, Eq, PartialEq)]
-pub enum TestMode {
-  /// Test as documentation, type-checking fenced code blocks.
-  Documentation,
-  /// Test as an executable module, loading the module into the isolate and running each test it
-  /// defines.
-  Executable,
-  /// Test as both documentation and an executable module.
-  Both,
-}
-
-impl TestMode {
-  /// Returns `true` if the test mode indicates that code snippet extraction is
-  /// needed.
-  fn needs_test_extraction(&self) -> bool {
-    matches!(self, Self::Documentation | Self::Both)
-  }
-
-  /// Returns `true` if the test mode indicates that the test should be
-  /// type-checked and run.
-  fn needs_test_run(&self) -> bool {
-    matches!(self, Self::Executable | Self::Both)
   }
 }
 
@@ -1191,83 +1163,17 @@ static HAS_TEST_RUN_SIGINT_HANDLER: AtomicBool = AtomicBool::new(false);
 
 /// Test a collection of specifiers with test modes concurrently.
 async fn test_specifiers(
-  worker_factory: Arc<CliMainWorkerFactory>,
-  permissions: &Permissions,
-  permission_desc_parser: &Arc<RuntimePermissionDescriptorParser>,
-  specifiers: Vec<ModuleSpecifier>,
-  options: TestSpecifiersOptions,
-) -> Result<(), AnyError> {
-  let specifiers = if let Some(seed) = options.specifier.shuffle {
-    let mut rng = SmallRng::seed_from_u64(seed);
-    let mut specifiers = specifiers;
-    specifiers.sort();
-    specifiers.shuffle(&mut rng);
-    specifiers
-  } else {
-    specifiers
-  };
-
-  let (test_event_sender_factory, receiver) = create_test_event_channel();
-  let concurrent_jobs = options.concurrent_jobs;
-
-  let mut cancel_sender = test_event_sender_factory.weak_sender();
-  let sigint_handler_handle = spawn(async move {
-    signal::ctrl_c().await.unwrap();
-    cancel_sender.send(TestEvent::Sigint).ok();
-  });
-  HAS_TEST_RUN_SIGINT_HANDLER.store(true, Ordering::Relaxed);
-  let reporter = get_test_reporter(&options);
-  let fail_fast_tracker = FailFastTracker::new(options.fail_fast);
-
-  let join_handles = specifiers.into_iter().map(move |specifier| {
-    let worker_factory = worker_factory.clone();
-    let permissions_container = PermissionsContainer::new(
-      permission_desc_parser.clone(),
-      permissions.clone(),
-    );
-    let worker_sender = test_event_sender_factory.worker();
-    let fail_fast_tracker = fail_fast_tracker.clone();
-    let specifier_options = options.specifier.clone();
-    spawn_blocking(move || {
-      create_and_run_current_thread(test_specifier(
-        worker_factory,
-        permissions_container,
-        specifier,
-        worker_sender,
-        fail_fast_tracker,
-        specifier_options,
-      ))
-    })
-  });
-
-  let join_stream = stream::iter(join_handles)
-    .buffer_unordered(concurrent_jobs.get())
-    .collect::<Vec<Result<Result<(), AnyError>, tokio::task::JoinError>>>();
-
-  let handler = spawn(async move { report_tests(receiver, reporter).await.0 });
-
-  let (join_results, result) = future::join(join_stream, handler).await;
-  sigint_handler_handle.abort();
-  HAS_TEST_RUN_SIGINT_HANDLER.store(false, Ordering::Relaxed);
-  for join_result in join_results {
-    join_result??;
-  }
-  result??;
-
-  Ok(())
-}
-
-/// Test a collection of specifiers with test modes concurrently.
-async fn test_specifiers2(
-  file_container: WorkspaceFileContainer,
+  factories_with_specifiers: Vec<(
+    Arc<CliMainWorkerFactory>,
+    Vec<ModuleSpecifier>,
+  )>,
   permissions: &Permissions,
   permission_desc_parser: &Arc<RuntimePermissionDescriptorParser>,
   options: TestSpecifiersOptions,
 ) -> Result<(), AnyError> {
-  let mut specifiers_with_factory = file_container
-    .checked_specifiers_with_worker_factories()
+  let mut specifiers_with_factory = factories_with_specifiers
     .into_iter()
-    .flat_map(|(s, f)| {
+    .flat_map(|(f, s)| {
       s.into_iter().map(|s| (s, f.clone())).collect::<Vec<_>>()
     })
     .collect::<Vec<_>>();
@@ -1527,91 +1433,6 @@ fn is_supported_test_ext(path: &Path) -> bool {
   }
 }
 
-/// Collects specifiers marking them with the appropriate test mode while maintaining the natural
-/// input order.
-///
-/// - Specifiers matching the `is_supported_test_ext` predicate are marked as
-///   `TestMode::Documentation`.
-/// - Specifiers matching the `is_supported_test_path` are marked as `TestMode::Executable`.
-/// - Specifiers matching both predicates are marked as `TestMode::Both`
-fn collect_specifiers_with_test_mode(
-  cli_options: &CliOptions,
-  files: FilePatterns,
-  include_inline: &bool,
-) -> Result<Vec<(ModuleSpecifier, TestMode)>, AnyError> {
-  // todo(dsherret): there's no need to collect twice as it's slow
-  let vendor_folder = cli_options.vendor_dir_path();
-  let module_specifiers = collect_specifiers(
-    files.clone(),
-    vendor_folder.map(ToOwned::to_owned),
-    is_supported_test_path_predicate,
-  )?;
-
-  if *include_inline {
-    return collect_specifiers(
-      files,
-      vendor_folder.map(ToOwned::to_owned),
-      |e| is_supported_test_ext(e.path),
-    )
-    .map(|specifiers| {
-      specifiers
-        .into_iter()
-        .map(|specifier| {
-          let mode = if module_specifiers.contains(&specifier) {
-            TestMode::Both
-          } else {
-            TestMode::Documentation
-          };
-
-          (specifier, mode)
-        })
-        .collect()
-    });
-  }
-
-  let specifiers_with_mode = module_specifiers
-    .into_iter()
-    .map(|specifier| (specifier, TestMode::Executable))
-    .collect();
-
-  Ok(specifiers_with_mode)
-}
-
-/// Collects module and document specifiers with test modes via
-/// `collect_specifiers_with_test_mode` which are then pre-fetched and adjusted
-/// based on the media type.
-///
-/// Specifiers that do not have a known media type that can be executed as a
-/// module are marked as `TestMode::Documentation`. Type definition files
-/// cannot be run, and therefore need to be marked as `TestMode::Documentation`
-/// as well.
-async fn fetch_specifiers_with_test_mode(
-  cli_options: &CliOptions,
-  file_fetcher: &FileFetcher,
-  member_patterns: impl Iterator<Item = FilePatterns>,
-  doc: &bool,
-) -> Result<Vec<(ModuleSpecifier, TestMode)>, AnyError> {
-  let mut specifiers_with_mode = member_patterns
-    .map(|files| {
-      collect_specifiers_with_test_mode(cli_options, files.clone(), doc)
-    })
-    .collect::<Result<Vec<_>, _>>()?
-    .into_iter()
-    .flatten()
-    .collect::<Vec<_>>();
-
-  for (specifier, mode) in &mut specifiers_with_mode {
-    let file = file_fetcher.fetch_bypass_permissions(specifier).await?;
-
-    let (media_type, _) = file.resolve_media_type_and_charset();
-    if matches!(media_type, MediaType::Unknown | MediaType::Dts) {
-      *mode = TestMode::Documentation
-    }
-  }
-
-  Ok(specifiers_with_mode)
-}
-
 pub async fn collect_specifiers_for_tests(
   patterns: FilePatterns,
   cli_options: Arc<CliOptions>,
@@ -1685,7 +1506,7 @@ pub async fn run_tests(
     .collect();
   let file_container = WorkspaceFileContainer::from_workspace_dirs_with_files(
     workspace_dirs_with_files,
-    cli_options,
+    &factory,
     extract_doc_tests,
     |patterns, cli_options, file_fetcher, doc| {
       collect_specifiers_for_tests(patterns, cli_options, file_fetcher, doc)
@@ -1706,8 +1527,8 @@ pub async fn run_tests(
     return Ok(());
   }
 
-  test_specifiers2(
-    file_container,
+  test_specifiers(
+    file_container.worker_factories_with_checked_specifiers(),
     &permissions,
     permission_desc_parser,
     TestSpecifiersOptions {
@@ -1777,13 +1598,13 @@ pub async fn run_tests_with_watch(
         let cli_options = factory.cli_options()?;
         let workspace_test_options =
           cli_options.resolve_workspace_test_options(&test_flags);
-
-        let _ = watcher_communicator.watch_paths(cli_options.watch_paths());
-        let graph_kind = cli_options.type_check_mode().as_graph_kind();
+        let permission_desc_parser = factory.permission_desc_parser()?;
+        let permissions = Permissions::from_options(
+          permission_desc_parser.as_ref(),
+          &cli_options.permissions_options(),
+        )?;
         let log_level = cli_options.log_level();
-        let cli_options = cli_options.clone();
-        let module_graph_creator = factory.module_graph_creator().await?;
-        let file_fetcher = factory.file_fetcher()?;
+
         let members_with_test_options =
           cli_options.resolve_test_options_for_members(&test_flags)?;
         let watch_paths = members_with_test_options
@@ -1798,96 +1619,43 @@ pub async fn run_tests_with_watch(
           .flatten()
           .collect::<Vec<_>>();
         let _ = watcher_communicator.watch_paths(watch_paths);
-        let test_modules = members_with_test_options
-          .iter()
-          .map(|(_, test_options)| {
-            collect_specifiers(
-              test_options.files.clone(),
-              cli_options.vendor_dir_path().map(ToOwned::to_owned),
-              if workspace_test_options.doc {
-                Box::new(|e: WalkEntry| is_supported_test_ext(e.path))
-                  as Box<dyn Fn(WalkEntry) -> bool>
-              } else {
-                Box::new(is_supported_test_path_predicate)
-              },
-            )
-          })
-          .collect::<Result<Vec<_>, _>>()?
+        let workspace_dirs_with_files = members_with_test_options
           .into_iter()
-          .flatten()
-          .collect::<Vec<_>>();
-
-        let permission_desc_parser = factory.permission_desc_parser()?;
-        let permissions = Permissions::from_options(
-          permission_desc_parser.as_ref(),
-          &cli_options.permissions_options(),
-        )?;
-        let graph = module_graph_creator
-          .create_graph(graph_kind, test_modules)
-          .await?;
-        module_graph_creator.graph_valid(&graph)?;
-        let test_modules = &graph.roots;
-
-        let test_modules_to_reload = if let Some(changed_paths) = changed_paths
-        {
-          let mut result = IndexSet::with_capacity(test_modules.len());
-          let changed_paths = changed_paths.into_iter().collect::<HashSet<_>>();
-          for test_module_specifier in test_modules {
-            if has_graph_root_local_dependent_changed(
-              &graph,
-              test_module_specifier,
-              &changed_paths,
-            ) {
-              result.insert(test_module_specifier.clone());
-            }
-          }
-          result
-        } else {
-          test_modules.clone()
-        };
-
-        let specifiers_with_mode = fetch_specifiers_with_test_mode(
-          &cli_options,
-          file_fetcher,
-          members_with_test_options.into_iter().map(|(_, v)| v.files),
-          &workspace_test_options.doc,
-        )
-        .await?
-        .into_iter()
-        .filter(|(specifier, _)| test_modules_to_reload.contains(specifier))
-        .collect::<Vec<(ModuleSpecifier, TestMode)>>();
-
-        let doc_tests =
-          get_doc_tests(&specifiers_with_mode, file_fetcher).await?;
-        let specifiers_for_typecheck_and_test =
-          get_target_specifiers(specifiers_with_mode, &doc_tests);
-        for doc_test in doc_tests {
-          file_fetcher.insert_memory_files(doc_test);
-        }
-
-        let main_graph_container =
-          factory.main_module_graph_container().await?;
-
-        // Typecheck
-        main_graph_container
-          .check_specifiers(
-            &specifiers_for_typecheck_and_test,
-            cli_options.ext_flag().as_ref(),
+          .map(|(d, o)| (Arc::new(d), o.files))
+          .collect();
+        let file_container =
+          WorkspaceFileContainer::from_workspace_dirs_with_files(
+            workspace_dirs_with_files,
+            &factory,
+            extract_doc_tests,
+            |patterns, cli_options, file_fetcher, doc| {
+              collect_specifiers_for_tests(
+                patterns,
+                cli_options,
+                file_fetcher,
+                doc,
+              )
+              .boxed_local()
+            },
+            workspace_test_options.doc,
           )
           .await?;
 
-        if workspace_test_options.no_run {
-          return Ok(());
-        }
-
-        let worker_factory =
-          Arc::new(factory.create_cli_main_worker_factory().await?);
+        let factories_with_specifiers =
+          if let Some(changed_paths) = changed_paths {
+            file_container
+              .worker_factories_with_dependent_checked_specifiers(
+                &changed_paths.into_iter().collect(),
+              )
+              .await?
+          } else {
+            file_container.worker_factories_with_checked_specifiers()
+          };
 
         test_specifiers(
-          worker_factory,
+          factories_with_specifiers,
           &permissions,
           permission_desc_parser,
-          specifiers_for_typecheck_and_test,
           TestSpecifiersOptions {
             cwd: Url::from_directory_path(cli_options.initial_cwd()).map_err(
               |_| {
@@ -1920,38 +1688,6 @@ pub async fn run_tests_with_watch(
   .await?;
 
   Ok(())
-}
-
-/// Extracts doc tests from files specified by the given specifiers.
-async fn get_doc_tests(
-  specifiers_with_mode: &[(Url, TestMode)],
-  file_fetcher: &FileFetcher,
-) -> Result<Vec<File>, AnyError> {
-  let specifiers_needing_extraction = specifiers_with_mode
-    .iter()
-    .filter(|(_, mode)| mode.needs_test_extraction())
-    .map(|(s, _)| s);
-
-  let mut doc_tests = Vec::new();
-  for s in specifiers_needing_extraction {
-    let file = file_fetcher.fetch_bypass_permissions(s).await?;
-    doc_tests.extend(extract_doc_tests(file)?);
-  }
-
-  Ok(doc_tests)
-}
-
-/// Get a list of specifiers that we need to perform typecheck and run tests on.
-/// The result includes "pseudo specifiers" for doc tests.
-fn get_target_specifiers(
-  specifiers_with_mode: Vec<(Url, TestMode)>,
-  doc_tests: &[File],
-) -> Vec<Url> {
-  specifiers_with_mode
-    .into_iter()
-    .filter_map(|(s, mode)| mode.needs_test_run().then_some(s))
-    .chain(doc_tests.iter().map(|d| d.specifier.clone()))
-    .collect()
 }
 
 /// Tracks failures for the `--fail-fast` argument in
