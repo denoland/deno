@@ -552,7 +552,7 @@ class ClientRequest extends OutgoingMessage {
           this.emit("response", incoming);
         }
       } catch (err) {
-        if (this._req.cancelHandleRid !== null) {
+        if (this._req && this._req.cancelHandleRid !== null) {
           core.tryClose(this._req.cancelHandleRid);
         }
 
