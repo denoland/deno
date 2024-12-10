@@ -478,9 +478,20 @@ pub enum DenoSubcommand {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
+pub enum OutdatedOutputFmt {
+  Table,
+  Json,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub enum OutdatedKind {
-  Update { latest: bool },
-  PrintOutdated { compatible: bool },
+  Update {
+    latest: bool,
+  },
+  PrintOutdated {
+    compatible: bool,
+    output_fmt: OutdatedOutputFmt,
+  },
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -2725,7 +2736,13 @@ Specific version requirements to update to can be specified:
           .long("recursive")
           .short('r')
           .action(ArgAction::SetTrue)
-          .help("include all workspace members"),
+          .help("Include all workspace members"),
+      )
+      .arg(
+        Arg::new("json")
+          .long("json")
+          .action(ArgAction::SetTrue)
+          .help("Output outdated packages in JSON format")
       )
   })
 }
@@ -4495,7 +4512,16 @@ fn outdated_parse(
     OutdatedKind::Update { latest }
   } else {
     let compatible = matches.get_flag("compatible");
-    OutdatedKind::PrintOutdated { compatible }
+    let json = matches.get_flag("json");
+    let output_fmt = if json {
+      OutdatedOutputFmt::Json
+    } else {
+      OutdatedOutputFmt::Table
+    };
+    OutdatedKind::PrintOutdated {
+      compatible,
+      output_fmt,
+    }
   };
   flags.subcommand = DenoSubcommand::Outdated(OutdatedFlags {
     filters,
@@ -11641,7 +11667,21 @@ Usage: deno repl [OPTIONS] [-- [ARGS]...]\n"
         svec![],
         OutdatedFlags {
           filters: vec![],
-          kind: OutdatedKind::PrintOutdated { compatible: false },
+          kind: OutdatedKind::PrintOutdated {
+            compatible: false,
+            output_fmt: OutdatedOutputFmt::Table,
+          },
+          recursive: false,
+        },
+      ),
+      (
+        svec!["--json"],
+        OutdatedFlags {
+          filters: vec![],
+          kind: OutdatedKind::PrintOutdated {
+            compatible: false,
+            output_fmt: OutdatedOutputFmt::Json,
+          },
           recursive: false,
         },
       ),
@@ -11649,7 +11689,10 @@ Usage: deno repl [OPTIONS] [-- [ARGS]...]\n"
         svec!["--recursive"],
         OutdatedFlags {
           filters: vec![],
-          kind: OutdatedKind::PrintOutdated { compatible: false },
+          kind: OutdatedKind::PrintOutdated {
+            compatible: false,
+            output_fmt: OutdatedOutputFmt::Table,
+          },
           recursive: true,
         },
       ),
@@ -11657,7 +11700,10 @@ Usage: deno repl [OPTIONS] [-- [ARGS]...]\n"
         svec!["--recursive", "--compatible"],
         OutdatedFlags {
           filters: vec![],
-          kind: OutdatedKind::PrintOutdated { compatible: true },
+          kind: OutdatedKind::PrintOutdated {
+            compatible: true,
+            output_fmt: OutdatedOutputFmt::Table,
+          },
           recursive: true,
         },
       ),
@@ -11697,7 +11743,10 @@ Usage: deno repl [OPTIONS] [-- [ARGS]...]\n"
         svec!["--latest"],
         OutdatedFlags {
           filters: svec![],
-          kind: OutdatedKind::PrintOutdated { compatible: false },
+          kind: OutdatedKind::PrintOutdated {
+            compatible: false,
+            output_fmt: OutdatedOutputFmt::Table,
+          },
           recursive: false,
         },
       ),

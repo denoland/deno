@@ -30,6 +30,7 @@ use deno_semver::VersionReq;
 use import_map::ImportMap;
 use import_map::ImportMapWithDiagnostics;
 use import_map::SpecifierMapEntry;
+use serde::Serialize;
 use tokio::sync::Semaphore;
 
 use crate::args::CliLockfile;
@@ -112,7 +113,7 @@ impl std::fmt::Debug for DepLocation {
   }
 }
 
-#[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize)]
 pub enum DepKind {
   Jsr,
   Npm,
