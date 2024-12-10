@@ -6283,7 +6283,7 @@ declare namespace Deno {
     arguments: Array<Expression | SpreadElement>;
     optional: boolean; // FIXME only in TSEstree
     // FIXME
-    typeArguments: null; // FIXME
+    typeArguments: any; // FIXME
   }
 
   export interface ChainExpression extends BaseNode {
@@ -6965,6 +6965,7 @@ declare namespace Deno {
     | Statement
     | CatchClause
     | PrivateIdentifier
+    | Property
     | JSXNode;
 
   export interface LintRuleContext {

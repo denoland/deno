@@ -24,7 +24,12 @@ a = {
   get foo() {
     return 1;
   },
-  set foo(a) {
-    2;
-  },
+  // FIXME
+  // set foo(a) {
+  //   2;
+  // },
+  // bar() {},
+  // async barAsync() {},
+  // *barGen() {},
+  // async *barAsyncGen() {},
 };

@@ -181,7 +181,7 @@ const AstType = {
   // Custom
   EmptyExpr: 84,
   Spread: 85,
-  ObjProperty: 86,
+  Property: 86,
   VarDeclarator: 87,
   CatchClause: 88,
 
@@ -1000,7 +1000,7 @@ class ArrowFunctionExpression extends BaseNode {
 }
 
 /** @implements {Deno.AssignmentExpression} */
-class AssignmentExpression {
+class AssignmentExpression extends BaseNode {
   type = /** @type {const} */ ("AssignmentExpression");
   range;
   get left() {
@@ -1024,12 +1024,15 @@ class AssignmentExpression {
 
   /**
    * @param {AstContext} ctx
+   * @param {number} parentId
    * @param {Deno.Range} range
    * @param {number} flags
    * @param {number} leftId
    * @param {number} rightId
    */
-  constructor(ctx, range, flags, leftId, rightId) {
+  constructor(ctx, parentId, range, flags, leftId, rightId) {
+    super(ctx, parentId);
+
     this.#ctx = ctx;
     this.#leftId = leftId;
     this.#rightId = rightId;
@@ -1045,37 +1048,37 @@ class AssignmentExpression {
 function getAssignOperator(n) {
   switch (n) {
     case 0:
-      return "&&=";
+      return "=";
     case 1:
-      return "&=";
+      return "+=";
     case 2:
-      return "**=";
+      return "-=";
     case 3:
       return "*=";
     case 4:
-      return "||=";
-    case 5:
-      return "|=";
-    case 6:
-      return "^=";
-    case 7:
-      return "=";
-    case 8:
-      return ">>=";
-    case 9:
-      return ">>>=";
-    case 10:
-      return "<<=";
-    case 11:
-      return "-=";
-    case 12:
-      return "%=";
-    case 13:
-      return "+=";
-    case 14:
-      return "??=";
-    case 15:
       return "/=";
+    case 5:
+      return "%=";
+    case 6:
+      return "<<=";
+    case 7:
+      return ">>=";
+    case 8:
+      return ">>>=";
+    case 9:
+      return "|=";
+    case 10:
+      return "^=";
+    case 11:
+      return "&=";
+    case 12:
+      return "**=";
+    case 13:
+      return "&&=";
+    case 14:
+      return "||=";
+    case 15:
+      return "??=";
     default:
       throw new Error(`Unknown operator: ${n}`);
   }
@@ -1505,6 +1508,32 @@ class NewExpression {
   }
 }
 
+/** @implements {Deno.ObjectExpression} */
+class ObjectExpression extends BaseNode {
+  type = /** @type {const} */ ("ObjectExpression");
+  range;
+  get properties() {
+    return createChildNodes(this.#ctx, this.#elemIds);
+  }
+
+  #ctx;
+  #elemIds;
+
+  /**
+   * @param {AstContext} ctx
+   * @param {number} parentId
+   * @param {Deno.Range} range
+   * @param {number[]} elemIds
+   */
+  constructor(ctx, parentId, range, elemIds) {
+    super(ctx, parentId);
+
+    this.#ctx = ctx;
+    this.range = range;
+    this.#elemIds = elemIds;
+  }
+}
+
 /** @implements {Deno.ParenthesisExpression} */
 class ParenthesisExpression extends BaseNode {
   type = /** @type {const} */ ("ParenthesisExpression");
@@ -1550,6 +1579,48 @@ class PrivateIdentifier extends BaseNode {
     this.#ctx = ctx;
     this.range = range;
     this.name = getString(ctx, nameId);
+  }
+}
+
+/** @implements {Deno.Property} */
+class Property extends BaseNode {
+  type = /** @type {const} */ ("Property");
+  range;
+  #ctx;
+
+  get key() {
+    return /** @type {*} */ (createAstNode(this.#ctx, this.#keyId));
+  }
+
+  get value() {
+    return /** @type {*} */ (createAstNode(this.#ctx, this.#valueId));
+  }
+
+  #keyId;
+  #valueId;
+
+  // FIXME
+  computed = false;
+  method = false;
+  shorthand = false;
+  kind = /** @type {const} */ ("get");
+
+  /**
+   * @param {AstContext} ctx
+   * @param {number} parentId
+   * @param {Deno.Range} range
+   * @param {number} keyId
+   * @param {number} valueId
+   */
+  constructor(ctx, parentId, range, keyId, valueId) {
+    super(ctx, parentId);
+
+    // FIXME flags
+
+    this.#ctx = ctx;
+    this.range = range;
+    this.#keyId = keyId;
+    this.#valueId = valueId;
   }
 }
 
@@ -2120,7 +2191,6 @@ const DECODER = new TextDecoder();
  *   buf: Uint8Array,
  *   strTable: Map<number, string>,
  *   idTable: number[],
- *   visited: Set<number>,
  * }} AstContext
  */
 
@@ -2329,8 +2399,19 @@ function createAstNode(ctx, id) {
         returnTypeId,
       );
     }
-    case AstType.AssignmentExpression:
-      throw new AssignmentExpression(ctx, range, flags, 0, 0); // FIXME
+    case AstType.AssignmentExpression: {
+      const flags = buf[offset];
+      const leftId = readU32(buf, offset + 1);
+      const rightId = readU32(buf, offset + 5);
+      return new AssignmentExpression(
+        ctx,
+        parentId,
+        range,
+        flags,
+        leftId,
+        rightId,
+      );
+    }
     case AstType.AwaitExpression:
       throw new AwaitExpression(ctx, range, 0); // FIXME
     case AstType.BinaryExpression:
@@ -2372,8 +2453,10 @@ function createAstNode(ctx, id) {
       throw new MetaProperty(ctx, range, 0, 0); // FIXME
     case AstType.NewExpression:
       throw new NewExpression(ctx, range, 0); // FIXME
-    case AstType.ObjectExpression:
-      throw new Error("TODO");
+    case AstType.ObjectExpression: {
+      const elemIds = readChildIds(buf, offset);
+      return new ObjectExpression(ctx, parentId, range, elemIds);
+    }
     case AstType.ParenthesisExpression: {
       const exprId = readU32(buf, offset);
       return new ParenthesisExpression(ctx, parentId, range, exprId);
@@ -2381,6 +2464,12 @@ function createAstNode(ctx, id) {
     case AstType.PrivateIdentifier: {
       const strId = readU32(buf, offset);
       return new PrivateIdentifier(ctx, parentId, range, strId);
+    }
+    case AstType.Property: {
+      const flags = buf[offset]; // FIXME
+      const keyId = readU32(buf, offset + 1);
+      const valueId = readU32(buf, offset + 5);
+      return new Property(ctx, parentId, range, keyId, valueId);
     }
     case AstType.StaticBlock:
       throw new Error("TODO");
@@ -2511,7 +2600,7 @@ function createAstContext(buf) {
   }
 
   /** @type {AstContext} */
-  const ctx = { buf, idTable, strTable, visited: new Set() };
+  const ctx = { buf, idTable, strTable };
 
   return ctx;
 }
@@ -2618,15 +2707,10 @@ function traverseInner(ctx, visitTypes, visitor, id) {
 
   // Empty id
   if (id === 0) return;
-  const { idTable, buf, visited } = ctx;
+  const { idTable, buf } = ctx;
   if (id >= idTable.length) {
     throw new Error(`Invalid node id: ${id}`);
   }
-
-  if (visited.has(id)) {
-    throw new Error(`Already visited ${id}`);
-  }
-  visited.add(id);
 
   let offset = idTable[id];
   if (offset === undefined) throw new Error(`Unknown id: ${id}`);
@@ -2655,6 +2739,7 @@ function traverseInner(ctx, visitTypes, visitor, id) {
     // Multiple children only
     case AstType.ArrayExpression:
     case AstType.BlockStatement:
+    case AstType.ObjectExpression:
     case AstType.SequenceExpression: {
       const stmtsIds = readChildIds(buf, offset);
       return traverseChildren(ctx, visitTypes, visitor, stmtsIds);
@@ -2708,8 +2793,33 @@ function traverseInner(ctx, visitTypes, visitor, id) {
 
       return;
     }
+    case AstType.AssignmentExpression: {
+      // Skip flags
+      offset += 1;
+
+      const leftId = readU32(buf, offset);
+      const rightId = readU32(buf, offset + 4);
+
+      traverseInner(ctx, visitTypes, visitor, leftId);
+      traverseInner(ctx, visitTypes, visitor, rightId);
+
+      return;
+    }
+    case AstType.Property: {
+      // Skip flags
+      offset += 1;
+
+      const keyId = readU32(buf, offset);
+      const valueId = readU32(buf, offset + 4);
+
+      traverseInner(ctx, visitTypes, visitor, keyId);
+      traverseInner(ctx, visitTypes, visitor, valueId);
+
+      return;
+    }
 
     // Two children
+    case AstType.AssignmentPattern:
     case AstType.LabeledStatement:
     case AstType.WhileStatement: {
       const firstId = readU32(buf, offset);
