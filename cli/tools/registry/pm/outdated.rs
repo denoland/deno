@@ -100,6 +100,31 @@ fn print_outdated_table(packages: &[OutdatedPackage]) {
   println!("└{package_fill}┴{current_fill}┴{update_fill}┴{latest_fill}┘",);
 }
 
+#[allow(clippy::print_stdout)]
+fn print_suggestion(compatible: bool) {
+  println!();
+  print!("{}", colors::gray("Run "));
+  let (cmd, txt) = if compatible {
+    (
+      "deno outdated --update",
+      "to update to the latest compatible versions,",
+    )
+  } else {
+    (
+      "deno outdated --update --latest",
+      "to update to the latest available versions,",
+    )
+  };
+  println!(
+    "{} {}\n{} {} {}",
+    colors::underline(cmd),
+    colors::gray(txt),
+    colors::gray("or"),
+    colors::underline("deno outdated --help"),
+    colors::gray("for more information.")
+  );
+}
+
 fn print_outdated(
   deps: &mut DepManager,
   compatible: bool,
@@ -148,6 +173,7 @@ fn print_outdated(
   if !outdated.is_empty() {
     outdated.sort();
     print_outdated_table(&outdated);
+    print_suggestion(compatible);
   }
 
   Ok(())
