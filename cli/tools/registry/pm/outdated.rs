@@ -103,25 +103,18 @@ fn print_outdated_table(packages: &[OutdatedPackage]) {
 #[allow(clippy::print_stdout)]
 fn print_suggestion(compatible: bool) {
   println!();
-  print!("{}", colors::gray("Run "));
   let (cmd, txt) = if compatible {
-    (
-      "deno outdated --update",
-      "to update to the latest compatible versions,",
-    )
+    ("", "compatible")
   } else {
-    (
-      "deno outdated --update --latest",
-      "to update to the latest available versions,",
-    )
+    (" --latest", "available")
   };
   println!(
-    "{} {}\n{} {} {}",
-    colors::underline(cmd),
-    colors::gray(txt),
-    colors::gray("or"),
-    colors::underline("deno outdated --help"),
-    colors::gray("for more information.")
+    "{}",
+    color_print::cformat!(
+      "<p(245)>Run</> <u>deno outdated --update{}</> <p(245)>to update to the latest {} versions,</>\n<p(245)>or</> <u>deno outdated --help</> <p(245)>for more information.</>",
+      cmd,
+      txt,
+    )
   );
 }
 
