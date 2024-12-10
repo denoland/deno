@@ -26,6 +26,7 @@ use rsa::pkcs1::DecodeRsaPrivateKey as _;
 use rsa::pkcs1::DecodeRsaPublicKey;
 use rsa::pkcs1::EncodeRsaPrivateKey as _;
 use rsa::pkcs1::EncodeRsaPublicKey;
+use rsa::traits::PrivateKeyParts;
 use rsa::traits::PublicKeyParts;
 use rsa::RsaPrivateKey;
 use rsa::RsaPublicKey;
@@ -2327,6 +2328,71 @@ pub fn op_node_export_private_key_pem(
   out.truncate(len);
 
   Ok(String::from_utf8(out).expect("invalid pem is not possible"))
+}
+
+#[derive(Debug, thiserror::Error)]
+pub enum ExportPrivateKeyJwkError {
+  #[error(transparent)]
+  AsymmetricPublicKeyDer(#[from] AsymmetricPrivateKeyDerError),
+  #[error("very large data")]
+  VeryLargeData,
+  #[error(transparent)]
+  Der(#[from] der::Error),
+}
+
+#[op2]
+#[serde]
+pub fn op_node_export_private_key_jwk(
+  #[cppgc] handle: &KeyObjectHandle,
+) -> Result<deno_core::serde_json::Value, ExportPrivateKeyJwkError> {
+  let private_key = handle
+    .as_private_key()
+    .ok_or(AsymmetricPrivateKeyDerError::KeyIsNotAsymmetricPrivateKey)?;
+
+  match private_key {
+    AsymmetricPrivateKey::Rsa(key) => {
+      let n = key.n();
+      let e = key.e();
+      let d = key.d();
+      let p = key.primes()[0];
+      let q = key.primes()[1];
+      let dp = key.dp();
+      let dq = key.dq();
+      let qi = key.crt_coefficient().unwrap();
+      let oth = &key.primes()[2..];
+
+      let mut obj = deno_core::serde_json::json!({
+          "kty": "RSA",
+          "n": bytes_to_b64(&n.to_bytes_be()),
+          "e": bytes_to_b64(&e.to_bytes_be()),
+          "d": bytes_to_b64(&d.to_bytes_be()),
+          "p": bytes_to_b64(&p.to_bytes_be()),
+          "q": bytes_to_b64(&q.to_bytes_be()),
+          "dp": bytes_to_b64(&p.to_bytes_be()),
+          "dq": bytes_to_b64(&p.to_bytes_be()),
+          "qi": bytes_to_b64(&p.to_bytes_be()),
+      });
+
+      if !oth.is_empty() {
+        obj["oth"] = deno_core::serde_json::json!(oth
+          .iter()
+          .map(|o| &o.to_bytes_be())
+          .collect::<Vec<_>>());
+      }
+
+      return Ok(obj);
+    }
+    AsymmetricPrivateKey::RsaPss(key) => Ok(deno_core::serde_json::json!({})),
+    AsymmetricPrivateKey::Dsa(key) => Ok(deno_core::serde_json::json!({})),
+    AsymmetricPrivateKey::Ec(key) => Ok(deno_core::serde_json::json!({})),
+    AsymmetricPrivateKey::X25519(static_secret) => {
+      Ok(deno_core::serde_json::json!({}))
+    }
+    AsymmetricPrivateKey::Ed25519(key) => Ok(deno_core::serde_json::json!({})),
+    AsymmetricPrivateKey::Dh(key) => Ok(deno_core::serde_json::json!({})),
+  };
+
+  todo!()
 }
 
 #[op2]
