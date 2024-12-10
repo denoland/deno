@@ -3,7 +3,7 @@ Compile file:///[WILDLINE]
 
 Embedded File System
 
-main.exe
+main[WILDLINE]
 ├── add.js
 ├── main.js
 ├─┬ node_modules

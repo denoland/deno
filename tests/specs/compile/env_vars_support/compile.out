@@ -5,6 +5,6 @@ Warning Environment variables from the file "environment.env" were embedded in t
 
 Embedded File System
 
-out.exe
+out[WILDLINE]
 └── main.ts
 

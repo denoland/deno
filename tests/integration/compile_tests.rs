@@ -1122,7 +1122,7 @@ Warning Failed resolving symlink. Ignoring.
 
 Embedded File System
 
-bin.exe
+bin[WILDLINE]
 ├── main.ts
 └─┬ node_modules
   ├─┬ .bin
