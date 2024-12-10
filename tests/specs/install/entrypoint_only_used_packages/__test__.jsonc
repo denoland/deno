@@ -2,7 +2,7 @@
   "tempDir": true,
   "steps": [
     {
-      "args": "install --entrypoint main.ts",
+      "args": "install --unstable-npm-lazy-caching --entrypoint main.ts",
       "output": "install-entrypoint.out"
     },
     {
