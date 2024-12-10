@@ -426,7 +426,7 @@ pub async fn run_benchmarks(
   // Various bench files should not share the same permissions in terms of
   // `PermissionsContainer` - otherwise granting/revoking permissions in one
   // file would have impact on other files, which is undesirable.
-  let permission_desc_parser = factory.permission_desc_parser()?.clone();
+  let permission_desc_parser = factory.permission_desc_parser()?;
   let permissions = Permissions::from_options(
     permission_desc_parser.as_ref(),
     &cli_options.permissions_options(),
@@ -482,7 +482,7 @@ pub async fn run_benchmarks(
   bench_specifiers(
     file_container.worker_factories_with_checked_specifiers(),
     &permissions,
-    &permission_desc_parser,
+    permission_desc_parser,
     BenchSpecifierOptions {
       filter: TestFilter::from_flag(&workspace_bench_options.filter),
       json: workspace_bench_options.json,
@@ -593,7 +593,7 @@ pub async fn run_benchmarks_with_watch(
         bench_specifiers(
           factories_with_specifiers,
           &permissions,
-          &permission_desc_parser,
+          permission_desc_parser,
           BenchSpecifierOptions {
             filter: TestFilter::from_flag(&workspace_bench_options.filter),
             json: workspace_bench_options.json,
