@@ -3425,7 +3425,7 @@ fn parse_code_actions(
                 &specifier_rewrite.new_deno_types_specifier
               {
                 text_edit.new_text = format!(
-                  "// @deno-types=\"{}\"\n{}",
+                  "// @ts-types=\"{}\"\n{}",
                   deno_types_specifier, &text_edit.new_text
                 );
               }
@@ -3600,10 +3600,8 @@ impl CompletionEntryDetails {
         if let Some(deno_types_specifier) =
           &specifier_rewrite.new_deno_types_specifier
         {
-          *new_text = format!(
-            "// @deno-types=\"{}\"\n{}",
-            deno_types_specifier, new_text
-          );
+          *new_text =
+            format!("// @ts-types=\"{}\"\n{}", deno_types_specifier, new_text);
         }
       }
     }
