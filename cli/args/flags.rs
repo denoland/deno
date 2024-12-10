@@ -36,7 +36,7 @@ use deno_path_util::normalize_path;
 use deno_path_util::url_to_file_path;
 use deno_runtime::deno_permissions::PermissionsOptions;
 use deno_runtime::deno_permissions::SysDescriptor;
-use deno_runtime::ops::otel::OtelConfig;
+use deno_telemetry::OtelConfig;
 use log::debug;
 use log::Level;
 use serde::Deserialize;
@@ -598,6 +598,7 @@ pub struct UnstableConfig {
   // TODO(bartlomieju): remove in Deno 2.5
   pub legacy_flag_enabled: bool, // --unstable
   pub bare_node_builtins: bool,
+  pub detect_cjs: bool,
   pub sloppy_imports: bool,
   pub features: Vec<String>, // --unstabe-kv --unstable-cron
 }
@@ -1232,7 +1233,7 @@ static DENO_HELP: &str = cstr!(
     <g>compile</>      Compile the script into a self contained executable
                   <p(245)>deno compile main.ts  |  deno compile --target=x86_64-unknown-linux-gnu</>
     <g>coverage</>     Print coverage reports
-    <g>doc</>          Genereate and show documentation for a module or built-ins
+    <g>doc</>          Generate and show documentation for a module or built-ins
                   <p(245)>deno doc  |  deno doc --json  |  deno doc --html mod.ts</>
     <g>fmt</>          Format source files
                   <p(245)>deno fmt  |  deno fmt main.ts</>
@@ -1704,8 +1705,11 @@ fn add_subcommand() -> Command {
       "Add dependencies to your configuration file.
   <p(245)>deno add jsr:@std/path</>
 
-You can add multiple dependencies at once:
-  <p(245)>deno add jsr:@std/path jsr:@std/assert</>"
+You can also add npm packages:
+  <p(245)>deno add npm:react</>
+
+Or multiple dependencies at once:
+  <p(245)>deno add jsr:@std/path jsr:@std/assert npm:chalk</>"
     ),
     UnstableArgsConfig::None,
   )
@@ -2659,11 +2663,11 @@ By default, outdated dependencies are only displayed.
 Display outdated dependencies:
   <p(245)>deno outdated</>
   <p(245)>deno outdated --compatible</>
-  
-Update dependencies:
+
+Update dependencies to latest semver compatible versions:
   <p(245)>deno outdated --update</>
+Update dependencies to latest versions, ignoring semver requirements:
   <p(245)>deno outdated --update --latest</>
-  <p(245)>deno outdated --update</>
 
 Filters can be used to select which packages to act on. Filters can include wildcards (*) to match multiple packages.
   <p(245)>deno outdated --update --latest \"@std/*\"</>
@@ -2699,7 +2703,6 @@ Specific version requirements to update to can be specified:
           .help(
             "Update to the latest version, regardless of semver constraints",
           )
-          .requires("update")
           .conflicts_with("compatible"),
       )
       .arg(
@@ -3044,7 +3047,7 @@ fn task_subcommand() -> Command {
 
 List all available tasks:
   <p(245)>deno task</>
-  
+
 Evaluate a task from string
   <p(245)>deno task --eval \"echo $(pwd)\"</>"
     ),
@@ -3073,14 +3076,14 @@ Evaluate a task from string
         Arg::new("filter")
         .long("filter")
         .short('f')
-        .help("Filter members of the workspace by name - should be used with --recursive")
+        .help("Filter members of the workspace by name, implies --recursive flag")
         .value_parser(value_parser!(String)),
       )
       .arg(
         Arg::new("eval")
           .long("eval")
           .help(
-            "Evaluate the passed value as if, it was a task in a configuration file",
+            "Evaluate the passed value as if it was a task in a configuration file",
           ).action(ArgAction::SetTrue)
       )
       .arg(node_modules_dir_arg())
@@ -4370,7 +4373,7 @@ impl CommandExt for Command {
     ).arg(
       Arg::new("unstable-detect-cjs")
         .long("unstable-detect-cjs")
-        .help("Reads the package.json type field in a project to treat .js files as .cjs")
+        .help("Treats ambiguous .js, .jsx, .ts, .tsx files as CommonJS modules in more cases")
         .value_parser(FalseyValueParser::new())
         .action(ArgAction::SetTrue)
         .hide(true)
@@ -5274,8 +5277,15 @@ fn task_parse(
   unstable_args_parse(flags, matches, UnstableArgsConfig::ResolutionAndRuntime);
   node_modules_arg_parse(flags, matches);
 
-  let filter = matches.remove_one::<String>("filter");
-  let recursive = matches.get_flag("recursive") || filter.is_some();
+  let mut recursive = matches.get_flag("recursive");
+  let filter = if let Some(filter) = matches.remove_one::<String>("filter") {
+    recursive = false;
+    Some(filter)
+  } else if recursive {
+    Some("*".to_string())
+  } else {
+    None
+  };
 
   let mut task_flags = TaskFlags {
     cwd: matches.remove_one::<String>("cwd"),
@@ -5983,6 +5993,7 @@ fn unstable_args_parse(
 
   flags.unstable_config.bare_node_builtins =
     matches.get_flag("unstable-bare-node-builtins");
+  flags.unstable_config.detect_cjs = matches.get_flag("unstable-detect-cjs");
   flags.unstable_config.sloppy_imports =
     matches.get_flag("unstable-sloppy-imports");
 
@@ -10534,7 +10545,7 @@ mod tests {
           cwd: None,
           task: Some("build".to_string()),
           is_run: false,
-          recursive: true,
+          recursive: false,
           filter: Some("*".to_string()),
           eval: false,
         }),
@@ -10551,7 +10562,7 @@ mod tests {
           task: Some("build".to_string()),
           is_run: false,
           recursive: true,
-          filter: None,
+          filter: Some("*".to_string()),
           eval: false,
         }),
         ..Flags::default()
@@ -10567,7 +10578,7 @@ mod tests {
           task: Some("build".to_string()),
           is_run: false,
           recursive: true,
-          filter: None,
+          filter: Some("*".to_string()),
           eval: false,
         }),
         ..Flags::default()
@@ -11679,6 +11690,14 @@ Usage: deno repl [OPTIONS] [-- [ARGS]...]\n"
         OutdatedFlags {
           filters: svec!["@foo/bar"],
           kind: OutdatedKind::Update { latest: false },
+          recursive: false,
+        },
+      ),
+      (
+        svec!["--latest"],
+        OutdatedFlags {
+          filters: svec![],
+          kind: OutdatedKind::PrintOutdated { compatible: false },
           recursive: false,
         },
       ),

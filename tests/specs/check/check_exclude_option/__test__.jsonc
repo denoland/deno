@@ -1,0 +1,19 @@
+{
+  "tests": {
+    "by_dir": {
+      "args": "check --quiet --config deno.exclude_dir.json ignored/index.ts",
+      "output": "",
+      "exitCode": 0
+    },
+    "by_glob": {
+      "args": "check --quiet --config deno.exclude_glob.json ignored/index.ts",
+      "output": "",
+      "exitCode": 0
+    },
+    "without": {
+      "args": "check --quiet --config deno.json ignored/index.ts",
+      "output": "exclude_option.ts.error.out",
+      "exitCode": 1
+    }
+  }
+}

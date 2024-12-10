@@ -2,6 +2,7 @@
 
 #![allow(clippy::disallowed_methods)]
 
+use std::borrow::Cow;
 use std::env::current_dir;
 use std::fs;
 use std::io;
@@ -371,7 +372,7 @@ impl FileSystem for RealFs {
     &self,
     path: &Path,
     access_check: Option<AccessCheckCb>,
-  ) -> FsResult<Vec<u8>> {
+  ) -> FsResult<Cow<'static, [u8]>> {
     let mut file = open_with_access_check(
       OpenOptions {
         read: true,
@@ -382,13 +383,13 @@ impl FileSystem for RealFs {
     )?;
     let mut buf = Vec::new();
     file.read_to_end(&mut buf)?;
-    Ok(buf)
+    Ok(Cow::Owned(buf))
   }
   async fn read_file_async<'a>(
     &'a self,
     path: PathBuf,
     access_check: Option<AccessCheckCb<'a>>,
-  ) -> FsResult<Vec<u8>> {
+  ) -> FsResult<Cow<'static, [u8]>> {
     let mut file = open_with_access_check(
       OpenOptions {
         read: true,
@@ -400,7 +401,7 @@ impl FileSystem for RealFs {
     spawn_blocking(move || {
       let mut buf = Vec::new();
       file.read_to_end(&mut buf)?;
-      Ok::<_, FsError>(buf)
+      Ok::<_, FsError>(Cow::Owned(buf))
     })
     .await?
     .map_err(Into::into)

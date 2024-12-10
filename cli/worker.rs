@@ -30,7 +30,6 @@ use deno_runtime::deno_tls::RootCertStoreProvider;
 use deno_runtime::deno_web::BlobStore;
 use deno_runtime::fmt_errors::format_js_error;
 use deno_runtime::inspector_server::InspectorServer;
-use deno_runtime::ops::otel::OtelConfig;
 use deno_runtime::ops::process::NpmProcessStateProviderRc;
 use deno_runtime::ops::worker_host::CreateWebWorkerCb;
 use deno_runtime::web_worker::WebWorker;
@@ -43,9 +42,10 @@ use deno_runtime::BootstrapOptions;
 use deno_runtime::WorkerExecutionMode;
 use deno_runtime::WorkerLogLevel;
 use deno_semver::npm::NpmPackageReqReference;
+use deno_telemetry::OtelConfig;
 use deno_terminal::colors;
-use node_resolver::NodeModuleKind;
-use node_resolver::NodeResolutionMode;
+use node_resolver::NodeResolutionKind;
+use node_resolver::ResolutionMode;
 use tokio::select;
 
 use crate::args::CliLockfile;
@@ -698,8 +698,8 @@ impl CliMainWorkerFactory {
         package_folder,
         sub_path,
         /* referrer */ None,
-        NodeModuleKind::Esm,
-        NodeResolutionMode::Execution,
+        ResolutionMode::Import,
+        NodeResolutionKind::Execution,
       )?;
     if specifier
       .to_file_path()

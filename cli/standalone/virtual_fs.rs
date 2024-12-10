@@ -32,6 +32,15 @@ use thiserror::Error;
 use crate::util;
 use crate::util::fs::canonicalize_path;
 
+#[derive(Debug, Copy, Clone)]
+pub enum VfsFileSubDataKind {
+  /// Raw bytes of the file.
+  Raw,
+  /// Bytes to use for module loading. For example, for TypeScript
+  /// files this will be the transpiled JavaScript source.
+  ModuleGraph,
+}
+
 #[derive(Error, Debug)]
 #[error(
   "Failed to strip prefix '{}' from '{}'", root_path.display(), target.display()
@@ -141,7 +150,11 @@ impl VfsBuilder {
                 // inline the symlink and make the target file
                 let file_bytes = std::fs::read(&target)
                   .with_context(|| format!("Reading {}", path.display()))?;
-                self.add_file_with_data_inner(&path, file_bytes)?;
+                self.add_file_with_data_inner(
+                  &path,
+                  file_bytes,
+                  VfsFileSubDataKind::Raw,
+                )?;
               } else {
                 log::warn!(
                   "{} Symlink target is outside '{}'. Excluding symlink at '{}' with target '{}'.",
@@ -219,25 +232,27 @@ impl VfsBuilder {
   ) -> Result<(), AnyError> {
     let file_bytes = std::fs::read(path)
       .with_context(|| format!("Reading {}", path.display()))?;
-    self.add_file_with_data_inner(path, file_bytes)
+    self.add_file_with_data_inner(path, file_bytes, VfsFileSubDataKind::Raw)
   }
 
   pub fn add_file_with_data(
     &mut self,
     path: &Path,
     data: Vec<u8>,
+    sub_data_kind: VfsFileSubDataKind,
   ) -> Result<(), AnyError> {
     let target_path = canonicalize_path(path)?;
     if target_path != path {
       self.add_symlink(path, &target_path)?;
     }
-    self.add_file_with_data_inner(&target_path, data)
+    self.add_file_with_data_inner(&target_path, data, sub_data_kind)
   }
 
   fn add_file_with_data_inner(
     &mut self,
     path: &Path,
     data: Vec<u8>,
+    sub_data_kind: VfsFileSubDataKind,
   ) -> Result<(), AnyError> {
     log::debug!("Adding file '{}'", path.display());
     let checksum = util::checksum::gen(&[&data]);
@@ -251,18 +266,32 @@ impl VfsBuilder {
 
     let dir = self.add_dir(path.parent().unwrap())?;
     let name = path.file_name().unwrap().to_string_lossy();
-    let data_len = data.len();
+    let offset_and_len = OffsetWithLength {
+      offset,
+      len: data.len() as u64,
+    };
     match dir.entries.binary_search_by(|e| e.name().cmp(&name)) {
-      Ok(_) => {
-        // already added, just ignore
+      Ok(index) => {
+        let entry = &mut dir.entries[index];
+        match entry {
+          VfsEntry::File(virtual_file) => match sub_data_kind {
+            VfsFileSubDataKind::Raw => {
+              virtual_file.offset = offset_and_len;
+            }
+            VfsFileSubDataKind::ModuleGraph => {
+              virtual_file.module_graph_offset = offset_and_len;
+            }
+          },
+          VfsEntry::Dir(_) | VfsEntry::Symlink(_) => unreachable!(),
+        }
       }
       Err(insert_index) => {
         dir.entries.insert(
           insert_index,
           VfsEntry::File(VirtualFile {
             name: name.to_string(),
-            offset,
-            len: data.len() as u64,
+            offset: offset_and_len,
+            module_graph_offset: offset_and_len,
           }),
         );
       }
@@ -271,7 +300,7 @@ impl VfsBuilder {
     // new file, update the list of files
     if self.current_offset == offset {
       self.files.push(data);
-      self.current_offset += data_len as u64;
+      self.current_offset += offset_and_len.len;
     }
 
     Ok(())
@@ -302,7 +331,7 @@ impl VfsBuilder {
     let dir = self.add_dir(path.parent().unwrap())?;
     let name = path.file_name().unwrap().to_string_lossy();
     match dir.entries.binary_search_by(|e| e.name().cmp(&name)) {
-      Ok(_) => unreachable!(),
+      Ok(_) => Ok(()), // previously inserted
       Err(insert_index) => {
         dir.entries.insert(
           insert_index,
@@ -314,9 +343,9 @@ impl VfsBuilder {
               .collect::<Vec<_>>(),
           }),
         );
+        Ok(())
       }
     }
-    Ok(())
   }
 
   pub fn into_dir_and_files(self) -> (VirtualDirectory, Vec<Vec<u8>>) {
@@ -376,7 +405,7 @@ impl<'a> VfsEntryRef<'a> {
         mtime: None,
         ctime: None,
         blksize: 0,
-        size: file.len,
+        size: file.offset.len,
         dev: 0,
         ino: 0,
         mode: 0,
@@ -445,21 +474,41 @@ impl VfsEntry {
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct VirtualDirectory {
+  #[serde(rename = "n")]
   pub name: String,
   // should be sorted by name
+  #[serde(rename = "e")]
   pub entries: Vec<VfsEntry>,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+pub struct OffsetWithLength {
+  #[serde(rename = "o")]
+  pub offset: u64,
+  #[serde(rename = "l")]
+  pub len: u64,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct VirtualFile {
+  #[serde(rename = "n")]
   pub name: String,
-  pub offset: u64,
-  pub len: u64,
+  #[serde(rename = "o")]
+  pub offset: OffsetWithLength,
+  /// Offset file to use for module loading when it differs from the
+  /// raw file. Often this will be the same offset as above for data
+  /// such as JavaScript files, but for TypeScript files the `offset`
+  /// will be the original raw bytes when included as an asset and this
+  /// offset will be to the transpiled JavaScript source.
+  #[serde(rename = "m")]
+  pub module_graph_offset: OffsetWithLength,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct VirtualSymlink {
+  #[serde(rename = "n")]
   pub name: String,
+  #[serde(rename = "p")]
   pub dest_parts: Vec<String>,
 }
 
@@ -603,7 +652,7 @@ impl FileBackedVfsFile {
         Ok(pos)
       }
       SeekFrom::End(offset) => {
-        if offset < 0 && -offset as u64 > self.file.len {
+        if offset < 0 && -offset as u64 > self.file.offset.len {
           let msg = "An attempt was made to move the file pointer before the beginning of the file.";
           Err(
             std::io::Error::new(std::io::ErrorKind::PermissionDenied, msg)
@@ -612,9 +661,9 @@ impl FileBackedVfsFile {
         } else {
           let mut current_pos = self.pos.lock();
           *current_pos = if offset >= 0 {
-            self.file.len - (offset as u64)
+            self.file.offset.len - (offset as u64)
           } else {
-            self.file.len + (-offset as u64)
+            self.file.offset.len + (-offset as u64)
           };
           Ok(*current_pos)
         }
@@ -634,37 +683,45 @@ impl FileBackedVfsFile {
   }
 
   fn read_to_buf(&self, buf: &mut [u8]) -> FsResult<usize> {
-    let pos = {
+    let read_pos = {
       let mut pos = self.pos.lock();
       let read_pos = *pos;
       // advance the position due to the read
-      *pos = std::cmp::min(self.file.len, *pos + buf.len() as u64);
+      *pos = std::cmp::min(self.file.offset.len, *pos + buf.len() as u64);
       read_pos
     };
     self
       .vfs
-      .read_file(&self.file, pos, buf)
+      .read_file(&self.file, read_pos, buf)
       .map_err(|err| err.into())
   }
 
-  fn read_to_end(&self) -> FsResult<Vec<u8>> {
-    let pos = {
+  fn read_to_end(&self) -> FsResult<Cow<'static, [u8]>> {
+    let read_pos = {
       let mut pos = self.pos.lock();
       let read_pos = *pos;
       // todo(dsherret): should this always set it to the end of the file?
-      if *pos < self.file.len {
+      if *pos < self.file.offset.len {
         // advance the position due to the read
-        *pos = self.file.len;
+        *pos = self.file.offset.len;
       }
       read_pos
     };
-    if pos > self.file.len {
-      return Ok(Vec::new());
+    if read_pos > self.file.offset.len {
+      return Ok(Cow::Borrowed(&[]));
     }
-    let size = (self.file.len - pos) as usize;
-    let mut buf = vec![0; size];
-    self.vfs.read_file(&self.file, pos, &mut buf)?;
-    Ok(buf)
+    if read_pos == 0 {
+      Ok(
+        self
+          .vfs
+          .read_file_all(&self.file, VfsFileSubDataKind::Raw)?,
+      )
+    } else {
+      let size = (self.file.offset.len - read_pos) as usize;
+      let mut buf = vec![0; size];
+      self.vfs.read_file(&self.file, read_pos, &mut buf)?;
+      Ok(Cow::Owned(buf))
+    }
   }
 }
 
@@ -702,10 +759,10 @@ impl deno_io::fs::File for FileBackedVfsFile {
     Err(FsError::NotSupported)
   }
 
-  fn read_all_sync(self: Rc<Self>) -> FsResult<Vec<u8>> {
+  fn read_all_sync(self: Rc<Self>) -> FsResult<Cow<'static, [u8]>> {
     self.read_to_end()
   }
-  async fn read_all_async(self: Rc<Self>) -> FsResult<Vec<u8>> {
+  async fn read_all_async(self: Rc<Self>) -> FsResult<Cow<'static, [u8]>> {
     let inner = (*self).clone();
     tokio::task::spawn_blocking(move || inner.read_to_end()).await?
   }
@@ -878,8 +935,13 @@ impl FileBackedVfs {
   pub fn read_file_all(
     &self,
     file: &VirtualFile,
+    sub_data_kind: VfsFileSubDataKind,
   ) -> std::io::Result<Cow<'static, [u8]>> {
-    let read_range = self.get_read_range(file, 0, file.len)?;
+    let read_len = match sub_data_kind {
+      VfsFileSubDataKind::Raw => file.offset.len,
+      VfsFileSubDataKind::ModuleGraph => file.module_graph_offset.len,
+    };
+    let read_range = self.get_read_range(file, sub_data_kind, 0, read_len)?;
     match &self.vfs_data {
       Cow::Borrowed(data) => Ok(Cow::Borrowed(&data[read_range])),
       Cow::Owned(data) => Ok(Cow::Owned(data[read_range].to_vec())),
@@ -892,26 +954,38 @@ impl FileBackedVfs {
     pos: u64,
     buf: &mut [u8],
   ) -> std::io::Result<usize> {
-    let read_range = self.get_read_range(file, pos, buf.len() as u64)?;
-    buf.copy_from_slice(&self.vfs_data[read_range]);
-    Ok(buf.len())
+    let read_range = self.get_read_range(
+      file,
+      VfsFileSubDataKind::Raw,
+      pos,
+      buf.len() as u64,
+    )?;
+    let read_len = read_range.len();
+    buf[..read_len].copy_from_slice(&self.vfs_data[read_range]);
+    Ok(read_len)
   }
 
   fn get_read_range(
     &self,
     file: &VirtualFile,
+    sub_data_kind: VfsFileSubDataKind,
     pos: u64,
     len: u64,
   ) -> std::io::Result<Range<usize>> {
-    let data = &self.vfs_data;
-    let start = self.fs_root.start_file_offset + file.offset + pos;
-    let end = start + len;
-    if end > data.len() as u64 {
+    let file_offset_and_len = match sub_data_kind {
+      VfsFileSubDataKind::Raw => file.offset,
+      VfsFileSubDataKind::ModuleGraph => file.module_graph_offset,
+    };
+    if pos > file_offset_and_len.len {
       return Err(std::io::Error::new(
         std::io::ErrorKind::UnexpectedEof,
         "unexpected EOF",
       ));
     }
+    let file_offset =
+      self.fs_root.start_file_offset + file_offset_and_len.offset;
+    let start = file_offset + pos;
+    let end = file_offset + std::cmp::min(pos + len, file_offset_and_len.len);
     Ok(start as usize..end as usize)
   }
 
@@ -950,7 +1024,13 @@ mod test {
   #[track_caller]
   fn read_file(vfs: &FileBackedVfs, path: &Path) -> String {
     let file = vfs.file_entry(path).unwrap();
-    String::from_utf8(vfs.read_file_all(file).unwrap().into_owned()).unwrap()
+    String::from_utf8(
+      vfs
+        .read_file_all(file, VfsFileSubDataKind::Raw)
+        .unwrap()
+        .into_owned(),
+    )
+    .unwrap()
   }
 
   #[test]
@@ -963,23 +1043,40 @@ mod test {
     let src_path = src_path.to_path_buf();
     let mut builder = VfsBuilder::new(src_path.clone()).unwrap();
     builder
-      .add_file_with_data_inner(&src_path.join("a.txt"), "data".into())
+      .add_file_with_data_inner(
+        &src_path.join("a.txt"),
+        "data".into(),
+        VfsFileSubDataKind::Raw,
+      )
       .unwrap();
     builder
-      .add_file_with_data_inner(&src_path.join("b.txt"), "data".into())
+      .add_file_with_data_inner(
+        &src_path.join("b.txt"),
+        "data".into(),
+        VfsFileSubDataKind::Raw,
+      )
       .unwrap();
     assert_eq!(builder.files.len(), 1); // because duplicate data
     builder
-      .add_file_with_data_inner(&src_path.join("c.txt"), "c".into())
+      .add_file_with_data_inner(
+        &src_path.join("c.txt"),
+        "c".into(),
+        VfsFileSubDataKind::Raw,
+      )
       .unwrap();
     builder
       .add_file_with_data_inner(
         &src_path.join("sub_dir").join("d.txt"),
         "d".into(),
+        VfsFileSubDataKind::Raw,
       )
       .unwrap();
     builder
-      .add_file_with_data_inner(&src_path.join("e.txt"), "e".into())
+      .add_file_with_data_inner(
+        &src_path.join("e.txt"),
+        "e".into(),
+        VfsFileSubDataKind::Raw,
+      )
       .unwrap();
     builder
       .add_symlink(
@@ -1150,6 +1247,7 @@ mod test {
       .add_file_with_data_inner(
         temp_path.join("a.txt").as_path(),
         "0123456789".to_string().into_bytes(),
+        VfsFileSubDataKind::Raw,
       )
       .unwrap();
     let (dest_path, virtual_fs) = into_virtual_fs(builder, &temp_dir);

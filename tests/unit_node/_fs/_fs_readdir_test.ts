@@ -53,6 +53,29 @@ Deno.test({
   },
 });
 
+Deno.test("ASYNC: read dirs recursively", async () => {
+  const dir = Deno.makeTempDirSync();
+  Deno.writeTextFileSync(join(dir, "file1.txt"), "hi");
+  Deno.mkdirSync(join(dir, "sub"));
+  Deno.writeTextFileSync(join(dir, "sub", "file2.txt"), "hi");
+
+  try {
+    const files = await new Promise<string[]>((resolve, reject) => {
+      readdir(dir, { recursive: true }, (err, files) => {
+        if (err) reject(err);
+        resolve(files.map((f) => f.toString()));
+      });
+    });
+
+    assertEqualsArrayAnyOrder(
+      files,
+      ["file1.txt", "sub", join("sub", "file2.txt")],
+    );
+  } finally {
+    Deno.removeSync(dir, { recursive: true });
+  }
+});
+
 Deno.test({
   name: "SYNC: reading empty the directory",
   fn() {
@@ -73,6 +96,26 @@ Deno.test({
       ["file1.txt", "some_dir", "file2.txt"],
     );
   },
+});
+
+Deno.test("SYNC: read dirs recursively", () => {
+  const dir = Deno.makeTempDirSync();
+  Deno.writeTextFileSync(join(dir, "file1.txt"), "hi");
+  Deno.mkdirSync(join(dir, "sub"));
+  Deno.writeTextFileSync(join(dir, "sub", "file2.txt"), "hi");
+
+  try {
+    const files = readdirSync(dir, { recursive: true }).map((f) =>
+      f.toString()
+    );
+
+    assertEqualsArrayAnyOrder(
+      files,
+      ["file1.txt", "sub", join("sub", "file2.txt")],
+    );
+  } finally {
+    Deno.removeSync(dir, { recursive: true });
+  }
 });
 
 Deno.test("[std/node/fs] readdir callback isn't called twice if error is thrown", async () => {

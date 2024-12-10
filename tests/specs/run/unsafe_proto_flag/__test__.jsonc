@@ -1,5 +1,5 @@
 {
-  "args": "run -A --unstable-unsafe-proto unsafe_proto/main.js",
-  "output": "unsafe_proto/main_with_unsafe_proto_flag.out",
+  "args": "run -A --unstable-unsafe-proto main.js",
+  "output": "main_with_unsafe_proto_flag.out",
   "exitCode": 0
 }
