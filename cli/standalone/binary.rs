@@ -368,6 +368,16 @@ pub fn extract_standalone(
   }))
 }
 
+pub struct WriteBinOptions<'a> {
+  pub writer: File,
+  pub display_output_filename: &'a str,
+  pub graph: &'a ModuleGraph,
+  pub root_dir_url: StandaloneRelativeFileBaseUrl<'a>,
+  pub entrypoint: &'a ModuleSpecifier,
+  pub include_files: &'a [ModuleSpecifier],
+  pub compile_flags: &'a CompileFlags,
+}
+
 pub struct DenoCompileBinaryWriter<'a> {
   cjs_tracker: &'a CjsTracker,
   cli_options: &'a CliOptions,
@@ -408,19 +418,14 @@ impl<'a> DenoCompileBinaryWriter<'a> {
 
   pub async fn write_bin(
     &self,
-    writer: File,
-    display_output_filename: &str,
-    graph: &ModuleGraph,
-    root_dir_url: StandaloneRelativeFileBaseUrl<'_>,
-    entrypoint: &ModuleSpecifier,
-    include_files: &[ModuleSpecifier],
-    compile_flags: &CompileFlags,
+    options: WriteBinOptions<'_>,
   ) -> Result<(), AnyError> {
     // Select base binary based on target
-    let mut original_binary = self.get_base_binary(compile_flags).await?;
+    let mut original_binary =
+      self.get_base_binary(options.compile_flags).await?;
 
-    if compile_flags.no_terminal {
-      let target = compile_flags.resolve_target();
+    if options.compile_flags.no_terminal {
+      let target = options.compile_flags.resolve_target();
       if !target.contains("windows") {
         bail!(
           "The `--no-terminal` flag is only available when targeting Windows (current: {})",
@@ -430,8 +435,8 @@ impl<'a> DenoCompileBinaryWriter<'a> {
       set_windows_binary_to_gui(&mut original_binary)
         .context("Setting windows binary to GUI.")?;
     }
-    if compile_flags.icon.is_some() {
-      let target = compile_flags.resolve_target();
+    if options.compile_flags.icon.is_some() {
+      let target = options.compile_flags.resolve_target();
       if !target.contains("windows") {
         bail!(
           "The `--icon` flag is only available when targeting Windows (current: {})",
@@ -439,18 +444,7 @@ impl<'a> DenoCompileBinaryWriter<'a> {
         )
       }
     }
-    self
-      .write_standalone_binary(
-        writer,
-        display_output_filename,
-        original_binary,
-        graph,
-        root_dir_url,
-        entrypoint,
-        include_files,
-        compile_flags,
-      )
-      .await
+    self.write_standalone_binary(options, original_binary).await
   }
 
   async fn get_base_binary(
@@ -555,15 +549,18 @@ impl<'a> DenoCompileBinaryWriter<'a> {
   #[allow(clippy::too_many_arguments)]
   async fn write_standalone_binary(
     &self,
-    writer: File,
-    display_output_filename: &str,
+    options: WriteBinOptions<'_>,
     original_bin: Vec<u8>,
-    graph: &ModuleGraph,
-    root_dir_url: StandaloneRelativeFileBaseUrl<'_>,
-    entrypoint: &ModuleSpecifier,
-    include_files: &[ModuleSpecifier],
-    compile_flags: &CompileFlags,
   ) -> Result<(), AnyError> {
+    let WriteBinOptions {
+      writer,
+      display_output_filename,
+      graph,
+      root_dir_url,
+      entrypoint,
+      include_files,
+      compile_flags,
+    } = options;
     let ca_data = match self.cli_options.ca_data() {
       Some(CaData::File(ca_file)) => Some(
         std::fs::read(ca_file).with_context(|| format!("Reading {ca_file}"))?,

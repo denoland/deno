@@ -382,7 +382,7 @@ pub fn output_vfs(builder: &VfsBuilder, executable_name: &str) {
         children: match self {
           EntryOutput::All => vec![DisplayTreeNode::from_text("*".to_string())],
           EntryOutput::Subset(vec) => vec
-            .into_iter()
+            .iter()
             .map(|e| e.output.as_display_tree(e.name.to_string()))
             .collect(),
           EntryOutput::File | EntryOutput::Symlink(_) => vec![],

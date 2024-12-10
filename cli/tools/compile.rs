@@ -6,6 +6,7 @@ use crate::args::Flags;
 use crate::factory::CliFactory;
 use crate::http_util::HttpClientProvider;
 use crate::standalone::binary::StandaloneRelativeFileBaseUrl;
+use crate::standalone::binary::WriteBinOptions;
 use crate::standalone::is_standalone_binary;
 use deno_ast::MediaType;
 use deno_ast::ModuleSpecifier;
@@ -15,6 +16,7 @@ use deno_core::error::generic_error;
 use deno_core::error::AnyError;
 use deno_core::resolve_url_or_path;
 use deno_graph::GraphKind;
+use deno_path_util::url_from_file_path;
 use deno_terminal::colors;
 use rand::Rng;
 use std::path::Path;
@@ -89,7 +91,16 @@ pub async fn compile(
           .and_then(|p| ModuleSpecifier::from_directory_path(p).ok())
           .iter(),
       )
-      .chain(include_files.iter()),
+      .chain(include_files.iter())
+      .chain(
+        // sometimes the import map path is outside the root dir
+        cli_options
+          .workspace()
+          .to_import_map_path()
+          .ok()
+          .and_then(|p| p.and_then(|p| url_from_file_path(&p).ok()))
+          .iter(),
+      ),
   );
   log::debug!("Binary root dir: {}", root_dir_url);
   log::info!(
@@ -116,15 +127,18 @@ pub async fn compile(
   })?;
 
   let write_result = binary_writer
-    .write_bin(
-      file,
-      &output_path.file_name().unwrap().to_string_lossy(),
-      &graph,
-      StandaloneRelativeFileBaseUrl::from(&root_dir_url),
+    .write_bin(WriteBinOptions {
+      writer: file,
+      display_output_filename: &output_path
+        .file_name()
+        .unwrap()
+        .to_string_lossy(),
+      graph: &graph,
+      root_dir_url: StandaloneRelativeFileBaseUrl::from(&root_dir_url),
       entrypoint,
-      &include_files,
-      &compile_flags,
-    )
+      include_files: &include_files,
+      compile_flags: &compile_flags,
+    })
     .await
     .with_context(|| {
       format!(
