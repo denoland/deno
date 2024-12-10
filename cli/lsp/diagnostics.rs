@@ -1355,7 +1355,7 @@ fn diagnose_resolution(
     }
     // don't bother warning about sloppy import redirects from .js to .d.ts
     // because explaining how to fix this via a diagnostic involves using
-    // @deno-types and that's a bit complicated to explain
+    // @ts-types and that's a bit complicated to explain
     let is_sloppy_import_dts_redirect = doc_specifier.scheme() == "file"
       && doc.media_type().is_declaration()
       && !MediaType::from_specifier(specifier).is_declaration();
@@ -1523,7 +1523,7 @@ fn diagnose_dependency(
     .iter()
     .map(|i| documents::to_lsp_range(&i.specifier_range))
     .collect();
-  // TODO(nayeemrmn): This is a crude way of detecting `@deno-types` which has
+  // TODO(nayeemrmn): This is a crude way of detecting `@ts-types` which has
   // a different specifier and therefore needs a separate call to
   // `diagnose_resolution()`. It would be much cleaner if that were modelled as
   // a separate dependency: https://github.com/denoland/deno_graph/issues/247.
@@ -1540,7 +1540,7 @@ fn diagnose_dependency(
       snapshot,
       dependency_key,
       if dependency.maybe_code.is_none()
-        // If not @deno-types, diagnose the types if the code errored because
+        // If not @ts-types, diagnose the types if the code errored because
         // it's likely resolving into the node_modules folder, which might be
         // erroring correctly due to resolution only being for bundlers. Let this
         // fail at runtime if necessary, but don't bother erroring in the editor
@@ -1951,7 +1951,7 @@ let c: number = "a";
       &[(
         "a.ts",
         r#"
-        // @deno-types="bad.d.ts"
+        // @ts-types="bad.d.ts"
         import "bad.js";
         import "bad.js";
         "#,
@@ -2005,11 +2005,11 @@ let c: number = "a";
           "range": {
             "start": {
               "line": 1,
-              "character": 23
+              "character": 21
             },
             "end": {
               "line": 1,
-              "character": 33
+              "character": 31
             }
           },
           "severity": 1,
