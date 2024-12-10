@@ -1,0 +1,24 @@
+{
+  "tests": {
+    "program": {
+      "cwd": "./program",
+      "args": "lint --plugins=./plugin.ts source.ts",
+      "output": "program/log.out"
+    },
+    "statements": {
+      "cwd": "./statements",
+      "args": "lint --config=./statements/deno.json source.ts",
+      "output": "statement/log.out"
+    },
+    "expressions": {
+      "cwd": "./expressions",
+      "args": "lint --plugins=./plugin.ts source.ts",
+      "output": "expressions/log.out"
+    },
+    "literals": {
+      "cwd": "./literals",
+      "args": "lint --plugins=./plugin.ts source.ts",
+      "output": "literals/log.out"
+    }
+  }
+}

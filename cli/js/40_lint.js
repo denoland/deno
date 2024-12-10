@@ -2,20 +2,19 @@
 
 // @ts-check
 
-import exp from "constants";
 import { core } from "ext:core/mod.js";
-import { deno } from "../tsc/dts/typescript.d.ts";
 const {
   op_lint_get_rule,
   op_lint_get_source,
   op_lint_report,
 } = core.ops;
 
-/** @typedef {{ plugins: Array<{ name: string, rules: Record<string, Deno.LintRule}> }} LintState */
+/** @typedef {{ plugins: Deno.LintPlugin[], installedPlugins: Set<string> }} LintState */
 
 /** @type {LintState} */
 const state = {
   plugins: [],
+  installedPlugins: new Set(),
 };
 
 /** @implements {Deno.LintRuleContext} */
@@ -67,8 +66,10 @@ export class Context {
   }
 }
 
+/**
+ * @param {Deno.LintPlugin} plugin
+ */
 export function installPlugin(plugin) {
-  console.log("plugin", plugin);
   if (typeof plugin !== "object") {
     throw new Error("Linter plugin must be an object");
   }
@@ -78,27 +79,41 @@ export function installPlugin(plugin) {
   if (typeof plugin.rules !== "object") {
     throw new Error("Linter plugin rules must be an object");
   }
-  if (typeof state.plugins[plugin.name] !== "undefined") {
+  if (state.installedPlugins.has(plugin.name)) {
     throw new Error(`Linter plugin ${plugin.name} has already been registered`);
   }
-  state.plugins[plugin.name] = plugin.rules;
-  console.log("Installed plugin", plugin.name, plugin.rules);
+  state.plugins.push(plugin);
+  state.installedPlugins.add(plugin.name);
 }
 
 // Keep in sync with Rust
 /**
  * @enum {number}
  */
-const AstNodeId = {
+const AstType = {
   Invalid: 0,
   Program: 1,
 
   Import: 2,
+  ImportDecl: 3,
+  ExportDecl: 4,
+  ExportNamed: 5,
+  ExportDefaultDecl: 6,
+  ExportDefaultExpr: 7,
+  ExportAll: 8,
+  TSImportEquals: 9,
+  TSExportAssignment: 10,
+  TSNamespaceExport: 11,
 
   // Decls
   Class: 12,
   Fn: 13,
   Var: 14,
+  Using: 15,
+  TsInterface: 16,
+  TsTypeAlias: 17,
+  TsEnum: 18,
+  TsModule: 19,
 
   // Statements
   BlockStatement: 20,
@@ -136,28 +151,39 @@ const AstNodeId = {
   ConditionalExpression: 50,
   CallExpression: 51,
   NewExpression: 52,
-  SequenceExpression: 53,
-  Identifier: 54,
-  TemplateLiteral: 55,
-  TaggedTemplateExpression: 56,
-  ArrowFunctionExpression: 57,
-  Yield: 59,
-  MetaProperty: 60,
-  AwaitExpression: 61,
+  ParenthesisExpression: 53,
+  SequenceExpression: 54,
+  Identifier: 55,
+  TemplateLiteral: 56,
+  TaggedTemplateExpression: 57,
+  ArrowFunctionExpression: 58,
+  ClassExpr: 59,
+  Yield: 60,
+  MetaProperty: 61,
+  AwaitExpression: 62,
+  LogicalExpression: 63,
+  TSTypeAssertion: 64,
+  TSConstAssertion: 65,
+  TSNonNull: 66,
+  TSAs: 67,
+  TSInstantiation: 68,
+  TSSatisfies: 69,
+  PrivateIdentifier: 70,
+  OptChain: 71,
 
-  StringLiteral: 70,
-  BooleanLiteral: 71,
-  NullLiteral: 72,
-  NumericLiteral: 73,
-  BigInt: 74,
-  RegExpLiteral: 75,
+  StringLiteral: 72,
+  BooleanLiteral: 73,
+  NullLiteral: 74,
+  NumericLiteral: 75,
+  BigIntLiteral: 76,
+  RegExpLiteral: 77,
 
   // Custom
-  EmptyExpr: 82,
-  Spread: 83,
-  ObjProperty: 84,
-  VarDeclarator: 85,
-  CatchClause: 86,
+  EmptyExpr: 84,
+  Spread: 85,
+  ObjProperty: 86,
+  VarDeclarator: 87,
+  CatchClause: 88,
 
   // JSX
   // FIXME
@@ -175,51 +201,105 @@ const AstNodeId = {
   JSXSpreadAttribute: Infinity,
   JSXSpreadChild: Infinity,
   JSXText: Infinity,
+
+  ArrayPattern: 89,
+  AssignmentPattern: 90,
+  ObjectPattern: 91,
 };
 
-const _ID = Symbol.for("__astId");
+const AstNodeById = Object.keys(AstType);
 
-/** @implements {Deno.Program} */
-class Program {
-  type = /** @type {const} */ ("Program");
-  range;
-  get body() {
-    return [];
+/**
+ * @param {AstContext} ctx
+ * @param {number[]} ids
+ * @returns {any[]}
+ */
+function createChildNodes(ctx, ids) {
+  /** @type {any[]} */
+  const out = [];
+  for (let i = 0; i < ids.length; i++) {
+    const id = ids[i];
+    out.push(createAstNode(ctx, id));
   }
+
+  return out;
+}
+
+class BaseNode {
   #ctx;
+  #parentId;
+
+  get parent() {
+    return /** @type {*} */ (createAstNode(
+      this.#ctx,
+      this.#parentId,
+    ));
+  }
 
   /**
    * @param {AstContext} ctx
+   * @param {number} parentId
+   */
+  constructor(ctx, parentId) {
+    this.#ctx = ctx;
+    this.#parentId = parentId;
+  }
+}
+
+/** @implements {Deno.Program} */
+class Program extends BaseNode {
+  type = /** @type {const} */ ("Program");
+  range;
+  get body() {
+    return createChildNodes(this.#ctx, this.#childIds);
+  }
+
+  #ctx;
+  #childIds;
+
+  /**
+   * @param {AstContext} ctx
+   * @param {number} parentId
    * @param {Deno.Range} range
    * @param {Deno.Program["sourceType"]} sourceType
+   * @param {number[]} childIds
    */
-  constructor(ctx, range, sourceType) {
+  constructor(ctx, parentId, range, sourceType, childIds) {
+    super(ctx, parentId);
     this.#ctx = ctx;
     this.range = range;
     this.sourceType = sourceType;
+    this.#childIds = childIds;
   }
 }
 
 /** @implements {Deno.BlockStatement} */
-class BlockStatement {
+class BlockStatement extends BaseNode {
   type = /** @type {const} */ ("BlockStatement");
-  body = [];
+  get body() {
+    return createChildNodes(this.#ctx, this.#childIds);
+  }
   range;
 
   #ctx;
+  #childIds;
 
   /**
    * @param {AstContext} ctx
+   * @param {number} parentId
    * @param {Deno.Range} range
+   * @param {number[]} childIds
    */
-  constructor(ctx, range) {
+  constructor(ctx, parentId, range, childIds) {
+    super(ctx, parentId);
     this.#ctx = ctx;
     this.range = range;
+    this.#childIds = childIds;
   }
 }
 
 /** @implements {Deno.BreakStatement} */
-class BreakStatement {
+class BreakStatement extends BaseNode {
   type = /** @type {const} */ ("BreakStatement");
   get label() {
     if (this.#labelId === 0) return null;
@@ -235,10 +315,13 @@ class BreakStatement {
 
   /**
    * @param {AstContext} ctx
+   * @param {number} parentId
    * @param {Deno.Range} range
    * @param {number} labelId
    */
-  constructor(ctx, range, labelId) {
+  constructor(ctx, parentId, range, labelId) {
+    super(ctx, parentId);
+
     this.#ctx = ctx;
     this.#labelId = labelId;
     this.range = range;
@@ -246,7 +329,7 @@ class BreakStatement {
 }
 
 /** @implements {Deno.ContinueStatement} */
-class ContinueStatement {
+class ContinueStatement extends BaseNode {
   type = /** @type {const} */ ("ContinueStatement");
   range;
   get label() {
@@ -261,10 +344,12 @@ class ContinueStatement {
 
   /**
    * @param {AstContext} ctx
+   * @param {number} parentId
    * @param {Deno.Range} range
    * @param {number} labelId
    */
-  constructor(ctx, range, labelId) {
+  constructor(ctx, parentId, range, labelId) {
+    super(ctx, parentId);
     this.#ctx = ctx;
     this.#labelId = labelId;
     this.range = range;
@@ -272,24 +357,23 @@ class ContinueStatement {
 }
 
 /** @implements {Deno.DebuggerStatement} */
-class DebuggerStatement {
+class DebuggerStatement extends BaseNode {
   type = /** @type {const} */ ("DebuggerStatement");
   range;
 
-  #ctx;
-
   /**
    * @param {AstContext} ctx
+   * @param {number} parentId
    * @param {Deno.Range} range
    */
-  constructor(ctx, range) {
-    this.#ctx = ctx;
+  constructor(ctx, parentId, range) {
+    super(ctx, parentId);
     this.range = range;
   }
 }
 
 /** @implements {Deno.DoWhileStatement} */
-class DoWhileStatement {
+class DoWhileStatement extends BaseNode {
   type = /** @type {const} */ ("DoWhileStatement");
   range;
   get test() {
@@ -311,11 +395,14 @@ class DoWhileStatement {
 
   /**
    * @param {AstContext} ctx
+   * @param {number} parentId
    * @param {Deno.Range} range
    * @param {number} exprId
    * @param {number} bodyId
    */
-  constructor(ctx, range, exprId, bodyId) {
+  constructor(ctx, parentId, range, exprId, bodyId) {
+    super(ctx, parentId);
+
     this.#ctx = ctx;
     this.#exprId = exprId;
     this.#bodyId = bodyId;
@@ -324,7 +411,7 @@ class DoWhileStatement {
 }
 
 /** @implements {Deno.ExpressionStatement} */
-class ExpressionStatement {
+class ExpressionStatement extends BaseNode {
   type = /** @type {const} */ ("ExpressionStatement");
   range;
   get expression() {
@@ -339,10 +426,13 @@ class ExpressionStatement {
 
   /**
    * @param {AstContext} ctx
+   * @param {number} parentId
    * @param {Deno.Range} range
    * @param {number} exprId
    */
-  constructor(ctx, range, exprId) {
+  constructor(ctx, parentId, range, exprId) {
+    super(ctx, parentId);
+
     this.#ctx = ctx;
     this.#exprId = exprId;
     this.range = range;
@@ -350,7 +440,7 @@ class ExpressionStatement {
 }
 
 /** @implements {Deno.ForInStatement} */
-class ForInStatement {
+class ForInStatement extends BaseNode {
   type = /** @type {const} */ ("ForInStatement");
   range;
   get left() {
@@ -379,12 +469,15 @@ class ForInStatement {
 
   /**
    * @param {AstContext} ctx
+   * @param {number} parentId
    * @param {Deno.Range} range
    * @param {number} leftId
    * @param {number} rightId
    * @param {number} bodyId
    */
-  constructor(ctx, range, leftId, rightId, bodyId) {
+  constructor(ctx, parentId, range, leftId, rightId, bodyId) {
+    super(ctx, parentId);
+
     this.#ctx = ctx;
     this.#leftId = leftId;
     this.#rightId = rightId;
@@ -394,7 +487,7 @@ class ForInStatement {
 }
 
 /** @implements {Deno.ForOfStatement} */
-class ForOfStatement {
+class ForOfStatement extends BaseNode {
   type = /** @type {const} */ ("ForOfStatement");
   range;
   get left() {
@@ -425,13 +518,16 @@ class ForOfStatement {
 
   /**
    * @param {AstContext} ctx
+   * @param {number} parentId
    * @param {Deno.Range} range
    * @param {boolean} isAwait
    * @param {number} leftId
    * @param {number} rightId
    * @param {number} bodyId
    */
-  constructor(ctx, range, isAwait, leftId, rightId, bodyId) {
+  constructor(ctx, parentId, range, isAwait, leftId, rightId, bodyId) {
+    super(ctx, parentId);
+
     this.#ctx = ctx;
     this.#leftId = leftId;
     this.#rightId = rightId;
@@ -442,7 +538,7 @@ class ForOfStatement {
 }
 
 /** @implements {Deno.ForStatement} */
-class ForStatement {
+class ForStatement extends BaseNode {
   type = /** @type {const} */ ("ForStatement");
   range;
   get init() {
@@ -482,13 +578,16 @@ class ForStatement {
 
   /**
    * @param {AstContext} ctx
+   * @param {number} parentId
    * @param {Deno.Range} range
    * @param {number} initId
    * @param {number} testId
    * @param {number} updateId
    * @param {number} bodyId
    */
-  constructor(ctx, range, initId, testId, updateId, bodyId) {
+  constructor(ctx, parentId, range, initId, testId, updateId, bodyId) {
+    super(ctx, parentId);
+
     this.#ctx = ctx;
     this.#initId = initId;
     this.#testId = testId;
@@ -499,7 +598,7 @@ class ForStatement {
 }
 
 /** @implements {Deno.IfStatement} */
-class IfStatement {
+class IfStatement extends BaseNode {
   type = /** @type {const} */ ("IfStatement");
   range;
   get test() {
@@ -529,12 +628,15 @@ class IfStatement {
 
   /**
    * @param {AstContext} ctx
+   * @param {number} parentId
    * @param {Deno.Range} range
    * @param {number} testId
    * @param {number} updateId
    * @param {number} alternateId
    */
-  constructor(ctx, range, testId, updateId, alternateId) {
+  constructor(ctx, parentId, range, testId, updateId, alternateId) {
+    super(ctx, parentId);
+
     this.#ctx = ctx;
     this.#testId = testId;
     this.#consequentId = updateId;
@@ -544,7 +646,7 @@ class IfStatement {
 }
 
 /** @implements {Deno.LabeledStatement} */
-class LabeledStatement {
+class LabeledStatement extends BaseNode {
   type = /** @type {const} */ ("LabeledStatement");
   range;
   get label() {
@@ -566,11 +668,14 @@ class LabeledStatement {
 
   /**
    * @param {AstContext} ctx
+   * @param {number} parentId
    * @param {Deno.Range} range
    * @param {number} testId
    * @param {number} bodyId
    */
-  constructor(ctx, range, testId, bodyId) {
+  constructor(ctx, parentId, range, testId, bodyId) {
+    super(ctx, parentId);
+
     this.#ctx = ctx;
     this.#labelId = testId;
     this.#bodyId = bodyId;
@@ -579,7 +684,7 @@ class LabeledStatement {
 }
 
 /** @implements {Deno.ReturnStatement} */
-class ReturnStatement {
+class ReturnStatement extends BaseNode {
   type = /** @type {const} */ ("ReturnStatement");
   range;
   get argument() {
@@ -595,10 +700,13 @@ class ReturnStatement {
 
   /**
    * @param {AstContext} ctx
+   * @param {number} parentId
    * @param {Deno.Range} range
    * @param {number} argId
    */
-  constructor(ctx, range, argId) {
+  constructor(ctx, parentId, range, argId) {
+    super(ctx, parentId);
+
     this.#ctx = ctx;
     this.#exprId = argId;
     this.range = range;
@@ -606,7 +714,7 @@ class ReturnStatement {
 }
 
 /** @implements {Deno.SwitchStatement} */
-class SwitchStatement {
+class SwitchStatement extends BaseNode {
   type = /** @type {const} */ ("SwitchStatement");
   range;
   get discriminant() {
@@ -624,10 +732,13 @@ class SwitchStatement {
 
   /**
    * @param {AstContext} ctx
+   * @param {number} parentId
    * @param {Deno.Range} range
    * @param {number} discriminantId
    */
-  constructor(ctx, range, discriminantId) {
+  constructor(ctx, parentId, range, discriminantId) {
+    super(ctx, parentId);
+
     this.#ctx = ctx;
     this.#discriminantId = discriminantId;
     this.range = range;
@@ -635,7 +746,7 @@ class SwitchStatement {
 }
 
 /** @implements {Deno.ThrowStatement} */
-class ThrowStatement {
+class ThrowStatement extends BaseNode {
   type = /** @type {const} */ ("ThrowStatement");
   range;
   get argument() {
@@ -650,10 +761,13 @@ class ThrowStatement {
 
   /**
    * @param {AstContext} ctx
+   * @param {number} parentId
    * @param {Deno.Range} range
    * @param {number} argId
    */
-  constructor(ctx, range, argId) {
+  constructor(ctx, parentId, range, argId) {
+    super(ctx, parentId);
+
     this.#ctx = ctx;
     this.#argId = argId;
     this.range = range;
@@ -661,7 +775,7 @@ class ThrowStatement {
 }
 
 /** @implements {Deno.TryStatement} */
-class TryStatement {
+class TryStatement extends BaseNode {
   type = /** @type {const} */ ("TryStatement");
   range;
   get block() {
@@ -692,12 +806,15 @@ class TryStatement {
 
   /**
    * @param {AstContext} ctx
+   * @param {number} parentId
    * @param {Deno.Range} range
    * @param {number} blockId
    * @param {number} finalizerId
    * @param {number} handlerId
    */
-  constructor(ctx, range, blockId, finalizerId, handlerId) {
+  constructor(ctx, parentId, range, blockId, finalizerId, handlerId) {
+    super(ctx, parentId);
+
     this.#ctx = ctx;
     this.#blockId = blockId;
     this.#finalizerId = finalizerId;
@@ -707,7 +824,7 @@ class TryStatement {
 }
 
 /** @implements {Deno.WhileStatement} */
-class WhileStatement {
+class WhileStatement extends BaseNode {
   type = /** @type {const} */ ("WhileStatement");
   range;
   get test() {
@@ -729,11 +846,14 @@ class WhileStatement {
 
   /**
    * @param {AstContext} ctx
+   * @param {number} parentId
    * @param {Deno.Range} range
    * @param {number} testId
    * @param {number} bodyId
    */
-  constructor(ctx, range, testId, bodyId) {
+  constructor(ctx, parentId, range, testId, bodyId) {
+    super(ctx, parentId);
+
     this.#ctx = ctx;
     this.#testId = testId;
     this.#bodyId = bodyId;
@@ -779,64 +899,100 @@ class WithStatement {
 // Expressions
 
 /** @implements {Deno.ArrayExpression} */
-class ArrayExpression {
+class ArrayExpression extends BaseNode {
   type = /** @type {const} */ ("ArrayExpression");
   range;
   get elements() {
-    return []; // FIXME
+    return createChildNodes(this.#ctx, this.#elemIds);
   }
 
   #ctx;
+  #elemIds;
 
   /**
    * @param {AstContext} ctx
+   * @param {number} parentId
    * @param {Deno.Range} range
+   * @param {number[]} elemIds
    */
-  constructor(ctx, range) {
+  constructor(ctx, parentId, range, elemIds) {
+    super(ctx, parentId);
+
     this.#ctx = ctx;
     this.range = range;
+    this.#elemIds = elemIds;
   }
 }
 
 /** @implements {Deno.ArrowFunctionExpression} */
-class ArrowFunctionExpression {
+class ArrowFunctionExpression extends BaseNode {
   type = /** @type {const} */ ("ArrowFunctionExpression");
   range;
   async = false;
   generator = false;
 
   get body() {
-    return /** @type {Deno.BlockStatement| Deno.Expression} */ (createAstNode(
+    return /** @type {*} */ (createAstNode(
       this.#ctx,
       this.#bodyId,
     ));
   }
 
   get params() {
-    return []; // FIXME
+    return createChildNodes(this.#ctx, this.#paramIds);
   }
 
   get returnType() {
-    return null; // FIXME
+    if (this.#returnTypeId === 0) return null;
+    return /** @type {*} */ (createAstNode(
+      this.#ctx,
+      this.#returnTypeId,
+    ));
   }
 
   get typeParameters() {
-    return null; // FIXME
+    if (this.#typeParamId === 0) return null;
+    return /** @type {*} */ (createAstNode(
+      this.#ctx,
+      this.#typeParamId,
+    ));
   }
 
   #ctx;
   #bodyId;
+  #typeParamId;
+  #paramIds;
+  #returnTypeId;
 
   /**
    * @param {AstContext} ctx
+   * @param {number} parentId
    * @param {Deno.Range} range
    * @param {boolean} isAsync
    * @param {boolean} isGenerator
+   * @param {number} typeParamId
+   * @param {number[]} paramIds
    * @param {number} bodyId
+   * @param {number} returnTypeId
    */
-  constructor(ctx, range, isAsync, isGenerator, bodyId) {
+  constructor(
+    ctx,
+    parentId,
+    range,
+    isAsync,
+    isGenerator,
+    typeParamId,
+    paramIds,
+    bodyId,
+    returnTypeId,
+  ) {
+    super(ctx, parentId);
+
     this.#ctx = ctx;
     this.#bodyId = bodyId;
+    this.#typeParamId = typeParamId;
+    this.#paramIds = paramIds;
+    this.#returnTypeId = returnTypeId;
     this.asnyc = isAsync;
     this.generator = isGenerator;
     this.range = range;
@@ -1045,7 +1201,7 @@ function getBinaryOperator(n) {
 }
 
 /** @implements {Deno.CallExpression} */
-class CallExpression {
+class CallExpression extends BaseNode {
   type = /** @type {const} */ ("CallExpression");
   range;
   get callee() {
@@ -1055,26 +1211,36 @@ class CallExpression {
     ));
   }
   get arguments() {
-    return []; // FIXME
+    return createChildNodes(this.#ctx, this.#argumentIds);
   }
   get typeArguments() {
-    return null; // FIXME
+    if (this.#typeArgId === 0) return null;
+    return createAstNode(this.#ctx, this.#typeArgId);
   }
 
   optional = false; // FIXME
 
   #ctx;
   #calleeId;
+  #typeArgId;
+  #argumentIds;
 
   /**
    * @param {AstContext} ctx
+   * @param {number} parentId
    * @param {Deno.Range} range
    * @param {number} calleeId
+   * @param {number} typeArgId
+   * @param {number[]} argumentIds
    */
-  constructor(ctx, range, calleeId) {
+  constructor(ctx, parentId, range, calleeId, typeArgId, argumentIds) {
+    super(ctx, parentId);
+
     this.#ctx = ctx;
     this.#calleeId = calleeId;
     this.range = range;
+    this.#typeArgId = typeArgId;
+    this.#argumentIds = argumentIds;
   }
 }
 
@@ -1157,7 +1323,7 @@ class FunctionExpression {
 }
 
 /** @implements {Deno.Identifier} */
-class Identifier {
+class Identifier extends BaseNode {
   type = /** @type {const} */ ("Identifier");
   range;
   name = "";
@@ -1166,10 +1332,13 @@ class Identifier {
 
   /**
    * @param {AstContext} ctx
+   * @param {number} parentId
    * @param {Deno.Range} range
    * @param {number} nameId
    */
-  constructor(ctx, range, nameId) {
+  constructor(ctx, parentId, range, nameId) {
+    super(ctx, parentId);
+
     this.#ctx = ctx;
     this.name = getString(ctx, nameId);
     this.range = range;
@@ -1231,17 +1400,17 @@ function getLogicalOperator(n) {
 }
 
 /** @implements {Deno.MemberExpression} */
-class MemberExpression {
+class MemberExpression extends BaseNode {
   type = /** @type {const} */ ("MemberExpression");
   range;
   get object() {
-    return /** @type {Deno.Expression} */ (createAstNode(
+    return /** @type {*} */ (createAstNode(
       this.#ctx,
       this.#objId,
     ));
   }
   get property() {
-    return /** @type {Deno.Expression | Deno.Identifier | Deno.PrivateIdentifier} */ (createAstNode(
+    return /** @type {*} */ (createAstNode(
       this.#ctx,
       this.#propId,
     ));
@@ -1255,14 +1424,17 @@ class MemberExpression {
 
   /**
    * @param {AstContext} ctx
+   * @param {number} parentId
    * @param {Deno.Range} range
    * @param {number} flags
    * @param {number} objId
    * @param {number} propId
    */
-  constructor(ctx, range, flags, objId, propId) {
+  constructor(ctx, parentId, range, flags, objId, propId) {
+    super(ctx, parentId);
+
     this.#ctx = ctx;
-    this.computed = flags === 1;
+    this.computed = (flags & 0b00000001) !== 0;
     this.#objId = objId;
     this.#propId = propId;
     this.range = range;
@@ -1333,6 +1505,80 @@ class NewExpression {
   }
 }
 
+/** @implements {Deno.ParenthesisExpression} */
+class ParenthesisExpression extends BaseNode {
+  type = /** @type {const} */ ("ParenthesisExpression");
+  range;
+  #ctx;
+  #exprId;
+
+  get expression() {
+    return /** @type {*} */ (createAstNode(this.#ctx, this.#exprId));
+  }
+
+  /**
+   * @param {AstContext} ctx
+   * @param {number} parentId
+   * @param {Deno.Range} range
+   * @param {number} exprId
+   */
+  constructor(ctx, parentId, range, exprId) {
+    super(ctx, parentId);
+
+    this.#ctx = ctx;
+    this.range = range;
+    this.#exprId = exprId;
+  }
+}
+
+/** @implements {Deno.PrivateIdentifier} */
+class PrivateIdentifier extends BaseNode {
+  type = /** @type {const} */ ("PrivateIdentifier");
+  range;
+  #ctx;
+  name;
+
+  /**
+   * @param {AstContext} ctx
+   * @param {number} parentId
+   * @param {Deno.Range} range
+   * @param {number} nameId
+   */
+  constructor(ctx, parentId, range, nameId) {
+    super(ctx, parentId);
+
+    this.#ctx = ctx;
+    this.range = range;
+    this.name = getString(ctx, nameId);
+  }
+}
+
+/** @implements {Deno.SequenceExpression} */
+class SequenceExpression extends BaseNode {
+  type = /** @type {const} */ ("SequenceExpression");
+  range;
+  #ctx;
+  #childIds;
+
+  get expressions() {
+    return createChildNodes(this.#ctx, this.#childIds);
+  }
+
+  /**
+   * @param {AstContext} ctx
+   * @param {number} parentId
+   * @param {Deno.Range} range
+   * @param {number[]} childIds
+   */
+  constructor(ctx, parentId, range, childIds) {
+    super(ctx, parentId);
+
+    this.#ctx = ctx;
+    this.range = range;
+    this.#childIds = childIds;
+  }
+}
+
 /** @implements {Deno.Super} */
 class Super {
   type = /** @type {const} */ ("Super");
@@ -1352,79 +1598,96 @@ class Super {
 // Literals
 
 /** @implements {Deno.BooleanLiteral} */
-class BooleanLiteral {
+class BooleanLiteral extends BaseNode {
   type = /** @type {const} */ ("BooleanLiteral");
   range;
   value = false;
-  #ctx;
 
   /**
    * @param {AstContext} ctx
+   * @param {number} parentId
    * @param {Deno.Range} range
    * @param {number} flags
    */
-  constructor(ctx, range, flags) {
-    this.#ctx = ctx;
+  constructor(ctx, parentId, range, flags) {
+    super(ctx, parentId);
     this.value = flags === 1;
     this.range = range;
   }
 }
 
+/** @implements {Deno.BigIntLiteral} */
+class BigIntLiteral extends BaseNode {
+  type = /** @type {const} */ ("BigIntLiteral");
+  range;
+  value;
+
+  /**
+   * @param {AstContext} ctx
+   * @param {number} parentId
+   * @param {Deno.Range} range
+   * @param {number} strId
+   */
+  constructor(ctx, parentId, range, strId) {
+    super(ctx, parentId);
+    this.range = range;
+    this.value = BigInt(getString(ctx, strId));
+  }
+}
+
 /** @implements {Deno.NullLiteral} */
-class NullLiteral {
+class NullLiteral extends BaseNode {
   type = /** @type {const} */ ("NullLiteral");
   range;
   value = null;
 
-  #ctx;
-
   /**
    * @param {AstContext} ctx
+   * @param {number} parentId
    * @param {Deno.Range} range
    */
-  constructor(ctx, range) {
-    this.#ctx = ctx;
+  constructor(ctx, parentId, range) {
+    super(ctx, parentId);
     this.range = range;
   }
 }
 
 /** @implements {Deno.NumericLiteral} */
-class NumericLiteral {
+class NumericLiteral extends BaseNode {
   type = /** @type {const} */ ("NumericLiteral");
   range;
   value = 0;
 
-  #ctx;
-
   /**
    * @param {AstContext} ctx
+   * @param {number} parentId
    * @param {Deno.Range} range
-   * @param {number} flags
+   * @param {number} strId
    */
-  constructor(ctx, range, flags) {
-    this.#ctx = ctx;
+  constructor(ctx, parentId, range, strId) {
+    super(ctx, parentId);
     this.range = range;
-    this.value = flags;
+    this.value = Number(getString(ctx, strId));
   }
 }
 
 /** @implements {Deno.RegExpLiteral} */
-class RegExpLiteral {
+class RegExpLiteral extends BaseNode {
   type = /** @type {const} */ ("RegExpLiteral");
   range;
   pattern = "";
   flags = "";
 
-  #ctx;
-
   /**
    * @param {AstContext} ctx
+   * @param {number} parentId
    * @param {Deno.Range} range
    * @param {number} patternId
    * @param {number} flagsId
    */
-  constructor(ctx, range, patternId, flagsId) {
-    this.#ctx = ctx;
+  constructor(ctx, parentId, range, patternId, flagsId) {
+    super(ctx, parentId);
+
     this.range = range;
     this.pattern = getString(ctx, patternId);
     this.flags = getString(ctx, flagsId);
@@ -1432,22 +1695,21 @@ class RegExpLiteral {
 }
 
 /** @implements {Deno.StringLiteral} */
-class StringLiteral {
+class StringLiteral extends BaseNode {
   type = /** @type {const} */ ("StringLiteral");
   range;
   value = "";
 
-  #ctx;
-
   /**
    * @param {AstContext} ctx
+   * @param {number} parentId
    * @param {Deno.Range} range
-   * @param {number} valueId
+   * @param {number} strId
    */
-  constructor(ctx, range, valueId) {
-    this.#ctx = ctx;
+  constructor(ctx, parentId, range, strId) {
+    super(ctx, parentId);
     this.range = range;
-    this.value = getString(ctx, valueId);
+    this.value = getString(ctx, strId);
   }
 }
 
@@ -1858,7 +2120,7 @@ const DECODER = new TextDecoder();
  *   buf: Uint8Array,
  *   strTable: Map<number, string>,
  *   idTable: number[],
- *   astStart: number,
+ *   visited: Set<number>,
  * }} AstContext
  */
 
@@ -1870,6 +2132,29 @@ const DECODER = new TextDecoder();
 function readU32(buf, i) {
   return (buf[i] << 24) + (buf[i + 1] << 16) + (buf[i + 2] << 8) +
     buf[i + 3];
+}
+
+/**
+ * @param {Uint8Array} buf
+ * @param {number} offset
+ * @returns {number[]}
+ */
+function readChildIds(buf, offset) {
+  const count = readU32(buf, offset);
+  offset += 4;
+  console.log("read children count:", count, offset);
+
+  /** @type {number[]} */
+  const out = new Array(count);
+
+  for (let i = 0; i < count; i++) {
+    out[i] = readU32(buf, offset);
+    offset += 4;
+  }
+
+  console.log("read children", out);
+
+  return out;
 }
 
 /**
@@ -1893,20 +2178,26 @@ function getString(ctx, id) {
  */
 function createAstNode(ctx, id) {
   const { buf, idTable } = ctx;
-  const i = idTable[id];
-  /** @type {AstNodeId} */
-  const kind = buf[i];
 
-  const flags = buf[i + 1];
-  const count = readU32(buf, i + 2);
-  const rangeStart = readU32(buf, i + 6);
-  const rangeEnd = readU32(buf, i + 10);
+  let offset = idTable[id];
+  console.log({ id, offset });
+  /** @type {AstType} */
+  const kind = buf[offset];
+
+  const parentId = readU32(buf, offset + 1);
+  const rangeStart = readU32(buf, offset + 5);
+  const rangeEnd = readU32(buf, offset + 9);
   const range = /** @type {Deno.Range} */ ([rangeStart, rangeEnd]);
 
+  offset += 13;
+
   switch (kind) {
-    case AstNodeId.Program:
-      return new Program(ctx, range, flags === 1 ? "module" : "script");
-    case AstNodeId.Import:
+    case AstType.Program: {
+      const moduleType = buf[offset] === 1 ? "module" : "script";
+      const childIds = readChildIds(buf, offset + 1);
+      return new Program(ctx, parentId, range, moduleType, childIds);
+    }
+    case AstType.Import:
       // case AstNodeId.ImportDecl:
       // case AstNodeId.ExportDecl:
       // case AstNodeId.ExportNamed:
@@ -1915,124 +2206,249 @@ function createAstNode(ctx, id) {
       // case AstNodeId.ExportAll:
 
     // Statements
-    case AstNodeId.BlockStatement:
-      throw new BlockStatement(ctx, range); // FIXME
-    case AstNodeId.BreakStatement:
-      throw new BreakStatement(ctx, range, 0); // FIXME
-    case AstNodeId.ContinueStatement:
-      throw new ContinueStatement(ctx, range, 0); // FIXME
-    case AstNodeId.DebuggerStatement:
-      throw new DebuggerStatement(ctx, range);
-    case AstNodeId.DoWhileStatement:
-      throw new DoWhileStatement(ctx, range, 0, 0); // FIXME
-    case AstNodeId.ExpressionStatement:
-      return new ExpressionStatement(ctx, range, 0); // FIXME
-    case AstNodeId.ForInStatement:
-      throw new ForInStatement(ctx, range, 0, 0, 0); // FIXME
-    case AstNodeId.ForOfStatement:
-      throw new ForOfStatement(ctx, range, false, 0, 0, 0); // FIXME
-    case AstNodeId.ForStatement:
-      throw new ForStatement(ctx, range, 0, 0, 0, 0); // FIXME
-    case AstNodeId.IfStatement:
-      throw new IfStatement(ctx, range, 0, 0, 0); // FIXME
-    case AstNodeId.LabeledStatement:
-      throw new LabeledStatement(ctx, range, 0, 0); // FIXME
-    case AstNodeId.ReturnStatement:
-      throw new ReturnStatement(ctx, range, 0); // FIXME
-    case AstNodeId.SwitchStatement:
-      throw new SwitchStatement(ctx, range, 0); // FIXME
-    case AstNodeId.ThrowStatement:
-      throw new ThrowStatement(ctx, range, 0); // FIXME
-    case AstNodeId.TryStatement:
-      throw new TryStatement(ctx, range, 0, 0, 0); // FIXME
-    case AstNodeId.WhileStatement:
-      throw new WhileStatement(ctx, range, 0, 0); // FIXME
-    case AstNodeId.WithStatement:
-      throw new WithStatement(ctx, range, 0, 0);
+    case AstType.BlockStatement: {
+      const childIds = readChildIds(buf, offset);
+      return new BlockStatement(ctx, parentId, range, childIds);
+    }
+    case AstType.BreakStatement: {
+      const labelId = readU32(buf, offset);
+      return new BreakStatement(ctx, parentId, range, labelId);
+    }
+    case AstType.ContinueStatement: {
+      const labelId = readU32(buf, offset);
+      return new ContinueStatement(ctx, parentId, range, labelId);
+    }
+    case AstType.DebuggerStatement:
+      return new DebuggerStatement(ctx, parentId, range);
+    case AstType.DoWhileStatement: {
+      const exprId = readU32(buf, offset);
+      const bodyId = readU32(buf, offset + 4);
+      return new DoWhileStatement(ctx, parentId, range, exprId, bodyId);
+    }
+    case AstType.ExpressionStatement: {
+      const exprId = readU32(buf, offset);
+      return new ExpressionStatement(ctx, parentId, range, exprId);
+    }
+    case AstType.ForInStatement: {
+      const leftId = readU32(buf, offset);
+      const rightId = readU32(buf, offset + 4);
+      const bodyId = readU32(buf, offset + 8);
+      return new ForInStatement(ctx, parentId, range, leftId, rightId, bodyId);
+    }
+    case AstType.ForOfStatement:
+      throw new ForOfStatement(ctx, parentId, range, false, 0, 0, 0); // FIXME
+    case AstType.ForStatement: {
+      const initId = readU32(buf, offset);
+      const testId = readU32(buf, offset + 4);
+      const updateId = readU32(buf, offset + 8);
+      const bodyId = readU32(buf, offset + 12);
+      return new ForStatement(
+        ctx,
+        parentId,
+        range,
+        initId,
+        testId,
+        updateId,
+        bodyId,
+      );
+    }
+    case AstType.IfStatement: {
+      const testId = readU32(buf, offset);
+      const consequentId = readU32(buf, offset + 4);
+      const alternateId = readU32(buf, offset + 8);
+      return new IfStatement(
+        ctx,
+        parentId,
+        range,
+        testId,
+        consequentId,
+        alternateId,
+      );
+    }
+    case AstType.LabeledStatement: {
+      const labelId = readU32(buf, offset);
+      const stmtId = readU32(buf, offset + 4);
+      return new LabeledStatement(ctx, parentId, range, labelId, stmtId);
+    }
+    case AstType.ReturnStatement: {
+      const argId = readU32(buf, offset);
+      return new ReturnStatement(ctx, parentId, range, argId);
+    }
+    case AstType.SwitchStatement:
+      throw new SwitchStatement(ctx, parentId, range, 0); // FIXME
+    case AstType.ThrowStatement: {
+      const argId = readU32(buf, offset);
+      return new ThrowStatement(ctx, parentId, range, argId);
+    }
+    case AstType.TryStatement: {
+      const blockId = readU32(buf, offset);
+      const catchId = readU32(buf, offset + 4);
+      const finalId = readU32(buf, offset + 8);
+      throw new TryStatement(ctx, parentId, range, blockId, catchId, finalId);
+    }
+    case AstType.WhileStatement: {
+      const testId = readU32(buf, offset);
+      const stmtId = readU32(buf, offset + 4);
+      return new WhileStatement(ctx, parentId, range, testId, stmtId);
+    }
+    case AstType.WithStatement:
+      return new WithStatement(ctx, range, 0, 0);
 
     // Expressions
-    case AstNodeId.ArrayExpression:
-      throw new ArrayExpression(ctx, range); // FIXME
-    case AstNodeId.ArrowFunctionExpression:
-      throw new ArrowFunctionExpression(ctx, range, false, false, 0); // FIXME
-    case AstNodeId.AssignmentExpression:
+    case AstType.ArrayExpression: {
+      const elemIds = readChildIds(buf, offset);
+      return new ArrayExpression(ctx, parentId, range, elemIds);
+    }
+    case AstType.ArrowFunctionExpression: {
+      const flags = buf[offset];
+      offset += 1;
+
+      const isAsync = (flags & 0b00000001) !== 0;
+      const isGenerator = (flags & 0b00000010) !== 0;
+
+      const typeParamId = readU32(buf, offset);
+      offset += 4;
+      const paramIds = readChildIds(buf, offset);
+      offset += paramIds.length * 4;
+
+      const bodyId = readU32(buf, offset);
+      offset += 4;
+
+      const returnTypeId = readU32(buf, offset);
+      offset += 4;
+
+      return new ArrowFunctionExpression(
+        ctx,
+        parentId,
+        range,
+        isAsync,
+        isGenerator,
+        typeParamId,
+        paramIds,
+        bodyId,
+        returnTypeId,
+      );
+    }
+    case AstType.AssignmentExpression:
       throw new AssignmentExpression(ctx, range, flags, 0, 0); // FIXME
-    case AstNodeId.AwaitExpression:
+    case AstType.AwaitExpression:
       throw new AwaitExpression(ctx, range, 0); // FIXME
-    case AstNodeId.BinaryExpression:
+    case AstType.BinaryExpression:
       throw new BinaryExpression(ctx, range, flags, 0, 0); // FIXME
-    case AstNodeId.CallExpression:
-      throw new CallExpression(ctx, range, 0); // FIXME
-    case AstNodeId.ChainExpression:
+    case AstType.CallExpression: {
+      const calleeId = readU32(buf, offset);
+      const typeArgId = readU32(buf, offset + 4);
+      const childIds = readChildIds(buf, offset + 8);
+      return new CallExpression(
+        ctx,
+        parentId,
+        range,
+        calleeId,
+        typeArgId,
+        childIds,
+      );
+    }
+    case AstType.ChainExpression:
       throw new ChainExpression(ctx, range); // FIXME
-    case AstNodeId.ConditionalExpression:
+    case AstType.ConditionalExpression:
       throw new ConditionalExpression(ctx, range, 0, 0, 0); // FIXME
-    case AstNodeId.FunctionExpression:
+    case AstType.FunctionExpression:
       throw new FunctionExpression(ctx, range); // FIXME
-    case AstNodeId.Identifier:
-      throw new Identifier(ctx, range, flags); // FIXME
-    case AstNodeId.LogicalExpression:
+    case AstType.Identifier: {
+      const strId = readU32(buf, offset);
+      return new Identifier(ctx, parentId, range, strId);
+    }
+    case AstType.LogicalExpression:
       throw new LogicalExpression(ctx, range, flags, 0, 0); // FIXME
-    case AstNodeId.MemberExpression:
-      throw new MemberExpression(ctx, range, flags, 0, 0); // FIXME
-    case AstNodeId.MetaProperty:
+    case AstType.MemberExpression: {
+      const flags = buf[offset];
+      offset += 1;
+      const objId = readU32(buf, offset);
+      offset += 4;
+      const propId = readU32(buf, offset);
+      return new MemberExpression(ctx, parentId, range, flags, objId, propId);
+    }
+    case AstType.MetaProperty:
       throw new MetaProperty(ctx, range, 0, 0); // FIXME
-    case AstNodeId.NewExpression:
+    case AstType.NewExpression:
       throw new NewExpression(ctx, range, 0); // FIXME
-    case AstNodeId.ObjectExpression:
+    case AstType.ObjectExpression:
       throw new Error("TODO");
-    case AstNodeId.StaticBlock:
+    case AstType.ParenthesisExpression: {
+      const exprId = readU32(buf, offset);
+      return new ParenthesisExpression(ctx, parentId, range, exprId);
+    }
+    case AstType.PrivateIdentifier: {
+      const strId = readU32(buf, offset);
+      return new PrivateIdentifier(ctx, parentId, range, strId);
+    }
+    case AstType.StaticBlock:
       throw new Error("TODO");
-    case AstNodeId.SequenceExpression:
-      throw new Error("TODO");
-    case AstNodeId.Super:
+    case AstType.SequenceExpression: {
+      const childIds = readChildIds(buf, offset);
+      return new SequenceExpression(ctx, parentId, range, childIds);
+    }
+    case AstType.Super:
       throw new Super(ctx, range); // FIXME
-    case AstNodeId.TaggedTemplateExpression:
+    case AstType.TaggedTemplateExpression:
       throw new Error("TODO");
-    case AstNodeId.TemplateLiteral:
+    case AstType.TemplateLiteral:
       throw new Error("TODO");
 
     // Literals
-    case AstNodeId.BooleanLiteral:
-      throw new BooleanLiteral(ctx, range, flags); // FIXME
-    case AstNodeId.NullLiteral:
-      throw new NullLiteral(ctx, range); // FIXME
-    case AstNodeId.NumericLiteral:
-      throw new NumericLiteral(ctx, range, flags); // FIXME
-    case AstNodeId.RegExpLiteral:
-      throw new RegExpLiteral(ctx, range, 0, 0); // FIXME
-    case AstNodeId.StringLiteral:
-      throw new StringLiteral(ctx, range, flags);
+    case AstType.BooleanLiteral: {
+      const flags = buf[offset];
+      return new BooleanLiteral(ctx, parentId, range, flags);
+    }
+    case AstType.BigIntLiteral: {
+      const strId = readU32(buf, offset);
+      return new BigIntLiteral(ctx, parentId, range, strId);
+    }
+    case AstType.NullLiteral:
+      return new NullLiteral(ctx, parentId, range);
+    case AstType.NumericLiteral: {
+      const strId = readU32(buf, offset);
+      return new NumericLiteral(ctx, parentId, range, strId);
+    }
+    case AstType.RegExpLiteral: {
+      const patternId = readU32(buf, offset);
+      const flagsId = readU32(buf, offset + 4);
+      return new RegExpLiteral(ctx, parentId, range, patternId, flagsId);
+    }
+    case AstType.StringLiteral: {
+      const strId = readU32(buf, offset);
+      return new StringLiteral(ctx, parentId, range, strId);
+    }
 
-      // JSX
-      // FIXME
-    case AstNodeId.JSXAttribute:
+    // JSX
+    // FIXME
+    case AstType.JSXAttribute:
       throw new JSXAttribute(ctx, range, 0, 0); // FIXME
-    case AstNodeId.JSXClosingElement:
+    case AstType.JSXClosingElement:
       throw new JSXClosingElement(ctx, range, 0); // FIXME
-    case AstNodeId.JSXClosingFragment:
+    case AstType.JSXClosingFragment:
       throw new JSXClosingFragment(ctx, range); // FIXME
-    case AstNodeId.JSXElement:
+    case AstType.JSXElement:
       throw new JSXElement(ctx, range, 0, 0); // FIXME
-    case AstNodeId.JSXExpressionContainer:
+    case AstType.JSXExpressionContainer:
       throw new JSXExpressionContainer(ctx, range, 0); // FIXME
-    case AstNodeId.JSXFragment:
+    case AstType.JSXFragment:
       throw new JSXFragment(ctx, range, 0, 0); // FIXME
-    case AstNodeId.JSXIdentifier:
+    case AstType.JSXIdentifier:
       throw new JSXIdentifier(ctx, range, 0); // FIXME
-    case AstNodeId.JSXMemberExpression:
+    case AstType.JSXMemberExpression:
       throw new JSXMemberExpression(ctx, range, 0, 0); // FIXME
-    case AstNodeId.JSXNamespacedName:
+    case AstType.JSXNamespacedName:
       throw new JSXNamespacedName(ctx, range, 0, 0); // FIXME
-    case AstNodeId.JSXOpeningElement:
+    case AstType.JSXOpeningElement:
       throw new JSXOpeningElement(ctx, range, flags, 0); // FIXME
-    case AstNodeId.JSXOpeningFragment:
+    case AstType.JSXOpeningFragment:
       throw new JSXOpeningFragment(ctx, range); // FIXME
-    case AstNodeId.JSXSpreadAttribute:
+    case AstType.JSXSpreadAttribute:
       throw new JSXSpreadAttribute(ctx, range, flags); // FIXME
-    case AstNodeId.JSXSpreadChild:
+    case AstType.JSXSpreadChild:
       throw new JSXSpreadChild(ctx, range, flags); // FIXME
-    case AstNodeId.JSXText:
+    case AstType.JSXText:
       throw new JSXText(ctx, range, 0, 0); // FIXME
 
     default:
@@ -2051,18 +2467,17 @@ function createAstContext(buf) {
   /** @type {Map<number, string>} */
   const strTable = new Map();
 
-  let i = 0;
+  let offset = 0;
   const stringCount = readU32(buf, 0);
-  i += 4;
+  offset += 4;
 
   let id = 0;
-  while (id < stringCount) {
-    const len = readU32(buf, i);
-    i += 4;
+  for (let i = 0; i < stringCount; i++) {
+    const len = readU32(buf, offset);
+    offset += 4;
 
-    const strBytes = buf.slice(i, i + len);
-    console.log({ strBytes });
-    i += len;
+    const strBytes = buf.slice(offset, offset + len);
+    offset += len;
     const s = DECODER.decode(strBytes);
     strTable.set(id, s);
     id++;
@@ -2076,8 +2491,27 @@ function createAstContext(buf) {
     );
   }
 
+  // Build id table
+  const idCount = readU32(buf, offset);
+  offset += 4;
+
+  const idTable = new Array(idCount);
+
+  for (let i = 0; i < idCount; i++) {
+    const id = readU32(buf, offset);
+    idTable[i] = id;
+    offset += 4;
+  }
+
+  console.log({ idCount, idTable });
+  if (idTable.length !== idCount) {
+    throw new Error(
+      `Could not deserialize id table. Expected ${idCount} items, but got ${idTable.length}`,
+    );
+  }
+
   /** @type {AstContext} */
-  const ctx = { buf, idTable: [], strTable, astStart: i };
+  const ctx = { buf, idTable, strTable, visited: new Set() };
 
   return ctx;
 }
@@ -2090,20 +2524,24 @@ export function runPluginsForFile(fileName, serializedAst) {
   const ctx = createAstContext(serializedAst);
   console.log(JSON.stringify(ctx, null, 2));
 
-  /** @type {Record<string, (node: any) => void} */
+  /** @type {Record<string, (node: any) => void>} */
   const mergedVisitor = {};
   const destroyFns = [];
+
+  console.log(state);
 
   // Instantiate and merge visitors. This allows us to only traverse
   // the AST once instead of per plugin.
   for (let i = 0; i < state.plugins.length; i++) {
     const plugin = state.plugins[i];
 
-    for (const name of Object.keys(plugin)) {
+    for (const name of Object.keys(plugin.rules)) {
       const rule = plugin.rules[name];
       const id = `${plugin.name}/${name}`;
       const ctx = new Context(id, fileName);
       const visitor = rule.create(ctx);
+
+      console.log({ visitor });
 
       for (const name in visitor) {
         const prev = mergedVisitor[name];
@@ -2121,12 +2559,12 @@ export function runPluginsForFile(fileName, serializedAst) {
           }
         };
       }
-      mergedVisitor.push({ ctx, visitor, rule });
 
       if (typeof rule.destroy === "function") {
+        const destroyFn = rule.destroy.bind(rule);
         destroyFns.push(() => {
           try {
-            rule.destroy(ctx);
+            destroyFn(ctx);
           } catch (err) {
             throw new Error(`Destroy hook of "${id}" errored`, { cause: err });
           }
@@ -2153,25 +2591,171 @@ export function runPluginsForFile(fileName, serializedAst) {
  * @returns {void}
  */
 function traverse(ctx, visitor) {
-  const { astStart, buf } = ctx;
-  const visitingTypes = new Map();
+  const visitTypes = new Map();
 
   // TODO: create visiting types
+  for (const name in visitor) {
+    const id = AstType[name];
+    visitTypes.set(id, name);
+  }
 
-  // All nodes are in depth first sorted order, so we can just loop
-  // forward in an iterative style to visit all nodes in the correct
-  // order.
-  for (let i = astStart; i < buf.length; i++) {
-    const id = buf[i];
-    const nodeLen = buf[i + 1];
-    const type = buf[i + 1];
+  console.log("merged visitor", visitor);
+  console.log("visiting types", visitTypes);
 
-    const name = visitingTypes.get(type);
-    if (name !== undefined) {
-      const node = createAstNode(ctx, id);
-      visitor[name](node);
+  // Program is always id 1
+  const id = 1;
+  traverseInner(ctx, visitTypes, visitor, id);
+}
+
+/**
+ * @param {AstContext} ctx
+ * @param {Map<number, string>} visitTypes
+ * @param {Record<string, (x: any) => void>} visitor
+ * @param {number} id
+ */
+function traverseInner(ctx, visitTypes, visitor, id) {
+  console.log("traversing id", id);
+
+  // Empty id
+  if (id === 0) return;
+  const { idTable, buf, visited } = ctx;
+  if (id >= idTable.length) {
+    throw new Error(`Invalid node id: ${id}`);
+  }
+
+  if (visited.has(id)) {
+    throw new Error(`Already visited ${id}`);
+  }
+  visited.add(id);
+
+  let offset = idTable[id];
+  if (offset === undefined) throw new Error(`Unknown id: ${id}`);
+
+  const type = buf[offset];
+  console.log({ id, type, offset });
+
+  const name = visitTypes.get(type);
+  if (name !== undefined) {
+    const node = createAstNode(ctx, id);
+    visitor[name](node);
+  }
+
+  // type + parentId + SpanLo + SpanHi
+  offset += 1 + 4 + 4 + 4;
+
+  // Children
+  switch (type) {
+    case AstType.Program: {
+      // skip flag reading during traversal
+      offset += 1;
+      const childIds = readChildIds(buf, offset);
+      return traverseChildren(ctx, visitTypes, visitor, childIds);
     }
 
-    i += nodeLen;
+    // Multiple children only
+    case AstType.ArrayExpression:
+    case AstType.BlockStatement:
+    case AstType.SequenceExpression: {
+      const stmtsIds = readChildIds(buf, offset);
+      return traverseChildren(ctx, visitTypes, visitor, stmtsIds);
+    }
+
+    // Expressions
+    case AstType.CallExpression: {
+      const calleeId = readU32(buf, offset);
+      traverseInner(ctx, visitTypes, visitor, calleeId);
+
+      const typeArgId = readU32(buf, offset + 4);
+      if (typeArgId > 0) {
+        traverseInner(ctx, visitTypes, visitor, typeArgId);
+      }
+
+      const childIds = readChildIds(buf, offset + 8);
+      return traverseChildren(ctx, visitTypes, visitor, childIds);
+    }
+    case AstType.ArrowFunctionExpression: {
+      // Skip flags
+      offset += 1;
+
+      const typeParamId = readU32(buf, offset);
+      offset += 4;
+      if (typeParamId > 0) {
+        traverseInner(ctx, visitTypes, visitor, typeParamId);
+      }
+
+      const childIds = readChildIds(buf, offset);
+      offset += childIds.length * 4;
+      traverseChildren(ctx, visitTypes, visitor, childIds);
+
+      const bodyId = readU32(buf, offset);
+      offset += 4;
+      traverseInner(ctx, visitTypes, visitor, bodyId);
+
+      const returnTypeId = readU32(buf, offset);
+      traverseInner(ctx, visitTypes, visitor, returnTypeId);
+
+      return;
+    }
+    case AstType.MemberExpression: {
+      // Skip flags
+      offset += 1;
+
+      const objId = readU32(buf, offset);
+      const propId = readU32(buf, offset + 4);
+
+      traverseInner(ctx, visitTypes, visitor, objId);
+      traverseInner(ctx, visitTypes, visitor, propId);
+
+      return;
+    }
+
+    // Two children
+    case AstType.LabeledStatement:
+    case AstType.WhileStatement: {
+      const firstId = readU32(buf, offset);
+      traverseInner(ctx, visitTypes, visitor, firstId);
+
+      const secondId = readU32(buf, offset + 4);
+      return traverseInner(ctx, visitTypes, visitor, secondId);
+    }
+
+    // Single child
+    case AstType.BreakStatement:
+    case AstType.ContinueStatement:
+    case AstType.ExpressionStatement:
+    case AstType.ReturnStatement:
+    case AstType.ParenthesisExpression: {
+      const childId = readU32(buf, offset);
+      return traverseInner(ctx, visitTypes, visitor, childId);
+    }
+
+    // These have no children
+    case AstType.BooleanLiteral:
+    case AstType.BigIntLiteral:
+    case AstType.DebuggerStatement:
+    case AstType.Identifier:
+    case AstType.NullLiteral:
+    case AstType.NumericLiteral:
+    case AstType.PrivateIdentifier:
+    case AstType.RegExpLiteral:
+    case AstType.StringLiteral:
+    case AstType.TemplateLiteral:
+    case AstType.This:
+      return;
+    default:
+      throw new Error(`Unknown ast type: ${type}`);
+  }
+}
+
+/**
+ * @param {AstContext} ctx
+ * @param {Map<number, string>} visitTypes
+ * @param {Record<string, *>} visitor
+ * @param {number[]} ids
+ */
+function traverseChildren(ctx, visitTypes, visitor, ids) {
+  for (let i = 0; i < ids.length; i++) {
+    const id = ids[i];
+    traverseInner(ctx, visitTypes, visitor, id);
   }
 }

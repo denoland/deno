@@ -74,9 +74,9 @@ impl PluginRunner {
     let (tx_req, rx_req) = channel(10);
     let (tx_res, rx_res) = channel(10);
 
-    log::info!("spawning thread");
+    log::debug!("spawning thread");
     let join_handle = std::thread::spawn(move || {
-      log::info!("PluginRunner thread spawned");
+      log::debug!("PluginRunner thread spawned");
       let start = std::time::Instant::now();
       let fut = async move {
         let mut flags = Flags::default();
@@ -110,7 +110,7 @@ impl PluginRunner {
         let mut worker = worker.into_main_worker();
         let runtime = &mut worker.js_runtime;
 
-        log::info!("before loaded");
+        log::debug!("before loaded");
 
         let obj_result = runtime.lazy_load_es_module_with_code(
           "ext:cli/lint.js",
@@ -125,7 +125,7 @@ impl PluginRunner {
           }
         };
 
-        log::info!("After plugin loaded, capturing exports");
+        log::debug!("After plugin loaded, capturing exports");
         let (install_plugin_fn, run_plugins_for_file_fn) = {
           let scope = &mut runtime.handle_scope();
           let module_exports: v8::Local<v8::Object> =
@@ -163,9 +163,9 @@ impl PluginRunner {
           rx: rx_req,
         };
         // TODO(bartlomieju): send "host ready" message to the proxy
-        log::info!("running host loop");
+        log::debug!("running host loop");
         runner.run_loop().await?;
-        log::info!(
+        log::debug!(
           "PluginRunner thread finished, took {:?}",
           std::time::Instant::now() - start
         );
@@ -175,7 +175,7 @@ impl PluginRunner {
       tokio_util::create_and_run_current_thread(fut)
     });
 
-    log::info!("is thread finished {}", join_handle.is_finished());
+    log::debug!("is thread finished {}", join_handle.is_finished());
     let proxy = PluginRunnerProxy {
       tx: tx_req,
       rx: Arc::new(tokio::sync::Mutex::new(rx_res)),
@@ -335,7 +335,7 @@ impl PluginRunnerProxy {
       .send(PluginRunnerRequest::LoadPlugins(plugin_specifiers))
       .await?;
     let mut rx = self.rx.lock().await;
-    log::info!("receiving load plugins");
+    log::debug!("receiving load plugins");
     if let Some(val) = rx.recv().await {
       let PluginRunnerResponse::LoadPlugin(result) = val else {
         unreachable!()

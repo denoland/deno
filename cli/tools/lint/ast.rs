@@ -2,11 +2,12 @@ use deno_ast::{
   swc::{
     ast::{
       AssignTarget, BlockStmtOrExpr, Callee, Decl, Expr, ForHead, Ident, Lit,
-      MemberProp, ModuleDecl, ModuleItem, Pat, Program, Prop, PropOrSpread,
-      SimpleAssignTarget, Stmt, SuperProp, TsType, VarDeclOrExpr,
+      MemberProp, ModuleDecl, ModuleItem, Pat, Program, Prop, PropName,
+      PropOrSpread, SimpleAssignTarget, Stmt, SuperProp, TsType, VarDeclOrExpr,
     },
-    common::Span,
+    common::{Span, Spanned, DUMMY_SP},
   },
+  view::BinaryOp,
   ParsedSource,
 };
 use indexmap::IndexMap;
@@ -75,6 +76,7 @@ enum AstNode {
   Cond,
   Call,
   New,
+  Paren,
   Seq,
   Ident,
   Tpl,
@@ -84,13 +86,14 @@ enum AstNode {
   Yield,
   MetaProp,
   Await,
+  LogicalExpression,
   TsTypeAssertion,
   TsConstAssertion,
   TsNonNull,
   TsAs,
   TsInstantiation,
   TsSatisfies,
-  PrivateName,
+  PrivateIdentifier,
   OptChain,
 
   // Literals
@@ -112,9 +115,14 @@ enum AstNode {
   // Custom
   EmptyExpr,
   Spread,
-  ObjProperty,
+  Property,
   VarDeclarator,
   CatchClause,
+
+  // Patterns
+  ArrayPattern,
+  AssignmentPattern,
+  ObjectPattern,
 }
 
 impl From<AstNode> for u8 {
@@ -123,25 +131,90 @@ impl From<AstNode> for u8 {
   }
 }
 
-enum Flags {
-  None,
-  ProgramModule,
-  BoolTrue,
+const MASK_U32_1: u32 = 0b11111111_00000000_00000000_00000000;
+const MASK_U32_2: u32 = 0b00000000_11111111_00000000_00000000;
+const MASK_U32_3: u32 = 0b00000000_00000000_11111111_00000000;
+const MASK_U32_4: u32 = 0b00000000_00000000_00000000_11111111;
+
+fn append_u32(result: &mut Vec<u8>, value: u32) {
+  let v1: u8 = ((value & MASK_U32_1) >> 24) as u8;
+  let v2: u8 = ((value & MASK_U32_2) >> 16) as u8;
+  let v3: u8 = ((value & MASK_U32_3) >> 8) as u8;
+  let v4: u8 = (value & MASK_U32_4) as u8;
+
+  result.push(v1);
+  result.push(v2);
+  result.push(v3);
+  result.push(v4);
 }
 
-impl From<Flags> for u8 {
-  fn from(m: Flags) -> u8 {
+fn append_usize(result: &mut Vec<u8>, value: usize) {
+  let raw = u32::try_from(value).unwrap();
+  append_u32(result, raw);
+}
+
+fn write_usize(result: &mut Vec<u8>, value: usize, idx: usize) {
+  let raw = u32::try_from(value).unwrap();
+
+  let v1: u8 = ((raw & MASK_U32_1) >> 24) as u8;
+  let v2: u8 = ((raw & MASK_U32_2) >> 16) as u8;
+  let v3: u8 = ((raw & MASK_U32_3) >> 8) as u8;
+  let v4: u8 = (raw & MASK_U32_4) as u8;
+
+  result[idx] = v1;
+  result[idx + 1] = v2;
+  result[idx + 2] = v3;
+  result[idx + 3] = v4;
+}
+
+enum Flag {
+  ProgramModule,
+  BoolFalse,
+  BoolTrue,
+  FnAsync,
+  FnGenerator,
+  MemberComputed,
+  PropShorthand,
+  PropComputed,
+  PropGetter,
+  PropSetter,
+}
+
+impl From<Flag> for u8 {
+  fn from(m: Flag) -> u8 {
     match m {
-      Flags::None => 0,
-      Flags::ProgramModule => 1,
-      Flags::BoolTrue => 1,
+      Flag::ProgramModule => 0b00000001,
+      Flag::BoolFalse => 0b00000000,
+      Flag::BoolTrue => 0b00000001,
+      Flag::FnAsync => 0b00000001,
+      Flag::FnGenerator => 0b00000010,
+      Flag::MemberComputed => 0b00000001,
+      Flag::PropShorthand => 0b00000001,
+      Flag::PropComputed => 0b00000010,
+      Flag::PropGetter => 0b00000100,
+      Flag::PropSetter => 0b00001000,
     }
   }
 }
 
+#[derive(Debug, Clone)]
+struct FlagValue(u8);
+
+impl FlagValue {
+  fn new() -> Self {
+    Self(0)
+  }
+
+  fn set(&mut self, flag: Flag) {
+    let value: u8 = flag.into();
+    self.0 |= value;
+  }
+}
+
+#[derive(Debug)]
 struct StringTable {
-  id: u32,
-  table: IndexMap<String, u32>,
+  id: usize,
+  table: IndexMap<String, usize>,
 }
 
 impl StringTable {
@@ -152,7 +225,7 @@ impl StringTable {
     }
   }
 
-  fn insert(&mut self, s: &str) -> u32 {
+  fn insert(&mut self, s: &str) -> usize {
     if let Some(id) = self.table.get(s) {
       return id.clone();
     }
@@ -174,51 +247,112 @@ impl StringTable {
       result.append(&mut bytes.to_vec());
     }
 
+    eprintln!("Serialized string table: {:#?}", result);
+
     result
   }
 }
 
 struct SerializeCtx {
+  id: usize,
+  id_to_offset: IndexMap<usize, usize>,
   result: Vec<u8>,
   str_table: StringTable,
 }
 
+impl SerializeCtx {
+  fn new() -> Self {
+    let mut ctx = Self {
+      id: 0,
+      id_to_offset: IndexMap::new(),
+      result: vec![],
+      str_table: StringTable::new(),
+    };
+
+    ctx.push_node(AstNode::Empty, 0, &DUMMY_SP);
+
+    ctx
+  }
+
+  fn reserve_child_ids_with_count(&mut self, count: usize) -> usize {
+    append_usize(&mut self.result, count);
+    self.reserve_child_ids(count)
+  }
+
+  fn reserve_child_ids(&mut self, count: usize) -> usize {
+    let offset = self.result.len();
+
+    for _ in 0..count {
+      append_usize(&mut self.result, 0);
+    }
+
+    offset
+  }
+
+  fn push_node(
+    &mut self,
+    kind: AstNode,
+    parent_id: usize,
+    span: &Span,
+  ) -> usize {
+    let id = self.id;
+    self.id_to_offset.insert(id, self.result.len());
+    self.id += 1;
+
+    let kind_value: u8 = kind.into();
+    self.result.push(kind_value);
+    append_usize(&mut self.result, parent_id);
+
+    // Span
+    append_u32(&mut self.result, span.lo.0);
+    append_u32(&mut self.result, span.hi.0);
+
+    id
+  }
+
+  fn set_child(&mut self, offset: usize, child_id: usize, idx: usize) {
+    let pos = offset + (idx * 4);
+    write_usize(&mut self.result, child_id, pos);
+  }
+}
+
 pub fn serialize_ast_bin(parsed_source: &ParsedSource) -> Vec<u8> {
-  let mut ctx = SerializeCtx {
-    result: vec![],
-    str_table: StringTable::new(),
-  };
+  let mut ctx = SerializeCtx::new();
+
+  let parent_id = 0;
 
   let program = &parsed_source.program();
+  let mut flags = FlagValue::new();
+
   match program.as_ref() {
     Program::Module(module) => {
-      push_node(
-        &mut ctx,
-        AstNode::Program.into(),
-        Flags::ProgramModule.into(),
-        module.body.len().try_into().unwrap(),
-        &module.span,
-      );
-      for item in &module.body {
-        match item {
+      let id = ctx.push_node(AstNode::Program, parent_id, &module.span);
+
+      flags.set(Flag::ProgramModule);
+      ctx.result.push(flags.0);
+
+      let offset = ctx.reserve_child_ids_with_count(module.body.len());
+
+      for (i, item) in module.body.iter().enumerate() {
+        let child_id = match item {
           ModuleItem::ModuleDecl(module_decl) => {
-            serialize_module_decl(&mut ctx, module_decl)
+            serialize_module_decl(&mut ctx, module_decl, parent_id)
           }
-          ModuleItem::Stmt(stmt) => serialize_stmt(&mut ctx, stmt),
-        }
+          ModuleItem::Stmt(stmt) => serialize_stmt(&mut ctx, stmt, id),
+        };
+
+        ctx.set_child(offset, child_id, i);
       }
     }
     Program::Script(script) => {
-      push_node(
-        &mut ctx,
-        AstNode::Program.into(),
-        Flags::None.into(),
-        script.body.len() as u32,
-        &script.span,
-      );
+      let id = ctx.push_node(AstNode::Program, parent_id, &script.span);
 
-      for stmt in &script.body {
-        serialize_stmt(&mut ctx, stmt)
+      ctx.result.push(flags.0);
+      let offset = ctx.reserve_child_ids_with_count(script.body.len());
+
+      for (i, stmt) in script.body.iter().enumerate() {
+        let child_id = serialize_stmt(&mut ctx, stmt, id);
+        ctx.set_child(offset, child_id, i);
       }
     }
   }
@@ -226,1150 +360,1107 @@ pub fn serialize_ast_bin(parsed_source: &ParsedSource) -> Vec<u8> {
   let mut result: Vec<u8> = vec![];
 
   // Serialize string table
+  eprintln!("STRING {:#?}", ctx.str_table);
   result.append(&mut ctx.str_table.serialize());
+
+  // Serialize ids
+  append_usize(&mut result, ctx.id_to_offset.len());
+
+  let offset = result.len() + (ctx.id_to_offset.len() * 4);
+
+  for (i, value) in ctx.id_to_offset {
+    append_usize(&mut result, value + offset);
+  }
 
   // Append serialized AST
   result.append(&mut ctx.result);
   result
 }
 
-fn append_u32(result: &mut Vec<u8>, value: u32) {
-  let mask_1 = 0b11111111_00000000_00000000_00000000;
-  let mask_2 = 0b00000000_11111111_00000000_00000000;
-  let mask_3 = 0b00000000_00000000_11111111_00000000;
-  let mask_4 = 0b00000000_00000000_00000000_11111111;
-
-  let v1: u8 = ((value & mask_1) >> 24) as u8;
-  let v2: u8 = ((value & mask_2) >> 16) as u8;
-  let v3: u8 = ((value & mask_3) >> 8) as u8;
-  let v4: u8 = (value & mask_4) as u8;
-
-  result.push(v1);
-  result.push(v2);
-  result.push(v3);
-  result.push(v4);
-}
-
-fn push_node(
+fn serialize_module_decl(
   ctx: &mut SerializeCtx,
-  kind: u8,
-  flags: u8,
-  count: u32,
-  span: &Span,
-) {
-  ctx.result.push(kind);
-  ctx.result.push(flags);
-
-  append_u32(&mut ctx.result, count);
-
-  // Span
-  append_u32(&mut ctx.result, span.lo.0 - 1);
-  append_u32(&mut ctx.result, span.hi.0 - 1);
-}
-
-fn serialize_module_decl(ctx: &mut SerializeCtx, module_decl: &ModuleDecl) {
+  module_decl: &ModuleDecl,
+  parent_id: usize,
+) -> usize {
   match module_decl {
-    ModuleDecl::Import(import_decl) => {
-      push_node(
-        ctx,
-        AstNode::Import.into(),
-        Flags::None.into(),
-        0,
-        &import_decl.span,
-      );
+    ModuleDecl::Import(node) => {
+      ctx.push_node(AstNode::Import, parent_id, &node.span)
     }
-    ModuleDecl::ExportDecl(export_decl) => {
-      push_node(
-        ctx,
-        AstNode::ExportDecl.into(),
-        Flags::None.into(),
-        0,
-        &export_decl.span,
-      );
+    ModuleDecl::ExportDecl(node) => {
+      ctx.push_node(AstNode::ExportDecl, parent_id, &node.span)
     }
-    ModuleDecl::ExportNamed(named_export) => {
-      push_node(
-        ctx,
-        AstNode::ExportNamed.into(),
-        Flags::None.into(),
-        0,
-        &named_export.span,
-      );
+    ModuleDecl::ExportNamed(node) => {
+      ctx.push_node(AstNode::ExportNamed, parent_id, &node.span)
     }
-    ModuleDecl::ExportDefaultDecl(export_default_decl) => {
-      push_node(
-        ctx,
-        AstNode::ExportDefaultDecl.into(),
-        Flags::None.into(),
-        0,
-        &export_default_decl.span,
-      );
+    ModuleDecl::ExportDefaultDecl(node) => {
+      ctx.push_node(AstNode::ExportDefaultDecl, parent_id, &node.span)
     }
-    ModuleDecl::ExportDefaultExpr(export_default_expr) => {
-      push_node(
-        ctx,
-        AstNode::ExportDefaultExpr.into(),
-        Flags::None.into(),
-        0,
-        &export_default_expr.span,
-      );
+    ModuleDecl::ExportDefaultExpr(node) => {
+      ctx.push_node(AstNode::ExportDefaultExpr, parent_id, &node.span)
     }
-    ModuleDecl::ExportAll(export_all) => {
-      push_node(
-        ctx,
-        AstNode::ExportAll.into(),
-        Flags::None.into(),
-        0,
-        &export_all.span,
-      );
+    ModuleDecl::ExportAll(node) => {
+      ctx.push_node(AstNode::ExportAll, parent_id, &node.span)
     }
-    ModuleDecl::TsImportEquals(ts_import_equals_decl) => {
-      push_node(
-        ctx,
-        AstNode::TsImportEquals.into(),
-        Flags::None.into(),
-        0,
-        &ts_import_equals_decl.span,
-      );
+    ModuleDecl::TsImportEquals(node) => {
+      ctx.push_node(AstNode::TsImportEquals, parent_id, &node.span)
     }
-    ModuleDecl::TsExportAssignment(ts_export_assignment) => {
-      push_node(
-        ctx,
-        AstNode::TsExportAssignment.into(),
-        Flags::None.into(),
-        0,
-        &ts_export_assignment.span,
-      );
+    ModuleDecl::TsExportAssignment(node) => {
+      ctx.push_node(AstNode::TsExportAssignment, parent_id, &node.span)
     }
-    ModuleDecl::TsNamespaceExport(ts_namespace_export_decl) => {
-      push_node(
-        ctx,
-        AstNode::TsNamespaceExport.into(),
-        Flags::None.into(),
-        0,
-        &ts_namespace_export_decl.span,
-      );
+    ModuleDecl::TsNamespaceExport(node) => {
+      ctx.push_node(AstNode::TsNamespaceExport, parent_id, &node.span)
     }
   }
 }
 
-fn serialize_stmt(ctx: &mut SerializeCtx, stmt: &Stmt) {
+fn serialize_stmt(
+  ctx: &mut SerializeCtx,
+  stmt: &Stmt,
+  parent_id: usize,
+) -> usize {
   match stmt {
-    Stmt::Block(block_stmt) => {
-      push_node(
-        ctx,
-        AstNode::Block.into(),
-        Flags::None.into(),
-        block_stmt.stmts.len().try_into().unwrap(),
-        &block_stmt.span,
-      );
+    Stmt::Block(node) => {
+      let id = ctx.push_node(AstNode::Block, parent_id, &node.span);
+      let offset = ctx.reserve_child_ids_with_count(node.stmts.len());
 
-      for child in &block_stmt.stmts {
-        serialize_stmt(ctx, child);
+      for (i, child) in node.stmts.iter().enumerate() {
+        let child_id = serialize_stmt(ctx, child, id);
+        ctx.set_child(offset, child_id, i);
       }
+
+      id
     }
-    Stmt::Empty(empty_stmt) => {
-      push_node(
-        ctx,
-        AstNode::Empty.into(),
-        Flags::None.into(),
-        0,
-        &empty_stmt.span,
-      );
-    }
-    Stmt::Debugger(debugger_stmt) => {
-      push_node(
-        ctx,
-        AstNode::Debugger.into(),
-        Flags::None.into(),
-        0,
-        &debugger_stmt.span,
-      );
+    Stmt::Empty(node) => ctx.push_node(AstNode::Empty, parent_id, &node.span),
+    Stmt::Debugger(node) => {
+      ctx.push_node(AstNode::Debugger, parent_id, &node.span)
     }
     Stmt::With(_) => todo!(),
-    Stmt::Return(return_stmt) => {
-      let count = if return_stmt.arg.is_some() { 1 } else { 0 };
-      push_node(
-        ctx,
-        AstNode::Return.into(),
-        Flags::None.into(),
-        count,
-        &return_stmt.span,
-      );
-    }
-    Stmt::Labeled(labeled_stmt) => {
-      push_node(
-        ctx,
-        AstNode::Labeled.into(),
-        Flags::None.into(),
-        1,
-        &labeled_stmt.span,
-      );
-    }
-    Stmt::Break(break_stmt) => {
-      let count = if break_stmt.label.is_some() { 1 } else { 0 };
-      push_node(
-        ctx,
-        AstNode::Break.into(),
-        Flags::None.into(),
-        count,
-        &break_stmt.span,
-      );
-    }
-    Stmt::Continue(continue_stmt) => {
-      let count = if continue_stmt.label.is_some() { 1 } else { 0 };
-      push_node(
-        ctx,
-        AstNode::Continue.into(),
-        Flags::None.into(),
-        count,
-        &continue_stmt.span,
-      );
-    }
-    Stmt::If(if_stmt) => {
-      let count = if if_stmt.alt.is_some() { 3 } else { 2 };
-      push_node(
-        ctx,
-        AstNode::If.into(),
-        Flags::None.into(),
-        count,
-        &if_stmt.span,
-      );
+    Stmt::Return(node) => {
+      let id = ctx.push_node(AstNode::Return, parent_id, &node.span);
+      let offset = ctx.reserve_child_ids(1);
 
-      serialize_expr(ctx, if_stmt.test.as_ref());
-      serialize_stmt(ctx, if_stmt.cons.as_ref());
+      if let Some(arg) = &node.arg {
+        let child_id = serialize_expr(ctx, &arg, id);
+        ctx.set_child(offset, child_id, 0);
+      };
 
-      if let Some(alt) = &if_stmt.alt {
-        serialize_stmt(ctx, &alt);
-      }
+      id
     }
-    Stmt::Switch(switch_stmt) => {
-      push_node(
-        ctx,
-        AstNode::Switch.into(),
-        Flags::None.into(),
-        switch_stmt.cases.len().try_into().unwrap(),
-        &switch_stmt.span,
-      );
+    Stmt::Labeled(node) => {
+      let id = ctx.push_node(AstNode::Labeled, parent_id, &node.span);
+      let offset = ctx.reserve_child_ids(2);
 
-      for case in &switch_stmt.cases {
-        let count = if case.test.is_some() {
-          case.cons.len() + 1
-        } else {
-          case.cons.len()
-        };
-        push_node(
-          ctx,
-          AstNode::SwitchCase.into(),
-          Flags::None.into(),
-          count.try_into().unwrap(),
-          &case.span,
-        );
-      }
+      let ident_id = serialize_ident(ctx, &node.label, id);
+      let stmt_id = serialize_stmt(ctx, &node.body, id);
+
+      ctx.set_child(offset, ident_id, 0);
+      ctx.set_child(offset, stmt_id, 1);
+
+      id
     }
-    Stmt::Throw(throw_stmt) => {
-      push_node(
-        ctx,
-        AstNode::Throw.into(),
-        Flags::None.into(),
-        1,
-        &throw_stmt.span,
-      );
+    Stmt::Break(node) => {
+      let id = ctx.push_node(AstNode::Break, parent_id, &node.span);
+      let offset = ctx.reserve_child_ids(1);
+
+      if let Some(arg) = &node.label {
+        let child_id = serialize_ident(ctx, &arg, id);
+        ctx.set_child(offset, child_id, 0);
+      };
+
+      id
     }
-    Stmt::Try(try_stmt) => {
-      let mut count = 1;
-      if try_stmt.finalizer.is_some() {
-        count += 1
-      }
-      if try_stmt.handler.is_some() {
-        count += 1
+    Stmt::Continue(node) => {
+      let id = ctx.push_node(AstNode::Continue, parent_id, &node.span);
+      let offset = ctx.reserve_child_ids(1);
+
+      if let Some(arg) = &node.label {
+        let child_id = serialize_ident(ctx, &arg, id);
+        ctx.set_child(offset, child_id, 0);
+      };
+
+      id
+    }
+    Stmt::If(node) => {
+      let id = ctx.push_node(AstNode::If, parent_id, &node.span);
+      let offset = ctx.reserve_child_ids(3); // Test + Consequent + Alternate
+
+      let test_id = serialize_expr(ctx, node.test.as_ref(), id);
+      let cons_id = serialize_stmt(ctx, node.cons.as_ref(), id);
+
+      ctx.set_child(offset, test_id, 0);
+      ctx.set_child(offset, cons_id, 1);
+
+      if let Some(alt) = &node.alt {
+        let child_id = serialize_stmt(ctx, &alt, id);
+        ctx.set_child(offset, child_id, 2);
       }
 
-      push_node(
-        ctx,
-        AstNode::Try.into(),
-        Flags::None.into(),
-        count,
-        &try_stmt.span,
-      );
+      id
+    }
+    Stmt::Switch(node) => {
+      let id = ctx.push_node(AstNode::Switch.into(), parent_id, &node.span);
 
-      serialize_stmt(ctx, &Stmt::Block(try_stmt.block.clone()));
+      let offset = ctx.reserve_child_ids_with_count(node.cases.len());
 
-      if let Some(catch_clause) = &try_stmt.handler {
-        let count = if catch_clause.param.is_some() { 2 } else { 1 };
-        push_node(
-          ctx,
+      for (i, case) in node.cases.iter().enumerate() {
+        let child_id =
+          ctx.push_node(AstNode::SwitchCase.into(), parent_id, &case.span);
+
+        let child_offset =
+          ctx.reserve_child_ids_with_count(case.cons.len() + 1);
+        // ctx.set_child(child_offset, child_id, i);
+        ctx.set_child(offset, child_id, i);
+      }
+
+      id
+    }
+    Stmt::Throw(node) => {
+      let id = ctx.push_node(AstNode::Throw.into(), parent_id, &node.span);
+      let offset = ctx.reserve_child_ids(1);
+
+      let child_id = serialize_expr(ctx, &node.arg, id);
+      ctx.set_child(offset, child_id, 0);
+
+      id
+    }
+    Stmt::Try(node) => {
+      let try_id = ctx.push_node(AstNode::Try.into(), parent_id, &node.span);
+      let offset = ctx.reserve_child_ids(3); // Block + Catch + Finalizer
+
+      let block_id =
+        serialize_stmt(ctx, &Stmt::Block(node.block.clone()), try_id);
+      ctx.set_child(offset, block_id, 0);
+
+      if let Some(catch_clause) = &node.handler {
+        let clause_id = ctx.push_node(
           AstNode::CatchClause.into(),
-          Flags::None.into(),
-          count,
+          try_id,
           &catch_clause.span,
         );
+
+        let clause_offset = ctx.reserve_child_ids(2); // Param + Body
 
         if let Some(param) = &catch_clause.param {
           // FIXME
         }
 
-        serialize_stmt(ctx, &Stmt::Block(catch_clause.body.clone()));
+        let body_id =
+          serialize_stmt(ctx, &Stmt::Block(catch_clause.body.clone()), try_id);
+        ctx.set_child(clause_offset, body_id, 1);
+
+        ctx.set_child(offset, clause_id, 1);
       }
-    }
-    Stmt::While(while_stmt) => {
-      push_node(
-        ctx,
-        AstNode::While.into(),
-        Flags::None.into(),
-        2,
-        &while_stmt.span,
-      );
 
-      serialize_expr(ctx, while_stmt.test.as_ref());
-      serialize_stmt(ctx, while_stmt.body.as_ref());
-    }
-    Stmt::DoWhile(do_while_stmt) => {
-      push_node(
-        ctx,
-        AstNode::DoWhile.into(),
-        Flags::None.into(),
-        2,
-        &do_while_stmt.span,
-      );
+      if let Some(finalizer) = &node.finalizer {
+        let child_id =
+          serialize_stmt(ctx, &Stmt::Block(finalizer.clone()), try_id);
+        ctx.set_child(offset, child_id, 2);
+      }
 
-      serialize_expr(ctx, do_while_stmt.test.as_ref());
-      serialize_stmt(ctx, do_while_stmt.body.as_ref());
+      try_id
     }
-    Stmt::For(for_stmt) => {
-      push_node(
-        ctx,
-        AstNode::For.into(),
-        Flags::None.into(),
-        4,
-        &for_stmt.span,
-      );
+    Stmt::While(node) => {
+      let id = ctx.push_node(AstNode::While, parent_id, &node.span);
+      let offset = ctx.reserve_child_ids(2);
 
-      if let Some(init) = &for_stmt.init {
+      let test_id = serialize_expr(ctx, node.test.as_ref(), id);
+      let stmt_id = serialize_stmt(ctx, node.body.as_ref(), id);
+
+      ctx.set_child(offset, test_id, 0);
+      ctx.set_child(offset, stmt_id, 1);
+
+      id
+    }
+    Stmt::DoWhile(node) => {
+      let id = ctx.push_node(AstNode::DoWhile, parent_id, &node.span);
+
+      let offset = ctx.reserve_child_ids(2);
+
+      let expr_id = serialize_expr(ctx, node.test.as_ref(), id);
+      let stmt_id = serialize_stmt(ctx, node.body.as_ref(), id);
+
+      ctx.set_child(offset, expr_id, 0);
+      ctx.set_child(offset, stmt_id, 0);
+
+      id
+    }
+    Stmt::For(node) => {
+      let id = ctx.push_node(AstNode::For, parent_id, &node.span);
+      let offset = ctx.reserve_child_ids(4); // Init + test + update + body
+
+      if let Some(init) = &node.init {
         match init {
           VarDeclOrExpr::VarDecl(var_decl) => {
-            serialize_stmt(ctx, &Stmt::Decl(Decl::Var(var_decl.clone())));
+            serialize_stmt(ctx, &Stmt::Decl(Decl::Var(var_decl.clone())), id);
           }
           VarDeclOrExpr::Expr(expr) => {
-            serialize_expr(ctx, expr);
+            serialize_expr(ctx, expr, id);
           }
         }
-      } else {
-        push_node(
-          ctx,
-          AstNode::EmptyExpr.into(),
-          Flags::None.into(),
-          0,
-          &for_stmt.span,
-        );
       }
 
-      if let Some(test_expr) = &for_stmt.test {
-        serialize_expr(ctx, test_expr.as_ref());
-      } else {
-        push_node(
-          ctx,
-          AstNode::EmptyExpr.into(),
-          Flags::None.into(),
-          0,
-          &for_stmt.span,
-        );
+      if let Some(test_expr) = &node.test {
+        let child_id = serialize_expr(ctx, test_expr.as_ref(), parent_id);
+        ctx.set_child(offset, child_id, 1);
       }
 
-      if let Some(update_expr) = &for_stmt.update {
-        serialize_expr(ctx, update_expr.as_ref());
-      } else {
-        push_node(
-          ctx,
-          AstNode::EmptyExpr.into(),
-          Flags::None.into(),
-          0,
-          &for_stmt.span,
-        );
+      if let Some(update_expr) = &node.update {
+        let child_id = serialize_expr(ctx, update_expr.as_ref(), id);
+        ctx.set_child(offset, child_id, 2);
       }
 
-      serialize_stmt(ctx, &for_stmt.body.as_ref());
+      let child_id = serialize_stmt(ctx, &node.body.as_ref(), id);
+      ctx.set_child(offset, child_id, 3);
+
+      id
     }
-    Stmt::ForIn(for_in_stmt) => {
-      push_node(
-        ctx,
-        AstNode::ForIn.into(),
-        Flags::None.into(),
-        3,
-        &for_in_stmt.span,
-      );
+    Stmt::ForIn(node) => {
+      let id = ctx.push_node(AstNode::ForIn, parent_id, &node.span);
+      let offset = ctx.reserve_child_ids(3); // Left + Right + Body
 
-      match &for_in_stmt.left {
+      // FIXME
+      match &node.left {
         ForHead::VarDecl(var_decl) => {}
         ForHead::UsingDecl(using_decl) => {}
         ForHead::Pat(pat) => {}
       }
 
-      serialize_expr(ctx, for_in_stmt.right.as_ref());
-      serialize_stmt(ctx, for_in_stmt.body.as_ref());
-    }
-    Stmt::ForOf(for_of_stmt) => {
-      push_node(
-        ctx,
-        AstNode::ForOf.into(),
-        Flags::None.into(),
-        3,
-        &for_of_stmt.span,
-      );
+      let right_id = serialize_expr(ctx, node.right.as_ref(), id);
+      let body_id = serialize_stmt(ctx, node.body.as_ref(), id);
 
-      match &for_of_stmt.left {
+      ctx.set_child(offset, right_id, 1);
+      ctx.set_child(offset, body_id, 2);
+
+      id
+    }
+    Stmt::ForOf(node) => {
+      let id = ctx.push_node(AstNode::ForOf, parent_id, &node.span);
+      let offset = ctx.reserve_child_ids(3);
+
+      // FIXME
+      match &node.left {
         ForHead::VarDecl(var_decl) => {}
         ForHead::UsingDecl(using_decl) => {}
         ForHead::Pat(pat) => {}
       }
 
-      serialize_expr(ctx, for_of_stmt.right.as_ref());
-      serialize_stmt(ctx, for_of_stmt.body.as_ref());
+      let right_id = serialize_expr(ctx, node.right.as_ref(), id);
+      let body_id = serialize_stmt(ctx, node.body.as_ref(), id);
+
+      ctx.set_child(offset, right_id, 1);
+      ctx.set_child(offset, body_id, 2);
+
+      id
     }
-    Stmt::Decl(decl) => serialize_decl(ctx, decl),
-    Stmt::Expr(expr_stmt) => {
-      push_node(
-        ctx,
-        AstNode::Expr.into(),
-        Flags::None.into(),
-        1,
-        &expr_stmt.span,
-      );
-      serialize_expr(ctx, expr_stmt.expr.as_ref());
+    Stmt::Decl(node) => serialize_decl(ctx, node, parent_id),
+    Stmt::Expr(node) => {
+      let id = ctx.push_node(AstNode::Expr, parent_id, &node.span);
+      let offset = ctx.reserve_child_ids(1);
+
+      let child_id = serialize_expr(ctx, node.expr.as_ref(), id);
+      ctx.set_child(offset, child_id, 0);
+
+      id
     }
   }
 }
 
-fn serialize_decl(ctx: &mut SerializeCtx, decl: &Decl) {
+fn serialize_decl(
+  ctx: &mut SerializeCtx,
+  decl: &Decl,
+  parent_id: usize,
+) -> usize {
   match decl {
-    Decl::Class(class_decl) => {
-      push_node(
-        ctx,
-        AstNode::Class.into(),
-        Flags::None.into(),
-        0,
-        &class_decl.class.span,
-      );
+    Decl::Class(node) => {
+      let id = ctx.push_node(AstNode::Class, parent_id, &node.class.span);
 
-      //
+      // FIXME
+
+      id
     }
-    Decl::Fn(fn_decl) => {
-      push_node(
-        ctx,
-        AstNode::Fn.into(),
-        Flags::None.into(),
-        0,
-        &fn_decl.function.span,
-      );
+    Decl::Fn(node) => {
+      let id = ctx.push_node(AstNode::Fn, parent_id, &node.function.span);
 
-      if let Some(body) = &fn_decl.function.as_ref().body {
-        serialize_stmt(ctx, &Stmt::Block(body.clone()));
-      }
+      // FIXME
+
+      id
     }
-    Decl::Var(var_decl) => {
-      let count = var_decl.decls.len();
-      push_node(
-        ctx,
-        AstNode::Var.into(),
-        Flags::None.into(),
-        count.try_into().unwrap(),
-        &var_decl.span,
-      );
+    Decl::Var(node) => {
+      let id = ctx.push_node(AstNode::Var, parent_id, &node.span);
+      let offset = ctx.reserve_child_ids_with_count(node.decls.len());
 
-      for decl in &var_decl.decls {
-        let count = if decl.init.is_some() { 2 } else { 1 };
-        push_node(
-          ctx,
-          AstNode::VarDeclarator.into(),
-          Flags::None.into(),
-          count,
-          &decl.span,
-        );
+      for (i, decl) in node.decls.iter().enumerate() {
+        let child_id =
+          ctx.push_node(AstNode::VarDeclarator.into(), parent_id, &decl.span);
 
-        match &decl.name {
+        ctx.set_child(offset, child_id, i);
+
+        let child_offset = ctx.reserve_child_ids(2); // Name + init
+
+        let decl_id = match &decl.name {
           Pat::Ident(binding_ident) => {
-            serialize_ident(ctx, &binding_ident.id);
+            serialize_ident(ctx, &binding_ident.id, child_id)
           }
-          Pat::Array(array_pat) => {}
-          Pat::Rest(rest_pat) => {}
-          Pat::Object(object_pat) => {}
-          Pat::Assign(assign_pat) => {}
-          Pat::Invalid(invalid) => {}
-          Pat::Expr(expr) => {
-            serialize_expr(ctx, expr.as_ref());
-          }
-        }
+          Pat::Array(array_pat) => todo!(),
+          Pat::Rest(rest_pat) => todo!(),
+          Pat::Object(object_pat) => todo!(),
+          Pat::Assign(assign_pat) => todo!(),
+          Pat::Invalid(invalid) => todo!(),
+          Pat::Expr(expr) => serialize_expr(ctx, expr.as_ref(), child_id),
+        };
+        ctx.set_child(child_offset, decl_id, 0);
 
         if let Some(init) = &decl.init {
-          serialize_expr(ctx, init.as_ref());
+          let expr_id = serialize_expr(ctx, init.as_ref(), id);
+          ctx.set_child(child_offset, expr_id, 1);
         }
       }
-    }
-    Decl::Using(using_decl) => {
-      let count = using_decl.decls.len();
-      push_node(
-        ctx,
-        AstNode::Using.into(),
-        Flags::None.into(),
-        count.try_into().unwrap(),
-        &using_decl.span,
-      );
 
-      for decl in &using_decl.decls {
-        // TODO
-      }
+      id
     }
-    Decl::TsInterface(ts_interface_decl) => {
-      let mut count = 2 + ts_interface_decl.extends.len();
-      if ts_interface_decl.type_params.is_some() {
-        count += 1;
+    Decl::Using(node) => {
+      let id = ctx.push_node(AstNode::Using, parent_id, &node.span);
+      let offset = ctx.reserve_child_ids_with_count(node.decls.len());
+
+      for (i, decl) in node.decls.iter().enumerate() {
+        // FIXME
       }
 
-      push_node(
-        ctx,
-        AstNode::TsInterface.into(),
-        Flags::None.into(),
-        count.try_into().unwrap(),
-        &ts_interface_decl.span,
-      );
+      id
     }
-    Decl::TsTypeAlias(ts_type_alias_decl) => {
-      push_node(
-        ctx,
-        AstNode::TsTypeAlias.into(),
-        Flags::None.into(),
-        0,
-        &ts_type_alias_decl.span,
-      );
+    Decl::TsInterface(node) => {
+      // ident + body + type_ann + extends(Vec)
+      let count = 3 + node.extends.len();
+
+      let id =
+        ctx.push_node(AstNode::TsInterface.into(), parent_id, &node.span);
+
+      // FIXME
+
+      id
     }
-    Decl::TsEnum(ts_enum_decl) => {
-      let count = 1 + ts_enum_decl.members.len();
-      push_node(
-        ctx,
-        AstNode::TsEnum.into(),
-        Flags::None.into(),
-        count.try_into().unwrap(),
-        &ts_enum_decl.span,
-      );
+    Decl::TsTypeAlias(node) => {
+      // FIXME: Declare flag
+      let id =
+        ctx.push_node(AstNode::TsTypeAlias.into(), parent_id, &node.span);
+
+      let offset = ctx.reserve_child_ids(1);
+
+      let ident_id = serialize_ident(ctx, &node.id, id);
+      ctx.set_child(offset, ident_id, 0);
+
+      // FIXME
+      // let foo = ts_type_alias_decl.type_ann
+
+      id
+    }
+    Decl::TsEnum(node) => {
+      let id = ctx.push_node(AstNode::TsEnum.into(), parent_id, &node.span);
+
+      // Ident + member count
+      let count = 1 + node.members.len();
+      let offset = ctx.reserve_child_ids_with_count(count);
+
+      let ident_id = serialize_ident(ctx, &node.id, parent_id);
+      ctx.set_child(offset, ident_id, id);
+
+      for (i, member) in node.members.iter().enumerate() {
+        // FIXME
+        // let member_id = member.
+        // ctx.set_child(id, member_id, id);
+      }
+
+      id
     }
     Decl::TsModule(ts_module_decl) => {
-      push_node(
-        ctx,
-        AstNode::TsModule.into(),
-        Flags::None.into(),
-        0,
-        &ts_module_decl.span,
-      );
+      ctx.push_node(AstNode::TsModule, parent_id, &ts_module_decl.span)
     }
   }
 }
 
-fn serialize_expr(ctx: &mut SerializeCtx, expr: &Expr) {
+fn serialize_expr(
+  ctx: &mut SerializeCtx,
+  expr: &Expr,
+  parent_id: usize,
+) -> usize {
   match expr {
-    Expr::This(this_expr) => {
-      push_node(
-        ctx,
-        AstNode::This.into(),
-        Flags::None.into(),
-        0,
-        &this_expr.span,
-      );
-    }
-    Expr::Array(array_lit) => {
-      let count = array_lit.elems.len();
-      push_node(
-        ctx,
-        AstNode::Array.into(),
-        Flags::None.into(),
-        count.try_into().unwrap(),
-        &array_lit.span,
-      );
+    Expr::This(node) => ctx.push_node(AstNode::This, parent_id, &node.span),
+    Expr::Array(node) => {
+      let id = ctx.push_node(AstNode::Array.into(), parent_id, &node.span);
+      let offset = ctx.reserve_child_ids_with_count(node.elems.len());
 
-      for maybe_item in &array_lit.elems {
+      for (i, maybe_item) in node.elems.iter().enumerate() {
         if let Some(item) = maybe_item {
-          //
-        } else {
-          //
+          // FIXME
+          ctx.set_child(offset, 0, i);
         }
-        // FIXME
       }
-    }
-    Expr::Object(object_lit) => {
-      let count = object_lit.props.len();
-      push_node(
-        ctx,
-        AstNode::Object.into(),
-        Flags::None.into(),
-        count.try_into().unwrap(),
-        &object_lit.span,
-      );
 
-      for prop in &object_lit.props {
-        match prop {
+      id
+    }
+    Expr::Object(node) => {
+      let id = ctx.push_node(AstNode::Object, parent_id, &node.span);
+
+      let offset = ctx.reserve_child_ids_with_count(node.props.len());
+
+      for (i, prop) in node.props.iter().enumerate() {
+        let child_id = match prop {
           PropOrSpread::Spread(spread_element) => {
-            push_node(
-              ctx,
-              AstNode::Spread.into(),
-              Flags::None.into(),
-              1,
-              &spread_element.dot3_token,
-            );
-            serialize_expr(ctx, spread_element.expr.as_ref());
-          }
-          PropOrSpread::Prop(prop) => match prop.as_ref() {
-            Prop::Shorthand(ident) => {
-              serialize_ident(ctx, ident);
-            }
-            Prop::KeyValue(key_value_prop) => {
-              serialize_expr(ctx, key_value_prop.value.as_ref())
-            }
-            Prop::Assign(assign_prop) => {
-              push_node(
-                ctx,
-                AstNode::Assign.into(),
-                Flags::None.into(),
-                2,
-                &assign_prop.span,
-              );
-              serialize_ident(ctx, &assign_prop.key);
-              serialize_expr(ctx, assign_prop.value.as_ref())
-            }
-            Prop::Getter(getter_prop) => {
-              // TODO
-              if let Some(stmt) = &getter_prop.body {
-                serialize_stmt(ctx, &Stmt::Block(stmt.clone()));
-              }
-            }
-            Prop::Setter(setter_prop) => {
-              // TODO
-              if let Some(body) = &setter_prop.body {
-                serialize_stmt(ctx, &Stmt::Block(body.clone()));
-              }
-            }
-            Prop::Method(method_prop) => {
-              if let Some(body) = &method_prop.function.body {
-                serialize_stmt(ctx, &Stmt::Block(body.clone()));
-              }
-            }
-          },
-        }
-      }
-    }
-    Expr::Fn(fn_expr) => {
-      let fn_obj = fn_expr.function.as_ref();
-      push_node(
-        ctx,
-        AstNode::FnExpr.into(),
-        Flags::None.into(),
-        0,
-        &fn_obj.span,
-      );
-    }
-    Expr::Unary(unary_expr) => {
-      push_node(
-        ctx,
-        AstNode::Unary.into(),
-        Flags::None.into(),
-        1,
-        &unary_expr.span,
-      );
-    }
-    Expr::Update(update_expr) => {
-      push_node(
-        ctx,
-        AstNode::Update.into(),
-        Flags::None.into(),
-        1,
-        &update_expr.span,
-      );
-      serialize_expr(ctx, update_expr.arg.as_ref());
-    }
-    Expr::Bin(bin_expr) => {
-      push_node(
-        ctx,
-        AstNode::Bin.into(),
-        Flags::None.into(),
-        2,
-        &bin_expr.span,
-      );
-      serialize_expr(ctx, bin_expr.left.as_ref());
-      serialize_expr(ctx, bin_expr.right.as_ref());
-    }
-    Expr::Assign(assign_expr) => {
-      push_node(
-        ctx,
-        AstNode::Assign.into(),
-        Flags::None.into(),
-        2,
-        &assign_expr.span,
-      );
+            let child_id =
+              ctx.push_node(AstNode::Spread, id, &spread_element.dot3_token);
 
-      match &assign_expr.left {
+            let child_offset = ctx.reserve_child_ids(1);
+            let expr_id =
+              serialize_expr(ctx, spread_element.expr.as_ref(), child_id);
+
+            ctx.set_child(child_offset, expr_id, 0);
+
+            child_id
+          }
+          PropOrSpread::Prop(prop) => {
+            let mut flags = FlagValue::new();
+            let prop_id = ctx.push_node(AstNode::Property, id, &prop.span());
+
+            // Reserve flag
+            ctx.result.push(flags.0);
+            let flag_offset = ctx.result.len() - 1;
+
+            let child_offset = ctx.reserve_child_ids(2);
+
+            // FIXME: optional
+            // computed: boolean;
+            // key: PropertyName;
+            // kind: 'get' | 'init' | 'set';
+            // method: boolean;
+            // optional: boolean;
+            // shorthand: boolean;
+            match prop.as_ref() {
+              Prop::Shorthand(ident) => {
+                flags.set(Flag::PropShorthand);
+
+                let child_id = serialize_ident(ctx, ident, prop_id);
+                ctx.set_child(child_offset, child_id, 0);
+                ctx.set_child(child_offset, child_id, 1);
+              }
+              Prop::KeyValue(key_value_prop) => {
+                if let PropName::Computed(_) = key_value_prop.key {
+                  flags.set(Flag::PropComputed)
+                }
+
+                let key_id =
+                  serialize_prop_name(ctx, &key_value_prop.key, prop_id);
+                let value_id =
+                  serialize_expr(ctx, key_value_prop.value.as_ref(), prop_id);
+
+                ctx.set_child(child_offset, key_id, 0);
+                ctx.set_child(child_offset, value_id, 1);
+              }
+              Prop::Assign(assign_prop) => {
+                let child_id =
+                  ctx.push_node(AstNode::Assign, prop_id, &assign_prop.span);
+
+                let key_id = serialize_ident(ctx, &assign_prop.key, child_id);
+                let value_id =
+                  serialize_expr(ctx, assign_prop.value.as_ref(), child_id);
+
+                ctx.set_child(child_id, key_id, 0);
+                ctx.set_child(child_id, value_id, 1);
+              }
+              Prop::Getter(getter_prop) => {
+                flags.set(Flag::PropGetter);
+
+                let key_id =
+                  serialize_prop_name(ctx, &getter_prop.key, prop_id);
+
+                ctx.set_child(child_offset, key_id, 0);
+
+                if let Some(stmt) = &getter_prop.body {
+                  let value_id =
+                    serialize_stmt(ctx, &Stmt::Block(stmt.clone()), prop_id);
+                  ctx.set_child(child_offset, value_id, 1);
+                }
+              }
+              Prop::Setter(setter_prop) => {
+                flags.set(Flag::PropSetter);
+
+                let key_id =
+                  serialize_prop_name(ctx, &setter_prop.key, prop_id);
+
+                let child_id =
+                  ctx.push_node(AstNode::FnExpr, prop_id, &setter_prop.span);
+                // TODO
+                // if let Some(body) = &setter_prop.body {
+                //   serialize_stmt(ctx, &Stmt::Block(body.clone()));
+                // }
+                todo!()
+              }
+              Prop::Method(method_prop) => {
+                // if let Some(body) = &method_prop.function.body {
+                //   serialize_stmt(ctx, &Stmt::Block(body.clone()));
+                // }
+                todo!()
+              }
+            }
+
+            ctx.result[flag_offset] = flags.0;
+
+            prop_id
+          }
+        };
+
+        ctx.set_child(offset, child_id, i);
+      }
+
+      id
+    }
+    Expr::Fn(node) => {
+      let fn_obj = node.function.as_ref();
+      let id = ctx.push_node(AstNode::FnExpr, parent_id, &fn_obj.span);
+
+      // FIXME
+
+      id
+    }
+    Expr::Unary(node) => {
+      let id = ctx.push_node(AstNode::Unary, parent_id, &node.span);
+      let offset = ctx.reserve_child_ids(1);
+
+      let child_id = serialize_expr(ctx, &node.arg, id);
+      ctx.set_child(offset, child_id, 0);
+
+      id
+    }
+    Expr::Update(node) => {
+      let id = ctx.push_node(AstNode::Update, parent_id, &node.span);
+      let offset = ctx.reserve_child_ids(1);
+
+      let child_id = serialize_expr(ctx, node.arg.as_ref(), id);
+      ctx.set_child(offset, child_id, 0);
+
+      id
+    }
+    Expr::Bin(node) => {
+      let id = match node.op {
+        BinaryOp::LogicalOr
+        | BinaryOp::LogicalAnd
+        | BinaryOp::NullishCoalescing => {
+          ctx.push_node(AstNode::LogicalExpression, parent_id, &node.span)
+        }
+        _ => ctx.push_node(AstNode::Bin, parent_id, &node.span),
+      };
+
+      let offset = ctx.reserve_child_ids(2);
+
+      let left_id = serialize_expr(ctx, node.left.as_ref(), id);
+      let right_id = serialize_expr(ctx, node.right.as_ref(), id);
+
+      ctx.set_child(offset, left_id, 0);
+      ctx.set_child(offset, right_id, 1);
+
+      id
+    }
+    Expr::Assign(node) => {
+      let id = ctx.push_node(AstNode::Assign, parent_id, &node.span);
+      let offset = ctx.reserve_child_ids(2);
+
+      let left_id = match &node.left {
         AssignTarget::Simple(simple_assign_target) => {
           match simple_assign_target {
             SimpleAssignTarget::Ident(binding_ident) => {
-              serialize_ident(ctx, &binding_ident.id);
+              serialize_ident(ctx, &binding_ident.id, id)
             }
             SimpleAssignTarget::Member(member_expr) => {
-              serialize_expr(ctx, &Expr::Member(member_expr.clone()));
+              serialize_expr(ctx, &Expr::Member(member_expr.clone()), id)
             }
-            SimpleAssignTarget::SuperProp(super_prop_expr) => {}
-            SimpleAssignTarget::Paren(paren_expr) => {}
-            SimpleAssignTarget::OptChain(opt_chain_expr) => {}
-            SimpleAssignTarget::TsAs(ts_as_expr) => {}
-            SimpleAssignTarget::TsSatisfies(ts_satisfies_expr) => {}
-            SimpleAssignTarget::TsNonNull(ts_non_null_expr) => {}
-            SimpleAssignTarget::TsTypeAssertion(ts_type_assertion) => {}
-            SimpleAssignTarget::TsInstantiation(ts_instantiation) => {}
-            SimpleAssignTarget::Invalid(invalid) => {}
+            SimpleAssignTarget::SuperProp(super_prop_expr) => todo!(),
+            SimpleAssignTarget::Paren(paren_expr) => todo!(),
+            SimpleAssignTarget::OptChain(opt_chain_expr) => todo!(),
+            SimpleAssignTarget::TsAs(ts_as_expr) => todo!(),
+            SimpleAssignTarget::TsSatisfies(ts_satisfies_expr) => todo!(),
+            SimpleAssignTarget::TsNonNull(ts_non_null_expr) => todo!(),
+            SimpleAssignTarget::TsTypeAssertion(ts_type_assertion) => todo!(),
+            SimpleAssignTarget::TsInstantiation(ts_instantiation) => todo!(),
+            SimpleAssignTarget::Invalid(invalid) => todo!(),
           }
         }
-        AssignTarget::Pat(assign_target_pat) => {}
-      }
+        AssignTarget::Pat(assign_target_pat) => todo!(),
+      };
 
-      serialize_expr(ctx, assign_expr.right.as_ref());
+      let right_id = serialize_expr(ctx, node.right.as_ref(), id);
+
+      ctx.set_child(offset, left_id, 0);
+      ctx.set_child(offset, right_id, 1);
+
+      id
     }
-    Expr::Member(member_expr) => {
-      push_node(
-        ctx,
-        AstNode::Member.into(),
-        Flags::None.into(),
-        2,
-        &member_expr.span,
-      );
-      serialize_expr(ctx, member_expr.obj.as_ref());
+    Expr::Member(node) => {
+      let id = ctx.push_node(AstNode::Member, parent_id, &node.span);
+      let mut flags = FlagValue::new();
+      // Reserve space
+      ctx.result.push(flags.0);
+      let flag_offset = ctx.result.len() - 1;
 
-      match &member_expr.prop {
+      let offset = ctx.reserve_child_ids(2);
+
+      let obj_id = serialize_expr(ctx, node.obj.as_ref(), id);
+
+      let prop_id = match &node.prop {
         MemberProp::Ident(ident_name) => {
-          // FIXME
-          push_node(
-            ctx,
-            AstNode::Ident.into(),
-            Flags::None.into(),
-            0,
-            &member_expr.span,
-          );
+          let child_id = ctx.push_node(AstNode::Ident, id, &ident_name.span);
+
+          let str_id = ctx.str_table.insert(ident_name.sym.as_str());
+          append_usize(&mut ctx.result, str_id);
+
+          child_id
         }
-        MemberProp::PrivateName(private_name) => {}
+        MemberProp::PrivateName(private_name) => {
+          let child_id =
+            ctx.push_node(AstNode::PrivateIdentifier, id, &private_name.span);
+
+          let str_id = ctx.str_table.insert(&private_name.name.as_str());
+          append_usize(&mut ctx.result, str_id);
+
+          child_id
+        }
         MemberProp::Computed(computed_prop_name) => {
-          serialize_expr(ctx, computed_prop_name.expr.as_ref());
+          flags.set(Flag::MemberComputed);
+
+          serialize_expr(ctx, computed_prop_name.expr.as_ref(), id)
         }
-      }
+      };
+
+      ctx.result[flag_offset] = flags.0;
+
+      ctx.set_child(offset, obj_id, 0);
+      ctx.set_child(offset, prop_id, 1);
+
+      id
     }
-    Expr::SuperProp(super_prop_expr) => {
-      push_node(
-        ctx,
-        AstNode::SuperProp.into(),
-        Flags::None.into(),
-        2,
-        &super_prop_expr.span,
-      );
+    Expr::SuperProp(node) => {
+      let id = ctx.push_node(AstNode::SuperProp, parent_id, &node.span);
+      let offset = ctx.reserve_child_ids(2);
+
       // FIXME
-      match &super_prop_expr.prop {
+      match &node.prop {
         SuperProp::Ident(ident_name) => {}
         SuperProp::Computed(computed_prop_name) => {}
       }
+
+      id
     }
-    Expr::Cond(cond_expr) => {
-      push_node(
-        ctx,
-        AstNode::Cond.into(),
-        Flags::None.into(),
-        3,
-        &cond_expr.span,
-      );
+    Expr::Cond(node) => {
+      let id = ctx.push_node(AstNode::Cond, parent_id, &node.span);
+      let offset = ctx.reserve_child_ids(3);
 
-      serialize_expr(ctx, cond_expr.test.as_ref());
-      serialize_expr(ctx, cond_expr.cons.as_ref());
-      serialize_expr(ctx, cond_expr.alt.as_ref());
+      let test_id = serialize_expr(ctx, node.test.as_ref(), id);
+      let cons_id = serialize_expr(ctx, node.cons.as_ref(), id);
+      let alt_id = serialize_expr(ctx, node.alt.as_ref(), id);
+
+      ctx.set_child(offset, test_id, 0);
+      ctx.set_child(offset, cons_id, 1);
+      ctx.set_child(offset, alt_id, 2);
+
+      id
     }
-    Expr::Call(call_expr) => {
-      let mut count = 1 + call_expr.args.len();
-      if call_expr.type_args.is_some() {
-        count += 1;
-      }
+    Expr::Call(node) => {
+      let id = ctx.push_node(AstNode::Call, parent_id, &node.span);
+      // Callee + type args
+      let offset = ctx.reserve_child_ids(2);
+      let arg_offset = ctx.reserve_child_ids_with_count(node.args.len());
 
-      push_node(
-        ctx,
-        AstNode::Call.into(),
-        Flags::None.into(),
-        count.try_into().unwrap(),
-        &call_expr.span,
-      );
-
-      for arg in &call_expr.args {
-        if let Some(spread) = &arg.spread {
-          push_node(ctx, AstNode::Spread.into(), Flags::None.into(), 1, spread);
-        }
-
-        serialize_expr(ctx, arg.expr.as_ref());
-      }
-
-      match &call_expr.callee {
-        Callee::Super(_) => {}
-        Callee::Import(import) => {}
+      match &node.callee {
+        Callee::Super(_) => todo!(),
+        Callee::Import(import) => todo!(),
         Callee::Expr(expr) => {
-          serialize_expr(ctx, expr);
+          let expr_id = serialize_expr(ctx, expr, id);
+          ctx.set_child(offset, expr_id, 0);
         }
       }
-    }
-    Expr::New(new_expr) => {
-      let mut count = 1;
 
-      if let Some(args) = &new_expr.args {
-        count += args.len()
+      if let Some(type_args) = &node.type_args {
+
+        // ctx.set_child(offset, expr_id, 1);
       }
-      if new_expr.type_args.is_some() {
-        count += 1;
-      }
-
-      push_node(
-        ctx,
-        AstNode::New.into(),
-        Flags::None.into(),
-        count.try_into().unwrap(),
-        &new_expr.span,
-      );
-      serialize_expr(ctx, new_expr.callee.as_ref());
-
-      if let Some(args) = &new_expr.args {
-        for arg in args {
-          if let Some(spread) = &arg.spread {
-            push_node(
-              ctx,
-              AstNode::Spread.into(),
-              Flags::None.into(),
-              1,
-              spread,
-            );
-          }
-
-          serialize_expr(ctx, arg.expr.as_ref());
-        }
-      }
-    }
-    Expr::Seq(seq_expr) => {
-      let count = seq_expr.exprs.len();
-      push_node(
-        ctx,
-        AstNode::Seq.into(),
-        Flags::None.into(),
-        count.try_into().unwrap(),
-        &seq_expr.span,
-      );
-
-      for expr in &seq_expr.exprs {
-        serialize_expr(ctx, expr);
-      }
-    }
-    Expr::Ident(ident) => {
-      serialize_ident(ctx, ident);
-    }
-    Expr::Lit(lit) => {
-      serialize_lit(ctx, lit);
-    }
-    Expr::Tpl(tpl) => {
-      push_node(ctx, AstNode::Tpl.into(), Flags::None.into(), 0, &tpl.span);
-    }
-    Expr::TaggedTpl(tagged_tpl) => {
-      push_node(
-        ctx,
-        AstNode::TaggedTpl.into(),
-        Flags::None.into(),
-        0,
-        &tagged_tpl.span,
-      );
-    }
-    Expr::Arrow(arrow_expr) => {
-      // body + return_type + type_params
-      let mut count = 1 + arrow_expr.params.len();
-      if arrow_expr.return_type.is_some() {
-        count += 1;
-      }
-      if arrow_expr.type_params.is_some() {
-        count += 1;
-      }
-
-      push_node(
-        ctx,
-        AstNode::Arrow.into(),
-        Flags::None.into(),
-        count.try_into().unwrap(),
-        &arrow_expr.span,
-      );
-
-      match arrow_expr.body.as_ref() {
-        BlockStmtOrExpr::BlockStmt(block_stmt) => {
-          serialize_stmt(ctx, &Stmt::Block(block_stmt.clone()));
-        }
-        BlockStmtOrExpr::Expr(expr) => {
-          serialize_expr(ctx, expr.as_ref());
-        }
-      }
-    }
-    Expr::Class(class_expr) => {
-      // push_node(result, AstNode::Class.into(), &class_expr.span);
-    }
-    Expr::Yield(yield_expr) => {
-      let count = if yield_expr.arg.is_some() { 1 } else { 0 };
-      push_node(
-        ctx,
-        AstNode::Yield.into(),
-        Flags::None.into(),
-        count,
-        &yield_expr.span,
-      );
-
-      if let Some(arg) = &yield_expr.arg {
-        serialize_expr(ctx, arg.as_ref());
-      }
-    }
-    Expr::MetaProp(meta_prop_expr) => {
-      push_node(
-        ctx,
-        AstNode::MetaProp.into(),
-        Flags::None.into(),
-        0,
-        &meta_prop_expr.span,
-      );
-    }
-    Expr::Await(await_expr) => {
-      push_node(
-        ctx,
-        AstNode::Await.into(),
-        Flags::None.into(),
-        1,
-        &await_expr.span,
-      );
-
-      serialize_expr(ctx, await_expr.arg.as_ref());
-    }
-    Expr::Paren(paren_expr) => {
-      push_node(
-        ctx,
-        AstNode::Seq.into(),
-        Flags::None.into(),
-        1,
-        &paren_expr.span,
-      );
-
-      serialize_expr(ctx, paren_expr.expr.as_ref());
-    }
-    Expr::JSXMember(jsxmember_expr) => {
-      push_node(
-        ctx,
-        AstNode::JSXMember.into(),
-        Flags::None.into(),
-        0,
-        &jsxmember_expr.span,
-      );
-    }
-    Expr::JSXNamespacedName(jsxnamespaced_name) => {
-      push_node(
-        ctx,
-        AstNode::JSXNamespacedName.into(),
-        Flags::None.into(),
-        0,
-        &jsxnamespaced_name.span,
-      );
-    }
-    Expr::JSXEmpty(jsxempty_expr) => {
-      push_node(
-        ctx,
-        AstNode::JSXEmpty.into(),
-        Flags::None.into(),
-        0,
-        &jsxempty_expr.span,
-      );
-    }
-    Expr::JSXElement(jsxelement) => {
-      push_node(
-        ctx,
-        AstNode::JSXElement.into(),
-        Flags::None.into(),
-        0,
-        &jsxelement.span,
-      );
-    }
-    Expr::JSXFragment(jsxfragment) => {
-      push_node(
-        ctx,
-        AstNode::JSXFragment.into(),
-        Flags::None.into(),
-        0,
-        &jsxfragment.span,
-      );
-    }
-    Expr::TsTypeAssertion(ts_type_assertion) => {
-      push_node(
-        ctx,
-        AstNode::TsTypeAssertion.into(),
-        Flags::None.into(),
-        0,
-        &ts_type_assertion.span,
-      );
-    }
-    Expr::TsConstAssertion(ts_const_assertion) => {
-      push_node(
-        ctx,
-        AstNode::TsConstAssertion.into(),
-        Flags::None.into(),
-        1,
-        &ts_const_assertion.span,
-      );
-      serialize_expr(ctx, ts_const_assertion.expr.as_ref());
-    }
-    Expr::TsNonNull(ts_non_null_expr) => {
-      push_node(
-        ctx,
-        AstNode::TsNonNull.into(),
-        Flags::None.into(),
-        1,
-        &ts_non_null_expr.span,
-      );
-      serialize_expr(ctx, ts_non_null_expr.expr.as_ref());
-    }
-    Expr::TsAs(ts_as_expr) => {
-      push_node(
-        ctx,
-        AstNode::TsAs.into(),
-        Flags::None.into(),
-        2,
-        &ts_as_expr.span,
-      );
-      serialize_expr(ctx, ts_as_expr.expr.as_ref());
-      serialize_ts_type(ctx, ts_as_expr.type_ann.as_ref());
-    }
-    Expr::TsInstantiation(ts_instantiation) => {
-      push_node(
-        ctx,
-        AstNode::TsInstantiation.into(),
-        Flags::None.into(),
-        2,
-        &ts_instantiation.span,
-      );
-      serialize_expr(ctx, ts_instantiation.expr.as_ref());
 
       // FIXME
+      for (i, arg) in node.args.iter().enumerate() {
+        // if let Some(spread) = &arg.spread {
+        //   let spread_id = ctx.push_node(AstNode::Spread, None, parent_id, 1, spread);
+        //   let id = serialize_expr(ctx, spread., spread_id);
+
+        //   ctx.set_child(spread_id, spread_id, i);
+        //   ctx.set_child(offset, spread_id, i + 2);
+
+        // } else {
+
+        //   serialize_expr(ctx, arg.expr.as_ref());
+        // }
+      }
+
+      id
     }
-    Expr::TsSatisfies(ts_satisfies_expr) => {
-      push_node(
-        ctx,
-        AstNode::TsSatisfies.into(),
-        Flags::None.into(),
-        2,
-        &ts_satisfies_expr.span,
+    Expr::New(node) => {
+      let id = ctx.push_node(AstNode::New.into(), parent_id, &node.span);
+      let offset = ctx.reserve_child_ids(2);
+      let child_offset = ctx.reserve_child_ids_with_count(
+        node.args.as_ref().map_or(0, |args| args.len()),
       );
-      serialize_expr(ctx, ts_satisfies_expr.expr.as_ref());
-      serialize_ts_type(ctx, ts_satisfies_expr.type_ann.as_ref());
+
+      let expr_id = serialize_expr(ctx, node.callee.as_ref(), id);
+      ctx.set_child(offset, expr_id, 0);
+
+      if let Some(args) = &node.args {
+        for arg in args {
+          // FIXME
+          //   if let Some(spread) = &arg.spread {
+          //     ctx.push_node(AstNode::Spread.into(), None)
+          //   }
+
+          //   serialize_expr(ctx, arg.expr.as_ref());
+        }
+      }
+
+      if let Some(type_ann) = &node.type_args {
+        // FIXME
+        // ctx.set_child(offset, child_id, 1);
+      }
+
+      id
     }
-    Expr::PrivateName(private_name) => {
-      push_node(
-        ctx,
-        AstNode::PrivateName.into(),
-        Flags::None.into(),
-        0,
-        &private_name.span,
-      );
+    Expr::Seq(node) => {
+      let id = ctx.push_node(AstNode::Seq, parent_id, &node.span);
+
+      let offset = ctx.reserve_child_ids_with_count(node.exprs.len());
+
+      for (i, expr) in node.exprs.iter().enumerate() {
+        let child_id = serialize_expr(ctx, expr, id);
+        ctx.set_child(offset, child_id, i);
+      }
+
+      id
     }
-    Expr::OptChain(opt_chain_expr) => {
-      push_node(
-        ctx,
-        AstNode::OptChain.into(),
-        Flags::None.into(),
-        0,
-        &opt_chain_expr.span,
-      );
+    Expr::Ident(node) => serialize_ident(ctx, node, parent_id),
+    Expr::Lit(node) => serialize_lit(ctx, node, parent_id),
+    Expr::Tpl(node) => {
+      let id = ctx.push_node(AstNode::Tpl, parent_id, &node.span);
+      //
+
+      id
+    }
+    Expr::TaggedTpl(tagged_tpl) => {
+      let id = ctx.push_node(AstNode::TaggedTpl, parent_id, &tagged_tpl.span);
+
+      id
+    }
+    Expr::Arrow(node) => {
+      let id = ctx.push_node(AstNode::Arrow, parent_id, &node.span);
+
+      let mut flags = FlagValue::new();
+      if node.is_async {
+        flags.set(Flag::FnAsync);
+      }
+      if node.is_generator {
+        flags.set(Flag::FnGenerator);
+      }
+      ctx.result.push(flags.0);
+
+      let type_offset = ctx.reserve_child_ids(1);
+      if let Some(type_params) = &node.type_params {
+        // FIXME;
+      }
+
+      let param_offset = ctx.reserve_child_ids_with_count(node.params.len());
+      for (i, pat) in node.params.iter().enumerate() {
+        let child_id = serialize_pat(ctx, pat, id);
+        ctx.set_child(param_offset, child_id, i);
+      }
+
+      // FIXME
+      let offset = ctx.reserve_child_ids(2);
+
+      let body_id = match node.body.as_ref() {
+        BlockStmtOrExpr::BlockStmt(block_stmt) => {
+          serialize_stmt(ctx, &Stmt::Block(block_stmt.clone()), id)
+        }
+        BlockStmtOrExpr::Expr(expr) => serialize_expr(ctx, expr.as_ref(), id),
+      };
+      ctx.set_child(offset, body_id, 0);
+
+      if let Some(return_type) = &node.return_type {
+        // FIXME
+        // ctx.set_child(offset, body_id, 1);
+      }
+
+      id
+    }
+    Expr::Class(node) => {
+      let id = ctx.push_node(AstNode::ClassExpr, parent_id, &node.class.span);
+
+      // FIXME
+
+      id
+    }
+    Expr::Yield(node) => {
+      let id = ctx.push_node(AstNode::Yield, parent_id, &node.span);
+      let offset = ctx.reserve_child_ids(1);
+
+      if let Some(arg) = &node.arg {
+        let child_id = serialize_expr(ctx, arg.as_ref(), id);
+        ctx.set_child(offset, child_id, 0);
+      }
+
+      id
+    }
+    Expr::MetaProp(node) => {
+      ctx.push_node(AstNode::MetaProp.into(), parent_id, &node.span)
+    }
+    Expr::Await(node) => {
+      let id = ctx.push_node(AstNode::Await, parent_id, &node.span);
+      let offset = ctx.reserve_child_ids(1);
+
+      let child_id = serialize_expr(ctx, node.arg.as_ref(), id);
+      ctx.set_child(offset, child_id, 0);
+
+      id
+    }
+    Expr::Paren(node) => {
+      let id = ctx.push_node(AstNode::Paren, parent_id, &node.span);
+      let offset = ctx.reserve_child_ids(1);
+
+      let child_id = serialize_expr(ctx, node.expr.as_ref(), id);
+      ctx.set_child(offset, child_id, 0);
+
+      id
+    }
+    Expr::JSXMember(node) => {
+      // FIXME
+      let id = ctx.push_node(AstNode::JSXMember, parent_id, &node.span);
+
+      id
+    }
+    Expr::JSXNamespacedName(node) => {
+      let id = ctx.push_node(AstNode::JSXNamespacedName, parent_id, &node.span);
+
+      id
+    }
+    Expr::JSXEmpty(node) => {
+      let id = ctx.push_node(AstNode::JSXEmpty, parent_id, &node.span);
+
+      id
+    }
+    Expr::JSXElement(node) => {
+      let id = ctx.push_node(AstNode::JSXElement, parent_id, &node.span);
+
+      id
+    }
+    Expr::JSXFragment(node) => {
+      let id = ctx.push_node(AstNode::JSXFragment, parent_id, &node.span);
+
+      id
+    }
+    Expr::TsTypeAssertion(node) => {
+      let id = ctx.push_node(AstNode::TsTypeAssertion, parent_id, &node.span);
+
+      id
+    }
+    Expr::TsConstAssertion(node) => {
+      let id = ctx.push_node(AstNode::TsConstAssertion, parent_id, &node.span);
+      let offset = ctx.reserve_child_ids(1);
+
+      let expr_id = serialize_expr(ctx, node.expr.as_ref(), id);
+      ctx.set_child(offset, expr_id, 0);
+
+      id
+    }
+    Expr::TsNonNull(node) => {
+      let id = ctx.push_node(AstNode::TsNonNull, parent_id, &node.span);
+      let offset = ctx.reserve_child_ids(1);
+
+      let child_id = serialize_expr(ctx, node.expr.as_ref(), id);
+      ctx.set_child(offset, child_id, 0);
+
+      id
+    }
+    Expr::TsAs(node) => {
+      let id = ctx.push_node(AstNode::TsAs, parent_id, &node.span);
+      let offset = ctx.reserve_child_ids(2);
+
+      let expr_id = serialize_expr(ctx, node.expr.as_ref(), id);
+      let type_id = serialize_ts_type(ctx, node.type_ann.as_ref(), id);
+
+      ctx.set_child(offset, expr_id, 0);
+      ctx.set_child(offset, type_id, 1);
+
+      id
+    }
+    Expr::TsInstantiation(node) => {
+      let id = ctx.push_node(AstNode::TsInstantiation, parent_id, &node.span);
+      let offset = ctx.reserve_child_ids(2);
+      let expr_id = serialize_expr(ctx, node.expr.as_ref(), id);
+      // let expr_id = serialize_expr(ctx, ts_instantiation.type_args.as_ref(), id);
+      ctx.set_child(offset, expr_id, 0);
+
+      // FIXME
+      id
+    }
+    Expr::TsSatisfies(node) => {
+      let id = ctx.push_node(AstNode::TsSatisfies, parent_id, &node.span);
+      let offset = ctx.reserve_child_ids(2);
+
+      let expr_id = serialize_expr(ctx, node.expr.as_ref(), id);
+      let type_id = serialize_ts_type(ctx, node.type_ann.as_ref(), id);
+
+      ctx.set_child(offset, expr_id, 0);
+      ctx.set_child(offset, type_id, 1);
+
+      id
+    }
+    Expr::PrivateName(node) => {
+      let id = ctx.push_node(AstNode::PrivateIdentifier, parent_id, &node.span);
+
+      id
+    }
+    Expr::OptChain(node) => {
+      let id = ctx.push_node(AstNode::OptChain, parent_id, &node.span);
+
+      id
     }
     Expr::Invalid(invalid) => {
-      // push_node(result, AstNode::Invalid.into(), &invalid.span);
+      // ctx.push_node(result, AstNode::Invalid.into(), &invalid.span);
+      todo!()
     }
   }
 }
 
-fn serialize_ident(ctx: &mut SerializeCtx, ident: &Ident) {
-  let id = ctx.str_table.insert(ident.sym.as_str());
-  push_node(
-    ctx,
-    AstNode::Ident.into(),
-    Flags::None.into(),
-    id,
-    &ident.span,
-  );
+fn serialize_pat(ctx: &mut SerializeCtx, pat: &Pat, parent_id: usize) -> usize {
+  match pat {
+    Pat::Ident(node) => serialize_ident(ctx, &node.id, parent_id),
+    Pat::Array(node) => {
+      let id = ctx.push_node(AstNode::ArrayPattern, parent_id, &node.span);
+
+      // FIXME: Optional
+      // FIXME: Type Ann
+      let offset = ctx.reserve_child_ids_with_count(node.elems.len());
+
+      for (i, elem) in node.elems.iter().enumerate() {
+        if let Some(pat) = elem {
+          let child_id = serialize_pat(ctx, pat, id);
+          ctx.set_child(offset, child_id, i);
+        }
+      }
+
+      id
+    }
+    Pat::Rest(node) => todo!(),
+    Pat::Object(node) => todo!(),
+    Pat::Assign(node) => todo!(),
+    Pat::Invalid(node) => todo!(),
+    Pat::Expr(node) => todo!(),
+  }
 }
 
-fn serialize_lit(ctx: &mut SerializeCtx, lit: &Lit) {
+fn serialize_prop_name(
+  ctx: &mut SerializeCtx,
+  prop_name: &PropName,
+  parent_id: usize,
+) -> usize {
+  match prop_name {
+    PropName::Ident(ident_name) => {
+      let child_id = ctx.push_node(AstNode::Ident, parent_id, &ident_name.span);
+
+      let str_id = ctx.str_table.insert(ident_name.sym.as_str());
+      append_usize(&mut ctx.result, str_id);
+
+      child_id
+    }
+    PropName::Str(str_prop) => {
+      let child_id =
+        ctx.push_node(AstNode::StringLiteral, parent_id, &str_prop.span);
+
+      let str_id = ctx.str_table.insert(&str_prop.value.as_str());
+      append_usize(&mut ctx.result, str_id);
+
+      child_id
+    }
+    PropName::Num(number) => {
+      serialize_lit(ctx, &Lit::Num(number.clone()), parent_id)
+    }
+    PropName::Computed(node) => serialize_expr(ctx, &node.expr, parent_id),
+    PropName::BigInt(big_int) => {
+      serialize_lit(ctx, &Lit::BigInt(big_int.clone()), parent_id)
+    }
+  }
+}
+
+fn serialize_ident(
+  ctx: &mut SerializeCtx,
+  ident: &Ident,
+  parent_id: usize,
+) -> usize {
+  let id = ctx.push_node(AstNode::Ident, parent_id, &ident.span);
+
+  let str_id = ctx.str_table.insert(ident.sym.as_str());
+  append_usize(&mut ctx.result, str_id);
+
+  id
+}
+
+fn serialize_lit(ctx: &mut SerializeCtx, lit: &Lit, parent_id: usize) -> usize {
   match lit {
-    Lit::Str(lit_str) => push_node(
-      ctx,
-      AstNode::StringLiteral.into(),
-      Flags::None.into(),
-      0,
-      &lit_str.span,
-    ),
+    Lit::Str(node) => {
+      let id = ctx.push_node(AstNode::StringLiteral, parent_id, &node.span);
+      let str_id = ctx.str_table.insert(&node.value.as_str());
+      append_usize(&mut ctx.result, str_id);
+
+      id
+    }
     Lit::Bool(lit_bool) => {
-      let value = if lit_bool.value {
-        Flags::BoolTrue
-      } else {
-        Flags::None
-      };
-      push_node(ctx, AstNode::Bool.into(), value.into(), 0, &lit_bool.span)
+      let id = ctx.push_node(AstNode::Bool, parent_id, &lit_bool.span);
+
+      let value: u8 = if lit_bool.value { 1 } else { 0 };
+      ctx.result.push(value);
+
+      id
     }
-    Lit::Null(null) => {
-      push_node(ctx, AstNode::Null.into(), Flags::None.into(), 0, &null.span)
+    Lit::Null(node) => ctx.push_node(AstNode::Null, parent_id, &node.span),
+    Lit::Num(node) => {
+      let id = ctx.push_node(AstNode::Num, parent_id, &node.span);
+
+      let value = node.raw.as_ref().unwrap();
+      let str_id = ctx.str_table.insert(&value.as_str());
+      append_usize(&mut ctx.result, str_id);
+
+      id
     }
-    Lit::Num(number) => push_node(
-      ctx,
-      AstNode::Num.into(),
-      Flags::None.into(),
-      0,
-      &number.span,
-    ),
-    Lit::BigInt(big_int) => push_node(
-      ctx,
-      AstNode::BigInt.into(),
-      Flags::None.into(),
-      0,
-      &big_int.span,
-    ),
-    Lit::Regex(regex) => push_node(
-      ctx,
-      AstNode::Regex.into(),
-      Flags::None.into(),
-      0,
-      &regex.span,
-    ),
-    Lit::JSXText(jsxtext) => push_node(
-      ctx,
-      AstNode::JSXText.into(),
-      Flags::None.into(),
-      0,
-      &jsxtext.span,
-    ),
+    Lit::BigInt(node) => {
+      let id = ctx.push_node(AstNode::BigInt, parent_id, &node.span);
+
+      let str_id = ctx.str_table.insert(&node.value.to_string());
+      append_usize(&mut ctx.result, str_id);
+
+      id
+    }
+    Lit::Regex(node) => {
+      let id = ctx.push_node(AstNode::Regex, parent_id, &node.span);
+
+      let pattern_id = ctx.str_table.insert(&node.exp.as_str());
+      let flag_id = ctx.str_table.insert(&node.flags.as_str());
+
+      append_usize(&mut ctx.result, pattern_id);
+      append_usize(&mut ctx.result, flag_id);
+
+      id
+    }
+    Lit::JSXText(jsxtext) => {
+      ctx.push_node(AstNode::JSXText, parent_id, &jsxtext.span)
+    }
   }
 }
 
-fn serialize_ts_type(ctx: &mut SerializeCtx, ts_type: &TsType) {
-  match ts_type {
-    TsType::TsKeywordType(ts_keyword_type) => {}
-    TsType::TsThisType(ts_this_type) => {}
-    TsType::TsFnOrConstructorType(ts_fn_or_constructor_type) => {}
-    TsType::TsTypeRef(ts_type_ref) => {}
-    TsType::TsTypeQuery(ts_type_query) => {}
-    TsType::TsTypeLit(ts_type_lit) => {}
-    TsType::TsArrayType(ts_array_type) => {}
-    TsType::TsTupleType(ts_tuple_type) => {}
-    TsType::TsOptionalType(ts_optional_type) => {}
-    TsType::TsRestType(ts_rest_type) => {}
-    TsType::TsUnionOrIntersectionType(ts_union_or_intersection_type) => {}
-    TsType::TsConditionalType(ts_conditional_type) => {}
-    TsType::TsInferType(ts_infer_type) => {}
-    TsType::TsParenthesizedType(ts_parenthesized_type) => {}
-    TsType::TsTypeOperator(ts_type_operator) => {}
-    TsType::TsIndexedAccessType(ts_indexed_access_type) => {}
-    TsType::TsMappedType(ts_mapped_type) => {}
-    TsType::TsLitType(ts_lit_type) => {}
-    TsType::TsTypePredicate(ts_type_predicate) => {}
-    TsType::TsImportType(ts_import_type) => {}
-  }
+fn serialize_ts_type(
+  ctx: &mut SerializeCtx,
+  ts_type: &TsType,
+  parent_id: usize,
+) -> usize {
+  todo!();
 }

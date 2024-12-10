@@ -6394,6 +6394,11 @@ declare namespace Deno {
     expressions: Expression[];
   }
 
+  export interface ParenthesisExpression extends BaseNode {
+    type: "ParenthesisExpression";
+    expression: Expression;
+  }
+
   export interface Super extends BaseNode {
     type: "Super";
   }
@@ -6472,6 +6477,7 @@ declare namespace Deno {
     | MetaProperty
     | NewExpression
     | ObjectExpression
+    | ParenthesisExpression
     | StaticBlock
     | SequenceExpression
     | Super
@@ -7026,7 +7032,8 @@ declare namespace Deno {
     TemplateLiteral?(node: TemplateLiteral): void;
 
     // Literals
-    BooleanLiteral?(node: BooleanLiteral): void;
+    BooleanLiteral?(node: BigIntLiteral): void;
+    BigIntLiteral?(node: BooleanLiteral): void;
     NullLiteral?(node: NullLiteral): void;
     NumericLiteral?(node: NumericLiteral): void;
     RegExpLiteral?(node: RegExpLiteral): void;
