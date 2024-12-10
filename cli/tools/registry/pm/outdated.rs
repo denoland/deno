@@ -184,8 +184,8 @@ pub async fn outdated(
     && !cli_options.start_dir.has_pkg_json()
   {
     bail!(
-      "No deno.json or package.json in {:?}.",
-      cli_options.initial_cwd(),
+      "No deno.json or package.json in \"{}\".",
+      cli_options.initial_cwd().display(),
     );
   }
 
