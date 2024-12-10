@@ -1122,15 +1122,7 @@ Warning Failed resolving symlink. Ignoring.
 
 Embedded File System
 
-bin[WILDLINE]
-├── main.ts
-└─┬ node_modules
-  ├─┬ .bin
-  │ └── *
-  ├─┬ .deno
-  │ └── *
-  └─┬ @denotest
-    └── *
+[WILDCARD]
 
 "#,
   );
