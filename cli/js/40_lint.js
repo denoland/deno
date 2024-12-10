@@ -109,6 +109,10 @@ const Flags = {
   VarDeclare: 0b00001000,
   ExportType: 0b000000001,
   TplTail: 0b000000001,
+  ForAwait: 0b000000001,
+  LogicalOr: 0b000000001,
+  LogicalAnd: 0b000000010,
+  LogicalNullishCoalescin: 0b000000100,
 };
 
 // Keep in sync with Rust
@@ -1434,8 +1438,6 @@ class Identifier extends BaseNode {
   range;
   name = "";
 
-  #ctx;
-
   /**
    * @param {AstContext} ctx
    * @param {number} parentId
@@ -1445,7 +1447,6 @@ class Identifier extends BaseNode {
   constructor(ctx, parentId, range, nameId) {
     super(ctx, parentId);
 
-    this.#ctx = ctx;
     this.name = getString(ctx, nameId);
     this.range = range;
   }
@@ -1493,16 +1494,15 @@ class LogicalExpression {
  * @returns {Deno.LogicalExpression["operator"]}
  */
 function getLogicalOperator(n) {
-  switch (n) {
-    case 0:
-      return "&&";
-    case 1:
-      return "||";
-    case 2:
-      return "??";
-    default:
-      throw new Error(`Unknown operator: ${n}`);
+  if ((n & Flags.LogicalAnd) !== 0) {
+    return "&&";
+  } else if ((n & Flags.LogicalOr) !== 0) {
+    return "||";
+  } else if ((n & Flags.LogicalNullishCoalescin) !== 0) {
+    return "??";
   }
+
+  throw new Error(`Unknown operator: ${n}`);
 }
 
 /** @implements {Deno.MemberExpression} */
@@ -2514,8 +2514,22 @@ function createAstNode(ctx, id) {
       const bodyId = readU32(buf, offset + 8);
       return new ForInStatement(ctx, parentId, range, leftId, rightId, bodyId);
     }
-    case AstType.ForOfStatement:
-      throw new ForOfStatement(ctx, parentId, range, false, 0, 0, 0); // FIXME
+    case AstType.ForOfStatement: {
+      const flags = buf[offset];
+      const isAwait = (flags & Flags.ForAwait) !== 0;
+      const leftId = readU32(buf, offset + 1);
+      const rightId = readU32(buf, offset + 5);
+      const bodyId = readU32(buf, offset + 9);
+      return new ForOfStatement(
+        ctx,
+        parentId,
+        range,
+        isAwait,
+        leftId,
+        rightId,
+        bodyId,
+      );
+    }
     case AstType.ForStatement: {
       const initId = readU32(buf, offset);
       const testId = readU32(buf, offset + 4);
@@ -2647,8 +2661,12 @@ function createAstNode(ctx, id) {
       const strId = readU32(buf, offset);
       return new Identifier(ctx, parentId, range, strId);
     }
-    case AstType.LogicalExpression:
-      throw new LogicalExpression(ctx, range, flags, 0, 0); // FIXME
+    case AstType.LogicalExpression: {
+      const flags = buf[offset];
+      const leftId = readU32(buf, offset + 1);
+      const rightId = readU32(buf, offset + 5);
+      return new LogicalExpression(ctx, range, flags, leftId, rightId);
+    }
     case AstType.MemberExpression: {
       const flags = buf[offset];
       offset += 1;

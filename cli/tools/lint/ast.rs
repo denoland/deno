@@ -191,6 +191,10 @@ enum Flag {
   VarDeclare,
   ExportType,
   TplTail,
+  ForAwait,
+  LogicalOr,
+  LogicalAnd,
+  LogicalNullishCoalescin,
 }
 
 fn assign_op_to_flag(m: AssignOp) -> u8 {
@@ -235,6 +239,10 @@ impl From<Flag> for u8 {
       Flag::VarDeclare => 0b00001000,
       Flag::ExportType => 0b000000001,
       Flag::TplTail => 0b000000001,
+      Flag::ForAwait => 0b000000001,
+      Flag::LogicalOr => 0b000000001,
+      Flag::LogicalAnd => 0b000000010,
+      Flag::LogicalNullishCoalescin => 0b000000100,
     }
   }
 }
@@ -753,7 +761,9 @@ fn serialize_stmt(
       let id = ctx.push_node(AstNode::ForOf, parent_id, &node.span);
       let offset = ctx.reserve_child_ids(3);
 
-      // FIXME: await
+      let mut flags = FlagValue::new();
+      flags.set(Flag::ForAwait);
+      ctx.result.push(flags.0);
 
       let left_id = serialize_for_head(ctx, &node.left, id);
       let right_id = serialize_expr(ctx, node.right.as_ref(), id);
@@ -1158,7 +1168,19 @@ fn serialize_expr(
         BinaryOp::LogicalOr
         | BinaryOp::LogicalAnd
         | BinaryOp::NullishCoalescing => {
-          ctx.push_node(AstNode::LogicalExpression, parent_id, &node.span)
+          let child_id =
+            ctx.push_node(AstNode::LogicalExpression, parent_id, &node.span);
+
+          let mut flags = FlagValue::new();
+          flags.set(match node.op {
+            BinaryOp::LogicalOr => Flag::LogicalOr,
+            BinaryOp::LogicalAnd => Flag::LogicalAnd,
+            BinaryOp::NullishCoalescing => Flag::LogicalNullishCoalescin,
+            _ => unreachable!("We mached op earlier"),
+          });
+          ctx.result.push(flags.0);
+
+          child_id
         }
         _ => ctx.push_node(AstNode::Bin, parent_id, &node.span),
       };
