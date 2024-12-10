@@ -189,8 +189,12 @@ pub async fn outdated(
     );
   }
 
-  eprintln!("cli lockfile {:#?}", cli_options.maybe_lockfile());
-  if cli_options.maybe_lockfile().is_none() {
+  let lockfile_exists = match &cli_options.maybe_lockfile() {
+    Some(lockfile) => lockfile.filename.exists(),
+    None => false,
+  };
+
+  if !lockfile_exists {
     bail!(
       "No lockfile in {:?}. Run {} to generate one.",
       cli_options.initial_cwd(),
