@@ -1,2 +1,13 @@
 Check file:///[WILDLINE]/main.js
 Compile file:///[WILDLINE]
+
+Embedded File System
+
+main.exe
+├── add.js
+├── main.js
+├─┬ node_modules
+│ └── *
+├── package.json
+└── subtract.ts
+

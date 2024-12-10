@@ -30,6 +30,7 @@ use serde::Serialize;
 use thiserror::Error;
 
 use crate::util;
+use crate::util::display::DisplayTreeNode;
 use crate::util::fs::canonicalize_path;
 
 #[derive(Debug, Copy, Clone)]
@@ -359,6 +360,119 @@ impl VfsBuilder {
       }),
     }
   }
+}
+
+pub fn output_vfs(builder: &VfsBuilder, executable_name: &str) {
+  enum EntryOutput<'a> {
+    All,
+    Subset(Vec<DirEntryOutput<'a>>),
+    File,
+    Symlink(&'a [String]),
+  }
+
+  impl<'a> EntryOutput<'a> {
+    pub fn as_display_tree(&self, name: String) -> DisplayTreeNode {
+      DisplayTreeNode {
+        text: match self {
+          EntryOutput::All | EntryOutput::Subset(_) | EntryOutput::File => name,
+          EntryOutput::Symlink(parts) => {
+            format!("{} --> {}", name, parts.join("/"))
+          }
+        },
+        children: match self {
+          EntryOutput::All => vec![DisplayTreeNode::from_text("*".to_string())],
+          EntryOutput::Subset(vec) => vec
+            .into_iter()
+            .map(|e| e.output.as_display_tree(e.name.to_string()))
+            .collect(),
+          EntryOutput::File | EntryOutput::Symlink(_) => vec![],
+        },
+      }
+    }
+  }
+
+  pub struct DirEntryOutput<'a> {
+    name: &'a str,
+    output: EntryOutput<'a>,
+  }
+
+  fn include_all_entries<'a>(
+    dir: &Path,
+    vfs_dir: &'a VirtualDirectory,
+  ) -> EntryOutput<'a> {
+    EntryOutput::Subset(
+      vfs_dir
+        .entries
+        .iter()
+        .map(|entry| DirEntryOutput {
+          name: entry.name(),
+          output: analyze_entry(&dir.join(entry.name()), entry),
+        })
+        .collect(),
+    )
+  }
+
+  fn analyze_entry<'a>(path: &Path, entry: &'a VfsEntry) -> EntryOutput<'a> {
+    match entry {
+      VfsEntry::Dir(virtual_directory) => analyze_dir(path, virtual_directory),
+      VfsEntry::File(_) => EntryOutput::File,
+      VfsEntry::Symlink(virtual_symlink) => {
+        EntryOutput::Symlink(&virtual_symlink.dest_parts)
+      }
+    }
+  }
+
+  fn analyze_dir<'a>(
+    dir: &Path,
+    vfs_dir: &'a VirtualDirectory,
+  ) -> EntryOutput<'a> {
+    let real_entry_count = std::fs::read_dir(dir)
+      .ok()
+      .map(|entries| entries.flat_map(|e| e.ok()).count())
+      .unwrap_or(0);
+    if real_entry_count == vfs_dir.entries.len() {
+      let children = vfs_dir
+        .entries
+        .iter()
+        .map(|entry| DirEntryOutput {
+          name: entry.name(),
+          output: analyze_entry(&dir.join(entry.name()), entry),
+        })
+        .collect::<Vec<_>>();
+      if children
+        .iter()
+        .all(|c| !matches!(c.output, EntryOutput::Subset(_)))
+      {
+        EntryOutput::All
+      } else {
+        EntryOutput::Subset(children)
+      }
+    } else {
+      include_all_entries(dir, vfs_dir)
+    }
+  }
+
+  if !log::log_enabled!(log::Level::Info) {
+    return; // no need to compute if won't output
+  }
+
+  if builder.root_dir.entries.is_empty() {
+    return; // nothing to output
+  }
+
+  // always include all the entries for the root directory, otherwise the
+  // user might not have context about what's being shown
+  let output = include_all_entries(&builder.root_path, &builder.root_dir);
+  let mut text = String::new();
+  output
+    .as_display_tree(deno_terminal::colors::italic(executable_name).to_string())
+    .print(&mut text)
+    .unwrap(); // unwrap ok because it's writing to a string
+  log::info!(
+    "\n{}\n",
+    deno_terminal::colors::bold("Embedded File System")
+  );
+  log::info!("{}\n", text.trim());
 }
 
 #[derive(Debug)]

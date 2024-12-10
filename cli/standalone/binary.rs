@@ -87,6 +87,7 @@ use super::serialization::DenoCompileModuleData;
 use super::serialization::DeserializedDataSection;
 use super::serialization::RemoteModulesStore;
 use super::serialization::RemoteModulesStoreBuilder;
+use super::virtual_fs::output_vfs;
 use super::virtual_fs::FileBackedVfs;
 use super::virtual_fs::VfsBuilder;
 use super::virtual_fs::VfsFileSubDataKind;
@@ -408,6 +409,7 @@ impl<'a> DenoCompileBinaryWriter<'a> {
   pub async fn write_bin(
     &self,
     writer: File,
+    display_output_filename: &str,
     graph: &ModuleGraph,
     root_dir_url: StandaloneRelativeFileBaseUrl<'_>,
     entrypoint: &ModuleSpecifier,
@@ -440,6 +442,7 @@ impl<'a> DenoCompileBinaryWriter<'a> {
     self
       .write_standalone_binary(
         writer,
+        display_output_filename,
         original_binary,
         graph,
         root_dir_url,
@@ -553,6 +556,7 @@ impl<'a> DenoCompileBinaryWriter<'a> {
   async fn write_standalone_binary(
     &self,
     writer: File,
+    display_output_filename: &str,
     original_bin: Vec<u8>,
     graph: &ModuleGraph,
     root_dir_url: StandaloneRelativeFileBaseUrl<'_>,
@@ -782,6 +786,8 @@ impl<'a> DenoCompileBinaryWriter<'a> {
       },
       otel_config: self.cli_options.otel_config(),
     };
+
+    output_vfs(&vfs, display_output_filename);
 
     write_binary_bytes(
       writer,

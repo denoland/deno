@@ -118,6 +118,7 @@ pub async fn compile(
   let write_result = binary_writer
     .write_bin(
       file,
+      &output_path.file_name().unwrap().to_string_lossy(),
       &graph,
       StandaloneRelativeFileBaseUrl::from(&root_dir_url),
       entrypoint,
@@ -364,17 +365,6 @@ fn resolve_root_dir_from_specifiers<'a>(
       }
     }
   }
-  let found_dir = if is_file_system_root(found_dir) {
-    found_dir
-  } else {
-    // include the parent dir name because it helps create some context
-    found_dir
-      .strip_suffix('/')
-      .unwrap_or(found_dir)
-      .rfind('/')
-      .map(|i| &found_dir[..i + 1])
-      .unwrap_or(found_dir)
-  };
   ModuleSpecifier::parse(found_dir).unwrap()
 }
 
@@ -469,14 +459,17 @@ mod test {
       .to_string()
     }
 
-    assert_eq!(resolve("file:///a/b/c", &["file:///a/b/c/d"]), "file:///a/");
     assert_eq!(
-      resolve("file:///a/b/c/", &["file:///a/b/c/d"]),
+      resolve("file:///a/b/e", &["file:///a/b/c/d"]),
       "file:///a/b/"
     );
     assert_eq!(
+      resolve("file:///a/b/c/", &["file:///a/b/c/d"]),
+      "file:///a/b/c/"
+    );
+    assert_eq!(
       resolve("file:///a/b/c/", &["file:///a/b/c/d", "file:///a/b/c/e"]),
-      "file:///a/b/"
+      "file:///a/b/c/"
     );
     assert_eq!(resolve("file:///", &["file:///a/b/c/d"]), "file:///");
     if cfg!(windows) {
@@ -484,7 +477,7 @@ mod test {
       // this will ignore the other one because it's on a separate drive
       assert_eq!(
         resolve("file:///c:/a/b/c/", &["file:///v:/a/b/c/d"]),
-        "file:///c:/a/b/"
+        "file:///c:/a/b/c/"
       );
     }
   }
