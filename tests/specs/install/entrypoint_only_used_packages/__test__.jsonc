@@ -1,0 +1,13 @@
+{
+  "tempDir": true,
+  "steps": [
+    {
+      "args": "install --entrypoint main.ts",
+      "output": "install-entrypoint.out"
+    },
+    {
+      "args": "install",
+      "output": "install.out"
+    }
+  ]
+}
