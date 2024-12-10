@@ -26,6 +26,11 @@
         {
           "args": "outdated",
           "output": "print_outdated/root.out"
+        },
+        {
+          // Filtering that matches nothing, should exit cleanly
+          "args": "outdated foobar",
+          "output": ""
         }
       ]
     },
@@ -38,6 +43,11 @@
         {
           "args": "outdated --recursive",
           "output": "print_outdated/recursive.out"
+        },
+        {
+          // Filtering that matches nothing, should exit cleanly
+          "args": "outdated foobar",
+          "output": ""
         }
       ]
     },

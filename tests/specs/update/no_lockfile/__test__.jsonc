@@ -1,0 +1,6 @@
+{
+  "tempDir": true,
+  "args": "outdated",
+  "exitCode": 1,
+  "output": "error: No lockfile in \"[WILDCARD]\". Run deno install to generate one.\n"
+}

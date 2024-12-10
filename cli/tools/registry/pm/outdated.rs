@@ -3,6 +3,7 @@
 use std::collections::HashSet;
 use std::sync::Arc;
 
+use deno_core::anyhow::bail;
 use deno_core::error::AnyError;
 use deno_semver::package::PackageNv;
 use deno_semver::package::PackageReq;
@@ -178,6 +179,14 @@ pub async fn outdated(
   ));
   let jsr_fetch_resolver =
     Arc::new(JsrFetchResolver::new(file_fetcher.clone()));
+
+  if cli_options.maybe_lockfile().is_none() {
+    bail!(
+      "No lockfile in {:?}. Run {} to generate one.",
+      cli_options.initial_cwd(),
+      colors::underline("deno install")
+    );
+  }
 
   let args = dep_manager_args(
     &factory,
