@@ -1,6 +1,6 @@
 {
   "tempDir": true,
   "args": "outdated",
-  "exitCode": 0,
-  "output": "blahblahblah"
+  "exitCode": 1,
+  "output": "error: No deno.json or package.json in \"[WILDCARD]\".\n"
 }

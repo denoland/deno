@@ -180,6 +180,16 @@ pub async fn outdated(
   let jsr_fetch_resolver =
     Arc::new(JsrFetchResolver::new(file_fetcher.clone()));
 
+  if !cli_options.start_dir.has_deno_json()
+    && !cli_options.start_dir.has_pkg_json()
+  {
+    bail!(
+      "No deno.json or package.json in {:?}.",
+      cli_options.initial_cwd(),
+    );
+  }
+
+  eprintln!("cli lockfile {:#?}", cli_options.maybe_lockfile());
   if cli_options.maybe_lockfile().is_none() {
     bail!(
       "No lockfile in {:?}. Run {} to generate one.",
