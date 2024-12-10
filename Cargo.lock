@@ -689,13 +689,13 @@ dependencies = [
 
 [[package]]
 name = "cc"
-version = "1.0.106"
+version = "1.2.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "066fce287b1d4eafef758e89e09d724a24808a9196fe9756b8ca90e86d0719a2"
+checksum = "27f657647bcff5394bf56c7317665bbf790a137a50eaaa5c6bfbb9e27a518f2d"
 dependencies = [
  "jobserver",
  "libc",
- "once_cell",
+ "shlex",
 ]
 
 [[package]]
@@ -1474,9 +1474,7 @@ dependencies = [
 
 [[package]]
 name = "deno_core"
-version = "0.324.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "24503eda646f246aa6eb0f794909f9a857c8f05095fed66f36e0eaef92edce23"
+version = "0.325.0"
 dependencies = [
  "anyhow",
  "az",
@@ -1948,6 +1946,7 @@ dependencies = [
  "k256",
  "lazy-regex",
  "libc",
+ "libsqlite3-sys",
  "libz-sys",
  "md-5",
  "md4",
@@ -1970,6 +1969,7 @@ dependencies = [
  "ring",
  "ripemd",
  "rsa",
+ "rusqlite",
  "scrypt",
  "sec1",
  "serde",
@@ -2043,9 +2043,7 @@ dependencies = [
 
 [[package]]
 name = "deno_ops"
-version = "0.200.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "03a529a2c488cd3042f12f35666569ebe5b3cf89d2b7d1cafc1a652f6d7bcc8f"
+version = "0.201.0"
 dependencies = [
  "proc-macro-rules",
  "proc-macro2",
@@ -4569,7 +4567,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "4979f22fdb869068da03c9f7528f8297c6fd2606bc3a4affe42e6a823fdb8da4"
 dependencies = [
  "cfg-if",
- "windows-targets 0.48.5",
+ "windows-targets 0.52.6",
 ]
 
 [[package]]
@@ -4590,9 +4588,9 @@ dependencies = [
 
 [[package]]
 name = "libsqlite3-sys"
-version = "0.30.0"
+version = "0.30.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6b694a822684ddb75df4d657029161431bcb4a85c1856952f845b76912bc6fec"
+checksum = "2e99fb7a497b1e3339bc746195567ed8d3e24945ecd636e3619d20b9de9e9149"
 dependencies = [
  "cc",
  "pkg-config",
@@ -6685,9 +6683,7 @@ dependencies = [
 
 [[package]]
 name = "serde_v8"
-version = "0.233.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "307f176b7475480cee690c34c7118f96fe564d1f2a974bf990294b8310ae4983"
+version = "0.234.0"
 dependencies = [
  "num-bigint",
  "serde",
@@ -8272,9 +8268,9 @@ dependencies = [
 
 [[package]]
 name = "v8"
-version = "130.0.1"
+version = "130.0.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c23b5c2caff00209b03a716609b275acae94b02dd3b63c4648e7232a84a8402f"
+checksum = "2ee0be58935708fa4d7efb970c6cf9f2d9511d24ee24246481a65b6ee167348d"
 dependencies = [
  "bindgen",
  "bitflags 2.6.0",
@@ -9145,7 +9141,3 @@ dependencies = [
  "cc",
  "pkg-config",
 ]
-
-[[patch.unused]]
-name = "deno_core"
-version = "0.325.0"
