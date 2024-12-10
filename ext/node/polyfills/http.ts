@@ -65,6 +65,8 @@ import {
 import { getTimerDuration } from "ext:deno_node/internal/timers.mjs";
 import { serve, upgradeHttpRaw } from "ext:deno_http/00_serve.ts";
 import { headersEntries } from "ext:deno_fetch/20_headers.js";
+import { timerId } from "ext:deno_web/03_abort_signal.js";
+import { clearTimeout as webClearTimeout } from "ext:deno_web/02_timers.js";
 import { resourceForReadableStream } from "ext:deno_web/06_streams.js";
 import { UpgradedConn } from "ext:deno_net/01_net.js";
 import { STATUS_CODES } from "node:_http_server";
@@ -463,7 +465,7 @@ class ClientRequest extends OutgoingMessage {
             alpnProtocols: ["http/1.0", "http/1.1"],
           });
         }
-        const rid = await op_node_http_request_with_conn(
+        this._req = await op_node_http_request_with_conn(
           this.method,
           url,
           headers,
@@ -472,7 +474,14 @@ class ClientRequest extends OutgoingMessage {
           this._encrypted,
         );
         this._flushBuffer();
-        const res = await op_node_http_await_response(rid);
+        const res = await op_node_http_await_response(this._req!.requestRid);
+        if (this._req.cancelHandleRid !== null) {
+          core.tryClose(this._req.cancelHandleRid);
+        }
+        if (this._timeout) {
+          this._timeout.removeEventListener("abort", this._timeoutCb);
+          webClearTimeout(this._timeout[timerId]);
+        }
         const incoming = new IncomingMessageForClient(this.socket);
         incoming.req = this;
         this.res = incoming;
@@ -543,6 +552,10 @@ class ClientRequest extends OutgoingMessage {
           this.emit("response", incoming);
         }
       } catch (err) {
+        if (this._req.cancelHandleRid !== null) {
+          core.tryClose(this._req.cancelHandleRid);
+        }
+
         if (this._requestSendError !== undefined) {
           // if the request body stream errored, we want to propagate that error
           // instead of the original error from opFetchSend

@@ -29,13 +29,17 @@ use deno_core::AsyncRefCell;
 use deno_core::AsyncResult;
 use deno_core::BufView;
 use deno_core::ByteString;
+use deno_core::CancelFuture;
 use deno_core::CancelHandle;
 use deno_core::CancelTryFuture;
+use deno_core::Canceled;
 use deno_core::OpState;
 use deno_core::RcRef;
 use deno_core::Resource;
 use deno_core::ResourceId;
+use deno_fetch::FetchCancelHandle;
 use deno_fetch::FetchError;
+use deno_fetch::FetchReturn;
 use deno_fetch::ResBody;
 use deno_net::io::TcpStreamResource;
 use deno_net::ops_tls::TlsStreamResource;
@@ -45,7 +49,6 @@ use http::header::HeaderValue;
 use http::header::AUTHORIZATION;
 use http::header::CONTENT_LENGTH;
 use http::Method;
-use http::Response;
 use http_body_util::BodyExt;
 use hyper::body::Frame;
 use hyper::body::Incoming;
@@ -68,9 +71,11 @@ pub struct NodeHttpResponse {
   pub error: Option<String>,
 }
 
+type CancelableResponseResult =
+  Result<Result<http::Response<Incoming>, Error>, Canceled>;
+
 pub struct NodeHttpClientResponse {
-  response:
-    Pin<Box<dyn Future<Output = Result<Response<Incoming>, Error>> + Send>>,
+  response: Pin<Box<dyn Future<Output = CancelableResponseResult>>>,
   url: String,
 }
 
@@ -98,7 +103,7 @@ pub async fn op_node_http_request_with_conn<P>(
   #[smi] body: Option<ResourceId>,
   #[smi] conn_rid: ResourceId,
   encrypted: bool,
-) -> Result<ResourceId, AnyError>
+) -> Result<FetchReturn, AnyError>
 where
   P: crate::NodePermissions + 'static,
 {
@@ -213,16 +218,34 @@ where
     request.headers_mut().insert(CONTENT_LENGTH, len.into());
   }
 
-  let res = sender.send_request(request).map_err(Error::from).boxed();
+  let cancel_handle = CancelHandle::new_rc();
+  let cancel_handle_ = cancel_handle.clone();
+
+  let fut = async move {
+    sender
+      .send_request(request)
+      .map_err(Error::from)
+      .or_cancel(cancel_handle_)
+      .await
+  };
+
   let rid = state
     .borrow_mut()
     .resource_table
     .add(NodeHttpClientResponse {
-      response: res,
+      response: Box::pin(fut),
       url: url.clone(),
     });
 
-  Ok(rid)
+  let cancel_handle_rid = state
+    .borrow_mut()
+    .resource_table
+    .add(FetchCancelHandle(cancel_handle));
+
+  Ok(FetchReturn {
+    request_rid: rid,
+    cancel_handle_rid: Some(cancel_handle_rid),
+  })
 }
 
 #[op2(async)]
@@ -238,7 +261,7 @@ pub async fn op_node_http_await_response(
   let resource = Rc::try_unwrap(resource)
     .map_err(|_| bad_resource("NodeHttpClientResponse"))?;
 
-  let res = resource.response.await?;
+  let res = resource.response.await??;
   let status = res.status();
   let mut res_headers = Vec::new();
   for (key, val) in res.headers().iter() {
