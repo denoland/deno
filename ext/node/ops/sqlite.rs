@@ -51,7 +51,6 @@ impl DatabaseSync {
       None
     };
 
-    dbg!("statement typeid", std::any::TypeId::of::<StatementSync>());
     Ok(DatabaseSync {
       conn: Rc::new(RefCell::new(db)),
       location,
@@ -118,7 +117,7 @@ impl DatabaseSync {
     if let Some(params) = params {
       bind(&mut stmt, scope, params, 1)?;
     }
-    stmt.execute([])?;
+    stmt.raw_execute()?;
 
     Ok(())
   }
@@ -171,14 +170,176 @@ impl StatementSync {
     unimplemented!()
   }
 
-  #[fast]
-  fn get(&self, #[varargs] params: Option<&v8::FunctionCallbackArguments>) {}
+  fn get<'a>(
+    &self,
+    scope: &mut v8::HandleScope<'a>,
+    #[varargs] params: Option<&v8::FunctionCallbackArguments>,
+  ) -> Result<v8::Local<'a, v8::Object>, SqliteError> {
+    let raw = self.inner;
+
+    let result = v8::Object::new(scope);
+    unsafe {
+      libsqlite3_sys::sqlite3_reset(raw);
+
+      let r = libsqlite3_sys::sqlite3_step(raw);
+
+      if r == libsqlite3_sys::SQLITE_DONE {
+        return Ok(v8::Object::new(scope));
+      }
+      if r != libsqlite3_sys::SQLITE_ROW {
+        // return Err(AnyError::msg("Failed to step statement"));
+        return panic!("Failed to step statement");
+      }
+
+      let columns = libsqlite3_sys::sqlite3_column_count(raw);
+
+      for i in 0..columns {
+        let name = libsqlite3_sys::sqlite3_column_name(raw, i);
+        let name = std::ffi::CStr::from_ptr(name).to_string_lossy().to_string();
+        let value = match libsqlite3_sys::sqlite3_column_type(raw, i) {
+          libsqlite3_sys::SQLITE_INTEGER => {
+            let value = libsqlite3_sys::sqlite3_column_int64(raw, i);
+            v8::Integer::new(scope, value as _).into()
+          }
+          libsqlite3_sys::SQLITE_FLOAT => {
+            let value = libsqlite3_sys::sqlite3_column_double(raw, i);
+            v8::Number::new(scope, value).into()
+          }
+          libsqlite3_sys::SQLITE_TEXT => {
+            let value = libsqlite3_sys::sqlite3_column_text(raw, i);
+            let value = std::ffi::CStr::from_ptr(value as _)
+              .to_string_lossy()
+              .to_string();
+            v8::String::new_from_utf8(
+              scope,
+              value.as_bytes(),
+              v8::NewStringType::Normal,
+            )
+            .unwrap()
+            .into()
+          }
+          libsqlite3_sys::SQLITE_BLOB => {
+            let value = libsqlite3_sys::sqlite3_column_blob(raw, i);
+            let size = libsqlite3_sys::sqlite3_column_bytes(raw, i);
+            let value =
+              std::slice::from_raw_parts(value as *const u8, size as usize);
+            let value =
+              v8::ArrayBuffer::new_backing_store_from_vec(value.to_vec())
+                .make_shared();
+            v8::ArrayBuffer::with_backing_store(scope, &value).into()
+          }
+          libsqlite3_sys::SQLITE_NULL => v8::null(scope).into(),
+          _ => {
+            // return Err(AnyError::msg("Unknown column type"));
+            return panic!("Unknown column type");
+          }
+        };
+
+        let name = v8::String::new_from_utf8(
+          scope,
+          name.as_bytes(),
+          v8::NewStringType::Normal,
+        )
+        .unwrap()
+        .into();
+        result.set(scope, name, value);
+      }
+
+      libsqlite3_sys::sqlite3_reset(raw);
+    }
+
+    Ok(result)
+  }
 
   #[fast]
   fn run(&self) {}
 
-  #[fast]
-  fn all(&self) {}
+  fn all<'a>(
+    &self,
+    scope: &mut v8::HandleScope<'a>,
+    #[varargs] params: Option<&v8::FunctionCallbackArguments>,
+  ) -> Result<v8::Local<'a, v8::Array>, SqliteError> {
+    let raw = self.inner;
+
+    let mut arr = vec![];
+    unsafe {
+      libsqlite3_sys::sqlite3_reset(raw);
+      loop {
+        let result = v8::Object::new(scope);
+
+        let r = libsqlite3_sys::sqlite3_step(raw);
+        if r == libsqlite3_sys::SQLITE_DONE {
+          break;
+        }
+        if r != libsqlite3_sys::SQLITE_ROW {
+          // return Err(AnyError::msg("Failed to step statement"));
+          return panic!("Failed to step statement");
+        }
+
+        let columns = libsqlite3_sys::sqlite3_column_count(raw);
+
+        for i in 0..columns {
+          let name = libsqlite3_sys::sqlite3_column_name(raw, i);
+          let name =
+            std::ffi::CStr::from_ptr(name).to_string_lossy().to_string();
+          let value = match libsqlite3_sys::sqlite3_column_type(raw, i) {
+            libsqlite3_sys::SQLITE_INTEGER => {
+              let value = libsqlite3_sys::sqlite3_column_int64(raw, i);
+              v8::Integer::new(scope, value as _).into()
+            }
+            libsqlite3_sys::SQLITE_FLOAT => {
+              let value = libsqlite3_sys::sqlite3_column_double(raw, i);
+              v8::Number::new(scope, value).into()
+            }
+            libsqlite3_sys::SQLITE_TEXT => {
+              let value = libsqlite3_sys::sqlite3_column_text(raw, i);
+              let value = std::ffi::CStr::from_ptr(value as _)
+                .to_string_lossy()
+                .to_string();
+              v8::String::new_from_utf8(
+                scope,
+                value.as_bytes(),
+                v8::NewStringType::Normal,
+              )
+              .unwrap()
+              .into()
+            }
+            libsqlite3_sys::SQLITE_BLOB => {
+              let value = libsqlite3_sys::sqlite3_column_blob(raw, i);
+              let size = libsqlite3_sys::sqlite3_column_bytes(raw, i);
+              let value =
+                std::slice::from_raw_parts(value as *const u8, size as usize);
+              let value =
+                v8::ArrayBuffer::new_backing_store_from_vec(value.to_vec())
+                  .make_shared();
+              v8::ArrayBuffer::with_backing_store(scope, &value).into()
+            }
+            libsqlite3_sys::SQLITE_NULL => v8::null(scope).into(),
+            _ => {
+              // return Err(AnyError::msg("Unknown column type"));
+              return panic!("Unknown column type");
+            }
+          };
+
+          let name = v8::String::new_from_utf8(
+            scope,
+            name.as_bytes(),
+            v8::NewStringType::Normal,
+          )
+          .unwrap()
+          .into();
+          result.set(scope, name, value);
+        }
+
+        arr.push(result.into());
+      }
+
+      libsqlite3_sys::sqlite3_reset(raw);
+    }
+
+    let arr = v8::Array::new_with_elements(scope, &arr);
+    Ok(arr)
+  }
 
   #[fast]
   fn set_allowed_bare_named_parameters(&self, enabled: bool) {}
@@ -186,11 +347,23 @@ impl StatementSync {
   #[fast]
   fn set_read_bigints(&self, enabled: bool) {}
 
-  #[fast]
-  fn source_sql(&self) {}
+  #[string]
+  fn source_sql(&self) -> Result<String, SqliteError> {
+    let raw = unsafe { libsqlite3_sys::sqlite3_sql(self.inner) };
+
+    if raw.is_null() {
+      // return Err(AnyError::msg("Failed to get SQL"));
+      panic!("Failed to get SQL");
+    }
+
+    let cstr = unsafe { std::ffi::CStr::from_ptr(raw) };
+    let sql = cstr.to_string_lossy().to_string();
+
+    Ok(sql)
+  }
 
   #[string]
-  fn expanded_sqlite(&self) -> Result<String, SqliteError> {
+  fn expanded_sql(&self) -> Result<String, SqliteError> {
     let raw = unsafe { libsqlite3_sys::sqlite3_expanded_sql(self.inner) };
     if raw.is_null() {
       // return Err(AnyError::msg("Failed to expand SQL"));

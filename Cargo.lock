@@ -1500,6 +1500,7 @@ dependencies = [
  "sourcemap 8.0.1",
  "static_assertions",
  "tokio",
+ "typeid",
  "url",
  "v8",
  "wasm_dep_analyzer",
@@ -8071,6 +8072,12 @@ name = "typed-arena"
 version = "2.0.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "6af6ae20167a9ece4bcb41af5b80f8a1f1df981f6391189ce00fd257af04126a"
+
+[[package]]
+name = "typeid"
+version = "1.0.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "0e13db2e0ccd5e14a544e8a246ba2312cd25223f616442d7f2cb0e3db614236e"
 
 [[package]]
 name = "typenum"
