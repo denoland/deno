@@ -1615,6 +1615,7 @@ pub async fn run_tests_with_watch(
         )?;
         let log_level = cli_options.log_level();
 
+        let _ = watcher_communicator.watch_paths(cli_options.watch_paths());
         let workspace_dirs_with_files = if cli_options.is_discovered_config() {
           cli_options
             .resolve_test_options_for_members(&test_flags)?
