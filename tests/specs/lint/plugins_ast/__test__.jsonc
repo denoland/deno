@@ -5,10 +5,15 @@
       "args": "lint --plugins=./plugin.ts source.ts",
       "output": "program/log.out"
     },
+    "declarations": {
+      "cwd": "./declarations",
+      "args": "lint --plugins=./plugin.ts source.ts",
+      "output": "declarations/log.out"
+    },
     "statements": {
       "cwd": "./statements",
       "args": "lint --config=./statements/deno.json source.ts",
-      "output": "statement/log.out"
+      "output": "statements/log.out"
     },
     "expressions": {
       "cwd": "./expressions",

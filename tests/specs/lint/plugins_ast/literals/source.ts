@@ -19,6 +19,7 @@ null;
 a = {};
 a = { foo };
 a = { foo: 1 };
+a = { ...foo };
 a = { ["foo\n"]: 1, 1: 2, "baz": 3 };
 a = {
   get foo() {

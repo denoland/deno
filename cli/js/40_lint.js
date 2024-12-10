@@ -90,6 +90,29 @@ export function installPlugin(plugin) {
 /**
  * @enum {number}
  */
+const Flags = {
+  ProgramModule: 0b00000001,
+  BoolFalse: 0b00000000,
+  BoolTrue: 0b00000001,
+  FnAsync: 0b00000001,
+  FnGenerator: 0b00000010,
+  FnDeclare: 0b00000100,
+  MemberComputed: 0b00000001,
+  PropShorthand: 0b00000001,
+  PropComputed: 0b00000010,
+  PropGetter: 0b00000100,
+  PropSetter: 0b00001000,
+  PropMethod: 0b00010000,
+  VarVar: 0b00000001,
+  VarConst: 0b00000010,
+  VarLet: 0b00000100,
+  VarDeclare: 0b00001000,
+};
+
+// Keep in sync with Rust
+/**
+ * @enum {number}
+ */
 const AstType = {
   Invalid: 0,
   Program: 1,
@@ -108,7 +131,7 @@ const AstType = {
   // Decls
   Class: 12,
   Fn: 13,
-  Var: 14,
+  VariableDeclaration: 14,
   Using: 15,
   TsInterface: 16,
   TsTypeAlias: 17,
@@ -180,10 +203,16 @@ const AstType = {
 
   // Custom
   EmptyExpr: 84,
-  Spread: 85,
+  SpreadElement: 85,
   Property: 86,
-  VarDeclarator: 87,
+  VariableDeclarator: 87,
   CatchClause: 88,
+  RestElement: 89,
+
+  // Patterns
+  ArrayPattern: 90,
+  AssignmentPattern: 91,
+  ObjectPattern: 92,
 
   // JSX
   // FIXME
@@ -201,10 +230,6 @@ const AstType = {
   JSXSpreadAttribute: Infinity,
   JSXSpreadChild: Infinity,
   JSXText: Infinity,
-
-  ArrayPattern: 89,
-  AssignmentPattern: 90,
-  ObjectPattern: 91,
 };
 
 const AstNodeById = Object.keys(AstType);
@@ -272,6 +297,79 @@ class Program extends BaseNode {
     this.#childIds = childIds;
   }
 }
+
+// Declarations
+
+/** @implements {Deno.VariableDeclaration} */
+class VariableDeclaration extends BaseNode {
+  type = /** @type {const} */ ("VariableDeclaration");
+  range;
+  get declarations() {
+    return createChildNodes(this.#ctx, this.#childIds);
+  }
+
+  #ctx;
+  #childIds;
+  kind;
+
+  /**
+   * @param {AstContext} ctx
+   * @param {number} parentId
+   * @param {Deno.Range} range
+   * @param {number} flags
+   * @param {number[]} childIds
+   */
+  constructor(ctx, parentId, range, flags, childIds) {
+    super(ctx, parentId);
+    this.#ctx = ctx;
+    this.range = range;
+    this.kind = (Flags.VarConst & flags) != 0
+      ? /** @type {const} */ ("const")
+      : (Flags.VarLet & flags) != 0
+      ? /** @type {const} */ ("let")
+      : /** @type {const} */ ("var");
+
+    // FIXME: Declare
+    this.#childIds = childIds;
+  }
+}
+
+/** @implements {Deno.VariableDeclarator} */
+class VariableDeclarator extends BaseNode {
+  type = /** @type {const} */ ("VariableDeclarator");
+  range;
+
+  get id() {
+    return /** @type {*} */ (createAstNode(this.#ctx, this.#nameId));
+  }
+
+  get init() {
+    if (this.#initId === 0) return null;
+    return /** @type {*} */ (createAstNode(this.#ctx, this.#initId));
+  }
+
+  #ctx;
+  #nameId;
+  #initId;
+
+  /**
+   * @param {AstContext} ctx
+   * @param {number} parentId
+   * @param {Deno.Range} range
+   * @param {number} nameId
+   * @param {number} initId
+   */
+  constructor(ctx, parentId, range, nameId, initId) {
+    // FIXME: Definite
+    super(ctx, parentId);
+    this.#ctx = ctx;
+    this.range = range;
+    this.#nameId = nameId;
+    this.#initId = initId;
+  }
+}
+
+// Statements
 
 /** @implements {Deno.BlockStatement} */
 class BlockStatement extends BaseNode {
@@ -1437,7 +1535,7 @@ class MemberExpression extends BaseNode {
     super(ctx, parentId);
 
     this.#ctx = ctx;
-    this.computed = (flags & 0b00000001) !== 0;
+    this.computed = (flags & Flags.MemberComputed) !== 0;
     this.#objId = objId;
     this.#propId = propId;
     this.range = range;
@@ -1647,6 +1745,32 @@ class SequenceExpression extends BaseNode {
     this.#ctx = ctx;
     this.range = range;
     this.#childIds = childIds;
+  }
+}
+
+/** @implements {Deno.SpreadElement} */
+class SpreadElement extends BaseNode {
+  type = /** @type {const} */ ("SpreadElement");
+  range;
+  #ctx;
+  #exprId;
+
+  get argument() {
+    return /** @type {*} */ (createAstNode(this.#ctx, this.#exprId));
+  }
+
+  /**
+   * @param {AstContext} ctx
+   * @param {number} parentId
+   * @param {Deno.Range} range
+   * @param {number} exprId
+   */
+  constructor(ctx, parentId, range, exprId) {
+    super(ctx, parentId);
+
+    this.#ctx = ctx;
+    this.range = range;
+    this.#exprId = exprId;
   }
 }
 
@@ -2212,7 +2336,7 @@ function readU32(buf, i) {
 function readChildIds(buf, offset) {
   const count = readU32(buf, offset);
   offset += 4;
-  console.log("read children count:", count, offset);
+  // console.log("read children count:", count, offset);
 
   /** @type {number[]} */
   const out = new Array(count);
@@ -2222,7 +2346,7 @@ function readChildIds(buf, offset) {
     offset += 4;
   }
 
-  console.log("read children", out);
+  // console.log("read children", out);
 
   return out;
 }
@@ -2250,7 +2374,7 @@ function createAstNode(ctx, id) {
   const { buf, idTable } = ctx;
 
   let offset = idTable[id];
-  console.log({ id, offset });
+  // console.log({ id, offset });
   /** @type {AstType} */
   const kind = buf[offset];
 
@@ -2274,6 +2398,18 @@ function createAstNode(ctx, id) {
       // case AstNodeId.ExportDefaultDecl:
       // case AstNodeId.ExportDefaultExpr:
       // case AstNodeId.ExportAll:
+
+    // Declarations
+    case AstType.VariableDeclaration: {
+      const flags = buf[offset];
+      const childIds = readChildIds(buf, offset + 1);
+      return new VariableDeclaration(ctx, parentId, range, flags, childIds);
+    }
+    case AstType.VariableDeclarator: {
+      const nameId = readU32(buf, offset);
+      const initId = readU32(buf, offset + 4);
+      return new VariableDeclarator(ctx, parentId, range, nameId, initId);
+    }
 
     // Statements
     case AstType.BlockStatement: {
@@ -2373,8 +2509,8 @@ function createAstNode(ctx, id) {
       const flags = buf[offset];
       offset += 1;
 
-      const isAsync = (flags & 0b00000001) !== 0;
-      const isGenerator = (flags & 0b00000010) !== 0;
+      const isAsync = (flags & Flags.FnAsync) !== 0;
+      const isGenerator = (flags & Flags.FnGenerator) !== 0;
 
       const typeParamId = readU32(buf, offset);
       offset += 4;
@@ -2477,6 +2613,10 @@ function createAstNode(ctx, id) {
       const childIds = readChildIds(buf, offset);
       return new SequenceExpression(ctx, parentId, range, childIds);
     }
+    case AstType.SpreadElement: {
+      const exprId = readU32(buf, offset);
+      return new SpreadElement(ctx, parentId, range, exprId);
+    }
     case AstType.Super:
       throw new Super(ctx, range); // FIXME
     case AstType.TaggedTemplateExpression:
@@ -2550,7 +2690,7 @@ function createAstNode(ctx, id) {
  * @param {AstContext} buf
  */
 function createAstContext(buf) {
-  console.log(buf);
+  // console.log(buf);
 
   // Extract string table
   /** @type {Map<number, string>} */
@@ -2572,7 +2712,7 @@ function createAstContext(buf) {
     id++;
   }
 
-  console.log({ stringCount, strTable });
+  // console.log({ stringCount, strTable });
 
   if (strTable.size !== stringCount) {
     throw new Error(
@@ -2592,7 +2732,7 @@ function createAstContext(buf) {
     offset += 4;
   }
 
-  console.log({ idCount, idTable });
+  // console.log({ idCount, idTable });
   if (idTable.length !== idCount) {
     throw new Error(
       `Could not deserialize id table. Expected ${idCount} items, but got ${idTable.length}`,
@@ -2611,13 +2751,13 @@ function createAstContext(buf) {
  */
 export function runPluginsForFile(fileName, serializedAst) {
   const ctx = createAstContext(serializedAst);
-  console.log(JSON.stringify(ctx, null, 2));
+  // console.log(JSON.stringify(ctx, null, 2));
 
   /** @type {Record<string, (node: any) => void>} */
   const mergedVisitor = {};
   const destroyFns = [];
 
-  console.log(state);
+  // console.log(state);
 
   // Instantiate and merge visitors. This allows us to only traverse
   // the AST once instead of per plugin.
@@ -2630,7 +2770,7 @@ export function runPluginsForFile(fileName, serializedAst) {
       const ctx = new Context(id, fileName);
       const visitor = rule.create(ctx);
 
-      console.log({ visitor });
+      // console.log({ visitor });
 
       for (const name in visitor) {
         const prev = mergedVisitor[name];
@@ -2642,6 +2782,8 @@ export function runPluginsForFile(fileName, serializedAst) {
           try {
             visitor[name](node);
           } catch (err) {
+            // FIXME: console here doesn't support error cause
+            console.log(err);
             throw new Error(`Visitor "${name}" of plugin "${id}" errored`, {
               cause: err,
             });
@@ -2688,8 +2830,8 @@ function traverse(ctx, visitor) {
     visitTypes.set(id, name);
   }
 
-  console.log("merged visitor", visitor);
-  console.log("visiting types", visitTypes);
+  // console.log("merged visitor", visitor);
+  // console.log("visiting types", visitTypes);
 
   // Program is always id 1
   const id = 1;
@@ -2703,20 +2845,20 @@ function traverse(ctx, visitor) {
  * @param {number} id
  */
 function traverseInner(ctx, visitTypes, visitor, id) {
-  console.log("traversing id", id);
+  // console.log("traversing id", id);
 
   // Empty id
   if (id === 0) return;
   const { idTable, buf } = ctx;
   if (id >= idTable.length) {
-    throw new Error(`Invalid node id: ${id}`);
+    throw new Error(`Invalid node  id: ${id}`);
   }
 
   let offset = idTable[id];
   if (offset === undefined) throw new Error(`Unknown id: ${id}`);
 
   const type = buf[offset];
-  console.log({ id, type, offset });
+  // console.log({ id, type, offset });
 
   const name = visitTypes.get(type);
   if (name !== undefined) {
@@ -2734,6 +2876,14 @@ function traverseInner(ctx, visitTypes, visitor, id) {
       offset += 1;
       const childIds = readChildIds(buf, offset);
       return traverseChildren(ctx, visitTypes, visitor, childIds);
+    }
+    case AstType.VariableDeclaration: {
+      // Skip flags
+      offset += 1;
+
+      const childIds = readChildIds(buf, offset);
+      traverseChildren(ctx, visitTypes, visitor, childIds);
+      return;
     }
 
     // Multiple children only
@@ -2821,6 +2971,7 @@ function traverseInner(ctx, visitTypes, visitor, id) {
     // Two children
     case AstType.AssignmentPattern:
     case AstType.LabeledStatement:
+    case AstType.VariableDeclarator:
     case AstType.WhileStatement: {
       const firstId = readU32(buf, offset);
       traverseInner(ctx, visitTypes, visitor, firstId);
@@ -2834,6 +2985,7 @@ function traverseInner(ctx, visitTypes, visitor, id) {
     case AstType.ContinueStatement:
     case AstType.ExpressionStatement:
     case AstType.ReturnStatement:
+    case AstType.SpreadElement:
     case AstType.ParenthesisExpression: {
       const childId = readU32(buf, offset);
       return traverseInner(ctx, visitTypes, visitor, childId);

@@ -6966,6 +6966,8 @@ declare namespace Deno {
     | CatchClause
     | PrivateIdentifier
     | Property
+    | SpreadElement
+    | VariableDeclarator
     | JSXNode;
 
   export interface LintRuleContext {
