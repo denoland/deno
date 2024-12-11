@@ -2,7 +2,7 @@
 
 [package]
 name = "deno_tls"
-version = "0.168.0"
+version = "0.169.0"
 authors.workspace = true
 edition.workspace = true
 license.workspace = true
