@@ -6,6 +6,7 @@ use crate::args::Flags;
 use crate::factory::CliFactory;
 use crate::http_util::HttpClientProvider;
 use crate::standalone::binary::StandaloneRelativeFileBaseUrl;
+use crate::standalone::binary::WriteBinOptions;
 use crate::standalone::is_standalone_binary;
 use deno_ast::MediaType;
 use deno_ast::ModuleSpecifier;
@@ -97,7 +98,16 @@ pub async fn compile(
           .and_then(|p| ModuleSpecifier::from_directory_path(p).ok())
           .iter(),
       )
-      .chain(include_files.iter()),
+      .chain(include_files.iter())
+      .chain(
+        // sometimes the import map path is outside the root dir
+        cli_options
+          .workspace()
+          .to_import_map_path()
+          .ok()
+          .and_then(|p| p.and_then(|p| url_from_file_path(&p).ok()))
+          .iter(),
+      ),
   );
   log::debug!("Binary root dir: {}", root_dir_url);
   log::info!(
@@ -124,14 +134,18 @@ pub async fn compile(
   })?;
 
   let write_result = binary_writer
-    .write_bin(
-      file,
-      &graph,
-      StandaloneRelativeFileBaseUrl::from(&root_dir_url),
+    .write_bin(WriteBinOptions {
+      writer: file,
+      display_output_filename: &output_path
+        .file_name()
+        .unwrap()
+        .to_string_lossy(),
+      graph: &graph,
+      root_dir_url: StandaloneRelativeFileBaseUrl::from(&root_dir_url),
       entrypoint,
-      &include_files,
-      &compile_flags,
-    )
+      include_files: &include_files,
+      compile_flags: &compile_flags,
+    })
     .await
     .with_context(|| {
       format!(
@@ -413,17 +427,6 @@ fn resolve_root_dir_from_specifiers<'a>(
       }
     }
   }
-  let found_dir = if is_file_system_root(found_dir) {
-    found_dir
-  } else {
-    // include the parent dir name because it helps create some context
-    found_dir
-      .strip_suffix('/')
-      .unwrap_or(found_dir)
-      .rfind('/')
-      .map(|i| &found_dir[..i + 1])
-      .unwrap_or(found_dir)
-  };
   ModuleSpecifier::parse(found_dir).unwrap()
 }
 
@@ -518,14 +521,17 @@ mod test {
       .to_string()
     }
 
-    assert_eq!(resolve("file:///a/b/c", &["file:///a/b/c/d"]), "file:///a/");
     assert_eq!(
-      resolve("file:///a/b/c/", &["file:///a/b/c/d"]),
+      resolve("file:///a/b/e", &["file:///a/b/c/d"]),
       "file:///a/b/"
     );
     assert_eq!(
+      resolve("file:///a/b/c/", &["file:///a/b/c/d"]),
+      "file:///a/b/c/"
+    );
+    assert_eq!(
       resolve("file:///a/b/c/", &["file:///a/b/c/d", "file:///a/b/c/e"]),
-      "file:///a/b/"
+      "file:///a/b/c/"
     );
     assert_eq!(resolve("file:///", &["file:///a/b/c/d"]), "file:///");
     if cfg!(windows) {
@@ -533,7 +539,7 @@ mod test {
       // this will ignore the other one because it's on a separate drive
       assert_eq!(
         resolve("file:///c:/a/b/c/", &["file:///v:/a/b/c/d"]),
-        "file:///c:/a/b/"
+        "file:///c:/a/b/c/"
       );
     }
   }
