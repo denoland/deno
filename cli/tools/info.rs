@@ -123,7 +123,12 @@ pub async fn info(
     let mut loader = module_graph_builder.create_graph_loader();
     loader.enable_loading_cache_info(); // for displaying the cache information
     let graph = module_graph_creator
-      .create_graph_with_loader(GraphKind::All, vec![specifier], &mut loader)
+      .create_graph_with_loader(
+        GraphKind::All,
+        vec![specifier],
+        &mut loader,
+        crate::graph_util::NpmCachingStrategy::Eager,
+      )
       .await?;
 
     // write out the lockfile if there is one

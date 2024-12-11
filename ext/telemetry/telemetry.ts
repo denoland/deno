@@ -220,6 +220,7 @@ function submitSpan(
   startTime: number,
   endTime: number,
 ) {
+  if (!TRACING_ENABLED) return;
   if (!(traceFlags & TRACE_FLAG_SAMPLED)) return;
 
   // TODO(@lucacasonato): `resource` is ignored for now, should we implement it?

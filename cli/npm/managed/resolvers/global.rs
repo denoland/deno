@@ -8,6 +8,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use crate::colors;
+use crate::npm::managed::PackageCaching;
 use crate::npm::CliNpmCache;
 use crate::npm::CliNpmTarballCache;
 use async_trait::async_trait;
@@ -150,10 +151,19 @@ impl NpmPackageFsResolver for GlobalNpmPackageResolver {
     )
   }
 
-  async fn cache_packages(&self) -> Result<(), AnyError> {
-    let package_partitions = self
-      .resolution
-      .all_system_packages_partitioned(&self.system_info);
+  async fn cache_packages<'a>(
+    &self,
+    caching: PackageCaching<'a>,
+  ) -> Result<(), AnyError> {
+    let package_partitions = match caching {
+      PackageCaching::All => self
+        .resolution
+        .all_system_packages_partitioned(&self.system_info),
+      PackageCaching::Only(reqs) => self
+        .resolution
+        .subset(&reqs)
+        .all_system_packages_partitioned(&self.system_info),
+    };
     cache_packages(&package_partitions.packages, &self.tarball_cache).await?;
 
     // create the copy package folders
