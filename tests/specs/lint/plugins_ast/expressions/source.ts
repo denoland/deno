@@ -46,3 +46,10 @@ a ??= b;
 typeof 1;
 void 0;
 delete a.b;
+
+// ConditionalExpression
+a ? b : c;
+
+// UpdateExpression
+++a;
+a++;

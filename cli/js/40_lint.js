@@ -143,6 +143,10 @@ const Flags = {
   UnaryTypeOf: 5,
   UnaryVoid: 6,
   UnaryDelete: 7,
+
+  UpdatePrefix: 0b000000001,
+  UpdatePlusPlus: 0b000000010,
+  UpdateMinusMinus: 0b000000100,
 };
 
 // Keep in sync with Rust
@@ -202,7 +206,7 @@ const AstType = {
   ObjectExpression: 42,
   FunctionExpression: 43,
   UnaryExpression: 44,
-  Update: 45,
+  UpdateExpression: 45,
   BinaryExpression: 46,
   AssignmentExpression: 47,
   MemberExpression: 48,
@@ -337,6 +341,75 @@ class Program extends BaseNode {
 }
 
 // Declarations
+/** @implements {Deno.FunctionDeclaration} */
+class FunctionDeclaration extends BaseNode {
+  type = /** @type {const} */ ("FunctionDeclaration");
+  range;
+
+  get id() {
+    if (this.#identId === 0) return null;
+    return /** @type {*} */ (createAstNode(this.#ctx, this.#identId));
+  }
+
+  get typeParameters() {
+    return /** @type {*} */ (createAstNode(this.#ctx, this.#typeParamsId));
+  }
+
+  get params() {
+    return createChildNodes(this.#ctx, this.#paramIds);
+  }
+
+  get body() {
+    return /** @type {*} */ (createAstNode(this.#ctx, this.#bodyId));
+  }
+
+  get returnType() {
+    return /** @type {*} */ (createAstNode(this.#ctx, this.#returnTypeId));
+  }
+
+  declare = false; // FIXME
+
+  #ctx;
+  #identId;
+  #typeParamsId;
+  #paramIds;
+  #returnTypeId;
+  #bodyId;
+
+  /**
+   * @param {AstContext} ctx
+   * @param {number} parentId
+   * @param {Deno.Range} range
+   * @param {number} flags
+   * @param {number} identId
+   * @param {number} typeParamsId
+   * @param {number[]} paramIds
+   * @param {number} returnTypeId
+   * @param {number} bodyId
+   */
+  constructor(
+    ctx,
+    parentId,
+    range,
+    flags,
+    identId,
+    typeParamsId,
+    paramIds,
+    returnTypeId,
+    bodyId,
+  ) {
+    super(ctx, parentId);
+    this.#ctx = ctx;
+    this.range = range;
+
+    // FIXME: Flags
+    this.#identId = identId;
+    this.#typeParamsId = typeParamsId;
+    this.#paramIds = paramIds;
+    this.#returnTypeId = returnTypeId;
+    this.#bodyId = bodyId;
+  }
+}
 
 /** @implements {Deno.VariableDeclaration} */
 class VariableDeclaration extends BaseNode {
@@ -1246,6 +1319,39 @@ class AwaitExpression extends BaseNode {
     this.#ctx = ctx;
     this.#argId = argId;
     this.range = range;
+  }
+}
+
+/** @implements {Deno.UpdateExpression} */
+class UpdateExpression extends BaseNode {
+  type = /** @type {const} */ ("UpdateExpression");
+  range;
+  get argument() {
+    return /** @type {*} */ (createAstNode(this.#ctx, this.#argId));
+  }
+
+  #ctx;
+  #argId;
+  prefix;
+  operator;
+
+  /**
+   * @param {AstContext} ctx
+   * @param {number} parentId
+   * @param {Deno.Range} range
+   * @param {number} flags
+   * @param {number} argId
+   */
+  constructor(ctx, parentId, range, flags, argId) {
+    super(ctx, parentId);
+    this.#ctx = ctx;
+    this.#argId = argId;
+    this.range = range;
+
+    this.prefix = (flags & Flags.UpdatePrefix) !== 0;
+    this.operator = (flags & Flags.UpdatePlusPlus) !== 0
+      ? /** @type {const} */ ("++")
+      : /** @type {const} */ ("--");
   }
 }
 
@@ -2599,6 +2705,25 @@ function createAstNode(ctx, id) {
       throw new Error("FIXME");
 
     // Declarations
+    case AstType.FunctionDeclaration: {
+      const flags = buf[offset];
+      const identId = readU32(buf, offset + 1);
+      const typeParamsId = readU32(buf, offset + 5);
+      const returnTypeId = readU32(buf, offset + 9);
+      const bodyId = readU32(buf, offset + 13);
+      const paramIds = readChildIds(buf, offset + 17);
+      return new FunctionDeclaration(
+        ctx,
+        parentId,
+        range,
+        flags,
+        identId,
+        typeParamsId,
+        paramIds,
+        returnTypeId,
+        bodyId,
+      );
+    }
     case AstType.VariableDeclaration: {
       const flags = buf[offset];
       const childIds = readChildIds(buf, offset + 1);
@@ -2882,6 +3007,11 @@ function createAstNode(ctx, id) {
       const flags = buf[offset];
       const exprId = readU32(buf, offset + 1);
       return new UnaryExpression(ctx, parentId, range, flags, exprId);
+    }
+    case AstType.UpdateExpression: {
+      const flags = buf[offset];
+      const exprId = readU32(buf, offset + 1);
+      return new UpdateExpression(ctx, parentId, range, flags, exprId);
     }
 
     // Literals
@@ -3193,12 +3323,43 @@ function traverseInner(ctx, visitTypes, visitor, id) {
       const childIds = readChildIds(buf, offset);
       return traverseChildren(ctx, visitTypes, visitor, childIds);
     }
+    case AstType.FunctionDeclaration: {
+      // Skip flags
+      offset += 1;
+
+      const identId = readU32(buf, offset);
+      const typeParamsId = readU32(buf, offset + 4);
+      const returnTypeId = readU32(buf, offset + 8);
+      const bodyId = readU32(buf, offset + 12);
+      const paramIds = readChildIds(buf, offset + 16);
+
+      traverseInner(ctx, visitTypes, visitor, identId);
+      traverseInner(ctx, visitTypes, visitor, typeParamsId);
+      traverseChildren(ctx, visitTypes, visitor, paramIds);
+
+      traverseInner(ctx, visitTypes, visitor, returnTypeId);
+      traverseInner(ctx, visitTypes, visitor, bodyId);
+
+      return;
+    }
     case AstType.VariableDeclaration: {
       // Skip flags
       offset += 1;
 
       const childIds = readChildIds(buf, offset);
       traverseChildren(ctx, visitTypes, visitor, childIds);
+      return;
+    }
+    case AstType.ForStatement: {
+      const initId = readU32(buf, offset);
+      const testId = readU32(buf, offset + 4);
+      const updateId = readU32(buf, offset + 8);
+      const bodyId = readU32(buf, offset + 12);
+
+      traverseInner(ctx, visitTypes, visitor, initId);
+      traverseInner(ctx, visitTypes, visitor, testId);
+      traverseInner(ctx, visitTypes, visitor, updateId);
+      traverseInner(ctx, visitTypes, visitor, bodyId);
       return;
     }
 
@@ -3322,7 +3483,8 @@ function traverseInner(ctx, visitTypes, visitor, id) {
 
       return;
     }
-    case AstType.UnaryExpression: {
+    case AstType.UnaryExpression:
+    case AstType.UpdateExpression: {
       // Skip flags
       offset += 1;
 
@@ -3356,6 +3518,7 @@ function traverseInner(ctx, visitTypes, visitor, id) {
     }
 
     // Three children
+    case AstType.ConditionalExpression:
     case AstType.ForInStatement:
     case AstType.IfStatement: {
       const firstId = readU32(buf, offset);

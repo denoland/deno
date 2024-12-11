@@ -1,18 +1,18 @@
 use deno_ast::{
   swc::{
     ast::{
-      AssignTarget, BlockStmtOrExpr, Callee, Decl, ExportSpecifier, Expr,
-      ExprOrSpread, FnExpr, ForHead, Function, Ident, IdentName, JSXAttrName,
-      JSXAttrOrSpread, JSXAttrValue, JSXElement, JSXElementChild,
-      JSXElementName, JSXEmptyExpr, JSXExpr, JSXExprContainer, JSXFragment,
-      JSXMemberExpr, JSXNamespacedName, JSXObject, JSXOpeningElement, Lit,
-      MemberProp, ModuleDecl, ModuleExportName, ModuleItem, ObjectPatProp,
-      Param, Pat, Program, Prop, PropName, PropOrSpread, SimpleAssignTarget,
-      Stmt, SuperProp, TsType, VarDeclOrExpr,
+      AssignTarget, AssignTargetPat, BlockStmtOrExpr, Callee, Decl,
+      ExportSpecifier, Expr, ExprOrSpread, FnExpr, ForHead, Function, Ident,
+      IdentName, JSXAttrName, JSXAttrOrSpread, JSXAttrValue, JSXElement,
+      JSXElementChild, JSXElementName, JSXEmptyExpr, JSXExpr, JSXExprContainer,
+      JSXFragment, JSXMemberExpr, JSXNamespacedName, JSXObject,
+      JSXOpeningElement, Lit, MemberProp, ModuleDecl, ModuleExportName,
+      ModuleItem, ObjectPatProp, Param, Pat, Program, Prop, PropName,
+      PropOrSpread, SimpleAssignTarget, Stmt, SuperProp, TsType, VarDeclOrExpr,
     },
     common::{Span, Spanned, SyntaxContext, DUMMY_SP},
   },
-  view::{AssignOp, BinaryOp, UnaryOp, VarDeclKind},
+  view::{AssignOp, BinaryOp, UnaryOp, UpdateOp, VarDeclKind},
   ParsedSource,
 };
 use indexmap::IndexMap;
@@ -73,7 +73,7 @@ enum AstNode {
   Object,
   FnExpr,
   Unary,
-  Update,
+  UpdateExpression,
   BinaryExpression,
   Assign,
   MemberExpression,
@@ -237,6 +237,10 @@ enum Flag {
   UnaryTypeOf,
   UnaryVoid,
   UnaryDelete,
+
+  UpdatePrefix,
+  UpdatePlusPlus,
+  UpdateMinusMinus,
 }
 
 fn assign_op_to_flag(m: AssignOp) -> u8 {
@@ -314,6 +318,10 @@ impl From<Flag> for u8 {
       Flag::UnaryTypeOf => 5,
       Flag::UnaryVoid => 6,
       Flag::UnaryDelete => 7,
+
+      Flag::UpdatePrefix => 0b000000001,
+      Flag::UpdatePlusPlus => 0b000000010,
+      Flag::UpdateMinusMinus => 0b000000100,
     }
   }
 }
@@ -875,31 +883,40 @@ fn serialize_decl(
     }
     Decl::Fn(node) => {
       let id = ctx.push_node(AstNode::Fn, parent_id, &node.function.span);
-      let flag_offset = ctx.reserve_flag();
       let mut flags = FlagValue::new();
       if node.declare {
         flags.set(Flag::FnDeclare)
       }
-
-      let offset = ctx.reserve_child_ids(2);
-      let ident_id = serialize_ident(ctx, &node.ident, parent_id);
-      ctx.set_child(offset, ident_id, 0);
-
       if node.function.is_async {
         flags.set(Flag::FnAsync)
       }
       if node.function.is_generator {
         flags.set(Flag::FnGenerator)
       }
-      ctx.result[flag_offset] = flags.0;
+      ctx.result.push(flags.0);
+
+      let offset = ctx.reserve_child_ids(4);
+      let param_offset =
+        ctx.reserve_child_ids_with_count(node.function.params.len());
+
+      let ident_id = serialize_ident(ctx, &node.ident, parent_id);
+      ctx.set_child(offset, ident_id, 0);
 
       if let Some(type_params) = &node.function.type_params {
         // FIXME
         // ctx.set_child(offset, type_param_id, 1);
       }
 
-      let param_offset =
-        ctx.reserve_child_ids_with_count(node.function.params.len());
+      if let Some(return_type) = &node.function.return_type {
+        // FIXME
+        // ctx.set_child(offset, return_type_id, 2);
+      }
+
+      if let Some(body) = &node.function.body {
+        let body_id = serialize_stmt(ctx, &Stmt::Block(body.clone()), id);
+        ctx.set_child(offset, body_id, 3);
+      }
+
       for (i, param) in node.function.params.iter().enumerate() {
         let child_id = serialize_pat(ctx, &param.pat, id);
         ctx.set_child(param_offset, child_id, i);
@@ -1239,7 +1256,17 @@ fn serialize_expr(
       id
     }
     Expr::Update(node) => {
-      let id = ctx.push_node(AstNode::Update, parent_id, &node.span);
+      let id = ctx.push_node(AstNode::UpdateExpression, parent_id, &node.span);
+      let mut flags = FlagValue::new();
+      if node.prefix {
+        flags.set(Flag::UpdatePrefix);
+      }
+      flags.set(match node.op {
+        UpdateOp::PlusPlus => Flag::UpdatePlusPlus,
+        UpdateOp::MinusMinus => Flag::UpdateMinusMinus,
+      });
+      ctx.result.push(flags.0);
+
       let offset = ctx.reserve_child_ids(1);
 
       let child_id = serialize_expr(ctx, node.arg.as_ref(), id);
@@ -1324,7 +1351,15 @@ fn serialize_expr(
             SimpleAssignTarget::Invalid(invalid) => todo!(),
           }
         }
-        AssignTarget::Pat(assign_target_pat) => todo!(),
+        AssignTarget::Pat(target) => match target {
+          AssignTargetPat::Array(array_pat) => {
+            serialize_pat(ctx, &Pat::Array(array_pat.clone()), id)
+          }
+          AssignTargetPat::Object(object_pat) => {
+            serialize_pat(ctx, &Pat::Object(object_pat.clone()), id)
+          }
+          AssignTargetPat::Invalid(invalid) => todo!(),
+        },
       };
 
       let right_id = serialize_expr(ctx, node.right.as_ref(), id);

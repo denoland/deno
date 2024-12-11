@@ -6431,6 +6431,13 @@ declare namespace Deno {
     argument: Expression;
   }
 
+  export interface UpdateExpression extends BaseNode {
+    type: "UpdateExpression";
+    prefix: boolean;
+    operator: "++" | "--";
+    argument: Expression;
+  }
+
   // Literals
   export interface BigIntLiteral extends BaseNode {
     type: "BigIntLiteral";
@@ -6490,6 +6497,7 @@ declare namespace Deno {
     | TaggedTemplateExpression
     | TemplateLiteral
     | UnaryExpression
+    | UpdateExpression
     | Literal
     // JSX
     | JSXElement
@@ -6663,7 +6671,18 @@ declare namespace Deno {
     type: "FunctionDeclaration";
     id: Identifier | null;
     declare: boolean;
-    expression: false; // FIXME TSTREE
+    // expression: false; // FIXME TSTREE
+    params: Array<
+      | ArrayPattern
+      | AssignmentPattern
+      | Identifier
+      | ObjectPattern
+      | RestElement
+      | TSParameterProperty
+    >;
+    body: BlockStatement;
+    typeParameters: null; // FIXME
+    returnType: null; // FIXME
   }
 
   export interface ImportDeclaration extends BaseNode {
@@ -7043,6 +7062,7 @@ declare namespace Deno {
     TaggedTemplateExpression?(node: TaggedTemplateExpression): void;
     TemplateLiteral?(node: TemplateLiteral): void;
     UnaryExpression?(node: UnaryExpression): void;
+    UpdateExpression?(node: UpdateExpression): void;
 
     // Literals
     BooleanLiteral?(node: BigIntLiteral): void;
