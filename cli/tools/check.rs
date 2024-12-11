@@ -50,24 +50,11 @@ pub async fn check(
 ) -> Result<(), AnyError> {
   let factory = CliFactory::from_flags(flags);
   let cli_options = factory.cli_options()?;
-  let workspace_dirs_with_files = if cli_options.is_discovered_config() {
-    cli_options
-      .resolve_file_flags_for_members(&FileFlags {
-        ignore: Default::default(),
-        include: check_flags.files,
-      })?
-      .into_iter()
-      .map(|(d, p)| (Arc::new(d), p))
-      .collect()
-  } else {
-    let file_flags = FileFlags {
+  let workspace_dirs_with_files =
+    cli_options.resolve_file_flags_for_members(&FileFlags {
       ignore: Default::default(),
       include: check_flags.files,
-    };
-    let patterns = file_flags.as_file_patterns(cli_options.initial_cwd())?;
-    let patterns = cli_options.start_dir.to_resolved_file_patterns(patterns)?;
-    vec![(cli_options.start_dir.clone(), patterns)]
-  };
+    })?;
   let file_container = WorkspaceFileContainer::from_workspace_dirs_with_files(
     workspace_dirs_with_files,
     &factory,

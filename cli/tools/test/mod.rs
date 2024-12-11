@@ -3,7 +3,6 @@
 use crate::args::CliOptions;
 use crate::args::Flags;
 use crate::args::TestFlags;
-use crate::args::TestOptions;
 use crate::args::TestReporterConfig;
 use crate::colors;
 use crate::display;
@@ -1500,20 +1499,11 @@ pub async fn run_tests(
   )?;
   let log_level = cli_options.log_level();
 
-  let workspace_dirs_with_files = if cli_options.is_discovered_config() {
-    cli_options
-      .resolve_test_options_for_members(&test_flags)?
-      .into_iter()
-      .map(|(d, o)| (Arc::new(d), o.files))
-      .collect()
-  } else {
-    let patterns = test_flags
-      .files
-      .as_file_patterns(cli_options.initial_cwd())?;
-    let config = cli_options.start_dir.to_test_config(patterns)?;
-    let options = TestOptions::resolve(config, &test_flags);
-    vec![(cli_options.start_dir.clone(), options.files)]
-  };
+  let workspace_dirs_with_files = cli_options
+    .resolve_test_options_for_members(&test_flags)?
+    .into_iter()
+    .map(|(d, o)| (d, o.files))
+    .collect();
   let file_container = WorkspaceFileContainer::from_workspace_dirs_with_files(
     workspace_dirs_with_files,
     &factory,
@@ -1616,20 +1606,11 @@ pub async fn run_tests_with_watch(
         let log_level = cli_options.log_level();
 
         let _ = watcher_communicator.watch_paths(cli_options.watch_paths());
-        let workspace_dirs_with_files = if cli_options.is_discovered_config() {
-          cli_options
-            .resolve_test_options_for_members(&test_flags)?
-            .into_iter()
-            .map(|(d, o)| (Arc::new(d), o.files))
-            .collect()
-        } else {
-          let patterns = test_flags
-            .files
-            .as_file_patterns(cli_options.initial_cwd())?;
-          let config = cli_options.start_dir.to_test_config(patterns)?;
-          let options = TestOptions::resolve(config, &test_flags);
-          vec![(cli_options.start_dir.clone(), options.files)]
-        };
+        let workspace_dirs_with_files = cli_options
+          .resolve_test_options_for_members(&test_flags)?
+          .into_iter()
+          .map(|(d, o)| (d, o.files))
+          .collect::<Vec<_>>();
         let watch_paths = workspace_dirs_with_files
           .iter()
           .filter_map(|(_, files)| {

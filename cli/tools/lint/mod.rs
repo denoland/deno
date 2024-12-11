@@ -200,7 +200,7 @@ pub async fn lint(
 }
 
 struct PathsWithOptions {
-  dir: WorkspaceDirectory,
+  dir: Arc<WorkspaceDirectory>,
   paths: Vec<PathBuf>,
   options: LintOptions,
 }
@@ -270,7 +270,7 @@ impl WorkspaceLinter {
     cli_options: &Arc<CliOptions>,
     lint_options: LintOptions,
     lint_config: LintConfig,
-    member_dir: WorkspaceDirectory,
+    member_dir: Arc<WorkspaceDirectory>,
     paths: Vec<PathBuf>,
   ) -> Result<(), AnyError> {
     self.file_count += paths.len();

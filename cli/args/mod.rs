@@ -1027,10 +1027,6 @@ impl CliOptions {
     }
   }
 
-  pub fn is_discovered_config(&self) -> bool {
-    self.flags.is_discovered_config()
-  }
-
   pub fn npm_system_info(&self) -> NpmSystemInfo {
     match self.sub_command() {
       DenoSubcommand::Compile(CompileFlags {
@@ -1342,12 +1338,22 @@ impl CliOptions {
   pub fn resolve_fmt_options_for_members(
     &self,
     fmt_flags: &FmtFlags,
-  ) -> Result<Vec<(WorkspaceDirectory, FmtOptions)>, AnyError> {
+  ) -> Result<Vec<(Arc<WorkspaceDirectory>, FmtOptions)>, AnyError> {
     let cli_arg_patterns =
       fmt_flags.files.as_file_patterns(self.initial_cwd())?;
-    let member_configs = self
-      .workspace()
-      .resolve_fmt_config_for_members(&cli_arg_patterns)?;
+    let member_configs = if self.flags.is_discovered_config() {
+      self
+        .workspace()
+        .resolve_fmt_config_for_members(&cli_arg_patterns)?
+        .into_iter()
+        .map(|(d, c)| (Arc::new(d), c))
+        .collect::<Vec<_>>()
+    } else {
+      vec![(
+        self.start_dir.clone(),
+        self.start_dir.to_fmt_config(cli_arg_patterns)?,
+      )]
+    };
     let unstable = self.resolve_config_unstable_fmt_options();
     let mut result = Vec::with_capacity(member_configs.len());
     for (ctx, config) in member_configs {
@@ -1376,23 +1382,43 @@ impl CliOptions {
   pub fn resolve_file_flags_for_members(
     &self,
     file_flags: &FileFlags,
-  ) -> Result<Vec<(WorkspaceDirectory, FilePatterns)>, AnyError> {
+  ) -> Result<Vec<(Arc<WorkspaceDirectory>, FilePatterns)>, AnyError> {
     let cli_arg_patterns = file_flags.as_file_patterns(self.initial_cwd())?;
-    let member_patterns = self
-      .workspace()
-      .resolve_file_patterns_for_members(&cli_arg_patterns)?;
+    let member_patterns = if self.flags.is_discovered_config() {
+      self
+        .workspace()
+        .resolve_file_patterns_for_members(&cli_arg_patterns)?
+        .into_iter()
+        .map(|(d, p)| (Arc::new(d), p))
+        .collect::<Vec<_>>()
+    } else {
+      vec![(
+        self.start_dir.clone(),
+        self.start_dir.to_resolved_file_patterns(cli_arg_patterns)?,
+      )]
+    };
     Ok(member_patterns)
   }
 
   pub fn resolve_lint_options_for_members(
     &self,
     lint_flags: &LintFlags,
-  ) -> Result<Vec<(WorkspaceDirectory, LintOptions)>, AnyError> {
+  ) -> Result<Vec<(Arc<WorkspaceDirectory>, LintOptions)>, AnyError> {
     let cli_arg_patterns =
       lint_flags.files.as_file_patterns(self.initial_cwd())?;
-    let member_configs = self
-      .workspace()
-      .resolve_lint_config_for_members(&cli_arg_patterns)?;
+    let member_configs = if self.flags.is_discovered_config() {
+      self
+        .workspace()
+        .resolve_lint_config_for_members(&cli_arg_patterns)?
+        .into_iter()
+        .map(|(d, c)| (Arc::new(d), c))
+        .collect::<Vec<_>>()
+    } else {
+      vec![(
+        self.start_dir.clone(),
+        self.start_dir.to_lint_config(cli_arg_patterns)?,
+      )]
+    };
     let mut result = Vec::with_capacity(member_configs.len());
     for (ctx, config) in member_configs {
       let options = LintOptions::resolve(config, lint_flags);
@@ -1430,18 +1456,26 @@ impl CliOptions {
   pub fn resolve_test_options_for_members(
     &self,
     test_flags: &TestFlags,
-  ) -> Result<Vec<(WorkspaceDirectory, TestOptions)>, AnyError> {
+  ) -> Result<Vec<(Arc<WorkspaceDirectory>, TestOptions)>, AnyError> {
     let cli_arg_patterns =
       test_flags.files.as_file_patterns(self.initial_cwd())?;
-    let workspace_dir_configs = self
-      .workspace()
-      .resolve_test_config_for_members(&cli_arg_patterns)?;
-    let mut result = Vec::with_capacity(workspace_dir_configs.len());
-    for (member_dir, config) in workspace_dir_configs {
-      let options = TestOptions::resolve(config, test_flags);
-      result.push((member_dir, options));
-    }
-    Ok(result)
+    let member_options = if self.flags.is_discovered_config() {
+      self
+        .workspace()
+        .resolve_test_config_for_members(&cli_arg_patterns)?
+        .into_iter()
+        .map(|(d, c)| (Arc::new(d), TestOptions::resolve(c, test_flags)))
+        .collect::<Vec<_>>()
+    } else {
+      vec![(
+        self.start_dir.clone(),
+        TestOptions::resolve(
+          self.start_dir.to_test_config(cli_arg_patterns)?,
+          test_flags,
+        ),
+      )]
+    };
+    Ok(member_options)
   }
 
   pub fn resolve_workspace_bench_options(
@@ -1454,18 +1488,26 @@ impl CliOptions {
   pub fn resolve_bench_options_for_members(
     &self,
     bench_flags: &BenchFlags,
-  ) -> Result<Vec<(WorkspaceDirectory, BenchOptions)>, AnyError> {
+  ) -> Result<Vec<(Arc<WorkspaceDirectory>, BenchOptions)>, AnyError> {
     let cli_arg_patterns =
       bench_flags.files.as_file_patterns(self.initial_cwd())?;
-    let workspace_dir_configs = self
-      .workspace()
-      .resolve_bench_config_for_members(&cli_arg_patterns)?;
-    let mut result = Vec::with_capacity(workspace_dir_configs.len());
-    for (member_dir, config) in workspace_dir_configs {
-      let options = BenchOptions::resolve(config, bench_flags);
-      result.push((member_dir, options));
-    }
-    Ok(result)
+    let member_options = if self.flags.is_discovered_config() {
+      self
+        .workspace()
+        .resolve_bench_config_for_members(&cli_arg_patterns)?
+        .into_iter()
+        .map(|(d, c)| (Arc::new(d), BenchOptions::resolve(c, bench_flags)))
+        .collect::<Vec<_>>()
+    } else {
+      vec![(
+        self.start_dir.clone(),
+        BenchOptions::resolve(
+          self.start_dir.to_bench_config(cli_arg_patterns)?,
+          bench_flags,
+        ),
+      )]
+    };
+    Ok(member_options)
   }
 
   /// Vector of user script CLI arguments.
