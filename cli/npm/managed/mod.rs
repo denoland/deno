@@ -296,6 +296,12 @@ pub fn create_managed_in_npm_pkg_checker(
   Arc::new(ManagedInNpmPackageChecker { root_dir })
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum PackageCaching<'a> {
+  Only(Cow<'a, [PackageReq]>),
+  All,
+}
+
 /// An npm resolver where the resolution is managed by Deno rather than
 /// the user bringing their own node_modules (BYONM) on the file system.
 pub struct ManagedCliNpmResolver {
@@ -420,19 +426,44 @@ impl ManagedCliNpmResolver {
 
   /// Adds package requirements to the resolver and ensures everything is setup.
   /// This includes setting up the `node_modules` directory, if applicable.
-  pub async fn add_package_reqs(
+  pub async fn add_and_cache_package_reqs(
     &self,
     packages: &[PackageReq],
   ) -> Result<(), AnyError> {
     self
-      .add_package_reqs_raw(packages)
+      .add_package_reqs_raw(
+        packages,
+        Some(PackageCaching::Only(packages.into())),
+      )
       .await
       .dependencies_result
   }
 
-  pub async fn add_package_reqs_raw(
+  pub async fn add_package_reqs_no_cache(
     &self,
     packages: &[PackageReq],
+  ) -> Result<(), AnyError> {
+    self
+      .add_package_reqs_raw(packages, None)
+      .await
+      .dependencies_result
+  }
+
+  pub async fn add_package_reqs(
+    &self,
+    packages: &[PackageReq],
+    caching: PackageCaching<'_>,
+  ) -> Result<(), AnyError> {
+    self
+      .add_package_reqs_raw(packages, Some(caching))
+      .await
+      .dependencies_result
+  }
+
+  pub async fn add_package_reqs_raw<'a>(
+    &self,
+    packages: &[PackageReq],
+    caching: Option<PackageCaching<'a>>,
   ) -> AddPkgReqsResult {
     if packages.is_empty() {
       return AddPkgReqsResult {
@@ -449,7 +480,9 @@ impl ManagedCliNpmResolver {
       }
     }
     if result.dependencies_result.is_ok() {
-      result.dependencies_result = self.cache_packages().await;
+      if let Some(caching) = caching {
+        result.dependencies_result = self.cache_packages(caching).await;
+      }
     }
 
     result
@@ -491,16 +524,20 @@ impl ManagedCliNpmResolver {
   pub async fn inject_synthetic_types_node_package(
     &self,
   ) -> Result<(), AnyError> {
+    let reqs = &[PackageReq::from_str("@types/node").unwrap()];
     // add and ensure this isn't added to the lockfile
     self
-      .add_package_reqs(&[PackageReq::from_str("@types/node").unwrap()])
+      .add_package_reqs(reqs, PackageCaching::Only(reqs.into()))
       .await?;
 
     Ok(())
   }
 
-  pub async fn cache_packages(&self) -> Result<(), AnyError> {
-    self.fs_resolver.cache_packages().await
+  pub async fn cache_packages(
+    &self,
+    caching: PackageCaching<'_>,
+  ) -> Result<(), AnyError> {
+    self.fs_resolver.cache_packages(caching).await
   }
 
   pub fn resolve_pkg_folder_from_deno_module(
@@ -545,18 +582,18 @@ impl ManagedCliNpmResolver {
   /// Ensures that the top level `package.json` dependencies are installed.
   /// This may set up the `node_modules` directory.
   ///
-  /// Returns `true` if any changes (such as caching packages) were made.
-  /// If this returns `false`, `node_modules` has _not_ been set up.
+  /// Returns `true` if the top level packages are already installed. A
+  /// return value of `false` means that new packages were added to the NPM resolution.
   pub async fn ensure_top_level_package_json_install(
     &self,
   ) -> Result<bool, AnyError> {
     if !self.top_level_install_flag.raise() {
-      return Ok(false); // already did this
+      return Ok(true); // already did this
     }
 
     let pkg_json_remote_pkgs = self.npm_install_deps_provider.remote_pkgs();
     if pkg_json_remote_pkgs.is_empty() {
-      return Ok(false);
+      return Ok(true);
     }
 
     // check if something needs resolving before bothering to load all
@@ -570,14 +607,16 @@ impl ManagedCliNpmResolver {
       log::debug!(
         "All package.json deps resolvable. Skipping top level install."
       );
-      return Ok(false); // everything is already resolvable
+      return Ok(true); // everything is already resolvable
     }
 
     let pkg_reqs = pkg_json_remote_pkgs
       .iter()
       .map(|pkg| pkg.req.clone())
       .collect::<Vec<_>>();
-    self.add_package_reqs(&pkg_reqs).await.map(|_| true)
+    self.add_package_reqs_no_cache(&pkg_reqs).await?;
+
+    Ok(false)
   }
 
   pub async fn cache_package_info(
