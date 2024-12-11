@@ -623,11 +623,14 @@ mod tests {
 
     std::fs::write(
       &rules_schema_path,
-      serde_json::to_string_pretty(&RulesSchema {
-        schema: schema.schema,
-        rules: all_rules,
-      })
-      .unwrap(),
+      format!(
+        "{}\n",
+        serde_json::to_string_pretty(&RulesSchema {
+          schema: schema.schema,
+          rules: all_rules,
+        })
+        .unwrap(),
+      ),
     )
     .unwrap();
   }
