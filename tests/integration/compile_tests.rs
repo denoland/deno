@@ -1045,6 +1045,7 @@ fn compile_node_modules_symlink_outside() {
   let symlink_target_dir = temp_dir.path().join("some_folder");
   project_dir.join("node_modules").create_dir_all();
   symlink_target_dir.create_dir_all();
+  symlink_target_dir.join("file.txt").write("5");
   let symlink_target_file = temp_dir.path().join("target.txt");
   symlink_target_file.write("5");
   let symlink_dir = project_dir.join("node_modules").join("symlink_dir");

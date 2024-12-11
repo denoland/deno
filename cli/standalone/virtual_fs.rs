@@ -38,6 +38,16 @@ use crate::util;
 use crate::util::display::DisplayTreeNode;
 use crate::util::fs::canonicalize_path;
 
+use super::binary::DENO_COMPILE_GLOBAL_NODE_MODULES_DIR_NAME;
+
+#[derive(Debug)]
+pub struct BuiltVfs {
+  /// Will be `None` when the root is the system root on Windows.
+  pub root_path: Option<PathBuf>,
+  pub root: VirtualDirectory,
+  pub files: Vec<Vec<u8>>,
+}
+
 #[derive(Debug, Copy, Clone)]
 pub enum VfsFileSubDataKind {
   /// Raw bytes of the file.
@@ -47,81 +57,37 @@ pub enum VfsFileSubDataKind {
   ModuleGraph,
 }
 
-#[derive(Error, Debug)]
-#[error(
-  "Failed to strip prefix '{}' from '{}'", root_path.display(), target.display()
-)]
-pub struct StripRootError {
-  root_path: PathBuf,
-  target: PathBuf,
-}
-
 #[derive(Debug)]
 pub struct VfsBuilder {
-  root_path: PathBuf,
-  root_dir: VirtualDirectory,
+  executable_root: VirtualDirectory,
   files: Vec<Vec<u8>>,
   current_offset: u64,
   file_offsets: HashMap<String, u64>,
 }
 
 impl VfsBuilder {
-  pub fn new(root_path: PathBuf) -> Result<Self, AnyError> {
-    let root_path = canonicalize_path(&root_path)
-      .with_context(|| format!("Canonicalizing {}", root_path.display()))?;
-    log::debug!("Building vfs with root '{}'", root_path.display());
-    Ok(Self {
-      root_dir: VirtualDirectory {
-        name: root_path
-          .file_stem()
-          .map(|s| s.to_string_lossy().into_owned())
-          .unwrap_or("root".to_string()),
+  pub fn new() -> Self {
+    Self {
+      executable_root: VirtualDirectory {
+        name: "/".to_string(),
         entries: Vec::new(),
       },
-      root_path,
       files: Vec::new(),
       current_offset: 0,
       file_offsets: Default::default(),
-    })
-  }
-
-  pub fn set_new_root_path(
-    &mut self,
-    root_path: PathBuf,
-  ) -> Result<(), AnyError> {
-    let root_path = canonicalize_path(&root_path)?;
-    self.root_path = root_path;
-    self.root_dir = VirtualDirectory {
-      name: self
-        .root_path
-        .file_stem()
-        .map(|s| s.to_string_lossy().into_owned())
-        .unwrap_or("root".to_string()),
-      entries: vec![VfsEntry::Dir(VirtualDirectory {
-        name: std::mem::take(&mut self.root_dir.name),
-        entries: std::mem::take(&mut self.root_dir.entries),
-      })],
-    };
-    Ok(())
-  }
-
-  pub fn with_root_dir<R>(
-    &mut self,
-    with_root: impl FnOnce(&mut VirtualDirectory) -> R,
-  ) -> R {
-    with_root(&mut self.root_dir)
+    }
   }
 
   pub fn add_dir_recursive(&mut self, path: &Path) -> Result<(), AnyError> {
     let target_path = self.resolve_target_path(path)?;
-    self.add_dir_recursive_internal(&target_path)
+    self.add_dir_recursive_not_symlink(&target_path)
   }
 
-  fn add_dir_recursive_internal(
+  fn add_dir_recursive_not_symlink(
     &mut self,
     path: &Path,
   ) -> Result<(), AnyError> {
-    self.add_dir(path)?;
+    self.add_dir(path);
     let read_dir = std::fs::read_dir(path)
       .with_context(|| format!("Reading {}", path.display()))?;
 
@@ -134,49 +100,26 @@ impl VfsBuilder {
       let path = entry.path();
 
       if file_type.is_dir() {
-        self.add_dir_recursive_internal(&path)?;
+        self.add_dir_recursive_not_symlink(&path)?;
       } else if file_type.is_file() {
         self.add_file_at_path_not_symlink(&path)?;
       } else if file_type.is_symlink() {
         match self.add_symlink(&path) {
-          Ok(_) => {}
-          Err(AddSymlinkError::StripRoot(StripRootError {
-            target, ..
-          })) => {
-            if target.is_file() {
-              // this may change behavior, so warn the user about it
-              log::warn!(
-                "{} Symlink target is outside '{}'. Inlining symlink at '{}' to '{}' as file.",
-                crate::colors::yellow("Warning"),
-                self.root_path.display(),
-                path.display(),
-                target.display(),
-              );
-              // inline the symlink and make the target file
-              let file_bytes = std::fs::read(&target)
-                .with_context(|| format!("Reading {}", path.display()))?;
-              self.add_file_with_data_inner(
-                &path,
-                file_bytes,
-                VfsFileSubDataKind::Raw,
-              )?;
-            } else {
-              log::warn!(
-                "{} Symlink target is outside '{}'. Excluding symlink at '{}' with target '{}'.",
-                crate::colors::yellow("Warning"),
-                self.root_path.display(),
-                path.display(),
-                target.display(),
-              );
+          Ok(target) => match target {
+            SymlinkTarget::File(target) => {
+              self.add_file_at_path_not_symlink(&target)?
             }
-          }
+            SymlinkTarget::Dir(target) => {
+              self.add_dir_recursive_not_symlink(&target)?;
+            }
+          },
           Err(err) => {
             log::warn!(
-              "{} Failed resolving symlink. Ignoring.\n    Path: {}\n    Message: {:#}",
-              crate::colors::yellow("Warning"),
-              path.display(),
-              err
-            );
+            "{} Failed resolving symlink. Ignoring.\n    Path: {}\n    Message: {:#}",
+            crate::colors::yellow("Warning"),
+            path.display(),
+            err
+          );
           }
         }
       }
@@ -185,15 +128,15 @@ impl VfsBuilder {
     Ok(())
   }
 
-  fn add_dir(
-    &mut self,
-    path: &Path,
-  ) -> Result<&mut VirtualDirectory, StripRootError> {
+  fn add_dir(&mut self, path: &Path) -> &mut VirtualDirectory {
     log::debug!("Ensuring directory '{}'", path.display());
-    let path = self.path_relative_root(path)?;
-    let mut current_dir = &mut self.root_dir;
+    debug_assert!(path.is_absolute());
+    let mut current_dir = &mut self.executable_root;
 
     for component in path.components() {
+      if matches!(component, std::path::Component::RootDir) {
+        continue;
+      }
       let name = component.as_os_str().to_string_lossy();
       let index = match current_dir
         .entries
@@ -219,7 +162,38 @@ impl VfsBuilder {
       };
     }
 
-    Ok(current_dir)
+    current_dir
+  }
+
+  pub fn get_system_root_dir_mut(&mut self) -> &mut VirtualDirectory {
+    &mut self.executable_root
+  }
+
+  pub fn get_dir_mut(&mut self, path: &Path) -> Option<&mut VirtualDirectory> {
+    debug_assert!(path.is_absolute());
+    let mut current_dir = &mut self.executable_root;
+
+    for component in path.components() {
+      if matches!(component, std::path::Component::RootDir) {
+        continue;
+      }
+      let name = component.as_os_str().to_string_lossy();
+      let index = match current_dir
+        .entries
+        .binary_search_by(|e| e.name().cmp(&name))
+      {
+        Ok(index) => index,
+        Err(_) => return None,
+      };
+      match &mut current_dir.entries[index] {
+        VfsEntry::Dir(dir) => {
+          current_dir = dir;
+        }
+        _ => unreachable!(),
+      };
+    }
+
+    Some(current_dir)
   }
 
   pub fn add_file_at_path(&mut self, path: &Path) -> Result<(), AnyError> {
@@ -247,30 +221,8 @@ impl VfsBuilder {
       format!("Resolving target path for '{}'", path.display())
     })?;
     if metadata.is_symlink() {
-      match self.add_symlink(&path) {
-        Ok(target) => {
-          self.add_file_with_data_inner(&target, data, sub_data_kind)
-        }
-        Err(AddSymlinkError::StripRoot(StripRootError { target, .. })) => {
-          if target.is_file() {
-            // this may change behavior, so warn the user about it
-            log::warn!(
-            "{} Symlink target is outside '{}'. Inlining symlink at '{}' to '{}' as file.",
-            crate::colors::yellow("Warning"),
-            self.root_path.display(),
-            path.display(),
-            target.display(),
-          );
-            // inline the symlink and make the target file
-            self.add_file_with_data_inner(&path, data, sub_data_kind)
-          } else {
-            bail!("Bug in Deno where the symlink target when adding a file was not a file");
-          }
-        }
-        Err(err) => {
-          return Err(err.into());
-        }
-      }
+      let target = self.add_symlink(&path)?.into_path_buf();
+      self.add_file_with_data_inner(&target, data, sub_data_kind)
     } else {
       self.add_file_with_data_inner(path, data, sub_data_kind)
     }
@@ -292,7 +244,7 @@ impl VfsBuilder {
       self.current_offset
     };
 
-    let dir = self.add_dir(path.parent().unwrap())?;
+    let dir = self.add_dir(path.parent().unwrap());
     let name = path.file_name().unwrap().to_string_lossy();
     let offset_and_len = OffsetWithLength {
       offset,
@@ -339,13 +291,13 @@ impl VfsBuilder {
       format!("Resolving target path for '{}'", path.display())
     })?;
     if metadata.is_symlink() {
-      Ok(self.add_symlink(path)?)
+      Ok(self.add_symlink(path)?.into_path_buf())
     } else {
       Ok(path.to_path_buf())
     }
   }
 
-  fn add_symlink(&mut self, path: &Path) -> Result<PathBuf, AddSymlinkError> {
+  fn add_symlink(&mut self, path: &Path) -> Result<SymlinkTarget, AnyError> {
     self.add_symlink_inner(path, &mut IndexSet::new())
   }
 
@@ -353,31 +305,14 @@ impl VfsBuilder {
     &mut self,
     path: &Path,
     visited: &mut IndexSet<PathBuf>,
-  ) -> Result<PathBuf, AddSymlinkError> {
+  ) -> Result<SymlinkTarget, AnyError> {
     log::debug!("Adding symlink '{}'", path.display());
     let target = strip_unc_prefix(
       std::fs::read_link(path)
-        .with_context(|| format!("Reading symlink '{}'", path.display()))
-        .map_err(AddSymlinkError::Any)?,
+        .with_context(|| format!("Reading symlink '{}'", path.display()))?,
     );
     let target = normalize_path(path.parent().unwrap().join(&target));
-    let relative_target = self
-      .path_relative_root(&target)
-      .map_err(AddSymlinkError::StripRoot)?;
-    let relative_path = match self.path_relative_root(path) {
-      Ok(path) => path,
-      Err(StripRootError { .. }) => {
-        // ignore if the original path is outside the root directory
-        return canonicalize_path(path).map_err(AddSymlinkError::Io);
-      }
-    };
-    if relative_target == relative_path {
-      // it's the same, ignore
-      return canonicalize_path(path).map_err(AddSymlinkError::Io);
-    }
-    let dir = self
-      .add_dir(path.parent().unwrap())
-      .map_err(AddSymlinkError::StripRoot)?;
+    let dir = self.add_dir(path.parent().unwrap());
     let name = path.file_name().unwrap().to_string_lossy();
     match dir.entries.binary_search_by(|e| e.name().cmp(&name)) {
       Ok(_) => {} // previously inserted
@@ -386,20 +321,19 @@ impl VfsBuilder {
           insert_index,
           VfsEntry::Symlink(VirtualSymlink {
             name: name.to_string(),
-            dest_parts: relative_target
-              .components()
-              .map(|c| c.as_os_str().to_string_lossy().to_string())
-              .collect::<Vec<_>>(),
+            dest_parts: VirtualSymlinkParts::from_path(&target),
           }),
         );
       }
     }
-    let target_metadata = std::fs::symlink_metadata(&target)
-      .with_context(|| format!("Reading symlink target '{}'", target.display()))
-      .map_err(AddSymlinkError::Any)?;
+    let target_metadata =
+      std::fs::symlink_metadata(&target).with_context(|| {
+        format!("Reading symlink target '{}'", target.display())
+      })?;
     if target_metadata.is_symlink() {
       if !visited.insert(target.clone()) {
-        return Err(AddSymlinkError::Any(anyhow!(
+        // todo: probably don't error in this scenario
+        bail!(
           "Circular symlink detected: {} -> {}",
           visited
             .iter()
@@ -407,50 +341,140 @@ impl VfsBuilder {
             .collect::<Vec<_>>()
             .join(" -> "),
           target.display()
-        )));
+        );
       }
       self.add_symlink_inner(&target, visited)
+    } else if target_metadata.is_dir() {
+      Ok(SymlinkTarget::Dir(target))
     } else {
-      Ok(target)
+      Ok(SymlinkTarget::File(target))
     }
   }
 
-  pub fn into_dir_and_files(self) -> (VirtualDirectory, Vec<Vec<u8>>) {
-    (self.root_dir, self.files)
+  /// Resolves the root path of the VFS based on its current state.
+  ///
+  /// Returns `None` when at the system level for Windows.
+  pub fn resolve_root_path(&self) -> Option<PathBuf> {
+    let executable_root = &self.executable_root;
+    let mut current_dir = executable_root;
+    let mut current_path = if cfg!(windows) {
+      None
+    } else {
+      Some(PathBuf::from("/"))
+    };
+    loop {
+      if current_dir.entries.len() != 1 {
+        return current_path;
+      }
+      match &current_dir.entries[0] {
+        VfsEntry::Dir(dir) => {
+          if dir.name == DENO_COMPILE_GLOBAL_NODE_MODULES_DIR_NAME {
+            // special directory want to maintain
+            return current_path;
+          }
+          current_dir = dir;
+          current_path = match current_path {
+            Some(path) => Some(path.join(&dir.name)),
+            // windows drive letter
+            None => Some(PathBuf::from(&format!("{}\\", dir.name))),
+          };
+        }
+        VfsEntry::File(_) | VfsEntry::Symlink(_) => return current_path,
+      }
+    }
   }
 
-  fn path_relative_root(&self, path: &Path) -> Result<PathBuf, StripRootError> {
-    match path.strip_prefix(&self.root_path) {
-      Ok(p) => Ok(p.to_path_buf()),
-      Err(_) => Err(StripRootError {
-        root_path: self.root_path.clone(),
-        target: path.to_path_buf(),
-      }),
+  pub fn build(self) -> BuiltVfs {
+    fn strip_prefix_from_symlinks(
+      dir: &mut VirtualDirectory,
+      parts: &[String],
+    ) {
+      for entry in &mut dir.entries {
+        match entry {
+          VfsEntry::Dir(dir) => {
+            strip_prefix_from_symlinks(dir, parts);
+          }
+          VfsEntry::File(_) => {}
+          VfsEntry::Symlink(symlink) => {
+            let old_parts = std::mem::take(&mut symlink.dest_parts.0);
+            symlink.dest_parts.0 =
+              old_parts.into_iter().skip(parts.len()).collect();
+          }
+        }
+      }
+    }
+
+    let mut current_dir = self.executable_root;
+    let mut current_path = if cfg!(windows) {
+      None
+    } else {
+      Some(PathBuf::from("/"))
+    };
+    loop {
+      if current_dir.entries.len() != 1 {
+        break;
+      }
+      match &current_dir.entries[0] {
+        VfsEntry::Dir(dir) => {
+          if dir.name == DENO_COMPILE_GLOBAL_NODE_MODULES_DIR_NAME {
+            // special directory we want to maintain
+            break;
+          }
+          match current_dir.entries.remove(0) {
+            VfsEntry::Dir(dir) => {
+              current_path = match current_path {
+                Some(path) => Some(path.join(&dir.name)),
+                // windows drive letter
+                None => Some(PathBuf::from(&format!("{}\\", dir.name))),
+              };
+              current_dir = dir;
+            }
+            _ => unreachable!(),
+          };
+        }
+        VfsEntry::File(_) | VfsEntry::Symlink(_) => break,
+      }
+    }
+    if let Some(path) = &current_path {
+      strip_prefix_from_symlinks(
+        &mut current_dir,
+        &VirtualSymlinkParts::from_path(path).0,
+      );
+    }
+    BuiltVfs {
+      root_path: current_path,
+      root: current_dir,
+      files: self.files,
     }
   }
 }
 
-#[derive(Debug, Error)]
-enum AddSymlinkError {
-  #[error(transparent)]
-  StripRoot(StripRootError),
-  #[error(transparent)]
-  Any(AnyError),
-  #[error(transparent)]
-  Io(std::io::Error),
+#[derive(Debug)]
+enum SymlinkTarget {
+  File(PathBuf),
+  Dir(PathBuf),
 }
 
-pub fn output_vfs(builder: &VfsBuilder, executable_name: &str) {
+impl SymlinkTarget {
+  pub fn into_path_buf(self) -> PathBuf {
+    match self {
+      Self::File(path) => path,
+      Self::Dir(path) => path,
+    }
+  }
+}
+
+pub fn output_vfs(vfs: &BuiltVfs, executable_name: &str) {
   if !log::log_enabled!(log::Level::Info) {
     return; // no need to compute if won't output
   }
 
-  if builder.root_dir.entries.is_empty() {
+  if vfs.root.entries.is_empty() {
     return; // nothing to output
   }
 
   let mut text = String::new();
-  let display_tree = vfs_as_display_tree(builder, executable_name);
+  let display_tree = vfs_as_display_tree(vfs, executable_name);
   display_tree.print(&mut text).unwrap(); // unwrap ok because it's writing to a string
   log::info!(
     "\n{}\n",
@@ -460,7 +484,7 @@ pub fn output_vfs(builder: &VfsBuilder, executable_name: &str) {
 }
 
 fn vfs_as_display_tree(
-  builder: &VfsBuilder,
+  vfs: &BuiltVfs,
   executable_name: &str,
 ) -> DisplayTreeNode {
   enum EntryOutput<'a> {
@@ -472,20 +496,38 @@ fn vfs_as_display_tree(
 
   impl<'a> EntryOutput<'a> {
     pub fn as_display_tree(&self, name: String) -> DisplayTreeNode {
+      let mut children = match self {
+        EntryOutput::Subset(vec) => vec
+          .iter()
+          .map(|e| e.output.as_display_tree(e.name.to_string()))
+          .collect(),
+        EntryOutput::All | EntryOutput::File | EntryOutput::Symlink(_) => {
+          vec![]
+        }
+      };
+      // we only want to collapse leafs so that nodes of the
+      // same depth have the same indentation
+      let collapse_single_child =
+        children.len() == 1 && children[0].children.is_empty();
       DisplayTreeNode {
         text: match self {
-          EntryOutput::All | EntryOutput::Subset(_) | EntryOutput::File => name,
+          EntryOutput::All => format!("{}/*", name),
+          EntryOutput::Subset(_) => {
+            if collapse_single_child {
+              format!("{}/{}", name, children[0].text)
+            } else {
+              name
+            }
+          }
+          EntryOutput::File => name,
           EntryOutput::Symlink(parts) => {
             format!("{} --> {}", name, parts.join("/"))
           }
         },
-        children: match self {
-          EntryOutput::All => vec![DisplayTreeNode::from_text("*".to_string())],
-          EntryOutput::Subset(vec) => vec
-            .iter()
-            .map(|e| e.output.as_display_tree(e.name.to_string()))
-            .collect(),
-          EntryOutput::File | EntryOutput::Symlink(_) => vec![],
+        children: if collapse_single_child {
+          children.remove(0).children
+        } else {
+          children
         },
       }
     }
@@ -496,17 +538,62 @@ fn vfs_as_display_tree(
     output: EntryOutput<'a>,
   }
 
-  fn include_all_entries<'a>(
-    dir: &Path,
+  fn show_global_node_modules_dir<'a>(
     vfs_dir: &'a VirtualDirectory,
   ) -> EntryOutput<'a> {
+    fn show_subset_deep<'a>(
+      vfs_dir: &'a VirtualDirectory,
+      depth: usize,
+    ) -> EntryOutput<'a> {
+      if depth == 0 {
+        EntryOutput::All
+      } else {
+        EntryOutput::Subset(
+          vfs_dir
+            .entries
+            .iter()
+            .map(|entry| DirEntryOutput {
+              name: entry.name(),
+              output: match entry {
+                VfsEntry::Dir(virtual_directory) => {
+                  show_subset_deep(virtual_directory, depth - 1)
+                }
+                VfsEntry::File(_) => EntryOutput::File,
+                VfsEntry::Symlink(virtual_symlink) => {
+                  EntryOutput::Symlink(&virtual_symlink.dest_parts.0)
+                }
+              },
+            })
+            .collect(),
+        )
+      }
+    }
+
+    // in this scenario, we want to show
+    // .deno_compile_node_modules/localhost/<package_name>/<version>/*
+    show_subset_deep(vfs_dir, 3)
+  }
+
+  fn include_all_entries<'a>(
+    dir_path: Option<&Path>,
+    vfs_dir: &'a VirtualDirectory,
+  ) -> EntryOutput<'a> {
+    if vfs_dir.name == DENO_COMPILE_GLOBAL_NODE_MODULES_DIR_NAME {
+      return show_global_node_modules_dir(vfs_dir);
+    }
+
     EntryOutput::Subset(
       vfs_dir
         .entries
         .iter()
         .map(|entry| DirEntryOutput {
           name: entry.name(),
-          output: analyze_entry(&dir.join(entry.name()), entry),
+          output: analyze_entry(
+            &dir_path
+              .map(|dir| dir.join(entry.name()))
+              .unwrap_or_else(|| PathBuf::from(entry.name())),
+            entry,
+          ),
         })
         .collect(),
     )
@@ -517,7 +604,7 @@ fn vfs_as_display_tree(
       VfsEntry::Dir(virtual_directory) => analyze_dir(path, virtual_directory),
       VfsEntry::File(_) => EntryOutput::File,
       VfsEntry::Symlink(virtual_symlink) => {
-        EntryOutput::Symlink(&virtual_symlink.dest_parts)
+        EntryOutput::Symlink(&virtual_symlink.dest_parts.0)
       }
     }
   }
@@ -526,6 +613,10 @@ fn vfs_as_display_tree(
     dir: &Path,
     vfs_dir: &'a VirtualDirectory,
   ) -> EntryOutput<'a> {
+    if vfs_dir.name == DENO_COMPILE_GLOBAL_NODE_MODULES_DIR_NAME {
+      return show_global_node_modules_dir(vfs_dir);
+    }
+
     let real_entry_count = std::fs::read_dir(dir)
       .ok()
       .map(|entries| entries.flat_map(|e| e.ok()).count())
@@ -548,13 +639,13 @@ fn vfs_as_display_tree(
         EntryOutput::Subset(children)
       }
     } else {
-      include_all_entries(dir, vfs_dir)
+      include_all_entries(Some(dir), vfs_dir)
     }
   }
 
   // always include all the entries for the root directory, otherwise the
   // user might not have context about what's being shown
-  let output = include_all_entries(&builder.root_path, &builder.root_dir);
+  let output = include_all_entries(vfs.root_path.as_deref(), &vfs.root);
   output
     .as_display_tree(deno_terminal::colors::italic(executable_name).to_string())
 }
@@ -677,6 +768,20 @@ pub struct VirtualDirectory {
   pub entries: Vec<VfsEntry>,
 }
 
+impl VirtualDirectory {
+  pub fn insert_entry(&mut self, entry: VfsEntry) {
+    let name = entry.name();
+    match self.entries.binary_search_by(|e| e.name().cmp(name)) {
+      Ok(index) => {
+        self.entries[index] = entry;
+      }
+      Err(insert_index) => {
+        self.entries.insert(insert_index, entry);
+      }
+    }
+  }
+}
+
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 pub struct OffsetWithLength {
   #[serde(rename = "o")]
@@ -701,17 +806,32 @@ pub struct VirtualFile {
 }
 
 #[derive(Debug, Serialize, Deserialize)]
+pub struct VirtualSymlinkParts(Vec<String>);
+
+impl VirtualSymlinkParts {
+  pub fn from_path(path: &Path) -> Self {
+    Self(
+      path
+        .components()
+        .filter(|c| !matches!(c, std::path::Component::RootDir))
+        .map(|c| c.as_os_str().to_string_lossy().to_string())
+        .collect(),
+    )
+  }
+}
+
+#[derive(Debug, Serialize, Deserialize)]
 pub struct VirtualSymlink {
   #[serde(rename = "n")]
   pub name: String,
   #[serde(rename = "p")]
-  pub dest_parts: Vec<String>,
+  pub dest_parts: VirtualSymlinkParts,
 }
 
 impl VirtualSymlink {
   pub fn resolve_dest_from_root(&self, root: &Path) -> PathBuf {
     let mut dest = root.to_path_buf();
-    for part in &self.dest_parts {
+    for part in &self.dest_parts.0 {
       dest.push(part);
     }
     dest
@@ -783,10 +903,10 @@ impl VfsRoot {
     let mut final_path = self.root_path.clone();
     let mut current_entry = VfsEntryRef::Dir(&self.dir);
     for component in relative_path.components() {
-      let component = component.as_os_str().to_string_lossy();
+      let component = component.as_os_str();
       let current_dir = match current_entry {
         VfsEntryRef::Dir(dir) => {
-          final_path.push(component.as_ref());
+          final_path.push(component);
           dir
         }
         VfsEntryRef::Symlink(symlink) => {
@@ -795,7 +915,7 @@ impl VfsRoot {
           final_path = resolved_path; // overwrite with the new resolved path
           match entry {
             VfsEntryRef::Dir(dir) => {
-              final_path.push(component.as_ref());
+              final_path.push(component);
               dir
             }
             _ => {
@@ -813,6 +933,7 @@ impl VfsRoot {
           ));
         }
       };
+      let component = component.to_string_lossy();
       match current_dir
         .entries
         .binary_search_by(|e| e.name().cmp(&component))
@@ -1238,7 +1359,7 @@ mod test {
     src_path.join("e.txt").write("e");
     src_path.symlink_file("e.txt", "sub_dir/e.txt");
     let src_path = src_path.to_path_buf();
-    let mut builder = VfsBuilder::new(src_path.clone()).unwrap();
+    let mut builder = VfsBuilder::new();
     builder
       .add_file_with_data_inner(
         &src_path.join("a.txt"),
@@ -1331,7 +1452,7 @@ mod test {
 
     // build and create the virtual fs
     let src_path = temp_dir_path.join("src").to_path_buf();
-    let mut builder = VfsBuilder::new(src_path.clone()).unwrap();
+    let mut builder = VfsBuilder::new();
     builder.add_dir_recursive(&src_path).unwrap();
     let (dest_path, virtual_fs) = into_virtual_fs(builder, &temp_dir);
 
@@ -1369,10 +1490,10 @@ mod test {
     temp_dir: &TempDir,
   ) -> (PathBuf, FileBackedVfs) {
     let virtual_fs_file = temp_dir.path().join("virtual_fs");
-    let (root_dir, files) = builder.into_dir_and_files();
+    let vfs = builder.build();
     {
       let mut file = std::fs::File::create(&virtual_fs_file).unwrap();
-      for file_data in &files {
+      for file_data in &vfs.files {
         file.write_all(file_data).unwrap();
       }
     }
@@ -1383,7 +1504,7 @@ mod test {
       FileBackedVfs::new(
         Cow::Owned(data),
         VfsRoot {
-          dir: root_dir,
+          dir: vfs.root,
           root_path: dest_path.to_path_buf(),
           start_file_offset: 0,
         },
@@ -1400,7 +1521,7 @@ mod test {
     src_path.symlink_file("b.txt", "c.txt");
     src_path.symlink_file("c.txt", "a.txt");
     let src_path = src_path.to_path_buf();
-    let mut builder = VfsBuilder::new(src_path.clone()).unwrap();
+    let mut builder = VfsBuilder::new();
     let err = builder
       .add_symlink(src_path.join("a.txt").as_path())
       .unwrap_err();
@@ -1411,7 +1532,7 @@ mod test {
   async fn test_open_file() {
     let temp_dir = TempDir::new();
     let temp_path = temp_dir.path().canonicalize();
-    let mut builder = VfsBuilder::new(temp_path.to_path_buf()).unwrap();
+    let mut builder = VfsBuilder::new();
     builder
       .add_file_with_data_inner(
         temp_path.join("a.txt").as_path(),
@@ -1486,8 +1607,7 @@ mod test {
     temp_dir.write("c/a.txt", "contents");
     temp_dir.symlink_file("c/a.txt", "c/b.txt");
     assert_eq!(temp_dir.read_to_string("c/b.txt"), "contents"); // ensure the symlink works
-    let mut vfs_builder =
-      VfsBuilder::new(temp_dir.path().to_path_buf()).unwrap();
+    let mut vfs_builder = VfsBuilder::new();
     // full dir
     vfs_builder
       .add_dir_recursive(temp_dir.path().join("a").as_path())
@@ -1501,16 +1621,14 @@ mod test {
       .add_dir_recursive(temp_dir.path().join("c").as_path())
       .unwrap();
     temp_dir.write("c/c.txt", ""); // write an extra file so it shows the whole directory
-    let node = vfs_as_display_tree(&vfs_builder, "executable");
+    let node = vfs_as_display_tree(&vfs_builder.build(), "executable");
     let mut text = String::new();
     node.print(&mut text).unwrap();
     assert_eq!(
       strip_ansi_codes(&text),
       r#"executable
-├─┬ a
-│ └── *
-├─┬ b
-│ └── a.txt
+├── a/*
+├── b/a.txt
 └─┬ c
   ├── a.txt
   └── b.txt --> c/a.txt

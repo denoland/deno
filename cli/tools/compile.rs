@@ -5,7 +5,6 @@ use crate::args::CompileFlags;
 use crate::args::Flags;
 use crate::factory::CliFactory;
 use crate::http_util::HttpClientProvider;
-use crate::standalone::binary::StandaloneRelativeFileBaseUrl;
 use crate::standalone::binary::WriteBinOptions;
 use crate::standalone::is_standalone_binary;
 use deno_ast::MediaType;
@@ -87,29 +86,6 @@ pub async fn compile(
   let ts_config_for_emit = cli_options
     .resolve_ts_config_for_emit(deno_config::deno_json::TsConfigType::Emit)?;
   check_warn_tsconfig(&ts_config_for_emit);
-  let root_dir_url = resolve_root_dir_from_specifiers(
-    cli_options.workspace().root_dir(),
-    graph
-      .specifiers()
-      .map(|(s, _)| s)
-      .chain(
-        cli_options
-          .node_modules_dir_path()
-          .and_then(|p| ModuleSpecifier::from_directory_path(p).ok())
-          .iter(),
-      )
-      .chain(include_files.iter())
-      .chain(
-        // sometimes the import map path is outside the root dir
-        cli_options
-          .workspace()
-          .to_import_map_path()
-          .ok()
-          .and_then(|p| p.and_then(|p| url_from_file_path(&p).ok()))
-          .iter(),
-      ),
-  );
-  log::debug!("Binary root dir: {}", root_dir_url);
   log::info!(
     "{} {} to {}",
     colors::green("Compile"),
@@ -141,7 +117,6 @@ pub async fn compile(
         .unwrap()
         .to_string_lossy(),
       graph: &graph,
-      root_dir_url: StandaloneRelativeFileBaseUrl::from(&root_dir_url),
       entrypoint,
       include_files: &include_files,
       compile_flags: &compile_flags,
@@ -381,57 +356,6 @@ fn get_os_specific_filepath(
   }
 }
 
-fn resolve_root_dir_from_specifiers<'a>(
-  starting_dir: &ModuleSpecifier,
-  specifiers: impl Iterator<Item = &'a ModuleSpecifier>,
-) -> ModuleSpecifier {
-  fn select_common_root<'a>(a: &'a str, b: &'a str) -> &'a str {
-    let min_length = a.len().min(b.len());
-
-    let mut last_slash = 0;
-    for i in 0..min_length {
-      if a.as_bytes()[i] == b.as_bytes()[i] && a.as_bytes()[i] == b'/' {
-        last_slash = i;
-      } else if a.as_bytes()[i] != b.as_bytes()[i] {
-        break;
-      }
-    }
-
-    // Return the common root path up to the last common slash.
-    // This returns a slice of the original string 'a', up to and including the last matching '/'.
-    let common = &a[..=last_slash];
-    if cfg!(windows) && common == "file:///" {
-      a
-    } else {
-      common
-    }
-  }
-
-  fn is_file_system_root(url: &str) -> bool {
-    let Some(path) = url.strip_prefix("file:///") else {
-      return false;
-    };
-    if cfg!(windows) {
-      let Some((_drive, path)) = path.split_once('/') else {
-        return true;
-      };
-      path.is_empty()
-    } else {
-      path.is_empty()
-    }
-  }
-
-  let mut found_dir = starting_dir.as_str();
-  if !is_file_system_root(found_dir) {
-    for specifier in specifiers {
-      if specifier.scheme() == "file" {
-        found_dir = select_common_root(found_dir, specifier.as_str());
-      }
-    }
-  }
-  ModuleSpecifier::parse(found_dir).unwrap()
-}
-
 #[cfg(test)]
 mod test {
   pub use super::*;
@@ -507,42 +431,5 @@ mod test {
     run_test("C:\\my-exe.exe", Some("windows"), "C:\\my-exe.exe");
     run_test("C:\\my-exe.0.1.2", Some("windows"), "C:\\my-exe.0.1.2.exe");
     run_test("my-exe-0.1.2", Some("linux"), "my-exe-0.1.2");
-  }
-
-  #[test]
-  fn test_resolve_root_dir_from_specifiers() {
-    fn resolve(start: &str, specifiers: &[&str]) -> String {
-      let specifiers = specifiers
-        .iter()
-        .map(|s| ModuleSpecifier::parse(s).unwrap())
-        .collect::<Vec<_>>();
-      resolve_root_dir_from_specifiers(
-        &ModuleSpecifier::parse(start).unwrap(),
-        specifiers.iter(),
-      )
-      .to_string()
-    }
-
-    assert_eq!(
-      resolve("file:///a/b/e", &["file:///a/b/c/d"]),
-      "file:///a/b/"
-    );
-    assert_eq!(
-      resolve("file:///a/b/c/", &["file:///a/b/c/d"]),
-      "file:///a/b/c/"
-    );
-    assert_eq!(
-      resolve("file:///a/b/c/", &["file:///a/b/c/d", "file:///a/b/c/e"]),
-      "file:///a/b/c/"
-    );
-    assert_eq!(resolve("file:///", &["file:///a/b/c/d"]), "file:///");
-    if cfg!(windows) {
-      assert_eq!(resolve("file:///c:/", &["file:///c:/test"]), "file:///c:/");
-      // this will ignore the other one because it's on a separate drive
-      assert_eq!(
-        resolve("file:///c:/a/b/c/", &["file:///v:/a/b/c/d"]),
-        "file:///c:/a/b/c/"
-      );
-    }
   }
 }
