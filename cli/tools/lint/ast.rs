@@ -2,10 +2,10 @@ use deno_ast::{
   swc::{
     ast::{
       AssignTarget, BlockStmtOrExpr, Callee, Decl, ExportSpecifier, Expr,
-      ExprOrSpread, FnExpr, ForHead, Function, Ident, Lit, MemberProp,
-      ModuleDecl, ModuleExportName, ModuleItem, ObjectPatProp, Param, Pat,
-      Program, Prop, PropName, PropOrSpread, SimpleAssignTarget, Stmt,
-      SuperProp, TsType, VarDeclOrExpr,
+      ExprOrSpread, FnExpr, ForHead, Function, Ident, IdentName, Lit,
+      MemberProp, ModuleDecl, ModuleExportName, ModuleItem, ObjectPatProp,
+      Param, Pat, Program, Prop, PropName, PropOrSpread, SimpleAssignTarget,
+      Stmt, SuperProp, TsType, VarDeclOrExpr,
     },
     common::{Span, Spanned, SyntaxContext, DUMMY_SP},
   },
@@ -73,14 +73,14 @@ enum AstNode {
   Update,
   Bin,
   Assign,
-  Member,
-  SuperProp,
+  MemberExpression,
+  Super,
   Cond,
   Call,
   New,
   Paren,
   Seq,
-  Ident,
+  Identifier,
   TemplateLiteral,
   TaggedTpl,
   Arrow,
@@ -174,8 +174,6 @@ fn write_usize(result: &mut Vec<u8>, value: usize, idx: usize) {
 
 enum Flag {
   ProgramModule,
-  BoolFalse,
-  BoolTrue,
   FnAsync,
   FnGenerator,
   FnDeclare,
@@ -222,8 +220,6 @@ impl From<Flag> for u8 {
   fn from(m: Flag) -> u8 {
     match m {
       Flag::ProgramModule => 0b00000001,
-      Flag::BoolFalse => 0b00000000,
-      Flag::BoolTrue => 0b00000001,
       Flag::FnAsync => 0b00000001,
       Flag::FnGenerator => 0b00000010,
       Flag::FnDeclare => 0b00000100,
@@ -1232,24 +1228,19 @@ fn serialize_expr(
       id
     }
     Expr::Member(node) => {
-      let id = ctx.push_node(AstNode::Member, parent_id, &node.span);
+      let id = ctx.push_node(AstNode::MemberExpression, parent_id, &node.span);
       let mut flags = FlagValue::new();
-      // Reserve space
+      if let MemberProp::Computed(_) = node.prop {
+        flags.set(Flag::MemberComputed)
+      }
       ctx.result.push(flags.0);
-      let flag_offset = ctx.result.len() - 1;
 
       let offset = ctx.reserve_child_ids(2);
-
       let obj_id = serialize_expr(ctx, node.obj.as_ref(), id);
 
       let prop_id = match &node.prop {
         MemberProp::Ident(ident_name) => {
-          let child_id = ctx.push_node(AstNode::Ident, id, &ident_name.span);
-
-          let str_id = ctx.str_table.insert(ident_name.sym.as_str());
-          append_usize(&mut ctx.result, str_id);
-
-          child_id
+          serialize_ident_name(ctx, ident_name, id)
         }
         MemberProp::PrivateName(private_name) => {
           let child_id =
@@ -1261,13 +1252,9 @@ fn serialize_expr(
           child_id
         }
         MemberProp::Computed(computed_prop_name) => {
-          flags.set(Flag::MemberComputed);
-
           serialize_expr(ctx, computed_prop_name.expr.as_ref(), id)
         }
       };
-
-      ctx.result[flag_offset] = flags.0;
 
       ctx.set_child(offset, obj_id, 0);
       ctx.set_child(offset, prop_id, 1);
@@ -1275,14 +1262,25 @@ fn serialize_expr(
       id
     }
     Expr::SuperProp(node) => {
-      let id = ctx.push_node(AstNode::SuperProp, parent_id, &node.span);
+      let id = ctx.push_node(AstNode::MemberExpression, parent_id, &node.span);
+      let mut flags = FlagValue::new();
+      if let SuperProp::Computed(_) = node.prop {
+        flags.set(Flag::MemberComputed)
+      }
+      ctx.result.push(flags.0);
+
       let offset = ctx.reserve_child_ids(2);
 
-      // FIXME
-      match &node.prop {
-        SuperProp::Ident(ident_name) => {}
-        SuperProp::Computed(computed_prop_name) => {}
-      }
+      let super_id = ctx.push_node(AstNode::Super, id, &node.obj.span);
+      ctx.set_child(offset, super_id, 0);
+
+      let child_id = match &node.prop {
+        SuperProp::Ident(ident_name) => {
+          serialize_ident_name(ctx, ident_name, id)
+        }
+        SuperProp::Computed(prop) => serialize_expr(ctx, &prop.expr, id),
+      };
+      ctx.set_child(offset, child_id, 1);
 
       id
     }
@@ -1308,7 +1306,7 @@ fn serialize_expr(
 
       let callee_id = match &node.callee {
         Callee::Super(super_node) => {
-          ctx.push_node(AstNode::SuperProp, id, &super_node.span)
+          ctx.push_node(AstNode::Super, id, &super_node.span)
         }
         Callee::Import(import) => todo!(),
         Callee::Expr(expr) => serialize_expr(ctx, expr, id),
@@ -1474,13 +1472,9 @@ fn serialize_expr(
       id
     }
     Expr::Paren(node) => {
-      let id = ctx.push_node(AstNode::Paren, parent_id, &node.span);
-      let offset = ctx.reserve_child_ids(1);
-
-      let child_id = serialize_expr(ctx, node.expr.as_ref(), id);
-      ctx.set_child(offset, child_id, 0);
-
-      id
+      // Paren nodes are treated as a syntax only thing in TSEStree
+      // and are never materialized to actual AST nodes.
+      serialize_expr(ctx, &node.expr, parent_id)
     }
     Expr::JSXMember(node) => {
       // FIXME
@@ -1732,6 +1726,19 @@ fn serialize_spread(
   id
 }
 
+fn serialize_ident_name(
+  ctx: &mut SerializeCtx,
+  ident_name: &IdentName,
+  parent_id: usize,
+) -> usize {
+  let id = ctx.push_node(AstNode::Identifier, parent_id, &ident_name.span);
+
+  let str_id = ctx.str_table.insert(ident_name.sym.as_str());
+  append_usize(&mut ctx.result, str_id);
+
+  id
+}
+
 fn serialize_prop_name(
   ctx: &mut SerializeCtx,
   prop_name: &PropName,
@@ -1739,12 +1746,7 @@ fn serialize_prop_name(
 ) -> usize {
   match prop_name {
     PropName::Ident(ident_name) => {
-      let child_id = ctx.push_node(AstNode::Ident, parent_id, &ident_name.span);
-
-      let str_id = ctx.str_table.insert(ident_name.sym.as_str());
-      append_usize(&mut ctx.result, str_id);
-
-      child_id
+      serialize_ident_name(ctx, ident_name, parent_id)
     }
     PropName::Str(str_prop) => {
       let child_id =
@@ -1770,7 +1772,7 @@ fn serialize_ident(
   ident: &Ident,
   parent_id: usize,
 ) -> usize {
-  let id = ctx.push_node(AstNode::Ident, parent_id, &ident.span);
+  let id = ctx.push_node(AstNode::Identifier, parent_id, &ident.span);
 
   let str_id = ctx.str_table.insert(ident.sym.as_str());
   append_usize(&mut ctx.result, str_id);

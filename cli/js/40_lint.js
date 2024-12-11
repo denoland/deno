@@ -92,8 +92,6 @@ export function installPlugin(plugin) {
  */
 const Flags = {
   ProgramModule: 0b00000001,
-  BoolFalse: 0b00000000,
-  BoolTrue: 0b00000001,
   FnAsync: 0b00000001,
   FnGenerator: 0b00000010,
   FnDeclare: 0b00000100,
@@ -1372,7 +1370,7 @@ class ChainExpression {
 }
 
 /** @implements {Deno.ConditionalExpression} */
-class ConditionalExpression {
+class ConditionalExpression extends BaseNode {
   type = /** @type {const} */ ("ConditionalExpression");
   range;
   get test() {
@@ -1401,12 +1399,15 @@ class ConditionalExpression {
 
   /**
    * @param {AstContext} ctx
+   * @param {number} parentId
    * @param {Deno.Range} range
    * @param {number} testId
    * @param {number} consequentId
    * @param {number} alternateId
    */
-  constructor(ctx, range, testId, consequentId, alternateId) {
+  constructor(ctx, parentId, range, testId, consequentId, alternateId) {
+    super(ctx, parentId);
+
     this.#ctx = ctx;
     this.#testId = testId;
     this.#consequentId = consequentId;
@@ -2653,8 +2654,19 @@ function createAstNode(ctx, id) {
         childIds,
       );
     }
-    case AstType.ConditionalExpression:
-      throw new ConditionalExpression(ctx, range, 0, 0, 0); // FIXME
+    case AstType.ConditionalExpression: {
+      const testId = readU32(buf, offset);
+      const consId = readU32(buf, offset + 4);
+      const altId = readU32(buf, offset + 8);
+      return new ConditionalExpression(
+        ctx,
+        parentId,
+        range,
+        testId,
+        consId,
+        altId,
+      );
+    }
     case AstType.FunctionExpression:
       throw new FunctionExpression(ctx, range); // FIXME
     case AstType.Identifier: {
