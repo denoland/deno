@@ -6438,6 +6438,12 @@ declare namespace Deno {
     argument: Expression;
   }
 
+  export interface YieldExpression extends BaseNode {
+    type: "YieldExpression";
+    argument: Expression;
+    delegate: boolean;
+  }
+
   // Literals
   export interface BigIntLiteral extends BaseNode {
     type: "BigIntLiteral";
@@ -6499,6 +6505,7 @@ declare namespace Deno {
     | UnaryExpression
     | UpdateExpression
     | Literal
+    | YieldExpression
     // JSX
     | JSXElement
     | JSXFragment;

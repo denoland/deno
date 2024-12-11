@@ -147,6 +147,8 @@ const Flags = {
   UpdatePrefix: 0b000000001,
   UpdatePlusPlus: 0b000000010,
   UpdateMinusMinus: 0b000000100,
+
+  YieldDelegate: 1,
 };
 
 // Keep in sync with Rust
@@ -221,7 +223,7 @@ const AstType = {
   TaggedTemplateExpression: 57,
   ArrowFunctionExpression: 58,
   ClassExpr: 59,
-  Yield: 60,
+  YieldExpression: 60,
   MetaProperty: 61,
   AwaitExpression: 62,
   LogicalExpression: 63,
@@ -2001,6 +2003,39 @@ function getUnaryOperator(n) {
   }
 }
 
+/** @implements {Deno.YieldExpression} */
+class YieldExpression extends BaseNode {
+  type = /** @type {const} */ ("YieldExpression");
+  range;
+  get argument() {
+    return /** @type {Deno.Expression} */ (createAstNode(
+      this.#ctx,
+      this.#argId,
+    ));
+  }
+
+  delegate = false;
+
+  #ctx;
+  #argId;
+
+  /**
+   * @param {AstContext} ctx
+   * @param {number} parentId
+   * @param {Deno.Range} range
+   * @param {number} flags
+   * @param {number} argId
+   */
+  constructor(ctx, parentId, range, flags, argId) {
+    super(ctx, parentId);
+    this.#ctx = ctx;
+    this.#argId = argId;
+    this.range = range;
+
+    this.delegate = (flags & Flags.YieldDelegate) !== 0;
+  }
+}
+
 // Literals
 
 /** @implements {Deno.BooleanLiteral} */
@@ -3013,6 +3048,11 @@ function createAstNode(ctx, id) {
       const exprId = readU32(buf, offset + 1);
       return new UpdateExpression(ctx, parentId, range, flags, exprId);
     }
+    case AstType.YieldExpression: {
+      const flags = buf[offset];
+      const exprId = readU32(buf, offset + 1);
+      return new YieldExpression(ctx, parentId, range, flags, exprId);
+    }
 
     // Literals
     case AstType.BooleanLiteral: {
@@ -3484,7 +3524,8 @@ function traverseInner(ctx, visitTypes, visitor, id) {
       return;
     }
     case AstType.UnaryExpression:
-    case AstType.UpdateExpression: {
+    case AstType.UpdateExpression:
+    case AstType.YieldExpression: {
       // Skip flags
       offset += 1;
 

@@ -88,7 +88,7 @@ enum AstNode {
   TaggedTpl,
   ArrowFunctionExpression,
   ClassExpr,
-  Yield,
+  YieldExpression,
   MetaProp,
   AwaitExpression,
   LogicalExpression,
@@ -241,6 +241,8 @@ enum Flag {
   UpdatePrefix,
   UpdatePlusPlus,
   UpdateMinusMinus,
+
+  YieldDelegate,
 }
 
 fn assign_op_to_flag(m: AssignOp) -> u8 {
@@ -322,6 +324,8 @@ impl From<Flag> for u8 {
       Flag::UpdatePrefix => 0b000000001,
       Flag::UpdatePlusPlus => 0b000000010,
       Flag::UpdateMinusMinus => 0b000000100,
+
+      Flag::YieldDelegate => 1,
     }
   }
 }
@@ -1592,7 +1596,13 @@ fn serialize_expr(
       id
     }
     Expr::Yield(node) => {
-      let id = ctx.push_node(AstNode::Yield, parent_id, &node.span);
+      let id = ctx.push_node(AstNode::YieldExpression, parent_id, &node.span);
+      let mut flags = FlagValue::new();
+      if node.delegate {
+        flags.set(Flag::YieldDelegate)
+      }
+      ctx.result.push(flags.0);
+
       let offset = ctx.reserve_child_ids(1);
 
       if let Some(arg) = &node.arg {

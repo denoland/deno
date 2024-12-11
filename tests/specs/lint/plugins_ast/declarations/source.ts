@@ -12,6 +12,11 @@ function foo5({ a = 2 }) {}
 function foo6([a, b]) {}
 function foo7<T, U>(a: T, b: U) {}
 
+async function foo() {}
+async function* foo() {
+  yield 2;
+}
+
 export const e = 2;
 export let e2 = 2;
 export function e3() {}
