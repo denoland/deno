@@ -2957,6 +2957,7 @@ function traverse(ctx, visitor) {
     visitTypes.set(id, name);
   }
 
+  console.log("buffer len", ctx.buf.length, ctx.buf.byteLength);
   console.log("merged visitor", visitor);
   console.log("visiting types", visitTypes);
 
