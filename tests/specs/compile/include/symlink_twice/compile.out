@@ -2,7 +2,7 @@ Compile [WILDLINE]
 
 Embedded File System
 
-main.exe
+main[WILDLINE]
 ├── index.js
 ├── link.js --> index.js
 └── setup.js
