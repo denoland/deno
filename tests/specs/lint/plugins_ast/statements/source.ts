@@ -47,3 +47,30 @@ switch (foo) {
   default:
     foo;
 }
+
+try {
+} catch (e) {
+} finally {
+}
+
+try {
+} finally {
+}
+
+try {
+} catch {
+}
+
+try {
+} catch (e) {
+}
+
+if (false) {
+  1;
+}
+
+if (false) {
+  1;
+} else {
+  2;
+}

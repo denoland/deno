@@ -112,6 +112,37 @@ const Flags = {
   LogicalAnd: 0b000000010,
   LogicalNullishCoalescin: 0b000000100,
   JSXSelfClosing: 0b000000001,
+
+  BinEqEq: 1,
+  BinNotEq: 2,
+  BinEqEqEq: 3,
+  BinNotEqEq: 4,
+  BinLt: 5,
+  BinLtEq: 6,
+  BinGt: 7,
+  BinGtEq: 8,
+  BinLShift: 9,
+  BinRShift: 10,
+  BinZeroFillRShift: 11,
+  BinAdd: 12,
+  BinSub: 13,
+  BinMul: 14,
+  BinDiv: 15,
+  BinMod: 16,
+  BinBitOr: 17,
+  BinBitXor: 18,
+  BinBitAnd: 19,
+  BinIn: 20,
+  BinInstanceOf: 21,
+  BinExp: 22,
+
+  UnaryMinus: 1,
+  UnaryPlus: 2,
+  UnaryBang: 3,
+  UnaryTilde: 4,
+  UnaryTypeOf: 5,
+  UnaryVoid: 6,
+  UnaryDelete: 7,
 };
 
 // Keep in sync with Rust
@@ -135,7 +166,7 @@ const AstType = {
 
   // Decls
   Class: 12,
-  Fn: 13,
+  FunctionDeclaration: 13,
   VariableDeclaration: 14,
   Using: 15,
   TsInterface: 16,
@@ -170,7 +201,7 @@ const AstType = {
   ArrayExpression: 41,
   ObjectExpression: 42,
   FunctionExpression: 43,
-  Unary: 44,
+  UnaryExpression: 44,
   Update: 45,
   BinaryExpression: 46,
   AssignmentExpression: 47,
@@ -1191,7 +1222,7 @@ function getAssignOperator(n) {
 }
 
 /** @implements {Deno.AwaitExpression} */
-class AwaitExpression {
+class AwaitExpression extends BaseNode {
   type = /** @type {const} */ ("AwaitExpression");
   range;
   get argument() {
@@ -1202,14 +1233,16 @@ class AwaitExpression {
   }
 
   #ctx;
-  #argId = 0;
+  #argId;
 
   /**
    * @param {AstContext} ctx
+   * @param {number} parentId
    * @param {Deno.Range} range
    * @param {number} argId
    */
-  constructor(ctx, range, argId) {
+  constructor(ctx, parentId, range, argId) {
+    super(ctx, parentId);
     this.#ctx = ctx;
     this.#argId = argId;
     this.range = range;
@@ -1217,7 +1250,7 @@ class AwaitExpression {
 }
 
 /** @implements {Deno.BinaryExpression} */
-class BinaryExpression {
+class BinaryExpression extends BaseNode {
   type = /** @type {const} */ ("BinaryExpression");
   range;
   get left() {
@@ -1240,12 +1273,15 @@ class BinaryExpression {
 
   /**
    * @param {AstContext} ctx
+   * @param {number} parentId
    * @param {Deno.Range} range
    * @param {number} flags
    * @param {number} leftId
    * @param {number} rightId
    */
-  constructor(ctx, range, flags, leftId, rightId) {
+  constructor(ctx, parentId, range, flags, leftId, rightId) {
+    super(ctx, parentId);
+
     this.#ctx = ctx;
     this.#leftId = leftId;
     this.#rightId = rightId;
@@ -1260,50 +1296,50 @@ class BinaryExpression {
  */
 function getBinaryOperator(n) {
   switch (n) {
-    case 0:
-      return "&";
     case 1:
-      return "**";
-    case 2:
-      return "*";
-    case 3:
-      return "|";
-    case 4:
-      return "^";
-    case 5:
-      return "===";
-    case 6:
       return "==";
-    case 7:
-      return "!==";
-    case 8:
+    case 2:
       return "!=";
-    case 9:
-      return ">=";
-    case 10:
-      return ">>>";
-    case 11:
-      return ">>";
-    case 12:
-      return ">";
-    case 13:
-      return "in";
-    case 14:
-      return "instanceof";
-    case 15:
-      return "<=";
-    case 16:
-      return "<<";
-    case 17:
+    case 3:
+      return "===";
+    case 4:
+      return "!==";
+    case 5:
       return "<";
-    case 18:
-      return "-";
-    case 19:
-      return "%";
-    case 20:
+    case 6:
+      return "<=";
+    case 7:
+      return ">";
+    case 8:
+      return ">=";
+    case 9:
+      return "<<";
+    case 10:
+      return ">>";
+    case 11:
+      return ">>>";
+    case 12:
       return "+";
-    case 21:
+    case 13:
+      return "-";
+    case 14:
+      return "*";
+    case 15:
       return "/";
+    case 16:
+      return "%";
+    case 17:
+      return "|";
+    case 18:
+      return "^";
+    case 19:
+      return "&";
+    case 20:
+      return "in";
+    case 21:
+      return "instanceof";
+    case 22:
+      return "**";
     default:
       throw new Error(`Unknown operator: ${n}`);
   }
@@ -1455,7 +1491,7 @@ class Identifier extends BaseNode {
 }
 
 /** @implements {Deno.LogicalExpression} */
-class LogicalExpression {
+class LogicalExpression extends BaseNode {
   type = /** @type {const} */ ("LogicalExpression");
   range;
   get left() {
@@ -1477,12 +1513,15 @@ class LogicalExpression {
 
   /**
    * @param {AstContext} ctx
+   * @param {number} parentId
    * @param {Deno.Range} range
    * @param {number} flags
    * @param {number} leftId
    * @param {number} rightId
    */
-  constructor(ctx, range, flags, leftId, rightId) {
+  constructor(ctx, parentId, range, flags, leftId, rightId) {
+    super(ctx, parentId);
+
     this.#ctx = ctx;
     this.operator = getLogicalOperator(flags);
     this.#leftId = leftId;
@@ -1585,11 +1624,11 @@ class MetaProperty {
 }
 
 /** @implements {Deno.NewExpression} */
-class NewExpression {
+class NewExpression extends BaseNode {
   type = /** @type {const} */ ("NewExpression");
   range;
   get arguments() {
-    return []; // FIXME
+    return createChildNodes(this.#ctx, this.#childIds);
   }
   get callee() {
     return /** @type {Deno.Expression} */ (createAstNode(
@@ -1600,15 +1639,21 @@ class NewExpression {
 
   #ctx;
   #calleeId;
+  #childIds;
 
   /**
    * @param {AstContext} ctx
+   * @param {number} parentId
    * @param {Deno.Range} range
    * @param {number} calleeId
+   * @param {number[]} childIds
    */
-  constructor(ctx, range, calleeId) {
+  constructor(ctx, parentId, range, calleeId, childIds) {
+    super(ctx, parentId);
+
     this.#ctx = ctx;
     this.#calleeId = calleeId;
+    this.#childIds = childIds;
     this.range = range;
   }
 }
@@ -1797,6 +1842,59 @@ class Super extends BaseNode {
   }
 }
 
+/** @implements {Deno.UnaryExpression} */
+class UnaryExpression extends BaseNode {
+  type = /** @type {const} */ ("UnaryExpression");
+  range;
+
+  get argument() {
+    return /** @type {*} */ (createAstNode(this.#ctx, this.#exprId));
+  }
+
+  #ctx;
+  #exprId;
+  operator;
+
+  /**
+   * @param {AstContext} ctx
+   * @param {number} parentId
+   * @param {Deno.Range} range
+   * @param {number} flags
+   * @param {number} exprId
+   */
+  constructor(ctx, parentId, range, flags, exprId) {
+    super(ctx, parentId);
+
+    this.#ctx = ctx;
+    this.range = range;
+    this.operator = getUnaryOperator(flags);
+    this.#exprId = exprId;
+  }
+}
+
+/**
+ * @param {number} n
+ * @returns {Deno.UnaryExpression["operator"]}
+ */
+function getUnaryOperator(n) {
+  switch (n) {
+    case 1:
+      return "-";
+    case 2:
+      return "+";
+    case 3:
+      return "!";
+    case 4:
+      return "~";
+    case 5:
+      return "typeof";
+    case 6:
+      return "void";
+    case 7:
+      return "delete";
+  }
+}
+
 // Literals
 
 /** @implements {Deno.BooleanLiteral} */
@@ -1980,7 +2078,7 @@ class TemplateElement extends BaseNode {
 // JSX
 
 /** @implements {Deno.JSXAttribute} */
-class JSXAttribute {
+class JSXAttribute extends BaseNode {
   type = /** @type {const} */ ("JSXAttribute");
   range;
   get name() {
@@ -2003,11 +2101,14 @@ class JSXAttribute {
 
   /**
    * @param {AstContext} ctx
+   * @param {number} parentId
    * @param {Deno.Range} range
    * @param {number} nameId
    * @param {number} valueId
    */
-  constructor(ctx, range, nameId, valueId) {
+  constructor(ctx, parentId, range, nameId, valueId) {
+    super(ctx, parentId);
+
     this.#ctx = ctx;
     this.range = range;
     this.#nameId = nameId;
@@ -2016,7 +2117,7 @@ class JSXAttribute {
 }
 
 /** @implements {Deno.JSXClosingElement} */
-class JSXClosingElement {
+class JSXClosingElement extends BaseNode {
   type = /** @type {const} */ ("JSXClosingElement");
   range;
   get name() {
@@ -2031,10 +2132,13 @@ class JSXClosingElement {
 
   /**
    * @param {AstContext} ctx
+   * @param {number} parentId
    * @param {Deno.Range} range
    * @param {number} nameId
    */
-  constructor(ctx, range, nameId) {
+  constructor(ctx, parentId, range, nameId) {
+    super(ctx, parentId);
+
     this.#ctx = ctx;
     this.range = range;
     this.#nameId = nameId;
@@ -2103,8 +2207,24 @@ class JSXElement extends BaseNode {
   }
 }
 
+/** @implements {Deno.JSXEmptyExpression} */
+class JSXEmptyExpression extends BaseNode {
+  type = /** @type {const} */ ("JSXEmptyExpression");
+  range;
+
+  /**
+   * @param {AstContext} ctx
+   * @param {number} parentId
+   * @param {Deno.Range} range
+   */
+  constructor(ctx, parentId, range) {
+    super(ctx, parentId);
+    this.range = range;
+  }
+}
+
 /** @implements {Deno.JSXExpressionContainer} */
-class JSXExpressionContainer {
+class JSXExpressionContainer extends BaseNode {
   type = /** @type {const} */ ("JSXExpressionContainer");
   range;
   get expression() {
@@ -2119,10 +2239,13 @@ class JSXExpressionContainer {
 
   /**
    * @param {AstContext} ctx
+   * @param {number} parentId
    * @param {Deno.Range} range
    * @param {number} exprId
    */
-  constructor(ctx, range, exprId) {
+  constructor(ctx, parentId, range, exprId) {
+    super(ctx, parentId);
+
     this.#ctx = ctx;
     this.range = range;
     this.#exprId = exprId;
@@ -2130,30 +2253,30 @@ class JSXExpressionContainer {
 }
 
 /** @implements {Deno.JSXFragment} */
-class JSXFragment {
+class JSXFragment extends BaseNode {
   type = /** @type {const} */ ("JSXFragment");
-  // range;
-  // get children() {
-  //   return createChildNodes(this.#ctx, this.#childIds);
-  // }
+  range;
+  get children() {
+    return createChildNodes(this.#ctx, this.#childIds);
+  }
 
-  // get openingFragment() {
-  //   return /** @type {*} */ (createAstNode(
-  //     this.#ctx,
-  //     this.#openId,
-  //   ));
-  // }
-  // get closingFragment() {
-  //   return /** @type {*} */ (createAstNode(
-  //     this.#ctx,
-  //     this.#closingId,
-  //   ));
-  // }
+  get openingFragment() {
+    return /** @type {*} */ (createAstNode(
+      this.#ctx,
+      this.#openId,
+    ));
+  }
+  get closingFragment() {
+    return /** @type {*} */ (createAstNode(
+      this.#ctx,
+      this.#closingId,
+    ));
+  }
 
-  // #ctx;
-  // #childIds;
-  // #openId;
-  // #closingId;
+  #ctx;
+  #childIds;
+  #openId;
+  #closingId;
 
   /**
    * @param {AstContext} ctx
@@ -2164,13 +2287,13 @@ class JSXFragment {
    * @param {number[]} childIds
    */
   constructor(ctx, parentId, range, openId, closingId, childIds) {
-    // super(ctx, parentId);
+    super(ctx, parentId);
 
-    // this.#ctx = ctx;
-    // this.range = range;
-    // this.#openId = openId;
-    // this.#closingId = closingId;
-    // this.#childIds = childIds;
+    this.#ctx = ctx;
+    this.range = range;
+    this.#openId = openId;
+    this.#closingId = closingId;
+    this.#childIds = childIds;
   }
 }
 
@@ -2195,7 +2318,7 @@ class JSXIdentifier extends BaseNode {
 }
 
 /** @implements {Deno.JSXMemberExpression} */
-class JSXMemberExpression {
+class JSXMemberExpression extends BaseNode {
   type = /** @type {const} */ ("JSXMemberExpression");
   range;
   get object() {
@@ -2217,11 +2340,14 @@ class JSXMemberExpression {
 
   /**
    * @param {AstContext} ctx
+   * @param {number} parentId
    * @param {Deno.Range} range
    * @param {number} objId
    * @param {number} propId
    */
-  constructor(ctx, range, objId, propId) {
+  constructor(ctx, parentId, range, objId, propId) {
+    super(ctx, parentId);
+
     this.#ctx = ctx;
     this.range = range;
     this.#objId = objId;
@@ -2265,11 +2391,11 @@ class JSXNamespacedName {
 }
 
 /** @implements {Deno.JSXOpeningElement} */
-class JSXOpeningElement {
+class JSXOpeningElement extends BaseNode {
   type = /** @type {const} */ ("JSXOpeningElement");
   range;
   get attributes() {
-    return []; // FIXME
+    return createChildNodes(this.#ctx, this.#attrIds);
   }
   get name() {
     return /** @type {Deno.JSXIdentifier} */ (createAstNode(
@@ -2280,18 +2406,24 @@ class JSXOpeningElement {
 
   #ctx;
   #nameId;
+  #attrIds;
   selfClosing = false;
 
   /**
    * @param {AstContext} ctx
+   * @param {number} parentId
    * @param {Deno.Range} range
-   * @param {number} flags
+   * @param {boolean} isSelfClosing
    * @param {number} nameId
+   * @param {number[]} attrIds
    */
-  constructor(ctx, range, flags, nameId) {
+  constructor(ctx, parentId, range, isSelfClosing, nameId, attrIds) {
+    super(ctx, parentId);
+
     this.#ctx = ctx;
-    this.selfClosing = flags === 1;
+    this.selfClosing = isSelfClosing;
     this.#nameId = nameId;
+    this.#attrIds = attrIds;
     this.range = range;
   }
 }
@@ -2314,7 +2446,7 @@ class JSXOpeningFragment extends BaseNode {
 }
 
 /** @implements {Deno.JSXSpreadAttribute} */
-class JSXSpreadAttribute {
+class JSXSpreadAttribute extends BaseNode {
   type = /** @type {const} */ ("JSXSpreadAttribute");
   range;
 
@@ -2330,10 +2462,13 @@ class JSXSpreadAttribute {
 
   /**
    * @param {AstContext} ctx
+   * @param {number} parentId
    * @param {Deno.Range} range
    * @param {number} argId
    */
-  constructor(ctx, range, argId) {
+  constructor(ctx, parentId, range, argId) {
+    super(ctx, parentId);
+
     this.#ctx = ctx;
     this.range = range;
     this.#argId = argId;
@@ -2341,7 +2476,7 @@ class JSXSpreadAttribute {
 }
 
 /** @implements {Deno.JSXText} */
-class JSXText {
+class JSXText extends BaseNode {
   type = /** @type {const} */ ("JSXText");
   range;
 
@@ -2350,11 +2485,14 @@ class JSXText {
 
   /**
    * @param {AstContext} ctx
+   * @param {number} parentId
    * @param {Deno.Range} range
    * @param {number} valueId
    * @param {number} rawId
    */
-  constructor(ctx, range, valueId, rawId) {
+  constructor(ctx, parentId, range, valueId, rawId) {
+    super(ctx, parentId);
+
     this.range = range;
     this.value = getString(ctx, valueId);
     this.raw = getString(ctx, rawId);
@@ -2452,12 +2590,13 @@ function createAstNode(ctx, id) {
       return new Program(ctx, parentId, range, moduleType, childIds);
     }
     case AstType.Import:
-      // case AstNodeId.ImportDecl:
-      // case AstNodeId.ExportDecl:
-      // case AstNodeId.ExportNamed:
-      // case AstNodeId.ExportDefaultDecl:
-      // case AstNodeId.ExportDefaultExpr:
-      // case AstNodeId.ExportAll:
+    case AstType.ImportDecl:
+    case AstType.ExportDecl:
+    case AstType.ExportNamed:
+    case AstType.ExportDefaultDecl:
+    case AstType.ExportDefaultExpr:
+    case AstType.ExportAll:
+      throw new Error("FIXME");
 
     // Declarations
     case AstType.VariableDeclaration: {
@@ -2564,7 +2703,7 @@ function createAstNode(ctx, id) {
       const blockId = readU32(buf, offset);
       const catchId = readU32(buf, offset + 4);
       const finalId = readU32(buf, offset + 8);
-      throw new TryStatement(ctx, parentId, range, blockId, catchId, finalId);
+      return new TryStatement(ctx, parentId, range, blockId, catchId, finalId);
     }
     case AstType.WhileStatement: {
       const testId = readU32(buf, offset);
@@ -2623,10 +2762,16 @@ function createAstNode(ctx, id) {
         rightId,
       );
     }
-    case AstType.AwaitExpression:
-      throw new AwaitExpression(ctx, range, 0); // FIXME
-    case AstType.BinaryExpression:
-      throw new BinaryExpression(ctx, range, flags, 0, 0); // FIXME
+    case AstType.AwaitExpression: {
+      const argId = readU32(buf, offset);
+      return new AwaitExpression(ctx, parentId, range, argId);
+    }
+    case AstType.BinaryExpression: {
+      const flags = buf[offset];
+      const leftId = readU32(buf, offset + 1);
+      const rightId = readU32(buf, offset + 5);
+      return new BinaryExpression(ctx, parentId, range, flags, leftId, rightId);
+    }
     case AstType.CallExpression: {
       const calleeId = readU32(buf, offset);
       const typeArgId = readU32(buf, offset + 4);
@@ -2663,7 +2808,14 @@ function createAstNode(ctx, id) {
       const flags = buf[offset];
       const leftId = readU32(buf, offset + 1);
       const rightId = readU32(buf, offset + 5);
-      return new LogicalExpression(ctx, range, flags, leftId, rightId);
+      return new LogicalExpression(
+        ctx,
+        parentId,
+        range,
+        flags,
+        leftId,
+        rightId,
+      );
     }
     case AstType.MemberExpression: {
       const flags = buf[offset];
@@ -2674,9 +2826,13 @@ function createAstNode(ctx, id) {
       return new MemberExpression(ctx, parentId, range, flags, objId, propId);
     }
     case AstType.MetaProperty:
-      throw new MetaProperty(ctx, range, 0, 0); // FIXME
-    case AstType.NewExpression:
-      throw new NewExpression(ctx, range, 0); // FIXME
+      throw new MetaProperty(ctx, parentId, range, 0, 0); // FIXME
+    case AstType.NewExpression: {
+      const calleeId = readU32(buf, offset);
+      const typeId = readU32(buf, offset + 4); // FIXME
+      const childIds = readChildIds(buf, offset + 8);
+      throw new NewExpression(ctx, parentId, range, calleeId, childIds);
+    }
     case AstType.ObjectExpression: {
       const elemIds = readChildIds(buf, offset);
       return new ObjectExpression(ctx, parentId, range, elemIds);
@@ -2722,6 +2878,11 @@ function createAstNode(ctx, id) {
       const exprIds = readChildIds(buf, offset);
       return new TemplateLiteral(ctx, parentId, range, quasiIds, exprIds);
     }
+    case AstType.UnaryExpression: {
+      const flags = buf[offset];
+      const exprId = readU32(buf, offset + 1);
+      return new UnaryExpression(ctx, parentId, range, flags, exprId);
+    }
 
     // Literals
     case AstType.BooleanLiteral: {
@@ -2749,11 +2910,15 @@ function createAstNode(ctx, id) {
     }
 
     // JSX
-    // FIXME
-    case AstType.JSXAttribute:
-      throw new JSXAttribute(ctx, range, 0, 0); // FIXME
-    case AstType.JSXClosingElement:
-      throw new JSXClosingElement(ctx, range, 0); // FIXME
+    case AstType.JSXAttribute: {
+      const nameId = readU32(buf, offset);
+      const valueId = readU32(buf, offset + 4);
+      return new JSXAttribute(ctx, parentId, range, nameId, valueId);
+    }
+    case AstType.JSXClosingElement: {
+      const nameId = readU32(buf, offset);
+      return new JSXClosingElement(ctx, parentId, range, nameId);
+    }
     case AstType.JSXClosingFragment:
       return new JSXClosingFragment(ctx, parentId, range);
     case AstType.JSXElement: {
@@ -2769,16 +2934,17 @@ function createAstNode(ctx, id) {
         childIds,
       );
     }
-    case AstType.JSXExpressionContainer:
-      throw new JSXExpressionContainer(ctx, range, 0); // FIXME
+    case AstType.JSXEmptyExpression: {
+      return new JSXEmptyExpression(ctx, parentId, range);
+    }
+    case AstType.JSXExpressionContainer: {
+      const exprId = readU32(buf, offset);
+      return new JSXExpressionContainer(ctx, parentId, range, exprId);
+    }
     case AstType.JSXFragment: {
       const openingId = readU32(buf, offset);
       const closingId = readU32(buf, offset + 4);
       const childIds = readChildIds(buf, offset + 8);
-      console.log(
-        `creating JSXFragment, buf size ${buf.length} ${buf.byteLength}`,
-      );
-      throw new Error("FAIL");
       return new JSXFragment(
         ctx,
         parentId,
@@ -2790,22 +2956,44 @@ function createAstNode(ctx, id) {
     }
     case AstType.JSXIdentifier: {
       const strId = readU32(buf, offset);
-      throw new JSXIdentifier(ctx, parentId, range, strId);
+      return new JSXIdentifier(ctx, parentId, range, strId);
     }
-    case AstType.JSXMemberExpression:
-      throw new JSXMemberExpression(ctx, range, 0, 0); // FIXME
+    case AstType.JSXMemberExpression: {
+      const objId = readU32(buf, offset);
+      const propId = readU32(buf, offset + 4);
+      return new JSXMemberExpression(ctx, parentId, range, objId, propId);
+    }
     case AstType.JSXNamespacedName:
       throw new JSXNamespacedName(ctx, range, 0, 0); // FIXME
-    case AstType.JSXOpeningElement:
-      throw new JSXOpeningElement(ctx, range, flags, 0); // FIXME
+    case AstType.JSXOpeningElement: {
+      const flags = buf[offset];
+      const nameId = readU32(buf, offset + 1);
+      const attrIds = readChildIds(buf, offset + 5);
+
+      const isSelfClosing = (flags & Flags.JSXSelfClosing) !== 0;
+
+      return new JSXOpeningElement(
+        ctx,
+        parentId,
+        range,
+        isSelfClosing,
+        nameId,
+        attrIds,
+      );
+    }
     case AstType.JSXOpeningFragment:
       return new JSXOpeningFragment(ctx, parentId, range);
-    case AstType.JSXSpreadAttribute:
-      throw new JSXSpreadAttribute(ctx, range, flags); // FIXME
+    case AstType.JSXSpreadAttribute: {
+      const childId = readU32(buf, offset);
+      return new JSXSpreadAttribute(ctx, parentId, range, childId);
+    }
     case AstType.JSXSpreadChild:
       throw new Error(`JSXSpreadChild not supported`);
-    case AstType.JSXText:
-      throw new JSXText(ctx, range, 0, 0); // FIXME
+    case AstType.JSXText: {
+      const rawId = readU32(buf, offset);
+      const valueId = readU32(buf, offset + 4);
+      return new JSXText(ctx, parentId, range, rawId, valueId);
+    }
 
     default:
       throw new Error(`Unknown ast node ${kind}`);
@@ -2973,7 +3161,7 @@ function traverse(ctx, visitor) {
  * @param {number} id
  */
 function traverseInner(ctx, visitTypes, visitor, id) {
-  // console.log("traversing id", id);
+  console.log("traversing id", id);
 
   // Empty id
   if (id === 0) return;
@@ -2986,7 +3174,7 @@ function traverseInner(ctx, visitTypes, visitor, id) {
   if (offset === undefined) throw new Error(`Unknown id: ${id}`);
 
   const type = buf[offset];
-  // console.log({ id, type, offset });
+  console.log({ id, type, offset });
 
   const name = visitTypes.get(type);
   if (name !== undefined) {
@@ -3084,6 +3272,19 @@ function traverseInner(ctx, visitTypes, visitor, id) {
 
       return;
     }
+    case AstType.BinaryExpression:
+    case AstType.LogicalExpression: {
+      // Skip flags
+      offset += 1;
+
+      const leftId = readU32(buf, offset);
+      const rightId = readU32(buf, offset + 4);
+
+      traverseInner(ctx, visitTypes, visitor, leftId);
+      traverseInner(ctx, visitTypes, visitor, rightId);
+
+      return;
+    }
     case AstType.Property: {
       // Skip flags
       offset += 1;
@@ -3109,24 +3310,88 @@ function traverseInner(ctx, visitTypes, visitor, id) {
 
       return;
     }
+    case AstType.JSXOpeningElement: {
+      // Skip flags
+      offset += 1;
+
+      const nameId = readU32(buf, offset);
+      const childIds = readChildIds(buf, offset + 4);
+
+      traverseInner(ctx, visitTypes, visitor, nameId);
+      traverseChildren(ctx, visitTypes, visitor, childIds);
+
+      return;
+    }
+    case AstType.UnaryExpression: {
+      // Skip flags
+      offset += 1;
+
+      const exprId = readU32(buf, offset);
+      traverseInner(ctx, visitTypes, visitor, exprId);
+      return;
+    }
+    case AstType.ForOfStatement: {
+      // Skip flags
+      offset += 1;
+
+      const firstId = readU32(buf, offset);
+      const secondId = readU32(buf, offset + 4);
+      const thirdId = readU32(buf, offset + 8);
+
+      traverseInner(ctx, visitTypes, visitor, firstId);
+      traverseInner(ctx, visitTypes, visitor, secondId);
+      traverseInner(ctx, visitTypes, visitor, thirdId);
+      return;
+    }
+    case AstType.NewExpression: {
+      const calleeId = readU32(buf, offset);
+      const typeId = readU32(buf, offset + 4);
+      const childIds = readChildIds(buf, offset + 8);
+
+      traverseInner(ctx, visitTypes, visitor, calleeId);
+      traverseInner(ctx, visitTypes, visitor, typeId);
+      traverseChildren(ctx, visitTypes, visitor, childIds);
+
+      return;
+    }
+
+    // Three children
+    case AstType.ForInStatement:
+    case AstType.IfStatement: {
+      const firstId = readU32(buf, offset);
+      const secondId = readU32(buf, offset + 4);
+      const thirdId = readU32(buf, offset + 8);
+
+      traverseInner(ctx, visitTypes, visitor, firstId);
+      traverseInner(ctx, visitTypes, visitor, secondId);
+      traverseInner(ctx, visitTypes, visitor, thirdId);
+      return;
+    }
 
     // Two children
     case AstType.AssignmentPattern:
+    case AstType.JSXAttribute:
+    case AstType.JSXMemberExpression:
     case AstType.LabeledStatement:
     case AstType.VariableDeclarator:
     case AstType.WhileStatement: {
       const firstId = readU32(buf, offset);
-      traverseInner(ctx, visitTypes, visitor, firstId);
-
       const secondId = readU32(buf, offset + 4);
-      return traverseInner(ctx, visitTypes, visitor, secondId);
+
+      traverseInner(ctx, visitTypes, visitor, firstId);
+      traverseInner(ctx, visitTypes, visitor, secondId);
+      return;
     }
 
     // Single child
+    case AstType.AwaitExpression:
     case AstType.BreakStatement:
     case AstType.ContinueStatement:
     case AstType.ExpressionStatement:
+    case AstType.JSXClosingElement:
+    case AstType.JSXExpressionContainer:
     case AstType.JSXIdentifier:
+    case AstType.JSXSpreadAttribute:
     case AstType.ReturnStatement:
     case AstType.SpreadElement:
     case AstType.ParenthesisExpression: {
@@ -3140,7 +3405,9 @@ function traverseInner(ctx, visitTypes, visitor, id) {
     case AstType.DebuggerStatement:
     case AstType.Identifier:
     case AstType.JSXClosingFragment:
+    case AstType.JSXEmptyExpression:
     case AstType.JSXOpeningFragment:
+    case AstType.JSXText:
     case AstType.NullLiteral:
     case AstType.NumericLiteral:
     case AstType.PrivateIdentifier:

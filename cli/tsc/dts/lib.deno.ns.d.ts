@@ -6425,6 +6425,12 @@ declare namespace Deno {
     };
   }
 
+  export interface UnaryExpression extends BaseNode {
+    type: "UnaryExpression";
+    operator: "!" | "+" | "~" | "-" | "delete" | "typeof" | "void";
+    argument: Expression;
+  }
+
   // Literals
   export interface BigIntLiteral extends BaseNode {
     type: "BigIntLiteral";
@@ -6483,6 +6489,7 @@ declare namespace Deno {
     | Super
     | TaggedTemplateExpression
     | TemplateLiteral
+    | UnaryExpression
     | Literal
     // JSX
     | JSXElement
@@ -6854,6 +6861,7 @@ declare namespace Deno {
     | JSXClosingElement
     | JSXClosingFragment
     | JSXElement
+    | JSXEmptyExpression
     | JSXExpressionContainer
     | JSXFragment
     | JSXIdentifier
@@ -7034,6 +7042,7 @@ declare namespace Deno {
     Super?(node: Super): void;
     TaggedTemplateExpression?(node: TaggedTemplateExpression): void;
     TemplateLiteral?(node: TemplateLiteral): void;
+    UnaryExpression?(node: UnaryExpression): void;
 
     // Literals
     BooleanLiteral?(node: BigIntLiteral): void;

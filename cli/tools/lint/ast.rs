@@ -12,7 +12,7 @@ use deno_ast::{
     },
     common::{Span, Spanned, SyntaxContext, DUMMY_SP},
   },
-  view::{AssignOp, BinaryOp, VarDeclKind},
+  view::{AssignOp, BinaryOp, UnaryOp, VarDeclKind},
   ParsedSource,
 };
 use indexmap::IndexMap;
@@ -58,11 +58,11 @@ enum AstNode {
   Switch,
   SwitchCase,
   Throw,
-  Try,
+  TryStatement,
   While,
   DoWhile,
   For,
-  ForIn,
+  ForInStatement,
   ForOf,
   Decl,
   Expr,
@@ -74,7 +74,7 @@ enum AstNode {
   FnExpr,
   Unary,
   Update,
-  Bin,
+  BinaryExpression,
   Assign,
   MemberExpression,
   Super,
@@ -86,11 +86,11 @@ enum AstNode {
   Identifier,
   TemplateLiteral,
   TaggedTpl,
-  Arrow,
+  ArrowFunctionExpression,
   ClassExpr,
   Yield,
   MetaProp,
-  Await,
+  AwaitExpression,
   LogicalExpression,
   TsTypeAssertion,
   TsConstAssertion,
@@ -206,6 +206,37 @@ enum Flag {
   LogicalAnd,
   LogicalNullishCoalescin,
   JSXSelfClosing,
+
+  BinEqEq,
+  BinNotEq,
+  BinEqEqEq,
+  BinNotEqEq,
+  BinLt,
+  BinLtEq,
+  BinGt,
+  BinGtEq,
+  BinLShift,
+  BinRShift,
+  BinZeroFillRShift,
+  BinAdd,
+  BinSub,
+  BinMul,
+  BinDiv,
+  BinMod,
+  BinBitOr,
+  BinBitXor,
+  BinBitAnd,
+  BinIn,
+  BinInstanceOf,
+  BinExp,
+
+  UnaryMinus,
+  UnaryPlus,
+  UnaryBang,
+  UnaryTilde,
+  UnaryTypeOf,
+  UnaryVoid,
+  UnaryDelete,
 }
 
 fn assign_op_to_flag(m: AssignOp) -> u8 {
@@ -253,6 +284,36 @@ impl From<Flag> for u8 {
       Flag::LogicalAnd => 0b000000010,
       Flag::LogicalNullishCoalescin => 0b000000100,
       Flag::JSXSelfClosing => 0b000000001,
+      Flag::BinEqEq => 1,
+      Flag::BinNotEq => 2,
+      Flag::BinEqEqEq => 3,
+      Flag::BinNotEqEq => 4,
+      Flag::BinLt => 5,
+      Flag::BinLtEq => 6,
+      Flag::BinGt => 7,
+      Flag::BinGtEq => 8,
+      Flag::BinLShift => 9,
+      Flag::BinRShift => 10,
+      Flag::BinZeroFillRShift => 11,
+      Flag::BinAdd => 12,
+      Flag::BinSub => 13,
+      Flag::BinMul => 14,
+      Flag::BinDiv => 15,
+      Flag::BinMod => 16,
+      Flag::BinBitOr => 17,
+      Flag::BinBitXor => 18,
+      Flag::BinBitAnd => 19,
+      Flag::BinIn => 20,
+      Flag::BinInstanceOf => 21,
+      Flag::BinExp => 22,
+
+      Flag::UnaryMinus => 1,
+      Flag::UnaryPlus => 2,
+      Flag::UnaryBang => 3,
+      Flag::UnaryTilde => 4,
+      Flag::UnaryTypeOf => 5,
+      Flag::UnaryVoid => 6,
+      Flag::UnaryDelete => 7,
     }
   }
 }
@@ -662,7 +723,8 @@ fn serialize_stmt(
       id
     }
     Stmt::Try(node) => {
-      let try_id = ctx.push_node(AstNode::Try.into(), parent_id, &node.span);
+      let try_id =
+        ctx.push_node(AstNode::TryStatement.into(), parent_id, &node.span);
       let offset = ctx.reserve_child_ids(3); // Block + Catch + Finalizer
 
       let block_id =
@@ -754,7 +816,7 @@ fn serialize_stmt(
       id
     }
     Stmt::ForIn(node) => {
-      let id = ctx.push_node(AstNode::ForIn, parent_id, &node.span);
+      let id = ctx.push_node(AstNode::ForInStatement, parent_id, &node.span);
       let offset = ctx.reserve_child_ids(3); // Left + Right + Body
 
       let left_id = serialize_for_head(ctx, &node.left, id);
@@ -769,12 +831,12 @@ fn serialize_stmt(
     }
     Stmt::ForOf(node) => {
       let id = ctx.push_node(AstNode::ForOf, parent_id, &node.span);
-      let offset = ctx.reserve_child_ids(3);
 
       let mut flags = FlagValue::new();
       flags.set(Flag::ForAwait);
       ctx.result.push(flags.0);
 
+      let offset = ctx.reserve_child_ids(3);
       let left_id = serialize_for_head(ctx, &node.left, id);
       let right_id = serialize_expr(ctx, node.right.as_ref(), id);
       let body_id = serialize_stmt(ctx, node.body.as_ref(), id);
@@ -1157,6 +1219,18 @@ fn serialize_expr(
     }
     Expr::Unary(node) => {
       let id = ctx.push_node(AstNode::Unary, parent_id, &node.span);
+      let mut flags = FlagValue::new();
+      flags.set(match node.op {
+        UnaryOp::Minus => Flag::UnaryMinus,
+        UnaryOp::Plus => Flag::UnaryPlus,
+        UnaryOp::Bang => Flag::UnaryBang,
+        UnaryOp::Tilde => Flag::UnaryTilde,
+        UnaryOp::TypeOf => Flag::UnaryTypeOf,
+        UnaryOp::Void => Flag::UnaryVoid,
+        UnaryOp::Delete => Flag::UnaryDelete,
+      });
+      ctx.result.push(flags.0);
+
       let offset = ctx.reserve_child_ids(1);
 
       let child_id = serialize_expr(ctx, &node.arg, id);
@@ -1174,26 +1248,45 @@ fn serialize_expr(
       id
     }
     Expr::Bin(node) => {
-      let id = match node.op {
-        BinaryOp::LogicalOr
-        | BinaryOp::LogicalAnd
-        | BinaryOp::NullishCoalescing => {
-          let child_id =
-            ctx.push_node(AstNode::LogicalExpression, parent_id, &node.span);
-
-          let mut flags = FlagValue::new();
-          flags.set(match node.op {
-            BinaryOp::LogicalOr => Flag::LogicalOr,
-            BinaryOp::LogicalAnd => Flag::LogicalAnd,
-            BinaryOp::NullishCoalescing => Flag::LogicalNullishCoalescin,
-            _ => unreachable!("We mached op earlier"),
-          });
-          ctx.result.push(flags.0);
-
-          child_id
+      let (node_type, flag) = match node.op {
+        BinaryOp::LogicalOr => (AstNode::LogicalExpression, Flag::LogicalOr),
+        BinaryOp::LogicalAnd => (AstNode::LogicalExpression, Flag::LogicalAnd),
+        BinaryOp::NullishCoalescing => {
+          (AstNode::LogicalExpression, Flag::LogicalNullishCoalescin)
         }
-        _ => ctx.push_node(AstNode::Bin, parent_id, &node.span),
+        BinaryOp::EqEq => (AstNode::BinaryExpression, Flag::BinEqEq),
+        BinaryOp::NotEq => (AstNode::BinaryExpression, Flag::BinNotEq),
+        BinaryOp::EqEqEq => (AstNode::BinaryExpression, Flag::BinEqEqEq),
+        BinaryOp::NotEqEq => (AstNode::BinaryExpression, Flag::BinNotEqEq),
+        BinaryOp::Lt => (AstNode::BinaryExpression, Flag::BinLt),
+        BinaryOp::LtEq => (AstNode::BinaryExpression, Flag::BinLtEq),
+        BinaryOp::Gt => (AstNode::BinaryExpression, Flag::BinGt),
+        BinaryOp::GtEq => (AstNode::BinaryExpression, Flag::BinGtEq),
+        BinaryOp::LShift => (AstNode::BinaryExpression, Flag::BinLShift),
+        BinaryOp::RShift => (AstNode::BinaryExpression, Flag::BinRShift),
+        BinaryOp::ZeroFillRShift => {
+          (AstNode::BinaryExpression, Flag::BinZeroFillRShift)
+        }
+        BinaryOp::Add => (AstNode::BinaryExpression, Flag::BinAdd),
+        BinaryOp::Sub => (AstNode::BinaryExpression, Flag::BinSub),
+        BinaryOp::Mul => (AstNode::BinaryExpression, Flag::BinMul),
+        BinaryOp::Div => (AstNode::BinaryExpression, Flag::BinDiv),
+        BinaryOp::Mod => (AstNode::BinaryExpression, Flag::BinMod),
+        BinaryOp::BitOr => (AstNode::BinaryExpression, Flag::BinBitOr),
+        BinaryOp::BitXor => (AstNode::BinaryExpression, Flag::BinBitXor),
+        BinaryOp::BitAnd => (AstNode::BinaryExpression, Flag::BinBitAnd),
+        BinaryOp::In => (AstNode::BinaryExpression, Flag::BinIn),
+        BinaryOp::InstanceOf => {
+          (AstNode::BinaryExpression, Flag::BinInstanceOf)
+        }
+        BinaryOp::Exp => (AstNode::BinaryExpression, Flag::BinExp),
       };
+
+      let id = ctx.push_node(node_type, parent_id, &node.span);
+
+      let mut flags = FlagValue::new();
+      flags.set(flag);
+      ctx.result.push(flags.0);
 
       let offset = ctx.reserve_child_ids(2);
 
@@ -1378,7 +1471,6 @@ fn serialize_expr(
     Expr::Ident(node) => serialize_ident(ctx, node, parent_id),
     Expr::Lit(node) => serialize_lit(ctx, node, parent_id),
     Expr::Tpl(node) => {
-      eprintln!("NODE {:#?}", node);
       let id = ctx.push_node(AstNode::TemplateLiteral, parent_id, &node.span);
 
       let quasi_offset = ctx.reserve_child_ids_with_count(node.quasis.len());
@@ -1415,7 +1507,8 @@ fn serialize_expr(
       id
     }
     Expr::Arrow(node) => {
-      let id = ctx.push_node(AstNode::Arrow, parent_id, &node.span);
+      let id =
+        ctx.push_node(AstNode::ArrowFunctionExpression, parent_id, &node.span);
 
       let mut flags = FlagValue::new();
       if node.is_async {
@@ -1427,18 +1520,19 @@ fn serialize_expr(
       ctx.result.push(flags.0);
 
       let type_offset = ctx.reserve_child_ids(1);
+      let param_offset = ctx.reserve_child_ids_with_count(node.params.len());
+      let body_offset = ctx.reserve_child_ids(2);
+
       if let Some(type_params) = &node.type_params {
         // FIXME;
       }
 
-      let param_offset = ctx.reserve_child_ids_with_count(node.params.len());
       for (i, pat) in node.params.iter().enumerate() {
         let child_id = serialize_pat(ctx, pat, id);
         ctx.set_child(param_offset, child_id, i);
       }
 
       // FIXME
-      let offset = ctx.reserve_child_ids(2);
 
       let body_id = match node.body.as_ref() {
         BlockStmtOrExpr::BlockStmt(block_stmt) => {
@@ -1446,11 +1540,11 @@ fn serialize_expr(
         }
         BlockStmtOrExpr::Expr(expr) => serialize_expr(ctx, expr.as_ref(), id),
       };
-      ctx.set_child(offset, body_id, 0);
+      ctx.set_child(body_offset, body_id, 0);
 
       if let Some(return_type) = &node.return_type {
         // FIXME
-        // ctx.set_child(offset, body_id, 1);
+        // ctx.set_child(body_offset, body_id, 1);
       }
 
       id
@@ -1477,7 +1571,7 @@ fn serialize_expr(
       ctx.push_node(AstNode::MetaProp.into(), parent_id, &node.span)
     }
     Expr::Await(node) => {
-      let id = ctx.push_node(AstNode::Await, parent_id, &node.span);
+      let id = ctx.push_node(AstNode::AwaitExpression, parent_id, &node.span);
       let offset = ctx.reserve_child_ids(1);
 
       let child_id = serialize_expr(ctx, node.arg.as_ref(), id);
@@ -1578,16 +1672,22 @@ fn serialize_jsx_element(
 ) -> usize {
   let id = ctx.push_node(AstNode::JSXElement, parent_id, &node.span);
   let offset = ctx.reserve_child_ids(2);
+  let child_offset = ctx.reserve_child_ids_with_count(node.children.len());
 
   let opening_id = serialize_jsx_opening_element(ctx, &node.opening, id);
   ctx.set_child(offset, opening_id, 0);
 
   if let Some(closing) = &node.closing {
-    let closing_id = serialize_jsx_element_name(ctx, &closing.name, id);
+    let closing_id =
+      ctx.push_node(AstNode::JSXClosingElement, id, &closing.span);
     ctx.set_child(offset, closing_id, 1);
+
+    let closing_offset = ctx.reserve_child_ids(1);
+    let child_id = serialize_jsx_element_name(ctx, &closing.name, id);
+    ctx.set_child(closing_offset, child_id, 1);
   }
 
-  serialize_jsx_children(ctx, &node.children, id);
+  serialize_jsx_children(ctx, &node.children, id, child_offset);
 
   id
 }
@@ -1600,6 +1700,8 @@ fn serialize_jsx_fragment(
   let id = ctx.push_node(AstNode::JSXFragment, parent_id, &node.span);
 
   let offset = ctx.reserve_child_ids(2);
+  let child_offset = ctx.reserve_child_ids_with_count(node.children.len());
+
   let opening_id =
     ctx.push_node(AstNode::JSXOpeningFragment, id, &node.opening.span);
   let closing_id =
@@ -1608,7 +1710,7 @@ fn serialize_jsx_fragment(
   ctx.set_child(offset, opening_id, 0);
   ctx.set_child(offset, closing_id, 1);
 
-  serialize_jsx_children(ctx, &node.children, id);
+  serialize_jsx_children(ctx, &node.children, id, child_offset);
 
   id
 }
@@ -1617,8 +1719,8 @@ fn serialize_jsx_children(
   ctx: &mut SerializeCtx,
   children: &Vec<JSXElementChild>,
   parent_id: usize,
+  offset: usize,
 ) {
-  let offset = ctx.reserve_child_ids_with_count(children.len());
   for (i, child) in children.iter().enumerate() {
     let child_id = match child {
       JSXElementChild::JSXText(text) => {
@@ -1696,20 +1798,19 @@ fn serialize_jsx_opening_element(
 ) -> usize {
   let id = ctx.push_node(AstNode::JSXOpeningElement, parent_id, &node.span);
 
-  let mut opening_flags = FlagValue::new();
+  let mut flags = FlagValue::new();
   if node.self_closing {
-    opening_flags.set(Flag::JSXSelfClosing);
+    flags.set(Flag::JSXSelfClosing);
   }
-  ctx.result.push(opening_flags.0);
+  ctx.result.push(flags.0);
 
   let offset = ctx.reserve_child_ids(1);
+  let child_offset = ctx.reserve_child_ids_with_count(node.attrs.len());
 
   let name_id = serialize_jsx_element_name(ctx, &node.name, id);
   ctx.set_child(offset, name_id, 0);
 
   // FIXME: type args
-
-  let offset = ctx.reserve_child_ids_with_count(node.attrs.len());
 
   for (i, attr) in node.attrs.iter().enumerate() {
     let child_id = match attr {
@@ -1758,7 +1859,7 @@ fn serialize_jsx_opening_element(
       }
     };
 
-    ctx.set_child(offset, child_id, i);
+    ctx.set_child(child_offset, child_id, i);
   }
 
   id
@@ -1789,9 +1890,7 @@ fn serialize_jsx_empty_expr(
   node: &JSXEmptyExpr,
   parent_id: usize,
 ) -> usize {
-  let id = ctx.push_node(AstNode::JSXEmptyExpression, parent_id, &node.span);
-
-  id
+  ctx.push_node(AstNode::JSXEmptyExpression, parent_id, &node.span)
 }
 
 fn serialize_jsx_namespaced_name(
