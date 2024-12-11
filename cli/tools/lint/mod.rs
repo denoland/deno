@@ -556,3 +556,68 @@ struct LintError {
   file_path: String,
   message: String,
 }
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+  use pretty_assertions::assert_eq;
+  use serde::Deserialize;
+  use test_util as util;
+
+  #[derive(Serialize, Deserialize)]
+  struct RulesSchema {
+    #[serde(rename = "$schema")]
+    schema: String,
+
+    #[serde(rename = "enum")]
+    rules: Vec<String>,
+  }
+
+  fn get_all_rules() -> Vec<String> {
+    let rule_provider = LintRuleProvider::new(None, None);
+    let configured_rules =
+      rule_provider.resolve_lint_rules(Default::default(), None);
+    let mut all_rules = configured_rules
+      .all_rule_codes
+      .into_iter()
+      .map(|s| s.to_string())
+      .collect::<Vec<String>>();
+    all_rules.sort();
+
+    all_rules
+  }
+
+  // TODO(bartlomieju): do the same for tags, once https://github.com/denoland/deno/pull/27162 lands
+  #[test]
+  fn all_lint_rules_are_listed_in_schema_file() {
+    let all_rules = get_all_rules();
+
+    let rules_schema_path =
+      util::root_path().join("cli/schemas/lint-rules.v1.json");
+    let rules_schema_file =
+      std::fs::read_to_string(&rules_schema_path).unwrap();
+
+    let schema: RulesSchema = serde_json::from_str(&rules_schema_file).unwrap();
+
+    const UPDATE_ENV_VAR_NAME: &str = "UPDATE_EXPECTED";
+
+    if std::env::var(UPDATE_ENV_VAR_NAME).ok().is_none() {
+      assert_eq!(
+        schema.rules, all_rules,
+        "Lint rules schema file not up to date. Run again with {}=1 to update the expected output",
+        UPDATE_ENV_VAR_NAME
+      );
+      return;
+    }
+
+    std::fs::write(
+      &rules_schema_path,
+      serde_json::to_string_pretty(&RulesSchema {
+        schema: schema.schema,
+        rules: all_rules,
+      })
+      .unwrap(),
+    )
+    .unwrap();
+  }
+}
