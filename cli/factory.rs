@@ -1,10 +1,8 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 use crate::args::check_warn_tsconfig;
-use crate::args::discover_npmrc_from_workspace;
 use crate::args::get_root_cert_store;
 use crate::args::CaData;
-use crate::args::CliLockfile;
 use crate::args::CliOptions;
 use crate::args::DenoSubcommand;
 use crate::args::Flags;
@@ -1131,24 +1129,16 @@ impl WorkspaceFileContainer {
     let dir_count = workspace_dirs_with_files.len();
     let mut entries = Vec::with_capacity(dir_count);
     for (workspace_dir, files) in workspace_dirs_with_files {
-      let (npmrc, _) = discover_npmrc_from_workspace(&workspace_dir.workspace)?;
-      let lockfile =
-        CliLockfile::discover(&cli_options.flags, &workspace_dir.workspace)?;
       let scope_options = (dir_count > 1).then(|| ScopeOptions {
         scope: workspace_dir
           .has_deno_or_pkg_json()
           .then(|| workspace_dir.dir_url().clone()),
         all_scopes: all_scopes.clone(),
       });
-      let cli_options = Arc::new(CliOptions::new(
-        cli_options.flags.clone(),
-        cli_options.initial_cwd().to_path_buf(),
-        lockfile.map(Arc::new),
-        npmrc,
-        workspace_dir,
-        false,
-        scope_options.map(Arc::new),
-      )?);
+      let cli_options = Arc::new(
+        cli_options
+          .with_new_start_dir_and_scope_options(workspace_dir, scope_options)?,
+      );
       let mut factory = CliFactory::from_cli_options(cli_options.clone());
       factory.watcher_communicator = watcher_communicator.clone();
       let file_fetcher = factory.file_fetcher()?;

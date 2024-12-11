@@ -811,7 +811,7 @@ pub struct ScopeOptions {
 pub struct CliOptions {
   // the source of the options is a detail the rest of the
   // application need not concern itself with, so keep these private
-  pub flags: Arc<Flags>,
+  flags: Arc<Flags>,
   initial_cwd: PathBuf,
   main_module_cell: std::sync::OnceLock<Result<ModuleSpecifier, AnyError>>,
   maybe_node_modules_folder: Option<PathBuf>,
@@ -957,6 +957,24 @@ impl CliOptions {
       Arc::new(start_dir),
       false,
       None,
+    )
+  }
+
+  pub fn with_new_start_dir_and_scope_options(
+    &self,
+    start_dir: Arc<WorkspaceDirectory>,
+    scope_options: Option<ScopeOptions>,
+  ) -> Result<Self, AnyError> {
+    let (npmrc, _) = discover_npmrc_from_workspace(&start_dir.workspace)?;
+    let lockfile = CliLockfile::discover(&self.flags, &start_dir.workspace)?;
+    Self::new(
+      self.flags.clone(),
+      self.initial_cwd().to_path_buf(),
+      lockfile.map(Arc::new),
+      npmrc,
+      start_dir,
+      false,
+      scope_options.map(Arc::new),
     )
   }
 
