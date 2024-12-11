@@ -11,6 +11,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use std::sync::Mutex;
 
+use super::super::PackageCaching;
 use async_trait::async_trait;
 use deno_ast::ModuleSpecifier;
 use deno_core::anyhow::Context;
@@ -57,7 +58,10 @@ pub trait NpmPackageFsResolver: Send + Sync {
     specifier: &ModuleSpecifier,
   ) -> Result<Option<NpmPackageCacheFolderId>, AnyError>;
 
-  async fn cache_packages(&self) -> Result<(), AnyError>;
+  async fn cache_packages<'a>(
+    &self,
+    caching: PackageCaching<'a>,
+  ) -> Result<(), AnyError>;
 
   #[must_use = "the resolved return value to mitigate time-of-check to time-of-use issues"]
   fn ensure_read_permission<'a>(
