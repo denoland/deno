@@ -599,7 +599,7 @@ mod tests {
 
     let schema: RulesSchema = serde_json::from_str(&rules_schema_file).unwrap();
 
-    const UPDATE_ENV_VAR_NAME: &'static str = "UPDATE_EXPECTED";
+    const UPDATE_ENV_VAR_NAME: &str = "UPDATE_EXPECTED";
 
     if std::env::var(UPDATE_ENV_VAR_NAME).ok().is_none() {
       assert_eq!(
