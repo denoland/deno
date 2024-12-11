@@ -2,6 +2,7 @@
 
 use std::borrow::Cow;
 use std::collections::HashMap;
+use std::path::PathBuf;
 use std::sync::atomic::AtomicBool;
 use std::sync::Arc;
 
@@ -43,10 +44,10 @@ use crate::npm::NpmFetchResolver;
 
 use super::ConfigUpdater;
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub enum ImportMapKind {
   Inline,
-  Outline,
+  Outline(PathBuf),
 }
 
 #[derive(Clone)]
@@ -62,9 +63,12 @@ impl DepLocation {
 
   pub fn file_path(&self) -> Cow<std::path::Path> {
     match self {
-      DepLocation::DenoJson(arc, _, _) => {
-        Cow::Owned(arc.specifier.to_file_path().unwrap())
-      }
+      DepLocation::DenoJson(arc, _, kind) => match kind {
+        ImportMapKind::Inline => {
+          Cow::Owned(arc.specifier.to_file_path().unwrap())
+        }
+        ImportMapKind::Outline(path) => Cow::Borrowed(path.as_path()),
+      },
       DepLocation::PackageJson(arc, _) => Cow::Borrowed(arc.path.as_ref()),
     }
   }
@@ -249,7 +253,7 @@ fn deno_json_import_map(
         Some(path) => {
           let text = std::fs::read_to_string(&path)?;
           let value = serde_json::from_str(&text)?;
-          (value, ImportMapKind::Outline)
+          (value, ImportMapKind::Outline(path))
         }
         None => return Ok(None),
       }
@@ -303,7 +307,7 @@ fn add_deps_from_deno_json(
       location: DepLocation::DenoJson(
         deno_json.clone(),
         key_path,
-        import_map_kind,
+        import_map_kind.clone(),
       ),
       kind,
       req,
@@ -747,11 +751,7 @@ impl DepManager {
           let dep = &mut self.deps[dep_id.0];
           dep.req.version_req = version_req.clone();
           match &dep.location {
-            DepLocation::DenoJson(arc, key_path, import_map_kind) => {
-              if matches!(import_map_kind, ImportMapKind::Outline) {
-                // not supported
-                continue;
-              }
+            DepLocation::DenoJson(arc, key_path, _) => {
               let updater =
                 get_or_create_updater(&mut config_updaters, &dep.location)?;
 
