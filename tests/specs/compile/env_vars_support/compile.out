@@ -2,3 +2,9 @@ Warning Parsing failed within the specified environment file: environment.env at
 Check [WILDCARD]main.ts
 Compile [WILDCARD]main.ts to out[WILDCARD]
 Warning Environment variables from the file "environment.env" were embedded in the generated executable file
+
+Embedded File System
+
+out[WILDLINE]
+└── main.ts
+
