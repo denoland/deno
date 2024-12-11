@@ -27,7 +27,15 @@ pub mod tsc;
 pub mod util;
 pub mod version;
 pub mod worker;
+
+pub use anstream;
+pub use clap;
+pub use deno_config;
+pub use deno_npm;
+pub use deno_resolver;
 pub use deno_runtime;
+pub use deno_terminal;
+pub use log;
 
 use crate::args::flags_from_vec;
 use crate::args::DenoSubcommand;

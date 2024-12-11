@@ -1,27 +1,44 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
-use deno_lib::args::flags_from_vec;
-use deno_lib::args::DenoSubcommand;
-use deno_lib::args::Flags;
-use deno_lib::deno_runtime;
-use deno_lib::util::display;
-use deno_lib::util::v8::get_v8_flags_from_env;
-use deno_lib::util::v8::init_v8_flags;
-
 use args::TaskFlags;
-use deno_resolver::npm::ByonmResolvePkgFolderFromDenoReqError;
-use deno_resolver::npm::ResolvePkgFolderFromDenoReqError;
-use deno_runtime::WorkerExecutionMode;
-pub use deno_runtime::UNSTABLE_GRANULAR_FLAGS;
-
 use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
 use deno_core::error::JsError;
 use deno_core::futures::FutureExt;
 use deno_core::unsync::JoinHandle;
+use deno_lib::anstream;
+use deno_lib::args;
+use deno_lib::args::flags_from_vec;
+use deno_lib::args::DenoSubcommand;
+use deno_lib::args::Flags;
+use deno_lib::clap;
+use deno_lib::deno_config;
+use deno_lib::deno_npm;
+use deno_lib::deno_resolver;
+use deno_lib::deno_runtime;
+use deno_lib::deno_runtime::deno_core;
+use deno_lib::deno_runtime::deno_telemetry;
+use deno_lib::deno_terminal;
+use deno_lib::exit_for_error;
+use deno_lib::exit_with_message;
+use deno_lib::factory;
+use deno_lib::log;
+use deno_lib::lsp;
+use deno_lib::setup_panic_hook;
+use deno_lib::standalone;
+use deno_lib::tools;
+use deno_lib::tsc;
+use deno_lib::util;
+use deno_lib::util::display;
+use deno_lib::util::v8::get_v8_flags_from_env;
+use deno_lib::util::v8::init_v8_flags;
 use deno_npm::resolution::SnapshotFromLockfileError;
+use deno_resolver::npm::ByonmResolvePkgFolderFromDenoReqError;
+use deno_resolver::npm::ResolvePkgFolderFromDenoReqError;
 use deno_runtime::fmt_errors::format_js_error;
 use deno_runtime::tokio_util::create_and_run_current_thread_with_maybe_metrics;
+use deno_runtime::WorkerExecutionMode;
+pub use deno_runtime::UNSTABLE_GRANULAR_FLAGS;
 use deno_terminal::colors;
 use factory::CliFactory;
 use standalone::MODULE_NOT_FOUND;
