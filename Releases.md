@@ -6,6 +6,26 @@ https://github.com/denoland/deno/releases
 We also have one-line install commands at:
 https://github.com/denoland/deno_install
 
+### 2.1.4 / 2024.12.11
+
+- feat(unstable): support caching npm dependencies only as they're needed
+  (#27300)
+- fix(compile): correct read length for transpiled typescript files (#27301)
+- fix(ext/node): accept file descriptor in fs.readFile(Sync) (#27252)
+- fix(ext/node): handle Float16Array in node:v8 module (#27285)
+- fix(lint): do not error providing --allow-import (#27321)
+- fix(node): update list of builtin node modules, add missing export to
+  _http_common (#27294)
+- fix(outdated): error when there are no config files (#27306)
+- fix(outdated): respect --quiet flag for hints (#27317)
+- fix(outdated): show a suggestion for updating (#27304)
+- fix(task): do not always kill child on ctrl+c on windows (#27269)
+- fix(unstable): don't unwrap optional state in otel (#27292)
+- fix: do not error when subpath has an @ symbol (#27290)
+- fix: do not panic when fetching invalid file url on Windows (#27259)
+- fix: replace the @deno-types with @ts-types (#27310)
+- perf(compile): improve FileBackedVfsFile (#27299)
+
 ### 2.1.3 / 2024.12.05
 
 - feat(unstable): add metrics to otel (#27143)
