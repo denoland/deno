@@ -2130,30 +2130,30 @@ class JSXExpressionContainer {
 }
 
 /** @implements {Deno.JSXFragment} */
-class JSXFragment extends BaseNode {
+class JSXFragment {
   type = /** @type {const} */ ("JSXFragment");
-  range;
-  get children() {
-    return createChildNodes(this.#ctx, this.#childIds);
-  }
+  // range;
+  // get children() {
+  //   return createChildNodes(this.#ctx, this.#childIds);
+  // }
 
-  get openingFragment() {
-    return /** @type {*} */ (createAstNode(
-      this.#ctx,
-      this.#openId,
-    ));
-  }
-  get closingFragment() {
-    return /** @type {*} */ (createAstNode(
-      this.#ctx,
-      this.#closingId,
-    ));
-  }
+  // get openingFragment() {
+  //   return /** @type {*} */ (createAstNode(
+  //     this.#ctx,
+  //     this.#openId,
+  //   ));
+  // }
+  // get closingFragment() {
+  //   return /** @type {*} */ (createAstNode(
+  //     this.#ctx,
+  //     this.#closingId,
+  //   ));
+  // }
 
-  #ctx;
-  #childIds;
-  #openId;
-  #closingId;
+  // #ctx;
+  // #childIds;
+  // #openId;
+  // #closingId;
 
   /**
    * @param {AstContext} ctx
@@ -2164,13 +2164,13 @@ class JSXFragment extends BaseNode {
    * @param {number[]} childIds
    */
   constructor(ctx, parentId, range, openId, closingId, childIds) {
-    super(ctx, parentId);
+    // super(ctx, parentId);
 
-    this.#ctx = ctx;
-    this.range = range;
-    this.#openId = openId;
-    this.#closingId = closingId;
-    this.#childIds = childIds;
+    // this.#ctx = ctx;
+    // this.range = range;
+    // this.#openId = openId;
+    // this.#closingId = closingId;
+    // this.#childIds = childIds;
   }
 }
 
@@ -2340,39 +2340,11 @@ class JSXSpreadAttribute {
   }
 }
 
-/** @implements {Deno.JSXSpreadChild} */
-class JSXSpreadChild {
-  type = /** @type {const} */ ("JSXSpreadChild");
-  range;
-
-  get expression() {
-    return /** @type {Deno.Expression | Deno.JSXEmptyExpression} */ (createAstNode(
-      this.#ctx,
-      this.#exprid,
-    ));
-  }
-
-  #ctx;
-  #exprid;
-
-  /**
-   * @param {AstContext} ctx
-   * @param {Deno.Range} range
-   * @param {number} exprId
-   */
-  constructor(ctx, range, exprId) {
-    this.#ctx = ctx;
-    this.range = range;
-    this.#exprid = exprId;
-  }
-}
-
 /** @implements {Deno.JSXText} */
 class JSXText {
   type = /** @type {const} */ ("JSXText");
   range;
 
-  #ctx;
   value = "";
   raw = "";
 
@@ -2383,7 +2355,6 @@ class JSXText {
    * @param {number} rawId
    */
   constructor(ctx, range, valueId, rawId) {
-    this.#ctx = ctx;
     this.range = range;
     this.value = getString(ctx, valueId);
     this.raw = getString(ctx, rawId);
@@ -2465,7 +2436,7 @@ function createAstNode(ctx, id) {
   // console.log({ id, offset });
   /** @type {AstType} */
   const kind = buf[offset];
-  // console.log("creating node", id, kind);
+  console.log("creating node", id, kind);
 
   const parentId = readU32(buf, offset + 1);
   const rangeStart = readU32(buf, offset + 5);
@@ -2804,7 +2775,10 @@ function createAstNode(ctx, id) {
       const openingId = readU32(buf, offset);
       const closingId = readU32(buf, offset + 4);
       const childIds = readChildIds(buf, offset + 8);
-      // console.log("creating fragment");
+      console.log(
+        `creating JSXFragment, buf size ${buf.length} ${buf.byteLength}`,
+      );
+      throw new Error("FAIL");
       return new JSXFragment(
         ctx,
         parentId,
@@ -2998,7 +2972,7 @@ function traverse(ctx, visitor) {
  * @param {number} id
  */
 function traverseInner(ctx, visitTypes, visitor, id) {
-  console.log("traversing id", id);
+  // console.log("traversing id", id);
 
   // Empty id
   if (id === 0) return;
@@ -3011,7 +2985,7 @@ function traverseInner(ctx, visitTypes, visitor, id) {
   if (offset === undefined) throw new Error(`Unknown id: ${id}`);
 
   const type = buf[offset];
-  console.log({ id, type, offset });
+  // console.log({ id, type, offset });
 
   const name = visitTypes.get(type);
   if (name !== undefined) {
