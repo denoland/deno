@@ -372,7 +372,7 @@ pub struct WriteBinOptions<'a> {
   pub writer: File,
   pub display_output_filename: &'a str,
   pub graph: &'a ModuleGraph,
-  pub root_dir_url: StandaloneRelativeFileBaseUrl<'a>,
+  //pub root_dir_url: StandaloneRelativeFileBaseUrl<'a>,
   pub entrypoint: &'a ModuleSpecifier,
   pub include_files: &'a [ModuleSpecifier],
   pub compile_flags: &'a CompileFlags,
@@ -556,7 +556,7 @@ impl<'a> DenoCompileBinaryWriter<'a> {
       writer,
       display_output_filename,
       graph,
-      root_dir_url,
+      //root_dir_url,
       entrypoint,
       include_files,
       compile_flags,
@@ -568,7 +568,7 @@ impl<'a> DenoCompileBinaryWriter<'a> {
       Some(CaData::Bytes(bytes)) => Some(bytes.clone()),
       None => None,
     };
-    let root_path = root_dir_url.inner().to_file_path().unwrap();
+    // let root_path = root_dir_url.inner().to_file_path().unwrap();
     let (maybe_npm_vfs, node_modules, npm_snapshot) =
       match self.npm_resolver.as_inner() {
         InnerCliNpmResolverRef::Managed(managed) => {
@@ -791,7 +791,7 @@ impl<'a> DenoCompileBinaryWriter<'a> {
     .context("Writing binary bytes")
   }
 
-  fn build_npm_vfs(&self, root_path: &Path) -> Result<VfsBuilder, AnyError> {
+  fn build_npm_vfs(&self) -> Result<VfsBuilder, AnyError> {
     fn maybe_warn_different_system(system_info: &NpmSystemInfo) {
       if system_info != &NpmSystemInfo::default() {
         log::warn!("{} The node_modules directory may be incompatible with the target system.", crate::colors::yellow("Warning"));

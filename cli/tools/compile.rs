@@ -306,7 +306,9 @@ fn get_module_roots_and_include_files(
     let url = resolve_url_or_path(side_module, initial_cwd)?;
     if is_module_graph_module(&url) {
       module_roots.push(url.clone());
-      include_files.push(url);
+      if url.scheme() == "file" {
+        include_files.push(url);
+      }
     } else {
       analyze_path(
         &url,

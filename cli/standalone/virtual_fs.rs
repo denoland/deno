@@ -15,17 +15,21 @@ use std::rc::Rc;
 use std::sync::Arc;
 
 use deno_core::anyhow::anyhow;
+use deno_core::anyhow::bail;
 use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
 use deno_core::parking_lot::Mutex;
 use deno_core::BufMutView;
 use deno_core::BufView;
 use deno_core::ResourceHandleFd;
+use deno_path_util::normalize_path;
+use deno_path_util::strip_unc_prefix;
 use deno_runtime::deno_fs::FsDirEntry;
 use deno_runtime::deno_io;
 use deno_runtime::deno_io::fs::FsError;
 use deno_runtime::deno_io::fs::FsResult;
 use deno_runtime::deno_io::fs::FsStat;
+use indexmap::IndexSet;
 use serde::Deserialize;
 use serde::Serialize;
 use thiserror::Error;
@@ -109,10 +113,7 @@ impl VfsBuilder {
   }
 
   pub fn add_dir_recursive(&mut self, path: &Path) -> Result<(), AnyError> {
-    let target_path = canonicalize_path(path)?;
-    if path != target_path {
-      self.add_symlink(path, &target_path)?;
-    }
+    let target_path = self.resolve_target_path(path)?;
     self.add_dir_recursive_internal(&target_path)
   }
 
@@ -137,36 +138,36 @@ impl VfsBuilder {
       } else if file_type.is_file() {
         self.add_file_at_path_not_symlink(&path)?;
       } else if file_type.is_symlink() {
-        match util::fs::canonicalize_path(&path) {
-          Ok(target) => {
-            if let Err(StripRootError { .. }) = self.add_symlink(&path, &target)
-            {
-              if target.is_file() {
-                // this may change behavior, so warn the user about it
-                log::warn!(
-                  "{} Symlink target is outside '{}'. Inlining symlink at '{}' to '{}' as file.",
-                  crate::colors::yellow("Warning"),
-                  self.root_path.display(),
-                  path.display(),
-                  target.display(),
-                );
-                // inline the symlink and make the target file
-                let file_bytes = std::fs::read(&target)
-                  .with_context(|| format!("Reading {}", path.display()))?;
-                self.add_file_with_data_inner(
-                  &path,
-                  file_bytes,
-                  VfsFileSubDataKind::Raw,
-                )?;
-              } else {
-                log::warn!(
-                  "{} Symlink target is outside '{}'. Excluding symlink at '{}' with target '{}'.",
-                  crate::colors::yellow("Warning"),
-                  self.root_path.display(),
-                  path.display(),
-                  target.display(),
-                );
-              }
+        match self.add_symlink(&path) {
+          Ok(_) => {}
+          Err(AddSymlinkError::StripRoot(StripRootError {
+            target, ..
+          })) => {
+            if target.is_file() {
+              // this may change behavior, so warn the user about it
+              log::warn!(
+                "{} Symlink target is outside '{}'. Inlining symlink at '{}' to '{}' as file.",
+                crate::colors::yellow("Warning"),
+                self.root_path.display(),
+                path.display(),
+                target.display(),
+              );
+              // inline the symlink and make the target file
+              let file_bytes = std::fs::read(&target)
+                .with_context(|| format!("Reading {}", path.display()))?;
+              self.add_file_with_data_inner(
+                &path,
+                file_bytes,
+                VfsFileSubDataKind::Raw,
+              )?;
+            } else {
+              log::warn!(
+                "{} Symlink target is outside '{}'. Excluding symlink at '{}' with target '{}'.",
+                crate::colors::yellow("Warning"),
+                self.root_path.display(),
+                path.display(),
+                target.display(),
+              );
             }
           }
           Err(err) => {
@@ -222,11 +223,9 @@ impl VfsBuilder {
   }
 
   pub fn add_file_at_path(&mut self, path: &Path) -> Result<(), AnyError> {
-    let target_path = canonicalize_path(path)?;
-    if target_path != path {
-      self.add_symlink(path, &target_path)?;
-    }
-    self.add_file_at_path_not_symlink(&target_path)
+    let file_bytes = std::fs::read(path)
+      .with_context(|| format!("Reading {}", path.display()))?;
+    self.add_file_with_data(&path, file_bytes, VfsFileSubDataKind::Raw)
   }
 
   fn add_file_at_path_not_symlink(
@@ -244,11 +243,37 @@ impl VfsBuilder {
     data: Vec<u8>,
     sub_data_kind: VfsFileSubDataKind,
   ) -> Result<(), AnyError> {
-    let target_path = canonicalize_path(path)?;
-    if target_path != path {
-      self.add_symlink(path, &target_path)?;
+    let metadata = std::fs::symlink_metadata(path).with_context(|| {
+      format!("Resolving target path for '{}'", path.display())
+    })?;
+    if metadata.is_symlink() {
+      match self.add_symlink(&path) {
+        Ok(target) => {
+          self.add_file_with_data_inner(&target, data, sub_data_kind)
+        }
+        Err(AddSymlinkError::StripRoot(StripRootError { target, .. })) => {
+          if target.is_file() {
+            // this may change behavior, so warn the user about it
+            log::warn!(
+            "{} Symlink target is outside '{}'. Inlining symlink at '{}' to '{}' as file.",
+            crate::colors::yellow("Warning"),
+            self.root_path.display(),
+            path.display(),
+            target.display(),
+          );
+            // inline the symlink and make the target file
+            self.add_file_with_data_inner(&path, data, sub_data_kind)
+          } else {
+            bail!("Bug in Deno where the symlink target when adding a file was not a file");
+          }
+        }
+        Err(err) => {
+          return Err(err.into());
+        }
+      }
+    } else {
+      self.add_file_with_data_inner(path, data, sub_data_kind)
     }
-    self.add_file_with_data_inner(&target_path, data, sub_data_kind)
   }
 
   fn add_file_with_data_inner(
@@ -309,32 +334,53 @@ impl VfsBuilder {
     Ok(())
   }
 
-  fn add_symlink(
+  fn resolve_target_path(&mut self, path: &Path) -> Result<PathBuf, AnyError> {
+    let metadata = std::fs::symlink_metadata(path).with_context(|| {
+      format!("Resolving target path for '{}'", path.display())
+    })?;
+    if metadata.is_symlink() {
+      Ok(self.add_symlink(path)?)
+    } else {
+      Ok(path.to_path_buf())
+    }
+  }
+
+  fn add_symlink(&mut self, path: &Path) -> Result<PathBuf, AddSymlinkError> {
+    self.add_symlink_inner(path, &mut IndexSet::new())
+  }
+
+  fn add_symlink_inner(
     &mut self,
     path: &Path,
-    target: &Path,
-  ) -> Result<(), StripRootError> {
-    log::debug!(
-      "Adding symlink '{}' to '{}'",
-      path.display(),
-      target.display()
+    visited: &mut IndexSet<PathBuf>,
+  ) -> Result<PathBuf, AddSymlinkError> {
+    log::debug!("Adding symlink '{}'", path.display());
+    let target = strip_unc_prefix(
+      std::fs::read_link(path)
+        .with_context(|| format!("Reading symlink '{}'", path.display()))
+        .map_err(AddSymlinkError::Any)?,
     );
-    let relative_target = self.path_relative_root(target)?;
+    let target = normalize_path(path.parent().unwrap().join(&target));
+    let relative_target = self
+      .path_relative_root(&target)
+      .map_err(AddSymlinkError::StripRoot)?;
     let relative_path = match self.path_relative_root(path) {
       Ok(path) => path,
       Err(StripRootError { .. }) => {
         // ignore if the original path is outside the root directory
-        return Ok(());
+        return canonicalize_path(path).map_err(AddSymlinkError::Io);
       }
     };
     if relative_target == relative_path {
       // it's the same, ignore
-      return Ok(());
+      return canonicalize_path(path).map_err(AddSymlinkError::Io);
     }
-    let dir = self.add_dir(path.parent().unwrap())?;
+    let dir = self
+      .add_dir(path.parent().unwrap())
+      .map_err(AddSymlinkError::StripRoot)?;
     let name = path.file_name().unwrap().to_string_lossy();
     match dir.entries.binary_search_by(|e| e.name().cmp(&name)) {
-      Ok(_) => Ok(()), // previously inserted
+      Ok(_) => {} // previously inserted
       Err(insert_index) => {
         dir.entries.insert(
           insert_index,
@@ -346,8 +392,26 @@ impl VfsBuilder {
               .collect::<Vec<_>>(),
           }),
         );
-        Ok(())
       }
+    }
+    let target_metadata = std::fs::symlink_metadata(&target)
+      .with_context(|| format!("Reading symlink target '{}'", target.display()))
+      .map_err(AddSymlinkError::Any)?;
+    if target_metadata.is_symlink() {
+      if !visited.insert(target.clone()) {
+        return Err(AddSymlinkError::Any(anyhow!(
+          "Circular symlink detected: {} -> {}",
+          visited
+            .iter()
+            .map(|p| p.display().to_string())
+            .collect::<Vec<_>>()
+            .join(" -> "),
+          target.display()
+        )));
+      }
+      self.add_symlink_inner(&target, visited)
+    } else {
+      Ok(target)
     }
   }
 
@@ -364,6 +428,16 @@ impl VfsBuilder {
       }),
     }
   }
+}
+
+#[derive(Debug, Error)]
+enum AddSymlinkError {
+  #[error(transparent)]
+  StripRoot(StripRootError),
+  #[error(transparent)]
+  Any(AnyError),
+  #[error(transparent)]
+  Io(std::io::Error),
 }
 
 pub fn output_vfs(builder: &VfsBuilder, executable_name: &str) {
@@ -1136,6 +1210,7 @@ impl FileBackedVfs {
 mod test {
   use console_static_text::ansi::strip_ansi_codes;
   use std::io::Write;
+  use test_util::assert_contains;
   use test_util::TempDir;
 
   use super::*;
@@ -1159,6 +1234,9 @@ mod test {
     // will canonicalize the root path
     let src_path = temp_dir.path().canonicalize().join("src");
     src_path.create_dir_all();
+    src_path.join("sub_dir").create_dir_all();
+    src_path.join("e.txt").write("e");
+    src_path.symlink_file("e.txt", "sub_dir/e.txt");
     let src_path = src_path.to_path_buf();
     let mut builder = VfsBuilder::new(src_path.clone()).unwrap();
     builder
@@ -1190,18 +1268,9 @@ mod test {
         VfsFileSubDataKind::Raw,
       )
       .unwrap();
+    builder.add_file_at_path(&src_path.join("e.txt")).unwrap();
     builder
-      .add_file_with_data_inner(
-        &src_path.join("e.txt"),
-        "e".into(),
-        VfsFileSubDataKind::Raw,
-      )
-      .unwrap();
-    builder
-      .add_symlink(
-        &src_path.join("sub_dir").join("e.txt"),
-        &src_path.join("e.txt"),
-      )
+      .add_symlink(&src_path.join("sub_dir").join("e.txt"))
       .unwrap();
 
     // get the virtual fs
@@ -1327,34 +1396,15 @@ mod test {
     let temp_dir = TempDir::new();
     let src_path = temp_dir.path().canonicalize().join("src");
     src_path.create_dir_all();
+    src_path.symlink_file("a.txt", "b.txt");
+    src_path.symlink_file("b.txt", "c.txt");
+    src_path.symlink_file("c.txt", "a.txt");
     let src_path = src_path.to_path_buf();
     let mut builder = VfsBuilder::new(src_path.clone()).unwrap();
-    builder
-      .add_symlink(&src_path.join("a.txt"), &src_path.join("b.txt"))
-      .unwrap();
-    builder
-      .add_symlink(&src_path.join("b.txt"), &src_path.join("c.txt"))
-      .unwrap();
-    builder
-      .add_symlink(&src_path.join("c.txt"), &src_path.join("a.txt"))
-      .unwrap();
-    let (dest_path, virtual_fs) = into_virtual_fs(builder, &temp_dir);
-    assert_eq!(
-      virtual_fs
-        .file_entry(&dest_path.join("a.txt"))
-        .err()
-        .unwrap()
-        .to_string(),
-      "circular symlinks",
-    );
-    assert_eq!(
-      virtual_fs.read_link(&dest_path.join("a.txt")).unwrap(),
-      dest_path.join("b.txt")
-    );
-    assert_eq!(
-      virtual_fs.read_link(&dest_path.join("b.txt")).unwrap(),
-      dest_path.join("c.txt")
-    );
+    let err = builder
+      .add_symlink(src_path.join("a.txt").as_path())
+      .unwrap_err();
+    assert_contains!(err.to_string(), "Circular symlink detected",);
   }
 
   #[tokio::test]

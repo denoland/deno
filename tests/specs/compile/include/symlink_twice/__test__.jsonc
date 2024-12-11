@@ -1,5 +1,6 @@
 {
   "tempDir": true,
+  "symlinkedTempDir": true,
   "steps": [{
     "args": "run -A setup.js",
     "output": "[WILDCARD]"
