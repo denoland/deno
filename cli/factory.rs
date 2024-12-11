@@ -998,6 +998,7 @@ impl CliFactory {
       cli_options.sub_command().clone(),
       self.create_cli_main_worker_options()?,
       self.cli_options()?.otel_config(),
+      self.cli_options()?.default_npm_caching_strategy(),
     ))
   }
 
@@ -1258,7 +1259,11 @@ impl WorkspaceFileContainer {
       let module_graph_creator = entry.factory.module_graph_creator().await?;
       let specifiers = entry.checked_specifiers().cloned().collect::<Vec<_>>();
       let graph = module_graph_creator
-        .create_graph(graph_kind, specifiers.clone())
+        .create_graph(
+          graph_kind,
+          specifiers.clone(),
+          crate::graph_util::NpmCachingStrategy::Eager,
+        )
         .await?;
       module_graph_creator.graph_valid(&graph)?;
       let dependent_specifiers = specifiers

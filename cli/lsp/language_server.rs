@@ -270,7 +270,12 @@ impl LanguageServer {
         open_docs: &open_docs,
       };
       let graph = module_graph_creator
-        .create_graph_with_loader(GraphKind::All, roots.clone(), &mut loader)
+        .create_graph_with_loader(
+          GraphKind::All,
+          roots.clone(),
+          &mut loader,
+          graph_util::NpmCachingStrategy::Eager,
+        )
         .await?;
       graph_util::graph_valid(
         &graph,

@@ -41,6 +41,7 @@ pub use self::managed::CliManagedInNpmPkgCheckerCreateOptions;
 pub use self::managed::CliManagedNpmResolverCreateOptions;
 pub use self::managed::CliNpmResolverManagedSnapshotOption;
 pub use self::managed::ManagedCliNpmResolver;
+pub use self::managed::PackageCaching;
 
 pub type CliNpmTarballCache = deno_npm_cache::TarballCache<CliNpmCacheEnv>;
 pub type CliNpmCache = deno_npm_cache::NpmCache<CliNpmCacheEnv>;

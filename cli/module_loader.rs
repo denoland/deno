@@ -157,6 +157,7 @@ impl ModuleLoadPreparer {
           graph_kind: graph.graph_kind(),
           roots: roots.to_vec(),
           loader: Some(&mut cache),
+          npm_caching: self.options.default_npm_caching_strategy(),
         },
       )
       .await?;

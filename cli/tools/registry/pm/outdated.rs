@@ -3,6 +3,7 @@
 use std::collections::HashSet;
 use std::sync::Arc;
 
+use deno_core::anyhow::bail;
 use deno_core::error::AnyError;
 use deno_semver::package::PackageNv;
 use deno_semver::package::PackageReq;
@@ -100,15 +101,14 @@ fn print_outdated_table(packages: &[OutdatedPackage]) {
   println!("└{package_fill}┴{current_fill}┴{update_fill}┴{latest_fill}┘",);
 }
 
-#[allow(clippy::print_stdout)]
 fn print_suggestion(compatible: bool) {
-  println!();
+  log::info!("");
   let (cmd, txt) = if compatible {
     ("", "compatible")
   } else {
     (" --latest", "available")
   };
-  println!(
+  log::info!(
     "{}",
     color_print::cformat!(
       "<p(245)>Run</> <u>deno outdated --update{}</> <p(245)>to update to the latest {} versions,</>\n<p(245)>or</> <u>deno outdated --help</> <p(245)>for more information.</>",
@@ -197,6 +197,15 @@ pub async fn outdated(
   ));
   let jsr_fetch_resolver =
     Arc::new(JsrFetchResolver::new(file_fetcher.clone()));
+
+  if !cli_options.start_dir.has_deno_json()
+    && !cli_options.start_dir.has_pkg_json()
+  {
+    bail!(
+      "No deno.json or package.json in \"{}\".",
+      cli_options.initial_cwd().display(),
+    );
+  }
 
   let args = dep_manager_args(
     &factory,
