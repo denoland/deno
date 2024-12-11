@@ -1,0 +1,25 @@
+[package]
+name = "deno"
+version = "2.1.3"
+authors.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[[bin]]
+name = "deno"
+path = "main.rs"
+doc = false
+
+[build-dependencies]
+deno_runtime = { workspace = true, features = ["include_js_files_for_snapshotting", "only_snapshotted_js_sources"] }
+deno_core = { workspace = true, features = ["include_js_files_for_snapshotting"] }
+lazy-regex.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+zstd.workspace = true
+glibc_version = "0.1.2"
+flate2 = { workspace = true, features = ["default"] }
+
+[dependencies]
+deno_lib.workspace = true

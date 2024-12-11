@@ -5,6 +5,8 @@ resolver = "2"
 members = [
   "bench_util",
   "cli",
+  "deno",
+  "denort",
   "ext/broadcast_channel",
   "ext/cache",
   "ext/canvas",
@@ -81,6 +83,7 @@ deno_fs = { version = "0.91.0", path = "./ext/fs" }
 deno_http = { version = "0.179.0", path = "./ext/http" }
 deno_io = { version = "0.91.0", path = "./ext/io" }
 deno_kv = { version = "0.89.0", path = "./ext/kv" }
+deno_lib = { version = "0.1.0", path = "./cli" }
 deno_napi = { version = "0.112.0", path = "./ext/napi" }
 deno_net = { version = "0.173.0", path = "./ext/net" }
 deno_node = { version = "0.118.0", path = "./ext/node" }
