@@ -40,8 +40,15 @@ pub struct DatabaseSync {
 
 impl GarbageCollected for DatabaseSync {}
 
+// Represents a single connection to a SQLite database.
 #[op2]
 impl DatabaseSync {
+  // Constructs a new `DatabaseSync` instance.
+  //
+  // A SQLite database can be stored in a file or in memory. To
+  // use a file-backed database, the `location` should be a path.
+  // To use an in-memory database, the `location` should be special
+  // name ":memory:".
   #[constructor]
   #[cppgc]
   fn new(
@@ -67,8 +74,17 @@ impl DatabaseSync {
     })
   }
 
+  // Opens the database specified by `location` of this instance.
+  //
+  // This method should only be used when the database is not opened
+  // via the constructor. An exception is thrown if the database is
+  // already opened.
   #[fast]
   fn open(&self) -> Result<(), SqliteError> {
+    if self.conn.borrow().is_some() {
+      return Err(SqliteError::AlreadyOpen);
+    }
+
     let db = rusqlite::Connection::open(&self.location)?;
     if self.options.enable_foreign_key_constraints {
       db.execute("PRAGMA foreign_keys = ON", [])?;
@@ -79,8 +95,32 @@ impl DatabaseSync {
     Ok(())
   }
 
+  // Closes the database connection. An exception is thrown if the
+  // database is not open.
   #[fast]
-  fn close(&self) {}
+  fn close(&self) -> Result<(), SqliteError> {
+    if self.conn.borrow().is_none() {
+      return Err(SqliteError::AlreadyClosed);
+    }
+
+    *self.conn.borrow_mut() = None;
+    Ok(())
+  }
+
+  // This method allows one or more SQL statements to be executed
+  // without returning any results.
+  //
+  // This method is a wrapper around sqlite3_exec().
+  #[fast]
+  fn exec(&self, #[string] sql: &str) -> Result<(), SqliteError> {
+    let db = self.conn.borrow();
+    let db = db.as_ref().ok_or(SqliteError::InUse)?;
+
+    let mut stmt = db.prepare_cached(sql)?;
+    stmt.raw_execute()?;
+
+    Ok(())
+  }
 
   #[cppgc]
   fn prepare(&self, #[string] sql: &str) -> Result<StatementSync, SqliteError> {
@@ -101,23 +141,12 @@ impl DatabaseSync {
     };
 
     if r != libsqlite3_sys::SQLITE_OK {
-      panic!("Failed to prepare statement");
+      return Err(SqliteError::PrepareFailed);
     }
 
     Ok(StatementSync {
       inner: raw_stmt,
       db: self.conn.clone(),
     })
-  }
-
-  #[fast]
-  fn exec(&self, #[string] sql: &str) -> Result<(), SqliteError> {
-    let db = self.conn.borrow();
-    let db = db.as_ref().ok_or(SqliteError::InUse)?;
-
-    let mut stmt = db.prepare_cached(sql)?;
-    stmt.raw_execute()?;
-
-    Ok(())
   }
 }
