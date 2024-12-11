@@ -21,13 +21,14 @@ use deno_core::ResourceId;
 use hickory_proto::rr::rdata::caa::Value;
 use hickory_proto::rr::record_data::RData;
 use hickory_proto::rr::record_type::RecordType;
+use hickory_proto::ProtoError;
+use hickory_proto::ProtoErrorKind;
 use hickory_resolver::config::NameServerConfigGroup;
 use hickory_resolver::config::ResolverConfig;
 use hickory_resolver::config::ResolverOpts;
-use hickory_resolver::error::ResolveError;
-use hickory_resolver::error::ResolveErrorKind;
 use hickory_resolver::system_conf;
-use hickory_resolver::AsyncResolver;
+use hickory_resolver::ResolveError;
+use hickory_resolver::ResolveErrorKind;
 use serde::Deserialize;
 use serde::Serialize;
 use socket2::Domain;
@@ -646,7 +647,7 @@ where
     }
   }
 
-  let resolver = AsyncResolver::tokio(config, opts);
+  let resolver = hickory_resolver::Resolver::tokio(config, opts);
 
   let lookup_fut = resolver.lookup(query, record_type);
 
@@ -674,11 +675,21 @@ where
 
   lookup
     .map_err(|e| match e.kind() {
-      ResolveErrorKind::NoRecordsFound { .. } => NetError::DnsNotFound(e),
-      ResolveErrorKind::Message("No connections available") => {
+      ResolveErrorKind::Proto(ProtoError { kind, .. })
+        if matches!(**kind, ProtoErrorKind::NoRecordsFound { .. }) =>
+      {
+        NetError::DnsNotFound(e)
+      }
+      ResolveErrorKind::Proto(ProtoError { kind, .. })
+        if matches!(**kind, ProtoErrorKind::NoConnections { .. }) =>
+      {
         NetError::DnsNotConnected(e)
       }
-      ResolveErrorKind::Timeout => NetError::DnsTimedOut(e),
+      ResolveErrorKind::Proto(ProtoError { kind, .. })
+        if matches!(**kind, ProtoErrorKind::Timeout { .. }) =>
+      {
+        NetError::DnsTimedOut(e)
+      }
       _ => NetError::Dns(e),
     })?
     .iter()

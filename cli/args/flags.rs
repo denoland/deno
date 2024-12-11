@@ -245,7 +245,7 @@ pub struct InstallFlagsGlobal {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub enum InstallKind {
+pub enum InstallFlags {
   Local(InstallFlagsLocal),
   Global(InstallFlagsGlobal),
 }
@@ -255,11 +255,6 @@ pub enum InstallFlagsLocal {
   Add(AddFlags),
   TopLevel,
   Entrypoints(Vec<String>),
-}
-
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct InstallFlags {
-  pub kind: InstallKind,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -602,6 +597,7 @@ pub struct UnstableConfig {
   pub bare_node_builtins: bool,
   pub detect_cjs: bool,
   pub sloppy_imports: bool,
+  pub npm_lazy_caching: bool,
   pub features: Vec<String>, // --unstabe-kv --unstable-cron
 }
 
@@ -2666,10 +2662,10 @@ Display outdated dependencies:
   <p(245)>deno outdated</>
   <p(245)>deno outdated --compatible</>
 
-Update dependencies:
+Update dependencies to latest semver compatible versions:
   <p(245)>deno outdated --update</>
+Update dependencies to latest versions, ignoring semver requirements:
   <p(245)>deno outdated --update --latest</>
-  <p(245)>deno outdated --update</>
 
 Filters can be used to select which packages to act on. Filters can include wildcards (*) to match multiple packages.
   <p(245)>deno outdated --update --latest \"@std/*\"</>
@@ -2705,7 +2701,6 @@ Specific version requirements to update to can be specified:
           .help(
             "Update to the latest version, regardless of semver constraints",
           )
-          .requires("update")
           .conflicts_with("compatible"),
       )
       .arg(
@@ -2907,6 +2902,7 @@ To ignore linting on an entire file, you can add an ignore comment at the top of
       .arg(watch_arg(false))
       .arg(watch_exclude_arg())
       .arg(no_clear_screen_arg())
+      .arg(allow_import_arg())
   })
 }
 
@@ -4409,6 +4405,16 @@ impl CommandExt for Command {
       })
       .help_heading(UNSTABLE_HEADING)
       .display_order(next_display_order())
+    ).arg(
+      Arg::new("unstable-npm-lazy-caching")
+        .long("unstable-npm-lazy-caching")
+        .help("Enable unstable lazy caching of npm dependencies, downloading them only as needed (disabled: all npm packages in package.json are installed on startup; enabled: only npm packages that are actually referenced in an import are installed")
+        .env("DENO_UNSTABLE_NPM_LAZY_CACHING")
+        .value_parser(FalseyValueParser::new())
+        .action(ArgAction::SetTrue)
+        .hide(true)
+        .help_heading(UNSTABLE_HEADING)
+        .display_order(next_display_order()),
     );
 
     for granular_flag in crate::UNSTABLE_GRANULAR_FLAGS.iter() {
@@ -4922,15 +4928,14 @@ fn install_parse(
     let module_url = cmd_values.next().unwrap();
     let args = cmd_values.collect();
 
-    flags.subcommand = DenoSubcommand::Install(InstallFlags {
-      kind: InstallKind::Global(InstallFlagsGlobal {
+    flags.subcommand =
+      DenoSubcommand::Install(InstallFlags::Global(InstallFlagsGlobal {
         name,
         module_url,
         args,
         root,
         force,
-      }),
-    });
+      }));
 
     return Ok(());
   }
@@ -4939,22 +4944,19 @@ fn install_parse(
   allow_scripts_arg_parse(flags, matches)?;
   if matches.get_flag("entrypoint") {
     let entrypoints = matches.remove_many::<String>("cmd").unwrap_or_default();
-    flags.subcommand = DenoSubcommand::Install(InstallFlags {
-      kind: InstallKind::Local(InstallFlagsLocal::Entrypoints(
-        entrypoints.collect(),
-      )),
-    });
+    flags.subcommand = DenoSubcommand::Install(InstallFlags::Local(
+      InstallFlagsLocal::Entrypoints(entrypoints.collect()),
+    ));
   } else if let Some(add_files) = matches
     .remove_many("cmd")
     .map(|packages| add_parse_inner(matches, Some(packages)))
   {
-    flags.subcommand = DenoSubcommand::Install(InstallFlags {
-      kind: InstallKind::Local(InstallFlagsLocal::Add(add_files)),
-    })
+    flags.subcommand = DenoSubcommand::Install(InstallFlags::Local(
+      InstallFlagsLocal::Add(add_files),
+    ))
   } else {
-    flags.subcommand = DenoSubcommand::Install(InstallFlags {
-      kind: InstallKind::Local(InstallFlagsLocal::TopLevel),
-    });
+    flags.subcommand =
+      DenoSubcommand::Install(InstallFlags::Local(InstallFlagsLocal::TopLevel));
   }
   Ok(())
 }
@@ -5086,6 +5088,7 @@ fn lint_parse(
   unstable_args_parse(flags, matches, UnstableArgsConfig::ResolutionOnly);
   ext_arg_parse(flags, matches);
   config_args_parse(flags, matches);
+  allow_import_parse(flags, matches);
 
   let files = match matches.remove_many::<String>("files") {
     Some(f) => f.collect(),
@@ -5282,8 +5285,15 @@ fn task_parse(
   unstable_args_parse(flags, matches, UnstableArgsConfig::ResolutionAndRuntime);
   node_modules_arg_parse(flags, matches);
 
-  let filter = matches.remove_one::<String>("filter");
-  let recursive = matches.get_flag("recursive") || filter.is_some();
+  let mut recursive = matches.get_flag("recursive");
+  let filter = if let Some(filter) = matches.remove_one::<String>("filter") {
+    recursive = false;
+    Some(filter)
+  } else if recursive {
+    Some("*".to_string())
+  } else {
+    None
+  };
 
   let mut task_flags = TaskFlags {
     cwd: matches.remove_one::<String>("cwd"),
@@ -5994,6 +6004,8 @@ fn unstable_args_parse(
   flags.unstable_config.detect_cjs = matches.get_flag("unstable-detect-cjs");
   flags.unstable_config.sloppy_imports =
     matches.get_flag("unstable-sloppy-imports");
+  flags.unstable_config.npm_lazy_caching =
+    matches.get_flag("unstable-npm-lazy-caching");
 
   if matches!(cfg, UnstableArgsConfig::ResolutionAndRuntime) {
     for granular_flag in crate::UNSTABLE_GRANULAR_FLAGS {
@@ -7139,6 +7151,7 @@ mod tests {
     let r = flags_from_vec(svec![
       "deno",
       "lint",
+      "--allow-import",
       "--watch",
       "script_1.ts",
       "script_2.ts"
@@ -7160,6 +7173,10 @@ mod tests {
           compact: false,
           watch: Some(Default::default()),
         }),
+        permissions: PermissionFlags {
+          allow_import: Some(vec![]),
+          ..Default::default()
+        },
         ..Flags::default()
       }
     );
@@ -8597,15 +8614,15 @@ mod tests {
     assert_eq!(
       r.unwrap(),
       Flags {
-        subcommand: DenoSubcommand::Install(InstallFlags {
-          kind: InstallKind::Global(InstallFlagsGlobal {
+        subcommand: DenoSubcommand::Install(InstallFlags::Global(
+          InstallFlagsGlobal {
             name: None,
             module_url: "jsr:@std/http/file-server".to_string(),
             args: vec![],
             root: None,
             force: false,
-          }),
-        }),
+          }
+        ),),
         ..Flags::default()
       }
     );
@@ -8619,15 +8636,15 @@ mod tests {
     assert_eq!(
       r.unwrap(),
       Flags {
-        subcommand: DenoSubcommand::Install(InstallFlags {
-          kind: InstallKind::Global(InstallFlagsGlobal {
+        subcommand: DenoSubcommand::Install(InstallFlags::Global(
+          InstallFlagsGlobal {
             name: None,
             module_url: "jsr:@std/http/file-server".to_string(),
             args: vec![],
             root: None,
             force: false,
-          }),
-        }),
+          }
+        ),),
         ..Flags::default()
       }
     );
@@ -8640,15 +8657,15 @@ mod tests {
     assert_eq!(
       r.unwrap(),
       Flags {
-        subcommand: DenoSubcommand::Install(InstallFlags {
-          kind: InstallKind::Global(InstallFlagsGlobal {
+        subcommand: DenoSubcommand::Install(InstallFlags::Global(
+          InstallFlagsGlobal {
             name: Some("file_server".to_string()),
             module_url: "jsr:@std/http/file-server".to_string(),
             args: svec!["foo", "bar"],
             root: Some("/foo".to_string()),
             force: true,
-          }),
-        }),
+          }
+        ),),
         import_map_path: Some("import_map.json".to_string()),
         no_remote: true,
         config_flag: ConfigFlag::Path("tsconfig.json".to_owned()),
@@ -10543,7 +10560,7 @@ mod tests {
           cwd: None,
           task: Some("build".to_string()),
           is_run: false,
-          recursive: true,
+          recursive: false,
           filter: Some("*".to_string()),
           eval: false,
         }),
@@ -10560,7 +10577,7 @@ mod tests {
           task: Some("build".to_string()),
           is_run: false,
           recursive: true,
-          filter: None,
+          filter: Some("*".to_string()),
           eval: false,
         }),
         ..Flags::default()
@@ -10576,7 +10593,7 @@ mod tests {
           task: Some("build".to_string()),
           is_run: false,
           recursive: true,
-          filter: None,
+          filter: Some("*".to_string()),
           eval: false,
         }),
         ..Flags::default()
@@ -11202,9 +11219,9 @@ mod tests {
             ..Flags::default()
           },
           "install" => Flags {
-            subcommand: DenoSubcommand::Install(InstallFlags {
-              kind: InstallKind::Local(InstallFlagsLocal::Add(flags)),
-            }),
+            subcommand: DenoSubcommand::Install(InstallFlags::Local(
+              InstallFlagsLocal::Add(flags),
+            )),
             ..Flags::default()
           },
           _ => unreachable!(),
@@ -11688,6 +11705,14 @@ Usage: deno repl [OPTIONS] [-- [ARGS]...]\n"
         OutdatedFlags {
           filters: svec!["@foo/bar"],
           kind: OutdatedKind::Update { latest: false },
+          recursive: false,
+        },
+      ),
+      (
+        svec!["--latest"],
+        OutdatedFlags {
+          filters: svec![],
+          kind: OutdatedKind::PrintOutdated { compatible: false },
           recursive: false,
         },
       ),

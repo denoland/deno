@@ -1031,11 +1031,11 @@ class EventTarget {
     }
 
     if (getDispatched(event)) {
-      throw new DOMException("Invalid event state.", "InvalidStateError");
+      throw new DOMException("Invalid event state", "InvalidStateError");
     }
 
     if (event.eventPhase !== Event.NONE) {
-      throw new DOMException("Invalid event state.", "InvalidStateError");
+      throw new DOMException("Invalid event state", "InvalidStateError");
     }
 
     return dispatch(self, event);

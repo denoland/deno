@@ -69,7 +69,11 @@ pub async fn compile(
     // create a module graph with types information in it. We don't want to
     // store that in the binary so create a code only module graph from scratch.
     module_graph_creator
-      .create_graph(GraphKind::CodeOnly, module_roots)
+      .create_graph(
+        GraphKind::CodeOnly,
+        module_roots,
+        crate::graph_util::NpmCachingStrategy::Eager,
+      )
       .await?
   } else {
     graph
