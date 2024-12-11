@@ -111,6 +111,7 @@ const Flags = {
   LogicalOr: 0b000000001,
   LogicalAnd: 0b000000010,
   LogicalNullishCoalescin: 0b000000100,
+  JSXSelfClosing: 0b000000001,
 };
 
 // Keep in sync with Rust
@@ -206,36 +207,36 @@ const AstType = {
   RegExpLiteral: 77,
 
   // Custom
-  EmptyExpr: 84,
-  SpreadElement: 85,
-  Property: 86,
-  VariableDeclarator: 87,
-  CatchClause: 88,
-  RestElement: 89,
-  ExportSpecifier: 90,
-  TemplateElement: 91,
+  EmptyExpr: 78,
+  SpreadElement: 79,
+  Property: 80,
+  VariableDeclarator: 81,
+  CatchClause: 82,
+  RestElement: 83,
+  ExportSpecifier: 84,
+  TemplateElement: 85,
 
   // Patterns
-  ArrayPattern: 92,
-  AssignmentPattern: 93,
-  ObjectPattern: 94,
+  ArrayPattern: 86,
+  AssignmentPattern: 87,
+  ObjectPattern: 88,
 
   // JSX
-  // FIXME
-  JSXAttribute: Infinity,
-  JSXClosingElement: Infinity,
-  JSXClosingFragment: Infinity,
-  JSXElement: Infinity,
-  JSXExpressionContainer: Infinity,
-  JSXFragment: Infinity,
-  JSXIdentifier: Infinity,
-  JSXMemberExpression: Infinity,
-  JSXNamespacedName: Infinity,
-  JSXOpeningElement: Infinity,
-  JSXOpeningFragment: Infinity,
-  JSXSpreadAttribute: Infinity,
-  JSXSpreadChild: Infinity,
-  JSXText: Infinity,
+  JSXAttribute: 89,
+  JSXClosingElement: 90,
+  JSXClosingFragment: 91,
+  JSXElement: 92,
+  JSXEmptyExpression: 93,
+  JSXExpressionContainer: 94,
+  JSXFragment: 95,
+  JSXIdentifier: 96,
+  JSXMemberExpression: 97,
+  JSXNamespacedName: 98,
+  JSXOpeningElement: 99,
+  JSXOpeningFragment: 100,
+  JSXSpreadAttribute: 101,
+  JSXSpreadChild: 102,
+  JSXText: 103,
 };
 
 const AstNodeById = Object.keys(AstType);
@@ -2041,28 +2042,28 @@ class JSXClosingElement {
 }
 
 /** @implements {Deno.JSXClosingFragment} */
-class JSXClosingFragment {
+class JSXClosingFragment extends BaseNode {
   type = /** @type {const} */ ("JSXClosingFragment");
   range;
 
-  #ctx;
-
   /**
    * @param {AstContext} ctx
+   * @param {number} parentId
    * @param {Deno.Range} range
    */
-  constructor(ctx, range) {
-    this.#ctx = ctx;
+  constructor(ctx, parentId, range) {
+    super(ctx, parentId);
+
     this.range = range;
   }
 }
 
 /** @implements {Deno.JSXElement} */
-class JSXElement {
+class JSXElement extends BaseNode {
   type = /** @type {const} */ ("JSXElement");
   range;
   get children() {
-    return []; // FIXME
+    return createChildNodes(this.#ctx, this.#childIds);
   }
 
   get openingElement() {
@@ -2081,18 +2082,24 @@ class JSXElement {
   #ctx;
   #openId;
   #closingId;
+  #childIds;
 
   /**
    * @param {AstContext} ctx
+   * @param {number} parentId
    * @param {Deno.Range} range
    * @param {number} openId
    * @param {number} closingId
+   * @param {number[]} childIds
    */
-  constructor(ctx, range, openId, closingId) {
+  constructor(ctx, parentId, range, openId, closingId, childIds) {
+    super(ctx, parentId);
+
     this.#ctx = ctx;
     this.range = range;
     this.#openId = openId;
     this.#closingId = closingId;
+    this.#childIds = childIds;
   }
 }
 
@@ -2123,58 +2130,65 @@ class JSXExpressionContainer {
 }
 
 /** @implements {Deno.JSXFragment} */
-class JSXFragment {
+class JSXFragment extends BaseNode {
   type = /** @type {const} */ ("JSXFragment");
   range;
   get children() {
-    return []; // FIXME
+    return createChildNodes(this.#ctx, this.#childIds);
+  }
+
+  get openingFragment() {
+    return /** @type {*} */ (createAstNode(
+      this.#ctx,
+      this.#openId,
+    ));
   }
   get closingFragment() {
-    return /** @type {Deno.JSXClosingFragment} */ (createAstNode(
+    return /** @type {*} */ (createAstNode(
       this.#ctx,
       this.#closingId,
     ));
   }
-  get openingFragment() {
-    return /** @type {Deno.JSXOpeningFragment} */ (createAstNode(
-      this.#ctx,
-      this.#openingId,
-    ));
-  }
 
   #ctx;
+  #childIds;
+  #openId;
   #closingId;
-  #openingId;
 
   /**
    * @param {AstContext} ctx
+   * @param {number} parentId
    * @param {Deno.Range} range
+   * @param {number} openId
    * @param {number} closingId
-   * @param {number} openingId
+   * @param {number[]} childIds
    */
-  constructor(ctx, range, closingId, openingId) {
+  constructor(ctx, parentId, range, openId, closingId, childIds) {
+    super(ctx, parentId);
+
     this.#ctx = ctx;
     this.range = range;
+    this.#openId = openId;
     this.#closingId = closingId;
-    this.#openingId = openingId;
+    this.#childIds = childIds;
   }
 }
 
 /** @implements {Deno.JSXIdentifier} */
-class JSXIdentifier {
+class JSXIdentifier extends BaseNode {
   type = /** @type {const} */ ("JSXIdentifier");
   range;
   name;
 
-  #ctx;
-
   /**
    * @param {AstContext} ctx
+   * @param {number} parentId
    * @param {Deno.Range} range
    * @param {number} nameId
    */
-  constructor(ctx, range, nameId) {
-    this.#ctx = ctx;
+  constructor(ctx, parentId, range, nameId) {
+    super(ctx, parentId);
+
     this.range = range;
     this.name = getString(ctx, nameId);
   }
@@ -2283,18 +2297,18 @@ class JSXOpeningElement {
 }
 
 /** @implements {Deno.JSXOpeningFragment} */
-class JSXOpeningFragment {
+class JSXOpeningFragment extends BaseNode {
   type = /** @type {const} */ ("JSXOpeningFragment");
   range;
 
-  #ctx;
-
   /**
    * @param {AstContext} ctx
+   * @param {number} parentId
    * @param {Deno.Range} range
    */
-  constructor(ctx, range) {
-    this.#ctx = ctx;
+  constructor(ctx, parentId, range) {
+    super(ctx, parentId);
+
     this.range = range;
   }
 }
@@ -2451,6 +2465,7 @@ function createAstNode(ctx, id) {
   // console.log({ id, offset });
   /** @type {AstType} */
   const kind = buf[offset];
+  // console.log("creating node", id, kind);
 
   const parentId = readU32(buf, offset + 1);
   const rangeStart = readU32(buf, offset + 5);
@@ -2769,15 +2784,40 @@ function createAstNode(ctx, id) {
     case AstType.JSXClosingElement:
       throw new JSXClosingElement(ctx, range, 0); // FIXME
     case AstType.JSXClosingFragment:
-      throw new JSXClosingFragment(ctx, range); // FIXME
-    case AstType.JSXElement:
-      throw new JSXElement(ctx, range, 0, 0); // FIXME
+      return new JSXClosingFragment(ctx, parentId, range);
+    case AstType.JSXElement: {
+      const openingId = readU32(buf, offset);
+      const closingId = readU32(buf, offset + 4);
+      const childIds = readChildIds(buf, offset + 8);
+      return new JSXElement(
+        ctx,
+        parentId,
+        range,
+        openingId,
+        closingId,
+        childIds,
+      );
+    }
     case AstType.JSXExpressionContainer:
       throw new JSXExpressionContainer(ctx, range, 0); // FIXME
-    case AstType.JSXFragment:
-      throw new JSXFragment(ctx, range, 0, 0); // FIXME
-    case AstType.JSXIdentifier:
-      throw new JSXIdentifier(ctx, range, 0); // FIXME
+    case AstType.JSXFragment: {
+      const openingId = readU32(buf, offset);
+      const closingId = readU32(buf, offset + 4);
+      const childIds = readChildIds(buf, offset + 8);
+      // console.log("creating fragment");
+      return new JSXFragment(
+        ctx,
+        parentId,
+        range,
+        openingId,
+        closingId,
+        childIds,
+      );
+    }
+    case AstType.JSXIdentifier: {
+      const strId = readU32(buf, offset);
+      throw new JSXIdentifier(ctx, parentId, range, strId);
+    }
     case AstType.JSXMemberExpression:
       throw new JSXMemberExpression(ctx, range, 0, 0); // FIXME
     case AstType.JSXNamespacedName:
@@ -2785,11 +2825,11 @@ function createAstNode(ctx, id) {
     case AstType.JSXOpeningElement:
       throw new JSXOpeningElement(ctx, range, flags, 0); // FIXME
     case AstType.JSXOpeningFragment:
-      throw new JSXOpeningFragment(ctx, range); // FIXME
+      return new JSXOpeningFragment(ctx, parentId, range);
     case AstType.JSXSpreadAttribute:
       throw new JSXSpreadAttribute(ctx, range, flags); // FIXME
     case AstType.JSXSpreadChild:
-      throw new JSXSpreadChild(ctx, range, flags); // FIXME
+      throw new Error(`JSXSpreadChild not supported`);
     case AstType.JSXText:
       throw new JSXText(ctx, range, 0, 0); // FIXME
 
@@ -2958,7 +2998,7 @@ function traverse(ctx, visitor) {
  * @param {number} id
  */
 function traverseInner(ctx, visitTypes, visitor, id) {
-  // console.log("traversing id", id);
+  console.log("traversing id", id);
 
   // Empty id
   if (id === 0) return;
@@ -2971,7 +3011,7 @@ function traverseInner(ctx, visitTypes, visitor, id) {
   if (offset === undefined) throw new Error(`Unknown id: ${id}`);
 
   const type = buf[offset];
-  // console.log({ id, type, offset });
+  console.log({ id, type, offset });
 
   const name = visitTypes.get(type);
   if (name !== undefined) {
@@ -3082,6 +3122,19 @@ function traverseInner(ctx, visitTypes, visitor, id) {
       return;
     }
 
+    case AstType.JSXElement:
+    case AstType.JSXFragment: {
+      const openingId = readU32(buf, offset);
+      const closingId = readU32(buf, offset + 4);
+      const childIds = readChildIds(buf, offset + 8);
+
+      traverseInner(ctx, visitTypes, visitor, openingId);
+      traverseInner(ctx, visitTypes, visitor, closingId);
+      traverseChildren(ctx, visitTypes, visitor, childIds);
+
+      return;
+    }
+
     // Two children
     case AstType.AssignmentPattern:
     case AstType.LabeledStatement:
@@ -3098,6 +3151,7 @@ function traverseInner(ctx, visitTypes, visitor, id) {
     case AstType.BreakStatement:
     case AstType.ContinueStatement:
     case AstType.ExpressionStatement:
+    case AstType.JSXIdentifier:
     case AstType.ReturnStatement:
     case AstType.SpreadElement:
     case AstType.ParenthesisExpression: {
@@ -3110,6 +3164,8 @@ function traverseInner(ctx, visitTypes, visitor, id) {
     case AstType.BigIntLiteral:
     case AstType.DebuggerStatement:
     case AstType.Identifier:
+    case AstType.JSXClosingFragment:
+    case AstType.JSXOpeningFragment:
     case AstType.NullLiteral:
     case AstType.NumericLiteral:
     case AstType.PrivateIdentifier:

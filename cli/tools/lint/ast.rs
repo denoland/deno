@@ -2,7 +2,10 @@ use deno_ast::{
   swc::{
     ast::{
       AssignTarget, BlockStmtOrExpr, Callee, Decl, ExportSpecifier, Expr,
-      ExprOrSpread, FnExpr, ForHead, Function, Ident, IdentName, Lit,
+      ExprOrSpread, FnExpr, ForHead, Function, Ident, IdentName, JSXAttrName,
+      JSXAttrOrSpread, JSXAttrValue, JSXElement, JSXElementChild,
+      JSXElementName, JSXEmptyExpr, JSXExpr, JSXExprContainer, JSXFragment,
+      JSXMemberExpr, JSXNamespacedName, JSXObject, JSXOpeningElement, Lit,
       MemberProp, ModuleDecl, ModuleExportName, ModuleItem, ObjectPatProp,
       Param, Pat, Program, Prop, PropName, PropOrSpread, SimpleAssignTarget,
       Stmt, SuperProp, TsType, VarDeclOrExpr,
@@ -106,14 +109,6 @@ enum AstNode {
   BigIntLiteral,
   RegExpLiteral,
 
-  // JSX
-  JSXMember,
-  JSXNamespacedName,
-  JSXEmpty,
-  JSXElement,
-  JSXFragment,
-  JSXText,
-
   // Custom
   EmptyExpr,
   Spread,
@@ -128,6 +123,23 @@ enum AstNode {
   ArrayPattern,
   AssignmentPattern,
   ObjectPattern,
+
+  // JSX
+  JSXAttribute,
+  JSXClosingElement,
+  JSXClosingFragment,
+  JSXElement,
+  JSXEmptyExpression,
+  JSXExpressionContainer,
+  JSXFragment,
+  JSXIdentifier,
+  JSXMemberExpression,
+  JSXNamespacedName,
+  JSXOpeningElement,
+  JSXOpeningFragment,
+  JSXSpreadAttribute,
+  JSXSpreadChild,
+  JSXText,
 }
 
 impl From<AstNode> for u8 {
@@ -193,6 +205,7 @@ enum Flag {
   LogicalOr,
   LogicalAnd,
   LogicalNullishCoalescin,
+  JSXSelfClosing,
 }
 
 fn assign_op_to_flag(m: AssignOp) -> u8 {
@@ -239,6 +252,7 @@ impl From<Flag> for u8 {
       Flag::LogicalOr => 0b000000001,
       Flag::LogicalAnd => 0b000000010,
       Flag::LogicalNullishCoalescin => 0b000000100,
+      Flag::JSXSelfClosing => 0b000000001,
     }
   }
 }
@@ -1476,32 +1490,13 @@ fn serialize_expr(
       // and are never materialized to actual AST nodes.
       serialize_expr(ctx, &node.expr, parent_id)
     }
-    Expr::JSXMember(node) => {
-      // FIXME
-      let id = ctx.push_node(AstNode::JSXMember, parent_id, &node.span);
-
-      id
-    }
+    Expr::JSXMember(node) => serialize_jsx_member_expr(ctx, &node, parent_id),
     Expr::JSXNamespacedName(node) => {
-      let id = ctx.push_node(AstNode::JSXNamespacedName, parent_id, &node.span);
-
-      id
+      serialize_jsx_namespaced_name(ctx, node, parent_id)
     }
-    Expr::JSXEmpty(node) => {
-      let id = ctx.push_node(AstNode::JSXEmpty, parent_id, &node.span);
-
-      id
-    }
-    Expr::JSXElement(node) => {
-      let id = ctx.push_node(AstNode::JSXElement, parent_id, &node.span);
-
-      id
-    }
-    Expr::JSXFragment(node) => {
-      let id = ctx.push_node(AstNode::JSXFragment, parent_id, &node.span);
-
-      id
-    }
+    Expr::JSXEmpty(node) => serialize_jsx_empty_expr(ctx, node, parent_id),
+    Expr::JSXElement(node) => serialize_jsx_element(ctx, &node, parent_id),
+    Expr::JSXFragment(node) => serialize_jsx_fragment(ctx, &node, parent_id),
     Expr::TsTypeAssertion(node) => {
       let id = ctx.push_node(AstNode::TsTypeAssertion, parent_id, &node.span);
 
@@ -1574,6 +1569,272 @@ fn serialize_expr(
       todo!()
     }
   }
+}
+
+fn serialize_jsx_element(
+  ctx: &mut SerializeCtx,
+  node: &JSXElement,
+  parent_id: usize,
+) -> usize {
+  let id = ctx.push_node(AstNode::JSXElement, parent_id, &node.span);
+  let offset = ctx.reserve_child_ids(2);
+
+  let opening_id = serialize_jsx_opening_element(ctx, &node.opening, id);
+  ctx.set_child(offset, opening_id, 0);
+
+  if let Some(closing) = &node.closing {
+    let closing_id = serialize_jsx_element_name(ctx, &closing.name, id);
+    ctx.set_child(offset, closing_id, 1);
+  }
+
+  serialize_jsx_children(ctx, &node.children, id);
+
+  id
+}
+
+fn serialize_jsx_fragment(
+  ctx: &mut SerializeCtx,
+  node: &JSXFragment,
+  parent_id: usize,
+) -> usize {
+  let id = ctx.push_node(AstNode::JSXFragment, parent_id, &node.span);
+
+  let offset = ctx.reserve_child_ids(2);
+  let opening_id =
+    ctx.push_node(AstNode::JSXOpeningFragment, id, &node.opening.span);
+  let closing_id =
+    ctx.push_node(AstNode::JSXClosingFragment, id, &node.closing.span);
+
+  ctx.set_child(offset, opening_id, 0);
+  ctx.set_child(offset, closing_id, 1);
+
+  serialize_jsx_children(ctx, &node.children, id);
+
+  id
+}
+
+fn serialize_jsx_children(
+  ctx: &mut SerializeCtx,
+  children: &Vec<JSXElementChild>,
+  parent_id: usize,
+) {
+  let offset = ctx.reserve_child_ids_with_count(children.len());
+  for (i, child) in children.iter().enumerate() {
+    let child_id = match child {
+      JSXElementChild::JSXText(text) => {
+        let id = ctx.push_node(AstNode::JSXText, parent_id, &text.span);
+
+        let raw_id = ctx.str_table.insert(&text.raw.as_str());
+        let value_id = ctx.str_table.insert(&text.value.as_str());
+
+        append_usize(&mut ctx.result, raw_id);
+        append_usize(&mut ctx.result, value_id);
+
+        id
+      }
+      JSXElementChild::JSXExprContainer(container) => {
+        serialize_jsx_container_expr(ctx, container, parent_id)
+      }
+      JSXElementChild::JSXElement(el) => {
+        serialize_jsx_element(ctx, el, parent_id)
+      }
+      JSXElementChild::JSXFragment(frag) => {
+        serialize_jsx_fragment(ctx, frag, parent_id)
+      }
+      // No parser supports this
+      JSXElementChild::JSXSpreadChild(_) => unreachable!(),
+    };
+    ctx.set_child(offset, child_id, i);
+  }
+}
+
+fn serialize_jsx_member_expr(
+  ctx: &mut SerializeCtx,
+  node: &JSXMemberExpr,
+  parent_id: usize,
+) -> usize {
+  let id = ctx.push_node(AstNode::JSXMemberExpression, parent_id, &node.span);
+  let offset = ctx.reserve_child_ids(2);
+
+  let obj_id = match &node.obj {
+    JSXObject::JSXMemberExpr(member) => {
+      serialize_jsx_member_expr(ctx, member, id)
+    }
+    JSXObject::Ident(ident) => serialize_jsx_identifier(ctx, &ident, parent_id),
+  };
+
+  let prop_id = serialize_ident_name_as_jsx_identifier(ctx, &node.prop, id);
+
+  ctx.set_child(offset, obj_id, 0);
+  ctx.set_child(offset, prop_id, 1);
+
+  id
+}
+
+fn serialize_jsx_element_name(
+  ctx: &mut SerializeCtx,
+  node: &JSXElementName,
+  parent_id: usize,
+) -> usize {
+  match &node {
+    JSXElementName::Ident(ident) => {
+      serialize_jsx_identifier(ctx, &ident, parent_id)
+    }
+    JSXElementName::JSXMemberExpr(member) => {
+      serialize_jsx_member_expr(ctx, &member, parent_id)
+    }
+    JSXElementName::JSXNamespacedName(ns) => {
+      serialize_jsx_namespaced_name(ctx, &ns, parent_id)
+    }
+  }
+}
+
+fn serialize_jsx_opening_element(
+  ctx: &mut SerializeCtx,
+  node: &JSXOpeningElement,
+  parent_id: usize,
+) -> usize {
+  let id = ctx.push_node(AstNode::JSXOpeningElement, parent_id, &node.span);
+
+  let mut opening_flags = FlagValue::new();
+  if node.self_closing {
+    opening_flags.set(Flag::JSXSelfClosing);
+  }
+  ctx.result.push(opening_flags.0);
+
+  let offset = ctx.reserve_child_ids(1);
+
+  let name_id = serialize_jsx_element_name(ctx, &node.name, id);
+  ctx.set_child(offset, name_id, 0);
+
+  // FIXME: type args
+
+  let offset = ctx.reserve_child_ids_with_count(node.attrs.len());
+
+  for (i, attr) in node.attrs.iter().enumerate() {
+    let child_id = match attr {
+      JSXAttrOrSpread::JSXAttr(jsxattr) => {
+        let attr_id = ctx.push_node(AstNode::JSXAttribute, id, &jsxattr.span);
+        let offset = ctx.reserve_child_ids(2);
+
+        let name_id = match &jsxattr.name {
+          JSXAttrName::Ident(name) => {
+            serialize_ident_name_as_jsx_identifier(ctx, &name, attr_id)
+          }
+          JSXAttrName::JSXNamespacedName(node) => {
+            serialize_jsx_namespaced_name(ctx, node, attr_id)
+          }
+        };
+        ctx.set_child(offset, name_id, 0);
+
+        if let Some(value) = &jsxattr.value {
+          let value_id = match value {
+            JSXAttrValue::Lit(lit) => serialize_lit(ctx, lit, attr_id),
+            JSXAttrValue::JSXExprContainer(container) => {
+              serialize_jsx_container_expr(ctx, container, attr_id)
+            }
+            JSXAttrValue::JSXElement(el) => {
+              serialize_jsx_element(ctx, &el, attr_id)
+            }
+            JSXAttrValue::JSXFragment(frag) => {
+              serialize_jsx_fragment(ctx, &frag, attr_id)
+            }
+          };
+
+          ctx.set_child(offset, value_id, 1);
+        }
+
+        attr_id
+      }
+      JSXAttrOrSpread::SpreadElement(spread) => {
+        let attr_id =
+          ctx.push_node(AstNode::JSXSpreadAttribute, id, &spread.dot3_token);
+
+        let offset = ctx.reserve_child_ids(1);
+        let child_id = serialize_expr(ctx, &spread.expr, attr_id);
+        ctx.set_child(offset, child_id, 0);
+
+        attr_id
+      }
+    };
+
+    ctx.set_child(offset, child_id, i);
+  }
+
+  id
+}
+
+fn serialize_jsx_container_expr(
+  ctx: &mut SerializeCtx,
+  node: &JSXExprContainer,
+  parent_id: usize,
+) -> usize {
+  let id =
+    ctx.push_node(AstNode::JSXExpressionContainer, parent_id, &node.span);
+
+  let offset = ctx.reserve_child_ids(1);
+
+  let child_id = match &node.expr {
+    JSXExpr::JSXEmptyExpr(expr) => serialize_jsx_empty_expr(ctx, expr, id),
+    JSXExpr::Expr(expr) => serialize_expr(ctx, &expr, id),
+  };
+
+  ctx.set_child(offset, child_id, 0);
+
+  id
+}
+
+fn serialize_jsx_empty_expr(
+  ctx: &mut SerializeCtx,
+  node: &JSXEmptyExpr,
+  parent_id: usize,
+) -> usize {
+  let id = ctx.push_node(AstNode::JSXEmptyExpression, parent_id, &node.span);
+
+  id
+}
+
+fn serialize_jsx_namespaced_name(
+  ctx: &mut SerializeCtx,
+  node: &JSXNamespacedName,
+  parent_id: usize,
+) -> usize {
+  let id = ctx.push_node(AstNode::JSXNamespacedName, parent_id, &node.span);
+
+  let offset = ctx.reserve_child_ids(2);
+  let ns_id = serialize_ident_name_as_jsx_identifier(ctx, &node.ns, id);
+  let name_id = serialize_ident_name_as_jsx_identifier(ctx, &node.name, id);
+
+  ctx.set_child(offset, ns_id, 0);
+  ctx.set_child(offset, name_id, 1);
+
+  id
+}
+
+fn serialize_ident_name_as_jsx_identifier(
+  ctx: &mut SerializeCtx,
+  node: &IdentName,
+  parent_id: usize,
+) -> usize {
+  let id = ctx.push_node(AstNode::JSXIdentifier, parent_id, &node.span);
+
+  let str_id = ctx.str_table.insert(node.sym.as_str());
+  append_usize(&mut ctx.result, str_id);
+
+  id
+}
+
+fn serialize_jsx_identifier(
+  ctx: &mut SerializeCtx,
+  node: &Ident,
+  parent_id: usize,
+) -> usize {
+  let id = ctx.push_node(AstNode::JSXIdentifier, parent_id, &node.span);
+
+  let str_id = ctx.str_table.insert(node.sym.as_str());
+  append_usize(&mut ctx.result, str_id);
+
+  id
 }
 
 fn serialize_pat(ctx: &mut SerializeCtx, pat: &Pat, parent_id: usize) -> usize {

@@ -24,6 +24,11 @@
       "cwd": "./literals",
       "args": "lint --plugins=./plugin.ts source.ts",
       "output": "literals/log.out"
+    },
+    "jsx": {
+      "cwd": "./jsx",
+      "args": "lint --plugins=./plugin.ts source.tsx",
+      "output": "jsx/log.out"
     }
   }
 }
