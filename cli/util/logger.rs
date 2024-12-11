@@ -1,24 +1,34 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
+use super::draw_thread::DrawThread;
+use deno_telemetry::OtelConfig;
+use deno_telemetry::OtelConsoleConfig;
 use std::io::Write;
 
-use super::draw_thread::DrawThread;
-
-struct CliLogger(env_logger::Logger);
+struct CliLogger {
+  otel_console_config: OtelConsoleConfig,
+  logger: env_logger::Logger,
+}
 
 impl CliLogger {
-  pub fn new(logger: env_logger::Logger) -> Self {
-    Self(logger)
+  pub fn new(
+    logger: env_logger::Logger,
+    otel_console_config: OtelConsoleConfig,
+  ) -> Self {
+    Self {
+      logger,
+      otel_console_config,
+    }
   }
 
   pub fn filter(&self) -> log::LevelFilter {
-    self.0.filter()
+    self.logger.filter()
   }
 }
 
 impl log::Log for CliLogger {
   fn enabled(&self, metadata: &log::Metadata) -> bool {
-    self.0.enabled(metadata)
+    self.logger.enabled(metadata)
   }
 
   fn log(&self, record: &log::Record) {
@@ -28,18 +38,30 @@ impl log::Log for CliLogger {
       // could potentially block other threads that access the draw
       // thread's state
       DrawThread::hide();
-      self.0.log(record);
-      deno_telemetry::handle_log(record);
+
+      match self.otel_console_config {
+        OtelConsoleConfig::Ignore => {
+          self.logger.log(record);
+        }
+        OtelConsoleConfig::Capture => {
+          self.logger.log(record);
+          deno_telemetry::handle_log(record);
+        }
+        OtelConsoleConfig::Replace => {
+          deno_telemetry::handle_log(record);
+        }
+      }
+
       DrawThread::show();
     }
   }
 
   fn flush(&self) {
-    self.0.flush();
+    self.logger.flush();
   }
 }
 
-pub fn init(maybe_level: Option<log::Level>) {
+pub fn init(maybe_level: Option<log::Level>, otel_config: Option<OtelConfig>) {
   let log_level = maybe_level.unwrap_or(log::Level::Info);
   let logger = env_logger::Builder::from_env(
     env_logger::Env::new()
@@ -93,7 +115,12 @@ pub fn init(maybe_level: Option<log::Level>) {
   })
   .build();
 
-  let cli_logger = CliLogger::new(logger);
+  let cli_logger = CliLogger::new(
+    logger,
+    otel_config
+      .map(|c| c.console)
+      .unwrap_or(OtelConsoleConfig::Ignore),
+  );
   let max_level = cli_logger.filter();
   let r = log::set_boxed_logger(Box::new(cli_logger));
   if r.is_ok() {

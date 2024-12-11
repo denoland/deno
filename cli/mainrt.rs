@@ -88,14 +88,17 @@ fn main() {
     match standalone {
       Ok(Some(data)) => {
         deno_telemetry::init(crate::args::otel_runtime_config())?;
-        util::logger::init(data.metadata.log_level);
+        util::logger::init(
+          data.metadata.log_level,
+          Some(data.metadata.otel_config.clone()),
+        );
         load_env_vars(&data.metadata.env_vars_from_env_file);
         let exit_code = standalone::run(data).await?;
         deno_runtime::exit(exit_code);
       }
       Ok(None) => Ok(()),
       Err(err) => {
-        util::logger::init(None);
+        util::logger::init(None, None);
         Err(err)
       }
     }
