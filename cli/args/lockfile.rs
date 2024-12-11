@@ -126,10 +126,13 @@ impl CliLockfile {
 
     fn deno_json_deps(
       maybe_deno_json: Option<&ConfigFile>,
-    ) -> HashSet<JsrDepPackageReq> {
-      maybe_deno_json
-        .map(crate::args::deno_json::deno_json_deps)
-        .unwrap_or_default()
+    ) -> Result<HashSet<JsrDepPackageReq>, AnyError> {
+      Ok(
+        maybe_deno_json
+          .map(crate::args::deno_json::deno_json_deps)
+          .transpose()?
+          .unwrap_or_default(),
+      )
     }
 
     if flags.no_lock
@@ -171,7 +174,7 @@ impl CliLockfile {
     let config = deno_lockfile::WorkspaceConfig {
       root: WorkspaceMemberConfig {
         package_json_deps: pkg_json_deps(root_folder.pkg_json.as_deref()),
-        dependencies: deno_json_deps(root_folder.deno_json.as_deref()),
+        dependencies: deno_json_deps(root_folder.deno_json.as_deref())?,
       },
       members: workspace
         .config_folders()
@@ -192,7 +195,18 @@ impl CliLockfile {
             {
               let config = WorkspaceMemberConfig {
                 package_json_deps: pkg_json_deps(folder.pkg_json.as_deref()),
-                dependencies: deno_json_deps(folder.deno_json.as_deref()),
+                dependencies: deno_json_deps(folder.deno_json.as_deref())
+                  .inspect_err(|err| {
+                    log::warn!(
+                      "failed to read dependencies from {}: {err}",
+                      folder
+                        .deno_json
+                        .as_ref()
+                        .map(|s| s.specifier.as_str())
+                        .unwrap_or("config file")
+                    )
+                  })
+                  .unwrap_or_default(),
               };
               if config.package_json_deps.is_empty()
                 && config.dependencies.is_empty()

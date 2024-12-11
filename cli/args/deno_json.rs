@@ -3,6 +3,7 @@
 use std::collections::HashSet;
 
 use deno_config::deno_json::TsConfigForEmit;
+use deno_core::error::AnyError;
 use deno_core::serde_json;
 use deno_semver::jsr::JsrDepPackageReq;
 use deno_semver::jsr::JsrPackageReqReference;
@@ -66,10 +67,18 @@ impl<'a> deno_config::fs::DenoConfigFs for DenoConfigFsAdapter<'a> {
 
 pub fn deno_json_deps(
   config: &deno_config::deno_json::ConfigFile,
-) -> HashSet<JsrDepPackageReq> {
-  let values = imports_values(config.json.imports.as_ref())
-    .into_iter()
-    .chain(scope_values(config.json.scopes.as_ref()));
+) -> Result<HashSet<JsrDepPackageReq>, AnyError> {
+  let import_map = config
+    .to_import_map_value(|path| {
+      std::fs::read_to_string(path).map_err(Into::into)
+    })?
+    .map(|(_, value)| value);
+  let values =
+    imports_values(import_map.as_ref().and_then(|m| m.get("imports")))
+      .into_iter()
+      .chain(scope_values(
+        import_map.as_ref().and_then(|m| m.get("scopes")),
+      ));
   let mut set = values_to_set(values);
 
   if let Some(serde_json::Value::Object(compiler_options)) =
@@ -104,7 +113,7 @@ pub fn deno_json_deps(
     }
   }
 
-  set
+  Ok(set)
 }
 
 fn imports_values(value: Option<&serde_json::Value>) -> Vec<&String> {
