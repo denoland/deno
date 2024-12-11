@@ -87,9 +87,7 @@ fn main() {
   let future = async move {
     match standalone {
       Ok(Some(data)) => {
-        if let Some(otel_config) = data.metadata.otel_config.clone() {
-          deno_telemetry::init(otel_config)?;
-        }
+        deno_telemetry::init(crate::args::otel_runtime_config())?;
         util::logger::init(data.metadata.log_level);
         load_env_vars(&data.metadata.env_vars_from_env_file);
         let exit_code = standalone::run(data).await?;

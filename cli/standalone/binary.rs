@@ -191,7 +191,7 @@ pub struct Metadata {
   pub entrypoint_key: String,
   pub node_modules: Option<NodeModules>,
   pub unstable_config: UnstableConfig,
-  pub otel_config: Option<OtelConfig>, // None means disabled.
+  pub otel_config: OtelConfig,
 }
 
 fn write_binary_bytes(

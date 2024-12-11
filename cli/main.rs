@@ -447,9 +447,7 @@ fn resolve_flags_and_init(
     }
   };
 
-  if let Some(otel_config) = flags.otel_config() {
-    deno_telemetry::init(otel_config)?;
-  }
+  deno_telemetry::init(crate::args::otel_runtime_config())?;
   util::logger::init(flags.log_level);
 
   // TODO(bartlomieju): remove in Deno v2.5 and hard error then.
