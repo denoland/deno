@@ -3,6 +3,7 @@
 const data = {
   spans: [],
   logs: [],
+  metrics: [],
 };
 
 const server = Deno.serve(
@@ -43,6 +44,11 @@ const server = Deno.serve(
       body.resourceSpans?.forEach((rSpans) => {
         rSpans.scopeSpans.forEach((sSpans) => {
           data.spans.push(...sSpans.spans);
+        });
+      });
+      body.resourceMetrics?.forEach((rMetrics) => {
+        rMetrics.scopeMetrics.forEach((sMetrics) => {
+          data.metrics.push(...sMetrics.metrics);
         });
       });
       return Response.json({ partialSuccess: {} }, { status: 200 });

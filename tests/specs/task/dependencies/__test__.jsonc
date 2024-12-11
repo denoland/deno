@@ -56,6 +56,11 @@
       "args": "task a",
       "output": "./cycle_2.out",
       "exitCode": 1
+    },
+    "arg_task_with_deps": {
+      "cwd": "arg_task_with_deps",
+      "args": "task a a",
+      "output": "./arg_task_with_deps.out"
     }
   }
 }

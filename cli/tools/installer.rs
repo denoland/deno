@@ -9,7 +9,6 @@ use crate::args::Flags;
 use crate::args::InstallFlags;
 use crate::args::InstallFlagsGlobal;
 use crate::args::InstallFlagsLocal;
-use crate::args::InstallKind;
 use crate::args::TypeCheckMode;
 use crate::args::UninstallFlags;
 use crate::args::UninstallKind;
@@ -339,11 +338,11 @@ pub async fn install_command(
   flags: Arc<Flags>,
   install_flags: InstallFlags,
 ) -> Result<(), AnyError> {
-  match install_flags.kind {
-    InstallKind::Global(global_flags) => {
+  match install_flags {
+    InstallFlags::Global(global_flags) => {
       install_global(flags, global_flags).await
     }
-    InstallKind::Local(local_flags) => {
+    InstallFlags::Local(local_flags) => {
       if let InstallFlagsLocal::Add(add_flags) = &local_flags {
         check_if_installs_a_single_package_globally(Some(add_flags))?;
       }
