@@ -924,6 +924,7 @@ pub async fn run(data: StandaloneData) -> Result<i32, AnyError> {
       serve_host: None,
     },
     metadata.otel_config,
+    crate::args::NpmCachingStrategy::Lazy,
   );
 
   // Initialize v8 once from the main thread.

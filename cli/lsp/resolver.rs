@@ -133,7 +133,8 @@ impl LspScopeResolver {
       cache.for_specifier(config_data.map(|d| d.scope.as_ref())),
       config_data.and_then(|d| d.lockfile.clone()),
     )));
-    let npm_graph_resolver = cli_resolver.create_graph_npm_resolver();
+    let npm_graph_resolver = cli_resolver
+      .create_graph_npm_resolver(crate::graph_util::NpmCachingStrategy::Eager);
     let maybe_jsx_import_source_config =
       config_data.and_then(|d| d.maybe_jsx_import_source_config());
     let graph_imports = config_data
@@ -343,7 +344,9 @@ impl LspResolver {
     file_referrer: Option<&ModuleSpecifier>,
   ) -> WorkerCliNpmGraphResolver {
     let resolver = self.get_scope_resolver(file_referrer);
-    resolver.resolver.create_graph_npm_resolver()
+    resolver
+      .resolver
+      .create_graph_npm_resolver(crate::graph_util::NpmCachingStrategy::Eager)
   }
 
   pub fn as_is_cjs_resolver(
