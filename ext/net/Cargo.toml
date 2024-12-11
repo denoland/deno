@@ -2,7 +2,7 @@
 
 [package]
 name = "deno_net"
-version = "0.173.0"
+version = "0.174.0"
 authors.workspace = true
 edition.workspace = true
 license.workspace = true
