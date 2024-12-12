@@ -58,7 +58,7 @@ const rootDir = currentDir.parentOrThrow().parentOrThrow().parentOrThrow();
 const outputDir = currentDir.join("./dist");
 const scopeDir = outputDir.join("@deno");
 const denoDir = outputDir.join("deno");
-const version = "1.46.0"; //resolveVersion();
+const version = "1.46.1"; //resolveVersion();
 
 $.logStep(`Publishing ${version}...`);
 
@@ -78,10 +78,10 @@ await $`mkdir -p ${denoDir} ${scopeDir}`;
       "url": "git+https://github.com/denoland/deno.git",
     },
     "keywords": [
-      "code",
-      "formatter",
+      "runtime",
+      "typescript",
     ],
-    "author": "David Sherret",
+    "author": "the Deno authors",
     "license": "MIT",
     "bugs": {
       "url": "https://github.com/denoland/deno/issues",
