@@ -6173,18 +6173,34 @@ declare namespace Deno {
 
   export interface AssignmentPattern extends BaseNode {
     type: "AssignmentPattern";
-    // FIXME
+    left: ArrayPattern | ObjectPattern | Identifier;
+    right: Expression;
+    // FIXME: I don't think these are possible
+    // optional: boolean;
+    // typeAnnotation: TSTypeAnnotation | null;
   }
 
   export interface ArrayPattern extends BaseNode {
     type: "ArrayPattern";
-    elements: any[];
+    elements: Array<
+      | ArrayPattern
+      | AssignmentPattern
+      | Identifier
+      | MemberExpression
+      | ObjectPattern
+      | RestElement
+      | null
+    >;
+    optional: boolean;
     typeAnnotation: TSTypeAnnotation | null;
   }
 
   export interface ObjectPattern extends BaseNode {
     type: "ObjectPattern";
-    // FIXME
+    optional: boolean;
+    properties: Array<Property | RestElement>;
+    // FIXME: TSEstree uses undefined for type annotations
+    typeAnnotation: TSTypeAnnotation | null;
   }
 
   export interface PrivateIdentifier extends BaseNode {
@@ -6195,6 +6211,7 @@ declare namespace Deno {
   export interface RestElement extends BaseNode {
     type: "RestElement";
     argument: Expression;
+    typeAnnotation: TSTypeAnnotation | null;
   }
 
   // Expressions
@@ -6306,11 +6323,22 @@ declare namespace Deno {
     alternate: Expression;
   }
 
-  // FIXME
   export interface FunctionExpression extends BaseNode {
     type: "FunctionExpression";
+    id: Identifier | null;
+    async: boolean;
+    generator: boolean;
+    params: Array<
+      | ArrayPattern
+      | AssignmentPattern
+      | Identifier
+      | ObjectPattern
+      | RestElement
+      | TSParameterProperty
+    >;
     body: BlockStatement;
-    expression: boolean; // FIXME: TSEStree
+    typeParameters: null; // FIXME
+    returnType: TSTypeAnnotation | null;
   }
 
   export interface Identifier extends BaseNode {
@@ -7003,6 +7031,11 @@ declare namespace Deno {
     | SpreadElement
     | VariableDeclarator
     | TemplateElement
+    | ArrayPattern
+    | AssignmentPattern
+    | ObjectPattern
+    | SwitchCase
+    | RestElement
     | JSXNode;
 
   export interface LintRuleContext {

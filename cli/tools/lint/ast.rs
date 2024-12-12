@@ -1,18 +1,19 @@
 use deno_ast::{
   swc::{
     ast::{
-      AssignTarget, AssignTargetPat, BlockStmtOrExpr, Callee, Decl,
-      ExportSpecifier, Expr, ExprOrSpread, FnExpr, ForHead, Function, Ident,
-      IdentName, JSXAttrName, JSXAttrOrSpread, JSXAttrValue, JSXElement,
+      AssignTarget, AssignTargetPat, BlockStmtOrExpr, Callee, ClassMember,
+      Decl, ExportSpecifier, Expr, ExprOrSpread, FnExpr, ForHead, Function,
+      Ident, IdentName, JSXAttrName, JSXAttrOrSpread, JSXAttrValue, JSXElement,
       JSXElementChild, JSXElementName, JSXEmptyExpr, JSXExpr, JSXExprContainer,
       JSXFragment, JSXMemberExpr, JSXNamespacedName, JSXObject,
       JSXOpeningElement, Lit, MemberProp, ModuleDecl, ModuleExportName,
-      ModuleItem, ObjectPatProp, Param, Pat, Program, Prop, PropName,
-      PropOrSpread, SimpleAssignTarget, Stmt, SuperProp, TsType, VarDeclOrExpr,
+      ModuleItem, ObjectPatProp, Param, ParamOrTsParamProp, Pat, Program, Prop,
+      PropName, PropOrSpread, SimpleAssignTarget, Stmt, SuperProp, TsType,
+      VarDeclOrExpr,
     },
     common::{Span, Spanned, SyntaxContext, DUMMY_SP},
   },
-  view::{AssignOp, BinaryOp, UnaryOp, UpdateOp, VarDeclKind},
+  view::{Accessibility, AssignOp, BinaryOp, UnaryOp, UpdateOp, VarDeclKind},
   ParsedSource,
 };
 use indexmap::IndexMap;
@@ -36,7 +37,7 @@ enum AstNode {
   TsNamespaceExport,
 
   // Decls
-  Class,
+  ClassDeclaration,
   Fn,
   Var,
   Using,
@@ -60,7 +61,7 @@ enum AstNode {
   Throw,
   TryStatement,
   While,
-  DoWhile,
+  DoWhileStatement,
   For,
   ForInStatement,
   ForOf,
@@ -71,7 +72,7 @@ enum AstNode {
   This,
   Array,
   Object,
-  FnExpr,
+  FunctionExpression,
   Unary,
   UpdateExpression,
   BinaryExpression,
@@ -118,6 +119,7 @@ enum AstNode {
   RestElement,
   ExportSpecifier,
   TemplateElement,
+  MethodDefinition,
 
   // Patterns
   ArrayPattern,
@@ -243,6 +245,15 @@ enum Flag {
   UpdateMinusMinus,
 
   YieldDelegate,
+  ParamOptional,
+
+  ClassDeclare,
+  ClassAbstract,
+  ClassConstructor,
+  ClassMethod,
+  ClassPublic,
+  ClassProtected,
+  ClassPrivate,
 }
 
 fn assign_op_to_flag(m: AssignOp) -> u8 {
@@ -326,6 +337,15 @@ impl From<Flag> for u8 {
       Flag::UpdateMinusMinus => 0b000000100,
 
       Flag::YieldDelegate => 1,
+      Flag::ParamOptional => 1,
+
+      Flag::ClassDeclare => 0b000000001,
+      Flag::ClassAbstract => 0b000000010,
+      Flag::ClassConstructor => 0b000000100,
+      Flag::ClassMethod => 0b000001000,
+      Flag::ClassPublic => 0b001000000,
+      Flag::ClassProtected => 0b010000000,
+      Flag::ClassPrivate => 0b10000000,
     }
   }
 }
@@ -704,23 +724,32 @@ fn serialize_stmt(
       id
     }
     Stmt::Switch(node) => {
-      let id = ctx.push_node(AstNode::Switch.into(), parent_id, &node.span);
+      let id = ctx.push_node(AstNode::Switch, parent_id, &node.span);
 
-      let offset = ctx.reserve_child_ids_with_count(node.cases.len());
+      let offset = ctx.reserve_child_ids(1);
+      let cases_offset = ctx.reserve_child_ids_with_count(node.cases.len());
+
+      let expr_id = serialize_expr(ctx, &node.discriminant, id);
+      ctx.set_child(offset, expr_id, 0);
 
       for (i, case) in node.cases.iter().enumerate() {
         let child_id =
           ctx.push_node(AstNode::SwitchCase.into(), parent_id, &case.span);
 
-        let child_offset =
-          ctx.reserve_child_ids_with_count(case.cons.len() + 1);
+        let test_offset = ctx.reserve_child_ids(1);
+        let child_offset = ctx.reserve_child_ids_with_count(case.cons.len());
+
+        if let Some(test) = &case.test {
+          let test_id = serialize_expr(ctx, test, child_id);
+          ctx.set_child(test_offset, test_id, 0);
+        }
 
         for (j, cons) in case.cons.iter().enumerate() {
           let cons_id = serialize_stmt(ctx, cons, child_id);
           ctx.set_child(child_offset, cons_id, j);
         }
 
-        ctx.set_child(offset, child_id, i);
+        ctx.set_child(cases_offset, child_id, i);
       }
 
       id
@@ -785,7 +814,7 @@ fn serialize_stmt(
       id
     }
     Stmt::DoWhile(node) => {
-      let id = ctx.push_node(AstNode::DoWhile, parent_id, &node.span);
+      let id = ctx.push_node(AstNode::DoWhileStatement, parent_id, &node.span);
 
       let offset = ctx.reserve_child_ids(2);
 
@@ -879,9 +908,125 @@ fn serialize_decl(
 ) -> usize {
   match decl {
     Decl::Class(node) => {
-      let id = ctx.push_node(AstNode::Class, parent_id, &node.class.span);
+      let id =
+        ctx.push_node(AstNode::ClassDeclaration, parent_id, &node.class.span);
 
-      // FIXME
+      let mut flags = FlagValue::new();
+      if node.declare {
+        flags.set(Flag::ClassDeclare)
+      }
+      if node.class.is_abstract {
+        flags.set(Flag::ClassAbstract)
+      }
+
+      let offset = ctx.reserve_child_ids(4);
+      let impl_offset =
+        ctx.reserve_child_ids_with_count(node.class.implements.len());
+      let body_offset = ctx.reserve_child_ids_with_count(node.class.body.len());
+
+      let ident_id = serialize_ident(ctx, &node.ident, id);
+      ctx.set_child(offset, ident_id, 0);
+
+      if let Some(type_params) = &node.class.type_params {
+        // FIXME
+      }
+
+      if let Some(super_class) = &node.class.super_class {
+        let super_id = serialize_expr(ctx, &super_class, id);
+        ctx.set_child(offset, super_id, 2);
+      }
+
+      if let Some(type_params) = &node.class.super_type_params {
+        // FIXME
+        // let type_id = serialize_expr(ctx,&type_params, id);
+        // ctx.set_child(offset, type_id, 3);
+      }
+
+      for (i, imp) in node.class.implements.iter().enumerate() {
+        // FIXME
+        // ctx.set_child(impl_offset, child_id, i);
+      }
+
+      for (i, member) in node.class.body.iter().enumerate() {
+        let child_id = match member {
+          ClassMember::Constructor(constructor) => {
+            let member_id =
+              ctx.push_node(AstNode::MethodDefinition, id, &constructor.span);
+
+            let mut flags = FlagValue::new();
+            flags.set(Flag::ClassConstructor);
+            accessibility_to_flag(&mut flags, constructor.accessibility);
+
+            ctx.result.push(flags.0);
+
+            let offset = ctx.reserve_child_ids(2);
+            let param_offset = ctx.reserve_child_ids(constructor.params.len());
+
+            let key_id = serialize_prop_name(ctx, &constructor.key, member_id);
+            ctx.set_child(offset, key_id, 0);
+
+            if let Some(body) = &constructor.body {
+              let body_id =
+                serialize_stmt(ctx, &Stmt::Block(body.clone()), member_id);
+              ctx.set_child(offset, body_id, 1);
+            }
+
+            for (i, param) in constructor.params.iter().enumerate() {
+              let child_id = match param {
+                ParamOrTsParamProp::TsParamProp(ts_param_prop) => todo!(),
+                ParamOrTsParamProp::Param(param) => {
+                  serialize_pat(ctx, &param.pat, member_id)
+                }
+              };
+              ctx.set_child(param_offset, child_id, i);
+            }
+
+            member_id
+          }
+          ClassMember::Method(method) => {
+            let member_id =
+              ctx.push_node(AstNode::MethodDefinition, id, &method.span);
+
+            let mut flags = FlagValue::new();
+            flags.set(Flag::ClassMethod);
+            if method.function.is_async {
+              //
+            }
+
+            accessibility_to_flag(&mut flags, method.accessibility);
+            ctx.result.push(flags.0);
+
+            let offset = ctx.reserve_child_ids(2);
+            let param_offset =
+              ctx.reserve_child_ids(method.function.params.len());
+
+            let key_id = serialize_prop_name(ctx, &method.key, member_id);
+            ctx.set_child(offset, key_id, 0);
+
+            if let Some(body) = &method.function.body {
+              let body_id =
+                serialize_stmt(ctx, &Stmt::Block(body.clone()), member_id);
+              ctx.set_child(offset, body_id, 1);
+            }
+
+            for (i, param) in method.function.params.iter().enumerate() {
+              let child_id = serialize_pat(ctx, &param.pat, member_id);
+              ctx.set_child(param_offset, child_id, i);
+            }
+
+            member_id
+          }
+          ClassMember::PrivateMethod(private_method) => todo!(),
+          ClassMember::ClassProp(class_prop) => todo!(),
+          ClassMember::PrivateProp(private_prop) => todo!(),
+          ClassMember::TsIndexSignature(ts_index_signature) => todo!(),
+          ClassMember::Empty(_) => unreachable!(),
+          ClassMember::StaticBlock(static_block) => todo!(),
+          ClassMember::AutoAccessor(auto_accessor) => todo!(),
+        };
+
+        ctx.set_child(body_offset, child_id, i);
+      }
 
       id
     }
@@ -1195,9 +1340,9 @@ fn serialize_expr(
     }
     Expr::Fn(node) => {
       let fn_obj = node.function.as_ref();
-      let id = ctx.push_node(AstNode::FnExpr, parent_id, &fn_obj.span);
+      let id =
+        ctx.push_node(AstNode::FunctionExpression, parent_id, &fn_obj.span);
 
-      let flag_offset = ctx.reserve_flag();
       let mut flags = FlagValue::new();
       if fn_obj.is_async {
         flags.set(Flag::FnAsync)
@@ -1205,9 +1350,11 @@ fn serialize_expr(
       if fn_obj.is_generator {
         flags.set(Flag::FnGenerator)
       }
-      ctx.result[flag_offset] = flags.0;
+      ctx.result.push(flags.0);
 
-      let offset = ctx.reserve_child_ids(2);
+      let offset = ctx.reserve_child_ids(4);
+      let param_offset = ctx.reserve_child_ids_with_count(fn_obj.params.len());
+
       if let Some(ident) = &node.ident {
         let ident_id = serialize_ident(ctx, ident, id);
         ctx.set_child(offset, ident_id, 0);
@@ -1218,14 +1365,11 @@ fn serialize_expr(
         ctx.set_child(offset, 0, 1);
       }
 
-      let param_offset = ctx.reserve_child_ids_with_count(fn_obj.params.len());
-
       for (i, param) in fn_obj.params.iter().enumerate() {
         let child_id = serialize_pat(ctx, &param.pat, id);
         ctx.set_child(param_offset, child_id, i);
       }
 
-      let offset = ctx.reserve_child_ids(2);
       if let Some(return_type) = &fn_obj.return_type {
         // FIXME
         ctx.set_child(offset, 0, 1);
@@ -1710,6 +1854,21 @@ fn serialize_expr(
   }
 }
 
+fn accessibility_to_flag(
+  flags: &mut FlagValue,
+  accessibility: Option<Accessibility>,
+) {
+  if let Some(accessibility) = &accessibility {
+    let value = match accessibility {
+      Accessibility::Public => Flag::ClassPublic,
+      Accessibility::Protected => Flag::ClassProtected,
+      Accessibility::Private => Flag::ClassPrivate,
+    };
+
+    flags.set(value);
+  }
+}
+
 fn serialize_jsx_element(
   ctx: &mut SerializeCtx,
   node: &JSXElement,
@@ -1987,14 +2146,24 @@ fn serialize_pat(ctx: &mut SerializeCtx, pat: &Pat, parent_id: usize) -> usize {
     Pat::Array(node) => {
       let id = ctx.push_node(AstNode::ArrayPattern, parent_id, &node.span);
 
-      // FIXME: Optional
+      let mut flags = FlagValue::new();
+      if node.optional {
+        flags.set(Flag::ParamOptional);
+      }
+      ctx.result.push(flags.0);
+
+      let offset = ctx.reserve_child_ids(1);
+      let elem_offset = ctx.reserve_child_ids_with_count(node.elems.len());
+
       // FIXME: Type Ann
-      let offset = ctx.reserve_child_ids_with_count(node.elems.len());
+      if let Some(type_ann) = &node.type_ann {
+        // ctx.set_child(offset, child_id, 0);
+      }
 
       for (i, elem) in node.elems.iter().enumerate() {
         if let Some(pat) = elem {
           let child_id = serialize_pat(ctx, pat, id);
-          ctx.set_child(offset, child_id, i);
+          ctx.set_child(elem_offset, child_id, i);
         }
       }
 
@@ -2017,9 +2186,19 @@ fn serialize_pat(ctx: &mut SerializeCtx, pat: &Pat, parent_id: usize) -> usize {
     Pat::Object(node) => {
       let id = ctx.push_node(AstNode::ObjectPattern, parent_id, &node.span);
 
-      // FIXME: Optional
+      let mut flags = FlagValue::new();
+      if node.optional {
+        flags.set(Flag::ParamOptional);
+      }
+      ctx.result.push(flags.0);
+
+      let offset = ctx.reserve_child_ids(1);
+      let props_offset = ctx.reserve_child_ids_with_count(node.props.len());
+
       // FIXME: Type Ann
-      let offset = ctx.reserve_child_ids_with_count(node.props.len());
+      if let Some(type_ann) = &node.type_ann {
+        // ctx.set_child(offset, child_id, 0);
+      }
 
       for (i, prop) in node.props.iter().enumerate() {
         let child_id = match prop {
@@ -2067,7 +2246,7 @@ fn serialize_pat(ctx: &mut SerializeCtx, pat: &Pat, parent_id: usize) -> usize {
           }
         };
 
-        ctx.set_child(offset, child_id, i);
+        ctx.set_child(props_offset, child_id, i);
       }
 
       id

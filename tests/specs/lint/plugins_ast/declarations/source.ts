@@ -12,8 +12,8 @@ function foo5({ a = 2 }) {}
 function foo6([a, b]) {}
 function foo7<T, U>(a: T, b: U) {}
 
-async function foo() {}
-async function* foo() {
+async function foo8() {}
+async function* foo9() {
   yield 2;
 }
 
@@ -28,3 +28,8 @@ import * as imp1 from "./foo.ts";
 import imp2 from "./foo.ts";
 import { imp3, imp4 as imp5 } from "./foo.ts";
 import json from "./json.json" with { type: "json" };
+
+// Patterns
+function foo10([a, b]) {}
+function foo11({ a }) {}
+function foo11(a = 3) {}

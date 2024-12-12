@@ -16,6 +16,9 @@ outer: while (false) {
   continue outer;
 }
 
+do {
+} while (false);
+
 // Debugger
 debugger;
 
