@@ -79,11 +79,11 @@ pub async fn run_script(
     .create_main_worker(mode, main_module.clone())
     .await
     .inspect_err(|e| {
-      deno_telemetry::report_event("deno_boot_failure", e)
+      deno_telemetry::report_event("boot_failure", e)
     })?;
 
   let exit_code = worker.run().await.inspect_err(|e| {
-    deno_telemetry::report_event("deno_uncaught_exception", e)
+    deno_telemetry::report_event("uncaught_exception", e)
   })?;
   Ok(exit_code)
 }
