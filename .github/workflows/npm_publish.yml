@@ -9,6 +9,9 @@ on:
   release:
     types: [published]
 
+permissions:
+  id-token: write
+
 jobs:
   build:
     name: npm publish

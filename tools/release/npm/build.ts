@@ -201,11 +201,11 @@ if (args.publish) {
       continue;
     }
     const pkgDir = scopeDir.join(pkgName);
-    await $`cd ${pkgDir} && npm publish --access public`;
+    await $`cd ${pkgDir} && npm publish --provenance --access public`;
   }
 
   $.logStep(`Publishing deno...`);
-  await $`cd ${denoDir} && npm publish --access public`;
+  await $`cd ${denoDir} && npm publish --provenance --access public`;
 }
 
 function getPackageNameNoScope(name: Package) {
