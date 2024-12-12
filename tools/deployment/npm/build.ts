@@ -46,8 +46,8 @@ const markdownText = `# deno
 npm CLI distribution for [deno](https://deno.land)—a modern runtime for JavaScript and TypeScript.
 `;
 
-const currentDir = $.path(import.meta).parentOrThrow();
-const rootDir = currentDir.parentOrThrow().parentOrThrow();
+const currentDir = $.path(import.meta.url).parentOrThrow();
+const rootDir = currentDir.parentOrThrow().parentOrThrow().parentOrThrow();
 const outputDir = currentDir.join("./dist");
 const scopeDir = outputDir.join("@deno");
 const denoDir = outputDir.join("deno");
@@ -93,7 +93,7 @@ await $`mkdir -p ${denoDir} ${scopeDir}`;
   currentDir.join("install_api.cjs").copyFileToDirSync(denoDir);
   currentDir.join("install.cjs").copyFileToDirSync(denoDir);
   denoDir.join("package.json").writeJsonPrettySync(pkgJson);
-  rootDir.join("LICENSE").copyFileSync(denoDir.join("LICENSE"));
+  rootDir.join("LICENSE.md").copyFileSync(denoDir.join("LICENSE"));
   denoDir.join("README.md").writeTextSync(markdownText);
   // ensure the test files don't get published
   denoDir.join(".npmignore").writeTextSync("deno\ndeno.exe\n");
@@ -109,7 +109,7 @@ await $`mkdir -p ${denoDir} ${scopeDir}`;
 
     // download and extract the zip file
     const zipUrl =
-      `https://github.com/denoland/deno/releases/download/${version}/${pkg.zipFileName}`;
+      `https://github.com/denoland/deno/releases/download/v${version}/${pkg.zipFileName}`;
     await $.request(zipUrl).showProgress().pipeToPath(zipPath);
     await decompress(zipPath.toString(), pkgDir.toString());
     zipPath.removeSync();
