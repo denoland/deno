@@ -32,7 +32,7 @@ use crate::args::DenoSubcommand;
 use crate::args::Flags;
 use crate::args::LintFlags;
 use crate::factory::CliFactory;
-use crate::tools::lint::ast::serialize_ast_bin;
+use crate::tools::lint::swc::serialize_ast_bin;
 
 #[derive(Debug)]
 pub enum PluginRunnerRequest {

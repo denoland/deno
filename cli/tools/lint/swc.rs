@@ -24,536 +24,10 @@ use deno_ast::{
 };
 use indexmap::IndexMap;
 
-// Keep in sync with JS
-enum AstNode {
-  Invalid,
-  //
-  Program,
-
-  // Module declarations
-  Import,
-  ImportDecl,
-  ExportDecl,
-  ExportNamedDeclaration,
-  ExportDefaultDecl,
-  ExportDefaultExpr,
-  ExportAll,
-  TsImportEquals,
-  TsExportAssignment,
-  TsNamespaceExport,
-
-  // Decls
-  ClassDeclaration,
-  Fn,
-  Var,
-  Using,
-  TSInterface,
-  TsTypeAlias,
-  TSEnumDeclaration,
-  TsModule,
-
-  // Statements
-  Block,
-  Empty,
-  Debugger,
-  With,
-  Return,
-  Labeled,
-  Break,
-  Continue,
-  IfStatement,
-  Switch,
-  SwitchCase,
-  Throw,
-  TryStatement,
-  While,
-  DoWhileStatement,
-  ForStatement,
-  ForInStatement,
-  ForOfStatement,
-  Decl,
-  Expr,
-
-  // Expressions
-  This,
-  Array,
-  Object,
-  FunctionExpression,
-  Unary,
-  UpdateExpression,
-  BinaryExpression,
-  Assign,
-  MemberExpression,
-  Super,
-  Cond,
-  CallExpression,
-  New,
-  Paren,
-  Seq,
-  Identifier,
-  TemplateLiteral,
-  TaggedTemplateExpression,
-  ArrowFunctionExpression,
-  ClassExpr,
-  YieldExpression,
-  MetaProp,
-  AwaitExpression,
-  LogicalExpression,
-  TSTypeAssertion,
-  TsConstAssertion,
-  TSNonNullExpression,
-  TSAsExpression,
-  TsInstantiation,
-  TsSatisfies,
-  PrivateIdentifier,
-  ChainExpression,
-
-  // Literals
-  StringLiteral,
-  Bool,
-  Null,
-  NumericLiteral,
-  BigIntLiteral,
-  RegExpLiteral,
-
-  // Custom
-  EmptyExpr,
-  Spread,
-  Property,
-  VariableDeclarator,
-  CatchClause,
-  RestElement,
-  ExportSpecifier,
-  TemplateElement,
-  MethodDefinition,
-
-  // Patterns
-  ArrayPattern,
-  AssignmentPattern,
-  ObjectPattern,
-
-  // JSX
-  JSXAttribute,
-  JSXClosingElement,
-  JSXClosingFragment,
-  JSXElement,
-  JSXEmptyExpression,
-  JSXExpressionContainer,
-  JSXFragment,
-  JSXIdentifier,
-  JSXMemberExpression,
-  JSXNamespacedName,
-  JSXOpeningElement,
-  JSXOpeningFragment,
-  JSXSpreadAttribute,
-  JSXSpreadChild,
-  JSXText,
-
-  TSTypeAnnotation,
-  TSTypeParameterDeclaration,
-  TSTypeParameter,
-  TSEnumMember,
-  TSInterfaceBody,
-  TSInterfaceHeritage,
-  TSTypeReference,
-  TSThisType,
-  TSLiteralType,
-  TSInferType,
-  TSConditionalType,
-  TSUnionType,
-  TSIntersectionType,
-  TSMappedType,
-  TSTypeQuery,
-  TSTupleType,
-  TSFunctionType,
-  TsCallSignatureDeclaration,
-
-  TSAnyKeyword,
-  TSBigIntKeyword,
-  TSBooleanKeyword,
-  TSIntrinsicKeyword,
-  TSNeverKeyword,
-  TSNullKeyword,
-  TSNumberKeyword,
-  TSObjectKeyword,
-  TSStringKeyword,
-  TSSymbolKeyword,
-  TSUndefinedKeyword,
-  TSUnknownKeyword,
-  TSVoidKeyword,
-}
-
-impl From<AstNode> for u8 {
-  fn from(m: AstNode) -> u8 {
-    m as u8
-  }
-}
-
-const MASK_U32_1: u32 = 0b11111111_00000000_00000000_00000000;
-const MASK_U32_2: u32 = 0b00000000_11111111_00000000_00000000;
-const MASK_U32_3: u32 = 0b00000000_00000000_11111111_00000000;
-const MASK_U32_4: u32 = 0b00000000_00000000_00000000_11111111;
-
-fn append_u32(result: &mut Vec<u8>, value: u32) {
-  let v1: u8 = ((value & MASK_U32_1) >> 24) as u8;
-  let v2: u8 = ((value & MASK_U32_2) >> 16) as u8;
-  let v3: u8 = ((value & MASK_U32_3) >> 8) as u8;
-  let v4: u8 = (value & MASK_U32_4) as u8;
-
-  result.push(v1);
-  result.push(v2);
-  result.push(v3);
-  result.push(v4);
-}
-
-fn append_usize(result: &mut Vec<u8>, value: usize) {
-  let raw = u32::try_from(value).unwrap();
-  append_u32(result, raw);
-}
-
-fn write_usize(result: &mut [u8], value: usize, idx: usize) {
-  let raw = u32::try_from(value).unwrap();
-
-  let v1: u8 = ((raw & MASK_U32_1) >> 24) as u8;
-  let v2: u8 = ((raw & MASK_U32_2) >> 16) as u8;
-  let v3: u8 = ((raw & MASK_U32_3) >> 8) as u8;
-  let v4: u8 = (raw & MASK_U32_4) as u8;
-
-  result[idx] = v1;
-  result[idx + 1] = v2;
-  result[idx + 2] = v3;
-  result[idx + 3] = v4;
-}
-
-enum Flag {
-  ProgramModule,
-  FnAsync,
-  FnGenerator,
-  FnDeclare,
-  FnOptional,
-  MemberComputed,
-  MemberOptional,
-  PropShorthand,
-  PropComputed,
-  PropGetter,
-  PropSetter,
-  PropMethod,
-  VarVar,
-  VarConst,
-  VarLet,
-  VarDeclare,
-  ExportType,
-  TplTail,
-  ForAwait,
-  LogicalOr,
-  LogicalAnd,
-  LogicalNullishCoalescin,
-  JSXSelfClosing,
-
-  BinEqEq,
-  BinNotEq,
-  BinEqEqEq,
-  BinNotEqEq,
-  BinLt,
-  BinLtEq,
-  BinGt,
-  BinGtEq,
-  BinLShift,
-  BinRShift,
-  BinZeroFillRShift,
-  BinAdd,
-  BinSub,
-  BinMul,
-  BinDiv,
-  BinMod,
-  BinBitOr,
-  BinBitXor,
-  BinBitAnd,
-  BinIn,
-  BinInstanceOf,
-  BinExp,
-
-  UnaryMinus,
-  UnaryPlus,
-  UnaryBang,
-  UnaryTilde,
-  UnaryTypeOf,
-  UnaryVoid,
-  UnaryDelete,
-
-  UpdatePrefix,
-  UpdatePlusPlus,
-  UpdateMinusMinus,
-
-  YieldDelegate,
-  ParamOptional,
-
-  ClassDeclare,
-  ClassAbstract,
-  ClassConstructor,
-  ClassMethod,
-  ClassPublic,
-  ClassProtected,
-  ClassPrivate,
-
-  TsDeclare,
-  TsConst,
-  TsTrue,
-  TsPlus,
-  TsMinus,
-  TsReadonly,
-}
-
-fn assign_op_to_flag(m: AssignOp) -> u8 {
-  match m {
-    AssignOp::Assign => 0,
-    AssignOp::AddAssign => 1,
-    AssignOp::SubAssign => 2,
-    AssignOp::MulAssign => 3,
-    AssignOp::DivAssign => 4,
-    AssignOp::ModAssign => 5,
-    AssignOp::LShiftAssign => 6,
-    AssignOp::RShiftAssign => 7,
-    AssignOp::ZeroFillRShiftAssign => 8,
-    AssignOp::BitOrAssign => 9,
-    AssignOp::BitXorAssign => 10,
-    AssignOp::BitAndAssign => 11,
-    AssignOp::ExpAssign => 12,
-    AssignOp::AndAssign => 13,
-    AssignOp::OrAssign => 14,
-    AssignOp::NullishAssign => 15,
-  }
-}
-
-impl From<Flag> for u8 {
-  fn from(m: Flag) -> u8 {
-    match m {
-      Flag::ProgramModule => 0b00000001,
-      Flag::FnAsync => 0b00000001,
-      Flag::FnGenerator => 0b00000010,
-      Flag::FnDeclare => 0b00000100,
-      Flag::FnOptional => 0b00001000,
-      Flag::MemberComputed => 0b00000001,
-      Flag::MemberOptional => 0b00000010,
-      Flag::PropShorthand => 0b00000001,
-      Flag::PropComputed => 0b00000010,
-      Flag::PropGetter => 0b00000100,
-      Flag::PropSetter => 0b00001000,
-      Flag::PropMethod => 0b00010000,
-      Flag::VarVar => 0b00000001,
-      Flag::VarConst => 0b00000010,
-      Flag::VarLet => 0b00000100,
-      Flag::VarDeclare => 0b00001000,
-      Flag::ExportType => 0b000000001,
-      Flag::TplTail => 0b000000001,
-      Flag::ForAwait => 0b000000001,
-      Flag::LogicalOr => 0b000000001,
-      Flag::LogicalAnd => 0b000000010,
-      Flag::LogicalNullishCoalescin => 0b000000100,
-      Flag::JSXSelfClosing => 0b000000001,
-      Flag::BinEqEq => 1,
-      Flag::BinNotEq => 2,
-      Flag::BinEqEqEq => 3,
-      Flag::BinNotEqEq => 4,
-      Flag::BinLt => 5,
-      Flag::BinLtEq => 6,
-      Flag::BinGt => 7,
-      Flag::BinGtEq => 8,
-      Flag::BinLShift => 9,
-      Flag::BinRShift => 10,
-      Flag::BinZeroFillRShift => 11,
-      Flag::BinAdd => 12,
-      Flag::BinSub => 13,
-      Flag::BinMul => 14,
-      Flag::BinDiv => 15,
-      Flag::BinMod => 16,
-      Flag::BinBitOr => 17,
-      Flag::BinBitXor => 18,
-      Flag::BinBitAnd => 19,
-      Flag::BinIn => 20,
-      Flag::BinInstanceOf => 21,
-      Flag::BinExp => 22,
-
-      Flag::UnaryMinus => 1,
-      Flag::UnaryPlus => 2,
-      Flag::UnaryBang => 3,
-      Flag::UnaryTilde => 4,
-      Flag::UnaryTypeOf => 5,
-      Flag::UnaryVoid => 6,
-      Flag::UnaryDelete => 7,
-
-      Flag::UpdatePrefix => 0b000000001,
-      Flag::UpdatePlusPlus => 0b000000010,
-      Flag::UpdateMinusMinus => 0b000000100,
-
-      Flag::YieldDelegate => 1,
-      Flag::ParamOptional => 1,
-
-      Flag::ClassDeclare => 0b000000001,
-      Flag::ClassAbstract => 0b000000010,
-      Flag::ClassConstructor => 0b000000100,
-      Flag::ClassMethod => 0b000001000,
-      Flag::ClassPublic => 0b001000000,
-      Flag::ClassProtected => 0b010000000,
-      Flag::ClassPrivate => 0b10000000,
-
-      Flag::TsDeclare => 0b000000001,
-      Flag::TsConst => 0b000000010,
-      Flag::TsTrue => 0b000000100,
-      Flag::TsPlus => 0b000001000,
-      Flag::TsMinus => 0b000010000,
-      Flag::TsReadonly => 0b000100000,
-    }
-  }
-}
-
-#[derive(Debug, Clone)]
-struct FlagValue(u8);
-
-impl FlagValue {
-  fn new() -> Self {
-    Self(0)
-  }
-
-  fn set(&mut self, flag: Flag) {
-    let value: u8 = flag.into();
-    self.0 |= value;
-  }
-}
-
-#[derive(Debug)]
-struct StringTable {
-  id: usize,
-  table: IndexMap<String, usize>,
-}
-
-impl StringTable {
-  fn new() -> Self {
-    Self {
-      id: 0,
-      table: IndexMap::new(),
-    }
-  }
-
-  fn insert(&mut self, s: &str) -> usize {
-    if let Some(id) = self.table.get(s) {
-      return *id;
-    }
-
-    let id = self.id;
-    self.id += 1;
-    self.table.insert(s.to_string(), id);
-    id
-  }
-
-  fn serialize(&mut self) -> Vec<u8> {
-    let mut result: Vec<u8> = vec![];
-    append_u32(&mut result, self.table.len() as u32);
-
-    // Assume that it's sorted by id
-    for (s, _id) in &self.table {
-      let bytes = s.as_bytes();
-      append_u32(&mut result, bytes.len() as u32);
-      result.append(&mut bytes.to_vec());
-    }
-
-    // eprintln!("Serialized string table: {:#?}", result);
-
-    result
-  }
-}
-
-struct SerializeCtx {
-  id: usize,
-  id_to_offset: IndexMap<usize, usize>,
-  result: Vec<u8>,
-  str_table: StringTable,
-}
-
-impl SerializeCtx {
-  fn new() -> Self {
-    let mut ctx = Self {
-      id: 0,
-      id_to_offset: IndexMap::new(),
-      result: vec![],
-      str_table: StringTable::new(),
-    };
-
-    ctx.str_table.insert("");
-
-    // Placeholder node
-    ctx.push_node(AstNode::Invalid, 0, &DUMMY_SP);
-
-    ctx
-  }
-
-  fn next_id(&mut self) -> usize {
-    let id = self.id;
-    self.id += 1;
-    id
-  }
-
-  fn write_u8(&mut self, value: u8) {
-    self.result.push(value);
-  }
-
-  fn write_node(
-    &mut self,
-    id: usize,
-    kind: AstNode,
-    parent_id: usize,
-    span: &Span,
-  ) {
-    self.id_to_offset.insert(id, self.result.len());
-
-    let kind_value: u8 = kind.into();
-    self.result.push(kind_value);
-    append_usize(&mut self.result, parent_id);
-
-    // Span
-    append_u32(&mut self.result, span.lo.0);
-    append_u32(&mut self.result, span.hi.0);
-  }
-
-  fn write_ids<I>(&mut self, ids: I)
-  where
-    I: IntoIterator<Item = usize>,
-  {
-    let mut count = 0;
-    let idx = self.result.len();
-    append_usize(&mut self.result, 0);
-
-    for id in ids {
-      append_usize(&mut self.result, id);
-      count += 1;
-    }
-
-    write_usize(&mut self.result, count, idx);
-  }
-
-  fn write_id(&mut self, id: usize) {
-    append_usize(&mut self.result, id);
-  }
-
-  fn write_flags(&mut self, flags: &FlagValue) {
-    self.result.push(flags.0)
-  }
-
-  fn push_node(
-    &mut self,
-    kind: AstNode,
-    parent_id: usize,
-    span: &Span,
-  ) -> usize {
-    let id = self.id;
-    self.id_to_offset.insert(id, self.result.len());
-    self.id += 1;
-
-    self.write_node(id, kind, parent_id, span);
-
-    id
-  }
-}
+use super::ast_buf::{
+  append_u32, append_usize, assign_op_to_flag, write_usize, AstNode, AstProp,
+  Flag, FlagValue, SerializeCtx, StringTable,
+};
 
 pub fn serialize_ast_bin(parsed_source: &ParsedSource) -> Vec<u8> {
   let mut ctx = SerializeCtx::new();
@@ -583,7 +57,7 @@ pub fn serialize_ast_bin(parsed_source: &ParsedSource) -> Vec<u8> {
 
       ctx.write_node(root_id, AstNode::Program, parent_id, &module.span);
       ctx.write_flags(&flags);
-      ctx.write_ids(child_ids);
+      ctx.write_ids(AstProp::Body, child_ids);
     }
     Program::Script(script) => {
       let child_ids = script
@@ -594,14 +68,14 @@ pub fn serialize_ast_bin(parsed_source: &ParsedSource) -> Vec<u8> {
 
       ctx.write_node(root_id, AstNode::Program, parent_id, &script.span);
       ctx.write_flags(&flags);
-      ctx.write_ids(child_ids);
+      ctx.write_ids(AstProp::Body, child_ids);
     }
   }
 
   let mut buf: Vec<u8> = vec![];
 
   // Append serialized AST
-  buf.append(&mut ctx.result);
+  buf.append(&mut ctx.buf);
 
   let offset_str_table = buf.len();
 
@@ -651,11 +125,6 @@ fn serialize_module_decl(
         .as_ref()
         .map_or(0, |src| serialize_lit(ctx, &Lit::Str(*src.clone()), id));
 
-      // FIXME: I don't think these are valid
-      let attr_id = node.with.as_ref().map_or(0, |attributes| {
-        serialize_expr(ctx, &Expr::Object(*attributes.clone()), id)
-      });
-
       let spec_ids = node
         .specifiers
         .iter()
@@ -701,9 +170,8 @@ fn serialize_module_decl(
         &node.span,
       );
       ctx.write_flags(&flags);
-      ctx.write_id(src_id);
-      ctx.write_id(attr_id);
-      ctx.write_ids(spec_ids);
+      ctx.write_prop(AstProp::Source, src_id);
+      ctx.write_ids(AstProp::Specifiers, spec_ids);
 
       id
     }
@@ -744,7 +212,7 @@ fn serialize_stmt(
         .collect::<Vec<_>>();
 
       ctx.write_node(id, AstNode::Block, parent_id, &node.span);
-      ctx.write_ids(children);
+      ctx.write_ids(AstProp::Body, children);
 
       id
     }
@@ -846,7 +314,7 @@ fn serialize_stmt(
 
           ctx.write_node(child_id, AstNode::SwitchCase, id, &case.span);
           ctx.write_id(test_id);
-          ctx.write_ids(cons);
+          ctx.write_ids(AstProp::Consequent, cons);
 
           child_id
         })
@@ -854,7 +322,7 @@ fn serialize_stmt(
 
       ctx.write_node(id, AstNode::Switch, parent_id, &node.span);
       ctx.write_id(expr_id);
-      ctx.write_ids(case_ids);
+      ctx.write_ids(AstProp::Cases, case_ids);
 
       id
     }
@@ -961,9 +429,9 @@ fn serialize_stmt(
       let body_id = serialize_stmt(ctx, node.body.as_ref(), id);
 
       ctx.write_node(id, AstNode::ForInStatement, parent_id, &node.span);
-      ctx.write_id(left_id);
-      ctx.write_id(right_id);
-      ctx.write_id(body_id);
+      ctx.write_prop(AstProp::Left, left_id);
+      ctx.write_prop(AstProp::Right, right_id);
+      ctx.write_prop(AstProp::Block, body_id);
 
       id
     }
@@ -979,9 +447,9 @@ fn serialize_stmt(
 
       ctx.write_node(id, AstNode::ForOfStatement, parent_id, &node.span);
       ctx.write_flags(&flags);
-      ctx.write_id(left_id);
-      ctx.write_id(right_id);
-      ctx.write_id(body_id);
+      ctx.write_prop(AstProp::Left, left_id);
+      ctx.write_prop(AstProp::Right, right_id);
+      ctx.write_prop(AstProp::Body, body_id);
 
       id
     }
@@ -990,8 +458,8 @@ fn serialize_stmt(
       let id = ctx.next_id();
 
       let child_id = serialize_expr(ctx, node.expr.as_ref(), id);
-      ctx.write_node(id, AstNode::Expr, parent_id, &node.span);
-      ctx.write_id(child_id);
+      ctx.write_node(id, AstNode::ExpressionStatement, parent_id, &node.span);
+      ctx.write_prop(AstProp::Expression, child_id);
 
       id
     }
@@ -1019,7 +487,7 @@ fn serialize_expr(
         .collect::<Vec<_>>();
 
       ctx.write_node(id, AstNode::Array, parent_id, &node.span);
-      ctx.write_ids(elem_ids);
+      ctx.write_ids(AstProp::Elements, elem_ids);
 
       id
     }
@@ -1166,7 +634,7 @@ fn serialize_expr(
         .collect::<Vec<_>>();
 
       ctx.write_node(id, AstNode::Object, parent_id, &node.span);
-      ctx.write_ids(prop_ids);
+      ctx.write_ids(AstProp::Properties, prop_ids);
 
       id
     }
@@ -1203,11 +671,11 @@ fn serialize_expr(
 
       ctx.write_node(id, AstNode::FunctionExpression, parent_id, &fn_obj.span);
       ctx.write_flags(&flags);
-      ctx.write_id(ident_id);
-      ctx.write_id(type_param_id);
-      ctx.write_ids(param_ids);
-      ctx.write_id(return_id);
-      ctx.write_id(block_id);
+      ctx.write_prop(AstProp::Id, ident_id);
+      ctx.write_prop(AstProp::TypeParameters, type_param_id);
+      ctx.write_ids(AstProp::Params, param_ids);
+      ctx.write_prop(AstProp::ReturnType, return_id);
+      ctx.write_prop(AstProp::Body, block_id);
 
       id
     }
@@ -1229,7 +697,7 @@ fn serialize_expr(
 
       ctx.write_node(id, AstNode::Unary, parent_id, &node.span);
       ctx.write_flags(&flags);
-      ctx.write_id(child_id);
+      ctx.write_prop(AstProp::Argument, child_id);
 
       id
     }
@@ -1249,7 +717,7 @@ fn serialize_expr(
 
       ctx.write_node(id, AstNode::UpdateExpression, parent_id, &node.span);
       ctx.write_flags(&flags);
-      ctx.write_id(child_id);
+      ctx.write_prop(AstProp::Argument, child_id);
 
       id
     }
@@ -1298,8 +766,8 @@ fn serialize_expr(
 
       ctx.write_node(id, node_type, parent_id, &node.span);
       ctx.write_flags(&flags);
-      ctx.write_id(left_id);
-      ctx.write_id(right_id);
+      ctx.write_prop(AstProp::Left, left_id);
+      ctx.write_prop(AstProp::Right, right_id);
 
       id
     }
@@ -1343,8 +811,8 @@ fn serialize_expr(
 
       ctx.write_node(id, AstNode::Assign, parent_id, &node.span);
       ctx.write_u8(assign_op_to_flag(node.op));
-      ctx.write_id(left_id);
-      ctx.write_id(right_id);
+      ctx.write_prop(AstProp::Left, left_id);
+      ctx.write_prop(AstProp::Right, right_id);
 
       id
     }
@@ -1381,9 +849,9 @@ fn serialize_expr(
       let alt_id = serialize_expr(ctx, node.alt.as_ref(), id);
 
       ctx.write_node(id, AstNode::Cond, parent_id, &node.span);
-      ctx.write_id(test_id);
-      ctx.write_id(cons_id);
-      ctx.write_id(alt_id);
+      ctx.write_prop(AstProp::Test, test_id);
+      ctx.write_prop(AstProp::Consequent, cons_id);
+      ctx.write_prop(AstProp::Alternate, alt_id);
 
       id
     }
@@ -1410,9 +878,9 @@ fn serialize_expr(
 
       ctx.write_node(id, AstNode::CallExpression, parent_id, &node.span);
       ctx.write_flags(&FlagValue::new());
-      ctx.write_id(callee_id);
-      ctx.write_id(type_id);
-      ctx.write_ids(arg_ids);
+      ctx.write_prop(AstProp::Callee, callee_id);
+      ctx.write_prop(AstProp::TypeArguments, type_id);
+      ctx.write_ids(AstProp::Arguments, arg_ids);
 
       id
     }
@@ -1433,9 +901,9 @@ fn serialize_expr(
       let type_arg_id = 0;
 
       ctx.write_node(id, AstNode::New, parent_id, &node.span);
-      ctx.write_id(callee_id);
-      ctx.write_id(type_arg_id);
-      ctx.write_ids(arg_ids);
+      ctx.write_prop(AstProp::Callee, callee_id);
+      ctx.write_prop(AstProp::TypeArguments, type_arg_id);
+      ctx.write_ids(AstProp::Arguments, arg_ids);
 
       id
     }
@@ -1448,8 +916,8 @@ fn serialize_expr(
         .map(|expr| serialize_expr(ctx, expr, id))
         .collect::<Vec<_>>();
 
-      ctx.write_node(id, AstNode::Seq, parent_id, &node.span);
-      ctx.write_ids(children);
+      ctx.write_node(id, AstNode::SequenceExpression, parent_id, &node.span);
+      ctx.write_ids(AstProp::Expressions, children);
 
       id
     }
@@ -1476,8 +944,8 @@ fn serialize_expr(
 
           ctx.write_node(tpl_id, AstNode::TemplateElement, id, &quasi.span);
           ctx.write_flags(&flags);
-          append_usize(&mut ctx.result, raw_str_id);
-          append_usize(&mut ctx.result, cooked_str_id);
+          append_usize(&mut ctx.buf, raw_str_id);
+          append_usize(&mut ctx.buf, cooked_str_id);
 
           tpl_id
         })
@@ -1490,8 +958,8 @@ fn serialize_expr(
         .collect::<Vec<_>>();
 
       ctx.write_node(id, AstNode::TemplateLiteral, parent_id, &node.span);
-      ctx.write_ids(quasi_ids);
-      ctx.write_ids(expr_ids);
+      ctx.write_ids(AstProp::Quasis, quasi_ids);
+      ctx.write_ids(AstProp::Expressions, expr_ids);
 
       id
     }
@@ -1510,9 +978,9 @@ fn serialize_expr(
         parent_id,
         &node.span,
       );
-      ctx.write_id(tag_id);
-      ctx.write_id(type_param_id);
-      ctx.write_id(quasi_id);
+      ctx.write_prop(AstProp::Tag, tag_id);
+      ctx.write_prop(AstProp::TypeArguments, type_param_id);
+      ctx.write_prop(AstProp::Quasi, quasi_id);
 
       id
     }
@@ -1553,10 +1021,10 @@ fn serialize_expr(
         &node.span,
       );
       ctx.write_flags(&flags);
-      ctx.write_id(type_param_id);
-      ctx.write_ids(param_ids);
-      ctx.write_id(body_id);
-      ctx.write_id(return_type_id);
+      ctx.write_prop(AstProp::TypeParameters, type_param_id);
+      ctx.write_ids(AstProp::Params, param_ids);
+      ctx.write_prop(AstProp::Body, body_id);
+      ctx.write_prop(AstProp::ReturnType, return_type_id);
 
       id
     }
@@ -1582,7 +1050,7 @@ fn serialize_expr(
 
       ctx.write_node(id, AstNode::YieldExpression, parent_id, &node.span);
       ctx.write_flags(&flags);
-      ctx.write_id(arg_id);
+      ctx.write_prop(AstProp::Argument, arg_id);
 
       id
     }
@@ -1702,16 +1170,16 @@ fn serialize_expr(
 
           ctx.write_node(call_id, AstNode::CallExpression, id, &opt_call.span);
           ctx.write_flags(&flags);
-          ctx.write_id(callee_id);
-          ctx.write_id(type_id);
-          ctx.write_ids(arg_ids);
+          ctx.write_prop(AstProp::Callee, callee_id);
+          ctx.write_prop(AstProp::TypeArguments, type_id);
+          ctx.write_ids(AstProp::Arguments, arg_ids);
 
           call_id
         }
       };
 
       ctx.write_node(id, AstNode::ChainExpression, parent_id, &node.span);
-      ctx.write_id(arg_id);
+      ctx.write_prop(AstProp::Expression, arg_id);
 
       id
     }
@@ -1749,8 +1217,8 @@ fn serialize_member_expr(
 
   ctx.write_node(id, AstNode::MemberExpression, parent_id, &node.span);
   ctx.write_flags(&flags);
-  ctx.write_id(obj_id);
-  ctx.write_id(prop_id);
+  ctx.write_prop(AstProp::Object, obj_id);
+  ctx.write_prop(AstProp::Property, prop_id);
 
   id
 }
@@ -1775,7 +1243,7 @@ fn serialize_ident(
   let id = ctx.push_node(AstNode::Identifier, parent_id, &ident.span);
 
   let str_id = ctx.str_table.insert(ident.sym.as_str());
-  append_usize(&mut ctx.result, str_id);
+  append_usize(&mut ctx.buf, str_id);
 
   id
 }
@@ -1879,7 +1347,8 @@ fn serialize_decl(
               ctx.write_flags(&flags);
               ctx.write_id(key_id);
               ctx.write_id(body_id);
-              ctx.write_ids(params);
+              // FIXME
+              ctx.write_ids(AstProp::Arguments, params);
 
               member_id
             }
@@ -1916,7 +1385,7 @@ fn serialize_decl(
               ctx.write_flags(&flags);
               ctx.write_id(key_id);
               ctx.write_id(body_id);
-              ctx.write_ids(params);
+              ctx.write_ids(AstProp::Params, params);
 
               member_id
             }
@@ -1942,8 +1411,11 @@ fn serialize_decl(
       ctx.write_id(type_param_id);
       ctx.write_id(super_class_id);
       ctx.write_id(super_type_params);
-      ctx.write_ids(implement_ids);
-      ctx.write_ids(member_ids);
+
+      // FIXME
+      ctx.write_ids(AstProp::Params, implement_ids);
+      // FIXME
+      ctx.write_ids(AstProp::Params, member_ids);
 
       id
     }
@@ -1979,11 +1451,11 @@ fn serialize_decl(
 
       ctx.write_node(id, AstNode::Fn, parent_id, &node.function.span);
       ctx.write_flags(&flags);
-      ctx.write_id(ident_id);
-      ctx.write_id(type_param_id);
-      ctx.write_id(return_type);
-      ctx.write_id(body_id);
-      ctx.write_ids(params);
+      ctx.write_prop(AstProp::Id, ident_id);
+      ctx.write_prop(AstProp::TypeParameters, type_param_id);
+      ctx.write_prop(AstProp::ReturnType, return_type);
+      ctx.write_prop(AstProp::Body, body_id);
+      ctx.write_ids(AstProp::Params, params);
 
       id
     }
@@ -2025,7 +1497,7 @@ fn serialize_decl(
 
       ctx.write_node(id, AstNode::Var, parent_id, &node.span);
       ctx.write_flags(&flags);
-      ctx.write_ids(children);
+      ctx.write_ids(AstProp::Declarations, children);
 
       id
     }
@@ -2094,7 +1566,8 @@ fn serialize_decl(
               &ts_call.span,
             );
             ctx.write_id(type_param_id);
-            ctx.write_ids(param_ids);
+            // FIXME
+            ctx.write_ids(AstProp::Params, param_ids);
             ctx.write_id(return_type_id);
 
             item_id
@@ -2112,13 +1585,17 @@ fn serialize_decl(
 
       let body_id = ctx.next_id();
       ctx.write_node(body_id, AstNode::TSInterfaceBody, id, &node.body.span);
-      ctx.write_ids(body_elem_ids);
+
+      // FIXME
+      // ctx.write_ids( body_elem_ids);
 
       ctx.write_node(id, AstNode::TSInterface, parent_id, &node.span);
       ctx.write_flags(&flags);
       ctx.write_id(ident_id);
       ctx.write_id(type_param);
-      ctx.write_ids(extend_ids);
+
+      // FIXME
+      // ctx.write_ids(extend_ids);
 
       id
     }
@@ -2187,7 +1664,7 @@ fn serialize_decl(
       ctx.write_node(id, AstNode::TSEnumDeclaration, parent_id, &node.span);
       ctx.write_flags(&flags);
       ctx.write_id(ident_id);
-      ctx.write_ids(member_ids);
+      ctx.write_ids(AstProp::Members, member_ids);
 
       id
     }
@@ -2220,7 +1697,7 @@ fn serialize_private_name(
   let id = ctx.push_node(AstNode::PrivateIdentifier, parent_id, &node.span);
 
   let str_id = ctx.str_table.insert(node.name.as_str());
-  append_usize(&mut ctx.result, str_id);
+  append_usize(&mut ctx.buf, str_id);
 
   id
 }
@@ -2247,9 +1724,9 @@ fn serialize_jsx_element(
   let children = serialize_jsx_children(ctx, &node.children, id);
 
   ctx.write_node(id, AstNode::JSXElement, parent_id, &node.span);
-  ctx.write_id(opening_id);
-  ctx.write_id(closing_id);
-  ctx.write_ids(children);
+  ctx.write_prop(AstProp::OpeningElement, opening_id);
+  ctx.write_prop(AstProp::ClosingElement, closing_id);
+  ctx.write_ids(AstProp::Children, children);
 
   id
 }
@@ -2269,9 +1746,9 @@ fn serialize_jsx_fragment(
   let children = serialize_jsx_children(ctx, &node.children, id);
 
   ctx.write_node(id, AstNode::JSXFragment, parent_id, &node.span);
-  ctx.write_id(opening_id);
-  ctx.write_id(closing_id);
-  ctx.write_ids(children);
+  ctx.write_prop(AstProp::OpeningFragment, opening_id);
+  ctx.write_prop(AstProp::ClosingFragment, closing_id);
+  ctx.write_ids(AstProp::Children, children);
 
   id
 }
@@ -2291,8 +1768,8 @@ fn serialize_jsx_children(
           let raw_id = ctx.str_table.insert(text.raw.as_str());
           let value_id = ctx.str_table.insert(text.value.as_str());
 
-          append_usize(&mut ctx.result, raw_id);
-          append_usize(&mut ctx.result, value_id);
+          append_usize(&mut ctx.buf, raw_id);
+          append_usize(&mut ctx.buf, value_id);
 
           id
         }
@@ -2329,8 +1806,8 @@ fn serialize_jsx_member_expr(
   let prop_id = serialize_ident_name_as_jsx_identifier(ctx, &node.prop, id);
 
   ctx.write_node(id, AstNode::JSXMemberExpression, parent_id, &node.span);
-  ctx.write_id(obj_id);
-  ctx.write_id(prop_id);
+  ctx.write_prop(AstProp::Object, obj_id);
+  ctx.write_prop(AstProp::Property, prop_id);
 
   id
 }
@@ -2418,8 +1895,8 @@ fn serialize_jsx_opening_element(
 
   ctx.write_node(id, AstNode::JSXOpeningElement, parent_id, &node.span);
   ctx.write_flags(&flags);
-  ctx.write_id(name_id);
-  ctx.write_ids(attr_ids);
+  ctx.write_prop(AstProp::Name, name_id);
+  ctx.write_ids(AstProp::Attributes, attr_ids);
 
   id
 }
@@ -2475,7 +1952,7 @@ fn serialize_ident_name_as_jsx_identifier(
   let id = ctx.push_node(AstNode::JSXIdentifier, parent_id, &node.span);
 
   let str_id = ctx.str_table.insert(node.sym.as_str());
-  append_usize(&mut ctx.result, str_id);
+  append_usize(&mut ctx.buf, str_id);
 
   id
 }
@@ -2488,7 +1965,7 @@ fn serialize_jsx_identifier(
   let id = ctx.push_node(AstNode::JSXIdentifier, parent_id, &node.span);
 
   let str_id = ctx.str_table.insert(node.sym.as_str());
-  append_usize(&mut ctx.result, str_id);
+  append_usize(&mut ctx.buf, str_id);
 
   id
 }
@@ -2514,8 +1991,8 @@ fn serialize_pat(ctx: &mut SerializeCtx, pat: &Pat, parent_id: usize) -> usize {
 
       ctx.write_node(id, AstNode::ArrayPattern, parent_id, &node.span);
       ctx.write_flags(&flags);
-      ctx.write_id(type_ann_id);
-      ctx.write_ids(children);
+      ctx.write_prop(AstProp::TypeAnnotation, type_ann_id);
+      ctx.write_ids(AstProp::Elements, children);
 
       id
     }
@@ -2526,8 +2003,8 @@ fn serialize_pat(ctx: &mut SerializeCtx, pat: &Pat, parent_id: usize) -> usize {
       let arg_id = serialize_pat(ctx, &node.arg, parent_id);
 
       ctx.write_node(id, AstNode::RestElement, parent_id, &node.span);
-      ctx.write_id(type_ann_id);
-      ctx.write_id(arg_id);
+      ctx.write_prop(AstProp::TypeAnnotation, type_ann_id);
+      ctx.write_prop(AstProp::Argument, arg_id);
 
       id
     }
@@ -2601,7 +2078,7 @@ fn serialize_pat(ctx: &mut SerializeCtx, pat: &Pat, parent_id: usize) -> usize {
 
       ctx.write_node(id, AstNode::ObjectPattern, parent_id, &node.span);
       ctx.write_flags(&flags);
-      ctx.write_ids(children);
+      ctx.write_ids(AstProp::Properties, children);
 
       id
     }
@@ -2661,7 +2138,7 @@ fn serialize_ident_name(
   let id = ctx.push_node(AstNode::Identifier, parent_id, &ident_name.span);
 
   let str_id = ctx.str_table.insert(ident_name.sym.as_str());
-  append_usize(&mut ctx.result, str_id);
+  append_usize(&mut ctx.buf, str_id);
 
   id
 }
@@ -2680,7 +2157,7 @@ fn serialize_prop_name(
         ctx.push_node(AstNode::StringLiteral, parent_id, &str_prop.span);
 
       let str_id = ctx.str_table.insert(str_prop.value.as_str());
-      append_usize(&mut ctx.result, str_id);
+      append_usize(&mut ctx.buf, str_id);
 
       child_id
     }
@@ -2699,7 +2176,7 @@ fn serialize_lit(ctx: &mut SerializeCtx, lit: &Lit, parent_id: usize) -> usize {
     Lit::Str(node) => {
       let id = ctx.push_node(AstNode::StringLiteral, parent_id, &node.span);
       let str_id = ctx.str_table.insert(node.value.as_str());
-      append_usize(&mut ctx.result, str_id);
+      append_usize(&mut ctx.buf, str_id);
 
       id
     }
@@ -2707,7 +2184,7 @@ fn serialize_lit(ctx: &mut SerializeCtx, lit: &Lit, parent_id: usize) -> usize {
       let id = ctx.push_node(AstNode::Bool, parent_id, &lit_bool.span);
 
       let value: u8 = if lit_bool.value { 1 } else { 0 };
-      ctx.result.push(value);
+      ctx.buf.push(value);
 
       id
     }
@@ -2717,7 +2194,7 @@ fn serialize_lit(ctx: &mut SerializeCtx, lit: &Lit, parent_id: usize) -> usize {
 
       let value = node.raw.as_ref().unwrap();
       let str_id = ctx.str_table.insert(value.as_str());
-      append_usize(&mut ctx.result, str_id);
+      append_usize(&mut ctx.buf, str_id);
 
       id
     }
@@ -2725,7 +2202,7 @@ fn serialize_lit(ctx: &mut SerializeCtx, lit: &Lit, parent_id: usize) -> usize {
       let id = ctx.push_node(AstNode::BigIntLiteral, parent_id, &node.span);
 
       let str_id = ctx.str_table.insert(&node.value.to_string());
-      append_usize(&mut ctx.result, str_id);
+      append_usize(&mut ctx.buf, str_id);
 
       id
     }
@@ -2735,8 +2212,8 @@ fn serialize_lit(ctx: &mut SerializeCtx, lit: &Lit, parent_id: usize) -> usize {
       let pattern_id = ctx.str_table.insert(node.exp.as_str());
       let flag_id = ctx.str_table.insert(node.flags.as_str());
 
-      append_usize(&mut ctx.result, pattern_id);
-      append_usize(&mut ctx.result, flag_id);
+      append_usize(&mut ctx.buf, pattern_id);
+      append_usize(&mut ctx.buf, flag_id);
 
       id
     }
@@ -2786,7 +2263,8 @@ fn serialize_ts_type(
             .collect::<Vec<_>>();
 
           ctx.write_node(id, AstNode::TSFunctionType, parent_id, &node.span);
-          ctx.write_ids(param_ids);
+          // FIXME
+          ctx.write_ids(AstProp::Params, param_ids);
           //
           id
         }
@@ -2834,7 +2312,9 @@ fn serialize_ts_type(
         .collect::<Vec<_>>();
 
       ctx.write_node(id, AstNode::TSTupleType, parent_id, &node.span);
-      ctx.write_ids(children);
+
+      // FIXME
+      // ctx.write_ids(children);
 
       id
     }
@@ -2851,7 +2331,9 @@ fn serialize_ts_type(
           .collect::<Vec<_>>();
 
         ctx.write_node(id, AstNode::TSUnionType, parent_id, &node.span);
-        ctx.write_ids(children);
+
+        // FIXME
+        // ctx.write_ids(children);
 
         id
       }
@@ -2865,7 +2347,9 @@ fn serialize_ts_type(
           .collect::<Vec<_>>();
 
         ctx.write_node(id, AstNode::TSIntersectionType, parent_id, &node.span);
-        ctx.write_ids(children);
+
+        // FIXME
+        // ctx.write_ids(children);
 
         id
       }
@@ -3049,7 +2533,9 @@ fn maybe_serialize_ts_type_param(
       parent_id,
       &node.span,
     );
-    ctx.write_ids(children);
+
+    // FIXME
+    // ctx.write_ids(children);
 
     id
   })

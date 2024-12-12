@@ -288,7 +288,153 @@ const AstType = {
   JSXText: 104,
 };
 
-const AstNodeById = Object.keys(AstType);
+const AstTypeName = Object.keys(AstType);
+
+// Keep in sync with Rust
+const AstProp = [
+  // Base
+  "parent",
+  "range",
+  "type",
+  "_InternalFlags", // Internal
+
+  // Node
+  "alternate",
+  "argument",
+  "arguments",
+  "async",
+  "attributes",
+  "await",
+  "block",
+  "body",
+  "callee",
+  "cases",
+  "children",
+  "closingElement",
+  "closingFragment",
+  "computed",
+  "consequent",
+  "declarations",
+  "declare",
+  "definite",
+  "delegate",
+  "discrimininant",
+  "elements",
+  "expression",
+  "expressions",
+  "finalizer",
+  "flags",
+  "generator",
+  "handler",
+  "id",
+  "init",
+  "key",
+  "kind",
+  "label",
+  "left",
+  "members",
+  "meta",
+  "method",
+  "name",
+  "namespace",
+  "object",
+  "openingElement",
+  "openingFragment",
+  "operator",
+  "optional",
+  "params",
+  "pattern",
+  "prefix",
+  "properties",
+  "property",
+  "quasi",
+  "quasis",
+  "raw",
+  "returnType",
+  "right",
+  "selfClosing",
+  "shorthand",
+  "source",
+  "specifiers",
+  "tag",
+  "tail",
+  "test",
+  "typeAnnotation",
+  "typeArguments",
+  "typeParameters",
+  "update",
+  "value",
+];
+const AST_PROP_PARENT = AstProp.indexOf("parent");
+const AST_PROP_TYPE = AstProp.indexOf("type");
+const AST_PROP_RANGE = AstProp.indexOf("range");
+const AST_PROP_INTERNAL_FLAGS = AstProp.indexOf("_InternalFlags");
+const AST_PROP_ATTRIBUTE = AstProp.indexOf("attribute");
+
+/**
+ * @param {AstContext} ctx
+ * @param {number} offset
+ * @param {number} propId
+ */
+function readValue(ctx, offset, propId) {
+  const { buf } = ctx;
+
+  // FIXME
+  if (propId === AST_PROP_TYPE) {
+    const type = buf[offset];
+    return AstTypeName[type];
+  } else if (propId === AST_PROP_RANGE) {
+    const start = readU32(buf, offset + 1 + 4);
+    const end = readU32(buf, offset + 1 + 4 + 4);
+    return [start, end];
+  } else if (propId === AST_PROP_PARENT) {
+    const id = readU32(buf, offset + 1);
+    if (id === 0) return null;
+
+    const target = ctx.idTable[id];
+    return new Node(ctx, target);
+  } else if (propId === AST_PROP_INTERNAL_FLAGS) {
+    //
+  } else {
+    const type = buf[offset];
+
+    // type + parentId + SpanLo + SpanHi
+    offset += 1 + 4 + 4 + 4;
+
+    // Check for arrays
+    if (propId === AST_PROP_ATTRIBUTE && type === AstType.JSXOpeningElement) {
+    }
+
+    //
+    const target = 0;
+    return new Node(ctx, target);
+  }
+}
+
+class Node {
+  #ctx;
+  #offset;
+
+  static {
+    for (let i = 0; i < AstProp.length; i++) {
+      const name = AstProp[i];
+      Object.defineProperty(this, name, {
+        get() {
+          return readValue(this.#ctx, this.#offset, i);
+        },
+      });
+    }
+  }
+
+  /**
+   * @param {AstContext} ctx
+   * @param {number} offset
+   */
+  constructor(ctx, offset) {
+    this.#ctx = ctx;
+    this.#offset = offset;
+  }
+}
 
 /**
  * @param {AstContext} ctx
@@ -306,29 +452,8 @@ function createChildNodes(ctx, ids) {
   return out;
 }
 
-class BaseNode {
-  #ctx;
-  #parentId;
-
-  get parent() {
-    return /** @type {*} */ (createAstNode(
-      this.#ctx,
-      this.#parentId,
-    ));
-  }
-
-  /**
-   * @param {AstContext} ctx
-   * @param {number} parentId
-   */
-  constructor(ctx, parentId) {
-    this.#ctx = ctx;
-    this.#parentId = parentId;
-  }
-}
-
 /** @implements {Deno.Program} */
-class Program extends BaseNode {
+class Program extends Node {
   type = /** @type {const} */ ("Program");
   range;
   get body() {
@@ -356,7 +481,7 @@ class Program extends BaseNode {
 
 // Declarations
 /** @implements {Deno.FunctionDeclaration} */
-class FunctionDeclaration extends BaseNode {
+class FunctionDeclaration extends Node {
   type = /** @type {const} */ ("FunctionDeclaration");
   range;
 
@@ -426,7 +551,7 @@ class FunctionDeclaration extends BaseNode {
 }
 
 /** @implements {Deno.VariableDeclaration} */
-class VariableDeclaration extends BaseNode {
+class VariableDeclaration extends Node {
   type = /** @type {const} */ ("VariableDeclaration");
   range;
   get declarations() {
@@ -460,7 +585,7 @@ class VariableDeclaration extends BaseNode {
 }
 
 /** @implements {Deno.VariableDeclarator} */
-class VariableDeclarator extends BaseNode {
+class VariableDeclarator extends Node {
   type = /** @type {const} */ ("VariableDeclarator");
   range;
 
@@ -498,7 +623,7 @@ class VariableDeclarator extends BaseNode {
 // Statements
 
 /** @implements {Deno.BlockStatement} */
-class BlockStatement extends BaseNode {
+class BlockStatement extends Node {
   type = /** @type {const} */ ("BlockStatement");
   get body() {
     return createChildNodes(this.#ctx, this.#childIds);
@@ -523,7 +648,7 @@ class BlockStatement extends BaseNode {
 }
 
 /** @implements {Deno.BreakStatement} */
-class BreakStatement extends BaseNode {
+class BreakStatement extends Node {
   type = /** @type {const} */ ("BreakStatement");
   get label() {
     if (this.#labelId === 0) return null;
@@ -553,7 +678,7 @@ class BreakStatement extends BaseNode {
 }
 
 /** @implements {Deno.ContinueStatement} */
-class ContinueStatement extends BaseNode {
+class ContinueStatement extends Node {
   type = /** @type {const} */ ("ContinueStatement");
   range;
   get label() {
@@ -581,7 +706,7 @@ class ContinueStatement extends BaseNode {
 }
 
 /** @implements {Deno.DebuggerStatement} */
-class DebuggerStatement extends BaseNode {
+class DebuggerStatement extends Node {
   type = /** @type {const} */ ("DebuggerStatement");
   range;
 
@@ -597,7 +722,7 @@ class DebuggerStatement extends BaseNode {
 }
 
 /** @implements {Deno.DoWhileStatement} */
-class DoWhileStatement extends BaseNode {
+class DoWhileStatement extends Node {
   type = /** @type {const} */ ("DoWhileStatement");
   range;
   get test() {
@@ -635,7 +760,7 @@ class DoWhileStatement extends BaseNode {
 }
 
 /** @implements {Deno.ExpressionStatement} */
-class ExpressionStatement extends BaseNode {
+class ExpressionStatement extends Node {
   type = /** @type {const} */ ("ExpressionStatement");
   range;
   get expression() {
@@ -664,7 +789,7 @@ class ExpressionStatement extends BaseNode {
 }
 
 /** @implements {Deno.ForInStatement} */
-class ForInStatement extends BaseNode {
+class ForInStatement extends Node {
   type = /** @type {const} */ ("ForInStatement");
   range;
   get left() {
@@ -711,7 +836,7 @@ class ForInStatement extends BaseNode {
 }
 
 /** @implements {Deno.ForOfStatement} */
-class ForOfStatement extends BaseNode {
+class ForOfStatement extends Node {
   type = /** @type {const} */ ("ForOfStatement");
   range;
   get left() {
@@ -762,7 +887,7 @@ class ForOfStatement extends BaseNode {
 }
 
 /** @implements {Deno.ForStatement} */
-class ForStatement extends BaseNode {
+class ForStatement extends Node {
   type = /** @type {const} */ ("ForStatement");
   range;
   get init() {
@@ -822,7 +947,7 @@ class ForStatement extends BaseNode {
 }
 
 /** @implements {Deno.IfStatement} */
-class IfStatement extends BaseNode {
+class IfStatement extends Node {
   type = /** @type {const} */ ("IfStatement");
   range;
   get test() {
@@ -870,7 +995,7 @@ class IfStatement extends BaseNode {
 }
 
 /** @implements {Deno.LabeledStatement} */
-class LabeledStatement extends BaseNode {
+class LabeledStatement extends Node {
   type = /** @type {const} */ ("LabeledStatement");
   range;
   get label() {
@@ -908,7 +1033,7 @@ class LabeledStatement extends BaseNode {
 }
 
 /** @implements {Deno.ReturnStatement} */
-class ReturnStatement extends BaseNode {
+class ReturnStatement extends Node {
   type = /** @type {const} */ ("ReturnStatement");
   range;
   get argument() {
@@ -938,7 +1063,7 @@ class ReturnStatement extends BaseNode {
 }
 
 /** @implements {Deno.SwitchStatement} */
-class SwitchStatement extends BaseNode {
+class SwitchStatement extends Node {
   type = /** @type {const} */ ("SwitchStatement");
   range;
   get discriminant() {
@@ -973,7 +1098,7 @@ class SwitchStatement extends BaseNode {
 }
 
 /** @implements {Deno.SwitchCase} */
-class SwitchCase extends BaseNode {
+class SwitchCase extends Node {
   type = /** @type {const} */ ("SwitchCase");
   range;
   get test() {
@@ -1008,7 +1133,7 @@ class SwitchCase extends BaseNode {
 }
 
 /** @implements {Deno.ThrowStatement} */
-class ThrowStatement extends BaseNode {
+class ThrowStatement extends Node {
   type = /** @type {const} */ ("ThrowStatement");
   range;
   get argument() {
@@ -1037,7 +1162,7 @@ class ThrowStatement extends BaseNode {
 }
 
 /** @implements {Deno.TryStatement} */
-class TryStatement extends BaseNode {
+class TryStatement extends Node {
   type = /** @type {const} */ ("TryStatement");
   range;
   get block() {
@@ -1086,7 +1211,7 @@ class TryStatement extends BaseNode {
 }
 
 /** @implements {Deno.WhileStatement} */
-class WhileStatement extends BaseNode {
+class WhileStatement extends Node {
   type = /** @type {const} */ ("WhileStatement");
   range;
   get test() {
@@ -1161,7 +1286,7 @@ class WithStatement {
 // Expressions
 
 /** @implements {Deno.ArrayExpression} */
-class ArrayExpression extends BaseNode {
+class ArrayExpression extends Node {
   type = /** @type {const} */ ("ArrayExpression");
   range;
   get elements() {
@@ -1187,7 +1312,7 @@ class ArrayExpression extends BaseNode {
 }
 
 /** @implements {Deno.ArrowFunctionExpression} */
-class ArrowFunctionExpression extends BaseNode {
+class ArrowFunctionExpression extends Node {
   type = /** @type {const} */ ("ArrowFunctionExpression");
   range;
   async = false;
@@ -1262,7 +1387,7 @@ class ArrowFunctionExpression extends BaseNode {
 }
 
 /** @implements {Deno.AssignmentExpression} */
-class AssignmentExpression extends BaseNode {
+class AssignmentExpression extends Node {
   type = /** @type {const} */ ("AssignmentExpression");
   range;
   get left() {
@@ -1347,7 +1472,7 @@ function getAssignOperator(n) {
 }
 
 /** @implements {Deno.AwaitExpression} */
-class AwaitExpression extends BaseNode {
+class AwaitExpression extends Node {
   type = /** @type {const} */ ("AwaitExpression");
   range;
   get argument() {
@@ -1375,7 +1500,7 @@ class AwaitExpression extends BaseNode {
 }
 
 /** @implements {Deno.UpdateExpression} */
-class UpdateExpression extends BaseNode {
+class UpdateExpression extends Node {
   type = /** @type {const} */ ("UpdateExpression");
   range;
   get argument() {
@@ -1408,7 +1533,7 @@ class UpdateExpression extends BaseNode {
 }
 
 /** @implements {Deno.BinaryExpression} */
-class BinaryExpression extends BaseNode {
+class BinaryExpression extends Node {
   type = /** @type {const} */ ("BinaryExpression");
   range;
   get left() {
@@ -1504,7 +1629,7 @@ function getBinaryOperator(n) {
 }
 
 /** @implements {Deno.CallExpression} */
-class CallExpression extends BaseNode {
+class CallExpression extends Node {
   type = /** @type {const} */ ("CallExpression");
   range;
   get callee() {
@@ -1550,7 +1675,7 @@ class CallExpression extends BaseNode {
 }
 
 /** @implements {Deno.ChainExpression} */
-class ChainExpression extends BaseNode {
+class ChainExpression extends Node {
   type = /** @type {const} */ ("ChainExpression");
   range;
 
@@ -1576,7 +1701,7 @@ class ChainExpression extends BaseNode {
 }
 
 /** @implements {Deno.ConditionalExpression} */
-class ConditionalExpression extends BaseNode {
+class ConditionalExpression extends Node {
   type = /** @type {const} */ ("ConditionalExpression");
   range;
   get test() {
@@ -1623,7 +1748,7 @@ class ConditionalExpression extends BaseNode {
 }
 
 /** @implements {Deno.FunctionExpression} */
-class FunctionExpression extends BaseNode {
+class FunctionExpression extends Node {
   type = /** @type {const} */ ("FunctionExpression");
   range;
 
@@ -1696,7 +1821,7 @@ class FunctionExpression extends BaseNode {
 }
 
 /** @implements {Deno.Identifier} */
-class Identifier extends BaseNode {
+class Identifier extends Node {
   type = /** @type {const} */ ("Identifier");
   range;
   name = "";
@@ -1716,7 +1841,7 @@ class Identifier extends BaseNode {
 }
 
 /** @implements {Deno.LogicalExpression} */
-class LogicalExpression extends BaseNode {
+class LogicalExpression extends Node {
   type = /** @type {const} */ ("LogicalExpression");
   range;
   get left() {
@@ -1772,7 +1897,7 @@ function getLogicalOperator(n) {
 }
 
 /** @implements {Deno.MemberExpression} */
-class MemberExpression extends BaseNode {
+class MemberExpression extends Node {
   type = /** @type {const} */ ("MemberExpression");
   range;
   get object() {
@@ -1850,7 +1975,7 @@ class MetaProperty {
 }
 
 /** @implements {Deno.NewExpression} */
-class NewExpression extends BaseNode {
+class NewExpression extends Node {
   type = /** @type {const} */ ("NewExpression");
   range;
   get arguments() {
@@ -1885,7 +2010,7 @@ class NewExpression extends BaseNode {
 }
 
 /** @implements {Deno.ObjectExpression} */
-class ObjectExpression extends BaseNode {
+class ObjectExpression extends Node {
   type = /** @type {const} */ ("ObjectExpression");
   range;
   get properties() {
@@ -1911,7 +2036,7 @@ class ObjectExpression extends BaseNode {
 }
 
 /** @implements {Deno.ParenthesisExpression} */
-class ParenthesisExpression extends BaseNode {
+class ParenthesisExpression extends Node {
   type = /** @type {const} */ ("ParenthesisExpression");
   range;
   #ctx;
@@ -1937,7 +2062,7 @@ class ParenthesisExpression extends BaseNode {
 }
 
 /** @implements {Deno.PrivateIdentifier} */
-class PrivateIdentifier extends BaseNode {
+class PrivateIdentifier extends Node {
   type = /** @type {const} */ ("PrivateIdentifier");
   range;
   #ctx;
@@ -1959,7 +2084,7 @@ class PrivateIdentifier extends BaseNode {
 }
 
 /** @implements {Deno.Property} */
-class Property extends BaseNode {
+class Property extends Node {
   type = /** @type {const} */ ("Property");
   range;
   #ctx;
@@ -2001,7 +2126,7 @@ class Property extends BaseNode {
 }
 
 /** @implements {Deno.RestElement} */
-class RestElement extends BaseNode {
+class RestElement extends Node {
   type = /** @type {const} */ ("RestElement");
   range;
   #ctx;
@@ -2034,7 +2159,7 @@ class RestElement extends BaseNode {
 }
 
 /** @implements {Deno.SequenceExpression} */
-class SequenceExpression extends BaseNode {
+class SequenceExpression extends Node {
   type = /** @type {const} */ ("SequenceExpression");
   range;
   #ctx;
@@ -2060,7 +2185,7 @@ class SequenceExpression extends BaseNode {
 }
 
 /** @implements {Deno.SpreadElement} */
-class SpreadElement extends BaseNode {
+class SpreadElement extends Node {
   type = /** @type {const} */ ("SpreadElement");
   range;
   #ctx;
@@ -2086,7 +2211,7 @@ class SpreadElement extends BaseNode {
 }
 
 /** @implements {Deno.Super} */
-class Super extends BaseNode {
+class Super extends Node {
   type = /** @type {const} */ ("Super");
   range;
 
@@ -2102,7 +2227,7 @@ class Super extends BaseNode {
 }
 
 /** @implements {Deno.TaggedTemplateExpression} */
-class TaggedTemplateExpression extends BaseNode {
+class TaggedTemplateExpression extends Node {
   type = /** @type {const} */ ("TaggedTemplateExpression");
   range;
 
@@ -2144,7 +2269,7 @@ class TaggedTemplateExpression extends BaseNode {
 }
 
 /** @implements {Deno.UnaryExpression} */
-class UnaryExpression extends BaseNode {
+class UnaryExpression extends Node {
   type = /** @type {const} */ ("UnaryExpression");
   range;
 
@@ -2197,7 +2322,7 @@ function getUnaryOperator(n) {
 }
 
 /** @implements {Deno.YieldExpression} */
-class YieldExpression extends BaseNode {
+class YieldExpression extends Node {
   type = /** @type {const} */ ("YieldExpression");
   range;
   get argument() {
@@ -2232,7 +2357,7 @@ class YieldExpression extends BaseNode {
 // Literals
 
 /** @implements {Deno.BooleanLiteral} */
-class BooleanLiteral extends BaseNode {
+class BooleanLiteral extends Node {
   type = /** @type {const} */ ("BooleanLiteral");
   range;
   value = false;
@@ -2251,7 +2376,7 @@ class BooleanLiteral extends BaseNode {
 }
 
 /** @implements {Deno.BigIntLiteral} */
-class BigIntLiteral extends BaseNode {
+class BigIntLiteral extends Node {
   type = /** @type {const} */ ("BigIntLiteral");
   range;
   value;
@@ -2270,7 +2395,7 @@ class BigIntLiteral extends BaseNode {
 }
 
 /** @implements {Deno.NullLiteral} */
-class NullLiteral extends BaseNode {
+class NullLiteral extends Node {
   type = /** @type {const} */ ("NullLiteral");
   range;
   value = null;
@@ -2287,7 +2412,7 @@ class NullLiteral extends BaseNode {
 }
 
 /** @implements {Deno.NumericLiteral} */
-class NumericLiteral extends BaseNode {
+class NumericLiteral extends Node {
   type = /** @type {const} */ ("NumericLiteral");
   range;
   value = 0;
@@ -2306,7 +2431,7 @@ class NumericLiteral extends BaseNode {
 }
 
 /** @implements {Deno.RegExpLiteral} */
-class RegExpLiteral extends BaseNode {
+class RegExpLiteral extends Node {
   type = /** @type {const} */ ("RegExpLiteral");
   range;
   pattern = "";
@@ -2329,7 +2454,7 @@ class RegExpLiteral extends BaseNode {
 }
 
 /** @implements {Deno.StringLiteral} */
-class StringLiteral extends BaseNode {
+class StringLiteral extends Node {
   type = /** @type {const} */ ("StringLiteral");
   range;
   value = "";
@@ -2348,7 +2473,7 @@ class StringLiteral extends BaseNode {
 }
 
 /** @implements {Deno.TemplateLiteral} */
-class TemplateLiteral extends BaseNode {
+class TemplateLiteral extends Node {
   type = /** @type {const} */ ("TemplateLiteral");
   range;
 
@@ -2381,7 +2506,7 @@ class TemplateLiteral extends BaseNode {
 }
 
 /** @implements {Deno.TemplateElement} */
-class TemplateElement extends BaseNode {
+class TemplateElement extends Node {
   type = /** @type {const} */ ("TemplateElement");
   range;
 
@@ -2412,7 +2537,7 @@ class TemplateElement extends BaseNode {
 // Patterns
 
 /** @implements {Deno.AssignmentPattern} */
-class AssignmentPattern extends BaseNode {
+class AssignmentPattern extends Node {
   type = /** @type {const} */ ("AssignmentPattern");
   range;
 
@@ -2446,7 +2571,7 @@ class AssignmentPattern extends BaseNode {
 }
 
 /** @implements {Deno.ArrayPattern} */
-class ArrayPattern extends BaseNode {
+class ArrayPattern extends Node {
   type = /** @type {const} */ ("ArrayPattern");
   range;
 
@@ -2485,7 +2610,7 @@ class ArrayPattern extends BaseNode {
 }
 
 /** @implements {Deno.ObjectPattern} */
-class ObjectPattern extends BaseNode {
+class ObjectPattern extends Node {
   type = /** @type {const} */ ("ObjectPattern");
   range;
 
@@ -2526,7 +2651,7 @@ class ObjectPattern extends BaseNode {
 // JSX
 
 /** @implements {Deno.JSXAttribute} */
-class JSXAttribute extends BaseNode {
+class JSXAttribute extends Node {
   type = /** @type {const} */ ("JSXAttribute");
   range;
   get name() {
@@ -2565,7 +2690,7 @@ class JSXAttribute extends BaseNode {
 }
 
 /** @implements {Deno.JSXClosingElement} */
-class JSXClosingElement extends BaseNode {
+class JSXClosingElement extends Node {
   type = /** @type {const} */ ("JSXClosingElement");
   range;
   get name() {
@@ -2594,7 +2719,7 @@ class JSXClosingElement extends BaseNode {
 }
 
 /** @implements {Deno.JSXClosingFragment} */
-class JSXClosingFragment extends BaseNode {
+class JSXClosingFragment extends Node {
   type = /** @type {const} */ ("JSXClosingFragment");
   range;
 
@@ -2611,7 +2736,7 @@ class JSXClosingFragment extends BaseNode {
 }
 
 /** @implements {Deno.JSXElement} */
-class JSXElement extends BaseNode {
+class JSXElement extends Node {
   type = /** @type {const} */ ("JSXElement");
   range;
   get children() {
@@ -2656,7 +2781,7 @@ class JSXElement extends BaseNode {
 }
 
 /** @implements {Deno.JSXEmptyExpression} */
-class JSXEmptyExpression extends BaseNode {
+class JSXEmptyExpression extends Node {
   type = /** @type {const} */ ("JSXEmptyExpression");
   range;
 
@@ -2672,7 +2797,7 @@ class JSXEmptyExpression extends BaseNode {
 }
 
 /** @implements {Deno.JSXExpressionContainer} */
-class JSXExpressionContainer extends BaseNode {
+class JSXExpressionContainer extends Node {
   type = /** @type {const} */ ("JSXExpressionContainer");
   range;
   get expression() {
@@ -2701,7 +2826,7 @@ class JSXExpressionContainer extends BaseNode {
 }
 
 /** @implements {Deno.JSXFragment} */
-class JSXFragment extends BaseNode {
+class JSXFragment extends Node {
   type = /** @type {const} */ ("JSXFragment");
   range;
   get children() {
@@ -2746,7 +2871,7 @@ class JSXFragment extends BaseNode {
 }
 
 /** @implements {Deno.JSXIdentifier} */
-class JSXIdentifier extends BaseNode {
+class JSXIdentifier extends Node {
   type = /** @type {const} */ ("JSXIdentifier");
   range;
   name;
@@ -2766,7 +2891,7 @@ class JSXIdentifier extends BaseNode {
 }
 
 /** @implements {Deno.JSXMemberExpression} */
-class JSXMemberExpression extends BaseNode {
+class JSXMemberExpression extends Node {
   type = /** @type {const} */ ("JSXMemberExpression");
   range;
   get object() {
@@ -2804,7 +2929,7 @@ class JSXMemberExpression extends BaseNode {
 }
 
 /** @implements {Deno.JSXNamespacedName} */
-class JSXNamespacedName extends BaseNode {
+class JSXNamespacedName extends Node {
   type = /** @type {const} */ ("JSXNamespacedName");
   range;
   get name() {
@@ -2842,7 +2967,7 @@ class JSXNamespacedName extends BaseNode {
 }
 
 /** @implements {Deno.JSXOpeningElement} */
-class JSXOpeningElement extends BaseNode {
+class JSXOpeningElement extends Node {
   type = /** @type {const} */ ("JSXOpeningElement");
   range;
   get attributes() {
@@ -2880,7 +3005,7 @@ class JSXOpeningElement extends BaseNode {
 }
 
 /** @implements {Deno.JSXOpeningFragment} */
-class JSXOpeningFragment extends BaseNode {
+class JSXOpeningFragment extends Node {
   type = /** @type {const} */ ("JSXOpeningFragment");
   range;
 
@@ -2897,7 +3022,7 @@ class JSXOpeningFragment extends BaseNode {
 }
 
 /** @implements {Deno.JSXSpreadAttribute} */
-class JSXSpreadAttribute extends BaseNode {
+class JSXSpreadAttribute extends Node {
   type = /** @type {const} */ ("JSXSpreadAttribute");
   range;
 
@@ -2927,7 +3052,7 @@ class JSXSpreadAttribute extends BaseNode {
 }
 
 /** @implements {Deno.JSXText} */
-class JSXText extends BaseNode {
+class JSXText extends Node {
   type = /** @type {const} */ ("JSXText");
   range;
 

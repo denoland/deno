@@ -6379,7 +6379,7 @@ declare namespace Deno {
     arguments: Array<Expression | SpreadElement>;
     callee: Expression;
     // FIXME
-    // typeArguments: TSTypeParameterInstantiation | null;
+    typeArguments: null;
   }
 
   export interface ObjectExpression extends BaseNode {

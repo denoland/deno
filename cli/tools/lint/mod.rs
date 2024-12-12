@@ -53,11 +53,12 @@ use crate::util::fs::canonicalize_path;
 use crate::util::path::is_script_ext;
 use crate::util::sync::AtomicFlag;
 
-mod ast;
+mod ast_buf;
 mod linter;
 mod plugins;
 mod reporters;
 mod rules;
+mod swc;
 
 pub use linter::CliLinter;
 pub use linter::CliLinterOptions;
