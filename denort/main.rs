@@ -3,18 +3,22 @@
 use deno_core::error::generic_error;
 use deno_core::error::AnyError;
 use deno_core::error::JsError;
+use deno_lib::args::Flags;
+use deno_lib::deno_runtime;
+use deno_lib::deno_runtime::deno_core;
+use deno_lib::log;
+use deno_lib::standalone;
+use deno_lib::util;
+use deno_runtime::deno_terminal::colors;
 use deno_runtime::fmt_errors::format_js_error;
 use deno_runtime::tokio_util::create_and_run_current_thread_with_maybe_metrics;
 pub use deno_runtime::UNSTABLE_GRANULAR_FLAGS;
-use deno_terminal::colors;
 use indexmap::IndexMap;
 
 use std::borrow::Cow;
 use std::collections::HashMap;
 use std::env;
 use std::env::current_exe;
-
-use crate::args::Flags;
 
 pub(crate) fn unstable_exit_cb(feature: &str, api_name: &str) {
   log::error!(
@@ -63,10 +67,8 @@ fn main() {
   let future = async move {
     match standalone {
       Ok(Some(data)) => {
-        if let Some(otel_config) = data.metadata.otel_config.clone() {
-          deno_telemetry::init(otel_config)?;
-        }
-        util::logger::init(data.metadata.log_level);
+        deno_telemetry::init(deno_lib::args::otel_runtime_config())?;
+        util::logger::init(data.metadata.log_level, Some(flags.otel_config()));
         load_env_vars(&data.metadata.env_vars_from_env_file);
         let exit_code = standalone::run(data).await?;
         deno_runtime::exit(exit_code);

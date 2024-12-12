@@ -6,7 +6,7 @@ members = [
   "bench_util",
   "cli",
   "deno",
-  # "denort",
+  "denort",
   "ext/broadcast_channel",
   "ext/cache",
   "ext/canvas",
