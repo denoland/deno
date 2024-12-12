@@ -95,7 +95,9 @@ const Flags = {
   FnAsync: 0b00000001,
   FnGenerator: 0b00000010,
   FnDeclare: 0b00000100,
+  FnOptional: 0b00001000,
   MemberComputed: 0b00000001,
+  MemberOptional: 0b00000010,
   PropShorthand: 0b00000001,
   PropComputed: 0b00000010,
   PropGetter: 0b00000100,
@@ -243,7 +245,7 @@ const AstType = {
   TSInstantiation: 68,
   TSSatisfies: 69,
   PrivateIdentifier: 70,
-  OptChain: 71,
+  ChainExpression: 71,
 
   StringLiteral: 72,
   BooleanLiteral: 73,
@@ -1519,7 +1521,7 @@ class CallExpression extends BaseNode {
     return createAstNode(this.#ctx, this.#typeArgId);
   }
 
-  optional = false; // FIXME
+  optional = false;
 
   #ctx;
   #calleeId;
@@ -1530,13 +1532,15 @@ class CallExpression extends BaseNode {
    * @param {AstContext} ctx
    * @param {number} parentId
    * @param {Deno.Range} range
+   * @param {number} flags
    * @param {number} calleeId
    * @param {number} typeArgId
    * @param {number[]} argumentIds
    */
-  constructor(ctx, parentId, range, calleeId, typeArgId, argumentIds) {
+  constructor(ctx, parentId, range, flags, calleeId, typeArgId, argumentIds) {
     super(ctx, parentId);
 
+    this.optional = (flags & Flags.FnOptional) !== 0;
     this.#ctx = ctx;
     this.#calleeId = calleeId;
     this.range = range;
@@ -1546,19 +1550,28 @@ class CallExpression extends BaseNode {
 }
 
 /** @implements {Deno.ChainExpression} */
-class ChainExpression {
+class ChainExpression extends BaseNode {
   type = /** @type {const} */ ("ChainExpression");
   range;
 
+  get expression() {
+    return /** @type {*} */ (createAstNode(this.#ctx, this.#exprId));
+  }
+
   #ctx;
+  #exprId;
 
   /**
    * @param {AstContext} ctx
+   * @param {number} parentId
    * @param {Deno.Range} range
+   * @param {number} exprId
    */
-  constructor(ctx, range) {
+  constructor(ctx, parentId, range, exprId) {
+    super(ctx, parentId);
     this.#ctx = ctx;
     this.range = range;
+    this.#exprId = exprId;
   }
 }
 
@@ -1774,8 +1787,8 @@ class MemberExpression extends BaseNode {
       this.#propId,
     ));
   }
-  optional = false; // FIXME
-  computed = false; // FIXME
+  optional = false;
+  computed = false;
 
   #ctx;
   #objId;
@@ -1794,6 +1807,7 @@ class MemberExpression extends BaseNode {
 
     this.#ctx = ctx;
     this.computed = (flags & Flags.MemberComputed) !== 0;
+    this.optional = (flags & Flags.MemberOptional) !== 0;
     this.#objId = objId;
     this.#propId = propId;
     this.range = range;
@@ -3192,6 +3206,8 @@ function createAstNode(ctx, id) {
       return new BinaryExpression(ctx, parentId, range, flags, leftId, rightId);
     }
     case AstType.CallExpression: {
+      const flags = buf[offset];
+      offset += 1;
       const calleeId = readU32(buf, offset);
       const typeArgId = readU32(buf, offset + 4);
       const childIds = readChildIds(buf, offset + 8);
@@ -3199,10 +3215,15 @@ function createAstNode(ctx, id) {
         ctx,
         parentId,
         range,
+        flags,
         calleeId,
         typeArgId,
         childIds,
       );
+    }
+    case AstType.ChainExpression: {
+      const argId = readU32(buf, offset);
+      return new ChainExpression(ctx, parentId, range, argId);
     }
     case AstType.ConditionalExpression: {
       const testId = readU32(buf, offset);
@@ -3735,9 +3756,10 @@ function traverseInner(ctx, visitTypes, visitor, id) {
 
     // Expressions
     case AstType.CallExpression: {
-      const calleeId = readU32(buf, offset);
-      const typeArgId = readU32(buf, offset + 4);
-      const childIds = readChildIds(buf, offset + 8);
+      offset += 1; // skip flags
+      const calleeId = readU32(buf, offset + 1);
+      const typeArgId = readU32(buf, offset + 5);
+      const childIds = readChildIds(buf, offset + 9);
 
       traverseInner(ctx, visitTypes, visitor, calleeId);
       traverseInner(ctx, visitTypes, visitor, typeArgId);
@@ -3945,6 +3967,7 @@ function traverseInner(ctx, visitTypes, visitor, id) {
     case AstType.AwaitExpression:
     case AstType.BreakStatement:
     case AstType.ContinueStatement:
+    case AstType.ChainExpression:
     case AstType.ExpressionStatement:
     case AstType.JSXClosingElement:
     case AstType.JSXExpressionContainer:

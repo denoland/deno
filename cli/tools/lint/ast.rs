@@ -6,11 +6,13 @@ use deno_ast::{
       Ident, IdentName, JSXAttrName, JSXAttrOrSpread, JSXAttrValue, JSXElement,
       JSXElementChild, JSXElementName, JSXEmptyExpr, JSXExpr, JSXExprContainer,
       JSXFragment, JSXMemberExpr, JSXNamespacedName, JSXObject,
-      JSXOpeningElement, Lit, MemberProp, ModuleDecl, ModuleExportName,
-      ModuleItem, ObjectPatProp, Param, ParamOrTsParamProp, Pat, Program, Prop,
-      PropName, PropOrSpread, SimpleAssignTarget, Stmt, SuperProp, Tpl,
-      TsEntityName, TsEnumMemberId, TsLit, TsType, TsTypeAnn, TsTypeElement,
-      TsTypeParam, TsTypeParamDecl, TsUnionOrIntersectionType, VarDeclOrExpr,
+      JSXOpeningElement, Lit, MemberExpr, MemberProp, ModuleDecl,
+      ModuleExportName, ModuleItem, ObjectPatProp, OptChainBase, Param,
+      ParamOrTsParamProp, Pat, PrivateName, Program, Prop, PropName,
+      PropOrSpread, SimpleAssignTarget, Stmt, SuperProp, Tpl, TsEntityName,
+      TsEnumMemberId, TsFnOrConstructorType, TsFnParam, TsLit, TsType,
+      TsTypeAnn, TsTypeElement, TsTypeParam, TsTypeParamDecl, TsTypeQueryExpr,
+      TsUnionOrIntersectionType, VarDeclOrExpr,
     },
     common::{Span, Spanned, SyntaxContext, DUMMY_SP},
   },
@@ -84,7 +86,7 @@ enum AstNode {
   MemberExpression,
   Super,
   Cond,
-  Call,
+  CallExpression,
   New,
   Paren,
   Seq,
@@ -104,7 +106,7 @@ enum AstNode {
   TsInstantiation,
   TsSatisfies,
   PrivateIdentifier,
-  OptChain,
+  ChainExpression,
 
   // Literals
   StringLiteral,
@@ -161,6 +163,10 @@ enum AstNode {
   TSUnionType,
   TSIntersectionType,
   TSMappedType,
+  TSTypeQuery,
+  TSTupleType,
+  TSFunctionType,
+  TsCallSignatureDeclaration,
 
   TSAnyKeyword,
   TSBigIntKeyword,
@@ -224,7 +230,9 @@ enum Flag {
   FnAsync,
   FnGenerator,
   FnDeclare,
+  FnOptional,
   MemberComputed,
+  MemberOptional,
   PropShorthand,
   PropComputed,
   PropGetter,
@@ -324,7 +332,9 @@ impl From<Flag> for u8 {
       Flag::FnAsync => 0b00000001,
       Flag::FnGenerator => 0b00000010,
       Flag::FnDeclare => 0b00000100,
+      Flag::FnOptional => 0b00001000,
       Flag::MemberComputed => 0b00000001,
+      Flag::MemberOptional => 0b00000010,
       Flag::PropShorthand => 0b00000001,
       Flag::PropComputed => 0b00000010,
       Flag::PropGetter => 0b00000100,
@@ -1312,21 +1322,23 @@ fn serialize_expr(
       let left_id = match &node.left {
         AssignTarget::Simple(simple_assign_target) => {
           match simple_assign_target {
-            SimpleAssignTarget::Ident(binding_ident) => {
-              serialize_ident(ctx, &binding_ident.id, id)
+            SimpleAssignTarget::Ident(target) => {
+              serialize_ident(ctx, &target.id, id)
             }
-            SimpleAssignTarget::Member(member_expr) => {
-              serialize_expr(ctx, &Expr::Member(member_expr.clone()), id)
+            SimpleAssignTarget::Member(target) => {
+              serialize_expr(ctx, &Expr::Member(target.clone()), id)
             }
-            SimpleAssignTarget::SuperProp(super_prop_expr) => todo!(),
+            SimpleAssignTarget::SuperProp(target) => todo!(),
             SimpleAssignTarget::Paren(paren_expr) => todo!(),
-            SimpleAssignTarget::OptChain(opt_chain_expr) => todo!(),
+            SimpleAssignTarget::OptChain(target) => {
+              serialize_expr(ctx, &Expr::OptChain(target.clone()), id)
+            }
             SimpleAssignTarget::TsAs(ts_as_expr) => todo!(),
             SimpleAssignTarget::TsSatisfies(ts_satisfies_expr) => todo!(),
             SimpleAssignTarget::TsNonNull(ts_non_null_expr) => todo!(),
             SimpleAssignTarget::TsTypeAssertion(ts_type_assertion) => todo!(),
             SimpleAssignTarget::TsInstantiation(ts_instantiation) => todo!(),
-            SimpleAssignTarget::Invalid(invalid) => todo!(),
+            SimpleAssignTarget::Invalid(_) => unreachable!(),
           }
         }
         AssignTarget::Pat(target) => match target {
@@ -1336,7 +1348,7 @@ fn serialize_expr(
           AssignTargetPat::Object(object_pat) => {
             serialize_pat(ctx, &Pat::Object(object_pat.clone()), id)
           }
-          AssignTargetPat::Invalid(invalid) => todo!(),
+          AssignTargetPat::Invalid(_) => unreachable!(),
         },
       };
 
@@ -1349,38 +1361,7 @@ fn serialize_expr(
 
       id
     }
-    Expr::Member(node) => {
-      let id = ctx.next_id();
-
-      let mut flags = FlagValue::new();
-      let obj_id = serialize_expr(ctx, node.obj.as_ref(), id);
-
-      let prop_id = match &node.prop {
-        MemberProp::Ident(ident_name) => {
-          serialize_ident_name(ctx, ident_name, id)
-        }
-        MemberProp::PrivateName(private_name) => {
-          let child_id =
-            ctx.push_node(AstNode::PrivateIdentifier, id, &private_name.span);
-
-          let str_id = ctx.str_table.insert(private_name.name.as_str());
-          append_usize(&mut ctx.result, str_id);
-
-          child_id
-        }
-        MemberProp::Computed(computed_prop_name) => {
-          flags.set(Flag::MemberComputed);
-          serialize_expr(ctx, computed_prop_name.expr.as_ref(), id)
-        }
-      };
-
-      ctx.write_node(id, AstNode::MemberExpression, parent_id, &node.span);
-      ctx.write_flags(&flags);
-      ctx.write_id(obj_id);
-      ctx.write_id(prop_id);
-
-      id
-    }
+    Expr::Member(node) => serialize_member_expr(ctx, node, parent_id, false),
     Expr::SuperProp(node) => {
       let id = ctx.next_id();
 
@@ -1440,7 +1421,8 @@ fn serialize_expr(
         .map(|arg| serialize_expr_or_spread(ctx, arg, id))
         .collect::<Vec<_>>();
 
-      ctx.write_node(id, AstNode::Call, parent_id, &node.span);
+      ctx.write_node(id, AstNode::CallExpression, parent_id, &node.span);
+      ctx.write_flags(&FlagValue::new());
       ctx.write_id(callee_id);
       ctx.write_id(type_id);
       ctx.write_ids(arg_ids);
@@ -1692,25 +1674,84 @@ fn serialize_expr(
 
       id
     }
-    Expr::PrivateName(node) => {
-      let id = ctx.push_node(AstNode::PrivateIdentifier, parent_id, &node.span);
-
-      // FIXME
-
-      id
-    }
+    Expr::PrivateName(node) => serialize_private_name(ctx, node, parent_id),
     Expr::OptChain(node) => {
-      let id = ctx.push_node(AstNode::OptChain, parent_id, &node.span);
+      let id = ctx.next_id();
 
-      // FIXME
+      let arg_id = match node.base.as_ref() {
+        OptChainBase::Member(member_expr) => {
+          serialize_member_expr(ctx, member_expr, id, true)
+        }
+        OptChainBase::Call(opt_call) => {
+          let call_id = ctx.next_id();
+
+          let mut flags = FlagValue::new();
+          flags.set(Flag::FnOptional);
+
+          let callee_id = serialize_expr(ctx, &opt_call.callee, id);
+          let type_id = opt_call.type_args.as_ref().map_or(0, |type_arg| {
+            todo!() // FIXME
+          });
+
+          let arg_ids = opt_call
+            .args
+            .iter()
+            .map(|arg| serialize_expr_or_spread(ctx, arg, id))
+            .collect::<Vec<_>>();
+
+          ctx.write_node(call_id, AstNode::CallExpression, id, &opt_call.span);
+          ctx.write_flags(&flags);
+          ctx.write_id(callee_id);
+          ctx.write_id(type_id);
+          ctx.write_ids(arg_ids);
+
+          call_id
+        }
+      };
+
+      ctx.write_node(id, AstNode::ChainExpression, parent_id, &node.span);
+      ctx.write_id(arg_id);
 
       id
     }
-    Expr::Invalid(invalid) => {
-      // ctx.push_node(result, AstNode::Invalid.into(), &invalid.span);
-      todo!()
+    Expr::Invalid(_) => {
+      unreachable!()
     }
   }
+}
+
+fn serialize_member_expr(
+  ctx: &mut SerializeCtx,
+  node: &MemberExpr,
+  parent_id: usize,
+  optional: bool,
+) -> usize {
+  let id = ctx.next_id();
+
+  let mut flags = FlagValue::new();
+  if optional {
+    flags.set(Flag::MemberOptional)
+  }
+
+  let obj_id = serialize_expr(ctx, node.obj.as_ref(), id);
+
+  let prop_id = match &node.prop {
+    MemberProp::Ident(ident_name) => serialize_ident_name(ctx, ident_name, id),
+    MemberProp::PrivateName(private_name) => {
+      serialize_private_name(ctx, private_name, id)
+    }
+    MemberProp::Computed(computed_prop_name) => {
+      flags.set(Flag::MemberComputed);
+      serialize_expr(ctx, computed_prop_name.expr.as_ref(), id)
+    }
+  };
+
+  ctx.write_node(id, AstNode::MemberExpression, parent_id, &node.span);
+  ctx.write_flags(&flags);
+  ctx.write_id(obj_id);
+  ctx.write_id(prop_id);
+
+  id
 }
 
 fn serialize_expr_or_spread(
@@ -2033,7 +2074,31 @@ fn serialize_decl(
         .body
         .iter()
         .map(|item| match item {
-          TsTypeElement::TsCallSignatureDecl(ts_call_signature_decl) => todo!(),
+          TsTypeElement::TsCallSignatureDecl(ts_call) => {
+            let item_id = ctx.next_id();
+
+            let type_param_id =
+              maybe_serialize_ts_type_param(ctx, &ts_call.type_params, id);
+            let return_type_id =
+              maybe_serialize_ts_type_ann(ctx, &ts_call.type_ann, id);
+            let param_ids = ts_call
+              .params
+              .iter()
+              .map(|param| serialize_ts_fn_param(ctx, param, id))
+              .collect::<Vec<_>>();
+
+            ctx.write_node(
+              item_id,
+              AstNode::TsCallSignatureDeclaration,
+              id,
+              &ts_call.span,
+            );
+            ctx.write_id(type_param_id);
+            ctx.write_ids(param_ids);
+            ctx.write_id(return_type_id);
+
+            item_id
+          }
           TsTypeElement::TsConstructSignatureDecl(
             ts_construct_signature_decl,
           ) => todo!(),
@@ -2145,6 +2210,19 @@ fn accessibility_to_flag(
 
     flags.set(value);
   }
+}
+
+fn serialize_private_name(
+  ctx: &mut SerializeCtx,
+  node: &PrivateName,
+  parent_id: usize,
+) -> usize {
+  let id = ctx.push_node(AstNode::PrivateIdentifier, parent_id, &node.span);
+
+  let str_id = ctx.str_table.insert(node.name.as_str());
+  append_usize(&mut ctx.result, str_id);
+
+  id
 }
 
 fn serialize_jsx_element(
@@ -2539,7 +2617,7 @@ fn serialize_pat(ctx: &mut SerializeCtx, pat: &Pat, parent_id: usize) -> usize {
 
       id
     }
-    Pat::Invalid(node) => todo!(),
+    Pat::Invalid(_) => unreachable!(),
     Pat::Expr(node) => serialize_expr(ctx, node, parent_id),
   }
 }
@@ -2553,7 +2631,9 @@ fn serialize_for_head(
     ForHead::VarDecl(var_decl) => {
       serialize_decl(ctx, &Decl::Var(var_decl.clone()), parent_id)
     }
-    ForHead::UsingDecl(using_decl) => todo!(),
+    ForHead::UsingDecl(using_decl) => {
+      serialize_decl(ctx, &Decl::Using(using_decl.clone()), parent_id)
+    }
     ForHead::Pat(pat) => serialize_pat(ctx, pat, parent_id),
   }
 }
@@ -2694,13 +2774,30 @@ fn serialize_ts_type(
     TsType::TsThisType(node) => {
       ctx.push_node(AstNode::TSThisType, parent_id, &node.span)
     }
-    TsType::TsFnOrConstructorType(ts_fn_or_constructor_type) => todo!(),
+    TsType::TsFnOrConstructorType(node) => {
+      match node {
+        TsFnOrConstructorType::TsFnType(node) => {
+          let id = ctx.next_id();
+
+          let param_ids = node
+            .params
+            .iter()
+            .map(|param| serialize_ts_fn_param(ctx, param, id))
+            .collect::<Vec<_>>();
+
+          ctx.write_node(id, AstNode::TSFunctionType, parent_id, &node.span);
+          ctx.write_ids(param_ids);
+          //
+          id
+        }
+        TsFnOrConstructorType::TsConstructorType(ts_constructor_type) => {
+          todo!()
+        }
+      }
+    }
     TsType::TsTypeRef(node) => {
       let id = ctx.next_id();
-      let name_id = match &node.type_name {
-        TsEntityName::TsQualifiedName(ts_qualified_name) => todo!(),
-        TsEntityName::Ident(ident) => serialize_ident(ctx, ident, id),
-      };
+      let name_id = serialize_ts_entity_name(ctx, &node.type_name, id);
 
       // FIXME params
 
@@ -2709,10 +2806,38 @@ fn serialize_ts_type(
 
       id
     }
-    TsType::TsTypeQuery(ts_type_query) => todo!(),
+    TsType::TsTypeQuery(node) => {
+      let id = ctx.next_id();
+
+      let name_id = match &node.expr_name {
+        TsTypeQueryExpr::TsEntityName(entity) => {
+          serialize_ts_entity_name(ctx, entity, id)
+        }
+        TsTypeQueryExpr::Import(ts_import_type) => todo!(),
+      };
+
+      // FIXME: params
+
+      ctx.write_node(id, AstNode::TSTypeQuery, parent_id, &node.span);
+      ctx.write_id(name_id);
+
+      id
+    }
     TsType::TsTypeLit(ts_type_lit) => todo!(),
     TsType::TsArrayType(ts_array_type) => todo!(),
-    TsType::TsTupleType(ts_tuple_type) => todo!(),
+    TsType::TsTupleType(node) => {
+      let id = ctx.next_id();
+      let children = node
+        .elem_types
+        .iter()
+        .map(|elem| todo!())
+        .collect::<Vec<_>>();
+
+      ctx.write_node(id, AstNode::TSTupleType, parent_id, &node.span);
+      ctx.write_ids(children);
+
+      id
+    }
     TsType::TsOptionalType(ts_optional_type) => todo!(),
     TsType::TsRestType(ts_rest_type) => todo!(),
     TsType::TsUnionOrIntersectionType(node) => match node {
@@ -2834,6 +2959,17 @@ fn serialize_ts_type(
   }
 }
 
+fn serialize_ts_entity_name(
+  ctx: &mut SerializeCtx,
+  node: &TsEntityName,
+  parent_id: usize,
+) -> usize {
+  match &node {
+    TsEntityName::TsQualifiedName(ts_qualified_name) => todo!(),
+    TsEntityName::Ident(ident) => serialize_ident(ctx, ident, parent_id),
+  }
+}
+
 fn maybe_serialize_ts_type_ann(
   ctx: &mut SerializeCtx,
   node: &Option<Box<TsTypeAnn>>,
@@ -2917,4 +3053,23 @@ fn maybe_serialize_ts_type_param(
 
     id
   })
+}
+
+fn serialize_ts_fn_param(
+  ctx: &mut SerializeCtx,
+  node: &TsFnParam,
+  parent_id: usize,
+) -> usize {
+  match node {
+    TsFnParam::Ident(ident) => serialize_ident(ctx, ident, parent_id),
+    TsFnParam::Array(pat) => {
+      serialize_pat(ctx, &Pat::Array(pat.clone()), parent_id)
+    }
+    TsFnParam::Rest(pat) => {
+      serialize_pat(ctx, &Pat::Rest(pat.clone()), parent_id)
+    }
+    TsFnParam::Object(pat) => {
+      serialize_pat(ctx, &Pat::Object(pat.clone()), parent_id)
+    }
+  }
 }

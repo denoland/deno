@@ -6305,8 +6305,7 @@ declare namespace Deno {
 
   export interface ChainExpression extends BaseNode {
     type: "ChainExpression";
-    // FIXME
-    // expression: CallExpression | MemberExpression | TsNonNullExpression;
+    expression: CallExpression | MemberExpression | TSNonNullExpression;
   }
 
   // FIXME
@@ -6974,6 +6973,11 @@ declare namespace Deno {
   }
   export interface TSTypeAliasDeclaration extends BaseNode {
     type: "TSTypeAliasDeclaration";
+    // FIXME
+  }
+
+  export interface TSNonNullExpression extends BaseNode {
+    type: "TSNonNullExpression";
     // FIXME
   }
 
