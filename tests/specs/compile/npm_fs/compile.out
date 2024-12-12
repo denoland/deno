@@ -2,7 +2,7 @@
 
 Embedded File System
 
-main.exe
+main[WILDLINE]
 ├── main.ts
 └── node_modules/*
 
