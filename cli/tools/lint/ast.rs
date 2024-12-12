@@ -1680,15 +1680,17 @@ pub fn serialize_ast_bin(parsed_source: &ParsedSource) -> Vec<u8> {
       ctx.write_ids(child_ids);
     }
     Program::Script(script) => {
-      let id = ctx.push_node(AstNode::Program, parent_id, &script.span);
+      let id = ctx.next_id();
 
-      ctx.result.push(flags.0);
-      let offset = ctx.reserve_child_ids_with_count(script.body.len());
+      let child_ids = script
+        .body
+        .iter()
+        .map(|stmt| ctx.serialize_stmt(stmt, id))
+        .collect::<Vec<_>>();
 
-      for (i, stmt) in script.body.iter().enumerate() {
-        let child_id = ctx.serialize_stmt(stmt, id);
-        ctx.set_child(offset, child_id, i);
-      }
+      ctx.write_node(id, AstNode::Program, parent_id, &script.span);
+      ctx.write_flags(&flags);
+      ctx.write_ids(child_ids);
     }
   }
 
@@ -1719,8 +1721,7 @@ fn serialize_decl(
 ) -> usize {
   match decl {
     Decl::Class(node) => {
-      let id =
-        ctx.push_node(AstNode::ClassDeclaration, parent_id, &node.class.span);
+      let id = ctx.next_id();
 
       let mut flags = FlagValue::new();
       if node.declare {
@@ -1730,119 +1731,148 @@ fn serialize_decl(
         flags.set(Flag::ClassAbstract)
       }
 
-      let offset = ctx.reserve_child_ids(4);
-      let impl_offset =
-        ctx.reserve_child_ids_with_count(node.class.implements.len());
-      let body_offset = ctx.reserve_child_ids_with_count(node.class.body.len());
-
       let ident_id = ctx.serialize_ident(&node.ident, id);
-      ctx.set_child(offset, ident_id, 0);
+      let type_param_id =
+        node.class.type_params.as_ref().map_or(0, |type_params| {
+          // FIXME
+          todo!()
+        });
 
-      if let Some(type_params) = &node.class.type_params {
-        // FIXME
-      }
+      let super_class_id = node
+        .class
+        .super_class
+        .as_ref()
+        .map_or(0, |super_class| ctx.serialize_expr(&super_class, id));
 
-      if let Some(super_class) = &node.class.super_class {
-        let super_id = ctx.serialize_expr(&super_class, id);
-        ctx.set_child(offset, super_id, 2);
-      }
+      let super_type_params =
+        node
+          .class
+          .super_type_params
+          .as_ref()
+          .map_or(0, |super_params| {
+            // FIXME
+            todo!()
+          });
 
-      if let Some(type_params) = &node.class.super_type_params {
-        // FIXME
-        // let type_id = ctx.serialize_expr(&type_params, id);
-        // ctx.set_child(offset, type_id, 3);
-      }
+      let implement_ids = node
+        .class
+        .implements
+        .iter()
+        .map(|implements| {
+          // FIXME
+          todo!()
+        })
+        .collect::<Vec<_>>();
 
-      for (i, imp) in node.class.implements.iter().enumerate() {
-        // FIXME
-        // ctx.set_child(impl_offset, child_id, i);
-      }
+      let member_ids = node
+        .class
+        .body
+        .iter()
+        .map(|member| {
+          match member {
+            ClassMember::Constructor(constructor) => {
+              let member_id = ctx.next_id();
 
-      for (i, member) in node.class.body.iter().enumerate() {
-        let child_id = match member {
-          ClassMember::Constructor(constructor) => {
-            let member_id =
-              ctx.push_node(AstNode::MethodDefinition, id, &constructor.span);
+              let mut flags = FlagValue::new();
+              flags.set(Flag::ClassConstructor);
+              accessibility_to_flag(&mut flags, constructor.accessibility);
 
-            let mut flags = FlagValue::new();
-            flags.set(Flag::ClassConstructor);
-            accessibility_to_flag(&mut flags, constructor.accessibility);
+              let key_id =
+                serialize_prop_name(ctx, &constructor.key, member_id);
+              let body_id = constructor.body.as_ref().map_or(0, |body| {
+                ctx.serialize_stmt(&Stmt::Block(body.clone()), member_id)
+              });
 
-            ctx.result.push(flags.0);
+              let params = constructor
+                .params
+                .iter()
+                .map(|param| match param {
+                  ParamOrTsParamProp::TsParamProp(ts_param_prop) => todo!(),
+                  ParamOrTsParamProp::Param(param) => {
+                    serialize_pat(ctx, &param.pat, member_id)
+                  }
+                })
+                .collect::<Vec<_>>();
 
-            let offset = ctx.reserve_child_ids(2);
-            let param_offset = ctx.reserve_child_ids(constructor.params.len());
+              ctx.write_node(
+                member_id,
+                AstNode::MethodDefinition,
+                id,
+                &constructor.span,
+              );
+              ctx.write_flags(&flags);
+              ctx.write_id(key_id);
+              ctx.write_id(body_id);
+              ctx.write_ids(params);
 
-            let key_id = serialize_prop_name(ctx, &constructor.key, member_id);
-            ctx.set_child(offset, key_id, 0);
-
-            if let Some(body) = &constructor.body {
-              let body_id =
-                ctx.serialize_stmt(&Stmt::Block(body.clone()), member_id);
-              ctx.set_child(offset, body_id, 1);
+              member_id
             }
+            ClassMember::Method(method) => {
+              let member_id = ctx.next_id();
 
-            for (i, param) in constructor.params.iter().enumerate() {
-              let child_id = match param {
-                ParamOrTsParamProp::TsParamProp(ts_param_prop) => todo!(),
-                ParamOrTsParamProp::Param(param) => {
-                  serialize_pat(ctx, &param.pat, member_id)
-                }
-              };
-              ctx.set_child(param_offset, child_id, i);
+              let mut flags = FlagValue::new();
+              flags.set(Flag::ClassMethod);
+              if method.function.is_async {
+                // FIXME
+              }
+
+              accessibility_to_flag(&mut flags, method.accessibility);
+
+              let key_id = serialize_prop_name(ctx, &method.key, member_id);
+
+              let body_id = method.function.body.as_ref().map_or(0, |body| {
+                ctx.serialize_stmt(&Stmt::Block(body.clone()), member_id)
+              });
+
+              let params = method
+                .function
+                .params
+                .iter()
+                .map(|param| serialize_pat(ctx, &param.pat, member_id))
+                .collect::<Vec<_>>();
+
+              ctx.write_node(
+                member_id,
+                AstNode::MethodDefinition,
+                id,
+                &method.span,
+              );
+              ctx.write_flags(&flags);
+              ctx.write_id(key_id);
+              ctx.write_id(body_id);
+              ctx.write_ids(params);
+
+              member_id
             }
-
-            member_id
+            ClassMember::PrivateMethod(private_method) => todo!(),
+            ClassMember::ClassProp(class_prop) => todo!(),
+            ClassMember::PrivateProp(private_prop) => todo!(),
+            ClassMember::TsIndexSignature(ts_index_signature) => todo!(),
+            ClassMember::Empty(_) => unreachable!(),
+            ClassMember::StaticBlock(static_block) => todo!(),
+            ClassMember::AutoAccessor(auto_accessor) => todo!(),
           }
-          ClassMember::Method(method) => {
-            let member_id =
-              ctx.push_node(AstNode::MethodDefinition, id, &method.span);
+        })
+        .collect::<Vec<_>>();
 
-            let mut flags = FlagValue::new();
-            flags.set(Flag::ClassMethod);
-            if method.function.is_async {
-              //
-            }
-
-            accessibility_to_flag(&mut flags, method.accessibility);
-            ctx.result.push(flags.0);
-
-            let offset = ctx.reserve_child_ids(2);
-            let param_offset =
-              ctx.reserve_child_ids(method.function.params.len());
-
-            let key_id = serialize_prop_name(ctx, &method.key, member_id);
-            ctx.set_child(offset, key_id, 0);
-
-            if let Some(body) = &method.function.body {
-              let body_id =
-                ctx.serialize_stmt(&Stmt::Block(body.clone()), member_id);
-              ctx.set_child(offset, body_id, 1);
-            }
-
-            for (i, param) in method.function.params.iter().enumerate() {
-              let child_id = serialize_pat(ctx, &param.pat, member_id);
-              ctx.set_child(param_offset, child_id, i);
-            }
-
-            member_id
-          }
-          ClassMember::PrivateMethod(private_method) => todo!(),
-          ClassMember::ClassProp(class_prop) => todo!(),
-          ClassMember::PrivateProp(private_prop) => todo!(),
-          ClassMember::TsIndexSignature(ts_index_signature) => todo!(),
-          ClassMember::Empty(_) => unreachable!(),
-          ClassMember::StaticBlock(static_block) => todo!(),
-          ClassMember::AutoAccessor(auto_accessor) => todo!(),
-        };
-
-        ctx.set_child(body_offset, child_id, i);
-      }
+      ctx.write_node(
+        id,
+        AstNode::ClassDeclaration,
+        parent_id,
+        &node.class.span,
+      );
+      ctx.write_flags(&flags);
+      ctx.write_id(ident_id);
+      ctx.write_id(type_param_id);
+      ctx.write_id(super_class_id);
+      ctx.write_id(super_type_params);
+      ctx.write_ids(implement_ids);
+      ctx.write_ids(member_ids);
 
       id
     }
     Decl::Fn(node) => {
-      let id = ctx.push_node(AstNode::Fn, parent_id, &node.function.span);
+      let id = ctx.next_id();
       let mut flags = FlagValue::new();
       if node.declare {
         flags.set(Flag::FnDeclare)
@@ -1853,34 +1883,41 @@ fn serialize_decl(
       if node.function.is_generator {
         flags.set(Flag::FnGenerator)
       }
-      ctx.result.push(flags.0);
-
-      let offset = ctx.reserve_child_ids(4);
-      let param_offset =
-        ctx.reserve_child_ids_with_count(node.function.params.len());
 
       let ident_id = ctx.serialize_ident(&node.ident, parent_id);
-      ctx.set_child(offset, ident_id, 0);
 
-      if let Some(type_params) = &node.function.type_params {
-        // FIXME
-        // ctx.set_child(offset, type_param_id, 1);
-      }
+      let type_param_id =
+        node.function.type_params.as_ref().map_or(0, |type_param| {
+          // FIXME
+          todo!()
+        });
 
-      if let Some(return_type) = &node.function.return_type {
-        // FIXME
-        // ctx.set_child(offset, return_type_id, 2);
-      }
+      let return_type =
+        node.function.return_type.as_ref().map_or(0, |return_type| {
+          // FIXME
+          todo!()
+        });
 
-      if let Some(body) = &node.function.body {
-        let body_id = ctx.serialize_stmt(&Stmt::Block(body.clone()), id);
-        ctx.set_child(offset, body_id, 3);
-      }
+      let body_id = node
+        .function
+        .body
+        .as_ref()
+        .map_or(0, |body| ctx.serialize_stmt(&Stmt::Block(body.clone()), id));
 
-      for (i, param) in node.function.params.iter().enumerate() {
-        let child_id = serialize_pat(ctx, &param.pat, id);
-        ctx.set_child(param_offset, child_id, i);
-      }
+      let params = node
+        .function
+        .params
+        .iter()
+        .map(|param| serialize_pat(ctx, &param.pat, id))
+        .collect::<Vec<_>>();
+
+      ctx.write_node(id, AstNode::Fn, parent_id, &node.function.span);
+      ctx.write_flags(&flags);
+      ctx.write_id(ident_id);
+      ctx.write_id(type_param_id);
+      ctx.write_id(return_type);
+      ctx.write_id(body_id);
+      ctx.write_ids(params);
 
       id
     }
@@ -2055,8 +2092,8 @@ fn serialize_jsx_children(
       JSXElementChild::JSXText(text) => {
         let id = ctx.push_node(AstNode::JSXText, parent_id, &text.span);
 
-        let raw_id = ctx.str_table.insert(&text.raw.as_str());
-        let value_id = ctx.str_table.insert(&text.value.as_str());
+        let raw_id = ctx.str_table.insert(text.raw.as_str());
+        let value_id = ctx.str_table.insert(text.value.as_str());
 
         append_usize(&mut ctx.result, raw_id);
         append_usize(&mut ctx.result, value_id);
@@ -2449,7 +2486,7 @@ fn serialize_prop_name(
       let child_id =
         ctx.push_node(AstNode::StringLiteral, parent_id, &str_prop.span);
 
-      let str_id = ctx.str_table.insert(&str_prop.value.as_str());
+      let str_id = ctx.str_table.insert(str_prop.value.as_str());
       append_usize(&mut ctx.result, str_id);
 
       child_id
@@ -2468,7 +2505,7 @@ fn serialize_lit(ctx: &mut SerializeCtx, lit: &Lit, parent_id: usize) -> usize {
   match lit {
     Lit::Str(node) => {
       let id = ctx.push_node(AstNode::StringLiteral, parent_id, &node.span);
-      let str_id = ctx.str_table.insert(&node.value.as_str());
+      let str_id = ctx.str_table.insert(node.value.as_str());
       append_usize(&mut ctx.result, str_id);
 
       id
@@ -2486,7 +2523,7 @@ fn serialize_lit(ctx: &mut SerializeCtx, lit: &Lit, parent_id: usize) -> usize {
       let id = ctx.push_node(AstNode::NumericLiteral, parent_id, &node.span);
 
       let value = node.raw.as_ref().unwrap();
-      let str_id = ctx.str_table.insert(&value.as_str());
+      let str_id = ctx.str_table.insert(value.as_str());
       append_usize(&mut ctx.result, str_id);
 
       id
@@ -2494,7 +2531,7 @@ fn serialize_lit(ctx: &mut SerializeCtx, lit: &Lit, parent_id: usize) -> usize {
     Lit::BigInt(node) => {
       let id = ctx.push_node(AstNode::BigIntLiteral, parent_id, &node.span);
 
-      let str_id = ctx.str_table.insert(&node.value.to_string());
+      let str_id = ctx.str_table.insert(node.value.to_string());
       append_usize(&mut ctx.result, str_id);
 
       id
@@ -2502,8 +2539,8 @@ fn serialize_lit(ctx: &mut SerializeCtx, lit: &Lit, parent_id: usize) -> usize {
     Lit::Regex(node) => {
       let id = ctx.push_node(AstNode::RegExpLiteral, parent_id, &node.span);
 
-      let pattern_id = ctx.str_table.insert(&node.exp.as_str());
-      let flag_id = ctx.str_table.insert(&node.flags.as_str());
+      let pattern_id = ctx.str_table.insert(node.exp.as_str());
+      let flag_id = ctx.str_table.insert(node.flags.as_str());
 
       append_usize(&mut ctx.result, pattern_id);
       append_usize(&mut ctx.result, flag_id);
