@@ -912,9 +912,9 @@ impl<'a> DenoCompileBinaryWriter<'a> {
                   localhost_entries.insert(entry.name().to_string(), entry)
                 {
                   panic!(
-                        "Unhandled scenario where a duplicate entry was found: {:?}",
-                        existing
-                      );
+                    "Unhandled scenario where a duplicate entry was found: {:?}",
+                    existing
+                  );
                 }
               }
             }

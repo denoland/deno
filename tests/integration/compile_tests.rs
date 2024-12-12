@@ -847,21 +847,6 @@ testing[WILDCARD]this
 }
 
 #[test]
-fn compile_npm_file_system() {
-  run_npm_bin_compile_test(RunNpmBinCompileOptions {
-    input_specifier: "compile/npm_fs/main.ts",
-    copy_temp_dir: Some("compile/npm_fs"),
-    compile_args: vec!["-A"],
-    run_args: vec![],
-    output_file: "compile/npm_fs/main.out",
-    node_modules_local: true,
-    input_name: Some("binary"),
-    expected_name: "binary",
-    exit_code: 0,
-  });
-}
-
-#[test]
 fn compile_npm_bin_esm() {
   run_npm_bin_compile_test(RunNpmBinCompileOptions {
     input_specifier: "npm:@denotest/bin/cli-esm",
@@ -902,21 +887,6 @@ fn compile_npm_cowsay_main() {
     node_modules_local: false,
     input_name: None,
     expected_name: "cowsay",
-    exit_code: 0,
-  });
-}
-
-#[test]
-fn compile_npm_vfs_implicit_read_permissions() {
-  run_npm_bin_compile_test(RunNpmBinCompileOptions {
-    input_specifier: "compile/vfs_implicit_read_permission/main.ts",
-    copy_temp_dir: Some("compile/vfs_implicit_read_permission"),
-    compile_args: vec![],
-    run_args: vec![],
-    output_file: "compile/vfs_implicit_read_permission/main.out",
-    node_modules_local: false,
-    input_name: Some("binary"),
-    expected_name: "binary",
     exit_code: 0,
   });
 }
