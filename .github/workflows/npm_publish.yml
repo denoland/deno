@@ -29,10 +29,15 @@ jobs:
         with:
           submodules: recursive
 
-      - name: Install deno
+      - name: Install Deno
         uses: denoland/setup-deno@v2
         with:
           deno-version: v2.x
+      - name: Install Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22.x'
+          registry-url: 'https://registry.npmjs.org'
 
       - name: Publish
         env:
