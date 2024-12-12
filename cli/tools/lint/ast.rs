@@ -522,6 +522,107 @@ impl SerializeCtx {
     write_usize(&mut self.result, child_id, pos);
   }
 
+  fn serialize_module_decl(
+    &mut self,
+    module_decl: &ModuleDecl,
+    parent_id: usize,
+  ) -> usize {
+    match module_decl {
+      ModuleDecl::Import(node) => {
+        self.push_node(AstNode::Import, parent_id, &node.span)
+      }
+      ModuleDecl::ExportDecl(node) => {
+        self.push_node(AstNode::ExportDecl, parent_id, &node.span)
+      }
+      ModuleDecl::ExportNamed(node) => {
+        let id = self.next_id();
+
+        let mut flags = FlagValue::new();
+        flags.set(Flag::ExportType);
+
+        let src_id = node
+          .src
+          .as_ref()
+          .map_or(0, |src| serialize_lit(self, &Lit::Str(*src.clone()), id));
+
+        // FIXME: I don't think these are valid
+        let attr_id = node.with.as_ref().map_or(0, |attributes| {
+          self.serialize_expr(&Expr::Object(*attributes.clone()), id)
+        });
+
+        let spec_ids = node
+          .specifiers
+          .iter()
+          .map(|spec| {
+            match spec {
+              ExportSpecifier::Named(child) => {
+                let spec_id = self.next_id();
+
+                let mut flags = FlagValue::new();
+                flags.set(Flag::ExportType);
+
+                let org_id =
+                  self.serialize_module_exported_name(&child.orig, spec_id);
+
+                let exported_id =
+                  child.exported.as_ref().map_or(0, |exported| {
+                    self.serialize_module_exported_name(&exported, spec_id)
+                  });
+
+                self.write_node(
+                  spec_id,
+                  AstNode::ExportSpecifier,
+                  id,
+                  &child.span,
+                );
+                self.write_flags(&flags);
+                self.write_id(org_id);
+                self.write_id(exported_id);
+
+                spec_id
+              }
+
+              // These two aren't syntactically valid
+              ExportSpecifier::Namespace(_) => todo!(),
+              ExportSpecifier::Default(_) => todo!(),
+            }
+          })
+          .collect::<Vec<_>>();
+
+        self.write_node(
+          id,
+          AstNode::ExportNamedDeclaration,
+          parent_id,
+          &node.span,
+        );
+        self.write_flags(&flags);
+        self.write_id(src_id);
+        self.write_id(attr_id);
+        self.write_ids(spec_ids);
+
+        id
+      }
+      ModuleDecl::ExportDefaultDecl(node) => {
+        self.push_node(AstNode::ExportDefaultDecl, parent_id, &node.span)
+      }
+      ModuleDecl::ExportDefaultExpr(node) => {
+        self.push_node(AstNode::ExportDefaultExpr, parent_id, &node.span)
+      }
+      ModuleDecl::ExportAll(node) => {
+        self.push_node(AstNode::ExportAll, parent_id, &node.span)
+      }
+      ModuleDecl::TsImportEquals(node) => {
+        self.push_node(AstNode::TsImportEquals, parent_id, &node.span)
+      }
+      ModuleDecl::TsExportAssignment(node) => {
+        self.push_node(AstNode::TsExportAssignment, parent_id, &node.span)
+      }
+      ModuleDecl::TsNamespaceExport(node) => {
+        self.push_node(AstNode::TsNamespaceExport, parent_id, &node.span)
+      }
+    }
+  }
+
   fn serialize_stmt(&mut self, stmt: &Stmt, parent_id: usize) -> usize {
     match stmt {
       Stmt::Block(node) => {
@@ -1532,6 +1633,19 @@ impl SerializeCtx {
       self.serialize_expr(arg.expr.as_ref(), parent_id)
     }
   }
+
+  fn serialize_module_exported_name(
+    &mut self,
+    name: &ModuleExportName,
+    parent_id: usize,
+  ) -> usize {
+    match &name {
+      ModuleExportName::Ident(ident) => self.serialize_ident(&ident, parent_id),
+      ModuleExportName::Str(lit) => {
+        serialize_lit(self, &Lit::Str(lit.clone()), parent_id)
+      }
+    }
+  }
 }
 
 pub fn serialize_ast_bin(parsed_source: &ParsedSource) -> Vec<u8> {
@@ -1546,23 +1660,24 @@ pub fn serialize_ast_bin(parsed_source: &ParsedSource) -> Vec<u8> {
 
   match program.as_ref() {
     Program::Module(module) => {
-      let id = ctx.push_node(AstNode::Program, parent_id, &module.span);
+      let id = ctx.next_id();
 
       flags.set(Flag::ProgramModule);
-      ctx.result.push(flags.0);
 
-      let offset = ctx.reserve_child_ids_with_count(module.body.len());
-
-      for (i, item) in module.body.iter().enumerate() {
-        let child_id = match item {
+      let child_ids = module
+        .body
+        .iter()
+        .map(|item| match item {
           ModuleItem::ModuleDecl(module_decl) => {
-            serialize_module_decl(&mut ctx, module_decl, parent_id)
+            ctx.serialize_module_decl(module_decl, parent_id)
           }
           ModuleItem::Stmt(stmt) => ctx.serialize_stmt(stmt, id),
-        };
+        })
+        .collect::<Vec<_>>();
 
-        ctx.set_child(offset, child_id, i);
-      }
+      ctx.write_node(id, AstNode::Program, parent_id, &module.span);
+      ctx.write_flags(&flags);
+      ctx.write_ids(child_ids);
     }
     Program::Script(script) => {
       let id = ctx.push_node(AstNode::Program, parent_id, &script.span);
@@ -1595,106 +1710,6 @@ pub fn serialize_ast_bin(parsed_source: &ParsedSource) -> Vec<u8> {
   // Append serialized AST
   result.append(&mut ctx.result);
   result
-}
-
-fn serialize_module_decl(
-  ctx: &mut SerializeCtx,
-  module_decl: &ModuleDecl,
-  parent_id: usize,
-) -> usize {
-  match module_decl {
-    ModuleDecl::Import(node) => {
-      ctx.push_node(AstNode::Import, parent_id, &node.span)
-    }
-    ModuleDecl::ExportDecl(node) => {
-      ctx.push_node(AstNode::ExportDecl, parent_id, &node.span)
-    }
-    ModuleDecl::ExportNamed(node) => {
-      let id =
-        ctx.push_node(AstNode::ExportNamedDeclaration, parent_id, &node.span);
-
-      let mut flags = FlagValue::new();
-      flags.set(Flag::ExportType);
-      ctx.result.push(flags.0);
-
-      let offset = ctx.reserve_child_ids(2);
-      if let Some(src) = &node.src {
-        let child_id = serialize_lit(ctx, &Lit::Str(*src.clone()), id);
-        ctx.set_child(offset, child_id, 0);
-      }
-
-      // FIXME: I don't think these are valid
-      if let Some(attributes) = &node.with {
-        let child_id =
-          ctx.serialize_expr(&Expr::Object(*attributes.clone()), id);
-        ctx.set_child(offset, child_id, 1);
-      }
-
-      for (i, spec) in node.specifiers.iter().enumerate() {
-        match spec {
-          ExportSpecifier::Named(child) => {
-            let export_id =
-              ctx.push_node(AstNode::ExportSpecifier, id, &child.span);
-
-            let mut flags = FlagValue::new();
-            flags.set(Flag::ExportType);
-            ctx.result.push(flags.0);
-
-            let export_offset = ctx.reserve_child_ids(2);
-
-            let org_id =
-              serialize_module_exported_name(ctx, &child.orig, export_id);
-            ctx.set_child(export_offset, org_id, 0);
-
-            if let Some(exported) = &child.exported {
-              let exported_id =
-                serialize_module_exported_name(ctx, exported, export_id);
-              ctx.set_child(export_offset, exported_id, 1);
-            }
-
-            ctx.set_child(offset, export_id, i);
-          }
-
-          // These two aren't syntactically valid
-          ExportSpecifier::Namespace(_) => todo!(),
-          ExportSpecifier::Default(_) => todo!(),
-        };
-      }
-
-      id
-    }
-    ModuleDecl::ExportDefaultDecl(node) => {
-      ctx.push_node(AstNode::ExportDefaultDecl, parent_id, &node.span)
-    }
-    ModuleDecl::ExportDefaultExpr(node) => {
-      ctx.push_node(AstNode::ExportDefaultExpr, parent_id, &node.span)
-    }
-    ModuleDecl::ExportAll(node) => {
-      ctx.push_node(AstNode::ExportAll, parent_id, &node.span)
-    }
-    ModuleDecl::TsImportEquals(node) => {
-      ctx.push_node(AstNode::TsImportEquals, parent_id, &node.span)
-    }
-    ModuleDecl::TsExportAssignment(node) => {
-      ctx.push_node(AstNode::TsExportAssignment, parent_id, &node.span)
-    }
-    ModuleDecl::TsNamespaceExport(node) => {
-      ctx.push_node(AstNode::TsNamespaceExport, parent_id, &node.span)
-    }
-  }
-}
-
-fn serialize_module_exported_name(
-  ctx: &mut SerializeCtx,
-  name: &ModuleExportName,
-  parent_id: usize,
-) -> usize {
-  match &name {
-    ModuleExportName::Ident(ident) => ctx.serialize_ident(&ident, parent_id),
-    ModuleExportName::Str(lit) => {
-      serialize_lit(ctx, &Lit::Str(lit.clone()), parent_id)
-    }
-  }
 }
 
 fn serialize_decl(
