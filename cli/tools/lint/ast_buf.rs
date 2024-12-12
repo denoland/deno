@@ -266,7 +266,7 @@ pub enum AstNode {
   TSNonNullExpression,
   TSAsExpression,
   TsInstantiation,
-  TsSatisfies,
+  TSSatisfiesExpression,
   PrivateIdentifier,
   ChainExpression,
 
@@ -374,14 +374,17 @@ pub enum AstProp {
   ClosingFragment,
   Computed,
   Consequent,
+  Cooked,
   Declarations,
   Declare,
   Definite,
   Delegate,
-  Discrimininant,
+  Discriminant,
   Elements,
+  ElementTypes,
   Expression,
   Expressions,
+  Exported,
   Finalizer,
   Flags,
   Generator,
@@ -392,6 +395,7 @@ pub enum AstProp {
   Kind,
   Label,
   Left,
+  Local,
   Members,
   Meta,
   Method,
@@ -402,6 +406,7 @@ pub enum AstProp {
   OpeningFragment,
   Operator,
   Optional,
+  Param,
   Params,
   Pattern,
   Prefix,
@@ -422,6 +427,7 @@ pub enum AstProp {
   TypeAnnotation,
   TypeArguments,
   TypeParameters,
+  Types,
   Update,
   Value,
 }
@@ -565,6 +571,7 @@ impl SerializeCtx {
     kind: AstNode,
     parent_id: usize,
     span: &Span,
+    prop_count: usize,
   ) {
     self.id_to_offset.insert(id, self.buf.len());
 
@@ -575,6 +582,9 @@ impl SerializeCtx {
     // Span
     append_u32(&mut self.buf, span.lo.0);
     append_u32(&mut self.buf, span.hi.0);
+
+    // No node has more than <10 properties
+    self.buf.push(prop_count as u8);
   }
 
   pub fn write_ids<I>(&mut self, prop: AstProp, ids: I)
@@ -619,7 +629,7 @@ impl SerializeCtx {
     self.id_to_offset.insert(id, self.buf.len());
     self.id += 1;
 
-    self.write_node(id, kind, parent_id, span);
+    self.write_node(id, kind, parent_id, span, 0);
 
     id
   }
