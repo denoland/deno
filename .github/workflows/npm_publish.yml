@@ -19,6 +19,16 @@ jobs:
     timeout-minutes: 30
 
     steps:
+      - name: Configure git
+        run: |
+          git config --global core.symlinks true
+          git config --global fetch.parallel 32
+
+      - name: Clone repository
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
       - name: Install deno
         uses: denoland/setup-deno@v2
         with:
