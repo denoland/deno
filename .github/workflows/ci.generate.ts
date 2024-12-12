@@ -629,7 +629,6 @@ const ci = {
               "!./target/*/*.zip",
               "!./target/*/*.tar.gz",
             ].join("\n"),
-            key: "never_saved",
             "restore-keys": prCacheKeyPrefix,
           },
         },
