@@ -58,7 +58,7 @@ const rootDir = currentDir.parentOrThrow().parentOrThrow().parentOrThrow();
 const outputDir = currentDir.join("./dist");
 const scopeDir = outputDir.join("@deno");
 const denoDir = outputDir.join("deno");
-const version = "1.46.1"; //resolveVersion();
+const version = "1.46.2"; //resolveVersion();
 
 $.logStep(`Publishing ${version}...`);
 
@@ -71,7 +71,7 @@ await $`mkdir -p ${denoDir} ${scopeDir}`;
   const pkgJson = {
     "name": "deno",
     "version": version,
-    "description": "A modern runtime for JavaScript and TypeScript",
+    "description": "A modern runtime for JavaScript and TypeScript.",
     "bin": "bin.cjs",
     "repository": {
       "type": "git",
@@ -86,7 +86,7 @@ await $`mkdir -p ${denoDir} ${scopeDir}`;
     "bugs": {
       "url": "https://github.com/denoland/deno/issues",
     },
-    "homepage": "https://deno.land",
+    "homepage": "https://deno.com",
     // for yarn berry (https://github.com/dprint/dprint/issues/686)
     "preferUnplugged": true,
     "scripts": {
