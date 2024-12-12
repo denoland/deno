@@ -1,18 +1,18 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
-use deno_core::error::generic_error;
 use deno_core::error::AnyError;
 use deno_core::error::JsError;
-use deno_lib::args::Flags;
 use deno_lib::deno_runtime;
 use deno_lib::deno_runtime::deno_core;
+use deno_lib::deno_runtime::deno_telemetry;
+use deno_lib::deno_terminal;
 use deno_lib::log;
 use deno_lib::standalone;
 use deno_lib::util;
-use deno_runtime::deno_terminal::colors;
 use deno_runtime::fmt_errors::format_js_error;
 use deno_runtime::tokio_util::create_and_run_current_thread_with_maybe_metrics;
 pub use deno_runtime::UNSTABLE_GRANULAR_FLAGS;
+use deno_terminal::colors;
 use indexmap::IndexMap;
 
 use std::borrow::Cow;
@@ -68,14 +68,17 @@ fn main() {
     match standalone {
       Ok(Some(data)) => {
         deno_telemetry::init(deno_lib::args::otel_runtime_config())?;
-        util::logger::init(data.metadata.log_level, Some(flags.otel_config()));
+        util::logger::init(
+          data.metadata.log_level,
+          Some(data.metadata.otel_config.clone()),
+        );
         load_env_vars(&data.metadata.env_vars_from_env_file);
         let exit_code = standalone::run(data).await?;
         deno_runtime::exit(exit_code);
       }
       Ok(None) => Ok(()),
       Err(err) => {
-        util::logger::init(None);
+        util::logger::init(None, None);
         Err(err)
       }
     }

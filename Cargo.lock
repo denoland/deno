@@ -2510,6 +2510,7 @@ dependencies = [
  "deno_runtime",
  "flate2",
  "glibc_version",
+ "indexmap 2.3.0",
  "lazy-regex",
  "serde",
  "serde_json",
