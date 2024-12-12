@@ -234,6 +234,10 @@ impl<Fs: DenoResolverFs, TEnv: NodeResolverEnv> ByonmNpmResolver<Fs, TEnv> {
     // now try to resolve based on the closest node_modules directory
     let maybe_referrer_path = url_to_file_path(referrer).ok();
     let search_node_modules = |node_modules: &Path| {
+      if req.version_req.tag().is_some() {
+        return None;
+      }
+
       let pkg_folder = node_modules.join(&req.name);
       if let Ok(Some(dep_pkg_json)) =
         self.load_pkg_json(&pkg_folder.join("package.json"))
