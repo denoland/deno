@@ -37,12 +37,9 @@ pub use deno_runtime;
 pub use deno_terminal;
 pub use log;
 
-use crate::args::flags_from_vec;
 use crate::args::DenoSubcommand;
 use crate::args::Flags;
 use crate::util::display;
-use crate::util::v8::get_v8_flags_from_env;
-use crate::util::v8::init_v8_flags;
 
 use args::TaskFlags;
 use deno_resolver::npm::ByonmResolvePkgFolderFromDenoReqError;
@@ -57,7 +54,6 @@ use deno_core::futures::FutureExt;
 use deno_core::unsync::JoinHandle;
 use deno_npm::resolution::SnapshotFromLockfileError;
 use deno_runtime::fmt_errors::format_js_error;
-use deno_runtime::tokio_util::create_and_run_current_thread_with_maybe_metrics;
 use deno_terminal::colors;
 use factory::CliFactory;
 use standalone::MODULE_NOT_FOUND;

@@ -268,7 +268,7 @@ pub async fn uninstall(
   Ok(())
 }
 
-pub(crate) async fn install_from_entrypoints(
+pub async fn install_from_entrypoints(
   flags: Arc<Flags>,
   entrypoints: &[String],
 ) -> Result<(), AnyError> {

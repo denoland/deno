@@ -2001,7 +2001,7 @@ pub enum NpmCachingStrategy {
   Manual,
 }
 
-pub(crate) fn otel_runtime_config() -> OtelRuntimeConfig {
+pub fn otel_runtime_config() -> OtelRuntimeConfig {
   OtelRuntimeConfig {
     runtime_name: Cow::Borrowed("deno"),
     runtime_version: Cow::Borrowed(crate::version::DENO_VERSION_INFO.deno),

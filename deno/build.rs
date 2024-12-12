@@ -2,7 +2,6 @@
 
 use deno_runtime::deno_napi;
 use std::env;
-use std::path::PathBuf;
 
 fn main() {
   // Skip building from docs.rs.
