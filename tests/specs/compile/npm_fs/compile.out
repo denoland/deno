@@ -1,0 +1,8 @@
+[WILDCARD]
+
+Embedded File System
+
+main[WILDLINE]
+├── main.ts
+└── node_modules/*
+
