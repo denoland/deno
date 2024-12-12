@@ -1,0 +1,27 @@
+name: npm_publish
+
+on:
+  workflow_dispatch:
+    inputs:
+      releaseKind:
+        description: 'Version'
+        type: string
+  release:
+    types: [published]
+
+jobs:
+  build:
+    name: npm publish
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Install deno
+        uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
+
+      - name: Publish
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: ./tools/release/npm/build.ts ${{ github.event.inputs.tags }} --publish

@@ -180,7 +180,7 @@ jobs:
         name: Install Deno
         uses: denoland/setup-deno@v2
         with:
-          deno-version: v1.x
+          deno-version: v2.x
       - name: Install Python
         uses: actions/setup-python@v5
         with:

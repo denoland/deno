@@ -1,9 +1,11 @@
+#!/usr/bin/env -S deno run -A --lock=tools/deno.lock.json
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 // NOTICE: This deployment/npm folder was lifted from https://github.com/dprint/dprint/blob/0ba79811cc96d2dee8e0cf766a8c8c0fc44879c2/deployment/npm/
-// with permission. Copyright 2019-2023 David Sherret
+// with permission (Copyright 2019-2023 David Sherret)
 import $ from "jsr:@david/dax@^0.42.0";
 // @ts-types="npm:@types/decompress@4.2.7"
 import decompress from "npm:decompress@4.2.1";
+import { parseArgs } from "@std/cli/parse-args";
 
 interface Package {
   zipFileName: string;
@@ -12,6 +14,9 @@ interface Package {
   libc?: "glibc" | "musl";
 }
 
+const args = parseArgs(Deno.args, {
+  boolean: ["publish"],
+});
 const packages: Package[] = [{
   zipFileName: "deno-x86_64-pc-windows-msvc.zip",
   os: "win32",
@@ -58,7 +63,7 @@ const rootDir = currentDir.parentOrThrow().parentOrThrow().parentOrThrow();
 const outputDir = currentDir.join("./dist");
 const scopeDir = outputDir.join("@deno");
 const denoDir = outputDir.join("deno");
-const version = "1.46.2"; //resolveVersion();
+const version = resolveVersion();
 
 $.logStep(`Publishing ${version}...`);
 
@@ -187,7 +192,7 @@ await $`mkdir -p ${denoDir} ${scopeDir}`;
 }
 
 // publish if necessary
-if (Deno.args.includes("--publish")) {
+if (args.publish) {
   for (const pkg of packages) {
     const pkgName = getPackageNameNoScope(pkg);
     $.logStep(`Publishing @deno/${pkgName}...`);
@@ -209,8 +214,13 @@ function getPackageNameNoScope(name: Package) {
 }
 
 function resolveVersion() {
-  if (Deno.args[0] != null && /^[0-9]+\.[0-9]+\.[0-9]+/.test(Deno.args[0])) {
-    return Deno.args[0];
+  const firstArg = args._[0];
+  if (
+    firstArg != null &&
+    typeof firstArg === "string" &&
+    firstArg.trim().length > 0
+  ) {
+    return firstArg;
   }
   const version = (rootDir.join("cli/Cargo.toml").readTextSync().match(
     /version = "(.*?)"/,
