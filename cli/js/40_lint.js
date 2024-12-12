@@ -3736,15 +3736,14 @@ function traverseInner(ctx, visitTypes, visitor, id) {
     // Expressions
     case AstType.CallExpression: {
       const calleeId = readU32(buf, offset);
-      traverseInner(ctx, visitTypes, visitor, calleeId);
-
       const typeArgId = readU32(buf, offset + 4);
-      if (typeArgId > 0) {
-        traverseInner(ctx, visitTypes, visitor, typeArgId);
-      }
-
       const childIds = readChildIds(buf, offset + 8);
-      return traverseChildren(ctx, visitTypes, visitor, childIds);
+
+      traverseInner(ctx, visitTypes, visitor, calleeId);
+      traverseInner(ctx, visitTypes, visitor, typeArgId);
+      traverseChildren(ctx, visitTypes, visitor, childIds);
+
+      return;
     }
     case AstType.ArrowFunctionExpression: {
       // Skip flags
