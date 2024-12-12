@@ -196,7 +196,7 @@ const installNodeStep = {
 const installDenoStep = {
   name: "Install Deno",
   uses: "denoland/setup-deno@v2",
-  with: { "deno-version": "v1.x" },
+  with: { "deno-version": "v2.x" },
 };
 
 const authenticateWithGoogleCloud = {
