@@ -42,7 +42,7 @@ module.exports = {
       // in order to make things faster the next time we run and to allow the
       // deno vscode extension to easily pick this up, copy the executable
       // into the deno package folder
-      atomicCopyFileSync(sourceExecutablePath, targetExecutablePath);
+      hardLinkOrCopy(sourceExecutablePath, targetExecutablePath);
       if (os.platform() !== "win32") {
         // chomd +x
         chmodX(targetExecutablePath);
@@ -164,7 +164,19 @@ function getLinuxFamily() {
  * @param sourcePath {string}
  * @param destinationPath {string}
  */
-function atomicCopyFileSync(sourcePath, destinationPath) {
+function hardLinkOrCopy(sourcePath, destinationPath) {
+  try {
+    fs.linkSync(sourcePath, destinationPath);
+  } catch {
+    atomicCopyFile(sourcePath, destinationPath);
+  }
+}
+
+/**
+ * @param sourcePath {string}
+ * @param destinationPath {string}
+ */
+function atomicCopyFile(sourcePath, destinationPath) {
   const crypto = require("crypto");
   const rand = crypto.randomBytes(4).toString("hex");
   const tempFilePath = destinationPath + "." + rand;

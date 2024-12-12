@@ -41,9 +41,16 @@ const packages: Package[] = [{
   libc: "glibc",
 }];
 
-const markdownText = `# deno
+const markdownText = `# Deno
 
-npm CLI distribution for [deno](https://deno.land)—a modern runtime for JavaScript and TypeScript.
+[Deno](https://www.deno.com)
+([/ˈdiːnoʊ/](http://ipa-reader.xyz/?text=%CB%88di%CB%90no%CA%8A), pronounced
+\`dee-no\`) is a JavaScript, TypeScript, and WebAssembly runtime with secure
+defaults and a great developer experience. It's built on [V8](https://v8.dev/),
+[Rust](https://www.rust-lang.org/), and [Tokio](https://tokio.rs/).
+
+Learn more about the Deno runtime
+[in the documentation](https://docs.deno.com/runtime/manual).
 `;
 
 const currentDir = $.path(import.meta.url).parentOrThrow();
@@ -51,7 +58,7 @@ const rootDir = currentDir.parentOrThrow().parentOrThrow().parentOrThrow();
 const outputDir = currentDir.join("./dist");
 const scopeDir = outputDir.join("@deno");
 const denoDir = outputDir.join("deno");
-const version = resolveVersion();
+const version = "1.46.0"; //resolveVersion();
 
 $.logStep(`Publishing ${version}...`);
 
@@ -167,7 +174,7 @@ await $`mkdir -p ${denoDir} ${scopeDir}`;
   // which is necessary for faster caching and to ensure the vscode extension
   // picks it up
   if (!denoDir.join(denoExe).existsSync()) {
-    throw new Error("deno executable did not exist after post install");
+    throw new Error("Deno executable did not exist after post install");
   }
 
   // run once after post install created deno, once with a simulated readonly file system, once creating the cache and once with
@@ -175,7 +182,7 @@ await $`mkdir -p ${denoDir} ${scopeDir}`;
     .cwd(denoDir);
 
   if (!denoDir.join(denoExe).existsSync()) {
-    throw new Error("deno executable did not exist when lazily initialized");
+    throw new Error("Deno executable did not exist when lazily initialized");
   }
 }
 
