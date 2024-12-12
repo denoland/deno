@@ -40,10 +40,32 @@ use crate::util::fs::canonicalize_path;
 
 use super::binary::DENO_COMPILE_GLOBAL_NODE_MODULES_DIR_NAME;
 
+#[derive(Debug, PartialEq, Eq)]
+pub enum WindowsSystemRootablePath {
+  /// The root of the system above any drive letters.
+  WindowSystemRoot,
+  Path(PathBuf),
+}
+
+impl WindowsSystemRootablePath {
+  pub fn join(&self, name_component: &str) -> PathBuf {
+    // this method doesn't handle multiple components
+    debug_assert!(!name_component.contains('\\'));
+    debug_assert!(!name_component.contains('/'));
+
+    match self {
+      WindowsSystemRootablePath::WindowSystemRoot => {
+        // windows drive letter
+        PathBuf::from(&format!("{}\\", name_component))
+      }
+      WindowsSystemRootablePath::Path(path) => path.join(name_component),
+    }
+  }
+}
+
 #[derive(Debug)]
 pub struct BuiltVfs {
-  /// Will be `None` when the root is the system root on Windows.
-  pub root_path: Option<PathBuf>,
+  pub root_path: WindowsSystemRootablePath,
   pub root: VirtualDirectory,
   pub files: Vec<Vec<u8>>,
 }
@@ -63,6 +85,8 @@ pub struct VfsBuilder {
   files: Vec<Vec<u8>>,
   current_offset: u64,
   file_offsets: HashMap<String, u64>,
+  /// The minimum root directory that should be included in the VFS.
+  min_root_dir: Option<WindowsSystemRootablePath>,
 }
 
 impl VfsBuilder {
@@ -75,6 +99,49 @@ impl VfsBuilder {
       files: Vec::new(),
       current_offset: 0,
       file_offsets: Default::default(),
+      min_root_dir: Default::default(),
+    }
+  }
+
+  /// Add a directory that might be the minimum root directory
+  /// of the VFS.
+  ///
+  /// For example, say the user has a deno.json and specifies an
+  /// import map in a parent directory. The import map won't be
+  /// included in the VFS, but its base will meaning we need to
+  /// tell the VFS builder to include the base of the import map
+  /// by calling this method.
+  pub fn add_possible_min_root_dir(&mut self, path: &Path) {
+    match &self.min_root_dir {
+      Some(WindowsSystemRootablePath::WindowSystemRoot) => {
+        // already the root dir
+      }
+      Some(WindowsSystemRootablePath::Path(current_path)) => {
+        let mut common_components = Vec::new();
+        for (a, b) in current_path.components().zip(path.components()) {
+          if a != b {
+            break;
+          }
+          common_components.push(a);
+        }
+        if common_components.is_empty() {
+          if cfg!(windows) {
+            self.min_root_dir =
+              Some(WindowsSystemRootablePath::WindowSystemRoot);
+          } else {
+            self.min_root_dir =
+              Some(WindowsSystemRootablePath::Path(PathBuf::from("/")));
+          }
+        } else {
+          self.min_root_dir = Some(WindowsSystemRootablePath::Path(
+            common_components.iter().collect(),
+          ));
+        }
+      }
+      None => {
+        self.min_root_dir =
+          Some(WindowsSystemRootablePath::Path(path.to_path_buf()));
+      }
     }
   }
 
@@ -199,7 +266,7 @@ impl VfsBuilder {
   pub fn add_file_at_path(&mut self, path: &Path) -> Result<(), AnyError> {
     let file_bytes = std::fs::read(path)
       .with_context(|| format!("Reading {}", path.display()))?;
-    self.add_file_with_data(&path, file_bytes, VfsFileSubDataKind::Raw)
+    self.add_file_with_data(path, file_bytes, VfsFileSubDataKind::Raw)
   }
 
   fn add_file_at_path_not_symlink(
@@ -221,7 +288,7 @@ impl VfsBuilder {
       format!("Resolving target path for '{}'", path.display())
     })?;
     if metadata.is_symlink() {
-      let target = self.add_symlink(&path)?.into_path_buf();
+      let target = self.add_symlink(path)?.into_path_buf();
       self.add_file_with_data_inner(&target, data, sub_data_kind)
     } else {
       self.add_file_with_data_inner(path, data, sub_data_kind)
@@ -354,16 +421,19 @@ impl VfsBuilder {
   /// Resolves the root path of the VFS based on its current state.
   ///
   /// Returns `None` when at the system level for Windows.
-  pub fn resolve_root_path(&self) -> Option<PathBuf> {
+  pub fn resolve_root_path(&self) -> WindowsSystemRootablePath {
     let executable_root = &self.executable_root;
     let mut current_dir = executable_root;
     let mut current_path = if cfg!(windows) {
-      None
+      WindowsSystemRootablePath::WindowSystemRoot
     } else {
-      Some(PathBuf::from("/"))
+      WindowsSystemRootablePath::Path(PathBuf::from("/"))
     };
     loop {
       if current_dir.entries.len() != 1 {
+        return current_path;
+      }
+      if self.min_root_dir.as_ref() == Some(&current_path) {
         return current_path;
       }
       match &current_dir.entries[0] {
@@ -373,11 +443,8 @@ impl VfsBuilder {
             return current_path;
           }
           current_dir = dir;
-          current_path = match current_path {
-            Some(path) => Some(path.join(&dir.name)),
-            // windows drive letter
-            None => Some(PathBuf::from(&format!("{}\\", dir.name))),
-          };
+          current_path =
+            WindowsSystemRootablePath::Path(current_path.join(&dir.name));
         }
         VfsEntry::File(_) | VfsEntry::Symlink(_) => return current_path,
       }
@@ -406,12 +473,15 @@ impl VfsBuilder {
 
     let mut current_dir = self.executable_root;
     let mut current_path = if cfg!(windows) {
-      None
+      WindowsSystemRootablePath::WindowSystemRoot
     } else {
-      Some(PathBuf::from("/"))
+      WindowsSystemRootablePath::Path(PathBuf::from("/"))
     };
     loop {
       if current_dir.entries.len() != 1 {
+        break;
+      }
+      if self.min_root_dir.as_ref() == Some(&current_path) {
         break;
       }
       match &current_dir.entries[0] {
@@ -422,11 +492,8 @@ impl VfsBuilder {
           }
           match current_dir.entries.remove(0) {
             VfsEntry::Dir(dir) => {
-              current_path = match current_path {
-                Some(path) => Some(path.join(&dir.name)),
-                // windows drive letter
-                None => Some(PathBuf::from(&format!("{}\\", dir.name))),
-              };
+              current_path =
+                WindowsSystemRootablePath::Path(current_path.join(&dir.name));
               current_dir = dir;
             }
             _ => unreachable!(),
@@ -435,7 +502,7 @@ impl VfsBuilder {
         VfsEntry::File(_) | VfsEntry::Symlink(_) => break,
       }
     }
-    if let Some(path) = &current_path {
+    if let WindowsSystemRootablePath::Path(path) = &current_path {
       strip_prefix_from_symlinks(
         &mut current_dir,
         &VirtualSymlinkParts::from_path(path).0,
@@ -538,68 +605,66 @@ fn vfs_as_display_tree(
     output: EntryOutput<'a>,
   }
 
-  fn show_global_node_modules_dir<'a>(
-    vfs_dir: &'a VirtualDirectory,
-  ) -> EntryOutput<'a> {
-    fn show_subset_deep<'a>(
-      vfs_dir: &'a VirtualDirectory,
+  fn show_global_node_modules_dir(
+    vfs_dir: &VirtualDirectory,
+  ) -> Vec<DirEntryOutput> {
+    fn show_subset_deep(
+      vfs_dir: &VirtualDirectory,
       depth: usize,
-    ) -> EntryOutput<'a> {
+    ) -> EntryOutput {
       if depth == 0 {
         EntryOutput::All
       } else {
-        EntryOutput::Subset(
-          vfs_dir
-            .entries
-            .iter()
-            .map(|entry| DirEntryOutput {
-              name: entry.name(),
-              output: match entry {
-                VfsEntry::Dir(virtual_directory) => {
-                  show_subset_deep(virtual_directory, depth - 1)
-                }
-                VfsEntry::File(_) => EntryOutput::File,
-                VfsEntry::Symlink(virtual_symlink) => {
-                  EntryOutput::Symlink(&virtual_symlink.dest_parts.0)
-                }
-              },
-            })
-            .collect(),
-        )
+        EntryOutput::Subset(show_subset(vfs_dir, depth))
       }
     }
 
-    // in this scenario, we want to show
-    // .deno_compile_node_modules/localhost/<package_name>/<version>/*
-    show_subset_deep(vfs_dir, 3)
-  }
-
-  fn include_all_entries<'a>(
-    dir_path: Option<&Path>,
-    vfs_dir: &'a VirtualDirectory,
-  ) -> EntryOutput<'a> {
-    if vfs_dir.name == DENO_COMPILE_GLOBAL_NODE_MODULES_DIR_NAME {
-      return show_global_node_modules_dir(vfs_dir);
-    }
-
-    EntryOutput::Subset(
+    fn show_subset(
+      vfs_dir: &VirtualDirectory,
+      depth: usize,
+    ) -> Vec<DirEntryOutput> {
       vfs_dir
         .entries
         .iter()
         .map(|entry| DirEntryOutput {
           name: entry.name(),
-          output: analyze_entry(
-            &dir_path
-              .map(|dir| dir.join(entry.name()))
-              .unwrap_or_else(|| PathBuf::from(entry.name())),
-            entry,
-          ),
+          output: match entry {
+            VfsEntry::Dir(virtual_directory) => {
+              show_subset_deep(virtual_directory, depth - 1)
+            }
+            VfsEntry::File(_) => EntryOutput::File,
+            VfsEntry::Symlink(virtual_symlink) => {
+              EntryOutput::Symlink(&virtual_symlink.dest_parts.0)
+            }
+          },
         })
-        .collect(),
-    )
+        .collect()
+    }
+
+    // in this scenario, we want to show
+    // .deno_compile_node_modules/localhost/<package_name>/<version>/*
+    show_subset(vfs_dir, 3)
   }
 
-  fn analyze_entry<'a>(path: &Path, entry: &'a VfsEntry) -> EntryOutput<'a> {
+  fn include_all_entries<'a>(
+    dir_path: &WindowsSystemRootablePath,
+    vfs_dir: &'a VirtualDirectory,
+  ) -> Vec<DirEntryOutput<'a>> {
+    if vfs_dir.name == DENO_COMPILE_GLOBAL_NODE_MODULES_DIR_NAME {
+      return show_global_node_modules_dir(vfs_dir);
+    }
+
+    vfs_dir
+      .entries
+      .iter()
+      .map(|entry| DirEntryOutput {
+        name: entry.name(),
+        output: analyze_entry(dir_path.join(entry.name()), entry),
+      })
+      .collect()
+  }
+
+  fn analyze_entry(path: PathBuf, entry: &VfsEntry) -> EntryOutput {
     match entry {
       VfsEntry::Dir(virtual_directory) => analyze_dir(path, virtual_directory),
       VfsEntry::File(_) => EntryOutput::File,
@@ -609,15 +674,12 @@ fn vfs_as_display_tree(
     }
   }
 
-  fn analyze_dir<'a>(
-    dir: &Path,
-    vfs_dir: &'a VirtualDirectory,
-  ) -> EntryOutput<'a> {
+  fn analyze_dir(dir: PathBuf, vfs_dir: &VirtualDirectory) -> EntryOutput {
     if vfs_dir.name == DENO_COMPILE_GLOBAL_NODE_MODULES_DIR_NAME {
-      return show_global_node_modules_dir(vfs_dir);
+      return EntryOutput::Subset(show_global_node_modules_dir(vfs_dir));
     }
 
-    let real_entry_count = std::fs::read_dir(dir)
+    let real_entry_count = std::fs::read_dir(&dir)
       .ok()
       .map(|entries| entries.flat_map(|e| e.ok()).count())
       .unwrap_or(0);
@@ -627,7 +689,7 @@ fn vfs_as_display_tree(
         .iter()
         .map(|entry| DirEntryOutput {
           name: entry.name(),
-          output: analyze_entry(&dir.join(entry.name()), entry),
+          output: analyze_entry(dir.join(entry.name()), entry),
         })
         .collect::<Vec<_>>();
       if children
@@ -639,15 +701,23 @@ fn vfs_as_display_tree(
         EntryOutput::Subset(children)
       }
     } else {
-      include_all_entries(Some(dir), vfs_dir)
+      EntryOutput::Subset(include_all_entries(
+        &WindowsSystemRootablePath::Path(dir),
+        vfs_dir,
+      ))
     }
   }
 
   // always include all the entries for the root directory, otherwise the
   // user might not have context about what's being shown
-  let output = include_all_entries(vfs.root_path.as_deref(), &vfs.root);
-  output
-    .as_display_tree(deno_terminal::colors::italic(executable_name).to_string())
+  let child_entries = include_all_entries(&vfs.root_path, &vfs.root);
+  DisplayTreeNode {
+    text: deno_terminal::colors::italic(executable_name).to_string(),
+    children: child_entries
+      .iter()
+      .map(|entry| entry.output.as_display_tree(entry.name.to_string()))
+      .collect(),
+  }
 }
 
 #[derive(Debug)]

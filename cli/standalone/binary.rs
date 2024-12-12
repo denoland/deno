@@ -46,6 +46,7 @@ use deno_npm::NpmPackageId;
 use deno_npm::NpmSystemInfo;
 use deno_path_util::url_from_directory_path;
 use deno_path_util::url_from_file_path;
+use deno_path_util::url_to_file_path;
 use deno_runtime::deno_fs;
 use deno_runtime::deno_fs::FileSystem;
 use deno_runtime::deno_fs::RealFs;
@@ -96,6 +97,7 @@ use super::virtual_fs::VfsBuilder;
 use super::virtual_fs::VfsFileSubDataKind;
 use super::virtual_fs::VfsRoot;
 use super::virtual_fs::VirtualDirectory;
+use super::virtual_fs::WindowsSystemRootablePath;
 
 pub static DENO_COMPILE_GLOBAL_NODE_MODULES_DIR_NAME: &str =
   ".deno_compile_node_modules";
@@ -105,16 +107,12 @@ pub static DENO_COMPILE_GLOBAL_NODE_MODULES_DIR_NAME: &str =
 /// After creation, this URL may be used to get the key for a
 /// module in the binary.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub struct StandaloneRelativeFileBaseUrl<'a>(Option<&'a Url>);
+pub enum StandaloneRelativeFileBaseUrl<'a> {
+  WindowsSystemRoot,
+  Path(&'a Url),
+}
 
 impl<'a> StandaloneRelativeFileBaseUrl<'a> {
-  pub fn new(url: Option<&'a Url>) -> Self {
-    if let Some(url) = url {
-      debug_assert_eq!(url.scheme(), "file");
-    }
-    Self(url)
-  }
-
   /// Gets the module map key of the provided specifier.
   ///
   /// * Descendant file specifiers will be made relative to the base.
@@ -124,17 +122,23 @@ impl<'a> StandaloneRelativeFileBaseUrl<'a> {
     if target.scheme() != "file" {
       return Cow::Borrowed(target.as_str());
     }
-    let Some(base) = self.0 else {
-      return Cow::Borrowed(target.path());
+    let base = match self {
+      Self::Path(base) => base,
+      Self::WindowsSystemRoot => return Cow::Borrowed(target.path()),
     };
 
     match base.make_relative(target) {
       Some(relative) => {
-        if relative.starts_with("../") {
-          Cow::Borrowed(target.as_str())
-        } else {
-          Cow::Owned(relative)
-        }
+        // this is not a great scenario to have because it means that the
+        // specifier is outside the vfs and could cause the binary to act
+        // strangely
+        debug_assert!(
+          !relative.starts_with("../"),
+          "{:?} -> {:?}",
+          base,
+          target
+        );
+        Cow::Owned(relative)
       }
       None => Cow::Borrowed(target.as_str()),
     }
@@ -659,14 +663,29 @@ impl<'a> DenoCompileBinaryWriter<'a> {
       }
     }
     remote_modules_store.add_redirects(&graph.redirects);
+
+    if let Some(import_map) = self.workspace_resolver.maybe_import_map() {
+      if let Ok(file_path) = url_to_file_path(import_map.base_url()) {
+        if let Some(import_map_parent_dir) = file_path.parent() {
+          // tell the vfs about the import map's parent directory in case it
+          // falls outside what the root of where the VFS will be based
+          vfs.add_possible_min_root_dir(import_map_parent_dir);
+        }
+      }
+    }
+
     self.consolidate_global_npm_registries_in_vfs(&mut vfs);
     let root_vfs_dir = vfs.resolve_root_path();
     let root_dir_url = match &root_vfs_dir {
-      Some(dir) => Some(url_from_directory_path(dir)?),
-      None => None,
+      WindowsSystemRootablePath::Path(dir) => {
+        Some(url_from_directory_path(dir)?)
+      }
+      WindowsSystemRootablePath::WindowSystemRoot => None,
     };
-    let root_dir_url =
-      StandaloneRelativeFileBaseUrl::new(root_dir_url.as_ref());
+    let root_dir_url = match &root_dir_url {
+      Some(url) => StandaloneRelativeFileBaseUrl::Path(url),
+      None => StandaloneRelativeFileBaseUrl::WindowsSystemRoot,
+    };
 
     let node_modules = match self.npm_resolver.as_inner() {
       InnerCliNpmResolverRef::Managed(_) => {
@@ -936,8 +955,12 @@ impl<'a> DenoCompileBinaryWriter<'a> {
             // the global cache entry there
             let root_dir = vfs.resolve_root_path();
             let dir = match &root_dir {
-              Some(root_dir) => vfs.get_dir_mut(root_dir).unwrap(),
-              None => vfs.get_system_root_dir_mut(),
+              WindowsSystemRootablePath::Path(root_dir) => {
+                vfs.get_dir_mut(root_dir).unwrap()
+              }
+              WindowsSystemRootablePath::WindowSystemRoot => {
+                vfs.get_system_root_dir_mut()
+              }
             };
             dir.insert_entry(npm_global_cache_dir_entry);
           }
