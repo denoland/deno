@@ -21,6 +21,7 @@ use deno_runtime::deno_permissions::PermissionsContainer;
 use deno_runtime::tokio_util;
 use deno_runtime::worker::MainWorker;
 use deno_runtime::WorkerExecutionMode;
+use std::path::Path;
 use std::path::PathBuf;
 use std::sync::Arc;
 use tokio::sync::mpsc::channel;
@@ -79,8 +80,10 @@ impl PluginRunner {
       log::debug!("PluginRunner thread spawned");
       let start = std::time::Instant::now();
       let fut = async move {
-        let mut flags = Flags::default();
-        flags.subcommand = DenoSubcommand::Lint(LintFlags::default());
+        let flags = Flags {
+          subcommand: DenoSubcommand::Lint(LintFlags::default()),
+          ..Default::default()
+        };
         let flags = Arc::new(flags);
         let factory = CliFactory::from_flags(flags);
         let cli_options = factory.cli_options()?;
@@ -228,7 +231,7 @@ impl PluginRunner {
 
   async fn run_plugins(
     &mut self,
-    specifier: &PathBuf,
+    specifier: &Path,
     serialized_ast: Vec<u8>,
     source_text_info: SourceTextInfo,
   ) -> Result<(), AnyError> {
@@ -348,7 +351,7 @@ impl PluginRunnerProxy {
 
   pub async fn run_rules(
     &self,
-    specifier: &PathBuf,
+    specifier: &Path,
     serialized_ast: Vec<u8>,
     source_text_info: SourceTextInfo,
   ) -> Result<Vec<LintDiagnostic>, AnyError> {
@@ -380,7 +383,7 @@ pub async fn create_runner_and_load_plugins(
 
 pub async fn run_rules_for_ast(
   runner_proxy: &mut PluginRunnerProxy,
-  specifier: &PathBuf,
+  specifier: &Path,
   serialized_ast: Vec<u8>,
   source_text_info: SourceTextInfo,
 ) -> Result<Vec<LintDiagnostic>, AnyError> {

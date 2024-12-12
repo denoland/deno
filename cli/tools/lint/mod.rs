@@ -298,12 +298,10 @@ impl WorkspaceLinter {
 
     let maybe_plugins = if maybe_plugins.is_some() {
       maybe_plugins
+    } else if lint_options.plugins.is_empty() {
+      None
     } else {
-      if lint_options.plugins.is_empty() {
-        None
-      } else {
-        Some(lint_options.plugins.clone())
-      }
+      Some(lint_options.plugins.clone())
     };
     let plugin_specifiers = if let Some(plugins) = maybe_plugins {
       let mut plugin_specifiers = Vec::with_capacity(plugins.len());

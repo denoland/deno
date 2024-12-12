@@ -172,7 +172,7 @@ fn append_usize(result: &mut Vec<u8>, value: usize) {
   append_u32(result, raw);
 }
 
-fn write_usize(result: &mut Vec<u8>, value: usize, idx: usize) {
+fn write_usize(result: &mut [u8], value: usize, idx: usize) {
   let raw = u32::try_from(value).unwrap();
 
   let v1: u8 = ((raw & MASK_U32_1) >> 24) as u8;
@@ -380,7 +380,7 @@ impl StringTable {
 
   fn insert(&mut self, s: &str) -> usize {
     if let Some(id) = self.table.get(s) {
-      return id.clone();
+      return *id;
     }
 
     let id = self.id;
@@ -566,7 +566,7 @@ impl SerializeCtx {
 
                 let exported_id =
                   child.exported.as_ref().map_or(0, |exported| {
-                    self.serialize_module_exported_name(&exported, spec_id)
+                    self.serialize_module_exported_name(exported, spec_id)
                   });
 
                 self.write_node(
@@ -631,7 +631,7 @@ impl SerializeCtx {
         let children = node
           .stmts
           .iter()
-          .map(|stmt| self.serialize_stmt(&stmt, parent_id))
+          .map(|stmt| self.serialize_stmt(stmt, parent_id))
           .collect::<Vec<_>>();
 
         self.write_node(id, AstNode::Block, parent_id, &node.span);
@@ -650,7 +650,7 @@ impl SerializeCtx {
         let arg_id = node
           .arg
           .as_ref()
-          .map_or(0, |arg| self.serialize_expr(&arg, id));
+          .map_or(0, |arg| self.serialize_expr(arg, id));
 
         self.write_node(id, AstNode::Return, parent_id, &node.span);
         self.write_id(arg_id);
@@ -675,7 +675,7 @@ impl SerializeCtx {
         let arg_id = node
           .label
           .as_ref()
-          .map_or(0, |label| self.serialize_ident(&label, id));
+          .map_or(0, |label| self.serialize_ident(label, id));
 
         self.write_node(id, AstNode::Break, parent_id, &node.span);
         self.write_id(arg_id);
@@ -688,7 +688,7 @@ impl SerializeCtx {
         let arg_id = node
           .label
           .as_ref()
-          .map_or(0, |label| self.serialize_ident(&label, id));
+          .map_or(0, |label| self.serialize_ident(label, id));
 
         self.write_node(id, AstNode::Continue, parent_id, &node.span);
         self.write_id(arg_id);
@@ -704,7 +704,7 @@ impl SerializeCtx {
         let alt_id = node
           .alt
           .as_ref()
-          .map_or(0, |alt| self.serialize_stmt(&alt, id));
+          .map_or(0, |alt| self.serialize_stmt(alt, id));
 
         self.write_node(id, AstNode::IfStatement, parent_id, &node.span);
         self.write_id(test_id);
@@ -727,12 +727,12 @@ impl SerializeCtx {
             let test_id = case
               .test
               .as_ref()
-              .map_or(0, |test| self.serialize_expr(&test, child_id));
+              .map_or(0, |test| self.serialize_expr(test, child_id));
 
             let cons = case
               .cons
               .iter()
-              .map(|cons| self.serialize_stmt(&cons, child_id))
+              .map(|cons| self.serialize_stmt(cons, child_id))
               .collect::<Vec<_>>();
 
             self.write_node(child_id, AstNode::SwitchCase, id, &case.span);
@@ -771,7 +771,7 @@ impl SerializeCtx {
           let param_id = catch
             .param
             .as_ref()
-            .map_or(0, |param| serialize_pat(self, &param, clause_id));
+            .map_or(0, |param| serialize_pat(self, param, clause_id));
 
           let body_id =
             self.serialize_stmt(&Stmt::Block(catch.body.clone()), id);
@@ -825,18 +825,18 @@ impl SerializeCtx {
           VarDeclOrExpr::VarDecl(var_decl) => {
             self.serialize_stmt(&Stmt::Decl(Decl::Var(var_decl.clone())), id)
           }
-          VarDeclOrExpr::Expr(expr) => self.serialize_expr(&expr, id),
+          VarDeclOrExpr::Expr(expr) => self.serialize_expr(expr, id),
         });
 
         let test_id = node
           .test
           .as_ref()
-          .map_or(0, |expr| self.serialize_expr(&expr, id));
+          .map_or(0, |expr| self.serialize_expr(expr, id));
         let update_id = node
           .update
           .as_ref()
-          .map_or(0, |expr| self.serialize_expr(&expr, id));
-        let body_id = self.serialize_stmt(&node.body.as_ref(), id);
+          .map_or(0, |expr| self.serialize_expr(expr, id));
+        let body_id = self.serialize_stmt(node.body.as_ref(), id);
 
         self.write_node(id, AstNode::ForStatement, parent_id, &node.span);
         self.write_id(init_id);
@@ -903,7 +903,7 @@ impl SerializeCtx {
           .map(|item| {
             item
               .as_ref()
-              .map_or(0, |item| self.serialize_expr_or_spread(&item, id))
+              .map_or(0, |item| self.serialize_expr_or_spread(item, id))
           })
           .collect::<Vec<_>>();
 
@@ -1072,7 +1072,7 @@ impl SerializeCtx {
         let ident_id = node
           .ident
           .as_ref()
-          .map_or(0, |ident| self.serialize_ident(&ident, id));
+          .map_or(0, |ident| self.serialize_ident(ident, id));
 
         let type_param_id = fn_obj.type_params.as_ref().map_or(0, |param| {
           todo!() // FIXME
@@ -1261,7 +1261,7 @@ impl SerializeCtx {
               &private_name.span,
             );
 
-            let str_id = self.str_table.insert(&private_name.name.as_str());
+            let str_id = self.str_table.insert(private_name.name.as_str());
             append_usize(&mut self.result, str_id);
 
             child_id
@@ -1335,7 +1335,7 @@ impl SerializeCtx {
         let arg_ids = node
           .args
           .iter()
-          .map(|arg| self.serialize_expr_or_spread(&arg, id))
+          .map(|arg| self.serialize_expr_or_spread(arg, id))
           .collect::<Vec<_>>();
 
         self.write_node(id, AstNode::Call, parent_id, &node.span);
@@ -1352,8 +1352,8 @@ impl SerializeCtx {
 
         let arg_ids: Vec<usize> = node.args.as_ref().map_or(vec![], |args| {
           args
-            .into_iter()
-            .map(|arg| self.serialize_expr_or_spread(&arg, id))
+            .iter()
+            .map(|arg| self.serialize_expr_or_spread(arg, id))
             .collect::<Vec<_>>()
         });
 
@@ -1374,7 +1374,7 @@ impl SerializeCtx {
         let children = node
           .exprs
           .iter()
-          .map(|expr| self.serialize_expr(&expr, id))
+          .map(|expr| self.serialize_expr(expr, id))
           .collect::<Vec<_>>();
 
         self.write_node(id, AstNode::Seq, parent_id, &node.span);
@@ -1415,7 +1415,7 @@ impl SerializeCtx {
         let expr_ids = node
           .exprs
           .iter()
-          .map(|expr| self.serialize_expr(&expr, id))
+          .map(|expr| self.serialize_expr(expr, id))
           .collect::<Vec<_>>();
 
         self.write_node(id, AstNode::TemplateLiteral, parent_id, &node.span);
@@ -1449,7 +1449,7 @@ impl SerializeCtx {
         let param_ids = node
           .params
           .iter()
-          .map(|param| serialize_pat(self, &param, id))
+          .map(|param| serialize_pat(self, param, id))
           .collect::<Vec<_>>();
 
         let body_id = match node.body.as_ref() {
@@ -1505,7 +1505,7 @@ impl SerializeCtx {
         id
       }
       Expr::MetaProp(node) => {
-        self.push_node(AstNode::MetaProp.into(), parent_id, &node.span)
+        self.push_node(AstNode::MetaProp, parent_id, &node.span)
       }
       Expr::Await(node) => {
         let id = self.next_id();
@@ -1521,15 +1521,13 @@ impl SerializeCtx {
         // and are never materialized to actual AST nodes.
         self.serialize_expr(&node.expr, parent_id)
       }
-      Expr::JSXMember(node) => {
-        serialize_jsx_member_expr(self, &node, parent_id)
-      }
+      Expr::JSXMember(node) => serialize_jsx_member_expr(self, node, parent_id),
       Expr::JSXNamespacedName(node) => {
         serialize_jsx_namespaced_name(self, node, parent_id)
       }
       Expr::JSXEmpty(node) => serialize_jsx_empty_expr(self, node, parent_id),
-      Expr::JSXElement(node) => serialize_jsx_element(self, &node, parent_id),
-      Expr::JSXFragment(node) => serialize_jsx_fragment(self, &node, parent_id),
+      Expr::JSXElement(node) => serialize_jsx_element(self, node, parent_id),
+      Expr::JSXFragment(node) => serialize_jsx_fragment(self, node, parent_id),
       Expr::TsTypeAssertion(node) => {
         let id =
           self.push_node(AstNode::TsTypeAssertion, parent_id, &node.span);
@@ -1640,7 +1638,7 @@ impl SerializeCtx {
     parent_id: usize,
   ) -> usize {
     match &name {
-      ModuleExportName::Ident(ident) => self.serialize_ident(&ident, parent_id),
+      ModuleExportName::Ident(ident) => self.serialize_ident(ident, parent_id),
       ModuleExportName::Str(lit) => {
         serialize_lit(self, &Lit::Str(lit.clone()), parent_id)
       }
@@ -1742,7 +1740,7 @@ fn serialize_decl(
         .class
         .super_class
         .as_ref()
-        .map_or(0, |super_class| ctx.serialize_expr(&super_class, id));
+        .map_or(0, |super_class| ctx.serialize_expr(super_class, id));
 
       let super_type_params =
         node
@@ -1970,8 +1968,7 @@ fn serialize_decl(
       // ident + body + type_ann + extends(Vec)
       let count = 3 + node.extends.len();
 
-      let id =
-        ctx.push_node(AstNode::TsInterface.into(), parent_id, &node.span);
+      let id = ctx.push_node(AstNode::TsInterface, parent_id, &node.span);
 
       // FIXME
 
@@ -1979,8 +1976,7 @@ fn serialize_decl(
     }
     Decl::TsTypeAlias(node) => {
       // FIXME: Declare flag
-      let id =
-        ctx.push_node(AstNode::TsTypeAlias.into(), parent_id, &node.span);
+      let id = ctx.push_node(AstNode::TsTypeAlias, parent_id, &node.span);
 
       let offset = ctx.reserve_child_ids(1);
 
@@ -1993,7 +1989,7 @@ fn serialize_decl(
       id
     }
     Decl::TsEnum(node) => {
-      let id = ctx.push_node(AstNode::TsEnum.into(), parent_id, &node.span);
+      let id = ctx.push_node(AstNode::TsEnum, parent_id, &node.span);
 
       // Ident + member count
       let count = 1 + node.members.len();
@@ -2083,7 +2079,7 @@ fn serialize_jsx_fragment(
 
 fn serialize_jsx_children(
   ctx: &mut SerializeCtx,
-  children: &Vec<JSXElementChild>,
+  children: &[JSXElementChild],
   parent_id: usize,
   offset: usize,
 ) {
@@ -2128,7 +2124,7 @@ fn serialize_jsx_member_expr(
     JSXObject::JSXMemberExpr(member) => {
       serialize_jsx_member_expr(ctx, member, id)
     }
-    JSXObject::Ident(ident) => serialize_jsx_identifier(ctx, &ident, parent_id),
+    JSXObject::Ident(ident) => serialize_jsx_identifier(ctx, ident, parent_id),
   };
 
   let prop_id = serialize_ident_name_as_jsx_identifier(ctx, &node.prop, id);
@@ -2146,13 +2142,13 @@ fn serialize_jsx_element_name(
 ) -> usize {
   match &node {
     JSXElementName::Ident(ident) => {
-      serialize_jsx_identifier(ctx, &ident, parent_id)
+      serialize_jsx_identifier(ctx, ident, parent_id)
     }
     JSXElementName::JSXMemberExpr(member) => {
-      serialize_jsx_member_expr(ctx, &member, parent_id)
+      serialize_jsx_member_expr(ctx, member, parent_id)
     }
     JSXElementName::JSXNamespacedName(ns) => {
-      serialize_jsx_namespaced_name(ctx, &ns, parent_id)
+      serialize_jsx_namespaced_name(ctx, ns, parent_id)
     }
   }
 }
@@ -2186,7 +2182,7 @@ fn serialize_jsx_opening_element(
 
         let name_id = match &jsxattr.name {
           JSXAttrName::Ident(name) => {
-            serialize_ident_name_as_jsx_identifier(ctx, &name, attr_id)
+            serialize_ident_name_as_jsx_identifier(ctx, name, attr_id)
           }
           JSXAttrName::JSXNamespacedName(node) => {
             serialize_jsx_namespaced_name(ctx, node, attr_id)
@@ -2201,10 +2197,10 @@ fn serialize_jsx_opening_element(
               serialize_jsx_container_expr(ctx, container, attr_id)
             }
             JSXAttrValue::JSXElement(el) => {
-              serialize_jsx_element(ctx, &el, attr_id)
+              serialize_jsx_element(ctx, el, attr_id)
             }
             JSXAttrValue::JSXFragment(frag) => {
-              serialize_jsx_fragment(ctx, &frag, attr_id)
+              serialize_jsx_fragment(ctx, frag, attr_id)
             }
           };
 
@@ -2243,7 +2239,7 @@ fn serialize_jsx_container_expr(
 
   let child_id = match &node.expr {
     JSXExpr::JSXEmptyExpr(expr) => serialize_jsx_empty_expr(ctx, expr, id),
-    JSXExpr::Expr(expr) => ctx.serialize_expr(&expr, id),
+    JSXExpr::Expr(expr) => ctx.serialize_expr(expr, id),
   };
 
   ctx.set_child(offset, child_id, 0);
@@ -2531,7 +2527,7 @@ fn serialize_lit(ctx: &mut SerializeCtx, lit: &Lit, parent_id: usize) -> usize {
     Lit::BigInt(node) => {
       let id = ctx.push_node(AstNode::BigIntLiteral, parent_id, &node.span);
 
-      let str_id = ctx.str_table.insert(node.value.to_string());
+      let str_id = ctx.str_table.insert(&node.value.to_string());
       append_usize(&mut ctx.result, str_id);
 
       id
