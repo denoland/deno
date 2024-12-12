@@ -1,5 +1,6 @@
 {
   "tempDir": true,
+  // use this so the vfs output is all in the same folder
   "canonicalizedTempDir": true,
   "steps": [{
     "if": "unix",
