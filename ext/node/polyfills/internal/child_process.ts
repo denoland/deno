@@ -277,6 +277,7 @@ export class ChildProcess extends EventEmitter {
     try {
       this.#process = new Deno.Command(cmd, {
         args: cmdArgs,
+        clearEnv: true,
         cwd,
         env: stringEnv,
         stdin: toDenoStdio(stdin),
@@ -839,6 +840,7 @@ export function normalizeSpawnArguments(
     args,
     cwd,
     detached: !!options.detached,
+    env,
     envPairs,
     file,
     windowsHide: !!options.windowsHide,
