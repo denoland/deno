@@ -36,6 +36,9 @@
         "flaky": {
           "type": "boolean"
         },
+        "canonicalizedTempDir": {
+          "type": "boolean"
+        },
         "symlinkedTempDir": {
           "type": "boolean"
         },
@@ -64,6 +67,9 @@
         "required": ["steps"],
         "properties": {
           "tempDir": {
+            "type": "boolean"
+          },
+          "canonicalizedTempDir": {
             "type": "boolean"
           },
           "symlinkedTempDir": {
@@ -95,6 +101,9 @@
         "allOf": [{
           "properties": {
             "tempDir": {
+              "type": "boolean"
+            },
+            "canonicalizedTempDir": {
               "type": "boolean"
             },
             "symlinkedTempDir": {

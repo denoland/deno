@@ -1,5 +1,6 @@
 {
   "tempDir": true,
+  "canonicalizedTempDir": true,
   "steps": [{
     "if": "unix",
     "args": "compile -A --output main main.ts",
