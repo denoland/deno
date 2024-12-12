@@ -24,6 +24,8 @@ pub enum SqliteError {
   AlreadyOpen,
   #[error("Failed to prepare statement")]
   PrepareFailed,
+  #[error("Invalid constructor")]
+  InvalidConstructor,
   #[error(transparent)]
   Other(deno_core::error::AnyError),
 }
