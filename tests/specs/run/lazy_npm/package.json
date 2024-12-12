@@ -1,0 +1,6 @@
+{
+  "dependencies": {
+    "@denotest/add": "1.0.0",
+    "@denotest/say-hello": "1.0.0"
+  }
+}

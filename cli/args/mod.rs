@@ -31,6 +31,7 @@ use deno_npm_cache::NpmCacheSetting;
 use deno_path_util::normalize_path;
 use deno_semver::npm::NpmPackageReqReference;
 use deno_telemetry::OtelConfig;
+use deno_telemetry::OtelRuntimeConfig;
 use import_map::resolve_import_map_value_from_specifier;
 
 pub use deno_config::deno_json::BenchConfig;
@@ -970,9 +971,7 @@ impl CliOptions {
     match self.sub_command() {
       DenoSubcommand::Cache(_) => GraphKind::All,
       DenoSubcommand::Check(_) => GraphKind::TypesOnly,
-      DenoSubcommand::Install(InstallFlags {
-        kind: InstallKind::Local(_),
-      }) => GraphKind::All,
+      DenoSubcommand::Install(InstallFlags::Local(_)) => GraphKind::All,
       _ => self.type_check_mode().as_graph_kind(),
     }
   }
@@ -1132,7 +1131,7 @@ impl CliOptions {
     }
   }
 
-  pub fn otel_config(&self) -> Option<OtelConfig> {
+  pub fn otel_config(&self) -> OtelConfig {
     self.flags.otel_config()
   }
 
@@ -1549,11 +1548,11 @@ impl CliOptions {
         DenoSubcommand::Check(check_flags) => {
           Some(files_to_urls(&check_flags.files))
         }
-        DenoSubcommand::Install(InstallFlags {
-          kind: InstallKind::Global(flags),
-        }) => Url::parse(&flags.module_url)
-          .ok()
-          .map(|url| vec![Cow::Owned(url)]),
+        DenoSubcommand::Install(InstallFlags::Global(flags)) => {
+          Url::parse(&flags.module_url)
+            .ok()
+            .map(|url| vec![Cow::Owned(url)])
+        }
         DenoSubcommand::Doc(DocFlags {
           source_files: DocSourceFileFlag::Paths(paths),
           ..
@@ -1689,6 +1688,7 @@ impl CliOptions {
           "detect-cjs",
           "fmt-component",
           "fmt-sql",
+          "lazy-npm-caching",
         ])
         .collect();
 
@@ -1765,6 +1765,19 @@ impl CliOptions {
           | DenoSubcommand::Cache(_)
           | DenoSubcommand::Add(_)
       ),
+    }
+  }
+
+  pub fn unstable_npm_lazy_caching(&self) -> bool {
+    self.flags.unstable_config.npm_lazy_caching
+      || self.workspace().has_unstable("npm-lazy-caching")
+  }
+
+  pub fn default_npm_caching_strategy(&self) -> NpmCachingStrategy {
+    if self.flags.unstable_config.npm_lazy_caching {
+      NpmCachingStrategy::Lazy
+    } else {
+      NpmCachingStrategy::Eager
     }
   }
 }
@@ -1978,6 +1991,20 @@ fn load_env_variables_from_env_file(filename: Option<&Vec<String>>) {
         }
       }
     }
+  }
+}
+
+#[derive(Debug, Clone, Copy)]
+pub enum NpmCachingStrategy {
+  Eager,
+  Lazy,
+  Manual,
+}
+
+pub(crate) fn otel_runtime_config() -> OtelRuntimeConfig {
+  OtelRuntimeConfig {
+    runtime_name: Cow::Borrowed("deno"),
+    runtime_version: Cow::Borrowed(crate::version::DENO_VERSION_INFO.deno),
   }
 }
 

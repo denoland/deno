@@ -131,7 +131,11 @@ pub async fn doc(
         |_| true,
       )?;
       let graph = module_graph_creator
-        .create_graph(GraphKind::TypesOnly, module_specifiers.clone())
+        .create_graph(
+          GraphKind::TypesOnly,
+          module_specifiers.clone(),
+          crate::graph_util::NpmCachingStrategy::Eager,
+        )
         .await?;
 
       graph_exit_integrity_errors(&graph);

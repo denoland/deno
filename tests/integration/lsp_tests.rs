@@ -2701,7 +2701,7 @@ fn lsp_hover_dependency() {
         "uri": "file:///a/file.ts",
         "languageId": "typescript",
         "version": 1,
-        "text": "import * as a from \"http://127.0.0.1:4545/xTypeScriptTypes.js\";\n// @deno-types=\"http://127.0.0.1:4545/type_definitions/foo.d.ts\"\nimport * as b from \"http://127.0.0.1:4545/type_definitions/foo.js\";\nimport * as c from \"http://127.0.0.1:4545/subdir/type_reference.js\";\nimport * as d from \"http://127.0.0.1:4545/subdir/mod1.ts\";\nimport * as e from \"data:application/typescript;base64,ZXhwb3J0IGNvbnN0IGEgPSAiYSI7CgpleHBvcnQgZW51bSBBIHsKICBBLAogIEIsCiAgQywKfQo=\";\nimport * as f from \"./file_01.ts\";\nimport * as g from \"http://localhost:4545/x/a/mod.ts\";\nimport * as h from \"./mod🦕.ts\";\n\nconsole.log(a, b, c, d, e, f, g, h);\n"
+        "text": "import * as a from \"http://127.0.0.1:4545/xTypeScriptTypes.js\";\n// @ts-types=\"http://127.0.0.1:4545/type_definitions/foo.d.ts\"\nimport * as b from \"http://127.0.0.1:4545/type_definitions/foo.js\";\nimport * as c from \"http://127.0.0.1:4545/subdir/type_reference.js\";\nimport * as d from \"http://127.0.0.1:4545/subdir/mod1.ts\";\nimport * as e from \"data:application/typescript;base64,ZXhwb3J0IGNvbnN0IGEgPSAiYSI7CgpleHBvcnQgZW51bSBBIHsKICBBLAogIEIsCiAgQywKfQo=\";\nimport * as f from \"./file_01.ts\";\nimport * as g from \"http://localhost:4545/x/a/mod.ts\";\nimport * as h from \"./mod🦕.ts\";\n\nconsole.log(a, b, c, d, e, f, g, h);\n"
       }
     }),
   );
@@ -6269,7 +6269,7 @@ fn lsp_code_actions_deno_types_for_npm() {
     res,
     json!([
       {
-        "title": "Add @deno-types directive for \"@types/react\"",
+        "title": "Add @ts-types directive for \"@types/react\"",
         "kind": "quickfix",
         "edit": {
           "changes": {
@@ -6279,7 +6279,7 @@ fn lsp_code_actions_deno_types_for_npm() {
                   "start": { "line": 0, "character": 0 },
                   "end": { "line": 0, "character": 0 },
                 },
-                "newText": "// @deno-types=\"@types/react\"\n",
+                "newText": "// @ts-types=\"@types/react\"\n",
               },
             ],
           },
@@ -6322,7 +6322,7 @@ fn lsp_code_actions_deno_types_for_npm() {
     res,
     json!([
       {
-        "title": "Add @deno-types directive for \"npm:@types/react@^18.3.10\"",
+        "title": "Add @ts-types directive for \"npm:@types/react@^18.3.10\"",
         "kind": "quickfix",
         "edit": {
           "changes": {
@@ -6332,7 +6332,7 @@ fn lsp_code_actions_deno_types_for_npm() {
                   "start": { "line": 0, "character": 0 },
                   "end": { "line": 0, "character": 0 },
                 },
-                "newText": "// @deno-types=\"npm:@types/react@^18.3.10\"\n",
+                "newText": "// @ts-types=\"npm:@types/react@^18.3.10\"\n",
               },
             ],
           },
@@ -8310,7 +8310,7 @@ fn lsp_npm_auto_import_with_deno_types() {
   temp_dir.write(
     "other.ts",
     r#"
-      // @deno-types="@types/lz-string"
+      // @ts-types="@types/lz-string"
       import "lz-string";
     "#,
   );
@@ -8358,7 +8358,7 @@ fn lsp_npm_auto_import_with_deno_types() {
             "start": { "line": 0, "character": 0 },
             "end": { "line": 0, "character": 0 },
           },
-          "newText": "// @deno-types=\"@types/lz-string\"\nimport { compressToBase64 } from \"lz-string\";\n",
+          "newText": "// @ts-types=\"@types/lz-string\"\nimport { compressToBase64 } from \"lz-string\";\n",
         },
       ],
     }),
@@ -8391,7 +8391,7 @@ fn lsp_npm_auto_import_with_deno_types() {
             "start": { "line": 0, "character": 0 },
             "end": { "line": 0, "character": 0 },
           },
-          "newText": "// @deno-types=\"@types/react\"\nimport { createRef } from \"react\";\n",
+          "newText": "// @ts-types=\"@types/react\"\nimport { createRef } from \"react\";\n",
         },
       ],
     }),
@@ -10226,7 +10226,7 @@ fn lsp_cache_location() {
         "uri": "file:///a/file.ts",
         "languageId": "typescript",
         "version": 1,
-        "text": "import * as a from \"http://127.0.0.1:4545/xTypeScriptTypes.js\";\n// @deno-types=\"http://127.0.0.1:4545/type_definitions/foo.d.ts\"\nimport * as b from \"http://127.0.0.1:4545/type_definitions/foo.js\";\nimport * as c from \"http://127.0.0.1:4545/subdir/type_reference.js\";\nimport * as d from \"http://127.0.0.1:4545/subdir/mod1.ts\";\nimport * as e from \"data:application/typescript;base64,ZXhwb3J0IGNvbnN0IGEgPSAiYSI7CgpleHBvcnQgZW51bSBBIHsKICBBLAogIEIsCiAgQywKfQo=\";\nimport * as f from \"./file_01.ts\";\nimport * as g from \"http://localhost:4545/x/a/mod.ts\";\n\nconsole.log(a, b, c, d, e, f, g);\n"
+        "text": "import * as a from \"http://127.0.0.1:4545/xTypeScriptTypes.js\";\n// @ts-types=\"http://127.0.0.1:4545/type_definitions/foo.d.ts\"\nimport * as b from \"http://127.0.0.1:4545/type_definitions/foo.js\";\nimport * as c from \"http://127.0.0.1:4545/subdir/type_reference.js\";\nimport * as d from \"http://127.0.0.1:4545/subdir/mod1.ts\";\nimport * as e from \"data:application/typescript;base64,ZXhwb3J0IGNvbnN0IGEgPSAiYSI7CgpleHBvcnQgZW51bSBBIHsKICBBLAogIEIsCiAgQywKfQo=\";\nimport * as f from \"./file_01.ts\";\nimport * as g from \"http://localhost:4545/x/a/mod.ts\";\n\nconsole.log(a, b, c, d, e, f, g);\n"
       }
     }));
   assert_eq!(diagnostics.all().len(), 6);
@@ -10319,7 +10319,7 @@ fn lsp_tls_cert() {
       "uri": "file:///a/file.ts",
       "languageId": "typescript",
       "version": 1,
-      "text": "import * as a from \"https://localhost:5545/xTypeScriptTypes.js\";\n// @deno-types=\"https://localhost:5545/type_definitions/foo.d.ts\"\nimport * as b from \"https://localhost:5545/type_definitions/foo.js\";\nimport * as c from \"https://localhost:5545/subdir/type_reference.js\";\nimport * as d from \"https://localhost:5545/subdir/mod1.ts\";\nimport * as e from \"data:application/typescript;base64,ZXhwb3J0IGNvbnN0IGEgPSAiYSI7CgpleHBvcnQgZW51bSBBIHsKICBBLAogIEIsCiAgQywKfQo=\";\nimport * as f from \"./file_01.ts\";\nimport * as g from \"http://localhost:4545/x/a/mod.ts\";\n\nconsole.log(a, b, c, d, e, f, g);\n"
+      "text": "import * as a from \"https://localhost:5545/xTypeScriptTypes.js\";\n// @ts-types=\"https://localhost:5545/type_definitions/foo.d.ts\"\nimport * as b from \"https://localhost:5545/type_definitions/foo.js\";\nimport * as c from \"https://localhost:5545/subdir/type_reference.js\";\nimport * as d from \"https://localhost:5545/subdir/mod1.ts\";\nimport * as e from \"data:application/typescript;base64,ZXhwb3J0IGNvbnN0IGEgPSAiYSI7CgpleHBvcnQgZW51bSBBIHsKICBBLAogIEIsCiAgQywKfQo=\";\nimport * as f from \"./file_01.ts\";\nimport * as g from \"http://localhost:4545/x/a/mod.ts\";\n\nconsole.log(a, b, c, d, e, f, g);\n"
     }
   }));
   let diagnostics = diagnostics.all();
@@ -10784,7 +10784,7 @@ fn lsp_diagnostics_deno_types() {
           "uri": "file:///a/file.ts",
           "languageId": "typescript",
           "version": 1,
-          "text": "/// <reference types=\"https://example.com/a/b.d.ts\" />\n/// <reference path=\"https://example.com/a/c.ts\"\n\n// @deno-types=https://example.com/a/d.d.ts\nimport * as d from \"https://example.com/a/d.js\";\n\n// @deno-types=\"https://example.com/a/e.d.ts\"\nimport * as e from \"https://example.com/a/e.js\";\n\nconsole.log(d, e);\n"
+          "text": "/// <reference types=\"https://example.com/a/b.d.ts\" />\n/// <reference path=\"https://example.com/a/c.ts\"\n\n// @ts-types=https://example.com/a/d.d.ts\nimport * as d from \"https://example.com/a/d.js\";\n\n// @ts-types=\"https://example.com/a/e.d.ts\"\nimport * as e from \"https://example.com/a/e.js\";\n\nconsole.log(d, e);\n"
         }
       }),
     );
@@ -10797,7 +10797,7 @@ fn lsp_diagnostics_deno_types() {
       }
     }),
   );
-  assert_eq!(diagnostics.all().len(), 5);
+  assert_eq!(diagnostics.all().len(), 4);
   client.shutdown();
 }
 
@@ -15782,7 +15782,7 @@ fn lsp_sloppy_imports() {
         "import * as b from './b.js';\n",
         // this one's types resolve to a .d.ts file and we don't
         // bother warning about it because it's a bit complicated
-        // to explain to use @deno-types in a diagnostic
+        // to explain to use @ts-types in a diagnostic
         "import * as c from './c.js';\n",
         "console.log(a)\n",
         "console.log(b);\n",
