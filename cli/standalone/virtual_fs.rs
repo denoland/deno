@@ -112,6 +112,8 @@ impl VfsBuilder {
   /// tell the VFS builder to include the base of the import map
   /// by calling this method.
   pub fn add_possible_min_root_dir(&mut self, path: &Path) {
+    self.add_dir_raw(path);
+
     match &self.min_root_dir {
       Some(WindowsSystemRootablePath::WindowSystemRoot) => {
         // already the root dir
@@ -154,7 +156,7 @@ impl VfsBuilder {
     &mut self,
     path: &Path,
   ) -> Result<(), AnyError> {
-    self.add_dir(path);
+    self.add_dir_raw(path);
     let read_dir = std::fs::read_dir(path)
       .with_context(|| format!("Reading {}", path.display()))?;
 
@@ -195,7 +197,7 @@ impl VfsBuilder {
     Ok(())
   }
 
-  fn add_dir(&mut self, path: &Path) -> &mut VirtualDirectory {
+  fn add_dir_raw(&mut self, path: &Path) -> &mut VirtualDirectory {
     log::debug!("Ensuring directory '{}'", path.display());
     debug_assert!(path.is_absolute());
     let mut current_dir = &mut self.executable_root;
@@ -311,7 +313,7 @@ impl VfsBuilder {
       self.current_offset
     };
 
-    let dir = self.add_dir(path.parent().unwrap());
+    let dir = self.add_dir_raw(path.parent().unwrap());
     let name = path.file_name().unwrap().to_string_lossy();
     let offset_and_len = OffsetWithLength {
       offset,
@@ -379,7 +381,7 @@ impl VfsBuilder {
         .with_context(|| format!("Reading symlink '{}'", path.display()))?,
     );
     let target = normalize_path(path.parent().unwrap().join(&target));
-    let dir = self.add_dir(path.parent().unwrap());
+    let dir = self.add_dir_raw(path.parent().unwrap());
     let name = path.file_name().unwrap().to_string_lossy();
     match dir.entries.binary_search_by(|e| e.name().cmp(&name)) {
       Ok(_) => {} // previously inserted
@@ -415,39 +417,6 @@ impl VfsBuilder {
       Ok(SymlinkTarget::Dir(target))
     } else {
       Ok(SymlinkTarget::File(target))
-    }
-  }
-
-  /// Resolves the root path of the VFS based on its current state.
-  ///
-  /// Returns `None` when at the system level for Windows.
-  pub fn resolve_root_path(&self) -> WindowsSystemRootablePath {
-    let executable_root = &self.executable_root;
-    let mut current_dir = executable_root;
-    let mut current_path = if cfg!(windows) {
-      WindowsSystemRootablePath::WindowSystemRoot
-    } else {
-      WindowsSystemRootablePath::Path(PathBuf::from("/"))
-    };
-    loop {
-      if current_dir.entries.len() != 1 {
-        return current_path;
-      }
-      if self.min_root_dir.as_ref() == Some(&current_path) {
-        return current_path;
-      }
-      match &current_dir.entries[0] {
-        VfsEntry::Dir(dir) => {
-          if dir.name == DENO_COMPILE_GLOBAL_NODE_MODULES_DIR_NAME {
-            // special directory want to maintain
-            return current_path;
-          }
-          current_dir = dir;
-          current_path =
-            WindowsSystemRootablePath::Path(current_path.join(&dir.name));
-        }
-        VfsEntry::File(_) | VfsEntry::Symlink(_) => return current_path,
-      }
     }
   }
 

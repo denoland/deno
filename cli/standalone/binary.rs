@@ -79,6 +79,7 @@ use crate::resolver::CjsTracker;
 use crate::shared::ReleaseChannel;
 use crate::standalone::virtual_fs::VfsEntry;
 use crate::util::archive;
+use crate::util::fs::canonicalize_path;
 use crate::util::fs::canonicalize_path_maybe_not_exists;
 use crate::util::progress_bar::ProgressBar;
 use crate::util::progress_bar::ProgressBarStyle;
@@ -129,14 +130,16 @@ impl<'a> StandaloneRelativeFileBaseUrl<'a> {
 
     match base.make_relative(target) {
       Some(relative) => {
-        // this is not a great scenario to have because it means that the
+        // This is not a great scenario to have because it means that the
         // specifier is outside the vfs and could cause the binary to act
-        // strangely
+        // strangely. If you encounter this, the fix is to add more paths
+        // to the vfs builder by calling `add_possible_min_root_dir`.
         debug_assert!(
           !relative.starts_with("../"),
-          "{:?} -> {:?}",
-          base,
-          target
+          "{} -> {} ({})",
+          base.as_str(),
+          target.as_str(),
+          relative,
         );
         Cow::Owned(relative)
       }
@@ -673,10 +676,15 @@ impl<'a> DenoCompileBinaryWriter<'a> {
         }
       }
     }
+    if let Some(node_modules_dir) = self.npm_resolver.root_node_modules_path() {
+      // ensure the vfs doesn't go below the node_modules directory's parent
+      if let Some(parent) = node_modules_dir.parent() {
+        vfs.add_possible_min_root_dir(parent);
+      }
+    }
 
-    self.consolidate_global_npm_registries_in_vfs(&mut vfs);
-    let root_vfs_dir = vfs.resolve_root_path();
-    let root_dir_url = match &root_vfs_dir {
+    let vfs = self.build_vfs_consolidating_global_npm_cache(vfs);
+    let root_dir_url = match &vfs.root_path {
       WindowsSystemRootablePath::Path(dir) => {
         Some(url_from_directory_path(dir)?)
       }
@@ -729,7 +737,6 @@ impl<'a> DenoCompileBinaryWriter<'a> {
       None => Default::default(),
     };
 
-    let vfs = vfs.build();
     output_vfs(&vfs, display_output_filename);
 
     let metadata = Metadata {
@@ -873,100 +880,95 @@ impl<'a> DenoCompileBinaryWriter<'a> {
     }
   }
 
-  fn consolidate_global_npm_registries_in_vfs(&self, vfs: &mut VfsBuilder) {
+  fn build_vfs_consolidating_global_npm_cache(
+    &self,
+    mut vfs: VfsBuilder,
+  ) -> BuiltVfs {
     match self.npm_resolver.as_inner() {
       InnerCliNpmResolverRef::Managed(npm_resolver) => {
-        if npm_resolver.root_node_modules_path().is_none() {
-          let global_cache_root_path = npm_resolver.global_cache_root_path();
+        if npm_resolver.root_node_modules_path().is_some() {
+          return vfs.build();
+        }
 
-          // Flatten all the registries folders into a single ".deno_compile_node_modules/localhost" folder
-          // that will be used by denort when loading the npm cache. This avoids us exposing
-          // the user's private registry information and means we don't have to bother
-          // serializing all the different registry config into the binary.
-          if let Some(root_dir) = vfs.get_dir_mut(global_cache_root_path) {
-            root_dir.name =
-              DENO_COMPILE_GLOBAL_NODE_MODULES_DIR_NAME.to_string();
-            let mut new_entries = Vec::with_capacity(root_dir.entries.len());
-            let mut localhost_entries = IndexMap::new();
-            for entry in std::mem::take(&mut root_dir.entries) {
-              match entry {
-                VfsEntry::Dir(dir) => {
-                  for entry in dir.entries {
-                    log::debug!(
-                      "Flattening {} into node_modules",
-                      entry.name()
-                    );
-                    if let Some(existing) =
-                      localhost_entries.insert(entry.name().to_string(), entry)
-                    {
-                      panic!(
+        let global_cache_root_path = npm_resolver.global_cache_root_path();
+
+        // Flatten all the registries folders into a single ".deno_compile_node_modules/localhost" folder
+        // that will be used by denort when loading the npm cache. This avoids us exposing
+        // the user's private registry information and means we don't have to bother
+        // serializing all the different registry config into the binary.
+        let Some(root_dir) = vfs.get_dir_mut(global_cache_root_path) else {
+          return vfs.build();
+        };
+
+        root_dir.name = DENO_COMPILE_GLOBAL_NODE_MODULES_DIR_NAME.to_string();
+        let mut new_entries = Vec::with_capacity(root_dir.entries.len());
+        let mut localhost_entries = IndexMap::new();
+        for entry in std::mem::take(&mut root_dir.entries) {
+          match entry {
+            VfsEntry::Dir(dir) => {
+              for entry in dir.entries {
+                log::debug!("Flattening {} into node_modules", entry.name());
+                if let Some(existing) =
+                  localhost_entries.insert(entry.name().to_string(), entry)
+                {
+                  panic!(
                         "Unhandled scenario where a duplicate entry was found: {:?}",
                         existing
                       );
-                    }
-                  }
-                }
-                VfsEntry::File(_) | VfsEntry::Symlink(_) => {
-                  new_entries.push(entry);
                 }
               }
             }
-            new_entries.push(VfsEntry::Dir(VirtualDirectory {
-              name: "localhost".to_string(),
-              entries: localhost_entries.into_iter().map(|(_, v)| v).collect(),
-            }));
-            // needs to be sorted by name
-            new_entries.sort_by(|a, b| a.name().cmp(b.name()));
-            root_dir.entries = new_entries;
-
-            // it's better to not expose the user's cache directory, so take it out
-            // of there
-            let parent = global_cache_root_path.parent().unwrap();
-            let parent_dir = vfs.get_dir_mut(parent).unwrap();
-            let index = parent_dir
-              .entries
-              .iter()
-              .position(|entry| {
-                entry.name() == DENO_COMPILE_GLOBAL_NODE_MODULES_DIR_NAME
-              })
-              .unwrap();
-            let npm_global_cache_dir_entry = parent_dir.entries.remove(index);
-
-            // go up from the ancestors removing empty directories...
-            // this is not as optimized as it could be
-            let mut last_name =
-              Cow::Borrowed(DENO_COMPILE_GLOBAL_NODE_MODULES_DIR_NAME);
-            for ancestor in parent.ancestors() {
-              let dir = vfs.get_dir_mut(ancestor).unwrap();
-              if let Some(index) = dir
-                .entries
-                .iter()
-                .position(|entry| entry.name() == last_name)
-              {
-                dir.entries.remove(index);
-              }
-              last_name = Cow::Owned(dir.name.clone());
-              if !dir.entries.is_empty() {
-                break;
-              }
+            VfsEntry::File(_) | VfsEntry::Symlink(_) => {
+              new_entries.push(entry);
             }
-
-            // now ask the vfs what the root directory will be, then add
-            // the global cache entry there
-            let root_dir = vfs.resolve_root_path();
-            let dir = match &root_dir {
-              WindowsSystemRootablePath::Path(root_dir) => {
-                vfs.get_dir_mut(root_dir).unwrap()
-              }
-              WindowsSystemRootablePath::WindowSystemRoot => {
-                vfs.get_system_root_dir_mut()
-              }
-            };
-            dir.insert_entry(npm_global_cache_dir_entry);
           }
         }
+        new_entries.push(VfsEntry::Dir(VirtualDirectory {
+          name: "localhost".to_string(),
+          entries: localhost_entries.into_iter().map(|(_, v)| v).collect(),
+        }));
+        // needs to be sorted by name
+        new_entries.sort_by(|a, b| a.name().cmp(b.name()));
+        root_dir.entries = new_entries;
+
+        // it's better to not expose the user's cache directory, so take it out
+        // of there
+        let parent = global_cache_root_path.parent().unwrap();
+        let parent_dir = vfs.get_dir_mut(parent).unwrap();
+        let index = parent_dir
+          .entries
+          .iter()
+          .position(|entry| {
+            entry.name() == DENO_COMPILE_GLOBAL_NODE_MODULES_DIR_NAME
+          })
+          .unwrap();
+        let npm_global_cache_dir_entry = parent_dir.entries.remove(index);
+
+        // go up from the ancestors removing empty directories...
+        // this is not as optimized as it could be
+        let mut last_name =
+          Cow::Borrowed(DENO_COMPILE_GLOBAL_NODE_MODULES_DIR_NAME);
+        for ancestor in parent.ancestors() {
+          let dir = vfs.get_dir_mut(ancestor).unwrap();
+          if let Some(index) = dir
+            .entries
+            .iter()
+            .position(|entry| entry.name() == last_name)
+          {
+            dir.entries.remove(index);
+          }
+          last_name = Cow::Owned(dir.name.clone());
+          if !dir.entries.is_empty() {
+            break;
+          }
+        }
+
+        // now build the vfs and add the global cache dir entry there
+        let mut built_vfs = vfs.build();
+        built_vfs.root.insert_entry(npm_global_cache_dir_entry);
+        built_vfs
       }
-      InnerCliNpmResolverRef::Byonm(_) => {}
+      InnerCliNpmResolverRef::Byonm(_) => vfs.build(),
     }
   }
 }
