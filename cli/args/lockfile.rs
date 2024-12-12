@@ -20,7 +20,6 @@ use crate::Flags;
 
 use crate::args::DenoSubcommand;
 use crate::args::InstallFlags;
-use crate::args::InstallKind;
 
 use deno_lockfile::Lockfile;
 
@@ -109,9 +108,12 @@ impl CliLockfile {
       let Some(pkg_json) = maybe_pkg_json else {
         return Default::default();
       };
-      pkg_json
-        .resolve_local_package_json_deps()
+      let deps = pkg_json.resolve_local_package_json_deps();
+
+      deps
+        .dependencies
         .values()
+        .chain(deps.dev_dependencies.values())
         .filter_map(|dep| dep.as_ref().ok())
         .filter_map(|dep| match dep {
           PackageJsonDepValue::Req(req) => {
@@ -133,10 +135,8 @@ impl CliLockfile {
     if flags.no_lock
       || matches!(
         flags.subcommand,
-        DenoSubcommand::Install(InstallFlags {
-          kind: InstallKind::Global(..),
-          ..
-        }) | DenoSubcommand::Uninstall(_)
+        DenoSubcommand::Install(InstallFlags::Global(..))
+          | DenoSubcommand::Uninstall(_)
       )
     {
       return Ok(None);

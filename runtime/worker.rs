@@ -343,6 +343,7 @@ impl MainWorker {
     // NOTE(bartlomieju): ordering is important here, keep it in sync with
     // `runtime/web_worker.rs` and `runtime/snapshot.rs`!
     let mut extensions = vec![
+      deno_telemetry::deno_telemetry::init_ops_and_esm(),
       // Web APIs
       deno_webidl::deno_webidl::init_ops_and_esm(),
       deno_console::deno_console::init_ops_and_esm(),
@@ -423,7 +424,6 @@ impl MainWorker {
       ),
       ops::fs_events::deno_fs_events::init_ops_and_esm(),
       ops::os::deno_os::init_ops_and_esm(exit_code.clone()),
-      ops::otel::deno_otel::init_ops_and_esm(),
       ops::permissions::deno_permissions::init_ops_and_esm(),
       ops::process::deno_process::init_ops_and_esm(
         services.npm_process_state_provider,

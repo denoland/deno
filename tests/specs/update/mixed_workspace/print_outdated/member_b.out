@@ -5,3 +5,6 @@
 ├──────────────────────────────────┼─────────┼────────┼────────┤
 │ npm:@denotest/bin                │ 0.6.0   │ 0.6.0  │ 1.0.0  │
 └──────────────────────────────────┴─────────┴────────┴────────┘
+
+Run deno outdated --update --latest to update to the latest available versions,
+or deno outdated --help for more information.

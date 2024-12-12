@@ -27,6 +27,7 @@ use deno_core::futures::TryFutureExt;
 use deno_core::op2;
 use deno_core::url;
 use deno_core::url::Url;
+use deno_core::v8;
 use deno_core::AsyncRefCell;
 use deno_core::AsyncResult;
 use deno_core::error::JsNativeError;
@@ -41,6 +42,8 @@ use deno_core::OpState;
 use deno_core::RcRef;
 use deno_core::Resource;
 use deno_core::ResourceId;
+use deno_path_util::url_from_file_path;
+use deno_path_util::PathToUrlError;
 use deno_permissions::PermissionCheckError;
 use deno_tls::rustls::RootCertStore;
 use deno_tls::Proxy;
@@ -142,6 +145,7 @@ deno_core::extension!(deno_fetch,
     op_fetch_send,
     op_utf8_to_byte_string,
     op_fetch_custom_client<FP>,
+    op_fetch_promise_is_settled,
   ],
   esm = [
     "20_headers.js",
@@ -175,6 +179,9 @@ pub enum FetchError {
   #[class(type)]
   #[error("Fetching files only supports the GET method: received {0}")]
   FsNotGet(Method),
+  #[class(inherit)]
+  #[error(transparent)]
+  PathToUrl(#[from] PathToUrlError),
   #[class(type)]
   #[error("Invalid URL {0}")]
   InvalidUrl(Url),
@@ -453,7 +460,7 @@ where
       let permissions = state.borrow_mut::<FP>();
       let path = permissions.check_read(&path, "fetch()")?;
       let url = match path {
-        Cow::Owned(path) => Url::from_file_path(path).unwrap(),
+        Cow::Owned(path) => url_from_file_path(&path)?,
         Cow::Borrowed(_) => url,
       };
 
@@ -1224,4 +1231,9 @@ pub fn extract_authority(url: &mut Url) -> Option<(String, Option<String>)> {
   }
 
   None
+}
+
+#[op2(fast)]
+fn op_fetch_promise_is_settled(promise: v8::Local<v8::Promise>) -> bool {
+  promise.state() != v8::PromiseState::Pending
 }

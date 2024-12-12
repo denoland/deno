@@ -4,6 +4,7 @@ use std::borrow::Cow;
 use std::collections::BTreeMap;
 use std::collections::HashMap;
 use std::collections::VecDeque;
+use std::env;
 use std::env::current_exe;
 use std::ffi::OsString;
 use std::fs;
@@ -15,6 +16,7 @@ use std::io::Seek;
 use std::io::SeekFrom;
 use std::io::Write;
 use std::ops::Range;
+use std::path::Component;
 use std::path::Path;
 use std::path::PathBuf;
 use std::process::Command;
@@ -47,11 +49,11 @@ use deno_runtime::deno_fs::FileSystem;
 use deno_runtime::deno_fs::RealFs;
 use deno_runtime::deno_io::fs::FsError;
 use deno_runtime::deno_node::PackageJson;
-use deno_runtime::ops::otel::OtelConfig;
 use deno_semver::npm::NpmVersionReqParseError;
 use deno_semver::package::PackageReq;
 use deno_semver::Version;
 use deno_semver::VersionReqSpecifierParseError;
+use deno_telemetry::OtelConfig;
 use indexmap::IndexMap;
 use log::Level;
 use serde::Deserialize;
@@ -85,8 +87,10 @@ use super::serialization::DenoCompileModuleData;
 use super::serialization::DeserializedDataSection;
 use super::serialization::RemoteModulesStore;
 use super::serialization::RemoteModulesStoreBuilder;
+use super::virtual_fs::output_vfs;
 use super::virtual_fs::FileBackedVfs;
 use super::virtual_fs::VfsBuilder;
+use super::virtual_fs::VfsFileSubDataKind;
 use super::virtual_fs::VfsRoot;
 use super::virtual_fs::VirtualDirectory;
 
@@ -275,16 +279,17 @@ impl StandaloneModules {
     if specifier.scheme() == "file" {
       let path = deno_path_util::url_to_file_path(specifier)?;
       let bytes = match self.vfs.file_entry(&path) {
-        Ok(entry) => self.vfs.read_file_all(entry)?,
+        Ok(entry) => self
+          .vfs
+          .read_file_all(entry, VfsFileSubDataKind::ModuleGraph)?,
         Err(err) if err.kind() == ErrorKind::NotFound => {
-          let bytes = match RealFs.read_file_sync(&path, None) {
+          match RealFs.read_file_sync(&path, None) {
             Ok(bytes) => bytes,
             Err(FsError::Io(err)) if err.kind() == ErrorKind::NotFound => {
               return Ok(None)
             }
             Err(err) => return Err(err.into()),
-          };
-          Cow::Owned(bytes)
+          }
         }
         Err(err) => return Err(err.into()),
       };
@@ -363,6 +368,16 @@ pub fn extract_standalone(
   }))
 }
 
+pub struct WriteBinOptions<'a> {
+  pub writer: File,
+  pub display_output_filename: &'a str,
+  pub graph: &'a ModuleGraph,
+  pub root_dir_url: StandaloneRelativeFileBaseUrl<'a>,
+  pub entrypoint: &'a ModuleSpecifier,
+  pub include_files: &'a [ModuleSpecifier],
+  pub compile_flags: &'a CompileFlags,
+}
+
 pub struct DenoCompileBinaryWriter<'a> {
   cjs_tracker: &'a CjsTracker,
   cli_options: &'a CliOptions,
@@ -403,18 +418,14 @@ impl<'a> DenoCompileBinaryWriter<'a> {
 
   pub async fn write_bin(
     &self,
-    writer: File,
-    graph: &ModuleGraph,
-    root_dir_url: StandaloneRelativeFileBaseUrl<'_>,
-    entrypoint: &ModuleSpecifier,
-    include_files: &[ModuleSpecifier],
-    compile_flags: &CompileFlags,
+    options: WriteBinOptions<'_>,
   ) -> Result<(), AnyError> {
     // Select base binary based on target
-    let mut original_binary = self.get_base_binary(compile_flags).await?;
+    let mut original_binary =
+      self.get_base_binary(options.compile_flags).await?;
 
-    if compile_flags.no_terminal {
-      let target = compile_flags.resolve_target();
+    if options.compile_flags.no_terminal {
+      let target = options.compile_flags.resolve_target();
       if !target.contains("windows") {
         bail!(
           "The `--no-terminal` flag is only available when targeting Windows (current: {})",
@@ -424,8 +435,8 @@ impl<'a> DenoCompileBinaryWriter<'a> {
       set_windows_binary_to_gui(&mut original_binary)
         .context("Setting windows binary to GUI.")?;
     }
-    if compile_flags.icon.is_some() {
-      let target = compile_flags.resolve_target();
+    if options.compile_flags.icon.is_some() {
+      let target = options.compile_flags.resolve_target();
       if !target.contains("windows") {
         bail!(
           "The `--icon` flag is only available when targeting Windows (current: {})",
@@ -433,17 +444,7 @@ impl<'a> DenoCompileBinaryWriter<'a> {
         )
       }
     }
-    self
-      .write_standalone_binary(
-        writer,
-        original_binary,
-        graph,
-        root_dir_url,
-        entrypoint,
-        include_files,
-        compile_flags,
-      )
-      .await
+    self.write_standalone_binary(options, original_binary).await
   }
 
   async fn get_base_binary(
@@ -454,7 +455,7 @@ impl<'a> DenoCompileBinaryWriter<'a> {
     //
     // Phase 2 of the 'min sized' deno compile RFC talks
     // about adding this as a flag.
-    if let Some(path) = std::env::var_os("DENORT_BIN") {
+    if let Some(path) = get_dev_binary_path() {
       return std::fs::read(&path).with_context(|| {
         format!("Could not find denort at '{}'", path.to_string_lossy())
       });
@@ -548,14 +549,18 @@ impl<'a> DenoCompileBinaryWriter<'a> {
   #[allow(clippy::too_many_arguments)]
   async fn write_standalone_binary(
     &self,
-    writer: File,
+    options: WriteBinOptions<'_>,
     original_bin: Vec<u8>,
-    graph: &ModuleGraph,
-    root_dir_url: StandaloneRelativeFileBaseUrl<'_>,
-    entrypoint: &ModuleSpecifier,
-    include_files: &[ModuleSpecifier],
-    compile_flags: &CompileFlags,
   ) -> Result<(), AnyError> {
+    let WriteBinOptions {
+      writer,
+      display_output_filename,
+      graph,
+      root_dir_url,
+      entrypoint,
+      include_files,
+      compile_flags,
+    } = options;
     let ca_data = match self.cli_options.ca_data() {
       Some(CaData::File(ca_file)) => Some(
         std::fs::read(ca_file).with_context(|| format!("Reading {ca_file}"))?,
@@ -689,8 +694,9 @@ impl<'a> DenoCompileBinaryWriter<'a> {
             &file_path,
             match maybe_source {
               Some(source) => source,
-              None => RealFs.read_file_sync(&file_path, None)?,
+              None => RealFs.read_file_sync(&file_path, None)?.into_owned(),
             },
+            VfsFileSubDataKind::ModuleGraph,
           )
           .with_context(|| {
             format!("Failed adding '{}'", file_path.display())
@@ -771,11 +777,15 @@ impl<'a> DenoCompileBinaryWriter<'a> {
       unstable_config: UnstableConfig {
         legacy_flag_enabled: false,
         bare_node_builtins: self.cli_options.unstable_bare_node_builtins(),
+        detect_cjs: self.cli_options.unstable_detect_cjs(),
         sloppy_imports: self.cli_options.unstable_sloppy_imports(),
         features: self.cli_options.unstable_features(),
+        npm_lazy_caching: self.cli_options.unstable_npm_lazy_caching(),
       },
       otel_config: self.cli_options.otel_config(),
     };
+
+    output_vfs(&vfs, display_output_filename);
 
     write_binary_bytes(
       writer,
@@ -902,6 +912,31 @@ impl<'a> DenoCompileBinaryWriter<'a> {
       }
     }
   }
+}
+
+fn get_denort_path(deno_exe: PathBuf) -> Option<OsString> {
+  let mut denort = deno_exe;
+  denort.set_file_name(if cfg!(windows) {
+    "denort.exe"
+  } else {
+    "denort"
+  });
+  denort.exists().then(|| denort.into_os_string())
+}
+
+fn get_dev_binary_path() -> Option<OsString> {
+  env::var_os("DENORT_BIN").or_else(|| {
+    env::current_exe().ok().and_then(|exec_path| {
+      if exec_path
+        .components()
+        .any(|component| component == Component::Normal("target".as_ref()))
+      {
+        get_denort_path(exec_path)
+      } else {
+        None
+      }
+    })
+  })
 }
 
 /// This function returns the environment variables specified

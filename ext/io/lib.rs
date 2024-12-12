@@ -790,26 +790,26 @@ impl crate::fs::File for StdFileResourceInner {
     }
   }
 
-  fn read_all_sync(self: Rc<Self>) -> FsResult<Vec<u8>> {
+  fn read_all_sync(self: Rc<Self>) -> FsResult<Cow<'static, [u8]>> {
     match self.kind {
       StdFileResourceKind::File | StdFileResourceKind::Stdin(_) => {
         let mut buf = Vec::new();
         self.with_sync(|file| Ok(file.read_to_end(&mut buf)?))?;
-        Ok(buf)
+        Ok(Cow::Owned(buf))
       }
       StdFileResourceKind::Stdout | StdFileResourceKind::Stderr => {
         Err(FsError::NotSupported)
       }
     }
   }
-  async fn read_all_async(self: Rc<Self>) -> FsResult<Vec<u8>> {
+  async fn read_all_async(self: Rc<Self>) -> FsResult<Cow<'static, [u8]>> {
     match self.kind {
       StdFileResourceKind::File | StdFileResourceKind::Stdin(_) => {
         self
           .with_inner_blocking_task(|file| {
             let mut buf = Vec::new();
             file.read_to_end(&mut buf)?;
-            Ok(buf)
+            Ok(Cow::Owned(buf))
           })
           .await
       }

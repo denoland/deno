@@ -27,9 +27,10 @@ use deno_npm::npm_rc::NpmRc;
 use deno_npm::npm_rc::ResolvedNpmRc;
 use deno_npm::resolution::ValidSerializedNpmResolutionSnapshot;
 use deno_npm::NpmSystemInfo;
+use deno_npm_cache::NpmCacheSetting;
 use deno_path_util::normalize_path;
-use deno_runtime::ops::otel::OtelConfig;
 use deno_semver::npm::NpmPackageReqReference;
+use deno_telemetry::OtelConfig;
 use import_map::resolve_import_map_value_from_specifier;
 
 pub use deno_config::deno_json::BenchConfig;
@@ -238,20 +239,25 @@ pub enum CacheSetting {
 }
 
 impl CacheSetting {
-  pub fn should_use_for_npm_package(&self, package_name: &str) -> bool {
+  pub fn as_npm_cache_setting(&self) -> NpmCacheSetting {
     match self {
-      CacheSetting::ReloadAll => false,
-      CacheSetting::ReloadSome(list) => {
-        if list.iter().any(|i| i == "npm:") {
-          return false;
+      CacheSetting::Only => NpmCacheSetting::Only,
+      CacheSetting::ReloadAll => NpmCacheSetting::ReloadAll,
+      CacheSetting::ReloadSome(values) => {
+        if values.iter().any(|v| v == "npm:") {
+          NpmCacheSetting::ReloadAll
+        } else {
+          NpmCacheSetting::ReloadSome {
+            npm_package_names: values
+              .iter()
+              .filter_map(|v| v.strip_prefix("npm:"))
+              .map(|n| n.to_string())
+              .collect(),
+          }
         }
-        let specifier = format!("npm:{package_name}");
-        if list.contains(&specifier) {
-          return false;
-        }
-        true
       }
-      _ => true,
+      CacheSetting::RespectHeaders => unreachable!(), // not supported
+      CacheSetting::Use => NpmCacheSetting::Use,
     }
   }
 }
@@ -965,9 +971,7 @@ impl CliOptions {
     match self.sub_command() {
       DenoSubcommand::Cache(_) => GraphKind::All,
       DenoSubcommand::Check(_) => GraphKind::TypesOnly,
-      DenoSubcommand::Install(InstallFlags {
-        kind: InstallKind::Local(_),
-      }) => GraphKind::All,
+      DenoSubcommand::Install(InstallFlags::Local(_)) => GraphKind::All,
       _ => self.type_check_mode().as_graph_kind(),
     }
   }
@@ -1544,11 +1548,11 @@ impl CliOptions {
         DenoSubcommand::Check(check_flags) => {
           Some(files_to_urls(&check_flags.files))
         }
-        DenoSubcommand::Install(InstallFlags {
-          kind: InstallKind::Global(flags),
-        }) => Url::parse(&flags.module_url)
-          .ok()
-          .map(|url| vec![Cow::Owned(url)]),
+        DenoSubcommand::Install(InstallFlags::Global(flags)) => {
+          Url::parse(&flags.module_url)
+            .ok()
+            .map(|url| vec![Cow::Owned(url)])
+        }
         DenoSubcommand::Doc(DocFlags {
           source_files: DocSourceFileFlag::Paths(paths),
           ..
@@ -1605,6 +1609,11 @@ impl CliOptions {
   pub fn unstable_bare_node_builtins(&self) -> bool {
     self.flags.unstable_config.bare_node_builtins
       || self.workspace().has_unstable("bare-node-builtins")
+  }
+
+  pub fn unstable_detect_cjs(&self) -> bool {
+    self.flags.unstable_config.detect_cjs
+      || self.workspace().has_unstable("detect-cjs")
   }
 
   pub fn detect_cjs(&self) -> bool {
@@ -1676,8 +1685,10 @@ impl CliOptions {
           "sloppy-imports",
           "byonm",
           "bare-node-builtins",
+          "detect-cjs",
           "fmt-component",
           "fmt-sql",
+          "lazy-npm-caching",
         ])
         .collect();
 
@@ -1754,6 +1765,19 @@ impl CliOptions {
           | DenoSubcommand::Cache(_)
           | DenoSubcommand::Add(_)
       ),
+    }
+  }
+
+  pub fn unstable_npm_lazy_caching(&self) -> bool {
+    self.flags.unstable_config.npm_lazy_caching
+      || self.workspace().has_unstable("npm-lazy-caching")
+  }
+
+  pub fn default_npm_caching_strategy(&self) -> NpmCachingStrategy {
+    if self.flags.unstable_config.npm_lazy_caching {
+      NpmCachingStrategy::Lazy
+    } else {
+      NpmCachingStrategy::Eager
     }
   }
 }
@@ -1968,6 +1992,13 @@ fn load_env_variables_from_env_file(filename: Option<&Vec<String>>) {
       }
     }
   }
+}
+
+#[derive(Debug, Clone, Copy)]
+pub enum NpmCachingStrategy {
+  Eager,
+  Lazy,
+  Manual,
 }
 
 #[cfg(test)]

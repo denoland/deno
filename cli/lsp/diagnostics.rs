@@ -45,7 +45,7 @@ use deno_graph::Resolution;
 use deno_graph::ResolutionError;
 use deno_graph::SpecifierError;
 use deno_resolver::sloppy_imports::SloppyImportsResolution;
-use deno_resolver::sloppy_imports::SloppyImportsResolutionMode;
+use deno_resolver::sloppy_imports::SloppyImportsResolutionKind;
 use deno_runtime::deno_fs;
 use deno_runtime::deno_node;
 use deno_runtime::tokio_util::create_basic_runtime;
@@ -1262,11 +1262,11 @@ impl DenoDiagnostic {
       Self::NoAttributeType => (lsp::DiagnosticSeverity::ERROR, "The module is a JSON module and not being imported with an import attribute. Consider adding `with { type: \"json\" }` to the import statement.".to_string(), None),
       Self::NoCache(specifier) => (lsp::DiagnosticSeverity::ERROR, format!("Uncached or missing remote URL: {specifier}"), Some(json!({ "specifier": specifier }))),
       Self::NotInstalledJsr(pkg_req, specifier) => (lsp::DiagnosticSeverity::ERROR, format!("JSR package \"{pkg_req}\" is not installed or doesn't exist."), Some(json!({ "specifier": specifier }))),
-      Self::NotInstalledNpm(pkg_req, specifier) => (lsp::DiagnosticSeverity::ERROR, format!("NPM package \"{pkg_req}\" is not installed or doesn't exist."), Some(json!({ "specifier": specifier }))),
+      Self::NotInstalledNpm(pkg_req, specifier) => (lsp::DiagnosticSeverity::ERROR, format!("npm package \"{pkg_req}\" is not installed or doesn't exist."), Some(json!({ "specifier": specifier }))),
       Self::NoLocal(specifier) => {
         let maybe_sloppy_resolution = CliSloppyImportsResolver::new(
           SloppyImportsCachedFs::new(Arc::new(deno_fs::RealFs))
-        ).resolve(specifier, SloppyImportsResolutionMode::Execution);
+        ).resolve(specifier, SloppyImportsResolutionKind::Execution);
         let data = maybe_sloppy_resolution.as_ref().map(|res| {
           json!({
             "specifier": specifier,
@@ -1355,7 +1355,7 @@ fn diagnose_resolution(
     }
     // don't bother warning about sloppy import redirects from .js to .d.ts
     // because explaining how to fix this via a diagnostic involves using
-    // @deno-types and that's a bit complicated to explain
+    // @ts-types and that's a bit complicated to explain
     let is_sloppy_import_dts_redirect = doc_specifier.scheme() == "file"
       && doc.media_type().is_declaration()
       && !MediaType::from_specifier(specifier).is_declaration();
@@ -1523,7 +1523,7 @@ fn diagnose_dependency(
     .iter()
     .map(|i| documents::to_lsp_range(&i.specifier_range))
     .collect();
-  // TODO(nayeemrmn): This is a crude way of detecting `@deno-types` which has
+  // TODO(nayeemrmn): This is a crude way of detecting `@ts-types` which has
   // a different specifier and therefore needs a separate call to
   // `diagnose_resolution()`. It would be much cleaner if that were modelled as
   // a separate dependency: https://github.com/denoland/deno_graph/issues/247.
@@ -1531,7 +1531,7 @@ fn diagnose_dependency(
     && !dependency.imports.iter().any(|i| {
       dependency
         .maybe_type
-        .includes(&i.specifier_range.start)
+        .includes(i.specifier_range.range.start)
         .is_some()
     });
 
@@ -1540,7 +1540,7 @@ fn diagnose_dependency(
       snapshot,
       dependency_key,
       if dependency.maybe_code.is_none()
-        // If not @deno-types, diagnose the types if the code errored because
+        // If not @ts-types, diagnose the types if the code errored because
         // it's likely resolving into the node_modules folder, which might be
         // erroring correctly due to resolution only being for bundlers. Let this
         // fail at runtime if necessary, but don't bother erroring in the editor
@@ -1707,7 +1707,6 @@ mod tests {
         documents: Arc::new(documents),
         assets: Default::default(),
         config: Arc::new(config),
-        is_cjs_resolver: Default::default(),
         resolver,
       },
     )
@@ -1952,7 +1951,7 @@ let c: number = "a";
       &[(
         "a.ts",
         r#"
-        // @deno-types="bad.d.ts"
+        // @ts-types="bad.d.ts"
         import "bad.js";
         import "bad.js";
         "#,
@@ -2006,11 +2005,11 @@ let c: number = "a";
           "range": {
             "start": {
               "line": 1,
-              "character": 23
+              "character": 21
             },
             "end": {
               "line": 1,
-              "character": 33
+              "character": 31
             }
           },
           "severity": 1,

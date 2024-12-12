@@ -7,6 +7,8 @@ use std::path::PathBuf;
 use std::pin::Pin;
 use std::rc::Rc;
 use std::str;
+use std::sync::atomic::AtomicU16;
+use std::sync::atomic::Ordering;
 use std::sync::Arc;
 
 use crate::args::jsr_url;
@@ -48,6 +50,7 @@ use deno_core::error::{JsNativeError, ModuleLoaderError};
 use deno_core::error::AnyError;
 use deno_core::futures::future::FutureExt;
 use deno_core::futures::Future;
+use deno_core::parking_lot::Mutex;
 use deno_core::resolve_url;
 use deno_core::ModuleCodeString;
 use deno_core::ModuleLoader;
@@ -56,9 +59,7 @@ use deno_core::ModuleSourceCode;
 use deno_core::ModuleSpecifier;
 use deno_core::ModuleType;
 use deno_core::RequestedModuleType;
-use deno_core::ResolutionKind;
 use deno_core::SourceCodeCacheInfo;
-use deno_graph::source::ResolutionMode;
 use deno_graph::GraphKind;
 use deno_graph::JsModule;
 use deno_graph::JsonModule;
@@ -75,7 +76,8 @@ use deno_runtime::deno_permissions::PermissionsContainer;
 use deno_semver::npm::NpmPackageReqReference;
 use node_resolver::errors::ClosestPkgJsonError;
 use node_resolver::InNpmPackageChecker;
-use node_resolver::NodeResolutionMode;
+use node_resolver::NodeResolutionKind;
+use node_resolver::ResolutionMode;
 
 pub struct ModuleLoadPreparer {
   options: Arc<CliOptions>,
@@ -153,6 +155,7 @@ impl ModuleLoadPreparer {
           graph_kind: graph.graph_kind(),
           roots: roots.to_vec(),
           loader: Some(&mut cache),
+          npm_caching: self.options.default_npm_caching_strategy(),
         },
       )
       .await?;
@@ -222,6 +225,42 @@ struct SharedCliModuleLoaderState {
   npm_module_loader: NpmModuleLoader,
   parsed_source_cache: Arc<ParsedSourceCache>,
   resolver: Arc<CliResolver>,
+  in_flight_loads_tracker: InFlightModuleLoadsTracker,
+}
+
+struct InFlightModuleLoadsTracker {
+  loads_number: Arc<AtomicU16>,
+  cleanup_task_timeout: u64,
+  cleanup_task_handle: Arc<Mutex<Option<tokio::task::JoinHandle<()>>>>,
+}
+
+impl InFlightModuleLoadsTracker {
+  pub fn increase(&self) {
+    self.loads_number.fetch_add(1, Ordering::Relaxed);
+    if let Some(task) = self.cleanup_task_handle.lock().take() {
+      task.abort();
+    }
+  }
+
+  pub fn decrease(&self, parsed_source_cache: &Arc<ParsedSourceCache>) {
+    let prev = self.loads_number.fetch_sub(1, Ordering::Relaxed);
+    if prev == 1 {
+      let parsed_source_cache = parsed_source_cache.clone();
+      let timeout = self.cleanup_task_timeout;
+      let task_handle = tokio::spawn(async move {
+        // We use a timeout here, which is defined to 10s,
+        // so that in situations when dynamic imports are loaded after the startup,
+        // we don't need to recompute and analyze multiple modules.
+        tokio::time::sleep(std::time::Duration::from_millis(timeout)).await;
+        parsed_source_cache.free_all();
+      });
+      let maybe_prev_task =
+        self.cleanup_task_handle.lock().replace(task_handle);
+      if let Some(prev_task) = maybe_prev_task {
+        prev_task.abort();
+      }
+    }
+  }
 }
 
 pub struct CliModuleLoaderFactory {
@@ -272,6 +311,11 @@ impl CliModuleLoaderFactory {
         npm_module_loader,
         parsed_source_cache,
         resolver,
+        in_flight_loads_tracker: InFlightModuleLoadsTracker {
+          loads_number: Arc::new(AtomicU16::new(0)),
+          cleanup_task_timeout: 10_000,
+          cleanup_task_handle: Arc::new(Mutex::new(None)),
+        },
       }),
     }
   }
@@ -497,13 +541,11 @@ impl<TGraphContainer: ModuleGraphContainer>
       }
       Resolution::None => Cow::Owned(self.shared.resolver.resolve(
         raw_specifier,
-        &deno_graph::Range {
-          specifier: referrer.clone(),
-          start: deno_graph::Position::zeroed(),
-          end: deno_graph::Position::zeroed(),
-        },
-        self.shared.cjs_tracker.get_referrer_kind(referrer),
-        ResolutionMode::Execution,
+        referrer,
+        deno_graph::Position::zeroed(),
+        // if we're here, that means it's resolving a dynamic import
+        ResolutionMode::Import,
+        NodeResolutionKind::Execution,
       )?),
     };
 
@@ -516,8 +558,8 @@ impl<TGraphContainer: ModuleGraphContainer>
           .resolve_req_reference(
             &reference,
             referrer,
-            self.shared.cjs_tracker.get_referrer_kind(referrer),
-            NodeResolutionMode::Execution,
+            ResolutionMode::Import,
+            NodeResolutionKind::Execution,
           )
           .map_err(AnyError::from);
       }
@@ -538,8 +580,8 @@ impl<TGraphContainer: ModuleGraphContainer>
             &package_folder,
             module.nv_reference.sub_path(),
             Some(referrer),
-            self.shared.cjs_tracker.get_referrer_kind(referrer),
-            NodeResolutionMode::Execution,
+            ResolutionMode::Import,
+            NodeResolutionKind::Execution,
           )
           .with_context(|| {
             format!("Could not resolve '{}'.", module.nv_reference)
@@ -805,7 +847,7 @@ impl<TGraphContainer: ModuleGraphContainer> ModuleLoader
     &self,
     specifier: &str,
     referrer: &str,
-    _kind: ResolutionKind,
+    _kind: deno_core::ResolutionKind,
   ) -> Result<ModuleSpecifier, ModuleLoaderError> {
     fn ensure_not_jsr_non_jsr_remote_import(
       specifier: &ModuleSpecifier,
@@ -869,6 +911,7 @@ impl<TGraphContainer: ModuleGraphContainer> ModuleLoader
     _maybe_referrer: Option<String>,
     is_dynamic: bool,
   ) -> Pin<Box<dyn Future<Output = Result<(), AnyError>>>> {
+    self.0.shared.in_flight_loads_tracker.increase();
     if self.0.shared.in_npm_pkg_checker.in_npm_package(specifier) {
       return Box::pin(deno_core::futures::future::ready(Ok(())));
     }
@@ -921,6 +964,14 @@ impl<TGraphContainer: ModuleGraphContainer> ModuleLoader
       Ok(())
     }
     .boxed_local()
+  }
+
+  fn finish_load(&self) {
+    self
+      .0
+      .shared
+      .in_flight_loads_tracker
+      .decrease(&self.0.shared.parsed_source_cache);
   }
 
   fn code_cache_ready(
@@ -1062,7 +1113,10 @@ impl<TGraphContainer: ModuleGraphContainer> NodeRequireLoader
     self.npm_resolver.ensure_read_permission(permissions, path)
   }
 
-  fn load_text_file_lossy(&self, path: &Path) -> Result<String, AnyError> {
+  fn load_text_file_lossy(
+    &self,
+    path: &Path,
+  ) -> Result<Cow<'static, str>, AnyError> {
     // todo(dsherret): use the preloaded module from the graph if available?
     let media_type = MediaType::from_path(path);
     let text = self.fs.read_text_file_lossy_sync(path, None)?;
@@ -1077,15 +1131,18 @@ impl<TGraphContainer: ModuleGraphContainer> NodeRequireLoader
           .into(),
         );
       }
-      self.emitter.emit_parsed_source_sync(
-        &specifier,
-        media_type,
-        // this is probably not super accurate due to require esm, but probably ok.
-        // If we find this causes a lot of churn in the emit cache then we should
-        // investigate how we can make this better
-        ModuleKind::Cjs,
-        &text.into(),
-      )
+      self
+        .emitter
+        .emit_parsed_source_sync(
+          &specifier,
+          media_type,
+          // this is probably not super accurate due to require esm, but probably ok.
+          // If we find this causes a lot of churn in the emit cache then we should
+          // investigate how we can make this better
+          ModuleKind::Cjs,
+          &text.into(),
+        )
+        .map(Cow::Owned)
     } else {
       Ok(text)
     }
@@ -1097,5 +1154,46 @@ impl<TGraphContainer: ModuleGraphContainer> NodeRequireLoader
   ) -> Result<bool, ClosestPkgJsonError> {
     let media_type = MediaType::from_specifier(specifier);
     self.cjs_tracker.is_maybe_cjs(specifier, media_type)
+  }
+}
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+  use deno_graph::ParsedSourceStore;
+
+  #[tokio::test]
+  async fn test_inflight_module_loads_tracker() {
+    let tracker = InFlightModuleLoadsTracker {
+      loads_number: Default::default(),
+      cleanup_task_timeout: 10,
+      cleanup_task_handle: Default::default(),
+    };
+
+    let specifier = ModuleSpecifier::parse("file:///a.js").unwrap();
+    let source = "const a = 'hello';";
+    let parsed_source_cache = Arc::new(ParsedSourceCache::default());
+    let parsed_source = parsed_source_cache
+      .remove_or_parse_module(&specifier, source.into(), MediaType::JavaScript)
+      .unwrap();
+    parsed_source_cache.set_parsed_source(specifier, parsed_source);
+
+    assert_eq!(parsed_source_cache.len(), 1);
+    assert!(tracker.cleanup_task_handle.lock().is_none());
+    tracker.increase();
+    tracker.increase();
+    assert!(tracker.cleanup_task_handle.lock().is_none());
+    tracker.decrease(&parsed_source_cache);
+    assert!(tracker.cleanup_task_handle.lock().is_none());
+    tracker.decrease(&parsed_source_cache);
+    assert!(tracker.cleanup_task_handle.lock().is_some());
+    assert_eq!(parsed_source_cache.len(), 1);
+    tracker.increase();
+    assert!(tracker.cleanup_task_handle.lock().is_none());
+    assert_eq!(parsed_source_cache.len(), 1);
+    tracker.decrease(&parsed_source_cache);
+    // Rather long timeout, but to make sure CI is not flaking on it.
+    tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+    assert_eq!(parsed_source_cache.len(), 0);
   }
 }

@@ -46,39 +46,12 @@ deno_core::extension!(
 
 #[derive(Debug, thiserror::Error, deno_error::JsError)]
 pub enum SignalError {
-  #[cfg(any(
-    target_os = "android",
-    target_os = "linux",
-    target_os = "openbsd",
-    target_os = "openbsd",
-    target_os = "macos",
-    target_os = "solaris",
-    target_os = "illumos"
-  ))]
   #[class(type)]
-  #[error("Invalid signal: {0}")]
-  InvalidSignalStr(String),
-  #[cfg(any(
-    target_os = "android",
-    target_os = "linux",
-    target_os = "openbsd",
-    target_os = "openbsd",
-    target_os = "macos",
-    target_os = "solaris",
-    target_os = "illumos"
-  ))]
+  #[error(transparent)]
+  InvalidSignalStr(#[from] crate::signal::InvalidSignalStrError),
   #[class(type)]
-  #[error("Invalid signal: {0}")]
-  InvalidSignalInt(libc::c_int),
-  #[cfg(target_os = "windows")]
-  #[class(type)]
-  #[error("Windows only supports ctrl-c (SIGINT) and ctrl-break (SIGBREAK), but got {0}")]
-  InvalidSignalStr(String),
-  #[cfg(target_os = "windows")]
-  #[class(type)]
-  #[error("Windows only supports ctrl-c (SIGINT) and ctrl-break (SIGBREAK), but got {0}")]
-  InvalidSignalInt(libc::c_int),
-  #[class(type)]
+  #[error(transparent)]
+  InvalidSignalInt(#[from] crate::signal::InvalidSignalIntError),
   #[error("Binding to signal '{0}' is not allowed")]
   SignalNotAllowed(String),
   #[class(inherit)]
@@ -187,218 +160,6 @@ impl Resource for SignalStreamResource {
   }
 }
 
-macro_rules! first_literal {
-  ($head:literal $(, $tail:literal)*) => {
-    $head
-  };
-}
-macro_rules! signal_dict {
-  ($(($number:literal, $($name:literal)|+)),*) => {
-    pub fn signal_str_to_int(s: &str) -> Result<libc::c_int, SignalError> {
-      match s {
-        $($($name)|* => Ok($number),)*
-        _ => Err(SignalError::InvalidSignalStr(s.to_string())),
-      }
-    }
-
-    pub fn signal_int_to_str(s: libc::c_int) -> Result<&'static str, SignalError> {
-      match s {
-        $($number => Ok(first_literal!($($name),+)),)*
-        _ => Err(SignalError::InvalidSignalInt(s)),
-      }
-    }
-  }
-}
-
-#[cfg(target_os = "freebsd")]
-signal_dict!(
-  (1, "SIGHUP"),
-  (2, "SIGINT"),
-  (3, "SIGQUIT"),
-  (4, "SIGILL"),
-  (5, "SIGTRAP"),
-  (6, "SIGABRT" | "SIGIOT"),
-  (7, "SIGEMT"),
-  (8, "SIGFPE"),
-  (9, "SIGKILL"),
-  (10, "SIGBUS"),
-  (11, "SIGSEGV"),
-  (12, "SIGSYS"),
-  (13, "SIGPIPE"),
-  (14, "SIGALRM"),
-  (15, "SIGTERM"),
-  (16, "SIGURG"),
-  (17, "SIGSTOP"),
-  (18, "SIGTSTP"),
-  (19, "SIGCONT"),
-  (20, "SIGCHLD"),
-  (21, "SIGTTIN"),
-  (22, "SIGTTOU"),
-  (23, "SIGIO"),
-  (24, "SIGXCPU"),
-  (25, "SIGXFSZ"),
-  (26, "SIGVTALRM"),
-  (27, "SIGPROF"),
-  (28, "SIGWINCH"),
-  (29, "SIGINFO"),
-  (30, "SIGUSR1"),
-  (31, "SIGUSR2"),
-  (32, "SIGTHR"),
-  (33, "SIGLIBRT")
-);
-
-#[cfg(target_os = "openbsd")]
-signal_dict!(
-  (1, "SIGHUP"),
-  (2, "SIGINT"),
-  (3, "SIGQUIT"),
-  (4, "SIGILL"),
-  (5, "SIGTRAP"),
-  (6, "SIGABRT" | "SIGIOT"),
-  (7, "SIGEMT"),
-  (8, "SIGKILL"),
-  (10, "SIGBUS"),
-  (11, "SIGSEGV"),
-  (12, "SIGSYS"),
-  (13, "SIGPIPE"),
-  (14, "SIGALRM"),
-  (15, "SIGTERM"),
-  (16, "SIGURG"),
-  (17, "SIGSTOP"),
-  (18, "SIGTSTP"),
-  (19, "SIGCONT"),
-  (20, "SIGCHLD"),
-  (21, "SIGTTIN"),
-  (22, "SIGTTOU"),
-  (23, "SIGIO"),
-  (24, "SIGXCPU"),
-  (25, "SIGXFSZ"),
-  (26, "SIGVTALRM"),
-  (27, "SIGPROF"),
-  (28, "SIGWINCH"),
-  (29, "SIGINFO"),
-  (30, "SIGUSR1"),
-  (31, "SIGUSR2"),
-  (32, "SIGTHR")
-);
-
-#[cfg(any(target_os = "android", target_os = "linux"))]
-signal_dict!(
-  (1, "SIGHUP"),
-  (2, "SIGINT"),
-  (3, "SIGQUIT"),
-  (4, "SIGILL"),
-  (5, "SIGTRAP"),
-  (6, "SIGABRT" | "SIGIOT"),
-  (7, "SIGBUS"),
-  (8, "SIGFPE"),
-  (9, "SIGKILL"),
-  (10, "SIGUSR1"),
-  (11, "SIGSEGV"),
-  (12, "SIGUSR2"),
-  (13, "SIGPIPE"),
-  (14, "SIGALRM"),
-  (15, "SIGTERM"),
-  (16, "SIGSTKFLT"),
-  (17, "SIGCHLD"),
-  (18, "SIGCONT"),
-  (19, "SIGSTOP"),
-  (20, "SIGTSTP"),
-  (21, "SIGTTIN"),
-  (22, "SIGTTOU"),
-  (23, "SIGURG"),
-  (24, "SIGXCPU"),
-  (25, "SIGXFSZ"),
-  (26, "SIGVTALRM"),
-  (27, "SIGPROF"),
-  (28, "SIGWINCH"),
-  (29, "SIGIO" | "SIGPOLL"),
-  (30, "SIGPWR"),
-  (31, "SIGSYS" | "SIGUNUSED")
-);
-
-#[cfg(target_os = "macos")]
-signal_dict!(
-  (1, "SIGHUP"),
-  (2, "SIGINT"),
-  (3, "SIGQUIT"),
-  (4, "SIGILL"),
-  (5, "SIGTRAP"),
-  (6, "SIGABRT" | "SIGIOT"),
-  (7, "SIGEMT"),
-  (8, "SIGFPE"),
-  (9, "SIGKILL"),
-  (10, "SIGBUS"),
-  (11, "SIGSEGV"),
-  (12, "SIGSYS"),
-  (13, "SIGPIPE"),
-  (14, "SIGALRM"),
-  (15, "SIGTERM"),
-  (16, "SIGURG"),
-  (17, "SIGSTOP"),
-  (18, "SIGTSTP"),
-  (19, "SIGCONT"),
-  (20, "SIGCHLD"),
-  (21, "SIGTTIN"),
-  (22, "SIGTTOU"),
-  (23, "SIGIO"),
-  (24, "SIGXCPU"),
-  (25, "SIGXFSZ"),
-  (26, "SIGVTALRM"),
-  (27, "SIGPROF"),
-  (28, "SIGWINCH"),
-  (29, "SIGINFO"),
-  (30, "SIGUSR1"),
-  (31, "SIGUSR2")
-);
-
-#[cfg(any(target_os = "solaris", target_os = "illumos"))]
-signal_dict!(
-  (1, "SIGHUP"),
-  (2, "SIGINT"),
-  (3, "SIGQUIT"),
-  (4, "SIGILL"),
-  (5, "SIGTRAP"),
-  (6, "SIGABRT" | "SIGIOT"),
-  (7, "SIGEMT"),
-  (8, "SIGFPE"),
-  (9, "SIGKILL"),
-  (10, "SIGBUS"),
-  (11, "SIGSEGV"),
-  (12, "SIGSYS"),
-  (13, "SIGPIPE"),
-  (14, "SIGALRM"),
-  (15, "SIGTERM"),
-  (16, "SIGUSR1"),
-  (17, "SIGUSR2"),
-  (18, "SIGCHLD"),
-  (19, "SIGPWR"),
-  (20, "SIGWINCH"),
-  (21, "SIGURG"),
-  (22, "SIGPOLL"),
-  (23, "SIGSTOP"),
-  (24, "SIGTSTP"),
-  (25, "SIGCONT"),
-  (26, "SIGTTIN"),
-  (27, "SIGTTOU"),
-  (28, "SIGVTALRM"),
-  (29, "SIGPROF"),
-  (30, "SIGXCPU"),
-  (31, "SIGXFSZ"),
-  (32, "SIGWAITING"),
-  (33, "SIGLWP"),
-  (34, "SIGFREEZE"),
-  (35, "SIGTHAW"),
-  (36, "SIGCANCEL"),
-  (37, "SIGLOST"),
-  (38, "SIGXRES"),
-  (39, "SIGJVM1"),
-  (40, "SIGJVM2")
-);
-
-#[cfg(target_os = "windows")]
-signal_dict!((2, "SIGINT"), (21, "SIGBREAK"));
-
 #[cfg(unix)]
 #[op2(fast)]
 #[smi]
@@ -406,7 +167,7 @@ fn op_signal_bind(
   state: &mut OpState,
   #[string] sig: &str,
 ) -> Result<ResourceId, SignalError> {
-  let signo = signal_str_to_int(sig)?;
+  let signo = crate::signal::signal_str_to_int(sig)?;
   if signal_hook_registry::FORBIDDEN.contains(&signo) {
     return Err(SignalError::SignalNotAllowed(sig.to_string()));
   }
@@ -443,7 +204,7 @@ fn op_signal_bind(
   state: &mut OpState,
   #[string] sig: &str,
 ) -> Result<ResourceId, SignalError> {
-  let signo = signal_str_to_int(sig)?;
+  let signo = crate::signal::signal_str_to_int(sig)?;
   let resource = SignalStreamResource {
     signal: AsyncRefCell::new(match signo {
       // SIGINT

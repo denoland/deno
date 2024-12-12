@@ -12,7 +12,6 @@ use deno_core::error::AnyError;
 use deno_core::url::Url;
 use deno_core::ModuleSourceCode;
 use deno_core::ModuleSpecifier;
-use deno_graph::source::ResolutionMode;
 use deno_graph::source::ResolveError;
 use deno_graph::source::UnknownBuiltInNodeModuleError;
 use deno_graph::NpmLoadError;
@@ -25,25 +24,25 @@ use deno_runtime::deno_fs::FileSystem;
 use deno_runtime::deno_node::is_builtin_node_module;
 use deno_runtime::deno_node::DenoFsNodeResolverEnv;
 use deno_semver::package::PackageReq;
-use node_resolver::NodeModuleKind;
-use node_resolver::NodeResolutionMode;
+use node_resolver::NodeResolutionKind;
+use node_resolver::ResolutionMode;
 use std::borrow::Cow;
 use std::path::Path;
 use std::path::PathBuf;
 use std::sync::Arc;
 use thiserror::Error;
 
+use crate::args::NpmCachingStrategy;
 use crate::args::DENO_DISABLE_PEDANTIC_NODE_WARNINGS;
 use crate::node::CliNodeCodeTranslator;
 use crate::npm::CliNpmResolver;
 use crate::npm::InnerCliNpmResolverRef;
 use crate::util::sync::AtomicFlag;
-use crate::util::text_encoding::from_utf8_lossy_owned;
+use crate::util::text_encoding::from_utf8_lossy_cow;
 
 pub type CjsTracker = deno_resolver::cjs::CjsTracker<DenoFsNodeResolverEnv>;
 pub type IsCjsResolver =
   deno_resolver::cjs::IsCjsResolver<DenoFsNodeResolverEnv>;
-pub type IsCjsResolverOptions = deno_resolver::cjs::IsCjsResolverOptions;
 pub type CliSloppyImportsResolver =
   SloppyImportsResolver<SloppyImportsCachedFs>;
 pub type CliDenoResolver = deno_resolver::DenoResolver<
@@ -64,7 +63,10 @@ pub struct ModuleCodeStringSource {
 pub struct CliDenoResolverFs(pub Arc<dyn FileSystem>);
 
 impl deno_resolver::fs::DenoResolverFs for CliDenoResolverFs {
-  fn read_to_string_lossy(&self, path: &Path) -> std::io::Result<String> {
+  fn read_to_string_lossy(
+    &self,
+    path: &Path,
+  ) -> std::io::Result<Cow<'static, str>> {
     self
       .0
       .read_text_file_lossy_sync(path, None)
@@ -184,18 +186,21 @@ impl NpmModuleLoader {
 
     let code = if self.cjs_tracker.is_maybe_cjs(specifier, media_type)? {
       // translate cjs to esm if it's cjs and inject node globals
-      let code = from_utf8_lossy_owned(code);
+      let code = from_utf8_lossy_cow(code);
       ModuleSourceCode::String(
         self
           .node_code_translator
-          .translate_cjs_to_esm(specifier, Some(Cow::Owned(code)))
+          .translate_cjs_to_esm(specifier, Some(code))
           .await?
           .into_owned()
           .into(),
       )
     } else {
       // esm and json code is untouched
-      ModuleSourceCode::Bytes(code.into_boxed_slice().into())
+      ModuleSourceCode::Bytes(match code {
+        Cow::Owned(bytes) => bytes.into_boxed_slice().into(),
+        Cow::Borrowed(bytes) => bytes.into(),
+      })
     };
 
     Ok(ModuleCodeStringSource {
@@ -236,36 +241,29 @@ impl CliResolver {
 
   // todo(dsherret): move this off CliResolver as CliResolver is acting
   // like a factory by doing this (it's beyond its responsibility)
-  pub fn create_graph_npm_resolver(&self) -> WorkerCliNpmGraphResolver {
+  pub fn create_graph_npm_resolver(
+    &self,
+    npm_caching: NpmCachingStrategy,
+  ) -> WorkerCliNpmGraphResolver {
     WorkerCliNpmGraphResolver {
       npm_resolver: self.npm_resolver.as_ref(),
       found_package_json_dep_flag: &self.found_package_json_dep_flag,
       bare_node_builtins_enabled: self.bare_node_builtins_enabled,
+      npm_caching,
     }
   }
 
   pub fn resolve(
     &self,
     raw_specifier: &str,
-    referrer_range: &deno_graph::Range,
-    referrer_kind: NodeModuleKind,
-    mode: ResolutionMode,
+    referrer: &ModuleSpecifier,
+    referrer_range_start: deno_graph::Position,
+    resolution_mode: ResolutionMode,
+    resolution_kind: NodeResolutionKind,
   ) -> Result<ModuleSpecifier, ResolveError> {
-    fn to_node_mode(mode: ResolutionMode) -> NodeResolutionMode {
-      match mode {
-        ResolutionMode::Execution => NodeResolutionMode::Execution,
-        ResolutionMode::Types => NodeResolutionMode::Types,
-      }
-    }
-
     let resolution = self
       .deno_resolver
-      .resolve(
-        raw_specifier,
-        &referrer_range.specifier,
-        referrer_kind,
-        to_node_mode(mode),
-      )
+      .resolve(raw_specifier, referrer, resolution_mode, resolution_kind)
       .map_err(|err| match err.into_kind() {
         deno_resolver::DenoResolveErrorKind::MappedResolution(
           mapped_resolution_error,
@@ -291,10 +289,11 @@ impl CliResolver {
         } => {
           if self.warned_pkgs.insert(reference.req().clone()) {
             log::warn!(
-              "{} {}\n    at {}",
+              "{} {}\n    at {}:{}",
               colors::yellow("Warning"),
               diagnostic,
-              referrer_range
+              referrer,
+              referrer_range_start,
             );
           }
         }
@@ -310,6 +309,7 @@ pub struct WorkerCliNpmGraphResolver<'a> {
   npm_resolver: Option<&'a Arc<dyn CliNpmResolver>>,
   found_package_json_dep_flag: &'a AtomicFlag,
   bare_node_builtins_enabled: bool,
+  npm_caching: NpmCachingStrategy,
 }
 
 #[async_trait(?Send)]
@@ -335,13 +335,10 @@ impl<'a> deno_graph::source::NpmResolver for WorkerCliNpmGraphResolver<'a> {
     module_name: &str,
     range: &deno_graph::Range,
   ) {
-    let deno_graph::Range {
-      start, specifier, ..
-    } = range;
-    let line = start.line + 1;
-    let column = start.character + 1;
+    let start = range.range.start;
+    let specifier = &range.specifier;
     if !*DENO_DISABLE_PEDANTIC_NODE_WARNINGS {
-      log::warn!("{} Resolving \"{module_name}\" as \"node:{module_name}\" at {specifier}:{line}:{column}. If you want to use a built-in Node module, add a \"node:\" prefix.", colors::yellow("Warning"))
+      log::warn!("{} Resolving \"{module_name}\" as \"node:{module_name}\" at {specifier}:{start}. If you want to use a built-in Node module, add a \"node:\" prefix.", colors::yellow("Warning"))
     }
   }
 
@@ -382,7 +379,20 @@ impl<'a> deno_graph::source::NpmResolver for WorkerCliNpmGraphResolver<'a> {
           Ok(())
         };
 
-        let result = npm_resolver.add_package_reqs_raw(package_reqs).await;
+        let result = npm_resolver
+          .add_package_reqs_raw(
+            package_reqs,
+            match self.npm_caching {
+              NpmCachingStrategy::Eager => {
+                Some(crate::npm::PackageCaching::All)
+              }
+              NpmCachingStrategy::Lazy => {
+                Some(crate::npm::PackageCaching::Only(package_reqs.into()))
+              }
+              NpmCachingStrategy::Manual => None,
+            },
+          )
+          .await;
 
         NpmResolvePkgReqsResult {
           results: result

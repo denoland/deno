@@ -11,6 +11,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use std::sync::Mutex;
 
+use super::super::PackageCaching;
 use async_trait::async_trait;
 use deno_ast::ModuleSpecifier;
 use deno_core::anyhow::Context;
@@ -24,7 +25,7 @@ use deno_runtime::deno_fs::FileSystem;
 use deno_runtime::deno_node::NodePermissions;
 use node_resolver::errors::PackageFolderResolveError;
 
-use crate::npm::managed::cache::TarballCache;
+use crate::npm::CliNpmTarballCache;
 
 /// Part of the resolution that interacts with the file system.
 #[async_trait(?Send)]
@@ -57,7 +58,10 @@ pub trait NpmPackageFsResolver: Send + Sync {
     specifier: &ModuleSpecifier,
   ) -> Result<Option<NpmPackageCacheFolderId>, AnyError>;
 
-  async fn cache_packages(&self) -> Result<(), AnyError>;
+  async fn cache_packages<'a>(
+    &self,
+    caching: PackageCaching<'a>,
+  ) -> Result<(), AnyError>;
 
   #[must_use = "the resolved return value to mitigate time-of-check to time-of-use issues"]
   fn ensure_read_permission<'a>(
@@ -140,7 +144,7 @@ impl RegistryReadPermissionChecker {
 /// Caches all the packages in parallel.
 pub async fn cache_packages(
   packages: &[NpmResolutionPackage],
-  tarball_cache: &Arc<TarballCache>,
+  tarball_cache: &Arc<CliNpmTarballCache>,
 ) -> Result<(), AnyError> {
   let mut futures_unordered = futures::stream::FuturesUnordered::new();
   for package in packages {

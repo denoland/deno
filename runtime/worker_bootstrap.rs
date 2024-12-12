@@ -1,8 +1,8 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
-use crate::ops::otel::OtelConfig;
 use deno_core::v8;
 use deno_core::ModuleSpecifier;
+use deno_telemetry::OtelConfig;
 use serde::Serialize;
 use std::cell::RefCell;
 use std::thread;

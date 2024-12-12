@@ -220,8 +220,8 @@ pub trait File {
   fn write_all_sync(self: Rc<Self>, buf: &[u8]) -> FsResult<()>;
   async fn write_all(self: Rc<Self>, buf: BufView) -> FsResult<()>;
 
-  fn read_all_sync(self: Rc<Self>) -> FsResult<Vec<u8>>;
-  async fn read_all_async(self: Rc<Self>) -> FsResult<Vec<u8>>;
+  fn read_all_sync(self: Rc<Self>) -> FsResult<Cow<'static, [u8]>>;
+  async fn read_all_async(self: Rc<Self>) -> FsResult<Cow<'static, [u8]>>;
 
   fn chmod_sync(self: Rc<Self>, pathmode: u32) -> FsResult<()>;
   async fn chmod_async(self: Rc<Self>, mode: u32) -> FsResult<()>;

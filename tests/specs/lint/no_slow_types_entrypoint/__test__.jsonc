@@ -1,5 +1,0 @@
-{
-  "args": "lint a.ts",
-  "output": "no_slow_types_entrypoint.out",
-  "exitCode": 1
-}

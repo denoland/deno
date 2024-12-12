@@ -102,7 +102,7 @@ fn cached_only_after_first_run() {
   let stdout = String::from_utf8_lossy(&output.stdout);
   assert_contains!(
     stderr,
-    "An npm specifier not found in cache: \"ansi-styles\", --cached-only is specified."
+    "npm package not found in cache: \"ansi-styles\", --cached-only is specified."
   );
   assert!(stdout.is_empty());
   assert!(!output.status.success());

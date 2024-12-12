@@ -47,8 +47,9 @@ deno_tls.workspace = true
 fastwebsockets = { workspace = true, features = ["upgrade", "unstable-split"] }
 file_test_runner = "0.7.3"
 flaky_test = "=0.2.2"
-hickory-client = "=0.24"
-hickory-server = "=0.24"
+hickory-client = "0.25.0-alpha.4"
+hickory-proto = "0.25.0-alpha.4"
+hickory-server = "0.25.0-alpha.4"
 http.workspace = true
 http-body-util.workspace = true
 hyper.workspace = true

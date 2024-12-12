@@ -157,7 +157,10 @@ pub trait NodeRequireLoader {
     path: &'a Path,
   ) -> Result<Cow<'a, Path>, PermissionCheckError>;
 
-  fn load_text_file_lossy(&self, path: &Path) -> Result<String, JsNativeError>;
+  fn load_text_file_lossy(
+    &self,
+    path: &Path,
+  ) -> Result<Cow<'static, str>, JsNativeError>;
 
   /// Get if the module kind is maybe CJS and loading should determine
   /// if its CJS or ESM.
@@ -869,7 +872,7 @@ impl deno_package_json::fs::DenoPkgJsonFs for DenoFsNodeResolverEnv {
   fn read_to_string_lossy(
     &self,
     path: &std::path::Path,
-  ) -> Result<String, std::io::Error> {
+  ) -> Result<Cow<'static, str>, std::io::Error> {
     self
       .fs
       .read_text_file_lossy_sync(path, None)
@@ -883,7 +886,7 @@ impl<'a> deno_package_json::fs::DenoPkgJsonFs for DenoPkgJsonFsAdapter<'a> {
   fn read_to_string_lossy(
     &self,
     path: &Path,
-  ) -> Result<String, std::io::Error> {
+  ) -> Result<Cow<'static, str>, std::io::Error> {
     self
       .0
       .read_text_file_lossy_sync(path, None)

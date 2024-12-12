@@ -7,6 +7,7 @@ const {
   SafeRegExp,
   Symbol,
 } = primordials;
+import { HTTPParser } from "ext:deno_node/internal_binding/http_parser.ts";
 
 export const CRLF = "\r\n";
 export const kIncomingMessage = Symbol("IncomingMessage");
@@ -79,6 +80,8 @@ export {
   checkIsHttpToken as _checkIsHttpToken,
 };
 
+export { HTTPParser };
+
 export default {
   _checkInvalidHeaderChar: checkInvalidHeaderChar,
   _checkIsHttpToken: checkIsHttpToken,
@@ -87,4 +90,5 @@ export default {
   continueExpression,
   kIncomingMessage,
   methods,
+  HTTPParser,
 };
