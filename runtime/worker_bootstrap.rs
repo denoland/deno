@@ -119,8 +119,7 @@ pub struct BootstrapOptions {
   // Used by `deno serve`
   pub serve_port: Option<u16>,
   pub serve_host: Option<String>,
-  // OpenTelemetry output options. If `None`, OpenTelemetry is disabled.
-  pub otel_config: Option<OtelConfig>,
+  pub otel_config: OtelConfig,
 }
 
 impl Default for BootstrapOptions {
@@ -155,7 +154,7 @@ impl Default for BootstrapOptions {
       mode: WorkerExecutionMode::None,
       serve_port: Default::default(),
       serve_host: Default::default(),
-      otel_config: None,
+      otel_config: Default::default(),
     }
   }
 }
@@ -225,11 +224,7 @@ impl BootstrapOptions {
       self.serve_host.as_deref(),
       serve_is_main,
       serve_worker_count,
-      if let Some(otel_config) = self.otel_config.as_ref() {
-        Box::new([otel_config.console as u8, otel_config.deterministic as u8])
-      } else {
-        Box::new([])
-      },
+      self.otel_config.as_v8(),
     );
 
     bootstrap.serialize(ser).unwrap()

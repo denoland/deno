@@ -255,6 +255,10 @@ impl NpmResolution {
       .read()
       .as_valid_serialized_for_system(system_info)
   }
+
+  pub fn subset(&self, package_reqs: &[PackageReq]) -> NpmResolutionSnapshot {
+    self.snapshot.read().subset(package_reqs)
+  }
 }
 
 async fn add_package_reqs_to_snapshot(

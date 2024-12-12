@@ -1119,6 +1119,11 @@ Compile file:///[WILDCARD]/main.ts to [WILDCARD]
 Warning Failed resolving symlink. Ignoring.
     Path: [WILDCARD]
     Message: [WILDCARD])
+
+Embedded File System
+
+[WILDCARD]
+
 "#,
   );
 

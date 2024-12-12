@@ -20,7 +20,6 @@ use crate::Flags;
 
 use crate::args::DenoSubcommand;
 use crate::args::InstallFlags;
-use crate::args::InstallKind;
 
 use deno_lockfile::Lockfile;
 
@@ -136,10 +135,8 @@ impl CliLockfile {
     if flags.no_lock
       || matches!(
         flags.subcommand,
-        DenoSubcommand::Install(InstallFlags {
-          kind: InstallKind::Global(..),
-          ..
-        }) | DenoSubcommand::Uninstall(_)
+        DenoSubcommand::Install(InstallFlags::Global(..))
+          | DenoSubcommand::Uninstall(_)
       )
     {
       return Ok(None);

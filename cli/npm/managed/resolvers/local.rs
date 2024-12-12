@@ -17,6 +17,7 @@ use std::sync::Arc;
 
 use crate::args::LifecycleScriptsConfig;
 use crate::colors;
+use crate::npm::managed::PackageCaching;
 use crate::npm::CliNpmCache;
 use crate::npm::CliNpmTarballCache;
 use async_trait::async_trait;
@@ -253,9 +254,16 @@ impl NpmPackageFsResolver for LocalNpmPackageResolver {
     ))
   }
 
-  async fn cache_packages(&self) -> Result<(), AnyError> {
+  async fn cache_packages<'a>(
+    &self,
+    caching: PackageCaching<'a>,
+  ) -> Result<(), AnyError> {
+    let snapshot = match caching {
+      PackageCaching::All => self.resolution.snapshot(),
+      PackageCaching::Only(reqs) => self.resolution.subset(&reqs),
+    };
     sync_resolution_with_fs(
-      &self.resolution.snapshot(),
+      &snapshot,
       &self.cache,
       &self.npm_install_deps_provider,
       &self.progress_bar,
