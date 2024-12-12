@@ -3,7 +3,7 @@ name: npm_publish
 on:
   workflow_dispatch:
     inputs:
-      releaseKind:
+      version:
         description: 'Version'
         type: string
   release:
@@ -24,4 +24,4 @@ jobs:
       - name: Publish
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
-        run: ./tools/release/npm/build.ts ${{ github.event.inputs.tags }} --publish
+        run: ./tools/release/npm/build.ts ${{ github.event.inputs.version }} --publish
