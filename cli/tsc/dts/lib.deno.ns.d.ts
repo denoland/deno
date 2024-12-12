@@ -6169,6 +6169,7 @@ declare namespace Deno {
 
   export interface BaseNode {
     range: Range;
+    parent: AstNode;
   }
 
   export interface AssignmentPattern extends BaseNode {
@@ -6434,7 +6435,7 @@ declare namespace Deno {
     type: "TaggedTemplateExpression";
     quasi: TemplateLiteral;
     tag: Expression;
-    // typeArguments: TSTypeParameterInstantiation | undefined; // FIXME
+    typeArguments: null; // FIXME
   }
 
   export interface TemplateLiteral extends BaseNode {

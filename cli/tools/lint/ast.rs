@@ -92,7 +92,7 @@ enum AstNode {
   Seq,
   Identifier,
   TemplateLiteral,
-  TaggedTpl,
+  TaggedTemplateExpression,
   ArrowFunctionExpression,
   ClassExpr,
   YieldExpression,
@@ -481,24 +481,10 @@ impl SerializeCtx {
 
     ctx.str_table.insert("");
 
-    ctx.push_node(AstNode::Empty, 0, &DUMMY_SP);
+    // Placeholder node
+    ctx.push_node(AstNode::Invalid, 0, &DUMMY_SP);
 
     ctx
-  }
-
-  fn reserve_child_ids_with_count(&mut self, count: usize) -> usize {
-    append_usize(&mut self.result, count);
-    self.reserve_child_ids(count)
-  }
-
-  fn reserve_child_ids(&mut self, count: usize) -> usize {
-    let offset = self.result.len();
-
-    for _ in 0..count {
-      append_usize(&mut self.result, 0);
-    }
-
-    offset
   }
 
   fn next_id(&mut self) -> usize {
@@ -563,13 +549,7 @@ impl SerializeCtx {
     self.id_to_offset.insert(id, self.result.len());
     self.id += 1;
 
-    let kind_value: u8 = kind.into();
-    self.result.push(kind_value);
-    append_usize(&mut self.result, parent_id);
-
-    // Span
-    append_u32(&mut self.result, span.lo.0);
-    append_u32(&mut self.result, span.hi.0);
+    self.write_node(id, kind, parent_id, span);
 
     id
   }
@@ -585,10 +565,9 @@ pub fn serialize_ast_bin(parsed_source: &ParsedSource) -> Vec<u8> {
 
   // eprintln!("SWC {:#?}", program);
 
+  let root_id = ctx.next_id();
   match program.as_ref() {
     Program::Module(module) => {
-      let id = ctx.next_id();
-
       flags.set(Flag::ProgramModule);
 
       let child_ids = module
@@ -598,47 +577,55 @@ pub fn serialize_ast_bin(parsed_source: &ParsedSource) -> Vec<u8> {
           ModuleItem::ModuleDecl(module_decl) => {
             serialize_module_decl(&mut ctx, module_decl, parent_id)
           }
-          ModuleItem::Stmt(stmt) => serialize_stmt(&mut ctx, stmt, id),
+          ModuleItem::Stmt(stmt) => serialize_stmt(&mut ctx, stmt, root_id),
         })
         .collect::<Vec<_>>();
 
-      ctx.write_node(id, AstNode::Program, parent_id, &module.span);
+      ctx.write_node(root_id, AstNode::Program, parent_id, &module.span);
       ctx.write_flags(&flags);
       ctx.write_ids(child_ids);
     }
     Program::Script(script) => {
-      let id = ctx.next_id();
-
       let child_ids = script
         .body
         .iter()
-        .map(|stmt| serialize_stmt(&mut ctx, stmt, id))
+        .map(|stmt| serialize_stmt(&mut ctx, stmt, root_id))
         .collect::<Vec<_>>();
 
-      ctx.write_node(id, AstNode::Program, parent_id, &script.span);
+      ctx.write_node(root_id, AstNode::Program, parent_id, &script.span);
       ctx.write_flags(&flags);
       ctx.write_ids(child_ids);
     }
   }
 
-  let mut result: Vec<u8> = vec![];
+  let mut buf: Vec<u8> = vec![];
+
+  // Append serialized AST
+  buf.append(&mut ctx.result);
+
+  let offset_str_table = buf.len();
 
   // Serialize string table
   // eprintln!("STRING {:#?}", ctx.str_table);
-  result.append(&mut ctx.str_table.serialize());
+  buf.append(&mut ctx.str_table.serialize());
+
+  let offset_id_table = buf.len();
 
   // Serialize ids
-  append_usize(&mut result, ctx.id_to_offset.len());
+  append_usize(&mut buf, ctx.id_to_offset.len());
 
-  let offset = result.len() + (ctx.id_to_offset.len() * 4);
-
-  for (_i, value) in ctx.id_to_offset {
-    append_usize(&mut result, value + offset);
+  let mut ids = ctx.id_to_offset.keys().collect::<Vec<_>>();
+  ids.sort();
+  for id in ids {
+    let offset = ctx.id_to_offset.get(id).unwrap();
+    append_usize(&mut buf, *offset);
   }
 
-  // Append serialized AST
-  result.append(&mut ctx.result);
-  result
+  append_usize(&mut buf, offset_str_table);
+  append_usize(&mut buf, offset_id_table);
+  append_usize(&mut buf, root_id);
+
+  buf
 }
 
 fn serialize_module_decl(
@@ -1508,10 +1495,24 @@ fn serialize_expr(
 
       id
     }
-    Expr::TaggedTpl(tagged_tpl) => {
-      let id = ctx.push_node(AstNode::TaggedTpl, parent_id, &tagged_tpl.span);
+    Expr::TaggedTpl(node) => {
+      let id = ctx.next_id();
+
+      let tag_id = serialize_expr(ctx, &node.tag, id);
 
       // FIXME
+      let type_param_id = 0;
+      let quasi_id = serialize_expr(ctx, &Expr::Tpl(*node.tpl.clone()), id);
+
+      ctx.write_node(
+        id,
+        AstNode::TaggedTemplateExpression,
+        parent_id,
+        &node.span,
+      );
+      ctx.write_id(tag_id);
+      ctx.write_id(type_param_id);
+      ctx.write_id(quasi_id);
 
       id
     }
@@ -2030,7 +2031,6 @@ fn serialize_decl(
     }
     Decl::Using(node) => {
       let id = ctx.push_node(AstNode::Using, parent_id, &node.span);
-      let offset = ctx.reserve_child_ids_with_count(node.decls.len());
 
       for (i, decl) in node.decls.iter().enumerate() {
         // FIXME

@@ -45,11 +45,11 @@ export class Context {
     let start, end;
 
     if (data.node) {
-      start = data.node.span.start - 1;
-      end = data.node.span.end - 1;
-    } else if (data.span) {
-      start = data.span.start - 1;
-      end = data.span.end - 1;
+      start = data.node.range[0] - 1;
+      end = data.node.range[1] - 1;
+    } else if (data.range) {
+      start = data.range[0] - 1;
+      end = data.range[1] - 1;
     } else {
       throw new Error(
         "Either `node` or `span` must be provided when reporting an error",
@@ -2101,6 +2101,48 @@ class Super extends BaseNode {
   }
 }
 
+/** @implements {Deno.TaggedTemplateExpression} */
+class TaggedTemplateExpression extends BaseNode {
+  type = /** @type {const} */ ("TaggedTemplateExpression");
+  range;
+
+  get tag() {
+    return /** @type {*} */ (createAstNode(this.#ctx, this.#tagId));
+  }
+
+  get quasi() {
+    return /** @type {*} */ (createAstNode(this.#ctx, this.#quasiId));
+  }
+
+  get typeArguments() {
+    if (this.#typeParamId === 0) return null;
+    return /** @type {*} */ (createAstNode(this.#ctx, this.#typeParamId));
+  }
+
+  #ctx;
+  #tagId;
+  #typeParamId;
+  #quasiId;
+
+  /**
+   * @param {AstContext} ctx
+   * @param {number} parentId
+   * @param {Deno.Range} range
+   * @param {number} tagId
+   * @param {number} typeParamId
+   * @param {number} quasiId
+   */
+  constructor(ctx, parentId, range, tagId, typeParamId, quasiId) {
+    super(ctx, parentId);
+
+    this.#ctx = ctx;
+    this.range = range;
+    this.#tagId = tagId;
+    this.#typeParamId = typeParamId;
+    this.#quasiId = quasiId;
+  }
+}
+
 /** @implements {Deno.UnaryExpression} */
 class UnaryExpression extends BaseNode {
   type = /** @type {const} */ ("UnaryExpression");
@@ -2762,7 +2804,7 @@ class JSXMemberExpression extends BaseNode {
 }
 
 /** @implements {Deno.JSXNamespacedName} */
-class JSXNamespacedName {
+class JSXNamespacedName extends BaseNode {
   type = /** @type {const} */ ("JSXNamespacedName");
   range;
   get name() {
@@ -2784,11 +2826,14 @@ class JSXNamespacedName {
 
   /**
    * @param {AstContext} ctx
+   * @param {number} parentId
    * @param {Deno.Range} range
    * @param {number} nameId
    * @param {number} nsId
    */
-  constructor(ctx, range, nameId, nsId) {
+  constructor(ctx, parentId, range, nameId, nsId) {
+    super(ctx, parentId);
+
     this.#ctx = ctx;
     this.range = range;
     this.#nameId = nameId;
@@ -2912,6 +2957,7 @@ const DECODER = new TextDecoder();
  *   buf: Uint8Array,
  *   strTable: Map<number, string>,
  *   idTable: number[],
+ *   rootId: number
  * }} AstContext
  */
 
@@ -3323,8 +3369,19 @@ function createAstNode(ctx, id) {
     }
     case AstType.Super:
       throw new Super(ctx, parentId, range);
-    case AstType.TaggedTemplateExpression:
-      throw new Error("FIXME");
+    case AstType.TaggedTemplateExpression: {
+      const tagId = readU32(buf, offset);
+      const typeParamId = readU32(buf, offset + 4);
+      const quasiId = readU32(buf, offset + 8);
+      return new TaggedTemplateExpression(
+        ctx,
+        parentId,
+        range,
+        tagId,
+        typeParamId,
+        quasiId,
+      );
+    }
 
     case AstType.TemplateElement: {
       const flags = buf[offset];
@@ -3505,8 +3562,15 @@ function createAstContext(buf) {
   /** @type {Map<number, string>} */
   const strTable = new Map();
 
-  let offset = 0;
-  const stringCount = readU32(buf, 0);
+  // console.log(JSON.stringify(buf, null, 2));
+
+  const strTableOffset = readU32(buf, buf.length - 12);
+  const idTableOffset = readU32(buf, buf.length - 8);
+  const rootId = readU32(buf, buf.length - 4);
+  // console.log({ strTableOffset, idTableOffset, rootId });
+
+  let offset = strTableOffset;
+  const stringCount = readU32(buf, offset);
   offset += 4;
 
   let id = 0;
@@ -3530,7 +3594,7 @@ function createAstContext(buf) {
   }
 
   // Build id table
-  const idCount = readU32(buf, offset);
+  const idCount = readU32(buf, idTableOffset);
   offset += 4;
 
   const idTable = new Array(idCount);
@@ -3549,7 +3613,9 @@ function createAstContext(buf) {
   }
 
   /** @type {AstContext} */
-  const ctx = { buf, idTable, strTable };
+  const ctx = { buf, idTable, strTable, rootId };
+
+  // console.log({ strTable, idTable });
 
   return ctx;
 }
@@ -3643,9 +3709,7 @@ function traverse(ctx, visitor) {
   console.log("merged visitor", visitor);
   console.log("visiting types", visitTypes);
 
-  // Program is always id 1
-  const id = 1;
-  traverseInner(ctx, visitTypes, visitor, id);
+  traverseInner(ctx, visitTypes, visitor, ctx.rootId);
 }
 
 /**
@@ -3685,7 +3749,8 @@ function traverseInner(ctx, visitTypes, visitor, id) {
       // skip flag reading during traversal
       offset += 1;
       const childIds = readChildIds(buf, offset);
-      return traverseChildren(ctx, visitTypes, visitor, childIds);
+      traverseChildren(ctx, visitTypes, visitor, childIds);
+      return;
     }
     case AstType.FunctionDeclaration: {
       // Skip flags
@@ -3757,9 +3822,9 @@ function traverseInner(ctx, visitTypes, visitor, id) {
     // Expressions
     case AstType.CallExpression: {
       offset += 1; // skip flags
-      const calleeId = readU32(buf, offset + 1);
-      const typeArgId = readU32(buf, offset + 5);
-      const childIds = readChildIds(buf, offset + 9);
+      const calleeId = readU32(buf, offset);
+      const typeArgId = readU32(buf, offset + 4);
+      const childIds = readChildIds(buf, offset + 8);
 
       traverseInner(ctx, visitTypes, visitor, calleeId);
       traverseInner(ctx, visitTypes, visitor, typeArgId);
@@ -3935,7 +4000,8 @@ function traverseInner(ctx, visitTypes, visitor, id) {
     // Three children
     case AstType.ConditionalExpression:
     case AstType.ForInStatement:
-    case AstType.IfStatement: {
+    case AstType.IfStatement:
+    case AstType.TaggedTemplateExpression: {
       const firstId = readU32(buf, offset);
       const secondId = readU32(buf, offset + 4);
       const thirdId = readU32(buf, offset + 8);
