@@ -1847,7 +1847,7 @@ fn get_target_specifiers(
   specifiers_with_mode
     .into_iter()
     .filter_map(|(s, mode)| mode.needs_test_run().then_some(s))
-    .chain(doc_tests.iter().map(|d| d.specifier.clone()))
+    .chain(doc_tests.iter().map(|d| d.url.clone()))
     .collect()
 }
 

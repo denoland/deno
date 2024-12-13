@@ -97,7 +97,7 @@ pub async fn run_from_stdin(flags: Arc<Flags>) -> Result<i32, AnyError> {
   // Save a fake file into file fetcher cache
   // to allow module access by TS compiler
   file_fetcher.insert_memory_files(File {
-    specifier: main_module.clone(),
+    url: main_module.clone(),
     maybe_headers: None,
     source: source.into(),
   });
@@ -184,7 +184,7 @@ pub async fn eval_command(
   // Save a fake file into file fetcher cache
   // to allow module access by TS compiler.
   file_fetcher.insert_memory_files(File {
-    specifier: main_module.clone(),
+    url: main_module.clone(),
     maybe_headers: None,
     source: source_code.into_bytes().into(),
   });

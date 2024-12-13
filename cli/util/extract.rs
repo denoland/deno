@@ -231,7 +231,7 @@ fn extract_files_from_regex_blocks(
           .unwrap_or(file_specifier);
 
       Some(File {
-        specifier: file_specifier,
+        url: file_specifier,
         maybe_headers: None,
         source: file_source.into_bytes().into(),
       })
@@ -595,7 +595,7 @@ fn generate_pseudo_file(
   log::debug!("{}:\n{}", file.specifier, source);
 
   Ok(File {
-    specifier: file.specifier,
+    url: file.specifier,
     maybe_headers: None,
     source: source.into_bytes().into(),
   })

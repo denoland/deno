@@ -57,10 +57,10 @@ impl TextDecodedFile {
   pub fn decode(file: File) -> Result<Self, AnyError> {
     let (media_type, maybe_charset) =
       deno_graph::source::resolve_media_type_and_charset_from_headers(
-        &file.specifier,
+        &file.url,
         file.maybe_headers.as_ref(),
       );
-    let specifier = file.specifier;
+    let specifier = file.url;
     match deno_graph::source::decode_source(
       &specifier,
       file.source,
@@ -476,7 +476,7 @@ impl CliFileFetcher {
 
   /// Insert a temporary module for the file fetcher.
   pub fn insert_memory_files(&self, file: File) -> Option<File> {
-    self.memory_files.insert(file.specifier.clone(), file)
+    self.memory_files.insert(file.url.clone(), file)
   }
 
   pub fn clear_memory_files(&self) {
@@ -489,7 +489,7 @@ fn validate_scheme(specifier: &Url) -> Result<(), UnsupportedSchemeError> {
     true => Ok(()),
     false => Err(UnsupportedSchemeError {
       scheme: specifier.scheme().to_string(),
-      specifier: specifier.clone(),
+      url: specifier.clone(),
     }),
   }
 }

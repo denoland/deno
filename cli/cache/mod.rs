@@ -349,7 +349,7 @@ impl Loader for FetchCacher {
                 (None, None) => None,
               };
             Ok(Some(LoadResponse::Module {
-              specifier: file.specifier,
+              specifier: file.url,
               maybe_headers,
               content: file.source,
             }))
