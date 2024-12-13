@@ -20,7 +20,7 @@ use deno_core::unsync::future::LocalFutureExt;
 use deno_core::unsync::future::SharedLocal;
 use deno_graph::ModuleGraph;
 use deno_lint::diagnostic::LintDiagnostic;
-use deno_lint::linter::LintConfig;
+use deno_lint::linter::LintConfig as DenoLintConfig;
 use log::debug;
 use reporters::create_reporter;
 use reporters::LintReporter;
@@ -277,7 +277,7 @@ impl WorkspaceLinter {
     &mut self,
     cli_options: &Arc<CliOptions>,
     lint_options: LintOptions,
-    lint_config: LintConfig,
+    lint_config: DenoLintConfig,
     member_dir: WorkspaceDirectory,
     paths: Vec<PathBuf>,
   ) -> Result<(), AnyError> {
@@ -513,7 +513,7 @@ fn lint_stdin(
   lint_rule_provider: LintRuleProvider,
   workspace_lint_options: WorkspaceLintOptions,
   lint_flags: LintFlags,
-  deno_lint_config: LintConfig,
+  deno_lint_config: DenoLintConfig,
 ) -> Result<bool, AnyError> {
   let start_dir = &cli_options.start_dir;
   let reporter_lock = Arc::new(Mutex::new(create_reporter(

@@ -23,6 +23,7 @@ use deno_config::workspace::WorkspaceLintConfig;
 use deno_config::workspace::WorkspaceResolver;
 use deno_core::resolve_url_or_path;
 use deno_graph::GraphKind;
+use deno_lint::linter::LintConfig as DenoLintConfig;
 use deno_npm::npm_rc::NpmRc;
 use deno_npm::npm_rc::ResolvedNpmRc;
 use deno_npm::resolution::ValidSerializedNpmResolutionSnapshot;
@@ -1355,9 +1356,7 @@ impl CliOptions {
     Ok(result)
   }
 
-  pub fn resolve_deno_lint_config(
-    &self,
-  ) -> Result<deno_lint::linter::LintConfig, AnyError> {
+  pub fn resolve_deno_lint_config(&self) -> Result<DenoLintConfig, AnyError> {
     let ts_config_result =
       self.resolve_ts_config_for_emit(TsConfigType::Emit)?;
 
@@ -1366,7 +1365,7 @@ impl CliOptions {
         ts_config_result.ts_config,
       )?;
 
-    Ok(deno_lint::linter::LintConfig {
+    Ok(DenoLintConfig {
       default_jsx_factory: (!transpile_options.jsx_automatic)
         .then(|| transpile_options.jsx_factory.clone()),
       default_jsx_fragment_factory: (!transpile_options.jsx_automatic)
