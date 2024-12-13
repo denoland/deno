@@ -667,24 +667,29 @@ fn vfs_as_display_tree(
   }
 
   fn file_size(file: &VirtualFile, seen_offsets: &mut HashSet<u64>) -> Size {
-    let mut size = if seen_offsets.insert(file.offset.offset) {
-      Size {
-        unique: file.offset.len,
-        total: file.offset.len,
+    fn add_offset_to_size(
+      offset: OffsetWithLength,
+      size: &mut Size,
+      seen_offsets: &mut HashSet<u64>,
+    ) {
+      if offset.len == 0 {
+        // some empty files have a dummy offset, so don't
+        // insert them into the seen offsets
+        return;
       }
-    } else {
-      Size {
-        unique: 0,
-        total: file.offset.len,
-      }
-    };
-    if file.module_graph_offset.offset != file.offset.offset {
-      if seen_offsets.insert(file.module_graph_offset.offset) {
-        size.total += file.module_graph_offset.len;
-        size.unique += file.module_graph_offset.len;
+
+      if seen_offsets.insert(offset.offset) {
+        size.total += offset.len;
+        size.unique += offset.len;
       } else {
-        size.total += file.module_graph_offset.len;
+        size.total += offset.len;
       }
+    }
+
+    let mut size = Size::default();
+    add_offset_to_size(file.offset, &mut size, seen_offsets);
+    if file.module_graph_offset.offset != file.offset.offset {
+      add_offset_to_size(file.module_graph_offset, &mut size, seen_offsets);
     }
     size
   }
@@ -775,7 +780,6 @@ fn vfs_as_display_tree(
   fn analyze_entry<'a>(
     path: PathBuf,
     entry: &'a VfsEntry,
-
     seen_offsets: &mut HashSet<u64>,
   ) -> EntryOutput<'a> {
     match entry {
@@ -1796,8 +1800,8 @@ mod test {
     let temp_dir = TempDir::new();
     temp_dir.write("root.txt", "");
     temp_dir.create_dir_all("a");
-    temp_dir.write("a/a.txt", "");
-    temp_dir.write("a/b.txt", "");
+    temp_dir.write("a/a.txt", "data");
+    temp_dir.write("a/b.txt", "other data");
     temp_dir.create_dir_all("b");
     temp_dir.write("b/a.txt", "");
     temp_dir.write("b/b.txt", "");
@@ -1825,10 +1829,10 @@ mod test {
     assert_eq!(
       strip_ansi_codes(&text),
       r#"executable
-├── a/*
-├── b/a.txt
-└─┬ c
-  ├── a.txt
+├── a/* (14B)
+├── b/a.txt (0B)
+└─┬ c (8B)
+  ├── a.txt (8B)
   └── b.txt --> c/a.txt
 "#
     );
