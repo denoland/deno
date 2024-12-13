@@ -59,6 +59,14 @@ const Runners = {
 
 const prCacheKeyPrefix =
   `${cacheVersion}-cargo-target-\${{ matrix.os }}-\${{ matrix.arch }}-\${{ matrix.profile }}-\${{ matrix.job }}-`;
+const prCacheKey = `${prCacheKeyPrefix}-\${{ hashFiles('Cargo.lock') }}`;
+const prCachePath = [
+  "./target",
+  "!./target/*/gn_out",
+  "!./target/*/gn_root",
+  "!./target/*/*.zip",
+  "!./target/*/*.tar.gz",
+].join("\n");
 
 // Note that you may need to add more version to the `apt-get remove` line below if you change this
 const llvmVersion = 19;
@@ -612,7 +620,7 @@ const ci = {
               `${cacheVersion}-cargo-home-\${{ matrix.os }}-\${{ matrix.arch }}-\${{ hashFiles('Cargo.lock') }}`,
             // We will try to restore from the closest cargo-home we can find
             "restore-keys":
-              `${cacheVersion}-cargo-home-\${{ matrix.os }}-\${{ matrix.arch }}`,
+              `${cacheVersion}-cargo-home-\${{ matrix.os }}-\${{ matrix.arch }}-`,
           },
         },
         {
@@ -622,13 +630,8 @@ const ci = {
           if:
             "github.ref != 'refs/heads/main' && !startsWith(github.ref, 'refs/tags/')",
           with: {
-            path: [
-              "./target",
-              "!./target/*/gn_out",
-              "!./target/*/gn_root",
-              "!./target/*/*.zip",
-              "!./target/*/*.tar.gz",
-            ].join("\n"),
+            path: prCachePath,
+            key: prCacheKey,
             "restore-keys": prCacheKeyPrefix,
           },
         },
@@ -1079,14 +1082,8 @@ const ci = {
           if:
             "(matrix.job == 'test' || matrix.job == 'lint') && github.ref == 'refs/heads/main'",
           with: {
-            path: [
-              "./target",
-              "!./target/*/gn_out",
-              "!./target/*/*.zip",
-              "!./target/*/*.sha256sum",
-              "!./target/*/*.tar.gz",
-            ].join("\n"),
-            key: prCacheKeyPrefix + "${{ github.sha }}",
+            path: prCachePath,
+            key: prCacheKey,
           },
         },
       ]),
