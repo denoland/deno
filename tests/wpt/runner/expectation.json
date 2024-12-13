@@ -3594,16 +3594,13 @@
         "DOMException-constructor-behavior.any.html": true,
         "DOMException-constructor-behavior.any.worker.html": true,
         "DOMException-custom-bindings.any.html": true,
-        "DOMException-custom-bindings.any.worker.html": true
+        "DOMException-custom-bindings.any.worker.html": true,
+        "exceptions.html": false
       },
       "class-string-interface.any.html": true,
       "class-string-interface.any.worker.html": true,
-      "class-string-iterator-prototype-object.any.html": [
-        "Object.prototype.toString applied after deleting @@toStringTag"
-      ],
-      "class-string-iterator-prototype-object.any.worker.html": [
-        "Object.prototype.toString applied after deleting @@toStringTag"
-      ],
+      "class-string-iterator-prototype-object.any.html": true,
+      "class-string-iterator-prototype-object.any.worker.html": true,
       "class-string-named-properties-object.window.html": false,
       "global-immutable-prototype.any.html": [
         "Setting to a different prototype"
@@ -9754,7 +9751,6 @@
         "structured-cloning-error-stack-optional.sub.window.html": [
           "page-created Error (cross-site iframe)",
           "page-created Error (same-origin iframe)",
-          "page-created DOMException (structuredClone())",
           "page-created DOMException (cross-site iframe)",
           "page-created DOMException (same-origin iframe)",
           "JS-engine-created TypeError (cross-site iframe)",
@@ -9762,8 +9758,7 @@
           "web API-created TypeError (cross-site iframe)",
           "web API-created TypeError (same-origin iframe)",
           "web API-created DOMException (cross-site iframe)",
-          "web API-created DOMException (same-origin iframe)",
-          "page-created DOMException (worker)"
+          "web API-created DOMException (same-origin iframe)"
         ],
         "transfer-errors.window.html": false,
         "window-postmessage.window.html": false
