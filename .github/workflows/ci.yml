@@ -68,12 +68,12 @@ jobs:
             skip: '${{ !contains(github.event.pull_request.labels.*.name, ''ci-full'') && (github.event_name == ''pull_request'') }}'
           - os: macos
             arch: aarch64
-            runner: '${{ github.repository == ''denoland/deno'' && github.ref == ''refs/heads/main'' && ''self-hosted'' || ''macos-14'' }}'
+            runner: '${{ github.repository == ''denoland/deno'' && startsWith(github.ref, ''refs/tags/'') && ''self-hosted'' || ''macos-14'' }}'
             job: test
             profile: debug
           - os: macos
             arch: aarch64
-            runner: '${{ (!contains(github.event.pull_request.labels.*.name, ''ci-full'') && (github.event_name == ''pull_request'')) && ''ubuntu-24.04'' || github.repository == ''denoland/deno'' && github.ref == ''refs/heads/main'' && ''self-hosted'' || ''macos-14'' }}'
+            runner: '${{ (!contains(github.event.pull_request.labels.*.name, ''ci-full'') && (github.event_name == ''pull_request'')) && ''ubuntu-24.04'' || github.repository == ''denoland/deno'' && startsWith(github.ref, ''refs/tags/'') && ''self-hosted'' || ''macos-14'' }}'
             job: test
             profile: release
             skip: '${{ !contains(github.event.pull_request.labels.*.name, ''ci-full'') && (github.event_name == ''pull_request'') }}'
