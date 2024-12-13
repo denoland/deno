@@ -42,7 +42,7 @@ const Runners = {
     os: "macos",
     arch: "aarch64",
     runner:
-      `\${{ github.repository == 'denoland/deno' && github.ref == 'refs/heads/main' && '${selfHostedMacosArmRunner}' || '${macosArmRunner}' }}`,
+      `\${{ github.repository == 'denoland/deno' && startsWith(github.ref, 'refs/tags/') && '${selfHostedMacosArmRunner}' || '${macosArmRunner}' }}`,
   },
   windowsX86: {
     os: "windows",
