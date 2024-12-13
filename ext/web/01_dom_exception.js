@@ -9,14 +9,15 @@
 
 import { primordials } from "ext:core/mod.js";
 const {
+  Error,
   ErrorPrototype,
-  ErrorCaptureStackTrace,
   ObjectDefineProperty,
   ObjectCreate,
   ObjectEntries,
   ObjectHasOwn,
   ObjectPrototypeIsPrototypeOf,
   ObjectSetPrototypeOf,
+  ReflectConstruct,
   Symbol,
   SymbolFor,
 } = primordials;
@@ -107,12 +108,14 @@ class DOMException {
     );
     const code = nameToCodeMapping[name] ?? 0;
 
-    this[_message] = message;
-    this[_name] = name;
-    this[_code] = code;
-    this[webidl.brand] = webidl.brand;
+    // execute Error constructor to have stack property and [[ErrorData]] internal slot
+    const error = ReflectConstruct(Error, [], new.target);
+    error[_message] = message;
+    error[_name] = name;
+    error[_code] = code;
+    error[webidl.brand] = webidl.brand;
 
-    ErrorCaptureStackTrace(this, DOMException);
+    return error;
   }
 
   get message() {
