@@ -24,7 +24,7 @@ use async_trait::async_trait;
 use deno_ast::ModuleSpecifier;
 use deno_cache_dir::npm::mixed_case_package_name_decode;
 use deno_core::anyhow::Context;
-use deno_core::error::AnyError;
+use deno_core::error::{AnyError, JsNativeError};
 use deno_core::futures::stream::FuturesUnordered;
 use deno_core::futures::StreamExt;
 use deno_core::parking_lot::Mutex;
@@ -312,7 +312,7 @@ async fn sync_resolution_with_fs(
   root_node_modules_dir_path: &Path,
   system_info: &NpmSystemInfo,
   lifecycle_scripts: &LifecycleScriptsConfig,
-) -> Result<(), AnyError> {
+) -> Result<(), JsNativeError> {
   if snapshot.is_empty()
     && npm_install_deps_provider.workspace_pkgs().is_empty()
   {

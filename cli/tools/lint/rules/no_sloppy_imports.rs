@@ -7,7 +7,7 @@ use std::sync::Arc;
 
 use deno_ast::SourceRange;
 use deno_config::workspace::WorkspaceResolver;
-use deno_core::anyhow::anyhow;
+use deno_core::error::JsNativeError;
 use deno_graph::source::ResolutionKind;
 use deno_graph::source::ResolveError;
 use deno_graph::Range;
@@ -221,7 +221,7 @@ impl<'a> deno_graph::source::Resolver for SloppyImportCaptureResolver<'a> {
       }
       | deno_config::workspace::MappedResolution::PackageJson { .. } => {
         // this error is ignored
-        Err(ResolveError::Other(anyhow!("")))
+        Err(ResolveError::Other(Box::new(JsNativeError::generic(""))))
       }
     }
   }

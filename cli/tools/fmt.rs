@@ -163,7 +163,7 @@ fn resolve_paths_with_options_batches(
     Vec::with_capacity(members_fmt_options.len());
   for (_ctx, member_fmt_options) in members_fmt_options {
     let files =
-      collect_fmt_files(cli_options, member_fmt_options.files.clone())?;
+      collect_fmt_files(cli_options, member_fmt_options.files.clone());
     if !files.is_empty() {
       paths_with_options_batches.push(PathsWithOptions {
         base: member_fmt_options.files.base.clone(),
@@ -220,7 +220,7 @@ async fn format_files(
 fn collect_fmt_files(
   cli_options: &CliOptions,
   files: FilePatterns,
-) -> Result<Vec<PathBuf>, AnyError> {
+) -> Vec<PathBuf> {
   FileCollector::new(|e| {
     is_supported_ext_fmt(e.path)
       || (e.path.extension().is_none() && cli_options.ext_flag().is_some())

@@ -4,7 +4,7 @@ use std::collections::HashMap;
 use std::collections::HashSet;
 use std::sync::Arc;
 
-use deno_core::error::AnyError;
+use deno_core::error::{AnyError, JsNativeError};
 use deno_lockfile::NpmPackageDependencyLockfileInfo;
 use deno_lockfile::NpmPackageLockfileInfo;
 use deno_npm::registry::NpmRegistryApi;
@@ -37,7 +37,7 @@ pub struct AddPkgReqsResult {
   /// package requirements.
   pub results: Vec<Result<PackageNv, NpmResolutionError>>,
   /// The final result of resolving and caching all the package requirements.
-  pub dependencies_result: Result<(), AnyError>,
+  pub dependencies_result: Result<(), JsNativeError>,
 }
 
 /// Handles updating and storing npm resolution in memory where the underlying
@@ -104,7 +104,7 @@ impl NpmResolution {
           *snapshot_lock.write() = snapshot;
           Ok(())
         }
-        Err(err) => Err(err.into()),
+        Err(err) => Err(JsNativeError::from_err(err)),
       },
     }
   }

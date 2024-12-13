@@ -52,11 +52,12 @@ pub enum SignalError {
   #[class(type)]
   #[error(transparent)]
   InvalidSignalInt(#[from] crate::signal::InvalidSignalIntError),
+  #[class(type)]
   #[error("Binding to signal '{0}' is not allowed")]
   SignalNotAllowed(String),
   #[class(inherit)]
   #[error("{0}")]
-  Io(#[from] #[inherit] std::io::Error),
+  Io(#[from] std::io::Error),
 }
 
 #[cfg(unix)]

@@ -17,6 +17,7 @@ use crate::npm::CliNpmTarballCache;
 use crate::util::progress_bar::ProgressBar;
 
 pub use self::common::NpmPackageFsResolver;
+pub use self::common::NpmPackageFsResolverPackageFolderError;
 
 use self::global::GlobalNpmPackageResolver;
 use self::local::LocalNpmPackageResolver;

@@ -24,9 +24,7 @@ use deno_ast::MediaType;
 use deno_config::glob::FilePatterns;
 use deno_config::glob::WalkEntry;
 use deno_core::anyhow;
-use deno_core::anyhow::bail;
-use deno_core::anyhow::Context as _;
-use deno_core::error::{generic_error};
+use deno_core::anyhow::anyhow;
 use deno_core::error::CoreError;
 use deno_core::error::AnyError;
 use deno_core::error::JsError;
@@ -978,12 +976,12 @@ async fn run_tests_for_worker_inner(
     let result = match result {
       Ok(r) => r,
       Err(error) => {
-        if error.is::<JsError>() {
+        if let CoreError::Js(js_error) = error {
           send_test_event(
             &state_rc,
             TestEvent::UncaughtError(
               specifier.to_string(),
-              Box::new(error.downcast::<JsError>().unwrap()),
+              Box::new(js_error),
             ),
           )?;
           fail_fast_tracker.add_failure();
@@ -994,7 +992,7 @@ async fn run_tests_for_worker_inner(
           had_uncaught_error = true;
           continue;
         } else {
-          return Err(error);
+          return Err(error.into());
         }
       }
     };
@@ -1366,17 +1364,17 @@ pub async fn report_tests(
   reporter.report_summary(&elapsed, &tests, &test_steps);
   if let Err(err) = reporter.flush_report(&elapsed, &tests, &test_steps) {
     return (
-      Err(generic_error(format!(
+      Err(anyhow!(
         "Test reporter failed to flush: {}",
         err
-      ))),
+      )),
       receiver,
     );
   }
 
   if used_only {
     return (
-      Err(generic_error(
+      Err(anyhow!(
         "Test failed because the \"only\" option was used",
       )),
       receiver,
@@ -1384,7 +1382,7 @@ pub async fn report_tests(
   }
 
   if failed {
-    return (Err(generic_error("Test failed")), receiver);
+    return (Err(anyhow!("Test failed")), receiver);
   }
 
   (Ok(()), receiver)
@@ -1567,7 +1565,7 @@ pub async fn run_tests(
 
   if !workspace_test_options.permit_no_files && specifiers_with_mode.is_empty()
   {
-    return Err(generic_error("No test modules found"));
+    return Err(anyhow!("No test modules found"));
   }
 
   let doc_tests = get_doc_tests(&specifiers_with_mode, file_fetcher).await?;
@@ -1603,10 +1601,10 @@ pub async fn run_tests(
     TestSpecifiersOptions {
       cwd: Url::from_directory_path(cli_options.initial_cwd()).map_err(
         |_| {
-          generic_error(format!(
+          anyhow!(
             "Unable to construct URL from the path of cwd: {}",
             cli_options.initial_cwd().to_string_lossy(),
-          ))
+          )
         },
       )?,
       concurrent_jobs: workspace_test_options.concurrent_jobs,
@@ -1785,10 +1783,10 @@ pub async fn run_tests_with_watch(
           TestSpecifiersOptions {
             cwd: Url::from_directory_path(cli_options.initial_cwd()).map_err(
               |_| {
-                generic_error(format!(
+                anyhow!(
                   "Unable to construct URL from the path of cwd: {}",
                   cli_options.initial_cwd().to_string_lossy(),
-                ))
+                )
               },
             )?,
             concurrent_jobs: workspace_test_options.concurrent_jobs,

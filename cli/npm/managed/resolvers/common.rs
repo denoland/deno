@@ -15,7 +15,7 @@ use super::super::PackageCaching;
 use async_trait::async_trait;
 use deno_ast::ModuleSpecifier;
 use deno_core::anyhow::Context;
-use deno_core::error::AnyError;
+use deno_core::error::{AnyError, JsNativeError};
 use deno_core::futures;
 use deno_core::futures::StreamExt;
 use deno_npm::NpmPackageCacheFolderId;
@@ -26,6 +26,11 @@ use deno_runtime::deno_node::NodePermissions;
 use node_resolver::errors::PackageFolderResolveError;
 
 use crate::npm::CliNpmTarballCache;
+
+#[derive(Debug, thiserror::Error, deno_error::JsError)]
+#[class(generic)]
+#[error("Package folder not found for '{0}'")]
+pub struct NpmPackageFsResolverPackageFolderError(String);
 
 /// Part of the resolution that interacts with the file system.
 #[async_trait(?Send)]
@@ -38,12 +43,9 @@ pub trait NpmPackageFsResolver: Send + Sync {
   fn package_folder(
     &self,
     package_id: &NpmPackageId,
-  ) -> Result<PathBuf, AnyError> {
+  ) -> Result<PathBuf, NpmPackageFsResolverPackageFolderError> {
     self.maybe_package_folder(package_id).ok_or_else(|| {
-      deno_core::anyhow::anyhow!(
-        "Package folder not found for '{}'",
-        package_id.as_serialized()
-      )
+      NpmPackageFsResolverPackageFolderError(package_id.as_serialized())
     })
   }
 
@@ -61,7 +63,7 @@ pub trait NpmPackageFsResolver: Send + Sync {
   async fn cache_packages<'a>(
     &self,
     caching: PackageCaching<'a>,
-  ) -> Result<(), AnyError>;
+  ) -> Result<(), JsNativeError>;
 
   #[must_use = "the resolved return value to mitigate time-of-check to time-of-use issues"]
   fn ensure_read_permission<'a>(
@@ -91,7 +93,7 @@ impl RegistryReadPermissionChecker {
     &self,
     permissions: &mut dyn NodePermissions,
     path: &'a Path,
-  ) -> Result<Cow<'a, Path>, AnyError> {
+  ) -> Result<Cow<'a, Path>, deno_runtime::deno_permissions::PermissionCheckError> {
     if permissions.query_read_all() {
       return Ok(Cow::Borrowed(path)); // skip permissions checks below
     }
@@ -137,7 +139,7 @@ impl RegistryReadPermissionChecker {
       }
     }
 
-    permissions.check_read_path(path).map_err(Into::into)
+    permissions.check_read_path(path)
   }
 }
 
@@ -145,7 +147,7 @@ impl RegistryReadPermissionChecker {
 pub async fn cache_packages(
   packages: &[NpmResolutionPackage],
   tarball_cache: &Arc<CliNpmTarballCache>,
-) -> Result<(), AnyError> {
+) -> Result<(), JsNativeError> {
   let mut futures_unordered = futures::stream::FuturesUnordered::new();
   for package in packages {
     futures_unordered.push(async move {

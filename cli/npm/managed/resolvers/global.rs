@@ -13,7 +13,7 @@ use crate::npm::CliNpmCache;
 use crate::npm::CliNpmTarballCache;
 use async_trait::async_trait;
 use deno_ast::ModuleSpecifier;
-use deno_core::error::AnyError;
+use deno_core::error::{AnyError, JsNativeError};
 use deno_npm::NpmPackageCacheFolderId;
 use deno_npm::NpmPackageId;
 use deno_npm::NpmResolutionPackage;
@@ -154,7 +154,7 @@ impl NpmPackageFsResolver for GlobalNpmPackageResolver {
   async fn cache_packages<'a>(
     &self,
     caching: PackageCaching<'a>,
-  ) -> Result<(), AnyError> {
+  ) -> Result<(), JsNativeError> {
     let package_partitions = match caching {
       PackageCaching::All => self
         .resolution
@@ -192,7 +192,7 @@ impl NpmPackageFsResolver for GlobalNpmPackageResolver {
     &self,
     permissions: &mut dyn NodePermissions,
     path: &'a Path,
-  ) -> Result<Cow<'a, Path>, AnyError> {
+  ) -> Result<Cow<'a, Path>, deno_runtime::deno_permissions::PermissionCheckError> {
     self
       .registry_read_permission_checker
       .ensure_registry_read_permission(permissions, path)

@@ -4,7 +4,6 @@ use std::sync::atomic::AtomicUsize;
 use std::sync::atomic::Ordering;
 
 use deno_core::error::JsNativeError;
-use deno_core::error::AnyError;
 use deno_core::op2;
 use deno_core::v8;
 use deno_core::ModuleSpecifier;

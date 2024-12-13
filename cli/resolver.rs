@@ -6,9 +6,9 @@ use dashmap::DashSet;
 use deno_ast::MediaType;
 use deno_config::workspace::MappedResolutionDiagnostic;
 use deno_config::workspace::MappedResolutionError;
-use deno_core::anyhow::anyhow;
 use deno_core::anyhow::Context;
-use deno_core::error::AnyError;
+use deno_core::error::{AnyError};
+use deno_core::error::{JsNativeError};
 use deno_core::url::Url;
 use deno_core::ModuleSourceCode;
 use deno_core::ModuleSpecifier;
@@ -270,10 +270,10 @@ impl CliResolver {
         ) => match mapped_resolution_error {
           MappedResolutionError::Specifier(e) => ResolveError::Specifier(e),
           // deno_graph checks specifically for an ImportMapError
-          MappedResolutionError::ImportMap(e) => ResolveError::Other(e.into()),
-          err => ResolveError::Other(err.into()),
+          MappedResolutionError::ImportMap(e) => ResolveError::Other(Box::new(e)),
+          err => ResolveError::Other(Box::new(err)),
         },
-        err => ResolveError::Other(err.into()),
+        err => ResolveError::Other(Box::new(err)),
       })?;
 
     if resolution.found_package_json_dep {
@@ -401,27 +401,25 @@ impl<'a> deno_graph::source::NpmResolver for WorkerCliNpmGraphResolver<'a> {
             .map(|r| {
               r.map_err(|err| match err {
                 NpmResolutionError::Registry(e) => {
-                  NpmLoadError::RegistryInfo(Arc::new(e.into()))
+                  NpmLoadError::RegistryInfo(Arc::new(e))
                 }
                 NpmResolutionError::Resolution(e) => {
-                  NpmLoadError::PackageReqResolution(Arc::new(e.into()))
+                  NpmLoadError::PackageReqResolution(Arc::new(e))
                 }
                 NpmResolutionError::DependencyEntry(e) => {
-                  NpmLoadError::PackageReqResolution(Arc::new(e.into()))
+                  NpmLoadError::PackageReqResolution(Arc::new(e))
                 }
               })
             })
             .collect(),
           dep_graph_result: match top_level_result {
-            Ok(()) => result.dependencies_result.map_err(Arc::new),
+            Ok(()) => result.dependencies_result.map_err(|e| Arc::new(e) as Arc<dyn deno_error::JsErrorClass>),
             Err(err) => Err(Arc::new(err)),
           },
         }
       }
       None => {
-        let err = Arc::new(anyhow!(
-          "npm specifiers were requested; but --no-npm is specified"
-        ));
+        let err = Arc::new(JsNativeError::generic("npm specifiers were requested; but --no-npm is specified"));
         NpmResolvePkgReqsResult {
           results: package_reqs
             .iter()

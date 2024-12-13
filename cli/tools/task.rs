@@ -829,7 +829,7 @@ fn print_available_tasks(
           is_deno: false,
           name: name.to_string(),
           task: deno_config::deno_json::TaskDefinition {
-            command: script.to_string(),
+            command: Some(script.to_string()),
             dependencies: vec![],
             description: None,
           },

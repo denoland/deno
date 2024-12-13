@@ -178,6 +178,7 @@ pub type LocalHttpCache = deno_cache_dir::LocalHttpCache<RealDenoCacheEnv>;
 pub type LocalLspHttpCache =
   deno_cache_dir::LocalLspHttpCache<RealDenoCacheEnv>;
 pub use deno_cache_dir::HttpCache;
+use deno_core::error::JsNativeError;
 
 pub struct FetchCacherOptions {
   pub file_header_overrides: HashMap<ModuleSpecifier, HashMap<String, String>>,
@@ -311,9 +312,9 @@ impl Loader for FetchCacher {
         LoaderCacheSetting::Use => None,
         LoaderCacheSetting::Reload => {
           if matches!(file_fetcher.cache_setting(), CacheSetting::Only) {
-            return Err(deno_core::anyhow::anyhow!(
+            return Err(JsNativeError::generic(
               "Could not resolve version constraint using only cached data. Try running again without --cached-only"
-            ));
+            ).into());
           }
           Some(CacheSetting::ReloadAll)
         }

@@ -853,7 +853,9 @@ fn op_otel_span_start<'s>(
 
   let parent_span_id = parse_span_id(scope, parent_span_id);
 
-  let name = owned_string(scope, name.try_cast()?);
+  let name = owned_string(scope, name.try_cast().map_err(|e: v8::DataError| {
+    OtelError::Data(e.into())
+  })?);
 
   let temporary_span = TemporarySpan(SpanData {
     span_context: SpanContext::new(
@@ -875,10 +877,10 @@ fn op_otel_span_start<'s>(
     name: Cow::Owned(name),
     start_time: SystemTime::UNIX_EPOCH
       .checked_add(std::time::Duration::from_secs_f64(start_time))
-      .ok_or_else(|| OtelError::InvalidStartTime)?,
+      .ok_or(OtelError::InvalidStartTime)?,
     end_time: SystemTime::UNIX_EPOCH
       .checked_add(std::time::Duration::from_secs_f64(end_time))
-      .ok_or_else(|| OtelError::InvalidStartTime)?,
+      .ok_or(OtelError::InvalidStartTime)?,
     attributes: Vec::new(),
     dropped_attributes_count: 0,
     events: Default::default(),

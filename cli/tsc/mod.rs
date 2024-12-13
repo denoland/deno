@@ -47,7 +47,6 @@ use once_cell::sync::Lazy;
 use std::borrow::Cow;
 use std::collections::HashMap;
 use std::fmt;
-use std::path::Path;
 use std::path::PathBuf;
 use std::sync::Arc;
 use thiserror::Error;
@@ -464,13 +463,6 @@ impl State {
   }
 }
 
-fn normalize_specifier(
-  specifier: &str,
-  current_dir: &Path,
-) -> Result<ModuleSpecifier, AnyError> {
-  resolve_url_or_path(specifier, current_dir).map_err(|err| err.into())
-}
-
 #[op2]
 #[string]
 fn op_create_hash(s: &mut OpState, #[string] text: &str) -> String {
@@ -541,6 +533,23 @@ pub fn as_ts_script_kind(media_type: MediaType) -> i32 {
 pub const MISSING_DEPENDENCY_SPECIFIER: &str =
   "internal:///missing_dependency.d.ts";
 
+#[derive(Debug, Error, deno_error::JsError)]
+pub enum LoadError {
+  #[class(generic)]
+  #[error("Unable to load {path}: {error}")]
+  LoadFromNodeModule {
+    path: String,
+    error: std::io::Error,
+  },
+  #[class(inherit)]
+  #[error("Error converting a string module specifier for \"op_resolve\": {0}")]
+  ModuleResolution(#[from] deno_core::ModuleResolutionError),
+  #[class(inherit)]
+  #[error("{0}")]
+  ClosestPkgJson(#[from] node_resolver::errors::ClosestPkgJsonError),
+
+}
+
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 struct LoadResponse {
@@ -555,24 +564,28 @@ struct LoadResponse {
 fn op_load(
   state: &mut OpState,
   #[string] load_specifier: &str,
-) -> Result<Option<LoadResponse>, AnyError> {
+) -> Result<Option<LoadResponse>, LoadError> {
   op_load_inner(state, load_specifier)
 }
 
 fn op_load_inner(
   state: &mut OpState,
   load_specifier: &str,
-) -> Result<Option<LoadResponse>, AnyError> {
+) -> Result<Option<LoadResponse>, LoadError> {
   fn load_from_node_modules(
     specifier: &ModuleSpecifier,
     npm_state: Option<&RequestNpmState>,
     media_type: &mut MediaType,
     is_cjs: &mut bool,
-  ) -> Result<String, AnyError> {
+  ) -> Result<String, LoadError> {
     *media_type = MediaType::from_specifier(specifier);
     let file_path = specifier.to_file_path().unwrap();
-    let code = std::fs::read_to_string(&file_path)
-      .with_context(|| format!("Unable to load {}", file_path.display()))?;
+    let code = std::fs::read_to_string(&file_path).map_err(|err| {
+      LoadError::LoadFromNodeModule {
+        path: file_path.display().to_string(),
+        error: err,
+      }
+    })?;
     let code: Arc<str> = code.into();
     *is_cjs = npm_state
       .map(|npm_state| {
@@ -585,8 +598,7 @@ fn op_load_inner(
 
   let state = state.borrow_mut::<State>();
 
-  let specifier = normalize_specifier(load_specifier, &state.current_dir)
-    .context("Error converting a string module specifier for \"op_load\".")?;
+  let specifier = resolve_url_or_path(load_specifier, &state.current_dir)?;
 
   let mut hash: Option<String> = None;
   let mut media_type = MediaType::Unknown;
@@ -701,6 +713,22 @@ fn op_load_inner(
   }))
 }
 
+#[derive(Debug, Error, deno_error::JsError)]
+pub enum ResolveError {
+  #[class(inherit)]
+  #[error("Error converting a string module specifier for \"op_resolve\": {0}")]
+  ModuleResolution(#[from] deno_core::ModuleResolutionError),
+  #[class(inherit)]
+  #[error("{0}")]
+  PackageSubpathResolve(PackageSubpathResolveError),
+  #[class(inherit)]
+  #[error("{0}")]
+  ResolvePkgFolderFromDenoModule(#[from] crate::npm::ResolvePkgFolderFromDenoModuleError),
+  #[class(inherit)]
+  #[error("{0}")]
+  ResolveNonGraphSpecifierTypes(#[from] ResolveNonGraphSpecifierTypesError),
+}
+
 #[derive(Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ResolveArgs {
@@ -718,7 +746,7 @@ fn op_resolve(
   state: &mut OpState,
   #[string] base: String,
   #[serde] specifiers: Vec<(bool, String)>,
-) -> Result<Vec<(String, &'static str)>, AnyError> {
+) -> Result<Vec<(String, &'static str)>, ResolveError> {
   op_resolve_inner(state, ResolveArgs { base, specifiers })
 }
 
@@ -726,7 +754,7 @@ fn op_resolve(
 fn op_resolve_inner(
   state: &mut OpState,
   args: ResolveArgs,
-) -> Result<Vec<(String, &'static str)>, AnyError> {
+) -> Result<Vec<(String, &'static str)>, ResolveError> {
   let state = state.borrow_mut::<State>();
   let mut resolved: Vec<(String, &'static str)> =
     Vec::with_capacity(args.specifiers.len());
@@ -737,9 +765,7 @@ fn op_resolve_inner(
   } else if let Some(remapped_base) = state.root_map.get(&args.base) {
     remapped_base.clone()
   } else {
-    normalize_specifier(&args.base, &state.current_dir).context(
-      "Error converting a string module specifier for \"op_resolve\".",
-    )?
+    resolve_url_or_path(&args.base, &state.current_dir)?
   };
   let referrer_module = state.graph.get(&referrer);
   for (is_cjs, specifier) in args.specifiers {
@@ -851,7 +877,7 @@ fn resolve_graph_specifier_types(
   referrer: &ModuleSpecifier,
   resolution_mode: ResolutionMode,
   state: &State,
-) -> Result<Option<(ModuleSpecifier, MediaType)>, AnyError> {
+) -> Result<Option<(ModuleSpecifier, MediaType)>, ResolveError> {
   let graph = &state.graph;
   let maybe_module = match graph.try_get(specifier) {
     Ok(Some(module)) => Some(module),
@@ -913,7 +939,7 @@ fn resolve_graph_specifier_types(
           Err(err) => match err.code() {
             NodeJsErrorCode::ERR_TYPES_NOT_FOUND
             | NodeJsErrorCode::ERR_MODULE_NOT_FOUND => None,
-            _ => return Err(err.into()),
+            _ => return Err(ResolveError::PackageSubpathResolve(err)),
           },
         };
         Ok(Some(into_specifier_and_media_type(maybe_url)))
@@ -935,10 +961,12 @@ fn resolve_graph_specifier_types(
   }
 }
 
-#[derive(Debug, Error)]
+#[derive(Debug, Error, deno_error::JsError)]
 enum ResolveNonGraphSpecifierTypesError {
+  #[class(inherit)]
   #[error(transparent)]
   ResolvePkgFolderFromDenoReq(#[from] ResolvePkgFolderFromDenoReqError),
+  #[class(inherit)]
   #[error(transparent)]
   PackageSubpathResolve(#[from] PackageSubpathResolveError),
 }

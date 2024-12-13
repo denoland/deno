@@ -8,7 +8,8 @@ use std::sync::Arc;
 use deno_ast::ModuleSpecifier;
 use deno_cache_dir::npm::NpmCacheDir;
 use deno_core::anyhow::Context;
-use deno_core::error::AnyError;
+use deno_core::error::{AnyError};
+use deno_core::error::{JsNativeError};
 use deno_core::serde_json;
 use deno_core::url::Url;
 use deno_npm::npm_rc::ResolvedNpmRc;
@@ -327,6 +328,26 @@ impl std::fmt::Debug for ManagedCliNpmResolver {
   }
 }
 
+#[derive(Debug, thiserror::Error, deno_error::JsError)]
+pub enum ResolvePkgFolderFromPkgIdError {
+  #[class(inherit)]
+  #[error("{0}")]
+  NpmPackageFsResolverPackageFolder(#[from] resolvers::NpmPackageFsResolverPackageFolderError),
+  #[class(inherit)]
+  #[error("{0}")]
+  Io(#[from] std::io::Error),
+}
+
+#[derive(Debug, thiserror::Error, deno_error::JsError)]
+pub enum ResolvePkgFolderFromDenoModuleError {
+  #[class(inherit)]
+  #[error("{0}")]
+  PackageNvNotFound(#[from] deno_npm::resolution::PackageNvNotFoundError),
+  #[class(inherit)]
+  #[error("{0}")]
+  ResolvePkgFolderFromPkgId(#[from] ResolvePkgFolderFromPkgIdError),
+}
+
 impl ManagedCliNpmResolver {
   #[allow(clippy::too_many_arguments)]
   pub fn new(
@@ -361,7 +382,7 @@ impl ManagedCliNpmResolver {
   pub fn resolve_pkg_folder_from_pkg_id(
     &self,
     pkg_id: &NpmPackageId,
-  ) -> Result<PathBuf, AnyError> {
+  ) -> Result<PathBuf, ResolvePkgFolderFromPkgIdError> {
     let path = self.fs_resolver.package_folder(pkg_id)?;
     let path =
       canonicalize_path_maybe_not_exists_with_fs(&path, self.fs.as_ref())?;
@@ -429,7 +450,7 @@ impl ManagedCliNpmResolver {
   pub async fn add_and_cache_package_reqs(
     &self,
     packages: &[PackageReq],
-  ) -> Result<(), AnyError> {
+  ) -> Result<(), JsNativeError> {
     self
       .add_package_reqs_raw(
         packages,
@@ -442,7 +463,7 @@ impl ManagedCliNpmResolver {
   pub async fn add_package_reqs_no_cache(
     &self,
     packages: &[PackageReq],
-  ) -> Result<(), AnyError> {
+  ) -> Result<(), JsNativeError> {
     self
       .add_package_reqs_raw(packages, None)
       .await
@@ -453,7 +474,7 @@ impl ManagedCliNpmResolver {
     &self,
     packages: &[PackageReq],
     caching: PackageCaching<'_>,
-  ) -> Result<(), AnyError> {
+  ) -> Result<(), JsNativeError> {
     self
       .add_package_reqs_raw(packages, Some(caching))
       .await
@@ -523,7 +544,7 @@ impl ManagedCliNpmResolver {
 
   pub async fn inject_synthetic_types_node_package(
     &self,
-  ) -> Result<(), AnyError> {
+  ) -> Result<(), JsNativeError> {
     let reqs = &[PackageReq::from_str("@types/node").unwrap()];
     // add and ensure this isn't added to the lockfile
     self
@@ -536,16 +557,16 @@ impl ManagedCliNpmResolver {
   pub async fn cache_packages(
     &self,
     caching: PackageCaching<'_>,
-  ) -> Result<(), AnyError> {
+  ) -> Result<(), JsNativeError> {
     self.fs_resolver.cache_packages(caching).await
   }
 
   pub fn resolve_pkg_folder_from_deno_module(
     &self,
     nv: &PackageNv,
-  ) -> Result<PathBuf, AnyError> {
+  ) -> Result<PathBuf, ResolvePkgFolderFromDenoModuleError> {
     let pkg_id = self.resolution.resolve_pkg_id_from_deno_module(nv)?;
-    self.resolve_pkg_folder_from_pkg_id(&pkg_id)
+    Ok(self.resolve_pkg_folder_from_pkg_id(&pkg_id)?)
   }
 
   pub fn resolve_pkg_id_from_pkg_req(
@@ -586,7 +607,7 @@ impl ManagedCliNpmResolver {
   /// return value of `false` means that new packages were added to the NPM resolution.
   pub async fn ensure_top_level_package_json_install(
     &self,
-  ) -> Result<bool, AnyError> {
+  ) -> Result<bool, JsNativeError> {
     if !self.top_level_install_flag.raise() {
       return Ok(true); // already did this
     }
@@ -694,10 +715,10 @@ impl CliNpmReqResolver for ManagedCliNpmResolver {
   ) -> Result<PathBuf, ResolvePkgFolderFromDenoReqError> {
     let pkg_id = self
       .resolve_pkg_id_from_pkg_req(req)
-      .map_err(|err| ResolvePkgFolderFromDenoReqError::Managed(err.into()))?;
+      .map_err(|err| ResolvePkgFolderFromDenoReqError::Managed(Box::new(err)))?;
     self
       .resolve_pkg_folder_from_pkg_id(&pkg_id)
-      .map_err(ResolvePkgFolderFromDenoReqError::Managed)
+      .map_err(|err| ResolvePkgFolderFromDenoReqError::Managed(Box::new(err)))
   }
 }
 

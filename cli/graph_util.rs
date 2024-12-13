@@ -55,7 +55,6 @@ use import_map::ImportMapError;
 use node_resolver::InNpmPackageChecker;
 use std::collections::HashSet;
 use std::error::Error;
-use std::ops::Deref;
 use std::path::PathBuf;
 use std::sync::Arc;
 use deno_error::JsErrorClass;

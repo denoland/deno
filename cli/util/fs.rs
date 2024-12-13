@@ -346,7 +346,7 @@ pub fn collect_specifiers(
     .ignore_git_folder()
     .ignore_node_modules()
     .set_vendor_folder(vendor_folder)
-    .collect_file_patterns(&deno_config::fs::RealDenoConfigFs, files)?;
+    .collect_file_patterns(&deno_config::fs::RealDenoConfigFs, files);
   let mut collected_files_as_urls = collected_files
     .iter()
     .map(|f| specifier_from_file_path(f).unwrap())

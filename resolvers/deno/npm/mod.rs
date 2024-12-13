@@ -82,10 +82,9 @@ pub enum ResolveReqWithSubPathErrorKind {
 
 #[derive(Debug, Error, JsError)]
 pub enum ResolvePkgFolderFromDenoReqError {
-  // todo(dsherret): don't use anyhow here
-  #[class(generic)]
-  #[error(transparent)]
-  Managed(anyhow::Error),
+  #[class(inherit)]
+  #[error("{0}")]
+  Managed(Box<dyn deno_error::JsErrorClass>),
   #[class(inherit)]
   #[error(transparent)]
   Byonm(#[from] ByonmResolvePkgFolderFromDenoReqError),

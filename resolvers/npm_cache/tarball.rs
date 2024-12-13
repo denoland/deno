@@ -15,11 +15,7 @@ use deno_npm::npm_rc::ResolvedNpmRc;
 use deno_npm::registry::NpmPackageVersionDistInfo;
 use deno_semver::package::PackageNv;
 use deno_unsync::sync::MultiRuntimeAsyncValueCreator;
-use futures::future::LocalBoxFuture;
-use futures::FutureExt;
 use http::StatusCode;
-use parking_lot::Mutex;
-use url::Url;
 
 use crate::remote::maybe_auth_header_for_npm_registry;
 use crate::tarball_extract::verify_and_extract_tarball;
@@ -139,13 +135,13 @@ impl<TEnv: NpmCacheEnv> TarballCache<TEnv> {
       if should_use_cache && package_folder_exists {
         return Ok(());
       } else if tarball_cache.cache.cache_setting() == &NpmCacheSetting::Only {
-        return Err(deno_core::error::custom_error(
+        return Err(deno_core::error::JsNativeError::new(
           "NotCached",
           format!(
             "npm package not found in cache: \"{}\", --cached-only is specified.",
             &package_nv.name
           )
-        )
+        ).into()
         );
       }
 

@@ -29,3 +29,5 @@ opentelemetry_sdk.workspace = true
 pin-project.workspace = true
 serde.workspace = true
 tokio.workspace = true
+thiserror.workspace = true
+deno_error.workspace = true

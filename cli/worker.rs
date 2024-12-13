@@ -52,7 +52,6 @@ use crate::args::CliLockfile;
 use crate::args::DenoSubcommand;
 use crate::args::NpmCachingStrategy;
 use crate::args::StorageKeyResolver;
-use crate::errors;
 use crate::npm::CliNpmResolver;
 use crate::util::checksum;
 use crate::util::file_watcher::WatcherCommunicator;

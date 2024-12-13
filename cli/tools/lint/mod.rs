@@ -213,7 +213,7 @@ fn resolve_paths_with_options_batches(
   let mut paths_with_options_batches =
     Vec::with_capacity(members_lint_options.len());
   for (dir, lint_options) in members_lint_options {
-    let files = collect_lint_files(cli_options, lint_options.files.clone())?;
+    let files = collect_lint_files(cli_options, lint_options.files.clone());
     if !files.is_empty() {
       paths_with_options_batches.push(PathsWithOptions {
         dir,
@@ -428,7 +428,7 @@ impl WorkspaceLinter {
 fn collect_lint_files(
   cli_options: &CliOptions,
   files: FilePatterns,
-) -> Result<Vec<PathBuf>, AnyError> {
+) -> Vec<PathBuf> {
   FileCollector::new(|e| {
     is_script_ext(e.path)
       || (e.path.extension().is_none() && cli_options.ext_flag().is_some())

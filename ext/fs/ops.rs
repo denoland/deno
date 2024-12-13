@@ -1398,46 +1398,23 @@ where
   Ok(buf.into_owned().into_boxed_slice().into())
 }
 
-// todo(https://github.com/denoland/deno_core/pull/986): remove
-// when upgrading deno_core
-#[derive(Debug)]
-pub struct FastStringV8AllocationError;
-
-impl std::error::Error for FastStringV8AllocationError {}
-
-impl std::fmt::Display for FastStringV8AllocationError {
-  fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-    write!(
-      f,
-      "failed to allocate string; buffer exceeds maximum length"
-    )
-  }
-}
-
 /// Maintains a static reference to the string if possible.
 pub struct V8MaybeStaticStr(pub Cow<'static, str>);
 
 impl<'s> ToV8<'s> for V8MaybeStaticStr {
-  type Error = FastStringV8AllocationError;
+  type Error = deno_core::FastStringV8AllocationError;
 
   #[inline]
   fn to_v8(
     self,
     scope: &mut v8::HandleScope<'s>,
   ) -> Result<v8::Local<'s, v8::Value>, Self::Error> {
-    // todo(https://github.com/denoland/deno_core/pull/986): remove this check
-    // when upgrading deno_core
-    const MAX_V8_STRING_LENGTH: usize = 536870888;
-    if self.0.len() > MAX_V8_STRING_LENGTH {
-      return Err(FastStringV8AllocationError);
-    }
-
     Ok(
       match self.0 {
         Cow::Borrowed(text) => FastString::from_static(text),
         Cow::Owned(value) => value.into(),
       }
-      .v8_string(scope)
+      .v8_string(scope)?
       .into(),
     )
   }

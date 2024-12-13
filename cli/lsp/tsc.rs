@@ -37,7 +37,6 @@ use crate::util::v8::convert;
 use crate::worker::create_isolate_create_params;
 use deno_core::convert::Smi;
 use deno_core::convert::ToV8;
-use deno_core::error::StdAnyError;
 use deno_core::futures::stream::FuturesOrdered;
 use deno_core::futures::StreamExt;
 
@@ -4304,7 +4303,7 @@ impl TscSpecifierMap {
   pub fn normalize<S: AsRef<str>>(
     &self,
     specifier: S,
-  ) -> Result<ModuleSpecifier, AnyError> {
+  ) -> Result<ModuleSpecifier, deno_core::url::ParseError> {
     let original = specifier.as_ref();
     if let Some(specifier) = self.normalized_specifiers.get(original) {
       return Ok(specifier.clone());
@@ -4312,7 +4311,7 @@ impl TscSpecifierMap {
     let specifier_str = original.replace(".d.ts.d.ts", ".d.ts");
     let specifier = match ModuleSpecifier::parse(&specifier_str) {
       Ok(s) => s,
-      Err(err) => return Err(err.into()),
+      Err(err) => return Err(err),
     };
     if specifier.as_str() != original {
       self
@@ -4410,6 +4409,16 @@ fn op_is_node_file(state: &mut OpState, #[string] path: String) -> bool {
   r
 }
 
+#[derive(Debug, thiserror::Error, deno_error::JsError)]
+enum LoadError {
+  #[error("{0}")]
+  #[class(inherit)]
+  UrlParse(#[from] deno_core::url::ParseError),
+  #[error("{0}")]
+  #[class(inherit)]
+  SerdeV8(#[from] serde_v8::Error),
+}
+
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 struct LoadResponse {
@@ -4424,7 +4433,7 @@ fn op_load<'s>(
   scope: &'s mut v8::HandleScope,
   state: &mut OpState,
   #[string] specifier: &str,
-) -> Result<v8::Local<'s, v8::Value>, AnyError> {
+) -> Result<v8::Local<'s, v8::Value>, LoadError> {
   let state = state.borrow_mut::<State>();
   let mark = state
     .performance
@@ -4455,7 +4464,7 @@ fn op_load<'s>(
 fn op_release(
   state: &mut OpState,
   #[string] specifier: &str,
-) -> Result<(), AnyError> {
+) -> Result<(), deno_core::url::ParseError> {
   let state = state.borrow_mut::<State>();
   let mark = state
     .performance
@@ -4472,7 +4481,7 @@ fn op_resolve(
   state: &mut OpState,
   #[string] base: String,
   #[serde] specifiers: Vec<(bool, String)>,
-) -> Result<Vec<Option<(String, String)>>, AnyError> {
+) -> Result<Vec<Option<(String, String)>>, deno_core::url::ParseError> {
   op_resolve_inner(state, ResolveArgs { base, specifiers })
 }
 
@@ -4483,8 +4492,16 @@ struct TscRequestArray {
   change: convert::OptionNull<PendingChange>,
 }
 
+#[derive(Debug, thiserror::Error)]
+pub enum TscRequestArrayError {
+  #[error(transparent)]
+  FastStringV8AllocationError(#[from] deno_core::FastStringV8AllocationError),
+  #[error(transparent)]
+  SerdeV8(#[from] serde_v8::Error),
+}
+
 impl<'a> ToV8<'a> for TscRequestArray {
-  type Error = StdAnyError;
+  type Error = TscRequestArrayError;
 
   fn to_v8(
     self,
@@ -4495,12 +4512,10 @@ impl<'a> ToV8<'a> for TscRequestArray {
     let (method_name, args) = self.request.to_server_request(scope)?;
 
     let method_name = deno_core::FastString::from_static(method_name)
-      .v8_string(scope)
+      .v8_string(scope)?
       .into();
     let args = args.unwrap_or_else(|| v8::Array::new(scope, 0).into());
-    let scope_url = serde_v8::to_v8(scope, self.scope)
-      .map_err(AnyError::from)
-      .map_err(StdAnyError::from)?;
+    let scope_url = serde_v8::to_v8(scope, self.scope)?;
 
     let change = self.change.to_v8(scope).unwrap_infallible();
 
@@ -4558,7 +4573,7 @@ async fn op_poll_requests(
 fn op_resolve_inner(
   state: &mut OpState,
   args: ResolveArgs,
-) -> Result<Vec<Option<(String, String)>>, AnyError> {
+) -> Result<Vec<Option<(String, String)>>, deno_core::url::ParseError> {
   let state = state.borrow_mut::<State>();
   let mark = state.performance.mark_with_args("tsc.op.op_resolve", &args);
   let referrer = state.specifier_map.normalize(&args.base)?;
@@ -4715,7 +4730,7 @@ fn op_script_names(state: &mut OpState) -> ScriptNames {
 fn op_script_version(
   state: &mut OpState,
   #[string] specifier: &str,
-) -> Result<Option<String>, AnyError> {
+) -> Result<Option<String>, deno_core::url::ParseError> {
   let state = state.borrow_mut::<State>();
   let mark = state.performance.mark("tsc.op.op_script_version");
   let specifier = state.specifier_map.normalize(specifier)?;
@@ -5370,7 +5385,7 @@ impl TscRequest {
   fn to_server_request<'s>(
     &self,
     scope: &mut v8::HandleScope<'s>,
-  ) -> Result<(&'static str, Option<v8::Local<'s, v8::Value>>), AnyError> {
+  ) -> Result<(&'static str, Option<v8::Local<'s, v8::Value>>), serde_v8::Error> {
     let args = match self {
       TscRequest::GetDiagnostics(args) => {
         ("$getDiagnostics", Some(serde_v8::to_v8(scope, args)?))

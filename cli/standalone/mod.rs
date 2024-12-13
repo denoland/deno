@@ -288,7 +288,7 @@ impl ModuleLoader for EmbeddedModuleLoader {
             &referrer,
             referrer_kind,
             NodeResolutionKind::Execution,
-          )?);
+          ).map_err(JsNativeError::from_err)?);
         }
 
         if specifier.scheme() == "jsr" {
@@ -315,7 +315,7 @@ impl ModuleLoader for EmbeddedModuleLoader {
           &referrer,
           referrer_kind,
           NodeResolutionKind::Execution,
-        )?;
+        ).map_err(JsNativeError::from_err)?;
         if let Some(res) = maybe_res {
           return Ok(res.into_url());
         }
@@ -518,11 +518,11 @@ impl NodeRequireLoader for EmbeddedModuleLoader {
     &self,
     path: &std::path::Path,
   ) -> Result<Cow<'static, str>, JsNativeError> {
-    let file_entry = self.shared.vfs.file_entry(path)?;
+    let file_entry = self.shared.vfs.file_entry(path).map_err(JsNativeError::from_err)?;
     let file_bytes = self
       .shared
       .vfs
-      .read_file_all(file_entry, VfsFileSubDataKind::ModuleGraph)?;
+      .read_file_all(file_entry, VfsFileSubDataKind::ModuleGraph).map_err(JsNativeError::from_err)?;
     Ok(from_utf8_lossy_cow(file_bytes))
   }
 

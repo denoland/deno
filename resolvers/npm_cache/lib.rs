@@ -34,7 +34,8 @@ pub use tarball::TarballCache;
 pub use registry_info::get_package_url;
 pub use remote::maybe_auth_header_for_npm_registry;
 
-#[derive(Debug)]
+#[derive(Debug, deno_error::JsError)]
+#[class(generic)]
 pub struct DownloadError {
   pub status_code: Option<StatusCode>,
   pub error: AnyError,
@@ -249,13 +250,13 @@ impl<TEnv: NpmCacheEnv> NpmCache<TEnv> {
   pub fn load_package_info(
     &self,
     name: &str,
-  ) -> Result<Option<NpmPackageInfo>, AnyError> {
+  ) -> Result<Option<NpmPackageInfo>, serde_json::Error> {
     let file_cache_path = self.get_registry_package_info_file_cache_path(name);
 
     let file_text = match std::fs::read_to_string(file_cache_path) {
       Ok(file_text) => file_text,
       Err(err) if err.kind() == ErrorKind::NotFound => return Ok(None),
-      Err(err) => return Err(err.into()),
+      Err(err) => return Err(serde_json::Error::io(err)),
     };
     Ok(serde_json::from_str(&file_text)?)
   }
