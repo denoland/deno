@@ -491,8 +491,12 @@ const ci = {
             // See https://doc.rust-lang.org/cargo/guide/cargo-home.html#caching-the-cargo-home-in-ci
             // Note that with the new sparse registry format, we no longer have to cache a `.git` dir
             path: [
+              "~/.cargo/.crates.toml",
+              "~/.cargo/.crates2.json",
+              "~/.cargo/bin",
               "~/.cargo/registry/index",
               "~/.cargo/registry/cache",
+              "~/.cargo/git/db",
             ].join("\n"),
             key:
               `${cacheVersion}-cargo-home-\${{ matrix.os }}-\${{ matrix.arch }}-\${{ hashFiles('Cargo.lock') }}`,
