@@ -27,10 +27,11 @@ use reporters::LintReporter;
 use serde::Serialize;
 use std::collections::HashSet;
 use std::fs;
+use std::future::Future;
 use std::io::stdin;
 use std::io::Read;
-use std::path::Path;
 use std::path::PathBuf;
+use std::pin::Pin;
 use std::rc::Rc;
 use std::sync::Arc;
 
@@ -47,6 +48,7 @@ use crate::graph_util::ModuleGraphCreator;
 use crate::tools::fmt::run_parallelized;
 use crate::util::display;
 use crate::util::file_watcher;
+use crate::util::file_watcher::WatcherCommunicator;
 use crate::util::fs::canonicalize_path;
 use crate::util::path::is_script_ext;
 use crate::util::sync::AtomicFlag;
@@ -69,134 +71,137 @@ pub async fn lint(
   flags: Arc<Flags>,
   lint_flags: LintFlags,
 ) -> Result<(), AnyError> {
-  if let Some(watch_flags) = &lint_flags.watch {
+  if lint_flags.watch.is_some() {
     if lint_flags.is_stdin() {
       return Err(generic_error(
         "Lint watch on standard input is not supported.",
       ));
     }
-    file_watcher::watch_func(
-      flags,
-      file_watcher::PrintConfig::new("Lint", !watch_flags.no_clear_screen),
-      move |flags, watcher_communicator, changed_paths| {
-        let lint_flags = lint_flags.clone();
-        watcher_communicator.show_path_changed(changed_paths.clone());
-        Ok(async move {
-          let factory = CliFactory::from_flags(flags);
-          let cli_options = factory.cli_options()?;
-          let lint_config = cli_options.resolve_deno_lint_config()?;
-          let mut paths_with_options_batches =
-            resolve_paths_with_options_batches(cli_options, &lint_flags)?;
-          for paths_with_options in &mut paths_with_options_batches {
-            _ = watcher_communicator
-              .watch_paths(paths_with_options.paths.clone());
 
-            let files = std::mem::take(&mut paths_with_options.paths);
-            paths_with_options.paths = if let Some(paths) = &changed_paths {
-              // lint all files on any changed (https://github.com/denoland/deno/issues/12446)
-              files
-                .iter()
-                .any(|path| {
-                  canonicalize_path(path)
-                    .map(|p| paths.contains(&p))
-                    .unwrap_or(false)
-                })
-                .then_some(files)
-                .unwrap_or_else(|| [].to_vec())
-            } else {
-              files
-            };
-          }
+    return lint_with_watch(flags, lint_flags).await;
+  }
 
-          let mut linter = WorkspaceLinter::new(
-            factory.caches()?.clone(),
-            factory.lint_rule_provider().await?,
-            factory.module_graph_creator().await?.clone(),
-            cli_options.start_dir.clone(),
-            &cli_options.resolve_workspace_lint_options(&lint_flags)?,
-          );
-          for paths_with_options in paths_with_options_batches {
-            linter
-              .lint_files(
-                cli_options,
-                paths_with_options.options,
-                lint_config.clone(),
-                paths_with_options.dir,
-                paths_with_options.paths,
-              )
-              .await?;
-          }
-
-          linter.finish();
-
-          Ok(())
-        })
-      },
-    )
-    .await?;
+  let factory = CliFactory::from_flags(flags);
+  let cli_options = factory.cli_options()?;
+  let lint_rule_provider = factory.lint_rule_provider().await?;
+  let is_stdin = lint_flags.is_stdin();
+  let deno_lint_config = cli_options.resolve_deno_lint_config()?;
+  let workspace_lint_options =
+    cli_options.resolve_workspace_lint_options(&lint_flags)?;
+  let success = if is_stdin {
+    lint_stdin(
+      cli_options,
+      lint_rule_provider,
+      workspace_lint_options,
+      lint_flags,
+      deno_lint_config,
+    )?
   } else {
-    let factory = CliFactory::from_flags(flags);
-    let cli_options = factory.cli_options()?;
-    let is_stdin = lint_flags.is_stdin();
-    let deno_lint_config = cli_options.resolve_deno_lint_config()?;
-    let workspace_lint_options =
-      cli_options.resolve_workspace_lint_options(&lint_flags)?;
-    let success = if is_stdin {
-      let start_dir = &cli_options.start_dir;
-      let reporter_lock = Arc::new(Mutex::new(create_reporter(
-        workspace_lint_options.reporter_kind,
-      )));
-      let lint_config = start_dir
-        .to_lint_config(FilePatterns::new_with_base(start_dir.dir_path()))?;
-      let lint_options = LintOptions::resolve(lint_config, &lint_flags);
-      let lint_rules = factory
-        .lint_rule_provider()
-        .await?
-        .resolve_lint_rules_err_empty(
-          lint_options.rules,
-          start_dir.maybe_deno_json().map(|c| c.as_ref()),
-        )?;
-      let mut file_path = cli_options.initial_cwd().join(STDIN_FILE_NAME);
-      if let Some(ext) = cli_options.ext_flag() {
-        file_path.set_extension(ext);
-      }
-      let r = lint_stdin(&file_path, lint_rules, deno_lint_config);
-      let success = handle_lint_result(
-        &file_path.to_string_lossy(),
-        r,
-        reporter_lock.clone(),
-      );
-      reporter_lock.lock().close(1);
-      success
-    } else {
-      let mut linter = WorkspaceLinter::new(
-        factory.caches()?.clone(),
-        factory.lint_rule_provider().await?,
-        factory.module_graph_creator().await?.clone(),
-        cli_options.start_dir.clone(),
-        &workspace_lint_options,
-      );
-      let paths_with_options_batches =
-        resolve_paths_with_options_batches(cli_options, &lint_flags)?;
-      for paths_with_options in paths_with_options_batches {
-        linter
-          .lint_files(
-            cli_options,
-            paths_with_options.options,
-            deno_lint_config.clone(),
-            paths_with_options.dir,
-            paths_with_options.paths,
-          )
-          .await?;
-      }
-      linter.finish()
-    };
-    if !success {
-      deno_runtime::exit(1);
+    let mut linter = WorkspaceLinter::new(
+      factory.caches()?.clone(),
+      lint_rule_provider,
+      factory.module_graph_creator().await?.clone(),
+      cli_options.start_dir.clone(),
+      &workspace_lint_options,
+    );
+    let paths_with_options_batches =
+      resolve_paths_with_options_batches(cli_options, &lint_flags)?;
+    for paths_with_options in paths_with_options_batches {
+      linter
+        .lint_files(
+          cli_options,
+          paths_with_options.options,
+          deno_lint_config.clone(),
+          paths_with_options.dir,
+          paths_with_options.paths,
+        )
+        .await?;
     }
+    linter.finish()
+  };
+  if !success {
+    deno_runtime::exit(1);
   }
 
   Ok(())
+}
+
+async fn lint_with_watch_inner(
+  flags: Arc<Flags>,
+  lint_flags: LintFlags,
+  watcher_communicator: Arc<WatcherCommunicator>,
+  changed_paths: Option<Vec<PathBuf>>,
+) -> Result<(), AnyError> {
+  let factory = CliFactory::from_flags(flags);
+  let cli_options = factory.cli_options()?;
+  let lint_config = cli_options.resolve_deno_lint_config()?;
+  let mut paths_with_options_batches =
+    resolve_paths_with_options_batches(cli_options, &lint_flags)?;
+  for paths_with_options in &mut paths_with_options_batches {
+    _ = watcher_communicator.watch_paths(paths_with_options.paths.clone());
+
+    let files = std::mem::take(&mut paths_with_options.paths);
+    paths_with_options.paths = if let Some(paths) = &changed_paths {
+      // lint all files on any changed (https://github.com/denoland/deno/issues/12446)
+      files
+        .iter()
+        .any(|path| {
+          canonicalize_path(path)
+            .map(|p| paths.contains(&p))
+            .unwrap_or(false)
+        })
+        .then_some(files)
+        .unwrap_or_else(|| [].to_vec())
+    } else {
+      files
+    };
+  }
+
+  let mut linter = WorkspaceLinter::new(
+    factory.caches()?.clone(),
+    factory.lint_rule_provider().await?,
+    factory.module_graph_creator().await?.clone(),
+    cli_options.start_dir.clone(),
+    &cli_options.resolve_workspace_lint_options(&lint_flags)?,
+  );
+  for paths_with_options in paths_with_options_batches {
+    linter
+      .lint_files(
+        cli_options,
+        paths_with_options.options,
+        lint_config.clone(),
+        paths_with_options.dir,
+        paths_with_options.paths,
+      )
+      .await?;
+  }
+
+  linter.finish();
+
+  Ok(())
+}
+
+async fn lint_with_watch(
+  flags: Arc<Flags>,
+  lint_flags: LintFlags,
+) -> Result<(), AnyError> {
+  let watch_flags = lint_flags.watch.as_ref().unwrap();
+
+  file_watcher::watch_func(
+    flags,
+    file_watcher::PrintConfig::new("Lint", !watch_flags.no_clear_screen),
+    move |flags, watcher_communicator, changed_paths| {
+      let lint_flags = lint_flags.clone();
+      watcher_communicator.show_path_changed(changed_paths.clone());
+      Ok(lint_with_watch_inner(
+        flags,
+        lint_flags,
+        watcher_communicator,
+        changed_paths,
+      ))
+    },
+  )
+  .await
 }
 
 struct PathsWithOptions {
@@ -242,6 +247,9 @@ struct WorkspaceLinter {
   has_error: Arc<AtomicFlag>,
   file_count: usize,
 }
+
+type WorkspaceLinterFuture =
+  Pin<Box<dyn Future<Output = Result<(), AnyError>>>>;
 
 impl WorkspaceLinter {
   pub fn new(
@@ -296,110 +304,60 @@ impl WorkspaceLinter {
 
     let mut futures = Vec::with_capacity(2);
     if linter.has_package_rules() {
-      if self.workspace_module_graph.is_none() {
-        let module_graph_creator = self.module_graph_creator.clone();
-        let packages = self.workspace_dir.jsr_packages_for_publish();
-        self.workspace_module_graph = Some(
-          async move {
-            module_graph_creator
-              .create_and_validate_publish_graph(&packages, true)
-              .await
-              .map(Rc::new)
-              .map_err(Rc::new)
-          }
-          .boxed_local()
-          .shared_local(),
-        );
-      }
-      let workspace_module_graph_future =
-        self.workspace_module_graph.as_ref().unwrap().clone();
-      let publish_config = member_dir.maybe_package_config();
-      if let Some(publish_config) = publish_config {
-        let has_error = self.has_error.clone();
-        let reporter_lock = self.reporter_lock.clone();
-        let linter = linter.clone();
-        let path_urls = paths
-          .iter()
-          .filter_map(|p| ModuleSpecifier::from_file_path(p).ok())
-          .collect::<HashSet<_>>();
-        futures.push(
-          async move {
-            let graph = workspace_module_graph_future
-              .await
-              .map_err(|err| anyhow!("{:#}", err))?;
-            let export_urls =
-              publish_config.config_file.resolve_export_value_urls()?;
-            if !export_urls.iter().any(|url| path_urls.contains(url)) {
-              return Ok(()); // entrypoint is not specified, so skip
-            }
-            let diagnostics = linter.lint_package(&graph, &export_urls);
-            if !diagnostics.is_empty() {
-              has_error.raise();
-              let mut reporter = reporter_lock.lock();
-              for diagnostic in &diagnostics {
-                reporter.visit_diagnostic(diagnostic);
-              }
-            }
-            Ok(())
-          }
-          .boxed_local(),
-        );
+      if let Some(fut) = self.run_package_rules(&linter, &member_dir, &paths) {
+        futures.push(fut);
       }
     }
 
-    futures.push({
-      let has_error = self.has_error.clone();
-      let reporter_lock = self.reporter_lock.clone();
-      let maybe_incremental_cache = maybe_incremental_cache.clone();
-      let linter = linter.clone();
-      let cli_options = cli_options.clone();
-      async move {
-        run_parallelized(paths, {
-          move |file_path| {
-            let file_text =
-              deno_ast::strip_bom(fs::read_to_string(&file_path)?);
+    let has_error = self.has_error.clone();
+    let reporter_lock = self.reporter_lock.clone();
+    let maybe_incremental_cache_ = maybe_incremental_cache.clone();
+    let linter = linter.clone();
+    let cli_options = cli_options.clone();
+    let fut = async move {
+      let operation = move |file_path: PathBuf| {
+        let file_text = deno_ast::strip_bom(fs::read_to_string(&file_path)?);
 
-            // don't bother rechecking this file if it didn't have any diagnostics before
-            if let Some(incremental_cache) = &maybe_incremental_cache {
-              if incremental_cache.is_file_same(&file_path, &file_text) {
-                return Ok(());
-              }
-            }
-
-            let r = linter.lint_file(
-              &file_path,
-              file_text,
-              cli_options.ext_flag().as_deref(),
-            );
-            if let Ok((file_source, file_diagnostics)) = &r {
-              if let Some(incremental_cache) = &maybe_incremental_cache {
-                if file_diagnostics.is_empty() {
-                  // update the incremental cache if there were no diagnostics
-                  incremental_cache.update_file(
-                    &file_path,
-                    // ensure the returned text is used here as it may have been modified via --fix
-                    file_source.text(),
-                  )
-                }
-              }
-            }
-
-            let success = handle_lint_result(
-              &file_path.to_string_lossy(),
-              r,
-              reporter_lock.clone(),
-            );
-            if !success {
-              has_error.raise();
-            }
-
-            Ok(())
+        // don't bother rechecking this file if it didn't have any diagnostics before
+        if let Some(incremental_cache) = &maybe_incremental_cache_ {
+          if incremental_cache.is_file_same(&file_path, &file_text) {
+            return Ok(());
           }
-        })
-        .await
-      }
-      .boxed_local()
-    });
+        }
+
+        let r = linter.lint_file(
+          &file_path,
+          file_text,
+          cli_options.ext_flag().as_deref(),
+        );
+        if let Ok((file_source, file_diagnostics)) = &r {
+          if let Some(incremental_cache) = &maybe_incremental_cache_ {
+            if file_diagnostics.is_empty() {
+              // update the incremental cache if there were no diagnostics
+              incremental_cache.update_file(
+                &file_path,
+                // ensure the returned text is used here as it may have been modified via --fix
+                file_source.text(),
+              )
+            }
+          }
+        }
+
+        let success = handle_lint_result(
+          &file_path.to_string_lossy(),
+          r,
+          reporter_lock.clone(),
+        );
+        if !success {
+          has_error.raise();
+        }
+
+        Ok(())
+      };
+      run_parallelized(paths, operation).await
+    }
+    .boxed_local();
+    futures.push(fut);
 
     if lint_options.fix {
       // run sequentially when using `--fix` to lower the chances of weird
@@ -417,6 +375,63 @@ impl WorkspaceLinter {
     }
 
     Ok(())
+  }
+
+  fn run_package_rules(
+    &mut self,
+    linter: &Arc<CliLinter>,
+    member_dir: &WorkspaceDirectory,
+    paths: &[PathBuf],
+  ) -> Option<WorkspaceLinterFuture> {
+    if self.workspace_module_graph.is_none() {
+      let module_graph_creator = self.module_graph_creator.clone();
+      let packages = self.workspace_dir.jsr_packages_for_publish();
+      self.workspace_module_graph = Some(
+        async move {
+          module_graph_creator
+            .create_and_validate_publish_graph(&packages, true)
+            .await
+            .map(Rc::new)
+            .map_err(Rc::new)
+        }
+        .boxed_local()
+        .shared_local(),
+      );
+    }
+
+    let workspace_module_graph_future =
+      self.workspace_module_graph.as_ref().unwrap().clone();
+    let maybe_publish_config = member_dir.maybe_package_config();
+    let publish_config = maybe_publish_config?;
+
+    let has_error = self.has_error.clone();
+    let reporter_lock = self.reporter_lock.clone();
+    let linter = linter.clone();
+    let path_urls = paths
+      .iter()
+      .filter_map(|p| ModuleSpecifier::from_file_path(p).ok())
+      .collect::<HashSet<_>>();
+    let fut = async move {
+      let graph = workspace_module_graph_future
+        .await
+        .map_err(|err| anyhow!("{:#}", err))?;
+      let export_urls =
+        publish_config.config_file.resolve_export_value_urls()?;
+      if !export_urls.iter().any(|url| path_urls.contains(url)) {
+        return Ok(()); // entrypoint is not specified, so skip
+      }
+      let diagnostics = linter.lint_package(&graph, &export_urls);
+      if !diagnostics.is_empty() {
+        has_error.raise();
+        let mut reporter = reporter_lock.lock();
+        for diagnostic in &diagnostics {
+          reporter.visit_diagnostic(diagnostic);
+        }
+      }
+      Ok(())
+    }
+    .boxed_local();
+    Some(fut)
   }
 
   pub fn finish(self) -> bool {
@@ -494,10 +509,27 @@ pub fn print_rules_list(json: bool, maybe_rules_tags: Option<Vec<String>>) {
 /// Treats input as TypeScript.
 /// Compatible with `--json` flag.
 fn lint_stdin(
-  file_path: &Path,
-  configured_rules: ConfiguredRules,
+  cli_options: &Arc<CliOptions>,
+  lint_rule_provider: LintRuleProvider,
+  workspace_lint_options: WorkspaceLintOptions,
+  lint_flags: LintFlags,
   deno_lint_config: LintConfig,
-) -> Result<(ParsedSource, Vec<LintDiagnostic>), AnyError> {
+) -> Result<bool, AnyError> {
+  let start_dir = &cli_options.start_dir;
+  let reporter_lock = Arc::new(Mutex::new(create_reporter(
+    workspace_lint_options.reporter_kind,
+  )));
+  let lint_config = start_dir
+    .to_lint_config(FilePatterns::new_with_base(start_dir.dir_path()))?;
+  let lint_options = LintOptions::resolve(lint_config, &lint_flags);
+  let configured_rules = lint_rule_provider.resolve_lint_rules_err_empty(
+    lint_options.rules,
+    start_dir.maybe_deno_json().map(|c| c.as_ref()),
+  )?;
+  let mut file_path = cli_options.initial_cwd().join(STDIN_FILE_NAME);
+  if let Some(ext) = cli_options.ext_flag() {
+    file_path.set_extension(ext);
+  }
   let mut source_code = String::new();
   if stdin().read_to_string(&mut source_code).is_err() {
     return Err(generic_error("Failed to read from stdin"));
@@ -509,9 +541,14 @@ fn lint_stdin(
     deno_lint_config,
   });
 
-  linter
-    .lint_file(file_path, deno_ast::strip_bom(source_code), None)
-    .map_err(AnyError::from)
+  let r = linter
+    .lint_file(&file_path, deno_ast::strip_bom(source_code), None)
+    .map_err(AnyError::from);
+
+  let success =
+    handle_lint_result(&file_path.to_string_lossy(), r, reporter_lock.clone());
+  reporter_lock.lock().close(1);
+  Ok(success)
 }
 
 fn handle_lint_result(
