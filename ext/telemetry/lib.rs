@@ -119,6 +119,7 @@ pub struct OtelRuntimeConfig {
 #[derive(Default, Debug, Clone, Serialize, Deserialize)]
 pub struct OtelConfig {
   pub tracing_enabled: bool,
+  pub metrics_enabled: bool,
   pub console: OtelConsoleConfig,
   pub deterministic: bool,
 }
@@ -127,6 +128,7 @@ impl OtelConfig {
   pub fn as_v8(&self) -> Box<[u8]> {
     Box::new([
       self.tracing_enabled as u8,
+      self.metrics_enabled as u8,
       self.console as u8,
       self.deterministic as u8,
     ])
@@ -386,6 +388,9 @@ impl DenoPeriodicReader {
             while futures.join_next().await.is_some() {}
           }
           inner.collect(&mut resource_metrics)?;
+          if resource_metrics.scope_metrics.is_empty() {
+            return Ok(());
+          }
           exporter.export(&mut resource_metrics).await?;
           Ok(())
         }
@@ -555,7 +560,7 @@ static BUILT_IN_INSTRUMENTATION_SCOPE: OnceCell<
   opentelemetry::InstrumentationScope,
 > = OnceCell::new();
 
-pub fn init(config: OtelRuntimeConfig) -> anyhow::Result<()> {
+pub fn init(rt_config: OtelRuntimeConfig) -> anyhow::Result<()> {
   // Parse the `OTEL_EXPORTER_OTLP_PROTOCOL` variable. The opentelemetry_*
   // crates don't do this automatically.
   // TODO(piscisaureus): enable GRPC support.
@@ -588,8 +593,8 @@ pub fn init(config: OtelRuntimeConfig) -> anyhow::Result<()> {
   // Add the runtime name and version to the resource attributes. Also override
   // the `telemetry.sdk` attributes to include the Deno runtime.
   resource = resource.merge(&Resource::new(vec![
-    KeyValue::new(PROCESS_RUNTIME_NAME, config.runtime_name),
-    KeyValue::new(PROCESS_RUNTIME_VERSION, config.runtime_version.clone()),
+    KeyValue::new(PROCESS_RUNTIME_NAME, rt_config.runtime_name),
+    KeyValue::new(PROCESS_RUNTIME_VERSION, rt_config.runtime_version.clone()),
     KeyValue::new(
       TELEMETRY_SDK_LANGUAGE,
       format!(
@@ -608,7 +613,7 @@ pub fn init(config: OtelRuntimeConfig) -> anyhow::Result<()> {
       TELEMETRY_SDK_VERSION,
       format!(
         "{}-{}",
-        config.runtime_version,
+        rt_config.runtime_version,
         resource.get(Key::new(TELEMETRY_SDK_VERSION)).unwrap()
       ),
     ),
@@ -671,7 +676,7 @@ pub fn init(config: OtelRuntimeConfig) -> anyhow::Result<()> {
 
   let builtin_instrumentation_scope =
     opentelemetry::InstrumentationScope::builder("deno")
-      .with_version(config.runtime_version.clone())
+      .with_version(rt_config.runtime_version.clone())
       .build();
   BUILT_IN_INSTRUMENTATION_SCOPE
     .set(builtin_instrumentation_scope)

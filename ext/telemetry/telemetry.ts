@@ -62,6 +62,7 @@ const {
 const { AsyncVariable, setAsyncContext } = core;
 
 export let TRACING_ENABLED = false;
+export let METRICS_ENABLED = false;
 let DETERMINISTIC = false;
 
 // Note: These start at 0 in the JS library,
@@ -785,7 +786,8 @@ class Meter {
   createCounter(
     name: string,
     options?: MetricOptions,
-  ): Counter {
+  ): Counter | NoopInstrument {
+    if (!METRICS_ENABLED) return new NoopInstrument();
     if (options?.valueType !== undefined && options?.valueType !== 1) {
       throw new Error("Only valueType: DOUBLE is supported");
     }
@@ -802,7 +804,8 @@ class Meter {
   createUpDownCounter(
     name: string,
     options?: MetricOptions,
-  ): Counter {
+  ): Counter | NoopInstrument {
+    if (!METRICS_ENABLED) return new NoopInstrument();
     if (options?.valueType !== undefined && options?.valueType !== 1) {
       throw new Error("Only valueType: DOUBLE is supported");
     }
@@ -819,7 +822,8 @@ class Meter {
   createGauge(
     name: string,
     options?: MetricOptions,
-  ): Gauge {
+  ): Gauge | NoopInstrument {
+    if (!METRICS_ENABLED) return new NoopInstrument();
     if (options?.valueType !== undefined && options?.valueType !== 1) {
       throw new Error("Only valueType: DOUBLE is supported");
     }
@@ -836,7 +840,8 @@ class Meter {
   createHistogram(
     name: string,
     options?: MetricOptions,
-  ): Histogram {
+  ): Histogram | NoopInstrument {
+    if (!METRICS_ENABLED) return new NoopInstrument();
     if (options?.valueType !== undefined && options?.valueType !== 1) {
       throw new Error("Only valueType: DOUBLE is supported");
     }
@@ -854,7 +859,8 @@ class Meter {
   createObservableCounter(
     name: string,
     options?: MetricOptions,
-  ): Observable {
+  ): Observable | NoopInstrument {
+    if (!METRICS_ENABLED) return new NoopInstrument();
     if (options?.valueType !== undefined && options?.valueType !== 1) {
       throw new Error("Only valueType: DOUBLE is supported");
     }
@@ -871,7 +877,8 @@ class Meter {
   createObservableGauge(
     name: string,
     options?: MetricOptions,
-  ): Observable {
+  ): Observable | NoopInstrument {
+    if (!METRICS_ENABLED) return new NoopInstrument();
     if (options?.valueType !== undefined && options?.valueType !== 1) {
       throw new Error("Only valueType: DOUBLE is supported");
     }
@@ -888,7 +895,8 @@ class Meter {
   createObservableUpDownCounter(
     name: string,
     options?: MetricOptions,
-  ): Observable {
+  ): Observable | NoopInstrument {
+    if (!METRICS_ENABLED) return new NoopInstrument();
     if (options?.valueType !== undefined && options?.valueType !== 1) {
       throw new Error("Only valueType: DOUBLE is supported");
     }
@@ -906,6 +914,7 @@ class Meter {
     callback: BatchObservableCallback,
     observables: Observable[],
   ): void {
+    if (!METRICS_ENABLED) return;
     const result = new BatchObservableResult(new SafeWeakSet(observables));
     startObserving();
     BATCH_CALLBACKS.set(callback, result);
@@ -915,11 +924,19 @@ class Meter {
     callback: BatchObservableCallback,
     observables: Observable[],
   ): void {
+    if (!METRICS_ENABLED) return;
     const result = BATCH_CALLBACKS.get(callback);
     if (result && batchResultHasObservables(result, observables)) {
       BATCH_CALLBACKS.delete(callback);
     }
   }
+}
+
+class NoopInstrument {
+  add(_value: number, _attributes?: MetricAttributes, _context?: Context) {}
+  record(_value: number, _attributes?: MetricAttributes, _context?: Context) {}
+  addCallback(_callback: ObservableCallback) {}
+  removeCallback(_callback: ObservableCallback) {}
 }
 
 type BatchObservableCallback = (
@@ -1203,13 +1220,20 @@ const otelConsoleConfig = {
 export function bootstrap(
   config: [
     0 | 1,
+    0 | 1,
     typeof otelConsoleConfig[keyof typeof otelConsoleConfig],
     0 | 1,
   ],
 ): void {
-  const { 0: tracingEnabled, 1: consoleConfig, 2: deterministic } = config;
+  const {
+    0: tracingEnabled,
+    1: metricsEnabled,
+    2: consoleConfig,
+    3: deterministic,
+  } = config;
 
   TRACING_ENABLED = tracingEnabled === 1;
+  METRICS_ENABLED = metricsEnabled === 1;
   DETERMINISTIC = deterministic === 1;
 
   switch (consoleConfig) {
