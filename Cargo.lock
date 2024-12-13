@@ -1424,7 +1424,7 @@ dependencies = [
 [[package]]
 name = "deno_cache_dir"
 version = "0.14.0"
-source = "git+https://github.com/dsherret/deno_cache_dir.git?branch=file_fetcher#87686302d8a3d4df4412db7f11437283e897df28"
+source = "git+https://github.com/dsherret/deno_cache_dir.git?branch=file_fetcher#63204356bdeea6733abe5ad35f4b764789530bca"
 dependencies = [
  "async-trait",
  "base32",
