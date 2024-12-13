@@ -118,7 +118,7 @@ console_static_text = "=0.8.1"
 dashmap = "5.5.3"
 data-encoding = "2.3.3"
 data-url = "=0.3.1"
-deno_cache_dir = "=0.14.0"
+deno_cache_dir = "=0.15.0"
 deno_error = "=0.5.2"
 deno_package_json = { version = "0.2.1", default-features = false }
 deno_unsync = "0.4.2"
@@ -341,6 +341,3 @@ opt-level = 3
 opt-level = 3
 [profile.release.package.zstd-sys]
 opt-level = 3
-
-[patch.crates-io]
-deno_cache_dir = { git = 'https://github.com/dsherret/deno_cache_dir.git', branch = 'file_fetcher' }
