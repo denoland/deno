@@ -367,6 +367,7 @@ const AstProp = [
   "update",
   "value",
 ];
+// FIXME: this is slow
 const AST_PROP_PARENT = AstProp.indexOf("parent");
 const AST_PROP_TYPE = AstProp.indexOf("type");
 const AST_PROP_BODY = AstProp.indexOf("body");
@@ -385,6 +386,16 @@ const AST_PROP_CASES = AstProp.indexOf("cases");
 const AST_PROP_SPECIFIERS = AstProp.indexOf("specifiers");
 const AST_PROP_DECLARATIONS = AstProp.indexOf("declarations");
 const AST_PROP_MEMBERS = AstProp.indexOf("members");
+const AST_PROP_OPERATOR = AstProp.indexOf("operator");
+const AST_PROP_PREFIX = AstProp.indexOf("prefix");
+const AST_PROP_OPTIONAL = AstProp.indexOf("optional");
+const AST_PROP_ASYNC = AstProp.indexOf("async");
+const AST_PROP_GENERATOR = AstProp.indexOf("generator");
+const AST_PROP_NAME = AstProp.indexOf("name");
+const AST_PROP_VALUE = AstProp.indexOf("value");
+const AST_PROP_COMPUTED = AstProp.indexOf("computed");
+const AST_PROP_DELEGATE = AstProp.indexOf("delegate");
+const AST_PROP_SELF_CLOSING = AstProp.indexOf("selfClosing");
 
 /**
  * @param {number} type
@@ -402,12 +413,22 @@ function isArrayProp(type, propId) {
     case AstType.SwitchCase:
       return propId === AST_PROP_CONSEQUENT;
     default:
-      return propId === AST_PROP_CHILDREN || propId === AST_PROP_ELEMENTS ||
-        propId === AST_PROP_PROPERTIES || propId === AST_PROP_PARAMS ||
-        propId === AST_PROP_ARGUMENTS || propId === AST_PROP_EXPRESSIONS ||
-        propId === AST_PROP_QUASIS || propId === AST_PROP_CASES ||
-        propId === AST_PROP_SPECIFIERS ||
-        propId === AST_PROP_DECLARATIONS || propId === AST_PROP_MEMBERS;
+      switch (propId) {
+        case AST_PROP_CHILDREN:
+        case AST_PROP_ELEMENTS:
+        case AST_PROP_PROPERTIES:
+        case AST_PROP_PARAMS:
+        case AST_PROP_ARGUMENTS:
+        case AST_PROP_EXPRESSIONS:
+        case AST_PROP_QUASIS:
+        case AST_PROP_CASES:
+        case AST_PROP_SPECIFIERS:
+        case AST_PROP_DECLARATIONS:
+        case AST_PROP_MEMBERS:
+          return true;
+        default:
+          return false;
+      }
   }
 }
 
@@ -415,6 +436,7 @@ function isArrayProp(type, propId) {
  * @param {AstContext} ctx
  * @param {number} offset
  * @param {number} propId
+ * @returns {*}
  */
 function readValue(ctx, offset, propId) {
   const { buf } = ctx;
@@ -427,14 +449,7 @@ function readValue(ctx, offset, propId) {
     const end = readU32(buf, offset + 1 + 4 + 4);
     return [start, end];
   } else if (propId === AST_PROP_PARENT) {
-    const id = readU32(buf, offset + 1);
-    if (id === 0) return null;
-
-    const target = ctx.idTable[id];
-    return new Node(ctx, target);
-  } else if (propId === AST_PROP_INTERNAL_FLAGS) {
-    // FIXME
-    return 0;
+    return readU32(buf, offset + 1);
   }
 
   const type = buf[offset];
@@ -449,31 +464,27 @@ function readValue(ctx, offset, propId) {
     const searchProp = buf[offset];
     offset += 1;
 
-    const isArray = isArrayProp(type, searchProp);
     if (searchProp === propId) {
-      // Check for arrays
-      if (isArray) {
+      if (propId === AST_PROP_INTERNAL_FLAGS) {
+        return buf[offset];
+      } else if (isArrayProp(type, searchProp)) {
         const len = readU32(buf, offset);
         offset += 4;
 
-        const nodes = new Array(len).fill(null);
+        const ids = new Array(len).fill(null);
         for (let j = 0; j < len; j++) {
-          nodes.push(new Node(ctx, offset));
+          ids[i] = readU32(buf, offset);
           offset += 4;
         }
-        return nodes;
+        return ids;
       }
 
-      const id = readU32(buf, offset);
-      if (id === 0) return null;
-
-      const target = ctx.idTable[id];
-      return new Node(ctx, target);
+      return readU32(buf, offset);
     }
 
     if (searchProp === AST_PROP_INTERNAL_FLAGS) {
       offset += 1;
-    } else if (isArray) {
+    } else if (isArrayProp(type, searchProp)) {
       const len = readU32(buf, offset);
       offset += 4 + (len * 4);
     } else {
@@ -482,6 +493,107 @@ function readValue(ctx, offset, propId) {
   }
 
   return 0;
+}
+
+/**
+ * @param {AstContext} ctx
+ * @param {number} offset
+ * @returns {number}
+ */
+function getTypeId(ctx, offset) {
+  return ctx.buf[offset];
+}
+
+/**
+ * @param {AstContext} ctx
+ * @param {number} offset
+ * @param {Map<number, any>} seen
+ * @returns {*}
+ */
+function toJsValue(ctx, offset, seen) {
+  const cached = seen.get(offset);
+  if (cached !== undefined) return cached;
+
+  const type = getTypeId(ctx, offset);
+  const range = readValue(ctx, offset, AST_PROP_RANGE);
+
+  /** @type {Record<string, any>} */
+  const node = {
+    type: AstTypeName[type],
+    range,
+  };
+
+  seen.set(offset, node);
+
+  // console.log("toJSON", AstTypeName[type], offset);
+
+  const { buf, idTable } = ctx;
+
+  // type + parentId + SpanLo + SpanHi
+  offset += 1 + 4 + 4 + 4;
+
+  const propCount = buf[offset];
+  offset += 1;
+
+  let flags = 0;
+  for (let i = 0; i < propCount; i++) {
+    const propId = buf[offset];
+    offset += 1;
+
+    const name = AstProp[propId];
+    // console.log(`reading node ${AstTypeName[type]}, prop ${name}`);
+
+    if (propId === AST_PROP_INTERNAL_FLAGS) {
+      flags = buf[offset];
+      offset += 1;
+    } else if (
+      propId === AST_PROP_NAME && (type === AstType.Identifier ||
+        type === AstType.JSXIdentifier)
+    ) {
+      const strId = readU32(buf, offset);
+      offset += 4;
+
+      node[name] = getString(ctx, strId);
+    } else if (
+      propId === AST_PROP_VALUE && (type === AstType.StringLiteral ||
+        type === AstType.NumericLiteral)
+    ) {
+      const strId = readU32(buf, offset);
+      offset += 4;
+
+      node[name] = getString(ctx, strId);
+    } else if (isArrayProp(type, propId)) {
+      const len = readU32(buf, offset);
+      offset += 4;
+
+      const elems = new Array(len).fill(null);
+      for (let j = 0; j < len; j++) {
+        const id = readU32(buf, offset);
+        offset += 4;
+
+        if (id === 0) {
+          elems[j] = undefined;
+        } else {
+          const nodeOffset = idTable[id];
+          elems[j] = toJsValue(ctx, nodeOffset, seen);
+        }
+      }
+
+      node[name] = elems;
+    } else {
+      const id = readU32(buf, offset);
+      offset += 4;
+
+      if (id === 0) {
+        node[name] = null;
+      } else {
+        const nodeOffset = idTable[id];
+        node[name] = toJsValue(ctx, nodeOffset, seen);
+      }
+    }
+  }
+
+  return node;
 }
 
 const INTERNAL_CTX = Symbol("ctx");
@@ -499,32 +611,106 @@ class Node {
     this[INTERNAL_CTX] = ctx;
     this[INTERNAL_OFFSET] = offset;
   }
+
+  /**
+   * @param {*} _
+   * @param {*} options
+   * @returns {string}
+   */
+  [Symbol.for("Deno.customInspect")](_, options) {
+    const seen = new Map();
+    const json = toJsValue(this[INTERNAL_CTX], this[INTERNAL_OFFSET], seen);
+    seen.clear();
+    return Deno.inspect(json, options);
+  }
 }
 
 for (let i = 0; i < AstProp.length; i++) {
   const name = AstProp[i];
   Object.defineProperty(Node.prototype, name, {
     get() {
-      return readValue(this[INTERNAL_CTX], this[INTERNAL_OFFSET], i);
+      const ctx = /** @type {AstContext} */ (this[INTERNAL_CTX]);
+      const offset = this[INTERNAL_OFFSET];
+      const type = getTypeId(ctx, offset);
+      const flags = readValue(ctx, offset, AST_PROP_INTERNAL_FLAGS);
+
+      switch (i) {
+        case AST_PROP_OPERATOR:
+          switch (type) {
+            case AstType.AssignmentExpression:
+              return getAssignOperator(flags);
+            case AstType.BinaryExpression:
+              return getBinaryOperator(flags);
+            case AstType.UpdateExpression:
+              return (flags & Flags.UpdatePlusPlus) !== 0 ? "++" : "--";
+            case AstType.LogicalExpression:
+              return getLogicalOperator(flags);
+            case AstType.UnaryExpression:
+              return getUnaryOperator(flags);
+          }
+
+          break;
+        case AST_PROP_PREFIX:
+          return (flags & Flags.UpdatePrefix) !== 0;
+        case AST_PROP_OPTIONAL:
+          switch (type) {
+            case AstType.FunctionExpression:
+              return (flags & Flags.FnOptional) !== 0;
+            case AstType.MemberExpression:
+              return (flags & Flags.MemberOptional) !== 0;
+            case AstType.ArrayPattern:
+            case AstType.ObjectPattern:
+              return (flags & Flags.ParamOptional) !== 0;
+          }
+
+          break;
+        case AST_PROP_ASYNC:
+          return (flags & Flags.FnAsync) !== 0;
+        case AST_PROP_GENERATOR:
+          return (flags & Flags.FnGenerator) !== 0;
+        case AST_PROP_COMPUTED:
+          return (flags & Flags.MemberComputed) !== 0;
+        case AST_PROP_DELEGATE:
+          return (flags & Flags.YieldDelegate) !== 0;
+        case AST_PROP_SELF_CLOSING:
+          return flags !== 0;
+        case AST_PROP_NAME: {
+          const value = readValue(ctx, offset, AST_PROP_NAME);
+
+          switch (type) {
+            case AstType.Identifier:
+            case AstType.JSXIdentifier:
+            case AstType.PrivateIdentifier:
+              return getString(ctx, value);
+            default: {
+              const nodeOffset = ctx.idTable[value];
+              return new Node(ctx, nodeOffset);
+            }
+          }
+        }
+      }
+
+      const value = readValue(ctx, offset, i);
+      if (Array.isArray(value)) {
+        const nodes = new Array(value.length);
+        for (let i = 0; i < value.length; i++) {
+          const id = value[i];
+          if (id === 0) {
+            nodes[i] = undefined;
+            continue;
+          }
+          const nodeOffset = ctx.idTable[id];
+          nodes[i] = new Node(ctx, nodeOffset);
+        }
+        return nodes;
+      }
+
+      if (value === 0) return null;
+      const nodeOffset = ctx.idTable[value];
+      return new Node(ctx, nodeOffset);
     },
   });
 }
-
-// /** @implements {Deno.AssignmentExpression} */
-// class AssignmentExpression extends Node {
-
-//   operator;
-
-//   constructor(ctx, parentId, range, flags, leftId, rightId) {
-//     super(ctx, parentId);
-
-//     this.#ctx = ctx;
-//     this.#leftId = leftId;
-//     this.#rightId = rightId;
-//     this.range = range;
-//     this.operator = getAssignOperator(flags);
-//   }
-// }
 
 /**
  * @param {number} n
@@ -568,53 +754,6 @@ function getAssignOperator(n) {
       throw new Error(`Unknown operator: ${n}`);
   }
 }
-
-// /** @implements {Deno.UpdateExpression} */
-// class UpdateExpression extends Node {
-//   type = /** @type {const} */ ("UpdateExpression");
-//   range;
-//   prefix;
-//   operator;
-
-//   /**
-//    * @param {AstContext} ctx
-//    * @param {number} parentId
-//    * @param {Deno.Range} range
-//    * @param {number} flags
-//    * @param {number} argId
-//    */
-//   constructor(ctx, parentId, range, flags, argId) {
-//     super(ctx, parentId);
-//     this.range = range;
-
-//     this.prefix = (flags & Flags.UpdatePrefix) !== 0;
-//     this.operator = (flags & Flags.UpdatePlusPlus) !== 0
-//       ? /** @type {const} */ ("++")
-//       : /** @type {const} */ ("--");
-//   }
-// }
-
-// /** @implements {Deno.BinaryExpression} */
-// class BinaryExpression extends Node {
-//   type = /** @type {const} */ ("BinaryExpression");
-
-//   operator;
-
-//   /**
-//    * @param {AstContext} ctx
-//    * @param {number} parentId
-//    * @param {Deno.Range} range
-//    * @param {number} flags
-//    * @param {number} leftId
-//    * @param {number} rightId
-//    */
-//   constructor(ctx, parentId, range, flags, leftId, rightId) {
-//     super(ctx, parentId);
-
-//     this.operator = getBinaryOperator(flags);
-//     this.range = range;
-//   }
-// }
 
 /**
  * @param {number} n
@@ -671,64 +810,6 @@ function getBinaryOperator(n) {
   }
 }
 
-// /** @implements {Deno.CallExpression} */
-// class CallExpression extends Node {
-//     this.optional = (flags & Flags.FnOptional) !== 0;
-//     this.#ctx = ctx;
-//     this.#calleeId = calleeId;
-//     this.range = range;
-//     this.#typeArgId = typeArgId;
-//     this.#argumentIds = argumentIds;
-//   }
-// }
-
-// /** @implements {Deno.FunctionExpression} */
-// class FunctionExpression extends Node {
-//   constructor(
-//   ) {
-//     super(ctx, parentId);
-
-//     this.async = (flags & Flags.FnAsync) !== 0;
-//     this.generator = (flags & Flags.FnGenerator) !== 0;
-
-//   }
-// }
-
-// /** @implements {Deno.Identifier} */
-// class Identifier extends Node {
-//   type = /** @type {const} */ ("Identifier");
-//   range;
-//   name = "";
-
-//   /**
-//    * @param {AstContext} ctx
-//    * @param {number} parentId
-//    * @param {Deno.Range} range
-//    * @param {number} nameId
-//    */
-//   constructor(ctx, parentId, range, nameId) {
-//     super(ctx, parentId);
-
-//     this.name = getString(ctx, nameId);
-//     this.range = range;
-//   }
-// }
-
-// /** @implements {Deno.LogicalExpression} */
-// class LogicalExpression extends Node {
-//   type = /** @type {const} */ ("LogicalExpression");
-
-//   constructor(ctx, parentId, range, flags, leftId, rightId) {
-//     super(ctx, parentId);
-
-//     this.#ctx = ctx;
-//     this.operator = getLogicalOperator(flags);
-//     this.#leftId = leftId;
-//     this.#rightId = rightId;
-//     this.range = range;
-//   }
-// }
-
 /**
  * @param {number} n
  * @returns {Deno.LogicalExpression["operator"]}
@@ -744,74 +825,6 @@ function getLogicalOperator(n) {
 
   throw new Error(`Unknown operator: ${n}`);
 }
-
-// /** @implements {Deno.MemberExpression} */
-// class MemberExpression extends Node {
-//   constructor(ctx, parentId, range, flags, objId, propId) {
-//     super(ctx, parentId);
-
-//     this.#ctx = ctx;
-//     this.computed = (flags & Flags.MemberComputed) !== 0;
-//     this.optional = (flags & Flags.MemberOptional) !== 0;
-//     this.#objId = objId;
-//     this.#propId = propId;
-//     this.range = range;
-//   }
-// }
-
-// /** @implements {Deno.PrivateIdentifier} */
-// class PrivateIdentifier extends Node {
-//   type = /** @type {const} */ ("PrivateIdentifier");
-//   range;
-//   #ctx;
-//   name;
-
-//   /**
-//    * @param {AstContext} ctx
-//    * @param {number} parentId
-//    * @param {Deno.Range} range
-//    * @param {number} nameId
-//    */
-//   constructor(ctx, parentId, range, nameId) {
-//     super(ctx, parentId);
-
-//     this.#ctx = ctx;
-//     this.range = range;
-//     this.name = getString(ctx, nameId);
-//   }
-// }
-
-// /** @implements {Deno.Property} */
-// class Property extends Node {
-//   type = /** @type {const} */ ("Property");
-//   range;
-
-//   constructor(ctx, parentId, range, keyId, valueId) {
-//     super(ctx, parentId);
-
-//     // FIXME flags
-
-//     this.#ctx = ctx;
-//     this.range = range;
-//     this.#keyId = keyId;
-//     this.#valueId = valueId;
-//   }
-// }
-
-// /** @implements {Deno.UnaryExpression} */
-// class UnaryExpression extends Node {
-//   type = /** @type {const} */ ("UnaryExpression");
-//   range;
-
-//   constructor(ctx, parentId, range, flags, exprId) {
-//     super(ctx, parentId);
-
-//     this.#ctx = ctx;
-//     this.range = range;
-//     this.operator = getUnaryOperator(flags);
-//     this.#exprId = exprId;
-//   }
-// }
 
 /**
  * @param {number} n
@@ -833,34 +846,10 @@ function getUnaryOperator(n) {
       return "void";
     case 7:
       return "delete";
+    default:
+      throw new Error(`Unknown operator: ${n}`);
   }
 }
-
-// /** @implements {Deno.YieldExpression} */
-// class YieldExpression extends Node {
-//   type = /** @type {const} */ ("YieldExpression");
-//   range;
-//   get argument() {
-//     return /** @type {Deno.Expression} */ (createAstNode(
-//       this.#ctx,
-//       this.#argId,
-//     ));
-//   }
-
-//   delegate = false;
-
-//   #ctx;
-//   #argId;
-
-//   constructor(ctx, parentId, range, flags, argId) {
-//     super(ctx, parentId);
-//     this.#ctx = ctx;
-//     this.#argId = argId;
-//     this.range = range;
-
-//     this.delegate = (flags & Flags.YieldDelegate) !== 0;
-//   }
-// }
 
 // Literals
 
@@ -1009,39 +998,6 @@ function getUnaryOperator(n) {
 //   }
 // }
 
-// Patterns
-
-// /** @implements {Deno.ArrayPattern} */
-// class ArrayPattern extends Node {
-//   constructor(ctx, parentId, range, flags, elemIds, typeId) {
-//     super(ctx, parentId);
-
-//     this.#ctx = ctx;
-//     this.range = range;
-
-//     this.optional = (flags & Flags.ParamOptional) !== 0;
-//     this.#elemIds = elemIds;
-//     this.#typeId = typeId;
-//   }
-// }
-
-// /** @implements {Deno.ObjectPattern} */
-// class ObjectPattern extends Node {
-//   type = /** @type {const} */ ("ObjectPattern");
-//   range;
-
-//   constructor(ctx, parentId, range, flags, elemIds, typeId) {
-//     super(ctx, parentId);
-
-//     this.#ctx = ctx;
-//     this.range = range;
-
-//     this.optional = (flags & Flags.ParamOptional) !== 0;
-//     this.#elemIds = elemIds;
-//     this.#typeId = typeId;
-//   }
-// }
-
 // /** @implements {Deno.JSXIdentifier} */
 // class JSXIdentifier extends Node {
 //   type = /** @type {const} */ ("JSXIdentifier");
@@ -1059,19 +1015,6 @@ function getUnaryOperator(n) {
 
 //     this.range = range;
 //     this.name = getString(ctx, nameId);
-//   }
-// }
-
-// /** @implements {Deno.JSXOpeningElement} */
-// class JSXOpeningElement extends Node {
-//   constructor(ctx, parentId, range, isSelfClosing, nameId, attrIds) {
-//     super(ctx, parentId);
-
-//     this.#ctx = ctx;
-//     this.selfClosing = isSelfClosing;
-//     this.#nameId = nameId;
-//     this.#attrIds = attrIds;
-//     this.range = range;
 //   }
 // }
 
@@ -1260,7 +1203,7 @@ function traverse(ctx, visitor) {
     visitTypes.set(id, name);
   }
 
-  console.log("buffer len", ctx.buf.length, ctx.buf.byteLength);
+  // console.log("buffer len", ctx.buf.length, ctx.buf.byteLength);
   console.log("merged visitor", visitor);
   console.log("visiting types", visitTypes);
 

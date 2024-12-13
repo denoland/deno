@@ -25,8 +25,8 @@ use deno_ast::{
 use indexmap::IndexMap;
 
 use super::ast_buf::{
-  append_u32, append_usize, assign_op_to_flag, write_usize, AstNode, AstProp,
-  Flag, FlagValue, SerializeCtx, StringTable,
+  append_usize, assign_op_to_flag, AstNode, AstProp, Flag, FlagValue,
+  SerializeCtx, StringTable,
 };
 
 pub fn serialize_ast_bin(parsed_source: &ParsedSource) -> Vec<u8> {
@@ -551,8 +551,8 @@ fn serialize_expr(
                     &assign_prop.span,
                     2,
                   );
-                  ctx.write_id(key_id);
-                  ctx.write_id(value_id);
+                  ctx.write_prop(AstProp::Left, key_id);
+                  ctx.write_prop(AstProp::Right, value_id);
 
                   (key_id, value_id)
                 }
@@ -633,8 +633,8 @@ fn serialize_expr(
 
               ctx.write_node(prop_id, AstNode::Property, id, &prop.span(), 3);
               ctx.write_flags(&flags);
-              ctx.write_id(key_id);
-              ctx.write_id(value_id);
+              ctx.write_prop(AstProp::Key, key_id);
+              ctx.write_prop(AstProp::Value, value_id);
 
               prop_id
             }
@@ -851,8 +851,8 @@ fn serialize_expr(
 
       ctx.write_node(id, AstNode::MemberExpression, parent_id, &node.span, 3);
       ctx.write_flags(&flags);
-      ctx.write_id(super_id);
-      ctx.write_id(child_id);
+      ctx.write_prop(AstProp::Object, super_id);
+      ctx.write_prop(AstProp::Property, child_id);
 
       id
     }
@@ -1276,10 +1276,11 @@ fn serialize_ident(
   ident: &Ident,
   parent_id: usize,
 ) -> usize {
-  let id = ctx.push_node(AstNode::Identifier, parent_id, &ident.span);
-
   let str_id = ctx.str_table.insert(ident.sym.as_str());
-  append_usize(&mut ctx.buf, str_id);
+
+  let id = ctx.next_id();
+  ctx.write_node(id, AstNode::Identifier, parent_id, &ident.span, 1);
+  ctx.write_prop(AstProp::Name, str_id);
 
   id
 }
@@ -2245,9 +2246,12 @@ fn serialize_prop_name(
 fn serialize_lit(ctx: &mut SerializeCtx, lit: &Lit, parent_id: usize) -> usize {
   match lit {
     Lit::Str(node) => {
-      let id = ctx.push_node(AstNode::StringLiteral, parent_id, &node.span);
+      let id = ctx.next_id();
+
       let str_id = ctx.str_table.insert(node.value.as_str());
-      append_usize(&mut ctx.buf, str_id);
+
+      ctx.write_node(id, AstNode::StringLiteral, parent_id, &node.span, 1);
+      ctx.write_prop(AstProp::Value, str_id);
 
       id
     }
@@ -2261,11 +2265,13 @@ fn serialize_lit(ctx: &mut SerializeCtx, lit: &Lit, parent_id: usize) -> usize {
     }
     Lit::Null(node) => ctx.push_node(AstNode::Null, parent_id, &node.span),
     Lit::Num(node) => {
-      let id = ctx.push_node(AstNode::NumericLiteral, parent_id, &node.span);
+      let id = ctx.next_id();
 
       let value = node.raw.as_ref().unwrap();
       let str_id = ctx.str_table.insert(value.as_str());
-      append_usize(&mut ctx.buf, str_id);
+
+      ctx.write_node(id, AstNode::NumericLiteral, parent_id, &node.span, 1);
+      ctx.write_prop(AstProp::Value, str_id);
 
       id
     }
@@ -2577,7 +2583,7 @@ fn serialize_ts_type_param(
 
   ctx.write_node(id, AstNode::TSTypeParameter, parent_id, &node.span, 4);
   ctx.write_flags(&flags);
-  ctx.write_id(name_id);
+  ctx.write_prop(AstProp::Name, name_id);
   ctx.write_id(constraint_id);
   ctx.write_id(default_id);
 

@@ -187,6 +187,7 @@ impl From<Flag> for u8 {
 }
 
 // Keep in sync with JS
+#[derive(Debug)]
 pub enum AstNode {
   Invalid,
   //
