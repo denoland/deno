@@ -23,6 +23,7 @@ use deno_semver::package::PackageReq;
 use crate::standalone::virtual_fs::VirtualDirectory;
 
 use super::binary::Metadata;
+use super::virtual_fs::BuiltVfs;
 use super::virtual_fs::VfsBuilder;
 
 const MAGIC_BYTES: &[u8; 8] = b"d3n0l4nd";
@@ -39,7 +40,7 @@ pub fn serialize_binary_data_section(
   metadata: &Metadata,
   npm_snapshot: Option<SerializedNpmResolutionSnapshot>,
   remote_modules: &RemoteModulesStoreBuilder,
-  vfs: VfsBuilder,
+  vfs: &BuiltVfs,
 ) -> Result<Vec<u8>, AnyError> {
   fn write_bytes_with_len(bytes: &mut Vec<u8>, data: &[u8]) {
     bytes.extend_from_slice(&(data.len() as u64).to_le_bytes());
@@ -73,12 +74,11 @@ pub fn serialize_binary_data_section(
   }
   // 4. VFS
   {
-    let (vfs, vfs_files) = vfs.into_dir_and_files();
-    let vfs = serde_json::to_string(&vfs)?;
-    write_bytes_with_len(&mut bytes, vfs.as_bytes());
-    let vfs_bytes_len = vfs_files.iter().map(|f| f.len() as u64).sum::<u64>();
+    let serialized_vfs = serde_json::to_string(&vfs.root)?;
+    write_bytes_with_len(&mut bytes, serialized_vfs.as_bytes());
+    let vfs_bytes_len = vfs.files.iter().map(|f| f.len() as u64).sum::<u64>();
     bytes.extend_from_slice(&vfs_bytes_len.to_le_bytes());
-    for file in &vfs_files {
+    for file in &vfs.files {
       bytes.extend_from_slice(file);
     }
   }

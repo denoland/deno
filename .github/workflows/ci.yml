@@ -180,7 +180,7 @@ jobs:
         name: Install Deno
         uses: denoland/setup-deno@v2
         with:
-          deno-version: v1.x
+          deno-version: v2.x
       - name: Install Python
         uses: actions/setup-python@v5
         with:
@@ -362,7 +362,7 @@ jobs:
             ~/.cargo/registry/index
             ~/.cargo/registry/cache
           key: '30-cargo-home-${{ matrix.os }}-${{ matrix.arch }}-${{ hashFiles(''Cargo.lock'') }}'
-          restore-keys: '30-cargo-home-${{ matrix.os }}-${{ matrix.arch }}'
+          restore-keys: '30-cargo-home-${{ matrix.os }}-${{ matrix.arch }}-'
         if: '!(matrix.skip)'
       - name: Restore cache build output (PR)
         uses: actions/cache/restore@v4
@@ -682,8 +682,8 @@ jobs:
           path: |-
             ./target
             !./target/*/gn_out
+            !./target/*/gn_root
             !./target/*/*.zip
-            !./target/*/*.sha256sum
             !./target/*/*.tar.gz
           key: '30-cargo-target-${{ matrix.os }}-${{ matrix.arch }}-${{ matrix.profile }}-${{ matrix.job }}-${{ github.sha }}'
   publish-canary:

@@ -816,15 +816,17 @@ pub fn wildcard_match_detailed(
             }
             let actual_next_text =
               &current_text[max_current_text_found_index..];
-            let max_next_text_len = 40;
-            let next_text_len =
-              std::cmp::min(max_next_text_len, actual_next_text.len());
+            let next_text_len = actual_next_text
+              .chars()
+              .take(40)
+              .map(|c| c.len_utf8())
+              .sum::<usize>();
             output_lines.push(format!(
               "==== NEXT ACTUAL TEXT ====\n{}{}",
               colors::red(annotate_whitespace(
                 &actual_next_text[..next_text_len]
               )),
-              if actual_next_text.len() > max_next_text_len {
+              if actual_next_text.len() > next_text_len {
                 "[TRUNCATED]"
               } else {
                 ""
