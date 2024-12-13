@@ -59,7 +59,7 @@ const Runners = {
 
 const prCacheKeyPrefix =
   `${cacheVersion}-cargo-target-\${{ matrix.os }}-\${{ matrix.arch }}-\${{ matrix.profile }}-\${{ matrix.job }}-`;
-const prCacheKey = `${prCacheKeyPrefix}\${{ hashFiles('Cargo.lock') }}`;
+const prCacheKey = `${prCacheKeyPrefix}\${{ github.sha }}`;
 const prCachePath = [
   "./target",
   "!./target/*/gn_out",
@@ -631,7 +631,7 @@ const ci = {
             "github.ref != 'refs/heads/main' && !startsWith(github.ref, 'refs/tags/')",
           with: {
             path: prCachePath,
-            key: prCacheKey,
+            key: "never_saved",
             "restore-keys": prCacheKeyPrefix,
           },
         },
