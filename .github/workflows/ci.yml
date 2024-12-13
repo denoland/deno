@@ -174,6 +174,15 @@ jobs:
           mkdir -p target/release
           tar --exclude=".git*" --exclude=target --exclude=third_party/prebuilt \
               -czvf target/release/deno_src.tar.gz -C .. deno
+      - name: Cache Cargo home
+        uses: actions/cache@v4
+        with:
+          path: |-
+            ~/.cargo/registry/index
+            ~/.cargo/registry/cache
+          key: '30-cargo-home-${{ matrix.os }}-${{ matrix.arch }}-${{ hashFiles(''Cargo.lock'') }}'
+          restore-keys: '30-cargo-home-${{ matrix.os }}-${{ matrix.arch }}-'
+        if: '!(matrix.skip)'
       - uses: dsherret/rust-toolchain-file@v1
         if: '!(matrix.skip)'
       - if: '!(matrix.skip) && (matrix.job == ''lint'' || matrix.job == ''test'' || matrix.job == ''bench'')'
@@ -355,15 +364,6 @@ jobs:
       - name: Install benchmark tools
         if: '!(matrix.skip) && (matrix.job == ''bench'')'
         run: ./tools/install_prebuilt.js wrk hyperfine
-      - name: Cache Cargo home
-        uses: actions/cache@v4
-        with:
-          path: |-
-            ~/.cargo/registry/index
-            ~/.cargo/registry/cache
-          key: '30-cargo-home-${{ matrix.os }}-${{ matrix.arch }}-${{ hashFiles(''Cargo.lock'') }}'
-          restore-keys: '30-cargo-home-${{ matrix.os }}-${{ matrix.arch }}-'
-        if: '!(matrix.skip)'
       - name: Restore cache build output (PR)
         uses: actions/cache/restore@v4
         if: '!(matrix.skip) && (github.ref != ''refs/heads/main'' && !startsWith(github.ref, ''refs/tags/''))'

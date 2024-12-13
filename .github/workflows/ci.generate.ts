@@ -484,6 +484,23 @@ const ci = {
             "    -czvf target/release/deno_src.tar.gz -C .. deno",
           ].join("\n"),
         },
+        {
+          name: "Cache Cargo home",
+          uses: "actions/cache@v4",
+          with: {
+            // See https://doc.rust-lang.org/cargo/guide/cargo-home.html#caching-the-cargo-home-in-ci
+            // Note that with the new sparse registry format, we no longer have to cache a `.git` dir
+            path: [
+              "~/.cargo/registry/index",
+              "~/.cargo/registry/cache",
+            ].join("\n"),
+            key:
+              `${cacheVersion}-cargo-home-\${{ matrix.os }}-\${{ matrix.arch }}-\${{ hashFiles('Cargo.lock') }}`,
+            // We will try to restore from the closest cargo-home we can find
+            "restore-keys":
+              `${cacheVersion}-cargo-home-\${{ matrix.os }}-\${{ matrix.arch }}-`,
+          },
+        },
         installRustStep,
         {
           if:
@@ -606,23 +623,6 @@ const ci = {
           run: [
             installBenchTools,
           ].join("\n"),
-        },
-        {
-          name: "Cache Cargo home",
-          uses: "actions/cache@v4",
-          with: {
-            // See https://doc.rust-lang.org/cargo/guide/cargo-home.html#caching-the-cargo-home-in-ci
-            // Note that with the new sparse registry format, we no longer have to cache a `.git` dir
-            path: [
-              "~/.cargo/registry/index",
-              "~/.cargo/registry/cache",
-            ].join("\n"),
-            key:
-              `${cacheVersion}-cargo-home-\${{ matrix.os }}-\${{ matrix.arch }}-\${{ hashFiles('Cargo.lock') }}`,
-            // We will try to restore from the closest cargo-home we can find
-            "restore-keys":
-              `${cacheVersion}-cargo-home-\${{ matrix.os }}-\${{ matrix.arch }}-`,
-          },
         },
         {
           // Restore cache from the latest 'main' branch build.
