@@ -1,7 +1,7 @@
 <!-- deno-fmt-ignore-file -->
 # Remaining Node Tests
 
-1163 tests out of 3681 have been ported from Node 20.11.1 (31.59% ported, 68.92% remaining).
+1155 tests out of 3681 have been ported from Node 20.11.1 (31.38% ported, 69.14% remaining).
 
 NOTE: This file should not be manually edited. Please edit `tests/node_compat/config.json` and run `deno task setup` in `tests/node_compat/runner` dir instead.
 
@@ -792,6 +792,8 @@ NOTE: This file should not be manually edited. Please edit `tests/node_compat/co
 - [parallel/test-http-agent-destroyed-socket.js](https://github.com/nodejs/node/tree/v20.11.1/test/parallel/test-http-agent-destroyed-socket.js)
 - [parallel/test-http-agent-domain-reused-gc.js](https://github.com/nodejs/node/tree/v20.11.1/test/parallel/test-http-agent-domain-reused-gc.js)
 - [parallel/test-http-agent-error-on-idle.js](https://github.com/nodejs/node/tree/v20.11.1/test/parallel/test-http-agent-error-on-idle.js)
+- [parallel/test-http-agent-false.js](https://github.com/nodejs/node/tree/v20.11.1/test/parallel/test-http-agent-false.js)
+- [parallel/test-http-agent-keepalive-delay.js](https://github.com/nodejs/node/tree/v20.11.1/test/parallel/test-http-agent-keepalive-delay.js)
 - [parallel/test-http-agent-keepalive.js](https://github.com/nodejs/node/tree/v20.11.1/test/parallel/test-http-agent-keepalive.js)
 - [parallel/test-http-agent-maxsockets-respected.js](https://github.com/nodejs/node/tree/v20.11.1/test/parallel/test-http-agent-maxsockets-respected.js)
 - [parallel/test-http-agent-maxsockets.js](https://github.com/nodejs/node/tree/v20.11.1/test/parallel/test-http-agent-maxsockets.js)
@@ -848,6 +850,7 @@ NOTE: This file should not be manually edited. Please edit `tests/node_compat/co
 - [parallel/test-http-client-set-timeout.js](https://github.com/nodejs/node/tree/v20.11.1/test/parallel/test-http-client-set-timeout.js)
 - [parallel/test-http-client-spurious-aborted.js](https://github.com/nodejs/node/tree/v20.11.1/test/parallel/test-http-client-spurious-aborted.js)
 - [parallel/test-http-client-timeout-agent.js](https://github.com/nodejs/node/tree/v20.11.1/test/parallel/test-http-client-timeout-agent.js)
+- [parallel/test-http-client-timeout-connect-listener.js](https://github.com/nodejs/node/tree/v20.11.1/test/parallel/test-http-client-timeout-connect-listener.js)
 - [parallel/test-http-client-timeout-event.js](https://github.com/nodejs/node/tree/v20.11.1/test/parallel/test-http-client-timeout-event.js)
 - [parallel/test-http-client-timeout-on-connect.js](https://github.com/nodejs/node/tree/v20.11.1/test/parallel/test-http-client-timeout-on-connect.js)
 - [parallel/test-http-client-timeout-option-listeners.js](https://github.com/nodejs/node/tree/v20.11.1/test/parallel/test-http-client-timeout-option-listeners.js)
@@ -865,6 +868,7 @@ NOTE: This file should not be manually edited. Please edit `tests/node_compat/co
 - [parallel/test-http-destroyed-socket-write2.js](https://github.com/nodejs/node/tree/v20.11.1/test/parallel/test-http-destroyed-socket-write2.js)
 - [parallel/test-http-dns-error.js](https://github.com/nodejs/node/tree/v20.11.1/test/parallel/test-http-dns-error.js)
 - [parallel/test-http-double-content-length.js](https://github.com/nodejs/node/tree/v20.11.1/test/parallel/test-http-double-content-length.js)
+- [parallel/test-http-dump-req-when-res-ends.js](https://github.com/nodejs/node/tree/v20.11.1/test/parallel/test-http-dump-req-when-res-ends.js)
 - [parallel/test-http-early-hints-invalid-argument.js](https://github.com/nodejs/node/tree/v20.11.1/test/parallel/test-http-early-hints-invalid-argument.js)
 - [parallel/test-http-early-hints.js](https://github.com/nodejs/node/tree/v20.11.1/test/parallel/test-http-early-hints.js)
 - [parallel/test-http-exceptions.js](https://github.com/nodejs/node/tree/v20.11.1/test/parallel/test-http-exceptions.js)
@@ -876,6 +880,7 @@ NOTE: This file should not be manually edited. Please edit `tests/node_compat/co
 - [parallel/test-http-header-badrequest.js](https://github.com/nodejs/node/tree/v20.11.1/test/parallel/test-http-header-badrequest.js)
 - [parallel/test-http-header-overflow.js](https://github.com/nodejs/node/tree/v20.11.1/test/parallel/test-http-header-overflow.js)
 - [parallel/test-http-host-header-ipv6-fail.js](https://github.com/nodejs/node/tree/v20.11.1/test/parallel/test-http-host-header-ipv6-fail.js)
+- [parallel/test-http-hostname-typechecking.js](https://github.com/nodejs/node/tree/v20.11.1/test/parallel/test-http-hostname-typechecking.js)
 - [parallel/test-http-incoming-matchKnownFields.js](https://github.com/nodejs/node/tree/v20.11.1/test/parallel/test-http-incoming-matchKnownFields.js)
 - [parallel/test-http-incoming-message-connection-setter.js](https://github.com/nodejs/node/tree/v20.11.1/test/parallel/test-http-incoming-message-connection-setter.js)
 - [parallel/test-http-incoming-message-options.js](https://github.com/nodejs/node/tree/v20.11.1/test/parallel/test-http-incoming-message-options.js)
@@ -2508,9 +2513,12 @@ NOTE: This file should not be manually edited. Please edit `tests/node_compat/co
 - [sequential/test-inspector-port-cluster.js](https://github.com/nodejs/node/tree/v20.11.1/test/sequential/test-inspector-port-cluster.js)
 - [sequential/test-module-loading.js](https://github.com/nodejs/node/tree/v20.11.1/test/sequential/test-module-loading.js)
 - [sequential/test-net-GH-5504.js](https://github.com/nodejs/node/tree/v20.11.1/test/sequential/test-net-GH-5504.js)
+- [sequential/test-net-better-error-messages-port.js](https://github.com/nodejs/node/tree/v20.11.1/test/sequential/test-net-better-error-messages-port.js)
 - [sequential/test-net-connect-econnrefused.js](https://github.com/nodejs/node/tree/v20.11.1/test/sequential/test-net-connect-econnrefused.js)
+- [sequential/test-net-connect-handle-econnrefused.js](https://github.com/nodejs/node/tree/v20.11.1/test/sequential/test-net-connect-handle-econnrefused.js)
 - [sequential/test-net-listen-shared-ports.js](https://github.com/nodejs/node/tree/v20.11.1/test/sequential/test-net-listen-shared-ports.js)
 - [sequential/test-net-localport.js](https://github.com/nodejs/node/tree/v20.11.1/test/sequential/test-net-localport.js)
+- [sequential/test-net-reconnect-error.js](https://github.com/nodejs/node/tree/v20.11.1/test/sequential/test-net-reconnect-error.js)
 - [sequential/test-net-server-address.js](https://github.com/nodejs/node/tree/v20.11.1/test/sequential/test-net-server-address.js)
 - [sequential/test-next-tick-error-spin.js](https://github.com/nodejs/node/tree/v20.11.1/test/sequential/test-next-tick-error-spin.js)
 - [sequential/test-perf-hooks.js](https://github.com/nodejs/node/tree/v20.11.1/test/sequential/test-perf-hooks.js)

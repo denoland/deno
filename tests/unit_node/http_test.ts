@@ -499,7 +499,6 @@ Deno.test("[node/http] send request with non-chunked body", async () => {
     assert(socket.writable);
     assert(socket.readable);
     socket.setKeepAlive();
-    socket.destroy();
     socket.setTimeout(100);
   });
   req.write("hello ");
@@ -512,6 +511,11 @@ Deno.test("[node/http] send request with non-chunked body", async () => {
     // in order to not cause a flaky test sanitizer failure
     await new Promise((resolve) => setTimeout(resolve, 100)),
   ]);
+
+  if (Deno.build.os === "windows") {
+    // FIXME(kt3k): This is necessary for preventing op leak on windows
+    await new Promise((resolve) => setTimeout(resolve, 4000));
+  }
 });
 
 Deno.test("[node/http] send request with chunked body", async () => {
@@ -559,6 +563,11 @@ Deno.test("[node/http] send request with chunked body", async () => {
   req.end();
 
   await servePromise;
+
+  if (Deno.build.os === "windows") {
+    // FIXME(kt3k): This is necessary for preventing op leak on windows
+    await new Promise((resolve) => setTimeout(resolve, 4000));
+  }
 });
 
 Deno.test("[node/http] send request with chunked body as default", async () => {
@@ -604,6 +613,11 @@ Deno.test("[node/http] send request with chunked body as default", async () => {
   req.end();
 
   await servePromise;
+
+  if (Deno.build.os === "windows") {
+    // FIXME(kt3k): This is necessary for preventing op leak on windows
+    await new Promise((resolve) => setTimeout(resolve, 4000));
+  }
 });
 
 Deno.test("[node/http] ServerResponse _implicitHeader", async () => {
@@ -689,7 +703,7 @@ Deno.test("[node/http] ClientRequest handle non-string headers", async () => {
   assertEquals(headers!["1"], "2");
 });
 
-Deno.test("[node/http] ClientRequest uses HTTP/1.1", async () => {
+Deno.test("[node/https] ClientRequest uses HTTP/1.1", async () => {
   let body = "";
   const { promise, resolve, reject } = Promise.withResolvers<void>();
   const req = https.request("https://localhost:5545/http_version", {
@@ -800,8 +814,9 @@ Deno.test("[node/http] ClientRequest search params", async () => {
   let body = "";
   const { promise, resolve, reject } = Promise.withResolvers<void>();
   const req = http.request({
-    host: "localhost:4545",
-    path: "search_params?foo=bar",
+    host: "localhost",
+    port: 4545,
+    path: "/search_params?foo=bar",
   }, (resp) => {
     resp.on("data", (chunk) => {
       body += chunk;
@@ -1011,28 +1026,50 @@ Deno.test(
 
 Deno.test(
   "[node/http] client destroy before sending request should not error",
-  () => {
+  async () => {
+    const { resolve, promise } = Promise.withResolvers<void>();
     const request = http.request("http://localhost:5929/");
     // Calling this would throw
     request.destroy();
+    request.on("error", (e) => {
+      assertEquals(e.message, "socket hang up");
+    });
+    request.on("close", () => resolve());
+    await promise;
+
+    if (Deno.build.os === "windows") {
+      // FIXME(kt3k): This is necessary for preventing op leak on windows
+      await new Promise((resolve) => setTimeout(resolve, 4000));
+    }
   },
 );
 
+const isWindows = Deno.build.os === "windows";
+
 Deno.test(
   "[node/http] destroyed requests should not be sent",
+  { sanitizeResources: !isWindows, sanitizeOps: !isWindows },
   async () => {
     let receivedRequest = false;
-    const server = Deno.serve(() => {
+    const requestClosed = Promise.withResolvers<void>();
+    const ac = new AbortController();
+    const server = Deno.serve({ port: 0, signal: ac.signal }, () => {
       receivedRequest = true;
       return new Response(null);
     });
     const request = http.request(`http://localhost:${server.addr.port}/`);
     request.destroy();
     request.end("hello");
-
-    await new Promise((r) => setTimeout(r, 500));
+    request.on("error", (err) => {
+      assert(err.message.includes("socket hang up"));
+      ac.abort();
+    });
+    request.on("close", () => {
+      requestClosed.resolve();
+    });
+    await requestClosed.promise;
     assertEquals(receivedRequest, false);
-    await server.shutdown();
+    await server.finished;
   },
 );
 
@@ -1060,22 +1097,33 @@ Deno.test("[node/https] node:https exports globalAgent", async () => {
   );
 });
 
-Deno.test("[node/http] node:http request.setHeader(header, null) doesn't throw", () => {
+Deno.test("[node/http] node:http request.setHeader(header, null) doesn't throw", async () => {
   {
-    const req = http.request("http://localhost:4545/");
-    req.on("error", () => {});
+    const { promise, resolve } = Promise.withResolvers<void>();
+    const req = http.request("http://localhost:4545/", (res) => {
+      res.on("data", () => {});
+      res.on("end", () => {
+        resolve();
+      });
+    });
     // @ts-expect-error - null is not a valid header value
     req.setHeader("foo", null);
     req.end();
-    req.destroy();
+    await promise;
   }
   {
-    const req = https.request("https://localhost:4545/");
-    req.on("error", () => {});
+    const { promise, resolve } = Promise.withResolvers<void>();
+    const req = http.request("http://localhost:4545/", (res) => {
+      res.on("data", () => {});
+      res.on("end", () => {
+        resolve();
+      });
+    });
     // @ts-expect-error - null is not a valid header value
     req.setHeader("foo", null);
     req.end();
-    req.destroy();
+
+    await promise;
   }
 });
 
