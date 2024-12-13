@@ -786,11 +786,11 @@ class Meter {
   createCounter(
     name: string,
     options?: MetricOptions,
-  ): Counter | NoopInstrument {
-    if (!METRICS_ENABLED) return new NoopInstrument();
+  ): Counter {
     if (options?.valueType !== undefined && options?.valueType !== 1) {
       throw new Error("Only valueType: DOUBLE is supported");
     }
+    if (!METRICS_ENABLED) return new Counter(null, false);
     activateInstrumentationLibrary(this.#instrumentationLibrary);
     const instrument = op_otel_metric_create_counter(
       name,
@@ -804,11 +804,11 @@ class Meter {
   createUpDownCounter(
     name: string,
     options?: MetricOptions,
-  ): Counter | NoopInstrument {
-    if (!METRICS_ENABLED) return new NoopInstrument();
+  ): Counter {
     if (options?.valueType !== undefined && options?.valueType !== 1) {
       throw new Error("Only valueType: DOUBLE is supported");
     }
+    if (!METRICS_ENABLED) return new Counter(null, true);
     activateInstrumentationLibrary(this.#instrumentationLibrary);
     const instrument = op_otel_metric_create_up_down_counter(
       name,
@@ -822,11 +822,11 @@ class Meter {
   createGauge(
     name: string,
     options?: MetricOptions,
-  ): Gauge | NoopInstrument {
-    if (!METRICS_ENABLED) return new NoopInstrument();
+  ): Gauge {
     if (options?.valueType !== undefined && options?.valueType !== 1) {
       throw new Error("Only valueType: DOUBLE is supported");
     }
+    if (!METRICS_ENABLED) return new Gauge(null);
     activateInstrumentationLibrary(this.#instrumentationLibrary);
     const instrument = op_otel_metric_create_gauge(
       name,
@@ -840,11 +840,11 @@ class Meter {
   createHistogram(
     name: string,
     options?: MetricOptions,
-  ): Histogram | NoopInstrument {
-    if (!METRICS_ENABLED) return new NoopInstrument();
+  ): Histogram {
     if (options?.valueType !== undefined && options?.valueType !== 1) {
       throw new Error("Only valueType: DOUBLE is supported");
     }
+    if (!METRICS_ENABLED) return new Histogram(null);
     activateInstrumentationLibrary(this.#instrumentationLibrary);
     const instrument = op_otel_metric_create_histogram(
       name,
@@ -859,11 +859,11 @@ class Meter {
   createObservableCounter(
     name: string,
     options?: MetricOptions,
-  ): Observable | NoopInstrument {
-    if (!METRICS_ENABLED) return new NoopInstrument();
+  ): Observable {
     if (options?.valueType !== undefined && options?.valueType !== 1) {
       throw new Error("Only valueType: DOUBLE is supported");
     }
+    if (!METRICS_ENABLED) new Observable(new ObservableResult(null, true));
     activateInstrumentationLibrary(this.#instrumentationLibrary);
     const instrument = op_otel_metric_create_observable_counter(
       name,
@@ -877,11 +877,11 @@ class Meter {
   createObservableGauge(
     name: string,
     options?: MetricOptions,
-  ): Observable | NoopInstrument {
-    if (!METRICS_ENABLED) return new NoopInstrument();
+  ): Observable {
     if (options?.valueType !== undefined && options?.valueType !== 1) {
       throw new Error("Only valueType: DOUBLE is supported");
     }
+    if (!METRICS_ENABLED) new Observable(new ObservableResult(null, false));
     activateInstrumentationLibrary(this.#instrumentationLibrary);
     const instrument = op_otel_metric_create_observable_gauge(
       name,
@@ -895,11 +895,11 @@ class Meter {
   createObservableUpDownCounter(
     name: string,
     options?: MetricOptions,
-  ): Observable | NoopInstrument {
-    if (!METRICS_ENABLED) return new NoopInstrument();
+  ): Observable {
     if (options?.valueType !== undefined && options?.valueType !== 1) {
       throw new Error("Only valueType: DOUBLE is supported");
     }
+    if (!METRICS_ENABLED) new Observable(new ObservableResult(null, false));
     activateInstrumentationLibrary(this.#instrumentationLibrary);
     const instrument = op_otel_metric_create_observable_up_down_counter(
       name,
@@ -932,22 +932,16 @@ class Meter {
   }
 }
 
-class NoopInstrument {
-  add(_value: number, _attributes?: MetricAttributes, _context?: Context) {}
-  record(_value: number, _attributes?: MetricAttributes, _context?: Context) {}
-  addCallback(_callback: ObservableCallback) {}
-  removeCallback(_callback: ObservableCallback) {}
-}
-
 type BatchObservableCallback = (
   observableResult: BatchObservableResult,
 ) => void | Promise<void>;
 
 function record(
-  instrument: Instrument,
+  instrument: Instrument | null,
   value: number,
   attributes?: MetricAttributes,
 ) {
+  if (instrument === null) return;
   if (attributes === undefined) {
     op_otel_metric_record0(instrument, value);
   } else {
@@ -1006,10 +1000,11 @@ function record(
 }
 
 function recordObservable(
-  instrument: Instrument,
+  instrument: Instrument | null,
   value: number,
   attributes?: MetricAttributes,
 ) {
+  if (instrument === null) return;
   if (attributes === undefined) {
     op_otel_metric_observable_record0(instrument, value);
   } else {
@@ -1068,10 +1063,10 @@ function recordObservable(
 }
 
 class Counter {
-  #instrument: Instrument;
+  #instrument: Instrument | null;
   #upDown: boolean;
 
-  constructor(instrument: Instrument, upDown: boolean) {
+  constructor(instrument: Instrument | null, upDown: boolean) {
     this.#instrument = instrument;
     this.#upDown = upDown;
   }
@@ -1085,9 +1080,9 @@ class Counter {
 }
 
 class Gauge {
-  #instrument: Instrument;
+  #instrument: Instrument | null;
 
-  constructor(instrument: Instrument) {
+  constructor(instrument: Instrument | null) {
     this.#instrument = instrument;
   }
 
@@ -1101,9 +1096,9 @@ class Gauge {
 }
 
 class Histogram {
-  #instrument: Instrument;
+  #instrument: Instrument | null;
 
-  constructor(instrument: Instrument) {
+  constructor(instrument: Instrument | null) {
     this.#instrument = instrument;
   }
 
@@ -1148,10 +1143,10 @@ class Observable {
 }
 
 class ObservableResult {
-  #instrument: Instrument;
+  #instrument: Instrument | null;
   #isRegularCounter: boolean;
 
-  constructor(instrument: Instrument, isRegularCounter: boolean) {
+  constructor(instrument: Instrument | null, isRegularCounter: boolean) {
     this.#instrument = instrument;
     this.#isRegularCounter = isRegularCounter;
   }
