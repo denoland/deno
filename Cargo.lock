@@ -830,7 +830,7 @@ dependencies = [
  "hickory-server",
  "http 1.1.0",
  "http-body-util",
- "hyper 1.5.1",
+ "hyper 1.4.1",
  "hyper-util",
  "nix",
  "once_cell",
@@ -1641,7 +1641,7 @@ dependencies = [
  "hickory-resolver",
  "http 1.1.0",
  "http-body-util",
- "hyper 1.5.1",
+ "hyper 1.4.1",
  "hyper-rustls",
  "hyper-util",
  "ipnet",
@@ -1752,7 +1752,7 @@ dependencies = [
  "http-body-util",
  "httparse",
  "hyper 0.14.28",
- "hyper 1.5.1",
+ "hyper 1.4.1",
  "hyper-util",
  "itertools 0.10.5",
  "memmem",
@@ -1949,7 +1949,7 @@ dependencies = [
  "home",
  "http 1.1.0",
  "http-body-util",
- "hyper 1.5.1",
+ "hyper 1.4.1",
  "hyper-util",
  "idna",
  "indexmap 2.3.0",
@@ -2171,7 +2171,7 @@ dependencies = [
  "http 1.1.0",
  "http-body-util",
  "hyper 0.14.28",
- "hyper 1.5.1",
+ "hyper 1.4.1",
  "hyper-util",
  "libc",
  "log",
@@ -2239,7 +2239,7 @@ dependencies = [
  "async-trait",
  "deno_core",
  "http-body-util",
- "hyper 1.5.1",
+ "hyper 1.4.1",
  "hyper-util",
  "log",
  "once_cell",
@@ -2391,7 +2391,7 @@ dependencies = [
  "h2 0.4.4",
  "http 1.1.0",
  "http-body-util",
- "hyper 1.5.1",
+ "hyper 1.4.1",
  "hyper-util",
  "once_cell",
  "rustls-tokio-stream",
@@ -3109,7 +3109,7 @@ dependencies = [
  "base64 0.21.7",
  "bytes",
  "http-body-util",
- "hyper 1.5.1",
+ "hyper 1.4.1",
  "hyper-util",
  "pin-project",
  "rand",
@@ -3970,9 +3970,9 @@ dependencies = [
 
 [[package]]
 name = "hyper"
-version = "1.5.1"
+version = "1.4.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "97818827ef4f364230e16705d4706e2897df2bb60617d6ca15d598025a3c481f"
+checksum = "50dfd22e0e76d0f662d429a5f80fcaf3855009297eab6a0a9f8543834744ba05"
 dependencies = [
  "bytes",
  "futures-channel",
@@ -3997,7 +3997,7 @@ checksum = "5ee4be2c948921a1a5320b629c4193916ed787a7f7f293fd3f7f5a6c9de74155"
 dependencies = [
  "futures-util",
  "http 1.1.0",
- "hyper 1.5.1",
+ "hyper 1.4.1",
  "hyper-util",
  "rustls",
  "rustls-pki-types",
@@ -4013,7 +4013,7 @@ version = "0.5.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3203a961e5c83b6f5498933e78b6b263e208c197b63e9c6c53cc82ffd3f63793"
 dependencies = [
- "hyper 1.5.1",
+ "hyper 1.4.1",
  "hyper-util",
  "pin-project-lite",
  "tokio",
@@ -4031,7 +4031,7 @@ dependencies = [
  "futures-util",
  "http 1.1.0",
  "http-body 1.0.0",
- "hyper 1.5.1",
+ "hyper 1.4.1",
  "pin-project-lite",
  "socket2",
  "tokio",
@@ -6150,7 +6150,7 @@ dependencies = [
  "http 1.1.0",
  "http-body 1.0.0",
  "http-body-util",
- "hyper 1.5.1",
+ "hyper 1.4.1",
  "hyper-rustls",
  "hyper-util",
  "ipnet",
@@ -7658,7 +7658,7 @@ dependencies = [
  "h2 0.4.4",
  "http 1.1.0",
  "http-body-util",
- "hyper 1.5.1",
+ "hyper 1.4.1",
  "hyper-util",
  "jsonc-parser",
  "lazy-regex",
@@ -7953,7 +7953,7 @@ dependencies = [
  "http 1.1.0",
  "http-body 1.0.0",
  "http-body-util",
- "hyper 1.5.1",
+ "hyper 1.4.1",
  "hyper-timeout",
  "hyper-util",
  "percent-encoding",
