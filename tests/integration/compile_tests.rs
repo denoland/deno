@@ -1091,7 +1091,7 @@ Warning Failed resolving symlink. Ignoring.
     Path: [WILDCARD]
     Message: [WILDCARD])
 
-Embedded File System
+Embedded Files
 
 [WILDCARD]
 

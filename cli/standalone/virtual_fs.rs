@@ -35,6 +35,7 @@ use serde::Serialize;
 use thiserror::Error;
 
 use crate::util;
+use crate::util::display::human_size;
 use crate::util::display::DisplayTreeNode;
 use crate::util::fs::canonicalize_path;
 
@@ -512,96 +513,233 @@ pub fn output_vfs(vfs: &BuiltVfs, executable_name: &str) {
   let mut text = String::new();
   let display_tree = vfs_as_display_tree(vfs, executable_name);
   display_tree.print(&mut text).unwrap(); // unwrap ok because it's writing to a string
-  log::info!(
-    "\n{}\n",
-    deno_terminal::colors::bold("Embedded File System")
-  );
+  log::info!("\n{}\n", deno_terminal::colors::bold("Embedded Files"));
   log::info!("{}\n", text.trim());
+  log::info!(
+    "Size: {}\n",
+    human_size(vfs.files.iter().map(|f| f.len() as f64).sum())
+  );
 }
 
 fn vfs_as_display_tree(
   vfs: &BuiltVfs,
   executable_name: &str,
 ) -> DisplayTreeNode {
+  /// The VFS only stores duplicate files once, so track that and display
+  /// it to the user so that it's not confusing.
+  #[derive(Debug, Default, Copy, Clone)]
+  struct Size {
+    unique: u64,
+    total: u64,
+  }
+
+  impl std::ops::Add for Size {
+    type Output = Self;
+
+    fn add(self, other: Self) -> Self {
+      Self {
+        unique: self.unique + other.unique,
+        total: self.total + other.total,
+      }
+    }
+  }
+
+  impl std::iter::Sum for Size {
+    fn sum<I: Iterator<Item = Self>>(iter: I) -> Self {
+      iter.fold(Self::default(), std::ops::Add::add)
+    }
+  }
+
   enum EntryOutput<'a> {
-    All,
+    All(Size),
     Subset(Vec<DirEntryOutput<'a>>),
-    File,
+    File(Size),
     Symlink(&'a [String]),
   }
 
   impl<'a> EntryOutput<'a> {
-    pub fn as_display_tree(&self, name: String) -> DisplayTreeNode {
-      let mut children = match self {
-        EntryOutput::Subset(vec) => vec
-          .iter()
-          .map(|e| e.output.as_display_tree(e.name.to_string()))
-          .collect(),
-        EntryOutput::All | EntryOutput::File | EntryOutput::Symlink(_) => {
-          vec![]
+    pub fn size(&self) -> Size {
+      match self {
+        EntryOutput::All(size) => *size,
+        EntryOutput::Subset(children) => {
+          children.iter().map(|c| c.output.size()).sum()
         }
-      };
-      // we only want to collapse leafs so that nodes of the
-      // same depth have the same indentation
-      let collapse_single_child =
-        children.len() == 1 && children[0].children.is_empty();
+        EntryOutput::File(size) => *size,
+        EntryOutput::Symlink(_) => Size {
+          unique: 0,
+          total: 0,
+        },
+      }
+    }
+  }
+
+  impl<'a> EntryOutput<'a> {
+    pub fn as_display_tree(&self, name: String) -> DisplayTreeNode {
+      fn format_size(size: Size) -> String {
+        if size.unique == size.total {
+          human_size(size.unique as f64)
+        } else {
+          format!(
+            "{} - {}",
+            human_size(size.total as f64),
+            deno_terminal::colors::gray(format!(
+              "{} unique",
+              human_size(size.unique as f64)
+            ))
+          )
+        }
+      }
+
       DisplayTreeNode {
         text: match self {
-          EntryOutput::All => format!("{}/*", name),
-          EntryOutput::Subset(_) => {
-            if collapse_single_child {
-              format!("{}/{}", name, children[0].text)
-            } else {
-              name
-            }
+          EntryOutput::All(size) => {
+            format!("{}/* ({})", name, format_size(*size))
           }
-          EntryOutput::File => name,
+          EntryOutput::Subset(children) => {
+            let size = children.iter().map(|c| c.output.size()).sum::<Size>();
+            format!("{} ({})", name, format_size(size))
+          }
+          EntryOutput::File(size) => {
+            format!("{} ({})", name, format_size(*size))
+          }
           EntryOutput::Symlink(parts) => {
             format!("{} --> {}", name, parts.join("/"))
           }
         },
-        children: if collapse_single_child {
-          children.remove(0).children
-        } else {
-          children
+        children: match self {
+          EntryOutput::All(_) => Vec::new(),
+          EntryOutput::Subset(children) => children
+            .iter()
+            .map(|entry| entry.output.as_display_tree(entry.name.to_string()))
+            .collect(),
+          EntryOutput::File(_) => Vec::new(),
+          EntryOutput::Symlink(_) => Vec::new(),
         },
       }
     }
   }
 
   pub struct DirEntryOutput<'a> {
-    name: &'a str,
+    name: Cow<'a, str>,
     output: EntryOutput<'a>,
   }
 
-  fn show_global_node_modules_dir(
-    vfs_dir: &VirtualDirectory,
-  ) -> Vec<DirEntryOutput> {
-    fn show_subset_deep(
-      vfs_dir: &VirtualDirectory,
-      depth: usize,
-    ) -> EntryOutput {
-      if depth == 0 {
-        EntryOutput::All
+  impl<'a> DirEntryOutput<'a> {
+    /// Collapses leaf nodes so they don't take up so much space when being
+    /// displayed.
+    ///
+    /// We only want to collapse leafs so that nodes of the same depth have
+    /// the same indentation.
+    pub fn collapse_leaf_nodes(&mut self) {
+      let EntryOutput::Subset(vec) = &mut self.output else {
+        return;
+      };
+      for dir_entry in vec.iter_mut() {
+        dir_entry.collapse_leaf_nodes();
+      }
+      if vec.len() != 1 {
+        return;
+      }
+      let child = &mut vec[0];
+      let child_name = &child.name;
+      match &mut child.output {
+        EntryOutput::All(size) => {
+          self.name = Cow::Owned(format!("{}/{}", self.name, child_name));
+          self.output = EntryOutput::All(*size);
+        }
+        EntryOutput::Subset(children) => {
+          if children.is_empty() {
+            self.name = Cow::Owned(format!("{}/{}", self.name, child_name));
+            self.output = EntryOutput::Subset(vec![]);
+          }
+        }
+        EntryOutput::File(size) => {
+          self.name = Cow::Owned(format!("{}/{}", self.name, child_name));
+          self.output = EntryOutput::File(*size);
+        }
+        EntryOutput::Symlink(parts) => {
+          let new_name = format!("{}/{}", self.name, child_name);
+          self.output = EntryOutput::Symlink(parts);
+          self.name = Cow::Owned(new_name);
+        }
+      }
+    }
+  }
+
+  fn file_size(file: &VirtualFile, seen_offsets: &mut HashSet<u64>) -> Size {
+    let mut size = if seen_offsets.insert(file.offset.offset) {
+      Size {
+        unique: file.offset.len,
+        total: file.offset.len,
+      }
+    } else {
+      Size {
+        unique: 0,
+        total: file.offset.len,
+      }
+    };
+    if file.module_graph_offset.offset != file.offset.offset {
+      if seen_offsets.insert(file.module_graph_offset.offset) {
+        size.total += file.module_graph_offset.len;
+        size.unique += file.module_graph_offset.len;
       } else {
-        EntryOutput::Subset(show_subset(vfs_dir, depth))
+        size.total += file.module_graph_offset.len;
+      }
+    }
+    size
+  }
+
+  fn dir_size(dir: &VirtualDirectory, seen_offsets: &mut HashSet<u64>) -> Size {
+    let mut size = Size::default();
+    for entry in &dir.entries {
+      match entry {
+        VfsEntry::Dir(virtual_directory) => {
+          size = size + dir_size(virtual_directory, seen_offsets);
+        }
+        VfsEntry::File(file) => {
+          size = size + file_size(file, seen_offsets);
+        }
+        VfsEntry::Symlink(_) => {
+          // ignore
+        }
+      }
+    }
+    size
+  }
+
+  fn show_global_node_modules_dir<'a>(
+    vfs_dir: &'a VirtualDirectory,
+    seen_offsets: &mut HashSet<u64>,
+  ) -> Vec<DirEntryOutput<'a>> {
+    fn show_subset_deep<'a>(
+      vfs_dir: &'a VirtualDirectory,
+      depth: usize,
+      seen_offsets: &mut HashSet<u64>,
+    ) -> EntryOutput<'a> {
+      if depth == 0 {
+        EntryOutput::All(dir_size(vfs_dir, seen_offsets))
+      } else {
+        EntryOutput::Subset(show_subset(vfs_dir, depth, seen_offsets))
       }
     }
 
-    fn show_subset(
-      vfs_dir: &VirtualDirectory,
+    fn show_subset<'a>(
+      vfs_dir: &'a VirtualDirectory,
       depth: usize,
-    ) -> Vec<DirEntryOutput> {
+      seen_offsets: &mut HashSet<u64>,
+    ) -> Vec<DirEntryOutput<'a>> {
       vfs_dir
         .entries
         .iter()
         .map(|entry| DirEntryOutput {
-          name: entry.name(),
+          name: Cow::Borrowed(entry.name()),
           output: match entry {
             VfsEntry::Dir(virtual_directory) => {
-              show_subset_deep(virtual_directory, depth - 1)
+              show_subset_deep(virtual_directory, depth - 1, seen_offsets)
             }
-            VfsEntry::File(_) => EntryOutput::File,
+            VfsEntry::File(file) => {
+              EntryOutput::File(file_size(file, seen_offsets))
+            }
             VfsEntry::Symlink(virtual_symlink) => {
               EntryOutput::Symlink(&virtual_symlink.dest_parts.0)
             }
@@ -612,40 +750,55 @@ fn vfs_as_display_tree(
 
     // in this scenario, we want to show
     // .deno_compile_node_modules/localhost/<package_name>/<version>/*
-    show_subset(vfs_dir, 3)
+    show_subset(vfs_dir, 3, seen_offsets)
   }
 
   fn include_all_entries<'a>(
     dir_path: &WindowsSystemRootablePath,
     vfs_dir: &'a VirtualDirectory,
+    seen_offsets: &mut HashSet<u64>,
   ) -> Vec<DirEntryOutput<'a>> {
     if vfs_dir.name == DENO_COMPILE_GLOBAL_NODE_MODULES_DIR_NAME {
-      return show_global_node_modules_dir(vfs_dir);
+      return show_global_node_modules_dir(vfs_dir, seen_offsets);
     }
 
     vfs_dir
       .entries
       .iter()
       .map(|entry| DirEntryOutput {
-        name: entry.name(),
-        output: analyze_entry(dir_path.join(entry.name()), entry),
+        name: Cow::Borrowed(entry.name()),
+        output: analyze_entry(dir_path.join(entry.name()), entry, seen_offsets),
       })
       .collect()
   }
 
-  fn analyze_entry(path: PathBuf, entry: &VfsEntry) -> EntryOutput {
+  fn analyze_entry<'a>(
+    path: PathBuf,
+    entry: &'a VfsEntry,
+
+    seen_offsets: &mut HashSet<u64>,
+  ) -> EntryOutput<'a> {
     match entry {
-      VfsEntry::Dir(virtual_directory) => analyze_dir(path, virtual_directory),
-      VfsEntry::File(_) => EntryOutput::File,
+      VfsEntry::Dir(virtual_directory) => {
+        analyze_dir(path, virtual_directory, seen_offsets)
+      }
+      VfsEntry::File(file) => EntryOutput::File(file_size(file, seen_offsets)),
       VfsEntry::Symlink(virtual_symlink) => {
         EntryOutput::Symlink(&virtual_symlink.dest_parts.0)
       }
     }
   }
 
-  fn analyze_dir(dir: PathBuf, vfs_dir: &VirtualDirectory) -> EntryOutput {
+  fn analyze_dir<'a>(
+    dir: PathBuf,
+    vfs_dir: &'a VirtualDirectory,
+    seen_offsets: &mut HashSet<u64>,
+  ) -> EntryOutput<'a> {
     if vfs_dir.name == DENO_COMPILE_GLOBAL_NODE_MODULES_DIR_NAME {
-      return EntryOutput::Subset(show_global_node_modules_dir(vfs_dir));
+      return EntryOutput::Subset(show_global_node_modules_dir(
+        vfs_dir,
+        seen_offsets,
+      ));
     }
 
     let real_entry_count = std::fs::read_dir(&dir)
@@ -657,15 +810,15 @@ fn vfs_as_display_tree(
         .entries
         .iter()
         .map(|entry| DirEntryOutput {
-          name: entry.name(),
-          output: analyze_entry(dir.join(entry.name()), entry),
+          name: Cow::Borrowed(entry.name()),
+          output: analyze_entry(dir.join(entry.name()), entry, seen_offsets),
         })
         .collect::<Vec<_>>();
       if children
         .iter()
-        .all(|c| !matches!(c.output, EntryOutput::Subset(_)))
+        .all(|c| !matches!(c.output, EntryOutput::Subset { .. }))
       {
-        EntryOutput::All
+        EntryOutput::All(children.iter().map(|c| c.output.size()).sum())
       } else {
         EntryOutput::Subset(children)
       }
@@ -673,13 +826,19 @@ fn vfs_as_display_tree(
       EntryOutput::Subset(include_all_entries(
         &WindowsSystemRootablePath::Path(dir),
         vfs_dir,
+        seen_offsets,
       ))
     }
   }
 
   // always include all the entries for the root directory, otherwise the
   // user might not have context about what's being shown
-  let child_entries = include_all_entries(&vfs.root_path, &vfs.root);
+  let mut seen_offsets = HashSet::with_capacity(vfs.files.len());
+  let mut child_entries =
+    include_all_entries(&vfs.root_path, &vfs.root, &mut seen_offsets);
+  for child_entry in &mut child_entries {
+    child_entry.collapse_leaf_nodes();
+  }
   DisplayTreeNode {
     text: deno_terminal::colors::italic(executable_name).to_string(),
     children: child_entries
