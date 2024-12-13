@@ -743,13 +743,16 @@ fn get_node_completions(
   }
   let items = SUPPORTED_BUILTIN_NODE_MODULES
     .iter()
-    .map(|name| {
+    .filter_map(|name| {
+      if name.starts_with('_') {
+        return None;
+      }
       let specifier = format!("node:{}", name);
       let text_edit = Some(lsp::CompletionTextEdit::Edit(lsp::TextEdit {
         range: *range,
         new_text: specifier.clone(),
       }));
-      lsp::CompletionItem {
+      Some(lsp::CompletionItem {
         label: specifier,
         kind: Some(lsp::CompletionItemKind::FILE),
         detail: Some("(node)".to_string()),
@@ -758,7 +761,7 @@ fn get_node_completions(
           IMPORT_COMMIT_CHARS.iter().map(|&c| c.into()).collect(),
         ),
         ..Default::default()
-      }
+      })
     })
     .collect();
   Some(CompletionList {

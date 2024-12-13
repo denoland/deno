@@ -1716,7 +1716,11 @@ pub async fn run_tests_with_watch(
           &cli_options.permissions_options(),
         )?;
         let graph = module_graph_creator
-          .create_graph(graph_kind, test_modules)
+          .create_graph(
+            graph_kind,
+            test_modules,
+            crate::graph_util::NpmCachingStrategy::Eager,
+          )
           .await?;
         module_graph_creator.graph_valid(&graph)?;
         let test_modules = &graph.roots;

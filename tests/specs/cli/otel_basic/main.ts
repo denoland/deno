@@ -13,6 +13,7 @@ const server = Deno.serve(
       const command = new Deno.Command(Deno.execPath(), {
         args: ["run", "-A", "-q", "--unstable-otel", Deno.args[0]],
         env: {
+          OTEL_DENO: "true",
           DENO_UNSTABLE_OTEL_DETERMINISTIC: "1",
           OTEL_EXPORTER_OTLP_PROTOCOL: "http/json",
           OTEL_EXPORTER_OTLP_ENDPOINT: `http://localhost:${port}`,

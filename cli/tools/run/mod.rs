@@ -198,13 +198,23 @@ pub async fn eval_command(
 }
 
 pub async fn maybe_npm_install(factory: &CliFactory) -> Result<(), AnyError> {
+  let cli_options = factory.cli_options()?;
   // ensure an "npm install" is done if the user has explicitly
   // opted into using a managed node_modules directory
-  if factory.cli_options()?.node_modules_dir()?
-    == Some(NodeModulesDirMode::Auto)
-  {
+  if cli_options.node_modules_dir()? == Some(NodeModulesDirMode::Auto) {
     if let Some(npm_resolver) = factory.npm_resolver().await?.as_managed() {
-      npm_resolver.ensure_top_level_package_json_install().await?;
+      let already_done =
+        npm_resolver.ensure_top_level_package_json_install().await?;
+      if !already_done
+        && matches!(
+          cli_options.default_npm_caching_strategy(),
+          crate::graph_util::NpmCachingStrategy::Eager
+        )
+      {
+        npm_resolver
+          .cache_packages(crate::npm::PackageCaching::All)
+          .await?;
+      }
     }
   }
   Ok(())

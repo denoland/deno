@@ -538,7 +538,11 @@ pub async fn run_benchmarks_with_watch(
         )?;
 
         let graph = module_graph_creator
-          .create_graph(graph_kind, collected_bench_modules.clone())
+          .create_graph(
+            graph_kind,
+            collected_bench_modules.clone(),
+            crate::graph_util::NpmCachingStrategy::Eager,
+          )
           .await?;
         module_graph_creator.graph_valid(&graph)?;
         let bench_modules = &graph.roots;

@@ -206,9 +206,6 @@ pub enum FetchError {
   RequestBuilderHook(deno_core::error::AnyError),
   #[error(transparent)]
   Io(#[from] std::io::Error),
-  // Only used for node upgrade
-  #[error(transparent)]
-  Hyper(#[from] hyper::Error),
 }
 
 pub type CancelableResponseFuture =

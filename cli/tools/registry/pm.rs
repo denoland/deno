@@ -432,9 +432,8 @@ pub async fn add(
   let mut package_reqs = Vec::with_capacity(add_flags.packages.len());
 
   for entry_text in add_flags.packages.iter() {
-    let req = AddRmPackageReq::parse(entry_text).with_context(|| {
-      format!("Failed to parse package required: {}", entry_text)
-    })?;
+    let req = AddRmPackageReq::parse(entry_text)
+      .with_context(|| format!("Failed to parse package: {}", entry_text))?;
 
     match req {
       Ok(add_req) => package_reqs.push(add_req),
@@ -805,9 +804,8 @@ pub async fn remove(
   let mut removed_packages = vec![];
 
   for package in &remove_flags.packages {
-    let req = AddRmPackageReq::parse(package).with_context(|| {
-      format!("Failed to parse package required: {}", package)
-    })?;
+    let req = AddRmPackageReq::parse(package)
+      .with_context(|| format!("Failed to parse package: {}", package))?;
     let mut parsed_pkg_name = None;
     for config in configs.iter_mut().flatten() {
       match &req {
