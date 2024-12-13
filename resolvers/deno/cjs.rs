@@ -1,13 +1,11 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
-#[allow(clippy::disallowed_types)]
-use crate::sync::MaybeArc;
-use dashmap::DashMap;
+use crate::sync::MaybeDashMap;
 use deno_media_type::MediaType;
 use node_resolver::env::NodeResolverEnv;
 use node_resolver::errors::ClosestPkgJsonError;
-use node_resolver::InNpmPackageChecker;
-use node_resolver::PackageJsonResolver;
+use node_resolver::InNpmPackageCheckerRc;
+use node_resolver::PackageJsonResolverRc;
 use node_resolver::ResolutionMode;
 use url::Url;
 
@@ -19,14 +17,13 @@ use url::Url;
 #[derive(Debug)]
 pub struct CjsTracker<TEnv: NodeResolverEnv> {
   is_cjs_resolver: IsCjsResolver<TEnv>,
-  known: DashMap<Url, ResolutionMode>,
+  known: MaybeDashMap<Url, ResolutionMode>,
 }
 
 impl<TEnv: NodeResolverEnv> CjsTracker<TEnv> {
-  #[allow(clippy::disallowed_types)]
   pub fn new(
-    in_npm_pkg_checker: MaybeArc<dyn InNpmPackageChecker>,
-    pkg_json_resolver: MaybeArc<PackageJsonResolver<TEnv>>,
+    in_npm_pkg_checker: InNpmPackageCheckerRc,
+    pkg_json_resolver: PackageJsonResolverRc<TEnv>,
     mode: IsCjsResolutionMode,
   ) -> Self {
     Self {
@@ -128,18 +125,15 @@ pub enum IsCjsResolutionMode {
 /// Resolves whether a module is CJS or ESM.
 #[derive(Debug)]
 pub struct IsCjsResolver<TEnv: NodeResolverEnv> {
-  #[allow(clippy::disallowed_types)]
-  in_npm_pkg_checker: MaybeArc<dyn InNpmPackageChecker>,
-  #[allow(clippy::disallowed_types)]
-  pkg_json_resolver: MaybeArc<PackageJsonResolver<TEnv>>,
+  in_npm_pkg_checker: InNpmPackageCheckerRc,
+  pkg_json_resolver: PackageJsonResolverRc<TEnv>,
   mode: IsCjsResolutionMode,
 }
 
 impl<TEnv: NodeResolverEnv> IsCjsResolver<TEnv> {
-  #[allow(clippy::disallowed_types)]
   pub fn new(
-    in_npm_pkg_checker: MaybeArc<dyn InNpmPackageChecker>,
-    pkg_json_resolver: MaybeArc<PackageJsonResolver<TEnv>>,
+    in_npm_pkg_checker: InNpmPackageCheckerRc,
+    pkg_json_resolver: PackageJsonResolverRc<TEnv>,
     mode: IsCjsResolutionMode,
   ) -> Self {
     Self {
@@ -189,7 +183,7 @@ impl<TEnv: NodeResolverEnv> IsCjsResolver<TEnv> {
     specifier: &Url,
     media_type: MediaType,
     is_script: Option<bool>,
-    known_cache: &DashMap<Url, ResolutionMode>,
+    known_cache: &MaybeDashMap<Url, ResolutionMode>,
   ) -> Option<ResolutionMode> {
     if specifier.scheme() != "file" {
       return Some(ResolutionMode::Import);

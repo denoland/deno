@@ -6,6 +6,7 @@ use std::path::PathBuf;
 
 use deno_package_json::PackageJson;
 use deno_package_json::PackageJsonDepValue;
+use deno_package_json::PackageJsonRc;
 use deno_path_util::url_to_file_path;
 use deno_semver::package::PackageReq;
 use deno_semver::Version;
@@ -48,6 +49,10 @@ pub struct ByonmNpmResolverCreateOptions<
   pub pkg_json_resolver: PackageJsonResolverRc<TEnv>,
 }
 
+#[allow(clippy::disallowed_types)]
+pub type ByonmNpmResolverRc<Fs, TEnv> =
+  crate::sync::MaybeArc<ByonmNpmResolver<Fs, TEnv>>;
+
 #[derive(Debug)]
 pub struct ByonmNpmResolver<Fs: DenoResolverFs, TEnv: NodeResolverEnv> {
   fs: Fs,
@@ -80,22 +85,19 @@ impl<Fs: DenoResolverFs, TEnv: NodeResolverEnv> ByonmNpmResolver<Fs, TEnv> {
     self.root_node_modules_dir.as_deref()
   }
 
-  #[allow(clippy::disallowed_types)]
   fn load_pkg_json(
     &self,
     path: &Path,
-  ) -> Result<Option<crate::sync::MaybeArc<PackageJson>>, PackageJsonLoadError>
-  {
+  ) -> Result<Option<PackageJsonRc>, PackageJsonLoadError> {
     self.pkg_json_resolver.load_package_json(path)
   }
 
   /// Finds the ancestor package.json that contains the specified dependency.
-  #[allow(clippy::disallowed_types)]
   pub fn find_ancestor_package_json_with_dep(
     &self,
     dep_name: &str,
     referrer: &Url,
-  ) -> Option<crate::sync::MaybeArc<PackageJson>> {
+  ) -> Option<PackageJsonRc> {
     let referrer_path = url_to_file_path(referrer).ok()?;
     let mut current_folder = referrer_path.parent()?;
     loop {
@@ -171,15 +173,11 @@ impl<Fs: DenoResolverFs, TEnv: NodeResolverEnv> ByonmNpmResolver<Fs, TEnv> {
     }
   }
 
-  #[allow(clippy::disallowed_types)]
   fn resolve_pkg_json_and_alias_for_req(
     &self,
     req: &PackageReq,
     referrer: &Url,
-  ) -> Result<
-    Option<(crate::sync::MaybeArc<PackageJson>, String)>,
-    PackageJsonLoadError,
-  > {
+  ) -> Result<Option<(PackageJsonRc, String)>, PackageJsonLoadError> {
     fn resolve_alias_from_pkg_json(
       req: &PackageReq,
       pkg_json: &PackageJson,
