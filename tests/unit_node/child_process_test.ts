@@ -657,14 +657,15 @@ Deno.test({
 });
 
 Deno.test({
-  name: "[node/child_process spawn] child inherits Deno.env when options.env is not provided",
+  name:
+    "[node/child_process spawn] child inherits Deno.env when options.env is not provided",
   async fn() {
     const deferred = withTimeout<string>();
-    Deno.env.set("BAR", "BAR")
+    Deno.env.set("BAR", "BAR");
     const env = spawn(
       `"${Deno.execPath()}" eval -p "Deno.env.toObject().BAR"`,
       {
-        shell: true
+        shell: true,
       },
     );
     try {
@@ -681,23 +682,24 @@ Deno.test({
       await deferred.promise;
     } finally {
       env.kill();
-      Deno.env.delete("BAR")
+      Deno.env.delete("BAR");
     }
     const value = await deferred.promise;
     assertEquals(value, "BAR");
-  }
+  },
 });
 
 Deno.test({
-  name: "[node/child_process spawn] child doesn't inherit Deno.env when options.env is provided",
+  name:
+    "[node/child_process spawn] child doesn't inherit Deno.env when options.env is provided",
   async fn() {
     const deferred = withTimeout<string>();
-    Deno.env.set("BAZ", "BAZ")
+    Deno.env.set("BAZ", "BAZ");
     const env = spawn(
       `"${Deno.execPath()}" eval -p "Deno.env.toObject().BAZ"`,
       {
         env: {},
-        shell: true
+        shell: true,
       },
     );
     try {
@@ -714,11 +716,11 @@ Deno.test({
       await deferred.promise;
     } finally {
       env.kill();
-      Deno.env.delete("BAZ")
+      Deno.env.delete("BAZ");
     }
     const value = await deferred.promise;
     assertEquals(value, "undefined");
-  }
+  },
 });
 
 // Regression test for https://github.com/denoland/deno/issues/20373
