@@ -1126,7 +1126,7 @@ impl CliOptions {
           if let Some((path, import_map)) =
             self.maybe_external_import_map.as_ref()
           {
-            let path_url = deno_path_util::url_from_file_path(&path)?;
+            let path_url = deno_path_util::url_from_file_path(path)?;
             Some(deno_config::workspace::SpecifiedImportMap {
               base_url: path_url,
               value: import_map.clone(),
