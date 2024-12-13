@@ -1,7 +1,7 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
-use std::sync::Arc;
-
+#[allow(clippy::disallowed_types)]
+use crate::sync::MaybeArc;
 use dashmap::DashMap;
 use deno_media_type::MediaType;
 use node_resolver::env::NodeResolverEnv;
@@ -23,9 +23,10 @@ pub struct CjsTracker<TEnv: NodeResolverEnv> {
 }
 
 impl<TEnv: NodeResolverEnv> CjsTracker<TEnv> {
+  #[allow(clippy::disallowed_types)]
   pub fn new(
-    in_npm_pkg_checker: Arc<dyn InNpmPackageChecker>,
-    pkg_json_resolver: Arc<PackageJsonResolver<TEnv>>,
+    in_npm_pkg_checker: MaybeArc<dyn InNpmPackageChecker>,
+    pkg_json_resolver: MaybeArc<PackageJsonResolver<TEnv>>,
     mode: IsCjsResolutionMode,
   ) -> Self {
     Self {
@@ -127,15 +128,18 @@ pub enum IsCjsResolutionMode {
 /// Resolves whether a module is CJS or ESM.
 #[derive(Debug)]
 pub struct IsCjsResolver<TEnv: NodeResolverEnv> {
-  in_npm_pkg_checker: Arc<dyn InNpmPackageChecker>,
-  pkg_json_resolver: Arc<PackageJsonResolver<TEnv>>,
+  #[allow(clippy::disallowed_types)]
+  in_npm_pkg_checker: MaybeArc<dyn InNpmPackageChecker>,
+  #[allow(clippy::disallowed_types)]
+  pkg_json_resolver: MaybeArc<PackageJsonResolver<TEnv>>,
   mode: IsCjsResolutionMode,
 }
 
 impl<TEnv: NodeResolverEnv> IsCjsResolver<TEnv> {
+  #[allow(clippy::disallowed_types)]
   pub fn new(
-    in_npm_pkg_checker: Arc<dyn InNpmPackageChecker>,
-    pkg_json_resolver: Arc<PackageJsonResolver<TEnv>>,
+    in_npm_pkg_checker: MaybeArc<dyn InNpmPackageChecker>,
+    pkg_json_resolver: MaybeArc<PackageJsonResolver<TEnv>>,
     mode: IsCjsResolutionMode,
   ) -> Self {
     Self {

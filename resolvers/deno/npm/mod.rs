@@ -2,7 +2,6 @@
 
 use std::fmt::Debug;
 use std::path::PathBuf;
-use std::sync::Arc;
 
 use boxed_error::Boxed;
 use deno_semver::npm::NpmPackageReqReference;
@@ -24,6 +23,8 @@ use thiserror::Error;
 use url::Url;
 
 use crate::fs::DenoResolverFs;
+#[allow(clippy::disallowed_types)]
+use crate::sync::MaybeArc;
 
 pub use byonm::ByonmInNpmPackageChecker;
 pub use byonm::ByonmNpmResolver;
@@ -98,21 +99,29 @@ pub struct NpmReqResolverOptions<
   /// The resolver when "bring your own node_modules" is enabled where Deno
   /// does not setup the node_modules directories automatically, but instead
   /// uses what already exists on the file system.
-  pub byonm_resolver: Option<Arc<ByonmNpmResolver<Fs, TNodeResolverEnv>>>,
+  #[allow(clippy::disallowed_types)]
+  pub byonm_resolver: Option<MaybeArc<ByonmNpmResolver<Fs, TNodeResolverEnv>>>,
   pub fs: Fs,
-  pub in_npm_pkg_checker: Arc<dyn InNpmPackageChecker>,
-  pub node_resolver: Arc<NodeResolver<TNodeResolverEnv>>,
-  pub npm_req_resolver: Arc<dyn CliNpmReqResolver>,
+  #[allow(clippy::disallowed_types)]
+  pub in_npm_pkg_checker: MaybeArc<dyn InNpmPackageChecker>,
+  #[allow(clippy::disallowed_types)]
+  pub node_resolver: MaybeArc<NodeResolver<TNodeResolverEnv>>,
+  #[allow(clippy::disallowed_types)]
+  pub npm_req_resolver: MaybeArc<dyn CliNpmReqResolver>,
 }
 
 #[derive(Debug)]
 pub struct NpmReqResolver<Fs: DenoResolverFs, TNodeResolverEnv: NodeResolverEnv>
 {
-  byonm_resolver: Option<Arc<ByonmNpmResolver<Fs, TNodeResolverEnv>>>,
+  #[allow(clippy::disallowed_types)]
+  byonm_resolver: Option<MaybeArc<ByonmNpmResolver<Fs, TNodeResolverEnv>>>,
   fs: Fs,
-  in_npm_pkg_checker: Arc<dyn InNpmPackageChecker>,
-  node_resolver: Arc<NodeResolver<TNodeResolverEnv>>,
-  npm_resolver: Arc<dyn CliNpmReqResolver>,
+  #[allow(clippy::disallowed_types)]
+  in_npm_pkg_checker: MaybeArc<dyn InNpmPackageChecker>,
+  #[allow(clippy::disallowed_types)]
+  node_resolver: MaybeArc<NodeResolver<TNodeResolverEnv>>,
+  #[allow(clippy::disallowed_types)]
+  npm_resolver: MaybeArc<dyn CliNpmReqResolver>,
 }
 
 impl<Fs: DenoResolverFs, TNodeResolverEnv: NodeResolverEnv>

@@ -13,6 +13,9 @@ description = "Deno resolution algorithm"
 [lib]
 path = "lib.rs"
 
+[features]
+sync = []
+
 [dependencies]
 anyhow.workspace = true
 base32.workspace = true

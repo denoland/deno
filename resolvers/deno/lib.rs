@@ -4,7 +4,6 @@
 #![deny(clippy::print_stdout)]
 
 use std::path::PathBuf;
-use std::sync::Arc;
 
 use boxed_error::Boxed;
 use deno_config::workspace::MappedResolution;
@@ -40,6 +39,9 @@ pub mod cjs;
 pub mod fs;
 pub mod npm;
 pub mod sloppy_imports;
+mod sync;
+#[allow(clippy::disallowed_types)]
+use sync::MaybeArc;
 
 #[derive(Debug, Clone)]
 pub struct DenoResolution {
@@ -80,8 +82,10 @@ pub struct NodeAndNpmReqResolver<
   Fs: DenoResolverFs,
   TNodeResolverEnv: NodeResolverEnv,
 > {
-  pub node_resolver: Arc<NodeResolver<TNodeResolverEnv>>,
-  pub npm_req_resolver: Arc<NpmReqResolver<Fs, TNodeResolverEnv>>,
+  #[allow(clippy::disallowed_types)]
+  pub node_resolver: MaybeArc<NodeResolver<TNodeResolverEnv>>,
+  #[allow(clippy::disallowed_types)]
+  pub npm_req_resolver: MaybeArc<NpmReqResolver<Fs, TNodeResolverEnv>>,
 }
 
 pub struct DenoResolverOptions<
@@ -90,12 +94,15 @@ pub struct DenoResolverOptions<
   TNodeResolverEnv: NodeResolverEnv,
   TSloppyImportResolverFs: SloppyImportResolverFs,
 > {
-  pub in_npm_pkg_checker: Arc<dyn InNpmPackageChecker>,
+  #[allow(clippy::disallowed_types)]
+  pub in_npm_pkg_checker: MaybeArc<dyn InNpmPackageChecker>,
   pub node_and_req_resolver:
     Option<NodeAndNpmReqResolver<Fs, TNodeResolverEnv>>,
+  #[allow(clippy::disallowed_types)]
   pub sloppy_imports_resolver:
-    Option<Arc<SloppyImportsResolver<TSloppyImportResolverFs>>>,
-  pub workspace_resolver: Arc<WorkspaceResolver>,
+    Option<MaybeArc<SloppyImportsResolver<TSloppyImportResolverFs>>>,
+  #[allow(clippy::disallowed_types)]
+  pub workspace_resolver: MaybeArc<WorkspaceResolver>,
   /// Whether "bring your own node_modules" is enabled where Deno does not
   /// setup the node_modules directories automatically, but instead uses
   /// what already exists on the file system.
@@ -111,11 +118,14 @@ pub struct DenoResolver<
   TNodeResolverEnv: NodeResolverEnv,
   TSloppyImportResolverFs: SloppyImportResolverFs,
 > {
-  in_npm_pkg_checker: Arc<dyn InNpmPackageChecker>,
+  #[allow(clippy::disallowed_types)]
+  in_npm_pkg_checker: MaybeArc<dyn InNpmPackageChecker>,
   node_and_npm_resolver: Option<NodeAndNpmReqResolver<Fs, TNodeResolverEnv>>,
+  #[allow(clippy::disallowed_types)]
   sloppy_imports_resolver:
-    Option<Arc<SloppyImportsResolver<TSloppyImportResolverFs>>>,
-  workspace_resolver: Arc<WorkspaceResolver>,
+    Option<MaybeArc<SloppyImportsResolver<TSloppyImportResolverFs>>>,
+  #[allow(clippy::disallowed_types)]
+  workspace_resolver: MaybeArc<WorkspaceResolver>,
   is_byonm: bool,
   maybe_vendor_specifier: Option<Url>,
 }
