@@ -58,6 +58,7 @@ mod linter;
 mod plugins;
 mod reporters;
 mod rules;
+mod selector;
 mod swc;
 mod ts_estree;
 
