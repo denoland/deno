@@ -64,6 +64,15 @@ impl<'a> deno_config::fs::DenoConfigFs for DenoConfigFsAdapter<'a> {
   }
 }
 
+pub fn import_map_deps(
+  import_map: &serde_json::Value,
+) -> HashSet<JsrDepPackageReq> {
+  let values = imports_values(import_map.get("imports"))
+    .into_iter()
+    .chain(scope_values(import_map.get("scopes")));
+  values_to_set(values)
+}
+
 pub fn deno_json_deps(
   config: &deno_config::deno_json::ConfigFile,
 ) -> HashSet<JsrDepPackageReq> {

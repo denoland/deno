@@ -1,0 +1,10 @@
+{
+  "imports": {
+    "@denotest/add": "jsr:@denotest/add@1.0.0"
+  },
+  "scopes": {
+    "/foo/": {
+      "@denotest/esm-basic": "npm:@denotest/esm-basic@1.0.0"
+    }
+  }
+}

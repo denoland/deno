@@ -808,6 +808,7 @@ pub struct CliOptions {
   maybe_node_modules_folder: Option<PathBuf>,
   npmrc: Arc<ResolvedNpmRc>,
   maybe_lockfile: Option<Arc<CliLockfile>>,
+  maybe_external_import_map: Option<(PathBuf, serde_json::Value)>,
   overrides: CliOptionOverrides,
   pub start_dir: Arc<WorkspaceDirectory>,
   pub deno_dir_provider: Arc<DenoDirProvider>,
@@ -821,6 +822,7 @@ impl CliOptions {
     npmrc: Arc<ResolvedNpmRc>,
     start_dir: Arc<WorkspaceDirectory>,
     force_global_cache: bool,
+    maybe_external_import_map: Option<(PathBuf, serde_json::Value)>,
   ) -> Result<Self, AnyError> {
     if let Some(insecure_allowlist) =
       flags.unsafely_ignore_certificate_errors.as_ref()
@@ -858,6 +860,7 @@ impl CliOptions {
       maybe_node_modules_folder,
       overrides: Default::default(),
       main_module_cell: std::sync::OnceLock::new(),
+      maybe_external_import_map,
       start_dir,
       deno_dir_provider,
     })
@@ -933,7 +936,33 @@ impl CliOptions {
 
     let (npmrc, _) = discover_npmrc_from_workspace(&start_dir.workspace)?;
 
-    let maybe_lock_file = CliLockfile::discover(&flags, &start_dir.workspace)?;
+    fn load_external_import_map(
+      deno_json: &ConfigFile,
+    ) -> Result<Option<(PathBuf, serde_json::Value)>, AnyError> {
+      if !deno_json.is_an_import_map() {
+        if let Some(path) = deno_json.to_import_map_path()? {
+          let contents = std::fs::read_to_string(&path).with_context(|| {
+            format!("Unable to read import map at '{}'", path.display())
+          })?;
+          let map = serde_json::from_str(&contents)?;
+          return Ok(Some((path, map)));
+        }
+      }
+      Ok(None)
+    }
+
+    let external_import_map =
+      if let Some(deno_json) = start_dir.workspace.root_deno_json() {
+        load_external_import_map(deno_json)?
+      } else {
+        None
+      };
+
+    let maybe_lock_file = CliLockfile::discover(
+      &flags,
+      &start_dir.workspace,
+      external_import_map.as_ref().map(|(_, v)| v),
+    )?;
 
     log::debug!("Finished config loading.");
 
@@ -944,6 +973,7 @@ impl CliOptions {
       npmrc,
       Arc::new(start_dir),
       false,
+      external_import_map,
     )
   }
 
@@ -1064,7 +1094,7 @@ impl CliOptions {
     file_fetcher: &FileFetcher,
     pkg_json_dep_resolution: PackageJsonDepResolution,
   ) -> Result<WorkspaceResolver, AnyError> {
-    let overrode_no_import_map = self
+    let overrode_no_import_map: bool = self
       .overrides
       .import_map_specifier
       .as_ref()
@@ -1092,7 +1122,19 @@ impl CliOptions {
             value,
           })
         }
-        None => None,
+        None => {
+          if let Some((path, import_map)) =
+            self.maybe_external_import_map.as_ref()
+          {
+            let path_url = deno_path_util::url_from_file_path(path)?;
+            Some(deno_config::workspace::SpecifiedImportMap {
+              base_url: path_url,
+              value: import_map.clone(),
+            })
+          } else {
+            None
+          }
+        }
       }
     };
     Ok(self.workspace().create_resolver(
