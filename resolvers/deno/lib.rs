@@ -355,16 +355,16 @@ impl<
               })
               .map_err(|err| {
                 match err.into_kind() {
-                ResolveReqWithSubPathErrorKind::MissingPackageNodeModulesFolder(
-                  err,
-                ) => err.into(),
-                ResolveReqWithSubPathErrorKind::ResolvePkgFolderFromDenoReq(
-                  err,
-                ) => err.into(),
-                ResolveReqWithSubPathErrorKind::PackageSubpathResolve(err) => {
-                  err.into()
+                  ResolveReqWithSubPathErrorKind::MissingPackageNodeModulesFolder(
+                    err,
+                  ) => err.into(),
+                  ResolveReqWithSubPathErrorKind::ResolvePkgFolderFromDenoReq(
+                    err,
+                  ) => err.into(),
+                  ResolveReqWithSubPathErrorKind::PackageSubpathResolve(err) => {
+                    err.into()
+                  }
                 }
-              }
               });
           }
         }

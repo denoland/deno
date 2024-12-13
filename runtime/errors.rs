@@ -712,7 +712,6 @@ fn get_fetch_error(error: &FetchError) -> &'static str {
     FetchError::ClientSend(_) => "TypeError",
     FetchError::RequestBuilderHook(_) => "TypeError",
     FetchError::Io(e) => get_io_error_class(e),
-    FetchError::Hyper(e) => get_hyper_error_class(e),
   }
 }
 
@@ -1083,6 +1082,7 @@ mod node {
   pub use deno_node::ops::crypto::SignEd25519Error;
   pub use deno_node::ops::crypto::VerifyEd25519Error;
   pub use deno_node::ops::fs::FsError;
+  pub use deno_node::ops::http::ConnError;
   pub use deno_node::ops::http2::Http2Error;
   pub use deno_node::ops::idna::IdnaError;
   pub use deno_node::ops::ipc::IpcError;
@@ -1538,6 +1538,24 @@ mod node {
   pub fn get_verify_ed25519_error(_: &VerifyEd25519Error) -> &'static str {
     "TypeError"
   }
+
+  pub fn get_conn_error(e: &ConnError) -> &'static str {
+    match e {
+      ConnError::Resource(e) => get_error_class_name(e).unwrap_or("Error"),
+      ConnError::Permission(e) => get_permission_check_error_class(e),
+      ConnError::InvalidUrl(_) => "TypeError",
+      ConnError::InvalidHeaderName(_) => "TypeError",
+      ConnError::InvalidHeaderValue(_) => "TypeError",
+      ConnError::Url(e) => get_url_parse_error_class(e),
+      ConnError::Method(_) => "TypeError",
+      ConnError::Io(e) => get_io_error_class(e),
+      ConnError::Hyper(e) => super::get_hyper_error_class(e),
+      ConnError::TlsStreamBusy => "Busy",
+      ConnError::TcpStreamBusy => "Busy",
+      ConnError::ReuniteTcp(_) => "Error",
+      ConnError::Canceled(_) => "Error",
+    }
+  }
 }
 
 fn get_os_error(error: &OsError) -> &'static str {
@@ -1729,6 +1747,10 @@ pub fn get_error_class_name(e: &AnyError) -> Option<&'static str> {
     .or_else(|| {
       e.downcast_ref::<node::VerifyEd25519Error>()
         .map(node::get_verify_ed25519_error)
+    })
+    .or_else(|| {
+      e.downcast_ref::<node::ConnError>()
+        .map(node::get_conn_error)
     })
     .or_else(|| e.downcast_ref::<NApiError>().map(get_napi_error_class))
     .or_else(|| e.downcast_ref::<WebError>().map(get_web_error_class))

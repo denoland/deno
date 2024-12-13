@@ -31,6 +31,7 @@ use deno_npm_cache::NpmCacheSetting;
 use deno_path_util::normalize_path;
 use deno_semver::npm::NpmPackageReqReference;
 use deno_telemetry::OtelConfig;
+use deno_telemetry::OtelRuntimeConfig;
 use import_map::resolve_import_map_value_from_specifier;
 
 pub use deno_config::deno_json::BenchConfig;
@@ -1162,7 +1163,7 @@ impl CliOptions {
     }
   }
 
-  pub fn otel_config(&self) -> Option<OtelConfig> {
+  pub fn otel_config(&self) -> OtelConfig {
     self.flags.otel_config()
   }
 
@@ -2087,6 +2088,13 @@ pub enum NpmCachingStrategy {
   Eager,
   Lazy,
   Manual,
+}
+
+pub(crate) fn otel_runtime_config() -> OtelRuntimeConfig {
+  OtelRuntimeConfig {
+    runtime_name: Cow::Borrowed("deno"),
+    runtime_version: Cow::Borrowed(crate::version::DENO_VERSION_INFO.deno),
+  }
 }
 
 #[cfg(test)]
