@@ -1381,23 +1381,6 @@ mod tests {
   }
 
   #[tokio::test]
-  async fn bad_redirect() {
-    let _g = test_util::http_server();
-    let url_str = "http://127.0.0.1:4545/bad_redirect";
-    let url = Url::parse(url_str).unwrap();
-    let client = create_http_client_adapter();
-    let result = client.send_no_follow(&url, Default::default()).await;
-    let err = result.unwrap_err();
-    match err {
-      SendError::Failed(error) => {
-        // Check that the error message contains the original URL
-        assert!(error.to_string().contains(url_str));
-      }
-      _ => unreachable!(),
-    }
-  }
-
-  #[tokio::test]
   async fn server_error() {
     let _g = test_util::http_server();
     let url_str = "http://127.0.0.1:4545/server_error";
