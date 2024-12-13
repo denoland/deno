@@ -1162,13 +1162,17 @@ async function observe(): Promise<void> {
     // Primordials are not needed, because this is a SafeSet.
     // deno-lint-ignore prefer-primordials
     for (const callback of callbacks) {
-      ArrayPrototypePush(promises, PromiseTry(callback, result));
+      // PromiseTry is not in primordials?
+      // deno-lint-ignore prefer-primordials
+      ArrayPrototypePush(promises, Promise.try(callback, result));
     }
   }
   // Primordials are not needed, because this is a SafeMap.
   // deno-lint-ignore prefer-primordials
   for (const { 0: callback, 1: result } of BATCH_CALLBACKS) {
-    ArrayPrototypePush(promises, PromiseTry(callback, result));
+    // PromiseTry is not in primordials?
+    // deno-lint-ignore prefer-primordials
+    ArrayPrototypePush(promises, Promise.try(callback, result));
   }
   await SafePromiseAll(promises);
 }

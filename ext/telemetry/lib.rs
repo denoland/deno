@@ -301,6 +301,7 @@ enum DenoPeriodicReaderMessage {
 #[derive(Debug)]
 struct DenoPeriodicReader {
   tx: tokio::sync::mpsc::Sender<DenoPeriodicReaderMessage>,
+  temporality: Temporality,
 }
 
 impl MetricReader for DenoPeriodicReader {
@@ -323,20 +324,22 @@ impl MetricReader for DenoPeriodicReader {
   fn force_flush(&self) -> opentelemetry_sdk::metrics::MetricResult<()> {
     let (tx, rx) = oneshot::channel();
     let _ = self.tx.try_send(DenoPeriodicReaderMessage::ForceFlush(tx));
-    rx.blocking_recv().unwrap()
+    deno_core::futures::executor::block_on(rx).unwrap()?;
+    Ok(())
   }
 
   fn shutdown(&self) -> opentelemetry_sdk::metrics::MetricResult<()> {
     let (tx, rx) = oneshot::channel();
     let _ = self.tx.try_send(DenoPeriodicReaderMessage::Shutdown(tx));
-    rx.blocking_recv().unwrap()
+    deno_core::futures::executor::block_on(rx).unwrap()?;
+    Ok(())
   }
 
   fn temporality(
     &self,
     _kind: opentelemetry_sdk::metrics::InstrumentKind,
   ) -> Temporality {
-    Temporality::Cumulative
+    self.temporality
   }
 }
 
@@ -351,6 +354,8 @@ impl DenoPeriodicReader {
       .unwrap_or(DEFAULT_INTERVAL);
 
     let (tx, mut rx) = tokio::sync::mpsc::channel(256);
+
+    let temporality = PushMetricExporter::temporality(&exporter);
 
     let worker = async move {
       let inner = ManualReader::builder()
@@ -454,7 +459,7 @@ impl DenoPeriodicReader {
       .unbounded_send(worker.boxed())
       .expect("failed to send task to shared OpenTelemetry runtime");
 
-    DenoPeriodicReader { tx }
+    DenoPeriodicReader { tx, temporality }
   }
 }
 
