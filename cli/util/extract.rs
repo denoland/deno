@@ -1200,7 +1200,7 @@ Deno.test("file:///main.ts$3-7.ts", async ()=>{
 
     for test in tests {
       let file = File {
-        specifier: ModuleSpecifier::parse(test.input.specifier).unwrap(),
+        url: ModuleSpecifier::parse(test.input.specifier).unwrap(),
         maybe_headers: None,
         source: test.input.source.as_bytes().into(),
       };
@@ -1436,7 +1436,7 @@ add('1', '2');
 
     for test in tests {
       let file = File {
-        specifier: ModuleSpecifier::parse(test.input.specifier).unwrap(),
+        url: ModuleSpecifier::parse(test.input.specifier).unwrap(),
         maybe_headers: None,
         source: test.input.source.as_bytes().into(),
       };

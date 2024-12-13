@@ -627,7 +627,7 @@ mod tests {
     let specifier = ModuleSpecifier::from_file_path(&local).unwrap();
     let file = File {
       source: Arc::from("some source code".as_bytes()),
-      specifier: specifier.clone(),
+      url: specifier.clone(),
       maybe_headers: Some(HashMap::from([(
         "content-type".to_string(),
         "application/javascript".to_string(),
@@ -847,7 +847,7 @@ mod tests {
     let result = file_fetcher.fetch_bypass_permissions(&specifier).await;
     assert!(result.is_ok());
     let file = result.unwrap();
-    assert_eq!(file.specifier, redirected_specifier);
+    assert_eq!(file.url, redirected_specifier);
 
     assert_eq!(
       get_text_from_cache(http_cache.as_ref(), &specifier),
@@ -890,7 +890,7 @@ mod tests {
     let result = file_fetcher.fetch_bypass_permissions(&specifier).await;
     assert!(result.is_ok());
     let file = result.unwrap();
-    assert_eq!(file.specifier, redirected_02_specifier);
+    assert_eq!(file.url, redirected_02_specifier);
 
     assert_eq!(
       get_text_from_cache(http_cache.as_ref(), &specifier),
@@ -1041,7 +1041,7 @@ mod tests {
     let result = file_fetcher.fetch_bypass_permissions(&specifier).await;
     assert!(result.is_ok());
     let file = result.unwrap();
-    assert_eq!(file.specifier, redirected_specifier);
+    assert_eq!(file.url, redirected_specifier);
 
     assert_eq!(
       get_text_from_cache(http_cache.as_ref(), &specifier),
