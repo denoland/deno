@@ -61,6 +61,7 @@ const prCacheKeyPrefix =
   `${cacheVersion}-cargo-target-\${{ matrix.os }}-\${{ matrix.arch }}-\${{ matrix.profile }}-\${{ matrix.job }}-`;
 const prCacheKey = `${prCacheKeyPrefix}\${{ github.sha }}`;
 const prCachePath = [
+  // this must match for save and restore (https://github.com/actions/cache/issues/1444)
   "./target",
   "!./target/*/gn_out",
   "!./target/*/gn_root",
