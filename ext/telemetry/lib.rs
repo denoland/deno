@@ -628,10 +628,25 @@ pub fn init(config: OtelRuntimeConfig) -> anyhow::Result<()> {
     BatchSpanProcessor::builder(span_exporter, OtelSharedRuntime).build();
   span_processor.set_resource(&resource);
 
+  let temporality_preference =
+    env::var("OTEL_EXPORTER_OTLP_METRICS_TEMPORALITY_PREFERENCE")
+      .ok()
+      .map(|s| s.to_lowercase());
+  let temporality = match temporality_preference.as_deref() {
+    None | Some("cumulative") => Temporality::Cumulative,
+    Some("delta") => Temporality::Delta,
+    Some("lowmemory") => Temporality::LowMemory,
+    Some(other) => {
+      return Err(anyhow!(
+        "Invalid value for OTEL_EXPORTER_OTLP_METRICS_TEMPORALITY_PREFERENCE: {}",
+        other
+      ));
+    }
+  };
   let metric_exporter = HttpExporterBuilder::default()
     .with_http_client(client.clone())
     .with_protocol(protocol)
-    .build_metrics_exporter(Temporality::Cumulative)?;
+    .build_metrics_exporter(temporality)?;
   let metric_reader = DenoPeriodicReader::new(metric_exporter);
   let meter_provider = SdkMeterProvider::builder()
     .with_reader(metric_reader)
