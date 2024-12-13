@@ -371,6 +371,7 @@ jobs:
           path: |-
             ./target
             !./target/*/gn_out
+            !./target/*/gn_root
             !./target/*/*.zip
             !./target/*/*.tar.gz
           key: '30-cargo-target-${{ matrix.os }}-${{ matrix.arch }}-${{ matrix.profile }}-${{ matrix.job }}--${{ hashFiles(''Cargo.lock'') }}'
@@ -681,6 +682,7 @@ jobs:
           path: |-
             ./target
             !./target/*/gn_out
+            !./target/*/gn_root
             !./target/*/*.zip
             !./target/*/*.tar.gz
           key: '30-cargo-target-${{ matrix.os }}-${{ matrix.arch }}-${{ matrix.profile }}-${{ matrix.job }}--${{ hashFiles(''Cargo.lock'') }}'

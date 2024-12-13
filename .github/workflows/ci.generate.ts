@@ -63,6 +63,7 @@ const prCacheKey = `${prCacheKeyPrefix}-\${{ hashFiles('Cargo.lock') }}`;
 const prCachePath = [
   "./target",
   "!./target/*/gn_out",
+  "!./target/*/gn_root",
   "!./target/*/*.zip",
   "!./target/*/*.tar.gz",
 ].join("\n");
