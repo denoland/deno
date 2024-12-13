@@ -12,6 +12,7 @@ use deno_config::deno_json::ConfigFileRc;
 use deno_config::workspace::Workspace;
 use deno_config::workspace::WorkspaceDirectory;
 use deno_core::anyhow::bail;
+use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
 use deno_core::futures::future::try_join;
 use deno_core::futures::stream::FuturesOrdered;
@@ -242,22 +243,30 @@ fn to_import_map_value_from_imports(
 fn deno_json_import_map(
   deno_json: &ConfigFile,
 ) -> Result<Option<(ImportMapWithDiagnostics, ImportMapKind)>, AnyError> {
-  let (value, kind) =
-    if deno_json.json.imports.is_some() || deno_json.json.scopes.is_some() {
-      (
-        to_import_map_value_from_imports(deno_json),
-        ImportMapKind::Inline,
-      )
-    } else {
-      match deno_json.to_import_map_path()? {
-        Some(path) => {
-          let text = std::fs::read_to_string(&path)?;
-          let value = serde_json::from_str(&text)?;
-          (value, ImportMapKind::Outline(path))
-        }
-        None => return Ok(None),
+  let (value, kind) = if deno_json.json.imports.is_some()
+    || deno_json.json.scopes.is_some()
+  {
+    (
+      to_import_map_value_from_imports(deno_json),
+      ImportMapKind::Inline,
+    )
+  } else {
+    match deno_json.to_import_map_path()? {
+      Some(path) => {
+        let err_context = || {
+          format!(
+            "loading import map at '{}' (from \"importMap\" field in '{}')",
+            path.display(),
+            deno_json.specifier
+          )
+        };
+        let text = std::fs::read_to_string(&path).with_context(err_context)?;
+        let value = serde_json::from_str(&text).with_context(err_context)?;
+        (value, ImportMapKind::Outline(path))
       }
-    };
+      None => return Ok(None),
+    }
+  };
 
   import_map::parse_from_value(deno_json.specifier.clone(), value)
     .map_err(Into::into)
