@@ -3676,6 +3676,7 @@ impl Inner {
         .unwrap_or_else(create_default_npmrc),
       workspace,
       force_global_cache,
+      None,
     )?;
 
     let open_docs = self.documents.documents(DocumentsFilter::OpenDiagnosable);
