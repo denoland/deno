@@ -1484,6 +1484,7 @@ dependencies = [
 [[package]]
 name = "deno_core"
 version = "0.325.0"
+source = "git+https://github.com/littledivy/deno_core?branch=rebuild_obj_templates#77c65eda54eede17223410996fd11eaf9a855d73"
 dependencies = [
  "anyhow",
  "az",
@@ -2054,6 +2055,7 @@ dependencies = [
 [[package]]
 name = "deno_ops"
 version = "0.201.0"
+source = "git+https://github.com/littledivy/deno_core?branch=rebuild_obj_templates#77c65eda54eede17223410996fd11eaf9a855d73"
 dependencies = [
  "proc-macro-rules",
  "proc-macro2",
@@ -6694,6 +6696,7 @@ dependencies = [
 [[package]]
 name = "serde_v8"
 version = "0.234.0"
+source = "git+https://github.com/littledivy/deno_core?branch=rebuild_obj_templates#77c65eda54eede17223410996fd11eaf9a855d73"
 dependencies = [
  "num-bigint",
  "serde",
