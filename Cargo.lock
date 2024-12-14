@@ -669,6 +669,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1bf2a5fb3207c12b5d208ebc145f967fea5cac41a021c37417ccc31ba40f39ee"
 
 [[package]]
+name = "capacity_builder"
+version = "0.1.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ab97838e07d98bdddf1e7e191ffe3c718cba7477c0b6607fdfb96ecd696202df"
+dependencies = [
+ "itoa",
+]
+
+[[package]]
 name = "caseless"
 version = "0.2.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1482,6 +1491,7 @@ dependencies = [
  "bit-set",
  "bit-vec",
  "bytes",
+ "capacity_builder",
  "cooked-waker",
  "deno_core_icudata",
  "deno_ops",
@@ -1500,7 +1510,6 @@ dependencies = [
  "sourcemap 8.0.1",
  "static_assertions",
  "tokio",
- "typeid",
  "url",
  "v8",
  "wasm_dep_analyzer",
@@ -1564,9 +1573,9 @@ dependencies = [
 
 [[package]]
 name = "deno_doc"
-version = "0.161.2"
+version = "0.161.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3af787319136f3e7f73ef551c618aeec70794522e36cd75ae35132a3bad983ef"
+checksum = "353a39c70d248af04600928cefc8066a9e4535fb6e7d7c518411e5efc822819f"
 dependencies = [
  "anyhow",
  "cfg-if",
@@ -4374,9 +4383,9 @@ dependencies = [
 
 [[package]]
 name = "itoa"
-version = "1.0.11"
+version = "1.0.14"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "49f1f14873335454500d59611f1cf4a4b0f786f9ac11f4312a78e4cf2566695b"
+checksum = "d75a2a4b1b190afb6f5425f10f6a8f959d2ea0b9c2b1d79553551850539e4674"
 
 [[package]]
 name = "jni-sys"
@@ -8072,12 +8081,6 @@ name = "typed-arena"
 version = "2.0.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "6af6ae20167a9ece4bcb41af5b80f8a1f1df981f6391189ce00fd257af04126a"
-
-[[package]]
-name = "typeid"
-version = "1.0.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0e13db2e0ccd5e14a544e8a246ba2312cd25223f616442d7f2cb0e3db614236e"
 
 [[package]]
 name = "typenum"
