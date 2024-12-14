@@ -1,441 +1,37 @@
-use deno_ast::{
-  swc::common::{Span, DUMMY_SP},
-  view::AssignOp,
-};
+use std::fmt::Display;
+
+use deno_ast::swc::common::{Span, DUMMY_SP};
 use indexmap::IndexMap;
 
-pub enum Flag {
-  ProgramModule,
-  FnAsync,
-  FnGenerator,
-  FnDeclare,
-  FnOptional,
-  MemberComputed,
-  MemberOptional,
-  PropShorthand,
-  PropComputed,
-  PropGetter,
-  PropSetter,
-  PropMethod,
-  VarVar,
-  VarConst,
-  VarLet,
-  VarDeclare,
-  ExportType,
-  TplTail,
-  ForAwait,
-  LogicalOr,
-  LogicalAnd,
-  LogicalNullishCoalescin,
-  JSXSelfClosing,
-
-  BinEqEq,
-  BinNotEq,
-  BinEqEqEq,
-  BinNotEqEq,
-  BinLt,
-  BinLtEq,
-  BinGt,
-  BinGtEq,
-  BinLShift,
-  BinRShift,
-  BinZeroFillRShift,
-  BinAdd,
-  BinSub,
-  BinMul,
-  BinDiv,
-  BinMod,
-  BinBitOr,
-  BinBitXor,
-  BinBitAnd,
-  BinIn,
-  BinInstanceOf,
-  BinExp,
-
-  UnaryMinus,
-  UnaryPlus,
-  UnaryBang,
-  UnaryTilde,
-  UnaryTypeOf,
-  UnaryVoid,
-  UnaryDelete,
-
-  UpdatePrefix,
-  UpdatePlusPlus,
-  UpdateMinusMinus,
-
-  YieldDelegate,
-  ParamOptional,
-
-  ClassDeclare,
-  ClassAbstract,
-  ClassConstructor,
-  ClassMethod,
-  ClassPublic,
-  ClassProtected,
-  ClassPrivate,
-
-  TsDeclare,
-  TsConst,
-  TsTrue,
-  TsPlus,
-  TsMinus,
-  TsReadonly,
-}
-
-pub fn assign_op_to_flag(m: AssignOp) -> u8 {
-  match m {
-    AssignOp::Assign => 0,
-    AssignOp::AddAssign => 1,
-    AssignOp::SubAssign => 2,
-    AssignOp::MulAssign => 3,
-    AssignOp::DivAssign => 4,
-    AssignOp::ModAssign => 5,
-    AssignOp::LShiftAssign => 6,
-    AssignOp::RShiftAssign => 7,
-    AssignOp::ZeroFillRShiftAssign => 8,
-    AssignOp::BitOrAssign => 9,
-    AssignOp::BitXorAssign => 10,
-    AssignOp::BitAndAssign => 11,
-    AssignOp::ExpAssign => 12,
-    AssignOp::AndAssign => 13,
-    AssignOp::OrAssign => 14,
-    AssignOp::NullishAssign => 15,
-  }
-}
-
-impl From<Flag> for u8 {
-  fn from(m: Flag) -> u8 {
-    match m {
-      Flag::ProgramModule => 0b00000001,
-      Flag::FnAsync => 0b00000001,
-      Flag::FnGenerator => 0b00000010,
-      Flag::FnDeclare => 0b00000100,
-      Flag::FnOptional => 0b00001000,
-      Flag::MemberComputed => 0b00000001,
-      Flag::MemberOptional => 0b00000010,
-      Flag::PropShorthand => 0b00000001,
-      Flag::PropComputed => 0b00000010,
-      Flag::PropGetter => 0b00000100,
-      Flag::PropSetter => 0b00001000,
-      Flag::PropMethod => 0b00010000,
-      Flag::VarVar => 0b00000001,
-      Flag::VarConst => 0b00000010,
-      Flag::VarLet => 0b00000100,
-      Flag::VarDeclare => 0b00001000,
-      Flag::ExportType => 0b000000001,
-      Flag::TplTail => 0b000000001,
-      Flag::ForAwait => 0b000000001,
-      Flag::LogicalOr => 0b000000001,
-      Flag::LogicalAnd => 0b000000010,
-      Flag::LogicalNullishCoalescin => 0b000000100,
-      Flag::JSXSelfClosing => 0b000000001,
-      Flag::BinEqEq => 1,
-      Flag::BinNotEq => 2,
-      Flag::BinEqEqEq => 3,
-      Flag::BinNotEqEq => 4,
-      Flag::BinLt => 5,
-      Flag::BinLtEq => 6,
-      Flag::BinGt => 7,
-      Flag::BinGtEq => 8,
-      Flag::BinLShift => 9,
-      Flag::BinRShift => 10,
-      Flag::BinZeroFillRShift => 11,
-      Flag::BinAdd => 12,
-      Flag::BinSub => 13,
-      Flag::BinMul => 14,
-      Flag::BinDiv => 15,
-      Flag::BinMod => 16,
-      Flag::BinBitOr => 17,
-      Flag::BinBitXor => 18,
-      Flag::BinBitAnd => 19,
-      Flag::BinIn => 20,
-      Flag::BinInstanceOf => 21,
-      Flag::BinExp => 22,
-
-      Flag::UnaryMinus => 1,
-      Flag::UnaryPlus => 2,
-      Flag::UnaryBang => 3,
-      Flag::UnaryTilde => 4,
-      Flag::UnaryTypeOf => 5,
-      Flag::UnaryVoid => 6,
-      Flag::UnaryDelete => 7,
-
-      Flag::UpdatePrefix => 0b000000001,
-      Flag::UpdatePlusPlus => 0b000000010,
-      Flag::UpdateMinusMinus => 0b000000100,
-
-      Flag::YieldDelegate => 1,
-      Flag::ParamOptional => 1,
-
-      Flag::ClassDeclare => 0b000000001,
-      Flag::ClassAbstract => 0b000000010,
-      Flag::ClassConstructor => 0b000000100,
-      Flag::ClassMethod => 0b000001000,
-      Flag::ClassPublic => 0b001000000,
-      Flag::ClassProtected => 0b010000000,
-      Flag::ClassPrivate => 0b10000000,
-
-      Flag::TsDeclare => 0b000000001,
-      Flag::TsConst => 0b000000010,
-      Flag::TsTrue => 0b000000100,
-      Flag::TsPlus => 0b000001000,
-      Flag::TsMinus => 0b000010000,
-      Flag::TsReadonly => 0b000100000,
-    }
-  }
-}
-
-// Keep in sync with JS
-#[derive(Debug)]
-pub enum AstNode {
-  Invalid,
-  //
-  Program,
-
-  // Module declarations
-  Import,
-  ImportDecl,
-  ExportDecl,
-  ExportNamedDeclaration,
-  ExportDefaultDecl,
-  ExportDefaultExpr,
-  ExportAll,
-  TsImportEquals,
-  TsExportAssignment,
-  TsNamespaceExport,
-
-  // Decls
-  ClassDeclaration,
-  Fn,
-  Var,
-  Using,
-  TSInterface,
-  TsTypeAlias,
-  TSEnumDeclaration,
-  TsModule,
-
-  // Statements
-  Block,
-  Empty,
-  Debugger,
-  With,
-  Return,
-  Labeled,
-  Break,
-  Continue,
-  IfStatement,
-  Switch,
-  SwitchCase,
-  Throw,
-  TryStatement,
-  While,
-  DoWhileStatement,
-  ForStatement,
-  ForInStatement,
-  ForOfStatement,
-  Decl,
-  ExpressionStatement,
-
-  // Expressions
-  This,
-  Array,
-  Object,
-  FunctionExpression,
-  Unary,
-  UpdateExpression,
-  BinaryExpression,
-  Assign,
-  MemberExpression,
-  Super,
-  Cond,
-  CallExpression,
-  New,
-  Paren,
-  SequenceExpression,
-  Identifier,
-  TemplateLiteral,
-  TaggedTemplateExpression,
-  ArrowFunctionExpression,
-  ClassExpr,
-  YieldExpression,
-  MetaProp,
-  AwaitExpression,
-  LogicalExpression,
-  TSTypeAssertion,
-  TsConstAssertion,
-  TSNonNullExpression,
-  TSAsExpression,
-  TsInstantiation,
-  TSSatisfiesExpression,
-  PrivateIdentifier,
-  ChainExpression,
-
-  // Literals
-  StringLiteral,
+#[derive(Debug, PartialEq)]
+pub enum PropFlags {
+  Ref,
+  RefArr,
+  String,
   Bool,
   Null,
-  NumericLiteral,
-  BigIntLiteral,
-  RegExpLiteral,
-
-  // Custom
-  EmptyExpr,
-  Spread,
-  Property,
-  VariableDeclarator,
-  CatchClause,
-  RestElement,
-  ExportSpecifier,
-  TemplateElement,
-  MethodDefinition,
-
-  // Patterns
-  ArrayPattern,
-  AssignmentPattern,
-  ObjectPattern,
-
-  // JSX
-  JSXAttribute,
-  JSXClosingElement,
-  JSXClosingFragment,
-  JSXElement,
-  JSXEmptyExpression,
-  JSXExpressionContainer,
-  JSXFragment,
-  JSXIdentifier,
-  JSXMemberExpression,
-  JSXNamespacedName,
-  JSXOpeningElement,
-  JSXOpeningFragment,
-  JSXSpreadAttribute,
-  JSXSpreadChild,
-  JSXText,
-
-  TSTypeAnnotation,
-  TSTypeParameterDeclaration,
-  TSTypeParameter,
-  TSEnumMember,
-  TSInterfaceBody,
-  TSInterfaceHeritage,
-  TSTypeReference,
-  TSThisType,
-  TSLiteralType,
-  TSInferType,
-  TSConditionalType,
-  TSUnionType,
-  TSIntersectionType,
-  TSMappedType,
-  TSTypeQuery,
-  TSTupleType,
-  TSFunctionType,
-  TsCallSignatureDeclaration,
-
-  TSAnyKeyword,
-  TSBigIntKeyword,
-  TSBooleanKeyword,
-  TSIntrinsicKeyword,
-  TSNeverKeyword,
-  TSNullKeyword,
-  TSNumberKeyword,
-  TSObjectKeyword,
-  TSStringKeyword,
-  TSSymbolKeyword,
-  TSUndefinedKeyword,
-  TSUnknownKeyword,
-  TSVoidKeyword,
+  Undefined,
 }
 
-impl From<AstNode> for u8 {
-  fn from(m: AstNode) -> u8 {
+impl From<PropFlags> for u8 {
+  fn from(m: PropFlags) -> u8 {
     m as u8
   }
 }
 
-pub enum AstProp {
-  // Base
-  Parent,
-  Range,
-  Type,
-  _InternalFlags, // Private
+impl TryFrom<u8> for PropFlags {
+  type Error = &'static str;
 
-  // Node
-  Alternate,
-  Argument,
-  Arguments,
-  Async,
-  Attributes,
-  Await,
-  Block,
-  Body,
-  Callee,
-  Cases,
-  Children,
-  ClosingElement,
-  ClosingFragment,
-  Computed,
-  Consequent,
-  Cooked,
-  Declarations,
-  Declare,
-  Definite,
-  Delegate,
-  Discriminant,
-  Elements,
-  ElementTypes,
-  Expression,
-  Expressions,
-  Exported,
-  Finalizer,
-  Flags,
-  Generator,
-  Handler,
-  Id,
-  Init,
-  Key,
-  Kind,
-  Label,
-  Left,
-  Local,
-  Members,
-  Meta,
-  Method,
-  Name,
-  Namespace,
-  Object,
-  OpeningElement,
-  OpeningFragment,
-  Operator,
-  Optional,
-  Param,
-  Params,
-  Pattern,
-  Prefix,
-  Properties,
-  Property,
-  Quasi,
-  Quasis,
-  Raw,
-  ReturnType,
-  Right,
-  SelfClosing,
-  Shorthand,
-  Source,
-  Specifiers,
-  Tag,
-  Tail,
-  Test,
-  TypeAnnotation,
-  TypeArguments,
-  TypeParameters,
-  Types,
-  Update,
-  Value,
-}
-
-impl From<AstProp> for u8 {
-  fn from(m: AstProp) -> u8 {
-    m as u8
+  fn try_from(value: u8) -> Result<Self, Self::Error> {
+    match value {
+      0 => Ok(PropFlags::Ref),
+      1 => Ok(PropFlags::RefArr),
+      2 => Ok(PropFlags::String),
+      3 => Ok(PropFlags::Bool),
+      4 => Ok(PropFlags::Null),
+      5 => Ok(PropFlags::Undefined),
+      _ => Err("Unknown Prop flag"),
+    }
   }
 }
 
@@ -473,20 +69,6 @@ pub fn write_usize(result: &mut [u8], value: usize, idx: usize) {
   result[idx + 1] = v2;
   result[idx + 2] = v3;
   result[idx + 3] = v4;
-}
-
-#[derive(Debug, Clone)]
-pub struct FlagValue(u8);
-
-impl FlagValue {
-  pub fn new() -> Self {
-    Self(0)
-  }
-
-  pub fn set(&mut self, flag: Flag) {
-    let value: u8 = flag.into();
-    self.0 |= value;
-  }
 }
 
 #[derive(Debug)]
@@ -531,54 +113,123 @@ impl StringTable {
   }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct NodeRef(pub usize);
+
+pub trait AstBufSerializer<K, P>
+where
+  K: Into<u8> + Display,
+  P: Into<u8> + Display,
+{
+  fn header(
+    &mut self,
+    kind: K,
+    parent: NodeRef,
+    span: &Span,
+    prop_count: usize,
+  ) -> NodeRef;
+  fn ref_field(&mut self, prop: P) -> usize;
+  fn ref_vec_field(&mut self, prop: P, len: usize) -> usize;
+  fn str_field(&mut self, prop: P) -> usize;
+  fn bool_field(&mut self, prop: P) -> usize;
+  fn undefined_field(&mut self, prop: P) -> usize;
+  #[allow(dead_code)]
+  fn null_field(&mut self, prop: P) -> usize;
+
+  fn write_ref(&mut self, pos: usize, value: NodeRef);
+  fn write_maybe_ref(&mut self, pos: usize, value: Option<NodeRef>);
+  fn write_refs(&mut self, pos: usize, value: Vec<NodeRef>);
+  fn write_str(&mut self, pos: usize, value: &str);
+  fn write_bool(&mut self, pos: usize, value: bool);
+
+  fn serialize(&mut self) -> Vec<u8>;
+}
+
 #[derive(Debug)]
 pub struct SerializeCtx {
-  pub id: usize,
-  pub id_to_offset: IndexMap<usize, usize>,
-  pub buf: Vec<u8>,
-  pub str_table: StringTable,
+  buf: Vec<u8>,
+  start_buf: NodeRef,
+  str_table: StringTable,
+  kind_map: Vec<usize>,
+  prop_map: Vec<usize>,
 }
 
 impl SerializeCtx {
-  pub fn new() -> Self {
+  pub fn new(kind_len: u8, prop_len: u8) -> Self {
+    let kind_size = kind_len as usize;
+    let prop_size = prop_len as usize;
     let mut ctx = Self {
-      id: 0,
-      id_to_offset: IndexMap::new(),
+      start_buf: NodeRef(0),
       buf: vec![],
       str_table: StringTable::new(),
+      kind_map: vec![0; kind_size + 1],
+      prop_map: vec![0; prop_size + 1],
     };
 
     ctx.str_table.insert("");
 
-    // Placeholder node
-    ctx.push_node(AstNode::Invalid, 0, &DUMMY_SP);
+    // Placeholder node is always 0
+    ctx.append_node(0, NodeRef(0), &DUMMY_SP, 0);
+    ctx.kind_map[0] = 0;
+    ctx.start_buf = NodeRef(ctx.buf.len());
+
+    // Insert default props that are always present
+    let type_str = ctx.str_table.insert("type");
+    let parent_str = ctx.str_table.insert("parent");
+    let range_str = ctx.str_table.insert("range");
+
+    ctx.prop_map[0] = type_str;
+    ctx.prop_map[1] = parent_str;
+    ctx.prop_map[2] = range_str;
 
     ctx
   }
 
-  pub fn next_id(&mut self) -> usize {
-    let id = self.id;
-    self.id += 1;
-    id
+  fn field_header<P>(&mut self, prop: P, prop_flags: PropFlags) -> usize
+  where
+    P: Into<u8> + Display + Clone,
+  {
+    let offset = self.buf.len();
+
+    let n: u8 = prop.clone().into();
+    self.buf.push(n);
+
+    if let Some(v) = self.prop_map.get::<usize>(n.into()) {
+      if *v == 0 {
+        let id = self.str_table.insert(&format!("{prop}"));
+        self.prop_map[n as usize] = id;
+      }
+    }
+
+    let flags: u8 = prop_flags.into();
+    self.buf.push(flags);
+
+    offset
   }
 
-  pub fn write_u8(&mut self, value: u8) {
-    self.buf.push(value);
+  fn field<P>(&mut self, prop: P, prop_flags: PropFlags) -> usize
+  where
+    P: Into<u8> + Display + Clone,
+  {
+    let offset = self.field_header(prop, prop_flags);
+
+    append_usize(&mut self.buf, 0);
+
+    offset
   }
 
-  pub fn write_node(
+  fn append_node(
     &mut self,
-    id: usize,
-    kind: AstNode,
-    parent_id: usize,
+    kind: u8,
+    parent: NodeRef,
     span: &Span,
     prop_count: usize,
-  ) {
-    self.id_to_offset.insert(id, self.buf.len());
+  ) -> NodeRef {
+    let offset = self.buf.len();
 
-    let kind_value: u8 = kind.into();
-    self.buf.push(kind_value);
-    append_usize(&mut self.buf, parent_id);
+    self.buf.push(kind);
+
+    append_usize(&mut self.buf, parent.0);
 
     // Span
     append_u32(&mut self.buf, span.lo.0);
@@ -586,52 +237,188 @@ impl SerializeCtx {
 
     // No node has more than <10 properties
     self.buf.push(prop_count as u8);
+
+    NodeRef(offset)
   }
 
-  pub fn write_ids<I>(&mut self, prop: AstProp, ids: I)
+  /// Begin writing a node
+  pub fn header<N>(
+    &mut self,
+    kind: N,
+    parent: NodeRef,
+    span: &Span,
+    prop_count: usize,
+  ) -> NodeRef
   where
-    I: IntoIterator<Item = usize>,
+    N: Into<u8> + Display + Clone,
   {
-    self.buf.push(prop.into());
+    let n: u8 = kind.clone().into();
 
-    let mut count = 0;
-    let idx = self.buf.len();
-    append_usize(&mut self.buf, 0);
-
-    for id in ids {
-      append_usize(&mut self.buf, id);
-      count += 1;
+    if let Some(v) = self.kind_map.get::<usize>(n.into()) {
+      if *v == 0 {
+        let id = self.str_table.insert(&format!("{kind}"));
+        self.kind_map[n as usize] = id;
+      }
     }
 
-    write_usize(&mut self.buf, count, idx);
+    let offset = self.append_node(n, parent, span, prop_count);
+
+    offset
   }
 
-  pub fn write_id(&mut self, id: usize) {
-    append_usize(&mut self.buf, id);
+  pub fn ref_field<P>(&mut self, prop: P) -> usize
+  where
+    P: Into<u8> + Display + Clone,
+  {
+    self.field(prop, PropFlags::Ref)
   }
 
-  pub fn write_flags(&mut self, flags: &FlagValue) {
-    self.buf.push(AstProp::_InternalFlags.into());
-    self.buf.push(flags.0)
+  pub fn ref_vec_field<P>(&mut self, prop: P, len: usize) -> usize
+  where
+    P: Into<u8> + Display + Clone,
+  {
+    let offset = self.field(prop, PropFlags::RefArr);
+
+    for _ in 0..len {
+      append_u32(&mut self.buf, 0);
+    }
+
+    offset
   }
 
-  pub fn write_prop(&mut self, prop: AstProp, id: usize) {
-    self.buf.push(prop.into());
-    append_usize(&mut self.buf, id);
+  pub fn str_field<P>(&mut self, prop: P) -> usize
+  where
+    P: Into<u8> + Display + Clone,
+  {
+    self.field(prop, PropFlags::String)
   }
 
-  pub fn push_node(
+  pub fn bool_field<P>(&mut self, prop: P) -> usize
+  where
+    P: Into<u8> + Display + Clone,
+  {
+    let offset = self.field_header(prop, PropFlags::Bool);
+    self.buf.push(0);
+    offset
+  }
+
+  pub fn undefined_field<P>(&mut self, prop: P) -> usize
+  where
+    P: Into<u8> + Display + Clone,
+  {
+    self.field_header(prop, PropFlags::Undefined)
+  }
+
+  #[allow(dead_code)]
+  pub fn null_field<P>(&mut self, prop: P) -> usize
+  where
+    P: Into<u8> + Display + Clone,
+  {
+    self.field_header(prop, PropFlags::Null)
+  }
+
+  pub fn write_ref(&mut self, field_offset: usize, value: NodeRef) {
+    #[cfg(debug_assertions)]
+    {
+      let value_kind = self.buf[field_offset + 1];
+      if PropFlags::try_from(value_kind).unwrap() != PropFlags::Ref {
+        panic!("Trying to write a ref into a non-ref field")
+      }
+    }
+
+    write_usize(&mut self.buf, value.0, field_offset + 2);
+  }
+
+  pub fn write_maybe_ref(
     &mut self,
-    kind: AstNode,
-    parent_id: usize,
-    span: &Span,
-  ) -> usize {
-    let id = self.id;
-    self.id_to_offset.insert(id, self.buf.len());
-    self.id += 1;
+    field_offset: usize,
+    value: Option<NodeRef>,
+  ) {
+    #[cfg(debug_assertions)]
+    {
+      let value_kind = self.buf[field_offset + 1];
+      if PropFlags::try_from(value_kind).unwrap() != PropFlags::Ref {
+        panic!("Trying to write a ref into a non-ref field")
+      }
+    }
 
-    self.write_node(id, kind, parent_id, span, 0);
+    let ref_value = if let Some(v) = value { v } else { NodeRef(0) };
+    write_usize(&mut self.buf, ref_value.0, field_offset + 2);
+  }
 
-    id
+  pub fn write_refs(&mut self, field_offset: usize, value: Vec<NodeRef>) {
+    #[cfg(debug_assertions)]
+    {
+      let value_kind = self.buf[field_offset + 1];
+      if PropFlags::try_from(value_kind).unwrap() != PropFlags::RefArr {
+        panic!("Trying to write a ref into a non-ref array field")
+      }
+    }
+
+    let mut offset = field_offset + 2;
+    write_usize(&mut self.buf, value.len(), offset);
+    offset += 4;
+
+    for item in value {
+      write_usize(&mut self.buf, item.0, offset);
+      offset += 4;
+    }
+  }
+
+  pub fn write_str(&mut self, field_offset: usize, value: &str) {
+    #[cfg(debug_assertions)]
+    {
+      let value_kind = self.buf[field_offset + 1];
+      if PropFlags::try_from(value_kind).unwrap() != PropFlags::String {
+        panic!("Trying to write a ref into a non-string field")
+      }
+    }
+
+    let id = self.str_table.insert(value);
+    write_usize(&mut self.buf, id, field_offset + 2);
+  }
+
+  pub fn write_bool(&mut self, field_offset: usize, value: bool) {
+    #[cfg(debug_assertions)]
+    {
+      let value_kind = self.buf[field_offset + 1];
+      if PropFlags::try_from(value_kind).unwrap() != PropFlags::Bool {
+        panic!("Trying to write a ref into a non-bool field")
+      }
+    }
+
+    self.buf[field_offset + 2] = if value { 1 } else { 0 };
+  }
+
+  pub fn serialize(&mut self) -> Vec<u8> {
+    let mut buf: Vec<u8> = vec![];
+
+    // Append serialized AST
+    buf.append(&mut self.buf);
+
+    let offset_str_table = buf.len();
+
+    // Serialize string table
+    // eprintln!("STRING {:#?}", self.str_table);
+    buf.append(&mut self.str_table.serialize());
+
+    let offset_kind_map = buf.len();
+    append_usize(&mut buf, self.kind_map.len());
+    for v in &self.kind_map {
+      append_usize(&mut buf, *v);
+    }
+
+    let offset_prop_map = buf.len();
+    append_usize(&mut buf, self.prop_map.len());
+    for v in &self.prop_map {
+      append_usize(&mut buf, *v);
+    }
+
+    append_usize(&mut buf, offset_kind_map);
+    append_usize(&mut buf, offset_prop_map);
+    append_usize(&mut buf, offset_str_table);
+    append_usize(&mut buf, self.start_buf.0);
+
+    buf
   }
 }
