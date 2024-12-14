@@ -122,14 +122,22 @@ impl DatabaseSync {
     Ok(())
   }
 
+  // Compiles an SQL statement into a prepared statement.
+  //
+  // This method is a wrapper around `sqlite3_prepare_v2()`.
   #[cppgc]
   fn prepare(&self, #[string] sql: &str) -> Result<StatementSync, SqliteError> {
     let db = self.conn.borrow();
     let db = db.as_ref().ok_or(SqliteError::InUse)?;
 
+    // SAFETY: lifetime of the connection is guaranteed by reference
+    // counting.
     let raw_handle = unsafe { db.handle() };
 
     let mut raw_stmt = std::ptr::null_mut();
+
+    // SAFETY: `sql` points to a valid memory location and its length
+    // is correct.
     let r = unsafe {
       libsqlite3_sys::sqlite3_prepare_v2(
         raw_handle,

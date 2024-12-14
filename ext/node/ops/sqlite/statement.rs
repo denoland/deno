@@ -1,5 +1,6 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
+use std::borrow::Cow;
 use std::cell::RefCell;
 use std::rc::Rc;
 
@@ -33,6 +34,39 @@ impl Drop for StatementSync {
   }
 }
 
+struct ColumnIterator<'a> {
+  stmt: &'a StatementSync,
+  index: i32,
+  count: i32,
+}
+
+impl<'a> ColumnIterator<'a> {
+  fn new(stmt: &'a StatementSync) -> Self {
+    let count = stmt.column_count();
+    ColumnIterator {
+      stmt,
+      index: 0,
+      count,
+    }
+  }
+}
+
+impl<'a> Iterator for ColumnIterator<'a> {
+  type Item = (i32, Cow<'a, str>);
+
+  fn next(&mut self) -> Option<Self::Item> {
+    if self.index >= self.count {
+      return None;
+    }
+
+    let index = self.index;
+    let name = self.stmt.column_name(self.index);
+
+    self.index += 1;
+    Some((index, name))
+  }
+}
+
 impl GarbageCollected for StatementSync {}
 
 impl StatementSync {
@@ -61,75 +95,90 @@ impl StatementSync {
     Ok(false)
   }
 
+  fn column_count(&self) -> i32 {
+    // SAFETY: `self.inner` is a valid pointer to a sqlite3_stmt.
+    unsafe { ffi::sqlite3_column_count(self.inner) }
+  }
+
+  fn column_name(&self, index: i32) -> Cow<str> {
+    // SAFETY: `self.inner` is a valid pointer to a sqlite3_stmt.
+    unsafe {
+      let name = ffi::sqlite3_column_name(self.inner, index);
+      std::ffi::CStr::from_ptr(name as _).to_string_lossy()
+    }
+  }
+
+  fn column_value<'a>(
+    &self,
+    index: i32,
+    scope: &mut v8::HandleScope<'a>,
+  ) -> v8::Local<'a, v8::Value> {
+    // SAFETY: `self.inner` is a valid pointer to a sqlite3_stmt.
+    unsafe {
+      match ffi::sqlite3_column_type(self.inner, index) {
+        ffi::SQLITE_INTEGER => {
+          let value = ffi::sqlite3_column_int64(self.inner, index);
+          v8::Integer::new(scope, value as _).into()
+        }
+        ffi::SQLITE_FLOAT => {
+          let value = ffi::sqlite3_column_double(self.inner, index);
+          v8::Number::new(scope, value).into()
+        }
+        ffi::SQLITE_TEXT => {
+          let value = ffi::sqlite3_column_text(self.inner, index);
+          let value = std::ffi::CStr::from_ptr(value as _).to_string_lossy();
+          v8::String::new_from_utf8(
+            scope,
+            value.as_bytes(),
+            v8::NewStringType::Normal,
+          )
+          .unwrap()
+          .into()
+        }
+        ffi::SQLITE_BLOB => {
+          let value = ffi::sqlite3_column_blob(self.inner, index);
+          let size = ffi::sqlite3_column_bytes(self.inner, index);
+          let value =
+            std::slice::from_raw_parts(value as *const u8, size as usize);
+          let value =
+            v8::ArrayBuffer::new_backing_store_from_vec(value.to_vec())
+              .make_shared();
+          v8::ArrayBuffer::with_backing_store(scope, &value).into()
+        }
+        ffi::SQLITE_NULL => v8::null(scope).into(),
+        _ => v8::undefined(scope).into(),
+      }
+    }
+  }
+
   // Read the current row of the prepared statement.
   fn read_row<'a>(
     &self,
     scope: &mut v8::HandleScope<'a>,
   ) -> Result<Option<v8::Local<'a, v8::Object>>, SqliteError> {
+    if self.step()? {
+      return Ok(None);
+    }
+
     let result = v8::Object::new(scope);
-    let raw = self.inner;
-    unsafe {
-      if self.step()? {
-        return Ok(None);
-      }
+    let iter = ColumnIterator::new(self);
 
-      let columns = ffi::sqlite3_column_count(raw);
-
-      for i in 0..columns {
-        let name = ffi::sqlite3_column_name(raw, i);
-        let name = std::ffi::CStr::from_ptr(name).to_string_lossy();
-        let value = match ffi::sqlite3_column_type(raw, i) {
-          ffi::SQLITE_INTEGER => {
-            let value = ffi::sqlite3_column_int64(raw, i);
-            v8::Integer::new(scope, value as _).into()
-          }
-          ffi::SQLITE_FLOAT => {
-            let value = ffi::sqlite3_column_double(raw, i);
-            v8::Number::new(scope, value).into()
-          }
-          ffi::SQLITE_TEXT => {
-            let value = ffi::sqlite3_column_text(raw, i);
-            let value = std::ffi::CStr::from_ptr(value as _)
-              .to_string_lossy()
-              .to_string();
-            v8::String::new_from_utf8(
-              scope,
-              value.as_bytes(),
-              v8::NewStringType::Normal,
-            )
-            .unwrap()
-            .into()
-          }
-          ffi::SQLITE_BLOB => {
-            let value = ffi::sqlite3_column_blob(raw, i);
-            let size = ffi::sqlite3_column_bytes(raw, i);
-            let value =
-              std::slice::from_raw_parts(value as *const u8, size as usize);
-            let value =
-              v8::ArrayBuffer::new_backing_store_from_vec(value.to_vec())
-                .make_shared();
-            v8::ArrayBuffer::with_backing_store(scope, &value).into()
-          }
-          ffi::SQLITE_NULL => v8::null(scope).into(),
-          _ => {
-            return Err(SqliteError::UnknownColumnType);
-          }
-        };
-
-        let name = v8::String::new_from_utf8(
-          scope,
-          name.as_bytes(),
-          v8::NewStringType::Normal,
-        )
-        .unwrap()
-        .into();
-        result.set(scope, name, value);
-      }
+    for (index, name) in iter {
+      let value = self.column_value(index, scope);
+      let name = v8::String::new_from_utf8(
+        scope,
+        name.as_bytes(),
+        v8::NewStringType::Normal,
+      )
+      .unwrap()
+      .into();
+      result.set(scope, name, value);
     }
 
     Ok(Some(result))
   }
 
+  // Bind the parameters to the prepared statement.
   fn bind_params(
     &self,
     scope: &mut v8::HandleScope,
@@ -144,33 +193,41 @@ impl StatementSync {
 
         if value.is_number() {
           let value = value.number_value(scope).unwrap();
+
+          // SAFETY: `self.inner` is a valid pointer to a sqlite3_stmt.
           unsafe {
-            ffi::sqlite3_bind_double(raw, i as i32 + 1, value);
+            ffi::sqlite3_bind_double(raw, i + 1, value);
           }
         } else if value.is_string() {
           let value = value.to_rust_string_lossy(scope);
+
+          // SAFETY: `self.inner` is a valid pointer to a sqlite3_stmt.
+          // SQLITE_TRANSIENT is used to indicate that SQLite should make a copy of the data.
           unsafe {
             ffi::sqlite3_bind_text(
               raw,
-              i as i32 + 1,
+              i + 1,
               value.as_ptr() as *const i8,
               value.len() as i32,
               ffi::SQLITE_TRANSIENT(),
             );
           }
         } else if value.is_null() {
+          // SAFETY: `self.inner` is a valid pointer to a sqlite3_stmt.
           unsafe {
-            ffi::sqlite3_bind_null(raw, i as i32 + 1);
+            ffi::sqlite3_bind_null(raw, i + 1);
           }
         } else if value.is_array_buffer_view() {
           let value: v8::Local<v8::ArrayBufferView> = value.try_into().unwrap();
           let data = value.data();
           let size = value.byte_length();
 
+          // SAFETY: `self.inner` is a valid pointer to a sqlite3_stmt.
+          // SQLITE_TRANSIENT is used to indicate that SQLite should make a copy of the data.
           unsafe {
             ffi::sqlite3_bind_blob(
               raw,
-              i as i32 + 1,
+              i + 1,
               data,
               size as i32,
               ffi::SQLITE_TRANSIENT(),
@@ -186,6 +243,10 @@ impl StatementSync {
   }
 }
 
+// Represents a single prepared statement. Cannot be initialized directly via constructor.
+// Instances are created using `DatabaseSync#prepare`.
+//
+// A prepared statement is an efficient binary representation of the SQL used to create it.
 #[op2]
 impl StatementSync {
   #[constructor]
@@ -194,6 +255,10 @@ impl StatementSync {
     Err(SqliteError::InvalidConstructor)
   }
 
+  // Executes a prepared statement and returns the first result as an object.
+  //
+  // The prepared statement does not return any results, this method returns undefined.
+  // Optionally, parameters can be bound to the prepared statement.
   fn get<'a>(
     &self,
     scope: &mut v8::HandleScope<'a>,
@@ -211,6 +276,10 @@ impl StatementSync {
     Ok(result)
   }
 
+  // Executes a prepared statement and returns an object summarizing the resulting
+  // changes.
+  //
+  // Optionally, parameters can be bound to the prepared statement.
   #[serde]
   fn run(
     &self,
@@ -231,6 +300,10 @@ impl StatementSync {
     })
   }
 
+  // Executes a prepared statement and returns all results as an array of objects.
+  //
+  // If the prepared statement does not return any results, this method returns an empty array.
+  // Optionally, parameters can be bound to the prepared statement.
   fn all<'a>(
     &self,
     scope: &mut v8::HandleScope<'a>,
