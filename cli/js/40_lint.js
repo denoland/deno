@@ -9,7 +9,371 @@ const {
   op_lint_report,
 } = core.ops;
 
-/** @typedef {{ plugins: Deno.LintPlugin[], installedPlugins: Set<string> }} LintState */
+// Keep in sync with Rust
+/**
+ * @enum {number}
+ */
+const AstTypeName = [
+  "Invalid",
+  "Program",
+
+  "Import",
+  "ImportDecl",
+  "ExportDecl",
+  "ExportNamed",
+  "ExportDefaultDecl",
+  "ExportDefaultExpr",
+  "ExportAll",
+  "TSImportEquals",
+  "TSExportAssignment",
+  "TSNamespaceExport",
+
+  // Decls
+  "ClassDeclaration",
+  "FunctionDeclaration",
+  "VariableDeclaration",
+  "Using",
+  "TsInterface",
+  "TsTypeAlias",
+  "TsEnum",
+  "TsModule",
+
+  // Statements
+  "BlockStatement",
+  "Empty",
+  "DebuggerStatement",
+  "WithStatement",
+  "ReturnStatement",
+  "LabeledStatement",
+  "BreakStatement",
+  "ContinueStatement",
+  "IfStatement",
+  "SwitchStatement",
+  "SwitchCase",
+  "ThrowStatement",
+  "TryStatement",
+  "WhileStatement",
+  "DoWhileStatement",
+  "ForStatement",
+  "ForInStatement",
+  "ForOfStatement",
+  "Decl",
+  "ExpressionStatement",
+
+  // Expressions
+  "This",
+  "ArrayExpression",
+  "ObjectExpression",
+  "FunctionExpression",
+  "UnaryExpression",
+  "UpdateExpression",
+  "BinaryExpression",
+  "AssignmentExpression",
+  "MemberExpression",
+  "Super",
+  "ConditionalExpression",
+  "CallExpression",
+  "NewExpression",
+  "ParenthesisExpression",
+  "SequenceExpression",
+  "Identifier",
+  "TemplateLiteral",
+  "TaggedTemplateExpression",
+  "ArrowFunctionExpression",
+  "ClassExpr",
+  "YieldExpression",
+  "MetaProperty",
+  "AwaitExpression",
+  "LogicalExpression",
+  "TSTypeAssertion",
+  "TSConstAssertion",
+  "TSNonNull",
+  "TSAs",
+  "TSInstantiation",
+  "TSSatisfies",
+  "PrivateIdentifier",
+  "ChainExpression",
+
+  "StringLiteral",
+  "BooleanLiteral",
+  "NullLiteral",
+  "NumericLiteral",
+  "BigIntLiteral",
+  "RegExpLiteral",
+
+  // Custom
+  "EmptyExpr",
+  "SpreadElement",
+  "Property",
+  "VariableDeclarator",
+  "CatchClause",
+  "RestElement",
+  "ExportSpecifier",
+  "TemplateElement",
+  "MethodDefinition",
+
+  // Patterns
+  "ArrayPattern",
+  "AssignmentPattern",
+  "ObjectPattern",
+
+  // JSX
+  "JSXAttribute",
+  "JSXClosingElement",
+  "JSXClosingFragment",
+  "JSXElement",
+  "JSXEmptyExpression",
+  "JSXExpressionContainer",
+  "JSXFragment",
+  "JSXIdentifier",
+  "JSXMemberExpression",
+  "JSXNamespacedName",
+  "JSXOpeningElement",
+  "JSXOpeningFragment",
+  "JSXSpreadAttribute",
+  "JSXSpreadChild",
+  "JSXText",
+];
+
+/** @type {Map<string, number>} */
+const AstType = new Map();
+for (let i = 0; i < AstTypeName.length; i++) {
+  AstType.set(AstTypeName[i], i);
+}
+
+// Keep in sync with Rust
+const AstPropArr = [
+  // Base
+  "parent:",
+  "range",
+  "type",
+  "_InternalFlags",
+
+  // Node
+  "abstract",
+  "accessibility",
+  "alternate",
+  "argument",
+  "arguments",
+  "async",
+  "attributes",
+  "await",
+  "block",
+  "body",
+  "callee",
+  "cases",
+  "children",
+  "checkType",
+  "closingElement",
+  "closingFragment",
+  "computed",
+  "consequent",
+  "const",
+  "constraint",
+  "cooked",
+  "declarations",
+  "declare",
+  "default",
+  "definite",
+  "delegate",
+  "discriminant",
+  "elements",
+  "elementTypes",
+  "exprName",
+  "expression",
+  "expressions",
+  "exported",
+  "extendsType",
+  "falseType",
+  "finalizer",
+  "flags",
+  "generator",
+  "handler",
+  "id",
+  "in",
+  "init",
+  "initializer",
+  "implements",
+  "key",
+  "kind",
+  "label",
+  "left",
+  "literal",
+  "local",
+  "members",
+  "meta",
+  "method",
+  "name",
+  "namespace",
+  "nameType",
+  "object",
+  "openingElement",
+  "openingFragment",
+  "operator",
+  "optional",
+  "out",
+  "param",
+  "params",
+  "pattern",
+  "prefix",
+  "properties",
+  "property",
+  "quasi",
+  "quasis",
+  "raw",
+  "readonly",
+  "returnType",
+  "right",
+  "selfClosing",
+  "shorthand",
+  "source",
+  "sourceType",
+  "specifiers",
+  "superClass",
+  "superTypeArguments",
+  "tag",
+  "tail",
+  "test",
+  "trueType",
+  "typeAnnotation",
+  "typeArguments",
+  "typeName",
+  "typeParameter",
+  "typeParameters",
+  "types",
+  "update",
+  "value",
+];
+
+/** @type {Map<string, number>} */
+const AstProp = new Map();
+for (let i = 0; i < AstPropArr.length; i++) {
+  AstProp.set(AstPropArr[i], i);
+}
+
+const AST_PROP_TYPE = /** @type {number} */ (AstProp.get("type"));
+const AST_PROP_PARENT = /** @type {number} */ (AstProp.get("parent"));
+const AST_PROP_RANGE = /** @type {number} */ (AstProp.get("range"));
+
+const AstPropName = Array.from(AstProp.keys());
+
+// Keep in sync with Rust
+/** @enum {number} */
+const PropFlags = {
+  Ref: 0,
+  RefArr: 1,
+  String: 2,
+  Bool: 3,
+  AssignOp: 4,
+  BinOp: 5,
+  LogicalOp: 6,
+  UnaryOp: 7,
+  VarKind: 8,
+  TruePlusMinus: 9,
+  Accessibility: 10,
+  UpdateOp: 11,
+};
+
+// Keep in sync with Rust
+const ASSIGN_OP = [
+  "=",
+  "+=",
+  "-=",
+  "*=",
+  "/=",
+  "%=",
+  "<<=",
+  ">>=",
+  ">>>=",
+  "|=",
+  "^=",
+  "&=",
+  "**=",
+  "&&=",
+  "||=",
+  "??=",
+];
+
+const BIN_OP = [
+  "==",
+  "!=",
+  "===",
+  "!==",
+  "<",
+  "<=",
+  ">",
+  ">=",
+  "<<",
+  ">>",
+  ">>>",
+  "+",
+  "-",
+  "*",
+  "/",
+  "%",
+  "|",
+  "^",
+  "&",
+  "in",
+  "instanceof",
+  "**",
+];
+
+// Keep in sync with rust
+const LOGICAL_OP = [
+  "&&",
+  "||",
+  "??",
+];
+
+// Keep in sync with rust
+const UNARY_OP = [
+  "-",
+  "+",
+  "!",
+  "~",
+  "typeof",
+  "void",
+  "delete",
+];
+
+// Keep in sync with rust
+const VAR_KIND = [
+  "var",
+  "let",
+  "const",
+];
+
+// Keep in sync with rust
+const ACCESSIBILITY = [
+  undefined,
+  "public",
+  "protected",
+  "private",
+];
+
+// Keep in sync with rust
+const UPDATE_OP = [
+  "++",
+  "--",
+];
+
+/**
+ * @typedef {{
+ *   buf: Uint8Array,
+ *   strTable: Map<number, string>,
+ *   strTableOffset: number,
+ *   rootId: number,
+ *   nodes: Map<number, Node>
+ * }} AstContext
+ */
+
+/**
+ * @typedef {{
+ *   plugins: Deno.LintPlugin[],
+ *   installedPlugins: Set<string>,
+ * }} LintState
+ */
 
 /** @type {LintState} */
 const state = {
@@ -82,514 +446,184 @@ export function installPlugin(plugin) {
   state.installedPlugins.add(plugin.name);
 }
 
-// Keep in sync with Rust
-/**
- * @enum {number}
- */
-const Flags = {
-  ProgramModule: 0b00000001,
-  FnAsync: 0b00000001,
-  FnGenerator: 0b00000010,
-  FnDeclare: 0b00000100,
-  FnOptional: 0b00001000,
-  MemberComputed: 0b00000001,
-  MemberOptional: 0b00000010,
-  PropShorthand: 0b00000001,
-  PropComputed: 0b00000010,
-  PropGetter: 0b00000100,
-  PropSetter: 0b00001000,
-  PropMethod: 0b00010000,
-  VarVar: 0b00000001,
-  VarConst: 0b00000010,
-  VarLet: 0b00000100,
-  VarDeclare: 0b00001000,
-  ExportType: 0b000000001,
-  TplTail: 0b000000001,
-  ForAwait: 0b000000001,
-  LogicalOr: 0b000000001,
-  LogicalAnd: 0b000000010,
-  LogicalNullishCoalescin: 0b000000100,
-  JSXSelfClosing: 0b000000001,
-
-  BinEqEq: 1,
-  BinNotEq: 2,
-  BinEqEqEq: 3,
-  BinNotEqEq: 4,
-  BinLt: 5,
-  BinLtEq: 6,
-  BinGt: 7,
-  BinGtEq: 8,
-  BinLShift: 9,
-  BinRShift: 10,
-  BinZeroFillRShift: 11,
-  BinAdd: 12,
-  BinSub: 13,
-  BinMul: 14,
-  BinDiv: 15,
-  BinMod: 16,
-  BinBitOr: 17,
-  BinBitXor: 18,
-  BinBitAnd: 19,
-  BinIn: 20,
-  BinInstanceOf: 21,
-  BinExp: 22,
-
-  UnaryMinus: 1,
-  UnaryPlus: 2,
-  UnaryBang: 3,
-  UnaryTilde: 4,
-  UnaryTypeOf: 5,
-  UnaryVoid: 6,
-  UnaryDelete: 7,
-
-  UpdatePrefix: 0b000000001,
-  UpdatePlusPlus: 0b000000010,
-  UpdateMinusMinus: 0b000000100,
-
-  YieldDelegate: 1,
-  ParamOptional: 1,
-
-  ClassDeclare: 0b000000001,
-  ClassAbstract: 0b000000010,
-  ClassConstructor: 0b000000100,
-  ClassMethod: 0b000001000,
-  ClassPublic: 0b001000000,
-  ClassProtected: 0b010000000,
-  ClassPrivate: 0b100000000,
-};
-
-// Keep in sync with Rust
-/**
- * @enum {number}
- */
-const AstType = {
-  Invalid: 0,
-  Program: 1,
-
-  Import: 2,
-  ImportDecl: 3,
-  ExportDecl: 4,
-  ExportNamed: 5,
-  ExportDefaultDecl: 6,
-  ExportDefaultExpr: 7,
-  ExportAll: 8,
-  TSImportEquals: 9,
-  TSExportAssignment: 10,
-  TSNamespaceExport: 11,
-
-  // Decls
-  ClassDeclaration: 12,
-  FunctionDeclaration: 13,
-  VariableDeclaration: 14,
-  Using: 15,
-  TsInterface: 16,
-  TsTypeAlias: 17,
-  TsEnum: 18,
-  TsModule: 19,
-
-  // Statements
-  BlockStatement: 20,
-  Empty: 21,
-  DebuggerStatement: 22,
-  WithStatement: 23,
-  ReturnStatement: 24,
-  LabeledStatement: 25,
-  BreakStatement: 26,
-  ContinueStatement: 27,
-  IfStatement: 28,
-  SwitchStatement: 29,
-  SwitchCase: 30,
-  ThrowStatement: 31,
-  TryStatement: 32,
-  WhileStatement: 33,
-  DoWhileStatement: 34,
-  ForStatement: 35,
-  ForInStatement: 36,
-  ForOfStatement: 37,
-  Decl: 38,
-  ExpressionStatement: 39,
-
-  // Expressions
-  This: 40,
-  ArrayExpression: 41,
-  ObjectExpression: 42,
-  FunctionExpression: 43,
-  UnaryExpression: 44,
-  UpdateExpression: 45,
-  BinaryExpression: 46,
-  AssignmentExpression: 47,
-  MemberExpression: 48,
-  Super: 49,
-  ConditionalExpression: 50,
-  CallExpression: 51,
-  NewExpression: 52,
-  ParenthesisExpression: 53,
-  SequenceExpression: 54,
-  Identifier: 55,
-  TemplateLiteral: 56,
-  TaggedTemplateExpression: 57,
-  ArrowFunctionExpression: 58,
-  ClassExpr: 59,
-  YieldExpression: 60,
-  MetaProperty: 61,
-  AwaitExpression: 62,
-  LogicalExpression: 63,
-  TSTypeAssertion: 64,
-  TSConstAssertion: 65,
-  TSNonNull: 66,
-  TSAs: 67,
-  TSInstantiation: 68,
-  TSSatisfies: 69,
-  PrivateIdentifier: 70,
-  ChainExpression: 71,
-
-  StringLiteral: 72,
-  BooleanLiteral: 73,
-  NullLiteral: 74,
-  NumericLiteral: 75,
-  BigIntLiteral: 76,
-  RegExpLiteral: 77,
-
-  // Custom
-  EmptyExpr: 78,
-  SpreadElement: 79,
-  Property: 80,
-  VariableDeclarator: 81,
-  CatchClause: 82,
-  RestElement: 83,
-  ExportSpecifier: 84,
-  TemplateElement: 85,
-  MethodDefinition: 86,
-
-  // Patterns
-  ArrayPattern: 87,
-  AssignmentPattern: 88,
-  ObjectPattern: 89,
-
-  // JSX
-  JSXAttribute: 90,
-  JSXClosingElement: 91,
-  JSXClosingFragment: 92,
-  JSXElement: 93,
-  JSXEmptyExpression: 94,
-  JSXExpressionContainer: 95,
-  JSXFragment: 96,
-  JSXIdentifier: 97,
-  JSXMemberExpression: 98,
-  JSXNamespacedName: 99,
-  JSXOpeningElement: 100,
-  JSXOpeningFragment: 101,
-  JSXSpreadAttribute: 102,
-  JSXSpreadChild: 103,
-  JSXText: 104,
-};
-
-const AstTypeName = Object.keys(AstType);
-
-// Keep in sync with Rust
-const AstProp = [
-  // Base
-  "parent",
-  "range",
-  "type",
-  "_InternalFlags", // Internal
-
-  // Node
-  "alternate",
-  "argument",
-  "arguments",
-  "async",
-  "attributes",
-  "await",
-  "block",
-  "body",
-  "callee",
-  "cases",
-  "children",
-  "closingElement",
-  "closingFragment",
-  "computed",
-  "consequent",
-  "cooked",
-  "declarations",
-  "declare",
-  "definite",
-  "delegate",
-  "discriminant",
-  "elements",
-  "elementTypes",
-  "expression",
-  "expressions",
-  "exported",
-  "finalizer",
-  "flags",
-  "generator",
-  "handler",
-  "id",
-  "init",
-  "key",
-  "kind",
-  "label",
-  "left",
-  "local",
-  "members",
-  "meta",
-  "method",
-  "name",
-  "namespace",
-  "object",
-  "openingElement",
-  "openingFragment",
-  "operator",
-  "optional",
-  "param",
-  "params",
-  "pattern",
-  "prefix",
-  "properties",
-  "property",
-  "quasi",
-  "quasis",
-  "raw",
-  "returnType",
-  "right",
-  "selfClosing",
-  "shorthand",
-  "source",
-  "specifiers",
-  "tag",
-  "tail",
-  "test",
-  "typeAnnotation",
-  "typeArguments",
-  "typeParameters",
-  "types",
-  "update",
-  "value",
-];
-// FIXME: this is slow
-const AST_PROP_PARENT = AstProp.indexOf("parent");
-const AST_PROP_TYPE = AstProp.indexOf("type");
-const AST_PROP_BODY = AstProp.indexOf("body");
-const AST_PROP_CHILDREN = AstProp.indexOf("children");
-const AST_PROP_ELEMENTS = AstProp.indexOf("elements");
-const AST_PROP_PROPERTIES = AstProp.indexOf("properties");
-const AST_PROP_ARGUMENTS = AstProp.indexOf("arguments");
-const AST_PROP_PARAMS = AstProp.indexOf("params");
-const AST_PROP_EXPRESSIONS = AstProp.indexOf("expressions");
-const AST_PROP_QUASIS = AstProp.indexOf("quasis");
-const AST_PROP_RANGE = AstProp.indexOf("range");
-const AST_PROP_INTERNAL_FLAGS = AstProp.indexOf("_InternalFlags");
-const AST_PROP_ATTRIBUTE = AstProp.indexOf("attribute");
-const AST_PROP_CONSEQUENT = AstProp.indexOf("consequent");
-const AST_PROP_CASES = AstProp.indexOf("cases");
-const AST_PROP_SPECIFIERS = AstProp.indexOf("specifiers");
-const AST_PROP_DECLARATIONS = AstProp.indexOf("declarations");
-const AST_PROP_MEMBERS = AstProp.indexOf("members");
-const AST_PROP_OPERATOR = AstProp.indexOf("operator");
-const AST_PROP_PREFIX = AstProp.indexOf("prefix");
-const AST_PROP_OPTIONAL = AstProp.indexOf("optional");
-const AST_PROP_ASYNC = AstProp.indexOf("async");
-const AST_PROP_GENERATOR = AstProp.indexOf("generator");
-const AST_PROP_NAME = AstProp.indexOf("name");
-const AST_PROP_VALUE = AstProp.indexOf("value");
-const AST_PROP_COMPUTED = AstProp.indexOf("computed");
-const AST_PROP_DELEGATE = AstProp.indexOf("delegate");
-const AST_PROP_SELF_CLOSING = AstProp.indexOf("selfClosing");
-
-/**
- * @param {number} type
- * @param {number} propId
- * @returns {boolean}
- */
-function isArrayProp(type, propId) {
-  switch (type) {
-    case AstType.Program:
-    case AstType.BlockStatement:
-      // case AstType.StaticBlock:
-      return propId === AST_PROP_BODY;
-    case AstType.JSXOpeningElement:
-      return propId === AST_PROP_ATTRIBUTE;
-    case AstType.SwitchCase:
-      return propId === AST_PROP_CONSEQUENT;
-    default:
-      switch (propId) {
-        case AST_PROP_CHILDREN:
-        case AST_PROP_ELEMENTS:
-        case AST_PROP_PROPERTIES:
-        case AST_PROP_PARAMS:
-        case AST_PROP_ARGUMENTS:
-        case AST_PROP_EXPRESSIONS:
-        case AST_PROP_QUASIS:
-        case AST_PROP_CASES:
-        case AST_PROP_SPECIFIERS:
-        case AST_PROP_DECLARATIONS:
-        case AST_PROP_MEMBERS:
-          return true;
-        default:
-          return false;
-      }
-  }
-}
-
 /**
  * @param {AstContext} ctx
  * @param {number} offset
- * @param {number} propId
- * @returns {*}
+ * @returns
  */
-function readValue(ctx, offset, propId) {
-  const { buf } = ctx;
+function getNode(ctx, offset) {
+  if (offset === 0) return null;
 
-  if (propId === AST_PROP_TYPE) {
-    const type = buf[offset];
-    return AstTypeName[type];
-  } else if (propId === AST_PROP_RANGE) {
-    const start = readU32(buf, offset + 1 + 4);
-    const end = readU32(buf, offset + 1 + 4 + 4);
-    return [start, end];
-  } else if (propId === AST_PROP_PARENT) {
-    return readU32(buf, offset + 1);
-  }
+  const cached = ctx.nodes.get(offset);
+  if (cached !== undefined) return cached;
 
-  const type = buf[offset];
-
-  // type + parentId + SpanLo + SpanHi
-  offset += 1 + 4 + 4 + 4;
-
-  const propCount = buf[offset];
-  offset += 1;
-
-  for (let i = 0; i < propCount; i++) {
-    const searchProp = buf[offset];
-    offset += 1;
-
-    if (searchProp === propId) {
-      if (propId === AST_PROP_INTERNAL_FLAGS) {
-        return buf[offset];
-      } else if (isArrayProp(type, searchProp)) {
-        const len = readU32(buf, offset);
-        offset += 4;
-
-        const ids = new Array(len).fill(null);
-        for (let j = 0; j < len; j++) {
-          ids[i] = readU32(buf, offset);
-          offset += 4;
-        }
-        return ids;
-      }
-
-      return readU32(buf, offset);
-    }
-
-    if (searchProp === AST_PROP_INTERNAL_FLAGS) {
-      offset += 1;
-    } else if (isArrayProp(type, searchProp)) {
-      const len = readU32(buf, offset);
-      offset += 4 + (len * 4);
-    } else {
-      offset += 4;
-    }
-  }
-
-  return 0;
+  const node = new Node(ctx, offset);
+  ctx.nodes.set(offset, /** @type {*} */ (cached));
+  return node;
 }
 
 /**
- * @param {AstContext} ctx
+ * @param {Uint8Array} buf
+ * @param {number} search
  * @param {number} offset
  * @returns {number}
  */
-function getTypeId(ctx, offset) {
-  return ctx.buf[offset];
-}
-
-/**
- * @param {AstContext} ctx
- * @param {number} offset
- * @param {Map<number, any>} seen
- * @returns {*}
- */
-function toJsValue(ctx, offset, seen) {
-  const cached = seen.get(offset);
-  if (cached !== undefined) return cached;
-
-  const type = getTypeId(ctx, offset);
-  const range = readValue(ctx, offset, AST_PROP_RANGE);
-
-  /** @type {Record<string, any>} */
-  const node = {
-    type: AstTypeName[type],
-    range,
-  };
-
-  seen.set(offset, node);
-
-  // console.log("toJSON", AstTypeName[type], offset);
-
-  const { buf, idTable } = ctx;
-
+function findPropOffset(buf, offset, search) {
   // type + parentId + SpanLo + SpanHi
   offset += 1 + 4 + 4 + 4;
 
   const propCount = buf[offset];
   offset += 1;
 
-  let flags = 0;
   for (let i = 0; i < propCount; i++) {
-    const propId = buf[offset];
-    offset += 1;
+    const maybe = offset;
+    const prop = buf[offset++];
+    const kind = buf[offset++];
+    if (prop === search) return maybe;
 
-    const name = AstProp[propId];
-    // console.log(`reading node ${AstTypeName[type]}, prop ${name}`);
-
-    if (propId === AST_PROP_INTERNAL_FLAGS) {
-      flags = buf[offset];
-      offset += 1;
-    } else if (
-      propId === AST_PROP_NAME && (type === AstType.Identifier ||
-        type === AstType.JSXIdentifier)
-    ) {
-      const strId = readU32(buf, offset);
+    if (kind === PropFlags.Ref) {
       offset += 4;
-
-      node[name] = getString(ctx, strId);
-    } else if (
-      propId === AST_PROP_VALUE && (type === AstType.StringLiteral ||
-        type === AstType.NumericLiteral)
-    ) {
-      const strId = readU32(buf, offset);
+    } else if (kind === PropFlags.RefArr) {
+      const len = readU32(buf, offset);
+      offset += 4 + (len * 4);
+    } else if (kind === PropFlags.String) {
       offset += 4;
+    } else if (kind === PropFlags.Bool) {
+      offset++;
+    } else {
+      offset++;
+    }
+  }
 
-      node[name] = getString(ctx, strId);
-    } else if (isArrayProp(type, propId)) {
+  return -1;
+}
+
+/**
+ * @param {AstContext} ctx
+ * @param {number} offset
+ * @param {number} search
+ * @returns {*}
+ */
+function readValue(ctx, offset, search) {
+  const { buf } = ctx;
+  const type = buf[offset];
+
+  if (search === AST_PROP_TYPE) {
+    return AstTypeName[type];
+  } else if (search === AST_PROP_RANGE) {
+    const start = readU32(buf, offset + 1 + 4);
+    const end = readU32(buf, offset + 1 + 4 + 4);
+    return [start, end];
+  } else if (search === AST_PROP_PARENT) {
+    const pos = readU32(buf, offset + 1);
+    return getNode(ctx, pos);
+  }
+
+  offset = findPropOffset(ctx.buf, offset, search);
+  if (offset === -1) return undefined;
+
+  const kind = buf[offset + 1];
+
+  if (kind === PropFlags.Ref) {
+    const value = readU32(buf, offset + 2);
+    return getNode(ctx, value);
+  } else if (kind === PropFlags.RefArr) {
+    const len = readU32(buf, offset);
+    offset += 4;
+
+    const nodes = new Array(len);
+    for (let i = 0; i < len; i++) {
+      nodes[i] = getNode(ctx, readU32(buf, offset));
+      offset += 4;
+    }
+    return nodes;
+  } else if (kind === PropFlags.Bool) {
+    return buf[offset] === 1;
+  } else if (kind === PropFlags.String) {
+    const v = readU32(buf, offset);
+    return getString(ctx, v);
+  }
+
+  return getFlagValue(kind, buf[offset]);
+}
+
+/**
+ * @param {number} kind
+ * @param {number} value
+ * @returns
+ */
+function getFlagValue(kind, value) {
+  switch (kind) {
+    case PropFlags.AssignOp:
+      return ASSIGN_OP[value];
+    case PropFlags.BinOp:
+      return BIN_OP[value];
+    case PropFlags.LogicalOp:
+      return LOGICAL_OP[value];
+    case PropFlags.TruePlusMinus:
+      throw new Error("TODO: TruePlusMinus");
+    case PropFlags.UnaryOp:
+      return UNARY_OP[value];
+    case PropFlags.VarKind:
+      return VAR_KIND[value];
+    case PropFlags.Accessibility:
+      return ACCESSIBILITY[value];
+    case PropFlags.UpdateOp:
+      return UPDATE_OP[value];
+    default:
+      throw new Error(`Unknown prop kind: ${kind}`);
+  }
+}
+
+/**
+ * @param {AstContext} ctx
+ * @param {number} offset
+ * @returns {*}
+ */
+function toJsValue(ctx, offset) {
+  const { buf } = ctx;
+  console.log("to js", offset);
+
+  /** @type {Record<string, any>} */
+  const node = {
+    type: readValue(ctx, offset, AST_PROP_TYPE),
+    range: readValue(ctx, offset, AST_PROP_RANGE),
+  };
+
+  // type + parentId + SpanLo + SpanHi
+  offset += 1 + 4 + 4 + 4;
+
+  const count = buf[offset];
+  for (let i = 0; i < count; i++) {
+    const prop = buf[offset++];
+    const kind = buf[offset++];
+    const name = AstPropName[prop];
+    console.log({ prop, kind, name });
+
+    if (kind === PropFlags.Ref) {
+      const v = readU32(buf, offset);
+      offset += 4;
+      node[name] = toJsValue(ctx, v);
+    } else if (kind === PropFlags.RefArr) {
       const len = readU32(buf, offset);
       offset += 4;
-
-      const elems = new Array(len).fill(null);
-      for (let j = 0; j < len; j++) {
-        const id = readU32(buf, offset);
+      const nodes = new Array(len);
+      for (let i = 0; i < len; i++) {
+        const v = readU32(buf, offset);
+        if (v === 0) continue;
+        nodes[i] = toJsValue(ctx, v);
         offset += 4;
-
-        if (id === 0) {
-          elems[j] = undefined;
-        } else {
-          const nodeOffset = idTable[id];
-          elems[j] = toJsValue(ctx, nodeOffset, seen);
-        }
       }
-
-      node[name] = elems;
-    } else {
-      const id = readU32(buf, offset);
+      node[name] = nodes;
+    } else if (kind === PropFlags.Bool) {
+      const v = buf[offset++];
+      node[name] = v === 1;
+    } else if (kind === PropFlags.String) {
+      const v = readU32(buf, offset);
       offset += 4;
-
-      if (id === 0) {
-        node[name] = null;
-      } else {
-        const nodeOffset = idTable[id];
-        node[name] = toJsValue(ctx, nodeOffset, seen);
-      }
+      node[name] = getString(ctx, v);
+    } else {
+      node[name] = getFlagValue(kind, buf[offset++]);
     }
   }
 
@@ -618,416 +652,21 @@ class Node {
    * @returns {string}
    */
   [Symbol.for("Deno.customInspect")](_, options) {
-    const seen = new Map();
-    const json = toJsValue(this[INTERNAL_CTX], this[INTERNAL_OFFSET], seen);
-    seen.clear();
+    const json = toJsValue(this[INTERNAL_CTX], this[INTERNAL_OFFSET]);
     return Deno.inspect(json, options);
   }
 }
 
-for (let i = 0; i < AstProp.length; i++) {
-  const name = AstProp[i];
+for (let i = 0; i < AstPropName.length; i++) {
+  const name = AstPropName[i];
   Object.defineProperty(Node.prototype, name, {
     get() {
-      const ctx = /** @type {AstContext} */ (this[INTERNAL_CTX]);
-      const offset = this[INTERNAL_OFFSET];
-      const type = getTypeId(ctx, offset);
-      const flags = readValue(ctx, offset, AST_PROP_INTERNAL_FLAGS);
-
-      switch (i) {
-        case AST_PROP_OPERATOR:
-          switch (type) {
-            case AstType.AssignmentExpression:
-              return getAssignOperator(flags);
-            case AstType.BinaryExpression:
-              return getBinaryOperator(flags);
-            case AstType.UpdateExpression:
-              return (flags & Flags.UpdatePlusPlus) !== 0 ? "++" : "--";
-            case AstType.LogicalExpression:
-              return getLogicalOperator(flags);
-            case AstType.UnaryExpression:
-              return getUnaryOperator(flags);
-          }
-
-          break;
-        case AST_PROP_PREFIX:
-          return (flags & Flags.UpdatePrefix) !== 0;
-        case AST_PROP_OPTIONAL:
-          switch (type) {
-            case AstType.FunctionExpression:
-              return (flags & Flags.FnOptional) !== 0;
-            case AstType.MemberExpression:
-              return (flags & Flags.MemberOptional) !== 0;
-            case AstType.ArrayPattern:
-            case AstType.ObjectPattern:
-              return (flags & Flags.ParamOptional) !== 0;
-          }
-
-          break;
-        case AST_PROP_ASYNC:
-          return (flags & Flags.FnAsync) !== 0;
-        case AST_PROP_GENERATOR:
-          return (flags & Flags.FnGenerator) !== 0;
-        case AST_PROP_COMPUTED:
-          return (flags & Flags.MemberComputed) !== 0;
-        case AST_PROP_DELEGATE:
-          return (flags & Flags.YieldDelegate) !== 0;
-        case AST_PROP_SELF_CLOSING:
-          return flags !== 0;
-        case AST_PROP_NAME: {
-          const value = readValue(ctx, offset, AST_PROP_NAME);
-
-          switch (type) {
-            case AstType.Identifier:
-            case AstType.JSXIdentifier:
-            case AstType.PrivateIdentifier:
-              return getString(ctx, value);
-            default: {
-              const nodeOffset = ctx.idTable[value];
-              return new Node(ctx, nodeOffset);
-            }
-          }
-        }
-      }
-
-      const value = readValue(ctx, offset, i);
-      if (Array.isArray(value)) {
-        const nodes = new Array(value.length);
-        for (let i = 0; i < value.length; i++) {
-          const id = value[i];
-          if (id === 0) {
-            nodes[i] = undefined;
-            continue;
-          }
-          const nodeOffset = ctx.idTable[id];
-          nodes[i] = new Node(ctx, nodeOffset);
-        }
-        return nodes;
-      }
-
-      if (value === 0) return null;
-      const nodeOffset = ctx.idTable[value];
-      return new Node(ctx, nodeOffset);
+      return readValue(this[INTERNAL_CTX], this[INTERNAL_OFFSET], i);
     },
   });
 }
 
-/**
- * @param {number} n
- * @returns {Deno.AssignmentExpression["operator"]}
- */
-function getAssignOperator(n) {
-  switch (n) {
-    case 0:
-      return "=";
-    case 1:
-      return "+=";
-    case 2:
-      return "-=";
-    case 3:
-      return "*=";
-    case 4:
-      return "/=";
-    case 5:
-      return "%=";
-    case 6:
-      return "<<=";
-    case 7:
-      return ">>=";
-    case 8:
-      return ">>>=";
-    case 9:
-      return "|=";
-    case 10:
-      return "^=";
-    case 11:
-      return "&=";
-    case 12:
-      return "**=";
-    case 13:
-      return "&&=";
-    case 14:
-      return "||=";
-    case 15:
-      return "??=";
-    default:
-      throw new Error(`Unknown operator: ${n}`);
-  }
-}
-
-/**
- * @param {number} n
- * @returns {Deno.BinaryExpression["operator"]}
- */
-function getBinaryOperator(n) {
-  switch (n) {
-    case 1:
-      return "==";
-    case 2:
-      return "!=";
-    case 3:
-      return "===";
-    case 4:
-      return "!==";
-    case 5:
-      return "<";
-    case 6:
-      return "<=";
-    case 7:
-      return ">";
-    case 8:
-      return ">=";
-    case 9:
-      return "<<";
-    case 10:
-      return ">>";
-    case 11:
-      return ">>>";
-    case 12:
-      return "+";
-    case 13:
-      return "-";
-    case 14:
-      return "*";
-    case 15:
-      return "/";
-    case 16:
-      return "%";
-    case 17:
-      return "|";
-    case 18:
-      return "^";
-    case 19:
-      return "&";
-    case 20:
-      return "in";
-    case 21:
-      return "instanceof";
-    case 22:
-      return "**";
-    default:
-      throw new Error(`Unknown operator: ${n}`);
-  }
-}
-
-/**
- * @param {number} n
- * @returns {Deno.LogicalExpression["operator"]}
- */
-function getLogicalOperator(n) {
-  if ((n & Flags.LogicalAnd) !== 0) {
-    return "&&";
-  } else if ((n & Flags.LogicalOr) !== 0) {
-    return "||";
-  } else if ((n & Flags.LogicalNullishCoalescin) !== 0) {
-    return "??";
-  }
-
-  throw new Error(`Unknown operator: ${n}`);
-}
-
-/**
- * @param {number} n
- * @returns {Deno.UnaryExpression["operator"]}
- */
-function getUnaryOperator(n) {
-  switch (n) {
-    case 1:
-      return "-";
-    case 2:
-      return "+";
-    case 3:
-      return "!";
-    case 4:
-      return "~";
-    case 5:
-      return "typeof";
-    case 6:
-      return "void";
-    case 7:
-      return "delete";
-    default:
-      throw new Error(`Unknown operator: ${n}`);
-  }
-}
-
-// Literals
-
-// /** @implements {Deno.BooleanLiteral} */
-// class BooleanLiteral extends Node {
-//   type = /** @type {const} */ ("BooleanLiteral");
-//   range;
-//   value = false;
-
-//   /**
-//    * @param {AstContext} ctx
-//    * @param {number} parentId
-//    * @param {Deno.Range} range
-//    * @param {number} flags
-//    */
-//   constructor(ctx, parentId, range, flags) {
-//     super(ctx, parentId);
-//     this.value = flags === 1;
-//     this.range = range;
-//   }
-// }
-
-// /** @implements {Deno.BigIntLiteral} */
-// class BigIntLiteral extends Node {
-//   type = /** @type {const} */ ("BigIntLiteral");
-//   range;
-//   value;
-
-//   /**
-//    * @param {AstContext} ctx
-//    * @param {number} parentId
-//    * @param {Deno.Range} range
-//    * @param {number} strId
-//    */
-//   constructor(ctx, parentId, range, strId) {
-//     super(ctx, parentId);
-//     this.range = range;
-//     this.value = BigInt(getString(ctx, strId));
-//   }
-// }
-
-// /** @implements {Deno.NullLiteral} */
-// class NullLiteral extends Node {
-//   type = /** @type {const} */ ("NullLiteral");
-//   range;
-//   value = null;
-
-//   /**
-//    * @param {AstContext} ctx
-//    * @param {number} parentId
-//    * @param {Deno.Range} range
-//    */
-//   constructor(ctx, parentId, range) {
-//     super(ctx, parentId);
-//     this.range = range;
-//   }
-// }
-
-// /** @implements {Deno.NumericLiteral} */
-// class NumericLiteral extends Node {
-//   type = /** @type {const} */ ("NumericLiteral");
-//   range;
-//   value = 0;
-
-//   /**
-//    * @param {AstContext} ctx
-//    * @param {number} parentId
-//    * @param {Deno.Range} range
-//    * @param {number} strId
-//    */
-//   constructor(ctx, parentId, range, strId) {
-//     super(ctx, parentId);
-//     this.range = range;
-//     this.value = Number(getString(ctx, strId));
-//   }
-// }
-
-// /** @implements {Deno.RegExpLiteral} */
-// class RegExpLiteral extends Node {
-//   type = /** @type {const} */ ("RegExpLiteral");
-//   range;
-//   pattern = "";
-//   flags = "";
-
-//   /**
-//    * @param {AstContext} ctx
-//    * @param {number} parentId
-//    * @param {Deno.Range} range
-//    * @param {number} patternId
-//    * @param {number} flagsId
-//    */
-//   constructor(ctx, parentId, range, patternId, flagsId) {
-//     super(ctx, parentId);
-
-//     this.range = range;
-//     this.pattern = getString(ctx, patternId);
-//     this.flags = getString(ctx, flagsId);
-//   }
-// }
-
-// /** @implements {Deno.StringLiteral} */
-// class StringLiteral extends Node {
-//   type = /** @type {const} */ ("StringLiteral");
-//   range;
-//   value = "";
-
-//   /**
-//    * @param {AstContext} ctx
-//    * @param {number} parentId
-//    * @param {Deno.Range} range
-//    * @param {number} strId
-//    */
-//   constructor(ctx, parentId, range, strId) {
-//     super(ctx, parentId);
-//     this.range = range;
-//     this.value = getString(ctx, strId);
-//   }
-// }
-
-// /** @implements {Deno.TemplateElement} */
-// class TemplateElement extends Node {
-//   type = /** @type {const} */ ("TemplateElement");
-//   range;
-
-//   tail = false;
-//   value;
-
-//   /**
-//    * @param {AstContext} ctx
-//    * @param {number} parentId
-//    * @param {Deno.Range} range
-//    * @param {number} rawId
-//    * @param {number} cookedId
-//    * @param {boolean} tail
-//    */
-//   constructor(ctx, parentId, range, rawId, cookedId, tail) {
-//     super(ctx, parentId);
-
-//     const raw = getString(ctx, rawId);
-//     this.value = {
-//       raw,
-//       cooked: cookedId === 0 ? raw : getString(ctx, cookedId),
-//     };
-//     this.tail = tail;
-//     this.range = range;
-//   }
-// }
-
-// /** @implements {Deno.JSXIdentifier} */
-// class JSXIdentifier extends Node {
-//   type = /** @type {const} */ ("JSXIdentifier");
-//   range;
-//   name;
-
-//   /**
-//    * @param {AstContext} ctx
-//    * @param {number} parentId
-//    * @param {Deno.Range} range
-//    * @param {number} nameId
-//    */
-//   constructor(ctx, parentId, range, nameId) {
-//     super(ctx, parentId);
-
-//     this.range = range;
-//     this.name = getString(ctx, nameId);
-//   }
-// }
-
 const DECODER = new TextDecoder();
-
-/**
- * @typedef {{
- *   buf: Uint8Array,
- *   strTable: Map<number, string>,
- *   idTable: number[],
- *   rootId: number
- * }} AstContext
- */
 
 /**
  * @param {Uint8Array} buf
@@ -1061,12 +700,11 @@ function createAstContext(buf) {
   /** @type {Map<number, string>} */
   const strTable = new Map();
 
-  // console.log(JSON.stringify(buf, null, 2));
+  console.log(JSON.stringify(buf, null, 2));
 
-  const strTableOffset = readU32(buf, buf.length - 12);
-  const idTableOffset = readU32(buf, buf.length - 8);
+  const strTableOffset = readU32(buf, buf.length - 8);
   const rootId = readU32(buf, buf.length - 4);
-  // console.log({ strTableOffset, idTableOffset, rootId });
+  // console.log({ strTableOffset, rootId });
 
   let offset = strTableOffset;
   const stringCount = readU32(buf, offset);
@@ -1084,7 +722,7 @@ function createAstContext(buf) {
     id++;
   }
 
-  // console.log({ stringCount, strTable });
+  console.log({ stringCount, strTable, rootId });
 
   if (strTable.size !== stringCount) {
     throw new Error(
@@ -1092,28 +730,10 @@ function createAstContext(buf) {
     );
   }
 
-  // Build id table
-  const idCount = readU32(buf, idTableOffset);
-  offset += 4;
-
-  const idTable = new Array(idCount);
-
-  for (let i = 0; i < idCount; i++) {
-    const id = readU32(buf, offset);
-    idTable[i] = id;
-    offset += 4;
-  }
-
-  if (idTable.length !== idCount) {
-    throw new Error(
-      `Could not deserialize id table. Expected ${idCount} items, but got ${idTable.length}`,
-    );
-  }
-
   /** @type {AstContext} */
-  const ctx = { buf, idTable, strTable, rootId };
+  const ctx = { buf, strTable, rootId, nodes: new Map(), strTableOffset };
 
-  // console.log({ strTable, idTable });
+  dump(ctx);
 
   return ctx;
 }
@@ -1182,6 +802,8 @@ export function runPluginsForFile(fileName, serializedAst) {
   try {
     traverse(ctx, mergedVisitor);
   } finally {
+    ctx.nodes.clear();
+
     // Optional: Destroy rules
     for (let i = 0; i < destroyFns.length; i++) {
       destroyFns[i]();
@@ -1199,7 +821,7 @@ function traverse(ctx, visitor) {
 
   // TODO: create visiting types
   for (const name in visitor) {
-    const id = AstType[name];
+    const id = AstType.get(name);
     visitTypes.set(id, name);
   }
 
@@ -1210,46 +832,19 @@ function traverse(ctx, visitor) {
   traverseInner(ctx, visitTypes, visitor, ctx.rootId);
 }
 
-const SKIP_CHILD_TRAVERSAL = new Set([
-  AstType.BooleanLiteral,
-  AstType.BigIntLiteral,
-  AstType.DebuggerStatement,
-  AstType.Identifier,
-  AstType.JSXClosingFragment,
-  AstType.JSXEmptyExpression,
-  AstType.JSXOpeningFragment,
-  AstType.JSXText,
-  AstType.NullLiteral,
-  AstType.NumericLiteral,
-  AstType.PrivateIdentifier,
-  AstType.RegExpLiteral,
-  AstType.StringLiteral,
-  AstType.TemplateLiteral,
-  AstType.This,
-]);
-
 /**
  * @param {AstContext} ctx
  * @param {Map<number, string>} visitTypes
  * @param {Record<string, (x: any) => void>} visitor
- * @param {number} id
+ * @param {number} offset
  */
-function traverseInner(ctx, visitTypes, visitor, id) {
-  // console.log("traversing id", id);
+function traverseInner(ctx, visitTypes, visitor, offset) {
+  // console.log("traversing offset", offset);
 
   // Empty id
-  if (id === 0) return;
-  const { idTable, buf } = ctx;
-  if (id >= idTable.length) {
-    throw new Error(`Invalid node  id: ${id}`);
-  }
-
-  let offset = idTable[id];
-  if (offset === undefined) throw new Error(`Unknown id: ${id}`);
-
+  if (offset === 0) return;
+  const { buf } = ctx;
   const type = buf[offset];
-
-  // console.log({ id, type, offset });
 
   const name = visitTypes.get(type);
   if (name !== undefined) {
@@ -1257,8 +852,6 @@ function traverseInner(ctx, visitTypes, visitor, id) {
     const node = new Node(ctx, offset);
     visitor[name](node);
   }
-
-  if (SKIP_CHILD_TRAVERSAL.has(type)) return;
 
   // type + parentId + SpanLo + SpanHi
   offset += 1 + 4 + 4 + 4;
@@ -1268,28 +861,96 @@ function traverseInner(ctx, visitTypes, visitor, id) {
   // console.log({ propCount });
 
   for (let i = 0; i < propCount; i++) {
-    const searchProp = buf[offset];
-    offset += 1;
+    const kind = buf[offset + 1];
+    offset += 2; // propId + propFlags
 
-    if (searchProp === AST_PROP_INTERNAL_FLAGS) {
-      offset += 1;
-      continue;
-    }
-
-    if (isArrayProp(type, searchProp)) {
+    if (kind === PropFlags.Ref) {
+      const next = readU32(buf, offset);
+      offset += 4;
+      traverseInner(ctx, visitTypes, visitor, next);
+    } else if (kind === PropFlags.RefArr) {
       const len = readU32(buf, offset);
       offset += 4;
 
       for (let j = 0; j < len; j++) {
-        const childId = readU32(buf, offset);
+        const chiild = readU32(buf, offset);
         offset += 4;
-        traverseInner(ctx, visitTypes, visitor, childId);
+        traverseInner(ctx, visitTypes, visitor, chiild);
       }
-      continue;
+    } else if (kind === PropFlags.String) {
+      offset += 4;
+    } else {
+      // Everything else is a flag or a bool
+      offset += 1;
     }
+  }
+}
 
-    const childId = readU32(buf, offset);
-    traverseInner(ctx, visitTypes, visitor, childId);
+/**
+ * @param {AstContext} ctx
+ */
+function dump(ctx) {
+  const { buf, strTableOffset } = ctx;
+
+  let offset = 0;
+
+  while (offset < strTableOffset) {
+    const type = buf[offset];
+    const name = AstTypeName[type];
+    console.log(`${name} offset: ${offset} type ${type}`);
+    offset += 1;
+
+    const parent = readU32(buf, offset);
     offset += 4;
+    console.log(`  parent: ${parent}`);
+
+    const start = readU32(buf, offset);
+    offset += 4;
+    const end = readU32(buf, offset);
+    offset += 4;
+    console.log(`  range: ${[start, end]}`);
+
+    const count = buf[offset];
+    console.log(`  prop count: ${count}`);
+
+    for (let i = 0; i < count; i++) {
+      const prop = buf[offset++];
+      const kind = buf[offset++];
+      const name = AstPropName[prop];
+
+      let kindName = "unknown";
+      for (const k in PropFlags) {
+        if (kind === PropFlags[k]) {
+          kindName = k;
+        }
+      }
+
+      if (kind === PropFlags.Ref) {
+        const v = readU32(buf, offset);
+        offset += 4;
+        console.log(`    ${name}: ${v} (${kindName})`);
+      } else if (kind === PropFlags.RefArr) {
+        const len = readU32(buf, offset);
+        offset += 4;
+        console.log(`    ${name}: Array(${len}) (${kindName})`);
+
+        for (let j = 0; j < len; j++) {
+          const v = readU32(buf, offset);
+          offset += 4;
+          console.log(`      - ${v}`);
+        }
+      } else if (kind === PropFlags.Bool) {
+        const v = buf[offset++];
+
+        console.log(`    ${name}: ${v} (${kindName})`);
+      } else if (kind === PropFlags.String) {
+        const v = readU32(buf, offset);
+        offset += 4;
+        console.log(`    ${name}: ${getString(ctx, v)} (${kindName})`);
+      } else {
+        const v = buf[offset++];
+        console.log(`    ${name}: ${getFlagValue(kind, v)} (${kindName})`);
+      }
+    }
   }
 }

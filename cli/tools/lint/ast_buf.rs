@@ -4,188 +4,6 @@ use deno_ast::{
 };
 use indexmap::IndexMap;
 
-pub enum Flag {
-  ProgramModule,
-  FnAsync,
-  FnGenerator,
-  FnDeclare,
-  FnOptional,
-  MemberComputed,
-  MemberOptional,
-  PropShorthand,
-  PropComputed,
-  PropGetter,
-  PropSetter,
-  PropMethod,
-  VarVar,
-  VarConst,
-  VarLet,
-  VarDeclare,
-  ExportType,
-  TplTail,
-  ForAwait,
-  LogicalOr,
-  LogicalAnd,
-  LogicalNullishCoalescin,
-  JSXSelfClosing,
-
-  BinEqEq,
-  BinNotEq,
-  BinEqEqEq,
-  BinNotEqEq,
-  BinLt,
-  BinLtEq,
-  BinGt,
-  BinGtEq,
-  BinLShift,
-  BinRShift,
-  BinZeroFillRShift,
-  BinAdd,
-  BinSub,
-  BinMul,
-  BinDiv,
-  BinMod,
-  BinBitOr,
-  BinBitXor,
-  BinBitAnd,
-  BinIn,
-  BinInstanceOf,
-  BinExp,
-
-  UnaryMinus,
-  UnaryPlus,
-  UnaryBang,
-  UnaryTilde,
-  UnaryTypeOf,
-  UnaryVoid,
-  UnaryDelete,
-
-  UpdatePrefix,
-  UpdatePlusPlus,
-  UpdateMinusMinus,
-
-  YieldDelegate,
-  ParamOptional,
-
-  ClassDeclare,
-  ClassAbstract,
-  ClassConstructor,
-  ClassMethod,
-  ClassPublic,
-  ClassProtected,
-  ClassPrivate,
-
-  TsDeclare,
-  TsConst,
-  TsTrue,
-  TsPlus,
-  TsMinus,
-  TsReadonly,
-}
-
-pub fn assign_op_to_flag(m: AssignOp) -> u8 {
-  match m {
-    AssignOp::Assign => 0,
-    AssignOp::AddAssign => 1,
-    AssignOp::SubAssign => 2,
-    AssignOp::MulAssign => 3,
-    AssignOp::DivAssign => 4,
-    AssignOp::ModAssign => 5,
-    AssignOp::LShiftAssign => 6,
-    AssignOp::RShiftAssign => 7,
-    AssignOp::ZeroFillRShiftAssign => 8,
-    AssignOp::BitOrAssign => 9,
-    AssignOp::BitXorAssign => 10,
-    AssignOp::BitAndAssign => 11,
-    AssignOp::ExpAssign => 12,
-    AssignOp::AndAssign => 13,
-    AssignOp::OrAssign => 14,
-    AssignOp::NullishAssign => 15,
-  }
-}
-
-impl From<Flag> for u8 {
-  fn from(m: Flag) -> u8 {
-    match m {
-      Flag::ProgramModule => 0b00000001,
-      Flag::FnAsync => 0b00000001,
-      Flag::FnGenerator => 0b00000010,
-      Flag::FnDeclare => 0b00000100,
-      Flag::FnOptional => 0b00001000,
-      Flag::MemberComputed => 0b00000001,
-      Flag::MemberOptional => 0b00000010,
-      Flag::PropShorthand => 0b00000001,
-      Flag::PropComputed => 0b00000010,
-      Flag::PropGetter => 0b00000100,
-      Flag::PropSetter => 0b00001000,
-      Flag::PropMethod => 0b00010000,
-      Flag::VarVar => 0b00000001,
-      Flag::VarConst => 0b00000010,
-      Flag::VarLet => 0b00000100,
-      Flag::VarDeclare => 0b00001000,
-      Flag::ExportType => 0b000000001,
-      Flag::TplTail => 0b000000001,
-      Flag::ForAwait => 0b000000001,
-      Flag::LogicalOr => 0b000000001,
-      Flag::LogicalAnd => 0b000000010,
-      Flag::LogicalNullishCoalescin => 0b000000100,
-      Flag::JSXSelfClosing => 0b000000001,
-      Flag::BinEqEq => 1,
-      Flag::BinNotEq => 2,
-      Flag::BinEqEqEq => 3,
-      Flag::BinNotEqEq => 4,
-      Flag::BinLt => 5,
-      Flag::BinLtEq => 6,
-      Flag::BinGt => 7,
-      Flag::BinGtEq => 8,
-      Flag::BinLShift => 9,
-      Flag::BinRShift => 10,
-      Flag::BinZeroFillRShift => 11,
-      Flag::BinAdd => 12,
-      Flag::BinSub => 13,
-      Flag::BinMul => 14,
-      Flag::BinDiv => 15,
-      Flag::BinMod => 16,
-      Flag::BinBitOr => 17,
-      Flag::BinBitXor => 18,
-      Flag::BinBitAnd => 19,
-      Flag::BinIn => 20,
-      Flag::BinInstanceOf => 21,
-      Flag::BinExp => 22,
-
-      Flag::UnaryMinus => 1,
-      Flag::UnaryPlus => 2,
-      Flag::UnaryBang => 3,
-      Flag::UnaryTilde => 4,
-      Flag::UnaryTypeOf => 5,
-      Flag::UnaryVoid => 6,
-      Flag::UnaryDelete => 7,
-
-      Flag::UpdatePrefix => 0b000000001,
-      Flag::UpdatePlusPlus => 0b000000010,
-      Flag::UpdateMinusMinus => 0b000000100,
-
-      Flag::YieldDelegate => 1,
-      Flag::ParamOptional => 1,
-
-      Flag::ClassDeclare => 0b000000001,
-      Flag::ClassAbstract => 0b000000010,
-      Flag::ClassConstructor => 0b000000100,
-      Flag::ClassMethod => 0b000001000,
-      Flag::ClassPublic => 0b001000000,
-      Flag::ClassProtected => 0b010000000,
-      Flag::ClassPrivate => 0b10000000,
-
-      Flag::TsDeclare => 0b000000001,
-      Flag::TsConst => 0b000000010,
-      Flag::TsTrue => 0b000000100,
-      Flag::TsPlus => 0b000001000,
-      Flag::TsMinus => 0b000010000,
-      Flag::TsReadonly => 0b000100000,
-    }
-  }
-}
-
 // Keep in sync with JS
 #[derive(Debug, PartialEq)]
 pub enum AstNode {
@@ -353,6 +171,7 @@ impl From<AstNode> for u8 {
   }
 }
 
+// Keep in sync with JS
 pub enum AstProp {
   // Base
   Parent,
@@ -362,6 +181,7 @@ pub enum AstProp {
 
   // Node
   Abstract,
+  Accessibility,
   Alternate,
   Argument,
   Arguments,
@@ -379,9 +199,11 @@ pub enum AstProp {
   Computed,
   Consequent,
   Const,
+  Constraint,
   Cooked,
   Declarations,
   Declare,
+  Default,
   Definite,
   Delegate,
   Discriminant,
@@ -398,23 +220,28 @@ pub enum AstProp {
   Generator,
   Handler,
   Id,
+  In,
   Init,
   Initializer,
+  Implements,
   Key,
   Kind,
   Label,
   Left,
+  Literal,
   Local,
   Members,
   Meta,
   Method,
   Name,
   Namespace,
+  NameType,
   Object,
   OpeningElement,
   OpeningFragment,
   Operator,
   Optional,
+  Out,
   Param,
   Params,
   Pattern,
@@ -424,6 +251,7 @@ pub enum AstProp {
   Quasi,
   Quasis,
   Raw,
+  Readonly,
   ReturnType,
   Right,
   SelfClosing,
@@ -431,6 +259,8 @@ pub enum AstProp {
   Source,
   SourceType,
   Specifiers,
+  SuperClass,
+  SuperTypeArguments,
   Tag,
   Tail,
   Test,
@@ -462,6 +292,9 @@ pub enum PropFlags {
   LogicalOp,
   UnaryOp,
   VarKind,
+  TruePlusMinus,
+  Accessibility,
+  UpdateOp,
 }
 
 impl From<PropFlags> for u8 {
@@ -479,6 +312,14 @@ impl TryFrom<u8> for PropFlags {
       1 => Ok(PropFlags::RefArr),
       2 => Ok(PropFlags::String),
       3 => Ok(PropFlags::Bool),
+      4 => Ok(PropFlags::AssignOp),
+      5 => Ok(PropFlags::BinOp),
+      6 => Ok(PropFlags::LogicalOp),
+      7 => Ok(PropFlags::UnaryOp),
+      8 => Ok(PropFlags::VarKind),
+      9 => Ok(PropFlags::TruePlusMinus),
+      10 => Ok(PropFlags::Accessibility),
+      11 => Ok(PropFlags::UpdateOp),
       _ => Err("Unknown Prop flag"),
     }
   }
@@ -528,9 +369,15 @@ impl FlagValue {
     Self(0)
   }
 
-  pub fn set(&mut self, flag: Flag) {
+  pub fn set(&mut self, flag: impl Into<u8>) {
     let value: u8 = flag.into();
     self.0 |= value;
+  }
+}
+
+impl From<FlagValue> for u8 {
+  fn from(item: FlagValue) -> Self {
+    item.0
   }
 }
 
@@ -581,17 +428,15 @@ pub struct NodeRef(pub usize);
 
 #[derive(Debug)]
 pub struct SerializeCtx {
-  pub id: usize,
-  pub id_to_offset: IndexMap<usize, usize>,
   pub buf: Vec<u8>,
+  pub start_buf: NodeRef,
   pub str_table: StringTable,
 }
 
 impl SerializeCtx {
   pub fn new() -> Self {
     let mut ctx = Self {
-      id: 0,
-      id_to_offset: IndexMap::new(),
+      start_buf: NodeRef(0),
       buf: vec![],
       str_table: StringTable::new(),
     };
@@ -599,8 +444,9 @@ impl SerializeCtx {
     ctx.str_table.insert("");
 
     // Placeholder node
-    // fIXME
     ctx.push_node(AstNode::Invalid, NodeRef(0), &DUMMY_SP);
+    ctx.start_buf = NodeRef(ctx.buf.len());
+    eprintln!("START {:#?}", ctx.buf);
 
     ctx
   }
@@ -733,67 +579,8 @@ impl SerializeCtx {
     self.buf[field_offset + 2] = if value { 1 } else { 0 };
   }
 
-  pub fn write_flags(&mut self, field_offset: usize, value: &FlagValue) {
-    self.buf[field_offset + 2] = value.0;
-  }
-
-  pub fn next_id(&mut self) -> usize {
-    let id = self.id;
-    self.id += 1;
-    id
-  }
-
-  pub fn write_u8(&mut self, value: u8) {
-    self.buf.push(value);
-  }
-
-  pub fn write_node(
-    &mut self,
-    id: usize,
-    kind: AstNode,
-    parent_id: usize,
-    span: &Span,
-    prop_count: usize,
-  ) {
-    self.id_to_offset.insert(id, self.buf.len());
-
-    let kind_value: u8 = kind.into();
-    self.buf.push(kind_value);
-    append_usize(&mut self.buf, parent_id);
-
-    // Span
-    append_u32(&mut self.buf, span.lo.0);
-    append_u32(&mut self.buf, span.hi.0);
-
-    // No node has more than <10 properties
-    self.buf.push(prop_count as u8);
-  }
-
-  pub fn write_ids<I>(&mut self, prop: AstProp, ids: I)
-  where
-    I: IntoIterator<Item = usize>,
-  {
-    self.buf.push(prop.into());
-
-    let mut count = 0;
-    let idx = self.buf.len();
-    append_usize(&mut self.buf, 0);
-
-    for id in ids {
-      append_usize(&mut self.buf, id);
-      count += 1;
-    }
-
-    write_usize(&mut self.buf, count, idx);
-  }
-
-  pub fn write_id(&mut self, id: usize) {
-    append_usize(&mut self.buf, id);
-  }
-
-  pub fn write_prop(&mut self, prop: AstProp, id: usize) {
-    self.buf.push(prop.into());
-    append_usize(&mut self.buf, id);
+  pub fn write_flags(&mut self, field_offset: usize, value: impl Into<u8>) {
+    self.buf[field_offset + 2] = value.into();
   }
 
   pub fn push_node(
@@ -803,5 +590,23 @@ impl SerializeCtx {
     span: &Span,
   ) -> NodeRef {
     self.header(kind, parent, span, 0)
+  }
+
+  pub fn serialize(&mut self) -> Vec<u8> {
+    let mut buf: Vec<u8> = vec![];
+
+    // Append serialized AST
+    buf.append(&mut self.buf);
+
+    let offset_str_table = buf.len();
+
+    // Serialize string table
+    // eprintln!("STRING {:#?}", self.str_table);
+    buf.append(&mut self.str_table.serialize());
+
+    append_usize(&mut buf, offset_str_table);
+    append_usize(&mut buf, self.start_buf.0);
+
+    buf
   }
 }

@@ -14,19 +14,17 @@ use deno_ast::{
       TsTypeAnn, TsTypeElement, TsTypeParam, TsTypeParamDecl, TsTypeQueryExpr,
       TsUnionOrIntersectionType, VarDeclOrExpr,
     },
-    common::{Span, Spanned, SyntaxContext, DUMMY_SP},
+    common::{Span, Spanned, SyntaxContext},
   },
   view::{
-    Accessibility, BinaryOp, TruePlusMinus, TsKeywordTypeKind, UnaryOp,
-    UpdateOp, VarDeclKind,
+    Accessibility, AssignOp, BinaryOp, TruePlusMinus, TsKeywordTypeKind,
+    UnaryOp, UpdateOp, VarDeclKind,
   },
   ParsedSource,
 };
-use libc::abs;
 
 use super::ast_buf::{
-  append_usize, assign_op_to_flag, AstNode, AstProp, Flag, FlagValue, NodeRef,
-  PropFlags, SerializeCtx,
+  append_usize, AstNode, AstProp, FlagValue, NodeRef, PropFlags, SerializeCtx,
 };
 
 pub fn serialize_ast_bin(parsed_source: &ParsedSource) -> Vec<u8> {
@@ -34,10 +32,7 @@ pub fn serialize_ast_bin(parsed_source: &ParsedSource) -> Vec<u8> {
 
   let program = &parsed_source.program();
 
-  // Empty node at the start
-  let empty_pos = ctx.header(AstNode::Empty, NodeRef(0), &DUMMY_SP, 0);
-
-  let pos = ctx.header(AstNode::Program, empty_pos, &program.span(), 2);
+  let pos = ctx.header(AstNode::Program, ctx.start_buf, &program.span(), 2);
   let source_type_pos = ctx.str_field(AstProp::SourceType);
   let body_pos = ctx.ref_vec_field(AstProp::Body);
 
@@ -73,34 +68,7 @@ pub fn serialize_ast_bin(parsed_source: &ParsedSource) -> Vec<u8> {
     }
   }
 
-  let mut buf: Vec<u8> = vec![];
-
-  // Append serialized AST
-  buf.append(&mut ctx.buf);
-
-  let offset_str_table = buf.len();
-
-  // Serialize string table
-  // eprintln!("STRING {:#?}", ctx.str_table);
-  buf.append(&mut ctx.str_table.serialize());
-
-  let offset_id_table = buf.len();
-
-  // Serialize ids
-  append_usize(&mut buf, ctx.id_to_offset.len());
-
-  let mut ids = ctx.id_to_offset.keys().collect::<Vec<_>>();
-  ids.sort();
-  for id in ids {
-    let offset = ctx.id_to_offset.get(id).unwrap();
-    append_usize(&mut buf, *offset);
-  }
-
-  append_usize(&mut buf, offset_str_table);
-  append_usize(&mut buf, offset_id_table);
-  append_usize(&mut buf, root_id);
-
-  buf
+  ctx.serialize()
 }
 
 fn serialize_module_decl(
@@ -117,10 +85,13 @@ fn serialize_module_decl(
     }
     ModuleDecl::ExportNamed(node) => {
       let id =
-        ctx.header(AstNode::ExportNamedDeclaration, parent, &node.span, 3);
+        ctx.header(AstNode::ExportNamedDeclaration, parent, &node.span, 2);
+      let src_pos = ctx.ref_field(AstProp::Source);
+      let spec_pos = ctx.ref_vec_field(AstProp::Specifiers);
 
-      let mut flags = FlagValue::new();
-      flags.set(Flag::ExportType);
+      // FIXME: Flags
+      // let mut flags = FlagValue::new();
+      // flags.set(Flag::ExportType);
 
       let src_id = node
         .src
@@ -134,21 +105,23 @@ fn serialize_module_decl(
           match spec {
             ExportSpecifier::Named(child) => {
               let spec_pos =
-                ctx.header(AstNode::ExportSpecifier, id, &child.span, 3);
+                ctx.header(AstNode::ExportSpecifier, id, &child.span, 2);
+              let local_pos = ctx.ref_field(AstProp::Local);
+              let exp_pos = ctx.ref_field(AstProp::Exported);
 
-              let mut flags = FlagValue::new();
-              flags.set(Flag::ExportType);
+              // let mut flags = FlagValue::new();
+              // flags.set(Flag::ExportType);
 
-              let org_id =
+              let local =
                 serialize_module_exported_name(ctx, &child.orig, spec_pos);
 
-              let exported_id = child.exported.as_ref().map_or(0, |exported| {
+              let exported = child.exported.as_ref().map(|exported| {
                 serialize_module_exported_name(ctx, exported, spec_pos)
               });
 
-              ctx.write_flags(&flags);
-              ctx.write_prop(AstProp::Local, org_id);
-              ctx.write_prop(AstProp::Exported, exported_id);
+              // ctx.write_flags(&flags);
+              ctx.write_ref(local_pos, local);
+              ctx.write_maybe_ref(exp_pos, exported);
 
               spec_pos
             }
@@ -160,9 +133,9 @@ fn serialize_module_decl(
         })
         .collect::<Vec<_>>();
 
-      ctx.write_flags(&flags);
-      ctx.write_prop(AstProp::Source, src_id);
-      ctx.write_ids(AstProp::Specifiers, spec_ids);
+      // ctx.write_flags(&flags);
+      ctx.write_maybe_ref(src_pos, src_id);
+      ctx.write_refs(spec_pos, spec_ids);
 
       id
     }
@@ -553,77 +526,70 @@ fn serialize_expr(
       let flag_pos = ctx.field(AstProp::Operator, PropFlags::UnaryOp);
       let arg_pos = ctx.ref_vec_field(AstProp::Argument);
 
-      let mut flags = FlagValue::new();
-      flags.set(match node.op {
-        UnaryOp::Minus => Flag::UnaryMinus,
-        UnaryOp::Plus => Flag::UnaryPlus,
-        UnaryOp::Bang => Flag::UnaryBang,
-        UnaryOp::Tilde => Flag::UnaryTilde,
-        UnaryOp::TypeOf => Flag::UnaryTypeOf,
-        UnaryOp::Void => Flag::UnaryVoid,
-        UnaryOp::Delete => Flag::UnaryDelete,
-      });
+      let flags: u8 = match node.op {
+        UnaryOp::Minus => 0,
+        UnaryOp::Plus => 1,
+        UnaryOp::Bang => 2,
+        UnaryOp::Tilde => 3,
+        UnaryOp::TypeOf => 4,
+        UnaryOp::Void => 5,
+        UnaryOp::Delete => 6,
+      };
 
       let arg = serialize_expr(ctx, &node.arg, pos);
 
-      ctx.write_flags(flag_pos, &flags);
+      ctx.write_flags(flag_pos, flags);
       ctx.write_ref(arg_pos, arg);
 
       pos
     }
     Expr::Update(node) => {
       let pos = ctx.header(AstNode::UpdateExpression, parent, &node.span, 3);
-      // FIXME operator
       let prefix_pos = ctx.bool_field(AstProp::Prefix);
       let arg_pos = ctx.ref_vec_field(AstProp::Argument);
-
-      let mut flags = FlagValue::new();
-      flags.set(match node.op {
-        UpdateOp::PlusPlus => Flag::UpdatePlusPlus,
-        UpdateOp::MinusMinus => Flag::UpdateMinusMinus,
-      });
+      let op_ops = ctx.field(AstProp::Operator, PropFlags::UpdateOp);
 
       let arg = serialize_expr(ctx, node.arg.as_ref(), pos);
 
-      // ctx.write_flags(&flags);
       ctx.write_bool(prefix_pos, node.prefix);
       ctx.write_ref(arg_pos, arg);
+      ctx.write_flags(
+        op_ops,
+        match node.op {
+          UpdateOp::PlusPlus => 0,
+          UpdateOp::MinusMinus => 1,
+        },
+      );
 
       pos
     }
     Expr::Bin(node) => {
       let (node_type, flag) = match node.op {
-        BinaryOp::LogicalOr => (AstNode::LogicalExpression, Flag::LogicalOr),
-        BinaryOp::LogicalAnd => (AstNode::LogicalExpression, Flag::LogicalAnd),
-        BinaryOp::NullishCoalescing => {
-          (AstNode::LogicalExpression, Flag::LogicalNullishCoalescin)
-        }
-        BinaryOp::EqEq => (AstNode::BinaryExpression, Flag::BinEqEq),
-        BinaryOp::NotEq => (AstNode::BinaryExpression, Flag::BinNotEq),
-        BinaryOp::EqEqEq => (AstNode::BinaryExpression, Flag::BinEqEqEq),
-        BinaryOp::NotEqEq => (AstNode::BinaryExpression, Flag::BinNotEqEq),
-        BinaryOp::Lt => (AstNode::BinaryExpression, Flag::BinLt),
-        BinaryOp::LtEq => (AstNode::BinaryExpression, Flag::BinLtEq),
-        BinaryOp::Gt => (AstNode::BinaryExpression, Flag::BinGt),
-        BinaryOp::GtEq => (AstNode::BinaryExpression, Flag::BinGtEq),
-        BinaryOp::LShift => (AstNode::BinaryExpression, Flag::BinLShift),
-        BinaryOp::RShift => (AstNode::BinaryExpression, Flag::BinRShift),
-        BinaryOp::ZeroFillRShift => {
-          (AstNode::BinaryExpression, Flag::BinZeroFillRShift)
-        }
-        BinaryOp::Add => (AstNode::BinaryExpression, Flag::BinAdd),
-        BinaryOp::Sub => (AstNode::BinaryExpression, Flag::BinSub),
-        BinaryOp::Mul => (AstNode::BinaryExpression, Flag::BinMul),
-        BinaryOp::Div => (AstNode::BinaryExpression, Flag::BinDiv),
-        BinaryOp::Mod => (AstNode::BinaryExpression, Flag::BinMod),
-        BinaryOp::BitOr => (AstNode::BinaryExpression, Flag::BinBitOr),
-        BinaryOp::BitXor => (AstNode::BinaryExpression, Flag::BinBitXor),
-        BinaryOp::BitAnd => (AstNode::BinaryExpression, Flag::BinBitAnd),
-        BinaryOp::In => (AstNode::BinaryExpression, Flag::BinIn),
-        BinaryOp::InstanceOf => {
-          (AstNode::BinaryExpression, Flag::BinInstanceOf)
-        }
-        BinaryOp::Exp => (AstNode::BinaryExpression, Flag::BinExp),
+        BinaryOp::LogicalAnd => (AstNode::LogicalExpression, 0),
+        BinaryOp::LogicalOr => (AstNode::LogicalExpression, 1),
+        BinaryOp::NullishCoalescing => (AstNode::LogicalExpression, 2),
+        BinaryOp::EqEq => (AstNode::BinaryExpression, 0),
+        BinaryOp::NotEq => (AstNode::BinaryExpression, 1),
+        BinaryOp::EqEqEq => (AstNode::BinaryExpression, 2),
+        BinaryOp::NotEqEq => (AstNode::BinaryExpression, 3),
+        BinaryOp::Lt => (AstNode::BinaryExpression, 4),
+        BinaryOp::LtEq => (AstNode::BinaryExpression, 5),
+        BinaryOp::Gt => (AstNode::BinaryExpression, 6),
+        BinaryOp::GtEq => (AstNode::BinaryExpression, 7),
+        BinaryOp::LShift => (AstNode::BinaryExpression, 8),
+        BinaryOp::RShift => (AstNode::BinaryExpression, 9),
+        BinaryOp::ZeroFillRShift => (AstNode::BinaryExpression, 10),
+        BinaryOp::Add => (AstNode::BinaryExpression, 11),
+        BinaryOp::Sub => (AstNode::BinaryExpression, 12),
+        BinaryOp::Mul => (AstNode::BinaryExpression, 13),
+        BinaryOp::Div => (AstNode::BinaryExpression, 14),
+        BinaryOp::Mod => (AstNode::BinaryExpression, 15),
+        BinaryOp::BitOr => (AstNode::BinaryExpression, 16),
+        BinaryOp::BitXor => (AstNode::BinaryExpression, 17),
+        BinaryOp::BitAnd => (AstNode::BinaryExpression, 18),
+        BinaryOp::In => (AstNode::BinaryExpression, 19),
+        BinaryOp::InstanceOf => (AstNode::BinaryExpression, 20),
+        BinaryOp::Exp => (AstNode::BinaryExpression, 21),
       };
 
       let op_kind = if node_type == AstNode::BinaryExpression {
@@ -637,13 +603,10 @@ fn serialize_expr(
       let left_pos = ctx.ref_field(AstProp::Left);
       let right_pos = ctx.ref_field(AstProp::Right);
 
-      let mut flags = FlagValue::new();
-      flags.set(flag);
-
       let left_id = serialize_expr(ctx, node.left.as_ref(), pos);
       let right_id = serialize_expr(ctx, node.right.as_ref(), pos);
 
-      ctx.write_flags(flag_pos, &flags);
+      ctx.write_flags(flag_pos, flag);
       ctx.write_ref(left_pos, left_id);
       ctx.write_ref(right_pos, right_id);
 
@@ -690,11 +653,27 @@ fn serialize_expr(
 
       let right = serialize_expr(ctx, node.right.as_ref(), pos);
 
-      // TODO: meh
-      let mut flags = FlagValue::new();
-      flags.0 = assign_op_to_flag(node.op);
-
-      ctx.write_flags(op_pos, &flags);
+      ctx.write_flags(
+        op_pos,
+        match node.op {
+          AssignOp::Assign => 0,
+          AssignOp::AddAssign => 1,
+          AssignOp::SubAssign => 2,
+          AssignOp::MulAssign => 3,
+          AssignOp::DivAssign => 4,
+          AssignOp::ModAssign => 5,
+          AssignOp::LShiftAssign => 6,
+          AssignOp::RShiftAssign => 7,
+          AssignOp::ZeroFillRShiftAssign => 8,
+          AssignOp::BitOrAssign => 9,
+          AssignOp::BitXorAssign => 10,
+          AssignOp::BitAndAssign => 11,
+          AssignOp::ExpAssign => 12,
+          AssignOp::AndAssign => 13,
+          AssignOp::OrAssign => 14,
+          AssignOp::NullishAssign => 15,
+        },
+      );
       ctx.write_ref(left_pos, left);
       ctx.write_ref(right_pos, right);
 
@@ -831,14 +810,15 @@ fn serialize_expr(
           let raw_pos = ctx.str_field(AstProp::Raw);
           let cooked_pos = ctx.str_field(AstProp::Cooked);
 
-          let cooked_str_id = quasi
-            .cooked
-            .as_ref()
-            .map_or(0, |cooked| ctx.str_table.insert(cooked.as_str()));
-
           ctx.write_bool(tail_pos, quasi.tail);
           ctx.write_str(raw_pos, &quasi.raw);
-          ctx.write_str(cooked_pos, &quasi.cooked);
+          ctx.write_str(
+            cooked_pos,
+            &quasi
+              .cooked
+              .as_ref()
+              .map_or("".to_string(), |v| v.to_string()),
+          );
 
           tpl_pos
         })
@@ -869,7 +849,7 @@ fn serialize_expr(
       let quasi = serialize_expr(ctx, &Expr::Tpl(*node.tpl.clone()), id);
 
       ctx.write_ref(tag_pos, tag);
-      ctx.write_maybe_prop(type_arg_pos, type_param_id);
+      ctx.write_maybe_ref(type_arg_pos, type_param_id);
       ctx.write_ref(quasi_pos, quasi);
 
       id
@@ -1094,7 +1074,6 @@ fn serialize_prop_or_spread(
       parent,
     ),
     PropOrSpread::Prop(prop) => {
-      let mut flags = FlagValue::new();
       let pos = ctx.header(AstNode::Property, parent, &prop.span(), 6);
 
       let shorthand_pos = ctx.bool_field(AstProp::Shorthand);
@@ -1272,11 +1251,11 @@ fn serialize_class_member(
       let key_pos = ctx.ref_field(AstProp::Key);
       let body_pos = ctx.ref_field(AstProp::Body);
       let args_pos = ctx.ref_vec_field(AstProp::Arguments);
+      let acc_pos = ctx.field(AstProp::Accessibility, PropFlags::Accessibility);
 
       // FIXME flags
-      let mut flags = FlagValue::new();
-      flags.set(Flag::ClassConstructor);
-      accessibility_to_flag(&mut flags, constructor.accessibility);
+      // let mut flags = FlagValue::new();
+      // flags.set(Flag::ClassConstructor);
 
       let key = serialize_prop_name(ctx, &constructor.key, member_id);
       let body = constructor
@@ -1295,6 +1274,8 @@ fn serialize_class_member(
         })
         .collect::<Vec<_>>();
 
+      ctx
+        .write_flags(acc_pos, accessibility_to_flag(constructor.accessibility));
       ctx.write_ref(key_pos, key);
       ctx.write_maybe_ref(body_pos, body);
       // FIXME
@@ -1304,15 +1285,15 @@ fn serialize_class_member(
     }
     ClassMember::Method(method) => {
       let member_id =
-        ctx.header(AstNode::MethodDefinition, id, &method.span, 0);
+        ctx.header(AstNode::MethodDefinition, parent, &method.span, 0);
 
-      let mut flags = FlagValue::new();
-      flags.set(Flag::ClassMethod);
+      // let mut flags = FlagValue::new();
+      // flags.set(Flag::ClassMethod);
       if method.function.is_async {
         // FIXME
       }
 
-      accessibility_to_flag(&mut flags, method.accessibility);
+      // accessibility_to_flag(&mut flags, method.accessibility);
 
       let key_id = serialize_prop_name(ctx, &method.key, member_id);
 
@@ -1394,34 +1375,29 @@ fn serialize_decl(
         ctx.header(AstNode::ClassDeclaration, parent, &node.class.span, 2);
       let declare_pos = ctx.ref_field(AstProp::Declare);
       let abstract_pos = ctx.ref_field(AstProp::Abstract);
+      let id_pos = ctx.ref_field(AstProp::Id);
+      let type_params_pos = ctx.ref_field(AstProp::TypeParameters);
+      let super_pos = ctx.ref_field(AstProp::SuperClass);
+      let super_type_pos = ctx.ref_field(AstProp::SuperTypeArguments);
+      let impl_pos = ctx.ref_vec_field(AstProp::Implements);
 
-      let mut flags = FlagValue::new();
-      if node.declare {
-        flags.set(Flag::ClassDeclare)
-      }
-      if node.class.is_abstract {
-        flags.set(Flag::ClassAbstract)
-      }
+      // FIXME class body
 
-      let ident_id = serialize_ident(ctx, &node.ident, id);
-      let type_param_id =
+      let ident = serialize_ident(ctx, &node.ident, id);
+      let type_params =
         maybe_serialize_ts_type_param(ctx, &node.class.type_params, id);
 
-      let super_class_id = node
+      let super_class = node
         .class
         .super_class
         .as_ref()
-        .map_or(0, |super_class| serialize_expr(ctx, super_class, id));
+        .map(|super_class| serialize_expr(ctx, super_class, id));
 
       let super_type_params =
-        node
-          .class
-          .super_type_params
-          .as_ref()
-          .map_or(0, |super_params| {
-            // FIXME
-            todo!()
-          });
+        node.class.super_type_params.as_ref().map(|super_params| {
+          // FIXME
+          todo!()
+        });
 
       let implement_ids = node
         .class
@@ -1442,19 +1418,11 @@ fn serialize_decl(
 
       ctx.write_bool(declare_pos, node.declare);
       ctx.write_bool(abstract_pos, node.class.is_abstract);
-      // FIXME
-      // ctx.write_id(ident_id);
-      // // FIXME
-      // ctx.write_id(type_param_id);
-      // // FIXME
-      // ctx.write_id(super_class_id);
-      // // FIXME
-      // ctx.write_id(super_type_params);
-
-      // // FIXME
-      // ctx.write_ids(AstProp::Params, implement_ids);
-      // // FIXME
-      // ctx.write_ids(AstProp::Params, member_ids);
+      ctx.write_ref(id_pos, ident);
+      ctx.write_maybe_ref(type_params_pos, type_params);
+      ctx.write_maybe_ref(super_pos, super_class);
+      ctx.write_maybe_ref(super_type_pos, super_type_params);
+      ctx.write_refs(impl_pos, implement_ids);
 
       id
     }
@@ -1505,13 +1473,6 @@ fn serialize_decl(
       let kind_pos = ctx.field(AstProp::Kind, PropFlags::VarKind);
       let decls_pos = ctx.ref_vec_field(AstProp::Declarations);
 
-      let mut flags = FlagValue::new();
-      let kind = match node.kind {
-        VarDeclKind::Var => Flag::VarVar,
-        VarDeclKind::Let => Flag::VarLet,
-        VarDeclKind::Const => Flag::VarConst,
-      };
-
       let children = node
         .decls
         .iter()
@@ -1531,14 +1492,21 @@ fn serialize_decl(
             .map(|init| serialize_expr(ctx, init.as_ref(), child_id));
 
           ctx.write_ref(id_pos, ident);
-          ctx.write_ref(init_pos, init);
+          ctx.write_maybe_ref(init_pos, init);
 
           child_id
         })
         .collect::<Vec<_>>();
 
       ctx.write_bool(declare_pos, node.declare);
-      ctx.write_flags(kind_pos, &flags);
+      ctx.write_flags(
+        kind_pos,
+        match node.kind {
+          VarDeclKind::Var => 0,
+          VarDeclKind::Let => 1,
+          VarDeclKind::Const => 2,
+        },
+      );
       ctx.write_refs(decls_pos, children);
 
       id
@@ -1553,11 +1521,11 @@ fn serialize_decl(
       id
     }
     Decl::TsInterface(node) => {
-      let id = ctx.header(AstNode::TSInterface, parent, &node.span, 4);
+      let id = ctx.header(AstNode::TSInterface, parent, &node.span, 0);
       let declare_pos = ctx.bool_field(AstProp::Declare);
 
-      let body_id = ctx.next_id();
-      ctx.header(AstNode::TSInterfaceBody, id, &node.body.span, 4);
+      let body_id =
+        ctx.header(AstNode::TSInterfaceBody, id, &node.body.span, 0);
       // FIXME
 
       let ident_id = serialize_ident(ctx, &node.id, id);
@@ -1629,9 +1597,9 @@ fn serialize_decl(
       // FIXME
       // ctx.write_ids( body_elem_ids);
 
-      ctx.write_bool(declare_pos, node.declare);
-      ctx.write_id(ident_id);
-      ctx.write_id(type_param);
+      // ctx.write_bool(declare_pos, node.declare);
+      // ctx.write_id(ident_id);
+      // ctx.write_id(type_param);
 
       // FIXME
       // ctx.write_ids(extend_ids);
@@ -1652,7 +1620,7 @@ fn serialize_decl(
 
       ctx.write_bool(declare_pos, node.declare);
       ctx.write_ref(id_pos, ident);
-      ctx.write_ref(type_params_pos, type_param);
+      ctx.write_maybe_ref(type_params_pos, type_param);
       ctx.write_ref(type_ann_pos, type_ann);
 
       pos
@@ -1714,19 +1682,12 @@ fn serialize_decl(
   }
 }
 
-fn accessibility_to_flag(
-  flags: &mut FlagValue,
-  accessibility: Option<Accessibility>,
-) {
-  if let Some(accessibility) = &accessibility {
-    let value = match accessibility {
-      Accessibility::Public => Flag::ClassPublic,
-      Accessibility::Protected => Flag::ClassProtected,
-      Accessibility::Private => Flag::ClassPrivate,
-    };
-
-    flags.set(value);
-  }
+fn accessibility_to_flag(accessibility: Option<Accessibility>) -> u8 {
+  accessibility.map_or(0, |v| match v {
+    Accessibility::Public => 1,
+    Accessibility::Protected => 2,
+    Accessibility::Private => 3,
+  })
 }
 
 fn serialize_private_name(
@@ -1927,7 +1888,8 @@ fn serialize_jsx_opening_element(
         attr_pos
       }
       JSXAttrOrSpread::SpreadElement(spread) => {
-        let attr_pos = ctx.header(AstNode::JSXAttribute, pos, &attr.span, 1);
+        let attr_pos =
+          ctx.header(AstNode::JSXAttribute, pos, &spread.dot3_token, 1);
         let arg_pos = ctx.ref_field(AstProp::Argument);
 
         let arg = serialize_expr(ctx, &spread.expr, attr_pos);
@@ -2128,7 +2090,7 @@ fn serialize_pat(
     Pat::Assign(node) => {
       let pos = ctx.header(AstNode::AssignmentPattern, parent, &node.span, 2);
       let left_pos = ctx.ref_field(AstProp::Left);
-      let right_pos = ctx.ref_field(AstProp::Rigth);
+      let right_pos = ctx.ref_field(AstProp::Right);
 
       let left = serialize_pat(ctx, &node.left, pos);
       let right = serialize_expr(ctx, &node.right, pos);
@@ -2221,53 +2183,48 @@ fn serialize_lit(
 ) -> NodeRef {
   match lit {
     Lit::Str(node) => {
-      let id = ctx.next_id();
+      let pos = ctx.header(AstNode::StringLiteral, parent, &node.span, 1);
+      let value_pos = ctx.str_field(AstProp::Value);
 
-      let str_id = ctx.str_table.insert(node.value.as_str());
+      ctx.write_str(value_pos, &node.value);
 
-      ctx.write_node(id, AstNode::StringLiteral, parent, &node.span, 1);
-      ctx.write_prop(AstProp::Value, str_id);
-
-      id
+      pos
     }
     Lit::Bool(lit_bool) => {
-      let id = ctx.push_node(AstNode::Bool, parent, &lit_bool.span);
+      let pos = ctx.header(AstNode::Bool, parent, &lit_bool.span, 1);
+      let value_pos = ctx.bool_field(AstProp::Value);
 
-      let value: u8 = if lit_bool.value { 1 } else { 0 };
-      ctx.buf.push(value);
+      ctx.write_bool(value_pos, lit_bool.value);
 
-      id
+      pos
     }
     Lit::Null(node) => ctx.push_node(AstNode::Null, parent, &node.span),
     Lit::Num(node) => {
-      let id = ctx.next_id();
+      let pos = ctx.header(AstNode::NumericLiteral, parent, &node.span, 1);
+      let value_pos = ctx.str_field(AstProp::Value);
 
       let value = node.raw.as_ref().unwrap();
-      let str_id = ctx.str_table.insert(value.as_str());
+      ctx.write_str(value_pos, &value);
 
-      ctx.write_node(id, AstNode::NumericLiteral, parent, &node.span, 1);
-      ctx.write_prop(AstProp::Value, str_id);
-
-      id
+      pos
     }
     Lit::BigInt(node) => {
-      let id = ctx.push_node(AstNode::BigIntLiteral, parent, &node.span);
+      let pos = ctx.header(AstNode::BigIntLiteral, parent, &node.span, 1);
+      let value_pos = ctx.str_field(AstProp::Value);
 
-      let str_id = ctx.str_table.insert(&node.value.to_string());
-      append_usize(&mut ctx.buf, str_id);
+      ctx.write_str(value_pos, &node.value.to_string());
 
-      id
+      pos
     }
     Lit::Regex(node) => {
-      let id = ctx.push_node(AstNode::RegExpLiteral, parent, &node.span);
+      let pos = ctx.header(AstNode::RegExpLiteral, parent, &node.span, 2);
+      let pattern_pos = ctx.str_field(AstProp::Pattern);
+      let flags_pos = ctx.str_field(AstProp::Flags);
 
-      let pattern_id = ctx.str_table.insert(node.exp.as_str());
-      let flag_id = ctx.str_table.insert(node.flags.as_str());
+      ctx.write_str(pattern_pos, &node.exp.as_str());
+      ctx.write_str(flags_pos, &node.flags.as_str());
 
-      append_usize(&mut ctx.buf, pattern_id);
-      append_usize(&mut ctx.buf, flag_id);
-
-      id
+      pos
     }
     Lit::JSXText(jsxtext) => {
       ctx.push_node(AstNode::JSXText, parent, &jsxtext.span)
@@ -2432,47 +2389,37 @@ fn serialize_ts_type(
     TsType::TsTypeOperator(ts_type_operator) => todo!(),
     TsType::TsIndexedAccessType(ts_indexed_access_type) => todo!(),
     TsType::TsMappedType(node) => {
-      let id = ctx.next_id();
+      let pos = ctx.header(AstNode::TSMappedType, parent, &node.span, 5);
 
-      let mut optional_flags = FlagValue::new();
-      let mut readonly_flags = FlagValue::new();
+      let name_pos = ctx.ref_field(AstProp::NameType);
+      let type_ann_pos = ctx.ref_field(AstProp::TypeAnnotation);
+      let type_param_pos = ctx.ref_field(AstProp::TypeParameter);
+      let opt_pos = ctx.field(AstProp::Optional, PropFlags::TruePlusMinus);
+      let readonly_pos = ctx.field(AstProp::Readonly, PropFlags::TruePlusMinus);
 
-      if let Some(optional) = node.optional {
-        optional_flags.set(match optional {
-          TruePlusMinus::True => Flag::TsTrue,
-          TruePlusMinus::Plus => Flag::TsPlus,
-          TruePlusMinus::Minus => Flag::TsMinus,
-        });
-      }
-      if let Some(readonly) = node.readonly {
-        readonly_flags.set(match readonly {
-          TruePlusMinus::True => Flag::TsTrue,
-          TruePlusMinus::Plus => Flag::TsPlus,
-          TruePlusMinus::Minus => Flag::TsMinus,
-        });
-      }
+      let name_id = maybe_serialize_ts_type(ctx, &node.name_type, pos);
+      let type_ann = maybe_serialize_ts_type(ctx, &node.type_ann, pos);
+      let type_param = serialize_ts_type_param(ctx, &node.type_param, pos);
 
-      let name_id = maybe_serialize_ts_type(ctx, &node.name_type, id);
-      let type_ann_id = maybe_serialize_ts_type(ctx, &node.type_ann, id);
+      ctx.write_flags(opt_pos, serialize_maybe_true_plus(node.optional));
+      ctx.write_flags(readonly_pos, serialize_maybe_true_plus(node.readonly));
+      ctx.write_maybe_ref(name_pos, name_id);
+      ctx.write_maybe_ref(type_ann_pos, type_ann);
+      ctx.write_ref(type_param_pos, type_param);
 
-      // FIXME
-
-      ctx.write_node(id, AstNode::TSMappedType, parent, &node.span, 4);
-      ctx.write_flags(&optional_flags);
-      ctx.write_flags(&readonly_flags);
-      ctx.write_id(name_id);
-      ctx.write_id(type_ann_id);
-
-      id
+      pos
     }
     TsType::TsLitType(node) => {
-      let id = ctx.next_id();
+      let pos = ctx.header(AstNode::TSLiteralType, parent, &node.span, 1);
+      let lit_pos = ctx.ref_field(AstProp::Literal);
 
-      let child_id = match &node.lit {
-        TsLit::Number(lit) => serialize_lit(ctx, &Lit::Num(lit.clone()), id),
-        TsLit::Str(lit) => serialize_lit(ctx, &Lit::Str(lit.clone()), id),
-        TsLit::Bool(lit) => serialize_lit(ctx, &Lit::Bool(lit.clone()), id),
-        TsLit::BigInt(lit) => serialize_lit(ctx, &Lit::BigInt(lit.clone()), id),
+      let lit = match &node.lit {
+        TsLit::Number(lit) => serialize_lit(ctx, &Lit::Num(lit.clone()), pos),
+        TsLit::Str(lit) => serialize_lit(ctx, &Lit::Str(lit.clone()), pos),
+        TsLit::Bool(lit) => serialize_lit(ctx, &Lit::Bool(lit.clone()), pos),
+        TsLit::BigInt(lit) => {
+          serialize_lit(ctx, &Lit::BigInt(lit.clone()), pos)
+        }
         TsLit::Tpl(lit) => serialize_expr(
           ctx,
           &Expr::Tpl(Tpl {
@@ -2480,17 +2427,25 @@ fn serialize_ts_type(
             exprs: vec![],
             quasis: lit.quasis.clone(),
           }),
-          id,
+          pos,
         ),
       };
-      ctx.write_node(id, AstNode::TSLiteralType, parent, &node.span, 1);
-      ctx.write_id(child_id);
 
-      id
+      ctx.write_ref(lit_pos, lit);
+
+      pos
     }
     TsType::TsTypePredicate(ts_type_predicate) => todo!(),
     TsType::TsImportType(ts_import_type) => todo!(),
   }
+}
+
+fn serialize_maybe_true_plus(value: Option<TruePlusMinus>) -> u8 {
+  value.map_or(0, |v| match v {
+    TruePlusMinus::True => 1,
+    TruePlusMinus::Plus => 2,
+    TruePlusMinus::Minus => 3,
+  })
 }
 
 fn serialize_ts_entity_name(
@@ -2544,21 +2499,24 @@ fn serialize_ts_type_param(
   node: &TsTypeParam,
   parent: NodeRef,
 ) -> NodeRef {
-  let pos = ctx.header(AstNode::TSTypeParameter, parent, &node.span, 3);
+  let pos = ctx.header(AstNode::TSTypeParameter, parent, &node.span, 6);
   let name_pos = ctx.ref_field(AstProp::Name);
-
-  let mut flags = FlagValue::new();
-
-  // FIXME: flags
+  let constraint_pos = ctx.ref_field(AstProp::Constraint);
+  let default_pos = ctx.ref_field(AstProp::Default);
+  let const_pos = ctx.ref_field(AstProp::Const);
+  let in_pos = ctx.ref_field(AstProp::In);
+  let out_pos = ctx.ref_field(AstProp::Out);
 
   let name = serialize_ident(ctx, &node.name, pos);
   let constraint = maybe_serialize_ts_type(ctx, &node.constraint, pos);
   let default = maybe_serialize_ts_type(ctx, &node.default, pos);
 
-  ctx.write_flags(&flags);
-  ctx.write_prop(AstProp::Name, name);
-  ctx.write_id(constraint);
-  ctx.write_id(default);
+  ctx.write_bool(const_pos, node.is_const);
+  ctx.write_bool(in_pos, node.is_in);
+  ctx.write_bool(out_pos, node.is_out);
+  ctx.write_ref(name_pos, name);
+  ctx.write_maybe_ref(constraint_pos, constraint);
+  ctx.write_maybe_ref(default_pos, default);
 
   pos
 }
@@ -2579,7 +2537,7 @@ fn maybe_serialize_ts_type_param(
       .map(|param| serialize_ts_type_param(ctx, param, pos))
       .collect::<Vec<_>>();
 
-    ctx.write_ref(params_pos, params);
+    ctx.write_refs(params_pos, params);
 
     pos
   })
