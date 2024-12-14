@@ -187,7 +187,7 @@ impl From<Flag> for u8 {
 }
 
 // Keep in sync with JS
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub enum AstNode {
   Invalid,
   //
@@ -229,7 +229,7 @@ pub enum AstNode {
   SwitchCase,
   Throw,
   TryStatement,
-  While,
+  WhileStatement,
   DoWhileStatement,
   ForStatement,
   ForInStatement,
@@ -239,16 +239,16 @@ pub enum AstNode {
 
   // Expressions
   This,
-  Array,
+  ArrayExpression,
   Object,
   FunctionExpression,
-  Unary,
+  UnaryExpression,
   UpdateExpression,
   BinaryExpression,
   Assign,
   MemberExpression,
   Super,
-  Cond,
+  ConditionalExpression,
   CallExpression,
   New,
   Paren,
@@ -344,6 +344,7 @@ pub enum AstNode {
   TSUndefinedKeyword,
   TSUnknownKeyword,
   TSVoidKeyword,
+  TSEnumBody,
 }
 
 impl From<AstNode> for u8 {
@@ -360,6 +361,7 @@ pub enum AstProp {
   _InternalFlags, // Private
 
   // Node
+  Abstract,
   Alternate,
   Argument,
   Arguments,
@@ -371,10 +373,12 @@ pub enum AstProp {
   Callee,
   Cases,
   Children,
+  CheckType,
   ClosingElement,
   ClosingFragment,
   Computed,
   Consequent,
+  Const,
   Cooked,
   Declarations,
   Declare,
@@ -383,15 +387,19 @@ pub enum AstProp {
   Discriminant,
   Elements,
   ElementTypes,
+  ExprName,
   Expression,
   Expressions,
   Exported,
+  ExtendsType,
+  FalseType,
   Finalizer,
   Flags,
   Generator,
   Handler,
   Id,
   Init,
+  Initializer,
   Key,
   Kind,
   Label,
@@ -421,12 +429,16 @@ pub enum AstProp {
   SelfClosing,
   Shorthand,
   Source,
+  SourceType,
   Specifiers,
   Tag,
   Tail,
   Test,
+  TrueType,
   TypeAnnotation,
   TypeArguments,
+  TypeName,
+  TypeParameter,
   TypeParameters,
   Types,
   Update,
@@ -436,6 +448,39 @@ pub enum AstProp {
 impl From<AstProp> for u8 {
   fn from(m: AstProp) -> u8 {
     m as u8
+  }
+}
+
+#[derive(Debug, PartialEq)]
+pub enum PropFlags {
+  Ref,
+  RefArr,
+  String,
+  Bool,
+  AssignOp,
+  BinOp,
+  LogicalOp,
+  UnaryOp,
+  VarKind,
+}
+
+impl From<PropFlags> for u8 {
+  fn from(m: PropFlags) -> u8 {
+    m as u8
+  }
+}
+
+impl TryFrom<u8> for PropFlags {
+  type Error = &'static str;
+
+  fn try_from(value: u8) -> Result<Self, Self::Error> {
+    match value {
+      0 => Ok(PropFlags::Ref),
+      1 => Ok(PropFlags::RefArr),
+      2 => Ok(PropFlags::String),
+      3 => Ok(PropFlags::Bool),
+      _ => Err("Unknown Prop flag"),
+    }
   }
 }
 
@@ -476,7 +521,7 @@ pub fn write_usize(result: &mut [u8], value: usize, idx: usize) {
 }
 
 #[derive(Debug, Clone)]
-pub struct FlagValue(u8);
+pub struct FlagValue(pub u8);
 
 impl FlagValue {
   pub fn new() -> Self {
@@ -531,6 +576,9 @@ impl StringTable {
   }
 }
 
+#[derive(Debug, Copy, PartialEq)]
+pub struct NodeRef(pub usize);
+
 #[derive(Debug)]
 pub struct SerializeCtx {
   pub id: usize,
@@ -551,9 +599,142 @@ impl SerializeCtx {
     ctx.str_table.insert("");
 
     // Placeholder node
-    ctx.push_node(AstNode::Invalid, 0, &DUMMY_SP);
+    // fIXME
+    ctx.push_node(AstNode::Invalid, NodeRef(0), &DUMMY_SP);
 
     ctx
+  }
+
+  /// Begin writing a node
+  pub fn header(
+    &mut self,
+    kind: AstNode,
+    parent: NodeRef,
+    span: &Span,
+    prop_count: usize,
+  ) -> NodeRef {
+    let offset = self.buf.len();
+
+    let kind_value: u8 = kind.into();
+    self.buf.push(kind_value);
+
+    append_usize(&mut self.buf, parent.0);
+
+    // Span
+    append_u32(&mut self.buf, span.lo.0);
+    append_u32(&mut self.buf, span.hi.0);
+
+    // No node has more than <10 properties
+    self.buf.push(prop_count as u8);
+
+    NodeRef(offset)
+  }
+
+  pub fn ref_field(&mut self, prop: AstProp) -> usize {
+    self.field(prop, PropFlags::Ref)
+  }
+
+  pub fn ref_vec_field(&mut self, prop: AstProp) -> usize {
+    self.field(prop, PropFlags::RefArr)
+  }
+
+  pub fn str_field(&mut self, prop: AstProp) -> usize {
+    self.field(prop, PropFlags::String)
+  }
+
+  pub fn bool_field(&mut self, prop: AstProp) -> usize {
+    self.field(prop, PropFlags::Bool)
+  }
+
+  pub fn field(&mut self, prop: AstProp, prop_flags: PropFlags) -> usize {
+    let offset = self.buf.len();
+
+    let kind: u8 = prop.into();
+    self.buf.push(kind);
+
+    let flags: u8 = prop_flags.into();
+    self.buf.push(flags);
+
+    append_usize(&mut self.buf, 0);
+
+    offset
+  }
+
+  pub fn write_ref(&mut self, field_offset: usize, value: NodeRef) {
+    #[cfg(debug_assertions)]
+    {
+      let value_kind = self.buf[field_offset + 1];
+      if PropFlags::try_from(value_kind).unwrap() != PropFlags::Ref {
+        panic!("Trying to write a ref into a non-ref field")
+      }
+    }
+
+    write_usize(&mut self.buf, value.0, field_offset + 2);
+  }
+
+  pub fn write_maybe_ref(
+    &mut self,
+    field_offset: usize,
+    value: Option<NodeRef>,
+  ) {
+    #[cfg(debug_assertions)]
+    {
+      let value_kind = self.buf[field_offset + 1];
+      if PropFlags::try_from(value_kind).unwrap() != PropFlags::Ref {
+        panic!("Trying to write a ref into a non-ref field")
+      }
+    }
+
+    let ref_value = if let Some(v) = value { v } else { NodeRef(0) };
+    write_usize(&mut self.buf, ref_value.0, field_offset + 2);
+  }
+
+  pub fn write_refs(&mut self, field_offset: usize, value: Vec<NodeRef>) {
+    #[cfg(debug_assertions)]
+    {
+      let value_kind = self.buf[field_offset + 1];
+      if PropFlags::try_from(value_kind).unwrap() != PropFlags::RefArr {
+        panic!("Trying to write a ref into a non-ref array field")
+      }
+    }
+
+    let mut offset = field_offset + 2;
+    write_usize(&mut self.buf, value.len(), offset);
+    offset += 4;
+
+    for item in value {
+      write_usize(&mut self.buf, item.0, offset);
+      offset += 4;
+    }
+  }
+
+  pub fn write_str(&mut self, field_offset: usize, value: &str) {
+    #[cfg(debug_assertions)]
+    {
+      let value_kind = self.buf[field_offset + 1];
+      if PropFlags::try_from(value_kind).unwrap() != PropFlags::String {
+        panic!("Trying to write a ref into a non-string field")
+      }
+    }
+
+    let id = self.str_table.insert(value);
+    write_usize(&mut self.buf, id, field_offset + 2);
+  }
+
+  pub fn write_bool(&mut self, field_offset: usize, value: bool) {
+    #[cfg(debug_assertions)]
+    {
+      let value_kind = self.buf[field_offset + 1];
+      if PropFlags::try_from(value_kind).unwrap() != PropFlags::Bool {
+        panic!("Trying to write a ref into a non-bool field")
+      }
+    }
+
+    self.buf[field_offset + 2] = if value { 1 } else { 0 };
+  }
+
+  pub fn write_flags(&mut self, field_offset: usize, value: &FlagValue) {
+    self.buf[field_offset + 2] = value.0;
   }
 
   pub fn next_id(&mut self) -> usize {
@@ -610,11 +791,6 @@ impl SerializeCtx {
     append_usize(&mut self.buf, id);
   }
 
-  pub fn write_flags(&mut self, flags: &FlagValue) {
-    self.buf.push(AstProp::_InternalFlags.into());
-    self.buf.push(flags.0)
-  }
-
   pub fn write_prop(&mut self, prop: AstProp, id: usize) {
     self.buf.push(prop.into());
     append_usize(&mut self.buf, id);
@@ -623,15 +799,9 @@ impl SerializeCtx {
   pub fn push_node(
     &mut self,
     kind: AstNode,
-    parent_id: usize,
+    parent: NodeRef,
     span: &Span,
-  ) -> usize {
-    let id = self.id;
-    self.id_to_offset.insert(id, self.buf.len());
-    self.id += 1;
-
-    self.write_node(id, kind, parent_id, span, 0);
-
-    id
+  ) -> NodeRef {
+    self.header(kind, parent, span, 0)
   }
 }
