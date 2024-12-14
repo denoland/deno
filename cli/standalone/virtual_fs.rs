@@ -580,10 +580,10 @@ fn vfs_as_display_tree(
           human_size(size.unique as f64)
         } else {
           format!(
-            "{} - {}",
+            "{}{}",
             human_size(size.total as f64),
             deno_terminal::colors::gray(format!(
-              "{} unique",
+              " - {} unique",
               human_size(size.unique as f64)
             ))
           )
