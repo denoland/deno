@@ -144,7 +144,7 @@ for (let i = 0; i < AstTypeName.length; i++) {
 // Keep in sync with Rust
 const AstPropArr = [
   // Base
-  "parent:",
+  "parent",
   "range",
   "type",
   "_InternalFlags",
@@ -593,7 +593,7 @@ function toJsValue(ctx, offset) {
   // type + parentId + SpanLo + SpanHi
   offset += 1 + 4 + 4 + 4;
 
-  const count = buf[offset];
+  const count = buf[offset++];
   for (let i = 0; i < count; i++) {
     const prop = buf[offset++];
     const kind = buf[offset++];
@@ -897,7 +897,7 @@ function dump(ctx) {
   while (offset < strTableOffset) {
     const type = buf[offset];
     const name = AstTypeName[type];
-    console.log(`${name} offset: ${offset} type ${type}`);
+    console.log(`${name}, offset: ${offset}, type: ${type}`);
     offset += 1;
 
     const parent = readU32(buf, offset);
@@ -908,9 +908,9 @@ function dump(ctx) {
     offset += 4;
     const end = readU32(buf, offset);
     offset += 4;
-    console.log(`  range: ${[start, end]}`);
+    console.log(`  range: ${start} -> ${end}}`);
 
-    const count = buf[offset];
+    const count = buf[offset++];
     console.log(`  prop count: ${count}`);
 
     for (let i = 0; i < count; i++) {

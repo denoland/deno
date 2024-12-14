@@ -446,7 +446,7 @@ impl SerializeCtx {
     // Placeholder node
     ctx.push_node(AstNode::Invalid, NodeRef(0), &DUMMY_SP);
     ctx.start_buf = NodeRef(ctx.buf.len());
-    eprintln!("START {:#?}", ctx.buf);
+    eprintln!("START {:#?} {}", ctx.buf, ctx.buf.len());
 
     ctx
   }

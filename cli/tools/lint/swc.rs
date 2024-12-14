@@ -24,7 +24,7 @@ use deno_ast::{
 };
 
 use super::ast_buf::{
-  append_usize, AstNode, AstProp, FlagValue, NodeRef, PropFlags, SerializeCtx,
+  append_usize, AstNode, AstProp, NodeRef, PropFlags, SerializeCtx,
 };
 
 pub fn serialize_ast_bin(parsed_source: &ParsedSource) -> Vec<u8> {
@@ -32,7 +32,7 @@ pub fn serialize_ast_bin(parsed_source: &ParsedSource) -> Vec<u8> {
 
   let program = &parsed_source.program();
 
-  let pos = ctx.header(AstNode::Program, ctx.start_buf, &program.span(), 2);
+  let pos = ctx.header(AstNode::Program, NodeRef(0), &program.span(), 2);
   let source_type_pos = ctx.str_field(AstProp::SourceType);
   let body_pos = ctx.ref_vec_field(AstProp::Body);
 
