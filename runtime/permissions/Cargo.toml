@@ -2,7 +2,7 @@
 
 [package]
 name = "deno_permissions"
-version = "0.41.0"
+version = "0.42.0"
 authors.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -14,6 +14,7 @@ name = "deno_permissions"
 path = "lib.rs"
 
 [dependencies]
+capacity_builder.workspace = true
 deno_core.workspace = true
 deno_path_util.workspace = true
 deno_terminal.workspace = true

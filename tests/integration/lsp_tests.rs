@@ -2701,7 +2701,7 @@ fn lsp_hover_dependency() {
         "uri": "file:///a/file.ts",
         "languageId": "typescript",
         "version": 1,
-        "text": "import * as a from \"http://127.0.0.1:4545/xTypeScriptTypes.js\";\n// @deno-types=\"http://127.0.0.1:4545/type_definitions/foo.d.ts\"\nimport * as b from \"http://127.0.0.1:4545/type_definitions/foo.js\";\nimport * as c from \"http://127.0.0.1:4545/subdir/type_reference.js\";\nimport * as d from \"http://127.0.0.1:4545/subdir/mod1.ts\";\nimport * as e from \"data:application/typescript;base64,ZXhwb3J0IGNvbnN0IGEgPSAiYSI7CgpleHBvcnQgZW51bSBBIHsKICBBLAogIEIsCiAgQywKfQo=\";\nimport * as f from \"./file_01.ts\";\nimport * as g from \"http://localhost:4545/x/a/mod.ts\";\nimport * as h from \"./mod🦕.ts\";\n\nconsole.log(a, b, c, d, e, f, g, h);\n"
+        "text": "import * as a from \"http://127.0.0.1:4545/xTypeScriptTypes.js\";\n// @ts-types=\"http://127.0.0.1:4545/type_definitions/foo.d.ts\"\nimport * as b from \"http://127.0.0.1:4545/type_definitions/foo.js\";\nimport * as c from \"http://127.0.0.1:4545/subdir/type_reference.js\";\nimport * as d from \"http://127.0.0.1:4545/subdir/mod1.ts\";\nimport * as e from \"data:application/typescript;base64,ZXhwb3J0IGNvbnN0IGEgPSAiYSI7CgpleHBvcnQgZW51bSBBIHsKICBBLAogIEIsCiAgQywKfQo=\";\nimport * as f from \"./file_01.ts\";\nimport * as g from \"http://localhost:4545/x/a/mod.ts\";\nimport * as h from \"./mod🦕.ts\";\n\nconsole.log(a, b, c, d, e, f, g, h);\n"
       }
     }),
   );
@@ -6269,7 +6269,7 @@ fn lsp_code_actions_deno_types_for_npm() {
     res,
     json!([
       {
-        "title": "Add @deno-types directive for \"@types/react\"",
+        "title": "Add @ts-types directive for \"@types/react\"",
         "kind": "quickfix",
         "edit": {
           "changes": {
@@ -6279,7 +6279,7 @@ fn lsp_code_actions_deno_types_for_npm() {
                   "start": { "line": 0, "character": 0 },
                   "end": { "line": 0, "character": 0 },
                 },
-                "newText": "// @deno-types=\"@types/react\"\n",
+                "newText": "// @ts-types=\"@types/react\"\n",
               },
             ],
           },
@@ -6322,7 +6322,7 @@ fn lsp_code_actions_deno_types_for_npm() {
     res,
     json!([
       {
-        "title": "Add @deno-types directive for \"npm:@types/react@^18.3.10\"",
+        "title": "Add @ts-types directive for \"npm:@types/react@^18.3.10\"",
         "kind": "quickfix",
         "edit": {
           "changes": {
@@ -6332,7 +6332,7 @@ fn lsp_code_actions_deno_types_for_npm() {
                   "start": { "line": 0, "character": 0 },
                   "end": { "line": 0, "character": 0 },
                 },
-                "newText": "// @deno-types=\"npm:@types/react@^18.3.10\"\n",
+                "newText": "// @ts-types=\"npm:@types/react@^18.3.10\"\n",
               },
             ],
           },
@@ -8310,7 +8310,7 @@ fn lsp_npm_auto_import_with_deno_types() {
   temp_dir.write(
     "other.ts",
     r#"
-      // @deno-types="@types/lz-string"
+      // @ts-types="@types/lz-string"
       import "lz-string";
     "#,
   );
@@ -8358,7 +8358,7 @@ fn lsp_npm_auto_import_with_deno_types() {
             "start": { "line": 0, "character": 0 },
             "end": { "line": 0, "character": 0 },
           },
-          "newText": "// @deno-types=\"@types/lz-string\"\nimport { compressToBase64 } from \"lz-string\";\n",
+          "newText": "// @ts-types=\"@types/lz-string\"\nimport { compressToBase64 } from \"lz-string\";\n",
         },
       ],
     }),
@@ -8391,7 +8391,7 @@ fn lsp_npm_auto_import_with_deno_types() {
             "start": { "line": 0, "character": 0 },
             "end": { "line": 0, "character": 0 },
           },
-          "newText": "// @deno-types=\"@types/react\"\nimport { createRef } from \"react\";\n",
+          "newText": "// @ts-types=\"@types/react\"\nimport { createRef } from \"react\";\n",
         },
       ],
     }),
@@ -10226,7 +10226,7 @@ fn lsp_cache_location() {
         "uri": "file:///a/file.ts",
         "languageId": "typescript",
         "version": 1,
-        "text": "import * as a from \"http://127.0.0.1:4545/xTypeScriptTypes.js\";\n// @deno-types=\"http://127.0.0.1:4545/type_definitions/foo.d.ts\"\nimport * as b from \"http://127.0.0.1:4545/type_definitions/foo.js\";\nimport * as c from \"http://127.0.0.1:4545/subdir/type_reference.js\";\nimport * as d from \"http://127.0.0.1:4545/subdir/mod1.ts\";\nimport * as e from \"data:application/typescript;base64,ZXhwb3J0IGNvbnN0IGEgPSAiYSI7CgpleHBvcnQgZW51bSBBIHsKICBBLAogIEIsCiAgQywKfQo=\";\nimport * as f from \"./file_01.ts\";\nimport * as g from \"http://localhost:4545/x/a/mod.ts\";\n\nconsole.log(a, b, c, d, e, f, g);\n"
+        "text": "import * as a from \"http://127.0.0.1:4545/xTypeScriptTypes.js\";\n// @ts-types=\"http://127.0.0.1:4545/type_definitions/foo.d.ts\"\nimport * as b from \"http://127.0.0.1:4545/type_definitions/foo.js\";\nimport * as c from \"http://127.0.0.1:4545/subdir/type_reference.js\";\nimport * as d from \"http://127.0.0.1:4545/subdir/mod1.ts\";\nimport * as e from \"data:application/typescript;base64,ZXhwb3J0IGNvbnN0IGEgPSAiYSI7CgpleHBvcnQgZW51bSBBIHsKICBBLAogIEIsCiAgQywKfQo=\";\nimport * as f from \"./file_01.ts\";\nimport * as g from \"http://localhost:4545/x/a/mod.ts\";\n\nconsole.log(a, b, c, d, e, f, g);\n"
       }
     }));
   assert_eq!(diagnostics.all().len(), 6);
@@ -10319,7 +10319,7 @@ fn lsp_tls_cert() {
       "uri": "file:///a/file.ts",
       "languageId": "typescript",
       "version": 1,
-      "text": "import * as a from \"https://localhost:5545/xTypeScriptTypes.js\";\n// @deno-types=\"https://localhost:5545/type_definitions/foo.d.ts\"\nimport * as b from \"https://localhost:5545/type_definitions/foo.js\";\nimport * as c from \"https://localhost:5545/subdir/type_reference.js\";\nimport * as d from \"https://localhost:5545/subdir/mod1.ts\";\nimport * as e from \"data:application/typescript;base64,ZXhwb3J0IGNvbnN0IGEgPSAiYSI7CgpleHBvcnQgZW51bSBBIHsKICBBLAogIEIsCiAgQywKfQo=\";\nimport * as f from \"./file_01.ts\";\nimport * as g from \"http://localhost:4545/x/a/mod.ts\";\n\nconsole.log(a, b, c, d, e, f, g);\n"
+      "text": "import * as a from \"https://localhost:5545/xTypeScriptTypes.js\";\n// @ts-types=\"https://localhost:5545/type_definitions/foo.d.ts\"\nimport * as b from \"https://localhost:5545/type_definitions/foo.js\";\nimport * as c from \"https://localhost:5545/subdir/type_reference.js\";\nimport * as d from \"https://localhost:5545/subdir/mod1.ts\";\nimport * as e from \"data:application/typescript;base64,ZXhwb3J0IGNvbnN0IGEgPSAiYSI7CgpleHBvcnQgZW51bSBBIHsKICBBLAogIEIsCiAgQywKfQo=\";\nimport * as f from \"./file_01.ts\";\nimport * as g from \"http://localhost:4545/x/a/mod.ts\";\n\nconsole.log(a, b, c, d, e, f, g);\n"
     }
   }));
   let diagnostics = diagnostics.all();
@@ -10784,7 +10784,7 @@ fn lsp_diagnostics_deno_types() {
           "uri": "file:///a/file.ts",
           "languageId": "typescript",
           "version": 1,
-          "text": "/// <reference types=\"https://example.com/a/b.d.ts\" />\n/// <reference path=\"https://example.com/a/c.ts\"\n\n// @deno-types=https://example.com/a/d.d.ts\nimport * as d from \"https://example.com/a/d.js\";\n\n// @deno-types=\"https://example.com/a/e.d.ts\"\nimport * as e from \"https://example.com/a/e.js\";\n\nconsole.log(d, e);\n"
+          "text": "/// <reference types=\"https://example.com/a/b.d.ts\" />\n/// <reference path=\"https://example.com/a/c.ts\"\n\n// @ts-types=https://example.com/a/d.d.ts\nimport * as d from \"https://example.com/a/d.js\";\n\n// @ts-types=\"https://example.com/a/e.d.ts\"\nimport * as e from \"https://example.com/a/e.js\";\n\nconsole.log(d, e);\n"
         }
       }),
     );
@@ -10797,7 +10797,7 @@ fn lsp_diagnostics_deno_types() {
       }
     }),
   );
-  assert_eq!(diagnostics.all().len(), 5);
+  assert_eq!(diagnostics.all().len(), 4);
   client.shutdown();
 }
 
@@ -11544,8 +11544,7 @@ fn lsp_json_import_with_query_string() {
 fn lsp_format_markdown() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let temp_dir = context.temp_dir();
-  let markdown_file =
-    source_file(temp_dir.path().join("file.md"), "#   Hello World");
+  let file = source_file(temp_dir.path().join("file.md"), "#   Hello World");
   let mut client = context.new_lsp_command().build();
   client.initialize_default();
 
@@ -11553,7 +11552,7 @@ fn lsp_format_markdown() {
     "textDocument/formatting",
     json!({
       "textDocument": {
-        "uri": markdown_file.url()
+        "uri": file.url()
       },
       "options": {
         "tabSize": 2,
@@ -11587,14 +11586,13 @@ fn lsp_format_markdown() {
 fn lsp_format_html() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let temp_dir = context.temp_dir();
-  let html_file =
-    source_file(temp_dir.path().join("file.html"), "  <html></html>");
+  let file = source_file(temp_dir.path().join("file.html"), "  <html></html>");
   let mut client = context.new_lsp_command().build();
   client.initialize_default();
   let res = client.write_request(
     "textDocument/formatting",
     json!({
-      "textDocument": { "uri": html_file.url() },
+      "textDocument": { "uri": file.url() },
       "options": {
         "tabSize": 2,
         "insertSpaces": true,
@@ -11627,13 +11625,13 @@ fn lsp_format_html() {
 fn lsp_format_css() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let temp_dir = context.temp_dir();
-  let css_file = source_file(temp_dir.path().join("file.css"), "  foo {}");
+  let file = source_file(temp_dir.path().join("file.css"), "  foo {}");
   let mut client = context.new_lsp_command().build();
   client.initialize_default();
   let res = client.write_request(
     "textDocument/formatting",
     json!({
-      "textDocument": { "uri": css_file.url() },
+      "textDocument": { "uri": file.url() },
       "options": {
         "tabSize": 2,
         "insertSpaces": true,
@@ -11666,13 +11664,13 @@ fn lsp_format_css() {
 fn lsp_format_yaml() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let temp_dir = context.temp_dir();
-  let yaml_file = source_file(temp_dir.path().join("file.yaml"), "  foo: 1");
+  let file = source_file(temp_dir.path().join("file.yaml"), "  foo: 1");
   let mut client = context.new_lsp_command().build();
   client.initialize_default();
   let res = client.write_request(
     "textDocument/formatting",
     json!({
-      "textDocument": { "uri": yaml_file.url() },
+      "textDocument": { "uri": file.url() },
       "options": {
         "tabSize": 2,
         "insertSpaces": true,
@@ -11695,6 +11693,201 @@ fn lsp_format_yaml() {
           "end": { "line": 0, "character": 8 },
         },
         "newText": "\n",
+      },
+    ]),
+  );
+  client.shutdown();
+}
+
+#[test]
+fn lsp_format_sql() {
+  let context = TestContextBuilder::new().use_temp_cwd().build();
+  let temp_dir = context.temp_dir();
+  temp_dir.write(
+    "deno.json",
+    json!({
+      "unstable": ["fmt-sql"],
+    })
+    .to_string(),
+  );
+  let file = source_file(
+    temp_dir.path().join("file.sql"),
+    "  CREATE TABLE item (id int NOT NULL IDENTITY(1, 1))",
+  );
+  let mut client = context.new_lsp_command().build();
+  client.initialize_default();
+  let res = client.write_request(
+    "textDocument/formatting",
+    json!({
+      "textDocument": { "uri": file.url() },
+      "options": {
+        "tabSize": 2,
+        "insertSpaces": true,
+      },
+    }),
+  );
+  assert_eq!(
+    res,
+    json!([
+      {
+        "range": {
+          "start": { "line": 0, "character": 0 },
+          "end": { "line": 0, "character": 2 },
+        },
+        "newText": "",
+      },
+      {
+        "range": {
+          "start": { "line": 0, "character": 52 },
+          "end": { "line": 0, "character": 52 },
+        },
+        "newText": "\n",
+      },
+    ]),
+  );
+  client.shutdown();
+}
+
+#[test]
+fn lsp_format_component() {
+  let context = TestContextBuilder::new().use_temp_cwd().build();
+  let temp_dir = context.temp_dir();
+  temp_dir.write(
+    "deno.json",
+    json!({
+      "unstable": ["fmt-component"],
+    })
+    .to_string(),
+  );
+  let svelte_file = source_file(
+    temp_dir.path().join("file.svelte"),
+    "  <script module>\n  // foo\n</script>\n",
+  );
+  let vue_file = source_file(
+    temp_dir.path().join("file.vue"),
+    "  <script setup>\n// foo\n</script>\n",
+  );
+  let astro_file = source_file(
+    temp_dir.path().join("file.astro"),
+    "  ---\n// foo\n---\n<html></html>\n",
+  );
+  let vento_file = source_file(
+    temp_dir.path().join("file.vto"),
+    "  {{ layout \"foo.vto\" }}\n  <h1>Foo!</h1>\n{{ /layout }}\n",
+  );
+  let nunjucks_file = source_file(
+    temp_dir.path().join("file.njk"),
+    "  {% block header %}\n  Foo\n{% endblock %}\n",
+  );
+  let mut client = context.new_lsp_command().build();
+  client.initialize_default();
+  let res = client.write_request(
+    "textDocument/formatting",
+    json!({
+      "textDocument": { "uri": svelte_file.url() },
+      "options": {
+        "tabSize": 2,
+        "insertSpaces": true,
+      },
+    }),
+  );
+  assert_eq!(
+    res,
+    json!([
+      {
+        "range": {
+          "start": { "line": 0, "character": 0 },
+          "end": { "line": 0, "character": 2 },
+        },
+        "newText": "",
+      },
+    ]),
+  );
+  let res = client.write_request(
+    "textDocument/formatting",
+    json!({
+      "textDocument": { "uri": vue_file.url() },
+      "options": {
+        "tabSize": 2,
+        "insertSpaces": true,
+      },
+    }),
+  );
+  assert_eq!(
+    res,
+    json!([
+      {
+        "range": {
+          "start": { "line": 0, "character": 0 },
+          "end": { "line": 0, "character": 2 },
+        },
+        "newText": "",
+      },
+    ]),
+  );
+  let res = client.write_request(
+    "textDocument/formatting",
+    json!({
+      "textDocument": { "uri": astro_file.url() },
+      "options": {
+        "tabSize": 2,
+        "insertSpaces": true,
+      },
+    }),
+  );
+  assert_eq!(
+    res,
+    json!([
+      {
+        "range": {
+          "start": { "line": 0, "character": 0 },
+          "end": { "line": 0, "character": 2 },
+        },
+        "newText": "",
+      },
+    ]),
+  );
+  let res = client.write_request(
+    "textDocument/formatting",
+    json!({
+      "textDocument": { "uri": vento_file.url() },
+      "options": {
+        "tabSize": 2,
+        "insertSpaces": true,
+      },
+    }),
+  );
+  assert_eq!(
+    res,
+    json!([
+      {
+        "range": {
+          "start": { "line": 0, "character": 0 },
+          "end": { "line": 0, "character": 2 },
+        },
+        "newText": "",
+      },
+    ]),
+  );
+  let res = client.write_request(
+    "textDocument/formatting",
+    json!({
+      "textDocument": { "uri": nunjucks_file.url() },
+      "options": {
+        "tabSize": 2,
+        "insertSpaces": true,
+      },
+    }),
+  );
+  assert_eq!(
+    res,
+    json!([
+      {
+        "range": {
+          "start": { "line": 0, "character": 0 },
+          "end": { "line": 0, "character": 2 },
+        },
+        "newText": "",
       },
     ]),
   );
@@ -15782,7 +15975,7 @@ fn lsp_sloppy_imports() {
         "import * as b from './b.js';\n",
         // this one's types resolve to a .d.ts file and we don't
         // bother warning about it because it's a bit complicated
-        // to explain to use @deno-types in a diagnostic
+        // to explain to use @ts-types in a diagnostic
         "import * as c from './c.js';\n",
         "console.log(a)\n",
         "console.log(b);\n",

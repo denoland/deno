@@ -440,6 +440,13 @@ impl<'a> TaskRunner<'a> {
     kill_signal: KillSignal,
     argv: &'a [String],
   ) -> Result<i32, deno_core::anyhow::Error> {
+    if let Some(npm_resolver) = self.npm_resolver.as_managed() {
+      npm_resolver.ensure_top_level_package_json_install().await?;
+      npm_resolver
+        .cache_packages(crate::npm::PackageCaching::All)
+        .await?;
+    }
+
     let cwd = match &self.task_flags.cwd {
       Some(path) => canonicalize_path(&PathBuf::from(path))
         .context("failed canonicalizing --cwd")?,
@@ -450,6 +457,7 @@ impl<'a> TaskRunner<'a> {
       self.npm_resolver,
       self.node_resolver,
     )?;
+
     self
       .run_single(RunSingleOptions {
         task_name,
@@ -473,6 +481,9 @@ impl<'a> TaskRunner<'a> {
     // ensure the npm packages are installed if using a managed resolver
     if let Some(npm_resolver) = self.npm_resolver.as_managed() {
       npm_resolver.ensure_top_level_package_json_install().await?;
+      npm_resolver
+        .cache_packages(crate::npm::PackageCaching::All)
+        .await?;
     }
 
     let cwd = match &self.task_flags.cwd {
@@ -492,6 +503,7 @@ impl<'a> TaskRunner<'a> {
       self.npm_resolver,
       self.node_resolver,
     )?;
+
     for task_name in &task_names {
       if let Some(script) = scripts.get(task_name) {
         let exit_code = self

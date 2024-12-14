@@ -205,9 +205,9 @@ impl<Fs: DenoResolverFs, TEnv: NodeResolverEnv> ByonmNpmResolver<Fs, TEnv> {
     }
 
     // attempt to resolve the npm specifier from the referrer's package.json,
-    if let Ok(file_path) = url_to_file_path(referrer) {
-      let mut current_path = file_path.as_path();
-      while let Some(dir_path) = current_path.parent() {
+    let maybe_referrer_path = url_to_file_path(referrer).ok();
+    if let Some(file_path) = maybe_referrer_path {
+      for dir_path in file_path.as_path().ancestors().skip(1) {
         let package_json_path = dir_path.join("package.json");
         if let Some(pkg_json) = self.load_pkg_json(&package_json_path)? {
           if let Some(alias) =
@@ -216,11 +216,10 @@ impl<Fs: DenoResolverFs, TEnv: NodeResolverEnv> ByonmNpmResolver<Fs, TEnv> {
             return Ok(Some((pkg_json, alias)));
           }
         }
-        current_path = dir_path;
       }
     }
 
-    // otherwise, fall fallback to the project's package.json
+    // fall fallback to the project's package.json
     if let Some(root_node_modules_dir) = &self.root_node_modules_dir {
       let root_pkg_json_path =
         root_node_modules_dir.parent().unwrap().join("package.json");
@@ -228,6 +227,58 @@ impl<Fs: DenoResolverFs, TEnv: NodeResolverEnv> ByonmNpmResolver<Fs, TEnv> {
         if let Some(alias) = resolve_alias_from_pkg_json(req, pkg_json.as_ref())
         {
           return Ok(Some((pkg_json, alias)));
+        }
+      }
+    }
+
+    // now try to resolve based on the closest node_modules directory
+    let maybe_referrer_path = url_to_file_path(referrer).ok();
+    let search_node_modules = |node_modules: &Path| {
+      if req.version_req.tag().is_some() {
+        return None;
+      }
+
+      let pkg_folder = node_modules.join(&req.name);
+      if let Ok(Some(dep_pkg_json)) =
+        self.load_pkg_json(&pkg_folder.join("package.json"))
+      {
+        if dep_pkg_json.name.as_ref() == Some(&req.name) {
+          let matches_req = dep_pkg_json
+            .version
+            .as_ref()
+            .and_then(|v| Version::parse_from_npm(v).ok())
+            .map(|version| req.version_req.matches(&version))
+            .unwrap_or(true);
+          if matches_req {
+            return Some((dep_pkg_json, req.name.clone()));
+          }
+        }
+      }
+      None
+    };
+    if let Some(file_path) = &maybe_referrer_path {
+      for dir_path in file_path.as_path().ancestors().skip(1) {
+        if let Some(result) =
+          search_node_modules(&dir_path.join("node_modules"))
+        {
+          return Ok(Some(result));
+        }
+      }
+    }
+
+    // and finally check the root node_modules directory
+    if let Some(root_node_modules_dir) = &self.root_node_modules_dir {
+      let already_searched = maybe_referrer_path
+        .as_ref()
+        .and_then(|referrer_path| {
+          root_node_modules_dir
+            .parent()
+            .map(|root_dir| referrer_path.starts_with(root_dir))
+        })
+        .unwrap_or(false);
+      if !already_searched {
+        if let Some(result) = search_node_modules(root_node_modules_dir) {
+          return Ok(Some(result));
         }
       }
     }

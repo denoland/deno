@@ -2,7 +2,6 @@
 
 use std::collections::HashMap;
 use std::collections::HashSet;
-use std::fmt;
 use std::fmt::Write;
 use std::sync::Arc;
 
@@ -35,6 +34,7 @@ use crate::graph_util::graph_exit_integrity_errors;
 use crate::npm::CliNpmResolver;
 use crate::npm::ManagedCliNpmResolver;
 use crate::util::checksum;
+use crate::util::display::DisplayTreeNode;
 
 const JSON_SCHEMA_VERSION: u8 = 1;
 
@@ -123,7 +123,12 @@ pub async fn info(
     let mut loader = module_graph_builder.create_graph_loader();
     loader.enable_loading_cache_info(); // for displaying the cache information
     let graph = module_graph_creator
-      .create_graph_with_loader(GraphKind::All, vec![specifier], &mut loader)
+      .create_graph_with_loader(
+        GraphKind::All,
+        vec![specifier],
+        &mut loader,
+        crate::graph_util::NpmCachingStrategy::Eager,
+      )
       .await?;
 
     // write out the lockfile if there is one
@@ -337,76 +342,6 @@ fn add_npm_packages_to_json(
   json.insert("npmPackages".to_string(), json_packages.into());
 }
 
-struct TreeNode {
-  text: String,
-  children: Vec<TreeNode>,
-}
-
-impl TreeNode {
-  pub fn from_text(text: String) -> Self {
-    Self {
-      text,
-      children: Default::default(),
-    }
-  }
-}
-
-fn print_tree_node<TWrite: Write>(
-  tree_node: &TreeNode,
-  writer: &mut TWrite,
-) -> fmt::Result {
-  fn print_children<TWrite: Write>(
-    writer: &mut TWrite,
-    prefix: &str,
-    children: &[TreeNode],
-  ) -> fmt::Result {
-    const SIBLING_CONNECTOR: char = '├';
-    const LAST_SIBLING_CONNECTOR: char = '└';
-    const CHILD_DEPS_CONNECTOR: char = '┬';
-    const CHILD_NO_DEPS_CONNECTOR: char = '─';
-    const VERTICAL_CONNECTOR: char = '│';
-    const EMPTY_CONNECTOR: char = ' ';
-
-    let child_len = children.len();
-    for (index, child) in children.iter().enumerate() {
-      let is_last = index + 1 == child_len;
-      let sibling_connector = if is_last {
-        LAST_SIBLING_CONNECTOR
-      } else {
-        SIBLING_CONNECTOR
-      };
-      let child_connector = if child.children.is_empty() {
-        CHILD_NO_DEPS_CONNECTOR
-      } else {
-        CHILD_DEPS_CONNECTOR
-      };
-      writeln!(
-        writer,
-        "{} {}",
-        colors::gray(format!("{prefix}{sibling_connector}─{child_connector}")),
-        child.text
-      )?;
-      let child_prefix = format!(
-        "{}{}{}",
-        prefix,
-        if is_last {
-          EMPTY_CONNECTOR
-        } else {
-          VERTICAL_CONNECTOR
-        },
-        EMPTY_CONNECTOR
-      );
-      print_children(writer, &child_prefix, &child.children)?;
-    }
-
-    Ok(())
-  }
-
-  writeln!(writer, "{}", tree_node.text)?;
-  print_children(writer, "", &tree_node.children)?;
-  Ok(())
-}
-
 /// Precached information about npm packages that are used in deno info.
 #[derive(Default)]
 struct NpmInfo {
@@ -563,7 +498,7 @@ impl<'a> GraphDisplayContext<'a> {
         )?;
         writeln!(writer)?;
         let root_node = self.build_module_info(root, false);
-        print_tree_node(&root_node, writer)?;
+        root_node.print(writer)?;
         Ok(())
       }
       Err(err) => {
@@ -579,7 +514,7 @@ impl<'a> GraphDisplayContext<'a> {
     }
   }
 
-  fn build_dep_info(&mut self, dep: &Dependency) -> Vec<TreeNode> {
+  fn build_dep_info(&mut self, dep: &Dependency) -> Vec<DisplayTreeNode> {
     let mut children = Vec::with_capacity(2);
     if !dep.maybe_code.is_none() {
       if let Some(child) = self.build_resolved_info(&dep.maybe_code, false) {
@@ -594,7 +529,11 @@ impl<'a> GraphDisplayContext<'a> {
     children
   }
 
-  fn build_module_info(&mut self, module: &Module, type_dep: bool) -> TreeNode {
+  fn build_module_info(
+    &mut self,
+    module: &Module,
+    type_dep: bool,
+  ) -> DisplayTreeNode {
     enum PackageOrSpecifier {
       Package(Box<NpmResolutionPackage>),
       Specifier(ModuleSpecifier),
@@ -640,7 +579,7 @@ impl<'a> GraphDisplayContext<'a> {
       format!("{} {}", header_text, maybe_size_to_text(maybe_size))
     };
 
-    let mut tree_node = TreeNode::from_text(header_text);
+    let mut tree_node = DisplayTreeNode::from_text(header_text);
 
     if !was_seen {
       match &package_or_specifier {
@@ -678,14 +617,14 @@ impl<'a> GraphDisplayContext<'a> {
   fn build_npm_deps(
     &mut self,
     package: &NpmResolutionPackage,
-  ) -> Vec<TreeNode> {
+  ) -> Vec<DisplayTreeNode> {
     let mut deps = package.dependencies.values().collect::<Vec<_>>();
     deps.sort();
     let mut children = Vec::with_capacity(deps.len());
     for dep_id in deps.into_iter() {
       let maybe_size = self.npm_info.package_sizes.get(dep_id).cloned();
       let size_str = maybe_size_to_text(maybe_size);
-      let mut child = TreeNode::from_text(format!(
+      let mut child = DisplayTreeNode::from_text(format!(
         "npm:/{} {}",
         dep_id.as_serialized(),
         size_str
@@ -710,7 +649,7 @@ impl<'a> GraphDisplayContext<'a> {
     &mut self,
     err: &ModuleError,
     specifier: &ModuleSpecifier,
-  ) -> TreeNode {
+  ) -> DisplayTreeNode {
     self.seen.insert(specifier.to_string());
     match err {
       ModuleError::InvalidTypeAssertion { .. } => {
@@ -753,8 +692,8 @@ impl<'a> GraphDisplayContext<'a> {
     &self,
     specifier: &ModuleSpecifier,
     error_msg: &str,
-  ) -> TreeNode {
-    TreeNode::from_text(format!(
+  ) -> DisplayTreeNode {
+    DisplayTreeNode::from_text(format!(
       "{} {}",
       colors::red(specifier),
       colors::red_bold(error_msg)
@@ -765,7 +704,7 @@ impl<'a> GraphDisplayContext<'a> {
     &mut self,
     resolution: &Resolution,
     type_dep: bool,
-  ) -> Option<TreeNode> {
+  ) -> Option<DisplayTreeNode> {
     match resolution {
       Resolution::Ok(resolved) => {
         let specifier = &resolved.specifier;
@@ -773,14 +712,14 @@ impl<'a> GraphDisplayContext<'a> {
         Some(match self.graph.try_get(resolved_specifier) {
           Ok(Some(module)) => self.build_module_info(module, type_dep),
           Err(err) => self.build_error_info(err, resolved_specifier),
-          Ok(None) => TreeNode::from_text(format!(
+          Ok(None) => DisplayTreeNode::from_text(format!(
             "{} {}",
             colors::red(specifier),
             colors::red_bold("(missing)")
           )),
         })
       }
-      Resolution::Err(err) => Some(TreeNode::from_text(format!(
+      Resolution::Err(err) => Some(DisplayTreeNode::from_text(format!(
         "{} {}",
         colors::italic(err.to_string()),
         colors::red_bold("(resolve error)")

@@ -25,6 +25,11 @@
         {
           "args": "outdated",
           "output": "outdated.out"
+        },
+        {
+          // Filtering that matches nothing, should exit cleanly
+          "args": "outdated foobar",
+          "output": ""
         }
       ]
     },
@@ -37,6 +42,11 @@
         {
           "args": "outdated --compatible",
           "output": "outdated_compatible.out"
+        },
+        {
+          // Filtering that matches nothing, should exit cleanly
+          "args": "outdated --compatible foobar",
+          "output": ""
         }
       ]
     },

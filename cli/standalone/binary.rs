@@ -44,6 +44,9 @@ use deno_npm::resolution::SerializedNpmResolutionSnapshotPackage;
 use deno_npm::resolution::ValidSerializedNpmResolutionSnapshot;
 use deno_npm::NpmPackageId;
 use deno_npm::NpmSystemInfo;
+use deno_path_util::url_from_directory_path;
+use deno_path_util::url_from_file_path;
+use deno_path_util::url_to_file_path;
 use deno_runtime::deno_fs;
 use deno_runtime::deno_fs::FileSystem;
 use deno_runtime::deno_fs::RealFs;
@@ -76,6 +79,7 @@ use crate::resolver::CjsTracker;
 use crate::shared::ReleaseChannel;
 use crate::standalone::virtual_fs::VfsEntry;
 use crate::util::archive;
+use crate::util::fs::canonicalize_path;
 use crate::util::fs::canonicalize_path_maybe_not_exists;
 use crate::util::progress_bar::ProgressBar;
 use crate::util::progress_bar::ProgressBarStyle;
@@ -87,31 +91,29 @@ use super::serialization::DenoCompileModuleData;
 use super::serialization::DeserializedDataSection;
 use super::serialization::RemoteModulesStore;
 use super::serialization::RemoteModulesStoreBuilder;
+use super::virtual_fs::output_vfs;
+use super::virtual_fs::BuiltVfs;
 use super::virtual_fs::FileBackedVfs;
 use super::virtual_fs::VfsBuilder;
 use super::virtual_fs::VfsFileSubDataKind;
 use super::virtual_fs::VfsRoot;
 use super::virtual_fs::VirtualDirectory;
+use super::virtual_fs::WindowsSystemRootablePath;
+
+pub static DENO_COMPILE_GLOBAL_NODE_MODULES_DIR_NAME: &str =
+  ".deno_compile_node_modules";
 
 /// A URL that can be designated as the base for relative URLs.
 ///
 /// After creation, this URL may be used to get the key for a
 /// module in the binary.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub struct StandaloneRelativeFileBaseUrl<'a>(&'a Url);
-
-impl<'a> From<&'a Url> for StandaloneRelativeFileBaseUrl<'a> {
-  fn from(url: &'a Url) -> Self {
-    Self(url)
-  }
+pub enum StandaloneRelativeFileBaseUrl<'a> {
+  WindowsSystemRoot,
+  Path(&'a Url),
 }
 
 impl<'a> StandaloneRelativeFileBaseUrl<'a> {
-  pub fn new(url: &'a Url) -> Self {
-    debug_assert_eq!(url.scheme(), "file");
-    Self(url)
-  }
-
   /// Gets the module map key of the provided specifier.
   ///
   /// * Descendant file specifiers will be made relative to the base.
@@ -121,21 +123,28 @@ impl<'a> StandaloneRelativeFileBaseUrl<'a> {
     if target.scheme() != "file" {
       return Cow::Borrowed(target.as_str());
     }
+    let base = match self {
+      Self::Path(base) => base,
+      Self::WindowsSystemRoot => return Cow::Borrowed(target.path()),
+    };
 
-    match self.0.make_relative(target) {
+    match base.make_relative(target) {
       Some(relative) => {
-        if relative.starts_with("../") {
-          Cow::Borrowed(target.as_str())
-        } else {
-          Cow::Owned(relative)
-        }
+        // This is not a great scenario to have because it means that the
+        // specifier is outside the vfs and could cause the binary to act
+        // strangely. If you encounter this, the fix is to add more paths
+        // to the vfs builder by calling `add_possible_min_root_dir`.
+        debug_assert!(
+          !relative.starts_with("../"),
+          "{} -> {} ({})",
+          base.as_str(),
+          target.as_str(),
+          relative,
+        );
+        Cow::Owned(relative)
       }
       None => Cow::Borrowed(target.as_str()),
     }
-  }
-
-  pub fn inner(&self) -> &Url {
-    self.0
   }
 }
 
@@ -191,7 +200,7 @@ pub struct Metadata {
   pub entrypoint_key: String,
   pub node_modules: Option<NodeModules>,
   pub unstable_config: UnstableConfig,
-  pub otel_config: Option<OtelConfig>, // None means disabled.
+  pub otel_config: OtelConfig,
 }
 
 fn write_binary_bytes(
@@ -200,7 +209,7 @@ fn write_binary_bytes(
   metadata: &Metadata,
   npm_snapshot: Option<SerializedNpmResolutionSnapshot>,
   remote_modules: &RemoteModulesStoreBuilder,
-  vfs: VfsBuilder,
+  vfs: &BuiltVfs,
   compile_flags: &CompileFlags,
 ) -> Result<(), AnyError> {
   let data_section_bytes =
@@ -367,6 +376,15 @@ pub fn extract_standalone(
   }))
 }
 
+pub struct WriteBinOptions<'a> {
+  pub writer: File,
+  pub display_output_filename: &'a str,
+  pub graph: &'a ModuleGraph,
+  pub entrypoint: &'a ModuleSpecifier,
+  pub include_files: &'a [ModuleSpecifier],
+  pub compile_flags: &'a CompileFlags,
+}
+
 pub struct DenoCompileBinaryWriter<'a> {
   cjs_tracker: &'a CjsTracker,
   cli_options: &'a CliOptions,
@@ -407,18 +425,14 @@ impl<'a> DenoCompileBinaryWriter<'a> {
 
   pub async fn write_bin(
     &self,
-    writer: File,
-    graph: &ModuleGraph,
-    root_dir_url: StandaloneRelativeFileBaseUrl<'_>,
-    entrypoint: &ModuleSpecifier,
-    include_files: &[ModuleSpecifier],
-    compile_flags: &CompileFlags,
+    options: WriteBinOptions<'_>,
   ) -> Result<(), AnyError> {
     // Select base binary based on target
-    let mut original_binary = self.get_base_binary(compile_flags).await?;
+    let mut original_binary =
+      self.get_base_binary(options.compile_flags).await?;
 
-    if compile_flags.no_terminal {
-      let target = compile_flags.resolve_target();
+    if options.compile_flags.no_terminal {
+      let target = options.compile_flags.resolve_target();
       if !target.contains("windows") {
         bail!(
           "The `--no-terminal` flag is only available when targeting Windows (current: {})",
@@ -428,8 +442,8 @@ impl<'a> DenoCompileBinaryWriter<'a> {
       set_windows_binary_to_gui(&mut original_binary)
         .context("Setting windows binary to GUI.")?;
     }
-    if compile_flags.icon.is_some() {
-      let target = compile_flags.resolve_target();
+    if options.compile_flags.icon.is_some() {
+      let target = options.compile_flags.resolve_target();
       if !target.contains("windows") {
         bail!(
           "The `--icon` flag is only available when targeting Windows (current: {})",
@@ -437,17 +451,7 @@ impl<'a> DenoCompileBinaryWriter<'a> {
         )
       }
     }
-    self
-      .write_standalone_binary(
-        writer,
-        original_binary,
-        graph,
-        root_dir_url,
-        entrypoint,
-        include_files,
-        compile_flags,
-      )
-      .await
+    self.write_standalone_binary(options, original_binary).await
   }
 
   async fn get_base_binary(
@@ -552,14 +556,17 @@ impl<'a> DenoCompileBinaryWriter<'a> {
   #[allow(clippy::too_many_arguments)]
   async fn write_standalone_binary(
     &self,
-    writer: File,
+    options: WriteBinOptions<'_>,
     original_bin: Vec<u8>,
-    graph: &ModuleGraph,
-    root_dir_url: StandaloneRelativeFileBaseUrl<'_>,
-    entrypoint: &ModuleSpecifier,
-    include_files: &[ModuleSpecifier],
-    compile_flags: &CompileFlags,
   ) -> Result<(), AnyError> {
+    let WriteBinOptions {
+      writer,
+      display_output_filename,
+      graph,
+      entrypoint,
+      include_files,
+      compile_flags,
+    } = options;
     let ca_data = match self.cli_options.ca_data() {
       Some(CaData::File(ca_file)) => Some(
         std::fs::read(ca_file).with_context(|| format!("Reading {ca_file}"))?,
@@ -567,74 +574,28 @@ impl<'a> DenoCompileBinaryWriter<'a> {
       Some(CaData::Bytes(bytes)) => Some(bytes.clone()),
       None => None,
     };
-    let root_path = root_dir_url.inner().to_file_path().unwrap();
-    let (maybe_npm_vfs, node_modules, npm_snapshot) =
-      match self.npm_resolver.as_inner() {
-        InnerCliNpmResolverRef::Managed(managed) => {
-          let snapshot =
-            managed.serialized_valid_snapshot_for_system(&self.npm_system_info);
-          if !snapshot.as_serialized().packages.is_empty() {
-            let npm_vfs_builder = self
-              .build_npm_vfs(&root_path)
-              .context("Building npm vfs.")?;
-            (
-              Some(npm_vfs_builder),
-              Some(NodeModules::Managed {
-                node_modules_dir: self
-                  .npm_resolver
-                  .root_node_modules_path()
-                  .map(|path| {
-                    root_dir_url
-                      .specifier_key(
-                        &ModuleSpecifier::from_directory_path(path).unwrap(),
-                      )
-                      .into_owned()
-                  }),
-              }),
-              Some(snapshot),
-            )
-          } else {
-            (None, None, None)
-          }
+    let mut vfs = VfsBuilder::new();
+    let npm_snapshot = match self.npm_resolver.as_inner() {
+      InnerCliNpmResolverRef::Managed(managed) => {
+        let snapshot =
+          managed.serialized_valid_snapshot_for_system(&self.npm_system_info);
+        if !snapshot.as_serialized().packages.is_empty() {
+          self.fill_npm_vfs(&mut vfs).context("Building npm vfs.")?;
+          Some(snapshot)
+        } else {
+          None
         }
-        InnerCliNpmResolverRef::Byonm(resolver) => {
-          let npm_vfs_builder = self.build_npm_vfs(&root_path)?;
-          (
-            Some(npm_vfs_builder),
-            Some(NodeModules::Byonm {
-              root_node_modules_dir: resolver.root_node_modules_path().map(
-                |node_modules_dir| {
-                  root_dir_url
-                    .specifier_key(
-                      &ModuleSpecifier::from_directory_path(node_modules_dir)
-                        .unwrap(),
-                    )
-                    .into_owned()
-                },
-              ),
-            }),
-            None,
-          )
-        }
-      };
-    let mut vfs = if let Some(npm_vfs) = maybe_npm_vfs {
-      npm_vfs
-    } else {
-      VfsBuilder::new(root_path.clone())?
+      }
+      InnerCliNpmResolverRef::Byonm(_) => {
+        self.fill_npm_vfs(&mut vfs)?;
+        None
+      }
     };
     for include_file in include_files {
       let path = deno_path_util::url_to_file_path(include_file)?;
-      if path.is_dir() {
-        // TODO(#26941): we should analyze if any of these are
-        // modules in order to include their dependencies
-        vfs
-          .add_dir_recursive(&path)
-          .with_context(|| format!("Including {}", path.display()))?;
-      } else {
-        vfs
-          .add_file_at_path(&path)
-          .with_context(|| format!("Including {}", path.display()))?;
-      }
+      vfs
+        .add_file_at_path(&path)
+        .with_context(|| format!("Including {}", path.display()))?;
     }
     let mut remote_modules_store = RemoteModulesStoreBuilder::default();
     let mut code_cache_key_hasher = if self.cli_options.code_cache_enabled() {
@@ -706,6 +667,62 @@ impl<'a> DenoCompileBinaryWriter<'a> {
     }
     remote_modules_store.add_redirects(&graph.redirects);
 
+    if let Some(import_map) = self.workspace_resolver.maybe_import_map() {
+      if let Ok(file_path) = url_to_file_path(import_map.base_url()) {
+        if let Some(import_map_parent_dir) = file_path.parent() {
+          // tell the vfs about the import map's parent directory in case it
+          // falls outside what the root of where the VFS will be based
+          vfs.add_possible_min_root_dir(import_map_parent_dir);
+        }
+      }
+    }
+    if let Some(node_modules_dir) = self.npm_resolver.root_node_modules_path() {
+      // ensure the vfs doesn't go below the node_modules directory's parent
+      if let Some(parent) = node_modules_dir.parent() {
+        vfs.add_possible_min_root_dir(parent);
+      }
+    }
+
+    let vfs = self.build_vfs_consolidating_global_npm_cache(vfs);
+    let root_dir_url = match &vfs.root_path {
+      WindowsSystemRootablePath::Path(dir) => {
+        Some(url_from_directory_path(dir)?)
+      }
+      WindowsSystemRootablePath::WindowSystemRoot => None,
+    };
+    let root_dir_url = match &root_dir_url {
+      Some(url) => StandaloneRelativeFileBaseUrl::Path(url),
+      None => StandaloneRelativeFileBaseUrl::WindowsSystemRoot,
+    };
+
+    let node_modules = match self.npm_resolver.as_inner() {
+      InnerCliNpmResolverRef::Managed(_) => {
+        npm_snapshot.as_ref().map(|_| NodeModules::Managed {
+          node_modules_dir: self.npm_resolver.root_node_modules_path().map(
+            |path| {
+              root_dir_url
+                .specifier_key(
+                  &ModuleSpecifier::from_directory_path(path).unwrap(),
+                )
+                .into_owned()
+            },
+          ),
+        })
+      }
+      InnerCliNpmResolverRef::Byonm(resolver) => Some(NodeModules::Byonm {
+        root_node_modules_dir: resolver.root_node_modules_path().map(
+          |node_modules_dir| {
+            root_dir_url
+              .specifier_key(
+                &ModuleSpecifier::from_directory_path(node_modules_dir)
+                  .unwrap(),
+              )
+              .into_owned()
+          },
+        ),
+      }),
+    };
+
     let env_vars_from_env_file = match self.cli_options.env_file_name() {
       Some(env_filenames) => {
         let mut aggregated_env_vars = IndexMap::new();
@@ -719,6 +736,8 @@ impl<'a> DenoCompileBinaryWriter<'a> {
       }
       None => Default::default(),
     };
+
+    output_vfs(&vfs, display_output_filename);
 
     let metadata = Metadata {
       argv: compile_flags.args.clone(),
@@ -779,6 +798,7 @@ impl<'a> DenoCompileBinaryWriter<'a> {
         detect_cjs: self.cli_options.unstable_detect_cjs(),
         sloppy_imports: self.cli_options.unstable_sloppy_imports(),
         features: self.cli_options.unstable_features(),
+        npm_lazy_caching: self.cli_options.unstable_npm_lazy_caching(),
       },
       otel_config: self.cli_options.otel_config(),
     };
@@ -789,13 +809,13 @@ impl<'a> DenoCompileBinaryWriter<'a> {
       &metadata,
       npm_snapshot.map(|s| s.into_serialized()),
       &remote_modules_store,
-      vfs,
+      &vfs,
       compile_flags,
     )
     .context("Writing binary bytes")
   }
 
-  fn build_npm_vfs(&self, root_path: &Path) -> Result<VfsBuilder, AnyError> {
+  fn fill_npm_vfs(&self, builder: &mut VfsBuilder) -> Result<(), AnyError> {
     fn maybe_warn_different_system(system_info: &NpmSystemInfo) {
       if system_info != &NpmSystemInfo::default() {
         log::warn!("{} The node_modules directory may be incompatible with the target system.", crate::colors::yellow("Warning"));
@@ -806,15 +826,10 @@ impl<'a> DenoCompileBinaryWriter<'a> {
       InnerCliNpmResolverRef::Managed(npm_resolver) => {
         if let Some(node_modules_path) = npm_resolver.root_node_modules_path() {
           maybe_warn_different_system(&self.npm_system_info);
-          let mut builder = VfsBuilder::new(root_path.to_path_buf())?;
           builder.add_dir_recursive(node_modules_path)?;
-          Ok(builder)
+          Ok(())
         } else {
-          // DO NOT include the user's registry url as it may contain credentials,
-          // but also don't make this dependent on the registry url
-          let global_cache_root_path = npm_resolver.global_cache_root_path();
-          let mut builder =
-            VfsBuilder::new(global_cache_root_path.to_path_buf())?;
+          // we'll flatten to remove any custom registries later
           let mut packages =
             npm_resolver.all_system_packages(&self.npm_system_info);
           packages.sort_by(|a, b| a.id.cmp(&b.id)); // determinism
@@ -823,55 +838,11 @@ impl<'a> DenoCompileBinaryWriter<'a> {
               npm_resolver.resolve_pkg_folder_from_pkg_id(&package.id)?;
             builder.add_dir_recursive(&folder)?;
           }
-
-          // Flatten all the registries folders into a single ".deno_compile_node_modules/localhost" folder
-          // that will be used by denort when loading the npm cache. This avoids us exposing
-          // the user's private registry information and means we don't have to bother
-          // serializing all the different registry config into the binary.
-          builder.with_root_dir(|root_dir| {
-            root_dir.name = ".deno_compile_node_modules".to_string();
-            let mut new_entries = Vec::with_capacity(root_dir.entries.len());
-            let mut localhost_entries = IndexMap::new();
-            for entry in std::mem::take(&mut root_dir.entries) {
-              match entry {
-                VfsEntry::Dir(dir) => {
-                  for entry in dir.entries {
-                    log::debug!(
-                      "Flattening {} into node_modules",
-                      entry.name()
-                    );
-                    if let Some(existing) =
-                      localhost_entries.insert(entry.name().to_string(), entry)
-                    {
-                      panic!(
-                        "Unhandled scenario where a duplicate entry was found: {:?}",
-                        existing
-                      );
-                    }
-                  }
-                }
-                VfsEntry::File(_) | VfsEntry::Symlink(_) => {
-                  new_entries.push(entry);
-                }
-              }
-            }
-            new_entries.push(VfsEntry::Dir(VirtualDirectory {
-              name: "localhost".to_string(),
-              entries: localhost_entries.into_iter().map(|(_, v)| v).collect(),
-            }));
-            // needs to be sorted by name
-            new_entries.sort_by(|a, b| a.name().cmp(b.name()));
-            root_dir.entries = new_entries;
-          });
-
-          builder.set_new_root_path(root_path.to_path_buf())?;
-
-          Ok(builder)
+          Ok(())
         }
       }
       InnerCliNpmResolverRef::Byonm(_) => {
         maybe_warn_different_system(&self.npm_system_info);
-        let mut builder = VfsBuilder::new(root_path.to_path_buf())?;
         for pkg_json in self.cli_options.workspace().package_jsons() {
           builder.add_file_at_path(&pkg_json.path)?;
         }
@@ -904,8 +875,100 @@ impl<'a> DenoCompileBinaryWriter<'a> {
             }
           }
         }
-        Ok(builder)
+        Ok(())
       }
+    }
+  }
+
+  fn build_vfs_consolidating_global_npm_cache(
+    &self,
+    mut vfs: VfsBuilder,
+  ) -> BuiltVfs {
+    match self.npm_resolver.as_inner() {
+      InnerCliNpmResolverRef::Managed(npm_resolver) => {
+        if npm_resolver.root_node_modules_path().is_some() {
+          return vfs.build();
+        }
+
+        let global_cache_root_path = npm_resolver.global_cache_root_path();
+
+        // Flatten all the registries folders into a single ".deno_compile_node_modules/localhost" folder
+        // that will be used by denort when loading the npm cache. This avoids us exposing
+        // the user's private registry information and means we don't have to bother
+        // serializing all the different registry config into the binary.
+        let Some(root_dir) = vfs.get_dir_mut(global_cache_root_path) else {
+          return vfs.build();
+        };
+
+        root_dir.name = DENO_COMPILE_GLOBAL_NODE_MODULES_DIR_NAME.to_string();
+        let mut new_entries = Vec::with_capacity(root_dir.entries.len());
+        let mut localhost_entries = IndexMap::new();
+        for entry in std::mem::take(&mut root_dir.entries) {
+          match entry {
+            VfsEntry::Dir(dir) => {
+              for entry in dir.entries {
+                log::debug!("Flattening {} into node_modules", entry.name());
+                if let Some(existing) =
+                  localhost_entries.insert(entry.name().to_string(), entry)
+                {
+                  panic!(
+                    "Unhandled scenario where a duplicate entry was found: {:?}",
+                    existing
+                  );
+                }
+              }
+            }
+            VfsEntry::File(_) | VfsEntry::Symlink(_) => {
+              new_entries.push(entry);
+            }
+          }
+        }
+        new_entries.push(VfsEntry::Dir(VirtualDirectory {
+          name: "localhost".to_string(),
+          entries: localhost_entries.into_iter().map(|(_, v)| v).collect(),
+        }));
+        // needs to be sorted by name
+        new_entries.sort_by(|a, b| a.name().cmp(b.name()));
+        root_dir.entries = new_entries;
+
+        // it's better to not expose the user's cache directory, so take it out
+        // of there
+        let parent = global_cache_root_path.parent().unwrap();
+        let parent_dir = vfs.get_dir_mut(parent).unwrap();
+        let index = parent_dir
+          .entries
+          .iter()
+          .position(|entry| {
+            entry.name() == DENO_COMPILE_GLOBAL_NODE_MODULES_DIR_NAME
+          })
+          .unwrap();
+        let npm_global_cache_dir_entry = parent_dir.entries.remove(index);
+
+        // go up from the ancestors removing empty directories...
+        // this is not as optimized as it could be
+        let mut last_name =
+          Cow::Borrowed(DENO_COMPILE_GLOBAL_NODE_MODULES_DIR_NAME);
+        for ancestor in parent.ancestors() {
+          let dir = vfs.get_dir_mut(ancestor).unwrap();
+          if let Some(index) = dir
+            .entries
+            .iter()
+            .position(|entry| entry.name() == last_name)
+          {
+            dir.entries.remove(index);
+          }
+          last_name = Cow::Owned(dir.name.clone());
+          if !dir.entries.is_empty() {
+            break;
+          }
+        }
+
+        // now build the vfs and add the global cache dir entry there
+        let mut built_vfs = vfs.build();
+        built_vfs.root.insert_entry(npm_global_cache_dir_entry);
+        built_vfs
+      }
+      InnerCliNpmResolverRef::Byonm(_) => vfs.build(),
     }
   }
 }

@@ -5,7 +5,7 @@ import { stringify } from "jsr:@std/yaml@^0.221/stringify";
 // Bump this number when you want to purge the cache.
 // Note: the tools/release/01_bump_crate_versions.ts script will update this version
 // automatically via regex, so ensure that this line maintains this format.
-const cacheVersion = 29;
+const cacheVersion = 30;
 
 const ubuntuX86Runner = "ubuntu-24.04";
 const ubuntuX86XlRunner = "ubuntu-24.04-xl";
@@ -59,6 +59,15 @@ const Runners = {
 
 const prCacheKeyPrefix =
   `${cacheVersion}-cargo-target-\${{ matrix.os }}-\${{ matrix.arch }}-\${{ matrix.profile }}-\${{ matrix.job }}-`;
+const prCacheKey = `${prCacheKeyPrefix}\${{ github.sha }}`;
+const prCachePath = [
+  // this must match for save and restore (https://github.com/actions/cache/issues/1444)
+  "./target",
+  "!./target/*/gn_out",
+  "!./target/*/gn_root",
+  "!./target/*/*.zip",
+  "!./target/*/*.tar.gz",
+].join("\n");
 
 // Note that you may need to add more version to the `apt-get remove` line below if you change this
 const llvmVersion = 19;
@@ -196,7 +205,7 @@ const installNodeStep = {
 const installDenoStep = {
   name: "Install Deno",
   uses: "denoland/setup-deno@v2",
-  with: { "deno-version": "v1.x" },
+  with: { "deno-version": "v2.x" },
 };
 
 const authenticateWithGoogleCloud = {
@@ -612,7 +621,7 @@ const ci = {
               `${cacheVersion}-cargo-home-\${{ matrix.os }}-\${{ matrix.arch }}-\${{ hashFiles('Cargo.lock') }}`,
             // We will try to restore from the closest cargo-home we can find
             "restore-keys":
-              `${cacheVersion}-cargo-home-\${{ matrix.os }}-\${{ matrix.arch }}`,
+              `${cacheVersion}-cargo-home-\${{ matrix.os }}-\${{ matrix.arch }}-`,
           },
         },
         {
@@ -622,13 +631,7 @@ const ci = {
           if:
             "github.ref != 'refs/heads/main' && !startsWith(github.ref, 'refs/tags/')",
           with: {
-            path: [
-              "./target",
-              "!./target/*/gn_out",
-              "!./target/*/gn_root",
-              "!./target/*/*.zip",
-              "!./target/*/*.tar.gz",
-            ].join("\n"),
+            path: prCachePath,
             key: "never_saved",
             "restore-keys": prCacheKeyPrefix,
           },
@@ -1080,14 +1083,8 @@ const ci = {
           if:
             "(matrix.job == 'test' || matrix.job == 'lint') && github.ref == 'refs/heads/main'",
           with: {
-            path: [
-              "./target",
-              "!./target/*/gn_out",
-              "!./target/*/*.zip",
-              "!./target/*/*.sha256sum",
-              "!./target/*/*.tar.gz",
-            ].join("\n"),
-            key: prCacheKeyPrefix + "${{ github.sha }}",
+            path: prCachePath,
+            key: prCacheKey,
           },
         },
       ]),

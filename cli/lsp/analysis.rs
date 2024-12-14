@@ -1387,7 +1387,7 @@ impl CodeActionCollection {
         character: import_start.column_index as u32,
       };
       let new_text = format!(
-        "{}// @deno-types=\"{}\"\n",
+        "{}// @ts-types=\"{}\"\n",
         if position.character == 0 { "" } else { "\n" },
         &types_specifier_text
       );
@@ -1400,7 +1400,7 @@ impl CodeActionCollection {
       };
       Some(lsp::CodeAction {
         title: format!(
-          "Add @deno-types directive for \"{}\"",
+          "Add @ts-types directive for \"{}\"",
           &types_specifier_text
         ),
         kind: Some(lsp::CodeActionKind::QUICKFIX),
