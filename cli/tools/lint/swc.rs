@@ -1556,6 +1556,8 @@ fn serialize_decl(
       let id = ctx.header(AstNode::TSInterface, parent, &node.span, 4);
       let declare_pos = ctx.bool_field(AstProp::Declare);
 
+      let body_id = ctx.next_id();
+      ctx.header(AstNode::TSInterfaceBody, id, &node.body.span, 4);
       // FIXME
 
       let ident_id = serialize_ident(ctx, &node.id, id);
@@ -1566,18 +1568,14 @@ fn serialize_decl(
         .extends
         .iter()
         .map(|item| {
-          let child_id = ctx.next_id();
-          let expr_id = serialize_expr(ctx, &item.expr, child_id);
+          let child_id =
+            ctx.header(AstNode::TSInterfaceHeritage, id, &item.span, 1);
+          let expr_pos = ctx.ref_field(AstProp::Expression);
 
-          ctx.write_node(
-            child_id,
-            AstNode::TSInterfaceHeritage,
-            id,
-            &item.span,
-            1,
-          );
+          let expr = serialize_expr(ctx, &item.expr, child_id);
+
           // FIXME
-          ctx.write_id(expr_id);
+          ctx.write_ref(expr_pos, expr);
 
           child_id
         })
@@ -1628,14 +1626,10 @@ fn serialize_decl(
         })
         .collect::<Vec<_>>();
 
-      let body_id = ctx.next_id();
-      ctx.write_node(body_id, AstNode::TSInterfaceBody, id, &node.body.span, 4);
-
       // FIXME
       // ctx.write_ids( body_elem_ids);
 
       ctx.write_bool(declare_pos, node.declare);
-      ctx.write_flags(&flags);
       ctx.write_id(ident_id);
       ctx.write_id(type_param);
 
@@ -2340,12 +2334,12 @@ fn serialize_ts_type(
       pos
     }
     TsType::TsTypeQuery(node) => {
-      let id = ctx.header(AstNode::TSTypeQuery, parent, &node.span, 1);
+      let pos = ctx.header(AstNode::TSTypeQuery, parent, &node.span, 1);
       let name_pos = ctx.ref_field(AstProp::ExprName);
 
       let expr_name = match &node.expr_name {
         TsTypeQueryExpr::TsEntityName(entity) => {
-          serialize_ts_entity_name(ctx, entity, id)
+          serialize_ts_entity_name(ctx, entity, pos)
         }
         TsTypeQueryExpr::Import(ts_import_type) => todo!(),
       };
@@ -2354,22 +2348,23 @@ fn serialize_ts_type(
 
       ctx.write_ref(name_pos, expr_name);
 
-      id
+      pos
     }
     TsType::TsTypeLit(ts_type_lit) => todo!(),
     TsType::TsArrayType(ts_array_type) => todo!(),
     TsType::TsTupleType(node) => {
-      let id = ctx.next_id();
+      let pos = ctx.header(AstNode::TSTupleType, parent, &node.span, 1);
+      let children_pos = ctx.ref_vec_field(AstProp::ElementTypes);
+
       let children = node
         .elem_types
         .iter()
         .map(|elem| todo!())
         .collect::<Vec<_>>();
 
-      ctx.write_node(id, AstNode::TSTupleType, parent, &node.span, 1);
-      ctx.write_ids(AstProp::ElementTypes, children);
+      ctx.write_refs(children_pos, children);
 
-      id
+      pos
     }
     TsType::TsOptionalType(ts_optional_type) => todo!(),
     TsType::TsRestType(ts_rest_type) => todo!(),
@@ -2501,8 +2496,8 @@ fn serialize_ts_type(
 fn serialize_ts_entity_name(
   ctx: &mut SerializeCtx,
   node: &TsEntityName,
-  parent: usize,
-) -> usize {
+  parent: NodeRef,
+) -> NodeRef {
   match &node {
     TsEntityName::TsQualifiedName(ts_qualified_name) => todo!(),
     TsEntityName::Ident(ident) => serialize_ident(ctx, ident, parent),

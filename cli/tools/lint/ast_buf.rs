@@ -576,7 +576,7 @@ impl StringTable {
   }
 }
 
-#[derive(Debug, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub struct NodeRef(pub usize);
 
 #[derive(Debug)]
