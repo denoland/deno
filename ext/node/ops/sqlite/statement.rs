@@ -1,6 +1,7 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 use std::borrow::Cow;
+use std::cell::Cell;
 use std::cell::RefCell;
 use std::rc::Rc;
 
@@ -22,6 +23,8 @@ pub struct RunStatementResult {
 pub struct StatementSync {
   pub inner: *mut ffi::sqlite3_stmt,
   pub db: Rc<RefCell<Option<rusqlite::Connection>>>,
+
+  pub use_big_ints: Cell<bool>,
 }
 
 impl Drop for StatementSync {
@@ -118,7 +121,11 @@ impl StatementSync {
       match ffi::sqlite3_column_type(self.inner, index) {
         ffi::SQLITE_INTEGER => {
           let value = ffi::sqlite3_column_int64(self.inner, index);
-          v8::Integer::new(scope, value as _).into()
+          if self.use_big_ints.get() {
+            v8::BigInt::new_from_i64(scope, value).into()
+          } else {
+            v8::Integer::new(scope, value as _).into()
+          }
         }
         ffi::SQLITE_FLOAT => {
           let value = ffi::sqlite3_column_double(self.inner, index);
@@ -320,5 +327,10 @@ impl StatementSync {
 
     let arr = v8::Array::new_with_elements(scope, &arr);
     Ok(arr)
+  }
+
+  #[fast]
+  fn set_read_big_ints(&self, enabled: bool) {
+    self.use_big_ints.set(enabled);
   }
 }

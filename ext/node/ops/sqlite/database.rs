@@ -1,5 +1,6 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
+use std::cell::Cell;
 use std::cell::RefCell;
 use std::rc::Rc;
 
@@ -155,6 +156,7 @@ impl DatabaseSync {
     Ok(StatementSync {
       inner: raw_stmt,
       db: self.conn.clone(),
+      use_big_ints: Cell::new(false),
     })
   }
 }
