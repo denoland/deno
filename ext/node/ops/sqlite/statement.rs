@@ -52,10 +52,14 @@ impl<'a> ColumnIterator<'a> {
       count,
     }
   }
+
+  fn column_count(&self) -> usize {
+    self.count as usize
+  }
 }
 
 impl<'a> Iterator for ColumnIterator<'a> {
-  type Item = (i32, Cow<'a, str>);
+  type Item = (i32, &'a [u8]);
 
   fn next(&mut self) -> Option<Self::Item> {
     if self.index >= self.count {
@@ -103,11 +107,11 @@ impl StatementSync {
     unsafe { ffi::sqlite3_column_count(self.inner) }
   }
 
-  fn column_name(&self, index: i32) -> Cow<str> {
+  fn column_name(&self, index: i32) -> &[u8] {
     // SAFETY: `self.inner` is a valid pointer to a sqlite3_stmt.
     unsafe {
       let name = ffi::sqlite3_column_name(self.inner, index);
-      std::ffi::CStr::from_ptr(name as _).to_string_lossy()
+      std::ffi::CStr::from_ptr(name as _).to_bytes()
     }
   }
 
@@ -133,10 +137,10 @@ impl StatementSync {
         }
         ffi::SQLITE_TEXT => {
           let value = ffi::sqlite3_column_text(self.inner, index);
-          let value = std::ffi::CStr::from_ptr(value as _).to_string_lossy();
+          let value = std::ffi::CStr::from_ptr(value as _);
           v8::String::new_from_utf8(
             scope,
-            value.as_bytes(),
+            value.to_bytes(),
             v8::NewStringType::Normal,
           )
           .unwrap()
@@ -167,20 +171,27 @@ impl StatementSync {
       return Ok(None);
     }
 
-    let result = v8::Object::new(scope);
     let iter = ColumnIterator::new(self);
+
+    let num_cols = iter.column_count();
+
+    let mut names = Vec::with_capacity(num_cols);
+    let mut values = Vec::with_capacity(num_cols);
 
     for (index, name) in iter {
       let value = self.column_value(index, scope);
-      let name = v8::String::new_from_utf8(
-        scope,
-        name.as_bytes(),
-        v8::NewStringType::Normal,
-      )
-      .unwrap()
-      .into();
-      result.set(scope, name, value);
+      let name =
+        v8::String::new_from_utf8(scope, name, v8::NewStringType::Normal)
+          .unwrap()
+          .into();
+
+      names.push(name);
+      values.push(value);
     }
+
+    let null = v8::null(scope).into();
+    let result =
+      v8::Object::with_prototype_and_properties(scope, null, &names, &values);
 
     Ok(Some(result))
   }
@@ -271,14 +282,14 @@ impl StatementSync {
     scope: &mut v8::HandleScope<'a>,
     #[varargs] params: Option<&v8::FunctionCallbackArguments>,
   ) -> Result<v8::Local<'a, v8::Value>, SqliteError> {
+    self.reset();
+
     self.bind_params(scope, params)?;
 
     let entry = self.read_row(scope)?;
     let result = entry
       .map(|r| r.into())
       .unwrap_or_else(|| v8::undefined(scope).into());
-
-    self.reset();
 
     Ok(result)
   }
