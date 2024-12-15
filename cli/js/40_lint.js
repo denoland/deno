@@ -264,99 +264,9 @@ const PropFlags = {
   RefArr: 1,
   String: 2,
   Bool: 3,
-  AssignOp: 4,
-  BinOp: 5,
-  LogicalOp: 6,
-  UnaryOp: 7,
-  VarKind: 8,
-  TruePlusMinus: 9,
-  Accessibility: 10,
-  UpdateOp: 11,
+  Null: 4,
+  Undefined: 5,
 };
-
-// Keep in sync with Rust
-const ASSIGN_OP = [
-  "=",
-  "+=",
-  "-=",
-  "*=",
-  "/=",
-  "%=",
-  "<<=",
-  ">>=",
-  ">>>=",
-  "|=",
-  "^=",
-  "&=",
-  "**=",
-  "&&=",
-  "||=",
-  "??=",
-];
-
-const BIN_OP = [
-  "==",
-  "!=",
-  "===",
-  "!==",
-  "<",
-  "<=",
-  ">",
-  ">=",
-  "<<",
-  ">>",
-  ">>>",
-  "+",
-  "-",
-  "*",
-  "/",
-  "%",
-  "|",
-  "^",
-  "&",
-  "in",
-  "instanceof",
-  "**",
-];
-
-// Keep in sync with rust
-const LOGICAL_OP = [
-  "&&",
-  "||",
-  "??",
-];
-
-// Keep in sync with rust
-const UNARY_OP = [
-  "-",
-  "+",
-  "!",
-  "~",
-  "typeof",
-  "void",
-  "delete",
-];
-
-// Keep in sync with rust
-const VAR_KIND = [
-  "var",
-  "let",
-  "const",
-];
-
-// Keep in sync with rust
-const ACCESSIBILITY = [
-  undefined,
-  "public",
-  "protected",
-  "private",
-];
-
-// Keep in sync with rust
-const UPDATE_OP = [
-  "++",
-  "--",
-];
 
 /**
  * @typedef {{
@@ -490,6 +400,8 @@ function findPropOffset(buf, offset, search) {
       offset += 4;
     } else if (kind === PropFlags.Bool) {
       offset++;
+    } else if (kind === PropFlags.Null || kind === PropFlags.Undefined) {
+      // No value
     } else {
       offset++;
     }
@@ -542,37 +454,13 @@ function readValue(ctx, offset, search) {
   } else if (kind === PropFlags.String) {
     const v = readU32(buf, offset);
     return getString(ctx, v);
+  } else if (kind === PropFlags.Null) {
+    return null;
+  } else if (kind === PropFlags.Undefined) {
+    return undefined;
   }
 
-  return getFlagValue(kind, buf[offset]);
-}
-
-/**
- * @param {number} kind
- * @param {number} value
- * @returns
- */
-function getFlagValue(kind, value) {
-  switch (kind) {
-    case PropFlags.AssignOp:
-      return ASSIGN_OP[value];
-    case PropFlags.BinOp:
-      return BIN_OP[value];
-    case PropFlags.LogicalOp:
-      return LOGICAL_OP[value];
-    case PropFlags.TruePlusMinus:
-      throw new Error("TODO: TruePlusMinus");
-    case PropFlags.UnaryOp:
-      return UNARY_OP[value];
-    case PropFlags.VarKind:
-      return VAR_KIND[value];
-    case PropFlags.Accessibility:
-      return ACCESSIBILITY[value];
-    case PropFlags.UpdateOp:
-      return UPDATE_OP[value];
-    default:
-      throw new Error(`Unknown prop kind: ${kind}`);
-  }
+  throw new Error(`Unknown prop kind: ${kind}`);
 }
 
 /**
@@ -620,8 +508,10 @@ function toJsValue(ctx, offset) {
       const v = readU32(buf, offset);
       offset += 4;
       node[name] = getString(ctx, v);
-    } else {
-      node[name] = getFlagValue(kind, buf[offset++]);
+    } else if (kind === PropFlags.Null) {
+      node[name] = null;
+    } else if (kind === PropFlags.Undefined) {
+      node[name] = undefined;
     }
   }
 
@@ -877,9 +767,10 @@ function traverseInner(ctx, visitTypes, visitor, offset) {
       }
     } else if (kind === PropFlags.String) {
       offset += 4;
-    } else {
-      // Everything else is a flag or a bool
+    } else if (kind === PropFlags.Bool) {
       offset += 1;
+    } else if (kind === PropFlags.Null || kind === PropFlags.Undefined) {
+      // No value
     }
   }
 }
@@ -887,7 +778,7 @@ function traverseInner(ctx, visitTypes, visitor, offset) {
 /**
  * @param {AstContext} ctx
  */
-function dump(ctx) {
+function _dump(ctx) {
   const { buf, strTableOffset } = ctx;
 
   let offset = 0;
@@ -955,11 +846,12 @@ function dump(ctx) {
         offset += 4;
         // @ts-ignore dump fn
         console.log(`    ${name}: ${getString(ctx, v)} (${kindName})`);
-      } else {
-        const v = buf[offset];
-        offset += 1;
+      } else if (kind === PropFlags.Null) {
         // @ts-ignore dump fn
-        console.log(`    ${name}: ${getFlagValue(kind, v)} (${kindName})`);
+        console.log(`    ${name}: null (${kindName})`);
+      } else if (kind === PropFlags.Undefined) {
+        // @ts-ignore dump fn
+        console.log(`    ${name}: undefined (${kindName})`);
       }
     }
   }

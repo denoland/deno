@@ -23,9 +23,7 @@ use deno_ast::{
   ParsedSource,
 };
 
-use super::ast_buf::{
-  append_usize, AstNode, AstProp, NodeRef, PropFlags, SerializeCtx,
-};
+use super::ast_buf::{append_usize, AstNode, AstProp, NodeRef, SerializeCtx};
 
 pub fn serialize_ast_bin(parsed_source: &ParsedSource) -> Vec<u8> {
   let mut ctx = SerializeCtx::new();
@@ -525,22 +523,23 @@ fn serialize_expr(
     }
     Expr::Unary(node) => {
       let pos = ctx.header(AstNode::UnaryExpression, parent, &node.span, 2);
-      let flag_pos = ctx.flag_field(AstProp::Operator, PropFlags::UnaryOp);
+      let flag_pos = ctx.str_field(AstProp::Operator);
       let arg_pos = ctx.ref_field(AstProp::Argument);
-
-      let flags: u8 = match node.op {
-        UnaryOp::Minus => 0,
-        UnaryOp::Plus => 1,
-        UnaryOp::Bang => 2,
-        UnaryOp::Tilde => 3,
-        UnaryOp::TypeOf => 4,
-        UnaryOp::Void => 5,
-        UnaryOp::Delete => 6,
-      };
 
       let arg = serialize_expr(ctx, &node.arg, pos);
 
-      ctx.write_flags(flag_pos, flags);
+      ctx.write_str(
+        flag_pos,
+        match node.op {
+          UnaryOp::Minus => "-",
+          UnaryOp::Plus => "+",
+          UnaryOp::Bang => "!",
+          UnaryOp::Tilde => "~",
+          UnaryOp::TypeOf => "typeof",
+          UnaryOp::Void => "void",
+          UnaryOp::Delete => "delete",
+        },
+      );
       ctx.write_ref(arg_pos, arg);
 
       pos
@@ -549,66 +548,60 @@ fn serialize_expr(
       let pos = ctx.header(AstNode::UpdateExpression, parent, &node.span, 3);
       let prefix_pos = ctx.bool_field(AstProp::Prefix);
       let arg_pos = ctx.ref_field(AstProp::Argument);
-      let op_ops = ctx.flag_field(AstProp::Operator, PropFlags::UpdateOp);
+      let op_ops = ctx.str_field(AstProp::Operator);
 
       let arg = serialize_expr(ctx, node.arg.as_ref(), pos);
 
       ctx.write_bool(prefix_pos, node.prefix);
       ctx.write_ref(arg_pos, arg);
-      ctx.write_flags(
+      ctx.write_str(
         op_ops,
         match node.op {
-          UpdateOp::PlusPlus => 0,
-          UpdateOp::MinusMinus => 1,
+          UpdateOp::PlusPlus => "++",
+          UpdateOp::MinusMinus => "--",
         },
       );
 
       pos
     }
     Expr::Bin(node) => {
-      let (node_type, flag) = match node.op {
-        BinaryOp::LogicalAnd => (AstNode::LogicalExpression, 0),
-        BinaryOp::LogicalOr => (AstNode::LogicalExpression, 1),
-        BinaryOp::NullishCoalescing => (AstNode::LogicalExpression, 2),
-        BinaryOp::EqEq => (AstNode::BinaryExpression, 0),
-        BinaryOp::NotEq => (AstNode::BinaryExpression, 1),
-        BinaryOp::EqEqEq => (AstNode::BinaryExpression, 2),
-        BinaryOp::NotEqEq => (AstNode::BinaryExpression, 3),
-        BinaryOp::Lt => (AstNode::BinaryExpression, 4),
-        BinaryOp::LtEq => (AstNode::BinaryExpression, 5),
-        BinaryOp::Gt => (AstNode::BinaryExpression, 6),
-        BinaryOp::GtEq => (AstNode::BinaryExpression, 7),
-        BinaryOp::LShift => (AstNode::BinaryExpression, 8),
-        BinaryOp::RShift => (AstNode::BinaryExpression, 9),
-        BinaryOp::ZeroFillRShift => (AstNode::BinaryExpression, 10),
-        BinaryOp::Add => (AstNode::BinaryExpression, 11),
-        BinaryOp::Sub => (AstNode::BinaryExpression, 12),
-        BinaryOp::Mul => (AstNode::BinaryExpression, 13),
-        BinaryOp::Div => (AstNode::BinaryExpression, 14),
-        BinaryOp::Mod => (AstNode::BinaryExpression, 15),
-        BinaryOp::BitOr => (AstNode::BinaryExpression, 16),
-        BinaryOp::BitXor => (AstNode::BinaryExpression, 17),
-        BinaryOp::BitAnd => (AstNode::BinaryExpression, 18),
-        BinaryOp::In => (AstNode::BinaryExpression, 19),
-        BinaryOp::InstanceOf => (AstNode::BinaryExpression, 20),
-        BinaryOp::Exp => (AstNode::BinaryExpression, 21),
-      };
-
-      let op_kind = if node_type == AstNode::BinaryExpression {
-        PropFlags::BinOp
-      } else {
-        PropFlags::LogicalOp
+      let (node_type, flag_str) = match node.op {
+        BinaryOp::LogicalAnd => (AstNode::LogicalExpression, "&&"),
+        BinaryOp::LogicalOr => (AstNode::LogicalExpression, "||"),
+        BinaryOp::NullishCoalescing => (AstNode::LogicalExpression, "??"),
+        BinaryOp::EqEq => (AstNode::BinaryExpression, "=="),
+        BinaryOp::NotEq => (AstNode::BinaryExpression, "!="),
+        BinaryOp::EqEqEq => (AstNode::BinaryExpression, "==="),
+        BinaryOp::NotEqEq => (AstNode::BinaryExpression, "!="),
+        BinaryOp::Lt => (AstNode::BinaryExpression, "<"),
+        BinaryOp::LtEq => (AstNode::BinaryExpression, "<="),
+        BinaryOp::Gt => (AstNode::BinaryExpression, ">"),
+        BinaryOp::GtEq => (AstNode::BinaryExpression, ">="),
+        BinaryOp::LShift => (AstNode::BinaryExpression, "<<"),
+        BinaryOp::RShift => (AstNode::BinaryExpression, ">>"),
+        BinaryOp::ZeroFillRShift => (AstNode::BinaryExpression, ">>>"),
+        BinaryOp::Add => (AstNode::BinaryExpression, "+"),
+        BinaryOp::Sub => (AstNode::BinaryExpression, "-"),
+        BinaryOp::Mul => (AstNode::BinaryExpression, "*"),
+        BinaryOp::Div => (AstNode::BinaryExpression, "/"),
+        BinaryOp::Mod => (AstNode::BinaryExpression, "%"),
+        BinaryOp::BitOr => (AstNode::BinaryExpression, "|"),
+        BinaryOp::BitXor => (AstNode::BinaryExpression, "^"),
+        BinaryOp::BitAnd => (AstNode::BinaryExpression, "&"),
+        BinaryOp::In => (AstNode::BinaryExpression, "in"),
+        BinaryOp::InstanceOf => (AstNode::BinaryExpression, "instanceof"),
+        BinaryOp::Exp => (AstNode::BinaryExpression, "**"),
       };
 
       let pos = ctx.header(node_type, parent, &node.span, 3);
-      let flag_pos = ctx.flag_field(AstProp::Operator, op_kind);
+      let op_pos = ctx.str_field(AstProp::Operator);
       let left_pos = ctx.ref_field(AstProp::Left);
       let right_pos = ctx.ref_field(AstProp::Right);
 
       let left_id = serialize_expr(ctx, node.left.as_ref(), pos);
       let right_id = serialize_expr(ctx, node.right.as_ref(), pos);
 
-      ctx.write_flags(flag_pos, flag);
+      ctx.write_str(op_pos, flag_str);
       ctx.write_ref(left_pos, left_id);
       ctx.write_ref(right_pos, right_id);
 
@@ -616,7 +609,7 @@ fn serialize_expr(
     }
     Expr::Assign(node) => {
       let pos = ctx.header(AstNode::Assign, parent, &node.span, 3);
-      let op_pos = ctx.flag_field(AstProp::Operator, PropFlags::AssignOp);
+      let op_pos = ctx.str_field(AstProp::Operator);
       let left_pos = ctx.ref_field(AstProp::Left);
       let right_pos = ctx.ref_field(AstProp::Right);
 
@@ -655,25 +648,25 @@ fn serialize_expr(
 
       let right = serialize_expr(ctx, node.right.as_ref(), pos);
 
-      ctx.write_flags(
+      ctx.write_str(
         op_pos,
         match node.op {
-          AssignOp::Assign => 0,
-          AssignOp::AddAssign => 1,
-          AssignOp::SubAssign => 2,
-          AssignOp::MulAssign => 3,
-          AssignOp::DivAssign => 4,
-          AssignOp::ModAssign => 5,
-          AssignOp::LShiftAssign => 6,
-          AssignOp::RShiftAssign => 7,
-          AssignOp::ZeroFillRShiftAssign => 8,
-          AssignOp::BitOrAssign => 9,
-          AssignOp::BitXorAssign => 10,
-          AssignOp::BitAndAssign => 11,
-          AssignOp::ExpAssign => 12,
-          AssignOp::AndAssign => 13,
-          AssignOp::OrAssign => 14,
-          AssignOp::NullishAssign => 15,
+          AssignOp::Assign => "=",
+          AssignOp::AddAssign => "+=",
+          AssignOp::SubAssign => "-=",
+          AssignOp::MulAssign => "*=",
+          AssignOp::DivAssign => "/=",
+          AssignOp::ModAssign => "%=",
+          AssignOp::LShiftAssign => "<<=",
+          AssignOp::RShiftAssign => ">>=",
+          AssignOp::ZeroFillRShiftAssign => ">>>=",
+          AssignOp::BitOrAssign => "|=",
+          AssignOp::BitXorAssign => "^=",
+          AssignOp::BitAndAssign => "&=",
+          AssignOp::ExpAssign => "**=",
+          AssignOp::AndAssign => "&&=",
+          AssignOp::OrAssign => "||=",
+          AssignOp::NullishAssign => "??=",
         },
       );
       ctx.write_ref(left_pos, left);
@@ -1258,8 +1251,11 @@ fn serialize_class_member(
       let body_pos = ctx.ref_field(AstProp::Body);
       let args_pos =
         ctx.ref_vec_field(AstProp::Arguments, constructor.params.len());
-      let acc_pos =
-        ctx.flag_field(AstProp::Accessibility, PropFlags::Accessibility);
+      let acc_pos = if constructor.accessibility.is_some() {
+        ctx.str_field(AstProp::Accessibility)
+      } else {
+        ctx.undefined_field(AstProp::Accessibility)
+      };
 
       // FIXME flags
       // let mut flags = FlagValue::new();
@@ -1282,8 +1278,10 @@ fn serialize_class_member(
         })
         .collect::<Vec<_>>();
 
-      ctx
-        .write_flags(acc_pos, accessibility_to_flag(constructor.accessibility));
+      if let Some(acc) = constructor.accessibility {
+        ctx.write_str(acc_pos, &accessibility_to_str(acc));
+      }
+
       ctx.write_ref(key_pos, key);
       ctx.write_maybe_ref(body_pos, body);
       // FIXME
@@ -1480,7 +1478,7 @@ fn serialize_decl(
     Decl::Var(node) => {
       let id = ctx.header(AstNode::Var, parent, &node.span, 3);
       let declare_pos = ctx.bool_field(AstProp::Declare);
-      let kind_pos = ctx.flag_field(AstProp::Kind, PropFlags::VarKind);
+      let kind_pos = ctx.str_field(AstProp::Kind);
       let decls_pos =
         ctx.ref_vec_field(AstProp::Declarations, node.decls.len());
 
@@ -1510,12 +1508,12 @@ fn serialize_decl(
         .collect::<Vec<_>>();
 
       ctx.write_bool(declare_pos, node.declare);
-      ctx.write_flags(
+      ctx.write_str(
         kind_pos,
         match node.kind {
-          VarDeclKind::Var => 0,
-          VarDeclKind::Let => 1,
-          VarDeclKind::Const => 2,
+          VarDeclKind::Var => "var",
+          VarDeclKind::Let => "let",
+          VarDeclKind::Const => "const",
         },
       );
       ctx.write_refs(decls_pos, children);
@@ -1694,12 +1692,12 @@ fn serialize_decl(
   }
 }
 
-fn accessibility_to_flag(accessibility: Option<Accessibility>) -> u8 {
-  accessibility.map_or(0, |v| match v {
-    Accessibility::Public => 1,
-    Accessibility::Protected => 2,
-    Accessibility::Private => 3,
-  })
+fn accessibility_to_str(accessibility: Accessibility) -> String {
+  match accessibility {
+    Accessibility::Public => "public".to_string(),
+    Accessibility::Protected => "protected".to_string(),
+    Accessibility::Private => "private".to_string(),
+  }
 }
 
 fn serialize_private_name(
@@ -2407,16 +2405,18 @@ fn serialize_ts_type(
       let name_pos = ctx.ref_field(AstProp::NameType);
       let type_ann_pos = ctx.ref_field(AstProp::TypeAnnotation);
       let type_param_pos = ctx.ref_field(AstProp::TypeParameter);
-      let opt_pos = ctx.flag_field(AstProp::Optional, PropFlags::TruePlusMinus);
+
+      let opt_pos =
+        create_true_plus_minus_field(ctx, AstProp::Optional, node.optional);
       let readonly_pos =
-        ctx.flag_field(AstProp::Readonly, PropFlags::TruePlusMinus);
+        create_true_plus_minus_field(ctx, AstProp::Readonly, node.readonly);
 
       let name_id = maybe_serialize_ts_type(ctx, &node.name_type, pos);
       let type_ann = maybe_serialize_ts_type(ctx, &node.type_ann, pos);
       let type_param = serialize_ts_type_param(ctx, &node.type_param, pos);
 
-      ctx.write_flags(opt_pos, serialize_maybe_true_plus(node.optional));
-      ctx.write_flags(readonly_pos, serialize_maybe_true_plus(node.readonly));
+      write_true_plus_minus(ctx, opt_pos, node.optional);
+      write_true_plus_minus(ctx, readonly_pos, node.readonly);
       ctx.write_maybe_ref(name_pos, name_id);
       ctx.write_maybe_ref(type_ann_pos, type_ann);
       ctx.write_ref(type_param_pos, type_param);
@@ -2454,12 +2454,35 @@ fn serialize_ts_type(
   }
 }
 
-fn serialize_maybe_true_plus(value: Option<TruePlusMinus>) -> u8 {
-  value.map_or(0, |v| match v {
-    TruePlusMinus::True => 1,
-    TruePlusMinus::Plus => 2,
-    TruePlusMinus::Minus => 3,
-  })
+fn create_true_plus_minus_field(
+  ctx: &mut SerializeCtx,
+  prop: AstProp,
+  value: Option<TruePlusMinus>,
+) -> usize {
+  if let Some(v) = value {
+    match v {
+      TruePlusMinus::True => ctx.bool_field(prop),
+      TruePlusMinus::Plus | TruePlusMinus::Minus => ctx.str_field(prop),
+    }
+  } else {
+    ctx.undefined_field(prop)
+  }
+}
+
+fn write_true_plus_minus(
+  ctx: &mut SerializeCtx,
+  pos: usize,
+  value: Option<TruePlusMinus>,
+) {
+  if let Some(v) = value {
+    match v {
+      TruePlusMinus::True => {
+        ctx.write_bool(pos, true);
+      }
+      TruePlusMinus::Plus => ctx.write_str(pos, "+"),
+      TruePlusMinus::Minus => ctx.write_str(pos, "-"),
+    }
+  }
 }
 
 fn serialize_ts_entity_name(

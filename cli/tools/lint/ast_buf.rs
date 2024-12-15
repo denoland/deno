@@ -284,14 +284,8 @@ pub enum PropFlags {
   RefArr,
   String,
   Bool,
-  AssignOp,
-  BinOp,
-  LogicalOp,
-  UnaryOp,
-  VarKind,
-  TruePlusMinus,
-  Accessibility,
-  UpdateOp,
+  Null,
+  Undefined,
 }
 
 impl From<PropFlags> for u8 {
@@ -309,14 +303,8 @@ impl TryFrom<u8> for PropFlags {
       1 => Ok(PropFlags::RefArr),
       2 => Ok(PropFlags::String),
       3 => Ok(PropFlags::Bool),
-      4 => Ok(PropFlags::AssignOp),
-      5 => Ok(PropFlags::BinOp),
-      6 => Ok(PropFlags::LogicalOp),
-      7 => Ok(PropFlags::UnaryOp),
-      8 => Ok(PropFlags::VarKind),
-      9 => Ok(PropFlags::TruePlusMinus),
-      10 => Ok(PropFlags::Accessibility),
-      11 => Ok(PropFlags::UpdateOp),
+      4 => Ok(PropFlags::Null),
+      5 => Ok(PropFlags::Undefined),
       _ => Err("Unknown Prop flag"),
     }
   }
@@ -503,13 +491,18 @@ impl SerializeCtx {
   }
 
   pub fn bool_field(&mut self, prop: AstProp) -> usize {
-    self.flag_field(prop, PropFlags::Bool)
-  }
-
-  pub fn flag_field(&mut self, prop: AstProp, prop_flags: PropFlags) -> usize {
-    let offset = self.field_header(prop, prop_flags);
+    let offset = self.field_header(prop, PropFlags::Bool);
     self.buf.push(0);
     offset
+  }
+
+  pub fn undefined_field(&mut self, prop: AstProp) -> usize {
+    self.field_header(prop, PropFlags::Undefined)
+  }
+
+  #[allow(dead_code)]
+  pub fn null_field(&mut self, prop: AstProp) -> usize {
+    self.field_header(prop, PropFlags::Null)
   }
 
   fn field(&mut self, prop: AstProp, prop_flags: PropFlags) -> usize {
@@ -591,10 +584,6 @@ impl SerializeCtx {
     }
 
     self.buf[field_offset + 2] = if value { 1 } else { 0 };
-  }
-
-  pub fn write_flags(&mut self, field_offset: usize, value: impl Into<u8>) {
-    self.buf[field_offset + 2] = value.into();
   }
 
   pub fn push_node(
