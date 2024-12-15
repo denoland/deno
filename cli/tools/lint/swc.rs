@@ -23,10 +23,13 @@ use deno_ast::{
   ParsedSource,
 };
 
-use super::ast_buf::{append_usize, AstNode, AstProp, NodeRef, SerializeCtx};
+use super::{
+  ast_buf::{AstBufSerializer, NodeRef},
+  ts_estree::{AstNode, AstProp, TsEsTreeBuilder},
+};
 
 pub fn serialize_ast_bin(parsed_source: &ParsedSource) -> Vec<u8> {
-  let mut ctx = SerializeCtx::new();
+  let mut ctx = TsEsTreeBuilder::new();
 
   let program = &parsed_source.program();
 
@@ -70,16 +73,16 @@ pub fn serialize_ast_bin(parsed_source: &ParsedSource) -> Vec<u8> {
 }
 
 fn serialize_module_decl(
-  ctx: &mut SerializeCtx,
+  ctx: &mut TsEsTreeBuilder,
   module_decl: &ModuleDecl,
   parent: NodeRef,
 ) -> NodeRef {
   match module_decl {
     ModuleDecl::Import(node) => {
-      ctx.push_node(AstNode::Import, parent, &node.span)
+      ctx.header(AstNode::Import, parent, &node.span, 0)
     }
     ModuleDecl::ExportDecl(node) => {
-      ctx.push_node(AstNode::ExportDecl, parent, &node.span)
+      ctx.header(AstNode::ExportDecl, parent, &node.span, 0)
     }
     ModuleDecl::ExportNamed(node) => {
       let id =
@@ -139,28 +142,28 @@ fn serialize_module_decl(
       id
     }
     ModuleDecl::ExportDefaultDecl(node) => {
-      ctx.push_node(AstNode::ExportDefaultDecl, parent, &node.span)
+      ctx.header(AstNode::ExportDefaultDecl, parent, &node.span, 0)
     }
     ModuleDecl::ExportDefaultExpr(node) => {
-      ctx.push_node(AstNode::ExportDefaultExpr, parent, &node.span)
+      ctx.header(AstNode::ExportDefaultExpr, parent, &node.span, 0)
     }
     ModuleDecl::ExportAll(node) => {
-      ctx.push_node(AstNode::ExportAll, parent, &node.span)
+      ctx.header(AstNode::ExportAll, parent, &node.span, 0)
     }
     ModuleDecl::TsImportEquals(node) => {
-      ctx.push_node(AstNode::TsImportEquals, parent, &node.span)
+      ctx.header(AstNode::TsImportEquals, parent, &node.span, 0)
     }
     ModuleDecl::TsExportAssignment(node) => {
-      ctx.push_node(AstNode::TsExportAssignment, parent, &node.span)
+      ctx.header(AstNode::TsExportAssignment, parent, &node.span, 0)
     }
     ModuleDecl::TsNamespaceExport(node) => {
-      ctx.push_node(AstNode::TsNamespaceExport, parent, &node.span)
+      ctx.header(AstNode::TsNamespaceExport, parent, &node.span, 0)
     }
   }
 }
 
 fn serialize_stmt(
-  ctx: &mut SerializeCtx,
+  ctx: &mut TsEsTreeBuilder,
   stmt: &Stmt,
   parent: NodeRef,
 ) -> NodeRef {
@@ -181,7 +184,7 @@ fn serialize_stmt(
     }
     Stmt::Empty(_) => NodeRef(0),
     Stmt::Debugger(node) => {
-      ctx.push_node(AstNode::Debugger, parent, &node.span)
+      ctx.header(AstNode::Debugger, parent, &node.span, 0)
     }
     Stmt::With(_) => todo!(),
     Stmt::Return(node) => {
@@ -438,12 +441,12 @@ fn serialize_stmt(
 }
 
 fn serialize_expr(
-  ctx: &mut SerializeCtx,
+  ctx: &mut TsEsTreeBuilder,
   expr: &Expr,
   parent: NodeRef,
 ) -> NodeRef {
   match expr {
-    Expr::This(node) => ctx.push_node(AstNode::This, parent, &node.span),
+    Expr::This(node) => ctx.header(AstNode::This, parent, &node.span, 0),
     Expr::Array(node) => {
       let pos = ctx.header(AstNode::ArrayExpression, parent, &node.span, 1);
       let elems_pos = ctx.ref_vec_field(AstProp::Elements, node.elems.len());
@@ -681,7 +684,7 @@ fn serialize_expr(
       let obj_pos = ctx.ref_field(AstProp::Object);
       let prop_pos = ctx.ref_field(AstProp::Property);
 
-      let obj = ctx.push_node(AstNode::Super, pos, &node.obj.span);
+      let obj = ctx.header(AstNode::Super, pos, &node.obj.span, 0);
 
       let mut computed = false;
       let prop = match &node.prop {
@@ -726,7 +729,7 @@ fn serialize_expr(
 
       let callee = match &node.callee {
         Callee::Super(super_node) => {
-          ctx.push_node(AstNode::Super, pos, &super_node.span)
+          ctx.header(AstNode::Super, pos, &super_node.span, 0)
         }
         Callee::Import(import) => todo!(),
         Callee::Expr(expr) => serialize_expr(ctx, expr, pos),
@@ -891,7 +894,7 @@ fn serialize_expr(
       pos
     }
     Expr::Class(node) => {
-      let id = ctx.push_node(AstNode::ClassExpr, parent, &node.class.span);
+      let id = ctx.header(AstNode::ClassExpr, parent, &node.class.span, 0);
 
       // FIXME
 
@@ -913,7 +916,7 @@ fn serialize_expr(
       pos
     }
     Expr::MetaProp(node) => {
-      ctx.push_node(AstNode::MetaProp, parent, &node.span)
+      ctx.header(AstNode::MetaProp, parent, &node.span, 0)
     }
     Expr::Await(node) => {
       let pos = ctx.header(AstNode::AwaitExpression, parent, &node.span, 1);
@@ -1061,7 +1064,7 @@ fn serialize_expr(
 }
 
 fn serialize_prop_or_spread(
-  ctx: &mut SerializeCtx,
+  ctx: &mut TsEsTreeBuilder,
   prop: &PropOrSpread,
   parent: NodeRef,
 ) -> NodeRef {
@@ -1204,7 +1207,7 @@ fn serialize_prop_or_spread(
 }
 
 fn serialize_member_expr(
-  ctx: &mut SerializeCtx,
+  ctx: &mut TsEsTreeBuilder,
   node: &MemberExpr,
   parent: NodeRef,
   optional: bool,
@@ -1239,7 +1242,7 @@ fn serialize_member_expr(
 }
 
 fn serialize_class_member(
-  ctx: &mut SerializeCtx,
+  ctx: &mut TsEsTreeBuilder,
   member: &ClassMember,
   parent: NodeRef,
 ) -> NodeRef {
@@ -1334,7 +1337,7 @@ fn serialize_class_member(
 }
 
 fn serialize_expr_or_spread(
-  ctx: &mut SerializeCtx,
+  ctx: &mut TsEsTreeBuilder,
   arg: &ExprOrSpread,
   parent: NodeRef,
 ) -> NodeRef {
@@ -1346,7 +1349,7 @@ fn serialize_expr_or_spread(
 }
 
 fn serialize_ident(
-  ctx: &mut SerializeCtx,
+  ctx: &mut TsEsTreeBuilder,
   ident: &Ident,
   parent: NodeRef,
 ) -> NodeRef {
@@ -1358,7 +1361,7 @@ fn serialize_ident(
 }
 
 fn serialize_module_exported_name(
-  ctx: &mut SerializeCtx,
+  ctx: &mut TsEsTreeBuilder,
   name: &ModuleExportName,
   parent: NodeRef,
 ) -> NodeRef {
@@ -1371,7 +1374,7 @@ fn serialize_module_exported_name(
 }
 
 fn serialize_decl(
-  ctx: &mut SerializeCtx,
+  ctx: &mut TsEsTreeBuilder,
   decl: &Decl,
   parent: NodeRef,
 ) -> NodeRef {
@@ -1521,7 +1524,7 @@ fn serialize_decl(
       id
     }
     Decl::Using(node) => {
-      let id = ctx.push_node(AstNode::Using, parent, &node.span);
+      let id = ctx.header(AstNode::Using, parent, &node.span, 0);
 
       for (i, decl) in node.decls.iter().enumerate() {
         // FIXME
@@ -1687,7 +1690,7 @@ fn serialize_decl(
       pos
     }
     Decl::TsModule(ts_module_decl) => {
-      ctx.push_node(AstNode::TsModule, parent, &ts_module_decl.span)
+      ctx.header(AstNode::TsModule, parent, &ts_module_decl.span, 0)
     }
   }
 }
@@ -1701,7 +1704,7 @@ fn accessibility_to_str(accessibility: Accessibility) -> String {
 }
 
 fn serialize_private_name(
-  ctx: &mut SerializeCtx,
+  ctx: &mut TsEsTreeBuilder,
   node: &PrivateName,
   parent: NodeRef,
 ) -> NodeRef {
@@ -1714,7 +1717,7 @@ fn serialize_private_name(
 }
 
 fn serialize_jsx_element(
-  ctx: &mut SerializeCtx,
+  ctx: &mut TsEsTreeBuilder,
   node: &JSXElement,
   parent: NodeRef,
 ) -> NodeRef {
@@ -1746,7 +1749,7 @@ fn serialize_jsx_element(
 }
 
 fn serialize_jsx_fragment(
-  ctx: &mut SerializeCtx,
+  ctx: &mut TsEsTreeBuilder,
   node: &JSXFragment,
   parent: NodeRef,
 ) -> NodeRef {
@@ -1757,9 +1760,9 @@ fn serialize_jsx_fragment(
   let children_pos = ctx.ref_vec_field(AstProp::Children, node.children.len());
 
   let opening_id =
-    ctx.push_node(AstNode::JSXOpeningFragment, pos, &node.opening.span);
+    ctx.header(AstNode::JSXOpeningFragment, pos, &node.opening.span, 0);
   let closing_id =
-    ctx.push_node(AstNode::JSXClosingFragment, pos, &node.closing.span);
+    ctx.header(AstNode::JSXClosingFragment, pos, &node.closing.span, 0);
 
   let children = serialize_jsx_children(ctx, &node.children, pos);
 
@@ -1771,7 +1774,7 @@ fn serialize_jsx_fragment(
 }
 
 fn serialize_jsx_children(
-  ctx: &mut SerializeCtx,
+  ctx: &mut TsEsTreeBuilder,
   children: &[JSXElementChild],
   parent: NodeRef,
 ) -> Vec<NodeRef> {
@@ -1806,7 +1809,7 @@ fn serialize_jsx_children(
 }
 
 fn serialize_jsx_member_expr(
-  ctx: &mut SerializeCtx,
+  ctx: &mut TsEsTreeBuilder,
   node: &JSXMemberExpr,
   parent: NodeRef,
 ) -> NodeRef {
@@ -1830,7 +1833,7 @@ fn serialize_jsx_member_expr(
 }
 
 fn serialize_jsx_element_name(
-  ctx: &mut SerializeCtx,
+  ctx: &mut TsEsTreeBuilder,
   node: &JSXElementName,
   parent: NodeRef,
 ) -> NodeRef {
@@ -1848,7 +1851,7 @@ fn serialize_jsx_element_name(
 }
 
 fn serialize_jsx_opening_element(
-  ctx: &mut SerializeCtx,
+  ctx: &mut TsEsTreeBuilder,
   node: &JSXOpeningElement,
   parent: NodeRef,
 ) -> NodeRef {
@@ -1919,7 +1922,7 @@ fn serialize_jsx_opening_element(
 }
 
 fn serialize_jsx_container_expr(
-  ctx: &mut SerializeCtx,
+  ctx: &mut TsEsTreeBuilder,
   node: &JSXExprContainer,
   parent: NodeRef,
 ) -> NodeRef {
@@ -1937,15 +1940,15 @@ fn serialize_jsx_container_expr(
 }
 
 fn serialize_jsx_empty_expr(
-  ctx: &mut SerializeCtx,
+  ctx: &mut TsEsTreeBuilder,
   node: &JSXEmptyExpr,
   parent: NodeRef,
 ) -> NodeRef {
-  ctx.push_node(AstNode::JSXEmptyExpression, parent, &node.span)
+  ctx.header(AstNode::JSXEmptyExpression, parent, &node.span, 0)
 }
 
 fn serialize_jsx_namespaced_name(
-  ctx: &mut SerializeCtx,
+  ctx: &mut TsEsTreeBuilder,
   node: &JSXNamespacedName,
   parent: NodeRef,
 ) -> NodeRef {
@@ -1963,7 +1966,7 @@ fn serialize_jsx_namespaced_name(
 }
 
 fn serialize_ident_name_as_jsx_identifier(
-  ctx: &mut SerializeCtx,
+  ctx: &mut TsEsTreeBuilder,
   node: &IdentName,
   parent: NodeRef,
 ) -> NodeRef {
@@ -1976,7 +1979,7 @@ fn serialize_ident_name_as_jsx_identifier(
 }
 
 fn serialize_jsx_identifier(
-  ctx: &mut SerializeCtx,
+  ctx: &mut TsEsTreeBuilder,
   node: &Ident,
   parent: NodeRef,
 ) -> NodeRef {
@@ -1989,7 +1992,7 @@ fn serialize_jsx_identifier(
 }
 
 fn serialize_pat(
-  ctx: &mut SerializeCtx,
+  ctx: &mut TsEsTreeBuilder,
   pat: &Pat,
   parent: NodeRef,
 ) -> NodeRef {
@@ -2116,7 +2119,7 @@ fn serialize_pat(
 }
 
 fn serialize_for_head(
-  ctx: &mut SerializeCtx,
+  ctx: &mut TsEsTreeBuilder,
   for_head: &ForHead,
   parent: NodeRef,
 ) -> NodeRef {
@@ -2132,7 +2135,7 @@ fn serialize_for_head(
 }
 
 fn serialize_spread(
-  ctx: &mut SerializeCtx,
+  ctx: &mut TsEsTreeBuilder,
   expr: &Expr,
   span: &Span,
   parent: NodeRef,
@@ -2147,7 +2150,7 @@ fn serialize_spread(
 }
 
 fn serialize_ident_name(
-  ctx: &mut SerializeCtx,
+  ctx: &mut TsEsTreeBuilder,
   ident_name: &IdentName,
   parent: NodeRef,
 ) -> NodeRef {
@@ -2159,7 +2162,7 @@ fn serialize_ident_name(
 }
 
 fn serialize_prop_name(
-  ctx: &mut SerializeCtx,
+  ctx: &mut TsEsTreeBuilder,
   prop_name: &PropName,
   parent: NodeRef,
 ) -> NodeRef {
@@ -2168,13 +2171,12 @@ fn serialize_prop_name(
       serialize_ident_name(ctx, ident_name, parent)
     }
     PropName::Str(str_prop) => {
-      let child_id =
-        ctx.push_node(AstNode::StringLiteral, parent, &str_prop.span);
+      let child_pos =
+        ctx.header(AstNode::StringLiteral, parent, &str_prop.span, 1);
+      let value_pos = ctx.str_field(AstProp::Value);
+      ctx.write_str(value_pos, &str_prop.value);
 
-      let str_id = ctx.str_table.insert(str_prop.value.as_str());
-      append_usize(&mut ctx.buf, str_id);
-
-      child_id
+      child_pos
     }
     PropName::Num(number) => {
       serialize_lit(ctx, &Lit::Num(number.clone()), parent)
@@ -2187,7 +2189,7 @@ fn serialize_prop_name(
 }
 
 fn serialize_lit(
-  ctx: &mut SerializeCtx,
+  ctx: &mut TsEsTreeBuilder,
   lit: &Lit,
   parent: NodeRef,
 ) -> NodeRef {
@@ -2208,7 +2210,7 @@ fn serialize_lit(
 
       pos
     }
-    Lit::Null(node) => ctx.push_node(AstNode::Null, parent, &node.span),
+    Lit::Null(node) => ctx.header(AstNode::Null, parent, &node.span, 0),
     Lit::Num(node) => {
       let pos = ctx.header(AstNode::NumericLiteral, parent, &node.span, 1);
       let value_pos = ctx.str_field(AstProp::Value);
@@ -2237,13 +2239,13 @@ fn serialize_lit(
       pos
     }
     Lit::JSXText(jsxtext) => {
-      ctx.push_node(AstNode::JSXText, parent, &jsxtext.span)
+      ctx.header(AstNode::JSXText, parent, &jsxtext.span, 0)
     }
   }
 }
 
 fn serialize_ts_type(
-  ctx: &mut SerializeCtx,
+  ctx: &mut TsEsTreeBuilder,
   node: &TsType,
   parent: NodeRef,
 ) -> NodeRef {
@@ -2265,10 +2267,10 @@ fn serialize_ts_type(
         TsKeywordTypeKind::TsIntrinsicKeyword => AstNode::TSIntrinsicKeyword,
       };
 
-      ctx.push_node(kind, parent, &node.span)
+      ctx.header(kind, parent, &node.span, 0)
     }
     TsType::TsThisType(node) => {
-      ctx.push_node(AstNode::TSThisType, parent, &node.span)
+      ctx.header(AstNode::TSThisType, parent, &node.span, 0)
     }
     TsType::TsFnOrConstructorType(node) => match node {
       TsFnOrConstructorType::TsFnType(node) => {
@@ -2455,7 +2457,7 @@ fn serialize_ts_type(
 }
 
 fn create_true_plus_minus_field(
-  ctx: &mut SerializeCtx,
+  ctx: &mut TsEsTreeBuilder,
   prop: AstProp,
   value: Option<TruePlusMinus>,
 ) -> usize {
@@ -2470,7 +2472,7 @@ fn create_true_plus_minus_field(
 }
 
 fn write_true_plus_minus(
-  ctx: &mut SerializeCtx,
+  ctx: &mut TsEsTreeBuilder,
   pos: usize,
   value: Option<TruePlusMinus>,
 ) {
@@ -2486,7 +2488,7 @@ fn write_true_plus_minus(
 }
 
 fn serialize_ts_entity_name(
-  ctx: &mut SerializeCtx,
+  ctx: &mut TsEsTreeBuilder,
   node: &TsEntityName,
   parent: NodeRef,
 ) -> NodeRef {
@@ -2497,7 +2499,7 @@ fn serialize_ts_entity_name(
 }
 
 fn maybe_serialize_ts_type_ann(
-  ctx: &mut SerializeCtx,
+  ctx: &mut TsEsTreeBuilder,
   node: &Option<Box<TsTypeAnn>>,
   parent: NodeRef,
 ) -> Option<NodeRef> {
@@ -2507,7 +2509,7 @@ fn maybe_serialize_ts_type_ann(
 }
 
 fn serialize_ts_type_ann(
-  ctx: &mut SerializeCtx,
+  ctx: &mut TsEsTreeBuilder,
   node: &TsTypeAnn,
   parent: NodeRef,
 ) -> NodeRef {
@@ -2522,7 +2524,7 @@ fn serialize_ts_type_ann(
 }
 
 fn maybe_serialize_ts_type(
-  ctx: &mut SerializeCtx,
+  ctx: &mut TsEsTreeBuilder,
   node: &Option<Box<TsType>>,
   parent: NodeRef,
 ) -> Option<NodeRef> {
@@ -2532,7 +2534,7 @@ fn maybe_serialize_ts_type(
 }
 
 fn serialize_ts_type_param(
-  ctx: &mut SerializeCtx,
+  ctx: &mut TsEsTreeBuilder,
   node: &TsTypeParam,
   parent: NodeRef,
 ) -> NodeRef {
@@ -2559,7 +2561,7 @@ fn serialize_ts_type_param(
 }
 
 fn maybe_serialize_ts_type_param(
-  ctx: &mut SerializeCtx,
+  ctx: &mut TsEsTreeBuilder,
   node: &Option<Box<TsTypeParamDecl>>,
   parent: NodeRef,
 ) -> Option<NodeRef> {
@@ -2581,7 +2583,7 @@ fn maybe_serialize_ts_type_param(
 }
 
 fn serialize_ts_fn_param(
-  ctx: &mut SerializeCtx,
+  ctx: &mut TsEsTreeBuilder,
   node: &TsFnParam,
   parent: NodeRef,
 ) -> NodeRef {

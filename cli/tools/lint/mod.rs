@@ -59,6 +59,7 @@ mod plugins;
 mod reporters;
 mod rules;
 mod swc;
+mod ts_estree;
 
 pub use linter::CliLinter;
 pub use linter::CliLinterOptions;

@@ -10,252 +10,9 @@ const {
 } = core.ops;
 
 // Keep in sync with Rust
-/**
- * @enum {number}
- */
-const AstTypeName = [
-  "Invalid",
-  "Program",
-
-  "Import",
-  "ImportDecl",
-  "ExportDecl",
-  "ExportNamed",
-  "ExportDefaultDecl",
-  "ExportDefaultExpr",
-  "ExportAll",
-  "TSImportEquals",
-  "TSExportAssignment",
-  "TSNamespaceExport",
-
-  // Decls
-  "ClassDeclaration",
-  "FunctionDeclaration",
-  "VariableDeclaration",
-  "Using",
-  "TsInterface",
-  "TsTypeAlias",
-  "TsEnum",
-  "TsModule",
-
-  // Statements
-  "BlockStatement",
-  "Empty",
-  "DebuggerStatement",
-  "WithStatement",
-  "ReturnStatement",
-  "LabeledStatement",
-  "BreakStatement",
-  "ContinueStatement",
-  "IfStatement",
-  "SwitchStatement",
-  "SwitchCase",
-  "ThrowStatement",
-  "TryStatement",
-  "WhileStatement",
-  "DoWhileStatement",
-  "ForStatement",
-  "ForInStatement",
-  "ForOfStatement",
-  "Decl",
-  "ExpressionStatement",
-
-  // Expressions
-  "This",
-  "ArrayExpression",
-  "ObjectExpression",
-  "FunctionExpression",
-  "UnaryExpression",
-  "UpdateExpression",
-  "BinaryExpression",
-  "AssignmentExpression",
-  "MemberExpression",
-  "Super",
-  "ConditionalExpression",
-  "CallExpression",
-  "NewExpression",
-  "ParenthesisExpression",
-  "SequenceExpression",
-  "Identifier",
-  "TemplateLiteral",
-  "TaggedTemplateExpression",
-  "ArrowFunctionExpression",
-  "ClassExpr",
-  "YieldExpression",
-  "MetaProperty",
-  "AwaitExpression",
-  "LogicalExpression",
-  "TSTypeAssertion",
-  "TSConstAssertion",
-  "TSNonNull",
-  "TSAs",
-  "TSInstantiation",
-  "TSSatisfies",
-  "PrivateIdentifier",
-  "ChainExpression",
-
-  "StringLiteral",
-  "BooleanLiteral",
-  "NullLiteral",
-  "NumericLiteral",
-  "BigIntLiteral",
-  "RegExpLiteral",
-
-  // Custom
-  "EmptyExpr",
-  "SpreadElement",
-  "Property",
-  "VariableDeclarator",
-  "CatchClause",
-  "RestElement",
-  "ExportSpecifier",
-  "TemplateElement",
-  "MethodDefinition",
-
-  // Patterns
-  "ArrayPattern",
-  "AssignmentPattern",
-  "ObjectPattern",
-
-  // JSX
-  "JSXAttribute",
-  "JSXClosingElement",
-  "JSXClosingFragment",
-  "JSXElement",
-  "JSXEmptyExpression",
-  "JSXExpressionContainer",
-  "JSXFragment",
-  "JSXIdentifier",
-  "JSXMemberExpression",
-  "JSXNamespacedName",
-  "JSXOpeningElement",
-  "JSXOpeningFragment",
-  "JSXSpreadAttribute",
-  "JSXSpreadChild",
-  "JSXText",
-];
-
-/** @type {Map<string, number>} */
-const AstType = new Map();
-for (let i = 0; i < AstTypeName.length; i++) {
-  AstType.set(AstTypeName[i], i);
-}
-
-// Keep in sync with Rust
-const AstPropArr = [
-  // Base
-  "parent",
-  "range",
-  "type",
-  "_InternalFlags",
-
-  // Node
-  "abstract",
-  "accessibility",
-  "alternate",
-  "argument",
-  "arguments",
-  "async",
-  "attributes",
-  "await",
-  "block",
-  "body",
-  "callee",
-  "cases",
-  "children",
-  "checkType",
-  "closingElement",
-  "closingFragment",
-  "computed",
-  "consequent",
-  "const",
-  "constraint",
-  "cooked",
-  "declarations",
-  "declare",
-  "default",
-  "definite",
-  "delegate",
-  "discriminant",
-  "elements",
-  "elementTypes",
-  "exprName",
-  "expression",
-  "expressions",
-  "exported",
-  "extendsType",
-  "falseType",
-  "finalizer",
-  "flags",
-  "generator",
-  "handler",
-  "id",
-  "in",
-  "init",
-  "initializer",
-  "implements",
-  "key",
-  "kind",
-  "label",
-  "left",
-  "literal",
-  "local",
-  "members",
-  "meta",
-  "method",
-  "name",
-  "namespace",
-  "nameType",
-  "object",
-  "openingElement",
-  "openingFragment",
-  "operator",
-  "optional",
-  "out",
-  "param",
-  "params",
-  "pattern",
-  "prefix",
-  "properties",
-  "property",
-  "quasi",
-  "quasis",
-  "raw",
-  "readonly",
-  "returnType",
-  "right",
-  "selfClosing",
-  "shorthand",
-  "source",
-  "sourceType",
-  "specifiers",
-  "superClass",
-  "superTypeArguments",
-  "tag",
-  "tail",
-  "test",
-  "trueType",
-  "typeAnnotation",
-  "typeArguments",
-  "typeName",
-  "typeParameter",
-  "typeParameters",
-  "types",
-  "update",
-  "value",
-];
-
-/** @type {Map<string, number>} */
-const AstProp = new Map();
-for (let i = 0; i < AstPropArr.length; i++) {
-  AstProp.set(AstPropArr[i], i);
-}
-
-const AST_PROP_TYPE = /** @type {number} */ (AstProp.get("type"));
-const AST_PROP_PARENT = /** @type {number} */ (AstProp.get("parent"));
-const AST_PROP_RANGE = /** @type {number} */ (AstProp.get("range"));
-
-const AstPropName = Array.from(AstProp.keys());
+const AST_PROP_TYPE = 0;
+const AST_PROP_PARENT = 1;
+const AST_PROP_RANGE = 2;
 
 // Keep in sync with Rust
 /** @enum {number} */
@@ -274,7 +31,10 @@ const PropFlags = {
  *   strTable: Map<number, string>,
  *   strTableOffset: number,
  *   rootId: number,
- *   nodes: Map<number, Node>
+ *   nodes: Map<number, Node>,
+ *   strByType: number[],
+ *   typeByStr: Map<string, number>,
+ *   strByProp: number[]
  * }} AstContext
  */
 
@@ -421,7 +181,7 @@ function readValue(ctx, offset, search) {
   const type = buf[offset];
 
   if (search === AST_PROP_TYPE) {
-    return AstTypeName[type];
+    return getString(ctx, ctx.strByType[type]);
   } else if (search === AST_PROP_RANGE) {
     const start = readU32(buf, offset + 1 + 4);
     const end = readU32(buf, offset + 1 + 4 + 4);
@@ -484,7 +244,7 @@ function toJsValue(ctx, offset) {
   for (let i = 0; i < count; i++) {
     const prop = buf[offset++];
     const kind = buf[offset++];
-    const name = AstPropName[prop];
+    const name = getString(ctx, ctx.strByProp[prop]);
 
     if (kind === PropFlags.Ref) {
       const v = readU32(buf, offset);
@@ -545,13 +305,28 @@ class Node {
   }
 }
 
-for (let i = 0; i < AstPropName.length; i++) {
-  const name = AstPropName[i];
-  Object.defineProperty(Node.prototype, name, {
-    get() {
-      return readValue(this[INTERNAL_CTX], this[INTERNAL_OFFSET], i);
-    },
-  });
+/** @type {Set<number>} */
+const appliedGetters = new Set();
+
+/**
+ * @param {AstContext} ctx
+ */
+function setNodeGetters(ctx) {
+  if (appliedGetters.size === ctx.strByProp.length) return;
+
+  for (let i = 0; i < ctx.strByProp.length; i++) {
+    const id = ctx.strByProp[i];
+    if (id === 0 || appliedGetters.has(i)) continue;
+    appliedGetters.add(i);
+
+    const name = getString(ctx, id);
+
+    Object.defineProperty(Node.prototype, name, {
+      get() {
+        return readValue(this[INTERNAL_CTX], this[INTERNAL_OFFSET], i);
+      },
+    });
+  }
 }
 
 const DECODER = new TextDecoder();
@@ -590,6 +365,8 @@ function createAstContext(buf) {
 
   // console.log(JSON.stringify(buf, null, 2));
 
+  const typeMapOffset = readU32(buf, buf.length - 16);
+  const propMapOffset = readU32(buf, buf.length - 12);
   const strTableOffset = readU32(buf, buf.length - 8);
   const rootId = readU32(buf, buf.length - 4);
   // console.log({ strTableOffset, rootId });
@@ -618,10 +395,48 @@ function createAstContext(buf) {
     );
   }
 
-  /** @type {AstContext} */
-  const ctx = { buf, strTable, rootId, nodes: new Map(), strTableOffset };
+  offset = typeMapOffset;
+  const typeCount = readU32(buf, offset);
+  offset += 4;
 
-  // dump(ctx);
+  const typeByStr = new Map();
+  const strByType = new Array(typeCount).fill(0);
+  for (let i = 0; i < typeCount; i++) {
+    const v = readU32(buf, offset);
+    offset += 4;
+
+    // console.log("type: ", i, v, strTable.get(v));
+    strByType[i] = v;
+    typeByStr.set(strTable.get(v), i);
+  }
+
+  offset = propMapOffset;
+  const propCount = readU32(buf, offset);
+  offset += 4;
+
+  const strByProp = new Array(propCount).fill(0);
+  for (let i = 0; i < propCount; i++) {
+    const v = readU32(buf, offset);
+    offset += 4;
+
+    strByProp[i] = v;
+  }
+
+  /** @type {AstContext} */
+  const ctx = {
+    buf,
+    strTable,
+    rootId,
+    nodes: new Map(),
+    strTableOffset,
+    strByProp,
+    strByType,
+    typeByStr,
+  };
+
+  setNodeGetters(ctx);
+
+  // _dump(ctx);
 
   return ctx;
 }
@@ -709,11 +524,11 @@ function traverse(ctx, visitor) {
 
   // TODO: create visiting types
   for (const name in visitor) {
-    const id = AstType.get(name);
+    const id = ctx.typeByStr.get(name);
+    if (id === undefined) continue;
     visitTypes.set(id, name);
   }
 
-  // console.log("buffer len", ctx.buf.length, ctx.buf.byteLength);
   console.log("merged visitor", visitor);
   console.log("visiting types", visitTypes);
 
@@ -779,13 +594,31 @@ function traverseInner(ctx, visitTypes, visitor, offset) {
  * @param {AstContext} ctx
  */
 function _dump(ctx) {
-  const { buf, strTableOffset } = ctx;
+  const { buf, strTableOffset, strTable, strByType, strByProp } = ctx;
+
+  // @ts-ignore dump fn
+  console.log(strTable);
+
+  for (let i = 0; i < strByType.length; i++) {
+    const v = strByType[i];
+    // @ts-ignore dump fn
+    if (v > 0) console.log(" > type:", i, getString(ctx, v), v);
+  }
+  // @ts-ignore dump fn
+  console.log();
+  for (let i = 0; i < strByProp.length; i++) {
+    const v = strByProp[i];
+    // @ts-ignore dump fn
+    if (v > 0) console.log(" > prop:", i, getString(ctx, v), v);
+  }
+  // @ts-ignore dump fn
+  console.log();
 
   let offset = 0;
 
   while (offset < strTableOffset) {
     const type = buf[offset];
-    const name = AstTypeName[type];
+    const name = getString(ctx, ctx.strByType[type]);
     // @ts-ignore dump fn
     console.log(`${name}, offset: ${offset}, type: ${type}`);
     offset += 1;
@@ -800,7 +633,7 @@ function _dump(ctx) {
     const end = readU32(buf, offset);
     offset += 4;
     // @ts-ignore dump fn
-    console.log(`  range: ${start} -> ${end}}`);
+    console.log(`  range: ${start} -> ${end}`);
 
     const count = buf[offset++];
     // @ts-ignore dump fn
@@ -809,7 +642,7 @@ function _dump(ctx) {
     for (let i = 0; i < count; i++) {
       const prop = buf[offset++];
       const kind = buf[offset++];
-      const name = AstPropName[prop];
+      const name = getString(ctx, ctx.strByProp[prop]);
 
       let kindName = "unknown";
       for (const k in PropFlags) {
@@ -823,35 +656,35 @@ function _dump(ctx) {
         const v = readU32(buf, offset);
         offset += 4;
         // @ts-ignore dump fn
-        console.log(`    ${name}: ${v} (${kindName})`);
+        console.log(`    ${name}: ${v} (${kindName}, ${prop})`);
       } else if (kind === PropFlags.RefArr) {
         const len = readU32(buf, offset);
         offset += 4;
         // @ts-ignore dump fn
-        console.log(`    ${name}: Array(${len}) (${kindName})`);
+        console.log(`    ${name}: Array(${len}) (${kindName}, ${prop})`);
 
         for (let j = 0; j < len; j++) {
           const v = readU32(buf, offset);
           offset += 4;
           // @ts-ignore dump fn
-          console.log(`      - ${v}`);
+          console.log(`      - ${v} (${prop})`);
         }
       } else if (kind === PropFlags.Bool) {
         const v = buf[offset];
         offset += 1;
         // @ts-ignore dump fn
-        console.log(`    ${name}: ${v} (${kindName})`);
+        console.log(`    ${name}: ${v} (${kindName}, ${prop})`);
       } else if (kind === PropFlags.String) {
         const v = readU32(buf, offset);
         offset += 4;
         // @ts-ignore dump fn
-        console.log(`    ${name}: ${getString(ctx, v)} (${kindName})`);
+        console.log(`    ${name}: ${getString(ctx, v)} (${kindName}, ${prop})`);
       } else if (kind === PropFlags.Null) {
         // @ts-ignore dump fn
-        console.log(`    ${name}: null (${kindName})`);
+        console.log(`    ${name}: null (${kindName}, ${prop})`);
       } else if (kind === PropFlags.Undefined) {
         // @ts-ignore dump fn
-        console.log(`    ${name}: undefined (${kindName})`);
+        console.log(`    ${name}: undefined (${kindName}, ${prop})`);
       }
     }
   }
