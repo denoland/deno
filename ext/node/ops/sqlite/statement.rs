@@ -214,7 +214,7 @@ impl StatementSync {
             ffi::sqlite3_bind_text(
               raw,
               i + 1,
-              value.as_ptr() as *const i8,
+              value.as_ptr() as *const _,
               value.len() as i32,
               ffi::SQLITE_TRANSIENT(),
             );

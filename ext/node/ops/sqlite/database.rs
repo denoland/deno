@@ -142,7 +142,7 @@ impl DatabaseSync {
     let r = unsafe {
       libsqlite3_sys::sqlite3_prepare_v2(
         raw_handle,
-        sql.as_ptr() as *const i8,
+        sql.as_ptr() as *const _,
         sql.len() as i32,
         &mut raw_stmt,
         std::ptr::null_mut(),
