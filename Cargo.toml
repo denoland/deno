@@ -342,4 +342,4 @@ opt-level = 3
 opt-level = 3
 
 [patch.crates-io]
-deno_core = { git = "https://github.com/littledivy/deno_core", branch = "rebuild_obj_templates" }
+deno_core = { git = "https://github.com/denoland/deno_core", rev = "f58a6f9" }
