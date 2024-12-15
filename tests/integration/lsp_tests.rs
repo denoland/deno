@@ -8463,6 +8463,7 @@ fn lsp_completions_node_specifier() {
       "node:repl",
       "node:readline",
       "node:readline/promises",
+      "node:sqlite",
       "node:stream",
       "node:stream/consumers",
       "node:stream/promises",
