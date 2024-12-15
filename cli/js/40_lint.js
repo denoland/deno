@@ -582,7 +582,6 @@ function getFlagValue(kind, value) {
  */
 function toJsValue(ctx, offset) {
   const { buf } = ctx;
-  console.log("to js", offset);
 
   /** @type {Record<string, any>} */
   const node = {
@@ -598,12 +597,11 @@ function toJsValue(ctx, offset) {
     const prop = buf[offset++];
     const kind = buf[offset++];
     const name = AstPropName[prop];
-    console.log({ prop, kind, name });
 
     if (kind === PropFlags.Ref) {
       const v = readU32(buf, offset);
       offset += 4;
-      node[name] = toJsValue(ctx, v);
+      node[name] = v === 0 ? null : toJsValue(ctx, v);
     } else if (kind === PropFlags.RefArr) {
       const len = readU32(buf, offset);
       offset += 4;
@@ -700,7 +698,7 @@ function createAstContext(buf) {
   /** @type {Map<number, string>} */
   const strTable = new Map();
 
-  console.log(JSON.stringify(buf, null, 2));
+  // console.log(JSON.stringify(buf, null, 2));
 
   const strTableOffset = readU32(buf, buf.length - 8);
   const rootId = readU32(buf, buf.length - 4);
@@ -722,7 +720,7 @@ function createAstContext(buf) {
     id++;
   }
 
-  console.log({ stringCount, strTable, rootId });
+  // console.log({ stringCount, strTable, rootId });
 
   if (strTable.size !== stringCount) {
     throw new Error(
@@ -733,7 +731,7 @@ function createAstContext(buf) {
   /** @type {AstContext} */
   const ctx = { buf, strTable, rootId, nodes: new Map(), strTableOffset };
 
-  dump(ctx);
+  // dump(ctx);
 
   return ctx;
 }
@@ -897,20 +895,24 @@ function dump(ctx) {
   while (offset < strTableOffset) {
     const type = buf[offset];
     const name = AstTypeName[type];
+    // @ts-ignore dump fn
     console.log(`${name}, offset: ${offset}, type: ${type}`);
     offset += 1;
 
     const parent = readU32(buf, offset);
     offset += 4;
+    // @ts-ignore dump fn
     console.log(`  parent: ${parent}`);
 
     const start = readU32(buf, offset);
     offset += 4;
     const end = readU32(buf, offset);
     offset += 4;
+    // @ts-ignore dump fn
     console.log(`  range: ${start} -> ${end}}`);
 
     const count = buf[offset++];
+    // @ts-ignore dump fn
     console.log(`  prop count: ${count}`);
 
     for (let i = 0; i < count; i++) {
@@ -920,6 +922,7 @@ function dump(ctx) {
 
       let kindName = "unknown";
       for (const k in PropFlags) {
+        // @ts-ignore dump fn
         if (kind === PropFlags[k]) {
           kindName = k;
         }
@@ -928,27 +931,34 @@ function dump(ctx) {
       if (kind === PropFlags.Ref) {
         const v = readU32(buf, offset);
         offset += 4;
+        // @ts-ignore dump fn
         console.log(`    ${name}: ${v} (${kindName})`);
       } else if (kind === PropFlags.RefArr) {
         const len = readU32(buf, offset);
         offset += 4;
+        // @ts-ignore dump fn
         console.log(`    ${name}: Array(${len}) (${kindName})`);
 
         for (let j = 0; j < len; j++) {
           const v = readU32(buf, offset);
           offset += 4;
+          // @ts-ignore dump fn
           console.log(`      - ${v}`);
         }
       } else if (kind === PropFlags.Bool) {
-        const v = buf[offset++];
-
+        const v = buf[offset];
+        offset += 1;
+        // @ts-ignore dump fn
         console.log(`    ${name}: ${v} (${kindName})`);
       } else if (kind === PropFlags.String) {
         const v = readU32(buf, offset);
         offset += 4;
+        // @ts-ignore dump fn
         console.log(`    ${name}: ${getString(ctx, v)} (${kindName})`);
       } else {
-        const v = buf[offset++];
+        const v = buf[offset];
+        offset += 1;
+        // @ts-ignore dump fn
         console.log(`    ${name}: ${getFlagValue(kind, v)} (${kindName})`);
       }
     }

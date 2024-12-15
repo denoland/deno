@@ -1,7 +1,4 @@
-use deno_ast::{
-  swc::common::{Span, DUMMY_SP},
-  view::AssignOp,
-};
+use deno_ast::swc::common::{Span, DUMMY_SP};
 use indexmap::IndexMap;
 
 // Keep in sync with JS
@@ -446,7 +443,6 @@ impl SerializeCtx {
     // Placeholder node
     ctx.push_node(AstNode::Invalid, NodeRef(0), &DUMMY_SP);
     ctx.start_buf = NodeRef(ctx.buf.len());
-    eprintln!("START {:#?} {}", ctx.buf, ctx.buf.len());
 
     ctx
   }
@@ -480,19 +476,21 @@ impl SerializeCtx {
     self.field(prop, PropFlags::Ref)
   }
 
-  pub fn ref_vec_field(&mut self, prop: AstProp) -> usize {
-    self.field(prop, PropFlags::RefArr)
+  pub fn ref_vec_field(&mut self, prop: AstProp, len: usize) -> usize {
+    let offset = self.field(prop, PropFlags::RefArr);
+
+    for _ in 0..len {
+      append_u32(&mut self.buf, 0);
+    }
+
+    offset
   }
 
   pub fn str_field(&mut self, prop: AstProp) -> usize {
     self.field(prop, PropFlags::String)
   }
 
-  pub fn bool_field(&mut self, prop: AstProp) -> usize {
-    self.field(prop, PropFlags::Bool)
-  }
-
-  pub fn field(&mut self, prop: AstProp, prop_flags: PropFlags) -> usize {
+  fn field_header(&mut self, prop: AstProp, prop_flags: PropFlags) -> usize {
     let offset = self.buf.len();
 
     let kind: u8 = prop.into();
@@ -500,6 +498,22 @@ impl SerializeCtx {
 
     let flags: u8 = prop_flags.into();
     self.buf.push(flags);
+
+    offset
+  }
+
+  pub fn bool_field(&mut self, prop: AstProp) -> usize {
+    self.flag_field(prop, PropFlags::Bool)
+  }
+
+  pub fn flag_field(&mut self, prop: AstProp, prop_flags: PropFlags) -> usize {
+    let offset = self.field_header(prop, prop_flags);
+    self.buf.push(0);
+    offset
+  }
+
+  fn field(&mut self, prop: AstProp, prop_flags: PropFlags) -> usize {
+    let offset = self.field_header(prop, prop_flags);
 
     append_usize(&mut self.buf, 0);
 
