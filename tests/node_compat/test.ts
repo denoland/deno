@@ -24,6 +24,7 @@ import {
   config,
   getPathsFromTestSuites,
   partitionParallelTestPaths,
+  runNodeCompatTestCase,
 } from "./common.ts";
 
 // If the test case is invoked like
@@ -40,7 +41,6 @@ const testPaths = partitionParallelTestPaths(
 testPaths.sequential = distinct(testPaths.sequential);
 testPaths.parallel = distinct(testPaths.parallel);
 
-const cwd = new URL(".", import.meta.url);
 const windowsIgnorePaths = new Set(
   getPathsFromTestSuites(config.windowsIgnore),
 );
@@ -49,13 +49,6 @@ const darwinIgnorePaths = new Set(
 );
 
 const decoder = new TextDecoder();
-let testSerialId = 0;
-
-function parseFlags(source: string): string[] {
-  const line = /^\/\/ Flags: (.+)$/um.exec(source);
-  if (line == null) return [];
-  return line[1].split(" ");
-}
 
 async function runTest(t: Deno.TestContext, path: string): Promise<void> {
   // If filter patterns are given and any pattern doesn't match
@@ -77,60 +70,7 @@ async function runTest(t: Deno.TestContext, path: string): Promise<void> {
     sanitizeExit: false,
     fn: async () => {
       const testCase = join(toolsPath, "test", path);
-
-      const v8Flags = ["--stack-size=4000"];
-      const testSource = await Deno.readTextFile(testCase);
-      const envVars: Record<string, string> = {};
-      const knownGlobals: string[] = [];
-      parseFlags(testSource).forEach((flag) => {
-        switch (flag) {
-          case "--expose_externalize_string":
-            v8Flags.push("--expose-externalize-string");
-            knownGlobals.push("createExternalizableString");
-            break;
-          case "--expose-gc":
-            v8Flags.push("--expose-gc");
-            knownGlobals.push("gc");
-            break;
-          default:
-            break;
-        }
-      });
-      if (knownGlobals.length > 0) {
-        envVars["NODE_TEST_KNOWN_GLOBALS"] = knownGlobals.join(",");
-      }
-      // TODO(nathanwhit): once we match node's behavior on executing
-      // `node:test` tests when we run a file, we can remove this
-      const usesNodeTest = testSource.includes("node:test");
-      const args = [
-        usesNodeTest ? "test" : "run",
-        "-A",
-        "--quiet",
-        //"--unsafely-ignore-certificate-errors",
-        "--unstable-unsafe-proto",
-        "--unstable-bare-node-builtins",
-        "--unstable-fs",
-        "--v8-flags=" + v8Flags.join(),
-      ];
-      if (usesNodeTest) {
-        // deno test typechecks by default + we want to pass script args
-        args.push("--no-check", "runner.ts", "--", testCase);
-      } else {
-        args.push("runner.ts", testCase);
-      }
-
-      // Pipe stdout in order to output each test result as Deno.test output
-      // That way the tests will respect the `--quiet` option when provided
-      const command = new Deno.Command(Deno.execPath(), {
-        args,
-        env: {
-          TEST_SERIAL_ID: String(testSerialId++),
-          ...envVars,
-        },
-        cwd,
-        stdout: "piped",
-        stderr: "piped",
-      }).spawn();
+      const command = await runNodeCompatTestCase(testCase);
       const warner = setTimeout(() => {
         console.error(`Test is running slow: ${testCase}`);
       }, 2 * 60_000);

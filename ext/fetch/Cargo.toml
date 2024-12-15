@@ -2,7 +2,7 @@
 
 [package]
 name = "deno_fetch"
-version = "0.204.0"
+version = "0.206.0"
 authors.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -18,6 +18,7 @@ base64.workspace = true
 bytes.workspace = true
 data-url.workspace = true
 deno_core.workspace = true
+deno_path_util.workspace = true
 deno_permissions.workspace = true
 deno_tls.workspace = true
 dyn-clone = "1"

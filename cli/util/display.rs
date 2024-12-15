@@ -2,6 +2,7 @@
 
 use deno_core::error::AnyError;
 use deno_core::serde_json;
+use deno_runtime::colors;
 use std::io::Write;
 
 /// A function that converts a float to a string the represents a human
@@ -83,6 +84,78 @@ where
   serde_json::to_writer_pretty(&mut writer, value)?;
   writeln!(&mut writer)?;
   Ok(())
+}
+
+pub struct DisplayTreeNode {
+  pub text: String,
+  pub children: Vec<DisplayTreeNode>,
+}
+
+impl DisplayTreeNode {
+  pub fn from_text(text: String) -> Self {
+    Self {
+      text,
+      children: Default::default(),
+    }
+  }
+
+  pub fn print<TWrite: std::fmt::Write>(
+    &self,
+    writer: &mut TWrite,
+  ) -> std::fmt::Result {
+    fn print_children<TWrite: std::fmt::Write>(
+      writer: &mut TWrite,
+      prefix: &str,
+      children: &[DisplayTreeNode],
+    ) -> std::fmt::Result {
+      const SIBLING_CONNECTOR: char = '├';
+      const LAST_SIBLING_CONNECTOR: char = '└';
+      const CHILD_DEPS_CONNECTOR: char = '┬';
+      const CHILD_NO_DEPS_CONNECTOR: char = '─';
+      const VERTICAL_CONNECTOR: char = '│';
+      const EMPTY_CONNECTOR: char = ' ';
+
+      let child_len = children.len();
+      for (index, child) in children.iter().enumerate() {
+        let is_last = index + 1 == child_len;
+        let sibling_connector = if is_last {
+          LAST_SIBLING_CONNECTOR
+        } else {
+          SIBLING_CONNECTOR
+        };
+        let child_connector = if child.children.is_empty() {
+          CHILD_NO_DEPS_CONNECTOR
+        } else {
+          CHILD_DEPS_CONNECTOR
+        };
+        writeln!(
+          writer,
+          "{} {}",
+          colors::gray(format!(
+            "{prefix}{sibling_connector}─{child_connector}"
+          )),
+          child.text
+        )?;
+        let child_prefix = format!(
+          "{}{}{}",
+          prefix,
+          if is_last {
+            EMPTY_CONNECTOR
+          } else {
+            VERTICAL_CONNECTOR
+          },
+          EMPTY_CONNECTOR
+        );
+        print_children(writer, &child_prefix, &child.children)?;
+      }
+
+      Ok(())
+    }
+
+    writeln!(writer, "{}", self.text)?;
+    print_children(writer, "", &self.children)?;
+    Ok(())
+  }
 }
 
 #[cfg(test)]

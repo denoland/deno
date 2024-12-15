@@ -2,7 +2,6 @@
 
 use std::fmt::Debug;
 use std::path::PathBuf;
-use std::sync::Arc;
 
 use boxed_error::Boxed;
 use deno_semver::npm::NpmPackageReqReference;
@@ -15,10 +14,10 @@ use node_resolver::errors::PackageFolderResolveIoError;
 use node_resolver::errors::PackageNotFoundError;
 use node_resolver::errors::PackageResolveErrorKind;
 use node_resolver::errors::PackageSubpathResolveError;
-use node_resolver::InNpmPackageChecker;
+use node_resolver::InNpmPackageCheckerRc;
 use node_resolver::NodeResolution;
 use node_resolver::NodeResolutionKind;
-use node_resolver::NodeResolver;
+use node_resolver::NodeResolverRc;
 use node_resolver::ResolutionMode;
 use thiserror::Error;
 use url::Url;
@@ -28,6 +27,7 @@ use crate::fs::DenoResolverFs;
 pub use byonm::ByonmInNpmPackageChecker;
 pub use byonm::ByonmNpmResolver;
 pub use byonm::ByonmNpmResolverCreateOptions;
+pub use byonm::ByonmNpmResolverRc;
 pub use byonm::ByonmResolvePkgFolderFromDenoReqError;
 pub use local::normalize_pkg_name_for_node_modules_deno_folder;
 
@@ -81,6 +81,9 @@ pub enum ResolvePkgFolderFromDenoReqError {
   Byonm(#[from] ByonmResolvePkgFolderFromDenoReqError),
 }
 
+#[allow(clippy::disallowed_types)]
+pub type CliNpmReqResolverRc = crate::sync::MaybeArc<dyn CliNpmReqResolver>;
+
 // todo(dsherret): a temporary trait until we extract
 // out the CLI npm resolver into here
 pub trait CliNpmReqResolver: Debug + Send + Sync {
@@ -98,21 +101,25 @@ pub struct NpmReqResolverOptions<
   /// The resolver when "bring your own node_modules" is enabled where Deno
   /// does not setup the node_modules directories automatically, but instead
   /// uses what already exists on the file system.
-  pub byonm_resolver: Option<Arc<ByonmNpmResolver<Fs, TNodeResolverEnv>>>,
+  pub byonm_resolver: Option<ByonmNpmResolverRc<Fs, TNodeResolverEnv>>,
   pub fs: Fs,
-  pub in_npm_pkg_checker: Arc<dyn InNpmPackageChecker>,
-  pub node_resolver: Arc<NodeResolver<TNodeResolverEnv>>,
-  pub npm_req_resolver: Arc<dyn CliNpmReqResolver>,
+  pub in_npm_pkg_checker: InNpmPackageCheckerRc,
+  pub node_resolver: NodeResolverRc<TNodeResolverEnv>,
+  pub npm_req_resolver: CliNpmReqResolverRc,
 }
+
+#[allow(clippy::disallowed_types)]
+pub type NpmReqResolverRc<Fs, TNodeResolverEnv> =
+  crate::sync::MaybeArc<NpmReqResolver<Fs, TNodeResolverEnv>>;
 
 #[derive(Debug)]
 pub struct NpmReqResolver<Fs: DenoResolverFs, TNodeResolverEnv: NodeResolverEnv>
 {
-  byonm_resolver: Option<Arc<ByonmNpmResolver<Fs, TNodeResolverEnv>>>,
+  byonm_resolver: Option<ByonmNpmResolverRc<Fs, TNodeResolverEnv>>,
   fs: Fs,
-  in_npm_pkg_checker: Arc<dyn InNpmPackageChecker>,
-  node_resolver: Arc<NodeResolver<TNodeResolverEnv>>,
-  npm_resolver: Arc<dyn CliNpmReqResolver>,
+  in_npm_pkg_checker: InNpmPackageCheckerRc,
+  node_resolver: NodeResolverRc<TNodeResolverEnv>,
+  npm_resolver: CliNpmReqResolverRc,
 }
 
 impl<Fs: DenoResolverFs, TNodeResolverEnv: NodeResolverEnv>

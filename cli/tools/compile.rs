@@ -5,7 +5,7 @@ use crate::args::CompileFlags;
 use crate::args::Flags;
 use crate::factory::CliFactory;
 use crate::http_util::HttpClientProvider;
-use crate::standalone::binary::StandaloneRelativeFileBaseUrl;
+use crate::standalone::binary::WriteBinOptions;
 use crate::standalone::is_standalone_binary;
 use deno_ast::MediaType;
 use deno_ast::ModuleSpecifier;
@@ -15,8 +15,12 @@ use deno_core::error::generic_error;
 use deno_core::error::AnyError;
 use deno_core::resolve_url_or_path;
 use deno_graph::GraphKind;
+use deno_path_util::url_from_file_path;
+use deno_path_util::url_to_file_path;
 use deno_terminal::colors;
 use rand::Rng;
+use std::collections::HashSet;
+use std::collections::VecDeque;
 use std::path::Path;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -69,7 +73,11 @@ pub async fn compile(
     // create a module graph with types information in it. We don't want to
     // store that in the binary so create a code only module graph from scratch.
     module_graph_creator
-      .create_graph(GraphKind::CodeOnly, module_roots)
+      .create_graph(
+        GraphKind::CodeOnly,
+        module_roots,
+        crate::graph_util::NpmCachingStrategy::Eager,
+      )
       .await?
   } else {
     graph
@@ -78,20 +86,6 @@ pub async fn compile(
   let ts_config_for_emit = cli_options
     .resolve_ts_config_for_emit(deno_config::deno_json::TsConfigType::Emit)?;
   check_warn_tsconfig(&ts_config_for_emit);
-  let root_dir_url = resolve_root_dir_from_specifiers(
-    cli_options.workspace().root_dir(),
-    graph
-      .specifiers()
-      .map(|(s, _)| s)
-      .chain(
-        cli_options
-          .node_modules_dir_path()
-          .and_then(|p| ModuleSpecifier::from_directory_path(p).ok())
-          .iter(),
-      )
-      .chain(include_files.iter()),
-  );
-  log::debug!("Binary root dir: {}", root_dir_url);
   log::info!(
     "{} {} to {}",
     colors::green("Compile"),
@@ -116,14 +110,17 @@ pub async fn compile(
   })?;
 
   let write_result = binary_writer
-    .write_bin(
-      file,
-      &graph,
-      StandaloneRelativeFileBaseUrl::from(&root_dir_url),
+    .write_bin(WriteBinOptions {
+      writer: file,
+      display_output_filename: &output_path
+        .file_name()
+        .unwrap()
+        .to_string_lossy(),
+      graph: &graph,
       entrypoint,
-      &include_files,
-      &compile_flags,
-    )
+      include_files: &include_files,
+      compile_flags: &compile_flags,
+    })
     .await
     .with_context(|| {
       format!(
@@ -242,15 +239,58 @@ fn get_module_roots_and_include_files(
     }
   }
 
-  let mut module_roots = Vec::with_capacity(compile_flags.include.len() + 1);
-  let mut include_files = Vec::with_capacity(compile_flags.include.len());
+  fn analyze_path(
+    url: &ModuleSpecifier,
+    module_roots: &mut Vec<ModuleSpecifier>,
+    include_files: &mut Vec<ModuleSpecifier>,
+    searched_paths: &mut HashSet<PathBuf>,
+  ) -> Result<(), AnyError> {
+    let Ok(path) = url_to_file_path(url) else {
+      return Ok(());
+    };
+    let mut pending = VecDeque::from([path]);
+    while let Some(path) = pending.pop_front() {
+      if !searched_paths.insert(path.clone()) {
+        continue;
+      }
+      if !path.is_dir() {
+        let url = url_from_file_path(&path)?;
+        include_files.push(url.clone());
+        if is_module_graph_module(&url) {
+          module_roots.push(url);
+        }
+        continue;
+      }
+      for entry in std::fs::read_dir(&path).with_context(|| {
+        format!("Failed reading directory '{}'", path.display())
+      })? {
+        let entry = entry.with_context(|| {
+          format!("Failed reading entry in directory '{}'", path.display())
+        })?;
+        pending.push_back(entry.path());
+      }
+    }
+    Ok(())
+  }
+
+  let mut searched_paths = HashSet::new();
+  let mut module_roots = Vec::new();
+  let mut include_files = Vec::new();
   module_roots.push(entrypoint.clone());
   for side_module in &compile_flags.include {
     let url = resolve_url_or_path(side_module, initial_cwd)?;
     if is_module_graph_module(&url) {
-      module_roots.push(url);
+      module_roots.push(url.clone());
+      if url.scheme() == "file" {
+        include_files.push(url);
+      }
     } else {
-      include_files.push(url);
+      analyze_path(
+        &url,
+        &mut module_roots,
+        &mut include_files,
+        &mut searched_paths,
+      )?;
     }
   }
   Ok((module_roots, include_files))
@@ -314,68 +354,6 @@ fn get_os_specific_filepath(
   } else {
     output
   }
-}
-
-fn resolve_root_dir_from_specifiers<'a>(
-  starting_dir: &ModuleSpecifier,
-  specifiers: impl Iterator<Item = &'a ModuleSpecifier>,
-) -> ModuleSpecifier {
-  fn select_common_root<'a>(a: &'a str, b: &'a str) -> &'a str {
-    let min_length = a.len().min(b.len());
-
-    let mut last_slash = 0;
-    for i in 0..min_length {
-      if a.as_bytes()[i] == b.as_bytes()[i] && a.as_bytes()[i] == b'/' {
-        last_slash = i;
-      } else if a.as_bytes()[i] != b.as_bytes()[i] {
-        break;
-      }
-    }
-
-    // Return the common root path up to the last common slash.
-    // This returns a slice of the original string 'a', up to and including the last matching '/'.
-    let common = &a[..=last_slash];
-    if cfg!(windows) && common == "file:///" {
-      a
-    } else {
-      common
-    }
-  }
-
-  fn is_file_system_root(url: &str) -> bool {
-    let Some(path) = url.strip_prefix("file:///") else {
-      return false;
-    };
-    if cfg!(windows) {
-      let Some((_drive, path)) = path.split_once('/') else {
-        return true;
-      };
-      path.is_empty()
-    } else {
-      path.is_empty()
-    }
-  }
-
-  let mut found_dir = starting_dir.as_str();
-  if !is_file_system_root(found_dir) {
-    for specifier in specifiers {
-      if specifier.scheme() == "file" {
-        found_dir = select_common_root(found_dir, specifier.as_str());
-      }
-    }
-  }
-  let found_dir = if is_file_system_root(found_dir) {
-    found_dir
-  } else {
-    // include the parent dir name because it helps create some context
-    found_dir
-      .strip_suffix('/')
-      .unwrap_or(found_dir)
-      .rfind('/')
-      .map(|i| &found_dir[..i + 1])
-      .unwrap_or(found_dir)
-  };
-  ModuleSpecifier::parse(found_dir).unwrap()
 }
 
 #[cfg(test)]
@@ -453,39 +431,5 @@ mod test {
     run_test("C:\\my-exe.exe", Some("windows"), "C:\\my-exe.exe");
     run_test("C:\\my-exe.0.1.2", Some("windows"), "C:\\my-exe.0.1.2.exe");
     run_test("my-exe-0.1.2", Some("linux"), "my-exe-0.1.2");
-  }
-
-  #[test]
-  fn test_resolve_root_dir_from_specifiers() {
-    fn resolve(start: &str, specifiers: &[&str]) -> String {
-      let specifiers = specifiers
-        .iter()
-        .map(|s| ModuleSpecifier::parse(s).unwrap())
-        .collect::<Vec<_>>();
-      resolve_root_dir_from_specifiers(
-        &ModuleSpecifier::parse(start).unwrap(),
-        specifiers.iter(),
-      )
-      .to_string()
-    }
-
-    assert_eq!(resolve("file:///a/b/c", &["file:///a/b/c/d"]), "file:///a/");
-    assert_eq!(
-      resolve("file:///a/b/c/", &["file:///a/b/c/d"]),
-      "file:///a/b/"
-    );
-    assert_eq!(
-      resolve("file:///a/b/c/", &["file:///a/b/c/d", "file:///a/b/c/e"]),
-      "file:///a/b/"
-    );
-    assert_eq!(resolve("file:///", &["file:///a/b/c/d"]), "file:///");
-    if cfg!(windows) {
-      assert_eq!(resolve("file:///c:/", &["file:///c:/test"]), "file:///c:/");
-      // this will ignore the other one because it's on a separate drive
-      assert_eq!(
-        resolve("file:///c:/a/b/c/", &["file:///v:/a/b/c/d"]),
-        "file:///c:/a/b/"
-      );
-    }
   }
 }

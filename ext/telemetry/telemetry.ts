@@ -39,7 +39,6 @@ const {
   SafeWeakMap,
   Array,
   ObjectEntries,
-  SafeMap,
   ReflectApply,
   SymbolFor,
   Error,
@@ -221,6 +220,7 @@ function submitSpan(
   startTime: number,
   endTime: number,
 ) {
+  if (!TRACING_ENABLED) return;
   if (!(traceFlags & TRACE_FLAG_SAMPLED)) return;
 
   // TODO(@lucacasonato): `resource` is ignored for now, should we implement it?
@@ -617,26 +617,25 @@ class SpanExporter {
 const CURRENT = new AsyncVariable();
 
 class Context {
-  #data = new SafeMap();
+  #data: Record<symbol, unknown> = { __proto__: null };
 
-  // deno-lint-ignore no-explicit-any
-  constructor(data?: Iterable<readonly [any, any]> | null | undefined) {
-    this.#data = data ? new SafeMap(data) : new SafeMap();
+  constructor(data?: Record<symbol, unknown> | null | undefined) {
+    this.#data = { __proto__: null, ...data };
   }
 
   getValue(key: symbol): unknown {
-    return this.#data.get(key);
+    return this.#data[key];
   }
 
   setValue(key: symbol, value: unknown): Context {
     const c = new Context(this.#data);
-    c.#data.set(key, value);
+    c.#data[key] = value;
     return c;
   }
 
   deleteValue(key: symbol): Context {
     const c = new Context(this.#data);
-    c.#data.delete(key);
+    delete c.#data[key];
     return c;
   }
 }
@@ -951,15 +950,15 @@ const otelConsoleConfig = {
 };
 
 export function bootstrap(
-  config: [] | [
+  config: [
+    0 | 1,
     typeof otelConsoleConfig[keyof typeof otelConsoleConfig],
-    number,
+    0 | 1,
   ],
 ): void {
-  if (config.length === 0) return;
-  const { 0: consoleConfig, 1: deterministic } = config;
+  const { 0: tracingEnabled, 1: consoleConfig, 2: deterministic } = config;
 
-  TRACING_ENABLED = true;
+  TRACING_ENABLED = tracingEnabled === 1;
   DETERMINISTIC = deterministic === 1;
 
   switch (consoleConfig) {

@@ -407,7 +407,7 @@ pub fn bi_pipe_pair_raw(
         &s,
         OPEN_EXISTING,
         FILE_FLAG_OVERLAPPED,
-        0,
+        std::ptr::null_mut(),
       );
       if hd2 == INVALID_HANDLE_VALUE {
         return Err(io::Error::last_os_error());

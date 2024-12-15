@@ -10,62 +10,19 @@ import { SEPARATOR } from "@std/path/constants";
 import { ensureFile } from "@std/fs/ensure-file";
 import { writeAll } from "@std/io/write-all";
 import { withoutAll } from "@std/collections/without-all";
-import { relative } from "@std/path/posix/relative";
 import { version } from "./suite/node_version.ts";
-
-import { config, ignoreList } from "../common.ts";
+import {
+  config,
+  getDenoTests,
+  getNodeTests,
+  ignoreList,
+  NODE_COMPAT_TEST_DEST_URL,
+  VENDORED_NODE_TEST,
+} from "../common.ts";
 
 const encoder = new TextEncoder();
 
 const NODE_VERSION = version;
-
-export const NODE_IGNORED_TEST_DIRS = [
-  "addons",
-  "async-hooks",
-  "cctest",
-  "common",
-  "doctool",
-  "embedding",
-  "fixtures",
-  "fuzzers",
-  "js-native-api",
-  "node-api",
-  "overlapped-checker",
-  "report",
-  "testpy",
-  "tick-processor",
-  "tools",
-  "v8-updates",
-  "wasi",
-  "wpt",
-];
-
-export const VENDORED_NODE_TEST = new URL("./suite/test/", import.meta.url);
-export const NODE_COMPAT_TEST_DEST_URL = new URL(
-  "../test/",
-  import.meta.url,
-);
-
-export async function getNodeTests(): Promise<string[]> {
-  const paths: string[] = [];
-  const rootPath = VENDORED_NODE_TEST.href.slice(7);
-  for await (
-    const item of walk(VENDORED_NODE_TEST, { exts: [".js"] })
-  ) {
-    const path = relative(rootPath, item.path);
-    if (NODE_IGNORED_TEST_DIRS.every((dir) => !path.startsWith(dir))) {
-      paths.push(path);
-    }
-  }
-
-  return paths.sort();
-}
-
-export function getDenoTests() {
-  return Object.entries(config.tests)
-    .filter(([testDir]) => !NODE_IGNORED_TEST_DIRS.includes(testDir))
-    .flatMap(([testDir, tests]) => tests.map((test) => testDir + "/" + test));
-}
 
 async function updateToDo() {
   using file = await Deno.open(new URL("./TODO.md", import.meta.url), {
@@ -75,7 +32,7 @@ async function updateToDo() {
   });
 
   const nodeTests = await getNodeTests();
-  const portedTests = getDenoTests();
+  const portedTests = await getDenoTests();
   const remainingTests = withoutAll(nodeTests, portedTests);
   const numPorted = portedTests.length;
   const numMissing = remainingTests.length;
@@ -167,7 +124,9 @@ await copyTests();
 await updateToDo();
 
 if (Deno.args[0] === "--check") {
-  const cmd = new Deno.Command("git", { args: ["status", "-s"] });
+  const cmd = new Deno.Command("git", {
+    args: ["status", "-s", "tests/node_compat/test"],
+  });
   const { stdout } = await cmd.output();
 
   if (stdout.length > 0) {
