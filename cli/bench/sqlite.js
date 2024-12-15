@@ -16,7 +16,7 @@ for (const name of [":memory:", "test.db"]) {
   console.log(`Benchmarking ${name}`);
   try {
     fs.unlinkSync(name);
-  } catch (e) {
+  } catch {
     // Ignore
   }
 
