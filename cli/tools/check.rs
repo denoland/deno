@@ -64,7 +64,7 @@ pub async fn check(
       let file = file_fetcher.fetch(&s, root_permissions).await?;
       let snippet_files = extract::extract_snippet_files(file)?;
       for snippet_file in snippet_files {
-        specifiers_for_typecheck.push(snippet_file.specifier.clone());
+        specifiers_for_typecheck.push(snippet_file.url.clone());
         file_fetcher.insert_memory_files(snippet_file);
       }
     }

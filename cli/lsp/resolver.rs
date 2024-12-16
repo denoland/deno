@@ -2,6 +2,7 @@
 
 use dashmap::DashMap;
 use deno_ast::MediaType;
+use deno_cache_dir::file_fetcher::CacheSetting;
 use deno_cache_dir::npm::NpmCacheDir;
 use deno_cache_dir::HttpCache;
 use deno_config::deno_json::JsxImportSourceConfig;
@@ -39,7 +40,6 @@ use std::sync::Arc;
 use super::cache::LspCache;
 use super::jsr::JsrCacheResolver;
 use crate::args::create_default_npmrc;
-use crate::args::CacheSetting;
 use crate::args::CliLockfile;
 use crate::args::NpmInstallDepsProvider;
 use crate::cache::DenoCacheEnvFsAdapter;
