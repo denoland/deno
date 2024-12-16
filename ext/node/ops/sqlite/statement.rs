@@ -78,7 +78,8 @@ impl GarbageCollected for StatementSync {}
 impl StatementSync {
   // Clear the prepared statement back to its initial state.
   fn reset(&self) {
-    // SAFETY: `self.inner` is a valid pointer to a sqlite3_stmt.
+    // SAFETY: `self.inner` is a valid pointer to a sqlite3_stmt
+    // as it lives as long as the StatementSync instance.
     unsafe {
       ffi::sqlite3_reset(self.inner);
     }
@@ -87,7 +88,8 @@ impl StatementSync {
   // Evaluate the prepared statement.
   fn step(&self) -> Result<bool, SqliteError> {
     let raw = self.inner;
-    // SAFETY: `self.inner` is a valid pointer to a sqlite3_stmt.
+    // SAFETY: `self.inner` is a valid pointer to a sqlite3_stmt
+    // as it lives as long as the StatementSync instance.
     unsafe {
       let r = ffi::sqlite3_step(raw);
       if r == ffi::SQLITE_DONE {
@@ -102,12 +104,14 @@ impl StatementSync {
   }
 
   fn column_count(&self) -> i32 {
-    // SAFETY: `self.inner` is a valid pointer to a sqlite3_stmt.
+    // SAFETY: `self.inner` is a valid pointer to a sqlite3_stmt
+    // as it lives as long as the StatementSync instance.
     unsafe { ffi::sqlite3_column_count(self.inner) }
   }
 
   fn column_name(&self, index: i32) -> &[u8] {
-    // SAFETY: `self.inner` is a valid pointer to a sqlite3_stmt.
+    // SAFETY: `self.inner` is a valid pointer to a sqlite3_stmt
+    // as it lives as long as the StatementSync instance.
     unsafe {
       let name = ffi::sqlite3_column_name(self.inner, index);
       std::ffi::CStr::from_ptr(name as _).to_bytes()
@@ -119,7 +123,8 @@ impl StatementSync {
     index: i32,
     scope: &mut v8::HandleScope<'a>,
   ) -> v8::Local<'a, v8::Value> {
-    // SAFETY: `self.inner` is a valid pointer to a sqlite3_stmt.
+    // SAFETY: `self.inner` is a valid pointer to a sqlite3_stmt
+    // as it lives as long as the StatementSync instance.
     unsafe {
       match ffi::sqlite3_column_type(self.inner, index) {
         ffi::SQLITE_INTEGER => {
@@ -211,14 +216,17 @@ impl StatementSync {
         if value.is_number() {
           let value = value.number_value(scope).unwrap();
 
-          // SAFETY: `self.inner` is a valid pointer to a sqlite3_stmt.
+          // SAFETY: `self.inner` is a valid pointer to a sqlite3_stmt
+          // as it lives as long as the StatementSync instance.
           unsafe {
             ffi::sqlite3_bind_double(raw, i + 1, value);
           }
         } else if value.is_string() {
           let value = value.to_rust_string_lossy(scope);
 
-          // SAFETY: `self.inner` is a valid pointer to a sqlite3_stmt.
+          // SAFETY: `self.inner` is a valid pointer to a sqlite3_stmt
+          // as it lives as long as the StatementSync instance.
+          //
           // SQLITE_TRANSIENT is used to indicate that SQLite should make a copy of the data.
           unsafe {
             ffi::sqlite3_bind_text(
@@ -230,7 +238,8 @@ impl StatementSync {
             );
           }
         } else if value.is_null() {
-          // SAFETY: `self.inner` is a valid pointer to a sqlite3_stmt.
+          // SAFETY: `self.inner` is a valid pointer to a sqlite3_stmt
+          // as it lives as long as the StatementSync instance.
           unsafe {
             ffi::sqlite3_bind_null(raw, i + 1);
           }
@@ -239,7 +248,9 @@ impl StatementSync {
           let data = value.data();
           let size = value.byte_length();
 
-          // SAFETY: `self.inner` is a valid pointer to a sqlite3_stmt.
+          // SAFETY: `self.inner` is a valid pointer to a sqlite3_stmt
+          // as it lives as long as the StatementSync instance.
+          //
           // SQLITE_TRANSIENT is used to indicate that SQLite should make a copy of the data.
           unsafe {
             ffi::sqlite3_bind_blob(
