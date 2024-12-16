@@ -119,6 +119,16 @@ pub struct CheckFlags {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
+pub struct CleanFlags {
+  pub size: bool,
+  pub deps: bool,
+  pub npm: bool,
+  pub jsr: bool,
+  pub emit: bool,
+  pub caches: bool,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct CompileFlags {
   pub source_file: String,
   pub output: Option<String>,
@@ -445,7 +455,7 @@ pub enum DenoSubcommand {
   Bundle,
   Cache(CacheFlags),
   Check(CheckFlags),
-  Clean,
+  Clean(CleanFlags),
   Compile(CompileFlags),
   Completions(CompletionsFlags),
   Coverage(CoverageFlags),
@@ -1870,6 +1880,45 @@ fn clean_subcommand() -> Command {
     cstr!("Remove the cache directory (<c>$DENO_DIR</>)"),
     UnstableArgsConfig::None,
   )
+  .defer(|cmd| {
+    cmd
+      .arg(
+        Arg::new("size")
+          .long("size")
+          .help("Show current cache size")
+          .action(ArgAction::SetTrue),
+      )
+      .arg(
+        Arg::new("deps")
+          .long("deps")
+          .help("Show current cache size for remote dependencies")
+          .action(ArgAction::SetTrue),
+      )
+      .arg(
+        Arg::new("npm")
+          .long("npm")
+          .help("Show current cache size for npm dependencies")
+          .action(ArgAction::SetTrue),
+      )
+      .arg(
+        Arg::new("jsr")
+          .long("jsr")
+          .help("Show current cache for jsr dependencies")
+          .action(ArgAction::SetTrue),
+      )
+      .arg(
+        Arg::new("emit")
+          .long("emit")
+          .help("Show current cache for transpilation emit")
+          .action(ArgAction::SetTrue),
+      )
+      .arg(
+        Arg::new("caches")
+          .long("caches")
+          .help("Show current cache for various caches")
+          .action(ArgAction::SetTrue),
+      )
+  })
 }
 
 fn check_subcommand() -> Command {
@@ -4621,8 +4670,22 @@ fn check_parse(
   Ok(())
 }
 
-fn clean_parse(flags: &mut Flags, _matches: &mut ArgMatches) {
-  flags.subcommand = DenoSubcommand::Clean;
+fn clean_parse(flags: &mut Flags, matches: &mut ArgMatches) {
+  let size = matches.get_flag("size");
+  let deps = matches.get_flag("deps");
+  let npm = matches.get_flag("npm");
+  let jsr = matches.get_flag("jsr");
+  let emit = matches.get_flag("emit");
+  let caches = matches.get_flag("caches");
+
+  flags.subcommand = DenoSubcommand::Clean(CleanFlags {
+    size,
+    deps,
+    npm,
+    jsr,
+    emit,
+    caches,
+  });
 }
 
 fn compile_parse(
