@@ -78,7 +78,6 @@ use std::io::Cursor;
 use std::io::Read;
 use std::io::Seek;
 use std::net::SocketAddr;
-use std::num::NonZeroUsize;
 use std::path::Path;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -264,22 +263,6 @@ impl CacheSetting {
   }
 }
 
-pub struct WorkspaceBenchOptions {
-  pub filter: Option<String>,
-  pub json: bool,
-  pub no_run: bool,
-}
-
-impl WorkspaceBenchOptions {
-  pub fn resolve(bench_flags: &BenchFlags) -> Self {
-    Self {
-      filter: bench_flags.filter.clone(),
-      json: bench_flags.json,
-      no_run: bench_flags.no_run,
-    }
-  }
-}
-
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct BenchOptions {
   pub files: FilePatterns,
@@ -373,41 +356,6 @@ fn resolve_fmt_options(
   }
 
   options
-}
-
-#[derive(Clone, Debug)]
-pub struct WorkspaceTestOptions {
-  pub doc: bool,
-  pub no_run: bool,
-  pub fail_fast: Option<NonZeroUsize>,
-  pub permit_no_files: bool,
-  pub filter: Option<String>,
-  pub shuffle: Option<u64>,
-  pub concurrent_jobs: NonZeroUsize,
-  pub trace_leaks: bool,
-  pub reporter: TestReporterConfig,
-  pub junit_path: Option<String>,
-  pub hide_stacktraces: bool,
-}
-
-impl WorkspaceTestOptions {
-  pub fn resolve(test_flags: &TestFlags) -> Self {
-    Self {
-      permit_no_files: test_flags.permit_no_files,
-      concurrent_jobs: test_flags
-        .concurrent_jobs
-        .unwrap_or_else(|| NonZeroUsize::new(1).unwrap()),
-      doc: test_flags.doc,
-      fail_fast: test_flags.fail_fast,
-      filter: test_flags.filter.clone(),
-      no_run: test_flags.no_run,
-      shuffle: test_flags.shuffle,
-      trace_leaks: test_flags.trace_leaks,
-      reporter: test_flags.reporter,
-      junit_path: test_flags.junit_path.clone(),
-      hide_stacktraces: test_flags.hide_stacktraces,
-    }
-  }
 }
 
 #[derive(Debug, Clone)]
@@ -1501,13 +1449,6 @@ impl CliOptions {
     })
   }
 
-  pub fn resolve_workspace_test_options(
-    &self,
-    test_flags: &TestFlags,
-  ) -> WorkspaceTestOptions {
-    WorkspaceTestOptions::resolve(test_flags)
-  }
-
   pub fn resolve_test_options_for_members(
     &self,
     test_flags: &TestFlags,
@@ -1531,13 +1472,6 @@ impl CliOptions {
       )]
     };
     Ok(member_options)
-  }
-
-  pub fn resolve_workspace_bench_options(
-    &self,
-    bench_flags: &BenchFlags,
-  ) -> WorkspaceBenchOptions {
-    WorkspaceBenchOptions::resolve(bench_flags)
   }
 
   pub fn resolve_bench_options_for_members(

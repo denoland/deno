@@ -1163,6 +1163,7 @@ impl WorkspaceDirFilesFactory {
 
 pub struct WorkspaceFilesFactory {
   dirs: Vec<WorkspaceDirFilesFactory>,
+  initial_cwd: PathBuf,
 }
 
 impl WorkspaceFilesFactory {
@@ -1186,6 +1187,10 @@ impl WorkspaceFilesFactory {
     cli_options: &CliOptions,
     watcher_communicator: Option<&Arc<WatcherCommunicator>>,
   ) -> Result<Self, AnyError> {
+    let initial_cwd = cli_options.initial_cwd().to_path_buf();
+    if let Some(watcher_communicator) = watcher_communicator {
+      let _ = watcher_communicator.watch_paths(cli_options.watch_paths());
+    }
     workspace_dirs_with_files.sort_by_cached_key(|(d, _)| d.dir_url().clone());
     let all_scopes = Arc::new(
       workspace_dirs_with_files
@@ -1197,6 +1202,15 @@ impl WorkspaceFilesFactory {
     let dir_count = workspace_dirs_with_files.len();
     let mut dirs = Vec::with_capacity(dir_count);
     for (workspace_dir, files) in workspace_dirs_with_files {
+      if let Some(watcher_communicator) = watcher_communicator {
+        let _ = watcher_communicator.watch_paths(
+          files
+            .include
+            .iter()
+            .flat_map(|set| set.base_paths())
+            .collect(),
+        );
+      }
       let scope_options = (dir_count > 1).then(|| ScopeOptions {
         scope: workspace_dir
           .has_deno_or_pkg_json()
@@ -1237,7 +1251,19 @@ impl WorkspaceFilesFactory {
         permissions_options: Default::default(),
       });
     }
-    Ok(Self { dirs })
+    Ok(Self { dirs, initial_cwd })
+  }
+
+  pub fn dirs(&self) -> &Vec<WorkspaceDirFilesFactory> {
+    &self.dirs
+  }
+
+  pub fn initial_cwd(&self) -> &PathBuf {
+    &self.initial_cwd
+  }
+
+  pub fn found_specifiers(&self) -> bool {
+    self.dirs.iter().any(|e| !e.specifiers.is_empty())
   }
 
   pub async fn check(&self) -> Result<(), AnyError> {
@@ -1281,13 +1307,5 @@ impl WorkspaceFilesFactory {
       ));
     }
     Ok(())
-  }
-
-  pub fn dirs(&self) -> &Vec<WorkspaceDirFilesFactory> {
-    &self.dirs
-  }
-
-  pub fn found_specifiers(&self) -> bool {
-    self.dirs.iter().any(|e| !e.specifiers.is_empty())
   }
 }

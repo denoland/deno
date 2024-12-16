@@ -1497,14 +1497,8 @@ pub async fn run_tests(
   flags: Arc<Flags>,
   test_flags: TestFlags,
 ) -> Result<(), AnyError> {
+  let log_level = flags.log_level;
   let cli_options = CliOptions::from_flags(flags)?;
-  let workspace_test_options =
-    cli_options.resolve_workspace_test_options(&test_flags);
-  // Various test files should not share the same permissions in terms of
-  // `PermissionsContainer` - otherwise granting/revoking permissions in one
-  // file would have impact on other files, which is undesirable.
-  let log_level = cli_options.log_level();
-
   let workspace_dirs_with_files = cli_options
     .resolve_test_options_for_members(&test_flags)?
     .into_iter()
@@ -1517,47 +1511,47 @@ pub async fn run_tests(
         collect_specifiers_for_tests(patterns, cli_options, file_fetcher, doc)
           .boxed_local()
       },
-      workspace_test_options.doc,
+      test_flags.doc,
       Some(extract_doc_tests),
       &cli_options,
       None,
     )
     .await?;
-  if !workspace_test_options.permit_no_files
-    && !workspace_files_factory.found_specifiers()
+  if !test_flags.permit_no_files && !workspace_files_factory.found_specifiers()
   {
     return Err(generic_error("No test modules found"));
   }
 
   workspace_files_factory.check().await?;
 
-  if workspace_test_options.no_run {
+  if test_flags.no_run {
     return Ok(());
   }
 
+  let initial_cwd = workspace_files_factory.initial_cwd();
   test_specifiers(
     &workspace_files_factory,
     None,
     TestSpecifiersOptions {
-      cwd: Url::from_directory_path(cli_options.initial_cwd()).map_err(
-        |_| {
-          generic_error(format!(
-            "Unable to construct URL from the path of cwd: {}",
-            cli_options.initial_cwd().to_string_lossy(),
-          ))
-        },
-      )?,
-      concurrent_jobs: workspace_test_options.concurrent_jobs,
-      fail_fast: workspace_test_options.fail_fast,
+      cwd: Url::from_directory_path(initial_cwd).map_err(|_| {
+        generic_error(format!(
+          "Unable to construct URL from the path of cwd: {}",
+          initial_cwd.to_string_lossy(),
+        ))
+      })?,
+      concurrent_jobs: test_flags
+        .concurrent_jobs
+        .unwrap_or_else(|| NonZeroUsize::new(1).unwrap()),
+      fail_fast: test_flags.fail_fast,
       log_level,
-      filter: workspace_test_options.filter.is_some(),
-      reporter: workspace_test_options.reporter,
-      junit_path: workspace_test_options.junit_path,
-      hide_stacktraces: workspace_test_options.hide_stacktraces,
+      filter: test_flags.filter.is_some(),
+      reporter: test_flags.reporter,
+      junit_path: test_flags.junit_path,
+      hide_stacktraces: test_flags.hide_stacktraces,
       specifier: TestSpecifierOptions {
-        filter: TestFilter::from_flag(&workspace_test_options.filter),
-        shuffle: workspace_test_options.shuffle,
-        trace_leaks: workspace_test_options.trace_leaks,
+        filter: TestFilter::from_flag(&test_flags.filter),
+        shuffle: test_flags.shuffle,
+        trace_leaks: test_flags.trace_leaks,
       },
     },
   )
@@ -1598,25 +1592,13 @@ pub async fn run_tests_with_watch(
       let test_flags = test_flags.clone();
       watcher_communicator.show_path_changed(changed_paths.clone());
       Ok(async move {
+        let log_level = flags.log_level;
         let cli_options = CliOptions::from_flags(flags)?;
-        let workspace_test_options =
-          cli_options.resolve_workspace_test_options(&test_flags);
-        let log_level = cli_options.log_level();
-
-        let _ = watcher_communicator.watch_paths(cli_options.watch_paths());
         let workspace_dirs_with_files = cli_options
           .resolve_test_options_for_members(&test_flags)?
           .into_iter()
           .map(|(d, o)| (d, o.files))
           .collect::<Vec<_>>();
-        let watch_paths = workspace_dirs_with_files
-          .iter()
-          .filter_map(|(_, files)| {
-            files.include.as_ref().map(|set| set.base_paths())
-          })
-          .flatten()
-          .collect::<Vec<_>>();
-        let _ = watcher_communicator.watch_paths(watch_paths);
         let workspace_files_factory =
           WorkspaceFilesFactory::from_workspace_dirs_with_files(
             workspace_dirs_with_files,
@@ -1629,7 +1611,7 @@ pub async fn run_tests_with_watch(
               )
               .boxed_local()
             },
-            workspace_test_options.doc,
+            test_flags.doc,
             Some(extract_doc_tests),
             &cli_options,
             Some(&watcher_communicator),
@@ -1638,33 +1620,34 @@ pub async fn run_tests_with_watch(
 
         workspace_files_factory.check().await?;
 
-        if workspace_test_options.no_run {
+        if test_flags.no_run {
           return Ok(());
         }
 
+        let initial_cwd = workspace_files_factory.initial_cwd();
         test_specifiers(
           &workspace_files_factory,
           changed_paths.map(|p| p.into_iter().collect()).as_ref(),
           TestSpecifiersOptions {
-            cwd: Url::from_directory_path(cli_options.initial_cwd()).map_err(
-              |_| {
-                generic_error(format!(
-                  "Unable to construct URL from the path of cwd: {}",
-                  cli_options.initial_cwd().to_string_lossy(),
-                ))
-              },
-            )?,
-            concurrent_jobs: workspace_test_options.concurrent_jobs,
-            fail_fast: workspace_test_options.fail_fast,
+            cwd: Url::from_directory_path(initial_cwd).map_err(|_| {
+              generic_error(format!(
+                "Unable to construct URL from the path of cwd: {}",
+                initial_cwd.to_string_lossy(),
+              ))
+            })?,
+            concurrent_jobs: test_flags
+              .concurrent_jobs
+              .unwrap_or_else(|| NonZeroUsize::new(1).unwrap()),
+            fail_fast: test_flags.fail_fast,
             log_level,
-            filter: workspace_test_options.filter.is_some(),
-            reporter: workspace_test_options.reporter,
-            junit_path: workspace_test_options.junit_path,
-            hide_stacktraces: workspace_test_options.hide_stacktraces,
+            filter: test_flags.filter.is_some(),
+            reporter: test_flags.reporter,
+            junit_path: test_flags.junit_path,
+            hide_stacktraces: test_flags.hide_stacktraces,
             specifier: TestSpecifierOptions {
-              filter: TestFilter::from_flag(&workspace_test_options.filter),
-              shuffle: workspace_test_options.shuffle,
-              trace_leaks: workspace_test_options.trace_leaks,
+              filter: TestFilter::from_flag(&test_flags.filter),
+              shuffle: test_flags.shuffle,
+              trace_leaks: test_flags.trace_leaks,
             },
           },
         )

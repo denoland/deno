@@ -432,11 +432,8 @@ pub async fn run_benchmarks(
   flags: Arc<Flags>,
   bench_flags: BenchFlags,
 ) -> Result<(), AnyError> {
+  let log_level = flags.log_level;
   let cli_options = CliOptions::from_flags(flags)?;
-  let workspace_bench_options =
-    cli_options.resolve_workspace_bench_options(&bench_flags);
-  let log_level = cli_options.log_level();
-
   let workspace_dirs_with_files = cli_options
     .resolve_bench_options_for_members(&bench_flags)?
     .into_iter()
@@ -472,7 +469,7 @@ pub async fn run_benchmarks(
 
   workspace_files_factory.check().await?;
 
-  if workspace_bench_options.no_run {
+  if bench_flags.no_run {
     return Ok(());
   }
 
@@ -480,8 +477,8 @@ pub async fn run_benchmarks(
     &workspace_files_factory,
     None,
     BenchSpecifierOptions {
-      filter: TestFilter::from_flag(&workspace_bench_options.filter),
-      json: workspace_bench_options.json,
+      filter: TestFilter::from_flag(&bench_flags.filter),
+      json: bench_flags.json,
       log_level,
     },
   )
@@ -508,25 +505,13 @@ pub async fn run_benchmarks_with_watch(
       let bench_flags = bench_flags.clone();
       watcher_communicator.show_path_changed(changed_paths.clone());
       Ok(async move {
+        let log_level: Option<Level> = flags.log_level;
         let cli_options = CliOptions::from_flags(flags)?;
-        let workspace_bench_options =
-          cli_options.resolve_workspace_bench_options(&bench_flags);
-        let log_level = cli_options.log_level();
-
-        let _ = watcher_communicator.watch_paths(cli_options.watch_paths());
         let workspace_dirs_with_files = cli_options
           .resolve_bench_options_for_members(&bench_flags)?
           .into_iter()
           .map(|(d, o)| (d, o.files))
           .collect::<Vec<_>>();
-        let watch_paths = workspace_dirs_with_files
-          .iter()
-          .filter_map(|(_, files)| {
-            files.include.as_ref().map(|set| set.base_paths())
-          })
-          .flatten()
-          .collect::<Vec<_>>();
-        let _ = watcher_communicator.watch_paths(watch_paths);
         let workspace_files_factory =
           WorkspaceFilesFactory::from_workspace_dirs_with_files(
             workspace_dirs_with_files,
@@ -554,7 +539,7 @@ pub async fn run_benchmarks_with_watch(
 
         workspace_files_factory.check().await?;
 
-        if workspace_bench_options.no_run {
+        if bench_flags.no_run {
           return Ok(());
         }
 
@@ -562,8 +547,8 @@ pub async fn run_benchmarks_with_watch(
           &workspace_files_factory,
           changed_paths.map(|p| p.into_iter().collect()).as_ref(),
           BenchSpecifierOptions {
-            filter: TestFilter::from_flag(&workspace_bench_options.filter),
-            json: workspace_bench_options.json,
+            filter: TestFilter::from_flag(&bench_flags.filter),
+            json: bench_flags.json,
             log_level,
           },
         )
