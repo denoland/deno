@@ -49,7 +49,6 @@ Deno.test(
     });
 
     db.close();
-    Deno.removeSync(tempDir, { recursive: true });
   },
 );
 
