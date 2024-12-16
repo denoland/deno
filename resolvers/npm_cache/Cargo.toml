@@ -40,3 +40,4 @@ tar.workspace = true
 tempfile = "3.4.0"
 thiserror.workspace = true
 url.workspace = true
+memchr = "2.7.4"
