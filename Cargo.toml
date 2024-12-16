@@ -48,7 +48,7 @@ repository = "https://github.com/denoland/deno"
 
 [workspace.dependencies]
 deno_ast = { version = "=0.44.0", features = ["transpiling"] }
-deno_core = { version = "0.324.0" }
+deno_core = { version = "0.326.0" }
 
 deno_bench_util = { version = "0.176.0", path = "./bench_util" }
 deno_config = { version = "=0.39.3", features = ["workspace", "sync"] }

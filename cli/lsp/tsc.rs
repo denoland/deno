@@ -4496,6 +4496,7 @@ impl<'a> ToV8<'a> for TscRequestArray {
 
     let method_name = deno_core::FastString::from_static(method_name)
       .v8_string(scope)
+      .unwrap()
       .into();
     let args = args.unwrap_or_else(|| v8::Array::new(scope, 0).into());
     let scope_url = serde_v8::to_v8(scope, self.scope)
