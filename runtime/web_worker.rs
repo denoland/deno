@@ -58,7 +58,6 @@ use std::task::Poll;
 use crate::inspector_server::InspectorServer;
 use crate::ops;
 use crate::ops::process::NpmProcessStateProviderRc;
-use crate::ops::worker_host::WorkersTable;
 use crate::shared::maybe_transpile_source;
 use crate::shared::runtime;
 use crate::tokio_util::create_and_run_current_thread;
@@ -836,7 +835,7 @@ impl WebWorker {
           return Poll::Ready(Err(e));
         }
 
-        if self.close_on_idle {
+        if self.close_on_idle && !self.has_message_event_listener() {
           return Poll::Ready(Ok(()));
         }
 
@@ -851,22 +850,7 @@ impl WebWorker {
           Poll::Ready(Ok(()))
         }
       }
-      Poll::Pending => {
-        // This is special code path for workers created from `node:worker_threads`
-        // module that have different semantics than Web workers.
-        // We want the worker thread to terminate automatically if we've done executing
-        // Top-Level await, there are no child workers spawned by that workers
-        // and there's no "message" event listener.
-        if self.close_on_idle
-          && self.has_executed_main_module
-          && !self.has_child_workers()
-          && !self.has_message_event_listener()
-        {
-          Poll::Ready(Ok(()))
-        } else {
-          Poll::Pending
-        }
-      }
+      Poll::Pending => Poll::Pending,
     }
   }
 
@@ -903,15 +887,6 @@ impl WebWorker {
       Some(result) => result.is_true(),
       None => false,
     }
-  }
-
-  fn has_child_workers(&mut self) -> bool {
-    !self
-      .js_runtime
-      .op_state()
-      .borrow()
-      .borrow::<WorkersTable>()
-      .is_empty()
   }
 }
 

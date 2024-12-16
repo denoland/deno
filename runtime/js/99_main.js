@@ -170,6 +170,7 @@ function postMessage(message, transferOrOptions = { __proto__: null }) {
 
 let isClosing = false;
 let globalDispatchEvent;
+let closeOnIdle;
 
 function hasMessageEventListener() {
   // the function name is kind of a misnomer, but we want to behave
@@ -187,7 +188,14 @@ async function pollForMessages() {
     );
   }
   while (!isClosing) {
-    const recvMessage = op_worker_recv_message();
+    const op = op_worker_recv_message();
+    // In a Node.js worker, unref() the op promise to prevent it from
+    // keeping the event loop alive. This avoids the need to explicitly
+    // call self.close() or worker.terminate().
+    if (closeOnIdle) {
+      core.unrefOpPromise(op);
+    }
+    const recvMessage = op;
     if (globalThis[messagePort.unrefPollForMessages] === true) {
       core.unrefOpPromise(recvMessage);
     }
@@ -915,6 +923,7 @@ function bootstrapWorkerRuntime(
       6: argv0,
       7: nodeDebug,
       13: otelConfig,
+      14: closeOnIdle_,
     } = runtimeOptions;
 
     performance.setTimeOrigin();
@@ -967,6 +976,7 @@ function bootstrapWorkerRuntime(
 
     globalThis.pollForMessages = pollForMessages;
     globalThis.hasMessageEventListener = hasMessageEventListener;
+    closeOnIdle = closeOnIdle_;
 
     for (let i = 0; i <= unstableFeatures.length; i++) {
       const id = unstableFeatures[i];
