@@ -3,10 +3,10 @@
 use std::borrow::Cow;
 use std::path::Path;
 use std::path::PathBuf;
-use std::sync::Arc;
 
 use deno_package_json::PackageJson;
 use deno_package_json::PackageJsonDepValue;
+use deno_package_json::PackageJsonRc;
 use deno_path_util::url_to_file_path;
 use deno_semver::package::PackageReq;
 use deno_semver::Version;
@@ -49,6 +49,10 @@ pub struct ByonmNpmResolverCreateOptions<
   pub pkg_json_resolver: PackageJsonResolverRc<TEnv>,
 }
 
+#[allow(clippy::disallowed_types)]
+pub type ByonmNpmResolverRc<Fs, TEnv> =
+  crate::sync::MaybeArc<ByonmNpmResolver<Fs, TEnv>>;
+
 #[derive(Debug)]
 pub struct ByonmNpmResolver<Fs: DenoResolverFs, TEnv: NodeResolverEnv> {
   fs: Fs,
@@ -84,7 +88,7 @@ impl<Fs: DenoResolverFs, TEnv: NodeResolverEnv> ByonmNpmResolver<Fs, TEnv> {
   fn load_pkg_json(
     &self,
     path: &Path,
-  ) -> Result<Option<Arc<PackageJson>>, PackageJsonLoadError> {
+  ) -> Result<Option<PackageJsonRc>, PackageJsonLoadError> {
     self.pkg_json_resolver.load_package_json(path)
   }
 
@@ -93,7 +97,7 @@ impl<Fs: DenoResolverFs, TEnv: NodeResolverEnv> ByonmNpmResolver<Fs, TEnv> {
     &self,
     dep_name: &str,
     referrer: &Url,
-  ) -> Option<Arc<PackageJson>> {
+  ) -> Option<PackageJsonRc> {
     let referrer_path = url_to_file_path(referrer).ok()?;
     let mut current_folder = referrer_path.parent()?;
     loop {
@@ -173,7 +177,7 @@ impl<Fs: DenoResolverFs, TEnv: NodeResolverEnv> ByonmNpmResolver<Fs, TEnv> {
     &self,
     req: &PackageReq,
     referrer: &Url,
-  ) -> Result<Option<(Arc<PackageJson>, String)>, PackageJsonLoadError> {
+  ) -> Result<Option<(PackageJsonRc, String)>, PackageJsonLoadError> {
     fn resolve_alias_from_pkg_json(
       req: &PackageReq,
       pkg_json: &PackageJson,
