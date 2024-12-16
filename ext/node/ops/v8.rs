@@ -68,6 +68,7 @@ impl v8::ValueSerializerImpl for SerializerDelegate {
     let obj = self.obj(scope);
     let key = FastString::from_static("_getSharedArrayBufferId")
       .v8_string(scope)
+      .unwrap()
       .into();
     if let Some(v) = obj.get(scope, key) {
       if let Ok(fun) = v.try_cast::<v8::Function>() {
@@ -89,6 +90,7 @@ impl v8::ValueSerializerImpl for SerializerDelegate {
     let obj = self.obj(scope);
     let key = FastString::from_static("_getDataCloneError")
       .v8_string(scope)
+      .unwrap()
       .into();
     if let Some(v) = obj.get(scope, key) {
       let fun = v
@@ -112,6 +114,7 @@ impl v8::ValueSerializerImpl for SerializerDelegate {
     let obj = self.obj(scope);
     let key = FastString::from_static("_writeHostObject")
       .v8_string(scope)
+      .unwrap()
       .into();
     if let Some(v) = obj.get(scope, key) {
       if let Ok(v) = v.try_cast::<v8::Function>() {
@@ -240,6 +243,7 @@ impl v8::ValueDeserializerImpl for DeserializerDelegate {
     let obj = v8::Local::new(scope, &self.obj);
     let key = FastString::from_static("_readHostObject")
       .v8_string(scope)
+      .unwrap()
       .into();
     let scope = &mut v8::AllowJavascriptExecutionScope::new(scope);
     if let Some(v) = obj.get(scope, key) {
@@ -250,7 +254,8 @@ impl v8::ValueDeserializerImpl for DeserializerDelegate {
           Err(_) => {
             let msg =
               FastString::from_static("readHostObject must return an object")
-                .v8_string(scope);
+                .v8_string(scope)
+                .unwrap();
             let error = v8::Exception::type_error(scope, msg);
             scope.throw_exception(error);
             return None;
