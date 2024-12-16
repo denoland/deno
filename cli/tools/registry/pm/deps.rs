@@ -708,7 +708,16 @@ impl DepManager {
             let lower_bound = semver_compatible.as_ref().map(|nv| &nv.version);
             let latest = info
               .and_then(|info| {
-                latest_version(lower_bound, info.versions.keys())
+                latest_version(
+                  lower_bound,
+                  info.versions.iter().filter_map(|(version, version_info)| {
+                    if !version_info.yanked {
+                      Some(version)
+                    } else {
+                      None
+                    }
+                  }),
+                )
               })
               .map(|version| PackageNv {
                 name: semver_req.name.clone(),
