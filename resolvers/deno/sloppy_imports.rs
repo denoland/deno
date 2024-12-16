@@ -101,6 +101,10 @@ pub trait SloppyImportResolverFs {
   }
 }
 
+#[allow(clippy::disallowed_types)]
+pub type SloppyImportsResolverRc<TSloppyImportResolverFs> =
+  crate::sync::MaybeArc<SloppyImportsResolver<TSloppyImportResolverFs>>;
+
 #[derive(Debug)]
 pub struct SloppyImportsResolver<Fs: SloppyImportResolverFs> {
   fs: Fs,
