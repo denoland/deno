@@ -133,6 +133,12 @@ pub struct Diagnostic {
   pub file_name: Option<String>,
   #[serde(skip_serializing_if = "Option::is_none")]
   pub related_information: Option<Vec<Diagnostic>>,
+  #[serde(skip_serializing_if = "Option::is_none")]
+  pub reports_deprecated: Option<bool>,
+  #[serde(skip_serializing_if = "Option::is_none")]
+  pub reports_unnecessary: Option<bool>,
+  #[serde(flatten)]
+  pub other: deno_core::serde_json::Map<String, deno_core::serde_json::Value>,
 }
 
 impl Diagnostic {

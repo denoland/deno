@@ -24,6 +24,7 @@ use crate::resolver::SloppyImportsCachedFs;
 use crate::tools::lint::CliLinter;
 use crate::tools::lint::CliLinterOptions;
 use crate::tools::lint::LintRuleProvider;
+use crate::tsc::DiagnosticCategory;
 use crate::util::path::to_percent_decoded_str;
 
 use deno_ast::MediaType;
@@ -906,8 +907,22 @@ async fn generate_ts_diagnostics(
   } else {
     Default::default()
   };
-  for (specifier_str, ts_json_diagnostics) in ts_diagnostics_map {
+  for (specifier_str, mut ts_json_diagnostics) in ts_diagnostics_map {
     let specifier = resolve_url(&specifier_str)?;
+    let suggestion_actions_settings = snapshot
+      .config
+      .language_settings_for_specifier(&specifier)
+      .map(|s| s.suggestion_actions.clone())
+      .unwrap_or_default();
+    if !suggestion_actions_settings.enabled {
+      ts_json_diagnostics.retain(|d| {
+        d.category != DiagnosticCategory::Suggestion
+          // Still show deprecated and unused diagnostics.
+          // https://github.com/microsoft/vscode/blob/ce50bd4876af457f64d83cfd956bc916535285f4/extensions/typescript-language-features/src/languageFeatures/diagnostics.ts#L113-L114
+          || d.reports_deprecated == Some(true)
+          || d.reports_unnecessary == Some(true)
+      });
+    }
     let version = snapshot
       .documents
       .get(&specifier)

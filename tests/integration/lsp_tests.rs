@@ -2083,6 +2083,88 @@ fn lsp_inlay_hints_not_enabled() {
 }
 
 #[test]
+fn lsp_suggestion_actions_disabled() {
+  let context = TestContextBuilder::new().use_temp_cwd().build();
+  let temp_dir = context.temp_dir();
+  let mut client = context.new_lsp_command().build();
+  client.initialize_default();
+  client.change_configuration(json!({
+    "deno": {
+      "enable": true,
+      "lint": false,
+    },
+    "typescript": {
+      "suggestionActions": {
+        "enabled": false,
+      },
+    },
+  }));
+  client.read_diagnostics();
+  let diagnostics = client.did_open(json!({
+    "textDocument": {
+      "uri": temp_dir.url().join("file.ts").unwrap(),
+      "languageId": "typescript",
+      "version": 1,
+      "text": r#"
+        // The settings should disable the suggestion for this to be async.
+        function asyncLikeFunction() {
+          return new Promise((r) => r(null)).then((v) => v);
+        }
+        console.log(asyncLikeFunction);
+
+        // Deprecated warnings should remain.
+        /** @deprecated */
+        function deprecatedFunction() {}
+        console.log(deprecatedFunction);
+
+        // Unused warnings should remain.
+        const unsusedVariable = 1;
+      "#,
+    },
+  }));
+  assert_eq!(
+    json!(diagnostics.all()),
+    json!([
+      {
+        "range": {
+          "start": { "line": 10, "character": 20 },
+          "end": { "line": 10, "character": 38 },
+        },
+        "severity": 4,
+        "code": 6385,
+        "source": "deno-ts",
+        "message": "'deprecatedFunction' is deprecated.",
+        "relatedInformation": [
+          {
+            "location": {
+              "uri": temp_dir.url().join("file.ts").unwrap(),
+              "range": {
+                "start": { "line": 8, "character": 12 },
+                "end": { "line": 8, "character": 24 },
+              },
+            },
+            "message": "The declaration was marked as deprecated here.",
+          },
+        ],
+        "tags": [2],
+      },
+      {
+        "range": {
+          "start": { "line": 13, "character": 14 },
+          "end": { "line": 13, "character": 29 },
+        },
+        "severity": 4,
+        "code": 6133,
+        "source": "deno-ts",
+        "message": "'unsusedVariable' is declared but its value is never read.",
+        "tags": [1],
+      },
+    ]),
+  );
+  client.shutdown();
+}
+
+#[test]
 fn lsp_workspace_disable_enable_paths() {
   fn run_test(use_trailing_slash: bool) {
     let context = TestContextBuilder::new().use_temp_cwd().build();

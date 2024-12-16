@@ -3,8 +3,10 @@ Check [WILDCARD]main.ts
 Compile [WILDCARD]main.ts to out[WILDCARD]
 Warning Environment variables from the file "environment.env" were embedded in the generated executable file
 
-Embedded File System
+Embedded Files
 
 out[WILDLINE]
-└── main.ts
+└── main.ts ([WILDLINE])
+
+Size: [WILDLINE]
 

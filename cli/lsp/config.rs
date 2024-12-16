@@ -459,6 +459,19 @@ impl Default for LanguagePreferences {
   }
 }
 
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct SuggestionActionsSettings {
+  #[serde(default = "is_true")]
+  pub enabled: bool,
+}
+
+impl Default for SuggestionActionsSettings {
+  fn default() -> Self {
+    SuggestionActionsSettings { enabled: true }
+  }
+}
+
 #[derive(Debug, Default, Clone, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct UpdateImportsOnFileMoveOptions {
@@ -489,6 +502,8 @@ pub struct LanguageWorkspaceSettings {
   pub preferences: LanguagePreferences,
   #[serde(default)]
   pub suggest: CompletionSettings,
+  #[serde(default)]
+  pub suggestion_actions: SuggestionActionsSettings,
   #[serde(default)]
   pub update_imports_on_file_move: UpdateImportsOnFileMoveOptions,
 }
@@ -2293,6 +2308,7 @@ mod tests {
               enabled: true,
             },
           },
+          suggestion_actions: SuggestionActionsSettings { enabled: true },
           update_imports_on_file_move: UpdateImportsOnFileMoveOptions {
             enabled: UpdateImportsOnFileMoveEnabled::Prompt
           }
@@ -2339,6 +2355,7 @@ mod tests {
               enabled: true,
             },
           },
+          suggestion_actions: SuggestionActionsSettings { enabled: true },
           update_imports_on_file_move: UpdateImportsOnFileMoveOptions {
             enabled: UpdateImportsOnFileMoveEnabled::Prompt
           }
