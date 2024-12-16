@@ -950,15 +950,15 @@ const otelConsoleConfig = {
 };
 
 export function bootstrap(
-  config: [] | [
+  config: [
+    0 | 1,
     typeof otelConsoleConfig[keyof typeof otelConsoleConfig],
-    number,
+    0 | 1,
   ],
 ): void {
-  if (config.length === 0) return;
-  const { 0: consoleConfig, 1: deterministic } = config;
+  const { 0: tracingEnabled, 1: consoleConfig, 2: deterministic } = config;
 
-  TRACING_ENABLED = true;
+  TRACING_ENABLED = tracingEnabled === 1;
   DETERMINISTIC = deterministic === 1;
 
   switch (consoleConfig) {

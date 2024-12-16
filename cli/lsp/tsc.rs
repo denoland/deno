@@ -4496,6 +4496,7 @@ impl<'a> ToV8<'a> for TscRequestArray {
 
     let method_name = deno_core::FastString::from_static(method_name)
       .v8_string(scope)
+      .unwrap()
       .into();
     let args = args.unwrap_or_else(|| v8::Array::new(scope, 0).into());
     let scope_url = serde_v8::to_v8(scope, self.scope)
@@ -5515,7 +5516,6 @@ impl TscRequest {
 mod tests {
   use super::*;
   use crate::cache::HttpCache;
-  use crate::http_util::HeadersMap;
   use crate::lsp::cache::LspCache;
   use crate::lsp::config::Config;
   use crate::lsp::config::WorkspaceSettings;
@@ -5745,6 +5745,7 @@ mod tests {
           "sourceLine": "        import { A } from \".\";",
           "category": 2,
           "code": 6133,
+          "reportsUnnecessary": true,
         }]
       })
     );
@@ -5827,6 +5828,7 @@ mod tests {
           "sourceLine": "        import {",
           "category": 2,
           "code": 6192,
+          "reportsUnnecessary": true,
         }, {
           "start": {
             "line": 8,
@@ -5950,7 +5952,7 @@ mod tests {
       .global()
       .set(
         &specifier_dep,
-        HeadersMap::default(),
+        Default::default(),
         b"export const b = \"b\";\n",
       )
       .unwrap();
@@ -5989,7 +5991,7 @@ mod tests {
       .global()
       .set(
         &specifier_dep,
-        HeadersMap::default(),
+        Default::default(),
         b"export const b = \"b\";\n\nexport const a = \"b\";\n",
       )
       .unwrap();
