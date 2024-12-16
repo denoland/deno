@@ -398,8 +398,6 @@ export function parseSelector(input, toElem, toAttr) {
   while (lex.token !== Token.EOF) {
     const current = /** @type {Selector} */ (stack.at(-1));
 
-    console.log(input.slice(lex.i));
-    console.log(stack);
     if (lex.token === Token.Word) {
       const value = lex.value;
       const wildcard = value === "*";
@@ -543,14 +541,23 @@ export function parseSelector(input, toElem, toAttr) {
           lex.expect(Token.BraceOpen);
           lex.next();
 
-          console.log("================================");
-
-          /** @type {PseudoHas} */
-          const node = {
+          current.push({
             type: PSEUDO_HAS,
             selectors: [],
-          };
-          current.push(node);
+          });
+          stack.push([]);
+
+          continue;
+        }
+        case "not": {
+          lex.next();
+          lex.expect(Token.BraceOpen);
+          lex.next();
+
+          current.push({
+            type: PSEUDO_NOT,
+            selectors: [],
+          });
           stack.push([]);
 
           continue;
@@ -609,7 +616,7 @@ function popSelector(result, stack) {
     if (node.type === PSEUDO_NTH_CHILD) {
       node.of = sel;
     } else if (node.type === PSEUDO_HAS || node.type === PSEUDO_NOT) {
-      node.selectors.push(prev);
+      node.selectors.push(sel);
     } else {
       throw new Error(`Multiple selectors not allowed here`);
     }

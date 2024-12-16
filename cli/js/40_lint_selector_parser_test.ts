@@ -9,6 +9,7 @@ import {
   PSEUDO_FIRST_CHILD,
   PSEUDO_HAS,
   PSEUDO_LAST_CHILD,
+  PSEUDO_NOT,
   PSEUDO_NTH_CHILD,
   RELATION_NODE,
   Token,
@@ -230,7 +231,7 @@ Deno.test("Lexer - Pseudo", () => {
   ]);
 });
 
-Deno.test("Parser", () => {
+Deno.test("Parser - Elem", () => {
   expect(testParse("Foo")).toEqual([[
     {
       type: ELEM_NODE,
@@ -484,8 +485,8 @@ Deno.test("Parser - Pseudo nth-child", () => {
   expect(() => testParse(":nth-child(2n - 1 foo)")).toThrow();
 });
 
-Deno.test.only("Parser - Pseudo has/is/where", () => {
-  expect(testParse(":has(Foo, Bar)")).toEqual([[
+Deno.test("Parser - Pseudo has/is/where", () => {
+  expect(testParse(":has(Foo:has(Foo), Bar)")).toEqual([[
     {
       type: PSEUDO_HAS,
       selectors: [
@@ -494,28 +495,74 @@ Deno.test.only("Parser - Pseudo has/is/where", () => {
           {
             type: PSEUDO_HAS,
             selectors: [
-              { type: ELEM_NODE, elem: 1, wildcard: false },
+              [{ type: ELEM_NODE, elem: 1, wildcard: false }],
             ],
           },
         ],
         [
-          { type: ELEM_NODE, elem: 1, wildcard: false },
+          { type: ELEM_NODE, elem: 2, wildcard: false },
         ],
       ],
     },
   ]]);
-  // expect(testParse(":where(Foo:where(Foo), Bar)")).toEqual([[
-  //   {
-  //     type: PSEUDO_HAS,
-  //     op: 1,
-  //     selectors: [{}],
-  //   },
-  // ]]);
-  // expect(testParse(":is(Foo:is(Foo), Bar)")).toEqual([[
-  //   {
-  //     type: PSEUDO_HAS,
-  //     op: 1,
-  //     selectors: [{}],
-  //   },
-  // ]]);
+  expect(testParse(":where(Foo:where(Foo), Bar)")).toEqual([[
+    {
+      type: PSEUDO_HAS,
+      selectors: [
+        [
+          { type: ELEM_NODE, elem: 1, wildcard: false },
+          {
+            type: PSEUDO_HAS,
+            selectors: [
+              [{ type: ELEM_NODE, elem: 1, wildcard: false }],
+            ],
+          },
+        ],
+        [
+          { type: ELEM_NODE, elem: 2, wildcard: false },
+        ],
+      ],
+    },
+  ]]);
+  expect(testParse(":is(Foo:is(Foo), Bar)")).toEqual([[
+    {
+      type: PSEUDO_HAS,
+      selectors: [
+        [
+          { type: ELEM_NODE, elem: 1, wildcard: false },
+          {
+            type: PSEUDO_HAS,
+            selectors: [
+              [{ type: ELEM_NODE, elem: 1, wildcard: false }],
+            ],
+          },
+        ],
+        [
+          { type: ELEM_NODE, elem: 2, wildcard: false },
+        ],
+      ],
+    },
+  ]]);
+});
+
+Deno.test("Parser - Pseudo not", () => {
+  expect(testParse(":not(Foo:not(Foo), Bar)")).toEqual([[
+    {
+      type: PSEUDO_NOT,
+      selectors: [
+        [
+          { type: ELEM_NODE, elem: 1, wildcard: false },
+          {
+            type: PSEUDO_NOT,
+            selectors: [
+              [{ type: ELEM_NODE, elem: 1, wildcard: false }],
+            ],
+          },
+        ],
+        [
+          { type: ELEM_NODE, elem: 2, wildcard: false },
+        ],
+      ],
+    },
+  ]]);
 });
