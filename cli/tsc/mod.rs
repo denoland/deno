@@ -1444,6 +1444,9 @@ mod tests {
           source_line: None,
           file_name: None,
           related_information: None,
+          reports_deprecated: None,
+          reports_unnecessary: None,
+          other: Default::default(),
         }]),
         stats: Stats(vec![("a".to_string(), 12)])
       })
