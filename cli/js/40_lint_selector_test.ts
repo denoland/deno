@@ -1,4 +1,9 @@
-import { compileSelector, parseSelector } from "./40_lint_selector.js";
+import {
+  compileSelector,
+  MatchCtx,
+  MatcherFn,
+  parseSelector,
+} from "./40_lint_selector.js";
 import { expect } from "@std/expect";
 
 /**
@@ -44,14 +49,14 @@ import { expect } from "@std/expect";
  * ```
  */
 
-const AstNodes = {
+const AstNodes: Record<string, number> = {
   Foo: 1,
   Bar: 2,
   Baz: 3,
   Foobar: 4,
 };
 
-const AstAttrs = {
+const AstAttrs: Record<string, number> = {
   _empty: 0,
   key: 1,
   value: 2,
@@ -60,6 +65,8 @@ const AstAttrs = {
   children: 5,
   msg: 6,
 };
+const toElem = (value: string) => AstNodes[value];
+const toAttr = (value: string) => AstAttrs[value];
 
 export interface TestNode {
   type: keyof typeof AstNodes;
@@ -70,7 +77,7 @@ export interface TestNode {
 export interface FakeProp {
   propId: number;
   name: string;
-  value: any;
+  value: unknown;
 }
 
 export interface FakeNode {
@@ -81,24 +88,43 @@ export interface FakeNode {
   original: TestNode;
 }
 
+function isFakeNode(x: unknown): x is FakeNode {
+  return x !== null && typeof x === "object" && "type" in x &&
+    typeof x.type === "number" &&
+    "original" in x;
+}
+
 class FakeContext implements MatchCtx {
   ids = new Map<number, FakeNode>();
-  nodeById = new Map();
-  idByNode = new Map();
+  idByNode = new Map<FakeNode, number>();
   id = 0;
 
-  getAttrValue(id: number, propId: number) {
+  getAttrPathValue(id: number, props: number[]) {
     const node = this.ids.get(id);
     if (node === undefined) return undefined;
 
-    return node.props.find((prop) => prop.propId === propId)?.value;
+    // deno-lint-ignore no-explicit-any
+    let tmp: any = node;
+    for (let i = 0; i < props.length; i++) {
+      const prop = props[i];
+
+      if (isFakeNode(tmp)) {
+        const found = tmp.props.find((node) => node.propId === prop);
+        if (!found) return undefined;
+        tmp = found.value;
+        continue;
+      }
+
+      const name = AstAttrs[prop];
+      if (!(name in tmp)) return undefined;
+      tmp = tmp[name];
+    }
+
+    return tmp;
   }
 
-  hasAttr(id: number, propId: number): boolean {
-    const node = this.ids.get(id);
-    if (node === undefined) return false;
-
-    return node.props.find((prop) => prop.propId === propId) !== undefined;
+  hasAttrPath(id: number, propId: number[]): boolean {
+    return this.getAttrPathValue(id, propId) !== undefined;
   }
 
   getType(id: number): number {
@@ -136,7 +162,7 @@ class FakeContext implements MatchCtx {
       if (Array.isArray(prop.value)) {
         if (prop.value.length === 0) return -1;
         return prop.value.at(-1);
-      } else if (prop.value !== null && typeof prop.value === "object") {
+      } else if (prop.value !== null && typeof prop.value !== "object") {
         last = prop.value;
       }
     }
@@ -171,7 +197,19 @@ class FakeContext implements MatchCtx {
   }
 
   getSiblings(id: number): number[] {
-    throw new Error("TODO");
+    const parent = this.getParent(id);
+    const node = this.ids.get(parent);
+    if (node === undefined) return [];
+
+    for (const prop of node.props) {
+      if (Array.isArray(prop.value)) {
+        if (prop.value.includes(id)) {
+          return prop.value;
+        }
+      }
+    }
+
+    return [];
   }
 }
 
@@ -203,9 +241,11 @@ function serializeFakeNode(
   };
 
   ctx.ids.set(id, fake);
+  ctx.idByNode.set(fake, id);
 
   for (const [k, value] of Object.entries(node)) {
     if (k === "type") continue;
+    // deno-lint-ignore no-explicit-any
     const propId = (AstAttrs as any)[k] as number;
 
     const prop: FakeProp = {
@@ -233,13 +273,12 @@ function visit(
   ctx: FakeContext,
   selector: MatcherFn,
   id: number,
-): any {
+): unknown {
   const node = ctx.ids.get(id)!;
-  console.log("================================");
-  console.log(node);
+  // console.log("visit", { node });
   const res = selector(ctx, id);
   if (res) {
-    console.log("<-- MATCHED");
+    // console.log("<-- MATCHED");
     return node.original;
   }
 
@@ -247,19 +286,18 @@ function visit(
     const prop = node.props[i];
     const value = prop.value;
 
-    if (value !== null && typeof value === "object") {
-      if (Array.isArray(value)) {
-        for (let i = 0; i < value.length; i++) {
-          const res = visit(ctx, selector, value[i]);
-          if (res) {
-            return res;
-          }
-        }
-      } else {
-        const res = visit(ctx, selector, value);
+    if (Array.isArray(value)) {
+      for (let i = 0; i < value.length; i++) {
+        const res = visit(ctx, selector, value[i]);
         if (res) {
           return res;
         }
+      }
+    } else if (isFakeNode(value)) {
+      const id = ctx.idByNode.get(value)!;
+      const res = visit(ctx, selector, id);
+      if (res) {
+        return res;
       }
     }
   }
@@ -268,15 +306,15 @@ function visit(
 function testSelector(
   ast: TestNode,
   selector: string,
-): any {
+): unknown {
   const ctx = fakeSerializeAst(ast);
-  const raw = parseSelector(selector, AstNodes, AstAttrs)[0];
+  const raw = parseSelector(selector, toElem, toAttr)[0];
   const sel = compileSelector(raw);
 
   return visit(ctx, sel, 0);
 }
 
-Deno.test.only("select descendant: A B", () => {
+Deno.test("select descendant: A B", () => {
   const ast: TestNode = {
     type: "Foo",
     children: [{ type: "Bar" }, { type: "Baz" }],
@@ -415,7 +453,7 @@ Deno.test("select child: A:first-child", () => {
 
 Deno.test("select child: A:nth-child", () => {
   const ast: TestNode = {
-    type: "Foo",
+    type: "Bar",
     children: [
       { type: "Foo", msg: "a" },
       { type: "Foo", msg: "b" },
@@ -425,4 +463,9 @@ Deno.test("select child: A:nth-child", () => {
   };
   expect(testSelector(ast, "Foo:nth-child(2)")).toEqual(ast.children![1]);
   expect(testSelector(ast, "Foo:nth-child(2n)")).toEqual(ast.children![1]);
+  expect(testSelector(ast, "Foo:nth-child(2n + 3)")).toEqual(ast.children![2]);
+  expect(testSelector(ast, "Foo:nth-child(2n - 1)")).toEqual(ast.children![0]);
+  expect(testSelector(ast, ":nth-child(2n + 2 of Foo)")).toEqual(
+    ast.children![1],
+  );
 });

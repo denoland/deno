@@ -69,7 +69,7 @@ export const Token = {
   Minus: 17,
 };
 
-const BinOp = {
+export const BinOp = {
   /** [attr="value"] or [attr=value] */
   Equal: 1,
   /** [attr!="value"] or [attr!=value] */
@@ -84,6 +84,7 @@ const BinOp = {
   LessThan: 6,
   Tilde: 7,
   Plus: 8,
+  Space: 9,
 };
 
 /**
@@ -409,6 +410,19 @@ export function parseSelector(input, toElem, toAttr) {
         wildcard,
       });
       lex.next();
+
+      // Descendant selector
+      if (lex.token === Token.Space) {
+        lex.next();
+
+        if (lex.token === Token.Word) {
+          current.push({
+            type: RELATION_NODE,
+            op: BinOp.Space,
+          });
+        }
+      }
+
       continue;
     } else if (lex.token === Token.BracketOpen) {
       lex.next();
@@ -462,11 +476,11 @@ export function parseSelector(input, toElem, toAttr) {
           lex.expect(Token.BraceOpen);
           lex.next();
 
-          let backwards = false;
+          let mul = 1;
           let repeat = false;
           let step = 0;
           if (lex.token === Token.Minus) {
-            backwards = true;
+            mul = -1;
             lex.next();
           }
 
@@ -475,9 +489,9 @@ export function parseSelector(input, toElem, toAttr) {
 
           if (value.endsWith("n")) {
             repeat = true;
-            step = +value.slice(0, -1);
+            step = +value.slice(0, -1) * mul;
           } else {
-            step = +value;
+            step = +value * mul;
           }
 
           lex.next();
@@ -485,23 +499,31 @@ export function parseSelector(input, toElem, toAttr) {
           /** @type {PseudoNthChild} */
           const node = {
             type: PSEUDO_NTH_CHILD,
-            backwards,
             of: null,
+            op: null,
             step,
             stepOffset: 0,
             repeat,
           };
           current.push(node);
 
+          if (lex.token === Token.Space) lex.next();
+
           if (lex.token !== Token.BraceClose) {
-            lex.expect(Token.Op);
-            if (/** @type {string} */ (lex.value) !== "+") {
-              throw new Error(
-                `Unknown operator in ':nth-child' selector: '${lex.value}'`,
-              );
+            if (lex.token === Token.Op) {
+              node.op = lex.value;
+              lex.next();
+
+              if (lex.token === Token.Space) lex.next();
+            } else if (lex.token === Token.Minus) {
+              node.op = "-";
+              lex.next();
+
+              if (lex.token === Token.Space) {
+                lex.next();
+              }
             }
 
-            lex.next();
             lex.expect(Token.Word);
             node.stepOffset = +lex.value;
             lex.next();
@@ -510,7 +532,7 @@ export function parseSelector(input, toElem, toAttr) {
               lex.next(); // Space
 
               if (lex.token === Token.Word) {
-                if (lex.value !== "of") {
+                if (/** @type {string} */ (lex.value) !== "of") {
                   throw new Error(
                     `Expected 'of' keyword in ':nth-child' but got: ${lex.value}`,
                   );
@@ -527,6 +549,10 @@ export function parseSelector(input, toElem, toAttr) {
             }
 
             lex.expect(Token.BraceClose);
+          } else if (!node.repeat) {
+            // :nth-child(2) -> step is actually stepOffset
+            node.stepOffset = node.step - 1;
+            node.step = 0;
           }
 
           lex.next();
@@ -642,16 +668,16 @@ export function compileSelector(selector) {
         break;
       case RELATION_NODE:
         switch (node.op) {
-          case Char.Space:
+          case BinOp.Space:
             fn = matchDescendant(fn);
             break;
-          case Char.Greater:
+          case BinOp.Greater:
             fn = matchChild(fn);
             break;
-          case Char.Plus:
+          case BinOp.Plus:
             fn = matchAdjacent(fn);
             break;
-          case Char.Tilde:
+          case BinOp.Tilde:
             fn = matchFollowing(fn);
             break;
           default:
@@ -712,6 +738,26 @@ function matchLastChild(next) {
 
 /**
  * @param {PseudoNthChild} node
+ * @param {number} i
+ * @returns {number}
+ */
+function getNthAnB(node, i) {
+  const n = node.step * i;
+
+  if (node.op === null) return n;
+
+  switch (node.op) {
+    case "+":
+      return n + node.stepOffset;
+    case "-":
+      return n - node.stepOffset;
+    default:
+      throw new Error("Not supported nth-child operator: " + node.op);
+  }
+}
+
+/**
+ * @param {PseudoNthChild} node
  * @param {NextFn} next
  * @returns {MatcherFn}
  */
@@ -720,36 +766,22 @@ function matchNthChild(node, next) {
 
   return (ctx, id) => {
     const siblings = ctx.getSiblings(id);
+    const idx = siblings.indexOf(id);
 
-    if (node.backwards) {
-      for (
-        let i = siblings.length - 1 - node.stepOffset;
-        i < siblings.length;
-        i += node.step
-      ) {
-        const sib = siblings[i];
-
-        if (sib !== id) {
-          continue;
-        }
-
-        if (node.of !== null && !ofSelector(ctx, sib)) {
-          continue;
-        } else if (next(ctx, sib)) {
-          return true;
-        }
-      }
-
-      return false;
+    if (!node.repeat) {
+      return idx === node.stepOffset && next(ctx, id);
     }
 
-    for (let i = node.stepOffset; i < siblings.length; i += node.step) {
-      const sib = siblings[i];
-
-      if (node.of !== null && !ofSelector(ctx, sib)) {
-        continue;
-      } else if (next(ctx, sib)) {
-        return true;
+    for (let i = 0; i < siblings.length; i++) {
+      const n = getNthAnB(node, i);
+      if (id === n) {
+        if (node.of !== null && !ofSelector(ctx, id)) {
+          continue;
+        } else if (next(ctx, id)) {
+          return true;
+        }
+      } else if (n > idx) {
+        return false;
       }
     }
 
@@ -875,7 +907,7 @@ function matchElem(part, next) {
  */
 function matchAttrExists(attr, next) {
   return (ctx, id) => {
-    return ctx.hasAttr(id, attr.prop) ? next(ctx, id) : false;
+    return ctx.hasAttrPath(id, attr.prop) ? next(ctx, id) : false;
   };
 }
 
@@ -886,8 +918,8 @@ function matchAttrExists(attr, next) {
  */
 function matchAttrBin(attr, next) {
   return (ctx, id) => {
-    if (!ctx.hasAttr(id, attr.prop)) return false;
-    const value = ctx.getAttrValue(id, attr.prop);
+    if (!ctx.hasAttrPath(id, attr.prop)) return false;
+    const value = ctx.getAttrPathValue(id, attr.prop);
     if (!matchAttrValue(attr, value)) return false;
     return next(ctx, id);
   };

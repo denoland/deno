@@ -3,6 +3,7 @@
 import {
   ATTR_BIN_NODE,
   ATTR_EXISTS_NODE,
+  BinOp,
   ELEM_NODE,
   Lexer,
   parseSelector,
@@ -239,11 +240,18 @@ Deno.test("Parser - Elem", () => {
       wildcard: false,
     },
   ]]);
+});
+
+Deno.test("Parser - Relation (descendant)", () => {
   expect(testParse("Foo Bar")).toEqual([[
     {
       type: ELEM_NODE,
       elem: 1,
       wildcard: false,
+    },
+    {
+      type: RELATION_NODE,
+      op: BinOp.Space,
     },
     {
       type: ELEM_NODE,
@@ -262,7 +270,7 @@ Deno.test("Parser - Relation", () => {
     },
     {
       type: RELATION_NODE,
-      op: 3,
+      op: BinOp.Greater,
     },
     {
       type: ELEM_NODE,
@@ -279,7 +287,7 @@ Deno.test("Parser - Relation", () => {
     },
     {
       type: RELATION_NODE,
-      op: 7,
+      op: BinOp.Tilde,
     },
     {
       type: ELEM_NODE,
@@ -296,7 +304,7 @@ Deno.test("Parser - Relation", () => {
     },
     {
       type: RELATION_NODE,
-      op: 8,
+      op: BinOp.Plus,
     },
     {
       type: ELEM_NODE,
@@ -328,7 +336,7 @@ Deno.test("Parser - Attr", () => {
   expect(testParse("[foo=1]")).toEqual([[
     {
       type: ATTR_BIN_NODE,
-      op: 1,
+      op: BinOp.Equal,
       prop: [1],
       value: 1,
     },
@@ -336,7 +344,7 @@ Deno.test("Parser - Attr", () => {
   expect(testParse("[foo=true]")).toEqual([[
     {
       type: ATTR_BIN_NODE,
-      op: 1,
+      op: BinOp.Equal,
       prop: [1],
       value: true,
     },
@@ -344,7 +352,7 @@ Deno.test("Parser - Attr", () => {
   expect(testParse("[foo=false]")).toEqual([[
     {
       type: ATTR_BIN_NODE,
-      op: 1,
+      op: BinOp.Equal,
       prop: [1],
       value: false,
     },
@@ -352,7 +360,7 @@ Deno.test("Parser - Attr", () => {
   expect(testParse("[foo=null]")).toEqual([[
     {
       type: ATTR_BIN_NODE,
-      op: 1,
+      op: BinOp.Equal,
       prop: [1],
       value: null,
     },
@@ -360,7 +368,7 @@ Deno.test("Parser - Attr", () => {
   expect(testParse("[foo='str']")).toEqual([[
     {
       type: ATTR_BIN_NODE,
-      op: 1,
+      op: BinOp.Equal,
       prop: [1],
       value: "str",
     },
@@ -368,7 +376,7 @@ Deno.test("Parser - Attr", () => {
   expect(testParse('[foo="str"]')).toEqual([[
     {
       type: ATTR_BIN_NODE,
-      op: 1,
+      op: BinOp.Equal,
       prop: [1],
       value: "str",
     },
@@ -376,7 +384,7 @@ Deno.test("Parser - Attr", () => {
   expect(testParse("[foo=/str/]")).toEqual([[
     {
       type: ATTR_BIN_NODE,
-      op: 1,
+      op: BinOp.Equal,
       prop: [1],
       value: /str/,
     },
@@ -384,7 +392,7 @@ Deno.test("Parser - Attr", () => {
   expect(testParse("[foo=/str/g]")).toEqual([[
     {
       type: ATTR_BIN_NODE,
-      op: 1,
+      op: BinOp.Equal,
       prop: [1],
       value: /str/g,
     },
@@ -402,7 +410,7 @@ Deno.test("Parser - Attr nested", () => {
   expect(testParse("[foo.bar = 2]")).toEqual([[
     {
       type: ATTR_BIN_NODE,
-      op: 1,
+      op: BinOp.Equal,
       prop: [1, 2],
       value: 2,
     },
@@ -428,8 +436,8 @@ Deno.test("Parser - Pseudo nth-child", () => {
       type: PSEUDO_NTH_CHILD,
       of: null,
       backwards: false,
-      step: 2,
-      stepOffset: 0,
+      step: 0,
+      stepOffset: 1,
       repeat: false,
     },
   ]]);

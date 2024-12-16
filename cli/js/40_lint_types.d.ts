@@ -35,7 +35,7 @@ export interface ElemSelector {
 
 export interface PseudoNthChild {
   type: 5;
-  backwards: boolean;
+  op: string | null;
   step: number;
   stepOffset: number;
   of: Selector | null;
@@ -96,8 +96,8 @@ export interface MatchCtx {
   getSiblings(id: number): number[];
   getParent(id: number): number;
   getType(id: number): number;
-  hasAttr(id: number, propId: number): boolean;
-  getAttrValue(id: number, propId: number): unknown;
+  hasAttrPath(id: number, propIds: number[]): boolean;
+  getAttrPathValue(id: number, propIds: number[]): unknown;
 }
 
 export type NextFn = (ctx: MatchCtx, id: number) => boolean;
