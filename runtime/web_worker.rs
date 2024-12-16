@@ -384,7 +384,6 @@ pub struct WebWorker {
   pub js_runtime: JsRuntime,
   pub name: String,
   close_on_idle: bool,
-  has_executed_main_module: bool,
   internal_handle: WebWorkerInternalHandle,
   pub worker_type: WebWorkerType,
   pub main_module: ModuleSpecifier,
@@ -657,7 +656,6 @@ impl WebWorker {
         has_message_event_listener_fn: None,
         bootstrap_fn_global: Some(bootstrap_fn_global),
         close_on_idle: options.close_on_idle,
-        has_executed_main_module: false,
         maybe_worker_metadata: options.maybe_worker_metadata,
       },
       external_handle,
@@ -798,7 +796,6 @@ impl WebWorker {
 
       maybe_result = &mut receiver => {
         debug!("received worker module evaluate {:#?}", maybe_result);
-        self.has_executed_main_module = true;
         maybe_result
       }
 
