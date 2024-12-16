@@ -3,6 +3,10 @@
 // @ts-check
 
 import { core } from "ext:core/mod.js";
+import { compileSelector, parseSelector } from "ext:cli/lint/selector.js";
+
+console.log({ compileSelector, foo: "foo" });
+
 const {
   op_lint_get_rule,
   op_lint_get_source,

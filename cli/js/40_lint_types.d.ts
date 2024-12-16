@@ -1,3 +1,5 @@
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+
 export interface AstContext {
   buf: Uint8Array;
   strTable: Map<number, string>;
@@ -11,84 +13,60 @@ export interface LintState {
   installedPlugins: Set<string>;
 }
 
-export enum AttrOp {
-  /** [attr="value"] or [attr=value] */
-  Equal,
-  /** [attr!="value"] or [attr!=value] */
-  NotEqual,
-  /** [attr>1] */
-  Greater,
-  /** [attr>=1] */
-  GreaterThan,
-  /** [attr<1] */
-  Less,
-  /** [attr<=1] */
-  LessThan,
-}
-
 export interface AttrExists {
   type: 3;
-  prop: number;
-  debug?: string;
+  prop: number[];
 }
 
 export interface AttrBin {
   type: 4;
-  prop: number;
-  op: AttrOp;
+  prop: number[];
+  op: number;
   value: string;
 }
 
-export interface AttrRegex {
-  type: 5;
-  prop: number;
-  value: RegExp;
-}
+export type AttrSelector = AttrExists | AttrBin;
 
-export type AttrSelector = AttrExists | AttrBin | AttrRegex;
-
-export interface Elem {
+export interface ElemSelector {
   type: 1;
   wildcard: boolean;
   elem: number;
-  debug?: string;
 }
 
 export interface PseudoNthChild {
-  type: 6;
-  backward: boolean;
+  type: 5;
+  backwards: boolean;
   step: number;
   stepOffset: number;
   of: Selector | null;
+  repeat: boolean;
 }
 
 export interface PseudoHas {
-  type: 7;
+  type: 6;
   selector: Selector[];
 }
 export interface PseudoNot {
-  type: 8;
+  type: 7;
   selector: Selector[];
 }
 export interface PseudoFirstChild {
-  type: 9;
+  type: 8;
 }
 export interface PseudoLastChild {
-  type: 10;
+  type: 9;
 }
 
 export interface Relation {
   type: 2;
   op: number;
-  debug?: string;
 }
 
 export type Selector = Array<
-  | Elem
+  | ElemSelector
   | Relation
   | AttrExists
   | AttrBin
-  | AttrRegex
   | PseudoNthChild
   | PseudoNot
   | PseudoHas
@@ -101,10 +79,10 @@ export interface SelectorParseCtx {
   current: Selector;
 }
 
-export enum SelToken {
-  Value = 0,
-  Char = 1,
-  EOF = 2,
+export const enum SelToken {
+  Value,
+  Char,
+  EOF,
 }
 
 export interface ILexer {
@@ -124,3 +102,6 @@ export interface MatchCtx {
 
 export type NextFn = (ctx: MatchCtx, id: number) => boolean;
 export type MatcherFn = (ctx: MatchCtx, id: number) => boolean;
+export type Transformer = (value: string) => number;
+
+export {};

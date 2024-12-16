@@ -115,6 +115,18 @@ impl PluginRunner {
 
         log::debug!("before loaded");
 
+        match runtime.lazy_load_es_module_with_code(
+          "ext:cli/lint/selector.js",
+          deno_core::ascii_str_include!(concat!(
+            "../../js/40_lint_selector.js"
+          )),
+        ) {
+          Ok(_) => {}
+          Err(err) => {
+            eprintln!("after load error {:#?}", err);
+            return Err(err);
+          }
+        }
         let obj_result = runtime.lazy_load_es_module_with_code(
           "ext:cli/lint.js",
           deno_core::ascii_str_include!(concat!("../../js/40_lint.js")),

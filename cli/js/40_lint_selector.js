@@ -1,66 +1,75 @@
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+
 // @ts-check
 
-/** @typedef {import("./internal.d.ts").LintState} LintState */
-/** @typedef {import("./internal.d.ts").AstContext} AstContext */
-/** @typedef {import("./internal.d.ts").MatchCtx} MatchCtx */
-/** @typedef {import("./internal.d.ts").AttrOp} AttrOp */
-/** @typedef {import("./internal.d.ts").AttrExists} AttrExists */
-/** @typedef {import("./internal.d.ts").AttrBin} AttrBin */
-/** @typedef {import("./internal.d.ts").AttrSelector} AttrSelector */
-/** @typedef {import("./internal.d.ts").Elem} SelectorPart */
-/** @typedef {import("./internal.d.ts").PseudoNthChild} PseudoNthChild */
-/** @typedef {import("./internal.d.ts").PseudoHas} PseudoHas */
-/** @typedef {import("./internal.d.ts").PseudoNot} PseudoNot */
-/** @typedef {import("./internal.d.ts").Relation} SRelation */
-/** @typedef {import("./internal.d.ts").Selector} Selector */
-/** @typedef {import("./internal.d.ts").SelectorParseCtx} SelectorParseCtx */
-/** @typedef {import("./internal.d.ts").ILexer} ILexer */
-/** @typedef {import("./internal.d.ts").NextFn} NextFn */
-/** @typedef {import("./internal.d.ts").MatcherFn} MatcherFn */
-/** @typedef {import("./internal.d.ts").AttrRegex} AttrRegex */
+/** @typedef {import("./40_lint_types.d.ts").LintState} LintState */
+/** @typedef {import("./40_lint_types.d.ts").AstContext} AstContext */
+/** @typedef {import("./40_lint_types.d.ts").MatchCtx} MatchCtx */
+/** @typedef {import("./40_lint_types.d.ts").AttrExists} AttrExists */
+/** @typedef {import("./40_lint_types.d.ts").AttrBin} AttrBin */
+/** @typedef {import("./40_lint_types.d.ts").AttrSelector} AttrSelector */
+/** @typedef {import("./40_lint_types.d.ts").ElemSelector} ElemSelector */
+/** @typedef {import("./40_lint_types.d.ts").PseudoNthChild} PseudoNthChild */
+/** @typedef {import("./40_lint_types.d.ts").PseudoHas} PseudoHas */
+/** @typedef {import("./40_lint_types.d.ts").PseudoNot} PseudoNot */
+/** @typedef {import("./40_lint_types.d.ts").Relation} SRelation */
+/** @typedef {import("./40_lint_types.d.ts").Selector} Selector */
+/** @typedef {import("./40_lint_types.d.ts").SelectorParseCtx} SelectorParseCtx */
+/** @typedef {import("./40_lint_types.d.ts").NextFn} NextFn */
+/** @typedef {import("./40_lint_types.d.ts").MatcherFn} MatcherFn */
+/** @typedef {import("./40_lint_types.d.ts").Transformer} Transformer */
 
 const Char = {
-  /**   */
+  Tab: 9,
   Space: 32,
-  /** ' */
   Bang: 33,
-  /** " */
   DoubleQuote: 34,
-  /** ' */
   Quote: 39,
-  /** ( */
   BraceOpen: 40,
-  /** ) */
   BraceClose: 41,
-  /** + */
   Plus: 43,
-  /** , */
   Comma: 44,
-  /** : */
+  Minus: 45,
+  Dot: 46,
+  Slash: 47,
+  n0: 49,
+  n9: 57,
   Colon: 58,
-  /** < */
   Less: 60,
-  /** = */
   Equal: 61,
-  /** > */
   Greater: 62,
-  /** [ */
+  A: 65,
+  Z: 90,
   BracketOpen: 91,
-  /** ] */
+  BackSlash: 92,
   BracketClose: 93,
-  /** ~ */
+  Underscore: 95,
+  a: 97,
+  z: 122,
   Tilde: 126,
 };
 
-const Token = {
-  Value: 0,
-  Char: 1,
-  Attr: 2,
-  Pseudo: 3,
-  EOF: 4,
+export const Token = {
+  EOF: 0,
+  Word: 1,
+  Space: 2,
+  Op: 3,
+  Colon: 4,
+  Comma: 7,
+  BraceOpen: 8,
+  BraceClose: 9,
+  BracketOpen: 10,
+  BracketClose: 11,
+  String: 12,
+  Number: 13,
+  Bool: 14,
+  Null: 15,
+  Undefined: 16,
+  Dot: 17,
+  Minus: 17,
 };
 
-const AttrOp = {
+const BinOp = {
   /** [attr="value"] or [attr=value] */
   Equal: 1,
   /** [attr!="value"] or [attr!=value] */
@@ -73,6 +82,8 @@ const AttrOp = {
   Less: 5,
   /** [attr<=1] */
   LessThan: 6,
+  Tilde: 7,
+  Plus: 8,
 };
 
 /**
@@ -82,241 +93,240 @@ const AttrOp = {
 function getAttrOp(s) {
   switch (s) {
     case "=":
-      return AttrOp.Equal;
+      return BinOp.Equal;
     case "!=":
-      return AttrOp.NotEqual;
+      return BinOp.NotEqual;
     case ">":
-      return AttrOp.Greater;
+      return BinOp.Greater;
     case ">=":
-      return AttrOp.GreaterThan;
+      return BinOp.GreaterThan;
     case "<":
-      return AttrOp.Less;
+      return BinOp.Less;
     case "<=":
-      return AttrOp.LessThan;
+      return BinOp.LessThan;
+    case "~":
+      return BinOp.Tilde;
+    case "+":
+      return BinOp.Plus;
     default:
       throw new Error(`Unknown attribute operator: '${s}'`);
   }
 }
 
-/** @implements ILexer */
-class Lexer {
-  token = Token.Value;
+export class Lexer {
+  token = Token.Word;
   start = 0;
   end = 0;
   ch = 0;
-  i = 0;
+  i = -1;
 
   value = "";
-  value2 = "";
-  op = 0;
 
   /**
    * @param {string} input
    */
   constructor(input) {
     this.input = input;
+    this.step();
+    this.next();
   }
 
   /**
-   * @param {number} char
+   * @param {number} token
    */
-  expect(char) {
-    if (this.i >= this.input.length) {
+  expect(token) {
+    if (this.token !== token) {
+      console.log(this, JSON.stringify(String.fromCharCode(this.ch)));
       throw new Error(
-        `Unterminated selector:\n\n${this.input}\n${" ".repeat(this.i)}^`,
+        `Expected token '${token}', but got '${this.token}'.\n\n${this.input}\n${
+          " ".repeat(this.i)
+        }^`,
       );
     }
-    const ch = this.input.charCodeAt(this.i);
-    if (ch !== char) {
-      throw new Error(
-        `Expected character '${
-          String.fromCharCode(ch)
-        }', but got '${ch}'.\n\n${this.input}\n${" ".repeat(this.i)}^`,
-      );
-    }
-
-    this.i++;
   }
 
-  getChar() {
-    return this.input.charCodeAt(this.i);
+  /**
+   * @param {number} token
+   */
+  readAsWordUntil(token) {
+    const s = this.i;
+    while (this.token !== Token.EOF && this.token !== token) {
+      this.next();
+    }
+
+    this.start = s;
+    this.end = this.i - 1;
+    this.value = this.getSlice();
   }
 
   getSlice() {
-    return this.input.slice(this.start, this.i);
+    return this.input.slice(this.start, this.end);
+  }
+
+  step() {
+    this.i++;
+    if (this.i >= this.input.length) {
+      this.ch = -1;
+    } else {
+      this.ch = this.input.charCodeAt(this.i);
+    }
   }
 
   next() {
     this.value = "";
-    this.value2 = "";
-    this.op = 0;
 
     if (this.i >= this.input.length) {
       this.token = Token.EOF;
       return;
     }
 
-    let ch = this.input.charCodeAt(this.i);
-    console.log("NEXT", JSON.stringify(String.fromCharCode(ch)));
-    switch (ch) {
-      case Char.Space:
-        while (ch === Char.Space) {
-          ch = this.getChar();
-          this.i++;
-        }
+    console.log(
+      "NEXT",
+      this.input,
+      this.i,
+      JSON.stringify(String.fromCharCode(this.ch)),
+    );
+    if (this.i > 30) throw new Error("infininte #2");
 
-        // Check if this a sibling/descendant selector
-        if (ch === Char.Plus || ch === Char.Tilde || ch === Char.Greater) {
+    let j = 0;
+    while (true) {
+      if (j++ > 50) throw new Error("infininte");
+      switch (this.ch) {
+        case Char.Space:
+          while (this.isWhiteSpace()) {
+            this.step();
+          }
+
+          // Check if space preceeded operator
+          if (this.isOpContinue()) {
+            continue;
+          }
+
+          this.token = Token.Space;
+          return;
+        case Char.BracketOpen:
+          this.token = Token.BracketOpen;
+          this.step();
+          return;
+        case Char.BracketClose:
+          this.token = Token.BracketClose;
+          this.step();
+          return;
+        case Char.BraceOpen:
+          this.token = Token.BraceOpen;
+          this.step();
+          return;
+        case Char.BraceClose:
+          this.token = Token.BraceClose;
+          this.step();
+          return;
+        case Char.Colon:
+          this.token = Token.Colon;
+          this.step();
+          return;
+        case Char.Comma:
+          this.token = Token.Comma;
+          this.step();
+          return;
+        case Char.Dot:
+          this.token = Token.Dot;
+          this.step();
+          return;
+        case Char.Minus:
+          this.token = Token.Minus;
+          this.step();
+          return;
+
+        case Char.Plus:
+        case Char.Tilde:
+        case Char.Greater:
+        case Char.Equal:
+        case Char.Less:
+        case Char.Bang: {
+          this.token = Token.Op;
           this.start = this.i;
+          this.step();
+
+          while (this.isOpContinue()) {
+            this.step();
+          }
+
           this.end = this.i;
-          this.ch = ch;
-          this.token = Token.Char;
+          this.value = this.getSlice();
 
-          console.log("--> yeah");
-          this.i++;
-          ch = this.getChar();
-
-          while (ch === Char.Space) {
-            ch = this.getChar();
-            this.i++;
+          // Consume remaining space
+          while (this.isWhiteSpace()) {
+            this.step();
           }
-        } else {
+
+          return;
+        }
+
+        case Char.Quote:
+        case Char.DoubleQuote: {
+          this.token = Token.String;
+          const ch = this.ch;
+
+          this.step();
           this.start = this.i;
+
+          while (this.ch > 0 && this.ch !== ch) {
+            this.step();
+          }
+
           this.end = this.i;
-          this.ch = Char.Space;
-          this.token = Token.Char;
-          this.i--;
+          this.value = this.getSlice();
+          this.step();
+
+          return;
         }
 
-        break;
-      case Char.BracketOpen: {
-        this.i++;
-        this.start = this.i;
-
-        let hasValue = false;
-        while (this.i < this.input.length) {
-          ch = this.getChar();
-          if (
-            ch === Char.Equal || ch === Char.Greater || ch === Char.Less ||
-            ch === Char.Bang
-          ) {
-            this.value = this.getSlice().trim();
-            hasValue = true;
-            break;
-          } else if (ch === Char.BracketClose) {
-            this.value = this.getSlice();
-            break;
-          }
-
-          this.i++;
-        }
-
-        if (hasValue) {
+        default:
           this.start = this.i;
-          while (
-            ch === Char.Equal || ch === Char.Greater || ch === Char.Less ||
-            ch === Char.Bang
-          ) {
-            this.i++;
-            ch = this.getChar();
+          this.step();
+
+          while (this.isWordContinue()) {
+            this.step();
           }
 
-          this.op = getAttrOp(this.getSlice());
-
-          this.start = this.i;
-
-          while (this.i < this.input.length) {
-            ch = this.input.charCodeAt(this.i);
-            if (ch === Char.BracketClose) {
-              const raw = this.getSlice().trim();
-              this.value2 = getFromRawValue(raw);
-              break;
-            }
-
-            this.i++;
-          }
-        }
-
-        this.expect(Char.BracketClose);
-
-        this.end = this.i;
-        this.token = Token.Attr;
-
-        break;
+          this.end = this.i;
+          this.value = this.getSlice();
+          this.token = Token.Word;
+          return;
       }
-      case Char.Greater:
-      case Char.Plus:
-      case Char.Tilde:
-      case Char.Comma:
-      case Char.BraceClose: {
-        const original = ch;
-        this.start = this.i;
-        this.i++;
-        while (this.i < this.input.length) {
-          ch = this.getChar();
-          if (ch !== Char.Space) {
-            break;
-          }
-
-          this.i++;
-        }
-        console.log("char", String.fromCharCode(original));
-        this.end = this.i;
-        this.token = Token.Char;
-        this.ch = original;
-
-        break;
-      }
-
-      // Pseudo
-      case Char.Colon:
-        this.start = this.i;
-        this.i++;
-        while (this.i < this.input.length) {
-          ch = this.getChar();
-          if (
-            ch === Char.Space || ch === Char.BracketOpen ||
-            ch === Char.BraceOpen
-          ) {
-            break;
-          }
-
-          this.i++;
-        }
-
-        this.end = this.i;
-        this.token = Token.Pseudo;
-        this.value = this.getSlice();
-        break;
-
-      default:
-        this.start = this.i;
-        this.i++;
-
-        loop: while (this.i < this.input.length) {
-          ch = this.getChar();
-
-          switch (ch) {
-            case Char.Space:
-            case Char.Comma:
-            case Char.Colon:
-            case Char.BracketOpen:
-            case Char.BraceClose:
-            case Char.Greater:
-            case Char.Plus:
-            case Char.Tilde:
-              console.log("BREAK", this.getSlice());
-              break loop;
-            default:
-              this.i++;
-          }
-        }
-
-        this.end = this.i;
-        this.value = this.getSlice();
-        console.log({ v: this.value });
-        this.token = Token.Value;
     }
+  }
+
+  isWordContinue() {
+    const ch = this.ch;
+    switch (ch) {
+      case Char.Minus:
+      case Char.Underscore:
+        return true;
+      default:
+        return (ch >= Char.a && ch <= Char.z) ||
+          (ch >= Char.A && ch <= Char.Z) ||
+          (ch >= Char.n0 && ch <= Char.n9);
+    }
+  }
+
+  isOpContinue() {
+    const ch = this.ch;
+    switch (ch) {
+      case Char.Equal:
+      case Char.Bang:
+      case Char.Greater:
+      case Char.Less:
+      case Char.Tilde:
+      case Char.Plus:
+        return true;
+      default:
+        return false;
+    }
+  }
+
+  isWhiteSpace() {
+    return this.ch === Char.Space || this.ch === Char.Tab;
   }
 }
 
@@ -345,10 +355,10 @@ function getFromRawValue(raw) {
         if (raw.length === 2) return "";
         return raw.slice(1, -1);
       } else if (raw.startsWith("/")) {
-        const end = raw.lastIndexOf("/", 1);
+        const end = raw.lastIndexOf("/");
         if (end === -1) throw new Error(`Invalid RegExp pattern: ${raw}`);
-        const pattern = raw.slice(0, end);
-        const flags = end < raw.length - 1 ? raw.slice(end) : undefined;
+        const pattern = raw.slice(1, end);
+        const flags = end < raw.length - 1 ? raw.slice(end + 1) : undefined;
         return new RegExp(pattern, flags);
       } else if (NUMBER_REG.test(raw)) {
         return Number(raw);
@@ -360,24 +370,23 @@ function getFromRawValue(raw) {
   }
 }
 
-const ELEM_NODE = 1;
-const RELATION_NODE = 2;
-const ATTR_EXISTS_NODE = 3;
-const ATTR_BIN_NODE = 4;
-const ATTR_REGEX_NODE = 5;
-const PSEUDO_NODE_NTH_CHILD = 6;
-const PSEUDO_NODE_HAS = 7;
-const PSEUDO_NODE_NOT = 8;
-const PSEUDO_FIRST_CHILD = 9;
-const PSEUDO_LAST_CHILD = 10;
+export const ELEM_NODE = 1;
+export const RELATION_NODE = 2;
+export const ATTR_EXISTS_NODE = 3;
+export const ATTR_BIN_NODE = 4;
+export const PSEUDO_NTH_CHILD = 5;
+export const PSEUDO_HAS = 6;
+export const PSEUDO_NODE_NOT = 7;
+export const PSEUDO_FIRST_CHILD = 8;
+export const PSEUDO_LAST_CHILD = 9;
 
 /**
  * @param {string} input
- * @param {Record<string, number>} astNodes
- * @param {Record<string, number>} astAttrs
+ * @param {Transformer} toElem
+ * @param {Transformer} toAttr
  * @returns {Selector[]}
  */
-export function parseSelector(input, astNodes, astAttrs) {
+export function parseSelector(input, toElem, toAttr) {
   /** @type {Selector[]} */
   const result = [];
 
@@ -385,95 +394,155 @@ export function parseSelector(input, astNodes, astAttrs) {
   let current = [];
 
   const lex = new Lexer(input);
-  lex.next();
 
   while (lex.token !== Token.EOF) {
     console.log(
       lex.token,
-      JSON.stringify(String.fromCharCode(lex.ch)),
-      Token,
       result,
       current,
     );
-    if (lex.token === Token.Value) {
-      const name = lex.value;
-      const wildcard = name === "*";
+    if (lex.token === Token.Word) {
+      const value = lex.value;
+      const wildcard = value === "*";
 
-      let elem = 0;
-      if (!wildcard) {
-        elem = astNodes[name];
-        if (elem === undefined) {
-          throw new Error(`Unkown element: ${name}`);
-        }
-      }
-
+      const elem = !wildcard ? toElem(value) : 0;
       current.push({
         type: ELEM_NODE,
         elem,
-        debug: name,
         wildcard,
       });
-    } else if (lex.token === Token.Attr) {
-      const name = lex.value;
-      const id = astAttrs[name];
-      if (id === undefined) {
-        console.log(lex);
-        throw new Error(`Unknown attribute: ${name}`);
+      lex.next();
+      continue;
+    } else if (lex.token === Token.BracketOpen) {
+      lex.next();
+      lex.expect(Token.Word);
+
+      // Check for value comparison
+      const prop = [toAttr(lex.value)];
+      lex.next();
+
+      while (lex.token === Token.Dot) {
+        lex.next();
+        lex.expect(Token.Word);
+
+        prop.push(toAttr(lex.value));
+        lex.next();
       }
 
-      if (lex.value2 === "") {
-        current.push({
-          type: ATTR_EXISTS_NODE,
-          prop: id,
-          debug: lex.value,
-        });
+      if (lex.token === Token.Op) {
+        const op = getAttrOp(lex.value);
+        lex.readAsWordUntil(Token.BracketClose);
+
+        const value = getFromRawValue(lex.value);
+        current.push({ type: ATTR_BIN_NODE, prop, op, value });
       } else {
         current.push({
-          type: ATTR_BIN_NODE,
-          prop: id,
-          op: lex.op,
-          debug: lex.value,
-          value: lex.value2,
+          type: ATTR_EXISTS_NODE,
+          prop,
         });
       }
-    } else if (lex.token === Token.Pseudo) {
+
+      lex.expect(Token.BracketClose);
+      lex.next();
+      continue;
+    } else if (lex.token === Token.Colon) {
+      lex.next();
+      lex.expect(Token.Word);
+
       console.log("PSEUDO", lex);
       switch (lex.value) {
-        case ":first-child":
+        case "first-child":
           current.push({
             type: PSEUDO_FIRST_CHILD,
           });
           break;
-        case ":last-child":
+        case "last-child":
           current.push({
             type: PSEUDO_LAST_CHILD,
           });
           break;
-        case ":nth-child":
-          lex.expect(Char.BraceOpen);
+        case "nth-child": {
+          lex.next();
+          lex.expect(Token.BraceOpen);
+          lex.next();
+
+          let backwards = false;
+          let repeat = false;
+          let step = 0;
+          if (lex.token === Token.Minus) {
+            backwards = true;
+            lex.next();
+          }
+
+          lex.expect(Token.Word);
+          const value = lex.getSlice();
+
+          if (value.endsWith("n")) {
+            repeat = true;
+            step = +value.slice(0, -1);
+          } else {
+            step = +value;
+          }
+
+          let stepOffset = 0;
+          lex.next();
+
+          if (lex.token !== Token.BraceClose) {
+            lex.expect(Token.Op);
+            if (lex.value !== "+") {
+              throw new Error(
+                `Unknown operator in ':nth-child' selector: '${lex.value}'`,
+              );
+            }
+
+            lex.next();
+            lex.expect(Token.Word);
+            stepOffset = +lex.value;
+            lex.next();
+
+            lex.next(); // Space
+
+            if (lex.token === Token.Word) {
+              if (lex.value !== "of") {
+                throw new Error(
+                  `Expected 'of' keyword in ':nth-child' but got: ${lex.value}`,
+                );
+              }
+
+              lex.next();
+              lex.expect(Token.Space);
+              lex.next();
+            }
+
+            lex.expect(Token.BraceClose);
+            //
+            console.log("CLOSE", Token.Op, lex.token);
+          }
 
           console.log("nth", lex);
           console.log(lex.getSlice());
 
           current.push({
-            type: PSEUDO_NODE_NTH_CHILD,
+            type: PSEUDO_NTH_CHILD,
+            backwards,
+            of: null,
+            step,
+            stepOffset,
+            repeat,
           });
 
           break;
+        }
         default:
           throw new Error(`Unknown pseudo selector: '${lex.value}'`);
       }
     } else if (lex.ch === Char.Comma) {
       result.push(current);
       current = [];
-    } else if (
-      lex.ch === Char.Space || lex.ch === Char.Plus || lex.ch === Char.Tilde ||
-      lex.ch === Char.Greater
-    ) {
+    } else if (lex.token === Token.Op) {
       current.push({
         type: RELATION_NODE,
-        op: lex.ch,
-        debug: JSON.stringify(String.fromCharCode(lex.ch)),
+        op: getAttrOp(lex.value),
       });
     }
 
@@ -531,19 +600,16 @@ export function compileSelector(selector) {
       case ATTR_BIN_NODE:
         fn = matchAttrBin(node, fn);
         break;
-      case ATTR_REGEX_NODE:
-        fn = matchAttrRegex(node, fn);
-        break;
       case PSEUDO_FIRST_CHILD:
         fn = matchFirstChild(fn);
         break;
       case PSEUDO_LAST_CHILD:
         fn = matchLastChild(fn);
         break;
-      case PSEUDO_NODE_NTH_CHILD:
+      case PSEUDO_NTH_CHILD:
         fn = matchNthChild(node, fn);
         break;
-      case PSEUDO_NODE_HAS:
+      case PSEUDO_HAS:
         // FIXME
         // fn = matchIs(part, fn);
         throw new Error("TODO: :has");
@@ -724,7 +790,7 @@ function matchFollowing(next) {
 }
 
 /**
- * @param {SelectorPart} part
+ * @param {ElemSelector} part
  * @param {MatcherFn} next
  * @returns {MatcherFn}
  */
@@ -770,39 +836,23 @@ function matchAttrBin(attr, next) {
  */
 function matchAttrValue(attr, value) {
   switch (attr.op) {
-    case AttrOp.Equal:
+    case BinOp.Equal:
       return value === attr.value;
-    case AttrOp.NotEqual:
+    case BinOp.NotEqual:
       return value !== attr.value;
-    case AttrOp.Greater:
+    case BinOp.Greater:
       return typeof value === "number" && typeof attr.value === "number" &&
         value > attr.value;
-    case AttrOp.GreaterThan:
+    case BinOp.GreaterThan:
       return typeof value === "number" && typeof attr.value === "number" &&
         value >= attr.value;
-    case AttrOp.Less:
+    case BinOp.Less:
       return typeof value === "number" && typeof attr.value === "number" &&
         value < attr.value;
-    case AttrOp.LessThan:
+    case BinOp.LessThan:
       return typeof value === "number" && typeof attr.value === "number" &&
         value <= attr.value;
     default:
       return false;
   }
-}
-
-/**
- * @param {AttrRegex} attr
- * @param {MatcherFn} next
- * @returns {MatcherFn}
- */
-function matchAttrRegex(attr, next) {
-  return (ctx, id) => {
-    const value = ctx.getAttrValue(id, attr.prop);
-    if (!attr.value.test(String(value))) {
-      return false;
-    }
-
-    return next(ctx, id);
-  };
 }

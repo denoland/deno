@@ -1,6 +1,5 @@
 import { compileSelector, parseSelector } from "./40_lint_selector.js";
 import { expect } from "@std/expect";
-import { MatchCtx, MatcherFn, Selector } from "./internal.d.ts";
 
 /**
  * TS eslint selector Examples
@@ -277,7 +276,7 @@ function testSelector(
   return visit(ctx, sel, 0);
 }
 
-Deno.test("select descendant: A B", () => {
+Deno.test.only("select descendant: A B", () => {
   const ast: TestNode = {
     type: "Foo",
     children: [{ type: "Bar" }, { type: "Baz" }],
