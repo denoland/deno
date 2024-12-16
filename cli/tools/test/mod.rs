@@ -6,9 +6,8 @@ use crate::args::TestFlags;
 use crate::args::TestReporterConfig;
 use crate::colors;
 use crate::display;
-use crate::factory::CliFactory;
 use crate::factory::SpecifierInfo;
-use crate::factory::WorkspaceFileContainer;
+use crate::factory::WorkspaceFilesFactory;
 use crate::file_fetcher::FileFetcher;
 use crate::ops;
 use crate::util::extract::extract_doc_tests;
@@ -53,7 +52,6 @@ use deno_runtime::deno_io::StdioPipe;
 use deno_runtime::deno_permissions::Permissions;
 use deno_runtime::deno_permissions::PermissionsContainer;
 use deno_runtime::fmt_errors::format_js_error;
-use deno_runtime::permissions::RuntimePermissionDescriptorParser;
 use deno_runtime::tokio_util::create_and_run_current_thread;
 use deno_runtime::worker::MainWorker;
 use deno_runtime::WorkerExecutionMode;
@@ -77,6 +75,7 @@ use std::future::poll_fn;
 use std::io::Write;
 use std::num::NonZeroUsize;
 use std::path::Path;
+use std::path::PathBuf;
 use std::sync::atomic::AtomicBool;
 use std::sync::atomic::AtomicUsize;
 use std::sync::atomic::Ordering;
@@ -1163,24 +1162,37 @@ static HAS_TEST_RUN_SIGINT_HANDLER: AtomicBool = AtomicBool::new(false);
 
 /// Test a collection of specifiers with test modes concurrently.
 async fn test_specifiers(
-  factories_with_specifiers: Vec<(
-    Arc<CliMainWorkerFactory>,
-    Vec<ModuleSpecifier>,
-  )>,
-  permissions: &Permissions,
-  permission_desc_parser: &Arc<RuntimePermissionDescriptorParser>,
+  workspace_files_factory: &WorkspaceFilesFactory,
+  changed_paths: Option<&HashSet<PathBuf>>,
   options: TestSpecifiersOptions,
 ) -> Result<(), AnyError> {
-  let mut specifiers_with_factory = factories_with_specifiers
-    .into_iter()
-    .flat_map(|(f, s)| {
-      s.into_iter().map(|s| (s, f.clone())).collect::<Vec<_>>()
-    })
-    .collect::<Vec<_>>();
+  let mut specifiers_with_services = vec![];
+  for factory in workspace_files_factory.dirs() {
+    let worker_factory =
+      Arc::new(factory.create_cli_main_worker_factory().await?);
+    let permission_desc_parser = factory.permission_desc_parser()?;
+    let permissions = Arc::new(Permissions::from_options(
+      permission_desc_parser.as_ref(),
+      factory.permissions_options(),
+    )?);
+    let specifiers = if let Some(changed_paths) = changed_paths {
+      factory.dependent_checked_specifiers(changed_paths).await?
+    } else {
+      factory.checked_specifiers().collect()
+    };
+    specifiers_with_services.extend(specifiers.into_iter().map(|s| {
+      (
+        s.clone(),
+        worker_factory.clone(),
+        permission_desc_parser.clone(),
+        permissions.clone(),
+      )
+    }));
+  }
   if let Some(seed) = options.specifier.shuffle {
     let mut rng = SmallRng::seed_from_u64(seed);
-    specifiers_with_factory.sort_by_cached_key(|(s, _)| s.to_string());
-    specifiers_with_factory.shuffle(&mut rng);
+    specifiers_with_services.sort_by_cached_key(|(s, ..)| s.to_string());
+    specifiers_with_services.shuffle(&mut rng);
   }
 
   let (test_event_sender_factory, receiver) = create_test_event_channel();
@@ -1195,11 +1207,11 @@ async fn test_specifiers(
   let reporter = get_test_reporter(&options);
   let fail_fast_tracker = FailFastTracker::new(options.fail_fast);
 
-  let join_handles = specifiers_with_factory.into_iter().map(
-    move |(specifier, worker_factory)| {
+  let join_handles = specifiers_with_services.into_iter().map(
+    move |(specifier, worker_factory, permission_desc_parser, permissions)| {
       let permissions_container = PermissionsContainer::new(
-        permission_desc_parser.clone(),
-        permissions.clone(),
+        permission_desc_parser,
+        permissions.as_ref().clone(),
       );
       let worker_sender = test_event_sender_factory.worker();
       let fail_fast_tracker = fail_fast_tracker.clone();
@@ -1485,18 +1497,12 @@ pub async fn run_tests(
   flags: Arc<Flags>,
   test_flags: TestFlags,
 ) -> Result<(), AnyError> {
-  let factory = CliFactory::from_flags(flags);
-  let cli_options = factory.cli_options()?;
+  let cli_options = CliOptions::from_flags(flags)?;
   let workspace_test_options =
     cli_options.resolve_workspace_test_options(&test_flags);
   // Various test files should not share the same permissions in terms of
   // `PermissionsContainer` - otherwise granting/revoking permissions in one
   // file would have impact on other files, which is undesirable.
-  let permission_desc_parser = factory.permission_desc_parser()?;
-  let permissions = Permissions::from_options(
-    permission_desc_parser.as_ref(),
-    &cli_options.permissions_options(),
-  )?;
   let log_level = cli_options.log_level();
 
   let workspace_dirs_with_files = cli_options
@@ -1504,33 +1510,34 @@ pub async fn run_tests(
     .into_iter()
     .map(|(d, o)| (d, o.files))
     .collect();
-  let file_container = WorkspaceFileContainer::from_workspace_dirs_with_files(
-    workspace_dirs_with_files,
-    &factory,
-    Some(extract_doc_tests),
-    |patterns, cli_options, file_fetcher, doc| {
-      collect_specifiers_for_tests(patterns, cli_options, file_fetcher, doc)
-        .boxed_local()
-    },
-    workspace_test_options.doc,
-  )
-  .await?;
+  let workspace_files_factory =
+    WorkspaceFilesFactory::from_workspace_dirs_with_files(
+      workspace_dirs_with_files,
+      |patterns, cli_options, file_fetcher, doc| {
+        collect_specifiers_for_tests(patterns, cli_options, file_fetcher, doc)
+          .boxed_local()
+      },
+      workspace_test_options.doc,
+      Some(extract_doc_tests),
+      &cli_options,
+      None,
+    )
+    .await?;
   if !workspace_test_options.permit_no_files
-    && !file_container.found_specifiers()
+    && !workspace_files_factory.found_specifiers()
   {
     return Err(generic_error("No test modules found"));
   }
 
-  file_container.check().await?;
+  workspace_files_factory.check().await?;
 
   if workspace_test_options.no_run {
     return Ok(());
   }
 
   test_specifiers(
-    file_container.worker_factories_with_checked_specifiers(),
-    &permissions,
-    permission_desc_parser,
+    &workspace_files_factory,
+    None,
     TestSpecifiersOptions {
       cwd: Url::from_directory_path(cli_options.initial_cwd()).map_err(
         |_| {
@@ -1591,18 +1598,9 @@ pub async fn run_tests_with_watch(
       let test_flags = test_flags.clone();
       watcher_communicator.show_path_changed(changed_paths.clone());
       Ok(async move {
-        let factory = CliFactory::from_flags_for_watcher(
-          flags,
-          watcher_communicator.clone(),
-        );
-        let cli_options = factory.cli_options()?;
+        let cli_options = CliOptions::from_flags(flags)?;
         let workspace_test_options =
           cli_options.resolve_workspace_test_options(&test_flags);
-        let permission_desc_parser = factory.permission_desc_parser()?;
-        let permissions = Permissions::from_options(
-          permission_desc_parser.as_ref(),
-          &cli_options.permissions_options(),
-        )?;
         let log_level = cli_options.log_level();
 
         let _ = watcher_communicator.watch_paths(cli_options.watch_paths());
@@ -1619,11 +1617,9 @@ pub async fn run_tests_with_watch(
           .flatten()
           .collect::<Vec<_>>();
         let _ = watcher_communicator.watch_paths(watch_paths);
-        let file_container =
-          WorkspaceFileContainer::from_workspace_dirs_with_files(
+        let workspace_files_factory =
+          WorkspaceFilesFactory::from_workspace_dirs_with_files(
             workspace_dirs_with_files,
-            &factory,
-            Some(extract_doc_tests),
             |patterns, cli_options, file_fetcher, doc| {
               collect_specifiers_for_tests(
                 patterns,
@@ -1634,30 +1630,21 @@ pub async fn run_tests_with_watch(
               .boxed_local()
             },
             workspace_test_options.doc,
+            Some(extract_doc_tests),
+            &cli_options,
+            Some(&watcher_communicator),
           )
           .await?;
 
-        file_container.check().await?;
+        workspace_files_factory.check().await?;
 
         if workspace_test_options.no_run {
           return Ok(());
         }
 
-        let factories_with_specifiers =
-          if let Some(changed_paths) = changed_paths {
-            file_container
-              .worker_factories_with_dependent_checked_specifiers(
-                &changed_paths.into_iter().collect(),
-              )
-              .await?
-          } else {
-            file_container.worker_factories_with_checked_specifiers()
-          };
-
         test_specifiers(
-          factories_with_specifiers,
-          &permissions,
-          permission_desc_parser,
+          &workspace_files_factory,
+          changed_paths.map(|p| p.into_iter().collect()).as_ref(),
           TestSpecifiersOptions {
             cwd: Url::from_directory_path(cli_options.initial_cwd()).map_err(
               |_| {

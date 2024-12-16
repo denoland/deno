@@ -30,9 +30,8 @@ use crate::cache::CacheDBHash;
 use crate::cache::Caches;
 use crate::cache::FastInsecureHasher;
 use crate::cache::TypeCheckCache;
-use crate::factory::CliFactory;
 use crate::factory::SpecifierInfo;
-use crate::factory::WorkspaceFileContainer;
+use crate::factory::WorkspaceFilesFactory;
 use crate::graph_util::BuildFastCheckGraphOptions;
 use crate::graph_util::ModuleGraphBuilder;
 use crate::npm::CliNpmResolver;
@@ -48,39 +47,40 @@ pub async fn check(
   flags: Arc<Flags>,
   check_flags: CheckFlags,
 ) -> Result<(), AnyError> {
-  let factory = CliFactory::from_flags(flags);
-  let cli_options = factory.cli_options()?;
+  let cli_options = CliOptions::from_flags(flags)?;
   let workspace_dirs_with_files =
     cli_options.resolve_file_flags_for_members(&FileFlags {
       ignore: Default::default(),
       include: check_flags.files,
     })?;
-  let file_container = WorkspaceFileContainer::from_workspace_dirs_with_files(
-    workspace_dirs_with_files,
-    &factory,
-    Some(extract_snippet_files),
-    |patterns, cli_options, _, (doc, doc_only)| {
-      async move {
-        let info = SpecifierInfo {
-          check: !doc_only,
-          check_doc: doc || doc_only,
-        };
-        collect_specifiers(
-          patterns,
-          cli_options.vendor_dir_path().map(ToOwned::to_owned),
-          |e| is_script_ext(e.path),
-        )
-        .map(|s| s.into_iter().map(|s| (s, info)).collect())
-      }
-      .boxed_local()
-    },
-    (check_flags.doc, check_flags.doc_only),
-  )
-  .await?;
-  if !file_container.found_specifiers() {
+  let workspace_files_factory =
+    WorkspaceFilesFactory::from_workspace_dirs_with_files(
+      workspace_dirs_with_files,
+      |patterns, cli_options, _, (doc, doc_only)| {
+        async move {
+          let info = SpecifierInfo {
+            check: !doc_only,
+            check_doc: doc || doc_only,
+          };
+          collect_specifiers(
+            patterns,
+            cli_options.vendor_dir_path().map(ToOwned::to_owned),
+            |e| is_script_ext(e.path),
+          )
+          .map(|s| s.into_iter().map(|s| (s, info)).collect())
+        }
+        .boxed_local()
+      },
+      (check_flags.doc, check_flags.doc_only),
+      Some(extract_snippet_files),
+      &cli_options,
+      None,
+    )
+    .await?;
+  if !workspace_files_factory.found_specifiers() {
     log::warn!("{} No matching files found.", colors::yellow("Warning"));
   }
-  file_container.check().await
+  workspace_files_factory.check().await
 }
 
 /// Options for performing a check of a module graph. Note that the decision to
