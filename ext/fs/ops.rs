@@ -1424,6 +1424,7 @@ impl<'s> ToV8<'s> for V8MaybeStaticStr {
         Cow::Owned(value) => value.into(),
       }
       .v8_string(scope)
+      .unwrap()
       .into(),
     )
   }
