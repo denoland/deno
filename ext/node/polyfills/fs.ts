@@ -25,7 +25,11 @@ import { exists, existsSync } from "ext:deno_node/_fs/_fs_exists.ts";
 import { fdatasync, fdatasyncSync } from "ext:deno_node/_fs/_fs_fdatasync.ts";
 import { fstat, fstatPromise, fstatSync } from "ext:deno_node/_fs/_fs_fstat.ts";
 import { fsync, fsyncSync } from "ext:deno_node/_fs/_fs_fsync.ts";
-import { ftruncate, ftruncateSync } from "ext:deno_node/_fs/_fs_ftruncate.ts";
+import {
+  ftruncate,
+  ftruncatePromise,
+  ftruncateSync,
+} from "ext:deno_node/_fs/_fs_ftruncate.ts";
 import { futimes, futimesSync } from "ext:deno_node/_fs/_fs_futimes.ts";
 import {
   lchown,
@@ -165,6 +169,7 @@ const promises = {
   opendir: opendirPromise,
   rename: renamePromise,
   truncate: truncatePromise,
+  ftruncate: ftruncatePromise,
   rm: rmPromise,
   rmdir: rmdirPromise,
   mkdir: mkdirPromise,

@@ -8,6 +8,7 @@ export const open = fsPromises.open;
 export const opendir = fsPromises.opendir;
 export const rename = fsPromises.rename;
 export const truncate = fsPromises.truncate;
+export const ftruncate = fsPromises.ftruncate;
 export const rm = fsPromises.rm;
 export const rmdir = fsPromises.rmdir;
 export const mkdir = fsPromises.mkdir;
