@@ -294,8 +294,10 @@ impl WorkspaceLinter {
       deno_lint_config: lint_config,
     }));
 
+    eprintln!("paths {:#?}", paths);
     let mut futures = Vec::with_capacity(2);
-    if linter.has_package_rules() {
+    // Package rules are only in effect if user didn't explicitly specify paths on the command line
+    if paths.is_empty() && linter.has_package_rules() {
       if self.workspace_module_graph.is_none() {
         let module_graph_creator = self.module_graph_creator.clone();
         let packages = self.workspace_dir.jsr_packages_for_publish();
@@ -324,9 +326,11 @@ impl WorkspaceLinter {
           .collect::<HashSet<_>>();
         futures.push(
           async move {
+            eprintln!("workspace module graph");
             let graph = workspace_module_graph_future
               .await
               .map_err(|err| anyhow!("{:#}", err))?;
+            eprintln!("workspace module graph2");
             let export_urls =
               publish_config.config_file.resolve_export_value_urls()?;
             if !export_urls.iter().any(|url| path_urls.contains(url)) {

@@ -1,0 +1,12 @@
+{
+  "tests": {
+    "run_dir": {
+      "args": "lint",
+      "output": "output.out"
+    },
+    "run_file": {
+      "args": "lint main.ts",
+      "output": "Checked 1 file\n"
+    }
+  }
+}

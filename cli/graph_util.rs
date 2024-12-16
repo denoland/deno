@@ -311,6 +311,10 @@ impl ModuleGraphCreator {
 
     let mut roots = Vec::new();
     for package_config in package_configs {
+      eprintln!(
+        "resolve export {:?}",
+        package_config.config_file.resolve_export_value_urls()?
+      );
       roots.extend(package_config.config_file.resolve_export_value_urls()?);
     }
 
@@ -325,7 +329,9 @@ impl ModuleGraphCreator {
         npm_caching: self.options.default_npm_caching_strategy(),
       })
       .await?;
-    self.graph_valid(&graph)?;
+    let r = self.graph_valid(&graph);
+    eprintln!("result {:#?}", r);
+    r?;
     if self.options.type_check_mode().is_true()
       && !graph_has_external_remote(&graph)
     {
