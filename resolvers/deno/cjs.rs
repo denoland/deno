@@ -1,13 +1,11 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
-use std::sync::Arc;
-
-use dashmap::DashMap;
+use crate::sync::MaybeDashMap;
 use deno_media_type::MediaType;
 use node_resolver::env::NodeResolverEnv;
 use node_resolver::errors::ClosestPkgJsonError;
-use node_resolver::InNpmPackageChecker;
-use node_resolver::PackageJsonResolver;
+use node_resolver::InNpmPackageCheckerRc;
+use node_resolver::PackageJsonResolverRc;
 use node_resolver::ResolutionMode;
 use url::Url;
 
@@ -19,13 +17,13 @@ use url::Url;
 #[derive(Debug)]
 pub struct CjsTracker<TEnv: NodeResolverEnv> {
   is_cjs_resolver: IsCjsResolver<TEnv>,
-  known: DashMap<Url, ResolutionMode>,
+  known: MaybeDashMap<Url, ResolutionMode>,
 }
 
 impl<TEnv: NodeResolverEnv> CjsTracker<TEnv> {
   pub fn new(
-    in_npm_pkg_checker: Arc<dyn InNpmPackageChecker>,
-    pkg_json_resolver: Arc<PackageJsonResolver<TEnv>>,
+    in_npm_pkg_checker: InNpmPackageCheckerRc,
+    pkg_json_resolver: PackageJsonResolverRc<TEnv>,
     mode: IsCjsResolutionMode,
   ) -> Self {
     Self {
@@ -127,15 +125,15 @@ pub enum IsCjsResolutionMode {
 /// Resolves whether a module is CJS or ESM.
 #[derive(Debug)]
 pub struct IsCjsResolver<TEnv: NodeResolverEnv> {
-  in_npm_pkg_checker: Arc<dyn InNpmPackageChecker>,
-  pkg_json_resolver: Arc<PackageJsonResolver<TEnv>>,
+  in_npm_pkg_checker: InNpmPackageCheckerRc,
+  pkg_json_resolver: PackageJsonResolverRc<TEnv>,
   mode: IsCjsResolutionMode,
 }
 
 impl<TEnv: NodeResolverEnv> IsCjsResolver<TEnv> {
   pub fn new(
-    in_npm_pkg_checker: Arc<dyn InNpmPackageChecker>,
-    pkg_json_resolver: Arc<PackageJsonResolver<TEnv>>,
+    in_npm_pkg_checker: InNpmPackageCheckerRc,
+    pkg_json_resolver: PackageJsonResolverRc<TEnv>,
     mode: IsCjsResolutionMode,
   ) -> Self {
     Self {
@@ -185,7 +183,7 @@ impl<TEnv: NodeResolverEnv> IsCjsResolver<TEnv> {
     specifier: &Url,
     media_type: MediaType,
     is_script: Option<bool>,
-    known_cache: &DashMap<Url, ResolutionMode>,
+    known_cache: &MaybeDashMap<Url, ResolutionMode>,
   ) -> Option<ResolutionMode> {
     if specifier.scheme() != "file" {
       return Some(ResolutionMode::Import);
