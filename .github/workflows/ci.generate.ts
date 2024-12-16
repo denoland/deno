@@ -59,6 +59,15 @@ const Runners = {
 
 const prCacheKeyPrefix =
   `${cacheVersion}-cargo-target-\${{ matrix.os }}-\${{ matrix.arch }}-\${{ matrix.profile }}-\${{ matrix.job }}-`;
+const prCacheKey = `${prCacheKeyPrefix}\${{ github.sha }}`;
+const prCachePath = [
+  // this must match for save and restore (https://github.com/actions/cache/issues/1444)
+  "./target",
+  "!./target/*/gn_out",
+  "!./target/*/gn_root",
+  "!./target/*/*.zip",
+  "!./target/*/*.tar.gz",
+].join("\n");
 
 // Note that you may need to add more version to the `apt-get remove` line below if you change this
 const llvmVersion = 19;
@@ -196,7 +205,7 @@ const installNodeStep = {
 const installDenoStep = {
   name: "Install Deno",
   uses: "denoland/setup-deno@v2",
-  with: { "deno-version": "v1.x" },
+  with: { "deno-version": "v2.x" },
 };
 
 const authenticateWithGoogleCloud = {
@@ -475,6 +484,27 @@ const ci = {
             "    -czvf target/release/deno_src.tar.gz -C .. deno",
           ].join("\n"),
         },
+        {
+          name: "Cache Cargo home",
+          uses: "actions/cache@v4",
+          with: {
+            // See https://doc.rust-lang.org/cargo/guide/cargo-home.html#caching-the-cargo-home-in-ci
+            // Note that with the new sparse registry format, we no longer have to cache a `.git` dir
+            path: [
+              "~/.cargo/.crates.toml",
+              "~/.cargo/.crates2.json",
+              "~/.cargo/bin",
+              "~/.cargo/registry/index",
+              "~/.cargo/registry/cache",
+              "~/.cargo/git/db",
+            ].join("\n"),
+            key:
+              `${cacheVersion}-cargo-home-\${{ matrix.os }}-\${{ matrix.arch }}-\${{ hashFiles('Cargo.lock') }}`,
+            // We will try to restore from the closest cargo-home we can find
+            "restore-keys":
+              `${cacheVersion}-cargo-home-\${{ matrix.os }}-\${{ matrix.arch }}-`,
+          },
+        },
         installRustStep,
         {
           if:
@@ -599,36 +629,13 @@ const ci = {
           ].join("\n"),
         },
         {
-          name: "Cache Cargo home",
-          uses: "actions/cache@v4",
-          with: {
-            // See https://doc.rust-lang.org/cargo/guide/cargo-home.html#caching-the-cargo-home-in-ci
-            // Note that with the new sparse registry format, we no longer have to cache a `.git` dir
-            path: [
-              "~/.cargo/registry/index",
-              "~/.cargo/registry/cache",
-            ].join("\n"),
-            key:
-              `${cacheVersion}-cargo-home-\${{ matrix.os }}-\${{ matrix.arch }}-\${{ hashFiles('Cargo.lock') }}`,
-            // We will try to restore from the closest cargo-home we can find
-            "restore-keys":
-              `${cacheVersion}-cargo-home-\${{ matrix.os }}-\${{ matrix.arch }}`,
-          },
-        },
-        {
           // Restore cache from the latest 'main' branch build.
           name: "Restore cache build output (PR)",
           uses: "actions/cache/restore@v4",
           if:
             "github.ref != 'refs/heads/main' && !startsWith(github.ref, 'refs/tags/')",
           with: {
-            path: [
-              "./target",
-              "!./target/*/gn_out",
-              "!./target/*/gn_root",
-              "!./target/*/*.zip",
-              "!./target/*/*.tar.gz",
-            ].join("\n"),
+            path: prCachePath,
             key: "never_saved",
             "restore-keys": prCacheKeyPrefix,
           },
@@ -1080,14 +1087,8 @@ const ci = {
           if:
             "(matrix.job == 'test' || matrix.job == 'lint') && github.ref == 'refs/heads/main'",
           with: {
-            path: [
-              "./target",
-              "!./target/*/gn_out",
-              "!./target/*/*.zip",
-              "!./target/*/*.sha256sum",
-              "!./target/*/*.tar.gz",
-            ].join("\n"),
-            key: prCacheKeyPrefix + "${{ github.sha }}",
+            path: prCachePath,
+            key: prCacheKey,
           },
         },
       ]),

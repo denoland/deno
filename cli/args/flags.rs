@@ -37,6 +37,7 @@ use deno_path_util::url_to_file_path;
 use deno_runtime::deno_permissions::PermissionsOptions;
 use deno_runtime::deno_permissions::SysDescriptor;
 use deno_telemetry::OtelConfig;
+use deno_telemetry::OtelConsoleConfig;
 use log::debug;
 use log::Level;
 use serde::Deserialize;
@@ -988,21 +989,41 @@ impl Flags {
     args
   }
 
-  pub fn otel_config(&self) -> Option<OtelConfig> {
-    if self
+  pub fn otel_config(&self) -> OtelConfig {
+    let has_unstable_flag = self
       .unstable_config
       .features
-      .contains(&String::from("otel"))
-    {
-      Some(OtelConfig {
-        runtime_name: Cow::Borrowed("deno"),
-        runtime_version: Cow::Borrowed(crate::version::DENO_VERSION_INFO.deno),
-        deterministic: std::env::var("DENO_UNSTABLE_OTEL_DETERMINISTIC")
-          .is_ok(),
-        ..Default::default()
-      })
-    } else {
-      None
+      .contains(&String::from("otel"));
+
+    let otel_var = |name| match std::env::var(name) {
+      Ok(s) if s.to_lowercase() == "true" => Some(true),
+      Ok(s) if s.to_lowercase() == "false" => Some(false),
+      _ => None,
+    };
+
+    let disabled =
+      !has_unstable_flag || otel_var("OTEL_SDK_DISABLED").unwrap_or(false);
+    let default = !disabled && otel_var("OTEL_DENO").unwrap_or(false);
+
+    OtelConfig {
+      tracing_enabled: !disabled
+        && otel_var("OTEL_DENO_TRACING").unwrap_or(default),
+      console: match std::env::var("OTEL_DENO_CONSOLE").as_deref() {
+        Ok(_) if disabled => OtelConsoleConfig::Ignore,
+        Ok("ignore") => OtelConsoleConfig::Ignore,
+        Ok("capture") => OtelConsoleConfig::Capture,
+        Ok("replace") => OtelConsoleConfig::Replace,
+        _ => {
+          if default {
+            OtelConsoleConfig::Capture
+          } else {
+            OtelConsoleConfig::Ignore
+          }
+        }
+      },
+      deterministic: std::env::var("DENO_UNSTABLE_OTEL_DETERMINISTIC")
+        .as_deref()
+        == Ok("1"),
     }
   }
 
