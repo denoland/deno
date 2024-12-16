@@ -835,7 +835,10 @@ impl WebWorker {
           return Poll::Ready(Err(e));
         }
 
-        if self.close_on_idle && !self.has_message_event_listener() {
+        if self.close_on_idle {
+          if self.has_message_event_listener() {
+            return Poll::Pending;
+          }
           return Poll::Ready(Ok(()));
         }
 
