@@ -1,47 +1,49 @@
 [WILDCARD]
 Compile file:///[WILDLINE]/main.ts to [WILDLINE]
 
-Embedded File System
+Embedded Files
 
 main[WILDLINE]
-├─┬ .deno_compile_node_modules
-│ └─┬ localhost
-│   ├─┬ ansi-regex
-│   │ ├── 3.0.1/*
-│   │ └── 5.0.1/*
-│   ├── ansi-styles/4.3.0/*
-│   ├── camelcase/5.3.1/*
-│   ├── cliui/6.0.0/*
-│   ├── color-convert/2.0.1/*
-│   ├── color-name/1.1.4/*
-│   ├── cowsay/1.5.0/*
-│   ├── decamelize/1.2.0/*
-│   ├── emoji-regex/8.0.0/*
-│   ├── find-up/4.1.0/*
-│   ├── get-caller-file/2.0.5/*
-│   ├── get-stdin/8.0.0/*
-│   ├─┬ is-fullwidth-code-point
-│   │ ├── 2.0.0/*
-│   │ └── 3.0.0/*
-│   ├── locate-path/5.0.0/*
-│   ├── p-limit/2.3.0/*
-│   ├── p-locate/4.1.0/*
-│   ├── p-try/2.2.0/*
-│   ├── path-exists/4.0.0/*
-│   ├── require-directory/2.1.1/*
-│   ├── require-main-filename/2.0.0/*
-│   ├── set-blocking/2.0.0/*
-│   ├─┬ string-width
-│   │ ├── 2.1.1/*
-│   │ └── 4.2.3/*
-│   ├─┬ strip-ansi
-│   │ ├── 4.0.0/*
-│   │ └── 6.0.1/*
-│   ├── strip-final-newline/2.0.0/*
-│   ├── which-module/2.0.0/*
-│   ├── wrap-ansi/6.2.0/*
-│   ├── y18n/4.0.3/*
-│   ├── yargs/15.4.1/*
-│   └── yargs-parser/18.1.3/*
-└── main.ts
+├─┬ .deno_compile_node_modules ([WILDLINE])
+│ └─┬ localhost ([WILDLINE])
+│   ├─┬ ansi-regex ([WILDLINE])
+│   │ ├── 3.0.1/* ([WILDLINE])
+│   │ └── 5.0.1/* ([WILDLINE])
+│   ├── ansi-styles/4.3.0/* ([WILDLINE])
+│   ├── camelcase/5.3.1/* ([WILDLINE])
+│   ├── cliui/6.0.0/* ([WILDLINE])
+│   ├── color-convert/2.0.1/* ([WILDLINE])
+│   ├── color-name/1.1.4/* ([WILDLINE])
+│   ├── cowsay/1.5.0/* ([WILDLINE])
+│   ├── decamelize/1.2.0/* ([WILDLINE])
+│   ├── emoji-regex/8.0.0/* ([WILDLINE])
+│   ├── find-up/4.1.0/* ([WILDLINE])
+│   ├── get-caller-file/2.0.5/* ([WILDLINE])
+│   ├── get-stdin/8.0.0/* ([WILDLINE])
+│   ├─┬ is-fullwidth-code-point ([WILDLINE])
+│   │ ├── 2.0.0/* ([WILDLINE])
+│   │ └── 3.0.0/* ([WILDLINE])
+│   ├── locate-path/5.0.0/* ([WILDLINE])
+│   ├── p-limit/2.3.0/* ([WILDLINE])
+│   ├── p-locate/4.1.0/* ([WILDLINE])
+│   ├── p-try/2.2.0/* ([WILDLINE])
+│   ├── path-exists/4.0.0/* ([WILDLINE])
+│   ├── require-directory/2.1.1/* ([WILDLINE])
+│   ├── require-main-filename/2.0.0/* ([WILDLINE])
+│   ├── set-blocking/2.0.0/* ([WILDLINE])
+│   ├─┬ string-width ([WILDLINE])
+│   │ ├── 2.1.1/* ([WILDLINE])
+│   │ └── 4.2.3/* ([WILDLINE])
+│   ├─┬ strip-ansi ([WILDLINE])
+│   │ ├── 4.0.0/* ([WILDLINE])
+│   │ └── 6.0.1/* ([WILDLINE])
+│   ├── strip-final-newline/2.0.0/* ([WILDLINE])
+│   ├── which-module/2.0.0/* ([WILDLINE])
+│   ├── wrap-ansi/6.2.0/* ([WILDLINE])
+│   ├── y18n/4.0.3/* ([WILDLINE])
+│   ├── yargs/15.4.1/* ([WILDLINE])
+│   └── yargs-parser/18.1.3/* ([WILDLINE])
+└── main.ts ([WILDLINE])
+
+Size: [WILDLINE]
 
