@@ -9,11 +9,13 @@ use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
 use deno_core::parking_lot::Mutex;
 use deno_core::parking_lot::MutexGuard;
+use deno_core::serde_json;
 use deno_lockfile::WorkspaceMemberConfig;
 use deno_package_json::PackageJsonDepValue;
 use deno_runtime::deno_node::PackageJson;
 use deno_semver::jsr::JsrDepPackageReq;
 
+use crate::args::deno_json::import_map_deps;
 use crate::cache;
 use crate::util::fs::atomic_write_file_with_retries;
 use crate::Flags;
@@ -101,6 +103,7 @@ impl CliLockfile {
   pub fn discover(
     flags: &Flags,
     workspace: &Workspace,
+    maybe_external_import_map: Option<&serde_json::Value>,
   ) -> Result<Option<CliLockfile>, AnyError> {
     fn pkg_json_deps(
       maybe_pkg_json: Option<&PackageJson>,
@@ -171,7 +174,11 @@ impl CliLockfile {
     let config = deno_lockfile::WorkspaceConfig {
       root: WorkspaceMemberConfig {
         package_json_deps: pkg_json_deps(root_folder.pkg_json.as_deref()),
-        dependencies: deno_json_deps(root_folder.deno_json.as_deref()),
+        dependencies: if let Some(map) = maybe_external_import_map {
+          import_map_deps(map)
+        } else {
+          deno_json_deps(root_folder.deno_json.as_deref())
+        },
       },
       members: workspace
         .config_folders()
