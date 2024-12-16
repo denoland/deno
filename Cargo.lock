@@ -670,9 +670,9 @@ checksum = "1bf2a5fb3207c12b5d208ebc145f967fea5cac41a021c37417ccc31ba40f39ee"
 
 [[package]]
 name = "capacity_builder"
-version = "0.1.0"
+version = "0.1.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a2c0f637033edd76ceb881faaee372868a383f0ed7a4a59e8fdf90db2502f3d3"
+checksum = "58ec49028cb308564429cd8fac4ef21290067a0afe8f5955330a8d487d0d790c"
 dependencies = [
  "itoa",
 ]
@@ -1223,6 +1223,7 @@ dependencies = [
  "bincode",
  "bytes",
  "cache_control",
+ "capacity_builder",
  "chrono",
  "clap",
  "clap_complete",
