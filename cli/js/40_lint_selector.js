@@ -136,7 +136,6 @@ export class Lexer {
    */
   expect(token) {
     if (this.token !== token) {
-      console.log(this, JSON.stringify(String.fromCharCode(this.ch)));
       throw new Error(
         `Expected token '${token}', but got '${this.token}'.\n\n${this.input}\n${
           " ".repeat(this.i)
@@ -180,17 +179,14 @@ export class Lexer {
       return;
     }
 
-    console.log(
-      "NEXT",
-      this.input,
-      this.i,
-      JSON.stringify(String.fromCharCode(this.ch)),
-    );
-    if (this.i > 30) throw new Error("infininte #2");
+    // console.log(
+    //   "NEXT",
+    //   this.input,
+    //   this.i,
+    //   JSON.stringify(String.fromCharCode(this.ch)),
+    // );
 
-    let j = 0;
     while (true) {
-      if (j++ > 50) throw new Error("infininte");
       switch (this.ch) {
         case Char.Space:
           while (this.isWhiteSpace()) {
@@ -376,7 +372,7 @@ export const ATTR_EXISTS_NODE = 3;
 export const ATTR_BIN_NODE = 4;
 export const PSEUDO_NTH_CHILD = 5;
 export const PSEUDO_HAS = 6;
-export const PSEUDO_NODE_NOT = 7;
+export const PSEUDO_NOT = 7;
 export const PSEUDO_FIRST_CHILD = 8;
 export const PSEUDO_LAST_CHILD = 9;
 
@@ -390,17 +386,20 @@ export function parseSelector(input, toElem, toAttr) {
   /** @type {Selector[]} */
   const result = [];
 
-  /** @type {Selector} */
-  let current = [];
+  /** @type {Selector[]} */
+  const stack = [[]];
 
   const lex = new Lexer(input);
 
+  // Some subselectors like `:nth-child(.. of <selector>)` must have
+  // a single selector instead of selector list.
+  let throwOnComma = false;
+
   while (lex.token !== Token.EOF) {
-    console.log(
-      lex.token,
-      result,
-      current,
-    );
+    const current = /** @type {Selector} */ (stack.at(-1));
+
+    console.log(input.slice(lex.i));
+    console.log(stack);
     if (lex.token === Token.Word) {
       const value = lex.value;
       const wildcard = value === "*";
@@ -449,7 +448,6 @@ export function parseSelector(input, toElem, toAttr) {
       lex.next();
       lex.expect(Token.Word);
 
-      console.log("PSEUDO", lex);
       switch (lex.value) {
         case "first-child":
           current.push({
@@ -484,12 +482,22 @@ export function parseSelector(input, toElem, toAttr) {
             step = +value;
           }
 
-          let stepOffset = 0;
           lex.next();
+
+          /** @type {PseudoNthChild} */
+          const node = {
+            type: PSEUDO_NTH_CHILD,
+            backwards,
+            of: null,
+            step,
+            stepOffset: 0,
+            repeat,
+          };
+          current.push(node);
 
           if (lex.token !== Token.BraceClose) {
             lex.expect(Token.Op);
-            if (lex.value !== "+") {
+            if (/** @type {string} */ (lex.value) !== "+") {
               throw new Error(
                 `Unknown operator in ':nth-child' selector: '${lex.value}'`,
               );
@@ -497,48 +505,69 @@ export function parseSelector(input, toElem, toAttr) {
 
             lex.next();
             lex.expect(Token.Word);
-            stepOffset = +lex.value;
+            node.stepOffset = +lex.value;
             lex.next();
 
-            lex.next(); // Space
+            if (lex.token !== Token.BraceClose) {
+              lex.next(); // Space
 
-            if (lex.token === Token.Word) {
-              if (lex.value !== "of") {
-                throw new Error(
-                  `Expected 'of' keyword in ':nth-child' but got: ${lex.value}`,
-                );
+              if (lex.token === Token.Word) {
+                if (lex.value !== "of") {
+                  throw new Error(
+                    `Expected 'of' keyword in ':nth-child' but got: ${lex.value}`,
+                  );
+                }
+
+                lex.next();
+                lex.expect(Token.Space);
+                lex.next();
+                throwOnComma = true;
+                stack.push([]);
               }
 
-              lex.next();
-              lex.expect(Token.Space);
-              lex.next();
+              continue;
             }
 
             lex.expect(Token.BraceClose);
-            //
-            console.log("CLOSE", Token.Op, lex.token);
           }
 
-          console.log("nth", lex);
-          console.log(lex.getSlice());
+          lex.next();
 
-          current.push({
-            type: PSEUDO_NTH_CHILD,
-            backwards,
-            of: null,
-            step,
-            stepOffset,
-            repeat,
-          });
+          continue;
+        }
 
-          break;
+        case "has":
+        case "where":
+        case "is": {
+          lex.next();
+          lex.expect(Token.BraceOpen);
+          lex.next();
+
+          console.log("================================");
+
+          /** @type {PseudoHas} */
+          const node = {
+            type: PSEUDO_HAS,
+            selectors: [],
+          };
+          current.push(node);
+          stack.push([]);
+
+          continue;
         }
         default:
           throw new Error(`Unknown pseudo selector: '${lex.value}'`);
       }
-    } else if (lex.ch === Char.Comma) {
-      result.push(current);
-      current = [];
+    } else if (lex.token === Token.Comma) {
+      if (throwOnComma) {
+        throw new Error(`Multiple selector arguments not supported here`);
+      }
+
+      popSelector(result, stack);
+      stack.push([]);
+    } else if (lex.token === Token.BraceClose) {
+      throwOnComma = false;
+      popSelector(result, stack);
     } else if (lex.token === Token.Op) {
       current.push({
         type: RELATION_NODE,
@@ -549,14 +578,42 @@ export function parseSelector(input, toElem, toAttr) {
     lex.next();
   }
 
-  if (current.length > 0) {
-    result.push(current);
+  if (stack.length > 0) {
+    result.push(stack[0]);
   }
 
-  console.log(lex);
-  console.log("--> SELECTORS", result);
-
   return result;
+}
+
+/**
+ * @param {Selector[]} result
+ * @param {Selector[]} stack
+ */
+function popSelector(result, stack) {
+  const sel = /** @type {Selector} */ (stack.pop());
+
+  if (stack.length === 0) {
+    result.push(sel);
+    stack.push([]);
+  } else {
+    const prev = /** @type {Selector} */ (stack.at(-1));
+    if (prev.length === 0) {
+      throw new Error(`Empty selector`);
+    }
+
+    const node = prev.at(-1);
+    if (node === undefined) {
+      throw new Error(`Empty node`);
+    }
+
+    if (node.type === PSEUDO_NTH_CHILD) {
+      node.of = sel;
+    } else if (node.type === PSEUDO_HAS || node.type === PSEUDO_NOT) {
+      node.selectors.push(prev);
+    } else {
+      throw new Error(`Multiple selectors not allowed here`);
+    }
+  }
 }
 
 const TRUE_FN = () => true;
@@ -613,8 +670,8 @@ export function compileSelector(selector) {
         // FIXME
         // fn = matchIs(part, fn);
         throw new Error("TODO: :has");
-      case PSEUDO_NODE_NOT:
-        fn = matchNot(node.selector, fn);
+      case PSEUDO_NOT:
+        fn = matchNot(node.selectors, fn);
         break;
     }
   }
@@ -657,7 +714,7 @@ function matchNthChild(node, next) {
   return (ctx, id) => {
     const siblings = ctx.getSiblings(id);
 
-    if (node.backward) {
+    if (node.backwards) {
       for (
         let i = siblings.length - 1 - node.stepOffset;
         i < siblings.length;

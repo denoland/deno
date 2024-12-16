@@ -44,11 +44,11 @@ export interface PseudoNthChild {
 
 export interface PseudoHas {
   type: 6;
-  selector: Selector[];
+  selectors: Selector[];
 }
 export interface PseudoNot {
   type: 7;
-  selector: Selector[];
+  selectors: Selector[];
 }
 export interface PseudoFirstChild {
   type: 8;

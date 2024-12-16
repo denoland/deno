@@ -33,9 +33,11 @@ function testLexer(input: string): LexState[] {
 }
 
 const Tags: Record<string, number> = { Foo: 1, Bar: 2, FooBar: 3 };
-const Attrs: Record<string, number> = { foo: 1, bar: 2, foobar: 3 };
+const Attrs: Record<string, number> = { foo: 1, bar: 2, foobar: 3, attr: 4 };
 const toTag = (name: string): number => Tags[name];
 const toAttr = (name: string): number => Attrs[name];
+
+const testParse = (input: string) => parseSelector(input, toTag, toAttr);
 
 Deno.test("Lexer - Elem", () => {
   expect(testLexer("Foo")).toEqual([
@@ -229,14 +231,14 @@ Deno.test("Lexer - Pseudo", () => {
 });
 
 Deno.test("Parser", () => {
-  expect(parseSelector("Foo", toTag, toAttr)).toEqual([[
+  expect(testParse("Foo")).toEqual([[
     {
       type: ELEM_NODE,
       elem: 1,
       wildcard: false,
     },
   ]]);
-  expect(parseSelector("Foo Bar", toTag, toAttr)).toEqual([[
+  expect(testParse("Foo Bar")).toEqual([[
     {
       type: ELEM_NODE,
       elem: 1,
@@ -251,7 +253,7 @@ Deno.test("Parser", () => {
 });
 
 Deno.test("Parser - Relation", () => {
-  expect(parseSelector("Foo > Bar", toTag, toAttr)).toEqual([[
+  expect(testParse("Foo > Bar")).toEqual([[
     {
       type: ELEM_NODE,
       elem: 1,
@@ -268,7 +270,7 @@ Deno.test("Parser - Relation", () => {
     },
   ]]);
 
-  expect(parseSelector("Foo ~ Bar", toTag, toAttr)).toEqual([[
+  expect(testParse("Foo ~ Bar")).toEqual([[
     {
       type: ELEM_NODE,
       elem: 1,
@@ -285,7 +287,7 @@ Deno.test("Parser - Relation", () => {
     },
   ]]);
 
-  expect(parseSelector("Foo + Bar", toTag, toAttr)).toEqual([[
+  expect(testParse("Foo + Bar")).toEqual([[
     {
       type: ELEM_NODE,
       elem: 1,
@@ -304,14 +306,14 @@ Deno.test("Parser - Relation", () => {
 });
 
 Deno.test("Parser - Attr", () => {
-  expect(parseSelector("[foo]", toTag, toAttr)).toEqual([[
+  expect(testParse("[foo]")).toEqual([[
     {
       type: ATTR_EXISTS_NODE,
       prop: [1],
     },
   ]]);
 
-  expect(parseSelector("[foo][bar]", toTag, toAttr)).toEqual([[
+  expect(testParse("[foo][bar]")).toEqual([[
     {
       type: ATTR_EXISTS_NODE,
       prop: [1],
@@ -322,7 +324,7 @@ Deno.test("Parser - Attr", () => {
     },
   ]]);
 
-  expect(parseSelector("[foo=1]", toTag, toAttr)).toEqual([[
+  expect(testParse("[foo=1]")).toEqual([[
     {
       type: ATTR_BIN_NODE,
       op: 1,
@@ -330,7 +332,7 @@ Deno.test("Parser - Attr", () => {
       value: 1,
     },
   ]]);
-  expect(parseSelector("[foo=true]", toTag, toAttr)).toEqual([[
+  expect(testParse("[foo=true]")).toEqual([[
     {
       type: ATTR_BIN_NODE,
       op: 1,
@@ -338,7 +340,7 @@ Deno.test("Parser - Attr", () => {
       value: true,
     },
   ]]);
-  expect(parseSelector("[foo=false]", toTag, toAttr)).toEqual([[
+  expect(testParse("[foo=false]")).toEqual([[
     {
       type: ATTR_BIN_NODE,
       op: 1,
@@ -346,7 +348,7 @@ Deno.test("Parser - Attr", () => {
       value: false,
     },
   ]]);
-  expect(parseSelector("[foo=null]", toTag, toAttr)).toEqual([[
+  expect(testParse("[foo=null]")).toEqual([[
     {
       type: ATTR_BIN_NODE,
       op: 1,
@@ -354,7 +356,7 @@ Deno.test("Parser - Attr", () => {
       value: null,
     },
   ]]);
-  expect(parseSelector("[foo='str']", toTag, toAttr)).toEqual([[
+  expect(testParse("[foo='str']")).toEqual([[
     {
       type: ATTR_BIN_NODE,
       op: 1,
@@ -362,7 +364,7 @@ Deno.test("Parser - Attr", () => {
       value: "str",
     },
   ]]);
-  expect(parseSelector('[foo="str"]', toTag, toAttr)).toEqual([[
+  expect(testParse('[foo="str"]')).toEqual([[
     {
       type: ATTR_BIN_NODE,
       op: 1,
@@ -370,7 +372,7 @@ Deno.test("Parser - Attr", () => {
       value: "str",
     },
   ]]);
-  expect(parseSelector("[foo=/str/]", toTag, toAttr)).toEqual([[
+  expect(testParse("[foo=/str/]")).toEqual([[
     {
       type: ATTR_BIN_NODE,
       op: 1,
@@ -378,7 +380,7 @@ Deno.test("Parser - Attr", () => {
       value: /str/,
     },
   ]]);
-  expect(parseSelector("[foo=/str/g]", toTag, toAttr)).toEqual([[
+  expect(testParse("[foo=/str/g]")).toEqual([[
     {
       type: ATTR_BIN_NODE,
       op: 1,
@@ -389,14 +391,14 @@ Deno.test("Parser - Attr", () => {
 });
 
 Deno.test("Parser - Attr nested", () => {
-  expect(parseSelector("[foo.bar]", toTag, toAttr)).toEqual([[
+  expect(testParse("[foo.bar]")).toEqual([[
     {
       type: ATTR_EXISTS_NODE,
       prop: [1, 2],
     },
   ]]);
 
-  expect(parseSelector("[foo.bar = 2]", toTag, toAttr)).toEqual([[
+  expect(testParse("[foo.bar = 2]")).toEqual([[
     {
       type: ATTR_BIN_NODE,
       op: 1,
@@ -407,20 +409,20 @@ Deno.test("Parser - Attr nested", () => {
 });
 
 Deno.test("Parser - Pseudo no value", () => {
-  expect(parseSelector(":first-child", toTag, toAttr)).toEqual([[
+  expect(testParse(":first-child")).toEqual([[
     {
       type: PSEUDO_FIRST_CHILD,
     },
   ]]);
-  expect(parseSelector(":last-child", toTag, toAttr)).toEqual([[
+  expect(testParse(":last-child")).toEqual([[
     {
       type: PSEUDO_LAST_CHILD,
     },
   ]]);
 });
 
-Deno.test.only("Parser - Pseudo nth-child", () => {
-  expect(parseSelector(":nth-child(2)", toTag, toAttr)).toEqual([[
+Deno.test("Parser - Pseudo nth-child", () => {
+  expect(testParse(":nth-child(2)")).toEqual([[
     {
       type: PSEUDO_NTH_CHILD,
       of: null,
@@ -430,7 +432,7 @@ Deno.test.only("Parser - Pseudo nth-child", () => {
       repeat: false,
     },
   ]]);
-  expect(parseSelector(":nth-child(2n)", toTag, toAttr)).toEqual([[
+  expect(testParse(":nth-child(2n)")).toEqual([[
     {
       type: PSEUDO_NTH_CHILD,
       of: null,
@@ -440,7 +442,7 @@ Deno.test.only("Parser - Pseudo nth-child", () => {
       repeat: true,
     },
   ]]);
-  expect(parseSelector(":nth-child(-2n)", toTag, toAttr)).toEqual([[
+  expect(testParse(":nth-child(-2n)")).toEqual([[
     {
       type: PSEUDO_NTH_CHILD,
       of: null,
@@ -450,7 +452,7 @@ Deno.test.only("Parser - Pseudo nth-child", () => {
       repeat: true,
     },
   ]]);
-  expect(parseSelector(":nth-child(2n + 1)", toTag, toAttr)).toEqual([[
+  expect(testParse(":nth-child(2n + 1)")).toEqual([[
     {
       type: PSEUDO_NTH_CHILD,
       of: null,
@@ -460,25 +462,60 @@ Deno.test.only("Parser - Pseudo nth-child", () => {
       repeat: true,
     },
   ]]);
-  expect(parseSelector(":nth-child(2n + 1 of Foo[attr])", toTag, toAttr))
+  expect(testParse(":nth-child(2n + 1 of Foo[attr])"))
     .toEqual([[
       {
         type: PSEUDO_NTH_CHILD,
-        of: [],
+        of: [
+          { type: ELEM_NODE, elem: 1, wildcard: false },
+          { type: ATTR_EXISTS_NODE, prop: [4] },
+        ],
         backwards: false,
         step: 2,
         stepOffset: 1,
         repeat: true,
       },
     ]]);
+
+  // Invalid selectors
+  expect(() => testParse(":nth-child(2n + 1 of Foo[attr], Bar)"))
+    .toThrow();
+  expect(() => testParse(":nth-child(2n - 1)")).toThrow();
+  expect(() => testParse(":nth-child(2n - 1 foo)")).toThrow();
 });
 
-Deno.test("Parser - Pseudo has/is/where", () => {
-  expect(parseSelector(":has(Foo:has(Foo), Bar)", toTag, toAttr)).toEqual([[
+Deno.test.only("Parser - Pseudo has/is/where", () => {
+  expect(testParse(":has(Foo, Bar)")).toEqual([[
     {
       type: PSEUDO_HAS,
-      op: 1,
-      selectors: [{}],
+      selectors: [
+        [
+          { type: ELEM_NODE, elem: 1, wildcard: false },
+          {
+            type: PSEUDO_HAS,
+            selectors: [
+              { type: ELEM_NODE, elem: 1, wildcard: false },
+            ],
+          },
+        ],
+        [
+          { type: ELEM_NODE, elem: 1, wildcard: false },
+        ],
+      ],
     },
   ]]);
+  // expect(testParse(":where(Foo:where(Foo), Bar)")).toEqual([[
+  //   {
+  //     type: PSEUDO_HAS,
+  //     op: 1,
+  //     selectors: [{}],
+  //   },
+  // ]]);
+  // expect(testParse(":is(Foo:is(Foo), Bar)")).toEqual([[
+  //   {
+  //     type: PSEUDO_HAS,
+  //     op: 1,
+  //     selectors: [{}],
+  //   },
+  // ]]);
 });
