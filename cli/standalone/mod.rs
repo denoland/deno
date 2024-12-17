@@ -398,7 +398,11 @@ impl ModuleLoader for EmbeddedModuleLoader {
       );
     }
 
-    match self.shared.modules.read(original_specifier) {
+    match self
+      .shared
+      .modules
+      .read(original_specifier, VfsFileSubDataKind::ModuleGraph)
+    {
       Ok(Some(module)) => {
         let media_type = module.media_type;
         let (module_specifier, module_type, module_source) =
@@ -508,7 +512,34 @@ impl ModuleLoader for EmbeddedModuleLoader {
     } else {
       self.shared.source_maps.get(file_name)
     }
+    // todo(https://github.com/denoland/deno_core/pull/1007): don't clone
     .map(|s| s.as_bytes().to_vec())
+  }
+
+  fn get_source_mapped_source_line(
+    &self,
+    file_name: &str,
+    line_number: usize,
+  ) -> Option<String> {
+    let specifier = ModuleSpecifier::parse(file_name).ok()?;
+    let data = self
+      .shared
+      .modules
+      .read(&specifier, VfsFileSubDataKind::Raw)
+      .ok()??;
+
+    let source = String::from_utf8_lossy(&data.data);
+    // Do NOT use .lines(): it skips the terminating empty line.
+    // (due to internally using_terminator() instead of .split())
+    let lines: Vec<&str> = source.split('\n').collect();
+    if line_number >= lines.len() {
+      Some(format!(
+        "{} Couldn't format source line: Line {} is out of bounds (source may have changed at runtime)",
+        crate::colors::yellow("Warning"), line_number + 1,
+      ))
+    } else {
+      Some(lines[line_number].to_string())
+    }
   }
 }
 

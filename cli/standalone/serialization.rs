@@ -121,12 +121,13 @@ pub fn deserialize_binary_data_section(
     Ok((input, true))
   }
 
+  #[allow(clippy::type_complexity)]
   fn read_source_map_entry(
     input: &[u8],
-  ) -> Result<(&[u8], (String, String)), AnyError> {
+  ) -> Result<(&[u8], (Cow<str>, Cow<str>)), AnyError> {
     let (input, specifier) = read_string_lossy(input)?;
     let (input, source_map) = read_string_lossy(input)?;
-    Ok((input, (specifier.into_owned(), source_map.into_owned())))
+    Ok((input, (specifier, source_map)))
   }
 
   let (input, found) = read_magic_bytes(data)?;
@@ -135,12 +136,13 @@ pub fn deserialize_binary_data_section(
   }
 
   // 1. Metadata
-  let (input, data) = read_bytes_with_len(input).context("reading metadata")?;
+  let (input, data) =
+    read_bytes_with_u64_len(input).context("reading metadata")?;
   let metadata: Metadata =
     serde_json::from_slice(data).context("deserializing metadata")?;
   // 2. Npm snapshot
   let (input, data) =
-    read_bytes_with_len(input).context("reading npm snapshot")?;
+    read_bytes_with_u64_len(input).context("reading npm snapshot")?;
   let npm_snapshot = if data.is_empty() {
     None
   } else {
@@ -150,11 +152,11 @@ pub fn deserialize_binary_data_section(
   let (input, remote_modules) =
     RemoteModulesStore::build(input).context("deserializing remote modules")?;
   // 4. VFS
-  let (input, data) = read_bytes_with_len(input).context("vfs")?;
+  let (input, data) = read_bytes_with_u64_len(input).context("vfs")?;
   let vfs_root_entries: VirtualDirectoryEntries =
     serde_json::from_slice(data).context("deserializing vfs data")?;
   let (input, vfs_files_data) =
-    read_bytes_with_len(input).context("reading vfs files data")?;
+    read_bytes_with_u64_len(input).context("reading vfs files data")?;
   // 5. Source maps
   let (mut input, source_map_data_len) = read_u32_as_usize(input)?;
   let mut source_maps = SourceMapStore::with_capacity(source_map_data_len);
@@ -184,19 +186,31 @@ pub fn deserialize_binary_data_section(
 #[derive(Default)]
 pub struct RemoteModulesStoreBuilder {
   specifiers: Vec<(String, u64)>,
-  data: Vec<(MediaType, Vec<u8>)>,
+  data: Vec<(MediaType, Vec<u8>, Option<Vec<u8>>)>,
   data_byte_len: u64,
   redirects: Vec<(String, String)>,
   redirects_len: u64,
 }
 
 impl RemoteModulesStoreBuilder {
-  pub fn add(&mut self, specifier: &Url, media_type: MediaType, data: Vec<u8>) {
+  pub fn add(
+    &mut self,
+    specifier: &Url,
+    media_type: MediaType,
+    data: Vec<u8>,
+    maybe_transpiled: Option<Vec<u8>>,
+  ) {
     log::debug!("Adding '{}' ({})", specifier, media_type);
     let specifier = specifier.to_string();
     self.specifiers.push((specifier, self.data_byte_len));
-    self.data_byte_len += 1 + 8 + data.len() as u64; // media type (1 byte), data length (8 bytes), data
-    self.data.push((media_type, data));
+    let maybe_transpiled_len = match &maybe_transpiled {
+      // data length (4 bytes), data
+      Some(data) => 4 + data.len() as u64,
+      None => 0,
+    };
+    // media type (1 byte), data length (4 bytes), data, has transpiled (1 byte), transpiled length
+    self.data_byte_len += 1 + 4 + data.len() as u64 + 1 + maybe_transpiled_len;
+    self.data.push((media_type, data, maybe_transpiled));
   }
 
   pub fn add_redirects(&mut self, redirects: &BTreeMap<Url, Url>) {
@@ -215,7 +229,7 @@ impl RemoteModulesStoreBuilder {
     builder.append_le(self.redirects.len() as u32);
     for (specifier, offset) in &self.specifiers {
       builder.append_le(specifier.len() as u32);
-      builder.append(specifier.as_bytes());
+      builder.append(specifier);
       builder.append_le(*offset);
     }
     for (from, to) in &self.redirects {
@@ -228,13 +242,28 @@ impl RemoteModulesStoreBuilder {
       self
         .data
         .iter()
-        .map(|(_, data)| 1 + 8 + (data.len() as u64))
+        .map(|(_, data, maybe_transpiled)| {
+          1 + 4
+            + (data.len() as u64)
+            + 1
+            + match maybe_transpiled {
+              Some(transpiled) => 4 + (transpiled.len() as u64),
+              None => 0,
+            }
+        })
         .sum::<u64>(),
     );
-    for (media_type, data) in &self.data {
+    for (media_type, data, maybe_transpiled) in &self.data {
       builder.append(serialize_media_type(*media_type));
-      builder.append_le(data.len() as u64);
+      builder.append_le(data.len() as u32);
       builder.append(data);
+      if let Some(transpiled) = maybe_transpiled {
+        builder.append(1);
+        builder.append_le(transpiled.len() as u32);
+        builder.append(transpiled);
+      } else {
+        builder.append(0);
+      }
     }
   }
 }
@@ -264,7 +293,7 @@ impl DenoCompileModuleSource {
 }
 
 pub struct SourceMapStore {
-  data: IndexMap<String, String>,
+  data: IndexMap<Cow<'static, str>, Cow<'static, str>>,
 }
 
 impl SourceMapStore {
@@ -274,12 +303,16 @@ impl SourceMapStore {
     }
   }
 
-  pub fn add(&mut self, specifier: String, source_map: String) {
+  pub fn add(
+    &mut self,
+    specifier: Cow<'static, str>,
+    source_map: Cow<'static, str>,
+  ) {
     self.data.insert(specifier, source_map);
   }
 
-  pub fn get(&self, specifier: &str) -> Option<&str> {
-    self.data.get(specifier).map(|s| s.as_str())
+  pub fn get(&self, specifier: &str) -> Option<&Cow<'static, str>> {
+    self.data.get(specifier)
   }
 }
 
@@ -327,6 +360,13 @@ impl<'a> DenoCompileModuleData<'a> {
     };
     (self.specifier, media_type, source)
   }
+}
+
+pub struct RemoteModuleEntry<'a> {
+  pub specifier: &'a Url,
+  pub media_type: MediaType,
+  pub data: Cow<'static, [u8]>,
+  pub transpiled_data: Option<Cow<'static, [u8]>>,
 }
 
 enum RemoteModulesStoreSpecifierValue {
@@ -384,7 +424,7 @@ impl RemoteModulesStore {
     }
 
     let (input, specifiers) = read_headers(input)?;
-    let (input, files_data) = read_bytes_with_len(input)?;
+    let (input, files_data) = read_bytes_with_u64_len(input)?;
 
     Ok((
       input,
@@ -423,7 +463,7 @@ impl RemoteModulesStore {
   pub fn read<'a>(
     &'a self,
     original_specifier: &'a Url,
-  ) -> Result<Option<DenoCompileModuleData<'a>>, AnyError> {
+  ) -> Result<Option<RemoteModuleEntry<'a>>, AnyError> {
     let mut count = 0;
     let mut specifier = original_specifier;
     loop {
@@ -439,12 +479,25 @@ impl RemoteModulesStore {
           let input = &self.files_data[*offset..];
           let (input, media_type_byte) = read_bytes(input, 1)?;
           let media_type = deserialize_media_type(media_type_byte[0])?;
-          let (input, len) = read_u64(input)?;
-          let (_input, data) = read_bytes(input, len as usize)?;
-          return Ok(Some(DenoCompileModuleData {
+          let (input, data) = read_bytes_with_u32_len(input)?;
+          check_has_len(input, 1)?;
+          let (input, has_transpiled) = (&input[1..], input[0]);
+          let (_, transpiled_data) = match has_transpiled {
+            0 => (input, None),
+            1 => {
+              let (input, data) = read_bytes_with_u32_len(input)?;
+              (input, Some(data))
+            }
+            value => bail!(
+              "Invalid transpiled data flag: {}. Compiled data is corrupt.",
+              value
+            ),
+          };
+          return Ok(Some(RemoteModuleEntry {
             specifier,
             media_type,
             data: Cow::Borrowed(data),
+            transpiled_data: transpiled_data.map(Cow::Borrowed),
           }));
         }
         None => {
@@ -683,18 +736,30 @@ fn parse_vec_n_times_with_index<TResult>(
   Ok((input, results))
 }
 
-fn read_bytes_with_len(input: &[u8]) -> Result<(&[u8], &[u8]), AnyError> {
+fn read_bytes_with_u64_len(input: &[u8]) -> Result<(&[u8], &[u8]), AnyError> {
   let (input, len) = read_u64(input)?;
   let (input, data) = read_bytes(input, len as usize)?;
   Ok((input, data))
 }
 
+fn read_bytes_with_u32_len(input: &[u8]) -> Result<(&[u8], &[u8]), AnyError> {
+  let (input, len) = read_u32_as_usize(input)?;
+  let (input, data) = read_bytes(input, len)?;
+  Ok((input, data))
+}
+
 fn read_bytes(input: &[u8], len: usize) -> Result<(&[u8], &[u8]), AnyError> {
-  if input.len() < len {
-    bail!("Unexpected end of data.",);
-  }
+  check_has_len(input, len)?;
   let (len_bytes, input) = input.split_at(len);
   Ok((input, len_bytes))
+}
+
+#[inline(always)]
+fn check_has_len(input: &[u8], len: usize) -> Result<(), AnyError> {
+  if input.len() < len {
+    bail!("Unexpected end of data.");
+  }
+  Ok(())
 }
 
 fn read_string_lossy(input: &[u8]) -> Result<(&[u8], Cow<str>), AnyError> {

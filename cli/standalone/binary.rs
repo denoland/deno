@@ -293,13 +293,12 @@ impl StandaloneModules {
   pub fn read<'a>(
     &'a self,
     specifier: &'a ModuleSpecifier,
+    kind: VfsFileSubDataKind,
   ) -> Result<Option<DenoCompileModuleData<'a>>, AnyError> {
     if specifier.scheme() == "file" {
       let path = deno_path_util::url_to_file_path(specifier)?;
       let bytes = match self.vfs.file_entry(&path) {
-        Ok(entry) => self
-          .vfs
-          .read_file_all(entry, VfsFileSubDataKind::ModuleGraph)?,
+        Ok(entry) => self.vfs.read_file_all(entry, kind)?,
         Err(err) if err.kind() == ErrorKind::NotFound => {
           match RealFs.read_file_sync(&path, None) {
             Ok(bytes) => bytes,
@@ -317,7 +316,18 @@ impl StandaloneModules {
         data: bytes,
       }))
     } else {
-      self.remote_modules.read(specifier)
+      self.remote_modules.read(specifier).map(|maybe_entry| {
+        maybe_entry.map(|entry| DenoCompileModuleData {
+          media_type: entry.media_type,
+          specifier: entry.specifier,
+          data: match kind {
+            VfsFileSubDataKind::Raw => entry.data,
+            VfsFileSubDataKind::ModuleGraph => {
+              entry.transpiled_data.unwrap_or(entry.data)
+            }
+          },
+        })
+      })
     }
   }
 }
@@ -617,9 +627,10 @@ impl<'a> DenoCompileBinaryWriter<'a> {
       if module.specifier().scheme() == "data" {
         continue; // don't store data urls as an entry as they're in the code
       }
-      let (maybe_source, media_type) = match module {
+      let (maybe_original_source, maybe_transpiled, media_type) = match module {
         deno_graph::Module::Js(m) => {
-          let source = if m.media_type.is_emittable() {
+          let original_bytes = m.source.as_bytes().to_vec();
+          let maybe_transpiled = if m.media_type.is_emittable() {
             let is_cjs = self.cjs_tracker.is_cjs_with_known_is_script(
               &m.specifier,
               m.media_type,
@@ -633,39 +644,58 @@ impl<'a> DenoCompileBinaryWriter<'a> {
                 module_kind,
                 &m.source,
               )?;
-            source_maps.push((&m.specifier, source_map));
-            source.into_bytes()
+            if source != m.source.as_ref() {
+              source_maps.push((&m.specifier, source_map));
+              Some(source.into_bytes())
+            } else {
+              None
+            }
           } else {
-            m.source.as_bytes().to_vec()
+            None
           };
-          (Some(source), m.media_type)
+          (Some(original_bytes), maybe_transpiled, m.media_type)
         }
         deno_graph::Module::Json(m) => {
-          (Some(m.source.as_bytes().to_vec()), m.media_type)
+          (Some(m.source.as_bytes().to_vec()), None, m.media_type)
         }
         deno_graph::Module::Wasm(m) => {
-          (Some(m.source.to_vec()), MediaType::Wasm)
+          (Some(m.source.to_vec()), None, MediaType::Wasm)
         }
         deno_graph::Module::Npm(_)
         | deno_graph::Module::Node(_)
-        | deno_graph::Module::External(_) => (None, MediaType::Unknown),
+        | deno_graph::Module::External(_) => (None, None, MediaType::Unknown),
       };
-      if module.specifier().scheme() == "file" {
-        let file_path = deno_path_util::url_to_file_path(module.specifier())?;
-        vfs
-          .add_file_with_data(
-            &file_path,
-            match maybe_source {
-              Some(source) => source,
-              None => RealFs.read_file_sync(&file_path, None)?.into_owned(),
-            },
-            VfsFileSubDataKind::ModuleGraph,
-          )
-          .with_context(|| {
-            format!("Failed adding '{}'", file_path.display())
-          })?;
-      } else if let Some(source) = maybe_source {
-        remote_modules_store.add(module.specifier(), media_type, source);
+      if let Some(original_source) = maybe_original_source {
+        if module.specifier().scheme() == "file" {
+          let file_path = deno_path_util::url_to_file_path(module.specifier())?;
+          vfs
+            .add_file_with_data(
+              &file_path,
+              original_source,
+              VfsFileSubDataKind::Raw,
+            )
+            .with_context(|| {
+              format!("Failed adding '{}'", file_path.display())
+            })?;
+          if let Some(transpiled_source) = maybe_transpiled {
+            vfs
+              .add_file_with_data(
+                &file_path,
+                transpiled_source,
+                VfsFileSubDataKind::ModuleGraph,
+              )
+              .with_context(|| {
+                format!("Failed adding '{}'", file_path.display())
+              })?;
+          }
+        } else {
+          remote_modules_store.add(
+            module.specifier(),
+            media_type,
+            original_source,
+            maybe_transpiled,
+          );
+        }
       }
     }
     remote_modules_store.add_redirects(&graph.redirects);
@@ -715,8 +745,8 @@ impl<'a> DenoCompileBinaryWriter<'a> {
     let mut source_map_store = SourceMapStore::with_capacity(source_maps.len());
     for (specifier, source_map) in source_maps {
       source_map_store.add(
-        root_dir_url.specifier_key(specifier).into_owned(),
-        source_map,
+        Cow::Owned(root_dir_url.specifier_key(specifier).into_owned()),
+        Cow::Owned(source_map),
       );
     }
 
