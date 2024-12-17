@@ -3,7 +3,6 @@
 use std::borrow::Cow;
 use std::collections::HashMap;
 use std::path::PathBuf;
-use std::sync::atomic::AtomicBool;
 use std::sync::Arc;
 
 use deno_ast::ModuleSpecifier;
@@ -43,6 +42,7 @@ use crate::jsr::JsrFetchResolver;
 use crate::module_loader::ModuleLoadPreparer;
 use crate::npm::CliNpmResolver;
 use crate::npm::NpmFetchResolver;
+use crate::util::sync::AtomicFlag;
 
 use super::ConfigUpdater;
 
@@ -448,7 +448,7 @@ pub struct DepManager {
 
   pending_changes: Vec<Change>,
 
-  dependencies_resolved: AtomicBool,
+  dependencies_resolved: AtomicFlag,
   module_load_preparer: Arc<ModuleLoadPreparer>,
   // TODO(nathanwhit): probably shouldn't be pub
   pub(crate) jsr_fetch_resolver: Arc<JsrFetchResolver>,
@@ -490,7 +490,7 @@ impl DepManager {
       resolved_versions: Vec::new(),
       latest_versions: Vec::new(),
       jsr_fetch_resolver,
-      dependencies_resolved: AtomicBool::new(false),
+      dependencies_resolved: AtomicFlag::lowered(),
       module_load_preparer,
       npm_fetch_resolver,
       npm_resolver,
@@ -531,10 +531,7 @@ impl DepManager {
   }
 
   async fn run_dependency_resolution(&self) -> Result<(), AnyError> {
-    if self
-      .dependencies_resolved
-      .load(std::sync::atomic::Ordering::Relaxed)
-    {
+    if self.dependencies_resolved.is_raised() {
       return Ok(());
     }
 
@@ -557,9 +554,7 @@ impl DepManager {
       }
       DepKind::Jsr => graph.packages.mappings().contains_key(&dep.req),
     }) {
-      self
-        .dependencies_resolved
-        .store(true, std::sync::atomic::Ordering::Relaxed);
+      self.dependencies_resolved.raise();
       graph_permit.commit();
       return Ok(());
     }
@@ -614,9 +609,7 @@ impl DepManager {
       )
       .await?;
 
-    self
-      .dependencies_resolved
-      .store(true, std::sync::atomic::Ordering::Relaxed);
+    self.dependencies_resolved.raise();
     graph_permit.commit();
 
     Ok(())
@@ -678,8 +671,7 @@ impl DepManager {
             let latest = info
               .and_then(|info| {
                 let latest_tag = info.dist_tags.get("latest")?;
-                let lower_bound =
-                  semver_compatible.as_ref().map(|nv| &nv.version)?;
+                let lower_bound = &semver_compatible.as_ref()?.version;
                 if latest_tag > lower_bound {
                   Some(latest_tag.clone())
                 } else {
@@ -688,7 +680,7 @@ impl DepManager {
               })
               .map(|version| PackageNv {
                 name: semver_req.name.clone(),
-                version: version.clone(),
+                version,
               });
             PackageLatestVersion {
               latest,
@@ -705,11 +697,11 @@ impl DepManager {
               self.jsr_fetch_resolver.req_to_nv(semver_req).await;
             let info =
               self.jsr_fetch_resolver.package_info(&semver_req.name).await;
-            let lower_bound = semver_compatible.as_ref().map(|nv| &nv.version);
             let latest = info
               .and_then(|info| {
+                let lower_bound = &semver_compatible.as_ref()?.version;
                 latest_version(
-                  lower_bound,
+                  Some(lower_bound),
                   info.versions.iter().filter_map(|(version, version_info)| {
                     if !version_info.yanked {
                       Some(version)
@@ -721,7 +713,7 @@ impl DepManager {
               })
               .map(|version| PackageNv {
                 name: semver_req.name.clone(),
-                version: version.clone(),
+                version,
               });
             PackageLatestVersion {
               latest,
