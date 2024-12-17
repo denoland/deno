@@ -177,7 +177,7 @@ function hasMessageEventListener() {
   // as if we have message event listeners if a node message port is explicitly
   // refed (and the inverse as well)
   return (event.listenerCount(globalThis, "message") > 0 &&
-    !globalThis[messagePort.unrefPollForMessages]) ||
+    !globalThis[messagePort.unrefParentPort]) ||
     messagePort.refedMessagePortsCount > 0;
 }
 
@@ -194,9 +194,6 @@ async function pollForMessages() {
     // keeping the event loop alive. This avoids the need to explicitly
     // call self.close() or worker.terminate().
     if (closeOnIdle) {
-      core.unrefOpPromise(recvMessage);
-    }
-    if (globalThis[messagePort.unrefPollForMessages] === true) {
       core.unrefOpPromise(recvMessage);
     }
     const data = await recvMessage;
