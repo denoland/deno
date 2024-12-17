@@ -23,8 +23,7 @@ use crate::cache::ModuleInfoCache;
 use crate::cache::NodeAnalysisCache;
 use crate::cache::ParsedSourceCache;
 use crate::emit::Emitter;
-use crate::file_fetcher::File;
-use crate::file_fetcher::FileFetcher;
+use crate::file_fetcher::CliFileFetcher;
 use crate::graph_container::MainModuleGraphContainer;
 use crate::graph_util::FileWatcherReporter;
 use crate::graph_util::ModuleGraphBuilder;
@@ -72,6 +71,7 @@ use std::collections::HashSet;
 use std::path::PathBuf;
 
 use deno_ast::ModuleSpecifier;
+use deno_cache_dir::file_fetcher::File;
 use deno_cache_dir::npm::NpmCacheDir;
 use deno_config::glob::FilePatterns;
 use deno_config::workspace::PackageJsonDepResolution;
@@ -198,7 +198,7 @@ struct CliFactoryServices {
   emit_cache: Deferred<Arc<EmitCache>>,
   emitter: Deferred<Arc<Emitter>>,
   feature_checker: Deferred<Arc<FeatureChecker>>,
-  file_fetcher: Deferred<Arc<FileFetcher>>,
+  file_fetcher: Deferred<Arc<CliFileFetcher>>,
   fs: Deferred<Arc<dyn deno_fs::FileSystem>>,
   global_http_cache: Deferred<Arc<GlobalHttpCache>>,
   http_cache: Deferred<Arc<dyn HttpCache>>,
@@ -363,16 +363,17 @@ impl CliFactory {
     })
   }
 
-  pub fn file_fetcher(&self) -> Result<&Arc<FileFetcher>, AnyError> {
+  pub fn file_fetcher(&self) -> Result<&Arc<CliFileFetcher>, AnyError> {
     self.services.file_fetcher.get_or_try_init(|| {
       let cli_options = self.cli_options()?;
-      Ok(Arc::new(FileFetcher::new(
+      Ok(Arc::new(CliFileFetcher::new(
         self.http_cache()?.clone(),
-        cli_options.cache_setting(),
-        !cli_options.no_remote(),
         self.http_client_provider().clone(),
         self.blob_store().clone(),
         Some(self.text_only_progress_bar().clone()),
+        !cli_options.no_remote(),
+        cli_options.cache_setting(),
+        log::Level::Info,
       )))
     })
   }
@@ -1173,7 +1174,7 @@ impl WorkspaceFilesFactory {
     collect_specifiers: fn(
       FilePatterns,
       Arc<CliOptions>,
-      Arc<FileFetcher>,
+      Arc<CliFileFetcher>,
       T,
     ) -> std::pin::Pin<
       Box<
@@ -1238,7 +1239,7 @@ impl WorkspaceFilesFactory {
           let file = file_fetcher.fetch(s, root_permissions).await?;
           let snippet_files = extract_doc_files(file)?;
           for snippet_file in snippet_files {
-            doc_snippet_specifiers.push(snippet_file.specifier.clone());
+            doc_snippet_specifiers.push(snippet_file.url.clone());
             file_fetcher.insert_memory_files(snippet_file);
           }
         }

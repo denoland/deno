@@ -9,6 +9,7 @@ mod package_json;
 
 use deno_ast::MediaType;
 use deno_ast::SourceMapOption;
+use deno_cache_dir::file_fetcher::CacheSetting;
 use deno_config::deno_json::NodeModulesDirMode;
 use deno_config::workspace::CreateResolverOptions;
 use deno_config::workspace::FolderConfigs;
@@ -23,11 +24,11 @@ use deno_config::workspace::WorkspaceLintConfig;
 use deno_config::workspace::WorkspaceResolver;
 use deno_core::resolve_url_or_path;
 use deno_graph::GraphKind;
+use deno_lint::linter::LintConfig as DenoLintConfig;
 use deno_npm::npm_rc::NpmRc;
 use deno_npm::npm_rc::ResolvedNpmRc;
 use deno_npm::resolution::ValidSerializedNpmResolutionSnapshot;
 use deno_npm::NpmSystemInfo;
-use deno_npm_cache::NpmCacheSetting;
 use deno_path_util::normalize_path;
 use deno_semver::npm::NpmPackageReqReference;
 use deno_telemetry::OtelConfig;
@@ -85,7 +86,7 @@ use thiserror::Error;
 
 use crate::cache;
 use crate::cache::DenoDirProvider;
-use crate::file_fetcher::FileFetcher;
+use crate::file_fetcher::CliFileFetcher;
 use crate::util::fs::canonicalize_path_maybe_not_exists;
 use crate::version;
 
@@ -215,52 +216,6 @@ pub fn ts_config_to_transpile_and_emit_options(
       source_map_file: None,
     },
   ))
-}
-
-/// Indicates how cached source files should be handled.
-#[derive(Debug, Clone, Eq, PartialEq)]
-pub enum CacheSetting {
-  /// Only the cached files should be used.  Any files not in the cache will
-  /// error.  This is the equivalent of `--cached-only` in the CLI.
-  Only,
-  /// No cached source files should be used, and all files should be reloaded.
-  /// This is the equivalent of `--reload` in the CLI.
-  ReloadAll,
-  /// Only some cached resources should be used.  This is the equivalent of
-  /// `--reload=jsr:@std/http/file-server` or
-  /// `--reload=jsr:@std/http/file-server,jsr:@std/assert/assert-equals`.
-  ReloadSome(Vec<String>),
-  /// The usability of a cached value is determined by analyzing the cached
-  /// headers and other metadata associated with a cached response, reloading
-  /// any cached "non-fresh" cached responses.
-  RespectHeaders,
-  /// The cached source files should be used for local modules.  This is the
-  /// default behavior of the CLI.
-  Use,
-}
-
-impl CacheSetting {
-  pub fn as_npm_cache_setting(&self) -> NpmCacheSetting {
-    match self {
-      CacheSetting::Only => NpmCacheSetting::Only,
-      CacheSetting::ReloadAll => NpmCacheSetting::ReloadAll,
-      CacheSetting::ReloadSome(values) => {
-        if values.iter().any(|v| v == "npm:") {
-          NpmCacheSetting::ReloadAll
-        } else {
-          NpmCacheSetting::ReloadSome {
-            npm_package_names: values
-              .iter()
-              .filter_map(|v| v.strip_prefix("npm:"))
-              .map(|n| n.to_string())
-              .collect(),
-          }
-        }
-      }
-      CacheSetting::RespectHeaders => unreachable!(), // not supported
-      CacheSetting::Use => NpmCacheSetting::Use,
-    }
-  }
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -1083,7 +1038,7 @@ impl CliOptions {
 
   pub async fn create_workspace_resolver(
     &self,
-    file_fetcher: &FileFetcher,
+    file_fetcher: &CliFileFetcher,
     pkg_json_dep_resolution: PackageJsonDepResolution,
   ) -> Result<WorkspaceResolver, AnyError> {
     let overrode_no_import_map: bool = self
@@ -1430,9 +1385,7 @@ impl CliOptions {
     Ok(result)
   }
 
-  pub fn resolve_deno_lint_config(
-    &self,
-  ) -> Result<deno_lint::linter::LintConfig, AnyError> {
+  pub fn resolve_deno_lint_config(&self) -> Result<DenoLintConfig, AnyError> {
     let ts_config_result =
       self.resolve_ts_config_for_emit(TsConfigType::Emit)?;
 
@@ -1441,7 +1394,7 @@ impl CliOptions {
         ts_config_result.ts_config,
       )?;
 
-    Ok(deno_lint::linter::LintConfig {
+    Ok(DenoLintConfig {
       default_jsx_factory: (!transpile_options.jsx_automatic)
         .then(|| transpile_options.jsx_factory.clone()),
       default_jsx_fragment_factory: (!transpile_options.jsx_automatic)

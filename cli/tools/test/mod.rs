@@ -8,7 +8,7 @@ use crate::colors;
 use crate::display;
 use crate::factory::SpecifierInfo;
 use crate::factory::WorkspaceFilesFactory;
-use crate::file_fetcher::FileFetcher;
+use crate::file_fetcher::CliFileFetcher;
 use crate::ops;
 use crate::util::extract::extract_doc_tests;
 use crate::util::file_watcher;
@@ -1448,7 +1448,7 @@ fn is_supported_test_ext(path: &Path) -> bool {
 pub async fn collect_specifiers_for_tests(
   patterns: FilePatterns,
   cli_options: Arc<CliOptions>,
-  file_fetcher: Arc<FileFetcher>,
+  file_fetcher: Arc<CliFileFetcher>,
   doc: bool,
 ) -> Result<Vec<(ModuleSpecifier, SpecifierInfo)>, AnyError> {
   let vendor_folder = cli_options.vendor_dir_path();
