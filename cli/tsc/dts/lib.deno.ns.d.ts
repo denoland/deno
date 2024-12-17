@@ -7159,6 +7159,9 @@ declare namespace Deno {
     TSTypeAnnotation?(node: TSTypeAnnotation): void;
     TSTypeReference?(node: TSTypeReference): void;
     TSUnknownKeyword?(node: TSUnknownKeyword): void;
+
+    // deno-lint-ignore no-explicit-any
+    [selector: string]: ((node: any) => void) | undefined;
   }
 
   export interface LintRule {

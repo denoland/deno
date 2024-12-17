@@ -25,8 +25,8 @@ pub enum AstNode {
 
   // Decls
   ClassDeclaration,
-  Fn,
-  Var,
+  FunctionDeclaration,
+  VariableDeclaration,
   Using,
   TSInterface,
   TsTypeAlias,
@@ -34,7 +34,7 @@ pub enum AstNode {
   TsModule,
 
   // Statements
-  Block,
+  BlockStatement,
   Empty,
   Debugger,
   With,

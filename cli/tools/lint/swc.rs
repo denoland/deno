@@ -169,7 +169,7 @@ fn serialize_stmt(
 ) -> NodeRef {
   match stmt {
     Stmt::Block(node) => {
-      let pos = ctx.header(AstNode::Block, parent, &node.span, 1);
+      let pos = ctx.header(AstNode::BlockStatement, parent, &node.span, 1);
       let body_pos = ctx.ref_vec_field(AstProp::Body, node.stmts.len());
 
       let children = node
@@ -1437,7 +1437,12 @@ fn serialize_decl(
       id
     }
     Decl::Fn(node) => {
-      let pos = ctx.header(AstNode::Fn, parent, &node.function.span, 8);
+      let pos = ctx.header(
+        AstNode::FunctionDeclaration,
+        parent,
+        &node.function.span,
+        8,
+      );
       let declare_pos = ctx.ref_field(AstProp::Declare);
       let async_pos = ctx.ref_field(AstProp::Async);
       let gen_pos = ctx.ref_field(AstProp::Generator);
@@ -1479,7 +1484,7 @@ fn serialize_decl(
       pos
     }
     Decl::Var(node) => {
-      let id = ctx.header(AstNode::Var, parent, &node.span, 3);
+      let id = ctx.header(AstNode::VariableDeclaration, parent, &node.span, 3);
       let declare_pos = ctx.bool_field(AstProp::Declare);
       let kind_pos = ctx.str_field(AstProp::Kind);
       let decls_pos =

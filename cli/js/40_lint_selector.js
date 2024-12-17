@@ -4,7 +4,7 @@
 
 /** @typedef {import("./40_lint_types.d.ts").LintState} LintState */
 /** @typedef {import("./40_lint_types.d.ts").AstContext} AstContext */
-/** @typedef {import("./40_lint_types.d.ts").MatchCtx} MatchCtx */
+/** @typedef {import("./40_lint_types.d.ts").MatchContext} MatchCtx */
 /** @typedef {import("./40_lint_types.d.ts").AttrExists} AttrExists */
 /** @typedef {import("./40_lint_types.d.ts").AttrBin} AttrBin */
 /** @typedef {import("./40_lint_types.d.ts").AttrSelector} AttrSelector */
@@ -685,7 +685,9 @@ function popSelector(result, stack) {
   }
 }
 
-const TRUE_FN = () => true;
+const TRUE_FN = () => {
+  return true;
+};
 
 /**
  * @param {Selector} selector
@@ -742,6 +744,10 @@ export function compileSelector(selector) {
       case PSEUDO_NOT:
         fn = matchNot(node.selectors, fn);
         break;
+      default:
+        // @ts-ignore error handling
+        console.log(node);
+        throw new Error(`Unknown selector node`);
     }
   }
 
@@ -943,7 +949,7 @@ function matchElem(part, next) {
  */
 function matchAttrExists(attr, next) {
   return (ctx, id) => {
-    return ctx.hasAttrPath(id, attr.prop) ? next(ctx, id) : false;
+    return ctx.hasAttrPath(id, attr.prop, 0) ? next(ctx, id) : false;
   };
 }
 
@@ -954,8 +960,8 @@ function matchAttrExists(attr, next) {
  */
 function matchAttrBin(attr, next) {
   return (ctx, id) => {
-    if (!ctx.hasAttrPath(id, attr.prop)) return false;
-    const value = ctx.getAttrPathValue(id, attr.prop);
+    if (!ctx.hasAttrPath(id, attr.prop, 0)) return false;
+    const value = ctx.getAttrPathValue(id, attr.prop, 0);
     if (!matchAttrValue(attr, value)) return false;
     return next(ctx, id);
   };

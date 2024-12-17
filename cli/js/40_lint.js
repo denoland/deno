@@ -31,39 +31,13 @@ const PropFlags = {
   Undefined: 5,
 };
 
-/**
- * @typedef {{
- *   buf: Uint8Array,
- *   strTable: Map<number, string>,
- *   strTableOffset: number,
- *   rootId: number,
- *   nodes: Map<number, Node>,
- *   strByType: number[],
- *   strByProp: number[]
- *   typeByStr: Map<string, number>,
- *   propByStr: Map<string, number>,
- * }} AstContext
- */
-
-/**
- * @typedef {{
- *   plugins: Deno.LintPlugin[],
- *   installedPlugins: Set<string>,
- * }} LintState
- */
-
-/**
- * @typedef {import("./40_lint_types.d.ts").VisitorFn} VisitorFn
- */
-/**
- * @typedef {import("./40_lint_types.d.ts").MatcherFn} MatcherFn
- */
-/**
- * @typedef {import("./40_lint_types.d.ts").TransformFn} TransformerFn
- */
-/**
- * @typedef {import("./40_lint_types.d.ts").CompiledVisitor} CompiledVisitor
- */
+/** @typedef {import("./40_lint_types.d.ts").AstContext} AstContext */
+/** @typedef {import("./40_lint_types.d.ts").VisitorFn} VisitorFn */
+/** @typedef {import("./40_lint_types.d.ts").MatcherFn} MatcherFn */
+/** @typedef {import("./40_lint_types.d.ts").TransformFn} TransformerFn */
+/** @typedef {import("./40_lint_types.d.ts").CompiledVisitor} CompiledVisitor */
+/** @typedef {import("./40_lint_types.d.ts").LintState} LintState */
+/** @typedef {import("./40_lint_types.d.ts").MatchContext} MatchContext */
 
 /** @type {LintState} */
 const state = {
@@ -201,7 +175,7 @@ function readValue(ctx, offset, search) {
   const type = buf[offset];
 
   if (search === AST_PROP_TYPE) {
-    return getString(ctx, ctx.strByType[type]);
+    return getString(ctx.strTable, ctx.strByType[type]);
   } else if (search === AST_PROP_RANGE) {
     const start = readU32(buf, offset + 1 + 4);
     const end = readU32(buf, offset + 1 + 4 + 4);
@@ -233,7 +207,7 @@ function readValue(ctx, offset, search) {
     return buf[offset] === 1;
   } else if (kind === PropFlags.String) {
     const v = readU32(buf, offset);
-    return getString(ctx, v);
+    return getString(ctx.strTable, v);
   } else if (kind === PropFlags.Null) {
     return null;
   } else if (kind === PropFlags.Undefined) {
@@ -264,7 +238,7 @@ function toJsValue(ctx, offset) {
   for (let i = 0; i < count; i++) {
     const prop = buf[offset++];
     const kind = buf[offset++];
-    const name = getString(ctx, ctx.strByProp[prop]);
+    const name = getString(ctx.strTable, ctx.strByProp[prop]);
 
     if (kind === PropFlags.Ref) {
       const v = readU32(buf, offset);
@@ -287,7 +261,7 @@ function toJsValue(ctx, offset) {
     } else if (kind === PropFlags.String) {
       const v = readU32(buf, offset);
       offset += 4;
-      node[name] = getString(ctx, v);
+      node[name] = getString(ctx.strTable, v);
     } else if (kind === PropFlags.Null) {
       node[name] = null;
     } else if (kind === PropFlags.Undefined) {
@@ -339,7 +313,7 @@ function setNodeGetters(ctx) {
     if (id === 0 || appliedGetters.has(i)) continue;
     appliedGetters.add(i);
 
-    const name = getString(ctx, id);
+    const name = getString(ctx.strTable, id);
 
     Object.defineProperty(Node.prototype, name, {
       get() {
@@ -362,17 +336,139 @@ function readU32(buf, i) {
 }
 
 /**
- * @param {AstContext} ctx
+ * @param {AstContext["strTable"]} strTable
  * @param {number} id
  * @returns {string}
  */
-function getString(ctx, id) {
-  const name = ctx.strTable.get(id);
+function getString(strTable, id) {
+  const name = strTable.get(id);
   if (name === undefined) {
     throw new Error(`Missing string id: ${id}`);
   }
 
   return name;
+}
+
+/** @implements {MatchContext} */
+class MatchCtx {
+  /**
+   * @param {AstContext["buf"]} buf
+   * @param {AstContext["strTable"]} strTable
+   */
+  constructor(buf, strTable) {
+    this.buf = buf;
+    this.strTable = strTable;
+  }
+
+  /**
+   * @param {number} offset
+   * @returns {number}
+   */
+  getParent(offset) {
+    return readU32(this.buf, offset + 1);
+  }
+
+  /**
+   * @param {number} offset
+   * @returns {number}
+   */
+  getType(offset) {
+    return this.buf[offset];
+  }
+
+  /**
+   * @param {number} offset
+   * @param {number[]} propIds
+   * @param {number} idx
+   * @returns {unknown}
+   */
+  getAttrPathValue(offset, propIds, idx) {
+    const { buf } = this;
+
+    offset = findPropOffset(buf, offset, propIds[idx]);
+    // console.log("attr value", offset, propIds, idx);
+    if (offset === -1) return undefined;
+    const prop = buf[offset++];
+    const kind = buf[offset++];
+
+    if (kind === PropFlags.Ref) {
+      const value = readU32(buf, offset);
+      // Checks need to end with a value, not a node
+      if (idx === propIds.length - 1) return undefined;
+      return this.getAttrPathValue(value, propIds, idx + 1);
+    } else if (kind === PropFlags.RefArr) {
+      // FIXME
+      const count = readU32(buf, offset);
+      offset += 4;
+    }
+
+    // Cannot traverse into primitives further
+    if (idx < propIds.length - 1) return undefined;
+
+    if (kind === PropFlags.String) {
+      const s = readU32(buf, offset);
+      return getString(this.strTable, s);
+    } else if (kind === PropFlags.Bool) {
+      return buf[offset] === 1;
+    } else if (kind === PropFlags.Null) {
+      return null;
+    } else if (kind === PropFlags.Undefined) {
+      return undefined;
+    }
+
+    return undefined;
+  }
+
+  /**
+   * @param {number} offset
+   * @param {number[]} propIds
+   * @param {number} idx
+   * @returns {boolean}
+   */
+  hasAttrPath(offset, propIds, idx) {
+    const { buf } = this;
+
+    offset = findPropOffset(buf, offset, propIds[idx]);
+    // console.log("attr path", offset, propIds, idx);
+    if (offset === -1) return false;
+    if (idx === propIds.length - 1) return true;
+
+    const prop = buf[offset++];
+    const kind = buf[offset++];
+    if (kind === PropFlags.Ref) {
+      const value = readU32(buf, offset);
+      return this.hasAttrPath(value, propIds, idx + 1);
+    } else if (kind === PropFlags.RefArr) {
+      const count = readU32(buf, offset);
+      offset += 4;
+
+      // FIXME
+    }
+
+    // Primitives cannot be traversed further. This means we
+    // didn't found the attribute.
+    if (idx < propIds.length - 1) return false;
+
+    return true;
+  }
+
+  getFirstChild() {
+    // FIXME
+    return 0;
+  }
+
+  getLastChild() {
+    // FIXME
+    return 0;
+  }
+  getSiblingBefore() {
+    // FIXME
+    return 0;
+  }
+  getSiblings() {
+    // FIXME
+    return [];
+  }
 }
 
 /**
@@ -455,6 +551,7 @@ function createAstContext(buf) {
     strByType,
     typeByStr,
     propByStr,
+    matcher: new MatchCtx(buf, strTable),
   };
 
   setNodeGetters(ctx);
@@ -499,6 +596,7 @@ export function runPluginsForFile(fileName, serializedAst) {
 
       for (let key in visitor) {
         const fn = visitor[key];
+        if (fn === undefined) continue;
 
         let isExit = false;
         if (key.endsWith(":exit")) {
@@ -563,7 +661,7 @@ export function runPluginsForFile(fileName, serializedAst) {
   };
   /** @type {TransformerFn} */
   const toAttr = (str) => {
-    const id = ctx.typeByStr.get(str);
+    const id = ctx.propByStr.get(str);
     if (id === undefined) throw new Error(`Unknown elem: ${str}`);
     return id;
   };
@@ -571,8 +669,10 @@ export function runPluginsForFile(fileName, serializedAst) {
   /** @type {CompiledVisitor[]} */
   const visitors = [];
   for (const [sel, info] of bySelector.entries()) {
-    const compiled = parseSelector(sel, toElem, toAttr);
-    const matcher = compileSelector(compiled);
+    // Selectors are already split here.
+    // TODO: Avoid array allocation (not sure if that matters)
+    const parsed = parseSelector(sel, toElem, toAttr)[0];
+    const matcher = compileSelector(parsed);
 
     visitors.push({
       info,
@@ -616,8 +716,7 @@ function traverse(ctx, visitors, offset) {
       continue;
     }
 
-    // FIXME: add matcher context methods
-    if (v.matcher(ctx, offset)) {
+    if (v.matcher(ctx.matcher, offset)) {
       const node = /** @type {*} */ (getNode(ctx, offset));
       v.info.enter(node);
 
@@ -684,14 +783,14 @@ function _dump(ctx) {
   for (let i = 0; i < strByType.length; i++) {
     const v = strByType[i];
     // @ts-ignore dump fn
-    if (v > 0) console.log(" > type:", i, getString(ctx, v), v);
+    if (v > 0) console.log(" > type:", i, getString(ctx.strTable, v), v);
   }
   // @ts-ignore dump fn
   console.log();
   for (let i = 0; i < strByProp.length; i++) {
     const v = strByProp[i];
     // @ts-ignore dump fn
-    if (v > 0) console.log(" > prop:", i, getString(ctx, v), v);
+    if (v > 0) console.log(" > prop:", i, getString(ctx.strTable, v), v);
   }
   // @ts-ignore dump fn
   console.log();
@@ -700,7 +799,7 @@ function _dump(ctx) {
 
   while (offset < strTableOffset) {
     const type = buf[offset];
-    const name = getString(ctx, ctx.strByType[type]);
+    const name = getString(ctx.strTable, ctx.strByType[type]);
     // @ts-ignore dump fn
     console.log(`${name}, offset: ${offset}, type: ${type}`);
     offset += 1;
@@ -724,7 +823,7 @@ function _dump(ctx) {
     for (let i = 0; i < count; i++) {
       const prop = buf[offset++];
       const kind = buf[offset++];
-      const name = getString(ctx, ctx.strByProp[prop]);
+      const name = getString(ctx.strTable, ctx.strByProp[prop]);
 
       let kindName = "unknown";
       for (const k in PropFlags) {
@@ -760,7 +859,9 @@ function _dump(ctx) {
         const v = readU32(buf, offset);
         offset += 4;
         // @ts-ignore dump fn
-        console.log(`    ${name}: ${getString(ctx, v)} (${kindName}, ${prop})`);
+        console.log(
+          `    ${name}: ${getString(ctx.strTable, v)} (${kindName}, ${prop})`,
+        );
       } else if (kind === PropFlags.Null) {
         // @ts-ignore dump fn
         console.log(`    ${name}: null (${kindName}, ${prop})`);

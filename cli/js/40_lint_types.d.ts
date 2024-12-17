@@ -1,11 +1,21 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
+export interface NodeFacade {
+  readonly type: string;
+  readonly range: [number, number];
+}
+
 export interface AstContext {
   buf: Uint8Array;
   strTable: Map<number, string>;
-  idTable: number[];
+  strTableOffset: number;
   rootId: number;
-  stack: number[];
+  nodes: Map<number, NodeFacade>;
+  strByType: number[];
+  strByProp: number[];
+  typeByStr: Map<string, number>;
+  propByStr: Map<string, number>;
+  matcher: MatchContext;
 }
 
 export interface LintState {
@@ -89,19 +99,19 @@ export interface ILexer {
   token: SelToken;
 }
 
-export interface MatchCtx {
+export interface MatchContext {
   getFirstChild(id: number): number;
   getLastChild(id: number): number;
   getSiblingBefore(parentId: number, sib: number): number;
   getSiblings(id: number): number[];
   getParent(id: number): number;
   getType(id: number): number;
-  hasAttrPath(id: number, propIds: number[]): boolean;
-  getAttrPathValue(id: number, propIds: number[]): unknown;
+  hasAttrPath(id: number, propIds: number[], idx: number): boolean;
+  getAttrPathValue(id: number, propIds: number[], idx: number): unknown;
 }
 
-export type NextFn = (ctx: MatchCtx, id: number) => boolean;
-export type MatcherFn = (ctx: MatchCtx, id: number) => boolean;
+export type NextFn = (ctx: MatchContext, id: number) => boolean;
+export type MatcherFn = (ctx: MatchContext, id: number) => boolean;
 export type TransformFn = (value: string) => number;
 export type VisitorFn = (node: Deno.AstNode) => void;
 
