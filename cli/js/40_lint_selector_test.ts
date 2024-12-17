@@ -480,3 +480,17 @@ Deno.test("splitSelectors", () => {
     "foobar",
   ]);
 });
+
+Deno.test("mixed", () => {
+  const ast: TestNode = {
+    type: "Foo",
+    attr: true,
+    children: [
+      { type: "Foo", msg: "a" },
+      { type: "Foo", msg: "b" },
+      { type: "Foo", msg: "c" },
+      { type: "Foo", msg: "d" },
+    ],
+  };
+  expect(testSelector(ast, "Foo[attr=true] Foo")).toEqual(ast.children![0]);
+});

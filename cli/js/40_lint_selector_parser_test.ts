@@ -435,7 +435,7 @@ Deno.test("Parser - Pseudo nth-child", () => {
     {
       type: PSEUDO_NTH_CHILD,
       of: null,
-      backwards: false,
+      op: null,
       step: 0,
       stepOffset: 1,
       repeat: false,
@@ -445,7 +445,7 @@ Deno.test("Parser - Pseudo nth-child", () => {
     {
       type: PSEUDO_NTH_CHILD,
       of: null,
-      backwards: false,
+      op: null,
       step: 2,
       stepOffset: 0,
       repeat: true,
@@ -455,8 +455,8 @@ Deno.test("Parser - Pseudo nth-child", () => {
     {
       type: PSEUDO_NTH_CHILD,
       of: null,
-      backwards: true,
-      step: 2,
+      op: null,
+      step: -2,
       stepOffset: 0,
       repeat: true,
     },
@@ -465,7 +465,7 @@ Deno.test("Parser - Pseudo nth-child", () => {
     {
       type: PSEUDO_NTH_CHILD,
       of: null,
-      backwards: false,
+      op: "+",
       step: 2,
       stepOffset: 1,
       repeat: true,
@@ -479,7 +479,7 @@ Deno.test("Parser - Pseudo nth-child", () => {
           { type: ELEM_NODE, elem: 1, wildcard: false },
           { type: ATTR_EXISTS_NODE, prop: [4] },
         ],
-        backwards: false,
+        op: "+",
         step: 2,
         stepOffset: 1,
         repeat: true,
@@ -489,7 +489,6 @@ Deno.test("Parser - Pseudo nth-child", () => {
   // Invalid selectors
   expect(() => testParse(":nth-child(2n + 1 of Foo[attr], Bar)"))
     .toThrow();
-  expect(() => testParse(":nth-child(2n - 1)")).toThrow();
   expect(() => testParse(":nth-child(2n - 1 foo)")).toThrow();
 });
 
@@ -571,6 +570,23 @@ Deno.test("Parser - Pseudo not", () => {
           { type: ELEM_NODE, elem: 2, wildcard: false },
         ],
       ],
+    },
+  ]]);
+});
+
+Deno.test("Parser - mixed", () => {
+  expect(testParse("Foo[foo=true] Bar")).toEqual([[
+    {
+      type: ELEM_NODE,
+      elem: 1,
+      wildcard: false,
+    },
+    { type: ATTR_BIN_NODE, op: BinOp.Equal, prop: [1], value: true },
+    { type: RELATION_NODE, op: BinOp.Space },
+    {
+      type: ELEM_NODE,
+      elem: 2,
+      wildcard: false,
     },
   ]]);
 });
