@@ -1,3 +1,4 @@
+import { splitSelectors } from "./40_lint_selector.js";
 import {
   compileSelector,
   MatchCtx,
@@ -468,4 +469,14 @@ Deno.test("select child: A:nth-child", () => {
   expect(testSelector(ast, ":nth-child(2n + 2 of Foo)")).toEqual(
     ast.children![1],
   );
+});
+
+Deno.test("splitSelectors", () => {
+  expect(splitSelectors("foo")).toEqual(["foo"]);
+  expect(splitSelectors("foo, bar")).toEqual(["foo", "bar"]);
+  expect(splitSelectors("foo:f(bar, baz)")).toEqual(["foo:f(bar, baz)"]);
+  expect(splitSelectors("foo:f(bar, baz), foobar")).toEqual([
+    "foo:f(bar, baz)",
+    "foobar",
+  ]);
 });

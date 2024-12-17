@@ -102,6 +102,12 @@ export interface MatchCtx {
 
 export type NextFn = (ctx: MatchCtx, id: number) => boolean;
 export type MatcherFn = (ctx: MatchCtx, id: number) => boolean;
-export type Transformer = (value: string) => number;
+export type TransformFn = (value: string) => number;
+export type VisitorFn = (node: Deno.AstNode) => void;
+
+export interface CompiledVisitor {
+  matcher: MatcherFn;
+  info: { enter: VisitorFn; exit: VisitorFn };
+}
 
 export {};

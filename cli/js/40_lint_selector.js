@@ -17,7 +17,7 @@
 /** @typedef {import("./40_lint_types.d.ts").SelectorParseCtx} SelectorParseCtx */
 /** @typedef {import("./40_lint_types.d.ts").NextFn} NextFn */
 /** @typedef {import("./40_lint_types.d.ts").MatcherFn} MatcherFn */
-/** @typedef {import("./40_lint_types.d.ts").Transformer} Transformer */
+/** @typedef {import("./40_lint_types.d.ts").TransformFn} Transformer */
 
 const Char = {
   Tab: 9,
@@ -376,6 +376,42 @@ export const PSEUDO_HAS = 6;
 export const PSEUDO_NOT = 7;
 export const PSEUDO_FIRST_CHILD = 8;
 export const PSEUDO_LAST_CHILD = 9;
+
+/**
+ * Parse out all unique selectors of a selector list.
+ * @param {string} input
+ * @returns {string[]}
+ */
+export function splitSelectors(input) {
+  /** @type {string[]} */
+  const out = [];
+
+  let last = 0;
+  let depth = 0;
+  for (let i = 0; i < input.length; i++) {
+    const ch = input.charCodeAt(i);
+    switch (ch) {
+      case Char.BraceOpen:
+        depth++;
+        break;
+      case Char.BraceClose:
+        depth--;
+        break;
+      case Char.Comma:
+        if (depth === 0) {
+          out.push(input.slice(last, i).trim());
+          last = i + 1;
+        }
+        break;
+    }
+  }
+
+  if (last < input.length - 1) {
+    out.push(input.slice(last).trim());
+  }
+
+  return out;
+}
 
 /**
  * @param {string} input

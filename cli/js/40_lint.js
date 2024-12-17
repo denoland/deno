@@ -3,9 +3,11 @@
 // @ts-check
 
 import { core } from "ext:core/mod.js";
-import { compileSelector, parseSelector } from "ext:cli/lint/selector.js";
-
-console.log({ compileSelector, foo: "foo" });
+import {
+  compileSelector,
+  parseSelector,
+  splitSelectors,
+} from "ext:cli/lint/selector.js";
 
 const {
   op_lint_get_rule,
@@ -37,8 +39,9 @@ const PropFlags = {
  *   rootId: number,
  *   nodes: Map<number, Node>,
  *   strByType: number[],
- *   typeByStr: Map<string, number>,
  *   strByProp: number[]
+ *   typeByStr: Map<string, number>,
+ *   propByStr: Map<string, number>,
  * }} AstContext
  */
 
@@ -47,6 +50,19 @@ const PropFlags = {
  *   plugins: Deno.LintPlugin[],
  *   installedPlugins: Set<string>,
  * }} LintState
+ */
+
+/**
+ * @typedef {import("./40_lint_types.d.ts").VisitorFn} VisitorFn
+ */
+/**
+ * @typedef {import("./40_lint_types.d.ts").MatcherFn} MatcherFn
+ */
+/**
+ * @typedef {import("./40_lint_types.d.ts").TransformFn} TransformerFn
+ */
+/**
+ * @typedef {import("./40_lint_types.d.ts").CompiledVisitor} CompiledVisitor
  */
 
 /** @type {LintState} */
@@ -418,12 +434,14 @@ function createAstContext(buf) {
   const propCount = readU32(buf, offset);
   offset += 4;
 
+  const propByStr = new Map();
   const strByProp = new Array(propCount).fill(0);
   for (let i = 0; i < propCount; i++) {
     const v = readU32(buf, offset);
     offset += 4;
 
     strByProp[i] = v;
+    propByStr.set(strTable.get(v), i);
   }
 
   /** @type {AstContext} */
@@ -436,6 +454,7 @@ function createAstContext(buf) {
     strByProp,
     strByType,
     typeByStr,
+    propByStr,
   };
 
   setNodeGetters(ctx);
@@ -446,6 +465,11 @@ function createAstContext(buf) {
 }
 
 /**
+ * @param {*} _node
+ */
+const NOOP = (_node) => {};
+
+/**
  * @param {string} fileName
  * @param {Uint8Array} serializedAst
  */
@@ -453,8 +477,9 @@ export function runPluginsForFile(fileName, serializedAst) {
   const ctx = createAstContext(serializedAst);
   // console.log(JSON.stringify(ctx, null, 2));
 
-  /** @type {Record<string, (node: any) => void>} */
-  const mergedVisitor = {};
+  /** @type {Map<string, { enter: VisitorFn, exit: VisitorFn}>} */
+  const bySelector = new Map();
+
   const destroyFns = [];
 
   // console.log(state);
@@ -472,23 +497,48 @@ export function runPluginsForFile(fileName, serializedAst) {
 
       // console.log({ visitor });
 
-      for (const name in visitor) {
-        const prev = mergedVisitor[name];
-        mergedVisitor[name] = (node) => {
-          if (typeof prev === "function") {
-            prev(node);
-          }
+      for (let key in visitor) {
+        const fn = visitor[key];
 
-          try {
-            visitor[name](node);
-          } catch (err) {
-            // FIXME: console here doesn't support error cause
-            console.log(err);
-            throw new Error(`Visitor "${name}" of plugin "${id}" errored`, {
-              cause: err,
-            });
+        let isExit = false;
+        if (key.endsWith(":exit")) {
+          isExit = true;
+          key = key.slice(0, -":exit".length);
+        }
+        const selectors = splitSelectors(key);
+
+        for (let j = 0; j < selectors.length; j++) {
+          const fnKey = selectors[j] + (isExit ? ":exit" : "");
+          let info = bySelector.get(fnKey);
+          if (info === undefined) {
+            info = { enter: NOOP, exit: NOOP };
+            bySelector.set(fnKey, info);
           }
-        };
+          const prevFn = isExit ? info.exit : info.enter;
+
+          /**
+           * @param {*} node
+           */
+          const wrapped = (node) => {
+            prevFn(node);
+
+            try {
+              fn(node);
+            } catch (err) {
+              // FIXME: console here doesn't support error cause
+              console.log(err);
+              throw new Error(`Visitor "${name}" of plugin "${id}" errored`, {
+                cause: err,
+              });
+            }
+          };
+
+          if (isExit) {
+            info.exit = wrapped;
+          } else {
+            info.enter = wrapped;
+          }
+        }
       }
 
       if (typeof rule.destroy === "function") {
@@ -504,10 +554,36 @@ export function runPluginsForFile(fileName, serializedAst) {
     }
   }
 
+  // Create selectors
+  /** @type {TransformerFn} */
+  const toElem = (str) => {
+    const id = ctx.typeByStr.get(str);
+    if (id === undefined) throw new Error(`Unknown elem: ${str}`);
+    return id;
+  };
+  /** @type {TransformerFn} */
+  const toAttr = (str) => {
+    const id = ctx.typeByStr.get(str);
+    if (id === undefined) throw new Error(`Unknown elem: ${str}`);
+    return id;
+  };
+
+  /** @type {CompiledVisitor[]} */
+  const visitors = [];
+  for (const [sel, info] of bySelector.entries()) {
+    const compiled = parseSelector(sel, toElem, toAttr);
+    const matcher = compileSelector(compiled);
+
+    visitors.push({
+      info,
+      matcher,
+    });
+  }
+
   // Traverse ast with all visitors at the same time to avoid traversing
   // multiple times.
   try {
-    traverse(ctx, mergedVisitor);
+    traverse(ctx, visitors, ctx.rootId);
   } finally {
     ctx.nodes.clear();
 
@@ -520,76 +596,78 @@ export function runPluginsForFile(fileName, serializedAst) {
 
 /**
  * @param {AstContext} ctx
- * @param {*} visitor
- * @returns {void}
- */
-function traverse(ctx, visitor) {
-  const visitTypes = new Map();
-
-  // TODO: create visiting types
-  for (const name in visitor) {
-    const id = ctx.typeByStr.get(name);
-    if (id === undefined) continue;
-    visitTypes.set(id, name);
-  }
-
-  console.log("merged visitor", visitor);
-  console.log("visiting types", visitTypes);
-
-  traverseInner(ctx, visitTypes, visitor, ctx.rootId);
-}
-
-/**
- * @param {AstContext} ctx
- * @param {Map<number, string>} visitTypes
- * @param {Record<string, (x: any) => void>} visitor
+ * @param {CompiledVisitor[]} visitors
  * @param {number} offset
  */
-function traverseInner(ctx, visitTypes, visitor, offset) {
+function traverse(ctx, visitors, offset) {
   // console.log("traversing offset", offset);
 
   // Empty id
   if (offset === 0) return;
   const { buf } = ctx;
-  const type = buf[offset];
 
-  const name = visitTypes.get(type);
-  if (name !== undefined) {
-    // console.log("--> invoking visitor");
-    const node = new Node(ctx, offset);
-    visitor[name](node);
+  /** @type {VisitorFn[] | null} */
+  let exits = null;
+
+  for (let i = 0; i < visitors.length; i++) {
+    const v = visitors[i];
+
+    if (v.info.enter === NOOP) {
+      continue;
+    }
+
+    // FIXME: add matcher context methods
+    if (v.matcher(ctx, offset)) {
+      const node = /** @type {*} */ (getNode(ctx, offset));
+      v.info.enter(node);
+
+      if (exits === null) {
+        exits = [v.info.exit];
+      } else {
+        exits.push(v.info.exit);
+      }
+    }
   }
 
-  // type + parentId + SpanLo + SpanHi
-  offset += 1 + 4 + 4 + 4;
+  try {
+    // type + parentId + SpanLo + SpanHi
+    offset += 1 + 4 + 4 + 4;
 
-  const propCount = buf[offset];
-  offset += 1;
-  // console.log({ propCount });
+    const propCount = buf[offset];
+    offset += 1;
+    // console.log({ propCount });
 
-  for (let i = 0; i < propCount; i++) {
-    const kind = buf[offset + 1];
-    offset += 2; // propId + propFlags
+    for (let i = 0; i < propCount; i++) {
+      const kind = buf[offset + 1];
+      offset += 2; // propId + propFlags
 
-    if (kind === PropFlags.Ref) {
-      const next = readU32(buf, offset);
-      offset += 4;
-      traverseInner(ctx, visitTypes, visitor, next);
-    } else if (kind === PropFlags.RefArr) {
-      const len = readU32(buf, offset);
-      offset += 4;
-
-      for (let j = 0; j < len; j++) {
-        const chiild = readU32(buf, offset);
+      if (kind === PropFlags.Ref) {
+        const next = readU32(buf, offset);
         offset += 4;
-        traverseInner(ctx, visitTypes, visitor, chiild);
+        traverse(ctx, visitors, next);
+      } else if (kind === PropFlags.RefArr) {
+        const len = readU32(buf, offset);
+        offset += 4;
+
+        for (let j = 0; j < len; j++) {
+          const child = readU32(buf, offset);
+          offset += 4;
+          traverse(ctx, visitors, child);
+        }
+      } else if (kind === PropFlags.String) {
+        offset += 4;
+      } else if (kind === PropFlags.Bool) {
+        offset += 1;
+      } else if (kind === PropFlags.Null || kind === PropFlags.Undefined) {
+        // No value
       }
-    } else if (kind === PropFlags.String) {
-      offset += 4;
-    } else if (kind === PropFlags.Bool) {
-      offset += 1;
-    } else if (kind === PropFlags.Null || kind === PropFlags.Undefined) {
-      // No value
+    }
+  } finally {
+    if (exits !== null) {
+      for (let i = 0; i < exits.length; i++) {
+        const node = /** @type {*} */ (getNode(ctx, offset));
+        exits[i](node);
+      }
     }
   }
 }
