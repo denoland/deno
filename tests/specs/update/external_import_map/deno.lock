@@ -1,0 +1,33 @@
+{
+  "version": "4",
+  "specifiers": {
+    "jsr:@denotest/add@0.2": "0.2.0",
+    "jsr:@denotest/subtract@0.2": "0.2.0",
+    "npm:@denotest/breaking-change-between-versions@1.0.0": "1.0.0",
+    "npm:@denotest/has-patch-versions@0.1": "0.1.0"
+  },
+  "jsr": {
+    "@denotest/add@0.2.0": {
+      "integrity": "a9076d30ecb42b2fc6dd95e7055fbf4e6358b53f550741bd7f60089d19f68848"
+    },
+    "@denotest/subtract@0.2.0": {
+      "integrity": "c9650fc559ab2430effc0c7fb1540e3aa89888fbdd926335ccfdeac57eb3a64d"
+    }
+  },
+  "npm": {
+    "@denotest/breaking-change-between-versions@1.0.0": {
+      "integrity": "sha512-bzMGYx+DxxPlI74n/VsDAN7Db1BY7Sz2XqxXruMo9dEznsBZu7Ez3i8YQ8n0leTxAiiMk1RCG4zQHPG1aj3xRw=="
+    },
+    "@denotest/has-patch-versions@0.1.0": {
+      "integrity": "sha512-H/MBo0jKDdMsX4AAGEGQbZj70nfNe3oUNZXbohYHhqf9EfpLnXp/7FC29ZdfV4+p6VjEcOGdCtXc6rilE6iYpg=="
+    }
+  },
+  "workspace": {
+    "dependencies": [
+      "jsr:@denotest/add@0.2",
+      "jsr:@denotest/subtract@0.2",
+      "npm:@denotest/breaking-change-between-versions@1.0.0",
+      "npm:@denotest/has-patch-versions@0.1"
+    ]
+  }
+}

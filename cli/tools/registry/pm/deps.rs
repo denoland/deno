@@ -2,6 +2,7 @@
 
 use std::borrow::Cow;
 use std::collections::HashMap;
+use std::path::PathBuf;
 use std::sync::atomic::AtomicBool;
 use std::sync::Arc;
 
@@ -11,6 +12,7 @@ use deno_config::deno_json::ConfigFileRc;
 use deno_config::workspace::Workspace;
 use deno_config::workspace::WorkspaceDirectory;
 use deno_core::anyhow::bail;
+use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
 use deno_core::futures::future::try_join;
 use deno_core::futures::stream::FuturesOrdered;
@@ -43,10 +45,10 @@ use crate::npm::NpmFetchResolver;
 
 use super::ConfigUpdater;
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub enum ImportMapKind {
   Inline,
-  Outline,
+  Outline(PathBuf),
 }
 
 #[derive(Clone)]
@@ -62,9 +64,12 @@ impl DepLocation {
 
   pub fn file_path(&self) -> Cow<std::path::Path> {
     match self {
-      DepLocation::DenoJson(arc, _, _) => {
-        Cow::Owned(arc.specifier.to_file_path().unwrap())
-      }
+      DepLocation::DenoJson(arc, _, kind) => match kind {
+        ImportMapKind::Inline => {
+          Cow::Owned(arc.specifier.to_file_path().unwrap())
+        }
+        ImportMapKind::Outline(path) => Cow::Borrowed(path.as_path()),
+      },
       DepLocation::PackageJson(arc, _) => Cow::Borrowed(arc.path.as_ref()),
     }
   }
@@ -238,22 +243,30 @@ fn to_import_map_value_from_imports(
 fn deno_json_import_map(
   deno_json: &ConfigFile,
 ) -> Result<Option<(ImportMapWithDiagnostics, ImportMapKind)>, AnyError> {
-  let (value, kind) =
-    if deno_json.json.imports.is_some() || deno_json.json.scopes.is_some() {
-      (
-        to_import_map_value_from_imports(deno_json),
-        ImportMapKind::Inline,
-      )
-    } else {
-      match deno_json.to_import_map_path()? {
-        Some(path) => {
-          let text = std::fs::read_to_string(&path)?;
-          let value = serde_json::from_str(&text)?;
-          (value, ImportMapKind::Outline)
-        }
-        None => return Ok(None),
+  let (value, kind) = if deno_json.json.imports.is_some()
+    || deno_json.json.scopes.is_some()
+  {
+    (
+      to_import_map_value_from_imports(deno_json),
+      ImportMapKind::Inline,
+    )
+  } else {
+    match deno_json.to_import_map_path()? {
+      Some(path) => {
+        let err_context = || {
+          format!(
+            "loading import map at '{}' (from \"importMap\" field in '{}')",
+            path.display(),
+            deno_json.specifier
+          )
+        };
+        let text = std::fs::read_to_string(&path).with_context(err_context)?;
+        let value = serde_json::from_str(&text).with_context(err_context)?;
+        (value, ImportMapKind::Outline(path))
       }
-    };
+      None => return Ok(None),
+    }
+  };
 
   import_map::parse_from_value(deno_json.specifier.clone(), value)
     .map_err(Into::into)
@@ -303,7 +316,7 @@ fn add_deps_from_deno_json(
       location: DepLocation::DenoJson(
         deno_json.clone(),
         key_path,
-        import_map_kind,
+        import_map_kind.clone(),
       ),
       kind,
       req,
@@ -747,11 +760,7 @@ impl DepManager {
           let dep = &mut self.deps[dep_id.0];
           dep.req.version_req = version_req.clone();
           match &dep.location {
-            DepLocation::DenoJson(arc, key_path, import_map_kind) => {
-              if matches!(import_map_kind, ImportMapKind::Outline) {
-                // not supported
-                continue;
-              }
+            DepLocation::DenoJson(arc, key_path, _) => {
               let updater =
                 get_or_create_updater(&mut config_updaters, &dep.location)?;
 

@@ -577,11 +577,6 @@ async fn main_server(
       );
       Ok(res)
     }
-    (_, "/bad_redirect") => {
-      let mut res = Response::new(empty_body());
-      *res.status_mut() = StatusCode::FOUND;
-      Ok(res)
-    }
     (_, "/server_error") => {
       let mut res = Response::new(empty_body());
       *res.status_mut() = StatusCode::INTERNAL_SERVER_ERROR;

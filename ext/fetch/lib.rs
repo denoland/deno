@@ -230,10 +230,6 @@ pub enum FetchError {
   #[class(generic)]
   #[error(transparent)]
   Dns(hickory_resolver::ResolveError),
-  // Only used for node upgrade
-  #[class("Http")]
-  #[error(transparent)]
-  Hyper(#[from] hyper::Error),
 }
 
 pub type CancelableResponseFuture =

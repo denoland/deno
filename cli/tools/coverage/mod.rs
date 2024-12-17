@@ -6,6 +6,7 @@ use crate::args::FileFlags;
 use crate::args::Flags;
 use crate::cdp;
 use crate::factory::CliFactory;
+use crate::file_fetcher::TextDecodedFile;
 use crate::tools::fmt::format_json;
 use crate::tools::test::is_supported_test_path;
 use crate::util::text_encoding::source_map_from_code;
@@ -558,6 +559,12 @@ pub fn cover_files(
     },
     None => None,
   };
+  let get_message = |specifier: &ModuleSpecifier| -> String {
+    format!(
+      "Failed to fetch \"{}\" from cache. Before generating coverage report, run `deno test --coverage` to ensure consistent state.",
+      specifier,
+    )
+  };
 
   for script_coverage in script_coverages {
     let module_specifier = deno_core::resolve_url_or_path(
@@ -565,21 +572,14 @@ pub fn cover_files(
       cli_options.initial_cwd(),
     )?;
 
-    let maybe_file = if module_specifier.scheme() == "file" {
-      file_fetcher.get_source(&module_specifier)
-    } else {
-      file_fetcher
-        .fetch_cached(&module_specifier, 10)
-        .with_context(|| {
-          format!("Failed to fetch \"{module_specifier}\" from cache.")
-        })?
+    let maybe_file_result = file_fetcher
+      .get_cached_source_or_local(&module_specifier)
+      .map_err(AnyError::from);
+    let file = match maybe_file_result {
+      Ok(Some(file)) => TextDecodedFile::decode(file)?,
+      Ok(None) => return Err(anyhow!("{}", get_message(&module_specifier))),
+      Err(err) => return Err(err).context(get_message(&module_specifier)),
     };
-    let file = maybe_file.ok_or_else(|| {
-      anyhow!("Failed to fetch \"{}\" from cache.
-          Before generating coverage report, run `deno test --coverage` to ensure consistent state.",
-          module_specifier
-        )
-    })?.into_text_decoded()?;
 
     let original_source = file.source.clone();
     // Check if file was transpiled

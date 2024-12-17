@@ -2083,6 +2083,88 @@ fn lsp_inlay_hints_not_enabled() {
 }
 
 #[test]
+fn lsp_suggestion_actions_disabled() {
+  let context = TestContextBuilder::new().use_temp_cwd().build();
+  let temp_dir = context.temp_dir();
+  let mut client = context.new_lsp_command().build();
+  client.initialize_default();
+  client.change_configuration(json!({
+    "deno": {
+      "enable": true,
+      "lint": false,
+    },
+    "typescript": {
+      "suggestionActions": {
+        "enabled": false,
+      },
+    },
+  }));
+  client.read_diagnostics();
+  let diagnostics = client.did_open(json!({
+    "textDocument": {
+      "uri": temp_dir.url().join("file.ts").unwrap(),
+      "languageId": "typescript",
+      "version": 1,
+      "text": r#"
+        // The settings should disable the suggestion for this to be async.
+        function asyncLikeFunction() {
+          return new Promise((r) => r(null)).then((v) => v);
+        }
+        console.log(asyncLikeFunction);
+
+        // Deprecated warnings should remain.
+        /** @deprecated */
+        function deprecatedFunction() {}
+        console.log(deprecatedFunction);
+
+        // Unused warnings should remain.
+        const unsusedVariable = 1;
+      "#,
+    },
+  }));
+  assert_eq!(
+    json!(diagnostics.all()),
+    json!([
+      {
+        "range": {
+          "start": { "line": 10, "character": 20 },
+          "end": { "line": 10, "character": 38 },
+        },
+        "severity": 4,
+        "code": 6385,
+        "source": "deno-ts",
+        "message": "'deprecatedFunction' is deprecated.",
+        "relatedInformation": [
+          {
+            "location": {
+              "uri": temp_dir.url().join("file.ts").unwrap(),
+              "range": {
+                "start": { "line": 8, "character": 12 },
+                "end": { "line": 8, "character": 24 },
+              },
+            },
+            "message": "The declaration was marked as deprecated here.",
+          },
+        ],
+        "tags": [2],
+      },
+      {
+        "range": {
+          "start": { "line": 13, "character": 14 },
+          "end": { "line": 13, "character": 29 },
+        },
+        "severity": 4,
+        "code": 6133,
+        "source": "deno-ts",
+        "message": "'unsusedVariable' is declared but its value is never read.",
+        "tags": [1],
+      },
+    ]),
+  );
+  client.shutdown();
+}
+
+#[test]
 fn lsp_workspace_disable_enable_paths() {
   fn run_test(use_trailing_slash: bool) {
     let context = TestContextBuilder::new().use_temp_cwd().build();
@@ -11544,8 +11626,7 @@ fn lsp_json_import_with_query_string() {
 fn lsp_format_markdown() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let temp_dir = context.temp_dir();
-  let markdown_file =
-    source_file(temp_dir.path().join("file.md"), "#   Hello World");
+  let file = source_file(temp_dir.path().join("file.md"), "#   Hello World");
   let mut client = context.new_lsp_command().build();
   client.initialize_default();
 
@@ -11553,7 +11634,7 @@ fn lsp_format_markdown() {
     "textDocument/formatting",
     json!({
       "textDocument": {
-        "uri": markdown_file.url()
+        "uri": file.url()
       },
       "options": {
         "tabSize": 2,
@@ -11587,14 +11668,13 @@ fn lsp_format_markdown() {
 fn lsp_format_html() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let temp_dir = context.temp_dir();
-  let html_file =
-    source_file(temp_dir.path().join("file.html"), "  <html></html>");
+  let file = source_file(temp_dir.path().join("file.html"), "  <html></html>");
   let mut client = context.new_lsp_command().build();
   client.initialize_default();
   let res = client.write_request(
     "textDocument/formatting",
     json!({
-      "textDocument": { "uri": html_file.url() },
+      "textDocument": { "uri": file.url() },
       "options": {
         "tabSize": 2,
         "insertSpaces": true,
@@ -11627,13 +11707,13 @@ fn lsp_format_html() {
 fn lsp_format_css() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let temp_dir = context.temp_dir();
-  let css_file = source_file(temp_dir.path().join("file.css"), "  foo {}");
+  let file = source_file(temp_dir.path().join("file.css"), "  foo {}");
   let mut client = context.new_lsp_command().build();
   client.initialize_default();
   let res = client.write_request(
     "textDocument/formatting",
     json!({
-      "textDocument": { "uri": css_file.url() },
+      "textDocument": { "uri": file.url() },
       "options": {
         "tabSize": 2,
         "insertSpaces": true,
@@ -11666,13 +11746,13 @@ fn lsp_format_css() {
 fn lsp_format_yaml() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let temp_dir = context.temp_dir();
-  let yaml_file = source_file(temp_dir.path().join("file.yaml"), "  foo: 1");
+  let file = source_file(temp_dir.path().join("file.yaml"), "  foo: 1");
   let mut client = context.new_lsp_command().build();
   client.initialize_default();
   let res = client.write_request(
     "textDocument/formatting",
     json!({
-      "textDocument": { "uri": yaml_file.url() },
+      "textDocument": { "uri": file.url() },
       "options": {
         "tabSize": 2,
         "insertSpaces": true,
@@ -11695,6 +11775,201 @@ fn lsp_format_yaml() {
           "end": { "line": 0, "character": 8 },
         },
         "newText": "\n",
+      },
+    ]),
+  );
+  client.shutdown();
+}
+
+#[test]
+fn lsp_format_sql() {
+  let context = TestContextBuilder::new().use_temp_cwd().build();
+  let temp_dir = context.temp_dir();
+  temp_dir.write(
+    "deno.json",
+    json!({
+      "unstable": ["fmt-sql"],
+    })
+    .to_string(),
+  );
+  let file = source_file(
+    temp_dir.path().join("file.sql"),
+    "  CREATE TABLE item (id int NOT NULL IDENTITY(1, 1))",
+  );
+  let mut client = context.new_lsp_command().build();
+  client.initialize_default();
+  let res = client.write_request(
+    "textDocument/formatting",
+    json!({
+      "textDocument": { "uri": file.url() },
+      "options": {
+        "tabSize": 2,
+        "insertSpaces": true,
+      },
+    }),
+  );
+  assert_eq!(
+    res,
+    json!([
+      {
+        "range": {
+          "start": { "line": 0, "character": 0 },
+          "end": { "line": 0, "character": 2 },
+        },
+        "newText": "",
+      },
+      {
+        "range": {
+          "start": { "line": 0, "character": 52 },
+          "end": { "line": 0, "character": 52 },
+        },
+        "newText": "\n",
+      },
+    ]),
+  );
+  client.shutdown();
+}
+
+#[test]
+fn lsp_format_component() {
+  let context = TestContextBuilder::new().use_temp_cwd().build();
+  let temp_dir = context.temp_dir();
+  temp_dir.write(
+    "deno.json",
+    json!({
+      "unstable": ["fmt-component"],
+    })
+    .to_string(),
+  );
+  let svelte_file = source_file(
+    temp_dir.path().join("file.svelte"),
+    "  <script module>\n  // foo\n</script>\n",
+  );
+  let vue_file = source_file(
+    temp_dir.path().join("file.vue"),
+    "  <script setup>\n// foo\n</script>\n",
+  );
+  let astro_file = source_file(
+    temp_dir.path().join("file.astro"),
+    "  ---\n// foo\n---\n<html></html>\n",
+  );
+  let vento_file = source_file(
+    temp_dir.path().join("file.vto"),
+    "  {{ layout \"foo.vto\" }}\n  <h1>Foo!</h1>\n{{ /layout }}\n",
+  );
+  let nunjucks_file = source_file(
+    temp_dir.path().join("file.njk"),
+    "  {% block header %}\n  Foo\n{% endblock %}\n",
+  );
+  let mut client = context.new_lsp_command().build();
+  client.initialize_default();
+  let res = client.write_request(
+    "textDocument/formatting",
+    json!({
+      "textDocument": { "uri": svelte_file.url() },
+      "options": {
+        "tabSize": 2,
+        "insertSpaces": true,
+      },
+    }),
+  );
+  assert_eq!(
+    res,
+    json!([
+      {
+        "range": {
+          "start": { "line": 0, "character": 0 },
+          "end": { "line": 0, "character": 2 },
+        },
+        "newText": "",
+      },
+    ]),
+  );
+  let res = client.write_request(
+    "textDocument/formatting",
+    json!({
+      "textDocument": { "uri": vue_file.url() },
+      "options": {
+        "tabSize": 2,
+        "insertSpaces": true,
+      },
+    }),
+  );
+  assert_eq!(
+    res,
+    json!([
+      {
+        "range": {
+          "start": { "line": 0, "character": 0 },
+          "end": { "line": 0, "character": 2 },
+        },
+        "newText": "",
+      },
+    ]),
+  );
+  let res = client.write_request(
+    "textDocument/formatting",
+    json!({
+      "textDocument": { "uri": astro_file.url() },
+      "options": {
+        "tabSize": 2,
+        "insertSpaces": true,
+      },
+    }),
+  );
+  assert_eq!(
+    res,
+    json!([
+      {
+        "range": {
+          "start": { "line": 0, "character": 0 },
+          "end": { "line": 0, "character": 2 },
+        },
+        "newText": "",
+      },
+    ]),
+  );
+  let res = client.write_request(
+    "textDocument/formatting",
+    json!({
+      "textDocument": { "uri": vento_file.url() },
+      "options": {
+        "tabSize": 2,
+        "insertSpaces": true,
+      },
+    }),
+  );
+  assert_eq!(
+    res,
+    json!([
+      {
+        "range": {
+          "start": { "line": 0, "character": 0 },
+          "end": { "line": 0, "character": 2 },
+        },
+        "newText": "",
+      },
+    ]),
+  );
+  let res = client.write_request(
+    "textDocument/formatting",
+    json!({
+      "textDocument": { "uri": nunjucks_file.url() },
+      "options": {
+        "tabSize": 2,
+        "insertSpaces": true,
+      },
+    }),
+  );
+  assert_eq!(
+    res,
+    json!([
+      {
+        "range": {
+          "start": { "line": 0, "character": 0 },
+          "end": { "line": 0, "character": 2 },
+        },
+        "newText": "",
       },
     ]),
   );

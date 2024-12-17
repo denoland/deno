@@ -153,7 +153,7 @@ struct SharedWorkerState {
   storage_key_resolver: StorageKeyResolver,
   options: CliMainWorkerOptions,
   subcommand: DenoSubcommand,
-  otel_config: Option<OtelConfig>, // `None` means OpenTelemetry is disabled.
+  otel_config: OtelConfig,
   default_npm_caching_strategy: NpmCachingStrategy,
 }
 
@@ -425,7 +425,7 @@ impl CliMainWorkerFactory {
     storage_key_resolver: StorageKeyResolver,
     subcommand: DenoSubcommand,
     options: CliMainWorkerOptions,
-    otel_config: Option<OtelConfig>,
+    otel_config: OtelConfig,
     default_npm_caching_strategy: NpmCachingStrategy,
   ) -> Self {
     Self {

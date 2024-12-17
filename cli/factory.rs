@@ -22,7 +22,7 @@ use crate::cache::ModuleInfoCache;
 use crate::cache::NodeAnalysisCache;
 use crate::cache::ParsedSourceCache;
 use crate::emit::Emitter;
-use crate::file_fetcher::FileFetcher;
+use crate::file_fetcher::CliFileFetcher;
 use crate::graph_container::MainModuleGraphContainer;
 use crate::graph_util::FileWatcherReporter;
 use crate::graph_util::ModuleGraphBuilder;
@@ -185,7 +185,7 @@ struct CliFactoryServices {
   emit_cache: Deferred<Arc<EmitCache>>,
   emitter: Deferred<Arc<Emitter>>,
   feature_checker: Deferred<Arc<FeatureChecker>>,
-  file_fetcher: Deferred<Arc<FileFetcher>>,
+  file_fetcher: Deferred<Arc<CliFileFetcher>>,
   fs: Deferred<Arc<dyn deno_fs::FileSystem>>,
   global_http_cache: Deferred<Arc<GlobalHttpCache>>,
   http_cache: Deferred<Arc<dyn HttpCache>>,
@@ -350,16 +350,17 @@ impl CliFactory {
     })
   }
 
-  pub fn file_fetcher(&self) -> Result<&Arc<FileFetcher>, AnyError> {
+  pub fn file_fetcher(&self) -> Result<&Arc<CliFileFetcher>, AnyError> {
     self.services.file_fetcher.get_or_try_init(|| {
       let cli_options = self.cli_options()?;
-      Ok(Arc::new(FileFetcher::new(
+      Ok(Arc::new(CliFileFetcher::new(
         self.http_cache()?.clone(),
-        cli_options.cache_setting(),
-        !cli_options.no_remote(),
         self.http_client_provider().clone(),
         self.blob_store().clone(),
         Some(self.text_only_progress_bar().clone()),
+        !cli_options.no_remote(),
+        cli_options.cache_setting(),
+        log::Level::Info,
       )))
     })
   }

@@ -97,11 +97,26 @@ deno_core::extension!(
 );
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct OtelConfig {
+pub struct OtelRuntimeConfig {
   pub runtime_name: Cow<'static, str>,
   pub runtime_version: Cow<'static, str>,
+}
+
+#[derive(Default, Debug, Clone, Serialize, Deserialize)]
+pub struct OtelConfig {
+  pub tracing_enabled: bool,
   pub console: OtelConsoleConfig,
   pub deterministic: bool,
+}
+
+impl OtelConfig {
+  pub fn as_v8(&self) -> Box<[u8]> {
+    Box::new([
+      self.tracing_enabled as u8,
+      self.console as u8,
+      self.deterministic as u8,
+    ])
+  }
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
@@ -112,14 +127,9 @@ pub enum OtelConsoleConfig {
   Replace = 2,
 }
 
-impl Default for OtelConfig {
+impl Default for OtelConsoleConfig {
   fn default() -> Self {
-    Self {
-      runtime_name: Cow::Borrowed(env!("CARGO_PKG_NAME")),
-      runtime_version: Cow::Borrowed(env!("CARGO_PKG_VERSION")),
-      console: OtelConsoleConfig::Capture,
-      deterministic: false,
-    }
+    Self::Ignore
   }
 }
 
@@ -411,16 +421,14 @@ static BUILT_IN_INSTRUMENTATION_SCOPE: OnceCell<
   opentelemetry::InstrumentationScope,
 > = OnceCell::new();
 
-pub fn init(config: OtelConfig) -> anyhow::Result<()> {
+pub fn init(config: OtelRuntimeConfig) -> anyhow::Result<()> {
   // Parse the `OTEL_EXPORTER_OTLP_PROTOCOL` variable. The opentelemetry_*
   // crates don't do this automatically.
   // TODO(piscisaureus): enable GRPC support.
   let protocol = match env::var("OTEL_EXPORTER_OTLP_PROTOCOL").as_deref() {
     Ok("http/protobuf") => Protocol::HttpBinary,
     Ok("http/json") => Protocol::HttpJson,
-    Ok("") | Err(env::VarError::NotPresent) => {
-      return Ok(());
-    }
+    Ok("") | Err(env::VarError::NotPresent) => Protocol::HttpBinary,
     Ok(protocol) => {
       return Err(anyhow!(
         "Env var OTEL_EXPORTER_OTLP_PROTOCOL specifies an unsupported protocol: {}",

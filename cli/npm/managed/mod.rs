@@ -21,6 +21,7 @@ use deno_npm::resolution::ValidSerializedNpmResolutionSnapshot;
 use deno_npm::NpmPackageId;
 use deno_npm::NpmResolutionPackage;
 use deno_npm::NpmSystemInfo;
+use deno_npm_cache::NpmCacheSetting;
 use deno_resolver::npm::CliNpmReqResolver;
 use deno_runtime::colors;
 use deno_runtime::deno_fs::FileSystem;
@@ -71,7 +72,7 @@ pub struct CliManagedNpmResolverCreateOptions {
   pub fs: Arc<dyn deno_runtime::deno_fs::FileSystem>,
   pub http_client_provider: Arc<crate::http_util::HttpClientProvider>,
   pub npm_cache_dir: Arc<NpmCacheDir>,
-  pub cache_setting: crate::args::CacheSetting,
+  pub cache_setting: deno_cache_dir::file_fetcher::CacheSetting,
   pub text_only_progress_bar: crate::util::progress_bar::ProgressBar,
   pub maybe_node_modules_path: Option<PathBuf>,
   pub npm_system_info: NpmSystemInfo,
@@ -204,7 +205,7 @@ fn create_cache(
 ) -> Arc<CliNpmCache> {
   Arc::new(CliNpmCache::new(
     options.npm_cache_dir.clone(),
-    options.cache_setting.as_npm_cache_setting(),
+    NpmCacheSetting::from_cache_setting(&options.cache_setting),
     env,
     options.npmrc.clone(),
   ))
