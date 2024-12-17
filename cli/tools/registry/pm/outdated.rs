@@ -3,6 +3,7 @@
 use std::collections::HashSet;
 use std::sync::Arc;
 
+use deno_cache_dir::file_fetcher::CacheSetting;
 use deno_core::anyhow::bail;
 use deno_core::error::AnyError;
 use deno_semver::package::PackageNv;
@@ -10,12 +11,11 @@ use deno_semver::package::PackageReq;
 use deno_semver::VersionReq;
 use deno_terminal::colors;
 
-use crate::args::CacheSetting;
 use crate::args::CliOptions;
 use crate::args::Flags;
 use crate::args::OutdatedFlags;
 use crate::factory::CliFactory;
-use crate::file_fetcher::FileFetcher;
+use crate::file_fetcher::CliFileFetcher;
 use crate::jsr::JsrFetchResolver;
 use crate::npm::NpmFetchResolver;
 use crate::tools::registry::pm::deps::DepKind;
@@ -181,15 +181,15 @@ pub async fn outdated(
   let workspace = cli_options.workspace();
   let http_client = factory.http_client_provider();
   let deps_http_cache = factory.global_http_cache()?;
-  let mut file_fetcher = FileFetcher::new(
+  let file_fetcher = CliFileFetcher::new(
     deps_http_cache.clone(),
-    CacheSetting::RespectHeaders,
-    true,
     http_client.clone(),
     Default::default(),
     None,
+    true,
+    CacheSetting::RespectHeaders,
+    log::Level::Trace,
   );
-  file_fetcher.set_download_log_level(log::Level::Trace);
   let file_fetcher = Arc::new(file_fetcher);
   let npm_fetch_resolver = Arc::new(NpmFetchResolver::new(
     file_fetcher.clone(),
