@@ -510,14 +510,6 @@ impl ModuleLoader for EmbeddedModuleLoader {
     }
     .map(|s| s.as_bytes().to_vec())
   }
-
-  fn get_source_mapped_source_line(
-    &self,
-    _file_name: &str,
-    _line_number: usize,
-  ) -> Option<String> {
-    None
-  }
 }
 
 impl NodeRequireLoader for EmbeddedModuleLoader {

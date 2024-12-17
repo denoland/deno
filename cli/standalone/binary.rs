@@ -612,6 +612,7 @@ impl<'a> DenoCompileBinaryWriter<'a> {
     }
     let mut remote_modules_store = RemoteModulesStoreBuilder::default();
     let mut source_maps = Vec::with_capacity(graph.specifiers_count());
+    // todo(dsherret): transpile in parallel
     for module in graph.modules() {
       if module.specifier().scheme() == "data" {
         continue; // don't store data urls as an entry as they're in the code

@@ -190,7 +190,8 @@ impl Emitter {
     let mut emit_options = self.transpile_and_emit_options.1.clone();
     emit_options.inline_sources = false;
     emit_options.source_map = SourceMapOption::Separate;
-    // strip off the path to be deterministic
+    // strip off the path to have more deterministic builds as we don't care
+    // about the source name because we manually provide the source map to v8
     emit_options.source_map_base = Some(deno_path_util::url_parent(specifier));
     let source = EmitParsedSourceHelper::transpile(
       &self.parsed_source_cache,
