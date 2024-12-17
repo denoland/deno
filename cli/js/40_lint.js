@@ -49,9 +49,15 @@ const state = {
 export class Context {
   id;
 
-  fileName;
+  // Match casing with eslint https://eslint.org/docs/latest/extend/custom-rules#the-context-object
+  filename;
 
   #source = null;
+
+  languageOptions = {};
+  sourceCode = {
+    parserServices: {},
+  };
 
   /**
    * @param {string} id
@@ -59,7 +65,7 @@ export class Context {
    */
   constructor(id, fileName) {
     this.id = id;
-    this.fileName = fileName;
+    this.filename = fileName;
   }
 
   source() {
@@ -82,7 +88,7 @@ export class Context {
 
     op_lint_report(
       this.id,
-      this.fileName,
+      this.filename,
       data.message,
       start,
       end,
@@ -588,6 +594,8 @@ export function runPluginsForFile(fileName, serializedAst) {
 
     for (const name of Object.keys(plugin.rules)) {
       const rule = plugin.rules[name];
+      if (rule === undefined) continue;
+
       const id = `${plugin.name}/${name}`;
       const ctx = new Context(id, fileName);
       const visitor = rule.create(ctx);

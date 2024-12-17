@@ -7171,6 +7171,6 @@ declare namespace Deno {
 
   export interface LintPlugin {
     name: string;
-    rules: Record<string, LintRule>;
+    rules: Record<string, LintRule | undefined>;
   }
 }
