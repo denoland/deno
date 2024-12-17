@@ -91,6 +91,7 @@ use super::serialization::DenoCompileModuleData;
 use super::serialization::DeserializedDataSection;
 use super::serialization::RemoteModulesStore;
 use super::serialization::RemoteModulesStoreBuilder;
+use super::serialization::SourceMapStore;
 use super::virtual_fs::output_vfs;
 use super::virtual_fs::BuiltVfs;
 use super::virtual_fs::FileBackedVfs;
@@ -209,12 +210,18 @@ fn write_binary_bytes(
   metadata: &Metadata,
   npm_snapshot: Option<SerializedNpmResolutionSnapshot>,
   remote_modules: &RemoteModulesStoreBuilder,
+  source_map_store: &SourceMapStore,
   vfs: &BuiltVfs,
   compile_flags: &CompileFlags,
 ) -> Result<(), AnyError> {
-  let data_section_bytes =
-    serialize_binary_data_section(metadata, npm_snapshot, remote_modules, vfs)
-      .context("Serializing binary data section.")?;
+  let data_section_bytes = serialize_binary_data_section(
+    metadata,
+    npm_snapshot,
+    remote_modules,
+    source_map_store,
+    vfs,
+  )
+  .context("Serializing binary data section.")?;
 
   let target = compile_flags.resolve_target();
   if target.contains("linux") {
@@ -256,6 +263,7 @@ pub struct StandaloneData {
   pub modules: StandaloneModules,
   pub npm_snapshot: Option<ValidSerializedNpmResolutionSnapshot>,
   pub root_path: PathBuf,
+  pub source_maps: SourceMapStore,
   pub vfs: Arc<FileBackedVfs>,
 }
 
@@ -328,6 +336,7 @@ pub fn extract_standalone(
     mut metadata,
     npm_snapshot,
     remote_modules,
+    source_maps,
     mut vfs_dir,
     vfs_files_data,
   } = match deserialize_binary_data_section(data)? {
@@ -372,6 +381,7 @@ pub fn extract_standalone(
     },
     npm_snapshot,
     root_path,
+    source_maps,
     vfs,
   }))
 }
@@ -598,20 +608,10 @@ impl<'a> DenoCompileBinaryWriter<'a> {
         .with_context(|| format!("Including {}", path.display()))?;
     }
     let mut remote_modules_store = RemoteModulesStoreBuilder::default();
-    let mut code_cache_key_hasher = if self.cli_options.code_cache_enabled() {
-      Some(FastInsecureHasher::new_deno_versioned())
-    } else {
-      None
-    };
+    let mut source_maps = Vec::with_capacity(graph.specifiers_count());
     for module in graph.modules() {
       if module.specifier().scheme() == "data" {
         continue; // don't store data urls as an entry as they're in the code
-      }
-      if let Some(hasher) = &mut code_cache_key_hasher {
-        if let Some(source) = module.source() {
-          hasher.write(module.specifier().as_str().as_bytes());
-          hasher.write(source.as_bytes());
-        }
       }
       let (maybe_source, media_type) = match module {
         deno_graph::Module::Js(m) => {
@@ -622,15 +622,14 @@ impl<'a> DenoCompileBinaryWriter<'a> {
               m.is_script,
             )?;
             let module_kind = ModuleKind::from_is_cjs(is_cjs);
-            let source = self
-              .emitter
-              .emit_parsed_source(
+            let (source, source_map) =
+              self.emitter.emit_parsed_source_for_deno_compile(
                 &m.specifier,
                 m.media_type,
                 module_kind,
                 &m.source,
-              )
-              .await?;
+              )?;
+            source_maps.push((&m.specifier, source_map));
             source.into_bytes()
           } else {
             m.source.as_bytes().to_vec()
@@ -695,6 +694,27 @@ impl<'a> DenoCompileBinaryWriter<'a> {
       None => StandaloneRelativeFileBaseUrl::WindowsSystemRoot,
     };
 
+    let code_cache_key = if self.cli_options.code_cache_enabled() {
+      let mut hasher = FastInsecureHasher::new_deno_versioned();
+      for module in graph.modules() {
+        if let Some(source) = module.source() {
+          hasher.write(root_dir_url.relative_specifier(module.specifier()));
+          hasher.write(source.as_bytes());
+        }
+      }
+      Some(hasher.finish())
+    } else {
+      None
+    };
+
+    let mut source_map_store = SourceMapStore::with_capacity(source_maps.len());
+    for (specifier, source_map) in source_maps {
+      source_map_store.add(
+        root_dir_url.specifier_key(specifier).into_owned(),
+        source_map,
+      );
+    }
+
     let node_modules = match self.npm_resolver.as_inner() {
       InnerCliNpmResolverRef::Managed(_) => {
         npm_snapshot.as_ref().map(|_| NodeModules::Managed {
@@ -742,7 +762,7 @@ impl<'a> DenoCompileBinaryWriter<'a> {
     let metadata = Metadata {
       argv: compile_flags.args.clone(),
       seed: self.cli_options.seed(),
-      code_cache_key: code_cache_key_hasher.map(|h| h.finish()),
+      code_cache_key,
       location: self.cli_options.location_flag().clone(),
       permissions: self.cli_options.permission_flags().clone(),
       v8_flags: self.cli_options.v8_flags().clone(),
@@ -809,6 +829,7 @@ impl<'a> DenoCompileBinaryWriter<'a> {
       &metadata,
       npm_snapshot.map(|s| s.into_serialized()),
       &remote_modules_store,
+      &source_map_store,
       &vfs,
       compile_flags,
     )

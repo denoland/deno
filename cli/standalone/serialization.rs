@@ -6,6 +6,7 @@ use std::collections::BTreeMap;
 use std::collections::HashMap;
 use std::io::Write;
 
+use deno_ast::swc::common::source_map;
 use deno_ast::MediaType;
 use deno_core::anyhow::bail;
 use deno_core::anyhow::Context;
@@ -20,6 +21,7 @@ use deno_npm::resolution::SerializedNpmResolutionSnapshotPackage;
 use deno_npm::resolution::ValidSerializedNpmResolutionSnapshot;
 use deno_npm::NpmPackageId;
 use deno_semver::package::PackageReq;
+use indexmap::IndexMap;
 
 use crate::standalone::virtual_fs::VirtualDirectory;
 
@@ -33,20 +35,21 @@ const MAGIC_BYTES: &[u8; 8] = b"d3n0l4nd";
 /// * d3n0l4nd
 /// * <metadata_len><metadata>
 /// * <npm_snapshot_len><npm_snapshot>
-/// * <remote_modules_len><remote_modules>
+/// * <remote_modules>
 /// * <vfs_headers_len><vfs_headers>
 /// * <vfs_file_data_len><vfs_file_data>
+/// * <source_map_data>
 /// * d3n0l4nd
 pub fn serialize_binary_data_section(
   metadata: &Metadata,
   npm_snapshot: Option<SerializedNpmResolutionSnapshot>,
   remote_modules: &RemoteModulesStoreBuilder,
+  source_map_store: &SourceMapStore,
   vfs: &BuiltVfs,
 ) -> Result<Vec<u8>, AnyError> {
   let metadata = serde_json::to_string(metadata)?;
   let npm_snapshot =
     npm_snapshot.map(serialize_npm_snapshot).unwrap_or_default();
-  let remote_modules_len = Cell::new(0_u64);
   let serialized_vfs = serde_json::to_string(&vfs.root)?;
 
   let bytes = capacity_builder::BytesBuilder::build(|builder| {
@@ -63,10 +66,7 @@ pub fn serialize_binary_data_section(
     }
     // 3. Remote modules
     {
-      builder.append_le(remote_modules_len.get()); // this will be properly initialized on the second pass
-      let start_index = builder.len();
       remote_modules.write(builder);
-      remote_modules_len.set((builder.len() - start_index) as u64);
     }
     // 4. VFS
     {
@@ -76,6 +76,16 @@ pub fn serialize_binary_data_section(
       builder.append_le(vfs_bytes_len);
       for file in &vfs.files {
         builder.append(file);
+      }
+    }
+    // 5. Source maps
+    {
+      builder.append_le(source_map_store.data.len() as u32);
+      for (specifier, source_map) in &source_map_store.data {
+        builder.append_le(specifier.len() as u32);
+        builder.append(specifier);
+        builder.append_le(source_map.len() as u32);
+        builder.append(source_map);
       }
     }
 
@@ -91,6 +101,7 @@ pub struct DeserializedDataSection {
   pub metadata: Metadata,
   pub npm_snapshot: Option<ValidSerializedNpmResolutionSnapshot>,
   pub remote_modules: RemoteModulesStore,
+  pub source_maps: SourceMapStore,
   pub vfs_dir: VirtualDirectory,
   pub vfs_files_data: &'static [u8],
 }
@@ -98,12 +109,6 @@ pub struct DeserializedDataSection {
 pub fn deserialize_binary_data_section(
   data: &'static [u8],
 ) -> Result<Option<DeserializedDataSection>, AnyError> {
-  fn read_bytes_with_len(input: &[u8]) -> Result<(&[u8], &[u8]), AnyError> {
-    let (input, len) = read_u64(input)?;
-    let (input, data) = read_bytes(input, len as usize)?;
-    Ok((input, data))
-  }
-
   fn read_magic_bytes(input: &[u8]) -> Result<(&[u8], bool), AnyError> {
     if input.len() < MAGIC_BYTES.len() {
       bail!("Unexpected end of data. Could not find magic bytes.");
@@ -113,6 +118,14 @@ pub fn deserialize_binary_data_section(
       return Ok((input, false));
     }
     Ok((input, true))
+  }
+
+  fn read_source_map_entry(
+    input: &[u8],
+  ) -> Result<(&[u8], (String, String)), AnyError> {
+    let (input, specifier) = read_string_lossy(input)?;
+    let (input, source_map) = read_string_lossy(input)?;
+    Ok((input, (specifier.into_owned(), source_map.into_owned())))
   }
 
   let (input, found) = read_magic_bytes(data)?;
@@ -133,16 +146,23 @@ pub fn deserialize_binary_data_section(
     Some(deserialize_npm_snapshot(data).context("deserializing npm snapshot")?)
   };
   // 3. Remote modules
-  let (input, data) =
-    read_bytes_with_len(input).context("reading remote modules data")?;
-  let remote_modules =
-    RemoteModulesStore::build(data).context("deserializing remote modules")?;
+  let (input, remote_modules) =
+    RemoteModulesStore::build(input).context("deserializing remote modules")?;
   // 4. VFS
   let (input, data) = read_bytes_with_len(input).context("vfs")?;
   let vfs_dir: VirtualDirectory =
     serde_json::from_slice(data).context("deserializing vfs data")?;
   let (input, vfs_files_data) =
     read_bytes_with_len(input).context("reading vfs files data")?;
+  // 5. Source maps
+  let (mut input, source_map_data_len) = read_u32_as_usize(input)?;
+  let mut source_maps = SourceMapStore::with_capacity(source_map_data_len);
+  for _ in 0..source_map_data_len {
+    let (current_input, (specifier, source_map)) =
+      read_source_map_entry(input)?;
+    input = current_input;
+    source_maps.add(specifier, source_map);
+  }
 
   // finally ensure we read the magic bytes at the end
   let (_input, found) = read_magic_bytes(input)?;
@@ -154,6 +174,7 @@ pub fn deserialize_binary_data_section(
     metadata,
     npm_snapshot,
     remote_modules,
+    source_maps,
     vfs_dir,
     vfs_files_data,
   }))
@@ -202,6 +223,13 @@ impl RemoteModulesStoreBuilder {
       builder.append_le(to.len() as u32);
       builder.append(to);
     }
+    builder.append_le(
+      self
+        .data
+        .iter()
+        .map(|(_, data)| 1 + 8 + (data.len() as u64))
+        .sum::<u64>(),
+    );
     for (media_type, data) in &self.data {
       builder.append(serialize_media_type(*media_type));
       builder.append_le(data.len() as u64);
@@ -231,6 +259,26 @@ impl DenoCompileModuleSource {
       Self::String(s) => ModuleSourceCode::String(FastString::from_static(s)),
       Self::Bytes(b) => into_bytes(b),
     }
+  }
+}
+
+pub struct SourceMapStore {
+  data: IndexMap<String, String>,
+}
+
+impl SourceMapStore {
+  pub fn with_capacity(capacity: usize) -> Self {
+    Self {
+      data: IndexMap::with_capacity(capacity),
+    }
+  }
+
+  pub fn add(&mut self, specifier: String, source_map: String) {
+    self.data.insert(specifier, source_map);
+  }
+
+  pub fn get(&self, specifier: &str) -> Option<&str> {
+    self.data.get(specifier).map(|s| s.as_str())
   }
 }
 
@@ -291,7 +339,7 @@ pub struct RemoteModulesStore {
 }
 
 impl RemoteModulesStore {
-  fn build(data: &'static [u8]) -> Result<Self, AnyError> {
+  fn build(input: &'static [u8]) -> Result<(&'static [u8], Self), AnyError> {
     fn read_specifier(input: &[u8]) -> Result<(&[u8], (Url, u64)), AnyError> {
       let (input, specifier) = read_string_lossy(input)?;
       let specifier = Url::parse(&specifier)?;
@@ -334,12 +382,16 @@ impl RemoteModulesStore {
       Ok((input, specifiers))
     }
 
-    let (files_data, specifiers) = read_headers(data)?;
+    let (input, specifiers) = read_headers(input)?;
+    let (input, files_data) = read_bytes_with_len(input)?;
 
-    Ok(Self {
-      specifiers,
-      files_data,
-    })
+    Ok((
+      input,
+      Self {
+        specifiers,
+        files_data,
+      },
+    ))
   }
 
   pub fn resolve_specifier<'a>(
@@ -628,6 +680,12 @@ fn parse_vec_n_times_with_index<TResult>(
     input = new_input;
   }
   Ok((input, results))
+}
+
+fn read_bytes_with_len(input: &[u8]) -> Result<(&[u8], &[u8]), AnyError> {
+  let (input, len) = read_u64(input)?;
+  let (input, data) = read_bytes(input, len as usize)?;
+  Ok((input, data))
 }
 
 fn read_bytes(input: &[u8], len: usize) -> Result<(&[u8], &[u8]), AnyError> {

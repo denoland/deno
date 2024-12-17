@@ -55,6 +55,7 @@ use node_resolver::errors::ClosestPkgJsonError;
 use node_resolver::NodeResolutionKind;
 use node_resolver::ResolutionMode;
 use serialization::DenoCompileModuleSource;
+use serialization::SourceMapStore;
 use std::borrow::Cow;
 use std::rc::Rc;
 use std::sync::Arc;
@@ -122,6 +123,7 @@ struct SharedModuleLoaderState {
   npm_module_loader: Arc<NpmModuleLoader>,
   npm_req_resolver: Arc<CliNpmReqResolver>,
   npm_resolver: Arc<dyn CliNpmResolver>,
+  source_maps: SourceMapStore,
   vfs: Arc<FileBackedVfs>,
   workspace_resolver: WorkspaceResolver,
 }
@@ -495,6 +497,27 @@ impl ModuleLoader for EmbeddedModuleLoader {
     }
     std::future::ready(()).boxed_local()
   }
+
+  fn get_source_map(&self, file_name: &str) -> Option<Vec<u8>> {
+    if file_name.starts_with("file:///") {
+      let url =
+        deno_path_util::url_from_directory_path(self.shared.vfs.root()).ok()?;
+      let file_url = ModuleSpecifier::parse(file_name).ok()?;
+      let relative_path = url.make_relative(&file_url)?;
+      self.shared.source_maps.get(&relative_path)
+    } else {
+      self.shared.source_maps.get(file_name)
+    }
+    .map(|s| s.as_bytes().to_vec())
+  }
+
+  fn get_source_mapped_source_line(
+    &self,
+    _file_name: &str,
+    _line_number: usize,
+  ) -> Option<String> {
+    None
+  }
 }
 
 impl NodeRequireLoader for EmbeddedModuleLoader {
@@ -590,6 +613,7 @@ pub async fn run(data: StandaloneData) -> Result<i32, AnyError> {
     modules,
     npm_snapshot,
     root_path,
+    source_maps,
     vfs,
   } = data;
   let deno_dir_provider = Arc::new(DenoDirProvider::new(None));
@@ -841,6 +865,7 @@ pub async fn run(data: StandaloneData) -> Result<i32, AnyError> {
       )),
       npm_resolver: npm_resolver.clone(),
       npm_req_resolver,
+      source_maps,
       vfs,
       workspace_resolver,
     }),

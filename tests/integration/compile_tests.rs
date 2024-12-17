@@ -121,8 +121,9 @@ fn standalone_error() {
   assert_contains!(stderr, "\n    at boom (file://");
   assert_contains!(stderr, "standalone_error.ts:2:9");
   assert_contains!(stderr, "at foo (file://");
-  assert_contains!(stderr, "standalone_error.ts:5:3");
-  assert_contains!(stderr, "standalone_error.ts:7:1");
+  // these line numbers should correspond with the source typescript and not the compiled output
+  assert_contains!(stderr, "standalone_error.ts:6:3");
+  assert_contains!(stderr, "standalone_error.ts:9:1");
 }
 
 #[test]
