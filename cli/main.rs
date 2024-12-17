@@ -1,7 +1,6 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 mod args;
-mod auth_tokens;
 mod cache;
 mod cdp;
 mod emit;

@@ -63,7 +63,7 @@ use crate::args::ConfigFile;
 use crate::args::LintFlags;
 use crate::args::LintOptions;
 use crate::cache::FastInsecureHasher;
-use crate::file_fetcher::FileFetcher;
+use crate::file_fetcher::CliFileFetcher;
 use crate::lsp::logging::lsp_warn;
 use crate::resolver::CliSloppyImportsResolver;
 use crate::resolver::SloppyImportsCachedFs;
@@ -1218,7 +1218,7 @@ impl ConfigData {
     specified_config: Option<&Path>,
     scope: &ModuleSpecifier,
     settings: &Settings,
-    file_fetcher: &Arc<FileFetcher>,
+    file_fetcher: &Arc<CliFileFetcher>,
     // sync requirement is because the lsp requires sync
     cached_deno_config_fs: &(dyn DenoConfigFs + Sync),
     deno_json_cache: &(dyn DenoJsonCache + Sync),
@@ -1313,7 +1313,7 @@ impl ConfigData {
     member_dir: Arc<WorkspaceDirectory>,
     scope: Arc<ModuleSpecifier>,
     settings: &Settings,
-    file_fetcher: Option<&Arc<FileFetcher>>,
+    file_fetcher: Option<&Arc<CliFileFetcher>>,
   ) -> Self {
     let (settings, workspace_folder) = settings.get_for_specifier(&scope);
     let mut watched_files = HashMap::with_capacity(10);
@@ -1834,7 +1834,7 @@ impl ConfigTree {
     &mut self,
     settings: &Settings,
     workspace_files: &IndexSet<ModuleSpecifier>,
-    file_fetcher: &Arc<FileFetcher>,
+    file_fetcher: &Arc<CliFileFetcher>,
   ) {
     lsp_log!("Refreshing configuration tree...");
     // since we're resolving a workspace multiple times in different

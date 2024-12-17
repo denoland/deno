@@ -8,7 +8,6 @@
 mod standalone;
 
 mod args;
-mod auth_tokens;
 mod cache;
 mod emit;
 mod errors;
