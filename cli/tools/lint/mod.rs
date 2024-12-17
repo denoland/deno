@@ -27,11 +27,9 @@ use reporters::LintReporter;
 use serde::Serialize;
 use std::collections::HashSet;
 use std::fs;
-use std::future::Future;
 use std::io::stdin;
 use std::io::Read;
 use std::path::PathBuf;
-use std::pin::Pin;
 use std::rc::Rc;
 use std::sync::Arc;
 
@@ -248,9 +246,6 @@ struct WorkspaceLinter {
   file_count: usize,
 }
 
-type WorkspaceLinterFuture =
-  Pin<Box<dyn Future<Output = Result<(), AnyError>>>>;
-
 impl WorkspaceLinter {
   pub fn new(
     caches: Arc<Caches>,
@@ -302,6 +297,9 @@ impl WorkspaceLinter {
       deno_lint_config: lint_config,
     }));
 
+    let has_error = self.has_error.clone();
+    let reporter_lock = self.reporter_lock.clone();
+
     let mut futures = Vec::with_capacity(2);
     if linter.has_package_rules() {
       if let Some(fut) = self.run_package_rules(&linter, &member_dir, &paths) {
@@ -309,8 +307,6 @@ impl WorkspaceLinter {
       }
     }
 
-    let has_error = self.has_error.clone();
-    let reporter_lock = self.reporter_lock.clone();
     let maybe_incremental_cache_ = maybe_incremental_cache.clone();
     let linter = linter.clone();
     let cli_options = cli_options.clone();
@@ -382,7 +378,7 @@ impl WorkspaceLinter {
     linter: &Arc<CliLinter>,
     member_dir: &WorkspaceDirectory,
     paths: &[PathBuf],
-  ) -> Option<WorkspaceLinterFuture> {
+  ) -> Option<LocalBoxFuture<Result<(), AnyError>>> {
     if self.workspace_module_graph.is_none() {
       let module_graph_creator = self.module_graph_creator.clone();
       let packages = self.workspace_dir.jsr_packages_for_publish();
