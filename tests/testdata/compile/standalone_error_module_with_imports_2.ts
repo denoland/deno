@@ -1,4 +1,7 @@
+// file has blank lines to make the input line
+// different than the output
 console.log("hello");
 
-// spaces to mess up the source map
-throw new Error("boom!");
+const value: string = "boom!";
+
+throw new Error(value);
