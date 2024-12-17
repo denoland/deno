@@ -28,6 +28,7 @@ use crate::standalone::virtual_fs::VirtualDirectory;
 use super::binary::Metadata;
 use super::virtual_fs::BuiltVfs;
 use super::virtual_fs::VfsBuilder;
+use super::virtual_fs::VirtualDirectoryEntries;
 
 const MAGIC_BYTES: &[u8; 8] = b"d3n0l4nd";
 
@@ -102,7 +103,7 @@ pub struct DeserializedDataSection {
   pub npm_snapshot: Option<ValidSerializedNpmResolutionSnapshot>,
   pub remote_modules: RemoteModulesStore,
   pub source_maps: SourceMapStore,
-  pub vfs_dir: VirtualDirectory,
+  pub vfs_root_entries: VirtualDirectoryEntries,
   pub vfs_files_data: &'static [u8],
 }
 
@@ -150,7 +151,7 @@ pub fn deserialize_binary_data_section(
     RemoteModulesStore::build(input).context("deserializing remote modules")?;
   // 4. VFS
   let (input, data) = read_bytes_with_len(input).context("vfs")?;
-  let vfs_dir: VirtualDirectory =
+  let vfs_root_entries: VirtualDirectoryEntries =
     serde_json::from_slice(data).context("deserializing vfs data")?;
   let (input, vfs_files_data) =
     read_bytes_with_len(input).context("reading vfs files data")?;
@@ -175,7 +176,7 @@ pub fn deserialize_binary_data_section(
     npm_snapshot,
     remote_modules,
     source_maps,
-    vfs_dir,
+    vfs_root_entries,
     vfs_files_data,
   }))
 }

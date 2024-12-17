@@ -205,6 +205,7 @@ pub struct Metadata {
   pub otel_config: OtelConfig,
 }
 
+#[allow(clippy::too_many_arguments)]
 fn write_binary_bytes(
   mut file_writer: File,
   original_bin: Vec<u8>,
@@ -338,7 +339,7 @@ pub fn extract_standalone(
     npm_snapshot,
     remote_modules,
     source_maps,
-    mut vfs_dir,
+    vfs_root_entries,
     vfs_files_data,
   } = match deserialize_binary_data_section(data)? {
     Some(data_section) => data_section,
@@ -361,11 +362,12 @@ pub fn extract_standalone(
     metadata.argv.push(arg.into_string().unwrap());
   }
   let vfs = {
-    // align the name of the directory with the root dir
-    vfs_dir.name = root_path.file_name().unwrap().to_string_lossy().to_string();
-
     let fs_root = VfsRoot {
-      dir: vfs_dir,
+      dir: VirtualDirectory {
+        // align the name of the directory with the root dir
+        name: root_path.file_name().unwrap().to_string_lossy().to_string(),
+        entries: vfs_root_entries,
+      },
       root_path: root_path.clone(),
       start_file_offset: 0,
     };
@@ -462,7 +464,7 @@ impl<'a> DenoCompileBinaryWriter<'a> {
         )
       }
     }
-    self.write_standalone_binary(options, original_binary).await
+    self.write_standalone_binary(options, original_binary)
   }
 
   async fn get_base_binary(
@@ -565,7 +567,7 @@ impl<'a> DenoCompileBinaryWriter<'a> {
   /// This functions creates a standalone deno binary by appending a bundle
   /// and magic trailer to the currently executing binary.
   #[allow(clippy::too_many_arguments)]
-  async fn write_standalone_binary(
+  fn write_standalone_binary(
     &self,
     options: WriteBinOptions<'_>,
     original_bin: Vec<u8>,
