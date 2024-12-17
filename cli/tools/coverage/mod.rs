@@ -11,6 +11,7 @@ use crate::tools::fmt::format_json;
 use crate::tools::test::is_supported_test_path;
 use crate::util::text_encoding::source_map_from_code;
 
+use ast_parser::parse_program;
 use deno_ast::MediaType;
 use deno_ast::ModuleKind;
 use deno_ast::ModuleSpecifier;
@@ -26,6 +27,9 @@ use deno_core::serde_json;
 use deno_core::sourcemap::SourceMap;
 use deno_core::url::Url;
 use deno_core::LocalInspectorSession;
+use ignore_directives::parse_file_ignore_directives;
+use ignore_directives::parse_next_ignore_directives;
+use ignore_directives::parse_range_ignore_directives;
 use node_resolver::InNpmPackageChecker;
 use regex::Regex;
 use std::fs;
@@ -38,6 +42,8 @@ use std::sync::Arc;
 use text_lines::TextLines;
 use uuid::Uuid;
 
+mod ast_parser;
+mod ignore_directives;
 mod merge;
 mod range_tree;
 mod reporter;
@@ -195,30 +201,61 @@ pub struct CoverageReport {
   output: Option<PathBuf>,
 }
 
+struct GenerateCoverageReportOptions<'a> {
+  cli_options: &'a CliOptions,
+  script_module_specifier: Url,
+  script_media_type: MediaType,
+  script_coverage: &'a cdp::ScriptCoverage,
+  script_original_source: String,
+  script_runtime_source: String,
+  maybe_source_map: &'a Option<Vec<u8>>,
+  output: &'a Option<PathBuf>,
+}
+
 fn generate_coverage_report(
-  script_coverage: &cdp::ScriptCoverage,
-  script_source: String,
-  maybe_source_map: &Option<Vec<u8>>,
-  output: &Option<PathBuf>,
-) -> CoverageReport {
-  let maybe_source_map = maybe_source_map
+  options: GenerateCoverageReportOptions,
+) -> Result<CoverageReport, AnyError> {
+  let parsed_source = parse_program(
+    options.script_module_specifier,
+    options.script_media_type,
+    &options.script_original_source,
+  )?;
+  let text_info = parsed_source.text_info_lazy();
+  let sorted_comments = parsed_source.comments().get_vec();
+  let ignore_file_directive =
+    parse_file_ignore_directives(&sorted_comments, &parsed_source);
+  let url = Url::parse(&options.script_coverage.url).unwrap();
+
+  if ignore_file_directive.is_some() {
+    return Ok(CoverageReport {
+      url,
+      named_functions: Vec::new(),
+      branches: Vec::new(),
+      found_lines: Vec::new(),
+      output: options.output.clone(),
+    });
+  }
+
+  let maybe_source_map = options
+    .maybe_source_map
     .as_ref()
     .map(|source_map| SourceMap::from_slice(source_map).unwrap());
-  let text_lines = TextLines::new(&script_source);
+  let text_lines = TextLines::new(&options.script_runtime_source);
 
-  let comment_ranges = deno_ast::lex(&script_source, MediaType::JavaScript)
-    .into_iter()
-    .filter(|item| {
-      matches!(item.inner, deno_ast::TokenOrComment::Comment { .. })
-    })
-    .map(|item| item.range)
-    .collect::<Vec<_>>();
+  let comment_ranges =
+    deno_ast::lex(&options.script_runtime_source, MediaType::JavaScript)
+      .into_iter()
+      .filter(|item| {
+        matches!(item.inner, deno_ast::TokenOrComment::Comment { .. })
+      })
+      .map(|item| item.range)
+      .collect::<Vec<_>>();
 
-  let url = Url::parse(&script_coverage.url).unwrap();
   let mut coverage_report = CoverageReport {
     url,
     named_functions: Vec::with_capacity(
-      script_coverage
+      options
+        .script_coverage
         .functions
         .iter()
         .filter(|f| !f.function_name.is_empty())
@@ -226,10 +263,19 @@ fn generate_coverage_report(
     ),
     branches: Vec::new(),
     found_lines: Vec::new(),
-    output: output.clone(),
+    output: options.output.clone(),
   };
 
-  for function in &script_coverage.functions {
+  let coverage_ignore_next_directives =
+    parse_next_ignore_directives(&sorted_comments, text_info);
+  let coverage_ignore_range_directives = parse_range_ignore_directives(
+    options.cli_options.is_quiet(),
+    parsed_source.specifier(),
+    &sorted_comments,
+    text_info,
+  );
+
+  for function in &options.script_coverage.functions {
     if function.function_name.is_empty() {
       continue;
     }
@@ -239,6 +285,20 @@ fn generate_coverage_report(
       &text_lines,
       &maybe_source_map,
     );
+
+    if line_index > 0
+      && coverage_ignore_next_directives.contains_key(&(line_index - 1_usize))
+    {
+      continue;
+    }
+
+    if coverage_ignore_range_directives.iter().any(|range| {
+      range.start_line_index <= line_index
+        && range.stop_line_index >= line_index
+    }) {
+      continue;
+    }
+
     coverage_report.named_functions.push(FunctionCoverageItem {
       name: function.function_name.clone(),
       line_index,
@@ -246,11 +306,26 @@ fn generate_coverage_report(
     });
   }
 
-  for (block_number, function) in script_coverage.functions.iter().enumerate() {
+  for (block_number, function) in
+    options.script_coverage.functions.iter().enumerate()
+  {
     let block_hits = function.ranges[0].count;
     for (branch_number, range) in function.ranges[1..].iter().enumerate() {
       let line_index =
         range_to_src_line_index(range, &text_lines, &maybe_source_map);
+
+      if line_index > 0
+        && coverage_ignore_next_directives.contains_key(&(line_index - 1_usize))
+      {
+        continue;
+      }
+
+      if coverage_ignore_range_directives.iter().any(|range| {
+        range.start_line_index <= line_index
+          && range.stop_line_index >= line_index
+      }) {
+        continue;
+      }
 
       // From https://manpages.debian.org/unstable/lcov/geninfo.1.en.html:
       //
@@ -287,7 +362,7 @@ fn generate_coverage_report(
     let line_end_char_offset = text_lines.char_index(line_end_byte_offset);
     let ignore = comment_ranges.iter().any(|range| {
       range.start <= line_start_byte_offset && range.end >= line_end_byte_offset
-    }) || script_source
+    }) || options.script_runtime_source
       [line_start_byte_offset..line_end_byte_offset]
       .trim()
       .is_empty();
@@ -298,7 +373,7 @@ fn generate_coverage_report(
     } else {
       // Count the hits of ranges that include the entire line which will always be at-least one
       // as long as the code has been evaluated.
-      for function in &script_coverage.functions {
+      for function in &options.script_coverage.functions {
         for range in &function.ranges {
           if range.start_char_offset <= line_start_char_offset
             && range.end_char_offset >= line_end_char_offset
@@ -309,7 +384,7 @@ fn generate_coverage_report(
       }
 
       // We reset the count if any block with a zero count overlaps with the line range.
-      for function in &script_coverage.functions {
+      for function in &options.script_coverage.functions {
         for range in &function.ranges {
           if range.count > 0 {
             continue;
@@ -327,9 +402,32 @@ fn generate_coverage_report(
     line_counts.push(count);
   }
 
+  let found_lines_coverage_filter = |(line, _): &(usize, i64)| -> bool {
+    if coverage_ignore_range_directives.iter().any(|range| {
+      range.start_line_index <= *line && range.stop_line_index >= *line
+    }) {
+      return false;
+    }
+
+    if coverage_ignore_next_directives.contains_key(line) {
+      return false;
+    }
+
+    if *line == 0_usize {
+      return true;
+    }
+
+    if coverage_ignore_next_directives.contains_key(&(line - 1_usize)) {
+      return false;
+    }
+
+    true
+  };
+
   coverage_report.found_lines =
     if let Some(source_map) = maybe_source_map.as_ref() {
-      let script_source_lines = script_source.lines().collect::<Vec<_>>();
+      let script_runtime_source_lines =
+        options.script_runtime_source.lines().collect::<Vec<_>>();
       let mut found_lines = line_counts
         .iter()
         .enumerate()
@@ -341,7 +439,7 @@ fn generate_coverage_report(
               let dst_line = token.get_dst_line() as usize;
               dst_line == index && {
                 let dst_col = token.get_dst_col() as usize;
-                let content = script_source_lines
+                let content = script_runtime_source_lines
                   .get(dst_line)
                   .and_then(|line| {
                     line.get(dst_col..std::cmp::min(dst_col + 2, line.len()))
@@ -361,6 +459,7 @@ fn generate_coverage_report(
           results.dedup_by_key(|(index, _)| *index);
           results.into_iter()
         })
+        .filter(found_lines_coverage_filter)
         .collect::<Vec<(usize, i64)>>();
 
       found_lines.sort_unstable_by_key(|(index, _)| *index);
@@ -376,10 +475,11 @@ fn generate_coverage_report(
       line_counts
         .into_iter()
         .enumerate()
+        .filter(found_lines_coverage_filter)
         .collect::<Vec<(usize, i64)>>()
     };
 
-  coverage_report
+  Ok(coverage_report)
 }
 
 fn range_to_src_line_index(
@@ -622,12 +722,22 @@ pub fn cover_files(
     };
 
     let source_map = source_map_from_code(runtime_code.as_bytes());
-    let coverage_report = generate_coverage_report(
-      &script_coverage,
-      runtime_code.as_str().to_owned(),
-      &source_map,
-      &out_mode,
-    );
+    let coverage_report =
+      generate_coverage_report(GenerateCoverageReportOptions {
+        cli_options,
+        script_module_specifier: module_specifier.clone(),
+        script_media_type: file.media_type,
+        script_coverage: &script_coverage,
+        script_original_source: original_source.to_string(),
+        script_runtime_source: runtime_code.as_str().to_owned(),
+        maybe_source_map: &source_map,
+        output: &out_mode,
+      })
+      .with_context(|| {
+        format!(
+          "Failed to generate coverage report for file ({module_specifier})"
+        )
+      })?;
 
     if !coverage_report.found_lines.is_empty() {
       reporter.report(&coverage_report, &original_source)?;

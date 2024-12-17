@@ -26,6 +26,21 @@ fn final_blankline() {
 }
 
 #[test]
+fn ignore_file_directive() {
+  run_coverage_text("ignore_file_directive", "ts");
+}
+
+#[test]
+fn ignore_next_directive() {
+  run_coverage_text("ignore_next_directive", "ts");
+}
+
+#[test]
+fn ignore_range_directive() {
+  run_coverage_text("ignore_range_directive", "ts");
+}
+
+#[test]
 fn no_snaps() {
   no_snaps_included("no_snaps_included", "ts");
 }
@@ -119,6 +134,7 @@ fn run_coverage_text(test_name: &str, extension: &str) {
     .args_vec(vec![
       "coverage".to_string(),
       "--detailed".to_string(),
+      "--quiet".to_string(),
       format!("{}/", tempdir),
     ])
     .split_output()
