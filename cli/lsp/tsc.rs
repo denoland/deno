@@ -3412,10 +3412,18 @@ fn parse_code_actions(
           additional_text_edits.extend(change.text_changes.iter().map(|tc| {
             let mut text_edit = tc.as_text_edit(asset_or_doc.line_index());
             if let Some(specifier_rewrite) = &data.specifier_rewrite {
-              text_edit.new_text = text_edit.new_text.replace(
-                &specifier_rewrite.old_specifier,
-                &specifier_rewrite.new_specifier,
-              );
+              let specifier_index = text_edit
+                .new_text
+                .char_indices()
+                .find_map(|(b, c)| (c == '\'' || c == '"').then_some(b));
+              if let Some(i) = specifier_index {
+                let mut specifier_part = text_edit.new_text.split_off(i);
+                specifier_part = specifier_part.replace(
+                  &specifier_rewrite.old_specifier,
+                  &specifier_rewrite.new_specifier,
+                );
+                text_edit.new_text.push_str(&specifier_part);
+              }
               if let Some(deno_types_specifier) =
                 &specifier_rewrite.new_deno_types_specifier
               {
@@ -3588,10 +3596,17 @@ impl CompletionEntryDetails {
             &mut insert_replace_edit.new_text
           }
         };
-        *new_text = new_text.replace(
-          &specifier_rewrite.old_specifier,
-          &specifier_rewrite.new_specifier,
-        );
+        let specifier_index = new_text
+          .char_indices()
+          .find_map(|(b, c)| (c == '\'' || c == '"').then_some(b));
+        if let Some(i) = specifier_index {
+          let mut specifier_part = new_text.split_off(i);
+          specifier_part = specifier_part.replace(
+            &specifier_rewrite.old_specifier,
+            &specifier_rewrite.new_specifier,
+          );
+          new_text.push_str(&specifier_part);
+        }
         if let Some(deno_types_specifier) =
           &specifier_rewrite.new_deno_types_specifier
         {
