@@ -189,14 +189,13 @@ async function pollForMessages() {
     );
   }
   while (!isClosing) {
-    const op = op_worker_recv_message();
+    const recvMessage = op_worker_recv_message();
     // In a Node.js worker, unref() the op promise to prevent it from
     // keeping the event loop alive. This avoids the need to explicitly
     // call self.close() or worker.terminate().
     if (closeOnIdle) {
-      core.unrefOpPromise(op);
+      core.unrefOpPromise(recvMessage);
     }
-    const recvMessage = op;
     if (globalThis[messagePort.unrefPollForMessages] === true) {
       core.unrefOpPromise(recvMessage);
     }
