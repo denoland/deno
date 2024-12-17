@@ -45,6 +45,7 @@ use deno_graph::source::ResolveError;
 use deno_graph::Resolution;
 use deno_graph::ResolutionError;
 use deno_graph::SpecifierError;
+use deno_lint::linter::LintConfig as DenoLintConfig;
 use deno_resolver::sloppy_imports::SloppyImportsResolution;
 use deno_resolver::sloppy_imports::SloppyImportsResolutionKind;
 use deno_runtime::deno_fs;
@@ -834,7 +835,7 @@ fn generate_lint_diagnostics(
               lint_rule_provider.resolve_lint_rules(Default::default(), None)
             },
             fix: false,
-            deno_lint_config: deno_lint::linter::LintConfig {
+            deno_lint_config: DenoLintConfig {
               default_jsx_factory: None,
               default_jsx_fragment_factory: None,
             },
