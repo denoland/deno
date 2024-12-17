@@ -447,16 +447,15 @@ export function parseSelector(input, toElem, toAttr) {
       });
       lex.next();
 
-      // Descendant selector
-      if (lex.token === Token.Space) {
-        lex.next();
+      continue;
+    } else if (lex.token === Token.Space) {
+      lex.next();
 
-        if (lex.token === Token.Word) {
-          current.push({
-            type: RELATION_NODE,
-            op: BinOp.Space,
-          });
-        }
+      if (lex.token === Token.Word) {
+        current.push({
+          type: RELATION_NODE,
+          op: BinOp.Space,
+        });
       }
 
       continue;
@@ -632,8 +631,14 @@ export function parseSelector(input, toElem, toAttr) {
         throw new Error(`Multiple selector arguments not supported here`);
       }
 
+      lex.next();
+      if (lex.token === Token.Space) {
+        lex.next();
+      }
+
       popSelector(result, stack);
       stack.push([]);
+      continue;
     } else if (lex.token === Token.BraceClose) {
       throwOnComma = false;
       popSelector(result, stack);
