@@ -99,6 +99,7 @@ use super::virtual_fs::VfsBuilder;
 use super::virtual_fs::VfsFileSubDataKind;
 use super::virtual_fs::VfsRoot;
 use super::virtual_fs::VirtualDirectory;
+use super::virtual_fs::VirtualDirectoryEntries;
 use super::virtual_fs::WindowsSystemRootablePath;
 
 pub static DENO_COMPILE_GLOBAL_NODE_MODULES_DIR_NAME: &str =
@@ -698,7 +699,8 @@ impl<'a> DenoCompileBinaryWriter<'a> {
       let mut hasher = FastInsecureHasher::new_deno_versioned();
       for module in graph.modules() {
         if let Some(source) = module.source() {
-          hasher.write(root_dir_url.relative_specifier(module.specifier()));
+          hasher
+            .write(root_dir_url.specifier_key(module.specifier()).as_bytes());
           hasher.write(source.as_bytes());
         }
       }
@@ -924,10 +926,10 @@ impl<'a> DenoCompileBinaryWriter<'a> {
         root_dir.name = DENO_COMPILE_GLOBAL_NODE_MODULES_DIR_NAME.to_string();
         let mut new_entries = Vec::with_capacity(root_dir.entries.len());
         let mut localhost_entries = IndexMap::new();
-        for entry in std::mem::take(&mut root_dir.entries) {
+        for entry in root_dir.entries.take_inner() {
           match entry {
-            VfsEntry::Dir(dir) => {
-              for entry in dir.entries {
+            VfsEntry::Dir(mut dir) => {
+              for entry in dir.entries.take_inner() {
                 log::debug!("Flattening {} into node_modules", entry.name());
                 if let Some(existing) =
                   localhost_entries.insert(entry.name().to_string(), entry)
@@ -946,11 +948,11 @@ impl<'a> DenoCompileBinaryWriter<'a> {
         }
         new_entries.push(VfsEntry::Dir(VirtualDirectory {
           name: "localhost".to_string(),
-          entries: localhost_entries.into_iter().map(|(_, v)| v).collect(),
+          entries: VirtualDirectoryEntries::new(
+            localhost_entries.into_iter().map(|(_, v)| v).collect(),
+          ),
         }));
-        // needs to be sorted by name
-        new_entries.sort_by(|a, b| a.name().cmp(b.name()));
-        root_dir.entries = new_entries;
+        root_dir.entries = VirtualDirectoryEntries::new(new_entries);
 
         // it's better to not expose the user's cache directory, so take it out
         // of there
@@ -958,10 +960,7 @@ impl<'a> DenoCompileBinaryWriter<'a> {
         let parent_dir = vfs.get_dir_mut(parent).unwrap();
         let index = parent_dir
           .entries
-          .iter()
-          .position(|entry| {
-            entry.name() == DENO_COMPILE_GLOBAL_NODE_MODULES_DIR_NAME
-          })
+          .binary_search(DENO_COMPILE_GLOBAL_NODE_MODULES_DIR_NAME)
           .unwrap();
         let npm_global_cache_dir_entry = parent_dir.entries.remove(index);
 
@@ -971,11 +970,7 @@ impl<'a> DenoCompileBinaryWriter<'a> {
           Cow::Borrowed(DENO_COMPILE_GLOBAL_NODE_MODULES_DIR_NAME);
         for ancestor in parent.ancestors() {
           let dir = vfs.get_dir_mut(ancestor).unwrap();
-          if let Some(index) = dir
-            .entries
-            .iter()
-            .position(|entry| entry.name() == last_name)
-          {
+          if let Ok(index) = dir.entries.binary_search(&last_name) {
             dir.entries.remove(index);
           }
           last_name = Cow::Owned(dir.name.clone());
@@ -986,7 +981,7 @@ impl<'a> DenoCompileBinaryWriter<'a> {
 
         // now build the vfs and add the global cache dir entry there
         let mut built_vfs = vfs.build();
-        built_vfs.root.insert_entry(npm_global_cache_dir_entry);
+        built_vfs.entries.insert(npm_global_cache_dir_entry);
         built_vfs
       }
       InnerCliNpmResolverRef::Byonm(_) => vfs.build(),

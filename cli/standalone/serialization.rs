@@ -50,7 +50,7 @@ pub fn serialize_binary_data_section(
   let metadata = serde_json::to_string(metadata)?;
   let npm_snapshot =
     npm_snapshot.map(serialize_npm_snapshot).unwrap_or_default();
-  let serialized_vfs = serde_json::to_string(&vfs.root)?;
+  let serialized_vfs = serde_json::to_string(&vfs.entries)?;
 
   let bytes = capacity_builder::BytesBuilder::build(|builder| {
     builder.append(MAGIC_BYTES);
