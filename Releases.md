@@ -6,32 +6,6 @@ https://github.com/denoland/deno/releases
 We also have one-line install commands at:
 https://github.com/denoland/deno_install
 
-### 2.1.5 / 2024.12.17
-
-- Revert "ci: use self-hosted mac arm runner only on main branch (#27347)"
-  (#27354)
-- feat(ext/web): add `[[ErrorData]]` slot to `DOMException` (#27342)
-- feat(permission): separate PermissionDeniedError to Retryable and Fatal
-  (#27282)
-- fix(cli): remove extraneous comma in task --eval help (#26985)
-- fix(compile): analyze modules in directory specified in --include (#27296)
-- fix(compile): display embedded file sizes and total (#27360)
-- fix(compile): output contents of embedded file system (#27302)
-- fix(ext/node): support createConnection option in node:http.request() (#25470)
-- fix(install/global): do not error if path is an npm pkg and relative file
-  (#26975)
-- fix(lockfile): include dependencies listed in external import map in lockfile
-  (#27337)
-- fix(lsp): respect "typescript.suggestionActions.enabled" setting (#27373)
-- fix(lsp): sql and component file formatting (#27350)
-- fix(npm): search node_modules folder for package matching npm specifier
-  (#27345)
-- fix(outdated): support updating dependencies in external import maps (#27339)
-- fix(publish): error on missing name field (#27131)
-- fix(task): update --filter flag description (#26974)
-- fix: FastString v8_string() should error when cannot allocated (#27375)
-- fix: upgrade deno_doc to 0.161.3 (#27377)
-
 ### 2.1.4 / 2024.12.11
 
 - feat(unstable): support caching npm dependencies only as they're needed
