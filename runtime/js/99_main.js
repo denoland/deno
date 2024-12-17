@@ -176,7 +176,7 @@ function hasMessageEventListener() {
   // the function name is kind of a misnomer, but we want to behave
   // as if we have message event listeners if a node message port is explicitly
   // refed (and the inverse as well)
-  return event.listenerCount(globalThis, "message") > 0 ||
+  return (event.listenerCount(globalThis, "message") > 0 && !globalThis[messagePort.unrefPollForMessages]) ||
     messagePort.refedMessagePortsCount > 0;
 }
 
