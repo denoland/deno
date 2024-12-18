@@ -6159,5 +6159,32 @@ declare namespace Deno {
       | (CreateHttpClientOptions & TlsCertifiedKeyPem),
   ): HttpClient;
 
+  /**
+   * The return value of a linting rule. It tells the linter which
+   * nodes should be visited. The property is the node's key like
+   * `CallExpression` and the right hand side is a callback function.
+   *
+   * To only call the callback on exiting, append the `:exit` suffix.
+   */
+  export interface LintVisitor {
+    [selector: string]: (node: unknown) => void;
+  }
+
+  /**
+   * Shape of a custom lint rule
+   */
+  export interface LintRule {
+    create(context: LintRuleContext): LintVisitor;
+    destroy?(context: LintRuleContext): void;
+  }
+
+  /**
+   * A JavaScript plugin for `deno lint`
+   */
+  export interface LintPlugin {
+    name: string;
+    rules: Record<string, LintRule>;
+  }
+
   export {}; // only export exports
 }

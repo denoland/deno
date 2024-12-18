@@ -51,6 +51,7 @@ use crate::util::fs::canonicalize_path;
 use crate::util::path::is_script_ext;
 use crate::util::sync::AtomicFlag;
 
+mod ast_buffer;
 mod linter;
 mod reporters;
 mod rules;
