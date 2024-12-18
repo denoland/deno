@@ -779,109 +779,82 @@ fn serialize_expr(
       pos
     }
     Expr::New(node) => {
-      let pos = ctx.header(AstNode::NewExpression, parent, &node.span, 3);
-      let callee_pos = ctx.ref_field(AstProp::Callee);
-      let type_args_pos = ctx.ref_field(AstProp::TypeArguments);
-      let args_pos = ctx.ref_vec_field(
-        AstProp::Arguments,
+      let opts = ctx.alloc_new_expr(
+        parent,
+        &node.span,
         node.args.as_ref().map_or(0, |v| v.len()),
       );
 
-      let callee = serialize_expr(ctx, node.callee.as_ref(), pos);
+      let callee = serialize_expr(ctx, node.callee.as_ref(), opts.0);
 
       let args: Vec<NodeRef> = node.args.as_ref().map_or(vec![], |args| {
         args
           .iter()
-          .map(|arg| serialize_expr_or_spread(ctx, arg, pos))
+          .map(|arg| serialize_expr_or_spread(ctx, arg, opts.0))
           .collect::<Vec<_>>()
       });
 
       let type_args = node.type_args.clone().map(|param_node| {
-        serialize_ts_param_inst(ctx, param_node.as_ref(), pos)
+        serialize_ts_param_inst(ctx, param_node.as_ref(), opts.0)
       });
 
-      ctx.write_ref(callee_pos, callee);
-      ctx.write_maybe_ref(type_args_pos, type_args);
-      ctx.write_refs(args_pos, args);
-
-      pos
+      ctx.commit_new_expr(opts, callee, type_args, args)
     }
     Expr::Seq(node) => {
-      let pos = ctx.header(AstNode::SequenceExpression, parent, &node.span, 1);
-      let exprs_pos = ctx.ref_vec_field(AstProp::Expressions, node.exprs.len());
+      let opts = ctx.alloc_seq(parent, &node.span, node.exprs.len());
 
       let children = node
         .exprs
         .iter()
-        .map(|expr| serialize_expr(ctx, expr, pos))
+        .map(|expr| serialize_expr(ctx, expr, opts.0))
         .collect::<Vec<_>>();
 
-      ctx.write_refs(exprs_pos, children);
-
-      pos
+      ctx.commit_seq(opts, children)
     }
     Expr::Ident(node) => serialize_ident(ctx, node, parent),
     Expr::Lit(node) => serialize_lit(ctx, node, parent),
     Expr::Tpl(node) => {
-      let pos = ctx.header(AstNode::TemplateLiteral, parent, &node.span, 2);
-      let quasis_pos = ctx.ref_vec_field(AstProp::Quasis, node.quasis.len());
-      let exprs_pos = ctx.ref_vec_field(AstProp::Expressions, node.exprs.len());
+      let opts =
+        ctx.alloc_tpl(parent, &node.span, node.quasis.len(), node.exprs.len());
 
       let quasis = node
         .quasis
         .iter()
         .map(|quasi| {
-          let tpl_pos =
-            ctx.header(AstNode::TemplateElement, pos, &quasi.span, 3);
-          let tail_pos = ctx.bool_field(AstProp::Tail);
-          let raw_pos = ctx.str_field(AstProp::Raw);
-          let cooked_pos = ctx.str_field(AstProp::Cooked);
+          let opts = ctx.alloc_tpl_elem(parent, &node.span);
 
-          ctx.write_bool(tail_pos, quasi.tail);
-          ctx.write_str(raw_pos, &quasi.raw);
-          ctx.write_str(
-            cooked_pos,
+          ctx.commit_tpl_elem(
+            opts,
+            quasi.tail,
+            &quasi.raw,
             &quasi
               .cooked
               .as_ref()
               .map_or("".to_string(), |v| v.to_string()),
-          );
-
-          tpl_pos
+          )
         })
         .collect::<Vec<_>>();
 
       let exprs = node
         .exprs
         .iter()
-        .map(|expr| serialize_expr(ctx, expr, pos))
+        .map(|expr| serialize_expr(ctx, expr, opts.0))
         .collect::<Vec<_>>();
 
-      ctx.write_refs(quasis_pos, quasis);
-      ctx.write_refs(exprs_pos, exprs);
-
-      pos
+      ctx.commit_tpl(opts, quasis, exprs)
     }
     Expr::TaggedTpl(node) => {
-      let pos =
-        ctx.header(AstNode::TaggedTemplateExpression, parent, &node.span, 3);
-      let tag_pos = ctx.ref_field(AstProp::Tag);
-      let type_arg_pos = ctx.ref_field(AstProp::TypeArguments);
-      let quasi_pos = ctx.ref_field(AstProp::Quasi);
+      let opts = ctx.alloc_tagged_tpl(parent, &node.span);
 
-      let tag = serialize_expr(ctx, &node.tag, pos);
+      let tag = serialize_expr(ctx, &node.tag, opts.0);
 
       let type_param_id = node
         .type_params
         .clone()
-        .map(|params| serialize_ts_param_inst(ctx, params.as_ref(), pos));
-      let quasi = serialize_expr(ctx, &Expr::Tpl(*node.tpl.clone()), pos);
+        .map(|params| serialize_ts_param_inst(ctx, params.as_ref(), opts.0));
+      let quasi = serialize_expr(ctx, &Expr::Tpl(*node.tpl.clone()), opts.0);
 
-      ctx.write_ref(tag_pos, tag);
-      ctx.write_maybe_ref(type_arg_pos, type_param_id);
-      ctx.write_ref(quasi_pos, quasi);
-
-      pos
+      ctx.commit_tagged_tpl(opts, tag, type_param_id, quasi)
     }
     Expr::Arrow(node) => {
       let pos =

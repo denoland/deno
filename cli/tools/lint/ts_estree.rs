@@ -434,6 +434,141 @@ impl TsEsTreeBuilder {
       ctx: SerializeCtx::new(kind_count, prop_count),
     }
   }
+
+  pub fn alloc_new_expr(
+    &mut self,
+    parent: NodeRef,
+    span: &Span,
+    args_len: usize,
+  ) -> (NodeRef, usize, usize, usize) {
+    let pos = self.ctx.header(AstNode::NewExpression, parent, span, 3);
+    let callee_pos = self.ctx.ref_field(AstProp::Callee);
+    let type_args_pos = self.ctx.ref_field(AstProp::TypeArguments);
+    let args_pos = self.ctx.ref_vec_field(AstProp::Arguments, args_len);
+
+    (pos, callee_pos, type_args_pos, args_pos)
+  }
+
+  pub fn commit_new_expr(
+    &mut self,
+    opts: (NodeRef, usize, usize, usize),
+    callee: NodeRef,
+    type_args: Option<NodeRef>,
+    args: Vec<NodeRef>,
+  ) -> NodeRef {
+    self.ctx.write_ref(opts.1, callee);
+    self.ctx.write_maybe_ref(opts.2, type_args);
+    self.ctx.write_refs(opts.3, args);
+
+    opts.0
+  }
+
+  pub fn alloc_seq(
+    &mut self,
+    parent: NodeRef,
+    span: &Span,
+    len: usize,
+  ) -> (NodeRef, usize) {
+    let pos = self
+      .ctx
+      .header(AstNode::SequenceExpression, parent, &span, 1);
+    let exprs_pos = self.ctx.ref_vec_field(AstProp::Expressions, len);
+
+    (pos, exprs_pos)
+  }
+
+  pub fn commit_seq(
+    &mut self,
+    opts: (NodeRef, usize),
+    children: Vec<NodeRef>,
+  ) -> NodeRef {
+    self.ctx.write_refs(opts.1, children);
+
+    opts.0
+  }
+
+  pub fn alloc_tpl(
+    &mut self,
+    parent: NodeRef,
+    span: &Span,
+    quasis_len: usize,
+    exprs_len: usize,
+  ) -> (NodeRef, usize, usize) {
+    let pos = self.ctx.header(AstNode::TemplateLiteral, parent, &span, 2);
+    let quasis_pos = self.ctx.ref_vec_field(AstProp::Quasis, quasis_len);
+    let exprs_pos = self.ctx.ref_vec_field(AstProp::Expressions, exprs_len);
+
+    (pos, quasis_pos, exprs_pos)
+  }
+
+  pub fn commit_tpl(
+    &mut self,
+    opts: (NodeRef, usize, usize),
+    quasis: Vec<NodeRef>,
+    exprs: Vec<NodeRef>,
+  ) -> NodeRef {
+    self.ctx.write_refs(opts.1, quasis);
+    self.ctx.write_refs(opts.2, exprs);
+
+    opts.0
+  }
+
+  pub fn alloc_tpl_elem(
+    &mut self,
+    parent: NodeRef,
+    span: &Span,
+  ) -> (NodeRef, usize, usize, usize) {
+    let tpl_pos = self.ctx.header(AstNode::TemplateElement, parent, span, 3);
+    let tail_pos = self.ctx.bool_field(AstProp::Tail);
+    let raw_pos = self.ctx.str_field(AstProp::Raw);
+    let cooked_pos = self.ctx.str_field(AstProp::Cooked);
+
+    (tpl_pos, tail_pos, raw_pos, cooked_pos)
+  }
+
+  pub fn commit_tpl_elem(
+    &mut self,
+    opts: (NodeRef, usize, usize, usize),
+    tail: bool,
+    quasi: &str,
+    raw: &str,
+  ) -> NodeRef {
+    self.ctx.write_bool(opts.1, tail);
+    self.ctx.write_str(opts.2, raw);
+    self.ctx.write_str(opts.3, quasi);
+
+    opts.0
+  }
+
+  pub fn alloc_tagged_tpl(
+    &mut self,
+    parent: NodeRef,
+    span: &Span,
+  ) -> (NodeRef, usize, usize, usize) {
+    let pos =
+      self
+        .ctx
+        .header(AstNode::TaggedTemplateExpression, parent, &span, 3);
+    let tag_pos = self.ctx.ref_field(AstProp::Tag);
+    let type_arg_pos = self.ctx.ref_field(AstProp::TypeArguments);
+    let quasi_pos = self.ctx.ref_field(AstProp::Quasi);
+
+    (pos, tag_pos, type_arg_pos, quasi_pos)
+  }
+
+  pub fn commit_tagged_tpl(
+    &mut self,
+    opts: (NodeRef, usize, usize, usize),
+    tag: NodeRef,
+    type_param: Option<NodeRef>,
+    quasi: NodeRef,
+  ) -> NodeRef {
+    self.ctx.write_ref(opts.1, tag);
+    self.ctx.write_maybe_ref(opts.2, type_param);
+    self.ctx.write_ref(opts.3, quasi);
+
+    opts.0
+  }
 }
 
 impl AstBufSerializer<AstNode, AstProp> for TsEsTreeBuilder {
