@@ -2,13 +2,6 @@
 
 // @ts-check
 
-import { core } from "ext:core/mod.js";
-
-const {
-  op_lint_get_source,
-  op_lint_report,
-} = core.ops;
-
 // Keep in sync with Rust
 // These types are expected to be present on every node. Note that this
 // isn't set in stone. We could revise this at a future point.
@@ -41,13 +34,6 @@ const PropFlags = {
 /** @typedef {import("./40_lint_types.d.ts").AstContext} AstContext */
 /** @typedef {import("./40_lint_types.d.ts").VisitorFn} VisitorFn */
 /** @typedef {import("./40_lint_types.d.ts").CompiledVisitor} CompiledVisitor */
-/** @typedef {import("./40_lint_types.d.ts").LintState} LintState */
-
-/** @type {LintState} */
-const state = {
-  plugins: [],
-  installedPlugins: new Set(),
-};
 
 /**
  * Every rule gets their own instance of this class. This is the main
@@ -69,53 +55,6 @@ export class Context {
     this.id = id;
     this.fileName = fileName;
   }
-
-  source() {
-    if (this.#source === null) {
-      this.#source = op_lint_get_source();
-    }
-    return /** @type {*} */ (this.#source);
-  }
-
-  report(data) {
-    const range = data.node ? data.node.range : data.range ? data.range : null;
-    if (range == null) {
-      throw new Error(
-        "Either `node` or `span` must be provided when reporting an error",
-      );
-    }
-
-    const start = range[0] - 1;
-    const end = range[1] - 1;
-
-    op_lint_report(
-      this.id,
-      this.fileName,
-      data.message,
-      start,
-      end,
-    );
-  }
-}
-
-/**
- * @param {Deno.LintPlugin} plugin
- */
-export function installPlugin(plugin) {
-  if (typeof plugin !== "object") {
-    throw new Error("Linter plugin must be an object");
-  }
-  if (typeof plugin.name !== "string") {
-    throw new Error("Linter plugin name must be a string");
-  }
-  if (typeof plugin.rules !== "object") {
-    throw new Error("Linter plugin rules must be an object");
-  }
-  if (state.installedPlugins.has(plugin.name)) {
-    throw new Error(`Linter plugin ${plugin.name} has already been registered`);
-  }
-  state.plugins.push(plugin);
-  state.installedPlugins.add(plugin.name);
 }
 
 /**
