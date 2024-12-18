@@ -116,6 +116,32 @@ impl StringTable {
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct NodeRef(pub usize);
 
+#[derive(Debug)]
+pub struct BoolPos(pub usize);
+#[derive(Debug)]
+pub struct FieldPos(pub usize);
+#[derive(Debug)]
+pub struct FieldArrPos(pub usize);
+#[derive(Debug)]
+pub struct StrPos(pub usize);
+#[derive(Debug)]
+pub struct UndefPos(pub usize);
+#[derive(Debug)]
+pub struct NullPos(pub usize);
+
+#[derive(Debug)]
+pub enum NodePos {
+  Bool(BoolPos),
+  #[allow(dead_code)]
+  Field(FieldPos),
+  #[allow(dead_code)]
+  FieldArr(FieldArrPos),
+  Str(StrPos),
+  Undef(UndefPos),
+  #[allow(dead_code)]
+  Null(NullPos),
+}
+
 pub trait AstBufSerializer<K, P>
 where
   K: Into<u8> + Display,
@@ -128,19 +154,19 @@ where
     span: &Span,
     prop_count: usize,
   ) -> NodeRef;
-  fn ref_field(&mut self, prop: P) -> usize;
-  fn ref_vec_field(&mut self, prop: P, len: usize) -> usize;
-  fn str_field(&mut self, prop: P) -> usize;
-  fn bool_field(&mut self, prop: P) -> usize;
-  fn undefined_field(&mut self, prop: P) -> usize;
+  fn ref_field(&mut self, prop: P) -> FieldPos;
+  fn ref_vec_field(&mut self, prop: P, len: usize) -> FieldArrPos;
+  fn str_field(&mut self, prop: P) -> StrPos;
+  fn bool_field(&mut self, prop: P) -> BoolPos;
+  fn undefined_field(&mut self, prop: P) -> UndefPos;
   #[allow(dead_code)]
-  fn null_field(&mut self, prop: P) -> usize;
+  fn null_field(&mut self, prop: P) -> NullPos;
 
-  fn write_ref(&mut self, pos: usize, value: NodeRef);
-  fn write_maybe_ref(&mut self, pos: usize, value: Option<NodeRef>);
-  fn write_refs(&mut self, pos: usize, value: Vec<NodeRef>);
-  fn write_str(&mut self, pos: usize, value: &str);
-  fn write_bool(&mut self, pos: usize, value: bool);
+  fn write_ref(&mut self, pos: FieldPos, value: NodeRef);
+  fn write_maybe_ref(&mut self, pos: FieldPos, value: Option<NodeRef>);
+  fn write_refs(&mut self, pos: FieldArrPos, value: Vec<NodeRef>);
+  fn write_str(&mut self, pos: StrPos, value: &str);
+  fn write_bool(&mut self, pos: BoolPos, value: bool);
 
   fn serialize(&mut self) -> Vec<u8>;
 }

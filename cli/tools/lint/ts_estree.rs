@@ -2,7 +2,10 @@ use std::fmt::{self, Debug, Display};
 
 use deno_ast::swc::common::Span;
 
-use super::ast_buf::{AstBufSerializer, NodeRef, SerializeCtx};
+use super::ast_buf::{
+  AstBufSerializer, BoolPos, FieldArrPos, FieldPos, NodeRef, NullPos,
+  SerializeCtx, StrPos, UndefPos,
+};
 
 // Keep in sync with JS
 #[derive(Debug, Clone, PartialEq)]
@@ -103,6 +106,7 @@ pub enum AstNode {
   ExportSpecifier,
   TemplateElement,
   MethodDefinition,
+  ClassBody,
 
   // Patterns
   ArrayPattern,
@@ -146,6 +150,16 @@ pub enum AstNode {
   TSNamedTupleMember,
   TSFunctionType,
   TsCallSignatureDeclaration,
+  TSPropertySignature,
+  TSMethodSignature,
+  TSIndexSignature,
+  TSIndexedAccessType,
+  TSTypeOperator,
+  TSTypePredicate,
+  TSImportType,
+  TSRestType,
+  TSArrayType,
+  TSClassImplements,
 
   TSAnyKeyword,
   TSBigIntKeyword,
@@ -188,6 +202,7 @@ pub enum AstProp {
   Alternate,
   Argument,
   Arguments,
+  Asserts,
   Async,
   Attributes,
   Await,
@@ -204,6 +219,7 @@ pub enum AstProp {
   Const,
   Constraint,
   Cooked,
+  Declaration,
   Declarations,
   Declare,
   Default,
@@ -217,6 +233,7 @@ pub enum AstProp {
   Expression,
   Expressions,
   Exported,
+  Extends,
   ExtendsType,
   FalseType,
   Finalizer,
@@ -225,6 +242,7 @@ pub enum AstProp {
   Handler,
   Id,
   In,
+  IndexType,
   Init,
   Initializer,
   Implements,
@@ -241,17 +259,20 @@ pub enum AstProp {
   Namespace,
   NameType,
   Object,
+  ObjectType,
   OpeningElement,
   OpeningFragment,
   Operator,
   Optional,
   Out,
   Param,
+  ParameterName,
   Params,
   Pattern,
   Prefix,
   Properties,
   Property,
+  Qualifier,
   Quasi,
   Quasis,
   Raw,
@@ -263,6 +284,7 @@ pub enum AstProp {
   Source,
   SourceType,
   Specifiers,
+  Static,
   SuperClass,
   SuperTypeArguments,
   Tag,
@@ -290,6 +312,7 @@ impl Display for AstProp {
       AstProp::Alternate => "alternate",
       AstProp::Argument => "argument",
       AstProp::Arguments => "arguments",
+      AstProp::Asserts => "asserts",
       AstProp::Async => "async",
       AstProp::Attributes => "attributes",
       AstProp::Await => "await",
@@ -306,6 +329,7 @@ impl Display for AstProp {
       AstProp::Const => "const",
       AstProp::Constraint => "constraint",
       AstProp::Cooked => "cooked",
+      AstProp::Declaration => "declaration",
       AstProp::Declarations => "declarations",
       AstProp::Declare => "declare",
       AstProp::Default => "default",
@@ -319,6 +343,7 @@ impl Display for AstProp {
       AstProp::Expression => "expression",
       AstProp::Expressions => "expressions",
       AstProp::Exported => "exported",
+      AstProp::Extends => "extends",
       AstProp::ExtendsType => "extendsType",
       AstProp::FalseType => "falseType",
       AstProp::Finalizer => "finalizer",
@@ -327,6 +352,7 @@ impl Display for AstProp {
       AstProp::Handler => "handler",
       AstProp::Id => "id",
       AstProp::In => "in",
+      AstProp::IndexType => "indexType",
       AstProp::Init => "init",
       AstProp::Initializer => "initializer",
       AstProp::Implements => "implements",
@@ -343,17 +369,20 @@ impl Display for AstProp {
       AstProp::Namespace => "namespace",
       AstProp::NameType => "nameType",
       AstProp::Object => "object",
+      AstProp::ObjectType => "objectType",
       AstProp::OpeningElement => "openingElement",
       AstProp::OpeningFragment => "openingFragment",
       AstProp::Operator => "operator",
       AstProp::Optional => "optional",
       AstProp::Out => "out",
       AstProp::Param => "param",
+      AstProp::ParameterName => "parameterName",
       AstProp::Params => "params",
       AstProp::Pattern => "pattern",
       AstProp::Prefix => "prefix",
       AstProp::Properties => "properties",
       AstProp::Property => "property",
+      AstProp::Qualifier => "qualifier",
       AstProp::Quasi => "quasi",
       AstProp::Quasis => "quasis",
       AstProp::Raw => "raw",
@@ -365,6 +394,7 @@ impl Display for AstProp {
       AstProp::Source => "source",
       AstProp::SourceType => "sourceType",
       AstProp::Specifiers => "specifiers",
+      AstProp::Static => "static",
       AstProp::SuperClass => "superClass",
       AstProp::SuperTypeArguments => "superTypeArguments",
       AstProp::Tag => "tag",
@@ -417,48 +447,48 @@ impl AstBufSerializer<AstNode, AstProp> for TsEsTreeBuilder {
     self.ctx.header(kind, parent, span, prop_count)
   }
 
-  fn ref_field(&mut self, prop: AstProp) -> usize {
-    self.ctx.ref_field(prop)
+  fn ref_field(&mut self, prop: AstProp) -> FieldPos {
+    FieldPos(self.ctx.ref_field(prop))
   }
 
-  fn ref_vec_field(&mut self, prop: AstProp, len: usize) -> usize {
-    self.ctx.ref_vec_field(prop, len)
+  fn ref_vec_field(&mut self, prop: AstProp, len: usize) -> FieldArrPos {
+    FieldArrPos(self.ctx.ref_vec_field(prop, len))
   }
 
-  fn str_field(&mut self, prop: AstProp) -> usize {
-    self.ctx.str_field(prop)
+  fn str_field(&mut self, prop: AstProp) -> StrPos {
+    StrPos(self.ctx.str_field(prop))
   }
 
-  fn bool_field(&mut self, prop: AstProp) -> usize {
-    self.ctx.bool_field(prop)
+  fn bool_field(&mut self, prop: AstProp) -> BoolPos {
+    BoolPos(self.ctx.bool_field(prop))
   }
 
-  fn undefined_field(&mut self, prop: AstProp) -> usize {
-    self.ctx.undefined_field(prop)
+  fn undefined_field(&mut self, prop: AstProp) -> UndefPos {
+    UndefPos(self.ctx.undefined_field(prop))
   }
 
-  fn null_field(&mut self, prop: AstProp) -> usize {
-    self.ctx.null_field(prop)
+  fn null_field(&mut self, prop: AstProp) -> NullPos {
+    NullPos(self.ctx.null_field(prop))
   }
 
-  fn write_ref(&mut self, pos: usize, value: NodeRef) {
-    self.ctx.write_ref(pos, value);
+  fn write_ref(&mut self, pos: FieldPos, value: NodeRef) {
+    self.ctx.write_ref(pos.0, value);
   }
 
-  fn write_maybe_ref(&mut self, pos: usize, value: Option<NodeRef>) {
-    self.ctx.write_maybe_ref(pos, value);
+  fn write_maybe_ref(&mut self, pos: FieldPos, value: Option<NodeRef>) {
+    self.ctx.write_maybe_ref(pos.0, value);
   }
 
-  fn write_refs(&mut self, pos: usize, value: Vec<NodeRef>) {
-    self.ctx.write_refs(pos, value);
+  fn write_refs(&mut self, pos: FieldArrPos, value: Vec<NodeRef>) {
+    self.ctx.write_refs(pos.0, value);
   }
 
-  fn write_str(&mut self, pos: usize, value: &str) {
-    self.ctx.write_str(pos, value);
+  fn write_str(&mut self, pos: StrPos, value: &str) {
+    self.ctx.write_str(pos.0, value);
   }
 
-  fn write_bool(&mut self, pos: usize, value: bool) {
-    self.ctx.write_bool(pos, value);
+  fn write_bool(&mut self, pos: BoolPos, value: bool) {
+    self.ctx.write_bool(pos.0, value);
   }
 
   fn serialize(&mut self) -> Vec<u8> {
