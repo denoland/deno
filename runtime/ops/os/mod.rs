@@ -424,8 +424,11 @@ fn rss() -> usize {
   let mut count = libc::MACH_TASK_BASIC_INFO_COUNT;
   // SAFETY: libc calls
   let r = unsafe {
+    extern "C" {
+      static mut mach_task_self_: std::ffi::c_uint;
+    }
     libc::task_info(
-      libc::mach_task_self(),
+      mach_task_self_,
       libc::MACH_TASK_BASIC_INFO,
       task_info.as_mut_ptr() as libc::task_info_t,
       &mut count as *mut libc::mach_msg_type_number_t,
