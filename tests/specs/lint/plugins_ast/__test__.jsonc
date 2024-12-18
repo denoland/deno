@@ -2,37 +2,37 @@
   "tests": {
     "program": {
       "cwd": "./program",
-      "args": "lint --plugins=./plugin.ts source.ts",
+      "args": "test --no-check -R test.ts",
       "output": "program/log.out"
     },
     "declarations": {
       "cwd": "./declarations",
-      "args": "lint --plugins=./plugin.ts source.ts",
+      "args": "test --no-check -R test.ts",
       "output": "declarations/log.out"
     },
     "statements": {
       "cwd": "./statements",
-      "args": "lint --config=./statements/deno.json source.ts",
+      "args": "test --no-check -R test.ts",
       "output": "statements/log.out"
     },
     "expressions": {
       "cwd": "./expressions",
-      "args": "lint --plugins=./plugin.ts source.ts",
+      "args": "test --no-check -R test.ts",
       "output": "expressions/log.out"
     },
     "literals": {
       "cwd": "./literals",
-      "args": "lint --plugins=./plugin.ts source.ts",
+      "args": "test --no-check -R test.ts",
       "output": "literals/log.out"
     },
     "jsx": {
       "cwd": "./jsx",
-      "args": "lint --plugins=./plugin.ts source.tsx",
+      "args": "test --no-check -R test.ts",
       "output": "jsx/log.out"
     },
     "ts": {
       "cwd": "./ts",
-      "args": "lint --plugins=./plugin.ts source.tsx",
+      "args": "test --no-check -R test.ts",
       "output": "ts/log.out"
     }
   }

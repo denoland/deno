@@ -543,6 +543,7 @@ export function runPluginsForFile(fileName, serializedAst) {
   // Traverse ast with all visitors at the same time to avoid traversing
   // multiple times.
   try {
+    console.log("visitors", visitors);
     traverse(ctx, visitors, ctx.rootId);
   } finally {
     ctx.nodes.clear();
@@ -738,7 +739,8 @@ function _dump(ctx) {
 // the CLI linter
 function runLintPlugin(plugin, fileName, sourceText) {
   installPlugin(plugin);
-  const serializedAst = op_lint_create_serialized_ast(sourceText);
+  const serializedAst = op_lint_create_serialized_ast(fileName, sourceText);
+  console.log(serializedAst);
   runPluginsForFile(fileName, serializedAst);
 }
 
