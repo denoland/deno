@@ -26,6 +26,7 @@ use deno_core::serde_json;
 use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
 use deno_core::url::Url;
+use deno_runtime::deno_fetch;
 use deno_terminal::colors;
 use http_body_util::BodyExt;
 use serde::Deserialize;
@@ -912,9 +913,7 @@ async fn publish_package(
     package.config
   );
 
-  let body = http_body_util::Full::new(package.tarball.bytes.clone())
-    .map_err(|never| match never {})
-    .boxed();
+  let body = deno_fetch::ReqBody::full(package.tarball.bytes.clone());
   let response = http_client
     .post(url.parse()?, body)?
     .header(
