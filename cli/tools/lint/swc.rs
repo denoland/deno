@@ -223,7 +223,7 @@ fn serialize_stmt(
       pos
     }
     Stmt::Continue(node) => {
-      let pos = ctx.header(AstNode::Continue, parent, &node.span, 1);
+      let pos = ctx.header(AstNode::ContinueStatement, parent, &node.span, 1);
       let label_pos = ctx.ref_field(AstProp::Label);
 
       let arg = node

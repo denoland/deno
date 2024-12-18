@@ -41,7 +41,7 @@ pub enum AstNode {
   Return,
   Labeled,
   Break,
-  Continue,
+  ContinueStatement,
   IfStatement,
   Switch,
   SwitchCase,
