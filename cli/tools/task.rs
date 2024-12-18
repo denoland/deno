@@ -94,7 +94,7 @@ pub async fn execute_script(
       return Ok(0);
     };
 
-    let task_regex = arg_to_regex(task_name)?;
+    let task_name_filter = arg_to_task_name_filter(task_name)?;
     let mut packages_task_info: Vec<PackageTaskInfo> = vec![];
 
     for folder in workspace.config_folders() {
@@ -137,10 +137,18 @@ pub async fn execute_script(
 
       // Match tasks in deno.json
       for name in tasks_config.task_names() {
-        if task_regex.is_match(name) && !visited.contains(name) {
+        let matches_filter = match &task_name_filter {
+          TaskNameFilter::Exact(n) => *n == name,
+          TaskNameFilter::Regex(re) => re.is_match(name),
+        };
+        if matches_filter && !visited.contains(name) {
           matched.insert(name.to_string());
           visit_task(&tasks_config, &mut visited, name);
         }
+      }
+
+      if matched.is_empty() {
+        continue;
       }
 
       packages_task_info.push(PackageTaskInfo {
@@ -901,4 +909,42 @@ fn strip_ansi_codes_and_escape_control_chars(s: &str) -> String {
       c => c.to_string(),
     })
     .collect()
+}
+
+fn arg_to_task_name_filter(input: &str) -> Result<TaskNameFilter, AnyError> {
+  if !input.contains("*") {
+    return Ok(TaskNameFilter::Exact(input));
+  }
+
+  let mut regex_str = regex::escape(input);
+  regex_str = regex_str.replace("\\*", ".*");
+  let re = Regex::new(&regex_str)?;
+  Ok(TaskNameFilter::Regex(re))
+}
+
+#[derive(Debug)]
+enum TaskNameFilter<'s> {
+  Exact(&'s str),
+  Regex(regex::Regex),
+}
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+
+  #[test]
+  fn test_arg_to_task_name_filter() {
+    assert!(matches!(
+      arg_to_task_name_filter("test").unwrap(),
+      TaskNameFilter::Exact("test")
+    ));
+    assert!(matches!(
+      arg_to_task_name_filter("test-").unwrap(),
+      TaskNameFilter::Exact("test-")
+    ));
+    assert!(matches!(
+      arg_to_task_name_filter("test*").unwrap(),
+      TaskNameFilter::Regex(_)
+    ));
+  }
 }
