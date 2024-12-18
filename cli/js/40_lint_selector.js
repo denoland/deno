@@ -900,12 +900,12 @@ function matchChild(next) {
  */
 function matchAdjacent(next) {
   return (ctx, id) => {
-    const parent = ctx.getParent(id);
-    if (parent < 0) return false;
+    const siblings = ctx.getSiblings(id);
+    const idx = siblings.indexOf(id) - 1;
 
-    const prev = ctx.getSiblingBefore(parent, id);
-    if (prev < 0) return false;
+    if (idx < 0) return false;
 
+    const prev = siblings[idx];
     return next(ctx, prev);
   };
 }
@@ -916,16 +916,14 @@ function matchAdjacent(next) {
  */
 function matchFollowing(next) {
   return (ctx, id) => {
-    const parent = ctx.getParent(id);
-    if (parent < 0) return false;
+    const siblings = ctx.getSiblings(id);
+    const idx = siblings.indexOf(id) - 1;
 
-    let prev = ctx.getSiblingBefore(parent, id);
-    while (prev > -1) {
-      if (next(ctx, prev)) {
-        return true;
-      }
+    if (idx < 0) return false;
 
-      prev = ctx.getSiblingBefore(parent, prev);
+    for (let i = idx; i >= 0; i--) {
+      const sib = siblings[i];
+      if (next(ctx, sib)) return true;
     }
 
     return false;

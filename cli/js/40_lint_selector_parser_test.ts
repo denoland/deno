@@ -116,6 +116,14 @@ Deno.test("Lexer - Relation ~", () => {
     { token: Token.Op, value: "~" },
     { token: Token.Word, value: "Bar" },
   ]);
+
+  expect(testLexer("Foo Bar ~ Bar")).toEqual([
+    { token: Token.Word, value: "Foo" },
+    { token: Token.Space, value: "" },
+    { token: Token.Word, value: "Bar" },
+    { token: Token.Op, value: "~" },
+    { token: Token.Word, value: "Bar" },
+  ]);
 });
 
 Deno.test("Lexer - Attr", () => {

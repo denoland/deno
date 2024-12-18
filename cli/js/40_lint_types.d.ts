@@ -102,7 +102,6 @@ export interface ILexer {
 export interface MatchContext {
   getFirstChild(id: number): number;
   getLastChild(id: number): number;
-  getSiblingBefore(parentId: number, sib: number): number;
   getSiblings(id: number): number[];
   getParent(id: number): number;
   getType(id: number): number;

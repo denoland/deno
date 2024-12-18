@@ -147,6 +147,7 @@ class FakeContext implements MatchCtx {
       } else if (
         first === -1 && prop.value !== null && typeof prop.value === "object"
       ) {
+        // @ts-ignore loosely typed
         first = prop.value;
       }
     }
@@ -164,6 +165,7 @@ class FakeContext implements MatchCtx {
         if (prop.value.length === 0) return -1;
         return prop.value.at(-1);
       } else if (prop.value !== null && typeof prop.value !== "object") {
+        // @ts-ignore loosely typed
         last = prop.value;
       }
     }
@@ -174,27 +176,6 @@ class FakeContext implements MatchCtx {
     const node = this.ids.get(id);
     if (node === undefined) return -1;
     return node.parentId;
-  }
-
-  getSiblingBefore(parentId: number, sib: number): number {
-    const node = this.ids.get(parentId);
-    if (node === undefined) return -1;
-
-    let prev = -1;
-    for (const prop of node.props) {
-      if (prop.value === sib) return prev;
-
-      if (Array.isArray(prop.value)) {
-        for (const id of prop.value) {
-          if (id === sib) return prev;
-          prev = id;
-        }
-      } else {
-        prev = prop.value;
-      }
-    }
-
-    return -1;
   }
 
   getSiblings(id: number): number[] {

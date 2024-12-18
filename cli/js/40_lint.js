@@ -218,6 +218,63 @@ function readValue(ctx, offset, search) {
 }
 
 /**
+ * @param {AstContext["buf"]} buf
+ * @param {number} child
+ * @returns {null | [number, number]}
+ */
+function findChildOffset(buf, child) {
+  let offset = readU32(buf, child + 1);
+
+  // type + parentId + SpanLo + SpanHi
+  offset += 1 + 4 + 4 + 4;
+
+  const propCount = buf[offset++];
+  for (let i = 0; i < propCount; i++) {
+    const _prop = buf[offset++];
+    const kind = buf[offset++];
+
+    switch (kind) {
+      case PropFlags.Ref: {
+        const start = offset;
+        const value = readU32(buf, offset);
+        offset += 4;
+        if (value === child) {
+          return [start, -1];
+        }
+        break;
+      }
+      case PropFlags.RefArr: {
+        const start = offset;
+
+        const len = readU32(buf, offset);
+        offset += 4;
+
+        for (let j = 0; j < len; j++) {
+          const value = readU32(buf, offset);
+          offset += 4;
+          if (value === child) {
+            return [start, j];
+          }
+        }
+
+        break;
+      }
+      case PropFlags.String:
+        offset += 4;
+        break;
+      case PropFlags.Bool:
+        offset++;
+        break;
+      case PropFlags.Null:
+      case PropFlags.Undefined:
+        break;
+    }
+  }
+
+  return null;
+}
+
+/**
  * @param {AstContext} ctx
  * @param {number} offset
  * @returns {*}
@@ -386,9 +443,8 @@ class MatchCtx {
     const { buf } = this;
 
     offset = findPropOffset(buf, offset, propIds[idx]);
-    // console.log("attr value", offset, propIds, idx);
     if (offset === -1) return undefined;
-    const prop = buf[offset++];
+    const _prop = buf[offset++];
     const kind = buf[offset++];
 
     if (kind === PropFlags.Ref) {
@@ -398,7 +454,7 @@ class MatchCtx {
       return this.getAttrPathValue(value, propIds, idx + 1);
     } else if (kind === PropFlags.RefArr) {
       // FIXME
-      const count = readU32(buf, offset);
+      const _count = readU32(buf, offset);
       offset += 4;
     }
 
@@ -452,22 +508,133 @@ class MatchCtx {
     return true;
   }
 
-  getFirstChild() {
-    // FIXME
-    return 0;
+  /**
+   * @param {number} offset
+   * @returns {number}
+   */
+  getFirstChild(offset) {
+    const { buf } = this;
+
+    // type + parentId + SpanLo + SpanHi
+    offset += 1 + 4 + 4 + 4;
+
+    const count = buf[offset++];
+    for (let i = 0; i < count; i++) {
+      const _prop = buf[offset++];
+      const kind = buf[offset++];
+
+      switch (kind) {
+        case PropFlags.Ref: {
+          const v = readU32(buf, offset);
+          offset += 4;
+          return v;
+        }
+        case PropFlags.RefArr: {
+          const len = readU32(buf, offset);
+          offset += 4;
+          for (let j = 0; j < len; j++) {
+            const v = readU32(buf, offset);
+            offset += 4;
+            return v;
+          }
+
+          return len;
+        }
+
+        case PropFlags.String:
+          offset += 4;
+          break;
+        case PropFlags.Bool:
+          offset++;
+          break;
+        case PropFlags.Null:
+        case PropFlags.Undefined:
+          break;
+      }
+    }
+
+    return -1;
   }
 
-  getLastChild() {
-    // FIXME
-    return 0;
+  /**
+   * @param {number} offset
+   * @returns {number}
+   */
+  getLastChild(offset) {
+    const { buf } = this;
+
+    // type + parentId + SpanLo + SpanHi
+    offset += 1 + 4 + 4 + 4;
+
+    let last = -1;
+
+    const count = buf[offset++];
+    for (let i = 0; i < count; i++) {
+      const _prop = buf[offset++];
+      const kind = buf[offset++];
+
+      switch (kind) {
+        case PropFlags.Ref: {
+          const v = readU32(buf, offset);
+          offset += 4;
+          last = v;
+          break;
+        }
+        case PropFlags.RefArr: {
+          const len = readU32(buf, offset);
+          offset += 4;
+          for (let j = 0; j < len; j++) {
+            const v = readU32(buf, offset);
+            last = v;
+            offset += 4;
+          }
+
+          break;
+        }
+
+        case PropFlags.String:
+          offset += 4;
+          break;
+        case PropFlags.Bool:
+          offset++;
+          break;
+        case PropFlags.Null:
+        case PropFlags.Undefined:
+          break;
+      }
+    }
+
+    return last;
   }
-  getSiblingBefore() {
-    // FIXME
-    return 0;
-  }
-  getSiblings() {
-    // FIXME
-    return [];
+
+  /**
+   * @param {number} id
+   * @returns {number[]}
+   */
+  getSiblings(id) {
+    const { buf } = this;
+
+    const result = findChildOffset(buf, id);
+    // Happens for program nodes
+    if (result === null) return [];
+
+    if (result[1] === -1) {
+      return [id];
+    }
+
+    let offset = result[0];
+    const count = readU32(buf, offset);
+    offset += 4;
+
+    /** @type {number[]} */
+    const out = [];
+    for (let i = 0; i < count; i++) {
+      const v = readU32(buf, offset);
+      offset += 4;
+      out.push(v);
+    }
+
+    return out;
   }
 }
 
@@ -623,8 +790,6 @@ export function runPluginsForFile(fileName, serializedAst) {
             try {
               fn(node);
             } catch (err) {
-              // FIXME: console here doesn't support error cause
-              console.log(err);
               throw new Error(`Visitor "${name}" of plugin "${id}" errored`, {
                 cause: err,
               });
@@ -734,7 +899,6 @@ function traverse(ctx, visitors, offset) {
 
     const propCount = buf[offset];
     offset += 1;
-    // console.log({ propCount });
 
     for (let i = 0; i < propCount; i++) {
       const kind = buf[offset + 1];
