@@ -5,11 +5,11 @@ use crate::version;
 
 use boxed_error::Boxed;
 use deno_cache_dir::file_fetcher::RedirectHeaderParseError;
-use deno_core::error::JsNativeError;
 use deno_core::error::AnyError;
+use deno_core::error::JsNativeError;
 use deno_core::futures::StreamExt;
 use deno_core::parking_lot::Mutex;
-use deno_core::serde;
+use deno_core::{serde, JsError};
 use deno_core::serde_json;
 use deno_core::url::Url;
 use deno_runtime::deno_fetch;
@@ -94,37 +94,49 @@ impl HttpClientProvider {
   }
 }
 
-#[derive(Debug, Error)]
+#[derive(Debug, Error, JsError)]
+#[class(type)]
 #[error("Bad response: {:?}{}", .status_code, .response_text.as_ref().map(|s| format!("\n\n{}", s)).unwrap_or_else(String::new))]
 pub struct BadResponseError {
   pub status_code: StatusCode,
   pub response_text: Option<String>,
 }
 
-#[derive(Debug, Boxed)]
+#[derive(Debug, Boxed, JsError)]
 pub struct DownloadError(pub Box<DownloadErrorKind>);
 
-#[derive(Debug, Error)]
+#[derive(Debug, Error, JsError)]
 pub enum DownloadErrorKind {
+  #[class(type)]
   #[error(transparent)]
   Fetch(deno_fetch::ClientSendError),
+  #[class(inherit)]
   #[error(transparent)]
   UrlParse(#[from] deno_core::url::ParseError),
+  #[class(generic)]
   #[error(transparent)]
   HttpParse(#[from] http::Error),
+  #[class(inherit)]
   #[error(transparent)]
   Json(#[from] serde_json::Error),
+  #[class(generic)]
   #[error(transparent)]
   ToStr(#[from] http::header::ToStrError),
+  #[class(inherit)]
   #[error(transparent)]
   RedirectHeaderParse(RedirectHeaderParseError),
+  #[class(type)]
   #[error("Too many redirects.")]
   TooManyRedirects,
+  #[class(inherit)]
   #[error(transparent)]
   BadResponse(#[from] BadResponseError),
   #[class("Http")]
   #[error("Not Found.")]
   NotFound,
+  #[class(inherit)]
+  #[error(transparent)]
+  Other(JsNativeError),
 }
 
 #[derive(Debug)]
@@ -221,7 +233,7 @@ impl HttpClient {
     let maybe_bytes = self.download_inner(url, None, None).await?;
     match maybe_bytes {
       Some(bytes) => Ok(bytes),
-      None => Err(DownloadError::NotFound),
+      None => Err(DownloadErrorKind::NotFound.into_box()),
     }
   }
 
@@ -285,7 +297,7 @@ impl HttpClient {
     get_response_body_with_progress(response, progress_guard)
       .await
       .map(|(_, body)| Some(body))
-      .map_err(|err| DownloadErrorKind::Fetch(err).into_box())
+      .map_err(|err| DownloadErrorKind::Other(err).into_box())
   }
 
   async fn get_redirected_response(

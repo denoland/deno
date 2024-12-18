@@ -136,10 +136,18 @@ deno_core::extension!(deno_crypto,
 pub enum CryptoError {
   #[class(inherit)]
   #[error(transparent)]
-  General(#[from] #[inherit] SharedError),
+  General(
+    #[from]
+    #[inherit]
+    SharedError,
+  ),
   #[class(inherit)]
   #[error(transparent)]
-  JoinError(#[from] #[inherit] tokio::task::JoinError),
+  JoinError(
+    #[from]
+    #[inherit]
+    tokio::task::JoinError,
+  ),
   #[class(generic)]
   #[error(transparent)]
   Der(#[from] rsa::pkcs1::der::Error),
@@ -205,7 +213,11 @@ pub enum CryptoError {
   ArrayBufferViewLengthExceeded(usize),
   #[class(inherit)]
   #[error(transparent)]
-  Other(#[from] #[inherit] JsNativeError),
+  Other(
+    #[from]
+    #[inherit]
+    JsNativeError,
+  ),
 }
 
 #[op2]

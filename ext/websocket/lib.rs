@@ -1,6 +1,7 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 use crate::stream::WebSocketStream;
 use bytes::Bytes;
+use deno_core::error::JsNativeError;
 use deno_core::futures::TryFutureExt;
 use deno_core::op2;
 use deno_core::unsync::spawn;
@@ -44,7 +45,6 @@ use std::num::NonZeroUsize;
 use std::path::PathBuf;
 use std::rc::Rc;
 use std::sync::Arc;
-use deno_core::error::JsNativeError;
 use tokio::io::AsyncRead;
 use tokio::io::AsyncWrite;
 use tokio::io::ReadHalf;

@@ -4,13 +4,13 @@ use std::collections::HashMap;
 use std::collections::HashSet;
 use std::sync::Arc;
 
+use async_trait::async_trait;
 use deno_core::error::JsNativeError;
 use deno_core::futures::future::LocalBoxFuture;
 use deno_core::futures::FutureExt;
 use deno_core::parking_lot::Mutex;
 use deno_core::serde_json;
 use deno_core::url::Url;
-use async_trait::async_trait;
 use deno_npm::npm_rc::ResolvedNpmRc;
 use deno_npm::registry::NpmPackageInfo;
 use deno_npm::registry::NpmRegistryApi;
@@ -106,7 +106,8 @@ pub enum LoadFileCachedPackageInfoError {
 pub struct LoadPackageInfoError {
   url: Url,
   name: String,
-  #[inherit] inner: LoadPackageInfoInnerError,
+  #[inherit]
+  inner: LoadPackageInfoInnerError,
 }
 
 #[derive(Debug, thiserror::Error, deno_error::JsError)]
@@ -186,9 +187,9 @@ impl<TEnv: NpmCacheEnv> RegistryInfoProvider<TEnv> {
       Ok(None) => Err(NpmRegistryPackageInfoLoadError::PackageNotExists {
         package_name: name.to_string(),
       }),
-      Err(err) => {
-        Err(NpmRegistryPackageInfoLoadError::LoadError(Arc::new(JsNativeError::from_err(err))))
-      }
+      Err(err) => Err(NpmRegistryPackageInfoLoadError::LoadError(Arc::new(
+        JsNativeError::from_err(err),
+      ))),
     }
   }
 
@@ -196,10 +197,12 @@ impl<TEnv: NpmCacheEnv> RegistryInfoProvider<TEnv> {
     self: &Arc<Self>,
     name: &str,
   ) -> Result<Option<Arc<NpmPackageInfo>>, LoadPackageInfoError> {
-    self.load_package_info_inner(name).await.map_err(|err| LoadPackageInfoError { 
-      url: get_package_url(&self.npmrc, name),
-      name: name.to_string(),
-      inner: err 
+    self.load_package_info_inner(name).await.map_err(|err| {
+      LoadPackageInfoError {
+        url: get_package_url(&self.npmrc, name),
+        name: name.to_string(),
+        inner: err,
+      }
     })
   }
 
@@ -298,9 +301,9 @@ impl<TEnv: NpmCacheEnv> RegistryInfoProvider<TEnv> {
     })?;
     match maybe_package_info {
       Some(package_info) => Ok(package_info),
-      None => {
-        Err(LoadFileCachedPackageInfoError::FileMissing(name.to_string()))
-      }
+      None => Err(LoadFileCachedPackageInfoError::FileMissing(
+        name.to_string(),
+      )),
     }
   }
 
@@ -312,7 +315,10 @@ impl<TEnv: NpmCacheEnv> RegistryInfoProvider<TEnv> {
       match maybe_auth_header_for_npm_registry(registry_config) {
         Ok(maybe_auth_header) => maybe_auth_header,
         Err(err) => {
-          return std::future::ready(Err(Arc::new(JsNativeError::from_err(err)))).boxed_local()
+          return std::future::ready(Err(Arc::new(JsNativeError::from_err(
+            err,
+          ))))
+          .boxed_local()
         }
       };
     let name = name.to_string();

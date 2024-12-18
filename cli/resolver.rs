@@ -7,8 +7,8 @@ use deno_ast::MediaType;
 use deno_config::workspace::MappedResolutionDiagnostic;
 use deno_config::workspace::MappedResolutionError;
 use deno_core::anyhow::Context;
-use deno_core::error::{AnyError};
-use deno_core::error::{JsNativeError};
+use deno_core::error::AnyError;
+use deno_core::error::JsNativeError;
 use deno_core::url::Url;
 use deno_core::ModuleSourceCode;
 use deno_core::ModuleSpecifier;
@@ -270,7 +270,9 @@ impl CliResolver {
         ) => match mapped_resolution_error {
           MappedResolutionError::Specifier(e) => ResolveError::Specifier(e),
           // deno_graph checks specifically for an ImportMapError
-          MappedResolutionError::ImportMap(e) => ResolveError::Other(Box::new(e)),
+          MappedResolutionError::ImportMap(e) => {
+            ResolveError::Other(Box::new(e))
+          }
           err => ResolveError::Other(Box::new(err)),
         },
         err => ResolveError::Other(Box::new(err)),
@@ -413,13 +415,17 @@ impl<'a> deno_graph::source::NpmResolver for WorkerCliNpmGraphResolver<'a> {
             })
             .collect(),
           dep_graph_result: match top_level_result {
-            Ok(()) => result.dependencies_result.map_err(|e| Arc::new(e) as Arc<dyn deno_error::JsErrorClass>),
+            Ok(()) => result
+              .dependencies_result
+              .map_err(|e| Arc::new(e) as Arc<dyn deno_error::JsErrorClass>),
             Err(err) => Err(Arc::new(err)),
           },
         }
       }
       None => {
-        let err = Arc::new(JsNativeError::generic("npm specifiers were requested; but --no-npm is specified"));
+        let err = Arc::new(JsNativeError::generic(
+          "npm specifiers were requested; but --no-npm is specified",
+        ));
         NpmResolvePkgReqsResult {
           results: package_reqs
             .iter()

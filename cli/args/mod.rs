@@ -10,7 +10,7 @@ mod package_json;
 use deno_ast::MediaType;
 use deno_ast::SourceMapOption;
 use deno_cache_dir::file_fetcher::CacheSetting;
-use deno_config::deno_json::NodeModulesDirMode;
+use deno_config::deno_json::{ConfigFileError, NodeModulesDirMode};
 use deno_config::workspace::CreateResolverOptions;
 use deno_config::workspace::FolderConfigs;
 use deno_config::workspace::PackageJsonDepResolution;
@@ -1098,7 +1098,10 @@ impl CliOptions {
         pkg_json_dep_resolution,
         specified_import_map: cli_arg_specified_import_map,
       },
-      |path| std::fs::read_to_string(path).map_err(Box::new),
+      |path| {
+        std::fs::read_to_string(path)
+          .map_err(|e| Box::new(e) as Box<dyn deno_error::JsErrorClass>)
+      },
     )?)
   }
 
@@ -1254,7 +1257,7 @@ impl CliOptions {
   pub fn resolve_ts_config_for_emit(
     &self,
     config_type: TsConfigType,
-  ) -> Result<TsConfigForEmit, AnyError> {
+  ) -> Result<TsConfigForEmit, ConfigFileError> {
     self.workspace().resolve_ts_config_for_emit(config_type)
   }
 
@@ -1283,7 +1286,7 @@ impl CliOptions {
 
   pub fn to_compiler_option_types(
     &self,
-  ) -> Result<Vec<deno_graph::ReferrerImports>, AnyError> {
+  ) -> Result<Vec<deno_graph::ReferrerImports>, serde_json::Error> {
     self
       .workspace()
       .to_compiler_option_types()

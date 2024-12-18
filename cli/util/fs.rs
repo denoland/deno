@@ -373,7 +373,6 @@ mod clone_dir_imp {
   #[cfg(target_vendor = "apple")]
   mod apple {
     use super::super::copy_dir_recursive;
-    use deno_core::error::AnyError;
     use std::os::unix::ffi::OsStrExt;
     use std::path::Path;
     fn clonefile(from: &Path, to: &Path) -> std::io::Result<()> {
@@ -387,7 +386,10 @@ mod clone_dir_imp {
       Ok(())
     }
 
-    pub fn clone_dir_recursive(from: &Path, to: &Path) -> Result<(), AnyError> {
+    pub fn clone_dir_recursive(
+      from: &Path,
+      to: &Path,
+    ) -> Result<(), super::super::CopyDirRecursiveError> {
       if let Some(parent) = to.parent() {
         std::fs::create_dir_all(parent)?;
       }
@@ -432,18 +434,73 @@ mod clone_dir_imp {
 /// operation.
 ///
 /// Note: Does not handle symlinks.
-pub fn clone_dir_recursive(from: &Path, to: &Path) -> Result<(), AnyError> {
+pub fn clone_dir_recursive(
+  from: &Path,
+  to: &Path,
+) -> Result<(), CopyDirRecursiveError> {
   clone_dir_imp::clone_dir_recursive(from, to)
+}
+
+#[derive(Debug, thiserror::Error, deno_error::JsError)]
+pub enum CopyDirRecursiveError {
+  #[class(inherit)]
+  #[error("Creating {path}")]
+  Creating {
+    path: PathBuf,
+    #[source]
+    #[inherit]
+    source: Error,
+  },
+  #[class(inherit)]
+  #[error("Creating {path}")]
+  Reading {
+    path: PathBuf,
+    #[source]
+    #[inherit]
+    source: Error,
+  },
+  #[class(inherit)]
+  #[error("Dir {from} to {to}")]
+  Dir {
+    from: PathBuf,
+    to: PathBuf,
+    #[source]
+    #[inherit]
+    source: Box<Self>,
+  },
+  #[class(inherit)]
+  #[error("Copying {from} to {to}")]
+  Copying {
+    from: PathBuf,
+    to: PathBuf,
+    #[source]
+    #[inherit]
+    source: Error,
+  },
+  #[class(inherit)]
+  #[error(transparent)]
+  Other(#[from] Error),
 }
 
 /// Copies a directory to another directory.
 ///
 /// Note: Does not handle symlinks.
-pub fn copy_dir_recursive(from: &Path, to: &Path) -> Result<(), AnyError> {
-  std::fs::create_dir_all(to)
-    .with_context(|| format!("Creating {}", to.display()))?;
-  let read_dir = std::fs::read_dir(from)
-    .with_context(|| format!("Reading {}", from.display()))?;
+pub fn copy_dir_recursive(
+  from: &Path,
+  to: &Path,
+) -> Result<(), CopyDirRecursiveError> {
+  std::fs::create_dir_all(to).map_err(|source| {
+    CopyDirRecursiveError::Creating {
+      path: to.to_path_buf(),
+      source,
+    }
+  })?;
+  let read_dir = std::fs::read_dir(from).map_err(|source| {
+    CopyDirRecursiveError::Reading {
+      path: from.to_path_buf(),
+      source,
+    }
+  })?;
 
   for entry in read_dir {
     let entry = entry?;
@@ -452,12 +509,20 @@ pub fn copy_dir_recursive(from: &Path, to: &Path) -> Result<(), AnyError> {
     let new_to = to.join(entry.file_name());
 
     if file_type.is_dir() {
-      copy_dir_recursive(&new_from, &new_to).with_context(|| {
-        format!("Dir {} to {}", new_from.display(), new_to.display())
+      copy_dir_recursive(&new_from, &new_to).map_err(|source| {
+        CopyDirRecursiveError::Dir {
+          from: new_from.to_path_buf(),
+          to: new_to.to_path_buf(),
+          source: Box::new(source),
+        }
       })?;
     } else if file_type.is_file() {
-      std::fs::copy(&new_from, &new_to).with_context(|| {
-        format!("Copying {} to {}", new_from.display(), new_to.display())
+      std::fs::copy(&new_from, &new_to).map_err(|source| {
+        CopyDirRecursiveError::Copying {
+          from: new_from.to_path_buf(),
+          to: new_to.to_path_buf(),
+          source,
+        }
       })?;
     }
   }

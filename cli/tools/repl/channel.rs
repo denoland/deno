@@ -68,7 +68,8 @@ impl RustylineSyncMessageSender {
           method: method.to_string(),
           params: params
             .map(|params| serde_json::to_value(params))
-            .transpose().map_err(JsNativeError::from_err)?,
+            .transpose()
+            .map_err(JsNativeError::from_err)?,
         })
     {
       Err(JsNativeError::from_err(err).into())

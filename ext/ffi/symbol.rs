@@ -55,7 +55,9 @@ impl TryFrom<NativeType> for libffi::middle::Type {
             .map(|field| field.clone().try_into())
             .collect::<Result<Vec<_>, _>>()?,
           false => {
-            return Err(JsNativeError::type_error("Struct must have at least one field"))
+            return Err(JsNativeError::type_error(
+              "Struct must have at least one field",
+            ))
           }
         })
       }

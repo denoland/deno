@@ -861,9 +861,12 @@ fn op_otel_span_start<'s>(
 
   let parent_span_id = parse_span_id(scope, parent_span_id);
 
-  let name = owned_string(scope, name.try_cast().map_err(|e: v8::DataError| {
-    OtelError::Data(e.into())
-  })?);
+  let name = owned_string(
+    scope,
+    name
+      .try_cast()
+      .map_err(|e: v8::DataError| OtelError::Data(e.into()))?,
+  );
 
   let temporary_span = TemporarySpan(SpanData {
     span_context: SpanContext::new(

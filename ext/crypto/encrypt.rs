@@ -75,7 +75,11 @@ pub enum EncryptAlgorithm {
 pub enum EncryptError {
   #[class(inherit)]
   #[error(transparent)]
-  General(#[from] #[inherit] SharedError),
+  General(
+    #[from]
+    #[inherit]
+    SharedError,
+  ),
   #[class(type)]
   #[error("invalid length")]
   InvalidLength,

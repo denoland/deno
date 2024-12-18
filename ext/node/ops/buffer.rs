@@ -28,7 +28,9 @@ pub fn op_transcode(
     ("latin1", "utf16le") | ("ascii", "utf16le") => {
       Ok(latin1_ascii_to_utf16le(source))
     }
-    (from, to) => Err(JsNativeError::generic(format!("Unable to transcode Buffer {from}->{to}"))),
+    (from, to) => Err(JsNativeError::generic(format!(
+      "Unable to transcode Buffer {from}->{to}"
+    ))),
   }
 }
 
@@ -48,11 +50,14 @@ fn utf16le_to_utf8(source: &[u8]) -> Result<Vec<u8>, JsNativeError> {
     .collect();
   String::from_utf16(&ucs2_vec)
     .map(|utf8_string| utf8_string.into_bytes())
-    .map_err(|e|JsNativeError::generic(format!("Invalid UTF-16 sequence: {}", e)))
+    .map_err(|e| {
+      JsNativeError::generic(format!("Invalid UTF-16 sequence: {}", e))
+    })
 }
 
 fn utf8_to_utf16le(source: &[u8]) -> Result<Vec<u8>, JsNativeError> {
-  let utf8_string = std::str::from_utf8(source).map_err(JsNativeError::from_err)?;
+  let utf8_string =
+    std::str::from_utf8(source).map_err(JsNativeError::from_err)?;
   let ucs2_vec: Vec<u16> = utf8_string.encode_utf16().collect();
   let bytes: Vec<u8> = ucs2_vec.iter().flat_map(|&x| x.to_le_bytes()).collect();
   Ok(bytes)

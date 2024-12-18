@@ -17,13 +17,21 @@ pub enum OsError {
   Priority(#[inherit] priority::PriorityError),
   #[class(inherit)]
   #[error(transparent)]
-  Permission(#[from] #[inherit] PermissionCheckError),
+  Permission(
+    #[from]
+    #[inherit]
+    PermissionCheckError,
+  ),
   #[class(type)]
   #[error("Failed to get cpu info")]
   FailedToGetCpuInfo,
   #[class(inherit)]
   #[error("Failed to get user info")]
-  FailedToGetUserInfo(#[source] #[inherit] std::io::Error),
+  FailedToGetUserInfo(
+    #[source]
+    #[inherit]
+    std::io::Error,
+  ),
 }
 
 #[op2(fast, stack_trace)]
@@ -218,9 +226,7 @@ where
 }
 
 #[op2(fast, stack_trace)]
-pub fn op_geteuid<P>(
-  state: &mut OpState,
-) -> Result<u32, PermissionCheckError>
+pub fn op_geteuid<P>(state: &mut OpState) -> Result<u32, PermissionCheckError>
 where
   P: NodePermissions + 'static,
 {
@@ -239,9 +245,7 @@ where
 }
 
 #[op2(fast, stack_trace)]
-pub fn op_getegid<P>(
-  state: &mut OpState,
-) -> Result<u32, PermissionCheckError>
+pub fn op_getegid<P>(state: &mut OpState) -> Result<u32, PermissionCheckError>
 where
   P: NodePermissions + 'static,
 {

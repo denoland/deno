@@ -5,7 +5,7 @@ use deno_cache_dir::file_fetcher::CacheSetting;
 use deno_config::workspace::WorkspaceDirectory;
 use deno_config::workspace::WorkspaceDiscoverOptions;
 use deno_core::anyhow::anyhow;
-use deno_core::error::{AnyError};
+use deno_core::error::AnyError;
 use deno_core::resolve_url;
 use deno_core::serde_json;
 use deno_core::serde_json::json;
@@ -120,7 +120,9 @@ use crate::util::sync::AsyncFlag;
 struct LspRootCertStoreProvider(RootCertStore);
 
 impl RootCertStoreProvider for LspRootCertStoreProvider {
-  fn get_or_try_init(&self) -> Result<&RootCertStore, deno_core::error::JsNativeError> {
+  fn get_or_try_init(
+    &self,
+  ) -> Result<&RootCertStore, deno_core::error::JsNativeError> {
     Ok(&self.0)
   }
 }

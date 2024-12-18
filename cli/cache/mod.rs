@@ -13,7 +13,6 @@ use deno_ast::MediaType;
 use deno_cache_dir::file_fetcher::CacheSetting;
 use deno_cache_dir::file_fetcher::FetchNoFollowErrorKind;
 use deno_cache_dir::file_fetcher::FileOrRedirect;
-use deno_core::error::AnyError;
 use deno_core::futures;
 use deno_core::futures::FutureExt;
 use deno_core::ModuleSpecifier;
@@ -313,9 +312,9 @@ impl Loader for FetchCacher {
         LoaderCacheSetting::Use => None,
         LoaderCacheSetting::Reload => {
           if matches!(file_fetcher.cache_setting(), CacheSetting::Only) {
-            return Err(JsNativeError::generic(
+            return Err(Arc::new(JsNativeError::generic(
               "Could not resolve version constraint using only cached data. Try running again without --cached-only"
-            ).into());
+            )).into());
           }
           Some(CacheSetting::ReloadAll)
         }
@@ -381,30 +380,29 @@ impl Loader for FetchCacher {
                 FetchNoFollowErrorKind::CacheSave  { .. } |
                 FetchNoFollowErrorKind::UnsupportedScheme  { .. } |
                 FetchNoFollowErrorKind::RedirectHeaderParse { .. } |
-                FetchNoFollowErrorKind::InvalidHeader { .. } => Err(AnyError::from(err)),
+                FetchNoFollowErrorKind::InvalidHeader { .. } => Err(JsNativeError::from_err(err)),
                 FetchNoFollowErrorKind::NotCached { .. } => {
                   if options.cache_setting == LoaderCacheSetting::Only {
                     Ok(None)
                   } else {
-                    Err(AnyError::from(err))
+                    Err(JsNativeError::from_err(err))
                   }
                 },
                 FetchNoFollowErrorKind::ChecksumIntegrity(err) => {
                   // convert to the equivalent deno_graph error so that it
                   // enhances it if this is passed to deno_graph
                   Err(
-                    deno_graph::source::ChecksumIntegrityError {
+                    JsNativeError::from_err( deno_graph::source::ChecksumIntegrityError {
                       actual: err.actual,
                       expected: err.expected,
-                    }
-                    .into(),
+                    }),
                   )
                 }
               }
             },
-            CliFetchNoFollowErrorKind::PermissionCheck(permission_check_error) => Err(AnyError::from(permission_check_error)),
+            CliFetchNoFollowErrorKind::PermissionCheck(permission_check_error) => Err(JsNativeError::from_err(permission_check_error)),
           }
-        })
+        }).map_err(|e| Arc::new(e).into())
     }
     .boxed_local()
   }

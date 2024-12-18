@@ -17,7 +17,11 @@ pub enum FsError {
   Permission(#[from] deno_permissions::PermissionCheckError),
   #[class(inherit)]
   #[error("{0}")]
-  Io(#[from] #[inherit] std::io::Error),
+  Io(
+    #[from]
+    #[inherit]
+    std::io::Error,
+  ),
   #[cfg(windows)]
   #[class(generic)]
   #[error("Path has no root.")]
@@ -28,7 +32,11 @@ pub enum FsError {
   UnsupportedPlatform,
   #[class(inherit)]
   #[error(transparent)]
-  Fs(#[from] #[inherit] deno_io::fs::FsError),
+  Fs(
+    #[from]
+    #[inherit]
+    deno_io::fs::FsError,
+  ),
 }
 
 #[op2(fast, stack_trace)]

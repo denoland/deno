@@ -1,5 +1,6 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
+use deno_core::error::JsNativeError;
 use deno_core::futures::TryFutureExt;
 use deno_core::AsyncMutFuture;
 use deno_core::AsyncRefCell;
@@ -11,7 +12,6 @@ use deno_core::Resource;
 use socket2::SockRef;
 use std::borrow::Cow;
 use std::rc::Rc;
-use deno_core::error::JsNativeError;
 use tokio::io::AsyncRead;
 use tokio::io::AsyncReadExt;
 use tokio::io::AsyncWrite;
@@ -165,9 +165,7 @@ impl UnixStreamResource {
     unreachable!()
   }
   #[allow(clippy::unused_async)]
-  pub async fn shutdown(
-    self: Rc<Self>,
-  ) -> Result<(), JsNativeError> {
+  pub async fn shutdown(self: Rc<Self>) -> Result<(), JsNativeError> {
     unreachable!()
   }
   pub fn cancel_read_ops(&self) {

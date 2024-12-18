@@ -8,8 +8,8 @@ use std::sync::Arc;
 use deno_ast::ModuleSpecifier;
 use deno_cache_dir::npm::NpmCacheDir;
 use deno_core::anyhow::Context;
-use deno_core::error::{AnyError};
-use deno_core::error::{JsNativeError};
+use deno_core::error::AnyError;
+use deno_core::error::JsNativeError;
 use deno_core::serde_json;
 use deno_core::url::Url;
 use deno_npm::npm_rc::ResolvedNpmRc;
@@ -333,7 +333,9 @@ impl std::fmt::Debug for ManagedCliNpmResolver {
 pub enum ResolvePkgFolderFromPkgIdError {
   #[class(inherit)]
   #[error("{0}")]
-  NpmPackageFsResolverPackageFolder(#[from] resolvers::NpmPackageFsResolverPackageFolderError),
+  NpmPackageFsResolverPackageFolder(
+    #[from] resolvers::NpmPackageFsResolverPackageFolderError,
+  ),
   #[class(inherit)]
   #[error("{0}")]
   Io(#[from] std::io::Error),
@@ -714,9 +716,9 @@ impl CliNpmReqResolver for ManagedCliNpmResolver {
     req: &PackageReq,
     _referrer: &ModuleSpecifier,
   ) -> Result<PathBuf, ResolvePkgFolderFromDenoReqError> {
-    let pkg_id = self
-      .resolve_pkg_id_from_pkg_req(req)
-      .map_err(|err| ResolvePkgFolderFromDenoReqError::Managed(Box::new(err)))?;
+    let pkg_id = self.resolve_pkg_id_from_pkg_req(req).map_err(|err| {
+      ResolvePkgFolderFromDenoReqError::Managed(Box::new(err))
+    })?;
     self
       .resolve_pkg_folder_from_pkg_id(&pkg_id)
       .map_err(|err| ResolvePkgFolderFromDenoReqError::Managed(Box::new(err)))
@@ -785,7 +787,8 @@ impl CliNpmResolver for ManagedCliNpmResolver {
     &self,
     permissions: &mut dyn NodePermissions,
     path: &'a Path,
-  ) -> Result<Cow<'a, Path>, deno_runtime::deno_permissions::PermissionCheckError> {
+  ) -> Result<Cow<'a, Path>, deno_runtime::deno_permissions::PermissionCheckError>
+  {
     self.fs_resolver.ensure_read_permission(permissions, path)
   }
 

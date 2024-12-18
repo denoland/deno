@@ -162,16 +162,28 @@ pub enum HttpNextError {
   Hyper(#[from] hyper::Error),
   #[class(inherit)]
   #[error(transparent)]
-  JoinError(#[from] #[inherit] tokio::task::JoinError),
+  JoinError(
+    #[from]
+    #[inherit]
+    tokio::task::JoinError,
+  ),
   #[class(inherit)]
   #[error(transparent)]
-  Canceled(#[from] #[inherit] deno_core::Canceled),
+  Canceled(
+    #[from]
+    #[inherit]
+    deno_core::Canceled,
+  ),
   #[class(generic)]
   #[error(transparent)]
   UpgradeUnavailable(#[from] crate::service::UpgradeUnavailableError),
   #[class(inherit)]
   #[error("{0}")]
-  Other(#[from] #[inherit] deno_core::error::JsNativeError),
+  Other(
+    #[from]
+    #[inherit]
+    deno_core::error::JsNativeError,
+  ),
 }
 
 #[op2(fast)]

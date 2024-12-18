@@ -32,10 +32,11 @@ use deno_graph::JsrLoadError;
 use deno_graph::ModuleLoadError;
 use deno_graph::WorkspaceFastCheckOption;
 
-use deno_core::error::JsNativeError;
 use deno_core::error::AnyError;
+use deno_core::error::JsNativeError;
 use deno_core::parking_lot::Mutex;
 use deno_core::ModuleSpecifier;
+use deno_error::JsErrorClass;
 use deno_graph::source::Loader;
 use deno_graph::source::ResolveError;
 use deno_graph::GraphKind;
@@ -57,7 +58,6 @@ use std::collections::HashSet;
 use std::error::Error;
 use std::path::PathBuf;
 use std::sync::Arc;
-use deno_error::JsErrorClass;
 
 #[derive(Clone)]
 pub struct GraphValidOptions {
@@ -1110,7 +1110,9 @@ impl<'a> deno_graph::source::FileSystem for DenoGraphFsAdapter<'a> {
       }
       Err(err) => {
         return vec![DirEntry {
-          kind: DirEntryKind::Error(deno_graph::source::DirEntryError::Dir(err.into_io_error())),
+          kind: DirEntryKind::Error(deno_graph::source::DirEntryError::Dir(
+            err.into_io_error(),
+          )),
           url: dir_url.clone(),
         }];
       }

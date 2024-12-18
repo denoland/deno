@@ -6,11 +6,11 @@ use std::rc::Rc;
 use std::sync::Arc;
 
 use async_trait::async_trait;
+use deno_core::error::JsNativeError;
 use deno_core::op2;
 use deno_core::serde::Deserialize;
 use deno_core::serde::Serialize;
 use deno_core::ByteString;
-use deno_core::error::JsNativeError;
 use deno_core::OpState;
 use deno_core::Resource;
 use deno_core::ResourceId;
@@ -40,10 +40,7 @@ pub enum CacheError {
   Io(#[from] std::io::Error),
   #[class(generic)]
   #[error("Failed to create cache storage directory {}: {error}", .dir.display())]
-  CacheStorageDirectory {
-    dir: PathBuf,
-    error: std::io::Error,
-  },
+  CacheStorageDirectory { dir: PathBuf, error: std::io::Error },
 }
 
 #[derive(Clone)]

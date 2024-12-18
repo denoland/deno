@@ -19,17 +19,17 @@ use deno_io::WinTtyState;
 #[cfg(windows)]
 use std::sync::Arc;
 
+use deno_core::error::JsNativeError;
 #[cfg(unix)]
 use deno_core::ResourceId;
+use deno_error::builtin_classes::GENERIC_ERROR;
+use deno_error::JsErrorClass;
 #[cfg(unix)]
 use nix::sys::termios;
 #[cfg(unix)]
 use std::cell::RefCell;
 #[cfg(unix)]
 use std::collections::HashMap;
-use deno_core::error::{JsNativeError};
-use deno_error::builtin_classes::{GENERIC_ERROR};
-use deno_error::JsErrorClass;
 
 #[cfg(unix)]
 #[derive(Default, Clone)]
@@ -52,11 +52,11 @@ impl TtyModeStore {
   }
 }
 
+use crate::ops::process::JsNixError;
 #[cfg(windows)]
 use winapi::shared::minwindef::DWORD;
 #[cfg(windows)]
 use winapi::um::wincon;
-use crate::ops::process::JsNixError;
 
 deno_core::extension!(
   deno_tty,
@@ -71,10 +71,18 @@ deno_core::extension!(
 pub enum TtyError {
   #[class(inherit)]
   #[error(transparent)]
-  Resource(#[from] #[inherit] deno_core::error::ResourceError),
+  Resource(
+    #[from]
+    #[inherit]
+    deno_core::error::ResourceError,
+  ),
   #[class(inherit)]
   #[error("{0}")]
-  Io(#[from] #[inherit] Error),
+  Io(
+    #[from]
+    #[inherit]
+    Error,
+  ),
   #[cfg(unix)]
   #[class(inherit)]
   #[error(transparent)]
@@ -111,10 +119,7 @@ fn op_set_raw(
   is_raw: bool,
   cbreak: bool,
 ) -> Result<(), TtyError> {
-  let handle_or_fd = state
-    .resource_table
-    .get_fd(rid)
-    ?;
+  let handle_or_fd = state.resource_table.get_fd(rid)?;
 
   // From https://github.com/kkawakam/rustyline/blob/master/src/tty/windows.rs
   // and https://github.com/kkawakam/rustyline/blob/master/src/tty/unix.rs
@@ -123,8 +128,8 @@ fn op_set_raw(
   // Copyright (c) 2019 Timon. MIT license.
   #[cfg(windows)]
   {
-    use winapi::shared::minwindef::FALSE;
     use deno_core::error::JsNativeError;
+    use winapi::shared::minwindef::FALSE;
 
     use winapi::um::consoleapi;
 
@@ -276,8 +281,8 @@ fn op_set_raw(
         Some(mode) => mode,
         None => {
           // Save original mode.
-          let original_mode =
-            termios::tcgetattr(raw_fd).map_err(|e| TtyError::Nix(JsNixError(e)))?;
+          let original_mode = termios::tcgetattr(raw_fd)
+            .map_err(|e| TtyError::Nix(JsNixError(e)))?;
           tty_mode_store.set(rid, original_mode.clone());
           original_mode
         }
@@ -323,10 +328,7 @@ fn op_console_size(
     result: &mut [u32],
     rid: u32,
   ) -> Result<(), TtyError> {
-    let fd = state
-      .resource_table
-      .get_fd(rid)
-      ?;
+    let fd = state.resource_table.get_fd(rid)?;
     let size = console_size_from_fd(fd)?;
     result[0] = size.cols;
     result[1] = size.rows;

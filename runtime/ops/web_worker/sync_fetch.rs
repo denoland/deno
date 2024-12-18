@@ -32,7 +32,11 @@ pub enum SyncFetchError {
   BlobUrlsNotSupportedInContext,
   #[class(inherit)]
   #[error("{0}")]
-  Io(#[from] #[inherit] std::io::Error),
+  Io(
+    #[from]
+    #[inherit]
+    std::io::Error,
+  ),
   #[class(type)]
   #[error("Invalid script URL")]
   InvalidScriptUrl,
@@ -53,10 +57,18 @@ pub enum SyncFetchError {
   MissingMimeType,
   #[class(inherit)]
   #[error(transparent)]
-  Fetch(#[from] #[inherit] FetchError),
+  Fetch(
+    #[from]
+    #[inherit]
+    FetchError,
+  ),
   #[class(inherit)]
   #[error(transparent)]
-  Join(#[from] #[inherit] tokio::task::JoinError),
+  Join(
+    #[from]
+    #[inherit]
+    tokio::task::JoinError,
+  ),
   #[class(inherit)]
   #[error(transparent)]
   Other(#[inherit] deno_core::error::JsNativeError),

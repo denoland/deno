@@ -18,6 +18,7 @@ use std::sync::Arc;
 use std::task::Context;
 use std::task::Poll;
 
+use deno_core::error::JsNativeError;
 use deno_core::futures::stream::Peekable;
 use deno_core::futures::Future;
 use deno_core::futures::FutureExt;
@@ -30,7 +31,6 @@ use deno_core::url::Url;
 use deno_core::v8;
 use deno_core::AsyncRefCell;
 use deno_core::AsyncResult;
-use deno_core::error::JsNativeError;
 use deno_core::BufView;
 use deno_core::ByteString;
 use deno_core::CancelFuture;
@@ -101,9 +101,8 @@ pub struct Options {
   /// For more info on what can be configured, see [`hyper_util::client::legacy::Builder`].
   pub client_builder_hook: Option<fn(HyperClientBuilder) -> HyperClientBuilder>,
   #[allow(clippy::type_complexity)]
-  pub request_builder_hook: Option<
-    fn(&mut http::Request<ReqBody>) -> Result<(), JsNativeError>,
-  >,
+  pub request_builder_hook:
+    Option<fn(&mut http::Request<ReqBody>) -> Result<(), JsNativeError>>,
   pub unsafely_ignore_certificate_errors: Option<Vec<String>>,
   pub client_cert_chain_and_key: TlsKeys,
   pub file_fetch_handler: Rc<dyn FetchHandler>,

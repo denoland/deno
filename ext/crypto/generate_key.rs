@@ -20,7 +20,11 @@ use crate::shared::*;
 pub enum GenerateKeyError {
   #[class(inherit)]
   #[error(transparent)]
-  General(#[from] #[inherit] SharedError),
+  General(
+    #[from]
+    #[inherit]
+    SharedError,
+  ),
   #[error("Bad public exponent")]
   BadPublicExponent,
   #[error("Invalid HMAC key length")]

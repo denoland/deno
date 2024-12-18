@@ -447,7 +447,11 @@ pub enum AsymmetricPrivateKeyError {
   UnsupportedPemLabel(String),
   #[class(inherit)]
   #[error(transparent)]
-  RsaPssParamsParse(#[from] #[inherit] RsaPssParamsParseError),
+  RsaPssParamsParse(
+    #[from]
+    #[inherit]
+    RsaPssParamsParseError,
+  ),
   #[error("invalid encrypted PKCS#8 private key")]
   InvalidEncryptedPkcs8PrivateKey,
   #[error("invalid PKCS#8 private key")]
@@ -493,7 +497,11 @@ pub enum AsymmetricPublicKeyError {
   InvalidPkcs1PublicKey,
   #[class(inherit)]
   #[error(transparent)]
-  AsymmetricPrivateKey(#[from] #[inherit] AsymmetricPrivateKeyError),
+  AsymmetricPrivateKey(
+    #[from]
+    #[inherit]
+    AsymmetricPrivateKeyError,
+  ),
   #[class(type)]
   #[error("invalid x509 certificate")]
   InvalidX509Certificate,
@@ -502,7 +510,11 @@ pub enum AsymmetricPublicKeyError {
   X509(#[from] x509_parser::nom::Err<X509Error>),
   #[class(inherit)]
   #[error(transparent)]
-  X509PublicKey(#[from] #[inherit] X509PublicKeyError),
+  X509PublicKey(
+    #[from]
+    #[inherit]
+    X509PublicKeyError,
+  ),
   #[class(type)]
   #[error("unsupported PEM label: {0}")]
   UnsupportedPemLabel(String),
@@ -523,7 +535,11 @@ pub enum AsymmetricPublicKeyError {
   Pkcs1(#[from] rsa::pkcs1::Error),
   #[class(inherit)]
   #[error(transparent)]
-  RsaPssParamsParse(#[from] #[inherit] RsaPssParamsParseError),
+  RsaPssParamsParse(
+    #[from]
+    #[inherit]
+    RsaPssParamsParseError,
+  ),
   #[class(type)]
   #[error("malformed DSS public key")]
   MalformedDssPublicKey,
@@ -1603,9 +1619,9 @@ pub fn op_node_get_asymmetric_key_type(
     }
     KeyObjectHandle::AsymmetricPrivate(AsymmetricPrivateKey::Dh(_))
     | KeyObjectHandle::AsymmetricPublic(AsymmetricPublicKey::Dh(_)) => Ok("dh"),
-    KeyObjectHandle::Secret(_) => {
-      Err(JsNativeError::type_error("symmetric key is not an asymmetric key"))
-    }
+    KeyObjectHandle::Secret(_) => Err(JsNativeError::type_error(
+      "symmetric key is not an asymmetric key",
+    )),
   }
 }
 
@@ -1756,9 +1772,9 @@ pub fn op_node_get_asymmetric_key_details(
       AsymmetricPublicKey::Ed25519(_) => Ok(AsymmetricKeyDetails::Ed25519),
       AsymmetricPublicKey::Dh(_) => Ok(AsymmetricKeyDetails::Dh),
     },
-    KeyObjectHandle::Secret(_) => {
-      Err(JsNativeError::type_error("symmetric key is not an asymmetric key"))
-    }
+    KeyObjectHandle::Secret(_) => Err(JsNativeError::type_error(
+      "symmetric key is not an asymmetric key",
+    )),
   }
 }
 
@@ -1769,9 +1785,9 @@ pub fn op_node_get_symmetric_key_size(
 ) -> Result<usize, JsNativeError> {
   match handle {
     KeyObjectHandle::AsymmetricPrivate(_)
-    | KeyObjectHandle::AsymmetricPublic(_) => {
-      Err(JsNativeError::type_error("asymmetric key is not a symmetric key"))
-    }
+    | KeyObjectHandle::AsymmetricPublic(_) => Err(JsNativeError::type_error(
+      "asymmetric key is not a symmetric key",
+    )),
     KeyObjectHandle::Secret(key) => Ok(key.len() * 8),
   }
 }
@@ -2294,7 +2310,11 @@ pub fn op_node_export_public_key_jwk(
 pub enum ExportPublicKeyPemError {
   #[class(inherit)]
   #[error(transparent)]
-  AsymmetricPublicKeyDer(#[from] #[inherit] AsymmetricPublicKeyDerError),
+  AsymmetricPublicKeyDer(
+    #[from]
+    #[inherit]
+    AsymmetricPublicKeyDerError,
+  ),
   #[class(type)]
   #[error("very large data")]
   VeryLargeData,
@@ -2347,7 +2367,11 @@ pub fn op_node_export_public_key_der(
 pub enum ExportPrivateKeyPemError {
   #[class(inherit)]
   #[error(transparent)]
-  AsymmetricPublicKeyDer(#[from] #[inherit] AsymmetricPrivateKeyDerError),
+  AsymmetricPublicKeyDer(
+    #[from]
+    #[inherit]
+    AsymmetricPrivateKeyDerError,
+  ),
   #[class(type)]
   #[error("very large data")]
   VeryLargeData,

@@ -7,9 +7,9 @@ use std::rc::Rc;
 use std::time::SystemTime;
 use std::time::UNIX_EPOCH;
 
+use deno_core::error::{JsNativeError, ResourceError};
 use deno_core::BufMutView;
 use deno_core::BufView;
-use deno_core::error::{JsNativeError, ResourceError};
 use deno_core::OpState;
 use deno_core::ResourceHandleFd;
 use deno_core::ResourceId;

@@ -83,7 +83,11 @@ impl<P: SqliteDbHandlerPermissions> SqliteDbHandler<P> {
   }
 }
 
-deno_error::js_error_wrapper!(SqliteBackendError, JsSqliteBackendError, "TypeError");
+deno_error::js_error_wrapper!(
+  SqliteBackendError,
+  JsSqliteBackendError,
+  "TypeError"
+);
 
 #[async_trait(?Send)]
 impl<P: SqliteDbHandlerPermissions> DatabaseHandler for SqliteDbHandler<P> {

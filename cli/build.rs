@@ -90,12 +90,15 @@ mod ts {
         // if it comes from an op crate, we were supplied with the path to the
         // file.
         let path = if let Some(op_crate_lib) = op_crate_libs.get(lib) {
-          PathBuf::from(op_crate_lib).canonicalize().map_err(JsNativeError::from_err)?
+          PathBuf::from(op_crate_lib)
+            .canonicalize()
+            .map_err(JsNativeError::from_err)?
           // otherwise we will generate the path ourself
         } else {
           path_dts.join(format!("lib.{lib}.d.ts"))
         };
-        let data = std::fs::read_to_string(path).map_err(JsNativeError::from_err)?;
+        let data =
+          std::fs::read_to_string(path).map_err(JsNativeError::from_err)?;
         Ok(LoadResponse {
           data,
           version: "1".to_string(),

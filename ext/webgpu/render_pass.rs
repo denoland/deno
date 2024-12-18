@@ -15,7 +15,11 @@ use super::error::WebGpuResult;
 pub enum RenderPassError {
   #[class(inherit)]
   #[error(transparent)]
-  Resource(#[from] #[inherit] ResourceError),
+  Resource(
+    #[from]
+    #[inherit]
+    ResourceError,
+  ),
   #[class(type)]
   #[error("size must be larger than 0")]
   InvalidSize,

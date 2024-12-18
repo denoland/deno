@@ -70,9 +70,7 @@ pub async fn lint(
 ) -> Result<(), AnyError> {
   if lint_flags.watch.is_some() {
     if lint_flags.is_stdin() {
-      return Err(anyhow!(
-        "Lint watch on standard input is not supported.",
-      ));
+      return Err(anyhow!("Lint watch on standard input is not supported.",));
     }
 
     return lint_with_watch(flags, lint_flags).await;

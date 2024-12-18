@@ -33,8 +33,8 @@ use deno_ast::SourcePos;
 use deno_ast::SourceRangedForSpanned;
 use deno_ast::SourceTextInfo;
 use deno_core::anyhow::anyhow;
-use deno_core::error::{CoreError, JsNativeError};
 use deno_core::error::AnyError;
+use deno_core::error::{CoreError, JsNativeError};
 use deno_core::futures::channel::mpsc::UnboundedReceiver;
 use deno_core::futures::FutureExt;
 use deno_core::futures::StreamExt;
@@ -766,7 +766,10 @@ impl ReplSession {
         }),
       )
       .await
-      .and_then(|res| serde_json::from_value(res).map_err(|e| JsNativeError::from_err(e).into()))
+      .and_then(|res| {
+        serde_json::from_value(res)
+          .map_err(|e| JsNativeError::from_err(e).into())
+      })
   }
 }
 

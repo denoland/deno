@@ -1,10 +1,10 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
+use deno_core::error::JsNativeError;
 use deno_core::op2;
 use libc::c_ulong;
 use std::borrow::Cow;
 use std::cell::RefCell;
-use deno_core::error::JsNativeError;
 use zlib::*;
 
 mod alloc;
@@ -82,10 +82,7 @@ impl ZlibInner {
     Ok(())
   }
 
-  fn do_write(
-    &mut self,
-    flush: Flush,
-  ) -> Result<(), JsNativeError> {
+  fn do_write(&mut self, flush: Flush) -> Result<(), JsNativeError> {
     self.flush = flush;
     match self.mode {
       Mode::Deflate | Mode::Gzip | Mode::DeflateRaw => {
@@ -265,10 +262,18 @@ pub enum ZlibError {
   NotInitialized,
   #[class(inherit)]
   #[error(transparent)]
-  Mode(#[from] #[inherit] mode::ModeError),
+  Mode(
+    #[from]
+    #[inherit]
+    mode::ModeError,
+  ),
   #[class(inherit)]
   #[error(transparent)]
-  Other(#[from] #[inherit] JsNativeError),
+  Other(
+    #[from]
+    #[inherit]
+    JsNativeError,
+  ),
 }
 
 #[op2(fast)]

@@ -33,11 +33,11 @@ use tokio::process::Command;
 use std::os::windows::process::CommandExt;
 
 use crate::ops::signal::SignalError;
+use deno_core::error::JsNativeError;
 #[cfg(unix)]
 use std::os::unix::prelude::ExitStatusExt;
 #[cfg(unix)]
 use std::os::unix::process::CommandExt;
-use deno_core::error::JsNativeError;
 
 pub const UNSTABLE_FEATURE_NAME: &str = "process";
 
@@ -108,7 +108,9 @@ impl StdioOrRid {
     match &self {
       StdioOrRid::Stdio(val) => Ok(val.as_stdio()),
       StdioOrRid::Rid(rid) => {
-        Ok(FileResource::with_file(state, *rid, |file| Ok(file.as_stdio().map_err(JsNativeError::from_err)?))?)
+        Ok(FileResource::with_file(state, *rid, |file| {
+          Ok(file.as_stdio().map_err(JsNativeError::from_err)?)
+        })?)
       }
     }
   }
@@ -192,7 +194,7 @@ pub struct SpawnArgs {
 
 #[cfg(unix)]
 deno_error::js_error_wrapper!(nix::Error, JsNixError, |err| {
-    match err {
+  match err {
     nix::Error::ECHILD => "NotFound",
     nix::Error::EINVAL => "TypeError",
     nix::Error::ENOENT => "NotFound",
@@ -215,7 +217,8 @@ pub enum ProcessError {
   #[error("Failed to spawn '{command}': {error}")]
   SpawnFailed {
     command: String,
-    #[source] #[inherit]
+    #[source]
+    #[inherit]
     error: Box<ProcessError>,
   },
   #[class(inherit)]
@@ -1116,8 +1119,10 @@ mod deprecated {
     use nix::sys::signal::kill as unix_kill;
     use nix::sys::signal::Signal;
     use nix::unistd::Pid;
-    let sig = Signal::try_from(signo).map_err(|e | ProcessError::Nix(JsNixError(e)))?;
-    unix_kill(Pid::from_raw(pid), Some(sig)).map_err(|e | ProcessError::Nix(JsNixError(e)))
+    let sig =
+      Signal::try_from(signo).map_err(|e| ProcessError::Nix(JsNixError(e)))?;
+    unix_kill(Pid::from_raw(pid), Some(sig))
+      .map_err(|e| ProcessError::Nix(JsNixError(e)))
   }
 
   #[cfg(not(unix))]

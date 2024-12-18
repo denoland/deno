@@ -1,12 +1,12 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
+use deno_core::error::JsNativeError;
 use deno_core::op2;
 use deno_core::v8;
 use deno_core::FastString;
 use deno_core::GarbageCollected;
 use deno_core::ToJsBuffer;
 use std::ptr::NonNull;
-use deno_core::error::JsNativeError;
 use v8::ValueDeserializerHelper;
 use v8::ValueSerializerHelper;
 
@@ -278,9 +278,7 @@ pub fn op_v8_new_deserializer(
   let offset = buffer.byte_offset();
   let len = buffer.byte_length();
   let backing_store = buffer.get_backing_store().ok_or_else(|| {
-    JsNativeError::generic(
-      "deserialization buffer has no backing store",
-    )
+    JsNativeError::generic("deserialization buffer has no backing store")
   })?;
   let (buf_slice, buf_ptr) = if let Some(data) = backing_store.data() {
     // SAFETY: the offset is valid for the underlying buffer because we're getting it directly from v8

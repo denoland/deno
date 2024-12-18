@@ -30,10 +30,18 @@ pub enum BrotliError {
   DecompressFailed,
   #[class(inherit)]
   #[error(transparent)]
-  Join(#[from] #[inherit] tokio::task::JoinError),
+  Join(
+    #[from]
+    #[inherit]
+    tokio::task::JoinError,
+  ),
   #[class(inherit)]
   #[error(transparent)]
-  Resource(#[from] #[inherit] deno_core::error::ResourceError),
+  Resource(
+    #[from]
+    #[inherit]
+    deno_core::error::ResourceError,
+  ),
   #[class(inherit)]
   #[error("{0}")]
   Io(#[inherit] std::io::Error),
@@ -172,10 +180,7 @@ pub fn op_brotli_compress_stream(
   #[buffer] input: &[u8],
   #[buffer] output: &mut [u8],
 ) -> Result<usize, BrotliError> {
-  let ctx = state
-    .resource_table
-    .get::<BrotliCompressCtx>(rid)
-    ?;
+  let ctx = state.resource_table.get::<BrotliCompressCtx>(rid)?;
   let mut inst = ctx.inst.borrow_mut();
   let mut output_offset = 0;
 
@@ -204,10 +209,7 @@ pub fn op_brotli_compress_stream_end(
   #[smi] rid: u32,
   #[buffer] output: &mut [u8],
 ) -> Result<usize, BrotliError> {
-  let ctx = state
-    .resource_table
-    .get::<BrotliCompressCtx>(rid)
-    ?;
+  let ctx = state.resource_table.get::<BrotliCompressCtx>(rid)?;
   let mut inst = ctx.inst.borrow_mut();
   let mut output_offset = 0;
 
@@ -282,10 +284,7 @@ pub fn op_brotli_decompress_stream(
   #[buffer] input: &[u8],
   #[buffer] output: &mut [u8],
 ) -> Result<usize, BrotliError> {
-  let ctx = state
-    .resource_table
-    .get::<BrotliDecompressCtx>(rid)
-    ?;
+  let ctx = state.resource_table.get::<BrotliDecompressCtx>(rid)?;
   let mut inst = ctx.inst.borrow_mut();
   let mut output_offset = 0;
 
@@ -313,10 +312,7 @@ pub fn op_brotli_decompress_stream_end(
   #[smi] rid: u32,
   #[buffer] output: &mut [u8],
 ) -> Result<usize, BrotliError> {
-  let ctx = state
-    .resource_table
-    .get::<BrotliDecompressCtx>(rid)
-    ?;
+  let ctx = state.resource_table.get::<BrotliDecompressCtx>(rid)?;
   let mut inst = ctx.inst.borrow_mut();
   let mut output_offset = 0;
 

@@ -17,7 +17,6 @@ use base64::Engine;
 use boxed_error::Boxed;
 use chrono::DateTime;
 use chrono::Utc;
-use deno_error::JsErrorClass;
 use deno_core::error::JsNativeError;
 use deno_core::futures::StreamExt;
 use deno_core::op2;
@@ -33,6 +32,7 @@ use deno_core::RcRef;
 use deno_core::Resource;
 use deno_core::ResourceId;
 use deno_core::ToJsBuffer;
+use deno_error::JsErrorClass;
 use denokv_proto::decode_key;
 use denokv_proto::encode_key;
 use denokv_proto::AtomicWrite;
@@ -123,7 +123,7 @@ pub struct KvError(pub Box<KvErrorKind>);
 pub enum KvErrorKind {
   #[class(inherit)]
   #[error(transparent)]
-  DatabaseHandler( JsNativeError),
+  DatabaseHandler(JsNativeError),
   #[class(inherit)]
   #[error(transparent)]
   Resource(#[from] deno_core::error::ResourceError),
@@ -635,7 +635,11 @@ pub enum KvMutationError {
   BigInt(#[from] num_bigint::TryFromBigIntError<num_bigint::BigInt>),
   #[class(inherit)]
   #[error(transparent)]
-  Io(#[from] #[inherit] std::io::Error),
+  Io(
+    #[from]
+    #[inherit]
+    std::io::Error,
+  ),
   #[class(type)]
   #[error("Invalid mutation '{0}' with value")]
   InvalidMutationWithValue(String),

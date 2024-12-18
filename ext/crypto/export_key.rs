@@ -24,7 +24,11 @@ use crate::shared::*;
 pub enum ExportKeyError {
   #[class(inherit)]
   #[error(transparent)]
-  General(#[from] #[inherit] SharedError),
+  General(
+    #[from]
+    #[inherit]
+    SharedError,
+  ),
   #[class(generic)]
   #[error(transparent)]
   Der(#[from] spki::der::Error),

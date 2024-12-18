@@ -16,6 +16,7 @@ use crate::util::path::matches_pattern_or_exact_path;
 use crate::worker::CliMainWorkerFactory;
 
 use deno_config::glob::WalkEntry;
+use deno_core::anyhow::anyhow;
 use deno_core::error::AnyError;
 use deno_core::error::JsError;
 use deno_core::futures::future;
@@ -41,7 +42,6 @@ use std::collections::HashSet;
 use std::path::Path;
 use std::sync::Arc;
 use std::time::Duration;
-use deno_core::anyhow::anyhow;
 use tokio::sync::mpsc::unbounded_channel;
 use tokio::sync::mpsc::UnboundedSender;
 

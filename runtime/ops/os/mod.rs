@@ -209,9 +209,7 @@ fn op_loadavg(
 
 #[op2(stack_trace, stack_trace)]
 #[string]
-fn op_hostname(
-  state: &mut OpState,
-) -> Result<String, PermissionCheckError> {
+fn op_hostname(state: &mut OpState) -> Result<String, PermissionCheckError> {
   state
     .borrow_mut::<PermissionsContainer>()
     .check_sys("hostname", "Deno.hostname()")?;
@@ -220,9 +218,7 @@ fn op_hostname(
 
 #[op2(stack_trace)]
 #[string]
-fn op_os_release(
-  state: &mut OpState,
-) -> Result<String, PermissionCheckError> {
+fn op_os_release(state: &mut OpState) -> Result<String, PermissionCheckError> {
   state
     .borrow_mut::<PermissionsContainer>()
     .check_sys("osRelease", "Deno.osRelease()")?;
@@ -295,9 +291,7 @@ fn op_system_memory_info(
 #[cfg(not(windows))]
 #[op2(stack_trace)]
 #[smi]
-fn op_gid(
-  state: &mut OpState,
-) -> Result<Option<u32>, PermissionCheckError> {
+fn op_gid(state: &mut OpState) -> Result<Option<u32>, PermissionCheckError> {
   state
     .borrow_mut::<PermissionsContainer>()
     .check_sys("gid", "Deno.gid()")?;
@@ -311,9 +305,7 @@ fn op_gid(
 #[cfg(windows)]
 #[op2(stack_trace)]
 #[smi]
-fn op_gid(
-  state: &mut OpState,
-) -> Result<Option<u32>, PermissionCheckError> {
+fn op_gid(state: &mut OpState) -> Result<Option<u32>, PermissionCheckError> {
   state
     .borrow_mut::<PermissionsContainer>()
     .check_sys("gid", "Deno.gid()")?;
@@ -323,9 +315,7 @@ fn op_gid(
 #[cfg(not(windows))]
 #[op2(stack_trace)]
 #[smi]
-fn op_uid(
-  state: &mut OpState,
-) -> Result<Option<u32>, PermissionCheckError> {
+fn op_uid(state: &mut OpState) -> Result<Option<u32>, PermissionCheckError> {
   state
     .borrow_mut::<PermissionsContainer>()
     .check_sys("uid", "Deno.uid()")?;
@@ -339,9 +329,7 @@ fn op_uid(
 #[cfg(windows)]
 #[op2(stack_trace)]
 #[smi]
-fn op_uid(
-  state: &mut OpState,
-) -> Result<Option<u32>, PermissionCheckError> {
+fn op_uid(state: &mut OpState) -> Result<Option<u32>, PermissionCheckError> {
   state
     .borrow_mut::<PermissionsContainer>()
     .check_sys("uid", "Deno.uid()")?;
@@ -528,8 +516,6 @@ fn os_uptime(state: &mut OpState) -> Result<u64, PermissionCheckError> {
 
 #[op2(fast, stack_trace)]
 #[number]
-fn op_os_uptime(
-  state: &mut OpState,
-) -> Result<u64, PermissionCheckError> {
+fn op_os_uptime(state: &mut OpState) -> Result<u64, PermissionCheckError> {
   os_uptime(state)
 }

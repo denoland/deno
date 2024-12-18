@@ -17,6 +17,7 @@ mod impl_ {
   use std::task::Context;
   use std::task::Poll;
 
+  use deno_core::error::JsNativeError;
   use deno_core::op2;
   use deno_core::serde;
   use deno_core::serde::Serializer;
@@ -25,7 +26,6 @@ mod impl_ {
   use deno_core::AsyncRefCell;
   use deno_core::CancelFuture;
   use deno_core::CancelHandle;
-  use deno_core::error::JsNativeError;
   use deno_core::ExternalOpsTracker;
   use deno_core::OpState;
   use deno_core::RcRef;
@@ -216,8 +216,7 @@ mod impl_ {
     let stream = state
       .borrow()
       .resource_table
-      .get::<IpcJsonStreamResource>(rid)
-      ?;
+      .get::<IpcJsonStreamResource>(rid)?;
     let old = stream
       .queued_bytes
       .fetch_add(serialized.len(), std::sync::atomic::Ordering::Relaxed);
@@ -261,8 +260,7 @@ mod impl_ {
     let stream = state
       .borrow()
       .resource_table
-      .get::<IpcJsonStreamResource>(rid)
-      ?;
+      .get::<IpcJsonStreamResource>(rid)?;
 
     let cancel = stream.cancel.clone();
     let mut stream = RcRef::map(stream, |r| &r.read_half).borrow_mut().await;

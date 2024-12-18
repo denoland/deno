@@ -54,9 +54,7 @@ fn validate_name(exec_name: &str) -> Result<(), AnyError> {
   if EXEC_NAME_RE.is_match(exec_name) {
     Ok(())
   } else {
-    Err(anyhow!(
-      "Invalid executable name: {exec_name}"
-    ))
+    Err(anyhow!("Invalid executable name: {exec_name}"))
   }
 }
 
@@ -247,7 +245,10 @@ pub async fn uninstall(
   }
 
   if !removed {
-    return Err(anyhow!("No installation found for {}", uninstall_flags.name));
+    return Err(anyhow!(
+      "No installation found for {}",
+      uninstall_flags.name
+    ));
   }
 
   // There might be some extra files to delete
@@ -520,9 +521,7 @@ async fn resolve_shim_data(
       let log_level = match log_level {
         Level::Debug => "debug",
         Level::Info => "info",
-        _ => {
-          return Err(anyhow!(format!("invalid log level {log_level}")))
-        }
+        _ => return Err(anyhow!(format!("invalid log level {log_level}"))),
       };
       executable_args.push(log_level.to_string());
     }

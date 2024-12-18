@@ -93,7 +93,8 @@ impl RegistryReadPermissionChecker {
     &self,
     permissions: &mut dyn NodePermissions,
     path: &'a Path,
-  ) -> Result<Cow<'a, Path>, deno_runtime::deno_permissions::PermissionCheckError> {
+  ) -> Result<Cow<'a, Path>, deno_runtime::deno_permissions::PermissionCheckError>
+  {
     if permissions.query_read_all() {
       return Ok(Cow::Borrowed(path)); // skip permissions checks below
     }

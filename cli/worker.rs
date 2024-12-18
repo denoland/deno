@@ -7,7 +7,8 @@ use std::sync::Arc;
 
 use deno_ast::ModuleSpecifier;
 use deno_core::anyhow::bail;
-use deno_core::error::{AnyError, CoreError};
+use deno_core::error::{AnyError};
+use deno_core::error::{CoreError};
 use deno_core::futures::FutureExt;
 use deno_core::url::Url;
 use deno_core::v8;
@@ -78,9 +79,9 @@ pub trait ModuleLoaderFactory: Send + Sync {
 
 #[async_trait::async_trait(?Send)]
 pub trait HmrRunner: Send + Sync {
-  async fn start(&mut self) -> Result<(), AnyError>;
-  async fn stop(&mut self) -> Result<(), AnyError>;
-  async fn run(&mut self) -> Result<(), AnyError>;
+  async fn start(&mut self) -> Result<(), CoreError>;
+  async fn stop(&mut self) -> Result<(), CoreError>;
+  async fn run(&mut self) -> Result<(), CoreError>;
 }
 
 pub trait CliCodeCache: code_cache::CodeCache {
@@ -191,7 +192,7 @@ impl CliMainWorker {
     Ok(())
   }
 
-  pub async fn run(&mut self) -> Result<i32, AnyError> {
+  pub async fn run(&mut self) -> Result<i32, CoreError> {
     let mut maybe_coverage_collector =
       self.maybe_setup_coverage_collector().await?;
     let mut maybe_hmr_runner = self.maybe_setup_hmr_runner().await?;
@@ -212,10 +213,10 @@ impl CliMainWorker {
         let result;
         select! {
           hmr_result = hmr_future => {
-            result = hmr_result;
+            result = hmr_result.map_err(Into::into);
           },
           event_loop_result = event_loop_future => {
-            result = event_loop_result.map_err(Into::into);
+            result = event_loop_result;
           }
         }
         if let Err(e) = result {

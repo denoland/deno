@@ -1,5 +1,6 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
+use crate::surface::WebGpuSurface;
 use deno_core::op2;
 use deno_core::OpState;
 use deno_core::ResourceId;
@@ -11,7 +12,6 @@ use std::ffi::c_void;
   target_os = "openbsd"
 ))]
 use std::ptr::NonNull;
-use crate::surface::WebGpuSurface;
 
 #[derive(Debug, thiserror::Error, deno_error::JsError)]
 pub enum ByowError {
@@ -207,5 +207,7 @@ fn raw_window(
   _window: *const c_void,
   _display: *const c_void,
 ) -> Result<RawHandles, deno_core::error::JsNativeError> {
-  Err(deno_core::error::JsNativeError::type_error("Unsupported platform"))
+  Err(deno_core::error::JsNativeError::type_error(
+    "Unsupported platform",
+  ))
 }

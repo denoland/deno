@@ -6,12 +6,13 @@ use crate::symbol::Symbol;
 use crate::turbocall;
 use crate::turbocall::Turbocall;
 use crate::FfiPermissions;
-use deno_core::error::{JsNativeError};
+use deno_core::error::JsNativeError;
 use deno_core::op2;
 use deno_core::v8;
 use deno_core::GarbageCollected;
 use deno_core::OpState;
 use deno_core::Resource;
+use deno_error::JsErrorClass;
 use dlopen2::raw::Library;
 use serde::Deserialize;
 use serde_value::ValueDeserializer;
@@ -20,7 +21,6 @@ use std::cell::RefCell;
 use std::collections::HashMap;
 use std::ffi::c_void;
 use std::rc::Rc;
-use deno_error::JsErrorClass;
 
 deno_error::js_error_wrapper!(dlopen2::Error, JsDlopen2Error, |err| {
   match err {
@@ -29,7 +29,8 @@ deno_error::js_error_wrapper!(dlopen2::Error, JsDlopen2Error, |err| {
     dlopen2::Error::SymbolGettingError(e) => e.get_class(),
     dlopen2::Error::AddrNotMatchingDll(e) => e.get_class(),
     dlopen2::Error::NullSymbol => "NotFound",
-  }});
+  }
+});
 
 #[derive(Debug, thiserror::Error, deno_error::JsError)]
 pub enum DlfcnError {

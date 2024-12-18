@@ -25,8 +25,8 @@ use deno_config::glob::FilePatterns;
 use deno_config::glob::WalkEntry;
 use deno_core::anyhow;
 use deno_core::anyhow::anyhow;
-use deno_core::error::CoreError;
 use deno_core::error::AnyError;
+use deno_core::error::CoreError;
 use deno_core::error::JsError;
 use deno_core::futures::future;
 use deno_core::futures::stream;
@@ -637,14 +637,11 @@ async fn configure_main_worker(
     Err(CoreError::Js(err)) => {
       send_test_event(
         &worker.js_runtime.op_state(),
-        TestEvent::UncaughtError(
-          specifier.to_string(),
-          Box::new(err),
-        ),
+        TestEvent::UncaughtError(specifier.to_string(), Box::new(err)),
       )?;
       Ok(())
     }
-    Err(err) => Err(err)
+    Err(err) => Err(err),
   }?;
   Ok((coverage_collector, worker))
 }
@@ -979,10 +976,7 @@ async fn run_tests_for_worker_inner(
         if let CoreError::Js(js_error) = error {
           send_test_event(
             &state_rc,
-            TestEvent::UncaughtError(
-              specifier.to_string(),
-              Box::new(js_error),
-            ),
+            TestEvent::UncaughtError(specifier.to_string(), Box::new(js_error)),
           )?;
           fail_fast_tracker.add_failure();
           send_test_event(
@@ -1364,19 +1358,14 @@ pub async fn report_tests(
   reporter.report_summary(&elapsed, &tests, &test_steps);
   if let Err(err) = reporter.flush_report(&elapsed, &tests, &test_steps) {
     return (
-      Err(anyhow!(
-        "Test reporter failed to flush: {}",
-        err
-      )),
+      Err(anyhow!("Test reporter failed to flush: {}", err)),
       receiver,
     );
   }
 
   if used_only {
     return (
-      Err(anyhow!(
-        "Test failed because the \"only\" option was used",
-      )),
+      Err(anyhow!("Test failed because the \"only\" option was used",)),
       receiver,
     );
   }

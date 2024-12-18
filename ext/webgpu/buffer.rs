@@ -17,7 +17,11 @@ use super::error::WebGpuResult;
 pub enum BufferError {
   #[class(inherit)]
   #[error(transparent)]
-  Resource(#[from] #[inherit] deno_core::error::ResourceError),
+  Resource(
+    #[from]
+    #[inherit]
+    deno_core::error::ResourceError,
+  ),
   #[class(type)]
   #[error("usage is not valid")]
   InvalidUsage,

@@ -17,7 +17,7 @@ use std::rc::Rc;
 use std::path::Path;
 use std::path::PathBuf;
 
-use deno_core::error::AnyError;
+use deno_core::error::{AnyError, JsNativeError};
 use deno_npm::NpmResolutionPackage;
 
 pub trait LifecycleScriptsStrategy {
@@ -29,7 +29,7 @@ pub trait LifecycleScriptsStrategy {
   fn warn_on_scripts_not_run(
     &self,
     packages: &[(&NpmResolutionPackage, PathBuf)],
-  ) -> Result<(), AnyError>;
+  ) -> Result<(), std::io::Error>;
 
   fn has_warned(&self, package: &NpmResolutionPackage) -> bool;
 
@@ -141,7 +141,7 @@ impl<'a> LifecycleScripts<'a> {
     }
   }
 
-  pub fn warn_not_run_scripts(&self) -> Result<(), AnyError> {
+  pub fn warn_not_run_scripts(&self) -> Result<(), std::io::Error> {
     if !self.packages_with_scripts_not_run.is_empty() {
       self
         .strategy
@@ -198,7 +198,7 @@ impl<'a> LifecycleScripts<'a> {
         snapshot,
         packages,
         get_package_path,
-      )?;
+      );
       let init_cwd = &self.config.initial_cwd;
       let process_state = crate::npm::managed::npm_process_state(
         snapshot.as_valid_serialized(),
@@ -240,7 +240,7 @@ impl<'a> LifecycleScripts<'a> {
           package,
           snapshot,
           get_package_path,
-        )?;
+        );
         for script_name in ["preinstall", "install", "postinstall"] {
           if let Some(script) = package.scripts.get(script_name) {
             if script_name == "install"
@@ -349,7 +349,7 @@ fn resolve_baseline_custom_commands<'a>(
   snapshot: &'a NpmResolutionSnapshot,
   packages: &'a [NpmResolutionPackage],
   get_package_path: impl Fn(&NpmResolutionPackage) -> PathBuf,
-) -> Result<crate::task_runner::TaskCustomCommands, AnyError> {
+) -> crate::task_runner::TaskCustomCommands {
   let mut custom_commands = crate::task_runner::TaskCustomCommands::new();
   custom_commands
     .insert("npx".to_string(), Rc::new(crate::task_runner::NpxCommand));
@@ -390,7 +390,7 @@ fn resolve_custom_commands_from_packages<
   snapshot: &'a NpmResolutionSnapshot,
   packages: P,
   get_package_path: impl Fn(&'a NpmResolutionPackage) -> PathBuf,
-) -> Result<crate::task_runner::TaskCustomCommands, AnyError> {
+) -> crate::task_runner::TaskCustomCommands {
   for package in packages {
     let package_path = get_package_path(package);
 
@@ -409,7 +409,7 @@ fn resolve_custom_commands_from_packages<
     );
   }
 
-  Ok(commands)
+  commands
 }
 
 // resolves the custom commands from the dependencies of a package
@@ -420,7 +420,7 @@ fn resolve_custom_commands_from_deps(
   package: &NpmResolutionPackage,
   snapshot: &NpmResolutionSnapshot,
   get_package_path: impl Fn(&NpmResolutionPackage) -> PathBuf,
-) -> Result<crate::task_runner::TaskCustomCommands, AnyError> {
+) -> crate::task_runner::TaskCustomCommands {
   let mut bin_entries = BinEntries::new();
   resolve_custom_commands_from_packages(
     &mut bin_entries,

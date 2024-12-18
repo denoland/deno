@@ -18,7 +18,10 @@ pub enum AuthHeaderForNpmRegistryError {
 // TODO(bartlomieju): support more auth methods besides token and basic auth
 pub fn maybe_auth_header_for_npm_registry(
   registry_config: &RegistryConfig,
-) -> Result<Option<(header::HeaderName, header::HeaderValue)>, AuthHeaderForNpmRegistryError> {
+) -> Result<
+  Option<(header::HeaderName, header::HeaderValue)>,
+  AuthHeaderForNpmRegistryError,
+> {
   if let Some(token) = registry_config.auth_token.as_ref() {
     return Ok(Some((
       header::AUTHORIZATION,

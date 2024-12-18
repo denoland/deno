@@ -5405,7 +5405,8 @@ impl TscRequest {
   fn to_server_request<'s>(
     &self,
     scope: &mut v8::HandleScope<'s>,
-  ) -> Result<(&'static str, Option<v8::Local<'s, v8::Value>>), serde_v8::Error> {
+  ) -> Result<(&'static str, Option<v8::Local<'s, v8::Value>>), serde_v8::Error>
+  {
     let args = match self {
       TscRequest::GetDiagnostics(args) => {
         ("$getDiagnostics", Some(serde_v8::to_v8(scope, args)?))

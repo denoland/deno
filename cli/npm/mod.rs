@@ -29,8 +29,7 @@ use node_resolver::InNpmPackageChecker;
 use node_resolver::NpmPackageFolderResolver;
 
 use crate::file_fetcher::CliFileFetcher;
-use crate::http_util::{DownloadError};
-use crate::http_util::{HttpClientProvider};
+use crate::http_util::HttpClientProvider;
 use crate::util::fs::atomic_write_file_with_retries_and_fs;
 use crate::util::fs::hard_link_dir_recursive;
 use crate::util::fs::AtomicWriteFileFsAdapter;
@@ -43,8 +42,6 @@ pub use self::managed::CliManagedNpmResolverCreateOptions;
 pub use self::managed::CliNpmResolverManagedSnapshotOption;
 pub use self::managed::ManagedCliNpmResolver;
 pub use self::managed::PackageCaching;
-pub use self::managed::ResolvePkgFolderFromPkgIdError;
-pub use self::managed::ResolvePkgFolderFromDenoModuleError;
 
 pub type CliNpmTarballCache = deno_npm_cache::TarballCache<CliNpmCacheEnv>;
 pub type CliNpmCache = deno_npm_cache::NpmCache<CliNpmCacheEnv>;
@@ -127,7 +124,8 @@ impl deno_npm_cache::NpmCacheEnv for CliNpmCacheEnv {
           | ToStr { .. }
           | RedirectHeaderParse { .. }
           | TooManyRedirects
-          | NotFound => None,
+          | NotFound
+          | Other(_) => None,
           BadResponse(bad_response_error) => {
             Some(bad_response_error.status_code)
           }

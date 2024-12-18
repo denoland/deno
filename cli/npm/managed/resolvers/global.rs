@@ -192,7 +192,8 @@ impl NpmPackageFsResolver for GlobalNpmPackageResolver {
     &self,
     permissions: &mut dyn NodePermissions,
     path: &'a Path,
-  ) -> Result<Cow<'a, Path>, deno_runtime::deno_permissions::PermissionCheckError> {
+  ) -> Result<Cow<'a, Path>, deno_runtime::deno_permissions::PermissionCheckError>
+  {
     self
       .registry_read_permission_checker
       .ensure_registry_read_permission(permissions, path)
@@ -235,7 +236,7 @@ impl<'a> super::common::lifecycle_scripts::LifecycleScriptsStrategy
   fn warn_on_scripts_not_run(
     &self,
     packages: &[(&NpmResolutionPackage, PathBuf)],
-  ) -> std::result::Result<(), deno_core::anyhow::Error> {
+  ) -> std::result::Result<(), std::io::Error> {
     log::warn!("{} The following packages contained npm lifecycle scripts ({}) that were not executed:", colors::yellow("Warning"), colors::gray("preinstall/install/postinstall"));
     for (package, _) in packages {
       log::warn!("┠─ {}", colors::gray(format!("npm:{}", package.id.nv)));

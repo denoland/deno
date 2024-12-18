@@ -74,7 +74,11 @@ pub enum DecryptAlgorithm {
 pub enum DecryptError {
   #[class(inherit)]
   #[error(transparent)]
-  General(#[from] #[inherit] SharedError),
+  General(
+    #[from]
+    #[inherit]
+    SharedError,
+  ),
   #[class(generic)]
   #[error(transparent)]
   Pkcs1(#[from] rsa::pkcs1::Error),

@@ -273,10 +273,7 @@ pub fn op_node_cipheriv_final(
   #[buffer] input: &[u8],
   #[anybuffer] output: &mut [u8],
 ) -> Result<Option<Vec<u8>>, cipher::CipherContextError> {
-  let context = state
-    .resource_table
-    .take::<cipher::CipherContext>(rid)
-    ?;
+  let context = state.resource_table.take::<cipher::CipherContext>(rid)?;
   let context = Rc::try_unwrap(context)
     .map_err(|_| cipher::CipherContextError::ContextInUse)?;
   context.r#final(auto_pad, input, output).map_err(Into::into)
@@ -288,10 +285,7 @@ pub fn op_node_cipheriv_take(
   state: &mut OpState,
   #[smi] rid: u32,
 ) -> Result<Option<Vec<u8>>, cipher::CipherContextError> {
-  let context = state
-    .resource_table
-    .take::<cipher::CipherContext>(rid)
-    ?;
+  let context = state.resource_table.take::<cipher::CipherContext>(rid)?;
   let context = Rc::try_unwrap(context)
     .map_err(|_| cipher::CipherContextError::ContextInUse)?;
   Ok(context.take_tag())
@@ -343,10 +337,7 @@ pub fn op_node_decipheriv_take(
   state: &mut OpState,
   #[smi] rid: u32,
 ) -> Result<(), cipher::DecipherContextError> {
-  let context = state
-    .resource_table
-    .take::<cipher::DecipherContext>(rid)
-    ?;
+  let context = state.resource_table.take::<cipher::DecipherContext>(rid)?;
   Rc::try_unwrap(context)
     .map_err(|_| cipher::DecipherContextError::ContextInUse)?;
   Ok(())
@@ -361,10 +352,7 @@ pub fn op_node_decipheriv_final(
   #[anybuffer] output: &mut [u8],
   #[buffer] auth_tag: &[u8],
 ) -> Result<(), cipher::DecipherContextError> {
-  let context = state
-    .resource_table
-    .take::<cipher::DecipherContext>(rid)
-    ?;
+  let context = state.resource_table.take::<cipher::DecipherContext>(rid)?;
   let context = Rc::try_unwrap(context)
     .map_err(|_| cipher::DecipherContextError::ContextInUse)?;
   context
@@ -795,7 +783,10 @@ pub fn op_node_ecdh_generate_keys(
 
       Ok(())
     }
-    &_ => Err(JsNativeError::type_error(format!("Unsupported curve: {}", curve))),
+    &_ => Err(JsNativeError::type_error(format!(
+      "Unsupported curve: {}",
+      curve
+    ))),
   }
 }
 

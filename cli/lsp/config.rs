@@ -1576,7 +1576,7 @@ impl ConfigData {
           pkg_json_dep_resolution,
           specified_import_map,
         },
-        |path| std::fs::read_to_string(path).map_err(Box::new),
+        |path| std::fs::read_to_string(path).map_err(|e| Box::new(e) as _),
       )
       .inspect_err(|err| {
         lsp_warn!(

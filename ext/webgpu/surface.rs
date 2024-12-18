@@ -15,7 +15,11 @@ use wgpu_types::SurfaceStatus;
 pub enum SurfaceError {
   #[class(inherit)]
   #[error(transparent)]
-  Resource(#[from] #[inherit] ResourceError),
+  Resource(
+    #[from]
+    #[inherit]
+    ResourceError,
+  ),
   #[class(generic)]
   #[error("Invalid Surface Status")]
   InvalidStatus,

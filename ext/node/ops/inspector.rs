@@ -88,7 +88,11 @@ impl GarbageCollected for JSInspectorSession {}
 pub enum InspectorConnectError {
   #[class(inherit)]
   #[error(transparent)]
-  Permission(#[from] #[inherit] deno_permissions::PermissionCheckError),
+  Permission(
+    #[from]
+    #[inherit]
+    deno_permissions::PermissionCheckError,
+  ),
   #[class(generic)]
   #[error("connectToMainThread not supported")]
   ConnectToMainThreadUnsupported,

@@ -1,15 +1,15 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
+use crate::NodePermissions;
+use crate::NodeRequireLoaderRc;
 use deno_core::op2;
 use deno_core::url::Url;
 use deno_core::OpState;
 use deno_fs::FileSystemRc;
+use deno_permissions::PermissionCheckError;
 use std::borrow::Cow;
 use std::path::Path;
 use std::path::PathBuf;
-use deno_permissions::PermissionCheckError;
-use crate::NodePermissions;
-use crate::NodeRequireLoaderRc;
 
 #[must_use = "the resolved return value to mitigate time-of-check to time-of-use issues"]
 fn ensure_read_permission<'a, P>(
@@ -31,7 +31,11 @@ pub enum WorkerThreadsFilenameError {
   Permission(#[from] PermissionCheckError),
   #[class(inherit)]
   #[error("{0}")]
-  UrlParse(#[from] #[inherit] url::ParseError),
+  UrlParse(
+    #[from]
+    #[inherit]
+    url::ParseError,
+  ),
   #[class(generic)]
   #[error("Relative path entries must start with '.' or '..'")]
   InvalidRelativeUrl,
@@ -49,7 +53,11 @@ pub enum WorkerThreadsFilenameError {
   FileNotFound(PathBuf),
   #[class(inherit)]
   #[error(transparent)]
-  Fs(#[from] #[inherit] deno_io::fs::FsError),
+  Fs(
+    #[from]
+    #[inherit]
+    deno_io::fs::FsError,
+  ),
 }
 
 // todo(dsherret): we should remove this and do all this work inside op_create_worker
@@ -72,8 +80,7 @@ where
     if path.is_relative() && !specifier.starts_with('.') {
       return Err(WorkerThreadsFilenameError::InvalidRelativeUrl);
     }
-    let path = ensure_read_permission::<P>(state, &path)
-      ?;
+    let path = ensure_read_permission::<P>(state, &path)?;
     let fs = state.borrow::<FileSystemRc>();
     let canonicalized_path =
       deno_path_util::strip_unc_prefix(fs.realpath_sync(&path)?);
@@ -83,8 +90,7 @@ where
   let url_path = url
     .to_file_path()
     .map_err(|_| WorkerThreadsFilenameError::UrlToPathString)?;
-  let url_path = ensure_read_permission::<P>(state, &url_path)
-    ?;
+  let url_path = ensure_read_permission::<P>(state, &url_path)?;
   let fs = state.borrow::<FileSystemRc>();
   if !fs.exists_sync(&url_path) {
     return Err(WorkerThreadsFilenameError::FileNotFound(

@@ -1,6 +1,12 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
+use crate::NodePermissions;
+use crate::NodeRequireLoaderRc;
+use crate::NodeResolverRc;
+use crate::NpmPackageFolderResolverRc;
+use crate::PackageJsonResolverRc;
 use boxed_error::Boxed;
+use deno_core::error::JsNativeError;
 use deno_core::op2;
 use deno_core::url::Url;
 use deno_core::v8;
@@ -12,6 +18,7 @@ use deno_package_json::PackageJsonRc;
 use deno_path_util::normalize_path;
 use deno_path_util::url_from_file_path;
 use deno_path_util::url_to_file_path;
+use deno_permissions::PermissionCheckError;
 use node_resolver::errors::ClosestPkgJsonError;
 use node_resolver::NodeResolutionKind;
 use node_resolver::ResolutionMode;
@@ -21,13 +28,6 @@ use std::cell::RefCell;
 use std::path::Path;
 use std::path::PathBuf;
 use std::rc::Rc;
-use deno_core::error::JsNativeError;
-use deno_permissions::PermissionCheckError;
-use crate::NodePermissions;
-use crate::NodeRequireLoaderRc;
-use crate::NodeResolverRc;
-use crate::NpmPackageFolderResolverRc;
-use crate::PackageJsonResolverRc;
 
 #[must_use = "the resolved return value to mitigate time-of-check to time-of-use issues"]
 fn ensure_read_permission<'a, P>(
@@ -49,10 +49,18 @@ pub struct RequireError(pub Box<RequireErrorKind>);
 pub enum RequireErrorKind {
   #[class(inherit)]
   #[error(transparent)]
-  UrlParse(#[from] #[inherit] url::ParseError),
+  UrlParse(
+    #[from]
+    #[inherit]
+    url::ParseError,
+  ),
   #[class(inherit)]
   #[error(transparent)]
-  Permission(#[from] #[inherit] PermissionCheckError),
+  Permission(
+    #[from]
+    #[inherit]
+    PermissionCheckError,
+  ),
   #[class(generic)]
   #[error(transparent)]
   PackageExportsResolve(
@@ -77,10 +85,18 @@ pub enum RequireErrorKind {
   UrlConversion(#[from] deno_path_util::PathToUrlError),
   #[class(inherit)]
   #[error(transparent)]
-  Fs(#[from] #[inherit] deno_io::fs::FsError),
+  Fs(
+    #[from]
+    #[inherit]
+    deno_io::fs::FsError,
+  ),
   #[class(inherit)]
   #[error(transparent)]
-  ReadModule(#[from] #[inherit] JsNativeError),
+  ReadModule(
+    #[from]
+    #[inherit]
+    JsNativeError,
+  ),
   #[class(inherit)]
   #[error("Unable to get CWD: {0}")]
   UnableToGetCwd(#[inherit] deno_io::fs::FsError),
@@ -238,13 +254,15 @@ pub fn op_require_resolve_deno_dir(
 ) -> Result<Option<String>, deno_path_util::PathToUrlError> {
   let resolver = state.borrow::<NpmPackageFolderResolverRc>();
 
-  Ok(resolver
-    .resolve_package_folder_from_package(
-      &request,
-      &url_from_file_path(&PathBuf::from(parent_filename))?,
-    )
-    .ok()
-    .map(|p| p.to_string_lossy().into_owned()))
+  Ok(
+    resolver
+      .resolve_package_folder_from_package(
+        &request,
+        &url_from_file_path(&PathBuf::from(parent_filename))?,
+      )
+      .ok()
+      .map(|p| p.to_string_lossy().into_owned()),
+  )
 }
 
 #[op2(fast)]
@@ -371,9 +389,7 @@ pub fn op_require_path_dirname(
   if let Some(parent) = p.parent() {
     Ok(parent.to_string_lossy().into_owned())
   } else {
-    Err(JsNativeError::generic(
-      "Path doesn't have a parent",
-    ))
+    Err(JsNativeError::generic("Path doesn't have a parent"))
   }
 }
 
@@ -386,9 +402,7 @@ pub fn op_require_path_basename(
   if let Some(path) = p.file_name() {
     Ok(path.to_string_lossy().into_owned())
   } else {
-    Err(JsNativeError::generic(
-      "Path doesn't have a file name",
-    ))
+    Err(JsNativeError::generic("Path doesn't have a file name"))
   }
 }
 
@@ -584,7 +598,11 @@ where
   }))
 }
 
-deno_error::js_error_wrapper!(ClosestPkgJsonError, JsClosestPkgJsonError, "Error");
+deno_error::js_error_wrapper!(
+  ClosestPkgJsonError,
+  JsClosestPkgJsonError,
+  "Error"
+);
 
 #[op2(fast)]
 pub fn op_require_is_maybe_cjs(

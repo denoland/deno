@@ -19,7 +19,11 @@ use crate::shared::*;
 pub enum ImportKeyError {
   #[class(inherit)]
   #[error(transparent)]
-  General(#[from] #[inherit] SharedError),
+  General(
+    #[from]
+    #[inherit]
+    SharedError,
+  ),
   #[error("invalid modulus")]
   InvalidModulus,
   #[error("invalid public exponent")]

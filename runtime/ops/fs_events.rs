@@ -11,6 +11,8 @@ use deno_core::ResourceId;
 
 use deno_core::op2;
 
+use deno_error::builtin_classes::GENERIC_ERROR;
+use deno_error::JsErrorClass;
 use deno_permissions::PermissionsContainer;
 use notify::event::Event as NotifyEvent;
 use notify::event::ModifyKind;
@@ -27,8 +29,6 @@ use std::path::Path;
 use std::path::PathBuf;
 use std::rc::Rc;
 use std::sync::Arc;
-use deno_error::builtin_classes::GENERIC_ERROR;
-use deno_error::JsErrorClass;
 use tokio::sync::mpsc;
 
 deno_core::extension!(
@@ -161,7 +161,9 @@ fn start_watcher(
   let sender_clone = senders.clone();
   let watcher: RecommendedWatcher = Watcher::new(
     move |res: Result<NotifyEvent, NotifyError>| {
-      let res2 = res.map(FsEvent::from).map_err(|e| FsEventsError::Notify(JsNotifyError(e)));
+      let res2 = res
+        .map(FsEvent::from)
+        .map_err(|e| FsEventsError::Notify(JsNotifyError(e)));
       for (paths, sender) in sender_clone.lock().iter() {
         // Ignore result, if send failed it means that watcher was already closed,
         // but not all messages have been flushed.
@@ -187,7 +189,8 @@ fn start_watcher(
       }
     },
     Default::default(),
-  ).map_err(|e| FsEventsError::Notify(JsNotifyError(e)))?;
+  )
+  .map_err(|e| FsEventsError::Notify(JsNotifyError(e)))?;
 
   state.put::<WatcherState>(WatcherState { watcher, senders });
 
@@ -216,7 +219,10 @@ fn op_fs_events_open(
       .check_read(path, "Deno.watchFs()")?;
 
     let watcher = state.borrow_mut::<WatcherState>();
-    watcher.watcher.watch(&path, recursive_mode).map_err(|e| FsEventsError::Notify(JsNotifyError(e)))?;
+    watcher
+      .watcher
+      .watch(&path, recursive_mode)
+      .map_err(|e| FsEventsError::Notify(JsNotifyError(e)))?;
   }
   let resource = FsEventsResource {
     receiver: AsyncRefCell::new(receiver),
@@ -232,10 +238,7 @@ async fn op_fs_events_poll(
   state: Rc<RefCell<OpState>>,
   #[smi] rid: ResourceId,
 ) -> Result<Option<FsEvent>, FsEventsError> {
-  let resource = state
-    .borrow()
-    .resource_table
-    .get::<FsEventsResource>(rid)?;
+  let resource = state.borrow().resource_table.get::<FsEventsResource>(rid)?;
   let mut receiver = RcRef::map(&resource, |r| &r.receiver).borrow_mut().await;
   let cancel = RcRef::map(resource, |r| &r.cancel);
   let maybe_result = receiver.recv().or_cancel(cancel).await?;

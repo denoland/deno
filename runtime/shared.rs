@@ -63,8 +63,16 @@ extension!(runtime,
   }
 );
 
-deno_error::js_error_wrapper!(deno_ast::ParseDiagnostic, JsParseDiagnostic, "Error");
-deno_error::js_error_wrapper!(deno_ast::TranspileError, JsTranspileError, "Error");
+deno_error::js_error_wrapper!(
+  deno_ast::ParseDiagnostic,
+  JsParseDiagnostic,
+  "Error"
+);
+deno_error::js_error_wrapper!(
+  deno_ast::TranspileError,
+  JsTranspileError,
+  "Error"
+);
 
 pub fn maybe_transpile_source(
   name: ModuleName,
@@ -94,7 +102,8 @@ pub fn maybe_transpile_source(
     capture_tokens: false,
     scope_analysis: false,
     maybe_syntax: None,
-  }).map_err(|e| JsNativeError::from_err(JsParseDiagnostic(e)))?;
+  })
+  .map_err(|e| JsNativeError::from_err(JsParseDiagnostic(e)))?;
   let transpiled_source = parsed
     .transpile(
       &deno_ast::TranspileOptions {
@@ -110,7 +119,8 @@ pub fn maybe_transpile_source(
         },
         ..Default::default()
       },
-    ).map_err(|e| JsNativeError::from_err(JsTranspileError(e)))?
+    )
+    .map_err(|e| JsNativeError::from_err(JsTranspileError(e)))?
     .into_source();
 
   let maybe_source_map: Option<SourceMapData> = transpiled_source

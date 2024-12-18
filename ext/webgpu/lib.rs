@@ -87,7 +87,11 @@ pub mod texture;
 pub enum InitError {
   #[class(inherit)]
   #[error(transparent)]
-  Resource(#[from] #[inherit] deno_core::error::ResourceError),
+  Resource(
+    #[from]
+    #[inherit]
+    deno_core::error::ResourceError,
+  ),
   #[class(generic)]
   #[error(transparent)]
   InvalidAdapter(wgpu_core::instance::InvalidAdapter),

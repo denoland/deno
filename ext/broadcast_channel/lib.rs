@@ -25,7 +25,11 @@ pub const UNSTABLE_FEATURE_NAME: &str = "broadcast-channel";
 pub enum BroadcastChannelError {
   #[class(inherit)]
   #[error(transparent)]
-  Resource(#[from] #[inherit] deno_core::error::ResourceError),
+  Resource(
+    #[from]
+    #[inherit]
+    deno_core::error::ResourceError,
+  ),
   #[class(generic)]
   #[error(transparent)]
   MPSCSendError(MpscSendError<Box<dyn std::fmt::Debug + Send + Sync>>),

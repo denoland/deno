@@ -42,7 +42,7 @@ pub enum CallError {
   Resource(#[from] deno_core::error::ResourceError),
   #[class(inherit)]
   #[error(transparent)]
-  Callback(#[from]  super::CallbackError),
+  Callback(#[from] super::CallbackError),
 }
 
 // SAFETY: Makes an FFI call

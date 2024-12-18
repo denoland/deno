@@ -8,6 +8,7 @@ use deno_core::RcRef;
 use deno_core::Resource;
 use deno_core::ResourceId;
 
+use deno_core::error::ResourceError;
 use std::borrow::Cow;
 use std::cell::RefCell;
 #[cfg(unix)]
@@ -17,7 +18,6 @@ use std::rc::Rc;
 use std::sync::atomic::AtomicBool;
 #[cfg(unix)]
 use std::sync::Arc;
-use deno_core::error::ResourceError;
 #[cfg(unix)]
 use tokio::signal::unix::signal;
 #[cfg(unix)]

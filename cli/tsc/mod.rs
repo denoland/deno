@@ -537,17 +537,15 @@ pub const MISSING_DEPENDENCY_SPECIFIER: &str =
 pub enum LoadError {
   #[class(generic)]
   #[error("Unable to load {path}: {error}")]
-  LoadFromNodeModule {
-    path: String,
-    error: std::io::Error,
-  },
+  LoadFromNodeModule { path: String, error: std::io::Error },
   #[class(inherit)]
-  #[error("Error converting a string module specifier for \"op_resolve\": {0}")]
+  #[error(
+    "Error converting a string module specifier for \"op_resolve\": {0}"
+  )]
   ModuleResolution(#[from] deno_core::ModuleResolutionError),
   #[class(inherit)]
   #[error("{0}")]
   ClosestPkgJson(#[from] node_resolver::errors::ClosestPkgJsonError),
-
 }
 
 #[derive(Debug, Serialize)]
@@ -716,14 +714,18 @@ fn op_load_inner(
 #[derive(Debug, Error, deno_error::JsError)]
 pub enum ResolveError {
   #[class(inherit)]
-  #[error("Error converting a string module specifier for \"op_resolve\": {0}")]
+  #[error(
+    "Error converting a string module specifier for \"op_resolve\": {0}"
+  )]
   ModuleResolution(#[from] deno_core::ModuleResolutionError),
   #[class(inherit)]
   #[error("{0}")]
   PackageSubpathResolve(PackageSubpathResolveError),
   #[class(inherit)]
   #[error("{0}")]
-  ResolvePkgFolderFromDenoModule(#[from] crate::npm::ResolvePkgFolderFromDenoModuleError),
+  ResolvePkgFolderFromDenoModule(
+    #[from] ResolvePkgFolderFromDenoModuleError,
+  ),
   #[class(inherit)]
   #[error("{0}")]
   ResolveNonGraphSpecifierTypes(#[from] ResolveNonGraphSpecifierTypesError),

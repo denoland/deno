@@ -45,9 +45,9 @@ use deno_ast::MediaType;
 use deno_ast::ModuleKind;
 use deno_core::anyhow::anyhow;
 use deno_core::anyhow::Context;
-use deno_core::error::{JsNativeError};
-use deno_core::error::{ModuleLoaderError};
 use deno_core::error::AnyError;
+use deno_core::error::JsNativeError;
+use deno_core::error::ModuleLoaderError;
 use deno_core::futures::future::FutureExt;
 use deno_core::futures::Future;
 use deno_core::parking_lot::Mutex;
@@ -534,18 +534,28 @@ impl<TGraphContainer: ModuleGraphContainer>
     let specifier = match resolution {
       Resolution::Ok(resolved) => Cow::Borrowed(&resolved.specifier),
       Resolution::Err(err) => {
-        return Err(JsNativeError::type_error(
-          format!("{}\n", err.to_string_with_range()),
-        ).into());
+        return Err(
+          JsNativeError::type_error(format!(
+            "{}\n",
+            err.to_string_with_range()
+          ))
+          .into(),
+        );
       }
-      Resolution::None => Cow::Owned(self.shared.resolver.resolve(
-        raw_specifier,
-        referrer,
-        deno_graph::Position::zeroed(),
-        // if we're here, that means it's resolving a dynamic import
-        ResolutionMode::Import,
-        NodeResolutionKind::Execution,
-      ).map_err(JsNativeError::from_err)?),
+      Resolution::None => Cow::Owned(
+        self
+          .shared
+          .resolver
+          .resolve(
+            raw_specifier,
+            referrer,
+            deno_graph::Position::zeroed(),
+            // if we're here, that means it's resolving a dynamic import
+            ResolutionMode::Import,
+            NodeResolutionKind::Execution,
+          )
+          .map_err(JsNativeError::from_err)?,
+      ),
     };
 
     if self.shared.is_repl {
@@ -571,7 +581,8 @@ impl<TGraphContainer: ModuleGraphContainer>
           .npm_resolver
           .as_managed()
           .unwrap() // byonm won't create a Module::Npm
-          .resolve_pkg_folder_from_deno_module(module.nv_reference.nv()).map_err(JsNativeError::from_err)?;
+          .resolve_pkg_folder_from_deno_module(module.nv_reference.nv())
+          .map_err(JsNativeError::from_err)?;
         self
           .shared
           .node_resolver
@@ -1102,7 +1113,8 @@ impl<TGraphContainer: ModuleGraphContainer> NodeRequireLoader
     &self,
     permissions: &mut dyn deno_runtime::deno_node::NodePermissions,
     path: &'a Path,
-  ) -> Result<Cow<'a, Path>, deno_runtime::deno_permissions::PermissionCheckError> {
+  ) -> Result<Cow<'a, Path>, deno_runtime::deno_permissions::PermissionCheckError>
+  {
     if let Ok(url) = deno_path_util::url_from_file_path(path) {
       // allow reading if it's in the module graph
       if self.graph_container.graph().get(&url).is_some() {
@@ -1118,9 +1130,13 @@ impl<TGraphContainer: ModuleGraphContainer> NodeRequireLoader
   ) -> Result<Cow<'static, str>, JsNativeError> {
     // todo(dsherret): use the preloaded module from the graph if available?
     let media_type = MediaType::from_path(path);
-    let text = self.fs.read_text_file_lossy_sync(path, None).map_err(JsNativeError::from_err)?;
+    let text = self
+      .fs
+      .read_text_file_lossy_sync(path, None)
+      .map_err(JsNativeError::from_err)?;
     if media_type.is_emittable() {
-      let specifier = deno_path_util::url_from_file_path(path).map_err(JsNativeError::from_err)?;
+      let specifier = deno_path_util::url_from_file_path(path)
+        .map_err(JsNativeError::from_err)?;
       if self.in_npm_pkg_checker.in_npm_package(&specifier) {
         return Err(
           NotSupportedKindInNpmError {
@@ -1142,6 +1158,7 @@ impl<TGraphContainer: ModuleGraphContainer> NodeRequireLoader
           &text.into(),
         )
         .map(Cow::Owned)
+        .map_err(JsNativeError::from_err)
     } else {
       Ok(text)
     }
