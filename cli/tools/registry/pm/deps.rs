@@ -2,7 +2,7 @@
 
 use std::borrow::Cow;
 use std::collections::HashMap;
-use std::sync::atomic::AtomicBool;
+use std::path::PathBuf;
 use std::sync::Arc;
 
 use deno_ast::ModuleSpecifier;
@@ -11,6 +11,7 @@ use deno_config::deno_json::ConfigFileRc;
 use deno_config::workspace::Workspace;
 use deno_config::workspace::WorkspaceDirectory;
 use deno_core::anyhow::bail;
+use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
 use deno_core::futures::future::try_join;
 use deno_core::futures::stream::FuturesOrdered;
@@ -18,7 +19,6 @@ use deno_core::futures::stream::FuturesUnordered;
 use deno_core::futures::FutureExt;
 use deno_core::futures::StreamExt;
 use deno_core::serde_json;
-use deno_graph::FillFromLockfileOptions;
 use deno_package_json::PackageJsonDepsMap;
 use deno_package_json::PackageJsonRc;
 use deno_runtime::deno_permissions::PermissionsContainer;
@@ -27,6 +27,7 @@ use deno_semver::npm::NpmPackageReqReference;
 use deno_semver::package::PackageNv;
 use deno_semver::package::PackageReq;
 use deno_semver::package::PackageReqReference;
+use deno_semver::Version;
 use deno_semver::VersionReq;
 use import_map::ImportMap;
 use import_map::ImportMapWithDiagnostics;
@@ -41,13 +42,14 @@ use crate::jsr::JsrFetchResolver;
 use crate::module_loader::ModuleLoadPreparer;
 use crate::npm::CliNpmResolver;
 use crate::npm::NpmFetchResolver;
+use crate::util::sync::AtomicFlag;
 
 use super::ConfigUpdater;
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub enum ImportMapKind {
   Inline,
-  Outline,
+  Outline(PathBuf),
 }
 
 #[derive(Clone)]
@@ -63,9 +65,12 @@ impl DepLocation {
 
   pub fn file_path(&self) -> Cow<std::path::Path> {
     match self {
-      DepLocation::DenoJson(arc, _, _) => {
-        Cow::Owned(arc.specifier.to_file_path().unwrap())
-      }
+      DepLocation::DenoJson(arc, _, kind) => match kind {
+        ImportMapKind::Inline => {
+          Cow::Owned(arc.specifier.to_file_path().unwrap())
+        }
+        ImportMapKind::Outline(path) => Cow::Borrowed(path.as_path()),
+      },
       DepLocation::PackageJson(arc, _) => Cow::Borrowed(arc.path.as_ref()),
     }
   }
@@ -239,22 +244,30 @@ fn to_import_map_value_from_imports(
 fn deno_json_import_map(
   deno_json: &ConfigFile,
 ) -> Result<Option<(ImportMapWithDiagnostics, ImportMapKind)>, AnyError> {
-  let (value, kind) =
-    if deno_json.json.imports.is_some() || deno_json.json.scopes.is_some() {
-      (
-        to_import_map_value_from_imports(deno_json),
-        ImportMapKind::Inline,
-      )
-    } else {
-      match deno_json.to_import_map_path()? {
-        Some(path) => {
-          let text = std::fs::read_to_string(&path)?;
-          let value = serde_json::from_str(&text)?;
-          (value, ImportMapKind::Outline)
-        }
-        None => return Ok(None),
+  let (value, kind) = if deno_json.json.imports.is_some()
+    || deno_json.json.scopes.is_some()
+  {
+    (
+      to_import_map_value_from_imports(deno_json),
+      ImportMapKind::Inline,
+    )
+  } else {
+    match deno_json.to_import_map_path()? {
+      Some(path) => {
+        let err_context = || {
+          format!(
+            "loading import map at '{}' (from \"importMap\" field in '{}')",
+            path.display(),
+            deno_json.specifier
+          )
+        };
+        let text = std::fs::read_to_string(&path).with_context(err_context)?;
+        let value = serde_json::from_str(&text).with_context(err_context)?;
+        (value, ImportMapKind::Outline(path))
       }
-    };
+      None => return Ok(None),
+    }
+  };
 
   import_map::parse_from_value(deno_json.specifier.clone(), value)
     .map_err(Into::into)
@@ -304,7 +317,7 @@ fn add_deps_from_deno_json(
       location: DepLocation::DenoJson(
         deno_json.clone(),
         key_path,
-        import_map_kind,
+        import_map_kind.clone(),
       ),
       kind,
       req,
@@ -435,7 +448,7 @@ pub struct DepManager {
 
   pending_changes: Vec<Change>,
 
-  dependencies_resolved: AtomicBool,
+  dependencies_resolved: AtomicFlag,
   module_load_preparer: Arc<ModuleLoadPreparer>,
   // TODO(nathanwhit): probably shouldn't be pub
   pub(crate) jsr_fetch_resolver: Arc<JsrFetchResolver>,
@@ -477,7 +490,7 @@ impl DepManager {
       resolved_versions: Vec::new(),
       latest_versions: Vec::new(),
       jsr_fetch_resolver,
-      dependencies_resolved: AtomicBool::new(false),
+      dependencies_resolved: AtomicFlag::lowered(),
       module_load_preparer,
       npm_fetch_resolver,
       npm_resolver,
@@ -518,10 +531,7 @@ impl DepManager {
   }
 
   async fn run_dependency_resolution(&self) -> Result<(), AnyError> {
-    if self
-      .dependencies_resolved
-      .load(std::sync::atomic::Ordering::Relaxed)
-    {
+    if self.dependencies_resolved.is_raised() {
       return Ok(());
     }
 
@@ -533,19 +543,8 @@ impl DepManager {
     // populate the information from the lockfile
     if let Some(lockfile) = &self.lockfile {
       let lockfile = lockfile.lock();
-      graph.fill_from_lockfile(FillFromLockfileOptions {
-        redirects: lockfile
-          .content
-          .redirects
-          .iter()
-          .map(|(from, to)| (from.as_str(), to.as_str())),
-        package_specifiers: lockfile
-          .content
-          .packages
-          .specifiers
-          .iter()
-          .map(|(dep, id)| (dep, id.as_str())),
-      });
+
+      crate::graph_util::fill_graph_from_lockfile(graph, &lockfile);
     }
 
     let npm_resolver = self.npm_resolver.as_managed().unwrap();
@@ -555,9 +554,7 @@ impl DepManager {
       }
       DepKind::Jsr => graph.packages.mappings().contains_key(&dep.req),
     }) {
-      self
-        .dependencies_resolved
-        .store(true, std::sync::atomic::Ordering::Relaxed);
+      self.dependencies_resolved.raise();
       graph_permit.commit();
       return Ok(());
     }
@@ -612,6 +609,7 @@ impl DepManager {
       )
       .await?;
 
+    self.dependencies_resolved.raise();
     graph_permit.commit();
 
     Ok(())
@@ -654,10 +652,6 @@ impl DepManager {
     if self.latest_versions.len() == self.deps.len() {
       return Ok(self.latest_versions.clone());
     }
-    let latest_tag_req = deno_semver::VersionReq::from_raw_text_and_inner(
-      "latest".into(),
-      deno_semver::RangeSetOrTag::Tag("latest".into()),
-    );
     let mut latest_versions = Vec::with_capacity(self.deps.len());
 
     let npm_sema = Semaphore::new(32);
@@ -669,14 +663,25 @@ impl DepManager {
         DepKind::Npm => futs.push_back(
           async {
             let semver_req = &dep.req;
-            let latest_req = PackageReq {
-              name: dep.req.name.clone(),
-              version_req: latest_tag_req.clone(),
-            };
             let _permit = npm_sema.acquire().await;
             let semver_compatible =
               self.npm_fetch_resolver.req_to_nv(semver_req).await;
-            let latest = self.npm_fetch_resolver.req_to_nv(&latest_req).await;
+            let info =
+              self.npm_fetch_resolver.package_info(&semver_req.name).await;
+            let latest = info
+              .and_then(|info| {
+                let latest_tag = info.dist_tags.get("latest")?;
+                let lower_bound = &semver_compatible.as_ref()?.version;
+                if latest_tag > lower_bound {
+                  Some(latest_tag.clone())
+                } else {
+                  latest_version(Some(latest_tag), info.versions.keys())
+                }
+              })
+              .map(|version| PackageNv {
+                name: semver_req.name.clone(),
+                version,
+              });
             PackageLatestVersion {
               latest,
               semver_compatible,
@@ -687,14 +692,29 @@ impl DepManager {
         DepKind::Jsr => futs.push_back(
           async {
             let semver_req = &dep.req;
-            let latest_req = PackageReq {
-              name: dep.req.name.clone(),
-              version_req: deno_semver::WILDCARD_VERSION_REQ.clone(),
-            };
             let _permit = jsr_sema.acquire().await;
             let semver_compatible =
               self.jsr_fetch_resolver.req_to_nv(semver_req).await;
-            let latest = self.jsr_fetch_resolver.req_to_nv(&latest_req).await;
+            let info =
+              self.jsr_fetch_resolver.package_info(&semver_req.name).await;
+            let latest = info
+              .and_then(|info| {
+                let lower_bound = &semver_compatible.as_ref()?.version;
+                latest_version(
+                  Some(lower_bound),
+                  info.versions.iter().filter_map(|(version, version_info)| {
+                    if !version_info.yanked {
+                      Some(version)
+                    } else {
+                      None
+                    }
+                  }),
+                )
+              })
+              .map(|version| PackageNv {
+                name: semver_req.name.clone(),
+                version,
+              });
             PackageLatestVersion {
               latest,
               semver_compatible,
@@ -759,11 +779,7 @@ impl DepManager {
           let dep = &mut self.deps[dep_id.0];
           dep.req.version_req = version_req.clone();
           match &dep.location {
-            DepLocation::DenoJson(arc, key_path, import_map_kind) => {
-              if matches!(import_map_kind, ImportMapKind::Outline) {
-                // not supported
-                continue;
-              }
+            DepLocation::DenoJson(arc, key_path, _) => {
               let updater =
                 get_or_create_updater(&mut config_updaters, &dep.location)?;
 
@@ -895,4 +911,19 @@ fn parse_req_reference(
     DepKind::Npm => NpmPackageReqReference::from_str(input)?.into_inner(),
     DepKind::Jsr => JsrPackageReqReference::from_str(input)?.into_inner(),
   })
+}
+
+fn latest_version<'a>(
+  start: Option<&Version>,
+  versions: impl IntoIterator<Item = &'a Version>,
+) -> Option<Version> {
+  let mut best = start;
+  for version in versions {
+    match best {
+      Some(best_version) if version > best_version => best = Some(version),
+      None => best = Some(version),
+      _ => {}
+    }
+  }
+  best.cloned()
 }

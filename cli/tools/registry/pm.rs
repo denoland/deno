@@ -4,6 +4,7 @@ use std::path::Path;
 use std::path::PathBuf;
 use std::sync::Arc;
 
+use deno_cache_dir::file_fetcher::CacheSetting;
 use deno_core::anyhow::bail;
 use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
@@ -23,12 +24,11 @@ use jsonc_parser::cst::CstRootNode;
 use jsonc_parser::json;
 
 use crate::args::AddFlags;
-use crate::args::CacheSetting;
 use crate::args::CliOptions;
 use crate::args::Flags;
 use crate::args::RemoveFlags;
 use crate::factory::CliFactory;
-use crate::file_fetcher::FileFetcher;
+use crate::file_fetcher::CliFileFetcher;
 use crate::jsr::JsrFetchResolver;
 use crate::npm::NpmFetchResolver;
 
@@ -411,18 +411,18 @@ pub async fn add(
 
   let http_client = cli_factory.http_client_provider();
   let deps_http_cache = cli_factory.global_http_cache()?;
-  let mut deps_file_fetcher = FileFetcher::new(
+  let deps_file_fetcher = CliFileFetcher::new(
     deps_http_cache.clone(),
-    CacheSetting::ReloadAll,
-    true,
     http_client.clone(),
     Default::default(),
     None,
+    true,
+    CacheSetting::ReloadAll,
+    log::Level::Trace,
   );
 
   let npmrc = cli_factory.cli_options().unwrap().npmrc();
 
-  deps_file_fetcher.set_download_log_level(log::Level::Trace);
   let deps_file_fetcher = Arc::new(deps_file_fetcher);
   let jsr_resolver = Arc::new(JsrFetchResolver::new(deps_file_fetcher.clone()));
   let npm_resolver =
@@ -432,9 +432,8 @@ pub async fn add(
   let mut package_reqs = Vec::with_capacity(add_flags.packages.len());
 
   for entry_text in add_flags.packages.iter() {
-    let req = AddRmPackageReq::parse(entry_text).with_context(|| {
-      format!("Failed to parse package required: {}", entry_text)
-    })?;
+    let req = AddRmPackageReq::parse(entry_text)
+      .with_context(|| format!("Failed to parse package: {}", entry_text))?;
 
     match req {
       Ok(add_req) => package_reqs.push(add_req),
@@ -805,9 +804,8 @@ pub async fn remove(
   let mut removed_packages = vec![];
 
   for package in &remove_flags.packages {
-    let req = AddRmPackageReq::parse(package).with_context(|| {
-      format!("Failed to parse package required: {}", package)
-    })?;
+    let req = AddRmPackageReq::parse(package)
+      .with_context(|| format!("Failed to parse package: {}", package))?;
     let mut parsed_pkg_name = None;
     for config in configs.iter_mut().flatten() {
       match &req {

@@ -267,6 +267,7 @@ fn get_npm_package(
   let mut tarballs = HashMap::new();
   let mut versions = serde_json::Map::new();
   let mut latest_version = semver::Version::parse("0.0.0").unwrap();
+  let mut dist_tags = serde_json::Map::new();
   for entry in fs::read_dir(&package_folder)? {
     let entry = entry?;
     let file_type = entry.file_type()?;
@@ -345,6 +346,14 @@ fn get_npm_package(
       }
     }
 
+    if let Some(publish_config) = version_info.get("publishConfig") {
+      if let Some(tag) = publish_config.get("tag") {
+        if let Some(tag) = tag.as_str() {
+          dist_tags.insert(tag.to_string(), version.clone().into());
+        }
+      }
+    }
+
     versions.insert(version.clone(), version_info.into());
     let version = semver::Version::parse(&version)?;
     if version.cmp(&latest_version).is_gt() {
@@ -352,8 +361,9 @@ fn get_npm_package(
     }
   }
 
-  let mut dist_tags = serde_json::Map::new();
-  dist_tags.insert("latest".to_string(), latest_version.to_string().into());
+  if !dist_tags.contains_key("latest") {
+    dist_tags.insert("latest".to_string(), latest_version.to_string().into());
+  }
 
   // create the registry file for this package
   let mut registry_file = serde_json::Map::new();

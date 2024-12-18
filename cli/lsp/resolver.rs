@@ -2,6 +2,7 @@
 
 use dashmap::DashMap;
 use deno_ast::MediaType;
+use deno_cache_dir::file_fetcher::CacheSetting;
 use deno_cache_dir::npm::NpmCacheDir;
 use deno_cache_dir::HttpCache;
 use deno_config::deno_json::JsxImportSourceConfig;
@@ -20,14 +21,12 @@ use deno_resolver::DenoResolverOptions;
 use deno_resolver::NodeAndNpmReqResolver;
 use deno_runtime::deno_fs;
 use deno_runtime::deno_node::NodeResolver;
-use deno_runtime::deno_node::PackageJson;
 use deno_runtime::deno_node::PackageJsonResolver;
 use deno_semver::jsr::JsrPackageReqReference;
 use deno_semver::npm::NpmPackageReqReference;
 use deno_semver::package::PackageNv;
 use deno_semver::package::PackageReq;
 use indexmap::IndexMap;
-use node_resolver::errors::ClosestPkgJsonError;
 use node_resolver::InNpmPackageChecker;
 use node_resolver::NodeResolutionKind;
 use node_resolver::ResolutionMode;
@@ -41,7 +40,6 @@ use std::sync::Arc;
 use super::cache::LspCache;
 use super::jsr::JsrCacheResolver;
 use crate::args::create_default_npmrc;
-use crate::args::CacheSetting;
 use crate::args::CliLockfile;
 use crate::args::NpmInstallDepsProvider;
 use crate::cache::DenoCacheEnvFsAdapter;
@@ -135,7 +133,8 @@ impl LspScopeResolver {
       cache.for_specifier(config_data.map(|d| d.scope.as_ref())),
       config_data.and_then(|d| d.lockfile.clone()),
     )));
-    let npm_graph_resolver = cli_resolver.create_graph_npm_resolver();
+    let npm_graph_resolver = cli_resolver
+      .create_graph_npm_resolver(crate::graph_util::NpmCachingStrategy::Eager);
     let maybe_jsx_import_source_config =
       config_data.and_then(|d| d.maybe_jsx_import_source_config());
     let graph_imports = config_data
@@ -345,7 +344,9 @@ impl LspResolver {
     file_referrer: Option<&ModuleSpecifier>,
   ) -> WorkerCliNpmGraphResolver {
     let resolver = self.get_scope_resolver(file_referrer);
-    resolver.resolver.create_graph_npm_resolver()
+    resolver
+      .resolver
+      .create_graph_npm_resolver(crate::graph_util::NpmCachingStrategy::Eager)
   }
 
   pub fn as_is_cjs_resolver(
@@ -378,6 +379,14 @@ impl LspResolver {
   ) -> Option<&ManagedCliNpmResolver> {
     let resolver = self.get_scope_resolver(file_referrer);
     resolver.npm_resolver.as_ref().and_then(|r| r.as_managed())
+  }
+
+  pub fn pkg_json_resolver(
+    &self,
+    referrer: &ModuleSpecifier,
+  ) -> &Arc<PackageJsonResolver> {
+    let resolver = self.get_scope_resolver(Some(referrer));
+    &resolver.pkg_json_resolver
   }
 
   pub fn graph_imports_by_referrer(
@@ -520,16 +529,6 @@ impl LspResolver {
       .ok()
       .flatten()
       .is_some()
-  }
-
-  pub fn get_closest_package_json(
-    &self,
-    referrer: &ModuleSpecifier,
-  ) -> Result<Option<Arc<PackageJson>>, ClosestPkgJsonError> {
-    let resolver = self.get_scope_resolver(Some(referrer));
-    resolver
-      .pkg_json_resolver
-      .get_closest_package_json(referrer)
   }
 
   pub fn resolve_redirects(
@@ -945,9 +944,7 @@ impl RedirectResolver {
         if chain.len() > 10 {
           break None;
         }
-        let Ok(target) =
-          deno_core::resolve_import(location, specifier.as_str())
-        else {
+        let Ok(target) = specifier.join(location) else {
           break None;
         };
         chain.push((

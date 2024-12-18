@@ -1290,6 +1290,14 @@ impl SourceFile {
       "html" => "html",
       "css" => "css",
       "yaml" => "yaml",
+      "sql" => "sql",
+      "svelte" => "svelte",
+      "vue" => "vue",
+      "astro" => "astro",
+      "vto" => "vento",
+      "vento" => "vento",
+      "njk" => "nunjucks",
+      "nunjucks" => "nunjucks",
       other => panic!("unsupported file extension: {other}"),
     };
     Self {

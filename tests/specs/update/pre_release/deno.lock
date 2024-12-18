@@ -1,0 +1,28 @@
+{
+  "version": "4",
+  "specifiers": {
+    "jsr:@denotest/has-only-pre-release@^2.0.0-beta.1": "2.0.0-beta.1",
+    "jsr:@denotest/has-pre-release@^2.0.0-beta.1": "2.0.0-beta.1",
+    "npm:@denotest/has-pre-release@^2.0.0-beta.1": "2.0.0-beta.1"
+  },
+  "jsr": {
+    "@denotest/has-only-pre-release@2.0.0-beta.1": {
+      "integrity": "43fd680ea94bb5db5fe1a2d86101c47d0e2cc77323b881755cea9a0372e49537"
+    },
+    "@denotest/has-pre-release@2.0.0-beta.1": {
+      "integrity": "43fd680ea94bb5db5fe1a2d86101c47d0e2cc77323b881755cea9a0372e49537"
+    }
+  },
+  "npm": {
+    "@denotest/has-pre-release@2.0.0-beta.1": {
+      "integrity": "sha512-K1fHe1L2EUSLgijtzzALNpkkIO0SrX3z+IXvVjjOIE8HKd4T7lkpzDdoUp+WllwS3KXmuJh+9vIfY5lFp38pew=="
+    }
+  },
+  "workspace": {
+    "dependencies": [
+      "jsr:@denotest/has-only-pre-release@^2.0.0-beta.1",
+      "jsr:@denotest/has-pre-release@^2.0.0-beta.1",
+      "npm:@denotest/has-pre-release@^2.0.0-beta.1"
+    ]
+  }
+}

@@ -1,0 +1,11 @@
+[UNORDERED_START]
+Download http://127.0.0.1:4250/@denotest/subtract/1.0.0/mod.ts
+Download http://127.0.0.1:4250/@denotest/add/1.0.0/mod.ts
+Download http://localhost:4260/@denotest/has-patch-versions/0.2.0.tgz
+Download http://localhost:4260/@denotest/breaking-change-between-versions/2.0.0.tgz
+[UNORDERED_END]
+Updated 4 dependencies:
+ - jsr:@denotest/add                              0.2.0 -> 1.0.0
+ - jsr:@denotest/subtract                         0.2.0 -> 1.0.0
+ - npm:@denotest/breaking-change-between-versions 1.0.0 -> 2.0.0
+ - npm:@denotest/has-patch-versions               0.1.0 -> 0.2.0

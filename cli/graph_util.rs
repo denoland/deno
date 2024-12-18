@@ -4,6 +4,7 @@ use crate::args::config_to_deno_graph_workspace_member;
 use crate::args::jsr_url;
 use crate::args::CliLockfile;
 use crate::args::CliOptions;
+pub use crate::args::NpmCachingStrategy;
 use crate::args::DENO_DISABLE_PEDANTIC_NODE_WARNINGS;
 use crate::cache;
 use crate::cache::FetchCacher;
@@ -12,7 +13,7 @@ use crate::cache::ModuleInfoCache;
 use crate::cache::ParsedSourceCache;
 use crate::colors;
 use crate::errors::get_error_class_name;
-use crate::file_fetcher::FileFetcher;
+use crate::file_fetcher::CliFileFetcher;
 use crate::npm::CliNpmResolver;
 use crate::resolver::CjsTracker;
 use crate::resolver::CliResolver;
@@ -109,6 +110,25 @@ pub fn graph_valid(
   }
 }
 
+pub fn fill_graph_from_lockfile(
+  graph: &mut ModuleGraph,
+  lockfile: &deno_lockfile::Lockfile,
+) {
+  graph.fill_from_lockfile(FillFromLockfileOptions {
+    redirects: lockfile
+      .content
+      .redirects
+      .iter()
+      .map(|(from, to)| (from.as_str(), to.as_str())),
+    package_specifiers: lockfile
+      .content
+      .packages
+      .specifiers
+      .iter()
+      .map(|(dep, id)| (dep, id.as_str())),
+  });
+}
+
 #[derive(Clone)]
 pub struct GraphWalkErrorsOptions {
   pub check_js: bool,
@@ -199,6 +219,7 @@ pub struct CreateGraphOptions<'a> {
   pub is_dynamic: bool,
   /// Specify `None` to use the default CLI loader.
   pub loader: Option<&'a mut dyn Loader>,
+  pub npm_caching: NpmCachingStrategy,
 }
 
 pub struct ModuleGraphCreator {
@@ -227,10 +248,11 @@ impl ModuleGraphCreator {
     &self,
     graph_kind: GraphKind,
     roots: Vec<ModuleSpecifier>,
+    npm_caching: NpmCachingStrategy,
   ) -> Result<deno_graph::ModuleGraph, AnyError> {
     let mut cache = self.module_graph_builder.create_graph_loader();
     self
-      .create_graph_with_loader(graph_kind, roots, &mut cache)
+      .create_graph_with_loader(graph_kind, roots, &mut cache, npm_caching)
       .await
   }
 
@@ -239,6 +261,7 @@ impl ModuleGraphCreator {
     graph_kind: GraphKind,
     roots: Vec<ModuleSpecifier>,
     loader: &mut dyn Loader,
+    npm_caching: NpmCachingStrategy,
   ) -> Result<ModuleGraph, AnyError> {
     self
       .create_graph_with_options(CreateGraphOptions {
@@ -246,6 +269,7 @@ impl ModuleGraphCreator {
         graph_kind,
         roots,
         loader: Some(loader),
+        npm_caching,
       })
       .await
   }
@@ -298,6 +322,7 @@ impl ModuleGraphCreator {
         graph_kind: deno_graph::GraphKind::All,
         roots,
         loader: Some(&mut publish_loader),
+        npm_caching: self.options.default_npm_caching_strategy(),
       })
       .await?;
     self.graph_valid(&graph)?;
@@ -357,6 +382,7 @@ impl ModuleGraphCreator {
         graph_kind,
         roots,
         loader: None,
+        npm_caching: self.options.default_npm_caching_strategy(),
       })
       .await?;
 
@@ -405,7 +431,7 @@ pub struct ModuleGraphBuilder {
   caches: Arc<cache::Caches>,
   cjs_tracker: Arc<CjsTracker>,
   cli_options: Arc<CliOptions>,
-  file_fetcher: Arc<FileFetcher>,
+  file_fetcher: Arc<CliFileFetcher>,
   fs: Arc<dyn FileSystem>,
   global_http_cache: Arc<GlobalHttpCache>,
   in_npm_pkg_checker: Arc<dyn InNpmPackageChecker>,
@@ -424,7 +450,7 @@ impl ModuleGraphBuilder {
     caches: Arc<cache::Caches>,
     cjs_tracker: Arc<CjsTracker>,
     cli_options: Arc<CliOptions>,
-    file_fetcher: Arc<FileFetcher>,
+    file_fetcher: Arc<CliFileFetcher>,
     fs: Arc<dyn FileSystem>,
     global_http_cache: Arc<GlobalHttpCache>,
     in_npm_pkg_checker: Arc<dyn InNpmPackageChecker>,
@@ -546,7 +572,8 @@ impl ModuleGraphBuilder {
     };
     let cli_resolver = &self.resolver;
     let graph_resolver = self.create_graph_resolver()?;
-    let graph_npm_resolver = cli_resolver.create_graph_npm_resolver();
+    let graph_npm_resolver =
+      cli_resolver.create_graph_npm_resolver(options.npm_caching);
     let maybe_file_watcher_reporter = self
       .maybe_file_watcher_reporter
       .as_ref()
@@ -573,6 +600,7 @@ impl ModuleGraphBuilder {
           resolver: Some(&graph_resolver),
           locker: locker.as_mut().map(|l| l as _),
         },
+        options.npm_caching,
       )
       .await
   }
@@ -583,6 +611,7 @@ impl ModuleGraphBuilder {
     roots: Vec<ModuleSpecifier>,
     loader: &'a mut dyn deno_graph::source::Loader,
     options: deno_graph::BuildOptions<'a>,
+    npm_caching: NpmCachingStrategy,
   ) -> Result<(), AnyError> {
     // ensure an "npm install" is done if the user has explicitly
     // opted into using a node_modules directory
@@ -593,7 +622,13 @@ impl ModuleGraphBuilder {
       .unwrap_or(false)
     {
       if let Some(npm_resolver) = self.npm_resolver.as_managed() {
-        npm_resolver.ensure_top_level_package_json_install().await?;
+        let already_done =
+          npm_resolver.ensure_top_level_package_json_install().await?;
+        if !already_done && matches!(npm_caching, NpmCachingStrategy::Eager) {
+          npm_resolver
+            .cache_packages(crate::npm::PackageCaching::All)
+            .await?;
+        }
       }
     }
 
@@ -603,19 +638,7 @@ impl ModuleGraphBuilder {
       // populate the information from the lockfile
       if let Some(lockfile) = &self.lockfile {
         let lockfile = lockfile.lock();
-        graph.fill_from_lockfile(FillFromLockfileOptions {
-          redirects: lockfile
-            .content
-            .redirects
-            .iter()
-            .map(|(from, to)| (from.as_str(), to.as_str())),
-          package_specifiers: lockfile
-            .content
-            .packages
-            .specifiers
-            .iter()
-            .map(|(dep, id)| (dep, id.as_str())),
-        });
+        fill_graph_from_lockfile(graph, &lockfile);
       }
     }
 
@@ -694,7 +717,9 @@ impl ModuleGraphBuilder {
     let parser = self.parsed_source_cache.as_capturing_parser();
     let cli_resolver = &self.resolver;
     let graph_resolver = self.create_graph_resolver()?;
-    let graph_npm_resolver = cli_resolver.create_graph_npm_resolver();
+    let graph_npm_resolver = cli_resolver.create_graph_npm_resolver(
+      self.cli_options.default_npm_caching_strategy(),
+    );
 
     graph.build_fast_check_type_graph(
       deno_graph::BuildFastCheckTypeGraphOptions {

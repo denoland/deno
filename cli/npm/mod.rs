@@ -28,7 +28,7 @@ use managed::create_managed_in_npm_pkg_checker;
 use node_resolver::InNpmPackageChecker;
 use node_resolver::NpmPackageFolderResolver;
 
-use crate::file_fetcher::FileFetcher;
+use crate::file_fetcher::CliFileFetcher;
 use crate::http_util::HttpClientProvider;
 use crate::util::fs::atomic_write_file_with_retries_and_fs;
 use crate::util::fs::hard_link_dir_recursive;
@@ -41,6 +41,7 @@ pub use self::managed::CliManagedInNpmPkgCheckerCreateOptions;
 pub use self::managed::CliManagedNpmResolverCreateOptions;
 pub use self::managed::CliNpmResolverManagedSnapshotOption;
 pub use self::managed::ManagedCliNpmResolver;
+pub use self::managed::PackageCaching;
 
 pub type CliNpmTarballCache = deno_npm_cache::TarballCache<CliNpmCacheEnv>;
 pub type CliNpmCache = deno_npm_cache::NpmCache<CliNpmCacheEnv>;
@@ -114,14 +115,14 @@ impl deno_npm_cache::NpmCacheEnv for CliNpmCacheEnv {
       .download_with_progress_and_retries(url, maybe_auth_header, &guard)
       .await
       .map_err(|err| {
-        use crate::http_util::DownloadError::*;
-        let status_code = match &err {
+        use crate::http_util::DownloadErrorKind::*;
+        let status_code = match err.as_kind() {
           Fetch { .. }
           | UrlParse { .. }
           | HttpParse { .. }
           | Json { .. }
           | ToStr { .. }
-          | NoRedirectHeader { .. }
+          | RedirectHeaderParse { .. }
           | TooManyRedirects => None,
           BadResponse(bad_response_error) => {
             Some(bad_response_error.status_code)
@@ -231,13 +232,13 @@ pub trait CliNpmResolver: NpmPackageFolderResolver + CliNpmReqResolver {
 pub struct NpmFetchResolver {
   nv_by_req: DashMap<PackageReq, Option<PackageNv>>,
   info_by_name: DashMap<String, Option<Arc<NpmPackageInfo>>>,
-  file_fetcher: Arc<FileFetcher>,
+  file_fetcher: Arc<CliFileFetcher>,
   npmrc: Arc<ResolvedNpmRc>,
 }
 
 impl NpmFetchResolver {
   pub fn new(
-    file_fetcher: Arc<FileFetcher>,
+    file_fetcher: Arc<CliFileFetcher>,
     npmrc: Arc<ResolvedNpmRc>,
   ) -> Self {
     Self {

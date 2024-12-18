@@ -2,7 +2,7 @@
 
 [package]
 name = "deno"
-version = "2.1.2"
+version = "2.1.4"
 authors.workspace = true
 default-run = "deno"
 edition.workspace = true
@@ -72,7 +72,8 @@ deno_ast = { workspace = true, features = ["bundler", "cjs", "codegen", "proposa
 deno_cache_dir.workspace = true
 deno_config.workspace = true
 deno_core = { workspace = true, features = ["include_js_files_for_snapshotting"] }
-deno_doc = { version = "=0.161.2", features = ["rust", "comrak"] }
+deno_doc = { version = "=0.161.3", features = ["rust", "comrak"] }
+deno_error.workspace = true
 deno_graph = { version = "=0.86.3" }
 deno_lint = { version = "=0.68.2", features = ["docs"] }
 deno_lockfile.workspace = true
@@ -80,10 +81,10 @@ deno_npm.workspace = true
 deno_npm_cache.workspace = true
 deno_package_json.workspace = true
 deno_path_util.workspace = true
-deno_resolver.workspace = true
+deno_resolver = { workspace = true, features = ["sync"] }
 deno_runtime = { workspace = true, features = ["include_js_files_for_snapshotting"] }
 deno_semver.workspace = true
-deno_task_shell = "=0.20.1"
+deno_task_shell = "=0.20.2"
 deno_telemetry.workspace = true
 deno_terminal.workspace = true
 libsui = "0.5.0"
@@ -93,8 +94,10 @@ anstream = "0.6.14"
 async-trait.workspace = true
 base64.workspace = true
 bincode = "=1.3.3"
+boxed_error.workspace = true
 bytes.workspace = true
 cache_control.workspace = true
+capacity_builder.workspace = true
 chrono = { workspace = true, features = ["now"] }
 clap = { version = "=4.5.16", features = ["env", "string", "wrap_help", "error-context"] }
 clap_complete = "=4.5.24"

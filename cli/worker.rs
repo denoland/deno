@@ -50,6 +50,7 @@ use tokio::select;
 
 use crate::args::CliLockfile;
 use crate::args::DenoSubcommand;
+use crate::args::NpmCachingStrategy;
 use crate::args::StorageKeyResolver;
 use crate::errors;
 use crate::npm::CliNpmResolver;
@@ -153,7 +154,8 @@ struct SharedWorkerState {
   storage_key_resolver: StorageKeyResolver,
   options: CliMainWorkerOptions,
   subcommand: DenoSubcommand,
-  otel_config: Option<OtelConfig>, // `None` means OpenTelemetry is disabled.
+  otel_config: OtelConfig,
+  default_npm_caching_strategy: NpmCachingStrategy,
 }
 
 impl SharedWorkerState {
@@ -424,7 +426,8 @@ impl CliMainWorkerFactory {
     storage_key_resolver: StorageKeyResolver,
     subcommand: DenoSubcommand,
     options: CliMainWorkerOptions,
-    otel_config: Option<OtelConfig>,
+    otel_config: OtelConfig,
+    default_npm_caching_strategy: NpmCachingStrategy,
   ) -> Self {
     Self {
       shared: Arc::new(SharedWorkerState {
@@ -448,6 +451,7 @@ impl CliMainWorkerFactory {
         options,
         subcommand,
         otel_config,
+        default_npm_caching_strategy,
       }),
     }
   }
@@ -487,8 +491,19 @@ impl CliMainWorkerFactory {
       NpmPackageReqReference::from_specifier(&main_module)
     {
       if let Some(npm_resolver) = shared.npm_resolver.as_managed() {
+        let reqs = &[package_ref.req().clone()];
         npm_resolver
-          .add_package_reqs(&[package_ref.req().clone()])
+          .add_package_reqs(
+            reqs,
+            if matches!(
+              shared.default_npm_caching_strategy,
+              NpmCachingStrategy::Lazy
+            ) {
+              crate::npm::PackageCaching::Only(reqs.into())
+            } else {
+              crate::npm::PackageCaching::All
+            },
+          )
           .await?;
       }
 
