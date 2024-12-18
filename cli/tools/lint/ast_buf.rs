@@ -287,9 +287,7 @@ impl SerializeCtx {
       }
     }
 
-    let offset = self.append_node(n, parent, span, prop_count);
-
-    offset
+    self.append_node(n, parent, span, prop_count)
   }
 
   pub fn ref_field<P>(&mut self, prop: P) -> usize

@@ -922,12 +922,8 @@ fn serialize_expr(
       pos
     }
     Expr::Class(node) => {
-      let id =
-        ctx.header(AstNode::ClassExpression, parent, &node.class.span, 0);
-
       // FIXME
-
-      id
+      ctx.header(AstNode::ClassExpression, parent, &node.class.span, 0)
     }
     Expr::Yield(node) => {
       let pos = ctx.header(AstNode::YieldExpression, parent, &node.span, 2);
@@ -1445,7 +1441,7 @@ fn serialize_decl(
         .class
         .super_type_params
         .as_ref()
-        .map(|super_params| serialize_ts_param_inst(ctx, &super_params, id));
+        .map(|super_params| serialize_ts_param_inst(ctx, super_params, id));
 
       let implement_ids = node
         .class
@@ -1752,7 +1748,7 @@ fn serialize_decl(
             let params = sig
               .params
               .iter()
-              .map(|param| serialize_ts_fn_param(ctx, &param, item_pos))
+              .map(|param| serialize_ts_fn_param(ctx, param, item_pos))
               .collect::<Vec<_>>();
             let return_type =
               maybe_serialize_ts_type_ann(ctx, &sig.type_ann, item_pos);
@@ -1826,7 +1822,7 @@ fn serialize_decl(
 
           let ident = match &member.id {
             TsEnumMemberId::Ident(ident) => {
-              serialize_ident(ctx, &ident, member_id)
+              serialize_ident(ctx, ident, member_id)
             }
             TsEnumMemberId::Str(lit_str) => {
               serialize_lit(ctx, &Lit::Str(lit_str.clone()), member_id)
@@ -2205,7 +2201,7 @@ fn serialize_pat(
         .map(|pat| {
           pat
             .as_ref()
-            .map_or(NodeRef(0), |v| serialize_pat(ctx, &v, pos))
+            .map_or(NodeRef(0), |v| serialize_pat(ctx, v, pos))
         })
         .collect::<Vec<_>>();
 
@@ -2247,11 +2243,7 @@ fn serialize_pat(
             let key_pos = ctx.ref_field(AstProp::Key);
             let value_pos = ctx.ref_field(AstProp::Value);
 
-            let computed = if let PropName::Computed(_) = key_value_prop.key {
-              true
-            } else {
-              false
-            };
+            let computed = matches!(key_value_prop.key, PropName::Computed(_));
 
             let key = serialize_prop_name(ctx, &key_value_prop.key, child_pos);
             let value =
@@ -2411,7 +2403,7 @@ fn serialize_lit(
       let value_pos = ctx.str_field(AstProp::Value);
 
       let value = node.raw.as_ref().unwrap();
-      ctx.write_str(value_pos, &value);
+      ctx.write_str(value_pos, value);
 
       pos
     }
@@ -2428,8 +2420,8 @@ fn serialize_lit(
       let pattern_pos = ctx.str_field(AstProp::Pattern);
       let flags_pos = ctx.str_field(AstProp::Flags);
 
-      ctx.write_str(pattern_pos, &node.exp.as_str());
-      ctx.write_str(flags_pos, &node.flags.as_str());
+      ctx.write_str(pattern_pos, node.exp.as_str());
+      ctx.write_str(flags_pos, node.flags.as_str());
 
       pos
     }
@@ -2576,7 +2568,7 @@ fn serialize_ts_type(
             let label_pos = ctx.ref_field(AstProp::Label);
             let type_pos = ctx.ref_field(AstProp::ElementType);
 
-            let label_id = serialize_pat(ctx, &label, child_pos);
+            let label_id = serialize_pat(ctx, label, child_pos);
             let type_id = serialize_ts_type(ctx, elem.ty.as_ref(), child_pos);
 
             ctx.write_ref(label_pos, label_id);
@@ -2735,7 +2727,7 @@ fn serialize_ts_type(
         TsThisTypeOrIdent::TsThisType(ts_this_type) => {
           ctx.header(AstNode::TSThisType, pos, &ts_this_type.span, 0)
         }
-        TsThisTypeOrIdent::Ident(ident) => serialize_ident(ctx, &ident, pos),
+        TsThisTypeOrIdent::Ident(ident) => serialize_ident(ctx, ident, pos),
       };
 
       let type_ann = maybe_serialize_ts_type_ann(ctx, &node.type_ann, pos);
@@ -2789,7 +2781,7 @@ fn serialize_ts_lit_type(
   let lit = match &node.lit {
     TsLit::Number(lit) => serialize_lit(ctx, &Lit::Num(lit.clone()), pos),
     TsLit::Str(lit) => serialize_lit(ctx, &Lit::Str(lit.clone()), pos),
-    TsLit::Bool(lit) => serialize_lit(ctx, &Lit::Bool(lit.clone()), pos),
+    TsLit::Bool(lit) => serialize_lit(ctx, &Lit::Bool(*lit), pos),
     TsLit::BigInt(lit) => serialize_lit(ctx, &Lit::BigInt(lit.clone()), pos),
     TsLit::Tpl(lit) => serialize_expr(
       ctx,
