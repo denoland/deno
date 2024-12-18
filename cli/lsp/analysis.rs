@@ -270,6 +270,10 @@ impl<'a> TsResponseImportMapper<'a> {
       }
     }
 
+    if specifier.scheme() == "node" {
+      return Some(specifier.to_string());
+    }
+
     if let Some(jsr_path) = specifier.as_str().strip_prefix(jsr_url().as_str())
     {
       let mut segments = jsr_path.split('/');
