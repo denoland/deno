@@ -12,6 +12,11 @@ export interface AstContext {
   propByStr: Map<string, number>;
 }
 
+export interface LintState {
+  plugins: Deno.LintPlugin[];
+  installedPlugins: Set<string>;
+}
+
 export type VisitorFn = (node: Deno.AstNode) => void;
 
 export interface CompiledVisitor {

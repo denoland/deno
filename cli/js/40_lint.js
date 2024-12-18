@@ -2,6 +2,11 @@
 
 // @ts-check
 
+import { core, internals } from "ext:core/mod.js";
+const {
+  op_lint_create_serialized_ast,
+} = core.ops;
+
 // Keep in sync with Rust
 // These types are expected to be present on every node. Note that this
 // isn't set in stone. We could revise this at a future point.
@@ -34,6 +39,13 @@ const PropFlags = {
 /** @typedef {import("./40_lint_types.d.ts").AstContext} AstContext */
 /** @typedef {import("./40_lint_types.d.ts").VisitorFn} VisitorFn */
 /** @typedef {import("./40_lint_types.d.ts").CompiledVisitor} CompiledVisitor */
+/** @typedef {import("./40_lint_types.d.ts").LintState} LintState */
+
+/** @type {LintState} */
+const state = {
+  plugins: [],
+  installedPlugins: new Set(),
+};
 
 /**
  * Every rule gets their own instance of this class. This is the main
@@ -55,6 +67,26 @@ export class Context {
     this.id = id;
     this.fileName = fileName;
   }
+}
+
+/**
+ * @param {Deno.LintPlugin} plugin
+ */
+export function installPlugin(plugin) {
+  if (typeof plugin !== "object") {
+    throw new Error("Linter plugin must be an object");
+  }
+  if (typeof plugin.name !== "string") {
+    throw new Error("Linter plugin name must be a string");
+  }
+  if (typeof plugin.rules !== "object") {
+    throw new Error("Linter plugin rules must be an object");
+  }
+  if (state.installedPlugins.has(plugin.name)) {
+    throw new Error(`Linter plugin ${plugin.name} has already been registered`);
+  }
+  state.plugins.push(plugin);
+  state.installedPlugins.add(plugin.name);
 }
 
 /**
@@ -701,3 +733,15 @@ function _dump(ctx) {
     }
   }
 }
+
+// TODO(bartlomieju): this is temporary, until we get plugins plumbed through
+// the CLI linter
+function runLintPlugin(plugin, fileName, sourceText) {
+  installPlugin(plugin);
+  const serializedAst = op_lint_create_serialized_ast(sourceText);
+  runPluginsForFile(fileName, serializedAst);
+}
+
+// TODO(bartlomieju): this is temporary, until we get plugins plumbed through
+// the CLI linter
+internals.runLintPlugin = runLintPlugin;
