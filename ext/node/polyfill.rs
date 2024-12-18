@@ -67,9 +67,9 @@ generate_builtin_node_module_lists! {
   "process",
   "punycode",
   "querystring",
-  "repl",
   "readline",
   "readline/promises",
+  "repl",
   "stream",
   "stream/consumers",
   "stream/promises",
@@ -89,4 +89,11 @@ generate_builtin_node_module_lists! {
   "wasi",
   "worker_threads",
   "zlib",
+}
+
+#[test]
+fn test_builtins_are_sorted() {
+  let mut builtins_list = SUPPORTED_BUILTIN_NODE_MODULES.to_vec();
+  builtins_list.sort();
+  assert_eq!(SUPPORTED_BUILTIN_NODE_MODULES, builtins_list);
 }
