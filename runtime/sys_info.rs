@@ -278,11 +278,15 @@ pub fn mem_info() -> Option<MemInfo> {
       mem_info.swap_total = xs.xsu_total;
       mem_info.swap_free = xs.xsu_avail;
 
+      extern "C" {
+        fn mach_host_self() -> std::ffi::c_uint;
+      }
+
       let mut count: u32 = libc::HOST_VM_INFO64_COUNT as _;
       let mut stat = std::mem::zeroed::<libc::vm_statistics64>();
       if libc::host_statistics64(
         // TODO(@littledivy): Put this in a once_cell.
-        libc::mach_host_self(),
+        mach_host_self(),
         libc::HOST_VM_INFO64,
         &mut stat as *mut libc::vm_statistics64 as *mut _,
         &mut count,
