@@ -1,0 +1,27 @@
+CallExpression {
+  type: "CallExpression",
+  range: [ 9, 14 ],
+  optional: false
+}
+CallExpression {
+  type: "CallExpression",
+  range: [ 16, 25 ],
+  optional: false
+}
+CallExpression {
+  type: "CallExpression",
+  range: [ 27, 41 ],
+  optional: false
+}
+MemberExpression {
+  type: "MemberExpression",
+  range: [ 83, 86 ],
+  optional: false,
+  computed: false
+}
+MemberExpression {
+  type: "MemberExpression",
+  range: [ 88, 94 ],
+  optional: false,
+  computed: true
+}

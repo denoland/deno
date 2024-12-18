@@ -1,0 +1,8 @@
+{
+  "lint": {
+    "plugins": ["./plugin.ts"],
+    "rules": {
+      "exclude": ["no-debugger"]
+    }
+  }
+}
