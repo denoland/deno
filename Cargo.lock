@@ -1215,7 +1215,7 @@ dependencies = [
 
 [[package]]
 name = "deno"
-version = "2.1.5"
+version = "2.1.4"
 dependencies = [
  "anstream",
  "async-trait",
@@ -2037,7 +2037,7 @@ dependencies = [
 
 [[package]]
 name = "deno_npm_cache"
-version = "0.4.0"
+version = "0.3.0"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -2110,7 +2110,7 @@ dependencies = [
 
 [[package]]
 name = "deno_permissions"
-version = "0.44.0"
+version = "0.43.0"
 dependencies = [
  "capacity_builder",
  "deno_core",
@@ -2129,7 +2129,7 @@ dependencies = [
 
 [[package]]
 name = "deno_resolver"
-version = "0.16.0"
+version = "0.15.0"
 dependencies = [
  "anyhow",
  "base32",
@@ -2148,7 +2148,7 @@ dependencies = [
 
 [[package]]
 name = "deno_runtime"
-version = "0.193.0"
+version = "0.192.0"
 dependencies = [
  "color-print",
  "deno_ast",
@@ -4986,7 +4986,7 @@ dependencies = [
 
 [[package]]
 name = "node_resolver"
-version = "0.23.0"
+version = "0.22.0"
 dependencies = [
  "anyhow",
  "async-trait",
