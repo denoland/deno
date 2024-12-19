@@ -679,7 +679,9 @@ dependencies = [
 
 [[package]]
 name = "capacity_builder"
-version = "0.4.1"
+version = "0.4.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "0ced42635df19d69e4296203f3d09edf81993fc33f70d1dd9a53e9659964a1ad"
 dependencies = [
  "capacity_builder_macros",
  "ecow",
@@ -689,7 +691,9 @@ dependencies = [
 
 [[package]]
 name = "capacity_builder_macros"
-version = "0.2.0"
+version = "0.2.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "2883cccc7b2ed65fb29c1141063b0c544be562aed530bac4f4ada2f163c7618d"
 dependencies = [
  "quote",
  "syn 2.0.87",
@@ -1242,7 +1246,7 @@ dependencies = [
  "boxed_error",
  "bytes",
  "cache_control",
- "capacity_builder 0.4.1",
+ "capacity_builder 0.4.2",
  "chrono",
  "clap",
  "clap_complete",
@@ -1482,6 +1486,7 @@ dependencies = [
 [[package]]
 name = "deno_config"
 version = "0.40.0"
+source = "git+https://github.com/dsherret/deno_config.git?branch=refactor_deno_semver_0_7#1e0e40edc2d7f7bf37266740d90d5bc8c3f5dd63"
 dependencies = [
  "anyhow",
  "deno_package_json",
@@ -1735,10 +1740,11 @@ dependencies = [
 [[package]]
 name = "deno_graph"
 version = "0.86.3"
+source = "git+https://github.com/dsherret/deno_graph.git?branch=refactor_deno_semver_0_7#20e0e943327790637dd59f54a7a6b7960ed76a14"
 dependencies = [
  "anyhow",
  "async-trait",
- "capacity_builder 0.4.1",
+ "capacity_builder 0.4.2",
  "data-url",
  "deno_ast",
  "deno_semver",
@@ -1874,6 +1880,7 @@ dependencies = [
 [[package]]
 name = "deno_lockfile"
 version = "0.23.2"
+source = "git+https://github.com/dsherret/deno_lockfile.git?branch=deno_semver_0_7#2f4d4bef5141c73591c68b578433ddbb8b1442ef"
 dependencies = [
  "deno_semver",
  "serde",
@@ -2032,9 +2039,10 @@ dependencies = [
 [[package]]
 name = "deno_npm"
 version = "0.26.0"
+source = "git+https://github.com/dsherret/deno_npm.git?branch=refactor_deno_semver_0_7#e75af8a5fc919f17811afefb8c03086695e42cb4"
 dependencies = [
  "async-trait",
- "capacity_builder 0.4.1",
+ "capacity_builder 0.4.2",
  "deno_error",
  "deno_lockfile",
  "deno_semver",
@@ -2097,6 +2105,7 @@ dependencies = [
 [[package]]
 name = "deno_package_json"
 version = "0.2.1"
+source = "git+https://github.com/dsherret/deno_package_json.git?branch=refactor_deno_semver_0_7#93b8f486ffffa8b0846e5aced09c45324150b1d1"
 dependencies = [
  "boxed_error",
  "deno_error",
@@ -2125,7 +2134,7 @@ dependencies = [
 name = "deno_permissions"
 version = "0.43.0"
 dependencies = [
- "capacity_builder 0.4.1",
+ "capacity_builder 0.4.2",
  "deno_core",
  "deno_path_util",
  "deno_terminal 0.2.0",
@@ -2231,8 +2240,9 @@ dependencies = [
 [[package]]
 name = "deno_semver"
 version = "0.6.1"
+source = "git+https://github.com/dsherret/deno_semver.git?branch=perf_stack_strings#d5a325428693cac86b033c712c54aa172b677df1"
 dependencies = [
- "capacity_builder 0.4.1",
+ "capacity_builder 0.4.2",
  "deno_error",
  "ecow",
  "hipstr",
