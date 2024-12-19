@@ -67,7 +67,7 @@ impl WindowsSystemRootablePath {
 #[derive(Debug)]
 pub struct BuiltVfs {
   pub root_path: WindowsSystemRootablePath,
-  pub root: VirtualDirectory,
+  pub entries: VirtualDirectoryEntries,
   pub files: Vec<Vec<u8>>,
 }
 
@@ -95,7 +95,7 @@ impl VfsBuilder {
     Self {
       executable_root: VirtualDirectory {
         name: "/".to_string(),
-        entries: Vec::new(),
+        entries: Default::default(),
       },
       files: Vec::new(),
       current_offset: 0,
@@ -208,23 +208,20 @@ impl VfsBuilder {
         continue;
       }
       let name = component.as_os_str().to_string_lossy();
-      let index = match current_dir
-        .entries
-        .binary_search_by(|e| e.name().cmp(&name))
-      {
+      let index = match current_dir.entries.binary_search(&name) {
         Ok(index) => index,
         Err(insert_index) => {
-          current_dir.entries.insert(
+          current_dir.entries.0.insert(
             insert_index,
             VfsEntry::Dir(VirtualDirectory {
               name: name.to_string(),
-              entries: Vec::new(),
+              entries: Default::default(),
             }),
           );
           insert_index
         }
       };
-      match &mut current_dir.entries[index] {
+      match &mut current_dir.entries.0[index] {
         VfsEntry::Dir(dir) => {
           current_dir = dir;
         }
@@ -248,14 +245,8 @@ impl VfsBuilder {
         continue;
       }
       let name = component.as_os_str().to_string_lossy();
-      let index = match current_dir
-        .entries
-        .binary_search_by(|e| e.name().cmp(&name))
-      {
-        Ok(index) => index,
-        Err(_) => return None,
-      };
-      match &mut current_dir.entries[index] {
+      let entry = current_dir.entries.get_mut_by_name(&name)?;
+      match entry {
         VfsEntry::Dir(dir) => {
           current_dir = dir;
         }
@@ -320,9 +311,9 @@ impl VfsBuilder {
       offset,
       len: data.len() as u64,
     };
-    match dir.entries.binary_search_by(|e| e.name().cmp(&name)) {
+    match dir.entries.binary_search(&name) {
       Ok(index) => {
-        let entry = &mut dir.entries[index];
+        let entry = &mut dir.entries.0[index];
         match entry {
           VfsEntry::File(virtual_file) => match sub_data_kind {
             VfsFileSubDataKind::Raw => {
@@ -336,7 +327,7 @@ impl VfsBuilder {
         }
       }
       Err(insert_index) => {
-        dir.entries.insert(
+        dir.entries.0.insert(
           insert_index,
           VfsEntry::File(VirtualFile {
             name: name.to_string(),
@@ -384,10 +375,10 @@ impl VfsBuilder {
     let target = normalize_path(path.parent().unwrap().join(&target));
     let dir = self.add_dir_raw(path.parent().unwrap());
     let name = path.file_name().unwrap().to_string_lossy();
-    match dir.entries.binary_search_by(|e| e.name().cmp(&name)) {
+    match dir.entries.binary_search(&name) {
       Ok(_) => {} // previously inserted
       Err(insert_index) => {
-        dir.entries.insert(
+        dir.entries.0.insert(
           insert_index,
           VfsEntry::Symlink(VirtualSymlink {
             name: name.to_string(),
@@ -426,7 +417,7 @@ impl VfsBuilder {
       dir: &mut VirtualDirectory,
       parts: &[String],
     ) {
-      for entry in &mut dir.entries {
+      for entry in &mut dir.entries.0 {
         match entry {
           VfsEntry::Dir(dir) => {
             strip_prefix_from_symlinks(dir, parts);
@@ -454,13 +445,13 @@ impl VfsBuilder {
       if self.min_root_dir.as_ref() == Some(&current_path) {
         break;
       }
-      match &current_dir.entries[0] {
+      match &current_dir.entries.0[0] {
         VfsEntry::Dir(dir) => {
           if dir.name == DENO_COMPILE_GLOBAL_NODE_MODULES_DIR_NAME {
             // special directory we want to maintain
             break;
           }
-          match current_dir.entries.remove(0) {
+          match current_dir.entries.0.remove(0) {
             VfsEntry::Dir(dir) => {
               current_path =
                 WindowsSystemRootablePath::Path(current_path.join(&dir.name));
@@ -480,7 +471,7 @@ impl VfsBuilder {
     }
     BuiltVfs {
       root_path: current_path,
-      root: current_dir,
+      entries: current_dir.entries,
       files: self.files,
     }
   }
@@ -506,7 +497,7 @@ pub fn output_vfs(vfs: &BuiltVfs, executable_name: &str) {
     return; // no need to compute if won't output
   }
 
-  if vfs.root.entries.is_empty() {
+  if vfs.entries.is_empty() {
     return; // nothing to output
   }
 
@@ -696,7 +687,7 @@ fn vfs_as_display_tree(
 
   fn dir_size(dir: &VirtualDirectory, seen_offsets: &mut HashSet<u64>) -> Size {
     let mut size = Size::default();
-    for entry in &dir.entries {
+    for entry in dir.entries.iter() {
       match entry {
         VfsEntry::Dir(virtual_directory) => {
           size = size + dir_size(virtual_directory, seen_offsets);
@@ -760,15 +751,10 @@ fn vfs_as_display_tree(
 
   fn include_all_entries<'a>(
     dir_path: &WindowsSystemRootablePath,
-    vfs_dir: &'a VirtualDirectory,
+    entries: &'a VirtualDirectoryEntries,
     seen_offsets: &mut HashSet<u64>,
   ) -> Vec<DirEntryOutput<'a>> {
-    if vfs_dir.name == DENO_COMPILE_GLOBAL_NODE_MODULES_DIR_NAME {
-      return show_global_node_modules_dir(vfs_dir, seen_offsets);
-    }
-
-    vfs_dir
-      .entries
+    entries
       .iter()
       .map(|entry| DirEntryOutput {
         name: Cow::Borrowed(entry.name()),
@@ -826,10 +812,12 @@ fn vfs_as_display_tree(
       } else {
         EntryOutput::Subset(children)
       }
+    } else if vfs_dir.name == DENO_COMPILE_GLOBAL_NODE_MODULES_DIR_NAME {
+      EntryOutput::Subset(show_global_node_modules_dir(vfs_dir, seen_offsets))
     } else {
       EntryOutput::Subset(include_all_entries(
         &WindowsSystemRootablePath::Path(dir),
-        vfs_dir,
+        &vfs_dir.entries,
         seen_offsets,
       ))
     }
@@ -839,7 +827,7 @@ fn vfs_as_display_tree(
   // user might not have context about what's being shown
   let mut seen_offsets = HashSet::with_capacity(vfs.files.len());
   let mut child_entries =
-    include_all_entries(&vfs.root_path, &vfs.root, &mut seen_offsets);
+    include_all_entries(&vfs.root_path, &vfs.entries, &mut seen_offsets);
   for child_entry in &mut child_entries {
     child_entry.collapse_leaf_nodes();
   }
@@ -961,27 +949,70 @@ impl VfsEntry {
   }
 }
 
+#[derive(Debug, Default, Serialize, Deserialize)]
+pub struct VirtualDirectoryEntries(Vec<VfsEntry>);
+
+impl VirtualDirectoryEntries {
+  pub fn new(mut entries: Vec<VfsEntry>) -> Self {
+    // needs to be sorted by name
+    entries.sort_by(|a, b| a.name().cmp(b.name()));
+    Self(entries)
+  }
+
+  pub fn take_inner(&mut self) -> Vec<VfsEntry> {
+    std::mem::take(&mut self.0)
+  }
+
+  pub fn is_empty(&self) -> bool {
+    self.0.is_empty()
+  }
+
+  pub fn len(&self) -> usize {
+    self.0.len()
+  }
+
+  pub fn get_by_name(&self, name: &str) -> Option<&VfsEntry> {
+    self.binary_search(name).ok().map(|index| &self.0[index])
+  }
+
+  pub fn get_mut_by_name(&mut self, name: &str) -> Option<&mut VfsEntry> {
+    self
+      .binary_search(name)
+      .ok()
+      .map(|index| &mut self.0[index])
+  }
+
+  pub fn binary_search(&self, name: &str) -> Result<usize, usize> {
+    self.0.binary_search_by(|e| e.name().cmp(name))
+  }
+
+  pub fn insert(&mut self, entry: VfsEntry) {
+    match self.binary_search(entry.name()) {
+      Ok(index) => {
+        self.0[index] = entry;
+      }
+      Err(insert_index) => {
+        self.0.insert(insert_index, entry);
+      }
+    }
+  }
+
+  pub fn remove(&mut self, index: usize) -> VfsEntry {
+    self.0.remove(index)
+  }
+
+  pub fn iter(&self) -> std::slice::Iter<'_, VfsEntry> {
+    self.0.iter()
+  }
+}
+
 #[derive(Debug, Serialize, Deserialize)]
 pub struct VirtualDirectory {
   #[serde(rename = "n")]
   pub name: String,
   // should be sorted by name
   #[serde(rename = "e")]
-  pub entries: Vec<VfsEntry>,
-}
-
-impl VirtualDirectory {
-  pub fn insert_entry(&mut self, entry: VfsEntry) {
-    let name = entry.name();
-    match self.entries.binary_search_by(|e| e.name().cmp(name)) {
-      Ok(index) => {
-        self.entries[index] = entry;
-      }
-      Err(insert_index) => {
-        self.entries.insert(insert_index, entry);
-      }
-    }
-  }
+  pub entries: VirtualDirectoryEntries,
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
@@ -1136,20 +1167,13 @@ impl VfsRoot {
         }
       };
       let component = component.to_string_lossy();
-      match current_dir
+      current_entry = current_dir
         .entries
-        .binary_search_by(|e| e.name().cmp(&component))
-      {
-        Ok(index) => {
-          current_entry = current_dir.entries[index].as_ref();
-        }
-        Err(_) => {
-          return Err(std::io::Error::new(
-            std::io::ErrorKind::NotFound,
-            "path not found",
-          ));
-        }
-      }
+        .get_by_name(&component)
+        .ok_or_else(|| {
+          std::io::Error::new(std::io::ErrorKind::NotFound, "path not found")
+        })?
+        .as_ref();
     }
 
     Ok((final_path, current_entry))
@@ -1706,7 +1730,10 @@ mod test {
       FileBackedVfs::new(
         Cow::Owned(data),
         VfsRoot {
-          dir: vfs.root,
+          dir: VirtualDirectory {
+            name: "".to_string(),
+            entries: vfs.entries,
+          },
           root_path: dest_path.to_path_buf(),
           start_file_offset: 0,
         },
