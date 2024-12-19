@@ -964,7 +964,7 @@ fn resolve_graph_specifier_types(
 }
 
 #[derive(Debug, Error, deno_error::JsError)]
-enum ResolveNonGraphSpecifierTypesError {
+pub enum ResolveNonGraphSpecifierTypesError {
   #[class(inherit)]
   #[error(transparent)]
   ResolvePkgFolderFromDenoReq(#[from] ResolvePkgFolderFromDenoReqError),
@@ -1166,6 +1166,7 @@ pub fn exec(request: Request) -> Result<Response, AnyError> {
 
 #[cfg(test)]
 mod tests {
+  use deno_core::error::JsNativeError;
   use super::Diagnostic;
   use super::DiagnosticCategory;
   use super::*;
@@ -1200,7 +1201,7 @@ mod tests {
           maybe_headers: None,
           content: c.into(),
         })
-      });
+      }).map_err(|e| Arc::new(JsNativeError::generic(e.to_string())).into());
       Box::pin(future::ready(response))
     }
   }

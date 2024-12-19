@@ -469,7 +469,7 @@ impl<'a> TaskRunner<'a> {
     self
       .run_single(RunSingleOptions {
         task_name,
-        script: &definition.command,
+        script: definition.command.as_ref().unwrap(),
         cwd: &cwd,
         custom_commands,
         kill_signal,

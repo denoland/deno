@@ -3783,7 +3783,7 @@ impl Inner {
         for (name, def) in tasks {
           result.push(TaskDefinition {
             name: name.clone(),
-            command: def.command.clone(),
+            command: def.command.clone().unwrap(),
             source_uri: url_to_uri(&config_file.specifier)
               .map_err(|_| LspError::internal_error())?,
           });

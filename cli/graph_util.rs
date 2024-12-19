@@ -946,8 +946,8 @@ fn get_resolution_error_bare_specifier(
     Some(specifier.as_str())
   } else if let ResolutionError::ResolverError { error, .. } = error {
     if let ResolveError::Other(error) = (*error).as_ref() {
-      if let Some(ImportMapError::UnmappedBareSpecifier(specifier, _)) =
-        error.downcast_ref::<ImportMapError>()
+      if let Some(import_map::ImportMapErrorKind::UnmappedBareSpecifier(specifier, _)) =
+        error.as_any().downcast_ref::<ImportMapError>().map(|e| &**e)
       {
         Some(specifier.as_str())
       } else {
@@ -984,7 +984,7 @@ fn get_import_prefix_missing_error(error: &ResolutionError) -> Option<&str> {
         ResolveError::Other(other_error) => {
           if let Some(SpecifierError::ImportPrefixMissing {
             specifier, ..
-          }) = other_error.downcast_ref::<SpecifierError>()
+          }) = other_error.as_any().downcast_ref::<SpecifierError>()
           {
             maybe_specifier = Some(specifier);
           }
@@ -1303,7 +1303,7 @@ mod test {
       let specifier = ModuleSpecifier::parse("file:///file.ts").unwrap();
       let err = import_map.resolve(input, &specifier).err().unwrap();
       let err = ResolutionError::ResolverError {
-        error: Arc::new(ResolveError::Other(err.into())),
+        error: Arc::new(ResolveError::Other(Box::new(err))),
         specifier: input.to_string(),
         range: Range {
           specifier,
