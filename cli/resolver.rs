@@ -106,7 +106,8 @@ impl deno_resolver::fs::DenoResolverFs for CliDenoResolverFs {
   }
 }
 
-#[derive(Debug, Error)]
+#[derive(Debug, Error, deno_error::JsError)]
+#[class(type)]
 #[error("{media_type} files are not supported in npm packages: {specifier}")]
 pub struct NotSupportedKindInNpmError {
   pub media_type: MediaType,

@@ -18,7 +18,6 @@ use deno_package_json::PackageJsonRc;
 use deno_path_util::normalize_path;
 use deno_path_util::url_from_file_path;
 use deno_path_util::url_to_file_path;
-use deno_permissions::PermissionCheckError;
 use node_resolver::errors::ClosestPkgJsonError;
 use node_resolver::NodeResolutionKind;
 use node_resolver::ResolutionMode;
@@ -33,7 +32,7 @@ use std::rc::Rc;
 fn ensure_read_permission<'a, P>(
   state: &mut OpState,
   file_path: &'a Path,
-) -> Result<Cow<'a, Path>, PermissionCheckError>
+) -> Result<Cow<'a, Path>, JsNativeError>
 where
   P: NodePermissions + 'static,
 {
@@ -56,11 +55,7 @@ pub enum RequireErrorKind {
   ),
   #[class(inherit)]
   #[error(transparent)]
-  Permission(
-    #[from]
-    #[inherit]
-    PermissionCheckError,
-  ),
+  Permission(#[inherit] JsNativeError),
   #[class(generic)]
   #[error(transparent)]
   PackageExportsResolve(
@@ -328,7 +323,7 @@ pub fn op_require_path_is_absolute(#[string] p: String) -> bool {
 pub fn op_require_stat<P>(
   state: &mut OpState,
   #[string] path: String,
-) -> Result<i32, PermissionCheckError>
+) -> Result<i32, JsNativeError>
 where
   P: NodePermissions + 'static,
 {
@@ -413,7 +408,7 @@ pub fn op_require_try_self_parent_path<P>(
   has_parent: bool,
   #[string] maybe_parent_filename: Option<String>,
   #[string] maybe_parent_id: Option<String>,
-) -> Result<Option<String>, PermissionCheckError>
+) -> Result<Option<String>, JsNativeError>
 where
   P: NodePermissions + 'static,
 {

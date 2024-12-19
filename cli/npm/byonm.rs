@@ -17,8 +17,8 @@ use crate::args::NpmProcessState;
 use crate::args::NpmProcessStateKind;
 use crate::resolver::CliDenoResolverFs;
 
-use super::CliNpmResolver;
 use super::InnerCliNpmResolverRef;
+use super::{managed, CliNpmResolver};
 
 pub type CliByonmNpmResolverCreateOptions =
   ByonmNpmResolverCreateOptions<CliDenoResolverFs, DenoFsNodeResolverEnv>;
@@ -79,13 +79,12 @@ impl CliNpmResolver for CliByonmNpmResolver {
     &self,
     permissions: &mut dyn NodePermissions,
     path: &'a Path,
-  ) -> Result<Cow<'a, Path>, deno_runtime::deno_permissions::PermissionCheckError>
-  {
+  ) -> Result<Cow<'a, Path>, managed::EnsureRegistryReadPermissionError> {
     if !path
       .components()
       .any(|c| c.as_os_str().to_ascii_lowercase() == "node_modules")
     {
-      permissions.check_read_path(path)
+      permissions.check_read_path(path).map_err(Into::into)
     } else {
       Ok(Cow::Borrowed(path))
     }

@@ -231,7 +231,7 @@ pub async fn execute_script(
           &Url::from_directory_path(cli_options.initial_cwd()).unwrap(),
           "",
           &TaskDefinition {
-            command: task_flags.task.as_ref().unwrap().to_string(),
+            command: Some(task_flags.task.as_ref().unwrap().to_string()),
             dependencies: vec![],
             description: None,
           },
@@ -873,11 +873,13 @@ fn print_available_tasks(
         )?;
       }
     }
-    writeln!(
-      writer,
-      "    {}",
-      strip_ansi_codes_and_escape_control_chars(&desc.task.command)
-    )?;
+    if let Some(command) = desc.task.command {
+      writeln!(
+        writer,
+        "    {}",
+        strip_ansi_codes_and_escape_control_chars(&command)
+      )?;
+    }
     if !desc.task.dependencies.is_empty() {
       let dependencies = desc
         .task

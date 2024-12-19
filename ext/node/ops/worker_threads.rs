@@ -2,11 +2,11 @@
 
 use crate::NodePermissions;
 use crate::NodeRequireLoaderRc;
+use deno_core::error::JsNativeError;
 use deno_core::op2;
 use deno_core::url::Url;
 use deno_core::OpState;
 use deno_fs::FileSystemRc;
-use deno_permissions::PermissionCheckError;
 use std::borrow::Cow;
 use std::path::Path;
 use std::path::PathBuf;
@@ -15,7 +15,7 @@ use std::path::PathBuf;
 fn ensure_read_permission<'a, P>(
   state: &mut OpState,
   file_path: &'a Path,
-) -> Result<Cow<'a, Path>, PermissionCheckError>
+) -> Result<Cow<'a, Path>, JsNativeError>
 where
   P: NodePermissions + 'static,
 {
@@ -28,7 +28,7 @@ where
 pub enum WorkerThreadsFilenameError {
   #[class(inherit)]
   #[error(transparent)]
-  Permission(#[from] PermissionCheckError),
+  Permission(JsNativeError),
   #[class(inherit)]
   #[error("{0}")]
   UrlParse(
@@ -80,7 +80,8 @@ where
     if path.is_relative() && !specifier.starts_with('.') {
       return Err(WorkerThreadsFilenameError::InvalidRelativeUrl);
     }
-    let path = ensure_read_permission::<P>(state, &path)?;
+    let path = ensure_read_permission::<P>(state, &path)
+      .map_err(WorkerThreadsFilenameError::Permission)?;
     let fs = state.borrow::<FileSystemRc>();
     let canonicalized_path =
       deno_path_util::strip_unc_prefix(fs.realpath_sync(&path)?);
@@ -90,7 +91,8 @@ where
   let url_path = url
     .to_file_path()
     .map_err(|_| WorkerThreadsFilenameError::UrlToPathString)?;
-  let url_path = ensure_read_permission::<P>(state, &url_path)?;
+  let url_path = ensure_read_permission::<P>(state, &url_path)
+    .map_err(WorkerThreadsFilenameError::Permission)?;
   let fs = state.borrow::<FileSystemRc>();
   if !fs.exists_sync(&url_path) {
     return Err(WorkerThreadsFilenameError::FileNotFound(

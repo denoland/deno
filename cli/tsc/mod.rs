@@ -724,7 +724,7 @@ pub enum ResolveError {
   #[class(inherit)]
   #[error("{0}")]
   ResolvePkgFolderFromDenoModule(
-    #[from] ResolvePkgFolderFromDenoModuleError,
+    #[from] crate::npm::ResolvePkgFolderFromDenoModuleError,
   ),
   #[class(inherit)]
   #[error("{0}")]

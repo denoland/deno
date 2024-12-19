@@ -14,14 +14,14 @@ use std::sync::Mutex;
 use super::super::PackageCaching;
 use async_trait::async_trait;
 use deno_ast::ModuleSpecifier;
-use deno_core::anyhow::Context;
-use deno_core::error::{AnyError, JsNativeError};
+use deno_core::error::JsNativeError;
 use deno_core::futures;
 use deno_core::futures::StreamExt;
 use deno_npm::NpmPackageCacheFolderId;
 use deno_npm::NpmPackageId;
 use deno_npm::NpmResolutionPackage;
 use deno_runtime::deno_fs::FileSystem;
+use deno_runtime::deno_io::fs::FsError;
 use deno_runtime::deno_node::NodePermissions;
 use node_resolver::errors::PackageFolderResolveError;
 
@@ -58,7 +58,7 @@ pub trait NpmPackageFsResolver: Send + Sync {
   fn resolve_package_cache_folder_id_from_specifier(
     &self,
     specifier: &ModuleSpecifier,
-  ) -> Result<Option<NpmPackageCacheFolderId>, AnyError>;
+  ) -> Result<Option<NpmPackageCacheFolderId>, std::io::Error>;
 
   async fn cache_packages<'a>(
     &self,
@@ -70,7 +70,22 @@ pub trait NpmPackageFsResolver: Send + Sync {
     &self,
     permissions: &mut dyn NodePermissions,
     path: &'a Path,
-  ) -> Result<Cow<'a, Path>, deno_runtime::deno_permissions::PermissionCheckError>;
+  ) -> Result<Cow<'a, Path>, EnsureRegistryReadPermissionError>;
+}
+
+#[derive(Debug, thiserror::Error, deno_error::JsError)]
+pub enum EnsureRegistryReadPermissionError {
+  #[class(inherit)]
+  #[error("failed canonicalizing '{path}'")]
+  Canonicalize {
+    path: PathBuf,
+    #[source]
+    #[inherit]
+    source: FsError,
+  },
+  #[class(inherit)]
+  #[error(transparent)]
+  PermissionCheck(#[from] deno_runtime::deno_permissions::PermissionCheckError),
 }
 
 #[derive(Debug)]
@@ -93,8 +108,7 @@ impl RegistryReadPermissionChecker {
     &self,
     permissions: &mut dyn NodePermissions,
     path: &'a Path,
-  ) -> Result<Cow<'a, Path>, deno_runtime::deno_permissions::PermissionCheckError>
-  {
+  ) -> Result<Cow<'a, Path>, EnsureRegistryReadPermissionError> {
     if permissions.query_read_all() {
       return Ok(Cow::Borrowed(path)); // skip permissions checks below
     }
@@ -107,26 +121,29 @@ impl RegistryReadPermissionChecker {
 
     if is_path_in_node_modules {
       let mut cache = self.cache.lock().unwrap();
-      let mut canonicalize =
-        |path: &Path| -> Result<Option<PathBuf>, AnyError> {
-          match cache.get(path) {
-            Some(canon) => Ok(Some(canon.clone())),
-            None => match self.fs.realpath_sync(path) {
-              Ok(canon) => {
-                cache.insert(path.to_path_buf(), canon.clone());
-                Ok(Some(canon))
+      let mut canonicalize = |path: &Path| -> Result<
+        Option<PathBuf>,
+        EnsureRegistryReadPermissionError,
+      > {
+        match cache.get(path) {
+          Some(canon) => Ok(Some(canon.clone())),
+          None => match self.fs.realpath_sync(path) {
+            Ok(canon) => {
+              cache.insert(path.to_path_buf(), canon.clone());
+              Ok(Some(canon))
+            }
+            Err(e) => {
+              if e.kind() == ErrorKind::NotFound {
+                return Ok(None);
               }
-              Err(e) => {
-                if e.kind() == ErrorKind::NotFound {
-                  return Ok(None);
-                }
-                Err(AnyError::from(e)).with_context(|| {
-                  format!("failed canonicalizing '{}'", path.display())
-                })
-              }
-            },
-          }
-        };
+              Err(EnsureRegistryReadPermissionError::Canonicalize {
+                path: path.to_path_buf(),
+                source: e,
+              })
+            }
+          },
+        }
+      };
       if let Some(registry_path_canon) = canonicalize(&self.registry_path)? {
         if let Some(path_canon) = canonicalize(path)? {
           if path_canon.starts_with(registry_path_canon) {
@@ -140,7 +157,7 @@ impl RegistryReadPermissionChecker {
       }
     }
 
-    permissions.check_read_path(path)
+    permissions.check_read_path(path).map_err(Into::into)
   }
 }
 
@@ -159,7 +176,7 @@ pub async fn cache_packages(
   }
   while let Some(result) = futures_unordered.next().await {
     // surface the first error
-    result?;
+    result.map_err(JsNativeError::from_err)?;
   }
   Ok(())
 }

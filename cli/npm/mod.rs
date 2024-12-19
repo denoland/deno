@@ -8,7 +8,7 @@ use std::path::Path;
 use std::sync::Arc;
 
 use dashmap::DashMap;
-use deno_core::error::AnyError;
+use deno_core::error::{AnyError, JsNativeError};
 use deno_core::serde_json;
 use deno_core::url::Url;
 use deno_npm::npm_rc::ResolvedNpmRc;
@@ -40,8 +40,10 @@ pub use self::byonm::CliByonmNpmResolverCreateOptions;
 pub use self::managed::CliManagedInNpmPkgCheckerCreateOptions;
 pub use self::managed::CliManagedNpmResolverCreateOptions;
 pub use self::managed::CliNpmResolverManagedSnapshotOption;
+pub use self::managed::EnsureRegistryReadPermissionError;
 pub use self::managed::ManagedCliNpmResolver;
 pub use self::managed::PackageCaching;
+pub use self::managed::ResolvePkgFolderFromDenoModuleError;
 
 pub type CliNpmTarballCache = deno_npm_cache::TarballCache<CliNpmCacheEnv>;
 pub type CliNpmCache = deno_npm_cache::NpmCache<CliNpmCacheEnv>;
@@ -79,9 +81,9 @@ impl deno_npm_cache::NpmCacheEnv for CliNpmCacheEnv {
     &self,
     from: &Path,
     to: &Path,
-  ) -> Result<(), AnyError> {
+  ) -> Result<(), JsNativeError> {
     // todo(dsherret): use self.fs here instead
-    hard_link_dir_recursive(from, to)
+    hard_link_dir_recursive(from, to).map_err(JsNativeError::from_err)
   }
 
   fn atomic_write_file_with_retries(
@@ -223,7 +225,7 @@ pub trait CliNpmResolver: NpmPackageFolderResolver + CliNpmReqResolver {
     &self,
     permissions: &mut dyn NodePermissions,
     path: &'a Path,
-  ) -> Result<Cow<'a, Path>, deno_runtime::deno_permissions::PermissionCheckError>;
+  ) -> Result<Cow<'a, Path>, managed::EnsureRegistryReadPermissionError>;
 
   /// Returns a hash returning the state of the npm resolver
   /// or `None` if the state currently can't be determined.

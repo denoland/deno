@@ -15,7 +15,6 @@ use deno_config::glob::PathOrPattern;
 use deno_config::glob::PathOrPatternSet;
 use deno_config::glob::WalkEntry;
 use deno_core::anyhow::anyhow;
-use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
 use deno_core::unsync::spawn_blocking;
 use deno_core::ModuleSpecifier;
@@ -530,14 +529,75 @@ pub fn copy_dir_recursive(
   Ok(())
 }
 
+#[derive(Debug, thiserror::Error, deno_error::JsError)]
+pub enum HardLinkDirRecursiveError {
+  #[class(inherit)]
+  #[error(transparent)]
+  Io(#[from] Error),
+  #[class(inherit)]
+  #[error("Creating {path}")]
+  Creating {
+    path: PathBuf,
+    #[source]
+    #[inherit]
+    source: Error,
+  },
+  #[class(inherit)]
+  #[error("Creating {path}")]
+  Reading {
+    path: PathBuf,
+    #[source]
+    #[inherit]
+    source: Error,
+  },
+  #[class(inherit)]
+  #[error("Dir {from} to {to}")]
+  Dir {
+    from: PathBuf,
+    to: PathBuf,
+    #[source]
+    #[inherit]
+    source: Box<Self>,
+  },
+  #[class(inherit)]
+  #[error("Removing file to hard link {from} to {to}")]
+  RemoveFileToHardLink {
+    from: PathBuf,
+    to: PathBuf,
+    #[source]
+    #[inherit]
+    source: Error,
+  },
+  #[class(inherit)]
+  #[error("Hard linking {from} to {to}")]
+  HardLinking {
+    from: PathBuf,
+    to: PathBuf,
+    #[source]
+    #[inherit]
+    source: Error,
+  },
+}
+
 /// Hardlinks the files in one directory to another directory.
 ///
 /// Note: Does not handle symlinks.
-pub fn hard_link_dir_recursive(from: &Path, to: &Path) -> Result<(), AnyError> {
-  std::fs::create_dir_all(to)
-    .with_context(|| format!("Creating {}", to.display()))?;
-  let read_dir = std::fs::read_dir(from)
-    .with_context(|| format!("Reading {}", from.display()))?;
+pub fn hard_link_dir_recursive(
+  from: &Path,
+  to: &Path,
+) -> Result<(), HardLinkDirRecursiveError> {
+  std::fs::create_dir_all(to).map_err(|source| {
+    HardLinkDirRecursiveError::Creating {
+      path: to.to_path_buf(),
+      source,
+    }
+  })?;
+  let read_dir = std::fs::read_dir(from).map_err(|source| {
+    HardLinkDirRecursiveError::Reading {
+      path: from.to_path_buf(),
+      source,
+    }
+  })?;
 
   for entry in read_dir {
     let entry = entry?;
@@ -546,8 +606,12 @@ pub fn hard_link_dir_recursive(from: &Path, to: &Path) -> Result<(), AnyError> {
     let new_to = to.join(entry.file_name());
 
     if file_type.is_dir() {
-      hard_link_dir_recursive(&new_from, &new_to).with_context(|| {
-        format!("Dir {} to {}", new_from.display(), new_to.display())
+      hard_link_dir_recursive(&new_from, &new_to).map_err(|source| {
+        HardLinkDirRecursiveError::Dir {
+          from: new_from.to_path_buf(),
+          to: new_to.to_path_buf(),
+          source: Box::new(source),
+        }
       })?;
     } else if file_type.is_file() {
       // note: chance for race conditions here between attempting to create,
@@ -564,12 +628,10 @@ pub fn hard_link_dir_recursive(from: &Path, to: &Path) -> Result<(), AnyError> {
               // faster to reduce contention.
               std::thread::sleep(Duration::from_millis(10));
             } else {
-              return Err(err).with_context(|| {
-                format!(
-                  "Removing file to hard link {} to {}",
-                  new_from.display(),
-                  new_to.display()
-                )
+              return Err(HardLinkDirRecursiveError::RemoveFileToHardLink {
+                from: new_from.to_path_buf(),
+                to: new_to.to_path_buf(),
+                source: err,
               });
             }
           }
@@ -583,22 +645,18 @@ pub fn hard_link_dir_recursive(from: &Path, to: &Path) -> Result<(), AnyError> {
             if err.kind() == ErrorKind::AlreadyExists {
               std::thread::sleep(Duration::from_millis(10));
             } else {
-              return Err(err).with_context(|| {
-                format!(
-                  "Hard linking {} to {}",
-                  new_from.display(),
-                  new_to.display()
-                )
+              return Err(HardLinkDirRecursiveError::HardLinking {
+                from: new_from.to_path_buf(),
+                to: new_to.to_path_buf(),
+                source: err,
               });
             }
           }
         } else {
-          return Err(err).with_context(|| {
-            format!(
-              "Hard linking {} to {}",
-              new_from.display(),
-              new_to.display()
-            )
+          return Err(HardLinkDirRecursiveError::HardLinking {
+            from: new_from.to_path_buf(),
+            to: new_to.to_path_buf(),
+            source: err,
           });
         }
       }

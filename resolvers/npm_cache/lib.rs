@@ -6,11 +6,10 @@ use std::path::Path;
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use anyhow::bail;
-use anyhow::Context;
 use anyhow::Error as AnyError;
 use deno_cache_dir::file_fetcher::CacheSetting;
 use deno_cache_dir::npm::NpmCacheDir;
+use deno_core::error::JsNativeError;
 use deno_npm::npm_rc::ResolvedNpmRc;
 use deno_npm::registry::NpmPackageInfo;
 use deno_npm::NpmPackageCacheFolderId;
@@ -61,7 +60,7 @@ pub trait NpmCacheEnv: Send + Sync + 'static {
     &self,
     from: &Path,
     to: &Path,
-  ) -> Result<(), AnyError>;
+  ) -> Result<(), JsNativeError>;
   fn atomic_write_file_with_retries(
     &self,
     file_path: &Path,
@@ -182,7 +181,7 @@ impl<TEnv: NpmCacheEnv> NpmCache<TEnv> {
   pub fn ensure_copy_package(
     &self,
     folder_id: &NpmPackageCacheFolderId,
-  ) -> Result<(), AnyError> {
+  ) -> Result<(), WithFolderSyncLockError> {
     let registry_url = self.npmrc.get_registry_url(&folder_id.nv.name);
     assert_ne!(folder_id.copy_index, 0);
     let package_folder = self.cache_dir.package_folder_for_id(
@@ -280,7 +279,7 @@ impl<TEnv: NpmCacheEnv> NpmCache<TEnv> {
       Err(err) if err.kind() == ErrorKind::NotFound => return Ok(None),
       Err(err) => return Err(serde_json::Error::io(err)),
     };
-    Ok(serde_json::from_str(&file_text)?)
+    serde_json::from_str(&file_text)
   }
 
   pub fn save_package_info(
@@ -304,17 +303,51 @@ impl<TEnv: NpmCacheEnv> NpmCache<TEnv> {
 
 const NPM_PACKAGE_SYNC_LOCK_FILENAME: &str = ".deno_sync_lock";
 
+#[derive(Debug, thiserror::Error, deno_error::JsError)]
+pub enum WithFolderSyncLockError {
+  #[class(inherit)]
+  #[error("Error creating '{path}'")]
+  CreateDir {
+    path: PathBuf,
+    #[source]
+    #[inherit]
+    source: std::io::Error,
+  },
+  #[class(inherit)]
+  #[error("Error creating package sync lock file at '{path}'. Maybe try manually deleting this folder.")]
+  CreateLockFile {
+    path: PathBuf,
+    #[source]
+    #[inherit]
+    source: std::io::Error,
+  },
+  #[class(inherit)]
+  #[error(transparent)]
+  Action(#[from] JsNativeError),
+  #[class(generic)]
+  #[error("Failed setting up package cache directory for {package}, then failed cleaning it up.\n\nOriginal error:\n\n{error}\n\nRemove error:\n\n{remove_error}\n\nPlease manually delete this folder or you will run into issues using this package in the future:\n\n{output_folder}")]
+  SetUpPackageCacheDir {
+    package: Box<PackageNv>,
+    error: Box<WithFolderSyncLockError>,
+    remove_error: std::io::Error,
+    output_folder: PathBuf,
+  },
+}
+
 fn with_folder_sync_lock(
   package: &PackageNv,
   output_folder: &Path,
-  action: impl FnOnce() -> Result<(), AnyError>,
-) -> Result<(), AnyError> {
+  action: impl FnOnce() -> Result<(), JsNativeError>,
+) -> Result<(), WithFolderSyncLockError> {
   fn inner(
     output_folder: &Path,
-    action: impl FnOnce() -> Result<(), AnyError>,
-  ) -> Result<(), AnyError> {
-    std::fs::create_dir_all(output_folder).with_context(|| {
-      format!("Error creating '{}'.", output_folder.display())
+    action: impl FnOnce() -> Result<(), JsNativeError>,
+  ) -> Result<(), WithFolderSyncLockError> {
+    std::fs::create_dir_all(output_folder).map_err(|source| {
+      WithFolderSyncLockError::CreateDir {
+        path: output_folder.to_path_buf(),
+        source,
+      }
     })?;
 
     // This sync lock file is a way to ensure that partially created
@@ -338,16 +371,10 @@ fn with_folder_sync_lock(
         let _ignore = std::fs::remove_file(&sync_lock_path);
         Ok(())
       }
-      Err(err) => {
-        bail!(
-          concat!(
-            "Error creating package sync lock file at '{}'. ",
-            "Maybe try manually deleting this folder.\n\n{:#}",
-          ),
-          output_folder.display(),
-          err
-        );
-      }
+      Err(err) => Err(WithFolderSyncLockError::CreateLockFile {
+        path: output_folder.to_path_buf(),
+        source: err,
+      }),
     }
   }
 
@@ -356,19 +383,12 @@ fn with_folder_sync_lock(
     Err(err) => {
       if let Err(remove_err) = std::fs::remove_dir_all(output_folder) {
         if remove_err.kind() != std::io::ErrorKind::NotFound {
-          bail!(
-            concat!(
-              "Failed setting up package cache directory for {}, then ",
-              "failed cleaning it up.\n\nOriginal error:\n\n{}\n\n",
-              "Remove error:\n\n{}\n\nPlease manually ",
-              "delete this folder or you will run into issues using this ",
-              "package in the future:\n\n{}"
-            ),
-            package,
-            err,
-            remove_err,
-            output_folder.display(),
-          );
+          return Err(WithFolderSyncLockError::SetUpPackageCacheDir {
+            package: Box::new(package.clone()),
+            error: Box::new(err),
+            remove_error: remove_err,
+            output_folder: output_folder.to_path_buf(),
+          });
         }
       }
       Err(err)

@@ -4,7 +4,6 @@ use super::bin_entries::BinEntries;
 use crate::args::LifecycleScriptsConfig;
 use crate::task_runner::TaskStdio;
 use crate::util::progress_bar::ProgressBar;
-use deno_core::anyhow::Context;
 use deno_npm::resolution::NpmResolutionSnapshot;
 use deno_runtime::deno_io::FromRawIoHandle;
 use deno_semver::package::PackageNv;
@@ -17,7 +16,7 @@ use std::rc::Rc;
 use std::path::Path;
 use std::path::PathBuf;
 
-use deno_core::error::{AnyError, JsNativeError};
+use deno_core::error::AnyError;
 use deno_npm::NpmResolutionPackage;
 
 pub trait LifecycleScriptsStrategy {
@@ -38,7 +37,7 @@ pub trait LifecycleScriptsStrategy {
   fn did_run_scripts(
     &self,
     package: &NpmResolutionPackage,
-  ) -> Result<(), AnyError>;
+  ) -> Result<(), std::io::Error>;
 }
 
 pub struct LifecycleScripts<'a> {
@@ -82,6 +81,27 @@ pub fn has_lifecycle_scripts(
 // (for example, `fsevents` hits this)
 fn is_broken_default_install_script(script: &str, package_path: &Path) -> bool {
   script == "node-gyp rebuild" && !package_path.join("binding.gyp").exists()
+}
+
+#[derive(Debug, thiserror::Error, deno_error::JsError)]
+pub enum LifecycleScriptsError {
+  #[class(inherit)]
+  #[error(transparent)]
+  Io(#[from] std::io::Error),
+  #[class(inherit)]
+  #[error(transparent)]
+  BinEntries(#[from] super::bin_entries::BinEntriesError),
+  #[class(inherit)]
+  #[error(
+    "failed to create npm process state tempfile for running lifecycle scripts"
+  )]
+  CreateNpmProcessState(#[source] std::io::Error),
+  #[class(generic)]
+  #[error(transparent)]
+  Task(AnyError),
+  #[class(generic)]
+  #[error("failed to run scripts for packages: {}", .0.join(", "))]
+  RunScripts(Vec<String>),
 }
 
 impl<'a> LifecycleScripts<'a> {
@@ -156,7 +176,7 @@ impl<'a> LifecycleScripts<'a> {
     packages: &[NpmResolutionPackage],
     root_node_modules_dir_path: &Path,
     progress_bar: &ProgressBar,
-  ) -> Result<(), AnyError> {
+  ) -> Result<(), LifecycleScriptsError> {
     let kill_signal = KillSignal::default();
     let _drop_signal = kill_signal.clone().drop_guard();
     // we don't run with signals forwarded because once signals
@@ -179,7 +199,7 @@ impl<'a> LifecycleScripts<'a> {
     root_node_modules_dir_path: &Path,
     progress_bar: &ProgressBar,
     kill_signal: KillSignal,
-  ) -> Result<(), AnyError> {
+  ) -> Result<(), LifecycleScriptsError> {
     self.warn_not_run_scripts()?;
     let get_package_path =
       |p: &NpmResolutionPackage| self.strategy.package_path(p);
@@ -222,7 +242,8 @@ impl<'a> LifecycleScripts<'a> {
       let temp_file_fd =
         deno_runtime::ops::process::npm_process_state_tempfile(
           process_state.as_bytes(),
-        ).context("failed to create npm process state tempfile for running lifecycle scripts")?;
+        )
+        .map_err(LifecycleScriptsError::CreateNpmProcessState)?;
       // SAFETY: fd/handle is valid
       let _temp_file =
         unsafe { std::fs::File::from_raw_io_handle(temp_file_fd) }; // make sure the file gets closed
@@ -273,7 +294,8 @@ impl<'a> LifecycleScripts<'a> {
                 kill_signal: kill_signal.clone(),
               },
             )
-            .await?;
+            .await
+            .map_err(LifecycleScriptsError::Task)?;
             let stdout = stdout.unwrap();
             let stderr = stderr.unwrap();
             if exit_code != 0 {
@@ -322,14 +344,12 @@ impl<'a> LifecycleScripts<'a> {
     if failed_packages.is_empty() {
       Ok(())
     } else {
-      Err(AnyError::msg(format!(
-        "failed to run scripts for packages: {}",
+      Err(LifecycleScriptsError::RunScripts(
         failed_packages
           .iter()
           .map(|p| p.to_string())
-          .collect::<Vec<_>>()
-          .join(", ")
-      )))
+          .collect::<Vec<_>>(),
+      ))
     }
   }
 }

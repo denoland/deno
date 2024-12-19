@@ -155,7 +155,7 @@ pub trait NodeRequireLoader {
     &self,
     permissions: &mut dyn NodePermissions,
     path: &'a Path,
-  ) -> Result<Cow<'a, Path>, PermissionCheckError>;
+  ) -> Result<Cow<'a, Path>, JsNativeError>;
 
   fn load_text_file_lossy(
     &self,

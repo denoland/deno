@@ -407,7 +407,7 @@ impl Resource for ReadableStreamResource {
   fn read(self: Rc<Self>, limit: usize) -> AsyncResult<BufView> {
     Box::pin(
       ReadableStreamResource::read(self, limit)
-        .map_err(|e| deno_core::error::JsNativeError::from_err(e)),
+        .map_err(deno_core::error::JsNativeError::from_err),
     )
   }
 

@@ -109,7 +109,7 @@ impl StdioOrRid {
       StdioOrRid::Stdio(val) => Ok(val.as_stdio()),
       StdioOrRid::Rid(rid) => {
         Ok(FileResource::with_file(state, *rid, |file| {
-          Ok(file.as_stdio().map_err(JsNativeError::from_err)?)
+          file.as_stdio().map_err(JsNativeError::from_err)
         })?)
       }
     }

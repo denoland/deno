@@ -359,7 +359,7 @@ pub async fn op_crypto_sign_key(
       Algorithm::Ecdsa => {
         let curve: &EcdsaSigningAlgorithm = args
           .named_curve
-          .ok_or_else(|| JsNativeError::not_supported())?
+          .ok_or_else(JsNativeError::not_supported)?
           .into();
 
         let rng = RingRand::SystemRandom::new();
@@ -379,10 +379,8 @@ pub async fn op_crypto_sign_key(
         signature.as_ref().to_vec()
       }
       Algorithm::Hmac => {
-        let hash: HmacAlgorithm = args
-          .hash
-          .ok_or_else(|| JsNativeError::not_supported())?
-          .into();
+        let hash: HmacAlgorithm =
+          args.hash.ok_or_else(JsNativeError::not_supported)?.into();
 
         let key = HmacKey::new(hash, &args.key.data);
 
@@ -475,21 +473,19 @@ pub async fn op_crypto_verify_key(
         }
       }
       Algorithm::Hmac => {
-        let hash: HmacAlgorithm = args
-          .hash
-          .ok_or_else(|| JsNativeError::not_supported())?
-          .into();
+        let hash: HmacAlgorithm =
+          args.hash.ok_or_else(JsNativeError::not_supported)?.into();
         let key = HmacKey::new(hash, &args.key.data);
         ring::hmac::verify(&key, data, &args.signature).is_ok()
       }
       Algorithm::Ecdsa => {
         let signing_alg: &EcdsaSigningAlgorithm = args
           .named_curve
-          .ok_or_else(|| JsNativeError::not_supported())?
+          .ok_or_else(JsNativeError::not_supported)?
           .into();
         let verify_alg: &EcdsaVerificationAlgorithm = args
           .named_curve
-          .ok_or_else(|| JsNativeError::not_supported())?
+          .ok_or_else(JsNativeError::not_supported)?
           .into();
 
         let private_key;
@@ -544,15 +540,14 @@ pub async fn op_crypto_derive_bits(
     let algorithm = args.algorithm;
     match algorithm {
       Algorithm::Pbkdf2 => {
-        let zero_copy =
-          zero_copy.ok_or_else(|| JsNativeError::not_supported())?;
+        let zero_copy = zero_copy.ok_or_else(JsNativeError::not_supported)?;
         let salt = &*zero_copy;
         // The caller must validate these cases.
         assert!(args.length > 0);
         assert!(args.length % 8 == 0);
 
         let algorithm =
-          match args.hash.ok_or_else(|| JsNativeError::not_supported())? {
+          match args.hash.ok_or_else(JsNativeError::not_supported)? {
             CryptoHash::Sha1 => pbkdf2::PBKDF2_HMAC_SHA1,
             CryptoHash::Sha256 => pbkdf2::PBKDF2_HMAC_SHA256,
             CryptoHash::Sha384 => pbkdf2::PBKDF2_HMAC_SHA384,
@@ -561,9 +556,7 @@ pub async fn op_crypto_derive_bits(
 
         // This will never panic. We have already checked length earlier.
         let iterations = NonZeroU32::new(
-          args
-            .iterations
-            .ok_or_else(|| JsNativeError::not_supported())?,
+          args.iterations.ok_or_else(JsNativeError::not_supported)?,
         )
         .unwrap();
         let secret = args.key.data;
@@ -650,18 +643,17 @@ pub async fn op_crypto_derive_bits(
         }
       }
       Algorithm::Hkdf => {
-        let zero_copy =
-          zero_copy.ok_or_else(|| JsNativeError::not_supported())?;
+        let zero_copy = zero_copy.ok_or_else(JsNativeError::not_supported)?;
         let salt = &*zero_copy;
         let algorithm =
-          match args.hash.ok_or_else(|| JsNativeError::not_supported())? {
+          match args.hash.ok_or_else(JsNativeError::not_supported)? {
             CryptoHash::Sha1 => hkdf::HKDF_SHA1_FOR_LEGACY_USE_ONLY,
             CryptoHash::Sha256 => hkdf::HKDF_SHA256,
             CryptoHash::Sha384 => hkdf::HKDF_SHA384,
             CryptoHash::Sha512 => hkdf::HKDF_SHA512,
           };
 
-        let info = args.info.ok_or_else(|| CryptoError::MissingArgumentInfo)?;
+        let info = args.info.ok_or(CryptoError::MissingArgumentInfo)?;
         // IKM
         let secret = args.key.data;
         // L

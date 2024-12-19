@@ -55,9 +55,9 @@ use crate::util::progress_bar::ProgressBar;
 use crate::util::progress_bar::ProgressMessagePrompt;
 
 use super::super::resolution::NpmResolution;
-use super::common::bin_entries;
 use super::common::NpmPackageFsResolver;
 use super::common::RegistryReadPermissionChecker;
+use super::common::{bin_entries, EnsureRegistryReadPermissionError};
 
 /// Resolver that creates a local node_modules directory
 /// and resolves packages from it.
@@ -145,7 +145,7 @@ impl LocalNpmPackageResolver {
   fn resolve_package_folder_from_specifier(
     &self,
     specifier: &ModuleSpecifier,
-  ) -> Result<Option<PathBuf>, AnyError> {
+  ) -> Result<Option<PathBuf>, std::io::Error> {
     let Some(local_path) = self.resolve_folder_for_specifier(specifier)? else {
       return Ok(None);
     };
@@ -230,7 +230,7 @@ impl NpmPackageFsResolver for LocalNpmPackageResolver {
   fn resolve_package_cache_folder_id_from_specifier(
     &self,
     specifier: &ModuleSpecifier,
-  ) -> Result<Option<NpmPackageCacheFolderId>, AnyError> {
+  ) -> Result<Option<NpmPackageCacheFolderId>, std::io::Error> {
     let Some(folder_path) =
       self.resolve_package_folder_from_specifier(specifier)?
     else {
@@ -279,11 +279,11 @@ impl NpmPackageFsResolver for LocalNpmPackageResolver {
     &self,
     permissions: &mut dyn NodePermissions,
     path: &'a Path,
-  ) -> Result<Cow<'a, Path>, deno_runtime::deno_permissions::PermissionCheckError>
-  {
+  ) -> Result<Cow<'a, Path>, EnsureRegistryReadPermissionError> {
     self
       .registry_read_permission_checker
       .ensure_registry_read_permission(permissions, path)
+      .map_err(Into::into)
   }
 }
 
@@ -320,7 +320,18 @@ pub enum SyncResolutionWithFsError {
   SymlinkPackageDir(#[from] SymlinkPackageDirError),
   #[class(inherit)]
   #[error(transparent)]
+  BinEntries(#[from] bin_entries::BinEntriesError),
+  #[class(inherit)]
+  #[error(transparent)]
+  LifecycleScripts(
+    #[from] super::common::lifecycle_scripts::LifecycleScriptsError,
+  ),
+  #[class(inherit)]
+  #[error(transparent)]
   Io(#[from] std::io::Error),
+  #[class(inherit)]
+  #[error(transparent)]
+  Other(#[from] JsNativeError),
 }
 
 /// Creates a pnpm style folder structure.
@@ -452,7 +463,8 @@ async fn sync_resolution_with_fs(
       cache_futures.push(async move {
         tarball_cache
           .ensure_package(&package.id.nv, &package.dist)
-          .await?;
+          .await
+          .map_err(JsNativeError::from_err)?;
         let pb_guard = progress_bar.update_with_prompt(
           ProgressMessagePrompt::Initialize,
           &package.id.nv.to_string(),
@@ -472,7 +484,9 @@ async fn sync_resolution_with_fs(
             Ok::<_, SyncResolutionWithFsError>(())
           }
         })
-        .await??;
+        .await
+        .map_err(JsNativeError::from_err)?
+        .map_err(JsNativeError::from_err)?;
 
         if package.bin.is_some() {
           bin_entries_to_setup.borrow_mut().add(package, package_path);
@@ -486,7 +500,7 @@ async fn sync_resolution_with_fs(
 
         // finally stop showing the progress bar
         drop(pb_guard); // explicit for clarity
-        Ok::<_, SyncResolutionWithFsError>(())
+        Ok::<_, JsNativeError>(())
       });
     } else if matches!(package_state, PackageFolderState::TagsOutdated) {
       fs::write(initialized_file, tags)?;
@@ -840,7 +854,7 @@ impl<'a> super::common::lifecycle_scripts::LifecycleScriptsStrategy
   fn did_run_scripts(
     &self,
     package: &NpmResolutionPackage,
-  ) -> std::result::Result<(), deno_core::anyhow::Error> {
+  ) -> std::result::Result<(), std::io::Error> {
     std::fs::write(self.ran_scripts_file(package), "")?;
     Ok(())
   }

@@ -61,6 +61,8 @@ use super::ResolvePkgFolderFromDenoReqError;
 mod resolution;
 mod resolvers;
 
+pub use resolvers::EnsureRegistryReadPermissionError;
+
 pub enum CliNpmResolverManagedSnapshotOption {
   ResolveFromLockfile(Arc<CliLockfile>),
   Specified(Option<ValidSerializedNpmResolutionSnapshot>),
@@ -787,8 +789,7 @@ impl CliNpmResolver for ManagedCliNpmResolver {
     &self,
     permissions: &mut dyn NodePermissions,
     path: &'a Path,
-  ) -> Result<Cow<'a, Path>, deno_runtime::deno_permissions::PermissionCheckError>
-  {
+  ) -> Result<Cow<'a, Path>, resolvers::EnsureRegistryReadPermissionError> {
     self.fs_resolver.ensure_read_permission(permissions, path)
   }
 

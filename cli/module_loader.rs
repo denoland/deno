@@ -1005,7 +1005,7 @@ impl<TGraphContainer: ModuleGraphContainer> ModuleLoader
     std::future::ready(()).boxed_local()
   }
 
-  fn get_source_map(&self, file_name: &str) -> Option<Vec<u8>> {
+  fn get_source_map(&self, file_name: &str) -> Option<Cow<[u8]>> {
     let specifier = resolve_url(file_name).ok()?;
     match specifier.scheme() {
       // we should only be looking for emits for schemes that denote external
@@ -1017,7 +1017,7 @@ impl<TGraphContainer: ModuleGraphContainer> ModuleLoader
       .0
       .load_prepared_module_for_source_map_sync(&specifier)
       .ok()??;
-    source_map_from_code(source.code.as_bytes())
+    source_map_from_code(source.code.as_bytes()).map(Into::into)
   }
 
   fn get_source_mapped_source_line(
@@ -1113,15 +1113,17 @@ impl<TGraphContainer: ModuleGraphContainer> NodeRequireLoader
     &self,
     permissions: &mut dyn deno_runtime::deno_node::NodePermissions,
     path: &'a Path,
-  ) -> Result<Cow<'a, Path>, deno_runtime::deno_permissions::PermissionCheckError>
-  {
+  ) -> Result<Cow<'a, Path>, JsNativeError> {
     if let Ok(url) = deno_path_util::url_from_file_path(path) {
       // allow reading if it's in the module graph
       if self.graph_container.graph().get(&url).is_some() {
         return Ok(Cow::Borrowed(path));
       }
     }
-    self.npm_resolver.ensure_read_permission(permissions, path)
+    self
+      .npm_resolver
+      .ensure_read_permission(permissions, path)
+      .map_err(JsNativeError::from_err)
   }
 
   fn load_text_file_lossy(
@@ -1138,13 +1140,10 @@ impl<TGraphContainer: ModuleGraphContainer> NodeRequireLoader
       let specifier = deno_path_util::url_from_file_path(path)
         .map_err(JsNativeError::from_err)?;
       if self.in_npm_pkg_checker.in_npm_package(&specifier) {
-        return Err(
-          NotSupportedKindInNpmError {
-            media_type,
-            specifier,
-          }
-          .into(),
-        );
+        return Err(JsNativeError::from_err(NotSupportedKindInNpmError {
+          media_type,
+          specifier,
+        }));
       }
       self
         .emitter

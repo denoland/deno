@@ -9,9 +9,9 @@ use deno_core::error::AnyError;
 use deno_core::error::JsNativeError;
 use deno_core::futures::StreamExt;
 use deno_core::parking_lot::Mutex;
-use deno_core::{serde, JsError};
 use deno_core::serde_json;
 use deno_core::url::Url;
+use deno_core::{serde, JsError};
 use deno_runtime::deno_fetch;
 use deno_runtime::deno_fetch::create_http_client;
 use deno_runtime::deno_fetch::CreateHttpClientOptions;
@@ -314,7 +314,7 @@ impl HttpClient {
       .clone()
       .send(req)
       .await
-      .map_err(|e| DownloadErrorKind::Fetch(e.into()).into_box())?;
+      .map_err(|e| DownloadErrorKind::Fetch(e).into_box())?;
     let status = response.status();
     if status.is_redirection() {
       for _ in 0..5 {
@@ -334,7 +334,7 @@ impl HttpClient {
           .clone()
           .send(req)
           .await
-          .map_err(|e| DownloadErrorKind::Fetch(e.into()).into_box())?;
+          .map_err(|e| DownloadErrorKind::Fetch(e).into_box())?;
         let status = new_response.status();
         if status.is_redirection() {
           response = new_response;

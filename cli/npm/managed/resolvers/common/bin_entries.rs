@@ -1,7 +1,6 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 use crate::npm::managed::NpmResolutionPackage;
-use deno_core::anyhow::Context;
 use deno_npm::resolution::NpmResolutionSnapshot;
 use deno_npm::NpmPackageId;
 use std::collections::HashMap;
@@ -63,12 +62,13 @@ pub enum BinEntriesError {
     #[inherit]
     source: std::io::Error,
   },
-  #[class("Can't set up '{name}' bin at {path}")]
-  #[error(transparent)]
+  #[class(inherit)]
+  #[error("Can't set up '{name}' bin at {path}")]
   SetUpBin {
     name: String,
     path: PathBuf,
     #[source]
+    #[inherit]
     source: Box<Self>,
   },
   #[class(inherit)]
@@ -204,7 +204,12 @@ impl<'a> BinEntries<'a> {
     mut handler: impl FnMut(&EntrySetupOutcome<'_>),
   ) -> Result<(), BinEntriesError> {
     if !self.entries.is_empty() && !bin_node_modules_dir_path.exists() {
-      std::fs::create_dir_all(bin_node_modules_dir_path).map_err(|source| BinEntriesError::Creating { path: bin_node_modules_dir_path.to_path_buf(), source })?;
+      std::fs::create_dir_all(bin_node_modules_dir_path).map_err(|source| {
+        BinEntriesError::Creating {
+          path: bin_node_modules_dir_path.to_path_buf(),
+          source,
+        }
+      })?;
     }
 
     self.for_each_entry(
@@ -387,9 +392,11 @@ fn make_executable_if_exists(path: &Path) -> Result<bool, BinEntriesError> {
   if perms.mode() & 0o111 == 0 {
     // if the original file is not executable, make it executable
     perms.set_mode(perms.mode() | 0o111);
-    std::fs::set_permissions(path, perms).map_err(|source| BinEntriesError::Permissions {
-      path: path.to_path_buf(),
-      source,
+    std::fs::set_permissions(path, perms).map_err(|source| {
+      BinEntriesError::Permissions {
+        path: path.to_path_buf(),
+        source,
+      }
     })?;
   }
 
@@ -457,14 +464,18 @@ fn symlink_bin_entry<'a>(
   if let Err(err) = symlink(&original_relative, &link) {
     if err.kind() == io::ErrorKind::AlreadyExists {
       // remove and retry
-      std::fs::remove_file(&link).map_err(|source| BinEntriesError::RemoveBinSymlink {
-        path: link.clone(),
-        source,
+      std::fs::remove_file(&link).map_err(|source| {
+        BinEntriesError::RemoveBinSymlink {
+          path: link.clone(),
+          source,
+        }
       })?;
-      symlink(&original_relative, &link).map_err(|source| BinEntriesError::SetUpBin {
-        name: bin_name.to_string(),
-        path: original_relative.to_path_buf(),
-        source: Box::new(source.into()),
+      symlink(&original_relative, &link).map_err(|source| {
+        BinEntriesError::SetUpBin {
+          name: bin_name.to_string(),
+          path: original_relative.to_path_buf(),
+          source: Box::new(source.into()),
+        }
       })?;
       return Ok(EntrySetupOutcome::Success);
     }

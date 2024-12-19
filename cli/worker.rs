@@ -7,8 +7,8 @@ use std::sync::Arc;
 
 use deno_ast::ModuleSpecifier;
 use deno_core::anyhow::bail;
-use deno_core::error::{AnyError};
-use deno_core::error::{CoreError};
+use deno_core::error::AnyError;
+use deno_core::error::CoreError;
 use deno_core::futures::FutureExt;
 use deno_core::url::Url;
 use deno_core::v8;

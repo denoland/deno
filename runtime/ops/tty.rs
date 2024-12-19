@@ -452,7 +452,7 @@ deno_error::js_error_wrapper!(ReadlineError, JsReadlineError, |err| {
     ReadlineError::Eof => GENERIC_ERROR,
     ReadlineError::Interrupted => GENERIC_ERROR,
     #[cfg(unix)]
-    ReadlineError::Errno(e) => JsNixError(e.clone()).get_class(),
+    ReadlineError::Errno(e) => JsNixError(*e).get_class(),
     ReadlineError::WindowResized => GENERIC_ERROR,
     #[cfg(windows)]
     ReadlineError::Decode(_) => GENERIC_ERROR,

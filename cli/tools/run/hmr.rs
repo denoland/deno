@@ -87,7 +87,7 @@ impl crate::worker::HmrRunner for HmrRunner {
       select! {
         biased;
         Some(notification) = session_rx.next() => {
-          let notification = serde_json::from_value::<cdp::Notification>(notification)?;
+          let notification = serde_json::from_value::<cdp::Notification>(notification).map_err(JsNativeError::from_err)?;
           if notification.method == "Runtime.exceptionThrown" {
             let exception_thrown = serde_json::from_value::<cdp::ExceptionThrown>(notification.params).map_err(JsNativeError::from_err)?;
             let (message, description) = exception_thrown.exception_details.get_message_and_description();
@@ -105,7 +105,7 @@ impl crate::worker::HmrRunner for HmrRunner {
           }
         }
         changed_paths = self.watcher_communicator.watch_for_changed_paths() => {
-          let changed_paths = changed_paths?;
+          let changed_paths = changed_paths.map_err(JsNativeError::from_err)?;
 
           let Some(changed_paths) = changed_paths else {
             let _ = self.watcher_communicator.force_restart();

@@ -16,6 +16,7 @@ use crate::npm::CliNpmCache;
 use crate::npm::CliNpmTarballCache;
 use crate::util::progress_bar::ProgressBar;
 
+pub use self::common::EnsureRegistryReadPermissionError;
 pub use self::common::NpmPackageFsResolver;
 pub use self::common::NpmPackageFsResolverPackageFolderError;
 

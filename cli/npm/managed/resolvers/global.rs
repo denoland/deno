@@ -13,7 +13,7 @@ use crate::npm::CliNpmCache;
 use crate::npm::CliNpmTarballCache;
 use async_trait::async_trait;
 use deno_ast::ModuleSpecifier;
-use deno_core::error::{AnyError, JsNativeError};
+use deno_core::error::JsNativeError;
 use deno_npm::NpmPackageCacheFolderId;
 use deno_npm::NpmPackageId;
 use deno_npm::NpmResolutionPackage;
@@ -143,7 +143,7 @@ impl NpmPackageFsResolver for GlobalNpmPackageResolver {
   fn resolve_package_cache_folder_id_from_specifier(
     &self,
     specifier: &ModuleSpecifier,
-  ) -> Result<Option<NpmPackageCacheFolderId>, AnyError> {
+  ) -> Result<Option<NpmPackageCacheFolderId>, std::io::Error> {
     Ok(
       self
         .cache
@@ -170,7 +170,8 @@ impl NpmPackageFsResolver for GlobalNpmPackageResolver {
     for copy in package_partitions.copy_packages {
       self
         .cache
-        .ensure_copy_package(&copy.get_package_cache_folder_id())?;
+        .ensure_copy_package(&copy.get_package_cache_folder_id())
+        .map_err(JsNativeError::from_err)?;
     }
 
     let mut lifecycle_scripts =
@@ -183,7 +184,9 @@ impl NpmPackageFsResolver for GlobalNpmPackageResolver {
       lifecycle_scripts.add(package, Cow::Borrowed(&package_folder));
     }
 
-    lifecycle_scripts.warn_not_run_scripts()?;
+    lifecycle_scripts
+      .warn_not_run_scripts()
+      .map_err(JsNativeError::from_err)?;
 
     Ok(())
   }
@@ -192,7 +195,7 @@ impl NpmPackageFsResolver for GlobalNpmPackageResolver {
     &self,
     permissions: &mut dyn NodePermissions,
     path: &'a Path,
-  ) -> Result<Cow<'a, Path>, deno_runtime::deno_permissions::PermissionCheckError>
+  ) -> Result<Cow<'a, Path>, super::common::EnsureRegistryReadPermissionError>
   {
     self
       .registry_read_permission_checker
@@ -262,7 +265,7 @@ impl<'a> super::common::lifecycle_scripts::LifecycleScriptsStrategy
   fn did_run_scripts(
     &self,
     _package: &NpmResolutionPackage,
-  ) -> std::result::Result<(), deno_core::anyhow::Error> {
+  ) -> Result<(), std::io::Error> {
     Ok(())
   }
 

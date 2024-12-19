@@ -1014,10 +1014,8 @@ pub fn op_print(
 ) -> Result<(), JsNativeError> {
   let rid = if is_err { 2 } else { 1 };
   FileResource::with_file(state, rid, move |file| {
-    Ok(
-      file
-        .write_all_sync(msg.as_bytes())
-        .map_err(JsNativeError::from_err)?,
-    )
+    file
+      .write_all_sync(msg.as_bytes())
+      .map_err(JsNativeError::from_err)
   })
 }
