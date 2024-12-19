@@ -841,3 +841,26 @@ Deno.test({
     assertEquals(result, true);
   },
 });
+
+Deno.test("[node/worker_threads] Worker runs async ops correctly", async () => {
+  const recvMessage = Promise.withResolvers<void>();
+  const timer = setTimeout(() => recvMessage.reject(), 1000);
+  const worker = new workerThreads.Worker(
+    `
+    import { parentPort } from "node:worker_threads";
+    setTimeout(() => {
+      parentPort.postMessage("Hello from worker");
+    }, 10);
+    `,
+    { eval: true },
+  );
+
+  worker.on("message", (msg) => {
+    assertEquals(msg, "Hello from worker");
+    worker.terminate();
+    recvMessage.resolve();
+    clearTimeout(timer);
+  });
+
+  await recvMessage.promise;
+});

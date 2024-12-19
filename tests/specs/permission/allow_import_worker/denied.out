@@ -3,5 +3,4 @@ await import(specifier);
 ^
     at async file:///[WILDLINE]
 error: Uncaught (in promise) Error: Unhandled error in child worker.
-    at [WILDLINE]
-    at [WILDLINE]
+    at [WILDCARD]
