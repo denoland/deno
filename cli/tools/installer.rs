@@ -161,11 +161,11 @@ pub async fn infer_name_from_url(
     let npm_ref = npm_ref.into_inner();
     if let Some(sub_path) = npm_ref.sub_path {
       if !sub_path.contains('/') {
-        return Some(sub_path.into());
+        return Some(sub_path.to_string());
       }
     }
     if !npm_ref.req.name.contains('/') {
-      return Some(npm_ref.req.name.into());
+      return Some(npm_ref.req.name.into_string());
     }
     return None;
   }

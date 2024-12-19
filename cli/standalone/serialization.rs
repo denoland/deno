@@ -485,10 +485,7 @@ fn deserialize_npm_snapshot(
     |input| {
       let (input, req) = read_string_lossy(input)?;
       let (input, id) = read_u32_as_usize(input)?;
-      let req = match req {
-        Cow::Borrowed(req) => StackString::from(req),
-        Cow::Owned(req) => StackString::from(req),
-      };
+      let req = StackString::from_cow(req);
       Ok((input, (req, id_to_npm_id(id)?)))
     }
   }

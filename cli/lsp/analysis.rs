@@ -36,6 +36,8 @@ use deno_semver::package::PackageNv;
 use deno_semver::package::PackageNvReference;
 use deno_semver::package::PackageReq;
 use deno_semver::package::PackageReqReference;
+use deno_semver::SmallStackString;
+use deno_semver::StackString;
 use deno_semver::Version;
 use import_map::ImportMap;
 use node_resolver::NodeResolutionKind;
@@ -278,22 +280,28 @@ impl<'a> TsResponseImportMapper<'a> {
     {
       let mut segments = jsr_path.split('/');
       let name = if jsr_path.starts_with('@') {
-        format!("{}/{}", segments.next()?, segments.next()?)
+        let scope = segments.next()?;
+        let name = segments.next()?;
+        capacity_builder::StringBuilder::<StackString>::build(|builder| {
+          builder.append(scope);
+          builder.append("/");
+          builder.append(name);
+        })
+        .unwrap()
       } else {
-        segments.next()?.to_string()
+        StackString::from(segments.next()?)
       };
       let version = Version::parse_standard(segments.next()?).ok()?;
-      let nv = PackageNv {
-        name: name.into(),
-        version,
-      };
+      let nv = PackageNv { name, version };
       let path = segments.collect::<Vec<_>>().join("/");
       let export = self.resolver.jsr_lookup_export_for_path(
         &nv,
         &path,
         Some(&self.file_referrer),
       )?;
-      let sub_path = (export != ".").then_some(export).map(|s| s.into());
+      let sub_path = (export != ".")
+        .then_some(export)
+        .map(|s| SmallStackString::from_string(s));
       let mut req = None;
       req = req.or_else(|| {
         let import_map = self.maybe_import_map?;

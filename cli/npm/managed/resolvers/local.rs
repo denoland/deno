@@ -1016,7 +1016,7 @@ fn get_package_folder_id_from_folder_name(
   let folder_name = folder_name.replace('+', "/");
   let (name, ending) = folder_name.rsplit_once('@')?;
   let name: StackString = if let Some(encoded_name) = name.strip_prefix('_') {
-    mixed_case_package_name_decode(encoded_name)?.into()
+    StackString::from_string(mixed_case_package_name_decode(encoded_name)?)
   } else {
     name.into()
   };

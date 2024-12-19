@@ -343,9 +343,16 @@ opt-level = 3
 opt-level = 3
 
 [patch.crates-io]
-deno_semver = { git = "https://github.com/dsherret/deno_semver.git", branch = "perf_stack_strings" }
-deno_package_json = { git = "https://github.com/dsherret/deno_package_json.git", branch = "refactor_deno_semver_0_7" }
-deno_lockfile = { git = "https://github.com/dsherret/deno_lockfile.git", branch = "deno_semver_0_7" }
-deno_config = { git = "https://github.com/dsherret/deno_config.git", branch = "refactor_deno_semver_0_7" }
-deno_npm = { git = "https://github.com/dsherret/deno_npm.git", branch = "refactor_deno_semver_0_7" }
-deno_graph = { git = "https://github.com/dsherret/deno_graph.git", branch = "refactor_deno_semver_0_7" }
+# deno_semver = { git = "https://github.com/dsherret/deno_semver.git", branch = "perf_stack_strings" }
+# deno_package_json = { git = "https://github.com/dsherret/deno_package_json.git", branch = "refactor_deno_semver_0_7" }
+# deno_lockfile = { git = "https://github.com/dsherret/deno_lockfile.git", branch = "deno_semver_0_7" }
+# deno_config = { git = "https://github.com/dsherret/deno_config.git", branch = "refactor_deno_semver_0_7" }
+# deno_npm = { git = "https://github.com/dsherret/deno_npm.git", branch = "refactor_deno_semver_0_7" }
+# deno_graph = { git = "https://github.com/dsherret/deno_graph.git", branch = "refactor_deno_semver_0_7" }
+deno_semver = { path = "../deno_semver" }
+deno_package_json = { path = "../deno_package_json" }
+deno_lockfile = { path = "../deno_lockfile" }
+deno_config = { path = "../deno_config" }
+deno_npm = { path = "../deno_npm" }
+deno_graph = { path = "../deno_graph" }
+capacity_builder = { path = "../capacity_builder" }
