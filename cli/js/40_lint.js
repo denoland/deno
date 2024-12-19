@@ -467,8 +467,10 @@ export function runPluginsForFile(fileName, serializedAst) {
       const ctx = new Context(id, fileName);
       const visitor = rule.create(ctx);
 
+      console.log("visitor", visitor);
       for (let key in visitor) {
         const fn = visitor[key];
+        console.log("key fn", key, fn);
         if (fn === undefined) continue;
 
         // Support enter and exit callbacks on a visitor.
@@ -481,6 +483,7 @@ export function runPluginsForFile(fileName, serializedAst) {
 
         const fnKey = key + (isExit ? ":exit" : "");
         let info = bySelector.get(fnKey);
+        console.log("info for selector", fnKey, info);
         if (info === undefined) {
           info = { enter: NOOP, exit: NOOP };
           bySelector.set(fnKey, info);
@@ -507,6 +510,8 @@ export function runPluginsForFile(fileName, serializedAst) {
         } else {
           info.enter = wrapped;
         }
+
+        console.log("final info", info);
       }
 
       if (typeof rule.destroy === "function") {
@@ -531,6 +536,13 @@ export function runPluginsForFile(fileName, serializedAst) {
     // Convert the visiting element name to a number. This number
     // is part of the serialized buffer and comparing a single number
     // is quicker than strings.
+    console.log(
+      "selector info",
+      sel,
+      info,
+      ctx.typeByStr,
+      ctx.typeByStr.get(sel),
+    );
     const elemId = ctx.typeByStr.get(sel) ?? -1;
 
     visitors.push({
@@ -543,8 +555,10 @@ export function runPluginsForFile(fileName, serializedAst) {
   // Traverse ast with all visitors at the same time to avoid traversing
   // multiple times.
   try {
-    console.log("visitors", visitors);
+    console.log("visitors", visitors, ctx.rootId);
     traverse(ctx, visitors, ctx.rootId);
+  } catch (e) {
+    console.log("traverse caught", e);
   } finally {
     ctx.nodes.clear();
 
@@ -571,6 +585,9 @@ function traverse(ctx, visitors, offset) {
 
   for (let i = 0; i < visitors.length; i++) {
     const v = visitors[i];
+
+    console.log("v.info.enter", v.info.enter);
+    console.log("v.matcher", v.matcher(offset));
 
     if (v.info.enter === NOOP) {
       continue;

@@ -56,6 +56,7 @@ mod linter;
 mod reporters;
 mod rules;
 
+// TODO(bartlomieju): remove once we wire plugins through the CLI linter
 pub use ast_buffer::serialize_ast_to_buffer;
 pub use linter::CliLinter;
 pub use linter::CliLinterOptions;
