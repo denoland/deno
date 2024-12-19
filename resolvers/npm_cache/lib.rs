@@ -260,7 +260,7 @@ impl<TEnv: NpmCacheEnv> NpmCache<TEnv> {
       .and_then(|cache_id| {
         Some(NpmPackageCacheFolderId {
           nv: PackageNv {
-            name: cache_id.name,
+            name: cache_id.name.into(),
             version: Version::parse_from_npm(&cache_id.version).ok()?,
           },
           copy_index: cache_id.copy_index,

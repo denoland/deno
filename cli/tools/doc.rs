@@ -28,6 +28,7 @@ use deno_graph::EsParser;
 use deno_graph::GraphKind;
 use deno_graph::ModuleAnalyzer;
 use deno_graph::ModuleSpecifier;
+use deno_semver::StackString;
 use doc::html::ShortPath;
 use doc::DocDiagnostic;
 use indexmap::IndexMap;
@@ -343,14 +344,14 @@ impl deno_doc::html::HrefResolver for DocResolver {
           let name = &res.req().name;
           Some((
             format!("https://www.npmjs.com/package/{name}"),
-            name.to_owned(),
+            name.to_string(),
           ))
         }
         "jsr" => {
           let res =
             deno_semver::jsr::JsrPackageReqReference::from_str(module).ok()?;
           let name = &res.req().name;
-          Some((format!("https://jsr.io/{name}"), name.to_owned()))
+          Some((format!("https://jsr.io/{name}"), name.to_string()))
         }
         _ => None,
       }

@@ -678,6 +678,24 @@ dependencies = [
 ]
 
 [[package]]
+name = "capacity_builder"
+version = "0.4.1"
+dependencies = [
+ "capacity_builder_macros",
+ "ecow",
+ "hipstr",
+ "itoa",
+]
+
+[[package]]
+name = "capacity_builder_macros"
+version = "0.2.0"
+dependencies = [
+ "quote",
+ "syn 2.0.87",
+]
+
+[[package]]
 name = "caseless"
 version = "0.2.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1224,7 +1242,7 @@ dependencies = [
  "boxed_error",
  "bytes",
  "cache_control",
- "capacity_builder",
+ "capacity_builder 0.4.1",
  "chrono",
  "clap",
  "clap_complete",
@@ -1463,9 +1481,7 @@ dependencies = [
 
 [[package]]
 name = "deno_config"
-version = "0.39.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ce717af3fe6788dae63965d58d5637fd62be8fe4f345f189137ffc06c51837d2"
+version = "0.40.0"
 dependencies = [
  "anyhow",
  "deno_package_json",
@@ -1504,7 +1520,7 @@ dependencies = [
  "bit-set",
  "bit-vec",
  "bytes",
- "capacity_builder",
+ "capacity_builder 0.1.3",
  "cooked-waker",
  "deno_core_icudata",
  "deno_ops",
@@ -1719,11 +1735,10 @@ dependencies = [
 [[package]]
 name = "deno_graph"
 version = "0.86.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "fc78ed0b4bbcb4197300f0d6e7d1edc2d2c5019cdb9dedba7ff229158441885b"
 dependencies = [
  "anyhow",
  "async-trait",
+ "capacity_builder 0.4.1",
  "data-url",
  "deno_ast",
  "deno_semver",
@@ -1859,8 +1874,6 @@ dependencies = [
 [[package]]
 name = "deno_lockfile"
 version = "0.23.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "559c19feb00af0c34f0bd4a20e56e12463fafd5c5069d6005f3ce33008027eea"
 dependencies = [
  "deno_semver",
  "serde",
@@ -2019,13 +2032,13 @@ dependencies = [
 [[package]]
 name = "deno_npm"
 version = "0.26.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f2f125a5dba7839c46394a0a9c835da9fe60f5f412587ab4956a76492a1cc6a8"
 dependencies = [
- "anyhow",
  "async-trait",
+ "capacity_builder 0.4.1",
+ "deno_error",
  "deno_lockfile",
  "deno_semver",
+ "ecow",
  "futures",
  "log",
  "monch",
@@ -2045,6 +2058,7 @@ dependencies = [
  "boxed_error",
  "deno_cache_dir",
  "deno_core",
+ "deno_error",
  "deno_npm",
  "deno_semver",
  "deno_unsync",
@@ -2083,9 +2097,8 @@ dependencies = [
 [[package]]
 name = "deno_package_json"
 version = "0.2.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "80b0a3d81c592624a1ae15332a04b4dc2b7c163ef1dfc7c60171f736d1babdf5"
 dependencies = [
+ "boxed_error",
  "deno_error",
  "deno_path_util",
  "deno_semver",
@@ -2112,7 +2125,7 @@ dependencies = [
 name = "deno_permissions"
 version = "0.43.0"
 dependencies = [
- "capacity_builder",
+ "capacity_builder 0.4.1",
  "deno_core",
  "deno_path_util",
  "deno_terminal 0.2.0",
@@ -2218,10 +2231,11 @@ dependencies = [
 [[package]]
 name = "deno_semver"
 version = "0.6.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7d1259270d66a5e6d29bb75c9289656541874f79ae9ff6c9f1c790846d5c07ba"
 dependencies = [
+ "capacity_builder 0.4.1",
  "deno_error",
+ "ecow",
+ "hipstr",
  "monch",
  "once_cell",
  "serde",
@@ -2886,6 +2900,15 @@ dependencies = [
  "rfc6979",
  "signature",
  "spki",
+]
+
+[[package]]
+name = "ecow"
+version = "0.2.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e42fc0a93992b20c58b99e59d61eaf1635a25bfbe49e4275c34ba0aee98119ba"
+dependencies = [
+ "serde",
 ]
 
 [[package]]
@@ -3822,6 +3845,17 @@ dependencies = [
  "tokio",
  "tokio-util",
  "tracing",
+]
+
+[[package]]
+name = "hipstr"
+version = "0.6.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "97971ffc85d4c98de12e2608e992a43f5294ebb625fdb045b27c731b64c4c6d6"
+dependencies = [
+ "serde",
+ "serde_bytes",
+ "sptr",
 ]
 
 [[package]]
@@ -6986,6 +7020,12 @@ dependencies = [
  "base64ct",
  "der",
 ]
+
+[[package]]
+name = "sptr"
+version = "0.3.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "3b9b39299b249ad65f3b7e96443bad61c02ca5cd3589f46cb6d610a0fd6c0d6a"
 
 [[package]]
 name = "sqlformat"

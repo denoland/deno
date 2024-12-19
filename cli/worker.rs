@@ -518,8 +518,10 @@ impl CliMainWorkerFactory {
           package_ref.req(),
           &referrer,
         )?;
-      let main_module = self
-        .resolve_binary_entrypoint(&package_folder, package_ref.sub_path())?;
+      let main_module = self.resolve_binary_entrypoint(
+        &package_folder,
+        package_ref.sub_path().map(|p| p.as_str()),
+      )?;
 
       if let Some(lockfile) = &shared.maybe_lockfile {
         // For npm binary commands, ensure that the lockfile gets updated

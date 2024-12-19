@@ -983,7 +983,7 @@ fn resolve_non_graph_specifier_types(
       .resolve_pkg_folder_from_deno_module_req(npm_req_ref.req(), referrer)?;
     let res_result = node_resolver.resolve_package_subpath_from_deno_module(
       &package_folder,
-      npm_req_ref.sub_path(),
+      npm_req_ref.sub_path().map(|s| s.as_str()),
       Some(referrer),
       resolution_mode,
       NodeResolutionKind::Types,

@@ -11,19 +11,20 @@ use deno_package_json::PackageJsonDepValueParseError;
 use deno_package_json::PackageJsonDepWorkspaceReq;
 use deno_semver::npm::NpmPackageReqReference;
 use deno_semver::package::PackageReq;
+use deno_semver::StackString;
 use deno_semver::VersionReq;
 use thiserror::Error;
 
 #[derive(Debug)]
 pub struct InstallNpmRemotePkg {
-  pub alias: Option<String>,
+  pub alias: Option<StackString>,
   pub base_dir: PathBuf,
   pub req: PackageReq,
 }
 
 #[derive(Debug)]
 pub struct InstallNpmWorkspacePkg {
-  pub alias: Option<String>,
+  pub alias: Option<StackString>,
   pub target_dir: PathBuf,
 }
 
@@ -31,7 +32,7 @@ pub struct InstallNpmWorkspacePkg {
 #[error("Failed to install '{}'\n    at {}", alias, location)]
 pub struct PackageJsonDepValueParseWithLocationError {
   pub location: Url,
-  pub alias: String,
+  pub alias: StackString,
   #[source]
   pub source: PackageJsonDepValueParseError,
 }
@@ -100,10 +101,8 @@ impl NpmInstallDepsProvider {
         let mut pkg_pkgs = Vec::with_capacity(
           deps.dependencies.len() + deps.dev_dependencies.len(),
         );
-        for (alias, dep) in deps
-          .dependencies
-          .into_iter()
-          .chain(deps.dev_dependencies.into_iter())
+        for (alias, dep) in
+          deps.dependencies.iter().chain(deps.dev_dependencies.iter())
         {
           let dep = match dep {
             Ok(dep) => dep,
@@ -111,8 +110,8 @@ impl NpmInstallDepsProvider {
               pkg_json_dep_errors.push(
                 PackageJsonDepValueParseWithLocationError {
                   location: pkg_json.specifier(),
-                  alias,
-                  source: err,
+                  alias: alias.clone(),
+                  source: err.clone(),
                 },
               );
               continue;
@@ -128,21 +127,21 @@ impl NpmInstallDepsProvider {
 
               if let Some(pkg) = workspace_pkg {
                 workspace_pkgs.push(InstallNpmWorkspacePkg {
-                  alias: Some(alias),
+                  alias: Some(alias.clone()),
                   target_dir: pkg.pkg_json.dir_path().to_path_buf(),
                 });
               } else {
                 pkg_pkgs.push(InstallNpmRemotePkg {
-                  alias: Some(alias),
+                  alias: Some(alias.clone()),
                   base_dir: pkg_json.dir_path().to_path_buf(),
-                  req: pkg_req,
+                  req: pkg_req.clone(),
                 });
               }
             }
             PackageJsonDepValue::Workspace(workspace_version_req) => {
               let version_req = match workspace_version_req {
                 PackageJsonDepWorkspaceReq::VersionReq(version_req) => {
-                  version_req
+                  version_req.clone()
                 }
                 PackageJsonDepWorkspaceReq::Tilde
                 | PackageJsonDepWorkspaceReq::Caret => {
@@ -153,7 +152,7 @@ impl NpmInstallDepsProvider {
                 pkg.matches_name_and_version_req(&alias, &version_req)
               }) {
                 workspace_pkgs.push(InstallNpmWorkspacePkg {
-                  alias: Some(alias),
+                  alias: Some(alias.clone()),
                   target_dir: pkg.pkg_json.dir_path().to_path_buf(),
                 });
               }

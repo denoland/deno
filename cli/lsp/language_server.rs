@@ -3781,7 +3781,8 @@ impl Inner {
         for (name, def) in tasks {
           result.push(TaskDefinition {
             name: name.clone(),
-            command: def.command.clone(),
+            // todo(https://github.com/denoland/deno/pull/27191): do not unwrap
+            command: def.command.unwrap().clone(),
             source_uri: url_to_uri(&config_file.specifier)
               .map_err(|_| LspError::internal_error())?,
           });

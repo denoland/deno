@@ -27,6 +27,7 @@ use deno_semver::npm::NpmPackageReqReference;
 use deno_semver::package::PackageNv;
 use deno_semver::package::PackageReq;
 use deno_semver::package::PackageReqReference;
+use deno_semver::StackString;
 use deno_semver::Version;
 use deno_semver::VersionReq;
 use import_map::ImportMap;
@@ -139,13 +140,7 @@ pub enum KeyPart {
   Scopes,
   Dependencies,
   DevDependencies,
-  String(String),
-}
-
-impl From<String> for KeyPart {
-  fn from(value: String) -> Self {
-    KeyPart::String(value)
-  }
+  String(StackString),
 }
 
 impl From<PackageJsonDepKind> for KeyPart {
@@ -164,7 +159,7 @@ impl KeyPart {
       KeyPart::Scopes => "scopes",
       KeyPart::Dependencies => "dependencies",
       KeyPart::DevDependencies => "devDependencies",
-      KeyPart::String(s) => s,
+      KeyPart::String(s) => s.as_str(),
     }
   }
 }
@@ -217,12 +212,12 @@ fn import_map_entries(
     .chain(import_map.scopes().flat_map(|scope| {
       let path = KeyPath::from_parts([
         KeyPart::Scopes,
-        scope.raw_key.to_string().into(),
+        KeyPart::String(scope.raw_key.into()),
       ]);
 
       scope.imports.entries().map(move |entry| {
         let mut full_path = path.clone();
-        full_path.push(KeyPart::String(entry.raw_key.to_string()));
+        full_path.push(KeyPart::String(entry.raw_key.into()));
         (full_path, entry)
       })
     }))
@@ -338,7 +333,7 @@ fn add_deps_from_package_json(
     package_json: &PackageJsonRc,
     mut filter: impl DepFilter,
     package_dep_kind: PackageJsonDepKind,
-    package_json_deps: PackageJsonDepsMap,
+    package_json_deps: &PackageJsonDepsMap,
     deps: &mut Vec<Dep>,
   ) {
     for (k, v) in package_json_deps {
@@ -362,9 +357,12 @@ fn add_deps_from_package_json(
             kind: DepKind::Npm,
             location: DepLocation::PackageJson(
               package_json.clone(),
-              KeyPath::from_parts([package_dep_kind.into(), k.into()]),
+              KeyPath::from_parts([
+                package_dep_kind.into(),
+                KeyPart::String(k.clone()),
+              ]),
             ),
-            req,
+            req: req.clone(),
             alias,
           })
         }
@@ -377,14 +375,14 @@ fn add_deps_from_package_json(
     package_json,
     filter,
     PackageJsonDepKind::Normal,
-    package_json_deps.dependencies,
+    &package_json_deps.dependencies,
     deps,
   );
   iterate(
     package_json,
     filter,
     PackageJsonDepKind::Dev,
-    package_json_deps.dev_dependencies,
+    &package_json_deps.dev_dependencies,
     deps,
   );
 }

@@ -231,7 +231,7 @@ pub async fn execute_script(
           &Url::from_directory_path(cli_options.initial_cwd()).unwrap(),
           "",
           &TaskDefinition {
-            command: task_flags.task.as_ref().unwrap().to_string(),
+            command: Some(task_flags.task.as_ref().unwrap().to_string()),
             dependencies: vec![],
             description: None,
           },
@@ -469,7 +469,8 @@ impl<'a> TaskRunner<'a> {
     self
       .run_single(RunSingleOptions {
         task_name,
-        script: &definition.command,
+        // todo(https://github.com/denoland/deno/pull/27191): do not unwrap
+        script: definition.command.as_ref().unwrap(),
         cwd: &cwd,
         custom_commands,
         kill_signal,
@@ -837,7 +838,7 @@ fn print_available_tasks(
           is_deno: false,
           name: name.to_string(),
           task: deno_config::deno_json::TaskDefinition {
-            command: script.to_string(),
+            command: Some(script.to_string()),
             dependencies: vec![],
             description: None,
           },
@@ -876,7 +877,8 @@ fn print_available_tasks(
     writeln!(
       writer,
       "    {}",
-      strip_ansi_codes_and_escape_control_chars(&desc.task.command)
+      // todo(https://github.com/denoland/deno/pull/27191): update this
+      strip_ansi_codes_and_escape_control_chars(&desc.task.command.unwrap()),
     )?;
     if !desc.task.dependencies.is_empty() {
       let dependencies = desc

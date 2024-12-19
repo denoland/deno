@@ -329,7 +329,7 @@ impl<
             return node_resolver
               .resolve_package_subpath_from_deno_module(
                 pkg_folder,
-                npm_req_ref.sub_path(),
+                npm_req_ref.sub_path().map(|v| v.as_str()),
                 Some(referrer),
                 resolution_mode,
                 resolution_kind,

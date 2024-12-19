@@ -38,6 +38,7 @@ use deno_resolver::npm::normalize_pkg_name_for_node_modules_deno_folder;
 use deno_runtime::deno_fs;
 use deno_runtime::deno_node::NodePermissions;
 use deno_semver::package::PackageNv;
+use deno_semver::StackString;
 use node_resolver::errors::PackageFolderResolveError;
 use node_resolver::errors::PackageFolderResolveIoError;
 use node_resolver::errors::PackageNotFoundError;
@@ -355,8 +356,10 @@ async fn sync_resolution_with_fs(
   let package_partitions =
     snapshot.all_system_packages_partitioned(system_info);
   let mut cache_futures = FuturesUnordered::new();
-  let mut newest_packages_by_name: HashMap<&String, &NpmResolutionPackage> =
-    HashMap::with_capacity(package_partitions.packages.len());
+  let mut newest_packages_by_name: HashMap<
+    &StackString,
+    &NpmResolutionPackage,
+  > = HashMap::with_capacity(package_partitions.packages.len());
   let bin_entries = Rc::new(RefCell::new(bin_entries::BinEntries::new()));
   let mut lifecycle_scripts =
     super::common::lifecycle_scripts::LifecycleScripts::new(
@@ -536,7 +539,7 @@ async fn sync_resolution_with_fs(
     }
   }
 
-  let mut found_names: HashMap<&String, &PackageNv> = HashMap::new();
+  let mut found_names: HashMap<&StackString, &PackageNv> = HashMap::new();
 
   // set of node_modules in workspace packages that we've already ensured exist
   let mut existing_child_node_modules_dirs: HashSet<PathBuf> = HashSet::new();
@@ -1012,10 +1015,10 @@ fn get_package_folder_id_from_folder_name(
 ) -> Option<NpmPackageCacheFolderId> {
   let folder_name = folder_name.replace('+', "/");
   let (name, ending) = folder_name.rsplit_once('@')?;
-  let name = if let Some(encoded_name) = name.strip_prefix('_') {
-    mixed_case_package_name_decode(encoded_name)?
+  let name: StackString = if let Some(encoded_name) = name.strip_prefix('_') {
+    mixed_case_package_name_decode(encoded_name)?.into()
   } else {
-    name.to_string()
+    name.into()
   };
   let (raw_version, copy_index) = match ending.split_once('_') {
     Some((raw_version, copy_index)) => {

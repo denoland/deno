@@ -21,6 +21,7 @@ use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
 use deno_core::unsync::spawn;
 use deno_core::url::Url;
+use deno_semver::SmallStackString;
 use deno_semver::Version;
 use once_cell::sync::Lazy;
 use std::borrow::Cow;
@@ -255,7 +256,7 @@ async fn print_release_notes(
   let is_deno_2_rc = new_semver.major == 2
     && new_semver.minor == 0
     && new_semver.patch == 0
-    && new_semver.pre.first() == Some(&"rc".to_string());
+    && new_semver.pre.first().map(|s| s.as_str()) == Some("rc");
 
   if is_deno_2_rc || is_switching_from_deno1_to_deno2 {
     log::info!(
@@ -674,7 +675,7 @@ impl RequestedVersion {
         );
       };
 
-      if semver.pre.contains(&"rc".to_string()) {
+      if semver.pre.contains(&SmallStackString::from("rc")) {
         (ReleaseChannel::Rc, passed_version)
       } else {
         (ReleaseChannel::Stable, passed_version)

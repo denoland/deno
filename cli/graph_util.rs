@@ -680,7 +680,7 @@ impl ModuleGraphBuilder {
           for (from, to) in graph.packages.mappings() {
             lockfile.insert_package_specifier(
               JsrDepPackageReq::jsr(from.clone()),
-              to.version.to_string(),
+              to.version.to_string_ecow(),
             );
           }
         }

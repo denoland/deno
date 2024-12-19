@@ -4,6 +4,7 @@ use std::collections::HashMap;
 use std::collections::HashSet;
 use std::sync::Arc;
 
+use capacity_builder::StringBuilder;
 use deno_core::error::AnyError;
 use deno_lockfile::NpmPackageDependencyLockfileInfo;
 use deno_lockfile::NpmPackageLockfileInfo;
@@ -24,6 +25,7 @@ use deno_npm::NpmSystemInfo;
 use deno_semver::jsr::JsrDepPackageReq;
 use deno_semver::package::PackageNv;
 use deno_semver::package::PackageReq;
+use deno_semver::SmallStackString;
 use deno_semver::VersionReq;
 
 use crate::args::CliLockfile;
@@ -336,7 +338,13 @@ fn populate_lockfile_from_snapshot(
     let id = &snapshot.resolve_package_from_deno_module(nv).unwrap().id;
     lockfile.insert_package_specifier(
       JsrDepPackageReq::npm(package_req.clone()),
-      format!("{}{}", id.nv.version, id.peer_deps_serialized()),
+      {
+        StringBuilder::<SmallStackString>::build(|builder| {
+          builder.append(&id.nv.name);
+          builder.append(&id.peer_dependencies);
+        })
+        .unwrap()
+      },
     );
   }
   for package in snapshot.all_packages_for_every_system() {
