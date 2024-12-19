@@ -3,7 +3,6 @@
 use std::borrow::Cow;
 use std::collections::HashMap;
 use std::path::PathBuf;
-use std::sync::atomic::AtomicBool;
 use std::sync::Arc;
 
 use deno_ast::ModuleSpecifier;
@@ -28,6 +27,7 @@ use deno_semver::npm::NpmPackageReqReference;
 use deno_semver::package::PackageNv;
 use deno_semver::package::PackageReq;
 use deno_semver::package::PackageReqReference;
+use deno_semver::Version;
 use deno_semver::VersionReq;
 use import_map::ImportMap;
 use import_map::ImportMapWithDiagnostics;
@@ -42,6 +42,7 @@ use crate::jsr::JsrFetchResolver;
 use crate::module_loader::ModuleLoadPreparer;
 use crate::npm::CliNpmResolver;
 use crate::npm::NpmFetchResolver;
+use crate::util::sync::AtomicFlag;
 
 use super::ConfigUpdater;
 
@@ -447,7 +448,7 @@ pub struct DepManager {
 
   pending_changes: Vec<Change>,
 
-  dependencies_resolved: AtomicBool,
+  dependencies_resolved: AtomicFlag,
   module_load_preparer: Arc<ModuleLoadPreparer>,
   // TODO(nathanwhit): probably shouldn't be pub
   pub(crate) jsr_fetch_resolver: Arc<JsrFetchResolver>,
@@ -489,7 +490,7 @@ impl DepManager {
       resolved_versions: Vec::new(),
       latest_versions: Vec::new(),
       jsr_fetch_resolver,
-      dependencies_resolved: AtomicBool::new(false),
+      dependencies_resolved: AtomicFlag::lowered(),
       module_load_preparer,
       npm_fetch_resolver,
       npm_resolver,
@@ -530,10 +531,7 @@ impl DepManager {
   }
 
   async fn run_dependency_resolution(&self) -> Result<(), AnyError> {
-    if self
-      .dependencies_resolved
-      .load(std::sync::atomic::Ordering::Relaxed)
-    {
+    if self.dependencies_resolved.is_raised() {
       return Ok(());
     }
 
@@ -556,9 +554,7 @@ impl DepManager {
       }
       DepKind::Jsr => graph.packages.mappings().contains_key(&dep.req),
     }) {
-      self
-        .dependencies_resolved
-        .store(true, std::sync::atomic::Ordering::Relaxed);
+      self.dependencies_resolved.raise();
       graph_permit.commit();
       return Ok(());
     }
@@ -613,6 +609,7 @@ impl DepManager {
       )
       .await?;
 
+    self.dependencies_resolved.raise();
     graph_permit.commit();
 
     Ok(())
@@ -655,10 +652,6 @@ impl DepManager {
     if self.latest_versions.len() == self.deps.len() {
       return Ok(self.latest_versions.clone());
     }
-    let latest_tag_req = deno_semver::VersionReq::from_raw_text_and_inner(
-      "latest".into(),
-      deno_semver::RangeSetOrTag::Tag("latest".into()),
-    );
     let mut latest_versions = Vec::with_capacity(self.deps.len());
 
     let npm_sema = Semaphore::new(32);
@@ -670,14 +663,25 @@ impl DepManager {
         DepKind::Npm => futs.push_back(
           async {
             let semver_req = &dep.req;
-            let latest_req = PackageReq {
-              name: dep.req.name.clone(),
-              version_req: latest_tag_req.clone(),
-            };
             let _permit = npm_sema.acquire().await;
             let semver_compatible =
               self.npm_fetch_resolver.req_to_nv(semver_req).await;
-            let latest = self.npm_fetch_resolver.req_to_nv(&latest_req).await;
+            let info =
+              self.npm_fetch_resolver.package_info(&semver_req.name).await;
+            let latest = info
+              .and_then(|info| {
+                let latest_tag = info.dist_tags.get("latest")?;
+                let lower_bound = &semver_compatible.as_ref()?.version;
+                if latest_tag > lower_bound {
+                  Some(latest_tag.clone())
+                } else {
+                  latest_version(Some(latest_tag), info.versions.keys())
+                }
+              })
+              .map(|version| PackageNv {
+                name: semver_req.name.clone(),
+                version,
+              });
             PackageLatestVersion {
               latest,
               semver_compatible,
@@ -688,14 +692,29 @@ impl DepManager {
         DepKind::Jsr => futs.push_back(
           async {
             let semver_req = &dep.req;
-            let latest_req = PackageReq {
-              name: dep.req.name.clone(),
-              version_req: deno_semver::WILDCARD_VERSION_REQ.clone(),
-            };
             let _permit = jsr_sema.acquire().await;
             let semver_compatible =
               self.jsr_fetch_resolver.req_to_nv(semver_req).await;
-            let latest = self.jsr_fetch_resolver.req_to_nv(&latest_req).await;
+            let info =
+              self.jsr_fetch_resolver.package_info(&semver_req.name).await;
+            let latest = info
+              .and_then(|info| {
+                let lower_bound = &semver_compatible.as_ref()?.version;
+                latest_version(
+                  Some(lower_bound),
+                  info.versions.iter().filter_map(|(version, version_info)| {
+                    if !version_info.yanked {
+                      Some(version)
+                    } else {
+                      None
+                    }
+                  }),
+                )
+              })
+              .map(|version| PackageNv {
+                name: semver_req.name.clone(),
+                version,
+              });
             PackageLatestVersion {
               latest,
               semver_compatible,
@@ -892,4 +911,19 @@ fn parse_req_reference(
     DepKind::Npm => NpmPackageReqReference::from_str(input)?.into_inner(),
     DepKind::Jsr => JsrPackageReqReference::from_str(input)?.into_inner(),
   })
+}
+
+fn latest_version<'a>(
+  start: Option<&Version>,
+  versions: impl IntoIterator<Item = &'a Version>,
+) -> Option<Version> {
+  let mut best = start;
+  for version in versions {
+    match best {
+      Some(best_version) if version > best_version => best = Some(version),
+      None => best = Some(version),
+      _ => {}
+    }
+  }
+  best.cloned()
 }

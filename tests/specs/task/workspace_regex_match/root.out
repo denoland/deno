@@ -1,0 +1,3 @@
+Task test-all deno task --recursive test
+Task test echo 'ok'
+ok

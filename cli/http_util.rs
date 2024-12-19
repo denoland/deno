@@ -145,9 +145,7 @@ impl HttpClient {
   }
 
   pub fn get(&self, url: Url) -> Result<RequestBuilder, http::Error> {
-    let body = http_body_util::Empty::new()
-      .map_err(|never| match never {})
-      .boxed();
+    let body = deno_fetch::ReqBody::empty();
     let mut req = http::Request::new(body);
     *req.uri_mut() = url.as_str().parse()?;
     Ok(RequestBuilder {
@@ -179,9 +177,7 @@ impl HttpClient {
     S: serde::Serialize,
   {
     let json = deno_core::serde_json::to_vec(ser)?;
-    let body = http_body_util::Full::new(json.into())
-      .map_err(|never| match never {})
-      .boxed();
+    let body = deno_fetch::ReqBody::full(json.into());
     let builder = self.post(url, body)?;
     Ok(builder.header(
       http::header::CONTENT_TYPE,
@@ -194,9 +190,7 @@ impl HttpClient {
     url: &Url,
     headers: HeaderMap,
   ) -> Result<http::Response<ResBody>, SendError> {
-    let body = http_body_util::Empty::new()
-      .map_err(|never| match never {})
-      .boxed();
+    let body = deno_fetch::ReqBody::empty();
     let mut request = http::Request::new(body);
     *request.uri_mut() = http::Uri::try_from(url.as_str())?;
     *request.headers_mut() = headers;
