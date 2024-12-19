@@ -291,7 +291,7 @@
               "type": "array",
               "description": "List of tag names that will be run. Empty list disables all tags and will only use rules from `include`.",
               "items": {
-                "$ref": "https://raw.githubusercontent.com/denoland/deno_lint/main/schemas/tags.v1.json"
+                "$ref": "lint-tags.v1.json"
               },
               "minItems": 0,
               "uniqueItems": true
@@ -300,7 +300,7 @@
               "type": "array",
               "description": "List of rule names that will be excluded from configured tag sets. If the same rule is in `include` it will be run.",
               "items": {
-                "$ref": "https://raw.githubusercontent.com/denoland/deno_lint/main/schemas/rules.v1.json"
+                "$ref": "lint-rules.v1.json"
               },
               "minItems": 0,
               "uniqueItems": true
@@ -309,7 +309,7 @@
               "type": "array",
               "description": "List of rule names that will be run. Even if the same rule is in `exclude` it will be run.",
               "items": {
-                "$ref": "https://raw.githubusercontent.com/denoland/deno_lint/main/schemas/rules.v1.json"
+                "$ref": "lint-rules.v1.json"
               },
               "minItems": 0,
               "uniqueItems": true

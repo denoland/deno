@@ -1,0 +1,10 @@
+[WILDCARD]
+
+Embedded Files
+
+main[WILDLINE]
+├── main.ts ([WILDLINE])
+└── node_modules/* ([WILDLINE])
+
+Size: [WILDLINE]
+

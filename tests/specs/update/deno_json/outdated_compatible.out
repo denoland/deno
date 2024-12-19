@@ -5,3 +5,6 @@
 ├──────────────────────────────────┼─────────┼────────┼────────┤
 │ npm:@denotest/has-patch-versions │ 0.1.0   │ 0.1.1  │ 0.2.0  │
 └──────────────────────────────────┴─────────┴────────┴────────┘
+
+Run deno outdated --update to update to the latest compatible versions,
+or deno outdated --help for more information.

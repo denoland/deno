@@ -17,6 +17,9 @@ use std::sync::Arc;
 
 use crate::args::LifecycleScriptsConfig;
 use crate::colors;
+use crate::npm::managed::PackageCaching;
+use crate::npm::CliNpmCache;
+use crate::npm::CliNpmTarballCache;
 use async_trait::async_trait;
 use deno_ast::ModuleSpecifier;
 use deno_cache_dir::npm::mixed_case_package_name_decode;
@@ -52,8 +55,6 @@ use crate::util::fs::LaxSingleProcessFsFlag;
 use crate::util::progress_bar::ProgressBar;
 use crate::util::progress_bar::ProgressMessagePrompt;
 
-use super::super::cache::NpmCache;
-use super::super::cache::TarballCache;
 use super::super::resolution::NpmResolution;
 use super::common::bin_entries;
 use super::common::NpmPackageFsResolver;
@@ -63,12 +64,12 @@ use super::common::RegistryReadPermissionChecker;
 /// and resolves packages from it.
 #[derive(Debug)]
 pub struct LocalNpmPackageResolver {
-  cache: Arc<NpmCache>,
+  cache: Arc<CliNpmCache>,
   fs: Arc<dyn deno_fs::FileSystem>,
   npm_install_deps_provider: Arc<NpmInstallDepsProvider>,
   progress_bar: ProgressBar,
   resolution: Arc<NpmResolution>,
-  tarball_cache: Arc<TarballCache>,
+  tarball_cache: Arc<CliNpmTarballCache>,
   root_node_modules_path: PathBuf,
   root_node_modules_url: Url,
   system_info: NpmSystemInfo,
@@ -79,12 +80,12 @@ pub struct LocalNpmPackageResolver {
 impl LocalNpmPackageResolver {
   #[allow(clippy::too_many_arguments)]
   pub fn new(
-    cache: Arc<NpmCache>,
+    cache: Arc<CliNpmCache>,
     fs: Arc<dyn deno_fs::FileSystem>,
     npm_install_deps_provider: Arc<NpmInstallDepsProvider>,
     progress_bar: ProgressBar,
     resolution: Arc<NpmResolution>,
-    tarball_cache: Arc<TarballCache>,
+    tarball_cache: Arc<CliNpmTarballCache>,
     node_modules_folder: PathBuf,
     system_info: NpmSystemInfo,
     lifecycle_scripts: LifecycleScriptsConfig,
@@ -236,13 +237,33 @@ impl NpmPackageFsResolver for LocalNpmPackageResolver {
     else {
       return Ok(None);
     };
-    let folder_name = folder_path.parent().unwrap().to_string_lossy();
-    Ok(get_package_folder_id_from_folder_name(&folder_name))
+    // ex. project/node_modules/.deno/preact@10.24.3/node_modules/preact/
+    let Some(node_modules_ancestor) = folder_path
+      .ancestors()
+      .find(|ancestor| ancestor.ends_with("node_modules"))
+    else {
+      return Ok(None);
+    };
+    let Some(folder_name) =
+      node_modules_ancestor.parent().and_then(|p| p.file_name())
+    else {
+      return Ok(None);
+    };
+    Ok(get_package_folder_id_from_folder_name(
+      &folder_name.to_string_lossy(),
+    ))
   }
 
-  async fn cache_packages(&self) -> Result<(), AnyError> {
+  async fn cache_packages<'a>(
+    &self,
+    caching: PackageCaching<'a>,
+  ) -> Result<(), AnyError> {
+    let snapshot = match caching {
+      PackageCaching::All => self.resolution.snapshot(),
+      PackageCaching::Only(reqs) => self.resolution.subset(&reqs),
+    };
     sync_resolution_with_fs(
-      &self.resolution.snapshot(),
+      &snapshot,
       &self.cache,
       &self.npm_install_deps_provider,
       &self.progress_bar,
@@ -284,10 +305,10 @@ fn local_node_modules_package_contents_path(
 #[allow(clippy::too_many_arguments)]
 async fn sync_resolution_with_fs(
   snapshot: &NpmResolutionSnapshot,
-  cache: &Arc<NpmCache>,
+  cache: &Arc<CliNpmCache>,
   npm_install_deps_provider: &NpmInstallDepsProvider,
   progress_bar: &ProgressBar,
-  tarball_cache: &Arc<TarballCache>,
+  tarball_cache: &Arc<CliNpmTarballCache>,
   root_node_modules_dir_path: &Path,
   system_info: &NpmSystemInfo,
   lifecycle_scripts: &LifecycleScriptsConfig,

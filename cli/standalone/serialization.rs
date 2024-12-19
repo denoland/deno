@@ -1,6 +1,7 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 use std::borrow::Cow;
+use std::cell::Cell;
 use std::collections::BTreeMap;
 use std::collections::HashMap;
 use std::io::Write;
@@ -23,6 +24,7 @@ use deno_semver::package::PackageReq;
 use crate::standalone::virtual_fs::VirtualDirectory;
 
 use super::binary::Metadata;
+use super::virtual_fs::BuiltVfs;
 use super::virtual_fs::VfsBuilder;
 
 const MAGIC_BYTES: &[u8; 8] = b"d3n0l4nd";
@@ -39,53 +41,48 @@ pub fn serialize_binary_data_section(
   metadata: &Metadata,
   npm_snapshot: Option<SerializedNpmResolutionSnapshot>,
   remote_modules: &RemoteModulesStoreBuilder,
-  vfs: VfsBuilder,
+  vfs: &BuiltVfs,
 ) -> Result<Vec<u8>, AnyError> {
-  fn write_bytes_with_len(bytes: &mut Vec<u8>, data: &[u8]) {
-    bytes.extend_from_slice(&(data.len() as u64).to_le_bytes());
-    bytes.extend_from_slice(data);
-  }
+  let metadata = serde_json::to_string(metadata)?;
+  let npm_snapshot =
+    npm_snapshot.map(serialize_npm_snapshot).unwrap_or_default();
+  let remote_modules_len = Cell::new(0_u64);
+  let serialized_vfs = serde_json::to_string(&vfs.root)?;
 
-  let mut bytes = Vec::new();
-  bytes.extend_from_slice(MAGIC_BYTES);
-
-  // 1. Metadata
-  {
-    let metadata = serde_json::to_string(metadata)?;
-    write_bytes_with_len(&mut bytes, metadata.as_bytes());
-  }
-  // 2. Npm snapshot
-  {
-    let npm_snapshot =
-      npm_snapshot.map(serialize_npm_snapshot).unwrap_or_default();
-    write_bytes_with_len(&mut bytes, &npm_snapshot);
-  }
-  // 3. Remote modules
-  {
-    let update_index = bytes.len();
-    bytes.extend_from_slice(&(0_u64).to_le_bytes());
-    let start_index = bytes.len();
-    remote_modules.write(&mut bytes)?;
-    let length = bytes.len() - start_index;
-    let length_bytes = (length as u64).to_le_bytes();
-    bytes[update_index..update_index + length_bytes.len()]
-      .copy_from_slice(&length_bytes);
-  }
-  // 4. VFS
-  {
-    let (vfs, vfs_files) = vfs.into_dir_and_files();
-    let vfs = serde_json::to_string(&vfs)?;
-    write_bytes_with_len(&mut bytes, vfs.as_bytes());
-    let vfs_bytes_len = vfs_files.iter().map(|f| f.len() as u64).sum::<u64>();
-    bytes.extend_from_slice(&vfs_bytes_len.to_le_bytes());
-    for file in &vfs_files {
-      bytes.extend_from_slice(file);
+  let bytes = capacity_builder::BytesBuilder::build(|builder| {
+    builder.append(MAGIC_BYTES);
+    // 1. Metadata
+    {
+      builder.append_le(metadata.len() as u64);
+      builder.append(&metadata);
     }
-  }
+    // 2. Npm snapshot
+    {
+      builder.append_le(npm_snapshot.len() as u64);
+      builder.append(&npm_snapshot);
+    }
+    // 3. Remote modules
+    {
+      builder.append_le(remote_modules_len.get()); // this will be properly initialized on the second pass
+      let start_index = builder.len();
+      remote_modules.write(builder);
+      remote_modules_len.set((builder.len() - start_index) as u64);
+    }
+    // 4. VFS
+    {
+      builder.append_le(serialized_vfs.len() as u64);
+      builder.append(&serialized_vfs);
+      let vfs_bytes_len = vfs.files.iter().map(|f| f.len() as u64).sum::<u64>();
+      builder.append_le(vfs_bytes_len);
+      for file in &vfs.files {
+        builder.append(file);
+      }
+    }
 
-  // write the magic bytes at the end so we can use it
-  // to make sure we've deserialized correctly
-  bytes.extend_from_slice(MAGIC_BYTES);
+    // write the magic bytes at the end so we can use it
+    // to make sure we've deserialized correctly
+    builder.append(MAGIC_BYTES);
+  })?;
 
   Ok(bytes)
 }
@@ -191,26 +188,25 @@ impl RemoteModulesStoreBuilder {
     }
   }
 
-  fn write(&self, writer: &mut dyn Write) -> Result<(), AnyError> {
-    writer.write_all(&(self.specifiers.len() as u32).to_le_bytes())?;
-    writer.write_all(&(self.redirects.len() as u32).to_le_bytes())?;
+  fn write<'a>(&'a self, builder: &mut capacity_builder::BytesBuilder<'a>) {
+    builder.append_le(self.specifiers.len() as u32);
+    builder.append_le(self.redirects.len() as u32);
     for (specifier, offset) in &self.specifiers {
-      writer.write_all(&(specifier.len() as u32).to_le_bytes())?;
-      writer.write_all(specifier.as_bytes())?;
-      writer.write_all(&offset.to_le_bytes())?;
+      builder.append_le(specifier.len() as u32);
+      builder.append(specifier.as_bytes());
+      builder.append_le(*offset);
     }
     for (from, to) in &self.redirects {
-      writer.write_all(&(from.len() as u32).to_le_bytes())?;
-      writer.write_all(from.as_bytes())?;
-      writer.write_all(&(to.len() as u32).to_le_bytes())?;
-      writer.write_all(to.as_bytes())?;
+      builder.append_le(from.len() as u32);
+      builder.append(from);
+      builder.append_le(to.len() as u32);
+      builder.append(to);
     }
     for (media_type, data) in &self.data {
-      writer.write_all(&[serialize_media_type(*media_type)])?;
-      writer.write_all(&(data.len() as u64).to_le_bytes())?;
-      writer.write_all(data)?;
+      builder.append(serialize_media_type(*media_type));
+      builder.append_le(data.len() as u64);
+      builder.append(data);
     }
-    Ok(())
   }
 }
 

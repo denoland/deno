@@ -224,7 +224,7 @@ Deno.test({
   fn() {
     assert(util.types.isNativeError(new Error()));
     assert(util.types.isNativeError(new TypeError()));
-    assert(!util.types.isNativeError(new DOMException()));
+    assert(util.types.isNativeError(new DOMException()));
   },
 });
 

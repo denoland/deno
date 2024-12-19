@@ -16,6 +16,7 @@ use once_cell::sync::OnceCell;
 use opentelemetry::logs::AnyValue;
 use opentelemetry::logs::LogRecord as LogRecordTrait;
 use opentelemetry::logs::Severity;
+use opentelemetry::otel_error;
 use opentelemetry::trace::SpanContext;
 use opentelemetry::trace::SpanId;
 use opentelemetry::trace::SpanKind;
@@ -27,15 +28,21 @@ use opentelemetry::KeyValue;
 use opentelemetry::StringValue;
 use opentelemetry::Value;
 use opentelemetry_otlp::HttpExporterBuilder;
+use opentelemetry_otlp::MetricExporter;
 use opentelemetry_otlp::Protocol;
 use opentelemetry_otlp::WithExportConfig;
 use opentelemetry_otlp::WithHttpConfig;
 use opentelemetry_sdk::export::trace::SpanData;
 use opentelemetry_sdk::logs::BatchLogProcessor;
-use opentelemetry_sdk::logs::LogProcessor as LogProcessorTrait;
+use opentelemetry_sdk::logs::LogProcessor;
 use opentelemetry_sdk::logs::LogRecord;
+use opentelemetry_sdk::metrics::data::Metric;
+use opentelemetry_sdk::metrics::data::ResourceMetrics;
+use opentelemetry_sdk::metrics::data::ScopeMetrics;
+use opentelemetry_sdk::metrics::exporter::PushMetricExporter;
+use opentelemetry_sdk::metrics::Temporality;
 use opentelemetry_sdk::trace::BatchSpanProcessor;
-use opentelemetry_sdk::trace::SpanProcessor as SpanProcessorTrait;
+use opentelemetry_sdk::trace::SpanProcessor;
 use opentelemetry_sdk::Resource;
 use opentelemetry_semantic_conventions::resource::PROCESS_RUNTIME_NAME;
 use opentelemetry_semantic_conventions::resource::PROCESS_RUNTIME_VERSION;
@@ -54,9 +61,6 @@ use std::thread;
 use std::time::Duration;
 use std::time::SystemTime;
 
-type SpanProcessor = BatchSpanProcessor<OtelSharedRuntime>;
-type LogProcessor = BatchLogProcessor<OtelSharedRuntime>;
-
 deno_core::extension!(
   deno_telemetry,
   ops = [
@@ -71,16 +75,48 @@ deno_core::extension!(
     op_otel_span_attribute3,
     op_otel_span_set_dropped,
     op_otel_span_flush,
+    op_otel_metrics_resource_attribute,
+    op_otel_metrics_resource_attribute2,
+    op_otel_metrics_resource_attribute3,
+    op_otel_metrics_scope,
+    op_otel_metrics_sum,
+    op_otel_metrics_gauge,
+    op_otel_metrics_sum_or_gauge_data_point,
+    op_otel_metrics_histogram,
+    op_otel_metrics_histogram_data_point,
+    op_otel_metrics_histogram_data_point_entry_final,
+    op_otel_metrics_histogram_data_point_entry1,
+    op_otel_metrics_histogram_data_point_entry2,
+    op_otel_metrics_histogram_data_point_entry3,
+    op_otel_metrics_data_point_attribute,
+    op_otel_metrics_data_point_attribute2,
+    op_otel_metrics_data_point_attribute3,
+    op_otel_metrics_submit,
   ],
   esm = ["telemetry.ts", "util.ts"],
 );
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct OtelConfig {
+pub struct OtelRuntimeConfig {
   pub runtime_name: Cow<'static, str>,
   pub runtime_version: Cow<'static, str>,
+}
+
+#[derive(Default, Debug, Clone, Serialize, Deserialize)]
+pub struct OtelConfig {
+  pub tracing_enabled: bool,
   pub console: OtelConsoleConfig,
   pub deterministic: bool,
+}
+
+impl OtelConfig {
+  pub fn as_v8(&self) -> Box<[u8]> {
+    Box::new([
+      self.tracing_enabled as u8,
+      self.console as u8,
+      self.deterministic as u8,
+    ])
+  }
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
@@ -91,14 +127,9 @@ pub enum OtelConsoleConfig {
   Replace = 2,
 }
 
-impl Default for OtelConfig {
+impl Default for OtelConsoleConfig {
   fn default() -> Self {
-    Self {
-      runtime_name: Cow::Borrowed(env!("CARGO_PKG_NAME")),
-      runtime_version: Cow::Borrowed(env!("CARGO_PKG_VERSION")),
-      console: OtelConsoleConfig::Capture,
-      deterministic: false,
-    }
+    Self::Ignore
   }
 }
 
@@ -322,23 +353,82 @@ mod hyper_client {
   }
 }
 
-static OTEL_PROCESSORS: OnceCell<(SpanProcessor, LogProcessor)> =
-  OnceCell::new();
+enum MetricProcessorMessage {
+  ResourceMetrics(ResourceMetrics),
+  Flush(tokio::sync::oneshot::Sender<()>),
+}
+
+struct MetricProcessor {
+  tx: tokio::sync::mpsc::Sender<MetricProcessorMessage>,
+}
+
+impl MetricProcessor {
+  fn new(exporter: MetricExporter) -> Self {
+    let (tx, mut rx) = tokio::sync::mpsc::channel(2048);
+    let future = async move {
+      while let Some(message) = rx.recv().await {
+        match message {
+          MetricProcessorMessage::ResourceMetrics(mut rm) => {
+            if let Err(err) = exporter.export(&mut rm).await {
+              otel_error!(
+                name: "MetricProcessor.Export.Error",
+                error = format!("{}", err)
+              );
+            }
+          }
+          MetricProcessorMessage::Flush(tx) => {
+            if let Err(()) = tx.send(()) {
+              otel_error!(
+                name: "MetricProcessor.Flush.SendResultError",
+                error = "()",
+              );
+            }
+          }
+        }
+      }
+    };
+
+    (*OTEL_SHARED_RUNTIME_SPAWN_TASK_TX)
+      .unbounded_send(Box::pin(future))
+      .expect("failed to send task to shared OpenTelemetry runtime");
+
+    Self { tx }
+  }
+
+  fn submit(&self, rm: ResourceMetrics) {
+    let _ = self
+      .tx
+      .try_send(MetricProcessorMessage::ResourceMetrics(rm));
+  }
+
+  fn force_flush(&self) -> Result<(), anyhow::Error> {
+    let (tx, rx) = tokio::sync::oneshot::channel();
+    self.tx.try_send(MetricProcessorMessage::Flush(tx))?;
+    deno_core::futures::executor::block_on(rx)?;
+    Ok(())
+  }
+}
+
+struct Processors {
+  spans: BatchSpanProcessor<OtelSharedRuntime>,
+  logs: BatchLogProcessor<OtelSharedRuntime>,
+  metrics: MetricProcessor,
+}
+
+static OTEL_PROCESSORS: OnceCell<Processors> = OnceCell::new();
 
 static BUILT_IN_INSTRUMENTATION_SCOPE: OnceCell<
   opentelemetry::InstrumentationScope,
 > = OnceCell::new();
 
-pub fn init(config: OtelConfig) -> anyhow::Result<()> {
+pub fn init(config: OtelRuntimeConfig) -> anyhow::Result<()> {
   // Parse the `OTEL_EXPORTER_OTLP_PROTOCOL` variable. The opentelemetry_*
   // crates don't do this automatically.
   // TODO(piscisaureus): enable GRPC support.
   let protocol = match env::var("OTEL_EXPORTER_OTLP_PROTOCOL").as_deref() {
     Ok("http/protobuf") => Protocol::HttpBinary,
     Ok("http/json") => Protocol::HttpJson,
-    Ok("") | Err(env::VarError::NotPresent) => {
-      return Ok(());
-    }
+    Ok("") | Err(env::VarError::NotPresent) => Protocol::HttpBinary,
     Ok(protocol) => {
       return Err(anyhow!(
         "Env var OTEL_EXPORTER_OTLP_PROTOCOL specifies an unsupported protocol: {}",
@@ -404,6 +494,12 @@ pub fn init(config: OtelConfig) -> anyhow::Result<()> {
     BatchSpanProcessor::builder(span_exporter, OtelSharedRuntime).build();
   span_processor.set_resource(&resource);
 
+  let metric_exporter = HttpExporterBuilder::default()
+    .with_http_client(client.clone())
+    .with_protocol(protocol)
+    .build_metrics_exporter(Temporality::Cumulative)?;
+  let metric_processor = MetricProcessor::new(metric_exporter);
+
   let log_exporter = HttpExporterBuilder::default()
     .with_http_client(client)
     .with_protocol(protocol)
@@ -413,7 +509,11 @@ pub fn init(config: OtelConfig) -> anyhow::Result<()> {
   log_processor.set_resource(&resource);
 
   OTEL_PROCESSORS
-    .set((span_processor, log_processor))
+    .set(Processors {
+      spans: span_processor,
+      logs: log_processor,
+      metrics: metric_processor,
+    })
     .map_err(|_| anyhow!("failed to init otel"))?;
 
   let builtin_instrumentation_scope =
@@ -431,16 +531,22 @@ pub fn init(config: OtelConfig) -> anyhow::Result<()> {
 /// `process::exit()`, to ensure that all OpenTelemetry logs are properly
 /// flushed before the process terminates.
 pub fn flush() {
-  if let Some((span_processor, log_processor)) = OTEL_PROCESSORS.get() {
-    let _ = span_processor.force_flush();
-    let _ = log_processor.force_flush();
+  if let Some(Processors {
+    spans,
+    logs,
+    metrics,
+  }) = OTEL_PROCESSORS.get()
+  {
+    let _ = spans.force_flush();
+    let _ = logs.force_flush();
+    let _ = metrics.force_flush();
   }
 }
 
 pub fn handle_log(record: &log::Record) {
   use log::Level;
 
-  let Some((_, log_processor)) = OTEL_PROCESSORS.get() else {
+  let Some(Processors { logs, .. }) = OTEL_PROCESSORS.get() else {
     return;
   };
 
@@ -490,7 +596,7 @@ pub fn handle_log(record: &log::Record) {
 
   let _ = record.key_values().visit(&mut Visitor(&mut log_record));
 
-  log_processor.emit(
+  logs.emit(
     &mut log_record,
     BUILT_IN_INSTRUMENTATION_SCOPE.get().unwrap(),
   );
@@ -634,9 +740,9 @@ fn op_otel_instrumentation_scope_enter(
 
 #[op2(fast)]
 fn op_otel_instrumentation_scope_enter_builtin(state: &mut OpState) {
-  state.put(InstrumentationScope(
-    BUILT_IN_INSTRUMENTATION_SCOPE.get().unwrap().clone(),
-  ));
+  if let Some(scope) = BUILT_IN_INSTRUMENTATION_SCOPE.get() {
+    state.put(InstrumentationScope(scope.clone()));
+  }
 }
 
 #[op2(fast)]
@@ -648,7 +754,10 @@ fn op_otel_log(
   span_id: v8::Local<'_, v8::Value>,
   #[smi] trace_flags: u8,
 ) {
-  let Some((_, log_processor)) = OTEL_PROCESSORS.get() else {
+  let Some(Processors { logs, .. }) = OTEL_PROCESSORS.get() else {
+    return;
+  };
+  let Some(instrumentation_scope) = BUILT_IN_INSTRUMENTATION_SCOPE.get() else {
     return;
   };
 
@@ -678,10 +787,20 @@ fn op_otel_log(
     );
   }
 
-  log_processor.emit(
-    &mut log_record,
-    BUILT_IN_INSTRUMENTATION_SCOPE.get().unwrap(),
-  );
+  logs.emit(&mut log_record, instrumentation_scope);
+}
+
+fn owned_string<'s>(
+  scope: &mut v8::HandleScope<'s>,
+  string: v8::Local<'s, v8::String>,
+) -> String {
+  let x = v8::ValueView::new(scope, string);
+  match x.data() {
+    v8::ValueViewData::OneByte(bytes) => {
+      String::from_utf8_lossy(bytes).into_owned()
+    }
+    v8::ValueViewData::TwoByte(bytes) => String::from_utf16_lossy(bytes),
+  }
 }
 
 struct TemporarySpan(SpanData);
@@ -700,10 +819,10 @@ fn op_otel_span_start<'s>(
   end_time: f64,
 ) -> Result<(), anyhow::Error> {
   if let Some(temporary_span) = state.try_take::<TemporarySpan>() {
-    let Some((span_processor, _)) = OTEL_PROCESSORS.get() else {
+    let Some(Processors { spans, .. }) = OTEL_PROCESSORS.get() else {
       return Ok(());
     };
-    span_processor.on_end(temporary_span.0);
+    spans.on_end(temporary_span.0);
   };
 
   let Some(InstrumentationScope(instrumentation_scope)) =
@@ -724,15 +843,7 @@ fn op_otel_span_start<'s>(
 
   let parent_span_id = parse_span_id(scope, parent_span_id);
 
-  let name = {
-    let x = v8::ValueView::new(scope, name.try_cast()?);
-    match x.data() {
-      v8::ValueViewData::OneByte(bytes) => {
-        String::from_utf8_lossy(bytes).into_owned()
-      }
-      v8::ValueViewData::TwoByte(bytes) => String::from_utf16_lossy(bytes),
-    }
-  };
+  let name = owned_string(scope, name.try_cast()?);
 
   let temporary_span = TemporarySpan(SpanData {
     span_context: SpanContext::new(
@@ -866,9 +977,598 @@ fn op_otel_span_flush(state: &mut OpState) {
     return;
   };
 
-  let Some((span_processor, _)) = OTEL_PROCESSORS.get() else {
+  let Some(Processors { spans, .. }) = OTEL_PROCESSORS.get() else {
     return;
   };
 
-  span_processor.on_end(temporary_span.0);
+  spans.on_end(temporary_span.0);
+}
+
+// Holds data being built from JS before
+// it is submitted to the rust processor.
+struct TemporaryMetricsExport {
+  resource_attributes: Vec<KeyValue>,
+  scope_metrics: Vec<ScopeMetrics>,
+  metric: Option<TemporaryMetric>,
+}
+
+struct TemporaryMetric {
+  name: String,
+  description: String,
+  unit: String,
+  data: TemporaryMetricData,
+}
+
+enum TemporaryMetricData {
+  Sum(opentelemetry_sdk::metrics::data::Sum<f64>),
+  Gauge(opentelemetry_sdk::metrics::data::Gauge<f64>),
+  Histogram(opentelemetry_sdk::metrics::data::Histogram<f64>),
+}
+
+impl From<TemporaryMetric> for Metric {
+  fn from(value: TemporaryMetric) -> Self {
+    Metric {
+      name: Cow::Owned(value.name),
+      description: Cow::Owned(value.description),
+      unit: Cow::Owned(value.unit),
+      data: match value.data {
+        TemporaryMetricData::Sum(sum) => Box::new(sum),
+        TemporaryMetricData::Gauge(gauge) => Box::new(gauge),
+        TemporaryMetricData::Histogram(histogram) => Box::new(histogram),
+      },
+    }
+  }
+}
+
+#[op2(fast)]
+fn op_otel_metrics_resource_attribute<'s>(
+  scope: &mut v8::HandleScope<'s>,
+  state: &mut OpState,
+  #[smi] capacity: u32,
+  key: v8::Local<'s, v8::Value>,
+  value: v8::Local<'s, v8::Value>,
+) {
+  let metrics_export = if let Some(metrics_export) =
+    state.try_borrow_mut::<TemporaryMetricsExport>()
+  {
+    metrics_export.resource_attributes.reserve_exact(
+      (capacity as usize) - metrics_export.resource_attributes.capacity(),
+    );
+    metrics_export
+  } else {
+    state.put(TemporaryMetricsExport {
+      resource_attributes: Vec::with_capacity(capacity as usize),
+      scope_metrics: vec![],
+      metric: None,
+    });
+    state.borrow_mut()
+  };
+  attr!(scope, metrics_export.resource_attributes, key, value);
+}
+
+#[op2(fast)]
+fn op_otel_metrics_resource_attribute2<'s>(
+  scope: &mut v8::HandleScope<'s>,
+  state: &mut OpState,
+  #[smi] capacity: u32,
+  key1: v8::Local<'s, v8::Value>,
+  value1: v8::Local<'s, v8::Value>,
+  key2: v8::Local<'s, v8::Value>,
+  value2: v8::Local<'s, v8::Value>,
+) {
+  let metrics_export = if let Some(metrics_export) =
+    state.try_borrow_mut::<TemporaryMetricsExport>()
+  {
+    metrics_export.resource_attributes.reserve_exact(
+      (capacity as usize) - metrics_export.resource_attributes.capacity(),
+    );
+    metrics_export
+  } else {
+    state.put(TemporaryMetricsExport {
+      resource_attributes: Vec::with_capacity(capacity as usize),
+      scope_metrics: vec![],
+      metric: None,
+    });
+    state.borrow_mut()
+  };
+  attr!(scope, metrics_export.resource_attributes, key1, value1);
+  attr!(scope, metrics_export.resource_attributes, key2, value2);
+}
+
+#[allow(clippy::too_many_arguments)]
+#[op2(fast)]
+fn op_otel_metrics_resource_attribute3<'s>(
+  scope: &mut v8::HandleScope<'s>,
+  state: &mut OpState,
+  #[smi] capacity: u32,
+  key1: v8::Local<'s, v8::Value>,
+  value1: v8::Local<'s, v8::Value>,
+  key2: v8::Local<'s, v8::Value>,
+  value2: v8::Local<'s, v8::Value>,
+  key3: v8::Local<'s, v8::Value>,
+  value3: v8::Local<'s, v8::Value>,
+) {
+  let metrics_export = if let Some(metrics_export) =
+    state.try_borrow_mut::<TemporaryMetricsExport>()
+  {
+    metrics_export.resource_attributes.reserve_exact(
+      (capacity as usize) - metrics_export.resource_attributes.capacity(),
+    );
+    metrics_export
+  } else {
+    state.put(TemporaryMetricsExport {
+      resource_attributes: Vec::with_capacity(capacity as usize),
+      scope_metrics: vec![],
+      metric: None,
+    });
+    state.borrow_mut()
+  };
+  attr!(scope, metrics_export.resource_attributes, key1, value1);
+  attr!(scope, metrics_export.resource_attributes, key2, value2);
+  attr!(scope, metrics_export.resource_attributes, key3, value3);
+}
+
+#[op2(fast)]
+fn op_otel_metrics_scope<'s>(
+  scope: &mut v8::HandleScope<'s>,
+  state: &mut OpState,
+  name: v8::Local<'s, v8::Value>,
+  schema_url: v8::Local<'s, v8::Value>,
+  version: v8::Local<'s, v8::Value>,
+) {
+  let name = owned_string(scope, name.cast());
+
+  let scope_builder = opentelemetry::InstrumentationScope::builder(name);
+  let scope_builder = if schema_url.is_null_or_undefined() {
+    scope_builder
+  } else {
+    scope_builder.with_schema_url(owned_string(scope, schema_url.cast()))
+  };
+  let scope_builder = if version.is_null_or_undefined() {
+    scope_builder
+  } else {
+    scope_builder.with_version(owned_string(scope, version.cast()))
+  };
+  let scope = scope_builder.build();
+  let scope_metric = ScopeMetrics {
+    scope,
+    metrics: vec![],
+  };
+
+  match state.try_borrow_mut::<TemporaryMetricsExport>() {
+    Some(temp) => {
+      if let Some(current_metric) = temp.metric.take() {
+        let metric = Metric::from(current_metric);
+        temp.scope_metrics.last_mut().unwrap().metrics.push(metric);
+      }
+      temp.scope_metrics.push(scope_metric);
+    }
+    None => {
+      state.put(TemporaryMetricsExport {
+        resource_attributes: vec![],
+        scope_metrics: vec![scope_metric],
+        metric: None,
+      });
+    }
+  }
+}
+
+#[op2(fast)]
+fn op_otel_metrics_sum<'s>(
+  scope: &mut v8::HandleScope<'s>,
+  state: &mut OpState,
+  name: v8::Local<'s, v8::Value>,
+  description: v8::Local<'s, v8::Value>,
+  unit: v8::Local<'s, v8::Value>,
+  #[smi] temporality: u8,
+  is_monotonic: bool,
+) {
+  let Some(temp) = state.try_borrow_mut::<TemporaryMetricsExport>() else {
+    return;
+  };
+
+  if let Some(current_metric) = temp.metric.take() {
+    let metric = Metric::from(current_metric);
+    temp.scope_metrics.last_mut().unwrap().metrics.push(metric);
+  }
+
+  let name = owned_string(scope, name.cast());
+  let description = owned_string(scope, description.cast());
+  let unit = owned_string(scope, unit.cast());
+  let temporality = match temporality {
+    0 => Temporality::Delta,
+    1 => Temporality::Cumulative,
+    _ => return,
+  };
+  let sum = opentelemetry_sdk::metrics::data::Sum {
+    data_points: vec![],
+    temporality,
+    is_monotonic,
+  };
+
+  temp.metric = Some(TemporaryMetric {
+    name,
+    description,
+    unit,
+    data: TemporaryMetricData::Sum(sum),
+  });
+}
+
+#[op2(fast)]
+fn op_otel_metrics_gauge<'s>(
+  scope: &mut v8::HandleScope<'s>,
+  state: &mut OpState,
+  name: v8::Local<'s, v8::Value>,
+  description: v8::Local<'s, v8::Value>,
+  unit: v8::Local<'s, v8::Value>,
+) {
+  let Some(temp) = state.try_borrow_mut::<TemporaryMetricsExport>() else {
+    return;
+  };
+
+  if let Some(current_metric) = temp.metric.take() {
+    let metric = Metric::from(current_metric);
+    temp.scope_metrics.last_mut().unwrap().metrics.push(metric);
+  }
+
+  let name = owned_string(scope, name.cast());
+  let description = owned_string(scope, description.cast());
+  let unit = owned_string(scope, unit.cast());
+
+  let gauge = opentelemetry_sdk::metrics::data::Gauge {
+    data_points: vec![],
+  };
+
+  temp.metric = Some(TemporaryMetric {
+    name,
+    description,
+    unit,
+    data: TemporaryMetricData::Gauge(gauge),
+  });
+}
+
+#[op2(fast)]
+fn op_otel_metrics_sum_or_gauge_data_point(
+  state: &mut OpState,
+  value: f64,
+  start_time: f64,
+  time: f64,
+) {
+  let Some(temp) = state.try_borrow_mut::<TemporaryMetricsExport>() else {
+    return;
+  };
+
+  let start_time = SystemTime::UNIX_EPOCH
+    .checked_add(std::time::Duration::from_secs_f64(start_time))
+    .unwrap();
+  let time = SystemTime::UNIX_EPOCH
+    .checked_add(std::time::Duration::from_secs_f64(time))
+    .unwrap();
+
+  let data_point = opentelemetry_sdk::metrics::data::DataPoint {
+    value,
+    start_time: Some(start_time),
+    time: Some(time),
+    attributes: vec![],
+    exemplars: vec![],
+  };
+
+  match &mut temp.metric {
+    Some(TemporaryMetric {
+      data: TemporaryMetricData::Sum(sum),
+      ..
+    }) => sum.data_points.push(data_point),
+    Some(TemporaryMetric {
+      data: TemporaryMetricData::Gauge(gauge),
+      ..
+    }) => gauge.data_points.push(data_point),
+    _ => {}
+  }
+}
+
+#[op2(fast)]
+fn op_otel_metrics_histogram<'s>(
+  scope: &mut v8::HandleScope<'s>,
+  state: &mut OpState,
+  name: v8::Local<'s, v8::Value>,
+  description: v8::Local<'s, v8::Value>,
+  unit: v8::Local<'s, v8::Value>,
+  #[smi] temporality: u8,
+) {
+  let Some(temp) = state.try_borrow_mut::<TemporaryMetricsExport>() else {
+    return;
+  };
+
+  if let Some(current_metric) = temp.metric.take() {
+    let metric = Metric::from(current_metric);
+    temp.scope_metrics.last_mut().unwrap().metrics.push(metric);
+  }
+
+  let name = owned_string(scope, name.cast());
+  let description = owned_string(scope, description.cast());
+  let unit = owned_string(scope, unit.cast());
+
+  let temporality = match temporality {
+    0 => Temporality::Delta,
+    1 => Temporality::Cumulative,
+    _ => return,
+  };
+  let histogram = opentelemetry_sdk::metrics::data::Histogram {
+    data_points: vec![],
+    temporality,
+  };
+
+  temp.metric = Some(TemporaryMetric {
+    name,
+    description,
+    unit,
+    data: TemporaryMetricData::Histogram(histogram),
+  });
+}
+
+#[allow(clippy::too_many_arguments)]
+#[op2(fast)]
+fn op_otel_metrics_histogram_data_point(
+  state: &mut OpState,
+  #[number] count: u64,
+  min: f64,
+  max: f64,
+  sum: f64,
+  start_time: f64,
+  time: f64,
+  #[smi] buckets: u32,
+) {
+  let Some(temp) = state.try_borrow_mut::<TemporaryMetricsExport>() else {
+    return;
+  };
+
+  let min = if min.is_nan() { None } else { Some(min) };
+  let max = if max.is_nan() { None } else { Some(max) };
+
+  let start_time = SystemTime::UNIX_EPOCH
+    .checked_add(std::time::Duration::from_secs_f64(start_time))
+    .unwrap();
+  let time = SystemTime::UNIX_EPOCH
+    .checked_add(std::time::Duration::from_secs_f64(time))
+    .unwrap();
+
+  let data_point = opentelemetry_sdk::metrics::data::HistogramDataPoint {
+    bounds: Vec::with_capacity(buckets as usize),
+    bucket_counts: Vec::with_capacity((buckets as usize) + 1),
+    count,
+    sum,
+    min,
+    max,
+    start_time,
+    time,
+    attributes: vec![],
+    exemplars: vec![],
+  };
+
+  if let Some(TemporaryMetric {
+    data: TemporaryMetricData::Histogram(histogram),
+    ..
+  }) = &mut temp.metric
+  {
+    histogram.data_points.push(data_point);
+  }
+}
+
+#[op2(fast)]
+fn op_otel_metrics_histogram_data_point_entry_final(
+  state: &mut OpState,
+  #[number] count1: u64,
+) {
+  let Some(temp) = state.try_borrow_mut::<TemporaryMetricsExport>() else {
+    return;
+  };
+
+  if let Some(TemporaryMetric {
+    data: TemporaryMetricData::Histogram(histogram),
+    ..
+  }) = &mut temp.metric
+  {
+    histogram
+      .data_points
+      .last_mut()
+      .unwrap()
+      .bucket_counts
+      .push(count1)
+  }
+}
+
+#[op2(fast)]
+fn op_otel_metrics_histogram_data_point_entry1(
+  state: &mut OpState,
+  #[number] count1: u64,
+  bound1: f64,
+) {
+  let Some(temp) = state.try_borrow_mut::<TemporaryMetricsExport>() else {
+    return;
+  };
+
+  if let Some(TemporaryMetric {
+    data: TemporaryMetricData::Histogram(histogram),
+    ..
+  }) = &mut temp.metric
+  {
+    let data_point = histogram.data_points.last_mut().unwrap();
+    data_point.bucket_counts.push(count1);
+    data_point.bounds.push(bound1);
+  }
+}
+
+#[op2(fast)]
+fn op_otel_metrics_histogram_data_point_entry2(
+  state: &mut OpState,
+  #[number] count1: u64,
+  bound1: f64,
+  #[number] count2: u64,
+  bound2: f64,
+) {
+  let Some(temp) = state.try_borrow_mut::<TemporaryMetricsExport>() else {
+    return;
+  };
+
+  if let Some(TemporaryMetric {
+    data: TemporaryMetricData::Histogram(histogram),
+    ..
+  }) = &mut temp.metric
+  {
+    let data_point = histogram.data_points.last_mut().unwrap();
+    data_point.bucket_counts.push(count1);
+    data_point.bounds.push(bound1);
+    data_point.bucket_counts.push(count2);
+    data_point.bounds.push(bound2);
+  }
+}
+
+#[op2(fast)]
+fn op_otel_metrics_histogram_data_point_entry3(
+  state: &mut OpState,
+  #[number] count1: u64,
+  bound1: f64,
+  #[number] count2: u64,
+  bound2: f64,
+  #[number] count3: u64,
+  bound3: f64,
+) {
+  let Some(temp) = state.try_borrow_mut::<TemporaryMetricsExport>() else {
+    return;
+  };
+
+  if let Some(TemporaryMetric {
+    data: TemporaryMetricData::Histogram(histogram),
+    ..
+  }) = &mut temp.metric
+  {
+    let data_point = histogram.data_points.last_mut().unwrap();
+    data_point.bucket_counts.push(count1);
+    data_point.bounds.push(bound1);
+    data_point.bucket_counts.push(count2);
+    data_point.bounds.push(bound2);
+    data_point.bucket_counts.push(count3);
+    data_point.bounds.push(bound3);
+  }
+}
+
+#[op2(fast)]
+fn op_otel_metrics_data_point_attribute<'s>(
+  scope: &mut v8::HandleScope<'s>,
+  state: &mut OpState,
+  #[smi] capacity: u32,
+  key: v8::Local<'s, v8::Value>,
+  value: v8::Local<'s, v8::Value>,
+) {
+  if let Some(TemporaryMetricsExport {
+    metric: Some(metric),
+    ..
+  }) = state.try_borrow_mut::<TemporaryMetricsExport>()
+  {
+    let attributes = match &mut metric.data {
+      TemporaryMetricData::Sum(sum) => {
+        &mut sum.data_points.last_mut().unwrap().attributes
+      }
+      TemporaryMetricData::Gauge(gauge) => {
+        &mut gauge.data_points.last_mut().unwrap().attributes
+      }
+      TemporaryMetricData::Histogram(histogram) => {
+        &mut histogram.data_points.last_mut().unwrap().attributes
+      }
+    };
+    attributes.reserve_exact((capacity as usize) - attributes.capacity());
+    attr!(scope, attributes, key, value);
+  }
+}
+
+#[op2(fast)]
+fn op_otel_metrics_data_point_attribute2<'s>(
+  scope: &mut v8::HandleScope<'s>,
+  state: &mut OpState,
+  #[smi] capacity: u32,
+  key1: v8::Local<'s, v8::Value>,
+  value1: v8::Local<'s, v8::Value>,
+  key2: v8::Local<'s, v8::Value>,
+  value2: v8::Local<'s, v8::Value>,
+) {
+  if let Some(TemporaryMetricsExport {
+    metric: Some(metric),
+    ..
+  }) = state.try_borrow_mut::<TemporaryMetricsExport>()
+  {
+    let attributes = match &mut metric.data {
+      TemporaryMetricData::Sum(sum) => {
+        &mut sum.data_points.last_mut().unwrap().attributes
+      }
+      TemporaryMetricData::Gauge(gauge) => {
+        &mut gauge.data_points.last_mut().unwrap().attributes
+      }
+      TemporaryMetricData::Histogram(histogram) => {
+        &mut histogram.data_points.last_mut().unwrap().attributes
+      }
+    };
+    attributes.reserve_exact((capacity as usize) - attributes.capacity());
+    attr!(scope, attributes, key1, value1);
+    attr!(scope, attributes, key2, value2);
+  }
+}
+
+#[allow(clippy::too_many_arguments)]
+#[op2(fast)]
+fn op_otel_metrics_data_point_attribute3<'s>(
+  scope: &mut v8::HandleScope<'s>,
+  state: &mut OpState,
+  #[smi] capacity: u32,
+  key1: v8::Local<'s, v8::Value>,
+  value1: v8::Local<'s, v8::Value>,
+  key2: v8::Local<'s, v8::Value>,
+  value2: v8::Local<'s, v8::Value>,
+  key3: v8::Local<'s, v8::Value>,
+  value3: v8::Local<'s, v8::Value>,
+) {
+  if let Some(TemporaryMetricsExport {
+    metric: Some(metric),
+    ..
+  }) = state.try_borrow_mut::<TemporaryMetricsExport>()
+  {
+    let attributes = match &mut metric.data {
+      TemporaryMetricData::Sum(sum) => {
+        &mut sum.data_points.last_mut().unwrap().attributes
+      }
+      TemporaryMetricData::Gauge(gauge) => {
+        &mut gauge.data_points.last_mut().unwrap().attributes
+      }
+      TemporaryMetricData::Histogram(histogram) => {
+        &mut histogram.data_points.last_mut().unwrap().attributes
+      }
+    };
+    attributes.reserve_exact((capacity as usize) - attributes.capacity());
+    attr!(scope, attributes, key1, value1);
+    attr!(scope, attributes, key2, value2);
+    attr!(scope, attributes, key3, value3);
+  }
+}
+
+#[op2(fast)]
+fn op_otel_metrics_submit(state: &mut OpState) {
+  let Some(mut temp) = state.try_take::<TemporaryMetricsExport>() else {
+    return;
+  };
+
+  let Some(Processors { metrics, .. }) = OTEL_PROCESSORS.get() else {
+    return;
+  };
+
+  if let Some(current_metric) = temp.metric {
+    let metric = Metric::from(current_metric);
+    temp.scope_metrics.last_mut().unwrap().metrics.push(metric);
+  }
+
+  let resource = Resource::new(temp.resource_attributes);
+  let scope_metrics = temp.scope_metrics;
+
+  metrics.submit(ResourceMetrics {
+    resource,
+    scope_metrics,
+  });
 }

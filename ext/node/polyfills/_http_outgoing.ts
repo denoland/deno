@@ -491,17 +491,51 @@ Object.defineProperties(
       return ret;
     },
 
+    /** Right after socket is ready, we need to writeHeader() to setup the request and
+     *  client. This is invoked by onSocket(). */
+    _flushHeaders() {
+      if (!this._headerSent) {
+        this._headerSent = true;
+        this._writeHeader();
+      }
+    },
+
     // deno-lint-ignore no-explicit-any
     _send(data: any, encoding?: string | null, callback?: () => void) {
-      if (!this._headerSent && this._header !== null) {
-        this._writeHeader();
-        this._headerSent = true;
+      // if socket is ready, write the data after headers are written.
+      // if socket is not ready, buffer data in outputbuffer.
+      if (
+        this.socket && !this.socket.connecting && this.outputData.length === 0
+      ) {
+        if (!this._headerSent) {
+          this._writeHeader();
+          this._headerSent = true;
+        }
+
+        return this._writeRaw(data, encoding, callback);
+      } else {
+        this.outputData.push({ data, encoding, callback });
       }
-      return this._writeRaw(data, encoding, callback);
+      return false;
     },
 
     _writeHeader() {
       throw new ERR_METHOD_NOT_IMPLEMENTED("_writeHeader()");
+    },
+
+    _flushBuffer() {
+      const outputLength = this.outputData.length;
+      if (outputLength <= 0 || !this.socket || !this._bodyWriter) {
+        return undefined;
+      }
+
+      const { data, encoding, callback } = this.outputData.shift();
+      const ret = this._writeRaw(data, encoding, callback);
+      if (this.outputData.length > 0) {
+        this.once("drain", this._flushBuffer);
+      }
+
+      return ret;
     },
 
     _writeRaw(
@@ -517,11 +551,15 @@ Object.defineProperties(
         data = new Uint8Array(data.buffer, data.byteOffset, data.byteLength);
       }
       if (data.buffer.byteLength > 0) {
-        this._bodyWriter.write(data).then(() => {
-          callback?.();
-          this.emit("drain");
-        }).catch((e) => {
-          this._requestSendError = e;
+        this._bodyWriter.ready.then(() => {
+          if (this._bodyWriter.desiredSize > 0) {
+            this._bodyWriter.write(data).then(() => {
+              callback?.();
+              this.emit("drain");
+            }).catch((e) => {
+              this._requestSendError = e;
+            });
+          }
         });
       }
       return false;
@@ -658,7 +696,6 @@ Object.defineProperties(
 
       const { header } = state;
       this._header = header + "\r\n";
-      this._headerSent = false;
 
       // Wait until the first body chunk, or close(), is sent to flush,
       // UNLESS we're sending Expect: 100-continue.

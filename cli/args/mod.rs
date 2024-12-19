@@ -9,6 +9,7 @@ mod package_json;
 
 use deno_ast::MediaType;
 use deno_ast::SourceMapOption;
+use deno_cache_dir::file_fetcher::CacheSetting;
 use deno_config::deno_json::NodeModulesDirMode;
 use deno_config::workspace::CreateResolverOptions;
 use deno_config::workspace::FolderConfigs;
@@ -23,6 +24,7 @@ use deno_config::workspace::WorkspaceLintConfig;
 use deno_config::workspace::WorkspaceResolver;
 use deno_core::resolve_url_or_path;
 use deno_graph::GraphKind;
+use deno_lint::linter::LintConfig as DenoLintConfig;
 use deno_npm::npm_rc::NpmRc;
 use deno_npm::npm_rc::ResolvedNpmRc;
 use deno_npm::resolution::ValidSerializedNpmResolutionSnapshot;
@@ -30,6 +32,7 @@ use deno_npm::NpmSystemInfo;
 use deno_path_util::normalize_path;
 use deno_semver::npm::NpmPackageReqReference;
 use deno_telemetry::OtelConfig;
+use deno_telemetry::OtelRuntimeConfig;
 use import_map::resolve_import_map_value_from_specifier;
 
 pub use deno_config::deno_json::BenchConfig;
@@ -83,7 +86,7 @@ use thiserror::Error;
 
 use crate::cache;
 use crate::cache::DenoDirProvider;
-use crate::file_fetcher::FileFetcher;
+use crate::file_fetcher::CliFileFetcher;
 use crate::util::fs::canonicalize_path_maybe_not_exists;
 use crate::version;
 
@@ -213,47 +216,6 @@ pub fn ts_config_to_transpile_and_emit_options(
       source_map_file: None,
     },
   ))
-}
-
-/// Indicates how cached source files should be handled.
-#[derive(Debug, Clone, Eq, PartialEq)]
-pub enum CacheSetting {
-  /// Only the cached files should be used.  Any files not in the cache will
-  /// error.  This is the equivalent of `--cached-only` in the CLI.
-  Only,
-  /// No cached source files should be used, and all files should be reloaded.
-  /// This is the equivalent of `--reload` in the CLI.
-  ReloadAll,
-  /// Only some cached resources should be used.  This is the equivalent of
-  /// `--reload=jsr:@std/http/file-server` or
-  /// `--reload=jsr:@std/http/file-server,jsr:@std/assert/assert-equals`.
-  ReloadSome(Vec<String>),
-  /// The usability of a cached value is determined by analyzing the cached
-  /// headers and other metadata associated with a cached response, reloading
-  /// any cached "non-fresh" cached responses.
-  RespectHeaders,
-  /// The cached source files should be used for local modules.  This is the
-  /// default behavior of the CLI.
-  Use,
-}
-
-impl CacheSetting {
-  pub fn should_use_for_npm_package(&self, package_name: &str) -> bool {
-    match self {
-      CacheSetting::ReloadAll => false,
-      CacheSetting::ReloadSome(list) => {
-        if list.iter().any(|i| i == "npm:") {
-          return false;
-        }
-        let specifier = format!("npm:{package_name}");
-        if list.contains(&specifier) {
-          return false;
-        }
-        true
-      }
-      _ => true,
-    }
-  }
 }
 
 pub struct WorkspaceBenchOptions {
@@ -801,6 +763,7 @@ pub struct CliOptions {
   maybe_node_modules_folder: Option<PathBuf>,
   npmrc: Arc<ResolvedNpmRc>,
   maybe_lockfile: Option<Arc<CliLockfile>>,
+  maybe_external_import_map: Option<(PathBuf, serde_json::Value)>,
   overrides: CliOptionOverrides,
   pub start_dir: Arc<WorkspaceDirectory>,
   pub deno_dir_provider: Arc<DenoDirProvider>,
@@ -814,6 +777,7 @@ impl CliOptions {
     npmrc: Arc<ResolvedNpmRc>,
     start_dir: Arc<WorkspaceDirectory>,
     force_global_cache: bool,
+    maybe_external_import_map: Option<(PathBuf, serde_json::Value)>,
   ) -> Result<Self, AnyError> {
     if let Some(insecure_allowlist) =
       flags.unsafely_ignore_certificate_errors.as_ref()
@@ -851,6 +815,7 @@ impl CliOptions {
       maybe_node_modules_folder,
       overrides: Default::default(),
       main_module_cell: std::sync::OnceLock::new(),
+      maybe_external_import_map,
       start_dir,
       deno_dir_provider,
     })
@@ -926,7 +891,33 @@ impl CliOptions {
 
     let (npmrc, _) = discover_npmrc_from_workspace(&start_dir.workspace)?;
 
-    let maybe_lock_file = CliLockfile::discover(&flags, &start_dir.workspace)?;
+    fn load_external_import_map(
+      deno_json: &ConfigFile,
+    ) -> Result<Option<(PathBuf, serde_json::Value)>, AnyError> {
+      if !deno_json.is_an_import_map() {
+        if let Some(path) = deno_json.to_import_map_path()? {
+          let contents = std::fs::read_to_string(&path).with_context(|| {
+            format!("Unable to read import map at '{}'", path.display())
+          })?;
+          let map = serde_json::from_str(&contents)?;
+          return Ok(Some((path, map)));
+        }
+      }
+      Ok(None)
+    }
+
+    let external_import_map =
+      if let Some(deno_json) = start_dir.workspace.root_deno_json() {
+        load_external_import_map(deno_json)?
+      } else {
+        None
+      };
+
+    let maybe_lock_file = CliLockfile::discover(
+      &flags,
+      &start_dir.workspace,
+      external_import_map.as_ref().map(|(_, v)| v),
+    )?;
 
     log::debug!("Finished config loading.");
 
@@ -937,6 +928,7 @@ impl CliOptions {
       npmrc,
       Arc::new(start_dir),
       false,
+      external_import_map,
     )
   }
 
@@ -964,9 +956,7 @@ impl CliOptions {
     match self.sub_command() {
       DenoSubcommand::Cache(_) => GraphKind::All,
       DenoSubcommand::Check(_) => GraphKind::TypesOnly,
-      DenoSubcommand::Install(InstallFlags {
-        kind: InstallKind::Local(_),
-      }) => GraphKind::All,
+      DenoSubcommand::Install(InstallFlags::Local(_)) => GraphKind::All,
       _ => self.type_check_mode().as_graph_kind(),
     }
   }
@@ -1056,10 +1046,10 @@ impl CliOptions {
 
   pub async fn create_workspace_resolver(
     &self,
-    file_fetcher: &FileFetcher,
+    file_fetcher: &CliFileFetcher,
     pkg_json_dep_resolution: PackageJsonDepResolution,
   ) -> Result<WorkspaceResolver, AnyError> {
-    let overrode_no_import_map = self
+    let overrode_no_import_map: bool = self
       .overrides
       .import_map_specifier
       .as_ref()
@@ -1087,7 +1077,19 @@ impl CliOptions {
             value,
           })
         }
-        None => None,
+        None => {
+          if let Some((path, import_map)) =
+            self.maybe_external_import_map.as_ref()
+          {
+            let path_url = deno_path_util::url_from_file_path(path)?;
+            Some(deno_config::workspace::SpecifiedImportMap {
+              base_url: path_url,
+              value: import_map.clone(),
+            })
+          } else {
+            None
+          }
+        }
       }
     };
     Ok(self.workspace().create_resolver(
@@ -1126,7 +1128,7 @@ impl CliOptions {
     }
   }
 
-  pub fn otel_config(&self) -> Option<OtelConfig> {
+  pub fn otel_config(&self) -> OtelConfig {
     self.flags.otel_config()
   }
 
@@ -1350,9 +1352,7 @@ impl CliOptions {
     Ok(result)
   }
 
-  pub fn resolve_deno_lint_config(
-    &self,
-  ) -> Result<deno_lint::linter::LintConfig, AnyError> {
+  pub fn resolve_deno_lint_config(&self) -> Result<DenoLintConfig, AnyError> {
     let ts_config_result =
       self.resolve_ts_config_for_emit(TsConfigType::Emit)?;
 
@@ -1361,7 +1361,7 @@ impl CliOptions {
         ts_config_result.ts_config,
       )?;
 
-    Ok(deno_lint::linter::LintConfig {
+    Ok(DenoLintConfig {
       default_jsx_factory: (!transpile_options.jsx_automatic)
         .then(|| transpile_options.jsx_factory.clone()),
       default_jsx_fragment_factory: (!transpile_options.jsx_automatic)
@@ -1543,11 +1543,11 @@ impl CliOptions {
         DenoSubcommand::Check(check_flags) => {
           Some(files_to_urls(&check_flags.files))
         }
-        DenoSubcommand::Install(InstallFlags {
-          kind: InstallKind::Global(flags),
-        }) => Url::parse(&flags.module_url)
-          .ok()
-          .map(|url| vec![Cow::Owned(url)]),
+        DenoSubcommand::Install(InstallFlags::Global(flags)) => {
+          Url::parse(&flags.module_url)
+            .ok()
+            .map(|url| vec![Cow::Owned(url)])
+        }
         DenoSubcommand::Doc(DocFlags {
           source_files: DocSourceFileFlag::Paths(paths),
           ..
@@ -1683,6 +1683,7 @@ impl CliOptions {
           "detect-cjs",
           "fmt-component",
           "fmt-sql",
+          "lazy-npm-caching",
         ])
         .collect();
 
@@ -1759,6 +1760,19 @@ impl CliOptions {
           | DenoSubcommand::Cache(_)
           | DenoSubcommand::Add(_)
       ),
+    }
+  }
+
+  pub fn unstable_npm_lazy_caching(&self) -> bool {
+    self.flags.unstable_config.npm_lazy_caching
+      || self.workspace().has_unstable("npm-lazy-caching")
+  }
+
+  pub fn default_npm_caching_strategy(&self) -> NpmCachingStrategy {
+    if self.flags.unstable_config.npm_lazy_caching {
+      NpmCachingStrategy::Lazy
+    } else {
+      NpmCachingStrategy::Eager
     }
   }
 }
@@ -1972,6 +1986,20 @@ fn load_env_variables_from_env_file(filename: Option<&Vec<String>>) {
         }
       }
     }
+  }
+}
+
+#[derive(Debug, Clone, Copy)]
+pub enum NpmCachingStrategy {
+  Eager,
+  Lazy,
+  Manual,
+}
+
+pub(crate) fn otel_runtime_config() -> OtelRuntimeConfig {
+  OtelRuntimeConfig {
+    runtime_name: Cow::Borrowed("deno"),
+    runtime_version: Cow::Borrowed(crate::version::DENO_VERSION_INFO.deno),
   }
 }
 

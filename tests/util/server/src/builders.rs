@@ -325,6 +325,15 @@ impl TestContext {
     builder
   }
 
+  pub fn run_deno(&self, args: impl AsRef<str>) {
+    self
+      .new_command()
+      .name("deno")
+      .args(args)
+      .run()
+      .skip_output_check();
+  }
+
   pub fn run_npm(&self, args: impl AsRef<str>) {
     self
       .new_command()
