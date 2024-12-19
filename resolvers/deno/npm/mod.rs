@@ -144,7 +144,7 @@ impl<Fs: DenoResolverFs, TNodeResolverEnv: NodeResolverEnv>
   ) -> Result<Url, ResolveReqWithSubPathError> {
     self.resolve_req_with_sub_path(
       req_ref.req(),
-      req_ref.sub_path().map(|s| s.as_str()),
+      req_ref.sub_path(),
       referrer,
       resolution_mode,
       resolution_kind,

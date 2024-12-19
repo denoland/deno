@@ -1758,7 +1758,7 @@ version = "0.86.3"
 dependencies = [
  "anyhow",
  "async-trait",
- "capacity_builder 0.4.2",
+ "capacity_builder 0.5.0",
  "data-url",
  "deno_ast",
  "deno_semver",
@@ -2054,7 +2054,7 @@ name = "deno_npm"
 version = "0.26.0"
 dependencies = [
  "async-trait",
- "capacity_builder 0.4.2",
+ "capacity_builder 0.5.0",
  "deno_error",
  "deno_lockfile",
  "deno_semver",
