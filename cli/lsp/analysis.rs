@@ -15,6 +15,7 @@ use crate::lsp::search::PackageSearchApi;
 use crate::tools::lint::CliLinter;
 use crate::util::path::relative_specifier;
 use deno_config::workspace::MappedResolution;
+use deno_core::resolve_url;
 use deno_lint::diagnostic::LintDiagnosticRange;
 
 use deno_ast::SourceRange;
@@ -603,18 +604,24 @@ fn try_reverse_map_package_json_exports(
 /// For a set of tsc changes, can them for any that contain something that looks
 /// like an import and rewrite the import specifier to include the extension
 pub fn fix_ts_import_changes(
-  referrer: &ModuleSpecifier,
-  resolution_mode: ResolutionMode,
   changes: &[tsc::FileTextChanges],
   language_server: &language_server::Inner,
 ) -> Result<Vec<tsc::FileTextChanges>, AnyError> {
-  let import_mapper = language_server.get_ts_response_import_mapper(referrer);
   let mut r = Vec::new();
   for change in changes {
+    let Ok(referrer) = resolve_url(&change.file_name) else {
+      continue;
+    };
+    let referrer_doc = language_server.get_asset_or_document(&referrer).ok();
+    let resolution_mode = referrer_doc
+      .as_ref()
+      .map(|d| d.resolution_mode())
+      .unwrap_or(ResolutionMode::Import);
+    let import_mapper =
+      language_server.get_ts_response_import_mapper(&referrer);
     let mut text_changes = Vec::new();
     for text_change in &change.text_changes {
       let lines = text_change.new_text.split('\n');
-
       let new_lines: Vec<String> = lines
         .map(|line| {
           // This assumes that there's only one import per line.
@@ -622,7 +629,7 @@ pub fn fix_ts_import_changes(
             let specifier =
               captures.iter().skip(1).find_map(|s| s).unwrap().as_str();
             if let Some(new_specifier) = import_mapper
-              .check_unresolved_specifier(specifier, referrer, resolution_mode)
+              .check_unresolved_specifier(specifier, &referrer, resolution_mode)
             {
               line.replace(specifier, &new_specifier)
             } else {
