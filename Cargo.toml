@@ -51,7 +51,7 @@ deno_ast = { version = "=0.44.0", features = ["transpiling"] }
 deno_core = { version = "0.326.0" }
 
 deno_bench_util = { version = "0.178.0", path = "./bench_util" }
-deno_config = { version = "=0.39.3", features = ["workspace", "sync"] }
+deno_config = { version = "=0.40.0", features = ["workspace", "sync"] }
 deno_lockfile = "=0.23.2"
 deno_media_type = { version = "0.2.0", features = ["module_specifier"] }
 deno_npm = "=0.26.0"
