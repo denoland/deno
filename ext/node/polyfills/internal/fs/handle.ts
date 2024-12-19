@@ -13,6 +13,7 @@ import {
   ReadOptions,
   TextOptionsArgument,
 } from "ext:deno_node/_fs/_fs_common.ts";
+import { ftruncatePromise } from "ext:deno_node/_fs/_fs_ftruncate.ts";
 import { core } from "ext:core/mod.js";
 
 interface WriteResult {
@@ -74,7 +75,7 @@ export class FileHandle extends EventEmitter {
   }
 
   truncate(len?: number): Promise<void> {
-    return fsCall(promises.ftruncate, this, len);
+    return fsCall(ftruncatePromise, this, len);
   }
 
   readFile(

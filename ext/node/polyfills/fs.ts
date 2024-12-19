@@ -169,7 +169,6 @@ const promises = {
   opendir: opendirPromise,
   rename: renamePromise,
   truncate: truncatePromise,
-  ftruncate: ftruncatePromise,
   rm: rmPromise,
   rmdir: rmdirPromise,
   mkdir: mkdirPromise,
