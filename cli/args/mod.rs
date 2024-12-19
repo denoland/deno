@@ -1364,9 +1364,9 @@ impl CliOptions {
 
     Ok(DenoLintConfig {
       default_jsx_factory: (!transpile_options.jsx_automatic)
-        .then(|| transpile_options.jsx_factory.clone()),
+        .then_some(transpile_options.jsx_factory),
       default_jsx_fragment_factory: (!transpile_options.jsx_automatic)
-        .then(|| transpile_options.jsx_fragment_factory.clone()),
+        .then_some(transpile_options.jsx_fragment_factory),
     })
   }
 
