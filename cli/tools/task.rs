@@ -448,6 +448,16 @@ impl<'a> TaskRunner<'a> {
     kill_signal: KillSignal,
     argv: &'a [String],
   ) -> Result<i32, deno_core::anyhow::Error> {
+    let Some(command) = &definition.command else {
+      log::info!(
+        "{} {} {}",
+        colors::green("Task"),
+        colors::cyan(task_name),
+        colors::gray("(no command)")
+      );
+      return Ok(0);
+    };
+
     if let Some(npm_resolver) = self.npm_resolver.as_managed() {
       npm_resolver.ensure_top_level_package_json_install().await?;
       npm_resolver
@@ -469,8 +479,7 @@ impl<'a> TaskRunner<'a> {
     self
       .run_single(RunSingleOptions {
         task_name,
-        // todo(https://github.com/denoland/deno/pull/27191): do not unwrap
-        script: definition.command.as_ref().unwrap(),
+        script: command,
         cwd: &cwd,
         custom_commands,
         kill_signal,
@@ -874,12 +883,13 @@ fn print_available_tasks(
         )?;
       }
     }
-    writeln!(
-      writer,
-      "    {}",
-      // todo(https://github.com/denoland/deno/pull/27191): update this
-      strip_ansi_codes_and_escape_control_chars(&desc.task.command.unwrap()),
-    )?;
+    if let Some(command) = &desc.task.command {
+      writeln!(
+        writer,
+        "    {}",
+        strip_ansi_codes_and_escape_control_chars(command)
+      )?;
+    };
     if !desc.task.dependencies.is_empty() {
       let dependencies = desc
         .task
