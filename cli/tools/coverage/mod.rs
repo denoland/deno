@@ -28,6 +28,7 @@ use deno_core::url::Url;
 use deno_core::LocalInspectorSession;
 use node_resolver::InNpmPackageChecker;
 use regex::Regex;
+use std::borrow::Cow;
 use std::fs;
 use std::fs::File;
 use std::io::BufWriter;
@@ -198,7 +199,7 @@ pub struct CoverageReport {
 fn generate_coverage_report(
   script_coverage: &cdp::ScriptCoverage,
   script_source: String,
-  maybe_source_map: &Option<Vec<u8>>,
+  maybe_source_map: &Option<Cow<[u8]>>,
   output: &Option<PathBuf>,
 ) -> CoverageReport {
   let maybe_source_map = maybe_source_map
@@ -621,7 +622,7 @@ pub fn cover_files(
       None => original_source.to_string(),
     };
 
-    let source_map = source_map_from_code(runtime_code.as_bytes());
+    let source_map = source_map_from_code(runtime_code.as_bytes().into());
     let coverage_report = generate_coverage_report(
       &script_coverage,
       runtime_code.as_str().to_owned(),

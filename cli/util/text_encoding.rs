@@ -29,12 +29,12 @@ pub fn from_utf8_lossy_owned(bytes: Vec<u8>) -> String {
   }
 }
 
-pub fn source_map_from_code(code: &[u8]) -> Option<Vec<u8>> {
-  let range = find_source_map_range(code)?;
+pub fn source_map_from_code(code: Cow<[u8]>) -> Option<Cow<[u8]>> {
+  let range = find_source_map_range(&code)?;
   let source_map_range = &code[range];
   let input = source_map_range.split_at(SOURCE_MAP_PREFIX.len()).1;
   let decoded_map = BASE64_STANDARD.decode(input).ok()?;
-  Some(decoded_map)
+  Some(decoded_map.into())
 }
 
 /// Truncate the source code before the source map.
@@ -139,23 +139,24 @@ mod tests {
 
   #[test]
   fn test_source_map_from_code() {
-    let to_string =
-      |bytes: Vec<u8>| -> String { String::from_utf8(bytes).unwrap() };
+    let to_string = |bytes: Cow<[u8]>| -> String {
+      String::from_utf8(bytes.to_vec()).unwrap()
+    };
     assert_eq!(
       source_map_from_code(
-        b"test\n//# sourceMappingURL=data:application/json;base64,dGVzdGluZ3Rlc3Rpbmc=",
+        b"test\n//# sourceMappingURL=data:application/json;base64,dGVzdGluZ3Rlc3Rpbmc=".into(),
       ).map(to_string),
       Some("testingtesting".to_string())
     );
     assert_eq!(
       source_map_from_code(
-        b"test\n//# sourceMappingURL=data:application/json;base64,dGVzdGluZ3Rlc3Rpbmc=\n  \n",
+        b"test\n//# sourceMappingURL=data:application/json;base64,dGVzdGluZ3Rlc3Rpbmc=\n  \n".into(),
       ).map(to_string),
       Some("testingtesting".to_string())
     );
     assert_eq!(
       source_map_from_code(
-        b"test\n//# sourceMappingURL=data:application/json;base64,dGVzdGluZ3Rlc3Rpbmc=\n  test\n",
+        b"test\n//# sourceMappingURL=data:application/json;base64,dGVzdGluZ3Rlc3Rpbmc=\n  test\n".into(),
       ),
       None
     );
@@ -164,7 +165,8 @@ mod tests {
         b"\"use strict\";
 
 throw new Error(\"Hello world!\");
-//# sourceMappingURL=data:application/json;base64,{",
+//# sourceMappingURL=data:application/json;base64,{"
+          .into(),
       ),
       None
     );

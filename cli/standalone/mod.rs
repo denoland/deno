@@ -502,7 +502,7 @@ impl ModuleLoader for EmbeddedModuleLoader {
     std::future::ready(()).boxed_local()
   }
 
-  fn get_source_map(&self, file_name: &str) -> Option<Vec<u8>> {
+  fn get_source_map(&self, file_name: &str) -> Option<Cow<[u8]>> {
     if file_name.starts_with("file:///") {
       let url =
         deno_path_util::url_from_directory_path(self.shared.vfs.root()).ok()?;
@@ -512,8 +512,7 @@ impl ModuleLoader for EmbeddedModuleLoader {
     } else {
       self.shared.source_maps.get(file_name)
     }
-    // todo(https://github.com/denoland/deno_core/pull/1007): don't clone
-    .map(|s| s.as_bytes().to_vec())
+    .map(move |s| s.as_bytes().into())
   }
 
   fn get_source_mapped_source_line(
