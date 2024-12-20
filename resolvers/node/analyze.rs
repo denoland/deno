@@ -162,7 +162,7 @@ impl<TCjsCodeAnalyzer: CjsCodeAnalyzer, TNodeResolverEnv: NodeResolverEnv>
         add_export(
           &mut source,
           export,
-          &format!("mod[\"{}\"]", escape_for_double_quote_string(export)),
+          &format!("mod[{}]", to_double_quote_string(export)),
           &mut temp_var_count,
         );
       }
@@ -561,8 +561,8 @@ fn add_export(
       "const __deno_export_{temp_var_count}__ = {initializer};"
     ));
     source.push(format!(
-      "export {{ __deno_export_{temp_var_count}__ as \"{}\" }};",
-      escape_for_double_quote_string(name)
+      "export {{ __deno_export_{temp_var_count}__ as {} }};",
+      to_double_quote_string(name)
     ));
   } else {
     source.push(format!("export const {name} = {initializer};"));
@@ -620,14 +620,9 @@ fn not_found(path: &str, referrer: &Path) -> AnyError {
   std::io::Error::new(std::io::ErrorKind::NotFound, msg).into()
 }
 
-fn escape_for_double_quote_string(text: &str) -> Cow<str> {
-  // this should be rare, so doing a scan first before allocating is ok
-  if text.chars().any(|c| matches!(c, '"' | '\\')) {
-    // don't bother making this more complex for perf because it's rare
-    Cow::Owned(text.replace('\\', "\\\\").replace('"', "\\\""))
-  } else {
-    Cow::Borrowed(text)
-  }
+fn to_double_quote_string(text: &str) -> String {
+  // serde can handle this for us
+  serde_json::to_string(text).unwrap()
 }
 
 #[cfg(test)]
@@ -663,6 +658,15 @@ mod tests {
     assert_eq!(
       parse_specifier("@some-package/core/actions"),
       Some(("@some-package/core".to_string(), "./actions".to_string()))
+    );
+  }
+
+  #[test]
+  fn test_to_double_quote_string() {
+    assert_eq!(to_double_quote_string("test"), "\"test\"");
+    assert_eq!(
+      to_double_quote_string("\r\n\t\"test"),
+      "\"\\r\\n\\t\\\"test\""
     );
   }
 }
