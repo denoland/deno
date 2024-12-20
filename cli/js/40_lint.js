@@ -231,7 +231,7 @@ function toJsValue(ctx, offset) {
     const prop = buf[offset++];
     const kind = buf[offset++];
     const name = getString(ctx.strTable, ctx.strByProp[prop]);
-    console.log("toJsValue", name, ctx.strTable, prop, ctx.strByProp);
+
     if (kind === PropFlags.Ref) {
       const v = readU32(buf, offset);
       offset += 4;
@@ -354,7 +354,6 @@ function createAstContext(buf) {
   /** @type {Map<number, string>} */
   const strTable = new Map();
 
-  console.log("ast context", buf.slice(buf.length - 16));
   // The buffer has a few offsets at the end which allows us to easily
   // jump to the relevant sections of the message.
   const typeMapOffset = readU32(buf, buf.length - 16);
@@ -467,10 +466,8 @@ export function runPluginsForFile(fileName, serializedAst) {
       const ctx = new Context(id, fileName);
       const visitor = rule.create(ctx);
 
-      console.log("visitor", visitor);
       for (let key in visitor) {
         const fn = visitor[key];
-        console.log("key fn", key, fn);
         if (fn === undefined) continue;
 
         // Support enter and exit callbacks on a visitor.
@@ -483,7 +480,6 @@ export function runPluginsForFile(fileName, serializedAst) {
 
         const fnKey = key + (isExit ? ":exit" : "");
         let info = bySelector.get(fnKey);
-        console.log("info for selector", fnKey, info);
         if (info === undefined) {
           info = { enter: NOOP, exit: NOOP };
           bySelector.set(fnKey, info);
@@ -510,8 +506,6 @@ export function runPluginsForFile(fileName, serializedAst) {
         } else {
           info.enter = wrapped;
         }
-
-        console.log("final info", info);
       }
 
       if (typeof rule.destroy === "function") {
@@ -536,14 +530,6 @@ export function runPluginsForFile(fileName, serializedAst) {
     // Convert the visiting element name to a number. This number
     // is part of the serialized buffer and comparing a single number
     // is quicker than strings.
-    console.log(
-      "selector info",
-      sel,
-      info,
-      ctx.strTable,
-      ctx.typeByStr,
-      ctx.typeByStr.get(sel),
-    );
     const elemId = ctx.typeByStr.get(sel) ?? -1;
 
     visitors.push({
@@ -586,9 +572,6 @@ function traverse(ctx, visitors, offset) {
 
   for (let i = 0; i < visitors.length; i++) {
     const v = visitors[i];
-
-    console.log("v.info.enter", v.info.enter);
-    console.log("v.matcher", v.matcher(offset));
 
     if (v.info.enter === NOOP) {
       continue;
@@ -755,10 +738,14 @@ function _dump(ctx) {
 
 // TODO(bartlomieju): this is temporary, until we get plugins plumbed through
 // the CLI linter
+/**
+ * @param {*} plugin
+ * @param {string} fileName
+ * @param {string} sourceText
+ */
 function runLintPlugin(plugin, fileName, sourceText) {
   installPlugin(plugin);
   const serializedAst = op_lint_create_serialized_ast(fileName, sourceText);
-  console.log(serializedAst);
   runPluginsForFile(fileName, serializedAst);
 }
 
