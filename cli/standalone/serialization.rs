@@ -86,7 +86,7 @@ pub fn serialize_binary_data_section(
         builder.append_le(specifier.len() as u32);
         builder.append(specifier);
         builder.append_le(source_map.len() as u32);
-        builder.append(source_map);
+        builder.append(source_map.as_ref());
       }
     }
 
@@ -124,9 +124,9 @@ pub fn deserialize_binary_data_section(
   #[allow(clippy::type_complexity)]
   fn read_source_map_entry(
     input: &[u8],
-  ) -> Result<(&[u8], (Cow<str>, Cow<str>)), AnyError> {
+  ) -> Result<(&[u8], (Cow<str>, &[u8])), AnyError> {
     let (input, specifier) = read_string_lossy(input)?;
-    let (input, source_map) = read_string_lossy(input)?;
+    let (input, source_map) = read_bytes_with_u32_len(input)?;
     Ok((input, (specifier, source_map)))
   }
 
@@ -164,7 +164,7 @@ pub fn deserialize_binary_data_section(
     let (current_input, (specifier, source_map)) =
       read_source_map_entry(input)?;
     input = current_input;
-    source_maps.add(specifier, source_map);
+    source_maps.add(specifier, Cow::Borrowed(source_map));
   }
 
   // finally ensure we read the magic bytes at the end
@@ -293,7 +293,7 @@ impl DenoCompileModuleSource {
 }
 
 pub struct SourceMapStore {
-  data: IndexMap<Cow<'static, str>, Cow<'static, str>>,
+  data: IndexMap<Cow<'static, str>, Cow<'static, [u8]>>,
 }
 
 impl SourceMapStore {
@@ -306,13 +306,13 @@ impl SourceMapStore {
   pub fn add(
     &mut self,
     specifier: Cow<'static, str>,
-    source_map: Cow<'static, str>,
+    source_map: Cow<'static, [u8]>,
   ) {
     self.data.insert(specifier, source_map);
   }
 
-  pub fn get(&self, specifier: &str) -> Option<&Cow<'static, str>> {
-    self.data.get(specifier)
+  pub fn get(&self, specifier: &str) -> Option<&[u8]> {
+    self.data.get(specifier).map(|v| v.as_ref())
   }
 }
 
@@ -763,8 +763,7 @@ fn check_has_len(input: &[u8], len: usize) -> Result<(), AnyError> {
 }
 
 fn read_string_lossy(input: &[u8]) -> Result<(&[u8], Cow<str>), AnyError> {
-  let (input, str_len) = read_u32_as_usize(input)?;
-  let (input, data_bytes) = read_bytes(input, str_len)?;
+  let (input, data_bytes) = read_bytes_with_u32_len(input)?;
   Ok((input, String::from_utf8_lossy(data_bytes)))
 }
 
