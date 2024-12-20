@@ -231,7 +231,7 @@ function toJsValue(ctx, offset) {
     const prop = buf[offset++];
     const kind = buf[offset++];
     const name = getString(ctx.strTable, ctx.strByProp[prop]);
-
+    console.log("toJsValue", name, ctx.strTable, prop, ctx.strByProp);
     if (kind === PropFlags.Ref) {
       const v = readU32(buf, offset);
       offset += 4;
@@ -363,7 +363,8 @@ function createAstContext(buf) {
 
   // RootId is the top most id of the AST Tree. In most cases this will
   // be `1`, as `0` is reserved for an empty id.
-  const rootId = readU32(buf, buf.length - 4);
+  const rootIdOffset = readU32(buf, buf.length - 4);
+  const rootId = buf[rootIdOffset];
 
   let offset = strTableOffset;
   const stringCount = readU32(buf, offset);
