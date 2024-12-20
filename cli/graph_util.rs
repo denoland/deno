@@ -52,6 +52,7 @@ use deno_runtime::deno_node;
 use deno_runtime::deno_permissions::PermissionsContainer;
 use deno_semver::jsr::JsrDepPackageReq;
 use deno_semver::package::PackageNv;
+use deno_semver::SmallStackString;
 use import_map::ImportMapError;
 use node_resolver::InNpmPackageChecker;
 use std::collections::HashSet;
@@ -680,7 +681,7 @@ impl ModuleGraphBuilder {
           for (from, to) in graph.packages.mappings() {
             lockfile.insert_package_specifier(
               JsrDepPackageReq::jsr(from.clone()),
-              to.version.to_string(),
+              to.version.to_custom_string::<SmallStackString>(),
             );
           }
         }

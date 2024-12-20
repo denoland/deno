@@ -6,6 +6,7 @@ use std::collections::BTreeMap;
 use std::collections::HashMap;
 use std::io::Write;
 
+use capacity_builder::BytesAppendable;
 use deno_ast::swc::common::source_map;
 use deno_ast::MediaType;
 use deno_core::anyhow::bail;
@@ -21,6 +22,7 @@ use deno_npm::resolution::SerializedNpmResolutionSnapshotPackage;
 use deno_npm::resolution::ValidSerializedNpmResolutionSnapshot;
 use deno_npm::NpmPackageId;
 use deno_semver::package::PackageReq;
+use deno_semver::StackString;
 use indexmap::IndexMap;
 
 use crate::standalone::virtual_fs::VirtualDirectory;
@@ -224,7 +226,10 @@ impl RemoteModulesStoreBuilder {
     }
   }
 
-  fn write<'a>(&'a self, builder: &mut capacity_builder::BytesBuilder<'a>) {
+  fn write<'a, TBytes: capacity_builder::BytesType>(
+    &'a self,
+    builder: &mut capacity_builder::BytesBuilder<'a, TBytes>,
+  ) {
     builder.append_le(self.specifiers.len() as u32);
     builder.append_le(self.redirects.len() as u32);
     for (specifier, offset) in &self.specifiers {
@@ -581,12 +586,13 @@ fn deserialize_npm_snapshot(
   #[allow(clippy::needless_lifetimes)] // clippy bug
   fn parse_package_dep<'a>(
     id_to_npm_id: &'a impl Fn(usize) -> Result<NpmPackageId, AnyError>,
-  ) -> impl Fn(&[u8]) -> Result<(&[u8], (String, NpmPackageId)), AnyError> + 'a
+  ) -> impl Fn(&[u8]) -> Result<(&[u8], (StackString, NpmPackageId)), AnyError> + 'a
   {
     |input| {
       let (input, req) = read_string_lossy(input)?;
       let (input, id) = read_u32_as_usize(input)?;
-      Ok((input, (req.into_owned(), id_to_npm_id(id)?)))
+      let req = StackString::from_cow(req);
+      Ok((input, (req, id_to_npm_id(id)?)))
     }
   }
 

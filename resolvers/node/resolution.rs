@@ -318,6 +318,8 @@ impl<TEnv: NodeResolverEnv> NodeResolver<TEnv> {
     resolution_mode: ResolutionMode,
     resolution_kind: NodeResolutionKind,
   ) -> Result<Url, PackageSubpathResolveError> {
+    // todo(dsherret): don't allocate a string here (maybe use an
+    // enum that says the subpath is not prefixed with a ./)
     let package_subpath = package_subpath
       .map(|s| format!("./{s}"))
       .unwrap_or_else(|| ".".to_string());
