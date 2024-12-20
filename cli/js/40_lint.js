@@ -40,6 +40,9 @@ const PropFlags = {
 /** @typedef {import("./40_lint_types.d.ts").VisitorFn} VisitorFn */
 /** @typedef {import("./40_lint_types.d.ts").CompiledVisitor} CompiledVisitor */
 /** @typedef {import("./40_lint_types.d.ts").LintState} LintState */
+/** @typedef {import("./40_lint_types.d.ts").LintContext} LintContext */
+/** @typedef {import("./40_lint_types.d.ts").NodeFacade} NodeFacade */
+/** @typedef {import("./40_lint_types.d.ts").LintPlugin} LintPlugin */
 
 /** @type {LintState} */
 const state = {
@@ -50,7 +53,7 @@ const state = {
 /**
  * Every rule gets their own instance of this class. This is the main
  * API lint rules interact with.
- * @implements {Deno.LintRuleContext}
+ * @implements {LintContext}
  */
 export class Context {
   id;
@@ -67,10 +70,20 @@ export class Context {
     this.id = id;
     this.fileName = fileName;
   }
+
+  /**
+   * @param {NodeFacade} node
+   */
+  report(node) {
+    // TODO(@marvinhagemeister) temporary until we have wired it through
+    // the CLI
+    // @ts-ignore temporary
+    console.log("Reported node: ", node);
+  }
 }
 
 /**
- * @param {Deno.LintPlugin} plugin
+ * @param {LintPlugin} plugin
  */
 export function installPlugin(plugin) {
   if (typeof plugin !== "object") {

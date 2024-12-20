@@ -19,14 +19,14 @@ export interface AstContext {
 }
 
 // TODO(@marvinhagemeister) Remove once we land "official" types
-interface LintContext {
+export interface LintContext {
   report(node: unknown): void;
 }
 
 // TODO(@marvinhagemeister) Remove once we land "official" types
-interface LintRule {
+export interface LintRule {
   create(ctx: LintContext): Record<string, (node: unknown) => void>;
-  destroy?(): void;
+  destroy?(ctx: LintContext): void;
 }
 
 // TODO(@marvinhagemeister) Remove once we land "official" types
