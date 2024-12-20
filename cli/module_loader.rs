@@ -996,7 +996,7 @@ impl<TGraphContainer: ModuleGraphContainer> ModuleLoader
     std::future::ready(()).boxed_local()
   }
 
-  fn get_source_map(&self, file_name: &str) -> Option<Vec<u8>> {
+  fn get_source_map(&self, file_name: &str) -> Option<Cow<[u8]>> {
     let specifier = resolve_url(file_name).ok()?;
     match specifier.scheme() {
       // we should only be looking for emits for schemes that denote external
@@ -1008,7 +1008,7 @@ impl<TGraphContainer: ModuleGraphContainer> ModuleLoader
       .0
       .load_prepared_module_for_source_map_sync(&specifier)
       .ok()??;
-    source_map_from_code(source.code.as_bytes())
+    source_map_from_code(source.code.as_bytes()).map(Cow::Owned)
   }
 
   fn get_source_mapped_source_line(
