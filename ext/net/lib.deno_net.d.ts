@@ -450,7 +450,11 @@ declare namespace Deno {
     options?: StartTlsOptions,
   ): Promise<TlsConn>;
 
-  /** @category Network */
+  /**
+   * **UNSTABLE**: New API, yet to be vetted.
+   * @experimental
+   * @category Network
+   */
   export interface QuicTransportOptions {
     /** Period of inactivity before sending a keep-alive packet. Keep-alive
      * packets prevent an inactive but otherwise healthy connection from timing
@@ -477,7 +481,11 @@ declare namespace Deno {
     maxConcurrentUnidirectionalStreams?: number;
   }
 
-  /** @category Network */
+  /**
+   * **UNSTABLE**: New API, yet to be vetted.
+   * @experimental
+   * @category Network
+   */
   export interface ListenQuicOptions extends QuicTransportOptions {
     /** The port to connect to. */
     port: number;
@@ -496,7 +504,9 @@ declare namespace Deno {
     alpnProtocols: string[];
   }
 
-  /** Listen announces on the local transport address over QUIC.
+  /**
+   * **UNSTABLE**: New API, yet to be vetted.
+   * Listen announces on the local transport address over QUIC.
    *
    * ```ts
    * const lstnr = await Deno.listenQuic({ port: 443, cert: "...", key: "...", alpnProtocols: ["h3"] });
@@ -504,12 +514,17 @@ declare namespace Deno {
    *
    * Requires `allow-net` permission.
    *
+   * @experimental
    * @tags allow-net
    * @category Network
    */
   export function listenQuic(options: ListenQuicOptions): Promise<QuicListener>;
 
-  /** @category Network */
+  /**
+   * **UNSTABLE**: New API, yet to be vetted.
+   * @experimental
+   * @category Network
+   */
   export interface ConnectQuicOptions extends QuicTransportOptions {
     /** The port to connect to. */
     port: number;
@@ -533,7 +548,9 @@ declare namespace Deno {
     congestionControl?: "throughput" | "low-latency";
   }
 
-  /** Establishes a secure connection over QUIC using a hostname and port.  The
+  /**
+   * **UNSTABLE**: New API, yet to be vetted.
+   * Establishes a secure connection over QUIC using a hostname and port.  The
    * cert file is optional and if not included Mozilla's root certificates will
    * be used. See also https://github.com/ctz/webpki-roots for specifics.
    *
@@ -545,12 +562,17 @@ declare namespace Deno {
    *
    * Requires `allow-net` permission.
    *
+   * @experimental
    * @tags allow-net
    * @category Network
    */
   export function connectQuic(options: ConnectQuicOptions): Promise<QuicConn>;
 
-  /** @category Network */
+  /**
+   * **UNSTABLE**: New API, yet to be vetted.
+   * @experimental
+   * @category Network
+   */
   export interface QuicCloseInfo {
     /** A number representing the error code for the error. */
     closeCode: number;
@@ -559,8 +581,10 @@ declare namespace Deno {
   }
 
   /**
+   * **UNSTABLE**: New API, yet to be vetted.
    * An incoming connection for which the server has not yet begun its part of the handshake.
    *
+   * @experimental
    * @category Network
    */
   export interface QuicIncoming {
@@ -595,8 +619,11 @@ declare namespace Deno {
     ignore(): void;
   }
 
-  /** Specialized listener that accepts QUIC connections.
+  /**
+   * **UNSTABLE**: New API, yet to be vetted.
+   * Specialized listener that accepts QUIC connections.
    *
+   * @experimental
    * @category Network
    */
   export interface QuicListener extends AsyncIterable<QuicConn> {
@@ -616,7 +643,12 @@ declare namespace Deno {
     [Symbol.asyncIterator](): AsyncIterableIterator<QuicConn>;
   }
 
-  /** @category Network */
+  /**
+   * **UNSTABLE**: New API, yet to be vetted.
+   *
+   * @experimental
+   * @category Network
+   */
   export interface QuicSendStreamOptions {
     /** Indicates the send priority of this stream relative to other streams for
      * which the value has been set.
@@ -629,7 +661,12 @@ declare namespace Deno {
     waitUntilAvailable?: boolean;
   }
 
-  /** @category Network */
+  /**
+   * **UNSTABLE**: New API, yet to be vetted.
+   *
+   * @experimental
+   * @category Network
+   */
   export interface QuicConn {
     /** Close closes the listener. Any pending accept promises will be rejected
      * with errors. */
@@ -668,7 +705,12 @@ declare namespace Deno {
     readonly maxDatagramSize: number;
   }
 
-  /** @category Network */
+  /**
+   * **UNSTABLE**: New API, yet to be vetted.
+   *
+   * @experimental
+   * @category Network
+   */
   export interface QuicBidirectionalStream {
     /** Returns a QuicReceiveStream instance that can be used to read incoming data. */
     readonly readable: QuicReceiveStream;
@@ -676,14 +718,24 @@ declare namespace Deno {
     readonly writable: QuicSendStream;
   }
 
-  /** @category Network */
+  /**
+   * **UNSTABLE**: New API, yet to be vetted.
+   *
+   * @experimental
+   * @category Network
+   */
   export interface QuicSendStream extends WritableStream<Uint8Array> {
     /** Indicates the send priority of this stream relative to other streams for
      * which the value has been set. */
     sendOrder: number;
   }
 
-  /** @category Network */
+  /**
+   * **UNSTABLE**: New API, yet to be vetted.
+   *
+   * @experimental
+   * @category Network
+   */
   export interface QuicReceiveStream extends ReadableStream<Uint8Array> {}
 
   export {}; // only export exports
