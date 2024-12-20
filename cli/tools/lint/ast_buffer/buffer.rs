@@ -200,8 +200,8 @@ impl SerializeCtx {
       start_buf: NodeRef(0),
       buf: vec![],
       str_table: StringTable::new(),
-      kind_map: vec![0; kind_size + 1],
-      prop_map: vec![0; prop_size + 1],
+      kind_map: vec![0; kind_size],
+      prop_map: vec![0; prop_size],
     };
 
     ctx.str_table.insert("");
