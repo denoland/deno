@@ -993,24 +993,24 @@ impl CliOptions {
         // https://nodejs.org/api/process.html
         match target.as_str() {
           "aarch64-apple-darwin" => NpmSystemInfo {
-            os: "darwin".to_string(),
-            cpu: "arm64".to_string(),
+            os: "darwin".into(),
+            cpu: "arm64".into(),
           },
           "aarch64-unknown-linux-gnu" => NpmSystemInfo {
-            os: "linux".to_string(),
-            cpu: "arm64".to_string(),
+            os: "linux".into(),
+            cpu: "arm64".into(),
           },
           "x86_64-apple-darwin" => NpmSystemInfo {
-            os: "darwin".to_string(),
-            cpu: "x64".to_string(),
+            os: "darwin".into(),
+            cpu: "x64".into(),
           },
           "x86_64-unknown-linux-gnu" => NpmSystemInfo {
-            os: "linux".to_string(),
-            cpu: "x64".to_string(),
+            os: "linux".into(),
+            cpu: "x64".into(),
           },
           "x86_64-pc-windows-msvc" => NpmSystemInfo {
-            os: "win32".to_string(),
-            cpu: "x64".to_string(),
+            os: "win32".into(),
+            cpu: "x64".into(),
           },
           value => {
             log::warn!(

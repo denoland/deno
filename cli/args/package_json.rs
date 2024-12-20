@@ -120,7 +120,7 @@ impl NpmInstallDepsProvider {
           match dep {
             PackageJsonDepValue::Req(pkg_req) => {
               let workspace_pkg = workspace_npm_pkgs.iter().find(|pkg| {
-                pkg.matches_req(&pkg_req)
+                pkg.matches_req(pkg_req)
               // do not resolve to the current package
               && pkg.pkg_json.path != pkg_json.path
               });
@@ -149,7 +149,7 @@ impl NpmInstallDepsProvider {
                 }
               };
               if let Some(pkg) = workspace_npm_pkgs.iter().find(|pkg| {
-                pkg.matches_name_and_version_req(&alias, &version_req)
+                pkg.matches_name_and_version_req(alias, &version_req)
               }) {
                 workspace_pkgs.push(InstallNpmWorkspacePkg {
                   alias: Some(alias.clone()),

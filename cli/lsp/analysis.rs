@@ -384,10 +384,7 @@ impl<'a> TsResponseImportMapper<'a> {
                   {
                     if pkg_reqs.contains(package_ref.req()) {
                       let sub_path = sub_path.as_deref().unwrap_or("");
-                      let value_sub_path = package_ref
-                        .sub_path()
-                        .map(|s| s.as_str())
-                        .unwrap_or("");
+                      let value_sub_path = package_ref.sub_path().unwrap_or("");
                       if let Some(key_sub_path) =
                         sub_path.strip_prefix(value_sub_path)
                       {
