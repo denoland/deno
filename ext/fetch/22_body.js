@@ -13,6 +13,7 @@
 
 import { core, primordials } from "ext:core/mod.js";
 const {
+  BadResourcePrototype,
   isAnyArrayBuffer,
   isArrayBuffer,
   isStringObject,
@@ -151,7 +152,7 @@ class InnerBody {
    * https://fetch.spec.whatwg.org/#concept-body-consume-body
    * @returns {Promise<Uint8Array>}
    */
-  consume() {
+  async consume() {
     if (this.unusable()) throw new TypeError("Body already consumed");
     if (
       ObjectPrototypeIsPrototypeOf(
@@ -160,7 +161,17 @@ class InnerBody {
       )
     ) {
       readableStreamThrowIfErrored(this.stream);
-      return readableStreamCollectIntoUint8Array(this.stream);
+      try {
+        return await readableStreamCollectIntoUint8Array(this.stream);
+      } catch (e) {
+        if (ObjectPrototypeIsPrototypeOf(BadResourcePrototype, e)) {
+          // TODO(kt3k): We probably like to pass e as `cause` if BadResource supports it.
+          throw new e.constructor(
+            "Cannot read body as underlying resource unavailable",
+          );
+        }
+        throw e;
+      }
     } else {
       this.streamOrStatic.consumed = true;
       return this.streamOrStatic.body;
