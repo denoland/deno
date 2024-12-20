@@ -348,7 +348,7 @@ fn add_deps_from_package_json(
         deno_package_json::PackageJsonDepValue::Req(req) => {
           let alias = k.as_str();
           let alias = (alias != req.name).then(|| alias.to_string());
-          if !filter.should_include(alias.as_deref(), &req, DepKind::Npm) {
+          if !filter.should_include(alias.as_deref(), req, DepKind::Npm) {
             continue;
           }
           let id = DepId(deps.len());

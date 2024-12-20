@@ -301,7 +301,7 @@ impl<'a> TsResponseImportMapper<'a> {
       )?;
       let sub_path = (export != ".")
         .then_some(export)
-        .map(|s| SmallStackString::from_string(s));
+        .map(SmallStackString::from_string);
       let mut req = None;
       req = req.or_else(|| {
         let import_map = self.maybe_import_map?;
