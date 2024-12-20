@@ -1,6 +1,7 @@
 use std::fmt::Display;
 
-use deno_ast::swc::common::{Span, DUMMY_SP};
+use deno_ast::swc::common::Span;
+use deno_ast::swc::common::DUMMY_SP;
 use indexmap::IndexMap;
 
 /// Each property has this flag to mark what kind of value it holds-

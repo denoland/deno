@@ -1,11 +1,18 @@
-use std::fmt::{self, Debug, Display};
+use std::fmt::Debug;
+use std::fmt::Display;
+use std::fmt::{self};
 
 use deno_ast::swc::common::Span;
 
-use super::buffer::{
-  AstBufSerializer, BoolPos, FieldArrPos, FieldPos, NodeRef, NullPos,
-  SerializeCtx, StrPos, UndefPos,
-};
+use super::buffer::AstBufSerializer;
+use super::buffer::BoolPos;
+use super::buffer::FieldArrPos;
+use super::buffer::FieldPos;
+use super::buffer::NodeRef;
+use super::buffer::NullPos;
+use super::buffer::SerializeCtx;
+use super::buffer::StrPos;
+use super::buffer::UndefPos;
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum AstNode {
