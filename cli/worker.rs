@@ -656,7 +656,8 @@ impl CliMainWorkerFactory {
         "40_test_common.js",
         "40_test.js",
         "40_bench.js",
-        "40_jupyter.js"
+        "40_jupyter.js",
+        "40_lint.js"
       );
     }
 

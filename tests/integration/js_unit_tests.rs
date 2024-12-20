@@ -52,6 +52,7 @@ util::unit_test_factory!(
     kv_queue_test,
     kv_queue_undelivered_test,
     link_test,
+    lint_plugin_test,
     make_temp_test,
     message_channel_test,
     mkdir_test,
