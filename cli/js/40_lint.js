@@ -374,7 +374,7 @@ function createAstContext(buf) {
   const stringCount = readU32(buf, offset);
   offset += 4;
 
-  // TODO: We could lazily decode the strings on an as needed basis.
+  // TODO(@marvinhagemeister): We could lazily decode the strings on an as needed basis.
   // Not sure if this matters much in practice though.
   let id = 0;
   for (let i = 0; i < stringCount; i++) {
@@ -473,6 +473,7 @@ export function runPluginsForFile(fileName, serializedAst) {
       const ctx = new Context(id, fileName);
       const visitor = rule.create(ctx);
 
+      // deno-lint-ignore guard-for-in
       for (let key in visitor) {
         const fn = visitor[key];
         if (fn === undefined) continue;
@@ -647,21 +648,26 @@ function _dump(ctx) {
   const { buf, strTableOffset, strTable, strByType, strByProp } = ctx;
 
   // @ts-ignore dump fn
+  // deno-lint-ignore no-console
   console.log(strTable);
 
   for (let i = 0; i < strByType.length; i++) {
     const v = strByType[i];
     // @ts-ignore dump fn
+    // deno-lint-ignore no-console
     if (v > 0) console.log(" > type:", i, getString(ctx.strTable, v), v);
   }
   // @ts-ignore dump fn
+  // deno-lint-ignore no-console
   console.log();
   for (let i = 0; i < strByProp.length; i++) {
     const v = strByProp[i];
     // @ts-ignore dump fn
+    // deno-lint-ignore no-console
     if (v > 0) console.log(" > prop:", i, getString(ctx.strTable, v), v);
   }
   // @ts-ignore dump fn
+  // deno-lint-ignore no-console
   console.log();
 
   let offset = 0;
@@ -670,12 +676,14 @@ function _dump(ctx) {
     const type = buf[offset];
     const name = getString(ctx.strTable, ctx.strByType[type]);
     // @ts-ignore dump fn
+    // deno-lint-ignore no-console
     console.log(`${name}, offset: ${offset}, type: ${type}`);
     offset += 1;
 
     const parent = readU32(buf, offset);
     offset += 4;
     // @ts-ignore dump fn
+    // deno-lint-ignore no-console
     console.log(`  parent: ${parent}`);
 
     const start = readU32(buf, offset);
@@ -683,10 +691,12 @@ function _dump(ctx) {
     const end = readU32(buf, offset);
     offset += 4;
     // @ts-ignore dump fn
+    // deno-lint-ignore no-console
     console.log(`  range: ${start} -> ${end}`);
 
     const count = buf[offset++];
     // @ts-ignore dump fn
+    // deno-lint-ignore no-console
     console.log(`  prop count: ${count}`);
 
     for (let i = 0; i < count; i++) {
@@ -706,36 +716,43 @@ function _dump(ctx) {
         const v = readU32(buf, offset);
         offset += 4;
         // @ts-ignore dump fn
+        // deno-lint-ignore no-console
         console.log(`    ${name}: ${v} (${kindName}, ${prop})`);
       } else if (kind === PropFlags.RefArr) {
         const len = readU32(buf, offset);
         offset += 4;
         // @ts-ignore dump fn
+        // deno-lint-ignore no-console
         console.log(`    ${name}: Array(${len}) (${kindName}, ${prop})`);
 
         for (let j = 0; j < len; j++) {
           const v = readU32(buf, offset);
           offset += 4;
           // @ts-ignore dump fn
+          // deno-lint-ignore no-console
           console.log(`      - ${v} (${prop})`);
         }
       } else if (kind === PropFlags.Bool) {
         const v = buf[offset];
         offset += 1;
         // @ts-ignore dump fn
+        // deno-lint-ignore no-console
         console.log(`    ${name}: ${v} (${kindName}, ${prop})`);
       } else if (kind === PropFlags.String) {
         const v = readU32(buf, offset);
         offset += 4;
         // @ts-ignore dump fn
+        // deno-lint-ignore no-console
         console.log(
           `    ${name}: ${getString(ctx.strTable, v)} (${kindName}, ${prop})`,
         );
       } else if (kind === PropFlags.Null) {
         // @ts-ignore dump fn
+        // deno-lint-ignore no-console
         console.log(`    ${name}: null (${kindName}, ${prop})`);
       } else if (kind === PropFlags.Undefined) {
         // @ts-ignore dump fn
+        // deno-lint-ignore no-console
         console.log(`    ${name}: undefined (${kindName}, ${prop})`);
       }
     }

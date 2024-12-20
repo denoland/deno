@@ -1,3 +1,5 @@
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+
 use std::fmt::Display;
 
 use deno_ast::swc::common::Span;

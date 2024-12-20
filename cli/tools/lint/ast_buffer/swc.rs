@@ -1,3 +1,5 @@
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+
 use deno_ast::swc::ast::AssignTarget;
 use deno_ast::swc::ast::AssignTargetPat;
 use deno_ast::swc::ast::BlockStmtOrExpr;
