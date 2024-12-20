@@ -284,7 +284,7 @@ fn package_json_dependency_entry(
       (npm_package.into(), selected.version_req)
     } else {
       (
-        selected.import_name.to_string(),
+        selected.import_name.into_string(),
         format!("npm:{}@{}", npm_package, selected.version_req),
       )
     }
@@ -293,7 +293,7 @@ fn package_json_dependency_entry(
     let scope_replaced = jsr_package.replace('/', "__");
     let version_req =
       format!("npm:@jsr/{scope_replaced}@{}", selected.version_req);
-    (selected.import_name.to_string(), version_req)
+    (selected.import_name.into_string(), version_req)
   } else {
     (selected.package_name, selected.version_req)
   }

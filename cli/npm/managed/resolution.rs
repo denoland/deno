@@ -340,7 +340,7 @@ fn populate_lockfile_from_snapshot(
       JsrDepPackageReq::npm(package_req.clone()),
       {
         StringBuilder::<SmallStackString>::build(|builder| {
-          builder.append(&id.nv.name);
+          builder.append(&id.nv.version);
           builder.append(&id.peer_dependencies);
         })
         .unwrap()

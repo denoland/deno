@@ -280,7 +280,7 @@ fn add_npm_packages_to_json(
           if let Some(module) = module.as_object_mut() {
             module.insert(
               "npmPackage".to_string(),
-              pkg.id.as_serialized().to_string().into(),
+              pkg.id.as_serialized().into_string().into(),
             );
           }
         }
@@ -298,7 +298,7 @@ fn add_npm_packages_to_json(
               {
                 dep.insert(
                   "npmPackage".to_string(),
-                  pkg.id.as_serialized().to_string().into(),
+                  pkg.id.as_serialized().into_string().into(),
                 );
               }
             }
@@ -332,13 +332,13 @@ fn add_npm_packages_to_json(
     deps.sort();
     let deps = deps
       .into_iter()
-      .map(|id| serde_json::Value::String(id.as_serialized().to_string()))
+      .map(|id| serde_json::Value::String(id.as_serialized().into_string()))
       .collect::<Vec<_>>();
     kv.insert("dependencies".to_string(), deps.into());
     let registry_url = npmrc.get_registry_url(&pkg.id.nv.name);
     kv.insert("registryUrl".to_string(), registry_url.to_string().into());
 
-    json_packages.insert(pkg.id.as_serialized().to_string(), kv.into());
+    json_packages.insert(pkg.id.as_serialized().into_string(), kv.into());
   }
 
   json.insert("npmPackages".to_string(), json_packages.into());
@@ -551,7 +551,7 @@ impl<'a> GraphDisplayContext<'a> {
       None => Specifier(module.specifier().clone()),
     };
     let was_seen = !self.seen.insert(match &package_or_specifier {
-      Package(package) => package.id.as_serialized().to_string(),
+      Package(package) => package.id.as_serialized().into_string(),
       Specifier(specifier) => specifier.to_string(),
     });
     let header_text = if was_seen {
@@ -634,7 +634,7 @@ impl<'a> GraphDisplayContext<'a> {
       if let Some(package) = self.npm_info.packages.get(dep_id) {
         if !package.dependencies.is_empty() {
           let was_seen =
-            !self.seen.insert(package.id.as_serialized().to_string());
+            !self.seen.insert(package.id.as_serialized().into_string());
           if was_seen {
             child.text = format!("{} {}", child.text, colors::gray("*"));
           } else {

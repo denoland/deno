@@ -675,7 +675,7 @@ impl RequestedVersion {
         );
       };
 
-      if semver.pre.contains(&SmallStackString::from("rc")) {
+      if semver.pre.contains(&SmallStackString::from_static("rc")) {
         (ReleaseChannel::Rc, passed_version)
       } else {
         (ReleaseChannel::Stable, passed_version)
