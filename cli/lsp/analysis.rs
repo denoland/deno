@@ -609,7 +609,7 @@ pub fn fix_ts_import_changes(
 ) -> Result<Vec<tsc::FileTextChanges>, AnyError> {
   let mut r = Vec::new();
   for change in changes {
-    let Ok(referrer) = resolve_url(&change.file_name) else {
+    let Ok(referrer) = ModuleSpecifier::parse(&change.file_name) else {
       continue;
     };
     let referrer_doc = language_server.get_asset_or_document(&referrer).ok();
