@@ -361,10 +361,8 @@ function createAstContext(buf) {
   const propMapOffset = readU32(buf, buf.length - 12);
   const strTableOffset = readU32(buf, buf.length - 8);
 
-  // RootId is the top most id of the AST Tree. In most cases this will
-  // be `1`, as `0` is reserved for an empty id.
-  const rootIdOffset = readU32(buf, buf.length - 4);
-  const rootId = buf[rootIdOffset];
+  // Offset of the topmost node in the AST Tree.
+  const rootOffset = readU32(buf, buf.length - 4);
 
   let offset = strTableOffset;
   const stringCount = readU32(buf, offset);
@@ -422,7 +420,7 @@ function createAstContext(buf) {
   const ctx = {
     buf,
     strTable,
-    rootId,
+    rootOffset,
     nodes: new Map(),
     strTableOffset,
     strByProp,
@@ -551,17 +549,17 @@ export function runPluginsForFile(fileName, serializedAst) {
     visitors.push({
       info,
       // Check if we should call this visitor
-      matcher: (id) => id === elemId,
+      matcher: (offset) => {
+        const type = ctx.buf[offset];
+        return type === elemId;
+      },
     });
   }
 
   // Traverse ast with all visitors at the same time to avoid traversing
   // multiple times.
   try {
-    console.log("visitors", visitors, ctx.rootId);
-    traverse(ctx, visitors, ctx.rootId);
-  } catch (e) {
-    console.log("traverse caught", e);
+    traverse(ctx, visitors, ctx.rootOffset);
   } finally {
     ctx.nodes.clear();
 
@@ -578,7 +576,7 @@ export function runPluginsForFile(fileName, serializedAst) {
  * @param {number} offset
  */
 function traverse(ctx, visitors, offset) {
-  // Empty id is always 0
+  // The 0 offset is used to denote an empty/placeholder node
   if (offset === 0) return;
 
   const { buf } = ctx;

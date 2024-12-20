@@ -4,7 +4,7 @@ export interface AstContext {
   buf: Uint8Array;
   strTable: Map<number, string>;
   strTableOffset: number;
-  rootId: number;
+  rootOffset: number;
   nodes: Map<number, NodeFacade>;
   strByType: number[];
   strByProp: number[];
