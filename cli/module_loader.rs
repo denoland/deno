@@ -1008,8 +1008,7 @@ impl<TGraphContainer: ModuleGraphContainer> ModuleLoader
       .0
       .load_prepared_module_for_source_map_sync(&specifier)
       .ok()??;
-    let data = source.code.as_bytes().to_vec();
-    source_map_from_code(data.into())
+    source_map_from_code(source.code.as_bytes()).map(|c| c.into())
   }
 
   fn get_source_mapped_source_line(

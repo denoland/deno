@@ -746,7 +746,7 @@ impl<'a> DenoCompileBinaryWriter<'a> {
     for (specifier, source_map) in source_maps {
       source_map_store.add(
         Cow::Owned(root_dir_url.specifier_key(specifier).into_owned()),
-        Cow::Owned(source_map),
+        Cow::Owned(source_map.into_bytes()),
       );
     }
 

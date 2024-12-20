@@ -512,7 +512,7 @@ impl ModuleLoader for EmbeddedModuleLoader {
     } else {
       self.shared.source_maps.get(file_name)
     }
-    .map(move |s| s.as_bytes().into())
+    .map(Cow::Borrowed)
   }
 
   fn get_source_mapped_source_line(
