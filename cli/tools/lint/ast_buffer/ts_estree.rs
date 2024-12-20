@@ -12,6 +12,7 @@ use super::buffer::FieldArrPos;
 use super::buffer::FieldPos;
 use super::buffer::NodeRef;
 use super::buffer::NullPos;
+use super::buffer::PendingNodeRef;
 use super::buffer::SerializeCtx;
 use super::buffer::StrPos;
 use super::buffer::UndefPos;
@@ -458,9 +459,12 @@ impl AstBufSerializer<AstNode, AstProp> for TsEsTreeBuilder {
     kind: AstNode,
     parent: NodeRef,
     span: &Span,
-    prop_count: usize,
-  ) -> NodeRef {
-    self.ctx.header(kind, parent, span, prop_count)
+  ) -> PendingNodeRef {
+    self.ctx.header(kind, parent, span)
+  }
+
+  fn commit_schema(&mut self, offset: PendingNodeRef) -> NodeRef {
+    self.ctx.commit_schema(offset)
   }
 
   fn ref_field(&mut self, prop: AstProp) -> FieldPos {

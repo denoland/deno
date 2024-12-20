@@ -121,6 +121,10 @@ impl StringTable {
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct NodeRef(pub usize);
 
+/// Represents an offset to a node whose schema hasn't been committed yet
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct PendingNodeRef(pub NodeRef);
+
 #[derive(Debug)]
 pub struct BoolPos(pub usize);
 #[derive(Debug)]
@@ -152,13 +156,8 @@ where
   K: Into<u8> + Display,
   P: Into<u8> + Display,
 {
-  fn header(
-    &mut self,
-    kind: K,
-    parent: NodeRef,
-    span: &Span,
-    prop_count: usize,
-  ) -> NodeRef;
+  fn header(&mut self, kind: K, parent: NodeRef, span: &Span)
+    -> PendingNodeRef;
   fn ref_field(&mut self, prop: P) -> FieldPos;
   fn ref_vec_field(&mut self, prop: P, len: usize) -> FieldArrPos;
   fn str_field(&mut self, prop: P) -> StrPos;
@@ -166,6 +165,7 @@ where
   fn undefined_field(&mut self, prop: P) -> UndefPos;
   #[allow(dead_code)]
   fn null_field(&mut self, prop: P) -> NullPos;
+  fn commit_schema(&mut self, offset: PendingNodeRef) -> NodeRef;
 
   fn write_ref(&mut self, pos: FieldPos, value: NodeRef);
   fn write_maybe_ref(&mut self, pos: FieldPos, value: Option<NodeRef>);
@@ -183,6 +183,7 @@ pub struct SerializeCtx {
   str_table: StringTable,
   kind_map: Vec<usize>,
   prop_map: Vec<usize>,
+  field_count: u8,
 }
 
 /// This is the internal context used to allocate and fill the buffer. The point
@@ -202,6 +203,7 @@ impl SerializeCtx {
       str_table: StringTable::new(),
       kind_map: vec![0; kind_size],
       prop_map: vec![0; prop_size],
+      field_count: 0,
     };
 
     ctx.str_table.insert("");
@@ -229,6 +231,8 @@ impl SerializeCtx {
   where
     P: Into<u8> + Display + Clone,
   {
+    self.field_count += 1;
+
     let offset = self.buf.len();
 
     let n: u8 = prop.clone().into();
@@ -265,7 +269,7 @@ impl SerializeCtx {
     parent: NodeRef,
     span: &Span,
     prop_count: usize,
-  ) -> NodeRef {
+  ) -> PendingNodeRef {
     let offset = self.buf.len();
 
     // Node type fits in a u8
@@ -282,7 +286,19 @@ impl SerializeCtx {
     debug_assert!(prop_count < 10);
     self.buf.push(prop_count as u8);
 
-    NodeRef(offset)
+    PendingNodeRef(NodeRef(offset))
+  }
+
+  pub fn commit_schema(&mut self, node_ref: PendingNodeRef) -> NodeRef {
+    let mut offset = node_ref.0 .0;
+
+    // type + parentId + span lo + span hi
+    offset += 1 + 4 + 4 + 4;
+
+    self.buf[offset] = self.field_count;
+    self.field_count = 0;
+
+    node_ref.0
   }
 
   /// Allocate the node header. It's always the same for every node.
@@ -296,8 +312,7 @@ impl SerializeCtx {
     kind: N,
     parent: NodeRef,
     span: &Span,
-    prop_count: usize,
-  ) -> NodeRef
+  ) -> PendingNodeRef
   where
     N: Into<u8> + Display + Clone,
   {
@@ -310,7 +325,9 @@ impl SerializeCtx {
       }
     }
 
-    self.append_node(n, parent, span, prop_count)
+    // Prop count will be filled with the actual value when the
+    // schema is committed.
+    self.append_node(n, parent, span, 0)
   }
 
   /// Allocate a reference property that will hold the offset of
