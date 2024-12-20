@@ -279,6 +279,7 @@ impl SerializeCtx {
     append_u32(&mut self.buf, span.hi.0);
 
     // No node has more than <10 properties
+    debug_assert!(prop_count < 10);
     self.buf.push(prop_count as u8);
 
     NodeRef(offset)
