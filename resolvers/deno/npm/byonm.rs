@@ -9,6 +9,7 @@ use deno_package_json::PackageJsonDepValue;
 use deno_package_json::PackageJsonRc;
 use deno_path_util::url_to_file_path;
 use deno_semver::package::PackageReq;
+use deno_semver::StackString;
 use deno_semver::Version;
 use node_resolver::env::NodeResolverEnv;
 use node_resolver::errors::PackageFolderResolveError;
@@ -30,7 +31,7 @@ use super::ResolvePkgFolderFromDenoReqError;
 #[derive(Debug, Error)]
 pub enum ByonmResolvePkgFolderFromDenoReqError {
   #[error("Could not find \"{}\" in a node_modules folder. Deno expects the node_modules/ directory to be up to date. Did you forget to run `deno install`?", .0)]
-  MissingAlias(String),
+  MissingAlias(StackString),
   #[error(transparent)]
   PackageJson(#[from] PackageJsonLoadError),
   #[error("Could not find a matching package for 'npm:{}' in the node_modules directory. Ensure you have all your JSR and npm dependencies listed in your deno.json or package.json, then run `deno install`. Alternatively, turn on auto-install by specifying `\"nodeModulesDir\": \"auto\"` in your deno.json file.", .0)]
@@ -177,16 +178,14 @@ impl<Fs: DenoResolverFs, TEnv: NodeResolverEnv> ByonmNpmResolver<Fs, TEnv> {
     &self,
     req: &PackageReq,
     referrer: &Url,
-  ) -> Result<Option<(PackageJsonRc, String)>, PackageJsonLoadError> {
+  ) -> Result<Option<(PackageJsonRc, StackString)>, PackageJsonLoadError> {
     fn resolve_alias_from_pkg_json(
       req: &PackageReq,
       pkg_json: &PackageJson,
-    ) -> Option<String> {
+    ) -> Option<StackString> {
       let deps = pkg_json.resolve_local_package_json_deps();
-      for (key, value) in deps
-        .dependencies
-        .into_iter()
-        .chain(deps.dev_dependencies.into_iter())
+      for (key, value) in
+        deps.dependencies.iter().chain(deps.dev_dependencies.iter())
       {
         if let Ok(value) = value {
           match value {
@@ -194,12 +193,14 @@ impl<Fs: DenoResolverFs, TEnv: NodeResolverEnv> ByonmNpmResolver<Fs, TEnv> {
               if dep_req.name == req.name
                 && dep_req.version_req.intersects(&req.version_req)
               {
-                return Some(key);
+                return Some(key.clone());
               }
             }
             PackageJsonDepValue::Workspace(_workspace) => {
-              if key == req.name && req.version_req.tag() == Some("workspace") {
-                return Some(key);
+              if key.as_str() == req.name
+                && req.version_req.tag() == Some("workspace")
+              {
+                return Some(key.clone());
               }
             }
           }
@@ -246,7 +247,7 @@ impl<Fs: DenoResolverFs, TEnv: NodeResolverEnv> ByonmNpmResolver<Fs, TEnv> {
       if let Ok(Some(dep_pkg_json)) =
         self.load_pkg_json(&pkg_folder.join("package.json"))
       {
-        if dep_pkg_json.name.as_ref() == Some(&req.name) {
+        if dep_pkg_json.name.as_deref() == Some(req.name.as_str()) {
           let matches_req = dep_pkg_json
             .version
             .as_ref()

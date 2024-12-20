@@ -8,6 +8,7 @@ use deno_core::anyhow::bail;
 use deno_core::error::AnyError;
 use deno_semver::package::PackageNv;
 use deno_semver::package::PackageReq;
+use deno_semver::StackString;
 use deno_semver::VersionReq;
 use deno_terminal::colors;
 
@@ -31,7 +32,7 @@ struct OutdatedPackage {
   latest: String,
   semver_compatible: String,
   current: String,
-  name: String,
+  name: StackString,
 }
 
 #[allow(clippy::print_stdout)]

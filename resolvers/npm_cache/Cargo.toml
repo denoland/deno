@@ -23,6 +23,7 @@ async-trait.workspace = true
 base64.workspace = true
 boxed_error.workspace = true
 deno_cache_dir.workspace = true
+deno_error.workspace = true
 deno_npm.workspace = true
 deno_semver.workspace = true
 deno_unsync = { workspace = true, features = ["tokio"] }
