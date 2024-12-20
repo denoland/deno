@@ -40,9 +40,11 @@ const PropFlags = {
 /** @typedef {import("./40_lint_types.d.ts").VisitorFn} VisitorFn */
 /** @typedef {import("./40_lint_types.d.ts").CompiledVisitor} CompiledVisitor */
 /** @typedef {import("./40_lint_types.d.ts").LintState} LintState */
-/** @typedef {import("./40_lint_types.d.ts").LintContext} LintContext */
+/** @typedef {import("./40_lint_types.d.ts").RuleContext} RuleContext */
 /** @typedef {import("./40_lint_types.d.ts").NodeFacade} NodeFacade */
 /** @typedef {import("./40_lint_types.d.ts").LintPlugin} LintPlugin */
+/** @typedef {import("./40_lint_types.d.ts").LintReportData} LintReportData */
+/** @typedef {import("./40_lint_types.d.ts").TestReportData} TestReportData */
 
 /** @type {LintState} */
 const state = {
@@ -53,14 +55,12 @@ const state = {
 /**
  * Every rule gets their own instance of this class. This is the main
  * API lint rules interact with.
- * @implements {LintContext}
+ * @implements {RuleContext}
  */
 export class Context {
   id;
 
   fileName;
-
-  #source = null;
 
   /**
    * @param {string} id
@@ -69,16 +69,6 @@ export class Context {
   constructor(id, fileName) {
     this.id = id;
     this.fileName = fileName;
-  }
-
-  /**
-   * @param {NodeFacade} node
-   */
-  report(node) {
-    // TODO(@marvinhagemeister) temporary until we have wired it through
-    // the CLI
-    // @ts-ignore temporary
-    console.log("Reported node: ", node);
   }
 }
 
@@ -193,6 +183,10 @@ class Node {
   [Symbol.for("Deno.customInspect")](_, options) {
     const json = toJsValue(this[INTERNAL_CTX], this[INTERNAL_OFFSET]);
     return Deno.inspect(json, options);
+  }
+
+  [Symbol.for("Deno.lint.toJsValue")]() {
+    return toJsValue(this[INTERNAL_CTX], this[INTERNAL_OFFSET]);
   }
 }
 
@@ -491,11 +485,10 @@ export function runPluginsForFile(fileName, serializedAst) {
           key = key.slice(0, -":exit".length);
         }
 
-        const fnKey = key + (isExit ? ":exit" : "");
-        let info = bySelector.get(fnKey);
+        let info = bySelector.get(key);
         if (info === undefined) {
           info = { enter: NOOP, exit: NOOP };
-          bySelector.set(fnKey, info);
+          bySelector.set(key, info);
         }
         const prevFn = isExit ? info.exit : info.enter;
 
@@ -586,18 +579,18 @@ function traverse(ctx, visitors, offset) {
   for (let i = 0; i < visitors.length; i++) {
     const v = visitors[i];
 
-    if (v.info.enter === NOOP) {
-      continue;
-    }
-
     if (v.matcher(offset)) {
-      const node = /** @type {*} */ (getNode(ctx, offset));
-      v.info.enter(node);
+      if (v.info.exit !== NOOP) {
+        if (exits === null) {
+          exits = [v.info.exit];
+        } else {
+          exits.push(v.info.exit);
+        }
+      }
 
-      if (exits === null) {
-        exits = [v.info.exit];
-      } else {
-        exits.push(v.info.exit);
+      if (v.info.enter !== NOOP) {
+        const node = /** @type {*} */ (getNode(ctx, offset));
+        v.info.enter(node);
       }
     }
   }
@@ -752,14 +745,20 @@ function _dump(ctx) {
 // TODO(bartlomieju): this is temporary, until we get plugins plumbed through
 // the CLI linter
 /**
- * @param {*} plugin
+ * @param {LintPlugin} plugin
  * @param {string} fileName
  * @param {string} sourceText
  */
 function runLintPlugin(plugin, fileName, sourceText) {
   installPlugin(plugin);
   const serializedAst = op_lint_create_serialized_ast(fileName, sourceText);
-  runPluginsForFile(fileName, serializedAst);
+
+  try {
+    runPluginsForFile(fileName, serializedAst);
+  } finally {
+    // During testing we don't want to keep plugins around
+    state.installedPlugins.clear();
+  }
 }
 
 // TODO(bartlomieju): this is temporary, until we get plugins plumbed through
