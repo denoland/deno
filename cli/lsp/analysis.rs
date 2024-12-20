@@ -15,7 +15,6 @@ use crate::lsp::search::PackageSearchApi;
 use crate::tools::lint::CliLinter;
 use crate::util::path::relative_specifier;
 use deno_config::workspace::MappedResolution;
-use deno_core::resolve_url;
 use deno_lint::diagnostic::LintDiagnosticRange;
 
 use deno_ast::SourceRange;
