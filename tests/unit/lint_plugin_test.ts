@@ -1,3 +1,5 @@
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+
 import { assertEquals } from "./test_util.ts";
 
 // TODO(@marvinhagemeister) Remove once we land "official" types
