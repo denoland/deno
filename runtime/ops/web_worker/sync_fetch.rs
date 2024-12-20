@@ -104,11 +104,7 @@ pub fn op_worker_sync_fetch(
 
             let (body, mime_type, res_url) = match script_url.scheme() {
               "http" | "https" => {
-                let mut req = http::Request::new(
-                  http_body_util::Empty::new()
-                    .map_err(|never| match never {})
-                    .boxed(),
-                );
+                let mut req = http::Request::new(deno_fetch::ReqBody::empty());
                 *req.uri_mut() = script_url.as_str().parse()?;
 
                 let resp =

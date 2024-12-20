@@ -1855,20 +1855,12 @@ impl Inner {
       }
 
       let changes = if code_action_data.fix_id == "fixMissingImport" {
-        fix_ts_import_changes(
-          &code_action_data.specifier,
-          maybe_asset_or_doc
-            .as_ref()
-            .and_then(|d| d.document())
-            .map(|d| d.resolution_mode())
-            .unwrap_or(ResolutionMode::Import),
-          &combined_code_actions.changes,
-          self,
-        )
-        .map_err(|err| {
-          error!("Unable to remap changes: {:#}", err);
-          LspError::internal_error()
-        })?
+        fix_ts_import_changes(&combined_code_actions.changes, self).map_err(
+          |err| {
+            error!("Unable to remap changes: {:#}", err);
+            LspError::internal_error()
+          },
+        )?
       } else {
         combined_code_actions.changes
       };
@@ -1912,20 +1904,16 @@ impl Inner {
           asset_or_doc.scope().cloned(),
         )
         .await?;
-      if kind_suffix == ".rewrite.function.returnType" {
-        refactor_edit_info.edits = fix_ts_import_changes(
-          &action_data.specifier,
-          asset_or_doc
-            .document()
-            .map(|d| d.resolution_mode())
-            .unwrap_or(ResolutionMode::Import),
-          &refactor_edit_info.edits,
-          self,
-        )
-        .map_err(|err| {
-          error!("Unable to remap changes: {:#}", err);
-          LspError::internal_error()
-        })?
+      if kind_suffix == ".rewrite.function.returnType"
+        || kind_suffix == ".move.newFile"
+      {
+        refactor_edit_info.edits =
+          fix_ts_import_changes(&refactor_edit_info.edits, self).map_err(
+            |err| {
+              error!("Unable to remap changes: {:#}", err);
+              LspError::internal_error()
+            },
+          )?
       }
       code_action.edit = refactor_edit_info.to_workspace_edit(self)?;
       code_action
@@ -3793,7 +3781,7 @@ impl Inner {
         for (name, command) in scripts {
           result.push(TaskDefinition {
             name: name.clone(),
-            command: command.clone(),
+            command: Some(command.clone()),
             source_uri: url_to_uri(&package_json.specifier())
               .map_err(|_| LspError::internal_error())?,
           });

@@ -14,7 +14,7 @@ pub const LATEST_DIAGNOSTIC_BATCH_INDEX: &str =
 #[serde(rename_all = "camelCase")]
 pub struct TaskDefinition {
   pub name: String,
-  pub command: String,
+  pub command: Option<String>,
   pub source_uri: lsp::Uri,
 }
 

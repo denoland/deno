@@ -446,7 +446,6 @@
                 },
                 "command": {
                   "type": "string",
-                  "required": true,
                   "description": "The task to execute"
                 },
                 "dependencies": {

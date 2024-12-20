@@ -198,7 +198,7 @@ pub struct CoverageReport {
 fn generate_coverage_report(
   script_coverage: &cdp::ScriptCoverage,
   script_source: String,
-  maybe_source_map: &Option<Vec<u8>>,
+  maybe_source_map: Option<&[u8]>,
   output: &Option<PathBuf>,
 ) -> CoverageReport {
   let maybe_source_map = maybe_source_map
@@ -625,7 +625,7 @@ pub fn cover_files(
     let coverage_report = generate_coverage_report(
       &script_coverage,
       runtime_code.as_str().to_owned(),
-      &source_map,
+      source_map.as_deref(),
       &out_mode,
     );
 

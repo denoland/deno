@@ -251,6 +251,13 @@ impl AssetOrDocument {
   pub fn document_lsp_version(&self) -> Option<i32> {
     self.document().and_then(|d| d.maybe_lsp_version())
   }
+
+  pub fn resolution_mode(&self) -> ResolutionMode {
+    match self {
+      AssetOrDocument::Asset(_) => ResolutionMode::Import,
+      AssetOrDocument::Document(d) => d.resolution_mode(),
+    }
+  }
 }
 
 type ModuleResult = Result<deno_graph::JsModule, deno_graph::ModuleGraphError>;
