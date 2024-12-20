@@ -159,7 +159,7 @@ console.log(version);"#,
     .get_mut(
       &JsrDepPackageReq::from_str("jsr:@denotest/no-module-graph@0.1").unwrap(),
     )
-    .unwrap() = "0.1.0".to_string();
+    .unwrap() = "0.1.0".into();
   lockfile_path.write(lockfile.as_json_string());
 
   test_context
