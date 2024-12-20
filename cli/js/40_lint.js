@@ -354,6 +354,7 @@ function createAstContext(buf) {
   /** @type {Map<number, string>} */
   const strTable = new Map();
 
+  console.log("ast context", buf.slice(buf.length - 16));
   // The buffer has a few offsets at the end which allows us to easily
   // jump to the relevant sections of the message.
   const typeMapOffset = readU32(buf, buf.length - 16);
@@ -540,6 +541,7 @@ export function runPluginsForFile(fileName, serializedAst) {
       "selector info",
       sel,
       info,
+      ctx.strTable,
       ctx.typeByStr,
       ctx.typeByStr.get(sel),
     );
