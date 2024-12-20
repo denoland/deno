@@ -17,7 +17,7 @@ fn op_lint_create_serialized_ast(
   #[string] source: String,
 ) -> Result<Vec<u8>, AnyError> {
   let file_text = deno_ast::strip_bom(source);
-  let path = std::env::current_dir()?.join(&file_name);
+  let path = std::env::current_dir()?.join(file_name);
   let specifier = ModuleSpecifier::from_file_path(&path).map_err(|_| {
     generic_error(format!("Failed to parse path as URL: {}", path.display()))
   })?;
