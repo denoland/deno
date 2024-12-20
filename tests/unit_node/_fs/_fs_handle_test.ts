@@ -117,3 +117,85 @@ Deno.test("[node/fs filehandle.writeFile] Write to file", async function () {
 
   assertEquals(decoder.decode(data), "hello world");
 });
+
+Deno.test(
+  "[node/fs filehandle.truncate] Truncate file with length",
+  async function () {
+    const tempFile: string = await Deno.makeTempFile();
+    const fileHandle = await fs.open(tempFile, "w+");
+
+    await fileHandle.writeFile("hello world");
+
+    await fileHandle.truncate(5);
+
+    const data = Deno.readFileSync(tempFile);
+    await Deno.remove(tempFile);
+    await fileHandle.close();
+
+    assertEquals(decoder.decode(data), "hello");
+  },
+);
+
+Deno.test(
+  "[node/fs filehandle.truncate] Truncate file without length",
+  async function () {
+    const tempFile: string = await Deno.makeTempFile();
+    const fileHandle = await fs.open(tempFile, "w+");
+
+    await fileHandle.writeFile("hello world");
+
+    await fileHandle.truncate();
+
+    const data = Deno.readFileSync(tempFile);
+    await Deno.remove(tempFile);
+    await fileHandle.close();
+
+    assertEquals(decoder.decode(data), "");
+  },
+);
+
+Deno.test(
+  "[node/fs filehandle.truncate] Truncate file with extension",
+  async function () {
+    const tempFile: string = await Deno.makeTempFile();
+    const fileHandle = await fs.open(tempFile, "w+");
+
+    await fileHandle.writeFile("hi");
+
+    await fileHandle.truncate(5);
+
+    const data = Deno.readFileSync(tempFile);
+    await Deno.remove(tempFile);
+    await fileHandle.close();
+
+    const expected = new Uint8Array(5);
+    expected.set(new TextEncoder().encode("hi"));
+
+    assertEquals(data, expected);
+    assertEquals(data.length, 5);
+    assertEquals(decoder.decode(data.subarray(0, 2)), "hi");
+    // Verify null bytes
+    assertEquals(data[2], 0);
+    assertEquals(data[3], 0);
+    assertEquals(data[4], 0);
+  },
+);
+
+Deno.test(
+  "[node/fs filehandle.truncate] Truncate file with negative length",
+  async function () {
+    const tempFile: string = await Deno.makeTempFile();
+    const fileHandle = await fs.open(tempFile, "w+");
+
+    await fileHandle.writeFile("hello world");
+
+    await fileHandle.truncate(-1);
+
+    const data = Deno.readFileSync(tempFile);
+    await Deno.remove(tempFile);
+    await fileHandle.close();
+
+    assertEquals(decoder.decode(data), "");
+    assertEquals(data.length, 0);
+  },
+);
