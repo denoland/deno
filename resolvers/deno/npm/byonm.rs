@@ -179,9 +179,9 @@ impl<Fs: DenoResolverFs, TEnv: NodeResolverEnv> ByonmNpmResolver<Fs, TEnv> {
     req: &PackageReq,
     referrer: &Url,
   ) -> Result<Option<(PackageJsonRc, StackString)>, PackageJsonLoadError> {
-    fn resolve_alias_from_pkg_json<'a>(
+    fn resolve_alias_from_pkg_json(
       req: &PackageReq,
-      pkg_json: &'a PackageJson,
+      pkg_json: &PackageJson,
     ) -> Option<StackString> {
       let deps = pkg_json.resolve_local_package_json_deps();
       for (key, value) in
