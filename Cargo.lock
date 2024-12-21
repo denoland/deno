@@ -1491,14 +1491,8 @@ dependencies = [
 
 [[package]]
 name = "deno_config"
-<<<<<<< HEAD
-version = "0.39.3"
-source = "git+https://github.com/denoland/deno_config.git?branch=deno_lint_rules#13f6ff94ce36896b29c2a84386e2173bb18a036d"
-=======
 version = "0.41.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8afa3beb6b9e0604cfe0380d30f88c5b758d44e228d5a5fc42ae637ccfb7d089"
->>>>>>> main
+source = "git+https://github.com/denoland/deno_config.git?branch=deno_lint_rules#10812e7b44ba3721b73048ea7117db541e3aa256"
 dependencies = [
  "anyhow",
  "deno_package_json",

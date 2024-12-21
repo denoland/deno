@@ -7,7 +7,7 @@ import {
   compileSelector,
   parseSelector,
   splitSelectors,
-} from "ext:cli/lint/selector.js";
+} from "ext:cli/lint/40_lint_selector.js";
 
 const {
   op_lint_get_rule,
@@ -15,7 +15,6 @@ const {
   op_lint_report,
   op_lint_create_serialized_ast,
 } = core.ops;
-
 
 // Keep in sync with Rust
 // These types are expected to be present on every node. Note that this
@@ -187,7 +186,6 @@ function findPropOffset(buf, offset, search) {
   return -1;
 }
 
-
 const INTERNAL_CTX = Symbol("ctx");
 const INTERNAL_OFFSET = Symbol("offset");
 
@@ -311,60 +309,6 @@ function toJsValue(ctx, offset) {
   return node;
 }
 
-<<<<<<< HEAD
-const INTERNAL_CTX = Symbol("ctx");
-const INTERNAL_OFFSET = Symbol("offset");
-
-class Node {
-  [INTERNAL_CTX];
-  [INTERNAL_OFFSET];
-
-  /**
-   * @param {AstContext} ctx
-   * @param {number} offset
-   */
-  constructor(ctx, offset) {
-    this[INTERNAL_CTX] = ctx;
-    this[INTERNAL_OFFSET] = offset;
-  }
-
-  /**
-   * @param {*} _
-   * @param {*} options
-   * @returns {string}
-   */
-  [Symbol.for("Deno.customInspect")](_, options) {
-    const json = toJsValue(this[INTERNAL_CTX], this[INTERNAL_OFFSET]);
-    return Deno.inspect(json, options);
-  }
-}
-
-/** @type {Set<number>} */
-const appliedGetters = new Set();
-
-/**
- * @param {AstContext} ctx
- */
-function setNodeGetters(ctx) {
-  if (appliedGetters.size === ctx.strByProp.length) return;
-
-  for (let i = 0; i < ctx.strByProp.length; i++) {
-    const id = ctx.strByProp[i];
-    if (id === 0 || appliedGetters.has(i)) continue;
-    appliedGetters.add(i);
-
-    const name = getString(ctx.strTable, id);
-
-    Object.defineProperty(Node.prototype, name, {
-      get() {
-        return readValue(this[INTERNAL_CTX], this[INTERNAL_OFFSET], i);
-      },
-    });
-  }
-
-  
-}
-
 /**
  * Read a specific property from a node
  * @param {AstContext} ctx
@@ -417,7 +361,6 @@ function readValue(ctx, offset, search) {
   }
 
   throw new Error(`Unknown prop kind: ${kind}`);
->>>>>>> main
 }
 
 const DECODER = new TextDecoder();

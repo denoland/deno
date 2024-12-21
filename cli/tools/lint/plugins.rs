@@ -32,7 +32,7 @@ use crate::args::DenoSubcommand;
 use crate::args::Flags;
 use crate::args::LintFlags;
 use crate::factory::CliFactory;
-use crate::tools::lint::swc::serialize_ast_bin;
+use crate::tools::lint::serialize_ast_to_buffer;
 
 #[derive(Debug)]
 pub enum PluginRunnerRequest {
@@ -407,7 +407,7 @@ pub async fn run_rules_for_ast(
 
 pub fn serialize_ast(parsed_source: ParsedSource) -> Result<Vec<u8>, AnyError> {
   let start = std::time::Instant::now();
-  let r = serialize_ast_bin(&parsed_source);
+  let r = serialize_ast_to_buffer(&parsed_source);
   log::info!(
     "serialize custom ast took {:?}",
     std::time::Instant::now() - start
