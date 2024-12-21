@@ -509,7 +509,8 @@ declare namespace Deno {
    * @experimental
    * @category Network
    */
-  export interface ConnectQuicOptions extends QuicTransportOptions {
+  export interface ConnectQuicOptions<ZRTT extends boolean>
+    extends QuicTransportOptions {
     /** The port to connect to. */
     port: number;
     /** A literal IP address or host name that can be resolved to an IP address. */
@@ -530,6 +531,12 @@ declare namespace Deno {
      * If no endpoint is provided, a new one is bound on an ephemeral port.
      */
     endpoint?: QuicEndpoint;
+    /**
+     * Attempt to convert the connection into 0-RTT. Any data sent before
+     * the TLS handshake completes is vulnerable to replay attacks.
+     * @default {false}
+     */
+    zrtt?: ZRTT;
   }
 
   /**
@@ -639,14 +646,16 @@ declare namespace Deno {
 
   /**
    * **UNSTABLE**: New API, yet to be vetted.
-   * An incoming connection for which the server has not yet begun its part of the handshake.
+   * An incoming connection for which the server has not yet begun its part of
+   * the handshake.
    *
    * @experimental
    * @category Network
    */
   export interface QuicIncoming {
     /**
-     * The local IP address which was used when the peer established the connection.
+     * The local IP address which was used when the peer established the
+     * connection.
      */
     readonly localIp: string;
 
@@ -656,7 +665,8 @@ declare namespace Deno {
     readonly remoteAddr: NetAddr;
 
     /**
-     * Whether the socket address that is initiating this connection has proven that they can receive traffic.
+     * Whether the socket address that is initiating this connection has proven
+     * that they can receive traffic.
      */
     readonly remoteAddressValidated: boolean;
 
@@ -664,6 +674,12 @@ declare namespace Deno {
      * Accept this incoming connection.
      */
     accept(): Promise<QuicConn>;
+
+    /**
+     * Convert this connection into 0.5-RTT at the cost of weakened security, as
+     * 0.5-RTT data may be sent before TLS client authentication has occurred.
+     */
+    accept0rtt(): QuicConn;
 
     /**
      * Refuse this incoming connection.
@@ -702,6 +718,8 @@ declare namespace Deno {
 
     /** The endpoint for this connection. */
     readonly endpoint: QuicEndpoint;
+    /** Returns a promise that resolves when the TLS handshake is complete. */
+    readonly handshake: Promise<void>;
     /** Return the remote address for the connection. Clients may change
      * addresses at will, for example when switching to a cellular internet
      * connection.
@@ -776,13 +794,20 @@ declare namespace Deno {
    * const conn2 = await Deno.connectQuic({ caCerts: [caCert], hostname: "example.com", port: 443, alpnProtocols: ["h3"] });
    * ```
    *
+   * If an endpoint is shared among many connections, 0-RTT can be enabled.
+   * When 0-RTT is successful, a QuicConn will be synchronously returned
+   * and data can be sent immediately with it. **Any data sent before the
+   * TLS handshake completes is vulnerable to replay attacks.**
+   *
    * Requires `allow-net` permission.
    *
    * @experimental
    * @tags allow-net
    * @category Network
    */
-  export function connectQuic(options: ConnectQuicOptions): Promise<QuicConn>;
+  export function connectQuic<ZRTT extends boolean>(
+    options: ConnectQuicOptions<ZRTT>,
+  ): ZRTT extends true ? (QuicConn | Promise<QuicConn>) : Promise<QuicConn>;
 
   export {}; // only export exports
 }

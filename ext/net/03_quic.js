@@ -1,6 +1,8 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 import { core, primordials } from "ext:core/mod.js";
 import {
+  op_quic_connecting_0rtt,
+  op_quic_connecting_1rtt,
   op_quic_connection_accept_bi,
   op_quic_connection_accept_uni,
   op_quic_connection_close,
@@ -8,6 +10,7 @@ import {
   op_quic_connection_get_max_datagram_size,
   op_quic_connection_get_protocol,
   op_quic_connection_get_remote_addr,
+  op_quic_connection_handshake,
   op_quic_connection_open_bi,
   op_quic_connection_open_uni,
   op_quic_connection_read_datagram,
@@ -18,6 +21,7 @@ import {
   op_quic_endpoint_get_addr,
   op_quic_endpoint_listen,
   op_quic_incoming_accept,
+  op_quic_incoming_accept_0rtt,
   op_quic_incoming_ignore,
   op_quic_incoming_local_ip,
   op_quic_incoming_refuse,
@@ -43,9 +47,10 @@ const {
   BadResourcePrototype,
 } = core;
 const {
+  ObjectPrototypeIsPrototypeOf,
+  PromisePrototypeThen,
   SymbolAsyncIterator,
   SafePromisePrototypeFinally,
-  ObjectPrototypeIsPrototypeOf,
 } = primordials;
 
 let getEndpointResource;
@@ -175,6 +180,11 @@ class QuicIncoming {
     return new QuicConn(conn, this.#endpoint);
   }
 
+  accept0rtt() {
+    const conn = op_quic_incoming_accept_0rtt(this.#incoming);
+    return new QuicConn(conn, this.#endpoint);
+  }
+
   refuse() {
     op_quic_incoming_refuse(this.#incoming);
   }
@@ -189,6 +199,7 @@ class QuicConn {
   #bidiStream = null;
   #uniStream = null;
   #closed;
+  #handshake;
   #endpoint;
 
   constructor(resource, endpoint) {
@@ -266,6 +277,13 @@ class QuicConn {
 
   async sendDatagram(data) {
     await op_quic_connection_send_datagram(this.#resource, data);
+  }
+
+  get handshake() {
+    if (!this.#handshake) {
+      this.#handshake = op_quic_connection_handshake(this.#resource);
+    }
+    return this.#handshake;
   }
 
   get closed() {
@@ -369,7 +387,7 @@ async function* uniStream(conn, closed) {
   }
 }
 
-async function connectQuic(options) {
+function connectQuic(options) {
   const endpoint = options.endpoint ??
     new QuicEndpoint({
       rid: op_quic_endpoint_create({ hostname: "::", port: 0 }, 0, false),
@@ -378,7 +396,7 @@ async function connectQuic(options) {
     cert: options.cert,
     key: options.key,
   });
-  const conn = await op_quic_endpoint_connect(
+  const connecting = op_quic_endpoint_connect(
     getEndpointResource(endpoint),
     {
       addr: {
@@ -392,7 +410,18 @@ async function connectQuic(options) {
     transportOptions(options),
     keyPair,
   );
-  return new QuicConn(conn, endpoint);
+
+  if (options.zrtt) {
+    const conn = op_quic_connecting_0rtt(connecting);
+    if (conn) {
+      return new QuicConn(conn, endpoint);
+    }
+  }
+
+  return PromisePrototypeThen(
+    op_quic_connecting_1rtt(connecting),
+    (conn) => new QuicConn(conn, endpoint),
+  );
 }
 
 export {

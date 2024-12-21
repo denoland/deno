@@ -1,6 +1,6 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
-import { assertEquals } from "./test_util.ts";
+import { assert, assertEquals } from "./test_util.ts";
 
 const cert = Deno.readTextFileSync("tests/testdata/tls/localhost.crt");
 const key = Deno.readTextFileSync("tests/testdata/tls/localhost.key");
@@ -169,4 +169,59 @@ Deno.test("incoming", async () => {
 
   endpoint.close();
   client.close();
+});
+
+Deno.test("0rtt", async () => {
+  const sEndpoint = new Deno.QuicEndpoint({ hostname: "localhost" });
+  const listener = sEndpoint.listen({
+    cert,
+    key,
+    alpnProtocols: ["deno-test"],
+  });
+
+  (async () => {
+    while (true) {
+      let incoming;
+      try {
+        incoming = await listener.incoming();
+      } catch (e) {
+        if (e instanceof Deno.errors.BadResource) {
+          break;
+        }
+        throw e;
+      }
+      const conn = incoming.accept0rtt();
+      conn.handshake.then(() => {
+        conn.close();
+      });
+    }
+  })();
+
+  const endpoint = new Deno.QuicEndpoint();
+
+  const c1 = await Deno.connectQuic({
+    hostname: "localhost",
+    port: sEndpoint.addr.port,
+    caCerts,
+    alpnProtocols: ["deno-test"],
+    endpoint,
+  });
+
+  await c1.closed;
+
+  const c2 = Deno.connectQuic({
+    hostname: "localhost",
+    port: sEndpoint.addr.port,
+    caCerts,
+    alpnProtocols: ["deno-test"],
+    zrtt: true,
+    endpoint,
+  });
+
+  assert(!(c2 instanceof Promise), "0rtt should be accepted");
+
+  await c2.closed;
+
+  sEndpoint.close();
+  endpoint.close();
 });
