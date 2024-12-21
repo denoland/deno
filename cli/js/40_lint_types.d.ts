@@ -116,7 +116,7 @@ export type TransformFn = (value: string) => number;
 export type VisitorFn = (node: Deno.AstNode) => void;
 
 export interface CompiledVisitor {
-  matcher: MatcherFn;
+  matcher: (offset: number) => boolean;
   info: { enter: VisitorFn; exit: VisitorFn };
 }
 
