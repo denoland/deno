@@ -9,9 +9,9 @@ use deno_ast::ModuleSpecifier;
 use deno_cache_dir::npm::NpmCacheDir;
 use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
-use deno_core::error::JsNativeError;
 use deno_core::serde_json;
 use deno_core::url::Url;
+use deno_error::JsErrorBox;
 use deno_npm::npm_rc::ResolvedNpmRc;
 use deno_npm::registry::NpmPackageInfo;
 use deno_npm::registry::NpmRegistryApi;
@@ -455,7 +455,7 @@ impl ManagedCliNpmResolver {
   pub async fn add_and_cache_package_reqs(
     &self,
     packages: &[PackageReq],
-  ) -> Result<(), JsNativeError> {
+  ) -> Result<(), JsErrorBox> {
     self
       .add_package_reqs_raw(
         packages,
@@ -468,7 +468,7 @@ impl ManagedCliNpmResolver {
   pub async fn add_package_reqs_no_cache(
     &self,
     packages: &[PackageReq],
-  ) -> Result<(), JsNativeError> {
+  ) -> Result<(), JsErrorBox> {
     self
       .add_package_reqs_raw(packages, None)
       .await
@@ -479,7 +479,7 @@ impl ManagedCliNpmResolver {
     &self,
     packages: &[PackageReq],
     caching: PackageCaching<'_>,
-  ) -> Result<(), JsNativeError> {
+  ) -> Result<(), JsErrorBox> {
     self
       .add_package_reqs_raw(packages, Some(caching))
       .await
@@ -549,7 +549,7 @@ impl ManagedCliNpmResolver {
 
   pub async fn inject_synthetic_types_node_package(
     &self,
-  ) -> Result<(), JsNativeError> {
+  ) -> Result<(), JsErrorBox> {
     let reqs = &[PackageReq::from_str("@types/node").unwrap()];
     // add and ensure this isn't added to the lockfile
     self
@@ -562,7 +562,7 @@ impl ManagedCliNpmResolver {
   pub async fn cache_packages(
     &self,
     caching: PackageCaching<'_>,
-  ) -> Result<(), JsNativeError> {
+  ) -> Result<(), JsErrorBox> {
     self.fs_resolver.cache_packages(caching).await
   }
 
@@ -612,7 +612,7 @@ impl ManagedCliNpmResolver {
   /// return value of `false` means that new packages were added to the NPM resolution.
   pub async fn ensure_top_level_package_json_install(
     &self,
-  ) -> Result<bool, JsNativeError> {
+  ) -> Result<bool, JsErrorBox> {
     if !self.top_level_install_flag.raise() {
       return Ok(true); // already did this
     }

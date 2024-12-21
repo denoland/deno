@@ -1,7 +1,7 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
-use deno_core::error::JsNativeError;
 use deno_core::op2;
+use deno_error::JsErrorBox;
 use libc::c_ulong;
 use std::borrow::Cow;
 use std::cell::RefCell;
@@ -18,11 +18,11 @@ use mode::Mode;
 use self::stream::StreamWrapper;
 
 #[inline]
-fn check(condition: bool, msg: &str) -> Result<(), JsNativeError> {
+fn check(condition: bool, msg: &str) -> Result<(), JsErrorBox> {
   if condition {
     Ok(())
   } else {
-    Err(JsNativeError::type_error(msg.to_string()))
+    Err(JsErrorBox::type_error(msg.to_string()))
   }
 }
 
@@ -57,7 +57,7 @@ impl ZlibInner {
     out_off: u32,
     out_len: u32,
     flush: Flush,
-  ) -> Result<(), JsNativeError> {
+  ) -> Result<(), JsErrorBox> {
     check(self.init_done, "write before init")?;
     check(!self.write_in_progress, "write already in progress")?;
     check(!self.pending_close, "close already in progress")?;
@@ -66,11 +66,11 @@ impl ZlibInner {
 
     let next_in = input
       .get(in_off as usize..in_off as usize + in_len as usize)
-      .ok_or_else(|| JsNativeError::type_error("invalid input range"))?
+      .ok_or_else(|| JsErrorBox::type_error("invalid input range"))?
       .as_ptr() as *mut _;
     let next_out = out
       .get_mut(out_off as usize..out_off as usize + out_len as usize)
-      .ok_or_else(|| JsNativeError::type_error("invalid output range"))?
+      .ok_or_else(|| JsErrorBox::type_error("invalid output range"))?
       .as_mut_ptr();
 
     self.strm.avail_in = in_len;
@@ -82,7 +82,7 @@ impl ZlibInner {
     Ok(())
   }
 
-  fn do_write(&mut self, flush: Flush) -> Result<(), JsNativeError> {
+  fn do_write(&mut self, flush: Flush) -> Result<(), JsErrorBox> {
     self.flush = flush;
     match self.mode {
       Mode::Deflate | Mode::Gzip | Mode::DeflateRaw => {
@@ -128,7 +128,7 @@ impl ZlibInner {
             self.mode = Mode::Inflate;
           }
         } else if next_expected_header_byte.is_some() {
-          return Err(JsNativeError::type_error(
+          return Err(JsErrorBox::type_error(
             "invalid number of gzip magic number bytes read",
           ));
         }
@@ -182,7 +182,7 @@ impl ZlibInner {
     Ok(())
   }
 
-  fn init_stream(&mut self) -> Result<(), JsNativeError> {
+  fn init_stream(&mut self) -> Result<(), JsErrorBox> {
     match self.mode {
       Mode::Gzip | Mode::Gunzip => self.window_bits += 16,
       Mode::Unzip => self.window_bits += 32,
@@ -200,7 +200,7 @@ impl ZlibInner {
       Mode::Inflate | Mode::Gunzip | Mode::InflateRaw | Mode::Unzip => {
         self.strm.inflate_init(self.window_bits)
       }
-      Mode::None => return Err(JsNativeError::type_error("Unknown mode")),
+      Mode::None => return Err(JsErrorBox::type_error("Unknown mode")),
     };
 
     self.write_in_progress = false;
@@ -209,7 +209,7 @@ impl ZlibInner {
     Ok(())
   }
 
-  fn close(&mut self) -> Result<bool, JsNativeError> {
+  fn close(&mut self) -> Result<bool, JsErrorBox> {
     if self.write_in_progress {
       self.pending_close = true;
       return Ok(false);
@@ -272,7 +272,7 @@ pub enum ZlibError {
   Other(
     #[from]
     #[inherit]
-    JsNativeError,
+    JsErrorBox,
   ),
 }
 

@@ -1,11 +1,11 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
-use deno_core::error::JsNativeError;
 use deno_core::op2;
 use deno_core::v8;
 use deno_core::FastString;
 use deno_core::GarbageCollected;
 use deno_core::ToJsBuffer;
+use deno_error::JsErrorBox;
 use std::ptr::NonNull;
 use v8::ValueDeserializerHelper;
 use v8::ValueSerializerHelper;
@@ -274,11 +274,11 @@ pub fn op_v8_new_deserializer(
   scope: &mut v8::HandleScope,
   obj: v8::Local<v8::Object>,
   buffer: v8::Local<v8::ArrayBufferView>,
-) -> Result<Deserializer<'static>, JsNativeError> {
+) -> Result<Deserializer<'static>, JsErrorBox> {
   let offset = buffer.byte_offset();
   let len = buffer.byte_length();
   let backing_store = buffer.get_backing_store().ok_or_else(|| {
-    JsNativeError::generic("deserialization buffer has no backing store")
+    JsErrorBox::generic("deserialization buffer has no backing store")
   })?;
   let (buf_slice, buf_ptr) = if let Some(data) = backing_store.data() {
     // SAFETY: the offset is valid for the underlying buffer because we're getting it directly from v8
@@ -320,10 +320,10 @@ pub fn op_v8_transfer_array_buffer_de(
 #[op2(fast)]
 pub fn op_v8_read_double(
   #[cppgc] deser: &Deserializer,
-) -> Result<f64, JsNativeError> {
+) -> Result<f64, JsErrorBox> {
   let mut double = 0f64;
   if !deser.inner.read_double(&mut double) {
-    return Err(JsNativeError::type_error("ReadDouble() failed"));
+    return Err(JsErrorBox::type_error("ReadDouble() failed"));
   }
   Ok(double)
 }
@@ -358,10 +358,10 @@ pub fn op_v8_read_raw_bytes(
 #[op2(fast)]
 pub fn op_v8_read_uint32(
   #[cppgc] deser: &Deserializer,
-) -> Result<u32, JsNativeError> {
+) -> Result<u32, JsErrorBox> {
   let mut value = 0;
   if !deser.inner.read_uint32(&mut value) {
-    return Err(JsNativeError::type_error("ReadUint32() failed"));
+    return Err(JsErrorBox::type_error("ReadUint32() failed"));
   }
 
   Ok(value)
@@ -371,10 +371,10 @@ pub fn op_v8_read_uint32(
 #[serde]
 pub fn op_v8_read_uint64(
   #[cppgc] deser: &Deserializer,
-) -> Result<(u32, u32), JsNativeError> {
+) -> Result<(u32, u32), JsErrorBox> {
   let mut val = 0;
   if !deser.inner.read_uint64(&mut val) {
-    return Err(JsNativeError::type_error("ReadUint64() failed"));
+    return Err(JsErrorBox::type_error("ReadUint64() failed"));
   }
 
   Ok(((val >> 32) as u32, val as u32))

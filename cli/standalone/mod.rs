@@ -17,7 +17,6 @@ use deno_config::workspace::ResolverWorkspaceJsrPackage;
 use deno_config::workspace::WorkspaceResolver;
 use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
-use deno_core::error::JsNativeError;
 use deno_core::error::ModuleLoaderError;
 use deno_core::futures::future::LocalBoxFuture;
 use deno_core::futures::FutureExt;
@@ -31,6 +30,7 @@ use deno_core::ModuleType;
 use deno_core::RequestedModuleType;
 use deno_core::ResolutionKind;
 use deno_core::SourceCodeCacheInfo;
+use deno_error::JsErrorBox;
 use deno_npm::npm_rc::ResolvedNpmRc;
 use deno_package_json::PackageJsonDepValue;
 use deno_resolver::cjs::IsCjsResolutionMode;
@@ -178,7 +178,7 @@ impl ModuleLoader for EmbeddedModuleLoader {
     let referrer = if referrer == "." {
       if kind != ResolutionKind::MainModule {
         return Err(
-          JsNativeError::generic(format!(
+          JsErrorBox::generic(format!(
             "Expected to resolve main module, got {:?} instead.",
             kind
           ))
@@ -189,7 +189,7 @@ impl ModuleLoader for EmbeddedModuleLoader {
       deno_core::resolve_path(".", &current_dir)?
     } else {
       ModuleSpecifier::parse(referrer).map_err(|err| {
-        JsNativeError::type_error(format!(
+        JsErrorBox::type_error(format!(
           "Referrer uses invalid specifier: {}",
           err
         ))
@@ -199,7 +199,7 @@ impl ModuleLoader for EmbeddedModuleLoader {
       .shared
       .cjs_tracker
       .is_maybe_cjs(&referrer, MediaType::from_specifier(&referrer))
-      .map_err(JsNativeError::from_err)?
+      .map_err(JsErrorBox::from_err)?
     {
       ResolutionMode::Require
     } else {
@@ -217,7 +217,7 @@ impl ModuleLoader for EmbeddedModuleLoader {
             referrer_kind,
             NodeResolutionKind::Execution,
           )
-          .map_err(JsNativeError::from_err)?
+          .map_err(JsErrorBox::from_err)?
           .into_url(),
       );
     }
@@ -246,7 +246,7 @@ impl ModuleLoader for EmbeddedModuleLoader {
             referrer_kind,
             NodeResolutionKind::Execution,
           )
-          .map_err(JsNativeError::from_err)?,
+          .map_err(JsErrorBox::from_err)?,
       ),
       Ok(MappedResolution::PackageJson {
         dep_result,
@@ -255,7 +255,7 @@ impl ModuleLoader for EmbeddedModuleLoader {
         ..
       }) => match dep_result
         .as_ref()
-        .map_err(|e| JsNativeError::from_err(e.clone()))?
+        .map_err(|e| JsErrorBox::from_err(e.clone()))?
       {
         PackageJsonDepValue::Req(req) => self
           .shared
@@ -267,7 +267,7 @@ impl ModuleLoader for EmbeddedModuleLoader {
             referrer_kind,
             NodeResolutionKind::Execution,
           )
-          .map_err(|e| JsNativeError::from_err(e).into()),
+          .map_err(|e| JsErrorBox::from_err(e).into()),
         PackageJsonDepValue::Workspace(version_req) => {
           let pkg_folder = self
             .shared
@@ -276,7 +276,7 @@ impl ModuleLoader for EmbeddedModuleLoader {
               alias,
               version_req,
             )
-            .map_err(JsNativeError::from_err)?;
+            .map_err(JsErrorBox::from_err)?;
           Ok(
             self
               .shared
@@ -288,7 +288,7 @@ impl ModuleLoader for EmbeddedModuleLoader {
                 referrer_kind,
                 NodeResolutionKind::Execution,
               )
-              .map_err(JsNativeError::from_err)?,
+              .map_err(JsErrorBox::from_err)?,
           )
         }
       },
@@ -307,7 +307,7 @@ impl ModuleLoader for EmbeddedModuleLoader {
                 referrer_kind,
                 NodeResolutionKind::Execution,
               )
-              .map_err(JsNativeError::from_err)?,
+              .map_err(JsErrorBox::from_err)?,
           );
         }
 
@@ -339,13 +339,13 @@ impl ModuleLoader for EmbeddedModuleLoader {
             referrer_kind,
             NodeResolutionKind::Execution,
           )
-          .map_err(JsNativeError::from_err)?;
+          .map_err(JsErrorBox::from_err)?;
         if let Some(res) = maybe_res {
           return Ok(res.into_url());
         }
-        Err(JsNativeError::from_err(err).into())
+        Err(JsErrorBox::from_err(err).into())
       }
-      Err(err) => Err(JsNativeError::from_err(err).into()),
+      Err(err) => Err(JsErrorBox::from_err(err).into()),
     }
   }
 
@@ -377,7 +377,7 @@ impl ModuleLoader for EmbeddedModuleLoader {
           Ok(response) => response,
           Err(err) => {
             return deno_core::ModuleLoadResponse::Sync(Err(
-              JsNativeError::type_error(format!("{:#}", err)).into(),
+              JsErrorBox::type_error(format!("{:#}", err)).into(),
             ));
           }
         };
@@ -433,7 +433,7 @@ impl ModuleLoader for EmbeddedModuleLoader {
           Ok(is_maybe_cjs) => is_maybe_cjs,
           Err(err) => {
             return deno_core::ModuleLoadResponse::Sync(Err(
-              JsNativeError::type_error(format!("{:?}", err)).into(),
+              JsErrorBox::type_error(format!("{:?}", err)).into(),
             ));
           }
         };
@@ -495,14 +495,14 @@ impl ModuleLoader for EmbeddedModuleLoader {
         }
       }
       Ok(None) => deno_core::ModuleLoadResponse::Sync(Err(
-        JsNativeError::type_error(format!(
+        JsErrorBox::type_error(format!(
           "{MODULE_NOT_FOUND}: {}",
           original_specifier
         ))
         .into(),
       )),
       Err(err) => deno_core::ModuleLoadResponse::Sync(Err(
-        JsNativeError::type_error(format!("{:?}", err)).into(),
+        JsErrorBox::type_error(format!("{:?}", err)).into(),
       )),
     }
   }
@@ -530,7 +530,7 @@ impl NodeRequireLoader for EmbeddedModuleLoader {
     &self,
     permissions: &mut dyn deno_runtime::deno_node::NodePermissions,
     path: &'a std::path::Path,
-  ) -> Result<Cow<'a, std::path::Path>, JsNativeError> {
+  ) -> Result<Cow<'a, std::path::Path>, JsErrorBox> {
     if self.shared.modules.has_file(path) {
       // allow reading if the file is in the snapshot
       return Ok(Cow::Borrowed(path));
@@ -540,23 +540,23 @@ impl NodeRequireLoader for EmbeddedModuleLoader {
       .shared
       .npm_resolver
       .ensure_read_permission(permissions, path)
-      .map_err(JsNativeError::from_err)
+      .map_err(JsErrorBox::from_err)
   }
 
   fn load_text_file_lossy(
     &self,
     path: &std::path::Path,
-  ) -> Result<Cow<'static, str>, JsNativeError> {
+  ) -> Result<Cow<'static, str>, JsErrorBox> {
     let file_entry = self
       .shared
       .vfs
       .file_entry(path)
-      .map_err(JsNativeError::from_err)?;
+      .map_err(JsErrorBox::from_err)?;
     let file_bytes = self
       .shared
       .vfs
       .read_file_all(file_entry, VfsFileSubDataKind::ModuleGraph)
-      .map_err(JsNativeError::from_err)?;
+      .map_err(JsErrorBox::from_err)?;
     Ok(from_utf8_lossy_cow(file_bytes))
   }
 
@@ -609,10 +609,10 @@ struct StandaloneRootCertStoreProvider {
 }
 
 impl RootCertStoreProvider for StandaloneRootCertStoreProvider {
-  fn get_or_try_init(&self) -> Result<&RootCertStore, JsNativeError> {
+  fn get_or_try_init(&self) -> Result<&RootCertStore, JsErrorBox> {
     self.cell.get_or_try_init(|| {
       get_root_cert_store(None, self.ca_stores.clone(), self.ca_data.clone())
-        .map_err(JsNativeError::from_err)
+        .map_err(JsErrorBox::from_err)
     })
   }
 }

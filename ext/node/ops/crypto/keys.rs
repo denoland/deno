@@ -4,12 +4,12 @@ use std::borrow::Cow;
 use std::cell::RefCell;
 
 use base64::Engine;
-use deno_core::error::JsNativeError;
 use deno_core::op2;
 use deno_core::serde_v8::BigInt as V8BigInt;
 use deno_core::unsync::spawn_blocking;
 use deno_core::GarbageCollected;
 use deno_core::ToJsBuffer;
+use deno_error::JsErrorBox;
 use ed25519_dalek::pkcs8::BitStringRef;
 use elliptic_curve::JwkEcKey;
 use num_bigint::BigInt;
@@ -1593,7 +1593,7 @@ pub fn op_node_create_secret_key(
 #[string]
 pub fn op_node_get_asymmetric_key_type(
   #[cppgc] handle: &KeyObjectHandle,
-) -> Result<&'static str, JsNativeError> {
+) -> Result<&'static str, JsErrorBox> {
   match handle {
     KeyObjectHandle::AsymmetricPrivate(AsymmetricPrivateKey::Rsa(_))
     | KeyObjectHandle::AsymmetricPublic(AsymmetricPublicKey::Rsa(_)) => {
@@ -1619,7 +1619,7 @@ pub fn op_node_get_asymmetric_key_type(
     }
     KeyObjectHandle::AsymmetricPrivate(AsymmetricPrivateKey::Dh(_))
     | KeyObjectHandle::AsymmetricPublic(AsymmetricPublicKey::Dh(_)) => Ok("dh"),
-    KeyObjectHandle::Secret(_) => Err(JsNativeError::type_error(
+    KeyObjectHandle::Secret(_) => Err(JsErrorBox::type_error(
       "symmetric key is not an asymmetric key",
     )),
   }
@@ -1664,7 +1664,7 @@ pub enum AsymmetricKeyDetails {
 #[serde]
 pub fn op_node_get_asymmetric_key_details(
   #[cppgc] handle: &KeyObjectHandle,
-) -> Result<AsymmetricKeyDetails, JsNativeError> {
+) -> Result<AsymmetricKeyDetails, JsErrorBox> {
   match handle {
     KeyObjectHandle::AsymmetricPrivate(private_key) => match private_key {
       AsymmetricPrivateKey::Rsa(key) => {
@@ -1772,7 +1772,7 @@ pub fn op_node_get_asymmetric_key_details(
       AsymmetricPublicKey::Ed25519(_) => Ok(AsymmetricKeyDetails::Ed25519),
       AsymmetricPublicKey::Dh(_) => Ok(AsymmetricKeyDetails::Dh),
     },
-    KeyObjectHandle::Secret(_) => Err(JsNativeError::type_error(
+    KeyObjectHandle::Secret(_) => Err(JsErrorBox::type_error(
       "symmetric key is not an asymmetric key",
     )),
   }
@@ -1782,10 +1782,10 @@ pub fn op_node_get_asymmetric_key_details(
 #[smi]
 pub fn op_node_get_symmetric_key_size(
   #[cppgc] handle: &KeyObjectHandle,
-) -> Result<usize, JsNativeError> {
+) -> Result<usize, JsErrorBox> {
   match handle {
     KeyObjectHandle::AsymmetricPrivate(_)
-    | KeyObjectHandle::AsymmetricPublic(_) => Err(JsNativeError::type_error(
+    | KeyObjectHandle::AsymmetricPublic(_) => Err(JsErrorBox::type_error(
       "asymmetric key is not a symmetric key",
     )),
     KeyObjectHandle::Secret(key) => Ok(key.len() * 8),
@@ -1995,7 +1995,7 @@ pub async fn op_node_generate_rsa_pss_key_async(
 fn dsa_generate(
   modulus_length: usize,
   divisor_length: usize,
-) -> Result<KeyObjectHandlePair, JsNativeError> {
+) -> Result<KeyObjectHandlePair, JsErrorBox> {
   let mut rng = rand::thread_rng();
   use dsa::Components;
   use dsa::KeySize;
@@ -2008,7 +2008,7 @@ fn dsa_generate(
     (2048, 256) => KeySize::DSA_2048_256,
     (3072, 256) => KeySize::DSA_3072_256,
     _ => {
-      return Err(JsNativeError::type_error(
+      return Err(JsErrorBox::type_error(
         "Invalid modulusLength+divisorLength combination",
       ))
     }
@@ -2026,7 +2026,7 @@ fn dsa_generate(
 pub fn op_node_generate_dsa_key(
   #[smi] modulus_length: usize,
   #[smi] divisor_length: usize,
-) -> Result<KeyObjectHandlePair, JsNativeError> {
+) -> Result<KeyObjectHandlePair, JsErrorBox> {
   dsa_generate(modulus_length, divisor_length)
 }
 
@@ -2035,15 +2035,13 @@ pub fn op_node_generate_dsa_key(
 pub async fn op_node_generate_dsa_key_async(
   #[smi] modulus_length: usize,
   #[smi] divisor_length: usize,
-) -> Result<KeyObjectHandlePair, JsNativeError> {
+) -> Result<KeyObjectHandlePair, JsErrorBox> {
   spawn_blocking(move || dsa_generate(modulus_length, divisor_length))
     .await
     .unwrap()
 }
 
-fn ec_generate(
-  named_curve: &str,
-) -> Result<KeyObjectHandlePair, JsNativeError> {
+fn ec_generate(named_curve: &str) -> Result<KeyObjectHandlePair, JsErrorBox> {
   let mut rng = rand::thread_rng();
   // TODO(@littledivy): Support public key point encoding.
   // Default is uncompressed.
@@ -2061,7 +2059,7 @@ fn ec_generate(
       AsymmetricPrivateKey::Ec(EcPrivateKey::P384(key))
     }
     _ => {
-      return Err(JsNativeError::type_error(format!(
+      return Err(JsErrorBox::type_error(format!(
         "unsupported named curve: {}",
         named_curve
       )))
@@ -2075,7 +2073,7 @@ fn ec_generate(
 #[cppgc]
 pub fn op_node_generate_ec_key(
   #[string] named_curve: &str,
-) -> Result<KeyObjectHandlePair, JsNativeError> {
+) -> Result<KeyObjectHandlePair, JsErrorBox> {
   ec_generate(named_curve)
 }
 
@@ -2083,7 +2081,7 @@ pub fn op_node_generate_ec_key(
 #[cppgc]
 pub async fn op_node_generate_ec_key_async(
   #[string] named_curve: String,
-) -> Result<KeyObjectHandlePair, JsNativeError> {
+) -> Result<KeyObjectHandlePair, JsErrorBox> {
   spawn_blocking(move || ec_generate(&named_curve))
     .await
     .unwrap()
@@ -2139,7 +2137,7 @@ fn u32_slice_to_u8_slice(slice: &[u32]) -> &[u8] {
 
 fn dh_group_generate(
   group_name: &str,
-) -> Result<KeyObjectHandlePair, JsNativeError> {
+) -> Result<KeyObjectHandlePair, JsErrorBox> {
   let (dh, prime, generator) = match group_name {
     "modp5" => (
       dh::DiffieHellman::group::<dh::Modp1536>(),
@@ -2171,7 +2169,7 @@ fn dh_group_generate(
       dh::Modp8192::MODULUS,
       dh::Modp8192::GENERATOR,
     ),
-    _ => return Err(JsNativeError::type_error("Unsupported group name")),
+    _ => return Err(JsErrorBox::type_error("Unsupported group name")),
   };
   let params = DhParameter {
     prime: asn1::Int::new(u32_slice_to_u8_slice(prime)).unwrap(),
@@ -2194,7 +2192,7 @@ fn dh_group_generate(
 #[cppgc]
 pub fn op_node_generate_dh_group_key(
   #[string] group_name: &str,
-) -> Result<KeyObjectHandlePair, JsNativeError> {
+) -> Result<KeyObjectHandlePair, JsErrorBox> {
   dh_group_generate(group_name)
 }
 
@@ -2202,7 +2200,7 @@ pub fn op_node_generate_dh_group_key(
 #[cppgc]
 pub async fn op_node_generate_dh_group_key_async(
   #[string] group_name: String,
-) -> Result<KeyObjectHandlePair, JsNativeError> {
+) -> Result<KeyObjectHandlePair, JsErrorBox> {
   spawn_blocking(move || dh_group_generate(&group_name))
     .await
     .unwrap()
@@ -2276,10 +2274,10 @@ pub fn op_node_dh_keys_generate_and_export(
 #[buffer]
 pub fn op_node_export_secret_key(
   #[cppgc] handle: &KeyObjectHandle,
-) -> Result<Box<[u8]>, JsNativeError> {
+) -> Result<Box<[u8]>, JsErrorBox> {
   let key = handle
     .as_secret_key()
-    .ok_or_else(|| JsNativeError::type_error("key is not a secret key"))?;
+    .ok_or_else(|| JsErrorBox::type_error("key is not a secret key"))?;
   Ok(key.to_vec().into_boxed_slice())
 }
 
@@ -2287,10 +2285,10 @@ pub fn op_node_export_secret_key(
 #[string]
 pub fn op_node_export_secret_key_b64url(
   #[cppgc] handle: &KeyObjectHandle,
-) -> Result<String, JsNativeError> {
+) -> Result<String, JsErrorBox> {
   let key = handle
     .as_secret_key()
-    .ok_or_else(|| JsNativeError::type_error("key is not a secret key"))?;
+    .ok_or_else(|| JsErrorBox::type_error("key is not a secret key"))?;
   Ok(base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(key))
 }
 
@@ -2435,9 +2433,9 @@ pub fn op_node_key_type(#[cppgc] handle: &KeyObjectHandle) -> &'static str {
 #[cppgc]
 pub fn op_node_derive_public_key_from_private_key(
   #[cppgc] handle: &KeyObjectHandle,
-) -> Result<KeyObjectHandle, JsNativeError> {
+) -> Result<KeyObjectHandle, JsErrorBox> {
   let Some(private_key) = handle.as_private_key() else {
-    return Err(JsNativeError::type_error("expected private key"));
+    return Err(JsErrorBox::type_error("expected private key"));
   };
 
   Ok(KeyObjectHandle::AsymmetricPublic(

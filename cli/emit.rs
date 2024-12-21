@@ -12,11 +12,13 @@ use deno_ast::SourceRanged;
 use deno_ast::SourceRangedForSpanned;
 use deno_ast::TranspileModuleOptions;
 use deno_ast::TranspileResult;
-use deno_core::error::{AnyError, CoreError, JsNativeError};
+use deno_core::error::AnyError;
+use deno_core::error::CoreError;
 use deno_core::futures::stream::FuturesUnordered;
 use deno_core::futures::FutureExt;
 use deno_core::futures::StreamExt;
 use deno_core::ModuleSpecifier;
+use deno_error::JsErrorBox;
 use deno_graph::MediaType;
 use deno_graph::Module;
 use deno_graph::ModuleGraph;
@@ -197,7 +199,7 @@ impl Emitter {
         let parsed_source = self
           .parsed_source_cache
           .remove_or_parse_module(specifier, source_arc, media_type)
-          .map_err(JsNativeError::from_err)?;
+          .map_err(JsErrorBox::from_err)?;
         // HMR doesn't work with embedded source maps for some reason, so set
         // the option to not use them (though you should test this out because
         // this statement is probably wrong)
@@ -210,7 +212,7 @@ impl Emitter {
             media_type,
             parsed_source.compute_is_script(),
           )
-          .map_err(JsNativeError::from_err)?;
+          .map_err(JsErrorBox::from_err)?;
         let transpiled_source = parsed_source
           .transpile(
             &self.transpile_and_emit_options.0,
@@ -219,7 +221,7 @@ impl Emitter {
             },
             &options,
           )
-          .map_err(JsNativeError::from_err)?
+          .map_err(JsErrorBox::from_err)?
           .into_source();
         Ok(transpiled_source.text)
       }
@@ -268,7 +270,7 @@ pub enum EmitParsedSourceHelperError {
   Transpile(#[from] deno_ast::TranspileError),
   #[class(inherit)]
   #[error(transparent)]
-  Other(#[from] JsNativeError),
+  Other(#[from] JsErrorBox),
 }
 
 /// Helper to share code between async and sync emit_parsed_source methods.
@@ -341,7 +343,7 @@ impl<'a> EmitParsedSourceHelper<'a> {
 // todo(dsherret): this is a temporary measure until we have swc erroring for this
 fn ensure_no_import_assertion(
   parsed_source: &deno_ast::ParsedSource,
-) -> Result<(), JsNativeError> {
+) -> Result<(), JsErrorBox> {
   fn has_import_assertion(text: &str) -> bool {
     // good enough
     text.contains(" assert ") && !text.contains(" with ")
@@ -350,7 +352,7 @@ fn ensure_no_import_assertion(
   fn create_err(
     parsed_source: &deno_ast::ParsedSource,
     range: SourceRange,
-  ) -> JsNativeError {
+  ) -> JsErrorBox {
     let text_info = parsed_source.text_info_lazy();
     let loc = text_info.line_and_column_display(range.start);
     let mut msg = "Import assertions are deprecated. Use `with` keyword, instead of 'assert' keyword.".to_string();
@@ -363,7 +365,7 @@ fn ensure_no_import_assertion(
       loc.line_number,
       loc.column_number,
     ));
-    JsNativeError::generic(msg)
+    JsErrorBox::generic(msg)
   }
 
   let deno_ast::ProgramRef::Module(module) = parsed_source.program_ref() else {

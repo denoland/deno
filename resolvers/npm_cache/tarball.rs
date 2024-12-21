@@ -3,11 +3,11 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 
-use deno_core::error::JsNativeError;
 use deno_core::futures::future::LocalBoxFuture;
 use deno_core::futures::FutureExt;
 use deno_core::parking_lot::Mutex;
 use deno_core::url::Url;
+use deno_error::JsErrorBox;
 use deno_npm::npm_rc::ResolvedNpmRc;
 use deno_npm::registry::NpmPackageVersionDistInfo;
 use deno_semver::package::PackageNv;
@@ -21,7 +21,7 @@ use crate::NpmCache;
 use crate::NpmCacheEnv;
 use crate::NpmCacheSetting;
 
-type LoadResult = Result<(), Arc<JsNativeError>>;
+type LoadResult = Result<(), Arc<JsErrorBox>>;
 type LoadFuture = LocalBoxFuture<'static, LoadResult>;
 
 #[derive(Debug, Clone)]
@@ -29,7 +29,7 @@ enum MemoryCacheItem {
   /// The cache item hasn't finished yet.
   Pending(Arc<MultiRuntimeAsyncValueCreator<LoadResult>>),
   /// The result errored.
-  Errored(Arc<JsNativeError>),
+  Errored(Arc<JsErrorBox>),
   /// This package has already been cached.
   Cached,
 }
@@ -52,7 +52,7 @@ pub struct TarballCache<TEnv: NpmCacheEnv> {
 pub struct EnsurePackageError {
   package_nv: Box<PackageNv>,
   #[source]
-  source: Arc<JsNativeError>,
+  source: Arc<JsErrorBox>,
 }
 
 impl<TEnv: NpmCacheEnv> TarballCache<TEnv> {
@@ -87,7 +87,7 @@ impl<TEnv: NpmCacheEnv> TarballCache<TEnv> {
     self: &Arc<Self>,
     package_nv: &PackageNv,
     dist: &NpmPackageVersionDistInfo,
-  ) -> Result<(), Arc<JsNativeError>> {
+  ) -> Result<(), Arc<JsErrorBox>> {
     let cache_item = {
       let mut mem_cache = self.memory_cache.lock();
       if let Some(cache_item) = mem_cache.get(package_nv) {
@@ -143,7 +143,7 @@ impl<TEnv: NpmCacheEnv> TarballCache<TEnv> {
       if should_use_cache && package_folder_exists {
         return Ok(());
       } else if tarball_cache.cache.cache_setting() == &NpmCacheSetting::Only {
-        return Err(JsNativeError::new(
+        return Err(JsErrorBox::new(
           "NotCached",
           format!(
             "npm package not found in cache: \"{}\", --cached-only is specified.",
@@ -154,12 +154,12 @@ impl<TEnv: NpmCacheEnv> TarballCache<TEnv> {
       }
 
       if dist.tarball.is_empty() {
-        return Err(JsNativeError::generic("Tarball URL was empty."));
+        return Err(JsErrorBox::generic("Tarball URL was empty."));
       }
 
       // IMPORTANT: npm registries may specify tarball URLs at different URLS than the
       // registry, so we MUST get the auth for the tarball URL and not the registry URL.
-      let tarball_uri = Url::parse(&dist.tarball).map_err(JsNativeError::from_err)?;
+      let tarball_uri = Url::parse(&dist.tarball).map_err(JsErrorBox::from_err)?;
       let maybe_registry_config =
         tarball_cache.npmrc.tarball_config(&tarball_uri);
       let maybe_auth_header = maybe_registry_config.and_then(|c| maybe_auth_header_for_npm_registry(c).ok()?);
@@ -174,7 +174,7 @@ impl<TEnv: NpmCacheEnv> TarballCache<TEnv> {
             && maybe_registry_config.is_none()
             && tarball_cache.npmrc.get_registry_config(&package_nv.name).auth_token.is_some()
           {
-            return Err(JsNativeError::generic(format!(
+            return Err(JsErrorBox::generic(format!(
               concat!(
                 "No auth for tarball URI, but present for scoped registry.\n\n",
                 "Tarball URI: {}\n",
@@ -185,7 +185,7 @@ impl<TEnv: NpmCacheEnv> TarballCache<TEnv> {
               registry_url,
             )));
           }
-          return Err(JsNativeError::from_err(err))
+          return Err(JsErrorBox::from_err(err))
         },
       };
       match maybe_bytes {
@@ -214,10 +214,10 @@ impl<TEnv: NpmCacheEnv> TarballCache<TEnv> {
               extraction_mode,
             )
           })
-          .await.map_err(JsNativeError::from_err)?.map_err(JsNativeError::from_err)
+          .await.map_err(JsErrorBox::from_err)?.map_err(JsErrorBox::from_err)
         }
         None => {
-          Err(JsNativeError::generic(format!("Could not find npm package tarball at: {}", dist.tarball)))
+          Err(JsErrorBox::generic(format!("Could not find npm package tarball at: {}", dist.tarball)))
         }
       }
     }

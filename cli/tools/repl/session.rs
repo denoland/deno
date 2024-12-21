@@ -34,7 +34,7 @@ use deno_ast::SourceRangedForSpanned;
 use deno_ast::SourceTextInfo;
 use deno_core::anyhow::anyhow;
 use deno_core::error::AnyError;
-use deno_core::error::{CoreError, JsNativeError};
+use deno_core::error::CoreError;
 use deno_core::futures::channel::mpsc::UnboundedReceiver;
 use deno_core::futures::FutureExt;
 use deno_core::futures::StreamExt;
@@ -44,6 +44,7 @@ use deno_core::unsync::spawn;
 use deno_core::url::Url;
 use deno_core::LocalInspectorSession;
 use deno_core::PollEventLoopOptions;
+use deno_error::JsErrorBox;
 use deno_graph::Position;
 use deno_graph::PositionRange;
 use deno_graph::SpecifierWithRange;
@@ -767,8 +768,7 @@ impl ReplSession {
       )
       .await
       .and_then(|res| {
-        serde_json::from_value(res)
-          .map_err(|e| JsNativeError::from_err(e).into())
+        serde_json::from_value(res).map_err(|e| JsErrorBox::from_err(e).into())
       })
   }
 }

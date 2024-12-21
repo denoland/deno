@@ -6,12 +6,13 @@ use crate::version;
 use boxed_error::Boxed;
 use deno_cache_dir::file_fetcher::RedirectHeaderParseError;
 use deno_core::error::AnyError;
-use deno_core::error::JsNativeError;
 use deno_core::futures::StreamExt;
 use deno_core::parking_lot::Mutex;
+use deno_core::serde;
 use deno_core::serde_json;
 use deno_core::url::Url;
-use deno_core::{serde, JsError};
+use deno_core::JsError;
+use deno_error::JsErrorBox;
 use deno_runtime::deno_fetch;
 use deno_runtime::deno_fetch::create_http_client;
 use deno_runtime::deno_fetch::CreateHttpClientOptions;
@@ -107,7 +108,7 @@ pub struct DownloadError(pub Box<DownloadErrorKind>);
 
 #[derive(Debug, Error, JsError)]
 pub enum DownloadErrorKind {
-  #[class(type)]
+  #[class(inherit)]
   #[error(transparent)]
   Fetch(deno_fetch::ClientSendError),
   #[class(inherit)]
@@ -136,7 +137,7 @@ pub enum DownloadErrorKind {
   NotFound,
   #[class(inherit)]
   #[error(transparent)]
-  Other(JsNativeError),
+  Other(JsErrorBox),
 }
 
 #[derive(Debug)]
@@ -353,7 +354,7 @@ impl HttpClient {
 pub async fn get_response_body_with_progress(
   response: http::Response<deno_fetch::ResBody>,
   progress_guard: Option<&UpdateGuard>,
-) -> Result<(HeaderMap, Vec<u8>), JsNativeError> {
+) -> Result<(HeaderMap, Vec<u8>), JsErrorBox> {
   use http_body::Body as _;
   if let Some(progress_guard) = progress_guard {
     let mut total_size = response.body().size_hint().exact();

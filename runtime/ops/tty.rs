@@ -19,10 +19,10 @@ use deno_io::WinTtyState;
 #[cfg(windows)]
 use std::sync::Arc;
 
-use deno_core::error::JsNativeError;
 #[cfg(unix)]
 use deno_core::ResourceId;
 use deno_error::builtin_classes::GENERIC_ERROR;
+use deno_error::JsErrorBox;
 use deno_error::JsErrorClass;
 #[cfg(unix)]
 use nix::sys::termios;
@@ -89,7 +89,7 @@ pub enum TtyError {
   Nix(#[inherit] JsNixError),
   #[class(inherit)]
   #[error(transparent)]
-  Other(#[inherit] JsNativeError),
+  Other(#[inherit] JsErrorBox),
 }
 
 // ref: <https://learn.microsoft.com/en-us/windows/console/setconsolemode>
@@ -128,7 +128,7 @@ fn op_set_raw(
   // Copyright (c) 2019 Timon. MIT license.
   #[cfg(windows)]
   {
-    use deno_core::error::JsNativeError;
+    use deno_error::JsErrorBox;
     use winapi::shared::minwindef::FALSE;
 
     use winapi::um::consoleapi;
@@ -136,7 +136,7 @@ fn op_set_raw(
     let handle = handle_or_fd;
 
     if cbreak {
-      return Err(TtyError::Other(JsNativeError::not_supported()));
+      return Err(TtyError::Other(JsErrorBox::not_supported()));
     }
 
     let mut original_mode: DWORD = 0;

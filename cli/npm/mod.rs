@@ -8,9 +8,10 @@ use std::path::Path;
 use std::sync::Arc;
 
 use dashmap::DashMap;
-use deno_core::error::{AnyError, JsNativeError};
+use deno_core::error::AnyError;
 use deno_core::serde_json;
 use deno_core::url::Url;
+use deno_error::JsErrorBox;
 use deno_npm::npm_rc::ResolvedNpmRc;
 use deno_npm::registry::NpmPackageInfo;
 use deno_resolver::npm::ByonmInNpmPackageChecker;
@@ -81,9 +82,9 @@ impl deno_npm_cache::NpmCacheEnv for CliNpmCacheEnv {
     &self,
     from: &Path,
     to: &Path,
-  ) -> Result<(), JsNativeError> {
+  ) -> Result<(), JsErrorBox> {
     // todo(dsherret): use self.fs here instead
-    hard_link_dir_recursive(from, to).map_err(JsNativeError::from_err)
+    hard_link_dir_recursive(from, to).map_err(JsErrorBox::from_err)
   }
 
   fn atomic_write_file_with_retries(

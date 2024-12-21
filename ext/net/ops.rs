@@ -145,7 +145,7 @@ pub enum NetError {
   ListenTlsRequiresKey,
   #[class(inherit)]
   #[error("{0}")]
-  RootCertStore(deno_core::error::JsNativeError),
+  RootCertStore(deno_error::JsErrorBox),
   #[class(generic)]
   #[error("{0}")]
   Reunite(tokio::net::tcp::ReuniteError),

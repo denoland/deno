@@ -1,7 +1,6 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 use crate::NodePermissions;
-use deno_core::error::JsNativeError;
 use deno_core::futures::channel::mpsc;
 use deno_core::op2;
 use deno_core::v8;
@@ -10,6 +9,7 @@ use deno_core::InspectorSessionKind;
 use deno_core::InspectorSessionOptions;
 use deno_core::JsRuntimeInspector;
 use deno_core::OpState;
+use deno_error::JsErrorBox;
 use std::cell::RefCell;
 use std::rc::Rc;
 
@@ -24,7 +24,7 @@ pub fn op_inspector_open<P>(
   _state: &mut OpState,
   _port: Option<u16>,
   #[string] _host: Option<String>,
-) -> Result<(), JsNativeError>
+) -> Result<(), JsErrorBox>
 where
   P: NodePermissions + 'static,
 {

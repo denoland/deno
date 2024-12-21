@@ -206,8 +206,6 @@ fn raw_window(
   _system: &str,
   _window: *const c_void,
   _display: *const c_void,
-) -> Result<RawHandles, deno_core::error::JsNativeError> {
-  Err(deno_core::error::JsNativeError::type_error(
-    "Unsupported platform",
-  ))
+) -> Result<RawHandles, deno_error::JsErrorBox> {
+  Err(deno_error::JsErrorBox::type_error("Unsupported platform"))
 }

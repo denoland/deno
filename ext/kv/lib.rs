@@ -17,7 +17,6 @@ use base64::Engine;
 use boxed_error::Boxed;
 use chrono::DateTime;
 use chrono::Utc;
-use deno_core::error::JsNativeError;
 use deno_core::futures::StreamExt;
 use deno_core::op2;
 use deno_core::serde_v8::AnyValue;
@@ -32,6 +31,7 @@ use deno_core::RcRef;
 use deno_core::Resource;
 use deno_core::ResourceId;
 use deno_core::ToJsBuffer;
+use deno_error::JsErrorBox;
 use deno_error::JsErrorClass;
 use denokv_proto::decode_key;
 use denokv_proto::encode_key;
@@ -123,7 +123,7 @@ pub struct KvError(pub Box<KvErrorKind>);
 pub enum KvErrorKind {
   #[class(inherit)]
   #[error(transparent)]
-  DatabaseHandler(JsNativeError),
+  DatabaseHandler(JsErrorBox),
   #[class(inherit)]
   #[error(transparent)]
   Resource(#[from] deno_core::error::ResourceError),
@@ -160,9 +160,9 @@ pub enum KvErrorKind {
   #[class(type)]
   #[error("Total key size too large (max {0} bytes)")]
   TotalKeyTooLarge(usize),
-  #[class(generic)]
+  #[class(inherit)]
   #[error(transparent)]
-  Kv(deno_core::error::AnyError),
+  Kv(JsErrorBox),
   #[class(inherit)]
   #[error(transparent)]
   Io(#[from] std::io::Error),

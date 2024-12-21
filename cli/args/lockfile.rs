@@ -6,10 +6,11 @@ use std::path::PathBuf;
 use deno_config::deno_json::ConfigFile;
 use deno_config::workspace::Workspace;
 use deno_core::anyhow::Context;
-use deno_core::error::{AnyError, JsNativeError};
+use deno_core::error::AnyError;
 use deno_core::parking_lot::Mutex;
 use deno_core::parking_lot::MutexGuard;
 use deno_core::serde_json;
+use deno_error::JsErrorBox;
 use deno_lockfile::WorkspaceMemberConfig;
 use deno_package_json::PackageJsonDepValue;
 use deno_runtime::deno_node::PackageJson;
@@ -248,7 +249,7 @@ impl CliLockfile {
     })
   }
 
-  pub fn error_if_changed(&self) -> Result<(), JsNativeError> {
+  pub fn error_if_changed(&self) -> Result<(), JsErrorBox> {
     if !self.frozen {
       return Ok(());
     }
@@ -260,7 +261,7 @@ impl CliLockfile {
       let diff = crate::util::diff::diff(&contents, &new_contents);
       // has an extra newline at the end
       let diff = diff.trim_end();
-      Err(JsNativeError::generic(format!("The lockfile is out of date. Run `deno install --frozen=false`, or rerun with `--frozen=false` to update it.\nchanges:\n{diff}")))
+      Err(JsErrorBox::generic(format!("The lockfile is out of date. Run `deno install --frozen=false`, or rerun with `--frozen=false` to update it.\nchanges:\n{diff}")))
     } else {
       Ok(())
     }

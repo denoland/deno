@@ -19,8 +19,8 @@ sync = ["deno_package_json/sync"]
 [dependencies]
 anyhow.workspace = true
 async-trait.workspace = true
-deno_error.workspace = true
 boxed_error.workspace = true
+deno_error.workspace = true
 deno_media_type.workspace = true
 deno_package_json.workspace = true
 deno_path_util.workspace = true

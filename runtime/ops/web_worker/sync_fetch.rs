@@ -71,7 +71,7 @@ pub enum SyncFetchError {
   ),
   #[class(inherit)]
   #[error(transparent)]
-  Other(#[inherit] deno_core::error::JsNativeError),
+  Other(#[inherit] deno_error::JsErrorBox),
 }
 
 #[derive(Serialize, Deserialize)]

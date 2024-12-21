@@ -21,12 +21,12 @@ use deno_ast::SourceRange;
 use deno_ast::SourceRangedForSpanned;
 use deno_ast::SourceTextInfo;
 use deno_core::error::AnyError;
-use deno_core::error::JsNativeError;
 use deno_core::serde::Deserialize;
 use deno_core::serde::Serialize;
 use deno_core::serde_json;
 use deno_core::serde_json::json;
 use deno_core::ModuleSpecifier;
+use deno_error::JsErrorBox;
 use deno_path_util::url_to_file_path;
 use deno_runtime::deno_node::PathClean;
 use deno_semver::jsr::JsrPackageNvReference;
@@ -1054,7 +1054,7 @@ impl CodeActionCollection {
       // actually easier to return errors if we ever encounter one of these,
       // which we really wouldn't expect from the Deno lsp.
       return Err(
-        JsNativeError::new(
+        JsErrorBox::new(
           "UnsupportedFix",
           "The action returned from TypeScript is unsupported.",
         )

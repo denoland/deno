@@ -33,7 +33,7 @@ use tokio::process::Command;
 use std::os::windows::process::CommandExt;
 
 use crate::ops::signal::SignalError;
-use deno_core::error::JsNativeError;
+use deno_error::JsErrorBox;
 #[cfg(unix)]
 use std::os::unix::prelude::ExitStatusExt;
 #[cfg(unix)]
@@ -109,7 +109,7 @@ impl StdioOrRid {
       StdioOrRid::Stdio(val) => Ok(val.as_stdio()),
       StdioOrRid::Rid(rid) => {
         Ok(FileResource::with_file(state, *rid, |file| {
-          file.as_stdio().map_err(JsNativeError::from_err)
+          file.as_stdio().map_err(JsErrorBox::from_err)
         })?)
       }
     }
@@ -257,7 +257,7 @@ pub enum ProcessError {
   Signal(#[from] SignalError),
   #[class(inherit)]
   #[error(transparent)]
-  Other(#[from] JsNativeError),
+  Other(#[from] JsErrorBox),
   #[class(type)]
   #[error("Missing cmd")]
   MissingCmd, // only for Deno.run
@@ -778,7 +778,7 @@ pub enum CheckRunPermissionError {
   Permission(#[from] deno_permissions::PermissionCheckError),
   #[class(inherit)]
   #[error("{0}")]
-  Other(JsNativeError),
+  Other(JsErrorBox),
 }
 
 fn check_run_permission(
@@ -795,7 +795,7 @@ fn check_run_permission(
       // we don't allow users to launch subprocesses with any LD_ or DYLD_*
       // env vars set because this allows executing code (ex. LD_PRELOAD)
       return Err(CheckRunPermissionError::Other(
-        JsNativeError::new(
+        JsErrorBox::new(
           "NotCapable",
           format!(
             "Requires --allow-run permissions to spawn subprocess with {0} environment variable{1}. Alternatively, spawn with {2} environment variable{1} unset.",

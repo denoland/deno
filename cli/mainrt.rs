@@ -23,6 +23,7 @@ mod version;
 mod worker;
 
 use deno_core::error::AnyError;
+use deno_core::error::CoreError;
 use deno_core::error::JsError;
 use deno_runtime::fmt_errors::format_js_error;
 use deno_runtime::tokio_util::create_and_run_current_thread_with_maybe_metrics;
@@ -60,8 +61,8 @@ fn unwrap_or_exit<T>(result: Result<T, AnyError>) -> T {
     Err(error) => {
       let mut error_string = format!("{:?}", error);
 
-      if let Some(e) = error.downcast_ref::<JsError>() {
-        error_string = format_js_error(e);
+      if let Some(CoreError::Js(js_error)) = error.downcast_ref::<CoreError>() {
+        error_string = format_js_error(js_error);
       }
 
       exit_with_message(&error_string, 1);

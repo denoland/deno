@@ -1166,7 +1166,6 @@ pub fn exec(request: Request) -> Result<Response, AnyError> {
 
 #[cfg(test)]
 mod tests {
-  use deno_core::error::JsNativeError;
   use super::Diagnostic;
   use super::DiagnosticCategory;
   use super::*;
@@ -1174,6 +1173,7 @@ mod tests {
   use deno_core::futures::future;
   use deno_core::serde_json;
   use deno_core::OpState;
+  use deno_error::JsErrorBox;
   use deno_graph::GraphKind;
   use deno_graph::ModuleGraph;
   use test_util::PathRef;
@@ -1195,13 +1195,16 @@ mod tests {
         .replace("://", "_")
         .replace('/', "-");
       let source_path = self.fixtures.join(specifier_text);
-      let response = source_path.read_to_bytes_if_exists().map(|c| {
-        Some(deno_graph::source::LoadResponse::Module {
-          specifier: specifier.clone(),
-          maybe_headers: None,
-          content: c.into(),
+      let response = source_path
+        .read_to_bytes_if_exists()
+        .map(|c| {
+          Some(deno_graph::source::LoadResponse::Module {
+            specifier: specifier.clone(),
+            maybe_headers: None,
+            content: c.into(),
+          })
         })
-      }).map_err(|e| Arc::new(JsNativeError::generic(e.to_string())).into());
+        .map_err(|e| Arc::new(JsErrorBox::generic(e.to_string())).into());
       Box::pin(future::ready(response))
     }
   }

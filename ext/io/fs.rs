@@ -7,12 +7,13 @@ use std::rc::Rc;
 use std::time::SystemTime;
 use std::time::UNIX_EPOCH;
 
-use deno_core::error::{JsNativeError, ResourceError};
+use deno_core::error::ResourceError;
 use deno_core::BufMutView;
 use deno_core::BufView;
 use deno_core::OpState;
 use deno_core::ResourceHandleFd;
 use deno_core::ResourceId;
+use deno_error::JsErrorBox;
 use tokio::task::JoinError;
 
 #[derive(Debug, deno_error::JsError)]
@@ -282,14 +283,14 @@ impl FileResource {
     state: &OpState,
     rid: ResourceId,
     f: F,
-  ) -> Result<R, JsNativeError>
+  ) -> Result<R, JsErrorBox>
   where
-    F: FnOnce(Rc<FileResource>) -> Result<R, JsNativeError>,
+    F: FnOnce(Rc<FileResource>) -> Result<R, JsErrorBox>,
   {
     let resource = state
       .resource_table
       .get::<FileResource>(rid)
-      .map_err(JsNativeError::from_err)?;
+      .map_err(JsErrorBox::from_err)?;
     f(resource)
   }
 
@@ -305,9 +306,9 @@ impl FileResource {
     state: &OpState,
     rid: ResourceId,
     f: F,
-  ) -> Result<R, JsNativeError>
+  ) -> Result<R, JsErrorBox>
   where
-    F: FnOnce(Rc<dyn File>) -> Result<R, JsNativeError>,
+    F: FnOnce(Rc<dyn File>) -> Result<R, JsErrorBox>,
   {
     Self::with_resource(state, rid, |r| f(r.file.clone()))
   }
@@ -329,7 +330,7 @@ impl deno_core::Resource for FileResource {
         .clone()
         .read(limit)
         .await
-        .map_err(JsNativeError::from_err)
+        .map_err(JsErrorBox::from_err)
     })
   }
 
@@ -343,7 +344,7 @@ impl deno_core::Resource for FileResource {
         .clone()
         .read_byob(buf)
         .await
-        .map_err(JsNativeError::from_err)
+        .map_err(JsErrorBox::from_err)
     })
   }
 
@@ -357,7 +358,7 @@ impl deno_core::Resource for FileResource {
         .clone()
         .write(buf)
         .await
-        .map_err(JsNativeError::from_err)
+        .map_err(JsErrorBox::from_err)
     })
   }
 
@@ -368,27 +369,27 @@ impl deno_core::Resource for FileResource {
         .clone()
         .write_all(buf)
         .await
-        .map_err(JsNativeError::from_err)
+        .map_err(JsErrorBox::from_err)
     })
   }
 
   fn read_byob_sync(
     self: Rc<Self>,
     data: &mut [u8],
-  ) -> Result<usize, JsNativeError> {
+  ) -> Result<usize, JsErrorBox> {
     self
       .file
       .clone()
       .read_sync(data)
-      .map_err(JsNativeError::from_err)
+      .map_err(JsErrorBox::from_err)
   }
 
-  fn write_sync(self: Rc<Self>, data: &[u8]) -> Result<usize, JsNativeError> {
+  fn write_sync(self: Rc<Self>, data: &[u8]) -> Result<usize, JsErrorBox> {
     self
       .file
       .clone()
       .write_sync(data)
-      .map_err(JsNativeError::from_err)
+      .map_err(JsErrorBox::from_err)
   }
 
   fn backing_fd(self: Rc<Self>) -> Option<ResourceHandleFd> {

@@ -17,7 +17,6 @@ mod impl_ {
   use std::task::Context;
   use std::task::Poll;
 
-  use deno_core::error::JsNativeError;
   use deno_core::op2;
   use deno_core::serde;
   use deno_core::serde::Serializer;
@@ -31,6 +30,7 @@ mod impl_ {
   use deno_core::RcRef;
   use deno_core::ResourceId;
   use deno_core::ToV8;
+  use deno_error::JsErrorBox;
   use memchr::memchr;
   use pin_project_lite::pin_project;
   use serde::Serialize;
@@ -81,7 +81,7 @@ mod impl_ {
     } else if value.is_string_object() {
       let str = deno_core::serde_v8::to_utf8(
         value.to_string(scope).ok_or_else(|| {
-          S::Error::custom(deno_core::error::JsNativeError::generic(
+          S::Error::custom(deno_error::JsErrorBox::generic(
             "toString on string object failed",
           ))
         })?,
@@ -154,7 +154,7 @@ mod impl_ {
       map.end()
     } else {
       // TODO(nathanwhit): better error message
-      Err(S::Error::custom(JsNativeError::type_error(format!(
+      Err(S::Error::custom(JsErrorBox::type_error(format!(
         "Unsupported type: {}",
         value.type_repr()
       ))))

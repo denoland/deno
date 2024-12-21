@@ -19,10 +19,10 @@ sync = ["dashmap"]
 [dependencies]
 anyhow.workspace = true
 base32.workspace = true
-deno_error.workspace = true
 boxed_error.workspace = true
 dashmap = { workspace = true, optional = true }
 deno_config.workspace = true
+deno_error.workspace = true
 deno_media_type.workspace = true
 deno_package_json.workspace = true
 deno_package_json.features = ["sync"]

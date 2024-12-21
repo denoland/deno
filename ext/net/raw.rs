@@ -1,13 +1,13 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 use crate::io::TcpStreamResource;
 use crate::ops_tls::TlsStreamResource;
-use deno_core::error::JsNativeError;
 use deno_core::error::ResourceError;
 use deno_core::AsyncRefCell;
 use deno_core::CancelHandle;
 use deno_core::Resource;
 use deno_core::ResourceId;
 use deno_core::ResourceTable;
+use deno_error::JsErrorBox;
 use std::borrow::Cow;
 use std::rc::Rc;
 
@@ -66,11 +66,10 @@ impl<T: NetworkStreamListenerTrait + 'static> NetworkListenerResource<T> {
   fn take(
     resource_table: &mut ResourceTable,
     listener_rid: ResourceId,
-  ) -> Result<Option<NetworkStreamListener>, JsNativeError> {
+  ) -> Result<Option<NetworkStreamListener>, JsErrorBox> {
     if let Ok(resource_rc) = resource_table.take::<Self>(listener_rid) {
-      let resource = Rc::try_unwrap(resource_rc).map_err(|_| {
-        JsNativeError::new("Busy", "Listener is currently in use")
-      })?;
+      let resource = Rc::try_unwrap(resource_rc)
+        .map_err(|_| JsErrorBox::new("Busy", "Listener is currently in use"))?;
       return Ok(Some(resource.listener.into_inner().into()));
     }
     Ok(None)
@@ -241,13 +240,13 @@ macro_rules! network_stream {
 
       /// Return a `NetworkStreamListener` if a resource exists for this `ResourceId` and it is currently
       /// not locked.
-      pub fn take_resource(resource_table: &mut ResourceTable, listener_rid: ResourceId) -> Result<NetworkStreamListener, JsNativeError> {
+      pub fn take_resource(resource_table: &mut ResourceTable, listener_rid: ResourceId) -> Result<NetworkStreamListener, JsErrorBox> {
         $(
           if let Some(resource) = NetworkListenerResource::<$listener>::take(resource_table, listener_rid)? {
             return Ok(resource)
           }
         )*
-        Err(JsNativeError::from_err(ResourceError::BadResourceId))
+        Err(JsErrorBox::from_err(ResourceError::BadResourceId))
       }
     }
   };
@@ -396,6 +395,6 @@ pub fn take_network_stream_resource(
 pub fn take_network_stream_listener_resource(
   resource_table: &mut ResourceTable,
   listener_rid: ResourceId,
-) -> Result<NetworkStreamListener, JsNativeError> {
+) -> Result<NetworkStreamListener, JsErrorBox> {
   NetworkStreamListener::take_resource(resource_table, listener_rid)
 }

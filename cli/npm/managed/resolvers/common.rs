@@ -14,9 +14,9 @@ use std::sync::Mutex;
 use super::super::PackageCaching;
 use async_trait::async_trait;
 use deno_ast::ModuleSpecifier;
-use deno_core::error::JsNativeError;
 use deno_core::futures;
 use deno_core::futures::StreamExt;
+use deno_error::JsErrorBox;
 use deno_npm::NpmPackageCacheFolderId;
 use deno_npm::NpmPackageId;
 use deno_npm::NpmResolutionPackage;
@@ -63,7 +63,7 @@ pub trait NpmPackageFsResolver: Send + Sync {
   async fn cache_packages<'a>(
     &self,
     caching: PackageCaching<'a>,
-  ) -> Result<(), JsNativeError>;
+  ) -> Result<(), JsErrorBox>;
 
   #[must_use = "the resolved return value to mitigate time-of-check to time-of-use issues"]
   fn ensure_read_permission<'a>(
@@ -165,7 +165,7 @@ impl RegistryReadPermissionChecker {
 pub async fn cache_packages(
   packages: &[NpmResolutionPackage],
   tarball_cache: &Arc<CliNpmTarballCache>,
-) -> Result<(), JsNativeError> {
+) -> Result<(), JsErrorBox> {
   let mut futures_unordered = futures::stream::FuturesUnordered::new();
   for package in packages {
     futures_unordered.push(async move {
@@ -176,7 +176,7 @@ pub async fn cache_packages(
   }
   while let Some(result) = futures_unordered.next().await {
     // surface the first error
-    result.map_err(JsNativeError::from_err)?;
+    result.map_err(JsErrorBox::from_err)?;
   }
   Ok(())
 }

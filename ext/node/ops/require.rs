@@ -6,12 +6,12 @@ use crate::NodeResolverRc;
 use crate::NpmPackageFolderResolverRc;
 use crate::PackageJsonResolverRc;
 use boxed_error::Boxed;
-use deno_core::error::JsNativeError;
 use deno_core::op2;
 use deno_core::url::Url;
 use deno_core::v8;
 use deno_core::JsRuntimeInspector;
 use deno_core::OpState;
+use deno_error::JsErrorBox;
 use deno_fs::FileSystemRc;
 use deno_fs::V8MaybeStaticStr;
 use deno_package_json::PackageJsonRc;
@@ -32,7 +32,7 @@ use std::rc::Rc;
 fn ensure_read_permission<'a, P>(
   state: &mut OpState,
   file_path: &'a Path,
-) -> Result<Cow<'a, Path>, JsNativeError>
+) -> Result<Cow<'a, Path>, JsErrorBox>
 where
   P: NodePermissions + 'static,
 {
@@ -55,7 +55,7 @@ pub enum RequireErrorKind {
   ),
   #[class(inherit)]
   #[error(transparent)]
-  Permission(#[inherit] JsNativeError),
+  Permission(#[inherit] JsErrorBox),
   #[class(generic)]
   #[error(transparent)]
   PackageExportsResolve(
@@ -90,7 +90,7 @@ pub enum RequireErrorKind {
   ReadModule(
     #[from]
     #[inherit]
-    JsNativeError,
+    JsErrorBox,
   ),
   #[class(inherit)]
   #[error("Unable to get CWD: {0}")]
@@ -323,7 +323,7 @@ pub fn op_require_path_is_absolute(#[string] p: String) -> bool {
 pub fn op_require_stat<P>(
   state: &mut OpState,
   #[string] path: String,
-) -> Result<i32, JsNativeError>
+) -> Result<i32, JsErrorBox>
 where
   P: NodePermissions + 'static,
 {
@@ -379,12 +379,12 @@ pub fn op_require_path_resolve(#[serde] parts: Vec<String>) -> String {
 #[string]
 pub fn op_require_path_dirname(
   #[string] request: String,
-) -> Result<String, JsNativeError> {
+) -> Result<String, JsErrorBox> {
   let p = PathBuf::from(request);
   if let Some(parent) = p.parent() {
     Ok(parent.to_string_lossy().into_owned())
   } else {
-    Err(JsNativeError::generic("Path doesn't have a parent"))
+    Err(JsErrorBox::generic("Path doesn't have a parent"))
   }
 }
 
@@ -392,12 +392,12 @@ pub fn op_require_path_dirname(
 #[string]
 pub fn op_require_path_basename(
   #[string] request: String,
-) -> Result<String, JsNativeError> {
+) -> Result<String, JsErrorBox> {
   let p = PathBuf::from(request);
   if let Some(path) = p.file_name() {
     Ok(path.to_string_lossy().into_owned())
   } else {
-    Err(JsNativeError::generic("Path doesn't have a file name"))
+    Err(JsErrorBox::generic("Path doesn't have a file name"))
   }
 }
 
@@ -408,7 +408,7 @@ pub fn op_require_try_self_parent_path<P>(
   has_parent: bool,
   #[string] maybe_parent_filename: Option<String>,
   #[string] maybe_parent_id: Option<String>,
-) -> Result<Option<String>, JsNativeError>
+) -> Result<Option<String>, JsErrorBox>
 where
   P: NodePermissions + 'static,
 {

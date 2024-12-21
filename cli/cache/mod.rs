@@ -178,7 +178,7 @@ pub type LocalHttpCache = deno_cache_dir::LocalHttpCache<RealDenoCacheEnv>;
 pub type LocalLspHttpCache =
   deno_cache_dir::LocalLspHttpCache<RealDenoCacheEnv>;
 pub use deno_cache_dir::HttpCache;
-use deno_core::error::JsNativeError;
+use deno_error::JsErrorBox;
 
 pub struct FetchCacherOptions {
   pub file_header_overrides: HashMap<ModuleSpecifier, HashMap<String, String>>,
@@ -312,7 +312,7 @@ impl Loader for FetchCacher {
         LoaderCacheSetting::Use => None,
         LoaderCacheSetting::Reload => {
           if matches!(file_fetcher.cache_setting(), CacheSetting::Only) {
-            return Err(Arc::new(JsNativeError::generic(
+            return Err(Arc::new(JsErrorBox::generic(
               "Could not resolve version constraint using only cached data. Try running again without --cached-only"
             )).into());
           }
@@ -380,19 +380,19 @@ impl Loader for FetchCacher {
                 FetchNoFollowErrorKind::CacheSave  { .. } |
                 FetchNoFollowErrorKind::UnsupportedScheme  { .. } |
                 FetchNoFollowErrorKind::RedirectHeaderParse { .. } |
-                FetchNoFollowErrorKind::InvalidHeader { .. } => Err(JsNativeError::from_err(err)),
+                FetchNoFollowErrorKind::InvalidHeader { .. } => Err(JsErrorBox::from_err(err)),
                 FetchNoFollowErrorKind::NotCached { .. } => {
                   if options.cache_setting == LoaderCacheSetting::Only {
                     Ok(None)
                   } else {
-                    Err(JsNativeError::from_err(err))
+                    Err(JsErrorBox::from_err(err))
                   }
                 },
                 FetchNoFollowErrorKind::ChecksumIntegrity(err) => {
                   // convert to the equivalent deno_graph error so that it
                   // enhances it if this is passed to deno_graph
                   Err(
-                    JsNativeError::from_err( deno_graph::source::ChecksumIntegrityError {
+                    JsErrorBox::from_err( deno_graph::source::ChecksumIntegrityError {
                       actual: err.actual,
                       expected: err.expected,
                     }),
@@ -400,7 +400,7 @@ impl Loader for FetchCacher {
                 }
               }
             },
-            CliFetchNoFollowErrorKind::PermissionCheck(permission_check_error) => Err(JsNativeError::from_err(permission_check_error)),
+            CliFetchNoFollowErrorKind::PermissionCheck(permission_check_error) => Err(JsErrorBox::from_err(permission_check_error)),
           }
         }).map_err(|e| Arc::new(e).into())
     }

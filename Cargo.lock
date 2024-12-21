@@ -1623,6 +1623,7 @@ dependencies = [
  "libc",
  "serde",
  "serde_json",
+ "thiserror 2.0.3",
  "tokio",
  "url",
 ]
@@ -2452,12 +2453,10 @@ dependencies = [
 [[package]]
 name = "denokv_proto"
 version = "0.8.4"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f7ba1f99ed11a9c11e868a8521b1f71a7e1aba785d7f42ea9ecbdc01146c89ec"
 dependencies = [
- "anyhow",
  "async-trait",
  "chrono",
+ "deno_error",
  "futures",
  "num-bigint",
  "prost",
@@ -2468,14 +2467,12 @@ dependencies = [
 [[package]]
 name = "denokv_remote"
 version = "0.8.4"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "08ed833073189e8f6d03155fe3b05a024e75e29d8a28a4c2e9ec3b5c925e727b"
 dependencies = [
- "anyhow",
  "async-stream",
  "async-trait",
  "bytes",
  "chrono",
+ "deno_error",
  "denokv_proto",
  "futures",
  "http 1.1.0",
@@ -2484,6 +2481,7 @@ dependencies = [
  "rand",
  "serde",
  "serde_json",
+ "thiserror 2.0.3",
  "tokio",
  "tokio-util",
  "url",
@@ -2493,13 +2491,11 @@ dependencies = [
 [[package]]
 name = "denokv_sqlite"
 version = "0.8.4"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9b790f01d1302d53a0c3cbd27de88a06b3abd64ec8ab8673924e490541c7c713"
 dependencies = [
- "anyhow",
  "async-stream",
  "async-trait",
  "chrono",
+ "deno_error",
  "denokv_proto",
  "futures",
  "hex",
@@ -2508,7 +2504,7 @@ dependencies = [
  "rand",
  "rusqlite",
  "serde_json",
- "thiserror 1.0.64",
+ "thiserror 2.0.3",
  "tokio",
  "tokio-stream",
  "uuid",
@@ -5817,7 +5813,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0c1318b19085f08681016926435853bbf7858f9c082d0999b80550ff5d9abe15"
 dependencies = [
  "bytes",
- "heck 0.5.0",
+ "heck 0.4.1",
  "itertools 0.13.0",
  "log",
  "multimap",
@@ -9204,7 +9200,7 @@ dependencies = [
 
 [[patch.unused]]
 name = "deno_doc"
-version = "0.162.1"
+version = "0.162.2"
 
 [[patch.unused]]
 name = "v8"

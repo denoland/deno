@@ -18,7 +18,6 @@ use std::sync::Arc;
 use std::task::Context;
 use std::task::Poll;
 
-use deno_core::error::JsNativeError;
 use deno_core::futures::stream::Peekable;
 use deno_core::futures::Future;
 use deno_core::futures::FutureExt;
@@ -42,6 +41,7 @@ use deno_core::OpState;
 use deno_core::RcRef;
 use deno_core::Resource;
 use deno_core::ResourceId;
+use deno_error::JsErrorBox;
 use deno_path_util::url_from_file_path;
 use deno_path_util::PathToUrlError;
 use deno_permissions::PermissionCheckError;
@@ -102,7 +102,7 @@ pub struct Options {
   pub client_builder_hook: Option<fn(HyperClientBuilder) -> HyperClientBuilder>,
   #[allow(clippy::type_complexity)]
   pub request_builder_hook:
-    Option<fn(&mut http::Request<ReqBody>) -> Result<(), JsNativeError>>,
+    Option<fn(&mut http::Request<ReqBody>) -> Result<(), JsErrorBox>>,
   pub unsafely_ignore_certificate_errors: Option<Vec<String>>,
   pub client_cert_chain_and_key: TlsKeys,
   pub file_fetch_handler: Rc<dyn FetchHandler>,
@@ -110,9 +110,7 @@ pub struct Options {
 }
 
 impl Options {
-  pub fn root_cert_store(
-    &self,
-  ) -> Result<Option<RootCertStore>, JsNativeError> {
+  pub fn root_cert_store(&self) -> Result<Option<RootCertStore>, JsErrorBox> {
     Ok(match &self.root_cert_store_provider {
       Some(provider) => Some(provider.get_or_try_init()?.clone()),
       None => None,
@@ -217,12 +215,12 @@ pub enum FetchError {
   #[class(type)]
   #[error(transparent)]
   Method(#[from] http::method::InvalidMethod),
-  #[class(type)]
+  #[class(inherit)]
   #[error(transparent)]
   ClientSend(#[from] ClientSendError),
   #[class(inherit)]
   #[error(transparent)]
-  RequestBuilderHook(JsNativeError),
+  RequestBuilderHook(JsErrorBox),
   #[class(inherit)]
   #[error(transparent)]
   Io(#[from] std::io::Error),
@@ -317,7 +315,7 @@ pub fn create_client_from_options(
 #[allow(clippy::type_complexity)]
 pub struct ResourceToBodyAdapter(
   Rc<dyn Resource>,
-  Option<Pin<Box<dyn Future<Output = Result<BufView, JsNativeError>>>>>,
+  Option<Pin<Box<dyn Future<Output = Result<BufView, JsErrorBox>>>>>,
 );
 
 impl ResourceToBodyAdapter {
@@ -333,7 +331,7 @@ unsafe impl Send for ResourceToBodyAdapter {}
 unsafe impl Sync for ResourceToBodyAdapter {}
 
 impl Stream for ResourceToBodyAdapter {
-  type Item = Result<Bytes, JsNativeError>;
+  type Item = Result<Bytes, JsErrorBox>;
 
   fn poll_next(
     self: Pin<&mut Self>,
@@ -363,7 +361,7 @@ impl Stream for ResourceToBodyAdapter {
 
 impl hyper::body::Body for ResourceToBodyAdapter {
   type Data = Bytes;
-  type Error = JsNativeError;
+  type Error = JsErrorBox;
 
   fn poll_frame(
     self: Pin<&mut Self>,
@@ -822,9 +820,7 @@ impl Resource for FetchResponseResource {
             // safely call `await` on it without creating a race condition.
             Some(_) => match reader.as_mut().next().await.unwrap() {
               Ok(chunk) => assert!(chunk.is_empty()),
-              Err(err) => {
-                break Err(JsNativeError::type_error(err.to_string()))
-              }
+              Err(err) => break Err(JsErrorBox::type_error(err.to_string())),
             },
             None => break Ok(BufView::empty()),
           }
@@ -835,7 +831,7 @@ impl Resource for FetchResponseResource {
       fut
         .try_or_cancel(cancel_handle)
         .await
-        .map_err(JsNativeError::from_err)
+        .map_err(JsErrorBox::from_err)
     })
   }
 
@@ -995,7 +991,7 @@ pub enum HttpClientCreateError {
   HttpVersionSelectionInvalid,
   #[class(inherit)]
   #[error(transparent)]
-  RootCertStore(JsNativeError),
+  RootCertStore(JsErrorBox),
 }
 
 /// Create new instance of async Client. This client supports
@@ -1112,7 +1108,8 @@ type Connector = proxy::ProxyConnector<HttpConnector<dns::Resolver>>;
 #[allow(clippy::declare_interior_mutable_const)]
 const STAR_STAR: HeaderValue = HeaderValue::from_static("*/*");
 
-#[derive(Debug)]
+#[derive(Debug, deno_error::JsError)]
+#[class(type)]
 pub struct ClientSendError {
   uri: Uri,
   pub source: hyper_util::client::legacy::Error,
@@ -1187,15 +1184,12 @@ impl Client {
       .oneshot(req)
       .await
       .map_err(|e| ClientSendError { uri, source: e })?;
-    Ok(
-      resp
-        .map(|b| b.map_err(|e| JsNativeError::generic(e.to_string())).boxed()),
-    )
+    Ok(resp.map(|b| b.map_err(|e| JsErrorBox::generic(e.to_string())).boxed()))
   }
 }
 
-pub type ReqBody = http_body_util::combinators::BoxBody<Bytes, JsNativeError>;
-pub type ResBody = http_body_util::combinators::BoxBody<Bytes, JsNativeError>;
+pub type ReqBody = http_body_util::combinators::BoxBody<Bytes, JsErrorBox>;
+pub type ResBody = http_body_util::combinators::BoxBody<Bytes, JsErrorBox>;
 
 /// Copied from https://github.com/seanmonstar/reqwest/blob/b9d62a0323d96f11672a61a17bf8849baec00275/src/async_impl/request.rs#L572
 /// Check the request URL for a "username:password" type authority, and if

@@ -9,7 +9,7 @@ pub use rustls_tokio_stream::*;
 pub use webpki;
 pub use webpki_roots;
 
-use deno_core::error::JsNativeError;
+use deno_error::JsErrorBox;
 use rustls::client::danger::HandshakeSignatureValid;
 use rustls::client::danger::ServerCertVerified;
 use rustls::client::danger::ServerCertVerifier;
@@ -58,7 +58,7 @@ pub enum TlsError {
 /// This was done because the root cert store is not needed in all cases
 /// and takes a bit of time to initialize.
 pub trait RootCertStoreProvider: Send + Sync {
-  fn get_or_try_init(&self) -> Result<&RootCertStore, JsNativeError>;
+  fn get_or_try_init(&self) -> Result<&RootCertStore, JsErrorBox>;
 }
 
 // This extension has no runtime apis, it only exports some shared native functions.

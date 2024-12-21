@@ -47,8 +47,8 @@ use winapi::um::processenv::GetStdHandle;
 #[cfg(windows)]
 use winapi::um::winbase;
 
-use deno_core::error::JsNativeError;
 use deno_core::futures::TryFutureExt;
+use deno_error::JsErrorBox;
 #[cfg(windows)]
 use parking_lot::Condvar;
 #[cfg(windows)]
@@ -418,7 +418,7 @@ impl Resource for ChildStdinResource {
   deno_core::impl_writable!();
 
   fn shutdown(self: Rc<Self>) -> AsyncResult<()> {
-    Box::pin(self.shutdown().map_err(JsNativeError::from_err))
+    Box::pin(self.shutdown().map_err(JsErrorBox::from_err))
   }
 }
 
@@ -1011,11 +1011,11 @@ pub fn op_print(
   state: &mut OpState,
   #[string] msg: &str,
   is_err: bool,
-) -> Result<(), JsNativeError> {
+) -> Result<(), JsErrorBox> {
   let rid = if is_err { 2 } else { 1 };
   FileResource::with_file(state, rid, move |file| {
     file
       .write_all_sync(msg.as_bytes())
-      .map_err(JsNativeError::from_err)
+      .map_err(JsErrorBox::from_err)
   })
 }

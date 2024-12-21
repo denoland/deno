@@ -6,7 +6,7 @@ use crate::util::fs::canonicalize_path;
 
 use deno_config::glob::PathOrPatternSet;
 use deno_core::error::AnyError;
-use deno_core::error::JsError;
+use deno_core::error::CoreError;
 use deno_core::futures::Future;
 use deno_core::futures::FutureExt;
 use deno_core::parking_lot::Mutex;
@@ -80,9 +80,9 @@ where
 {
   let result = watch_future.await;
   if let Err(err) = result {
-    let error_string = match err.downcast_ref::<JsError>() {
-      Some(e) => format_js_error(e),
-      None => format!("{err:?}"),
+    let error_string = match err.downcast_ref::<CoreError>() {
+      Some(CoreError::Js(e)) => format_js_error(e),
+      _ => format!("{err:?}"),
     };
     log::error!(
       "{}: {}",

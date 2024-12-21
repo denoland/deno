@@ -18,7 +18,6 @@ use crate::interface::FsFileType;
 use crate::FsPermissions;
 use crate::OpenOptions;
 use boxed_error::Boxed;
-use deno_core::error::JsNativeError;
 use deno_core::error::ResourceError;
 use deno_core::op2;
 use deno_core::v8;
@@ -30,6 +29,7 @@ use deno_core::OpState;
 use deno_core::ResourceId;
 use deno_core::ToJsBuffer;
 use deno_core::ToV8;
+use deno_error::JsErrorBox;
 use deno_io::fs::FileResource;
 use deno_io::fs::FsError;
 use deno_io::fs::FsStat;
@@ -91,7 +91,7 @@ pub enum FsOpsErrorKind {
   NotCapable(&'static str),
   #[class(inherit)]
   #[error(transparent)]
-  Other(JsNativeError),
+  Other(JsErrorBox),
 }
 
 impl From<FsError> for FsOpsError {
@@ -100,7 +100,7 @@ impl From<FsError> for FsOpsError {
       FsError::Io(err) => FsOpsErrorKind::Io(err),
       FsError::FileBusy => FsOpsErrorKind::Resource(ResourceError::Unavailable),
       FsError::NotSupported => {
-        FsOpsErrorKind::Other(JsNativeError::not_supported())
+        FsOpsErrorKind::Other(JsErrorBox::not_supported())
       }
       FsError::NotCapable(err) => FsOpsErrorKind::NotCapable(err),
     }

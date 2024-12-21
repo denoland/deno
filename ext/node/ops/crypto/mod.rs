@@ -1,11 +1,11 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
-use deno_core::error::JsNativeError;
 use deno_core::op2;
 use deno_core::unsync::spawn_blocking;
 use deno_core::JsBuffer;
 use deno_core::OpState;
 use deno_core::StringOrBuffer;
 use deno_core::ToJsBuffer;
+use deno_error::JsErrorBox;
 use elliptic_curve::sec1::ToEncodedPoint;
 use hkdf::Hkdf;
 use keys::AsymmetricPrivateKey;
@@ -574,7 +574,7 @@ fn scrypt(
   parallelization: u32,
   _maxmem: u32,
   output_buffer: &mut [u8],
-) -> Result<(), JsNativeError> {
+) -> Result<(), JsErrorBox> {
   // Construct Params
   let params = scrypt::Params::new(
     cost as u8,
@@ -590,7 +590,7 @@ fn scrypt(
     Ok(())
   } else {
     // TODO(lev): key derivation failed, so what?
-    Err(JsNativeError::generic("scrypt key derivation failed"))
+    Err(JsErrorBox::generic("scrypt key derivation failed"))
   }
 }
 
@@ -605,7 +605,7 @@ pub fn op_node_scrypt_sync(
   #[smi] parallelization: u32,
   #[smi] maxmem: u32,
   #[anybuffer] output_buffer: &mut [u8],
-) -> Result<(), JsNativeError> {
+) -> Result<(), JsErrorBox> {
   scrypt(
     password,
     salt,
@@ -625,7 +625,7 @@ pub enum ScryptAsyncError {
   Join(#[from] tokio::task::JoinError),
   #[class(inherit)]
   #[error(transparent)]
-  Other(JsNativeError),
+  Other(JsErrorBox),
 }
 
 #[op2(async)]
@@ -746,7 +746,7 @@ pub fn op_node_ecdh_generate_keys(
   #[buffer] pubbuf: &mut [u8],
   #[buffer] privbuf: &mut [u8],
   #[string] format: &str,
-) -> Result<(), JsNativeError> {
+) -> Result<(), JsErrorBox> {
   let mut rng = rand::thread_rng();
   let compress = format == "compressed";
   match curve {
@@ -783,7 +783,7 @@ pub fn op_node_ecdh_generate_keys(
 
       Ok(())
     }
-    &_ => Err(JsNativeError::type_error(format!(
+    &_ => Err(JsErrorBox::type_error(format!(
       "Unsupported curve: {}",
       curve
     ))),

@@ -43,10 +43,10 @@ pub struct SqliteBackedCache {
 impl SqliteBackedCache {
   pub fn new(cache_storage_dir: PathBuf) -> Result<Self, CacheError> {
     {
-      std::fs::create_dir_all(&cache_storage_dir).map_err(|error| {
+      std::fs::create_dir_all(&cache_storage_dir).map_err(|source| {
         CacheError::CacheStorageDirectory {
           dir: cache_storage_dir.clone(),
-          error,
+          source,
         }
       })?;
       let path = cache_storage_dir.join("cache_metadata.db");

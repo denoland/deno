@@ -10,12 +10,12 @@ use std::path::PathBuf;
 use std::rc::Rc;
 
 use async_trait::async_trait;
-use deno_core::error::JsNativeError;
 use deno_core::op2;
 use deno_core::JsBuffer;
 use deno_core::OpState;
 use deno_core::Resource;
 use deno_core::ResourceId;
+use deno_error::JsErrorBox;
 use tokio::sync::broadcast::error::SendError as BroadcastSendError;
 use tokio::sync::mpsc::error::SendError as MpscSendError;
 
@@ -40,7 +40,7 @@ pub enum BroadcastChannelError {
   ),
   #[class(inherit)]
   #[error(transparent)]
-  Other(#[inherit] JsNativeError),
+  Other(#[inherit] JsErrorBox),
 }
 
 impl<T: std::fmt::Debug + Send + Sync + 'static> From<MpscSendError<T>>

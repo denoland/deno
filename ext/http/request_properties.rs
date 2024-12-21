@@ -1,7 +1,7 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
-use deno_core::error::JsNativeError;
 use deno_core::OpState;
 use deno_core::ResourceId;
+use deno_error::JsErrorBox;
 use deno_net::raw::take_network_stream_listener_resource;
 use deno_net::raw::take_network_stream_resource;
 use deno_net::raw::NetworkStream;
@@ -49,13 +49,13 @@ pub trait HttpPropertyExtractor {
   fn get_listener_for_rid(
     state: &mut OpState,
     listener_rid: ResourceId,
-  ) -> Result<Self::Listener, JsNativeError>;
+  ) -> Result<Self::Listener, JsErrorBox>;
 
   /// Given a connection [`ResourceId`], returns the [`HttpPropertyExtractor::Connection`].
   fn get_connection_for_rid(
     state: &mut OpState,
     connection_rid: ResourceId,
-  ) -> Result<Self::Connection, JsNativeError>;
+  ) -> Result<Self::Connection, JsErrorBox>;
 
   /// Determines the listener properties.
   fn listen_properties_from_listener(
@@ -70,7 +70,7 @@ pub trait HttpPropertyExtractor {
   /// Accept a new [`HttpPropertyExtractor::Connection`] from the given listener [`HttpPropertyExtractor::Listener`].
   async fn accept_connection_from_listener(
     listener: &Self::Listener,
-  ) -> Result<Self::Connection, JsNativeError>;
+  ) -> Result<Self::Connection, JsErrorBox>;
 
   /// Determines the connection properties.
   fn connection_properties(
@@ -102,7 +102,7 @@ impl HttpPropertyExtractor for DefaultHttpPropertyExtractor {
   fn get_listener_for_rid(
     state: &mut OpState,
     listener_rid: ResourceId,
-  ) -> Result<NetworkStreamListener, JsNativeError> {
+  ) -> Result<NetworkStreamListener, JsErrorBox> {
     take_network_stream_listener_resource(
       &mut state.resource_table,
       listener_rid,
@@ -112,18 +112,18 @@ impl HttpPropertyExtractor for DefaultHttpPropertyExtractor {
   fn get_connection_for_rid(
     state: &mut OpState,
     stream_rid: ResourceId,
-  ) -> Result<NetworkStream, JsNativeError> {
+  ) -> Result<NetworkStream, JsErrorBox> {
     take_network_stream_resource(&mut state.resource_table, stream_rid)
-      .map_err(JsNativeError::from_err)
+      .map_err(JsErrorBox::from_err)
   }
 
   async fn accept_connection_from_listener(
     listener: &NetworkStreamListener,
-  ) -> Result<NetworkStream, JsNativeError> {
+  ) -> Result<NetworkStream, JsErrorBox> {
     listener
       .accept()
       .await
-      .map_err(JsNativeError::from_err)
+      .map_err(JsErrorBox::from_err)
       .map(|(stm, _)| stm)
   }
 

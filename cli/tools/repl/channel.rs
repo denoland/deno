@@ -1,9 +1,11 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 use deno_core::anyhow::anyhow;
-use deno_core::error::{AnyError, CoreError, JsNativeError};
+use deno_core::error::AnyError;
+use deno_core::error::CoreError;
 use deno_core::serde_json;
 use deno_core::serde_json::Value;
+use deno_error::JsErrorBox;
 use std::cell::RefCell;
 use tokio::sync::mpsc::channel;
 use tokio::sync::mpsc::unbounded_channel;
@@ -69,10 +71,10 @@ impl RustylineSyncMessageSender {
           params: params
             .map(|params| serde_json::to_value(params))
             .transpose()
-            .map_err(JsNativeError::from_err)?,
+            .map_err(JsErrorBox::from_err)?,
         })
     {
-      Err(JsNativeError::from_err(err).into())
+      Err(JsErrorBox::from_err(err).into())
     } else {
       match self.response_rx.borrow_mut().blocking_recv().unwrap() {
         RustylineSyncResponse::PostMessage(result) => result,

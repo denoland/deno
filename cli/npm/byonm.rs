@@ -17,8 +17,9 @@ use crate::args::NpmProcessState;
 use crate::args::NpmProcessStateKind;
 use crate::resolver::CliDenoResolverFs;
 
+use super::managed;
+use super::CliNpmResolver;
 use super::InnerCliNpmResolverRef;
-use super::{managed, CliNpmResolver};
 
 pub type CliByonmNpmResolverCreateOptions =
   ByonmNpmResolverCreateOptions<CliDenoResolverFs, DenoFsNodeResolverEnv>;

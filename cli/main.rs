@@ -41,7 +41,7 @@ pub use deno_runtime::UNSTABLE_GRANULAR_FLAGS;
 
 use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
-use deno_core::error::JsError;
+use deno_core::error::CoreError;
 use deno_core::futures::FutureExt;
 use deno_core::unsync::JoinHandle;
 use deno_npm::resolution::SnapshotFromLockfileError;
@@ -371,7 +371,7 @@ fn exit_for_error(error: AnyError) -> ! {
   let mut error_string = format!("{error:?}");
   let mut error_code = 1;
 
-  if let Some(e) = error.downcast_ref::<JsError>() {
+  if let Some(CoreError::Js(e)) = error.downcast_ref::<CoreError>() {
     error_string = format_js_error(e);
   } else if let Some(SnapshotFromLockfileError::IntegrityCheckFailed(e)) =
     error.downcast_ref::<SnapshotFromLockfileError>()

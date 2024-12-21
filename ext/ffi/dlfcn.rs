@@ -6,12 +6,12 @@ use crate::symbol::Symbol;
 use crate::turbocall;
 use crate::turbocall::Turbocall;
 use crate::FfiPermissions;
-use deno_core::error::JsNativeError;
 use deno_core::op2;
 use deno_core::v8;
 use deno_core::GarbageCollected;
 use deno_core::OpState;
 use deno_core::Resource;
+use deno_error::JsErrorBox;
 use deno_error::JsErrorClass;
 use dlopen2::raw::Library;
 use serde::Deserialize;
@@ -49,7 +49,7 @@ pub enum DlfcnError {
   Permission(#[from] deno_permissions::PermissionCheckError),
   #[class(inherit)]
   #[error(transparent)]
-  Other(#[from] JsNativeError),
+  Other(#[from] JsErrorBox),
 }
 
 pub struct DynamicLibraryResource {

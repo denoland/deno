@@ -43,7 +43,7 @@ pub enum CallbackError {
   Permission(#[from] deno_permissions::PermissionCheckError),
   #[class(inherit)]
   #[error(transparent)]
-  Other(#[from] deno_core::error::JsNativeError),
+  Other(#[from] deno_error::JsErrorBox),
 }
 
 #[derive(Clone)]

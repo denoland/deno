@@ -13,7 +13,7 @@ use crate::npm::CliNpmCache;
 use crate::npm::CliNpmTarballCache;
 use async_trait::async_trait;
 use deno_ast::ModuleSpecifier;
-use deno_core::error::JsNativeError;
+use deno_error::JsErrorBox;
 use deno_npm::NpmPackageCacheFolderId;
 use deno_npm::NpmPackageId;
 use deno_npm::NpmResolutionPackage;
@@ -154,7 +154,7 @@ impl NpmPackageFsResolver for GlobalNpmPackageResolver {
   async fn cache_packages<'a>(
     &self,
     caching: PackageCaching<'a>,
-  ) -> Result<(), JsNativeError> {
+  ) -> Result<(), JsErrorBox> {
     let package_partitions = match caching {
       PackageCaching::All => self
         .resolution
@@ -171,7 +171,7 @@ impl NpmPackageFsResolver for GlobalNpmPackageResolver {
       self
         .cache
         .ensure_copy_package(&copy.get_package_cache_folder_id())
-        .map_err(JsNativeError::from_err)?;
+        .map_err(JsErrorBox::from_err)?;
     }
 
     let mut lifecycle_scripts =
@@ -186,7 +186,7 @@ impl NpmPackageFsResolver for GlobalNpmPackageResolver {
 
     lifecycle_scripts
       .warn_not_run_scripts()
-      .map_err(JsNativeError::from_err)?;
+      .map_err(JsErrorBox::from_err)?;
 
     Ok(())
   }

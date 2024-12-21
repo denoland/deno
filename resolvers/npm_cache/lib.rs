@@ -9,7 +9,7 @@ use std::sync::Arc;
 use anyhow::Error as AnyError;
 use deno_cache_dir::file_fetcher::CacheSetting;
 use deno_cache_dir::npm::NpmCacheDir;
-use deno_core::error::JsNativeError;
+use deno_error::JsErrorBox;
 use deno_npm::npm_rc::ResolvedNpmRc;
 use deno_npm::registry::NpmPackageInfo;
 use deno_npm::NpmPackageCacheFolderId;
@@ -60,7 +60,7 @@ pub trait NpmCacheEnv: Send + Sync + 'static {
     &self,
     from: &Path,
     to: &Path,
-  ) -> Result<(), JsNativeError>;
+  ) -> Result<(), JsErrorBox>;
   fn atomic_write_file_with_retries(
     &self,
     file_path: &Path,
@@ -323,7 +323,7 @@ pub enum WithFolderSyncLockError {
   },
   #[class(inherit)]
   #[error(transparent)]
-  Action(#[from] JsNativeError),
+  Action(#[from] JsErrorBox),
   #[class(generic)]
   #[error("Failed setting up package cache directory for {package}, then failed cleaning it up.\n\nOriginal error:\n\n{error}\n\nRemove error:\n\n{remove_error}\n\nPlease manually delete this folder or you will run into issues using this package in the future:\n\n{output_folder}")]
   SetUpPackageCacheDir {
@@ -337,11 +337,11 @@ pub enum WithFolderSyncLockError {
 fn with_folder_sync_lock(
   package: &PackageNv,
   output_folder: &Path,
-  action: impl FnOnce() -> Result<(), JsNativeError>,
+  action: impl FnOnce() -> Result<(), JsErrorBox>,
 ) -> Result<(), WithFolderSyncLockError> {
   fn inner(
     output_folder: &Path,
-    action: impl FnOnce() -> Result<(), JsNativeError>,
+    action: impl FnOnce() -> Result<(), JsErrorBox>,
   ) -> Result<(), WithFolderSyncLockError> {
     std::fs::create_dir_all(output_folder).map_err(|source| {
       WithFolderSyncLockError::CreateDir {

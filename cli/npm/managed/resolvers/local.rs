@@ -23,11 +23,11 @@ use crate::npm::CliNpmTarballCache;
 use async_trait::async_trait;
 use deno_ast::ModuleSpecifier;
 use deno_cache_dir::npm::mixed_case_package_name_decode;
-use deno_core::error::JsNativeError;
 use deno_core::futures::stream::FuturesUnordered;
 use deno_core::futures::StreamExt;
 use deno_core::parking_lot::Mutex;
 use deno_core::url::Url;
+use deno_error::JsErrorBox;
 use deno_npm::resolution::NpmResolutionSnapshot;
 use deno_npm::NpmPackageCacheFolderId;
 use deno_npm::NpmPackageId;
@@ -55,9 +55,10 @@ use crate::util::progress_bar::ProgressBar;
 use crate::util::progress_bar::ProgressMessagePrompt;
 
 use super::super::resolution::NpmResolution;
+use super::common::bin_entries;
+use super::common::EnsureRegistryReadPermissionError;
 use super::common::NpmPackageFsResolver;
 use super::common::RegistryReadPermissionChecker;
-use super::common::{bin_entries, EnsureRegistryReadPermissionError};
 
 /// Resolver that creates a local node_modules directory
 /// and resolves packages from it.
@@ -256,7 +257,7 @@ impl NpmPackageFsResolver for LocalNpmPackageResolver {
   async fn cache_packages<'a>(
     &self,
     caching: PackageCaching<'a>,
-  ) -> Result<(), JsNativeError> {
+  ) -> Result<(), JsErrorBox> {
     let snapshot = match caching {
       PackageCaching::All => self.resolution.snapshot(),
       PackageCaching::Only(reqs) => self.resolution.subset(&reqs),
@@ -272,7 +273,7 @@ impl NpmPackageFsResolver for LocalNpmPackageResolver {
       &self.lifecycle_scripts,
     )
     .await
-    .map_err(JsNativeError::from_err)
+    .map_err(JsErrorBox::from_err)
   }
 
   fn ensure_read_permission<'a>(
@@ -331,7 +332,7 @@ pub enum SyncResolutionWithFsError {
   Io(#[from] std::io::Error),
   #[class(inherit)]
   #[error(transparent)]
-  Other(#[from] JsNativeError),
+  Other(#[from] JsErrorBox),
 }
 
 /// Creates a pnpm style folder structure.
@@ -464,7 +465,7 @@ async fn sync_resolution_with_fs(
         tarball_cache
           .ensure_package(&package.id.nv, &package.dist)
           .await
-          .map_err(JsNativeError::from_err)?;
+          .map_err(JsErrorBox::from_err)?;
         let pb_guard = progress_bar.update_with_prompt(
           ProgressMessagePrompt::Initialize,
           &package.id.nv.to_string(),
@@ -485,8 +486,8 @@ async fn sync_resolution_with_fs(
           }
         })
         .await
-        .map_err(JsNativeError::from_err)?
-        .map_err(JsNativeError::from_err)?;
+        .map_err(JsErrorBox::from_err)?
+        .map_err(JsErrorBox::from_err)?;
 
         if package.bin.is_some() {
           bin_entries_to_setup.borrow_mut().add(package, package_path);
@@ -500,7 +501,7 @@ async fn sync_resolution_with_fs(
 
         // finally stop showing the progress bar
         drop(pb_guard); // explicit for clarity
-        Ok::<_, JsNativeError>(())
+        Ok::<_, JsErrorBox>(())
       });
     } else if matches!(package_state, PackageFolderState::TagsOutdated) {
       fs::write(initialized_file, tags)?;

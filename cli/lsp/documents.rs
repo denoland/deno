@@ -20,12 +20,12 @@ use deno_ast::MediaType;
 use deno_ast::ParsedSource;
 use deno_ast::SourceTextInfo;
 use deno_core::error::AnyError;
-use deno_core::error::JsNativeError;
 use deno_core::futures::future;
 use deno_core::futures::future::Shared;
 use deno_core::futures::FutureExt;
 use deno_core::parking_lot::Mutex;
 use deno_core::ModuleSpecifier;
+use deno_error::JsErrorBox;
 use deno_graph::Resolution;
 use deno_path_util::url_to_file_path;
 use deno_runtime::deno_node;
@@ -1062,7 +1062,7 @@ impl Documents {
       .or_else(|| self.file_system_docs.remove_document(specifier))
       .map(Ok)
       .unwrap_or_else(|| {
-        Err(JsNativeError::new(
+        Err(JsErrorBox::new(
           "NotFound",
           format!("The specifier \"{specifier}\" was not found."),
         ))

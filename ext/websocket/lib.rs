@@ -1,7 +1,6 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 use crate::stream::WebSocketStream;
 use bytes::Bytes;
-use deno_core::error::JsNativeError;
 use deno_core::futures::TryFutureExt;
 use deno_core::op2;
 use deno_core::unsync::spawn;
@@ -17,6 +16,7 @@ use deno_core::RcRef;
 use deno_core::Resource;
 use deno_core::ResourceId;
 use deno_core::ToJsBuffer;
+use deno_error::JsErrorBox;
 use deno_net::raw::NetworkStream;
 use deno_tls::create_client_config;
 use deno_tls::rustls::ClientConfig;
@@ -104,9 +104,7 @@ pub enum WebsocketError {
 pub struct WsRootStoreProvider(Option<Arc<dyn RootCertStoreProvider>>);
 
 impl WsRootStoreProvider {
-  pub fn get_or_try_init(
-    &self,
-  ) -> Result<Option<RootCertStore>, JsNativeError> {
+  pub fn get_or_try_init(&self) -> Result<Option<RootCertStore>, JsErrorBox> {
     Ok(match &self.0 {
       Some(provider) => Some(provider.get_or_try_init()?.clone()),
       None => None,
@@ -222,7 +220,7 @@ pub enum HandshakeError {
   InvalidHostname(String),
   #[class(inherit)]
   #[error(transparent)]
-  RootStoreError(JsNativeError),
+  RootStoreError(JsErrorBox),
   #[class(inherit)]
   #[error(transparent)]
   Tls(deno_tls::TlsError),

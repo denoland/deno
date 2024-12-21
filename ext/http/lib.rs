@@ -6,7 +6,6 @@ use async_compression::Level;
 use base64::prelude::BASE64_STANDARD;
 use base64::Engine;
 use cache_control::CacheControl;
-use deno_core::error::JsNativeError;
 use deno_core::futures::channel::mpsc;
 use deno_core::futures::channel::oneshot;
 use deno_core::futures::future::pending;
@@ -36,6 +35,7 @@ use deno_core::RcRef;
 use deno_core::Resource;
 use deno_core::ResourceId;
 use deno_core::StringOrBuffer;
+use deno_error::JsErrorBox;
 use deno_net::raw::NetworkStream;
 use deno_websocket::ws_create_server_stream;
 use flate2::write::GzEncoder;
@@ -208,7 +208,7 @@ pub enum HttpError {
   UpgradeBodyUsed,
   #[class("Http")]
   #[error(transparent)]
-  Other(#[from] JsNativeError),
+  Other(#[from] JsErrorBox),
 }
 
 pub enum HttpSocketAddr {
@@ -500,7 +500,7 @@ impl Resource for HttpStreamReadResource {
             Some(_) => match body.as_mut().next().await.unwrap() {
               Ok(chunk) => assert!(chunk.is_empty()),
               Err(err) => {
-                break Err(JsNativeError::from_err(HttpError::HyperV014(
+                break Err(JsErrorBox::from_err(HttpError::HyperV014(
                   Arc::new(err),
                 )))
               }

@@ -11,7 +11,6 @@ use crate::tcp::TcpListener;
 use crate::DefaultTlsOptions;
 use crate::NetPermissions;
 use crate::UnsafelyIgnoreCertificateErrors;
-use deno_core::error::JsNativeError;
 use deno_core::futures::TryFutureExt;
 use deno_core::op2;
 use deno_core::v8;
@@ -23,6 +22,7 @@ use deno_core::OpState;
 use deno_core::RcRef;
 use deno_core::Resource;
 use deno_core::ResourceId;
+use deno_error::JsErrorBox;
 use deno_tls::create_client_config;
 use deno_tls::load_certs;
 use deno_tls::load_private_keys;
@@ -163,7 +163,7 @@ impl Resource for TlsStreamResource {
   }
 
   fn shutdown(self: Rc<Self>) -> AsyncResult<()> {
-    Box::pin(self.shutdown().map_err(JsNativeError::from_err))
+    Box::pin(self.shutdown().map_err(JsErrorBox::from_err))
   }
 
   fn close(self: Rc<Self>) {

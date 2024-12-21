@@ -8,12 +8,12 @@ use std::collections::HashSet;
 use std::path::Path;
 use std::path::PathBuf;
 
-use deno_core::error::JsNativeError;
 use deno_core::op2;
 use deno_core::url::Url;
 #[allow(unused_imports)]
 use deno_core::v8;
 use deno_core::v8::ExternalReference;
+use deno_error::JsErrorBox;
 use node_resolver::errors::ClosestPkgJsonError;
 use node_resolver::NpmPackageFolderResolverRc;
 use once_cell::sync::Lazy;
@@ -155,12 +155,12 @@ pub trait NodeRequireLoader {
     &self,
     permissions: &mut dyn NodePermissions,
     path: &'a Path,
-  ) -> Result<Cow<'a, Path>, JsNativeError>;
+  ) -> Result<Cow<'a, Path>, JsErrorBox>;
 
   fn load_text_file_lossy(
     &self,
     path: &Path,
-  ) -> Result<Cow<'static, str>, JsNativeError>;
+  ) -> Result<Cow<'static, str>, JsErrorBox>;
 
   /// Get if the module kind is maybe CJS and loading should determine
   /// if its CJS or ESM.

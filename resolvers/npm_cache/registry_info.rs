@@ -5,12 +5,12 @@ use std::collections::HashSet;
 use std::sync::Arc;
 
 use async_trait::async_trait;
-use deno_core::error::JsNativeError;
 use deno_core::futures::future::LocalBoxFuture;
 use deno_core::futures::FutureExt;
 use deno_core::parking_lot::Mutex;
 use deno_core::serde_json;
 use deno_core::url::Url;
+use deno_error::JsErrorBox;
 use deno_npm::npm_rc::ResolvedNpmRc;
 use deno_npm::registry::NpmPackageInfo;
 use deno_npm::registry::NpmRegistryApi;
@@ -23,7 +23,7 @@ use crate::NpmCache;
 use crate::NpmCacheEnv;
 use crate::NpmCacheSetting;
 
-type LoadResult = Result<FutureResult, Arc<JsNativeError>>;
+type LoadResult = Result<FutureResult, Arc<JsErrorBox>>;
 type LoadFuture = LocalBoxFuture<'static, LoadResult>;
 
 #[derive(Debug, Clone)]
@@ -43,7 +43,7 @@ enum MemoryCacheItem {
   FsCached,
   /// An item is memory cached when it fails saving to the file system cache
   /// or the package does not exist.
-  MemoryCached(Result<Option<Arc<NpmPackageInfo>>, Arc<JsNativeError>>),
+  MemoryCached(Result<Option<Arc<NpmPackageInfo>>, Arc<JsErrorBox>>),
 }
 
 #[derive(Debug, Default)]
@@ -117,7 +117,7 @@ pub enum LoadPackageInfoInnerError {
   LoadFileCachedPackageInfo(LoadFileCachedPackageInfoError),
   #[class(inherit)]
   #[error("{0}")]
-  Other(Arc<JsNativeError>),
+  Other(Arc<JsErrorBox>),
 }
 
 // todo(#27198): refactor to store this only in the http cache
@@ -188,7 +188,7 @@ impl<TEnv: NpmCacheEnv> RegistryInfoProvider<TEnv> {
         package_name: name.to_string(),
       }),
       Err(err) => Err(NpmRegistryPackageInfoLoadError::LoadError(Arc::new(
-        JsNativeError::from_err(err),
+        JsErrorBox::from_err(err),
       ))),
     }
   }
@@ -315,10 +315,8 @@ impl<TEnv: NpmCacheEnv> RegistryInfoProvider<TEnv> {
       match maybe_auth_header_for_npm_registry(registry_config) {
         Ok(maybe_auth_header) => maybe_auth_header,
         Err(err) => {
-          return std::future::ready(Err(Arc::new(JsNativeError::from_err(
-            err,
-          ))))
-          .boxed_local()
+          return std::future::ready(Err(Arc::new(JsErrorBox::from_err(err))))
+            .boxed_local()
         }
       };
     let name = name.to_string();
@@ -329,14 +327,14 @@ impl<TEnv: NpmCacheEnv> RegistryInfoProvider<TEnv> {
         || downloader.previously_loaded_packages.lock().contains(&name)
       {
         // attempt to load from the file cache
-        if let Some(info) = downloader.cache.load_package_info(&name).map_err(JsNativeError::from_err)? {
+        if let Some(info) = downloader.cache.load_package_info(&name).map_err(JsErrorBox::from_err)? {
           let result = Arc::new(info);
           return Ok(FutureResult::SavedFsCache(result));
         }
       }
 
       if *downloader.cache.cache_setting() == NpmCacheSetting::Only {
-        return Err(JsNativeError::new(
+        return Err(JsErrorBox::new(
           "NotCached",
           format!(
             "npm package not found in cache: \"{name}\", --cached-only is specified."
@@ -352,12 +350,12 @@ impl<TEnv: NpmCacheEnv> RegistryInfoProvider<TEnv> {
           package_url,
           maybe_auth_header,
         )
-        .await.map_err(JsNativeError::from_err)?;
+        .await.map_err(JsErrorBox::from_err)?;
       match maybe_bytes {
         Some(bytes) => {
           let future_result = deno_unsync::spawn_blocking(
-            move || -> Result<FutureResult, JsNativeError> {
-              let package_info = serde_json::from_slice(&bytes).map_err(JsNativeError::from_err)?;
+            move || -> Result<FutureResult, JsErrorBox> {
+              let package_info = serde_json::from_slice(&bytes).map_err(JsErrorBox::from_err)?;
               match downloader.cache.save_package_info(&name, &package_info) {
                 Ok(()) => {
                   Ok(FutureResult::SavedFsCache(Arc::new(package_info)))
@@ -374,7 +372,7 @@ impl<TEnv: NpmCacheEnv> RegistryInfoProvider<TEnv> {
             },
           )
           .await
-          .map_err(JsNativeError::from_err)??;
+          .map_err(JsErrorBox::from_err)??;
           Ok(future_result)
         }
         None => Ok(FutureResult::PackageNotExists),

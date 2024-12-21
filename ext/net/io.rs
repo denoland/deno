@@ -1,6 +1,5 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
-use deno_core::error::JsNativeError;
 use deno_core::futures::TryFutureExt;
 use deno_core::AsyncMutFuture;
 use deno_core::AsyncRefCell;
@@ -9,6 +8,7 @@ use deno_core::CancelHandle;
 use deno_core::CancelTryFuture;
 use deno_core::RcRef;
 use deno_core::Resource;
+use deno_error::JsErrorBox;
 use socket2::SockRef;
 use std::borrow::Cow;
 use std::rc::Rc;
@@ -113,7 +113,7 @@ impl Resource for TcpStreamResource {
   }
 
   fn shutdown(self: Rc<Self>) -> AsyncResult<()> {
-    Box::pin(self.shutdown().map_err(JsNativeError::from_err))
+    Box::pin(self.shutdown().map_err(JsErrorBox::from_err))
   }
 
   fn close(self: Rc<Self>) {
@@ -165,7 +165,7 @@ impl UnixStreamResource {
     unreachable!()
   }
   #[allow(clippy::unused_async)]
-  pub async fn shutdown(self: Rc<Self>) -> Result<(), JsNativeError> {
+  pub async fn shutdown(self: Rc<Self>) -> Result<(), JsErrorBox> {
     unreachable!()
   }
   pub fn cancel_read_ops(&self) {
@@ -182,7 +182,7 @@ impl Resource for UnixStreamResource {
   }
 
   fn shutdown(self: Rc<Self>) -> AsyncResult<()> {
-    Box::pin(self.shutdown().map_err(JsNativeError::from_err))
+    Box::pin(self.shutdown().map_err(JsErrorBox::from_err))
   }
 
   fn close(self: Rc<Self>) {

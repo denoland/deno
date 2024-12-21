@@ -6,7 +6,6 @@ use std::rc::Rc;
 use std::sync::Arc;
 
 use async_trait::async_trait;
-use deno_core::error::JsNativeError;
 use deno_core::op2;
 use deno_core::serde::Deserialize;
 use deno_core::serde::Serialize;
@@ -14,6 +13,7 @@ use deno_core::ByteString;
 use deno_core::OpState;
 use deno_core::Resource;
 use deno_core::ResourceId;
+use deno_error::JsErrorBox;
 
 mod sqlite;
 pub use sqlite::SqliteBackedCache;
@@ -34,13 +34,17 @@ pub enum CacheError {
   Resource(#[from] deno_core::error::ResourceError),
   #[class(inherit)]
   #[error(transparent)]
-  Other(JsNativeError),
+  Other(JsErrorBox),
   #[class(inherit)]
   #[error("{0}")]
   Io(#[from] std::io::Error),
   #[class(generic)]
-  #[error("Failed to create cache storage directory {}: {error}", .dir.display())]
-  CacheStorageDirectory { dir: PathBuf, error: std::io::Error },
+  #[error("Failed to create cache storage directory {}", .dir.display())]
+  CacheStorageDirectory {
+    dir: PathBuf,
+    #[source]
+    source: std::io::Error,
+  },
 }
 
 #[derive(Clone)]
@@ -244,7 +248,7 @@ where
   if let Some(cache) = state.try_borrow::<CA>() {
     Ok(cache.clone())
   } else if let Some(create_cache) = state.try_borrow::<CreateCache<CA>>() {
-    let cache = create_cache.0();
+    let cache = create_cache.0()?;
     state.put(cache);
     Ok(state.borrow::<CA>().clone())
   } else {

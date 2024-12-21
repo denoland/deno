@@ -9,12 +9,13 @@ use std::task::Context;
 use std::task::Poll;
 
 use bytes::Bytes;
-use deno_core::error::{JsNativeError, ResourceError};
+use deno_core::error::ResourceError;
 use deno_core::futures::stream::Peekable;
 use deno_core::futures::Future;
 use deno_core::futures::FutureExt;
 use deno_core::futures::Stream;
 use deno_core::futures::StreamExt;
+use deno_core::op2;
 use deno_core::serde::Serialize;
 use deno_core::unsync::spawn;
 use deno_core::url::Url;
@@ -26,11 +27,12 @@ use deno_core::CancelFuture;
 use deno_core::CancelHandle;
 use deno_core::CancelTryFuture;
 use deno_core::Canceled;
+use deno_core::JsError;
 use deno_core::OpState;
 use deno_core::RcRef;
 use deno_core::Resource;
 use deno_core::ResourceId;
-use deno_core::{op2, JsError};
+use deno_error::JsErrorBox;
 use deno_fetch::FetchCancelHandle;
 use deno_fetch::FetchReturn;
 use deno_fetch::ResBody;
@@ -311,7 +313,7 @@ pub async fn op_node_http_await_response(
   };
 
   let (parts, body) = res.into_parts();
-  let body = body.map_err(|e| JsNativeError::new("Http", e.to_string()));
+  let body = body.map_err(|e| JsErrorBox::new("Http", e.to_string()));
   let body = body.boxed();
 
   let res = http::Response::from_parts(parts, body);
@@ -538,9 +540,7 @@ impl Resource for NodeHttpResponseResource {
             // safely call `await` on it without creating a race condition.
             Some(_) => match reader.as_mut().next().await.unwrap() {
               Ok(chunk) => assert!(chunk.is_empty()),
-              Err(err) => {
-                break Err(JsNativeError::type_error(err.to_string()))
-              }
+              Err(err) => break Err(JsErrorBox::type_error(err.to_string())),
             },
             None => break Ok(BufView::empty()),
           }
@@ -564,7 +564,7 @@ impl Resource for NodeHttpResponseResource {
 #[allow(clippy::type_complexity)]
 pub struct NodeHttpResourceToBodyAdapter(
   Rc<dyn Resource>,
-  Option<Pin<Box<dyn Future<Output = Result<BufView, JsNativeError>>>>>,
+  Option<Pin<Box<dyn Future<Output = Result<BufView, JsErrorBox>>>>>,
 );
 
 impl NodeHttpResourceToBodyAdapter {
@@ -580,7 +580,7 @@ unsafe impl Send for NodeHttpResourceToBodyAdapter {}
 unsafe impl Sync for NodeHttpResourceToBodyAdapter {}
 
 impl Stream for NodeHttpResourceToBodyAdapter {
-  type Item = Result<Bytes, JsNativeError>;
+  type Item = Result<Bytes, JsErrorBox>;
 
   fn poll_next(
     self: Pin<&mut Self>,
@@ -611,7 +611,7 @@ impl Stream for NodeHttpResourceToBodyAdapter {
 
 impl hyper::body::Body for NodeHttpResourceToBodyAdapter {
   type Data = Bytes;
-  type Error = JsNativeError;
+  type Error = JsErrorBox;
 
   fn poll_frame(
     self: Pin<&mut Self>,

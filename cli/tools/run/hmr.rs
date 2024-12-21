@@ -5,12 +5,12 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use deno_core::error::CoreError;
-use deno_core::error::JsNativeError;
 use deno_core::futures::StreamExt;
 use deno_core::serde_json::json;
 use deno_core::serde_json::{self};
 use deno_core::url::Url;
 use deno_core::LocalInspectorSession;
+use deno_error::JsErrorBox;
 use deno_terminal::colors;
 use tokio::select;
 
@@ -87,13 +87,13 @@ impl crate::worker::HmrRunner for HmrRunner {
       select! {
         biased;
         Some(notification) = session_rx.next() => {
-          let notification = serde_json::from_value::<cdp::Notification>(notification).map_err(JsNativeError::from_err)?;
+          let notification = serde_json::from_value::<cdp::Notification>(notification).map_err(JsErrorBox::from_err)?;
           if notification.method == "Runtime.exceptionThrown" {
-            let exception_thrown = serde_json::from_value::<cdp::ExceptionThrown>(notification.params).map_err(JsNativeError::from_err)?;
+            let exception_thrown = serde_json::from_value::<cdp::ExceptionThrown>(notification.params).map_err(JsErrorBox::from_err)?;
             let (message, description) = exception_thrown.exception_details.get_message_and_description();
-            break Err(JsNativeError::generic(format!("{} {}", message, description)).into());
+            break Err(JsErrorBox::generic(format!("{} {}", message, description)).into());
           } else if notification.method == "Debugger.scriptParsed" {
-            let params = serde_json::from_value::<cdp::ScriptParsed>(notification.params).map_err(JsNativeError::from_err)?;
+            let params = serde_json::from_value::<cdp::ScriptParsed>(notification.params).map_err(JsErrorBox::from_err)?;
             if params.url.starts_with("file://") {
               let file_url = Url::parse(&params.url).unwrap();
               let file_path = file_url.to_file_path().unwrap();
@@ -105,7 +105,7 @@ impl crate::worker::HmrRunner for HmrRunner {
           }
         }
         changed_paths = self.watcher_communicator.watch_for_changed_paths() => {
-          let changed_paths = changed_paths.map_err(JsNativeError::from_err)?;
+          let changed_paths = changed_paths.map_err(JsErrorBox::from_err)?;
 
           let Some(changed_paths) = changed_paths else {
             let _ = self.watcher_communicator.force_restart();
@@ -231,7 +231,7 @@ impl HmrRunner {
 
     Ok(
       serde_json::from_value::<cdp::SetScriptSourceResponse>(result)
-        .map_err(JsNativeError::from_err)?,
+        .map_err(JsErrorBox::from_err)?,
     )
   }
 

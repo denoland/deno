@@ -2,13 +2,13 @@
 
 mod urlpattern;
 
-use deno_core::error::JsNativeError;
 use deno_core::op2;
 use deno_core::url::form_urlencoded;
 use deno_core::url::quirks;
 use deno_core::url::Url;
 use deno_core::JsBuffer;
 use deno_core::OpState;
+use deno_error::JsErrorBox;
 use std::path::PathBuf;
 
 use crate::urlpattern::op_urlpattern_parse;
@@ -219,7 +219,7 @@ pub fn op_url_reparse(
 pub fn op_url_parse_search_params(
   #[string] args: Option<String>,
   #[buffer] zero_copy: Option<JsBuffer>,
-) -> Result<Vec<(String, String)>, JsNativeError> {
+) -> Result<Vec<(String, String)>, JsErrorBox> {
   let params = match (args, zero_copy) {
     (None, Some(zero_copy)) => form_urlencoded::parse(&zero_copy)
       .into_iter()
@@ -229,7 +229,7 @@ pub fn op_url_parse_search_params(
       .into_iter()
       .map(|(k, v)| (k.as_ref().to_owned(), v.as_ref().to_owned()))
       .collect(),
-    _ => return Err(JsNativeError::type_error("invalid parameters")),
+    _ => return Err(JsErrorBox::type_error("invalid parameters")),
   };
   Ok(params)
 }

@@ -33,9 +33,9 @@ use deno_graph::ModuleLoadError;
 use deno_graph::WorkspaceFastCheckOption;
 
 use deno_core::error::AnyError;
-use deno_core::error::JsNativeError;
 use deno_core::parking_lot::Mutex;
 use deno_core::ModuleSpecifier;
+use deno_error::JsErrorBox;
 use deno_error::JsErrorClass;
 use deno_graph::source::Loader;
 use deno_graph::source::ResolveError;
@@ -81,7 +81,7 @@ pub fn graph_valid(
   fs: &Arc<dyn FileSystem>,
   roots: &[ModuleSpecifier],
   options: GraphValidOptions,
-) -> Result<(), JsNativeError> {
+) -> Result<(), JsErrorBox> {
   if options.exit_integrity_errors {
     graph_exit_integrity_errors(graph);
   }
@@ -100,7 +100,7 @@ pub fn graph_valid(
   } else {
     // finally surface the npm resolution result
     if let Err(err) = &graph.npm_dep_graph_result {
-      return Err(JsNativeError::new(
+      return Err(JsErrorBox::new(
         err.get_class(),
         format_deno_graph_error(err),
       ));
@@ -141,7 +141,7 @@ pub fn graph_walk_errors<'a>(
   fs: &'a Arc<dyn FileSystem>,
   roots: &'a [ModuleSpecifier],
   options: GraphWalkErrorsOptions,
-) -> impl Iterator<Item = JsNativeError> + 'a {
+) -> impl Iterator<Item = JsErrorBox> + 'a {
   graph
     .walk(
       roots.iter(),
@@ -195,7 +195,7 @@ pub fn graph_walk_errors<'a>(
         return None;
       }
 
-      Some(JsNativeError::new(error.get_class(), message))
+      Some(JsErrorBox::new(error.get_class(), message))
     })
 }
 
@@ -396,7 +396,7 @@ impl ModuleGraphCreator {
     }
   }
 
-  pub fn graph_valid(&self, graph: &ModuleGraph) -> Result<(), JsNativeError> {
+  pub fn graph_valid(&self, graph: &ModuleGraph) -> Result<(), JsErrorBox> {
     self.module_graph_builder.graph_valid(graph)
   }
 
@@ -763,7 +763,7 @@ impl ModuleGraphBuilder {
   /// Check if `roots` and their deps are available. Returns `Ok(())` if
   /// so. Returns `Err(_)` if there is a known module graph or resolution
   /// error statically reachable from `roots` and not a dynamic import.
-  pub fn graph_valid(&self, graph: &ModuleGraph) -> Result<(), JsNativeError> {
+  pub fn graph_valid(&self, graph: &ModuleGraph) -> Result<(), JsErrorBox> {
     self.graph_roots_valid(
       graph,
       &graph.roots.iter().cloned().collect::<Vec<_>>(),
@@ -774,7 +774,7 @@ impl ModuleGraphBuilder {
     &self,
     graph: &ModuleGraph,
     roots: &[ModuleSpecifier],
-  ) -> Result<(), JsNativeError> {
+  ) -> Result<(), JsErrorBox> {
     graph_valid(
       graph,
       &self.fs,
@@ -853,7 +853,7 @@ fn enhanced_sloppy_imports_error_message(
 }
 
 fn enhanced_integrity_error_message(err: &ModuleError) -> Option<String> {
-  match err {
+  match dbg!(err) {
     ModuleError::LoadingErr(
       specifier,
       _,
@@ -946,8 +946,13 @@ fn get_resolution_error_bare_specifier(
     Some(specifier.as_str())
   } else if let ResolutionError::ResolverError { error, .. } = error {
     if let ResolveError::Other(error) = (*error).as_ref() {
-      if let Some(import_map::ImportMapErrorKind::UnmappedBareSpecifier(specifier, _)) =
-        error.as_any().downcast_ref::<ImportMapError>().map(|e| &**e)
+      if let Some(import_map::ImportMapErrorKind::UnmappedBareSpecifier(
+        specifier,
+        _,
+      )) = error
+        .as_any()
+        .downcast_ref::<ImportMapError>()
+        .map(|e| &**e)
       {
         Some(specifier.as_str())
       } else {
@@ -1303,7 +1308,7 @@ mod test {
       let specifier = ModuleSpecifier::parse("file:///file.ts").unwrap();
       let err = import_map.resolve(input, &specifier).err().unwrap();
       let err = ResolutionError::ResolverError {
-        error: Arc::new(ResolveError::Other(Box::new(err))),
+        error: Arc::new(ResolveError::Other(JsErrorBox::from_err(err))),
         specifier: input.to_string(),
         range: Range {
           specifier,

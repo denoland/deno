@@ -14,7 +14,7 @@ use hyper::body::SizeHint;
 use hyper::header::HeaderMap;
 use hyper::upgrade::OnUpgrade;
 
-use deno_core::error::JsNativeError;
+use deno_error::JsErrorBox;
 use scopeguard::guard;
 use scopeguard::ScopeGuard;
 use std::cell::Cell;
@@ -529,7 +529,7 @@ pub struct HttpRecordResponse(ManuallyDrop<Rc<HttpRecord>>);
 
 impl Body for HttpRecordResponse {
   type Data = BufView;
-  type Error = JsNativeError;
+  type Error = JsErrorBox;
 
   fn poll_frame(
     self: Pin<&mut Self>,

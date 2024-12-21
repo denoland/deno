@@ -353,3 +353,6 @@ deno_npm = { path = "../deno_npm" }
 deno_doc = { path = "../deno_doc" }
 deno_config = { path = "../deno_config" }
 deno_cache_dir = { path = "../deno_cache_dir/rs_lib" }
+denokv_sqlite = { path = "../denokv/sqlite" }
+denokv_proto = { path = "../denokv/proto" }
+denokv_remote = { path = "../denokv/remote" }

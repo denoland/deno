@@ -9,9 +9,9 @@ mod shared;
 
 mod ts {
   use super::*;
-  use deno_core::error::JsNativeError;
   use deno_core::op2;
   use deno_core::OpState;
+  use deno_error::JsErrorBox;
   use serde::Serialize;
   use std::collections::HashMap;
   use std::io::Write;
@@ -50,7 +50,7 @@ mod ts {
   fn op_script_version(
     _state: &mut OpState,
     #[string] _arg: &str,
-  ) -> Result<Option<String>, JsNativeError> {
+  ) -> Result<Option<String>, JsErrorBox> {
     Ok(Some("1".to_string()))
   }
 
@@ -69,7 +69,7 @@ mod ts {
   fn op_load(
     state: &mut OpState,
     #[string] load_specifier: &str,
-  ) -> Result<LoadResponse, JsNativeError> {
+  ) -> Result<LoadResponse, JsErrorBox> {
     let op_crate_libs = state.borrow::<HashMap<&str, PathBuf>>();
     let path_dts = state.borrow::<PathBuf>();
     let re_asset = lazy_regex::regex!(r"asset:/{3}lib\.(\S+)\.d\.ts");
@@ -92,13 +92,13 @@ mod ts {
         let path = if let Some(op_crate_lib) = op_crate_libs.get(lib) {
           PathBuf::from(op_crate_lib)
             .canonicalize()
-            .map_err(JsNativeError::from_err)?
+            .map_err(JsErrorBox::from_err)?
           // otherwise we will generate the path ourself
         } else {
           path_dts.join(format!("lib.{lib}.d.ts"))
         };
         let data =
-          std::fs::read_to_string(path).map_err(JsNativeError::from_err)?;
+          std::fs::read_to_string(path).map_err(JsErrorBox::from_err)?;
         Ok(LoadResponse {
           data,
           version: "1".to_string(),
@@ -106,13 +106,13 @@ mod ts {
           script_kind: 3,
         })
       } else {
-        Err(JsNativeError::new(
+        Err(JsErrorBox::new(
           "InvalidSpecifier",
           format!("An invalid specifier was requested: {}", load_specifier),
         ))
       }
     } else {
-      Err(JsNativeError::new(
+      Err(JsErrorBox::new(
         "InvalidSpecifier",
         format!("An invalid specifier was requested: {}", load_specifier),
       ))

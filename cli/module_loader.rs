@@ -46,7 +46,6 @@ use deno_ast::ModuleKind;
 use deno_core::anyhow::anyhow;
 use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
-use deno_core::error::JsNativeError;
 use deno_core::error::ModuleLoaderError;
 use deno_core::futures::future::FutureExt;
 use deno_core::futures::Future;
@@ -60,6 +59,7 @@ use deno_core::ModuleSpecifier;
 use deno_core::ModuleType;
 use deno_core::RequestedModuleType;
 use deno_core::SourceCodeCacheInfo;
+use deno_error::JsErrorBox;
 use deno_graph::GraphKind;
 use deno_graph::JsModule;
 use deno_graph::JsonModule;
@@ -199,7 +199,7 @@ impl ModuleLoadPreparer {
     &self,
     graph: &ModuleGraph,
     roots: &[ModuleSpecifier],
-  ) -> Result<(), JsNativeError> {
+  ) -> Result<(), JsErrorBox> {
     self.module_graph_builder.graph_roots_valid(graph, roots)
   }
 }
@@ -433,7 +433,7 @@ impl<TGraphContainer: ModuleGraphContainer>
     if module_type == ModuleType::Json
       && requested_module_type != RequestedModuleType::Json
     {
-      return Err(JsNativeError::generic("Attempted to load JSON module without specifying \"type\": \"json\" attribute in the import statement.").into());
+      return Err(JsErrorBox::generic("Attempted to load JSON module without specifying \"type\": \"json\" attribute in the import statement.").into());
     }
 
     let code_cache = if module_type == ModuleType::JavaScript {
@@ -535,11 +535,8 @@ impl<TGraphContainer: ModuleGraphContainer>
       Resolution::Ok(resolved) => Cow::Borrowed(&resolved.specifier),
       Resolution::Err(err) => {
         return Err(
-          JsNativeError::type_error(format!(
-            "{}\n",
-            err.to_string_with_range()
-          ))
-          .into(),
+          JsErrorBox::type_error(format!("{}\n", err.to_string_with_range()))
+            .into(),
         );
       }
       Resolution::None => Cow::Owned(
@@ -554,7 +551,7 @@ impl<TGraphContainer: ModuleGraphContainer>
             ResolutionMode::Import,
             NodeResolutionKind::Execution,
           )
-          .map_err(JsNativeError::from_err)?,
+          .map_err(JsErrorBox::from_err)?,
       ),
     };
 
@@ -570,7 +567,7 @@ impl<TGraphContainer: ModuleGraphContainer>
             ResolutionMode::Import,
             NodeResolutionKind::Execution,
           )
-          .map_err(|e| JsNativeError::from_err(e).into());
+          .map_err(|e| JsErrorBox::from_err(e).into());
       }
     }
 
@@ -582,7 +579,7 @@ impl<TGraphContainer: ModuleGraphContainer>
           .as_managed()
           .unwrap() // byonm won't create a Module::Npm
           .resolve_pkg_folder_from_deno_module(module.nv_reference.nv())
-          .map_err(JsNativeError::from_err)?;
+          .map_err(JsErrorBox::from_err)?;
         self
           .shared
           .node_resolver
@@ -862,12 +859,12 @@ impl<TGraphContainer: ModuleGraphContainer> ModuleLoader
     fn ensure_not_jsr_non_jsr_remote_import(
       specifier: &ModuleSpecifier,
       referrer: &ModuleSpecifier,
-    ) -> Result<(), JsNativeError> {
+    ) -> Result<(), JsErrorBox> {
       if referrer.as_str().starts_with(jsr_url().as_str())
         && !specifier.as_str().starts_with(jsr_url().as_str())
         && matches!(specifier.scheme(), "http" | "https")
       {
-        return Err(JsNativeError::generic(format!("Importing {} blocked. JSR packages cannot import non-JSR remote modules for security reasons.", specifier)));
+        return Err(JsErrorBox::generic(format!("Importing {} blocked. JSR packages cannot import non-JSR remote modules for security reasons.", specifier)));
       }
       Ok(())
     }
@@ -1113,7 +1110,7 @@ impl<TGraphContainer: ModuleGraphContainer> NodeRequireLoader
     &self,
     permissions: &mut dyn deno_runtime::deno_node::NodePermissions,
     path: &'a Path,
-  ) -> Result<Cow<'a, Path>, JsNativeError> {
+  ) -> Result<Cow<'a, Path>, JsErrorBox> {
     if let Ok(url) = deno_path_util::url_from_file_path(path) {
       // allow reading if it's in the module graph
       if self.graph_container.graph().get(&url).is_some() {
@@ -1123,24 +1120,24 @@ impl<TGraphContainer: ModuleGraphContainer> NodeRequireLoader
     self
       .npm_resolver
       .ensure_read_permission(permissions, path)
-      .map_err(JsNativeError::from_err)
+      .map_err(JsErrorBox::from_err)
   }
 
   fn load_text_file_lossy(
     &self,
     path: &Path,
-  ) -> Result<Cow<'static, str>, JsNativeError> {
+  ) -> Result<Cow<'static, str>, JsErrorBox> {
     // todo(dsherret): use the preloaded module from the graph if available?
     let media_type = MediaType::from_path(path);
     let text = self
       .fs
       .read_text_file_lossy_sync(path, None)
-      .map_err(JsNativeError::from_err)?;
+      .map_err(JsErrorBox::from_err)?;
     if media_type.is_emittable() {
       let specifier = deno_path_util::url_from_file_path(path)
-        .map_err(JsNativeError::from_err)?;
+        .map_err(JsErrorBox::from_err)?;
       if self.in_npm_pkg_checker.in_npm_package(&specifier) {
-        return Err(JsNativeError::from_err(NotSupportedKindInNpmError {
+        return Err(JsErrorBox::from_err(NotSupportedKindInNpmError {
           media_type,
           specifier,
         }));
@@ -1157,7 +1154,7 @@ impl<TGraphContainer: ModuleGraphContainer> NodeRequireLoader
           &text.into(),
         )
         .map(Cow::Owned)
-        .map_err(JsNativeError::from_err)
+        .map_err(JsErrorBox::from_err)
     } else {
       Ok(text)
     }

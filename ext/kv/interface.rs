@@ -4,8 +4,8 @@ use std::cell::RefCell;
 use std::rc::Rc;
 
 use async_trait::async_trait;
-use deno_core::error::JsNativeError;
 use deno_core::OpState;
+use deno_error::JsErrorBox;
 use denokv_proto::Database;
 
 #[async_trait(?Send)]
@@ -16,5 +16,5 @@ pub trait DatabaseHandler {
     &self,
     state: Rc<RefCell<OpState>>,
     path: Option<String>,
-  ) -> Result<Self::DB, JsNativeError>;
+  ) -> Result<Self::DB, JsErrorBox>;
 }

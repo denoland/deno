@@ -182,7 +182,7 @@ pub enum HttpNextError {
   Other(
     #[from]
     #[inherit]
-    deno_core::error::JsNativeError,
+    deno_error::JsErrorBox,
   ),
 }
 

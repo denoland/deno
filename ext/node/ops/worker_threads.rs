@@ -2,10 +2,10 @@
 
 use crate::NodePermissions;
 use crate::NodeRequireLoaderRc;
-use deno_core::error::JsNativeError;
 use deno_core::op2;
 use deno_core::url::Url;
 use deno_core::OpState;
+use deno_error::JsErrorBox;
 use deno_fs::FileSystemRc;
 use std::borrow::Cow;
 use std::path::Path;
@@ -15,7 +15,7 @@ use std::path::PathBuf;
 fn ensure_read_permission<'a, P>(
   state: &mut OpState,
   file_path: &'a Path,
-) -> Result<Cow<'a, Path>, JsNativeError>
+) -> Result<Cow<'a, Path>, JsErrorBox>
 where
   P: NodePermissions + 'static,
 {
@@ -28,7 +28,7 @@ where
 pub enum WorkerThreadsFilenameError {
   #[class(inherit)]
   #[error(transparent)]
-  Permission(JsNativeError),
+  Permission(JsErrorBox),
   #[class(inherit)]
   #[error("{0}")]
   UrlParse(

@@ -120,9 +120,7 @@ use crate::util::sync::AsyncFlag;
 struct LspRootCertStoreProvider(RootCertStore);
 
 impl RootCertStoreProvider for LspRootCertStoreProvider {
-  fn get_or_try_init(
-    &self,
-  ) -> Result<&RootCertStore, deno_core::error::JsNativeError> {
+  fn get_or_try_init(&self) -> Result<&RootCertStore, deno_error::JsErrorBox> {
     Ok(&self.0)
   }
 }

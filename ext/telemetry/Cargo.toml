@@ -16,6 +16,7 @@ path = "lib.rs"
 [dependencies]
 async-trait.workspace = true
 deno_core.workspace = true
+deno_error.workspace = true
 http-body-util.workspace = true
 hyper.workspace = true
 hyper-util.workspace = true
@@ -28,6 +29,5 @@ opentelemetry-semantic-conventions.workspace = true
 opentelemetry_sdk.workspace = true
 pin-project.workspace = true
 serde.workspace = true
-tokio.workspace = true
 thiserror.workspace = true
-deno_error.workspace = true
+tokio.workspace = true

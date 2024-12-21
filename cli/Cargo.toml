@@ -62,6 +62,7 @@ serde_json.workspace = true
 zstd.workspace = true
 glibc_version = "0.1.2"
 flate2 = { workspace = true, features = ["default"] }
+deno_error.workspace = true
 
 [target.'cfg(windows)'.build-dependencies]
 winapi.workspace = true
