@@ -20,6 +20,8 @@ use std::path::Path;
 use std::path::PathBuf;
 use std::sync::Arc;
 
+pub use quic::QuicError;
+
 pub const UNSTABLE_FEATURE_NAME: &str = "net";
 
 pub trait NetPermissions {
