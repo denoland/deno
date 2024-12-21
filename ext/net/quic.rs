@@ -100,7 +100,7 @@ struct ListenArgs {
   alpn_protocols: Option<Vec<String>>,
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, Default, PartialEq)]
 #[serde(rename_all = "camelCase")]
 struct TransportConfig {
   keep_alive_interval: Option<u64>,
@@ -379,13 +379,13 @@ fn quic_incoming_accept(
     return Err(QuicError::BadResource("QuicIncoming"));
   };
   match transport_config {
-    Some(transport_config) => {
+    Some(transport_config) if transport_config != Default::default() => {
       let mut config =
         quinn::ServerConfig::with_crypto(incoming_resource.1.clone());
       apply_server_transport_config(&mut config, transport_config)?;
       Ok(incoming.accept_with(Arc::new(config))?)
     }
-    None => Ok(incoming.accept()?),
+    _ => Ok(incoming.accept()?),
   }
 }
 
