@@ -300,7 +300,7 @@ class ChildProcess {
       try {
         this.kill("SIGTERM");
       } catch (error) {}
-    }
+    };
     signal?.[abortSignal.add](onAbort);
 
     const waitPromise = op_spawn_wait(this.#rid);
