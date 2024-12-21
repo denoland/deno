@@ -1,17 +1,26 @@
-use std::fmt::{self, Debug, Display};
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+
+use std::fmt;
+use std::fmt::Debug;
+use std::fmt::Display;
 
 use deno_ast::swc::common::Span;
 
-use super::ast_buf::{
-  AstBufSerializer, BoolPos, FieldArrPos, FieldPos, NodeRef, NullPos,
-  SerializeCtx, StrPos, UndefPos,
-};
+use super::buffer::AstBufSerializer;
+use super::buffer::BoolPos;
+use super::buffer::FieldArrPos;
+use super::buffer::FieldPos;
+use super::buffer::NodeRef;
+use super::buffer::NullPos;
+use super::buffer::SerializeCtx;
+use super::buffer::StrPos;
+use super::buffer::UndefPos;
 
-// Keep in sync with JS
 #[derive(Debug, Clone, PartialEq)]
 pub enum AstNode {
+  // First node must always be the empty/invalid node
   Invalid,
-  //
+  // Typically the
   Program,
 
   // Module declarations
@@ -88,6 +97,7 @@ pub enum AstNode {
   UpdateExpression,
   YieldExpression,
 
+  // TODO: TSEsTree uses a single literal node
   // Literals
   StringLiteral,
   Bool,
@@ -96,7 +106,6 @@ pub enum AstNode {
   BigIntLiteral,
   RegExpLiteral,
 
-  // Custom
   EmptyExpr,
   SpreadElement,
   Property,
@@ -191,12 +200,14 @@ impl From<AstNode> for u8 {
 
 #[derive(Debug, Clone)]
 pub enum AstProp {
-  // Base, these three must be in sync with JS
+  // Base, these three must be in sync with JS. The
+  // order here for these 3 fields is important.
   Type,
   Parent,
   Range,
 
-  // Node
+  // Starting from here the order doesn't matter.
+  // Following are all possible AST node properties.
   Abstract,
   Accessibility,
   Alternate,
@@ -301,6 +312,8 @@ pub enum AstProp {
   Value, // Last value is used for max value
 }
 
+// TODO: Feels like there should be an easier way to iterater over an
+// enum in Rust and lowercase the first letter.
 impl Display for AstProp {
   fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
     let s = match self {
@@ -425,9 +438,12 @@ pub struct TsEsTreeBuilder {
   ctx: SerializeCtx,
 }
 
+// TODO: Add a builder API to make it easier to convert from different source
+// ast formats.
 impl TsEsTreeBuilder {
   pub fn new() -> Self {
     // Max values
+    // TODO: Maybe there is a rust macro to grab the last enum value?
     let kind_count: u8 = AstNode::TSEnumBody.into();
     let prop_count: u8 = AstProp::Value.into();
     Self {

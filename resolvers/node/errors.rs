@@ -320,7 +320,6 @@ impl NodeJsErrorCoded for PackageJsonLoadError {
 impl NodeJsErrorCoded for ClosestPkgJsonError {
   fn code(&self) -> NodeJsErrorCode {
     match self.as_kind() {
-      ClosestPkgJsonErrorKind::CanonicalizingDir(e) => e.code(),
       ClosestPkgJsonErrorKind::Load(e) => e.code(),
     }
   }
@@ -332,23 +331,7 @@ pub struct ClosestPkgJsonError(pub Box<ClosestPkgJsonErrorKind>);
 #[derive(Debug, Error)]
 pub enum ClosestPkgJsonErrorKind {
   #[error(transparent)]
-  CanonicalizingDir(#[from] CanonicalizingPkgJsonDirError),
-  #[error(transparent)]
   Load(#[from] PackageJsonLoadError),
-}
-
-#[derive(Debug, Error)]
-#[error("[{}] Failed canonicalizing package.json directory '{}'.", self.code(), dir_path.display())]
-pub struct CanonicalizingPkgJsonDirError {
-  pub dir_path: PathBuf,
-  #[source]
-  pub source: std::io::Error,
-}
-
-impl NodeJsErrorCoded for CanonicalizingPkgJsonDirError {
-  fn code(&self) -> NodeJsErrorCode {
-    NodeJsErrorCode::ERR_MODULE_NOT_FOUND
-  }
 }
 
 // todo(https://github.com/denoland/deno_core/issues/810): make this a TypeError

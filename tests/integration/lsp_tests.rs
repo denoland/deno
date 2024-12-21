@@ -6067,6 +6067,119 @@ fn lsp_jsr_code_action_missing_declaration() {
 }
 
 #[test]
+fn lsp_jsr_code_action_move_to_new_file() {
+  let context = TestContextBuilder::new()
+    .use_http_server()
+    .use_temp_cwd()
+    .build();
+  let temp_dir = context.temp_dir();
+  let file = source_file(
+    temp_dir.path().join("file.ts"),
+    r#"
+      import { someFunction } from "jsr:@denotest/types-file";
+      export const someValue = someFunction();
+    "#,
+  );
+  let mut client = context.new_lsp_command().build();
+  client.initialize_default();
+  client.write_request(
+    "workspace/executeCommand",
+    json!({
+      "command": "deno.cache",
+      "arguments": [[], file.url()],
+    }),
+  );
+  client.did_open_file(&file);
+  let list = client
+    .write_request_with_res_as::<Option<lsp::CodeActionResponse>>(
+      "textDocument/codeAction",
+      json!({
+        "textDocument": { "uri": file.url() },
+        "range": {
+          "start": { "line": 2, "character": 19 },
+          "end": { "line": 2, "character": 28 },
+        },
+        "context": { "diagnostics": [] },
+      }),
+    )
+    .unwrap();
+  let action = list
+    .iter()
+    .find_map(|c| match c {
+      lsp::CodeActionOrCommand::CodeAction(a)
+        if &a.title == "Move to a new file" =>
+      {
+        Some(a)
+      }
+      _ => None,
+    })
+    .unwrap();
+  let res = client.write_request("codeAction/resolve", json!(action));
+  assert_eq!(
+    res,
+    json!({
+      "title": "Move to a new file",
+      "kind": "refactor.move.newFile",
+      "edit": {
+        "documentChanges": [
+          {
+            "textDocument": { "uri": file.url(), "version": 1 },
+            "edits": [
+              {
+                "range": {
+                  "start": { "line": 1, "character": 6 },
+                  "end": { "line": 2, "character": 0 },
+                },
+                "newText": "",
+              },
+              {
+                "range": {
+                  "start": { "line": 2, "character": 0 },
+                  "end": { "line": 3, "character": 4 },
+                },
+                "newText": "",
+              },
+            ],
+          },
+          {
+            "kind": "create",
+            "uri": file.url().join("someValue.ts").unwrap(),
+            "options": {
+              "ignoreIfExists": true,
+            },
+          },
+          {
+            "textDocument": {
+              "uri": file.url().join("someValue.ts").unwrap(),
+              "version": null,
+            },
+            "edits": [
+              {
+                "range": {
+                  "start": { "line": 0, "character": 0 },
+                  "end": { "line": 0, "character": 0 },
+                },
+                "newText": "import { someFunction } from \"jsr:@denotest/types-file\";\n\nexport const someValue = someFunction();\n",
+              },
+            ],
+          },
+        ],
+      },
+      "isPreferred": false,
+      "data": {
+        "specifier": file.url(),
+        "range": {
+          "start": { "line": 2, "character": 19 },
+          "end": { "line": 2, "character": 28 },
+        },
+        "refactorName": "Move to a new file",
+        "actionName": "Move to a new file",
+      },
+    }),
+  );
+}
+
+#[test]
 fn lsp_code_actions_deno_cache_npm() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let mut client = context.new_lsp_command().build();
@@ -8609,9 +8722,9 @@ fn lsp_completions_node_specifier() {
       "node:process",
       "node:punycode",
       "node:querystring",
-      "node:repl",
       "node:readline",
       "node:readline/promises",
+      "node:repl",
       "node:stream",
       "node:stream/consumers",
       "node:stream/promises",

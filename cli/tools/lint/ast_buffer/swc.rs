@@ -1,43 +1,100 @@
-use deno_ast::{
-  swc::{
-    ast::{
-      AssignTarget, AssignTargetPat, BlockStmtOrExpr, Callee, ClassMember,
-      Decl, ExportSpecifier, Expr, ExprOrSpread, FnExpr, ForHead, Function,
-      Ident, IdentName, JSXAttrName, JSXAttrOrSpread, JSXAttrValue, JSXElement,
-      JSXElementChild, JSXElementName, JSXEmptyExpr, JSXExpr, JSXExprContainer,
-      JSXFragment, JSXMemberExpr, JSXNamespacedName, JSXObject,
-      JSXOpeningElement, Lit, MemberExpr, MemberProp, ModuleDecl,
-      ModuleExportName, ModuleItem, ObjectPatProp, OptChainBase, Param,
-      ParamOrTsParamProp, Pat, PrivateName, Program, Prop, PropName,
-      PropOrSpread, SimpleAssignTarget, Stmt, SuperProp, Tpl, TsEntityName,
-      TsEnumMemberId, TsFnOrConstructorType, TsFnParam, TsIndexSignature,
-      TsLit, TsLitType, TsThisTypeOrIdent, TsType, TsTypeAnn, TsTypeElement,
-      TsTypeParam, TsTypeParamDecl, TsTypeParamInstantiation, TsTypeQueryExpr,
-      TsUnionOrIntersectionType, VarDeclOrExpr,
-    },
-    common::{Span, Spanned, SyntaxContext},
-  },
-  view::{
-    Accessibility, AssignOp, BinaryOp, TruePlusMinus, TsKeywordTypeKind,
-    TsTypeOperatorOp, UnaryOp, UpdateOp, VarDeclKind,
-  },
-  ParsedSource,
-};
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
-use super::{
-  ast_buf::{AstBufSerializer, BoolPos, NodePos, NodeRef, StrPos},
-  ts_estree::{AstNode, AstProp, TsEsTreeBuilder},
-};
+use deno_ast::swc::ast::AssignTarget;
+use deno_ast::swc::ast::AssignTargetPat;
+use deno_ast::swc::ast::BlockStmtOrExpr;
+use deno_ast::swc::ast::Callee;
+use deno_ast::swc::ast::ClassMember;
+use deno_ast::swc::ast::Decl;
+use deno_ast::swc::ast::ExportSpecifier;
+use deno_ast::swc::ast::Expr;
+use deno_ast::swc::ast::ExprOrSpread;
+use deno_ast::swc::ast::FnExpr;
+use deno_ast::swc::ast::ForHead;
+use deno_ast::swc::ast::Function;
+use deno_ast::swc::ast::Ident;
+use deno_ast::swc::ast::IdentName;
+use deno_ast::swc::ast::JSXAttrName;
+use deno_ast::swc::ast::JSXAttrOrSpread;
+use deno_ast::swc::ast::JSXAttrValue;
+use deno_ast::swc::ast::JSXElement;
+use deno_ast::swc::ast::JSXElementChild;
+use deno_ast::swc::ast::JSXElementName;
+use deno_ast::swc::ast::JSXEmptyExpr;
+use deno_ast::swc::ast::JSXExpr;
+use deno_ast::swc::ast::JSXExprContainer;
+use deno_ast::swc::ast::JSXFragment;
+use deno_ast::swc::ast::JSXMemberExpr;
+use deno_ast::swc::ast::JSXNamespacedName;
+use deno_ast::swc::ast::JSXObject;
+use deno_ast::swc::ast::JSXOpeningElement;
+use deno_ast::swc::ast::Lit;
+use deno_ast::swc::ast::MemberExpr;
+use deno_ast::swc::ast::MemberProp;
+use deno_ast::swc::ast::ModuleDecl;
+use deno_ast::swc::ast::ModuleExportName;
+use deno_ast::swc::ast::ModuleItem;
+use deno_ast::swc::ast::ObjectPatProp;
+use deno_ast::swc::ast::OptChainBase;
+use deno_ast::swc::ast::Param;
+use deno_ast::swc::ast::ParamOrTsParamProp;
+use deno_ast::swc::ast::Pat;
+use deno_ast::swc::ast::PrivateName;
+use deno_ast::swc::ast::Program;
+use deno_ast::swc::ast::Prop;
+use deno_ast::swc::ast::PropName;
+use deno_ast::swc::ast::PropOrSpread;
+use deno_ast::swc::ast::SimpleAssignTarget;
+use deno_ast::swc::ast::Stmt;
+use deno_ast::swc::ast::SuperProp;
+use deno_ast::swc::ast::Tpl;
+use deno_ast::swc::ast::TsEntityName;
+use deno_ast::swc::ast::TsEnumMemberId;
+use deno_ast::swc::ast::TsFnOrConstructorType;
+use deno_ast::swc::ast::TsFnParam;
+use deno_ast::swc::ast::TsIndexSignature;
+use deno_ast::swc::ast::TsLit;
+use deno_ast::swc::ast::TsLitType;
+use deno_ast::swc::ast::TsThisTypeOrIdent;
+use deno_ast::swc::ast::TsType;
+use deno_ast::swc::ast::TsTypeAnn;
+use deno_ast::swc::ast::TsTypeElement;
+use deno_ast::swc::ast::TsTypeParam;
+use deno_ast::swc::ast::TsTypeParamDecl;
+use deno_ast::swc::ast::TsTypeParamInstantiation;
+use deno_ast::swc::ast::TsTypeQueryExpr;
+use deno_ast::swc::ast::TsUnionOrIntersectionType;
+use deno_ast::swc::ast::VarDeclOrExpr;
+use deno_ast::swc::common::Span;
+use deno_ast::swc::common::Spanned;
+use deno_ast::swc::common::SyntaxContext;
+use deno_ast::view::Accessibility;
+use deno_ast::view::AssignOp;
+use deno_ast::view::BinaryOp;
+use deno_ast::view::TruePlusMinus;
+use deno_ast::view::TsKeywordTypeKind;
+use deno_ast::view::TsTypeOperatorOp;
+use deno_ast::view::UnaryOp;
+use deno_ast::view::UpdateOp;
+use deno_ast::view::VarDeclKind;
+use deno_ast::ParsedSource;
 
-pub fn serialize_ast_bin(parsed_source: &ParsedSource) -> Vec<u8> {
+use super::buffer::AstBufSerializer;
+use super::buffer::BoolPos;
+use super::buffer::NodePos;
+use super::buffer::NodeRef;
+use super::buffer::StrPos;
+use super::ts_estree::AstNode;
+use super::ts_estree::AstProp;
+use super::ts_estree::TsEsTreeBuilder;
+
+pub fn serialize_swc_to_buffer(parsed_source: &ParsedSource) -> Vec<u8> {
   let mut ctx = TsEsTreeBuilder::new();
 
   let program = &parsed_source.program();
 
   let pos = ctx.header(AstNode::Program, NodeRef(0), &program.span(), 2);
   let source_type_pos = ctx.str_field(AstProp::SourceType);
-
-  // eprintln!("SWC {:#?}", program);
 
   match program.as_ref() {
     Program::Module(module) => {
@@ -1286,8 +1343,6 @@ fn serialize_class_member(
       };
 
       // FIXME flags
-      // let mut flags = FlagValue::new();
-      // flags.set(Flag::ClassConstructor);
 
       let key = serialize_prop_name(ctx, &constructor.key, member_id);
       let body = constructor

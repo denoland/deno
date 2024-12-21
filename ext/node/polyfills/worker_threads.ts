@@ -21,7 +21,7 @@ import {
   nodeWorkerThreadCloseCb,
   refMessagePort,
   serializeJsMessageData,
-  unrefPollForMessages,
+  unrefParentPort,
 } from "ext:deno_web/13_message_port.js";
 import * as webidl from "ext:deno_webidl/00_webidl.js";
 import { notImplemented } from "ext:deno_node/_utils.ts";
@@ -451,10 +451,10 @@ internals.__initWorkerThreads = (
       parentPort.emit("close");
     });
     parentPort.unref = () => {
-      parentPort[unrefPollForMessages] = true;
+      parentPort[unrefParentPort] = true;
     };
     parentPort.ref = () => {
-      parentPort[unrefPollForMessages] = false;
+      parentPort[unrefParentPort] = false;
     };
 
     if (isWorkerThread) {

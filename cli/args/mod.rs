@@ -31,6 +31,7 @@ use deno_npm::resolution::ValidSerializedNpmResolutionSnapshot;
 use deno_npm::NpmSystemInfo;
 use deno_path_util::normalize_path;
 use deno_semver::npm::NpmPackageReqReference;
+use deno_semver::StackString;
 use deno_telemetry::OtelConfig;
 use deno_telemetry::OtelRuntimeConfig;
 use import_map::resolve_import_map_value_from_specifier;
@@ -1001,24 +1002,24 @@ impl CliOptions {
         // https://nodejs.org/api/process.html
         match target.as_str() {
           "aarch64-apple-darwin" => NpmSystemInfo {
-            os: "darwin".to_string(),
-            cpu: "arm64".to_string(),
+            os: "darwin".into(),
+            cpu: "arm64".into(),
           },
           "aarch64-unknown-linux-gnu" => NpmSystemInfo {
-            os: "linux".to_string(),
-            cpu: "arm64".to_string(),
+            os: "linux".into(),
+            cpu: "arm64".into(),
           },
           "x86_64-apple-darwin" => NpmSystemInfo {
-            os: "darwin".to_string(),
-            cpu: "x64".to_string(),
+            os: "darwin".into(),
+            cpu: "x64".into(),
           },
           "x86_64-unknown-linux-gnu" => NpmSystemInfo {
-            os: "linux".to_string(),
-            cpu: "x64".to_string(),
+            os: "linux".into(),
+            cpu: "x64".into(),
           },
           "x86_64-pc-windows-msvc" => NpmSystemInfo {
-            os: "win32".to_string(),
-            cpu: "x64".to_string(),
+            os: "win32".into(),
+            cpu: "x64".into(),
           },
           value => {
             log::warn!(
@@ -1372,9 +1373,9 @@ impl CliOptions {
 
     Ok(DenoLintConfig {
       default_jsx_factory: (!transpile_options.jsx_automatic)
-        .then(|| transpile_options.jsx_factory.clone()),
+        .then_some(transpile_options.jsx_factory),
       default_jsx_fragment_factory: (!transpile_options.jsx_automatic)
-        .then(|| transpile_options.jsx_fragment_factory.clone()),
+        .then_some(transpile_options.jsx_fragment_factory),
     })
   }
 
@@ -1955,15 +1956,17 @@ pub fn has_flag_env_var(name: &str) -> bool {
 pub fn npm_pkg_req_ref_to_binary_command(
   req_ref: &NpmPackageReqReference,
 ) -> String {
-  let binary_name = req_ref.sub_path().unwrap_or(req_ref.req().name.as_str());
-  binary_name.to_string()
+  req_ref
+    .sub_path()
+    .map(|s| s.to_string())
+    .unwrap_or_else(|| req_ref.req().name.to_string())
 }
 
 pub fn config_to_deno_graph_workspace_member(
   config: &ConfigFile,
 ) -> Result<deno_graph::WorkspaceMember, AnyError> {
-  let name = match &config.json.name {
-    Some(name) => name.clone(),
+  let name: StackString = match &config.json.name {
+    Some(name) => name.as_str().into(),
     None => bail!("Missing 'name' field in config file."),
   };
   let version = match &config.json.version {

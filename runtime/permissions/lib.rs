@@ -183,7 +183,7 @@ impl PermissionState {
       PermissionState::Prompt if prompt => {
         let msg = {
           let info = info();
-          StringBuilder::build(|builder| {
+          StringBuilder::<String>::build(|builder| {
             builder.append(name);
             builder.append(" access");
             if let Some(info) = &info {
@@ -498,7 +498,7 @@ impl<TQuery: QueryDescriptor> UnaryPermission<TQuery> {
     }
     let maybe_formatted_display_name =
       desc.map(|d| format_display_name(d.display_name()));
-    let message = StringBuilder::build(|builder| {
+    let message = StringBuilder::<String>::build(|builder| {
       builder.append(TQuery::flag_name());
       builder.append(" access");
       if let Some(display_name) = &maybe_formatted_display_name {

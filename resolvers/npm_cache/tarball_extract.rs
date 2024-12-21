@@ -236,7 +236,7 @@ mod test {
   #[test]
   pub fn test_verify_tarball() {
     let package = PackageNv {
-      name: "package".to_string(),
+      name: "package".into(),
       version: Version::parse_from_npm("1.0.0").unwrap(),
     };
     let actual_checksum =

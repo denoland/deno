@@ -1,6 +1,9 @@
 {
   "tempDir": true,
   "steps": [{
+    "args": "run -A cleanup.ts",
+    "output": "[WILDCARD]"
+  }, {
     "if": "unix",
     "args": "compile --output using_code_cache --log-level=debug main.ts",
     "output": "[WILDCARD]"

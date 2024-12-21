@@ -15,6 +15,7 @@ use deno_npm::npm_rc::ResolvedNpmRc;
 use deno_npm::registry::NpmPackageInfo;
 use deno_npm::NpmPackageCacheFolderId;
 use deno_semver::package::PackageNv;
+use deno_semver::StackString;
 use deno_semver::Version;
 use http::HeaderName;
 use http::HeaderValue;
@@ -260,7 +261,7 @@ impl<TEnv: NpmCacheEnv> NpmCache<TEnv> {
       .and_then(|cache_id| {
         Some(NpmPackageCacheFolderId {
           nv: PackageNv {
-            name: cache_id.name,
+            name: StackString::from_string(cache_id.name),
             version: Version::parse_from_npm(&cache_id.version).ok()?,
           },
           copy_index: cache_id.copy_index,

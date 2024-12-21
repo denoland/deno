@@ -1,15 +1,16 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 export interface NodeFacade {
-  readonly type: string;
-  readonly range: [number, number];
+  type: string;
+  range: [number, number];
+  [key: string]: unknown;
 }
 
 export interface AstContext {
   buf: Uint8Array;
   strTable: Map<number, string>;
   strTableOffset: number;
-  rootId: number;
+  rootOffset: number;
   nodes: Map<number, NodeFacade>;
   strByType: number[];
   strByProp: number[];

@@ -1,8 +1,14 @@
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+
 use std::fmt::Display;
 
-use deno_ast::swc::common::{Span, DUMMY_SP};
+use deno_ast::swc::common::Span;
+use deno_ast::swc::common::DUMMY_SP;
 use indexmap::IndexMap;
 
+/// Each property has this flag to mark what kind of value it holds-
+/// Plain objects and arrays are not supported yet, but could be easily
+/// added if needed.
 #[derive(Debug, PartialEq)]
 pub enum PropFlags {
   Ref,
@@ -40,6 +46,7 @@ const MASK_U32_2: u32 = 0b00000000_11111111_00000000_00000000;
 const MASK_U32_3: u32 = 0b00000000_00000000_11111111_00000000;
 const MASK_U32_4: u32 = 0b00000000_00000000_00000000_11111111;
 
+// TODO: There is probably a native Rust function to do this.
 pub fn append_u32(result: &mut Vec<u8>, value: u32) {
   let v1: u8 = ((value & MASK_U32_1) >> 24) as u8;
   let v2: u8 = ((value & MASK_U32_2) >> 16) as u8;
@@ -106,8 +113,6 @@ impl StringTable {
       append_u32(&mut result, bytes.len() as u32);
       result.append(&mut bytes.to_vec());
     }
-
-    // eprintln!("Serialized string table: {:#?}", result);
 
     result
   }
@@ -180,6 +185,13 @@ pub struct SerializeCtx {
   prop_map: Vec<usize>,
 }
 
+/// This is the internal context used to allocate and fill the buffer. The point
+/// is to be able to write absolute offsets directly in place.
+///
+/// The typical workflow is to reserve all necessary space for the currrent
+/// node with placeholders for the offsets of the child nodes. Once child
+/// nodes have been traversed, we know their offsets and can replace the
+/// placeholder values with the actual ones.
 impl SerializeCtx {
   pub fn new(kind_len: u8, prop_len: u8) -> Self {
     let kind_size = kind_len as usize;
@@ -204,6 +216,7 @@ impl SerializeCtx {
     let parent_str = ctx.str_table.insert("parent");
     let range_str = ctx.str_table.insert("range");
 
+    // These values are expected to be in this order on the JS side
     ctx.prop_map[0] = type_str;
     ctx.prop_map[1] = parent_str;
     ctx.prop_map[2] = range_str;
@@ -211,6 +224,7 @@ impl SerializeCtx {
     ctx
   }
 
+  /// Allocate a node's header
   fn field_header<P>(&mut self, prop: P, prop_flags: PropFlags) -> usize
   where
     P: Into<u8> + Display + Clone,
@@ -233,6 +247,7 @@ impl SerializeCtx {
     offset
   }
 
+  /// Allocate a property pointing to another node.
   fn field<P>(&mut self, prop: P, prop_flags: PropFlags) -> usize
   where
     P: Into<u8> + Display + Clone,
@@ -253,21 +268,29 @@ impl SerializeCtx {
   ) -> NodeRef {
     let offset = self.buf.len();
 
+    // Node type fits in a u8
     self.buf.push(kind);
 
+    // Offset to the parent node. Will be 0 if none exists
     append_usize(&mut self.buf, parent.0);
 
-    // Span
+    // Span, the start and end location of this node
     append_u32(&mut self.buf, span.lo.0);
     append_u32(&mut self.buf, span.hi.0);
 
     // No node has more than <10 properties
+    debug_assert!(prop_count < 10);
     self.buf.push(prop_count as u8);
 
     NodeRef(offset)
   }
 
-  /// Begin writing a node
+  /// Allocate the node header. It's always the same for every node.
+  ///   <type u8>
+  ///   <parent offset u32>
+  ///   <span lo u32>
+  ///   <span high u32>
+  ///   <property count u8> (There is no node with more than 10 properties)
   pub fn header<N>(
     &mut self,
     kind: N,
@@ -290,6 +313,8 @@ impl SerializeCtx {
     self.append_node(n, parent, span, prop_count)
   }
 
+  /// Allocate a reference property that will hold the offset of
+  /// another node.
   pub fn ref_field<P>(&mut self, prop: P) -> usize
   where
     P: Into<u8> + Display + Clone,
@@ -297,6 +322,8 @@ impl SerializeCtx {
     self.field(prop, PropFlags::Ref)
   }
 
+  /// Allocate a property that is a vec of node offsets pointing to other
+  /// nodes.
   pub fn ref_vec_field<P>(&mut self, prop: P, len: usize) -> usize
   where
     P: Into<u8> + Display + Clone,
@@ -310,6 +337,8 @@ impl SerializeCtx {
     offset
   }
 
+  // Allocate a property representing a string. Strings are deduplicated
+  // in the message and the property will only contain the string id.
   pub fn str_field<P>(&mut self, prop: P) -> usize
   where
     P: Into<u8> + Display + Clone,
@@ -317,6 +346,7 @@ impl SerializeCtx {
     self.field(prop, PropFlags::String)
   }
 
+  /// Allocate a bool field
   pub fn bool_field<P>(&mut self, prop: P) -> usize
   where
     P: Into<u8> + Display + Clone,
@@ -326,6 +356,7 @@ impl SerializeCtx {
     offset
   }
 
+  /// Allocate an undefined field
   pub fn undefined_field<P>(&mut self, prop: P) -> usize
   where
     P: Into<u8> + Display + Clone,
@@ -333,6 +364,7 @@ impl SerializeCtx {
     self.field_header(prop, PropFlags::Undefined)
   }
 
+  /// Allocate an undefined field
   #[allow(dead_code)]
   pub fn null_field<P>(&mut self, prop: P) -> usize
   where
@@ -341,6 +373,8 @@ impl SerializeCtx {
     self.field_header(prop, PropFlags::Null)
   }
 
+  /// Replace the placeholder of a reference field with the actual offset
+  /// to the node we want to point to.
   pub fn write_ref(&mut self, field_offset: usize, value: NodeRef) {
     #[cfg(debug_assertions)]
     {
@@ -353,6 +387,7 @@ impl SerializeCtx {
     write_usize(&mut self.buf, value.0, field_offset + 2);
   }
 
+  /// Helper for writing optional node offsets
   pub fn write_maybe_ref(
     &mut self,
     field_offset: usize,
@@ -370,6 +405,8 @@ impl SerializeCtx {
     write_usize(&mut self.buf, ref_value.0, field_offset + 2);
   }
 
+  /// Write a vec of node offsets into the property. The necessary space
+  /// has been reserved earlier.
   pub fn write_refs(&mut self, field_offset: usize, value: Vec<NodeRef>) {
     #[cfg(debug_assertions)]
     {
@@ -389,6 +426,8 @@ impl SerializeCtx {
     }
   }
 
+  /// Store the string in our string table and save the id of the string
+  /// in the current field.
   pub fn write_str(&mut self, field_offset: usize, value: &str) {
     #[cfg(debug_assertions)]
     {
@@ -402,6 +441,7 @@ impl SerializeCtx {
     write_usize(&mut self.buf, id, field_offset + 2);
   }
 
+  /// Write a bool to a field.
   pub fn write_bool(&mut self, field_offset: usize, value: bool) {
     #[cfg(debug_assertions)]
     {
@@ -414,30 +454,58 @@ impl SerializeCtx {
     self.buf[field_offset + 2] = if value { 1 } else { 0 };
   }
 
+  /// Serialize all information we have into a buffer that can be sent to JS.
+  /// It has the following structure:
+  ///
+  ///   <...ast>
+  ///   <string table>
+  ///   <node kind map>  <- node kind id maps to string id
+  ///   <node prop map> <- node property id maps to string id
+  ///   <offset kind map>
+  ///   <offset prop map>
+  ///   <offset str table>
   pub fn serialize(&mut self) -> Vec<u8> {
     let mut buf: Vec<u8> = vec![];
 
-    // Append serialized AST
+    // The buffer starts with the serialized AST first, because that
+    // contains absolute offsets. By butting this at the start of the
+    // message we don't have to waste time updating any offsets.
     buf.append(&mut self.buf);
 
+    // Next follows the string table. We'll keep track of the offset
+    // in the message of where the string table begins
     let offset_str_table = buf.len();
 
     // Serialize string table
-    // eprintln!("STRING {:#?}", self.str_table);
     buf.append(&mut self.str_table.serialize());
 
+    // Next, serialize the mappings of kind -> string of encountered
+    // nodes in the AST. We use this additional lookup table to compress
+    // the message so that we can save space by using a u8 . All nodes of
+    // JS, TS and JSX together are <200
     let offset_kind_map = buf.len();
+
+    // Write the total number of entries in the kind -> str mapping table
+    // TODO: make this a u8
     append_usize(&mut buf, self.kind_map.len());
     for v in &self.kind_map {
       append_usize(&mut buf, *v);
     }
 
+    // Store offset to prop -> string map. It's the same as with node kind
+    // as the total number of properties is <120 which allows us to store it
+    // as u8.
     let offset_prop_map = buf.len();
+    // Write the total number of entries in the kind -> str mapping table
     append_usize(&mut buf, self.prop_map.len());
     for v in &self.prop_map {
       append_usize(&mut buf, *v);
     }
 
+    // Putting offsets of relevant parts of the buffer at the end. This
+    // allows us to hop to the relevant part by merely looking at the last
+    // for values in the message. Each value represents an offset into the
+    // buffer.
     append_usize(&mut buf, offset_kind_map);
     append_usize(&mut buf, offset_prop_map);
     append_usize(&mut buf, offset_str_table);
