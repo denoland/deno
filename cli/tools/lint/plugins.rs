@@ -115,30 +115,31 @@ impl PluginRunner {
 
         log::debug!("before loaded");
 
-        match runtime.lazy_load_es_module_with_code(
-          "ext:cli/lint/selector.js",
-          deno_core::ascii_str_include!(concat!(
-            "../../js/40_lint_selector.js"
-          )),
-        ) {
-          Ok(_) => {}
-          Err(err) => {
-            eprintln!("after load error {:#?}", err);
-            return Err(err);
-          }
-        }
-        let obj_result = runtime.lazy_load_es_module_with_code(
-          "ext:cli/lint.js",
-          deno_core::ascii_str_include!(concat!("../../js/40_lint.js")),
-        );
+        // match runtime.lazy_load_es_module_with_code(
+        //   "ext:cli/40_lint_selector.js",
+        //   deno_core::ascii_str_include!(concat!(
+        //     "../../js/40_lint_selector.js"
+        //   )),
+        // ) {
+        //   Ok(_) => {}
+        //   Err(err) => {
+        //     eprintln!("after load error {:#?}", err);
+        //     return Err(err);
+        //   }
+        // }
+        // let obj_result = runtime.lazy_load_es_module_with_code(
+        //   "ext:cli/40_lint.js",
+        //   deno_core::ascii_str_include!(concat!("../../js/40_lint.js")),
+        // );
 
-        let obj = match obj_result {
-          Ok(obj) => obj,
-          Err(err) => {
-            eprintln!("after load error {:#?}", err);
-            return Err(err);
-          }
-        };
+        // let obj = match obj_result {
+        //   Ok(obj) => obj,
+        //   Err(err) => {
+        //     eprintln!("after load error {:#?}", err);
+        //     return Err(err);
+        //   }
+        // };
+        let obj = runtime.execute_script("lint.js", "Deno[Deno.internal]")?;
 
         log::debug!("After plugin loaded, capturing exports");
         let (install_plugin_fn, run_plugins_for_file_fn) = {

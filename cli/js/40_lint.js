@@ -7,7 +7,7 @@ import {
   compileSelector,
   parseSelector,
   splitSelectors,
-} from "ext:cli/lint/40_lint_selector.js";
+} from "ext:cli/40_lint_selector.js";
 
 const {
   op_lint_get_rule,
@@ -1063,3 +1063,5 @@ function runLintPlugin(plugin, fileName, sourceText) {
 // TODO(bartlomieju): this is temporary, until we get plugins plumbed through
 // the CLI linter
 internals.runLintPlugin = runLintPlugin;
+internals.installPlugin = installPlugin;
+internals.runPluginsForFile = runPluginsForFile;
