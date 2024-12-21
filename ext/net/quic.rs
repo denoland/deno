@@ -22,6 +22,7 @@ use deno_core::futures::task::noop_waker_ref;
 use deno_core::op2;
 use deno_core::AsyncRefCell;
 use deno_core::AsyncResult;
+use deno_core::BufMutView;
 use deno_core::BufView;
 use deno_core::GarbageCollected;
 use deno_core::JsBuffer;
@@ -38,11 +39,18 @@ use quinn::crypto::rustls::QuicClientConfig;
 use quinn::crypto::rustls::QuicServerConfig;
 use serde::Deserialize;
 use serde::Serialize;
-
 use crate::resolve_addr::resolve_addr;
+use crate::resolve_addr::resolve_addr_sync;
 use crate::DefaultTlsOptions;
 use crate::NetPermissions;
 use crate::UnsafelyIgnoreCertificateErrors;
+
+#[derive(Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct CloseInfo {
+  close_code: u64,
+  reason: String,
+}
 
 #[derive(Debug, Deserialize, Serialize)]
 struct Addr {
@@ -111,31 +119,110 @@ impl TryInto<quinn::TransportConfig> for TransportConfig {
   }
 }
 
-struct EndpointResource(quinn::Endpoint, Arc<QuicServerConfig>);
+fn apply_server_transport_config(
+  config: &mut quinn::ServerConfig,
+  transport_config: TransportConfig,
+) -> Result<(), AnyError> {
+  config.preferred_address_v4(transport_config.preferred_address_v4);
+  config.preferred_address_v6(transport_config.preferred_address_v6);
+  config.transport_config(Arc::new(transport_config.try_into()?));
+  Ok(())
+}
+
+struct EndpointResource(quinn::Endpoint, bool);
 
 impl GarbageCollected for EndpointResource {}
 
-#[op2(async)]
+#[op2]
 #[cppgc]
-pub(crate) async fn op_quic_listen<NP>(
+pub(crate) fn op_quic_endpoint_create<NP>(
   state: Rc<RefCell<OpState>>,
   #[serde] addr: Addr,
-  #[serde] args: ListenArgs,
-  #[serde] transport_config: TransportConfig,
-  #[cppgc] keys: &TlsKeysHolder,
+  can_listen: bool,
 ) -> Result<EndpointResource, AnyError>
 where
   NP: NetPermissions + 'static,
 {
-  state
-    .borrow_mut()
-    .borrow_mut::<NP>()
-    .check_net(&(&addr.hostname, Some(addr.port)), "Deno.listenQuic()")?;
-
-  let addr = resolve_addr(&addr.hostname, addr.port)
-    .await?
+  let addr = resolve_addr_sync(&addr.hostname, addr.port)?
     .next()
     .ok_or_else(|| generic_error("No resolved address found"))?;
+
+  if can_listen {
+    state.borrow_mut().borrow_mut::<NP>().check_net(
+      &(&addr.ip().to_string(), Some(addr.port())),
+      "new Deno.QuicEndpoint()",
+    )?;
+  } else {
+    // If this is not a can-listen, assert that we will bind to an ephemeral port.
+    assert_eq!(
+      addr,
+      SocketAddr::from((
+        IpAddr::from(Ipv6Addr::new(0, 0, 0, 0, 0, 0, 0, 0)),
+        0
+      ))
+    );
+  }
+
+  let config = quinn::EndpointConfig::default();
+  let socket = std::net::UdpSocket::bind(addr)?;
+  let endpoint = quinn::Endpoint::new(
+    config,
+    None,
+    socket,
+    quinn::default_runtime().unwrap(),
+  )?;
+
+  Ok(EndpointResource(endpoint, can_listen))
+}
+
+#[op2]
+#[serde]
+pub(crate) fn op_quic_endpoint_get_addr(
+  #[cppgc] endpoint: &EndpointResource,
+) -> Result<Addr, AnyError> {
+  let addr = endpoint.0.local_addr()?;
+  let addr = Addr {
+    hostname: format!("{}", addr.ip()),
+    port: addr.port(),
+  };
+  Ok(addr)
+}
+
+#[op2(fast)]
+pub(crate) fn op_quic_endpoint_close(
+  #[cppgc] endpoint: &EndpointResource,
+  #[bigint] close_code: u64,
+  #[string] reason: String,
+) -> Result<(), AnyError> {
+  endpoint
+    .0
+    .close(quinn::VarInt::from_u64(close_code)?, reason.as_bytes());
+  Ok(())
+}
+
+struct ListenerResource(quinn::Endpoint, Arc<QuicServerConfig>);
+
+impl Drop for ListenerResource {
+  fn drop(&mut self) {
+    self.0.set_server_config(None);
+  }
+}
+
+impl GarbageCollected for ListenerResource {}
+
+#[op2]
+#[cppgc]
+pub(crate) fn op_quic_endpoint_listen(
+  #[cppgc] endpoint: &EndpointResource,
+  #[serde] args: ListenArgs,
+  #[serde] transport_config: TransportConfig,
+  #[cppgc] keys: &TlsKeysHolder,
+) -> Result<ListenerResource, AnyError> {
+  if !endpoint.1 {
+    return Err(generic_error(
+      "Endpoint created by connectQuic cannot be used to listen",
+    ));
+  }
 
   let TlsKeys::Static(deno_tls::TlsKey(cert, key)) = keys.take() else {
     unreachable!()
@@ -157,63 +244,16 @@ where
 
   let server_config = Arc::new(QuicServerConfig::try_from(crypto)?);
   let mut config = quinn::ServerConfig::with_crypto(server_config.clone());
-  config.preferred_address_v4(transport_config.preferred_address_v4);
-  config.preferred_address_v6(transport_config.preferred_address_v6);
-  config.transport_config(Arc::new(transport_config.try_into()?));
-  let endpoint = quinn::Endpoint::server(config, addr)?;
+  apply_server_transport_config(&mut config, transport_config)?;
 
-  Ok(EndpointResource(endpoint, server_config))
-}
+  endpoint.0.set_server_config(Some(config));
 
-#[op2]
-#[serde]
-pub(crate) fn op_quic_endpoint_get_addr(
-  #[cppgc] endpoint: &EndpointResource,
-) -> Result<Addr, AnyError> {
-  let addr = endpoint.0.local_addr()?;
-  let addr = Addr {
-    hostname: format!("{}", addr.ip()),
-    port: addr.port(),
-  };
-  Ok(addr)
-}
-
-#[derive(Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct CloseInfo {
-  close_code: u64,
-  reason: String,
-}
-
-#[op2(fast)]
-pub(crate) fn op_quic_close_endpoint(
-  #[cppgc] endpoint: &EndpointResource,
-  #[bigint] close_code: u64,
-  #[string] reason: String,
-) -> Result<(), AnyError> {
-  endpoint
-    .0
-    .close(quinn::VarInt::from_u64(close_code)?, reason.as_bytes());
-  Ok(())
+  Ok(ListenerResource(endpoint.0.clone(), server_config))
 }
 
 struct ConnectionResource(quinn::Connection);
 
 impl GarbageCollected for ConnectionResource {}
-
-#[op2(async)]
-#[cppgc]
-pub(crate) async fn op_quic_accept(
-  #[cppgc] endpoint: &EndpointResource,
-) -> Result<ConnectionResource, AnyError> {
-  match endpoint.0.accept().await {
-    Some(incoming) => {
-      let conn = incoming.accept()?.await?;
-      Ok(ConnectionResource(conn))
-    }
-    None => Err(bad_resource("QuicListener is closed")),
-  }
-}
 
 struct IncomingResource(
   RefCell<Option<quinn::Incoming>>,
@@ -224,16 +264,21 @@ impl GarbageCollected for IncomingResource {}
 
 #[op2(async)]
 #[cppgc]
-pub(crate) async fn op_quic_accept_incoming(
-  #[cppgc] endpoint: &EndpointResource,
+pub(crate) async fn op_quic_listener_accept(
+  #[cppgc] resource: &ListenerResource,
 ) -> Result<IncomingResource, AnyError> {
-  match endpoint.0.accept().await {
+  match resource.0.accept().await {
     Some(incoming) => Ok(IncomingResource(
       RefCell::new(Some(incoming)),
-      endpoint.1.clone(),
+      resource.1.clone(),
     )),
     None => Err(bad_resource("QuicListener is closed")),
   }
+}
+
+#[op2(fast)]
+pub(crate) fn op_quic_listener_stop(#[cppgc] resource: &ListenerResource) {
+  resource.0.set_server_config(None);
 }
 
 #[op2]
@@ -285,9 +330,7 @@ pub(crate) async fn op_quic_incoming_accept(
     Some(transport_config) => {
       let mut config =
         quinn::ServerConfig::with_crypto(incoming_resource.1.clone());
-      config.preferred_address_v4(transport_config.preferred_address_v4);
-      config.preferred_address_v6(transport_config.preferred_address_v6);
-      config.transport_config(Arc::new(transport_config.try_into()?));
+      apply_server_transport_config(&mut config, transport_config)?;
       incoming.accept_with(Arc::new(config))?.await?
     }
     None => incoming.accept()?.await?,
@@ -322,6 +365,7 @@ pub(crate) fn op_quic_incoming_ignore(
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct ConnectArgs {
+  addr: Addr,
   ca_certs: Option<Vec<String>>,
   alpn_protocols: Option<Vec<String>>,
   server_name: Option<String>,
@@ -329,9 +373,9 @@ struct ConnectArgs {
 
 #[op2(async)]
 #[cppgc]
-pub(crate) async fn op_quic_connect<NP>(
+pub(crate) async fn op_quic_endpoint_connect<NP>(
   state: Rc<RefCell<OpState>>,
-  #[serde] addr: Addr,
+  #[cppgc] endpoint: &EndpointResource,
   #[serde] args: ConnectArgs,
   #[serde] transport_config: TransportConfig,
   #[cppgc] key_pair: &TlsKeysHolder,
@@ -339,12 +383,12 @@ pub(crate) async fn op_quic_connect<NP>(
 where
   NP: NetPermissions + 'static,
 {
-  state
-    .borrow_mut()
-    .borrow_mut::<NP>()
-    .check_net(&(&addr.hostname, Some(addr.port)), "Deno.connectQuic()")?;
+  state.borrow_mut().borrow_mut::<NP>().check_net(
+    &(&args.addr.hostname, Some(args.addr.port)),
+    "Deno.connectQuic()",
+  )?;
 
-  let sock_addr = resolve_addr(&addr.hostname, addr.port)
+  let sock_addr = resolve_addr(&args.addr.hostname, args.addr.port)
     .await?
     .next()
     .ok_or_else(|| generic_error("No resolved address found"))?;
@@ -383,16 +427,12 @@ where
   let mut client_config = quinn::ClientConfig::new(Arc::new(client_config));
   client_config.transport_config(Arc::new(transport_config.try_into()?));
 
-  let local_addr = match sock_addr.ip() {
-    IpAddr::V4(_) => IpAddr::from(Ipv4Addr::new(0, 0, 0, 0)),
-    IpAddr::V6(_) => IpAddr::from(Ipv6Addr::new(0, 0, 0, 0, 0, 0, 0, 0)),
-  };
-
-  let conn = quinn::Endpoint::client((local_addr, 0).into())?
+  let conn = endpoint
+    .0
     .connect_with(
       client_config,
       sock_addr,
-      &args.server_name.unwrap_or(addr.hostname),
+      &args.server_name.unwrap_or(args.addr.hostname),
     )?
     .await?;
 
@@ -425,7 +465,7 @@ pub(crate) fn op_quic_connection_get_remote_addr(
 }
 
 #[op2(fast)]
-pub(crate) fn op_quic_close_connection(
+pub(crate) fn op_quic_connection_close(
   #[cppgc] connection: &ConnectionResource,
   #[bigint] close_code: u64,
   #[string] reason: String,
@@ -475,6 +515,8 @@ impl Resource for SendStreamResource {
       Ok(WriteOutcome::Partial { nwritten, view })
     })
   }
+
+  fn close(self: Rc<Self>) {}
 }
 
 struct RecvStreamResource(AsyncRefCell<quinn::RecvStream>);
@@ -499,11 +541,30 @@ impl Resource for RecvStreamResource {
       Ok(BufView::from(data))
     })
   }
+
+  fn read_byob(
+    self: Rc<Self>,
+    mut buf: BufMutView,
+  ) -> AsyncResult<(usize, BufMutView)> {
+    Box::pin(async move {
+      let mut r = RcRef::map(self, |r| &r.0).borrow_mut().await;
+      let nread = r.read(&mut buf).await?.unwrap_or(0);
+      Ok((nread, buf))
+    })
+  }
+
+  fn shutdown(self: Rc<Self>) -> AsyncResult<()> {
+    Box::pin(async move {
+      let mut r = RcRef::map(self, |r| &r.0).borrow_mut().await;
+      r.stop(quinn::VarInt::from(0u32))?;
+      Ok(())
+    })
+  }
 }
 
 #[op2(async)]
 #[serde]
-pub(crate) async fn op_quic_accept_bi(
+pub(crate) async fn op_quic_connection_accept_bi(
   #[cppgc] connection: &ConnectionResource,
   state: Rc<RefCell<OpState>>,
 ) -> Result<(ResourceId, ResourceId), AnyError> {
@@ -526,7 +587,7 @@ pub(crate) async fn op_quic_accept_bi(
 
 #[op2(async)]
 #[serde]
-pub(crate) async fn op_quic_open_bi(
+pub(crate) async fn op_quic_connection_open_bi(
   #[cppgc] connection: &ConnectionResource,
   state: Rc<RefCell<OpState>>,
   wait_for_available: bool,
@@ -551,7 +612,7 @@ pub(crate) async fn op_quic_open_bi(
 
 #[op2(async)]
 #[serde]
-pub(crate) async fn op_quic_accept_uni(
+pub(crate) async fn op_quic_connection_accept_uni(
   #[cppgc] connection: &ConnectionResource,
   state: Rc<RefCell<OpState>>,
 ) -> Result<ResourceId, AnyError> {
@@ -575,7 +636,7 @@ pub(crate) async fn op_quic_accept_uni(
 
 #[op2(async)]
 #[serde]
-pub(crate) async fn op_quic_open_uni(
+pub(crate) async fn op_quic_connection_open_uni(
   #[cppgc] connection: &ConnectionResource,
   state: Rc<RefCell<OpState>>,
   wait_for_available: bool,
@@ -600,7 +661,7 @@ pub(crate) async fn op_quic_open_uni(
 }
 
 #[op2(async)]
-pub(crate) async fn op_quic_send_datagram(
+pub(crate) async fn op_quic_connection_send_datagram(
   #[cppgc] connection: &ConnectionResource,
   #[buffer] buf: JsBuffer,
 ) -> Result<(), AnyError> {
@@ -609,24 +670,23 @@ pub(crate) async fn op_quic_send_datagram(
 }
 
 #[op2(async)]
-pub(crate) async fn op_quic_read_datagram(
+#[buffer]
+pub(crate) async fn op_quic_connection_read_datagram(
   #[cppgc] connection: &ConnectionResource,
-  #[buffer] mut buf: JsBuffer,
-) -> Result<u32, AnyError> {
+) -> Result<Vec<u8>, AnyError> {
   let data = connection.0.read_datagram().await?;
-  buf[0..data.len()].copy_from_slice(&data);
-  Ok(data.len() as _)
+  Ok(data.into())
 }
 
 #[op2(fast)]
-pub(crate) fn op_quic_max_datagram_size(
+pub(crate) fn op_quic_connection_get_max_datagram_size(
   #[cppgc] connection: &ConnectionResource,
 ) -> Result<u32, AnyError> {
   Ok(connection.0.max_datagram_size().unwrap_or(0) as _)
 }
 
 #[op2(fast)]
-pub(crate) fn op_quic_get_send_stream_priority(
+pub(crate) fn op_quic_send_stream_get_priority(
   state: Rc<RefCell<OpState>>,
   #[smi] rid: ResourceId,
 ) -> Result<i32, AnyError> {
@@ -642,7 +702,7 @@ pub(crate) fn op_quic_get_send_stream_priority(
 }
 
 #[op2(fast)]
-pub(crate) fn op_quic_set_send_stream_priority(
+pub(crate) fn op_quic_send_stream_set_priority(
   state: Rc<RefCell<OpState>>,
   #[smi] rid: ResourceId,
   priority: i32,
@@ -658,5 +718,39 @@ pub(crate) fn op_quic_set_send_stream_priority(
       Ok(())
     }
     None => Err(generic_error("Unable to set priority")),
+  }
+}
+
+#[op2(fast)]
+#[bigint]
+pub(crate) fn op_quic_send_stream_get_id(
+  state: Rc<RefCell<OpState>>,
+  #[smi] rid: ResourceId,
+) -> Result<u64, AnyError> {
+  let resource = state
+    .borrow()
+    .resource_table
+    .get::<SendStreamResource>(rid)?;
+  let r = RcRef::map(resource, |r| &r.0).try_borrow();
+  match r {
+    Some(s) => Ok(quinn::VarInt::from(s.id()).into_inner()),
+    None => Err(generic_error("Unable to get id")),
+  }
+}
+
+#[op2(fast)]
+#[bigint]
+pub(crate) fn op_quic_recv_stream_get_id(
+  state: Rc<RefCell<OpState>>,
+  #[smi] rid: ResourceId,
+) -> Result<u64, AnyError> {
+  let resource = state
+    .borrow()
+    .resource_table
+    .get::<RecvStreamResource>(rid)?;
+  let r = RcRef::map(resource, |r| &r.0).try_borrow();
+  match r {
+    Some(s) => Ok(quinn::VarInt::from(s.id()).into_inner()),
+    None => Err(generic_error("Unable to get id")),
   }
 }

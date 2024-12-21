@@ -6,23 +6,27 @@ const cert = Deno.readTextFileSync("tests/testdata/tls/localhost.crt");
 const key = Deno.readTextFileSync("tests/testdata/tls/localhost.key");
 const caCerts = [Deno.readTextFileSync("tests/testdata/tls/RootCA.pem")];
 
-async function pair(opt?: Deno.QuicTransportOptions): Promise<
-  [Deno.QuicConn, Deno.QuicConn, Deno.QuicListener]
-> {
-  const listener = await Deno.listenQuic({
-    hostname: "localhost",
-    port: 0,
+interface Pair {
+  server: Deno.QuicConn;
+  client: Deno.QuicConn;
+  endpoint: Deno.QuicEndpoint;
+}
+
+async function pair(opt?: Deno.QuicTransportOptions): Promise<Pair> {
+  const endpoint = new Deno.QuicEndpoint({ hostname: "localhost" });
+  const listener = endpoint.listen({
     cert,
     key,
     alpnProtocols: ["deno-test"],
     ...opt,
   });
+  assertEquals(endpoint, listener.endpoint);
 
   const [server, client] = await Promise.all([
     listener.accept(),
     Deno.connectQuic({
       hostname: "localhost",
-      port: listener.addr.port,
+      port: endpoint.addr.port,
       caCerts,
       alpnProtocols: ["deno-test"],
       ...opt,
@@ -31,13 +35,13 @@ async function pair(opt?: Deno.QuicTransportOptions): Promise<
 
   assertEquals(server.protocol, "deno-test");
   assertEquals(client.protocol, "deno-test");
-  assertEquals(client.remoteAddr, listener.addr);
+  assertEquals(client.remoteAddr, endpoint.addr);
 
-  return [server, client, listener];
+  return { server, client, endpoint };
 }
 
 Deno.test("bidirectional stream", async () => {
-  const [server, client, listener] = await pair();
+  const { server, client, endpoint } = await pair();
 
   const encoded = (new TextEncoder()).encode("hi!");
 
@@ -57,12 +61,12 @@ Deno.test("bidirectional stream", async () => {
     assertEquals(data, encoded);
   }
 
-  listener.close({ closeCode: 0, reason: "" });
-  client.close({ closeCode: 0, reason: "" });
+  client.close();
+  endpoint.close();
 });
 
 Deno.test("unidirectional stream", async () => {
-  const [server, client, listener] = await pair();
+  const { server, client, endpoint } = await pair();
 
   const encoded = (new TextEncoder()).encode("hi!");
 
@@ -82,12 +86,12 @@ Deno.test("unidirectional stream", async () => {
     assertEquals(data, encoded);
   }
 
-  listener.close({ closeCode: 0, reason: "" });
-  client.close({ closeCode: 0, reason: "" });
+  endpoint.close();
+  client.close();
 });
 
 Deno.test("datagrams", async () => {
-  const [server, client, listener] = await pair();
+  const { server, client, endpoint } = await pair();
 
   const encoded = (new TextEncoder()).encode("hi!");
 
@@ -96,22 +100,20 @@ Deno.test("datagrams", async () => {
   const data = await client.readDatagram();
   assertEquals(data, encoded);
 
-  listener.close({ closeCode: 0, reason: "" });
-  client.close({ closeCode: 0, reason: "" });
+  endpoint.close();
+  client.close();
 });
 
 Deno.test("closing", async () => {
-  const [server, client, listener] = await pair();
+  const { server, client } = await pair();
 
   server.close({ closeCode: 42, reason: "hi!" });
 
   assertEquals(await client.closed, { closeCode: 42, reason: "hi!" });
-
-  listener.close({ closeCode: 0, reason: "" });
 });
 
 Deno.test("max concurrent streams", async () => {
-  const [server, client, listener] = await pair({
+  const { server, client, endpoint } = await pair({
     maxConcurrentBidirectionalStreams: 1,
     maxConcurrentUnidirectionalStreams: 1,
   });
@@ -136,15 +138,13 @@ Deno.test("max concurrent streams", async () => {
       });
   }
 
-  listener.close({ closeCode: 0, reason: "" });
-  server.close({ closeCode: 0, reason: "" });
-  client.close({ closeCode: 0, reason: "" });
+  endpoint.close();
+  client.close();
 });
 
 Deno.test("incoming", async () => {
-  const listener = await Deno.listenQuic({
-    hostname: "localhost",
-    port: 0,
+  const endpoint = new Deno.QuicEndpoint({ hostname: "localhost" });
+  const listener = endpoint.listen({
     cert,
     key,
     alpnProtocols: ["deno-test"],
@@ -153,7 +153,7 @@ Deno.test("incoming", async () => {
   const connect = () =>
     Deno.connectQuic({
       hostname: "localhost",
-      port: listener.addr.port,
+      port: endpoint.addr.port,
       caCerts,
       alpnProtocols: ["deno-test"],
     });
@@ -165,8 +165,8 @@ Deno.test("incoming", async () => {
 
   assertEquals(server.protocol, "deno-test");
   assertEquals(client.protocol, "deno-test");
-  assertEquals(client.remoteAddr, listener.addr);
+  assertEquals(client.remoteAddr, endpoint.addr);
 
-  listener.close({ closeCode: 0, reason: "" });
-  client.close({ closeCode: 0, reason: "" });
+  endpoint.close();
+  client.close();
 });

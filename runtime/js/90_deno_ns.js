@@ -177,7 +177,7 @@ denoNsUnstableById[unstableIds.net] = {
   ),
 
   connectQuic: quic.connectQuic,
-  listenQuic: quic.listenQuic,
+  QuicEndpoint: quic.QuicEndpoint,
   QuicBidirectionalStream: quic.QuicBidirectionalStream,
   QuicConn: quic.QuicConn,
   QuicListener: quic.QuicListener,
