@@ -15,6 +15,10 @@ use std::task::Context;
 use std::task::Poll;
 use std::time::Duration;
 
+use crate::resolve_addr::resolve_addr_sync;
+use crate::DefaultTlsOptions;
+use crate::NetPermissions;
+use crate::UnsafelyIgnoreCertificateErrors;
 use deno_core::error::bad_resource;
 use deno_core::error::generic_error;
 use deno_core::error::AnyError;
@@ -37,13 +41,11 @@ use deno_tls::TlsKeys;
 use deno_tls::TlsKeysHolder;
 use quinn::crypto::rustls::QuicClientConfig;
 use quinn::crypto::rustls::QuicServerConfig;
+use quinn::rustls::client::ClientSessionMemoryCache;
+use quinn::rustls::client::ClientSessionStore;
+use quinn::rustls::client::Resumption;
 use serde::Deserialize;
 use serde::Serialize;
-use crate::resolve_addr::resolve_addr;
-use crate::resolve_addr::resolve_addr_sync;
-use crate::DefaultTlsOptions;
-use crate::NetPermissions;
-use crate::UnsafelyIgnoreCertificateErrors;
 
 #[derive(Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -129,7 +131,11 @@ fn apply_server_transport_config(
   Ok(())
 }
 
-struct EndpointResource(quinn::Endpoint, bool);
+struct EndpointResource {
+  endpoint: quinn::Endpoint,
+  can_listen: bool,
+  session_store: Arc<dyn ClientSessionStore>,
+}
 
 impl GarbageCollected for EndpointResource {}
 
@@ -172,7 +178,11 @@ where
     quinn::default_runtime().unwrap(),
   )?;
 
-  Ok(EndpointResource(endpoint, can_listen))
+  Ok(EndpointResource {
+    endpoint,
+    can_listen,
+    session_store: Arc::new(ClientSessionMemoryCache::new(256)),
+  })
 }
 
 #[op2]
@@ -180,7 +190,7 @@ where
 pub(crate) fn op_quic_endpoint_get_addr(
   #[cppgc] endpoint: &EndpointResource,
 ) -> Result<Addr, AnyError> {
-  let addr = endpoint.0.local_addr()?;
+  let addr = endpoint.endpoint.local_addr()?;
   let addr = Addr {
     hostname: format!("{}", addr.ip()),
     port: addr.port(),
@@ -195,7 +205,7 @@ pub(crate) fn op_quic_endpoint_close(
   #[string] reason: String,
 ) -> Result<(), AnyError> {
   endpoint
-    .0
+    .endpoint
     .close(quinn::VarInt::from_u64(close_code)?, reason.as_bytes());
   Ok(())
 }
@@ -218,14 +228,14 @@ pub(crate) fn op_quic_endpoint_listen(
   #[serde] transport_config: TransportConfig,
   #[cppgc] keys: &TlsKeysHolder,
 ) -> Result<ListenerResource, AnyError> {
-  if !endpoint.1 {
+  if !endpoint.can_listen {
     return Err(generic_error(
       "Endpoint created by connectQuic cannot be used to listen",
     ));
   }
 
   let TlsKeys::Static(deno_tls::TlsKey(cert, key)) = keys.take() else {
-    unreachable!()
+    return Err(generic_error("key and cert are required"));
   };
 
   let mut crypto =
@@ -234,6 +244,9 @@ pub(crate) fn op_quic_endpoint_listen(
     ])
     .with_no_client_auth()
     .with_single_cert(cert.clone(), key.clone_key())?;
+
+  // required by QUIC spec.
+  crypto.max_early_data_size = u32::MAX;
 
   if let Some(alpn_protocols) = args.alpn_protocols {
     crypto.alpn_protocols = alpn_protocols
@@ -246,12 +259,15 @@ pub(crate) fn op_quic_endpoint_listen(
   let mut config = quinn::ServerConfig::with_crypto(server_config.clone());
   apply_server_transport_config(&mut config, transport_config)?;
 
-  endpoint.0.set_server_config(Some(config));
+  endpoint.endpoint.set_server_config(Some(config));
 
-  Ok(ListenerResource(endpoint.0.clone(), server_config))
+  Ok(ListenerResource(endpoint.endpoint.clone(), server_config))
 }
 
-struct ConnectionResource(quinn::Connection);
+struct ConnectionResource(
+  quinn::Connection,
+  RefCell<Option<quinn::ZeroRttAccepted>>,
+);
 
 impl GarbageCollected for ConnectionResource {}
 
@@ -317,25 +333,50 @@ pub(crate) fn op_quic_incoming_remote_addr_validated(
   Ok(incoming.remote_address_validated())
 }
 
+fn quic_incoming_accept(
+  incoming_resource: &IncomingResource,
+  transport_config: Option<TransportConfig>,
+) -> Result<quinn::Connecting, AnyError> {
+  let Some(incoming) = incoming_resource.0.borrow_mut().take() else {
+    return Err(bad_resource("QuicIncoming already used"));
+  };
+  match transport_config {
+    Some(transport_config) => {
+      let mut config =
+        quinn::ServerConfig::with_crypto(incoming_resource.1.clone());
+      apply_server_transport_config(&mut config, transport_config)?;
+      Ok(incoming.accept_with(Arc::new(config))?)
+    }
+    None => Ok(incoming.accept()?),
+  }
+}
+
 #[op2(async)]
 #[cppgc]
 pub(crate) async fn op_quic_incoming_accept(
   #[cppgc] incoming_resource: &IncomingResource,
   #[serde] transport_config: Option<TransportConfig>,
 ) -> Result<ConnectionResource, AnyError> {
-  let Some(incoming) = incoming_resource.0.borrow_mut().take() else {
-    return Err(bad_resource("QuicIncoming already used"));
-  };
-  let conn = match transport_config {
-    Some(transport_config) => {
-      let mut config =
-        quinn::ServerConfig::with_crypto(incoming_resource.1.clone());
-      apply_server_transport_config(&mut config, transport_config)?;
-      incoming.accept_with(Arc::new(config))?.await?
+  let connecting = quic_incoming_accept(incoming_resource, transport_config)?;
+  let conn = connecting.await?;
+  Ok(ConnectionResource(conn, RefCell::new(None)))
+}
+
+#[op2]
+#[cppgc]
+pub(crate) fn op_quic_incoming_accept_0rtt(
+  #[cppgc] incoming_resource: &IncomingResource,
+  #[serde] transport_config: Option<TransportConfig>,
+) -> Result<ConnectionResource, AnyError> {
+  let connecting = quic_incoming_accept(incoming_resource, transport_config)?;
+  match connecting.into_0rtt() {
+    Ok((conn, zrtt_accepted)) => {
+      Ok(ConnectionResource(conn, RefCell::new(Some(zrtt_accepted))))
     }
-    None => incoming.accept()?.await?,
-  };
-  Ok(ConnectionResource(conn))
+    Err(_connecting) => {
+      unreachable!("0.5-RTT always succeeds");
+    }
+  }
 }
 
 #[op2]
@@ -362,6 +403,10 @@ pub(crate) fn op_quic_incoming_ignore(
   Ok(())
 }
 
+struct ConnectingResource(RefCell<Option<quinn::Connecting>>);
+
+impl GarbageCollected for ConnectingResource {}
+
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct ConnectArgs {
@@ -371,15 +416,15 @@ struct ConnectArgs {
   server_name: Option<String>,
 }
 
-#[op2(async)]
+#[op2]
 #[cppgc]
-pub(crate) async fn op_quic_endpoint_connect<NP>(
+pub(crate) fn op_quic_endpoint_connect<NP>(
   state: Rc<RefCell<OpState>>,
   #[cppgc] endpoint: &EndpointResource,
   #[serde] args: ConnectArgs,
   #[serde] transport_config: TransportConfig,
   #[cppgc] key_pair: &TlsKeysHolder,
-) -> Result<ConnectionResource, AnyError>
+) -> Result<ConnectingResource, AnyError>
 where
   NP: NetPermissions + 'static,
 {
@@ -388,8 +433,7 @@ where
     "Deno.connectQuic()",
   )?;
 
-  let sock_addr = resolve_addr(&args.addr.hostname, args.addr.port)
-    .await?
+  let sock_addr = resolve_addr_sync(&args.addr.hostname, args.addr.port)?
     .next()
     .ok_or_else(|| generic_error("No resolved address found"))?;
 
@@ -423,20 +467,49 @@ where
       alpn_protocols.into_iter().map(|s| s.into_bytes()).collect();
   }
 
+  tls_config.enable_early_data = true;
+  tls_config.resumption = Resumption::store(endpoint.session_store.clone());
+
   let client_config = QuicClientConfig::try_from(tls_config)?;
   let mut client_config = quinn::ClientConfig::new(Arc::new(client_config));
   client_config.transport_config(Arc::new(transport_config.try_into()?));
 
-  let conn = endpoint
-    .0
-    .connect_with(
-      client_config,
-      sock_addr,
-      &args.server_name.unwrap_or(args.addr.hostname),
-    )?
-    .await?;
+  let connecting = endpoint.endpoint.connect_with(
+    client_config,
+    sock_addr,
+    &args.server_name.unwrap_or(args.addr.hostname),
+  )?;
 
-  Ok(ConnectionResource(conn))
+  Ok(ConnectingResource(RefCell::new(Some(connecting))))
+}
+
+#[op2(async)]
+#[cppgc]
+pub(crate) async fn op_quic_connecting_1rtt(
+  #[cppgc] connecting: &ConnectingResource,
+) -> Result<ConnectionResource, AnyError> {
+  let Some(connecting) = connecting.0.borrow_mut().take() else {
+    return Err(generic_error("Connecting resource already used"));
+  };
+  let conn = connecting.await?;
+  Ok(ConnectionResource(conn, RefCell::new(None)))
+}
+
+#[op2]
+#[cppgc]
+pub(crate) fn op_quic_connecting_0rtt(
+  #[cppgc] connecting_res: &ConnectingResource,
+) -> Option<ConnectionResource> {
+  let connecting = connecting_res.0.borrow_mut().take()?;
+  match connecting.into_0rtt() {
+    Ok((conn, zrtt_accepted)) => {
+      Some(ConnectionResource(conn, RefCell::new(Some(zrtt_accepted))))
+    }
+    Err(connecting) => {
+      *connecting_res.0.borrow_mut() = Some(connecting);
+      None
+    }
+  }
 }
 
 #[op2]
@@ -493,6 +566,16 @@ pub(crate) async fn op_quic_connection_closed(
     }),
     e => Err(e.into()),
   }
+}
+
+#[op2(async)]
+pub(crate) async fn op_quic_connection_handshake(
+  #[cppgc] connection: &ConnectionResource,
+) {
+  let Some(zrtt_accepted) = connection.1.borrow_mut().take() else {
+    return;
+  };
+  zrtt_accepted.await;
 }
 
 struct SendStreamResource(AsyncRefCell<quinn::SendStream>);
