@@ -422,7 +422,7 @@ fn get_suggestions_for_terminal_errors(e: &JsError) -> Vec<FixSuggestion> {
           "Run again with `--unstable-webgpu` flag to enable this API.",
         ),
       ];
-    } else if msg.contains("listenQuic is not a function") {
+    } else if msg.contains("QuicEndpoint is not a constructor") {
       return vec![
         FixSuggestion::info("listenQuic is an unstable API."),
         FixSuggestion::hint(
