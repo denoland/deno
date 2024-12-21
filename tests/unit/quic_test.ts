@@ -190,7 +190,7 @@ Deno.test("0rtt", async () => {
         }
         throw e;
       }
-      const conn = incoming.accept0rtt();
+      const conn = incoming.accept({ zeroRtt: true });
       conn.handshake.then(() => {
         conn.close();
       });
@@ -214,7 +214,7 @@ Deno.test("0rtt", async () => {
     port: sEndpoint.addr.port,
     caCerts,
     alpnProtocols: ["deno-test"],
-    zrtt: true,
+    zeroRtt: true,
     endpoint,
   });
 

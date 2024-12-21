@@ -175,14 +175,19 @@ class QuicIncoming {
     return op_quic_incoming_remote_addr_validated(this.#incoming);
   }
 
-  async accept() {
-    const conn = await op_quic_incoming_accept(this.#incoming);
-    return new QuicConn(conn, this.#endpoint);
-  }
-
-  accept0rtt() {
-    const conn = op_quic_incoming_accept_0rtt(this.#incoming);
-    return new QuicConn(conn, this.#endpoint);
+  accept(options) {
+    const tOptions = options ? transportOptions(options) : null;
+    if (options?.zeroRtt) {
+      const conn = op_quic_incoming_accept_0rtt(
+        this.#incoming,
+        tOptions,
+      );
+      return new QuicConn(conn, this.#endpoint);
+    }
+    return PromisePrototypeThen(
+      op_quic_incoming_accept(this.#incoming, tOptions),
+      (conn) => new QuicConn(conn, this.#endpoint),
+    );
   }
 
   refuse() {
@@ -411,7 +416,7 @@ function connectQuic(options) {
     keyPair,
   );
 
-  if (options.zrtt) {
+  if (options.zeroRtt) {
     const conn = op_quic_connecting_0rtt(connecting);
     if (conn) {
       return new QuicConn(conn, endpoint);

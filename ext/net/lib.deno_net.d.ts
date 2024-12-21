@@ -536,7 +536,7 @@ declare namespace Deno {
      * the TLS handshake completes is vulnerable to replay attacks.
      * @default {false}
      */
-    zrtt?: ZRTT;
+    zeroRtt?: ZRTT;
   }
 
   /**
@@ -553,6 +553,21 @@ declare namespace Deno {
      * the client. QUIC requires the use of ALPN.
      */
     alpnProtocols: string[];
+  }
+
+  /**
+   * **UNSTABLE**: New API, yet to be vetted.
+   * @experimental
+   * @category Network
+   */
+  export interface QuicAcceptOptions<ZRTT extends boolean>
+    extends QuicTransportOptions {
+    /**
+     * Convert this connection into 0.5-RTT at the cost of weakened security, as
+     * 0.5-RTT data may be sent before TLS client authentication has occurred.
+     * @default {false}
+     */
+    zeroRtt?: ZRTT;
   }
 
   /**
@@ -673,13 +688,9 @@ declare namespace Deno {
     /**
      * Accept this incoming connection.
      */
-    accept(): Promise<QuicConn>;
-
-    /**
-     * Convert this connection into 0.5-RTT at the cost of weakened security, as
-     * 0.5-RTT data may be sent before TLS client authentication has occurred.
-     */
-    accept0rtt(): QuicConn;
+    accept<ZRTT extends boolean>(
+      options?: QuicAcceptOptions<ZRTT>,
+    ): ZRTT extends true ? QuicConn : Promise<QuicConn>;
 
     /**
      * Refuse this incoming connection.
