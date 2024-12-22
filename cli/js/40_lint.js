@@ -535,9 +535,12 @@ export function runPluginsForFile(fileName, serializedAst) {
           try {
             fn(node);
           } catch (err) {
-            throw new Error(`Visitor "${name}" of plugin "${id}" errored`, {
-              cause: err,
-            });
+            throw new Error(
+              `Visitor "${name}" of plugin "${id}" errored, ${err}`,
+              {
+                cause: err,
+              },
+            );
           }
         };
 

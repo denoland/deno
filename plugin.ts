@@ -6,10 +6,7 @@ const rule = {
     console.log("GOGO", context);
     console.log("Hello from", `${PLUGIN_NAME}/${RULE1_NAME}`);
     context.report({
-      span: {
-        start: 7,
-        end: 10,
-      },
+      range: [7, 10],
       message: "Error from " + `${PLUGIN_NAME}/${RULE1_NAME}`,
       data: {
         some: "Data",
