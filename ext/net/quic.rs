@@ -630,11 +630,19 @@ pub(crate) async fn op_quic_connection_handshake(
   zrtt_accepted.await;
 }
 
-struct SendStreamResource(AsyncRefCell<quinn::SendStream>);
+struct SendStreamResource {
+  stream: AsyncRefCell<quinn::SendStream>,
+  stream_id: quinn::StreamId,
+  priority: AtomicI32,
+}
 
 impl SendStreamResource {
   fn new(stream: quinn::SendStream) -> Self {
-    Self(AsyncRefCell::new(stream))
+    Self {
+      stream_id: stream.id(),
+      priority: AtomicI32::new(stream.priority().unwrap_or(0)),
+      stream: AsyncRefCell::new(stream),
+    }
   }
 }
 
@@ -645,8 +653,10 @@ impl Resource for SendStreamResource {
 
   fn write(self: Rc<Self>, view: BufView) -> AsyncResult<WriteOutcome> {
     Box::pin(async move {
-      let mut r = RcRef::map(self, |r| &r.0).borrow_mut().await;
-      let nwritten = r.write(&view).await?;
+      let mut stream =
+        RcRef::map(self.clone(), |r| &r.stream).borrow_mut().await;
+      stream.set_priority(self.priority.load(Ordering::Relaxed))?;
+      let nwritten = stream.write(&view).await?;
       Ok(WriteOutcome::Partial { nwritten, view })
     })
   }
@@ -654,11 +664,17 @@ impl Resource for SendStreamResource {
   fn close(self: Rc<Self>) {}
 }
 
-struct RecvStreamResource(AsyncRefCell<quinn::RecvStream>);
+struct RecvStreamResource {
+  stream: AsyncRefCell<quinn::RecvStream>,
+  stream_id: quinn::StreamId,
+}
 
 impl RecvStreamResource {
   fn new(stream: quinn::RecvStream) -> Self {
-    Self(AsyncRefCell::new(stream))
+    Self {
+      stream_id: stream.id(),
+      stream: AsyncRefCell::new(stream),
+    }
   }
 }
 
@@ -669,7 +685,7 @@ impl Resource for RecvStreamResource {
 
   fn read(self: Rc<Self>, limit: usize) -> AsyncResult<BufView> {
     Box::pin(async move {
-      let mut r = RcRef::map(self, |r| &r.0).borrow_mut().await;
+      let mut r = RcRef::map(self, |r| &r.stream).borrow_mut().await;
       let mut data = vec![0; limit];
       let nread = r.read(&mut data).await?.unwrap_or(0);
       data.truncate(nread);
@@ -682,7 +698,7 @@ impl Resource for RecvStreamResource {
     mut buf: BufMutView,
   ) -> AsyncResult<(usize, BufMutView)> {
     Box::pin(async move {
-      let mut r = RcRef::map(self, |r| &r.0).borrow_mut().await;
+      let mut r = RcRef::map(self, |r| &r.stream).borrow_mut().await;
       let nread = r.read(&mut buf).await?.unwrap_or(0);
       Ok((nread, buf))
     })
@@ -690,7 +706,7 @@ impl Resource for RecvStreamResource {
 
   fn shutdown(self: Rc<Self>) -> AsyncResult<()> {
     Box::pin(async move {
-      let mut r = RcRef::map(self, |r| &r.0).borrow_mut().await;
+      let mut r = RcRef::map(self, |r| &r.stream).borrow_mut().await;
       r.stop(quinn::VarInt::from(0u32))?;
       Ok(())
     })
@@ -829,11 +845,7 @@ pub(crate) fn op_quic_send_stream_get_priority(
     .borrow()
     .resource_table
     .get::<SendStreamResource>(rid)?;
-  let r = RcRef::map(resource, |r| &r.0).try_borrow();
-  match r {
-    Some(s) => Ok(s.priority()?),
-    None => Err(QuicError::BadResource("QuicSendStream")),
-  }
+  Ok(resource.priority.load(Ordering::Relaxed))
 }
 
 #[op2(fast)]
@@ -846,14 +858,8 @@ pub(crate) fn op_quic_send_stream_set_priority(
     .borrow()
     .resource_table
     .get::<SendStreamResource>(rid)?;
-  let r = RcRef::map(resource, |r| &r.0).try_borrow();
-  match r {
-    Some(s) => {
-      s.set_priority(priority)?;
-      Ok(())
-    }
-    None => Err(QuicError::BadResource("QuicSendStream")),
-  }
+  resource.priority.store(priority, Ordering::Relaxed);
+  Ok(())
 }
 
 #[op2(fast)]
@@ -866,11 +872,8 @@ pub(crate) fn op_quic_send_stream_get_id(
     .borrow()
     .resource_table
     .get::<SendStreamResource>(rid)?;
-  let r = RcRef::map(resource, |r| &r.0).try_borrow();
-  match r {
-    Some(s) => Ok(quinn::VarInt::from(s.id()).into_inner()),
-    None => Err(QuicError::BadResource("QuicSendStream")),
-  }
+  let stream_id = quinn::VarInt::from(resource.stream_id).into_inner();
+  Ok(stream_id)
 }
 
 #[op2(fast)]
@@ -883,9 +886,6 @@ pub(crate) fn op_quic_recv_stream_get_id(
     .borrow()
     .resource_table
     .get::<RecvStreamResource>(rid)?;
-  let r = RcRef::map(resource, |r| &r.0).try_borrow();
-  match r {
-    Some(s) => Ok(quinn::VarInt::from(s.id()).into_inner()),
-    None => Err(QuicError::BadResource("QuicRecvStream")),
-  }
+  let stream_id = quinn::VarInt::from(resource.stream_id).into_inner();
+  Ok(stream_id)
 }
