@@ -5,7 +5,6 @@
 import { core, internals } from "ext:core/mod.js";
 
 const {
-  op_lint_get_rule,
   op_lint_get_source,
   op_lint_report,
   op_lint_create_serialized_ast,

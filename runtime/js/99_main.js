@@ -530,7 +530,6 @@ const NOT_IMPORTED_OPS = [
   "op_base64_encode",
 
   // Used in the lint API
-  "op_lint_get_rule",
   "op_lint_report",
   "op_lint_get_source",
   "op_lint_create_serialized_ast",
