@@ -566,6 +566,18 @@ pub(crate) fn op_quic_connection_get_protocol(
 }
 
 #[op2]
+#[string]
+pub(crate) fn op_quic_connection_get_server_name(
+  #[cppgc] connection: &ConnectionResource,
+) -> Option<String> {
+  connection
+    .0
+    .handshake_data()
+    .and_then(|h| h.downcast::<quinn::crypto::rustls::HandshakeData>().ok())
+    .and_then(|h| h.server_name)
+}
+
+#[op2]
 #[serde]
 pub(crate) fn op_quic_connection_get_remote_addr(
   #[cppgc] connection: &ConnectionResource,

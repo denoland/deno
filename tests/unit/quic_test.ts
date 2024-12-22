@@ -36,6 +36,7 @@ async function pair(opt?: Deno.QuicTransportOptions): Promise<Pair> {
   assertEquals(server.protocol, "deno-test");
   assertEquals(client.protocol, "deno-test");
   assertEquals(client.remoteAddr, endpoint.addr);
+  assertEquals(server.serverName, "localhost");
 
   return { server, client, endpoint };
 }
