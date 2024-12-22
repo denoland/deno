@@ -86,9 +86,9 @@ impl PluginRunner {
           resolve_url_or_path("./$deno$lint.mts", cli_options.initial_cwd())
             .unwrap();
         // TODO(bartlomieju): should we run with all permissions?
-        let permissions = PermissionsContainer::new(
+        let permissions = PermissionsContainer::allow_all(
           factory.permission_desc_parser()?.clone(),
-          Permissions::none(false),
+          // Permissions::none(false),
         );
         // let npm_resolver = factory.npm_resolver().await?.clone();
         // let resolver = factory.resolver().await?.clone();

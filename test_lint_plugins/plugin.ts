@@ -1,4 +1,4 @@
-const PLUGIN_NAME = "test-plugin";
+const PLUGIN_NAME = "test-plugin-local";
 const RULE1_NAME = "first-rule";
 
 const rule = {
@@ -56,7 +56,7 @@ const rule = {
 export default {
   name: PLUGIN_NAME,
   rules: {
-    [RULE1_NAME]: rule,
+    // [RULE1_NAME]: rule,
     "jsx-style-string": {
       create(context) {
         console.log("context", context);
@@ -66,8 +66,10 @@ export default {
             // console.log("INTERFAcE", { ...node, parent: null });
           },
           JSXAttribute(node) {
+            console.log("JSX attr node", node);
             if (
-              node.name.type === "Identifier" && node.name.value === "style" &&
+              node.name.type === "JSXIdentifier" &&
+              node.name.name === "style" &&
               node.value.type !== "StringLiteral"
             ) {
               context.report({

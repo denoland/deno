@@ -1,6 +1,6 @@
 {
   "lint": {
-    "plugins": ["./plugin.ts"],
+    "plugins": ["./plugin.ts", "jsr:@bartlomieju/test-lint-plugin"],
     "rules": {
       "exclude": [
         "ban-ts-comment",

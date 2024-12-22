@@ -10,12 +10,12 @@ use deno_config::glob::FileCollector;
 use deno_config::glob::FilePatterns;
 use deno_config::workspace::WorkspaceDirectory;
 use deno_core::anyhow::anyhow;
-use deno_core::error::custom_error;
 use deno_core::error::generic_error;
 use deno_core::error::AnyError;
 use deno_core::futures::future::LocalBoxFuture;
 use deno_core::futures::FutureExt;
 use deno_core::parking_lot::Mutex;
+use deno_core::resolve_url_or_path;
 use deno_core::serde_json;
 use deno_core::unsync::future::LocalFutureExt;
 use deno_core::unsync::future::SharedLocal;
@@ -305,15 +305,9 @@ impl WorkspaceLinter {
 
     let plugin_specifiers = if let Some(plugins) = maybe_plugins {
       let mut plugin_specifiers = Vec::with_capacity(plugins.len());
-      // TODO(bartlomieju): handle non-relative plugin specifiers
+      // TODO(bartlomieju): handle import-mapped specifiers
       for plugin in plugins {
-        let path = lint_options.dir_path.join(plugin);
-        let url = ModuleSpecifier::from_file_path(&path).map_err(|_| {
-          custom_error(
-            "NotFound",
-            format!("Bad plugin path: {}", path.display()),
-          )
-        })?;
+        let url = resolve_url_or_path(&plugin, &lint_options.dir_path)?;
         plugin_specifiers.push(url);
       }
       plugin_specifiers
