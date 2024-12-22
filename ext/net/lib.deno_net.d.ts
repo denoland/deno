@@ -544,15 +544,37 @@ declare namespace Deno {
    * @experimental
    * @category Network
    */
-  export interface ListenQuicOptions extends QuicTransportOptions {
-    /** Server private key in PEM format */
-    key: string;
-    /** Cert chain in PEM format */
-    cert: string;
+  export interface QuicServerTransportOptions extends QuicTransportOptions {
+    /**
+     * Preferred IPv4 address to be communicated to the client during
+     * handshaking. If the client is able to reach this address it will switch
+     * to it.
+     * @default {undefined}
+     */
+    preferredAddressV4?: string;
+    /**
+     * Preferred IPv6 address to be communicated to the client during
+     * handshaking. If the client is able to reach this address it will switch
+     * to it.
+     * @default {undefined}
+     */
+    preferredAddressV6?: string;
+  }
+
+  /**
+   * **UNSTABLE**: New API, yet to be vetted.
+   * @experimental
+   * @category Network
+   */
+  export interface QuicListenOptions extends QuicServerTransportOptions {
     /** Application-Layer Protocol Negotiation (ALPN) protocols to announce to
      * the client. QUIC requires the use of ALPN.
      */
     alpnProtocols: string[];
+    /** Server private key in PEM format */
+    key: string;
+    /** Cert chain in PEM format */
+    cert: string;
   }
 
   /**
@@ -561,7 +583,11 @@ declare namespace Deno {
    * @category Network
    */
   export interface QuicAcceptOptions<ZRTT extends boolean>
-    extends QuicTransportOptions {
+    extends QuicServerTransportOptions {
+    /** Application-Layer Protocol Negotiation (ALPN) protocols to announce to
+     * the client. QUIC requires the use of ALPN.
+     */
+    alpnProtocols?: string[];
     /**
      * Convert this connection into 0.5-RTT at the cost of weakened security, as
      * 0.5-RTT data may be sent before TLS client authentication has occurred.
@@ -627,7 +653,7 @@ declare namespace Deno {
      * @experimental
      * @category Network
      */
-    listen(options: ListenQuicOptions): QuicListener;
+    listen(options: QuicListenOptions): QuicListener;
 
     /**
      * Closes the endpoint. All associated connections will be closed and incoming
@@ -736,8 +762,13 @@ declare namespace Deno {
      * connection.
      */
     readonly remoteAddr: NetAddr;
-    /** The negotiated ALPN protocol, if provided. */
+    /**
+     * The negotiated ALPN protocol, if provided. Only available after the
+     * handshake is complete. */
     readonly protocol: string | undefined;
+    /** The negotiated server name. Only available on the server after the
+     * handshake is complete. */
+    readonly serverName: string | undefined;
     /** Returns a promise that resolves when the connection is closed. */
     readonly closed: Promise<QuicCloseInfo>;
     /** A stream of bidirectional streams opened by the peer. */

@@ -10,6 +10,7 @@ import {
   op_quic_connection_get_max_datagram_size,
   op_quic_connection_get_protocol,
   op_quic_connection_get_remote_addr,
+  op_quic_connection_get_server_name,
   op_quic_connection_handshake,
   op_quic_connection_open_bi,
   op_quic_connection_open_uni,
@@ -225,6 +226,10 @@ class QuicConn {
 
   get remoteAddr() {
     return op_quic_connection_get_remote_addr(this.#resource);
+  }
+
+  get serverName() {
+    return op_quic_connection_get_server_name(this.#resource);
   }
 
   async createBidirectionalStream(
