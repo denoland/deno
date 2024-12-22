@@ -305,9 +305,9 @@ impl WorkspaceLinter {
 
     let plugin_specifiers = if let Some(plugins) = maybe_plugins {
       let mut plugin_specifiers = Vec::with_capacity(plugins.len());
-      let cwd = cli_options.initial_cwd();
+      // TODO(bartlomieju): handle non-relative plugin specifiers
       for plugin in plugins {
-        let path = cwd.join(plugin);
+        let path = lint_options.dir_path.join(plugin);
         let url = ModuleSpecifier::from_file_path(&path).map_err(|_| {
           custom_error(
             "NotFound",
@@ -587,7 +587,8 @@ fn lint_stdin(
   )));
   let lint_config = start_dir
     .to_lint_config(FilePatterns::new_with_base(start_dir.dir_path()))?;
-  let lint_options = LintOptions::resolve(lint_config, &lint_flags);
+  let lint_options =
+    LintOptions::resolve(start_dir.dir_path(), lint_config, &lint_flags);
   let configured_rules = lint_rule_provider.resolve_lint_rules_err_empty(
     lint_options.rules,
     start_dir.maybe_deno_json().map(|c| c.as_ref()),

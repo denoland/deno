@@ -425,6 +425,7 @@ impl WorkspaceLintOptions {
 
 #[derive(Clone, Debug)]
 pub struct LintOptions {
+  pub dir_path: PathBuf,
   pub rules: LintRulesConfig,
   pub files: FilePatterns,
   pub fix: bool,
@@ -444,10 +445,15 @@ impl LintOptions {
       files: FilePatterns::new_with_base(base),
       fix: false,
       plugins: vec![],
+      dir_path: PathBuf::from("/"),
     }
   }
 
-  pub fn resolve(lint_config: LintConfig, lint_flags: &LintFlags) -> Self {
+  pub fn resolve(
+    dir_path: PathBuf,
+    lint_config: LintConfig,
+    lint_flags: &LintFlags,
+  ) -> Self {
     Self {
       files: lint_config.files,
       rules: resolve_lint_rules_options(
@@ -458,6 +464,7 @@ impl LintOptions {
       ),
       fix: lint_flags.fix,
       plugins: lint_config.options.plugins,
+      dir_path,
     }
   }
 }
@@ -1350,7 +1357,7 @@ impl CliOptions {
       .resolve_lint_config_for_members(&cli_arg_patterns)?;
     let mut result = Vec::with_capacity(member_configs.len());
     for (ctx, config) in member_configs {
-      let options = LintOptions::resolve(config, lint_flags);
+      let options = LintOptions::resolve(ctx.dir_path(), config, lint_flags);
       result.push((ctx, options));
     }
     Ok(result)

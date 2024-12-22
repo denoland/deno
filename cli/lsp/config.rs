@@ -1630,8 +1630,12 @@ impl ConfigData {
     );
     let linter = Arc::new(CliLinter::new(CliLinterOptions {
       configured_rules: lint_rule_provider.resolve_lint_rules(
-        LintOptions::resolve((*lint_config).clone(), &LintFlags::default())
-          .rules,
+        LintOptions::resolve(
+          member_dir.dir_path(),
+          (*lint_config).clone(),
+          &LintFlags::default(),
+        )
+        .rules,
         member_dir.maybe_deno_json().map(|c| c.as_ref()),
       ),
       fix: false,
