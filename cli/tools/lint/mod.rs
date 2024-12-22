@@ -118,8 +118,6 @@ pub async fn lint(
           deno_lint_config.clone(),
           paths_with_options.dir,
           paths_with_options.paths,
-          // TODO(bartlomieju): clean this up
-          lint_flags.maybe_plugins.clone(),
         )
         .await?;
     }
@@ -178,8 +176,6 @@ async fn lint_with_watch_inner(
         lint_config.clone(),
         paths_with_options.dir,
         paths_with_options.paths,
-        // TODO(bartlomieju): clean this up
-        lint_flags.maybe_plugins.clone(),
       )
       .await?;
   }
@@ -285,7 +281,6 @@ impl WorkspaceLinter {
     lint_config: DenoLintConfig,
     member_dir: WorkspaceDirectory,
     paths: Vec<PathBuf>,
-    maybe_plugins: Option<Vec<String>>,
   ) -> Result<(), AnyError> {
     self.file_count += paths.len();
 
@@ -302,9 +297,7 @@ impl WorkspaceLinter {
         ))
       });
 
-    let maybe_plugins = if maybe_plugins.is_some() {
-      maybe_plugins
-    } else if lint_options.plugins.is_empty() {
+    let maybe_plugins = if lint_options.plugins.is_empty() {
       None
     } else {
       Some(lint_options.plugins.clone())

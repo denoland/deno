@@ -457,13 +457,7 @@ impl LintOptions {
         lint_flags.maybe_rules_exclude.clone(),
       ),
       fix: lint_flags.fix,
-      plugins: if !lint_config.options.plugins.is_empty() {
-        lint_config.options.plugins.clone()
-      } else if let Some(plugins) = lint_flags.maybe_plugins.as_ref() {
-        plugins.clone()
-      } else {
-        vec![]
-      },
+      plugins: lint_config.options.plugins,
     }
   }
 }

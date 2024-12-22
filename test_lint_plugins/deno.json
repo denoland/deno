@@ -1,0 +1,11 @@
+{
+  "lint": {
+    "plugins": ["./plugin.ts"],
+    "rules": {
+      "exclude": [
+        "ban-ts-comment",
+        "prefix/whatever"
+      ]
+    }
+  }
+}
