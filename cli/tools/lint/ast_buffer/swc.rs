@@ -2507,9 +2507,7 @@ fn serialize_prop_name(
       let raw = ctx.header(AstNode::StringLiteral, parent, &str_prop.span);
       let value_pos = ctx.str_field(AstProp::Value);
       ctx.write_str(value_pos, &str_prop.value);
-      let child_pos = ctx.commit_schema(raw);
-
-      child_pos
+      ctx.commit_schema(raw)
     }
     PropName::Num(number) => {
       serialize_lit(ctx, &Lit::Num(number.clone()), parent)
