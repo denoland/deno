@@ -657,6 +657,8 @@ impl CliMainWorkerFactory {
         "40_test.js",
         "40_bench.js",
         "40_jupyter.js",
+        // TODO(bartlomieju): probably shouldn't include these files here?
+        "40_lint_selector.js",
         "40_lint.js"
       );
     }
