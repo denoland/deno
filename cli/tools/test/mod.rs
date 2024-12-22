@@ -618,7 +618,8 @@ async fn configure_main_worker(
       permissions_container,
       vec![
         ops::testing::deno_test::init_ops(worker_sender.sender),
-        ops::lint::deno_lint::init_ops(),
+        // TODO(bartlomieju): this is temporary and should be removed before landing plugin support
+        ops::lint::deno_lint_ext::init_ops(),
       ],
       Stdio {
         stdin: StdioPipe::inherit(),

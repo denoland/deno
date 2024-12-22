@@ -2,20 +2,14 @@
 
 use deno_ast::ModuleSpecifier;
 use deno_ast::ParsedSource;
-use deno_ast::SourceRange;
 use deno_ast::SourceTextInfo;
-use deno_ast::SourceTextProvider;
 use deno_core::error::custom_error;
 use deno_core::error::AnyError;
 use deno_core::futures::FutureExt;
-use deno_core::op2;
 use deno_core::resolve_url_or_path;
 use deno_core::v8;
-use deno_core::OpState;
 use deno_core::PollEventLoopOptions;
 use deno_lint::diagnostic::LintDiagnostic;
-use deno_lint::diagnostic::LintDiagnosticDetails;
-use deno_lint::diagnostic::LintDiagnosticRange;
 use deno_runtime::deno_permissions::Permissions;
 use deno_runtime::deno_permissions::PermissionsContainer;
 use deno_runtime::tokio_util;
@@ -32,6 +26,7 @@ use crate::args::DenoSubcommand;
 use crate::args::Flags;
 use crate::args::LintFlags;
 use crate::factory::CliFactory;
+use crate::ops::lint::LintPluginContainer;
 use crate::tools::lint::serialize_ast_to_buffer;
 
 #[derive(Debug)]
@@ -105,7 +100,7 @@ impl PluginRunner {
             WorkerExecutionMode::Run,
             main_module.clone(),
             permissions,
-            vec![deno_lint_ext::init_ops()],
+            vec![crate::ops::lint::deno_lint_ext::init_ops()],
             Default::default(),
           )
           .await?;
@@ -115,30 +110,6 @@ impl PluginRunner {
 
         log::debug!("before loaded");
 
-        // match runtime.lazy_load_es_module_with_code(
-        //   "ext:cli/40_lint_selector.js",
-        //   deno_core::ascii_str_include!(concat!(
-        //     "../../js/40_lint_selector.js"
-        //   )),
-        // ) {
-        //   Ok(_) => {}
-        //   Err(err) => {
-        //     eprintln!("after load error {:#?}", err);
-        //     return Err(err);
-        //   }
-        // }
-        // let obj_result = runtime.lazy_load_es_module_with_code(
-        //   "ext:cli/40_lint.js",
-        //   deno_core::ascii_str_include!(concat!("../../js/40_lint.js")),
-        // );
-
-        // let obj = match obj_result {
-        //   Ok(obj) => obj,
-        //   Err(err) => {
-        //     eprintln!("after load error {:#?}", err);
-        //     return Err(err);
-        //   }
-        // };
         let obj = runtime.execute_script("lint.js", "Deno[Deno.internal]")?;
 
         log::debug!("After plugin loaded, capturing exports");
@@ -414,78 +385,4 @@ pub fn serialize_ast(parsed_source: ParsedSource) -> Result<Vec<u8>, AnyError> {
     std::time::Instant::now() - start
   );
   Ok(r)
-}
-
-#[derive(Default)]
-struct LintPluginContainer {
-  diagnostics: Vec<LintDiagnostic>,
-  source_text_info: Option<SourceTextInfo>,
-}
-
-impl LintPluginContainer {
-  fn report(
-    &mut self,
-    id: String,
-    specifier: String,
-    message: String,
-    start: usize,
-    end: usize,
-  ) {
-    let source_text_info = self.source_text_info.as_ref().unwrap();
-    let start_pos = source_text_info.start_pos();
-    let source_range = SourceRange::new(start_pos + start, start_pos + end);
-    let range = LintDiagnosticRange {
-      range: source_range,
-      description: None,
-      text_info: source_text_info.clone(),
-    };
-    let lint_diagnostic = LintDiagnostic {
-      // TODO: fix
-      specifier: ModuleSpecifier::parse(&format!("file:///{}", specifier))
-        .unwrap(),
-      range: Some(range),
-      details: LintDiagnosticDetails {
-        message,
-        code: id,
-        hint: None,
-        fixes: vec![],
-        custom_docs_url: None,
-        info: vec![],
-      },
-    };
-    self.diagnostics.push(lint_diagnostic);
-  }
-}
-
-deno_core::extension!(
-  deno_lint_ext,
-  ops = [op_lint_report, op_lint_get_source],
-  state = |state| {
-    state.put(LintPluginContainer::default());
-  },
-);
-
-#[op2(fast)]
-fn op_lint_report(
-  state: &mut OpState,
-  #[string] id: String,
-  #[string] specifier: String,
-  #[string] message: String,
-  #[smi] start: usize,
-  #[smi] end: usize,
-) {
-  let container = state.borrow_mut::<LintPluginContainer>();
-  container.report(id, specifier, message, start, end);
-}
-
-#[op2]
-#[string]
-fn op_lint_get_source(state: &mut OpState) -> String {
-  let container = state.borrow_mut::<LintPluginContainer>();
-  container
-    .source_text_info
-    .as_ref()
-    .unwrap()
-    .text_str()
-    .to_string()
 }

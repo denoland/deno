@@ -2,13 +2,71 @@
 
 use deno_ast::MediaType;
 use deno_ast::ModuleSpecifier;
+use deno_ast::SourceRange;
+use deno_ast::SourceTextInfo;
+use deno_ast::SourceTextProvider;
 use deno_core::error::generic_error;
 use deno_core::error::AnyError;
 use deno_core::op2;
+use deno_core::OpState;
+use deno_lint::diagnostic::LintDiagnostic;
+use deno_lint::diagnostic::LintDiagnosticDetails;
+use deno_lint::diagnostic::LintDiagnosticRange;
 
 use crate::tools::lint;
 
-deno_core::extension!(deno_lint, ops = [op_lint_create_serialized_ast,],);
+deno_core::extension!(
+  deno_lint_ext,
+  ops = [
+    op_lint_create_serialized_ast,
+    op_lint_report,
+    op_lint_get_source
+  ],
+  state = |state| {
+    state.put(LintPluginContainer::default());
+  }
+);
+
+#[derive(Default)]
+pub struct LintPluginContainer {
+  pub diagnostics: Vec<LintDiagnostic>,
+  pub source_text_info: Option<SourceTextInfo>,
+}
+
+impl LintPluginContainer {
+  fn report(
+    &mut self,
+    id: String,
+    specifier: String,
+    message: String,
+    start: usize,
+    end: usize,
+  ) {
+    let source_text_info = self.source_text_info.as_ref().unwrap();
+    let start_pos = source_text_info.start_pos();
+    let source_range = SourceRange::new(start_pos + start, start_pos + end);
+    let range = LintDiagnosticRange {
+      range: source_range,
+      description: None,
+      text_info: source_text_info.clone(),
+    };
+    let lint_diagnostic = LintDiagnostic {
+      // TODO: fix
+      specifier: ModuleSpecifier::parse(&format!("file:///{}", specifier))
+        .unwrap(),
+      range: Some(range),
+      details: LintDiagnosticDetails {
+        message,
+        code: id,
+        hint: None,
+        fixes: vec![],
+        custom_docs_url: None,
+        info: vec![],
+      },
+    };
+    self.diagnostics.push(lint_diagnostic);
+  }
+}
 
 #[op2]
 #[buffer]
@@ -31,4 +89,29 @@ fn op_lint_create_serialized_ast(
     maybe_syntax: None,
   })?;
   Ok(lint::serialize_ast_to_buffer(&parsed_source))
+}
+
+#[op2(fast)]
+fn op_lint_report(
+  state: &mut OpState,
+  #[string] id: String,
+  #[string] specifier: String,
+  #[string] message: String,
+  #[smi] start: usize,
+  #[smi] end: usize,
+) {
+  let container = state.borrow_mut::<LintPluginContainer>();
+  container.report(id, specifier, message, start, end);
+}
+
+#[op2]
+#[string]
+fn op_lint_get_source(state: &mut OpState) -> String {
+  let container = state.borrow_mut::<LintPluginContainer>();
+  container
+    .source_text_info
+    .as_ref()
+    .unwrap()
+    .text_str()
+    .to_string()
 }
