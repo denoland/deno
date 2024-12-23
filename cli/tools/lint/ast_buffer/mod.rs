@@ -4,6 +4,7 @@ use deno_ast::ParsedSource;
 use swc::serialize_swc_to_buffer;
 
 mod buffer;
+mod selector;
 mod swc;
 mod ts_estree;
 

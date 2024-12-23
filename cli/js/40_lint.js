@@ -880,8 +880,11 @@ export function runPluginsForFile(fileName, serializedAst) {
   for (const [sel, info] of bySelector.entries()) {
     // Selectors are already split here.
     // TODO(@marvinhagemeister): Avoid array allocation (not sure if that matters)
+    console.log({ sel });
+    console.time("custom parse selector");
     const parsed = parseSelector(sel, toElem, toAttr)[0];
     const matcher = compileSelector(parsed);
+    console.timeEnd("custom parse selector");
 
     visitors.push({ info, matcher });
   }
@@ -889,7 +892,9 @@ export function runPluginsForFile(fileName, serializedAst) {
   // Traverse ast with all visitors at the same time to avoid traversing
   // multiple times.
   try {
+    console.time("custom match");
     traverse(ctx, visitors, ctx.rootOffset);
+    console.timeEnd("custom match");
   } finally {
     ctx.nodes.clear();
 
@@ -1114,9 +1119,11 @@ function runLintPlugin(plugin, fileName, sourceText) {
   } finally {
     // During testing we don't want to keep plugins around
     state.installedPlugins.clear();
+    state.plugins = [];
   }
 }
 
 // TODO(bartlomieju): this is temporary, until we get plugins plumbed through
 // the CLI linter
 internals.runLintPlugin = runLintPlugin;
+internals.op_lint_create_serialized_ast = op_lint_create_serialized_ast;
