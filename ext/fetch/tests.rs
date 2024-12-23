@@ -133,11 +133,7 @@ async fn rust_test_client_with_resolver(
 
   let req = http::Request::builder()
     .uri(format!("https://{}/foo", src_addr))
-    .body(
-      http_body_util::Empty::new()
-        .map_err(|err| match err {})
-        .boxed(),
-    )
+    .body(crate::ReqBody::empty())
     .unwrap();
   let resp = client.send(req).await.unwrap();
   assert_eq!(resp.status(), http::StatusCode::OK);

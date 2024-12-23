@@ -560,11 +560,11 @@ impl ManagedCliNpmResolver {
     &self,
   ) -> Result<(), Box<PackageJsonDepValueParseWithLocationError>> {
     for err in self.npm_install_deps_provider.pkg_json_dep_errors() {
-      match &err.source {
-        deno_package_json::PackageJsonDepValueParseError::VersionReq(_) => {
+      match err.source.as_kind() {
+        deno_package_json::PackageJsonDepValueParseErrorKind::VersionReq(_) => {
           return Err(Box::new(err.clone()));
         }
-        deno_package_json::PackageJsonDepValueParseError::Unsupported {
+        deno_package_json::PackageJsonDepValueParseErrorKind::Unsupported {
           ..
         } => {
           // only warn for this one

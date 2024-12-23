@@ -612,6 +612,7 @@ impl CliMainWorkerFactory {
         serve_port: shared.options.serve_port,
         serve_host: shared.options.serve_host.clone(),
         otel_config: shared.otel_config.clone(),
+        close_on_idle: true,
       },
       extensions: custom_extensions,
       startup_snapshot: crate::js::deno_isolate_init(),
@@ -655,7 +656,10 @@ impl CliMainWorkerFactory {
         "40_test_common.js",
         "40_test.js",
         "40_bench.js",
-        "40_jupyter.js"
+        "40_jupyter.js",
+        // TODO(bartlomieju): probably shouldn't include these files here?
+        "40_lint_selector.js",
+        "40_lint.js"
       );
     }
 
@@ -812,6 +816,7 @@ fn create_web_worker_callback(
         serve_port: shared.options.serve_port,
         serve_host: shared.options.serve_host.clone(),
         otel_config: shared.otel_config.clone(),
+        close_on_idle: args.close_on_idle,
       },
       extensions: vec![],
       startup_snapshot: crate::js::deno_isolate_init(),

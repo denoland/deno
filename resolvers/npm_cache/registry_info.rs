@@ -18,6 +18,7 @@ use deno_unsync::sync::MultiRuntimeAsyncValueCreator;
 use futures::future::LocalBoxFuture;
 use futures::FutureExt;
 use parking_lot::Mutex;
+use thiserror::Error;
 use url::Url;
 
 use crate::remote::maybe_auth_header_for_npm_registry;
@@ -27,6 +28,31 @@ use crate::NpmCacheSetting;
 
 type LoadResult = Result<FutureResult, Arc<AnyError>>;
 type LoadFuture = LocalBoxFuture<'static, LoadResult>;
+
+#[derive(Debug, Error)]
+#[error(transparent)]
+pub struct AnyhowJsError(pub AnyError);
+
+impl deno_error::JsErrorClass for AnyhowJsError {
+  fn get_class(&self) -> &'static str {
+    "generic"
+  }
+
+  fn get_message(&self) -> std::borrow::Cow<'static, str> {
+    self.0.to_string().into()
+  }
+
+  fn get_additional_properties(
+    &self,
+  ) -> Option<
+    Vec<(
+      std::borrow::Cow<'static, str>,
+      std::borrow::Cow<'static, str>,
+    )>,
+  > {
+    None
+  }
+}
 
 #[derive(Debug, Clone)]
 enum FutureResult {
@@ -157,9 +183,9 @@ impl<TEnv: NpmCacheEnv> RegistryInfoProvider<TEnv> {
       Ok(None) => Err(NpmRegistryPackageInfoLoadError::PackageNotExists {
         package_name: name.to_string(),
       }),
-      Err(err) => {
-        Err(NpmRegistryPackageInfoLoadError::LoadError(Arc::new(err)))
-      }
+      Err(err) => Err(NpmRegistryPackageInfoLoadError::LoadError(Arc::new(
+        AnyhowJsError(err),
+      ))),
     }
   }
 

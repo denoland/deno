@@ -218,7 +218,7 @@ fn npm_module_check_then_error() {
       "npm:@denotest/breaking-change-between-versions",
     )
     .unwrap(),
-    "1.0.0".to_string(),
+    "1.0.0".into(),
   );
   lockfile_path.write(lockfile.as_json_string());
   temp_dir.write(
@@ -236,7 +236,7 @@ fn npm_module_check_then_error() {
       "npm:@denotest/breaking-change-between-versions",
     )
     .unwrap(),
-    "2.0.0".to_string(),
+    "2.0.0".into(),
   );
   lockfile_path.write(lockfile.as_json_string());
 

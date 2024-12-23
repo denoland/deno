@@ -67,7 +67,9 @@ pub mod tests {
       &self,
       nv: &PackageNv,
     ) -> Result<Arc<Vec<String>>, AnyError> {
-      let Some(exports_by_version) = self.package_versions.get(&nv.name) else {
+      let Some(exports_by_version) =
+        self.package_versions.get(nv.name.as_str())
+      else {
         return Err(anyhow!("Package not found."));
       };
       let Some(exports) = exports_by_version.get(&nv.version) else {

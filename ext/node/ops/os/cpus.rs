@@ -73,12 +73,17 @@ pub fn cpu_info() -> Option<Vec<CpuInfo>> {
       cpu_speed = 2_400_000_000;
     }
 
+    extern "C" {
+      fn mach_host_self() -> std::ffi::c_uint;
+      static mut mach_task_self_: std::ffi::c_uint;
+    }
+
     let mut num_cpus: libc::natural_t = 0;
     let mut info: *mut libc::processor_cpu_load_info_data_t =
       std::ptr::null_mut();
     let mut msg_type: libc::mach_msg_type_number_t = 0;
     if libc::host_processor_info(
-      libc::mach_host_self(),
+      mach_host_self(),
       libc::PROCESSOR_CPU_LOAD_INFO,
       &mut num_cpus,
       &mut info as *mut _ as *mut libc::processor_info_array_t,
@@ -111,7 +116,7 @@ pub fn cpu_info() -> Option<Vec<CpuInfo>> {
     }
 
     libc::vm_deallocate(
-      libc::mach_task_self(),
+      mach_task_self_,
       info.as_ptr() as libc::vm_address_t,
       msg_type as _,
     );
