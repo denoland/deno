@@ -51,22 +51,38 @@ function testPlugin(
   return runLintPlugin(plugin, "source.tsx", source);
 }
 
-function testVisit(source: string, ...selectors: string[]): string[] {
-  const log: string[] = [];
+interface VisitResult {
+  selector: string;
+  kind: "enter" | "exit";
+  // deno-lint-ignore no-explicit-any
+  node: any;
+}
+
+function testVisit(
+  source: string,
+  ...selectors: string[]
+): VisitResult[] {
+  const result: VisitResult[] = [];
 
   testPlugin(source, {
     create() {
       const visitor: LintVisitor = {};
 
       for (const s of selectors) {
-        visitor[s] = () => log.push(s);
+        visitor[s] = (node) => {
+          result.push({
+            kind: s.endsWith(":exit") ? "exit" : "enter",
+            selector: s,
+            node,
+          });
+        };
       }
 
       return visitor;
     },
   });
 
-  return log;
+  return result;
 }
 
 function testLintNode(source: string, ...selectors: string[]) {
@@ -91,14 +107,188 @@ function testLintNode(source: string, ...selectors: string[]) {
 }
 
 Deno.test("Plugin - visitor enter/exit", () => {
-  const enter = testVisit("foo", "Identifier");
-  assertEquals(enter, ["Identifier"]);
+  const enter = testVisit(
+    "foo",
+    "Identifier",
+  );
+  assertEquals(enter[0].node.type, "Identifier");
 
-  const exit = testVisit("foo", "Identifier:exit");
-  assertEquals(exit, ["Identifier:exit"]);
+  const exit = testVisit(
+    "foo",
+    "Identifier:exit",
+  );
+  assertEquals(exit[0].node.type, "Identifier");
 
   const both = testVisit("foo", "Identifier", "Identifier:exit");
-  assertEquals(both, ["Identifier", "Identifier:exit"]);
+  assertEquals(both.map((t) => t.selector), ["Identifier", "Identifier:exit"]);
+});
+
+Deno.test("Plugin - visitor descendant", () => {
+  let result = testVisit(
+    "if (false) foo; if (false) bar()",
+    "IfStatement CallExpression",
+  );
+  assertEquals(result[0].node.type, "CallExpression");
+  assertEquals(result[0].node.callee.name, "bar");
+
+  result = testVisit(
+    "if (false) foo; foo()",
+    "IfStatement IfStatement",
+  );
+  assertEquals(result, []);
+
+  result = testVisit(
+    "if (false) foo; foo()",
+    "* CallExpression",
+  );
+  assertEquals(result[0].node.type, "CallExpression");
+});
+
+Deno.test("Plugin - visitor child combinator", () => {
+  let result = testVisit(
+    "if (false) foo; if (false) { bar; }",
+    "IfStatement > ExpressionStatement > Identifier",
+  );
+  assertEquals(result[0].node.name, "foo");
+
+  result = testVisit(
+    "if (false) foo; foo()",
+    "IfStatement IfStatement",
+  );
+  assertEquals(result, []);
+});
+
+Deno.test("Plugin - visitor next sibling", () => {
+  const result = testVisit(
+    "if (false) foo; if (false) bar;",
+    "IfStatement + IfStatement Identifier",
+  );
+  assertEquals(result[0].node.name, "bar");
+});
+
+Deno.test("Plugin - visitor subsequent sibling", () => {
+  const result = testVisit(
+    "if (false) foo; if (false) bar; if (false) baz;",
+    "IfStatement ~ IfStatement Identifier",
+  );
+  assertEquals(result.map((r) => r.node.name), ["bar", "baz"]);
+});
+
+Deno.test("Plugin - visitor attr", () => {
+  let result = testVisit(
+    "for (const a of b) {}",
+    "[await]",
+  );
+  assertEquals(result[0].node.await, false);
+
+  result = testVisit(
+    "for await (const a of b) {}",
+    "[await=true]",
+  );
+  assertEquals(result[0].node.await, true);
+
+  result = testVisit(
+    "for await (const a of b) {}",
+    "ForOfStatement[await=true]",
+  );
+  assertEquals(result[0].node.await, true);
+
+  result = testVisit(
+    "for (const a of b) {}",
+    "ForOfStatement[await != true]",
+  );
+  assertEquals(result[0].node.await, false);
+
+  result = testVisit(
+    "async function *foo() {}",
+    "FunctionDeclaration[async=true][generator=true]",
+  );
+  assertEquals(result[0].node.type, "FunctionDeclaration");
+
+  result = testVisit(
+    "foo",
+    "[name='foo']",
+  );
+  assertEquals(result[0].node.name, "foo");
+});
+
+Deno.test("Plugin - visitor attr length special case", () => {
+  let result = testVisit(
+    "foo(1); foo(1, 2);",
+    "CallExpression[arguments.length=2]",
+  );
+  assertEquals(result[0].node.arguments.length, 2);
+
+  result = testVisit(
+    "foo(1); foo(1, 2);",
+    "CallExpression[arguments.length>1]",
+  );
+  assertEquals(result[0].node.arguments.length, 2);
+
+  result = testVisit(
+    "foo(1); foo(1, 2);",
+    "CallExpression[arguments.length<2]",
+  );
+  assertEquals(result[0].node.arguments.length, 1);
+
+  result = testVisit(
+    "foo(1); foo(1, 2);",
+    "CallExpression[arguments.length<=3]",
+  );
+  assertEquals(result[0].node.arguments.length, 1);
+  assertEquals(result[1].node.arguments.length, 2);
+
+  result = testVisit(
+    "foo(1); foo(1, 2);",
+    "CallExpression[arguments.length>=1]",
+  );
+  assertEquals(result[0].node.arguments.length, 1);
+  assertEquals(result[1].node.arguments.length, 2);
+});
+
+Deno.test("Plugin - visitor :first-child", () => {
+  const result = testVisit(
+    "{ foo; bar }",
+    "BlockStatement ExpressionStatement:first-child Identifier",
+  );
+  assertEquals(result[0].node.name, "foo");
+});
+
+Deno.test("Plugin - visitor :last-child", () => {
+  const result = testVisit(
+    "{ foo; bar }",
+    "BlockStatement ExpressionStatement:last-child Identifier",
+  );
+  assertEquals(result[0].node.name, "bar");
+});
+
+Deno.test("Plugin - visitor :nth-child", () => {
+  let result = testVisit(
+    "{ foo; bar; baz; foobar; }",
+    "BlockStatement ExpressionStatement:nth-child(2) Identifier",
+  );
+  assertEquals(result[0].node.name, "bar");
+
+  result = testVisit(
+    "{ foo; bar; baz; foobar; }",
+    "BlockStatement ExpressionStatement:nth-child(2n) Identifier",
+  );
+  assertEquals(result[0].node.name, "foo");
+  assertEquals(result[1].node.name, "baz");
+
+  result = testVisit(
+    "{ foo; bar; baz; foobar; }",
+    "BlockStatement ExpressionStatement:nth-child(2n + 1) Identifier",
+  );
+  assertEquals(result[0].node.name, "bar");
+  assertEquals(result[1].node.name, "foobar");
+
+  result = testVisit(
+    "{ foo; bar; baz; foobar; }",
+    "BlockStatement *:nth-child(2n + 1 of ExpressionStatement) Identifier",
+  );
+  assertEquals(result[0].node.name, "bar");
+  assertEquals(result[1].node.name, "foobar");
 });
 
 Deno.test("Plugin - Program", () => {
