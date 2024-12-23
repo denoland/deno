@@ -2,7 +2,6 @@
 
 // @ts-check
 
-import { ATTR_BIN_NODE } from "ext:cli/40_lint_selector.js";
 import {
   compileSelector,
   parseSelector,
