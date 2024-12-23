@@ -204,11 +204,11 @@ impl SerializeCtx {
       prop_map: vec![0; prop_size + 1],
     };
 
-    ctx.str_table.insert("");
+    let empty_str = ctx.str_table.insert("");
 
     // Placeholder node is always 0
     ctx.append_node(0, NodeRef(0), &DUMMY_SP, 0);
-    ctx.kind_map[0] = 0;
+    ctx.kind_map[0] = empty_str;
     ctx.start_buf = NodeRef(ctx.buf.len());
 
     // Insert default props that are always present
@@ -218,10 +218,11 @@ impl SerializeCtx {
     let length_str = ctx.str_table.insert("length");
 
     // These values are expected to be in this order on the JS side
-    ctx.prop_map[0] = type_str;
-    ctx.prop_map[1] = parent_str;
-    ctx.prop_map[2] = range_str;
-    ctx.prop_map[3] = length_str;
+    ctx.prop_map[0] = empty_str;
+    ctx.prop_map[1] = type_str;
+    ctx.prop_map[2] = parent_str;
+    ctx.prop_map[3] = range_str;
+    ctx.prop_map[4] = length_str;
 
     ctx
   }

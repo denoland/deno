@@ -2,6 +2,7 @@
 
 // @ts-check
 
+import { ATTR_BIN_NODE } from "ext:cli/40_lint_selector.js";
 import {
   compileSelector,
   parseSelector,
@@ -15,10 +16,10 @@ const {
 // Keep in sync with Rust
 // These types are expected to be present on every node. Note that this
 // isn't set in stone. We could revise this at a future point.
-const AST_PROP_TYPE = 0;
-const AST_PROP_PARENT = 1;
-const AST_PROP_RANGE = 2;
-const AST_PROP_LENGTH = 3;
+const AST_PROP_TYPE = 1;
+const AST_PROP_PARENT = 2;
+const AST_PROP_RANGE = 3;
+const AST_PROP_LENGTH = 4;
 
 // Keep in sync with Rust
 // Each node property is tagged with this enum to denote
@@ -421,10 +422,12 @@ class MatchCtx {
   /**
    * @param {AstContext["buf"]} buf
    * @param {AstContext["strTable"]} strTable
+   * @param {AstContext["strByType"]} strByType
    */
-  constructor(buf, strTable) {
+  constructor(buf, strTable, strByType) {
     this.buf = buf;
     this.strTable = strTable;
+    this.strByType = strByType;
   }
 
   /**
@@ -452,7 +455,19 @@ class MatchCtx {
   getAttrPathValue(offset, propIds, idx) {
     const { buf } = this;
 
-    offset = findPropOffset(buf, offset, propIds[idx]);
+    const propId = propIds[idx];
+
+    switch (propId) {
+      case AST_PROP_TYPE: {
+        const type = this.getType(offset);
+        return getString(this.strTable, this.strByType[type]);
+      }
+      case AST_PROP_PARENT:
+      case AST_PROP_RANGE:
+        throw new Error(`Not supported`);
+    }
+
+    offset = findPropOffset(buf, offset, propId);
     if (offset === -1) return undefined;
     const _prop = buf[offset++];
     const kind = buf[offset++];
@@ -499,7 +514,18 @@ class MatchCtx {
   hasAttrPath(offset, propIds, idx) {
     const { buf } = this;
 
-    offset = findPropOffset(buf, offset, propIds[idx]);
+    const propId = propIds[idx];
+    // If propId is 0 then the property doesn't exist in the AST
+    if (propId === 0) return false;
+
+    switch (propId) {
+      case AST_PROP_TYPE:
+      case AST_PROP_PARENT:
+      case AST_PROP_RANGE:
+        return true;
+    }
+
+    offset = findPropOffset(buf, offset, propId);
     if (offset === -1) return false;
     if (idx === propIds.length - 1) return true;
 
@@ -736,7 +762,7 @@ function createAstContext(buf) {
     strByType,
     typeByStr,
     propByStr,
-    matcher: new MatchCtx(buf, strTable),
+    matcher: new MatchCtx(buf, strTable, strByType),
   };
 
   setNodeGetters(ctx);
