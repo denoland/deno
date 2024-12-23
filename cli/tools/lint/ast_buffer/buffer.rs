@@ -215,11 +215,13 @@ impl SerializeCtx {
     let type_str = ctx.str_table.insert("type");
     let parent_str = ctx.str_table.insert("parent");
     let range_str = ctx.str_table.insert("range");
+    let length_str = ctx.str_table.insert("length");
 
     // These values are expected to be in this order on the JS side
     ctx.prop_map[0] = type_str;
     ctx.prop_map[1] = parent_str;
     ctx.prop_map[2] = range_str;
+    ctx.prop_map[3] = length_str;
 
     ctx
   }

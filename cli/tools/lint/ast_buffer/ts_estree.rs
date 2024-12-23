@@ -205,6 +205,7 @@ pub enum AstProp {
   Type,
   Parent,
   Range,
+  Length, // Not used in AST, but can be used in attr selectors
 
   // Starting from here the order doesn't matter.
   // Following are all possible AST node properties.
@@ -320,6 +321,7 @@ impl Display for AstProp {
       AstProp::Parent => "parent",
       AstProp::Range => "range",
       AstProp::Type => "type",
+      AstProp::Length => "length",
       AstProp::Abstract => "abstract",
       AstProp::Accessibility => "accessibility",
       AstProp::Alternate => "alternate",
