@@ -598,29 +598,11 @@ impl<'a> DenoCompileBinaryWriter<'a> {
       None => None,
     };
     let mut vfs = VfsBuilder::new();
-    let mut remote_modules_size = 0.0;
     let npm_snapshot = match self.npm_resolver.as_inner() {
       InnerCliNpmResolverRef::Managed(managed) => {
         let snapshot =
           managed.serialized_valid_snapshot_for_system(&self.npm_system_info);
         if !snapshot.as_serialized().packages.is_empty() {
-          let npm_snapshot = managed.snapshot();
-          // make sure that graph.npm_packages.is_empty() isn't empty
-          if !graph.npm_packages.is_empty() {
-            for module in graph.modules() {
-              if let deno_graph::Module::Npm(module) = module {
-                let nv = module.nv_reference.nv();
-                if let Ok(package) =
-                  npm_snapshot.resolve_package_from_deno_module(nv)
-                {
-                  // package.id.clone() is found now
-                  if let Ok(size) = managed.package_size(&package.id) {
-                    remote_modules_size += size as f64;
-                  }
-                }
-              }
-            }
-          }
           self.fill_npm_vfs(&mut vfs).context("Building npm vfs.")?;
           Some(snapshot)
         } else {
