@@ -1,5 +1,5 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
-import { assert, assertEquals } from "./test_util.ts";
+import { assert, assertEquals, assertRejects } from "./test_util.ts";
 
 // just a hack to get a body object
 // deno-lint-ignore no-explicit-any
@@ -187,3 +187,14 @@ Deno.test(
     assertEquals(file.size, 1);
   },
 );
+
+Deno.test(async function bodyBadResourceError() {
+  const file = await Deno.open("README.md");
+  file.close();
+  const body = buildBody(file.readable);
+  await assertRejects(
+    () => body.arrayBuffer(),
+    Deno.errors.BadResource,
+    "Cannot read body as underlying resource unavailable",
+  );
+});
