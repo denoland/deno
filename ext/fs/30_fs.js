@@ -5,6 +5,7 @@ const {
   isDate,
   internalRidSymbol,
   createCancelHandle,
+  Number,
 } = core;
 import {
   op_fs_chdir,
