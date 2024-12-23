@@ -93,7 +93,7 @@ export class Context {
     const range = data.node ? data.node.range : data.range ? data.range : null;
     if (range == null) {
       throw new Error(
-        "Either `node` or `span` must be provided when reporting an error",
+        "Either `node` or `range` must be provided when reporting an error",
       );
     }
 
