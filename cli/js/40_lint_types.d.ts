@@ -37,11 +37,11 @@ export interface LintPlugin {
 }
 
 export interface LintState {
-  plugins: Deno.LintPlugin[];
+  plugins: LintPlugin[];
   installedPlugins: Set<string>;
 }
 
-export type VisitorFn = (node: Deno.AstNode) => void;
+export type VisitorFn = (node: unknown) => void;
 
 export interface CompiledVisitor {
   matcher: (ctx: MatchContext, offset: number) => boolean;
