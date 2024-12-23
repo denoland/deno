@@ -2,6 +2,11 @@
 
 // @ts-check
 
+import {
+  compileSelector,
+  parseSelector,
+  splitSelectors,
+} from "ext:cli/40_lint_selector.js";
 import { core, internals } from "ext:core/mod.js";
 const {
   op_lint_create_serialized_ast,
@@ -13,6 +18,7 @@ const {
 const AST_PROP_TYPE = 0;
 const AST_PROP_PARENT = 1;
 const AST_PROP_RANGE = 2;
+const AST_PROP_LENGTH = 3;
 
 // Keep in sync with Rust
 // Each node property is tagged with this enum to denote
@@ -43,8 +49,8 @@ const PropFlags = {
 /** @typedef {import("./40_lint_types.d.ts").RuleContext} RuleContext */
 /** @typedef {import("./40_lint_types.d.ts").NodeFacade} NodeFacade */
 /** @typedef {import("./40_lint_types.d.ts").LintPlugin} LintPlugin */
-/** @typedef {import("./40_lint_types.d.ts").LintReportData} LintReportData */
-/** @typedef {import("./40_lint_types.d.ts").TestReportData} TestReportData */
+/** @typedef {import("./40_lint_types.d.ts").TransformFn} TransformFn */
+/** @typedef {import("./40_lint_types.d.ts").MatchContext} MatchContext */
 
 /** @type {LintState} */
 const state = {
@@ -99,7 +105,6 @@ export function installPlugin(plugin) {
  */
 function getNode(ctx, offset) {
   if (offset === 0) return null;
-
   const cached = ctx.nodes.get(offset);
   if (cached !== undefined) return cached;
 
@@ -297,9 +302,10 @@ function readValue(ctx, offset, search) {
   if (offset === -1) return undefined;
 
   const kind = buf[offset + 1];
+  offset += 2;
 
   if (kind === PropFlags.Ref) {
-    const value = readU32(buf, offset + 2);
+    const value = readU32(buf, offset);
     return getNode(ctx, value);
   } else if (kind === PropFlags.RefArr) {
     const len = readU32(buf, offset);
@@ -351,6 +357,303 @@ function getString(strTable, id) {
   }
 
   return name;
+}
+
+/**
+ * @param {AstContext["buf"]} buf
+ * @param {number} child
+ * @returns {null | [number, number]}
+ */
+function findChildOffset(buf, child) {
+  let offset = readU32(buf, child + 1);
+
+  // type + parentId + SpanLo + SpanHi
+  offset += 1 + 4 + 4 + 4;
+
+  const propCount = buf[offset++];
+  for (let i = 0; i < propCount; i++) {
+    const _prop = buf[offset++];
+    const kind = buf[offset++];
+
+    switch (kind) {
+      case PropFlags.Ref: {
+        const start = offset;
+        const value = readU32(buf, offset);
+        offset += 4;
+        if (value === child) {
+          return [start, -1];
+        }
+        break;
+      }
+      case PropFlags.RefArr: {
+        const start = offset;
+
+        const len = readU32(buf, offset);
+        offset += 4;
+
+        for (let j = 0; j < len; j++) {
+          const value = readU32(buf, offset);
+          offset += 4;
+          if (value === child) {
+            return [start, j];
+          }
+        }
+
+        break;
+      }
+      case PropFlags.String:
+        offset += 4;
+        break;
+      case PropFlags.Bool:
+        offset++;
+        break;
+      case PropFlags.Null:
+      case PropFlags.Undefined:
+        break;
+    }
+  }
+
+  return null;
+}
+
+/** @implements {MatchContext} */
+class MatchCtx {
+  /**
+   * @param {AstContext["buf"]} buf
+   * @param {AstContext["strTable"]} strTable
+   */
+  constructor(buf, strTable) {
+    this.buf = buf;
+    this.strTable = strTable;
+  }
+
+  /**
+   * @param {number} offset
+   * @returns {number}
+   */
+  getParent(offset) {
+    return readU32(this.buf, offset + 1);
+  }
+
+  /**
+   * @param {number} offset
+   * @returns {number}
+   */
+  getType(offset) {
+    return this.buf[offset];
+  }
+
+  /**
+   * @param {number} offset
+   * @param {number[]} propIds
+   * @param {number} idx
+   * @returns {unknown}
+   */
+  getAttrPathValue(offset, propIds, idx) {
+    const { buf } = this;
+
+    offset = findPropOffset(buf, offset, propIds[idx]);
+    if (offset === -1) return undefined;
+    const _prop = buf[offset++];
+    const kind = buf[offset++];
+
+    if (kind === PropFlags.Ref) {
+      const value = readU32(buf, offset);
+      // Checks need to end with a value, not a node
+      if (idx === propIds.length - 1) return undefined;
+      return this.getAttrPathValue(value, propIds, idx + 1);
+    } else if (kind === PropFlags.RefArr) {
+      const count = readU32(buf, offset);
+      offset += 4;
+
+      if (idx < propIds.length - 1 && propIds[idx + 1] === AST_PROP_LENGTH) {
+        return count;
+      }
+
+      // TODO(@marvinhagemeister): Allow traversing into array children?
+    }
+
+    // Cannot traverse into primitives further
+    if (idx < propIds.length - 1) return undefined;
+
+    if (kind === PropFlags.String) {
+      const s = readU32(buf, offset);
+      return getString(this.strTable, s);
+    } else if (kind === PropFlags.Bool) {
+      return buf[offset] === 1;
+    } else if (kind === PropFlags.Null) {
+      return null;
+    } else if (kind === PropFlags.Undefined) {
+      return undefined;
+    }
+
+    return undefined;
+  }
+
+  /**
+   * @param {number} offset
+   * @param {number[]} propIds
+   * @param {number} idx
+   * @returns {boolean}
+   */
+  hasAttrPath(offset, propIds, idx) {
+    const { buf } = this;
+
+    offset = findPropOffset(buf, offset, propIds[idx]);
+    if (offset === -1) return false;
+    if (idx === propIds.length - 1) return true;
+
+    const _prop = buf[offset++];
+    const kind = buf[offset++];
+    if (kind === PropFlags.Ref) {
+      const value = readU32(buf, offset);
+      return this.hasAttrPath(value, propIds, idx + 1);
+    } else if (kind === PropFlags.RefArr) {
+      const _count = readU32(buf, offset);
+      offset += 4;
+
+      if (idx < propIds.length - 1 && propIds[idx + 1] === AST_PROP_LENGTH) {
+        return true;
+      }
+
+      // TODO(@marvinhagemeister): Allow traversing into array children?
+    }
+
+    // Primitives cannot be traversed further. This means we
+    // didn't found the attribute.
+    if (idx < propIds.length - 1) return false;
+
+    return true;
+  }
+
+  /**
+   * @param {number} offset
+   * @returns {number}
+   */
+  getFirstChild(offset) {
+    const { buf } = this;
+
+    // type + parentId + SpanLo + SpanHi
+    offset += 1 + 4 + 4 + 4;
+
+    const count = buf[offset++];
+    for (let i = 0; i < count; i++) {
+      const _prop = buf[offset++];
+      const kind = buf[offset++];
+
+      switch (kind) {
+        case PropFlags.Ref: {
+          const v = readU32(buf, offset);
+          offset += 4;
+          return v;
+        }
+        case PropFlags.RefArr: {
+          const len = readU32(buf, offset);
+          offset += 4;
+          for (let j = 0; j < len; j++) {
+            const v = readU32(buf, offset);
+            offset += 4;
+            return v;
+          }
+
+          return len;
+        }
+
+        case PropFlags.String:
+          offset += 4;
+          break;
+        case PropFlags.Bool:
+          offset++;
+          break;
+        case PropFlags.Null:
+        case PropFlags.Undefined:
+          break;
+      }
+    }
+
+    return -1;
+  }
+
+  /**
+   * @param {number} offset
+   * @returns {number}
+   */
+  getLastChild(offset) {
+    const { buf } = this;
+
+    // type + parentId + SpanLo + SpanHi
+    offset += 1 + 4 + 4 + 4;
+
+    let last = -1;
+
+    const count = buf[offset++];
+    for (let i = 0; i < count; i++) {
+      const _prop = buf[offset++];
+      const kind = buf[offset++];
+
+      switch (kind) {
+        case PropFlags.Ref: {
+          const v = readU32(buf, offset);
+          offset += 4;
+          last = v;
+          break;
+        }
+        case PropFlags.RefArr: {
+          const len = readU32(buf, offset);
+          offset += 4;
+          for (let j = 0; j < len; j++) {
+            const v = readU32(buf, offset);
+            last = v;
+            offset += 4;
+          }
+
+          break;
+        }
+
+        case PropFlags.String:
+          offset += 4;
+          break;
+        case PropFlags.Bool:
+          offset++;
+          break;
+        case PropFlags.Null:
+        case PropFlags.Undefined:
+          break;
+      }
+    }
+
+    return last;
+  }
+
+  /**
+   * @param {number} id
+   * @returns {number[]}
+   */
+  getSiblings(id) {
+    const { buf } = this;
+
+    const result = findChildOffset(buf, id);
+    // Happens for program nodes
+    if (result === null) return [];
+
+    if (result[1] === -1) {
+      return [id];
+    }
+
+    let offset = result[0];
+    const count = readU32(buf, offset);
+    offset += 4;
+
+    /** @type {number[]} */
+    const out = [];
+    for (let i = 0; i < count; i++) {
+      const v = readU32(buf, offset);
+      offset += 4;
+      out.push(v);
+    }
+
+    return out;
+  }
 }
 
 /**
@@ -433,6 +736,7 @@ function createAstContext(buf) {
     strByType,
     typeByStr,
     propByStr,
+    matcher: new MatchCtx(buf, strTable),
   };
 
   setNodeGetters(ctx);
@@ -456,7 +760,7 @@ const NOOP = (_node) => {};
 export function runPluginsForFile(fileName, serializedAst) {
   const ctx = createAstContext(serializedAst);
 
-  /** @type {Map<string, { enter: VisitorFn, exit: VisitorFn}>} */
+  /** @type {Map<string, CompiledVisitor["info"]>}>} */
   const bySelector = new Map();
 
   const destroyFns = [];
@@ -486,32 +790,38 @@ export function runPluginsForFile(fileName, serializedAst) {
           key = key.slice(0, -":exit".length);
         }
 
-        let info = bySelector.get(key);
-        if (info === undefined) {
-          info = { enter: NOOP, exit: NOOP };
-          bySelector.set(key, info);
-        }
-        const prevFn = isExit ? info.exit : info.enter;
+        const selectors = splitSelectors(key);
 
-        /**
-         * @param {*} node
-         */
-        const wrapped = (node) => {
-          prevFn(node);
+        for (let j = 0; j < selectors.length; j++) {
+          const key = selectors[j];
 
-          try {
-            fn(node);
-          } catch (err) {
-            throw new Error(`Visitor "${name}" of plugin "${id}" errored`, {
-              cause: err,
-            });
+          let info = bySelector.get(key);
+          if (info === undefined) {
+            info = { enter: NOOP, exit: NOOP };
+            bySelector.set(key, info);
           }
-        };
+          const prevFn = isExit ? info.exit : info.enter;
 
-        if (isExit) {
-          info.exit = wrapped;
-        } else {
-          info.enter = wrapped;
+          /**
+           * @param {*} node
+           */
+          const wrapped = (node) => {
+            prevFn(node);
+
+            try {
+              fn(node);
+            } catch (err) {
+              throw new Error(`Visitor "${name}" of plugin "${id}" errored`, {
+                cause: err,
+              });
+            }
+          };
+
+          if (isExit) {
+            info.exit = wrapped;
+          } else {
+            info.enter = wrapped;
+          }
         }
       }
 
@@ -528,25 +838,27 @@ export function runPluginsForFile(fileName, serializedAst) {
     }
   }
 
+  // Create selectors
+  /** @type {TransformFn} */
+  const toElem = (str) => {
+    const id = ctx.typeByStr.get(str);
+    return id === undefined ? 0 : id;
+  };
+  /** @type {TransformFn} */
+  const toAttr = (str) => {
+    const id = ctx.propByStr.get(str);
+    return id === undefined ? 0 : id;
+  };
+
   /** @type {CompiledVisitor[]} */
   const visitors = [];
   for (const [sel, info] of bySelector.entries()) {
-    // This will make more sense once selectors land as it's faster
-    // to precompile them once upfront.
+    // Selectors are already split here.
+    // TODO(@marvinhagemeister): Avoid array allocation (not sure if that matters)
+    const parsed = parseSelector(sel, toElem, toAttr)[0];
+    const matcher = compileSelector(parsed);
 
-    // Convert the visiting element name to a number. This number
-    // is part of the serialized buffer and comparing a single number
-    // is quicker than strings.
-    const elemId = ctx.typeByStr.get(sel) ?? -1;
-
-    visitors.push({
-      info,
-      // Check if we should call this visitor
-      matcher: (offset) => {
-        const type = ctx.buf[offset];
-        return type === elemId;
-      },
-    });
+    visitors.push({ info, matcher });
   }
 
   // Traverse ast with all visitors at the same time to avoid traversing
@@ -572,6 +884,8 @@ function traverse(ctx, visitors, offset) {
   // The 0 offset is used to denote an empty/placeholder node
   if (offset === 0) return;
 
+  const originalOffset = offset;
+
   const { buf } = ctx;
 
   /** @type {VisitorFn[] | null} */
@@ -580,7 +894,7 @@ function traverse(ctx, visitors, offset) {
   for (let i = 0; i < visitors.length; i++) {
     const v = visitors[i];
 
-    if (v.matcher(offset)) {
+    if (v.matcher(ctx.matcher, offset)) {
       if (v.info.exit !== NOOP) {
         if (exits === null) {
           exits = [v.info.exit];
@@ -633,7 +947,7 @@ function traverse(ctx, visitors, offset) {
   } finally {
     if (exits !== null) {
       for (let i = 0; i < exits.length; i++) {
-        const node = /** @type {*} */ (getNode(ctx, offset));
+        const node = /** @type {*} */ (getNode(ctx, originalOffset));
         exits[i](node);
       }
     }
