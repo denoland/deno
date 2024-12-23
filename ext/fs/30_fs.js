@@ -373,12 +373,12 @@ function parseFileInfo(response) {
     isDirectory: response.isDirectory,
     isSymlink: response.isSymlink,
     size: response.size,
-    mtime: response.mtimeSet === true ? new Date(response.mtime) : null,
-    atime: response.atimeSet === true ? new Date(response.atime) : null,
+    mtime: response.mtimeSet === true ? new Date(Number(response.mtime)) : null,
+    atime: response.atimeSet === true ? new Date(Number(response.atime)) : null,
     birthtime: response.birthtimeSet === true
       ? new Date(response.birthtime)
       : null,
-    ctime: response.ctimeSet === true ? new Date(response.ctime) : null,
+    ctime: response.ctimeSet === true ? new Date(Number(response.ctime)) : null,
     dev: response.dev,
     mode: response.mode,
     ino: unix ? response.ino : null,
