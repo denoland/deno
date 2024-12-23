@@ -152,7 +152,7 @@ class InnerBody {
    * https://fetch.spec.whatwg.org/#concept-body-consume-body
    * @returns {Promise<Uint8Array>}
    */
-  async consume() {
+  consume() {
     if (this.unusable()) throw new TypeError("Body already consumed");
     if (
       ObjectPrototypeIsPrototypeOf(
@@ -161,9 +161,7 @@ class InnerBody {
       )
     ) {
       readableStreamThrowIfErrored(this.stream);
-      try {
-        return await readableStreamCollectIntoUint8Array(this.stream);
-      } catch (e) {
+      return readableStreamCollectIntoUint8Array(this.stream).catch((e) => {
         if (ObjectPrototypeIsPrototypeOf(BadResourcePrototype, e)) {
           // TODO(kt3k): We probably like to pass e as `cause` if BadResource supports it.
           throw new e.constructor(
@@ -171,7 +169,7 @@ class InnerBody {
           );
         }
         throw e;
-      }
+      });
     } else {
       this.streamOrStatic.consumed = true;
       return this.streamOrStatic.body;
