@@ -341,27 +341,18 @@ impl WorkspaceLinter {
           file_text,
           cli_options.ext_flag().as_deref(),
         );
-        let r = match r {
-          Ok((file_source, mut file_diagnostics)) => {
-            // TODO(bartlomieju): now move it to `linter.lint_file()` and `linter.lint_with_ast()`.
-            let plugin_diagnostics =
-              linter.run_plugins(file_source.clone(), file_path.clone())?;
-
-            file_diagnostics.extend_from_slice(&plugin_diagnostics);
-            if let Some(incremental_cache) = &maybe_incremental_cache_ {
-              if file_diagnostics.is_empty() {
-                // update the incremental cache if there were no diagnostics
-                incremental_cache.update_file(
-                  &file_path,
-                  // ensure the returned text is used here as it may have been modified via --fix
-                  file_source.text(),
-                )
-              }
+        if let Ok((file_source, file_diagnostics)) = &r {
+          if let Some(incremental_cache) = &maybe_incremental_cache_ {
+            if file_diagnostics.is_empty() {
+              // update the incremental cache if there were no diagnostics
+              incremental_cache.update_file(
+                &file_path,
+                // ensure the returned text is used here as it may have been modified via --fix
+                file_source.text(),
+              )
             }
-            Ok((file_source, file_diagnostics))
           }
-          Err(err) => Err(err),
-        };
+        }
 
         let success = handle_lint_result(
           &file_path.to_string_lossy(),

@@ -75,10 +75,6 @@ impl CliLinter {
     }
   }
 
-  pub fn get_plugin_runner(&self) -> Option<Arc<Mutex<PluginRunnerProxy>>> {
-    self.maybe_plugin_runner.clone()
-  }
-
   pub fn run_plugins(
     &self,
     parsed_source: ParsedSource,
@@ -131,7 +127,7 @@ impl CliLinter {
       MediaType::from_specifier(&specifier)
     };
 
-    if self.fix {
+    let result = if self.fix {
       self.lint_file_and_fix(&specifier, media_type, source_code, file_path)
     } else {
       self
@@ -143,6 +139,19 @@ impl CliLinter {
           config: self.deno_lint_config.clone(),
         })
         .map_err(AnyError::from)
+    };
+
+    match result {
+      Ok((file_source, mut file_diagnostics)) => {
+        // TODO(bartlomieju): now add it to `linter.lint_with_ast()`.
+        // TODO(bartlomieju): plugins don't support fixing for now.
+        let plugin_diagnostics =
+          self.run_plugins(file_source.clone(), file_path.to_path_buf())?;
+
+        file_diagnostics.extend_from_slice(&plugin_diagnostics);
+        Ok((file_source, file_diagnostics))
+      }
+      Err(err) => Err(err),
     }
   }
 
