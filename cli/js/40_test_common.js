@@ -1,4 +1,8 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+import {
+  op_pledge_test_permissions,
+  op_restore_test_permissions,
+} from "ext:core/ops";
 import { core, primordials } from "ext:core/mod.js";
 import { serializePermissions } from "ext:runtime/10_permissions.js";
 const ops = core.ops;
@@ -38,13 +42,13 @@ export function escapeName(name) {
 }
 
 export function pledgePermissions(permissions) {
-  return ops.op_pledge_test_permissions(
+  return op_pledge_test_permissions(
     serializePermissions(permissions),
   );
 }
 
 export function restorePermissions(token) {
-  ops.op_restore_test_permissions(token);
+  op_restore_test_permissions(token);
 }
 
 export function withPermissions(fn, permissions) {

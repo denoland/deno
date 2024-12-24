@@ -40,7 +40,7 @@ deno_core::extension!(deno_test,
   state = |state, options| {
     state.put(options.sender);
     state.put(TestContainer::default());
-  },
+  }
 );
 
 #[derive(Clone)]

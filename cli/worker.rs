@@ -643,24 +643,32 @@ impl CliMainWorkerFactory {
       options,
     );
 
-    if self.shared.subcommand.needs_test() {
-      macro_rules! test_file {
-        ($($file:literal),*) => {
-          $(worker.js_runtime.lazy_load_es_module_with_code(
-            concat!("ext:cli/", $file),
-            deno_core::ascii_str_include!(concat!("js/", $file)),
-          )?;)*
-        }
+    macro_rules! test_file {
+      ($($file:literal),*) => {
+        $(worker.js_runtime.lazy_load_es_module_with_code(
+          concat!("ext:cli/", $file),
+          deno_core::ascii_str_include!(concat!("js/", $file)),
+        )?;)*
       }
-      test_file!(
-        "40_test_common.js",
-        "40_test.js",
-        "40_bench.js",
-        "40_jupyter.js",
-        // TODO(bartlomieju): probably shouldn't include these files here?
-        "40_lint_selector.js",
-        "40_lint.js"
-      );
+    }
+    match &self.shared.subcommand {
+      DenoSubcommand::Test(_) => {
+        test_file!("40_test_common.js", "40_test.js");
+      }
+      DenoSubcommand::Bench(_) => {
+        test_file!("40_test_common.js", "40_bench.js");
+      }
+      DenoSubcommand::Jupyter(_) => {
+        test_file!("40_test_common.js", "40_test.js", "40_jupyter.js");
+      }
+
+      DenoSubcommand::Repl(_) => {
+        test_file!("40_test_common.js", "40_test.js");
+      }
+      DenoSubcommand::Lint(_) => {
+        test_file!("40_lint_selector.js", "40_lint.js");
+      }
+      _ => {}
     }
 
     Ok(CliMainWorker {

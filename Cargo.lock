@@ -1523,8 +1523,7 @@ dependencies = [
 [[package]]
 name = "deno_core"
 version = "0.327.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "eaf8dff204b9c2415deb47b9f30d4d38b0925d0d88f1f9074e8e76f59e6d7ded"
+source = "git+https://github.com/nathanwhit/deno_core?branch=execute-virtual-ops-module#3ab1b220e6f60b0e447929aa585f26e0253a14b1"
 dependencies = [
  "anyhow",
  "az",
@@ -2099,8 +2098,7 @@ dependencies = [
 [[package]]
 name = "deno_ops"
 version = "0.203.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b146ca74cac431843486ade58e2accc16c11315fb2c6934590a52a73c56b7ec3"
+source = "git+https://github.com/nathanwhit/deno_core?branch=execute-virtual-ops-module#3ab1b220e6f60b0e447929aa585f26e0253a14b1"
 dependencies = [
  "proc-macro-rules",
  "proc-macro2",
@@ -6774,8 +6772,7 @@ dependencies = [
 [[package]]
 name = "serde_v8"
 version = "0.236.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e23b3abce64010612f88f4ff689a959736f99eb3dc0dbf1c7903434b8bd8cda5"
+source = "git+https://github.com/nathanwhit/deno_core?branch=execute-virtual-ops-module#3ab1b220e6f60b0e447929aa585f26e0253a14b1"
 dependencies = [
  "num-bigint",
  "serde",
