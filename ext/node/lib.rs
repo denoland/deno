@@ -14,6 +14,7 @@ use deno_core::url::Url;
 #[allow(unused_imports)]
 use deno_core::v8;
 use deno_core::v8::ExternalReference;
+use node_resolver::env::NodeResolverEnv;
 use node_resolver::errors::ClosestPkgJsonError;
 use node_resolver::NpmPackageFolderResolverRc;
 use once_cell::sync::Lazy;
@@ -807,16 +808,15 @@ deno_core::extension!(deno_node,
   },
 );
 
-pub type NodeResolver = node_resolver::NodeResolver<DenoFsNodeResolverEnv>;
+pub type NodeResolver<T: NodeResolverEnv> = node_resolver::NodeResolver<T>;
 #[allow(clippy::disallowed_types)]
-pub type NodeResolverRc =
-  deno_fs::sync::MaybeArc<node_resolver::NodeResolver<DenoFsNodeResolverEnv>>;
-pub type PackageJsonResolver =
-  node_resolver::PackageJsonResolver<DenoFsNodeResolverEnv>;
+pub type NodeResolverRc<T: NodeResolverEnv> =
+  deno_fs::sync::MaybeArc<node_resolver::NodeResolver<T>>;
+pub type PackageJsonResolver<T: NodeResolverEnv> =
+  node_resolver::PackageJsonResolver<T>;
 #[allow(clippy::disallowed_types)]
-pub type PackageJsonResolverRc = deno_fs::sync::MaybeArc<
-  node_resolver::PackageJsonResolver<DenoFsNodeResolverEnv>,
->;
+pub type PackageJsonResolverRc<T: NodeResolverEnv> =
+  deno_fs::sync::MaybeArc<node_resolver::PackageJsonResolver<T>>;
 
 #[derive(Debug)]
 pub struct DenoFsNodeResolverEnv {
