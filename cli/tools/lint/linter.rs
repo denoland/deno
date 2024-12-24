@@ -2,6 +2,7 @@
 
 use std::collections::HashSet;
 use std::path::Path;
+use std::path::PathBuf;
 use std::sync::Arc;
 
 use deno_ast::MediaType;
@@ -10,6 +11,7 @@ use deno_ast::ParsedSource;
 use deno_ast::SourceTextInfo;
 use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
+use deno_core::futures::FutureExt as _;
 use deno_core::parking_lot::Mutex;
 use deno_graph::ModuleGraph;
 use deno_lint::diagnostic::LintDiagnostic;
@@ -17,10 +19,12 @@ use deno_lint::linter::LintConfig as DenoLintConfig;
 use deno_lint::linter::LintFileOptions;
 use deno_lint::linter::Linter as DenoLintLinter;
 use deno_lint::linter::LinterOptions;
+use deno_runtime::tokio_util;
 
 use crate::util::fs::atomic_write_file_with_retries;
 use crate::util::fs::specifier_from_file_path;
 
+use super::plugins;
 use super::plugins::PluginRunnerProxy;
 use super::rules::FileOrPackageLintRule;
 use super::rules::PackageLintRule;
@@ -73,6 +77,18 @@ impl CliLinter {
 
   pub fn get_plugin_runner(&self) -> Option<Arc<Mutex<PluginRunnerProxy>>> {
     self.maybe_plugin_runner.clone()
+  }
+
+  pub fn run_plugins(
+    &self,
+    parsed_source: ParsedSource,
+    file_path: PathBuf,
+  ) -> Result<Vec<LintDiagnostic>, AnyError> {
+    let Some(plugin_runner) = self.maybe_plugin_runner.clone() else {
+      return Ok(vec![]);
+    };
+
+    run_plugins(plugin_runner, parsed_source, file_path)
   }
 
   pub fn has_package_rules(&self) -> bool {
@@ -266,4 +282,30 @@ fn apply_lint_fixes(
   let new_text =
     deno_ast::apply_text_changes(text_info.text_str(), quick_fixes);
   Some(new_text)
+}
+
+fn run_plugins(
+  plugin_runner: Arc<Mutex<PluginRunnerProxy>>,
+  parsed_source: ParsedSource,
+  file_path: PathBuf,
+) -> Result<Vec<LintDiagnostic>, AnyError> {
+  let source_text_info = parsed_source.text_info_lazy().clone();
+  let serialized_ast = plugins::serialize_ast(parsed_source)?;
+
+  #[allow(clippy::await_holding_lock)]
+  let fut = async move {
+    let mut plugin_runner = plugin_runner.lock();
+    plugins::run_rules_for_ast(
+      &mut plugin_runner,
+      &file_path,
+      serialized_ast,
+      source_text_info,
+    )
+    .await
+  }
+  .boxed_local();
+
+  let plugin_diagnostics = tokio_util::create_and_run_current_thread(fut)?;
+
+  Ok(plugin_diagnostics)
 }

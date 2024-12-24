@@ -15,14 +15,12 @@ use deno_core::error::AnyError;
 use deno_core::futures::future::LocalBoxFuture;
 use deno_core::futures::FutureExt;
 use deno_core::parking_lot::Mutex;
-use deno_core::resolve_url_or_path;
 use deno_core::serde_json;
 use deno_core::unsync::future::LocalFutureExt;
 use deno_core::unsync::future::SharedLocal;
 use deno_graph::ModuleGraph;
 use deno_lint::diagnostic::LintDiagnostic;
 use deno_lint::linter::LintConfig as DenoLintConfig;
-use deno_runtime::tokio_util;
 use log::debug;
 use reporters::create_reporter;
 use reporters::LintReporter;
@@ -284,6 +282,7 @@ impl WorkspaceLinter {
   ) -> Result<(), AnyError> {
     self.file_count += paths.len();
 
+    let maybe_plugin_specifiers = lint_options.resolve_lint_plugins()?;
     let lint_rules = self.lint_rule_provider.resolve_lint_rules_err_empty(
       lint_options.rules,
       member_dir.maybe_deno_json().map(|c| c.as_ref()),
@@ -298,7 +297,7 @@ impl WorkspaceLinter {
       });
 
     let mut plugin_runner = None;
-    if let Some(plugin_specifiers) = lint_options.resolve_lint_plugins()? {
+    if let Some(plugin_specifiers) = maybe_plugin_specifiers {
       let runner =
         plugins::create_runner_and_load_plugins(plugin_specifiers).await?;
       plugin_runner = Some(Arc::new(Mutex::new(runner)));
@@ -344,29 +343,9 @@ impl WorkspaceLinter {
         );
         let r = match r {
           Ok((file_source, mut file_diagnostics)) => {
-            let file_source_ = file_source.clone();
-            let source_text_info = file_source.text_info_lazy().clone();
-            let tmp_file_path = file_path.clone();
-            let plugin_diagnostics = if linter.get_plugin_runner().is_some() {
-              tokio_util::create_and_run_current_thread(
-                async move {
-                  let plugin_runner = linter.get_plugin_runner().unwrap();
-                  #[allow(clippy::await_holding_lock)]
-                  let mut plugin_runner = plugin_runner.lock();
-                  let serialized_ast = plugins::serialize_ast(file_source_)?;
-                  plugins::run_rules_for_ast(
-                    &mut plugin_runner,
-                    &tmp_file_path,
-                    serialized_ast,
-                    source_text_info,
-                  )
-                  .await
-                }
-                .boxed_local(),
-              )?
-            } else {
-              vec![]
-            };
+            // TODO(bartlomieju): now move it to `linter.lint_file()` and `linter.lint_with_ast()`.
+            let plugin_diagnostics =
+              linter.run_plugins(file_source.clone(), file_path.clone())?;
 
             file_diagnostics.extend_from_slice(&plugin_diagnostics);
             if let Some(incremental_cache) = &maybe_incremental_cache_ {
