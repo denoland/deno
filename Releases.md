@@ -6,6 +6,170 @@ https://github.com/denoland/deno/releases
 We also have one-line install commands at:
 https://github.com/denoland/deno_install
 
+### 2.1.4 / 2024.12.11
+
+- feat(unstable): support caching npm dependencies only as they're needed
+  (#27300)
+- fix(compile): correct read length for transpiled typescript files (#27301)
+- fix(ext/node): accept file descriptor in fs.readFile(Sync) (#27252)
+- fix(ext/node): handle Float16Array in node:v8 module (#27285)
+- fix(lint): do not error providing --allow-import (#27321)
+- fix(node): update list of builtin node modules, add missing export to
+  _http_common (#27294)
+- fix(outdated): error when there are no config files (#27306)
+- fix(outdated): respect --quiet flag for hints (#27317)
+- fix(outdated): show a suggestion for updating (#27304)
+- fix(task): do not always kill child on ctrl+c on windows (#27269)
+- fix(unstable): don't unwrap optional state in otel (#27292)
+- fix: do not error when subpath has an @ symbol (#27290)
+- fix: do not panic when fetching invalid file url on Windows (#27259)
+- fix: replace the @deno-types with @ts-types (#27310)
+- perf(compile): improve FileBackedVfsFile (#27299)
+
+### 2.1.3 / 2024.12.05
+
+- feat(unstable): add metrics to otel (#27143)
+- fix(fmt): stable formatting of HTML files with JS (#27164)
+- fix(install): use locked version of jsr package when fetching exports (#27237)
+- fix(node/fs): support `recursive` option in readdir (#27179)
+- fix(node/worker_threads): data url not encoded properly with eval (#27184)
+- fix(outdated): allow `--latest` without `--update` (#27227)
+- fix(task): `--recursive` option not working (#27183)
+- fix(task): don't panic with filter on missing task argument (#27180)
+- fix(task): forward signals to spawned sub-processes on unix (#27141)
+- fix(task): kill descendants when killing task process on Windows (#27163)
+- fix(task): only pass args to root task (#27213)
+- fix(unstable): otel context with multiple keys (#27230)
+- fix(unstable/temporal): respect locale in `Duration.prototype.toLocaleString`
+  (#27000)
+- fix: clear dep analysis when module loading is done (#27204)
+- fix: improve auto-imports for npm packages (#27224)
+- fix: support `workspace:^` and `workspace:~` version constraints (#27096)
+
+### 2.1.2 / 2024.11.28
+
+- feat(unstable): Instrument Deno.serve (#26964)
+- feat(unstable): Instrument fetch (#27057)
+- feat(unstable): repurpose `--unstable-detect-cjs` to attempt loading more
+  modules as cjs (#27094)
+- fix(check): support jsdoc `@import` tag (#26991)
+- fix(compile): correct buffered reading of assets and files (#27008)
+- fix(compile): do not error embedding same symlink via multiple methods
+  (#27015)
+- fix(compile): handle TypeScript file included as asset (#27032)
+- fix(ext/fetch): don't throw when `bodyUsed` inspect after upgrade (#27088)
+- fix(ext/node): `tls.connect` socket upgrades (#27125)
+- fix(ext/node): add `fs.promises.fstat` and `FileHandle#stat` (#26719)
+- fix(ext/webgpu): normalize limits to number (#27072)
+- fix(ext/webgpu): use correct variable name (#27108)
+- fix(ext/websocket): don't throw exception when sending to closed socket
+  (#26932)
+- fix(fmt): return `None` if sql fmt result is the same (#27014)
+- fix(info): resolve bare specifier pointing to workspace member (#27020)
+- fix(init): always force managed node modules (#27047)
+- fix(init): support scoped npm packages (#27128)
+- fix(install): don't re-set up node_modules if running lifecycle script
+  (#26984)
+- fix(lsp): remove stray debug output (#27010)
+- fix(lsp): support task object notation for tasks request (#27076)
+- fix(lsp): wasm file import completions (#27018)
+- fix(node): correct resolution of dynamic import of esm from cjs (#27071)
+- fix(node/fs): add missing stat path argument validation (#27086)
+- fix(node/fs): missing uv error context for readFile (#27011)
+- fix(node/http): casing ignored in ServerResponse.hasHeader() (#27105)
+- fix(node/timers): error when passing id to clearTimeout/clearInterval (#27130)
+- fix(runtime/ops): Fix watchfs remove event (#27041)
+- fix(streams): reject `string` in `ReadableStream.from` type (#25116)
+- fix(task): handle carriage return in task description (#27099)
+- fix(task): handle multiline descriptions properly (#27069)
+- fix(task): strip ansi codes and control chars when printing tasks (#27100)
+- fix(tools/doc): HTML resolve main entrypoint from config file (#27103)
+- fix: support bun specifiers in JSR publish (#24588)
+- fix: support non-function exports in Wasm modules (#26992)
+- perf(compile): read embedded files as static references when UTF-8 and reading
+  as strings (#27033)
+- perf(ext/webstorage): use object wrap for `Storage` (#26931)
+
+### 2.1.1 / 2024.11.21
+
+- docs(add): clarification to add command (#26968)
+- docs(doc): fix typo in doc subcommand help output (#26321)
+- fix(node): regression where ts files were sometimes resolved instead of js
+  (#26971)
+- fix(task): ensure root config always looks up dependencies in root (#26959)
+- fix(watch): don't panic if there's no path provided (#26972)
+- fix: Buffer global in --unstable-node-globals (#26973)
+
+### 2.1.0 / 2024.11.21
+
+- feat(cli): add `--unstable-node-globals` flag (#26617)
+- feat(cli): support multiple env file argument (#26527)
+- feat(compile): ability to embed directory in executable (#26939)
+- feat(compile): ability to embed local data files (#26934)
+- feat(ext/fetch): Make fetch client parameters configurable (#26909)
+- feat(ext/fetch): allow embedders to use `hickory_dns_resolver` instead of
+  default `GaiResolver` (#26740)
+- feat(ext/fs): add ctime to Deno.stats and use it in node compat layer (#24801)
+- feat(ext/http): Make http server parameters configurable (#26785)
+- feat(ext/node): perf_hooks.monitorEventLoopDelay() (#26905)
+- feat(fetch): accept async iterables for body (#26882)
+- feat(fmt): support SQL (#26750)
+- feat(info): show location for Web Cache (#26205)
+- feat(init): add --npm flag to initialize npm projects (#26896)
+- feat(jupyter): Add `Deno.jupyter.image` API (#26284)
+- feat(lint): Add checked files list to the JSON output(#26936)
+- feat(lsp): auto-imports with @deno-types directives (#26821)
+- feat(node): stabilize detecting if CJS via `"type": "commonjs"` in a
+  package.json (#26439)
+- feat(permission): support suffix wildcards in `--allow-env` flag (#25255)
+- feat(publish): add `--set-version <version>` flag (#26141)
+- feat(runtime): remove public OTEL trace API (#26854)
+- feat(task): add --eval flag (#26943)
+- feat(task): dependencies (#26467)
+- feat(task): support object notation, remove support for JSDocs (#26886)
+- feat(task): workspace support with --filter and --recursive (#26949)
+- feat(watch): log which file changed on HMR or watch change (#25801)
+- feat: OpenTelemetry Tracing API and Exporting (#26710)
+- feat: Wasm module support (#26668)
+- feat: fmt and lint respect .gitignore file (#26897)
+- feat: permission stack traces in ops (#26938)
+- feat: subcommand to view and update outdated dependencies (#26942)
+- feat: upgrade V8 to 13.0 (#26851)
+- fix(cli): preserve comments in doc tests (#26828)
+- fix(cli): show prefix hint when installing a package globally (#26629)
+- fix(ext/cache): gracefully error when cache creation failed (#26895)
+- fix(ext/http): prefer brotli for `accept-encoding: gzip, deflate, br, zstd`
+  (#26814)
+- fix(ext/node): New async setInterval function to improve the nodejs
+  compatibility (#26703)
+- fix(ext/node): add autoSelectFamily option to net.createConnection (#26661)
+- fix(ext/node): handle `--allow-sys=inspector` (#26836)
+- fix(ext/node): increase tolerance for interval test (#26899)
+- fix(ext/node): process.getBuiltinModule (#26833)
+- fix(ext/node): use ERR_NOT_IMPLEMENTED for notImplemented (#26853)
+- fix(ext/node): zlib.crc32() (#26856)
+- fix(ext/webgpu): Create GPUQuerySet converter before usage (#26883)
+- fix(ext/websocket): initialize `error` attribute of WebSocket ErrorEvent
+  (#26796)
+- fix(ext/webstorage): use error class for sqlite error case (#26806)
+- fix(fmt): error instead of panic on unstable format (#26859)
+- fix(fmt): formatting of .svelte files (#26948)
+- fix(install): percent encodings in interactive progress bar (#26600)
+- fix(install): re-setup bin entries after running lifecycle scripts (#26752)
+- fix(lockfile): track dependencies specified in TypeScript compiler options
+  (#26551)
+- fix(lsp): ignore editor indent settings if deno.json is present (#26912)
+- fix(lsp): skip code action edits that can't be converted (#26831)
+- fix(node): handle resolving ".//<something>" in npm packages (#26920)
+- fix(node/crypto): support promisify on generateKeyPair (#26913)
+- fix(permissions): say to use --allow-run instead of --allow-all (#26842)
+- fix(publish): improve error message when missing exports (#26945)
+- fix: otel resiliency (#26857)
+- fix: update message for unsupported schemes with npm and jsr (#26884)
+- perf(compile): code cache (#26528)
+- perf(windows): delay load webgpu and some other dlls (#26917)
+- perf: use available system memory for v8 isolate memory limit (#26868)
+
 ### 2.0.6 / 2024.11.10
 
 - feat(ext/http): abort event when request is cancelled (#26781)

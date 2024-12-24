@@ -22,7 +22,7 @@ use crate::cache::ModuleInfoCache;
 use crate::cache::NodeAnalysisCache;
 use crate::cache::ParsedSourceCache;
 use crate::emit::Emitter;
-use crate::file_fetcher::FileFetcher;
+use crate::file_fetcher::CliFileFetcher;
 use crate::graph_container::MainModuleGraphContainer;
 use crate::graph_util::FileWatcherReporter;
 use crate::graph_util::ModuleGraphBuilder;
@@ -48,7 +48,6 @@ use crate::resolver::CliNpmReqResolver;
 use crate::resolver::CliResolver;
 use crate::resolver::CliResolverOptions;
 use crate::resolver::CliSloppyImportsResolver;
-use crate::resolver::IsCjsResolverOptions;
 use crate::resolver::NpmModuleLoader;
 use crate::resolver::SloppyImportsCachedFs;
 use crate::standalone::DenoCompileBinaryWriter;
@@ -72,6 +71,7 @@ use deno_core::error::AnyError;
 use deno_core::futures::FutureExt;
 use deno_core::FeatureChecker;
 
+use deno_resolver::cjs::IsCjsResolutionMode;
 use deno_resolver::npm::NpmReqResolverOptions;
 use deno_resolver::DenoResolverOptions;
 use deno_resolver::NodeAndNpmReqResolver;
@@ -185,7 +185,7 @@ struct CliFactoryServices {
   emit_cache: Deferred<Arc<EmitCache>>,
   emitter: Deferred<Arc<Emitter>>,
   feature_checker: Deferred<Arc<FeatureChecker>>,
-  file_fetcher: Deferred<Arc<FileFetcher>>,
+  file_fetcher: Deferred<Arc<CliFileFetcher>>,
   fs: Deferred<Arc<dyn deno_fs::FileSystem>>,
   global_http_cache: Deferred<Arc<GlobalHttpCache>>,
   http_cache: Deferred<Arc<dyn HttpCache>>,
@@ -350,16 +350,17 @@ impl CliFactory {
     })
   }
 
-  pub fn file_fetcher(&self) -> Result<&Arc<FileFetcher>, AnyError> {
+  pub fn file_fetcher(&self) -> Result<&Arc<CliFileFetcher>, AnyError> {
     self.services.file_fetcher.get_or_try_init(|| {
       let cli_options = self.cli_options()?;
-      Ok(Arc::new(FileFetcher::new(
+      Ok(Arc::new(CliFileFetcher::new(
         self.http_cache()?.clone(),
-        cli_options.cache_setting(),
-        !cli_options.no_remote(),
         self.http_client_provider().clone(),
         self.blob_store().clone(),
         Some(self.text_only_progress_bar().clone()),
+        !cli_options.no_remote(),
+        cli_options.cache_setting(),
+        log::Level::Info,
       )))
     })
   }
@@ -504,7 +505,12 @@ impl CliFactory {
         let resolver = cli_options
           .create_workspace_resolver(
             self.file_fetcher()?,
-            if cli_options.use_byonm() {
+            if cli_options.use_byonm()
+              && !matches!(
+                cli_options.sub_command(),
+                DenoSubcommand::Publish(_)
+              )
+            {
               PackageJsonDepResolution::Disabled
             } else {
               // todo(dsherret): this should be false for nodeModulesDir: true
@@ -845,9 +851,12 @@ impl CliFactory {
       Ok(Arc::new(CjsTracker::new(
         self.in_npm_pkg_checker()?.clone(),
         self.pkg_json_resolver().clone(),
-        IsCjsResolverOptions {
-          detect_cjs: options.detect_cjs(),
-          is_node_main: options.is_node_main(),
+        if options.is_node_main() || options.unstable_detect_cjs() {
+          IsCjsResolutionMode::ImplicitTypeCommonJs
+        } else if options.detect_cjs() {
+          IsCjsResolutionMode::ExplicitTypeCommonJs
+        } else {
+          IsCjsResolutionMode::Disabled
         },
       )))
     })
@@ -884,6 +893,7 @@ impl CliFactory {
     let cli_options = self.cli_options()?;
     Ok(DenoCompileBinaryWriter::new(
       self.cjs_tracker()?,
+      self.cli_options()?,
       self.deno_dir()?,
       self.emitter()?,
       self.file_fetcher()?,
@@ -975,6 +985,7 @@ impl CliFactory {
       cli_options.sub_command().clone(),
       self.create_cli_main_worker_options()?,
       self.cli_options()?.otel_config(),
+      self.cli_options()?.default_npm_caching_strategy(),
     ))
   }
 

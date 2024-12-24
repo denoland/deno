@@ -14,6 +14,7 @@ use deno_runtime::deno_node::NodeResolver;
 use deno_semver::package::PackageNv;
 use deno_task_shell::ExecutableCommand;
 use deno_task_shell::ExecuteResult;
+use deno_task_shell::KillSignal;
 use deno_task_shell::ShellCommand;
 use deno_task_shell::ShellCommandContext;
 use deno_task_shell::ShellPipeReader;
@@ -22,6 +23,7 @@ use lazy_regex::Lazy;
 use regex::Regex;
 use tokio::task::JoinHandle;
 use tokio::task::LocalSet;
+use tokio_util::sync::CancellationToken;
 
 use crate::npm::CliNpmResolver;
 use crate::npm::InnerCliNpmResolverRef;
@@ -45,9 +47,11 @@ impl TaskStdio {
   pub fn stdout() -> Self {
     Self(None, ShellPipeWriter::stdout())
   }
+
   pub fn stderr() -> Self {
     Self(None, ShellPipeWriter::stderr())
   }
+
   pub fn piped() -> Self {
     let (r, w) = deno_task_shell::pipe();
     Self(Some(r), w)
@@ -62,8 +66,8 @@ pub struct TaskIo {
 impl Default for TaskIo {
   fn default() -> Self {
     Self {
-      stderr: TaskStdio::stderr(),
       stdout: TaskStdio::stdout(),
+      stderr: TaskStdio::stderr(),
     }
   }
 }
@@ -78,6 +82,7 @@ pub struct RunTaskOptions<'a> {
   pub custom_commands: HashMap<String, Rc<dyn ShellCommand>>,
   pub root_node_modules_dir: Option<&'a Path>,
   pub stdio: Option<TaskIo>,
+  pub kill_signal: KillSignal,
 }
 
 pub type TaskCustomCommands = HashMap<String, Rc<dyn ShellCommand>>;
@@ -96,8 +101,12 @@ pub async fn run_task(
     .with_context(|| format!("Error parsing script '{}'.", opts.task_name))?;
   let env_vars =
     prepare_env_vars(opts.env_vars, opts.init_cwd, opts.root_node_modules_dir);
-  let state =
-    deno_task_shell::ShellState::new(env_vars, opts.cwd, opts.custom_commands);
+  let state = deno_task_shell::ShellState::new(
+    env_vars,
+    opts.cwd,
+    opts.custom_commands,
+    opts.kill_signal,
+  );
   let stdio = opts.stdio.unwrap_or_default();
   let (
     TaskStdio(stdout_read, stdout_write),
@@ -483,20 +492,32 @@ fn resolve_execution_path_from_npx_shim(
   static SCRIPT_PATH_RE: Lazy<Regex> =
     lazy_regex::lazy_regex!(r#""\$basedir\/([^"]+)" "\$@""#);
 
-  if text.starts_with("#!/usr/bin/env node") {
-    // launch this file itself because it's a JS file
-    Some(file_path)
-  } else {
-    // Search for...
-    // > "$basedir/../next/dist/bin/next" "$@"
-    // ...which is what it will look like on Windows
-    SCRIPT_PATH_RE
-      .captures(text)
-      .and_then(|c| c.get(1))
-      .map(|relative_path| {
-        file_path.parent().unwrap().join(relative_path.as_str())
-      })
+  let maybe_first_line = {
+    let index = text.find("\n")?;
+    Some(&text[0..index])
+  };
+
+  if let Some(first_line) = maybe_first_line {
+    // NOTE(bartlomieju): this is not perfect, but handle two most common scenarios
+    // where Node is run without any args. If there are args then we use `NodeCommand`
+    // struct.
+    if first_line == "#!/usr/bin/env node"
+      || first_line == "#!/usr/bin/env -S node"
+    {
+      // launch this file itself because it's a JS file
+      return Some(file_path);
+    }
   }
+
+  // Search for...
+  // > "$basedir/../next/dist/bin/next" "$@"
+  // ...which is what it will look like on Windows
+  SCRIPT_PATH_RE
+    .captures(text)
+    .and_then(|c| c.get(1))
+    .map(|relative_path| {
+      file_path.parent().unwrap().join(relative_path.as_str())
+    })
 }
 
 fn resolve_managed_npm_commands(
@@ -523,6 +544,86 @@ fn resolve_managed_npm_commands(
     result.insert("npx".to_string(), Rc::new(NpxCommand));
   }
   Ok(result)
+}
+
+/// Runs a deno task future forwarding any signals received
+/// to the process.
+///
+/// Signal listeners and ctrl+c listening will be setup.
+pub async fn run_future_forwarding_signals<TOutput>(
+  kill_signal: KillSignal,
+  future: impl std::future::Future<Output = TOutput>,
+) -> TOutput {
+  fn spawn_future_with_cancellation(
+    future: impl std::future::Future<Output = ()> + 'static,
+    token: CancellationToken,
+  ) {
+    deno_core::unsync::spawn(async move {
+      tokio::select! {
+        _ = future => {}
+        _ = token.cancelled() => {}
+      }
+    });
+  }
+
+  let token = CancellationToken::new();
+  let _token_drop_guard = token.clone().drop_guard();
+  let _drop_guard = kill_signal.clone().drop_guard();
+
+  spawn_future_with_cancellation(
+    listen_ctrl_c(kill_signal.clone()),
+    token.clone(),
+  );
+  #[cfg(unix)]
+  spawn_future_with_cancellation(
+    listen_and_forward_all_signals(kill_signal),
+    token,
+  );
+
+  future.await
+}
+
+async fn listen_ctrl_c(kill_signal: KillSignal) {
+  while let Ok(()) = tokio::signal::ctrl_c().await {
+    // On windows, ctrl+c is sent to the process group, so the signal would
+    // have already been sent to the child process. We still want to listen
+    // for ctrl+c here to keep the process alive when receiving it, but no
+    // need to forward the signal because it's already been sent.
+    if !cfg!(windows) {
+      kill_signal.send(deno_task_shell::SignalKind::SIGINT)
+    }
+  }
+}
+
+#[cfg(unix)]
+async fn listen_and_forward_all_signals(kill_signal: KillSignal) {
+  use deno_core::futures::FutureExt;
+  use deno_runtime::signal::SIGNAL_NUMS;
+
+  // listen and forward every signal we support
+  let mut futures = Vec::with_capacity(SIGNAL_NUMS.len());
+  for signo in SIGNAL_NUMS.iter().copied() {
+    if signo == libc::SIGKILL || signo == libc::SIGSTOP {
+      continue; // skip, can't listen to these
+    }
+
+    let kill_signal = kill_signal.clone();
+    futures.push(
+      async move {
+        let Ok(mut stream) = tokio::signal::unix::signal(
+          tokio::signal::unix::SignalKind::from_raw(signo),
+        ) else {
+          return;
+        };
+        let signal_kind: deno_task_shell::SignalKind = signo.into();
+        while let Some(()) = stream.recv().await {
+          kill_signal.send(signal_kind);
+        }
+      }
+      .boxed_local(),
+    )
+  }
+  futures::future::join_all(futures).await;
 }
 
 #[cfg(test)]
@@ -562,6 +663,16 @@ mod test {
   fn test_resolve_execution_path_from_npx_shim() {
     // example shim on unix
     let unix_shim = r#"#!/usr/bin/env node
+"use strict";
+console.log('Hi!');
+"#;
+    let path = PathBuf::from("/node_modules/.bin/example");
+    assert_eq!(
+      resolve_execution_path_from_npx_shim(path.clone(), unix_shim).unwrap(),
+      path
+    );
+    // example shim on unix
+    let unix_shim = r#"#!/usr/bin/env -S node
 "use strict";
 console.log('Hi!');
 "#;

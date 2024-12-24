@@ -5,8 +5,6 @@ use std::path::Path;
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use cache::RegistryInfoDownloader;
-use cache::TarballCache;
 use deno_ast::ModuleSpecifier;
 use deno_cache_dir::npm::NpmCacheDir;
 use deno_core::anyhow::Context;
@@ -22,6 +20,7 @@ use deno_npm::resolution::ValidSerializedNpmResolutionSnapshot;
 use deno_npm::NpmPackageId;
 use deno_npm::NpmResolutionPackage;
 use deno_npm::NpmSystemInfo;
+use deno_npm_cache::NpmCacheSetting;
 use deno_resolver::npm::CliNpmReqResolver;
 use deno_runtime::colors;
 use deno_runtime::deno_fs::FileSystem;
@@ -42,23 +41,22 @@ use crate::args::NpmProcessState;
 use crate::args::NpmProcessStateKind;
 use crate::args::PackageJsonDepValueParseWithLocationError;
 use crate::cache::FastInsecureHasher;
-use crate::http_util::HttpClientProvider;
 use crate::util::fs::canonicalize_path_maybe_not_exists_with_fs;
 use crate::util::progress_bar::ProgressBar;
 use crate::util::sync::AtomicFlag;
 
-use self::cache::NpmCache;
-use self::registry::CliNpmRegistryApi;
 use self::resolution::NpmResolution;
 use self::resolvers::create_npm_fs_resolver;
 use self::resolvers::NpmPackageFsResolver;
 
+use super::CliNpmCache;
+use super::CliNpmCacheEnv;
+use super::CliNpmRegistryInfoProvider;
 use super::CliNpmResolver;
+use super::CliNpmTarballCache;
 use super::InnerCliNpmResolverRef;
 use super::ResolvePkgFolderFromDenoReqError;
 
-pub mod cache;
-mod registry;
 mod resolution;
 mod resolvers;
 
@@ -73,7 +71,7 @@ pub struct CliManagedNpmResolverCreateOptions {
   pub fs: Arc<dyn deno_runtime::deno_fs::FileSystem>,
   pub http_client_provider: Arc<crate::http_util::HttpClientProvider>,
   pub npm_cache_dir: Arc<NpmCacheDir>,
-  pub cache_setting: crate::args::CacheSetting,
+  pub cache_setting: deno_cache_dir::file_fetcher::CacheSetting,
   pub text_only_progress_bar: crate::util::progress_bar::ProgressBar,
   pub maybe_node_modules_path: Option<PathBuf>,
   pub npm_system_info: NpmSystemInfo,
@@ -85,8 +83,9 @@ pub struct CliManagedNpmResolverCreateOptions {
 pub async fn create_managed_npm_resolver_for_lsp(
   options: CliManagedNpmResolverCreateOptions,
 ) -> Arc<dyn CliNpmResolver> {
-  let npm_cache = create_cache(&options);
-  let npm_api = create_api(&options, npm_cache.clone());
+  let cache_env = create_cache_env(&options);
+  let npm_cache = create_cache(cache_env.clone(), &options);
+  let npm_api = create_api(npm_cache.clone(), cache_env.clone(), &options);
   // spawn due to the lsp's `Send` requirement
   deno_core::unsync::spawn(async move {
     let snapshot = match resolve_snapshot(&npm_api, options.snapshot).await {
@@ -97,8 +96,8 @@ pub async fn create_managed_npm_resolver_for_lsp(
       }
     };
     create_inner(
+      cache_env,
       options.fs,
-      options.http_client_provider,
       options.maybe_lockfile,
       npm_api,
       npm_cache,
@@ -118,14 +117,15 @@ pub async fn create_managed_npm_resolver_for_lsp(
 pub async fn create_managed_npm_resolver(
   options: CliManagedNpmResolverCreateOptions,
 ) -> Result<Arc<dyn CliNpmResolver>, AnyError> {
-  let npm_cache = create_cache(&options);
-  let npm_api = create_api(&options, npm_cache.clone());
-  let snapshot = resolve_snapshot(&npm_api, options.snapshot).await?;
+  let npm_cache_env = create_cache_env(&options);
+  let npm_cache = create_cache(npm_cache_env.clone(), &options);
+  let api = create_api(npm_cache.clone(), npm_cache_env.clone(), &options);
+  let snapshot = resolve_snapshot(&api, options.snapshot).await?;
   Ok(create_inner(
+    npm_cache_env,
     options.fs,
-    options.http_client_provider,
     options.maybe_lockfile,
-    npm_api,
+    api,
     npm_cache,
     options.npmrc,
     options.npm_install_deps_provider,
@@ -139,11 +139,11 @@ pub async fn create_managed_npm_resolver(
 
 #[allow(clippy::too_many_arguments)]
 fn create_inner(
+  env: Arc<CliNpmCacheEnv>,
   fs: Arc<dyn deno_runtime::deno_fs::FileSystem>,
-  http_client_provider: Arc<HttpClientProvider>,
   maybe_lockfile: Option<Arc<CliLockfile>>,
-  npm_api: Arc<CliNpmRegistryApi>,
-  npm_cache: Arc<NpmCache>,
+  registry_info_provider: Arc<CliNpmRegistryInfoProvider>,
+  npm_cache: Arc<CliNpmCache>,
   npm_rc: Arc<ResolvedNpmRc>,
   npm_install_deps_provider: Arc<NpmInstallDepsProvider>,
   text_only_progress_bar: crate::util::progress_bar::ProgressBar,
@@ -153,16 +153,14 @@ fn create_inner(
   lifecycle_scripts: LifecycleScriptsConfig,
 ) -> Arc<dyn CliNpmResolver> {
   let resolution = Arc::new(NpmResolution::from_serialized(
-    npm_api.clone(),
+    registry_info_provider.clone(),
     snapshot,
     maybe_lockfile.clone(),
   ));
-  let tarball_cache = Arc::new(TarballCache::new(
+  let tarball_cache = Arc::new(CliNpmTarballCache::new(
     npm_cache.clone(),
-    fs.clone(),
-    http_client_provider.clone(),
+    env,
     npm_rc.clone(),
-    text_only_progress_bar.clone(),
   ));
   let fs_resolver = create_npm_fs_resolver(
     fs.clone(),
@@ -179,7 +177,7 @@ fn create_inner(
     fs,
     fs_resolver,
     maybe_lockfile,
-    npm_api,
+    registry_info_provider,
     npm_cache,
     npm_install_deps_provider,
     resolution,
@@ -190,41 +188,55 @@ fn create_inner(
   ))
 }
 
-fn create_cache(options: &CliManagedNpmResolverCreateOptions) -> Arc<NpmCache> {
-  Arc::new(NpmCache::new(
+fn create_cache_env(
+  options: &CliManagedNpmResolverCreateOptions,
+) -> Arc<CliNpmCacheEnv> {
+  Arc::new(CliNpmCacheEnv::new(
+    options.fs.clone(),
+    options.http_client_provider.clone(),
+    options.text_only_progress_bar.clone(),
+  ))
+}
+
+fn create_cache(
+  env: Arc<CliNpmCacheEnv>,
+  options: &CliManagedNpmResolverCreateOptions,
+) -> Arc<CliNpmCache> {
+  Arc::new(CliNpmCache::new(
     options.npm_cache_dir.clone(),
-    options.cache_setting.clone(),
+    NpmCacheSetting::from_cache_setting(&options.cache_setting),
+    env,
     options.npmrc.clone(),
   ))
 }
 
 fn create_api(
+  cache: Arc<CliNpmCache>,
+  env: Arc<CliNpmCacheEnv>,
   options: &CliManagedNpmResolverCreateOptions,
-  npm_cache: Arc<NpmCache>,
-) -> Arc<CliNpmRegistryApi> {
-  Arc::new(CliNpmRegistryApi::new(
-    npm_cache.clone(),
-    Arc::new(RegistryInfoDownloader::new(
-      npm_cache,
-      options.http_client_provider.clone(),
-      options.npmrc.clone(),
-      options.text_only_progress_bar.clone(),
-    )),
+) -> Arc<CliNpmRegistryInfoProvider> {
+  Arc::new(CliNpmRegistryInfoProvider::new(
+    cache,
+    env,
+    options.npmrc.clone(),
   ))
 }
 
 async fn resolve_snapshot(
-  api: &CliNpmRegistryApi,
+  registry_info_provider: &Arc<CliNpmRegistryInfoProvider>,
   snapshot: CliNpmResolverManagedSnapshotOption,
 ) -> Result<Option<ValidSerializedNpmResolutionSnapshot>, AnyError> {
   match snapshot {
     CliNpmResolverManagedSnapshotOption::ResolveFromLockfile(lockfile) => {
       if !lockfile.overwrite() {
-        let snapshot = snapshot_from_lockfile(lockfile.clone(), api)
-          .await
-          .with_context(|| {
-            format!("failed reading lockfile '{}'", lockfile.filename.display())
-          })?;
+        let snapshot = snapshot_from_lockfile(
+          lockfile.clone(),
+          &registry_info_provider.as_npm_registry_api(),
+        )
+        .await
+        .with_context(|| {
+          format!("failed reading lockfile '{}'", lockfile.filename.display())
+        })?;
         Ok(Some(snapshot))
       } else {
         Ok(None)
@@ -285,17 +297,23 @@ pub fn create_managed_in_npm_pkg_checker(
   Arc::new(ManagedInNpmPackageChecker { root_dir })
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum PackageCaching<'a> {
+  Only(Cow<'a, [PackageReq]>),
+  All,
+}
+
 /// An npm resolver where the resolution is managed by Deno rather than
 /// the user bringing their own node_modules (BYONM) on the file system.
 pub struct ManagedCliNpmResolver {
   fs: Arc<dyn FileSystem>,
   fs_resolver: Arc<dyn NpmPackageFsResolver>,
   maybe_lockfile: Option<Arc<CliLockfile>>,
-  npm_api: Arc<CliNpmRegistryApi>,
-  npm_cache: Arc<NpmCache>,
+  registry_info_provider: Arc<CliNpmRegistryInfoProvider>,
+  npm_cache: Arc<CliNpmCache>,
   npm_install_deps_provider: Arc<NpmInstallDepsProvider>,
   resolution: Arc<NpmResolution>,
-  tarball_cache: Arc<TarballCache>,
+  tarball_cache: Arc<CliNpmTarballCache>,
   text_only_progress_bar: ProgressBar,
   npm_system_info: NpmSystemInfo,
   top_level_install_flag: AtomicFlag,
@@ -316,11 +334,11 @@ impl ManagedCliNpmResolver {
     fs: Arc<dyn FileSystem>,
     fs_resolver: Arc<dyn NpmPackageFsResolver>,
     maybe_lockfile: Option<Arc<CliLockfile>>,
-    npm_api: Arc<CliNpmRegistryApi>,
-    npm_cache: Arc<NpmCache>,
+    registry_info_provider: Arc<CliNpmRegistryInfoProvider>,
+    npm_cache: Arc<CliNpmCache>,
     npm_install_deps_provider: Arc<NpmInstallDepsProvider>,
     resolution: Arc<NpmResolution>,
-    tarball_cache: Arc<TarballCache>,
+    tarball_cache: Arc<CliNpmTarballCache>,
     text_only_progress_bar: ProgressBar,
     npm_system_info: NpmSystemInfo,
     lifecycle_scripts: LifecycleScriptsConfig,
@@ -329,7 +347,7 @@ impl ManagedCliNpmResolver {
       fs,
       fs_resolver,
       maybe_lockfile,
-      npm_api,
+      registry_info_provider,
       npm_cache,
       npm_install_deps_provider,
       text_only_progress_bar,
@@ -409,19 +427,44 @@ impl ManagedCliNpmResolver {
 
   /// Adds package requirements to the resolver and ensures everything is setup.
   /// This includes setting up the `node_modules` directory, if applicable.
-  pub async fn add_package_reqs(
+  pub async fn add_and_cache_package_reqs(
     &self,
     packages: &[PackageReq],
   ) -> Result<(), AnyError> {
     self
-      .add_package_reqs_raw(packages)
+      .add_package_reqs_raw(
+        packages,
+        Some(PackageCaching::Only(packages.into())),
+      )
       .await
       .dependencies_result
   }
 
-  pub async fn add_package_reqs_raw(
+  pub async fn add_package_reqs_no_cache(
     &self,
     packages: &[PackageReq],
+  ) -> Result<(), AnyError> {
+    self
+      .add_package_reqs_raw(packages, None)
+      .await
+      .dependencies_result
+  }
+
+  pub async fn add_package_reqs(
+    &self,
+    packages: &[PackageReq],
+    caching: PackageCaching<'_>,
+  ) -> Result<(), AnyError> {
+    self
+      .add_package_reqs_raw(packages, Some(caching))
+      .await
+      .dependencies_result
+  }
+
+  pub async fn add_package_reqs_raw<'a>(
+    &self,
+    packages: &[PackageReq],
+    caching: Option<PackageCaching<'a>>,
   ) -> AddPkgReqsResult {
     if packages.is_empty() {
       return AddPkgReqsResult {
@@ -438,7 +481,9 @@ impl ManagedCliNpmResolver {
       }
     }
     if result.dependencies_result.is_ok() {
-      result.dependencies_result = self.cache_packages().await;
+      if let Some(caching) = caching {
+        result.dependencies_result = self.cache_packages(caching).await;
+      }
     }
 
     result
@@ -480,16 +525,20 @@ impl ManagedCliNpmResolver {
   pub async fn inject_synthetic_types_node_package(
     &self,
   ) -> Result<(), AnyError> {
+    let reqs = &[PackageReq::from_str("@types/node").unwrap()];
     // add and ensure this isn't added to the lockfile
     self
-      .add_package_reqs(&[PackageReq::from_str("@types/node").unwrap()])
+      .add_package_reqs(reqs, PackageCaching::Only(reqs.into()))
       .await?;
 
     Ok(())
   }
 
-  pub async fn cache_packages(&self) -> Result<(), AnyError> {
-    self.fs_resolver.cache_packages().await
+  pub async fn cache_packages(
+    &self,
+    caching: PackageCaching<'_>,
+  ) -> Result<(), AnyError> {
+    self.fs_resolver.cache_packages(caching).await
   }
 
   pub fn resolve_pkg_folder_from_deno_module(
@@ -500,7 +549,7 @@ impl ManagedCliNpmResolver {
     self.resolve_pkg_folder_from_pkg_id(&pkg_id)
   }
 
-  fn resolve_pkg_id_from_pkg_req(
+  pub fn resolve_pkg_id_from_pkg_req(
     &self,
     req: &PackageReq,
   ) -> Result<NpmPackageId, PackageReqNotFoundError> {
@@ -511,11 +560,11 @@ impl ManagedCliNpmResolver {
     &self,
   ) -> Result<(), Box<PackageJsonDepValueParseWithLocationError>> {
     for err in self.npm_install_deps_provider.pkg_json_dep_errors() {
-      match &err.source {
-        deno_package_json::PackageJsonDepValueParseError::VersionReq(_) => {
+      match err.source.as_kind() {
+        deno_package_json::PackageJsonDepValueParseErrorKind::VersionReq(_) => {
           return Err(Box::new(err.clone()));
         }
-        deno_package_json::PackageJsonDepValueParseError::Unsupported {
+        deno_package_json::PackageJsonDepValueParseErrorKind::Unsupported {
           ..
         } => {
           // only warn for this one
@@ -534,18 +583,18 @@ impl ManagedCliNpmResolver {
   /// Ensures that the top level `package.json` dependencies are installed.
   /// This may set up the `node_modules` directory.
   ///
-  /// Returns `true` if any changes (such as caching packages) were made.
-  /// If this returns `false`, `node_modules` has _not_ been set up.
+  /// Returns `true` if the top level packages are already installed. A
+  /// return value of `false` means that new packages were added to the NPM resolution.
   pub async fn ensure_top_level_package_json_install(
     &self,
   ) -> Result<bool, AnyError> {
     if !self.top_level_install_flag.raise() {
-      return Ok(false); // already did this
+      return Ok(true); // already did this
     }
 
     let pkg_json_remote_pkgs = self.npm_install_deps_provider.remote_pkgs();
     if pkg_json_remote_pkgs.is_empty() {
-      return Ok(false);
+      return Ok(true);
     }
 
     // check if something needs resolving before bothering to load all
@@ -559,14 +608,16 @@ impl ManagedCliNpmResolver {
       log::debug!(
         "All package.json deps resolvable. Skipping top level install."
       );
-      return Ok(false); // everything is already resolvable
+      return Ok(true); // everything is already resolvable
     }
 
     let pkg_reqs = pkg_json_remote_pkgs
       .iter()
       .map(|pkg| pkg.req.clone())
       .collect::<Vec<_>>();
-    self.add_package_reqs(&pkg_reqs).await.map(|_| true)
+    self.add_package_reqs_no_cache(&pkg_reqs).await?;
+
+    Ok(false)
   }
 
   pub async fn cache_package_info(
@@ -575,7 +626,7 @@ impl ManagedCliNpmResolver {
   ) -> Result<Arc<NpmPackageInfo>, AnyError> {
     // this will internally cache the package information
     self
-      .npm_api
+      .registry_info_provider
       .package_info(package_name)
       .await
       .map_err(|err| err.into())
@@ -671,7 +722,7 @@ impl CliNpmResolver for ManagedCliNpmResolver {
   fn clone_snapshotted(&self) -> Arc<dyn CliNpmResolver> {
     // create a new snapshotted npm resolution and resolver
     let npm_resolution = Arc::new(NpmResolution::new(
-      self.npm_api.clone(),
+      self.registry_info_provider.clone(),
       self.resolution.snapshot(),
       self.maybe_lockfile.clone(),
     ));
@@ -690,7 +741,7 @@ impl CliNpmResolver for ManagedCliNpmResolver {
         self.lifecycle_scripts.clone(),
       ),
       self.maybe_lockfile.clone(),
-      self.npm_api.clone(),
+      self.registry_info_provider.clone(),
       self.npm_cache.clone(),
       self.npm_install_deps_provider.clone(),
       npm_resolution,

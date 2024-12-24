@@ -1360,26 +1360,31 @@ fn lsp_deno_task() {
   let temp_dir = context.temp_dir();
   temp_dir.write(
     "deno.jsonc",
-    r#"{
-    "tasks": {
-      "build": "deno test"
-    }
-  }"#,
+    json!({
+      "tasks": {
+        "build": "deno test",
+        "serve": {
+          "description": "Start the dev server",
+          "command": "deno run -RN server.ts",
+        },
+      },
+    })
+    .to_string(),
   );
-
   let mut client = context.new_lsp_command().build();
-  client.initialize(|builder| {
-    builder.set_config("./deno.jsonc");
-  });
-
-  let res = client.write_request("deno/task", json!(null));
-
+  client.initialize_default();
+  let res = client.write_request("deno/taskDefinitions", json!(null));
   assert_eq!(
     res,
     json!([
       {
         "name": "build",
-        "detail": "deno test",
+        "command": "deno test",
+        "sourceUri": temp_dir.url().join("deno.jsonc").unwrap(),
+      },
+      {
+        "name": "serve",
+        "command": "deno run -RN server.ts",
         "sourceUri": temp_dir.url().join("deno.jsonc").unwrap(),
       }
     ])
@@ -2078,6 +2083,88 @@ fn lsp_inlay_hints_not_enabled() {
 }
 
 #[test]
+fn lsp_suggestion_actions_disabled() {
+  let context = TestContextBuilder::new().use_temp_cwd().build();
+  let temp_dir = context.temp_dir();
+  let mut client = context.new_lsp_command().build();
+  client.initialize_default();
+  client.change_configuration(json!({
+    "deno": {
+      "enable": true,
+      "lint": false,
+    },
+    "typescript": {
+      "suggestionActions": {
+        "enabled": false,
+      },
+    },
+  }));
+  client.read_diagnostics();
+  let diagnostics = client.did_open(json!({
+    "textDocument": {
+      "uri": temp_dir.url().join("file.ts").unwrap(),
+      "languageId": "typescript",
+      "version": 1,
+      "text": r#"
+        // The settings should disable the suggestion for this to be async.
+        function asyncLikeFunction() {
+          return new Promise((r) => r(null)).then((v) => v);
+        }
+        console.log(asyncLikeFunction);
+
+        // Deprecated warnings should remain.
+        /** @deprecated */
+        function deprecatedFunction() {}
+        console.log(deprecatedFunction);
+
+        // Unused warnings should remain.
+        const unsusedVariable = 1;
+      "#,
+    },
+  }));
+  assert_eq!(
+    json!(diagnostics.all()),
+    json!([
+      {
+        "range": {
+          "start": { "line": 10, "character": 20 },
+          "end": { "line": 10, "character": 38 },
+        },
+        "severity": 4,
+        "code": 6385,
+        "source": "deno-ts",
+        "message": "'deprecatedFunction' is deprecated.",
+        "relatedInformation": [
+          {
+            "location": {
+              "uri": temp_dir.url().join("file.ts").unwrap(),
+              "range": {
+                "start": { "line": 8, "character": 12 },
+                "end": { "line": 8, "character": 24 },
+              },
+            },
+            "message": "The declaration was marked as deprecated here.",
+          },
+        ],
+        "tags": [2],
+      },
+      {
+        "range": {
+          "start": { "line": 13, "character": 14 },
+          "end": { "line": 13, "character": 29 },
+        },
+        "severity": 4,
+        "code": 6133,
+        "source": "deno-ts",
+        "message": "'unsusedVariable' is declared but its value is never read.",
+        "tags": [1],
+      },
+    ]),
+  );
+  client.shutdown();
+}
+
+#[test]
 fn lsp_workspace_disable_enable_paths() {
   fn run_test(use_trailing_slash: bool) {
     let context = TestContextBuilder::new().use_temp_cwd().build();
@@ -2696,7 +2783,7 @@ fn lsp_hover_dependency() {
         "uri": "file:///a/file.ts",
         "languageId": "typescript",
         "version": 1,
-        "text": "import * as a from \"http://127.0.0.1:4545/xTypeScriptTypes.js\";\n// @deno-types=\"http://127.0.0.1:4545/type_definitions/foo.d.ts\"\nimport * as b from \"http://127.0.0.1:4545/type_definitions/foo.js\";\nimport * as c from \"http://127.0.0.1:4545/subdir/type_reference.js\";\nimport * as d from \"http://127.0.0.1:4545/subdir/mod1.ts\";\nimport * as e from \"data:application/typescript;base64,ZXhwb3J0IGNvbnN0IGEgPSAiYSI7CgpleHBvcnQgZW51bSBBIHsKICBBLAogIEIsCiAgQywKfQo=\";\nimport * as f from \"./file_01.ts\";\nimport * as g from \"http://localhost:4545/x/a/mod.ts\";\nimport * as h from \"./mod🦕.ts\";\n\nconsole.log(a, b, c, d, e, f, g, h);\n"
+        "text": "import * as a from \"http://127.0.0.1:4545/xTypeScriptTypes.js\";\n// @ts-types=\"http://127.0.0.1:4545/type_definitions/foo.d.ts\"\nimport * as b from \"http://127.0.0.1:4545/type_definitions/foo.js\";\nimport * as c from \"http://127.0.0.1:4545/subdir/type_reference.js\";\nimport * as d from \"http://127.0.0.1:4545/subdir/mod1.ts\";\nimport * as e from \"data:application/typescript;base64,ZXhwb3J0IGNvbnN0IGEgPSAiYSI7CgpleHBvcnQgZW51bSBBIHsKICBBLAogIEIsCiAgQywKfQo=\";\nimport * as f from \"./file_01.ts\";\nimport * as g from \"http://localhost:4545/x/a/mod.ts\";\nimport * as h from \"./mod🦕.ts\";\n\nconsole.log(a, b, c, d, e, f, g, h);\n"
       }
     }),
   );
@@ -5427,7 +5514,8 @@ fn lsp_code_actions_deno_cache() {
 
   let res =
     client
-    .write_request(      "textDocument/codeAction",
+    .write_request(
+      "textDocument/codeAction",
       json!({
         "textDocument": {
           "uri": "file:///a/file.ts"
@@ -5453,8 +5541,7 @@ fn lsp_code_actions_deno_cache() {
           "only": ["quickfix"]
         }
       }),
-    )
-    ;
+    );
   assert_eq!(
     res,
     json!([{
@@ -5980,6 +6067,119 @@ fn lsp_jsr_code_action_missing_declaration() {
 }
 
 #[test]
+fn lsp_jsr_code_action_move_to_new_file() {
+  let context = TestContextBuilder::new()
+    .use_http_server()
+    .use_temp_cwd()
+    .build();
+  let temp_dir = context.temp_dir();
+  let file = source_file(
+    temp_dir.path().join("file.ts"),
+    r#"
+      import { someFunction } from "jsr:@denotest/types-file";
+      export const someValue = someFunction();
+    "#,
+  );
+  let mut client = context.new_lsp_command().build();
+  client.initialize_default();
+  client.write_request(
+    "workspace/executeCommand",
+    json!({
+      "command": "deno.cache",
+      "arguments": [[], file.url()],
+    }),
+  );
+  client.did_open_file(&file);
+  let list = client
+    .write_request_with_res_as::<Option<lsp::CodeActionResponse>>(
+      "textDocument/codeAction",
+      json!({
+        "textDocument": { "uri": file.url() },
+        "range": {
+          "start": { "line": 2, "character": 19 },
+          "end": { "line": 2, "character": 28 },
+        },
+        "context": { "diagnostics": [] },
+      }),
+    )
+    .unwrap();
+  let action = list
+    .iter()
+    .find_map(|c| match c {
+      lsp::CodeActionOrCommand::CodeAction(a)
+        if &a.title == "Move to a new file" =>
+      {
+        Some(a)
+      }
+      _ => None,
+    })
+    .unwrap();
+  let res = client.write_request("codeAction/resolve", json!(action));
+  assert_eq!(
+    res,
+    json!({
+      "title": "Move to a new file",
+      "kind": "refactor.move.newFile",
+      "edit": {
+        "documentChanges": [
+          {
+            "textDocument": { "uri": file.url(), "version": 1 },
+            "edits": [
+              {
+                "range": {
+                  "start": { "line": 1, "character": 6 },
+                  "end": { "line": 2, "character": 0 },
+                },
+                "newText": "",
+              },
+              {
+                "range": {
+                  "start": { "line": 2, "character": 0 },
+                  "end": { "line": 3, "character": 4 },
+                },
+                "newText": "",
+              },
+            ],
+          },
+          {
+            "kind": "create",
+            "uri": file.url().join("someValue.ts").unwrap(),
+            "options": {
+              "ignoreIfExists": true,
+            },
+          },
+          {
+            "textDocument": {
+              "uri": file.url().join("someValue.ts").unwrap(),
+              "version": null,
+            },
+            "edits": [
+              {
+                "range": {
+                  "start": { "line": 0, "character": 0 },
+                  "end": { "line": 0, "character": 0 },
+                },
+                "newText": "import { someFunction } from \"jsr:@denotest/types-file\";\n\nexport const someValue = someFunction();\n",
+              },
+            ],
+          },
+        ],
+      },
+      "isPreferred": false,
+      "data": {
+        "specifier": file.url(),
+        "range": {
+          "start": { "line": 2, "character": 19 },
+          "end": { "line": 2, "character": 28 },
+        },
+        "refactorName": "Move to a new file",
+        "actionName": "Move to a new file",
+      },
+    }),
+  );
+}
+
+#[test]
 fn lsp_code_actions_deno_cache_npm() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let mut client = context.new_lsp_command().build();
@@ -6004,7 +6204,7 @@ fn lsp_code_actions_deno_cache_npm() {
         "severity": 1,
         "code": "not-installed-npm",
         "source": "deno",
-        "message": "NPM package \"chalk\" is not installed or doesn't exist.",
+        "message": "npm package \"chalk\" is not installed or doesn't exist.",
         "data": { "specifier": "npm:chalk" }
       }],
       "version": 1
@@ -6031,7 +6231,7 @@ fn lsp_code_actions_deno_cache_npm() {
           "severity": 1,
           "code": "not-installed-npm",
           "source": "deno",
-          "message": "NPM package \"chalk\" is not installed or doesn't exist.",
+          "message": "npm package \"chalk\" is not installed or doesn't exist.",
           "data": { "specifier": "npm:chalk" }
         }],
         "only": ["quickfix"]
@@ -6051,7 +6251,7 @@ fn lsp_code_actions_deno_cache_npm() {
         "severity": 1,
         "code": "not-installed-npm",
         "source": "deno",
-        "message": "NPM package \"chalk\" is not installed or doesn't exist.",
+        "message": "npm package \"chalk\" is not installed or doesn't exist.",
         "data": { "specifier": "npm:chalk" }
       }],
       "command": {
@@ -6106,7 +6306,7 @@ fn lsp_code_actions_deno_cache_all() {
           "severity": 1,
           "code": "not-installed-npm",
           "source": "deno",
-          "message": "NPM package \"chalk\" is not installed or doesn't exist.",
+          "message": "npm package \"chalk\" is not installed or doesn't exist.",
           "data": { "specifier": "npm:chalk" },
         },
       ],
@@ -6194,7 +6394,7 @@ fn lsp_code_actions_deno_cache_all() {
             "severity": 1,
             "code": "not-installed-npm",
             "source": "deno",
-            "message": "NPM package \"chalk\" is not installed or doesn't exist.",
+            "message": "npm package \"chalk\" is not installed or doesn't exist.",
             "data": { "specifier": "npm:chalk" },
           },
         ],
@@ -6264,7 +6464,7 @@ fn lsp_code_actions_deno_types_for_npm() {
     res,
     json!([
       {
-        "title": "Add @deno-types directive for \"@types/react\"",
+        "title": "Add @ts-types directive for \"@types/react\"",
         "kind": "quickfix",
         "edit": {
           "changes": {
@@ -6274,7 +6474,7 @@ fn lsp_code_actions_deno_types_for_npm() {
                   "start": { "line": 0, "character": 0 },
                   "end": { "line": 0, "character": 0 },
                 },
-                "newText": "// @deno-types=\"@types/react\"\n",
+                "newText": "// @ts-types=\"@types/react\"\n",
               },
             ],
           },
@@ -6317,7 +6517,7 @@ fn lsp_code_actions_deno_types_for_npm() {
     res,
     json!([
       {
-        "title": "Add @deno-types directive for \"npm:@types/react@^18.3.10\"",
+        "title": "Add @ts-types directive for \"npm:@types/react@^18.3.10\"",
         "kind": "quickfix",
         "edit": {
           "changes": {
@@ -6327,7 +6527,7 @@ fn lsp_code_actions_deno_types_for_npm() {
                   "start": { "line": 0, "character": 0 },
                   "end": { "line": 0, "character": 0 },
                 },
-                "newText": "// @deno-types=\"npm:@types/react@^18.3.10\"\n",
+                "newText": "// @ts-types=\"npm:@types/react@^18.3.10\"\n",
               },
             ],
           },
@@ -7874,6 +8074,73 @@ fn lsp_completions_auto_import() {
 }
 
 #[test]
+fn lsp_completions_auto_import_node_builtin() {
+  let context = TestContextBuilder::new()
+    .use_http_server()
+    .use_temp_cwd()
+    .build();
+  let temp_dir = context.temp_dir();
+  let mut client = context.new_lsp_command().build();
+  client.initialize_default();
+  client.did_open(json!({
+    "textDocument": {
+      "uri": temp_dir.url().join("file.ts").unwrap(),
+      "languageId": "typescript",
+      "version": 1,
+      "text": r#"
+        import "npm:@types/node";
+        pathToFileURL
+      "#,
+    }
+  }));
+  client.write_request(
+    "workspace/executeCommand",
+    json!({
+      "command": "deno.cache",
+      "arguments": [[], temp_dir.url().join("file.ts").unwrap()],
+    }),
+  );
+  let list = client.get_completion_list(
+    temp_dir.url().join("file.ts").unwrap(),
+    (2, 21),
+    json!({ "triggerKind": 2 }),
+  );
+  assert!(!list.is_incomplete);
+  let item = list
+    .items
+    .iter()
+    .find(|item| item.label == "pathToFileURL")
+    .unwrap();
+  let res = client.write_request("completionItem/resolve", json!(item));
+  assert_eq!(
+    res,
+    json!({
+      "label": "pathToFileURL",
+      "labelDetails": {
+        "description": "node:url",
+      },
+      "kind": 3,
+      "detail": "function pathToFileURL(path: string, options?: PathToFileUrlOptions): URL",
+      "documentation": {
+        "kind": "markdown",
+        "value": "This function ensures that `path` is resolved absolutely, and that the URL\ncontrol characters are correctly encoded when converting into a File URL.\n\n```js\nimport { pathToFileURL } from 'node:url';\n\nnew URL('/foo#1', 'file:');           // Incorrect: file:///foo#1\npathToFileURL('/foo#1');              // Correct:   file:///foo#1 (POSIX)\n\nnew URL('/some/path%.c', 'file:');    // Incorrect: file:///some/path%.c\npathToFileURL('/some/path%.c');       // Correct:   file:///some/path%.c (POSIX)\n```\n\n*@since* - v10.12.0  \n\n*@param* - path The path to convert to a File URL.  \n\n*@return* - The file URL object.",
+      },
+      "sortText": "￿16_1",
+      "additionalTextEdits": [
+        {
+          "range": {
+            "start": { "line": 2, "character": 0 },
+            "end": { "line": 2, "character": 0 },
+          },
+          "newText": "        import { pathToFileURL } from \"node:url\";\n",
+        },
+      ],
+    }),
+  );
+  client.shutdown();
+}
+
+#[test]
 fn lsp_npm_completions_auto_import_and_quick_fix_no_import_map() {
   let context = TestContextBuilder::new()
     .use_http_server()
@@ -8305,7 +8572,7 @@ fn lsp_npm_auto_import_with_deno_types() {
   temp_dir.write(
     "other.ts",
     r#"
-      // @deno-types="@types/lz-string"
+      // @ts-types="@types/lz-string"
       import "lz-string";
     "#,
   );
@@ -8353,7 +8620,7 @@ fn lsp_npm_auto_import_with_deno_types() {
             "start": { "line": 0, "character": 0 },
             "end": { "line": 0, "character": 0 },
           },
-          "newText": "// @deno-types=\"@types/lz-string\"\nimport { compressToBase64 } from \"lz-string\";\n",
+          "newText": "// @ts-types=\"@types/lz-string\"\nimport { compressToBase64 } from \"lz-string\";\n",
         },
       ],
     }),
@@ -8386,7 +8653,7 @@ fn lsp_npm_auto_import_with_deno_types() {
             "start": { "line": 0, "character": 0 },
             "end": { "line": 0, "character": 0 },
           },
-          "newText": "// @deno-types=\"@types/react\"\nimport { createRef } from \"react\";\n",
+          "newText": "// @ts-types=\"@types/react\"\nimport { createRef } from \"react\";\n",
         },
       ],
     }),
@@ -8455,9 +8722,9 @@ fn lsp_completions_node_specifier() {
       "node:process",
       "node:punycode",
       "node:querystring",
-      "node:repl",
       "node:readline",
       "node:readline/promises",
+      "node:repl",
       "node:stream",
       "node:stream/consumers",
       "node:stream/promises",
@@ -9606,6 +9873,69 @@ fn lsp_completions_npm() {
 }
 
 #[test]
+fn lsp_auto_imports_npm_auto() {
+  let context = TestContextBuilder::for_npm().use_temp_cwd().build();
+  let temp_dir_path = context.temp_dir().path();
+  temp_dir_path.join("deno.json").write_json(&json!({
+    "nodeModulesDir": "auto",
+    "imports": {
+      "preact": "npm:preact@^10.19.6",
+    },
+  }));
+  // add a file that uses the import so that typescript knows about it
+  temp_dir_path
+    .join("mod.ts")
+    .write("import { useEffect } from 'preact/hooks'; console.log(useEffect);");
+  context.run_deno("cache mod.ts");
+  let mut client = context.new_lsp_command().build();
+  client.initialize_default();
+  let file_uri = temp_dir_path.join("file.ts").url_file();
+  let mut diagnostics = client
+    .did_open(json!({
+      "textDocument": {
+        "uri": file_uri,
+        "languageId": "typescript",
+        "version": 1,
+        "text": "useEffect",
+      }
+    }))
+    .all();
+  assert_eq!(diagnostics.len(), 1);
+  let diagnostic = diagnostics.remove(0);
+  let res = client.write_request(
+    "textDocument/codeAction",
+    json!({
+      "textDocument": {
+        "uri": file_uri,
+      },
+      "range": {
+        "start": { "line": 0, "character": 0 },
+        "end": { "line": 0, "character": 9 }
+      },
+      "context": {
+        "diagnostics": [diagnostic],
+        "only": ["quickfix"]
+      }
+    }),
+  );
+  assert_eq!(
+    res
+      .as_array()
+      .unwrap()
+      .first()
+      .unwrap()
+      .as_object()
+      .unwrap()
+      .get("title")
+      .unwrap()
+      .as_str()
+      .unwrap(),
+    "Add import from \"preact/hooks\""
+  );
+  client.shutdown();
+}
+
+#[test]
 fn lsp_npm_specifier_unopened_file() {
   let context = TestContextBuilder::new()
     .use_http_server()
@@ -9855,7 +10185,7 @@ fn lsp_completions_node_builtin() {
         "severity": 1,
         "code": "not-installed-npm",
         "source": "deno",
-        "message": "NPM package \"@types/node\" is not installed or doesn't exist."
+        "message": "npm package \"@types/node\" is not installed or doesn't exist."
       }
     ])
   );
@@ -10158,7 +10488,7 @@ fn lsp_cache_location() {
         "uri": "file:///a/file.ts",
         "languageId": "typescript",
         "version": 1,
-        "text": "import * as a from \"http://127.0.0.1:4545/xTypeScriptTypes.js\";\n// @deno-types=\"http://127.0.0.1:4545/type_definitions/foo.d.ts\"\nimport * as b from \"http://127.0.0.1:4545/type_definitions/foo.js\";\nimport * as c from \"http://127.0.0.1:4545/subdir/type_reference.js\";\nimport * as d from \"http://127.0.0.1:4545/subdir/mod1.ts\";\nimport * as e from \"data:application/typescript;base64,ZXhwb3J0IGNvbnN0IGEgPSAiYSI7CgpleHBvcnQgZW51bSBBIHsKICBBLAogIEIsCiAgQywKfQo=\";\nimport * as f from \"./file_01.ts\";\nimport * as g from \"http://localhost:4545/x/a/mod.ts\";\n\nconsole.log(a, b, c, d, e, f, g);\n"
+        "text": "import * as a from \"http://127.0.0.1:4545/xTypeScriptTypes.js\";\n// @ts-types=\"http://127.0.0.1:4545/type_definitions/foo.d.ts\"\nimport * as b from \"http://127.0.0.1:4545/type_definitions/foo.js\";\nimport * as c from \"http://127.0.0.1:4545/subdir/type_reference.js\";\nimport * as d from \"http://127.0.0.1:4545/subdir/mod1.ts\";\nimport * as e from \"data:application/typescript;base64,ZXhwb3J0IGNvbnN0IGEgPSAiYSI7CgpleHBvcnQgZW51bSBBIHsKICBBLAogIEIsCiAgQywKfQo=\";\nimport * as f from \"./file_01.ts\";\nimport * as g from \"http://localhost:4545/x/a/mod.ts\";\n\nconsole.log(a, b, c, d, e, f, g);\n"
       }
     }));
   assert_eq!(diagnostics.all().len(), 6);
@@ -10251,7 +10581,7 @@ fn lsp_tls_cert() {
       "uri": "file:///a/file.ts",
       "languageId": "typescript",
       "version": 1,
-      "text": "import * as a from \"https://localhost:5545/xTypeScriptTypes.js\";\n// @deno-types=\"https://localhost:5545/type_definitions/foo.d.ts\"\nimport * as b from \"https://localhost:5545/type_definitions/foo.js\";\nimport * as c from \"https://localhost:5545/subdir/type_reference.js\";\nimport * as d from \"https://localhost:5545/subdir/mod1.ts\";\nimport * as e from \"data:application/typescript;base64,ZXhwb3J0IGNvbnN0IGEgPSAiYSI7CgpleHBvcnQgZW51bSBBIHsKICBBLAogIEIsCiAgQywKfQo=\";\nimport * as f from \"./file_01.ts\";\nimport * as g from \"http://localhost:4545/x/a/mod.ts\";\n\nconsole.log(a, b, c, d, e, f, g);\n"
+      "text": "import * as a from \"https://localhost:5545/xTypeScriptTypes.js\";\n// @ts-types=\"https://localhost:5545/type_definitions/foo.d.ts\"\nimport * as b from \"https://localhost:5545/type_definitions/foo.js\";\nimport * as c from \"https://localhost:5545/subdir/type_reference.js\";\nimport * as d from \"https://localhost:5545/subdir/mod1.ts\";\nimport * as e from \"data:application/typescript;base64,ZXhwb3J0IGNvbnN0IGEgPSAiYSI7CgpleHBvcnQgZW51bSBBIHsKICBBLAogIEIsCiAgQywKfQo=\";\nimport * as f from \"./file_01.ts\";\nimport * as g from \"http://localhost:4545/x/a/mod.ts\";\n\nconsole.log(a, b, c, d, e, f, g);\n"
     }
   }));
   let diagnostics = diagnostics.all();
@@ -10716,7 +11046,7 @@ fn lsp_diagnostics_deno_types() {
           "uri": "file:///a/file.ts",
           "languageId": "typescript",
           "version": 1,
-          "text": "/// <reference types=\"https://example.com/a/b.d.ts\" />\n/// <reference path=\"https://example.com/a/c.ts\"\n\n// @deno-types=https://example.com/a/d.d.ts\nimport * as d from \"https://example.com/a/d.js\";\n\n// @deno-types=\"https://example.com/a/e.d.ts\"\nimport * as e from \"https://example.com/a/e.js\";\n\nconsole.log(d, e);\n"
+          "text": "/// <reference types=\"https://example.com/a/b.d.ts\" />\n/// <reference path=\"https://example.com/a/c.ts\"\n\n// @ts-types=https://example.com/a/d.d.ts\nimport * as d from \"https://example.com/a/d.js\";\n\n// @ts-types=\"https://example.com/a/e.d.ts\"\nimport * as e from \"https://example.com/a/e.js\";\n\nconsole.log(d, e);\n"
         }
       }),
     );
@@ -10729,7 +11059,7 @@ fn lsp_diagnostics_deno_types() {
       }
     }),
   );
-  assert_eq!(diagnostics.all().len(), 5);
+  assert_eq!(diagnostics.all().len(), 4);
   client.shutdown();
 }
 
@@ -11476,8 +11806,7 @@ fn lsp_json_import_with_query_string() {
 fn lsp_format_markdown() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let temp_dir = context.temp_dir();
-  let markdown_file =
-    source_file(temp_dir.path().join("file.md"), "#   Hello World");
+  let file = source_file(temp_dir.path().join("file.md"), "#   Hello World");
   let mut client = context.new_lsp_command().build();
   client.initialize_default();
 
@@ -11485,7 +11814,7 @@ fn lsp_format_markdown() {
     "textDocument/formatting",
     json!({
       "textDocument": {
-        "uri": markdown_file.url()
+        "uri": file.url()
       },
       "options": {
         "tabSize": 2,
@@ -11519,14 +11848,13 @@ fn lsp_format_markdown() {
 fn lsp_format_html() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let temp_dir = context.temp_dir();
-  let html_file =
-    source_file(temp_dir.path().join("file.html"), "  <html></html>");
+  let file = source_file(temp_dir.path().join("file.html"), "  <html></html>");
   let mut client = context.new_lsp_command().build();
   client.initialize_default();
   let res = client.write_request(
     "textDocument/formatting",
     json!({
-      "textDocument": { "uri": html_file.url() },
+      "textDocument": { "uri": file.url() },
       "options": {
         "tabSize": 2,
         "insertSpaces": true,
@@ -11559,13 +11887,13 @@ fn lsp_format_html() {
 fn lsp_format_css() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let temp_dir = context.temp_dir();
-  let css_file = source_file(temp_dir.path().join("file.css"), "  foo {}");
+  let file = source_file(temp_dir.path().join("file.css"), "  foo {}");
   let mut client = context.new_lsp_command().build();
   client.initialize_default();
   let res = client.write_request(
     "textDocument/formatting",
     json!({
-      "textDocument": { "uri": css_file.url() },
+      "textDocument": { "uri": file.url() },
       "options": {
         "tabSize": 2,
         "insertSpaces": true,
@@ -11598,13 +11926,13 @@ fn lsp_format_css() {
 fn lsp_format_yaml() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let temp_dir = context.temp_dir();
-  let yaml_file = source_file(temp_dir.path().join("file.yaml"), "  foo: 1");
+  let file = source_file(temp_dir.path().join("file.yaml"), "  foo: 1");
   let mut client = context.new_lsp_command().build();
   client.initialize_default();
   let res = client.write_request(
     "textDocument/formatting",
     json!({
-      "textDocument": { "uri": yaml_file.url() },
+      "textDocument": { "uri": file.url() },
       "options": {
         "tabSize": 2,
         "insertSpaces": true,
@@ -11627,6 +11955,201 @@ fn lsp_format_yaml() {
           "end": { "line": 0, "character": 8 },
         },
         "newText": "\n",
+      },
+    ]),
+  );
+  client.shutdown();
+}
+
+#[test]
+fn lsp_format_sql() {
+  let context = TestContextBuilder::new().use_temp_cwd().build();
+  let temp_dir = context.temp_dir();
+  temp_dir.write(
+    "deno.json",
+    json!({
+      "unstable": ["fmt-sql"],
+    })
+    .to_string(),
+  );
+  let file = source_file(
+    temp_dir.path().join("file.sql"),
+    "  CREATE TABLE item (id int NOT NULL IDENTITY(1, 1))",
+  );
+  let mut client = context.new_lsp_command().build();
+  client.initialize_default();
+  let res = client.write_request(
+    "textDocument/formatting",
+    json!({
+      "textDocument": { "uri": file.url() },
+      "options": {
+        "tabSize": 2,
+        "insertSpaces": true,
+      },
+    }),
+  );
+  assert_eq!(
+    res,
+    json!([
+      {
+        "range": {
+          "start": { "line": 0, "character": 0 },
+          "end": { "line": 0, "character": 2 },
+        },
+        "newText": "",
+      },
+      {
+        "range": {
+          "start": { "line": 0, "character": 52 },
+          "end": { "line": 0, "character": 52 },
+        },
+        "newText": "\n",
+      },
+    ]),
+  );
+  client.shutdown();
+}
+
+#[test]
+fn lsp_format_component() {
+  let context = TestContextBuilder::new().use_temp_cwd().build();
+  let temp_dir = context.temp_dir();
+  temp_dir.write(
+    "deno.json",
+    json!({
+      "unstable": ["fmt-component"],
+    })
+    .to_string(),
+  );
+  let svelte_file = source_file(
+    temp_dir.path().join("file.svelte"),
+    "  <script module>\n  // foo\n</script>\n",
+  );
+  let vue_file = source_file(
+    temp_dir.path().join("file.vue"),
+    "  <script setup>\n// foo\n</script>\n",
+  );
+  let astro_file = source_file(
+    temp_dir.path().join("file.astro"),
+    "  ---\n// foo\n---\n<html></html>\n",
+  );
+  let vento_file = source_file(
+    temp_dir.path().join("file.vto"),
+    "  {{ layout \"foo.vto\" }}\n  <h1>Foo!</h1>\n{{ /layout }}\n",
+  );
+  let nunjucks_file = source_file(
+    temp_dir.path().join("file.njk"),
+    "  {% block header %}\n  Foo\n{% endblock %}\n",
+  );
+  let mut client = context.new_lsp_command().build();
+  client.initialize_default();
+  let res = client.write_request(
+    "textDocument/formatting",
+    json!({
+      "textDocument": { "uri": svelte_file.url() },
+      "options": {
+        "tabSize": 2,
+        "insertSpaces": true,
+      },
+    }),
+  );
+  assert_eq!(
+    res,
+    json!([
+      {
+        "range": {
+          "start": { "line": 0, "character": 0 },
+          "end": { "line": 0, "character": 2 },
+        },
+        "newText": "",
+      },
+    ]),
+  );
+  let res = client.write_request(
+    "textDocument/formatting",
+    json!({
+      "textDocument": { "uri": vue_file.url() },
+      "options": {
+        "tabSize": 2,
+        "insertSpaces": true,
+      },
+    }),
+  );
+  assert_eq!(
+    res,
+    json!([
+      {
+        "range": {
+          "start": { "line": 0, "character": 0 },
+          "end": { "line": 0, "character": 2 },
+        },
+        "newText": "",
+      },
+    ]),
+  );
+  let res = client.write_request(
+    "textDocument/formatting",
+    json!({
+      "textDocument": { "uri": astro_file.url() },
+      "options": {
+        "tabSize": 2,
+        "insertSpaces": true,
+      },
+    }),
+  );
+  assert_eq!(
+    res,
+    json!([
+      {
+        "range": {
+          "start": { "line": 0, "character": 0 },
+          "end": { "line": 0, "character": 2 },
+        },
+        "newText": "",
+      },
+    ]),
+  );
+  let res = client.write_request(
+    "textDocument/formatting",
+    json!({
+      "textDocument": { "uri": vento_file.url() },
+      "options": {
+        "tabSize": 2,
+        "insertSpaces": true,
+      },
+    }),
+  );
+  assert_eq!(
+    res,
+    json!([
+      {
+        "range": {
+          "start": { "line": 0, "character": 0 },
+          "end": { "line": 0, "character": 2 },
+        },
+        "newText": "",
+      },
+    ]),
+  );
+  let res = client.write_request(
+    "textDocument/formatting",
+    json!({
+      "textDocument": { "uri": nunjucks_file.url() },
+      "options": {
+        "tabSize": 2,
+        "insertSpaces": true,
+      },
+    }),
+  );
+  assert_eq!(
+    res,
+    json!([
+      {
+        "range": {
+          "start": { "line": 0, "character": 0 },
+          "end": { "line": 0, "character": 2 },
+        },
+        "newText": "",
       },
     ]),
   );
@@ -11680,7 +12203,7 @@ fn lsp_format_with_config() {
       },
       "options": {
         "tabSize": 2,
-        "insertSpaces": false
+        "insertSpaces": true,
       }
     }),
   );
@@ -15714,7 +16237,7 @@ fn lsp_sloppy_imports() {
         "import * as b from './b.js';\n",
         // this one's types resolve to a .d.ts file and we don't
         // bother warning about it because it's a bit complicated
-        // to explain to use @deno-types in a diagnostic
+        // to explain to use @ts-types in a diagnostic
         "import * as c from './c.js';\n",
         "console.log(a)\n",
         "console.log(b);\n",
@@ -16515,4 +17038,48 @@ fn lsp_jsdoc_named_example() {
       ]
     }),
   );
+}
+
+#[test]
+fn lsp_wasm_module() {
+  let context = TestContextBuilder::new()
+    .use_temp_cwd()
+    .use_http_server()
+    .build();
+  let mut client = context.new_lsp_command().build();
+  client.initialize_default();
+  client.did_open(json!({
+    "textDocument": {
+      "uri": "file:///a/file.ts",
+      "languageId": "typescript",
+      "version": 1,
+      "text": "import { add } from \"http://localhost:4545/wasm/math.wasm\";\nadd(1, '');\n"
+    }
+  }));
+
+  client.write_request(
+    "workspace/executeCommand",
+    json!({
+      "command": "deno.cache",
+      "arguments": [[], "file:///a/file.ts"],
+    }),
+  );
+
+  let diagnostics = client.read_diagnostics();
+  assert_eq!(
+    json!(diagnostics.all()),
+    json!([
+      {
+        "range": {
+          "start": { "line": 1, "character": 7 },
+          "end": { "line": 1, "character": 9 }
+        },
+        "severity": 1,
+        "code": 2345,
+        "source": "deno-ts",
+        "message": "Argument of type 'string' is not assignable to parameter of type 'number'."
+      }
+    ])
+  );
+  client.shutdown();
 }

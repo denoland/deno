@@ -1,7 +1,6 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 mod args;
-mod auth_tokens;
 mod cache;
 mod cdp;
 mod emit;
@@ -144,9 +143,7 @@ async fn run_subcommand(flags: Arc<Flags>) -> Result<i32, AnyError> {
     }
     DenoSubcommand::Init(init_flags) => {
       spawn_subcommand(async {
-        // make compiler happy since init_project is sync
-        tokio::task::yield_now().await;
-        tools::init::init_project(init_flags)
+        tools::init::init_project(init_flags).await
       })
     }
     DenoSubcommand::Info(info_flags) => {
@@ -188,6 +185,11 @@ async fn run_subcommand(flags: Arc<Flags>) -> Result<i32, AnyError> {
         tools::lint::lint(flags, lint_flags).await
       }
     }),
+    DenoSubcommand::Outdated(update_flags) => {
+      spawn_subcommand(async move {
+        tools::registry::outdated(flags, update_flags).await
+      })
+    }
     DenoSubcommand::Repl(repl_flags) => {
       spawn_subcommand(async move { tools::repl::run(flags, repl_flags).await })
     }
@@ -238,6 +240,9 @@ async fn run_subcommand(flags: Arc<Flags>) -> Result<i32, AnyError> {
                   cwd: None,
                   task: Some(run_flags.script.clone()),
                   is_run: true,
+                  recursive: false,
+                  filter: None,
+                  eval: false,
                 };
                 new_flags.subcommand = DenoSubcommand::Task(task_flags.clone());
                 let result = tools::task::execute_script(Arc::new(new_flags), task_flags.clone()).await;
@@ -431,20 +436,18 @@ fn resolve_flags_and_init(
       if err.kind() == clap::error::ErrorKind::DisplayVersion =>
     {
       // Ignore results to avoid BrokenPipe errors.
-      util::logger::init(None);
+      util::logger::init(None, None);
       let _ = err.print();
       deno_runtime::exit(0);
     }
     Err(err) => {
-      util::logger::init(None);
+      util::logger::init(None, None);
       exit_for_error(AnyError::from(err))
     }
   };
 
-  if let Some(otel_config) = flags.otel_config() {
-    deno_runtime::ops::otel::init(otel_config)?;
-  }
-  util::logger::init(flags.log_level);
+  deno_telemetry::init(crate::args::otel_runtime_config())?;
+  util::logger::init(flags.log_level, Some(flags.otel_config()));
 
   // TODO(bartlomieju): remove in Deno v2.5 and hard error then.
   if flags.unstable_config.legacy_flag_enabled {

@@ -4,6 +4,7 @@ use std::path::Path;
 use std::path::PathBuf;
 use std::sync::Arc;
 
+use deno_cache_dir::file_fetcher::CacheSetting;
 use deno_core::anyhow::bail;
 use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
@@ -14,28 +15,32 @@ use deno_semver::jsr::JsrPackageReqReference;
 use deno_semver::npm::NpmPackageReqReference;
 use deno_semver::package::PackageNv;
 use deno_semver::package::PackageReq;
+use deno_semver::StackString;
 use deno_semver::Version;
 use deno_semver::VersionReq;
+use deps::KeyPath;
 use jsonc_parser::cst::CstObject;
 use jsonc_parser::cst::CstObjectProp;
 use jsonc_parser::cst::CstRootNode;
 use jsonc_parser::json;
 
 use crate::args::AddFlags;
-use crate::args::CacheSetting;
 use crate::args::CliOptions;
 use crate::args::Flags;
 use crate::args::RemoveFlags;
 use crate::factory::CliFactory;
-use crate::file_fetcher::FileFetcher;
+use crate::file_fetcher::CliFileFetcher;
 use crate::jsr::JsrFetchResolver;
 use crate::npm::NpmFetchResolver;
 
 mod cache_deps;
+pub(crate) mod deps;
+mod outdated;
 
 pub use cache_deps::cache_top_level_deps;
+pub use outdated::outdated;
 
-#[derive(Debug, Copy, Clone)]
+#[derive(Debug, Copy, Clone, Hash)]
 enum ConfigKind {
   DenoJson,
   PackageJson,
@@ -84,6 +89,28 @@ impl ConfigUpdater {
 
   fn contents(&self) -> String {
     self.cst.to_string()
+  }
+
+  fn get_property_for_mutation(
+    &mut self,
+    key_path: &KeyPath,
+  ) -> Option<CstObjectProp> {
+    let mut current_node = self.root_object.clone();
+
+    self.modified = true;
+
+    for (i, part) in key_path.parts.iter().enumerate() {
+      let s = part.as_str();
+      if i < key_path.parts.len().saturating_sub(1) {
+        let object = current_node.object_value(s)?;
+        current_node = object;
+      } else {
+        // last part
+        return current_node.get(s);
+      }
+    }
+
+    None
   }
 
   fn add(&mut self, selected: SelectedPackage, dev: bool) {
@@ -257,7 +284,7 @@ fn package_json_dependency_entry(
       (npm_package.into(), selected.version_req)
     } else {
       (
-        selected.import_name,
+        selected.import_name.into_string(),
         format!("npm:{}@{}", npm_package, selected.version_req),
       )
     }
@@ -266,7 +293,7 @@ fn package_json_dependency_entry(
     let scope_replaced = jsr_package.replace('/', "__");
     let version_req =
       format!("npm:@jsr/{scope_replaced}@{}", selected.version_req);
-    (selected.import_name, version_req)
+    (selected.import_name.into_string(), version_req)
   } else {
     (selected.package_name, selected.version_req)
   }
@@ -385,18 +412,18 @@ pub async fn add(
 
   let http_client = cli_factory.http_client_provider();
   let deps_http_cache = cli_factory.global_http_cache()?;
-  let mut deps_file_fetcher = FileFetcher::new(
+  let deps_file_fetcher = CliFileFetcher::new(
     deps_http_cache.clone(),
-    CacheSetting::ReloadAll,
-    true,
     http_client.clone(),
     Default::default(),
     None,
+    true,
+    CacheSetting::ReloadAll,
+    log::Level::Trace,
   );
 
   let npmrc = cli_factory.cli_options().unwrap().npmrc();
 
-  deps_file_fetcher.set_download_log_level(log::Level::Trace);
   let deps_file_fetcher = Arc::new(deps_file_fetcher);
   let jsr_resolver = Arc::new(JsrFetchResolver::new(deps_file_fetcher.clone()));
   let npm_resolver =
@@ -406,9 +433,8 @@ pub async fn add(
   let mut package_reqs = Vec::with_capacity(add_flags.packages.len());
 
   for entry_text in add_flags.packages.iter() {
-    let req = AddRmPackageReq::parse(entry_text).with_context(|| {
-      format!("Failed to parse package required: {}", entry_text)
-    })?;
+    let req = AddRmPackageReq::parse(entry_text)
+      .with_context(|| format!("Failed to parse package: {}", entry_text))?;
 
     match req {
       Ok(add_req) => package_reqs.push(add_req),
@@ -524,10 +550,10 @@ pub async fn add(
 }
 
 struct SelectedPackage {
-  import_name: String,
+  import_name: StackString,
   package_name: String,
   version_req: String,
-  selected_version: String,
+  selected_version: StackString,
 }
 
 enum NotFoundHelp {
@@ -658,7 +684,7 @@ async fn find_package_and_select_version_for_req(
       import_name: add_package_req.alias,
       package_name: prefixed_name,
       version_req: format!("{}{}", range_symbol, &nv.version),
-      selected_version: nv.version.to_string(),
+      selected_version: nv.version.to_custom_string::<StackString>(),
     }))
   }
 
@@ -679,8 +705,8 @@ enum AddRmPackageReqValue {
 }
 
 #[derive(Debug, PartialEq, Eq)]
-struct AddRmPackageReq {
-  alias: String,
+pub struct AddRmPackageReq {
+  alias: StackString,
   value: AddRmPackageReqValue,
 }
 
@@ -728,7 +754,11 @@ impl AddRmPackageReq {
             return Ok(Err(PackageReq::from_str(entry_text)?));
           }
 
-          (maybe_prefix.unwrap(), Some(alias.to_string()), entry_text)
+          (
+            maybe_prefix.unwrap(),
+            Some(StackString::from(alias)),
+            entry_text,
+          )
         }
         None => return Ok(Err(PackageReq::from_str(entry_text)?)),
       },
@@ -740,7 +770,7 @@ impl AddRmPackageReq {
           JsrPackageReqReference::from_str(&format!("jsr:{}", entry_text))?;
         let package_req = req_ref.into_inner().req;
         Ok(Ok(AddRmPackageReq {
-          alias: maybe_alias.unwrap_or_else(|| package_req.name.to_string()),
+          alias: maybe_alias.unwrap_or_else(|| package_req.name.clone()),
           value: AddRmPackageReqValue::Jsr(package_req),
         }))
       }
@@ -760,7 +790,7 @@ impl AddRmPackageReq {
           );
         }
         Ok(Ok(AddRmPackageReq {
-          alias: maybe_alias.unwrap_or_else(|| package_req.name.to_string()),
+          alias: maybe_alias.unwrap_or_else(|| package_req.name.clone()),
           value: AddRmPackageReqValue::Npm(package_req),
         }))
       }
@@ -779,9 +809,8 @@ pub async fn remove(
   let mut removed_packages = vec![];
 
   for package in &remove_flags.packages {
-    let req = AddRmPackageReq::parse(package).with_context(|| {
-      format!("Failed to parse package required: {}", package)
-    })?;
+    let req = AddRmPackageReq::parse(package)
+      .with_context(|| format!("Failed to parse package: {}", package))?;
     let mut parsed_pkg_name = None;
     for config in configs.iter_mut().flatten() {
       match &req {
@@ -824,7 +853,7 @@ async fn npm_install_after_modification(
   flags: Arc<Flags>,
   // explicitly provided to prevent redownloading
   jsr_resolver: Option<Arc<crate::jsr::JsrFetchResolver>>,
-) -> Result<(), AnyError> {
+) -> Result<CliFactory, AnyError> {
   // clear the previously cached package.json from memory before reloading it
   node_resolver::PackageJsonThreadLocalCache::clear();
 
@@ -842,7 +871,7 @@ async fn npm_install_after_modification(
     lockfile.write_if_changed()?;
   }
 
-  Ok(())
+  Ok(cli_factory)
 }
 
 #[cfg(test)]
@@ -854,14 +883,14 @@ mod test {
     assert_eq!(
       AddRmPackageReq::parse("jsr:foo").unwrap().unwrap(),
       AddRmPackageReq {
-        alias: "foo".to_string(),
+        alias: "foo".into(),
         value: AddRmPackageReqValue::Jsr(PackageReq::from_str("foo").unwrap())
       }
     );
     assert_eq!(
       AddRmPackageReq::parse("alias@jsr:foo").unwrap().unwrap(),
       AddRmPackageReq {
-        alias: "alias".to_string(),
+        alias: "alias".into(),
         value: AddRmPackageReqValue::Jsr(PackageReq::from_str("foo").unwrap())
       }
     );
@@ -870,7 +899,7 @@ mod test {
         .unwrap()
         .unwrap(),
       AddRmPackageReq {
-        alias: "@alias/pkg".to_string(),
+        alias: "@alias/pkg".into(),
         value: AddRmPackageReqValue::Npm(
           PackageReq::from_str("foo@latest").unwrap()
         )
@@ -881,7 +910,7 @@ mod test {
         .unwrap()
         .unwrap(),
       AddRmPackageReq {
-        alias: "@alias/pkg".to_string(),
+        alias: "@alias/pkg".into(),
         value: AddRmPackageReqValue::Jsr(PackageReq::from_str("foo").unwrap())
       }
     );
@@ -890,7 +919,7 @@ mod test {
         .unwrap()
         .unwrap(),
       AddRmPackageReq {
-        alias: "alias".to_string(),
+        alias: "alias".into(),
         value: AddRmPackageReqValue::Jsr(
           PackageReq::from_str("foo@^1.5.0").unwrap()
         )

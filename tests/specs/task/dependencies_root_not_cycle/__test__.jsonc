@@ -1,0 +1,5 @@
+{
+  "args": "task a",
+  "cwd": "member",
+  "output": "task.out"
+}

@@ -122,9 +122,7 @@ impl RemoteTransport for FetchClient {
     headers: http::HeaderMap,
     body: Bytes,
   ) -> Result<(Url, http::StatusCode, Self::Response), anyhow::Error> {
-    let body = http_body_util::Full::new(body)
-      .map_err(|never| match never {})
-      .boxed();
+    let body = deno_fetch::ReqBody::full(body);
     let mut req = http::Request::new(body);
     *req.method_mut() = http::Method::POST;
     *req.uri_mut() = url.as_str().parse()?;
@@ -210,6 +208,7 @@ impl<P: RemoteDbHandlerPermissions + 'static> DatabaseHandler
         pool_idle_timeout: None,
         http1: false,
         http2: true,
+        client_builder_hook: None,
       },
     )?;
     let fetch_client = FetchClient(client);

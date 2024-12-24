@@ -34,6 +34,7 @@ const {
   ObjectHasOwn,
   ObjectPrototypeIsPrototypeOf,
   PromisePrototypeCatch,
+  SafePromisePrototypeFinally,
   PromisePrototypeThen,
   StringPrototypeIncludes,
   Symbol,
@@ -88,6 +89,16 @@ import {
 } from "ext:deno_net/01_net.js";
 import { hasTlsKeyPairOptions, listenTls } from "ext:deno_net/02_tls.js";
 import { SymbolAsyncDispose } from "ext:deno_web/00_infra.js";
+import {
+  endSpan,
+  enterSpan,
+  Span,
+  TRACING_ENABLED,
+} from "ext:deno_telemetry/telemetry.ts";
+import {
+  updateSpanFromRequest,
+  updateSpanFromResponse,
+} from "ext:deno_telemetry/util.ts";
 
 const _upgraded = Symbol("_upgraded");
 
@@ -513,91 +524,126 @@ function fastSyncResponseOrStream(
  * This function returns a promise that will only reject in the case of abnormal exit.
  */
 function mapToCallback(context, callback, onError) {
-  return async function (req) {
-    const asyncContext = getAsyncContext();
-    setAsyncContext(context.asyncContext);
-
+  let mapped = async function (req, span) {
+    // Get the response from the user-provided callback. If that fails, use onError. If that fails, return a fallback
+    // 500 error.
+    let innerRequest;
+    let response;
     try {
-      // Get the response from the user-provided callback. If that fails, use onError. If that fails, return a fallback
-      // 500 error.
-      let innerRequest;
-      let response;
-      try {
-        innerRequest = new InnerRequest(req, context);
-        const request = fromInnerRequest(innerRequest, "immutable");
-        innerRequest.request = request;
-        response = await callback(
-          request,
-          new ServeHandlerInfo(innerRequest),
-        );
+      innerRequest = new InnerRequest(req, context);
+      const request = fromInnerRequest(innerRequest, "immutable");
+      innerRequest.request = request;
 
-        // Throwing Error if the handler return value is not a Response class
+      if (span) {
+        updateSpanFromRequest(span, request);
+      }
+
+      response = await callback(
+        request,
+        new ServeHandlerInfo(innerRequest),
+      );
+
+      // Throwing Error if the handler return value is not a Response class
+      if (!ObjectPrototypeIsPrototypeOf(ResponsePrototype, response)) {
+        throw new TypeError(
+          "Return value from serve handler must be a response or a promise resolving to a response",
+        );
+      }
+
+      if (response.type === "error") {
+        throw new TypeError(
+          "Return value from serve handler must not be an error response (like Response.error())",
+        );
+      }
+
+      if (response.bodyUsed) {
+        throw new TypeError(
+          "The body of the Response returned from the serve handler has already been consumed",
+        );
+      }
+    } catch (error) {
+      try {
+        response = await onError(error);
         if (!ObjectPrototypeIsPrototypeOf(ResponsePrototype, response)) {
           throw new TypeError(
-            "Return value from serve handler must be a response or a promise resolving to a response",
-          );
-        }
-
-        if (response.type === "error") {
-          throw new TypeError(
-            "Return value from serve handler must not be an error response (like Response.error())",
-          );
-        }
-
-        if (response.bodyUsed) {
-          throw new TypeError(
-            "The body of the Response returned from the serve handler has already been consumed",
+            "Return value from onError handler must be a response or a promise resolving to a response",
           );
         }
       } catch (error) {
-        try {
-          response = await onError(error);
-          if (!ObjectPrototypeIsPrototypeOf(ResponsePrototype, response)) {
-            throw new TypeError(
-              "Return value from onError handler must be a response or a promise resolving to a response",
-            );
-          }
-        } catch (error) {
-          // deno-lint-ignore no-console
-          console.error("Exception in onError while handling exception", error);
-          response = internalServerError();
-        }
+        // deno-lint-ignore no-console
+        console.error("Exception in onError while handling exception", error);
+        response = internalServerError();
       }
-      const inner = toInnerResponse(response);
-      if (innerRequest?.[_upgraded]) {
-        // We're done here as the connection has been upgraded during the callback and no longer requires servicing.
-        if (response !== UPGRADE_RESPONSE_SENTINEL) {
-          // deno-lint-ignore no-console
-          console.error("Upgrade response was not returned from callback");
-          context.close();
-        }
-        innerRequest?.[_upgraded]();
-        return;
-      }
-
-      // Did everything shut down while we were waiting?
-      if (context.closed) {
-        // We're shutting down, so this status shouldn't make it back to the client but "Service Unavailable" seems appropriate
-        innerRequest?.close();
-        op_http_set_promise_complete(req, 503);
-        return;
-      }
-
-      const status = inner.status;
-      const headers = inner.headerList;
-      if (headers && headers.length > 0) {
-        if (headers.length == 1) {
-          op_http_set_response_header(req, headers[0][0], headers[0][1]);
-        } else {
-          op_http_set_response_headers(req, headers);
-        }
-      }
-
-      fastSyncResponseOrStream(req, inner.body, status, innerRequest);
-    } finally {
-      setAsyncContext(asyncContext);
     }
+
+    if (span) {
+      updateSpanFromResponse(span, response);
+    }
+
+    const inner = toInnerResponse(response);
+    if (innerRequest?.[_upgraded]) {
+      // We're done here as the connection has been upgraded during the callback and no longer requires servicing.
+      if (response !== UPGRADE_RESPONSE_SENTINEL) {
+        // deno-lint-ignore no-console
+        console.error("Upgrade response was not returned from callback");
+        context.close();
+      }
+      innerRequest?.[_upgraded]();
+      return;
+    }
+
+    // Did everything shut down while we were waiting?
+    if (context.closed) {
+      // We're shutting down, so this status shouldn't make it back to the client but "Service Unavailable" seems appropriate
+      innerRequest?.close();
+      op_http_set_promise_complete(req, 503);
+      return;
+    }
+
+    const status = inner.status;
+    const headers = inner.headerList;
+    if (headers && headers.length > 0) {
+      if (headers.length == 1) {
+        op_http_set_response_header(req, headers[0][0], headers[0][1]);
+      } else {
+        op_http_set_response_headers(req, headers);
+      }
+    }
+
+    fastSyncResponseOrStream(req, inner.body, status, innerRequest);
   };
+
+  if (TRACING_ENABLED) {
+    const origMapped = mapped;
+    mapped = function (req, _span) {
+      const oldCtx = getAsyncContext();
+      setAsyncContext(context.asyncContext);
+      const span = new Span("deno.serve", { kind: 1 });
+      try {
+        enterSpan(span);
+        return SafePromisePrototypeFinally(
+          origMapped(req, span),
+          () => endSpan(span),
+        );
+      } finally {
+        // equiv to exitSpan.
+        setAsyncContext(oldCtx);
+      }
+    };
+  } else {
+    const origMapped = mapped;
+    mapped = function (req, span) {
+      const oldCtx = getAsyncContext();
+      setAsyncContext(context.asyncContext);
+      try {
+        return origMapped(req, span);
+      } finally {
+        setAsyncContext(oldCtx);
+      }
+    };
+  }
+
+  return mapped;
 }
 
 type RawHandler = (
@@ -795,7 +841,7 @@ function serveHttpOn(context, addr, callback) {
         // Attempt to pull as many requests out of the queue as possible before awaiting. This API is
         // a synchronous, non-blocking API that returns u32::MAX if anything goes wrong.
         while ((req = op_http_try_wait(rid)) !== null) {
-          PromisePrototypeCatch(callback(req), promiseErrorHandler);
+          PromisePrototypeCatch(callback(req, undefined), promiseErrorHandler);
         }
         currentPromise = op_http_wait(rid);
         if (!ref) {
@@ -815,7 +861,7 @@ function serveHttpOn(context, addr, callback) {
       if (req === null) {
         break;
       }
-      PromisePrototypeCatch(callback(req), promiseErrorHandler);
+      PromisePrototypeCatch(callback(req, undefined), promiseErrorHandler);
     }
 
     try {

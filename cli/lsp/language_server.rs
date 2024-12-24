@@ -1,6 +1,7 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 use deno_ast::MediaType;
+use deno_cache_dir::file_fetcher::CacheSetting;
 use deno_config::workspace::WorkspaceDirectory;
 use deno_config::workspace::WorkspaceDiscoverOptions;
 use deno_core::anyhow::anyhow;
@@ -22,7 +23,8 @@ use deno_semver::jsr::JsrPackageReqReference;
 use indexmap::Equivalent;
 use indexmap::IndexSet;
 use log::error;
-use node_resolver::NodeModuleKind;
+use node_resolver::NodeResolutionKind;
+use node_resolver::ResolutionMode;
 use serde::Deserialize;
 use serde_json::from_value;
 use std::collections::BTreeMap;
@@ -78,7 +80,6 @@ use super::parent_process_checker;
 use super::performance::Performance;
 use super::refactor;
 use super::registries::ModuleRegistry;
-use super::resolver::LspIsCjsResolver;
 use super::resolver::LspResolver;
 use super::testing;
 use super::text;
@@ -95,13 +96,12 @@ use crate::args::create_default_npmrc;
 use crate::args::get_root_cert_store;
 use crate::args::has_flag_env_var;
 use crate::args::CaData;
-use crate::args::CacheSetting;
 use crate::args::CliOptions;
 use crate::args::Flags;
 use crate::args::InternalFlags;
 use crate::args::UnstableFmtOptions;
 use crate::factory::CliFactory;
-use crate::file_fetcher::FileFetcher;
+use crate::file_fetcher::CliFileFetcher;
 use crate::graph_util;
 use crate::http_util::HttpClientProvider;
 use crate::lsp::config::ConfigWatchedFileType;
@@ -146,7 +146,6 @@ pub struct StateSnapshot {
   pub project_version: usize,
   pub assets: AssetsSnapshot,
   pub config: Arc<Config>,
-  pub is_cjs_resolver: Arc<LspIsCjsResolver>,
   pub documents: Arc<Documents>,
   pub resolver: Arc<LspResolver>,
 }
@@ -206,7 +205,6 @@ pub struct Inner {
   pub documents: Documents,
   http_client_provider: Arc<HttpClientProvider>,
   initial_cwd: PathBuf,
-  pub is_cjs_resolver: Arc<LspIsCjsResolver>,
   jsr_search_api: CliJsrSearchApi,
   /// Handles module registries, which allow discovery of modules
   module_registry: ModuleRegistry,
@@ -272,7 +270,12 @@ impl LanguageServer {
         open_docs: &open_docs,
       };
       let graph = module_graph_creator
-        .create_graph_with_loader(GraphKind::All, roots.clone(), &mut loader)
+        .create_graph_with_loader(
+          GraphKind::All,
+          roots.clone(),
+          &mut loader,
+          graph_util::NpmCachingStrategy::Eager,
+        )
         .await?;
       graph_util::graph_valid(
         &graph,
@@ -484,7 +487,6 @@ impl Inner {
     let initial_cwd = std::env::current_dir().unwrap_or_else(|_| {
       panic!("Could not resolve current working directory")
     });
-    let is_cjs_resolver = Arc::new(LspIsCjsResolver::new(&cache));
 
     Self {
       assets,
@@ -496,7 +498,6 @@ impl Inner {
       documents,
       http_client_provider,
       initial_cwd: initial_cwd.clone(),
-      is_cjs_resolver,
       jsr_search_api,
       project_version: 0,
       task_queue: Default::default(),
@@ -607,7 +608,6 @@ impl Inner {
       project_version: self.project_version,
       assets: self.assets.snapshot(),
       config: Arc::new(self.config.clone()),
-      is_cjs_resolver: self.is_cjs_resolver.clone(),
       documents: Arc::new(self.documents.clone()),
       resolver: self.resolver.snapshot(),
     })
@@ -629,7 +629,6 @@ impl Inner {
       }
     });
     self.cache = LspCache::new(global_cache_url);
-    self.is_cjs_resolver = Arc::new(LspIsCjsResolver::new(&self.cache));
     let deno_dir = self.cache.deno_dir();
     let workspace_settings = self.config.workspace_settings();
     let maybe_root_path = self
@@ -959,15 +958,15 @@ impl Inner {
   }
 
   async fn refresh_config_tree(&mut self) {
-    let mut file_fetcher = FileFetcher::new(
+    let file_fetcher = CliFileFetcher::new(
       self.cache.global().clone(),
-      CacheSetting::RespectHeaders,
-      true,
       self.http_client_provider.clone(),
       Default::default(),
       None,
+      true,
+      CacheSetting::RespectHeaders,
+      super::logging::lsp_log_level(),
     );
-    file_fetcher.set_download_log_level(super::logging::lsp_log_level());
     let file_fetcher = Arc::new(file_fetcher);
     self
       .config
@@ -993,13 +992,10 @@ impl Inner {
               let resolver = inner.resolver.as_cli_resolver(Some(&referrer));
               let Ok(specifier) = resolver.resolve(
                 &specifier,
-                &deno_graph::Range {
-                  specifier: referrer.clone(),
-                  start: deno_graph::Position::zeroed(),
-                  end: deno_graph::Position::zeroed(),
-                },
-                NodeModuleKind::Esm,
-                deno_graph::source::ResolutionMode::Types,
+                &referrer,
+                deno_graph::Position::zeroed(),
+                ResolutionMode::Import,
+                NodeResolutionKind::Types,
               ) else {
                 return;
               };
@@ -1396,12 +1392,17 @@ impl Inner {
         .fmt_config_for_specifier(&specifier)
         .options
         .clone();
-      fmt_options.use_tabs = Some(!params.options.insert_spaces);
-      fmt_options.indent_width = Some(params.options.tab_size as u8);
       let config_data = self.config.tree.data_for_specifier(&specifier);
+      if !config_data.is_some_and(|d| d.maybe_deno_json().is_some()) {
+        fmt_options.use_tabs = Some(!params.options.insert_spaces);
+        fmt_options.indent_width = Some(params.options.tab_size as u8);
+      }
       let unstable_options = UnstableFmtOptions {
         component: config_data
           .map(|d| d.unstable.contains("fmt-component"))
+          .unwrap_or(false),
+        sql: config_data
+          .map(|d| d.unstable.contains("fmt-sql"))
           .unwrap_or(false),
       };
       let document = document.clone();
@@ -1635,8 +1636,8 @@ impl Inner {
         .get_ts_diagnostics(&specifier, asset_or_doc.document_lsp_version());
       let specifier_kind = asset_or_doc
         .document()
-        .map(|d| self.is_cjs_resolver.get_doc_module_kind(d))
-        .unwrap_or(NodeModuleKind::Esm);
+        .map(|d| d.resolution_mode())
+        .unwrap_or(ResolutionMode::Import);
       let mut includes_no_cache = false;
       for diagnostic in &fixable_diagnostics {
         match diagnostic.source.as_deref() {
@@ -1854,20 +1855,12 @@ impl Inner {
       }
 
       let changes = if code_action_data.fix_id == "fixMissingImport" {
-        fix_ts_import_changes(
-          &code_action_data.specifier,
-          maybe_asset_or_doc
-            .as_ref()
-            .and_then(|d| d.document())
-            .map(|d| self.is_cjs_resolver.get_doc_module_kind(d))
-            .unwrap_or(NodeModuleKind::Esm),
-          &combined_code_actions.changes,
-          self,
-        )
-        .map_err(|err| {
-          error!("Unable to remap changes: {:#}", err);
-          LspError::internal_error()
-        })?
+        fix_ts_import_changes(&combined_code_actions.changes, self).map_err(
+          |err| {
+            error!("Unable to remap changes: {:#}", err);
+            LspError::internal_error()
+          },
+        )?
       } else {
         combined_code_actions.changes
       };
@@ -1911,20 +1904,16 @@ impl Inner {
           asset_or_doc.scope().cloned(),
         )
         .await?;
-      if kind_suffix == ".rewrite.function.returnType" {
-        refactor_edit_info.edits = fix_ts_import_changes(
-          &action_data.specifier,
-          asset_or_doc
-            .document()
-            .map(|d| self.is_cjs_resolver.get_doc_module_kind(d))
-            .unwrap_or(NodeModuleKind::Esm),
-          &refactor_edit_info.edits,
-          self,
-        )
-        .map_err(|err| {
-          error!("Unable to remap changes: {:#}", err);
-          LspError::internal_error()
-        })?
+      if kind_suffix == ".rewrite.function.returnType"
+        || kind_suffix == ".move.newFile"
+      {
+        refactor_edit_info.edits =
+          fix_ts_import_changes(&refactor_edit_info.edits, self).map_err(
+            |err| {
+              error!("Unable to remap changes: {:#}", err);
+              LspError::internal_error()
+            },
+          )?
       }
       code_action.edit = refactor_edit_info.to_workspace_edit(self)?;
       code_action
@@ -2267,7 +2256,6 @@ impl Inner {
         &self.jsr_search_api,
         &self.npm_search_api,
         &self.documents,
-        &self.is_cjs_resolver,
         self.resolver.as_ref(),
         self
           .config
@@ -3632,9 +3620,8 @@ impl Inner {
           deno_json_cache: None,
           pkg_json_cache: None,
           workspace_cache: None,
-          config_parse_options: deno_config::deno_json::ConfigParseOptions {
-            include_task_comments: false,
-          },
+          config_parse_options:
+            deno_config::deno_json::ConfigParseOptions::default(),
           additional_config_file_names: &[],
           discover_pkg_json: !has_flag_env_var("DENO_NO_PACKAGE_JSON"),
           maybe_vendor_override: if force_global_cache {
@@ -3677,6 +3664,7 @@ impl Inner {
         .unwrap_or_else(create_default_npmrc),
       workspace,
       force_global_cache,
+      None,
     )?;
 
     let open_docs = self.documents.documents(DocumentsFilter::OpenDiagnosable);
@@ -3777,14 +3765,11 @@ impl Inner {
   fn task_definitions(&self) -> LspResult<Vec<TaskDefinition>> {
     let mut result = vec![];
     for config_file in self.config.tree.config_files() {
-      if let Some(tasks) = json!(&config_file.json.tasks).as_object() {
-        for (name, value) in tasks {
-          let Some(command) = value.as_str() else {
-            continue;
-          };
+      if let Some(tasks) = config_file.to_tasks_config().ok().flatten() {
+        for (name, def) in tasks {
           result.push(TaskDefinition {
             name: name.clone(),
-            command: command.to_string(),
+            command: def.command.clone(),
             source_uri: url_to_uri(&config_file.specifier)
               .map_err(|_| LspError::internal_error())?,
           });
@@ -3796,7 +3781,7 @@ impl Inner {
         for (name, command) in scripts {
           result.push(TaskDefinition {
             name: name.clone(),
-            command: command.clone(),
+            command: Some(command.clone()),
             source_uri: url_to_uri(&package_json.specifier())
               .map_err(|_| LspError::internal_error())?,
           });

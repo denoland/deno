@@ -14,9 +14,7 @@ pub const LATEST_DIAGNOSTIC_BATCH_INDEX: &str =
 #[serde(rename_all = "camelCase")]
 pub struct TaskDefinition {
   pub name: String,
-  // TODO(nayeemrmn): Rename this to `command` in vscode_deno.
-  #[serde(rename = "detail")]
-  pub command: String,
+  pub command: Option<String>,
   pub source_uri: lsp::Uri,
 }
 

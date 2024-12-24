@@ -12,8 +12,8 @@ use std::sync::Arc;
 use base64::prelude::BASE64_STANDARD;
 use base64::Engine;
 use deno_ast::ModuleSpecifier;
+use deno_config::deno_json::ConfigFile;
 use deno_config::workspace::JsrPackageConfig;
-use deno_config::workspace::PackageJsonDepResolution;
 use deno_config::workspace::Workspace;
 use deno_core::anyhow::bail;
 use deno_core::anyhow::Context;
@@ -26,6 +26,7 @@ use deno_core::serde_json;
 use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
 use deno_core::url::Url;
+use deno_runtime::deno_fetch;
 use deno_terminal::colors;
 use http_body_util::BodyExt;
 use serde::Deserialize;
@@ -43,8 +44,6 @@ use crate::cache::ParsedSourceCache;
 use crate::factory::CliFactory;
 use crate::graph_util::ModuleGraphCreator;
 use crate::http_util::HttpClient;
-use crate::resolver::CliSloppyImportsResolver;
-use crate::resolver::SloppyImportsCachedFs;
 use crate::tools::check::CheckOptions;
 use crate::tools::lint::collect_no_slow_type_diagnostics;
 use crate::tools::registry::diagnostics::PublishDiagnostic;
@@ -67,8 +66,10 @@ use auth::get_auth_method;
 use auth::AuthMethod;
 pub use pm::add;
 pub use pm::cache_top_level_deps;
+pub use pm::outdated;
 pub use pm::remove;
 pub use pm::AddCommandName;
+pub use pm::AddRmPackageReq;
 use publish_order::PublishOrderGraph;
 use unfurl::SpecifierUnfurler;
 
@@ -89,15 +90,15 @@ pub async fn publish(
 
   let cli_options = cli_factory.cli_options()?;
   let directory_path = cli_options.initial_cwd();
-  let publish_configs = cli_options.start_dir.jsr_packages_for_publish();
+  let mut publish_configs = cli_options.start_dir.jsr_packages_for_publish();
   if publish_configs.is_empty() {
     match cli_options.start_dir.maybe_deno_json() {
       Some(deno_json) => {
         debug_assert!(!deno_json.is_package());
-        bail!(
-          "Missing 'name', 'version' and 'exports' field in '{}'.",
-          deno_json.specifier
-        );
+        if deno_json.json.name.is_none() {
+          bail!("Missing 'name' field in '{}'.", deno_json.specifier);
+        }
+        error_missing_exports_field(deno_json)?;
       }
       None => {
         bail!(
@@ -107,20 +108,21 @@ pub async fn publish(
       }
     }
   }
+
+  if let Some(version) = &publish_flags.set_version {
+    if publish_configs.len() > 1 {
+      bail!("Cannot use --set-version when publishing a workspace. Change your cwd to an individual package instead.");
+    }
+    if let Some(publish_config) = publish_configs.get_mut(0) {
+      let mut config_file = publish_config.config_file.as_ref().clone();
+      config_file.json.version = Some(version.clone());
+      publish_config.config_file = Arc::new(config_file);
+    }
+  }
+
   let specifier_unfurler = Arc::new(SpecifierUnfurler::new(
-    if cli_options.unstable_sloppy_imports() {
-      Some(CliSloppyImportsResolver::new(SloppyImportsCachedFs::new(
-        cli_factory.fs().clone(),
-      )))
-    } else {
-      None
-    },
-    cli_options
-      .create_workspace_resolver(
-        cli_factory.file_fetcher()?,
-        PackageJsonDepResolution::Enabled,
-      )
-      .await?,
+    cli_factory.sloppy_imports_resolver()?.cloned(),
+    cli_factory.workspace_resolver().await?.clone(),
     cli_options.unstable_bare_node_builtins(),
   ));
 
@@ -403,43 +405,15 @@ impl PublishPreparer {
     graph: Arc<deno_graph::ModuleGraph>,
     diagnostics_collector: &PublishDiagnosticsCollector,
   ) -> Result<Rc<PreparedPublishPackage>, AnyError> {
-    static SUGGESTED_ENTRYPOINTS: [&str; 4] =
-      ["mod.ts", "mod.js", "index.ts", "index.js"];
-
     let deno_json = &package.config_file;
     let config_path = deno_json.specifier.to_file_path().unwrap();
     let root_dir = config_path.parent().unwrap().to_path_buf();
-    let Some(version) = deno_json.json.version.clone() else {
-      bail!("{} is missing 'version' field", deno_json.specifier);
-    };
-    if deno_json.json.exports.is_none() {
-      let mut suggested_entrypoint = None;
-
-      for entrypoint in SUGGESTED_ENTRYPOINTS {
-        if root_dir.join(entrypoint).exists() {
-          suggested_entrypoint = Some(entrypoint);
-          break;
-        }
-      }
-
-      let exports_content = format!(
-        r#"{{
-  "name": "{}",
-  "version": "{}",
-  "exports": "{}"
-}}"#,
-        package.name,
-        version,
-        suggested_entrypoint.unwrap_or("<path_to_entrypoint>")
-      );
-
-      bail!(
-      "You did not specify an entrypoint to \"{}\" package in {}. Add `exports` mapping in the configuration file, eg:\n{}",
-      package.name,
-      deno_json.specifier,
-      exports_content
-    );
-    }
+    let version = deno_json.json.version.clone().ok_or_else(|| {
+      deno_core::anyhow::anyhow!(
+        "{} is missing 'version' field",
+        deno_json.specifier
+      )
+    })?;
     let Some(name_no_at) = package.name.strip_prefix('@') else {
       bail!("Invalid package name, use '@<scope_name>/<package_name> format");
     };
@@ -938,9 +912,7 @@ async fn publish_package(
     package.config
   );
 
-  let body = http_body_util::Full::new(package.tarball.bytes.clone())
-    .map_err(|never| match never {})
-    .boxed();
+  let body = deno_fetch::ReqBody::full(package.tarball.bytes.clone());
   let response = http_client
     .post(url.parse()?, body)?
     .header(
@@ -1106,9 +1078,9 @@ fn collect_excluded_module_diagnostics(
   let graph_specifiers = graph
     .modules()
     .filter_map(|m| match m {
-      deno_graph::Module::Js(_) | deno_graph::Module::Json(_) => {
-        Some(m.specifier())
-      }
+      deno_graph::Module::Js(_)
+      | deno_graph::Module::Json(_)
+      | deno_graph::Module::Wasm(_) => Some(m.specifier()),
       deno_graph::Module::Npm(_)
       | deno_graph::Module::Node(_)
       | deno_graph::Module::External(_) => None,
@@ -1269,6 +1241,36 @@ fn has_license_file<'a>(
       })
       .unwrap_or(false)
   })
+}
+
+fn error_missing_exports_field(deno_json: &ConfigFile) -> Result<(), AnyError> {
+  static SUGGESTED_ENTRYPOINTS: [&str; 4] =
+    ["mod.ts", "mod.js", "index.ts", "index.js"];
+  let mut suggested_entrypoint = None;
+
+  for entrypoint in SUGGESTED_ENTRYPOINTS {
+    if deno_json.dir_path().join(entrypoint).exists() {
+      suggested_entrypoint = Some(entrypoint);
+      break;
+    }
+  }
+
+  let exports_content = format!(
+    r#"{{
+  "name": "{}",
+  "version": "{}",
+  "exports": "{}"
+}}"#,
+    deno_json.json.name.as_deref().unwrap_or("@scope/name"),
+    deno_json.json.name.as_deref().unwrap_or("0.0.0"),
+    suggested_entrypoint.unwrap_or("<path_to_entrypoint>")
+  );
+
+  bail!(
+    "You did not specify an entrypoint in {}. Add `exports` mapping in the configuration file, eg:\n{}",
+    deno_json.specifier,
+    exports_content
+  );
 }
 
 #[allow(clippy::print_stderr)]

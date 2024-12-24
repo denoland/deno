@@ -25,6 +25,17 @@ macro_rules! generate_builtin_node_module_lists {
 
 // NOTE(bartlomieju): keep this list in sync with `ext/node/polyfills/01_require.js`
 generate_builtin_node_module_lists! {
+  "_http_agent",
+  "_http_common",
+  "_http_outgoing",
+  "_http_server",
+  "_stream_duplex",
+  "_stream_passthrough",
+  "_stream_readable",
+  "_stream_transform",
+  "_stream_writable",
+  "_tls_common",
+  "_tls_wrap",
   "assert",
   "assert/strict",
   "async_hooks",
@@ -56,9 +67,9 @@ generate_builtin_node_module_lists! {
   "process",
   "punycode",
   "querystring",
-  "repl",
   "readline",
   "readline/promises",
+  "repl",
   "stream",
   "stream/consumers",
   "stream/promises",
@@ -78,4 +89,11 @@ generate_builtin_node_module_lists! {
   "wasi",
   "worker_threads",
   "zlib",
+}
+
+#[test]
+fn test_builtins_are_sorted() {
+  let mut builtins_list = SUPPORTED_BUILTIN_NODE_MODULES.to_vec();
+  builtins_list.sort();
+  assert_eq!(SUPPORTED_BUILTIN_NODE_MODULES, builtins_list);
 }

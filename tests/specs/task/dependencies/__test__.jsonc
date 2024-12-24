@@ -1,0 +1,78 @@
+{
+  "tests": {
+    "basic1": {
+      "cwd": "basic1",
+      "tempDir": true,
+      "args": "task run",
+      "output": "./basic1.out"
+    },
+    "basic2": {
+      "cwd": "basic2",
+      "tempDir": true,
+      "args": "task run",
+      "output": "./basic2.out"
+    },
+    "cross_package": {
+      "cwd": "cross_package/package1",
+      "tempDir": true,
+      "args": "task run",
+      "output": "./cross_package.out",
+      "exitCode": 1
+    },
+    "diamond": {
+      "cwd": "diamond",
+      "tempDir": true,
+      "args": "task a",
+      "output": "./diamond.out"
+    },
+    "diamond_list": {
+      "cwd": "diamond",
+      "tempDir": true,
+      "args": "task",
+      "output": "./diamond_list.out"
+    },
+    "diamond_big": {
+      "cwd": "diamond_big",
+      "tempDir": true,
+      "args": "task a",
+      "output": "./diamond_big.out"
+    },
+    "diamond_big_list": {
+      "cwd": "diamond_big",
+      "tempDir": true,
+      "args": "task",
+      "output": "./diamond_big_list.out"
+    },
+    "cycle": {
+      "cwd": "cycle",
+      "tempDir": true,
+      "output": "./cycle.out",
+      "args": "task a",
+      "exitCode": 1
+    },
+    "cycle_2": {
+      "cwd": "cycle_2",
+      "tempDir": true,
+      "args": "task a",
+      "output": "./cycle_2.out",
+      "exitCode": 1
+    },
+    "arg_task_with_deps": {
+      "cwd": "arg_task_with_deps",
+      "args": "task a a",
+      "output": "./arg_task_with_deps.out"
+    },
+    "no_command": {
+      "cwd": "no_command",
+      "args": "task a",
+      "output": "./no_command.out",
+      "exitCode": 0
+    },
+    "no_command_list": {
+      "cwd": "no_command",
+      "args": "task",
+      "output": "./no_command_list.out",
+      "exitCode": 0
+    }
+  }
+}

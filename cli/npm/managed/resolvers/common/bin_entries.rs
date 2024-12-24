@@ -28,8 +28,10 @@ fn default_bin_name(package: &NpmResolutionPackage) -> &str {
     .id
     .nv
     .name
+    .as_str()
     .rsplit_once('/')
-    .map_or(package.id.nv.name.as_str(), |(_, name)| name)
+    .map(|(_, name)| name)
+    .unwrap_or(package.id.nv.name.as_str())
 }
 
 pub fn warn_missing_entrypoint(

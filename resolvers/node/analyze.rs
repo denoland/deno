@@ -21,11 +21,11 @@ use url::Url;
 use crate::env::NodeResolverEnv;
 use crate::npm::InNpmPackageCheckerRc;
 use crate::resolution::NodeResolverRc;
-use crate::NodeModuleKind;
-use crate::NodeResolutionMode;
+use crate::NodeResolutionKind;
 use crate::NpmPackageFolderResolverRc;
 use crate::PackageJsonResolverRc;
 use crate::PathClean;
+use crate::ResolutionMode;
 
 #[derive(Debug, Clone)]
 pub enum CjsAnalysis<'a> {
@@ -162,7 +162,7 @@ impl<TCjsCodeAnalyzer: CjsCodeAnalyzer, TNodeResolverEnv: NodeResolverEnv>
         add_export(
           &mut source,
           export,
-          &format!("mod[\"{}\"]", escape_for_double_quote_string(export)),
+          &format!("mod[{}]", to_double_quote_string(export)),
           &mut temp_var_count,
         );
       }
@@ -209,7 +209,7 @@ impl<TCjsCodeAnalyzer: CjsCodeAnalyzer, TNodeResolverEnv: NodeResolverEnv>
             // FIXME(bartlomieju): check if these conditions are okay, probably
             // should be `deno-require`, because `deno` is already used in `esm_resolver.rs`
             &["deno", "node", "require", "default"],
-            NodeResolutionMode::Execution,
+            NodeResolutionKind::Execution,
           );
           let reexport_specifier = match result {
             Ok(Some(specifier)) => specifier,
@@ -303,7 +303,7 @@ impl<TCjsCodeAnalyzer: CjsCodeAnalyzer, TNodeResolverEnv: NodeResolverEnv>
     specifier: &str,
     referrer: &Url,
     conditions: &[&str],
-    mode: NodeResolutionMode,
+    resolution_kind: NodeResolutionKind,
   ) -> Result<Option<Url>, AnyError> {
     if specifier.starts_with('/') {
       todo!();
@@ -354,9 +354,9 @@ impl<TCjsCodeAnalyzer: CjsCodeAnalyzer, TNodeResolverEnv: NodeResolverEnv>
               &package_subpath,
               exports,
               Some(referrer),
-              NodeModuleKind::Esm,
+              ResolutionMode::Import,
               conditions,
-              mode,
+              resolution_kind,
             )
             .map_err(AnyError::from),
         )
@@ -373,7 +373,9 @@ impl<TCjsCodeAnalyzer: CjsCodeAnalyzer, TNodeResolverEnv: NodeResolverEnv>
             .pkg_json_resolver
             .load_package_json(&package_json_path)?;
           if let Some(package_json) = maybe_package_json {
-            if let Some(main) = package_json.main(NodeModuleKind::Cjs) {
+            if let Some(main) =
+              package_json.main(deno_package_json::NodeModuleKind::Cjs)
+            {
               return Ok(Some(url_from_file_path(&d.join(main).clean())?));
             }
           }
@@ -384,7 +386,9 @@ impl<TCjsCodeAnalyzer: CjsCodeAnalyzer, TNodeResolverEnv: NodeResolverEnv>
           .file_extension_probe(d, &referrer_path)
           .and_then(|p| url_from_file_path(&p).map_err(AnyError::from))
           .map(Some);
-      } else if let Some(main) = package_json.main(NodeModuleKind::Cjs) {
+      } else if let Some(main) =
+        package_json.main(deno_package_json::NodeModuleKind::Cjs)
+      {
         return Ok(Some(url_from_file_path(&module_dir.join(main).clean())?));
       } else {
         return Ok(Some(url_from_file_path(
@@ -557,8 +561,8 @@ fn add_export(
       "const __deno_export_{temp_var_count}__ = {initializer};"
     ));
     source.push(format!(
-      "export {{ __deno_export_{temp_var_count}__ as \"{}\" }};",
-      escape_for_double_quote_string(name)
+      "export {{ __deno_export_{temp_var_count}__ as {} }};",
+      to_double_quote_string(name)
     ));
   } else {
     source.push(format!("export const {name} = {initializer};"));
@@ -616,14 +620,9 @@ fn not_found(path: &str, referrer: &Path) -> AnyError {
   std::io::Error::new(std::io::ErrorKind::NotFound, msg).into()
 }
 
-fn escape_for_double_quote_string(text: &str) -> Cow<str> {
-  // this should be rare, so doing a scan first before allocating is ok
-  if text.chars().any(|c| matches!(c, '"' | '\\')) {
-    // don't bother making this more complex for perf because it's rare
-    Cow::Owned(text.replace('\\', "\\\\").replace('"', "\\\""))
-  } else {
-    Cow::Borrowed(text)
-  }
+fn to_double_quote_string(text: &str) -> String {
+  // serde can handle this for us
+  serde_json::to_string(text).unwrap()
 }
 
 #[cfg(test)]
@@ -659,6 +658,15 @@ mod tests {
     assert_eq!(
       parse_specifier("@some-package/core/actions"),
       Some(("@some-package/core".to_string(), "./actions".to_string()))
+    );
+  }
+
+  #[test]
+  fn test_to_double_quote_string() {
+    assert_eq!(to_double_quote_string("test"), "\"test\"");
+    assert_eq!(
+      to_double_quote_string("\r\n\t\"test"),
+      "\"\\r\\n\\t\\\"test\""
     );
   }
 }

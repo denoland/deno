@@ -64,7 +64,7 @@ pub async fn check(
       let file = file_fetcher.fetch(&s, root_permissions).await?;
       let snippet_files = extract::extract_snippet_files(file)?;
       for snippet_file in snippet_files {
-        specifiers_for_typecheck.push(snippet_file.specifier.clone());
+        specifiers_for_typecheck.push(snippet_file.url.clone());
         file_fetcher.insert_memory_files(snippet_file);
       }
     }
@@ -380,6 +380,11 @@ fn get_check_hash(
         hasher.write_str(module.specifier.as_str());
         hasher.write_str(&module.source);
       }
+      Module::Wasm(module) => {
+        has_file_to_type_check = true;
+        hasher.write_str(module.specifier.as_str());
+        hasher.write_str(&module.source_dts);
+      }
       Module::External(module) => {
         hasher.write_str(module.specifier.as_str());
       }
@@ -437,6 +442,7 @@ fn get_tsc_roots(
         | MediaType::SourceMap
         | MediaType::Unknown => None,
       },
+      Module::Wasm(module) => Some((module.specifier.clone(), MediaType::Dmts)),
       Module::External(_)
       | Module::Node(_)
       | Module::Npm(_)

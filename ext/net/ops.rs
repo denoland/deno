@@ -21,13 +21,14 @@ use deno_core::ResourceId;
 use hickory_proto::rr::rdata::caa::Value;
 use hickory_proto::rr::record_data::RData;
 use hickory_proto::rr::record_type::RecordType;
+use hickory_proto::ProtoError;
+use hickory_proto::ProtoErrorKind;
 use hickory_resolver::config::NameServerConfigGroup;
 use hickory_resolver::config::ResolverConfig;
 use hickory_resolver::config::ResolverOpts;
-use hickory_resolver::error::ResolveError;
-use hickory_resolver::error::ResolveErrorKind;
 use hickory_resolver::system_conf;
-use hickory_resolver::AsyncResolver;
+use hickory_resolver::ResolveError;
+use hickory_resolver::ResolveErrorKind;
 use serde::Deserialize;
 use serde::Serialize;
 use socket2::Domain;
@@ -182,7 +183,7 @@ pub async fn op_net_recv_udp(
   Ok((nread, IpAddr::from(remote_addr)))
 }
 
-#[op2(async)]
+#[op2(async, stack_trace)]
 #[number]
 pub async fn op_net_send_udp<NP>(
   state: Rc<RefCell<OpState>>,
@@ -343,7 +344,7 @@ pub async fn op_net_set_multi_ttl_udp(
   Ok(())
 }
 
-#[op2(async)]
+#[op2(async, stack_trace)]
 #[serde]
 pub async fn op_net_connect_tcp<NP>(
   state: Rc<RefCell<OpState>>,
@@ -401,7 +402,7 @@ impl Resource for UdpSocketResource {
   }
 }
 
-#[op2]
+#[op2(stack_trace)]
 #[serde]
 pub fn op_net_listen_tcp<NP>(
   state: &mut OpState,
@@ -501,7 +502,7 @@ where
   Ok((rid, IpAddr::from(local_addr)))
 }
 
-#[op2]
+#[op2(stack_trace)]
 #[serde]
 pub fn op_net_listen_udp<NP>(
   state: &mut OpState,
@@ -516,7 +517,7 @@ where
   net_listen_udp::<NP>(state, addr, reuse_address, loopback)
 }
 
-#[op2]
+#[op2(stack_trace)]
 #[serde]
 pub fn op_node_unstable_net_listen_udp<NP>(
   state: &mut OpState,
@@ -601,7 +602,7 @@ pub struct NameServer {
   port: u16,
 }
 
-#[op2(async)]
+#[op2(async, stack_trace)]
 #[serde]
 pub async fn op_dns_resolve<NP>(
   state: Rc<RefCell<OpState>>,
@@ -646,7 +647,7 @@ where
     }
   }
 
-  let resolver = AsyncResolver::tokio(config, opts);
+  let resolver = hickory_resolver::Resolver::tokio(config, opts);
 
   let lookup_fut = resolver.lookup(query, record_type);
 
@@ -674,11 +675,21 @@ where
 
   lookup
     .map_err(|e| match e.kind() {
-      ResolveErrorKind::NoRecordsFound { .. } => NetError::DnsNotFound(e),
-      ResolveErrorKind::Message("No connections available") => {
+      ResolveErrorKind::Proto(ProtoError { kind, .. })
+        if matches!(**kind, ProtoErrorKind::NoRecordsFound { .. }) =>
+      {
+        NetError::DnsNotFound(e)
+      }
+      ResolveErrorKind::Proto(ProtoError { kind, .. })
+        if matches!(**kind, ProtoErrorKind::NoConnections { .. }) =>
+      {
         NetError::DnsNotConnected(e)
       }
-      ResolveErrorKind::Timeout => NetError::DnsTimedOut(e),
+      ResolveErrorKind::Proto(ProtoError { kind, .. })
+        if matches!(**kind, ProtoErrorKind::Timeout { .. }) =>
+      {
+        NetError::DnsTimedOut(e)
+      }
       _ => NetError::Dns(e),
     })?
     .iter()
