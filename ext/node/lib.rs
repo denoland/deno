@@ -184,11 +184,11 @@ fn op_node_build_os() -> String {
 }
 
 #[derive(Clone)]
-pub struct NodeExtInitServices {
+pub struct NodeExtInitServices<T: NodeResolverEnv> {
   pub node_require_loader: NodeRequireLoaderRc,
-  pub node_resolver: NodeResolverRc,
+  pub node_resolver: NodeResolverRc<T>,
   pub npm_resolver: NpmPackageFolderResolverRc,
-  pub pkg_json_resolver: PackageJsonResolverRc,
+  pub pkg_json_resolver: PackageJsonResolverRc<T>,
 }
 
 deno_core::extension!(deno_node,
