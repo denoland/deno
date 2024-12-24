@@ -80,6 +80,7 @@ impl CliLinter {
     parsed_source: ParsedSource,
     file_path: PathBuf,
   ) -> Result<Vec<LintDiagnostic>, AnyError> {
+    eprintln!("has plugin runner? {}", self.maybe_plugin_runner.is_some());
     let Some(plugin_runner) = self.maybe_plugin_runner.clone() else {
       return Ok(vec![]);
     };
@@ -107,9 +108,22 @@ impl CliLinter {
     &self,
     parsed_source: &ParsedSource,
   ) -> Vec<LintDiagnostic> {
-    self
+    let mut diagnostics = self
       .linter
-      .lint_with_ast(parsed_source, self.deno_lint_config.clone())
+      .lint_with_ast(parsed_source, self.deno_lint_config.clone());
+    eprintln!("lint with ast");
+    let file_path = parsed_source.specifier().to_file_path().unwrap();
+    // TODO(bartlomieju): surface error is running plugin fails
+    let run_plugin_result = self.run_plugins(parsed_source.clone(), file_path);
+    // if let Err(err) = run_plugin_result.as_ref() {
+    //   eprintln!("run plugin result {:#?}", err);
+    // }
+    let maybe_plugin_diagnostics = run_plugin_result.ok();
+    if let Some(plugin_diagnostics) = maybe_plugin_diagnostics {
+      diagnostics.extend_from_slice(&plugin_diagnostics);
+    }
+
+    diagnostics
   }
 
   pub fn lint_file(

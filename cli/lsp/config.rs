@@ -1628,19 +1628,34 @@ impl ConfigData {
       sloppy_imports_resolver.clone(),
       Some(resolver.clone()),
     );
+
+    let lint_options = LintOptions::resolve(
+      member_dir.dir_path(),
+      (*lint_config).clone(),
+      &LintFlags::default(),
+    );
+    let mut plugin_runner = None;
+    let maybe_plugin_specifiers_result = lint_options.resolve_lint_plugins();
+    if let Ok(maybe_plugin_specifiers) = maybe_plugin_specifiers_result {
+      if let Some(plugin_specifiers) = maybe_plugin_specifiers {
+        let plugin_load_result =
+          crate::tools::lint::create_runner_and_load_plugins(plugin_specifiers)
+            .await;
+        // eprintln!("plugin load result {:#?}", plugin_load_result);
+        if let Some(runner) = plugin_load_result.ok() {
+          plugin_runner = Some(Arc::new(Mutex::new(runner)));
+        }
+      }
+    }
+
     let linter = Arc::new(CliLinter::new(CliLinterOptions {
       configured_rules: lint_rule_provider.resolve_lint_rules(
-        LintOptions::resolve(
-          member_dir.dir_path(),
-          (*lint_config).clone(),
-          &LintFlags::default(),
-        )
-        .rules,
+        lint_options.rules,
         member_dir.maybe_deno_json().map(|c| c.as_ref()),
       ),
       fix: false,
       deno_lint_config,
-      maybe_plugin_runner: None,
+      maybe_plugin_runner: plugin_runner,
     }));
 
     ConfigData {
