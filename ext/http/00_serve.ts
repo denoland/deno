@@ -377,13 +377,14 @@ class InnerRequest {
         undefined,
         (controller, error) => {
           if (ObjectPrototypeIsPrototypeOf(BadResourcePrototype, error)) {
-            // TODO(kt3k): We would like to pass `error` as cause when BadResource supports it.
+            // TODO(kt3k): We would like to pass `error` as `cause` when BadResource supports it.
             controller.error(
               new error.constructor(
                 `Cannot read request body as underlying resource unavailable`,
               ),
             );
-            return;
+          } else {
+            controller.error(error);
           }
         },
       ),
