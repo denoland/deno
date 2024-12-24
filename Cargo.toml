@@ -135,6 +135,8 @@ fs3 = "0.5.0"
 futures = "0.3.21"
 glob = "0.3.1"
 h2 = "0.4.4"
+h3 = "0.0.6"
+h3-quinn = "0.0.7"
 hickory-resolver = { version = "0.25.0-alpha.4", features = ["tokio-runtime", "serde"] }
 http = "1.0"
 http-body = "1.0"
@@ -169,6 +171,7 @@ pin-project = "1.0.11" # don't pin because they yank crates from cargo
 pretty_assertions = "=1.4.0"
 prost = "0.13"
 prost-build = "0.13"
+quinn = { version = "0.11.6", default-features = false, features = ["runtime-tokio", "rustls", "ring"] }
 rand = "=0.8.5"
 regex = "^1.7.0"
 reqwest = { version = "=0.12.5", default-features = false, features = ["rustls-tls", "stream", "gzip", "brotli", "socks", "json", "http2"] } # pinned because of https://github.com/seanmonstar/reqwest/pull/1955

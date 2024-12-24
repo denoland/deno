@@ -1013,6 +1013,8 @@ fn get_http_next_error(error: &HttpNextError) -> &'static str {
     HttpNextError::Io(e) => get_io_error_class(e),
     HttpNextError::WebSocketUpgrade(e) => get_websocket_upgrade_error(e),
     HttpNextError::Hyper(e) => get_hyper_error_class(e),
+    HttpNextError::H3(_) => "Http",
+    HttpNextError::QuinnConnectionError(_) => "Http",
     HttpNextError::JoinError(_) => "Error",
     HttpNextError::Canceled(e) => {
       let io_err: io::Error = e.to_owned().into();

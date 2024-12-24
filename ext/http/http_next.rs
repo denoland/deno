@@ -3,6 +3,7 @@ use crate::compressible::is_content_compressible;
 use crate::extract_network_stream;
 use crate::network_buffered_stream::NetworkStreamPrefixCheck;
 use crate::request_body::HttpRequestBody;
+use crate::request_properties::listener_properties;
 use crate::request_properties::HttpConnectionProperties;
 use crate::request_properties::HttpListenProperties;
 use crate::request_properties::HttpPropertyExtractor;
@@ -22,6 +23,7 @@ use crate::Options;
 use cache_control::CacheControl;
 use deno_core::external;
 use deno_core::futures::future::poll_fn;
+use deno_core::futures::StreamExt;
 use deno_core::futures::TryFutureExt;
 use deno_core::op2;
 use deno_core::serde_v8::from_v8;
@@ -42,8 +44,12 @@ use deno_core::RcRef;
 use deno_core::Resource;
 use deno_core::ResourceId;
 use deno_net::ops_tls::TlsStream;
+use deno_net::quic::ListenerResource as QuicListener;
 use deno_net::raw::NetworkStream;
+use deno_net::raw::NetworkStreamAddress;
+use deno_net::raw::NetworkStreamType;
 use deno_websocket::ws_create_server_stream;
+use http_body_util::BodyExt;
 use hyper::body::Incoming;
 use hyper::header::HeaderMap;
 use hyper::header::ACCEPT_ENCODING;
@@ -156,6 +162,10 @@ pub enum HttpNextError {
   WebSocketUpgrade(crate::websocket_upgrade::WebSocketUpgradeError),
   #[error("{0}")]
   Hyper(#[from] hyper::Error),
+  #[error(transparent)]
+  H3(#[from] h3::Error),
+  #[error(transparent)]
+  QuinnConnectionError(#[from] h3_quinn::quinn::ConnectionError),
   #[error(transparent)]
   JoinError(#[from] tokio::task::JoinError),
   #[error(transparent)]
@@ -905,7 +915,12 @@ fn serve_https(
   } = lifetime;
 
   let svc = service_fn(move |req: Request| {
-    handle_request(req, request_info.clone(), server_state.clone(), tx.clone())
+    handle_request(
+      req.map(Into::into),
+      request_info.clone(),
+      server_state.clone(),
+      tx.clone(),
+    )
   });
   spawn(
     async move {
@@ -953,7 +968,12 @@ fn serve_http(
   } = lifetime;
 
   let svc = service_fn(move |req: Request| {
-    handle_request(req, request_info.clone(), server_state.clone(), tx.clone())
+    handle_request(
+      req.map(Into::into),
+      request_info.clone(),
+      server_state.clone(),
+      tx.clone(),
+    )
   });
   spawn(
     serve_http2_autodetect(io, svc, listen_cancel_handle, options)
@@ -1062,9 +1082,19 @@ pub fn op_http_serve<HTTP>(
 where
   HTTP: HttpPropertyExtractor,
 {
-  let listener =
-    HTTP::get_listener_for_rid(&mut state.borrow_mut(), listener_rid)
-      .map_err(HttpNextError::Resource)?;
+  let listener = {
+    let mut bstate = state.borrow_mut();
+
+    if let Ok(endpoint) =
+      bstate.resource_table.take::<QuicListener>(listener_rid)
+    {
+      drop(bstate);
+      return serve_on_quic(state, endpoint);
+    }
+
+    HTTP::get_listener_for_rid(&mut bstate, listener_rid)
+      .map_err(HttpNextError::Resource)?
+  };
 
   let listen_properties = HTTP::listen_properties_from_listener(&listener)?;
 
@@ -1107,6 +1137,117 @@ where
     state.borrow_mut().resource_table.add_rc(resource),
     listen_properties.scheme,
     listen_properties.fallback_host,
+  ))
+}
+
+fn serve_on_quic(
+  state: Rc<RefCell<OpState>>,
+  listener: Rc<QuicListener>,
+) -> Result<(ResourceId, &'static str, String), HttpNextError> {
+  let endpoint = listener.0.clone();
+  let (tx, rx) = tokio::sync::mpsc::channel(10);
+  let resource: Rc<HttpJoinHandle> = Rc::new(HttpJoinHandle::new(rx));
+  let lifetime = resource.lifetime();
+
+  let local_addr = endpoint.local_addr()?;
+  let properties = listener_properties(
+    NetworkStreamType::Tls,
+    NetworkStreamAddress::Ip(local_addr),
+  )?;
+
+  let handle = spawn(async move {
+    while let Some(incoming) = endpoint
+      .accept()
+      .or_cancel(lifetime.listen_cancel_handle.clone())
+      .await?
+    {
+      let lifetime = lifetime.clone();
+      let tx = tx.clone();
+      spawn(async move {
+        let conn = incoming
+          .accept()?
+          .or_cancel(lifetime.listen_cancel_handle.clone())
+          .await??;
+
+        let request_info = HttpConnectionProperties {
+          peer_address: Rc::from(conn.remote_address().ip().to_string()),
+          peer_port: Some(conn.remote_address().port()),
+          local_port: properties.local_port,
+          stream_type: properties.stream_type,
+        };
+
+        let mut h3_conn = h3::server::builder()
+          .send_grease(true)
+          .enable_datagram(true)
+          .enable_connect(true)
+          .enable_webtransport(true)
+          .max_webtransport_sessions(1u32.into())
+          .build(h3_quinn::Connection::new(conn))
+          .or_cancel(lifetime.connection_cancel_handle.clone())
+          .await??;
+
+        while let Some((req, stream)) = h3_conn
+          .accept()
+          .or_cancel(lifetime.connection_cancel_handle.clone())
+          .await??
+        {
+          let request_info = request_info.clone();
+          let lifetime = lifetime.clone();
+          let tx = tx.clone();
+          spawn(async move {
+            let (mut send, recv) = stream.split();
+
+            let (parts, _body) = req.into_parts();
+            let req = hyper::Request::from_parts(parts, recv.into());
+
+            match handle_request(
+              req,
+              request_info,
+              lifetime.server_state.clone(),
+              tx.clone(),
+            )
+            .await
+            {
+              Ok(res) => {
+                let (parts, body) = res.into_parts();
+                let res = hyper::Response::from_parts(parts, ());
+
+                send.send_response(res).await?;
+
+                let mut body = body.into_data_stream();
+                while let Some(v) = body.next().await {
+                  send.send_data(v.unwrap()).await?;
+                }
+              }
+              Err(_) => {
+                send
+                  .send_response(
+                    hyper::Response::builder().status(500).body(()).unwrap(),
+                  )
+                  .await?;
+              }
+            }
+
+            Ok::<_, HttpNextError>(())
+          });
+        }
+
+        Ok::<_, HttpNextError>(())
+      });
+    }
+
+    Ok(())
+  });
+
+  // Set the handle after we start the future
+  *RcRef::map(&resource, |this| &this.join_handle)
+    .try_borrow_mut()
+    .unwrap() = Some(handle);
+
+  Ok((
+    state.borrow_mut().resource_table.add_rc(resource),
+    properties.scheme,
+    properties.fallback_host,
   ))
 }
 

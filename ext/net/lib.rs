@@ -5,7 +5,7 @@ pub mod ops;
 pub mod ops_tls;
 #[cfg(unix)]
 pub mod ops_unix;
-mod quic;
+pub mod quic;
 pub mod raw;
 pub mod resolve_addr;
 pub mod tcp;
@@ -190,7 +190,6 @@ deno_core::extension!(deno_net,
     quic::op_quic_incoming_remote_addr,
     quic::op_quic_incoming_remote_addr_validated,
     quic::op_quic_listener_accept,
-    quic::op_quic_listener_stop,
     quic::op_quic_recv_stream_get_id,
     quic::op_quic_send_stream_get_id,
     quic::op_quic_send_stream_get_priority,

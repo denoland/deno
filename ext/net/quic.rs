@@ -250,24 +250,27 @@ pub(crate) fn op_quic_endpoint_close(
   Ok(())
 }
 
-struct ListenerResource(quinn::Endpoint, Arc<QuicServerConfig>);
+pub struct ListenerResource(pub quinn::Endpoint, Arc<QuicServerConfig>);
 
-impl Drop for ListenerResource {
-  fn drop(&mut self) {
+impl Resource for ListenerResource {
+  fn name(&self) -> Cow<str> {
+    "quicListener".into()
+  }
+
+  fn close(self: Rc<Self>) {
     self.0.set_server_config(None);
   }
 }
 
-impl GarbageCollected for ListenerResource {}
-
 #[op2]
-#[cppgc]
+#[smi]
 pub(crate) fn op_quic_endpoint_listen(
+  state: Rc<RefCell<OpState>>,
   #[cppgc] endpoint: &EndpointResource,
   #[serde] args: ListenArgs,
   #[serde] transport_config: TransportConfig,
   #[cppgc] keys: &TlsKeysHolder,
-) -> Result<ListenerResource, QuicError> {
+) -> Result<u32, QuicError> {
   if !endpoint.can_listen {
     return Err(QuicError::CannotListen);
   }
@@ -301,7 +304,11 @@ pub(crate) fn op_quic_endpoint_listen(
 
   endpoint.endpoint.set_server_config(Some(config));
 
-  Ok(ListenerResource(endpoint.endpoint.clone(), server_config))
+  let rid = state
+    .borrow_mut()
+    .resource_table
+    .add(ListenerResource(endpoint.endpoint.clone(), server_config));
+  Ok(rid)
 }
 
 struct ConnectionResource(
@@ -321,8 +328,13 @@ impl GarbageCollected for IncomingResource {}
 #[op2(async)]
 #[cppgc]
 pub(crate) async fn op_quic_listener_accept(
-  #[cppgc] resource: &ListenerResource,
+  state: Rc<RefCell<OpState>>,
+  #[smi] resource_id: u32,
 ) -> Result<IncomingResource, QuicError> {
+  let resource = state
+    .borrow()
+    .resource_table
+    .get::<ListenerResource>(resource_id)?;
   match resource.0.accept().await {
     Some(incoming) => Ok(IncomingResource(
       RefCell::new(Some(incoming)),
@@ -330,11 +342,6 @@ pub(crate) async fn op_quic_listener_accept(
     )),
     None => Err(QuicError::BadResource("QuicListener")),
   }
-}
-
-#[op2(fast)]
-pub(crate) fn op_quic_listener_stop(#[cppgc] resource: &ListenerResource) {
-  resource.0.set_server_config(None);
 }
 
 #[op2]

@@ -42,6 +42,7 @@ const {
   TypedArrayPrototypeGetSymbolToStringTag,
   Uint8Array,
   Promise,
+  SafePromiseAll,
 } = primordials;
 const {
   getAsyncContext,
@@ -340,7 +341,7 @@ class InnerRequest {
       this.#methodAndUri = op_http_get_request_method_and_url(this.#external);
     }
     return {
-      transport: "tcp",
+      transport,
       hostname: this.#methodAndUri[3],
       port: this.#methodAndUri[4],
     };
@@ -727,7 +728,7 @@ function serve(arg1, arg2) {
     const path = listener.addr.path;
     return serveHttpOnListener(listener, signal, handler, onError, () => {
       if (options.onListen) {
-        options.onListen(listener.addr);
+        options.onListen(listener.addr, "unix");
       } else {
         // deno-lint-ignore no-console
         console.error(`Listening on ${path}`);
@@ -754,6 +755,7 @@ function serve(arg1, arg2) {
   }
 
   let listener;
+  let listenerQuic;
   if (wantsHttps) {
     if (!options.cert || !options.key) {
       throw new TypeError(
@@ -765,6 +767,17 @@ function serve(arg1, arg2) {
     listenOpts.alpnProtocols = ["h2", "http/1.1"];
     listener = listenTls(listenOpts);
     listenOpts.port = listener.addr.port;
+
+    if (Deno.QuicEndpoint) {
+      listenerQuic = new Deno.QuicEndpoint({
+        hostname: listenOpts.hostname,
+        port: listenOpts.port,
+      }).listen({
+        key: listenOpts.key,
+        cert: listenOpts.cert,
+        alpnProtocols: ["h3"],
+      });
+    }
   } else {
     listener = listen(listenOpts);
     listenOpts.port = listener.addr.port;
@@ -772,18 +785,56 @@ function serve(arg1, arg2) {
 
   const addr = listener.addr;
 
-  const onListen = (scheme) => {
+  const onListen = (scheme, transport = "tcp") => {
     if (options.onListen) {
-      options.onListen(addr);
+      options.onListen(addr, transport);
     } else {
       const host = formatHostName(addr.hostname);
 
       // deno-lint-ignore no-console
-      console.error(`Listening on ${scheme}${host}:${addr.port}/`);
+      console.error(
+        `Listening with ${transport} on ${scheme}${host}:${addr.port}/`,
+      );
     }
   };
 
-  return serveHttpOnListener(listener, signal, handler, onError, onListen);
+  const tcp = serveHttpOnListener(listener, signal, handler, onError, onListen);
+
+  if (listenerQuic) {
+    const udp = serveHttpOnListener(
+      listenerQuic,
+      signal,
+      handler,
+      onError,
+      onListen,
+    );
+    return {
+      addr: tcp.addr,
+      finished: SafePromiseAll([
+        tcp.finished,
+        udp.finished,
+      ]),
+      async shutdown() {
+        await SafePromiseAll([
+          tcp.shutdown(),
+          udp.shutdown(),
+        ]);
+      },
+      ref() {
+        tcp.ref();
+        udp.ref();
+      },
+      unref() {
+        tcp.unref();
+        udp.unref();
+      },
+      [SymbolAsyncDispose]() {
+        return this.shutdown();
+      },
+    };
+  }
+
+  return tcp;
 }
 
 /**
@@ -797,7 +848,7 @@ function serveHttpOnListener(listener, signal, handler, onError, onListen) {
   );
   const callback = mapToCallback(context, handler, onError);
 
-  onListen(context.scheme);
+  onListen(context.scheme, context.listener.addr.transport);
 
   return serveHttpOn(context, listener.addr, callback);
 }

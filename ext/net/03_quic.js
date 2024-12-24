@@ -29,7 +29,6 @@ import {
   op_quic_incoming_remote_addr,
   op_quic_incoming_remote_addr_validated,
   op_quic_listener_accept,
-  op_quic_listener_stop,
   op_quic_recv_stream_get_id,
   op_quic_send_stream_get_id,
   op_quic_send_stream_get_priority,
@@ -45,9 +44,11 @@ import {
 } from "ext:deno_web/06_streams.js";
 import { loadTlsKeyPair } from "ext:deno_net/02_tls.js";
 const {
+  internalRidSymbol,
   BadResourcePrototype,
 } = core;
 const {
+  ObjectDefineProperty,
   ObjectPrototypeIsPrototypeOf,
   PromisePrototypeThen,
   SymbolAsyncIterator,
@@ -84,7 +85,10 @@ class QuicEndpoint {
   }
 
   get addr() {
-    return op_quic_endpoint_get_addr(this.#endpoint);
+    return {
+      ...op_quic_endpoint_get_addr(this.#endpoint),
+      transport: "quic",
+    };
   }
 
   listen(options) {
@@ -117,6 +121,16 @@ class QuicListener {
   constructor(listener, endpoint) {
     this.#listener = listener;
     this.#endpoint = endpoint;
+
+    ObjectDefineProperty(this, internalRidSymbol, {
+      __proto__: null,
+      enumerable: false,
+      value: listener,
+    });
+  }
+
+  get addr() {
+    return this.#endpoint.addr;
   }
 
   get endpoint() {
@@ -151,7 +165,7 @@ class QuicListener {
   }
 
   stop() {
-    op_quic_listener_stop(this.#listener);
+    core.close(this.#listener);
   }
 }
 

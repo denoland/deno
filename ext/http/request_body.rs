@@ -1,4 +1,5 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+use crate::service::RequestBody;
 use bytes::Bytes;
 use deno_core::futures::stream::Peekable;
 use deno_core::futures::Stream;
@@ -10,7 +11,6 @@ use deno_core::BufView;
 use deno_core::RcRef;
 use deno_core::Resource;
 use hyper::body::Body;
-use hyper::body::Incoming;
 use hyper::body::SizeHint;
 use std::borrow::Cow;
 use std::pin::Pin;
@@ -19,10 +19,10 @@ use std::task::ready;
 use std::task::Poll;
 
 /// Converts a hyper incoming body stream into a stream of [`Bytes`] that we can use to read in V8.
-struct ReadFuture(Incoming);
+struct ReadFuture(RequestBody);
 
 impl Stream for ReadFuture {
-  type Item = Result<Bytes, hyper::Error>;
+  type Item = Result<Bytes, crate::HttpNextError>;
 
   fn poll_next(
     self: Pin<&mut Self>,
@@ -53,12 +53,15 @@ impl Stream for ReadFuture {
 pub struct HttpRequestBody(AsyncRefCell<Peekable<ReadFuture>>, SizeHint);
 
 impl HttpRequestBody {
-  pub fn new(body: Incoming) -> Self {
+  pub fn new(body: RequestBody) -> Self {
     let size_hint = body.size_hint();
     Self(AsyncRefCell::new(ReadFuture(body).peekable()), size_hint)
   }
 
-  async fn read(self: Rc<Self>, limit: usize) -> Result<BufView, hyper::Error> {
+  async fn read(
+    self: Rc<Self>,
+    limit: usize,
+  ) -> Result<BufView, crate::HttpNextError> {
     let peekable = RcRef::map(self, |this| &this.0);
     let mut peekable = peekable.borrow_mut().await;
     match Pin::new(&mut *peekable).peek_mut().await {

@@ -196,7 +196,7 @@ impl HttpPropertyExtractor for DefaultHttpPropertyExtractor {
   }
 }
 
-fn listener_properties(
+pub(crate) fn listener_properties(
   stream_type: NetworkStreamType,
   local_address: NetworkStreamAddress,
 ) -> Result<HttpListenProperties, std::io::Error> {

@@ -2,6 +2,7 @@
 use crate::request_properties::HttpConnectionProperties;
 use crate::response_body::ResponseBytesInner;
 use crate::response_body::ResponseStreamResult;
+use bytes::Buf;
 use deno_core::futures::ready;
 use deno_core::BufView;
 use deno_core::OpState;
@@ -29,7 +30,7 @@ use std::task::Poll;
 use std::task::Waker;
 use tokio::sync::oneshot;
 
-pub type Request = hyper::Request<Incoming>;
+pub type Request = hyper::Request<RequestBody>;
 pub type Response = hyper::Response<HttpRecordResponse>;
 
 #[cfg(feature = "__http_tracing")]
@@ -148,13 +149,54 @@ impl std::ops::Deref for HttpServerState {
   }
 }
 
-enum RequestBodyState {
+type H3Stream = h3::server::RequestStream<h3_quinn::RecvStream, BufView>;
+
+pub enum RequestBody {
   Incoming(Incoming),
+  H3(H3Stream),
+}
+
+impl Body for RequestBody {
+  type Data = bytes::Bytes;
+  type Error = crate::HttpNextError;
+
+  fn poll_frame(
+    self: Pin<&mut Self>,
+    cx: &mut Context<'_>,
+  ) -> Poll<Option<Result<Frame<Self::Data>, Self::Error>>> {
+    match self.get_mut() {
+      Self::Incoming(incoming) => {
+        Pin::new(incoming).poll_frame(cx).map_err(Into::into)
+      }
+      Self::H3(stream) => match stream.poll_recv_data(cx)? {
+        Poll::Ready(v) => Poll::Ready(
+          v.map(|mut v| Ok(Frame::data(v.copy_to_bytes(v.remaining())))),
+        ),
+        Poll::Pending => Poll::Pending,
+      },
+    }
+  }
+}
+
+impl From<Incoming> for RequestBody {
+  fn from(value: Incoming) -> Self {
+    Self::Incoming(value)
+  }
+}
+
+impl From<H3Stream> for RequestBody {
+  fn from(value: H3Stream) -> Self {
+    Self::H3(value)
+  }
+}
+
+enum RequestBodyState {
+  Incoming(RequestBody),
   Resource(#[allow(dead_code)] HttpRequestBodyAutocloser),
 }
 
-impl From<Incoming> for RequestBodyState {
-  fn from(value: Incoming) -> Self {
+impl From<RequestBody> for RequestBodyState {
+  fn from(value: RequestBody) -> Self {
     RequestBodyState::Incoming(value)
   }
 }
@@ -365,7 +407,7 @@ impl HttpRecord {
   }
 
   /// Take the Hyper body from this record.
-  pub fn take_request_body(&self) -> Option<Incoming> {
+  pub fn take_request_body(&self) -> Option<RequestBody> {
     let body_holder = &mut self.self_mut().request_body;
     let body = body_holder.take();
     match body {
@@ -544,13 +586,13 @@ impl Body for HttpRecordResponse {
           if let Some(trailers) = inner.trailers.take() {
             return Poll::Ready(Some(Ok(Frame::trailers(trailers))));
           }
-          unreachable!()
+          return Poll::Ready(None);
         }
         ResponseBytesInner::Bytes(..) => {
           drop(inner);
           let ResponseBytesInner::Bytes(data) = record.take_response_body()
           else {
-            unreachable!();
+            return Poll::Ready(None);
           };
           return Poll::Ready(Some(Ok(Frame::data(data))));
         }
@@ -665,7 +707,7 @@ mod tests {
     };
     let svc = service_fn(move |req: hyper::Request<Incoming>| {
       handle_request(
-        req,
+        req.map(Into::into),
         request_info.clone(),
         server_state.clone(),
         tx.clone(),
