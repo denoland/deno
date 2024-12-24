@@ -297,31 +297,12 @@ impl WorkspaceLinter {
         ))
       });
 
-    let maybe_plugins = if lint_options.plugins.is_empty() {
-      None
-    } else {
-      Some(lint_options.plugins.clone())
-    };
-
-    let plugin_specifiers = if let Some(plugins) = maybe_plugins {
-      let mut plugin_specifiers = Vec::with_capacity(plugins.len());
-      // TODO(bartlomieju): handle import-mapped specifiers
-      for plugin in plugins {
-        let url = resolve_url_or_path(&plugin, &lint_options.dir_path)?;
-        plugin_specifiers.push(url);
-      }
-      plugin_specifiers
-    } else {
-      vec![]
-    };
-
-    let plugin_runner = if !plugin_specifiers.is_empty() {
+    let mut plugin_runner = None;
+    if let Some(plugin_specifiers) = lint_options.resolve_lint_plugins()? {
       let runner =
         plugins::create_runner_and_load_plugins(plugin_specifiers).await?;
-      Some(Arc::new(Mutex::new(runner)))
-    } else {
-      None
-    };
+      plugin_runner = Some(Arc::new(Mutex::new(runner)));
+    }
 
     let linter = Arc::new(CliLinter::new(CliLinterOptions {
       configured_rules: lint_rules,

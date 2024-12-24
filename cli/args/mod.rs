@@ -467,6 +467,20 @@ impl LintOptions {
       dir_path,
     }
   }
+
+  pub fn resolve_lint_plugins(&self) -> Result<Option<Vec<Url>>, AnyError> {
+    if self.plugins.is_empty() {
+      return Ok(None);
+    }
+
+    let mut specifiers = Vec::with_capacity(self.plugins.len());
+    for plugin in &self.plugins {
+      // TODO(bartlomieju): handle import-mapped specifiers
+      let url = resolve_url_or_path(plugin, &self.dir_path)?;
+      specifiers.push(url);
+    }
+    Ok(Some(specifiers))
+  }
 }
 
 fn resolve_lint_rules_options(
