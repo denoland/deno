@@ -371,7 +371,8 @@ Deno.test({
     };
 
     for (const cipher of crypto.getCiphers()) {
-      crypto.createCipheriv(cipher, getZeroKey(cipher), getZeroIv(cipher)).final();
+      crypto.createCipheriv(cipher, getZeroKey(cipher), getZeroIv(cipher))
+        .final();
     }
   },
 });
