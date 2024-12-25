@@ -361,6 +361,12 @@ Deno.test({
   name: "getCiphers",
   fn() {
     assertEquals(crypto.getCiphers().includes("aes-128-cbc"), true);
+
+    const getBytes = (cipher: string) => +cipher.match(/\d+/)![0] / 8;
+
+    for (const cipher of crypto.getCiphers()) {
+      crypto.createCipheriv(cipher, zeros(getBytes(cipher)), zeros(16));
+    }
   },
 });
 
