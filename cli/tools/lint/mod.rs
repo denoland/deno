@@ -62,6 +62,7 @@ pub use ast_buffer::serialize_ast_to_buffer;
 pub use linter::CliLinter;
 pub use linter::CliLinterOptions;
 pub use plugins::create_runner_and_load_plugins;
+pub use plugins::PluginLogger;
 pub use rules::collect_no_slow_type_diagnostics;
 pub use rules::ConfiguredRules;
 pub use rules::LintRuleProvider;
@@ -297,10 +298,20 @@ impl WorkspaceLinter {
         ))
       });
 
+    fn logger_printer(msg: &str, is_err: bool) {
+      if is_err {
+        eprintln!("{}", msg);
+      } else {
+        println!("{}", msg);
+      }
+    }
+
     let mut plugin_runner = None;
     if let Some(plugin_specifiers) = maybe_plugin_specifiers {
+      let logger = plugins::PluginLogger::new(logger_printer, true);
       let runner =
-        plugins::create_runner_and_load_plugins(plugin_specifiers).await?;
+        plugins::create_runner_and_load_plugins(plugin_specifiers, logger)
+          .await?;
       plugin_runner = Some(Arc::new(Mutex::new(runner)));
     }
 

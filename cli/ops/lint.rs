@@ -14,6 +14,7 @@ use deno_lint::diagnostic::LintDiagnosticDetails;
 use deno_lint::diagnostic::LintDiagnosticRange;
 
 use crate::tools::lint;
+use crate::tools::lint::PluginLogger;
 
 deno_core::extension!(
   deno_lint_ext,
@@ -22,9 +23,17 @@ deno_core::extension!(
     op_lint_report,
     op_lint_get_source
   ],
-  state = |state| {
+  options = {
+    logger: PluginLogger,
+  },
+  middleware = |op| match op.name {
+    "op_print" => op_print(),
+    _ => op,
+  },
+  state = |state, options| {
+    state.put(options.logger);
     state.put(LintPluginContainer::default());
-  }
+  },
 );
 
 #[derive(Default)]
@@ -65,6 +74,17 @@ impl LintPluginContainer {
       },
     };
     self.diagnostics.push(lint_diagnostic);
+  }
+}
+
+#[op2(fast)]
+pub fn op_print(state: &mut OpState, #[string] msg: &str, is_err: bool) {
+  let logger = state.borrow::<PluginLogger>();
+
+  if is_err {
+    logger.error(msg);
+  } else {
+    logger.log(msg);
   }
 }
 

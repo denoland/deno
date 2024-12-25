@@ -611,6 +611,14 @@ async fn configure_main_worker(
   worker_sender: TestEventWorkerSender,
   options: &TestSpecifierOptions,
 ) -> Result<(Option<Box<dyn CoverageCollector>>, MainWorker), anyhow::Error> {
+  fn linter_logger(msg: &str, is_err: bool) {
+    if is_err {
+      eprintln!("{}", msg);
+    } else {
+      println!("{}", msg);
+    }
+  }
+  let logger = crate::tools::lint::PluginLogger::new(linter_logger, true);
   let mut worker = worker_factory
     .create_custom_worker(
       WorkerExecutionMode::Test,
@@ -619,7 +627,7 @@ async fn configure_main_worker(
       vec![
         ops::testing::deno_test::init_ops(worker_sender.sender),
         // TODO(bartlomieju): this is temporary and should be removed before landing plugin support
-        ops::lint::deno_lint_ext::init_ops(),
+        ops::lint::deno_lint_ext::init_ops(logger),
       ],
       Stdio {
         stdin: StdioPipe::inherit(),

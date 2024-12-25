@@ -5,6 +5,7 @@ use super::diagnostics::DiagnosticSource;
 use super::documents::Document;
 use super::documents::Documents;
 use super::language_server;
+use super::logging::lsp_log;
 use super::resolver::LspResolver;
 use super::tsc;
 use super::urls::url_to_uri;
@@ -186,11 +187,12 @@ pub fn get_lint_references(
   linter: &CliLinter,
 ) -> Result<Vec<Reference>, AnyError> {
   let lint_diagnostics = linter.lint_with_ast(parsed_source);
-
+  lsp_log!("lint diagnostics {}", lint_diagnostics.len());
   Ok(
     lint_diagnostics
       .into_iter()
       .filter_map(|d| {
+        lsp_log!("range {:?}", d.range.as_ref().is_some());
         let range = d.range.as_ref()?;
         Some(Reference {
           range: as_lsp_range_from_lint_diagnostic(range),
