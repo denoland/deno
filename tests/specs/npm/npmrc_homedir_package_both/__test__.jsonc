@@ -1,0 +1,10 @@
+{
+  "tempDir": true,
+  "envs": {
+    "HOME": "$PWD/../",
+    "USERPROFILE": "$PWD\\..\\"
+  },
+  "cwd": "subdir",
+  "args": "install",
+  "output": "install.out"
+}
