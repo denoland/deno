@@ -80,7 +80,6 @@ impl CliLinter {
     parsed_source: ParsedSource,
     file_path: PathBuf,
   ) -> Result<Vec<LintDiagnostic>, AnyError> {
-    eprintln!("has plugin runner? {}", self.maybe_plugin_runner.is_some());
     let Some(plugin_runner) = self.maybe_plugin_runner.clone() else {
       return Ok(vec![]);
     };
@@ -111,9 +110,9 @@ impl CliLinter {
     let mut diagnostics = self
       .linter
       .lint_with_ast(parsed_source, self.deno_lint_config.clone());
-    // eprintln!("lint with ast");
     let file_path = parsed_source.specifier().to_file_path().unwrap();
     // TODO(bartlomieju): surface error is running plugin fails
+    // TODO(bartlomieju): plugins don't support fixing for now.
     let run_plugin_result = self.run_plugins(parsed_source.clone(), file_path);
     if let Err(err) = run_plugin_result.as_ref() {
       eprintln!("run plugin result {:#?}", err);
@@ -157,7 +156,6 @@ impl CliLinter {
 
     match result {
       Ok((file_source, mut file_diagnostics)) => {
-        // TODO(bartlomieju): now add it to `linter.lint_with_ast()`.
         // TODO(bartlomieju): plugins don't support fixing for now.
         let plugin_diagnostics =
           self.run_plugins(file_source.clone(), file_path.to_path_buf())?;
