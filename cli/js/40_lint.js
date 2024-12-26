@@ -113,7 +113,6 @@ export class Context {
 
     op_lint_report(
       this.id,
-      this.fileName,
       data.message,
       start,
       end,

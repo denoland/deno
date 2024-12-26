@@ -271,6 +271,8 @@ impl PluginRunner {
       let mut state = state.borrow_mut();
       let container = state.borrow_mut::<LintPluginContainer>();
       container.source_text_info = Some(source_text_info);
+      container.specifier =
+        Some(ModuleSpecifier::from_file_path(specifier).unwrap());
     }
 
     let (file_name_v8, ast_uint8arr_v8) = {

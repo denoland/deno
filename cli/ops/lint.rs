@@ -28,6 +28,8 @@ deno_core::extension!(
   options = {
     logger: PluginLogger,
   },
+  // TODO(bartlomieju): this should only be done,
+  // if not in the "test worker".
   middleware = |op| match op.name {
     "op_print" => op_print(),
     _ => op,
@@ -42,19 +44,14 @@ deno_core::extension!(
 pub struct LintPluginContainer {
   pub diagnostics: Vec<LintDiagnostic>,
   pub source_text_info: Option<SourceTextInfo>,
-  token: CancellationToken,
+  pub specifier: Option<ModuleSpecifier>,
+  pub token: CancellationToken,
 }
 
 impl LintPluginContainer {
-  fn report(
-    &mut self,
-    id: String,
-    specifier: String,
-    message: String,
-    start: usize,
-    end: usize,
-  ) {
+  fn report(&mut self, id: String, message: String, start: usize, end: usize) {
     let source_text_info = self.source_text_info.as_ref().unwrap();
+    let specifier = self.specifier.clone().unwrap();
     let start_pos = source_text_info.start_pos();
     let source_range = SourceRange::new(start_pos + start, start_pos + end);
     let range = LintDiagnosticRange {
@@ -63,9 +60,7 @@ impl LintPluginContainer {
       text_info: source_text_info.clone(),
     };
     let lint_diagnostic = LintDiagnostic {
-      // TODO: fix
-      specifier: ModuleSpecifier::parse(&format!("file:///{}", specifier))
-        .unwrap(),
+      specifier,
       range: Some(range),
       details: LintDiagnosticDetails {
         message,
@@ -124,13 +119,12 @@ fn op_lint_create_serialized_ast(
 fn op_lint_report(
   state: &mut OpState,
   #[string] id: String,
-  #[string] specifier: String,
   #[string] message: String,
   #[smi] start: usize,
   #[smi] end: usize,
 ) {
   let container = state.borrow_mut::<LintPluginContainer>();
-  container.report(id, specifier, message, start, end);
+  container.report(id, message, start, end);
 }
 
 #[op2]

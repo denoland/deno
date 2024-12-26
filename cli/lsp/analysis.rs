@@ -5,7 +5,6 @@ use super::diagnostics::DiagnosticSource;
 use super::documents::Document;
 use super::documents::Documents;
 use super::language_server;
-use super::logging::lsp_log;
 use super::resolver::LspResolver;
 use super::tsc;
 use super::urls::url_to_uri;

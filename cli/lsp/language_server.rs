@@ -3090,7 +3090,6 @@ impl tower_lsp::LanguageServer for LanguageServer {
     self.init_flag.raise();
 
     for registration in registrations {
-      lsp_log!("{}", format!("registration {:#?}", registration));
       if let Err(err) = self
         .client
         .when_outside_lsp_lock()
@@ -3099,7 +3098,6 @@ impl tower_lsp::LanguageServer for LanguageServer {
       {
         lsp_warn!("Client errored on capabilities.\n{:#}", err);
       }
-      lsp_log!("registration finished");
     }
 
     if upgrade_check_enabled() {
