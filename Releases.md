@@ -6,6 +6,46 @@ https://github.com/denoland/deno/releases
 We also have one-line install commands at:
 https://github.com/denoland/deno_install
 
+### 2.1.4 / 2024.12.11
+
+- feat(unstable): support caching npm dependencies only as they're needed
+  (#27300)
+- fix(compile): correct read length for transpiled typescript files (#27301)
+- fix(ext/node): accept file descriptor in fs.readFile(Sync) (#27252)
+- fix(ext/node): handle Float16Array in node:v8 module (#27285)
+- fix(lint): do not error providing --allow-import (#27321)
+- fix(node): update list of builtin node modules, add missing export to
+  _http_common (#27294)
+- fix(outdated): error when there are no config files (#27306)
+- fix(outdated): respect --quiet flag for hints (#27317)
+- fix(outdated): show a suggestion for updating (#27304)
+- fix(task): do not always kill child on ctrl+c on windows (#27269)
+- fix(unstable): don't unwrap optional state in otel (#27292)
+- fix: do not error when subpath has an @ symbol (#27290)
+- fix: do not panic when fetching invalid file url on Windows (#27259)
+- fix: replace the @deno-types with @ts-types (#27310)
+- perf(compile): improve FileBackedVfsFile (#27299)
+
+### 2.1.3 / 2024.12.05
+
+- feat(unstable): add metrics to otel (#27143)
+- fix(fmt): stable formatting of HTML files with JS (#27164)
+- fix(install): use locked version of jsr package when fetching exports (#27237)
+- fix(node/fs): support `recursive` option in readdir (#27179)
+- fix(node/worker_threads): data url not encoded properly with eval (#27184)
+- fix(outdated): allow `--latest` without `--update` (#27227)
+- fix(task): `--recursive` option not working (#27183)
+- fix(task): don't panic with filter on missing task argument (#27180)
+- fix(task): forward signals to spawned sub-processes on unix (#27141)
+- fix(task): kill descendants when killing task process on Windows (#27163)
+- fix(task): only pass args to root task (#27213)
+- fix(unstable): otel context with multiple keys (#27230)
+- fix(unstable/temporal): respect locale in `Duration.prototype.toLocaleString`
+  (#27000)
+- fix: clear dep analysis when module loading is done (#27204)
+- fix: improve auto-imports for npm packages (#27224)
+- fix: support `workspace:^` and `workspace:~` version constraints (#27096)
+
 ### 2.1.2 / 2024.11.28
 
 - feat(unstable): Instrument Deno.serve (#26964)

@@ -2,18 +2,20 @@
 
 use std::borrow::Cow;
 use std::cell::RefCell;
+use std::fmt::Debug;
 use std::pin::Pin;
 use std::rc::Rc;
 use std::task::Context;
 use std::task::Poll;
 
 use bytes::Bytes;
+use deno_core::error::bad_resource;
+use deno_core::error::type_error;
 use deno_core::futures::stream::Peekable;
 use deno_core::futures::Future;
 use deno_core::futures::FutureExt;
 use deno_core::futures::Stream;
 use deno_core::futures::StreamExt;
-use deno_core::futures::TryFutureExt;
 use deno_core::op2;
 use deno_core::serde::Serialize;
 use deno_core::unsync::spawn;
@@ -25,17 +27,17 @@ use deno_core::ByteString;
 use deno_core::CancelFuture;
 use deno_core::CancelHandle;
 use deno_core::CancelTryFuture;
+use deno_core::Canceled;
 use deno_core::OpState;
 use deno_core::RcRef;
 use deno_core::Resource;
 use deno_core::ResourceId;
-use deno_fetch::get_or_create_client_from_state;
 use deno_fetch::FetchCancelHandle;
-use deno_fetch::FetchError;
-use deno_fetch::FetchRequestResource;
 use deno_fetch::FetchReturn;
-use deno_fetch::HttpClientResource;
 use deno_fetch::ResBody;
+use deno_net::io::TcpStreamResource;
+use deno_net::ops_tls::TlsStreamResource;
+use deno_permissions::PermissionCheckError;
 use http::header::HeaderMap;
 use http::header::HeaderName;
 use http::header::HeaderValue;
@@ -44,41 +46,140 @@ use http::header::CONTENT_LENGTH;
 use http::Method;
 use http_body_util::BodyExt;
 use hyper::body::Frame;
+use hyper::body::Incoming;
 use hyper_util::rt::TokioIo;
 use std::cmp::min;
 use tokio::io::AsyncReadExt;
 use tokio::io::AsyncWriteExt;
 
-#[op2(stack_trace)]
+#[derive(Default, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct NodeHttpResponse {
+  pub status: u16,
+  pub status_text: String,
+  pub headers: Vec<(ByteString, ByteString)>,
+  pub url: String,
+  pub response_rid: ResourceId,
+  pub content_length: Option<u64>,
+  pub remote_addr_ip: Option<String>,
+  pub remote_addr_port: Option<u16>,
+  pub error: Option<String>,
+}
+
+type CancelableResponseResult =
+  Result<Result<http::Response<Incoming>, hyper::Error>, Canceled>;
+
+pub struct NodeHttpClientResponse {
+  response: Pin<Box<dyn Future<Output = CancelableResponseResult>>>,
+  url: String,
+}
+
+impl Debug for NodeHttpClientResponse {
+  fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    f.debug_struct("NodeHttpClientResponse")
+      .field("url", &self.url)
+      .finish()
+  }
+}
+
+impl deno_core::Resource for NodeHttpClientResponse {
+  fn name(&self) -> Cow<str> {
+    "nodeHttpClientResponse".into()
+  }
+}
+
+#[derive(Debug, thiserror::Error)]
+pub enum ConnError {
+  #[error(transparent)]
+  Resource(deno_core::error::AnyError),
+  #[error(transparent)]
+  Permission(#[from] PermissionCheckError),
+  #[error("Invalid URL {0}")]
+  InvalidUrl(Url),
+  #[error(transparent)]
+  InvalidHeaderName(#[from] http::header::InvalidHeaderName),
+  #[error(transparent)]
+  InvalidHeaderValue(#[from] http::header::InvalidHeaderValue),
+  #[error(transparent)]
+  Url(#[from] url::ParseError),
+  #[error(transparent)]
+  Method(#[from] http::method::InvalidMethod),
+  #[error(transparent)]
+  Io(#[from] std::io::Error),
+  #[error("TLS stream is currently in use")]
+  TlsStreamBusy,
+  #[error("TCP stream is currently in use")]
+  TcpStreamBusy,
+  #[error(transparent)]
+  ReuniteTcp(#[from] tokio::net::tcp::ReuniteError),
+  #[error(transparent)]
+  Canceled(#[from] deno_core::Canceled),
+  #[error(transparent)]
+  Hyper(#[from] hyper::Error),
+}
+
+#[op2(async, stack_trace)]
 #[serde]
-pub fn op_node_http_request<P>(
-  state: &mut OpState,
+pub async fn op_node_http_request_with_conn<P>(
+  state: Rc<RefCell<OpState>>,
   #[serde] method: ByteString,
   #[string] url: String,
   #[serde] headers: Vec<(ByteString, ByteString)>,
-  #[smi] client_rid: Option<u32>,
   #[smi] body: Option<ResourceId>,
-) -> Result<FetchReturn, FetchError>
+  #[smi] conn_rid: ResourceId,
+  encrypted: bool,
+) -> Result<FetchReturn, ConnError>
 where
   P: crate::NodePermissions + 'static,
 {
-  let client = if let Some(rid) = client_rid {
-    let r = state
+  let (_handle, mut sender) = if encrypted {
+    let resource_rc = state
+      .borrow_mut()
       .resource_table
-      .get::<HttpClientResource>(rid)
-      .map_err(FetchError::Resource)?;
-    r.client.clone()
+      .take::<TlsStreamResource>(conn_rid)
+      .map_err(ConnError::Resource)?;
+    let resource =
+      Rc::try_unwrap(resource_rc).map_err(|_e| ConnError::TlsStreamBusy)?;
+    let (read_half, write_half) = resource.into_inner();
+    let tcp_stream = read_half.unsplit(write_half);
+    let io = TokioIo::new(tcp_stream);
+    let (sender, conn) = hyper::client::conn::http1::handshake(io).await?;
+    (
+      tokio::task::spawn(async move { conn.with_upgrades().await }),
+      sender,
+    )
   } else {
-    get_or_create_client_from_state(state)?
+    let resource_rc = state
+      .borrow_mut()
+      .resource_table
+      .take::<TcpStreamResource>(conn_rid)
+      .map_err(ConnError::Resource)?;
+    let resource =
+      Rc::try_unwrap(resource_rc).map_err(|_| ConnError::TcpStreamBusy)?;
+    let (read_half, write_half) = resource.into_inner();
+    let tcp_stream = read_half.reunite(write_half)?;
+    let io = TokioIo::new(tcp_stream);
+    let (sender, conn) = hyper::client::conn::http1::handshake(io).await?;
+
+    // Spawn a task to poll the connection, driving the HTTP state
+    (
+      tokio::task::spawn(async move {
+        conn.with_upgrades().await?;
+        Ok::<_, _>(())
+      }),
+      sender,
+    )
   };
 
+  // Create the request.
   let method = Method::from_bytes(&method)?;
-  let mut url = Url::parse(&url)?;
-  let maybe_authority = deno_fetch::extract_authority(&mut url);
+  let mut url_parsed = Url::parse(&url)?;
+  let maybe_authority = deno_fetch::extract_authority(&mut url_parsed);
 
   {
-    let permissions = state.borrow_mut::<P>();
-    permissions.check_net_url(&url, "ClientRequest")?;
+    let mut state_ = state.borrow_mut();
+    let permissions = state_.borrow_mut::<P>();
+    permissions.check_net_url(&url_parsed, "ClientRequest")?;
   }
 
   let mut header_map = HeaderMap::new();
@@ -93,9 +194,10 @@ where
     (
       BodyExt::boxed(NodeHttpResourceToBodyAdapter::new(
         state
+          .borrow_mut()
           .resource_table
           .take_any(body)
-          .map_err(FetchError::Resource)?,
+          .map_err(ConnError::Resource)?,
       )),
       None,
     )
@@ -117,10 +219,13 @@ where
 
   let mut request = http::Request::new(body);
   *request.method_mut() = method.clone();
-  *request.uri_mut() = url
-    .as_str()
+  let path = url_parsed.path();
+  let query = url_parsed.query();
+  *request.uri_mut() = query
+    .map(|q| format!("{}?{}", path, q))
+    .unwrap_or_else(|| path.to_string())
     .parse()
-    .map_err(|_| FetchError::InvalidUrl(url.clone()))?;
+    .map_err(|_| ConnError::InvalidUrl(url_parsed.clone()))?;
   *request.headers_mut() = header_map;
 
   if let Some((username, password)) = maybe_authority {
@@ -136,86 +241,44 @@ where
   let cancel_handle = CancelHandle::new_rc();
   let cancel_handle_ = cancel_handle.clone();
 
-  let fut = async move {
-    client
-      .send(request)
-      .map_err(Into::into)
-      .or_cancel(cancel_handle_)
-      .await
-  };
+  let fut =
+    async move { sender.send_request(request).or_cancel(cancel_handle_).await };
 
-  let request_rid = state.resource_table.add(FetchRequestResource {
-    future: Box::pin(fut),
-    url,
-  });
+  let rid = state
+    .borrow_mut()
+    .resource_table
+    .add(NodeHttpClientResponse {
+      response: Box::pin(fut),
+      url: url.clone(),
+    });
 
-  let cancel_handle_rid =
-    state.resource_table.add(FetchCancelHandle(cancel_handle));
+  let cancel_handle_rid = state
+    .borrow_mut()
+    .resource_table
+    .add(FetchCancelHandle(cancel_handle));
 
   Ok(FetchReturn {
-    request_rid,
+    request_rid: rid,
     cancel_handle_rid: Some(cancel_handle_rid),
   })
 }
 
-#[derive(Default, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct NodeHttpFetchResponse {
-  pub status: u16,
-  pub status_text: String,
-  pub headers: Vec<(ByteString, ByteString)>,
-  pub url: String,
-  pub response_rid: ResourceId,
-  pub content_length: Option<u64>,
-  pub remote_addr_ip: Option<String>,
-  pub remote_addr_port: Option<u16>,
-  pub error: Option<String>,
-}
-
 #[op2(async)]
 #[serde]
-pub async fn op_node_http_fetch_send(
+pub async fn op_node_http_await_response(
   state: Rc<RefCell<OpState>>,
   #[smi] rid: ResourceId,
-) -> Result<NodeHttpFetchResponse, FetchError> {
-  let request = state
+) -> Result<NodeHttpResponse, ConnError> {
+  let resource = state
     .borrow_mut()
     .resource_table
-    .take::<FetchRequestResource>(rid)
-    .map_err(FetchError::Resource)?;
+    .take::<NodeHttpClientResponse>(rid)
+    .map_err(ConnError::Resource)?;
+  let resource = Rc::try_unwrap(resource)
+    .map_err(|_| ConnError::Resource(bad_resource("NodeHttpClientResponse")))?;
 
-  let request = Rc::try_unwrap(request)
-    .ok()
-    .expect("multiple op_node_http_fetch_send ongoing");
-
-  let res = match request.future.await {
-    Ok(Ok(res)) => res,
-    Ok(Err(err)) => {
-      // We're going to try and rescue the error cause from a stream and return it from this fetch.
-      // If any error in the chain is a hyper body error, return that as a special result we can use to
-      // reconstruct an error chain (eg: `new TypeError(..., { cause: new Error(...) })`).
-      // TODO(mmastrac): it would be a lot easier if we just passed a v8::Global through here instead
-
-      if let FetchError::ClientSend(err_src) = &err {
-        if let Some(client_err) = std::error::Error::source(&err_src.source) {
-          if let Some(err_src) = client_err.downcast_ref::<hyper::Error>() {
-            if let Some(err_src) = std::error::Error::source(err_src) {
-              return Ok(NodeHttpFetchResponse {
-                error: Some(err_src.to_string()),
-                ..Default::default()
-              });
-            }
-          }
-        }
-      }
-
-      return Err(err);
-    }
-    Err(_) => return Err(FetchError::RequestCanceled),
-  };
-
+  let res = resource.response.await??;
   let status = res.status();
-  let url = request.url.into();
   let mut res_headers = Vec::new();
   for (key, val) in res.headers().iter() {
     res_headers.push((key.as_str().into(), val.as_bytes().into()));
@@ -232,16 +295,22 @@ pub async fn op_node_http_fetch_send(
     (None, None)
   };
 
+  let (parts, body) = res.into_parts();
+  let body = body.map_err(deno_core::anyhow::Error::from);
+  let body = body.boxed();
+
+  let res = http::Response::from_parts(parts, body);
+
   let response_rid = state
     .borrow_mut()
     .resource_table
-    .add(NodeHttpFetchResponseResource::new(res, content_length));
+    .add(NodeHttpResponseResource::new(res, content_length));
 
-  Ok(NodeHttpFetchResponse {
+  Ok(NodeHttpResponse {
     status: status.as_u16(),
     status_text: status.canonical_reason().unwrap_or("").to_string(),
     headers: res_headers,
-    url,
+    url: resource.url,
     response_rid,
     content_length,
     remote_addr_ip,
@@ -255,12 +324,12 @@ pub async fn op_node_http_fetch_send(
 pub async fn op_node_http_fetch_response_upgrade(
   state: Rc<RefCell<OpState>>,
   #[smi] rid: ResourceId,
-) -> Result<ResourceId, FetchError> {
+) -> Result<ResourceId, ConnError> {
   let raw_response = state
     .borrow_mut()
     .resource_table
-    .take::<NodeHttpFetchResponseResource>(rid)
-    .map_err(FetchError::Resource)?;
+    .take::<NodeHttpResponseResource>(rid)
+    .map_err(ConnError::Resource)?;
   let raw_response = Rc::try_unwrap(raw_response)
     .expect("Someone is holding onto NodeHttpFetchResponseResource");
 
@@ -283,7 +352,7 @@ pub async fn op_node_http_fetch_response_upgrade(
         }
         read_tx.write_all(&buf[..read]).await?;
       }
-      Ok::<_, FetchError>(())
+      Ok::<_, ConnError>(())
     });
     spawn(async move {
       let mut buf = [0; 1024];
@@ -294,7 +363,7 @@ pub async fn op_node_http_fetch_response_upgrade(
         }
         upgraded_tx.write_all(&buf[..read]).await?;
       }
-      Ok::<_, FetchError>(())
+      Ok::<_, ConnError>(())
     });
   }
 
@@ -379,13 +448,13 @@ impl Default for NodeHttpFetchResponseReader {
 }
 
 #[derive(Debug)]
-pub struct NodeHttpFetchResponseResource {
+pub struct NodeHttpResponseResource {
   pub response_reader: AsyncRefCell<NodeHttpFetchResponseReader>,
   pub cancel: CancelHandle,
   pub size: Option<u64>,
 }
 
-impl NodeHttpFetchResponseResource {
+impl NodeHttpResponseResource {
   pub fn new(response: http::Response<ResBody>, size: Option<u64>) -> Self {
     Self {
       response_reader: AsyncRefCell::new(NodeHttpFetchResponseReader::Start(
@@ -400,14 +469,14 @@ impl NodeHttpFetchResponseResource {
     let reader = self.response_reader.into_inner();
     match reader {
       NodeHttpFetchResponseReader::Start(resp) => {
-        Ok(hyper::upgrade::on(resp).await?)
+        hyper::upgrade::on(resp).await
       }
       _ => unreachable!(),
     }
   }
 }
 
-impl Resource for NodeHttpFetchResponseResource {
+impl Resource for NodeHttpResponseResource {
   fn name(&self) -> Cow<str> {
     "fetchResponse".into()
   }
@@ -454,9 +523,7 @@ impl Resource for NodeHttpFetchResponseResource {
             // safely call `await` on it without creating a race condition.
             Some(_) => match reader.as_mut().next().await.unwrap() {
               Ok(chunk) => assert!(chunk.is_empty()),
-              Err(err) => {
-                break Err(deno_core::error::type_error(err.to_string()))
-              }
+              Err(err) => break Err(type_error(err.to_string())),
             },
             None => break Ok(BufView::empty()),
           }
@@ -464,7 +531,7 @@ impl Resource for NodeHttpFetchResponseResource {
       };
 
       let cancel_handle = RcRef::map(self, |r| &r.cancel);
-      fut.try_or_cancel(cancel_handle).await.map_err(Into::into)
+      fut.try_or_cancel(cancel_handle).await
     })
   }
 
@@ -514,8 +581,9 @@ impl Stream for NodeHttpResourceToBodyAdapter {
         Poll::Ready(res) => match res {
           Ok(buf) if buf.is_empty() => Poll::Ready(None),
           Ok(buf) => {
+            let bytes: Bytes = buf.to_vec().into();
             this.1 = Some(this.0.clone().read(64 * 1024));
-            Poll::Ready(Some(Ok(buf.to_vec().into())))
+            Poll::Ready(Some(Ok(bytes)))
           }
           Err(err) => Poll::Ready(Some(Err(err))),
         },

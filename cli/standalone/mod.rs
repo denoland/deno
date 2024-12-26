@@ -9,6 +9,7 @@ use binary::StandaloneData;
 use binary::StandaloneModules;
 use code_cache::DenoCompileCodeCache;
 use deno_ast::MediaType;
+use deno_cache_dir::file_fetcher::CacheSetting;
 use deno_cache_dir::npm::NpmCacheDir;
 use deno_config::workspace::MappedResolution;
 use deno_config::workspace::MappedResolutionError;
@@ -54,6 +55,7 @@ use node_resolver::errors::ClosestPkgJsonError;
 use node_resolver::NodeResolutionKind;
 use node_resolver::ResolutionMode;
 use serialization::DenoCompileModuleSource;
+use serialization::SourceMapStore;
 use std::borrow::Cow;
 use std::rc::Rc;
 use std::sync::Arc;
@@ -64,7 +66,6 @@ use crate::args::create_default_npmrc;
 use crate::args::get_root_cert_store;
 use crate::args::npm_pkg_req_ref_to_binary_command;
 use crate::args::CaData;
-use crate::args::CacheSetting;
 use crate::args::NpmInstallDepsProvider;
 use crate::args::StorageKeyResolver;
 use crate::cache::Caches;
@@ -122,6 +123,7 @@ struct SharedModuleLoaderState {
   npm_module_loader: Arc<NpmModuleLoader>,
   npm_req_resolver: Arc<CliNpmReqResolver>,
   npm_resolver: Arc<dyn CliNpmResolver>,
+  source_maps: SourceMapStore,
   vfs: Arc<FileBackedVfs>,
   workspace_resolver: WorkspaceResolver,
 }
@@ -396,7 +398,11 @@ impl ModuleLoader for EmbeddedModuleLoader {
       );
     }
 
-    match self.shared.modules.read(original_specifier) {
+    match self
+      .shared
+      .modules
+      .read(original_specifier, VfsFileSubDataKind::ModuleGraph)
+    {
       Ok(Some(module)) => {
         let media_type = module.media_type;
         let (module_specifier, module_type, module_source) =
@@ -495,6 +501,45 @@ impl ModuleLoader for EmbeddedModuleLoader {
     }
     std::future::ready(()).boxed_local()
   }
+
+  fn get_source_map(&self, file_name: &str) -> Option<Cow<[u8]>> {
+    if file_name.starts_with("file:///") {
+      let url =
+        deno_path_util::url_from_directory_path(self.shared.vfs.root()).ok()?;
+      let file_url = ModuleSpecifier::parse(file_name).ok()?;
+      let relative_path = url.make_relative(&file_url)?;
+      self.shared.source_maps.get(&relative_path)
+    } else {
+      self.shared.source_maps.get(file_name)
+    }
+    .map(Cow::Borrowed)
+  }
+
+  fn get_source_mapped_source_line(
+    &self,
+    file_name: &str,
+    line_number: usize,
+  ) -> Option<String> {
+    let specifier = ModuleSpecifier::parse(file_name).ok()?;
+    let data = self
+      .shared
+      .modules
+      .read(&specifier, VfsFileSubDataKind::Raw)
+      .ok()??;
+
+    let source = String::from_utf8_lossy(&data.data);
+    // Do NOT use .lines(): it skips the terminating empty line.
+    // (due to internally using_terminator() instead of .split())
+    let lines: Vec<&str> = source.split('\n').collect();
+    if line_number >= lines.len() {
+      Some(format!(
+        "{} Couldn't format source line: Line {} is out of bounds (source may have changed at runtime)",
+        crate::colors::yellow("Warning"), line_number + 1,
+      ))
+    } else {
+      Some(lines[line_number].to_string())
+    }
+  }
 }
 
 impl NodeRequireLoader for EmbeddedModuleLoader {
@@ -590,6 +635,7 @@ pub async fn run(data: StandaloneData) -> Result<i32, AnyError> {
     modules,
     npm_snapshot,
     root_path,
+    source_maps,
     vfs,
   } = data;
   let deno_dir_provider = Arc::new(DenoDirProvider::new(None));
@@ -841,6 +887,7 @@ pub async fn run(data: StandaloneData) -> Result<i32, AnyError> {
       )),
       npm_resolver: npm_resolver.clone(),
       npm_req_resolver,
+      source_maps,
       vfs,
       workspace_resolver,
     }),
@@ -924,6 +971,7 @@ pub async fn run(data: StandaloneData) -> Result<i32, AnyError> {
       serve_host: None,
     },
     metadata.otel_config,
+    crate::args::NpmCachingStrategy::Lazy,
   );
 
   // Initialize v8 once from the main thread.

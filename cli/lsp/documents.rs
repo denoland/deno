@@ -65,6 +65,12 @@ pub enum LanguageId {
   Html,
   Css,
   Yaml,
+  Sql,
+  Svelte,
+  Vue,
+  Astro,
+  Vento,
+  Nunjucks,
   Unknown,
 }
 
@@ -81,6 +87,12 @@ impl LanguageId {
       LanguageId::Html => Some("html"),
       LanguageId::Css => Some("css"),
       LanguageId::Yaml => Some("yaml"),
+      LanguageId::Sql => Some("sql"),
+      LanguageId::Svelte => Some("svelte"),
+      LanguageId::Vue => Some("vue"),
+      LanguageId::Astro => Some("astro"),
+      LanguageId::Vento => Some("vto"),
+      LanguageId::Nunjucks => Some("njk"),
       LanguageId::Unknown => None,
     }
   }
@@ -96,6 +108,12 @@ impl LanguageId {
       LanguageId::Html => Some("text/html"),
       LanguageId::Css => Some("text/css"),
       LanguageId::Yaml => Some("application/yaml"),
+      LanguageId::Sql => None,
+      LanguageId::Svelte => None,
+      LanguageId::Vue => None,
+      LanguageId::Astro => None,
+      LanguageId::Vento => None,
+      LanguageId::Nunjucks => None,
       LanguageId::Unknown => None,
     }
   }
@@ -123,6 +141,12 @@ impl FromStr for LanguageId {
       "html" => Ok(Self::Html),
       "css" => Ok(Self::Css),
       "yaml" => Ok(Self::Yaml),
+      "sql" => Ok(Self::Sql),
+      "svelte" => Ok(Self::Svelte),
+      "vue" => Ok(Self::Vue),
+      "astro" => Ok(Self::Astro),
+      "vento" => Ok(Self::Vento),
+      "nunjucks" => Ok(Self::Nunjucks),
       _ => Ok(Self::Unknown),
     }
   }
@@ -226,6 +250,13 @@ impl AssetOrDocument {
 
   pub fn document_lsp_version(&self) -> Option<i32> {
     self.document().and_then(|d| d.maybe_lsp_version())
+  }
+
+  pub fn resolution_mode(&self) -> ResolutionMode {
+    match self {
+      AssetOrDocument::Asset(_) => ResolutionMode::Import,
+      AssetOrDocument::Document(d) => d.resolution_mode(),
+    }
   }
 }
 

@@ -131,7 +131,11 @@ pub async fn doc(
         |_| true,
       )?;
       let graph = module_graph_creator
-        .create_graph(GraphKind::TypesOnly, module_specifiers.clone())
+        .create_graph(
+          GraphKind::TypesOnly,
+          module_specifiers.clone(),
+          crate::graph_util::NpmCachingStrategy::Eager,
+        )
         .await?;
 
       graph_exit_integrity_errors(&graph);
@@ -339,14 +343,14 @@ impl deno_doc::html::HrefResolver for DocResolver {
           let name = &res.req().name;
           Some((
             format!("https://www.npmjs.com/package/{name}"),
-            name.to_owned(),
+            name.to_string(),
           ))
         }
         "jsr" => {
           let res =
             deno_semver::jsr::JsrPackageReqReference::from_str(module).ok()?;
           let name = &res.req().name;
-          Some((format!("https://jsr.io/{name}"), name.to_owned()))
+          Some((format!("https://jsr.io/{name}"), name.to_string()))
         }
         _ => None,
       }

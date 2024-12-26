@@ -36,6 +36,8 @@ use deno_semver::package::PackageNv;
 use deno_semver::package::PackageNvReference;
 use deno_semver::package::PackageReq;
 use deno_semver::package::PackageReqReference;
+use deno_semver::SmallStackString;
+use deno_semver::StackString;
 use deno_semver::Version;
 use import_map::ImportMap;
 use node_resolver::NodeResolutionKind;
@@ -270,13 +272,24 @@ impl<'a> TsResponseImportMapper<'a> {
       }
     }
 
+    if specifier.scheme() == "node" {
+      return Some(specifier.to_string());
+    }
+
     if let Some(jsr_path) = specifier.as_str().strip_prefix(jsr_url().as_str())
     {
       let mut segments = jsr_path.split('/');
       let name = if jsr_path.starts_with('@') {
-        format!("{}/{}", segments.next()?, segments.next()?)
+        let scope = segments.next()?;
+        let name = segments.next()?;
+        capacity_builder::StringBuilder::<StackString>::build(|builder| {
+          builder.append(scope);
+          builder.append("/");
+          builder.append(name);
+        })
+        .unwrap()
       } else {
-        segments.next()?.to_string()
+        StackString::from(segments.next()?)
       };
       let version = Version::parse_standard(segments.next()?).ok()?;
       let nv = PackageNv { name, version };
@@ -286,7 +299,9 @@ impl<'a> TsResponseImportMapper<'a> {
         &path,
         Some(&self.file_referrer),
       )?;
-      let sub_path = (export != ".").then_some(export);
+      let sub_path = (export != ".")
+        .then_some(export)
+        .map(SmallStackString::from_string);
       let mut req = None;
       req = req.or_else(|| {
         let import_map = self.maybe_import_map?;
@@ -353,7 +368,12 @@ impl<'a> TsResponseImportMapper<'a> {
           let pkg_reqs = npm_resolver.resolve_pkg_reqs_from_pkg_id(&pkg_id);
           // check if any pkg reqs match what is found in an import map
           if !pkg_reqs.is_empty() {
-            let sub_path = self.resolve_package_path(specifier);
+            let sub_path = npm_resolver
+              .resolve_pkg_folder_from_pkg_id(&pkg_id)
+              .ok()
+              .and_then(|pkg_folder| {
+                self.resolve_package_path(specifier, &pkg_folder)
+              });
             if let Some(import_map) = self.maybe_import_map {
               let pkg_reqs = pkg_reqs.iter().collect::<HashSet<_>>();
               let mut matches = Vec::new();
@@ -368,8 +388,13 @@ impl<'a> TsResponseImportMapper<'a> {
                       if let Some(key_sub_path) =
                         sub_path.strip_prefix(value_sub_path)
                       {
-                        matches
-                          .push(format!("{}{}", entry.raw_key, key_sub_path));
+                        // keys that don't end in a slash can't be mapped to a subpath
+                        if entry.raw_key.ends_with('/')
+                          || key_sub_path.is_empty()
+                        {
+                          matches
+                            .push(format!("{}{}", entry.raw_key, key_sub_path));
+                        }
                       }
                     }
                   }
@@ -413,10 +438,16 @@ impl<'a> TsResponseImportMapper<'a> {
   fn resolve_package_path(
     &self,
     specifier: &ModuleSpecifier,
+    package_root_folder: &Path,
   ) -> Option<String> {
     let package_json = self
       .resolver
-      .get_closest_package_json(specifier)
+      .pkg_json_resolver(specifier)
+      // the specifier might have a closer package.json, but we
+      // want the root of the package's package.json
+      .get_closest_package_json_from_file_path(
+        &package_root_folder.join("package.json"),
+      )
       .ok()
       .flatten()?;
     let root_folder = package_json.path.parent()?;
@@ -583,18 +614,24 @@ fn try_reverse_map_package_json_exports(
 /// For a set of tsc changes, can them for any that contain something that looks
 /// like an import and rewrite the import specifier to include the extension
 pub fn fix_ts_import_changes(
-  referrer: &ModuleSpecifier,
-  resolution_mode: ResolutionMode,
   changes: &[tsc::FileTextChanges],
   language_server: &language_server::Inner,
 ) -> Result<Vec<tsc::FileTextChanges>, AnyError> {
-  let import_mapper = language_server.get_ts_response_import_mapper(referrer);
   let mut r = Vec::new();
   for change in changes {
+    let Ok(referrer) = ModuleSpecifier::parse(&change.file_name) else {
+      continue;
+    };
+    let referrer_doc = language_server.get_asset_or_document(&referrer).ok();
+    let resolution_mode = referrer_doc
+      .as_ref()
+      .map(|d| d.resolution_mode())
+      .unwrap_or(ResolutionMode::Import);
+    let import_mapper =
+      language_server.get_ts_response_import_mapper(&referrer);
     let mut text_changes = Vec::new();
     for text_change in &change.text_changes {
       let lines = text_change.new_text.split('\n');
-
       let new_lines: Vec<String> = lines
         .map(|line| {
           // This assumes that there's only one import per line.
@@ -602,7 +639,7 @@ pub fn fix_ts_import_changes(
             let specifier =
               captures.iter().skip(1).find_map(|s| s).unwrap().as_str();
             if let Some(new_specifier) = import_mapper
-              .check_unresolved_specifier(specifier, referrer, resolution_mode)
+              .check_unresolved_specifier(specifier, &referrer, resolution_mode)
             {
               line.replace(specifier, &new_specifier)
             } else {
@@ -1371,7 +1408,7 @@ impl CodeActionCollection {
         character: import_start.column_index as u32,
       };
       let new_text = format!(
-        "{}// @deno-types=\"{}\"\n",
+        "{}// @ts-types=\"{}\"\n",
         if position.character == 0 { "" } else { "\n" },
         &types_specifier_text
       );
@@ -1384,7 +1421,7 @@ impl CodeActionCollection {
       };
       Some(lsp::CodeAction {
         title: format!(
-          "Add @deno-types directive for \"{}\"",
+          "Add @ts-types directive for \"{}\"",
           &types_specifier_text
         ),
         kind: Some(lsp::CodeActionKind::QUICKFIX),

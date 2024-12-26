@@ -32,6 +32,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use thiserror::Error;
 
+use crate::args::NpmCachingStrategy;
 use crate::args::DENO_DISABLE_PEDANTIC_NODE_WARNINGS;
 use crate::node::CliNodeCodeTranslator;
 use crate::npm::CliNpmResolver;
@@ -240,11 +241,15 @@ impl CliResolver {
 
   // todo(dsherret): move this off CliResolver as CliResolver is acting
   // like a factory by doing this (it's beyond its responsibility)
-  pub fn create_graph_npm_resolver(&self) -> WorkerCliNpmGraphResolver {
+  pub fn create_graph_npm_resolver(
+    &self,
+    npm_caching: NpmCachingStrategy,
+  ) -> WorkerCliNpmGraphResolver {
     WorkerCliNpmGraphResolver {
       npm_resolver: self.npm_resolver.as_ref(),
       found_package_json_dep_flag: &self.found_package_json_dep_flag,
       bare_node_builtins_enabled: self.bare_node_builtins_enabled,
+      npm_caching,
     }
   }
 
@@ -304,6 +309,7 @@ pub struct WorkerCliNpmGraphResolver<'a> {
   npm_resolver: Option<&'a Arc<dyn CliNpmResolver>>,
   found_package_json_dep_flag: &'a AtomicFlag,
   bare_node_builtins_enabled: bool,
+  npm_caching: NpmCachingStrategy,
 }
 
 #[async_trait(?Send)]
@@ -373,7 +379,20 @@ impl<'a> deno_graph::source::NpmResolver for WorkerCliNpmGraphResolver<'a> {
           Ok(())
         };
 
-        let result = npm_resolver.add_package_reqs_raw(package_reqs).await;
+        let result = npm_resolver
+          .add_package_reqs_raw(
+            package_reqs,
+            match self.npm_caching {
+              NpmCachingStrategy::Eager => {
+                Some(crate::npm::PackageCaching::All)
+              }
+              NpmCachingStrategy::Lazy => {
+                Some(crate::npm::PackageCaching::Only(package_reqs.into()))
+              }
+              NpmCachingStrategy::Manual => None,
+            },
+          )
+          .await;
 
         NpmResolvePkgReqsResult {
           results: result

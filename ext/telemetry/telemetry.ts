@@ -7,6 +7,24 @@ import {
   op_otel_instrumentation_scope_enter,
   op_otel_instrumentation_scope_enter_builtin,
   op_otel_log,
+  op_otel_metric_attribute3,
+  op_otel_metric_create_counter,
+  op_otel_metric_create_gauge,
+  op_otel_metric_create_histogram,
+  op_otel_metric_create_observable_counter,
+  op_otel_metric_create_observable_gauge,
+  op_otel_metric_create_observable_up_down_counter,
+  op_otel_metric_create_up_down_counter,
+  op_otel_metric_observable_record0,
+  op_otel_metric_observable_record1,
+  op_otel_metric_observable_record2,
+  op_otel_metric_observable_record3,
+  op_otel_metric_observation_done,
+  op_otel_metric_record0,
+  op_otel_metric_record1,
+  op_otel_metric_record2,
+  op_otel_metric_record3,
+  op_otel_metric_wait_to_observe,
   op_otel_span_attribute,
   op_otel_span_attribute2,
   op_otel_span_attribute3,
@@ -19,26 +37,32 @@ import { Console } from "ext:deno_console/01_console.js";
 import { performance } from "ext:deno_web/15_performance.js";
 
 const {
-  SafeWeakMap,
   Array,
-  ObjectEntries,
-  SafeMap,
-  ReflectApply,
-  SymbolFor,
+  ArrayPrototypePush,
   Error,
-  Uint8Array,
-  TypedArrayPrototypeSubarray,
   ObjectAssign,
   ObjectDefineProperty,
-  WeakRefPrototypeDeref,
+  ObjectEntries,
+  ObjectPrototypeIsPrototypeOf,
+  ReflectApply,
+  SafeIterator,
+  SafeMap,
+  SafePromiseAll,
+  SafeSet,
+  SafeWeakMap,
+  SafeWeakRef,
+  SafeWeakSet,
   String,
   StringPrototypePadStart,
-  ObjectPrototypeIsPrototypeOf,
-  SafeWeakRef,
+  SymbolFor,
+  TypedArrayPrototypeSubarray,
+  Uint8Array,
+  WeakRefPrototypeDeref,
 } = primordials;
 const { AsyncVariable, setAsyncContext } = core;
 
 export let TRACING_ENABLED = false;
+export let METRICS_ENABLED = false;
 let DETERMINISTIC = false;
 
 // Note: These start at 0 in the JS library,
@@ -186,29 +210,9 @@ const instrumentationScopes = new SafeWeakMap<
 >();
 let activeInstrumentationLibrary: WeakRef<InstrumentationLibrary> | null = null;
 
-function submit(
-  spanId: string | Uint8Array,
-  traceId: string | Uint8Array,
-  traceFlags: number,
-  parentSpanId: string | Uint8Array | null,
-  span: Omit<
-    ReadableSpan,
-    | "spanContext"
-    | "startTime"
-    | "endTime"
-    | "parentSpanId"
-    | "duration"
-    | "ended"
-    | "resource"
-  >,
-  startTime: number,
-  endTime: number,
+function activateInstrumentationLibrary(
+  instrumentationLibrary: InstrumentationLibrary,
 ) {
-  if (!(traceFlags & TRACE_FLAG_SAMPLED)) return;
-
-  // TODO(@lucacasonato): `resource` is ignored for now, should we implement it?
-
-  const instrumentationLibrary = span.instrumentationLibrary;
   if (
     !activeInstrumentationLibrary ||
     WeakRefPrototypeDeref(activeInstrumentationLibrary) !==
@@ -238,6 +242,32 @@ function submit(
       }
     }
   }
+}
+
+function submitSpan(
+  spanId: string | Uint8Array,
+  traceId: string | Uint8Array,
+  traceFlags: number,
+  parentSpanId: string | Uint8Array | null,
+  span: Omit<
+    ReadableSpan,
+    | "spanContext"
+    | "startTime"
+    | "endTime"
+    | "parentSpanId"
+    | "duration"
+    | "ended"
+    | "resource"
+  >,
+  startTime: number,
+  endTime: number,
+) {
+  if (!TRACING_ENABLED) return;
+  if (!(traceFlags & TRACE_FLAG_SAMPLED)) return;
+
+  // TODO(@lucacasonato): `resource` is ignored for now, should we implement it?
+
+  activateInstrumentationLibrary(span.instrumentationLibrary);
 
   op_otel_span_start(
     traceId,
@@ -351,7 +381,7 @@ export let endSpan: (span: Span) => void;
 
 export class Span {
   #traceId: string | Uint8Array;
-  #spanId: Uint8Array;
+  #spanId: string | Uint8Array;
   #traceFlags = TRACE_FLAG_SAMPLED;
 
   #spanContext: SpanContext | null = null;
@@ -411,7 +441,7 @@ export class Span {
 
     endSpan = (span: Span) => {
       const endTime = now();
-      submit(
+      submitSpan(
         span.#spanId,
         span.#traceId,
         span.#traceFlags,
@@ -571,7 +601,7 @@ class SpanExporter {
       for (let i = 0; i < spans.length; i += 1) {
         const span = spans[i];
         const context = span.spanContext();
-        submit(
+        submitSpan(
           context.spanId,
           context.traceId,
           context.traceFlags,
@@ -600,26 +630,25 @@ class SpanExporter {
 const CURRENT = new AsyncVariable();
 
 class Context {
-  #data = new SafeMap();
+  #data: Record<symbol, unknown> = { __proto__: null };
 
-  // deno-lint-ignore no-explicit-any
-  constructor(data?: Iterable<readonly [any, any]> | null | undefined) {
-    this.#data = data ? new SafeMap(data) : new SafeMap();
+  constructor(data?: Record<symbol, unknown> | null | undefined) {
+    this.#data = { __proto__: null, ...data };
   }
 
   getValue(key: symbol): unknown {
-    return this.#data.get(key);
+    return this.#data[key];
   }
 
   setValue(key: symbol, value: unknown): Context {
     const c = new Context(this.#data);
-    c.#data.set(key, value);
+    c.#data[key] = value;
     return c;
   }
 
   deleteValue(key: symbol): Context {
     const c = new Context(this.#data);
-    c.#data.delete(key);
+    delete c.#data[key];
     return c;
   }
 }
@@ -671,6 +700,512 @@ class ContextManager {
   }
 }
 
+// metrics
+
+interface MeterOptions {
+  schemaUrl?: string;
+}
+
+interface MetricOptions {
+  description?: string;
+
+  unit?: string;
+
+  valueType?: ValueType;
+
+  advice?: MetricAdvice;
+}
+
+enum ValueType {
+  INT = 0,
+  DOUBLE = 1,
+}
+
+interface MetricAdvice {
+  /**
+   * Hint the explicit bucket boundaries for SDK if the metric is been
+   * aggregated with a HistogramAggregator.
+   */
+  explicitBucketBoundaries?: number[];
+}
+
+export class MeterProvider {
+  getMeter(name: string, version?: string, options?: MeterOptions): Meter {
+    return new Meter({ name, version, schemaUrl: options?.schemaUrl });
+  }
+}
+
+type MetricAttributes = Attributes;
+
+type Instrument = { __key: "instrument" };
+
+let batchResultHasObservables: (
+  res: BatchObservableResult,
+  observables: Observable[],
+) => boolean;
+
+class BatchObservableResult {
+  #observables: WeakSet<Observable>;
+
+  constructor(observables: WeakSet<Observable>) {
+    this.#observables = observables;
+  }
+
+  static {
+    batchResultHasObservables = (cb, observables) => {
+      for (const observable of new SafeIterator(observables)) {
+        if (!cb.#observables.has(observable)) return false;
+      }
+      return true;
+    };
+  }
+
+  observe(
+    metric: Observable,
+    value: number,
+    attributes?: MetricAttributes,
+  ): void {
+    if (!this.#observables.has(metric)) return;
+    getObservableResult(metric).observe(value, attributes);
+  }
+}
+
+const BATCH_CALLBACKS = new SafeMap<
+  BatchObservableCallback,
+  BatchObservableResult
+>();
+const INDIVIDUAL_CALLBACKS = new SafeMap<Observable, Set<ObservableCallback>>();
+
+class Meter {
+  #instrumentationLibrary: InstrumentationLibrary;
+
+  constructor(instrumentationLibrary: InstrumentationLibrary) {
+    this.#instrumentationLibrary = instrumentationLibrary;
+  }
+
+  createCounter(
+    name: string,
+    options?: MetricOptions,
+  ): Counter {
+    if (options?.valueType !== undefined && options?.valueType !== 1) {
+      throw new Error("Only valueType: DOUBLE is supported");
+    }
+    if (!METRICS_ENABLED) return new Counter(null, false);
+    activateInstrumentationLibrary(this.#instrumentationLibrary);
+    const instrument = op_otel_metric_create_counter(
+      name,
+      // deno-lint-ignore prefer-primordials
+      options?.description,
+      options?.unit,
+    ) as Instrument;
+    return new Counter(instrument, false);
+  }
+
+  createUpDownCounter(
+    name: string,
+    options?: MetricOptions,
+  ): Counter {
+    if (options?.valueType !== undefined && options?.valueType !== 1) {
+      throw new Error("Only valueType: DOUBLE is supported");
+    }
+    if (!METRICS_ENABLED) return new Counter(null, true);
+    activateInstrumentationLibrary(this.#instrumentationLibrary);
+    const instrument = op_otel_metric_create_up_down_counter(
+      name,
+      // deno-lint-ignore prefer-primordials
+      options?.description,
+      options?.unit,
+    ) as Instrument;
+    return new Counter(instrument, true);
+  }
+
+  createGauge(
+    name: string,
+    options?: MetricOptions,
+  ): Gauge {
+    if (options?.valueType !== undefined && options?.valueType !== 1) {
+      throw new Error("Only valueType: DOUBLE is supported");
+    }
+    if (!METRICS_ENABLED) return new Gauge(null);
+    activateInstrumentationLibrary(this.#instrumentationLibrary);
+    const instrument = op_otel_metric_create_gauge(
+      name,
+      // deno-lint-ignore prefer-primordials
+      options?.description,
+      options?.unit,
+    ) as Instrument;
+    return new Gauge(instrument);
+  }
+
+  createHistogram(
+    name: string,
+    options?: MetricOptions,
+  ): Histogram {
+    if (options?.valueType !== undefined && options?.valueType !== 1) {
+      throw new Error("Only valueType: DOUBLE is supported");
+    }
+    if (!METRICS_ENABLED) return new Histogram(null);
+    activateInstrumentationLibrary(this.#instrumentationLibrary);
+    const instrument = op_otel_metric_create_histogram(
+      name,
+      // deno-lint-ignore prefer-primordials
+      options?.description,
+      options?.unit,
+      options?.advice?.explicitBucketBoundaries,
+    ) as Instrument;
+    return new Histogram(instrument);
+  }
+
+  createObservableCounter(
+    name: string,
+    options?: MetricOptions,
+  ): Observable {
+    if (options?.valueType !== undefined && options?.valueType !== 1) {
+      throw new Error("Only valueType: DOUBLE is supported");
+    }
+    if (!METRICS_ENABLED) new Observable(new ObservableResult(null, true));
+    activateInstrumentationLibrary(this.#instrumentationLibrary);
+    const instrument = op_otel_metric_create_observable_counter(
+      name,
+      // deno-lint-ignore prefer-primordials
+      options?.description,
+      options?.unit,
+    ) as Instrument;
+    return new Observable(new ObservableResult(instrument, true));
+  }
+
+  createObservableGauge(
+    name: string,
+    options?: MetricOptions,
+  ): Observable {
+    if (options?.valueType !== undefined && options?.valueType !== 1) {
+      throw new Error("Only valueType: DOUBLE is supported");
+    }
+    if (!METRICS_ENABLED) new Observable(new ObservableResult(null, false));
+    activateInstrumentationLibrary(this.#instrumentationLibrary);
+    const instrument = op_otel_metric_create_observable_gauge(
+      name,
+      // deno-lint-ignore prefer-primordials
+      options?.description,
+      options?.unit,
+    ) as Instrument;
+    return new Observable(new ObservableResult(instrument, false));
+  }
+
+  createObservableUpDownCounter(
+    name: string,
+    options?: MetricOptions,
+  ): Observable {
+    if (options?.valueType !== undefined && options?.valueType !== 1) {
+      throw new Error("Only valueType: DOUBLE is supported");
+    }
+    if (!METRICS_ENABLED) new Observable(new ObservableResult(null, false));
+    activateInstrumentationLibrary(this.#instrumentationLibrary);
+    const instrument = op_otel_metric_create_observable_up_down_counter(
+      name,
+      // deno-lint-ignore prefer-primordials
+      options?.description,
+      options?.unit,
+    ) as Instrument;
+    return new Observable(new ObservableResult(instrument, false));
+  }
+
+  addBatchObservableCallback(
+    callback: BatchObservableCallback,
+    observables: Observable[],
+  ): void {
+    if (!METRICS_ENABLED) return;
+    const result = new BatchObservableResult(new SafeWeakSet(observables));
+    startObserving();
+    BATCH_CALLBACKS.set(callback, result);
+  }
+
+  removeBatchObservableCallback(
+    callback: BatchObservableCallback,
+    observables: Observable[],
+  ): void {
+    if (!METRICS_ENABLED) return;
+    const result = BATCH_CALLBACKS.get(callback);
+    if (result && batchResultHasObservables(result, observables)) {
+      BATCH_CALLBACKS.delete(callback);
+    }
+  }
+}
+
+type BatchObservableCallback = (
+  observableResult: BatchObservableResult,
+) => void | Promise<void>;
+
+function record(
+  instrument: Instrument | null,
+  value: number,
+  attributes?: MetricAttributes,
+) {
+  if (instrument === null) return;
+  if (attributes === undefined) {
+    op_otel_metric_record0(instrument, value);
+  } else {
+    const attrs = ObjectEntries(attributes);
+    if (attrs.length === 0) {
+      op_otel_metric_record0(instrument, value);
+    }
+    let i = 0;
+    while (i < attrs.length) {
+      const remaining = attrs.length - i;
+      if (remaining > 3) {
+        op_otel_metric_attribute3(
+          instrument,
+          value,
+          attrs[i][0],
+          attrs[i][1],
+          attrs[i + 1][0],
+          attrs[i + 1][1],
+          attrs[i + 2][0],
+          attrs[i + 2][1],
+        );
+        i += 3;
+      } else if (remaining === 3) {
+        op_otel_metric_record3(
+          instrument,
+          value,
+          attrs[i][0],
+          attrs[i][1],
+          attrs[i + 1][0],
+          attrs[i + 1][1],
+          attrs[i + 2][0],
+          attrs[i + 2][1],
+        );
+        i += 3;
+      } else if (remaining === 2) {
+        op_otel_metric_record2(
+          instrument,
+          value,
+          attrs[i][0],
+          attrs[i][1],
+          attrs[i + 1][0],
+          attrs[i + 1][1],
+        );
+        i += 2;
+      } else if (remaining === 1) {
+        op_otel_metric_record1(
+          instrument,
+          value,
+          attrs[i][0],
+          attrs[i][1],
+        );
+        i += 1;
+      }
+    }
+  }
+}
+
+function recordObservable(
+  instrument: Instrument | null,
+  value: number,
+  attributes?: MetricAttributes,
+) {
+  if (instrument === null) return;
+  if (attributes === undefined) {
+    op_otel_metric_observable_record0(instrument, value);
+  } else {
+    const attrs = ObjectEntries(attributes);
+    if (attrs.length === 0) {
+      op_otel_metric_observable_record0(instrument, value);
+    }
+    let i = 0;
+    while (i < attrs.length) {
+      const remaining = attrs.length - i;
+      if (remaining > 3) {
+        op_otel_metric_attribute3(
+          instrument,
+          value,
+          attrs[i][0],
+          attrs[i][1],
+          attrs[i + 1][0],
+          attrs[i + 1][1],
+          attrs[i + 2][0],
+          attrs[i + 2][1],
+        );
+        i += 3;
+      } else if (remaining === 3) {
+        op_otel_metric_observable_record3(
+          instrument,
+          value,
+          attrs[i][0],
+          attrs[i][1],
+          attrs[i + 1][0],
+          attrs[i + 1][1],
+          attrs[i + 2][0],
+          attrs[i + 2][1],
+        );
+        i += 3;
+      } else if (remaining === 2) {
+        op_otel_metric_observable_record2(
+          instrument,
+          value,
+          attrs[i][0],
+          attrs[i][1],
+          attrs[i + 1][0],
+          attrs[i + 1][1],
+        );
+        i += 2;
+      } else if (remaining === 1) {
+        op_otel_metric_observable_record1(
+          instrument,
+          value,
+          attrs[i][0],
+          attrs[i][1],
+        );
+        i += 1;
+      }
+    }
+  }
+}
+
+class Counter {
+  #instrument: Instrument | null;
+  #upDown: boolean;
+
+  constructor(instrument: Instrument | null, upDown: boolean) {
+    this.#instrument = instrument;
+    this.#upDown = upDown;
+  }
+
+  add(value: number, attributes?: MetricAttributes, _context?: Context): void {
+    if (value < 0 && !this.#upDown) {
+      throw new Error("Counter can only be incremented");
+    }
+    record(this.#instrument, value, attributes);
+  }
+}
+
+class Gauge {
+  #instrument: Instrument | null;
+
+  constructor(instrument: Instrument | null) {
+    this.#instrument = instrument;
+  }
+
+  record(
+    value: number,
+    attributes?: MetricAttributes,
+    _context?: Context,
+  ): void {
+    record(this.#instrument, value, attributes);
+  }
+}
+
+class Histogram {
+  #instrument: Instrument | null;
+
+  constructor(instrument: Instrument | null) {
+    this.#instrument = instrument;
+  }
+
+  record(
+    value: number,
+    attributes?: MetricAttributes,
+    _context?: Context,
+  ): void {
+    record(this.#instrument, value, attributes);
+  }
+}
+
+type ObservableCallback = (
+  observableResult: ObservableResult,
+) => void | Promise<void>;
+
+let getObservableResult: (observable: Observable) => ObservableResult;
+
+class Observable {
+  #result: ObservableResult;
+
+  constructor(result: ObservableResult) {
+    this.#result = result;
+  }
+
+  static {
+    getObservableResult = (observable) => observable.#result;
+  }
+
+  addCallback(callback: ObservableCallback): void {
+    const res = INDIVIDUAL_CALLBACKS.get(this);
+    if (res) res.add(callback);
+    else INDIVIDUAL_CALLBACKS.set(this, new SafeSet([callback]));
+    startObserving();
+  }
+
+  removeCallback(callback: ObservableCallback): void {
+    const res = INDIVIDUAL_CALLBACKS.get(this);
+    if (res) res.delete(callback);
+    if (res?.size === 0) INDIVIDUAL_CALLBACKS.delete(this);
+  }
+}
+
+class ObservableResult {
+  #instrument: Instrument | null;
+  #isRegularCounter: boolean;
+
+  constructor(instrument: Instrument | null, isRegularCounter: boolean) {
+    this.#instrument = instrument;
+    this.#isRegularCounter = isRegularCounter;
+  }
+
+  observe(
+    this: ObservableResult,
+    value: number,
+    attributes?: MetricAttributes,
+  ): void {
+    if (this.#isRegularCounter) {
+      if (value < 0) {
+        throw new Error("Observable counters can only be incremented");
+      }
+    }
+    recordObservable(this.#instrument, value, attributes);
+  }
+}
+
+async function observe(): Promise<void> {
+  const promises: Promise<void>[] = [];
+  // Primordials are not needed, because this is a SafeMap.
+  // deno-lint-ignore prefer-primordials
+  for (const { 0: observable, 1: callbacks } of INDIVIDUAL_CALLBACKS) {
+    const result = getObservableResult(observable);
+    // Primordials are not needed, because this is a SafeSet.
+    // deno-lint-ignore prefer-primordials
+    for (const callback of callbacks) {
+      // PromiseTry is not in primordials?
+      // deno-lint-ignore prefer-primordials
+      ArrayPrototypePush(promises, Promise.try(callback, result));
+    }
+  }
+  // Primordials are not needed, because this is a SafeMap.
+  // deno-lint-ignore prefer-primordials
+  for (const { 0: callback, 1: result } of BATCH_CALLBACKS) {
+    // PromiseTry is not in primordials?
+    // deno-lint-ignore prefer-primordials
+    ArrayPrototypePush(promises, Promise.try(callback, result));
+  }
+  await SafePromiseAll(promises);
+}
+
+let isObserving = false;
+function startObserving() {
+  if (!isObserving) {
+    isObserving = true;
+    (async () => {
+      while (true) {
+        const promise = op_otel_metric_wait_to_observe();
+        core.unrefOpPromise(promise);
+        const ok = await promise;
+        if (!ok) break;
+        await observe();
+        op_otel_metric_observation_done();
+      }
+    })();
+  }
+}
+
 const otelConsoleConfig = {
   ignore: 0,
   capture: 1,
@@ -678,15 +1213,22 @@ const otelConsoleConfig = {
 };
 
 export function bootstrap(
-  config: [] | [
+  config: [
+    0 | 1,
+    0 | 1,
     typeof otelConsoleConfig[keyof typeof otelConsoleConfig],
-    number,
+    0 | 1,
   ],
 ): void {
-  if (config.length === 0) return;
-  const { 0: consoleConfig, 1: deterministic } = config;
+  const {
+    0: tracingEnabled,
+    1: metricsEnabled,
+    2: consoleConfig,
+    3: deterministic,
+  } = config;
 
-  TRACING_ENABLED = true;
+  TRACING_ENABLED = tracingEnabled === 1;
+  METRICS_ENABLED = metricsEnabled === 1;
   DETERMINISTIC = deterministic === 1;
 
   switch (consoleConfig) {
@@ -708,4 +1250,5 @@ export function bootstrap(
 export const telemetry = {
   SpanExporter,
   ContextManager,
+  MeterProvider,
 };

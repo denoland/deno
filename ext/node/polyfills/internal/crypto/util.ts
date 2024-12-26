@@ -67,22 +67,16 @@ export const ellipticCurves: Array<EllipticCurve> = [
   }, // NIST P-224 EC
 ];
 
-// deno-fmt-ignore
 const supportedCiphers = [
-  "aes-128-ecb",  "aes-192-ecb",
-  "aes-256-ecb",  "aes-128-cbc",
-  "aes-192-cbc",  "aes-256-cbc",
-  "aes128",       "aes192",
-  "aes256",       "aes-128-cfb",
-  "aes-192-cfb",  "aes-256-cfb",
-  "aes-128-cfb8", "aes-192-cfb8",
-  "aes-256-cfb8", "aes-128-cfb1",
-  "aes-192-cfb1", "aes-256-cfb1",
-  "aes-128-ofb",  "aes-192-ofb",
-  "aes-256-ofb",  "aes-128-ctr",
-  "aes-192-ctr",  "aes-256-ctr",
-  "aes-128-gcm",  "aes-192-gcm",
-  "aes-256-gcm"
+  "aes-128-ecb",
+  "aes-192-ecb",
+  "aes-256-ecb",
+  "aes-128-cbc",
+  "aes-256-cbc",
+  "aes128",
+  "aes256",
+  "aes-128-gcm",
+  "aes-256-gcm",
 ];
 
 export function getCiphers(): string[] {
