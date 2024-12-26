@@ -1300,12 +1300,12 @@ declare namespace Deno {
    */
   export namespace telemetry {
     /**
-     * A SpanExporter compatible with OpenTelemetry.js
-     * https://open-telemetry.github.io/opentelemetry-js/interfaces/_opentelemetry_sdk_trace_base.SpanExporter.html
+     * A TracerProvider compatible with OpenTelemetry.js
+     * https://open-telemetry.github.io/opentelemetry-js/interfaces/_opentelemetry_api.TracerProvider.html
      * @category Telemetry
      * @experimental
      */
-    export class SpanExporter {}
+    export class TracerProvider {}
 
     /**
      * A ContextManager compatible with OpenTelemetry.js
@@ -1314,6 +1314,14 @@ declare namespace Deno {
      * @experimental
      */
     export class ContextManager {}
+
+    /**
+     * A MeterProvider compatible with OpenTelemetry.js
+     * https://open-telemetry.github.io/opentelemetry-js/interfaces/_opentelemetry_api.MeterProvider.html
+     * @category Telemetry
+     * @experimental
+     */
+    export class MeterProvider {}
 
     export {}; // only export exports
   }
