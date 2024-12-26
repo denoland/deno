@@ -823,7 +823,7 @@ Deno.test("send to a closed socket", async () => {
 });
 
 Deno.test(async function websocketDoesntLeak() {
-  const { promise, resolve, reject } = Promise.withResolvers<void>();
+  const { promise, resolve } = Promise.withResolvers<void>();
   const ws = new WebSocket(new URL("ws://localhost:4242/"));
   assertEquals(ws.url, "ws://localhost:4242/");
   ws.onopen = () => resolve();
