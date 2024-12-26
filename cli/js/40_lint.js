@@ -13,6 +13,7 @@ const {
   op_lint_get_source,
   op_lint_report,
   op_lint_create_serialized_ast,
+  op_is_cancelled,
 } = core.ops;
 
 // Keep in sync with Rust
@@ -60,6 +61,16 @@ const state = {
   plugins: [],
   installedPlugins: new Set(),
 };
+
+/**
+ * This implementation calls into Rust to check if Tokio's cancellation token
+ * has already been canceled.
+ */
+class CancellationToken {
+  isCancellationRequested() {
+    return op_is_cancelled();
+  }
+}
 
 /**
  * Every rule gets their own instance of this class. This is the main
@@ -893,10 +904,11 @@ export function runPluginsForFile(fileName, serializedAst) {
     visitors.push({ info, matcher });
   }
 
+  const token = new CancellationToken();
   // Traverse ast with all visitors at the same time to avoid traversing
   // multiple times.
   try {
-    traverse(ctx, visitors, ctx.rootOffset);
+    traverse(ctx, visitors, ctx.rootOffset, token);
   } finally {
     ctx.nodes.clear();
 
@@ -911,10 +923,12 @@ export function runPluginsForFile(fileName, serializedAst) {
  * @param {AstContext} ctx
  * @param {CompiledVisitor[]} visitors
  * @param {number} offset
+ * @param {CancellationToken} cancellationToken
  */
-function traverse(ctx, visitors, offset) {
+function traverse(ctx, visitors, offset, cancellationToken) {
   // The 0 offset is used to denote an empty/placeholder node
   if (offset === 0) return;
+  if (cancellationToken.isCancellationRequested()) return;
 
   const originalOffset = offset;
 
@@ -925,8 +939,8 @@ function traverse(ctx, visitors, offset) {
 
   for (let i = 0; i < visitors.length; i++) {
     const v = visitors[i];
-
     if (v.matcher(ctx.matcher, offset)) {
+      if (cancellationToken.isCancellationRequested()) return;
       if (v.info.exit !== NOOP) {
         if (exits === null) {
           exits = [v.info.exit];
@@ -952,13 +966,14 @@ function traverse(ctx, visitors, offset) {
     offset += 1;
 
     for (let i = 0; i < propCount; i++) {
+      if (cancellationToken.isCancellationRequested()) return;
       const kind = buf[offset + 1];
       offset += 2; // propId + propFlags
 
       if (kind === PropFlags.Ref) {
         const next = readU32(buf, offset);
         offset += 4;
-        traverse(ctx, visitors, next);
+        traverse(ctx, visitors, next, cancellationToken);
       } else if (kind === PropFlags.RefArr) {
         const len = readU32(buf, offset);
         offset += 4;
@@ -966,7 +981,7 @@ function traverse(ctx, visitors, offset) {
         for (let j = 0; j < len; j++) {
           const child = readU32(buf, offset);
           offset += 4;
-          traverse(ctx, visitors, child);
+          traverse(ctx, visitors, child, cancellationToken);
         }
       } else if (kind === PropFlags.String) {
         offset += 4;

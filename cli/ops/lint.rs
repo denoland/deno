@@ -12,6 +12,7 @@ use deno_core::OpState;
 use deno_lint::diagnostic::LintDiagnostic;
 use deno_lint::diagnostic::LintDiagnosticDetails;
 use deno_lint::diagnostic::LintDiagnosticRange;
+use tokio_util::sync::CancellationToken;
 
 use crate::tools::lint;
 use crate::tools::lint::PluginLogger;
@@ -21,7 +22,8 @@ deno_core::extension!(
   ops = [
     op_lint_create_serialized_ast,
     op_lint_report,
-    op_lint_get_source
+    op_lint_get_source,
+    op_is_cancelled
   ],
   options = {
     logger: PluginLogger,
@@ -40,6 +42,7 @@ deno_core::extension!(
 pub struct LintPluginContainer {
   pub diagnostics: Vec<LintDiagnostic>,
   pub source_text_info: Option<SourceTextInfo>,
+  token: CancellationToken,
 }
 
 impl LintPluginContainer {
@@ -86,6 +89,12 @@ pub fn op_print(state: &mut OpState, #[string] msg: &str, is_err: bool) {
   } else {
     logger.log(msg);
   }
+}
+
+#[op2(fast)]
+fn op_is_cancelled(state: &mut OpState) -> bool {
+  let container = state.borrow_mut::<LintPluginContainer>();
+  container.token.is_cancelled()
 }
 
 #[op2]

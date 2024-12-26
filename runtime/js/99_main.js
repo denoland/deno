@@ -533,6 +533,7 @@ const NOT_IMPORTED_OPS = [
   "op_lint_report",
   "op_lint_get_source",
   "op_lint_create_serialized_ast",
+  "op_is_cancelled",
 
   // Related to `Deno.test()` API
   "op_test_event_step_result_failed",
