@@ -1,0 +1,22 @@
+{
+  "tempDir": true,
+  "steps": [{
+    "if": "unix",
+    "args": "compile --output main main.ts",
+    "output": "compile.out"
+  }, {
+    "if": "unix",
+    "commandName": "./main",
+    "args": [],
+    "output": "main.out"
+  }, {
+    "if": "windows",
+    "args": "compile --output main.exe main.ts",
+    "output": "compile.out"
+  }, {
+    "if": "windows",
+    "commandName": "./main.exe",
+    "args": [],
+    "output": "main.out"
+  }]
+}

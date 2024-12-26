@@ -41,6 +41,7 @@ use deno_path_util::url_to_file_path;
 use deno_runtime::deno_node::PackageJson;
 use indexmap::IndexSet;
 use lsp_types::ClientCapabilities;
+use std::borrow::Cow;
 use std::collections::BTreeMap;
 use std::collections::BTreeSet;
 use std::collections::HashMap;
@@ -62,7 +63,7 @@ use crate::args::ConfigFile;
 use crate::args::LintFlags;
 use crate::args::LintOptions;
 use crate::cache::FastInsecureHasher;
-use crate::file_fetcher::FileFetcher;
+use crate::file_fetcher::CliFileFetcher;
 use crate::lsp::logging::lsp_warn;
 use crate::resolver::CliSloppyImportsResolver;
 use crate::resolver::SloppyImportsCachedFs;
@@ -458,6 +459,19 @@ impl Default for LanguagePreferences {
   }
 }
 
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct SuggestionActionsSettings {
+  #[serde(default = "is_true")]
+  pub enabled: bool,
+}
+
+impl Default for SuggestionActionsSettings {
+  fn default() -> Self {
+    SuggestionActionsSettings { enabled: true }
+  }
+}
+
 #[derive(Debug, Default, Clone, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct UpdateImportsOnFileMoveOptions {
@@ -488,6 +502,8 @@ pub struct LanguageWorkspaceSettings {
   pub preferences: LanguagePreferences,
   #[serde(default)]
   pub suggest: CompletionSettings,
+  #[serde(default)]
+  pub suggestion_actions: SuggestionActionsSettings,
   #[serde(default)]
   pub update_imports_on_file_move: UpdateImportsOnFileMoveOptions,
 }
@@ -1202,7 +1218,7 @@ impl ConfigData {
     specified_config: Option<&Path>,
     scope: &ModuleSpecifier,
     settings: &Settings,
-    file_fetcher: &Arc<FileFetcher>,
+    file_fetcher: &Arc<CliFileFetcher>,
     // sync requirement is because the lsp requires sync
     cached_deno_config_fs: &(dyn DenoConfigFs + Sync),
     deno_json_cache: &(dyn DenoJsonCache + Sync),
@@ -1297,7 +1313,7 @@ impl ConfigData {
     member_dir: Arc<WorkspaceDirectory>,
     scope: Arc<ModuleSpecifier>,
     settings: &Settings,
-    file_fetcher: Option<&Arc<FileFetcher>>,
+    file_fetcher: Option<&Arc<CliFileFetcher>>,
   ) -> Self {
     let (settings, workspace_folder) = settings.get_for_specifier(&scope);
     let mut watched_files = HashMap::with_capacity(10);
@@ -1818,7 +1834,7 @@ impl ConfigTree {
     &mut self,
     settings: &Settings,
     workspace_files: &IndexSet<ModuleSpecifier>,
-    file_fetcher: &Arc<FileFetcher>,
+    file_fetcher: &Arc<CliFileFetcher>,
   ) {
     lsp_log!("Refreshing configuration tree...");
     // since we're resolving a workspace multiple times in different
@@ -2092,7 +2108,7 @@ impl<T: Clone> CachedFsItems<T> {
 #[derive(Default)]
 struct InnerData {
   stat_calls: CachedFsItems<deno_config::fs::FsMetadata>,
-  read_to_string_calls: CachedFsItems<String>,
+  read_to_string_calls: CachedFsItems<Cow<'static, str>>,
 }
 
 #[derive(Default)]
@@ -2113,7 +2129,7 @@ impl DenoConfigFs for CachedDenoConfigFs {
   fn read_to_string_lossy(
     &self,
     path: &Path,
-  ) -> Result<String, std::io::Error> {
+  ) -> Result<Cow<'static, str>, std::io::Error> {
     self
       .0
       .lock()
@@ -2291,6 +2307,7 @@ mod tests {
               enabled: true,
             },
           },
+          suggestion_actions: SuggestionActionsSettings { enabled: true },
           update_imports_on_file_move: UpdateImportsOnFileMoveOptions {
             enabled: UpdateImportsOnFileMoveEnabled::Prompt
           }
@@ -2337,6 +2354,7 @@ mod tests {
               enabled: true,
             },
           },
+          suggestion_actions: SuggestionActionsSettings { enabled: true },
           update_imports_on_file_move: UpdateImportsOnFileMoveOptions {
             enabled: UpdateImportsOnFileMoveEnabled::Prompt
           }

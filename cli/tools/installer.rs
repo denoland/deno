@@ -3,24 +3,23 @@
 use crate::args::resolve_no_prompt;
 use crate::args::AddFlags;
 use crate::args::CaData;
-use crate::args::CacheSetting;
 use crate::args::ConfigFlag;
 use crate::args::Flags;
 use crate::args::InstallFlags;
 use crate::args::InstallFlagsGlobal;
 use crate::args::InstallFlagsLocal;
-use crate::args::InstallKind;
 use crate::args::TypeCheckMode;
 use crate::args::UninstallFlags;
 use crate::args::UninstallKind;
 use crate::factory::CliFactory;
-use crate::file_fetcher::FileFetcher;
+use crate::file_fetcher::CliFileFetcher;
 use crate::graph_container::ModuleGraphContainer;
 use crate::http_util::HttpClientProvider;
 use crate::jsr::JsrFetchResolver;
 use crate::npm::NpmFetchResolver;
 use crate::util::fs::canonicalize_path_maybe_not_exists;
 
+use deno_cache_dir::file_fetcher::CacheSetting;
 use deno_core::anyhow::bail;
 use deno_core::anyhow::Context;
 use deno_core::error::generic_error;
@@ -162,11 +161,11 @@ pub async fn infer_name_from_url(
     let npm_ref = npm_ref.into_inner();
     if let Some(sub_path) = npm_ref.sub_path {
       if !sub_path.contains('/') {
-        return Some(sub_path);
+        return Some(sub_path.to_string());
       }
     }
     if !npm_ref.req.name.contains('/') {
-      return Some(npm_ref.req.name);
+      return Some(npm_ref.req.name.into_string());
     }
     return None;
   }
@@ -344,11 +343,11 @@ pub async fn install_command(
   flags: Arc<Flags>,
   install_flags: InstallFlags,
 ) -> Result<(), AnyError> {
-  match install_flags.kind {
-    InstallKind::Global(global_flags) => {
+  match install_flags {
+    InstallFlags::Global(global_flags) => {
       install_global(flags, global_flags).await
     }
-    InstallKind::Local(local_flags) => {
+    InstallFlags::Local(local_flags) => {
       if let InstallFlagsLocal::Add(add_flags) = &local_flags {
         check_if_installs_a_single_package_globally(Some(add_flags))?;
       }
@@ -367,18 +366,18 @@ async fn install_global(
   let cli_options = factory.cli_options()?;
   let http_client = factory.http_client_provider();
   let deps_http_cache = factory.global_http_cache()?;
-  let mut deps_file_fetcher = FileFetcher::new(
+  let deps_file_fetcher = CliFileFetcher::new(
     deps_http_cache.clone(),
-    CacheSetting::ReloadAll,
-    true,
     http_client.clone(),
     Default::default(),
     None,
+    true,
+    CacheSetting::ReloadAll,
+    log::Level::Trace,
   );
 
   let npmrc = factory.cli_options().unwrap().npmrc();
 
-  deps_file_fetcher.set_download_log_level(log::Level::Trace);
   let deps_file_fetcher = Arc::new(deps_file_fetcher);
   let jsr_resolver = Arc::new(JsrFetchResolver::new(deps_file_fetcher.clone()));
   let npm_resolver = Arc::new(NpmFetchResolver::new(

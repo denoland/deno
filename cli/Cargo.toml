@@ -2,7 +2,7 @@
 
 [package]
 name = "deno"
-version = "2.1.1"
+version = "2.1.4"
 authors.workspace = true
 default-run = "deno"
 edition.workspace = true
@@ -72,17 +72,20 @@ deno_ast = { workspace = true, features = ["bundler", "cjs", "codegen", "proposa
 deno_cache_dir.workspace = true
 deno_config.workspace = true
 deno_core = { workspace = true, features = ["include_js_files_for_snapshotting"] }
-deno_doc = { version = "0.160.0", features = ["rust", "comrak"] }
-deno_graph = { version = "=0.85.0" }
-deno_lint = { version = "=0.68.0", features = ["docs"] }
+deno_doc = { version = "=0.161.3", features = ["rust", "comrak"] }
+deno_error.workspace = true
+deno_graph = { version = "=0.86.5" }
+deno_lint = { version = "=0.68.2", features = ["docs"] }
 deno_lockfile.workspace = true
 deno_npm.workspace = true
+deno_npm_cache.workspace = true
 deno_package_json.workspace = true
 deno_path_util.workspace = true
-deno_resolver.workspace = true
+deno_resolver = { workspace = true, features = ["sync"] }
 deno_runtime = { workspace = true, features = ["include_js_files_for_snapshotting"] }
 deno_semver.workspace = true
-deno_task_shell = "=0.18.1"
+deno_task_shell = "=0.20.2"
+deno_telemetry.workspace = true
 deno_terminal.workspace = true
 libsui = "0.5.0"
 node_resolver.workspace = true
@@ -91,8 +94,10 @@ anstream = "0.6.14"
 async-trait.workspace = true
 base64.workspace = true
 bincode = "=1.3.3"
+boxed_error.workspace = true
 bytes.workspace = true
 cache_control.workspace = true
+capacity_builder.workspace = true
 chrono = { workspace = true, features = ["now"] }
 clap = { version = "=4.5.16", features = ["env", "string", "wrap_help", "error-context"] }
 clap_complete = "=4.5.24"
@@ -107,7 +112,7 @@ dotenvy = "0.15.7"
 dprint-plugin-json = "=0.19.4"
 dprint-plugin-jupyter = "=0.1.5"
 dprint-plugin-markdown = "=0.17.8"
-dprint-plugin-typescript = "=0.93.2"
+dprint-plugin-typescript = "=0.93.3"
 env_logger = "=0.10.0"
 fancy-regex = "=0.10.0"
 faster-hex.workspace = true
@@ -129,7 +134,7 @@ libz-sys.workspace = true
 log = { workspace = true, features = ["serde"] }
 lsp-types.workspace = true
 malva = "=0.11.0"
-markup_fmt = "=0.16.0"
+markup_fmt = "=0.18.0"
 memmem.workspace = true
 monch.workspace = true
 notify.workspace = true
@@ -151,8 +156,7 @@ serde_repr.workspace = true
 sha2.workspace = true
 shell-escape = "=0.1.5"
 spki = { version = "0.7", features = ["pem"] }
-# NOTE(bartlomieju): using temporary fork for now, revert back to `sqlformat-rs` later
-sqlformat = { package = "deno_sqlformat", version = "0.3.2" }
+sqlformat = "=0.3.2"
 strsim = "0.11.1"
 tar.workspace = true
 tempfile.workspace = true

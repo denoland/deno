@@ -160,7 +160,7 @@ impl CjsCodeAnalyzer for CliCjsCodeAnalyzer {
           if let Ok(source_from_file) =
             self.fs.read_text_file_lossy_async(path, None).await
           {
-            Cow::Owned(source_from_file)
+            source_from_file
           } else {
             return Ok(ExtNodeCjsAnalysis::Cjs(CjsAnalysisExports {
               exports: vec![],

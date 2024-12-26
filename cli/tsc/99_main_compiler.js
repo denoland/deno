@@ -41,6 +41,13 @@ delete Object.prototype.__proto__;
     "listen",
     "listenDatagram",
     "openKv",
+    "connectQuic",
+    "listenQuic",
+    "QuicBidirectionalStream",
+    "QuicConn",
+    "QuicListener",
+    "QuicReceiveStream",
+    "QuicSendStream",
   ]);
   const unstableMsgSuggestion =
     "If not, try changing the 'lib' compiler option to include 'deno.unstable' " +
@@ -681,14 +688,18 @@ delete Object.prototype.__proto__;
     getNewLine() {
       return "\n";
     },
-    resolveTypeReferenceDirectives(
-      typeDirectiveNames,
+    resolveTypeReferenceDirectiveReferences(
+      typeDirectiveReferences,
       containingFilePath,
       redirectedReference,
       options,
-      containingFileMode,
+      containingSourceFile,
+      _reusedNames,
     ) {
-      return typeDirectiveNames.map((arg) => {
+      const isCjs =
+        containingSourceFile?.impliedNodeFormat === ts.ModuleKind.CommonJS;
+      /** @type {Array<ts.ResolvedTypeReferenceDirectiveWithFailedLookupLocations>} */
+      const result = typeDirectiveReferences.map((arg) => {
         /** @type {ts.FileReference} */
         const fileReference = typeof arg === "string"
           ? {
@@ -701,16 +712,28 @@ delete Object.prototype.__proto__;
           /** @type {[string, ts.Extension] | undefined} */
           const resolved = ops.op_resolve(
             containingFilePath,
-            containingFileMode === ts.ModuleKind.CommonJS,
-            [fileReference.fileName],
+            [
+              [
+                fileReference.resolutionMode == null
+                  ? isCjs
+                  : fileReference.resolutionMode === ts.ModuleKind.CommonJS,
+                fileReference.fileName,
+              ],
+            ],
           )?.[0];
           if (resolved) {
             return {
-              primary: true,
-              resolvedFileName: resolved[0],
+              resolvedTypeReferenceDirective: {
+                primary: true,
+                resolvedFileName: resolved[0],
+                // todo(dsherret): we should probably be setting this
+                isExternalLibraryImport: undefined,
+              },
             };
           } else {
-            return undefined;
+            return {
+              resolvedTypeReferenceDirective: undefined,
+            };
           }
         } else {
           return ts.resolveTypeReferenceDirective(
@@ -720,41 +743,56 @@ delete Object.prototype.__proto__;
             host,
             redirectedReference,
             undefined,
-            containingFileMode ?? fileReference.resolutionMode,
-          ).resolvedTypeReferenceDirective;
+            containingSourceFile?.impliedNodeFormat ??
+              fileReference.resolutionMode,
+          );
         }
       });
+      return result;
     },
-    resolveModuleNames(
-      specifiers,
+    resolveModuleNameLiterals(
+      moduleLiterals,
       base,
-      _reusedNames,
       _redirectedReference,
-      _options,
+      compilerOptions,
       containingSourceFile,
+      _reusedNames,
     ) {
+      const specifiers = moduleLiterals.map((literal) => [
+        ts.getModeForUsageLocation(
+          containingSourceFile,
+          literal,
+          compilerOptions,
+        ) === ts.ModuleKind.CommonJS,
+        literal.text,
+      ]);
       if (logDebug) {
         debug(`host.resolveModuleNames()`);
         debug(`  base: ${base}`);
-        debug(`  specifiers: ${specifiers.join(", ")}`);
+        debug(`  specifiers: ${specifiers.map((s) => s[1]).join(", ")}`);
       }
       /** @type {Array<[string, ts.Extension] | undefined>} */
       const resolved = ops.op_resolve(
         base,
-        containingSourceFile?.impliedNodeFormat === ts.ModuleKind.CommonJS,
         specifiers,
       );
       if (resolved) {
+        /** @type {Array<ts.ResolvedModuleWithFailedLookupLocations>} */
         const result = resolved.map((item) => {
           if (item) {
             const [resolvedFileName, extension] = item;
             return {
-              resolvedFileName,
-              extension,
-              isExternalLibraryImport: false,
+              resolvedModule: {
+                resolvedFileName,
+                extension,
+                // todo(dsherret): we should probably be setting this
+                isExternalLibraryImport: false,
+              },
             };
           }
-          return undefined;
+          return {
+            resolvedModule: undefined,
+          };
         });
         result.length = specifiers.length;
         return result;

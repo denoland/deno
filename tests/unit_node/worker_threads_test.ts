@@ -137,6 +137,25 @@ Deno.test({
 });
 
 Deno.test({
+  name: "[node/worker_threads] Worker eval",
+  async fn() {
+    // Check that newlines are encoded properly
+    const worker = new workerThreads.Worker(
+      `
+      import { parentPort } from "node:worker_threads"
+      console.log("hey, foo") // comment
+      parentPort.postMessage("It works!");
+      `,
+      {
+        eval: true,
+      },
+    );
+    assertEquals((await once(worker, "message"))[0], "It works!");
+    worker.terminate();
+  },
+});
+
+Deno.test({
   name: "[node/worker_threads] worker thread with type module",
   async fn() {
     function p() {
@@ -821,4 +840,27 @@ Deno.test({
     const result = await done.promise;
     assertEquals(result, true);
   },
+});
+
+Deno.test("[node/worker_threads] Worker runs async ops correctly", async () => {
+  const recvMessage = Promise.withResolvers<void>();
+  const timer = setTimeout(() => recvMessage.reject(), 1000);
+  const worker = new workerThreads.Worker(
+    `
+    import { parentPort } from "node:worker_threads";
+    setTimeout(() => {
+      parentPort.postMessage("Hello from worker");
+    }, 10);
+    `,
+    { eval: true },
+  );
+
+  worker.on("message", (msg) => {
+    assertEquals(msg, "Hello from worker");
+    worker.terminate();
+    recvMessage.resolve();
+    clearTimeout(timer);
+  });
+
+  await recvMessage.promise;
 });

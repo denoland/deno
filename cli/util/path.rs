@@ -1,6 +1,7 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 use std::borrow::Cow;
+use std::fmt::Write;
 use std::path::Path;
 use std::path::PathBuf;
 
@@ -27,7 +28,16 @@ pub fn is_importable_ext(path: &Path) -> bool {
   if let Some(ext) = get_extension(path) {
     matches!(
       ext.as_str(),
-      "ts" | "tsx" | "js" | "jsx" | "mjs" | "mts" | "cjs" | "cts" | "json"
+      "ts"
+        | "tsx"
+        | "js"
+        | "jsx"
+        | "mjs"
+        | "mts"
+        | "cjs"
+        | "cts"
+        | "json"
+        | "wasm"
     )
   } else {
     false
@@ -42,19 +52,6 @@ pub fn get_extension(file_path: &Path) -> Option<String> {
     .map(|e| e.to_lowercase());
 }
 
-pub fn get_atomic_dir_path(file_path: &Path) -> PathBuf {
-  let rand = gen_rand_path_component();
-  let new_file_name = format!(
-    ".{}_{}",
-    file_path
-      .file_name()
-      .map(|f| f.to_string_lossy())
-      .unwrap_or(Cow::Borrowed("")),
-    rand
-  );
-  file_path.with_file_name(new_file_name)
-}
-
 pub fn get_atomic_file_path(file_path: &Path) -> PathBuf {
   let rand = gen_rand_path_component();
   let extension = format!("{rand}.tmp");
@@ -62,8 +59,8 @@ pub fn get_atomic_file_path(file_path: &Path) -> PathBuf {
 }
 
 fn gen_rand_path_component() -> String {
-  (0..4).fold(String::new(), |mut output, _| {
-    output.push_str(&format!("{:02x}", rand::random::<u8>()));
+  (0..4).fold(String::with_capacity(8), |mut output, _| {
+    write!(&mut output, "{:02x}", rand::random::<u8>()).unwrap();
     output
   })
 }
@@ -222,6 +219,7 @@ mod test {
     assert!(is_script_ext(Path::new("foo.cjs")));
     assert!(is_script_ext(Path::new("foo.cts")));
     assert!(!is_script_ext(Path::new("foo.json")));
+    assert!(!is_script_ext(Path::new("foo.wasm")));
     assert!(!is_script_ext(Path::new("foo.mjsx")));
   }
 
@@ -243,6 +241,7 @@ mod test {
     assert!(is_importable_ext(Path::new("foo.cjs")));
     assert!(is_importable_ext(Path::new("foo.cts")));
     assert!(is_importable_ext(Path::new("foo.json")));
+    assert!(is_importable_ext(Path::new("foo.wasm")));
     assert!(!is_importable_ext(Path::new("foo.mjsx")));
   }
 

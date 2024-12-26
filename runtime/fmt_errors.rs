@@ -316,7 +316,8 @@ fn get_suggestions_for_terminal_errors(e: &JsError) -> Vec<FixSuggestion> {
         FixSuggestion::hint_multiline(&[
           "Rewrite this module to ESM,",
           cstr!("or change the file extension to <u>.cjs</u>,"),
-          cstr!("or add <u>package.json</> next to the file with <i>\"type\": \"commonjs\"</> option."),
+          cstr!("or add <u>package.json</> next to the file with <i>\"type\": \"commonjs\"</> option,"),
+          cstr!("or pass <i>--unstable-detect-cjs</> flag to detect CommonJS when loading."),
         ]),
         FixSuggestion::docs("https://docs.deno.com/go/commonjs"),
       ];
@@ -419,6 +420,20 @@ fn get_suggestions_for_terminal_errors(e: &JsError) -> Vec<FixSuggestion> {
         FixSuggestion::info("Deno.UnsafeWindowSurface is an unstable API."),
         FixSuggestion::hint(
           "Run again with `--unstable-webgpu` flag to enable this API.",
+        ),
+      ];
+    } else if msg.contains("listenQuic is not a function") {
+      return vec![
+        FixSuggestion::info("listenQuic is an unstable API."),
+        FixSuggestion::hint(
+          "Run again with `--unstable-net` flag to enable this API.",
+        ),
+      ];
+    } else if msg.contains("connectQuic is not a function") {
+      return vec![
+        FixSuggestion::info("connectQuic is an unstable API."),
+        FixSuggestion::hint(
+          "Run again with `--unstable-net` flag to enable this API.",
         ),
       ];
     // Try to capture errors like:

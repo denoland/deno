@@ -18,7 +18,7 @@ impl<'a> deno_config::fs::DenoConfigFs for DenoConfigFsAdapter<'a> {
   fn read_to_string_lossy(
     &self,
     path: &std::path::Path,
-  ) -> Result<String, std::io::Error> {
+  ) -> Result<std::borrow::Cow<'static, str>, std::io::Error> {
     self
       .0
       .read_text_file_lossy_sync(path, None)
@@ -62,6 +62,15 @@ impl<'a> deno_config::fs::DenoConfigFs for DenoConfigFsAdapter<'a> {
           .collect()
       })
   }
+}
+
+pub fn import_map_deps(
+  import_map: &serde_json::Value,
+) -> HashSet<JsrDepPackageReq> {
+  let values = imports_values(import_map.get("imports"))
+    .into_iter()
+    .chain(scope_values(import_map.get("scopes")));
+  values_to_set(values)
 }
 
 pub fn deno_json_deps(

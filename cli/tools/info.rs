@@ -2,7 +2,6 @@
 
 use std::collections::HashMap;
 use std::collections::HashSet;
-use std::fmt;
 use std::fmt::Write;
 use std::sync::Arc;
 
@@ -35,6 +34,7 @@ use crate::graph_util::graph_exit_integrity_errors;
 use crate::npm::CliNpmResolver;
 use crate::npm::ManagedCliNpmResolver;
 use crate::util::checksum;
+use crate::util::display::DisplayTreeNode;
 
 const JSON_SCHEMA_VERSION: u8 = 1;
 
@@ -49,19 +49,67 @@ pub async fn info(
     let module_graph_creator = factory.module_graph_creator().await?;
     let npm_resolver = factory.npm_resolver().await?;
     let maybe_lockfile = cli_options.maybe_lockfile();
+    let resolver = factory.workspace_resolver().await?.clone();
     let npmrc = cli_options.npmrc();
-    let resolver = factory.workspace_resolver().await?;
+    let node_resolver = factory.node_resolver().await?;
 
     let cwd_url =
       url::Url::from_directory_path(cli_options.initial_cwd()).unwrap();
 
-    let maybe_import_specifier = if let Some(import_map) =
-      resolver.maybe_import_map()
+    let maybe_import_specifier = if let Ok(resolved) =
+      resolver.resolve(&specifier, &cwd_url)
     {
-      if let Ok(imports_specifier) = import_map.resolve(&specifier, &cwd_url) {
-        Some(imports_specifier)
-      } else {
-        None
+      match resolved {
+        deno_config::workspace::MappedResolution::Normal {
+          specifier, ..
+        }
+        | deno_config::workspace::MappedResolution::ImportMap {
+          specifier,
+          ..
+        }
+        | deno_config::workspace::MappedResolution::WorkspaceJsrPackage {
+          specifier,
+          ..
+        } => Some(specifier),
+        deno_config::workspace::MappedResolution::WorkspaceNpmPackage {
+          target_pkg_json,
+          sub_path,
+          ..
+        } => Some(node_resolver.resolve_package_subpath_from_deno_module(
+          target_pkg_json.clone().dir_path(),
+          sub_path.as_deref(),
+          Some(&cwd_url),
+          node_resolver::ResolutionMode::Import,
+          node_resolver::NodeResolutionKind::Execution,
+        )?),
+        deno_config::workspace::MappedResolution::PackageJson {
+          alias,
+          sub_path,
+          dep_result,
+          ..
+        } => match dep_result.as_ref().map_err(|e| e.clone())? {
+          deno_package_json::PackageJsonDepValue::Workspace(version_req) => {
+            let pkg_folder = resolver
+              .resolve_workspace_pkg_json_folder_for_pkg_json_dep(
+                alias,
+                version_req,
+              )?;
+            Some(node_resolver.resolve_package_subpath_from_deno_module(
+              pkg_folder,
+              sub_path.as_deref(),
+              Some(&cwd_url),
+              node_resolver::ResolutionMode::Import,
+              node_resolver::NodeResolutionKind::Execution,
+            )?)
+          }
+          deno_package_json::PackageJsonDepValue::Req(req) => {
+            Some(ModuleSpecifier::parse(&format!(
+              "npm:{}{}",
+              req,
+              sub_path.map(|s| format!("/{}", s)).unwrap_or_default()
+            ))?)
+          }
+        },
       }
     } else {
       None
@@ -75,7 +123,12 @@ pub async fn info(
     let mut loader = module_graph_builder.create_graph_loader();
     loader.enable_loading_cache_info(); // for displaying the cache information
     let graph = module_graph_creator
-      .create_graph_with_loader(GraphKind::All, vec![specifier], &mut loader)
+      .create_graph_with_loader(
+        GraphKind::All,
+        vec![specifier],
+        &mut loader,
+        crate::graph_util::NpmCachingStrategy::Eager,
+      )
       .await?;
 
     // write out the lockfile if there is one
@@ -225,8 +278,10 @@ fn add_npm_packages_to_json(
           });
         if let Some(pkg) = maybe_package {
           if let Some(module) = module.as_object_mut() {
-            module
-              .insert("npmPackage".to_string(), pkg.id.as_serialized().into());
+            module.insert(
+              "npmPackage".to_string(),
+              pkg.id.as_serialized().into_string().into(),
+            );
           }
         }
       }
@@ -235,21 +290,30 @@ fn add_npm_packages_to_json(
         .get_mut("dependencies")
         .and_then(|d| d.as_array_mut());
       if let Some(dependencies) = dependencies {
-        for dep in dependencies.iter_mut() {
-          if let serde_json::Value::Object(dep) = dep {
-            let specifier = dep.get("specifier").and_then(|s| s.as_str());
-            if let Some(specifier) = specifier {
-              if let Ok(npm_ref) = NpmPackageReqReference::from_str(specifier) {
-                if let Ok(pkg) =
-                  snapshot.resolve_pkg_from_pkg_req(npm_ref.req())
-                {
-                  dep.insert(
-                    "npmPackage".to_string(),
-                    pkg.id.as_serialized().into(),
-                  );
-                }
+        for dep in dependencies.iter_mut().flat_map(|d| d.as_object_mut()) {
+          if let Some(specifier) = dep.get("specifier").and_then(|s| s.as_str())
+          {
+            if let Ok(npm_ref) = NpmPackageReqReference::from_str(specifier) {
+              if let Ok(pkg) = snapshot.resolve_pkg_from_pkg_req(npm_ref.req())
+              {
+                dep.insert(
+                  "npmPackage".to_string(),
+                  pkg.id.as_serialized().into_string().into(),
+                );
               }
             }
+          }
+
+          // don't show this in the output unless someone needs it
+          if let Some(code) =
+            dep.get_mut("code").and_then(|c| c.as_object_mut())
+          {
+            code.remove("resolutionMode");
+          }
+          if let Some(types) =
+            dep.get_mut("types").and_then(|c| c.as_object_mut())
+          {
+            types.remove("resolutionMode");
           }
         }
       }
@@ -262,92 +326,22 @@ fn add_npm_packages_to_json(
   let mut json_packages = serde_json::Map::with_capacity(sorted_packages.len());
   for pkg in sorted_packages {
     let mut kv = serde_json::Map::new();
-    kv.insert("name".to_string(), pkg.id.nv.name.clone().into());
+    kv.insert("name".to_string(), pkg.id.nv.name.to_string().into());
     kv.insert("version".to_string(), pkg.id.nv.version.to_string().into());
     let mut deps = pkg.dependencies.values().collect::<Vec<_>>();
     deps.sort();
     let deps = deps
       .into_iter()
-      .map(|id| serde_json::Value::String(id.as_serialized()))
+      .map(|id| serde_json::Value::String(id.as_serialized().into_string()))
       .collect::<Vec<_>>();
     kv.insert("dependencies".to_string(), deps.into());
     let registry_url = npmrc.get_registry_url(&pkg.id.nv.name);
     kv.insert("registryUrl".to_string(), registry_url.to_string().into());
 
-    json_packages.insert(pkg.id.as_serialized(), kv.into());
+    json_packages.insert(pkg.id.as_serialized().into_string(), kv.into());
   }
 
   json.insert("npmPackages".to_string(), json_packages.into());
-}
-
-struct TreeNode {
-  text: String,
-  children: Vec<TreeNode>,
-}
-
-impl TreeNode {
-  pub fn from_text(text: String) -> Self {
-    Self {
-      text,
-      children: Default::default(),
-    }
-  }
-}
-
-fn print_tree_node<TWrite: Write>(
-  tree_node: &TreeNode,
-  writer: &mut TWrite,
-) -> fmt::Result {
-  fn print_children<TWrite: Write>(
-    writer: &mut TWrite,
-    prefix: &str,
-    children: &[TreeNode],
-  ) -> fmt::Result {
-    const SIBLING_CONNECTOR: char = '├';
-    const LAST_SIBLING_CONNECTOR: char = '└';
-    const CHILD_DEPS_CONNECTOR: char = '┬';
-    const CHILD_NO_DEPS_CONNECTOR: char = '─';
-    const VERTICAL_CONNECTOR: char = '│';
-    const EMPTY_CONNECTOR: char = ' ';
-
-    let child_len = children.len();
-    for (index, child) in children.iter().enumerate() {
-      let is_last = index + 1 == child_len;
-      let sibling_connector = if is_last {
-        LAST_SIBLING_CONNECTOR
-      } else {
-        SIBLING_CONNECTOR
-      };
-      let child_connector = if child.children.is_empty() {
-        CHILD_NO_DEPS_CONNECTOR
-      } else {
-        CHILD_DEPS_CONNECTOR
-      };
-      writeln!(
-        writer,
-        "{} {}",
-        colors::gray(format!("{prefix}{sibling_connector}─{child_connector}")),
-        child.text
-      )?;
-      let child_prefix = format!(
-        "{}{}{}",
-        prefix,
-        if is_last {
-          EMPTY_CONNECTOR
-        } else {
-          VERTICAL_CONNECTOR
-        },
-        EMPTY_CONNECTOR
-      );
-      print_children(writer, &child_prefix, &child.children)?;
-    }
-
-    Ok(())
-  }
-
-  writeln!(writer, "{}", tree_node.text)?;
-  print_children(writer, "", &tree_node.children)?;
-  Ok(())
 }
 
 /// Precached information about npm packages that are used in deno info.
@@ -506,7 +500,7 @@ impl<'a> GraphDisplayContext<'a> {
         )?;
         writeln!(writer)?;
         let root_node = self.build_module_info(root, false);
-        print_tree_node(&root_node, writer)?;
+        root_node.print(writer)?;
         Ok(())
       }
       Err(err) => {
@@ -522,7 +516,7 @@ impl<'a> GraphDisplayContext<'a> {
     }
   }
 
-  fn build_dep_info(&mut self, dep: &Dependency) -> Vec<TreeNode> {
+  fn build_dep_info(&mut self, dep: &Dependency) -> Vec<DisplayTreeNode> {
     let mut children = Vec::with_capacity(2);
     if !dep.maybe_code.is_none() {
       if let Some(child) = self.build_resolved_info(&dep.maybe_code, false) {
@@ -537,7 +531,11 @@ impl<'a> GraphDisplayContext<'a> {
     children
   }
 
-  fn build_module_info(&mut self, module: &Module, type_dep: bool) -> TreeNode {
+  fn build_module_info(
+    &mut self,
+    module: &Module,
+    type_dep: bool,
+  ) -> DisplayTreeNode {
     enum PackageOrSpecifier {
       Package(Box<NpmResolutionPackage>),
       Specifier(ModuleSpecifier),
@@ -553,7 +551,7 @@ impl<'a> GraphDisplayContext<'a> {
       None => Specifier(module.specifier().clone()),
     };
     let was_seen = !self.seen.insert(match &package_or_specifier {
-      Package(package) => package.id.as_serialized(),
+      Package(package) => package.id.as_serialized().into_string(),
       Specifier(specifier) => specifier.to_string(),
     });
     let header_text = if was_seen {
@@ -583,7 +581,7 @@ impl<'a> GraphDisplayContext<'a> {
       format!("{} {}", header_text, maybe_size_to_text(maybe_size))
     };
 
-    let mut tree_node = TreeNode::from_text(header_text);
+    let mut tree_node = DisplayTreeNode::from_text(header_text);
 
     if !was_seen {
       match &package_or_specifier {
@@ -621,21 +619,22 @@ impl<'a> GraphDisplayContext<'a> {
   fn build_npm_deps(
     &mut self,
     package: &NpmResolutionPackage,
-  ) -> Vec<TreeNode> {
+  ) -> Vec<DisplayTreeNode> {
     let mut deps = package.dependencies.values().collect::<Vec<_>>();
     deps.sort();
     let mut children = Vec::with_capacity(deps.len());
     for dep_id in deps.into_iter() {
       let maybe_size = self.npm_info.package_sizes.get(dep_id).cloned();
       let size_str = maybe_size_to_text(maybe_size);
-      let mut child = TreeNode::from_text(format!(
+      let mut child = DisplayTreeNode::from_text(format!(
         "npm:/{} {}",
         dep_id.as_serialized(),
         size_str
       ));
       if let Some(package) = self.npm_info.packages.get(dep_id) {
         if !package.dependencies.is_empty() {
-          let was_seen = !self.seen.insert(package.id.as_serialized());
+          let was_seen =
+            !self.seen.insert(package.id.as_serialized().into_string());
           if was_seen {
             child.text = format!("{} {}", child.text, colors::gray("*"));
           } else {
@@ -653,7 +652,7 @@ impl<'a> GraphDisplayContext<'a> {
     &mut self,
     err: &ModuleError,
     specifier: &ModuleSpecifier,
-  ) -> TreeNode {
+  ) -> DisplayTreeNode {
     self.seen.insert(specifier.to_string());
     match err {
       ModuleError::InvalidTypeAssertion { .. } => {
@@ -696,8 +695,8 @@ impl<'a> GraphDisplayContext<'a> {
     &self,
     specifier: &ModuleSpecifier,
     error_msg: &str,
-  ) -> TreeNode {
-    TreeNode::from_text(format!(
+  ) -> DisplayTreeNode {
+    DisplayTreeNode::from_text(format!(
       "{} {}",
       colors::red(specifier),
       colors::red_bold(error_msg)
@@ -708,7 +707,7 @@ impl<'a> GraphDisplayContext<'a> {
     &mut self,
     resolution: &Resolution,
     type_dep: bool,
-  ) -> Option<TreeNode> {
+  ) -> Option<DisplayTreeNode> {
     match resolution {
       Resolution::Ok(resolved) => {
         let specifier = &resolved.specifier;
@@ -716,14 +715,14 @@ impl<'a> GraphDisplayContext<'a> {
         Some(match self.graph.try_get(resolved_specifier) {
           Ok(Some(module)) => self.build_module_info(module, type_dep),
           Err(err) => self.build_error_info(err, resolved_specifier),
-          Ok(None) => TreeNode::from_text(format!(
+          Ok(None) => DisplayTreeNode::from_text(format!(
             "{} {}",
             colors::red(specifier),
             colors::red_bold("(missing)")
           )),
         })
       }
-      Resolution::Err(err) => Some(TreeNode::from_text(format!(
+      Resolution::Err(err) => Some(DisplayTreeNode::from_text(format!(
         "{} {}",
         colors::italic(err.to_string()),
         colors::red_bold("(resolve error)")

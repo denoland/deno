@@ -30,7 +30,6 @@ use deno_runtime::deno_tls::RootCertStoreProvider;
 use deno_runtime::deno_web::BlobStore;
 use deno_runtime::fmt_errors::format_js_error;
 use deno_runtime::inspector_server::InspectorServer;
-use deno_runtime::ops::otel::OtelConfig;
 use deno_runtime::ops::process::NpmProcessStateProviderRc;
 use deno_runtime::ops::worker_host::CreateWebWorkerCb;
 use deno_runtime::web_worker::WebWorker;
@@ -43,13 +42,15 @@ use deno_runtime::BootstrapOptions;
 use deno_runtime::WorkerExecutionMode;
 use deno_runtime::WorkerLogLevel;
 use deno_semver::npm::NpmPackageReqReference;
+use deno_telemetry::OtelConfig;
 use deno_terminal::colors;
-use node_resolver::NodeModuleKind;
-use node_resolver::NodeResolutionMode;
+use node_resolver::NodeResolutionKind;
+use node_resolver::ResolutionMode;
 use tokio::select;
 
 use crate::args::CliLockfile;
 use crate::args::DenoSubcommand;
+use crate::args::NpmCachingStrategy;
 use crate::args::StorageKeyResolver;
 use crate::errors;
 use crate::npm::CliNpmResolver;
@@ -153,7 +154,8 @@ struct SharedWorkerState {
   storage_key_resolver: StorageKeyResolver,
   options: CliMainWorkerOptions,
   subcommand: DenoSubcommand,
-  otel_config: Option<OtelConfig>, // `None` means OpenTelemetry is disabled.
+  otel_config: OtelConfig,
+  default_npm_caching_strategy: NpmCachingStrategy,
 }
 
 impl SharedWorkerState {
@@ -424,7 +426,8 @@ impl CliMainWorkerFactory {
     storage_key_resolver: StorageKeyResolver,
     subcommand: DenoSubcommand,
     options: CliMainWorkerOptions,
-    otel_config: Option<OtelConfig>,
+    otel_config: OtelConfig,
+    default_npm_caching_strategy: NpmCachingStrategy,
   ) -> Self {
     Self {
       shared: Arc::new(SharedWorkerState {
@@ -448,6 +451,7 @@ impl CliMainWorkerFactory {
         options,
         subcommand,
         otel_config,
+        default_npm_caching_strategy,
       }),
     }
   }
@@ -487,8 +491,19 @@ impl CliMainWorkerFactory {
       NpmPackageReqReference::from_specifier(&main_module)
     {
       if let Some(npm_resolver) = shared.npm_resolver.as_managed() {
+        let reqs = &[package_ref.req().clone()];
         npm_resolver
-          .add_package_reqs(&[package_ref.req().clone()])
+          .add_package_reqs(
+            reqs,
+            if matches!(
+              shared.default_npm_caching_strategy,
+              NpmCachingStrategy::Lazy
+            ) {
+              crate::npm::PackageCaching::Only(reqs.into())
+            } else {
+              crate::npm::PackageCaching::All
+            },
+          )
           .await?;
       }
 
@@ -597,6 +612,7 @@ impl CliMainWorkerFactory {
         serve_port: shared.options.serve_port,
         serve_host: shared.options.serve_host.clone(),
         otel_config: shared.otel_config.clone(),
+        close_on_idle: true,
       },
       extensions: custom_extensions,
       startup_snapshot: crate::js::deno_isolate_init(),
@@ -640,7 +656,10 @@ impl CliMainWorkerFactory {
         "40_test_common.js",
         "40_test.js",
         "40_bench.js",
-        "40_jupyter.js"
+        "40_jupyter.js",
+        // TODO(bartlomieju): probably shouldn't include these files here?
+        "40_lint_selector.js",
+        "40_lint.js"
       );
     }
 
@@ -698,8 +717,8 @@ impl CliMainWorkerFactory {
         package_folder,
         sub_path,
         /* referrer */ None,
-        NodeModuleKind::Esm,
-        NodeResolutionMode::Execution,
+        ResolutionMode::Import,
+        NodeResolutionKind::Execution,
       )?;
     if specifier
       .to_file_path()
@@ -797,6 +816,7 @@ fn create_web_worker_callback(
         serve_port: shared.options.serve_port,
         serve_host: shared.options.serve_host.clone(),
         otel_config: shared.otel_config.clone(),
+        close_on_idle: args.close_on_idle,
       },
       extensions: vec![],
       startup_snapshot: crate::js::deno_isolate_init(),

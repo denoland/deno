@@ -77,6 +77,7 @@ const {
   Error,
   Function,
   MathTrunc,
+  Number,
   ObjectEntries,
   ObjectDefineProperty,
   ObjectPrototypeIsPrototypeOf,
@@ -373,12 +374,12 @@ function parseFileInfo(response) {
     isDirectory: response.isDirectory,
     isSymlink: response.isSymlink,
     size: response.size,
-    mtime: response.mtimeSet === true ? new Date(response.mtime) : null,
-    atime: response.atimeSet === true ? new Date(response.atime) : null,
+    mtime: response.mtimeSet === true ? new Date(Number(response.mtime)) : null,
+    atime: response.atimeSet === true ? new Date(Number(response.atime)) : null,
     birthtime: response.birthtimeSet === true
       ? new Date(response.birthtime)
       : null,
-    ctime: response.ctimeSet === true ? new Date(response.ctime) : null,
+    ctime: response.ctimeSet === true ? new Date(Number(response.ctime)) : null,
     dev: response.dev,
     mode: response.mode,
     ino: unix ? response.ino : null,
@@ -578,7 +579,7 @@ class FsFile {
     this.#rid = rid;
     if (!symbol || symbol !== SymbolFor("Deno.internal.FsFile")) {
       throw new TypeError(
-        "`Deno.FsFile` cannot be constructed, use `Deno.open()` or `Deno.openSync()` instead.",
+        "'Deno.FsFile' cannot be constructed, use 'Deno.open()' or 'Deno.openSync()' instead",
       );
     }
   }
@@ -713,11 +714,15 @@ function checkOpenOptions(options) {
       (val) => val === true,
     ).length === 0
   ) {
-    throw new Error("OpenOptions requires at least one option to be true");
+    throw new Error(
+      "'options' requires at least one option to be true",
+    );
   }
 
   if (options.truncate && !options.write) {
-    throw new Error("'truncate' option requires 'write' option");
+    throw new Error(
+      "'truncate' option requires 'write' to be true",
+    );
   }
 
   const createOrCreateNewWithoutWriteOrAppend =
@@ -726,7 +731,7 @@ function checkOpenOptions(options) {
 
   if (createOrCreateNewWithoutWriteOrAppend) {
     throw new Error(
-      "'create' or 'createNew' options require 'write' or 'append' option",
+      "'create' or 'createNew' options require 'write' or 'append' to be true",
     );
   }
 }

@@ -157,7 +157,10 @@ pub trait NodeRequireLoader {
     path: &'a Path,
   ) -> Result<Cow<'a, Path>, AnyError>;
 
-  fn load_text_file_lossy(&self, path: &Path) -> Result<String, AnyError>;
+  fn load_text_file_lossy(
+    &self,
+    path: &Path,
+  ) -> Result<Cow<'static, str>, AnyError>;
 
   /// Get if the module kind is maybe CJS and loading should determine
   /// if its CJS or ESM.
@@ -361,9 +364,9 @@ deno_core::extension!(deno_node,
     ops::zlib::brotli::op_create_brotli_decompress,
     ops::zlib::brotli::op_brotli_decompress_stream,
     ops::zlib::brotli::op_brotli_decompress_stream_end,
-    ops::http::op_node_http_request<P>,
     ops::http::op_node_http_fetch_response_upgrade,
-    ops::http::op_node_http_fetch_send,
+    ops::http::op_node_http_request_with_conn<P>,
+    ops::http::op_node_http_await_response,
     ops::http2::op_http2_connect,
     ops::http2::op_http2_poll_client_connection,
     ops::http2::op_http2_client_request,
@@ -869,7 +872,7 @@ impl deno_package_json::fs::DenoPkgJsonFs for DenoFsNodeResolverEnv {
   fn read_to_string_lossy(
     &self,
     path: &std::path::Path,
-  ) -> Result<String, std::io::Error> {
+  ) -> Result<Cow<'static, str>, std::io::Error> {
     self
       .fs
       .read_text_file_lossy_sync(path, None)
@@ -883,7 +886,7 @@ impl<'a> deno_package_json::fs::DenoPkgJsonFs for DenoPkgJsonFsAdapter<'a> {
   fn read_to_string_lossy(
     &self,
     path: &Path,
-  ) -> Result<String, std::io::Error> {
+  ) -> Result<Cow<'static, str>, std::io::Error> {
     self
       .0
       .read_text_file_lossy_sync(path, None)

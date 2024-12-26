@@ -6,12 +6,14 @@
 import { EventEmitter } from "node:events";
 import { Buffer } from "node:buffer";
 import { promises, read, write } from "node:fs";
+export type { BigIntStats, Stats } from "ext:deno_node/_fs/_fs_stat.ts";
 import {
   BinaryOptionsArgument,
   FileOptionsArgument,
   ReadOptions,
   TextOptionsArgument,
 } from "ext:deno_node/_fs/_fs_common.ts";
+import { ftruncatePromise } from "ext:deno_node/_fs/_fs_ftruncate.ts";
 import { core } from "ext:core/mod.js";
 
 interface WriteResult {
@@ -72,6 +74,10 @@ export class FileHandle extends EventEmitter {
     }
   }
 
+  truncate(len?: number): Promise<void> {
+    return fsCall(ftruncatePromise, this, len);
+  }
+
   readFile(
     opt?: TextOptionsArgument | BinaryOptionsArgument | FileOptionsArgument,
   ): Promise<string | Buffer> {
@@ -84,11 +90,7 @@ export class FileHandle extends EventEmitter {
     length: number,
     position: number,
   ): Promise<WriteResult>;
-  write(
-    str: string,
-    position: number,
-    encoding: string,
-  ): Promise<WriteResult>;
+  write(str: string, position: number, encoding: string): Promise<WriteResult>;
   write(
     bufferOrStr: Uint8Array | string,
     offsetOrPosition: number,
@@ -119,16 +121,10 @@ export class FileHandle extends EventEmitter {
       const encoding = lengthOrEncoding;
 
       return new Promise((resolve, reject) => {
-        write(
-          this.fd,
-          str,
-          position,
-          encoding,
-          (err, bytesWritten, buffer) => {
-            if (err) reject(err);
-            else resolve({ buffer, bytesWritten });
-          },
-        );
+        write(this.fd, str, position, encoding, (err, bytesWritten, buffer) => {
+          if (err) reject(err);
+          else resolve({ buffer, bytesWritten });
+        });
       });
     }
   }
@@ -141,6 +137,13 @@ export class FileHandle extends EventEmitter {
     // Note that Deno.close is not async
     return Promise.resolve(core.close(this.fd));
   }
+
+  stat(): Promise<Stats>;
+  stat(options: { bigint: false }): Promise<Stats>;
+  stat(options: { bigint: true }): Promise<BigIntStats>;
+  stat(options?: { bigint: boolean }): Promise<Stats | BigIntStats> {
+    return fsCall(promises.fstat, this, options);
+  }
 }
 
 function fsCall(fn, handle, ...args) {
@@ -152,7 +155,7 @@ function fsCall(fn, handle, ...args) {
     });
   }
 
-  return fn(handle, ...args);
+  return fn(handle.fd, ...args);
 }
 
 export default {
