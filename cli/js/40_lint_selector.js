@@ -180,7 +180,7 @@ export class Lexer {
       return;
     }
 
-    // console.error(
+    // console.log(
     //   "NEXT",
     //   this.input,
     //   this.i,
@@ -752,7 +752,7 @@ export function compileSelector(selector) {
       default:
         // @ts-ignore error handling
         // deno-lint-ignore no-console
-        // console.error(node);
+        console.log(node);
         throw new Error(`Unknown selector node`);
     }
   }
