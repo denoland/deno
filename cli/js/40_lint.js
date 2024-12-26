@@ -1010,26 +1010,26 @@ function _dump(ctx) {
 
   // @ts-ignore dump fn
   // deno-lint-ignore no-console
-  console.error(strTable);
+  console.log(strTable);
 
   for (let i = 0; i < strByType.length; i++) {
     const v = strByType[i];
     // @ts-ignore dump fn
     // deno-lint-ignore no-console
-    if (v > 0) console.error(" > type:", i, getString(ctx.strTable, v), v);
+    if (v > 0) console.log(" > type:", i, getString(ctx.strTable, v), v);
   }
   // @ts-ignore dump fn
   // deno-lint-ignore no-console
-  console.error();
+  console.log();
   for (let i = 0; i < strByProp.length; i++) {
     const v = strByProp[i];
     // @ts-ignore dump fn
     // deno-lint-ignore no-console
-    if (v > 0) console.error(" > prop:", i, getString(ctx.strTable, v), v);
+    if (v > 0) console.log(" > prop:", i, getString(ctx.strTable, v), v);
   }
   // @ts-ignore dump fn
   // deno-lint-ignore no-console
-  console.error();
+  console.log();
 
   let offset = 0;
 
@@ -1038,14 +1038,14 @@ function _dump(ctx) {
     const name = getString(ctx.strTable, ctx.strByType[type]);
     // @ts-ignore dump fn
     // deno-lint-ignore no-console
-    console.error(`${name}, offset: ${offset}, type: ${type}`);
+    console.log(`${name}, offset: ${offset}, type: ${type}`);
     offset += 1;
 
     const parent = readU32(buf, offset);
     offset += 4;
     // @ts-ignore dump fn
     // deno-lint-ignore no-console
-    console.error(`  parent: ${parent}`);
+    console.log(`  parent: ${parent}`);
 
     const start = readU32(buf, offset);
     offset += 4;
@@ -1053,12 +1053,12 @@ function _dump(ctx) {
     offset += 4;
     // @ts-ignore dump fn
     // deno-lint-ignore no-console
-    console.error(`  range: ${start} -> ${end}`);
+    console.log(`  range: ${start} -> ${end}`);
 
     const count = buf[offset++];
     // @ts-ignore dump fn
     // deno-lint-ignore no-console
-    console.error(`  prop count: ${count}`);
+    console.log(`  prop count: ${count}`);
 
     for (let i = 0; i < count; i++) {
       const prop = buf[offset++];
@@ -1078,43 +1078,43 @@ function _dump(ctx) {
         offset += 4;
         // @ts-ignore dump fn
         // deno-lint-ignore no-console
-        console.error(`    ${name}: ${v} (${kindName}, ${prop})`);
+        console.log(`    ${name}: ${v} (${kindName}, ${prop})`);
       } else if (kind === PropFlags.RefArr) {
         const len = readU32(buf, offset);
         offset += 4;
         // @ts-ignore dump fn
         // deno-lint-ignore no-console
-        console.error(`    ${name}: Array(${len}) (${kindName}, ${prop})`);
+        console.log(`    ${name}: Array(${len}) (${kindName}, ${prop})`);
 
         for (let j = 0; j < len; j++) {
           const v = readU32(buf, offset);
           offset += 4;
           // @ts-ignore dump fn
           // deno-lint-ignore no-console
-          console.error(`      - ${v} (${prop})`);
+          console.log(`      - ${v} (${prop})`);
         }
       } else if (kind === PropFlags.Bool) {
         const v = buf[offset];
         offset += 1;
         // @ts-ignore dump fn
         // deno-lint-ignore no-console
-        console.error(`    ${name}: ${v} (${kindName}, ${prop})`);
+        console.log(`    ${name}: ${v} (${kindName}, ${prop})`);
       } else if (kind === PropFlags.String) {
         const v = readU32(buf, offset);
         offset += 4;
         // @ts-ignore dump fn
         // deno-lint-ignore no-console
-        console.error(
+        console.log(
           `    ${name}: ${getString(ctx.strTable, v)} (${kindName}, ${prop})`,
         );
       } else if (kind === PropFlags.Null) {
         // @ts-ignore dump fn
         // deno-lint-ignore no-console
-        console.error(`    ${name}: null (${kindName}, ${prop})`);
+        console.log(`    ${name}: null (${kindName}, ${prop})`);
       } else if (kind === PropFlags.Undefined) {
         // @ts-ignore dump fn
         // deno-lint-ignore no-console
-        console.error(`    ${name}: undefined (${kindName}, ${prop})`);
+        console.log(`    ${name}: undefined (${kindName}, ${prop})`);
       }
     }
   }
