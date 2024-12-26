@@ -49,7 +49,23 @@ pub struct LintPluginContainer {
 }
 
 impl LintPluginContainer {
-  fn report(&mut self, id: String, message: String, start: usize, end: usize) {
+  pub fn set_info_for_file(
+    &mut self,
+    specifier: ModuleSpecifier,
+    source_text_info: SourceTextInfo,
+  ) {
+    self.specifier = Some(specifier);
+    self.source_text_info = Some(source_text_info);
+  }
+
+  fn report(
+    &mut self,
+    id: String,
+    message: String,
+    hint: Option<String>,
+    start: usize,
+    end: usize,
+  ) {
     let source_text_info = self.source_text_info.as_ref().unwrap();
     let specifier = self.specifier.clone().unwrap();
     let start_pos = source_text_info.start_pos();
@@ -65,7 +81,7 @@ impl LintPluginContainer {
       details: LintDiagnosticDetails {
         message,
         code: id,
-        hint: None,
+        hint,
         fixes: vec![],
         custom_docs_url: None,
         info: vec![],
@@ -115,16 +131,17 @@ fn op_lint_create_serialized_ast(
   Ok(lint::serialize_ast_to_buffer(&parsed_source))
 }
 
-#[op2(fast)]
+#[op2]
 fn op_lint_report(
   state: &mut OpState,
   #[string] id: String,
   #[string] message: String,
+  #[string] hint: Option<String>,
   #[smi] start: usize,
   #[smi] end: usize,
 ) {
   let container = state.borrow_mut::<LintPluginContainer>();
-  container.report(id, message, start, end);
+  container.report(id, message, hint, start, end);
 }
 
 #[op2]

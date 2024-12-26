@@ -277,10 +277,10 @@ impl PluginHost {
     {
       let state = self.worker.js_runtime.op_state();
       let mut state = state.borrow_mut();
-      let container = state.borrow_mut::<LintPluginContainer>();
-      container.source_text_info = Some(source_text_info);
-      container.specifier =
-        Some(ModuleSpecifier::from_file_path(specifier).unwrap());
+      state.borrow_mut::<LintPluginContainer>().set_info_for_file(
+        ModuleSpecifier::from_file_path(specifier).unwrap(),
+        source_text_info,
+      );
     }
 
     let (file_name_v8, ast_uint8arr_v8) = {

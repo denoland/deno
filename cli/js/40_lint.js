@@ -114,6 +114,7 @@ export class Context {
     op_lint_report(
       this.id,
       data.message,
+      data.hint,
       start,
       end,
     );
