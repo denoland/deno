@@ -10,8 +10,6 @@ use deno_core::resolve_url_or_path;
 use deno_core::v8;
 use deno_core::PollEventLoopOptions;
 use deno_lint::diagnostic::LintDiagnostic;
-use deno_runtime::deno_io::Stdio;
-use deno_runtime::deno_io::StdioPipe;
 use deno_runtime::deno_permissions::Permissions;
 use deno_runtime::deno_permissions::PermissionsContainer;
 use deno_runtime::tokio_util;
@@ -83,6 +81,19 @@ impl std::fmt::Debug for PluginLogger {
   }
 }
 
+macro_rules! v8_static_strings {
+  ($($ident:ident = $str:literal),* $(,)?) => {
+    $(
+      pub static $ident: deno_core::FastStaticString = deno_core::ascii_str!($str);
+    )*
+  };
+}
+
+v8_static_strings! {
+  INSTALL_PLUGIN = "installPlugin",
+  RUN_PLUGINS_FOR_FILE = "runPluginsForFile",
+}
+
 #[derive(Debug)]
 pub struct PluginRunnerProxy {
   tx: Sender<PluginRunnerRequest>,
@@ -132,9 +143,6 @@ impl PluginRunner {
         // let resolver = factory.resolver().await?.clone();
         let worker_factory = factory.create_cli_main_worker_factory().await?;
 
-        let dev_null = std::fs::File::open("/dev/null").unwrap();
-        let dev_null2 = std::fs::File::open("/dev/null").unwrap();
-
         let worker = worker_factory
           .create_custom_worker(
             // TODO(bartlomieju): add "lint" execution mode
@@ -142,11 +150,7 @@ impl PluginRunner {
             main_module.clone(),
             permissions,
             vec![crate::ops::lint::deno_lint_ext::init_ops(logger.clone())],
-            Stdio {
-              stdin: StdioPipe::inherit(),
-              stdout: StdioPipe::file(dev_null),
-              stderr: StdioPipe::file(dev_null2),
-            },
+            Default::default(),
           )
           .await?;
 
@@ -163,18 +167,15 @@ impl PluginRunner {
           let module_exports: v8::Local<v8::Object> =
             v8::Local::new(scope, obj).try_into().unwrap();
 
-          // TODO(bartlomieju): use v8::OneByteConst and `v8_static_strings!` macro from `deno_core`.
-          let install_plugin_fn_name =
-            v8::String::new(scope, "installPlugin").unwrap();
+          let install_plugin_fn_name = INSTALL_PLUGIN.v8_string(scope).unwrap();
           let install_plugin_fn_val = module_exports
             .get(scope, install_plugin_fn_name.into())
             .unwrap();
           let install_plugin_fn: v8::Local<v8::Function> =
             install_plugin_fn_val.try_into().unwrap();
 
-          // TODO(bartlomieju): use v8::OneByteConst and `v8_static_strings!` macro from `deno_core`.
           let run_plugins_for_file_fn_name =
-            v8::String::new(scope, "runPluginsForFile").unwrap();
+            RUN_PLUGINS_FOR_FILE.v8_string(scope).unwrap();
           let run_plugins_for_file_fn_val = module_exports
             .get(scope, run_plugins_for_file_fn_name.into())
             .unwrap();
