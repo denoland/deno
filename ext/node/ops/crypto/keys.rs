@@ -256,6 +256,16 @@ impl EcPrivateKey {
       EcPrivateKey::P384(key) => EcPublicKey::P384(key.public_key()),
     }
   }
+
+  pub fn to_jwk(&self) -> Result<JwkEcKey, AsymmetricPrivateKeyJwkError> {
+    match self {
+      EcPrivateKey::P224(_) => {
+        Err(AsymmetricPrivateKeyJwkError::UnsupportedJwkEcCurveP224)
+      }
+      EcPrivateKey::P256(key) => Ok(key.to_jwk()),
+      EcPrivateKey::P384(key) => Ok(key.to_jwk()),
+    }
+  }
 }
 
 // https://oidref.com/
@@ -1109,6 +1119,16 @@ fn bytes_to_b64(bytes: &[u8]) -> String {
 }
 
 #[derive(Debug, thiserror::Error)]
+pub enum AsymmetricPrivateKeyJwkError {
+  #[error("key is not an asymmetric private key")]
+  KeyIsNotAsymmetricPrivateKey,
+  #[error("Unsupported JWK EC curve: P224")]
+  UnsupportedJwkEcCurveP224,
+  #[error("jwk export not implemented for this key type")]
+  JwkExportNotImplementedForKeyType,
+}
+
+#[derive(Debug, thiserror::Error)]
 pub enum AsymmetricPublicKeyJwkError {
   #[error("key is not an asymmetric public key")]
   KeyIsNotAsymmetricPublicKey,
@@ -1329,7 +1349,73 @@ pub enum AsymmetricPrivateKeyDerError {
   UnsupportedKeyType(String),
 }
 
+// https://datatracker.ietf.org/doc/html/rfc7518#section-6.3.2
+fn rsa_private_to_jwk(key: &RsaPrivateKey) -> deno_core::serde_json::Value {
+  let n = key.n();
+  let e = key.e();
+  let d = key.d();
+  let p = &key.primes()[0];
+  let q = &key.primes()[1];
+  let dp = key.dp();
+  let dq = key.dq();
+  let qi = key.crt_coefficient();
+  let oth = &key.primes()[2..];
+
+  let mut obj = deno_core::serde_json::json!({
+      "kty": "RSA",
+      "n": bytes_to_b64(&n.to_bytes_be()),
+      "e": bytes_to_b64(&e.to_bytes_be()),
+      "d": bytes_to_b64(&d.to_bytes_be()),
+      "p": bytes_to_b64(&p.to_bytes_be()),
+      "q": bytes_to_b64(&q.to_bytes_be()),
+      "dp": dp.map(|dp| bytes_to_b64(&dp.to_bytes_be())),
+      "dq": dq.map(|dq| bytes_to_b64(&dq.to_bytes_be())),
+      "qi": qi.map(|qi| bytes_to_b64(&qi.to_bytes_be())),
+  });
+
+  if !oth.is_empty() {
+    obj["oth"] = deno_core::serde_json::json!(oth
+      .iter()
+      .map(|o| o.to_bytes_be())
+      .collect::<Vec<_>>());
+  }
+
+  obj
+}
+
 impl AsymmetricPrivateKey {
+  fn export_jwk(
+    &self,
+  ) -> Result<deno_core::serde_json::Value, AsymmetricPrivateKeyJwkError> {
+    match self {
+      AsymmetricPrivateKey::Rsa(key) => Ok(rsa_private_to_jwk(key)),
+      AsymmetricPrivateKey::RsaPss(key) => Ok(rsa_private_to_jwk(&key.key)),
+      AsymmetricPrivateKey::Ec(key) => {
+        let jwk = key.to_jwk()?;
+        Ok(deno_core::serde_json::json!(jwk))
+      }
+      AsymmetricPrivateKey::X25519(static_secret) => {
+        let bytes = static_secret.to_bytes();
+
+        Ok(deno_core::serde_json::json!({
+            "kty": "OKP",
+            "crv": "X25519",
+            "d": bytes_to_b64(&bytes),
+        }))
+      }
+      AsymmetricPrivateKey::Ed25519(key) => {
+        let bytes = key.to_bytes();
+
+        Ok(deno_core::serde_json::json!({
+            "kty": "OKP",
+            "crv": "Ed25519",
+            "d": bytes_to_b64(&bytes),
+        }))
+      }
+      _ => Err(AsymmetricPrivateKeyJwkError::JwkExportNotImplementedForKeyType),
+    }
+  }
+
   fn export_der(
     &self,
     typ: &str,
@@ -2333,7 +2419,7 @@ pub fn op_node_export_private_key_pem(
 #[derive(Debug, thiserror::Error)]
 pub enum ExportPrivateKeyJwkError {
   #[error(transparent)]
-  AsymmetricPublicKeyDer(#[from] AsymmetricPrivateKeyDerError),
+  AsymmetricPublicKeyJwk(#[from] AsymmetricPrivateKeyJwkError),
   #[error("very large data")]
   VeryLargeData,
   #[error(transparent)]
@@ -2347,52 +2433,9 @@ pub fn op_node_export_private_key_jwk(
 ) -> Result<deno_core::serde_json::Value, ExportPrivateKeyJwkError> {
   let private_key = handle
     .as_private_key()
-    .ok_or(AsymmetricPrivateKeyDerError::KeyIsNotAsymmetricPrivateKey)?;
+    .ok_or(AsymmetricPrivateKeyJwkError::KeyIsNotAsymmetricPrivateKey)?;
 
-  match private_key {
-    AsymmetricPrivateKey::Rsa(key) => {
-      let n = key.n();
-      let e = key.e();
-      let d = key.d();
-      let p = key.primes()[0];
-      let q = key.primes()[1];
-      let dp = key.dp();
-      let dq = key.dq();
-      let qi = key.crt_coefficient().unwrap();
-      let oth = &key.primes()[2..];
-
-      let mut obj = deno_core::serde_json::json!({
-          "kty": "RSA",
-          "n": bytes_to_b64(&n.to_bytes_be()),
-          "e": bytes_to_b64(&e.to_bytes_be()),
-          "d": bytes_to_b64(&d.to_bytes_be()),
-          "p": bytes_to_b64(&p.to_bytes_be()),
-          "q": bytes_to_b64(&q.to_bytes_be()),
-          "dp": bytes_to_b64(&p.to_bytes_be()),
-          "dq": bytes_to_b64(&p.to_bytes_be()),
-          "qi": bytes_to_b64(&p.to_bytes_be()),
-      });
-
-      if !oth.is_empty() {
-        obj["oth"] = deno_core::serde_json::json!(oth
-          .iter()
-          .map(|o| &o.to_bytes_be())
-          .collect::<Vec<_>>());
-      }
-
-      return Ok(obj);
-    }
-    AsymmetricPrivateKey::RsaPss(key) => Ok(deno_core::serde_json::json!({})),
-    AsymmetricPrivateKey::Dsa(key) => Ok(deno_core::serde_json::json!({})),
-    AsymmetricPrivateKey::Ec(key) => Ok(deno_core::serde_json::json!({})),
-    AsymmetricPrivateKey::X25519(static_secret) => {
-      Ok(deno_core::serde_json::json!({}))
-    }
-    AsymmetricPrivateKey::Ed25519(key) => Ok(deno_core::serde_json::json!({})),
-    AsymmetricPrivateKey::Dh(key) => Ok(deno_core::serde_json::json!({})),
-  };
-
-  todo!()
+  Ok(private_key.export_jwk()?)
 }
 
 #[op2]
