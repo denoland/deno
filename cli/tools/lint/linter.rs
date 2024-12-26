@@ -311,11 +311,11 @@ fn run_plugins(
   file_path: PathBuf,
 ) -> Result<Vec<LintDiagnostic>, AnyError> {
   let source_text_info = parsed_source.text_info_lazy().clone();
-  let serialized_ast = plugins::serialize_ast(parsed_source)?;
-
   #[allow(clippy::await_holding_lock)]
   let fut = async move {
     let mut plugin_runner = plugin_runner.lock();
+    let serialized_ast = plugin_runner.serialize_ast(parsed_source)?;
+
     plugins::run_rules_for_ast(
       &mut plugin_runner,
       &file_path,

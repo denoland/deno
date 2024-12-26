@@ -404,6 +404,19 @@ impl PluginRunnerProxy {
     }
     Err(custom_error("AlreadyClosed", "Plugin host has closed"))
   }
+
+  pub fn serialize_ast(
+    &self,
+    parsed_source: ParsedSource,
+  ) -> Result<Vec<u8>, AnyError> {
+    let start = std::time::Instant::now();
+    let r = serialize_ast_to_buffer(&parsed_source);
+    self.logger.debug(&format!(
+      "serialize custom ast took {:?}",
+      std::time::Instant::now() - start
+    ));
+    Ok(r)
+  }
 }
 
 pub async fn create_runner_and_load_plugins(
@@ -425,14 +438,4 @@ pub async fn run_rules_for_ast(
     .run_rules(specifier, serialized_ast, source_text_info)
     .await?;
   Ok(d)
-}
-
-pub fn serialize_ast(parsed_source: ParsedSource) -> Result<Vec<u8>, AnyError> {
-  let start = std::time::Instant::now();
-  let r = serialize_ast_to_buffer(&parsed_source);
-  // log::info!(
-  //   "serialize custom ast took {:?}",
-  //   std::time::Instant::now() - start
-  // );
-  Ok(r)
 }
