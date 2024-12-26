@@ -8,6 +8,7 @@ use super::resolver::ScopeDepInfo;
 use super::resolver::SingleReferrerGraphResolver;
 use super::testing::TestCollector;
 use super::testing::TestModule;
+use super::text::IndexValid;
 use super::text::LineIndex;
 use super::tsc;
 use super::tsc::AssetDocument;
@@ -148,21 +149,6 @@ impl FromStr for LanguageId {
       "vento" => Ok(Self::Vento),
       "nunjucks" => Ok(Self::Nunjucks),
       _ => Ok(Self::Unknown),
-    }
-  }
-}
-
-#[derive(Debug, PartialEq, Eq)]
-enum IndexValid {
-  All,
-  UpTo(u32),
-}
-
-impl IndexValid {
-  fn covers(&self, line: u32) -> bool {
-    match *self {
-      IndexValid::UpTo(to) => to > line,
-      IndexValid::All => true,
     }
   }
 }
@@ -1097,15 +1083,20 @@ impl Documents {
   /// Close an open document, this essentially clears any editor state that is
   /// being held, and the document store will revert to the file system if
   /// information about the document is required.
-  pub fn close(&mut self, specifier: &ModuleSpecifier) {
+  pub fn close(
+    &mut self,
+    specifier: &ModuleSpecifier,
+  ) -> Option<Arc<Document>> {
     if let Some(document) = self.open_docs.remove(specifier) {
       let document = document.closed(&self.cache);
       self
         .file_system_docs
         .docs
-        .insert(specifier.clone(), document);
-
+        .insert(specifier.clone(), document.clone());
       self.dirty = true;
+      Some(document)
+    } else {
+      None
     }
   }
 

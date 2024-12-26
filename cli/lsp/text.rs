@@ -40,6 +40,21 @@ where
   left
 }
 
+#[derive(Debug, PartialEq, Eq)]
+pub enum IndexValid {
+  All,
+  UpTo(u32),
+}
+
+impl IndexValid {
+  pub fn covers(&self, line: u32) -> bool {
+    match *self {
+      IndexValid::UpTo(to) => to > line,
+      IndexValid::All => true,
+    }
+  }
+}
+
 #[derive(Debug, Clone, Eq, PartialEq, Hash)]
 pub struct Utf16Char {
   pub start: TextSize,
