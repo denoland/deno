@@ -17,6 +17,7 @@ use deno_runtime::worker::MainWorker;
 use deno_runtime::WorkerExecutionMode;
 use std::path::Path;
 use std::path::PathBuf;
+use std::rc::Rc;
 use std::sync::Arc;
 use tokio::sync::mpsc::channel;
 use tokio::sync::mpsc::Receiver;
@@ -105,11 +106,91 @@ pub struct PluginRunnerProxy {
 
 pub struct PluginRunner {
   worker: MainWorker,
-  install_plugin_fn: v8::Global<v8::Function>,
-  run_plugins_for_file_fn: v8::Global<v8::Function>,
+  install_plugin_fn: Rc<v8::Global<v8::Function>>,
+  run_plugins_for_file_fn: Rc<v8::Global<v8::Function>>,
   tx: Sender<PluginRunnerResponse>,
   rx: Receiver<PluginRunnerRequest>,
   logger: PluginLogger,
+}
+
+async fn create_plugin_runner_inner(
+  logger: PluginLogger,
+  rx_req: Receiver<PluginRunnerRequest>,
+  tx_res: Sender<PluginRunnerResponse>,
+) -> Result<PluginRunner, AnyError> {
+  let flags = Flags {
+    subcommand: DenoSubcommand::Lint(LintFlags::default()),
+    ..Default::default()
+  };
+  let flags = Arc::new(flags);
+  let factory = CliFactory::from_flags(flags);
+  let cli_options = factory.cli_options()?;
+  let main_module =
+    resolve_url_or_path("./$deno$lint.mts", cli_options.initial_cwd()).unwrap();
+  // TODO(bartlomieju): should we run with all permissions?
+  // TODO(bartlomieju): use none permissions, but with it, the JSR plugin doesn't work
+  // anymore
+  let permissions = PermissionsContainer::allow_all(
+    factory.permission_desc_parser()?.clone(),
+    // Permissions::none(false),
+  );
+  // let npm_resolver = factory.npm_resolver().await?.clone();
+  // let resolver = factory.resolver().await?.clone();
+  let worker_factory = factory.create_cli_main_worker_factory().await?;
+
+  let worker = worker_factory
+    .create_custom_worker(
+      // TODO(bartlomieju): add "lint" execution mode
+      WorkerExecutionMode::Run,
+      main_module.clone(),
+      permissions,
+      vec![crate::ops::lint::deno_lint_ext::init_ops(logger.clone())],
+      Default::default(),
+    )
+    .await?;
+
+  let mut worker = worker.into_main_worker();
+  let runtime = &mut worker.js_runtime;
+
+  logger.log("before loaded");
+
+  let obj = runtime.execute_script("lint.js", "Deno[Deno.internal]")?;
+
+  logger.log("After plugin loaded, capturing exports");
+  let (install_plugin_fn, run_plugins_for_file_fn) = {
+    let scope = &mut runtime.handle_scope();
+    let module_exports: v8::Local<v8::Object> =
+      v8::Local::new(scope, obj).try_into().unwrap();
+
+    let install_plugin_fn_name = INSTALL_PLUGIN.v8_string(scope).unwrap();
+    let install_plugin_fn_val = module_exports
+      .get(scope, install_plugin_fn_name.into())
+      .unwrap();
+    let install_plugin_fn: v8::Local<v8::Function> =
+      install_plugin_fn_val.try_into().unwrap();
+
+    let run_plugins_for_file_fn_name =
+      RUN_PLUGINS_FOR_FILE.v8_string(scope).unwrap();
+    let run_plugins_for_file_fn_val = module_exports
+      .get(scope, run_plugins_for_file_fn_name.into())
+      .unwrap();
+    let run_plugins_for_file_fn: v8::Local<v8::Function> =
+      run_plugins_for_file_fn_val.try_into().unwrap();
+
+    (
+      Rc::new(v8::Global::new(scope, install_plugin_fn)),
+      Rc::new(v8::Global::new(scope, run_plugins_for_file_fn)),
+    )
+  };
+
+  Ok(PluginRunner {
+    worker,
+    install_plugin_fn,
+    run_plugins_for_file_fn,
+    tx: tx_res,
+    rx: rx_req,
+    logger: logger.clone(),
+  })
 }
 
 impl PluginRunner {
@@ -124,78 +205,8 @@ impl PluginRunner {
       logger.log("PluginRunner thread spawned");
       let start = std::time::Instant::now();
       let fut = async move {
-        let flags = Flags {
-          subcommand: DenoSubcommand::Lint(LintFlags::default()),
-          ..Default::default()
-        };
-        let flags = Arc::new(flags);
-        let factory = CliFactory::from_flags(flags);
-        let cli_options = factory.cli_options()?;
-        let main_module =
-          resolve_url_or_path("./$deno$lint.mts", cli_options.initial_cwd())
-            .unwrap();
-        // TODO(bartlomieju): should we run with all permissions?
-        let permissions = PermissionsContainer::allow_all(
-          factory.permission_desc_parser()?.clone(),
-          // Permissions::none(false),
-        );
-        // let npm_resolver = factory.npm_resolver().await?.clone();
-        // let resolver = factory.resolver().await?.clone();
-        let worker_factory = factory.create_cli_main_worker_factory().await?;
-
-        let worker = worker_factory
-          .create_custom_worker(
-            // TODO(bartlomieju): add "lint" execution mode
-            WorkerExecutionMode::Run,
-            main_module.clone(),
-            permissions,
-            vec![crate::ops::lint::deno_lint_ext::init_ops(logger.clone())],
-            Default::default(),
-          )
-          .await?;
-
-        let mut worker = worker.into_main_worker();
-        let runtime = &mut worker.js_runtime;
-
-        logger.log("before loaded");
-
-        let obj = runtime.execute_script("lint.js", "Deno[Deno.internal]")?;
-
-        logger.log("After plugin loaded, capturing exports");
-        let (install_plugin_fn, run_plugins_for_file_fn) = {
-          let scope = &mut runtime.handle_scope();
-          let module_exports: v8::Local<v8::Object> =
-            v8::Local::new(scope, obj).try_into().unwrap();
-
-          let install_plugin_fn_name = INSTALL_PLUGIN.v8_string(scope).unwrap();
-          let install_plugin_fn_val = module_exports
-            .get(scope, install_plugin_fn_name.into())
-            .unwrap();
-          let install_plugin_fn: v8::Local<v8::Function> =
-            install_plugin_fn_val.try_into().unwrap();
-
-          let run_plugins_for_file_fn_name =
-            RUN_PLUGINS_FOR_FILE.v8_string(scope).unwrap();
-          let run_plugins_for_file_fn_val = module_exports
-            .get(scope, run_plugins_for_file_fn_name.into())
-            .unwrap();
-          let run_plugins_for_file_fn: v8::Local<v8::Function> =
-            run_plugins_for_file_fn_val.try_into().unwrap();
-
-          (
-            v8::Global::new(scope, install_plugin_fn),
-            v8::Global::new(scope, run_plugins_for_file_fn),
-          )
-        };
-
-        let runner = Self {
-          worker,
-          install_plugin_fn,
-          run_plugins_for_file_fn,
-          tx: tx_res,
-          rx: rx_req,
-          logger: logger.clone(),
-        };
+        let runner =
+          create_plugin_runner_inner(logger.clone(), rx_req, tx_res).await?;
         // TODO(bartlomieju): send "host ready" message to the proxy
         logger.log("running host loop");
         runner.run_loop().await?;
@@ -345,9 +356,8 @@ impl PluginRunner {
       let default_export_str = v8::String::new(scope, "default").unwrap();
       let default_export =
         module_local.get(scope, default_export_str.into()).unwrap();
-      // TODO(bartlomieju): put `install_plugin_fn` behind na `Rc``
       let install_plugins_local =
-        v8::Local::new(scope, self.install_plugin_fn.clone());
+        v8::Local::new(scope, &*self.install_plugin_fn.clone());
       let undefined = v8::undefined(scope);
       let args = &[default_export];
       self.logger.log("Installing plugin...");
