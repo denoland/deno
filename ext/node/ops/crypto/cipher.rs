@@ -179,20 +179,12 @@ impl Cipher {
       "aes-192-ecb" => Aes192Ecb(Box::new(ecb::Encryptor::new(key.into()))),
       "aes-256-ecb" => Aes256Ecb(Box::new(ecb::Encryptor::new(key.into()))),
       "aes-128-gcm" => {
-        if iv.len() != 12 {
-          return Err(CipherError::InvalidIvLength);
-        }
-
         let cipher =
           aead_gcm_stream::AesGcm::<aes::Aes128>::new(key.into(), iv);
 
         Aes128Gcm(Box::new(cipher))
       }
       "aes-256-gcm" => {
-        if iv.len() != 12 {
-          return Err(CipherError::InvalidIvLength);
-        }
-
         let cipher =
           aead_gcm_stream::AesGcm::<aes::Aes256>::new(key.into(), iv);
 
@@ -395,20 +387,12 @@ impl Decipher {
       "aes-192-ecb" => Aes192Ecb(Box::new(ecb::Decryptor::new(key.into()))),
       "aes-256-ecb" => Aes256Ecb(Box::new(ecb::Decryptor::new(key.into()))),
       "aes-128-gcm" => {
-        if iv.len() != 12 {
-          return Err(DecipherError::InvalidIvLength);
-        }
-
         let decipher =
           aead_gcm_stream::AesGcm::<aes::Aes128>::new(key.into(), iv);
 
         Aes128Gcm(Box::new(decipher))
       }
       "aes-256-gcm" => {
-        if iv.len() != 12 {
-          return Err(DecipherError::InvalidIvLength);
-        }
-
         let decipher =
           aead_gcm_stream::AesGcm::<aes::Aes256>::new(key.into(), iv);
 
