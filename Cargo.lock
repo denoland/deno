@@ -1454,6 +1454,7 @@ dependencies = [
 [[package]]
 name = "deno_cache_dir"
 version = "0.15.0"
+source = "git+https://github.com/dsherret/deno_cache_dir?branch=refactor_use_sys_traits#2147cf8073d66f2c27e19814abd22d4601fbed35"
 dependencies = [
  "async-trait",
  "base32",
@@ -1492,6 +1493,7 @@ dependencies = [
 [[package]]
 name = "deno_config"
 version = "0.41.0"
+source = "git+https://github.com/dsherret/deno_config?branch=refactor_use_sys_traits#0c2b434990ed2997698ebdfb460ebb7c0a82b5d8"
 dependencies = [
  "anyhow",
  "deno_package_json",
@@ -1748,6 +1750,7 @@ dependencies = [
 [[package]]
 name = "deno_graph"
 version = "0.86.5"
+source = "git+https://github.com/dsherret/deno_graph?branch=refactor_use_sys_traits#33b73855233b1c9257b10d8b9a54963e276eed74"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -2118,6 +2121,7 @@ dependencies = [
 [[package]]
 name = "deno_package_json"
 version = "0.3.0"
+source = "git+https://github.com/dsherret/deno_package_json?branch=sys_traits#5a0234ad46b5d33ddcac4db384cd30629023e405"
 dependencies = [
  "boxed_error",
  "deno_error",
@@ -2134,6 +2138,7 @@ dependencies = [
 [[package]]
 name = "deno_path_util"
 version = "0.2.2"
+source = "git+https://github.com/denoland/deno_path_util?branch=refactor_use_sys_traits#306d390986d3f548a19da0e739ae41d445ac4189"
 dependencies = [
  "deno_error",
  "percent-encoding",
@@ -4651,7 +4656,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "4979f22fdb869068da03c9f7528f8297c6fd2606bc3a4affe42e6a823fdb8da4"
 dependencies = [
  "cfg-if",
- "windows-targets 0.48.5",
+ "windows-targets 0.52.6",
 ]
 
 [[package]]
@@ -6013,7 +6018,7 @@ dependencies = [
  "once_cell",
  "socket2",
  "tracing",
- "windows-sys 0.52.0",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]
@@ -7657,7 +7662,9 @@ dependencies = [
 
 [[package]]
 name = "sys_traits"
-version = "0.1.0-alpha.6"
+version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "72001c0d1b690f17bb18ea7960821389199fd59ce6784f883fc76d0f3fbb6236"
 dependencies = [
  "getrandom",
  "libc",

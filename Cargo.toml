@@ -193,7 +193,7 @@ slab = "0.4"
 smallvec = "1.8"
 socket2 = { version = "0.5.3", features = ["all"] }
 spki = "0.7.2"
-sys_traits = { path = "../sys_traits" }
+sys_traits = "0.1.0"
 tar = "=0.4.40"
 tempfile = "3.4.0"
 termcolor = "1.1.3"
@@ -344,9 +344,8 @@ opt-level = 3
 opt-level = 3
 
 [patch.crates-io]
-deno_path_util = { path = "../deno_path_util" }
-deno_cache_dir = { path = "../deno_cache_dir/rs_lib" }
-deno_package_json = { path = "../deno_package_json" }
-deno_config = { path = "../deno_config" }
-deno_graph = { path = "../deno_graph" }
-sys_traits = { path = "../sys_traits" }
+deno_path_util = { git = "https://github.com/denoland/deno_path_util", branch = "refactor_use_sys_traits" }
+deno_package_json = { git = "https://github.com/dsherret/deno_package_json", branch = "sys_traits" }
+deno_config = { git = "https://github.com/dsherret/deno_config", branch = "refactor_use_sys_traits" }
+deno_graph = { git = "https://github.com/dsherret/deno_graph", branch = "refactor_use_sys_traits" }
+deno_cache_dir = { git = "https://github.com/dsherret/deno_cache_dir", branch = "refactor_use_sys_traits" }

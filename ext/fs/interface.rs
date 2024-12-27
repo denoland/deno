@@ -429,9 +429,9 @@ impl FsSysTraitsAdapter {
   }
 }
 
-impl sys_traits::FsHardLinkImpl for FsSysTraitsAdapter {
+impl sys_traits::BaseFsHardLink for FsSysTraitsAdapter {
   #[inline]
-  fn fs_hard_link_impl(&self, src: &Path, dst: &Path) -> std::io::Result<()> {
+  fn base_fs_hard_link(&self, src: &Path, dst: &Path) -> std::io::Result<()> {
     self
       .0
       .link_sync(src, dst)
@@ -439,9 +439,9 @@ impl sys_traits::FsHardLinkImpl for FsSysTraitsAdapter {
   }
 }
 
-impl sys_traits::FsReadImpl for FsSysTraitsAdapter {
+impl sys_traits::BaseFsRead for FsSysTraitsAdapter {
   #[inline]
-  fn fs_read_impl(&self, path: &Path) -> std::io::Result<Cow<'static, [u8]>> {
+  fn base_fs_read(&self, path: &Path) -> std::io::Result<Cow<'static, [u8]>> {
     self
       .0
       .read_file_sync(path, None)
@@ -489,10 +489,10 @@ impl sys_traits::FsDirEntry for FsSysTraitsAdapterReadDirEntry {
   }
 }
 
-impl sys_traits::FsReadDirImpl for FsSysTraitsAdapter {
+impl sys_traits::BaseFsReadDir for FsSysTraitsAdapter {
   type ReadDirEntry = FsSysTraitsAdapterReadDirEntry;
 
-  fn fs_read_dir_impl(
+  fn base_fs_read_dir(
     &self,
     path: &Path,
   ) -> std::io::Result<
@@ -513,9 +513,9 @@ impl sys_traits::FsReadDirImpl for FsSysTraitsAdapter {
   }
 }
 
-impl sys_traits::FsCanonicalizeImpl for FsSysTraitsAdapter {
+impl sys_traits::BaseFsCanonicalize for FsSysTraitsAdapter {
   #[inline]
-  fn fs_canonicalize_impl(&self, path: &Path) -> std::io::Result<PathBuf> {
+  fn base_fs_canonicalize(&self, path: &Path) -> std::io::Result<PathBuf> {
     self
       .0
       .realpath_sync(path)
@@ -523,11 +523,11 @@ impl sys_traits::FsCanonicalizeImpl for FsSysTraitsAdapter {
   }
 }
 
-impl sys_traits::FsMetadataImpl for FsSysTraitsAdapter {
+impl sys_traits::BaseFsMetadata for FsSysTraitsAdapter {
   type Metadata = FsStatSlim;
 
   #[inline]
-  fn fs_metadata_impl(&self, path: &Path) -> std::io::Result<Self::Metadata> {
+  fn base_fs_metadata(&self, path: &Path) -> std::io::Result<Self::Metadata> {
     self
       .0
       .stat_slim_sync(path)
@@ -535,7 +535,7 @@ impl sys_traits::FsMetadataImpl for FsSysTraitsAdapter {
   }
 
   #[inline]
-  fn fs_symlink_metadata_impl(
+  fn base_fs_symlink_metadata(
     &self,
     path: &Path,
   ) -> std::io::Result<Self::Metadata> {
@@ -546,9 +546,9 @@ impl sys_traits::FsMetadataImpl for FsSysTraitsAdapter {
   }
 }
 
-impl sys_traits::FsCreateDirAllImpl for FsSysTraitsAdapter {
+impl sys_traits::BaseFsCreateDirAll for FsSysTraitsAdapter {
   #[inline]
-  fn fs_create_dir_all_impl(&self, path: &Path) -> std::io::Result<()> {
+  fn base_fs_create_dir_all(&self, path: &Path) -> std::io::Result<()> {
     self
       .0
       .mkdir_sync(path, true, None)
@@ -556,9 +556,9 @@ impl sys_traits::FsCreateDirAllImpl for FsSysTraitsAdapter {
   }
 }
 
-impl sys_traits::FsRemoveFileImpl for FsSysTraitsAdapter {
+impl sys_traits::BaseFsRemoveFile for FsSysTraitsAdapter {
   #[inline]
-  fn fs_remove_file_impl(&self, path: &Path) -> std::io::Result<()> {
+  fn base_fs_remove_file(&self, path: &Path) -> std::io::Result<()> {
     self
       .0
       .remove_sync(path, false)
@@ -566,9 +566,9 @@ impl sys_traits::FsRemoveFileImpl for FsSysTraitsAdapter {
   }
 }
 
-impl sys_traits::FsRenameImpl for FsSysTraitsAdapter {
+impl sys_traits::BaseFsRename for FsSysTraitsAdapter {
   #[inline]
-  fn fs_rename_impl(&self, from: &Path, to: &Path) -> std::io::Result<()> {
+  fn base_fs_rename(&self, from: &Path, to: &Path) -> std::io::Result<()> {
     self
       .0
       .rename_sync(from, to)
@@ -635,10 +635,10 @@ impl std::io::Write for FsFileAdapter {
   }
 }
 
-impl sys_traits::FsOpenImpl for FsSysTraitsAdapter {
+impl sys_traits::BaseFsOpen for FsSysTraitsAdapter {
   type File = FsFileAdapter;
 
-  fn fs_open_impl(
+  fn base_fs_open(
     &self,
     path: &Path,
     options: &sys_traits::OpenOptions,
@@ -686,8 +686,8 @@ impl sys_traits::ThreadSleep for FsSysTraitsAdapter {
   }
 }
 
-impl sys_traits::EnvVarImpl for FsSysTraitsAdapter {
-  fn env_var_os_impl(
+impl sys_traits::BaseEnvVar for FsSysTraitsAdapter {
+  fn base_env_var_os(
     &self,
     key: &std::ffi::OsStr,
   ) -> Option<std::ffi::OsString> {
