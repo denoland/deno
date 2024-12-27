@@ -243,23 +243,6 @@ impl FileSystem for DenoCompileFileSystem {
     }
   }
 
-  fn stat_slim_sync(&self, path: &Path) -> FsResult<FsStatSlim> {
-    if self.0.is_path_within(path) {
-      let stat = self.0.stat(path)?;
-      Ok(FsStatSlim::for_in_memory(&stat))
-    } else {
-      RealFs.stat_slim_sync(path)
-    }
-  }
-  fn lstat_slim_sync(&self, path: &Path) -> FsResult<FsStatSlim> {
-    if self.0.is_path_within(path) {
-      let stat = self.0.lstat(path)?;
-      Ok(FsStatSlim::for_in_memory(&stat))
-    } else {
-      RealFs.lstat_slim_sync(path)
-    }
-  }
-
   fn realpath_sync(&self, path: &Path) -> FsResult<PathBuf> {
     if self.0.is_path_within(path) {
       Ok(self.0.canonicalize(path)?)

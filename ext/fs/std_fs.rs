@@ -175,17 +175,6 @@ impl FileSystem for RealFs {
     spawn_blocking(move || lstat(&path)).await?.map(Into::into)
   }
 
-  fn stat_slim_sync(&self, path: &Path) -> FsResult<FsStatSlim> {
-    std::fs::metadata(&path)
-      .map(|data| FsStatSlim::from_std(&data))
-      .map_err(Into::into)
-  }
-  fn lstat_slim_sync(&self, path: &Path) -> FsResult<FsStatSlim> {
-    std::fs::symlink_metadata(&path)
-      .map(|data| FsStatSlim::from_std(&data))
-      .map_err(Into::into)
-  }
-
   fn exists_sync(&self, path: &Path) -> bool {
     exists(path)
   }

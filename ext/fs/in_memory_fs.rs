@@ -284,17 +284,6 @@ impl FileSystem for InMemoryFs {
     self.lstat_sync(&path)
   }
 
-  fn stat_slim_sync(&self, path: &Path) -> FsResult<FsStatSlim> {
-    self
-      .stat_sync(&path)
-      .map(|data| FsStatSlim::for_in_memory(&data))
-  }
-  fn lstat_slim_sync(&self, path: &Path) -> FsResult<FsStatSlim> {
-    self
-      .lstat_sync(&path)
-      .map(|data| FsStatSlim::for_in_memory(&data))
-  }
-
   fn realpath_sync(&self, _path: &Path) -> FsResult<PathBuf> {
     Err(FsError::NotSupported)
   }

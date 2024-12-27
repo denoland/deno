@@ -118,7 +118,7 @@ impl FsStatSlim {
     }
   }
 
-  pub fn for_in_memory(data: &FsStat) -> Self {
+  pub fn from_deno_fs_stat(data: &FsStat) -> Self {
     FsStatSlim {
       file_type: if data.is_file {
         sys_traits::FileType::File
@@ -236,10 +236,6 @@ pub trait FileSystem: std::fmt::Debug + MaybeSend + MaybeSync {
 
   fn lstat_sync(&self, path: &Path) -> FsResult<FsStat>;
   async fn lstat_async(&self, path: PathBuf) -> FsResult<FsStat>;
-
-  // faster versions of the above that get less data
-  fn stat_slim_sync(&self, path: &Path) -> FsResult<FsStatSlim>;
-  fn lstat_slim_sync(&self, path: &Path) -> FsResult<FsStatSlim>;
 
   fn realpath_sync(&self, path: &Path) -> FsResult<PathBuf>;
   async fn realpath_async(&self, path: PathBuf) -> FsResult<PathBuf>;
@@ -420,6 +416,10 @@ fn string_from_utf8_lossy(buf: Vec<u8>) -> String {
   }
 }
 
+// todo(dsherret): this is temporary. Instead of using the `FileSystem` trait implementation
+// in the CLI, the CLI should instead create it's own file system using `sys_traits` traits
+// then that can implement the `FileSystem` trait. Then this `FileSystem` trait can stay here
+// for use only for `ext/fs` and not the entire CLI.
 #[derive(Debug, Clone)]
 pub struct FsSysTraitsAdapter(pub FileSystemRc);
 
@@ -530,7 +530,8 @@ impl sys_traits::BaseFsMetadata for FsSysTraitsAdapter {
   fn base_fs_metadata(&self, path: &Path) -> std::io::Result<Self::Metadata> {
     self
       .0
-      .stat_slim_sync(path)
+      .stat_sync(path)
+      .map(|data| FsStatSlim::from_deno_fs_stat(&data))
       .map_err(|err| err.into_io_error())
   }
 
@@ -541,7 +542,8 @@ impl sys_traits::BaseFsMetadata for FsSysTraitsAdapter {
   ) -> std::io::Result<Self::Metadata> {
     self
       .0
-      .lstat_slim_sync(path)
+      .lstat_sync(path)
+      .map(|data| FsStatSlim::from_deno_fs_stat(&data))
       .map_err(|err| err.into_io_error())
   }
 }
@@ -594,7 +596,6 @@ impl FsFileSetPermissions for FsFileAdapter {
 impl std::io::Read for FsFileAdapter {
   #[inline]
   fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
-    // todo(dsherret): this cloning doesn't seem great
     self
       .0
       .clone()
@@ -616,7 +617,6 @@ impl std::io::Seek for FsFileAdapter {
 impl std::io::Write for FsFileAdapter {
   #[inline]
   fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
-    // todo(dsherret): this cloning doesn't seem great
     self
       .0
       .clone()
@@ -626,7 +626,6 @@ impl std::io::Write for FsFileAdapter {
 
   #[inline]
   fn flush(&mut self) -> std::io::Result<()> {
-    // todo(dsherret): this cloning doesn't seem great
     self
       .0
       .clone()
