@@ -23,7 +23,6 @@ use deno_path_util::normalize_path;
 use crate::interface::AccessCheckCb;
 use crate::interface::FsDirEntry;
 use crate::interface::FsFileType;
-use crate::interface::FsStatSlim;
 use crate::FileSystem;
 use crate::OpenOptions;
 
