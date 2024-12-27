@@ -1275,7 +1275,7 @@ dependencies = [
  "deno_npm",
  "deno_npm_cache",
  "deno_package_json",
- "deno_path_util",
+ "deno_path_util 0.3.0",
  "deno_resolver",
  "deno_runtime",
  "deno_semver",
@@ -1454,8 +1454,9 @@ dependencies = [
 
 [[package]]
 name = "deno_cache_dir"
-version = "0.15.0"
-source = "git+https://github.com/dsherret/deno_cache_dir?branch=refactor_use_sys_traits#8add2af4d689b10a552ea32f15ce82b4ce83e1d2"
+version = "0.16.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e73ed17f285731a23df9779ca1e0e721de866db6776ed919ebd9235e0a107c4c"
 dependencies = [
  "async-trait",
  "base32",
@@ -1466,7 +1467,7 @@ dependencies = [
  "data-url",
  "deno_error",
  "deno_media_type",
- "deno_path_util",
+ "deno_path_util 0.3.0",
  "http 1.1.0",
  "indexmap 2.3.0",
  "log",
@@ -1493,12 +1494,13 @@ dependencies = [
 
 [[package]]
 name = "deno_config"
-version = "0.41.0"
-source = "git+https://github.com/dsherret/deno_config?branch=refactor_use_sys_traits#0c2b434990ed2997698ebdfb460ebb7c0a82b5d8"
+version = "0.42.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b45aaf31e58ca915d5c0746bf8e2d07b94635154ad9e5afe5ff265cae6187b19"
 dependencies = [
  "anyhow",
  "deno_package_json",
- "deno_path_util",
+ "deno_path_util 0.3.0",
  "deno_semver",
  "glob",
  "ignore",
@@ -1625,7 +1627,7 @@ dependencies = [
  "comrak",
  "deno_ast",
  "deno_graph",
- "deno_path_util",
+ "deno_path_util 0.2.2",
  "handlebars",
  "html-escape",
  "import_map",
@@ -1675,7 +1677,7 @@ dependencies = [
  "bytes",
  "data-url",
  "deno_core",
- "deno_path_util",
+ "deno_path_util 0.3.0",
  "deno_permissions",
  "deno_tls",
  "dyn-clone",
@@ -1732,7 +1734,7 @@ dependencies = [
  "boxed_error",
  "deno_core",
  "deno_io",
- "deno_path_util",
+ "deno_path_util 0.3.0",
  "deno_permissions",
  "filetime",
  "getrandom",
@@ -1750,15 +1752,16 @@ dependencies = [
 
 [[package]]
 name = "deno_graph"
-version = "0.86.5"
-source = "git+https://github.com/dsherret/deno_graph?branch=refactor_use_sys_traits#33b73855233b1c9257b10d8b9a54963e276eed74"
+version = "0.86.6"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "83af194ca492ea7b624d21055f933676d3f3d27586de93be31c8f1babcc73510"
 dependencies = [
  "anyhow",
  "async-trait",
  "capacity_builder 0.5.0",
  "data-url",
  "deno_ast",
- "deno_path_util",
+ "deno_path_util 0.3.0",
  "deno_semver",
  "deno_unsync",
  "encoding_rs",
@@ -1852,7 +1855,7 @@ dependencies = [
  "chrono",
  "deno_core",
  "deno_fetch",
- "deno_path_util",
+ "deno_path_util 0.3.0",
  "deno_permissions",
  "deno_tls",
  "denokv_proto",
@@ -1981,7 +1984,7 @@ dependencies = [
  "deno_media_type",
  "deno_net",
  "deno_package_json",
- "deno_path_util",
+ "deno_path_util 0.3.0",
  "deno_permissions",
  "deno_whoami",
  "der",
@@ -2083,7 +2086,7 @@ dependencies = [
  "deno_core",
  "deno_error",
  "deno_npm",
- "deno_path_util",
+ "deno_path_util 0.3.0",
  "deno_semver",
  "deno_unsync",
  "faster-hex",
@@ -2121,12 +2124,13 @@ dependencies = [
 
 [[package]]
 name = "deno_package_json"
-version = "0.3.0"
-source = "git+https://github.com/dsherret/deno_package_json?branch=sys_traits#5a0234ad46b5d33ddcac4db384cd30629023e405"
+version = "0.4.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e1d3c0f699ba2040669204ce24ab73720499fc290af843e4ce0fc8a9b3d67735"
 dependencies = [
  "boxed_error",
  "deno_error",
- "deno_path_util",
+ "deno_path_util 0.3.0",
  "deno_semver",
  "indexmap 2.3.0",
  "serde",
@@ -2139,7 +2143,20 @@ dependencies = [
 [[package]]
 name = "deno_path_util"
 version = "0.2.2"
-source = "git+https://github.com/denoland/deno_path_util?branch=refactor_use_sys_traits#281308b310f72d0922ee4cda59a5be44d162e227"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b02c7d341e1b2cf089daff0f4fb2b4be8f3b5511b1d96040b3f7ed63a66c737b"
+dependencies = [
+ "deno_error",
+ "percent-encoding",
+ "thiserror 2.0.3",
+ "url",
+]
+
+[[package]]
+name = "deno_path_util"
+version = "0.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "420e8211aaba7fde83ccaa9a5dad855c3b940ed988d70c95159acd600a70dc87"
 dependencies = [
  "deno_error",
  "percent-encoding",
@@ -2154,7 +2171,7 @@ version = "0.43.0"
 dependencies = [
  "capacity_builder 0.5.0",
  "deno_core",
- "deno_path_util",
+ "deno_path_util 0.3.0",
  "deno_terminal 0.2.0",
  "fqdn",
  "libc",
@@ -2178,7 +2195,7 @@ dependencies = [
  "deno_config",
  "deno_media_type",
  "deno_package_json",
- "deno_path_util",
+ "deno_path_util 0.3.0",
  "deno_semver",
  "node_resolver",
  "sys_traits",
@@ -2209,7 +2226,7 @@ dependencies = [
  "deno_napi",
  "deno_net",
  "deno_node",
- "deno_path_util",
+ "deno_path_util 0.3.0",
  "deno_permissions",
  "deno_telemetry",
  "deno_terminal 0.2.0",
@@ -5057,7 +5074,7 @@ dependencies = [
  "boxed_error",
  "deno_media_type",
  "deno_package_json",
- "deno_path_util",
+ "deno_path_util 0.3.0",
  "futures",
  "lazy-regex",
  "once_cell",
@@ -7666,11 +7683,6 @@ name = "sys_traits"
 version = "0.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "72001c0d1b690f17bb18ea7960821389199fd59ce6784f883fc76d0f3fbb6236"
-dependencies = [
- "getrandom",
- "libc",
- "windows-sys 0.59.0",
-]
 
 [[package]]
 name = "tagptr"
