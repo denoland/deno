@@ -867,6 +867,7 @@ dependencies = [
  "regex",
  "reqwest",
  "serde",
+ "sys_traits",
  "test_server",
  "tokio",
  "url",
@@ -1454,7 +1455,7 @@ dependencies = [
 [[package]]
 name = "deno_cache_dir"
 version = "0.15.0"
-source = "git+https://github.com/dsherret/deno_cache_dir?branch=refactor_use_sys_traits#2147cf8073d66f2c27e19814abd22d4601fbed35"
+source = "git+https://github.com/dsherret/deno_cache_dir?branch=refactor_use_sys_traits#8add2af4d689b10a552ea32f15ce82b4ce83e1d2"
 dependencies = [
  "async-trait",
  "base32",

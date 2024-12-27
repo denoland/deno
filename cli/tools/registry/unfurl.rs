@@ -863,7 +863,7 @@ const warn2 = await import(`${expr}`);
       ],
       deno_config::workspace::PackageJsonDepResolution::Enabled,
     );
-    let fs = Arc::new(RealFs);
+    let fs = FsSysTraitsAdapter(Arc::new(RealFs));
     let unfurler = SpecifierUnfurler::new(
       Some(Arc::new(CliSloppyImportsResolver::new(
         SloppyImportsCachedFs::new(fs),
