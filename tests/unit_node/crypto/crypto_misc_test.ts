@@ -1,7 +1,7 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 import { randomFillSync, randomUUID, timingSafeEqual } from "node:crypto";
 import { Buffer } from "node:buffer";
-import { assert, assertEquals } from "../../unit/test_util.ts";
+import { assert, assertEquals, assertThrows } from "../../unit/test_util.ts";
 import { assertNotEquals } from "@std/assert";
 
 Deno.test("[node/crypto.getRandomUUID] works the same way as Web Crypto API", () => {
@@ -35,4 +35,11 @@ Deno.test("[node/crypto.timingSafeEqual] compares equal Buffer with different by
   const b = Buffer.from([0, 0, 0, 0, 0, 0, 0, 0, 212, 213]).subarray(8);
 
   assert(timingSafeEqual(a, b));
+});
+
+Deno.test("[node/crypto.timingSafeEqual] RangeError on Buffer with different byteLength", () => {
+  const a = Buffer.from([212, 213]);
+  const b = Buffer.from([0, 0, 0, 0, 0, 0, 0, 0, 212, 213, 0]);
+
+  assertThrows(() => timingSafeEqual(a, b), RangeError);
 });
