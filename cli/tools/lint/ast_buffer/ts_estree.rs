@@ -200,8 +200,8 @@ impl From<AstNode> for u8 {
 
 #[derive(Debug, Clone)]
 pub enum AstProp {
-  // Base, these three must be in sync with JS. The
-  // order here for these 3 fields is important.
+  // Base, these must be in sync with JS in the same order.
+  Invalid,
   Type,
   Parent,
   Range,
@@ -318,6 +318,7 @@ pub enum AstProp {
 impl Display for AstProp {
   fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
     let s = match self {
+      AstProp::Invalid => "__invalid__", // unused
       AstProp::Parent => "parent",
       AstProp::Range => "range",
       AstProp::Type => "type",

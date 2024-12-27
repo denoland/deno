@@ -212,6 +212,28 @@ Deno.test("Plugin - visitor attr", () => {
   assertEquals(result[0].node.name, "foo");
 });
 
+Deno.test("Plugin - visitor attr to check type", () => {
+  let result = testVisit(
+    "foo",
+    "Identifier[type]",
+  );
+  assertEquals(result[0].node.type, "Identifier");
+
+  result = testVisit(
+    "foo",
+    "Identifier[type='Identifier']",
+  );
+  assertEquals(result[0].node.type, "Identifier");
+});
+
+Deno.test("Plugin - visitor attr non-existing", () => {
+  const result = testVisit(
+    "foo",
+    "[non-existing]",
+  );
+  assertEquals(result, []);
+});
+
 Deno.test("Plugin - visitor attr length special case", () => {
   let result = testVisit(
     "foo(1); foo(1, 2);",
