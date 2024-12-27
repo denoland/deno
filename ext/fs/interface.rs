@@ -585,11 +585,15 @@ impl FsFile for FsFileAdapter {}
 impl FsFileSetPermissions for FsFileAdapter {
   #[inline]
   fn fs_file_set_permissions(&mut self, mode: u32) -> std::io::Result<()> {
-    self
-      .0
-      .clone()
-      .chmod_sync(mode)
-      .map_err(|err| err.into_io_error())
+    if cfg!(windows) {
+      Ok(()) // ignore
+    } else {
+      self
+        .0
+        .clone()
+        .chmod_sync(mode)
+        .map_err(|err| err.into_io_error())
+    }
   }
 }
 
