@@ -149,7 +149,6 @@ impl sys_traits::FsMetadataValue for FsStatSlim {
     self
       .modified
       .as_ref()
-      .map(|c| c.clone())
       .map_err(|err| std::io::Error::new(err.kind(), err.to_string()))
   }
 }
