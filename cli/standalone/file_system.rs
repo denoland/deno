@@ -9,6 +9,7 @@ use deno_runtime::deno_fs::AccessCheckCb;
 use deno_runtime::deno_fs::FileSystem;
 use deno_runtime::deno_fs::FsDirEntry;
 use deno_runtime::deno_fs::FsFileType;
+use deno_runtime::deno_fs::FsStatSlim;
 use deno_runtime::deno_fs::OpenOptions;
 use deno_runtime::deno_fs::RealFs;
 use deno_runtime::deno_io::fs::File;
@@ -239,6 +240,23 @@ impl FileSystem for DenoCompileFileSystem {
       Ok(self.0.lstat(&path)?)
     } else {
       RealFs.lstat_async(path).await
+    }
+  }
+
+  fn stat_slim_sync(&self, path: &Path) -> FsResult<FsStatSlim> {
+    if self.0.is_path_within(path) {
+      let stat = self.0.stat(path)?;
+      Ok(FsStatSlim::for_in_memory(&stat))
+    } else {
+      RealFs.stat_slim_sync(path)
+    }
+  }
+  fn lstat_slim_sync(&self, path: &Path) -> FsResult<FsStatSlim> {
+    if self.0.is_path_within(path) {
+      let stat = self.0.lstat(path)?;
+      Ok(FsStatSlim::for_in_memory(&stat))
+    } else {
+      RealFs.lstat_slim_sync(path)
     }
   }
 

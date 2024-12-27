@@ -14,11 +14,10 @@ use deno_config::workspace::WorkspaceResolver;
 use deno_package_json::PackageJsonDepValue;
 use deno_package_json::PackageJsonDepValueParseError;
 use deno_semver::npm::NpmPackageReqReference;
-use fs::DenoResolverFs;
-use node_resolver::env::NodeResolverEnv;
 use node_resolver::errors::NodeResolveError;
 use node_resolver::errors::PackageSubpathResolveError;
 use node_resolver::InNpmPackageCheckerRc;
+use node_resolver::IsBuiltInNodeModuleChecker;
 use node_resolver::NodeResolution;
 use node_resolver::NodeResolutionKind;
 use node_resolver::NodeResolverRc;
@@ -32,11 +31,14 @@ use npm::ResolveReqWithSubPathErrorKind;
 use sloppy_imports::SloppyImportResolverFs;
 use sloppy_imports::SloppyImportsResolutionKind;
 use sloppy_imports::SloppyImportsResolverRc;
+use sys_traits::FsCanonicalize;
+use sys_traits::FsMetadata;
+use sys_traits::FsRead;
+use sys_traits::FsReadDir;
 use thiserror::Error;
 use url::Url;
 
 pub mod cjs;
-pub mod fs;
 pub mod npm;
 pub mod sloppy_imports;
 mod sync;
@@ -80,22 +82,22 @@ pub enum DenoResolveErrorKind {
 
 #[derive(Debug)]
 pub struct NodeAndNpmReqResolver<
-  Fs: DenoResolverFs,
-  TNodeResolverEnv: NodeResolverEnv,
+  TIsBuiltInNodeModuleChecker: IsBuiltInNodeModuleChecker,
+  TSys: FsCanonicalize + FsMetadata + FsRead + FsReadDir,
 > {
-  pub node_resolver: NodeResolverRc<TNodeResolverEnv>,
-  pub npm_req_resolver: NpmReqResolverRc<Fs, TNodeResolverEnv>,
+  pub node_resolver: NodeResolverRc<TIsBuiltInNodeModuleChecker, TSys>,
+  pub npm_req_resolver: NpmReqResolverRc<TIsBuiltInNodeModuleChecker, TSys>,
 }
 
 pub struct DenoResolverOptions<
   'a,
-  Fs: DenoResolverFs,
-  TNodeResolverEnv: NodeResolverEnv,
+  TIsBuiltInNodeModuleChecker: IsBuiltInNodeModuleChecker,
   TSloppyImportResolverFs: SloppyImportResolverFs,
+  TSys: FsCanonicalize + FsMetadata + FsRead + FsReadDir,
 > {
   pub in_npm_pkg_checker: InNpmPackageCheckerRc,
   pub node_and_req_resolver:
-    Option<NodeAndNpmReqResolver<Fs, TNodeResolverEnv>>,
+    Option<NodeAndNpmReqResolver<TIsBuiltInNodeModuleChecker, TSys>>,
   pub sloppy_imports_resolver:
     Option<SloppyImportsResolverRc<TSloppyImportResolverFs>>,
   pub workspace_resolver: WorkspaceResolverRc,
@@ -110,12 +112,13 @@ pub struct DenoResolverOptions<
 /// import map, JSX settings.
 #[derive(Debug)]
 pub struct DenoResolver<
-  Fs: DenoResolverFs,
-  TNodeResolverEnv: NodeResolverEnv,
+  TIsBuiltInNodeModuleChecker: IsBuiltInNodeModuleChecker,
   TSloppyImportResolverFs: SloppyImportResolverFs,
+  TSys: FsCanonicalize + FsMetadata + FsRead + FsReadDir,
 > {
   in_npm_pkg_checker: InNpmPackageCheckerRc,
-  node_and_npm_resolver: Option<NodeAndNpmReqResolver<Fs, TNodeResolverEnv>>,
+  node_and_npm_resolver:
+    Option<NodeAndNpmReqResolver<TIsBuiltInNodeModuleChecker, TSys>>,
   sloppy_imports_resolver:
     Option<SloppyImportsResolverRc<TSloppyImportResolverFs>>,
   workspace_resolver: WorkspaceResolverRc,
@@ -124,13 +127,17 @@ pub struct DenoResolver<
 }
 
 impl<
-    Fs: DenoResolverFs,
-    TNodeResolverEnv: NodeResolverEnv,
+    TIsBuiltInNodeModuleChecker: IsBuiltInNodeModuleChecker,
     TSloppyImportResolverFs: SloppyImportResolverFs,
-  > DenoResolver<Fs, TNodeResolverEnv, TSloppyImportResolverFs>
+    TSys: FsCanonicalize + FsMetadata + FsRead + FsReadDir,
+  > DenoResolver<TIsBuiltInNodeModuleChecker, TSloppyImportResolverFs, TSys>
 {
   pub fn new(
-    options: DenoResolverOptions<Fs, TNodeResolverEnv, TSloppyImportResolverFs>,
+    options: DenoResolverOptions<
+      TIsBuiltInNodeModuleChecker,
+      TSloppyImportResolverFs,
+      TSys,
+    >,
   ) -> Self {
     Self {
       in_npm_pkg_checker: options.in_npm_pkg_checker,

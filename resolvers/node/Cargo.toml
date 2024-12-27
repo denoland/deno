@@ -29,6 +29,7 @@ once_cell.workspace = true
 path-clean = "=0.1.0"
 regex.workspace = true
 serde_json.workspace = true
+sys_traits.workspace = true
 thiserror.workspace = true
 tokio.workspace = true
 url.workspace = true

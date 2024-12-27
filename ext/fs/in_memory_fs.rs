@@ -23,6 +23,7 @@ use deno_path_util::normalize_path;
 use crate::interface::AccessCheckCb;
 use crate::interface::FsDirEntry;
 use crate::interface::FsFileType;
+use crate::interface::FsStatSlim;
 use crate::FileSystem;
 use crate::OpenOptions;
 
@@ -281,6 +282,17 @@ impl FileSystem for InMemoryFs {
   }
   async fn lstat_async(&self, path: PathBuf) -> FsResult<FsStat> {
     self.lstat_sync(&path)
+  }
+
+  fn stat_slim_sync(&self, path: &Path) -> FsResult<FsStatSlim> {
+    self
+      .stat_sync(&path)
+      .map(|data| FsStatSlim::for_in_memory(&data))
+  }
+  fn lstat_slim_sync(&self, path: &Path) -> FsResult<FsStatSlim> {
+    self
+      .lstat_sync(&path)
+      .map(|data| FsStatSlim::for_in_memory(&data))
   }
 
   fn realpath_sync(&self, _path: &Path) -> FsResult<PathBuf> {

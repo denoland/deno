@@ -9,9 +9,13 @@ use anyhow::Error as AnyError;
 use deno_path_util::url_from_file_path;
 use serde_json::Map;
 use serde_json::Value;
+use sys_traits::FileType;
+use sys_traits::FsCanonicalize;
+use sys_traits::FsMetadata;
+use sys_traits::FsMetadataValue;
+use sys_traits::FsRead;
 use url::Url;
 
-use crate::env::NodeResolverEnv;
 use crate::errors;
 use crate::errors::DataUrlReferrerError;
 use crate::errors::FinalizeResolutionError;
@@ -98,29 +102,44 @@ impl NodeResolution {
   }
 }
 
-#[allow(clippy::disallowed_types)]
-pub type NodeResolverRc<TEnv> = crate::sync::MaybeArc<NodeResolver<TEnv>>;
-
-#[derive(Debug)]
-pub struct NodeResolver<TEnv: NodeResolverEnv> {
-  env: TEnv,
-  in_npm_pkg_checker: InNpmPackageCheckerRc,
-  npm_pkg_folder_resolver: NpmPackageFolderResolverRc,
-  pkg_json_resolver: PackageJsonResolverRc<TEnv>,
+pub trait IsBuiltInNodeModuleChecker: std::fmt::Debug {
+  fn is_builtin_node_module(&self, specifier: &str) -> bool;
 }
 
-impl<TEnv: NodeResolverEnv> NodeResolver<TEnv> {
+#[allow(clippy::disallowed_types)]
+pub type NodeResolverRc<TIsBuiltInNodeModuleChecker, TSys> =
+  crate::sync::MaybeArc<NodeResolver<TIsBuiltInNodeModuleChecker, TSys>>;
+
+#[derive(Debug)]
+pub struct NodeResolver<
+  TIsBuiltInNodeModuleChecker: IsBuiltInNodeModuleChecker,
+  TSys: FsCanonicalize + FsMetadata + FsRead,
+> {
+  in_npm_pkg_checker: InNpmPackageCheckerRc,
+  is_built_in_node_module_checker: TIsBuiltInNodeModuleChecker,
+  npm_pkg_folder_resolver: NpmPackageFolderResolverRc,
+  pkg_json_resolver: PackageJsonResolverRc<TSys>,
+  sys: TSys,
+}
+
+impl<
+    TIsBuiltInNodeModuleChecker: IsBuiltInNodeModuleChecker,
+    TSys: FsCanonicalize + FsMetadata + FsRead,
+  > NodeResolver<TIsBuiltInNodeModuleChecker, TSys>
+{
   pub fn new(
-    env: TEnv,
     in_npm_pkg_checker: InNpmPackageCheckerRc,
+    is_built_in_node_module_checker: TIsBuiltInNodeModuleChecker,
     npm_pkg_folder_resolver: NpmPackageFolderResolverRc,
-    pkg_json_resolver: PackageJsonResolverRc<TEnv>,
+    pkg_json_resolver: PackageJsonResolverRc<TSys>,
+    sys: TSys,
   ) -> Self {
     Self {
-      env,
       in_npm_pkg_checker,
+      is_built_in_node_module_checker,
       npm_pkg_folder_resolver,
       pkg_json_resolver,
+      sys,
     }
   }
 
@@ -140,7 +159,10 @@ impl<TEnv: NodeResolverEnv> NodeResolver<TEnv> {
     // Note: if we are here, then the referrer is an esm module
     // TODO(bartlomieju): skipped "policy" part as we don't plan to support it
 
-    if self.env.is_builtin_node_module(specifier) {
+    if self
+      .is_built_in_node_module_checker
+      .is_builtin_node_module(specifier)
+    {
       return Ok(NodeResolution::BuiltIn(specifier.to_string()));
     }
 
@@ -282,32 +304,25 @@ impl<TEnv: NodeResolverEnv> NodeResolver<TEnv> {
       p_str.to_string()
     };
 
-    let (is_dir, is_file) = if let Ok(stats) = self.env.stat_sync(Path::new(&p))
-    {
-      (stats.is_dir, stats.is_file)
-    } else {
-      (false, false)
-    };
-    if is_dir {
-      return Err(
+    let maybe_file_type = self.sys.fs_metadata(p).map(|m| m.file_type());
+    match maybe_file_type {
+      Ok(FileType::Dir) => Err(
         UnsupportedDirImportError {
           dir_url: resolved.clone(),
           maybe_referrer: maybe_referrer.map(ToOwned::to_owned),
         }
         .into(),
-      );
-    } else if !is_file {
-      return Err(
+      ),
+      Ok(FileType::File) => Ok(resolved),
+      _ => Err(
         ModuleNotFoundError {
           specifier: resolved,
           maybe_referrer: maybe_referrer.map(ToOwned::to_owned),
           typ: "module",
         }
         .into(),
-      );
+      ),
     }
-
-    Ok(resolved)
   }
 
   pub fn resolve_package_subpath_from_deno_module(
@@ -397,8 +412,8 @@ impl<TEnv: NodeResolverEnv> NodeResolver<TEnv> {
     maybe_referrer: Option<&Url>,
     resolution_mode: ResolutionMode,
   ) -> Result<Url, TypesNotFoundError> {
-    fn probe_extensions<TEnv: NodeResolverEnv>(
-      fs: &TEnv,
+    fn probe_extensions<TSys: FsMetadata>(
+      sys: &TSys,
       path: &Path,
       lowercase_path: &str,
       resolution_mode: ResolutionMode,
@@ -407,20 +422,20 @@ impl<TEnv: NodeResolverEnv> NodeResolver<TEnv> {
       let mut searched_for_d_cts = false;
       if lowercase_path.ends_with(".mjs") {
         let d_mts_path = with_known_extension(path, "d.mts");
-        if fs.exists_sync(&d_mts_path) {
+        if sys.fs_exists_no_err(&d_mts_path) {
           return Some(d_mts_path);
         }
         searched_for_d_mts = true;
       } else if lowercase_path.ends_with(".cjs") {
         let d_cts_path = with_known_extension(path, "d.cts");
-        if fs.exists_sync(&d_cts_path) {
+        if sys.fs_exists_no_err(&d_cts_path) {
           return Some(d_cts_path);
         }
         searched_for_d_cts = true;
       }
 
       let dts_path = with_known_extension(path, "d.ts");
-      if fs.exists_sync(&dts_path) {
+      if sys.fs_exists_no_err(&dts_path) {
         return Some(dts_path);
       }
 
@@ -434,7 +449,7 @@ impl<TEnv: NodeResolverEnv> NodeResolver<TEnv> {
         _ => None, // already searched above
       };
       if let Some(specific_dts_path) = specific_dts_path {
-        if fs.exists_sync(&specific_dts_path) {
+        if sys.fs_exists_no_err(&specific_dts_path) {
           return Some(specific_dts_path);
         }
       }
@@ -449,11 +464,11 @@ impl<TEnv: NodeResolverEnv> NodeResolver<TEnv> {
       return Ok(url_from_file_path(path).unwrap());
     }
     if let Some(path) =
-      probe_extensions(&self.env, path, &lowercase_path, resolution_mode)
+      probe_extensions(&self.sys, path, &lowercase_path, resolution_mode)
     {
       return Ok(url_from_file_path(&path).unwrap());
     }
-    if self.env.is_dir_sync(path) {
+    if self.sys.fs_is_dir_no_err(path) {
       let resolution_result = self.resolve_package_dir_subpath(
         path,
         /* sub path */ ".",
@@ -467,7 +482,7 @@ impl<TEnv: NodeResolverEnv> NodeResolver<TEnv> {
       }
       let index_path = path.join("index.js");
       if let Some(path) = probe_extensions(
-        &self.env,
+        &self.sys,
         &index_path,
         &index_path.to_string_lossy().to_lowercase(),
         resolution_mode,
@@ -671,7 +686,10 @@ impl<TEnv: NodeResolverEnv> NodeResolver<TEnv> {
             return match result {
               Ok(url) => Ok(url),
               Err(err) => {
-                if self.env.is_builtin_node_module(target) {
+                if self
+                  .is_built_in_node_module_checker
+                  .is_builtin_node_module(target)
+                {
                   Ok(Url::parse(&format!("node:{}", target)).unwrap())
                 } else {
                   Err(err)
@@ -1353,7 +1371,7 @@ impl<TEnv: NodeResolverEnv> NodeResolver<TEnv> {
 
     if let Some(main) = maybe_main {
       let guess = package_json.path.parent().unwrap().join(main).clean();
-      if self.env.is_file_sync(&guess) {
+      if self.sys.fs_is_file_no_err(&guess) {
         return Ok(url_from_file_path(&guess).unwrap());
       }
 
@@ -1382,7 +1400,7 @@ impl<TEnv: NodeResolverEnv> NodeResolver<TEnv> {
           .unwrap()
           .join(format!("{main}{ending}"))
           .clean();
-        if self.env.is_file_sync(&guess) {
+        if self.sys.fs_is_file_no_err(&guess) {
           // TODO(bartlomieju): emitLegacyIndexDeprecation()
           return Ok(url_from_file_path(&guess).unwrap());
         }
@@ -1417,7 +1435,7 @@ impl<TEnv: NodeResolverEnv> NodeResolver<TEnv> {
     };
     for index_file_name in index_file_names {
       let guess = directory.join(index_file_name).clean();
-      if self.env.is_file_sync(&guess) {
+      if self.sys.fs_is_file_no_err(&guess) {
         // TODO(bartlomieju): emitLegacyIndexDeprecation()
         return Ok(url_from_file_path(&guess).unwrap());
       }
@@ -1454,9 +1472,7 @@ impl<TEnv: NodeResolverEnv> NodeResolver<TEnv> {
     {
       // Specifiers in the node_modules directory are canonicalized
       // so canoncalize then check if it's in the node_modules directory.
-      let specifier = resolve_specifier_into_node_modules(specifier, &|path| {
-        self.env.realpath_sync(path)
-      });
+      let specifier = resolve_specifier_into_node_modules(&self.sys, specifier);
       return Some(specifier);
     }
 
@@ -1717,16 +1733,15 @@ pub fn parse_npm_pkg_name(
 /// not be fully resolved at the time deno_graph is analyzing it
 /// because the node_modules folder might not exist at that time.
 pub fn resolve_specifier_into_node_modules(
+  sys: &impl FsCanonicalize,
   specifier: &Url,
-  canonicalize: &impl Fn(&Path) -> std::io::Result<PathBuf>,
 ) -> Url {
   deno_path_util::url_to_file_path(specifier)
     .ok()
     // this path might not exist at the time the graph is being created
     // because the node_modules folder might not yet exist
     .and_then(|path| {
-      deno_path_util::canonicalize_path_maybe_not_exists(&path, canonicalize)
-        .ok()
+      deno_path_util::canonicalize_path_maybe_not_exists(sys, &path).ok()
     })
     .and_then(|path| deno_path_util::url_from_file_path(&path).ok())
     .unwrap_or_else(|| specifier.clone())

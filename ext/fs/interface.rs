@@ -5,6 +5,8 @@ use std::borrow::Cow;
 use std::path::Path;
 use std::path::PathBuf;
 use std::rc::Rc;
+use std::time::Duration;
+use std::time::SystemTime;
 
 use serde::Deserialize;
 use serde::Serialize;
@@ -12,6 +14,8 @@ use serde::Serialize;
 use deno_io::fs::File;
 use deno_io::fs::FsResult;
 use deno_io::fs::FsStat;
+use sys_traits::FsFile;
+use sys_traits::FsFileSetPermissions;
 
 use crate::sync::MaybeSend;
 use crate::sync::MaybeSync;
@@ -71,7 +75,7 @@ pub enum FsFileType {
 }
 
 /// WARNING: This is part of the public JS Deno API.
-#[derive(Serialize)]
+#[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct FsDirEntry {
   pub name: String,
@@ -98,6 +102,56 @@ impl<T> AccessCheckFn for T where
     &'a OpenOptions,
   ) -> FsResult<std::borrow::Cow<'a, Path>>
 {
+}
+
+#[derive(Debug)]
+pub struct FsStatSlim {
+  file_type: sys_traits::FileType,
+  modified: Result<SystemTime, std::io::Error>,
+}
+
+impl FsStatSlim {
+  pub fn from_std(metadata: &std::fs::Metadata) -> Self {
+    Self {
+      file_type: metadata.file_type().into(),
+      modified: metadata.modified(),
+    }
+  }
+
+  pub fn for_in_memory(data: &FsStat) -> Self {
+    FsStatSlim {
+      file_type: if data.is_file {
+        sys_traits::FileType::File
+      } else if data.is_directory {
+        sys_traits::FileType::Dir
+      } else if data.is_symlink {
+        sys_traits::FileType::Symlink
+      } else {
+        sys_traits::FileType::Unknown
+      },
+      modified: data
+        .mtime
+        .map(|ms| SystemTime::UNIX_EPOCH + Duration::from_millis(ms))
+        .ok_or_else(|| {
+          std::io::Error::new(std::io::ErrorKind::InvalidData, "No mtime")
+        }),
+    }
+  }
+}
+
+impl sys_traits::FsMetadataValue for FsStatSlim {
+  #[inline]
+  fn file_type(&self) -> sys_traits::FileType {
+    self.file_type
+  }
+
+  fn modified(&self) -> Result<SystemTime, std::io::Error> {
+    self
+      .modified
+      .as_ref()
+      .map(|c| c.clone())
+      .map_err(|err| std::io::Error::new(err.kind(), err.to_string()))
+  }
 }
 
 pub type AccessCheckCb<'a> = &'a mut (dyn AccessCheckFn + 'a);
@@ -182,6 +236,10 @@ pub trait FileSystem: std::fmt::Debug + MaybeSend + MaybeSync {
 
   fn lstat_sync(&self, path: &Path) -> FsResult<FsStat>;
   async fn lstat_async(&self, path: PathBuf) -> FsResult<FsStat>;
+
+  // faster versions of the above that get less data
+  fn stat_slim_sync(&self, path: &Path) -> FsResult<FsStatSlim>;
+  fn lstat_slim_sync(&self, path: &Path) -> FsResult<FsStatSlim>;
 
   fn realpath_sync(&self, path: &Path) -> FsResult<PathBuf>;
   async fn realpath_async(&self, path: PathBuf) -> FsResult<PathBuf>;
@@ -359,5 +417,280 @@ fn string_from_utf8_lossy(buf: Vec<u8>) -> String {
     // SAFETY: if Borrowed then the buf only contains utf8 chars,
     // we do this instead of .into_owned() to avoid copying the input buf
     Cow::Borrowed(_) => unsafe { String::from_utf8_unchecked(buf) },
+  }
+}
+
+#[derive(Debug, Clone)]
+pub struct FsSysTraitsAdapter(pub FileSystemRc);
+
+impl FsSysTraitsAdapter {
+  pub fn new_real() -> Self {
+    Self(crate::sync::new_rc(crate::RealFs))
+  }
+}
+
+impl sys_traits::FsHardLinkImpl for FsSysTraitsAdapter {
+  #[inline]
+  fn fs_hard_link_impl(&self, src: &Path, dst: &Path) -> std::io::Result<()> {
+    self
+      .0
+      .link_sync(src, dst)
+      .map_err(|err| err.into_io_error())
+  }
+}
+
+impl sys_traits::FsReadImpl for FsSysTraitsAdapter {
+  #[inline]
+  fn fs_read_impl(&self, path: &Path) -> std::io::Result<Cow<'static, [u8]>> {
+    self
+      .0
+      .read_file_sync(path, None)
+      .map_err(|err| err.into_io_error())
+  }
+}
+
+#[derive(Debug)]
+pub struct FsSysTraitsAdapterReadDirEntry {
+  path: PathBuf,
+  entry: FsDirEntry,
+}
+
+impl sys_traits::FsDirEntry for FsSysTraitsAdapterReadDirEntry {
+  type Metadata = FsStatSlim;
+
+  fn file_name(&self) -> Cow<std::ffi::OsStr> {
+    Cow::Borrowed(self.entry.name.as_ref())
+  }
+
+  fn file_type(&self) -> std::io::Result<sys_traits::FileType> {
+    if self.entry.is_file {
+      Ok(sys_traits::FileType::File)
+    } else if self.entry.is_directory {
+      Ok(sys_traits::FileType::Dir)
+    } else if self.entry.is_symlink {
+      Ok(sys_traits::FileType::Symlink)
+    } else {
+      Ok(sys_traits::FileType::Unknown)
+    }
+  }
+
+  fn metadata(&self) -> std::io::Result<Self::Metadata> {
+    Ok(FsStatSlim {
+      file_type: self.file_type().unwrap(),
+      modified: Err(std::io::Error::new(
+        std::io::ErrorKind::Other,
+        "not supported",
+      )),
+    })
+  }
+
+  fn path(&self) -> Cow<Path> {
+    Cow::Borrowed(&self.path)
+  }
+}
+
+impl sys_traits::FsReadDirImpl for FsSysTraitsAdapter {
+  type ReadDirEntry = FsSysTraitsAdapterReadDirEntry;
+
+  fn fs_read_dir_impl(
+    &self,
+    path: &Path,
+  ) -> std::io::Result<
+    Box<dyn Iterator<Item = std::io::Result<Self::ReadDirEntry>>>,
+  > {
+    // todo(dsherret): needs to actually be iterable and not allocate a vector
+    let entries = self
+      .0
+      .read_dir_sync(path)
+      .map_err(|err| err.into_io_error())?;
+    let parent_dir = path.to_path_buf();
+    Ok(Box::new(entries.into_iter().map(move |entry| {
+      Ok(FsSysTraitsAdapterReadDirEntry {
+        path: parent_dir.join(&entry.name),
+        entry,
+      })
+    })))
+  }
+}
+
+impl sys_traits::FsCanonicalizeImpl for FsSysTraitsAdapter {
+  #[inline]
+  fn fs_canonicalize_impl(&self, path: &Path) -> std::io::Result<PathBuf> {
+    self
+      .0
+      .realpath_sync(path)
+      .map_err(|err| err.into_io_error())
+  }
+}
+
+impl sys_traits::FsMetadataImpl for FsSysTraitsAdapter {
+  type Metadata = FsStatSlim;
+
+  #[inline]
+  fn fs_metadata_impl(&self, path: &Path) -> std::io::Result<Self::Metadata> {
+    self
+      .0
+      .stat_slim_sync(path)
+      .map_err(|err| err.into_io_error())
+  }
+
+  #[inline]
+  fn fs_symlink_metadata_impl(
+    &self,
+    path: &Path,
+  ) -> std::io::Result<Self::Metadata> {
+    self
+      .0
+      .lstat_slim_sync(path)
+      .map_err(|err| err.into_io_error())
+  }
+}
+
+impl sys_traits::FsCreateDirAllImpl for FsSysTraitsAdapter {
+  #[inline]
+  fn fs_create_dir_all_impl(&self, path: &Path) -> std::io::Result<()> {
+    self
+      .0
+      .mkdir_sync(path, true, None)
+      .map_err(|err| err.into_io_error())
+  }
+}
+
+impl sys_traits::FsRemoveFileImpl for FsSysTraitsAdapter {
+  #[inline]
+  fn fs_remove_file_impl(&self, path: &Path) -> std::io::Result<()> {
+    self
+      .0
+      .remove_sync(path, false)
+      .map_err(|err| err.into_io_error())
+  }
+}
+
+impl sys_traits::FsRenameImpl for FsSysTraitsAdapter {
+  #[inline]
+  fn fs_rename_impl(&self, from: &Path, to: &Path) -> std::io::Result<()> {
+    self
+      .0
+      .rename_sync(from, to)
+      .map_err(|err| err.into_io_error())
+  }
+}
+
+pub struct FsFileAdapter(pub Rc<dyn File>);
+
+impl FsFile for FsFileAdapter {}
+
+impl FsFileSetPermissions for FsFileAdapter {
+  #[inline]
+  fn fs_file_set_permissions(&mut self, mode: u32) -> std::io::Result<()> {
+    self
+      .0
+      .clone()
+      .chmod_sync(mode)
+      .map_err(|err| err.into_io_error())
+  }
+}
+
+impl std::io::Read for FsFileAdapter {
+  #[inline]
+  fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
+    // todo(dsherret): this cloning doesn't seem great
+    self
+      .0
+      .clone()
+      .read_sync(buf)
+      .map_err(|err| err.into_io_error())
+  }
+}
+
+impl std::io::Seek for FsFileAdapter {
+  fn seek(&mut self, pos: std::io::SeekFrom) -> std::io::Result<u64> {
+    self
+      .0
+      .clone()
+      .seek_sync(pos)
+      .map_err(|err| err.into_io_error())
+  }
+}
+
+impl std::io::Write for FsFileAdapter {
+  #[inline]
+  fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+    // todo(dsherret): this cloning doesn't seem great
+    self
+      .0
+      .clone()
+      .write_sync(buf)
+      .map_err(|err| err.into_io_error())
+  }
+
+  #[inline]
+  fn flush(&mut self) -> std::io::Result<()> {
+    // todo(dsherret): this cloning doesn't seem great
+    self
+      .0
+      .clone()
+      .sync_sync()
+      .map_err(|err| err.into_io_error())
+  }
+}
+
+impl sys_traits::FsOpenImpl for FsSysTraitsAdapter {
+  type File = FsFileAdapter;
+
+  fn fs_open_impl(
+    &self,
+    path: &Path,
+    options: &sys_traits::OpenOptions,
+  ) -> std::io::Result<Self::File> {
+    self
+      .0
+      .open_sync(
+        path,
+        OpenOptions {
+          read: options.read,
+          write: options.write,
+          create: options.create,
+          truncate: options.truncate,
+          append: options.append,
+          create_new: options.create_new,
+          mode: options.mode,
+        },
+        None,
+      )
+      .map(FsFileAdapter)
+      .map_err(|err| err.into_io_error())
+  }
+}
+
+impl sys_traits::SystemRandom for FsSysTraitsAdapter {
+  #[inline]
+  fn sys_random(&self, buf: &mut [u8]) -> std::io::Result<()> {
+    getrandom::getrandom(buf).map_err(|err| {
+      std::io::Error::new(std::io::ErrorKind::Other, err.to_string())
+    })
+  }
+}
+
+impl sys_traits::SystemTimeNow for FsSysTraitsAdapter {
+  #[inline]
+  fn sys_time_now(&self) -> SystemTime {
+    SystemTime::now()
+  }
+}
+
+impl sys_traits::ThreadSleep for FsSysTraitsAdapter {
+  #[inline]
+  fn thread_sleep(&self, dur: Duration) {
+    std::thread::sleep(dur);
+  }
+}
+
+impl sys_traits::EnvVarImpl for FsSysTraitsAdapter {
+  fn env_var_os_impl(
+    &self,
+    key: &std::ffi::OsStr,
+  ) -> Option<std::ffi::OsString> {
+    std::env::var_os(key)
   }
 }

@@ -1,15 +1,16 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
-use deno_package_json::PackageJson;
-use deno_package_json::PackageJsonRc;
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::io::ErrorKind;
 use std::path::Path;
 use std::path::PathBuf;
+
+use deno_package_json::PackageJson;
+use deno_package_json::PackageJsonRc;
+use sys_traits::FsRead;
 use url::Url;
 
-use crate::env::NodeResolverEnv;
 use crate::errors::ClosestPkgJsonError;
 use crate::errors::PackageJsonLoadError;
 
@@ -38,17 +39,17 @@ impl deno_package_json::PackageJsonCache for PackageJsonThreadLocalCache {
 }
 
 #[allow(clippy::disallowed_types)]
-pub type PackageJsonResolverRc<TEnv> =
-  crate::sync::MaybeArc<PackageJsonResolver<TEnv>>;
+pub type PackageJsonResolverRc<TSys> =
+  crate::sync::MaybeArc<PackageJsonResolver<TSys>>;
 
 #[derive(Debug)]
-pub struct PackageJsonResolver<TEnv: NodeResolverEnv> {
-  env: TEnv,
+pub struct PackageJsonResolver<TSys: FsRead> {
+  sys: TSys,
 }
 
-impl<TEnv: NodeResolverEnv> PackageJsonResolver<TEnv> {
-  pub fn new(env: TEnv) -> Self {
-    Self { env }
+impl<TSys: FsRead> PackageJsonResolver<TSys> {
+  pub fn new(sys: TSys) -> Self {
+    Self { sys }
   }
 
   pub fn get_closest_package_json(
@@ -81,9 +82,9 @@ impl<TEnv: NodeResolverEnv> PackageJsonResolver<TEnv> {
     path: &Path,
   ) -> Result<Option<PackageJsonRc>, PackageJsonLoadError> {
     let result = PackageJson::load_from_path(
-      path,
-      self.env.pkg_json_fs(),
+      &self.sys,
       Some(&PackageJsonThreadLocalCache),
+      path,
     );
     match result {
       Ok(pkg_json) => Ok(Some(pkg_json)),

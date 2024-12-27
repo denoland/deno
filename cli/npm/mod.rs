@@ -17,7 +17,7 @@ use deno_resolver::npm::ByonmInNpmPackageChecker;
 use deno_resolver::npm::ByonmNpmResolver;
 use deno_resolver::npm::CliNpmReqResolver;
 use deno_resolver::npm::ResolvePkgFolderFromDenoReqError;
-use deno_runtime::deno_fs::FileSystem;
+use deno_runtime::deno_fs::FsSysTraitsAdapter;
 use deno_runtime::deno_node::NodePermissions;
 use deno_runtime::ops::process::NpmProcessStateProvider;
 use deno_semver::package::PackageNv;
@@ -30,9 +30,6 @@ use node_resolver::NpmPackageFolderResolver;
 
 use crate::file_fetcher::CliFileFetcher;
 use crate::http_util::HttpClientProvider;
-use crate::util::fs::atomic_write_file_with_retries_and_fs;
-use crate::util::fs::hard_link_dir_recursive;
-use crate::util::fs::AtomicWriteFileFsAdapter;
 use crate::util::progress_bar::ProgressBar;
 
 pub use self::byonm::CliByonmNpmResolver;
@@ -43,26 +40,26 @@ pub use self::managed::CliNpmResolverManagedSnapshotOption;
 pub use self::managed::ManagedCliNpmResolver;
 pub use self::managed::PackageCaching;
 
-pub type CliNpmTarballCache = deno_npm_cache::TarballCache<CliNpmCacheEnv>;
-pub type CliNpmCache = deno_npm_cache::NpmCache<CliNpmCacheEnv>;
-pub type CliNpmRegistryInfoProvider =
-  deno_npm_cache::RegistryInfoProvider<CliNpmCacheEnv>;
+pub type CliNpmTarballCache =
+  deno_npm_cache::TarballCache<CliNpmCacheHttpClient, FsSysTraitsAdapter>;
+pub type CliNpmCache = deno_npm_cache::NpmCache<FsSysTraitsAdapter>;
+pub type CliNpmRegistryInfoProvider = deno_npm_cache::RegistryInfoProvider<
+  CliNpmCacheHttpClient,
+  FsSysTraitsAdapter,
+>;
 
 #[derive(Debug)]
-pub struct CliNpmCacheEnv {
-  fs: Arc<dyn FileSystem>,
+pub struct CliNpmCacheHttpClient {
   http_client_provider: Arc<HttpClientProvider>,
   progress_bar: ProgressBar,
 }
 
-impl CliNpmCacheEnv {
+impl CliNpmCacheHttpClient {
   pub fn new(
-    fs: Arc<dyn FileSystem>,
     http_client_provider: Arc<HttpClientProvider>,
     progress_bar: ProgressBar,
   ) -> Self {
     Self {
-      fs,
       http_client_provider,
       progress_bar,
     }
@@ -70,35 +67,7 @@ impl CliNpmCacheEnv {
 }
 
 #[async_trait::async_trait(?Send)]
-impl deno_npm_cache::NpmCacheEnv for CliNpmCacheEnv {
-  fn exists(&self, path: &Path) -> bool {
-    self.fs.exists_sync(path)
-  }
-
-  fn hard_link_dir_recursive(
-    &self,
-    from: &Path,
-    to: &Path,
-  ) -> Result<(), AnyError> {
-    // todo(dsherret): use self.fs here instead
-    hard_link_dir_recursive(from, to)
-  }
-
-  fn atomic_write_file_with_retries(
-    &self,
-    file_path: &Path,
-    data: &[u8],
-  ) -> std::io::Result<()> {
-    atomic_write_file_with_retries_and_fs(
-      &AtomicWriteFileFsAdapter {
-        fs: self.fs.as_ref(),
-        write_mode: crate::cache::CACHE_PERM,
-      },
-      file_path,
-      data,
-    )
-  }
-
+impl deno_npm_cache::NpmCacheHttpClient for CliNpmCacheHttpClient {
   async fn download_with_retries_on_any_tokio_runtime(
     &self,
     url: Url,

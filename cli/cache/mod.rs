@@ -5,9 +5,6 @@ use crate::file_fetcher::CliFetchNoFollowErrorKind;
 use crate::file_fetcher::CliFileFetcher;
 use crate::file_fetcher::FetchNoFollowOptions;
 use crate::file_fetcher::FetchPermissionsOptionRef;
-use crate::util::fs::atomic_write_file_with_retries;
-use crate::util::fs::atomic_write_file_with_retries_and_fs;
-use crate::util::fs::AtomicWriteFileFsAdapter;
 
 use deno_ast::MediaType;
 use deno_cache_dir::file_fetcher::CacheSetting;
@@ -21,15 +18,12 @@ use deno_graph::source::CacheInfo;
 use deno_graph::source::LoadFuture;
 use deno_graph::source::LoadResponse;
 use deno_graph::source::Loader;
-use deno_runtime::deno_fs;
+use deno_runtime::deno_fs::FsSysTraitsAdapter;
 use deno_runtime::deno_permissions::PermissionsContainer;
 use node_resolver::InNpmPackageChecker;
-use std::borrow::Cow;
 use std::collections::HashMap;
-use std::path::Path;
 use std::path::PathBuf;
 use std::sync::Arc;
-use std::time::SystemTime;
 
 mod cache_db;
 mod caches;
@@ -63,121 +57,12 @@ pub use parsed_source::LazyGraphSourceParser;
 pub use parsed_source::ParsedSourceCache;
 
 /// Permissions used to save a file in the disk caches.
-pub const CACHE_PERM: u32 = 0o644;
+pub use deno_cache_dir::CACHE_PERM;
 
-#[derive(Debug, Clone)]
-pub struct RealDenoCacheEnv;
-
-impl deno_cache_dir::DenoCacheEnv for RealDenoCacheEnv {
-  fn read_file_bytes(
-    &self,
-    path: &Path,
-  ) -> std::io::Result<Cow<'static, [u8]>> {
-    std::fs::read(path).map(Cow::Owned)
-  }
-
-  fn atomic_write_file(
-    &self,
-    path: &Path,
-    bytes: &[u8],
-  ) -> std::io::Result<()> {
-    atomic_write_file_with_retries(path, bytes, CACHE_PERM)
-  }
-
-  fn canonicalize_path(&self, path: &Path) -> std::io::Result<PathBuf> {
-    crate::util::fs::canonicalize_path(path)
-  }
-
-  fn create_dir_all(&self, path: &Path) -> std::io::Result<()> {
-    std::fs::create_dir_all(path)
-  }
-
-  fn modified(&self, path: &Path) -> std::io::Result<Option<SystemTime>> {
-    match std::fs::metadata(path) {
-      Ok(metadata) => Ok(Some(
-        metadata.modified().unwrap_or_else(|_| SystemTime::now()),
-      )),
-      Err(err) if err.kind() == std::io::ErrorKind::NotFound => Ok(None),
-      Err(err) => Err(err),
-    }
-  }
-
-  fn is_file(&self, path: &Path) -> bool {
-    path.is_file()
-  }
-
-  fn time_now(&self) -> SystemTime {
-    SystemTime::now()
-  }
-}
-
-#[derive(Debug, Clone)]
-pub struct DenoCacheEnvFsAdapter<'a>(
-  pub &'a dyn deno_runtime::deno_fs::FileSystem,
-);
-
-impl<'a> deno_cache_dir::DenoCacheEnv for DenoCacheEnvFsAdapter<'a> {
-  fn read_file_bytes(
-    &self,
-    path: &Path,
-  ) -> std::io::Result<Cow<'static, [u8]>> {
-    self
-      .0
-      .read_file_sync(path, None)
-      .map_err(|err| err.into_io_error())
-  }
-
-  fn atomic_write_file(
-    &self,
-    path: &Path,
-    bytes: &[u8],
-  ) -> std::io::Result<()> {
-    atomic_write_file_with_retries_and_fs(
-      &AtomicWriteFileFsAdapter {
-        fs: self.0,
-        write_mode: CACHE_PERM,
-      },
-      path,
-      bytes,
-    )
-  }
-
-  fn canonicalize_path(&self, path: &Path) -> std::io::Result<PathBuf> {
-    self.0.realpath_sync(path).map_err(|e| e.into_io_error())
-  }
-
-  fn create_dir_all(&self, path: &Path) -> std::io::Result<()> {
-    self
-      .0
-      .mkdir_sync(path, true, None)
-      .map_err(|e| e.into_io_error())
-  }
-
-  fn modified(&self, path: &Path) -> std::io::Result<Option<SystemTime>> {
-    self
-      .0
-      .stat_sync(path)
-      .map(|stat| {
-        stat
-          .mtime
-          .map(|ts| SystemTime::UNIX_EPOCH + std::time::Duration::from_secs(ts))
-      })
-      .map_err(|e| e.into_io_error())
-  }
-
-  fn is_file(&self, path: &Path) -> bool {
-    self.0.is_file_sync(path)
-  }
-
-  fn time_now(&self) -> SystemTime {
-    SystemTime::now()
-  }
-}
-
-pub type GlobalHttpCache = deno_cache_dir::GlobalHttpCache<RealDenoCacheEnv>;
-pub type LocalHttpCache = deno_cache_dir::LocalHttpCache<RealDenoCacheEnv>;
+pub type GlobalHttpCache = deno_cache_dir::GlobalHttpCache<FsSysTraitsAdapter>;
+pub type LocalHttpCache = deno_cache_dir::LocalHttpCache<FsSysTraitsAdapter>;
 pub type LocalLspHttpCache =
-  deno_cache_dir::LocalLspHttpCache<RealDenoCacheEnv>;
+  deno_cache_dir::LocalLspHttpCache<FsSysTraitsAdapter>;
 pub use deno_cache_dir::HttpCache;
 
 pub struct FetchCacherOptions {
@@ -192,11 +77,11 @@ pub struct FetchCacherOptions {
 pub struct FetchCacher {
   pub file_header_overrides: HashMap<ModuleSpecifier, HashMap<String, String>>,
   file_fetcher: Arc<CliFileFetcher>,
-  fs: Arc<dyn deno_fs::FileSystem>,
   global_http_cache: Arc<GlobalHttpCache>,
   in_npm_pkg_checker: Arc<dyn InNpmPackageChecker>,
   module_info_cache: Arc<ModuleInfoCache>,
   permissions: PermissionsContainer,
+  sys: FsSysTraitsAdapter,
   is_deno_publish: bool,
   cache_info_enabled: bool,
 }
@@ -204,18 +89,18 @@ pub struct FetchCacher {
 impl FetchCacher {
   pub fn new(
     file_fetcher: Arc<CliFileFetcher>,
-    fs: Arc<dyn deno_fs::FileSystem>,
     global_http_cache: Arc<GlobalHttpCache>,
     in_npm_pkg_checker: Arc<dyn InNpmPackageChecker>,
     module_info_cache: Arc<ModuleInfoCache>,
+    sys: FsSysTraitsAdapter,
     options: FetchCacherOptions,
   ) -> Self {
     Self {
       file_fetcher,
-      fs,
       global_http_cache,
       in_npm_pkg_checker,
       module_info_cache,
+      sys,
       file_header_overrides: options.file_header_overrides,
       permissions: options.permissions,
       is_deno_publish: options.is_deno_publish,
@@ -277,9 +162,8 @@ impl Loader for FetchCacher {
       // symlinked to `/my-project-2/node_modules`), so first we checked if the path
       // is in a node_modules dir to avoid needlessly canonicalizing, then now compare
       // against the canonicalized specifier.
-      let specifier = crate::node::resolve_specifier_into_node_modules(
-        specifier,
-        self.fs.as_ref(),
+      let specifier = node_resolver::resolve_specifier_into_node_modules(
+        &self.sys, specifier,
       );
       if self.in_npm_pkg_checker.in_npm_package(&specifier) {
         return Box::pin(futures::future::ready(Ok(Some(

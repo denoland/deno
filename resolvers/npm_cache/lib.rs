@@ -14,6 +14,7 @@ use deno_cache_dir::npm::NpmCacheDir;
 use deno_npm::npm_rc::ResolvedNpmRc;
 use deno_npm::registry::NpmPackageInfo;
 use deno_npm::NpmPackageCacheFolderId;
+use deno_path_util::atomic_write_file_with_retries;
 use deno_semver::package::PackageNv;
 use deno_semver::StackString;
 use deno_semver::Version;
@@ -21,13 +22,24 @@ use http::HeaderName;
 use http::HeaderValue;
 use http::StatusCode;
 use parking_lot::Mutex;
+use sys_traits::FsCreateDirAll;
+use sys_traits::FsHardLink;
+use sys_traits::FsMetadata;
+use sys_traits::FsOpen;
+use sys_traits::FsReadDir;
+use sys_traits::FsRemoveFile;
+use sys_traits::FsRename;
+use sys_traits::SystemRandom;
+use sys_traits::ThreadSleep;
 use url::Url;
 
+mod fs_util;
 mod registry_info;
 mod remote;
 mod tarball;
 mod tarball_extract;
 
+pub use fs_util::hard_link_dir_recursive;
 pub use registry_info::RegistryInfoProvider;
 pub use tarball::TarballCache;
 
@@ -55,18 +67,7 @@ impl std::fmt::Display for DownloadError {
 }
 
 #[async_trait::async_trait(?Send)]
-pub trait NpmCacheEnv: Send + Sync + 'static {
-  fn exists(&self, path: &Path) -> bool;
-  fn hard_link_dir_recursive(
-    &self,
-    from: &Path,
-    to: &Path,
-  ) -> Result<(), AnyError>;
-  fn atomic_write_file_with_retries(
-    &self,
-    file_path: &Path,
-    data: &[u8],
-  ) -> std::io::Result<()>;
+pub trait NpmCacheHttpClient: Send + Sync + 'static {
   async fn download_with_retries_on_any_tokio_runtime(
     &self,
     url: Url,
@@ -126,27 +127,48 @@ impl NpmCacheSetting {
 
 /// Stores a single copy of npm packages in a cache.
 #[derive(Debug)]
-pub struct NpmCache<TEnv: NpmCacheEnv> {
-  env: Arc<TEnv>,
+pub struct NpmCache<
+  TSys: FsCreateDirAll
+    + FsHardLink
+    + FsMetadata
+    + FsOpen
+    + FsReadDir
+    + FsRemoveFile
+    + FsRename
+    + ThreadSleep
+    + SystemRandom,
+> {
   cache_dir: Arc<NpmCacheDir>,
+  sys: TSys,
   cache_setting: NpmCacheSetting,
   npmrc: Arc<ResolvedNpmRc>,
   previously_reloaded_packages: Mutex<HashSet<PackageNv>>,
 }
 
-impl<TEnv: NpmCacheEnv> NpmCache<TEnv> {
+impl<
+    TSys: FsCreateDirAll
+      + FsHardLink
+      + FsMetadata
+      + FsOpen
+      + FsReadDir
+      + FsRemoveFile
+      + FsRename
+      + ThreadSleep
+      + SystemRandom,
+  > NpmCache<TSys>
+{
   pub fn new(
     cache_dir: Arc<NpmCacheDir>,
+    sys: TSys,
     cache_setting: NpmCacheSetting,
-    env: Arc<TEnv>,
     npmrc: Arc<ResolvedNpmRc>,
   ) -> Self {
     Self {
       cache_dir,
+      sys,
       cache_setting,
-      env,
-      previously_reloaded_packages: Default::default(),
       npmrc,
+      previously_reloaded_packages: Default::default(),
     }
   }
 
@@ -211,9 +233,11 @@ impl<TEnv: NpmCacheEnv> NpmCache<TEnv> {
     // it seems Windows does an "AccessDenied" error when moving a
     // directory with hard links, so that's why this solution is done
     with_folder_sync_lock(&folder_id.nv, &package_folder, || {
-      self
-        .env
-        .hard_link_dir_recursive(&original_package_folder, &package_folder)
+      hard_link_dir_recursive(
+        &self.sys,
+        &original_package_folder,
+        &package_folder,
+      )
     })?;
     Ok(())
   }
@@ -290,9 +314,12 @@ impl<TEnv: NpmCacheEnv> NpmCache<TEnv> {
   ) -> Result<(), AnyError> {
     let file_cache_path = self.get_registry_package_info_file_cache_path(name);
     let file_text = serde_json::to_string(&package_info)?;
-    self
-      .env
-      .atomic_write_file_with_retries(&file_cache_path, file_text.as_bytes())?;
+    atomic_write_file_with_retries(
+      &self.sys,
+      &file_cache_path,
+      file_text.as_bytes(),
+      0o644,
+    )?;
     Ok(())
   }
 
@@ -304,6 +331,7 @@ impl<TEnv: NpmCacheEnv> NpmCache<TEnv> {
 
 const NPM_PACKAGE_SYNC_LOCK_FILENAME: &str = ".deno_sync_lock";
 
+// todo(dsherret): use `sys` here instead of `std::fs`.
 fn with_folder_sync_lock(
   package: &PackageNv,
   output_folder: &Path,

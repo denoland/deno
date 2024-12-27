@@ -23,6 +23,7 @@ use deno_path_util::normalize_path;
 use crate::interface::AccessCheckCb;
 use crate::interface::FsDirEntry;
 use crate::interface::FsFileType;
+use crate::interface::FsStatSlim;
 use crate::FileSystem;
 use crate::OpenOptions;
 
@@ -172,6 +173,17 @@ impl FileSystem for RealFs {
   }
   async fn lstat_async(&self, path: PathBuf) -> FsResult<FsStat> {
     spawn_blocking(move || lstat(&path)).await?.map(Into::into)
+  }
+
+  fn stat_slim_sync(&self, path: &Path) -> FsResult<FsStatSlim> {
+    std::fs::metadata(&path)
+      .map(|data| FsStatSlim::from_std(&data))
+      .map_err(Into::into)
+  }
+  fn lstat_slim_sync(&self, path: &Path) -> FsResult<FsStatSlim> {
+    std::fs::symlink_metadata(&path)
+      .map(|data| FsStatSlim::from_std(&data))
+      .map_err(Into::into)
   }
 
   fn exists_sync(&self, path: &Path) -> bool {

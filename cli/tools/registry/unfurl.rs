@@ -663,6 +663,7 @@ mod tests {
   use deno_config::workspace::ResolverWorkspaceJsrPackage;
   use deno_core::serde_json::json;
   use deno_core::url::Url;
+  use deno_runtime::deno_fs::FsSysTraitsAdapter;
   use deno_runtime::deno_fs::RealFs;
   use deno_runtime::deno_node::PackageJson;
   use deno_semver::Version;
@@ -722,10 +723,9 @@ mod tests {
       vec![Arc::new(package_json)],
       deno_config::workspace::PackageJsonDepResolution::Enabled,
     );
-    let fs = Arc::new(RealFs);
     let unfurler = SpecifierUnfurler::new(
       Some(Arc::new(CliSloppyImportsResolver::new(
-        SloppyImportsCachedFs::new(fs),
+        SloppyImportsCachedFs::new(FsSysTraitsAdapter::new_real()),
       ))),
       Arc::new(workspace_resolver),
       true,
