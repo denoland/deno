@@ -21,7 +21,7 @@ use deno_npm::NpmPackageId;
 use deno_npm::NpmResolutionPackage;
 use deno_npm::NpmSystemInfo;
 use deno_npm_cache::NpmCacheSetting;
-use deno_path_util::canonicalize_path_maybe_not_exists;
+use deno_path_util::fs::canonicalize_path_maybe_not_exists;
 use deno_resolver::npm::CliNpmReqResolver;
 use deno_runtime::colors;
 use deno_runtime::deno_fs::FsSysTraitsAdapter;
