@@ -7684,6 +7684,7 @@ version = "0.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "72001c0d1b690f17bb18ea7960821389199fd59ce6784f883fc76d0f3fbb6236"
 dependencies = [
+ "getrandom",
  "libc",
  "windows-sys 0.59.0",
 ]
