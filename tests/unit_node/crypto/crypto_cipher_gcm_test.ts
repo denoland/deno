@@ -119,3 +119,23 @@ Deno.test({
     );
   },
 });
+
+// Issue #27441
+// https://github.com/denoland/deno/issues/27441
+Deno.test({
+  name: "aes-256-gcm supports IV of non standard length",
+  fn() {
+    const decipher = crypto.createDecipheriv(
+      "aes-256-gcm",
+      Buffer.from("eYLEiLFQnpjYksWTiKpwv2sKhw+WJb5Fo/aY2YqXswc=", "base64"),
+      Buffer.from("k5oP3kb8tTbZaL3PxbFWN8ToOb8vfv2b1EuPz1LbmYU=", "base64"), // 256 bits IV
+    );
+    const decrypted = decipher.update(
+      "s0/KBsFec29XLrGbAnLiNA==",
+      "base64",
+      "utf-8",
+    );
+    assertEquals(decrypted, "this is a secret");
+    decipher.final();
+  },
+});
