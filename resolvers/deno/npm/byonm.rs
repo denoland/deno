@@ -141,9 +141,11 @@ impl<TSys: FsCanonicalize + FsRead + FsMetadata + FsReadDir>
         let node_modules_folder = ancestor.join("node_modules");
         let sub_dir = join_package_name(&node_modules_folder, alias);
         if sys.fs_is_dir_no_err(&sub_dir) {
-          return Ok(Some(deno_path_util::canonicalize_path_maybe_not_exists(
-            sys, &sub_dir,
-          )?));
+          return Ok(Some(
+            deno_path_util::fs::canonicalize_path_maybe_not_exists(
+              sys, &sub_dir,
+            )?,
+          ));
         }
       }
       Ok(None)

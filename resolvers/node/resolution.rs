@@ -1741,7 +1741,7 @@ pub fn resolve_specifier_into_node_modules(
     // this path might not exist at the time the graph is being created
     // because the node_modules folder might not yet exist
     .and_then(|path| {
-      deno_path_util::canonicalize_path_maybe_not_exists(sys, &path).ok()
+      deno_path_util::fs::canonicalize_path_maybe_not_exists(sys, &path).ok()
     })
     .and_then(|path| deno_path_util::url_from_file_path(&path).ok())
     .unwrap_or_else(|| specifier.clone())

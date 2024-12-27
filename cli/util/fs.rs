@@ -75,7 +75,7 @@ pub fn canonicalize_path(path: &Path) -> Result<PathBuf, Error> {
 pub fn canonicalize_path_maybe_not_exists(
   path: &Path,
 ) -> Result<PathBuf, Error> {
-  deno_path_util::canonicalize_path_maybe_not_exists(
+  deno_path_util::fs::canonicalize_path_maybe_not_exists(
     &FsSysTraitsAdapter::new_real(),
     path,
   )

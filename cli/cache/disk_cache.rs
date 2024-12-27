@@ -5,7 +5,7 @@ use super::CACHE_PERM;
 use deno_cache_dir::url_to_filename;
 use deno_core::url::Host;
 use deno_core::url::Url;
-use deno_path_util::atomic_write_file_with_retries;
+use deno_path_util::fs::atomic_write_file_with_retries;
 use deno_runtime::deno_fs::FsSysTraitsAdapter;
 use std::ffi::OsStr;
 use std::fs;

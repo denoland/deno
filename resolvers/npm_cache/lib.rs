@@ -14,7 +14,7 @@ use deno_cache_dir::npm::NpmCacheDir;
 use deno_npm::npm_rc::ResolvedNpmRc;
 use deno_npm::registry::NpmPackageInfo;
 use deno_npm::NpmPackageCacheFolderId;
-use deno_path_util::atomic_write_file_with_retries;
+use deno_path_util::fs::atomic_write_file_with_retries;
 use deno_semver::package::PackageNv;
 use deno_semver::StackString;
 use deno_semver::Version;

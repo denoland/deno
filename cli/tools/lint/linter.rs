@@ -15,7 +15,7 @@ use deno_lint::linter::LintConfig as DenoLintConfig;
 use deno_lint::linter::LintFileOptions;
 use deno_lint::linter::Linter as DenoLintLinter;
 use deno_lint::linter::LinterOptions;
-use deno_path_util::atomic_write_file_with_retries;
+use deno_path_util::fs::atomic_write_file_with_retries;
 use deno_runtime::deno_fs::FsSysTraitsAdapter;
 
 use crate::util::fs::specifier_from_file_path;
