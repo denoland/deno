@@ -7680,9 +7680,9 @@ dependencies = [
 
 [[package]]
 name = "sys_traits"
-version = "0.1.0"
+version = "0.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "72001c0d1b690f17bb18ea7960821389199fd59ce6784f883fc76d0f3fbb6236"
+checksum = "a5a12729b699487bb50163466e87be7197871d83d04cc6815d430cf7c893bbd7"
 dependencies = [
  "getrandom",
  "libc",

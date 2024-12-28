@@ -548,12 +548,16 @@ impl sys_traits::BaseFsMetadata for FsSysTraitsAdapter {
   }
 }
 
-impl sys_traits::BaseFsCreateDirAll for FsSysTraitsAdapter {
+impl sys_traits::BaseFsCreateDir for FsSysTraitsAdapter {
   #[inline]
-  fn base_fs_create_dir_all(&self, path: &Path) -> std::io::Result<()> {
+  fn base_fs_create_dir(
+    &self,
+    path: &Path,
+    options: &sys_traits::CreateDirOptions,
+  ) -> std::io::Result<()> {
     self
       .0
-      .mkdir_sync(path, true, None)
+      .mkdir_sync(path, options.recursive, options.mode)
       .map_err(|err| err.into_io_error())
   }
 }
