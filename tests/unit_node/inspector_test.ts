@@ -13,10 +13,10 @@ Deno.test("[node/inspector] - Session constructor should not throw", () => {
   new Session();
 });
 
-Deno.test("[node/inspector/promise] - importing inspector works", () => {
+Deno.test("[node/inspector/promises] - importing inspector works", () => {
   assertEquals(typeof inspectorPromises.open, "function");
 });
 
-Deno.test("[node/inspector/promise] - Session constructor should not throw", () => {
+Deno.test("[node/inspector/promises] - Session constructor should not throw", () => {
   new SessionPromise();
 });
