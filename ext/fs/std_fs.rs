@@ -61,7 +61,7 @@ impl FileSystem for RealFs {
       umask(Mode::from_bits_truncate(mask as mode_t))
     } else {
       // If no mask provided, we query the current. Requires two syscalls.
-      let prev = umask(Mode::from_bits_truncate(0o777));
+      let prev = umask(Mode::from_bits_truncate(0));
       let _ = umask(prev);
       prev
     };
@@ -802,6 +802,17 @@ fn stat_extra(
   use winapi::um::winnt::FILE_SHARE_READ;
   use winapi::um::winnt::FILE_SHARE_WRITE;
 
+  struct WinHandle(winapi::shared::ntdef::HANDLE);
+
+  impl Drop for WinHandle {
+    fn drop(&mut self) {
+      // SAFETY: winapi call
+      unsafe {
+        CloseHandle(self.0);
+      }
+    }
+  }
+
   unsafe fn get_dev(
     handle: winapi::shared::ntdef::HANDLE,
   ) -> std::io::Result<u64> {
@@ -883,11 +894,12 @@ fn stat_extra(
     if file_handle == INVALID_HANDLE_VALUE {
       return Err(std::io::Error::last_os_error().into());
     }
+    let file_handle = WinHandle(file_handle);
 
-    let result = get_dev(file_handle);
+    let result = get_dev(file_handle.0);
     fsstat.dev = result?;
 
-    if let Ok(file_info) = query_file_information(file_handle) {
+    if let Ok(file_info) = query_file_information(file_handle.0) {
       fsstat.ctime = Some(windows_time_to_unix_time_msec(
         &file_info.BasicInformation.ChangeTime,
       ) as u64);
@@ -924,7 +936,6 @@ fn stat_extra(
       }
     }
 
-    CloseHandle(file_handle);
     Ok(())
   }
 }
