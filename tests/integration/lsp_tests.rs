@@ -8712,6 +8712,7 @@ fn lsp_completions_node_specifier() {
       "node:http2",
       "node:https",
       "node:inspector",
+      "node:inspector/promises",
       "node:module",
       "node:net",
       "node:os",
