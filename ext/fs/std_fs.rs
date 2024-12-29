@@ -896,8 +896,7 @@ fn stat_extra(
     }
     let file_handle = WinHandle(file_handle);
 
-    let result = get_dev(file_handle.0);
-    fsstat.dev = result?;
+    fsstat.dev = get_dev(file_handle.0)?;
 
     if let Ok(file_info) = query_file_information(file_handle.0) {
       fsstat.ctime = Some(windows_time_to_unix_time_msec(
