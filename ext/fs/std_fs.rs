@@ -757,11 +757,16 @@ fn stat(path: &Path) -> FsResult<FsStat> {
 
 #[cfg(windows)]
 fn stat(path: &Path) -> FsResult<FsStat> {
-  let metadata = fs::metadata(path)?;
-  let mut fsstat = FsStat::from_std(metadata);
+  use std::os::windows::fs::OpenOptionsExt;
   use winapi::um::winbase::FILE_FLAG_BACKUP_SEMANTICS;
-  let path = path.canonicalize()?;
-  stat_extra(&mut fsstat, &path, FILE_FLAG_BACKUP_SEMANTICS)?;
+
+  let mut opts = fs::OpenOptions::new();
+  opts.access_mode(0); // no read or write
+  opts.custom_flags(FILE_FLAG_BACKUP_SEMANTICS);
+  let file = opts.open(path)?;
+  let metadata = file.metadata()?;
+  let mut fsstat = FsStat::from_std(metadata);
+  stat_extra(&file, &mut fsstat)?;
   Ok(fsstat)
 }
 
@@ -773,45 +778,24 @@ fn lstat(path: &Path) -> FsResult<FsStat> {
 
 #[cfg(windows)]
 fn lstat(path: &Path) -> FsResult<FsStat> {
+  use std::os::windows::fs::OpenOptionsExt;
+
   use winapi::um::winbase::FILE_FLAG_BACKUP_SEMANTICS;
   use winapi::um::winbase::FILE_FLAG_OPEN_REPARSE_POINT;
 
-  let metadata = fs::symlink_metadata(path)?;
+  let mut opts = fs::OpenOptions::new();
+  opts.access_mode(0); // no read or write
+  opts.custom_flags(FILE_FLAG_BACKUP_SEMANTICS | FILE_FLAG_OPEN_REPARSE_POINT);
+  let file = opts.open(path)?;
+  let metadata = file.metadata()?;
   let mut fsstat = FsStat::from_std(metadata);
-  stat_extra(
-    &mut fsstat,
-    path,
-    FILE_FLAG_BACKUP_SEMANTICS | FILE_FLAG_OPEN_REPARSE_POINT,
-  )?;
+  stat_extra(&file, &mut fsstat)?;
   Ok(fsstat)
 }
 
 #[cfg(windows)]
-fn stat_extra(
-  fsstat: &mut FsStat,
-  path: &Path,
-  file_flags: winapi::shared::minwindef::DWORD,
-) -> FsResult<()> {
-  use std::os::windows::prelude::OsStrExt;
-
-  use winapi::um::fileapi::CreateFileW;
-  use winapi::um::fileapi::OPEN_EXISTING;
-  use winapi::um::handleapi::CloseHandle;
-  use winapi::um::handleapi::INVALID_HANDLE_VALUE;
-  use winapi::um::winnt::FILE_SHARE_DELETE;
-  use winapi::um::winnt::FILE_SHARE_READ;
-  use winapi::um::winnt::FILE_SHARE_WRITE;
-
-  struct WinHandle(winapi::shared::ntdef::HANDLE);
-
-  impl Drop for WinHandle {
-    fn drop(&mut self) {
-      // SAFETY: winapi call
-      unsafe {
-        CloseHandle(self.0);
-      }
-    }
-  }
+fn stat_extra(file: &std::fs::File, fsstat: &mut FsStat) -> FsResult<()> {
+  use std::os::windows::io::AsRawHandle;
 
   unsafe fn get_dev(
     handle: winapi::shared::ntdef::HANDLE,
@@ -880,25 +864,11 @@ fn stat_extra(
 
   // SAFETY: winapi calls
   unsafe {
-    let mut path: Vec<_> = path.as_os_str().encode_wide().collect();
-    path.push(0);
-    let file_handle = CreateFileW(
-      path.as_ptr(),
-      0,
-      FILE_SHARE_READ | FILE_SHARE_DELETE | FILE_SHARE_WRITE,
-      std::ptr::null_mut(),
-      OPEN_EXISTING,
-      file_flags,
-      std::ptr::null_mut(),
-    );
-    if file_handle == INVALID_HANDLE_VALUE {
-      return Err(std::io::Error::last_os_error().into());
-    }
-    let file_handle = WinHandle(file_handle);
+    let file_handle = file.as_raw_handle();
 
-    fsstat.dev = get_dev(file_handle.0)?;
+    fsstat.dev = get_dev(file_handle)?;
 
-    if let Ok(file_info) = query_file_information(file_handle.0) {
+    if let Ok(file_info) = query_file_information(file_handle) {
       fsstat.ctime = Some(windows_time_to_unix_time_msec(
         &file_info.BasicInformation.ChangeTime,
       ) as u64);
