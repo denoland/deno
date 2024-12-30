@@ -1,5 +1,6 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
+use std::collections::BTreeMap;
 use std::collections::HashMap;
 use std::io::BufReader;
 use std::io::BufWriter;

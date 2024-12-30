@@ -77,20 +77,26 @@ use crate::npm::InnerCliNpmResolverRef;
 use crate::resolver::CjsTracker;
 use crate::shared::ReleaseChannel;
 use crate::standalone::virtual_fs::VfsEntry;
-use crate::sys::CliSys;
 use crate::util::archive;
 use crate::util::fs::canonicalize_path;
 use crate::util::fs::canonicalize_path_maybe_not_exists;
 use crate::util::progress_bar::ProgressBar;
 use crate::util::progress_bar::ProgressBarStyle;
 
+use super::file_system::DenoCompileFileSystem;
+use super::serialization::deserialize_binary_data_section;
 use super::serialization::serialize_binary_data_section;
+use super::serialization::DenoCompileModuleData;
+use super::serialization::DeserializedDataSection;
+use super::serialization::RemoteModulesStore;
 use super::serialization::RemoteModulesStoreBuilder;
 use super::serialization::SourceMapStore;
 use super::virtual_fs::output_vfs;
 use super::virtual_fs::BuiltVfs;
+use super::virtual_fs::FileBackedVfs;
 use super::virtual_fs::VfsBuilder;
 use super::virtual_fs::VfsFileSubDataKind;
+use super::virtual_fs::VfsRoot;
 use super::virtual_fs::VirtualDirectory;
 use super::virtual_fs::VirtualDirectoryEntries;
 use super::virtual_fs::WindowsSystemRootablePath;
@@ -250,6 +256,142 @@ pub fn is_standalone_binary(exe_path: &Path) -> bool {
   libsui::utils::is_elf(&data)
     || libsui::utils::is_pe(&data)
     || libsui::utils::is_macho(&data)
+}
+
+pub struct StandaloneData {
+  pub metadata: Metadata,
+  pub modules: StandaloneModules,
+  pub npm_snapshot: Option<ValidSerializedNpmResolutionSnapshot>,
+  pub root_path: PathBuf,
+  pub source_maps: SourceMapStore,
+  pub vfs: Arc<FileBackedVfs>,
+}
+
+pub struct StandaloneModules {
+  remote_modules: RemoteModulesStore,
+  vfs: Arc<FileBackedVfs>,
+}
+
+impl StandaloneModules {
+  pub fn resolve_specifier<'a>(
+    &'a self,
+    specifier: &'a ModuleSpecifier,
+  ) -> Result<Option<&'a ModuleSpecifier>, AnyError> {
+    if specifier.scheme() == "file" {
+      Ok(Some(specifier))
+    } else {
+      self.remote_modules.resolve_specifier(specifier)
+    }
+  }
+
+  pub fn has_file(&self, path: &Path) -> bool {
+    self.vfs.file_entry(path).is_ok()
+  }
+
+  pub fn read<'a>(
+    &'a self,
+    specifier: &'a ModuleSpecifier,
+    kind: VfsFileSubDataKind,
+  ) -> Result<Option<DenoCompileModuleData<'a>>, AnyError> {
+    if specifier.scheme() == "file" {
+      let path = deno_path_util::url_to_file_path(specifier)?;
+      let bytes = match self.vfs.file_entry(&path) {
+        Ok(entry) => self.vfs.read_file_all(entry, kind)?,
+        Err(err) if err.kind() == ErrorKind::NotFound => {
+          match RealFs.read_file_sync(&path, None) {
+            Ok(bytes) => bytes,
+            Err(FsError::Io(err)) if err.kind() == ErrorKind::NotFound => {
+              return Ok(None)
+            }
+            Err(err) => return Err(err.into()),
+          }
+        }
+        Err(err) => return Err(err.into()),
+      };
+      Ok(Some(DenoCompileModuleData {
+        media_type: MediaType::from_specifier(specifier),
+        specifier,
+        data: bytes,
+      }))
+    } else {
+      self.remote_modules.read(specifier).map(|maybe_entry| {
+        maybe_entry.map(|entry| DenoCompileModuleData {
+          media_type: entry.media_type,
+          specifier: entry.specifier,
+          data: match kind {
+            VfsFileSubDataKind::Raw => entry.data,
+            VfsFileSubDataKind::ModuleGraph => {
+              entry.transpiled_data.unwrap_or(entry.data)
+            }
+          },
+        })
+      })
+    }
+  }
+}
+
+/// This function will try to run this binary as a standalone binary
+/// produced by `deno compile`. It determines if this is a standalone
+/// binary by skipping over the trailer width at the end of the file,
+/// then checking for the magic trailer string `d3n0l4nd`. If found,
+/// the bundle is executed. If not, this function exits with `Ok(None)`.
+pub fn extract_standalone(
+  cli_args: Cow<Vec<OsString>>,
+) -> Result<Option<StandaloneData>, AnyError> {
+  let Some(data) = libsui::find_section("d3n0l4nd") else {
+    return Ok(None);
+  };
+
+  let DeserializedDataSection {
+    mut metadata,
+    npm_snapshot,
+    remote_modules,
+    source_maps,
+    vfs_root_entries,
+    vfs_files_data,
+  } = match deserialize_binary_data_section(data)? {
+    Some(data_section) => data_section,
+    None => return Ok(None),
+  };
+
+  let root_path = {
+    let maybe_current_exe = std::env::current_exe().ok();
+    let current_exe_name = maybe_current_exe
+      .as_ref()
+      .and_then(|p| p.file_name())
+      .map(|p| p.to_string_lossy())
+      // should never happen
+      .unwrap_or_else(|| Cow::Borrowed("binary"));
+    std::env::temp_dir().join(format!("deno-compile-{}", current_exe_name))
+  };
+  let cli_args = cli_args.into_owned();
+  metadata.argv.reserve(cli_args.len() - 1);
+  for arg in cli_args.into_iter().skip(1) {
+    metadata.argv.push(arg.into_string().unwrap());
+  }
+  let vfs = {
+    let fs_root = VfsRoot {
+      dir: VirtualDirectory {
+        // align the name of the directory with the root dir
+        name: root_path.file_name().unwrap().to_string_lossy().to_string(),
+        entries: vfs_root_entries,
+      },
+      root_path: root_path.clone(),
+      start_file_offset: 0,
+    };
+    Arc::new(FileBackedVfs::new(Cow::Borrowed(vfs_files_data), fs_root))
+  };
+  Ok(Some(StandaloneData {
+    metadata,
+    modules: StandaloneModules {
+      remote_modules,
+      vfs: vfs.clone(),
+    },
+    npm_snapshot,
+    root_path,
+    source_maps,
+    vfs,
+  }))
 }
 
 pub struct WriteBinOptions<'a> {

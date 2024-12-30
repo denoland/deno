@@ -876,7 +876,9 @@ mod tests {
       resolve_path("./hello.js", &std::env::current_dir().unwrap()).unwrap();
     let fs = Arc::new(RealFs);
     let permission_desc_parser =
-      Arc::new(RuntimePermissionDescriptorParser::new(fs.clone()));
+      Arc::new(RuntimePermissionDescriptorParser::new(
+        sys_traits::impls::RealSys.clone(),
+      ));
     let options = WorkerOptions {
       startup_snapshot: crate::js::deno_isolate_init(),
       ..Default::default()
