@@ -11,6 +11,7 @@ use crate::lsp::logging::lsp_warn;
 use deno_core::url::Url;
 use deno_core::ModuleSpecifier;
 use deno_path_util::url_to_file_path;
+use deno_runtime::deno_fs::FsSysTraitsAdapter;
 use std::collections::BTreeMap;
 use std::fs;
 use std::path::Path;
@@ -94,8 +95,8 @@ impl LspCache {
     let deno_dir = DenoDir::new(global_cache_path)
       .expect("should be infallible with absolute custom root");
     let global = Arc::new(GlobalHttpCache::new(
+      FsSysTraitsAdapter::new_real(),
       deno_dir.remote_folder_path(),
-      crate::cache::RealDenoCacheEnv,
     ));
     Self {
       deno_dir,

@@ -30,6 +30,7 @@ use deno_npm::npm_rc::ResolvedNpmRc;
 use deno_npm::resolution::ValidSerializedNpmResolutionSnapshot;
 use deno_npm::NpmSystemInfo;
 use deno_path_util::normalize_path;
+use deno_runtime::deno_fs::FsSysTraitsAdapter;
 use deno_semver::npm::NpmPackageReqReference;
 use deno_semver::StackString;
 use deno_telemetry::OtelConfig;
@@ -83,9 +84,9 @@ use std::num::NonZeroUsize;
 use std::path::Path;
 use std::path::PathBuf;
 use std::sync::Arc;
+use sys_traits::EnvHomeDir;
 use thiserror::Error;
 
-use crate::cache;
 use crate::cache::DenoDirProvider;
 use crate::file_fetcher::CliFileFetcher;
 use crate::util::fs::canonicalize_path_maybe_not_exists;
@@ -572,7 +573,7 @@ fn discover_npmrc(
   // TODO(bartlomieju): update to read both files - one in the project root and one and
   // home dir and then merge them.
   // 3. Try `.npmrc` in the user's home directory
-  if let Some(home_dir) = cache::home_dir() {
+  if let Some(home_dir) = sys_traits::impls::RealSys.env_home_dir() {
     match try_to_read_npmrc(&home_dir) {
       Ok(Some((source, path))) => {
         return try_to_parse_npmrc(source, &path).map(|r| (r, Some(path)));
@@ -845,7 +846,6 @@ impl CliOptions {
         log::debug!("package.json auto-discovery is disabled");
       }
       WorkspaceDiscoverOptions {
-        fs: Default::default(), // use real fs
         deno_json_cache: None,
         pkg_json_cache: Some(&node_resolver::PackageJsonThreadLocalCache),
         workspace_cache: None,
@@ -867,6 +867,7 @@ impl CliOptions {
       ConfigFlag::Discover => {
         if let Some(start_paths) = flags.config_path_args(&initial_cwd) {
           WorkspaceDirectory::discover(
+            &FsSysTraitsAdapter::new_real(),
             WorkspaceDiscoverStart::Paths(&start_paths),
             &resolve_workspace_discover_options(),
           )?
@@ -877,6 +878,7 @@ impl CliOptions {
       ConfigFlag::Path(path) => {
         let config_path = normalize_path(initial_cwd.join(path));
         WorkspaceDirectory::discover(
+          &FsSysTraitsAdapter::new_real(),
           WorkspaceDiscoverStart::ConfigFile(&config_path),
           &resolve_workspace_discover_options(),
         )?

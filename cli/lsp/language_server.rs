@@ -17,6 +17,7 @@ use deno_core::ModuleSpecifier;
 use deno_graph::GraphKind;
 use deno_graph::Resolution;
 use deno_path_util::url_to_file_path;
+use deno_runtime::deno_fs::FsSysTraitsAdapter;
 use deno_runtime::deno_tls::rustls::RootCertStore;
 use deno_runtime::deno_tls::RootCertStoreProvider;
 use deno_semver::jsr::JsrPackageReqReference;
@@ -279,7 +280,7 @@ impl LanguageServer {
         .await?;
       graph_util::graph_valid(
         &graph,
-        factory.fs(),
+        &FsSysTraitsAdapter(factory.fs().clone()),
         &roots,
         graph_util::GraphValidOptions {
           kind: GraphKind::All,
@@ -3612,11 +3613,11 @@ impl Inner {
     let workspace = match config_data {
       Some(d) => d.member_dir.clone(),
       None => Arc::new(WorkspaceDirectory::discover(
+        &FsSysTraitsAdapter::new_real(),
         deno_config::workspace::WorkspaceDiscoverStart::Paths(&[
           initial_cwd.clone()
         ]),
         &WorkspaceDiscoverOptions {
-          fs: Default::default(), // use real fs,
           deno_json_cache: None,
           pkg_json_cache: None,
           workspace_cache: None,

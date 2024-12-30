@@ -6,7 +6,6 @@ use std::path::PathBuf;
 use boxed_error::Boxed;
 use deno_semver::npm::NpmPackageReqReference;
 use deno_semver::package::PackageReq;
-use node_resolver::env::NodeResolverEnv;
 use node_resolver::errors::NodeResolveError;
 use node_resolver::errors::NodeResolveErrorKind;
 use node_resolver::errors::PackageFolderResolveErrorKind;
@@ -15,14 +14,17 @@ use node_resolver::errors::PackageNotFoundError;
 use node_resolver::errors::PackageResolveErrorKind;
 use node_resolver::errors::PackageSubpathResolveError;
 use node_resolver::InNpmPackageCheckerRc;
+use node_resolver::IsBuiltInNodeModuleChecker;
 use node_resolver::NodeResolution;
 use node_resolver::NodeResolutionKind;
 use node_resolver::NodeResolverRc;
 use node_resolver::ResolutionMode;
+use sys_traits::FsCanonicalize;
+use sys_traits::FsMetadata;
+use sys_traits::FsRead;
+use sys_traits::FsReadDir;
 use thiserror::Error;
 use url::Url;
-
-use crate::fs::DenoResolverFs;
 
 pub use byonm::ByonmInNpmPackageChecker;
 pub use byonm::ByonmNpmResolver;
@@ -95,40 +97,46 @@ pub trait CliNpmReqResolver: Debug + Send + Sync {
 }
 
 pub struct NpmReqResolverOptions<
-  Fs: DenoResolverFs,
-  TNodeResolverEnv: NodeResolverEnv,
+  TIsBuiltInNodeModuleChecker: IsBuiltInNodeModuleChecker,
+  TSys: FsCanonicalize + FsMetadata + FsRead + FsReadDir,
 > {
   /// The resolver when "bring your own node_modules" is enabled where Deno
   /// does not setup the node_modules directories automatically, but instead
   /// uses what already exists on the file system.
-  pub byonm_resolver: Option<ByonmNpmResolverRc<Fs, TNodeResolverEnv>>,
-  pub fs: Fs,
+  pub byonm_resolver: Option<ByonmNpmResolverRc<TSys>>,
   pub in_npm_pkg_checker: InNpmPackageCheckerRc,
-  pub node_resolver: NodeResolverRc<TNodeResolverEnv>,
+  pub node_resolver: NodeResolverRc<TIsBuiltInNodeModuleChecker, TSys>,
   pub npm_req_resolver: CliNpmReqResolverRc,
+  pub sys: TSys,
 }
 
 #[allow(clippy::disallowed_types)]
-pub type NpmReqResolverRc<Fs, TNodeResolverEnv> =
-  crate::sync::MaybeArc<NpmReqResolver<Fs, TNodeResolverEnv>>;
+pub type NpmReqResolverRc<TIsBuiltInNodeModuleChecker, TSys> =
+  crate::sync::MaybeArc<NpmReqResolver<TIsBuiltInNodeModuleChecker, TSys>>;
 
 #[derive(Debug)]
-pub struct NpmReqResolver<Fs: DenoResolverFs, TNodeResolverEnv: NodeResolverEnv>
-{
-  byonm_resolver: Option<ByonmNpmResolverRc<Fs, TNodeResolverEnv>>,
-  fs: Fs,
+pub struct NpmReqResolver<
+  TIsBuiltInNodeModuleChecker: IsBuiltInNodeModuleChecker,
+  TSys: FsCanonicalize + FsMetadata + FsRead + FsReadDir,
+> {
+  byonm_resolver: Option<ByonmNpmResolverRc<TSys>>,
+  sys: TSys,
   in_npm_pkg_checker: InNpmPackageCheckerRc,
-  node_resolver: NodeResolverRc<TNodeResolverEnv>,
+  node_resolver: NodeResolverRc<TIsBuiltInNodeModuleChecker, TSys>,
   npm_resolver: CliNpmReqResolverRc,
 }
 
-impl<Fs: DenoResolverFs, TNodeResolverEnv: NodeResolverEnv>
-  NpmReqResolver<Fs, TNodeResolverEnv>
+impl<
+    TIsBuiltInNodeModuleChecker: IsBuiltInNodeModuleChecker,
+    TSys: FsCanonicalize + FsMetadata + FsRead + FsReadDir,
+  > NpmReqResolver<TIsBuiltInNodeModuleChecker, TSys>
 {
-  pub fn new(options: NpmReqResolverOptions<Fs, TNodeResolverEnv>) -> Self {
+  pub fn new(
+    options: NpmReqResolverOptions<TIsBuiltInNodeModuleChecker, TSys>,
+  ) -> Self {
     Self {
       byonm_resolver: options.byonm_resolver,
-      fs: options.fs,
+      sys: options.sys,
       in_npm_pkg_checker: options.in_npm_pkg_checker,
       node_resolver: options.node_resolver,
       npm_resolver: options.npm_req_resolver,
@@ -175,7 +183,7 @@ impl<Fs: DenoResolverFs, TNodeResolverEnv: NodeResolverEnv>
       Err(err) => {
         if self.byonm_resolver.is_some() {
           let package_json_path = package_folder.join("package.json");
-          if !self.fs.exists_sync(&package_json_path) {
+          if !self.sys.fs_exists_no_err(&package_json_path) {
             return Err(
               MissingPackageNodeModulesFolderError { package_json_path }.into(),
             );

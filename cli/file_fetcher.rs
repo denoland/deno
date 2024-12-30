@@ -1,11 +1,8 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
-use crate::cache::HttpCache;
-use crate::cache::RealDenoCacheEnv;
-use crate::colors;
-use crate::http_util::get_response_body_with_progress;
-use crate::http_util::HttpClientProvider;
-use crate::util::progress_bar::ProgressBar;
+use std::borrow::Cow;
+use std::collections::HashMap;
+use std::sync::Arc;
 
 use boxed_error::Boxed;
 use deno_ast::MediaType;
@@ -27,7 +24,7 @@ use deno_core::url::Url;
 use deno_core::ModuleSpecifier;
 use deno_error::JsError;
 use deno_graph::source::LoaderChecksum;
-
+use deno_runtime::deno_fs::FsSysTraitsAdapter;
 use deno_runtime::deno_permissions::CheckSpecifierKind;
 use deno_runtime::deno_permissions::PermissionCheckError;
 use deno_runtime::deno_permissions::PermissionsContainer;
@@ -35,11 +32,13 @@ use deno_runtime::deno_web::BlobStore;
 use http::header;
 use http::HeaderMap;
 use http::StatusCode;
-use std::borrow::Cow;
-use std::collections::HashMap;
-use std::env;
-use std::sync::Arc;
 use thiserror::Error;
+
+use crate::cache::HttpCache;
+use crate::colors;
+use crate::http_util::get_response_body_with_progress;
+use crate::http_util::HttpClientProvider;
+use crate::util::progress_bar::ProgressBar;
 
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub struct TextDecodedFile {
@@ -268,7 +267,7 @@ pub struct FetchNoFollowOptions<'a> {
 
 type DenoCacheDirFileFetcher = deno_cache_dir::file_fetcher::FileFetcher<
   BlobStoreAdapter,
-  RealDenoCacheEnv,
+  FsSysTraitsAdapter,
   HttpClientAdapter,
 >;
 
@@ -290,9 +289,11 @@ impl CliFileFetcher {
     download_log_level: log::Level,
   ) -> Self {
     let memory_files = Arc::new(MemoryFiles::default());
+    let sys = FsSysTraitsAdapter::new_real();
+    let auth_tokens = AuthTokens::new_from_sys(&sys);
     let file_fetcher = DenoCacheDirFileFetcher::new(
       BlobStoreAdapter(blob_store),
-      RealDenoCacheEnv,
+      sys,
       http_cache,
       HttpClientAdapter {
         http_client_provider: http_client_provider.clone(),
@@ -303,7 +304,7 @@ impl CliFileFetcher {
       FileFetcherOptions {
         allow_remote,
         cache_setting,
-        auth_tokens: AuthTokens::new(env::var("DENO_AUTH_TOKENS").ok()),
+        auth_tokens,
       },
     );
     Self {
@@ -497,7 +498,6 @@ fn validate_scheme(specifier: &Url) -> Result<(), UnsupportedSchemeError> {
 #[cfg(test)]
 mod tests {
   use crate::cache::GlobalHttpCache;
-  use crate::cache::RealDenoCacheEnv;
   use crate::http_util::HttpClientProvider;
 
   use super::*;
@@ -538,7 +538,10 @@ mod tests {
     let temp_dir = maybe_temp_dir.unwrap_or_default();
     let location = temp_dir.path().join("remote").to_path_buf();
     let blob_store: Arc<BlobStore> = Default::default();
-    let cache = Arc::new(GlobalHttpCache::new(location, RealDenoCacheEnv));
+    let cache = Arc::new(GlobalHttpCache::new(
+      FsSysTraitsAdapter::new_real(),
+      location,
+    ));
     let file_fetcher = CliFileFetcher::new(
       cache.clone(),
       Arc::new(HttpClientProvider::new(None, None)),
@@ -752,8 +755,8 @@ mod tests {
     let location = temp_dir.path().join("remote").to_path_buf();
     let file_fetcher = CliFileFetcher::new(
       Arc::new(GlobalHttpCache::new(
+        FsSysTraitsAdapter::new_real(),
         location,
-        crate::cache::RealDenoCacheEnv,
       )),
       Arc::new(HttpClientProvider::new(None, None)),
       Default::default(),
@@ -781,8 +784,8 @@ mod tests {
       resolve_url("http://localhost:4545/subdir/mismatch_ext.ts").unwrap();
 
     let http_cache = Arc::new(GlobalHttpCache::new(
+      FsSysTraitsAdapter::new_real(),
       location.clone(),
-      crate::cache::RealDenoCacheEnv,
     ));
     let file_modified_01 = {
       let file_fetcher = CliFileFetcher::new(
@@ -808,8 +811,8 @@ mod tests {
     let file_modified_02 = {
       let file_fetcher = CliFileFetcher::new(
         Arc::new(GlobalHttpCache::new(
+          FsSysTraitsAdapter::new_real(),
           location,
-          crate::cache::RealDenoCacheEnv,
         )),
         Arc::new(HttpClientProvider::new(None, None)),
         Default::default(),
@@ -938,8 +941,8 @@ mod tests {
     let redirected_specifier =
       resolve_url("http://localhost:4546/subdir/mismatch_ext.ts").unwrap();
     let http_cache = Arc::new(GlobalHttpCache::new(
+      FsSysTraitsAdapter::new_real(),
       location.clone(),
-      crate::cache::RealDenoCacheEnv,
     ));
 
     let metadata_file_modified_01 = {
@@ -1073,8 +1076,8 @@ mod tests {
     let location = temp_dir.path().join("remote").to_path_buf();
     let file_fetcher = CliFileFetcher::new(
       Arc::new(GlobalHttpCache::new(
+        FsSysTraitsAdapter::new_real(),
         location,
-        crate::cache::RealDenoCacheEnv,
       )),
       Arc::new(HttpClientProvider::new(None, None)),
       Default::default(),
@@ -1110,7 +1113,10 @@ mod tests {
     let temp_dir = TempDir::new();
     let location = temp_dir.path().join("remote").to_path_buf();
     let file_fetcher_01 = CliFileFetcher::new(
-      Arc::new(GlobalHttpCache::new(location.clone(), RealDenoCacheEnv)),
+      Arc::new(GlobalHttpCache::new(
+        FsSysTraitsAdapter::new_real(),
+        location.clone(),
+      )),
       Arc::new(HttpClientProvider::new(None, None)),
       Default::default(),
       None,
@@ -1119,7 +1125,10 @@ mod tests {
       log::Level::Info,
     );
     let file_fetcher_02 = CliFileFetcher::new(
-      Arc::new(GlobalHttpCache::new(location, RealDenoCacheEnv)),
+      Arc::new(GlobalHttpCache::new(
+        FsSysTraitsAdapter::new_real(),
+        location,
+      )),
       Arc::new(HttpClientProvider::new(None, None)),
       Default::default(),
       None,
