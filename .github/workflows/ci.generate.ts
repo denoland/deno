@@ -707,7 +707,7 @@ const ci = {
           if: [
             "(matrix.job == 'test' || matrix.job == 'bench') &&",
             "matrix.profile == 'release' && (matrix.use_sysroot ||",
-            "github.repository == 'denoland/deno')",
+            "github.repository == 'denoland/deno' || github.repository == 'nathanwhit/deno')",
           ].join("\n"),
           run: [
             // output fs space before and after building
@@ -721,8 +721,8 @@ const ci = {
           if: [
             "matrix.job == 'test' &&",
             "matrix.profile == 'release' &&",
-            "github.repository == 'denoland/deno'",
-          ],
+            "(github.repository == 'denoland/deno' || github.repository == 'nathanwhit/deno')",
+          ].join("\n"),
           run: [
             "df -h",
             "cargo build --profile=release-slim --locked --bin denort",
@@ -769,7 +769,7 @@ const ci = {
             "matrix.os == 'linux' &&",
             "matrix.job == 'test' &&",
             "matrix.profile == 'release' &&",
-            "github.repository == 'denoland/deno'",
+            "github.repository == 'denoland/deno' || github.repository == 'nathanwhit/deno'",
           ].join("\n"),
           run: [
             "cd target/release",
