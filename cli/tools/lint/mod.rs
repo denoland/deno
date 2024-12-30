@@ -21,6 +21,7 @@ use deno_core::unsync::future::SharedLocal;
 use deno_graph::ModuleGraph;
 use deno_lint::diagnostic::LintDiagnostic;
 use deno_lint::linter::LintConfig as DenoLintConfig;
+use deno_runtime::deno_fs::FsSysTraitsAdapter;
 use log::debug;
 use reporters::create_reporter;
 use reporters::LintReporter;
@@ -51,10 +52,13 @@ use crate::util::fs::canonicalize_path;
 use crate::util::path::is_script_ext;
 use crate::util::sync::AtomicFlag;
 
+mod ast_buffer;
 mod linter;
 mod reporters;
 mod rules;
 
+// TODO(bartlomieju): remove once we wire plugins through the CLI linter
+pub use ast_buffer::serialize_ast_to_buffer;
 pub use linter::CliLinter;
 pub use linter::CliLinterOptions;
 pub use rules::collect_no_slow_type_diagnostics;
@@ -449,7 +453,7 @@ fn collect_lint_files(
   .ignore_node_modules()
   .use_gitignore()
   .set_vendor_folder(cli_options.vendor_dir_path().map(ToOwned::to_owned))
-  .collect_file_patterns(&deno_config::fs::RealDenoConfigFs, files)
+  .collect_file_patterns(&FsSysTraitsAdapter::new_real(), files)
 }
 
 #[allow(clippy::print_stdout)]

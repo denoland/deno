@@ -30,7 +30,9 @@ use deno_npm::npm_rc::ResolvedNpmRc;
 use deno_npm::resolution::ValidSerializedNpmResolutionSnapshot;
 use deno_npm::NpmSystemInfo;
 use deno_path_util::normalize_path;
+use deno_runtime::deno_fs::FsSysTraitsAdapter;
 use deno_semver::npm::NpmPackageReqReference;
+use deno_semver::StackString;
 use deno_telemetry::OtelConfig;
 use deno_telemetry::OtelRuntimeConfig;
 use import_map::resolve_import_map_value_from_specifier;
@@ -82,9 +84,9 @@ use std::net::SocketAddr;
 use std::path::Path;
 use std::path::PathBuf;
 use std::sync::Arc;
+use sys_traits::EnvHomeDir;
 use thiserror::Error;
 
-use crate::cache;
 use crate::cache::DenoDirProvider;
 use crate::file_fetcher::CliFileFetcher;
 use crate::util::fs::canonicalize_path_maybe_not_exists;
@@ -520,7 +522,7 @@ fn discover_npmrc(
   // TODO(bartlomieju): update to read both files - one in the project root and one and
   // home dir and then merge them.
   // 3. Try `.npmrc` in the user's home directory
-  if let Some(home_dir) = cache::home_dir() {
+  if let Some(home_dir) = sys_traits::impls::RealSys.env_home_dir() {
     match try_to_read_npmrc(&home_dir) {
       Ok(Some((source, path))) => {
         return try_to_parse_npmrc(source, &path).map(|r| (r, Some(path)));
@@ -821,7 +823,6 @@ impl CliOptions {
         log::debug!("package.json auto-discovery is disabled");
       }
       WorkspaceDiscoverOptions {
-        fs: Default::default(), // use real fs
         deno_json_cache: None,
         pkg_json_cache: Some(&node_resolver::PackageJsonThreadLocalCache),
         workspace_cache: None,
@@ -843,6 +844,7 @@ impl CliOptions {
       ConfigFlag::Discover => {
         if let Some(start_paths) = flags.config_path_args(&initial_cwd) {
           WorkspaceDirectory::discover(
+            &FsSysTraitsAdapter::new_real(),
             WorkspaceDiscoverStart::Paths(&start_paths),
             &resolve_workspace_discover_options(),
           )?
@@ -853,6 +855,7 @@ impl CliOptions {
       ConfigFlag::Path(path) => {
         let config_path = normalize_path(initial_cwd.join(path));
         WorkspaceDirectory::discover(
+          &FsSysTraitsAdapter::new_real(),
           WorkspaceDiscoverStart::ConfigFile(&config_path),
           &resolve_workspace_discover_options(),
         )?
@@ -984,24 +987,24 @@ impl CliOptions {
         // https://nodejs.org/api/process.html
         match target.as_str() {
           "aarch64-apple-darwin" => NpmSystemInfo {
-            os: "darwin".to_string(),
-            cpu: "arm64".to_string(),
+            os: "darwin".into(),
+            cpu: "arm64".into(),
           },
           "aarch64-unknown-linux-gnu" => NpmSystemInfo {
-            os: "linux".to_string(),
-            cpu: "arm64".to_string(),
+            os: "linux".into(),
+            cpu: "arm64".into(),
           },
           "x86_64-apple-darwin" => NpmSystemInfo {
-            os: "darwin".to_string(),
-            cpu: "x64".to_string(),
+            os: "darwin".into(),
+            cpu: "x64".into(),
           },
           "x86_64-unknown-linux-gnu" => NpmSystemInfo {
-            os: "linux".to_string(),
-            cpu: "x64".to_string(),
+            os: "linux".into(),
+            cpu: "x64".into(),
           },
           "x86_64-pc-windows-msvc" => NpmSystemInfo {
-            os: "win32".to_string(),
-            cpu: "x64".to_string(),
+            os: "win32".into(),
+            cpu: "x64".into(),
           },
           value => {
             log::warn!(
@@ -1396,9 +1399,9 @@ impl CliOptions {
 
     Ok(DenoLintConfig {
       default_jsx_factory: (!transpile_options.jsx_automatic)
-        .then(|| transpile_options.jsx_factory.clone()),
+        .then_some(transpile_options.jsx_factory),
       default_jsx_fragment_factory: (!transpile_options.jsx_automatic)
-        .then(|| transpile_options.jsx_fragment_factory.clone()),
+        .then_some(transpile_options.jsx_fragment_factory),
     })
   }
 
@@ -1981,15 +1984,17 @@ pub fn has_flag_env_var(name: &str) -> bool {
 pub fn npm_pkg_req_ref_to_binary_command(
   req_ref: &NpmPackageReqReference,
 ) -> String {
-  let binary_name = req_ref.sub_path().unwrap_or(req_ref.req().name.as_str());
-  binary_name.to_string()
+  req_ref
+    .sub_path()
+    .map(|s| s.to_string())
+    .unwrap_or_else(|| req_ref.req().name.to_string())
 }
 
 pub fn config_to_deno_graph_workspace_member(
   config: &ConfigFile,
 ) -> Result<deno_graph::WorkspaceMember, AnyError> {
-  let name = match &config.json.name {
-    Some(name) => name.clone(),
+  let name: StackString = match &config.json.name {
+    Some(name) => name.as_str().into(),
     None => bail!("Missing 'name' field in config file."),
   };
   let version = match &config.json.version {

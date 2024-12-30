@@ -34,6 +34,7 @@ use deno_core::futures;
 use deno_core::parking_lot::Mutex;
 use deno_core::unsync::spawn_blocking;
 use deno_core::url::Url;
+use deno_runtime::deno_fs::FsSysTraitsAdapter;
 use log::debug;
 use log::info;
 use log::warn;
@@ -230,7 +231,7 @@ fn collect_fmt_files(
   .ignore_node_modules()
   .use_gitignore()
   .set_vendor_folder(cli_options.vendor_dir_path().map(ToOwned::to_owned))
-  .collect_file_patterns(&deno_config::fs::RealDenoConfigFs, files)
+  .collect_file_patterns(&FsSysTraitsAdapter::new_real(), files)
 }
 
 /// Formats markdown (using <https://github.com/dprint/dprint-plugin-markdown>) and its code blocks

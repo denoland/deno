@@ -19,9 +19,10 @@ use deno_resolver::cjs::IsCjsResolutionMode;
 use deno_resolver::npm::NpmReqResolverOptions;
 use deno_resolver::DenoResolverOptions;
 use deno_resolver::NodeAndNpmReqResolver;
-use deno_runtime::deno_fs;
+use deno_runtime::deno_fs::FsSysTraitsAdapter;
 use deno_runtime::deno_node::NodeResolver;
 use deno_runtime::deno_node::PackageJsonResolver;
+use deno_runtime::deno_node::RealIsBuiltInNodeModuleChecker;
 use deno_semver::jsr::JsrPackageReqReference;
 use deno_semver::npm::NpmPackageReqReference;
 use deno_semver::package::PackageNv;
@@ -42,7 +43,6 @@ use super::jsr::JsrCacheResolver;
 use crate::args::create_default_npmrc;
 use crate::args::CliLockfile;
 use crate::args::NpmInstallDepsProvider;
-use crate::cache::DenoCacheEnvFsAdapter;
 use crate::factory::Deferred;
 use crate::graph_util::to_node_resolution_kind;
 use crate::graph_util::to_node_resolution_mode;
@@ -61,7 +61,6 @@ use crate::npm::CliNpmResolverManagedSnapshotOption;
 use crate::npm::CreateInNpmPkgCheckerOptions;
 use crate::npm::ManagedCliNpmResolver;
 use crate::resolver::CliDenoResolver;
-use crate::resolver::CliDenoResolverFs;
 use crate::resolver::CliNpmReqResolver;
 use crate::resolver::CliResolver;
 use crate::resolver::CliResolverOptions;
@@ -599,21 +598,19 @@ struct ResolverFactoryServices {
 
 struct ResolverFactory<'a> {
   config_data: Option<&'a Arc<ConfigData>>,
-  fs: Arc<dyn deno_fs::FileSystem>,
   pkg_json_resolver: Arc<PackageJsonResolver>,
+  sys: FsSysTraitsAdapter,
   services: ResolverFactoryServices,
 }
 
 impl<'a> ResolverFactory<'a> {
   pub fn new(config_data: Option<&'a Arc<ConfigData>>) -> Self {
-    let fs = Arc::new(deno_fs::RealFs);
-    let pkg_json_resolver = Arc::new(PackageJsonResolver::new(
-      deno_runtime::deno_node::DenoFsNodeResolverEnv::new(fs.clone()),
-    ));
+    let sys = FsSysTraitsAdapter::new_real();
+    let pkg_json_resolver = Arc::new(PackageJsonResolver::new(sys.clone()));
     Self {
       config_data,
-      fs,
       pkg_json_resolver,
+      sys,
       services: Default::default(),
     }
   }
@@ -624,9 +621,10 @@ impl<'a> ResolverFactory<'a> {
     cache: &LspCache,
   ) {
     let enable_byonm = self.config_data.map(|d| d.byonm).unwrap_or(false);
+    let sys = FsSysTraitsAdapter::new_real();
     let options = if enable_byonm {
       CliNpmResolverCreateOptions::Byonm(CliByonmNpmResolverCreateOptions {
-        fs: CliDenoResolverFs(Arc::new(deno_fs::RealFs)),
+        sys,
         pkg_json_resolver: self.pkg_json_resolver.clone(),
         root_node_modules_dir: self.config_data.and_then(|config_data| {
           config_data.node_modules_dir.clone().or_else(|| {
@@ -642,12 +640,14 @@ impl<'a> ResolverFactory<'a> {
         .and_then(|d| d.npmrc.clone())
         .unwrap_or_else(create_default_npmrc);
       let npm_cache_dir = Arc::new(NpmCacheDir::new(
-        &DenoCacheEnvFsAdapter(self.fs.as_ref()),
+        &sys,
         cache.deno_dir().npm_folder_path(),
         npmrc.get_all_known_registries_urls(),
       ));
       CliNpmResolverCreateOptions::Managed(CliManagedNpmResolverCreateOptions {
         http_client_provider: http_client_provider.clone(),
+        // only used for top level install, so we can ignore this
+        npm_install_deps_provider: Arc::new(NpmInstallDepsProvider::empty()),
         snapshot: match self.config_data.and_then(|d| d.lockfile.as_ref()) {
           Some(lockfile) => {
             CliNpmResolverManagedSnapshotOption::ResolveFromLockfile(
@@ -656,10 +656,7 @@ impl<'a> ResolverFactory<'a> {
           }
           None => CliNpmResolverManagedSnapshotOption::Specified(None),
         },
-        // Don't provide the lockfile. We don't want these resolvers
-        // updating it. Only the cache request should update the lockfile.
-        maybe_lockfile: None,
-        fs: Arc::new(deno_fs::RealFs),
+        sys: FsSysTraitsAdapter::new_real(),
         npm_cache_dir,
         // Use an "only" cache setting in order to make the
         // user do an explicit "cache" command and prevent
@@ -667,11 +664,12 @@ impl<'a> ResolverFactory<'a> {
         // the user is typing.
         cache_setting: CacheSetting::Only,
         text_only_progress_bar: ProgressBar::new(ProgressBarStyle::TextOnly),
+        // Don't provide the lockfile. We don't want these resolvers
+        // updating it. Only the cache request should update the lockfile.
+        maybe_lockfile: None,
         maybe_node_modules_path: self
           .config_data
           .and_then(|d| d.node_modules_dir.clone()),
-        // only used for top level install, so we can ignore this
-        npm_install_deps_provider: Arc::new(NpmInstallDepsProvider::empty()),
         npmrc,
         npm_system_info: NpmSystemInfo::default(),
         lifecycle_scripts: Default::default(),
@@ -779,10 +777,11 @@ impl<'a> ResolverFactory<'a> {
       .get_or_init(|| {
         let npm_resolver = self.services.npm_resolver.as_ref()?;
         Some(Arc::new(NodeResolver::new(
-          deno_runtime::deno_node::DenoFsNodeResolverEnv::new(self.fs.clone()),
           self.in_npm_pkg_checker().clone(),
+          RealIsBuiltInNodeModuleChecker,
           npm_resolver.clone().into_npm_pkg_folder_resolver(),
           self.pkg_json_resolver.clone(),
+          self.sys.clone(),
         )))
       })
       .as_ref()
@@ -797,10 +796,10 @@ impl<'a> ResolverFactory<'a> {
         let npm_resolver = self.npm_resolver()?;
         Some(Arc::new(CliNpmReqResolver::new(NpmReqResolverOptions {
           byonm_resolver: (npm_resolver.clone()).into_maybe_byonm(),
-          fs: CliDenoResolverFs(self.fs.clone()),
           in_npm_pkg_checker: self.in_npm_pkg_checker().clone(),
           node_resolver: node_resolver.clone(),
           npm_req_resolver: npm_resolver.clone().into_npm_req_resolver(),
+          sys: self.sys.clone(),
         })))
       })
       .as_ref()

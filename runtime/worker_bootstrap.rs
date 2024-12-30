@@ -120,6 +120,7 @@ pub struct BootstrapOptions {
   pub serve_port: Option<u16>,
   pub serve_host: Option<String>,
   pub otel_config: OtelConfig,
+  pub close_on_idle: bool,
 }
 
 impl Default for BootstrapOptions {
@@ -155,6 +156,7 @@ impl Default for BootstrapOptions {
       serve_port: Default::default(),
       serve_host: Default::default(),
       otel_config: Default::default(),
+      close_on_idle: false,
     }
   }
 }
@@ -198,6 +200,8 @@ struct BootstrapV8<'a>(
   Option<usize>,
   // OTEL config
   Box<[u8]>,
+  // close on idle
+  bool,
 );
 
 impl BootstrapOptions {
@@ -225,6 +229,7 @@ impl BootstrapOptions {
       serve_is_main,
       serve_worker_count,
       self.otel_config.as_v8(),
+      self.close_on_idle,
     );
 
     bootstrap.serialize(ser).unwrap()

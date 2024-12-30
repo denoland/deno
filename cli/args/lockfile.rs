@@ -12,12 +12,13 @@ use deno_core::parking_lot::MutexGuard;
 use deno_core::serde_json;
 use deno_lockfile::WorkspaceMemberConfig;
 use deno_package_json::PackageJsonDepValue;
+use deno_path_util::fs::atomic_write_file_with_retries;
+use deno_runtime::deno_fs::FsSysTraitsAdapter;
 use deno_runtime::deno_node::PackageJson;
 use deno_semver::jsr::JsrDepPackageReq;
 
 use crate::args::deno_json::import_map_deps;
 use crate::cache;
-use crate::util::fs::atomic_write_file_with_retries;
 use crate::Flags;
 
 use crate::args::DenoSubcommand;
@@ -91,8 +92,9 @@ impl CliLockfile {
     // do an atomic write to reduce the chance of multiple deno
     // processes corrupting the file
     atomic_write_file_with_retries(
+      &FsSysTraitsAdapter::new_real(),
       &lockfile.filename,
-      bytes,
+      &bytes,
       cache::CACHE_PERM,
     )
     .context("Failed writing lockfile.")?;

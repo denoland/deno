@@ -15,11 +15,12 @@ use deno_core::anyhow::bail;
 use deno_core::error::AnyError;
 use deno_core::parking_lot::Mutex;
 use deno_core::unsync::sync::AtomicFlag;
+use deno_path_util::get_atomic_path;
 use deno_runtime::code_cache::CodeCache;
 use deno_runtime::code_cache::CodeCacheType;
+use deno_runtime::deno_fs::FsSysTraitsAdapter;
 
 use crate::cache::FastInsecureHasher;
-use crate::util::path::get_atomic_file_path;
 use crate::worker::CliCodeCache;
 
 enum CodeCacheStrategy {
@@ -189,7 +190,8 @@ impl FirstRunCodeCacheStrategy {
     cache_data: &HashMap<CodeCacheKey, DenoCompileCodeCacheEntry>,
   ) {
     let count = cache_data.len();
-    let temp_file = get_atomic_file_path(&self.file_path);
+    let temp_file =
+      get_atomic_path(&FsSysTraitsAdapter::new_real(), &self.file_path);
     match serialize(&temp_file, self.cache_key, cache_data) {
       Ok(()) => {
         if let Err(err) = std::fs::rename(&temp_file, &self.file_path) {

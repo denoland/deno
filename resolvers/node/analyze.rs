@@ -16,11 +16,14 @@ use once_cell::sync::Lazy;
 
 use anyhow::Context;
 use anyhow::Error as AnyError;
+use sys_traits::FsCanonicalize;
+use sys_traits::FsMetadata;
+use sys_traits::FsRead;
 use url::Url;
 
-use crate::env::NodeResolverEnv;
 use crate::npm::InNpmPackageCheckerRc;
 use crate::resolution::NodeResolverRc;
+use crate::IsBuiltInNodeModuleChecker;
 use crate::NodeResolutionKind;
 use crate::NpmPackageFolderResolverRc;
 use crate::PackageJsonResolverRc;
@@ -60,34 +63,38 @@ pub trait CjsCodeAnalyzer {
 
 pub struct NodeCodeTranslator<
   TCjsCodeAnalyzer: CjsCodeAnalyzer,
-  TNodeResolverEnv: NodeResolverEnv,
+  TIsBuiltInNodeModuleChecker: IsBuiltInNodeModuleChecker,
+  TSys: FsCanonicalize + FsMetadata + FsRead,
 > {
   cjs_code_analyzer: TCjsCodeAnalyzer,
-  env: TNodeResolverEnv,
   in_npm_pkg_checker: InNpmPackageCheckerRc,
-  node_resolver: NodeResolverRc<TNodeResolverEnv>,
+  node_resolver: NodeResolverRc<TIsBuiltInNodeModuleChecker, TSys>,
   npm_resolver: NpmPackageFolderResolverRc,
-  pkg_json_resolver: PackageJsonResolverRc<TNodeResolverEnv>,
+  pkg_json_resolver: PackageJsonResolverRc<TSys>,
+  sys: TSys,
 }
 
-impl<TCjsCodeAnalyzer: CjsCodeAnalyzer, TNodeResolverEnv: NodeResolverEnv>
-  NodeCodeTranslator<TCjsCodeAnalyzer, TNodeResolverEnv>
+impl<
+    TCjsCodeAnalyzer: CjsCodeAnalyzer,
+    TIsBuiltInNodeModuleChecker: IsBuiltInNodeModuleChecker,
+    TSys: FsCanonicalize + FsMetadata + FsRead,
+  > NodeCodeTranslator<TCjsCodeAnalyzer, TIsBuiltInNodeModuleChecker, TSys>
 {
   pub fn new(
     cjs_code_analyzer: TCjsCodeAnalyzer,
-    env: TNodeResolverEnv,
     in_npm_pkg_checker: InNpmPackageCheckerRc,
-    node_resolver: NodeResolverRc<TNodeResolverEnv>,
+    node_resolver: NodeResolverRc<TIsBuiltInNodeModuleChecker, TSys>,
     npm_resolver: NpmPackageFolderResolverRc,
-    pkg_json_resolver: PackageJsonResolverRc<TNodeResolverEnv>,
+    pkg_json_resolver: PackageJsonResolverRc<TSys>,
+    sys: TSys,
   ) -> Self {
     Self {
       cjs_code_analyzer,
-      env,
       in_npm_pkg_checker,
       node_resolver,
       npm_resolver,
       pkg_json_resolver,
+      sys,
     }
   }
 
@@ -162,7 +169,7 @@ impl<TCjsCodeAnalyzer: CjsCodeAnalyzer, TNodeResolverEnv: NodeResolverEnv>
         add_export(
           &mut source,
           export,
-          &format!("mod[\"{}\"]", escape_for_double_quote_string(export)),
+          &format!("mod[{}]", to_double_quote_string(export)),
           &mut temp_var_count,
         );
       }
@@ -366,7 +373,7 @@ impl<TCjsCodeAnalyzer: CjsCodeAnalyzer, TNodeResolverEnv: NodeResolverEnv>
       // old school
       if package_subpath != "." {
         let d = module_dir.join(package_subpath);
-        if self.env.is_dir_sync(&d) {
+        if self.sys.fs_is_dir_no_err(&d) {
           // subdir might have a package.json that specifies the entrypoint
           let package_json_path = d.join("package.json");
           let maybe_package_json = self
@@ -423,13 +430,13 @@ impl<TCjsCodeAnalyzer: CjsCodeAnalyzer, TNodeResolverEnv: NodeResolverEnv>
     referrer: &Path,
   ) -> Result<PathBuf, AnyError> {
     let p = p.clean();
-    if self.env.exists_sync(&p) {
+    if self.sys.fs_exists_no_err(&p) {
       let file_name = p.file_name().unwrap();
       let p_js =
         p.with_file_name(format!("{}.js", file_name.to_str().unwrap()));
-      if self.env.is_file_sync(&p_js) {
+      if self.sys.fs_is_file_no_err(&p_js) {
         return Ok(p_js);
-      } else if self.env.is_dir_sync(&p) {
+      } else if self.sys.fs_is_dir_no_err(&p) {
         return Ok(p.join("index.js"));
       } else {
         return Ok(p);
@@ -438,14 +445,14 @@ impl<TCjsCodeAnalyzer: CjsCodeAnalyzer, TNodeResolverEnv: NodeResolverEnv>
       {
         let p_js =
           p.with_file_name(format!("{}.js", file_name.to_str().unwrap()));
-        if self.env.is_file_sync(&p_js) {
+        if self.sys.fs_is_file_no_err(&p_js) {
           return Ok(p_js);
         }
       }
       {
         let p_json =
           p.with_file_name(format!("{}.json", file_name.to_str().unwrap()));
-        if self.env.is_file_sync(&p_json) {
+        if self.sys.fs_is_file_no_err(&p_json) {
           return Ok(p_json);
         }
       }
@@ -561,8 +568,8 @@ fn add_export(
       "const __deno_export_{temp_var_count}__ = {initializer};"
     ));
     source.push(format!(
-      "export {{ __deno_export_{temp_var_count}__ as \"{}\" }};",
-      escape_for_double_quote_string(name)
+      "export {{ __deno_export_{temp_var_count}__ as {} }};",
+      to_double_quote_string(name)
     ));
   } else {
     source.push(format!("export const {name} = {initializer};"));
@@ -620,14 +627,9 @@ fn not_found(path: &str, referrer: &Path) -> AnyError {
   std::io::Error::new(std::io::ErrorKind::NotFound, msg).into()
 }
 
-fn escape_for_double_quote_string(text: &str) -> Cow<str> {
-  // this should be rare, so doing a scan first before allocating is ok
-  if text.chars().any(|c| matches!(c, '"' | '\\')) {
-    // don't bother making this more complex for perf because it's rare
-    Cow::Owned(text.replace('\\', "\\\\").replace('"', "\\\""))
-  } else {
-    Cow::Borrowed(text)
-  }
+fn to_double_quote_string(text: &str) -> String {
+  // serde can handle this for us
+  serde_json::to_string(text).unwrap()
 }
 
 #[cfg(test)]
@@ -663,6 +665,15 @@ mod tests {
     assert_eq!(
       parse_specifier("@some-package/core/actions"),
       Some(("@some-package/core".to_string(), "./actions".to_string()))
+    );
+  }
+
+  #[test]
+  fn test_to_double_quote_string() {
+    assert_eq!(to_double_quote_string("test"), "\"test\"");
+    assert_eq!(
+      to_double_quote_string("\r\n\t\"test"),
+      "\"\\r\\n\\t\\\"test\""
     );
   }
 }

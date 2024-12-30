@@ -1006,6 +1006,8 @@ impl Flags {
     OtelConfig {
       tracing_enabled: !disabled
         && otel_var("OTEL_DENO_TRACING").unwrap_or(default),
+      metrics_enabled: !disabled
+        && otel_var("OTEL_DENO_METRICS").unwrap_or(default),
       console: match std::env::var("OTEL_DENO_CONSOLE").as_deref() {
         Ok(_) if disabled => OtelConsoleConfig::Ignore,
         Ok("ignore") => OtelConsoleConfig::Ignore,

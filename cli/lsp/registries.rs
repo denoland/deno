@@ -32,6 +32,7 @@ use deno_core::url::Position;
 use deno_core::url::Url;
 use deno_core::ModuleSpecifier;
 use deno_graph::Dependency;
+use deno_runtime::deno_fs::FsSysTraitsAdapter;
 use log::error;
 use once_cell::sync::Lazy;
 use std::borrow::Cow;
@@ -430,8 +431,8 @@ impl ModuleRegistry {
   ) -> Self {
     // the http cache should always be the global one for registry completions
     let http_cache = Arc::new(GlobalHttpCache::new(
+      FsSysTraitsAdapter::new_real(),
       location.clone(),
-      crate::cache::RealDenoCacheEnv,
     ));
     let file_fetcher = CliFileFetcher::new(
       http_cache.clone(),

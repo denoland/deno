@@ -26,6 +26,7 @@ use deno_core::serde_json;
 use deno_core::sourcemap::SourceMap;
 use deno_core::url::Url;
 use deno_core::LocalInspectorSession;
+use deno_runtime::deno_fs::FsSysTraitsAdapter;
 use node_resolver::InNpmPackageChecker;
 use regex::Regex;
 use std::fs;
@@ -198,7 +199,7 @@ pub struct CoverageReport {
 fn generate_coverage_report(
   script_coverage: &cdp::ScriptCoverage,
   script_source: String,
-  maybe_source_map: &Option<Vec<u8>>,
+  maybe_source_map: Option<&[u8]>,
   output: &Option<PathBuf>,
 ) -> CoverageReport {
   let maybe_source_map = maybe_source_map
@@ -428,7 +429,7 @@ fn collect_coverages(
   .ignore_git_folder()
   .ignore_node_modules()
   .set_vendor_folder(cli_options.vendor_dir_path().map(ToOwned::to_owned))
-  .collect_file_patterns(&deno_config::fs::RealDenoConfigFs, file_patterns)?;
+  .collect_file_patterns(&FsSysTraitsAdapter::new_real(), file_patterns)?;
 
   let coverage_patterns = FilePatterns {
     base: initial_cwd.to_path_buf(),
@@ -625,7 +626,7 @@ pub fn cover_files(
     let coverage_report = generate_coverage_report(
       &script_coverage,
       runtime_code.as_str().to_owned(),
-      &source_map,
+      source_map.as_deref(),
       &out_mode,
     );
 

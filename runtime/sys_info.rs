@@ -295,11 +295,9 @@ pub fn mem_info() -> Option<MemInfo> {
         // TODO(@littledivy): Put this in a once_cell
         let page_size = libc::sysconf(libc::_SC_PAGESIZE) as u64;
         mem_info.available =
-          (stat.free_count as u64 + stat.inactive_count as u64) * page_size
-            / 1024;
+          (stat.free_count as u64 + stat.inactive_count as u64) * page_size;
         mem_info.free =
-          (stat.free_count as u64 - stat.speculative_count as u64) * page_size
-            / 1024;
+          (stat.free_count as u64 - stat.speculative_count as u64) * page_size;
       }
     }
   }
