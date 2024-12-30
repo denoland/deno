@@ -409,7 +409,7 @@ jobs:
         if: |-
           !(matrix.skip) && ((matrix.job == 'test' || matrix.job == 'bench') &&
           matrix.profile == 'release' && (matrix.use_sysroot ||
-          github.repository == 'denoland/deno' || github.repository == 'nathanwhit/deno'))
+          (github.repository == 'denoland/deno' || github.repository == 'nathanwhit/deno')))
         run: |-
           df -h
           cargo build --release --locked --all-targets
@@ -447,7 +447,7 @@ jobs:
           !(matrix.skip) && (matrix.os == 'linux' &&
           matrix.job == 'test' &&
           matrix.profile == 'release' &&
-          github.repository == 'denoland/deno' || github.repository == 'nathanwhit/deno')
+          (github.repository == 'denoland/deno' || github.repository == 'nathanwhit/deno'))
         run: |-
           cd target/release
           zip -r deno-${{ matrix.arch }}-unknown-linux-gnu.zip deno
