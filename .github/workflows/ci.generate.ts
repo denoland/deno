@@ -654,15 +654,15 @@ const ci = {
           run:
             "deno run --allow-write --allow-read --allow-run --allow-net ./tools/format.js --check",
         },
-        // {
-        //   name: "Lint PR title",
-        //   if:
-        //     "matrix.job == 'lint' && github.event_name == 'pull_request' && matrix.os == 'linux'",
-        //   env: {
-        //     PR_TITLE: "${{ github.event.pull_request.title }}",
-        //   },
-        //   run: 'deno run ./tools/verify_pr_title.js "$PR_TITLE"',
-        // },
+        {
+          name: "Lint PR title",
+          if:
+            "matrix.job == 'lint' && github.event_name == 'pull_request' && matrix.os == 'linux'",
+          env: {
+            PR_TITLE: "${{ github.event.pull_request.title }}",
+          },
+          run: 'deno run ./tools/verify_pr_title.js "$PR_TITLE"',
+        },
         {
           name: "lint.js",
           if: "matrix.job == 'lint'",
@@ -707,7 +707,7 @@ const ci = {
           if: [
             "(matrix.job == 'test' || matrix.job == 'bench') &&",
             "matrix.profile == 'release' && (matrix.use_sysroot ||",
-            "(github.repository == 'denoland/deno' || github.repository == 'nathanwhit/deno'))",
+            "github.repository == 'denoland/deno')",
           ].join("\n"),
           run: [
             // output fs space before and after building
@@ -721,7 +721,7 @@ const ci = {
           if: [
             "matrix.job == 'test' &&",
             "matrix.profile == 'release' &&",
-            "(github.repository == 'denoland/deno' || github.repository == 'nathanwhit/deno')",
+            "github.repository == 'denoland/deno'",
           ].join("\n"),
           run: [
             "df -h",
@@ -769,7 +769,7 @@ const ci = {
             "matrix.os == 'linux' &&",
             "matrix.job == 'test' &&",
             "matrix.profile == 'release' &&",
-            "(github.repository == 'denoland/deno' || github.repository == 'nathanwhit/deno')",
+            "github.repository == 'denoland/deno'",
           ].join("\n"),
           run: [
             "cd target/release",

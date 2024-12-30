@@ -388,6 +388,11 @@ jobs:
       - name: test_format.js
         if: '!(matrix.skip) && (matrix.job == ''lint'' && matrix.os == ''linux'')'
         run: deno run --allow-write --allow-read --allow-run --allow-net ./tools/format.js --check
+      - name: Lint PR title
+        if: '!(matrix.skip) && (matrix.job == ''lint'' && github.event_name == ''pull_request'' && matrix.os == ''linux'')'
+        env:
+          PR_TITLE: '${{ github.event.pull_request.title }}'
+        run: deno run ./tools/verify_pr_title.js "$PR_TITLE"
       - name: lint.js
         if: '!(matrix.skip) && (matrix.job == ''lint'')'
         run: deno run --allow-write --allow-read --allow-run --allow-net ./tools/lint.js
@@ -409,7 +414,7 @@ jobs:
         if: |-
           !(matrix.skip) && ((matrix.job == 'test' || matrix.job == 'bench') &&
           matrix.profile == 'release' && (matrix.use_sysroot ||
-          (github.repository == 'denoland/deno' || github.repository == 'nathanwhit/deno')))
+          github.repository == 'denoland/deno'))
         run: |-
           df -h
           cargo build --release --locked --all-targets
@@ -418,7 +423,7 @@ jobs:
         if: |-
           !(matrix.skip) && (matrix.job == 'test' &&
           matrix.profile == 'release' &&
-          (github.repository == 'denoland/deno' || github.repository == 'nathanwhit/deno'))
+          github.repository == 'denoland/deno')
         run: |-
           df -h
           cargo build --profile=release-slim --locked --bin denort
@@ -447,7 +452,7 @@ jobs:
           !(matrix.skip) && (matrix.os == 'linux' &&
           matrix.job == 'test' &&
           matrix.profile == 'release' &&
-          (github.repository == 'denoland/deno' || github.repository == 'nathanwhit/deno'))
+          github.repository == 'denoland/deno')
         run: |-
           cd target/release
           zip -r deno-${{ matrix.arch }}-unknown-linux-gnu.zip deno
