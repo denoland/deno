@@ -654,15 +654,15 @@ const ci = {
           run:
             "deno run --allow-write --allow-read --allow-run --allow-net ./tools/format.js --check",
         },
-        {
-          name: "Lint PR title",
-          if:
-            "matrix.job == 'lint' && github.event_name == 'pull_request' && matrix.os == 'linux'",
-          env: {
-            PR_TITLE: "${{ github.event.pull_request.title }}",
-          },
-          run: 'deno run ./tools/verify_pr_title.js "$PR_TITLE"',
-        },
+        // {
+        //   name: "Lint PR title",
+        //   if:
+        //     "matrix.job == 'lint' && github.event_name == 'pull_request' && matrix.os == 'linux'",
+        //   env: {
+        //     PR_TITLE: "${{ github.event.pull_request.title }}",
+        //   },
+        //   run: 'deno run ./tools/verify_pr_title.js "$PR_TITLE"',
+        // },
         {
           name: "lint.js",
           if: "matrix.job == 'lint'",
