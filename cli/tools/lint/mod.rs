@@ -21,6 +21,7 @@ use deno_core::unsync::future::SharedLocal;
 use deno_graph::ModuleGraph;
 use deno_lint::diagnostic::LintDiagnostic;
 use deno_lint::linter::LintConfig as DenoLintConfig;
+use deno_runtime::deno_fs::FsSysTraitsAdapter;
 use log::debug;
 use reporters::create_reporter;
 use reporters::LintReporter;
@@ -452,7 +453,7 @@ fn collect_lint_files(
   .ignore_node_modules()
   .use_gitignore()
   .set_vendor_folder(cli_options.vendor_dir_path().map(ToOwned::to_owned))
-  .collect_file_patterns(&deno_config::fs::RealDenoConfigFs, files)
+  .collect_file_patterns(&FsSysTraitsAdapter::new_real(), files)
 }
 
 #[allow(clippy::print_stdout)]

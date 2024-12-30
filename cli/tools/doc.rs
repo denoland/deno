@@ -28,6 +28,7 @@ use deno_graph::EsParser;
 use deno_graph::GraphKind;
 use deno_graph::ModuleAnalyzer;
 use deno_graph::ModuleSpecifier;
+use deno_runtime::deno_fs::FsSysTraitsAdapter;
 use doc::html::ShortPath;
 use doc::DocDiagnostic;
 use indexmap::IndexMap;
@@ -114,7 +115,7 @@ pub async fn doc(
     }
     DocSourceFileFlag::Paths(ref source_files) => {
       let module_graph_creator = factory.module_graph_creator().await?;
-      let fs = factory.fs();
+      let fs = FsSysTraitsAdapter(factory.fs().clone());
 
       let module_specifiers = collect_specifiers(
         FilePatterns {
@@ -141,7 +142,7 @@ pub async fn doc(
       graph_exit_integrity_errors(&graph);
       let errors = graph_walk_errors(
         &graph,
-        fs,
+        &fs,
         &module_specifiers,
         GraphWalkErrorsOptions {
           check_js: false,

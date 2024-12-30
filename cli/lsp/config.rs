@@ -9,8 +9,6 @@ use deno_config::deno_json::LintConfig;
 use deno_config::deno_json::NodeModulesDirMode;
 use deno_config::deno_json::TestConfig;
 use deno_config::deno_json::TsConfig;
-use deno_config::fs::DenoConfigFs;
-use deno_config::fs::RealDenoConfigFs;
 use deno_config::glob::FilePatterns;
 use deno_config::glob::PathOrPatternSet;
 use deno_config::workspace::CreateResolverOptions;
@@ -38,10 +36,10 @@ use deno_lint::linter::LintConfig as DenoLintConfig;
 use deno_npm::npm_rc::ResolvedNpmRc;
 use deno_package_json::PackageJsonCache;
 use deno_path_util::url_to_file_path;
+use deno_runtime::deno_fs::FsSysTraitsAdapter;
 use deno_runtime::deno_node::PackageJson;
 use indexmap::IndexSet;
 use lsp_types::ClientCapabilities;
-use std::borrow::Cow;
 use std::collections::BTreeMap;
 use std::collections::BTreeSet;
 use std::collections::HashMap;
@@ -1220,7 +1218,6 @@ impl ConfigData {
     settings: &Settings,
     file_fetcher: &Arc<CliFileFetcher>,
     // sync requirement is because the lsp requires sync
-    cached_deno_config_fs: &(dyn DenoConfigFs + Sync),
     deno_json_cache: &(dyn DenoJsonCache + Sync),
     pkg_json_cache: &(dyn PackageJsonCache + Sync),
     workspace_cache: &(dyn WorkspaceCache + Sync),
@@ -1230,6 +1227,7 @@ impl ConfigData {
       Ok(scope_dir_path) => {
         let paths = [scope_dir_path];
         WorkspaceDirectory::discover(
+          &FsSysTraitsAdapter::new_real(),
           match specified_config {
             Some(config_path) => {
               deno_config::workspace::WorkspaceDiscoverStart::ConfigFile(
@@ -1241,7 +1239,6 @@ impl ConfigData {
             }
           },
           &WorkspaceDiscoverOptions {
-            fs: cached_deno_config_fs,
             additional_config_file_names: &[],
             deno_json_cache: Some(deno_json_cache),
             pkg_json_cache: Some(pkg_json_cache),
@@ -1618,9 +1615,9 @@ impl ConfigData {
       || unstable.contains("sloppy-imports");
     let sloppy_imports_resolver = unstable_sloppy_imports.then(|| {
       Arc::new(CliSloppyImportsResolver::new(
-        SloppyImportsCachedFs::new_without_stat_cache(Arc::new(
-          deno_runtime::deno_fs::RealFs,
-        )),
+        SloppyImportsCachedFs::new_without_stat_cache(
+          FsSysTraitsAdapter::new_real(),
+        ),
       ))
     });
     let resolver = Arc::new(resolver);
@@ -1840,7 +1837,6 @@ impl ConfigTree {
     // since we're resolving a workspace multiple times in different
     // folders, we want to cache all the lookups and config files across
     // ConfigData::load calls
-    let cached_fs = CachedDenoConfigFs::default();
     let deno_json_cache = DenoJsonMemCache::default();
     let pkg_json_cache = PackageJsonMemCache::default();
     let workspace_cache = WorkspaceMemCache::default();
@@ -1865,7 +1861,6 @@ impl ConfigTree {
                 folder_uri,
                 settings,
                 file_fetcher,
-                &cached_fs,
                 &deno_json_cache,
                 &pkg_json_cache,
                 &workspace_cache,
@@ -1896,7 +1891,6 @@ impl ConfigTree {
           &scope,
           settings,
           file_fetcher,
-          &cached_fs,
           &deno_json_cache,
           &pkg_json_cache,
           &workspace_cache,
@@ -1913,7 +1907,6 @@ impl ConfigTree {
           member_scope,
           settings,
           file_fetcher,
-          &cached_fs,
           &deno_json_cache,
           &pkg_json_cache,
           &workspace_cache,
@@ -1930,7 +1923,7 @@ impl ConfigTree {
   pub async fn inject_config_file(&mut self, config_file: ConfigFile) {
     let scope = config_file.specifier.join(".").unwrap();
     let json_text = serde_json::to_string(&config_file.json).unwrap();
-    let test_fs = deno_runtime::deno_fs::InMemoryFs::default();
+    let test_fs = Arc::new(deno_runtime::deno_fs::InMemoryFs::default());
     let config_path = url_to_file_path(&config_file.specifier).unwrap();
     test_fs.setup_text_files(vec![(
       config_path.to_string_lossy().to_string(),
@@ -1938,11 +1931,11 @@ impl ConfigTree {
     )]);
     let workspace_dir = Arc::new(
       WorkspaceDirectory::discover(
+        &FsSysTraitsAdapter(test_fs.clone()),
         deno_config::workspace::WorkspaceDiscoverStart::ConfigFile(
           &config_path,
         ),
         &deno_config::workspace::WorkspaceDiscoverOptions {
-          fs: &crate::args::deno_json::DenoConfigFsAdapter(&test_fs),
           ..Default::default()
         },
       )
@@ -2073,78 +2066,6 @@ impl deno_config::workspace::WorkspaceCache for WorkspaceMemCache {
 
   fn set(&self, dir_path: PathBuf, workspace: Arc<Workspace>) {
     self.0.lock().insert(dir_path, workspace);
-  }
-}
-
-#[derive(Default)]
-struct CachedFsItems<T: Clone> {
-  items: HashMap<PathBuf, Result<T, std::io::Error>>,
-}
-
-impl<T: Clone> CachedFsItems<T> {
-  pub fn get(
-    &mut self,
-    path: &Path,
-    action: impl FnOnce(&Path) -> Result<T, std::io::Error>,
-  ) -> Result<T, std::io::Error> {
-    let value = if let Some(value) = self.items.get(path) {
-      value
-    } else {
-      let value = action(path);
-      // just in case this gets really large for some reason
-      if self.items.len() == 16_384 {
-        return value;
-      }
-      self.items.insert(path.to_owned(), value);
-      self.items.get(path).unwrap()
-    };
-    value
-      .as_ref()
-      .map(|v| (*v).clone())
-      .map_err(|e| std::io::Error::new(e.kind(), e.to_string()))
-  }
-}
-
-#[derive(Default)]
-struct InnerData {
-  stat_calls: CachedFsItems<deno_config::fs::FsMetadata>,
-  read_to_string_calls: CachedFsItems<Cow<'static, str>>,
-}
-
-#[derive(Default)]
-struct CachedDenoConfigFs(Mutex<InnerData>);
-
-impl DenoConfigFs for CachedDenoConfigFs {
-  fn stat_sync(
-    &self,
-    path: &Path,
-  ) -> Result<deno_config::fs::FsMetadata, std::io::Error> {
-    self
-      .0
-      .lock()
-      .stat_calls
-      .get(path, |path| RealDenoConfigFs.stat_sync(path))
-  }
-
-  fn read_to_string_lossy(
-    &self,
-    path: &Path,
-  ) -> Result<Cow<'static, str>, std::io::Error> {
-    self
-      .0
-      .lock()
-      .read_to_string_calls
-      .get(path, |path| RealDenoConfigFs.read_to_string_lossy(path))
-  }
-
-  fn read_dir(
-    &self,
-    path: &Path,
-  ) -> Result<Vec<deno_config::fs::FsDirEntry>, std::io::Error> {
-    // no need to cache these because the workspace cache will ensure
-    // we only do read_dir calls once (read_dirs are only used for
-    // npm workspace resolution)
-    RealDenoConfigFs.read_dir(path)
   }
 }
 
