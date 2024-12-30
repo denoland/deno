@@ -415,6 +415,7 @@ pub async fn add(
   let deps_file_fetcher = CliFileFetcher::new(
     deps_http_cache.clone(),
     http_client.clone(),
+    cli_factory.sys(),
     Default::default(),
     None,
     true,

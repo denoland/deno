@@ -11,6 +11,7 @@ use crate::colors;
 use crate::npm::managed::PackageCaching;
 use crate::npm::CliNpmCache;
 use crate::npm::CliNpmTarballCache;
+use crate::sys::CliSys;
 use async_trait::async_trait;
 use deno_ast::ModuleSpecifier;
 use deno_core::error::AnyError;
@@ -18,7 +19,6 @@ use deno_npm::NpmPackageCacheFolderId;
 use deno_npm::NpmPackageId;
 use deno_npm::NpmResolutionPackage;
 use deno_npm::NpmSystemInfo;
-use deno_runtime::deno_fs::FsSysTraitsAdapter;
 use deno_runtime::deno_node::NodePermissions;
 use node_resolver::errors::PackageFolderResolveError;
 use node_resolver::errors::PackageNotFoundError;
@@ -49,7 +49,7 @@ impl GlobalNpmPackageResolver {
     cache: Arc<CliNpmCache>,
     tarball_cache: Arc<CliNpmTarballCache>,
     resolution: Arc<NpmResolution>,
-    sys: FsSysTraitsAdapter,
+    sys: CliSys,
     system_info: NpmSystemInfo,
     lifecycle_scripts: LifecycleScriptsConfig,
   ) -> Self {

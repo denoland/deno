@@ -1737,14 +1737,12 @@ dependencies = [
  "deno_path_util 0.3.0",
  "deno_permissions",
  "filetime",
- "getrandom",
  "junction",
  "libc",
  "nix",
  "rand",
  "rayon",
  "serde",
- "sys_traits",
  "thiserror 2.0.3",
  "winapi",
  "windows-sys 0.59.0",
@@ -2042,6 +2040,7 @@ dependencies = [
  "sm3",
  "spki",
  "stable_deref_trait",
+ "sys_traits",
  "thiserror 2.0.3",
  "tokio",
  "tokio-eld",
@@ -2261,6 +2260,7 @@ dependencies = [
  "serde",
  "signal-hook",
  "signal-hook-registry",
+ "sys_traits",
  "tempfile",
  "test_server",
  "thiserror 2.0.3",
@@ -7680,12 +7680,13 @@ dependencies = [
 
 [[package]]
 name = "sys_traits"
-version = "0.1.1"
+version = "0.1.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a5a12729b699487bb50163466e87be7197871d83d04cc6815d430cf7c893bbd7"
+checksum = "3c5d91af4edd54bd3249fb33dc6c7f40458b9516c958c6ca5f5c46554bf23606"
 dependencies = [
  "getrandom",
  "libc",
+ "parking_lot",
  "windows-sys 0.59.0",
 ]
 

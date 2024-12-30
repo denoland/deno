@@ -25,6 +25,7 @@ use tokio::task::JoinHandle;
 use tokio::task::LocalSet;
 use tokio_util::sync::CancellationToken;
 
+use crate::node::CliNodeResolver;
 use crate::npm::CliNpmResolver;
 use crate::npm::InnerCliNpmResolverRef;
 use crate::npm::ManagedCliNpmResolver;
@@ -415,7 +416,7 @@ impl ShellCommand for NodeModulesFileRunCommand {
 
 pub fn resolve_custom_commands(
   npm_resolver: &dyn CliNpmResolver,
-  node_resolver: &NodeResolver,
+  node_resolver: &CliNodeResolver,
 ) -> Result<HashMap<String, Rc<dyn ShellCommand>>, AnyError> {
   let mut commands = match npm_resolver.as_inner() {
     InnerCliNpmResolverRef::Byonm(npm_resolver) => {
@@ -522,7 +523,7 @@ fn resolve_execution_path_from_npx_shim(
 
 fn resolve_managed_npm_commands(
   npm_resolver: &ManagedCliNpmResolver,
-  node_resolver: &NodeResolver,
+  node_resolver: &CliNodeResolver,
 ) -> Result<HashMap<String, Rc<dyn ShellCommand>>, AnyError> {
   let mut result = HashMap::new();
   let snapshot = npm_resolver.snapshot();

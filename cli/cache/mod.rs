@@ -5,6 +5,7 @@ use crate::file_fetcher::CliFetchNoFollowErrorKind;
 use crate::file_fetcher::CliFileFetcher;
 use crate::file_fetcher::FetchNoFollowOptions;
 use crate::file_fetcher::FetchPermissionsOptionRef;
+use crate::sys::CliSys;
 
 use deno_ast::MediaType;
 use deno_cache_dir::file_fetcher::CacheSetting;
@@ -18,7 +19,6 @@ use deno_graph::source::CacheInfo;
 use deno_graph::source::LoadFuture;
 use deno_graph::source::LoadResponse;
 use deno_graph::source::Loader;
-use deno_runtime::deno_fs::FsSysTraitsAdapter;
 use deno_runtime::deno_permissions::PermissionsContainer;
 use node_resolver::InNpmPackageChecker;
 use std::collections::HashMap;
@@ -58,10 +58,9 @@ pub use parsed_source::ParsedSourceCache;
 /// Permissions used to save a file in the disk caches.
 pub use deno_cache_dir::CACHE_PERM;
 
-pub type GlobalHttpCache = deno_cache_dir::GlobalHttpCache<FsSysTraitsAdapter>;
-pub type LocalHttpCache = deno_cache_dir::LocalHttpCache<FsSysTraitsAdapter>;
-pub type LocalLspHttpCache =
-  deno_cache_dir::LocalLspHttpCache<FsSysTraitsAdapter>;
+pub type GlobalHttpCache = deno_cache_dir::GlobalHttpCache<CliSys>;
+pub type LocalHttpCache = deno_cache_dir::LocalHttpCache<CliSys>;
+pub type LocalLspHttpCache = deno_cache_dir::LocalLspHttpCache<CliSys>;
 pub use deno_cache_dir::HttpCache;
 
 pub struct FetchCacherOptions {
@@ -80,7 +79,7 @@ pub struct FetchCacher {
   in_npm_pkg_checker: Arc<dyn InNpmPackageChecker>,
   module_info_cache: Arc<ModuleInfoCache>,
   permissions: PermissionsContainer,
-  sys: FsSysTraitsAdapter,
+  sys: CliSys,
   is_deno_publish: bool,
   cache_info_enabled: bool,
 }
@@ -91,7 +90,7 @@ impl FetchCacher {
     global_http_cache: Arc<GlobalHttpCache>,
     in_npm_pkg_checker: Arc<dyn InNpmPackageChecker>,
     module_info_cache: Arc<ModuleInfoCache>,
-    sys: FsSysTraitsAdapter,
+    sys: CliSys,
     options: FetchCacherOptions,
   ) -> Self {
     Self {

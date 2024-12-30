@@ -20,6 +20,7 @@ mod ops;
 mod resolver;
 mod shared;
 mod standalone;
+mod sys;
 mod task_runner;
 mod tools;
 mod tsc;

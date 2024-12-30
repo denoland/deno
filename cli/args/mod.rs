@@ -30,7 +30,6 @@ use deno_npm::npm_rc::ResolvedNpmRc;
 use deno_npm::resolution::ValidSerializedNpmResolutionSnapshot;
 use deno_npm::NpmSystemInfo;
 use deno_path_util::normalize_path;
-use deno_runtime::deno_fs::FsSysTraitsAdapter;
 use deno_semver::npm::NpmPackageReqReference;
 use deno_semver::StackString;
 use deno_telemetry::OtelConfig;
@@ -89,6 +88,7 @@ use thiserror::Error;
 
 use crate::cache::DenoDirProvider;
 use crate::file_fetcher::CliFileFetcher;
+use crate::sys::CliSys;
 use crate::util::fs::canonicalize_path_maybe_not_exists;
 use crate::version;
 
@@ -773,6 +773,7 @@ pub struct CliOptions {
 
 impl CliOptions {
   pub fn new(
+    sys: &CliSys,
     flags: Arc<Flags>,
     initial_cwd: PathBuf,
     maybe_lockfile: Option<Arc<CliLockfile>>,
@@ -797,8 +798,10 @@ impl CliOptions {
     }
 
     let maybe_lockfile = maybe_lockfile.filter(|_| !force_global_cache);
-    let deno_dir_provider =
-      Arc::new(DenoDirProvider::new(flags.internal.cache_path.clone()));
+    let deno_dir_provider = Arc::new(DenoDirProvider::new(
+      sys.clone(),
+      flags.internal.cache_path.clone(),
+    ));
     let maybe_node_modules_folder = resolve_node_modules_folder(
       &initial_cwd,
       &flags,
@@ -823,7 +826,7 @@ impl CliOptions {
     })
   }
 
-  pub fn from_flags(flags: Arc<Flags>) -> Result<Self, AnyError> {
+  pub fn from_flags(sys: &CliSys, flags: Arc<Flags>) -> Result<Self, AnyError> {
     let initial_cwd =
       std::env::current_dir().with_context(|| "Failed getting cwd.")?;
     let maybe_vendor_override = flags.vendor.map(|v| match v {
@@ -867,7 +870,7 @@ impl CliOptions {
       ConfigFlag::Discover => {
         if let Some(start_paths) = flags.config_path_args(&initial_cwd) {
           WorkspaceDirectory::discover(
-            &FsSysTraitsAdapter::new_real(),
+            sys,
             WorkspaceDiscoverStart::Paths(&start_paths),
             &resolve_workspace_discover_options(),
           )?
@@ -878,7 +881,7 @@ impl CliOptions {
       ConfigFlag::Path(path) => {
         let config_path = normalize_path(initial_cwd.join(path));
         WorkspaceDirectory::discover(
-          &FsSysTraitsAdapter::new_real(),
+          sys,
           WorkspaceDiscoverStart::ConfigFile(&config_path),
           &resolve_workspace_discover_options(),
         )?
@@ -917,6 +920,7 @@ impl CliOptions {
       };
 
     let maybe_lock_file = CliLockfile::discover(
+      sys,
       &flags,
       &start_dir.workspace,
       external_import_map.as_ref().map(|(_, v)| v),
@@ -925,6 +929,7 @@ impl CliOptions {
     log::debug!("Finished config loading.");
 
     Self::new(
+      sys,
       flags,
       initial_cwd,
       maybe_lock_file.map(Arc::new),

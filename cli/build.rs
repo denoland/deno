@@ -365,6 +365,14 @@ fn main() {
     return;
   }
 
+  // add a #[cfg(denort)]
+  println!("cargo::rustc-check-cfg=cfg(denort)");
+  if let Ok(target) = env::var("CARGO_BIN_NAME") {
+    if target == "denort" {
+      println!("cargo:rustc-cfg=denort");
+    }
+  }
+
   deno_napi::print_linker_flags("deno");
   deno_napi::print_linker_flags("denort");
 

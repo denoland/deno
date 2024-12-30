@@ -24,7 +24,6 @@ use deno_runtime::deno_node::NodeExtInitServices;
 use deno_runtime::deno_node::NodeRequireLoader;
 use deno_runtime::deno_node::NodeRequireLoaderRc;
 use deno_runtime::deno_node::NodeResolver;
-use deno_runtime::deno_node::PackageJsonResolver;
 use deno_runtime::deno_permissions::PermissionsContainer;
 use deno_runtime::deno_tls::RootCertStoreProvider;
 use deno_runtime::deno_web::BlobStore;
@@ -53,7 +52,10 @@ use crate::args::DenoSubcommand;
 use crate::args::NpmCachingStrategy;
 use crate::args::StorageKeyResolver;
 use crate::errors;
+use crate::node::CliNodeResolver;
+use crate::node::CliPackageJsonResolver;
 use crate::npm::CliNpmResolver;
+use crate::sys::CliSys;
 use crate::util::checksum;
 use crate::util::file_watcher::WatcherCommunicator;
 use crate::util::file_watcher::WatcherRestartMode;
@@ -145,13 +147,14 @@ struct SharedWorkerState {
   maybe_inspector_server: Option<Arc<InspectorServer>>,
   maybe_lockfile: Option<Arc<CliLockfile>>,
   module_loader_factory: Box<dyn ModuleLoaderFactory>,
-  node_resolver: Arc<NodeResolver>,
+  node_resolver: Arc<CliNodeResolver>,
   npm_resolver: Arc<dyn CliNpmResolver>,
-  pkg_json_resolver: Arc<PackageJsonResolver>,
+  pkg_json_resolver: Arc<CliPackageJsonResolver>,
   root_cert_store_provider: Arc<dyn RootCertStoreProvider>,
   root_permissions: PermissionsContainer,
   shared_array_buffer_store: SharedArrayBufferStore,
   storage_key_resolver: StorageKeyResolver,
+  sys: CliSys,
   options: CliMainWorkerOptions,
   subcommand: DenoSubcommand,
   otel_config: OtelConfig,
@@ -162,12 +165,13 @@ impl SharedWorkerState {
   pub fn create_node_init_services(
     &self,
     node_require_loader: NodeRequireLoaderRc,
-  ) -> NodeExtInitServices {
+  ) -> NodeExtInitServices<CliSys> {
     NodeExtInitServices {
       node_require_loader,
       node_resolver: self.node_resolver.clone(),
       npm_resolver: self.npm_resolver.clone().into_npm_pkg_folder_resolver(),
       pkg_json_resolver: self.pkg_json_resolver.clone(),
+      sys: self.sys.clone(),
     }
   }
 
@@ -418,12 +422,13 @@ impl CliMainWorkerFactory {
     maybe_inspector_server: Option<Arc<InspectorServer>>,
     maybe_lockfile: Option<Arc<CliLockfile>>,
     module_loader_factory: Box<dyn ModuleLoaderFactory>,
-    node_resolver: Arc<NodeResolver>,
+    node_resolver: Arc<CliNodeResolver>,
     npm_resolver: Arc<dyn CliNpmResolver>,
-    pkg_json_resolver: Arc<PackageJsonResolver>,
+    pkg_json_resolver: Arc<CliPackageJsonResolver>,
     root_cert_store_provider: Arc<dyn RootCertStoreProvider>,
     root_permissions: PermissionsContainer,
     storage_key_resolver: StorageKeyResolver,
+    sys: CliSys,
     subcommand: DenoSubcommand,
     options: CliMainWorkerOptions,
     otel_config: OtelConfig,
@@ -448,6 +453,7 @@ impl CliMainWorkerFactory {
         root_permissions,
         shared_array_buffer_store: Default::default(),
         storage_key_resolver,
+        sys,
         options,
         subcommand,
         otel_config,
@@ -876,7 +882,7 @@ mod tests {
       ..Default::default()
     };
 
-    MainWorker::bootstrap_from_options(
+    MainWorker::bootstrap_from_options::<CliSys>(
       main_module,
       WorkerServiceOptions {
         module_loader: Rc::new(FsModuleLoader),

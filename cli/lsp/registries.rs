@@ -19,6 +19,7 @@ use crate::file_fetcher::FetchOptions;
 use crate::file_fetcher::FetchPermissionsOptionRef;
 use crate::file_fetcher::TextDecodedFile;
 use crate::http_util::HttpClientProvider;
+use crate::sys::CliSys;
 
 use deno_cache_dir::file_fetcher::CacheSetting;
 use deno_core::anyhow::anyhow;
@@ -32,7 +33,6 @@ use deno_core::url::Position;
 use deno_core::url::Url;
 use deno_core::ModuleSpecifier;
 use deno_graph::Dependency;
-use deno_runtime::deno_fs::FsSysTraitsAdapter;
 use log::error;
 use once_cell::sync::Lazy;
 use std::borrow::Cow;
@@ -430,13 +430,12 @@ impl ModuleRegistry {
     http_client_provider: Arc<HttpClientProvider>,
   ) -> Self {
     // the http cache should always be the global one for registry completions
-    let http_cache = Arc::new(GlobalHttpCache::new(
-      FsSysTraitsAdapter::new_real(),
-      location.clone(),
-    ));
+    let http_cache =
+      Arc::new(GlobalHttpCache::new(CliSys::default(), location.clone()));
     let file_fetcher = CliFileFetcher::new(
       http_cache.clone(),
       http_client_provider,
+      CliSys::default(),
       Default::default(),
       None,
       true,

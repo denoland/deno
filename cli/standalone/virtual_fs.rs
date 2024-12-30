@@ -4,9 +4,6 @@ use std::borrow::Cow;
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::collections::HashSet;
-use std::fs::File;
-use std::io::Read;
-use std::io::Seek;
 use std::io::SeekFrom;
 use std::ops::Range;
 use std::path::Path;
@@ -14,11 +11,9 @@ use std::path::PathBuf;
 use std::rc::Rc;
 use std::sync::Arc;
 
-use deno_core::anyhow::anyhow;
 use deno_core::anyhow::bail;
 use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
-use deno_core::parking_lot::Mutex;
 use deno_core::BufMutView;
 use deno_core::BufView;
 use deno_core::ResourceHandleFd;
@@ -32,12 +27,10 @@ use deno_runtime::deno_io::fs::FsStat;
 use indexmap::IndexSet;
 use serde::Deserialize;
 use serde::Serialize;
-use thiserror::Error;
 
 use crate::util;
 use crate::util::display::human_size;
 use crate::util::display::DisplayTreeNode;
-use crate::util::fs::canonicalize_path;
 
 use super::binary::DENO_COMPILE_GLOBAL_NODE_MODULES_DIR_NAME;
 

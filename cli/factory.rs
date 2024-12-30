@@ -31,6 +31,8 @@ use crate::module_loader::CliModuleLoaderFactory;
 use crate::module_loader::ModuleLoadPreparer;
 use crate::node::CliCjsCodeAnalyzer;
 use crate::node::CliNodeCodeTranslator;
+use crate::node::CliNodeResolver;
+use crate::node::CliPackageJsonResolver;
 use crate::npm::create_cli_npm_resolver;
 use crate::npm::create_in_npm_pkg_checker;
 use crate::npm::CliByonmNpmResolverCreateOptions;
@@ -48,7 +50,8 @@ use crate::resolver::CliResolverOptions;
 use crate::resolver::CliSloppyImportsResolver;
 use crate::resolver::NpmModuleLoader;
 use crate::resolver::SloppyImportsCachedFs;
-use crate::standalone::DenoCompileBinaryWriter;
+use crate::standalone::binary::DenoCompileBinaryWriter;
+use crate::sys::CliSys;
 use crate::tools::check::TypeChecker;
 use crate::tools::coverage::CoverageCollector;
 use crate::tools::lint::LintRuleProvider;
@@ -74,9 +77,6 @@ use deno_resolver::npm::NpmReqResolverOptions;
 use deno_resolver::DenoResolverOptions;
 use deno_resolver::NodeAndNpmReqResolver;
 use deno_runtime::deno_fs;
-use deno_runtime::deno_fs::FsSysTraitsAdapter;
-use deno_runtime::deno_node::NodeResolver;
-use deno_runtime::deno_node::PackageJsonResolver;
 use deno_runtime::deno_node::RealIsBuiltInNodeModuleChecker;
 use deno_runtime::deno_permissions::Permissions;
 use deno_runtime::deno_permissions::PermissionsContainer;
@@ -198,13 +198,14 @@ struct CliFactoryServices {
   module_info_cache: Deferred<Arc<ModuleInfoCache>>,
   module_load_preparer: Deferred<Arc<ModuleLoadPreparer>>,
   node_code_translator: Deferred<Arc<CliNodeCodeTranslator>>,
-  node_resolver: Deferred<Arc<NodeResolver>>,
+  node_resolver: Deferred<Arc<CliNodeResolver>>,
   npm_cache_dir: Deferred<Arc<NpmCacheDir>>,
   npm_req_resolver: Deferred<Arc<CliNpmReqResolver>>,
   npm_resolver: Deferred<Arc<dyn CliNpmResolver>>,
   parsed_source_cache: Deferred<Arc<ParsedSourceCache>>,
-  permission_desc_parser: Deferred<Arc<RuntimePermissionDescriptorParser>>,
-  pkg_json_resolver: Deferred<Arc<PackageJsonResolver>>,
+  permission_desc_parser:
+    Deferred<Arc<RuntimePermissionDescriptorParser<CliSys>>>,
+  pkg_json_resolver: Deferred<Arc<CliPackageJsonResolver>>,
   resolver: Deferred<Arc<CliResolver>>,
   root_cert_store_provider: Deferred<Arc<dyn RootCertStoreProvider>>,
   root_permissions_container: Deferred<PermissionsContainer>,
@@ -254,7 +255,7 @@ impl CliFactory {
 
   pub fn cli_options(&self) -> Result<&Arc<CliOptions>, AnyError> {
     self.services.cli_options.get_or_try_init(|| {
-      CliOptions::from_flags(self.flags.clone()).map(Arc::new)
+      CliOptions::from_flags(&self.sys(), self.flags.clone()).map(Arc::new)
     })
   }
 
@@ -317,7 +318,7 @@ impl CliFactory {
   pub fn global_http_cache(&self) -> Result<&Arc<GlobalHttpCache>, AnyError> {
     self.services.global_http_cache.get_or_try_init(|| {
       Ok(Arc::new(GlobalHttpCache::new(
-        FsSysTraitsAdapter(self.fs().clone()),
+        self.sys(),
         self.deno_dir()?.remote_folder_path(),
       )))
     })
@@ -355,6 +356,7 @@ impl CliFactory {
       Ok(Arc::new(CliFileFetcher::new(
         self.http_cache()?.clone(),
         self.http_client_provider().clone(),
+        self.sys(),
         self.blob_store().clone(),
         Some(self.text_only_progress_bar().clone()),
         !cli_options.no_remote(),
@@ -365,7 +367,14 @@ impl CliFactory {
   }
 
   pub fn fs(&self) -> &Arc<dyn deno_fs::FileSystem> {
-    self.services.fs.get_or_init(|| Arc::new(deno_fs::RealFs))
+    self
+      .services
+      .fs
+      .get_or_init(|| Arc::new(crate::sys::CliDenoFs::default()))
+  }
+
+  pub fn sys(&self) -> CliSys {
+    CliSys::default() // very cheap to make
   }
 
   pub fn in_npm_pkg_checker(
@@ -391,11 +400,10 @@ impl CliFactory {
 
   pub fn npm_cache_dir(&self) -> Result<&Arc<NpmCacheDir>, AnyError> {
     self.services.npm_cache_dir.get_or_try_init(|| {
-      let fs = self.fs();
       let global_path = self.deno_dir()?.npm_folder_path();
       let cli_options = self.cli_options()?;
       Ok(Arc::new(NpmCacheDir::new(
-        &FsSysTraitsAdapter(fs.clone()),
+        &self.sys(),
         global_path,
         cli_options.npmrc().get_all_known_registries_urls(),
       )))
@@ -415,7 +423,7 @@ impl CliFactory {
           create_cli_npm_resolver(if cli_options.use_byonm() {
             CliNpmResolverCreateOptions::Byonm(
               CliByonmNpmResolverCreateOptions {
-                sys: FsSysTraitsAdapter(fs.clone()),
+                sys: self.sys(),
                 pkg_json_resolver: self.pkg_json_resolver().clone(),
                 root_node_modules_dir: Some(
                   match cli_options.node_modules_dir_path() {
@@ -439,7 +447,7 @@ impl CliFactory {
                     cli_options.workspace(),
                   ),
                 ),
-                sys: FsSysTraitsAdapter(self.fs().clone()),
+                sys: self.sys(),
                 snapshot: match cli_options.resolve_npm_resolution_snapshot()? {
                   Some(snapshot) => {
                     CliNpmResolverManagedSnapshotOption::Specified(Some(
@@ -486,7 +494,7 @@ impl CliFactory {
       .get_or_try_init(|| {
         Ok(self.cli_options()?.unstable_sloppy_imports().then(|| {
           Arc::new(CliSloppyImportsResolver::new(SloppyImportsCachedFs::new(
-            FsSysTraitsAdapter(self.fs().clone()),
+            self.sys(),
           )))
         }))
       })
@@ -647,13 +655,13 @@ impl CliFactory {
     ))
   }
 
-  pub async fn node_resolver(&self) -> Result<&Arc<NodeResolver>, AnyError> {
+  pub async fn node_resolver(&self) -> Result<&Arc<CliNodeResolver>, AnyError> {
     self
       .services
       .node_resolver
       .get_or_try_init_async(
         async {
-          Ok(Arc::new(NodeResolver::new(
+          Ok(Arc::new(CliNodeResolver::new(
             self.in_npm_pkg_checker()?.clone(),
             RealIsBuiltInNodeModuleChecker,
             self
@@ -662,7 +670,7 @@ impl CliFactory {
               .clone()
               .into_npm_pkg_folder_resolver(),
             self.pkg_json_resolver().clone(),
-            FsSysTraitsAdapter(self.fs().clone()),
+            self.sys(),
           )))
         }
         .boxed_local(),
@@ -698,7 +706,7 @@ impl CliFactory {
             .clone()
             .into_npm_pkg_folder_resolver(),
           self.pkg_json_resolver().clone(),
-          FsSysTraitsAdapter(self.fs().clone()),
+          self.sys(),
         )))
       })
       .await
@@ -714,7 +722,7 @@ impl CliFactory {
         let npm_resolver = self.npm_resolver().await?;
         Ok(Arc::new(CliNpmReqResolver::new(NpmReqResolverOptions {
           byonm_resolver: (npm_resolver.clone()).into_maybe_byonm(),
-          sys: FsSysTraitsAdapter(self.fs().clone()),
+          sys: self.sys(),
           in_npm_pkg_checker: self.in_npm_pkg_checker()?.clone(),
           node_resolver: self.node_resolver().await?.clone(),
           npm_req_resolver: npm_resolver.clone().into_npm_req_resolver(),
@@ -723,12 +731,11 @@ impl CliFactory {
       .await
   }
 
-  pub fn pkg_json_resolver(&self) -> &Arc<PackageJsonResolver> {
-    self.services.pkg_json_resolver.get_or_init(|| {
-      Arc::new(PackageJsonResolver::new(FsSysTraitsAdapter(
-        self.fs().clone(),
-      )))
-    })
+  pub fn pkg_json_resolver(&self) -> &Arc<CliPackageJsonResolver> {
+    self
+      .services
+      .pkg_json_resolver
+      .get_or_init(|| Arc::new(CliPackageJsonResolver::new(self.sys())))
   }
 
   pub async fn type_checker(&self) -> Result<&Arc<TypeChecker>, AnyError> {
@@ -774,7 +781,7 @@ impl CliFactory {
           self.parsed_source_cache().clone(),
           self.resolver().await?.clone(),
           self.root_permissions_container()?.clone(),
-          FsSysTraitsAdapter(self.fs().clone()),
+          self.sys(),
         )))
       })
       .await
@@ -864,10 +871,9 @@ impl CliFactory {
 
   pub fn permission_desc_parser(
     &self,
-  ) -> Result<&Arc<RuntimePermissionDescriptorParser>, AnyError> {
+  ) -> Result<&Arc<RuntimePermissionDescriptorParser<CliSys>>, AnyError> {
     self.services.permission_desc_parser.get_or_try_init(|| {
-      let fs = self.fs().clone();
-      Ok(Arc::new(RuntimePermissionDescriptorParser::new(fs)))
+      Ok(Arc::new(RuntimePermissionDescriptorParser::new(self.sys())))
     })
   }
 
@@ -974,7 +980,7 @@ impl CliFactory {
         ),
         self.parsed_source_cache().clone(),
         self.resolver().await?.clone(),
-        FsSysTraitsAdapter(self.fs().clone()),
+        self.sys(),
       )),
       node_resolver.clone(),
       npm_resolver.clone(),
@@ -982,6 +988,7 @@ impl CliFactory {
       self.root_cert_store_provider().clone(),
       self.root_permissions_container()?.clone(),
       StorageKeyResolver::from_options(cli_options),
+      self.sys(),
       cli_options.sub_command().clone(),
       self.create_cli_main_worker_options()?,
       self.cli_options()?.otel_config(),

@@ -26,7 +26,7 @@ use crate::interface::FsFileType;
 use crate::FileSystem;
 use crate::OpenOptions;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Default, Clone)]
 pub struct RealFs;
 
 #[async_trait::async_trait(?Send)]

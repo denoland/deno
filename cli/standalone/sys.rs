@@ -9,7 +9,6 @@ use deno_runtime::deno_fs::AccessCheckCb;
 use deno_runtime::deno_fs::FileSystem;
 use deno_runtime::deno_fs::FsDirEntry;
 use deno_runtime::deno_fs::FsFileType;
-use deno_runtime::deno_fs::FsStatSlim;
 use deno_runtime::deno_fs::OpenOptions;
 use deno_runtime::deno_fs::RealFs;
 use deno_runtime::deno_io::fs::File;

@@ -36,6 +36,7 @@ use crate::args::Flags;
 use crate::args::TaskFlags;
 use crate::colors;
 use crate::factory::CliFactory;
+use crate::node::CliNodeResolver;
 use crate::npm::CliNpmResolver;
 use crate::task_runner;
 use crate::task_runner::run_future_forwarding_signals;
@@ -267,7 +268,7 @@ struct RunSingleOptions<'a> {
 struct TaskRunner<'a> {
   task_flags: &'a TaskFlags,
   npm_resolver: &'a dyn CliNpmResolver,
-  node_resolver: &'a NodeResolver,
+  node_resolver: &'a CliNodeResolver,
   env_vars: HashMap<String, String>,
   cli_options: &'a CliOptions,
   concurrency: usize,

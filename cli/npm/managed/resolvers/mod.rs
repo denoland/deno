@@ -7,8 +7,8 @@ mod local;
 use std::path::PathBuf;
 use std::sync::Arc;
 
+use crate::sys::CliSys;
 use deno_npm::NpmSystemInfo;
-use deno_runtime::deno_fs::FsSysTraitsAdapter;
 
 use crate::args::LifecycleScriptsConfig;
 use crate::args::NpmInstallDepsProvider;
@@ -29,7 +29,7 @@ pub fn create_npm_fs_resolver(
   npm_install_deps_provider: &Arc<NpmInstallDepsProvider>,
   progress_bar: &ProgressBar,
   resolution: Arc<NpmResolution>,
-  sys: FsSysTraitsAdapter,
+  sys: CliSys,
   tarball_cache: Arc<CliNpmTarballCache>,
   maybe_node_modules_path: Option<PathBuf>,
   system_info: NpmSystemInfo,

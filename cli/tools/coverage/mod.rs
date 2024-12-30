@@ -7,6 +7,7 @@ use crate::args::Flags;
 use crate::cdp;
 use crate::factory::CliFactory;
 use crate::file_fetcher::TextDecodedFile;
+use crate::sys::CliSys;
 use crate::tools::fmt::format_json;
 use crate::tools::test::is_supported_test_path;
 use crate::util::text_encoding::source_map_from_code;
@@ -26,7 +27,6 @@ use deno_core::serde_json;
 use deno_core::sourcemap::SourceMap;
 use deno_core::url::Url;
 use deno_core::LocalInspectorSession;
-use deno_runtime::deno_fs::FsSysTraitsAdapter;
 use node_resolver::InNpmPackageChecker;
 use regex::Regex;
 use std::fs;
@@ -429,7 +429,7 @@ fn collect_coverages(
   .ignore_git_folder()
   .ignore_node_modules()
   .set_vendor_folder(cli_options.vendor_dir_path().map(ToOwned::to_owned))
-  .collect_file_patterns(&FsSysTraitsAdapter::new_real(), file_patterns)?;
+  .collect_file_patterns(&CliSys::default(), file_patterns)?;
 
   let coverage_patterns = FilePatterns {
     base: initial_cwd.to_path_buf(),

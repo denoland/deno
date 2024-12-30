@@ -14,10 +14,10 @@ use deno_core::url::Url;
 #[allow(unused_imports)]
 use deno_core::v8;
 use deno_core::v8::ExternalReference;
-use deno_fs::FsSysTraitsAdapter;
 use node_resolver::errors::ClosestPkgJsonError;
 use node_resolver::IsBuiltInNodeModuleChecker;
 use node_resolver::NpmPackageFolderResolverRc;
+use node_resolver::PackageJsonResolverRc;
 use once_cell::sync::Lazy;
 
 extern crate libz_sys as zlib;
@@ -185,16 +185,17 @@ fn op_node_build_os() -> String {
 }
 
 #[derive(Clone)]
-pub struct NodeExtInitServices {
+pub struct NodeExtInitServices<TSys: ExtNodeSys> {
   pub node_require_loader: NodeRequireLoaderRc,
-  pub node_resolver: NodeResolverRc,
+  pub node_resolver: NodeResolverRc<TSys>,
   pub npm_resolver: NpmPackageFolderResolverRc,
-  pub pkg_json_resolver: PackageJsonResolverRc,
+  pub pkg_json_resolver: PackageJsonResolverRc<TSys>,
+  pub sys: TSys,
 }
 
 deno_core::extension!(deno_node,
   deps = [ deno_io, deno_fs ],
-  parameters = [P: NodePermissions],
+  parameters = [P: NodePermissions, TSys: ExtNodeSys],
   ops = [
     ops::blocklist::op_socket_address_parse,
     ops::blocklist::op_socket_address_get_serialization,
@@ -391,29 +392,29 @@ deno_core::extension!(deno_node,
     op_node_build_os,
     ops::require::op_require_can_parse_as_esm,
     ops::require::op_require_init_paths,
-    ops::require::op_require_node_module_paths<P>,
+    ops::require::op_require_node_module_paths<P, TSys>,
     ops::require::op_require_proxy_path,
-    ops::require::op_require_is_deno_dir_package,
+    ops::require::op_require_is_deno_dir_package<TSys>,
     ops::require::op_require_resolve_deno_dir,
     ops::require::op_require_is_maybe_cjs,
     ops::require::op_require_is_request_relative,
     ops::require::op_require_resolve_lookup_paths,
-    ops::require::op_require_try_self_parent_path<P>,
-    ops::require::op_require_try_self<P>,
-    ops::require::op_require_real_path<P>,
+    ops::require::op_require_try_self_parent_path<P, TSys>,
+    ops::require::op_require_try_self<P, TSys>,
+    ops::require::op_require_real_path<P, TSys>,
     ops::require::op_require_path_is_absolute,
     ops::require::op_require_path_dirname,
-    ops::require::op_require_stat<P>,
+    ops::require::op_require_stat<P, TSys>,
     ops::require::op_require_path_resolve,
     ops::require::op_require_path_basename,
     ops::require::op_require_read_file<P>,
     ops::require::op_require_as_file_path,
-    ops::require::op_require_resolve_exports<P>,
-    ops::require::op_require_read_package_scope<P>,
-    ops::require::op_require_package_imports_resolve<P>,
+    ops::require::op_require_resolve_exports<P, TSys>,
+    ops::require::op_require_read_package_scope<P, TSys>,
+    ops::require::op_require_package_imports_resolve<P, TSys>,
     ops::require::op_require_break_on_next_statement,
     ops::util::op_node_guess_handle_type,
-    ops::worker_threads::op_worker_threads_filename<P>,
+    ops::worker_threads::op_worker_threads_filename<P, TSys>,
     ops::ipc::op_node_child_ipc_pipe,
     ops::ipc::op_node_ipc_write,
     ops::ipc::op_node_ipc_read,
@@ -679,13 +680,14 @@ deno_core::extension!(deno_node,
     "node:zlib" = "zlib.ts",
   ],
   options = {
-    maybe_init: Option<NodeExtInitServices>,
+    maybe_init: Option<NodeExtInitServices<TSys>>,
     fs: deno_fs::FileSystemRc,
   },
   state = |state, options| {
     state.put(options.fs.clone());
 
     if let Some(init) = &options.maybe_init {
+      state.put(init.sys.clone());
       state.put(init.node_require_loader.clone());
       state.put(init.node_resolver.clone());
       state.put(init.npm_resolver.clone());
@@ -819,18 +821,22 @@ impl IsBuiltInNodeModuleChecker for RealIsBuiltInNodeModuleChecker {
   }
 }
 
-pub type NodeResolver = node_resolver::NodeResolver<
-  RealIsBuiltInNodeModuleChecker,
-  FsSysTraitsAdapter,
->;
+pub trait ExtNodeSys:
+  sys_traits::BaseFsCanonicalize
+  + sys_traits::BaseFsMetadata
+  + sys_traits::BaseFsRead
+  + sys_traits::EnvCurrentDir
+  + Clone
+{
+}
+
+impl ExtNodeSys for sys_traits::impls::RealSys {}
+
+pub type NodeResolver<TSys> =
+  node_resolver::NodeResolver<RealIsBuiltInNodeModuleChecker, TSys>;
 #[allow(clippy::disallowed_types)]
-pub type NodeResolverRc = deno_fs::sync::MaybeArc<NodeResolver>;
-pub type PackageJsonResolver =
-  node_resolver::PackageJsonResolver<FsSysTraitsAdapter>;
+pub type NodeResolverRc<TSys> = deno_fs::sync::MaybeArc<NodeResolver<TSys>>;
 #[allow(clippy::disallowed_types)]
-pub type PackageJsonResolverRc = deno_fs::sync::MaybeArc<
-  node_resolver::PackageJsonResolver<FsSysTraitsAdapter>,
->;
 
 pub fn create_host_defined_options<'s>(
   scope: &mut v8::HandleScope<'s>,

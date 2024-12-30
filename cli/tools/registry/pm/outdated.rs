@@ -19,6 +19,7 @@ use crate::factory::CliFactory;
 use crate::file_fetcher::CliFileFetcher;
 use crate::jsr::JsrFetchResolver;
 use crate::npm::NpmFetchResolver;
+use crate::sys::CliSys;
 use crate::tools::registry::pm::deps::DepKind;
 
 use super::deps::Dep;
@@ -185,6 +186,7 @@ pub async fn outdated(
   let file_fetcher = CliFileFetcher::new(
     deps_http_cache.clone(),
     http_client.clone(),
+    factory.sys(),
     Default::default(),
     None,
     true,

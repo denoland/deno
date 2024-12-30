@@ -17,8 +17,8 @@ use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
 use deno_core::unsync::spawn_blocking;
 use deno_core::ModuleSpecifier;
-use deno_runtime::deno_fs::FsSysTraitsAdapter;
 
+use crate::sys::CliSys;
 use crate::util::progress_bar::ProgressBar;
 use crate::util::progress_bar::ProgressBarStyle;
 use crate::util::progress_bar::ProgressMessagePrompt;
@@ -76,7 +76,7 @@ pub fn canonicalize_path_maybe_not_exists(
   path: &Path,
 ) -> Result<PathBuf, Error> {
   deno_path_util::fs::canonicalize_path_maybe_not_exists(
-    &FsSysTraitsAdapter::new_real(),
+    &CliSys::default(),
     path,
   )
 }
@@ -126,7 +126,7 @@ pub fn collect_specifiers(
     .ignore_git_folder()
     .ignore_node_modules()
     .set_vendor_folder(vendor_folder)
-    .collect_file_patterns(&FsSysTraitsAdapter::new_real(), files)?;
+    .collect_file_patterns(&CliSys::default(), files)?;
   let mut collected_files_as_urls = collected_files
     .iter()
     .map(|f| specifier_from_file_path(f).unwrap())
@@ -198,13 +198,11 @@ mod clone_dir_imp {
     from: &std::path::Path,
     to: &std::path::Path,
   ) -> Result<(), deno_core::error::AnyError> {
-    use deno_runtime::deno_fs::FsSysTraitsAdapter;
+    use crate::sys::CliSys;
 
-    if let Err(e) = deno_npm_cache::hard_link_dir_recursive(
-      &FsSysTraitsAdapter::new_real(),
-      from,
-      to,
-    ) {
+    if let Err(e) =
+      deno_npm_cache::hard_link_dir_recursive(&CliSys::default(), from, to)
+    {
       log::debug!("Failed to hard link dir {:?} to {:?}: {}", from, to, e);
       super::copy_dir_recursive(from, to)?;
     }

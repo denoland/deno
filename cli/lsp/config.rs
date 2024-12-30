@@ -36,7 +36,6 @@ use deno_lint::linter::LintConfig as DenoLintConfig;
 use deno_npm::npm_rc::ResolvedNpmRc;
 use deno_package_json::PackageJsonCache;
 use deno_path_util::url_to_file_path;
-use deno_runtime::deno_fs::FsSysTraitsAdapter;
 use deno_runtime::deno_node::PackageJson;
 use indexmap::IndexSet;
 use lsp_types::ClientCapabilities;
@@ -65,6 +64,7 @@ use crate::file_fetcher::CliFileFetcher;
 use crate::lsp::logging::lsp_warn;
 use crate::resolver::CliSloppyImportsResolver;
 use crate::resolver::SloppyImportsCachedFs;
+use crate::sys::CliSys;
 use crate::tools::lint::CliLinter;
 use crate::tools::lint::CliLinterOptions;
 use crate::tools::lint::LintRuleProvider;
@@ -1227,7 +1227,7 @@ impl ConfigData {
       Ok(scope_dir_path) => {
         let paths = [scope_dir_path];
         WorkspaceDirectory::discover(
-          &FsSysTraitsAdapter::new_real(),
+          &CliSys::default(),
           match specified_config {
             Some(config_path) => {
               deno_config::workspace::WorkspaceDiscoverStart::ConfigFile(
@@ -1615,9 +1615,7 @@ impl ConfigData {
       || unstable.contains("sloppy-imports");
     let sloppy_imports_resolver = unstable_sloppy_imports.then(|| {
       Arc::new(CliSloppyImportsResolver::new(
-        SloppyImportsCachedFs::new_without_stat_cache(
-          FsSysTraitsAdapter::new_real(),
-        ),
+        SloppyImportsCachedFs::new_without_stat_cache(CliSys::default()),
       ))
     });
     let resolver = Arc::new(resolver);
@@ -1921,17 +1919,20 @@ impl ConfigTree {
 
   #[cfg(test)]
   pub async fn inject_config_file(&mut self, config_file: ConfigFile) {
+    use sys_traits::FsCreateDirAll;
+    use sys_traits::FsWrite;
+
     let scope = config_file.specifier.join(".").unwrap();
     let json_text = serde_json::to_string(&config_file.json).unwrap();
-    let test_fs = Arc::new(deno_runtime::deno_fs::InMemoryFs::default());
+    let memory_sys = sys_traits::impls::InMemorySys::default();
     let config_path = url_to_file_path(&config_file.specifier).unwrap();
-    test_fs.setup_text_files(vec![(
-      config_path.to_string_lossy().to_string(),
-      json_text,
-    )]);
+    memory_sys
+      .fs_create_dir_all(config_path.parent().unwrap())
+      .unwrap();
+    memory_sys.fs_write(&config_path, json_text).unwrap();
     let workspace_dir = Arc::new(
       WorkspaceDirectory::discover(
-        &FsSysTraitsAdapter(test_fs.clone()),
+        &memory_sys,
         deno_config::workspace::WorkspaceDiscoverStart::ConfigFile(
           &config_path,
         ),
@@ -2008,11 +2009,14 @@ fn resolve_lockfile_from_path(
   lockfile_path: PathBuf,
   frozen: bool,
 ) -> Option<CliLockfile> {
-  match CliLockfile::read_from_path(CliLockfileReadFromPathOptions {
-    file_path: lockfile_path,
-    frozen,
-    skip_write: false,
-  }) {
+  match CliLockfile::read_from_path(
+    &CliSys::default(),
+    CliLockfileReadFromPathOptions {
+      file_path: lockfile_path,
+      frozen,
+      skip_write: false,
+    },
+  ) {
     Ok(value) => {
       if value.filename.exists() {
         if let Ok(specifier) = ModuleSpecifier::from_file_path(&value.filename)

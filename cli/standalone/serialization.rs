@@ -273,30 +273,6 @@ impl RemoteModulesStoreBuilder {
   }
 }
 
-pub enum DenoCompileModuleSource {
-  String(&'static str),
-  Bytes(Cow<'static, [u8]>),
-}
-
-impl DenoCompileModuleSource {
-  pub fn into_for_v8(self) -> ModuleSourceCode {
-    fn into_bytes(data: Cow<'static, [u8]>) -> ModuleSourceCode {
-      ModuleSourceCode::Bytes(match data {
-        Cow::Borrowed(d) => d.into(),
-        Cow::Owned(d) => d.into_boxed_slice().into(),
-      })
-    }
-
-    match self {
-      // todo(https://github.com/denoland/deno_core/pull/943): store whether
-      // the string is ascii or not ahead of time so we can avoid the is_ascii()
-      // check in FastString::from_static
-      Self::String(s) => ModuleSourceCode::String(FastString::from_static(s)),
-      Self::Bytes(b) => into_bytes(b),
-    }
-  }
-}
-
 pub struct SourceMapStore {
   data: IndexMap<Cow<'static, str>, Cow<'static, [u8]>>,
 }
@@ -318,52 +294,6 @@ impl SourceMapStore {
 
   pub fn get(&self, specifier: &str) -> Option<&[u8]> {
     self.data.get(specifier).map(|v| v.as_ref())
-  }
-}
-
-pub struct DenoCompileModuleData<'a> {
-  pub specifier: &'a Url,
-  pub media_type: MediaType,
-  pub data: Cow<'static, [u8]>,
-}
-
-impl<'a> DenoCompileModuleData<'a> {
-  pub fn into_parts(self) -> (&'a Url, ModuleType, DenoCompileModuleSource) {
-    fn into_string_unsafe(data: Cow<'static, [u8]>) -> DenoCompileModuleSource {
-      match data {
-        Cow::Borrowed(d) => DenoCompileModuleSource::String(
-          // SAFETY: we know this is a valid utf8 string
-          unsafe { std::str::from_utf8_unchecked(d) },
-        ),
-        Cow::Owned(d) => DenoCompileModuleSource::Bytes(Cow::Owned(d)),
-      }
-    }
-
-    let (media_type, source) = match self.media_type {
-      MediaType::JavaScript
-      | MediaType::Jsx
-      | MediaType::Mjs
-      | MediaType::Cjs
-      | MediaType::TypeScript
-      | MediaType::Mts
-      | MediaType::Cts
-      | MediaType::Dts
-      | MediaType::Dmts
-      | MediaType::Dcts
-      | MediaType::Tsx => {
-        (ModuleType::JavaScript, into_string_unsafe(self.data))
-      }
-      MediaType::Json => (ModuleType::Json, into_string_unsafe(self.data)),
-      MediaType::Wasm => {
-        (ModuleType::Wasm, DenoCompileModuleSource::Bytes(self.data))
-      }
-      // just assume javascript if we made it here
-      MediaType::Css | MediaType::SourceMap | MediaType::Unknown => (
-        ModuleType::JavaScript,
-        DenoCompileModuleSource::Bytes(self.data),
-      ),
-    };
-    (self.specifier, media_type, source)
   }
 }
 

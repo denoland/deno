@@ -1157,7 +1157,7 @@ mod node {
       WorkerThreadsFilenameError::UrlToPathString => "Error",
       WorkerThreadsFilenameError::UrlToPath => "Error",
       WorkerThreadsFilenameError::FileNotFound(_) => "Error",
-      WorkerThreadsFilenameError::Fs(e) => super::get_fs_error(e),
+      WorkerThreadsFilenameError::Fs(e) => super::get_io_error_class(e),
     }
   }
 
@@ -1173,7 +1173,7 @@ mod node {
       | UrlConversion(_)
       | ReadModule(_)
       | PackageImportsResolve(_) => "Error",
-      Fs(e) | UnableToGetCwd(e) => super::get_fs_error(e),
+      Fs(e) | UnableToGetCwd(e) => super::get_io_error_class(e),
     }
   }
 

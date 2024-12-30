@@ -16,8 +16,8 @@ use deno_lint::linter::LintFileOptions;
 use deno_lint::linter::Linter as DenoLintLinter;
 use deno_lint::linter::LinterOptions;
 use deno_path_util::fs::atomic_write_file_with_retries;
-use deno_runtime::deno_fs::FsSysTraitsAdapter;
 
+use crate::sys::CliSys;
 use crate::util::fs::specifier_from_file_path;
 
 use super::rules::FileOrPackageLintRule;
@@ -177,7 +177,7 @@ impl CliLinter {
     if fix_iterations > 0 {
       // everything looks good and the file still parses, so write it out
       atomic_write_file_with_retries(
-        &FsSysTraitsAdapter::new_real(),
+        &CliSys::default(),
         file_path,
         source.text().as_bytes(),
         crate::cache::CACHE_PERM,
