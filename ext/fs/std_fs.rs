@@ -723,30 +723,34 @@ fn cp(from: &Path, to: &Path) -> FsResult<()> {
     }
   }
 
-  match (fs::metadata(to), fs::symlink_metadata(to)) {
-    (Ok(m), _) if m.is_dir() => cp_(
-      source_meta,
-      from,
-      &to.join(from.file_name().ok_or_else(|| {
-        io::Error::new(
-          io::ErrorKind::InvalidInput,
-          "the source path is not a valid file",
-        )
-      })?),
-    )?,
-    (_, Ok(m)) if is_identical(&source_meta, &m) => {
+  if let Ok(m) = fs::metadata(to) {
+    if m.is_dir() {
+      return cp_(
+        source_meta,
+        from,
+        &to.join(from.file_name().ok_or_else(|| {
+          io::Error::new(
+            io::ErrorKind::InvalidInput,
+            "the source path is not a valid file",
+          )
+        })?),
+      );
+    }
+  }
+
+  if let Ok(m) = fs::symlink_metadata(to) {
+    if is_identical(&source_meta, &m) {
       return Err(
         io::Error::new(
           io::ErrorKind::InvalidInput,
           "the source and destination are the same file",
         )
         .into(),
-      )
+      );
     }
-    _ => cp_(source_meta, from, to)?,
   }
 
-  Ok(())
+  cp_(source_meta, from, to)
 }
 
 #[cfg(not(windows))]
