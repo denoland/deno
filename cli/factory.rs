@@ -951,7 +951,7 @@ impl CliFactory {
         NpmRegistryReadPermissionCheckerMode::Local(node_modules_dir.clone())
       } else {
         NpmRegistryReadPermissionCheckerMode::Global(
-          self.deno_dir()?.npm_folder_path(),
+          self.npm_cache_dir()?.root_dir().to_path_buf(),
         )
       };
       Arc::new(NpmRegistryReadPermissionChecker::new(self.sys(), mode))

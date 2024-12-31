@@ -49,10 +49,10 @@ impl NpmRegistryReadPermissionChecker {
 
     match &self.mode {
       NpmRegistryReadPermissionCheckerMode::Byonm => {
-        if !path.components().any(|c| c.as_os_str() == "node_modules") {
-          permissions.check_read_path(path).map_err(Into::into)
-        } else {
+        if path.components().any(|c| c.as_os_str() == "node_modules") {
           Ok(Cow::Borrowed(path))
+        } else {
+          permissions.check_read_path(path).map_err(Into::into)
         }
       }
       NpmRegistryReadPermissionCheckerMode::Global(registry_path)
