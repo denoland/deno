@@ -19,7 +19,6 @@ use crate::factory::CliFactory;
 use crate::file_fetcher::CliFileFetcher;
 use crate::jsr::JsrFetchResolver;
 use crate::npm::NpmFetchResolver;
-use crate::sys::CliSys;
 use crate::tools::registry::pm::deps::DepKind;
 
 use super::deps::Dep;

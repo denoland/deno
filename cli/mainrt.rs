@@ -32,11 +32,13 @@ use deno_runtime::tokio_util::create_and_run_current_thread_with_maybe_metrics;
 pub use deno_runtime::UNSTABLE_GRANULAR_FLAGS;
 use deno_terminal::colors;
 use indexmap::IndexMap;
+use standalone::DenoCompileFileSystem;
 
 use std::borrow::Cow;
 use std::collections::HashMap;
 use std::env;
 use std::env::current_exe;
+use std::sync::Arc;
 
 use crate::args::Flags;
 
@@ -93,7 +95,12 @@ fn main() {
           Some(data.metadata.otel_config.clone()),
         );
         load_env_vars(&data.metadata.env_vars_from_env_file);
-        let exit_code = standalone::run(data).await?;
+        let fs = DenoCompileFileSystem::new(data.vfs.clone());
+        #[cfg(denort)]
+        let sys = fs.clone();
+        #[cfg(not(denort))]
+        let sys = sys::CliSys::default(); // this is just to make the editor happy during development
+        let exit_code = standalone::run(Arc::new(fs), sys, data).await?;
         deno_runtime::exit(exit_code);
       }
       Ok(None) => Ok(()),

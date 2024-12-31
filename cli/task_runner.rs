@@ -10,7 +10,6 @@ use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
 use deno_core::futures;
 use deno_core::futures::future::LocalBoxFuture;
-use deno_runtime::deno_node::NodeResolver;
 use deno_semver::package::PackageNv;
 use deno_task_shell::ExecutableCommand;
 use deno_task_shell::ExecuteResult;

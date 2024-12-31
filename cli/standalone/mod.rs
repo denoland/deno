@@ -107,12 +107,12 @@ mod file_system;
 mod serialization;
 mod virtual_fs;
 
+pub use self::file_system::DenoCompileFileSystem;
 pub use binary::extract_standalone;
 pub use binary::is_standalone_binary;
 pub use binary::DenoCompileBinaryWriter;
 
 use self::binary::Metadata;
-use self::file_system::DenoCompileFileSystem;
 
 struct SharedModuleLoaderState {
   cjs_tracker: Arc<CjsTracker>,

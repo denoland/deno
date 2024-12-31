@@ -418,7 +418,6 @@ impl CliFactory {
       .npm_resolver
       .get_or_try_init_async(
         async {
-          let fs = self.fs();
           let cli_options = self.cli_options()?;
           create_cli_npm_resolver(if cli_options.use_byonm() {
             CliNpmResolverCreateOptions::Byonm(

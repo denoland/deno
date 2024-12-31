@@ -23,7 +23,6 @@ use deno_runtime::deno_fs;
 use deno_runtime::deno_node::NodeExtInitServices;
 use deno_runtime::deno_node::NodeRequireLoader;
 use deno_runtime::deno_node::NodeRequireLoaderRc;
-use deno_runtime::deno_node::NodeResolver;
 use deno_runtime::deno_permissions::PermissionsContainer;
 use deno_runtime::deno_tls::RootCertStoreProvider;
 use deno_runtime::deno_web::BlobStore;
@@ -875,10 +874,9 @@ mod tests {
     let main_module =
       resolve_path("./hello.js", &std::env::current_dir().unwrap()).unwrap();
     let fs = Arc::new(RealFs);
-    let permission_desc_parser =
-      Arc::new(RuntimePermissionDescriptorParser::new(
-        sys_traits::impls::RealSys.clone(),
-      ));
+    let permission_desc_parser = Arc::new(
+      RuntimePermissionDescriptorParser::new(crate::sys::CliSys::default()),
+    );
     let options = WorkerOptions {
       startup_snapshot: crate::js::deno_isolate_init(),
       ..Default::default()

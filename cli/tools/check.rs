@@ -9,7 +9,6 @@ use deno_ast::ModuleSpecifier;
 use deno_core::error::AnyError;
 use deno_graph::Module;
 use deno_graph::ModuleGraph;
-use deno_runtime::deno_node::NodeResolver;
 use deno_terminal::colors;
 use once_cell::sync::Lazy;
 use regex::Regex;

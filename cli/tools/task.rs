@@ -25,7 +25,6 @@ use deno_core::futures::FutureExt;
 use deno_core::futures::StreamExt;
 use deno_core::url::Url;
 use deno_path_util::normalize_path;
-use deno_runtime::deno_node::NodeResolver;
 use deno_task_shell::KillSignal;
 use deno_task_shell::ShellCommand;
 use indexmap::IndexMap;
