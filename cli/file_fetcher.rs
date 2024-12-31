@@ -279,6 +279,7 @@ pub struct CliFileFetcher {
 }
 
 impl CliFileFetcher {
+  #[allow(clippy::too_many_arguments)]
   pub fn new(
     http_cache: Arc<dyn HttpCache>,
     http_client_provider: Arc<HttpClientProvider>,

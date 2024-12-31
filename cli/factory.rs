@@ -77,6 +77,7 @@ use deno_resolver::npm::NpmReqResolverOptions;
 use deno_resolver::DenoResolverOptions;
 use deno_resolver::NodeAndNpmReqResolver;
 use deno_runtime::deno_fs;
+use deno_runtime::deno_fs::RealFs;
 use deno_runtime::deno_node::RealIsBuiltInNodeModuleChecker;
 use deno_runtime::deno_permissions::Permissions;
 use deno_runtime::deno_permissions::PermissionsContainer;
@@ -367,10 +368,7 @@ impl CliFactory {
   }
 
   pub fn fs(&self) -> &Arc<dyn deno_fs::FileSystem> {
-    self
-      .services
-      .fs
-      .get_or_init(|| Arc::new(crate::sys::CliDenoFs::default()))
+    self.services.fs.get_or_init(|| Arc::new(RealFs))
   }
 
   pub fn sys(&self) -> CliSys {

@@ -642,7 +642,7 @@ pub async fn run(
     source_maps,
     vfs,
   } = data;
-  let deno_dir_provider = Arc::new(DenoDirProvider::new(sys, None));
+  let deno_dir_provider = Arc::new(DenoDirProvider::new(sys.clone(), None));
   let root_cert_store_provider = Arc::new(StandaloneRootCertStoreProvider {
     ca_stores: metadata.ca_stores,
     ca_data: metadata.ca_data.map(CaData::Bytes),
@@ -811,7 +811,7 @@ pub async fn run(
     node_resolver.clone(),
     npm_resolver.clone().into_npm_pkg_folder_resolver(),
     pkg_json_resolver.clone(),
-    sys,
+    sys.clone(),
   ));
   let workspace_resolver = {
     let import_map = match metadata.workspace_resolver.import_map {

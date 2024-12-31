@@ -772,6 +772,7 @@ pub struct CliOptions {
 }
 
 impl CliOptions {
+  #[allow(clippy::too_many_arguments)]
   pub fn new(
     sys: &CliSys,
     flags: Arc<Flags>,

@@ -23,7 +23,6 @@ use sys_traits::boxed::BoxedFsDirEntry;
 use sys_traits::boxed::BoxedFsMetadataValue;
 use sys_traits::boxed::FsMetadataBoxed;
 use sys_traits::boxed::FsReadDirBoxed;
-use sys_traits::impls::RealSys;
 use sys_traits::FsMetadata;
 
 use super::virtual_fs::FileBackedVfs;
@@ -554,7 +553,8 @@ impl sys_traits::BaseFsReadDir for DenoCompileFileSystem {
         entries.map(|entry| Ok(BoxedFsDirEntry::new(entry))),
       ))
     } else {
-      RealSys.fs_read_dir_boxed(path)
+      #[allow(clippy::disallowed_types)] // ok because we're implementing the fs
+      sys_traits::impls::RealSys.fs_read_dir_boxed(path)
     }
   }
 }
@@ -574,7 +574,8 @@ impl sys_traits::BaseFsMetadata for DenoCompileFileSystem {
     if self.0.is_path_within(path) {
       Ok(BoxedFsMetadataValue::new(self.0.stat(path)?))
     } else {
-      RealSys.fs_metadata_boxed(path)
+      #[allow(clippy::disallowed_types)] // ok because we're implementing the fs
+      sys_traits::impls::RealSys.fs_metadata_boxed(path)
     }
   }
 
@@ -586,7 +587,8 @@ impl sys_traits::BaseFsMetadata for DenoCompileFileSystem {
     if self.0.is_path_within(path) {
       Ok(BoxedFsMetadataValue::new(self.0.lstat(path)?))
     } else {
-      RealSys.fs_symlink_metadata_boxed(path)
+      #[allow(clippy::disallowed_types)] // ok because we're implementing the fs
+      sys_traits::impls::RealSys.fs_symlink_metadata_boxed(path)
     }
   }
 }
@@ -784,7 +786,10 @@ impl sys_traits::BaseFsOpen for DenoCompileFileSystem {
     if self.0.is_path_within(path) {
       Ok(FsFileAdapter::Vfs(self.0.open_file(path)?))
     } else {
-      Ok(FsFileAdapter::Real(RealSys.base_fs_open(path, options)?))
+      #[allow(clippy::disallowed_types)] // ok because we're implementing the fs
+      Ok(FsFileAdapter::Real(
+        sys_traits::impls::RealSys.base_fs_open(path, options)?,
+      ))
     }
   }
 }
@@ -792,21 +797,31 @@ impl sys_traits::BaseFsOpen for DenoCompileFileSystem {
 impl sys_traits::SystemRandom for DenoCompileFileSystem {
   #[inline]
   fn sys_random(&self, buf: &mut [u8]) -> std::io::Result<()> {
-    RealSys.sys_random(buf)
+    #[allow(clippy::disallowed_types)] // ok because we're implementing the fs
+    sys_traits::impls::RealSys.sys_random(buf)
   }
 }
 
 impl sys_traits::SystemTimeNow for DenoCompileFileSystem {
   #[inline]
   fn sys_time_now(&self) -> SystemTime {
-    RealSys.sys_time_now()
+    #[allow(clippy::disallowed_types)] // ok because we're implementing the fs
+    sys_traits::impls::RealSys.sys_time_now()
   }
 }
 
 impl sys_traits::ThreadSleep for DenoCompileFileSystem {
   #[inline]
   fn thread_sleep(&self, dur: Duration) {
-    RealSys.thread_sleep(dur)
+    #[allow(clippy::disallowed_types)] // ok because we're implementing the fs
+    sys_traits::impls::RealSys.thread_sleep(dur)
+  }
+}
+
+impl sys_traits::EnvCurrentDir for DenoCompileFileSystem {
+  fn env_current_dir(&self) -> std::io::Result<PathBuf> {
+    #[allow(clippy::disallowed_types)] // ok because we're implementing the fs
+    sys_traits::impls::RealSys.env_current_dir()
   }
 }
 
@@ -815,6 +830,7 @@ impl sys_traits::BaseEnvVar for DenoCompileFileSystem {
     &self,
     key: &std::ffi::OsStr,
   ) -> Option<std::ffi::OsString> {
-    RealSys.base_env_var_os(key)
+    #[allow(clippy::disallowed_types)] // ok because we're implementing the fs
+    sys_traits::impls::RealSys.base_env_var_os(key)
   }
 }

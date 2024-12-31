@@ -96,10 +96,7 @@ fn main() {
         );
         load_env_vars(&data.metadata.env_vars_from_env_file);
         let fs = DenoCompileFileSystem::new(data.vfs.clone());
-        #[cfg(denort)]
-        let sys = fs.clone();
-        #[cfg(not(denort))]
-        let sys = sys::CliSys::default(); // this is just to make the editor happy during development
+        let sys = crate::sys::CliSys::DenoCompile(fs.clone());
         let exit_code = standalone::run(Arc::new(fs), sys, data).await?;
         deno_runtime::exit(exit_code);
       }
