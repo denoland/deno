@@ -1,5 +1,5 @@
 #!/usr/bin/env -S deno run --allow-write=. --lock=./tools/deno.lock.json
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 import { stringify } from "jsr:@std/yaml@^0.221/stringify";
 
 // Bump this number when you want to purge the cache.

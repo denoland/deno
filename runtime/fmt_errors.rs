@@ -1,4 +1,4 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 //! This mod provides DenoError to unify errors across Deno.
 use std::fmt::Write as _;
 

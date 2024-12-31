@@ -1,4 +1,4 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
 #![allow(non_upper_case_globals)]
 #![deny(unsafe_op_in_unsafe_fn)]

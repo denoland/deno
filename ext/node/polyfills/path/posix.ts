@@ -1,6 +1,6 @@
 // Copyright the Browserify authors. MIT License.
 // Ported from https://github.com/browserify/path-browserify/
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
 import path from "ext:deno_node/path/mod.ts";
 
