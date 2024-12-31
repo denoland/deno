@@ -30,16 +30,15 @@ mod impl_ {
   use deno_core::RcRef;
   use deno_core::ResourceId;
   use deno_core::ToV8;
+  use deno_io::BiPipe;
+  use deno_io::BiPipeRead;
+  use deno_io::BiPipeWrite;
   use memchr::memchr;
   use pin_project_lite::pin_project;
   use serde::Serialize;
   use tokio::io::AsyncRead;
   use tokio::io::AsyncWriteExt;
   use tokio::io::ReadBuf;
-
-  use deno_io::BiPipe;
-  use deno_io::BiPipeRead;
-  use deno_io::BiPipeWrite;
 
   /// Wrapper around v8 value that implements Serialize.
   struct SerializeWrapper<'a, 'b>(
@@ -624,13 +623,15 @@ mod impl_ {
 
   #[cfg(test)]
   mod tests {
-    use super::IpcJsonStreamResource;
+    use std::rc::Rc;
+
     use deno_core::serde_json::json;
     use deno_core::v8;
     use deno_core::JsRuntime;
     use deno_core::RcRef;
     use deno_core::RuntimeOptions;
-    use std::rc::Rc;
+
+    use super::IpcJsonStreamResource;
 
     #[allow(clippy::unused_async)]
     #[cfg(unix)]

@@ -146,9 +146,10 @@ impl<'a> Future for TaskQueuePermitAcquireFuture<'a> {
 
 #[cfg(test)]
 mod test {
+  use std::sync::Arc;
+
   use deno_core::futures;
   use deno_core::parking_lot::Mutex;
-  use std::sync::Arc;
 
   use super::*;
 

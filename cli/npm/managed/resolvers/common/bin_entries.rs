@@ -1,15 +1,17 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
-use crate::npm::managed::NpmResolutionPackage;
-use deno_core::anyhow::Context;
-use deno_core::error::AnyError;
-use deno_npm::resolution::NpmResolutionSnapshot;
-use deno_npm::NpmPackageId;
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::collections::VecDeque;
 use std::path::Path;
 use std::path::PathBuf;
+
+use deno_core::anyhow::Context;
+use deno_core::error::AnyError;
+use deno_npm::resolution::NpmResolutionSnapshot;
+use deno_npm::NpmPackageId;
+
+use crate::npm::managed::NpmResolutionPackage;
 
 #[derive(Default)]
 pub struct BinEntries<'a> {

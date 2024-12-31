@@ -2,12 +2,13 @@
 
 //! This module helps deno implement timers and performance APIs.
 
-use deno_core::op2;
-use deno_core::OpState;
 use std::time::Duration;
 use std::time::Instant;
 use std::time::SystemTime;
 use std::time::UNIX_EPOCH;
+
+use deno_core::op2;
+use deno_core::OpState;
 
 pub trait TimersPermission {
   fn allow_hrtime(&mut self) -> bool;

@@ -503,6 +503,7 @@ fn remove(path: &Path, recursive: bool) -> FsResult<()> {
     #[cfg(not(unix))]
     {
       use std::os::windows::prelude::MetadataExt;
+
       use winapi::um::winnt::FILE_ATTRIBUTE_DIRECTORY;
       if metadata.file_attributes() & FILE_ATTRIBUTE_DIRECTORY != 0 {
         fs::remove_dir(path)
@@ -520,12 +521,13 @@ fn remove(path: &Path, recursive: bool) -> FsResult<()> {
 fn copy_file(from: &Path, to: &Path) -> FsResult<()> {
   #[cfg(target_os = "macos")]
   {
-    use libc::clonefile;
-    use libc::stat;
-    use libc::unlink;
     use std::ffi::CString;
     use std::os::unix::fs::OpenOptionsExt;
     use std::os::unix::fs::PermissionsExt;
+
+    use libc::clonefile;
+    use libc::stat;
+    use libc::unlink;
 
     let from_str = CString::new(from.as_os_str().as_encoded_bytes())
       .map_err(|err| io::Error::new(io::ErrorKind::InvalidInput, err))?;
@@ -670,10 +672,11 @@ fn cp(from: &Path, to: &Path) -> FsResult<()> {
   #[cfg(target_os = "macos")]
   {
     // Just clonefile()
-    use libc::clonefile;
-    use libc::unlink;
     use std::ffi::CString;
     use std::os::unix::ffi::OsStrExt;
+
+    use libc::clonefile;
+    use libc::unlink;
 
     let from_str = CString::new(from.as_os_str().as_bytes())
       .map_err(|err| io::Error::new(io::ErrorKind::InvalidInput, err))?;
@@ -762,6 +765,7 @@ fn stat(path: &Path) -> FsResult<FsStat> {
 #[cfg(windows)]
 fn stat(path: &Path) -> FsResult<FsStat> {
   use std::os::windows::fs::OpenOptionsExt;
+
   use winapi::um::winbase::FILE_FLAG_BACKUP_SEMANTICS;
 
   let mut opts = fs::OpenOptions::new();
@@ -924,6 +928,7 @@ fn exists(path: &Path) -> bool {
   #[cfg(windows)]
   {
     use std::os::windows::ffi::OsStrExt;
+
     use winapi::um::fileapi::GetFileAttributesW;
     use winapi::um::fileapi::INVALID_FILE_ATTRIBUTES;
 

@@ -10,15 +10,16 @@ pub mod raw;
 pub mod resolve_addr;
 pub mod tcp;
 
+use std::borrow::Cow;
+use std::path::Path;
+use std::path::PathBuf;
+use std::sync::Arc;
+
 use deno_core::error::AnyError;
 use deno_core::OpState;
 use deno_permissions::PermissionCheckError;
 use deno_tls::rustls::RootCertStore;
 use deno_tls::RootCertStoreProvider;
-use std::borrow::Cow;
-use std::path::Path;
-use std::path::PathBuf;
-use std::sync::Arc;
 
 pub const UNSTABLE_FEATURE_NAME: &str = "net";
 
@@ -204,8 +205,9 @@ deno_core::extension!(deno_net,
 /// Stub ops for non-unix platforms.
 #[cfg(not(unix))]
 mod ops_unix {
-  use crate::NetPermissions;
   use deno_core::op2;
+
+  use crate::NetPermissions;
 
   macro_rules! stub_op {
     ($name:ident) => {

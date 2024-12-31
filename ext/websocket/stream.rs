@@ -1,4 +1,9 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+use std::io::ErrorKind;
+use std::pin::Pin;
+use std::task::ready;
+use std::task::Poll;
+
 use bytes::Buf;
 use bytes::Bytes;
 use deno_net::raw::NetworkStream;
@@ -6,10 +11,6 @@ use h2::RecvStream;
 use h2::SendStream;
 use hyper::upgrade::Upgraded;
 use hyper_util::rt::TokioIo;
-use std::io::ErrorKind;
-use std::pin::Pin;
-use std::task::ready;
-use std::task::Poll;
 use tokio::io::AsyncRead;
 use tokio::io::AsyncWrite;
 use tokio::io::ReadBuf;

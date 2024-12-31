@@ -1,10 +1,11 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
-use super::mode::Flush;
-use super::mode::Mode;
 use std::ffi::c_int;
 use std::ops::Deref;
 use std::ops::DerefMut;
+
+use super::mode::Flush;
+use super::mode::Mode;
 
 pub struct StreamWrapper {
   pub strm: zlib::z_stream,

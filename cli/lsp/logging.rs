@@ -1,8 +1,5 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
-use chrono::DateTime;
-use chrono::Utc;
-use deno_core::parking_lot::Mutex;
 use std::fs;
 use std::io::prelude::*;
 use std::path::Path;
@@ -11,6 +8,10 @@ use std::sync::atomic::AtomicUsize;
 use std::sync::atomic::Ordering;
 use std::thread;
 use std::time::SystemTime;
+
+use chrono::DateTime;
+use chrono::Utc;
+use deno_core::parking_lot::Mutex;
 
 static LSP_DEBUG_FLAG: AtomicBool = AtomicBool::new(false);
 static LSP_LOG_LEVEL: AtomicUsize = AtomicUsize::new(log::Level::Info as usize);

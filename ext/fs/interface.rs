@@ -6,12 +6,11 @@ use std::path::Path;
 use std::path::PathBuf;
 use std::rc::Rc;
 
-use serde::Deserialize;
-use serde::Serialize;
-
 use deno_io::fs::File;
 use deno_io::fs::FsResult;
 use deno_io::fs::FsStat;
+use serde::Deserialize;
+use serde::Serialize;
 
 use crate::sync::MaybeSend;
 use crate::sync::MaybeSync;

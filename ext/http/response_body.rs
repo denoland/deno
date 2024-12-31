@@ -573,11 +573,13 @@ impl PollFrame for BrotliResponseStream {
 #[allow(clippy::print_stderr)]
 #[cfg(test)]
 mod tests {
-  use super::*;
-  use deno_core::futures::future::poll_fn;
   use std::hash::Hasher;
   use std::io::Read;
   use std::io::Write;
+
+  use deno_core::futures::future::poll_fn;
+
+  use super::*;
 
   fn zeros() -> Vec<u8> {
     vec![0; 1024 * 1024]

@@ -152,10 +152,12 @@ mod clone_dir_imp {
 
   #[cfg(target_vendor = "apple")]
   mod apple {
-    use super::super::copy_dir_recursive;
-    use deno_core::error::AnyError;
     use std::os::unix::ffi::OsStrExt;
     use std::path::Path;
+
+    use deno_core::error::AnyError;
+
+    use super::super::copy_dir_recursive;
     fn clonefile(from: &Path, to: &Path) -> std::io::Result<()> {
       let from = std::ffi::CString::new(from.as_os_str().as_bytes())?;
       let to = std::ffi::CString::new(to.as_os_str().as_bytes())?;
@@ -462,7 +464,6 @@ pub fn specifier_from_file_path(
 
 #[cfg(test)]
 mod tests {
-  use super::*;
   use deno_core::futures;
   use deno_core::parking_lot::Mutex;
   use deno_path_util::normalize_path;
@@ -470,6 +471,8 @@ mod tests {
   use test_util::PathRef;
   use test_util::TempDir;
   use tokio::sync::Notify;
+
+  use super::*;
 
   #[test]
   fn test_normalize_path() {

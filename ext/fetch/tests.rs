@@ -12,10 +12,9 @@ use http_body_util::BodyExt;
 use tokio::io::AsyncReadExt;
 use tokio::io::AsyncWriteExt;
 
-use crate::dns;
-
 use super::create_http_client;
 use super::CreateHttpClientOptions;
+use crate::dns;
 
 static EXAMPLE_CRT: &[u8] = include_bytes!("../tls/testdata/example1_cert.der");
 static EXAMPLE_KEY: &[u8] =

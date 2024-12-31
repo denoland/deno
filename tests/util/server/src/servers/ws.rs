@@ -1,5 +1,8 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
+use std::pin::Pin;
+use std::result::Result;
+
 use anyhow::anyhow;
 use bytes::Bytes;
 use fastwebsockets::FragmentCollector;
@@ -22,8 +25,6 @@ use hyper::Response;
 use hyper::StatusCode;
 use hyper_util::rt::TokioIo;
 use pretty_assertions::assert_eq;
-use std::pin::Pin;
-use std::result::Result;
 use tokio::io::AsyncReadExt;
 use tokio::io::AsyncWriteExt;
 

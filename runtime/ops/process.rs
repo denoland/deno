@@ -1,5 +1,21 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
+use std::borrow::Cow;
+use std::cell::RefCell;
+use std::collections::HashMap;
+use std::ffi::OsString;
+use std::io::Write;
+#[cfg(unix)]
+use std::os::unix::prelude::ExitStatusExt;
+#[cfg(unix)]
+use std::os::unix::process::CommandExt;
+#[cfg(windows)]
+use std::os::windows::process::CommandExt;
+use std::path::Path;
+use std::path::PathBuf;
+use std::process::ExitStatus;
+use std::rc::Rc;
+
 use deno_core::op2;
 use deno_core::serde_json;
 use deno_core::AsyncMutFuture;
@@ -18,25 +34,9 @@ use deno_permissions::PermissionsContainer;
 use deno_permissions::RunQueryDescriptor;
 use serde::Deserialize;
 use serde::Serialize;
-use std::borrow::Cow;
-use std::cell::RefCell;
-use std::collections::HashMap;
-use std::ffi::OsString;
-use std::io::Write;
-use std::path::Path;
-use std::path::PathBuf;
-use std::process::ExitStatus;
-use std::rc::Rc;
 use tokio::process::Command;
 
-#[cfg(windows)]
-use std::os::windows::process::CommandExt;
-
 use crate::ops::signal::SignalError;
-#[cfg(unix)]
-use std::os::unix::prelude::ExitStatusExt;
-#[cfg(unix)]
-use std::os::unix::process::CommandExt;
 
 pub const UNSTABLE_FEATURE_NAME: &str = "process";
 
@@ -1087,6 +1087,7 @@ mod deprecated {
   pub fn kill(pid: i32, signal: &str) -> Result<(), ProcessError> {
     use std::io::Error;
     use std::io::ErrorKind::NotFound;
+
     use winapi::shared::minwindef::DWORD;
     use winapi::shared::minwindef::FALSE;
     use winapi::shared::minwindef::TRUE;

@@ -43,6 +43,10 @@ use serde::Deserialize;
 use serde::Serialize;
 use sys_traits::FsMetadata;
 
+use super::super::resolution::NpmResolution;
+use super::common::bin_entries;
+use super::common::NpmPackageFsResolver;
+use super::common::RegistryReadPermissionChecker;
 use crate::args::LifecycleScriptsConfig;
 use crate::args::NpmInstallDepsProvider;
 use crate::cache::CACHE_PERM;
@@ -56,11 +60,6 @@ use crate::util::fs::symlink_dir;
 use crate::util::fs::LaxSingleProcessFsFlag;
 use crate::util::progress_bar::ProgressBar;
 use crate::util::progress_bar::ProgressMessagePrompt;
-
-use super::super::resolution::NpmResolution;
-use super::common::bin_entries;
-use super::common::NpmPackageFsResolver;
-use super::common::RegistryReadPermissionChecker;
 
 /// Resolver that creates a local node_modules directory
 /// and resolves packages from it.

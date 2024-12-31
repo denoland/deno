@@ -8,6 +8,7 @@ pub fn ensure_stdio_open() {
   // SAFETY: winapi calls
   unsafe {
     use std::mem::size_of;
+
     use winapi::shared::minwindef::DWORD;
     use winapi::shared::minwindef::FALSE;
     use winapi::shared::minwindef::TRUE;

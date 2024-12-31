@@ -3,13 +3,14 @@
 // Forked from https://github.com/demurgos/v8-coverage/tree/d0ca18da8740198681e0bc68971b0a6cdb11db3e/rust
 // Copyright 2021 Charles Samborski. All rights reserved. MIT license.
 
-use super::range_tree::RangeTree;
-use super::range_tree::RangeTreeArena;
-use crate::cdp;
 use std::collections::BTreeMap;
 use std::collections::BTreeSet;
 use std::collections::HashMap;
 use std::iter::Peekable;
+
+use super::range_tree::RangeTree;
+use super::range_tree::RangeTreeArena;
+use crate::cdp;
 
 #[derive(Eq, PartialEq, Clone, Debug)]
 pub struct ProcessCoverage {

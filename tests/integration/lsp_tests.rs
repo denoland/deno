@@ -1,5 +1,8 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
+use std::fs;
+use std::str::FromStr;
+
 use deno_ast::ModuleSpecifier;
 use deno_core::serde::Deserialize;
 use deno_core::serde_json;
@@ -7,8 +10,6 @@ use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
 use deno_core::url::Url;
 use pretty_assertions::assert_eq;
-use std::fs;
-use std::str::FromStr;
 use test_util::assert_starts_with;
 use test_util::assertions::assert_json_subset;
 use test_util::deno_cmd_with_deno_dir;

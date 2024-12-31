@@ -1,13 +1,9 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
-use crate::lsp::logging::lsp_warn;
-
-use super::analysis::source_range_to_lsp_range;
-use super::config::CodeLensSettings;
-use super::language_server;
-use super::text::LineIndex;
-use super::tsc;
-use super::tsc::NavigationTree;
+use std::cell::RefCell;
+use std::collections::HashSet;
+use std::rc::Rc;
+use std::sync::Arc;
 
 use deno_ast::swc::ast;
 use deno_ast::swc::visit::Visit;
@@ -25,12 +21,16 @@ use deno_core::ModuleSpecifier;
 use lazy_regex::lazy_regex;
 use once_cell::sync::Lazy;
 use regex::Regex;
-use std::cell::RefCell;
-use std::collections::HashSet;
-use std::rc::Rc;
-use std::sync::Arc;
 use tower_lsp::jsonrpc::Error as LspError;
 use tower_lsp::lsp_types as lsp;
+
+use super::analysis::source_range_to_lsp_range;
+use super::config::CodeLensSettings;
+use super::language_server;
+use super::text::LineIndex;
+use super::tsc;
+use super::tsc::NavigationTree;
+use crate::lsp::logging::lsp_warn;
 
 static ABSTRACT_MODIFIER: Lazy<Regex> = lazy_regex!(r"\babstract\b");
 

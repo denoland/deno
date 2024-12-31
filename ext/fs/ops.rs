@@ -11,12 +11,6 @@ use std::path::PathBuf;
 use std::path::StripPrefixError;
 use std::rc::Rc;
 
-use crate::interface::AccessCheckFn;
-use crate::interface::FileSystemRc;
-use crate::interface::FsDirEntry;
-use crate::interface::FsFileType;
-use crate::FsPermissions;
-use crate::OpenOptions;
 use boxed_error::Boxed;
 use deno_core::op2;
 use deno_core::CancelFuture;
@@ -34,6 +28,13 @@ use rand::rngs::ThreadRng;
 use rand::thread_rng;
 use rand::Rng;
 use serde::Serialize;
+
+use crate::interface::AccessCheckFn;
+use crate::interface::FileSystemRc;
+use crate::interface::FsDirEntry;
+use crate::interface::FsFileType;
+use crate::FsPermissions;
+use crate::OpenOptions;
 
 #[derive(Debug, Boxed)]
 pub struct FsOpsError(pub Box<FsOpsErrorKind>);

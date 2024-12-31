@@ -1,13 +1,15 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
+use std::ptr;
+
+use napi_sys::Status::napi_pending_exception;
+use napi_sys::ValueType::napi_bigint;
+use napi_sys::*;
+
 use crate::assert_napi_ok;
 use crate::cstr;
 use crate::napi_get_callback_info;
 use crate::napi_new_property;
-use napi_sys::Status::napi_pending_exception;
-use napi_sys::ValueType::napi_bigint;
-use napi_sys::*;
-use std::ptr;
 
 extern "C" fn is_lossless(
   env: napi_env,

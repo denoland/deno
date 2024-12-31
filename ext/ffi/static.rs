@@ -1,12 +1,14 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
-use crate::dlfcn::DynamicLibraryResource;
-use crate::symbol::NativeType;
+use std::ptr;
+
 use deno_core::op2;
 use deno_core::v8;
 use deno_core::OpState;
 use deno_core::ResourceId;
-use std::ptr;
+
+use crate::dlfcn::DynamicLibraryResource;
+use crate::symbol::NativeType;
 
 #[derive(Debug, thiserror::Error)]
 pub enum StaticError {

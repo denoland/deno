@@ -13,7 +13,6 @@ use std::task::Poll;
 
 use deno_core::futures::TryFutureExt;
 use deno_tls::rustls::ClientConfig as TlsConfig;
-
 use http::header::HeaderValue;
 use http::uri::Scheme;
 use http::Uri;
@@ -108,9 +107,10 @@ pub(crate) fn from_env() -> Proxies {
 }
 
 pub fn basic_auth(user: &str, pass: Option<&str>) -> HeaderValue {
+  use std::io::Write;
+
   use base64::prelude::BASE64_STANDARD;
   use base64::write::EncoderWriter;
-  use std::io::Write;
 
   let mut buf = b"Basic ".to_vec();
   {

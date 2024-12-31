@@ -1,13 +1,4 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
-use deno_core::op2;
-use deno_core::AsyncRefCell;
-use deno_core::CancelFuture;
-use deno_core::CancelHandle;
-use deno_core::OpState;
-use deno_core::RcRef;
-use deno_core::Resource;
-use deno_core::ResourceId;
-
 use std::borrow::Cow;
 use std::cell::RefCell;
 #[cfg(unix)]
@@ -18,6 +9,14 @@ use std::sync::atomic::AtomicBool;
 #[cfg(unix)]
 use std::sync::Arc;
 
+use deno_core::op2;
+use deno_core::AsyncRefCell;
+use deno_core::CancelFuture;
+use deno_core::CancelHandle;
+use deno_core::OpState;
+use deno_core::RcRef;
+use deno_core::Resource;
+use deno_core::ResourceId;
 #[cfg(unix)]
 use tokio::signal::unix::signal;
 #[cfg(unix)]

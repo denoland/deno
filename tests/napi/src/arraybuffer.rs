@@ -1,9 +1,10 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
+use napi_sys::*;
+
 use crate::assert_napi_ok;
 use crate::napi_get_callback_info;
 use crate::napi_new_property;
-use napi_sys::*;
 
 extern "C" fn test_detached(
   env: napi_env,

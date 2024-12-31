@@ -5,6 +5,10 @@
 #![allow(dead_code)]
 #![allow(unused_imports)]
 
+use std::borrow::Cow;
+use std::rc::Rc;
+use std::sync::Arc;
+
 use binary::StandaloneData;
 use binary::StandaloneModules;
 use code_cache::DenoCompileCodeCache;
@@ -57,9 +61,6 @@ use node_resolver::NodeResolutionKind;
 use node_resolver::ResolutionMode;
 use serialization::DenoCompileModuleSource;
 use serialization::SourceMapStore;
-use std::borrow::Cow;
-use std::rc::Rc;
-use std::sync::Arc;
 use virtual_fs::FileBackedVfs;
 use virtual_fs::VfsFileSubDataKind;
 
@@ -107,12 +108,12 @@ mod file_system;
 mod serialization;
 mod virtual_fs;
 
-pub use self::file_system::DenoCompileFileSystem;
 pub use binary::extract_standalone;
 pub use binary::is_standalone_binary;
 pub use binary::DenoCompileBinaryWriter;
 
 use self::binary::Metadata;
+pub use self::file_system::DenoCompileFileSystem;
 
 struct SharedModuleLoaderState {
   cjs_tracker: Arc<CjsTracker>,

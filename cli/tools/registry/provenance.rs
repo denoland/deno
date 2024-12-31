@@ -1,11 +1,8 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
-use crate::http_util;
-use crate::http_util::HttpClient;
+use std::collections::HashMap;
+use std::env;
 
-use super::api::OidcTokenResponse;
-use super::auth::gha_oidc_token;
-use super::auth::is_gha;
 use base64::engine::general_purpose::STANDARD_NO_PAD;
 use base64::prelude::BASE64_STANDARD;
 use base64::Engine as _;
@@ -27,8 +24,12 @@ use sha2::Digest;
 use spki::der::asn1;
 use spki::der::pem::LineEnding;
 use spki::der::EncodePem;
-use std::collections::HashMap;
-use std::env;
+
+use super::api::OidcTokenResponse;
+use super::auth::gha_oidc_token;
+use super::auth::is_gha;
+use crate::http_util;
+use crate::http_util::HttpClient;
 
 const PAE_PREFIX: &str = "DSSEv1";
 
@@ -706,10 +707,11 @@ async fn testify(
 
 #[cfg(test)]
 mod tests {
+  use std::env;
+
   use super::ProvenanceAttestation;
   use super::Subject;
   use super::SubjectDigest;
-  use std::env;
 
   #[test]
   fn slsa_github_actions() {

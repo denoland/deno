@@ -1,14 +1,16 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
-use crate::create_host_defined_options;
+use std::sync::atomic::AtomicBool;
+use std::sync::atomic::Ordering;
+use std::time::Duration;
+
 use deno_core::op2;
 use deno_core::serde_v8;
 use deno_core::v8;
 use deno_core::v8::MapFnTo;
 use deno_core::JsBuffer;
-use std::sync::atomic::AtomicBool;
-use std::sync::atomic::Ordering;
-use std::time::Duration;
+
+use crate::create_host_defined_options;
 
 pub const PRIVATE_SYMBOL_NAME: v8::OneByteConst =
   v8::String::create_external_onebyte_const(b"node:contextify:context");

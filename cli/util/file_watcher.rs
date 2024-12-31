@@ -1,8 +1,12 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
-use crate::args::Flags;
-use crate::colors;
-use crate::util::fs::canonicalize_path;
+use std::cell::RefCell;
+use std::collections::HashSet;
+use std::io::IsTerminal;
+use std::path::PathBuf;
+use std::rc::Rc;
+use std::sync::Arc;
+use std::time::Duration;
 
 use deno_config::glob::PathOrPatternSet;
 use deno_core::error::AnyError;
@@ -18,17 +22,14 @@ use notify::Error as NotifyError;
 use notify::RecommendedWatcher;
 use notify::RecursiveMode;
 use notify::Watcher;
-use std::cell::RefCell;
-use std::collections::HashSet;
-use std::io::IsTerminal;
-use std::path::PathBuf;
-use std::rc::Rc;
-use std::sync::Arc;
-use std::time::Duration;
 use tokio::select;
 use tokio::sync::mpsc;
 use tokio::sync::mpsc::UnboundedReceiver;
 use tokio::time::sleep;
+
+use crate::args::Flags;
+use crate::colors;
+use crate::util::fs::canonicalize_path;
 
 const CLEAR_SCREEN: &str = "\x1B[H\x1B[2J\x1B[3J";
 const DEBOUNCE_INTERVAL: Duration = Duration::from_millis(200);

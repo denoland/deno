@@ -1,8 +1,8 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
-use deno_core::op2;
-
 use std::borrow::Cow;
+
+use deno_core::op2;
 
 // map_domain, to_ascii and to_unicode are based on the punycode implementation in node.js
 // https://github.com/nodejs/node/blob/73025c4dec042e344eeea7912ed39f7b7c4a3991/lib/punycode.js

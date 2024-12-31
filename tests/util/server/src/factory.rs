@@ -1,7 +1,8 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
-use glob::glob;
 use std::collections::HashSet;
 use std::path::PathBuf;
+
+use glob::glob;
 
 /// Generate a unit test factory verified and backed by a glob.
 #[macro_export]

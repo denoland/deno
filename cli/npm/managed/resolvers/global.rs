@@ -7,11 +7,6 @@ use std::path::Path;
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use crate::colors;
-use crate::npm::managed::PackageCaching;
-use crate::npm::CliNpmCache;
-use crate::npm::CliNpmTarballCache;
-use crate::sys::CliSys;
 use async_trait::async_trait;
 use deno_ast::ModuleSpecifier;
 use deno_core::error::AnyError;
@@ -24,14 +19,18 @@ use node_resolver::errors::PackageFolderResolveError;
 use node_resolver::errors::PackageNotFoundError;
 use node_resolver::errors::ReferrerNotFoundError;
 
-use crate::args::LifecycleScriptsConfig;
-use crate::cache::FastInsecureHasher;
-
 use super::super::resolution::NpmResolution;
 use super::common::cache_packages;
 use super::common::lifecycle_scripts::LifecycleScriptsStrategy;
 use super::common::NpmPackageFsResolver;
 use super::common::RegistryReadPermissionChecker;
+use crate::args::LifecycleScriptsConfig;
+use crate::cache::FastInsecureHasher;
+use crate::colors;
+use crate::npm::managed::PackageCaching;
+use crate::npm::CliNpmCache;
+use crate::npm::CliNpmTarballCache;
+use crate::sys::CliSys;
 
 /// Resolves packages from the global npm cache.
 #[derive(Debug)]

@@ -1,12 +1,15 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
+use std::io::BufRead;
+use std::process::ChildStderr;
+use std::time::Duration;
+
 use bytes::Bytes;
 use deno_core::anyhow::anyhow;
 use deno_core::error::AnyError;
 use deno_core::serde_json;
 use deno_core::serde_json::json;
 use deno_core::url;
-
 use fastwebsockets::FragmentCollector;
 use fastwebsockets::Frame;
 use fastwebsockets::WebSocket;
@@ -15,9 +18,6 @@ use hyper::upgrade::Upgraded;
 use hyper::Request;
 use hyper::Response;
 use hyper_util::rt::TokioIo;
-use std::io::BufRead;
-use std::process::ChildStderr;
-use std::time::Duration;
 use test_util as util;
 use tokio::net::TcpStream;
 use tokio::time::timeout;

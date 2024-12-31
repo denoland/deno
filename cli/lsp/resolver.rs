@@ -1,5 +1,12 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
+use std::borrow::Cow;
+use std::collections::BTreeMap;
+use std::collections::BTreeSet;
+use std::collections::HashMap;
+use std::collections::HashSet;
+use std::sync::Arc;
+
 use dashmap::DashMap;
 use deno_ast::MediaType;
 use deno_cache_dir::file_fetcher::CacheSetting;
@@ -28,12 +35,6 @@ use indexmap::IndexMap;
 use node_resolver::InNpmPackageChecker;
 use node_resolver::NodeResolutionKind;
 use node_resolver::ResolutionMode;
-use std::borrow::Cow;
-use std::collections::BTreeMap;
-use std::collections::BTreeSet;
-use std::collections::HashMap;
-use std::collections::HashSet;
-use std::sync::Arc;
 
 use super::cache::LspCache;
 use super::jsr::JsrCacheResolver;

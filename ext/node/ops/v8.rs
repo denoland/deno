@@ -1,11 +1,12 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
+use std::ptr::NonNull;
+
 use deno_core::op2;
 use deno_core::v8;
 use deno_core::FastString;
 use deno_core::GarbageCollected;
 use deno_core::ToJsBuffer;
-use std::ptr::NonNull;
 use v8::ValueDeserializerHelper;
 use v8::ValueSerializerHelper;
 

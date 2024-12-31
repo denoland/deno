@@ -6,7 +6,6 @@ use std::collections::HashSet;
 use std::path::Path;
 use std::path::PathBuf;
 
-use crate::sys::CliSys;
 use deno_ast::MediaType;
 use deno_ast::ModuleSpecifier;
 use deno_config::glob::FileCollector;
@@ -14,10 +13,10 @@ use deno_config::glob::FilePatterns;
 use deno_core::error::AnyError;
 use thiserror::Error;
 
-use crate::args::CliOptions;
-
 use super::diagnostics::PublishDiagnostic;
 use super::diagnostics::PublishDiagnosticsCollector;
+use crate::args::CliOptions;
+use crate::sys::CliSys;
 
 /// A package path, like '/foo' or '/foo/bar'. The path is prefixed with a slash
 /// and does not end with a slash.

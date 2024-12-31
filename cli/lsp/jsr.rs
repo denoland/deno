@@ -1,11 +1,8 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
-use crate::args::jsr_api_url;
-use crate::args::jsr_url;
-use crate::file_fetcher::CliFileFetcher;
-use crate::file_fetcher::TextDecodedFile;
-use crate::jsr::partial_jsr_package_version_info_from_slice;
-use crate::jsr::JsrFetchResolver;
+use std::collections::HashMap;
+use std::sync::Arc;
+
 use dashmap::DashMap;
 use deno_cache_dir::HttpCache;
 use deno_core::anyhow::anyhow;
@@ -21,11 +18,15 @@ use deno_semver::package::PackageReq;
 use deno_semver::StackString;
 use deno_semver::Version;
 use serde::Deserialize;
-use std::collections::HashMap;
-use std::sync::Arc;
 
 use super::config::ConfigData;
 use super::search::PackageSearchApi;
+use crate::args::jsr_api_url;
+use crate::args::jsr_url;
+use crate::file_fetcher::CliFileFetcher;
+use crate::file_fetcher::TextDecodedFile;
+use crate::jsr::partial_jsr_package_version_info_from_slice;
+use crate::jsr::JsrFetchResolver;
 
 /// Keep in sync with `JsrFetchResolver`!
 #[derive(Debug)]

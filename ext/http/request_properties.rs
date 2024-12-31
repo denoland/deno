@@ -1,4 +1,10 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+use std::borrow::Cow;
+use std::net::Ipv4Addr;
+use std::net::SocketAddr;
+use std::net::SocketAddrV4;
+use std::rc::Rc;
+
 use deno_core::error::AnyError;
 use deno_core::OpState;
 use deno_core::ResourceId;
@@ -11,11 +17,6 @@ use deno_net::raw::NetworkStreamType;
 use hyper::header::HOST;
 use hyper::HeaderMap;
 use hyper::Uri;
-use std::borrow::Cow;
-use std::net::Ipv4Addr;
-use std::net::SocketAddr;
-use std::net::SocketAddrV4;
-use std::rc::Rc;
 
 // TODO(mmastrac): I don't like that we have to clone this, but it's one-time setup
 #[derive(Clone)]

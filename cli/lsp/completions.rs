@@ -1,5 +1,27 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
+use deno_ast::LineAndColumnIndex;
+use deno_ast::SourceTextInfo;
+use deno_core::resolve_path;
+use deno_core::resolve_url;
+use deno_core::serde::Deserialize;
+use deno_core::serde::Serialize;
+use deno_core::serde_json::json;
+use deno_core::url::Position;
+use deno_core::ModuleSpecifier;
+use deno_path_util::url_to_file_path;
+use deno_runtime::deno_node::SUPPORTED_BUILTIN_NODE_MODULES;
+use deno_semver::jsr::JsrPackageReqReference;
+use deno_semver::package::PackageNv;
+use import_map::ImportMap;
+use indexmap::IndexSet;
+use lsp_types::CompletionList;
+use node_resolver::NodeResolutionKind;
+use node_resolver::ResolutionMode;
+use once_cell::sync::Lazy;
+use regex::Regex;
+use tower_lsp::lsp_types as lsp;
+
 use super::client::Client;
 use super::config::Config;
 use super::config::WorkspaceSettings;
@@ -12,33 +34,10 @@ use super::registries::ModuleRegistry;
 use super::resolver::LspResolver;
 use super::search::PackageSearchApi;
 use super::tsc;
-
 use crate::graph_util::to_node_resolution_mode;
 use crate::jsr::JsrFetchResolver;
 use crate::util::path::is_importable_ext;
 use crate::util::path::relative_specifier;
-use deno_runtime::deno_node::SUPPORTED_BUILTIN_NODE_MODULES;
-
-use deno_ast::LineAndColumnIndex;
-use deno_ast::SourceTextInfo;
-use deno_core::resolve_path;
-use deno_core::resolve_url;
-use deno_core::serde::Deserialize;
-use deno_core::serde::Serialize;
-use deno_core::serde_json::json;
-use deno_core::url::Position;
-use deno_core::ModuleSpecifier;
-use deno_path_util::url_to_file_path;
-use deno_semver::jsr::JsrPackageReqReference;
-use deno_semver::package::PackageNv;
-use import_map::ImportMap;
-use indexmap::IndexSet;
-use lsp_types::CompletionList;
-use node_resolver::NodeResolutionKind;
-use node_resolver::ResolutionMode;
-use once_cell::sync::Lazy;
-use regex::Regex;
-use tower_lsp::lsp_types as lsp;
 
 static FILE_PROTO_RE: Lazy<Regex> =
   lazy_regex::lazy_regex!(r#"^file:/{2}(?:/[A-Za-z]:)?"#);
@@ -822,16 +821,18 @@ fn get_workspace_completions(
 
 #[cfg(test)]
 mod tests {
+  use std::collections::HashMap;
+
+  use deno_core::resolve_url;
+  use pretty_assertions::assert_eq;
+  use test_util::TempDir;
+
   use super::*;
   use crate::cache::HttpCache;
   use crate::lsp::cache::LspCache;
   use crate::lsp::documents::Documents;
   use crate::lsp::documents::LanguageId;
   use crate::lsp::search::tests::TestPackageSearchApi;
-  use deno_core::resolve_url;
-  use pretty_assertions::assert_eq;
-  use std::collections::HashMap;
-  use test_util::TempDir;
 
   fn setup(
     open_sources: &[(&str, &str, i32, LanguageId)],

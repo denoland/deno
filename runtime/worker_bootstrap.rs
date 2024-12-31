@@ -1,13 +1,13 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
-use deno_core::v8;
-use deno_core::ModuleSpecifier;
-use deno_telemetry::OtelConfig;
-use serde::Serialize;
 use std::cell::RefCell;
 use std::thread;
 
+use deno_core::v8;
+use deno_core::ModuleSpecifier;
+use deno_telemetry::OtelConfig;
 use deno_terminal::colors;
+use serde::Serialize;
 
 /// The execution mode for this worker. Some modes may have implicit behaviour.
 #[derive(Copy, Clone)]

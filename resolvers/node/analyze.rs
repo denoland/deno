@@ -6,6 +6,8 @@ use std::collections::HashSet;
 use std::path::Path;
 use std::path::PathBuf;
 
+use anyhow::Context;
+use anyhow::Error as AnyError;
 use deno_path_util::url_from_file_path;
 use deno_path_util::url_to_file_path;
 use futures::future::LocalBoxFuture;
@@ -13,9 +15,6 @@ use futures::stream::FuturesUnordered;
 use futures::FutureExt;
 use futures::StreamExt;
 use once_cell::sync::Lazy;
-
-use anyhow::Context;
-use anyhow::Error as AnyError;
 use sys_traits::FsCanonicalize;
 use sys_traits::FsMetadata;
 use sys_traits::FsRead;

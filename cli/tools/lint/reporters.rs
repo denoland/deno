@@ -8,9 +8,8 @@ use deno_runtime::colors;
 use log::info;
 use serde::Serialize;
 
-use crate::args::LintReporterKind;
-
 use super::LintError;
+use crate::args::LintReporterKind;
 
 const JSON_SCHEMA_VERSION: u8 = 1;
 

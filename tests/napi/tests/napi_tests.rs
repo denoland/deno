@@ -4,6 +4,7 @@
 #![allow(clippy::print_stderr)]
 
 use std::process::Command;
+
 use test_util::deno_cmd;
 use test_util::deno_config_path;
 use test_util::env_vars_for_npm_tests;

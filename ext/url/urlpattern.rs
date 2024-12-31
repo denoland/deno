@@ -1,7 +1,6 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 use deno_core::op2;
-
 use urlpattern::quirks;
 use urlpattern::quirks::MatchInput;
 use urlpattern::quirks::StringOrInit;
