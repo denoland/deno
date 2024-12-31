@@ -700,3 +700,19 @@ Deno.test("generateKeyPair promisify", async () => {
   assert(publicKey.startsWith("-----BEGIN PUBLIC KEY-----"));
   assert(privateKey.startsWith("-----BEGIN PRIVATE KEY-----"));
 });
+
+Deno.test("RSA export private JWK", function () {
+  // @ts-ignore @types/node broken
+  const { privateKey, publicKey } = generateKeyPairSync("rsa", {
+    modulusLength: 4096,
+    publicKeyEncoding: {
+      format: "jwk",
+    },
+    privateKeyEncoding: {
+      format: "jwk",
+    },
+  });
+
+  assertEquals((privateKey as any).kty, "RSA");
+  assertEquals((privateKey as any).n, (publicKey as any).n);
+});
