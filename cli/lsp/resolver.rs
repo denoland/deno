@@ -19,9 +19,6 @@ use deno_resolver::cjs::IsCjsResolutionMode;
 use deno_resolver::npm::NpmReqResolverOptions;
 use deno_resolver::DenoResolverOptions;
 use deno_resolver::NodeAndNpmReqResolver;
-use deno_runtime::deno_fs::FsSysTraitsAdapter;
-use deno_runtime::deno_node::NodeResolver;
-use deno_runtime::deno_node::PackageJsonResolver;
 use deno_runtime::deno_node::RealIsBuiltInNodeModuleChecker;
 use deno_semver::jsr::JsrPackageReqReference;
 use deno_semver::npm::NpmPackageReqReference;
@@ -51,6 +48,8 @@ use crate::http_util::HttpClientProvider;
 use crate::lsp::config::Config;
 use crate::lsp::config::ConfigData;
 use crate::lsp::logging::lsp_warn;
+use crate::node::CliNodeResolver;
+use crate::node::CliPackageJsonResolver;
 use crate::npm::create_cli_npm_resolver_for_lsp;
 use crate::npm::CliByonmNpmResolverCreateOptions;
 use crate::npm::CliManagedInNpmPkgCheckerCreateOptions;
@@ -66,6 +65,7 @@ use crate::resolver::CliResolver;
 use crate::resolver::CliResolverOptions;
 use crate::resolver::IsCjsResolver;
 use crate::resolver::WorkerCliNpmGraphResolver;
+use crate::sys::CliSys;
 use crate::tsc::into_specifier_and_media_type;
 use crate::util::progress_bar::ProgressBar;
 use crate::util::progress_bar::ProgressBarStyle;
@@ -77,9 +77,9 @@ struct LspScopeResolver {
   is_cjs_resolver: Arc<IsCjsResolver>,
   jsr_resolver: Option<Arc<JsrCacheResolver>>,
   npm_resolver: Option<Arc<dyn CliNpmResolver>>,
-  node_resolver: Option<Arc<NodeResolver>>,
+  node_resolver: Option<Arc<CliNodeResolver>>,
   npm_pkg_req_resolver: Option<Arc<CliNpmReqResolver>>,
-  pkg_json_resolver: Arc<PackageJsonResolver>,
+  pkg_json_resolver: Arc<CliPackageJsonResolver>,
   redirect_resolver: Option<Arc<RedirectResolver>>,
   graph_imports: Arc<IndexMap<ModuleSpecifier, GraphImport>>,
   dep_info: Arc<Mutex<Arc<ScopeDepInfo>>>,
@@ -383,7 +383,7 @@ impl LspResolver {
   pub fn pkg_json_resolver(
     &self,
     referrer: &ModuleSpecifier,
-  ) -> &Arc<PackageJsonResolver> {
+  ) -> &Arc<CliPackageJsonResolver> {
     let resolver = self.get_scope_resolver(Some(referrer));
     &resolver.pkg_json_resolver
   }
@@ -591,22 +591,22 @@ struct ResolverFactoryServices {
   cli_resolver: Deferred<Arc<CliResolver>>,
   in_npm_pkg_checker: Deferred<Arc<dyn InNpmPackageChecker>>,
   is_cjs_resolver: Deferred<Arc<IsCjsResolver>>,
-  node_resolver: Deferred<Option<Arc<NodeResolver>>>,
+  node_resolver: Deferred<Option<Arc<CliNodeResolver>>>,
   npm_pkg_req_resolver: Deferred<Option<Arc<CliNpmReqResolver>>>,
   npm_resolver: Option<Arc<dyn CliNpmResolver>>,
 }
 
 struct ResolverFactory<'a> {
   config_data: Option<&'a Arc<ConfigData>>,
-  pkg_json_resolver: Arc<PackageJsonResolver>,
-  sys: FsSysTraitsAdapter,
+  pkg_json_resolver: Arc<CliPackageJsonResolver>,
+  sys: CliSys,
   services: ResolverFactoryServices,
 }
 
 impl<'a> ResolverFactory<'a> {
   pub fn new(config_data: Option<&'a Arc<ConfigData>>) -> Self {
-    let sys = FsSysTraitsAdapter::new_real();
-    let pkg_json_resolver = Arc::new(PackageJsonResolver::new(sys.clone()));
+    let sys = CliSys::default();
+    let pkg_json_resolver = Arc::new(CliPackageJsonResolver::new(sys.clone()));
     Self {
       config_data,
       pkg_json_resolver,
@@ -621,7 +621,7 @@ impl<'a> ResolverFactory<'a> {
     cache: &LspCache,
   ) {
     let enable_byonm = self.config_data.map(|d| d.byonm).unwrap_or(false);
-    let sys = FsSysTraitsAdapter::new_real();
+    let sys = CliSys::default();
     let options = if enable_byonm {
       CliNpmResolverCreateOptions::Byonm(CliByonmNpmResolverCreateOptions {
         sys,
@@ -656,7 +656,7 @@ impl<'a> ResolverFactory<'a> {
           }
           None => CliNpmResolverManagedSnapshotOption::Specified(None),
         },
-        sys: FsSysTraitsAdapter::new_real(),
+        sys: CliSys::default(),
         npm_cache_dir,
         // Use an "only" cache setting in order to make the
         // user do an explicit "cache" command and prevent
@@ -729,7 +729,7 @@ impl<'a> ResolverFactory<'a> {
     })
   }
 
-  pub fn pkg_json_resolver(&self) -> &Arc<PackageJsonResolver> {
+  pub fn pkg_json_resolver(&self) -> &Arc<CliPackageJsonResolver> {
     &self.pkg_json_resolver
   }
 
@@ -770,13 +770,13 @@ impl<'a> ResolverFactory<'a> {
     })
   }
 
-  pub fn node_resolver(&self) -> Option<&Arc<NodeResolver>> {
+  pub fn node_resolver(&self) -> Option<&Arc<CliNodeResolver>> {
     self
       .services
       .node_resolver
       .get_or_init(|| {
         let npm_resolver = self.services.npm_resolver.as_ref()?;
-        Some(Arc::new(NodeResolver::new(
+        Some(Arc::new(CliNodeResolver::new(
           self.in_npm_pkg_checker().clone(),
           RealIsBuiltInNodeModuleChecker,
           npm_resolver.clone().into_npm_pkg_folder_resolver(),

@@ -29,7 +29,6 @@ use deno_graph::SpecifierError;
 use deno_graph::WorkspaceFastCheckOption;
 use deno_path_util::url_to_file_path;
 use deno_resolver::sloppy_imports::SloppyImportsResolutionKind;
-use deno_runtime::deno_fs::FsSysTraitsAdapter;
 use deno_runtime::deno_node;
 use deno_runtime::deno_permissions::PermissionsContainer;
 use deno_semver::jsr::JsrDepPackageReq;
@@ -57,6 +56,7 @@ use crate::resolver::CjsTracker;
 use crate::resolver::CliResolver;
 use crate::resolver::CliSloppyImportsResolver;
 use crate::resolver::SloppyImportsCachedFs;
+use crate::sys::CliSys;
 use crate::tools::check;
 use crate::tools::check::TypeChecker;
 use crate::util::file_watcher::WatcherCommunicator;
@@ -81,7 +81,7 @@ pub struct GraphValidOptions {
 /// for the CLI.
 pub fn graph_valid(
   graph: &ModuleGraph,
-  sys: &FsSysTraitsAdapter,
+  sys: &CliSys,
   roots: &[ModuleSpecifier],
   options: GraphValidOptions,
 ) -> Result<(), AnyError> {
@@ -141,7 +141,7 @@ pub struct GraphWalkErrorsOptions {
 /// and enhances them with CLI information.
 pub fn graph_walk_errors<'a>(
   graph: &'a ModuleGraph,
-  sys: &'a FsSysTraitsAdapter,
+  sys: &'a CliSys,
   roots: &'a [ModuleSpecifier],
   options: GraphWalkErrorsOptions,
 ) -> impl Iterator<Item = AnyError> + 'a {
@@ -443,7 +443,7 @@ pub struct ModuleGraphBuilder {
   parsed_source_cache: Arc<ParsedSourceCache>,
   resolver: Arc<CliResolver>,
   root_permissions_container: PermissionsContainer,
-  sys: FsSysTraitsAdapter,
+  sys: CliSys,
 }
 
 impl ModuleGraphBuilder {
@@ -462,7 +462,7 @@ impl ModuleGraphBuilder {
     parsed_source_cache: Arc<ParsedSourceCache>,
     resolver: Arc<CliResolver>,
     root_permissions_container: PermissionsContainer,
-    sys: FsSysTraitsAdapter,
+    sys: CliSys,
   ) -> Self {
     Self {
       caches,
@@ -836,7 +836,7 @@ pub fn enhanced_resolution_error_message(error: &ResolutionError) -> String {
 }
 
 fn enhanced_sloppy_imports_error_message(
-  sys: &FsSysTraitsAdapter,
+  sys: &CliSys,
   error: &ModuleError,
 ) -> Option<String> {
   match error {

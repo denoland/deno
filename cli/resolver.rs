@@ -5,6 +5,7 @@ use std::path::Path;
 use std::path::PathBuf;
 use std::sync::Arc;
 
+use crate::sys::CliSys;
 use async_trait::async_trait;
 use dashmap::DashMap;
 use dashmap::DashSet;
@@ -25,7 +26,6 @@ use deno_npm::resolution::NpmResolutionError;
 use deno_resolver::sloppy_imports::SloppyImportsResolver;
 use deno_runtime::colors;
 use deno_runtime::deno_fs;
-use deno_runtime::deno_fs::FsSysTraitsAdapter;
 use deno_runtime::deno_node::is_builtin_node_module;
 use deno_runtime::deno_node::RealIsBuiltInNodeModuleChecker;
 use deno_semver::package::PackageReq;
@@ -43,19 +43,17 @@ use crate::npm::InnerCliNpmResolverRef;
 use crate::util::sync::AtomicFlag;
 use crate::util::text_encoding::from_utf8_lossy_cow;
 
-pub type CjsTracker = deno_resolver::cjs::CjsTracker<FsSysTraitsAdapter>;
-pub type IsCjsResolver = deno_resolver::cjs::IsCjsResolver<FsSysTraitsAdapter>;
+pub type CjsTracker = deno_resolver::cjs::CjsTracker<CliSys>;
+pub type IsCjsResolver = deno_resolver::cjs::IsCjsResolver<CliSys>;
 pub type CliSloppyImportsResolver =
   SloppyImportsResolver<SloppyImportsCachedFs>;
 pub type CliDenoResolver = deno_resolver::DenoResolver<
   RealIsBuiltInNodeModuleChecker,
   SloppyImportsCachedFs,
-  FsSysTraitsAdapter,
+  CliSys,
 >;
-pub type CliNpmReqResolver = deno_resolver::npm::NpmReqResolver<
-  RealIsBuiltInNodeModuleChecker,
-  FsSysTraitsAdapter,
->;
+pub type CliNpmReqResolver =
+  deno_resolver::npm::NpmReqResolver<RealIsBuiltInNodeModuleChecker, CliSys>;
 
 pub struct ModuleCodeStringSource {
   pub code: ModuleSourceCode,
@@ -397,7 +395,7 @@ impl<'a> deno_graph::source::NpmResolver for WorkerCliNpmGraphResolver<'a> {
 
 #[derive(Debug)]
 pub struct SloppyImportsCachedFs {
-  sys: FsSysTraitsAdapter,
+  sys: CliSys,
   cache: Option<
     DashMap<
       PathBuf,
@@ -407,14 +405,14 @@ pub struct SloppyImportsCachedFs {
 }
 
 impl SloppyImportsCachedFs {
-  pub fn new(sys: FsSysTraitsAdapter) -> Self {
+  pub fn new(sys: CliSys) -> Self {
     Self {
       sys,
       cache: Some(Default::default()),
     }
   }
 
-  pub fn new_without_stat_cache(fs: FsSysTraitsAdapter) -> Self {
+  pub fn new_without_stat_cache(fs: CliSys) -> Self {
     Self {
       sys: fs,
       cache: None,

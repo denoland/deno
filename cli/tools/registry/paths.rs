@@ -6,12 +6,12 @@ use std::collections::HashSet;
 use std::path::Path;
 use std::path::PathBuf;
 
+use crate::sys::CliSys;
 use deno_ast::MediaType;
 use deno_ast::ModuleSpecifier;
 use deno_config::glob::FileCollector;
 use deno_config::glob::FilePatterns;
 use deno_core::error::AnyError;
-use deno_runtime::deno_fs::FsSysTraitsAdapter;
 use thiserror::Error;
 
 use crate::args::CliOptions;
@@ -346,5 +346,5 @@ fn collect_paths(
   .ignore_node_modules()
   .set_vendor_folder(cli_options.vendor_dir_path().map(ToOwned::to_owned))
   .use_gitignore()
-  .collect_file_patterns(&FsSysTraitsAdapter::new_real(), file_patterns)
+  .collect_file_patterns(&CliSys::default(), file_patterns)
 }

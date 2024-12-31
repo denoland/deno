@@ -21,6 +21,7 @@ use crate::graph_util::enhanced_resolution_error_message;
 use crate::lsp::lsp_custom::DiagnosticBatchNotificationParams;
 use crate::resolver::CliSloppyImportsResolver;
 use crate::resolver::SloppyImportsCachedFs;
+use crate::sys::CliSys;
 use crate::tools::lint::CliLinter;
 use crate::tools::lint::CliLinterOptions;
 use crate::tools::lint::LintRuleProvider;
@@ -48,7 +49,6 @@ use deno_graph::SpecifierError;
 use deno_lint::linter::LintConfig as DenoLintConfig;
 use deno_resolver::sloppy_imports::SloppyImportsResolution;
 use deno_resolver::sloppy_imports::SloppyImportsResolutionKind;
-use deno_runtime::deno_fs::FsSysTraitsAdapter;
 use deno_runtime::deno_node;
 use deno_runtime::tokio_util::create_basic_runtime;
 use deno_semver::jsr::JsrPackageReqReference;
@@ -1281,7 +1281,7 @@ impl DenoDiagnostic {
       Self::NotInstalledNpm(pkg_req, specifier) => (lsp::DiagnosticSeverity::ERROR, format!("npm package \"{pkg_req}\" is not installed or doesn't exist."), Some(json!({ "specifier": specifier }))),
       Self::NoLocal(specifier) => {
         let maybe_sloppy_resolution = CliSloppyImportsResolver::new(
-          SloppyImportsCachedFs::new(FsSysTraitsAdapter::new_real())
+          SloppyImportsCachedFs::new(CliSys::default())
         ).resolve(specifier, SloppyImportsResolutionKind::Execution);
         let data = maybe_sloppy_resolution.as_ref().map(|res| {
           json!({

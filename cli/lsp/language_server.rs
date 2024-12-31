@@ -17,7 +17,6 @@ use deno_core::ModuleSpecifier;
 use deno_graph::GraphKind;
 use deno_graph::Resolution;
 use deno_path_util::url_to_file_path;
-use deno_runtime::deno_fs::FsSysTraitsAdapter;
 use deno_runtime::deno_tls::rustls::RootCertStore;
 use deno_runtime::deno_tls::RootCertStoreProvider;
 use deno_semver::jsr::JsrPackageReqReference;
@@ -109,6 +108,7 @@ use crate::lsp::config::ConfigWatchedFileType;
 use crate::lsp::logging::init_log_file;
 use crate::lsp::tsc::file_text_changes_to_workspace_edit;
 use crate::lsp::urls::LspUrlKind;
+use crate::sys::CliSys;
 use crate::tools::fmt::format_file;
 use crate::tools::fmt::format_parsed_source;
 use crate::tools::upgrade::check_for_upgrades_for_lsp;
@@ -280,7 +280,7 @@ impl LanguageServer {
         .await?;
       graph_util::graph_valid(
         &graph,
-        &FsSysTraitsAdapter(factory.fs().clone()),
+        &CliSys::default(),
         &roots,
         graph_util::GraphValidOptions {
           kind: GraphKind::All,
@@ -962,6 +962,7 @@ impl Inner {
     let file_fetcher = CliFileFetcher::new(
       self.cache.global().clone(),
       self.http_client_provider.clone(),
+      CliSys::default(),
       Default::default(),
       None,
       true,
@@ -3613,7 +3614,7 @@ impl Inner {
     let workspace = match config_data {
       Some(d) => d.member_dir.clone(),
       None => Arc::new(WorkspaceDirectory::discover(
-        &FsSysTraitsAdapter::new_real(),
+        &CliSys::default(),
         deno_config::workspace::WorkspaceDiscoverStart::Paths(&[
           initial_cwd.clone()
         ]),
@@ -3634,6 +3635,7 @@ impl Inner {
       )?),
     };
     let cli_options = CliOptions::new(
+      &CliSys::default(),
       Arc::new(Flags {
         internal: InternalFlags {
           cache_path: Some(self.cache.deno_dir().root.clone()),

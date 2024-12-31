@@ -25,12 +25,10 @@ deno_io.workspace = true
 deno_path_util.workspace = true
 deno_permissions.workspace = true
 filetime.workspace = true
-getrandom = "0.2"
 libc.workspace = true
 rand.workspace = true
 rayon = "1.8.0"
 serde.workspace = true
-sys_traits.workspace = true
 thiserror.workspace = true
 
 [target.'cfg(unix)'.dependencies]
