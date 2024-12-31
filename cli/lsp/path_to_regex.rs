@@ -1,4 +1,4 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
 // The logic of this module is heavily influenced by path-to-regexp at:
 // https://github.com/pillarjs/path-to-regexp/ which is licensed as follows:

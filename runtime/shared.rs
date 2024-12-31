@@ -1,4 +1,4 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 // Utilities shared between `build.rs` and the rest of the crate.
 
 use std::path::Path;

@@ -1,4 +1,4 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
 // todo(dsherret): this should instead use conditional compilation and directly
 // surface the underlying implementation.

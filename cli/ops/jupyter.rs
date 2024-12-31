@@ -1,4 +1,4 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
 // NOTE(bartlomieju): unfortunately it appears that clippy is broken
 // and can't allow a single line ignore for `await_holding_lock`.
