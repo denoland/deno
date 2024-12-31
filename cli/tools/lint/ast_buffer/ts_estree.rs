@@ -12,6 +12,7 @@ use super::buffer::FieldArrPos;
 use super::buffer::FieldPos;
 use super::buffer::NodeRef;
 use super::buffer::NullPos;
+use super::buffer::PendingNodeRef;
 use super::buffer::SerializeCtx;
 use super::buffer::StrPos;
 use super::buffer::UndefPos;
@@ -447,10 +448,10 @@ impl TsEsTreeBuilder {
   pub fn new() -> Self {
     // Max values
     // TODO: Maybe there is a rust macro to grab the last enum value?
-    let kind_count: u8 = AstNode::TSEnumBody.into();
-    let prop_count: u8 = AstProp::Value.into();
+    let kind_max_count: u8 = u8::from(AstNode::TSEnumBody) + 1;
+    let prop_max_count: u8 = u8::from(AstProp::Value) + 1;
     Self {
-      ctx: SerializeCtx::new(kind_count, prop_count),
+      ctx: SerializeCtx::new(kind_max_count, prop_max_count),
     }
   }
 }
@@ -461,9 +462,12 @@ impl AstBufSerializer<AstNode, AstProp> for TsEsTreeBuilder {
     kind: AstNode,
     parent: NodeRef,
     span: &Span,
-    prop_count: usize,
-  ) -> NodeRef {
-    self.ctx.header(kind, parent, span, prop_count)
+  ) -> PendingNodeRef {
+    self.ctx.header(kind, parent, span)
+  }
+
+  fn commit_schema(&mut self, offset: PendingNodeRef) -> NodeRef {
+    self.ctx.commit_schema(offset)
   }
 
   fn ref_field(&mut self, prop: AstProp) -> FieldPos {
