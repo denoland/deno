@@ -1,6 +1,12 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 // deno-lint-ignore-file
 
+import {
+  op_bench_get_origin,
+  op_bench_now,
+  op_dispatch_bench_event,
+  op_register_bench,
+} from "ext:core/ops";
 import { core, primordials } from "ext:core/mod.js";
 import {
   escapeName,
@@ -9,12 +15,6 @@ import {
 } from "ext:cli/40_test_common.js";
 import { Console } from "ext:deno_console/01_console.js";
 import { setExitHandler } from "ext:runtime/30_os.js";
-const {
-  op_register_bench,
-  op_bench_get_origin,
-  op_dispatch_bench_event,
-  op_bench_now,
-} = core.ops;
 const {
   ArrayPrototypePush,
   Error,

@@ -24,6 +24,7 @@ use tokio::sync::mpsc;
 use crate::tools::jupyter::server::StdinConnectionProxy;
 
 deno_core::extension!(deno_jupyter,
+  deps = [deno_web],
   ops = [
     op_jupyter_broadcast,
     op_jupyter_input,

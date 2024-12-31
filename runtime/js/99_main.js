@@ -515,14 +515,14 @@ function shimTemporalDurationToLocaleString() {
 // "virtual op module" (`ext:core/ops`).
 const NOT_IMPORTED_OPS = [
   // Related to `Deno.bench()` API
-  "op_bench_now",
-  "op_dispatch_bench_event",
-  "op_register_bench",
-  "op_bench_get_origin",
+  // "op_bench_now",
+  // "op_dispatch_bench_event",
+  // "op_register_bench",
+  // "op_bench_get_origin",
 
   // Related to `Deno.jupyter` API
-  "op_jupyter_broadcast",
-  "op_jupyter_input",
+  // "op_jupyter_broadcast",
+  // "op_jupyter_input",
   // Used in jupyter API
   "op_base64_encode",
 
@@ -530,18 +530,18 @@ const NOT_IMPORTED_OPS = [
   "op_lint_create_serialized_ast",
 
   // Related to `Deno.test()` API
-  "op_test_event_step_result_failed",
-  "op_test_event_step_result_ignored",
-  "op_test_event_step_result_ok",
-  "op_test_event_step_wait",
-  "op_test_op_sanitizer_collect",
-  "op_test_op_sanitizer_finish",
-  "op_test_op_sanitizer_get_async_message",
-  "op_test_op_sanitizer_report",
-  "op_restore_test_permissions",
-  "op_register_test_step",
-  "op_register_test",
-  "op_test_get_origin",
+  // "op_test_event_step_result_failed",
+  // "op_test_event_step_result_ignored",
+  // "op_test_event_step_result_ok",
+  // "op_test_event_step_wait",
+  // "op_test_op_sanitizer_collect",
+  // "op_test_op_sanitizer_finish",
+  // "op_test_op_sanitizer_get_async_message",
+  // "op_test_op_sanitizer_report",
+  // "op_restore_test_permissions",
+  // "op_register_test_step",
+  // "op_register_test",
+  // "op_test_get_origin",
   "op_pledge_test_permissions",
 
   // TODO(bartlomieju): used in various integration tests - figure out a way

@@ -490,18 +490,6 @@ impl DenoSubcommand {
   pub fn is_run(&self) -> bool {
     matches!(self, Self::Run(_))
   }
-
-  // Returns `true` if the subcommand depends on testing infrastructure.
-  pub fn needs_test(&self) -> bool {
-    matches!(
-      self,
-      Self::Test(_)
-        | Self::Jupyter(_)
-        | Self::Repl(_)
-        | Self::Bench(_)
-        | Self::Lsp
-    )
-  }
 }
 
 impl Default for DenoSubcommand {

@@ -3,16 +3,16 @@
 import { core, primordials } from "ext:core/mod.js";
 import { escapeName, withPermissions } from "ext:cli/40_test_common.js";
 
-// TODO(mmastrac): We cannot import these from "ext:core/ops" yet
-const {
-  op_register_test_step,
+import {
   op_register_test,
+  op_register_test_step,
   op_test_event_step_result_failed,
   op_test_event_step_result_ignored,
   op_test_event_step_result_ok,
   op_test_event_step_wait,
   op_test_get_origin,
-} = core.ops;
+} from "ext:core/ops";
+
 const {
   ArrayPrototypeFilter,
   ArrayPrototypePush,
