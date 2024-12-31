@@ -92,7 +92,7 @@ simd-json = "0.14.0"
 sm3 = "0.4.2"
 spki.workspace = true
 stable_deref_trait = "1.2.0"
-sys_traits = { workspace = true, features = ["real"] }
+sys_traits = { workspace = true, features = ["real", "winapi", "libc"] }
 thiserror.workspace = true
 tokio.workspace = true
 tokio-eld = "0.2"
