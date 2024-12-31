@@ -1,4 +1,4 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
 /// Ensures that stdin, stdout, and stderr are open and have valid HANDLEs
 /// associated with them. There are many places where a `std::fs::File` is

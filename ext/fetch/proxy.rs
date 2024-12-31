@@ -1,4 +1,4 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
 //! Parts of this module should be able to be replaced with other crates
 //! eventually, once generic versions appear in hyper-util, et al.

@@ -1,4 +1,4 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 import { randomFillSync, randomUUID, timingSafeEqual } from "node:crypto";
 import { Buffer } from "node:buffer";
 import { assert, assertEquals, assertThrows } from "../../unit/test_util.ts";
