@@ -7,6 +7,7 @@ use crate::cache::LocalLspHttpCache;
 use crate::lsp::config::Config;
 use crate::lsp::logging::lsp_log;
 use crate::lsp::logging::lsp_warn;
+use crate::sys::CliSys;
 
 use deno_core::url::Url;
 use deno_core::ModuleSpecifier;
@@ -91,12 +92,11 @@ impl LspCache {
         })
         .ok()
     });
-    let deno_dir = DenoDir::new(global_cache_path)
+    let sys = CliSys::default();
+    let deno_dir = DenoDir::new(sys.clone(), global_cache_path)
       .expect("should be infallible with absolute custom root");
-    let global = Arc::new(GlobalHttpCache::new(
-      deno_dir.remote_folder_path(),
-      crate::cache::RealDenoCacheEnv,
-    ));
+    let global =
+      Arc::new(GlobalHttpCache::new(sys, deno_dir.remote_folder_path()));
     Self {
       deno_dir,
       global,

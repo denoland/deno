@@ -36,6 +36,8 @@ use deno_semver::package::PackageNv;
 use deno_semver::package::PackageNvReference;
 use deno_semver::package::PackageReq;
 use deno_semver::package::PackageReqReference;
+use deno_semver::SmallStackString;
+use deno_semver::StackString;
 use deno_semver::Version;
 use import_map::ImportMap;
 use node_resolver::NodeResolutionKind;
@@ -270,13 +272,24 @@ impl<'a> TsResponseImportMapper<'a> {
       }
     }
 
+    if specifier.scheme() == "node" {
+      return Some(specifier.to_string());
+    }
+
     if let Some(jsr_path) = specifier.as_str().strip_prefix(jsr_url().as_str())
     {
       let mut segments = jsr_path.split('/');
       let name = if jsr_path.starts_with('@') {
-        format!("{}/{}", segments.next()?, segments.next()?)
+        let scope = segments.next()?;
+        let name = segments.next()?;
+        capacity_builder::StringBuilder::<StackString>::build(|builder| {
+          builder.append(scope);
+          builder.append("/");
+          builder.append(name);
+        })
+        .unwrap()
       } else {
-        segments.next()?.to_string()
+        StackString::from(segments.next()?)
       };
       let version = Version::parse_standard(segments.next()?).ok()?;
       let nv = PackageNv { name, version };
@@ -286,7 +299,9 @@ impl<'a> TsResponseImportMapper<'a> {
         &path,
         Some(&self.file_referrer),
       )?;
-      let sub_path = (export != ".").then_some(export);
+      let sub_path = (export != ".")
+        .then_some(export)
+        .map(SmallStackString::from_string);
       let mut req = None;
       req = req.or_else(|| {
         let import_map = self.maybe_import_map?;
@@ -599,18 +614,24 @@ fn try_reverse_map_package_json_exports(
 /// For a set of tsc changes, can them for any that contain something that looks
 /// like an import and rewrite the import specifier to include the extension
 pub fn fix_ts_import_changes(
-  referrer: &ModuleSpecifier,
-  resolution_mode: ResolutionMode,
   changes: &[tsc::FileTextChanges],
   language_server: &language_server::Inner,
 ) -> Result<Vec<tsc::FileTextChanges>, AnyError> {
-  let import_mapper = language_server.get_ts_response_import_mapper(referrer);
   let mut r = Vec::new();
   for change in changes {
+    let Ok(referrer) = ModuleSpecifier::parse(&change.file_name) else {
+      continue;
+    };
+    let referrer_doc = language_server.get_asset_or_document(&referrer).ok();
+    let resolution_mode = referrer_doc
+      .as_ref()
+      .map(|d| d.resolution_mode())
+      .unwrap_or(ResolutionMode::Import);
+    let import_mapper =
+      language_server.get_ts_response_import_mapper(&referrer);
     let mut text_changes = Vec::new();
     for text_change in &change.text_changes {
       let lines = text_change.new_text.split('\n');
-
       let new_lines: Vec<String> = lines
         .map(|line| {
           // This assumes that there's only one import per line.
@@ -618,7 +639,7 @@ pub fn fix_ts_import_changes(
             let specifier =
               captures.iter().skip(1).find_map(|s| s).unwrap().as_str();
             if let Some(new_specifier) = import_mapper
-              .check_unresolved_specifier(specifier, referrer, resolution_mode)
+              .check_unresolved_specifier(specifier, &referrer, resolution_mode)
             {
               line.replace(specifier, &new_specifier)
             } else {

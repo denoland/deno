@@ -140,23 +140,23 @@ mod tests {
   #[test]
   fn test_source_map_from_code() {
     let to_string =
-      |bytes: Vec<u8>| -> String { String::from_utf8(bytes).unwrap() };
+      |bytes: Vec<u8>| -> String { String::from_utf8(bytes.to_vec()).unwrap() };
     assert_eq!(
       source_map_from_code(
-        b"test\n//# sourceMappingURL=data:application/json;base64,dGVzdGluZ3Rlc3Rpbmc=",
+        b"test\n//# sourceMappingURL=data:application/json;base64,dGVzdGluZ3Rlc3Rpbmc="
       ).map(to_string),
       Some("testingtesting".to_string())
     );
     assert_eq!(
       source_map_from_code(
-        b"test\n//# sourceMappingURL=data:application/json;base64,dGVzdGluZ3Rlc3Rpbmc=\n  \n",
+        b"test\n//# sourceMappingURL=data:application/json;base64,dGVzdGluZ3Rlc3Rpbmc=\n  \n"
       ).map(to_string),
       Some("testingtesting".to_string())
     );
     assert_eq!(
       source_map_from_code(
-        b"test\n//# sourceMappingURL=data:application/json;base64,dGVzdGluZ3Rlc3Rpbmc=\n  test\n",
-      ),
+        b"test\n//# sourceMappingURL=data:application/json;base64,dGVzdGluZ3Rlc3Rpbmc=\n  test\n"
+      ).map(to_string),
       None
     );
     assert_eq!(
@@ -164,7 +164,7 @@ mod tests {
         b"\"use strict\";
 
 throw new Error(\"Hello world!\");
-//# sourceMappingURL=data:application/json;base64,{",
+//# sourceMappingURL=data:application/json;base64,{"
       ),
       None
     );

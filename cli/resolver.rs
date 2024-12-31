@@ -1,5 +1,11 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
+use std::borrow::Cow;
+use std::path::Path;
+use std::path::PathBuf;
+use std::sync::Arc;
+
+use crate::sys::CliSys;
 use async_trait::async_trait;
 use dashmap::DashMap;
 use dashmap::DashSet;
@@ -20,16 +26,13 @@ use deno_npm::resolution::NpmResolutionError;
 use deno_resolver::sloppy_imports::SloppyImportsResolver;
 use deno_runtime::colors;
 use deno_runtime::deno_fs;
-use deno_runtime::deno_fs::FileSystem;
 use deno_runtime::deno_node::is_builtin_node_module;
-use deno_runtime::deno_node::DenoFsNodeResolverEnv;
+use deno_runtime::deno_node::RealIsBuiltInNodeModuleChecker;
 use deno_semver::package::PackageReq;
 use node_resolver::NodeResolutionKind;
 use node_resolver::ResolutionMode;
-use std::borrow::Cow;
-use std::path::Path;
-use std::path::PathBuf;
-use std::sync::Arc;
+use sys_traits::FsMetadata;
+use sys_traits::FsMetadataValue;
 use thiserror::Error;
 
 use crate::args::NpmCachingStrategy;
@@ -40,70 +43,22 @@ use crate::npm::InnerCliNpmResolverRef;
 use crate::util::sync::AtomicFlag;
 use crate::util::text_encoding::from_utf8_lossy_cow;
 
-pub type CjsTracker = deno_resolver::cjs::CjsTracker<DenoFsNodeResolverEnv>;
-pub type IsCjsResolver =
-  deno_resolver::cjs::IsCjsResolver<DenoFsNodeResolverEnv>;
+pub type CjsTracker = deno_resolver::cjs::CjsTracker<CliSys>;
+pub type IsCjsResolver = deno_resolver::cjs::IsCjsResolver<CliSys>;
 pub type CliSloppyImportsResolver =
   SloppyImportsResolver<SloppyImportsCachedFs>;
 pub type CliDenoResolver = deno_resolver::DenoResolver<
-  CliDenoResolverFs,
-  DenoFsNodeResolverEnv,
+  RealIsBuiltInNodeModuleChecker,
   SloppyImportsCachedFs,
+  CliSys,
 >;
 pub type CliNpmReqResolver =
-  deno_resolver::npm::NpmReqResolver<CliDenoResolverFs, DenoFsNodeResolverEnv>;
+  deno_resolver::npm::NpmReqResolver<RealIsBuiltInNodeModuleChecker, CliSys>;
 
 pub struct ModuleCodeStringSource {
   pub code: ModuleSourceCode,
   pub found_url: ModuleSpecifier,
   pub media_type: MediaType,
-}
-
-#[derive(Debug, Clone)]
-pub struct CliDenoResolverFs(pub Arc<dyn FileSystem>);
-
-impl deno_resolver::fs::DenoResolverFs for CliDenoResolverFs {
-  fn read_to_string_lossy(
-    &self,
-    path: &Path,
-  ) -> std::io::Result<Cow<'static, str>> {
-    self
-      .0
-      .read_text_file_lossy_sync(path, None)
-      .map_err(|e| e.into_io_error())
-  }
-
-  fn realpath_sync(&self, path: &Path) -> std::io::Result<PathBuf> {
-    self.0.realpath_sync(path).map_err(|e| e.into_io_error())
-  }
-
-  fn exists_sync(&self, path: &Path) -> bool {
-    self.0.exists_sync(path)
-  }
-
-  fn is_dir_sync(&self, path: &Path) -> bool {
-    self.0.is_dir_sync(path)
-  }
-
-  fn read_dir_sync(
-    &self,
-    dir_path: &Path,
-  ) -> std::io::Result<Vec<deno_resolver::fs::DirEntry>> {
-    self
-      .0
-      .read_dir_sync(dir_path)
-      .map(|entries| {
-        entries
-          .into_iter()
-          .map(|e| deno_resolver::fs::DirEntry {
-            name: e.name,
-            is_file: e.is_file,
-            is_directory: e.is_directory,
-          })
-          .collect::<Vec<_>>()
-      })
-      .map_err(|err| err.into_io_error())
-  }
 }
 
 #[derive(Debug, Error)]
@@ -440,7 +395,7 @@ impl<'a> deno_graph::source::NpmResolver for WorkerCliNpmGraphResolver<'a> {
 
 #[derive(Debug)]
 pub struct SloppyImportsCachedFs {
-  fs: Arc<dyn deno_fs::FileSystem>,
+  sys: CliSys,
   cache: Option<
     DashMap<
       PathBuf,
@@ -450,15 +405,18 @@ pub struct SloppyImportsCachedFs {
 }
 
 impl SloppyImportsCachedFs {
-  pub fn new(fs: Arc<dyn FileSystem>) -> Self {
+  pub fn new(sys: CliSys) -> Self {
     Self {
-      fs,
+      sys,
       cache: Some(Default::default()),
     }
   }
 
-  pub fn new_without_stat_cache(fs: Arc<dyn FileSystem>) -> Self {
-    Self { fs, cache: None }
+  pub fn new_without_stat_cache(fs: CliSys) -> Self {
+    Self {
+      sys: fs,
+      cache: None,
+    }
   }
 }
 
@@ -475,10 +433,10 @@ impl deno_resolver::sloppy_imports::SloppyImportResolverFs
       }
     }
 
-    let entry = self.fs.stat_sync(path).ok().and_then(|stat| {
-      if stat.is_file {
+    let entry = self.sys.fs_metadata(path).ok().and_then(|stat| {
+      if stat.file_type().is_file() {
         Some(deno_resolver::sloppy_imports::SloppyImportsFsEntry::File)
-      } else if stat.is_directory {
+      } else if stat.file_type().is_dir() {
         Some(deno_resolver::sloppy_imports::SloppyImportsFsEntry::Dir)
       } else {
         None

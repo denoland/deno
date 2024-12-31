@@ -21,9 +21,11 @@ use crate::graph_util::enhanced_resolution_error_message;
 use crate::lsp::lsp_custom::DiagnosticBatchNotificationParams;
 use crate::resolver::CliSloppyImportsResolver;
 use crate::resolver::SloppyImportsCachedFs;
+use crate::sys::CliSys;
 use crate::tools::lint::CliLinter;
 use crate::tools::lint::CliLinterOptions;
 use crate::tools::lint::LintRuleProvider;
+use crate::tsc::DiagnosticCategory;
 use crate::util::path::to_percent_decoded_str;
 
 use deno_ast::MediaType;
@@ -44,9 +46,9 @@ use deno_graph::source::ResolveError;
 use deno_graph::Resolution;
 use deno_graph::ResolutionError;
 use deno_graph::SpecifierError;
+use deno_lint::linter::LintConfig as DenoLintConfig;
 use deno_resolver::sloppy_imports::SloppyImportsResolution;
 use deno_resolver::sloppy_imports::SloppyImportsResolutionKind;
-use deno_runtime::deno_fs;
 use deno_runtime::deno_node;
 use deno_runtime::tokio_util::create_basic_runtime;
 use deno_semver::jsr::JsrPackageReqReference;
@@ -833,7 +835,7 @@ fn generate_lint_diagnostics(
               lint_rule_provider.resolve_lint_rules(Default::default(), None)
             },
             fix: false,
-            deno_lint_config: deno_lint::linter::LintConfig {
+            deno_lint_config: DenoLintConfig {
               default_jsx_factory: None,
               default_jsx_fragment_factory: None,
             },
@@ -906,8 +908,22 @@ async fn generate_ts_diagnostics(
   } else {
     Default::default()
   };
-  for (specifier_str, ts_json_diagnostics) in ts_diagnostics_map {
+  for (specifier_str, mut ts_json_diagnostics) in ts_diagnostics_map {
     let specifier = resolve_url(&specifier_str)?;
+    let suggestion_actions_settings = snapshot
+      .config
+      .language_settings_for_specifier(&specifier)
+      .map(|s| s.suggestion_actions.clone())
+      .unwrap_or_default();
+    if !suggestion_actions_settings.enabled {
+      ts_json_diagnostics.retain(|d| {
+        d.category != DiagnosticCategory::Suggestion
+          // Still show deprecated and unused diagnostics.
+          // https://github.com/microsoft/vscode/blob/ce50bd4876af457f64d83cfd956bc916535285f4/extensions/typescript-language-features/src/languageFeatures/diagnostics.ts#L113-L114
+          || d.reports_deprecated == Some(true)
+          || d.reports_unnecessary == Some(true)
+      });
+    }
     let version = snapshot
       .documents
       .get(&specifier)
@@ -1265,7 +1281,7 @@ impl DenoDiagnostic {
       Self::NotInstalledNpm(pkg_req, specifier) => (lsp::DiagnosticSeverity::ERROR, format!("npm package \"{pkg_req}\" is not installed or doesn't exist."), Some(json!({ "specifier": specifier }))),
       Self::NoLocal(specifier) => {
         let maybe_sloppy_resolution = CliSloppyImportsResolver::new(
-          SloppyImportsCachedFs::new(Arc::new(deno_fs::RealFs))
+          SloppyImportsCachedFs::new(CliSys::default())
         ).resolve(specifier, SloppyImportsResolutionKind::Execution);
         let data = maybe_sloppy_resolution.as_ref().map(|res| {
           json!({

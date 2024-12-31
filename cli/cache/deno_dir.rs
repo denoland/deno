@@ -1,6 +1,9 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
+use deno_cache_dir::DenoDirResolutionError;
 use once_cell::sync::OnceCell;
+
+use crate::sys::CliSys;
 
 use super::DiskCache;
 
@@ -10,24 +13,37 @@ use std::path::PathBuf;
 /// Lazily creates the deno dir which might be useful in scenarios
 /// where functionality wants to continue if the DENO_DIR can't be created.
 pub struct DenoDirProvider {
+  sys: CliSys,
   maybe_custom_root: Option<PathBuf>,
-  deno_dir: OnceCell<std::io::Result<DenoDir>>,
+  deno_dir: OnceCell<Result<DenoDir, DenoDirResolutionError>>,
 }
 
 impl DenoDirProvider {
-  pub fn new(maybe_custom_root: Option<PathBuf>) -> Self {
+  pub fn new(sys: CliSys, maybe_custom_root: Option<PathBuf>) -> Self {
     Self {
+      sys,
       maybe_custom_root,
       deno_dir: Default::default(),
     }
   }
 
-  pub fn get_or_create(&self) -> Result<&DenoDir, std::io::Error> {
+  pub fn get_or_create(&self) -> Result<&DenoDir, DenoDirResolutionError> {
     self
       .deno_dir
-      .get_or_init(|| DenoDir::new(self.maybe_custom_root.clone()))
+      .get_or_init(|| {
+        DenoDir::new(self.sys.clone(), self.maybe_custom_root.clone())
+      })
       .as_ref()
-      .map_err(|err| std::io::Error::new(err.kind(), err.to_string()))
+      .map_err(|err| match err {
+        DenoDirResolutionError::NoCacheOrHomeDir => {
+          DenoDirResolutionError::NoCacheOrHomeDir
+        }
+        DenoDirResolutionError::FailedCwd { source } => {
+          DenoDirResolutionError::FailedCwd {
+            source: std::io::Error::new(source.kind(), source.to_string()),
+          }
+        }
+      })
   }
 }
 
@@ -42,33 +58,20 @@ pub struct DenoDir {
 }
 
 impl DenoDir {
-  pub fn new(maybe_custom_root: Option<PathBuf>) -> std::io::Result<Self> {
-    let maybe_custom_root =
-      maybe_custom_root.or_else(|| env::var("DENO_DIR").map(String::into).ok());
-    let root: PathBuf = if let Some(root) = maybe_custom_root {
-      root
-    } else if let Some(cache_dir) = dirs::cache_dir() {
-      // We use the OS cache dir because all files deno writes are cache files
-      // Once that changes we need to start using different roots if DENO_DIR
-      // is not set, and keep a single one if it is.
-      cache_dir.join("deno")
-    } else if let Some(home_dir) = dirs::home_dir() {
-      // fallback path
-      home_dir.join(".deno")
-    } else {
-      panic!("Could not set the Deno root directory")
-    };
-    let root = if root.is_absolute() {
-      root
-    } else {
-      std::env::current_dir()?.join(root)
-    };
+  pub fn new(
+    sys: CliSys,
+    maybe_custom_root: Option<PathBuf>,
+  ) -> Result<Self, deno_cache_dir::DenoDirResolutionError> {
+    let root = deno_cache_dir::resolve_deno_dir(
+      &sys_traits::impls::RealSys,
+      maybe_custom_root,
+    )?;
     assert!(root.is_absolute());
     let gen_path = root.join("gen");
 
     let deno_dir = Self {
       root,
-      gen_cache: DiskCache::new(&gen_path),
+      gen_cache: DiskCache::new(sys, &gen_path),
     };
 
     Ok(deno_dir)
@@ -164,114 +167,5 @@ impl DenoDir {
   /// Folder path used for downloading new versions of deno.
   pub fn dl_folder_path(&self) -> PathBuf {
     self.root.join("dl")
-  }
-}
-
-/// To avoid the poorly managed dirs crate
-#[cfg(not(windows))]
-pub mod dirs {
-  use std::path::PathBuf;
-
-  pub fn cache_dir() -> Option<PathBuf> {
-    if cfg!(target_os = "macos") {
-      home_dir().map(|h| h.join("Library/Caches"))
-    } else {
-      std::env::var_os("XDG_CACHE_HOME")
-        .map(PathBuf::from)
-        .or_else(|| home_dir().map(|h| h.join(".cache")))
-    }
-  }
-
-  pub fn home_dir() -> Option<PathBuf> {
-    std::env::var_os("HOME")
-      .and_then(|h| if h.is_empty() { None } else { Some(h) })
-      .or_else(|| {
-        // TODO(bartlomieju):
-        #[allow(clippy::undocumented_unsafe_blocks)]
-        unsafe {
-          fallback()
-        }
-      })
-      .map(PathBuf::from)
-  }
-
-  // This piece of code is taken from the deprecated home_dir() function in Rust's standard library: https://github.com/rust-lang/rust/blob/master/src/libstd/sys/unix/os.rs#L579
-  // The same code is used by the dirs crate
-  unsafe fn fallback() -> Option<std::ffi::OsString> {
-    let amt = match libc::sysconf(libc::_SC_GETPW_R_SIZE_MAX) {
-      n if n < 0 => 512_usize,
-      n => n as usize,
-    };
-    let mut buf = Vec::with_capacity(amt);
-    let mut passwd: libc::passwd = std::mem::zeroed();
-    let mut result = std::ptr::null_mut();
-    match libc::getpwuid_r(
-      libc::getuid(),
-      &mut passwd,
-      buf.as_mut_ptr(),
-      buf.capacity(),
-      &mut result,
-    ) {
-      0 if !result.is_null() => {
-        let ptr = passwd.pw_dir as *const _;
-        let bytes = std::ffi::CStr::from_ptr(ptr).to_bytes().to_vec();
-        Some(std::os::unix::ffi::OsStringExt::from_vec(bytes))
-      }
-      _ => None,
-    }
-  }
-}
-
-/// To avoid the poorly managed dirs crate
-// Copied from
-// https://github.com/dirs-dev/dirs-sys-rs/blob/ec7cee0b3e8685573d847f0a0f60aae3d9e07fa2/src/lib.rs#L140-L164
-// MIT license. Copyright (c) 2018-2019 dirs-rs contributors
-#[cfg(windows)]
-pub mod dirs {
-  use std::ffi::OsString;
-  use std::os::windows::ffi::OsStringExt;
-  use std::path::PathBuf;
-  use winapi::shared::winerror;
-  use winapi::um::combaseapi;
-  use winapi::um::knownfolders;
-  use winapi::um::shlobj;
-  use winapi::um::shtypes;
-  use winapi::um::winbase;
-  use winapi::um::winnt;
-
-  fn known_folder(folder_id: shtypes::REFKNOWNFOLDERID) -> Option<PathBuf> {
-    // SAFETY: winapi calls
-    unsafe {
-      let mut path_ptr: winnt::PWSTR = std::ptr::null_mut();
-      let result = shlobj::SHGetKnownFolderPath(
-        folder_id,
-        0,
-        std::ptr::null_mut(),
-        &mut path_ptr,
-      );
-      if result == winerror::S_OK {
-        let len = winbase::lstrlenW(path_ptr) as usize;
-        let path = std::slice::from_raw_parts(path_ptr, len);
-        let ostr: OsString = OsStringExt::from_wide(path);
-        combaseapi::CoTaskMemFree(path_ptr as *mut winapi::ctypes::c_void);
-        Some(PathBuf::from(ostr))
-      } else {
-        None
-      }
-    }
-  }
-
-  pub fn cache_dir() -> Option<PathBuf> {
-    known_folder(&knownfolders::FOLDERID_LocalAppData)
-  }
-
-  pub fn home_dir() -> Option<PathBuf> {
-    if let Some(userprofile) = std::env::var_os("USERPROFILE") {
-      if !userprofile.is_empty() {
-        return Some(PathBuf::from(userprofile));
-      }
-    }
-
-    known_folder(&knownfolders::FOLDERID_Profile)
   }
 }

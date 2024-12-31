@@ -4,9 +4,10 @@ use crate::args::TsConfig;
 use crate::args::TypeCheckMode;
 use crate::cache::FastInsecureHasher;
 use crate::cache::ModuleInfoCache;
-use crate::node;
+use crate::node::CliNodeResolver;
 use crate::npm::CliNpmResolver;
 use crate::resolver::CjsTracker;
+use crate::sys::CliSys;
 use crate::util::checksum;
 use crate::util::path::mapped_specifier_for_tsc;
 use crate::worker::create_isolate_create_params;
@@ -35,12 +36,11 @@ use deno_graph::Module;
 use deno_graph::ModuleGraph;
 use deno_graph::ResolutionResolved;
 use deno_resolver::npm::ResolvePkgFolderFromDenoReqError;
-use deno_runtime::deno_fs;
-use deno_runtime::deno_node::NodeResolver;
 use deno_semver::npm::NpmPackageReqReference;
 use node_resolver::errors::NodeJsErrorCode;
 use node_resolver::errors::NodeJsErrorCoded;
 use node_resolver::errors::PackageSubpathResolveError;
+use node_resolver::resolve_specifier_into_node_modules;
 use node_resolver::NodeResolutionKind;
 use node_resolver::ResolutionMode;
 use once_cell::sync::Lazy;
@@ -380,7 +380,7 @@ impl TypeCheckingCjsTracker {
 #[derive(Debug)]
 pub struct RequestNpmState {
   pub cjs_tracker: Arc<TypeCheckingCjsTracker>,
-  pub node_resolver: Arc<NodeResolver>,
+  pub node_resolver: Arc<CliNodeResolver>,
   pub npm_resolver: Arc<dyn CliNpmResolver>,
 }
 
@@ -660,9 +660,9 @@ fn op_load_inner(
             None
           } else {
             // means it's Deno code importing an npm module
-            let specifier = node::resolve_specifier_into_node_modules(
+            let specifier = resolve_specifier_into_node_modules(
+              &CliSys::default(),
               &module.specifier,
-              &deno_fs::RealFs,
             );
             Some(Cow::Owned(load_from_node_modules(
               &specifier,
@@ -924,9 +924,9 @@ fn resolve_graph_specifier_types(
     Some(Module::External(module)) => {
       // we currently only use "External" for when the module is in an npm package
       Ok(state.maybe_npm.as_ref().map(|_| {
-        let specifier = node::resolve_specifier_into_node_modules(
+        let specifier = resolve_specifier_into_node_modules(
+          &CliSys::default(),
           &module.specifier,
-          &deno_fs::RealFs,
         );
         into_specifier_and_media_type(Some(specifier))
       }))
@@ -1444,6 +1444,9 @@ mod tests {
           source_line: None,
           file_name: None,
           related_information: None,
+          reports_deprecated: None,
+          reports_unnecessary: None,
+          other: Default::default(),
         }]),
         stats: Stats(vec![("a".to_string(), 12)])
       })

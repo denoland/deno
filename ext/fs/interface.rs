@@ -71,7 +71,7 @@ pub enum FsFileType {
 }
 
 /// WARNING: This is part of the public JS Deno API.
-#[derive(Serialize)]
+#[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct FsDirEntry {
   pub name: String,

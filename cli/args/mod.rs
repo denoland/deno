@@ -9,6 +9,7 @@ mod package_json;
 
 use deno_ast::MediaType;
 use deno_ast::SourceMapOption;
+use deno_cache_dir::file_fetcher::CacheSetting;
 use deno_config::deno_json::NodeModulesDirMode;
 use deno_config::workspace::CreateResolverOptions;
 use deno_config::workspace::FolderConfigs;
@@ -23,13 +24,14 @@ use deno_config::workspace::WorkspaceLintConfig;
 use deno_config::workspace::WorkspaceResolver;
 use deno_core::resolve_url_or_path;
 use deno_graph::GraphKind;
+use deno_lint::linter::LintConfig as DenoLintConfig;
 use deno_npm::npm_rc::NpmRc;
 use deno_npm::npm_rc::ResolvedNpmRc;
 use deno_npm::resolution::ValidSerializedNpmResolutionSnapshot;
 use deno_npm::NpmSystemInfo;
-use deno_npm_cache::NpmCacheSetting;
 use deno_path_util::normalize_path;
 use deno_semver::npm::NpmPackageReqReference;
+use deno_semver::StackString;
 use deno_telemetry::OtelConfig;
 use deno_telemetry::OtelRuntimeConfig;
 use import_map::resolve_import_map_value_from_specifier;
@@ -81,11 +83,12 @@ use std::num::NonZeroUsize;
 use std::path::Path;
 use std::path::PathBuf;
 use std::sync::Arc;
+use sys_traits::EnvHomeDir;
 use thiserror::Error;
 
-use crate::cache;
 use crate::cache::DenoDirProvider;
-use crate::file_fetcher::FileFetcher;
+use crate::file_fetcher::CliFileFetcher;
+use crate::sys::CliSys;
 use crate::util::fs::canonicalize_path_maybe_not_exists;
 use crate::version;
 
@@ -215,52 +218,6 @@ pub fn ts_config_to_transpile_and_emit_options(
       source_map_file: None,
     },
   ))
-}
-
-/// Indicates how cached source files should be handled.
-#[derive(Debug, Clone, Eq, PartialEq)]
-pub enum CacheSetting {
-  /// Only the cached files should be used.  Any files not in the cache will
-  /// error.  This is the equivalent of `--cached-only` in the CLI.
-  Only,
-  /// No cached source files should be used, and all files should be reloaded.
-  /// This is the equivalent of `--reload` in the CLI.
-  ReloadAll,
-  /// Only some cached resources should be used.  This is the equivalent of
-  /// `--reload=jsr:@std/http/file-server` or
-  /// `--reload=jsr:@std/http/file-server,jsr:@std/assert/assert-equals`.
-  ReloadSome(Vec<String>),
-  /// The usability of a cached value is determined by analyzing the cached
-  /// headers and other metadata associated with a cached response, reloading
-  /// any cached "non-fresh" cached responses.
-  RespectHeaders,
-  /// The cached source files should be used for local modules.  This is the
-  /// default behavior of the CLI.
-  Use,
-}
-
-impl CacheSetting {
-  pub fn as_npm_cache_setting(&self) -> NpmCacheSetting {
-    match self {
-      CacheSetting::Only => NpmCacheSetting::Only,
-      CacheSetting::ReloadAll => NpmCacheSetting::ReloadAll,
-      CacheSetting::ReloadSome(values) => {
-        if values.iter().any(|v| v == "npm:") {
-          NpmCacheSetting::ReloadAll
-        } else {
-          NpmCacheSetting::ReloadSome {
-            npm_package_names: values
-              .iter()
-              .filter_map(|v| v.strip_prefix("npm:"))
-              .map(|n| n.to_string())
-              .collect(),
-          }
-        }
-      }
-      CacheSetting::RespectHeaders => unreachable!(), // not supported
-      CacheSetting::Use => NpmCacheSetting::Use,
-    }
-  }
 }
 
 pub struct WorkspaceBenchOptions {
@@ -616,7 +573,7 @@ fn discover_npmrc(
   // TODO(bartlomieju): update to read both files - one in the project root and one and
   // home dir and then merge them.
   // 3. Try `.npmrc` in the user's home directory
-  if let Some(home_dir) = cache::home_dir() {
+  if let Some(home_dir) = crate::sys::CliSys::default().env_home_dir() {
     match try_to_read_npmrc(&home_dir) {
       Ok(Some((source, path))) => {
         return try_to_parse_npmrc(source, &path).map(|r| (r, Some(path)));
@@ -815,7 +772,9 @@ pub struct CliOptions {
 }
 
 impl CliOptions {
+  #[allow(clippy::too_many_arguments)]
   pub fn new(
+    sys: &CliSys,
     flags: Arc<Flags>,
     initial_cwd: PathBuf,
     maybe_lockfile: Option<Arc<CliLockfile>>,
@@ -840,8 +799,10 @@ impl CliOptions {
     }
 
     let maybe_lockfile = maybe_lockfile.filter(|_| !force_global_cache);
-    let deno_dir_provider =
-      Arc::new(DenoDirProvider::new(flags.internal.cache_path.clone()));
+    let deno_dir_provider = Arc::new(DenoDirProvider::new(
+      sys.clone(),
+      flags.internal.cache_path.clone(),
+    ));
     let maybe_node_modules_folder = resolve_node_modules_folder(
       &initial_cwd,
       &flags,
@@ -866,7 +827,7 @@ impl CliOptions {
     })
   }
 
-  pub fn from_flags(flags: Arc<Flags>) -> Result<Self, AnyError> {
+  pub fn from_flags(sys: &CliSys, flags: Arc<Flags>) -> Result<Self, AnyError> {
     let initial_cwd =
       std::env::current_dir().with_context(|| "Failed getting cwd.")?;
     let maybe_vendor_override = flags.vendor.map(|v| match v {
@@ -889,7 +850,6 @@ impl CliOptions {
         log::debug!("package.json auto-discovery is disabled");
       }
       WorkspaceDiscoverOptions {
-        fs: Default::default(), // use real fs
         deno_json_cache: None,
         pkg_json_cache: Some(&node_resolver::PackageJsonThreadLocalCache),
         workspace_cache: None,
@@ -911,6 +871,7 @@ impl CliOptions {
       ConfigFlag::Discover => {
         if let Some(start_paths) = flags.config_path_args(&initial_cwd) {
           WorkspaceDirectory::discover(
+            sys,
             WorkspaceDiscoverStart::Paths(&start_paths),
             &resolve_workspace_discover_options(),
           )?
@@ -921,6 +882,7 @@ impl CliOptions {
       ConfigFlag::Path(path) => {
         let config_path = normalize_path(initial_cwd.join(path));
         WorkspaceDirectory::discover(
+          sys,
           WorkspaceDiscoverStart::ConfigFile(&config_path),
           &resolve_workspace_discover_options(),
         )?
@@ -959,6 +921,7 @@ impl CliOptions {
       };
 
     let maybe_lock_file = CliLockfile::discover(
+      sys,
       &flags,
       &start_dir.workspace,
       external_import_map.as_ref().map(|(_, v)| v),
@@ -967,6 +930,7 @@ impl CliOptions {
     log::debug!("Finished config loading.");
 
     Self::new(
+      sys,
       flags,
       initial_cwd,
       maybe_lock_file.map(Arc::new),
@@ -1037,24 +1001,24 @@ impl CliOptions {
         // https://nodejs.org/api/process.html
         match target.as_str() {
           "aarch64-apple-darwin" => NpmSystemInfo {
-            os: "darwin".to_string(),
-            cpu: "arm64".to_string(),
+            os: "darwin".into(),
+            cpu: "arm64".into(),
           },
           "aarch64-unknown-linux-gnu" => NpmSystemInfo {
-            os: "linux".to_string(),
-            cpu: "arm64".to_string(),
+            os: "linux".into(),
+            cpu: "arm64".into(),
           },
           "x86_64-apple-darwin" => NpmSystemInfo {
-            os: "darwin".to_string(),
-            cpu: "x64".to_string(),
+            os: "darwin".into(),
+            cpu: "x64".into(),
           },
           "x86_64-unknown-linux-gnu" => NpmSystemInfo {
-            os: "linux".to_string(),
-            cpu: "x64".to_string(),
+            os: "linux".into(),
+            cpu: "x64".into(),
           },
           "x86_64-pc-windows-msvc" => NpmSystemInfo {
-            os: "win32".to_string(),
-            cpu: "x64".to_string(),
+            os: "win32".into(),
+            cpu: "x64".into(),
           },
           value => {
             log::warn!(
@@ -1091,7 +1055,7 @@ impl CliOptions {
 
   pub async fn create_workspace_resolver(
     &self,
-    file_fetcher: &FileFetcher,
+    file_fetcher: &CliFileFetcher,
     pkg_json_dep_resolution: PackageJsonDepResolution,
   ) -> Result<WorkspaceResolver, AnyError> {
     let overrode_no_import_map: bool = self
@@ -1397,9 +1361,7 @@ impl CliOptions {
     Ok(result)
   }
 
-  pub fn resolve_deno_lint_config(
-    &self,
-  ) -> Result<deno_lint::linter::LintConfig, AnyError> {
+  pub fn resolve_deno_lint_config(&self) -> Result<DenoLintConfig, AnyError> {
     let ts_config_result =
       self.resolve_ts_config_for_emit(TsConfigType::Emit)?;
 
@@ -1408,11 +1370,11 @@ impl CliOptions {
         ts_config_result.ts_config,
       )?;
 
-    Ok(deno_lint::linter::LintConfig {
+    Ok(DenoLintConfig {
       default_jsx_factory: (!transpile_options.jsx_automatic)
-        .then(|| transpile_options.jsx_factory.clone()),
+        .then_some(transpile_options.jsx_factory),
       default_jsx_fragment_factory: (!transpile_options.jsx_automatic)
-        .then(|| transpile_options.jsx_fragment_factory.clone()),
+        .then_some(transpile_options.jsx_fragment_factory),
     })
   }
 
@@ -1993,15 +1955,17 @@ pub fn has_flag_env_var(name: &str) -> bool {
 pub fn npm_pkg_req_ref_to_binary_command(
   req_ref: &NpmPackageReqReference,
 ) -> String {
-  let binary_name = req_ref.sub_path().unwrap_or(req_ref.req().name.as_str());
-  binary_name.to_string()
+  req_ref
+    .sub_path()
+    .map(|s| s.to_string())
+    .unwrap_or_else(|| req_ref.req().name.to_string())
 }
 
 pub fn config_to_deno_graph_workspace_member(
   config: &ConfigFile,
 ) -> Result<deno_graph::WorkspaceMember, AnyError> {
-  let name = match &config.json.name {
-    Some(name) => name.clone(),
+  let name: StackString = match &config.json.name {
+    Some(name) => name.as_str().into(),
     None => bail!("Missing 'name' field in config file."),
   };
   let version = match &config.json.version {

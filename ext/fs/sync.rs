@@ -21,3 +21,9 @@ mod inner {
   pub trait MaybeSend {}
   impl<T> MaybeSend for T where T: ?Sized {}
 }
+
+#[allow(clippy::disallowed_types)]
+#[inline]
+pub fn new_rc<T>(value: T) -> MaybeArc<T> {
+  MaybeArc::new(value)
+}

@@ -2083,6 +2083,88 @@ fn lsp_inlay_hints_not_enabled() {
 }
 
 #[test]
+fn lsp_suggestion_actions_disabled() {
+  let context = TestContextBuilder::new().use_temp_cwd().build();
+  let temp_dir = context.temp_dir();
+  let mut client = context.new_lsp_command().build();
+  client.initialize_default();
+  client.change_configuration(json!({
+    "deno": {
+      "enable": true,
+      "lint": false,
+    },
+    "typescript": {
+      "suggestionActions": {
+        "enabled": false,
+      },
+    },
+  }));
+  client.read_diagnostics();
+  let diagnostics = client.did_open(json!({
+    "textDocument": {
+      "uri": temp_dir.url().join("file.ts").unwrap(),
+      "languageId": "typescript",
+      "version": 1,
+      "text": r#"
+        // The settings should disable the suggestion for this to be async.
+        function asyncLikeFunction() {
+          return new Promise((r) => r(null)).then((v) => v);
+        }
+        console.log(asyncLikeFunction);
+
+        // Deprecated warnings should remain.
+        /** @deprecated */
+        function deprecatedFunction() {}
+        console.log(deprecatedFunction);
+
+        // Unused warnings should remain.
+        const unsusedVariable = 1;
+      "#,
+    },
+  }));
+  assert_eq!(
+    json!(diagnostics.all()),
+    json!([
+      {
+        "range": {
+          "start": { "line": 10, "character": 20 },
+          "end": { "line": 10, "character": 38 },
+        },
+        "severity": 4,
+        "code": 6385,
+        "source": "deno-ts",
+        "message": "'deprecatedFunction' is deprecated.",
+        "relatedInformation": [
+          {
+            "location": {
+              "uri": temp_dir.url().join("file.ts").unwrap(),
+              "range": {
+                "start": { "line": 8, "character": 12 },
+                "end": { "line": 8, "character": 24 },
+              },
+            },
+            "message": "The declaration was marked as deprecated here.",
+          },
+        ],
+        "tags": [2],
+      },
+      {
+        "range": {
+          "start": { "line": 13, "character": 14 },
+          "end": { "line": 13, "character": 29 },
+        },
+        "severity": 4,
+        "code": 6133,
+        "source": "deno-ts",
+        "message": "'unsusedVariable' is declared but its value is never read.",
+        "tags": [1],
+      },
+    ]),
+  );
+  client.shutdown();
+}
+
+#[test]
 fn lsp_workspace_disable_enable_paths() {
   fn run_test(use_trailing_slash: bool) {
     let context = TestContextBuilder::new().use_temp_cwd().build();
@@ -5985,6 +6067,119 @@ fn lsp_jsr_code_action_missing_declaration() {
 }
 
 #[test]
+fn lsp_jsr_code_action_move_to_new_file() {
+  let context = TestContextBuilder::new()
+    .use_http_server()
+    .use_temp_cwd()
+    .build();
+  let temp_dir = context.temp_dir();
+  let file = source_file(
+    temp_dir.path().join("file.ts"),
+    r#"
+      import { someFunction } from "jsr:@denotest/types-file";
+      export const someValue = someFunction();
+    "#,
+  );
+  let mut client = context.new_lsp_command().build();
+  client.initialize_default();
+  client.write_request(
+    "workspace/executeCommand",
+    json!({
+      "command": "deno.cache",
+      "arguments": [[], file.url()],
+    }),
+  );
+  client.did_open_file(&file);
+  let list = client
+    .write_request_with_res_as::<Option<lsp::CodeActionResponse>>(
+      "textDocument/codeAction",
+      json!({
+        "textDocument": { "uri": file.url() },
+        "range": {
+          "start": { "line": 2, "character": 19 },
+          "end": { "line": 2, "character": 28 },
+        },
+        "context": { "diagnostics": [] },
+      }),
+    )
+    .unwrap();
+  let action = list
+    .iter()
+    .find_map(|c| match c {
+      lsp::CodeActionOrCommand::CodeAction(a)
+        if &a.title == "Move to a new file" =>
+      {
+        Some(a)
+      }
+      _ => None,
+    })
+    .unwrap();
+  let res = client.write_request("codeAction/resolve", json!(action));
+  assert_eq!(
+    res,
+    json!({
+      "title": "Move to a new file",
+      "kind": "refactor.move.newFile",
+      "edit": {
+        "documentChanges": [
+          {
+            "textDocument": { "uri": file.url(), "version": 1 },
+            "edits": [
+              {
+                "range": {
+                  "start": { "line": 1, "character": 6 },
+                  "end": { "line": 2, "character": 0 },
+                },
+                "newText": "",
+              },
+              {
+                "range": {
+                  "start": { "line": 2, "character": 0 },
+                  "end": { "line": 3, "character": 4 },
+                },
+                "newText": "",
+              },
+            ],
+          },
+          {
+            "kind": "create",
+            "uri": file.url().join("someValue.ts").unwrap(),
+            "options": {
+              "ignoreIfExists": true,
+            },
+          },
+          {
+            "textDocument": {
+              "uri": file.url().join("someValue.ts").unwrap(),
+              "version": null,
+            },
+            "edits": [
+              {
+                "range": {
+                  "start": { "line": 0, "character": 0 },
+                  "end": { "line": 0, "character": 0 },
+                },
+                "newText": "import { someFunction } from \"jsr:@denotest/types-file\";\n\nexport const someValue = someFunction();\n",
+              },
+            ],
+          },
+        ],
+      },
+      "isPreferred": false,
+      "data": {
+        "specifier": file.url(),
+        "range": {
+          "start": { "line": 2, "character": 19 },
+          "end": { "line": 2, "character": 28 },
+        },
+        "refactorName": "Move to a new file",
+        "actionName": "Move to a new file",
+      },
+    }),
+  );
+}
+
+#[test]
 fn lsp_code_actions_deno_cache_npm() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let mut client = context.new_lsp_command().build();
@@ -7879,6 +8074,73 @@ fn lsp_completions_auto_import() {
 }
 
 #[test]
+fn lsp_completions_auto_import_node_builtin() {
+  let context = TestContextBuilder::new()
+    .use_http_server()
+    .use_temp_cwd()
+    .build();
+  let temp_dir = context.temp_dir();
+  let mut client = context.new_lsp_command().build();
+  client.initialize_default();
+  client.did_open(json!({
+    "textDocument": {
+      "uri": temp_dir.url().join("file.ts").unwrap(),
+      "languageId": "typescript",
+      "version": 1,
+      "text": r#"
+        import "npm:@types/node";
+        pathToFileURL
+      "#,
+    }
+  }));
+  client.write_request(
+    "workspace/executeCommand",
+    json!({
+      "command": "deno.cache",
+      "arguments": [[], temp_dir.url().join("file.ts").unwrap()],
+    }),
+  );
+  let list = client.get_completion_list(
+    temp_dir.url().join("file.ts").unwrap(),
+    (2, 21),
+    json!({ "triggerKind": 2 }),
+  );
+  assert!(!list.is_incomplete);
+  let item = list
+    .items
+    .iter()
+    .find(|item| item.label == "pathToFileURL")
+    .unwrap();
+  let res = client.write_request("completionItem/resolve", json!(item));
+  assert_eq!(
+    res,
+    json!({
+      "label": "pathToFileURL",
+      "labelDetails": {
+        "description": "node:url",
+      },
+      "kind": 3,
+      "detail": "function pathToFileURL(path: string, options?: PathToFileUrlOptions): URL",
+      "documentation": {
+        "kind": "markdown",
+        "value": "This function ensures that `path` is resolved absolutely, and that the URL\ncontrol characters are correctly encoded when converting into a File URL.\n\n```js\nimport { pathToFileURL } from 'node:url';\n\nnew URL('/foo#1', 'file:');           // Incorrect: file:///foo#1\npathToFileURL('/foo#1');              // Correct:   file:///foo#1 (POSIX)\n\nnew URL('/some/path%.c', 'file:');    // Incorrect: file:///some/path%.c\npathToFileURL('/some/path%.c');       // Correct:   file:///some/path%.c (POSIX)\n```\n\n*@since* - v10.12.0  \n\n*@param* - path The path to convert to a File URL.  \n\n*@return* - The file URL object.",
+      },
+      "sortText": "￿16_1",
+      "additionalTextEdits": [
+        {
+          "range": {
+            "start": { "line": 2, "character": 0 },
+            "end": { "line": 2, "character": 0 },
+          },
+          "newText": "        import { pathToFileURL } from \"node:url\";\n",
+        },
+      ],
+    }),
+  );
+  client.shutdown();
+}
+
+#[test]
 fn lsp_npm_completions_auto_import_and_quick_fix_no_import_map() {
   let context = TestContextBuilder::new()
     .use_http_server()
@@ -8450,6 +8712,7 @@ fn lsp_completions_node_specifier() {
       "node:http2",
       "node:https",
       "node:inspector",
+      "node:inspector/promises",
       "node:module",
       "node:net",
       "node:os",
@@ -8460,9 +8723,9 @@ fn lsp_completions_node_specifier() {
       "node:process",
       "node:punycode",
       "node:querystring",
-      "node:repl",
       "node:readline",
       "node:readline/promises",
+      "node:repl",
       "node:sqlite",
       "node:stream",
       "node:stream/consumers",

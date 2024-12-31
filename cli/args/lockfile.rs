@@ -12,12 +12,13 @@ use deno_core::parking_lot::MutexGuard;
 use deno_core::serde_json;
 use deno_lockfile::WorkspaceMemberConfig;
 use deno_package_json::PackageJsonDepValue;
+use deno_path_util::fs::atomic_write_file_with_retries;
 use deno_runtime::deno_node::PackageJson;
 use deno_semver::jsr::JsrDepPackageReq;
 
 use crate::args::deno_json::import_map_deps;
 use crate::cache;
-use crate::util::fs::atomic_write_file_with_retries;
+use crate::sys::CliSys;
 use crate::Flags;
 
 use crate::args::DenoSubcommand;
@@ -35,6 +36,7 @@ pub struct CliLockfileReadFromPathOptions {
 
 #[derive(Debug)]
 pub struct CliLockfile {
+  sys: CliSys,
   lockfile: Mutex<Lockfile>,
   pub filename: PathBuf,
   frozen: bool,
@@ -91,8 +93,9 @@ impl CliLockfile {
     // do an atomic write to reduce the chance of multiple deno
     // processes corrupting the file
     atomic_write_file_with_retries(
+      &self.sys,
       &lockfile.filename,
-      bytes,
+      &bytes,
       cache::CACHE_PERM,
     )
     .context("Failed writing lockfile.")?;
@@ -101,6 +104,7 @@ impl CliLockfile {
   }
 
   pub fn discover(
+    sys: &CliSys,
     flags: &Flags,
     workspace: &Workspace,
     maybe_external_import_map: Option<&serde_json::Value>,
@@ -163,11 +167,14 @@ impl CliLockfile {
         .unwrap_or(false)
     });
 
-    let lockfile = Self::read_from_path(CliLockfileReadFromPathOptions {
-      file_path,
-      frozen,
-      skip_write: flags.internal.lockfile_skip_write,
-    })?;
+    let lockfile = Self::read_from_path(
+      sys,
+      CliLockfileReadFromPathOptions {
+        file_path,
+        frozen,
+        skip_write: flags.internal.lockfile_skip_write,
+      },
+    )?;
 
     // initialize the lockfile with the workspace's configuration
     let root_url = workspace.root_dir();
@@ -223,6 +230,7 @@ impl CliLockfile {
   }
 
   pub fn read_from_path(
+    sys: &CliSys,
     opts: CliLockfileReadFromPathOptions,
   ) -> Result<CliLockfile, AnyError> {
     let lockfile = match std::fs::read_to_string(&opts.file_path) {
@@ -241,6 +249,7 @@ impl CliLockfile {
       }
     };
     Ok(CliLockfile {
+      sys: sys.clone(),
       filename: lockfile.filename.clone(),
       lockfile: Mutex::new(lockfile),
       frozen: opts.frozen,

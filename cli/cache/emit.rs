@@ -159,12 +159,15 @@ impl EmitFileSerializer {
 mod test {
   use test_util::TempDir;
 
+  use crate::sys::CliSys;
+
   use super::*;
 
   #[test]
   pub fn emit_cache_general_use() {
     let temp_dir = TempDir::new();
-    let disk_cache = DiskCache::new(temp_dir.path().as_path());
+    let disk_cache =
+      DiskCache::new(CliSys::default(), temp_dir.path().as_path());
     let cache = EmitCache {
       disk_cache: disk_cache.clone(),
       file_serializer: EmitFileSerializer {

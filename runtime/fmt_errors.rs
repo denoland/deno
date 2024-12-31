@@ -422,6 +422,20 @@ fn get_suggestions_for_terminal_errors(e: &JsError) -> Vec<FixSuggestion> {
           "Run again with `--unstable-webgpu` flag to enable this API.",
         ),
       ];
+    } else if msg.contains("listenQuic is not a function") {
+      return vec![
+        FixSuggestion::info("listenQuic is an unstable API."),
+        FixSuggestion::hint(
+          "Run again with `--unstable-net` flag to enable this API.",
+        ),
+      ];
+    } else if msg.contains("connectQuic is not a function") {
+      return vec![
+        FixSuggestion::info("connectQuic is an unstable API."),
+        FixSuggestion::hint(
+          "Run again with `--unstable-net` flag to enable this API.",
+        ),
+      ];
     // Try to capture errors like:
     // ```
     // Uncaught Error: Cannot find module '../build/Release/canvas.node'

@@ -64,6 +64,7 @@ use deno_core::OpState;
 use deno_core::PollEventLoopOptions;
 use deno_core::RuntimeOptions;
 use deno_path_util::url_to_file_path;
+use deno_runtime::deno_node::SUPPORTED_BUILTIN_NODE_MODULES;
 use deno_runtime::inspector_server::InspectorServer;
 use deno_runtime::tokio_util::create_basic_runtime;
 use indexmap::IndexMap;
@@ -3411,10 +3412,18 @@ fn parse_code_actions(
           additional_text_edits.extend(change.text_changes.iter().map(|tc| {
             let mut text_edit = tc.as_text_edit(asset_or_doc.line_index());
             if let Some(specifier_rewrite) = &data.specifier_rewrite {
-              text_edit.new_text = text_edit.new_text.replace(
-                &specifier_rewrite.old_specifier,
-                &specifier_rewrite.new_specifier,
-              );
+              let specifier_index = text_edit
+                .new_text
+                .char_indices()
+                .find_map(|(b, c)| (c == '\'' || c == '"').then_some(b));
+              if let Some(i) = specifier_index {
+                let mut specifier_part = text_edit.new_text.split_off(i);
+                specifier_part = specifier_part.replace(
+                  &specifier_rewrite.old_specifier,
+                  &specifier_rewrite.new_specifier,
+                );
+                text_edit.new_text.push_str(&specifier_part);
+              }
               if let Some(deno_types_specifier) =
                 &specifier_rewrite.new_deno_types_specifier
               {
@@ -3587,10 +3596,17 @@ impl CompletionEntryDetails {
             &mut insert_replace_edit.new_text
           }
         };
-        *new_text = new_text.replace(
-          &specifier_rewrite.old_specifier,
-          &specifier_rewrite.new_specifier,
-        );
+        let specifier_index = new_text
+          .char_indices()
+          .find_map(|(b, c)| (c == '\'' || c == '"').then_some(b));
+        if let Some(i) = specifier_index {
+          let mut specifier_part = new_text.split_off(i);
+          specifier_part = specifier_part.replace(
+            &specifier_rewrite.old_specifier,
+            &specifier_rewrite.new_specifier,
+          );
+          new_text.push_str(&specifier_part);
+        }
         if let Some(deno_types_specifier) =
           &specifier_rewrite.new_deno_types_specifier
         {
@@ -3729,7 +3745,7 @@ pub struct CompletionItemData {
 #[serde(rename_all = "camelCase")]
 struct CompletionEntryDataAutoImport {
   module_specifier: String,
-  file_name: String,
+  file_name: Option<String>,
 }
 
 #[derive(Debug)]
@@ -3786,9 +3802,20 @@ impl CompletionEntry {
     else {
       return;
     };
-    if let Ok(normalized) = specifier_map.normalize(&raw.file_name) {
-      self.auto_import_data =
-        Some(CompletionNormalizedAutoImportData { raw, normalized });
+    if let Some(file_name) = &raw.file_name {
+      if let Ok(normalized) = specifier_map.normalize(file_name) {
+        self.auto_import_data =
+          Some(CompletionNormalizedAutoImportData { raw, normalized });
+      }
+    } else if SUPPORTED_BUILTIN_NODE_MODULES
+      .contains(&raw.module_specifier.as_str())
+    {
+      if let Ok(normalized) =
+        resolve_url(&format!("node:{}", &raw.module_specifier))
+      {
+        self.auto_import_data =
+          Some(CompletionNormalizedAutoImportData { raw, normalized });
+      }
     }
   }
 
@@ -5516,7 +5543,6 @@ impl TscRequest {
 mod tests {
   use super::*;
   use crate::cache::HttpCache;
-  use crate::http_util::HeadersMap;
   use crate::lsp::cache::LspCache;
   use crate::lsp::config::Config;
   use crate::lsp::config::WorkspaceSettings;
@@ -5746,6 +5772,7 @@ mod tests {
           "sourceLine": "        import { A } from \".\";",
           "category": 2,
           "code": 6133,
+          "reportsUnnecessary": true,
         }]
       })
     );
@@ -5828,6 +5855,7 @@ mod tests {
           "sourceLine": "        import {",
           "category": 2,
           "code": 6192,
+          "reportsUnnecessary": true,
         }, {
           "start": {
             "line": 8,
@@ -5951,7 +5979,7 @@ mod tests {
       .global()
       .set(
         &specifier_dep,
-        HeadersMap::default(),
+        Default::default(),
         b"export const b = \"b\";\n",
       )
       .unwrap();
@@ -5990,7 +6018,7 @@ mod tests {
       .global()
       .set(
         &specifier_dep,
-        HeadersMap::default(),
+        Default::default(),
         b"export const b = \"b\";\n\nexport const a = \"b\";\n",
       )
       .unwrap();

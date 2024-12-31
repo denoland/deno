@@ -1,10 +1,13 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 use std::borrow::Cow;
+use std::cell::Cell;
 use std::collections::BTreeMap;
 use std::collections::HashMap;
 use std::io::Write;
 
+use capacity_builder::BytesAppendable;
+use deno_ast::swc::common::source_map;
 use deno_ast::MediaType;
 use deno_core::anyhow::bail;
 use deno_core::anyhow::Context;
@@ -19,12 +22,15 @@ use deno_npm::resolution::SerializedNpmResolutionSnapshotPackage;
 use deno_npm::resolution::ValidSerializedNpmResolutionSnapshot;
 use deno_npm::NpmPackageId;
 use deno_semver::package::PackageReq;
+use deno_semver::StackString;
+use indexmap::IndexMap;
 
 use crate::standalone::virtual_fs::VirtualDirectory;
 
 use super::binary::Metadata;
 use super::virtual_fs::BuiltVfs;
 use super::virtual_fs::VfsBuilder;
+use super::virtual_fs::VirtualDirectoryEntries;
 
 const MAGIC_BYTES: &[u8; 8] = b"d3n0l4nd";
 
@@ -32,60 +38,64 @@ const MAGIC_BYTES: &[u8; 8] = b"d3n0l4nd";
 /// * d3n0l4nd
 /// * <metadata_len><metadata>
 /// * <npm_snapshot_len><npm_snapshot>
-/// * <remote_modules_len><remote_modules>
+/// * <remote_modules>
 /// * <vfs_headers_len><vfs_headers>
 /// * <vfs_file_data_len><vfs_file_data>
+/// * <source_map_data>
 /// * d3n0l4nd
 pub fn serialize_binary_data_section(
   metadata: &Metadata,
   npm_snapshot: Option<SerializedNpmResolutionSnapshot>,
   remote_modules: &RemoteModulesStoreBuilder,
+  source_map_store: &SourceMapStore,
   vfs: &BuiltVfs,
 ) -> Result<Vec<u8>, AnyError> {
-  fn write_bytes_with_len(bytes: &mut Vec<u8>, data: &[u8]) {
-    bytes.extend_from_slice(&(data.len() as u64).to_le_bytes());
-    bytes.extend_from_slice(data);
-  }
+  let metadata = serde_json::to_string(metadata)?;
+  let npm_snapshot =
+    npm_snapshot.map(serialize_npm_snapshot).unwrap_or_default();
+  let serialized_vfs = serde_json::to_string(&vfs.entries)?;
 
-  let mut bytes = Vec::new();
-  bytes.extend_from_slice(MAGIC_BYTES);
-
-  // 1. Metadata
-  {
-    let metadata = serde_json::to_string(metadata)?;
-    write_bytes_with_len(&mut bytes, metadata.as_bytes());
-  }
-  // 2. Npm snapshot
-  {
-    let npm_snapshot =
-      npm_snapshot.map(serialize_npm_snapshot).unwrap_or_default();
-    write_bytes_with_len(&mut bytes, &npm_snapshot);
-  }
-  // 3. Remote modules
-  {
-    let update_index = bytes.len();
-    bytes.extend_from_slice(&(0_u64).to_le_bytes());
-    let start_index = bytes.len();
-    remote_modules.write(&mut bytes)?;
-    let length = bytes.len() - start_index;
-    let length_bytes = (length as u64).to_le_bytes();
-    bytes[update_index..update_index + length_bytes.len()]
-      .copy_from_slice(&length_bytes);
-  }
-  // 4. VFS
-  {
-    let serialized_vfs = serde_json::to_string(&vfs.root)?;
-    write_bytes_with_len(&mut bytes, serialized_vfs.as_bytes());
-    let vfs_bytes_len = vfs.files.iter().map(|f| f.len() as u64).sum::<u64>();
-    bytes.extend_from_slice(&vfs_bytes_len.to_le_bytes());
-    for file in &vfs.files {
-      bytes.extend_from_slice(file);
+  let bytes = capacity_builder::BytesBuilder::build(|builder| {
+    builder.append(MAGIC_BYTES);
+    // 1. Metadata
+    {
+      builder.append_le(metadata.len() as u64);
+      builder.append(&metadata);
     }
-  }
+    // 2. Npm snapshot
+    {
+      builder.append_le(npm_snapshot.len() as u64);
+      builder.append(&npm_snapshot);
+    }
+    // 3. Remote modules
+    {
+      remote_modules.write(builder);
+    }
+    // 4. VFS
+    {
+      builder.append_le(serialized_vfs.len() as u64);
+      builder.append(&serialized_vfs);
+      let vfs_bytes_len = vfs.files.iter().map(|f| f.len() as u64).sum::<u64>();
+      builder.append_le(vfs_bytes_len);
+      for file in &vfs.files {
+        builder.append(file);
+      }
+    }
+    // 5. Source maps
+    {
+      builder.append_le(source_map_store.data.len() as u32);
+      for (specifier, source_map) in &source_map_store.data {
+        builder.append_le(specifier.len() as u32);
+        builder.append(specifier);
+        builder.append_le(source_map.len() as u32);
+        builder.append(source_map.as_ref());
+      }
+    }
 
-  // write the magic bytes at the end so we can use it
-  // to make sure we've deserialized correctly
-  bytes.extend_from_slice(MAGIC_BYTES);
+    // write the magic bytes at the end so we can use it
+    // to make sure we've deserialized correctly
+    builder.append(MAGIC_BYTES);
+  })?;
 
   Ok(bytes)
 }
@@ -94,19 +104,14 @@ pub struct DeserializedDataSection {
   pub metadata: Metadata,
   pub npm_snapshot: Option<ValidSerializedNpmResolutionSnapshot>,
   pub remote_modules: RemoteModulesStore,
-  pub vfs_dir: VirtualDirectory,
+  pub source_maps: SourceMapStore,
+  pub vfs_root_entries: VirtualDirectoryEntries,
   pub vfs_files_data: &'static [u8],
 }
 
 pub fn deserialize_binary_data_section(
   data: &'static [u8],
 ) -> Result<Option<DeserializedDataSection>, AnyError> {
-  fn read_bytes_with_len(input: &[u8]) -> Result<(&[u8], &[u8]), AnyError> {
-    let (input, len) = read_u64(input)?;
-    let (input, data) = read_bytes(input, len as usize)?;
-    Ok((input, data))
-  }
-
   fn read_magic_bytes(input: &[u8]) -> Result<(&[u8], bool), AnyError> {
     if input.len() < MAGIC_BYTES.len() {
       bail!("Unexpected end of data. Could not find magic bytes.");
@@ -118,34 +123,51 @@ pub fn deserialize_binary_data_section(
     Ok((input, true))
   }
 
+  #[allow(clippy::type_complexity)]
+  fn read_source_map_entry(
+    input: &[u8],
+  ) -> Result<(&[u8], (Cow<str>, &[u8])), AnyError> {
+    let (input, specifier) = read_string_lossy(input)?;
+    let (input, source_map) = read_bytes_with_u32_len(input)?;
+    Ok((input, (specifier, source_map)))
+  }
+
   let (input, found) = read_magic_bytes(data)?;
   if !found {
     return Ok(None);
   }
 
   // 1. Metadata
-  let (input, data) = read_bytes_with_len(input).context("reading metadata")?;
+  let (input, data) =
+    read_bytes_with_u64_len(input).context("reading metadata")?;
   let metadata: Metadata =
     serde_json::from_slice(data).context("deserializing metadata")?;
   // 2. Npm snapshot
   let (input, data) =
-    read_bytes_with_len(input).context("reading npm snapshot")?;
+    read_bytes_with_u64_len(input).context("reading npm snapshot")?;
   let npm_snapshot = if data.is_empty() {
     None
   } else {
     Some(deserialize_npm_snapshot(data).context("deserializing npm snapshot")?)
   };
   // 3. Remote modules
-  let (input, data) =
-    read_bytes_with_len(input).context("reading remote modules data")?;
-  let remote_modules =
-    RemoteModulesStore::build(data).context("deserializing remote modules")?;
+  let (input, remote_modules) =
+    RemoteModulesStore::build(input).context("deserializing remote modules")?;
   // 4. VFS
-  let (input, data) = read_bytes_with_len(input).context("vfs")?;
-  let vfs_dir: VirtualDirectory =
+  let (input, data) = read_bytes_with_u64_len(input).context("vfs")?;
+  let vfs_root_entries: VirtualDirectoryEntries =
     serde_json::from_slice(data).context("deserializing vfs data")?;
   let (input, vfs_files_data) =
-    read_bytes_with_len(input).context("reading vfs files data")?;
+    read_bytes_with_u64_len(input).context("reading vfs files data")?;
+  // 5. Source maps
+  let (mut input, source_map_data_len) = read_u32_as_usize(input)?;
+  let mut source_maps = SourceMapStore::with_capacity(source_map_data_len);
+  for _ in 0..source_map_data_len {
+    let (current_input, (specifier, source_map)) =
+      read_source_map_entry(input)?;
+    input = current_input;
+    source_maps.add(specifier, Cow::Borrowed(source_map));
+  }
 
   // finally ensure we read the magic bytes at the end
   let (_input, found) = read_magic_bytes(input)?;
@@ -157,7 +179,8 @@ pub fn deserialize_binary_data_section(
     metadata,
     npm_snapshot,
     remote_modules,
-    vfs_dir,
+    source_maps,
+    vfs_root_entries,
     vfs_files_data,
   }))
 }
@@ -165,19 +188,31 @@ pub fn deserialize_binary_data_section(
 #[derive(Default)]
 pub struct RemoteModulesStoreBuilder {
   specifiers: Vec<(String, u64)>,
-  data: Vec<(MediaType, Vec<u8>)>,
+  data: Vec<(MediaType, Vec<u8>, Option<Vec<u8>>)>,
   data_byte_len: u64,
   redirects: Vec<(String, String)>,
   redirects_len: u64,
 }
 
 impl RemoteModulesStoreBuilder {
-  pub fn add(&mut self, specifier: &Url, media_type: MediaType, data: Vec<u8>) {
+  pub fn add(
+    &mut self,
+    specifier: &Url,
+    media_type: MediaType,
+    data: Vec<u8>,
+    maybe_transpiled: Option<Vec<u8>>,
+  ) {
     log::debug!("Adding '{}' ({})", specifier, media_type);
     let specifier = specifier.to_string();
     self.specifiers.push((specifier, self.data_byte_len));
-    self.data_byte_len += 1 + 8 + data.len() as u64; // media type (1 byte), data length (8 bytes), data
-    self.data.push((media_type, data));
+    let maybe_transpiled_len = match &maybe_transpiled {
+      // data length (4 bytes), data
+      Some(data) => 4 + data.len() as u64,
+      None => 0,
+    };
+    // media type (1 byte), data length (4 bytes), data, has transpiled (1 byte), transpiled length
+    self.data_byte_len += 1 + 4 + data.len() as u64 + 1 + maybe_transpiled_len;
+    self.data.push((media_type, data, maybe_transpiled));
   }
 
   pub fn add_redirects(&mut self, redirects: &BTreeMap<Url, Url>) {
@@ -191,26 +226,50 @@ impl RemoteModulesStoreBuilder {
     }
   }
 
-  fn write(&self, writer: &mut dyn Write) -> Result<(), AnyError> {
-    writer.write_all(&(self.specifiers.len() as u32).to_le_bytes())?;
-    writer.write_all(&(self.redirects.len() as u32).to_le_bytes())?;
+  fn write<'a, TBytes: capacity_builder::BytesType>(
+    &'a self,
+    builder: &mut capacity_builder::BytesBuilder<'a, TBytes>,
+  ) {
+    builder.append_le(self.specifiers.len() as u32);
+    builder.append_le(self.redirects.len() as u32);
     for (specifier, offset) in &self.specifiers {
-      writer.write_all(&(specifier.len() as u32).to_le_bytes())?;
-      writer.write_all(specifier.as_bytes())?;
-      writer.write_all(&offset.to_le_bytes())?;
+      builder.append_le(specifier.len() as u32);
+      builder.append(specifier);
+      builder.append_le(*offset);
     }
     for (from, to) in &self.redirects {
-      writer.write_all(&(from.len() as u32).to_le_bytes())?;
-      writer.write_all(from.as_bytes())?;
-      writer.write_all(&(to.len() as u32).to_le_bytes())?;
-      writer.write_all(to.as_bytes())?;
+      builder.append_le(from.len() as u32);
+      builder.append(from);
+      builder.append_le(to.len() as u32);
+      builder.append(to);
     }
-    for (media_type, data) in &self.data {
-      writer.write_all(&[serialize_media_type(*media_type)])?;
-      writer.write_all(&(data.len() as u64).to_le_bytes())?;
-      writer.write_all(data)?;
+    builder.append_le(
+      self
+        .data
+        .iter()
+        .map(|(_, data, maybe_transpiled)| {
+          1 + 4
+            + (data.len() as u64)
+            + 1
+            + match maybe_transpiled {
+              Some(transpiled) => 4 + (transpiled.len() as u64),
+              None => 0,
+            }
+        })
+        .sum::<u64>(),
+    );
+    for (media_type, data, maybe_transpiled) in &self.data {
+      builder.append(serialize_media_type(*media_type));
+      builder.append_le(data.len() as u32);
+      builder.append(data);
+      if let Some(transpiled) = maybe_transpiled {
+        builder.append(1);
+        builder.append_le(transpiled.len() as u32);
+        builder.append(transpiled);
+      } else {
+        builder.append(0);
+      }
     }
-    Ok(())
   }
 }
 
@@ -235,6 +294,30 @@ impl DenoCompileModuleSource {
       Self::String(s) => ModuleSourceCode::String(FastString::from_static(s)),
       Self::Bytes(b) => into_bytes(b),
     }
+  }
+}
+
+pub struct SourceMapStore {
+  data: IndexMap<Cow<'static, str>, Cow<'static, [u8]>>,
+}
+
+impl SourceMapStore {
+  pub fn with_capacity(capacity: usize) -> Self {
+    Self {
+      data: IndexMap::with_capacity(capacity),
+    }
+  }
+
+  pub fn add(
+    &mut self,
+    specifier: Cow<'static, str>,
+    source_map: Cow<'static, [u8]>,
+  ) {
+    self.data.insert(specifier, source_map);
+  }
+
+  pub fn get(&self, specifier: &str) -> Option<&[u8]> {
+    self.data.get(specifier).map(|v| v.as_ref())
   }
 }
 
@@ -284,6 +367,13 @@ impl<'a> DenoCompileModuleData<'a> {
   }
 }
 
+pub struct RemoteModuleEntry<'a> {
+  pub specifier: &'a Url,
+  pub media_type: MediaType,
+  pub data: Cow<'static, [u8]>,
+  pub transpiled_data: Option<Cow<'static, [u8]>>,
+}
+
 enum RemoteModulesStoreSpecifierValue {
   Data(usize),
   Redirect(Url),
@@ -295,7 +385,7 @@ pub struct RemoteModulesStore {
 }
 
 impl RemoteModulesStore {
-  fn build(data: &'static [u8]) -> Result<Self, AnyError> {
+  fn build(input: &'static [u8]) -> Result<(&'static [u8], Self), AnyError> {
     fn read_specifier(input: &[u8]) -> Result<(&[u8], (Url, u64)), AnyError> {
       let (input, specifier) = read_string_lossy(input)?;
       let specifier = Url::parse(&specifier)?;
@@ -338,12 +428,16 @@ impl RemoteModulesStore {
       Ok((input, specifiers))
     }
 
-    let (files_data, specifiers) = read_headers(data)?;
+    let (input, specifiers) = read_headers(input)?;
+    let (input, files_data) = read_bytes_with_u64_len(input)?;
 
-    Ok(Self {
-      specifiers,
-      files_data,
-    })
+    Ok((
+      input,
+      Self {
+        specifiers,
+        files_data,
+      },
+    ))
   }
 
   pub fn resolve_specifier<'a>(
@@ -374,7 +468,7 @@ impl RemoteModulesStore {
   pub fn read<'a>(
     &'a self,
     original_specifier: &'a Url,
-  ) -> Result<Option<DenoCompileModuleData<'a>>, AnyError> {
+  ) -> Result<Option<RemoteModuleEntry<'a>>, AnyError> {
     let mut count = 0;
     let mut specifier = original_specifier;
     loop {
@@ -390,12 +484,25 @@ impl RemoteModulesStore {
           let input = &self.files_data[*offset..];
           let (input, media_type_byte) = read_bytes(input, 1)?;
           let media_type = deserialize_media_type(media_type_byte[0])?;
-          let (input, len) = read_u64(input)?;
-          let (_input, data) = read_bytes(input, len as usize)?;
-          return Ok(Some(DenoCompileModuleData {
+          let (input, data) = read_bytes_with_u32_len(input)?;
+          check_has_len(input, 1)?;
+          let (input, has_transpiled) = (&input[1..], input[0]);
+          let (_, transpiled_data) = match has_transpiled {
+            0 => (input, None),
+            1 => {
+              let (input, data) = read_bytes_with_u32_len(input)?;
+              (input, Some(data))
+            }
+            value => bail!(
+              "Invalid transpiled data flag: {}. Compiled data is corrupt.",
+              value
+            ),
+          };
+          return Ok(Some(RemoteModuleEntry {
             specifier,
             media_type,
             data: Cow::Borrowed(data),
+            transpiled_data: transpiled_data.map(Cow::Borrowed),
           }));
         }
         None => {
@@ -479,12 +586,13 @@ fn deserialize_npm_snapshot(
   #[allow(clippy::needless_lifetimes)] // clippy bug
   fn parse_package_dep<'a>(
     id_to_npm_id: &'a impl Fn(usize) -> Result<NpmPackageId, AnyError>,
-  ) -> impl Fn(&[u8]) -> Result<(&[u8], (String, NpmPackageId)), AnyError> + 'a
+  ) -> impl Fn(&[u8]) -> Result<(&[u8], (StackString, NpmPackageId)), AnyError> + 'a
   {
     |input| {
       let (input, req) = read_string_lossy(input)?;
       let (input, id) = read_u32_as_usize(input)?;
-      Ok((input, (req.into_owned(), id_to_npm_id(id)?)))
+      let req = StackString::from_cow(req);
+      Ok((input, (req, id_to_npm_id(id)?)))
     }
   }
 
@@ -634,17 +742,34 @@ fn parse_vec_n_times_with_index<TResult>(
   Ok((input, results))
 }
 
+fn read_bytes_with_u64_len(input: &[u8]) -> Result<(&[u8], &[u8]), AnyError> {
+  let (input, len) = read_u64(input)?;
+  let (input, data) = read_bytes(input, len as usize)?;
+  Ok((input, data))
+}
+
+fn read_bytes_with_u32_len(input: &[u8]) -> Result<(&[u8], &[u8]), AnyError> {
+  let (input, len) = read_u32_as_usize(input)?;
+  let (input, data) = read_bytes(input, len)?;
+  Ok((input, data))
+}
+
 fn read_bytes(input: &[u8], len: usize) -> Result<(&[u8], &[u8]), AnyError> {
-  if input.len() < len {
-    bail!("Unexpected end of data.",);
-  }
+  check_has_len(input, len)?;
   let (len_bytes, input) = input.split_at(len);
   Ok((input, len_bytes))
 }
 
+#[inline(always)]
+fn check_has_len(input: &[u8], len: usize) -> Result<(), AnyError> {
+  if input.len() < len {
+    bail!("Unexpected end of data.");
+  }
+  Ok(())
+}
+
 fn read_string_lossy(input: &[u8]) -> Result<(&[u8], Cow<str>), AnyError> {
-  let (input, str_len) = read_u32_as_usize(input)?;
-  let (input, data_bytes) = read_bytes(input, str_len)?;
+  let (input, data_bytes) = read_bytes_with_u32_len(input)?;
   Ok((input, String::from_utf8_lossy(data_bytes)))
 }
 

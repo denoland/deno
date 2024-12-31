@@ -15,11 +15,6 @@ use std::path::PathBuf;
 use std::rc::Rc;
 use std::sync::Arc;
 
-use crate::args::LifecycleScriptsConfig;
-use crate::colors;
-use crate::npm::managed::PackageCaching;
-use crate::npm::CliNpmCache;
-use crate::npm::CliNpmTarballCache;
 use async_trait::async_trait;
 use deno_ast::ModuleSpecifier;
 use deno_cache_dir::npm::mixed_case_package_name_decode;
@@ -34,21 +29,28 @@ use deno_npm::NpmPackageCacheFolderId;
 use deno_npm::NpmPackageId;
 use deno_npm::NpmResolutionPackage;
 use deno_npm::NpmSystemInfo;
+use deno_path_util::fs::atomic_write_file_with_retries;
+use deno_path_util::fs::canonicalize_path_maybe_not_exists;
 use deno_resolver::npm::normalize_pkg_name_for_node_modules_deno_folder;
-use deno_runtime::deno_fs;
 use deno_runtime::deno_node::NodePermissions;
 use deno_semver::package::PackageNv;
+use deno_semver::StackString;
 use node_resolver::errors::PackageFolderResolveError;
 use node_resolver::errors::PackageFolderResolveIoError;
 use node_resolver::errors::PackageNotFoundError;
 use node_resolver::errors::ReferrerNotFoundError;
 use serde::Deserialize;
 use serde::Serialize;
+use sys_traits::FsMetadata;
 
+use crate::args::LifecycleScriptsConfig;
 use crate::args::NpmInstallDepsProvider;
 use crate::cache::CACHE_PERM;
-use crate::util::fs::atomic_write_file_with_retries;
-use crate::util::fs::canonicalize_path_maybe_not_exists_with_fs;
+use crate::colors;
+use crate::npm::managed::PackageCaching;
+use crate::npm::CliNpmCache;
+use crate::npm::CliNpmTarballCache;
+use crate::sys::CliSys;
 use crate::util::fs::clone_dir_recursive;
 use crate::util::fs::symlink_dir;
 use crate::util::fs::LaxSingleProcessFsFlag;
@@ -65,10 +67,10 @@ use super::common::RegistryReadPermissionChecker;
 #[derive(Debug)]
 pub struct LocalNpmPackageResolver {
   cache: Arc<CliNpmCache>,
-  fs: Arc<dyn deno_fs::FileSystem>,
   npm_install_deps_provider: Arc<NpmInstallDepsProvider>,
   progress_bar: ProgressBar,
   resolution: Arc<NpmResolution>,
+  sys: CliSys,
   tarball_cache: Arc<CliNpmTarballCache>,
   root_node_modules_path: PathBuf,
   root_node_modules_url: Url,
@@ -81,10 +83,10 @@ impl LocalNpmPackageResolver {
   #[allow(clippy::too_many_arguments)]
   pub fn new(
     cache: Arc<CliNpmCache>,
-    fs: Arc<dyn deno_fs::FileSystem>,
     npm_install_deps_provider: Arc<NpmInstallDepsProvider>,
     progress_bar: ProgressBar,
     resolution: Arc<NpmResolution>,
+    sys: CliSys,
     tarball_cache: Arc<CliNpmTarballCache>,
     node_modules_folder: PathBuf,
     system_info: NpmSystemInfo,
@@ -92,15 +94,15 @@ impl LocalNpmPackageResolver {
   ) -> Self {
     Self {
       cache,
-      fs: fs.clone(),
       npm_install_deps_provider,
       progress_bar,
       resolution,
       tarball_cache,
       registry_read_permission_checker: RegistryReadPermissionChecker::new(
-        fs,
+        sys.clone(),
         node_modules_folder.clone(),
       ),
+      sys,
       root_node_modules_url: Url::from_directory_path(&node_modules_folder)
         .unwrap(),
       root_node_modules_path: node_modules_folder,
@@ -139,8 +141,7 @@ impl LocalNpmPackageResolver {
     };
     // Canonicalize the path so it's not pointing to the symlinked directory
     // in `node_modules` directory of the referrer.
-    canonicalize_path_maybe_not_exists_with_fs(&path, self.fs.as_ref())
-      .map(Some)
+    canonicalize_path_maybe_not_exists(&self.sys, &path).map(Some)
   }
 
   fn resolve_package_folder_from_specifier(
@@ -209,7 +210,7 @@ impl NpmPackageFsResolver for LocalNpmPackageResolver {
       };
 
       let sub_dir = join_package_name(&node_modules_folder, name);
-      if self.fs.is_dir_sync(&sub_dir) {
+      if self.sys.fs_is_dir_no_err(&sub_dir) {
         return Ok(sub_dir);
       }
 
@@ -355,8 +356,10 @@ async fn sync_resolution_with_fs(
   let package_partitions =
     snapshot.all_system_packages_partitioned(system_info);
   let mut cache_futures = FuturesUnordered::new();
-  let mut newest_packages_by_name: HashMap<&String, &NpmResolutionPackage> =
-    HashMap::with_capacity(package_partitions.packages.len());
+  let mut newest_packages_by_name: HashMap<
+    &StackString,
+    &NpmResolutionPackage,
+  > = HashMap::with_capacity(package_partitions.packages.len());
   let bin_entries = Rc::new(RefCell::new(bin_entries::BinEntries::new()));
   let mut lifecycle_scripts =
     super::common::lifecycle_scripts::LifecycleScripts::new(
@@ -536,7 +539,7 @@ async fn sync_resolution_with_fs(
     }
   }
 
-  let mut found_names: HashMap<&String, &PackageNv> = HashMap::new();
+  let mut found_names: HashMap<&StackString, &PackageNv> = HashMap::new();
 
   // set of node_modules in workspace packages that we've already ensured exist
   let mut existing_child_node_modules_dirs: HashSet<PathBuf> = HashSet::new();
@@ -922,7 +925,13 @@ impl SetupCache {
     }
 
     bincode::serialize(&self.current).ok().and_then(|data| {
-      atomic_write_file_with_retries(&self.file_path, data, CACHE_PERM).ok()
+      atomic_write_file_with_retries(
+        &CliSys::default(),
+        &self.file_path,
+        &data,
+        CACHE_PERM,
+      )
+      .ok()
     });
     true
   }
@@ -1012,10 +1021,10 @@ fn get_package_folder_id_from_folder_name(
 ) -> Option<NpmPackageCacheFolderId> {
   let folder_name = folder_name.replace('+', "/");
   let (name, ending) = folder_name.rsplit_once('@')?;
-  let name = if let Some(encoded_name) = name.strip_prefix('_') {
-    mixed_case_package_name_decode(encoded_name)?
+  let name: StackString = if let Some(encoded_name) = name.strip_prefix('_') {
+    StackString::from_string(mixed_case_package_name_decode(encoded_name)?)
   } else {
-    name.to_string()
+    name.into()
   };
   let (raw_version, copy_index) = match ending.split_once('_') {
     Some((raw_version, copy_index)) => {

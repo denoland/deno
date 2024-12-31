@@ -10,6 +10,7 @@ use crate::factory::CliFactory;
 use crate::graph_util::graph_exit_integrity_errors;
 use crate::graph_util::graph_walk_errors;
 use crate::graph_util::GraphWalkErrorsOptions;
+use crate::sys::CliSys;
 use crate::tsc::get_types_declaration_file_text;
 use crate::util::fs::collect_specifiers;
 use deno_ast::diagnostics::Diagnostic;
@@ -114,7 +115,7 @@ pub async fn doc(
     }
     DocSourceFileFlag::Paths(ref source_files) => {
       let module_graph_creator = factory.module_graph_creator().await?;
-      let fs = factory.fs();
+      let sys = CliSys::default();
 
       let module_specifiers = collect_specifiers(
         FilePatterns {
@@ -141,7 +142,7 @@ pub async fn doc(
       graph_exit_integrity_errors(&graph);
       let errors = graph_walk_errors(
         &graph,
-        fs,
+        &sys,
         &module_specifiers,
         GraphWalkErrorsOptions {
           check_js: false,
@@ -343,14 +344,14 @@ impl deno_doc::html::HrefResolver for DocResolver {
           let name = &res.req().name;
           Some((
             format!("https://www.npmjs.com/package/{name}"),
-            name.to_owned(),
+            name.to_string(),
           ))
         }
         "jsr" => {
           let res =
             deno_semver::jsr::JsrPackageReqReference::from_str(module).ok()?;
           let name = &res.req().name;
-          Some((format!("https://jsr.io/{name}"), name.to_owned()))
+          Some((format!("https://jsr.io/{name}"), name.to_string()))
         }
         _ => None,
       }

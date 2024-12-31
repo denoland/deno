@@ -2,7 +2,7 @@
 
 [package]
 name = "deno_resolver"
-version = "0.14.0"
+version = "0.15.0"
 authors.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -29,6 +29,7 @@ deno_path_util.workspace = true
 deno_semver.workspace = true
 node_resolver.workspace = true
 node_resolver.features = ["sync"]
+sys_traits.workspace = true
 thiserror.workspace = true
 url.workspace = true
 

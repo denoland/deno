@@ -1,17 +1,16 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
-use deno_package_json::PackageJson;
-use deno_package_json::PackageJsonRc;
-use deno_path_util::strip_unc_prefix;
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::io::ErrorKind;
 use std::path::Path;
 use std::path::PathBuf;
+
+use deno_package_json::PackageJson;
+use deno_package_json::PackageJsonRc;
+use sys_traits::FsRead;
 use url::Url;
 
-use crate::env::NodeResolverEnv;
-use crate::errors::CanonicalizingPkgJsonDirError;
 use crate::errors::ClosestPkgJsonError;
 use crate::errors::PackageJsonLoadError;
 
@@ -40,17 +39,17 @@ impl deno_package_json::PackageJsonCache for PackageJsonThreadLocalCache {
 }
 
 #[allow(clippy::disallowed_types)]
-pub type PackageJsonResolverRc<TEnv> =
-  crate::sync::MaybeArc<PackageJsonResolver<TEnv>>;
+pub type PackageJsonResolverRc<TSys> =
+  crate::sync::MaybeArc<PackageJsonResolver<TSys>>;
 
 #[derive(Debug)]
-pub struct PackageJsonResolver<TEnv: NodeResolverEnv> {
-  env: TEnv,
+pub struct PackageJsonResolver<TSys: FsRead> {
+  sys: TSys,
 }
 
-impl<TEnv: NodeResolverEnv> PackageJsonResolver<TEnv> {
-  pub fn new(env: TEnv) -> Self {
-    Self { env }
+impl<TSys: FsRead> PackageJsonResolver<TSys> {
+  pub fn new(sys: TSys) -> Self {
+    Self { sys }
   }
 
   pub fn get_closest_package_json(
@@ -67,37 +66,8 @@ impl<TEnv: NodeResolverEnv> PackageJsonResolver<TEnv> {
     &self,
     file_path: &Path,
   ) -> Result<Option<PackageJsonRc>, ClosestPkgJsonError> {
-    // we use this for deno compile using byonm because the script paths
-    // won't be in virtual file system, but the package.json paths will be
-    fn canonicalize_first_ancestor_exists<TEnv: NodeResolverEnv>(
-      dir_path: &Path,
-      env: &TEnv,
-    ) -> Result<Option<PathBuf>, std::io::Error> {
-      for ancestor in dir_path.ancestors() {
-        match env.realpath_sync(ancestor) {
-          Ok(dir_path) => return Ok(Some(dir_path)),
-          Err(err) if err.kind() == std::io::ErrorKind::NotFound => {
-            // keep searching
-          }
-          Err(err) => return Err(err),
-        }
-      }
-      Ok(None)
-    }
-
     let parent_dir = file_path.parent().unwrap();
-    let Some(start_dir) = canonicalize_first_ancestor_exists(
-      parent_dir, &self.env,
-    )
-    .map_err(|source| CanonicalizingPkgJsonDirError {
-      dir_path: parent_dir.to_path_buf(),
-      source,
-    })?
-    else {
-      return Ok(None);
-    };
-    let start_dir = strip_unc_prefix(start_dir);
-    for current_dir in start_dir.ancestors() {
+    for current_dir in parent_dir.ancestors() {
       let package_json_path = current_dir.join("package.json");
       if let Some(pkg_json) = self.load_package_json(&package_json_path)? {
         return Ok(Some(pkg_json));
@@ -112,9 +82,9 @@ impl<TEnv: NodeResolverEnv> PackageJsonResolver<TEnv> {
     path: &Path,
   ) -> Result<Option<PackageJsonRc>, PackageJsonLoadError> {
     let result = PackageJson::load_from_path(
-      path,
-      self.env.pkg_json_fs(),
+      &self.sys,
       Some(&PackageJsonThreadLocalCache),
+      path,
     );
     match result {
       Ok(pkg_json) => Ok(Some(pkg_json)),

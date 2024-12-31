@@ -39,10 +39,11 @@ pub use prompter::PromptCallback;
 pub use prompter::PromptResponse;
 
 #[derive(Debug, thiserror::Error)]
-#[error("Requires {access}, {}", format_permission_error(.name))]
-pub struct PermissionDeniedError {
-  pub access: String,
-  pub name: &'static str,
+pub enum PermissionDeniedError {
+  #[error("Requires {access}, {}", format_permission_error(.name))]
+  Retryable { access: String, name: &'static str },
+  #[error("Requires {access}, which cannot be granted in this environment")]
+  Fatal { access: String },
 }
 
 fn format_permission_error(name: &'static str) -> String {
@@ -144,11 +145,11 @@ impl PermissionState {
     )
   }
 
-  fn error(
+  fn retryable_error(
     name: &'static str,
     info: impl FnOnce() -> Option<String>,
   ) -> PermissionDeniedError {
-    PermissionDeniedError {
+    PermissionDeniedError::Retryable {
       access: Self::fmt_access(name, info),
       name,
     }
@@ -182,7 +183,7 @@ impl PermissionState {
       PermissionState::Prompt if prompt => {
         let msg = {
           let info = info();
-          StringBuilder::build(|builder| {
+          StringBuilder::<String>::build(|builder| {
             builder.append(name);
             builder.append(" access");
             if let Some(info) = &info {
@@ -201,10 +202,12 @@ impl PermissionState {
             Self::log_perm_access(name, info);
             (Ok(()), true, true)
           }
-          PromptResponse::Deny => (Err(Self::error(name, info)), true, false),
+          PromptResponse::Deny => {
+            (Err(Self::retryable_error(name, info)), true, false)
+          }
         }
       }
-      _ => (Err(Self::error(name, info)), false, false),
+      _ => (Err(Self::retryable_error(name, info)), false, false),
     }
   }
 }
@@ -495,7 +498,7 @@ impl<TQuery: QueryDescriptor> UnaryPermission<TQuery> {
     }
     let maybe_formatted_display_name =
       desc.map(|d| format_display_name(d.display_name()));
-    let message = StringBuilder::build(|builder| {
+    let message = StringBuilder::<String>::build(|builder| {
       builder.append(TQuery::flag_name());
       builder.append(" access");
       if let Some(display_name) = &maybe_formatted_display_name {

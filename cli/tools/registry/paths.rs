@@ -6,6 +6,7 @@ use std::collections::HashSet;
 use std::path::Path;
 use std::path::PathBuf;
 
+use crate::sys::CliSys;
 use deno_ast::MediaType;
 use deno_ast::ModuleSpecifier;
 use deno_config::glob::FileCollector;
@@ -323,11 +324,11 @@ fn collect_paths(
   file_patterns: FilePatterns,
 ) -> Result<Vec<PathBuf>, AnyError> {
   FileCollector::new(|e| {
-    if !e.metadata.is_file {
+    if !e.metadata.file_type().is_file() {
       if let Ok(specifier) = ModuleSpecifier::from_file_path(e.path) {
         diagnostics_collector.push(PublishDiagnostic::UnsupportedFileType {
           specifier,
-          kind: if e.metadata.is_symlink {
+          kind: if e.metadata.file_type().is_symlink() {
             "symlink".to_string()
           } else {
             "Unknown".to_string()
@@ -345,5 +346,5 @@ fn collect_paths(
   .ignore_node_modules()
   .set_vendor_folder(cli_options.vendor_dir_path().map(ToOwned::to_owned))
   .use_gitignore()
-  .collect_file_patterns(&deno_config::fs::RealDenoConfigFs, file_patterns)
+  .collect_file_patterns(&CliSys::default(), file_patterns)
 }
