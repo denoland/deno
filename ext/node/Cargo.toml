@@ -49,7 +49,6 @@ errno = "0.2.8"
 faster-hex.workspace = true
 h2.workspace = true
 hkdf.workspace = true
-home = "0.5.9"
 http.workspace = true
 http-body-util.workspace = true
 hyper.workspace = true

@@ -1996,7 +1996,6 @@ dependencies = [
  "faster-hex",
  "h2 0.4.4",
  "hkdf",
- "home",
  "http 1.1.0",
  "http-body-util",
  "hyper 1.4.1",
