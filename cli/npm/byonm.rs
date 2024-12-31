@@ -1,15 +1,12 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
-use std::borrow::Cow;
 use std::path::Path;
 use std::sync::Arc;
 
-use deno_core::error::AnyError;
 use deno_core::serde_json;
 use deno_resolver::npm::ByonmNpmResolver;
 use deno_resolver::npm::ByonmNpmResolverCreateOptions;
 use deno_resolver::npm::CliNpmReqResolver;
-use deno_runtime::deno_node::NodePermissions;
 use deno_runtime::ops::process::NpmProcessStateProvider;
 use node_resolver::NpmPackageFolderResolver;
 
@@ -71,21 +68,6 @@ impl CliNpmResolver for CliByonmNpmResolver {
 
   fn root_node_modules_path(&self) -> Option<&Path> {
     self.root_node_modules_dir()
-  }
-
-  fn ensure_read_permission<'a>(
-    &self,
-    permissions: &mut dyn NodePermissions,
-    path: &'a Path,
-  ) -> Result<Cow<'a, Path>, AnyError> {
-    if !path
-      .components()
-      .any(|c| c.as_os_str().to_ascii_lowercase() == "node_modules")
-    {
-      permissions.check_read_path(path).map_err(Into::into)
-    } else {
-      Ok(Cow::Borrowed(path))
-    }
   }
 
   fn check_state_hash(&self) -> Option<u64> {

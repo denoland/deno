@@ -2,8 +2,8 @@
 
 mod byonm;
 mod managed;
+mod permission_checker;
 
-use std::borrow::Cow;
 use std::path::Path;
 use std::sync::Arc;
 
@@ -17,7 +17,6 @@ use deno_resolver::npm::ByonmInNpmPackageChecker;
 use deno_resolver::npm::ByonmNpmResolver;
 use deno_resolver::npm::CliNpmReqResolver;
 use deno_resolver::npm::ResolvePkgFolderFromDenoReqError;
-use deno_runtime::deno_node::NodePermissions;
 use deno_runtime::ops::process::NpmProcessStateProvider;
 use deno_semver::package::PackageNv;
 use deno_semver::package::PackageReq;
@@ -34,6 +33,8 @@ pub use self::managed::CliManagedNpmResolverCreateOptions;
 pub use self::managed::CliNpmResolverManagedSnapshotOption;
 pub use self::managed::ManagedCliNpmResolver;
 pub use self::managed::PackageCaching;
+pub use self::permission_checker::NpmRegistryReadPermissionChecker;
+pub use self::permission_checker::NpmRegistryReadPermissionCheckerMode;
 use crate::file_fetcher::CliFileFetcher;
 use crate::http_util::HttpClientProvider;
 use crate::sys::CliSys;
@@ -182,12 +183,6 @@ pub trait CliNpmResolver: NpmPackageFolderResolver + CliNpmReqResolver {
   }
 
   fn root_node_modules_path(&self) -> Option<&Path>;
-
-  fn ensure_read_permission<'a>(
-    &self,
-    permissions: &mut dyn NodePermissions,
-    path: &'a Path,
-  ) -> Result<Cow<'a, Path>, AnyError>;
 
   /// Returns a hash returning the state of the npm resolver
   /// or `None` if the state currently can't be determined.

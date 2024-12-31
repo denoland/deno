@@ -71,6 +71,8 @@ use crate::npm::CliNpmResolver;
 use crate::npm::CliNpmResolverCreateOptions;
 use crate::npm::CliNpmResolverManagedSnapshotOption;
 use crate::npm::CreateInNpmPkgCheckerOptions;
+use crate::npm::NpmRegistryReadPermissionChecker;
+use crate::npm::NpmRegistryReadPermissionCheckerMode;
 use crate::resolver::CjsTracker;
 use crate::resolver::CliDenoResolver;
 use crate::resolver::CliNpmReqResolver;
@@ -941,6 +943,19 @@ impl CliFactory {
     let cjs_tracker = self.cjs_tracker()?.clone();
     let pkg_json_resolver = self.pkg_json_resolver().clone();
     let npm_req_resolver = self.npm_req_resolver().await?;
+    let npm_registry_permission_checker = {
+      let mode = if cli_options.use_byonm() {
+        NpmRegistryReadPermissionCheckerMode::Byonm
+      } else if let Some(node_modules_dir) = cli_options.node_modules_dir_path()
+      {
+        NpmRegistryReadPermissionCheckerMode::Local(node_modules_dir.clone())
+      } else {
+        NpmRegistryReadPermissionCheckerMode::Global(
+          self.deno_dir()?.npm_folder_path(),
+        )
+      };
+      Arc::new(NpmRegistryReadPermissionChecker::new(self.sys(), mode))
+    };
 
     Ok(CliMainWorkerFactory::new(
       self.blob_store().clone(),
@@ -968,13 +983,14 @@ impl CliFactory {
         self.module_load_preparer().await?.clone(),
         node_code_translator.clone(),
         node_resolver.clone(),
-        npm_req_resolver.clone(),
-        cli_npm_resolver.clone(),
         NpmModuleLoader::new(
           self.cjs_tracker()?.clone(),
           fs.clone(),
           node_code_translator.clone(),
         ),
+        npm_registry_permission_checker,
+        npm_req_resolver.clone(),
+        cli_npm_resolver.clone(),
         self.parsed_source_cache().clone(),
         self.resolver().await?.clone(),
         self.sys(),

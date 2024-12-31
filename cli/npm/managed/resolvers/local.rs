@@ -32,7 +32,6 @@ use deno_npm::NpmSystemInfo;
 use deno_path_util::fs::atomic_write_file_with_retries;
 use deno_path_util::fs::canonicalize_path_maybe_not_exists;
 use deno_resolver::npm::normalize_pkg_name_for_node_modules_deno_folder;
-use deno_runtime::deno_node::NodePermissions;
 use deno_semver::package::PackageNv;
 use deno_semver::StackString;
 use node_resolver::errors::PackageFolderResolveError;
@@ -46,7 +45,6 @@ use sys_traits::FsMetadata;
 use super::super::resolution::NpmResolution;
 use super::common::bin_entries;
 use super::common::NpmPackageFsResolver;
-use super::common::RegistryReadPermissionChecker;
 use crate::args::LifecycleScriptsConfig;
 use crate::args::NpmInstallDepsProvider;
 use crate::cache::CACHE_PERM;
@@ -74,7 +72,6 @@ pub struct LocalNpmPackageResolver {
   root_node_modules_path: PathBuf,
   root_node_modules_url: Url,
   system_info: NpmSystemInfo,
-  registry_read_permission_checker: RegistryReadPermissionChecker,
   lifecycle_scripts: LifecycleScriptsConfig,
 }
 
@@ -97,10 +94,6 @@ impl LocalNpmPackageResolver {
       progress_bar,
       resolution,
       tarball_cache,
-      registry_read_permission_checker: RegistryReadPermissionChecker::new(
-        sys.clone(),
-        node_modules_folder.clone(),
-      ),
       sys,
       root_node_modules_url: Url::from_directory_path(&node_modules_folder)
         .unwrap(),
@@ -273,16 +266,6 @@ impl NpmPackageFsResolver for LocalNpmPackageResolver {
       &self.lifecycle_scripts,
     )
     .await
-  }
-
-  fn ensure_read_permission<'a>(
-    &self,
-    permissions: &mut dyn NodePermissions,
-    path: &'a Path,
-  ) -> Result<Cow<'a, Path>, AnyError> {
-    self
-      .registry_read_permission_checker
-      .ensure_registry_read_permission(permissions, path)
   }
 }
 

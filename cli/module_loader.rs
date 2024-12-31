@@ -66,6 +66,7 @@ use crate::graph_util::ModuleGraphBuilder;
 use crate::node::CliNodeCodeTranslator;
 use crate::node::CliNodeResolver;
 use crate::npm::CliNpmResolver;
+use crate::npm::NpmRegistryReadPermissionChecker;
 use crate::resolver::CjsTracker;
 use crate::resolver::CliNpmReqResolver;
 use crate::resolver::CliResolver;
@@ -221,9 +222,10 @@ struct SharedCliModuleLoaderState {
   module_load_preparer: Arc<ModuleLoadPreparer>,
   node_code_translator: Arc<CliNodeCodeTranslator>,
   node_resolver: Arc<CliNodeResolver>,
+  npm_module_loader: NpmModuleLoader,
+  npm_registry_permission_checker: Arc<NpmRegistryReadPermissionChecker>,
   npm_req_resolver: Arc<CliNpmReqResolver>,
   npm_resolver: Arc<dyn CliNpmResolver>,
-  npm_module_loader: NpmModuleLoader,
   parsed_source_cache: Arc<ParsedSourceCache>,
   resolver: Arc<CliResolver>,
   sys: CliSys,
@@ -281,9 +283,10 @@ impl CliModuleLoaderFactory {
     module_load_preparer: Arc<ModuleLoadPreparer>,
     node_code_translator: Arc<CliNodeCodeTranslator>,
     node_resolver: Arc<CliNodeResolver>,
+    npm_module_loader: NpmModuleLoader,
+    npm_registry_permission_checker: Arc<NpmRegistryReadPermissionChecker>,
     npm_req_resolver: Arc<CliNpmReqResolver>,
     npm_resolver: Arc<dyn CliNpmResolver>,
-    npm_module_loader: NpmModuleLoader,
     parsed_source_cache: Arc<ParsedSourceCache>,
     resolver: Arc<CliResolver>,
     sys: CliSys,
@@ -307,9 +310,10 @@ impl CliModuleLoaderFactory {
         module_load_preparer,
         node_code_translator,
         node_resolver,
+        npm_module_loader,
+        npm_registry_permission_checker,
         npm_req_resolver,
         npm_resolver,
-        npm_module_loader,
         parsed_source_cache,
         resolver,
         sys,
@@ -348,7 +352,10 @@ impl CliModuleLoaderFactory {
       sys: self.shared.sys.clone(),
       graph_container,
       in_npm_pkg_checker: self.shared.in_npm_pkg_checker.clone(),
-      npm_resolver: self.shared.npm_resolver.clone(),
+      npm_registry_permission_checker: self
+        .shared
+        .npm_registry_permission_checker
+        .clone(),
     });
     CreateModuleLoaderResult {
       module_loader,
@@ -1095,7 +1102,7 @@ struct CliNodeRequireLoader<TGraphContainer: ModuleGraphContainer> {
   sys: CliSys,
   graph_container: TGraphContainer,
   in_npm_pkg_checker: Arc<dyn InNpmPackageChecker>,
-  npm_resolver: Arc<dyn CliNpmResolver>,
+  npm_registry_permission_checker: Arc<NpmRegistryReadPermissionChecker>,
 }
 
 impl<TGraphContainer: ModuleGraphContainer> NodeRequireLoader
@@ -1112,7 +1119,9 @@ impl<TGraphContainer: ModuleGraphContainer> NodeRequireLoader
         return Ok(std::borrow::Cow::Borrowed(path));
       }
     }
-    self.npm_resolver.ensure_read_permission(permissions, path)
+    self
+      .npm_registry_permission_checker
+      .ensure_read_permission(permissions, path)
   }
 
   fn load_text_file_lossy(

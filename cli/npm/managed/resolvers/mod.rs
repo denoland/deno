@@ -48,7 +48,6 @@ pub fn create_npm_fs_resolver(
       npm_cache,
       tarball_cache,
       resolution,
-      sys,
       system_info,
       lifecycle_scripts,
     )),

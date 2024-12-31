@@ -6,6 +6,7 @@
 #![allow(unused_imports)]
 
 use std::borrow::Cow;
+use std::path::PathBuf;
 use std::rc::Rc;
 use std::sync::Arc;
 
@@ -88,6 +89,8 @@ use crate::npm::CliNpmResolver;
 use crate::npm::CliNpmResolverCreateOptions;
 use crate::npm::CliNpmResolverManagedSnapshotOption;
 use crate::npm::CreateInNpmPkgCheckerOptions;
+use crate::npm::NpmRegistryReadPermissionChecker;
+use crate::npm::NpmRegistryReadPermissionCheckerMode;
 use crate::resolver::CjsTracker;
 use crate::resolver::CliNpmReqResolver;
 use crate::resolver::NpmModuleLoader;
@@ -123,6 +126,7 @@ struct SharedModuleLoaderState {
   node_code_translator: Arc<CliNodeCodeTranslator>,
   node_resolver: Arc<CliNodeResolver>,
   npm_module_loader: Arc<NpmModuleLoader>,
+  npm_registry_permission_checker: NpmRegistryReadPermissionChecker,
   npm_req_resolver: Arc<CliNpmReqResolver>,
   npm_resolver: Arc<dyn CliNpmResolver>,
   source_maps: SourceMapStore,
@@ -557,7 +561,7 @@ impl NodeRequireLoader for EmbeddedModuleLoader {
 
     self
       .shared
-      .npm_resolver
+      .npm_registry_permission_checker
       .ensure_read_permission(permissions, path)
   }
 
@@ -662,6 +666,23 @@ pub async fn run(
   let npm_global_cache_dir = root_path.join(".deno_compile_node_modules");
   let cache_setting = CacheSetting::Only;
   let pkg_json_resolver = Arc::new(CliPackageJsonResolver::new(sys.clone()));
+  let npm_registry_permission_checker = {
+    let mode = match &metadata.node_modules {
+      Some(binary::NodeModules::Managed {
+        node_modules_dir: Some(path),
+      }) => NpmRegistryReadPermissionCheckerMode::Local(PathBuf::from(path)),
+      Some(binary::NodeModules::Byonm { .. }) => {
+        NpmRegistryReadPermissionCheckerMode::Byonm
+      }
+      Some(binary::NodeModules::Managed {
+        node_modules_dir: None,
+      })
+      | None => NpmRegistryReadPermissionCheckerMode::Global(
+        npm_global_cache_dir.clone(),
+      ),
+    };
+    NpmRegistryReadPermissionChecker::new(sys.clone(), mode)
+  };
   let (in_npm_pkg_checker, npm_resolver) = match metadata.node_modules {
     Some(binary::NodeModules::Managed { node_modules_dir }) => {
       // create an npmrc that uses the fake npm_registry_url to resolve packages
@@ -889,6 +910,7 @@ pub async fn run(
         fs.clone(),
         node_code_translator,
       )),
+      npm_registry_permission_checker,
       npm_resolver: npm_resolver.clone(),
       npm_req_resolver,
       source_maps,
