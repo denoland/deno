@@ -28,7 +28,6 @@ pub type CliNodeCodeTranslator = NodeCodeTranslator<
   CliSys,
 >;
 pub type CliNodeResolver = deno_runtime::deno_node::NodeResolver<CliSys>;
-pub type CliNodeResolverRc = deno_runtime::deno_node::NodeResolverRc<CliSys>;
 pub type CliPackageJsonResolver = node_resolver::PackageJsonResolver<CliSys>;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

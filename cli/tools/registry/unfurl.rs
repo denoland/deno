@@ -664,7 +664,6 @@ mod tests {
   use deno_config::workspace::ResolverWorkspaceJsrPackage;
   use deno_core::serde_json::json;
   use deno_core::url::Url;
-  use deno_runtime::deno_fs::RealFs;
   use deno_runtime::deno_node::PackageJson;
   use deno_semver::Version;
   use import_map::ImportMapWithDiagnostics;

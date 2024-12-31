@@ -51,8 +51,16 @@ pub enum WindowsSystemRootablePath {
 impl WindowsSystemRootablePath {
   pub fn join(&self, name_component: &str) -> PathBuf {
     // this method doesn't handle multiple components
-    debug_assert!(!name_component.contains('\\'));
-    debug_assert!(!name_component.contains('/'));
+    debug_assert!(
+      !name_component.contains('\\'),
+      "Invalid component: {}",
+      name_component
+    );
+    debug_assert!(
+      !name_component.contains('/'),
+      "Invalid component: {}",
+      name_component
+    );
 
     match self {
       WindowsSystemRootablePath::WindowSystemRoot => {

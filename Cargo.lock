@@ -7680,8 +7680,11 @@ dependencies = [
 
 [[package]]
 name = "sys_traits"
-version = "0.1.2"
+version = "0.1.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c039a16ed026723bddbfc9b80b4f93ab3bbbd900209ce25b3a1eb6ce9ab24dd9"
 dependencies = [
+ "filetime",
  "getrandom",
  "libc",
  "parking_lot",
