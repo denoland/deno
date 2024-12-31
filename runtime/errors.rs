@@ -1,4 +1,4 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
 //! There are many types of errors in Deno:
 //! - AnyError: a generic wrapper that can encapsulate any type of error.
