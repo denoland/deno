@@ -1071,7 +1071,8 @@ fn symlink_package_dir(
   }
   #[cfg(not(windows))]
   {
-    symlink_dir(&old_path_relative, new_path).map_err(Into::into)
+    symlink_dir(&crate::sys::CliSys::default(), &old_path_relative, new_path)
+      .map_err(Into::into)
   }
 }
 
