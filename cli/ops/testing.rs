@@ -1,13 +1,7 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
-use crate::tools::test::TestContainer;
-use crate::tools::test::TestDescription;
-use crate::tools::test::TestEvent;
-use crate::tools::test::TestEventSender;
-use crate::tools::test::TestFailure;
-use crate::tools::test::TestLocation;
-use crate::tools::test::TestStepDescription;
-use crate::tools::test::TestStepResult;
+use std::sync::atomic::AtomicUsize;
+use std::sync::atomic::Ordering;
 
 use deno_core::error::generic_error;
 use deno_core::error::type_error;
@@ -18,9 +12,16 @@ use deno_core::ModuleSpecifier;
 use deno_core::OpState;
 use deno_runtime::deno_permissions::ChildPermissionsArg;
 use deno_runtime::deno_permissions::PermissionsContainer;
-use std::sync::atomic::AtomicUsize;
-use std::sync::atomic::Ordering;
 use uuid::Uuid;
+
+use crate::tools::test::TestContainer;
+use crate::tools::test::TestDescription;
+use crate::tools::test::TestEvent;
+use crate::tools::test::TestEventSender;
+use crate::tools::test::TestFailure;
+use crate::tools::test::TestLocation;
+use crate::tools::test::TestStepDescription;
+use crate::tools::test::TestStepResult;
 
 deno_core::extension!(deno_test,
   ops = [

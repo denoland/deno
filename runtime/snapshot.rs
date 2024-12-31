@@ -1,9 +1,12 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
-use crate::ops;
-use crate::ops::bootstrap::SnapshotOptions;
-use crate::shared::maybe_transpile_source;
-use crate::shared::runtime;
+use std::borrow::Cow;
+use std::io::Write;
+use std::path::Path;
+use std::path::PathBuf;
+use std::rc::Rc;
+use std::sync::Arc;
+
 use deno_cache::SqliteBackedCache;
 use deno_core::snapshot::*;
 use deno_core::v8;
@@ -11,12 +14,11 @@ use deno_core::Extension;
 use deno_http::DefaultHttpPropertyExtractor;
 use deno_io::fs::FsError;
 use deno_permissions::PermissionCheckError;
-use std::borrow::Cow;
-use std::io::Write;
-use std::path::Path;
-use std::path::PathBuf;
-use std::rc::Rc;
-use std::sync::Arc;
+
+use crate::ops;
+use crate::ops::bootstrap::SnapshotOptions;
+use crate::shared::maybe_transpile_source;
+use crate::shared::runtime;
 
 #[derive(Clone)]
 struct Permissions;

@@ -7,7 +7,6 @@ use std::borrow::Cow;
 use std::path::Path;
 use std::sync::Arc;
 
-use crate::sys::CliSys;
 use dashmap::DashMap;
 use deno_core::error::AnyError;
 use deno_core::serde_json;
@@ -28,10 +27,6 @@ use managed::create_managed_in_npm_pkg_checker;
 use node_resolver::InNpmPackageChecker;
 use node_resolver::NpmPackageFolderResolver;
 
-use crate::file_fetcher::CliFileFetcher;
-use crate::http_util::HttpClientProvider;
-use crate::util::progress_bar::ProgressBar;
-
 pub use self::byonm::CliByonmNpmResolver;
 pub use self::byonm::CliByonmNpmResolverCreateOptions;
 pub use self::managed::CliManagedInNpmPkgCheckerCreateOptions;
@@ -39,6 +34,10 @@ pub use self::managed::CliManagedNpmResolverCreateOptions;
 pub use self::managed::CliNpmResolverManagedSnapshotOption;
 pub use self::managed::ManagedCliNpmResolver;
 pub use self::managed::PackageCaching;
+use crate::file_fetcher::CliFileFetcher;
+use crate::http_util::HttpClientProvider;
+use crate::sys::CliSys;
+use crate::util::progress_bar::ProgressBar;
 
 pub type CliNpmTarballCache =
   deno_npm_cache::TarballCache<CliNpmCacheHttpClient, CliSys>;

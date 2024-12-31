@@ -22,17 +22,18 @@ pub mod util;
 pub mod uv;
 
 use core::ptr::NonNull;
+use std::cell::RefCell;
+use std::collections::HashMap;
+use std::path::PathBuf;
+use std::rc::Rc;
+use std::thread_local;
+
 use deno_core::op2;
 use deno_core::parking_lot::RwLock;
 use deno_core::url::Url;
 use deno_core::ExternalOpsTracker;
 use deno_core::OpState;
 use deno_core::V8CrossThreadTaskSpawner;
-use std::cell::RefCell;
-use std::collections::HashMap;
-use std::path::PathBuf;
-use std::rc::Rc;
-use std::thread_local;
 
 #[derive(Debug, thiserror::Error)]
 pub enum NApiError {
@@ -46,20 +47,19 @@ pub enum NApiError {
   Permission(#[from] PermissionCheckError),
 }
 
-#[cfg(unix)]
-use libloading::os::unix::*;
-
-#[cfg(windows)]
-use libloading::os::windows::*;
+pub use std::ffi::CStr;
+pub use std::os::raw::c_char;
+pub use std::os::raw::c_void;
+pub use std::ptr;
 
 // Expose common stuff for ease of use.
 // `use deno_napi::*`
 pub use deno_core::v8;
 use deno_permissions::PermissionCheckError;
-pub use std::ffi::CStr;
-pub use std::os::raw::c_char;
-pub use std::os::raw::c_void;
-pub use std::ptr;
+#[cfg(unix)]
+use libloading::os::unix::*;
+#[cfg(windows)]
+use libloading::os::windows::*;
 pub use value::napi_value;
 
 pub mod function;

@@ -1,7 +1,11 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
-use crate::cdp;
-use crate::colors;
+use std::borrow::Cow;
+use std::path::PathBuf;
+use std::sync::atomic::AtomicBool;
+use std::sync::atomic::Ordering::Relaxed;
+use std::sync::Arc;
+
 use deno_ast::swc::parser::error::SyntaxError;
 use deno_ast::swc::parser::token::BinOpToken;
 use deno_ast::swc::parser::token::Token;
@@ -32,14 +36,11 @@ use rustyline::Modifiers;
 use rustyline::RepeatCount;
 use rustyline_derive::Helper;
 use rustyline_derive::Hinter;
-use std::borrow::Cow;
-use std::path::PathBuf;
-use std::sync::atomic::AtomicBool;
-use std::sync::atomic::Ordering::Relaxed;
-use std::sync::Arc;
 
 use super::channel::RustylineSyncMessageSender;
 use super::session::REPL_INTERNALS_NAME;
+use crate::cdp;
+use crate::colors;
 
 // Provides helpers to the editor like validation for multi-line edits, completion candidates for
 // tab completion.

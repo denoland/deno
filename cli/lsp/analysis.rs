@@ -1,25 +1,15 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
-use super::diagnostics::DenoDiagnostic;
-use super::diagnostics::DiagnosticSource;
-use super::documents::Document;
-use super::documents::Documents;
-use super::language_server;
-use super::resolver::LspResolver;
-use super::tsc;
-use super::urls::url_to_uri;
-
-use crate::args::jsr_url;
-use crate::lsp::logging::lsp_warn;
-use crate::lsp::search::PackageSearchApi;
-use crate::tools::lint::CliLinter;
-use crate::util::path::relative_specifier;
-use deno_config::workspace::MappedResolution;
-use deno_lint::diagnostic::LintDiagnosticRange;
+use std::borrow::Cow;
+use std::cmp::Ordering;
+use std::collections::HashMap;
+use std::collections::HashSet;
+use std::path::Path;
 
 use deno_ast::SourceRange;
 use deno_ast::SourceRangedForSpanned;
 use deno_ast::SourceTextInfo;
+use deno_config::workspace::MappedResolution;
 use deno_core::error::custom_error;
 use deno_core::error::AnyError;
 use deno_core::serde::Deserialize;
@@ -27,6 +17,7 @@ use deno_core::serde::Serialize;
 use deno_core::serde_json;
 use deno_core::serde_json::json;
 use deno_core::ModuleSpecifier;
+use deno_lint::diagnostic::LintDiagnosticRange;
 use deno_path_util::url_to_file_path;
 use deno_runtime::deno_node::PathClean;
 use deno_semver::jsr::JsrPackageNvReference;
@@ -44,15 +35,24 @@ use node_resolver::NodeResolutionKind;
 use node_resolver::ResolutionMode;
 use once_cell::sync::Lazy;
 use regex::Regex;
-use std::borrow::Cow;
-use std::cmp::Ordering;
-use std::collections::HashMap;
-use std::collections::HashSet;
-use std::path::Path;
 use text_lines::LineAndColumnIndex;
 use tower_lsp::lsp_types as lsp;
 use tower_lsp::lsp_types::Position;
 use tower_lsp::lsp_types::Range;
+
+use super::diagnostics::DenoDiagnostic;
+use super::diagnostics::DiagnosticSource;
+use super::documents::Document;
+use super::documents::Documents;
+use super::language_server;
+use super::resolver::LspResolver;
+use super::tsc;
+use super::urls::url_to_uri;
+use crate::args::jsr_url;
+use crate::lsp::logging::lsp_warn;
+use crate::lsp::search::PackageSearchApi;
+use crate::tools::lint::CliLinter;
+use crate::util::path::relative_specifier;
 
 /// Diagnostic error codes which actually are the same, and so when grouping
 /// fixes we treat them the same.

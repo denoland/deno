@@ -863,12 +863,13 @@ pub fn create_isolate_create_params() -> Option<v8::CreateParams> {
 #[allow(clippy::print_stderr)]
 #[cfg(test)]
 mod tests {
-  use super::*;
   use deno_core::resolve_path;
   use deno_core::FsModuleLoader;
   use deno_fs::RealFs;
   use deno_runtime::deno_permissions::Permissions;
   use deno_runtime::permissions::RuntimePermissionDescriptorParser;
+
+  use super::*;
 
   fn create_test_worker() -> MainWorker {
     let main_module =

@@ -1,5 +1,7 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
+use std::path::PathBuf;
+
 use deno_core::op2;
 use deno_core::ToJsBuffer;
 use image::imageops::FilterType;
@@ -9,7 +11,6 @@ use image::Pixel;
 use image::RgbaImage;
 use serde::Deserialize;
 use serde::Serialize;
-use std::path::PathBuf;
 
 #[derive(Debug, thiserror::Error)]
 pub enum CanvasError {

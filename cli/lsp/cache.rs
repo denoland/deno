@@ -1,5 +1,15 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
+use std::collections::BTreeMap;
+use std::fs;
+use std::path::Path;
+use std::sync::Arc;
+use std::time::SystemTime;
+
+use deno_core::url::Url;
+use deno_core::ModuleSpecifier;
+use deno_path_util::url_to_file_path;
+
 use crate::cache::DenoDir;
 use crate::cache::GlobalHttpCache;
 use crate::cache::HttpCache;
@@ -8,15 +18,6 @@ use crate::lsp::config::Config;
 use crate::lsp::logging::lsp_log;
 use crate::lsp::logging::lsp_warn;
 use crate::sys::CliSys;
-
-use deno_core::url::Url;
-use deno_core::ModuleSpecifier;
-use deno_path_util::url_to_file_path;
-use std::collections::BTreeMap;
-use std::fs;
-use std::path::Path;
-use std::sync::Arc;
-use std::time::SystemTime;
 
 pub fn calculate_fs_version(
   cache: &LspCache,

@@ -1,16 +1,11 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
-use crate::args::TsConfig;
-use crate::args::TypeCheckMode;
-use crate::cache::FastInsecureHasher;
-use crate::cache::ModuleInfoCache;
-use crate::node::CliNodeResolver;
-use crate::npm::CliNpmResolver;
-use crate::resolver::CjsTracker;
-use crate::sys::CliSys;
-use crate::util::checksum;
-use crate::util::path::mapped_specifier_for_tsc;
-use crate::worker::create_isolate_create_params;
+use std::borrow::Cow;
+use std::collections::HashMap;
+use std::fmt;
+use std::path::Path;
+use std::path::PathBuf;
+use std::sync::Arc;
 
 use deno_ast::MediaType;
 use deno_core::anyhow::anyhow;
@@ -44,13 +39,19 @@ use node_resolver::resolve_specifier_into_node_modules;
 use node_resolver::NodeResolutionKind;
 use node_resolver::ResolutionMode;
 use once_cell::sync::Lazy;
-use std::borrow::Cow;
-use std::collections::HashMap;
-use std::fmt;
-use std::path::Path;
-use std::path::PathBuf;
-use std::sync::Arc;
 use thiserror::Error;
+
+use crate::args::TsConfig;
+use crate::args::TypeCheckMode;
+use crate::cache::FastInsecureHasher;
+use crate::cache::ModuleInfoCache;
+use crate::node::CliNodeResolver;
+use crate::npm::CliNpmResolver;
+use crate::resolver::CjsTracker;
+use crate::sys::CliSys;
+use crate::util::checksum;
+use crate::util::path::mapped_specifier_for_tsc;
+use crate::worker::create_isolate_create_params;
 
 mod diagnostics;
 
@@ -1136,16 +1137,17 @@ pub fn exec(request: Request) -> Result<Response, AnyError> {
 
 #[cfg(test)]
 mod tests {
-  use super::Diagnostic;
-  use super::DiagnosticCategory;
-  use super::*;
-  use crate::args::TsConfig;
   use deno_core::futures::future;
   use deno_core::serde_json;
   use deno_core::OpState;
   use deno_graph::GraphKind;
   use deno_graph::ModuleGraph;
   use test_util::PathRef;
+
+  use super::Diagnostic;
+  use super::DiagnosticCategory;
+  use super::*;
+  use crate::args::TsConfig;
 
   #[derive(Debug, Default)]
   pub struct MockLoader {

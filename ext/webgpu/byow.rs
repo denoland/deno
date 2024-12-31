@@ -1,8 +1,5 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
-use deno_core::op2;
-use deno_core::OpState;
-use deno_core::ResourceId;
 use std::ffi::c_void;
 #[cfg(any(
   target_os = "linux",
@@ -11,6 +8,10 @@ use std::ffi::c_void;
   target_os = "openbsd"
 ))]
 use std::ptr::NonNull;
+
+use deno_core::op2;
+use deno_core::OpState;
+use deno_core::ResourceId;
 
 use crate::surface::WebGpuSurface;
 

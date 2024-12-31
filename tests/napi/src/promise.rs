@@ -1,11 +1,13 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
+use std::ptr;
+use std::ptr::addr_of_mut;
+
+use napi_sys::*;
+
 use crate::assert_napi_ok;
 use crate::napi_get_callback_info;
 use crate::napi_new_property;
-use napi_sys::*;
-use std::ptr;
-use std::ptr::addr_of_mut;
 
 static mut CURRENT_DEFERRED: napi_deferred = ptr::null_mut();
 

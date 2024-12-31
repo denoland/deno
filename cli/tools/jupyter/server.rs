@@ -11,8 +11,6 @@ use std::collections::HashMap;
 use std::rc::Rc;
 use std::sync::Arc;
 
-use crate::cdp;
-use crate::tools::repl;
 use deno_core::anyhow::bail;
 use deno_core::error::AnyError;
 use deno_core::futures;
@@ -20,12 +18,9 @@ use deno_core::parking_lot::Mutex;
 use deno_core::serde_json;
 use deno_core::CancelFuture;
 use deno_core::CancelHandle;
-use jupyter_runtime::ExecutionCount;
-use tokio::sync::mpsc;
-use tokio::sync::oneshot;
-
 use jupyter_runtime::messaging;
 use jupyter_runtime::ConnectionInfo;
+use jupyter_runtime::ExecutionCount;
 use jupyter_runtime::JupyterMessage;
 use jupyter_runtime::JupyterMessageContent;
 use jupyter_runtime::KernelControlConnection;
@@ -34,9 +29,13 @@ use jupyter_runtime::KernelShellConnection;
 use jupyter_runtime::ReplyError;
 use jupyter_runtime::ReplyStatus;
 use jupyter_runtime::StreamContent;
+use tokio::sync::mpsc;
+use tokio::sync::oneshot;
 use uuid::Uuid;
 
 use super::JupyterReplProxy;
+use crate::cdp;
+use crate::tools::repl;
 
 pub struct JupyterServer {
   execution_count: ExecutionCount,

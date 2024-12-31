@@ -7,21 +7,18 @@ mod local;
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use crate::sys::CliSys;
 use deno_npm::NpmSystemInfo;
 
+pub use self::common::NpmPackageFsResolver;
+use self::global::GlobalNpmPackageResolver;
+use self::local::LocalNpmPackageResolver;
+use super::resolution::NpmResolution;
 use crate::args::LifecycleScriptsConfig;
 use crate::args::NpmInstallDepsProvider;
 use crate::npm::CliNpmCache;
 use crate::npm::CliNpmTarballCache;
+use crate::sys::CliSys;
 use crate::util::progress_bar::ProgressBar;
-
-pub use self::common::NpmPackageFsResolver;
-
-use self::global::GlobalNpmPackageResolver;
-use self::local::LocalNpmPackageResolver;
-
-use super::resolution::NpmResolution;
 
 #[allow(clippy::too_many_arguments)]
 pub fn create_npm_fs_resolver(

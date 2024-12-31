@@ -159,9 +159,8 @@ impl EmitFileSerializer {
 mod test {
   use test_util::TempDir;
 
-  use crate::sys::CliSys;
-
   use super::*;
+  use crate::sys::CliSys;
 
   #[test]
   pub fn emit_cache_general_use() {

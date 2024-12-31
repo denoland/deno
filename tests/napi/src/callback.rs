@@ -1,14 +1,16 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
-use crate::assert_napi_ok;
-use crate::napi_get_callback_info;
-use crate::napi_new_property;
+use std::ptr;
+
 use napi_sys::ValueType::napi_function;
 use napi_sys::ValueType::napi_object;
 use napi_sys::ValueType::napi_undefined;
 use napi_sys::*;
-use std::ptr;
 use Status::napi_pending_exception;
+
+use crate::assert_napi_ok;
+use crate::napi_get_callback_info;
+use crate::napi_new_property;
 
 /// `test_callback_run((a, b) => a + b, [1, 2])` => 3
 extern "C" fn test_callback_run(

@@ -2,6 +2,17 @@
 
 #![deny(unsafe_op_in_unsafe_fn)]
 
+use std::sync::atomic::AtomicBool;
+use std::sync::atomic::AtomicU8;
+use std::sync::atomic::AtomicUsize;
+use std::sync::atomic::Ordering;
+use std::sync::Arc;
+
+use deno_core::parking_lot::Condvar;
+use deno_core::parking_lot::Mutex;
+use deno_core::V8CrossThreadTaskSpawner;
+use napi_sym::napi_sym;
+
 use super::util::get_array_buffer_ptr;
 use super::util::make_external_backing_store;
 use super::util::napi_clear_last_error;
@@ -10,15 +21,6 @@ use super::util::SendPtr;
 use crate::check_arg;
 use crate::check_env;
 use crate::*;
-use deno_core::parking_lot::Condvar;
-use deno_core::parking_lot::Mutex;
-use deno_core::V8CrossThreadTaskSpawner;
-use napi_sym::napi_sym;
-use std::sync::atomic::AtomicBool;
-use std::sync::atomic::AtomicU8;
-use std::sync::atomic::AtomicUsize;
-use std::sync::atomic::Ordering;
-use std::sync::Arc;
 
 #[napi_sym]
 fn napi_module_register(module: *const NapiModule) -> napi_status {

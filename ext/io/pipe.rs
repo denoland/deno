@@ -299,12 +299,13 @@ pub fn pipe_impl() -> io::Result<(PipeRead, PipeWrite)> {
 
 #[cfg(test)]
 mod tests {
-  use super::*;
-
   use std::io::Read;
   use std::io::Write;
+
   use tokio::io::AsyncReadExt;
   use tokio::io::AsyncWriteExt;
+
+  use super::*;
 
   #[test]
   fn test_pipe() {

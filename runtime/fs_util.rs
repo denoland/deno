@@ -1,10 +1,11 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
+use std::path::Path;
+use std::path::PathBuf;
+
 use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
 use deno_path_util::normalize_path;
-use std::path::Path;
-use std::path::PathBuf;
 
 #[inline]
 pub fn resolve_from_cwd(path: &Path) -> Result<PathBuf, AnyError> {

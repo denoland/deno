@@ -159,6 +159,7 @@ pub fn hostname() -> String {
     use std::ffi::OsString;
     use std::mem;
     use std::os::windows::ffi::OsStringExt;
+
     use winapi::shared::minwindef::MAKEWORD;
     use winapi::um::winsock2::GetHostNameW;
     use winapi::um::winsock2::WSAStartup;
@@ -307,6 +308,7 @@ pub fn mem_info() -> Option<MemInfo> {
   //   - `dwLength` is set to the size of the struct.
   unsafe {
     use std::mem;
+
     use winapi::shared::minwindef;
     use winapi::um::psapi::GetPerformanceInfo;
     use winapi::um::psapi::PERFORMANCE_INFORMATION;

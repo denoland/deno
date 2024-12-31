@@ -5,7 +5,6 @@ use std::cell::RefCell;
 use std::rc::Rc;
 
 use deno_core::op2;
-
 use deno_core::CancelFuture;
 use deno_core::CancelHandle;
 use deno_core::DetachedBuffer;

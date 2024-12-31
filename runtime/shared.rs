@@ -1,6 +1,8 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 // Utilities shared between `build.rs` and the rest of the crate.
 
+use std::path::Path;
+
 use deno_ast::MediaType;
 use deno_ast::ParseParams;
 use deno_ast::SourceMapOption;
@@ -10,7 +12,6 @@ use deno_core::Extension;
 use deno_core::ModuleCodeString;
 use deno_core::ModuleName;
 use deno_core::SourceMapData;
-use std::path::Path;
 
 extension!(runtime,
   deps = [

@@ -1,12 +1,13 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
-use bytes::Bytes;
-use deno_core::futures::future::poll_fn;
-use deno_core::futures::ready;
 use std::io;
 use std::mem::MaybeUninit;
 use std::pin::Pin;
 use std::task::Poll;
+
+use bytes::Bytes;
+use deno_core::futures::future::poll_fn;
+use deno_core::futures::ready;
 use tokio::io::AsyncRead;
 use tokio::io::AsyncWrite;
 use tokio::io::ReadBuf;
@@ -227,8 +228,9 @@ impl<S: AsyncRead + AsyncWrite + Unpin> AsyncWrite
 
 #[cfg(test)]
 mod tests {
-  use super::*;
   use tokio::io::AsyncReadExt;
+
+  use super::*;
 
   struct YieldsOneByteAtATime(&'static [u8]);
 

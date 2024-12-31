@@ -1,10 +1,12 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
-use crate::assert_napi_ok;
-use crate::cstr;
+use std::ptr;
+
 use napi_sys::ValueType::napi_function;
 use napi_sys::*;
-use std::ptr;
+
+use crate::assert_napi_ok;
+use crate::cstr;
 
 extern "C" fn make_callback(
   env: napi_env,

@@ -17,12 +17,11 @@ use deno_lint::linter::Linter as DenoLintLinter;
 use deno_lint::linter::LinterOptions;
 use deno_path_util::fs::atomic_write_file_with_retries;
 
-use crate::sys::CliSys;
-use crate::util::fs::specifier_from_file_path;
-
 use super::rules::FileOrPackageLintRule;
 use super::rules::PackageLintRule;
 use super::ConfiguredRules;
+use crate::sys::CliSys;
+use crate::util::fs::specifier_from_file_path;
 
 pub struct CliLinterOptions {
   pub configured_rules: ConfiguredRules,

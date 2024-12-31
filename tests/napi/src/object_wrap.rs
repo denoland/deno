@@ -1,15 +1,17 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
-use crate::assert_napi_ok;
-use crate::napi_get_callback_info;
-use crate::napi_new_property;
-use napi_sys::ValueType::napi_number;
-use napi_sys::*;
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::os::raw::c_char;
 use std::os::raw::c_void;
 use std::ptr;
+
+use napi_sys::ValueType::napi_number;
+use napi_sys::*;
+
+use crate::assert_napi_ok;
+use crate::napi_get_callback_info;
+use crate::napi_new_property;
 
 pub struct NapiObject {
   counter: i32,

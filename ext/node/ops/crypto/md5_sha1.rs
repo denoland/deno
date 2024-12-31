@@ -1,5 +1,6 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 use core::fmt;
+
 use digest::core_api::AlgorithmName;
 use digest::core_api::BlockSizeUser;
 use digest::core_api::Buffer;

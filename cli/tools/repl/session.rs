@@ -2,22 +2,6 @@
 
 use std::sync::Arc;
 
-use crate::args::CliOptions;
-use crate::cdp;
-use crate::colors;
-use crate::lsp::ReplLanguageServer;
-use crate::npm::CliNpmResolver;
-use crate::resolver::CliResolver;
-use crate::tools::test::report_tests;
-use crate::tools::test::reporters::PrettyTestReporter;
-use crate::tools::test::reporters::TestReporter;
-use crate::tools::test::run_tests_for_worker;
-use crate::tools::test::send_test_event;
-use crate::tools::test::worker_has_tests;
-use crate::tools::test::TestEvent;
-use crate::tools::test::TestEventReceiver;
-use crate::tools::test::TestFailureFormatOptions;
-
 use deno_ast::diagnostics::Diagnostic;
 use deno_ast::swc::ast as swc_ast;
 use deno_ast::swc::common::comments::CommentKind;
@@ -54,6 +38,22 @@ use once_cell::sync::Lazy;
 use regex::Match;
 use regex::Regex;
 use tokio::sync::Mutex;
+
+use crate::args::CliOptions;
+use crate::cdp;
+use crate::colors;
+use crate::lsp::ReplLanguageServer;
+use crate::npm::CliNpmResolver;
+use crate::resolver::CliResolver;
+use crate::tools::test::report_tests;
+use crate::tools::test::reporters::PrettyTestReporter;
+use crate::tools::test::reporters::TestReporter;
+use crate::tools::test::run_tests_for_worker;
+use crate::tools::test::send_test_event;
+use crate::tools::test::worker_has_tests;
+use crate::tools::test::TestEvent;
+use crate::tools::test::TestEventReceiver;
+use crate::tools::test::TestFailureFormatOptions;
 
 fn comment_source_to_position_range(
   comment_start: SourcePos,

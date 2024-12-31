@@ -19,6 +19,10 @@ use std::sync::Arc;
 use std::task::Context;
 use std::task::Poll;
 
+use bytes::Bytes;
+// Re-export data_url
+pub use data_url;
+use data_url::DataUrl;
 use deno_core::futures::stream::Peekable;
 use deno_core::futures::Future;
 use deno_core::futures::FutureExt;
@@ -51,9 +55,7 @@ use deno_tls::RootCertStoreProvider;
 use deno_tls::TlsKey;
 use deno_tls::TlsKeys;
 use deno_tls::TlsKeysHolder;
-
-use bytes::Bytes;
-use data_url::DataUrl;
+pub use fs_fetch_handler::FsFetchHandler;
 use http::header::HeaderName;
 use http::header::HeaderValue;
 use http::header::ACCEPT;
@@ -75,17 +77,12 @@ use hyper_util::client::legacy::connect::HttpInfo;
 use hyper_util::client::legacy::Builder as HyperClientBuilder;
 use hyper_util::rt::TokioExecutor;
 use hyper_util::rt::TokioTimer;
+pub use proxy::basic_auth;
 use serde::Deserialize;
 use serde::Serialize;
 use tower::retry;
 use tower::ServiceExt;
 use tower_http::decompression::Decompression;
-
-// Re-export data_url
-pub use data_url;
-pub use proxy::basic_auth;
-
-pub use fs_fetch_handler::FsFetchHandler;
 
 #[derive(Clone)]
 pub struct Options {

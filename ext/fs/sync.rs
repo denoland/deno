@@ -6,10 +6,9 @@ pub use inner::*;
 mod inner {
   #![allow(clippy::disallowed_types)]
 
-  pub use std::sync::Arc as MaybeArc;
-
   pub use core::marker::Send as MaybeSend;
   pub use core::marker::Sync as MaybeSync;
+  pub use std::sync::Arc as MaybeArc;
 }
 
 #[cfg(not(feature = "sync_fs"))]

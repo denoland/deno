@@ -1,13 +1,15 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
-use crate::FfiPermissions;
-use deno_core::op2;
-use deno_core::v8;
-use deno_core::OpState;
 use std::ffi::c_char;
 use std::ffi::c_void;
 use std::ffi::CStr;
 use std::ptr;
+
+use deno_core::op2;
+use deno_core::v8;
+use deno_core::OpState;
+
+use crate::FfiPermissions;
 
 #[derive(Debug, thiserror::Error)]
 pub enum ReprError {

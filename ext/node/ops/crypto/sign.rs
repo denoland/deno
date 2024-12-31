@@ -1,12 +1,15 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+use core::ops::Add;
+
+use ecdsa::der::MaxOverhead;
+use ecdsa::der::MaxSize;
+use elliptic_curve::generic_array::ArrayLength;
+use elliptic_curve::FieldBytesSize;
 use rand::rngs::OsRng;
 use rsa::signature::hazmat::PrehashSigner as _;
 use rsa::signature::hazmat::PrehashVerifier as _;
 use rsa::traits::SignatureScheme as _;
 use spki::der::Decode;
-
-use crate::ops::crypto::digest::match_fixed_digest;
-use crate::ops::crypto::digest::match_fixed_digest_with_oid;
 
 use super::keys::AsymmetricPrivateKey;
 use super::keys::AsymmetricPublicKey;
@@ -14,11 +17,8 @@ use super::keys::EcPrivateKey;
 use super::keys::EcPublicKey;
 use super::keys::KeyObjectHandle;
 use super::keys::RsaPssHashAlgorithm;
-use core::ops::Add;
-use ecdsa::der::MaxOverhead;
-use ecdsa::der::MaxSize;
-use elliptic_curve::generic_array::ArrayLength;
-use elliptic_curve::FieldBytesSize;
+use crate::ops::crypto::digest::match_fixed_digest;
+use crate::ops::crypto::digest::match_fixed_digest_with_oid;
 
 fn dsa_signature<C: elliptic_curve::PrimeCurve>(
   encoding: u32,

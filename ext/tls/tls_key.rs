@@ -11,12 +11,6 @@
 //! key lookup can handle closing one end of the pair, in which case they will just
 //! attempt to clean up the associated resources.
 
-use deno_core::futures::future::poll_fn;
-use deno_core::futures::future::Either;
-use deno_core::futures::FutureExt;
-use deno_core::unsync::spawn;
-use rustls::ServerConfig;
-use rustls_tokio_stream::ServerConfigProvider;
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::fmt::Debug;
@@ -25,6 +19,13 @@ use std::future::Future;
 use std::io::ErrorKind;
 use std::rc::Rc;
 use std::sync::Arc;
+
+use deno_core::futures::future::poll_fn;
+use deno_core::futures::future::Either;
+use deno_core::futures::FutureExt;
+use deno_core::unsync::spawn;
+use rustls::ServerConfig;
+use rustls_tokio_stream::ServerConfigProvider;
 use tokio::sync::broadcast;
 use tokio::sync::mpsc;
 use tokio::sync::oneshot;
@@ -269,8 +270,9 @@ impl TlsKeyLookup {
 
 #[cfg(test)]
 pub mod tests {
-  use super::*;
   use deno_core::unsync::spawn;
+
+  use super::*;
 
   fn tls_key_for_test(sni: &str) -> TlsKey {
     let manifest_dir =

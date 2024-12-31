@@ -1,10 +1,12 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
-use crate::symbol::NativeType;
-use deno_core::v8;
-use libffi::middle::Arg;
 use std::ffi::c_void;
 use std::ptr;
+
+use deno_core::v8;
+use libffi::middle::Arg;
+
+use crate::symbol::NativeType;
 
 #[derive(Debug, thiserror::Error)]
 pub enum IRError {

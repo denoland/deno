@@ -1,21 +1,4 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
-use crate::request_properties::HttpConnectionProperties;
-use crate::response_body::ResponseBytesInner;
-use crate::response_body::ResponseStreamResult;
-use deno_core::futures::ready;
-use deno_core::BufView;
-use deno_core::OpState;
-use deno_core::ResourceId;
-use http::request::Parts;
-use hyper::body::Body;
-use hyper::body::Frame;
-use hyper::body::Incoming;
-use hyper::body::SizeHint;
-use hyper::header::HeaderMap;
-use hyper::upgrade::OnUpgrade;
-
-use scopeguard::guard;
-use scopeguard::ScopeGuard;
 use std::cell::Cell;
 use std::cell::Ref;
 use std::cell::RefCell;
@@ -27,7 +10,25 @@ use std::rc::Rc;
 use std::task::Context;
 use std::task::Poll;
 use std::task::Waker;
+
+use deno_core::futures::ready;
+use deno_core::BufView;
+use deno_core::OpState;
+use deno_core::ResourceId;
+use http::request::Parts;
+use hyper::body::Body;
+use hyper::body::Frame;
+use hyper::body::Incoming;
+use hyper::body::SizeHint;
+use hyper::header::HeaderMap;
+use hyper::upgrade::OnUpgrade;
+use scopeguard::guard;
+use scopeguard::ScopeGuard;
 use tokio::sync::oneshot;
+
+use crate::request_properties::HttpConnectionProperties;
+use crate::response_body::ResponseBytesInner;
+use crate::response_body::ResponseStreamResult;
 
 pub type Request = hyper::Request<Incoming>;
 pub type Response = hyper::Response<HttpRecordResponse>;
@@ -606,16 +607,18 @@ impl Drop for HttpRecordResponse {
 
 #[cfg(test)]
 mod tests {
-  use super::*;
-  use crate::response_body::Compression;
-  use crate::response_body::ResponseBytesInner;
+  use std::error::Error as StdError;
+
   use bytes::Buf;
   use deno_net::raw::NetworkStreamType;
   use hyper::body::Body;
   use hyper::service::service_fn;
   use hyper::service::HttpService;
   use hyper_util::rt::TokioIo;
-  use std::error::Error as StdError;
+
+  use super::*;
+  use crate::response_body::Compression;
+  use crate::response_body::ResponseBytesInner;
 
   /// Execute client request on service and concurrently map the response.
   async fn serve_request<B, S, T, F>(

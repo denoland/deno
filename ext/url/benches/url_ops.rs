@@ -4,7 +4,6 @@ use deno_bench_util::bench_js_sync;
 use deno_bench_util::bench_or_profile;
 use deno_bench_util::bencher::benchmark_group;
 use deno_bench_util::bencher::Bencher;
-
 use deno_core::Extension;
 
 fn setup() -> Vec<Extension> {

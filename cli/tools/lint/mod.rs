@@ -3,6 +3,14 @@
 //! This module provides file linting utilities using
 //! [`deno_lint`](https://github.com/denoland/deno_lint).
 
+use std::collections::HashSet;
+use std::fs;
+use std::io::stdin;
+use std::io::Read;
+use std::path::PathBuf;
+use std::rc::Rc;
+use std::sync::Arc;
+
 use deno_ast::ModuleSpecifier;
 use deno_ast::ParsedSource;
 use deno_config::deno_json::LintRulesConfig;
@@ -25,13 +33,6 @@ use log::debug;
 use reporters::create_reporter;
 use reporters::LintReporter;
 use serde::Serialize;
-use std::collections::HashSet;
-use std::fs;
-use std::io::stdin;
-use std::io::Read;
-use std::path::PathBuf;
-use std::rc::Rc;
-use std::sync::Arc;
 
 use crate::args::CliOptions;
 use crate::args::Flags;
@@ -596,10 +597,11 @@ struct LintError {
 
 #[cfg(test)]
 mod tests {
-  use super::*;
   use pretty_assertions::assert_eq;
   use serde::Deserialize;
   use test_util as util;
+
+  use super::*;
 
   #[derive(Serialize, Deserialize)]
   struct RulesSchema {

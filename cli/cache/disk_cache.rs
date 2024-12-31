@@ -1,13 +1,5 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
-use crate::sys::CliSys;
-
-use super::CACHE_PERM;
-
-use deno_cache_dir::url_to_filename;
-use deno_core::url::Host;
-use deno_core::url::Url;
-use deno_path_util::fs::atomic_write_file_with_retries;
 use std::ffi::OsStr;
 use std::fs;
 use std::path::Component;
@@ -15,6 +7,14 @@ use std::path::Path;
 use std::path::PathBuf;
 use std::path::Prefix;
 use std::str;
+
+use deno_cache_dir::url_to_filename;
+use deno_core::url::Host;
+use deno_core::url::Url;
+use deno_path_util::fs::atomic_write_file_with_retries;
+
+use super::CACHE_PERM;
+use crate::sys::CliSys;
 
 #[derive(Debug, Clone)]
 pub struct DiskCache {
@@ -130,8 +130,9 @@ impl DiskCache {
 
 #[cfg(test)]
 mod tests {
-  use super::*;
   use test_util::TempDir;
+
+  use super::*;
 
   #[test]
   fn test_set_get_cache_file() {
