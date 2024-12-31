@@ -7,6 +7,7 @@ use std::cell::RefCell;
 use std::cmp::Ordering;
 use std::collections::hash_map::Entry;
 use std::collections::BTreeMap;
+use std::collections::BTreeSet;
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::fs;
@@ -369,10 +370,10 @@ async fn sync_resolution_with_fs(
     );
   let packages_with_deprecation_warnings = Arc::new(Mutex::new(Vec::new()));
 
-  let mut package_tags: HashMap<&PackageNv, Vec<&str>> = HashMap::new();
+  let mut package_tags: HashMap<&PackageNv, BTreeSet<&str>> = HashMap::new();
   for (package_req, package_nv) in snapshot.package_reqs() {
     if let Some(tag) = package_req.version_req.tag() {
-      package_tags.entry(package_nv).or_default().push(tag);
+      package_tags.entry(package_nv).or_default().insert(tag);
     }
   }
 
@@ -392,7 +393,17 @@ async fn sync_resolution_with_fs(
     let folder_path = deno_local_registry_dir.join(&package_folder_name);
     let tags = package_tags
       .get(&package.id.nv)
-      .map(|tags| tags.join(","))
+      .map(|tags| {
+        capacity_builder::StringBuilder::<String>::build(|builder| {
+          for (i, tag) in tags.iter().enumerate() {
+            if i > 0 {
+              builder.append(',')
+            }
+            builder.append(*tag);
+          }
+        })
+        .unwrap()
+      })
       .unwrap_or_default();
     enum PackageFolderState {
       UpToDate,
