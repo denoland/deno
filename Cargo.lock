@@ -4519,12 +4519,12 @@ dependencies = [
 
 [[package]]
 name = "junction"
-version = "0.2.0"
+version = "1.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "be39922b087cecaba4e2d5592dedfc8bda5d4a5a1231f143337cca207950b61d"
+checksum = "72bbdfd737a243da3dfc1f99ee8d6e166480f17ab4ac84d7c34aacd73fc7bd16"
 dependencies = [
  "scopeguard",
- "winapi",
+ "windows-sys 0.52.0",
 ]
 
 [[package]]
@@ -7680,9 +7680,9 @@ dependencies = [
 
 [[package]]
 name = "sys_traits"
-version = "0.1.4"
+version = "0.1.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6683465f4e1d8fd75069cbc36c646258c05b7d8d6676bcb5d71968b99b7d5ae2"
+checksum = "600268ff0fd85b98d44ff3dcbe1f990c306ac914709a1d81b31619b7a4077223"
 dependencies = [
  "filetime",
  "getrandom",
