@@ -1355,7 +1355,7 @@ dependencies = [
  "typed-arena",
  "uuid",
  "walkdir",
- "which 4.4.2",
+ "which",
  "winapi",
  "winres",
  "zeromq",
@@ -2178,7 +2178,7 @@ dependencies = [
  "percent-encoding",
  "serde",
  "thiserror 2.0.3",
- "which 4.4.2",
+ "which",
  "winapi",
 ]
 
@@ -2267,7 +2267,7 @@ dependencies = [
  "tokio-metrics",
  "twox-hash",
  "uuid",
- "which 4.4.2",
+ "which",
  "winapi",
  "windows-sys 0.59.0",
 ]
@@ -8431,7 +8431,7 @@ dependencies = [
  "miniz_oxide",
  "once_cell",
  "paste",
- "which 6.0.1",
+ "which",
 ]
 
 [[package]]
@@ -8739,18 +8739,6 @@ dependencies = [
  "js-sys",
  "serde",
  "web-sys",
-]
-
-[[package]]
-name = "which"
-version = "4.4.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "87ba24419a2078cd2b0f2ede2691b6c66d8e47836da3b6db8265ebad47afbfc7"
-dependencies = [
- "either",
- "home",
- "once_cell",
- "rustix",
 ]
 
 [[package]]
