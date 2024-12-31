@@ -57,6 +57,7 @@ generate_builtin_node_module_lists! {
   "http2",
   "https",
   "inspector",
+  "inspector/promises",
   "module",
   "net",
   "os",
