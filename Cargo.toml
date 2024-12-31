@@ -251,6 +251,11 @@ incremental = true
 lto = true
 opt-level = 'z' # Optimize for size
 
+[profile.release-slim]
+inherits = "release"
+panic = "abort"
+strip = "symbols"
+
 # Build release with debug symbols: cargo build --profile=release-with-debug
 [profile.release-with-debug]
 inherits = "release"
