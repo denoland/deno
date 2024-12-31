@@ -7,6 +7,7 @@ use crate::display::write_json_to_stdout;
 use crate::factory::CliFactory;
 use crate::graph_util::has_graph_root_local_dependent_changed;
 use crate::ops;
+use crate::sys::CliSys;
 use crate::tools::test::format_test_error;
 use crate::tools::test::TestFilter;
 use crate::util::file_watcher;
@@ -265,7 +266,7 @@ async fn bench_specifier_inner(
 async fn bench_specifiers(
   worker_factory: Arc<CliMainWorkerFactory>,
   permissions: &Permissions,
-  permissions_desc_parser: &Arc<RuntimePermissionDescriptorParser>,
+  permissions_desc_parser: &Arc<RuntimePermissionDescriptorParser<CliSys>>,
   specifiers: Vec<ModuleSpecifier>,
   options: BenchSpecifierOptions,
 ) -> Result<(), AnyError> {

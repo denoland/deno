@@ -51,8 +51,16 @@ pub enum WindowsSystemRootablePath {
 impl WindowsSystemRootablePath {
   pub fn join(&self, name_component: &str) -> PathBuf {
     // this method doesn't handle multiple components
-    debug_assert!(!name_component.contains('\\'));
-    debug_assert!(!name_component.contains('/'));
+    debug_assert!(
+      !name_component.contains('\\'),
+      "Invalid component: {}",
+      name_component
+    );
+    debug_assert!(
+      !name_component.contains('/'),
+      "Invalid component: {}",
+      name_component
+    );
 
     match self {
       WindowsSystemRootablePath::WindowSystemRoot => {
@@ -847,78 +855,28 @@ enum VfsEntryRef<'a> {
   Symlink(&'a VirtualSymlink),
 }
 
-impl<'a> VfsEntryRef<'a> {
-  pub fn as_fs_stat(&self) -> FsStat {
+impl VfsEntryRef<'_> {
+  pub fn as_metadata(&self) -> FileBackedVfsMetadata {
+    FileBackedVfsMetadata {
+      file_type: match self {
+        Self::Dir(_) => sys_traits::FileType::Dir,
+        Self::File(_) => sys_traits::FileType::File,
+        Self::Symlink(_) => sys_traits::FileType::Symlink,
+      },
+      name: self.name().to_string(),
+      len: match self {
+        Self::Dir(_) => 0,
+        Self::File(file) => file.offset.len,
+        Self::Symlink(_) => 0,
+      },
+    }
+  }
+
+  pub fn name(&self) -> &str {
     match self {
-      VfsEntryRef::Dir(_) => FsStat {
-        is_directory: true,
-        is_file: false,
-        is_symlink: false,
-        atime: None,
-        birthtime: None,
-        mtime: None,
-        ctime: None,
-        blksize: 0,
-        size: 0,
-        dev: 0,
-        ino: 0,
-        mode: 0,
-        nlink: 0,
-        uid: 0,
-        gid: 0,
-        rdev: 0,
-        blocks: 0,
-        is_block_device: false,
-        is_char_device: false,
-        is_fifo: false,
-        is_socket: false,
-      },
-      VfsEntryRef::File(file) => FsStat {
-        is_directory: false,
-        is_file: true,
-        is_symlink: false,
-        atime: None,
-        birthtime: None,
-        mtime: None,
-        ctime: None,
-        blksize: 0,
-        size: file.offset.len,
-        dev: 0,
-        ino: 0,
-        mode: 0,
-        nlink: 0,
-        uid: 0,
-        gid: 0,
-        rdev: 0,
-        blocks: 0,
-        is_block_device: false,
-        is_char_device: false,
-        is_fifo: false,
-        is_socket: false,
-      },
-      VfsEntryRef::Symlink(_) => FsStat {
-        is_directory: false,
-        is_file: false,
-        is_symlink: true,
-        atime: None,
-        birthtime: None,
-        mtime: None,
-        ctime: None,
-        blksize: 0,
-        size: 0,
-        dev: 0,
-        ino: 0,
-        mode: 0,
-        nlink: 0,
-        uid: 0,
-        gid: 0,
-        rdev: 0,
-        blocks: 0,
-        is_block_device: false,
-        is_char_device: false,
-        is_fifo: false,
-        is_socket: false,
-      },
+      Self::Dir(dir) => &dir.name,
+      Self::File(file) => &file.name,
+      Self::Symlink(symlink) => &symlink.name,
     }
   }
 }
@@ -934,9 +892,9 @@ pub enum VfsEntry {
 impl VfsEntry {
   pub fn name(&self) -> &str {
     match self {
-      VfsEntry::Dir(dir) => &dir.name,
-      VfsEntry::File(file) => &file.name,
-      VfsEntry::Symlink(symlink) => &symlink.name,
+      Self::Dir(dir) => &dir.name,
+      Self::File(file) => &file.name,
+      Self::Symlink(symlink) => &symlink.name,
     }
   }
 
@@ -1180,14 +1138,14 @@ impl VfsRoot {
   }
 }
 
-struct FileBackedVfsFile {
+pub struct FileBackedVfsFile {
   file: VirtualFile,
   pos: RefCell<u64>,
   vfs: Arc<FileBackedVfs>,
 }
 
 impl FileBackedVfsFile {
-  fn seek(&self, pos: SeekFrom) -> FsResult<u64> {
+  pub fn seek(&self, pos: SeekFrom) -> std::io::Result<u64> {
     match pos {
       SeekFrom::Start(pos) => {
         *self.pos.borrow_mut() = pos;
@@ -1196,10 +1154,10 @@ impl FileBackedVfsFile {
       SeekFrom::End(offset) => {
         if offset < 0 && -offset as u64 > self.file.offset.len {
           let msg = "An attempt was made to move the file pointer before the beginning of the file.";
-          Err(
-            std::io::Error::new(std::io::ErrorKind::PermissionDenied, msg)
-              .into(),
-          )
+          Err(std::io::Error::new(
+            std::io::ErrorKind::PermissionDenied,
+            msg,
+          ))
         } else {
           let mut current_pos = self.pos.borrow_mut();
           *current_pos = if offset >= 0 {
@@ -1215,7 +1173,7 @@ impl FileBackedVfsFile {
         if offset >= 0 {
           *current_pos += offset as u64;
         } else if -offset as u64 > *current_pos {
-          return Err(std::io::Error::new(std::io::ErrorKind::PermissionDenied, "An attempt was made to move the file pointer before the beginning of the file.").into());
+          return Err(std::io::Error::new(std::io::ErrorKind::PermissionDenied, "An attempt was made to move the file pointer before the beginning of the file."));
         } else {
           *current_pos -= -offset as u64;
         }
@@ -1224,7 +1182,7 @@ impl FileBackedVfsFile {
     }
   }
 
-  fn read_to_buf(&self, buf: &mut [u8]) -> FsResult<usize> {
+  pub fn read_to_buf(&self, buf: &mut [u8]) -> std::io::Result<usize> {
     let read_pos = {
       let mut pos = self.pos.borrow_mut();
       let read_pos = *pos;
@@ -1232,10 +1190,7 @@ impl FileBackedVfsFile {
       *pos = std::cmp::min(self.file.offset.len, *pos + buf.len() as u64);
       read_pos
     };
-    self
-      .vfs
-      .read_file(&self.file, read_pos, buf)
-      .map_err(|err| err.into())
+    self.vfs.read_file(&self.file, read_pos, buf)
   }
 
   fn read_to_end(&self) -> FsResult<Cow<'static, [u8]>> {
@@ -1270,7 +1225,7 @@ impl FileBackedVfsFile {
 #[async_trait::async_trait(?Send)]
 impl deno_io::fs::File for FileBackedVfsFile {
   fn read_sync(self: Rc<Self>, buf: &mut [u8]) -> FsResult<usize> {
-    self.read_to_buf(buf)
+    self.read_to_buf(buf).map_err(Into::into)
   }
   async fn read_byob(
     self: Rc<Self>,
@@ -1314,10 +1269,10 @@ impl deno_io::fs::File for FileBackedVfsFile {
   }
 
   fn seek_sync(self: Rc<Self>, pos: SeekFrom) -> FsResult<u64> {
-    self.seek(pos)
+    self.seek(pos).map_err(|err| err.into())
   }
   async fn seek_async(self: Rc<Self>, pos: SeekFrom) -> FsResult<u64> {
-    self.seek(pos)
+    self.seek(pos).map_err(|err| err.into())
   }
 
   fn datasync_sync(self: Rc<Self>) -> FsResult<()> {
@@ -1393,6 +1348,47 @@ impl deno_io::fs::File for FileBackedVfsFile {
   }
 }
 
+#[derive(Debug, Clone)]
+pub struct FileBackedVfsDirEntry {
+  pub parent_path: PathBuf,
+  pub metadata: FileBackedVfsMetadata,
+}
+
+#[derive(Debug, Clone)]
+pub struct FileBackedVfsMetadata {
+  pub name: String,
+  pub file_type: sys_traits::FileType,
+  pub len: u64,
+}
+
+impl FileBackedVfsMetadata {
+  pub fn as_fs_stat(&self) -> FsStat {
+    FsStat {
+      is_directory: self.file_type == sys_traits::FileType::Dir,
+      is_file: self.file_type == sys_traits::FileType::File,
+      is_symlink: self.file_type == sys_traits::FileType::Symlink,
+      atime: None,
+      birthtime: None,
+      mtime: None,
+      ctime: None,
+      blksize: 0,
+      size: self.len,
+      dev: 0,
+      ino: 0,
+      mode: 0,
+      nlink: 0,
+      uid: 0,
+      gid: 0,
+      rdev: 0,
+      blocks: 0,
+      is_block_device: false,
+      is_char_device: false,
+      is_fifo: false,
+      is_socket: false,
+    }
+  }
+}
+
 #[derive(Debug)]
 pub struct FileBackedVfs {
   vfs_data: Cow<'static, [u8]>,
@@ -1418,13 +1414,13 @@ impl FileBackedVfs {
   pub fn open_file(
     self: &Arc<Self>,
     path: &Path,
-  ) -> std::io::Result<Rc<dyn deno_io::fs::File>> {
+  ) -> std::io::Result<FileBackedVfsFile> {
     let file = self.file_entry(path)?;
-    Ok(Rc::new(FileBackedVfsFile {
+    Ok(FileBackedVfsFile {
       file: file.clone(),
       vfs: self.clone(),
       pos: Default::default(),
-    }))
+    })
   }
 
   pub fn read_dir(&self, path: &Path) -> std::io::Result<Vec<FsDirEntry>> {
@@ -1443,6 +1439,18 @@ impl FileBackedVfs {
     )
   }
 
+  pub fn read_dir_with_metadata<'a>(
+    &'a self,
+    path: &Path,
+  ) -> std::io::Result<impl Iterator<Item = FileBackedVfsDirEntry> + 'a> {
+    let dir = self.dir_entry(path)?;
+    let path = path.to_path_buf();
+    Ok(dir.entries.iter().map(move |entry| FileBackedVfsDirEntry {
+      parent_path: path.to_path_buf(),
+      metadata: entry.as_ref().as_metadata(),
+    }))
+  }
+
   pub fn read_link(&self, path: &Path) -> std::io::Result<PathBuf> {
     let (_, entry) = self.fs_root.find_entry_no_follow(path)?;
     match entry {
@@ -1456,14 +1464,14 @@ impl FileBackedVfs {
     }
   }
 
-  pub fn lstat(&self, path: &Path) -> std::io::Result<FsStat> {
+  pub fn lstat(&self, path: &Path) -> std::io::Result<FileBackedVfsMetadata> {
     let (_, entry) = self.fs_root.find_entry_no_follow(path)?;
-    Ok(entry.as_fs_stat())
+    Ok(entry.as_metadata())
   }
 
-  pub fn stat(&self, path: &Path) -> std::io::Result<FsStat> {
+  pub fn stat(&self, path: &Path) -> std::io::Result<FileBackedVfsMetadata> {
     let (_, entry) = self.fs_root.find_entry(path)?;
-    Ok(entry.as_fs_stat())
+    Ok(entry.as_metadata())
   }
 
   pub fn canonicalize(&self, path: &Path) -> std::io::Result<PathBuf> {
@@ -1556,6 +1564,7 @@ impl FileBackedVfs {
 #[cfg(test)]
 mod test {
   use console_static_text::ansi::strip_ansi_codes;
+  use deno_io::fs::File;
   use std::io::Write;
   use test_util::assert_contains;
   use test_util::TempDir;
@@ -1641,25 +1650,31 @@ mod test {
     );
 
     // metadata
-    assert!(
+    assert_eq!(
       virtual_fs
         .lstat(&dest_path.join("sub_dir").join("e.txt"))
         .unwrap()
-        .is_symlink
+        .file_type,
+      sys_traits::FileType::Symlink,
     );
-    assert!(
+    assert_eq!(
       virtual_fs
         .stat(&dest_path.join("sub_dir").join("e.txt"))
         .unwrap()
-        .is_file
+        .file_type,
+      sys_traits::FileType::File,
     );
-    assert!(
+    assert_eq!(
       virtual_fs
         .stat(&dest_path.join("sub_dir"))
         .unwrap()
-        .is_directory,
+        .file_type,
+      sys_traits::FileType::Dir,
     );
-    assert!(virtual_fs.stat(&dest_path.join("e.txt")).unwrap().is_file,);
+    assert_eq!(
+      virtual_fs.stat(&dest_path.join("e.txt")).unwrap().file_type,
+      sys_traits::FileType::File
+    );
   }
 
   #[test]
@@ -1696,11 +1711,12 @@ mod test {
       read_file(&virtual_fs, &dest_path.join("sub_dir_link").join("c.txt")),
       "c",
     );
-    assert!(
+    assert_eq!(
       virtual_fs
         .lstat(&dest_path.join("sub_dir_link"))
         .unwrap()
-        .is_symlink
+        .file_type,
+      sys_traits::FileType::Symlink,
     );
 
     assert_eq!(
@@ -1772,37 +1788,35 @@ mod test {
     let (dest_path, virtual_fs) = into_virtual_fs(builder, &temp_dir);
     let virtual_fs = Arc::new(virtual_fs);
     let file = virtual_fs.open_file(&dest_path.join("a.txt")).unwrap();
-    file.clone().seek_sync(SeekFrom::Current(2)).unwrap();
+    file.seek(SeekFrom::Current(2)).unwrap();
     let mut buf = vec![0; 2];
-    file.clone().read_sync(&mut buf).unwrap();
+    file.read_to_buf(&mut buf).unwrap();
     assert_eq!(buf, b"23");
-    file.clone().read_sync(&mut buf).unwrap();
+    file.read_to_buf(&mut buf).unwrap();
     assert_eq!(buf, b"45");
-    file.clone().seek_sync(SeekFrom::Current(-4)).unwrap();
-    file.clone().read_sync(&mut buf).unwrap();
+    file.seek(SeekFrom::Current(-4)).unwrap();
+    file.read_to_buf(&mut buf).unwrap();
     assert_eq!(buf, b"23");
-    file.clone().seek_sync(SeekFrom::Start(2)).unwrap();
-    file.clone().read_sync(&mut buf).unwrap();
+    file.seek(SeekFrom::Start(2)).unwrap();
+    file.read_to_buf(&mut buf).unwrap();
     assert_eq!(buf, b"23");
-    file.clone().seek_sync(SeekFrom::End(2)).unwrap();
-    file.clone().read_sync(&mut buf).unwrap();
+    file.seek(SeekFrom::End(2)).unwrap();
+    file.read_to_buf(&mut buf).unwrap();
     assert_eq!(buf, b"89");
-    file.clone().seek_sync(SeekFrom::Current(-8)).unwrap();
-    file.clone().read_sync(&mut buf).unwrap();
+    file.seek(SeekFrom::Current(-8)).unwrap();
+    file.read_to_buf(&mut buf).unwrap();
     assert_eq!(buf, b"23");
     assert_eq!(
       file
-        .clone()
-        .seek_sync(SeekFrom::Current(-5))
-        .err()
-        .unwrap()
-        .into_io_error()
+        .seek(SeekFrom::Current(-5))
+        .unwrap_err()
         .to_string(),
       "An attempt was made to move the file pointer before the beginning of the file."
     );
     // go beyond the file length, then back
-    file.clone().seek_sync(SeekFrom::Current(40)).unwrap();
-    file.clone().seek_sync(SeekFrom::Current(-38)).unwrap();
+    file.seek(SeekFrom::Current(40)).unwrap();
+    file.seek(SeekFrom::Current(-38)).unwrap();
+    let file = Rc::new(file);
     let read_buf = file.clone().read(2).await.unwrap();
     assert_eq!(read_buf.to_vec(), b"67");
     file.clone().seek_sync(SeekFrom::Current(-2)).unwrap();

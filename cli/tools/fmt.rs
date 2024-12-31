@@ -17,6 +17,7 @@ use crate::args::UnstableFmtOptions;
 use crate::cache::Caches;
 use crate::colors;
 use crate::factory::CliFactory;
+use crate::sys::CliSys;
 use crate::util::diff::diff;
 use crate::util::file_watcher;
 use crate::util::fs::canonicalize_path;
@@ -34,7 +35,6 @@ use deno_core::futures;
 use deno_core::parking_lot::Mutex;
 use deno_core::unsync::spawn_blocking;
 use deno_core::url::Url;
-use deno_runtime::deno_fs::FsSysTraitsAdapter;
 use log::debug;
 use log::info;
 use log::warn;
@@ -58,7 +58,7 @@ pub async fn format(
   fmt_flags: FmtFlags,
 ) -> Result<(), AnyError> {
   if fmt_flags.is_stdin() {
-    let cli_options = CliOptions::from_flags(flags)?;
+    let cli_options = CliOptions::from_flags(&CliSys::default(), flags)?;
     let start_dir = &cli_options.start_dir;
     let fmt_config = start_dir
       .to_fmt_config(FilePatterns::new_with_base(start_dir.dir_path()))?;
@@ -231,7 +231,7 @@ fn collect_fmt_files(
   .ignore_node_modules()
   .use_gitignore()
   .set_vendor_folder(cli_options.vendor_dir_path().map(ToOwned::to_owned))
-  .collect_file_patterns(&FsSysTraitsAdapter::new_real(), files)
+  .collect_file_patterns(&CliSys::default(), files)
 }
 
 /// Formats markdown (using <https://github.com/dprint/dprint-plugin-markdown>) and its code blocks

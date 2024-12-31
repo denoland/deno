@@ -36,11 +36,10 @@ use deno_package_json::PackageJsonDepValue;
 use deno_resolver::cjs::IsCjsResolutionMode;
 use deno_resolver::npm::NpmReqResolverOptions;
 use deno_runtime::deno_fs;
-use deno_runtime::deno_fs::FsSysTraitsAdapter;
+use deno_runtime::deno_fs::FileSystem;
 use deno_runtime::deno_node::create_host_defined_options;
 use deno_runtime::deno_node::NodeRequireLoader;
 use deno_runtime::deno_node::NodeResolver;
-use deno_runtime::deno_node::PackageJsonResolver;
 use deno_runtime::deno_node::RealIsBuiltInNodeModuleChecker;
 use deno_runtime::deno_permissions::Permissions;
 use deno_runtime::deno_permissions::PermissionsContainer;
@@ -77,6 +76,8 @@ use crate::cache::NodeAnalysisCache;
 use crate::http_util::HttpClientProvider;
 use crate::node::CliCjsCodeAnalyzer;
 use crate::node::CliNodeCodeTranslator;
+use crate::node::CliNodeResolver;
+use crate::node::CliPackageJsonResolver;
 use crate::npm::create_cli_npm_resolver;
 use crate::npm::create_in_npm_pkg_checker;
 use crate::npm::CliByonmNpmResolverCreateOptions;
@@ -89,6 +90,7 @@ use crate::npm::CreateInNpmPkgCheckerOptions;
 use crate::resolver::CjsTracker;
 use crate::resolver::CliNpmReqResolver;
 use crate::resolver::NpmModuleLoader;
+use crate::sys::CliSys;
 use crate::util::progress_bar::ProgressBar;
 use crate::util::progress_bar::ProgressBarStyle;
 use crate::util::text_encoding::from_utf8_lossy_cow;
@@ -105,12 +107,12 @@ mod file_system;
 mod serialization;
 mod virtual_fs;
 
+pub use self::file_system::DenoCompileFileSystem;
 pub use binary::extract_standalone;
 pub use binary::is_standalone_binary;
 pub use binary::DenoCompileBinaryWriter;
 
 use self::binary::Metadata;
-use self::file_system::DenoCompileFileSystem;
 
 struct SharedModuleLoaderState {
   cjs_tracker: Arc<CjsTracker>,
@@ -118,7 +120,7 @@ struct SharedModuleLoaderState {
   fs: Arc<dyn deno_fs::FileSystem>,
   modules: StandaloneModules,
   node_code_translator: Arc<CliNodeCodeTranslator>,
-  node_resolver: Arc<NodeResolver>,
+  node_resolver: Arc<CliNodeResolver>,
   npm_module_loader: Arc<NpmModuleLoader>,
   npm_req_resolver: Arc<CliNpmReqResolver>,
   npm_resolver: Arc<dyn CliNpmResolver>,
@@ -627,9 +629,12 @@ impl RootCertStoreProvider for StandaloneRootCertStoreProvider {
   }
 }
 
-pub async fn run(data: StandaloneData) -> Result<i32, AnyError> {
+pub async fn run(
+  fs: Arc<dyn FileSystem>,
+  sys: CliSys,
+  data: StandaloneData,
+) -> Result<i32, AnyError> {
   let StandaloneData {
-    fs,
     metadata,
     modules,
     npm_snapshot,
@@ -637,7 +642,7 @@ pub async fn run(data: StandaloneData) -> Result<i32, AnyError> {
     source_maps,
     vfs,
   } = data;
-  let deno_dir_provider = Arc::new(DenoDirProvider::new(None));
+  let deno_dir_provider = Arc::new(DenoDirProvider::new(sys.clone(), None));
   let root_cert_store_provider = Arc::new(StandaloneRootCertStoreProvider {
     ca_stores: metadata.ca_stores,
     ca_data: metadata.ca_data.map(CaData::Bytes),
@@ -655,8 +660,7 @@ pub async fn run(data: StandaloneData) -> Result<i32, AnyError> {
   let main_module = root_dir_url.join(&metadata.entrypoint_key).unwrap();
   let npm_global_cache_dir = root_path.join(".deno_compile_node_modules");
   let cache_setting = CacheSetting::Only;
-  let sys = FsSysTraitsAdapter(fs.clone());
-  let pkg_json_resolver = Arc::new(PackageJsonResolver::new(sys.clone()));
+  let pkg_json_resolver = Arc::new(CliPackageJsonResolver::new(sys.clone()));
   let (in_npm_pkg_checker, npm_resolver) = match metadata.node_modules {
     Some(binary::NodeModules::Managed { node_modules_dir }) => {
       // create an npmrc that uses the fake npm_registry_url to resolve packages
@@ -807,7 +811,7 @@ pub async fn run(data: StandaloneData) -> Result<i32, AnyError> {
     node_resolver.clone(),
     npm_resolver.clone().into_npm_pkg_folder_resolver(),
     pkg_json_resolver.clone(),
-    sys,
+    sys.clone(),
   ));
   let workspace_resolver = {
     let import_map = match metadata.workspace_resolver.import_map {
@@ -910,7 +914,7 @@ pub async fn run(data: StandaloneData) -> Result<i32, AnyError> {
     }
 
     let desc_parser =
-      Arc::new(RuntimePermissionDescriptorParser::new(fs.clone()));
+      Arc::new(RuntimePermissionDescriptorParser::new(sys.clone()));
     let permissions =
       Permissions::from_options(desc_parser.as_ref(), &permissions)?;
     PermissionsContainer::new(desc_parser, permissions)
@@ -940,6 +944,7 @@ pub async fn run(data: StandaloneData) -> Result<i32, AnyError> {
     root_cert_store_provider,
     permissions,
     StorageKeyResolver::empty(),
+    sys,
     crate::args::DenoSubcommand::Run(Default::default()),
     CliMainWorkerOptions {
       argv: metadata.argv,

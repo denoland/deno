@@ -10,6 +10,7 @@ use crate::factory::CliFactory;
 use crate::graph_util::graph_exit_integrity_errors;
 use crate::graph_util::graph_walk_errors;
 use crate::graph_util::GraphWalkErrorsOptions;
+use crate::sys::CliSys;
 use crate::tsc::get_types_declaration_file_text;
 use crate::util::fs::collect_specifiers;
 use deno_ast::diagnostics::Diagnostic;
@@ -28,7 +29,6 @@ use deno_graph::EsParser;
 use deno_graph::GraphKind;
 use deno_graph::ModuleAnalyzer;
 use deno_graph::ModuleSpecifier;
-use deno_runtime::deno_fs::FsSysTraitsAdapter;
 use doc::html::ShortPath;
 use doc::DocDiagnostic;
 use indexmap::IndexMap;
@@ -115,7 +115,7 @@ pub async fn doc(
     }
     DocSourceFileFlag::Paths(ref source_files) => {
       let module_graph_creator = factory.module_graph_creator().await?;
-      let fs = FsSysTraitsAdapter(factory.fs().clone());
+      let sys = CliSys::default();
 
       let module_specifiers = collect_specifiers(
         FilePatterns {
@@ -142,7 +142,7 @@ pub async fn doc(
       graph_exit_integrity_errors(&graph);
       let errors = graph_walk_errors(
         &graph,
-        &fs,
+        &sys,
         &module_specifiers,
         GraphWalkErrorsOptions {
           check_js: false,

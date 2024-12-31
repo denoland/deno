@@ -10,6 +10,7 @@ use crate::factory::CliFactory;
 use crate::file_fetcher::CliFileFetcher;
 use crate::graph_util::has_graph_root_local_dependent_changed;
 use crate::ops;
+use crate::sys::CliSys;
 use crate::util::extract::extract_doc_tests;
 use crate::util::file_watcher;
 use crate::util::fs::collect_specifiers;
@@ -1194,7 +1195,7 @@ static HAS_TEST_RUN_SIGINT_HANDLER: AtomicBool = AtomicBool::new(false);
 async fn test_specifiers(
   worker_factory: Arc<CliMainWorkerFactory>,
   permissions: &Permissions,
-  permission_desc_parser: &Arc<RuntimePermissionDescriptorParser>,
+  permission_desc_parser: &Arc<RuntimePermissionDescriptorParser<CliSys>>,
   specifiers: Vec<ModuleSpecifier>,
   options: TestSpecifiersOptions,
 ) -> Result<(), AnyError> {

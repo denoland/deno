@@ -9,7 +9,6 @@ use deno_ast::ModuleSpecifier;
 use deno_core::error::AnyError;
 use deno_graph::Module;
 use deno_graph::ModuleGraph;
-use deno_runtime::deno_node::NodeResolver;
 use deno_terminal::colors;
 use once_cell::sync::Lazy;
 use regex::Regex;
@@ -29,6 +28,7 @@ use crate::cache::TypeCheckCache;
 use crate::factory::CliFactory;
 use crate::graph_util::BuildFastCheckGraphOptions;
 use crate::graph_util::ModuleGraphBuilder;
+use crate::node::CliNodeResolver;
 use crate::npm::CliNpmResolver;
 use crate::tsc;
 use crate::tsc::Diagnostics;
@@ -103,7 +103,7 @@ pub struct TypeChecker {
   cjs_tracker: Arc<TypeCheckingCjsTracker>,
   cli_options: Arc<CliOptions>,
   module_graph_builder: Arc<ModuleGraphBuilder>,
-  node_resolver: Arc<NodeResolver>,
+  node_resolver: Arc<CliNodeResolver>,
   npm_resolver: Arc<dyn CliNpmResolver>,
 }
 
@@ -113,7 +113,7 @@ impl TypeChecker {
     cjs_tracker: Arc<TypeCheckingCjsTracker>,
     cli_options: Arc<CliOptions>,
     module_graph_builder: Arc<ModuleGraphBuilder>,
-    node_resolver: Arc<NodeResolver>,
+    node_resolver: Arc<CliNodeResolver>,
     npm_resolver: Arc<dyn CliNpmResolver>,
   ) -> Self {
     Self {

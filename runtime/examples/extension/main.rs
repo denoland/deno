@@ -37,11 +37,12 @@ async fn main() -> Result<(), AnyError> {
   let main_module = ModuleSpecifier::from_file_path(js_path).unwrap();
   eprintln!("Running {main_module}...");
   let fs = Arc::new(RealFs);
-  let permission_desc_parser =
-    Arc::new(RuntimePermissionDescriptorParser::new(fs.clone()));
+  let permission_desc_parser = Arc::new(
+    RuntimePermissionDescriptorParser::new(sys_traits::impls::RealSys),
+  );
   let mut worker = MainWorker::bootstrap_from_options(
     main_module.clone(),
-    WorkerServiceOptions {
+    WorkerServiceOptions::<sys_traits::impls::RealSys> {
       module_loader: Rc::new(FsModuleLoader),
       permissions: PermissionsContainer::allow_all(permission_desc_parser),
       blob_store: Default::default(),

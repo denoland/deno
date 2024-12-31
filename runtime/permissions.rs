@@ -21,13 +21,17 @@ use deno_permissions::SysDescriptorParseError;
 use deno_permissions::WriteDescriptor;
 
 #[derive(Debug)]
-pub struct RuntimePermissionDescriptorParser {
-  fs: deno_fs::FileSystemRc,
+pub struct RuntimePermissionDescriptorParser<
+  TSys: sys_traits::EnvCurrentDir + Send + Sync,
+> {
+  sys: TSys,
 }
 
-impl RuntimePermissionDescriptorParser {
-  pub fn new(fs: deno_fs::FileSystemRc) -> Self {
-    Self { fs }
+impl<TSys: sys_traits::EnvCurrentDir + Send + Sync>
+  RuntimePermissionDescriptorParser<TSys>
+{
+  pub fn new(sys: TSys) -> Self {
+    Self { sys }
   }
 
   fn resolve_from_cwd(&self, path: &str) -> Result<PathBuf, PathResolveError> {
@@ -45,14 +49,15 @@ impl RuntimePermissionDescriptorParser {
 
   fn resolve_cwd(&self) -> Result<PathBuf, PathResolveError> {
     self
-      .fs
-      .cwd()
-      .map_err(|e| PathResolveError::CwdResolve(e.into_io_error()))
+      .sys
+      .env_current_dir()
+      .map_err(PathResolveError::CwdResolve)
   }
 }
 
-impl deno_permissions::PermissionDescriptorParser
-  for RuntimePermissionDescriptorParser
+impl<TSys: sys_traits::EnvCurrentDir + Send + Sync + std::fmt::Debug>
+  deno_permissions::PermissionDescriptorParser
+  for RuntimePermissionDescriptorParser<TSys>
 {
   fn parse_read_descriptor(
     &self,
@@ -151,16 +156,14 @@ impl deno_permissions::PermissionDescriptorParser
 
 #[cfg(test)]
 mod test {
-  use std::sync::Arc;
-
-  use deno_fs::RealFs;
   use deno_permissions::PermissionDescriptorParser;
 
   use super::*;
 
   #[test]
   fn test_handle_empty_value() {
-    let parser = RuntimePermissionDescriptorParser::new(Arc::new(RealFs));
+    let parser =
+      RuntimePermissionDescriptorParser::new(sys_traits::impls::RealSys);
     assert!(parser.parse_read_descriptor("").is_err());
     assert!(parser.parse_write_descriptor("").is_err());
     assert!(parser.parse_env_descriptor("").is_err());

@@ -259,7 +259,6 @@ pub fn is_standalone_binary(exe_path: &Path) -> bool {
 }
 
 pub struct StandaloneData {
-  pub fs: Arc<dyn deno_fs::FileSystem>,
   pub metadata: Metadata,
   pub modules: StandaloneModules,
   pub npm_snapshot: Option<ValidSerializedNpmResolutionSnapshot>,
@@ -382,10 +381,7 @@ pub fn extract_standalone(
     };
     Arc::new(FileBackedVfs::new(Cow::Borrowed(vfs_files_data), fs_root))
   };
-  let fs: Arc<dyn deno_fs::FileSystem> =
-    Arc::new(DenoCompileFileSystem::new(vfs.clone()));
   Ok(Some(StandaloneData {
-    fs,
     metadata,
     modules: StandaloneModules {
       remote_modules,

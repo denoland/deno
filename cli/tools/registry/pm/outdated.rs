@@ -185,6 +185,7 @@ pub async fn outdated(
   let file_fetcher = CliFileFetcher::new(
     deps_http_cache.clone(),
     http_client.clone(),
+    factory.sys(),
     Default::default(),
     None,
     true,

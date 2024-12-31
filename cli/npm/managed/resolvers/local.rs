@@ -32,7 +32,6 @@ use deno_npm::NpmSystemInfo;
 use deno_path_util::fs::atomic_write_file_with_retries;
 use deno_path_util::fs::canonicalize_path_maybe_not_exists;
 use deno_resolver::npm::normalize_pkg_name_for_node_modules_deno_folder;
-use deno_runtime::deno_fs::FsSysTraitsAdapter;
 use deno_runtime::deno_node::NodePermissions;
 use deno_semver::package::PackageNv;
 use deno_semver::StackString;
@@ -51,6 +50,7 @@ use crate::colors;
 use crate::npm::managed::PackageCaching;
 use crate::npm::CliNpmCache;
 use crate::npm::CliNpmTarballCache;
+use crate::sys::CliSys;
 use crate::util::fs::clone_dir_recursive;
 use crate::util::fs::symlink_dir;
 use crate::util::fs::LaxSingleProcessFsFlag;
@@ -70,7 +70,7 @@ pub struct LocalNpmPackageResolver {
   npm_install_deps_provider: Arc<NpmInstallDepsProvider>,
   progress_bar: ProgressBar,
   resolution: Arc<NpmResolution>,
-  sys: FsSysTraitsAdapter,
+  sys: CliSys,
   tarball_cache: Arc<CliNpmTarballCache>,
   root_node_modules_path: PathBuf,
   root_node_modules_url: Url,
@@ -86,7 +86,7 @@ impl LocalNpmPackageResolver {
     npm_install_deps_provider: Arc<NpmInstallDepsProvider>,
     progress_bar: ProgressBar,
     resolution: Arc<NpmResolution>,
-    sys: FsSysTraitsAdapter,
+    sys: CliSys,
     tarball_cache: Arc<CliNpmTarballCache>,
     node_modules_folder: PathBuf,
     system_info: NpmSystemInfo,
@@ -926,7 +926,7 @@ impl SetupCache {
 
     bincode::serialize(&self.current).ok().and_then(|data| {
       atomic_write_file_with_retries(
-        &FsSysTraitsAdapter::new_real(),
+        &CliSys::default(),
         &self.file_path,
         &data,
         CACHE_PERM,

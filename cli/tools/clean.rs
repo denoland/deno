@@ -7,6 +7,7 @@ use std::path::Path;
 use crate::cache::DenoDir;
 use crate::colors;
 use crate::display;
+use crate::sys::CliSys;
 use crate::util::progress_bar::ProgressBar;
 use crate::util::progress_bar::ProgressBarStyle;
 use crate::util::progress_bar::ProgressMessagePrompt;
@@ -28,7 +29,7 @@ impl CleanState {
 }
 
 pub fn clean() -> Result<(), AnyError> {
-  let deno_dir = DenoDir::new(None)?;
+  let deno_dir = DenoDir::new(CliSys::default(), None)?;
   if deno_dir.root.exists() {
     let no_of_files = walkdir::WalkDir::new(&deno_dir.root).into_iter().count();
     let progress_bar = ProgressBar::new(ProgressBarStyle::ProgressBars);
