@@ -5,8 +5,10 @@
 
 const NAPI_VERSION: u32 = 9;
 
-use crate::*;
+use std::ptr::NonNull;
+
 use libc::INT_MAX;
+use napi_sym::napi_sym;
 
 use super::util::check_new_from_utf8;
 use super::util::check_new_from_utf8_len;
@@ -20,8 +22,7 @@ use crate::check_env;
 use crate::function::create_function;
 use crate::function::create_function_template;
 use crate::function::CallbackInfo;
-use napi_sym::napi_sym;
-use std::ptr::NonNull;
+use crate::*;
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 enum ReferenceOwnership {

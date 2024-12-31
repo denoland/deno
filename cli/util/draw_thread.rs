@@ -1,13 +1,14 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
+use std::io::IsTerminal;
+use std::sync::Arc;
+use std::time::Duration;
+
 use console_static_text::ConsoleStaticText;
 use deno_core::parking_lot::Mutex;
 use deno_core::unsync::spawn_blocking;
 use deno_runtime::ops::tty::ConsoleSize;
 use once_cell::sync::Lazy;
-use std::io::IsTerminal;
-use std::sync::Arc;
-use std::time::Duration;
 
 use crate::util::console::console_size;
 

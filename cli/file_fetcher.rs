@@ -498,16 +498,16 @@ fn validate_scheme(specifier: &Url) -> Result<(), UnsupportedSchemeError> {
 
 #[cfg(test)]
 mod tests {
-  use crate::cache::GlobalHttpCache;
-  use crate::http_util::HttpClientProvider;
-
-  use super::*;
   use deno_cache_dir::file_fetcher::FetchNoFollowErrorKind;
   use deno_cache_dir::file_fetcher::HttpClient;
   use deno_core::resolve_url;
   use deno_runtime::deno_web::Blob;
   use deno_runtime::deno_web::InMemoryBlobPart;
   use test_util::TempDir;
+
+  use super::*;
+  use crate::cache::GlobalHttpCache;
+  use crate::http_util::HttpClientProvider;
 
   fn setup(
     cache_setting: CacheSetting,

@@ -1,14 +1,13 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
+use std::env;
+use std::path::PathBuf;
+
 use deno_cache_dir::DenoDirResolutionError;
 use once_cell::sync::OnceCell;
 
-use crate::sys::CliSys;
-
 use super::DiskCache;
-
-use std::env;
-use std::path::PathBuf;
+use crate::sys::CliSys;
 
 /// Lazily creates the deno dir which might be useful in scenarios
 /// where functionality wants to continue if the DENO_DIR can't be created.

@@ -2,6 +2,13 @@
 
 // Usage: provide a port as argument to run hyper_hello benchmark server
 // otherwise this starts multiple servers on many ports for test endpoints.
+use std::collections::HashMap;
+use std::convert::Infallible;
+use std::env;
+use std::net::SocketAddr;
+use std::result::Result;
+use std::time::Duration;
+
 use base64::prelude::BASE64_STANDARD;
 use base64::Engine;
 use bytes::Bytes;
@@ -27,12 +34,6 @@ use http_body_util::Empty;
 use http_body_util::Full;
 use pretty_assertions::assert_eq;
 use prost::Message;
-use std::collections::HashMap;
-use std::convert::Infallible;
-use std::env;
-use std::net::SocketAddr;
-use std::result::Result;
-use std::time::Duration;
 use tokio::io::AsyncWriteExt;
 use tokio::net::TcpStream;
 
@@ -48,12 +49,11 @@ use hyper_utils::run_server_with_acceptor;
 use hyper_utils::ServerKind;
 use hyper_utils::ServerOptions;
 
-use crate::TEST_SERVERS_COUNT;
-
 use super::https::get_tls_listener_stream;
 use super::https::SupportedHttpVersions;
 use super::std_path;
 use super::testdata_path;
+use crate::TEST_SERVERS_COUNT;
 
 pub(crate) const PORT: u16 = 4545;
 const TEST_AUTH_TOKEN: &str = "abcdef123456789";

@@ -1,7 +1,8 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+use std::path::PathBuf;
+
 use deno_core::op2;
 use deno_core::v8;
-use std::path::PathBuf;
 
 deno_core::extension!(
   deno_console,

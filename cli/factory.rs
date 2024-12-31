@@ -1,5 +1,34 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
+use std::future::Future;
+use std::path::PathBuf;
+use std::sync::Arc;
+
+use deno_cache_dir::npm::NpmCacheDir;
+use deno_config::workspace::PackageJsonDepResolution;
+use deno_config::workspace::WorkspaceResolver;
+use deno_core::error::AnyError;
+use deno_core::futures::FutureExt;
+use deno_core::FeatureChecker;
+use deno_resolver::cjs::IsCjsResolutionMode;
+use deno_resolver::npm::NpmReqResolverOptions;
+use deno_resolver::DenoResolverOptions;
+use deno_resolver::NodeAndNpmReqResolver;
+use deno_runtime::deno_fs;
+use deno_runtime::deno_fs::RealFs;
+use deno_runtime::deno_node::RealIsBuiltInNodeModuleChecker;
+use deno_runtime::deno_permissions::Permissions;
+use deno_runtime::deno_permissions::PermissionsContainer;
+use deno_runtime::deno_tls::rustls::RootCertStore;
+use deno_runtime::deno_tls::RootCertStoreProvider;
+use deno_runtime::deno_web::BlobStore;
+use deno_runtime::inspector_server::InspectorServer;
+use deno_runtime::permissions::RuntimePermissionDescriptorParser;
+use log::warn;
+use node_resolver::analyze::NodeCodeTranslator;
+use node_resolver::InNpmPackageChecker;
+use once_cell::sync::OnceCell;
+
 use crate::args::check_warn_tsconfig;
 use crate::args::get_root_cert_store;
 use crate::args::CaData;
@@ -63,35 +92,6 @@ use crate::util::progress_bar::ProgressBar;
 use crate::util::progress_bar::ProgressBarStyle;
 use crate::worker::CliMainWorkerFactory;
 use crate::worker::CliMainWorkerOptions;
-use std::path::PathBuf;
-
-use deno_cache_dir::npm::NpmCacheDir;
-use deno_config::workspace::PackageJsonDepResolution;
-use deno_config::workspace::WorkspaceResolver;
-use deno_core::error::AnyError;
-use deno_core::futures::FutureExt;
-use deno_core::FeatureChecker;
-
-use deno_resolver::cjs::IsCjsResolutionMode;
-use deno_resolver::npm::NpmReqResolverOptions;
-use deno_resolver::DenoResolverOptions;
-use deno_resolver::NodeAndNpmReqResolver;
-use deno_runtime::deno_fs;
-use deno_runtime::deno_fs::RealFs;
-use deno_runtime::deno_node::RealIsBuiltInNodeModuleChecker;
-use deno_runtime::deno_permissions::Permissions;
-use deno_runtime::deno_permissions::PermissionsContainer;
-use deno_runtime::deno_tls::rustls::RootCertStore;
-use deno_runtime::deno_tls::RootCertStoreProvider;
-use deno_runtime::deno_web::BlobStore;
-use deno_runtime::inspector_server::InspectorServer;
-use deno_runtime::permissions::RuntimePermissionDescriptorParser;
-use log::warn;
-use node_resolver::analyze::NodeCodeTranslator;
-use node_resolver::InNpmPackageChecker;
-use once_cell::sync::OnceCell;
-use std::future::Future;
-use std::sync::Arc;
 
 struct CliRootCertStoreProvider {
   cell: OnceCell<RootCertStore>,

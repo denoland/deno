@@ -24,6 +24,12 @@ mod util;
 mod version;
 mod worker;
 
+use std::borrow::Cow;
+use std::collections::HashMap;
+use std::env;
+use std::env::current_exe;
+use std::sync::Arc;
+
 use deno_core::error::generic_error;
 use deno_core::error::AnyError;
 use deno_core::error::JsError;
@@ -33,12 +39,6 @@ pub use deno_runtime::UNSTABLE_GRANULAR_FLAGS;
 use deno_terminal::colors;
 use indexmap::IndexMap;
 use standalone::DenoCompileFileSystem;
-
-use std::borrow::Cow;
-use std::collections::HashMap;
-use std::env;
-use std::env::current_exe;
-use std::sync::Arc;
 
 use crate::args::Flags;
 

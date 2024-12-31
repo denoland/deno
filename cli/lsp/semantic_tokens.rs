@@ -7,6 +7,7 @@
 
 use std::ops::Index;
 use std::ops::IndexMut;
+
 use tower_lsp::lsp_types as lsp;
 use tower_lsp::lsp_types::SemanticToken;
 use tower_lsp::lsp_types::SemanticTokenModifier;

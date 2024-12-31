@@ -8,16 +8,18 @@ use deno_runtime::*;
 mod shared;
 
 mod ts {
-  use super::*;
+  use std::collections::HashMap;
+  use std::io::Write;
+  use std::path::Path;
+  use std::path::PathBuf;
+
   use deno_core::error::custom_error;
   use deno_core::error::AnyError;
   use deno_core::op2;
   use deno_core::OpState;
   use serde::Serialize;
-  use std::collections::HashMap;
-  use std::io::Write;
-  use std::path::Path;
-  use std::path::PathBuf;
+
+  use super::*;
 
   #[derive(Debug, Serialize)]
   #[serde(rename_all = "camelCase")]

@@ -1,10 +1,12 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
-use crate::assert_napi_ok;
-use crate::cstr;
+use std::ptr;
+
 use napi_sys::PropertyAttributes::*;
 use napi_sys::*;
-use std::ptr;
+
+use crate::assert_napi_ok;
+use crate::cstr;
 
 static NICE: i64 = 69;
 

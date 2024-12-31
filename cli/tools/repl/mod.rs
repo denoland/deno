@@ -2,8 +2,14 @@
 
 use std::io;
 use std::io::Write;
-
 use std::sync::Arc;
+
+use deno_core::error::AnyError;
+use deno_core::futures::StreamExt;
+use deno_core::serde_json;
+use deno_core::unsync::spawn_blocking;
+use deno_runtime::WorkerExecutionMode;
+use rustyline::error::ReadlineError;
 
 use crate::args::CliOptions;
 use crate::args::Flags;
@@ -13,12 +19,6 @@ use crate::colors;
 use crate::factory::CliFactory;
 use crate::file_fetcher::CliFileFetcher;
 use crate::file_fetcher::TextDecodedFile;
-use deno_core::error::AnyError;
-use deno_core::futures::StreamExt;
-use deno_core::serde_json;
-use deno_core::unsync::spawn_blocking;
-use deno_runtime::WorkerExecutionMode;
-use rustyline::error::ReadlineError;
 
 mod channel;
 mod editor;

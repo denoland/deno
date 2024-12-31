@@ -5,7 +5,6 @@ use std::path::Path;
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use crate::sys::CliSys;
 use deno_ast::ModuleSpecifier;
 use deno_cache_dir::npm::NpmCacheDir;
 use deno_core::anyhow::Context;
@@ -35,20 +34,9 @@ use node_resolver::InNpmPackageChecker;
 use node_resolver::NpmPackageFolderResolver;
 use resolution::AddPkgReqsResult;
 
-use crate::args::CliLockfile;
-use crate::args::LifecycleScriptsConfig;
-use crate::args::NpmInstallDepsProvider;
-use crate::args::NpmProcessState;
-use crate::args::NpmProcessStateKind;
-use crate::args::PackageJsonDepValueParseWithLocationError;
-use crate::cache::FastInsecureHasher;
-use crate::util::progress_bar::ProgressBar;
-use crate::util::sync::AtomicFlag;
-
 use self::resolution::NpmResolution;
 use self::resolvers::create_npm_fs_resolver;
 use self::resolvers::NpmPackageFsResolver;
-
 use super::CliNpmCache;
 use super::CliNpmCacheHttpClient;
 use super::CliNpmRegistryInfoProvider;
@@ -56,6 +44,16 @@ use super::CliNpmResolver;
 use super::CliNpmTarballCache;
 use super::InnerCliNpmResolverRef;
 use super::ResolvePkgFolderFromDenoReqError;
+use crate::args::CliLockfile;
+use crate::args::LifecycleScriptsConfig;
+use crate::args::NpmInstallDepsProvider;
+use crate::args::NpmProcessState;
+use crate::args::NpmProcessStateKind;
+use crate::args::PackageJsonDepValueParseWithLocationError;
+use crate::cache::FastInsecureHasher;
+use crate::sys::CliSys;
+use crate::util::progress_bar::ProgressBar;
+use crate::util::sync::AtomicFlag;
 
 mod resolution;
 mod resolvers;

@@ -34,12 +34,11 @@ use serde::Deserialize;
 use serde::Serialize;
 use thiserror::Error;
 
+use super::binary::DENO_COMPILE_GLOBAL_NODE_MODULES_DIR_NAME;
 use crate::util;
 use crate::util::display::human_size;
 use crate::util::display::DisplayTreeNode;
 use crate::util::fs::canonicalize_path;
-
-use super::binary::DENO_COMPILE_GLOBAL_NODE_MODULES_DIR_NAME;
 
 #[derive(Debug, PartialEq, Eq)]
 pub enum WindowsSystemRootablePath {
@@ -1563,9 +1562,10 @@ impl FileBackedVfs {
 
 #[cfg(test)]
 mod test {
+  use std::io::Write;
+
   use console_static_text::ansi::strip_ansi_codes;
   use deno_io::fs::File;
-  use std::io::Write;
   use test_util::assert_contains;
   use test_util::TempDir;
 

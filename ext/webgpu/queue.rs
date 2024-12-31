@@ -1,17 +1,18 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
-use crate::command_encoder::WebGpuCommandBuffer;
-use crate::Instance;
+use std::borrow::Cow;
+use std::rc::Rc;
+
 use deno_core::error::AnyError;
 use deno_core::op2;
 use deno_core::OpState;
 use deno_core::Resource;
 use deno_core::ResourceId;
 use serde::Deserialize;
-use std::borrow::Cow;
-use std::rc::Rc;
 
 use super::error::WebGpuResult;
+use crate::command_encoder::WebGpuCommandBuffer;
+use crate::Instance;
 
 pub struct WebGpuQueue(pub Instance, pub wgpu_core::id::QueueId);
 impl Resource for WebGpuQueue {

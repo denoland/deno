@@ -1,9 +1,11 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
-use crate::*;
-use deno_core::parking_lot::Mutex;
 use std::mem::MaybeUninit;
 use std::ptr::addr_of_mut;
+
+use deno_core::parking_lot::Mutex;
+
+use crate::*;
 
 fn assert_ok(res: c_int) -> c_int {
   if res != 0 {
@@ -15,11 +17,12 @@ fn assert_ok(res: c_int) -> c_int {
   res
 }
 
+use std::ffi::c_int;
+
 use js_native_api::napi_create_string_utf8;
 use node_api::napi_create_async_work;
 use node_api::napi_delete_async_work;
 use node_api::napi_queue_async_work;
-use std::ffi::c_int;
 
 const UV_MUTEX_SIZE: usize = {
   #[cfg(unix)]

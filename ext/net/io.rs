@@ -1,5 +1,8 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
+use std::borrow::Cow;
+use std::rc::Rc;
+
 use deno_core::futures::TryFutureExt;
 use deno_core::AsyncMutFuture;
 use deno_core::AsyncRefCell;
@@ -9,14 +12,11 @@ use deno_core::CancelTryFuture;
 use deno_core::RcRef;
 use deno_core::Resource;
 use socket2::SockRef;
-use std::borrow::Cow;
-use std::rc::Rc;
 use tokio::io::AsyncRead;
 use tokio::io::AsyncReadExt;
 use tokio::io::AsyncWrite;
 use tokio::io::AsyncWriteExt;
 use tokio::net::tcp;
-
 #[cfg(unix)]
 use tokio::net::unix;
 

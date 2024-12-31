@@ -20,10 +20,9 @@ use deno_resolver::sloppy_imports::SloppyImportsResolution;
 use deno_resolver::sloppy_imports::SloppyImportsResolutionKind;
 use text_lines::LineAndColumnIndex;
 
+use super::ExtendedLintRule;
 use crate::graph_util::CliJsrUrlProvider;
 use crate::resolver::CliSloppyImportsResolver;
-
-use super::ExtendedLintRule;
 
 #[derive(Debug)]
 pub struct NoSloppyImportsRule {

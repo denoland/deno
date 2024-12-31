@@ -16,10 +16,9 @@ use deno_graph::WalkOptions;
 use deno_semver::jsr::JsrPackageReqReference;
 use deno_semver::npm::NpmPackageReqReference;
 
-use crate::cache::ParsedSourceCache;
-
 use super::diagnostics::PublishDiagnostic;
 use super::diagnostics::PublishDiagnosticsCollector;
+use crate::cache::ParsedSourceCache;
 
 pub struct GraphDiagnosticsCollector {
   parsed_source_cache: Arc<ParsedSourceCache>,

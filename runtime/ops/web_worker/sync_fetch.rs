@@ -2,8 +2,6 @@
 
 use std::sync::Arc;
 
-use crate::web_worker::WebWorkerInternalHandle;
-use crate::web_worker::WebWorkerType;
 use deno_core::futures::StreamExt;
 use deno_core::op2;
 use deno_core::url::Url;
@@ -15,6 +13,9 @@ use http_body_util::BodyExt;
 use hyper::body::Bytes;
 use serde::Deserialize;
 use serde::Serialize;
+
+use crate::web_worker::WebWorkerInternalHandle;
+use crate::web_worker::WebWorkerType;
 
 // TODO(andreubotella) Properly parse the MIME type
 fn mime_type_essence(mime_type: &str) -> String {

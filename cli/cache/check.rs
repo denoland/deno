@@ -1,12 +1,13 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
+use deno_ast::ModuleSpecifier;
+use deno_core::error::AnyError;
+use deno_runtime::deno_webstorage::rusqlite::params;
+
 use super::cache_db::CacheDB;
 use super::cache_db::CacheDBConfiguration;
 use super::cache_db::CacheDBHash;
 use super::cache_db::CacheFailure;
-use deno_ast::ModuleSpecifier;
-use deno_core::error::AnyError;
-use deno_runtime::deno_webstorage::rusqlite::params;
 
 pub static TYPE_CHECK_CACHE_DB: CacheDBConfiguration = CacheDBConfiguration {
   table_initializer: concat!(

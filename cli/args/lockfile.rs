@@ -10,6 +10,7 @@ use deno_core::error::AnyError;
 use deno_core::parking_lot::Mutex;
 use deno_core::parking_lot::MutexGuard;
 use deno_core::serde_json;
+use deno_lockfile::Lockfile;
 use deno_lockfile::WorkspaceMemberConfig;
 use deno_package_json::PackageJsonDepValue;
 use deno_path_util::fs::atomic_write_file_with_retries;
@@ -17,14 +18,11 @@ use deno_runtime::deno_node::PackageJson;
 use deno_semver::jsr::JsrDepPackageReq;
 
 use crate::args::deno_json::import_map_deps;
+use crate::args::DenoSubcommand;
+use crate::args::InstallFlags;
 use crate::cache;
 use crate::sys::CliSys;
 use crate::Flags;
-
-use crate::args::DenoSubcommand;
-use crate::args::InstallFlags;
-
-use deno_lockfile::Lockfile;
 
 #[derive(Debug)]
 pub struct CliLockfileReadFromPathOptions {

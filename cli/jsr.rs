@@ -1,14 +1,16 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
-use crate::args::jsr_url;
-use crate::file_fetcher::CliFileFetcher;
+use std::sync::Arc;
+
 use dashmap::DashMap;
 use deno_core::serde_json;
 use deno_graph::packages::JsrPackageInfo;
 use deno_graph::packages::JsrPackageVersionInfo;
 use deno_semver::package::PackageNv;
 use deno_semver::package::PackageReq;
-use std::sync::Arc;
+
+use crate::args::jsr_url;
+use crate::file_fetcher::CliFileFetcher;
 
 /// This is similar to a subset of `JsrCacheResolver` which fetches rather than
 /// just reads the cache. Keep in sync!

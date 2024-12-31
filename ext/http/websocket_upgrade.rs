@@ -169,8 +169,9 @@ impl<T: Default> WebSocketUpgrade<T> {
 
 #[cfg(test)]
 mod tests {
-  use super::*;
   use hyper_v014::Body;
+
+  use super::*;
 
   type ExpectedResponseAndHead = Option<(Response<Body>, &'static [u8])>;
 

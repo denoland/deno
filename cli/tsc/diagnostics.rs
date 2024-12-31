@@ -1,16 +1,16 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
-use deno_ast::ModuleSpecifier;
-use deno_graph::ModuleGraph;
-use deno_terminal::colors;
+use std::error::Error;
+use std::fmt;
 
+use deno_ast::ModuleSpecifier;
 use deno_core::serde::Deserialize;
 use deno_core::serde::Deserializer;
 use deno_core::serde::Serialize;
 use deno_core::serde::Serializer;
 use deno_core::sourcemap::SourceMap;
-use std::error::Error;
-use std::fmt;
+use deno_graph::ModuleGraph;
+use deno_terminal::colors;
 
 const MAX_SOURCE_LINE_LENGTH: usize = 150;
 
@@ -401,10 +401,11 @@ impl Error for Diagnostics {}
 
 #[cfg(test)]
 mod tests {
-  use super::*;
   use deno_core::serde_json;
   use deno_core::serde_json::json;
   use test_util::strip_ansi_codes;
+
+  use super::*;
 
   #[test]
   fn test_de_diagnostics() {

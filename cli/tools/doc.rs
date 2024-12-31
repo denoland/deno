@@ -1,18 +1,9 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
-use crate::args::DocFlags;
-use crate::args::DocHtmlFlag;
-use crate::args::DocSourceFileFlag;
-use crate::args::Flags;
-use crate::colors;
-use crate::display;
-use crate::factory::CliFactory;
-use crate::graph_util::graph_exit_integrity_errors;
-use crate::graph_util::graph_walk_errors;
-use crate::graph_util::GraphWalkErrorsOptions;
-use crate::sys::CliSys;
-use crate::tsc::get_types_declaration_file_text;
-use crate::util::fs::collect_specifiers;
+use std::collections::BTreeMap;
+use std::rc::Rc;
+use std::sync::Arc;
+
 use deno_ast::diagnostics::Diagnostic;
 use deno_config::glob::FilePatterns;
 use deno_config::glob::PathOrPatternSet;
@@ -32,9 +23,20 @@ use deno_graph::ModuleSpecifier;
 use doc::html::ShortPath;
 use doc::DocDiagnostic;
 use indexmap::IndexMap;
-use std::collections::BTreeMap;
-use std::rc::Rc;
-use std::sync::Arc;
+
+use crate::args::DocFlags;
+use crate::args::DocHtmlFlag;
+use crate::args::DocSourceFileFlag;
+use crate::args::Flags;
+use crate::colors;
+use crate::display;
+use crate::factory::CliFactory;
+use crate::graph_util::graph_exit_integrity_errors;
+use crate::graph_util::graph_walk_errors;
+use crate::graph_util::GraphWalkErrorsOptions;
+use crate::sys::CliSys;
+use crate::tsc::get_types_declaration_file_text;
+use crate::util::fs::collect_specifiers;
 
 const JSON_SCHEMA_VERSION: u8 = 1;
 

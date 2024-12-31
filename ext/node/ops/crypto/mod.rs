@@ -1,4 +1,7 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+use std::future::Future;
+use std::rc::Rc;
+
 use deno_core::error::generic_error;
 use deno_core::error::type_error;
 use deno_core::op2;
@@ -16,16 +19,13 @@ use keys::EcPublicKey;
 use keys::KeyObjectHandle;
 use num_bigint::BigInt;
 use num_bigint_dig::BigUint;
+use p224::NistP224;
+use p256::NistP256;
+use p384::NistP384;
 use rand::distributions::Distribution;
 use rand::distributions::Uniform;
 use rand::Rng;
 use ring::signature::Ed25519KeyPair;
-use std::future::Future;
-use std::rc::Rc;
-
-use p224::NistP224;
-use p256::NistP256;
-use p384::NistP384;
 use rsa::pkcs8::DecodePrivateKey;
 use rsa::pkcs8::DecodePublicKey;
 use rsa::Oaep;

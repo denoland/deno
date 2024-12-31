@@ -66,10 +66,11 @@ impl<R: AsyncRead> Stream for ExternallyAbortableReaderStream<R> {
 
 #[cfg(test)]
 mod tests {
-  use super::*;
   use bytes::Bytes;
   use deno_core::futures::StreamExt;
   use tokio::io::AsyncWriteExt;
+
+  use super::*;
 
   #[tokio::test]
   async fn success() {

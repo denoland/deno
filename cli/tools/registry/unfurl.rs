@@ -655,10 +655,6 @@ fn to_range(
 mod tests {
   use std::sync::Arc;
 
-  use crate::resolver::SloppyImportsCachedFs;
-
-  use super::*;
-  use crate::sys::CliSys;
   use deno_ast::MediaType;
   use deno_ast::ModuleSpecifier;
   use deno_config::workspace::ResolverWorkspaceJsrPackage;
@@ -670,6 +666,10 @@ mod tests {
   use indexmap::IndexMap;
   use pretty_assertions::assert_eq;
   use test_util::testdata_path;
+
+  use super::*;
+  use crate::resolver::SloppyImportsCachedFs;
+  use crate::sys::CliSys;
 
   fn parse_ast(specifier: &Url, source_code: &str) -> ParsedSource {
     let media_type = MediaType::from_specifier(specifier);

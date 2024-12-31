@@ -2,10 +2,9 @@
 
 use serde::Serialize;
 
+use super::*;
 use crate::tools::test::TestFailureFormatOptions;
 use crate::version;
-
-use super::*;
 
 pub trait BenchReporter {
   fn report_group_summary(&mut self);

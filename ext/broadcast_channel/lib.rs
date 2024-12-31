@@ -2,9 +2,6 @@
 
 mod in_memory_broadcast_channel;
 
-pub use in_memory_broadcast_channel::InMemoryBroadcastChannel;
-pub use in_memory_broadcast_channel::InMemoryBroadcastChannelResource;
-
 use std::cell::RefCell;
 use std::path::PathBuf;
 use std::rc::Rc;
@@ -15,6 +12,8 @@ use deno_core::JsBuffer;
 use deno_core::OpState;
 use deno_core::Resource;
 use deno_core::ResourceId;
+pub use in_memory_broadcast_channel::InMemoryBroadcastChannel;
+pub use in_memory_broadcast_channel::InMemoryBroadcastChannelResource;
 use tokio::sync::broadcast::error::SendError as BroadcastSendError;
 use tokio::sync::mpsc::error::SendError as MpscSendError;
 

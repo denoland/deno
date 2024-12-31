@@ -4,7 +4,6 @@ use std::borrow::Cow;
 use std::path::Path;
 use std::sync::Arc;
 
-use crate::sys::CliSys;
 use deno_core::error::AnyError;
 use deno_core::serde_json;
 use deno_resolver::npm::ByonmNpmResolver;
@@ -14,11 +13,11 @@ use deno_runtime::deno_node::NodePermissions;
 use deno_runtime::ops::process::NpmProcessStateProvider;
 use node_resolver::NpmPackageFolderResolver;
 
-use crate::args::NpmProcessState;
-use crate::args::NpmProcessStateKind;
-
 use super::CliNpmResolver;
 use super::InnerCliNpmResolverRef;
+use crate::args::NpmProcessState;
+use crate::args::NpmProcessStateKind;
+use crate::sys::CliSys;
 
 pub type CliByonmNpmResolverCreateOptions =
   ByonmNpmResolverCreateOptions<CliSys>;

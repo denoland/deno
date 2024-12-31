@@ -17,23 +17,22 @@ mod turbocall;
 use call::op_ffi_call_nonblocking;
 use call::op_ffi_call_ptr;
 use call::op_ffi_call_ptr_nonblocking;
+pub use call::CallError;
 use callback::op_ffi_unsafe_callback_close;
 use callback::op_ffi_unsafe_callback_create;
 use callback::op_ffi_unsafe_callback_ref;
+pub use callback::CallbackError;
+use deno_permissions::PermissionCheckError;
 use dlfcn::op_ffi_load;
+pub use dlfcn::DlfcnError;
 use dlfcn::ForeignFunction;
+pub use ir::IRError;
 use r#static::op_ffi_get_static;
+pub use r#static::StaticError;
+pub use repr::ReprError;
 use repr::*;
 use symbol::NativeType;
 use symbol::Symbol;
-
-pub use call::CallError;
-pub use callback::CallbackError;
-use deno_permissions::PermissionCheckError;
-pub use dlfcn::DlfcnError;
-pub use ir::IRError;
-pub use r#static::StaticError;
-pub use repr::ReprError;
 
 #[cfg(not(target_pointer_width = "64"))]
 compile_error!("platform not supported");

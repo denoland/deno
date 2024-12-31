@@ -1,9 +1,11 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
+use std::ptr;
+
+use napi_sys::*;
+
 use crate::assert_napi_ok;
 use crate::napi_new_property;
-use napi_sys::*;
-use std::ptr;
 
 extern "C" fn test_get_undefined(
   env: napi_env,

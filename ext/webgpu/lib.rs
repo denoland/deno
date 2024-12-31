@@ -2,20 +2,20 @@
 #![cfg(not(target_arch = "wasm32"))]
 #![warn(unsafe_op_in_unsafe_fn)]
 
-use deno_core::op2;
-use deno_core::OpState;
-use deno_core::Resource;
-use deno_core::ResourceId;
-use serde::Deserialize;
-use serde::Serialize;
 use std::borrow::Cow;
 use std::cell::RefCell;
 use std::collections::HashSet;
 use std::rc::Rc;
+
+use deno_core::op2;
+use deno_core::OpState;
+use deno_core::Resource;
+use deno_core::ResourceId;
+use error::WebGpuResult;
+use serde::Deserialize;
+use serde::Serialize;
 pub use wgpu_core;
 pub use wgpu_types;
-
-use error::WebGpuResult;
 
 pub const UNSTABLE_FEATURE_NAME: &str = "webgpu";
 

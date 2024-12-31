@@ -1,7 +1,5 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
-use lsp_types::Uri;
-use pretty_assertions::assert_eq;
 use std::borrow::Cow;
 use std::collections::HashSet;
 use std::ffi::OsStr;
@@ -15,6 +13,8 @@ use std::str::FromStr;
 use std::sync::Arc;
 
 use anyhow::Context;
+use lsp_types::Uri;
+use pretty_assertions::assert_eq;
 use serde::de::DeserializeOwned;
 use serde::Serialize;
 use url::Url;

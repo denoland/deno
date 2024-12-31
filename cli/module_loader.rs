@@ -11,8 +11,6 @@ use std::sync::atomic::AtomicU16;
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
 
-use crate::node::CliNodeResolver;
-use crate::sys::CliSys;
 use deno_ast::MediaType;
 use deno_ast::ModuleKind;
 use deno_core::anyhow::anyhow;
@@ -66,6 +64,7 @@ use crate::graph_container::ModuleGraphUpdatePermit;
 use crate::graph_util::CreateGraphOptions;
 use crate::graph_util::ModuleGraphBuilder;
 use crate::node::CliNodeCodeTranslator;
+use crate::node::CliNodeResolver;
 use crate::npm::CliNpmResolver;
 use crate::resolver::CjsTracker;
 use crate::resolver::CliNpmReqResolver;
@@ -73,6 +72,7 @@ use crate::resolver::CliResolver;
 use crate::resolver::ModuleCodeStringSource;
 use crate::resolver::NotSupportedKindInNpmError;
 use crate::resolver::NpmModuleLoader;
+use crate::sys::CliSys;
 use crate::tools::check;
 use crate::tools::check::TypeChecker;
 use crate::util::progress_bar::ProgressBar;
@@ -1161,8 +1161,9 @@ impl<TGraphContainer: ModuleGraphContainer> NodeRequireLoader
 
 #[cfg(test)]
 mod tests {
-  use super::*;
   use deno_graph::ParsedSourceStore;
+
+  use super::*;
 
   #[tokio::test]
   async fn test_inflight_module_loads_tracker() {

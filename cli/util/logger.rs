@@ -1,9 +1,11 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
-use super::draw_thread::DrawThread;
+use std::io::Write;
+
 use deno_telemetry::OtelConfig;
 use deno_telemetry::OtelConsoleConfig;
-use std::io::Write;
+
+use super::draw_thread::DrawThread;
 
 struct CliLogger {
   otel_console_config: OtelConsoleConfig,

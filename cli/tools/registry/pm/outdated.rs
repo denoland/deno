@@ -12,6 +12,10 @@ use deno_semver::StackString;
 use deno_semver::VersionReq;
 use deno_terminal::colors;
 
+use super::deps::Dep;
+use super::deps::DepManager;
+use super::deps::DepManagerArgs;
+use super::deps::PackageLatestVersion;
 use crate::args::CliOptions;
 use crate::args::Flags;
 use crate::args::OutdatedFlags;
@@ -20,11 +24,6 @@ use crate::file_fetcher::CliFileFetcher;
 use crate::jsr::JsrFetchResolver;
 use crate::npm::NpmFetchResolver;
 use crate::tools::registry::pm::deps::DepKind;
-
-use super::deps::Dep;
-use super::deps::DepManager;
-use super::deps::DepManagerArgs;
-use super::deps::PackageLatestVersion;
 
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord)]
 struct OutdatedPackage {
