@@ -4,21 +4,19 @@ use std::borrow::Cow;
 use std::cell::RefCell;
 use std::future::Future;
 use std::net::IpAddr;
-use std::net::Ipv4Addr;
 use std::net::Ipv6Addr;
+use std::net::SocketAddr;
 use std::net::SocketAddrV4;
 use std::net::SocketAddrV6;
 use std::pin::pin;
 use std::rc::Rc;
+use std::sync::atomic::AtomicI32;
+use std::sync::atomic::Ordering;
 use std::sync::Arc;
 use std::task::Context;
 use std::task::Poll;
 use std::time::Duration;
 
-use crate::resolve_addr::resolve_addr_sync;
-use crate::DefaultTlsOptions;
-use crate::NetPermissions;
-use crate::UnsafelyIgnoreCertificateErrors;
 use deno_core::futures::task::noop_waker_ref;
 use deno_core::op2;
 use deno_core::AsyncRefCell;
@@ -45,6 +43,11 @@ use quinn::rustls::client::ClientSessionStore;
 use quinn::rustls::client::Resumption;
 use serde::Deserialize;
 use serde::Serialize;
+
+use crate::resolve_addr::resolve_addr_sync;
+use crate::DefaultTlsOptions;
+use crate::NetPermissions;
+use crate::UnsafelyIgnoreCertificateErrors;
 
 #[derive(Debug, thiserror::Error)]
 pub enum QuicError {
