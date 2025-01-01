@@ -295,26 +295,17 @@ impl SelectorMatcher for Elem {
 
 #[derive(Debug, PartialEq)]
 struct Selector {
-  // short circuit if the selecor cannot match
-  never: bool,
   parts: Vec<SelPart>,
 }
 
 impl Selector {
   fn new() -> Self {
-    Self {
-      never: false,
-      parts: vec![],
-    }
+    Self { parts: vec![] }
   }
 }
 
 impl SelectorMatcher for Selector {
   fn matches(&mut self, offset: usize) -> bool {
-    if self.never {
-      return false;
-    }
-
     self.parts.iter().all(|part| match part {
       SelPart::Wildcard => todo!(),
       SelPart::Elem(_) => todo!(),
