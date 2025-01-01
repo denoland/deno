@@ -1,6 +1,5 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
-use crate::worker::CliMainWorkerFactory;
 use std::collections::HashSet;
 use std::path::Path;
 use std::path::PathBuf;
@@ -48,6 +47,7 @@ use crate::util::file_watcher;
 use crate::util::fs::collect_specifiers;
 use crate::util::path::is_script_ext;
 use crate::util::path::matches_pattern_or_exact_path;
+use crate::worker::CliMainWorkerFactory;
 
 mod mitata;
 mod reporters;
