@@ -1,4 +1,4 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
 use std::collections::BTreeMap;
 use std::collections::HashMap;
@@ -18,7 +18,6 @@ use deno_core::unsync::sync::AtomicFlag;
 use deno_path_util::get_atomic_path;
 use deno_runtime::code_cache::CodeCache;
 use deno_runtime::code_cache::CodeCacheType;
-use deno_runtime::deno_fs::FsSysTraitsAdapter;
 
 use crate::cache::FastInsecureHasher;
 use crate::worker::CliCodeCache;
@@ -191,7 +190,7 @@ impl FirstRunCodeCacheStrategy {
   ) {
     let count = cache_data.len();
     let temp_file =
-      get_atomic_path(&FsSysTraitsAdapter::new_real(), &self.file_path);
+      get_atomic_path(&sys_traits::impls::RealSys, &self.file_path);
     match serialize(&temp_file, self.cache_key, cache_data) {
       Ok(()) => {
         if let Err(err) = std::fs::rename(&temp_file, &self.file_path) {
@@ -396,10 +395,11 @@ fn deserialize_with_reader<T: Read>(
 
 #[cfg(test)]
 mod test {
+  use std::fs::File;
+
   use test_util::TempDir;
 
   use super::*;
-  use std::fs::File;
 
   #[test]
   fn serialize_deserialize() {

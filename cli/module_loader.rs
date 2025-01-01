@@ -1,4 +1,4 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
 use std::borrow::Cow;
 use std::cell::RefCell;
@@ -39,10 +39,8 @@ use deno_graph::ModuleGraph;
 use deno_graph::Resolution;
 use deno_graph::WasmModule;
 use deno_runtime::code_cache;
-use deno_runtime::deno_fs::FsSysTraitsAdapter;
 use deno_runtime::deno_node::create_host_defined_options;
 use deno_runtime::deno_node::NodeRequireLoader;
-use deno_runtime::deno_node::NodeResolver;
 use deno_runtime::deno_permissions::PermissionsContainer;
 use deno_semver::npm::NpmPackageReqReference;
 use node_resolver::errors::ClosestPkgJsonError;
@@ -66,6 +64,7 @@ use crate::graph_container::ModuleGraphUpdatePermit;
 use crate::graph_util::CreateGraphOptions;
 use crate::graph_util::ModuleGraphBuilder;
 use crate::node::CliNodeCodeTranslator;
+use crate::node::CliNodeResolver;
 use crate::npm::CliNpmResolver;
 use crate::resolver::CjsTracker;
 use crate::resolver::CliNpmReqResolver;
@@ -73,6 +72,7 @@ use crate::resolver::CliResolver;
 use crate::resolver::ModuleCodeStringSource;
 use crate::resolver::NotSupportedKindInNpmError;
 use crate::resolver::NpmModuleLoader;
+use crate::sys::CliSys;
 use crate::tools::check;
 use crate::tools::check::MaybeDiagnostics;
 use crate::tools::check::TypeChecker;
@@ -221,13 +221,13 @@ struct SharedCliModuleLoaderState {
   main_module_graph_container: Arc<MainModuleGraphContainer>,
   module_load_preparer: Arc<ModuleLoadPreparer>,
   node_code_translator: Arc<CliNodeCodeTranslator>,
-  node_resolver: Arc<NodeResolver>,
+  node_resolver: Arc<CliNodeResolver>,
   npm_req_resolver: Arc<CliNpmReqResolver>,
   npm_resolver: Arc<dyn CliNpmResolver>,
   npm_module_loader: NpmModuleLoader,
   parsed_source_cache: Arc<ParsedSourceCache>,
   resolver: Arc<CliResolver>,
-  sys: FsSysTraitsAdapter,
+  sys: CliSys,
   in_flight_loads_tracker: InFlightModuleLoadsTracker,
 }
 
@@ -281,13 +281,13 @@ impl CliModuleLoaderFactory {
     main_module_graph_container: Arc<MainModuleGraphContainer>,
     module_load_preparer: Arc<ModuleLoadPreparer>,
     node_code_translator: Arc<CliNodeCodeTranslator>,
-    node_resolver: Arc<NodeResolver>,
+    node_resolver: Arc<CliNodeResolver>,
     npm_req_resolver: Arc<CliNpmReqResolver>,
     npm_resolver: Arc<dyn CliNpmResolver>,
     npm_module_loader: NpmModuleLoader,
     parsed_source_cache: Arc<ParsedSourceCache>,
     resolver: Arc<CliResolver>,
-    sys: FsSysTraitsAdapter,
+    sys: CliSys,
   ) -> Self {
     Self {
       shared: Arc::new(SharedCliModuleLoaderState {
@@ -1093,7 +1093,7 @@ impl ModuleGraphUpdatePermit for WorkerModuleGraphUpdatePermit {
 struct CliNodeRequireLoader<TGraphContainer: ModuleGraphContainer> {
   cjs_tracker: Arc<CjsTracker>,
   emitter: Arc<Emitter>,
-  sys: FsSysTraitsAdapter,
+  sys: CliSys,
   graph_container: TGraphContainer,
   in_npm_pkg_checker: Arc<dyn InNpmPackageChecker>,
   npm_resolver: Arc<dyn CliNpmResolver>,
@@ -1162,8 +1162,9 @@ impl<TGraphContainer: ModuleGraphContainer> NodeRequireLoader
 
 #[cfg(test)]
 mod tests {
-  use super::*;
   use deno_graph::ParsedSourceStore;
+
+  use super::*;
 
   #[tokio::test]
   async fn test_inflight_module_loads_tracker() {

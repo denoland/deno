@@ -1,4 +1,4 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
 pub mod bin_entries;
 pub mod lifecycle_scripts;
@@ -20,13 +20,13 @@ use deno_core::futures::StreamExt;
 use deno_npm::NpmPackageCacheFolderId;
 use deno_npm::NpmPackageId;
 use deno_npm::NpmResolutionPackage;
-use deno_runtime::deno_fs::FsSysTraitsAdapter;
 use deno_runtime::deno_node::NodePermissions;
 use node_resolver::errors::PackageFolderResolveError;
 use sys_traits::FsCanonicalize;
 
 use super::super::PackageCaching;
 use crate::npm::CliNpmTarballCache;
+use crate::sys::CliSys;
 
 /// Part of the resolution that interacts with the file system.
 #[async_trait(?Send)]
@@ -74,15 +74,15 @@ pub trait NpmPackageFsResolver: Send + Sync {
 
 #[derive(Debug)]
 pub struct RegistryReadPermissionChecker {
-  sys: FsSysTraitsAdapter,
+  sys: CliSys,
   cache: Mutex<HashMap<PathBuf, PathBuf>>,
   registry_path: PathBuf,
 }
 
 impl RegistryReadPermissionChecker {
-  pub fn new(fs: FsSysTraitsAdapter, registry_path: PathBuf) -> Self {
+  pub fn new(sys: CliSys, registry_path: PathBuf) -> Self {
     Self {
-      sys: fs,
+      sys,
       registry_path,
       cache: Default::default(),
     }

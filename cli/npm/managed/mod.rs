@@ -1,4 +1,4 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
 use std::borrow::Cow;
 use std::path::Path;
@@ -24,7 +24,6 @@ use deno_npm_cache::NpmCacheSetting;
 use deno_path_util::fs::canonicalize_path_maybe_not_exists;
 use deno_resolver::npm::CliNpmReqResolver;
 use deno_runtime::colors;
-use deno_runtime::deno_fs::FsSysTraitsAdapter;
 use deno_runtime::deno_node::NodePermissions;
 use deno_runtime::ops::process::NpmProcessStateProvider;
 use deno_semver::package::PackageNv;
@@ -35,20 +34,9 @@ use node_resolver::InNpmPackageChecker;
 use node_resolver::NpmPackageFolderResolver;
 use resolution::AddPkgReqsResult;
 
-use crate::args::CliLockfile;
-use crate::args::LifecycleScriptsConfig;
-use crate::args::NpmInstallDepsProvider;
-use crate::args::NpmProcessState;
-use crate::args::NpmProcessStateKind;
-use crate::args::PackageJsonDepValueParseWithLocationError;
-use crate::cache::FastInsecureHasher;
-use crate::util::progress_bar::ProgressBar;
-use crate::util::sync::AtomicFlag;
-
 use self::resolution::NpmResolution;
 use self::resolvers::create_npm_fs_resolver;
 use self::resolvers::NpmPackageFsResolver;
-
 use super::CliNpmCache;
 use super::CliNpmCacheHttpClient;
 use super::CliNpmRegistryInfoProvider;
@@ -56,6 +44,16 @@ use super::CliNpmResolver;
 use super::CliNpmTarballCache;
 use super::InnerCliNpmResolverRef;
 use super::ResolvePkgFolderFromDenoReqError;
+use crate::args::CliLockfile;
+use crate::args::LifecycleScriptsConfig;
+use crate::args::NpmInstallDepsProvider;
+use crate::args::NpmProcessState;
+use crate::args::NpmProcessStateKind;
+use crate::args::PackageJsonDepValueParseWithLocationError;
+use crate::cache::FastInsecureHasher;
+use crate::sys::CliSys;
+use crate::util::progress_bar::ProgressBar;
+use crate::util::sync::AtomicFlag;
 
 mod resolution;
 mod resolvers;
@@ -70,7 +68,7 @@ pub struct CliManagedNpmResolverCreateOptions {
   pub maybe_lockfile: Option<Arc<CliLockfile>>,
   pub http_client_provider: Arc<crate::http_util::HttpClientProvider>,
   pub npm_cache_dir: Arc<NpmCacheDir>,
-  pub sys: FsSysTraitsAdapter,
+  pub sys: CliSys,
   pub cache_setting: deno_cache_dir::file_fetcher::CacheSetting,
   pub text_only_progress_bar: crate::util::progress_bar::ProgressBar,
   pub maybe_node_modules_path: Option<PathBuf>,
@@ -149,7 +147,7 @@ fn create_inner(
   npm_cache: Arc<CliNpmCache>,
   npm_install_deps_provider: Arc<NpmInstallDepsProvider>,
   registry_info_provider: Arc<CliNpmRegistryInfoProvider>,
-  sys: FsSysTraitsAdapter,
+  sys: CliSys,
   text_only_progress_bar: crate::util::progress_bar::ProgressBar,
   maybe_lockfile: Option<Arc<CliLockfile>>,
   npm_rc: Arc<ResolvedNpmRc>,
@@ -307,7 +305,7 @@ pub struct ManagedCliNpmResolver {
   registry_info_provider: Arc<CliNpmRegistryInfoProvider>,
   npm_cache: Arc<CliNpmCache>,
   npm_install_deps_provider: Arc<NpmInstallDepsProvider>,
-  sys: FsSysTraitsAdapter,
+  sys: CliSys,
   resolution: Arc<NpmResolution>,
   tarball_cache: Arc<CliNpmTarballCache>,
   text_only_progress_bar: ProgressBar,
@@ -333,7 +331,7 @@ impl ManagedCliNpmResolver {
     npm_cache: Arc<CliNpmCache>,
     npm_install_deps_provider: Arc<NpmInstallDepsProvider>,
     resolution: Arc<NpmResolution>,
-    sys: FsSysTraitsAdapter,
+    sys: CliSys,
     tarball_cache: Arc<CliNpmTarballCache>,
     text_only_progress_bar: ProgressBar,
     npm_system_info: NpmSystemInfo,

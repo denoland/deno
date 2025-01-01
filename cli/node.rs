@@ -1,4 +1,4 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
 use std::borrow::Cow;
 use std::sync::Arc;
@@ -8,7 +8,6 @@ use deno_ast::ModuleSpecifier;
 use deno_core::error::AnyError;
 use deno_graph::ParsedSourceStore;
 use deno_runtime::deno_fs;
-use deno_runtime::deno_fs::FsSysTraitsAdapter;
 use deno_runtime::deno_node::RealIsBuiltInNodeModuleChecker;
 use node_resolver::analyze::CjsAnalysis as ExtNodeCjsAnalysis;
 use node_resolver::analyze::CjsAnalysisExports;
@@ -21,12 +20,15 @@ use crate::cache::CacheDBHash;
 use crate::cache::NodeAnalysisCache;
 use crate::cache::ParsedSourceCache;
 use crate::resolver::CjsTracker;
+use crate::sys::CliSys;
 
 pub type CliNodeCodeTranslator = NodeCodeTranslator<
   CliCjsCodeAnalyzer,
   RealIsBuiltInNodeModuleChecker,
-  FsSysTraitsAdapter,
+  CliSys,
 >;
+pub type CliNodeResolver = deno_runtime::deno_node::NodeResolver<CliSys>;
+pub type CliPackageJsonResolver = node_resolver::PackageJsonResolver<CliSys>;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum CliCjsAnalysis {

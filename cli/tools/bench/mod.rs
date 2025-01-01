@@ -1,20 +1,11 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
-use crate::args::BenchFlags;
-use crate::args::CliOptions;
-use crate::args::Flags;
-use crate::colors;
-use crate::display::write_json_to_stdout;
-use crate::factory::SpecifierInfo;
-use crate::factory::WorkspaceFilesFactory;
-use crate::ops;
-use crate::tools::test::format_test_error;
-use crate::tools::test::TestFilter;
-use crate::util::file_watcher;
-use crate::util::fs::collect_specifiers;
-use crate::util::path::is_script_ext;
-use crate::util::path::matches_pattern_or_exact_path;
 use crate::worker::CliMainWorkerFactory;
+use std::collections::HashSet;
+use std::path::Path;
+use std::path::PathBuf;
+use std::sync::Arc;
+use std::time::Duration;
 
 use deno_config::glob::WalkEntry;
 use deno_core::error::generic_error;
@@ -39,13 +30,24 @@ use indexmap::IndexSet;
 use log::Level;
 use serde::Deserialize;
 use serde::Serialize;
-use std::collections::HashSet;
-use std::path::Path;
-use std::path::PathBuf;
-use std::sync::Arc;
-use std::time::Duration;
 use tokio::sync::mpsc::unbounded_channel;
 use tokio::sync::mpsc::UnboundedSender;
+
+use crate::args::BenchFlags;
+use crate::args::CliOptions;
+use crate::args::Flags;
+use crate::colors;
+use crate::display::write_json_to_stdout;
+use crate::factory::SpecifierInfo;
+use crate::factory::WorkspaceFilesFactory;
+use crate::ops;
+use crate::sys::CliSys;
+use crate::tools::test::format_test_error;
+use crate::tools::test::TestFilter;
+use crate::util::file_watcher;
+use crate::util::fs::collect_specifiers;
+use crate::util::path::is_script_ext;
+use crate::util::path::matches_pattern_or_exact_path;
 
 mod mitata;
 mod reporters;
@@ -433,7 +435,7 @@ pub async fn run_benchmarks(
   bench_flags: BenchFlags,
 ) -> Result<(), AnyError> {
   let log_level = flags.log_level;
-  let cli_options = CliOptions::from_flags(flags)?;
+  let cli_options = CliOptions::from_flags(&CliSys::default(), flags)?;
   let workspace_dirs_with_files = cli_options
     .resolve_bench_options_for_members(&bench_flags)?
     .into_iter()
@@ -506,7 +508,7 @@ pub async fn run_benchmarks_with_watch(
       watcher_communicator.show_path_changed(changed_paths.clone());
       Ok(async move {
         let log_level: Option<Level> = flags.log_level;
-        let cli_options = CliOptions::from_flags(flags)?;
+        let cli_options = CliOptions::from_flags(&CliSys::default(), flags)?;
         let workspace_dirs_with_files = cli_options
           .resolve_bench_options_for_members(&bench_flags)?
           .into_iter()

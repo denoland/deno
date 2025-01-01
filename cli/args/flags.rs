@@ -1,4 +1,4 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
 use std::borrow::Cow;
 use std::collections::HashSet;
@@ -43,11 +43,10 @@ use log::Level;
 use serde::Deserialize;
 use serde::Serialize;
 
-use crate::args::resolve_no_prompt;
-use crate::util::fs::canonicalize_path;
-
 use super::flags_net;
 use super::jsr_url;
+use crate::args::resolve_no_prompt;
+use crate::util::fs::canonicalize_path;
 
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
 pub enum ConfigFlag {
@@ -6067,8 +6066,9 @@ pub fn resolve_urls(urls: Vec<String>) -> Vec<String> {
 
 #[cfg(test)]
 mod tests {
-  use super::*;
   use pretty_assertions::assert_eq;
+
+  use super::*;
 
   /// Creates vector of strings, Vec<String>
   macro_rules! svec {

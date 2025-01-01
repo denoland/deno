@@ -1,4 +1,4 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
 use std::collections::HashSet;
 use std::io::ErrorKind;
@@ -40,13 +40,12 @@ mod tarball;
 mod tarball_extract;
 
 pub use fs_util::hard_link_dir_recursive;
-pub use registry_info::RegistryInfoProvider;
-pub use tarball::TarballCache;
-
 // todo(#27198): make both of these private and get the rest of the code
 // using RegistryInfoProvider.
 pub use registry_info::get_package_url;
+pub use registry_info::RegistryInfoProvider;
 pub use remote::maybe_auth_header_for_npm_registry;
+pub use tarball::TarballCache;
 
 #[derive(Debug)]
 pub struct DownloadError {

@@ -1,9 +1,20 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
-use crate::resolve_addr::resolve_addr;
-use crate::DefaultTlsOptions;
-use crate::NetPermissions;
-use crate::UnsafelyIgnoreCertificateErrors;
+use std::borrow::Cow;
+use std::cell::RefCell;
+use std::future::Future;
+use std::net::IpAddr;
+use std::net::Ipv4Addr;
+use std::net::Ipv6Addr;
+use std::net::SocketAddrV4;
+use std::net::SocketAddrV6;
+use std::pin::pin;
+use std::rc::Rc;
+use std::sync::Arc;
+use std::task::Context;
+use std::task::Poll;
+use std::time::Duration;
+
 use deno_core::error::bad_resource;
 use deno_core::error::generic_error;
 use deno_core::error::AnyError;
@@ -27,20 +38,11 @@ use quinn::crypto::rustls::QuicClientConfig;
 use quinn::crypto::rustls::QuicServerConfig;
 use serde::Deserialize;
 use serde::Serialize;
-use std::borrow::Cow;
-use std::cell::RefCell;
-use std::future::Future;
-use std::net::IpAddr;
-use std::net::Ipv4Addr;
-use std::net::Ipv6Addr;
-use std::net::SocketAddrV4;
-use std::net::SocketAddrV6;
-use std::pin::pin;
-use std::rc::Rc;
-use std::sync::Arc;
-use std::task::Context;
-use std::task::Poll;
-use std::time::Duration;
+
+use crate::resolve_addr::resolve_addr;
+use crate::DefaultTlsOptions;
+use crate::NetPermissions;
+use crate::UnsafelyIgnoreCertificateErrors;
 
 #[derive(Debug, Deserialize, Serialize)]
 struct Addr {

@@ -1,4 +1,4 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
 // Validation logic in this file is shared with registry/api/src/ids.rs
 
@@ -11,13 +11,12 @@ use deno_ast::ModuleSpecifier;
 use deno_config::glob::FileCollector;
 use deno_config::glob::FilePatterns;
 use deno_core::error::AnyError;
-use deno_runtime::deno_fs::FsSysTraitsAdapter;
 use thiserror::Error;
-
-use crate::args::CliOptions;
 
 use super::diagnostics::PublishDiagnostic;
 use super::diagnostics::PublishDiagnosticsCollector;
+use crate::args::CliOptions;
+use crate::sys::CliSys;
 
 /// A package path, like '/foo' or '/foo/bar'. The path is prefixed with a slash
 /// and does not end with a slash.
@@ -346,5 +345,5 @@ fn collect_paths(
   .ignore_node_modules()
   .set_vendor_folder(cli_options.vendor_dir_path().map(ToOwned::to_owned))
   .use_gitignore()
-  .collect_file_patterns(&FsSysTraitsAdapter::new_real(), file_patterns)
+  .collect_file_patterns(&CliSys::default(), file_patterns)
 }

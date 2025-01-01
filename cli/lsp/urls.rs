@@ -1,4 +1,8 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
+
+use std::collections::HashMap;
+use std::str::FromStr;
+use std::sync::Arc;
 
 use deno_ast::MediaType;
 use deno_core::error::AnyError;
@@ -8,9 +12,6 @@ use deno_core::url::Url;
 use deno_core::ModuleSpecifier;
 use lsp_types::Uri;
 use once_cell::sync::Lazy;
-use std::collections::HashMap;
-use std::str::FromStr;
-use std::sync::Arc;
 
 use super::cache::LspCache;
 use super::logging::lsp_warn;
@@ -307,8 +308,9 @@ fn file_like_to_file_specifier(specifier: &Url) -> Option<Url> {
 
 #[cfg(test)]
 mod tests {
-  use super::*;
   use deno_core::resolve_url;
+
+  use super::*;
 
   #[test]
   fn test_hash_data_specifier() {

@@ -1,4 +1,19 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
+
+use std::borrow::Cow;
+use std::cell::RefCell;
+use std::collections::HashMap;
+use std::env;
+use std::fmt::Debug;
+use std::pin::Pin;
+use std::rc::Rc;
+use std::sync::Arc;
+use std::sync::Mutex;
+use std::task::Context;
+use std::task::Poll;
+use std::thread;
+use std::time::Duration;
+use std::time::SystemTime;
 
 use deno_core::anyhow;
 use deno_core::anyhow::anyhow;
@@ -57,20 +72,6 @@ use opentelemetry_semantic_conventions::resource::TELEMETRY_SDK_NAME;
 use opentelemetry_semantic_conventions::resource::TELEMETRY_SDK_VERSION;
 use serde::Deserialize;
 use serde::Serialize;
-use std::borrow::Cow;
-use std::cell::RefCell;
-use std::collections::HashMap;
-use std::env;
-use std::fmt::Debug;
-use std::pin::Pin;
-use std::rc::Rc;
-use std::sync::Arc;
-use std::sync::Mutex;
-use std::task::Context;
-use std::task::Poll;
-use std::thread;
-use std::time::Duration;
-use std::time::SystemTime;
 use tokio::sync::oneshot;
 use tokio::task::JoinSet;
 
@@ -469,6 +470,11 @@ impl DenoPeriodicReader {
 }
 
 mod hyper_client {
+  use std::fmt::Debug;
+  use std::pin::Pin;
+  use std::task::Poll;
+  use std::task::{self};
+
   use http_body_util::BodyExt;
   use http_body_util::Full;
   use hyper::body::Body as HttpBody;
@@ -480,10 +486,6 @@ mod hyper_client {
   use opentelemetry_http::Request;
   use opentelemetry_http::Response;
   use opentelemetry_http::ResponseExt;
-  use std::fmt::Debug;
-  use std::pin::Pin;
-  use std::task::Poll;
-  use std::task::{self};
 
   use super::OtelSharedRuntime;
 

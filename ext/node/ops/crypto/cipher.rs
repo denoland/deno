@@ -1,4 +1,8 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
+
+use std::borrow::Cow;
+use std::cell::RefCell;
+use std::rc::Rc;
 
 use aes::cipher::block_padding::Pkcs7;
 use aes::cipher::BlockDecryptMut;
@@ -7,10 +11,6 @@ use aes::cipher::KeyIvInit;
 use deno_core::Resource;
 use digest::generic_array::GenericArray;
 use digest::KeyInit;
-
-use std::borrow::Cow;
-use std::cell::RefCell;
-use std::rc::Rc;
 
 type Tag = Option<Vec<u8>>;
 

@@ -1,4 +1,4 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
 use std::borrow::Cow;
 use std::path::Path;
@@ -9,20 +9,19 @@ use deno_core::serde_json;
 use deno_resolver::npm::ByonmNpmResolver;
 use deno_resolver::npm::ByonmNpmResolverCreateOptions;
 use deno_resolver::npm::CliNpmReqResolver;
-use deno_runtime::deno_fs::FsSysTraitsAdapter;
 use deno_runtime::deno_node::NodePermissions;
 use deno_runtime::ops::process::NpmProcessStateProvider;
 use node_resolver::NpmPackageFolderResolver;
 
-use crate::args::NpmProcessState;
-use crate::args::NpmProcessStateKind;
-
 use super::CliNpmResolver;
 use super::InnerCliNpmResolverRef;
+use crate::args::NpmProcessState;
+use crate::args::NpmProcessStateKind;
+use crate::sys::CliSys;
 
 pub type CliByonmNpmResolverCreateOptions =
-  ByonmNpmResolverCreateOptions<FsSysTraitsAdapter>;
-pub type CliByonmNpmResolver = ByonmNpmResolver<FsSysTraitsAdapter>;
+  ByonmNpmResolverCreateOptions<CliSys>;
+pub type CliByonmNpmResolver = ByonmNpmResolver<CliSys>;
 
 // todo(dsherret): the services hanging off `CliNpmResolver` doesn't seem ideal. We should probably decouple.
 #[derive(Debug)]

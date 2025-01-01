@@ -1,11 +1,12 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
+use std::cell::RefCell;
+use std::rc::Rc;
+
 use deno_core::GarbageCollected;
 use digest::Digest;
 use digest::DynDigest;
 use digest::ExtendableOutput;
 use digest::Update;
-use std::cell::RefCell;
-use std::rc::Rc;
 
 pub struct Hasher {
   pub hash: Rc<RefCell<Option<Hash>>>,

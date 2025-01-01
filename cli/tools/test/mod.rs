@@ -1,23 +1,25 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
-use crate::args::CliOptions;
-use crate::args::Flags;
-use crate::args::TestFlags;
-use crate::args::TestReporterConfig;
-use crate::colors;
-use crate::display;
-use crate::factory::SpecifierInfo;
-use crate::factory::WorkspaceFilesFactory;
-use crate::file_fetcher::CliFileFetcher;
-use crate::ops;
-use crate::util::extract::extract_doc_tests;
-use crate::util::file_watcher;
-use crate::util::fs::collect_specifiers;
-use crate::util::path::get_extension;
-use crate::util::path::is_script_ext;
-use crate::util::path::matches_pattern_or_exact_path;
-use crate::worker::CliMainWorkerFactory;
-use crate::worker::CoverageCollector;
+use std::borrow::Cow;
+use std::cell::RefCell;
+use std::collections::BTreeMap;
+use std::collections::BTreeSet;
+use std::collections::HashMap;
+use std::collections::HashSet;
+use std::env;
+use std::fmt::Write as _;
+use std::future::poll_fn;
+use std::io::Write;
+use std::num::NonZeroUsize;
+use std::path::Path;
+use std::path::PathBuf;
+use std::sync::atomic::AtomicBool;
+use std::sync::atomic::AtomicUsize;
+use std::sync::atomic::Ordering;
+use std::sync::Arc;
+use std::task::Poll;
+use std::time::Duration;
+use std::time::Instant;
 
 use deno_ast::MediaType;
 use deno_config::glob::FilePatterns;
@@ -63,27 +65,27 @@ use rand::seq::SliceRandom;
 use rand::SeedableRng;
 use regex::Regex;
 use serde::Deserialize;
-use std::borrow::Cow;
-use std::cell::RefCell;
-use std::collections::BTreeMap;
-use std::collections::BTreeSet;
-use std::collections::HashMap;
-use std::collections::HashSet;
-use std::env;
-use std::fmt::Write as _;
-use std::future::poll_fn;
-use std::io::Write;
-use std::num::NonZeroUsize;
-use std::path::Path;
-use std::path::PathBuf;
-use std::sync::atomic::AtomicBool;
-use std::sync::atomic::AtomicUsize;
-use std::sync::atomic::Ordering;
-use std::sync::Arc;
-use std::task::Poll;
-use std::time::Duration;
-use std::time::Instant;
 use tokio::signal;
+
+use crate::args::CliOptions;
+use crate::args::Flags;
+use crate::args::TestFlags;
+use crate::args::TestReporterConfig;
+use crate::colors;
+use crate::display;
+use crate::factory::SpecifierInfo;
+use crate::factory::WorkspaceFilesFactory;
+use crate::file_fetcher::CliFileFetcher;
+use crate::ops;
+use crate::sys::CliSys;
+use crate::util::extract::extract_doc_tests;
+use crate::util::file_watcher;
+use crate::util::fs::collect_specifiers;
+use crate::util::path::get_extension;
+use crate::util::path::is_script_ext;
+use crate::util::path::matches_pattern_or_exact_path;
+use crate::worker::CliMainWorkerFactory;
+use crate::worker::CoverageCollector;
 
 mod channel;
 pub mod fmt;
@@ -1501,7 +1503,7 @@ pub async fn run_tests(
   test_flags: TestFlags,
 ) -> Result<(), AnyError> {
   let log_level = flags.log_level;
-  let cli_options = CliOptions::from_flags(flags)?;
+  let cli_options = CliOptions::from_flags(&CliSys::default(), flags)?;
   let workspace_dirs_with_files = cli_options
     .resolve_test_options_for_members(&test_flags)?
     .into_iter()
@@ -1596,7 +1598,7 @@ pub async fn run_tests_with_watch(
       watcher_communicator.show_path_changed(changed_paths.clone());
       Ok(async move {
         let log_level = flags.log_level;
-        let cli_options = CliOptions::from_flags(flags)?;
+        let cli_options = CliOptions::from_flags(&CliSys::default(), flags)?;
         let workspace_dirs_with_files = cli_options
           .resolve_test_options_for_members(&test_flags)?
           .into_iter()

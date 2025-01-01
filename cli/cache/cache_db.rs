@@ -1,4 +1,9 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
+
+use std::io::IsTerminal;
+use std::path::Path;
+use std::path::PathBuf;
+use std::sync::Arc;
 
 use deno_core::error::AnyError;
 use deno_core::parking_lot::Mutex;
@@ -9,10 +14,6 @@ use deno_runtime::deno_webstorage::rusqlite::Connection;
 use deno_runtime::deno_webstorage::rusqlite::OptionalExtension;
 use deno_runtime::deno_webstorage::rusqlite::Params;
 use once_cell::sync::OnceCell;
-use std::io::IsTerminal;
-use std::path::Path;
-use std::path::PathBuf;
-use std::sync::Arc;
 
 use super::FastInsecureHasher;
 

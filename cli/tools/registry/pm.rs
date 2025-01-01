@@ -1,4 +1,4 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
 use std::path::Path;
 use std::path::PathBuf;
@@ -415,6 +415,7 @@ pub async fn add(
   let deps_file_fetcher = CliFileFetcher::new(
     deps_http_cache.clone(),
     http_client.clone(),
+    cli_factory.sys(),
     Default::default(),
     None,
     true,

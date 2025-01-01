@@ -1,4 +1,4 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
 use std::borrow::Cow;
 use std::path::Path;
@@ -6,6 +6,7 @@ use std::path::PathBuf;
 
 use anyhow::bail;
 use anyhow::Error as AnyError;
+use deno_package_json::PackageJson;
 use deno_path_util::url_from_file_path;
 use serde_json::Map;
 use serde_json::Value;
@@ -48,7 +49,6 @@ use crate::npm::InNpmPackageCheckerRc;
 use crate::NpmPackageFolderResolverRc;
 use crate::PackageJsonResolverRc;
 use crate::PathClean;
-use deno_package_json::PackageJson;
 
 pub static DEFAULT_CONDITIONS: &[&str] = &["deno", "node", "import"];
 pub static REQUIRE_CONDITIONS: &[&str] = &["require", "node"];

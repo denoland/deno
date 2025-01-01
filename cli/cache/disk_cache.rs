@@ -1,12 +1,5 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
-use super::CACHE_PERM;
-
-use deno_cache_dir::url_to_filename;
-use deno_core::url::Host;
-use deno_core::url::Url;
-use deno_path_util::fs::atomic_write_file_with_retries;
-use deno_runtime::deno_fs::FsSysTraitsAdapter;
 use std::ffi::OsStr;
 use std::fs;
 use std::path::Component;
@@ -15,16 +8,26 @@ use std::path::PathBuf;
 use std::path::Prefix;
 use std::str;
 
+use deno_cache_dir::url_to_filename;
+use deno_core::url::Host;
+use deno_core::url::Url;
+use deno_path_util::fs::atomic_write_file_with_retries;
+
+use super::CACHE_PERM;
+use crate::sys::CliSys;
+
 #[derive(Debug, Clone)]
 pub struct DiskCache {
+  sys: CliSys,
   pub location: PathBuf,
 }
 
 impl DiskCache {
   /// `location` must be an absolute path.
-  pub fn new(location: &Path) -> Self {
+  pub fn new(sys: CliSys, location: &Path) -> Self {
     assert!(location.is_absolute());
     Self {
+      sys,
       location: location.to_owned(),
     }
   }
@@ -121,25 +124,21 @@ impl DiskCache {
 
   pub fn set(&self, filename: &Path, data: &[u8]) -> std::io::Result<()> {
     let path = self.location.join(filename);
-    atomic_write_file_with_retries(
-      &FsSysTraitsAdapter::new_real(),
-      &path,
-      data,
-      CACHE_PERM,
-    )
+    atomic_write_file_with_retries(&self.sys, &path, data, CACHE_PERM)
   }
 }
 
 #[cfg(test)]
 mod tests {
-  use super::*;
   use test_util::TempDir;
+
+  use super::*;
 
   #[test]
   fn test_set_get_cache_file() {
     let temp_dir = TempDir::new();
     let sub_dir = temp_dir.path().join("sub_dir");
-    let cache = DiskCache::new(&sub_dir.to_path_buf());
+    let cache = DiskCache::new(CliSys::default(), &sub_dir.to_path_buf());
     let path = PathBuf::from("foo/bar.txt");
     cache.set(&path, b"hello").unwrap();
     assert_eq!(cache.get(&path).unwrap(), b"hello");
@@ -153,7 +152,7 @@ mod tests {
       PathBuf::from("/deno_dir/")
     };
 
-    let cache = DiskCache::new(&cache_location);
+    let cache = DiskCache::new(CliSys::default(), &cache_location);
 
     let mut test_cases = vec![
       (
@@ -209,7 +208,7 @@ mod tests {
     } else {
       "/foo"
     };
-    let cache = DiskCache::new(&PathBuf::from(p));
+    let cache = DiskCache::new(CliSys::default(), &PathBuf::from(p));
 
     let mut test_cases = vec![
       (
@@ -257,7 +256,7 @@ mod tests {
       PathBuf::from("/deno_dir/")
     };
 
-    let cache = DiskCache::new(&cache_location);
+    let cache = DiskCache::new(CliSys::default(), &cache_location);
 
     let mut test_cases = vec!["unknown://localhost/test.ts"];
 

@@ -1,31 +1,11 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
-use super::analysis;
-use super::client::Client;
-use super::config::Config;
-use super::documents;
-use super::documents::Document;
-use super::documents::Documents;
-use super::documents::DocumentsFilter;
-use super::language_server;
-use super::language_server::StateSnapshot;
-use super::performance::Performance;
-use super::tsc;
-use super::tsc::TsServer;
-use super::urls::uri_parse_unencoded;
-use super::urls::url_to_uri;
-use super::urls::LspUrlMap;
-
-use crate::graph_util;
-use crate::graph_util::enhanced_resolution_error_message;
-use crate::lsp::lsp_custom::DiagnosticBatchNotificationParams;
-use crate::resolver::CliSloppyImportsResolver;
-use crate::resolver::SloppyImportsCachedFs;
-use crate::tools::lint::CliLinter;
-use crate::tools::lint::CliLinterOptions;
-use crate::tools::lint::LintRuleProvider;
-use crate::tsc::DiagnosticCategory;
-use crate::util::path::to_percent_decoded_str;
+use std::collections::HashMap;
+use std::collections::HashSet;
+use std::path::PathBuf;
+use std::sync::atomic::AtomicUsize;
+use std::sync::Arc;
+use std::thread;
 
 use deno_ast::MediaType;
 use deno_config::deno_json::LintConfig;
@@ -48,7 +28,6 @@ use deno_graph::SpecifierError;
 use deno_lint::linter::LintConfig as DenoLintConfig;
 use deno_resolver::sloppy_imports::SloppyImportsResolution;
 use deno_resolver::sloppy_imports::SloppyImportsResolutionKind;
-use deno_runtime::deno_fs::FsSysTraitsAdapter;
 use deno_runtime::deno_node;
 use deno_runtime::tokio_util::create_basic_runtime;
 use deno_semver::jsr::JsrPackageReqReference;
@@ -57,17 +36,38 @@ use deno_semver::package::PackageReq;
 use import_map::ImportMap;
 use import_map::ImportMapError;
 use log::error;
-use std::collections::HashMap;
-use std::collections::HashSet;
-use std::path::PathBuf;
-use std::sync::atomic::AtomicUsize;
-use std::sync::Arc;
-use std::thread;
 use tokio::sync::mpsc;
 use tokio::sync::Mutex;
 use tokio::time::Duration;
 use tokio_util::sync::CancellationToken;
 use tower_lsp::lsp_types as lsp;
+
+use super::analysis;
+use super::client::Client;
+use super::config::Config;
+use super::documents;
+use super::documents::Document;
+use super::documents::Documents;
+use super::documents::DocumentsFilter;
+use super::language_server;
+use super::language_server::StateSnapshot;
+use super::performance::Performance;
+use super::tsc;
+use super::tsc::TsServer;
+use super::urls::uri_parse_unencoded;
+use super::urls::url_to_uri;
+use super::urls::LspUrlMap;
+use crate::graph_util;
+use crate::graph_util::enhanced_resolution_error_message;
+use crate::lsp::lsp_custom::DiagnosticBatchNotificationParams;
+use crate::resolver::CliSloppyImportsResolver;
+use crate::resolver::SloppyImportsCachedFs;
+use crate::sys::CliSys;
+use crate::tools::lint::CliLinter;
+use crate::tools::lint::CliLinterOptions;
+use crate::tools::lint::LintRuleProvider;
+use crate::tsc::DiagnosticCategory;
+use crate::util::path::to_percent_decoded_str;
 
 #[derive(Debug)]
 pub struct DiagnosticServerUpdateMessage {
@@ -1281,7 +1281,7 @@ impl DenoDiagnostic {
       Self::NotInstalledNpm(pkg_req, specifier) => (lsp::DiagnosticSeverity::ERROR, format!("npm package \"{pkg_req}\" is not installed or doesn't exist."), Some(json!({ "specifier": specifier }))),
       Self::NoLocal(specifier) => {
         let maybe_sloppy_resolution = CliSloppyImportsResolver::new(
-          SloppyImportsCachedFs::new(FsSysTraitsAdapter::new_real())
+          SloppyImportsCachedFs::new(CliSys::default())
         ).resolve(specifier, SloppyImportsResolutionKind::Execution);
         let data = maybe_sloppy_resolution.as_ref().map(|res| {
           json!({
@@ -1646,6 +1646,12 @@ fn generate_deno_diagnostics(
 
 #[cfg(test)]
 mod tests {
+  use std::sync::Arc;
+
+  use deno_config::deno_json::ConfigFile;
+  use pretty_assertions::assert_eq;
+  use test_util::TempDir;
+
   use super::*;
   use crate::lsp::cache::LspCache;
   use crate::lsp::config::Config;
@@ -1655,11 +1661,6 @@ mod tests {
   use crate::lsp::documents::LanguageId;
   use crate::lsp::language_server::StateSnapshot;
   use crate::lsp::resolver::LspResolver;
-
-  use deno_config::deno_json::ConfigFile;
-  use pretty_assertions::assert_eq;
-  use std::sync::Arc;
-  use test_util::TempDir;
 
   fn mock_config() -> Config {
     let root_url = resolve_url("file:///").unwrap();

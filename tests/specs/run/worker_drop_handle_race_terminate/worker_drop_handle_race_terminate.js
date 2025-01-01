@@ -1,4 +1,4 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
 // Test that the panic in https://github.com/denoland/deno/issues/11342 does not
 // happen when calling worker.terminate() after fixing

@@ -1,4 +1,4 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
 pub mod deno_json;
 mod flags;
@@ -7,71 +7,6 @@ mod import_map;
 mod lockfile;
 mod package_json;
 
-use deno_ast::MediaType;
-use deno_ast::SourceMapOption;
-use deno_cache_dir::file_fetcher::CacheSetting;
-use deno_config::deno_json::NodeModulesDirMode;
-use deno_config::workspace::CreateResolverOptions;
-use deno_config::workspace::FolderConfigs;
-use deno_config::workspace::PackageJsonDepResolution;
-use deno_config::workspace::VendorEnablement;
-use deno_config::workspace::Workspace;
-use deno_config::workspace::WorkspaceDirectory;
-use deno_config::workspace::WorkspaceDirectoryEmptyOptions;
-use deno_config::workspace::WorkspaceDiscoverOptions;
-use deno_config::workspace::WorkspaceDiscoverStart;
-use deno_config::workspace::WorkspaceLintConfig;
-use deno_config::workspace::WorkspaceResolver;
-use deno_core::resolve_url_or_path;
-use deno_graph::GraphKind;
-use deno_lint::linter::LintConfig as DenoLintConfig;
-use deno_npm::npm_rc::NpmRc;
-use deno_npm::npm_rc::ResolvedNpmRc;
-use deno_npm::resolution::ValidSerializedNpmResolutionSnapshot;
-use deno_npm::NpmSystemInfo;
-use deno_path_util::normalize_path;
-use deno_runtime::deno_fs::FsSysTraitsAdapter;
-use deno_semver::npm::NpmPackageReqReference;
-use deno_semver::StackString;
-use deno_telemetry::OtelConfig;
-use deno_telemetry::OtelRuntimeConfig;
-use import_map::resolve_import_map_value_from_specifier;
-
-pub use deno_config::deno_json::BenchConfig;
-pub use deno_config::deno_json::ConfigFile;
-pub use deno_config::deno_json::FmtOptionsConfig;
-pub use deno_config::deno_json::LintRulesConfig;
-pub use deno_config::deno_json::ProseWrap;
-pub use deno_config::deno_json::TsConfig;
-pub use deno_config::deno_json::TsConfigForEmit;
-pub use deno_config::deno_json::TsConfigType;
-pub use deno_config::deno_json::TsTypeLib;
-pub use deno_config::glob::FilePatterns;
-pub use deno_json::check_warn_tsconfig;
-pub use flags::*;
-pub use lockfile::CliLockfile;
-pub use lockfile::CliLockfileReadFromPathOptions;
-pub use package_json::NpmInstallDepsProvider;
-pub use package_json::PackageJsonDepValueParseWithLocationError;
-
-use deno_ast::ModuleSpecifier;
-use deno_core::anyhow::bail;
-use deno_core::anyhow::Context;
-use deno_core::error::AnyError;
-use deno_core::serde_json;
-use deno_core::url::Url;
-use deno_runtime::deno_permissions::PermissionsOptions;
-use deno_runtime::deno_tls::deno_native_certs::load_native_certs;
-use deno_runtime::deno_tls::rustls;
-use deno_runtime::deno_tls::rustls::RootCertStore;
-use deno_runtime::deno_tls::rustls_pemfile;
-use deno_runtime::deno_tls::webpki_roots;
-use deno_runtime::inspector_server::InspectorServer;
-use deno_terminal::colors;
-use dotenvy::from_filename;
-use once_cell::sync::Lazy;
-use serde::Deserialize;
-use serde::Serialize;
 use std::borrow::Cow;
 use std::collections::BTreeSet;
 use std::collections::HashMap;
@@ -84,17 +19,80 @@ use std::net::SocketAddr;
 use std::path::Path;
 use std::path::PathBuf;
 use std::sync::Arc;
+
+use deno_ast::MediaType;
+use deno_ast::ModuleSpecifier;
+use deno_ast::SourceMapOption;
+use deno_cache_dir::file_fetcher::CacheSetting;
+pub use deno_config::deno_json::BenchConfig;
+pub use deno_config::deno_json::ConfigFile;
+use deno_config::deno_json::FmtConfig;
+pub use deno_config::deno_json::FmtOptionsConfig;
+use deno_config::deno_json::LintConfig;
+pub use deno_config::deno_json::LintRulesConfig;
+use deno_config::deno_json::NodeModulesDirMode;
+pub use deno_config::deno_json::ProseWrap;
+use deno_config::deno_json::TestConfig;
+pub use deno_config::deno_json::TsConfig;
+pub use deno_config::deno_json::TsConfigForEmit;
+pub use deno_config::deno_json::TsConfigType;
+pub use deno_config::deno_json::TsTypeLib;
+pub use deno_config::glob::FilePatterns;
+use deno_config::workspace::CreateResolverOptions;
+use deno_config::workspace::FolderConfigs;
+use deno_config::workspace::PackageJsonDepResolution;
+use deno_config::workspace::VendorEnablement;
+use deno_config::workspace::Workspace;
+use deno_config::workspace::WorkspaceDirectory;
+use deno_config::workspace::WorkspaceDirectoryEmptyOptions;
+use deno_config::workspace::WorkspaceDiscoverOptions;
+use deno_config::workspace::WorkspaceDiscoverStart;
+use deno_config::workspace::WorkspaceLintConfig;
+use deno_config::workspace::WorkspaceResolver;
+use deno_core::anyhow::bail;
+use deno_core::anyhow::Context;
+use deno_core::error::AnyError;
+use deno_core::resolve_url_or_path;
+use deno_core::serde_json;
+use deno_core::url::Url;
+use deno_graph::GraphKind;
+pub use deno_json::check_warn_tsconfig;
+use deno_lint::linter::LintConfig as DenoLintConfig;
+use deno_npm::npm_rc::NpmRc;
+use deno_npm::npm_rc::ResolvedNpmRc;
+use deno_npm::resolution::ValidSerializedNpmResolutionSnapshot;
+use deno_npm::NpmSystemInfo;
+use deno_path_util::normalize_path;
+use deno_runtime::deno_permissions::PermissionsOptions;
+use deno_runtime::deno_tls::deno_native_certs::load_native_certs;
+use deno_runtime::deno_tls::rustls;
+use deno_runtime::deno_tls::rustls::RootCertStore;
+use deno_runtime::deno_tls::rustls_pemfile;
+use deno_runtime::deno_tls::webpki_roots;
+use deno_runtime::inspector_server::InspectorServer;
+use deno_semver::npm::NpmPackageReqReference;
+use deno_semver::StackString;
+use deno_telemetry::OtelConfig;
+use deno_telemetry::OtelRuntimeConfig;
+use deno_terminal::colors;
+use dotenvy::from_filename;
+pub use flags::*;
+use import_map::resolve_import_map_value_from_specifier;
+pub use lockfile::CliLockfile;
+pub use lockfile::CliLockfileReadFromPathOptions;
+use once_cell::sync::Lazy;
+pub use package_json::NpmInstallDepsProvider;
+pub use package_json::PackageJsonDepValueParseWithLocationError;
+use serde::Deserialize;
+use serde::Serialize;
 use sys_traits::EnvHomeDir;
 use thiserror::Error;
 
 use crate::cache::DenoDirProvider;
 use crate::file_fetcher::CliFileFetcher;
+use crate::sys::CliSys;
 use crate::util::fs::canonicalize_path_maybe_not_exists;
 use crate::version;
-
-use deno_config::deno_json::FmtConfig;
-use deno_config::deno_json::LintConfig;
-use deno_config::deno_json::TestConfig;
 
 pub fn npm_registry_url() -> &'static Url {
   static NPM_REGISTRY_DEFAULT_URL: Lazy<Url> = Lazy::new(|| {
@@ -522,7 +520,7 @@ fn discover_npmrc(
   // TODO(bartlomieju): update to read both files - one in the project root and one and
   // home dir and then merge them.
   // 3. Try `.npmrc` in the user's home directory
-  if let Some(home_dir) = sys_traits::impls::RealSys.env_home_dir() {
+  if let Some(home_dir) = crate::sys::CliSys::default().env_home_dir() {
     match try_to_read_npmrc(&home_dir) {
       Ok(Some((source, path))) => {
         return try_to_parse_npmrc(source, &path).map(|r| (r, Some(path)));
@@ -739,6 +737,7 @@ pub struct CliOptions {
   npmrc: Arc<ResolvedNpmRc>,
   maybe_lockfile: Option<Arc<CliLockfile>>,
   maybe_external_import_map: Option<(PathBuf, serde_json::Value)>,
+  sys: CliSys,
   overrides: CliOptionOverrides,
   pub start_dir: Arc<WorkspaceDirectory>,
   pub deno_dir_provider: Arc<DenoDirProvider>,
@@ -748,6 +747,7 @@ pub struct CliOptions {
 impl CliOptions {
   #[allow(clippy::too_many_arguments)]
   pub fn new(
+    sys: &CliSys,
     flags: Arc<Flags>,
     initial_cwd: PathBuf,
     maybe_lockfile: Option<Arc<CliLockfile>>,
@@ -773,8 +773,10 @@ impl CliOptions {
     }
 
     let maybe_lockfile = maybe_lockfile.filter(|_| !force_global_cache);
-    let deno_dir_provider =
-      Arc::new(DenoDirProvider::new(flags.internal.cache_path.clone()));
+    let deno_dir_provider = Arc::new(DenoDirProvider::new(
+      sys.clone(),
+      flags.internal.cache_path.clone(),
+    ));
     let maybe_node_modules_folder = resolve_node_modules_folder(
       &initial_cwd,
       &flags,
@@ -796,11 +798,12 @@ impl CliOptions {
       maybe_external_import_map,
       start_dir,
       deno_dir_provider,
+      sys: sys.clone(),
       scope_options,
     })
   }
 
-  pub fn from_flags(flags: Arc<Flags>) -> Result<Self, AnyError> {
+  pub fn from_flags(sys: &CliSys, flags: Arc<Flags>) -> Result<Self, AnyError> {
     let initial_cwd =
       std::env::current_dir().with_context(|| "Failed getting cwd.")?;
     let maybe_vendor_override = flags.vendor.map(|v| match v {
@@ -844,7 +847,7 @@ impl CliOptions {
       ConfigFlag::Discover => {
         if let Some(start_paths) = flags.config_path_args(&initial_cwd) {
           WorkspaceDirectory::discover(
-            &FsSysTraitsAdapter::new_real(),
+            sys,
             WorkspaceDiscoverStart::Paths(&start_paths),
             &resolve_workspace_discover_options(),
           )?
@@ -855,7 +858,7 @@ impl CliOptions {
       ConfigFlag::Path(path) => {
         let config_path = normalize_path(initial_cwd.join(path));
         WorkspaceDirectory::discover(
-          &FsSysTraitsAdapter::new_real(),
+          sys,
           WorkspaceDiscoverStart::ConfigFile(&config_path),
           &resolve_workspace_discover_options(),
         )?
@@ -879,6 +882,7 @@ impl CliOptions {
       };
 
     let maybe_lock_file = CliLockfile::discover(
+      sys,
       &flags,
       &start_dir.workspace,
       external_import_map.as_ref().map(|(_, v)| v),
@@ -887,6 +891,7 @@ impl CliOptions {
     log::debug!("Finished config loading.");
 
     Self::new(
+      sys,
       flags,
       initial_cwd,
       maybe_lock_file.map(Arc::new),
@@ -911,11 +916,13 @@ impl CliOptions {
         None
       };
     let lockfile = CliLockfile::discover(
+      &self.sys,
       &self.flags,
       &start_dir.workspace,
       external_import_map.as_ref().map(|(_, v)| v),
     )?;
     Self::new(
+      &self.sys,
       self.flags.clone(),
       self.initial_cwd().to_path_buf(),
       lockfile.map(Arc::new),

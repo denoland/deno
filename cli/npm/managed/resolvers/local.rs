@@ -1,4 +1,4 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
 //! Code for local node_modules resolution.
 
@@ -7,6 +7,7 @@ use std::cell::RefCell;
 use std::cmp::Ordering;
 use std::collections::hash_map::Entry;
 use std::collections::BTreeMap;
+use std::collections::BTreeSet;
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::fs;
@@ -32,7 +33,6 @@ use deno_npm::NpmSystemInfo;
 use deno_path_util::fs::atomic_write_file_with_retries;
 use deno_path_util::fs::canonicalize_path_maybe_not_exists;
 use deno_resolver::npm::normalize_pkg_name_for_node_modules_deno_folder;
-use deno_runtime::deno_fs::FsSysTraitsAdapter;
 use deno_runtime::deno_node::NodePermissions;
 use deno_semver::package::PackageNv;
 use deno_semver::StackString;
@@ -44,6 +44,10 @@ use serde::Deserialize;
 use serde::Serialize;
 use sys_traits::FsMetadata;
 
+use super::super::resolution::NpmResolution;
+use super::common::bin_entries;
+use super::common::NpmPackageFsResolver;
+use super::common::RegistryReadPermissionChecker;
 use crate::args::LifecycleScriptsConfig;
 use crate::args::NpmInstallDepsProvider;
 use crate::cache::CACHE_PERM;
@@ -51,16 +55,12 @@ use crate::colors;
 use crate::npm::managed::PackageCaching;
 use crate::npm::CliNpmCache;
 use crate::npm::CliNpmTarballCache;
+use crate::sys::CliSys;
 use crate::util::fs::clone_dir_recursive;
 use crate::util::fs::symlink_dir;
 use crate::util::fs::LaxSingleProcessFsFlag;
 use crate::util::progress_bar::ProgressBar;
 use crate::util::progress_bar::ProgressMessagePrompt;
-
-use super::super::resolution::NpmResolution;
-use super::common::bin_entries;
-use super::common::NpmPackageFsResolver;
-use super::common::RegistryReadPermissionChecker;
 
 /// Resolver that creates a local node_modules directory
 /// and resolves packages from it.
@@ -70,7 +70,7 @@ pub struct LocalNpmPackageResolver {
   npm_install_deps_provider: Arc<NpmInstallDepsProvider>,
   progress_bar: ProgressBar,
   resolution: Arc<NpmResolution>,
-  sys: FsSysTraitsAdapter,
+  sys: CliSys,
   tarball_cache: Arc<CliNpmTarballCache>,
   root_node_modules_path: PathBuf,
   root_node_modules_url: Url,
@@ -86,7 +86,7 @@ impl LocalNpmPackageResolver {
     npm_install_deps_provider: Arc<NpmInstallDepsProvider>,
     progress_bar: ProgressBar,
     resolution: Arc<NpmResolution>,
-    sys: FsSysTraitsAdapter,
+    sys: CliSys,
     tarball_cache: Arc<CliNpmTarballCache>,
     node_modules_folder: PathBuf,
     system_info: NpmSystemInfo,
@@ -370,10 +370,10 @@ async fn sync_resolution_with_fs(
     );
   let packages_with_deprecation_warnings = Arc::new(Mutex::new(Vec::new()));
 
-  let mut package_tags: HashMap<&PackageNv, Vec<&str>> = HashMap::new();
+  let mut package_tags: HashMap<&PackageNv, BTreeSet<&str>> = HashMap::new();
   for (package_req, package_nv) in snapshot.package_reqs() {
     if let Some(tag) = package_req.version_req.tag() {
-      package_tags.entry(package_nv).or_default().push(tag);
+      package_tags.entry(package_nv).or_default().insert(tag);
     }
   }
 
@@ -393,7 +393,17 @@ async fn sync_resolution_with_fs(
     let folder_path = deno_local_registry_dir.join(&package_folder_name);
     let tags = package_tags
       .get(&package.id.nv)
-      .map(|tags| tags.join(","))
+      .map(|tags| {
+        capacity_builder::StringBuilder::<String>::build(|builder| {
+          for (i, tag) in tags.iter().enumerate() {
+            if i > 0 {
+              builder.append(',')
+            }
+            builder.append(*tag);
+          }
+        })
+        .unwrap()
+      })
       .unwrap_or_default();
     enum PackageFolderState {
       UpToDate,
@@ -926,7 +936,7 @@ impl SetupCache {
 
     bincode::serialize(&self.current).ok().and_then(|data| {
       atomic_write_file_with_retries(
-        &FsSysTraitsAdapter::new_real(),
+        &CliSys::default(),
         &self.file_path,
         &data,
         CACHE_PERM,

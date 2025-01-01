@@ -1,4 +1,4 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
 mod common;
 mod global;
@@ -8,20 +8,17 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use deno_npm::NpmSystemInfo;
-use deno_runtime::deno_fs::FsSysTraitsAdapter;
 
+pub use self::common::NpmPackageFsResolver;
+use self::global::GlobalNpmPackageResolver;
+use self::local::LocalNpmPackageResolver;
+use super::resolution::NpmResolution;
 use crate::args::LifecycleScriptsConfig;
 use crate::args::NpmInstallDepsProvider;
 use crate::npm::CliNpmCache;
 use crate::npm::CliNpmTarballCache;
+use crate::sys::CliSys;
 use crate::util::progress_bar::ProgressBar;
-
-pub use self::common::NpmPackageFsResolver;
-
-use self::global::GlobalNpmPackageResolver;
-use self::local::LocalNpmPackageResolver;
-
-use super::resolution::NpmResolution;
 
 #[allow(clippy::too_many_arguments)]
 pub fn create_npm_fs_resolver(
@@ -29,7 +26,7 @@ pub fn create_npm_fs_resolver(
   npm_install_deps_provider: &Arc<NpmInstallDepsProvider>,
   progress_bar: &ProgressBar,
   resolution: Arc<NpmResolution>,
-  sys: FsSysTraitsAdapter,
+  sys: CliSys,
   tarball_cache: Arc<CliNpmTarballCache>,
   maybe_node_modules_path: Option<PathBuf>,
   system_info: NpmSystemInfo,

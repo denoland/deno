@@ -1,9 +1,6 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
-use crate::cache::EmitCache;
-use crate::cache::FastInsecureHasher;
-use crate::cache::ParsedSourceCache;
-use crate::resolver::CjsTracker;
+use std::sync::Arc;
 
 use deno_ast::EmittedSourceText;
 use deno_ast::ModuleKind;
@@ -21,7 +18,11 @@ use deno_core::ModuleSpecifier;
 use deno_graph::MediaType;
 use deno_graph::Module;
 use deno_graph::ModuleGraph;
-use std::sync::Arc;
+
+use crate::cache::EmitCache;
+use crate::cache::FastInsecureHasher;
+use crate::cache::ParsedSourceCache;
+use crate::resolver::CjsTracker;
 
 #[derive(Debug)]
 pub struct Emitter {

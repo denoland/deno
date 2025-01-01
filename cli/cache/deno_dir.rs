@@ -1,23 +1,26 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
+
+use std::env;
+use std::path::PathBuf;
 
 use deno_cache_dir::DenoDirResolutionError;
 use once_cell::sync::OnceCell;
 
 use super::DiskCache;
-
-use std::env;
-use std::path::PathBuf;
+use crate::sys::CliSys;
 
 /// Lazily creates the deno dir which might be useful in scenarios
 /// where functionality wants to continue if the DENO_DIR can't be created.
 pub struct DenoDirProvider {
+  sys: CliSys,
   maybe_custom_root: Option<PathBuf>,
   deno_dir: OnceCell<Result<DenoDir, DenoDirResolutionError>>,
 }
 
 impl DenoDirProvider {
-  pub fn new(maybe_custom_root: Option<PathBuf>) -> Self {
+  pub fn new(sys: CliSys, maybe_custom_root: Option<PathBuf>) -> Self {
     Self {
+      sys,
       maybe_custom_root,
       deno_dir: Default::default(),
     }
@@ -26,7 +29,9 @@ impl DenoDirProvider {
   pub fn get_or_create(&self) -> Result<&DenoDir, DenoDirResolutionError> {
     self
       .deno_dir
-      .get_or_init(|| DenoDir::new(self.maybe_custom_root.clone()))
+      .get_or_init(|| {
+        DenoDir::new(self.sys.clone(), self.maybe_custom_root.clone())
+      })
       .as_ref()
       .map_err(|err| match err {
         DenoDirResolutionError::NoCacheOrHomeDir => {
@@ -53,6 +58,7 @@ pub struct DenoDir {
 
 impl DenoDir {
   pub fn new(
+    sys: CliSys,
     maybe_custom_root: Option<PathBuf>,
   ) -> Result<Self, deno_cache_dir::DenoDirResolutionError> {
     let root = deno_cache_dir::resolve_deno_dir(
@@ -64,7 +70,7 @@ impl DenoDir {
 
     let deno_dir = Self {
       root,
-      gen_cache: DiskCache::new(&gen_path),
+      gen_cache: DiskCache::new(sys, &gen_path),
     };
 
     Ok(deno_dir)

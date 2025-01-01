@@ -1,4 +1,4 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
 use std::path::PathBuf;
 
@@ -160,11 +160,13 @@ mod test {
   use test_util::TempDir;
 
   use super::*;
+  use crate::sys::CliSys;
 
   #[test]
   pub fn emit_cache_general_use() {
     let temp_dir = TempDir::new();
-    let disk_cache = DiskCache::new(temp_dir.path().as_path());
+    let disk_cache =
+      DiskCache::new(CliSys::default(), temp_dir.path().as_path());
     let cache = EmitCache {
       disk_cache: disk_cache.clone(),
       file_serializer: EmitFileSerializer {

@@ -1,4 +1,4 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
 use std::collections::HashSet;
 use std::collections::VecDeque;
@@ -12,7 +12,6 @@ use deno_core::error::AnyError;
 use deno_core::futures::FutureExt;
 use deno_graph::Module;
 use deno_graph::ModuleGraph;
-use deno_runtime::deno_node::NodeResolver;
 use deno_terminal::colors;
 use once_cell::sync::Lazy;
 use regex::Regex;
@@ -34,7 +33,9 @@ use crate::factory::SpecifierInfo;
 use crate::factory::WorkspaceFilesFactory;
 use crate::graph_util::BuildFastCheckGraphOptions;
 use crate::graph_util::ModuleGraphBuilder;
+use crate::node::CliNodeResolver;
 use crate::npm::CliNpmResolver;
+use crate::sys::CliSys;
 use crate::tsc;
 use crate::tsc::Diagnostics;
 use crate::tsc::TypeCheckingCjsTracker;
@@ -47,7 +48,7 @@ pub async fn check(
   flags: Arc<Flags>,
   check_flags: CheckFlags,
 ) -> Result<(), AnyError> {
-  let cli_options = CliOptions::from_flags(flags)?;
+  let cli_options = CliOptions::from_flags(&CliSys::default(), flags)?;
   let workspace_dirs_with_files =
     cli_options.resolve_file_flags_for_members(&FileFlags {
       ignore: Default::default(),
@@ -130,7 +131,7 @@ pub struct TypeChecker {
   cjs_tracker: Arc<TypeCheckingCjsTracker>,
   cli_options: Arc<CliOptions>,
   module_graph_builder: Arc<ModuleGraphBuilder>,
-  node_resolver: Arc<NodeResolver>,
+  node_resolver: Arc<CliNodeResolver>,
   npm_resolver: Arc<dyn CliNpmResolver>,
 }
 
@@ -140,7 +141,7 @@ impl TypeChecker {
     cjs_tracker: Arc<TypeCheckingCjsTracker>,
     cli_options: Arc<CliOptions>,
     module_graph_builder: Arc<ModuleGraphBuilder>,
-    node_resolver: Arc<NodeResolver>,
+    node_resolver: Arc<CliNodeResolver>,
     npm_resolver: Arc<dyn CliNpmResolver>,
   ) -> Self {
     Self {

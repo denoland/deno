@@ -1,4 +1,4 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
 use std::borrow::Cow;
 use std::collections::BTreeMap;
@@ -61,6 +61,23 @@ use log::Level;
 use serde::Deserialize;
 use serde::Serialize;
 
+use super::file_system::DenoCompileFileSystem;
+use super::serialization::deserialize_binary_data_section;
+use super::serialization::serialize_binary_data_section;
+use super::serialization::DenoCompileModuleData;
+use super::serialization::DeserializedDataSection;
+use super::serialization::RemoteModulesStore;
+use super::serialization::RemoteModulesStoreBuilder;
+use super::serialization::SourceMapStore;
+use super::virtual_fs::output_vfs;
+use super::virtual_fs::BuiltVfs;
+use super::virtual_fs::FileBackedVfs;
+use super::virtual_fs::VfsBuilder;
+use super::virtual_fs::VfsFileSubDataKind;
+use super::virtual_fs::VfsRoot;
+use super::virtual_fs::VirtualDirectory;
+use super::virtual_fs::VirtualDirectoryEntries;
+use super::virtual_fs::WindowsSystemRootablePath;
 use crate::args::CaData;
 use crate::args::CliOptions;
 use crate::args::CompileFlags;
@@ -82,24 +99,6 @@ use crate::util::fs::canonicalize_path;
 use crate::util::fs::canonicalize_path_maybe_not_exists;
 use crate::util::progress_bar::ProgressBar;
 use crate::util::progress_bar::ProgressBarStyle;
-
-use super::file_system::DenoCompileFileSystem;
-use super::serialization::deserialize_binary_data_section;
-use super::serialization::serialize_binary_data_section;
-use super::serialization::DenoCompileModuleData;
-use super::serialization::DeserializedDataSection;
-use super::serialization::RemoteModulesStore;
-use super::serialization::RemoteModulesStoreBuilder;
-use super::serialization::SourceMapStore;
-use super::virtual_fs::output_vfs;
-use super::virtual_fs::BuiltVfs;
-use super::virtual_fs::FileBackedVfs;
-use super::virtual_fs::VfsBuilder;
-use super::virtual_fs::VfsFileSubDataKind;
-use super::virtual_fs::VfsRoot;
-use super::virtual_fs::VirtualDirectory;
-use super::virtual_fs::VirtualDirectoryEntries;
-use super::virtual_fs::WindowsSystemRootablePath;
 
 pub static DENO_COMPILE_GLOBAL_NODE_MODULES_DIR_NAME: &str =
   ".deno_compile_node_modules";
@@ -259,7 +258,6 @@ pub fn is_standalone_binary(exe_path: &Path) -> bool {
 }
 
 pub struct StandaloneData {
-  pub fs: Arc<dyn deno_fs::FileSystem>,
   pub metadata: Metadata,
   pub modules: StandaloneModules,
   pub npm_snapshot: Option<ValidSerializedNpmResolutionSnapshot>,
@@ -382,10 +380,7 @@ pub fn extract_standalone(
     };
     Arc::new(FileBackedVfs::new(Cow::Borrowed(vfs_files_data), fs_root))
   };
-  let fs: Arc<dyn deno_fs::FileSystem> =
-    Arc::new(DenoCompileFileSystem::new(vfs.clone()));
   Ok(Some(StandaloneData {
-    fs,
     metadata,
     modules: StandaloneModules {
       remote_modules,

@@ -1,7 +1,8 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
 use std::borrow::Cow;
 use std::cell::RefCell;
+use std::cmp::min;
 use std::fmt::Debug;
 use std::pin::Pin;
 use std::rc::Rc;
@@ -48,7 +49,6 @@ use http_body_util::BodyExt;
 use hyper::body::Frame;
 use hyper::body::Incoming;
 use hyper_util::rt::TokioIo;
-use std::cmp::min;
 use tokio::io::AsyncReadExt;
 use tokio::io::AsyncWriteExt;
 

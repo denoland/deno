@@ -1,4 +1,4 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 use std::borrow::Cow;
 use std::collections::HashMap;
 use std::rc::Rc;
@@ -39,6 +39,7 @@ use deno_fs::FileSystem;
 use deno_http::DefaultHttpPropertyExtractor;
 use deno_io::Stdio;
 use deno_kv::dynamic::MultiBackendDbHandler;
+use deno_node::ExtNodeSys;
 use deno_node::NodeExtInitServices;
 use deno_permissions::PermissionsContainer;
 use deno_tls::RootCertStoreProvider;
@@ -128,7 +129,7 @@ pub struct MainWorker {
   dispatch_process_exit_event_fn_global: v8::Global<v8::Function>,
 }
 
-pub struct WorkerServiceOptions {
+pub struct WorkerServiceOptions<TExtNodeSys: ExtNodeSys> {
   pub blob_store: Arc<BlobStore>,
   pub broadcast_channel: InMemoryBroadcastChannel,
   pub feature_checker: Arc<FeatureChecker>,
@@ -139,7 +140,7 @@ pub struct WorkerServiceOptions {
   /// If not provided runtime will error if code being
   /// executed tries to load modules.
   pub module_loader: Rc<dyn ModuleLoader>,
-  pub node_services: Option<NodeExtInitServices>,
+  pub node_services: Option<NodeExtInitServices<TExtNodeSys>>,
   pub npm_process_state_provider: Option<NpmProcessStateProviderRc>,
   pub permissions: PermissionsContainer,
   pub root_cert_store_provider: Option<Arc<dyn RootCertStoreProvider>>,
@@ -304,9 +305,9 @@ pub fn create_op_metrics(
 }
 
 impl MainWorker {
-  pub fn bootstrap_from_options(
+  pub fn bootstrap_from_options<TExtNodeSys: ExtNodeSys + 'static>(
     main_module: ModuleSpecifier,
-    services: WorkerServiceOptions,
+    services: WorkerServiceOptions<TExtNodeSys>,
     options: WorkerOptions,
   ) -> Self {
     let (mut worker, bootstrap_options) =
@@ -315,9 +316,9 @@ impl MainWorker {
     worker
   }
 
-  fn from_options(
+  fn from_options<TExtNodeSys: ExtNodeSys + 'static>(
     main_module: ModuleSpecifier,
-    services: WorkerServiceOptions,
+    services: WorkerServiceOptions<TExtNodeSys>,
     mut options: WorkerOptions,
   ) -> (Self, BootstrapOptions) {
     deno_core::extension!(deno_permissions_worker,
@@ -417,7 +418,7 @@ impl MainWorker {
       deno_fs::deno_fs::init_ops_and_esm::<PermissionsContainer>(
         services.fs.clone(),
       ),
-      deno_node::deno_node::init_ops_and_esm::<PermissionsContainer>(
+      deno_node::deno_node::init_ops_and_esm::<PermissionsContainer, TExtNodeSys>(
         services.node_services,
         services.fs,
       ),

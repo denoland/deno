@@ -1,4 +1,4 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
 mod byonm;
 mod managed;
@@ -17,7 +17,6 @@ use deno_resolver::npm::ByonmInNpmPackageChecker;
 use deno_resolver::npm::ByonmNpmResolver;
 use deno_resolver::npm::CliNpmReqResolver;
 use deno_resolver::npm::ResolvePkgFolderFromDenoReqError;
-use deno_runtime::deno_fs::FsSysTraitsAdapter;
 use deno_runtime::deno_node::NodePermissions;
 use deno_runtime::ops::process::NpmProcessStateProvider;
 use deno_semver::package::PackageNv;
@@ -28,10 +27,6 @@ use managed::create_managed_in_npm_pkg_checker;
 use node_resolver::InNpmPackageChecker;
 use node_resolver::NpmPackageFolderResolver;
 
-use crate::file_fetcher::CliFileFetcher;
-use crate::http_util::HttpClientProvider;
-use crate::util::progress_bar::ProgressBar;
-
 pub use self::byonm::CliByonmNpmResolver;
 pub use self::byonm::CliByonmNpmResolverCreateOptions;
 pub use self::managed::CliManagedInNpmPkgCheckerCreateOptions;
@@ -39,14 +34,16 @@ pub use self::managed::CliManagedNpmResolverCreateOptions;
 pub use self::managed::CliNpmResolverManagedSnapshotOption;
 pub use self::managed::ManagedCliNpmResolver;
 pub use self::managed::PackageCaching;
+use crate::file_fetcher::CliFileFetcher;
+use crate::http_util::HttpClientProvider;
+use crate::sys::CliSys;
+use crate::util::progress_bar::ProgressBar;
 
 pub type CliNpmTarballCache =
-  deno_npm_cache::TarballCache<CliNpmCacheHttpClient, FsSysTraitsAdapter>;
-pub type CliNpmCache = deno_npm_cache::NpmCache<FsSysTraitsAdapter>;
-pub type CliNpmRegistryInfoProvider = deno_npm_cache::RegistryInfoProvider<
-  CliNpmCacheHttpClient,
-  FsSysTraitsAdapter,
->;
+  deno_npm_cache::TarballCache<CliNpmCacheHttpClient, CliSys>;
+pub type CliNpmCache = deno_npm_cache::NpmCache<CliSys>;
+pub type CliNpmRegistryInfoProvider =
+  deno_npm_cache::RegistryInfoProvider<CliNpmCacheHttpClient, CliSys>;
 
 #[derive(Debug)]
 pub struct CliNpmCacheHttpClient {
