@@ -12,7 +12,7 @@ enum AttrOp {
   Equal,
   NotEqual,
   Greater,
-  GreaterEqaul,
+  GreaterEqual,
   Less,
   LessEqual,
 }
@@ -38,6 +38,7 @@ enum SelPart {
   FirstChild,
   LastChild,
   NthChild,
+  Not(Vec<Selector>),
 }
 
 #[derive(Debug, PartialEq)]
@@ -70,10 +71,14 @@ enum Token {
   Undefined,
   Dot,
   Minus,
+  Asteriks,
 }
 
+#[derive(Debug)]
 enum ParseError {
   UnexpectedEnd(usize),
+  UnexpectedToken,
+  UnknownPseudo(String),
 }
 
 struct Lexer<'a> {
@@ -108,6 +113,17 @@ impl<'a> Lexer<'a> {
     return ch;
   }
 
+  fn peek(&mut self) -> Option<Token> {
+    let i = self.i;
+    let iter = self.iter.clone();
+
+    let result = self.next_token();
+    self.i = i;
+    self.iter = iter;
+
+    result
+  }
+
   fn next_token(&mut self) -> Option<Token> {
     while let Some(next) = self.step() {
       let mut ch = next;
@@ -121,6 +137,9 @@ impl<'a> Lexer<'a> {
           }
 
           return Some(Token::Space);
+        }
+        '*' => {
+          return Some(Token::Asteriks);
         }
         '[' => {
           return Some(Token::BracketOpen);
@@ -231,6 +250,13 @@ impl<'a> Lexer<'a> {
 
     None
   }
+
+  fn expect_next(&mut self) -> Result<Token, ParseError> {
+    match self.next_token() {
+      Some(tk) => Ok(tk),
+      None => Err(ParseError::UnexpectedEnd(self.i)),
+    }
+  }
 }
 
 impl<'a> Iterator for Lexer<'a> {
@@ -254,9 +280,210 @@ fn is_whitespace(ch: &char) -> bool {
   matches!(ch, ' ' | '\t')
 }
 
+trait SelectorMatcher {
+  fn matches(&mut self, offset: usize) -> bool;
+}
+
+struct Wildcard;
+struct Elem(u8);
+
+impl SelectorMatcher for Elem {
+  fn matches(&mut self, offset: usize) -> bool {
+    todo!()
+  }
+}
+
+#[derive(Debug, PartialEq)]
+struct Selector {
+  // short circuit if the selecor cannot match
+  never: bool,
+  parts: Vec<SelPart>,
+}
+
+impl Selector {
+  fn new() -> Self {
+    Self {
+      never: false,
+      parts: vec![],
+    }
+  }
+}
+
+impl SelectorMatcher for Selector {
+  fn matches(&mut self, offset: usize) -> bool {
+    if self.never {
+      return false;
+    }
+
+    self.parts.iter().all(|part| match part {
+      SelPart::Wildcard => todo!(),
+      SelPart::Elem(_) => todo!(),
+      SelPart::Relation(relation_op) => todo!(),
+      SelPart::AttrExists(vec) => todo!(),
+      SelPart::AttrBin(attr_op, vec, _) => todo!(),
+      SelPart::FirstChild => todo!(),
+      SelPart::LastChild => todo!(),
+      SelPart::NthChild => todo!(),
+      SelPart::Not(vec) => todo!(),
+    })
+  }
+}
+
+trait SelStrMapper {
+  fn str_to_prop(&self, s: &str) -> u8;
+  fn str_to_type(&self, s: &str) -> u8;
+}
+
+fn parse_selector(
+  input: &str,
+  mapper: &impl SelStrMapper,
+) -> Result<Vec<Selector>, ParseError> {
+  let mut l = Lexer::new(input);
+
+  let mut stack: Vec<Selector> = vec![Selector::new()];
+
+  #[inline]
+  fn append(stack: &mut Vec<Selector>, part: SelPart) {
+    stack.last_mut().unwrap().parts.push(part);
+  }
+
+  #[inline]
+  fn pop_selector(stack: &mut Vec<Selector>) {
+    let last = stack.last_mut().unwrap();
+  }
+
+  // Some subselectors like `:nth-child(.. of <selector>)` must have
+  // a single selector instead of selector list.
+  let mut throw_on_comma = false;
+
+  while let Some(tk) = l.next_token() {
+    match tk {
+      Token::Word(s) => {
+        let kind = mapper.str_to_type(&s);
+        append(&mut stack, SelPart::Elem(kind));
+      }
+      Token::Space => {
+        if let Some(next) = l.peek() {
+          if let Token::Word(_) | Token::Asteriks = next {
+            append(&mut stack, SelPart::Relation(RelationOp::Space))
+          }
+        }
+      }
+      Token::Op(op_value) => {
+        let op = match op_value {
+          OpValue::Plus => RelationOp::Plus,
+          OpValue::Tilde => RelationOp::Tilde,
+          _ => return Err(ParseError::UnexpectedToken),
+        };
+        append(&mut stack, SelPart::Relation(op))
+      }
+      Token::Colon => {
+        let Token::Word(word) = l.expect_next()? else {
+          return Err(ParseError::UnexpectedToken);
+        };
+
+        match word.as_str() {
+          "first-child" => append(&mut stack, SelPart::FirstChild),
+          "last-child" => append(&mut stack, SelPart::LastChild),
+          "nth-child" => {
+            //
+            todo!()
+          }
+          "has" | "is" | "where" => {
+            //
+            todo!()
+          }
+          "not" => {
+            if Token::BraceOpen != l.expect_next()? {
+              return Err(ParseError::UnexpectedToken);
+            };
+
+            append(&mut stack, SelPart::Not(vec![]));
+            stack.push(Selector::new());
+          }
+          s => return Err(ParseError::UnknownPseudo(s.to_string())),
+        }
+      }
+      Token::Comma => {
+        if throw_on_comma {
+          return Err(ParseError::UnexpectedToken);
+        }
+
+        // TODO Consume space
+
+        pop_selector(&mut stack);
+        stack.push(Selector::new())
+      }
+      Token::BraceOpen => todo!(),
+      Token::BraceClose => {
+        // TODO(@marvinhagemeister) Nested pseudos?
+        throw_on_comma = false;
+        pop_selector(&mut stack);
+        stack.push(Selector::new())
+      }
+      Token::BracketOpen => {
+        let Token::Word(word) = l.expect_next()? else {
+          return Err(ParseError::UnexpectedToken);
+        };
+
+        let name_path: Vec<u8> = vec![mapper.str_to_prop(word.as_str())];
+
+        // TODO dot
+
+        let next = l.expect_next()?;
+
+        match next {
+          Token::Op(op) => {
+            // TODO
+            let value = "".to_string();
+            let attr_op = match op {
+              OpValue::Equal => AttrOp::Equal,
+              OpValue::NotEqual => AttrOp::NotEqual,
+              OpValue::Greater => AttrOp::Greater,
+              OpValue::GreaterThan => AttrOp::GreaterEqual,
+              OpValue::Less => AttrOp::Less,
+              OpValue::LessThan => AttrOp::LessEqual,
+              OpValue::Plus | OpValue::Tilde => {
+                return Err(ParseError::UnexpectedToken)
+              }
+            };
+            append(&mut stack, SelPart::AttrBin(attr_op, name_path, value))
+          }
+          Token::BracketClose => return Err(ParseError::UnexpectedToken),
+          _ => append(&mut stack, SelPart::AttrExists(name_path)),
+        }
+
+        let Token::BracketClose = l.expect_next()? else {
+          return Err(ParseError::UnexpectedToken);
+        };
+      }
+      Token::BracketClose => todo!(),
+      Token::String(_) => todo!(),
+      Token::Number => todo!(),
+      Token::Bool => todo!(),
+      Token::Null => todo!(),
+      Token::Undefined => todo!(),
+      Token::Dot => todo!(),
+      Token::Minus => todo!(),
+      Token::Asteriks => {
+        append(&mut stack, SelPart::Wildcard);
+      }
+    }
+  }
+
+  Ok(stack)
+}
+
 #[cfg(test)]
 mod test {
-  use super::{Lexer, OpValue, Token};
+
+  use crate::tools::lint::ast_buffer::selector::{
+    RelationOp, SelPart, Selector,
+  };
+
+  use super::{
+    parse_selector, Lexer, OpValue, ParseError, SelStrMapper, Token,
+  };
 
   fn test_lex(s: &str) -> Vec<Token> {
     let lex = Lexer::new(s);
@@ -361,5 +588,52 @@ mod test {
         Token::BraceClose,
       ]
     );
+  }
+
+  struct TestMapper;
+  impl SelStrMapper for TestMapper {
+    fn str_to_prop(&self, s: &str) -> u8 {
+      match s {
+        "foo" => 1,
+        "bar" => 2,
+        "baz" => 3,
+        _ => 0, // TODO
+      }
+    }
+
+    fn str_to_type(&self, s: &str) -> u8 {
+      match s {
+        "Foo" => 1,
+        "Bar" => 2,
+        "Baz" => 3,
+        _ => 0, // TODO
+      }
+    }
+  }
+
+  #[test]
+  fn parse_elem() -> Result<(), ParseError> {
+    let mapper = TestMapper {};
+    let result = parse_selector("Foo", &mapper)?;
+
+    let mut s = Selector::new();
+    s.parts.push(SelPart::Elem(mapper.str_to_type("Foo")));
+    assert_eq!(result, vec![s]);
+
+    Ok(())
+  }
+
+  #[test]
+  fn parse_space_relation() -> Result<(), ParseError> {
+    let mapper = TestMapper {};
+    let result = parse_selector("Foo Bar", &mapper)?;
+
+    let mut s = Selector::new();
+    s.parts.push(SelPart::Elem(mapper.str_to_type("Foo")));
+    s.parts.push(SelPart::Relation(RelationOp::Space));
+    s.parts.push(SelPart::Elem(mapper.str_to_type("Bar")));
+    assert_eq!(result, vec![s]);
+
+    Ok(())
   }
 }
