@@ -1575,10 +1575,8 @@ impl CliOptions {
   }
 
   fn implicit_allow_import(&self) -> Vec<String> {
-    // allow importing from anywhere when using cached only or when the lockfile is locked
-    if self.cache_setting() == CacheSetting::Only
-      || self.maybe_lockfile().map(|l| l.frozen()).unwrap_or(false)
-    {
+    // allow importing from anywhere when using cached only
+    if self.cache_setting() == CacheSetting::Only {
       vec![] // allow all imports
     } else {
       // implicitly allow CLI arg urls and the JSR_URL

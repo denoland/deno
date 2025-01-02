@@ -255,10 +255,6 @@ impl CliLockfile {
     })
   }
 
-  pub fn frozen(&self) -> bool {
-    self.frozen
-  }
-
   pub fn error_if_changed(&self) -> Result<(), AnyError> {
     if !self.frozen {
       return Ok(());

@@ -16,14 +16,6 @@
         "args": "run --cached-only main.ts",
         "output": "success.out",
         "exitCode": 0
-      }, {
-        "args": "run --frozen main.ts",
-        "output": "success.out",
-        "exitCode": 0
-      }, {
-        "args": "run --config deno.frozen.jsonc main.ts",
-        "output": "success.out",
-        "exitCode": 0
       }]
     }
   }
