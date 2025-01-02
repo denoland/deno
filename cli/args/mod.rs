@@ -1579,7 +1579,7 @@ impl CliOptions {
     if self.cache_setting() == CacheSetting::Only {
       vec![] // allow all imports
     } else {
-      // implicitly allow CLI arg urls and the JSR_URL
+      // implicitly allow some trusted hosts and the CLI arg urls
       let cli_arg_urls = self.get_cli_arg_urls();
       let builtin_allowed_import_hosts = [
         "jsr.io:443",
