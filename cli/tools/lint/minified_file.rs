@@ -35,24 +35,23 @@ pub fn is_likely_minified(content: &str) -> bool {
     return false;
   }
 
-  // Preallocate a line buffer to avoid per-line allocations
-  let mut line_buffer = String::with_capacity(1024);
+  let mut str_ref = content;
 
   // Process the content character by character to avoid line allocations
-  let mut chars = content.chars().peekable();
-  while let Some(c) = chars.next() {
+  let mut chars = content.chars().enumerate().peekable();
+  while let Some((idx, c)) = chars.next() {
     total_chars += 1;
 
     if c.is_whitespace() {
       whitespace_count += 1;
     }
 
-    line_buffer.push(c);
+    str_ref = &content[..idx];
 
     // Check for end of line or end of content
     if c == '\n' || chars.peek().is_none() {
       total_lines += 1;
-      let trimmed = line_buffer.trim();
+      let trimmed = str_ref.trim();
 
       // Check for license/copyright only if we haven't found one yet
       if !has_license && !trimmed.is_empty() {
@@ -72,25 +71,25 @@ pub fn is_likely_minified(content: &str) -> bool {
       }
       if trimmed.ends_with("*/") {
         in_multiline_comment = false;
-        line_buffer.clear();
+        str_ref = "";
         continue;
       }
       if in_multiline_comment || trimmed.starts_with("//") {
-        line_buffer.clear();
+        str_ref = "";
         continue;
       }
 
       // Check line length
-      if line_buffer.len() > LONG_LINE_LEN {
+      if str_ref.len() > LONG_LINE_LEN {
         long_lines_count += 1;
       }
 
-      line_buffer.clear();
+      str_ref = "";
     }
   }
 
   // Handle case where file doesn't end with newline
-  if !line_buffer.is_empty() {
+  if !str_ref.is_empty() {
     total_lines += 1;
   }
 
