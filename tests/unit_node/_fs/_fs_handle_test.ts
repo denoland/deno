@@ -200,13 +200,16 @@ Deno.test(
   },
 );
 
-Deno.test("chmod", async function () {
+Deno.test("[node/fs filehandle.chmod] Change the permissions of the file", async function () {
   const fileHandle = await fs.open(testData);
-  await fileHandle.chmod(0o666)
-  const info1 = await Deno.stat(testData)
-  assertEquals(info1.mode?.toString(8), `100666`)
-  await fileHandle.chmod(0o555)
-  const info2 = await Deno.stat(testData)
-  assertEquals(info2.mode?.toString(8), `100555`)
+
+  const readOnly = 0o444;
+  await fileHandle.chmod(readOnly.toString(8));
+  assertEquals(Deno.statSync(testData).mode! & 0o777, readOnly);
+
+  const readWrite = 0o666;
+  await fileHandle.chmod(readWrite.toString(8));
+  assertEquals(Deno.statSync(testData).mode! & 0o777, readWrite);
+
   await fileHandle.close();
 });

@@ -5,7 +5,7 @@
 
 import { EventEmitter } from "node:events";
 import { Buffer } from "node:buffer";
-import { promises, read, write }  from "node:fs";
+import { promises, read, write } from "node:fs";
 export type { BigIntStats, Stats } from "ext:deno_node/_fs/_fs_stat.ts";
 import {
   BinaryOptionsArgument,
@@ -26,10 +26,10 @@ interface ReadResult {
   buffer: Buffer;
 }
 
-type Path =string | Buffer | URL;
+type Path = string | Buffer | URL;
 export class FileHandle extends EventEmitter {
   #rid: number;
-  #path: Path
+  #path: Path;
 
   constructor(rid: number, path: Path) {
     super();
@@ -149,8 +149,8 @@ export class FileHandle extends EventEmitter {
     return fsCall(promises.fstat, this, options);
   }
   chmod(mode: number): Promise<void> {
-    assertNotClosed(this, promises.chmod.name)
-    return promises.chmod(this.#path, mode)
+    assertNotClosed(this, promises.chmod.name);
+    return promises.chmod(this.#path, mode);
   }
 }
 
@@ -159,13 +159,13 @@ function assertNotClosed(handle: FileHandle, syscall: string) {
     const err = new Error("file closed");
     throw Object.assign(err, {
       code: "EBADF",
-      syscall
+      syscall,
     });
   }
 }
 
 function fsCall(fn, handle, ...args) {
-  assertNotClosed(handle, fn.name)
+  assertNotClosed(handle, fn.name);
   return fn(handle.fd, ...args);
 }
 
