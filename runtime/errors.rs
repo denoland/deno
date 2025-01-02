@@ -29,11 +29,17 @@ use deno_crypto::GenerateKeyError;
 use deno_crypto::ImportKeyError;
 use deno_fetch::FetchError;
 use deno_fetch::HttpClientCreateError;
+#[cfg(feature = "ffi")]
 use deno_ffi::CallError;
+#[cfg(feature = "ffi")]
 use deno_ffi::CallbackError;
+#[cfg(feature = "ffi")]
 use deno_ffi::DlfcnError;
+#[cfg(feature = "ffi")]
 use deno_ffi::IRError;
+#[cfg(feature = "ffi")]
 use deno_ffi::ReprError;
+#[cfg(feature = "ffi")]
 use deno_ffi::StaticError;
 use deno_fs::FsOpsError;
 use deno_fs::FsOpsErrorKind;
@@ -564,6 +570,7 @@ fn get_web_blob_error_class(e: &BlobError) -> &'static str {
   }
 }
 
+#[cfg(feature = "ffi")]
 fn get_ffi_repr_error_class(e: &ReprError) -> &'static str {
   match e {
     ReprError::InvalidOffset => "TypeError",
@@ -587,6 +594,7 @@ fn get_ffi_repr_error_class(e: &ReprError) -> &'static str {
   }
 }
 
+#[cfg(feature = "ffi")]
 fn get_ffi_dlfcn_error_class(e: &DlfcnError) -> &'static str {
   match e {
     DlfcnError::RegisterSymbol { .. } => "Error",
@@ -596,6 +604,7 @@ fn get_ffi_dlfcn_error_class(e: &DlfcnError) -> &'static str {
   }
 }
 
+#[cfg(feature = "ffi")]
 fn get_ffi_static_error_class(e: &StaticError) -> &'static str {
   match e {
     StaticError::Dlfcn(e) => get_ffi_dlfcn_error_class(e),
@@ -605,6 +614,7 @@ fn get_ffi_static_error_class(e: &StaticError) -> &'static str {
   }
 }
 
+#[cfg(feature = "ffi")]
 fn get_ffi_callback_error_class(e: &CallbackError) -> &'static str {
   match e {
     CallbackError::Resource(e) => get_error_class_name(e).unwrap_or("Error"),
@@ -613,6 +623,7 @@ fn get_ffi_callback_error_class(e: &CallbackError) -> &'static str {
   }
 }
 
+#[cfg(feature = "ffi")]
 fn get_ffi_call_error_class(e: &CallError) -> &'static str {
   match e {
     CallError::IR(_) => "TypeError",
@@ -1782,8 +1793,18 @@ pub fn get_error_class_name(e: &AnyError) -> Option<&'static str> {
         .map(get_web_stream_resource_error_class)
     })
     .or_else(|| e.downcast_ref::<BlobError>().map(get_web_blob_error_class))
-    .or_else(|| e.downcast_ref::<IRError>().map(|_| "TypeError"))
-    .or_else(|| e.downcast_ref::<ReprError>().map(get_ffi_repr_error_class))
+    .or_else(|| {
+      #[cfg(feature = "ffi")]
+      return e.downcast_ref::<IRError>().map(|_| "TypeError");
+      #[cfg(not(feature = "ffi"))]
+      None
+    })
+    .or_else(|| {
+      #[cfg(feature = "ffi")]
+      return e.downcast_ref::<ReprError>().map(get_ffi_repr_error_class);
+      #[cfg(not(feature = "ffi"))]
+      None
+    })
     .or_else(|| e.downcast_ref::<HttpError>().map(get_http_error))
     .or_else(|| e.downcast_ref::<HttpNextError>().map(get_http_next_error))
     .or_else(|| {
@@ -1792,18 +1813,35 @@ pub fn get_error_class_name(e: &AnyError) -> Option<&'static str> {
     })
     .or_else(|| e.downcast_ref::<FsOpsError>().map(get_fs_ops_error))
     .or_else(|| {
-      e.downcast_ref::<DlfcnError>()
-        .map(get_ffi_dlfcn_error_class)
+      #[cfg(feature = "ffi")]
+      return e
+        .downcast_ref::<DlfcnError>()
+        .map(get_ffi_dlfcn_error_class);
+      #[cfg(not(feature = "ffi"))]
+      None
     })
     .or_else(|| {
-      e.downcast_ref::<StaticError>()
-        .map(get_ffi_static_error_class)
+      #[cfg(feature = "ffi")]
+      return e
+        .downcast_ref::<StaticError>()
+        .map(get_ffi_static_error_class);
+      #[cfg(not(feature = "ffi"))]
+      None
     })
     .or_else(|| {
-      e.downcast_ref::<CallbackError>()
-        .map(get_ffi_callback_error_class)
+      #[cfg(feature = "ffi")]
+      return e
+        .downcast_ref::<CallbackError>()
+        .map(get_ffi_callback_error_class);
+      #[cfg(not(feature = "ffi"))]
+      None
     })
-    .or_else(|| e.downcast_ref::<CallError>().map(get_ffi_call_error_class))
+    .or_else(|| {
+      #[cfg(feature = "ffi")]
+      return e.downcast_ref::<CallError>().map(get_ffi_call_error_class);
+      #[cfg(not(feature = "ffi"))]
+      None
+    })
     .or_else(|| e.downcast_ref::<TlsError>().map(get_tls_error_class))
     .or_else(|| e.downcast_ref::<CronError>().map(get_cron_error_class))
     .or_else(|| e.downcast_ref::<CanvasError>().map(get_canvas_error))
