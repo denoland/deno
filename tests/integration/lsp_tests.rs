@@ -11889,13 +11889,22 @@ fn lsp_format_html() {
 fn lsp_format_css() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let temp_dir = context.temp_dir();
-  let file = source_file(temp_dir.path().join("file.css"), "  foo {}");
+  let css_file = source_file(temp_dir.path().join("file.css"), "  foo {}\n");
+  let scss_file = source_file(temp_dir.path().join("file.scss"), "  $font-stack: Helvetica, sans-serif;\n\nbody {\n  font: 100% $font-stack;\n}\n");
+  let sass_file = source_file(
+    temp_dir.path().join("file.sass"),
+    "  $font-stack: Helvetica, sans-serif\n\nbody\n  font: 100% $font-stack\n",
+  );
+  let less_file = source_file(
+    temp_dir.path().join("file.less"),
+    "  @width: 10px;\n\n#header {\n  width: @width;\n}\n",
+  );
   let mut client = context.new_lsp_command().build();
   client.initialize_default();
   let res = client.write_request(
     "textDocument/formatting",
     json!({
-      "textDocument": { "uri": file.url() },
+      "textDocument": { "uri": css_file.url() },
       "options": {
         "tabSize": 2,
         "insertSpaces": true,
@@ -11912,12 +11921,71 @@ fn lsp_format_css() {
         },
         "newText": "",
       },
+    ]),
+  );
+  let res = client.write_request(
+    "textDocument/formatting",
+    json!({
+      "textDocument": { "uri": scss_file.url() },
+      "options": {
+        "tabSize": 2,
+        "insertSpaces": true,
+      },
+    }),
+  );
+  assert_eq!(
+    res,
+    json!([
       {
         "range": {
-          "start": { "line": 0, "character": 8 },
-          "end": { "line": 0, "character": 8 },
+          "start": { "line": 0, "character": 0 },
+          "end": { "line": 0, "character": 2 },
         },
-        "newText": "\n",
+        "newText": "",
+      },
+    ]),
+  );
+  let res = client.write_request(
+    "textDocument/formatting",
+    json!({
+      "textDocument": { "uri": sass_file.url() },
+      "options": {
+        "tabSize": 2,
+        "insertSpaces": true,
+      },
+    }),
+  );
+  assert_eq!(
+    res,
+    json!([
+      {
+        "range": {
+          "start": { "line": 0, "character": 0 },
+          "end": { "line": 0, "character": 2 },
+        },
+        "newText": "",
+      },
+    ]),
+  );
+  let res = client.write_request(
+    "textDocument/formatting",
+    json!({
+      "textDocument": { "uri": less_file.url() },
+      "options": {
+        "tabSize": 2,
+        "insertSpaces": true,
+      },
+    }),
+  );
+  assert_eq!(
+    res,
+    json!([
+      {
+        "range": {
+          "start": { "line": 0, "character": 0 },
+          "end": { "line": 0, "character": 2 },
+        },
+        "newText": "",
       },
     ]),
   );
