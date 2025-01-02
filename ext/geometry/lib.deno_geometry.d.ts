@@ -6,7 +6,7 @@
 /// <reference lib="esnext" />
 
 /** @category Geometry Interfaces Module API */
-declare interface DOMMatrix2DInit {
+interface DOMMatrix2DInit {
   a?: number;
   b?: number;
   c?: number;
@@ -22,7 +22,7 @@ declare interface DOMMatrix2DInit {
 }
 
 /** @category Geometry Interfaces Module API */
-declare interface DOMMatrixInit extends DOMMatrix2DInit {
+interface DOMMatrixInit extends DOMMatrix2DInit {
   is2D?: boolean;
   m13?: number;
   m14?: number;
@@ -49,7 +49,7 @@ declare interface DOMMatrixInit extends DOMMatrix2DInit {
  *
  * @category Geometry Interfaces Module API
  */
-declare interface DOMMatrix extends DOMMatrixReadOnly {
+interface DOMMatrix extends DOMMatrixReadOnly {
   a: number;
   b: number;
   c: number;
@@ -227,7 +227,7 @@ declare var DOMMatrix: {
  *
  * @category Geometry Interfaces Module API
  */
-declare interface DOMMatrixReadOnly {
+interface DOMMatrixReadOnly {
   readonly a: number;
   readonly b: number;
   readonly c: number;
@@ -418,7 +418,7 @@ declare var DOMMatrixReadOnly: {
 };
 
 /** @category Geometry Interfaces Module API */
-declare interface DOMPointInit {
+interface DOMPointInit {
   w?: number;
   x?: number;
   y?: number;
@@ -431,7 +431,7 @@ declare interface DOMPointInit {
  *
  * @category Geometry Interfaces Module API
  */
-declare interface DOMPoint extends DOMPointReadOnly {
+interface DOMPoint extends DOMPointReadOnly {
   w: number;
   x: number;
   y: number;
@@ -456,7 +456,7 @@ declare var DOMPoint: {
  *
  * @category Geometry Interfaces Module API
  */
-declare interface DOMPointReadOnly {
+interface DOMPointReadOnly {
   readonly w: number;
   readonly x: number;
   readonly y: number;
@@ -483,7 +483,7 @@ declare var DOMPointReadOnly: {
 };
 
 /** @category Geometry Interfaces Module API */
-declare interface DOMQuadInit {
+interface DOMQuadInit {
   p1?: DOMPointInit;
   p2?: DOMPointInit;
   p3?: DOMPointInit;
@@ -496,7 +496,7 @@ declare interface DOMQuadInit {
  *
  * @category Geometry Interfaces Module API
  */
-declare interface DOMQuad {
+interface DOMQuad {
   readonly p1: DOMPoint;
   readonly p2: DOMPoint;
   readonly p3: DOMPoint;
@@ -529,7 +529,7 @@ declare var DOMQuad: {
 };
 
 /** @category Geometry Interfaces Module API */
-declare interface DOMRectInit {
+interface DOMRectInit {
   height?: number;
   width?: number;
   x?: number;
@@ -541,7 +541,7 @@ declare interface DOMRectInit {
  *
  * @category Geometry Interfaces Module API
  */
-declare interface DOMRect extends DOMRectReadOnly {
+interface DOMRect extends DOMRectReadOnly {
   height: number;
   width: number;
   x: number;
@@ -564,7 +564,7 @@ declare var DOMRect: {
  *
  * @category Geometry Interfaces Module API
  */
-declare interface DOMRectReadOnly {
+interface DOMRectReadOnly {
   readonly bottom: number;
   readonly height: number;
   readonly left: number;
