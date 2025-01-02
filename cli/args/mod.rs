@@ -1526,20 +1526,102 @@ impl CliOptions {
     self.flags.no_npm
   }
 
-  pub fn permission_flags(&self) -> &PermissionFlags {
-    &self.flags.permissions
-  }
-
   pub fn permissions_options(&self) -> PermissionsOptions {
-    fn files_to_urls(files: &[String]) -> Vec<Cow<'_, Url>> {
-      files
-        .iter()
-        .filter_map(|f| Url::parse(f).ok().map(Cow::Owned))
-        .collect()
+    // bury this in here to ensure people use cli_options.permissions_options()
+    fn flags_to_options(flags: &PermissionFlags) -> PermissionsOptions {
+      fn handle_allow<T: Default>(
+        allow_all: bool,
+        value: Option<T>,
+      ) -> Option<T> {
+        if allow_all {
+          assert!(value.is_none());
+          Some(T::default())
+        } else {
+          value
+        }
+      }
+
+      PermissionsOptions {
+        allow_all: flags.allow_all,
+        allow_env: handle_allow(flags.allow_all, flags.allow_env.clone()),
+        deny_env: flags.deny_env.clone(),
+        allow_net: handle_allow(flags.allow_all, flags.allow_net.clone()),
+        deny_net: flags.deny_net.clone(),
+        allow_ffi: handle_allow(flags.allow_all, flags.allow_ffi.clone()),
+        deny_ffi: flags.deny_ffi.clone(),
+        allow_read: handle_allow(flags.allow_all, flags.allow_read.clone()),
+        deny_read: flags.deny_read.clone(),
+        allow_run: handle_allow(flags.allow_all, flags.allow_run.clone()),
+        deny_run: flags.deny_run.clone(),
+        allow_sys: handle_allow(flags.allow_all, flags.allow_sys.clone()),
+        deny_sys: flags.deny_sys.clone(),
+        allow_write: handle_allow(flags.allow_all, flags.allow_write.clone()),
+        deny_write: flags.deny_write.clone(),
+        allow_import: handle_allow(flags.allow_all, flags.allow_import.clone()),
+        prompt: !resolve_no_prompt(flags),
+      }
     }
 
-    // get a list of urls to imply for --allow-import
-    let cli_arg_urls = self
+    let mut permissions_options = flags_to_options(&self.flags.permissions);
+    self.augment_import_permissions(&mut permissions_options);
+    permissions_options
+  }
+
+  fn augment_import_permissions(&self, options: &mut PermissionsOptions) {
+    // do not add if the user specified --allow-all or --allow-import
+    if !options.allow_all && options.allow_import.is_none() {
+      options.allow_import = Some(self.implicit_allow_import());
+    }
+  }
+
+  fn implicit_allow_import(&self) -> Vec<String> {
+    // allow importing from anywhere when using cached only or when the lockfile is locked
+    if self.cache_setting() == CacheSetting::Only
+      || self.maybe_lockfile().map(|l| l.frozen()).unwrap_or(false)
+    {
+      vec![] // allow all imports
+    } else {
+      // implicitly allow CLI arg urls and the JSR_URL
+      let cli_arg_urls = self.get_cli_arg_urls();
+      let builtin_allowed_import_hosts = [
+        "jsr.io:443",
+        "deno.land:443",
+        "esm.sh:443",
+        "cdn.jsdelivr.net:443",
+        "raw.githubusercontent.com:443",
+        "gist.githubusercontent.com:443",
+      ];
+      let mut imports = Vec::with_capacity(
+        builtin_allowed_import_hosts.len() + cli_arg_urls.len() + 1,
+      );
+      imports
+        .extend(builtin_allowed_import_hosts.iter().map(|s| s.to_string()));
+      // also add the JSR_URL env var
+      if let Some(jsr_host) = allow_import_host_from_url(jsr_url()) {
+        if jsr_host != "jsr.io:443" {
+          imports.push(jsr_host);
+        }
+      }
+      // include the cli arg urls
+      for url in cli_arg_urls {
+        if let Some(host) = allow_import_host_from_url(&url) {
+          imports.push(host);
+        }
+      }
+      imports
+    }
+  }
+
+  fn get_cli_arg_urls(&self) -> Vec<Cow<'_, Url>> {
+    fn files_to_urls(files: &[String]) -> Vec<Cow<'_, Url>> {
+      files.iter().filter_map(|f| file_to_url(f)).collect()
+    }
+
+    fn file_to_url(file: &str) -> Option<Cow<'_, Url>> {
+      Url::parse(file).ok().map(Cow::Owned)
+    }
+
+    self
       .resolve_main_module()
       .ok()
       .map(|url| vec![Cow::Borrowed(url)])
@@ -1551,18 +1633,18 @@ impl CliOptions {
           Some(files_to_urls(&check_flags.files))
         }
         DenoSubcommand::Install(InstallFlags::Global(flags)) => {
-          Url::parse(&flags.module_url)
-            .ok()
-            .map(|url| vec![Cow::Owned(url)])
+          file_to_url(&flags.module_url).map(|url| vec![url])
         }
         DenoSubcommand::Doc(DocFlags {
           source_files: DocSourceFileFlag::Paths(paths),
           ..
         }) => Some(files_to_urls(paths)),
+        DenoSubcommand::Info(InfoFlags {
+          file: Some(file), ..
+        }) => file_to_url(file).map(|url| vec![url]),
         _ => None,
       })
-      .unwrap_or_default();
-    self.flags.permissions.to_options(&cli_arg_urls)
+      .unwrap_or_default()
   }
 
   pub fn reload_flag(&self) -> bool {
@@ -1998,6 +2080,22 @@ fn load_env_variables_from_env_file(filename: Option<&Vec<String>>) {
   }
 }
 
+/// Gets the --allow-import host from the provided url
+fn allow_import_host_from_url(url: &Url) -> Option<String> {
+  let host = url.host()?;
+  if let Some(port) = url.port() {
+    Some(format!("{}:{}", host, port))
+  } else {
+    match host {
+      _ => match url.scheme() {
+        "https" => Some(format!("{}:443", host)),
+        "http" => Some(format!("{}:80", host)),
+        _ => None,
+      },
+    }
+  }
+}
+
 #[derive(Debug, Clone, Copy)]
 pub enum NpmCachingStrategy {
   Eager,
@@ -2005,7 +2103,7 @@ pub enum NpmCachingStrategy {
   Manual,
 }
 
-pub(crate) fn otel_runtime_config() -> OtelRuntimeConfig {
+pub fn otel_runtime_config() -> OtelRuntimeConfig {
   OtelRuntimeConfig {
     runtime_name: Cow::Borrowed("deno"),
     runtime_version: Cow::Borrowed(crate::version::DENO_VERSION_INFO.deno),
@@ -2101,5 +2199,27 @@ mod test {
     assert!(reg_url.as_str().ends_with('/'));
     let reg_api_url = jsr_api_url();
     assert!(reg_api_url.as_str().ends_with('/'));
+  }
+
+  #[test]
+  fn test_allow_import_host_from_url() {
+    fn parse(text: &str) -> Option<String> {
+      allow_import_host_from_url(&Url::parse(text).unwrap())
+    }
+
+    assert_eq!(
+      parse("http://127.0.0.1:4250"),
+      Some("127.0.0.1:4250".to_string())
+    );
+    assert_eq!(parse("http://jsr.io"), Some("jsr.io:80".to_string()));
+    assert_eq!(
+      parse("https://example.com"),
+      Some("example.com:443".to_string())
+    );
+    assert_eq!(
+      parse("http://example.com"),
+      Some("example.com:80".to_string())
+    );
+    assert_eq!(parse("file:///example.com"), None);
   }
 }
