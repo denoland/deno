@@ -13,7 +13,8 @@ import { core } from "ext:core/mod.js";
 import { createGeometryLoader } from "ext:deno_geometry/00_init.js";
 ```
 
-For environments that do not have a CSS `<transform-list>` parser, such as Web Worker, configure as follows:
+For environments that do not have a CSS `<transform-list>` parser, such as Web
+Worker, configure as follows:
 
 ```javascript
 const loadGeometry = createGeometryLoader((_transformList, prefix) => {
@@ -23,7 +24,8 @@ const loadGeometry = createGeometryLoader((_transformList, prefix) => {
 }, /* enableWindowFeatures */ false);
 ```
 
-On the other hand, in environments with a CSS `<transform-list>` parser, you can configure as follows:
+On the other hand, in environments with a CSS `<transform-list>` parser, you can
+configure as follows:
 
 ```javascript
 const loadGeometry = createGeometryLoader((transformList, prefix) => {
@@ -77,9 +79,8 @@ Object.defineProperties(globalThis, {
 });
 ```
 
-Then from rust, provide:
-`deno_geometry::deno_geometry::init_ops_and_esm()` in the `extensions`
-field of your `RuntimeOptions`
+Then from rust, provide: `deno_geometry::deno_geometry::init_ops_and_esm()` in
+the `extensions` field of your `RuntimeOptions`
 
 ## Dependencies
 
@@ -91,18 +92,7 @@ field of your `RuntimeOptions`
 
 Following ops are provided, which can be accessed through `Deno.ops`:
 
-- op_geometry_translate_self
-- op_geometry_scale_self
-- op_geometry_scale_with_origin_self
-- op_geometry_rotate_self
-- op_geometry_rotate_from_vector_self
-- op_geometry_rotate_axis_angle_self
-- op_geometry_skew_self
-- op_geometry_multiply
-- op_geometry_multiply_self
-- op_geometry_premultiply_self
-- op_geometry_flip_x_self
-- op_geometry_flip_y_self
-- op_geometry_invert_self
-- op_geometry_invert_2d_self
-- op_geometry_premultiply_point_self
+- op_create_matrix_identity
+- Matrix
+- Point
+- Rect
