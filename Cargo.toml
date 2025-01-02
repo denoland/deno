@@ -350,3 +350,4 @@ opt-level = 3
 
 [patch.crates-io]
 deno_config = { git = "https://github.com/denoland/deno_config.git", branch = "deno_lint_rules" }
+deno_lint = { path = "../deno_lint" }

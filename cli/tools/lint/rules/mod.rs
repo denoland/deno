@@ -125,7 +125,7 @@ impl CliLintRule {
 
 #[derive(Debug)]
 pub struct ConfiguredRules {
-  pub all_rule_codes: HashSet<&'static str>,
+  pub all_rule_codes: HashSet<Cow<'static, str>>,
   pub rules: Vec<CliLintRule>,
 }
 
@@ -195,7 +195,7 @@ impl LintRuleProvider {
       .chain(cli_lint_rules)
       .chain(cli_graph_rules)
       .inspect(|rule| {
-        all_rule_names.insert(rule.code());
+        all_rule_names.insert(rule.code().into());
       });
     let rules = filtered_rules(
       all_rules,

@@ -213,6 +213,11 @@ export function installPlugin(plugin) {
   }
   state.plugins.push(plugin);
   state.installedPlugins.add(plugin.name);
+
+  return {
+    name: plugin.name,
+    ruleNames: Object.keys(plugin.rules),
+  };
 }
 
 /**

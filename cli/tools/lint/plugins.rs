@@ -1,11 +1,17 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
+use std::path::Path;
+use std::path::PathBuf;
+use std::rc::Rc;
+use std::sync::Arc;
+
 use deno_ast::ModuleSpecifier;
 use deno_ast::ParsedSource;
 use deno_ast::SourceTextInfo;
 use deno_core::error::custom_error;
 use deno_core::error::AnyError;
 use deno_core::futures::FutureExt;
+use deno_core::parking_lot::Mutex;
 use deno_core::resolve_url_or_path;
 use deno_core::v8;
 use deno_core::PollEventLoopOptions;
@@ -15,10 +21,6 @@ use deno_runtime::deno_permissions::PermissionsContainer;
 use deno_runtime::tokio_util;
 use deno_runtime::worker::MainWorker;
 use deno_runtime::WorkerExecutionMode;
-use std::path::Path;
-use std::path::PathBuf;
-use std::rc::Rc;
-use std::sync::Arc;
 use tokio::sync::mpsc::channel;
 use tokio::sync::mpsc::Receiver;
 use tokio::sync::mpsc::Sender;
@@ -37,7 +39,7 @@ pub enum PluginHostRequest {
 }
 
 pub enum PluginHostResponse {
-  LoadPlugin(Result<(), AnyError>),
+  LoadPlugin(Result<Vec<PluginInfo>, AnyError>),
   Run(Result<Vec<LintDiagnostic>, AnyError>),
 }
 
@@ -99,9 +101,24 @@ v8_static_strings! {
 pub struct PluginHostProxy {
   tx: Sender<PluginHostRequest>,
   rx: Arc<tokio::sync::Mutex<Receiver<PluginHostResponse>>>,
+  pub(crate) plugin_info: Arc<Mutex<Vec<PluginInfo>>>,
   #[allow(unused)]
   join_handle: std::thread::JoinHandle<Result<(), AnyError>>,
   logger: PluginLogger,
+}
+
+impl PluginHostProxy {
+  pub fn get_plugin_rules(&self) -> Vec<String> {
+    let infos = self.plugin_info.lock();
+
+    let mut all_names = vec![];
+
+    for info in infos.iter() {
+      all_names.extend_from_slice(&info.get_rules());
+    }
+
+    all_names
+  }
 }
 
 pub struct PluginHost {
@@ -123,17 +140,16 @@ async fn create_plugin_runner_inner(
     ..Default::default()
   };
   let flags = Arc::new(flags);
-  let factory = CliFactory::from_flags(flags);
+  let factory = CliFactory::from_flags(flags.clone());
   let cli_options = factory.cli_options()?;
   let main_module =
     resolve_url_or_path("./$deno$lint.mts", cli_options.initial_cwd()).unwrap();
-  // TODO(bartlomieju): should we run with all permissions?
-  // TODO(bartlomieju): use none permissions, but with it, the JSR plugin doesn't work
-  // anymore
-  let permissions = PermissionsContainer::allow_all(
-    factory.permission_desc_parser()?.clone(),
-    // Permissions::none(false),
-  );
+  let perm_parser = factory.permission_desc_parser()?;
+  let permissions = Permissions::from_options(
+    perm_parser.as_ref(),
+    &flags.permissions.to_options(&[]),
+  )?;
+  let permissions = PermissionsContainer::new(perm_parser.clone(), permissions);
   // let npm_resolver = factory.npm_resolver().await?.clone();
   // let resolver = factory.resolver().await?.clone();
   let worker_factory = factory.create_cli_main_worker_factory().await?;
@@ -193,6 +209,25 @@ async fn create_plugin_runner_inner(
   })
 }
 
+#[derive(Debug, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PluginInfo {
+  pub name: String,
+  pub rule_names: Vec<String>,
+}
+
+impl PluginInfo {
+  pub fn get_rules(&self) -> Vec<String> {
+    let mut rules = Vec::with_capacity(self.rule_names.len());
+
+    for rule_name in &self.rule_names {
+      rules.push(format!("{}/{}", self.name, rule_name));
+    }
+
+    rules
+  }
+}
+
 impl PluginHost {
   fn create(logger: PluginLogger) -> Result<PluginHostProxy, AnyError> {
     let (tx_req, rx_req) = channel(10);
@@ -224,6 +259,7 @@ impl PluginHost {
     let proxy = PluginHostProxy {
       tx: tx_req,
       rx: Arc::new(tokio::sync::Mutex::new(rx_res)),
+      plugin_info: Arc::new(Mutex::new(vec![])),
       join_handle,
       logger,
     };
@@ -325,7 +361,7 @@ impl PluginHost {
   async fn load_plugins(
     &mut self,
     plugin_specifiers: Vec<ModuleSpecifier>,
-  ) -> Result<(), AnyError> {
+  ) -> Result<Vec<PluginInfo>, AnyError> {
     let mut load_futures = Vec::with_capacity(plugin_specifiers.len());
     for specifier in plugin_specifiers {
       let mod_id = self
@@ -344,6 +380,8 @@ impl PluginHost {
       .run_event_loop(PollEventLoopOptions::default())
       .await?;
 
+    let mut infos = Vec::with_capacity(load_futures.len());
+
     for (fut, mod_id) in load_futures {
       fut.await?;
       let module = self.worker.js_runtime.get_module_namespace(mod_id).unwrap();
@@ -358,11 +396,15 @@ impl PluginHost {
       let args = &[default_export];
       self.logger.log("Installing plugin...");
       // TODO(bartlomieju): do it in a try/catch scope
-      install_plugins_local.call(scope, undefined.into(), args);
-      self.logger.log("Plugin installed");
+      let plugin_info = install_plugins_local
+        .call(scope, undefined.into(), args)
+        .unwrap();
+      let info: PluginInfo = deno_core::serde_v8::from_v8(scope, plugin_info)?;
+      self.logger.log(&format!("Plugin installed: {}", info.name));
+      infos.push(info);
     }
 
-    Ok(())
+    Ok(infos)
   }
 }
 
@@ -384,6 +426,8 @@ impl PluginHostProxy {
       self
         .logger
         .error(&format!("load plugins response {:#?}", result));
+      let infos = result?;
+      *self.plugin_info.lock() = infos;
       return Ok(());
     }
     Err(custom_error("AlreadyClosed", "Plugin host has closed"))

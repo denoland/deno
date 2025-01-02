@@ -15,6 +15,8 @@ use deno_core::futures::FutureExt as _;
 use deno_core::parking_lot::Mutex;
 use deno_graph::ModuleGraph;
 use deno_lint::diagnostic::LintDiagnostic;
+use deno_lint::linter::ExternalLinterCb;
+use deno_lint::linter::ExternalLinterResult;
 use deno_lint::linter::LintConfig as DenoLintConfig;
 use deno_lint::linter::LintFileOptions;
 use deno_lint::linter::Linter as DenoLintLinter;
@@ -75,18 +77,6 @@ impl CliLinter {
     }
   }
 
-  pub fn run_plugins(
-    &self,
-    parsed_source: ParsedSource,
-    file_path: PathBuf,
-  ) -> Result<Vec<LintDiagnostic>, AnyError> {
-    let Some(plugin_runner) = self.maybe_plugin_runner.clone() else {
-      return Ok(vec![]);
-    };
-
-    run_plugins(plugin_runner, parsed_source, file_path)
-  }
-
   pub fn has_package_rules(&self) -> bool {
     !self.package_rules.is_empty()
   }
@@ -107,22 +97,23 @@ impl CliLinter {
     &self,
     parsed_source: &ParsedSource,
   ) -> Vec<LintDiagnostic> {
-    let mut diagnostics = self
-      .linter
-      .lint_with_ast(parsed_source, self.deno_lint_config.clone());
-    let file_path = parsed_source.specifier().to_file_path().unwrap();
     // TODO(bartlomieju): surface error is running plugin fails
-    // TODO(bartlomieju): plugins don't support fixing for now.
-    let run_plugin_result = self.run_plugins(parsed_source.clone(), file_path);
-    if let Err(err) = run_plugin_result.as_ref() {
-      eprintln!("run plugin result {:#?}", err);
-    }
-    let maybe_plugin_diagnostics = run_plugin_result.ok();
-    if let Some(plugin_diagnostics) = maybe_plugin_diagnostics {
-      diagnostics.extend_from_slice(&plugin_diagnostics);
-    }
+    let external_linter: Option<ExternalLinterCb> =
+      if let Some(plugin_runner) = self.maybe_plugin_runner.clone() {
+        Some(Arc::new(move |parsed_source: ParsedSource| {
+          // TODO: clean this up
+          let file_path = parsed_source.specifier().to_file_path().unwrap();
+          run_plugins(plugin_runner.clone(), parsed_source, file_path)
+        }))
+      } else {
+        None
+      };
 
-    diagnostics
+    self.linter.lint_with_ast(
+      parsed_source,
+      self.deno_lint_config.clone(),
+      external_linter,
+    )
   }
 
   pub fn lint_file(
@@ -140,22 +131,37 @@ impl CliLinter {
       MediaType::from_specifier(&specifier)
     };
 
+    // TODO(bartlomieju): surface error is running plugin fails
+    let external_linter: Option<ExternalLinterCb> =
+      if let Some(plugin_runner) = self.maybe_plugin_runner.clone() {
+        Some(Arc::new(move |parsed_source: ParsedSource| {
+          // TODO: clean this up
+          let file_path = parsed_source.specifier().to_file_path().unwrap();
+          run_plugins(plugin_runner.clone(), parsed_source, file_path)
+        }))
+      } else {
+        None
+      };
+
     if self.fix {
-      self.lint_file_and_fix(&specifier, media_type, source_code, file_path)
+      self.lint_file_and_fix(
+        &specifier,
+        media_type,
+        source_code,
+        file_path,
+        external_linter,
+      )
     } else {
-      let (source, mut diagnostics) = self
+      let (source, diagnostics) = self
         .linter
         .lint_file(LintFileOptions {
           specifier,
           media_type,
           source_code,
           config: self.deno_lint_config.clone(),
+          external_linter,
         })
         .map_err(AnyError::from)?;
-      let plugin_diagnostics =
-        self.run_plugins(source.clone(), file_path.to_path_buf())?;
-
-      diagnostics.extend_from_slice(&plugin_diagnostics);
 
       Ok((source, diagnostics))
     }
@@ -167,19 +173,16 @@ impl CliLinter {
     media_type: MediaType,
     source_code: String,
     file_path: &Path,
+    external_linter: Option<ExternalLinterCb>,
   ) -> Result<(ParsedSource, Vec<LintDiagnostic>), deno_core::anyhow::Error> {
     // initial lint
-    let (source, mut diagnostics) = self.linter.lint_file(LintFileOptions {
+    let (source, diagnostics) = self.linter.lint_file(LintFileOptions {
       specifier: specifier.clone(),
       media_type,
       source_code,
       config: self.deno_lint_config.clone(),
+      external_linter: external_linter.clone(),
     })?;
-
-    let plugin_diagnostics =
-      self.run_plugins(source.clone(), file_path.to_path_buf())?;
-
-    diagnostics.extend_from_slice(&plugin_diagnostics);
 
     // Try applying fixes repeatedly until the file has none left or
     // a maximum number of iterations is reached. This is necessary
@@ -196,6 +199,7 @@ impl CliLinter {
         self.deno_lint_config.clone(),
         source.text_info_lazy(),
         &diagnostics,
+        external_linter.clone(),
       )?;
       match change {
         Some(change) => {
@@ -241,6 +245,7 @@ fn apply_lint_fixes_and_relint(
   config: DenoLintConfig,
   text_info: &SourceTextInfo,
   diagnostics: &[LintDiagnostic],
+  external_linter: Option<ExternalLinterCb>,
 ) -> Result<Option<(ParsedSource, Vec<LintDiagnostic>)>, AnyError> {
   let Some(new_text) = apply_lint_fixes(text_info, diagnostics) else {
     return Ok(None);
@@ -251,6 +256,7 @@ fn apply_lint_fixes_and_relint(
       source_code: new_text,
       media_type,
       config,
+      external_linter,
     })
     .map(Some)
     .context(
@@ -309,8 +315,10 @@ fn run_plugins(
   plugin_runner: Arc<Mutex<PluginHostProxy>>,
   parsed_source: ParsedSource,
   file_path: PathBuf,
-) -> Result<Vec<LintDiagnostic>, AnyError> {
+) -> Result<ExternalLinterResult, AnyError> {
   let source_text_info = parsed_source.text_info_lazy().clone();
+  let plugin_info = plugin_runner.lock().get_plugin_rules();
+
   #[allow(clippy::await_holding_lock)]
   let fut = async move {
     let mut plugin_runner = plugin_runner.lock();
@@ -328,5 +336,8 @@ fn run_plugins(
 
   let plugin_diagnostics = tokio_util::create_and_run_current_thread(fut)?;
 
-  Ok(plugin_diagnostics)
+  Ok(ExternalLinterResult {
+    diagnostics: plugin_diagnostics,
+    rules: plugin_info,
+  })
 }
