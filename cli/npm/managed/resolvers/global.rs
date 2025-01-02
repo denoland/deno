@@ -10,27 +10,25 @@ use std::sync::Arc;
 use async_trait::async_trait;
 use deno_ast::ModuleSpecifier;
 use deno_core::error::AnyError;
+use deno_core::futures::stream::FuturesUnordered;
+use deno_core::futures::StreamExt;
 use deno_npm::NpmPackageCacheFolderId;
 use deno_npm::NpmPackageId;
 use deno_npm::NpmResolutionPackage;
 use deno_npm::NpmSystemInfo;
-use deno_runtime::deno_node::NodePermissions;
 use node_resolver::errors::PackageFolderResolveError;
 use node_resolver::errors::PackageNotFoundError;
 use node_resolver::errors::ReferrerNotFoundError;
 
 use super::super::resolution::NpmResolution;
-use super::common::cache_packages;
 use super::common::lifecycle_scripts::LifecycleScriptsStrategy;
 use super::common::NpmPackageFsResolver;
-use super::common::RegistryReadPermissionChecker;
 use crate::args::LifecycleScriptsConfig;
 use crate::cache::FastInsecureHasher;
 use crate::colors;
 use crate::npm::managed::PackageCaching;
 use crate::npm::CliNpmCache;
 use crate::npm::CliNpmTarballCache;
-use crate::sys::CliSys;
 
 /// Resolves packages from the global npm cache.
 #[derive(Debug)]
@@ -39,7 +37,6 @@ pub struct GlobalNpmPackageResolver {
   tarball_cache: Arc<CliNpmTarballCache>,
   resolution: Arc<NpmResolution>,
   system_info: NpmSystemInfo,
-  registry_read_permission_checker: RegistryReadPermissionChecker,
   lifecycle_scripts: LifecycleScriptsConfig,
 }
 
@@ -48,15 +45,10 @@ impl GlobalNpmPackageResolver {
     cache: Arc<CliNpmCache>,
     tarball_cache: Arc<CliNpmTarballCache>,
     resolution: Arc<NpmResolution>,
-    sys: CliSys,
     system_info: NpmSystemInfo,
     lifecycle_scripts: LifecycleScriptsConfig,
   ) -> Self {
     Self {
-      registry_read_permission_checker: RegistryReadPermissionChecker::new(
-        sys,
-        cache.root_dir_path().to_path_buf(),
-      ),
       cache,
       tarball_cache,
       resolution,
@@ -186,16 +178,25 @@ impl NpmPackageFsResolver for GlobalNpmPackageResolver {
 
     Ok(())
   }
+}
 
-  fn ensure_read_permission<'a>(
-    &self,
-    permissions: &mut dyn NodePermissions,
-    path: &'a Path,
-  ) -> Result<Cow<'a, Path>, AnyError> {
-    self
-      .registry_read_permission_checker
-      .ensure_registry_read_permission(permissions, path)
+async fn cache_packages(
+  packages: &[NpmResolutionPackage],
+  tarball_cache: &Arc<CliNpmTarballCache>,
+) -> Result<(), AnyError> {
+  let mut futures_unordered = FuturesUnordered::new();
+  for package in packages {
+    futures_unordered.push(async move {
+      tarball_cache
+        .ensure_package(&package.id.nv, &package.dist)
+        .await
+    });
   }
+  while let Some(result) = futures_unordered.next().await {
+    // surface the first error
+    result?;
+  }
+  Ok(())
 }
 
 struct GlobalLifecycleScripts<'a> {
