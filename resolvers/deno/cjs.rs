@@ -1,13 +1,14 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
-use crate::sync::MaybeDashMap;
 use deno_media_type::MediaType;
-use node_resolver::env::NodeResolverEnv;
 use node_resolver::errors::ClosestPkgJsonError;
 use node_resolver::InNpmPackageCheckerRc;
 use node_resolver::PackageJsonResolverRc;
 use node_resolver::ResolutionMode;
+use sys_traits::FsRead;
 use url::Url;
+
+use crate::sync::MaybeDashMap;
 
 /// Keeps track of what module specifiers were resolved as CJS.
 ///
@@ -15,15 +16,15 @@ use url::Url;
 /// be CJS or ESM after they're loaded based on their contents. So these
 /// files will be "maybe CJS" until they're loaded.
 #[derive(Debug)]
-pub struct CjsTracker<TEnv: NodeResolverEnv> {
-  is_cjs_resolver: IsCjsResolver<TEnv>,
+pub struct CjsTracker<TSys: FsRead> {
+  is_cjs_resolver: IsCjsResolver<TSys>,
   known: MaybeDashMap<Url, ResolutionMode>,
 }
 
-impl<TEnv: NodeResolverEnv> CjsTracker<TEnv> {
+impl<TSys: FsRead> CjsTracker<TSys> {
   pub fn new(
     in_npm_pkg_checker: InNpmPackageCheckerRc,
-    pkg_json_resolver: PackageJsonResolverRc<TEnv>,
+    pkg_json_resolver: PackageJsonResolverRc<TSys>,
     mode: IsCjsResolutionMode,
   ) -> Self {
     Self {
@@ -124,16 +125,16 @@ pub enum IsCjsResolutionMode {
 
 /// Resolves whether a module is CJS or ESM.
 #[derive(Debug)]
-pub struct IsCjsResolver<TEnv: NodeResolverEnv> {
+pub struct IsCjsResolver<TSys: FsRead> {
   in_npm_pkg_checker: InNpmPackageCheckerRc,
-  pkg_json_resolver: PackageJsonResolverRc<TEnv>,
+  pkg_json_resolver: PackageJsonResolverRc<TSys>,
   mode: IsCjsResolutionMode,
 }
 
-impl<TEnv: NodeResolverEnv> IsCjsResolver<TEnv> {
+impl<TSys: FsRead> IsCjsResolver<TSys> {
   pub fn new(
     in_npm_pkg_checker: InNpmPackageCheckerRc,
-    pkg_json_resolver: PackageJsonResolverRc<TEnv>,
+    pkg_json_resolver: PackageJsonResolverRc<TSys>,
     mode: IsCjsResolutionMode,
   ) -> Self {
     Self {

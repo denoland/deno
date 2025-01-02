@@ -1,4 +1,4 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
 //! Code for local node_modules resolution.
 
@@ -7,6 +7,7 @@ use std::cell::RefCell;
 use std::cmp::Ordering;
 use std::collections::hash_map::Entry;
 use std::collections::BTreeMap;
+use std::collections::BTreeSet;
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::fs;
@@ -15,11 +16,6 @@ use std::path::PathBuf;
 use std::rc::Rc;
 use std::sync::Arc;
 
-use crate::args::LifecycleScriptsConfig;
-use crate::colors;
-use crate::npm::managed::PackageCaching;
-use crate::npm::CliNpmCache;
-use crate::npm::CliNpmTarballCache;
 use async_trait::async_trait;
 use deno_ast::ModuleSpecifier;
 use deno_cache_dir::npm::mixed_case_package_name_decode;
@@ -34,8 +30,9 @@ use deno_npm::NpmPackageCacheFolderId;
 use deno_npm::NpmPackageId;
 use deno_npm::NpmResolutionPackage;
 use deno_npm::NpmSystemInfo;
+use deno_path_util::fs::atomic_write_file_with_retries;
+use deno_path_util::fs::canonicalize_path_maybe_not_exists;
 use deno_resolver::npm::normalize_pkg_name_for_node_modules_deno_folder;
-use deno_runtime::deno_fs;
 use deno_runtime::deno_node::NodePermissions;
 use deno_semver::package::PackageNv;
 use deno_semver::StackString;
@@ -45,31 +42,35 @@ use node_resolver::errors::PackageNotFoundError;
 use node_resolver::errors::ReferrerNotFoundError;
 use serde::Deserialize;
 use serde::Serialize;
+use sys_traits::FsMetadata;
 
+use super::super::resolution::NpmResolution;
+use super::common::bin_entries;
+use super::common::NpmPackageFsResolver;
+use super::common::RegistryReadPermissionChecker;
+use crate::args::LifecycleScriptsConfig;
 use crate::args::NpmInstallDepsProvider;
 use crate::cache::CACHE_PERM;
-use crate::util::fs::atomic_write_file_with_retries;
-use crate::util::fs::canonicalize_path_maybe_not_exists_with_fs;
+use crate::colors;
+use crate::npm::managed::PackageCaching;
+use crate::npm::CliNpmCache;
+use crate::npm::CliNpmTarballCache;
+use crate::sys::CliSys;
 use crate::util::fs::clone_dir_recursive;
 use crate::util::fs::symlink_dir;
 use crate::util::fs::LaxSingleProcessFsFlag;
 use crate::util::progress_bar::ProgressBar;
 use crate::util::progress_bar::ProgressMessagePrompt;
 
-use super::super::resolution::NpmResolution;
-use super::common::bin_entries;
-use super::common::NpmPackageFsResolver;
-use super::common::RegistryReadPermissionChecker;
-
 /// Resolver that creates a local node_modules directory
 /// and resolves packages from it.
 #[derive(Debug)]
 pub struct LocalNpmPackageResolver {
   cache: Arc<CliNpmCache>,
-  fs: Arc<dyn deno_fs::FileSystem>,
   npm_install_deps_provider: Arc<NpmInstallDepsProvider>,
   progress_bar: ProgressBar,
   resolution: Arc<NpmResolution>,
+  sys: CliSys,
   tarball_cache: Arc<CliNpmTarballCache>,
   root_node_modules_path: PathBuf,
   root_node_modules_url: Url,
@@ -82,10 +83,10 @@ impl LocalNpmPackageResolver {
   #[allow(clippy::too_many_arguments)]
   pub fn new(
     cache: Arc<CliNpmCache>,
-    fs: Arc<dyn deno_fs::FileSystem>,
     npm_install_deps_provider: Arc<NpmInstallDepsProvider>,
     progress_bar: ProgressBar,
     resolution: Arc<NpmResolution>,
+    sys: CliSys,
     tarball_cache: Arc<CliNpmTarballCache>,
     node_modules_folder: PathBuf,
     system_info: NpmSystemInfo,
@@ -93,15 +94,15 @@ impl LocalNpmPackageResolver {
   ) -> Self {
     Self {
       cache,
-      fs: fs.clone(),
       npm_install_deps_provider,
       progress_bar,
       resolution,
       tarball_cache,
       registry_read_permission_checker: RegistryReadPermissionChecker::new(
-        fs,
+        sys.clone(),
         node_modules_folder.clone(),
       ),
+      sys,
       root_node_modules_url: Url::from_directory_path(&node_modules_folder)
         .unwrap(),
       root_node_modules_path: node_modules_folder,
@@ -140,8 +141,7 @@ impl LocalNpmPackageResolver {
     };
     // Canonicalize the path so it's not pointing to the symlinked directory
     // in `node_modules` directory of the referrer.
-    canonicalize_path_maybe_not_exists_with_fs(&path, self.fs.as_ref())
-      .map(Some)
+    canonicalize_path_maybe_not_exists(&self.sys, &path).map(Some)
   }
 
   fn resolve_package_folder_from_specifier(
@@ -210,7 +210,7 @@ impl NpmPackageFsResolver for LocalNpmPackageResolver {
       };
 
       let sub_dir = join_package_name(&node_modules_folder, name);
-      if self.fs.is_dir_sync(&sub_dir) {
+      if self.sys.fs_is_dir_no_err(&sub_dir) {
         return Ok(sub_dir);
       }
 
@@ -370,10 +370,10 @@ async fn sync_resolution_with_fs(
     );
   let packages_with_deprecation_warnings = Arc::new(Mutex::new(Vec::new()));
 
-  let mut package_tags: HashMap<&PackageNv, Vec<&str>> = HashMap::new();
+  let mut package_tags: HashMap<&PackageNv, BTreeSet<&str>> = HashMap::new();
   for (package_req, package_nv) in snapshot.package_reqs() {
     if let Some(tag) = package_req.version_req.tag() {
-      package_tags.entry(package_nv).or_default().push(tag);
+      package_tags.entry(package_nv).or_default().insert(tag);
     }
   }
 
@@ -393,7 +393,17 @@ async fn sync_resolution_with_fs(
     let folder_path = deno_local_registry_dir.join(&package_folder_name);
     let tags = package_tags
       .get(&package.id.nv)
-      .map(|tags| tags.join(","))
+      .map(|tags| {
+        capacity_builder::StringBuilder::<String>::build(|builder| {
+          for (i, tag) in tags.iter().enumerate() {
+            if i > 0 {
+              builder.append(',')
+            }
+            builder.append(*tag);
+          }
+        })
+        .unwrap()
+      })
       .unwrap_or_default();
     enum PackageFolderState {
       UpToDate,
@@ -925,7 +935,13 @@ impl SetupCache {
     }
 
     bincode::serialize(&self.current).ok().and_then(|data| {
-      atomic_write_file_with_retries(&self.file_path, data, CACHE_PERM).ok()
+      atomic_write_file_with_retries(
+        &CliSys::default(),
+        &self.file_path,
+        &data,
+        CACHE_PERM,
+      )
+      .ok()
     });
     true
   }

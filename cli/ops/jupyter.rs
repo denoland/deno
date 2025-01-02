@@ -1,4 +1,4 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
 // NOTE(bartlomieju): unfortunately it appears that clippy is broken
 // and can't allow a single line ignore for `await_holding_lock`.
@@ -8,17 +8,16 @@ use std::cell::RefCell;
 use std::rc::Rc;
 use std::sync::Arc;
 
-use jupyter_runtime::InputRequest;
-use jupyter_runtime::JupyterMessage;
-use jupyter_runtime::JupyterMessageContent;
-use jupyter_runtime::KernelIoPubConnection;
-use jupyter_runtime::StreamContent;
-
 use deno_core::error::AnyError;
 use deno_core::op2;
 use deno_core::parking_lot::Mutex;
 use deno_core::serde_json;
 use deno_core::OpState;
+use jupyter_runtime::InputRequest;
+use jupyter_runtime::JupyterMessage;
+use jupyter_runtime::JupyterMessageContent;
+use jupyter_runtime::KernelIoPubConnection;
+use jupyter_runtime::StreamContent;
 use tokio::sync::mpsc;
 
 use crate::tools::jupyter::server::StdinConnectionProxy;

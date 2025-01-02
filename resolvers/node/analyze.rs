@@ -1,4 +1,4 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
 use std::borrow::Cow;
 use std::collections::BTreeSet;
@@ -6,6 +6,8 @@ use std::collections::HashSet;
 use std::path::Path;
 use std::path::PathBuf;
 
+use anyhow::Context;
+use anyhow::Error as AnyError;
 use deno_path_util::url_from_file_path;
 use deno_path_util::url_to_file_path;
 use futures::future::LocalBoxFuture;
@@ -13,14 +15,14 @@ use futures::stream::FuturesUnordered;
 use futures::FutureExt;
 use futures::StreamExt;
 use once_cell::sync::Lazy;
-
-use anyhow::Context;
-use anyhow::Error as AnyError;
+use sys_traits::FsCanonicalize;
+use sys_traits::FsMetadata;
+use sys_traits::FsRead;
 use url::Url;
 
-use crate::env::NodeResolverEnv;
 use crate::npm::InNpmPackageCheckerRc;
 use crate::resolution::NodeResolverRc;
+use crate::IsBuiltInNodeModuleChecker;
 use crate::NodeResolutionKind;
 use crate::NpmPackageFolderResolverRc;
 use crate::PackageJsonResolverRc;
@@ -60,34 +62,38 @@ pub trait CjsCodeAnalyzer {
 
 pub struct NodeCodeTranslator<
   TCjsCodeAnalyzer: CjsCodeAnalyzer,
-  TNodeResolverEnv: NodeResolverEnv,
+  TIsBuiltInNodeModuleChecker: IsBuiltInNodeModuleChecker,
+  TSys: FsCanonicalize + FsMetadata + FsRead,
 > {
   cjs_code_analyzer: TCjsCodeAnalyzer,
-  env: TNodeResolverEnv,
   in_npm_pkg_checker: InNpmPackageCheckerRc,
-  node_resolver: NodeResolverRc<TNodeResolverEnv>,
+  node_resolver: NodeResolverRc<TIsBuiltInNodeModuleChecker, TSys>,
   npm_resolver: NpmPackageFolderResolverRc,
-  pkg_json_resolver: PackageJsonResolverRc<TNodeResolverEnv>,
+  pkg_json_resolver: PackageJsonResolverRc<TSys>,
+  sys: TSys,
 }
 
-impl<TCjsCodeAnalyzer: CjsCodeAnalyzer, TNodeResolverEnv: NodeResolverEnv>
-  NodeCodeTranslator<TCjsCodeAnalyzer, TNodeResolverEnv>
+impl<
+    TCjsCodeAnalyzer: CjsCodeAnalyzer,
+    TIsBuiltInNodeModuleChecker: IsBuiltInNodeModuleChecker,
+    TSys: FsCanonicalize + FsMetadata + FsRead,
+  > NodeCodeTranslator<TCjsCodeAnalyzer, TIsBuiltInNodeModuleChecker, TSys>
 {
   pub fn new(
     cjs_code_analyzer: TCjsCodeAnalyzer,
-    env: TNodeResolverEnv,
     in_npm_pkg_checker: InNpmPackageCheckerRc,
-    node_resolver: NodeResolverRc<TNodeResolverEnv>,
+    node_resolver: NodeResolverRc<TIsBuiltInNodeModuleChecker, TSys>,
     npm_resolver: NpmPackageFolderResolverRc,
-    pkg_json_resolver: PackageJsonResolverRc<TNodeResolverEnv>,
+    pkg_json_resolver: PackageJsonResolverRc<TSys>,
+    sys: TSys,
   ) -> Self {
     Self {
       cjs_code_analyzer,
-      env,
       in_npm_pkg_checker,
       node_resolver,
       npm_resolver,
       pkg_json_resolver,
+      sys,
     }
   }
 
@@ -366,7 +372,7 @@ impl<TCjsCodeAnalyzer: CjsCodeAnalyzer, TNodeResolverEnv: NodeResolverEnv>
       // old school
       if package_subpath != "." {
         let d = module_dir.join(package_subpath);
-        if self.env.is_dir_sync(&d) {
+        if self.sys.fs_is_dir_no_err(&d) {
           // subdir might have a package.json that specifies the entrypoint
           let package_json_path = d.join("package.json");
           let maybe_package_json = self
@@ -423,13 +429,13 @@ impl<TCjsCodeAnalyzer: CjsCodeAnalyzer, TNodeResolverEnv: NodeResolverEnv>
     referrer: &Path,
   ) -> Result<PathBuf, AnyError> {
     let p = p.clean();
-    if self.env.exists_sync(&p) {
+    if self.sys.fs_exists_no_err(&p) {
       let file_name = p.file_name().unwrap();
       let p_js =
         p.with_file_name(format!("{}.js", file_name.to_str().unwrap()));
-      if self.env.is_file_sync(&p_js) {
+      if self.sys.fs_is_file_no_err(&p_js) {
         return Ok(p_js);
-      } else if self.env.is_dir_sync(&p) {
+      } else if self.sys.fs_is_dir_no_err(&p) {
         return Ok(p.join("index.js"));
       } else {
         return Ok(p);
@@ -438,14 +444,14 @@ impl<TCjsCodeAnalyzer: CjsCodeAnalyzer, TNodeResolverEnv: NodeResolverEnv>
       {
         let p_js =
           p.with_file_name(format!("{}.js", file_name.to_str().unwrap()));
-        if self.env.is_file_sync(&p_js) {
+        if self.sys.fs_is_file_no_err(&p_js) {
           return Ok(p_js);
         }
       }
       {
         let p_json =
           p.with_file_name(format!("{}.json", file_name.to_str().unwrap()));
-        if self.env.is_file_sync(&p_json) {
+        if self.sys.fs_is_file_no_err(&p_json) {
           return Ok(p_json);
         }
       }

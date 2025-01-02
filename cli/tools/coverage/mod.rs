@@ -1,15 +1,12 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
-use crate::args::CliOptions;
-use crate::args::CoverageFlags;
-use crate::args::FileFlags;
-use crate::args::Flags;
-use crate::cdp;
-use crate::factory::CliFactory;
-use crate::file_fetcher::TextDecodedFile;
-use crate::tools::fmt::format_json;
-use crate::tools::test::is_supported_test_path;
-use crate::util::text_encoding::source_map_from_code;
+use std::fs;
+use std::fs::File;
+use std::io::BufWriter;
+use std::io::Write;
+use std::path::Path;
+use std::path::PathBuf;
+use std::sync::Arc;
 
 use deno_ast::MediaType;
 use deno_ast::ModuleKind;
@@ -28,15 +25,20 @@ use deno_core::url::Url;
 use deno_core::LocalInspectorSession;
 use node_resolver::InNpmPackageChecker;
 use regex::Regex;
-use std::fs;
-use std::fs::File;
-use std::io::BufWriter;
-use std::io::Write;
-use std::path::Path;
-use std::path::PathBuf;
-use std::sync::Arc;
 use text_lines::TextLines;
 use uuid::Uuid;
+
+use crate::args::CliOptions;
+use crate::args::CoverageFlags;
+use crate::args::FileFlags;
+use crate::args::Flags;
+use crate::cdp;
+use crate::factory::CliFactory;
+use crate::file_fetcher::TextDecodedFile;
+use crate::sys::CliSys;
+use crate::tools::fmt::format_json;
+use crate::tools::test::is_supported_test_path;
+use crate::util::text_encoding::source_map_from_code;
 
 mod merge;
 mod range_tree;
@@ -428,7 +430,7 @@ fn collect_coverages(
   .ignore_git_folder()
   .ignore_node_modules()
   .set_vendor_folder(cli_options.vendor_dir_path().map(ToOwned::to_owned))
-  .collect_file_patterns(&deno_config::fs::RealDenoConfigFs, file_patterns)?;
+  .collect_file_patterns(&CliSys::default(), file_patterns)?;
 
   let coverage_patterns = FilePatterns {
     base: initial_cwd.to_path_buf(),

@@ -1,9 +1,23 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
+#[cfg(unix)]
+use std::cell::RefCell;
+#[cfg(unix)]
+use std::collections::HashMap;
 use std::io::Error;
+#[cfg(windows)]
+use std::sync::Arc;
 
 use deno_core::op2;
+#[cfg(windows)]
+use deno_core::parking_lot::Mutex;
 use deno_core::OpState;
+#[cfg(unix)]
+use deno_core::ResourceId;
+#[cfg(windows)]
+use deno_io::WinTtyState;
+#[cfg(unix)]
+use nix::sys::termios;
 use rustyline::config::Configurer;
 use rustyline::error::ReadlineError;
 use rustyline::Cmd;
@@ -11,22 +25,6 @@ use rustyline::Editor;
 use rustyline::KeyCode;
 use rustyline::KeyEvent;
 use rustyline::Modifiers;
-
-#[cfg(windows)]
-use deno_core::parking_lot::Mutex;
-#[cfg(windows)]
-use deno_io::WinTtyState;
-#[cfg(windows)]
-use std::sync::Arc;
-
-#[cfg(unix)]
-use deno_core::ResourceId;
-#[cfg(unix)]
-use nix::sys::termios;
-#[cfg(unix)]
-use std::cell::RefCell;
-#[cfg(unix)]
-use std::collections::HashMap;
 
 #[cfg(unix)]
 #[derive(Default, Clone)]
@@ -116,7 +114,6 @@ fn op_set_raw(
   #[cfg(windows)]
   {
     use winapi::shared::minwindef::FALSE;
-
     use winapi::um::consoleapi;
 
     let handle = handle_or_fd;

@@ -1,4 +1,4 @@
-# Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+# Copyright 2018-2025 the Deno authors. MIT license.
 
 [package]
 name = "deno_resolver"
@@ -29,6 +29,7 @@ deno_path_util.workspace = true
 deno_semver.workspace = true
 node_resolver.workspace = true
 node_resolver.features = ["sync"]
+sys_traits.workspace = true
 thiserror.workspace = true
 url.workspace = true
 

@@ -1,4 +1,4 @@
-# Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+# Copyright 2018-2025 the Deno authors. MIT license.
 
 [package]
 name = "deno_node"
@@ -14,10 +14,10 @@ description = "Node compatibility for Deno"
 path = "lib.rs"
 
 [features]
-sync_fs = ["deno_package_json/sync", "node_resolver/sync"]
+sync_fs = ["deno_fs/sync_fs", "deno_package_json/sync", "node_resolver/sync"]
 
 [dependencies]
-aead-gcm-stream = "0.3"
+aead-gcm-stream = "0.4"
 aes.workspace = true
 async-trait.workspace = true
 base64.workspace = true
@@ -93,6 +93,7 @@ simd-json = "0.14.0"
 sm3 = "0.4.2"
 spki.workspace = true
 stable_deref_trait = "1.2.0"
+sys_traits = { workspace = true, features = ["real"] }
 thiserror.workspace = true
 tokio.workspace = true
 tokio-eld = "0.2"

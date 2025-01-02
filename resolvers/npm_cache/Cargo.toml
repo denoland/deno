@@ -1,4 +1,4 @@
-# Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+# Copyright 2018-2025 the Deno authors. MIT license.
 
 [package]
 name = "deno_npm_cache"
@@ -25,6 +25,7 @@ boxed_error.workspace = true
 deno_cache_dir.workspace = true
 deno_error.workspace = true
 deno_npm.workspace = true
+deno_path_util.workspace = true
 deno_semver.workspace = true
 deno_unsync = { workspace = true, features = ["tokio"] }
 faster-hex.workspace = true
@@ -37,6 +38,7 @@ percent-encoding.workspace = true
 rand.workspace = true
 ring.workspace = true
 serde_json.workspace = true
+sys_traits.workspace = true
 tar.workspace = true
 tempfile = "3.4.0"
 thiserror.workspace = true

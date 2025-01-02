@@ -1,4 +1,4 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
 use deno_cache_dir::HttpCache;
 use deno_core::serde_json;
@@ -191,8 +191,8 @@ fn reload_info_not_found_cache_but_exists_remote() {
       Url::parse(&format!("http://127.0.0.1:4250/{}/meta.json", package))
         .unwrap();
     let cache = deno_cache_dir::GlobalHttpCache::new(
+      sys_traits::impls::RealSys,
       deno_dir.path().join("remote").to_path_buf(),
-      deno_cache_dir::TestRealDenoCacheEnv,
     );
     let entry = cache
       .get(&cache.cache_item_key(&specifier).unwrap(), None)

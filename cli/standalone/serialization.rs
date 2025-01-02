@@ -1,4 +1,4 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
 use std::borrow::Cow;
 use std::cell::Cell;
@@ -25,12 +25,11 @@ use deno_semver::package::PackageReq;
 use deno_semver::StackString;
 use indexmap::IndexMap;
 
-use crate::standalone::virtual_fs::VirtualDirectory;
-
 use super::binary::Metadata;
 use super::virtual_fs::BuiltVfs;
 use super::virtual_fs::VfsBuilder;
 use super::virtual_fs::VirtualDirectoryEntries;
+use crate::standalone::virtual_fs::VirtualDirectory;
 
 const MAGIC_BYTES: &[u8; 8] = b"d3n0l4nd";
 

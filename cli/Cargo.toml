@@ -1,4 +1,4 @@
-# Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+# Copyright 2018-2025 the Deno authors. MIT license.
 
 [package]
 name = "deno"
@@ -74,7 +74,7 @@ deno_config.workspace = true
 deno_core = { workspace = true, features = ["include_js_files_for_snapshotting"] }
 deno_doc = { version = "=0.161.3", features = ["rust", "comrak"] }
 deno_error.workspace = true
-deno_graph = { version = "=0.86.5" }
+deno_graph = { version = "=0.86.6" }
 deno_lint = { version = "=0.68.2", features = ["docs"] }
 deno_lockfile.workspace = true
 deno_npm.workspace = true
@@ -158,6 +158,7 @@ shell-escape = "=0.1.5"
 spki = { version = "0.7", features = ["pem"] }
 sqlformat = "=0.3.2"
 strsim = "0.11.1"
+sys_traits = { workspace = true, features = ["getrandom", "filetime", "libc", "real", "strip_unc", "winapi"] }
 tar.workspace = true
 tempfile.workspace = true
 text-size = "=1.1.0"
@@ -186,6 +187,7 @@ nix.workspace = true
 [dev-dependencies]
 deno_bench_util.workspace = true
 pretty_assertions.workspace = true
+sys_traits = { workspace = true, features = ["memory"] }
 test_util.workspace = true
 
 [package.metadata.winres]

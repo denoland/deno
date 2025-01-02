@@ -1,11 +1,11 @@
 #!/usr/bin/env -S deno run --allow-read=. --allow-run=git --config=tests/config/deno.json
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
 // deno-lint-ignore-file no-console
 
 import { getSources, ROOT_PATH } from "./util.js";
 
-const copyrightYear = 2024;
+const copyrightYear = 2025;
 
 const buffer = new Uint8Array(1024);
 const textDecoder = new TextDecoder();
@@ -63,7 +63,7 @@ export async function checkCopyright() {
   const ACCEPTABLE_LINES =
     /^(\/\/ deno-lint-.*|\/\/ Copyright.*|\/\/ Ported.*|\s*|#!\/.*)\n/;
   const COPYRIGHT_LINE =
-    `Copyright 2018-${copyrightYear} the Deno authors. All rights reserved. MIT license.`;
+    `Copyright 2018-${copyrightYear} the Deno authors. MIT license.`;
   const TOML_COPYRIGHT_LINE = "# " + COPYRIGHT_LINE;
   const C_STYLE_COPYRIGHT_LINE = "// " + COPYRIGHT_LINE;
 

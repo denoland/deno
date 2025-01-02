@@ -1,4 +1,4 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
 use deno_core::serde::Serialize;
 
@@ -127,12 +127,12 @@ pub fn cpu_info() -> Option<Vec<CpuInfo>> {
 
 #[cfg(target_os = "windows")]
 pub fn cpu_info() -> Option<Vec<CpuInfo>> {
+  use std::os::windows::ffi::OsStrExt;
+  use std::os::windows::ffi::OsStringExt;
+
   use windows_sys::Wdk::System::SystemInformation::NtQuerySystemInformation;
   use windows_sys::Wdk::System::SystemInformation::SystemProcessorPerformanceInformation;
   use windows_sys::Win32::System::WindowsProgramming::SYSTEM_PROCESSOR_PERFORMANCE_INFORMATION;
-
-  use std::os::windows::ffi::OsStrExt;
-  use std::os::windows::ffi::OsStringExt;
 
   fn encode_wide(s: &str) -> Vec<u16> {
     std::ffi::OsString::from(s)

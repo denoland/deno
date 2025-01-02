@@ -1,4 +1,17 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
+
+use std::borrow::Cow;
+use std::collections::HashSet;
+use std::ffi::OsStr;
+use std::fmt;
+use std::fmt::Debug;
+use std::hash::Hash;
+use std::net::IpAddr;
+use std::net::Ipv6Addr;
+use std::path::Path;
+use std::path::PathBuf;
+use std::string::ToString;
+use std::sync::Arc;
 
 use capacity_builder::StringBuilder;
 use deno_core::parking_lot::Mutex;
@@ -15,28 +28,15 @@ use deno_path_util::url_to_file_path;
 use deno_terminal::colors;
 use fqdn::FQDN;
 use once_cell::sync::Lazy;
-use std::borrow::Cow;
-use std::collections::HashSet;
-use std::ffi::OsStr;
-use std::fmt;
-use std::fmt::Debug;
-use std::hash::Hash;
-use std::net::IpAddr;
-use std::net::Ipv6Addr;
-use std::path::Path;
-use std::path::PathBuf;
-use std::string::ToString;
-use std::sync::Arc;
 
 pub mod prompter;
 use prompter::permission_prompt;
-use prompter::PERMISSION_EMOJI;
-
 pub use prompter::set_prompt_callbacks;
 pub use prompter::set_prompter;
 pub use prompter::PermissionPrompter;
 pub use prompter::PromptCallback;
 pub use prompter::PromptResponse;
+use prompter::PERMISSION_EMOJI;
 
 #[derive(Debug, thiserror::Error)]
 pub enum PermissionDeniedError {
@@ -3691,11 +3691,13 @@ pub fn is_standalone() -> bool {
 
 #[cfg(test)]
 mod tests {
-  use super::*;
+  use std::net::Ipv4Addr;
+
   use deno_core::serde_json::json;
   use fqdn::fqdn;
   use prompter::tests::*;
-  use std::net::Ipv4Addr;
+
+  use super::*;
 
   // Creates vector of strings, Vec<String>
   macro_rules! svec {

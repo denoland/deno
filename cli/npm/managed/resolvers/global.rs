@@ -1,4 +1,4 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
 //! Code for global npm cache resolution.
 
@@ -7,10 +7,6 @@ use std::path::Path;
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use crate::colors;
-use crate::npm::managed::PackageCaching;
-use crate::npm::CliNpmCache;
-use crate::npm::CliNpmTarballCache;
 use async_trait::async_trait;
 use deno_ast::ModuleSpecifier;
 use deno_core::error::AnyError;
@@ -18,20 +14,23 @@ use deno_npm::NpmPackageCacheFolderId;
 use deno_npm::NpmPackageId;
 use deno_npm::NpmResolutionPackage;
 use deno_npm::NpmSystemInfo;
-use deno_runtime::deno_fs::FileSystem;
 use deno_runtime::deno_node::NodePermissions;
 use node_resolver::errors::PackageFolderResolveError;
 use node_resolver::errors::PackageNotFoundError;
 use node_resolver::errors::ReferrerNotFoundError;
-
-use crate::args::LifecycleScriptsConfig;
-use crate::cache::FastInsecureHasher;
 
 use super::super::resolution::NpmResolution;
 use super::common::cache_packages;
 use super::common::lifecycle_scripts::LifecycleScriptsStrategy;
 use super::common::NpmPackageFsResolver;
 use super::common::RegistryReadPermissionChecker;
+use crate::args::LifecycleScriptsConfig;
+use crate::cache::FastInsecureHasher;
+use crate::colors;
+use crate::npm::managed::PackageCaching;
+use crate::npm::CliNpmCache;
+use crate::npm::CliNpmTarballCache;
+use crate::sys::CliSys;
 
 /// Resolves packages from the global npm cache.
 #[derive(Debug)]
@@ -47,15 +46,15 @@ pub struct GlobalNpmPackageResolver {
 impl GlobalNpmPackageResolver {
   pub fn new(
     cache: Arc<CliNpmCache>,
-    fs: Arc<dyn FileSystem>,
     tarball_cache: Arc<CliNpmTarballCache>,
     resolution: Arc<NpmResolution>,
+    sys: CliSys,
     system_info: NpmSystemInfo,
     lifecycle_scripts: LifecycleScriptsConfig,
   ) -> Self {
     Self {
       registry_read_permission_checker: RegistryReadPermissionChecker::new(
-        fs,
+        sys,
         cache.root_dir_path().to_path_buf(),
       ),
       cache,

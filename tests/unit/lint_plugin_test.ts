@@ -1,4 +1,4 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
 import { assertEquals } from "./test_util.ts";
 
@@ -210,6 +210,28 @@ Deno.test("Plugin - visitor attr", () => {
     "[name='foo']",
   );
   assertEquals(result[0].node.name, "foo");
+});
+
+Deno.test("Plugin - visitor attr to check type", () => {
+  let result = testVisit(
+    "foo",
+    "Identifier[type]",
+  );
+  assertEquals(result[0].node.type, "Identifier");
+
+  result = testVisit(
+    "foo",
+    "Identifier[type='Identifier']",
+  );
+  assertEquals(result[0].node.type, "Identifier");
+});
+
+Deno.test("Plugin - visitor attr non-existing", () => {
+  const result = testVisit(
+    "foo",
+    "[non-existing]",
+  );
+  assertEquals(result, []);
 });
 
 Deno.test("Plugin - visitor attr length special case", () => {

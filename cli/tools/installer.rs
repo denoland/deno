@@ -1,4 +1,28 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
+
+use std::env;
+use std::fs;
+use std::fs::File;
+use std::io;
+use std::io::Write;
+#[cfg(not(windows))]
+use std::os::unix::fs::PermissionsExt;
+use std::path::Path;
+use std::path::PathBuf;
+use std::sync::Arc;
+
+use deno_cache_dir::file_fetcher::CacheSetting;
+use deno_core::anyhow::bail;
+use deno_core::anyhow::Context;
+use deno_core::error::generic_error;
+use deno_core::error::AnyError;
+use deno_core::resolve_url_or_path;
+use deno_core::url::Url;
+use deno_semver::npm::NpmPackageReqReference;
+use log::Level;
+use once_cell::sync::Lazy;
+use regex::Regex;
+use regex::RegexBuilder;
 
 use crate::args::resolve_no_prompt;
 use crate::args::AddFlags;
@@ -18,30 +42,6 @@ use crate::http_util::HttpClientProvider;
 use crate::jsr::JsrFetchResolver;
 use crate::npm::NpmFetchResolver;
 use crate::util::fs::canonicalize_path_maybe_not_exists;
-
-use deno_cache_dir::file_fetcher::CacheSetting;
-use deno_core::anyhow::bail;
-use deno_core::anyhow::Context;
-use deno_core::error::generic_error;
-use deno_core::error::AnyError;
-use deno_core::resolve_url_or_path;
-use deno_core::url::Url;
-use deno_semver::npm::NpmPackageReqReference;
-use log::Level;
-use once_cell::sync::Lazy;
-use regex::Regex;
-use regex::RegexBuilder;
-use std::env;
-use std::fs;
-use std::fs::File;
-use std::io;
-use std::io::Write;
-use std::path::Path;
-use std::path::PathBuf;
-
-#[cfg(not(windows))]
-use std::os::unix::fs::PermissionsExt;
-use std::sync::Arc;
 
 static EXEC_NAME_RE: Lazy<Regex> = Lazy::new(|| {
   RegexBuilder::new(r"^[a-z0-9][\w-]*$")
@@ -364,6 +364,7 @@ async fn install_global(
   let deps_file_fetcher = CliFileFetcher::new(
     deps_http_cache.clone(),
     http_client.clone(),
+    factory.sys(),
     Default::default(),
     None,
     true,
@@ -658,16 +659,17 @@ fn is_in_path(dir: &Path) -> bool {
 
 #[cfg(test)]
 mod tests {
-  use super::*;
+  use std::process::Command;
 
+  use test_util::testdata_path;
+  use test_util::TempDir;
+
+  use super::*;
   use crate::args::ConfigFlag;
   use crate::args::PermissionFlags;
   use crate::args::UninstallFlagsGlobal;
   use crate::args::UnstableConfig;
   use crate::util::fs::canonicalize_path;
-  use std::process::Command;
-  use test_util::testdata_path;
-  use test_util::TempDir;
 
   #[tokio::test]
   async fn install_infer_name_from_url() {

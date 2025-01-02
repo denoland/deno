@@ -1,4 +1,4 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
 use std::borrow::Cow;
 use std::collections::HashMap;
@@ -35,6 +35,7 @@ use import_map::ImportMapWithDiagnostics;
 use import_map::SpecifierMapEntry;
 use tokio::sync::Semaphore;
 
+use super::ConfigUpdater;
 use crate::args::CliLockfile;
 use crate::graph_container::MainModuleGraphContainer;
 use crate::graph_container::ModuleGraphContainer;
@@ -44,8 +45,6 @@ use crate::module_loader::ModuleLoadPreparer;
 use crate::npm::CliNpmResolver;
 use crate::npm::NpmFetchResolver;
 use crate::util::sync::AtomicFlag;
-
-use super::ConfigUpdater;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum ImportMapKind {

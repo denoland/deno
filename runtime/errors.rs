@@ -1,4 +1,4 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
 //! There are many types of errors in Deno:
 //! - AnyError: a generic wrapper that can encapsulate any type of error.
@@ -9,16 +9,11 @@
 //!   Diagnostics are compile-time type errors, whereas JsErrors are runtime
 //!   exceptions.
 
-use crate::ops::fs_events::FsEventsError;
-use crate::ops::http::HttpStartError;
-use crate::ops::os::OsError;
-use crate::ops::permissions::PermissionError;
-use crate::ops::process::CheckRunPermissionError;
-use crate::ops::process::ProcessError;
-use crate::ops::signal::SignalError;
-use crate::ops::tty::TtyError;
-use crate::ops::web_worker::SyncFetchError;
-use crate::ops::worker_host::CreateWorkerError;
+use std::env;
+use std::error::Error;
+use std::io;
+use std::sync::Arc;
+
 use deno_broadcast_channel::BroadcastChannelError;
 use deno_cache::CacheError;
 use deno_canvas::CanvasError;
@@ -68,10 +63,17 @@ use deno_websocket::HandshakeError;
 use deno_websocket::WebsocketError;
 use deno_webstorage::WebStorageError;
 use rustyline::error::ReadlineError;
-use std::env;
-use std::error::Error;
-use std::io;
-use std::sync::Arc;
+
+use crate::ops::fs_events::FsEventsError;
+use crate::ops::http::HttpStartError;
+use crate::ops::os::OsError;
+use crate::ops::permissions::PermissionError;
+use crate::ops::process::CheckRunPermissionError;
+use crate::ops::process::ProcessError;
+use crate::ops::signal::SignalError;
+use crate::ops::tty::TtyError;
+use crate::ops::web_worker::SyncFetchError;
+use crate::ops::worker_host::CreateWorkerError;
 
 fn get_run_descriptor_parse_error(e: &RunDescriptorParseError) -> &'static str {
   match e {
@@ -1047,11 +1049,6 @@ fn get_fs_error(e: &FsError) -> &'static str {
 }
 
 mod node {
-  use super::get_error_class_name;
-  use super::get_io_error_class;
-  use super::get_permission_check_error_class;
-  use super::get_serde_json_error_class;
-  use super::get_url_parse_error_class;
   pub use deno_node::ops::blocklist::BlocklistError;
   pub use deno_node::ops::crypto::cipher::CipherContextError;
   pub use deno_node::ops::crypto::cipher::CipherError;
@@ -1095,6 +1092,12 @@ mod node {
   pub use deno_node::ops::zlib::brotli::BrotliError;
   pub use deno_node::ops::zlib::mode::ModeError;
   pub use deno_node::ops::zlib::ZlibError;
+
+  use super::get_error_class_name;
+  use super::get_io_error_class;
+  use super::get_permission_check_error_class;
+  use super::get_serde_json_error_class;
+  use super::get_url_parse_error_class;
 
   pub fn get_blocklist_error(error: &BlocklistError) -> &'static str {
     match error {
@@ -1157,7 +1160,7 @@ mod node {
       WorkerThreadsFilenameError::UrlToPathString => "Error",
       WorkerThreadsFilenameError::UrlToPath => "Error",
       WorkerThreadsFilenameError::FileNotFound(_) => "Error",
-      WorkerThreadsFilenameError::Fs(e) => super::get_fs_error(e),
+      WorkerThreadsFilenameError::Fs(e) => super::get_io_error_class(e),
     }
   }
 
@@ -1173,7 +1176,7 @@ mod node {
       | UrlConversion(_)
       | ReadModule(_)
       | PackageImportsResolve(_) => "Error",
-      Fs(e) | UnableToGetCwd(e) => super::get_fs_error(e),
+      Fs(e) | UnableToGetCwd(e) => super::get_io_error_class(e),
     }
   }
 

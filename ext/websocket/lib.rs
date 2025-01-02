@@ -1,5 +1,13 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
-use crate::stream::WebSocketStream;
+// Copyright 2018-2025 the Deno authors. MIT license.
+use std::borrow::Cow;
+use std::cell::Cell;
+use std::cell::RefCell;
+use std::future::Future;
+use std::num::NonZeroUsize;
+use std::path::PathBuf;
+use std::rc::Rc;
+use std::sync::Arc;
+
 use bytes::Bytes;
 use deno_core::futures::TryFutureExt;
 use deno_core::op2;
@@ -17,12 +25,20 @@ use deno_core::Resource;
 use deno_core::ResourceId;
 use deno_core::ToJsBuffer;
 use deno_net::raw::NetworkStream;
+use deno_permissions::PermissionCheckError;
 use deno_tls::create_client_config;
 use deno_tls::rustls::ClientConfig;
 use deno_tls::rustls::ClientConnection;
 use deno_tls::RootCertStoreProvider;
 use deno_tls::SocketUse;
 use deno_tls::TlsKeys;
+use fastwebsockets::CloseCode;
+use fastwebsockets::FragmentCollectorRead;
+use fastwebsockets::Frame;
+use fastwebsockets::OpCode;
+use fastwebsockets::Role;
+use fastwebsockets::WebSocket;
+use fastwebsockets::WebSocketWrite;
 use http::header::CONNECTION;
 use http::header::UPGRADE;
 use http::HeaderName;
@@ -36,28 +52,13 @@ use rustls_tokio_stream::rustls::pki_types::ServerName;
 use rustls_tokio_stream::rustls::RootCertStore;
 use rustls_tokio_stream::TlsStream;
 use serde::Serialize;
-use std::borrow::Cow;
-use std::cell::Cell;
-use std::cell::RefCell;
-use std::future::Future;
-use std::num::NonZeroUsize;
-use std::path::PathBuf;
-use std::rc::Rc;
-use std::sync::Arc;
 use tokio::io::AsyncRead;
 use tokio::io::AsyncWrite;
 use tokio::io::ReadHalf;
 use tokio::io::WriteHalf;
 use tokio::net::TcpStream;
 
-use deno_permissions::PermissionCheckError;
-use fastwebsockets::CloseCode;
-use fastwebsockets::FragmentCollectorRead;
-use fastwebsockets::Frame;
-use fastwebsockets::OpCode;
-use fastwebsockets::Role;
-use fastwebsockets::WebSocket;
-use fastwebsockets::WebSocketWrite;
+use crate::stream::WebSocketStream;
 
 mod stream;
 

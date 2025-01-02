@@ -1,15 +1,16 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
-use deno_core::op2;
-use deno_core::OpState;
-use deno_core::Resource;
-use deno_core::ResourceId;
 use std::borrow::Cow;
 use std::cell::RefCell;
 use std::rc::Rc;
 use std::sync::Arc;
 use std::sync::Mutex;
 use std::time::Duration;
+
+use deno_core::op2;
+use deno_core::OpState;
+use deno_core::Resource;
+use deno_core::ResourceId;
 
 use super::error::WebGpuResult;
 

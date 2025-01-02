@@ -1,11 +1,5 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
-use super::util;
-use super::CoverageReport;
-use crate::args::CoverageType;
-use crate::colors;
-use deno_core::error::AnyError;
-use deno_core::url::Url;
 use std::collections::HashMap;
 use std::fs;
 use std::fs::File;
@@ -14,6 +8,14 @@ use std::io::Write;
 use std::io::{self};
 use std::path::Path;
 use std::path::PathBuf;
+
+use deno_core::error::AnyError;
+use deno_core::url::Url;
+
+use super::util;
+use super::CoverageReport;
+use crate::args::CoverageType;
+use crate::colors;
 
 #[derive(Default)]
 pub struct CoverageStats<'a> {

@@ -1,4 +1,4 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
 use std::borrow::Cow;
 use std::cell::RefCell;
@@ -11,36 +11,6 @@ use std::sync::atomic::AtomicU16;
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
 
-use crate::args::jsr_url;
-use crate::args::CliLockfile;
-use crate::args::CliOptions;
-use crate::args::DenoSubcommand;
-use crate::args::TsTypeLib;
-use crate::cache::CodeCache;
-use crate::cache::FastInsecureHasher;
-use crate::cache::ParsedSourceCache;
-use crate::emit::Emitter;
-use crate::graph_container::MainModuleGraphContainer;
-use crate::graph_container::ModuleGraphContainer;
-use crate::graph_container::ModuleGraphUpdatePermit;
-use crate::graph_util::CreateGraphOptions;
-use crate::graph_util::ModuleGraphBuilder;
-use crate::node;
-use crate::node::CliNodeCodeTranslator;
-use crate::npm::CliNpmResolver;
-use crate::resolver::CjsTracker;
-use crate::resolver::CliNpmReqResolver;
-use crate::resolver::CliResolver;
-use crate::resolver::ModuleCodeStringSource;
-use crate::resolver::NotSupportedKindInNpmError;
-use crate::resolver::NpmModuleLoader;
-use crate::tools::check;
-use crate::tools::check::TypeChecker;
-use crate::util::progress_bar::ProgressBar;
-use crate::util::text_encoding::code_without_source_map;
-use crate::util::text_encoding::source_map_from_code;
-use crate::worker::CreateModuleLoaderResult;
-use crate::worker::ModuleLoaderFactory;
 use deno_ast::MediaType;
 use deno_ast::ModuleKind;
 use deno_core::anyhow::anyhow;
@@ -69,16 +39,47 @@ use deno_graph::ModuleGraph;
 use deno_graph::Resolution;
 use deno_graph::WasmModule;
 use deno_runtime::code_cache;
-use deno_runtime::deno_fs::FileSystem;
 use deno_runtime::deno_node::create_host_defined_options;
 use deno_runtime::deno_node::NodeRequireLoader;
-use deno_runtime::deno_node::NodeResolver;
 use deno_runtime::deno_permissions::PermissionsContainer;
 use deno_semver::npm::NpmPackageReqReference;
 use node_resolver::errors::ClosestPkgJsonError;
 use node_resolver::InNpmPackageChecker;
 use node_resolver::NodeResolutionKind;
 use node_resolver::ResolutionMode;
+use sys_traits::FsRead;
+
+use crate::args::jsr_url;
+use crate::args::CliLockfile;
+use crate::args::CliOptions;
+use crate::args::DenoSubcommand;
+use crate::args::TsTypeLib;
+use crate::cache::CodeCache;
+use crate::cache::FastInsecureHasher;
+use crate::cache::ParsedSourceCache;
+use crate::emit::Emitter;
+use crate::graph_container::MainModuleGraphContainer;
+use crate::graph_container::ModuleGraphContainer;
+use crate::graph_container::ModuleGraphUpdatePermit;
+use crate::graph_util::CreateGraphOptions;
+use crate::graph_util::ModuleGraphBuilder;
+use crate::node::CliNodeCodeTranslator;
+use crate::node::CliNodeResolver;
+use crate::npm::CliNpmResolver;
+use crate::resolver::CjsTracker;
+use crate::resolver::CliNpmReqResolver;
+use crate::resolver::CliResolver;
+use crate::resolver::ModuleCodeStringSource;
+use crate::resolver::NotSupportedKindInNpmError;
+use crate::resolver::NpmModuleLoader;
+use crate::sys::CliSys;
+use crate::tools::check;
+use crate::tools::check::TypeChecker;
+use crate::util::progress_bar::ProgressBar;
+use crate::util::text_encoding::code_without_source_map;
+use crate::util::text_encoding::source_map_from_code;
+use crate::worker::CreateModuleLoaderResult;
+use crate::worker::ModuleLoaderFactory;
 
 pub struct ModuleLoadPreparer {
   options: Arc<CliOptions>,
@@ -215,17 +216,17 @@ struct SharedCliModuleLoaderState {
   cjs_tracker: Arc<CjsTracker>,
   code_cache: Option<Arc<CodeCache>>,
   emitter: Arc<Emitter>,
-  fs: Arc<dyn FileSystem>,
   in_npm_pkg_checker: Arc<dyn InNpmPackageChecker>,
   main_module_graph_container: Arc<MainModuleGraphContainer>,
   module_load_preparer: Arc<ModuleLoadPreparer>,
   node_code_translator: Arc<CliNodeCodeTranslator>,
-  node_resolver: Arc<NodeResolver>,
+  node_resolver: Arc<CliNodeResolver>,
   npm_req_resolver: Arc<CliNpmReqResolver>,
   npm_resolver: Arc<dyn CliNpmResolver>,
   npm_module_loader: NpmModuleLoader,
   parsed_source_cache: Arc<ParsedSourceCache>,
   resolver: Arc<CliResolver>,
+  sys: CliSys,
   in_flight_loads_tracker: InFlightModuleLoadsTracker,
 }
 
@@ -275,17 +276,17 @@ impl CliModuleLoaderFactory {
     cjs_tracker: Arc<CjsTracker>,
     code_cache: Option<Arc<CodeCache>>,
     emitter: Arc<Emitter>,
-    fs: Arc<dyn FileSystem>,
     in_npm_pkg_checker: Arc<dyn InNpmPackageChecker>,
     main_module_graph_container: Arc<MainModuleGraphContainer>,
     module_load_preparer: Arc<ModuleLoadPreparer>,
     node_code_translator: Arc<CliNodeCodeTranslator>,
-    node_resolver: Arc<NodeResolver>,
+    node_resolver: Arc<CliNodeResolver>,
     npm_req_resolver: Arc<CliNpmReqResolver>,
     npm_resolver: Arc<dyn CliNpmResolver>,
     npm_module_loader: NpmModuleLoader,
     parsed_source_cache: Arc<ParsedSourceCache>,
     resolver: Arc<CliResolver>,
+    sys: CliSys,
   ) -> Self {
     Self {
       shared: Arc::new(SharedCliModuleLoaderState {
@@ -301,7 +302,6 @@ impl CliModuleLoaderFactory {
         cjs_tracker,
         code_cache,
         emitter,
-        fs,
         in_npm_pkg_checker,
         main_module_graph_container,
         module_load_preparer,
@@ -312,6 +312,7 @@ impl CliModuleLoaderFactory {
         npm_module_loader,
         parsed_source_cache,
         resolver,
+        sys,
         in_flight_loads_tracker: InFlightModuleLoadsTracker {
           loads_number: Arc::new(AtomicU16::new(0)),
           cleanup_task_timeout: 10_000,
@@ -344,7 +345,7 @@ impl CliModuleLoaderFactory {
     let node_require_loader = Rc::new(CliNodeRequireLoader {
       cjs_tracker: self.shared.cjs_tracker.clone(),
       emitter: self.shared.emitter.clone(),
-      fs: self.shared.fs.clone(),
+      sys: self.shared.sys.clone(),
       graph_container,
       in_npm_pkg_checker: self.shared.in_npm_pkg_checker.clone(),
       npm_resolver: self.shared.npm_resolver.clone(),
@@ -593,9 +594,9 @@ impl<TGraphContainer: ModuleGraphContainer>
       Some(Module::Json(module)) => module.specifier.clone(),
       Some(Module::Wasm(module)) => module.specifier.clone(),
       Some(Module::External(module)) => {
-        node::resolve_specifier_into_node_modules(
+        node_resolver::resolve_specifier_into_node_modules(
+          &self.shared.sys,
           &module.specifier,
-          self.shared.fs.as_ref(),
         )
       }
       None => specifier.into_owned(),
@@ -1091,7 +1092,7 @@ impl ModuleGraphUpdatePermit for WorkerModuleGraphUpdatePermit {
 struct CliNodeRequireLoader<TGraphContainer: ModuleGraphContainer> {
   cjs_tracker: Arc<CjsTracker>,
   emitter: Arc<Emitter>,
-  fs: Arc<dyn FileSystem>,
+  sys: CliSys,
   graph_container: TGraphContainer,
   in_npm_pkg_checker: Arc<dyn InNpmPackageChecker>,
   npm_resolver: Arc<dyn CliNpmResolver>,
@@ -1120,7 +1121,7 @@ impl<TGraphContainer: ModuleGraphContainer> NodeRequireLoader
   ) -> Result<Cow<'static, str>, AnyError> {
     // todo(dsherret): use the preloaded module from the graph if available?
     let media_type = MediaType::from_path(path);
-    let text = self.fs.read_text_file_lossy_sync(path, None)?;
+    let text = self.sys.fs_read_to_string_lossy(path)?;
     if media_type.is_emittable() {
       let specifier = deno_path_util::url_from_file_path(path)?;
       if self.in_npm_pkg_checker.in_npm_package(&specifier) {
@@ -1160,8 +1161,9 @@ impl<TGraphContainer: ModuleGraphContainer> NodeRequireLoader
 
 #[cfg(test)]
 mod tests {
-  use super::*;
   use deno_graph::ParsedSourceStore;
+
+  use super::*;
 
   #[tokio::test]
   async fn test_inflight_module_loads_tracker() {

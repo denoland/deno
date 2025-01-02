@@ -1,4 +1,4 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
 use std::borrow::Cow;
 use std::sync::Arc;
@@ -8,7 +8,7 @@ use deno_ast::ModuleSpecifier;
 use deno_core::error::AnyError;
 use deno_graph::ParsedSourceStore;
 use deno_runtime::deno_fs;
-use deno_runtime::deno_node::DenoFsNodeResolverEnv;
+use deno_runtime::deno_node::RealIsBuiltInNodeModuleChecker;
 use node_resolver::analyze::CjsAnalysis as ExtNodeCjsAnalysis;
 use node_resolver::analyze::CjsAnalysisExports;
 use node_resolver::analyze::CjsCodeAnalyzer;
@@ -20,24 +20,15 @@ use crate::cache::CacheDBHash;
 use crate::cache::NodeAnalysisCache;
 use crate::cache::ParsedSourceCache;
 use crate::resolver::CjsTracker;
+use crate::sys::CliSys;
 
-pub type CliNodeCodeTranslator =
-  NodeCodeTranslator<CliCjsCodeAnalyzer, DenoFsNodeResolverEnv>;
-
-/// Resolves a specifier that is pointing into a node_modules folder.
-///
-/// Note: This should be called whenever getting the specifier from
-/// a Module::External(module) reference because that module might
-/// not be fully resolved at the time deno_graph is analyzing it
-/// because the node_modules folder might not exist at that time.
-pub fn resolve_specifier_into_node_modules(
-  specifier: &ModuleSpecifier,
-  fs: &dyn deno_fs::FileSystem,
-) -> ModuleSpecifier {
-  node_resolver::resolve_specifier_into_node_modules(specifier, &|path| {
-    fs.realpath_sync(path).map_err(|err| err.into_io_error())
-  })
-}
+pub type CliNodeCodeTranslator = NodeCodeTranslator<
+  CliCjsCodeAnalyzer,
+  RealIsBuiltInNodeModuleChecker,
+  CliSys,
+>;
+pub type CliNodeResolver = deno_runtime::deno_node::NodeResolver<CliSys>;
+pub type CliPackageJsonResolver = node_resolver::PackageJsonResolver<CliSys>;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum CliCjsAnalysis {
