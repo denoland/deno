@@ -1875,6 +1875,7 @@ dependencies = [
 [[package]]
 name = "deno_lint"
 version = "0.68.2"
+source = "git+https://github.com/bartlomieju/deno_lint.git?branch=add_apis#b7de97ba396028c4e6b3a98af970f3994ce508ca"
 dependencies = [
  "anyhow",
  "deno_ast",
