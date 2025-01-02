@@ -3,5 +3,5 @@ type: TypeScript
 dependencies: [WILDLINE]
 size: [WILDLINE]
 
-file:///V:/deno/tests/specs/permission/allow_import_info/main.ts ([WILDLINE])
+file:///[WILDLINE]/allow_import_info/main.ts ([WILDLINE])
 └── http://localhost:4545/welcome.ts (not capable, requires --allow-import)
