@@ -920,8 +920,7 @@ pub async fn run(
   };
 
   let permissions = {
-    let mut permissions =
-      metadata.permissions.to_options(/* cli_arg_urls */ &[]);
+    let mut permissions = metadata.permissions;
     // grant read access to the vfs
     match &mut permissions.allow_read {
       Some(vec) if vec.is_empty() => {
