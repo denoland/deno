@@ -1,45 +1,353 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
+use std::borrow::Cow;
+
 use deno_core::op2;
+use deno_core::v8;
+use deno_core::webidl::WebIdlConverter;
+use deno_core::webidl::WebIdlError;
+use deno_core::GarbageCollected;
+use deno_core::WebIDL;
 use urlpattern::quirks;
-use urlpattern::quirks::MatchInput;
-use urlpattern::quirks::StringOrInit;
-use urlpattern::quirks::UrlPattern;
 
 #[derive(Debug, thiserror::Error)]
 #[error(transparent)]
-pub struct UrlPatternError(urlpattern::Error);
-
-#[op2]
-#[serde]
-pub fn op_urlpattern_parse(
-  #[serde] input: StringOrInit,
-  #[string] base_url: Option<String>,
-  #[serde] options: urlpattern::UrlPatternOptions,
-) -> Result<UrlPattern, UrlPatternError> {
-  let init =
-    quirks::process_construct_pattern_input(input, base_url.as_deref())
-      .map_err(UrlPatternError)?;
-
-  let pattern =
-    quirks::parse_pattern(init, options).map_err(UrlPatternError)?;
-
-  Ok(pattern)
+pub enum UrlPatternError {
+  #[error(transparent)]
+  UrlPattern(#[from] urlpattern::Error),
+  #[error(transparent)]
+  WebIDL(#[from] WebIdlError),
 }
 
+#[derive(WebIDL, Default)]
+#[webidl(dictionary)]
+struct URLPatternInit {
+  protocol: Option<String>,
+  username: Option<String>,
+  password: Option<String>,
+  hostname: Option<String>,
+  port: Option<String>,
+  pathname: Option<String>,
+  search: Option<String>,
+  hash: Option<String>,
+  #[webidl(rename = "baseURL")]
+  base_url: Option<String>,
+}
+
+impl From<URLPatternInit> for quirks::UrlPatternInit {
+  fn from(value: URLPatternInit) -> Self {
+    Self {
+      protocol: value.protocol,
+      username: value.username,
+      password: value.password,
+      hostname: value.hostname,
+      port: value.port,
+      pathname: value.pathname,
+      search: value.search,
+      hash: value.hash,
+      base_url: value.base_url,
+    }
+  }
+}
+
+enum URLPatternInput {
+  URLPatternInit(URLPatternInit),
+  String(String),
+}
+
+impl<'a> WebIdlConverter<'a> for URLPatternInput {
+  type Options = ();
+
+  fn convert<C>(
+    scope: &mut v8::HandleScope<'a>,
+    value: v8::Local<'a, v8::Value>,
+    prefix: Cow<'static, str>,
+    context: C,
+    _: &Self::Options,
+  ) -> Result<Self, WebIdlError>
+  where
+    C: Fn() -> Cow<'static, str>,
+  {
+    if value.is_object() {
+      Ok(URLPatternInput::URLPatternInit(URLPatternInit::convert(
+        scope,
+        value,
+        prefix,
+        context,
+        &Default::default(),
+      )?))
+    } else {
+      Ok(URLPatternInput::String(String::convert(
+        scope,
+        value,
+        prefix,
+        context,
+        &Default::default(),
+      )?))
+    }
+  }
+}
+
+impl From<URLPatternInput> for quirks::StringOrInit {
+  fn from(value: URLPatternInput) -> Self {
+    match value {
+      URLPatternInput::URLPatternInit(init) => {
+        quirks::StringOrInit::Init(init.into())
+      }
+      URLPatternInput::String(s) => quirks::StringOrInit::String(s),
+    }
+  }
+}
+
+#[derive(WebIDL, Clone)]
+#[webidl(dictionary)]
+struct URLPatternOptions {
+  #[webidl(default = false)]
+  ignore_case: bool,
+}
+
+impl From<URLPatternOptions> for urlpattern::UrlPatternOptions {
+  fn from(value: URLPatternOptions) -> Self {
+    Self {
+      ignore_case: value.ignore_case,
+    }
+  }
+}
+
+struct URLPattern {
+  pattern: quirks::UrlPattern,
+
+  protocol: v8::Global<v8::RegExp>,
+  username: v8::Global<v8::RegExp>,
+  password: v8::Global<v8::RegExp>,
+  hostname: v8::Global<v8::RegExp>,
+  port: v8::Global<v8::RegExp>,
+  pathname: v8::Global<v8::RegExp>,
+  search: v8::Global<v8::RegExp>,
+  hash: v8::Global<v8::RegExp>,
+}
+
+impl GarbageCollected for URLPattern {}
+
 #[op2]
-#[serde]
-pub fn op_urlpattern_process_match_input(
-  #[serde] input: StringOrInit,
-  #[string] base_url: Option<String>,
-) -> Result<Option<(MatchInput, quirks::Inputs)>, UrlPatternError> {
-  let res = quirks::process_match_input(input, base_url.as_deref())
-    .map_err(UrlPatternError)?;
+impl URLPattern {
+  #[constructor]
+  #[cppgc]
+  fn new<'s>(
+    scope: &mut v8::HandleScope<'s>,
+    input: v8::Local<'s, v8::Value>,
+    base_url_or_options: v8::Local<'s, v8::Value>,
+    maybe_options: v8::Local<'s, v8::Value>,
+  ) -> Result<URLPattern, UrlPatternError> {
+    const PREFIX: &str = "Failed to construct 'URLPattern'";
 
-  let (input, inputs) = match res {
-    Some((input, inputs)) => (input, inputs),
-    None => return Ok(None),
-  };
+    let (input, base_url, options) = if base_url_or_options.is_string() {
+      // TODO: webidl.requiredArguments(arguments.length, 2, prefix);
+      let input = URLPatternInput::convert(
+        scope,
+        input,
+        PREFIX.into(),
+        || "Argument 1".into(),
+        &Default::default(),
+      )?;
+      let base_url = Some(String::convert(
+        scope,
+        base_url_or_options,
+        PREFIX.into(),
+        || "Argument 2".into(),
+        &Default::default(),
+      )?);
+      let options = URLPatternOptions::convert(
+        scope,
+        maybe_options,
+        PREFIX.into(),
+        || "Argument 3".into(),
+        &Default::default(),
+      )?;
+      (input, base_url, options)
+    } else {
+      let input = if !input.is_undefined() {
+        URLPatternInput::convert(
+          scope,
+          input,
+          PREFIX.into(),
+          || "Argument 1".into(),
+          &Default::default(),
+        )?
+      } else {
+        URLPatternInput::URLPatternInit(URLPatternInit::default())
+      };
+      let options = URLPatternOptions::convert(
+        scope,
+        base_url_or_options,
+        PREFIX.into(),
+        || "Argument 2".into(),
+        &Default::default(),
+      )?;
+      (input, None, options)
+    };
 
-  Ok(quirks::parse_match_input(input).map(|input| (input, inputs)))
+    let init = quirks::process_construct_pattern_input(
+      input.into(),
+      base_url.as_deref(),
+    )?;
+
+    let opts = options.clone();
+    let pattern = quirks::parse_pattern(init, options.into())?;
+
+    fn create_regexp_global<'s>(
+      scope: &mut v8::HandleScope<'s>,
+      pattern: &str,
+      options: &URLPatternOptions,
+    ) -> Result<v8::Global<v8::RegExp>, UrlPatternError> {
+      let pattern = v8::String::new(scope, pattern).unwrap();
+
+      let flags = if options.ignore_case {
+        v8::RegExpCreationFlags::UNICODE | v8::RegExpCreationFlags::IGNORE_CASE
+      } else {
+        v8::RegExpCreationFlags::UNICODE
+      };
+
+      let regexp = v8::RegExp::new(scope, pattern, flags).unwrap(); // TODO: throw new TypeError(`${prefix}: ${key} is invalid; ${e.message}`);
+      Ok(v8::Global::new(scope, regexp))
+    }
+
+    Ok(URLPattern {
+      protocol: create_regexp_global(
+        scope,
+        &pattern.protocol.regexp_string,
+        &opts,
+      )?,
+      username: create_regexp_global(
+        scope,
+        &pattern.username.regexp_string,
+        &opts,
+      )?,
+      password: create_regexp_global(
+        scope,
+        &pattern.password.regexp_string,
+        &opts,
+      )?,
+      hostname: create_regexp_global(
+        scope,
+        &pattern.hostname.regexp_string,
+        &opts,
+      )?,
+      port: create_regexp_global(scope, &pattern.port.regexp_string, &opts)?,
+      pathname: create_regexp_global(
+        scope,
+        &pattern.pathname.regexp_string,
+        &opts,
+      )?,
+      search: create_regexp_global(
+        scope,
+        &pattern.search.regexp_string,
+        &opts,
+      )?,
+      hash: create_regexp_global(scope, &pattern.hash.regexp_string, &opts)?,
+      pattern,
+    })
+  }
+
+  /*#[getter]
+    #[string]
+    fn protocol(&self) -> String {
+      self.pattern.protocol.pattern_string
+    }
+
+    #[getter]
+    #[string]
+    fn username(&self) -> String {
+      self.pattern.username.pattern_string
+    }
+
+    #[getter]
+    #[string]
+    fn password(&self) -> String {
+      self.pattern.password.pattern_string
+    }
+
+    #[getter]
+    #[string]
+    fn hostname(&self) -> String {
+      self.pattern.hostname.pattern_string
+    }
+
+    #[getter]
+    #[string]
+    fn port(&self) -> String {
+      self.pattern.port.pattern_string
+    }
+
+    #[getter]
+    #[string]
+    fn pathname(&self) -> String {
+      self.pattern.pathname.pattern_string
+    }
+
+    #[getter]
+    #[string]
+    fn search(&self) -> String {
+      self.pattern.search.pattern_string
+    }
+
+    #[getter]
+    #[string]
+    fn hash(&self) -> String {
+      self.pattern.hash.pattern_string
+    }
+
+    #[getter]
+    #[string]
+    fn hasRegExpGroups(&self) -> bool {
+      self.pattern.has_regexp_groups
+    }
+  */
+  #[required(1)]
+  fn test(
+    &self,
+    scope: &mut v8::HandleScope,
+    #[webidl] input: URLPatternInput,
+    #[webidl] base_url: Option<String>,
+  ) -> Result<bool, UrlPatternError> {
+    let res = quirks::process_match_input(input.into(), base_url.as_deref())?;
+
+    let Some((input, _inputs)) = res else {
+      return Ok(false);
+    };
+
+    let Some(input) = quirks::parse_match_input(input) else {
+      return Ok(false);
+    };
+
+    macro_rules! handle_component {
+      ($t:tt) => {
+        match self.pattern.$t.regexp_string.as_str() {
+          "^$" => {
+            if input.$t != "" {
+              return Ok(false);
+            }
+          }
+          "^(.*)$" => {}
+          _ => {
+            let subject = v8::String::new(scope, &input.$t).unwrap();
+            if self.$t.exec(scope, subject).is_none() {
+              return Ok(false);
+            }
+          }
+        }
+      };
+    }
+
+    handle_component!(protocol);
+    handle_component!(username);
+    handle_component!(password);
+    handle_component!(hostname);
+    handle_component!(port);
+    handle_component!(pathname);
+    handle_component!(search);
+    handle_component!(hash);
+
+    Ok(true)
+  }
 }
