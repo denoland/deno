@@ -3,26 +3,14 @@ const RULE1_NAME = "first-rule";
 
 const rule = {
   create(context) {
-    console.log("GOGO", context);
-    console.log("Hello from", `${PLUGIN_NAME}/${RULE1_NAME}`);
-    context.report({
-      range: [7, 10],
-      message: "Error from " + `${PLUGIN_NAME}/${RULE1_NAME}`,
-      data: {
-        some: "Data",
-      },
-    });
     return {
       VariableDeclarator(node) {
         // console.log("variable declarator", node);
         // Check if a `const` variable declaration
-        console.log("node.parent.kind", node.parent.kind);
         if (node.parent.kind === "const") {
           // Check if variable name is `foo`
-          console.log("node.id.type", node.id.type, node.id.value);
-          if (node.id.type === "Identifier" && node.id.value === "foo") {
+          if (node.id.type === "Identifier" && node.id.name === "foo") {
             // Check if value of variable is "bar"
-            console.log("node.init", node.init);
             if (
               node.init && node.init.type === "StringLiteral" &&
               node.init.value !== "bar"
@@ -56,7 +44,7 @@ const rule = {
 export default {
   name: PLUGIN_NAME,
   rules: {
-    // [RULE1_NAME]: rule,
+    [RULE1_NAME]: rule,
     "jsx-style-string": {
       create(context) {
         console.log("context", context);

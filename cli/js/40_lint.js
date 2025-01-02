@@ -55,6 +55,9 @@ const PropFlags = {
 /** @typedef {import("./40_lint_types.d.ts").LintPlugin} LintPlugin */
 /** @typedef {import("./40_lint_types.d.ts").TransformFn} TransformFn */
 /** @typedef {import("./40_lint_types.d.ts").MatchContext} MatchContext */
+/** @typedef {import("./40_lint_types.d.ts").ReportData} ReportData */
+/** @typedef {import("./40_lint_types.d.ts").Fixer} Fixer */
+/** @typedef {import("./40_lint_types.d.ts").Node} Node */
 
 /** @type {LintState} */
 const state = {
@@ -69,6 +72,64 @@ const state = {
 class CancellationToken {
   isCancellationRequested() {
     return op_is_cancelled();
+  }
+}
+
+/** @implements {Fixer} */
+class FixerHelper {
+  insertTextAfter(node, text) {
+    throw new Error("Method not implemented.");
+  }
+  insertTextAfterRange(range, text) {
+    throw new Error("Method not implemented.");
+  }
+  insertTextBefore(node, text) {
+    throw new Error("Method not implemented.");
+  }
+  insertTextBeforeRange(range, text) {
+    throw new Error("Method not implemented.");
+  }
+
+  /**
+   * @param {Node} node
+   */
+  remove(node) {
+    return {
+      range: node.range,
+      text: "",
+    };
+  }
+
+  /**
+   * @param {Node["range"]} range
+   */
+  removeRange(range) {
+    return {
+      range,
+      text: "",
+    };
+  }
+
+  /**
+   * @param {Node} node
+   * @param {string} text
+   */
+  replaceText(node, text) {
+    return {
+      range: node.range,
+      text,
+    };
+  }
+
+  /**
+   * @param {Node["range"]} range
+   * @param {string} text
+   */
+  replaceTextRange(range, text) {
+    return {
+      range,
+      text,
+    };
   }
 }
 
@@ -100,6 +161,9 @@ export class Context {
     return /** @type {*} */ (this.#source);
   }
 
+  /**
+   * @param {ReportData} data
+   */
   report(data) {
     const range = data.node ? data.node.range : data.range ? data.range : null;
     if (range == null) {
@@ -111,12 +175,22 @@ export class Context {
     const start = range[0] - 1;
     const end = range[1] - 1;
 
+    let fix;
+
+    if (typeof data.fix === "function") {
+      const fixer = new FixerHelper();
+      fix = data.fix(fixer);
+      fix.range[0]--;
+      fix.range[1]--;
+    }
+
     op_lint_report(
       this.id,
       data.message,
       data.hint,
       start,
       end,
+      fix,
     );
   }
 }
@@ -151,7 +225,7 @@ function getNode(ctx, offset) {
   const cached = ctx.nodes.get(offset);
   if (cached !== undefined) return cached;
 
-  const node = new Node(ctx, offset);
+  const node = new FacadeNode(ctx, offset);
   ctx.nodes.set(offset, /** @type {*} */ (cached));
   return node;
 }
@@ -203,7 +277,7 @@ const INTERNAL_OFFSET = Symbol("offset");
 // unique class per AST node, we have one class with getters for every
 // possible node property. This allows us to lazily materialize child node
 // only when they are needed.
-class Node {
+class FacadeNode {
   [INTERNAL_CTX];
   [INTERNAL_OFFSET];
 
@@ -255,7 +329,7 @@ function setNodeGetters(ctx) {
 
     const name = getString(ctx.strTable, id);
 
-    Object.defineProperty(Node.prototype, name, {
+    Object.defineProperty(FacadeNode.prototype, name, {
       get() {
         return readValue(this[INTERNAL_CTX], this[INTERNAL_OFFSET], i);
       },

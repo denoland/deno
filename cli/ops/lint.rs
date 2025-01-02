@@ -12,6 +12,8 @@ use deno_core::OpState;
 use deno_lint::diagnostic::LintDiagnostic;
 use deno_lint::diagnostic::LintDiagnosticDetails;
 use deno_lint::diagnostic::LintDiagnosticRange;
+use deno_lint::diagnostic::LintFix;
+use deno_lint::diagnostic::LintFixChange;
 use tokio_util::sync::CancellationToken;
 
 use crate::tools::lint;
@@ -65,6 +67,7 @@ impl LintPluginContainer {
     hint: Option<String>,
     start: usize,
     end: usize,
+    fix: Option<LintReportFix>,
   ) {
     let source_text_info = self.source_text_info.as_ref().unwrap();
     let specifier = self.specifier.clone().unwrap();
@@ -75,6 +78,22 @@ impl LintPluginContainer {
       description: None,
       text_info: source_text_info.clone(),
     };
+
+    let mut fixes: Vec<LintFix> = vec![];
+
+    if let Some(fix) = fix {
+      fixes.push(LintFix {
+        changes: vec![LintFixChange {
+          new_text: fix.text.into(),
+          range: SourceRange::new(
+            start_pos + fix.range.0,
+            start_pos + fix.range.1,
+          ),
+        }],
+        description: format!("Fix this {} problem", id).into(),
+      });
+    }
+
     let lint_diagnostic = LintDiagnostic {
       specifier,
       range: Some(range),
@@ -82,7 +101,7 @@ impl LintPluginContainer {
         message,
         code: id,
         hint,
-        fixes: vec![],
+        fixes,
         custom_docs_url: None,
         info: vec![],
       },
@@ -131,6 +150,12 @@ fn op_lint_create_serialized_ast(
   Ok(lint::serialize_ast_to_buffer(&parsed_source))
 }
 
+#[derive(serde::Deserialize)]
+struct LintReportFix {
+  text: String,
+  range: (usize, usize),
+}
+
 #[op2]
 fn op_lint_report(
   state: &mut OpState,
@@ -139,9 +164,10 @@ fn op_lint_report(
   #[string] hint: Option<String>,
   #[smi] start: usize,
   #[smi] end: usize,
+  #[serde] fix: Option<LintReportFix>,
 ) {
   let container = state.borrow_mut::<LintPluginContainer>();
-  container.report(id, message, hint, start, end);
+  container.report(id, message, hint, start, end, fix);
 }
 
 #[op2]

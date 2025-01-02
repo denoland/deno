@@ -1,0 +1,14 @@
+{
+  "tempDir": true,
+  "steps": [
+    {
+      "args": "lint a.ts",
+      "output": "lint.out",
+      "exitCode": 1
+    },
+    {
+      "args": "lint --fix a.ts",
+      "output": "lint_fixed.out"
+    }
+  ]
+}

@@ -140,10 +140,10 @@ impl CliLinter {
       MediaType::from_specifier(&specifier)
     };
 
-    let result = if self.fix {
+    if self.fix {
       self.lint_file_and_fix(&specifier, media_type, source_code, file_path)
     } else {
-      self
+      let (source, mut diagnostics) = self
         .linter
         .lint_file(LintFileOptions {
           specifier,
@@ -151,19 +151,13 @@ impl CliLinter {
           source_code,
           config: self.deno_lint_config.clone(),
         })
-        .map_err(AnyError::from)
-    };
+        .map_err(AnyError::from)?;
+      let plugin_diagnostics =
+        self.run_plugins(source.clone(), file_path.to_path_buf())?;
 
-    match result {
-      Ok((file_source, mut file_diagnostics)) => {
-        // TODO(bartlomieju): plugins don't support fixing for now.
-        let plugin_diagnostics =
-          self.run_plugins(file_source.clone(), file_path.to_path_buf())?;
+      diagnostics.extend_from_slice(&plugin_diagnostics);
 
-        file_diagnostics.extend_from_slice(&plugin_diagnostics);
-        Ok((file_source, file_diagnostics))
-      }
-      Err(err) => Err(err),
+      Ok((source, diagnostics))
     }
   }
 
@@ -175,12 +169,17 @@ impl CliLinter {
     file_path: &Path,
   ) -> Result<(ParsedSource, Vec<LintDiagnostic>), deno_core::anyhow::Error> {
     // initial lint
-    let (source, diagnostics) = self.linter.lint_file(LintFileOptions {
+    let (source, mut diagnostics) = self.linter.lint_file(LintFileOptions {
       specifier: specifier.clone(),
       media_type,
       source_code,
       config: self.deno_lint_config.clone(),
     })?;
+
+    let plugin_diagnostics =
+      self.run_plugins(source.clone(), file_path.to_path_buf())?;
+
+    diagnostics.extend_from_slice(&plugin_diagnostics);
 
     // Try applying fixes repeatedly until the file has none left or
     // a maximum number of iterations is reached. This is necessary
