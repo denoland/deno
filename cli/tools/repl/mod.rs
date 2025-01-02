@@ -1,9 +1,15 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
 use std::io;
 use std::io::Write;
-
 use std::sync::Arc;
+
+use deno_core::error::AnyError;
+use deno_core::futures::StreamExt;
+use deno_core::serde_json;
+use deno_core::unsync::spawn_blocking;
+use deno_runtime::WorkerExecutionMode;
+use rustyline::error::ReadlineError;
 
 use crate::args::CliOptions;
 use crate::args::Flags;
@@ -11,13 +17,8 @@ use crate::args::ReplFlags;
 use crate::cdp;
 use crate::colors;
 use crate::factory::CliFactory;
-use crate::file_fetcher::FileFetcher;
-use deno_core::error::AnyError;
-use deno_core::futures::StreamExt;
-use deno_core::serde_json;
-use deno_core::unsync::spawn_blocking;
-use deno_runtime::WorkerExecutionMode;
-use rustyline::error::ReadlineError;
+use crate::file_fetcher::CliFileFetcher;
+use crate::file_fetcher::TextDecodedFile;
 
 mod channel;
 mod editor;
@@ -143,7 +144,7 @@ async fn read_line_and_poll(
 
 async fn read_eval_file(
   cli_options: &CliOptions,
-  file_fetcher: &FileFetcher,
+  file_fetcher: &CliFileFetcher,
   eval_file: &str,
 ) -> Result<Arc<str>, AnyError> {
   let specifier =
@@ -151,7 +152,7 @@ async fn read_eval_file(
 
   let file = file_fetcher.fetch_bypass_permissions(&specifier).await?;
 
-  Ok(file.into_text_decoded()?.source)
+  Ok(TextDecodedFile::decode(file)?.source)
 }
 
 #[allow(clippy::print_stdout)]

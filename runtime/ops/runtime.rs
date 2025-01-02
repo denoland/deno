@@ -1,4 +1,4 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
 use deno_core::op2;
 use deno_core::ModuleSpecifier;
@@ -34,6 +34,7 @@ pub fn op_ppid() -> i64 {
     // - Apache License, Version 2.0
     // - MIT license
     use std::mem;
+
     use winapi::shared::minwindef::DWORD;
     use winapi::um::handleapi::CloseHandle;
     use winapi::um::handleapi::INVALID_HANDLE_VALUE;

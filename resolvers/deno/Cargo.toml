@@ -1,8 +1,8 @@
-# Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+# Copyright 2018-2025 the Deno authors. MIT license.
 
 [package]
 name = "deno_resolver"
-version = "0.12.0"
+version = "0.15.0"
 authors.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -13,11 +13,14 @@ description = "Deno resolution algorithm"
 [lib]
 path = "lib.rs"
 
+[features]
+sync = ["dashmap"]
+
 [dependencies]
 anyhow.workspace = true
 base32.workspace = true
 boxed_error.workspace = true
-dashmap.workspace = true
+dashmap = { workspace = true, optional = true }
 deno_config.workspace = true
 deno_media_type.workspace = true
 deno_package_json.workspace = true
@@ -26,6 +29,7 @@ deno_path_util.workspace = true
 deno_semver.workspace = true
 node_resolver.workspace = true
 node_resolver.features = ["sync"]
+sys_traits.workspace = true
 thiserror.workspace = true
 url.workspace = true
 

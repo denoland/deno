@@ -1,18 +1,18 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::sync::Arc;
 
+use capacity_builder::StringBuilder;
 use deno_core::error::AnyError;
 use deno_lockfile::NpmPackageDependencyLockfileInfo;
 use deno_lockfile::NpmPackageLockfileInfo;
 use deno_npm::registry::NpmRegistryApi;
+use deno_npm::resolution::AddPkgReqsOptions;
 use deno_npm::resolution::NpmPackagesPartitioned;
 use deno_npm::resolution::NpmResolutionError;
 use deno_npm::resolution::NpmResolutionSnapshot;
-use deno_npm::resolution::NpmResolutionSnapshotPendingResolver;
-use deno_npm::resolution::NpmResolutionSnapshotPendingResolverOptions;
 use deno_npm::resolution::PackageCacheFolderIdNotFoundError;
 use deno_npm::resolution::PackageNotFoundFromReferrerError;
 use deno_npm::resolution::PackageNvNotFoundError;
@@ -25,12 +25,12 @@ use deno_npm::NpmSystemInfo;
 use deno_semver::jsr::JsrDepPackageReq;
 use deno_semver::package::PackageNv;
 use deno_semver::package::PackageReq;
+use deno_semver::SmallStackString;
 use deno_semver::VersionReq;
 
 use crate::args::CliLockfile;
+use crate::npm::CliNpmRegistryInfoProvider;
 use crate::util::sync::SyncReadAsyncWriteLock;
-
-use super::CliNpmRegistryApi;
 
 pub struct AddPkgReqsResult {
   /// Results from adding the individual packages.
@@ -48,7 +48,7 @@ pub struct AddPkgReqsResult {
 ///
 /// This does not interact with the file system.
 pub struct NpmResolution {
-  api: Arc<CliNpmRegistryApi>,
+  registry_info_provider: Arc<CliNpmRegistryInfoProvider>,
   snapshot: SyncReadAsyncWriteLock<NpmResolutionSnapshot>,
   maybe_lockfile: Option<Arc<CliLockfile>>,
 }
@@ -64,22 +64,22 @@ impl std::fmt::Debug for NpmResolution {
 
 impl NpmResolution {
   pub fn from_serialized(
-    api: Arc<CliNpmRegistryApi>,
+    registry_info_provider: Arc<CliNpmRegistryInfoProvider>,
     initial_snapshot: Option<ValidSerializedNpmResolutionSnapshot>,
     maybe_lockfile: Option<Arc<CliLockfile>>,
   ) -> Self {
     let snapshot =
       NpmResolutionSnapshot::new(initial_snapshot.unwrap_or_default());
-    Self::new(api, snapshot, maybe_lockfile)
+    Self::new(registry_info_provider, snapshot, maybe_lockfile)
   }
 
   pub fn new(
-    api: Arc<CliNpmRegistryApi>,
+    registry_info_provider: Arc<CliNpmRegistryInfoProvider>,
     initial_snapshot: NpmResolutionSnapshot,
     maybe_lockfile: Option<Arc<CliLockfile>>,
   ) -> Self {
     Self {
-      api,
+      registry_info_provider,
       snapshot: SyncReadAsyncWriteLock::new(initial_snapshot),
       maybe_lockfile,
     }
@@ -92,7 +92,7 @@ impl NpmResolution {
     // only allow one thread in here at a time
     let snapshot_lock = self.snapshot.acquire().await;
     let result = add_package_reqs_to_snapshot(
-      &self.api,
+      &self.registry_info_provider,
       package_reqs,
       self.maybe_lockfile.clone(),
       || snapshot_lock.read().clone(),
@@ -120,7 +120,7 @@ impl NpmResolution {
 
     let reqs_set = package_reqs.iter().collect::<HashSet<_>>();
     let snapshot = add_package_reqs_to_snapshot(
-      &self.api,
+      &self.registry_info_provider,
       package_reqs,
       self.maybe_lockfile.clone(),
       || {
@@ -257,10 +257,14 @@ impl NpmResolution {
       .read()
       .as_valid_serialized_for_system(system_info)
   }
+
+  pub fn subset(&self, package_reqs: &[PackageReq]) -> NpmResolutionSnapshot {
+    self.snapshot.read().subset(package_reqs)
+  }
 }
 
 async fn add_package_reqs_to_snapshot(
-  api: &CliNpmRegistryApi,
+  registry_info_provider: &Arc<CliNpmRegistryInfoProvider>,
   package_reqs: &[PackageReq],
   maybe_lockfile: Option<Arc<CliLockfile>>,
   get_new_snapshot: impl Fn() -> NpmResolutionSnapshot,
@@ -283,22 +287,27 @@ async fn add_package_reqs_to_snapshot(
     /* this string is used in tests */
     "Running npm resolution."
   );
-  let pending_resolver = get_npm_pending_resolver(api);
-  let result = pending_resolver.add_pkg_reqs(snapshot, package_reqs).await;
-  api.clear_memory_cache();
+  let npm_registry_api = registry_info_provider.as_npm_registry_api();
+  let result = snapshot
+    .add_pkg_reqs(&npm_registry_api, get_add_pkg_reqs_options(package_reqs))
+    .await;
   let result = match &result.dep_graph_result {
-    Err(NpmResolutionError::Resolution(err)) if api.mark_force_reload() => {
+    Err(NpmResolutionError::Resolution(err))
+      if npm_registry_api.mark_force_reload() =>
+    {
       log::debug!("{err:#}");
       log::debug!("npm resolution failed. Trying again...");
 
-      // try again
+      // try again with forced reloading
       let snapshot = get_new_snapshot();
-      let result = pending_resolver.add_pkg_reqs(snapshot, package_reqs).await;
-      api.clear_memory_cache();
-      result
+      snapshot
+        .add_pkg_reqs(&npm_registry_api, get_add_pkg_reqs_options(package_reqs))
+        .await
     }
     _ => result,
   };
+
+  registry_info_provider.clear_memory_cache();
 
   if let Ok(snapshot) = &result.dep_graph_result {
     if let Some(lockfile) = maybe_lockfile {
@@ -309,19 +318,15 @@ async fn add_package_reqs_to_snapshot(
   result
 }
 
-fn get_npm_pending_resolver(
-  api: &CliNpmRegistryApi,
-) -> NpmResolutionSnapshotPendingResolver<CliNpmRegistryApi> {
-  NpmResolutionSnapshotPendingResolver::new(
-    NpmResolutionSnapshotPendingResolverOptions {
-      api,
-      // WARNING: When bumping this version, check if anything needs to be
-      // updated in the `setNodeOnlyGlobalNames` call in 99_main_compiler.js
-      types_node_version_req: Some(
-        VersionReq::parse_from_npm("22.0.0 - 22.5.4").unwrap(),
-      ),
-    },
-  )
+fn get_add_pkg_reqs_options(package_reqs: &[PackageReq]) -> AddPkgReqsOptions {
+  AddPkgReqsOptions {
+    package_reqs,
+    // WARNING: When bumping this version, check if anything needs to be
+    // updated in the `setNodeOnlyGlobalNames` call in 99_main_compiler.js
+    types_node_version_req: Some(
+      VersionReq::parse_from_npm("22.0.0 - 22.5.4").unwrap(),
+    ),
+  }
 }
 
 fn populate_lockfile_from_snapshot(
@@ -333,7 +338,13 @@ fn populate_lockfile_from_snapshot(
     let id = &snapshot.resolve_package_from_deno_module(nv).unwrap().id;
     lockfile.insert_package_specifier(
       JsrDepPackageReq::npm(package_req.clone()),
-      format!("{}{}", id.nv.version, id.peer_deps_serialized()),
+      {
+        StringBuilder::<SmallStackString>::build(|builder| {
+          builder.append(&id.nv.version);
+          builder.append(&id.peer_dependencies);
+        })
+        .unwrap()
+      },
     );
   }
   for package in snapshot.all_packages_for_every_system() {

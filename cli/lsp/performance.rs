@@ -1,9 +1,5 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
-use deno_core::parking_lot::Mutex;
-use deno_core::serde::Deserialize;
-use deno_core::serde::Serialize;
-use deno_core::serde_json::json;
 use std::cmp;
 use std::collections::HashMap;
 use std::collections::VecDeque;
@@ -11,6 +7,11 @@ use std::fmt;
 use std::sync::Arc;
 use std::time::Duration;
 use std::time::Instant;
+
+use deno_core::parking_lot::Mutex;
+use deno_core::serde::Deserialize;
+use deno_core::serde::Serialize;
+use deno_core::serde_json::json;
 
 use super::logging::lsp_debug;
 

@@ -1,4 +1,4 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
 use std::collections::HashSet;
 use std::path::Path;
@@ -15,14 +15,14 @@ use deno_lint::linter::LintConfig as DenoLintConfig;
 use deno_lint::linter::LintFileOptions;
 use deno_lint::linter::Linter as DenoLintLinter;
 use deno_lint::linter::LinterOptions;
-
-use crate::util::fs::atomic_write_file_with_retries;
-use crate::util::fs::specifier_from_file_path;
+use deno_path_util::fs::atomic_write_file_with_retries;
 
 use super::minified_file;
 use super::rules::FileOrPackageLintRule;
 use super::rules::PackageLintRule;
 use super::ConfiguredRules;
+use crate::sys::CliSys;
+use crate::util::fs::specifier_from_file_path;
 
 pub enum LintResult {
   /// File was linted and optionally produced diagnostics
@@ -199,8 +199,9 @@ impl CliLinter {
     if fix_iterations > 0 {
       // everything looks good and the file still parses, so write it out
       atomic_write_file_with_retries(
+        &CliSys::default(),
         file_path,
-        source.text().as_ref(),
+        source.text().as_bytes(),
         crate::cache::CACHE_PERM,
       )
       .context("Failed writing fix to file.")?;

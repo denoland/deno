@@ -1,4 +1,4 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
 use deno_ast::diagnostics::Diagnostic;
 use deno_core::error::AnyError;
@@ -8,10 +8,9 @@ use deno_runtime::colors;
 use log::info;
 use serde::Serialize;
 
-use crate::args::LintReporterKind;
-
 use super::LintError;
 use super::LintSkipped;
+use crate::args::LintReporterKind;
 
 const JSON_SCHEMA_VERSION: u8 = 1;
 

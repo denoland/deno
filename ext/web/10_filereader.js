@@ -1,4 +1,4 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
 // @ts-check
 /// <reference no-default-lib="true" />
@@ -65,7 +65,7 @@ class FileReader extends EventTarget {
     // 1. If fr's state is "loading", throw an InvalidStateError DOMException.
     if (this[state] === "loading") {
       throw new DOMException(
-        "Invalid FileReader state.",
+        "Invalid FileReader state",
         "InvalidStateError",
       );
     }

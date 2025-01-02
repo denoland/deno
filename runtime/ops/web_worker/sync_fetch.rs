@@ -1,9 +1,7 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
 use std::sync::Arc;
 
-use crate::web_worker::WebWorkerInternalHandle;
-use crate::web_worker::WebWorkerType;
 use deno_core::futures::StreamExt;
 use deno_core::op2;
 use deno_core::url::Url;
@@ -15,6 +13,9 @@ use http_body_util::BodyExt;
 use hyper::body::Bytes;
 use serde::Deserialize;
 use serde::Serialize;
+
+use crate::web_worker::WebWorkerInternalHandle;
+use crate::web_worker::WebWorkerType;
 
 // TODO(andreubotella) Properly parse the MIME type
 fn mime_type_essence(mime_type: &str) -> String {
@@ -104,11 +105,7 @@ pub fn op_worker_sync_fetch(
 
             let (body, mime_type, res_url) = match script_url.scheme() {
               "http" | "https" => {
-                let mut req = http::Request::new(
-                  http_body_util::Empty::new()
-                    .map_err(|never| match never {})
-                    .boxed(),
-                );
+                let mut req = http::Request::new(deno_fetch::ReqBody::empty());
                 *req.uri_mut() = script_url.as_str().parse()?;
 
                 let resp =

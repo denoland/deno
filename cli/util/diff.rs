@@ -1,9 +1,11 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
-use crate::colors;
+use std::fmt::Write as _;
+
 use dissimilar::diff as difference;
 use dissimilar::Chunk;
-use std::fmt::Write as _;
+
+use crate::colors;
 
 /// Print diff of the same file_path, before and after formatting.
 ///

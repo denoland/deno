@@ -1,9 +1,8 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
 use deno_core::serde_json;
 use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
-
 use pretty_assertions::assert_eq;
 use test_util as util;
 use test_util::itest;
@@ -102,7 +101,7 @@ fn cached_only_after_first_run() {
   let stdout = String::from_utf8_lossy(&output.stdout);
   assert_contains!(
     stderr,
-    "An npm specifier not found in cache: \"ansi-styles\", --cached-only is specified."
+    "npm package not found in cache: \"ansi-styles\", --cached-only is specified."
   );
   assert!(stdout.is_empty());
   assert!(!output.status.success());

@@ -1,11 +1,24 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
-use crate::deno_exe_path;
-use crate::jsr_registry_url;
-use crate::npm_registry_url;
-use crate::PathRef;
-
-use super::TempDir;
+use std::collections::HashMap;
+use std::collections::HashSet;
+use std::ffi::OsStr;
+use std::ffi::OsString;
+use std::io;
+use std::io::BufRead;
+use std::io::BufReader;
+use std::io::Write;
+use std::path::Path;
+use std::process::Child;
+use std::process::ChildStdin;
+use std::process::ChildStdout;
+use std::process::Command;
+use std::process::Stdio;
+use std::str::FromStr;
+use std::sync::mpsc;
+use std::sync::Arc;
+use std::time::Duration;
+use std::time::Instant;
 
 use anyhow::Result;
 use lsp_types as lsp;
@@ -32,26 +45,13 @@ use serde::Serialize;
 use serde_json::json;
 use serde_json::to_value;
 use serde_json::Value;
-use std::collections::HashMap;
-use std::collections::HashSet;
-use std::ffi::OsStr;
-use std::ffi::OsString;
-use std::io;
-use std::io::BufRead;
-use std::io::BufReader;
-use std::io::Write;
-use std::path::Path;
-use std::process::Child;
-use std::process::ChildStdin;
-use std::process::ChildStdout;
-use std::process::Command;
-use std::process::Stdio;
-use std::str::FromStr;
-use std::sync::mpsc;
-use std::sync::Arc;
-use std::time::Duration;
-use std::time::Instant;
 use url::Url;
+
+use super::TempDir;
+use crate::deno_exe_path;
+use crate::jsr_registry_url;
+use crate::npm_registry_url;
+use crate::PathRef;
 
 static CONTENT_TYPE_REG: Lazy<Regex> =
   lazy_regex::lazy_regex!(r"(?i)^content-length:\s+(\d+)");
@@ -1290,6 +1290,14 @@ impl SourceFile {
       "html" => "html",
       "css" => "css",
       "yaml" => "yaml",
+      "sql" => "sql",
+      "svelte" => "svelte",
+      "vue" => "vue",
+      "astro" => "astro",
+      "vto" => "vento",
+      "vento" => "vento",
+      "njk" => "nunjucks",
+      "nunjucks" => "nunjucks",
       other => panic!("unsupported file extension: {other}"),
     };
     Self {

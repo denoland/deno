@@ -1,9 +1,47 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
+
+use std::collections::HashSet;
+use std::error::Error;
+use std::ops::Deref;
+use std::path::PathBuf;
+use std::sync::Arc;
+
+use deno_config::deno_json::JsxImportSourceConfig;
+use deno_config::workspace::JsrPackageConfig;
+use deno_core::anyhow::bail;
+use deno_core::error::custom_error;
+use deno_core::error::AnyError;
+use deno_core::parking_lot::Mutex;
+use deno_core::ModuleSpecifier;
+use deno_graph::source::Loader;
+use deno_graph::source::LoaderChecksum;
+use deno_graph::source::ResolutionKind;
+use deno_graph::source::ResolveError;
+use deno_graph::FillFromLockfileOptions;
+use deno_graph::GraphKind;
+use deno_graph::JsrLoadError;
+use deno_graph::ModuleError;
+use deno_graph::ModuleGraph;
+use deno_graph::ModuleGraphError;
+use deno_graph::ModuleLoadError;
+use deno_graph::ResolutionError;
+use deno_graph::SpecifierError;
+use deno_graph::WorkspaceFastCheckOption;
+use deno_path_util::url_to_file_path;
+use deno_resolver::sloppy_imports::SloppyImportsResolutionKind;
+use deno_runtime::deno_node;
+use deno_runtime::deno_permissions::PermissionsContainer;
+use deno_semver::jsr::JsrDepPackageReq;
+use deno_semver::package::PackageNv;
+use deno_semver::SmallStackString;
+use import_map::ImportMapError;
+use node_resolver::InNpmPackageChecker;
 
 use crate::args::config_to_deno_graph_workspace_member;
 use crate::args::jsr_url;
 use crate::args::CliLockfile;
 use crate::args::CliOptions;
+pub use crate::args::NpmCachingStrategy;
 use crate::args::DENO_DISABLE_PEDANTIC_NODE_WARNINGS;
 use crate::cache;
 use crate::cache::FetchCacher;
@@ -12,52 +50,17 @@ use crate::cache::ModuleInfoCache;
 use crate::cache::ParsedSourceCache;
 use crate::colors;
 use crate::errors::get_error_class_name;
-use crate::file_fetcher::FileFetcher;
+use crate::file_fetcher::CliFileFetcher;
 use crate::npm::CliNpmResolver;
 use crate::resolver::CjsTracker;
 use crate::resolver::CliResolver;
 use crate::resolver::CliSloppyImportsResolver;
 use crate::resolver::SloppyImportsCachedFs;
+use crate::sys::CliSys;
 use crate::tools::check;
 use crate::tools::check::TypeChecker;
 use crate::util::file_watcher::WatcherCommunicator;
 use crate::util::fs::canonicalize_path;
-use deno_config::deno_json::JsxImportSourceConfig;
-use deno_config::workspace::JsrPackageConfig;
-use deno_core::anyhow::bail;
-use deno_graph::source::LoaderChecksum;
-use deno_graph::source::ResolutionKind;
-use deno_graph::FillFromLockfileOptions;
-use deno_graph::JsrLoadError;
-use deno_graph::ModuleLoadError;
-use deno_graph::WorkspaceFastCheckOption;
-
-use deno_core::error::custom_error;
-use deno_core::error::AnyError;
-use deno_core::parking_lot::Mutex;
-use deno_core::ModuleSpecifier;
-use deno_graph::source::Loader;
-use deno_graph::source::ResolveError;
-use deno_graph::GraphKind;
-use deno_graph::ModuleError;
-use deno_graph::ModuleGraph;
-use deno_graph::ModuleGraphError;
-use deno_graph::ResolutionError;
-use deno_graph::SpecifierError;
-use deno_path_util::url_to_file_path;
-use deno_resolver::sloppy_imports::SloppyImportsResolutionKind;
-use deno_runtime::deno_fs::FileSystem;
-use deno_runtime::deno_node;
-use deno_runtime::deno_permissions::PermissionsContainer;
-use deno_semver::jsr::JsrDepPackageReq;
-use deno_semver::package::PackageNv;
-use import_map::ImportMapError;
-use node_resolver::InNpmPackageChecker;
-use std::collections::HashSet;
-use std::error::Error;
-use std::ops::Deref;
-use std::path::PathBuf;
-use std::sync::Arc;
 
 #[derive(Clone)]
 pub struct GraphValidOptions {
@@ -78,7 +81,7 @@ pub struct GraphValidOptions {
 /// for the CLI.
 pub fn graph_valid(
   graph: &ModuleGraph,
-  fs: &Arc<dyn FileSystem>,
+  sys: &CliSys,
   roots: &[ModuleSpecifier],
   options: GraphValidOptions,
 ) -> Result<(), AnyError> {
@@ -88,7 +91,7 @@ pub fn graph_valid(
 
   let mut errors = graph_walk_errors(
     graph,
-    fs,
+    sys,
     roots,
     GraphWalkErrorsOptions {
       check_js: options.check_js,
@@ -109,6 +112,25 @@ pub fn graph_valid(
   }
 }
 
+pub fn fill_graph_from_lockfile(
+  graph: &mut ModuleGraph,
+  lockfile: &deno_lockfile::Lockfile,
+) {
+  graph.fill_from_lockfile(FillFromLockfileOptions {
+    redirects: lockfile
+      .content
+      .redirects
+      .iter()
+      .map(|(from, to)| (from.as_str(), to.as_str())),
+    package_specifiers: lockfile
+      .content
+      .packages
+      .specifiers
+      .iter()
+      .map(|(dep, id)| (dep, id.as_str())),
+  });
+}
+
 #[derive(Clone)]
 pub struct GraphWalkErrorsOptions {
   pub check_js: bool,
@@ -119,7 +141,7 @@ pub struct GraphWalkErrorsOptions {
 /// and enhances them with CLI information.
 pub fn graph_walk_errors<'a>(
   graph: &'a ModuleGraph,
-  fs: &'a Arc<dyn FileSystem>,
+  sys: &'a CliSys,
   roots: &'a [ModuleSpecifier],
   options: GraphWalkErrorsOptions,
 ) -> impl Iterator<Item = AnyError> + 'a {
@@ -154,7 +176,7 @@ pub fn graph_walk_errors<'a>(
         }
         ModuleGraphError::ModuleError(error) => {
           enhanced_integrity_error_message(error)
-            .or_else(|| enhanced_sloppy_imports_error_message(fs, error))
+            .or_else(|| enhanced_sloppy_imports_error_message(sys, error))
             .unwrap_or_else(|| format_deno_graph_error(error))
         }
       };
@@ -199,6 +221,7 @@ pub struct CreateGraphOptions<'a> {
   pub is_dynamic: bool,
   /// Specify `None` to use the default CLI loader.
   pub loader: Option<&'a mut dyn Loader>,
+  pub npm_caching: NpmCachingStrategy,
 }
 
 pub struct ModuleGraphCreator {
@@ -227,10 +250,11 @@ impl ModuleGraphCreator {
     &self,
     graph_kind: GraphKind,
     roots: Vec<ModuleSpecifier>,
+    npm_caching: NpmCachingStrategy,
   ) -> Result<deno_graph::ModuleGraph, AnyError> {
     let mut cache = self.module_graph_builder.create_graph_loader();
     self
-      .create_graph_with_loader(graph_kind, roots, &mut cache)
+      .create_graph_with_loader(graph_kind, roots, &mut cache, npm_caching)
       .await
   }
 
@@ -239,6 +263,7 @@ impl ModuleGraphCreator {
     graph_kind: GraphKind,
     roots: Vec<ModuleSpecifier>,
     loader: &mut dyn Loader,
+    npm_caching: NpmCachingStrategy,
   ) -> Result<ModuleGraph, AnyError> {
     self
       .create_graph_with_options(CreateGraphOptions {
@@ -246,6 +271,7 @@ impl ModuleGraphCreator {
         graph_kind,
         roots,
         loader: Some(loader),
+        npm_caching,
       })
       .await
   }
@@ -298,6 +324,7 @@ impl ModuleGraphCreator {
         graph_kind: deno_graph::GraphKind::All,
         roots,
         loader: Some(&mut publish_loader),
+        npm_caching: self.options.default_npm_caching_strategy(),
       })
       .await?;
     self.graph_valid(&graph)?;
@@ -357,6 +384,7 @@ impl ModuleGraphCreator {
         graph_kind,
         roots,
         loader: None,
+        npm_caching: self.options.default_npm_caching_strategy(),
       })
       .await?;
 
@@ -405,8 +433,7 @@ pub struct ModuleGraphBuilder {
   caches: Arc<cache::Caches>,
   cjs_tracker: Arc<CjsTracker>,
   cli_options: Arc<CliOptions>,
-  file_fetcher: Arc<FileFetcher>,
-  fs: Arc<dyn FileSystem>,
+  file_fetcher: Arc<CliFileFetcher>,
   global_http_cache: Arc<GlobalHttpCache>,
   in_npm_pkg_checker: Arc<dyn InNpmPackageChecker>,
   lockfile: Option<Arc<CliLockfile>>,
@@ -416,6 +443,7 @@ pub struct ModuleGraphBuilder {
   parsed_source_cache: Arc<ParsedSourceCache>,
   resolver: Arc<CliResolver>,
   root_permissions_container: PermissionsContainer,
+  sys: CliSys,
 }
 
 impl ModuleGraphBuilder {
@@ -424,8 +452,7 @@ impl ModuleGraphBuilder {
     caches: Arc<cache::Caches>,
     cjs_tracker: Arc<CjsTracker>,
     cli_options: Arc<CliOptions>,
-    file_fetcher: Arc<FileFetcher>,
-    fs: Arc<dyn FileSystem>,
+    file_fetcher: Arc<CliFileFetcher>,
     global_http_cache: Arc<GlobalHttpCache>,
     in_npm_pkg_checker: Arc<dyn InNpmPackageChecker>,
     lockfile: Option<Arc<CliLockfile>>,
@@ -435,13 +462,13 @@ impl ModuleGraphBuilder {
     parsed_source_cache: Arc<ParsedSourceCache>,
     resolver: Arc<CliResolver>,
     root_permissions_container: PermissionsContainer,
+    sys: CliSys,
   ) -> Self {
     Self {
       caches,
       cjs_tracker,
       cli_options,
       file_fetcher,
-      fs,
       global_http_cache,
       in_npm_pkg_checker,
       lockfile,
@@ -451,6 +478,7 @@ impl ModuleGraphBuilder {
       parsed_source_cache,
       resolver,
       root_permissions_container,
+      sys,
     }
   }
 
@@ -546,7 +574,8 @@ impl ModuleGraphBuilder {
     };
     let cli_resolver = &self.resolver;
     let graph_resolver = self.create_graph_resolver()?;
-    let graph_npm_resolver = cli_resolver.create_graph_npm_resolver();
+    let graph_npm_resolver =
+      cli_resolver.create_graph_npm_resolver(options.npm_caching);
     let maybe_file_watcher_reporter = self
       .maybe_file_watcher_reporter
       .as_ref()
@@ -565,7 +594,7 @@ impl ModuleGraphBuilder {
           is_dynamic: options.is_dynamic,
           passthrough_jsr_specifiers: false,
           executor: Default::default(),
-          file_system: &DenoGraphFsAdapter(self.fs.as_ref()),
+          file_system: &self.sys,
           jsr_url_provider: &CliJsrUrlProvider,
           npm_resolver: Some(&graph_npm_resolver),
           module_analyzer: &analyzer,
@@ -573,6 +602,7 @@ impl ModuleGraphBuilder {
           resolver: Some(&graph_resolver),
           locker: locker.as_mut().map(|l| l as _),
         },
+        options.npm_caching,
       )
       .await
   }
@@ -583,6 +613,7 @@ impl ModuleGraphBuilder {
     roots: Vec<ModuleSpecifier>,
     loader: &'a mut dyn deno_graph::source::Loader,
     options: deno_graph::BuildOptions<'a>,
+    npm_caching: NpmCachingStrategy,
   ) -> Result<(), AnyError> {
     // ensure an "npm install" is done if the user has explicitly
     // opted into using a node_modules directory
@@ -593,7 +624,13 @@ impl ModuleGraphBuilder {
       .unwrap_or(false)
     {
       if let Some(npm_resolver) = self.npm_resolver.as_managed() {
-        npm_resolver.ensure_top_level_package_json_install().await?;
+        let already_done =
+          npm_resolver.ensure_top_level_package_json_install().await?;
+        if !already_done && matches!(npm_caching, NpmCachingStrategy::Eager) {
+          npm_resolver
+            .cache_packages(crate::npm::PackageCaching::All)
+            .await?;
+        }
       }
     }
 
@@ -603,19 +640,7 @@ impl ModuleGraphBuilder {
       // populate the information from the lockfile
       if let Some(lockfile) = &self.lockfile {
         let lockfile = lockfile.lock();
-        graph.fill_from_lockfile(FillFromLockfileOptions {
-          redirects: lockfile
-            .content
-            .redirects
-            .iter()
-            .map(|(from, to)| (from.as_str(), to.as_str())),
-          package_specifiers: lockfile
-            .content
-            .packages
-            .specifiers
-            .iter()
-            .map(|(dep, id)| (dep, id.as_str())),
-        });
+        fill_graph_from_lockfile(graph, &lockfile);
       }
     }
 
@@ -657,7 +682,7 @@ impl ModuleGraphBuilder {
           for (from, to) in graph.packages.mappings() {
             lockfile.insert_package_specifier(
               JsrDepPackageReq::jsr(from.clone()),
-              to.version.to_string(),
+              to.version.to_custom_string::<SmallStackString>(),
             );
           }
         }
@@ -694,7 +719,9 @@ impl ModuleGraphBuilder {
     let parser = self.parsed_source_cache.as_capturing_parser();
     let cli_resolver = &self.resolver;
     let graph_resolver = self.create_graph_resolver()?;
-    let graph_npm_resolver = cli_resolver.create_graph_npm_resolver();
+    let graph_npm_resolver = cli_resolver.create_graph_npm_resolver(
+      self.cli_options.default_npm_caching_strategy(),
+    );
 
     graph.build_fast_check_type_graph(
       deno_graph::BuildFastCheckTypeGraphOptions {
@@ -721,10 +748,10 @@ impl ModuleGraphBuilder {
   ) -> cache::FetchCacher {
     cache::FetchCacher::new(
       self.file_fetcher.clone(),
-      self.fs.clone(),
       self.global_http_cache.clone(),
       self.in_npm_pkg_checker.clone(),
       self.module_info_cache.clone(),
+      self.sys.clone(),
       cache::FetchCacherOptions {
         file_header_overrides: self.cli_options.resolve_file_header_overrides(),
         permissions,
@@ -753,7 +780,7 @@ impl ModuleGraphBuilder {
   ) -> Result<(), AnyError> {
     graph_valid(
       graph,
-      &self.fs,
+      &self.sys,
       roots,
       GraphValidOptions {
         kind: if self.cli_options.type_check_mode().is_true() {
@@ -809,13 +836,13 @@ pub fn enhanced_resolution_error_message(error: &ResolutionError) -> String {
 }
 
 fn enhanced_sloppy_imports_error_message(
-  fs: &Arc<dyn FileSystem>,
+  sys: &CliSys,
   error: &ModuleError,
 ) -> Option<String> {
   match error {
     ModuleError::LoadingErr(specifier, _, ModuleLoadError::Loader(_)) // ex. "Is a directory" error
     | ModuleError::Missing(specifier, _) => {
-      let additional_message = CliSloppyImportsResolver::new(SloppyImportsCachedFs::new(fs.clone()))
+      let additional_message = CliSloppyImportsResolver::new(SloppyImportsCachedFs::new(sys.clone()))
         .resolve(specifier, SloppyImportsResolutionKind::Execution)?
         .as_suggestion_message();
       Some(format!(
@@ -1053,71 +1080,6 @@ impl deno_graph::source::Reporter for FileWatcherReporter {
         .watch_paths(file_paths.drain(..).collect())
         .unwrap();
     }
-  }
-}
-
-pub struct DenoGraphFsAdapter<'a>(
-  pub &'a dyn deno_runtime::deno_fs::FileSystem,
-);
-
-impl<'a> deno_graph::source::FileSystem for DenoGraphFsAdapter<'a> {
-  fn read_dir(
-    &self,
-    dir_url: &deno_graph::ModuleSpecifier,
-  ) -> Vec<deno_graph::source::DirEntry> {
-    use deno_core::anyhow;
-    use deno_graph::source::DirEntry;
-    use deno_graph::source::DirEntryKind;
-
-    let dir_path = match dir_url.to_file_path() {
-      Ok(path) => path,
-      // ignore, treat as non-analyzable
-      Err(()) => return vec![],
-    };
-    let entries = match self.0.read_dir_sync(&dir_path) {
-      Ok(dir) => dir,
-      Err(err)
-        if matches!(
-          err.kind(),
-          std::io::ErrorKind::PermissionDenied | std::io::ErrorKind::NotFound
-        ) =>
-      {
-        return vec![];
-      }
-      Err(err) => {
-        return vec![DirEntry {
-          kind: DirEntryKind::Error(
-            anyhow::Error::from(err)
-              .context("Failed to read directory.".to_string()),
-          ),
-          url: dir_url.clone(),
-        }];
-      }
-    };
-    let mut dir_entries = Vec::with_capacity(entries.len());
-    for entry in entries {
-      let entry_path = dir_path.join(&entry.name);
-      dir_entries.push(if entry.is_directory {
-        DirEntry {
-          kind: DirEntryKind::Dir,
-          url: ModuleSpecifier::from_directory_path(&entry_path).unwrap(),
-        }
-      } else if entry.is_file {
-        DirEntry {
-          kind: DirEntryKind::File,
-          url: ModuleSpecifier::from_file_path(&entry_path).unwrap(),
-        }
-      } else if entry.is_symlink {
-        DirEntry {
-          kind: DirEntryKind::Symlink,
-          url: ModuleSpecifier::from_file_path(&entry_path).unwrap(),
-        }
-      } else {
-        continue;
-      });
-    }
-
-    dir_entries
   }
 }
 

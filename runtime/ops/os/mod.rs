@@ -1,7 +1,8 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
-use crate::sys_info;
-use crate::worker::ExitCode;
+use std::collections::HashMap;
+use std::env;
+
 use deno_core::op2;
 use deno_core::v8;
 use deno_core::OpState;
@@ -9,8 +10,9 @@ use deno_node::NODE_ENV_VAR_ALLOWLIST;
 use deno_path_util::normalize_path;
 use deno_permissions::PermissionsContainer;
 use serde::Serialize;
-use std::collections::HashMap;
-use std::env;
+
+use crate::sys_info;
+use crate::worker::ExitCode;
 
 deno_core::extension!(
   deno_os,
@@ -424,8 +426,11 @@ fn rss() -> usize {
   let mut count = libc::MACH_TASK_BASIC_INFO_COUNT;
   // SAFETY: libc calls
   let r = unsafe {
+    extern "C" {
+      static mut mach_task_self_: std::ffi::c_uint;
+    }
     libc::task_info(
-      libc::mach_task_self(),
+      mach_task_self_,
       libc::MACH_TASK_BASIC_INFO,
       task_info.as_mut_ptr() as libc::task_info_t,
       &mut count as *mut libc::mach_msg_type_number_t,

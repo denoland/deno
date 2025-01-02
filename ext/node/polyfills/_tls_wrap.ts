@@ -1,4 +1,4 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 // Copyright Joyent and Node contributors. All rights reserved. MIT license.
 
 // TODO(petamoriken): enable prefer-primordials for node polyfills
@@ -154,6 +154,13 @@ export class TLSSocket extends net.Socket {
       const afterConnect = handle.afterConnect;
       handle.afterConnect = async (req: any, status: number) => {
         options.hostname ??= undefined; // coerce to undefined if null, startTls expects hostname to be undefined
+        if (tlssock._isNpmAgent) {
+          // skips the TLS handshake for @npmcli/agent as it's handled by
+          // onSocket handler of ClientRequest object.
+          tlssock.emit("secure");
+          tlssock.removeListener("end", onConnectEnd);
+          return afterConnect.call(handle, req, status);
+        }
 
         try {
           const conn = await Deno.startTls(handle[kStreamBaseField], options);

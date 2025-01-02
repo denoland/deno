@@ -1,4 +1,4 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
 pub use deno_broadcast_channel;
 pub use deno_cache;
@@ -46,7 +46,7 @@ pub use worker_bootstrap::BootstrapOptions;
 pub use worker_bootstrap::WorkerExecutionMode;
 pub use worker_bootstrap::WorkerLogLevel;
 
-mod shared;
+pub mod shared;
 pub use shared::runtime;
 
 pub struct UnstableGranularFlag {

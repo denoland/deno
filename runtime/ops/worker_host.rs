@@ -1,15 +1,10 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
-use crate::ops::TestingFeaturesEnabled;
-use crate::web_worker::run_web_worker;
-use crate::web_worker::SendableWebWorkerHandle;
-use crate::web_worker::WebWorker;
-use crate::web_worker::WebWorkerHandle;
-use crate::web_worker::WebWorkerType;
-use crate::web_worker::WorkerControlEvent;
-use crate::web_worker::WorkerId;
-use crate::web_worker::WorkerMetadata;
-use crate::worker::FormatJsErrorFn;
+use std::cell::RefCell;
+use std::collections::HashMap;
+use std::rc::Rc;
+use std::sync::Arc;
+
 use deno_core::op2;
 use deno_core::serde::Deserialize;
 use deno_core::CancelFuture;
@@ -22,10 +17,17 @@ use deno_web::deserialize_js_transferables;
 use deno_web::JsMessageData;
 use deno_web::MessagePortError;
 use log::debug;
-use std::cell::RefCell;
-use std::collections::HashMap;
-use std::rc::Rc;
-use std::sync::Arc;
+
+use crate::ops::TestingFeaturesEnabled;
+use crate::web_worker::run_web_worker;
+use crate::web_worker::SendableWebWorkerHandle;
+use crate::web_worker::WebWorker;
+use crate::web_worker::WebWorkerHandle;
+use crate::web_worker::WebWorkerType;
+use crate::web_worker::WorkerControlEvent;
+use crate::web_worker::WorkerId;
+use crate::web_worker::WorkerMetadata;
+use crate::worker::FormatJsErrorFn;
 
 pub const UNSTABLE_FEATURE_NAME: &str = "worker-options";
 

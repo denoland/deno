@@ -1,16 +1,16 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
+
+use std::error::Error;
+use std::fmt;
 
 use deno_ast::ModuleSpecifier;
-use deno_graph::ModuleGraph;
-use deno_terminal::colors;
-
 use deno_core::serde::Deserialize;
 use deno_core::serde::Deserializer;
 use deno_core::serde::Serialize;
 use deno_core::serde::Serializer;
 use deno_core::sourcemap::SourceMap;
-use std::error::Error;
-use std::fmt;
+use deno_graph::ModuleGraph;
+use deno_terminal::colors;
 
 const MAX_SOURCE_LINE_LENGTH: usize = 150;
 
@@ -133,6 +133,12 @@ pub struct Diagnostic {
   pub file_name: Option<String>,
   #[serde(skip_serializing_if = "Option::is_none")]
   pub related_information: Option<Vec<Diagnostic>>,
+  #[serde(skip_serializing_if = "Option::is_none")]
+  pub reports_deprecated: Option<bool>,
+  #[serde(skip_serializing_if = "Option::is_none")]
+  pub reports_unnecessary: Option<bool>,
+  #[serde(flatten)]
+  pub other: deno_core::serde_json::Map<String, deno_core::serde_json::Value>,
 }
 
 impl Diagnostic {
@@ -395,10 +401,11 @@ impl Error for Diagnostics {}
 
 #[cfg(test)]
 mod tests {
-  use super::*;
   use deno_core::serde_json;
   use deno_core::serde_json::json;
   use test_util::strip_ansi_codes;
+
+  use super::*;
 
   #[test]
   fn test_de_diagnostics() {

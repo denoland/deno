@@ -1,4 +1,4 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
 use std::borrow::Cow;
 use std::cell::RefCell;
@@ -26,6 +26,7 @@ use rsa::pkcs1::DecodeRsaPrivateKey as _;
 use rsa::pkcs1::DecodeRsaPublicKey;
 use rsa::pkcs1::EncodeRsaPrivateKey as _;
 use rsa::pkcs1::EncodeRsaPublicKey;
+use rsa::traits::PrivateKeyParts;
 use rsa::traits::PublicKeyParts;
 use rsa::RsaPrivateKey;
 use rsa::RsaPublicKey;
@@ -253,6 +254,16 @@ impl EcPrivateKey {
       EcPrivateKey::P224(key) => EcPublicKey::P224(key.public_key()),
       EcPrivateKey::P256(key) => EcPublicKey::P256(key.public_key()),
       EcPrivateKey::P384(key) => EcPublicKey::P384(key.public_key()),
+    }
+  }
+
+  pub fn to_jwk(&self) -> Result<JwkEcKey, AsymmetricPrivateKeyJwkError> {
+    match self {
+      EcPrivateKey::P224(_) => {
+        Err(AsymmetricPrivateKeyJwkError::UnsupportedJwkEcCurveP224)
+      }
+      EcPrivateKey::P256(key) => Ok(key.to_jwk()),
+      EcPrivateKey::P384(key) => Ok(key.to_jwk()),
     }
   }
 }
@@ -1108,6 +1119,16 @@ fn bytes_to_b64(bytes: &[u8]) -> String {
 }
 
 #[derive(Debug, thiserror::Error)]
+pub enum AsymmetricPrivateKeyJwkError {
+  #[error("key is not an asymmetric private key")]
+  KeyIsNotAsymmetricPrivateKey,
+  #[error("Unsupported JWK EC curve: P224")]
+  UnsupportedJwkEcCurveP224,
+  #[error("jwk export not implemented for this key type")]
+  JwkExportNotImplementedForKeyType,
+}
+
+#[derive(Debug, thiserror::Error)]
 pub enum AsymmetricPublicKeyJwkError {
   #[error("key is not an asymmetric public key")]
   KeyIsNotAsymmetricPublicKey,
@@ -1328,7 +1349,73 @@ pub enum AsymmetricPrivateKeyDerError {
   UnsupportedKeyType(String),
 }
 
+// https://datatracker.ietf.org/doc/html/rfc7518#section-6.3.2
+fn rsa_private_to_jwk(key: &RsaPrivateKey) -> deno_core::serde_json::Value {
+  let n = key.n();
+  let e = key.e();
+  let d = key.d();
+  let p = &key.primes()[0];
+  let q = &key.primes()[1];
+  let dp = key.dp();
+  let dq = key.dq();
+  let qi = key.crt_coefficient();
+  let oth = &key.primes()[2..];
+
+  let mut obj = deno_core::serde_json::json!({
+      "kty": "RSA",
+      "n": bytes_to_b64(&n.to_bytes_be()),
+      "e": bytes_to_b64(&e.to_bytes_be()),
+      "d": bytes_to_b64(&d.to_bytes_be()),
+      "p": bytes_to_b64(&p.to_bytes_be()),
+      "q": bytes_to_b64(&q.to_bytes_be()),
+      "dp": dp.map(|dp| bytes_to_b64(&dp.to_bytes_be())),
+      "dq": dq.map(|dq| bytes_to_b64(&dq.to_bytes_be())),
+      "qi": qi.map(|qi| bytes_to_b64(&qi.to_bytes_be())),
+  });
+
+  if !oth.is_empty() {
+    obj["oth"] = deno_core::serde_json::json!(oth
+      .iter()
+      .map(|o| o.to_bytes_be())
+      .collect::<Vec<_>>());
+  }
+
+  obj
+}
+
 impl AsymmetricPrivateKey {
+  fn export_jwk(
+    &self,
+  ) -> Result<deno_core::serde_json::Value, AsymmetricPrivateKeyJwkError> {
+    match self {
+      AsymmetricPrivateKey::Rsa(key) => Ok(rsa_private_to_jwk(key)),
+      AsymmetricPrivateKey::RsaPss(key) => Ok(rsa_private_to_jwk(&key.key)),
+      AsymmetricPrivateKey::Ec(key) => {
+        let jwk = key.to_jwk()?;
+        Ok(deno_core::serde_json::json!(jwk))
+      }
+      AsymmetricPrivateKey::X25519(static_secret) => {
+        let bytes = static_secret.to_bytes();
+
+        Ok(deno_core::serde_json::json!({
+            "kty": "OKP",
+            "crv": "X25519",
+            "d": bytes_to_b64(&bytes),
+        }))
+      }
+      AsymmetricPrivateKey::Ed25519(key) => {
+        let bytes = key.to_bytes();
+
+        Ok(deno_core::serde_json::json!({
+            "kty": "OKP",
+            "crv": "Ed25519",
+            "d": bytes_to_b64(&bytes),
+        }))
+      }
+      _ => Err(AsymmetricPrivateKeyJwkError::JwkExportNotImplementedForKeyType),
+    }
+  }
+
   fn export_der(
     &self,
     typ: &str,
@@ -2327,6 +2414,28 @@ pub fn op_node_export_private_key_pem(
   out.truncate(len);
 
   Ok(String::from_utf8(out).expect("invalid pem is not possible"))
+}
+
+#[derive(Debug, thiserror::Error)]
+pub enum ExportPrivateKeyJwkError {
+  #[error(transparent)]
+  AsymmetricPublicKeyJwk(#[from] AsymmetricPrivateKeyJwkError),
+  #[error("very large data")]
+  VeryLargeData,
+  #[error(transparent)]
+  Der(#[from] der::Error),
+}
+
+#[op2]
+#[serde]
+pub fn op_node_export_private_key_jwk(
+  #[cppgc] handle: &KeyObjectHandle,
+) -> Result<deno_core::serde_json::Value, ExportPrivateKeyJwkError> {
+  let private_key = handle
+    .as_private_key()
+    .ok_or(AsymmetricPrivateKeyJwkError::KeyIsNotAsymmetricPrivateKey)?;
+
+  Ok(private_key.export_jwk()?)
 }
 
 #[op2]

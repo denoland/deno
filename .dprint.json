@@ -13,7 +13,7 @@
   },
   "exec": {
     "commands": [{
-      "command": "rustfmt --config imports_granularity=item",
+      "command": "rustfmt --config imports_granularity=item --config group_imports=StdExternalCrate",
       "exts": ["rs"]
     }]
   },

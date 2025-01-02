@@ -1,5 +1,19 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
+use std::borrow::Cow;
+use std::collections::HashSet;
+use std::ffi::OsStr;
+use std::fmt;
+use std::fmt::Debug;
+use std::hash::Hash;
+use std::net::IpAddr;
+use std::net::Ipv6Addr;
+use std::path::Path;
+use std::path::PathBuf;
+use std::string::ToString;
+use std::sync::Arc;
+
+use capacity_builder::StringBuilder;
 use deno_core::parking_lot::Mutex;
 use deno_core::serde::de;
 use deno_core::serde::Deserialize;
@@ -14,34 +28,22 @@ use deno_path_util::url_to_file_path;
 use deno_terminal::colors;
 use fqdn::FQDN;
 use once_cell::sync::Lazy;
-use std::borrow::Cow;
-use std::collections::HashSet;
-use std::ffi::OsStr;
-use std::fmt;
-use std::fmt::Debug;
-use std::hash::Hash;
-use std::net::IpAddr;
-use std::net::Ipv6Addr;
-use std::path::Path;
-use std::path::PathBuf;
-use std::string::ToString;
-use std::sync::Arc;
 
 pub mod prompter;
 use prompter::permission_prompt;
-use prompter::PERMISSION_EMOJI;
-
 pub use prompter::set_prompt_callbacks;
 pub use prompter::set_prompter;
 pub use prompter::PermissionPrompter;
 pub use prompter::PromptCallback;
 pub use prompter::PromptResponse;
+use prompter::PERMISSION_EMOJI;
 
 #[derive(Debug, thiserror::Error)]
-#[error("Requires {access}, {}", format_permission_error(.name))]
-pub struct PermissionDeniedError {
-  pub access: String,
-  pub name: &'static str,
+pub enum PermissionDeniedError {
+  #[error("Requires {access}, {}", format_permission_error(.name))]
+  Retryable { access: String, name: &'static str },
+  #[error("Requires {access}, which cannot be granted in this environment")]
+  Fatal { access: String },
 }
 
 fn format_permission_error(name: &'static str) -> String {
@@ -143,11 +145,11 @@ impl PermissionState {
     )
   }
 
-  fn error(
+  fn retryable_error(
     name: &'static str,
     info: impl FnOnce() -> Option<String>,
   ) -> PermissionDeniedError {
-    PermissionDeniedError {
+    PermissionDeniedError::Retryable {
       access: Self::fmt_access(name, info),
       name,
     }
@@ -179,13 +181,18 @@ impl PermissionState {
         (Ok(()), false, false)
       }
       PermissionState::Prompt if prompt => {
-        let msg = format!(
-          "{} access{}",
-          name,
-          info()
-            .map(|info| { format!(" to {info}") })
-            .unwrap_or_default(),
-        );
+        let msg = {
+          let info = info();
+          StringBuilder::<String>::build(|builder| {
+            builder.append(name);
+            builder.append(" access");
+            if let Some(info) = &info {
+              builder.append(" to ");
+              builder.append(info);
+            }
+          })
+          .unwrap()
+        };
         match permission_prompt(&msg, name, api_name, true) {
           PromptResponse::Allow => {
             Self::log_perm_access(name, info);
@@ -195,10 +202,12 @@ impl PermissionState {
             Self::log_perm_access(name, info);
             (Ok(()), true, true)
           }
-          PromptResponse::Deny => (Err(Self::error(name, info)), true, false),
+          PromptResponse::Deny => {
+            (Err(Self::retryable_error(name, info)), true, false)
+          }
         }
       }
-      _ => (Err(Self::error(name, info)), false, false),
+      _ => (Err(Self::retryable_error(name, info)), false, false),
     }
   }
 }
@@ -344,11 +353,11 @@ pub trait QueryDescriptor: Debug {
   fn overlaps_deny(&self, other: &Self::DenyDesc) -> bool;
 }
 
-fn format_display_name(display_name: Cow<str>) -> String {
+fn format_display_name(display_name: Cow<str>) -> Cow<str> {
   if display_name.starts_with('<') && display_name.ends_with('>') {
-    display_name.into_owned()
+    display_name
   } else {
-    format!("\"{}\"", display_name)
+    Cow::Owned(format!("\"{}\"", display_name))
   }
 }
 
@@ -424,7 +433,7 @@ impl<TQuery: QueryDescriptor> UnaryPermission<TQuery> {
       .check2(
         TQuery::flag_name(),
         api_name,
-        || desc.map(|d| format_display_name(d.display_name())),
+        || desc.map(|d| format_display_name(d.display_name()).into_owned()),
         self.prompt,
       );
     if prompted {
@@ -487,12 +496,17 @@ impl<TQuery: QueryDescriptor> UnaryPermission<TQuery> {
     if !self.prompt {
       return PermissionState::Denied;
     }
-    let mut message = String::with_capacity(40);
-    message.push_str(&format!("{} access", TQuery::flag_name()));
-    if let Some(desc) = desc {
-      message
-        .push_str(&format!(" to {}", format_display_name(desc.display_name())));
-    }
+    let maybe_formatted_display_name =
+      desc.map(|d| format_display_name(d.display_name()));
+    let message = StringBuilder::<String>::build(|builder| {
+      builder.append(TQuery::flag_name());
+      builder.append(" access");
+      if let Some(display_name) = &maybe_formatted_display_name {
+        builder.append(" to ");
+        builder.append(display_name)
+      }
+    })
+    .unwrap();
     match permission_prompt(
       &message,
       TQuery::flag_name(),
@@ -3677,11 +3691,13 @@ pub fn is_standalone() -> bool {
 
 #[cfg(test)]
 mod tests {
-  use super::*;
+  use std::net::Ipv4Addr;
+
   use deno_core::serde_json::json;
   use fqdn::fqdn;
   use prompter::tests::*;
-  use std::net::Ipv4Addr;
+
+  use super::*;
 
   // Creates vector of strings, Vec<String>
   macro_rules! svec {

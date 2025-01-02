@@ -1,4 +1,4 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
 //! There are many types of errors in Deno:
 //! - AnyError: a generic wrapper that can encapsulate any type of error.
@@ -9,16 +9,11 @@
 //!   Diagnostics are compile-time type errors, whereas JsErrors are runtime
 //!   exceptions.
 
-use crate::ops::fs_events::FsEventsError;
-use crate::ops::http::HttpStartError;
-use crate::ops::os::OsError;
-use crate::ops::permissions::PermissionError;
-use crate::ops::process::CheckRunPermissionError;
-use crate::ops::process::ProcessError;
-use crate::ops::signal::SignalError;
-use crate::ops::tty::TtyError;
-use crate::ops::web_worker::SyncFetchError;
-use crate::ops::worker_host::CreateWorkerError;
+use std::env;
+use std::error::Error;
+use std::io;
+use std::sync::Arc;
+
 use deno_broadcast_channel::BroadcastChannelError;
 use deno_cache::CacheError;
 use deno_canvas::CanvasError;
@@ -68,10 +63,17 @@ use deno_websocket::HandshakeError;
 use deno_websocket::WebsocketError;
 use deno_webstorage::WebStorageError;
 use rustyline::error::ReadlineError;
-use std::env;
-use std::error::Error;
-use std::io;
-use std::sync::Arc;
+
+use crate::ops::fs_events::FsEventsError;
+use crate::ops::http::HttpStartError;
+use crate::ops::os::OsError;
+use crate::ops::permissions::PermissionError;
+use crate::ops::process::CheckRunPermissionError;
+use crate::ops::process::ProcessError;
+use crate::ops::signal::SignalError;
+use crate::ops::tty::TtyError;
+use crate::ops::web_worker::SyncFetchError;
+use crate::ops::worker_host::CreateWorkerError;
 
 fn get_run_descriptor_parse_error(e: &RunDescriptorParseError) -> &'static str {
   match e {
@@ -696,6 +698,7 @@ fn get_fetch_error(error: &FetchError) -> &'static str {
     FetchError::Permission(e) => get_permission_check_error_class(e),
     FetchError::NetworkError => "TypeError",
     FetchError::FsNotGet(_) => "TypeError",
+    FetchError::PathToUrl(_) => "TypeError",
     FetchError::InvalidUrl(_) => "TypeError",
     FetchError::InvalidHeaderName(_) => "TypeError",
     FetchError::InvalidHeaderValue(_) => "TypeError",
@@ -711,7 +714,6 @@ fn get_fetch_error(error: &FetchError) -> &'static str {
     FetchError::ClientSend(_) => "TypeError",
     FetchError::RequestBuilderHook(_) => "TypeError",
     FetchError::Io(e) => get_io_error_class(e),
-    FetchError::Hyper(e) => get_hyper_error_class(e),
   }
 }
 
@@ -1047,11 +1049,6 @@ fn get_fs_error(e: &FsError) -> &'static str {
 }
 
 mod node {
-  use super::get_error_class_name;
-  use super::get_io_error_class;
-  use super::get_permission_check_error_class;
-  use super::get_serde_json_error_class;
-  use super::get_url_parse_error_class;
   pub use deno_node::ops::blocklist::BlocklistError;
   pub use deno_node::ops::crypto::cipher::CipherContextError;
   pub use deno_node::ops::crypto::cipher::CipherError;
@@ -1082,6 +1079,7 @@ mod node {
   pub use deno_node::ops::crypto::SignEd25519Error;
   pub use deno_node::ops::crypto::VerifyEd25519Error;
   pub use deno_node::ops::fs::FsError;
+  pub use deno_node::ops::http::ConnError;
   pub use deno_node::ops::http2::Http2Error;
   pub use deno_node::ops::idna::IdnaError;
   pub use deno_node::ops::ipc::IpcError;
@@ -1094,6 +1092,12 @@ mod node {
   pub use deno_node::ops::zlib::brotli::BrotliError;
   pub use deno_node::ops::zlib::mode::ModeError;
   pub use deno_node::ops::zlib::ZlibError;
+
+  use super::get_error_class_name;
+  use super::get_io_error_class;
+  use super::get_permission_check_error_class;
+  use super::get_serde_json_error_class;
+  use super::get_url_parse_error_class;
 
   pub fn get_blocklist_error(error: &BlocklistError) -> &'static str {
     match error {
@@ -1156,7 +1160,7 @@ mod node {
       WorkerThreadsFilenameError::UrlToPathString => "Error",
       WorkerThreadsFilenameError::UrlToPath => "Error",
       WorkerThreadsFilenameError::FileNotFound(_) => "Error",
-      WorkerThreadsFilenameError::Fs(e) => super::get_fs_error(e),
+      WorkerThreadsFilenameError::Fs(e) => super::get_io_error_class(e),
     }
   }
 
@@ -1172,7 +1176,7 @@ mod node {
       | UrlConversion(_)
       | ReadModule(_)
       | PackageImportsResolve(_) => "Error",
-      Fs(e) | UnableToGetCwd(e) => super::get_fs_error(e),
+      Fs(e) | UnableToGetCwd(e) => super::get_io_error_class(e),
     }
   }
 
@@ -1537,6 +1541,24 @@ mod node {
   pub fn get_verify_ed25519_error(_: &VerifyEd25519Error) -> &'static str {
     "TypeError"
   }
+
+  pub fn get_conn_error(e: &ConnError) -> &'static str {
+    match e {
+      ConnError::Resource(e) => get_error_class_name(e).unwrap_or("Error"),
+      ConnError::Permission(e) => get_permission_check_error_class(e),
+      ConnError::InvalidUrl(_) => "TypeError",
+      ConnError::InvalidHeaderName(_) => "TypeError",
+      ConnError::InvalidHeaderValue(_) => "TypeError",
+      ConnError::Url(e) => get_url_parse_error_class(e),
+      ConnError::Method(_) => "TypeError",
+      ConnError::Io(e) => get_io_error_class(e),
+      ConnError::Hyper(e) => super::get_hyper_error_class(e),
+      ConnError::TlsStreamBusy => "Busy",
+      ConnError::TcpStreamBusy => "Busy",
+      ConnError::ReuniteTcp(_) => "Error",
+      ConnError::Canceled(_) => "Error",
+    }
+  }
 }
 
 fn get_os_error(error: &OsError) -> &'static str {
@@ -1728,6 +1750,10 @@ pub fn get_error_class_name(e: &AnyError) -> Option<&'static str> {
     .or_else(|| {
       e.downcast_ref::<node::VerifyEd25519Error>()
         .map(node::get_verify_ed25519_error)
+    })
+    .or_else(|| {
+      e.downcast_ref::<node::ConnError>()
+        .map(node::get_conn_error)
     })
     .or_else(|| e.downcast_ref::<NApiError>().map(get_napi_error_class))
     .or_else(|| e.downcast_ref::<WebError>().map(get_web_error_class))

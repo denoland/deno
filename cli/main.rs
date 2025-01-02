@@ -1,7 +1,6 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
 mod args;
-mod auth_tokens;
 mod cache;
 mod cdp;
 mod emit;
@@ -21,6 +20,7 @@ mod ops;
 mod resolver;
 mod shared;
 mod standalone;
+mod sys;
 mod task_runner;
 mod tools;
 mod tsc;
@@ -28,37 +28,37 @@ mod util;
 mod version;
 mod worker;
 
-use crate::args::flags_from_vec;
-use crate::args::DenoSubcommand;
-use crate::args::Flags;
-use crate::util::display;
-use crate::util::v8::get_v8_flags_from_env;
-use crate::util::v8::init_v8_flags;
-
-use args::TaskFlags;
-use deno_resolver::npm::ByonmResolvePkgFolderFromDenoReqError;
-use deno_resolver::npm::ResolvePkgFolderFromDenoReqError;
-use deno_runtime::WorkerExecutionMode;
-pub use deno_runtime::UNSTABLE_GRANULAR_FLAGS;
-
-use deno_core::anyhow::Context;
-use deno_core::error::AnyError;
-use deno_core::error::JsError;
-use deno_core::futures::FutureExt;
-use deno_core::unsync::JoinHandle;
-use deno_npm::resolution::SnapshotFromLockfileError;
-use deno_runtime::fmt_errors::format_js_error;
-use deno_runtime::tokio_util::create_and_run_current_thread_with_maybe_metrics;
-use deno_terminal::colors;
-use factory::CliFactory;
-use standalone::MODULE_NOT_FOUND;
-use standalone::UNSUPPORTED_SCHEME;
 use std::env;
 use std::future::Future;
 use std::io::IsTerminal;
 use std::ops::Deref;
 use std::path::PathBuf;
 use std::sync::Arc;
+
+use args::TaskFlags;
+use deno_core::anyhow::Context;
+use deno_core::error::AnyError;
+use deno_core::error::JsError;
+use deno_core::futures::FutureExt;
+use deno_core::unsync::JoinHandle;
+use deno_npm::resolution::SnapshotFromLockfileError;
+use deno_resolver::npm::ByonmResolvePkgFolderFromDenoReqError;
+use deno_resolver::npm::ResolvePkgFolderFromDenoReqError;
+use deno_runtime::fmt_errors::format_js_error;
+use deno_runtime::tokio_util::create_and_run_current_thread_with_maybe_metrics;
+use deno_runtime::WorkerExecutionMode;
+pub use deno_runtime::UNSTABLE_GRANULAR_FLAGS;
+use deno_terminal::colors;
+use factory::CliFactory;
+use standalone::MODULE_NOT_FOUND;
+use standalone::UNSUPPORTED_SCHEME;
+
+use crate::args::flags_from_vec;
+use crate::args::DenoSubcommand;
+use crate::args::Flags;
+use crate::util::display;
+use crate::util::v8::get_v8_flags_from_env;
+use crate::util::v8::init_v8_flags;
 
 #[cfg(feature = "dhat-heap")]
 #[global_allocator]
@@ -437,20 +437,18 @@ fn resolve_flags_and_init(
       if err.kind() == clap::error::ErrorKind::DisplayVersion =>
     {
       // Ignore results to avoid BrokenPipe errors.
-      util::logger::init(None);
+      util::logger::init(None, None);
       let _ = err.print();
       deno_runtime::exit(0);
     }
     Err(err) => {
-      util::logger::init(None);
+      util::logger::init(None, None);
       exit_for_error(AnyError::from(err))
     }
   };
 
-  if let Some(otel_config) = flags.otel_config() {
-    deno_telemetry::init(otel_config)?;
-  }
-  util::logger::init(flags.log_level);
+  deno_telemetry::init(crate::args::otel_runtime_config())?;
+  util::logger::init(flags.log_level, Some(flags.otel_config()));
 
   // TODO(bartlomieju): remove in Deno v2.5 and hard error then.
   if flags.unstable_config.legacy_flag_enabled {

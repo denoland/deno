@@ -1,12 +1,9 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
-use crate::args::DenoSubcommand;
-use crate::args::Flags;
-use crate::args::InitFlags;
-use crate::args::PackagesAllowedScripts;
-use crate::args::PermissionFlags;
-use crate::args::RunFlags;
-use crate::colors;
+use std::io::IsTerminal;
+use std::io::Write;
+use std::path::Path;
+
 use color_print::cformat;
 use color_print::cstr;
 use deno_config::deno_json::NodeModulesDirMode;
@@ -15,9 +12,14 @@ use deno_core::error::AnyError;
 use deno_core::serde_json::json;
 use deno_runtime::WorkerExecutionMode;
 use log::info;
-use std::io::IsTerminal;
-use std::io::Write;
-use std::path::Path;
+
+use crate::args::DenoSubcommand;
+use crate::args::Flags;
+use crate::args::InitFlags;
+use crate::args::PackagesAllowedScripts;
+use crate::args::PermissionFlags;
+use crate::args::RunFlags;
+use crate::colors;
 
 pub async fn init_project(init_flags: InitFlags) -> Result<i32, AnyError> {
   if let Some(package) = &init_flags.package {

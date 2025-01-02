@@ -1,4 +1,4 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
 use std::borrow::Cow;
 use std::path::Path;
@@ -100,6 +100,10 @@ pub trait SloppyImportResolverFs {
     self.stat_sync(path) == Some(SloppyImportsFsEntry::File)
   }
 }
+
+#[allow(clippy::disallowed_types)]
+pub type SloppyImportsResolverRc<TSloppyImportResolverFs> =
+  crate::sync::MaybeArc<SloppyImportsResolver<TSloppyImportResolverFs>>;
 
 #[derive(Debug)]
 pub struct SloppyImportsResolver<Fs: SloppyImportResolverFs> {

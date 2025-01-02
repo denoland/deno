@@ -1,9 +1,9 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
+
+use std::cell::Cell;
 
 use deno_core::op2;
 use deno_core::GarbageCollected;
-
-use std::cell::Cell;
 
 #[derive(Debug, thiserror::Error)]
 pub enum PerfHooksError {

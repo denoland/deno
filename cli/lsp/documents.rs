@@ -1,18 +1,17 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
-use super::cache::calculate_fs_version;
-use super::cache::LspCache;
-use super::config::Config;
-use super::resolver::LspResolver;
-use super::resolver::ScopeDepInfo;
-use super::resolver::SingleReferrerGraphResolver;
-use super::testing::TestCollector;
-use super::testing::TestModule;
-use super::text::LineIndex;
-use super::tsc;
-use super::tsc::AssetDocument;
-
-use crate::graph_util::CliJsrUrlProvider;
+use std::borrow::Cow;
+use std::collections::BTreeMap;
+use std::collections::HashMap;
+use std::collections::HashSet;
+use std::fs;
+use std::future::Future;
+use std::ops::Range;
+use std::pin::Pin;
+use std::str::FromStr;
+use std::sync::atomic::AtomicBool;
+use std::sync::atomic::Ordering;
+use std::sync::Arc;
 
 use dashmap::DashMap;
 use deno_ast::swc::visit::VisitWith;
@@ -36,19 +35,20 @@ use indexmap::IndexMap;
 use indexmap::IndexSet;
 use node_resolver::NodeResolutionKind;
 use node_resolver::ResolutionMode;
-use std::borrow::Cow;
-use std::collections::BTreeMap;
-use std::collections::HashMap;
-use std::collections::HashSet;
-use std::fs;
-use std::future::Future;
-use std::ops::Range;
-use std::pin::Pin;
-use std::str::FromStr;
-use std::sync::atomic::AtomicBool;
-use std::sync::atomic::Ordering;
-use std::sync::Arc;
 use tower_lsp::lsp_types as lsp;
+
+use super::cache::calculate_fs_version;
+use super::cache::LspCache;
+use super::config::Config;
+use super::resolver::LspResolver;
+use super::resolver::ScopeDepInfo;
+use super::resolver::SingleReferrerGraphResolver;
+use super::testing::TestCollector;
+use super::testing::TestModule;
+use super::text::LineIndex;
+use super::tsc;
+use super::tsc::AssetDocument;
+use crate::graph_util::CliJsrUrlProvider;
 
 pub const DOCUMENT_SCHEMES: [&str; 5] =
   ["data", "blob", "file", "http", "https"];
@@ -65,6 +65,12 @@ pub enum LanguageId {
   Html,
   Css,
   Yaml,
+  Sql,
+  Svelte,
+  Vue,
+  Astro,
+  Vento,
+  Nunjucks,
   Unknown,
 }
 
@@ -81,6 +87,12 @@ impl LanguageId {
       LanguageId::Html => Some("html"),
       LanguageId::Css => Some("css"),
       LanguageId::Yaml => Some("yaml"),
+      LanguageId::Sql => Some("sql"),
+      LanguageId::Svelte => Some("svelte"),
+      LanguageId::Vue => Some("vue"),
+      LanguageId::Astro => Some("astro"),
+      LanguageId::Vento => Some("vto"),
+      LanguageId::Nunjucks => Some("njk"),
       LanguageId::Unknown => None,
     }
   }
@@ -96,6 +108,12 @@ impl LanguageId {
       LanguageId::Html => Some("text/html"),
       LanguageId::Css => Some("text/css"),
       LanguageId::Yaml => Some("application/yaml"),
+      LanguageId::Sql => None,
+      LanguageId::Svelte => None,
+      LanguageId::Vue => None,
+      LanguageId::Astro => None,
+      LanguageId::Vento => None,
+      LanguageId::Nunjucks => None,
       LanguageId::Unknown => None,
     }
   }
@@ -123,6 +141,12 @@ impl FromStr for LanguageId {
       "html" => Ok(Self::Html),
       "css" => Ok(Self::Css),
       "yaml" => Ok(Self::Yaml),
+      "sql" => Ok(Self::Sql),
+      "svelte" => Ok(Self::Svelte),
+      "vue" => Ok(Self::Vue),
+      "astro" => Ok(Self::Astro),
+      "vento" => Ok(Self::Vento),
+      "nunjucks" => Ok(Self::Nunjucks),
       _ => Ok(Self::Unknown),
     }
   }
@@ -226,6 +250,13 @@ impl AssetOrDocument {
 
   pub fn document_lsp_version(&self) -> Option<i32> {
     self.document().and_then(|d| d.maybe_lsp_version())
+  }
+
+  pub fn resolution_mode(&self) -> ResolutionMode {
+    match self {
+      AssetOrDocument::Asset(_) => ResolutionMode::Import,
+      AssetOrDocument::Document(d) => d.resolution_mode(),
+    }
   }
 }
 
@@ -1723,15 +1754,15 @@ fn bytes_to_content(
 
 #[cfg(test)]
 mod tests {
-  use super::*;
-  use crate::lsp::cache::LspCache;
-
   use deno_config::deno_json::ConfigFile;
   use deno_config::deno_json::ConfigParseOptions;
   use deno_core::serde_json;
   use deno_core::serde_json::json;
   use pretty_assertions::assert_eq;
   use test_util::TempDir;
+
+  use super::*;
+  use crate::lsp::cache::LspCache;
 
   async fn setup() -> (Documents, LspCache, TempDir) {
     let temp_dir = TempDir::new();
