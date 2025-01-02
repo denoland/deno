@@ -2086,12 +2086,10 @@ fn allow_import_host_from_url(url: &Url) -> Option<String> {
   if let Some(port) = url.port() {
     Some(format!("{}:{}", host, port))
   } else {
-    match host {
-      _ => match url.scheme() {
-        "https" => Some(format!("{}:443", host)),
-        "http" => Some(format!("{}:80", host)),
-        _ => None,
-      },
+    match url.scheme() {
+      "https" => Some(format!("{}:443", host)),
+      "http" => Some(format!("{}:80", host)),
+      _ => None,
     }
   }
 }
