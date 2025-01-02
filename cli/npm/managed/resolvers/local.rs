@@ -433,7 +433,11 @@ async fn sync_resolution_with_fs(
         deno_core::unsync::spawn_blocking({
           let package_path = package_path.clone();
           move || {
-            clone_dir_recursive(&cache_folder, &package_path)?;
+            clone_dir_recursive(
+              &crate::sys::CliSys::default(),
+              &cache_folder,
+              &package_path,
+            )?;
             // write out a file that indicates this folder has been initialized
             fs::write(initialized_file, tags)?;
 
@@ -490,7 +494,11 @@ async fn sync_resolution_with_fs(
         &package.id.nv.name,
       );
 
-      clone_dir_recursive(&source_path, &package_path)?;
+      clone_dir_recursive(
+        &crate::sys::CliSys::default(),
+        &source_path,
+        &package_path,
+      )?;
       // write out a file that indicates this folder has been initialized
       fs::write(initialized_file, "")?;
     }
@@ -1057,7 +1065,8 @@ fn symlink_package_dir(
   }
   #[cfg(not(windows))]
   {
-    symlink_dir(&old_path_relative, new_path).map_err(Into::into)
+    symlink_dir(&crate::sys::CliSys::default(), &old_path_relative, new_path)
+      .map_err(Into::into)
   }
 }
 
@@ -1079,7 +1088,8 @@ fn junction_or_symlink_dir(
       .context("Failed creating junction in node_modules folder");
   }
 
-  match symlink_dir(old_path_relative, new_path) {
+  match symlink_dir(&crate::sys::CliSys::default(), old_path_relative, new_path)
+  {
     Ok(()) => Ok(()),
     Err(symlink_err)
       if symlink_err.kind() == std::io::ErrorKind::PermissionDenied =>
