@@ -458,6 +458,71 @@ impl TsEsTreeBuilder {
     }
   }
 
+  pub fn alloc_var_decl(&mut self, parent: NodeRef, span: &Span) -> NodeRef {
+    let kind = AstNode::VariableDeclaration;
+    let offset = self.ctx.append_node(&kind, parent, span);
+
+    if !self.ctx.has_schema(&kind) {
+      let offset = self.ctx.begin_schema(&kind);
+
+      self.ctx.bool_field(AstProp::Declare);
+      self.ctx.str_field(AstProp::Kind);
+      self.ctx.ref_vec_field(AstProp::Declarations);
+
+      self.ctx.commit_schema(offset);
+    }
+
+    offset
+  }
+
+  pub fn write_var_decl(
+    &mut self,
+    offset: NodeRef,
+    declare: bool,
+    kind: &str,
+    decls: Vec<NodeRef>,
+  ) -> NodeRef {
+    self.ctx.begin_write(&offset);
+    self.ctx.write_bool(declare);
+    self.ctx.write_str(kind);
+    self.ctx.write_ref_vec(decls);
+
+    offset
+  }
+
+  pub fn alloc_var_declarator(
+    &mut self,
+    parent: NodeRef,
+    span: &Span,
+  ) -> NodeRef {
+    let kind = AstNode::VariableDeclarator;
+    let offset = self.ctx.append_node(&kind, parent, span);
+
+    if !self.ctx.has_schema(&kind) {
+      let offset = self.ctx.begin_schema(&kind);
+
+      self.ctx.ref_field(AstProp::Id);
+      self.ctx.ref_field(AstProp::Init);
+
+      self.ctx.commit_schema(offset);
+    }
+
+    offset
+  }
+
+  pub fn write_var_declarator(
+    &mut self,
+    offset: NodeRef,
+    id: NodeRef,
+    init: Option<NodeRef>,
+  ) -> NodeRef {
+    self.ctx.begin_write(&offset);
+    self.ctx.ref_field(id);
+    self.ctx.ref_maybe_field(init);
+
+    offset
+  }
+
   pub fn alloc_block_stmt(&mut self, parent: NodeRef, span: &Span) -> NodeRef {
     let kind = AstNode::BlockStatement;
     let offset = self.ctx.append_node(&kind, parent, span);
@@ -994,8 +1059,64 @@ impl TsEsTreeBuilder {
     offset
   }
 
+  pub fn alloc_fn_expr(&mut self, parent: NodeRef, span: &Span) -> NodeRef {
+    let kind = AstNode::FunctionExpression;
+    let offset = self.ctx.append_node(&kind, parent, span);
+
+    if !self.ctx.has_schema(&kind) {
+      let offset = self.ctx.begin_schema(&kind);
+
+      self.ctx.bool_field(AstProp::Async);
+      self.ctx.bool_field(AstProp::Generator);
+      self.ctx.ref_field(AstProp::Id);
+      self.ctx.ref_field(AstProp::TypeParameters);
+      self.ctx.ref_vec_field(AstProp::Params);
+      self.ctx.ref_field(AstProp::ReturnType);
+      self.ctx.ref_field(AstProp::Body);
+
+      self.ctx.commit_schema(offset);
+    }
+
+    offset
+  }
+
+  pub fn write_fn_expr(
+    &mut self,
+    offset: NodeRef,
+    is_async: bool,
+    is_generator: bool,
+    id: Option<NodeRef>,
+    type_params: Option<NodeRef>,
+    params: Vec<NodeRef>,
+    return_type: Option<NodeRef>,
+    body: Option<NodeRef>,
+  ) -> NodeRef {
+    self.ctx.begin_write(&offset);
+    self.ctx.write_bool(is_async);
+    self.ctx.write_bool(is_generator);
+    self.ctx.write_maybe_ref(id);
+    self.ctx.write_maybe_ref(type_params);
+    self.ctx.write_ref_vec(params);
+    self.ctx.write_maybe_ref(return_type);
+    self.ctx.write_maybe_ref(body);
+
+    offset
+  }
+
   pub fn alloc_this_expr(&mut self, parent: NodeRef, span: &Span) -> NodeRef {
     let kind = AstNode::ThisExpression;
+    let offset = self.ctx.append_node(&kind, parent, span);
+
+    if !self.ctx.has_schema(&kind) {
+      let offset = self.ctx.begin_schema(&kind);
+      self.ctx.commit_schema(offset);
+    }
+
+    offset
+  }
+
+  pub fn alloc_super(&mut self, parent: NodeRef, span: &Span) -> NodeRef {
+    let kind = AstNode::Super;
     let offset = self.ctx.append_node(&kind, parent, span);
 
     if !self.ctx.has_schema(&kind) {
@@ -1031,6 +1152,102 @@ impl TsEsTreeBuilder {
     self.ctx.begin_write(&offset);
     self.ctx.write_str(operator);
     self.ctx.write_ref(arg);
+
+    offset
+  }
+
+  pub fn alloc_new_expr(&mut self, parent: NodeRef, span: &Span) -> NodeRef {
+    let kind = AstNode::NewExpression;
+    let offset = self.ctx.append_node(&kind, parent, span);
+
+    if !self.ctx.has_schema(&kind) {
+      let offset = self.ctx.begin_schema(&kind);
+
+      self.ctx.str_field(AstProp::Callee);
+      self.ctx.ref_field(AstProp::TypeArguments);
+      self.ctx.ref_vec_field(AstProp::Arguments);
+
+      self.ctx.commit_schema(offset);
+    }
+
+    offset
+  }
+
+  pub fn write_new_expr(
+    &mut self,
+    offset: NodeRef,
+    callee: NodeRef,
+    type_args: Option<NodeRef>,
+    args: Vec<NodeRef>,
+  ) -> NodeRef {
+    self.ctx.begin_write(&offset);
+    self.ctx.write_ref(callee);
+    self.ctx.write_maybe_ref(type_args);
+    self.ctx.write_ref_vec(args);
+
+    offset
+  }
+
+  pub fn alloc_import_expr(&mut self, parent: NodeRef, span: &Span) -> NodeRef {
+    let kind = AstNode::ImportExpression;
+    let offset = self.ctx.append_node(&kind, parent, span);
+
+    if !self.ctx.has_schema(&kind) {
+      let offset = self.ctx.begin_schema(&kind);
+
+      self.ctx.ref_field(AstProp::Source);
+      self.ctx.ref_field(AstProp::Options);
+
+      self.ctx.commit_schema(offset);
+    }
+
+    offset
+  }
+
+  pub fn write_import_expr(
+    &mut self,
+    offset: NodeRef,
+    source: NodeRef,
+    options: NodeRef,
+  ) -> NodeRef {
+    self.ctx.begin_write(&offset);
+    self.ctx.write_ref(source);
+    self.ctx.write_ref(options);
+
+    offset
+  }
+
+  pub fn alloc_call_expr(&mut self, parent: NodeRef, span: &Span) -> NodeRef {
+    let kind = AstNode::CallExpression;
+    let offset = self.ctx.append_node(&kind, parent, span);
+
+    if !self.ctx.has_schema(&kind) {
+      let offset = self.ctx.begin_schema(&kind);
+
+      self.ctx.bool_field(AstProp::Optional);
+      self.ctx.ref_field(AstProp::Callee);
+      self.ctx.ref_field(AstProp::TypeArguments);
+      self.ctx.ref_vec_field(AstProp::Arguments);
+
+      self.ctx.commit_schema(offset);
+    }
+
+    offset
+  }
+
+  pub fn write_call_expr(
+    &mut self,
+    offset: NodeRef,
+    optional: bool,
+    callee: NodeRef,
+    type_args: Option<NodeRef>,
+    args: Vec<NodeRef>,
+  ) -> NodeRef {
+    self.ctx.begin_write(&offset);
+    self.ctx.write_bool(optional);
+    self.ctx.write_ref(callee);
+    self.ctx.write_maybe_ref(type_args);
+    self.ctx.write_ref_vec(args);
 
     offset
   }
@@ -1418,6 +1635,86 @@ impl TsEsTreeBuilder {
   ) -> NodeRef {
     self.ctx.begin_write(&offset);
     self.ctx.write_str(name);
+
+    offset
+  }
+
+  pub fn alloc_assign_pat(&mut self, parent: NodeRef, span: &Span) -> NodeRef {
+    let kind = AstNode::AssignmentPattern;
+    let offset = self.ctx.append_node(&kind, parent, span);
+
+    if !self.ctx.has_schema(&kind) {
+      let offset = self.ctx.begin_schema(&kind);
+
+      self.ctx.ref_field(AstProp::Left);
+      self.ctx.ref_field(AstProp::Right);
+
+      self.ctx.commit_schema(offset);
+    }
+
+    offset
+  }
+
+  pub fn write_assign_pat(
+    &mut self,
+    offset: NodeRef,
+    left: NodeRef,
+    right: NodeRef,
+  ) -> NodeRef {
+    self.ctx.begin_write(&offset);
+    self.ctx.write_ref(left);
+    self.ctx.write_ref(right);
+
+    offset
+  }
+
+  pub fn alloc_rest_elem(&mut self, parent: NodeRef, span: &Span) -> NodeRef {
+    let kind = AstNode::RestElement;
+    let offset = self.ctx.append_node(&kind, parent, span);
+
+    if !self.ctx.has_schema(&kind) {
+      let offset = self.ctx.begin_schema(&kind);
+
+      self.ctx.ref_field(AstProp::TypeAnnotation);
+      self.ctx.ref_field(AstProp::Argument);
+
+      self.ctx.commit_schema(offset);
+    }
+
+    offset
+  }
+
+  pub fn write_rest_elem(
+    &mut self,
+    offset: NodeRef,
+    type_ann: Option<NodeRef>,
+    arg: NodeRef,
+  ) -> NodeRef {
+    self.ctx.begin_write(&offset);
+    self.ctx.write_maybe_ref(type_ann);
+    self.ctx.write_ref(arg);
+
+    offset
+  }
+
+  pub fn alloc_spread(&mut self, parent: NodeRef, span: &Span) -> NodeRef {
+    let kind = AstNode::SpreadElement;
+    let offset = self.ctx.append_node(&kind, parent, span);
+
+    if !self.ctx.has_schema(&kind) {
+      let offset = self.ctx.begin_schema(&kind);
+
+      self.ctx.ref_field(AstProp::Argument);
+
+      self.ctx.commit_schema(offset);
+    }
+
+    offset
+  }
+
+  pub fn write_spread(&mut self, offset: NodeRef, arg: NodeRef) -> NodeRef {
+    self.ctx.begin_write(&offset);
+    self.ctx.write_ref(arg);
 
     offset
   }
