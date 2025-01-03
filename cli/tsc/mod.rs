@@ -705,7 +705,7 @@ fn op_remap_specifier(
   state: &mut OpState,
   #[string] specifier: &str,
 ) -> Option<String> {
-  let state = state.borrow_mut::<State>();
+  let state = state.borrow::<State>();
   state
     .maybe_remapped_specifier(specifier)
     .map(|url| url.to_string())
