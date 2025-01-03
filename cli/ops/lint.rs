@@ -51,6 +51,14 @@ pub struct LintPluginContainer {
 }
 
 impl LintPluginContainer {
+  pub fn set_cancellation_token(
+    &mut self,
+    maybe_token: Option<CancellationToken>,
+  ) {
+    let token = maybe_token.unwrap_or_default();
+    self.token = token;
+  }
+
   pub fn set_info_for_file(
     &mut self,
     specifier: ModuleSpecifier,

@@ -851,6 +851,7 @@ fn generate_lint_diagnostics(
           &document,
           &lint_config,
           &linter,
+          token.clone(),
         ),
       },
     });
@@ -862,6 +863,7 @@ fn generate_document_lint_diagnostics(
   document: &Document,
   lint_config: &LintConfig,
   linter: &CliLinter,
+  token: CancellationToken,
 ) -> Vec<lsp::Diagnostic> {
   if !lint_config.files.matches_specifier(document.specifier()) {
     return Vec::new();
@@ -869,7 +871,7 @@ fn generate_document_lint_diagnostics(
   match document.maybe_parsed_source() {
     Some(Ok(parsed_source)) => {
       if let Ok(references) =
-        analysis::get_lint_references(parsed_source, linter)
+        analysis::get_lint_references(parsed_source, linter, token)
       {
         references
           .into_iter()

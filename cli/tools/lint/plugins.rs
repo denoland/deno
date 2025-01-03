@@ -5,6 +5,7 @@ use std::path::PathBuf;
 use std::rc::Rc;
 use std::sync::Arc;
 
+use ::tokio_util::sync::CancellationToken;
 use deno_ast::ModuleSpecifier;
 use deno_ast::ParsedSource;
 use deno_ast::SourceTextInfo;
@@ -34,11 +35,13 @@ use crate::tools::lint::serialize_ast_to_buffer;
 
 #[derive(Debug)]
 pub enum PluginHostRequest {
+  // TODO: write to structs
   LoadPlugins(Vec<ModuleSpecifier>, Option<Vec<String>>),
-  Run(Vec<u8>, PathBuf, SourceTextInfo),
+  Run(Vec<u8>, PathBuf, SourceTextInfo, Option<CancellationToken>),
 }
 
 pub enum PluginHostResponse {
+  // TODO: write to structs
   LoadPlugin(Result<Vec<PluginInfo>, AnyError>),
   Run(Result<Vec<LintDiagnostic>, AnyError>),
 }
@@ -276,10 +279,20 @@ impl PluginHost {
           let r = self.load_plugins(specifiers, exclude).await;
           let _ = self.tx.send(PluginHostResponse::LoadPlugin(r)).await;
         }
-        PluginHostRequest::Run(serialized_ast, specifier, source_text_info) => {
+        PluginHostRequest::Run(
+          serialized_ast,
+          specifier,
+          source_text_info,
+          maybe_token,
+        ) => {
           let start = std::time::Instant::now();
           let r = match self
-            .run_plugins(&specifier, serialized_ast, source_text_info)
+            .run_plugins(
+              &specifier,
+              serialized_ast,
+              source_text_info,
+              maybe_token,
+            )
             .await
           {
             Ok(()) => Ok(self.take_diagnostics()),
@@ -309,14 +322,17 @@ impl PluginHost {
     specifier: &Path,
     serialized_ast: Vec<u8>,
     source_text_info: SourceTextInfo,
+    maybe_token: Option<CancellationToken>,
   ) -> Result<(), AnyError> {
     {
       let state = self.worker.js_runtime.op_state();
       let mut state = state.borrow_mut();
-      state.borrow_mut::<LintPluginContainer>().set_info_for_file(
+      let container = state.borrow_mut::<LintPluginContainer>();
+      container.set_info_for_file(
         ModuleSpecifier::from_file_path(specifier).unwrap(),
         source_text_info,
       );
+      container.set_cancellation_token(maybe_token);
     }
 
     let (file_name_v8, ast_uint8arr_v8) = {
@@ -452,6 +468,7 @@ impl PluginHostProxy {
     specifier: &Path,
     serialized_ast: Vec<u8>,
     source_text_info: SourceTextInfo,
+    maybe_token: Option<CancellationToken>,
   ) -> Result<Vec<LintDiagnostic>, AnyError> {
     self
       .tx
@@ -459,6 +476,7 @@ impl PluginHostProxy {
         serialized_ast,
         specifier.to_path_buf(),
         source_text_info,
+        maybe_token,
       ))
       .await?;
     let mut rx = self.rx.lock().await;
@@ -498,9 +516,10 @@ pub async fn run_rules_for_ast(
   specifier: &Path,
   serialized_ast: Vec<u8>,
   source_text_info: SourceTextInfo,
+  maybe_token: Option<CancellationToken>,
 ) -> Result<Vec<LintDiagnostic>, AnyError> {
   let d = host_proxy
-    .run_rules(specifier, serialized_ast, source_text_info)
+    .run_rules(specifier, serialized_ast, source_text_info, maybe_token)
     .await?;
   Ok(d)
 }

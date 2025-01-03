@@ -5,6 +5,7 @@ use std::path::Path;
 use std::path::PathBuf;
 use std::sync::Arc;
 
+use ::tokio_util::sync::CancellationToken;
 use deno_ast::MediaType;
 use deno_ast::ModuleSpecifier;
 use deno_ast::ParsedSource;
@@ -96,6 +97,7 @@ impl CliLinter {
   pub fn lint_with_ast(
     &self,
     parsed_source: &ParsedSource,
+    token: CancellationToken,
   ) -> Vec<LintDiagnostic> {
     // TODO(bartlomieju): surface error is running plugin fails
     let external_linter: Option<ExternalLinterCb> =
@@ -103,7 +105,12 @@ impl CliLinter {
         Some(Arc::new(move |parsed_source: ParsedSource| {
           // TODO: clean this up
           let file_path = parsed_source.specifier().to_file_path().unwrap();
-          run_plugins(plugin_runner.clone(), parsed_source, file_path)
+          run_plugins(
+            plugin_runner.clone(),
+            parsed_source,
+            file_path,
+            Some(token.clone()),
+          )
         }))
       } else {
         None
@@ -137,7 +144,7 @@ impl CliLinter {
         Some(Arc::new(move |parsed_source: ParsedSource| {
           // TODO: clean this up
           let file_path = parsed_source.specifier().to_file_path().unwrap();
-          run_plugins(plugin_runner.clone(), parsed_source, file_path)
+          run_plugins(plugin_runner.clone(), parsed_source, file_path, None)
         }))
       } else {
         None
@@ -315,6 +322,7 @@ fn run_plugins(
   plugin_runner: Arc<Mutex<PluginHostProxy>>,
   parsed_source: ParsedSource,
   file_path: PathBuf,
+  maybe_token: Option<CancellationToken>,
 ) -> Result<ExternalLinterResult, AnyError> {
   let source_text_info = parsed_source.text_info_lazy().clone();
   let plugin_info = plugin_runner.lock().get_plugin_rules();
@@ -329,6 +337,7 @@ fn run_plugins(
       &file_path,
       serialized_ast,
       source_text_info,
+      maybe_token,
     )
     .await
   }
