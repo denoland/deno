@@ -78,7 +78,7 @@ const maxQueueBackoffInterval = 60 * 60 * 1000;
 function validateBackoffSchedule(backoffSchedule: number[]) {
   if (backoffSchedule.length > maxQueueBackoffIntervals) {
     throw new TypeError(
-      `Invalid backoffSchedule, max ${maxQueueBackoffInterval} intervals allowed`,
+      `Invalid backoffSchedule, max ${maxQueueBackoffIntervals} intervals allowed`,
     );
   }
   for (let i = 0; i < backoffSchedule.length; ++i) {
