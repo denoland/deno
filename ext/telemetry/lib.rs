@@ -976,7 +976,7 @@ fn op_otel_log<'s>(
     deno_core::_ops::try_unwrap_cppgc_object::<OtelSpan>(scope, span)
   {
     let state = span.0.borrow();
-    match &*state {
+    match &**state {
       OtelSpanState::Recording(span) => {
         log_record.set_trace_context(
           span.span_context.trace_id(),
@@ -1091,7 +1091,6 @@ impl OtelTracer {
     OtelTracer(builtin_instrumentation_scope.clone())
   }
 
-  #[reentrant]
   #[cppgc]
   fn start_span<'s>(
     &self,
@@ -1108,7 +1107,7 @@ impl OtelTracer {
     match parent {
       Some(parent) => {
         let parent = parent.0.borrow();
-        let parent_span_context = match &*parent {
+        let parent_span_context = match &**parent {
           OtelSpanState::Recording(span) => &span.span_context,
           OtelSpanState::Done(span_context) => span_context,
         };
@@ -1162,10 +1161,11 @@ impl OtelTracer {
       links: SpanLinks::default(),
       instrumentation_scope: self.0.clone(),
     };
-    Ok(OtelSpan(RefCell::new(OtelSpanState::Recording(span_data))))
+    Ok(OtelSpan(RefCell::new(Box::new(OtelSpanState::Recording(
+      span_data,
+    )))))
   }
 
-  #[reentrant]
   #[cppgc]
   fn start_span_foreign<'s>(
     &self,
@@ -1223,7 +1223,9 @@ impl OtelTracer {
       links: SpanLinks::default(),
       instrumentation_scope: self.0.clone(),
     };
-    Ok(OtelSpan(RefCell::new(OtelSpanState::Recording(span_data))))
+    Ok(OtelSpan(RefCell::new(Box::new(OtelSpanState::Recording(
+      span_data,
+    )))))
   }
 }
 
@@ -1235,8 +1237,11 @@ struct JsSpanContext {
   trace_flags: u8,
 }
 
-struct OtelSpan(RefCell<OtelSpanState>);
+// boxed because of https://github.com/denoland/rusty_v8/issues/1676
+#[derive(Debug)]
+struct OtelSpan(RefCell<Box<OtelSpanState>>);
 
+#[derive(Debug)]
 #[allow(clippy::large_enum_variant)]
 enum OtelSpanState {
   Recording(SpanData),
@@ -1256,7 +1261,7 @@ impl OtelSpan {
   #[serde]
   fn span_context(&self) -> JsSpanContext {
     let state = self.0.borrow();
-    let span_context = match &*state {
+    let span_context = match &**state {
       OtelSpanState::Recording(span) => &span.span_context,
       OtelSpanState::Done(span_context) => span_context,
     };
@@ -1274,7 +1279,7 @@ impl OtelSpan {
     #[string] error_description: String,
   ) -> Result<(), AnyError> {
     let mut state = self.0.borrow_mut();
-    let OtelSpanState::Recording(span) = &mut *state else {
+    let OtelSpanState::Recording(span) = &mut **state else {
       return Ok(());
     };
     span.status = match status {
@@ -1291,7 +1296,7 @@ impl OtelSpan {
   #[fast]
   fn drop_event(&self) {
     let mut state = self.0.borrow_mut();
-    match &mut *state {
+    match &mut **state {
       OtelSpanState::Recording(span) => {
         span.events.dropped_count += 1;
       }
@@ -1302,7 +1307,7 @@ impl OtelSpan {
   #[fast]
   fn drop_link(&self) {
     let mut state = self.0.borrow_mut();
-    match &mut *state {
+    match &mut **state {
       OtelSpanState::Recording(span) => {
         span.links.dropped_count += 1;
       }
@@ -1320,12 +1325,16 @@ impl OtelSpan {
         .unwrap()
     };
 
+    println!("self {:x}", self as *const OtelSpan as u64);
+    println!("self {:?}", self);
     let mut state = self.0.borrow_mut();
-    if let OtelSpanState::Recording(span) = &mut *state {
+    println!("state {:?}", state);
+    if let OtelSpanState::Recording(span) = &mut **state {
       let span_context = span.span_context.clone();
-      if let OtelSpanState::Recording(mut span) =
-        std::mem::replace(&mut *state, OtelSpanState::Done(span_context))
-      {
+      if let OtelSpanState::Recording(mut span) = *std::mem::replace(
+        &mut *state,
+        Box::new(OtelSpanState::Done(span_context)),
+      ) {
         span.end_time = end_time;
         let Some(OtelGlobals { span_processor, .. }) = OTEL_GLOBALS.get()
         else {
@@ -1350,7 +1359,7 @@ fn op_otel_span_attribute1<'s>(
     return;
   };
   let mut state = span.0.borrow_mut();
-  if let OtelSpanState::Recording(span) = &mut *state {
+  if let OtelSpanState::Recording(span) = &mut **state {
     attr!(scope, span.attributes => span.dropped_attributes_count, key, value);
   }
 }
@@ -1370,7 +1379,7 @@ fn op_otel_span_attribute2<'s>(
     return;
   };
   let mut state = span.0.borrow_mut();
-  if let OtelSpanState::Recording(span) = &mut *state {
+  if let OtelSpanState::Recording(span) = &mut **state {
     attr!(scope, span.attributes => span.dropped_attributes_count, key1, value1);
     attr!(scope, span.attributes => span.dropped_attributes_count, key2, value2);
   }
@@ -1394,7 +1403,7 @@ fn op_otel_span_attribute3<'s>(
     return;
   };
   let mut state = span.0.borrow_mut();
-  if let OtelSpanState::Recording(span) = &mut *state {
+  if let OtelSpanState::Recording(span) = &mut **state {
     attr!(scope, span.attributes => span.dropped_attributes_count, key1, value1);
     attr!(scope, span.attributes => span.dropped_attributes_count, key2, value2);
     attr!(scope, span.attributes => span.dropped_attributes_count, key3, value3);
@@ -1417,7 +1426,7 @@ fn op_otel_span_update_name<'s>(
     return;
   };
   let mut state = span.0.borrow_mut();
-  if let OtelSpanState::Recording(span) = &mut *state {
+  if let OtelSpanState::Recording(span) = &mut **state {
     span.name = Cow::Owned(name)
   }
 }

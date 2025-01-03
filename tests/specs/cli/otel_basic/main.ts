@@ -22,7 +22,12 @@ const server = Deno.serve(
       });
       const child = command.spawn();
       child.output()
-        .then(() => server.shutdown())
+        .then((status) => {
+          if (!status.success) {
+            throw new Error("child process failed: " + JSON.stringify(status));
+          }
+          return server.shutdown();
+        })
         .then(() => {
           data.logs.sort((a, b) =>
             Number(
