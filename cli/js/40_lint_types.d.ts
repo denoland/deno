@@ -70,6 +70,8 @@ export interface LintPlugin {
 export interface LintState {
   plugins: LintPlugin[];
   installedPlugins: Set<string>;
+  /** format: `<plugin>/<rule>` */
+  ignoredRules: Set<string>;
 }
 
 export type VisitorFn = (node: unknown) => void;

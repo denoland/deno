@@ -63,6 +63,7 @@ const PropFlags = {
 const state = {
   plugins: [],
   installedPlugins: new Set(),
+  ignoredRules: new Set(),
 };
 
 /**
@@ -197,8 +198,9 @@ export class Context {
 
 /**
  * @param {LintPlugin} plugin
+ * @param {string[]} exclude
  */
-export function installPlugin(plugin) {
+export function installPlugin(plugin, exclude) {
   if (typeof plugin !== "object") {
     throw new Error("Linter plugin must be an object");
   }
@@ -213,6 +215,12 @@ export function installPlugin(plugin) {
   }
   state.plugins.push(plugin);
   state.installedPlugins.add(plugin.name);
+
+  // TODO(@marvinhagemeister): This should be done once instead of
+  // for every plugin
+  for (let i = 0; i < exclude.length; i++) {
+    state.ignoredRules.add(exclude[i]);
+  }
 
   return {
     name: plugin.name,
@@ -921,6 +929,12 @@ export function runPluginsForFile(fileName, serializedAst) {
     for (const name of Object.keys(plugin.rules)) {
       const rule = plugin.rules[name];
       const id = `${plugin.name}/${name}`;
+
+      // Check if this rule is excluded
+      if (state.ignoredRules.has(id)) {
+        continue;
+      }
+
       const ctx = new Context(id, fileName);
       const visitor = rule.create(ctx);
 

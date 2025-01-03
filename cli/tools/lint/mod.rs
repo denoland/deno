@@ -286,6 +286,8 @@ impl WorkspaceLinter {
   ) -> Result<(), AnyError> {
     self.file_count += paths.len();
 
+    let exclude = lint_options.rules.exclude.clone();
+
     let maybe_plugin_specifiers = lint_options.resolve_lint_plugins()?;
     let lint_rules = self.lint_rule_provider.resolve_lint_rules_err_empty(
       lint_options.rules,
@@ -311,9 +313,12 @@ impl WorkspaceLinter {
     let mut plugin_runner = None;
     if let Some(plugin_specifiers) = maybe_plugin_specifiers {
       let logger = plugins::PluginLogger::new(logger_printer, true);
-      let runner =
-        plugins::create_runner_and_load_plugins(plugin_specifiers, logger)
-          .await?;
+      let runner = plugins::create_runner_and_load_plugins(
+        plugin_specifiers,
+        logger,
+        exclude,
+      )
+      .await?;
       plugin_runner = Some(Arc::new(Mutex::new(runner)));
     }
 

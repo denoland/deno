@@ -1643,6 +1643,7 @@ impl ConfigData {
           crate::tools::lint::create_runner_and_load_plugins(
             plugin_specifiers,
             logger,
+            lint_options.rules.exclude.clone(),
           )
           .await;
         // eprintln!("plugin load result {:#?}", plugin_load_result);

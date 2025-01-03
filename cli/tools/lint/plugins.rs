@@ -34,7 +34,7 @@ use crate::tools::lint::serialize_ast_to_buffer;
 
 #[derive(Debug)]
 pub enum PluginHostRequest {
-  LoadPlugins(Vec<ModuleSpecifier>),
+  LoadPlugins(Vec<ModuleSpecifier>, Option<Vec<String>>),
   Run(Vec<u8>, PathBuf, SourceTextInfo),
 }
 
@@ -272,8 +272,8 @@ impl PluginHost {
     while let Some(req) = self.rx.recv().await {
       self.logger.log("received message");
       match req {
-        PluginHostRequest::LoadPlugins(specifiers) => {
-          let r = self.load_plugins(specifiers).await;
+        PluginHostRequest::LoadPlugins(specifiers, exclude) => {
+          let r = self.load_plugins(specifiers, exclude).await;
           let _ = self.tx.send(PluginHostResponse::LoadPlugin(r)).await;
         }
         PluginHostRequest::Run(serialized_ast, specifier, source_text_info) => {
@@ -361,6 +361,7 @@ impl PluginHost {
   async fn load_plugins(
     &mut self,
     plugin_specifiers: Vec<ModuleSpecifier>,
+    exclude: Option<Vec<String>>,
   ) -> Result<Vec<PluginInfo>, AnyError> {
     let mut load_futures = Vec::with_capacity(plugin_specifiers.len());
     for specifier in plugin_specifiers {
@@ -393,7 +394,19 @@ impl PluginHost {
       let install_plugins_local =
         v8::Local::new(scope, &*self.install_plugin_fn.clone());
       let undefined = v8::undefined(scope);
-      let args = &[default_export];
+
+      let exclude_v8: v8::Local<v8::Value> =
+        exclude.clone().map_or(v8::null(scope).into(), |v| {
+          let elems = v
+            .iter()
+            .map(|item| v8::String::new(scope, item).unwrap().into())
+            .collect::<Vec<_>>();
+
+          v8::Array::new_with_elements(scope, elems.as_slice()).into()
+        });
+
+      let args = &[default_export, exclude_v8];
+
       self.logger.log("Installing plugin...");
       // TODO(bartlomieju): do it in a try/catch scope
       let plugin_info = install_plugins_local
@@ -412,10 +425,11 @@ impl PluginHostProxy {
   pub async fn load_plugins(
     &self,
     plugin_specifiers: Vec<ModuleSpecifier>,
+    exclude: Option<Vec<String>>,
   ) -> Result<(), AnyError> {
     self
       .tx
-      .send(PluginHostRequest::LoadPlugins(plugin_specifiers))
+      .send(PluginHostRequest::LoadPlugins(plugin_specifiers, exclude))
       .await?;
     let mut rx = self.rx.lock().await;
     self.logger.log("receiving load plugins");
@@ -472,9 +486,10 @@ impl PluginHostProxy {
 pub async fn create_runner_and_load_plugins(
   plugin_specifiers: Vec<ModuleSpecifier>,
   logger: PluginLogger,
+  exclude: Option<Vec<String>>,
 ) -> Result<PluginHostProxy, AnyError> {
   let host_proxy = PluginHost::create(logger)?;
-  host_proxy.load_plugins(plugin_specifiers).await?;
+  host_proxy.load_plugins(plugin_specifiers, exclude).await?;
   Ok(host_proxy)
 }
 
