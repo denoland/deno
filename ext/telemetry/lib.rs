@@ -972,11 +972,9 @@ fn op_otel_log<'s>(
   log_record.set_body(owned_string(scope, message).into());
   log_record.set_severity_number(severity);
   log_record.set_severity_text(severity.name());
-  println!("span: {:?}", span);
   if let Some(span) =
     deno_core::_ops::try_unwrap_cppgc_object::<OtelSpan>(scope, span)
   {
-    println!("unwrapped otelspan");
     let state = span.0.borrow();
     match &*state {
       OtelSpanState::Recording(span) => {
