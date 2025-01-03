@@ -6,7 +6,7 @@ use std::borrow::Cow;
 use std::cell::RefCell;
 use std::path::PathBuf;
 use std::rc::Rc;
-
+use deno_core::cppgc::SameObject;
 use deno_core::error::AnyError;
 use deno_core::op2;
 use deno_core::url;
@@ -14,7 +14,6 @@ use deno_core::url::form_urlencoded;
 use deno_core::url::quirks;
 use deno_core::url::Url;
 use deno_core::v8;
-use deno_core::v8::HandleScope;
 use deno_core::v8::Local;
 use deno_core::v8::Value;
 use deno_core::webidl;
@@ -51,7 +50,7 @@ pub fn get_declaration() -> PathBuf {
   PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("lib.deno_url.d.ts")
 }
 
-pub struct URL(Rc<RefCell<Url>>);
+pub struct URL(Rc<RefCell<Url>>, SameObject<URLSearchParams>);
 
 impl GarbageCollected for URL {}
 
@@ -65,7 +64,7 @@ impl URL {
   ) -> Result<URL, url::ParseError> {
     let base = base.map(|base| Url::parse(&base)).transpose()?;
     let url = Url::options().base_url(base.as_ref()).parse(&url)?;
-    Ok(URL(Rc::from(RefCell::new(url))))
+    Ok(URL(Rc::from(RefCell::new(url)), SameObject::new()))
   }
 
   #[static_method]
@@ -76,7 +75,7 @@ impl URL {
   ) -> Option<URL> {
     let base = base.map(|base| Url::parse(&base)).transpose().ok()?;
     let url = Url::options().base_url(base.as_ref()).parse(&url).ok()?;
-    Some(URL(Rc::from(RefCell::new(url))))
+    Some(URL(Rc::from(RefCell::new(url)), SameObject::new()))
   }
 
   #[static_method]
@@ -204,17 +203,18 @@ impl URL {
   }
 
   #[getter]
-  #[cppgc]
-  fn searchParams(&self) -> URLSearchParams {
-    // TODO: sameObject
-    let repr =
-      form_urlencoded::parse(quirks::search(&self.0.borrow()).as_bytes())
-        .into_owned()
-        .collect();
-    URLSearchParams {
-      inner_url: Some(self.0.clone()),
-      repr: RefCell::new(repr),
-    }
+  #[global]
+  fn searchParams(&self, scope: &mut v8::HandleScope) -> v8::Global<v8::Object> {
+    self.1.get(scope, || {
+      let repr =
+        form_urlencoded::parse(quirks::search(&self.0.borrow()).as_bytes())
+          .into_owned()
+          .collect();
+      URLSearchParams {
+        inner_url: Some(self.0.clone()),
+        repr: RefCell::new(repr),
+      }
+    })
   }
 
   #[string]
@@ -236,11 +236,10 @@ impl GarbageCollected for URLSearchParams {}
 
 #[op2]
 impl URLSearchParams {
-  // TODO:   constructor(init = "") {
   #[constructor]
   #[cppgc]
   fn new(
-    #[webidl] init: SequenceOrRecordOrString,
+    #[webidl(default = "")] init: SequenceOrRecordOrString,
   ) -> Result<URLSearchParams, AnyError> {
     let repr = match init {
       SequenceOrRecordOrString::Sequence(s) => {
@@ -338,7 +337,6 @@ impl URLSearchParams {
     })
   }
 
-  // TODO: dont use option, figure out a solution to differentiate between "= undefined" and nullable converter
   #[required(1)]
   fn has(
     &self,
@@ -426,6 +424,8 @@ impl URLSearchParams {
   }
 }
 
+
+#[derive(Debug)]
 enum SequenceOrRecordOrString {
   Sequence(Vec<Vec<String>>),
   Record(indexmap::IndexMap<String, String>),
@@ -435,7 +435,7 @@ impl<'a> WebIdlConverter<'a> for SequenceOrRecordOrString {
   type Options = ();
 
   fn convert<C>(
-    scope: &mut HandleScope<'a>,
+    scope: &mut v8::HandleScope<'a>,
     value: Local<'a, Value>,
     prefix: Cow<'static, str>,
     context: C,

@@ -8,6 +8,7 @@
 import { primordials } from "ext:core/mod.js";
 import { op_url_parse_search_params, URL, URLSearchParams } from "ext:core/ops";
 const {
+  ObjectDefineProperty,
   ObjectPrototypeIsPrototypeOf,
   Symbol,
   SymbolFor,
@@ -31,7 +32,7 @@ webidl.converters["URLSearchParams"] = webidl.createInterfaceConverter(
 webidl.configureInterface(URL);
 const URLPrototype = URL.prototype;
 
-Object.defineProperty(URLPrototype, SymbolFor("Deno.privateCustomInspect"), {
+ObjectDefineProperty(URLPrototype, SymbolFor("Deno.privateCustomInspect"), {
   value(inspect, inspectOptions) {
     return inspect(
       createFilteredInspectProxy({
