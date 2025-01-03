@@ -78,17 +78,48 @@ class CancellationToken {
 
 /** @implements {Fixer} */
 class FixerHelper {
+  /**
+   * @param {Node} node
+   * @param {string} text
+   */
   insertTextAfter(node, text) {
-    throw new Error("Method not implemented.");
+    return {
+      range: /** @type {[number, number]} */ ([node.range[1], node.range[1]]),
+      text,
+    };
   }
+
+  /**
+   * @param {Node["range"]} range
+   * @param {string} text
+   */
   insertTextAfterRange(range, text) {
-    throw new Error("Method not implemented.");
+    return {
+      range: /** @type {[number, number]} */ ([range[1], range[1]]),
+      text,
+    };
   }
+
+  /**
+   * @param {Node} node
+   * @param {string} text
+   */
   insertTextBefore(node, text) {
-    throw new Error("Method not implemented.");
+    return {
+      range: /** @type {[number, number]} */ ([node.range[0], node.range[0]]),
+      text,
+    };
   }
+
+  /**
+   * @param {Node["range"]} range
+   * @param {string} text
+   */
   insertTextBeforeRange(range, text) {
-    throw new Error("Method not implemented.");
+    return {
+      range: /** @type {[number, number]} */ ([range[0], range[0]]),
+      text,
+    };
   }
 
   /**
