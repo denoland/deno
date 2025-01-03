@@ -517,8 +517,8 @@ impl TsEsTreeBuilder {
     init: Option<NodeRef>,
   ) -> NodeRef {
     self.ctx.begin_write(&offset);
-    self.ctx.ref_field(id);
-    self.ctx.ref_maybe_field(init);
+    self.ctx.write_ref(id);
+    self.ctx.write_maybe_ref(init);
 
     offset
   }
