@@ -24,7 +24,7 @@ deno_path_util.workspace = true
 deno_semver.workspace = true
 deno_unsync = { workspace = true, features = ["tokio"] }
 faster-hex.workspace = true
-flate2 = { workspace = true, features = ["zlib-ng-compat"] }
+flate2 = { workspace = true, features = ["default"] }
 futures.workspace = true
 http.workspace = true
 log.workspace = true

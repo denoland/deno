@@ -153,7 +153,7 @@ ipnet = "2.3"
 jsonc-parser = { version = "=0.26.2", features = ["serde"] }
 lazy-regex = "3"
 libc = "0.2.168"
-libz-sys = { version = "1.1.20", default-features = false }
+libz-sys = { version = "1.1.20", default-features = false, features = ["zlib-ng-no-cmake-experimental-community-maintained"] }
 log = { version = "0.4.20", features = ["kv"] }
 lsp-types = "=0.97.0" # used by tower-lsp and "proposed" feature is unstable in patch releases
 memmem = "0.1.1"
