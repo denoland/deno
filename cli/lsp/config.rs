@@ -1632,24 +1632,21 @@ impl ConfigData {
     );
     let mut plugin_runner = None;
     let maybe_plugin_specifiers_result = lint_options.resolve_lint_plugins();
-    if let Ok(maybe_plugin_specifiers) = maybe_plugin_specifiers_result {
-      if let Some(plugin_specifiers) = maybe_plugin_specifiers {
-        fn logger_printer(msg: &str, _is_err: bool) {
-          lsp_log!("pluggin runner - {}", msg);
-        }
-        let logger =
-          crate::tools::lint::PluginLogger::new(logger_printer, true);
-        let plugin_load_result =
-          crate::tools::lint::create_runner_and_load_plugins(
-            plugin_specifiers,
-            logger,
-            lint_options.rules.exclude.clone(),
-          )
-          .await;
-        // eprintln!("plugin load result {:#?}", plugin_load_result);
-        if let Some(runner) = plugin_load_result.ok() {
-          plugin_runner = Some(Arc::new(Mutex::new(runner)));
-        }
+    if let Ok(Some(plugin_specifiers)) = maybe_plugin_specifiers_result {
+      fn logger_printer(msg: &str, _is_err: bool) {
+        lsp_log!("pluggin runner - {}", msg);
+      }
+      let logger = crate::tools::lint::PluginLogger::new(logger_printer, true);
+      let plugin_load_result =
+        crate::tools::lint::create_runner_and_load_plugins(
+          plugin_specifiers,
+          logger,
+          lint_options.rules.exclude.clone(),
+        )
+        .await;
+      // eprintln!("plugin load result {:#?}", plugin_load_result);
+      if let Ok(runner) = plugin_load_result {
+        plugin_runner = Some(Arc::new(Mutex::new(runner)));
       }
     }
 

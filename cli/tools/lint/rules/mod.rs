@@ -130,11 +130,11 @@ pub struct ConfiguredRules {
 }
 
 impl ConfiguredRules {
-  pub fn incremental_cache_state(&self) -> Option<impl std::hash::Hash> {
-    if self.rules.iter().any(|r| !r.supports_incremental_cache()) {
-      return None;
-    }
+  pub fn supports_incremental_cache(&self) -> bool {
+    self.rules.iter().all(|r| r.supports_incremental_cache())
+  }
 
+  pub fn incremental_cache_state(&self) -> impl std::hash::Hash {
     // use a hash of the rule names in order to bust the cache
     let mut codes = self.rules.iter().map(|r| r.code()).collect::<Vec<_>>();
     // ensure this is stable by sorting it

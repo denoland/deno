@@ -613,6 +613,8 @@ async fn configure_main_worker(
   worker_sender: TestEventWorkerSender,
   options: &TestSpecifierOptions,
 ) -> Result<(Option<Box<dyn CoverageCollector>>, MainWorker), anyhow::Error> {
+  #[allow(clippy::print_stdout)]
+  #[allow(clippy::print_stderr)]
   fn linter_logger(msg: &str, is_err: bool) {
     if is_err {
       eprintln!("{}", msg);

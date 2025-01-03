@@ -478,6 +478,8 @@ impl LintOptions {
       let url = resolve_url_or_path(plugin, &self.dir_path)?;
       specifiers.push(url);
     }
+    // ensure stability for hasher
+    specifiers.sort_unstable();
     Ok(Some(specifiers))
   }
 }

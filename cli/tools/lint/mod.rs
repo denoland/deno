@@ -293,15 +293,25 @@ impl WorkspaceLinter {
       lint_options.rules,
       member_dir.maybe_deno_json().map(|c| c.as_ref()),
     )?;
-    let maybe_incremental_cache =
-      lint_rules.incremental_cache_state().map(|state| {
-        Arc::new(IncrementalCache::new(
-          self.caches.lint_incremental_cache_db(),
-          &state,
-          &paths,
-        ))
-      });
+    let mut maybe_incremental_cache = None;
 
+    // TODO(bartlomieju): how do we decide if plugins support incremental cache?
+    if lint_rules.supports_incremental_cache() {
+      maybe_incremental_cache =
+        Some(Arc::new(IncrementalCache::new_with_callback(
+          self.caches.lint_incremental_cache_db(),
+          &paths,
+          |hasher| {
+            hasher.write_hashable(lint_rules.incremental_cache_state());
+            if let Some(plugin_specifiers) = maybe_plugin_specifiers.as_ref() {
+              hasher.write_hashable(plugin_specifiers);
+            }
+          },
+        )));
+    }
+
+    #[allow(clippy::print_stdout)]
+    #[allow(clippy::print_stderr)]
     fn logger_printer(msg: &str, is_err: bool) {
       if is_err {
         eprintln!("{}", msg);
@@ -346,14 +356,12 @@ impl WorkspaceLinter {
       let operation = move |file_path: PathBuf| {
         let file_text = deno_ast::strip_bom(fs::read_to_string(&file_path)?);
 
-        // TODO(bartlomieju): fix this - this check doesn't take into account the plugins
-        // that were applied when checking the file.
         // don't bother rechecking this file if it didn't have any diagnostics before
-        // if let Some(incremental_cache) = &maybe_incremental_cache_ {
-        //   if incremental_cache.is_file_same(&file_path, &file_text) {
-        //     return Ok(());
-        //   }
-        // }
+        if let Some(incremental_cache) = &maybe_incremental_cache_ {
+          if incremental_cache.is_file_same(&file_path, &file_text) {
+            return Ok(());
+          }
+        }
 
         let r = linter.lint_file(
           &file_path,
