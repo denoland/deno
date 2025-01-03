@@ -384,40 +384,23 @@ fn serialize_stmt(
       pos
     }
     Stmt::While(node) => {
-      let raw = ctx.header(AstNode::WhileStatement, parent, &node.span);
-      let test_pos = ctx.ref_field(AstProp::Test);
-      let body_pos = ctx.ref_field(AstProp::Body);
-      let pos = ctx.commit_schema(raw);
+      let pos = ctx.alloc_while_stmt(parent, &node.span);
 
       let test = serialize_expr(ctx, node.test.as_ref(), pos);
       let stmt = serialize_stmt(ctx, node.body.as_ref(), pos);
 
-      ctx.write_ref(test_pos, test);
-      ctx.write_ref(body_pos, stmt);
-
-      pos
+      ctx.write_while_stmt(pos, test, stmt)
     }
     Stmt::DoWhile(node) => {
-      let raw = ctx.header(AstNode::DoWhileStatement, parent, &node.span);
-      let test_pos = ctx.ref_field(AstProp::Test);
-      let body_pos = ctx.ref_field(AstProp::Body);
-      let pos = ctx.commit_schema(raw);
+      let pos = ctx.alloc_do_while_stmt(parent, &node.span);
 
       let expr = serialize_expr(ctx, node.test.as_ref(), pos);
       let stmt = serialize_stmt(ctx, node.body.as_ref(), pos);
 
-      ctx.write_ref(test_pos, expr);
-      ctx.write_ref(body_pos, stmt);
-
-      pos
+      ctx.write_do_while_stmt(pos, expr, stmt)
     }
     Stmt::For(node) => {
-      let raw = ctx.header(AstNode::ForStatement, parent, &node.span);
-      let init_pos = ctx.ref_field(AstProp::Init);
-      let test_pos = ctx.ref_field(AstProp::Test);
-      let update_pos = ctx.ref_field(AstProp::Update);
-      let body_pos = ctx.ref_field(AstProp::Body);
-      let pos = ctx.commit_schema(raw);
+      let pos = ctx.alloc_for_stmt(parent, &node.span);
 
       let init = node.init.as_ref().map(|init| match init {
         VarDeclOrExpr::VarDecl(var_decl) => {
@@ -436,59 +419,31 @@ fn serialize_stmt(
         .map(|expr| serialize_expr(ctx, expr, pos));
       let body = serialize_stmt(ctx, node.body.as_ref(), pos);
 
-      ctx.write_maybe_ref(init_pos, init);
-      ctx.write_maybe_ref(test_pos, test);
-      ctx.write_maybe_ref(update_pos, update);
-      ctx.write_ref(body_pos, body);
-
-      pos
+      ctx.write_for_stmt(pos, init, test, update, body)
     }
     Stmt::ForIn(node) => {
-      let raw = ctx.header(AstNode::ForInStatement, parent, &node.span);
-      let left_pos = ctx.ref_field(AstProp::Left);
-      let right_pos = ctx.ref_field(AstProp::Right);
-      let body_pos = ctx.ref_field(AstProp::Body);
-      let pos = ctx.commit_schema(raw);
+      let pos = ctx.alloc_for_in_stmt(parent, &node.span);
 
       let left = serialize_for_head(ctx, &node.left, pos);
       let right = serialize_expr(ctx, node.right.as_ref(), pos);
       let body = serialize_stmt(ctx, node.body.as_ref(), pos);
 
-      ctx.write_ref(left_pos, left);
-      ctx.write_ref(right_pos, right);
-      ctx.write_ref(body_pos, body);
-
-      pos
+      ctx.write_for_in_stmt(pos, left, right, body)
     }
     Stmt::ForOf(node) => {
-      let raw = ctx.header(AstNode::ForOfStatement, parent, &node.span);
-      let await_pos = ctx.bool_field(AstProp::Await);
-      let left_pos = ctx.ref_field(AstProp::Left);
-      let right_pos = ctx.ref_field(AstProp::Right);
-      let body_pos = ctx.ref_field(AstProp::Body);
-      let pos = ctx.commit_schema(raw);
+      let pos = ctx.alloc_for_of_stmt(parent, &node.span);
 
       let left = serialize_for_head(ctx, &node.left, pos);
       let right = serialize_expr(ctx, node.right.as_ref(), pos);
       let body = serialize_stmt(ctx, node.body.as_ref(), pos);
 
-      ctx.write_bool(await_pos, node.is_await);
-      ctx.write_ref(left_pos, left);
-      ctx.write_ref(right_pos, right);
-      ctx.write_ref(body_pos, body);
-
-      pos
+      ctx.write_for_of_stmt(pos, node.is_await, left, right, body)
     }
     Stmt::Decl(node) => serialize_decl(ctx, node, parent),
     Stmt::Expr(node) => {
-      let raw = ctx.header(AstNode::ExpressionStatement, parent, &node.span);
-      let expr_pos = ctx.ref_field(AstProp::Expression);
-      let pos = ctx.commit_schema(raw);
-
+      let pos = ctx.alloc_expr_stmt(parent, &node.span);
       let expr = serialize_expr(ctx, node.expr.as_ref(), pos);
-      ctx.write_ref(expr_pos, expr);
-
-      pos
+      ctx.write_expr_stmt(pos, expr)
     }
   }
 }
@@ -501,9 +456,7 @@ fn serialize_expr(
   match expr {
     Expr::This(node) => ctx.alloc_this_expr(parent, &node.span),
     Expr::Array(node) => {
-      let raw = ctx.header(AstNode::ArrayExpression, parent, &node.span);
-      let elems_pos = ctx.ref_vec_field(AstProp::Elements, node.elems.len());
-      let pos = ctx.commit_schema(raw);
+      let pos = ctx.alloc_arr_expr(parent, &node.span);
 
       let elems = node
         .elems
@@ -515,24 +468,18 @@ fn serialize_expr(
         })
         .collect::<Vec<_>>();
 
-      ctx.write_refs(elems_pos, elems);
-
-      pos
+      ctx.write_arr_expr(pos, elems)
     }
     Expr::Object(node) => {
-      let raw = ctx.header(AstNode::ObjectExpression, parent, &node.span);
-      let props_pos = ctx.ref_vec_field(AstProp::Properties, node.props.len());
-      let pos = ctx.commit_schema(raw);
+      let pos = ctx.alloc_obj_expr(parent, &node.span);
 
-      let prop_ids = node
+      let props = node
         .props
         .iter()
         .map(|prop| serialize_prop_or_spread(ctx, prop, pos))
         .collect::<Vec<_>>();
 
-      ctx.write_refs(props_pos, prop_ids);
-
-      pos
+      ctx.write_obj_expr(pos, props)
     }
     Expr::Fn(node) => {
       let fn_obj = node.function.as_ref();
@@ -1274,16 +1221,10 @@ fn serialize_member_expr(
   parent: NodeRef,
   optional: bool,
 ) -> NodeRef {
-  let raw = ctx.header(AstNode::MemberExpression, parent, &node.span);
-  let opt_pos = ctx.bool_field(AstProp::Optional);
-  let computed_pos = ctx.bool_field(AstProp::Computed);
-  let obj_pos = ctx.ref_field(AstProp::Object);
-  let prop_pos = ctx.ref_field(AstProp::Property);
-  let pos = ctx.commit_schema(raw);
-
-  let obj = serialize_expr(ctx, node.obj.as_ref(), pos);
+  let pos = ctx.alloc_member_expr(parent, &node.span);
 
   let mut computed = false;
+  let obj = serialize_expr(ctx, node.obj.as_ref(), pos);
 
   let prop = match &node.prop {
     MemberProp::Ident(ident_name) => serialize_ident_name(ctx, ident_name, pos),
@@ -1296,12 +1237,7 @@ fn serialize_member_expr(
     }
   };
 
-  ctx.write_bool(opt_pos, optional);
-  ctx.write_bool(computed_pos, computed);
-  ctx.write_ref(obj_pos, obj);
-  ctx.write_ref(prop_pos, prop);
-
-  pos
+  ctx.write_member_expr(pos, optional, computed, obj, prop)
 }
 
 fn serialize_class_member(
@@ -1938,13 +1874,8 @@ fn serialize_private_name(
   node: &PrivateName,
   parent: NodeRef,
 ) -> NodeRef {
-  let raw = ctx.header(AstNode::PrivateIdentifier, parent, &node.span);
-  let name_pos = ctx.str_field(AstProp::Name);
-  let pos = ctx.commit_schema(raw);
-
-  ctx.write_str(name_pos, node.name.as_str());
-
-  pos
+  let pos = ctx.alloc_private_identifier(parent, &node.span);
+  ctx.write_private_identifier(pos, node.name.as_str())
 }
 
 fn serialize_jsx_element(
