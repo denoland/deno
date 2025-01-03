@@ -1277,7 +1277,7 @@ function _dump(ctx) {
  * @param {string} sourceText
  */
 function runLintPlugin(plugin, fileName, sourceText) {
-  installPlugin(plugin);
+  installPlugin(plugin, []);
   const serializedAst = op_lint_create_serialized_ast(fileName, sourceText);
 
   try {
