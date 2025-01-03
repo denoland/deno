@@ -21,7 +21,7 @@ const server = Deno.serve(
         stdout: "null",
       });
       const child = command.spawn();
-      child.output()
+      child.status
         .then((status) => {
           if (!status.success) {
             throw new Error("child process failed: " + JSON.stringify(status));
