@@ -90,9 +90,9 @@ impl DiagnosticMessageChain {
     s.push_str(&" ".repeat(level * 2));
     s.push_str(&self.message_text);
     if let Some(next) = &self.next {
-      s.push('\n');
       let arr = next.clone();
       for dm in arr {
+        s.push('\n');
         s.push_str(&dm.format_message(level + 1));
       }
     }
