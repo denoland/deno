@@ -1429,18 +1429,7 @@ fn serialize_decl(
       id
     }
     Decl::Fn(node) => {
-      let raw =
-        ctx.header(AstNode::FunctionDeclaration, parent, &node.function.span);
-      let declare_pos = ctx.bool_field(AstProp::Declare);
-      let async_pos = ctx.bool_field(AstProp::Async);
-      let gen_pos = ctx.bool_field(AstProp::Generator);
-      let id_pos = ctx.ref_field(AstProp::Id);
-      let type_params_pos = ctx.ref_field(AstProp::TypeParameters);
-      let return_pos = ctx.ref_field(AstProp::ReturnType);
-      let body_pos = ctx.ref_field(AstProp::Body);
-      let params_pos =
-        ctx.ref_vec_field(AstProp::Params, node.function.params.len());
-      let pos = ctx.commit_schema(raw);
+      let pos = ctx.alloc_fn_decl(parent, &node.function.span);
 
       let ident_id = serialize_ident(ctx, &node.ident, parent);
       let type_param_id =
@@ -1461,16 +1450,17 @@ fn serialize_decl(
         .map(|param| serialize_pat(ctx, &param.pat, pos))
         .collect::<Vec<_>>();
 
-      ctx.write_bool(declare_pos, node.declare);
-      ctx.write_bool(async_pos, node.function.is_async);
-      ctx.write_bool(gen_pos, node.function.is_generator);
-      ctx.write_ref(id_pos, ident_id);
-      ctx.write_maybe_ref(type_params_pos, type_param_id);
-      ctx.write_maybe_ref(return_pos, return_type);
-      ctx.write_maybe_ref(body_pos, body);
-      ctx.write_refs(params_pos, params);
-
-      pos
+      ctx.write_fn_decl(
+        pos,
+        node.declare,
+        node.function.is_async,
+        node.function.is_generator,
+        ident_id,
+        type_param_id,
+        return_type,
+        body,
+        params,
+      )
     }
     Decl::Var(node) => {
       let pos = ctx.alloc_var_decl(parent, &node.span);
@@ -1701,24 +1691,14 @@ fn serialize_decl(
       pos
     }
     Decl::TsTypeAlias(node) => {
-      let raw = ctx.header(AstNode::TsTypeAlias, parent, &node.span);
-      let declare_pos = ctx.bool_field(AstProp::Declare);
-      let id_pos = ctx.ref_field(AstProp::Id);
-      let type_params_pos = ctx.ref_field(AstProp::TypeParameters);
-      let type_ann_pos = ctx.ref_field(AstProp::TypeAnnotation);
-      let pos = ctx.commit_schema(raw);
+      let pos = ctx.alloc_ts_type_alias(parent, &node.span);
 
       let ident = serialize_ident(ctx, &node.id, pos);
       let type_ann = serialize_ts_type(ctx, &node.type_ann, pos);
       let type_param =
         maybe_serialize_ts_type_param(ctx, &node.type_params, pos);
 
-      ctx.write_bool(declare_pos, node.declare);
-      ctx.write_ref(id_pos, ident);
-      ctx.write_maybe_ref(type_params_pos, type_param);
-      ctx.write_ref(type_ann_pos, type_ann);
-
-      pos
+      ctx.write_ts_type_alias(pos, node.declare, ident, type_param, type_ann)
     }
     Decl::TsEnum(node) => {
       let raw = ctx.header(AstNode::TSEnumDeclaration, parent, &node.span);

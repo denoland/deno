@@ -43,7 +43,7 @@ pub enum AstNode {
   TSEnumDeclaration,
   TSInterface,
   TsModule,
-  TsTypeAlias,
+  TSTypeAliasDeclaration,
   Using,
   VariableDeclaration,
 
@@ -519,6 +519,53 @@ impl TsEsTreeBuilder {
     self.ctx.begin_write(&offset);
     self.ctx.write_ref(id);
     self.ctx.write_maybe_ref(init);
+
+    offset
+  }
+
+  pub fn alloc_fn_decl(&mut self, parent: NodeRef, span: &Span) -> NodeRef {
+    let kind = AstNode::FunctionDeclaration;
+    let offset = self.ctx.append_node(&kind, parent, span);
+
+    if !self.ctx.has_schema(&kind) {
+      let offset = self.ctx.begin_schema(&kind);
+
+      self.ctx.bool_field(AstProp::Declare);
+      self.ctx.bool_field(AstProp::Async);
+      self.ctx.bool_field(AstProp::Generator);
+      self.ctx.ref_field(AstProp::Id);
+      self.ctx.ref_field(AstProp::TypeParameters);
+      self.ctx.ref_field(AstProp::ReturnType);
+      self.ctx.ref_field(AstProp::Body);
+      self.ctx.ref_vec_field(AstProp::Params);
+
+      self.ctx.commit_schema(offset);
+    }
+
+    offset
+  }
+
+  pub fn write_fn_decl(
+    &mut self,
+    offset: NodeRef,
+    is_declare: bool,
+    is_async: bool,
+    is_generator: bool,
+    id: NodeRef,
+    type_param: Option<NodeRef>,
+    return_type: Option<NodeRef>,
+    body: Option<NodeRef>,
+    params: Vec<NodeRef>,
+  ) -> NodeRef {
+    self.ctx.begin_write(&offset);
+    self.ctx.write_bool(is_declare);
+    self.ctx.write_bool(is_async);
+    self.ctx.write_bool(is_generator);
+    self.ctx.write_ref(id);
+    self.ctx.write_maybe_ref(type_param);
+    self.ctx.write_maybe_ref(return_type);
+    self.ctx.write_maybe_ref(body);
+    self.ctx.write_ref_vec(params);
 
     offset
   }
@@ -2107,6 +2154,45 @@ impl TsEsTreeBuilder {
     self.ctx.begin_write(&offset);
     self.ctx.write_ref(obj);
     self.ctx.write_ref(prop);
+
+    offset
+  }
+
+  pub fn alloc_ts_type_alias(
+    &mut self,
+    parent: NodeRef,
+    span: &Span,
+  ) -> NodeRef {
+    let kind = AstNode::TSTypeAliasDeclaration;
+    let offset = self.ctx.append_node(&kind, parent, span);
+
+    if !self.ctx.has_schema(&kind) {
+      let offset = self.ctx.begin_schema(&kind);
+
+      self.ctx.bool_field(AstProp::Declare);
+      self.ctx.ref_field(AstProp::Id);
+      self.ctx.ref_field(AstProp::TypeParameters);
+      self.ctx.ref_field(AstProp::TypeAnnotation);
+
+      self.ctx.commit_schema(offset);
+    }
+
+    offset
+  }
+
+  pub fn write_ts_type_alias(
+    &mut self,
+    offset: NodeRef,
+    declare: bool,
+    id: NodeRef,
+    type_param: Option<NodeRef>,
+    type_ann: NodeRef,
+  ) -> NodeRef {
+    self.ctx.begin_write(&offset);
+    self.ctx.write_bool(declare);
+    self.ctx.write_ref(id);
+    self.ctx.write_maybe_ref(type_param);
+    self.ctx.write_ref(type_ann);
 
     offset
   }
