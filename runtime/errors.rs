@@ -1592,8 +1592,22 @@ fn get_sync_fetch_error(error: &SyncFetchError) -> &'static str {
 
 fn get_quic_error_class(error: &QuicError) -> &'static str {
   match error {
+    QuicError::CannotListen => "Error",
+    QuicError::MissingTlsKey => "TypeError",
+    QuicError::InvalidDuration => "TypeError",
+    QuicError::UnableToResolve => "Error",
+    QuicError::StdIo(e) => get_io_error_class(e),
+    QuicError::PermissionCheck(e) => get_permission_check_error_class(e),
+    QuicError::VarIntBoundsExceeded(_) => "RangeError",
+    QuicError::Rustls(_) => "Error",
+    QuicError::Tls(e) => get_tls_error_class(e),
+    QuicError::ConnectionError(_) => "Error",
+    QuicError::ConnectError(_) => "Error",
+    QuicError::SendDatagramError(_) => "Error",
+    QuicError::ClosedStream(_) => "BadResource",
     QuicError::BadResource(_) => "BadResource",
-    _ => "Error",
+    QuicError::MaxStreams(_) => "RangeError",
+    QuicError::Core(e) => get_error_class_name(e).unwrap_or("Error"),
   }
 }
 
