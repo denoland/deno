@@ -110,6 +110,15 @@ pub struct Position {
   pub character: u64,
 }
 
+impl Position {
+  pub fn from_deno_graph(deno_graph_position: deno_graph::Position) -> Self {
+    Self {
+      line: deno_graph_position.line as u64,
+      character: deno_graph_position.character as u64,
+    }
+  }
+}
+
 #[derive(Debug, Deserialize, Serialize, Clone, Eq, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct Diagnostic {
@@ -142,6 +151,38 @@ pub struct Diagnostic {
 }
 
 impl Diagnostic {
+  pub fn from_missing_error(
+    specifier: &ModuleSpecifier,
+    maybe_range: Option<&deno_graph::Range>,
+    additional_message: Option<String>,
+  ) -> Self {
+    Self {
+      category: DiagnosticCategory::Error,
+      code: 2307,
+      start: maybe_range.map(|r| Position::from_deno_graph(r.range.start)),
+      end: maybe_range.map(|r| Position::from_deno_graph(r.range.end)),
+      original_source_start: None, // will be applied later
+      message_text: Some(format!(
+        "Cannot find module '{}'.{}{}",
+        specifier,
+        if additional_message.is_none() {
+          ""
+        } else {
+          " "
+        },
+        additional_message.unwrap_or_default()
+      )),
+      message_chain: None,
+      source: None,
+      source_line: None,
+      file_name: maybe_range.map(|r| r.specifier.to_string()),
+      related_information: None,
+      reports_deprecated: None,
+      reports_unnecessary: None,
+      other: Default::default(),
+    }
+  }
+
   /// If this diagnostic should be included when it comes from a remote module.
   pub fn include_when_remote(&self) -> bool {
     /// TS6133: value is declared but its value is never read (noUnusedParameters and noUnusedLocals)
@@ -297,6 +338,14 @@ impl Diagnostics {
         true
       }
     });
+  }
+
+  pub fn push(&mut self, diagnostic: Diagnostic) {
+    self.0.push(diagnostic);
+  }
+
+  pub fn extend(&mut self, diagnostic: Diagnostics) {
+    self.0.extend(diagnostic.0);
   }
 
   /// Return a set of diagnostics where only the values where the predicate

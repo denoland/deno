@@ -753,6 +753,7 @@ impl CliFactory {
           self.module_graph_builder().await?.clone(),
           self.node_resolver().await?.clone(),
           self.npm_resolver().await?.clone(),
+          self.sys(),
         )))
       })
       .await
