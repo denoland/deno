@@ -266,7 +266,20 @@ fn serialize_stmt(
       let raw = ctx.header(AstNode::DebuggerStatement, parent, &node.span);
       ctx.commit_schema(raw)
     }
-    Stmt::With(_) => todo!(),
+    Stmt::With(node) => {
+      let raw = ctx.header(AstNode::WithStatement, parent, &node.span);
+      let obj_pos = ctx.ref_field(AstProp::Object);
+      let body_pos = ctx.ref_field(AstProp::Body);
+      let pos = ctx.commit_schema(raw);
+
+      let obj = serialize_expr(ctx, &node.obj, pos);
+      let body = serialize_stmt(ctx, &node.body, pos);
+
+      ctx.write_ref(obj_pos, obj);
+      ctx.write_ref(body_pos, body);
+
+      pos
+    }
     Stmt::Return(node) => {
       let raw = ctx.header(AstNode::ReturnStatement, parent, &node.span);
       let arg_pos = ctx.ref_field(AstProp::Argument);
@@ -842,38 +855,57 @@ fn serialize_expr(
       pos
     }
     Expr::Call(node) => {
-      let raw = ctx.header(AstNode::CallExpression, parent, &node.span);
-      let opt_pos = ctx.bool_field(AstProp::Optional);
-      let callee_pos = ctx.ref_field(AstProp::Callee);
-      let type_args_pos = ctx.ref_field(AstProp::TypeArguments);
-      let args_pos = ctx.ref_vec_field(AstProp::Arguments, node.args.len());
-      let pos = ctx.commit_schema(raw);
+      if let Callee::Import(_) = node.callee {
+        let raw = ctx.header(AstNode::ImportExpression, parent, &node.span);
+        let source_pos = ctx.ref_field(AstProp::Source);
+        let options_pos = ctx.ref_field(AstProp::Options);
+        let pos = ctx.commit_schema(raw);
 
-      let callee = match &node.callee {
-        Callee::Super(super_node) => {
-          let raw = ctx.header(AstNode::Super, pos, &super_node.span);
-          ctx.commit_schema(raw)
+        if let Some(arg) = node.args.first() {
+          let source = serialize_expr_or_spread(ctx, arg, pos);
+          ctx.write_ref(source_pos, source);
         }
-        Callee::Import(_) => todo!(),
-        Callee::Expr(expr) => serialize_expr(ctx, expr, pos),
-      };
 
-      let type_arg = node.type_args.clone().map(|param_node| {
-        serialize_ts_param_inst(ctx, param_node.as_ref(), pos)
-      });
+        if let Some(arg) = node.args.get(1) {
+          let obj = serialize_expr_or_spread(ctx, arg, pos);
+          ctx.write_ref(options_pos, obj);
+        }
 
-      let args = node
-        .args
-        .iter()
-        .map(|arg| serialize_expr_or_spread(ctx, arg, pos))
-        .collect::<Vec<_>>();
+        pos
+      } else {
+        let raw = ctx.header(AstNode::CallExpression, parent, &node.span);
+        let opt_pos = ctx.bool_field(AstProp::Optional);
+        let callee_pos = ctx.ref_field(AstProp::Callee);
+        let type_args_pos = ctx.ref_field(AstProp::TypeArguments);
+        let args_pos = ctx.ref_vec_field(AstProp::Arguments, node.args.len());
+        let pos = ctx.commit_schema(raw);
 
-      ctx.write_bool(opt_pos, false);
-      ctx.write_ref(callee_pos, callee);
-      ctx.write_maybe_ref(type_args_pos, type_arg);
-      ctx.write_refs(args_pos, args);
+        let callee = match &node.callee {
+          Callee::Super(super_node) => {
+            let raw = ctx.header(AstNode::Super, pos, &super_node.span);
+            ctx.commit_schema(raw)
+          }
+          Callee::Import(_) => unreachable!("Already handled"),
+          Callee::Expr(expr) => serialize_expr(ctx, expr, pos),
+        };
 
-      pos
+        let type_arg = node.type_args.clone().map(|param_node| {
+          serialize_ts_param_inst(ctx, param_node.as_ref(), pos)
+        });
+
+        let args = node
+          .args
+          .iter()
+          .map(|arg| serialize_expr_or_spread(ctx, arg, pos))
+          .collect::<Vec<_>>();
+
+        ctx.write_bool(opt_pos, false);
+        ctx.write_ref(callee_pos, callee);
+        ctx.write_maybe_ref(type_args_pos, type_arg);
+        ctx.write_refs(args_pos, args);
+
+        pos
+      }
     }
     Expr::New(node) => {
       let raw = ctx.header(AstNode::NewExpression, parent, &node.span);
