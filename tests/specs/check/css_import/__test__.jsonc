@@ -8,6 +8,10 @@
     "exitCode": 1
   }, {
     "args": "check not_exists.ts",
+    "output": "not_exists_check.out",
+    "exitCode": 0 // typescript doesn't raise errors for non-existent side-effect imports
+  }, {
+    "args": "run --check not_exists.ts",
     "output": "not_exists.out",
     "exitCode": 1
   }, {

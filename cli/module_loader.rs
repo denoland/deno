@@ -36,6 +36,7 @@ use deno_graph::JsModule;
 use deno_graph::JsonModule;
 use deno_graph::Module;
 use deno_graph::ModuleGraph;
+use deno_graph::ModuleGraphError;
 use deno_graph::Resolution;
 use deno_graph::WasmModule;
 use deno_runtime::code_cache;
@@ -58,10 +59,13 @@ use crate::cache::CodeCache;
 use crate::cache::FastInsecureHasher;
 use crate::cache::ParsedSourceCache;
 use crate::emit::Emitter;
+use crate::errors::get_module_error_class;
 use crate::graph_container::MainModuleGraphContainer;
 use crate::graph_container::ModuleGraphContainer;
 use crate::graph_container::ModuleGraphUpdatePermit;
+use crate::graph_util::enhance_graph_error;
 use crate::graph_util::CreateGraphOptions;
+use crate::graph_util::EnhanceGraphErrorMode;
 use crate::graph_util::ModuleGraphBuilder;
 use crate::node::CliNodeCodeTranslator;
 use crate::node::CliNodeResolver;
@@ -703,7 +707,21 @@ impl<TGraphContainer: ModuleGraphContainer>
       unreachable!("Deno bug. {} was misconfigured internally.", specifier);
     }
 
-    match graph.get(specifier) {
+    let maybe_module = match graph.try_get(specifier) {
+      Ok(module) => module,
+      Err(err) => {
+        return Err(custom_error(
+          get_module_error_class(err),
+          enhance_graph_error(
+            &self.shared.sys,
+            &ModuleGraphError::ModuleError(err.clone()),
+            EnhanceGraphErrorMode::ShowRange,
+          ),
+        ))
+      }
+    };
+
+    match maybe_module {
       Some(deno_graph::Module::Json(JsonModule {
         source,
         media_type,

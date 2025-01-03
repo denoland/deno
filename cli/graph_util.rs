@@ -50,6 +50,7 @@ use crate::cache::ModuleInfoCache;
 use crate::cache::ParsedSourceCache;
 use crate::colors;
 use crate::errors::get_error_class_name;
+use crate::errors::get_module_graph_error_class;
 use crate::file_fetcher::CliFileFetcher;
 use crate::npm::CliNpmResolver;
 use crate::resolver::CjsTracker;
@@ -164,29 +165,15 @@ pub fn graph_walk_errors<'a>(
           roots.contains(error.specifier())
         }
       };
-      let mut message = match &error {
-        ModuleGraphError::ResolutionError(resolution_error) => {
-          enhanced_resolution_error_message(resolution_error)
-        }
-        ModuleGraphError::TypesResolutionError(resolution_error) => {
-          format!(
-            "Failed resolving types. {}",
-            enhanced_resolution_error_message(resolution_error)
-          )
-        }
-        ModuleGraphError::ModuleError(error) => {
-          enhanced_integrity_error_message(error)
-            .or_else(|| enhanced_sloppy_imports_error_message(sys, error))
-            .unwrap_or_else(|| format_deno_graph_error(error))
-        }
-      };
-
-      if let Some(range) = error.maybe_range() {
-        if !is_root && !range.specifier.as_str().contains("/$deno$eval") {
-          message.push_str("\n    at ");
-          message.push_str(&format_range_with_colors(range));
-        }
-      }
+      let message = enhance_graph_error(
+        sys,
+        &error,
+        if is_root {
+          EnhanceGraphErrorMode::HideRange
+        } else {
+          EnhanceGraphErrorMode::ShowRange
+        },
+      );
 
       if graph.graph_kind() == GraphKind::TypesOnly
         && matches!(
@@ -198,8 +185,58 @@ pub fn graph_walk_errors<'a>(
         return None;
       }
 
-      Some(custom_error(get_error_class_name(&error.into()), message))
+      if graph.graph_kind().include_types()
+        && matches!(
+          error,
+          ModuleGraphError::ModuleError(ModuleError::Missing(..))
+        )
+      {
+        // ignore and let typescript surface this as a diagnostic instead
+        log::debug!("Ignoring: {}", message);
+        return None;
+      }
+
+      Some(custom_error(get_module_graph_error_class(&error), message))
     })
+}
+
+#[derive(Debug, PartialEq, Eq)]
+pub enum EnhanceGraphErrorMode {
+  ShowRange,
+  HideRange,
+}
+
+pub fn enhance_graph_error(
+  sys: &CliSys,
+  error: &ModuleGraphError,
+  mode: EnhanceGraphErrorMode,
+) -> String {
+  let mut message = match &error {
+    ModuleGraphError::ResolutionError(resolution_error) => {
+      enhanced_resolution_error_message(resolution_error)
+    }
+    ModuleGraphError::TypesResolutionError(resolution_error) => {
+      format!(
+        "Failed resolving types. {}",
+        enhanced_resolution_error_message(resolution_error)
+      )
+    }
+    ModuleGraphError::ModuleError(error) => {
+      enhanced_integrity_error_message(error)
+        .or_else(|| enhanced_sloppy_imports_error_message(sys, error))
+        .unwrap_or_else(|| format_deno_graph_error(error))
+    }
+  };
+
+  if let Some(range) = error.maybe_range() {
+    if mode == EnhanceGraphErrorMode::ShowRange
+      && !range.specifier.as_str().contains("/$deno$eval")
+    {
+      message.push_str("\n    at ");
+      message.push_str(&format_range_with_colors(range));
+    }
+  }
+  message
 }
 
 pub fn graph_exit_integrity_errors(graph: &ModuleGraph) {

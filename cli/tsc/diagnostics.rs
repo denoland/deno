@@ -110,6 +110,15 @@ pub struct Position {
   pub character: u64,
 }
 
+impl Position {
+  pub fn from_deno_graph(deno_graph_position: deno_graph::Position) -> Self {
+    Self {
+      line: deno_graph_position.line as u64,
+      character: deno_graph_position.character as u64,
+    }
+  }
+}
+
 #[derive(Debug, Deserialize, Serialize, Clone, Eq, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct Diagnostic {
@@ -142,6 +151,28 @@ pub struct Diagnostic {
 }
 
 impl Diagnostic {
+  pub fn from_missing_error(
+    specifier: &ModuleSpecifier,
+    maybe_range: Option<&deno_graph::Range>,
+  ) -> Self {
+    Self {
+      category: DiagnosticCategory::Error,
+      code: 2307,
+      start: maybe_range.map(|r| Position::from_deno_graph(r.range.start)),
+      end: maybe_range.map(|r| Position::from_deno_graph(r.range.end)),
+      original_source_start: None, // will be applied later
+      message_text: Some(format!("Cannot find module '{}'.", specifier)),
+      message_chain: None,
+      source: maybe_range.map(|r| r.specifier.to_string()),
+      source_line: None,
+      file_name: maybe_range.map(|r| r.specifier.to_string()),
+      related_information: None,
+      reports_deprecated: None,
+      reports_unnecessary: None,
+      other: Default::default(),
+    }
+  }
+
   /// If this diagnostic should be included when it comes from a remote module.
   pub fn include_when_remote(&self) -> bool {
     /// TS6133: value is declared but its value is never read (noUnusedParameters and noUnusedLocals)
@@ -297,6 +328,14 @@ impl Diagnostics {
         true
       }
     });
+  }
+
+  pub fn prepend(&mut self, diagnostic: Vec<Diagnostic>) {
+    let mut new_diagnostics =
+      Vec::with_capacity(diagnostic.len() + self.0.len());
+    new_diagnostics.extend(diagnostic);
+    new_diagnostics.extend(self.0.drain(..));
+    self.0 = new_diagnostics;
   }
 
   /// Return a set of diagnostics where only the values where the predicate

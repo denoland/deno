@@ -409,9 +409,20 @@ delete Object.prototype.__proto__;
       messageText = formatMessage(msgText, ri.code);
     }
     if (start !== undefined && length !== undefined && file) {
-      const startPos = file.getLineAndCharacterOfPosition(start);
-      const sourceLine = file.getFullText().split("\n")[startPos.line];
-      const fileName = file.fileName;
+      let startPos = file.getLineAndCharacterOfPosition(start);
+      let sourceLine = file.getFullText().split("\n")[startPos.line];
+      const originalFileName = file.fileName;
+      const fileName = ops.op_remap_specifier
+        ? (ops.op_remap_specifier(file.fileName) ?? file.fileName)
+        : file.fileName;
+      // Bit of a hack to detect when we have a .wasm file and want to hide
+      // the .d.ts text. This is not perfect, but will work in most scenarios
+      if (
+        fileName.endsWith(".wasm") && originalFileName.endsWith(".wasm.d.mts")
+      ) {
+        startPos = { line: 0, character: 0 };
+        sourceLine = undefined;
+      }
       return {
         start: startPos,
         end: file.getLineAndCharacterOfPosition(start + length),
@@ -470,11 +481,6 @@ delete Object.prototype.__proto__;
     // TS2688: Cannot find type definition file for '...'.
     // We ignore because type definition files can end with '.ts'.
     2688,
-    // TS2792: Cannot find module. Did you mean to set the 'moduleResolution'
-    // option to 'node', or to add aliases to the 'paths' option?
-    2792,
-    // TS2307: Cannot find module '{0}' or its corresponding type declarations.
-    2307,
     // TS5009: Cannot find the common subdirectory path for the input files.
     5009,
     // TS5055: Cannot write file
@@ -888,6 +894,8 @@ delete Object.prototype.__proto__;
     const nodeMessage = "Cannot find name '{0}'."; // don't offer any suggestions
     const jqueryMessage =
       "Cannot find name '{0}'. Did you mean to import jQuery? Try adding `import $ from \"npm:jquery\";`.";
+    const cannotFindModuleMessage = "Cannot find module '{0}'.";
+    const cannotFindModuleNoIterpolationMessage = "Cannot find module.";
     return {
       "Cannot_find_name_0_Do_you_need_to_install_type_definitions_for_node_Try_npm_i_save_dev_types_Slashno_2580":
         nodeMessage,
@@ -899,6 +907,14 @@ delete Object.prototype.__proto__;
         jqueryMessage,
       "Module_0_was_resolved_to_1_but_allowArbitraryExtensions_is_not_set_6263":
         "Module '{0}' was resolved to '{1}', but importing these modules is not supported.",
+      "Cannot_find_module_0_Consider_using_resolveJsonModule_to_import_module_with_json_extension_2732":
+        cannotFindModuleMessage,
+      "Cannot_find_module_0_Did_you_mean_to_set_the_moduleResolution_option_to_nodenext_or_to_add_aliases_t_2792":
+        cannotFindModuleMessage,
+      "Relative_import_paths_need_explicit_file_extensions_in_ECMAScript_imports_when_moduleResolution_is_n_2834":
+        cannotFindModuleNoIterpolationMessage,
+      "Relative_import_paths_need_explicit_file_extensions_in_ECMAScript_imports_when_moduleResolution_is_n_2835":
+        cannotFindModuleNoIterpolationMessage,
     };
   })());
 
@@ -1037,24 +1053,27 @@ delete Object.prototype.__proto__;
       configFileParsingDiagnostics,
     });
 
-    const checkFiles = localOnly
-      ? rootNames
-        .filter((n) => !n.startsWith("http"))
-        .map((checkName) => {
-          const sourceFile = program.getSourceFile(checkName);
-          if (sourceFile == null) {
-            throw new Error("Could not find source file for: " + checkName);
-          }
-          return sourceFile;
-        })
-      : undefined;
+    let checkFiles = undefined;
 
-    if (checkFiles != null) {
+    if (localOnly) {
+      const checkFileNames = new Set();
+      checkFiles = [];
+
+      for (const checkName of rootNames) {
+        if (checkName.startsWith("http")) {
+          continue;
+        }
+        const sourceFile = program.getSourceFile(checkName);
+        if (sourceFile != null) {
+          checkFiles.push(sourceFile);
+        }
+        checkFileNames.add(checkName);
+      }
+
       // When calling program.getSemanticDiagnostics(...) with a source file, we
       // need to call this code first in order to get it to invalidate cached
       // diagnostics correctly. This is what program.getSemanticDiagnostics()
       // does internally when calling without any arguments.
-      const checkFileNames = new Set(checkFiles.map((f) => f.fileName));
       while (
         program.getSemanticDiagnosticsOfNextAffectedFile(
           undefined,
