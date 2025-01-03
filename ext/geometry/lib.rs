@@ -22,8 +22,8 @@ use nalgebra::Vector4;
 deno_core::extension!(
   deno_geometry,
   deps = [deno_webidl, deno_web, deno_console],
-  ops = [op_create_matrix_identity],
-  objects = [Point, Rect, Matrix],
+  ops = [op_geometry_create_matrix_identity],
+  objects = [DOMPointInner, DOMRectInner, DOMMatrixInner],
   esm = ["00_init.js"],
   lazy_loaded_esm = ["01_geometry.js"],
 );
@@ -32,21 +32,21 @@ pub fn get_declaration() -> PathBuf {
   PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("lib.deno_geometry.d.ts")
 }
 
-pub struct Point {
+pub struct DOMPointInner {
   x: Cell<f64>,
   y: Cell<f64>,
   z: Cell<f64>,
   w: Cell<f64>,
 }
 
-impl GarbageCollected for Point {}
+impl GarbageCollected for DOMPointInner {}
 
 #[op2]
-impl Point {
+impl DOMPointInner {
   #[constructor]
   #[cppgc]
-  pub fn constructor(x: f64, y: f64, z: f64, w: f64) -> Point {
-    Point {
+  pub fn constructor(x: f64, y: f64, z: f64, w: f64) -> DOMPointInner {
+    DOMPointInner {
       x: Cell::new(x),
       y: Cell::new(y),
       z: Cell::new(z),
@@ -103,9 +103,12 @@ impl Point {
   }
 
   #[cppgc]
-  pub fn matrixTransform(&self, matrix: v8::Local<v8::Object>) -> Point {
+  pub fn matrix_transform(
+    &self,
+    matrix: v8::Local<v8::Object>,
+  ) -> DOMPointInner {
     let matrix = cast_to_matrix(matrix);
-    let out = Point {
+    let out = DOMPointInner {
       x: Cell::new(0.0),
       y: Cell::new(0.0),
       z: Cell::new(0.0),
@@ -116,21 +119,21 @@ impl Point {
   }
 }
 
-pub struct Rect {
+pub struct DOMRectInner {
   x: Cell<f64>,
   y: Cell<f64>,
   width: Cell<f64>,
   height: Cell<f64>,
 }
 
-impl GarbageCollected for Rect {}
+impl GarbageCollected for DOMRectInner {}
 
 #[op2]
-impl Rect {
+impl DOMRectInner {
   #[constructor]
   #[cppgc]
-  pub fn constructor(x: f64, y: f64, width: f64, height: f64) -> Rect {
-    Rect {
+  pub fn constructor(x: f64, y: f64, width: f64, height: f64) -> DOMRectInner {
+    DOMRectInner {
       x: Cell::new(x),
       y: Cell::new(y),
       width: Cell::new(width),
@@ -188,12 +191,12 @@ impl Rect {
 }
 
 #[derive(Clone)]
-pub struct Matrix {
+pub struct DOMMatrixInner {
   inner: RefCell<Matrix4<f64>>,
   is_2d: Cell<bool>,
 }
 
-impl GarbageCollected for Matrix {}
+impl GarbageCollected for DOMMatrixInner {}
 
 /*
  * NOTE: column-major order
@@ -238,18 +241,18 @@ const INDEX_M43: usize = 14;
 const INDEX_M44: usize = 15;
 
 #[op2]
-impl Matrix {
+impl DOMMatrixInner {
   #[constructor]
   #[cppgc]
-  pub fn constructor(#[buffer] buffer: &[f64], is_2d: bool) -> Matrix {
-    Matrix {
+  pub fn constructor(#[buffer] buffer: &[f64], is_2d: bool) -> DOMMatrixInner {
+    DOMMatrixInner {
       inner: RefCell::new(Matrix4::from_column_slice(buffer)),
       is_2d: Cell::new(is_2d),
     }
   }
 
   #[cppgc]
-  pub fn clone(&self) -> Matrix {
+  pub fn clone(&self) -> DOMMatrixInner {
     self.clone()
   }
 
@@ -689,7 +692,7 @@ impl Matrix {
   }
 
   #[cppgc]
-  pub fn translate(&self, tx: f64, ty: f64, tz: f64) -> Matrix {
+  pub fn translate(&self, tx: f64, ty: f64, tz: f64) -> DOMMatrixInner {
     let out = self.clone();
     matrix_translate(&out, tx, ty, tz);
     out
@@ -701,14 +704,19 @@ impl Matrix {
   }
 
   #[cppgc]
-  pub fn scale(&self, sx: f64, sy: f64, sz: f64) -> Matrix {
+  pub fn scale_without_origin(
+    &self,
+    sx: f64,
+    sy: f64,
+    sz: f64,
+  ) -> DOMMatrixInner {
     let out = self.clone();
     matrix_scale(&out, sx, sy, sz);
     out
   }
 
   #[fast]
-  pub fn scale_self(&self, sx: f64, sy: f64, sz: f64) {
+  pub fn scale_without_origin_self(&self, sx: f64, sy: f64, sz: f64) {
     matrix_scale(self, sx, sy, sz);
   }
 
@@ -721,7 +729,7 @@ impl Matrix {
     origin_x: f64,
     origin_y: f64,
     origin_z: f64,
-  ) -> Matrix {
+  ) -> DOMMatrixInner {
     let out = self.clone();
     matrix_scale_with_origin(&out, sx, sy, sz, origin_x, origin_y, origin_z);
     out
@@ -741,7 +749,12 @@ impl Matrix {
   }
 
   #[cppgc]
-  pub fn rotate(&self, roll_deg: f64, pitch_deg: f64, yaw_deg: f64) -> Matrix {
+  pub fn rotate(
+    &self,
+    roll_deg: f64,
+    pitch_deg: f64,
+    yaw_deg: f64,
+  ) -> DOMMatrixInner {
     let out = self.clone();
     matrix_rotate(&out, roll_deg, pitch_deg, yaw_deg);
     out
@@ -753,7 +766,7 @@ impl Matrix {
   }
 
   #[cppgc]
-  pub fn rotate_from_vector(&self, x: f64, y: f64) -> Matrix {
+  pub fn rotate_from_vector(&self, x: f64, y: f64) -> DOMMatrixInner {
     let out = self.clone();
     matrix_rotate_from_vector(&out, x, y);
     out
@@ -771,7 +784,7 @@ impl Matrix {
     y: f64,
     z: f64,
     angle_deg: f64,
-  ) -> Matrix {
+  ) -> DOMMatrixInner {
     let out = self.clone();
     matrix_rotate_axis_angle(&out, x, y, z, angle_deg);
     out
@@ -783,7 +796,7 @@ impl Matrix {
   }
 
   #[cppgc]
-  pub fn skew_x(&self, x_deg: f64) -> Matrix {
+  pub fn skew_x(&self, x_deg: f64) -> DOMMatrixInner {
     let out = self.clone();
     matrix_skew_x(&out, x_deg);
     out
@@ -795,7 +808,7 @@ impl Matrix {
   }
 
   #[cppgc]
-  pub fn skew_y(&self, y_deg: f64) -> Matrix {
+  pub fn skew_y(&self, y_deg: f64) -> DOMMatrixInner {
     let out = self.clone();
     matrix_skew_y(&out, y_deg);
     out
@@ -807,9 +820,9 @@ impl Matrix {
   }
 
   #[cppgc]
-  pub fn multiply(&self, other: v8::Local<v8::Object>) -> Matrix {
+  pub fn multiply(&self, other: v8::Local<v8::Object>) -> DOMMatrixInner {
     let other = cast_to_matrix(other);
-    let out = Matrix {
+    let out = DOMMatrixInner {
       inner: RefCell::new(Matrix4::zeros()),
       is_2d: Cell::new(true),
     };
@@ -820,7 +833,7 @@ impl Matrix {
   #[fast]
   pub fn multiply_self(&self, other: v8::Local<v8::Object>) {
     let other = cast_to_matrix(other);
-    let result = Matrix {
+    let result = DOMMatrixInner {
       inner: RefCell::new(Matrix4::zeros()),
       is_2d: Cell::new(true),
     };
@@ -832,7 +845,7 @@ impl Matrix {
   #[fast]
   pub fn pre_multiply_self(&self, other: v8::Local<v8::Object>) {
     let other = cast_to_matrix(other);
-    let result = Matrix {
+    let result = DOMMatrixInner {
       inner: RefCell::new(Matrix4::zeros()),
       is_2d: Cell::new(true),
     };
@@ -842,21 +855,21 @@ impl Matrix {
   }
 
   #[cppgc]
-  pub fn flip_x(&self) -> Matrix {
+  pub fn flip_x(&self) -> DOMMatrixInner {
     let out = self.clone();
     matrix_flip_x(&out);
     out
   }
 
   #[cppgc]
-  pub fn flip_y(&self) -> Matrix {
+  pub fn flip_y(&self) -> DOMMatrixInner {
     let out = self.clone();
     matrix_flip_y(&out);
     out
   }
 
   #[cppgc]
-  pub fn inverse(&self) -> Matrix {
+  pub fn inverse(&self) -> DOMMatrixInner {
     let out = self.clone();
     matrix_inverse(&out);
     out
@@ -868,9 +881,9 @@ impl Matrix {
   }
 
   #[cppgc]
-  pub fn transformPoint(&self, point: v8::Local<v8::Object>) -> Point {
+  pub fn transform_point(&self, point: v8::Local<v8::Object>) -> DOMPointInner {
     let point = cast_to_point(point);
-    let out = Point {
+    let out = DOMPointInner {
       x: Cell::new(0.0),
       y: Cell::new(0.0),
       z: Cell::new(0.0),
@@ -882,30 +895,36 @@ impl Matrix {
 }
 
 #[op2]
-pub fn op_create_matrix_identity<'a>(
+pub fn op_geometry_create_matrix_identity<'a>(
   scope: &mut v8::HandleScope<'a>,
 ) -> v8::Local<'a, v8::Object> {
   cppgc::make_cppgc_object(
     scope,
-    Matrix {
+    DOMMatrixInner {
       inner: RefCell::new(Matrix4::identity()),
       is_2d: Cell::new(true),
     },
   )
 }
 
-fn cast_to_point(obj: v8::Local<'_, v8::Object>) -> v8::Local<'_, Point> {
-  // SAFETY: cast v8::Local
-  unsafe { mem::transmute(obj) }
-}
-
-fn cast_to_matrix(obj: v8::Local<'_, v8::Object>) -> v8::Local<'_, Matrix> {
+#[inline]
+fn cast_to_point(
+  obj: v8::Local<'_, v8::Object>,
+) -> v8::Local<'_, DOMPointInner> {
   // SAFETY: cast v8::Local
   unsafe { mem::transmute(obj) }
 }
 
 #[inline]
-fn matrix_translate(matrix: &Matrix, tx: f64, ty: f64, tz: f64) {
+fn cast_to_matrix(
+  obj: v8::Local<'_, v8::Object>,
+) -> v8::Local<'_, DOMMatrixInner> {
+  // SAFETY: cast v8::Local
+  unsafe { mem::transmute(obj) }
+}
+
+#[inline]
+fn matrix_translate(matrix: &DOMMatrixInner, tx: f64, ty: f64, tz: f64) {
   let mut inner = matrix.inner.borrow_mut();
   let is_2d = matrix.is_2d.get();
   let shift = Vector3::new(tx, ty, tz);
@@ -914,7 +933,7 @@ fn matrix_translate(matrix: &Matrix, tx: f64, ty: f64, tz: f64) {
 }
 
 #[inline]
-fn matrix_scale(matrix: &Matrix, sx: f64, sy: f64, sz: f64) {
+fn matrix_scale(matrix: &DOMMatrixInner, sx: f64, sy: f64, sz: f64) {
   let mut inner = matrix.inner.borrow_mut();
   let is_2d = matrix.is_2d.get();
   let scaling = Vector3::new(sx, sy, sz);
@@ -924,7 +943,7 @@ fn matrix_scale(matrix: &Matrix, sx: f64, sy: f64, sz: f64) {
 
 #[inline]
 fn matrix_scale_with_origin(
-  matrix: &Matrix,
+  matrix: &DOMMatrixInner,
   sx: f64,
   sy: f64,
   sz: f64,
@@ -944,7 +963,12 @@ fn matrix_scale_with_origin(
 }
 
 #[inline]
-fn matrix_rotate(matrix: &Matrix, roll_deg: f64, pitch_deg: f64, yaw_deg: f64) {
+fn matrix_rotate(
+  matrix: &DOMMatrixInner,
+  roll_deg: f64,
+  pitch_deg: f64,
+  yaw_deg: f64,
+) {
   let mut inner = matrix.inner.borrow_mut();
   let is_2d = matrix.is_2d.get();
   let rotation = Rotation3::from_euler_angles(
@@ -964,7 +988,7 @@ fn matrix_rotate(matrix: &Matrix, roll_deg: f64, pitch_deg: f64, yaw_deg: f64) {
 }
 
 #[inline]
-fn matrix_rotate_from_vector(matrix: &Matrix, x: f64, y: f64) {
+fn matrix_rotate_from_vector(matrix: &DOMMatrixInner, x: f64, y: f64) {
   let mut inner = matrix.inner.borrow_mut();
   let rotation =
     Rotation3::from_axis_angle(&Vector3::z_axis(), y.atan2(x)).to_homogeneous();
@@ -977,7 +1001,7 @@ fn matrix_rotate_from_vector(matrix: &Matrix, x: f64, y: f64) {
 
 #[inline]
 fn matrix_rotate_axis_angle(
-  matrix: &Matrix,
+  matrix: &DOMMatrixInner,
   x: f64,
   y: f64,
   z: f64,
@@ -999,7 +1023,7 @@ fn matrix_rotate_axis_angle(
 }
 
 #[inline]
-fn matrix_skew_x(matrix: &Matrix, x_deg: f64) {
+fn matrix_skew_x(matrix: &DOMMatrixInner, x_deg: f64) {
   let mut inner = matrix.inner.borrow_mut();
   let skew =
     Matrix4x2::new(1.0, x_deg.to_radians().tan(), 0.0, 1.0, 0.0, 0.0, 0.0, 0.0);
@@ -1010,7 +1034,7 @@ fn matrix_skew_x(matrix: &Matrix, x_deg: f64) {
 }
 
 #[inline]
-fn matrix_skew_y(matrix: &Matrix, y_deg: f64) {
+fn matrix_skew_y(matrix: &DOMMatrixInner, y_deg: f64) {
   let mut inner = matrix.inner.borrow_mut();
   let skew =
     Matrix4x2::new(1.0, 0.0, y_deg.to_radians().tan(), 1.0, 0.0, 0.0, 0.0, 0.0);
@@ -1021,7 +1045,11 @@ fn matrix_skew_y(matrix: &Matrix, y_deg: f64) {
 }
 
 #[inline]
-fn matrix_multiply(out: &Matrix, lhs: &Matrix, rhs: &Matrix) {
+fn matrix_multiply(
+  out: &DOMMatrixInner,
+  lhs: &DOMMatrixInner,
+  rhs: &DOMMatrixInner,
+) {
   let lhs_inner = lhs.inner.borrow();
   let lhs_is_2d = lhs.is_2d.get();
   let rhs_inner = rhs.inner.borrow();
@@ -1034,19 +1062,19 @@ fn matrix_multiply(out: &Matrix, lhs: &Matrix, rhs: &Matrix) {
 }
 
 #[inline]
-fn matrix_flip_x(matrix: &Matrix) {
+fn matrix_flip_x(matrix: &DOMMatrixInner) {
   let mut inner = matrix.inner.borrow_mut();
   inner.column_mut(0).neg_mut();
 }
 
 #[inline]
-fn matrix_flip_y(matrix: &Matrix) {
+fn matrix_flip_y(matrix: &DOMMatrixInner) {
   let mut inner = matrix.inner.borrow_mut();
   inner.column_mut(1).neg_mut();
 }
 
 #[inline]
-fn matrix_inverse(matrix: &Matrix) {
+fn matrix_inverse(matrix: &DOMMatrixInner) {
   let mut inner = matrix.inner.borrow_mut();
   let is_2d = matrix.is_2d.get();
   if inner.iter().any(|&x| x.is_infinite()) {
@@ -1088,7 +1116,11 @@ fn matrix_inverse(matrix: &Matrix) {
   }
 }
 
-fn matrix_transform_point(matrix: &Matrix, point: &Point, out: &Point) {
+fn matrix_transform_point(
+  matrix: &DOMMatrixInner,
+  point: &DOMPointInner,
+  out: &DOMPointInner,
+) {
   let inner = matrix.inner.borrow();
   let point =
     Vector4::new(point.x.get(), point.y.get(), point.z.get(), point.w.get());

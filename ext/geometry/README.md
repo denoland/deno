@@ -92,7 +92,7 @@ the `extensions` field of your `RuntimeOptions`
 
 Following ops are provided, which can be accessed through `Deno.ops`:
 
-- op_create_matrix_identity
-- Matrix
-- Point
-- Rect
+- op_geometry_create_matrix_identity
+- DOMMatrixInner
+- DOMPointInner
+- DOMRectInner
