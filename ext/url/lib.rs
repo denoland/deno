@@ -2,16 +2,26 @@
 
 mod urlpattern;
 
+use std::borrow::Cow;
+use std::cell::RefCell;
 use std::path::PathBuf;
+use std::rc::Rc;
 
-use deno_core::error::type_error;
 use deno_core::error::AnyError;
 use deno_core::op2;
+use deno_core::url;
 use deno_core::url::form_urlencoded;
 use deno_core::url::quirks;
 use deno_core::url::Url;
+use deno_core::v8;
+use deno_core::v8::HandleScope;
+use deno_core::v8::Local;
+use deno_core::v8::Value;
+use deno_core::webidl;
+use deno_core::webidl::WebIdlConverter;
+use deno_core::webidl::WebIdlError;
+use deno_core::GarbageCollected;
 use deno_core::JsBuffer;
-use deno_core::OpState;
 pub use urlpattern::UrlPatternError;
 
 use crate::urlpattern::op_urlpattern_parse;
@@ -21,231 +31,447 @@ deno_core::extension!(
   deno_url,
   deps = [deno_webidl],
   ops = [
-    op_url_reparse,
-    op_url_parse,
-    op_url_get_serialization,
-    op_url_parse_with_base,
     op_url_parse_search_params,
-    op_url_stringify_search_params,
     op_urlpattern_parse,
     op_urlpattern_process_match_input
   ],
+  objects = [URL, URLSearchParams],
   esm = ["00_url.js", "01_urlpattern.js"],
 );
-
-/// Parse `href` with a `base_href`. Fills the out `buf` with URL components.
-#[op2(fast)]
-#[smi]
-pub fn op_url_parse_with_base(
-  state: &mut OpState,
-  #[string] href: &str,
-  #[string] base_href: &str,
-  #[buffer] buf: &mut [u32],
-) -> u32 {
-  let base_url = match Url::parse(base_href) {
-    Ok(url) => url,
-    Err(_) => return ParseStatus::Err as u32,
-  };
-  parse_url(state, href, Some(&base_url), buf)
-}
-
-#[repr(u32)]
-pub enum ParseStatus {
-  Ok = 0,
-  OkSerialization = 1,
-  Err,
-}
-
-struct UrlSerialization(String);
-
-#[op2]
-#[string]
-pub fn op_url_get_serialization(state: &mut OpState) -> String {
-  state.take::<UrlSerialization>().0
-}
-
-/// Parse `href` without a `base_url`. Fills the out `buf` with URL components.
-#[op2(fast)]
-#[smi]
-pub fn op_url_parse(
-  state: &mut OpState,
-  #[string] href: &str,
-  #[buffer] buf: &mut [u32],
-) -> u32 {
-  parse_url(state, href, None, buf)
-}
-
-/// `op_url_parse` and `op_url_parse_with_base` share the same implementation.
-///
-/// This function is used to parse the URL and fill the `buf` with internal
-/// offset values of the URL components.
-///
-/// If the serialized URL is the same as the input URL, then `UrlSerialization` is
-/// not set and returns `ParseStatus::Ok`.
-///
-/// If the serialized URL is different from the input URL, then `UrlSerialization` is
-/// set and returns `ParseStatus::OkSerialization`. JS side should check status and
-/// use `op_url_get_serialization` to get the serialized URL.
-///
-/// If the URL is invalid, then `UrlSerialization` is not set and returns `ParseStatus::Err`.
-///
-/// ```js
-/// const buf = new Uint32Array(8);
-/// const status = op_url_parse("http://example.com", buf.buffer);
-/// let serializedUrl = "";
-/// if (status === ParseStatus.Ok) {
-///   serializedUrl = "http://example.com";
-/// } else if (status === ParseStatus.OkSerialization) {
-///   serializedUrl = op_url_get_serialization();
-/// }
-/// ```
-#[inline]
-fn parse_url(
-  state: &mut OpState,
-  href: &str,
-  base_href: Option<&Url>,
-  buf: &mut [u32],
-) -> u32 {
-  match Url::options().base_url(base_href).parse(href) {
-    Ok(url) => {
-      let inner_url = quirks::internal_components(&url);
-
-      buf[0] = inner_url.scheme_end;
-      buf[1] = inner_url.username_end;
-      buf[2] = inner_url.host_start;
-      buf[3] = inner_url.host_end;
-      buf[4] = inner_url.port.unwrap_or(0) as u32;
-      buf[5] = inner_url.path_start;
-      buf[6] = inner_url.query_start.unwrap_or(0);
-      buf[7] = inner_url.fragment_start.unwrap_or(0);
-      let serialization: String = url.into();
-      if serialization != href {
-        state.put(UrlSerialization(serialization));
-        ParseStatus::OkSerialization as u32
-      } else {
-        ParseStatus::Ok as u32
-      }
-    }
-    Err(_) => ParseStatus::Err as u32,
-  }
-}
-
-#[derive(Eq, PartialEq, Debug)]
-#[repr(u8)]
-pub enum UrlSetter {
-  Hash = 0,
-  Host = 1,
-  Hostname = 2,
-  Password = 3,
-  Pathname = 4,
-  Port = 5,
-  Protocol = 6,
-  Search = 7,
-  Username = 8,
-}
-
-const NO_PORT: u32 = 65536;
-
-#[op2(fast)]
-#[smi]
-pub fn op_url_reparse(
-  state: &mut OpState,
-  #[string] href: String,
-  #[smi] setter: u8,
-  #[string] setter_value: String,
-  #[buffer] buf: &mut [u32],
-) -> u32 {
-  let mut url = match Url::options().parse(&href) {
-    Ok(url) => url,
-    Err(_) => return ParseStatus::Err as u32,
-  };
-
-  if setter > 8 {
-    return ParseStatus::Err as u32;
-  }
-  // SAFETY: checked to be less than 9.
-  let setter = unsafe { std::mem::transmute::<u8, UrlSetter>(setter) };
-  let value = setter_value.as_ref();
-  let e = match setter {
-    UrlSetter::Hash => {
-      quirks::set_hash(&mut url, value);
-      Ok(())
-    }
-    UrlSetter::Host => quirks::set_host(&mut url, value),
-
-    UrlSetter::Hostname => quirks::set_hostname(&mut url, value),
-
-    UrlSetter::Password => quirks::set_password(&mut url, value),
-
-    UrlSetter::Pathname => {
-      quirks::set_pathname(&mut url, value);
-      Ok(())
-    }
-    UrlSetter::Port => quirks::set_port(&mut url, value),
-
-    UrlSetter::Protocol => quirks::set_protocol(&mut url, value),
-    UrlSetter::Search => {
-      quirks::set_search(&mut url, value);
-      Ok(())
-    }
-    UrlSetter::Username => quirks::set_username(&mut url, value),
-  };
-
-  match e {
-    Ok(_) => {
-      let inner_url = quirks::internal_components(&url);
-
-      buf[0] = inner_url.scheme_end;
-      buf[1] = inner_url.username_end;
-      buf[2] = inner_url.host_start;
-      buf[3] = inner_url.host_end;
-      buf[4] = inner_url.port.map(|p| p as u32).unwrap_or(NO_PORT);
-      buf[5] = inner_url.path_start;
-      buf[6] = inner_url.query_start.unwrap_or(0);
-      buf[7] = inner_url.fragment_start.unwrap_or(0);
-      let serialization: String = url.into();
-      if serialization != href {
-        state.put(UrlSerialization(serialization));
-        ParseStatus::OkSerialization as u32
-      } else {
-        ParseStatus::Ok as u32
-      }
-    }
-    Err(_) => ParseStatus::Err as u32,
-  }
-}
 
 #[op2]
 #[serde]
 pub fn op_url_parse_search_params(
-  #[string] args: Option<String>,
-  #[buffer] zero_copy: Option<JsBuffer>,
-) -> Result<Vec<(String, String)>, AnyError> {
-  let params = match (args, zero_copy) {
-    (None, Some(zero_copy)) => form_urlencoded::parse(&zero_copy)
-      .into_iter()
-      .map(|(k, v)| (k.as_ref().to_owned(), v.as_ref().to_owned()))
-      .collect(),
-    (Some(args), None) => form_urlencoded::parse(args.as_bytes())
-      .into_iter()
-      .map(|(k, v)| (k.as_ref().to_owned(), v.as_ref().to_owned()))
-      .collect(),
-    _ => return Err(type_error("invalid parameters")),
-  };
-  Ok(params)
-}
-
-#[op2]
-#[string]
-pub fn op_url_stringify_search_params(
-  #[serde] args: Vec<(String, String)>,
-) -> String {
-  let search = form_urlencoded::Serializer::new(String::new())
-    .extend_pairs(args)
-    .finish();
-  search
+  #[buffer] zero_copy: JsBuffer,
+) -> Vec<(String, String)> {
+  form_urlencoded::parse(&zero_copy).into_owned().collect()
 }
 
 pub fn get_declaration() -> PathBuf {
   PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("lib.deno_url.d.ts")
+}
+
+pub struct URL(Rc<RefCell<Url>>);
+
+impl GarbageCollected for URL {}
+
+#[op2]
+impl URL {
+  #[constructor]
+  #[cppgc]
+  fn new(
+    #[webidl] url: String,
+    #[webidl] base: Option<String>,
+  ) -> Result<URL, url::ParseError> {
+    let base = base.map(|base| Url::parse(&base)).transpose()?;
+    let url = Url::options().base_url(base.as_ref()).parse(&url)?;
+    Ok(URL(Rc::from(RefCell::new(url))))
+  }
+
+  #[static_method]
+  #[cppgc]
+  fn parse(
+    #[webidl] url: String,
+    #[webidl] base: Option<String>,
+  ) -> Option<URL> {
+    let base = base.map(|base| Url::parse(&base)).transpose().ok()?;
+    let url = Url::options().base_url(base.as_ref()).parse(&url).ok()?;
+    Some(URL(Rc::from(RefCell::new(url))))
+  }
+
+  #[static_method]
+  fn canParse(#[webidl] url: String, #[webidl] base: Option<String>) -> bool {
+    let Ok(base) = base.map(|base| Url::parse(&base)).transpose() else {
+      return false;
+    };
+    Url::options().base_url(base.as_ref()).parse(&url).is_ok()
+  }
+
+  #[getter]
+  #[string]
+  fn hash(&self) -> String {
+    quirks::hash(&self.0.borrow()).to_string()
+  }
+
+  #[setter]
+  fn hash(&self, #[webidl] value: String) {
+    quirks::set_hash(&mut self.0.borrow_mut(), &value);
+  }
+
+  #[getter]
+  #[string]
+  fn host(&self) -> String {
+    quirks::host(&self.0.borrow()).to_string()
+  }
+
+  #[setter]
+  fn host(&self, #[webidl] value: String) {
+    quirks::set_host(&mut self.0.borrow_mut(), &value);
+  }
+
+  #[getter]
+  #[string]
+  fn hostname(&self) -> String {
+    quirks::hostname(&self.0.borrow()).to_string()
+  }
+
+  #[setter]
+  fn hostname(&self, #[webidl] value: String) {
+    quirks::set_hostname(&mut self.0.borrow_mut(), &value);
+  }
+
+  #[getter]
+  #[string]
+  fn href(&self) -> String {
+    quirks::href(&self.0.borrow()).to_string()
+  }
+
+  #[setter]
+  fn href(&self, #[webidl] value: String) {
+    quirks::set_href(&mut self.0.borrow_mut(), &value);
+  }
+
+  #[getter]
+  #[string]
+  fn origin(&self) -> String {
+    quirks::origin(&self.0.borrow())
+  }
+
+  #[getter]
+  #[string]
+  fn password(&self) -> String {
+    quirks::password(&self.0.borrow()).to_string()
+  }
+
+  #[setter]
+  fn password(&self, #[webidl] value: String) {
+    quirks::set_password(&mut self.0.borrow_mut(), &value);
+  }
+
+  #[getter]
+  #[string]
+  fn pathname(&self) -> String {
+    quirks::pathname(&self.0.borrow()).to_string()
+  }
+
+  #[setter]
+  fn pathname(&self, #[webidl] value: String) {
+    quirks::set_pathname(&mut self.0.borrow_mut(), &value);
+  }
+
+  #[getter]
+  #[string]
+  fn port(&self) -> String {
+    quirks::port(&self.0.borrow()).to_string()
+  }
+
+  #[setter]
+  fn port(&self, #[webidl] value: String) {
+    quirks::set_port(&mut self.0.borrow_mut(), &value);
+  }
+
+  #[getter]
+  #[string]
+  fn protocol(&self) -> String {
+    quirks::protocol(&self.0.borrow()).to_string()
+  }
+
+  #[setter]
+  fn protocol(&self, #[webidl] value: String) {
+    quirks::set_protocol(&mut self.0.borrow_mut(), &value);
+  }
+
+  #[getter]
+  #[string]
+  fn search(&self) -> String {
+    quirks::search(&self.0.borrow()).to_string()
+  }
+
+  #[setter]
+  fn search(&self, #[webidl] value: String) {
+    quirks::set_search(&mut self.0.borrow_mut(), &value);
+  }
+
+  #[getter]
+  #[string]
+  fn username(&self) -> String {
+    quirks::username(&self.0.borrow()).to_string()
+  }
+
+  #[setter]
+  fn username(&self, #[webidl] value: String) {
+    quirks::set_username(&mut self.0.borrow_mut(), &value);
+  }
+
+  #[getter]
+  #[cppgc]
+  fn searchParams(&self) -> URLSearchParams {
+    // TODO: sameObject
+    let repr =
+      form_urlencoded::parse(quirks::search(&self.0.borrow()).as_bytes())
+        .into_owned()
+        .collect();
+    URLSearchParams {
+      inner_url: Some(self.0.clone()),
+      repr: RefCell::new(repr),
+    }
+  }
+
+  #[string]
+  fn toString(&self) -> String {
+    self.0.borrow().to_string()
+  }
+
+  #[string]
+  fn toJSON(&self) -> String {
+    self.0.borrow().to_string()
+  }
+}
+
+struct URLSearchParams {
+  inner_url: Option<Rc<RefCell<Url>>>,
+  repr: RefCell<Vec<(String, String)>>,
+}
+impl GarbageCollected for URLSearchParams {}
+
+#[op2]
+impl URLSearchParams {
+  // TODO:   constructor(init = "") {
+  #[constructor]
+  #[cppgc]
+  fn new(
+    #[webidl] init: SequenceOrRecordOrString,
+  ) -> Result<URLSearchParams, AnyError> {
+    let repr = match init {
+      SequenceOrRecordOrString::Sequence(s) => {
+        s.into_iter()
+          .enumerate()
+          .map(|(i, pair)| {
+            if pair.len() != 2 {
+              /* TODO:
+                throw new TypeError(
+                  `${prefix}: Item ${
+                    i + 0
+                  } in the parameter list does have length 2 exactly`,
+                );
+              }
+                 */
+              unreachable!()
+            }
+            let mut iter = pair.into_iter();
+            (iter.next().unwrap(), iter.next().unwrap())
+          })
+          .collect::<Vec<_>>()
+      }
+      SequenceOrRecordOrString::Record(r) => r.into_iter().collect(),
+      SequenceOrRecordOrString::String(s) => {
+        let s = s.strip_prefix('?').unwrap_or(&s);
+        form_urlencoded::parse(s.as_bytes()).into_owned().collect()
+      }
+    };
+
+    Ok(URLSearchParams {
+      inner_url: None,
+      repr: RefCell::new(repr),
+    })
+  }
+
+  #[required(2)]
+  fn append(&self, #[webidl] name: String, #[webidl] value: String) {
+    {
+      self.repr.borrow_mut().push((name, value));
+    }
+    self.update_url();
+  }
+
+  #[required(1)]
+  fn delete(&self, #[webidl] name: String, #[webidl] value: Option<String>) {
+    let mut i = 0;
+    if let Some(value) = value {
+      let mut list = self.repr.borrow_mut();
+      while i < list.len() {
+        if list[i].0 == name && list[i].1 == value {
+          list.remove(i);
+        } else {
+          i += 1;
+        }
+      }
+    } else {
+      let mut list = self.repr.borrow_mut();
+      while i < list.len() {
+        if list[i].0 == name {
+          list.remove(i);
+        } else {
+          i += 1;
+        }
+      }
+    }
+    self.update_url();
+  }
+
+  #[required(1)]
+  #[serde]
+  fn getAll(&self, #[webidl] name: String) -> Vec<String> {
+    self
+      .repr
+      .borrow()
+      .iter()
+      .filter_map(|(repr_name, val)| {
+        if repr_name == &name {
+          Some(val.clone())
+        } else {
+          None
+        }
+      })
+      .collect()
+  }
+
+  #[required(1)]
+  #[string]
+  fn get(&self, #[webidl] name: String) -> Option<String> {
+    self.repr.borrow().iter().find_map(|(repr_name, val)| {
+      if repr_name == &name {
+        Some(val.clone())
+      } else {
+        None
+      }
+    })
+  }
+
+  // TODO: dont use option, figure out a solution to differentiate between "= undefined" and nullable converter
+  #[required(1)]
+  fn has(
+    &self,
+    #[webidl] name: String,
+    #[webidl] value: Option<String>,
+  ) -> bool {
+    if let Some(value) = value {
+      self.repr.borrow().contains(&(name, value))
+    } else {
+      self
+        .repr
+        .borrow()
+        .iter()
+        .any(|(repr_name, _val)| repr_name == &name)
+    }
+  }
+
+  #[required(2)]
+  fn set(&self, #[webidl] name: String, #[webidl] value: String) {
+    {
+      let mut list = self.repr.borrow_mut();
+      let mut i = 0;
+      let mut found = false;
+
+      // If there are any name-value pairs whose name is name, in list,
+      // set the value of the first such name-value pair to value
+      // and remove the others.
+      while i < list.len() {
+        if list[i].0 == name {
+          if !found {
+            list[i].1 = value.clone();
+            found = true;
+            i += 1;
+          } else {
+            list.remove(i);
+          }
+        } else {
+          i += 1;
+        }
+      }
+
+      // Otherwise, append a new name-value pair whose name is name
+      // and value is value, to list.
+      if !found {
+        list.push((name, value));
+      }
+    }
+
+    self.update_url();
+  }
+
+  #[fast]
+  fn sort(&self) {
+    {
+      let mut list = self.repr.borrow_mut();
+      list.sort_by(|a, b| a.0.cmp(&b.0));
+    }
+
+    self.update_url();
+  }
+
+  #[string]
+  fn toString(&self) -> String {
+    self.to_string_repr()
+  }
+
+  #[getter]
+  fn size(&self) -> u32 {
+    self.repr.borrow().len() as _
+  }
+}
+
+impl URLSearchParams {
+  fn update_url(&self) {
+    if let Some(inner) = &self.inner_url {
+      quirks::set_search(&mut inner.borrow_mut(), &self.to_string_repr());
+    }
+  }
+
+  fn to_string_repr(&self) -> String {
+    let repr = self.repr.borrow();
+    form_urlencoded::Serializer::new(String::new())
+      .extend_pairs(repr.iter())
+      .finish()
+  }
+}
+
+enum SequenceOrRecordOrString {
+  Sequence(Vec<Vec<String>>),
+  Record(indexmap::IndexMap<String, String>),
+  String(String),
+}
+impl<'a> WebIdlConverter<'a> for SequenceOrRecordOrString {
+  type Options = ();
+
+  fn convert<C>(
+    scope: &mut HandleScope<'a>,
+    value: Local<'a, Value>,
+    prefix: Cow<'static, str>,
+    context: C,
+    _options: &Self::Options,
+  ) -> Result<Self, WebIdlError>
+  where
+    C: Fn() -> Cow<'static, str>,
+  {
+    if webidl::type_of(scope, value) == webidl::Type::Object {
+      let obj = value.try_cast::<v8::Object>().unwrap();
+      let iter_key = v8::Symbol::get_iterator(scope);
+      if obj.get(scope, iter_key.into()).is_some() {
+        Ok(Self::Sequence(WebIdlConverter::convert(
+          scope,
+          value,
+          prefix,
+          context,
+          &Default::default(),
+        )?))
+      } else {
+        Ok(Self::Record(WebIdlConverter::convert(
+          scope,
+          value,
+          prefix,
+          context,
+          &Default::default(),
+        )?))
+      }
+    } else {
+      Ok(Self::String(WebIdlConverter::convert(
+        scope,
+        value,
+        prefix,
+        context,
+        &Default::default(),
+      )?))
+    }
+  }
 }
