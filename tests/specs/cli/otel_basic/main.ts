@@ -23,7 +23,7 @@ const server = Deno.serve(
       const child = command.spawn();
       child.status
         .then((status) => {
-          if (!status.success) {
+          if (status.signal) {
             throw new Error("child process failed: " + JSON.stringify(status));
           }
           return server.shutdown();
