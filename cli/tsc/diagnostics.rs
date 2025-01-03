@@ -173,7 +173,7 @@ impl Diagnostic {
         additional_message.unwrap_or_default()
       )),
       message_chain: None,
-      source: maybe_range.map(|r| r.specifier.to_string()),
+      source: None,
       source_line: None,
       file_name: maybe_range.map(|r| r.specifier.to_string()),
       related_information: None,
