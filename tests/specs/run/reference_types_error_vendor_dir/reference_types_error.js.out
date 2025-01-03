@@ -1,2 +1,3 @@
-error: Module not found "file:///[WILDCARD]/nonexistent.d.ts".
-    at file:///[WILDCARD]/reference_types_error.js:1:22
+Check file:///[WILDLINE]/reference_types_error.js
+error: TS2307 [ERROR]: Cannot find module 'file:///[WILDLINE]/nonexistent.d.ts'.
+    at file:///[WILDLINE]/reference_types_error.js:1:22
