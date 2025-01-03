@@ -186,10 +186,11 @@ pub fn graph_walk_errors<'a>(
       }
 
       if graph.graph_kind().include_types()
-        && matches!(
-          error,
-          ModuleGraphError::ModuleError(ModuleError::Missing(..))
-        )
+        && (message.contains(RUN_WITH_SLOPPY_IMPORTS_MSG)
+          || matches!(
+            error,
+            ModuleGraphError::ModuleError(ModuleError::Missing(..))
+          ))
       {
         // ignore and let typescript surface this as a diagnostic instead
         log::debug!("Ignoring: {}", message);
@@ -872,6 +873,9 @@ pub fn enhanced_resolution_error_message(error: &ResolutionError) -> String {
   message
 }
 
+static RUN_WITH_SLOPPY_IMPORTS_MSG: &str =
+  "or run with --unstable-sloppy-imports";
+
 fn enhanced_sloppy_imports_error_message(
   sys: &CliSys,
   error: &ModuleError,
@@ -879,17 +883,28 @@ fn enhanced_sloppy_imports_error_message(
   match error {
     ModuleError::LoadingErr(specifier, _, ModuleLoadError::Loader(_)) // ex. "Is a directory" error
     | ModuleError::Missing(specifier, _) => {
-      let additional_message = CliSloppyImportsResolver::new(SloppyImportsCachedFs::new(sys.clone()))
-        .resolve(specifier, SloppyImportsResolutionKind::Execution)?
-        .as_suggestion_message();
+      let additional_message = maybe_additional_sloppy_imports_message(sys, specifier)?;
       Some(format!(
-        "{} {} or run with --unstable-sloppy-imports",
+        "{} {}",
         error,
         additional_message,
       ))
     }
     _ => None,
   }
+}
+
+pub fn maybe_additional_sloppy_imports_message(
+  sys: &CliSys,
+  specifier: &ModuleSpecifier,
+) -> Option<String> {
+  Some(format!(
+    "{} {}",
+    CliSloppyImportsResolver::new(SloppyImportsCachedFs::new(sys.clone()))
+      .resolve(specifier, SloppyImportsResolutionKind::Execution)?
+      .as_suggestion_message(),
+    RUN_WITH_SLOPPY_IMPORTS_MSG
+  ))
 }
 
 fn enhanced_integrity_error_message(err: &ModuleError) -> Option<String> {

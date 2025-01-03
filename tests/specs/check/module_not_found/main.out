@@ -1,13 +1,9 @@
 Download http://localhost:4545/remote.ts
 Check file:///[WILDLINE]/module_not_found/main.ts
-error: TS2307 [ERROR]: Cannot find module './other.js' or its corresponding type declarations.
-import { Test } from "./other.js";
-                     ~~~~~~~~~~~~
+error: TS2307 [ERROR]: Cannot find module 'file:///[WILDLINE]/other.js'.
     at file:///[WILDLINE]/main.ts:1:22
 
-TS2307 [ERROR]: Cannot find module 'http://localhost:4545/remote.ts' or its corresponding type declarations.
-import { Remote } from "http://localhost:4545/remote.ts";
-                       ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+TS2307 [ERROR]: Cannot find module 'http://localhost:4545/remote.ts'.
     at file:///[WILDLINE]/main.ts:2:24
 
 Found 2 errors.

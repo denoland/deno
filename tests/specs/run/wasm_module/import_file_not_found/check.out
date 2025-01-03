@@ -1,4 +1,4 @@
 Download http://localhost:4545/wasm/math_with_import.wasm
 Check file:///[WILDLINE]/main.js
-error: TS2307 [ERROR]: Cannot find module './math.ts' or its corresponding type declarations.
-    at http://localhost:4545/wasm/math_with_import.wasm:1:1
+error: TS2307 [ERROR]: Cannot find module 'file:///V:/deno/tests/specs/run/wasm_module/import_file_not_found/local_math.ts'.
+    at http://localhost:4545/wasm/math_with_import.wasm:1:87

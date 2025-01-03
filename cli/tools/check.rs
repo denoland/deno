@@ -10,6 +10,7 @@ use deno_core::error::AnyError;
 use deno_graph::Module;
 use deno_graph::ModuleError;
 use deno_graph::ModuleGraph;
+use deno_graph::ModuleLoadError;
 use deno_terminal::colors;
 use once_cell::sync::Lazy;
 use regex::Regex;
@@ -27,10 +28,12 @@ use crate::cache::Caches;
 use crate::cache::FastInsecureHasher;
 use crate::cache::TypeCheckCache;
 use crate::factory::CliFactory;
+use crate::graph_util::maybe_additional_sloppy_imports_message;
 use crate::graph_util::BuildFastCheckGraphOptions;
 use crate::graph_util::ModuleGraphBuilder;
 use crate::node::CliNodeResolver;
 use crate::npm::CliNpmResolver;
+use crate::sys::CliSys;
 use crate::tsc;
 use crate::tsc::Diagnostics;
 use crate::tsc::TypeCheckingCjsTracker;
@@ -106,6 +109,7 @@ pub struct TypeChecker {
   module_graph_builder: Arc<ModuleGraphBuilder>,
   node_resolver: Arc<CliNodeResolver>,
   npm_resolver: Arc<dyn CliNpmResolver>,
+  sys: CliSys,
 }
 
 impl TypeChecker {
@@ -116,6 +120,7 @@ impl TypeChecker {
     module_graph_builder: Arc<ModuleGraphBuilder>,
     node_resolver: Arc<CliNodeResolver>,
     npm_resolver: Arc<dyn CliNpmResolver>,
+    sys: CliSys,
   ) -> Self {
     Self {
       caches,
@@ -124,6 +129,7 @@ impl TypeChecker {
       module_graph_builder,
       node_resolver,
       npm_resolver,
+      sys,
     }
   }
 
@@ -191,17 +197,28 @@ impl TypeChecker {
       )?;
     }
 
+    let filter_remote_diagnostics = |d: &tsc::Diagnostic| {
+      if self.is_remote_diagnostic(d) {
+        type_check_mode == TypeCheckMode::All && d.include_when_remote()
+      } else {
+        true
+      }
+    };
     let TscRoots {
       roots: root_names,
       missing_diagnostics,
       maybe_check_hash,
     } = get_tsc_roots(
+      &self.sys,
       &graph,
       check_js,
       self.npm_resolver.check_state_hash(),
       type_check_mode,
       &ts_config,
     );
+
+    let missing_diagnostics =
+      missing_diagnostics.filter(filter_remote_diagnostics);
 
     if root_names.is_empty() && missing_diagnostics.is_empty() {
       return Ok((graph.into(), Default::default()));
@@ -255,16 +272,11 @@ impl TypeChecker {
       check_mode: type_check_mode,
     })?;
 
-    let mut diagnostics = response.diagnostics;
-    diagnostics = diagnostics.filter(|d| {
-      if self.is_remote_diagnostic(d) {
-        type_check_mode == TypeCheckMode::All && d.include_when_remote()
-      } else {
-        true
-      }
-    });
-    // always show these diagnostics because they're for root specified files
-    diagnostics.prepend(missing_diagnostics);
+    let response_diagnostics =
+      response.diagnostics.filter(filter_remote_diagnostics);
+
+    let mut diagnostics = missing_diagnostics;
+    diagnostics.extend(response_diagnostics);
 
     diagnostics.apply_fast_check_source_maps(&graph);
 
@@ -300,8 +312,7 @@ impl TypeChecker {
 
 struct TscRoots {
   roots: Vec<(ModuleSpecifier, MediaType)>,
-  /// missing errors only found in the root
-  missing_diagnostics: Vec<tsc::Diagnostic>,
+  missing_diagnostics: tsc::Diagnostics,
   maybe_check_hash: Option<CacheDBHash>,
 }
 
@@ -312,6 +323,7 @@ struct TscRoots {
 /// the roots, so they get type checked and optionally emitted,
 /// otherwise they would be ignored if only imported into JavaScript.
 fn get_tsc_roots(
+  sys: &CliSys,
   graph: &ModuleGraph,
   check_js: bool,
   npm_cache_state_hash: Option<u64>,
@@ -401,7 +413,7 @@ fn get_tsc_roots(
 
   let mut result = TscRoots {
     roots: Vec::with_capacity(graph.specifiers_count()),
-    missing_diagnostics: Vec::new(),
+    missing_diagnostics: Default::default(),
     maybe_check_hash: None,
   };
   let mut maybe_hasher = npm_cache_state_hash.map(|npm_cache_state_hash| {
@@ -439,41 +451,58 @@ fn get_tsc_roots(
   };
   for specifier in get_import_specifiers() {
     let specifier = graph.resolve(specifier);
-    if seen.insert(specifier.clone()) {
-      pending.push_back(specifier);
+    if seen.insert(specifier) {
+      pending.push_back((specifier, false));
     }
   }
 
   // then the roots
   for root in &graph.roots {
     let specifier = graph.resolve(root);
-    if seen.insert(specifier.clone()) {
-      pending.push_back(specifier);
+    if seen.insert(specifier) {
+      pending.push_back((specifier, false));
     }
   }
 
   // now walk the graph that only includes the fast check dependencies
-  while let Some(specifier) = pending.pop_front() {
+  while let Some((specifier, is_dynamic)) = pending.pop_front() {
     let module = match graph.try_get(specifier) {
       Ok(Some(module)) => module,
       Ok(None) => continue,
       Err(ModuleError::Missing(specifier, maybe_range)) => {
-        if get_import_specifiers().any(|s| s == specifier)
-          || graph.roots.contains(specifier)
-        {
+        if !is_dynamic {
           result
             .missing_diagnostics
             .push(tsc::Diagnostic::from_missing_error(
               specifier,
               maybe_range.as_ref(),
+              maybe_additional_sloppy_imports_message(sys, specifier),
             ));
-          // diagnostic, no need to keep hashing
-          maybe_hasher = None;
+        }
+        continue;
+      }
+      Err(ModuleError::LoadingErr(
+        specifier,
+        maybe_range,
+        ModuleLoadError::Loader(_),
+      )) => {
+        // these will be errors like attempting to load a directory
+        if !is_dynamic {
+          result
+            .missing_diagnostics
+            .push(tsc::Diagnostic::from_missing_error(
+              specifier,
+              maybe_range.as_ref(),
+              maybe_additional_sloppy_imports_message(sys, specifier),
+            ));
         }
         continue;
       }
       Err(_) => continue,
     };
+    if is_dynamic && !seen.insert(specifier) {
+      continue;
+    }
     if let Some(entry) =
       maybe_get_check_entry(module, check_js, maybe_hasher.as_mut())
     {
@@ -492,29 +521,49 @@ fn get_tsc_roots(
       maybe_module_dependencies = Some(&module.dependencies);
     }
 
+    fn handle_specifier<'a>(
+      graph: &'a ModuleGraph,
+      seen: &mut HashSet<&'a ModuleSpecifier>,
+      pending: &mut VecDeque<(&'a ModuleSpecifier, bool)>,
+      specifier: &'a ModuleSpecifier,
+      is_dynamic: bool,
+    ) {
+      let specifier = graph.resolve(specifier);
+      if is_dynamic {
+        if !seen.contains(specifier) {
+          pending.push_back((specifier, true));
+        }
+      } else if seen.insert(specifier) {
+        pending.push_back((specifier, false));
+      }
+    }
+
     if let Some(deps) = maybe_module_dependencies {
       for dep in deps.values() {
         // walk both the code and type dependencies
         if let Some(specifier) = dep.get_code() {
-          let specifier = graph.resolve(specifier);
-          if seen.insert(specifier.clone()) {
-            pending.push_back(specifier);
-          }
+          handle_specifier(
+            graph,
+            &mut seen,
+            &mut pending,
+            specifier,
+            dep.is_dynamic,
+          );
         }
         if let Some(specifier) = dep.get_type() {
-          let specifier = graph.resolve(specifier);
-          if seen.insert(specifier.clone()) {
-            pending.push_back(specifier);
-          }
+          handle_specifier(
+            graph,
+            &mut seen,
+            &mut pending,
+            specifier,
+            dep.is_dynamic,
+          );
         }
       }
     }
 
     if let Some(dep) = maybe_types_dependency {
-      let specifier = graph.resolve(&dep.specifier);
-      if seen.insert(specifier.clone()) {
-        pending.push_back(specifier);
-      }
+      handle_specifier(graph, &mut seen, &mut pending, &dep.specifier, false);
     }
   }
 

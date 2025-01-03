@@ -154,6 +154,7 @@ impl Diagnostic {
   pub fn from_missing_error(
     specifier: &ModuleSpecifier,
     maybe_range: Option<&deno_graph::Range>,
+    additional_message: Option<String>,
   ) -> Self {
     Self {
       category: DiagnosticCategory::Error,
@@ -161,7 +162,16 @@ impl Diagnostic {
       start: maybe_range.map(|r| Position::from_deno_graph(r.range.start)),
       end: maybe_range.map(|r| Position::from_deno_graph(r.range.end)),
       original_source_start: None, // will be applied later
-      message_text: Some(format!("Cannot find module '{}'.", specifier)),
+      message_text: Some(format!(
+        "Cannot find module '{}'.{}{}",
+        specifier,
+        if additional_message.is_none() {
+          ""
+        } else {
+          " "
+        },
+        additional_message.unwrap_or_default()
+      )),
       message_chain: None,
       source: maybe_range.map(|r| r.specifier.to_string()),
       source_line: None,
@@ -330,12 +340,12 @@ impl Diagnostics {
     });
   }
 
-  pub fn prepend(&mut self, diagnostic: Vec<Diagnostic>) {
-    let mut new_diagnostics =
-      Vec::with_capacity(diagnostic.len() + self.0.len());
-    new_diagnostics.extend(diagnostic);
-    new_diagnostics.extend(self.0.drain(..));
-    self.0 = new_diagnostics;
+  pub fn push(&mut self, diagnostic: Diagnostic) {
+    self.0.push(diagnostic);
+  }
+
+  pub fn extend(&mut self, diagnostic: Diagnostics) {
+    self.0.extend(diagnostic.0);
   }
 
   /// Return a set of diagnostics where only the values where the predicate
