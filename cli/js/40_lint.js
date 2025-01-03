@@ -38,12 +38,20 @@ const PropFlags = {
    * the string table that was included in the message.
    */
   String: 2,
+  /**
+   * A numnber field. Numbers are represented as strings internally.
+   */
+  Number: 3,
   /** This value is either 0 = false, or 1 = true */
-  Bool: 3,
+  Bool: 4,
   /** No value, it's null */
-  Null: 4,
+  Null: 5,
   /** No value, it's undefined */
-  Undefined: 5,
+  Undefined: 6,
+  /** An object */
+  Obj: 7,
+  /** A regex obj */
+  Regex: 8,
 };
 
 /** @typedef {import("./40_lint_types.d.ts").AstContext} AstContext */
@@ -291,18 +299,28 @@ function findPropOffset(buf, offset, search) {
   const propCount = buf[offset];
   offset += 1;
 
+  let skip = 0;
+
   for (let i = 0; i < propCount; i++) {
     const maybe = offset;
     const prop = buf[offset++];
     const kind = buf[offset++];
-    if (prop === search) return maybe;
+    if (skip === 0 && prop === search) return maybe;
+    if (skip > 0) skip--;
 
     if (kind === PropFlags.Ref) {
       offset += 4;
     } else if (kind === PropFlags.RefArr) {
       const len = readU32(buf, offset);
       offset += 4 + (len * 4);
-    } else if (kind === PropFlags.String) {
+    } else if (kind === PropFlags.Obj) {
+      const len = readU32(buf, offset);
+      skip += len;
+      offset += 4;
+    } else if (
+      kind === PropFlags.String || kind === PropFlags.Number ||
+      kind === PropFlags.Regex
+    ) {
       offset += 4;
     } else if (kind === PropFlags.Bool) {
       offset++;
@@ -398,6 +416,10 @@ function toJsValue(ctx, offset) {
     range: readValue(ctx, offset, AST_PROP_RANGE),
   };
 
+  /** @type {Record<string, any>} */
+  let out = node;
+  let skip = 0;
+
   // type + parentId + SpanLo + SpanHi
   offset += 1 + 4 + 4 + 4;
 
@@ -406,11 +428,18 @@ function toJsValue(ctx, offset) {
     const prop = buf[offset++];
     const kind = buf[offset++];
     const name = getString(ctx.strTable, ctx.strByProp[prop]);
+    if (skip > 0) {
+      skip--;
+      if (skip === 0) {
+        // TODO(@marvinhagemeister): Support recursiveness
+        out = node;
+      }
+    }
 
     if (kind === PropFlags.Ref) {
       const v = readU32(buf, offset);
       offset += 4;
-      node[name] = v === 0 ? null : toJsValue(ctx, v);
+      out[name] = v === 0 ? null : toJsValue(ctx, v);
     } else if (kind === PropFlags.RefArr) {
       const len = readU32(buf, offset);
       offset += 4;
@@ -421,22 +450,124 @@ function toJsValue(ctx, offset) {
         nodes[i] = toJsValue(ctx, v);
         offset += 4;
       }
-      node[name] = nodes;
+      out[name] = nodes;
     } else if (kind === PropFlags.Bool) {
       const v = buf[offset++];
-      node[name] = v === 1;
+      out[name] = v === 1;
     } else if (kind === PropFlags.String) {
       const v = readU32(buf, offset);
       offset += 4;
-      node[name] = getString(ctx.strTable, v);
+      out[name] = getString(ctx.strTable, v);
+    } else if (kind === PropFlags.Number) {
+      const v = readU32(buf, offset);
+      offset += 4;
+      out[name] = Number(getString(ctx.strTable, v));
+    } else if (kind === PropFlags.Regex) {
+      const v = readU32(buf, offset);
+      offset += 4;
+
+      out[name] = readRegex(ctx.strTable, v);
     } else if (kind === PropFlags.Null) {
-      node[name] = null;
+      out[name] = null;
     } else if (kind === PropFlags.Undefined) {
-      node[name] = undefined;
+      out[name] = undefined;
+    } else if (kind === PropFlags.Obj) {
+      const v = readU32(buf, offset);
+      skip += v;
+      offset += 4;
+      const obj = {};
+      out = obj;
+      out[name] = obj;
     }
   }
 
   return node;
+}
+
+/**
+ * @param {AstContext["strTable"]} strTable
+ * @param {number} strId
+ * @returns  {RegExp}
+ */
+function readRegex(strTable, strId) {
+  const raw = getString(strTable, strId);
+  const idx = raw.lastIndexOf("/");
+  const pattern = raw.slice(1, idx);
+  const flags = idx < raw.length - 1 ? raw.slice(idx) : undefined;
+
+  return new RegExp(pattern, flags);
+}
+
+/**
+ * @param {AstContext} ctx
+ * @param {number} offset
+ * @returns {Record<string, any>}
+ */
+function readObject(ctx, offset) {
+  const { buf, strTable, strByProp } = ctx;
+
+  /** @type {Record<string, any>} */
+  const obj = {};
+
+  const count = readU32(buf, offset);
+  offset += 4;
+
+  for (let i = 0; i < count; i++) {
+    const start = offset;
+    const prop = buf[offset++];
+    const name = getString(strTable, strByProp[prop]);
+    const value = readProperty(ctx, start);
+
+    obj[name] = value;
+  }
+
+  return obj;
+}
+
+/**
+ * @param {AstContext} ctx
+ * @param {number} offset
+ * @returns {any}
+ */
+function readProperty(ctx, offset) {
+  const { buf } = ctx;
+
+  const kind = buf[offset + 1];
+  offset += 2;
+
+  if (kind === PropFlags.Ref) {
+    const value = readU32(buf, offset);
+    return getNode(ctx, value);
+  } else if (kind === PropFlags.RefArr) {
+    const len = readU32(buf, offset);
+    offset += 4;
+
+    const nodes = new Array(len);
+    for (let i = 0; i < len; i++) {
+      nodes[i] = getNode(ctx, readU32(buf, offset));
+      offset += 4;
+    }
+    return nodes;
+  } else if (kind === PropFlags.Bool) {
+    return buf[offset] === 1;
+  } else if (kind === PropFlags.String) {
+    const v = readU32(buf, offset);
+    return getString(ctx.strTable, v);
+  } else if (kind === PropFlags.Number) {
+    const v = readU32(buf, offset);
+    return Number(getString(ctx.strTable, v));
+  } else if (kind === PropFlags.Regex) {
+    const v = readU32(buf, offset);
+    return readRegex(ctx.strTable, v);
+  } else if (kind === PropFlags.Null) {
+    return null;
+  } else if (kind === PropFlags.Undefined) {
+    return undefined;
+  } else if (kind === PropFlags.Obj) {
+    return readObject(ctx, offset);
+  }
+
+  throw new Error(`Unknown prop kind: ${kind}`);
 }
 
 /**
@@ -464,34 +595,7 @@ function readValue(ctx, offset, search) {
   offset = findPropOffset(ctx.buf, offset, search);
   if (offset === -1) return undefined;
 
-  const kind = buf[offset + 1];
-  offset += 2;
-
-  if (kind === PropFlags.Ref) {
-    const value = readU32(buf, offset);
-    return getNode(ctx, value);
-  } else if (kind === PropFlags.RefArr) {
-    const len = readU32(buf, offset);
-    offset += 4;
-
-    const nodes = new Array(len);
-    for (let i = 0; i < len; i++) {
-      nodes[i] = getNode(ctx, readU32(buf, offset));
-      offset += 4;
-    }
-    return nodes;
-  } else if (kind === PropFlags.Bool) {
-    return buf[offset] === 1;
-  } else if (kind === PropFlags.String) {
-    const v = readU32(buf, offset);
-    return getString(ctx.strTable, v);
-  } else if (kind === PropFlags.Null) {
-    return null;
-  } else if (kind === PropFlags.Undefined) {
-    return undefined;
-  }
-
-  throw new Error(`Unknown prop kind: ${kind}`);
+  return readProperty(ctx, offset);
 }
 
 const DECODER = new TextDecoder();
@@ -564,7 +668,9 @@ function findChildOffset(buf, child) {
 
         break;
       }
+      case PropFlags.Number:
       case PropFlags.String:
+      case PropFlags.Regex:
         offset += 4;
         break;
       case PropFlags.Bool:
@@ -572,6 +678,8 @@ function findChildOffset(buf, child) {
         break;
       case PropFlags.Null:
       case PropFlags.Undefined:
+        break;
+      case PropFlags.Obj:
         break;
     }
   }
@@ -656,6 +764,12 @@ class MatchCtx {
     if (kind === PropFlags.String) {
       const s = readU32(buf, offset);
       return getString(this.strTable, s);
+    } else if (kind === PropFlags.Number) {
+      const s = readU32(buf, offset);
+      return Number(getString(this.strTable, s));
+    } else if (kind === PropFlags.Regex) {
+      const v = readU32(buf, offset);
+      return readRegex(this.strTable, v);
     } else if (kind === PropFlags.Bool) {
       return buf[offset] === 1;
     } else if (kind === PropFlags.Null) {
@@ -747,7 +861,9 @@ class MatchCtx {
           return len;
         }
 
+        case PropFlags.Number:
         case PropFlags.String:
+        case PropFlags.Regex:
           offset += 4;
           break;
         case PropFlags.Bool:
@@ -799,6 +915,8 @@ class MatchCtx {
         }
 
         case PropFlags.String:
+        case PropFlags.Number:
+        case PropFlags.Regex:
           offset += 4;
           break;
         case PropFlags.Bool:
@@ -1133,7 +1251,10 @@ function traverse(ctx, visitors, offset, cancellationToken) {
           offset += 4;
           traverse(ctx, visitors, child, cancellationToken);
         }
-      } else if (kind === PropFlags.String) {
+      } else if (
+        kind === PropFlags.String || kind === PropFlags.Number ||
+        kind === PropFlags.Regex
+      ) {
         offset += 4;
       } else if (kind === PropFlags.Bool) {
         offset += 1;
@@ -1250,6 +1371,22 @@ function _dump(ctx) {
         // deno-lint-ignore no-console
         console.log(`    ${name}: ${v} (${kindName}, ${prop})`);
       } else if (kind === PropFlags.String) {
+        const v = readU32(buf, offset);
+        offset += 4;
+        // @ts-ignore dump fn
+        // deno-lint-ignore no-console
+        console.log(
+          `    ${name}: ${getString(ctx.strTable, v)} (${kindName}, ${prop})`,
+        );
+      } else if (kind === PropFlags.Number) {
+        const v = readU32(buf, offset);
+        offset += 4;
+        // @ts-ignore dump fn
+        // deno-lint-ignore no-console
+        console.log(
+          `    ${name}: ${getString(ctx.strTable, v)} (${kindName}, ${prop})`,
+        );
+      } else if (kind === PropFlags.Regex) {
         const v = readU32(buf, offset);
         offset += 4;
         // @ts-ignore dump fn

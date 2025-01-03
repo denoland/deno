@@ -1,6 +1,7 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
 import { assertEquals } from "./test_util.ts";
+import { assertSnapshot } from "@std/testing/snapshot";
 
 // TODO(@marvinhagemeister) Remove once we land "official" types
 export interface LintReportData {
@@ -102,6 +103,8 @@ function testLintNode(source: string, ...selectors: string[]) {
       return visitor;
     },
   });
+
+  assertEquals(log.length > 0, true);
 
   return log;
 }
@@ -323,292 +326,85 @@ Deno.test("Plugin - Program", () => {
   });
 });
 
-Deno.test("Plugin - BlockStatement", () => {
+Deno.test("Plugin - BlockStatement", async (t) => {
   const node = testLintNode("{ foo; }", "BlockStatement");
-  assertEquals(node[0], {
-    type: "BlockStatement",
-    range: [1, 9],
-    body: [{
-      type: "ExpressionStatement",
-      range: [3, 7],
-      expression: {
-        type: "Identifier",
-        name: "foo",
-        range: [3, 6],
-      },
-    }],
-  });
+  await assertSnapshot(t, node[0]);
 });
 
-Deno.test("Plugin - BreakStatement", () => {
+Deno.test("Plugin - BreakStatement", async (t) => {
   let node = testLintNode("break;", "BreakStatement");
-  assertEquals(node[0], {
-    type: "BreakStatement",
-    range: [1, 7],
-    label: null,
-  });
+  await assertSnapshot(t, node[0]);
 
   node = testLintNode("break foo;", "BreakStatement");
-  assertEquals(node[0], {
-    type: "BreakStatement",
-    range: [1, 11],
-    label: {
-      type: "Identifier",
-      range: [7, 10],
-      name: "foo",
-    },
-  });
+  await assertSnapshot(t, node[0]);
 });
 
-Deno.test("Plugin - ContinueStatement", () => {
+Deno.test("Plugin - ContinueStatement", async (t) => {
   let node = testLintNode("continue;", "ContinueStatement");
-  assertEquals(node[0], {
-    type: "ContinueStatement",
-    range: [1, 10],
-    label: null,
-  });
+  await assertSnapshot(t, node[0]);
 
   node = testLintNode("continue foo;", "ContinueStatement");
-  assertEquals(node[0], {
-    type: "ContinueStatement",
-    range: [1, 14],
-    label: {
-      type: "Identifier",
-      range: [10, 13],
-      name: "foo",
-    },
-  });
+  await assertSnapshot(t, node[0]);
 });
 
-Deno.test("Plugin - DebuggerStatement", () => {
+Deno.test("Plugin - DebuggerStatement", async (t) => {
   const node = testLintNode("debugger;", "DebuggerStatement");
-  assertEquals(node[0], {
-    type: "DebuggerStatement",
-    range: [1, 10],
-  });
+  await assertSnapshot(t, node[0]);
 });
 
-Deno.test("Plugin - DoWhileStatement", () => {
+Deno.test("Plugin - DoWhileStatement", async (t) => {
   const node = testLintNode("do {} while (foo);", "DoWhileStatement");
-  assertEquals(node[0], {
-    type: "DoWhileStatement",
-    range: [1, 19],
-    test: {
-      type: "Identifier",
-      range: [14, 17],
-      name: "foo",
-    },
-    body: {
-      type: "BlockStatement",
-      range: [4, 6],
-      body: [],
-    },
-  });
+  await assertSnapshot(t, node[0]);
 });
 
-Deno.test("Plugin - ExpressionStatement", () => {
+Deno.test("Plugin - ExpressionStatement", async (t) => {
   const node = testLintNode("foo;", "ExpressionStatement");
-  assertEquals(node[0], {
-    type: "ExpressionStatement",
-    range: [1, 5],
-    expression: {
-      type: "Identifier",
-      range: [1, 4],
-      name: "foo",
-    },
-  });
+  await assertSnapshot(t, node[0]);
 });
 
-Deno.test("Plugin - ForInStatement", () => {
+Deno.test("Plugin - ForInStatement", async (t) => {
   const node = testLintNode("for (a in b) {}", "ForInStatement");
-  assertEquals(node[0], {
-    type: "ForInStatement",
-    range: [1, 16],
-    left: {
-      type: "Identifier",
-      range: [6, 7],
-      name: "a",
-    },
-    right: {
-      type: "Identifier",
-      range: [11, 12],
-      name: "b",
-    },
-    body: {
-      type: "BlockStatement",
-      range: [14, 16],
-      body: [],
-    },
-  });
+  await assertSnapshot(t, node[0]);
 });
 
-Deno.test("Plugin - ForOfStatement", () => {
+Deno.test("Plugin - ForOfStatement", async (t) => {
   let node = testLintNode("for (a of b) {}", "ForOfStatement");
-  assertEquals(node[0], {
-    type: "ForOfStatement",
-    range: [1, 16],
-    await: false,
-    left: {
-      type: "Identifier",
-      range: [6, 7],
-      name: "a",
-    },
-    right: {
-      type: "Identifier",
-      range: [11, 12],
-      name: "b",
-    },
-    body: {
-      type: "BlockStatement",
-      range: [14, 16],
-      body: [],
-    },
-  });
+  await assertSnapshot(t, node[0]);
 
   node = testLintNode("for await (a of b) {}", "ForOfStatement");
-  assertEquals(node[0], {
-    type: "ForOfStatement",
-    range: [1, 22],
-    await: true,
-    left: {
-      type: "Identifier",
-      range: [12, 13],
-      name: "a",
-    },
-    right: {
-      type: "Identifier",
-      range: [17, 18],
-      name: "b",
-    },
-    body: {
-      type: "BlockStatement",
-      range: [20, 22],
-      body: [],
-    },
-  });
+  await assertSnapshot(t, node[0]);
 });
 
-Deno.test("Plugin - ForStatement", () => {
+Deno.test("Plugin - ForStatement", async (t) => {
   let node = testLintNode("for (;;) {}", "ForStatement");
-  assertEquals(node[0], {
-    type: "ForStatement",
-    range: [1, 12],
-    init: null,
-    test: null,
-    update: null,
-    body: {
-      type: "BlockStatement",
-      range: [10, 12],
-      body: [],
-    },
-  });
+  await assertSnapshot(t, node[0]);
 
   node = testLintNode("for (a; b; c) {}", "ForStatement");
-  assertEquals(node[0], {
-    type: "ForStatement",
-    range: [1, 17],
-    init: {
-      type: "Identifier",
-      range: [6, 7],
-      name: "a",
-    },
-    test: {
-      type: "Identifier",
-      range: [9, 10],
-      name: "b",
-    },
-    update: {
-      type: "Identifier",
-      range: [12, 13],
-      name: "c",
-    },
-    body: {
-      type: "BlockStatement",
-      range: [15, 17],
-      body: [],
-    },
-  });
+  await assertSnapshot(t, node[0]);
 });
 
-Deno.test("Plugin - IfStatement", () => {
+Deno.test("Plugin - IfStatement", async (t) => {
   let node = testLintNode("if (foo) {}", "IfStatement");
-  assertEquals(node[0], {
-    type: "IfStatement",
-    range: [1, 12],
-    test: {
-      type: "Identifier",
-      name: "foo",
-      range: [5, 8],
-    },
-    consequent: {
-      type: "BlockStatement",
-      range: [10, 12],
-      body: [],
-    },
-    alternate: null,
-  });
+  await assertSnapshot(t, node[0]);
 
   node = testLintNode("if (foo) {} else {}", "IfStatement");
-  assertEquals(node[0], {
-    type: "IfStatement",
-    range: [1, 20],
-    test: {
-      type: "Identifier",
-      name: "foo",
-      range: [5, 8],
-    },
-    consequent: {
-      type: "BlockStatement",
-      range: [10, 12],
-      body: [],
-    },
-    alternate: {
-      type: "BlockStatement",
-      range: [18, 20],
-      body: [],
-    },
-  });
+  await assertSnapshot(t, node[0]);
 });
 
-Deno.test("Plugin - LabeledStatement", () => {
+Deno.test("Plugin - LabeledStatement", async (t) => {
   const node = testLintNode("foo: {};", "LabeledStatement");
-  assertEquals(node[0], {
-    type: "LabeledStatement",
-    range: [1, 8],
-    label: {
-      type: "Identifier",
-      name: "foo",
-      range: [1, 4],
-    },
-    body: {
-      type: "BlockStatement",
-      range: [6, 8],
-      body: [],
-    },
-  });
+  await assertSnapshot(t, node[0]);
 });
 
-Deno.test("Plugin - ReturnStatement", () => {
+Deno.test("Plugin - ReturnStatement", async (t) => {
   let node = testLintNode("return", "ReturnStatement");
-  assertEquals(node[0], {
-    type: "ReturnStatement",
-    range: [1, 7],
-    argument: null,
-  });
+  await assertSnapshot(t, node[0]);
 
   node = testLintNode("return foo;", "ReturnStatement");
-  assertEquals(node[0], {
-    type: "ReturnStatement",
-    range: [1, 12],
-    argument: {
-      type: "Identifier",
-      name: "foo",
-      range: [8, 11],
-    },
-  });
+  await assertSnapshot(t, node[0]);
 });
 
-Deno.test("Plugin - SwitchStatement", () => {
+Deno.test("Plugin - SwitchStatement", async (t) => {
   const node = testLintNode(
     `switch (foo) {
       case foo:
@@ -619,151 +415,388 @@ Deno.test("Plugin - SwitchStatement", () => {
     }`,
     "SwitchStatement",
   );
-  assertEquals(node[0], {
-    type: "SwitchStatement",
-    range: [1, 94],
-    discriminant: {
-      type: "Identifier",
-      range: [9, 12],
-      name: "foo",
-    },
-    cases: [
-      {
-        type: "SwitchCase",
-        range: [22, 31],
-        test: {
-          type: "Identifier",
-          range: [27, 30],
-          name: "foo",
-        },
-        consequent: [],
-      },
-      {
-        type: "SwitchCase",
-        range: [38, 62],
-        test: {
-          type: "Identifier",
-          range: [43, 46],
-          name: "bar",
-        },
-        consequent: [
-          {
-            type: "BreakStatement",
-            label: null,
-            range: [56, 62],
-          },
-        ],
-      },
-      {
-        type: "SwitchCase",
-        range: [69, 88],
-        test: null,
-        consequent: [
-          {
-            type: "BlockStatement",
-            range: [86, 88],
-            body: [],
-          },
-        ],
-      },
-    ],
-  });
+  await assertSnapshot(t, node[0]);
 });
 
-Deno.test("Plugin - ThrowStatement", () => {
+Deno.test("Plugin - ThrowStatement", async (t) => {
   const node = testLintNode("throw foo;", "ThrowStatement");
-  assertEquals(node[0], {
-    type: "ThrowStatement",
-    range: [1, 11],
-    argument: {
-      type: "Identifier",
-      range: [7, 10],
-      name: "foo",
-    },
-  });
+  await assertSnapshot(t, node[0]);
 });
 
-Deno.test("Plugin - TryStatement", () => {
+Deno.test("Plugin - TryStatement", async (t) => {
   let node = testLintNode("try {} catch {};", "TryStatement");
-  assertEquals(node[0], {
-    type: "TryStatement",
-    range: [1, 16],
-    block: {
-      type: "BlockStatement",
-      range: [5, 7],
-      body: [],
-    },
-    handler: {
-      type: "CatchClause",
-      range: [8, 16],
-      param: null,
-      body: {
-        type: "BlockStatement",
-        range: [14, 16],
-        body: [],
-      },
-    },
-    finalizer: null,
-  });
+  await assertSnapshot(t, node[0]);
 
   node = testLintNode("try {} catch (e) {};", "TryStatement");
-  assertEquals(node[0], {
-    type: "TryStatement",
-    range: [1, 20],
-    block: {
-      type: "BlockStatement",
-      range: [5, 7],
-      body: [],
-    },
-    handler: {
-      type: "CatchClause",
-      range: [8, 20],
-      param: {
-        type: "Identifier",
-        range: [15, 16],
-        name: "e",
-      },
-      body: {
-        type: "BlockStatement",
-        range: [18, 20],
-        body: [],
-      },
-    },
-    finalizer: null,
-  });
+  await assertSnapshot(t, node[0]);
 
   node = testLintNode("try {} finally {};", "TryStatement");
-  assertEquals(node[0], {
-    type: "TryStatement",
-    range: [1, 18],
-    block: {
-      type: "BlockStatement",
-      range: [5, 7],
-      body: [],
-    },
-    handler: null,
-    finalizer: {
-      type: "BlockStatement",
-      range: [16, 18],
-      body: [],
-    },
-  });
+  await assertSnapshot(t, node[0]);
 });
 
-Deno.test("Plugin - WhileStatement", () => {
+Deno.test("Plugin - WhileStatement", async (t) => {
   const node = testLintNode("while (foo) {}", "WhileStatement");
-  assertEquals(node[0], {
-    type: "WhileStatement",
-    range: [1, 15],
-    test: {
-      type: "Identifier",
-      range: [8, 11],
-      name: "foo",
-    },
-    body: {
-      type: "BlockStatement",
-      range: [13, 15],
-      body: [],
-    },
-  });
+  await assertSnapshot(t, node[0]);
+});
+
+Deno.test("Plugin - WithStatement", async (t) => {
+  const node = testLintNode("with ([]) {}", "WithStatement");
+  await assertSnapshot(t, node[0]);
+});
+
+Deno.test("Plugin - ArrayExpression", async (t) => {
+  const node = testLintNode("[[],,[]]", "ArrayExpression");
+  await assertSnapshot(t, node[0]);
+});
+
+Deno.test("Plugin - ArrowFunctionExpression", async (t) => {
+  let node = testLintNode("() => {}", "ArrowFunctionExpression");
+  await assertSnapshot(t, node[0]);
+
+  node = testLintNode("async () => {}", "ArrowFunctionExpression");
+  await assertSnapshot(t, node[0]);
+
+  node = testLintNode(
+    "(a: number, ...b: any[]): any => {}",
+    "ArrowFunctionExpression",
+  );
+  await assertSnapshot(t, node[0]);
+});
+
+Deno.test("Plugin - AssignmentExpression", async (t) => {
+  let node = testLintNode("a = b", "AssignmentExpression");
+  await assertSnapshot(t, node[0]);
+
+  node = testLintNode("a = a ??= b", "AssignmentExpression");
+  await assertSnapshot(t, node[0]);
+});
+
+Deno.test("Plugin - AwaitExpression", async (t) => {
+  const node = testLintNode("await foo;", "AwaitExpression");
+  await assertSnapshot(t, node[0]);
+});
+
+Deno.test("Plugin - BinaryExpression", async (t) => {
+  let node = testLintNode("a > b", "BinaryExpression");
+  await assertSnapshot(t, node[0]);
+
+  node = testLintNode("a >= b", "BinaryExpression");
+  await assertSnapshot(t, node[0]);
+
+  node = testLintNode("a < b", "BinaryExpression");
+  await assertSnapshot(t, node[0]);
+
+  node = testLintNode("a <= b", "BinaryExpression");
+  await assertSnapshot(t, node[0]);
+
+  node = testLintNode("a == b", "BinaryExpression");
+  await assertSnapshot(t, node[0]);
+
+  node = testLintNode("a === b", "BinaryExpression");
+  await assertSnapshot(t, node[0]);
+
+  node = testLintNode("a != b", "BinaryExpression");
+  await assertSnapshot(t, node[0]);
+
+  node = testLintNode("a !== b", "BinaryExpression");
+  await assertSnapshot(t, node[0]);
+
+  node = testLintNode("a << b", "BinaryExpression");
+  await assertSnapshot(t, node[0]);
+
+  node = testLintNode("a >> b", "BinaryExpression");
+  await assertSnapshot(t, node[0]);
+
+  node = testLintNode("a >>> b", "BinaryExpression");
+  await assertSnapshot(t, node[0]);
+
+  node = testLintNode("a + b", "BinaryExpression");
+  await assertSnapshot(t, node[0]);
+
+  node = testLintNode("a - b", "BinaryExpression");
+  await assertSnapshot(t, node[0]);
+
+  node = testLintNode("a * b", "BinaryExpression");
+  await assertSnapshot(t, node[0]);
+
+  node = testLintNode("a / b", "BinaryExpression");
+  await assertSnapshot(t, node[0]);
+
+  node = testLintNode("a % b", "BinaryExpression");
+  await assertSnapshot(t, node[0]);
+
+  node = testLintNode("a | b", "BinaryExpression");
+  await assertSnapshot(t, node[0]);
+
+  node = testLintNode("a ^ b", "BinaryExpression");
+  await assertSnapshot(t, node[0]);
+
+  node = testLintNode("a & b", "BinaryExpression");
+  await assertSnapshot(t, node[0]);
+
+  node = testLintNode("a in b", "BinaryExpression");
+  await assertSnapshot(t, node[0]);
+
+  node = testLintNode("a ** b", "BinaryExpression");
+  await assertSnapshot(t, node[0]);
+});
+
+Deno.test("Plugin - CallExpression", async (t) => {
+  let node = testLintNode("foo();", "CallExpression");
+  await assertSnapshot(t, node[0]);
+
+  node = testLintNode("foo(a, ...b);", "CallExpression");
+  await assertSnapshot(t, node[0]);
+
+  node = testLintNode("foo?.();", "CallExpression");
+  await assertSnapshot(t, node[0]);
+});
+
+Deno.test("Plugin - ChainExpression", async (t) => {
+  const node = testLintNode("a?.b", "ChainExpression");
+  await assertSnapshot(t, node[0]);
+});
+
+Deno.test("Plugin - ClassExpression", async (t) => {
+  let node = testLintNode("a = class {}", "ClassExpression");
+  await assertSnapshot(t, node[0]);
+
+  node = testLintNode("a = class Foo {}", "ClassExpression");
+  await assertSnapshot(t, node[0]);
+
+  node = testLintNode("a = class Foo extends Bar {}", "ClassExpression");
+  await assertSnapshot(t, node[0]);
+
+  node = testLintNode(
+    "a = class Foo extends Bar implements Baz, Baz2 {}",
+    "ClassExpression",
+  );
+  await assertSnapshot(t, node[0]);
+
+  node = testLintNode("a = class Foo<T> {}", "ClassExpression");
+  await assertSnapshot(t, node[0]);
+
+  node = testLintNode("a = class { foo() {} }", "ClassExpression");
+  await assertSnapshot(t, node[0]);
+
+  node = testLintNode("a = class { #foo() {} }", "ClassExpression");
+  await assertSnapshot(t, node[0]);
+
+  node = testLintNode("a = class { foo: number }", "ClassExpression");
+  await assertSnapshot(t, node[0]);
+
+  node = testLintNode("a = class { foo = bar }", "ClassExpression");
+  await assertSnapshot(t, node[0]);
+
+  node = testLintNode(
+    "a = class { constructor(public foo: string) {} }",
+    "ClassExpression",
+  );
+  await assertSnapshot(t, node[0]);
+
+  node = testLintNode("a = class { #foo: number = bar }", "ClassExpression");
+  await assertSnapshot(t, node[0]);
+
+  node = testLintNode("a = class { static foo = bar }", "ClassExpression");
+  await assertSnapshot(t, node[0]);
+
+  node = testLintNode(
+    "a = class { static foo; static { foo = bar } }",
+    "ClassExpression",
+  );
+  await assertSnapshot(t, node[0]);
+});
+
+Deno.test("Plugin - ConditionalExpression", async (t) => {
+  const node = testLintNode("a ? b : c", "ConditionalExpression");
+  await assertSnapshot(t, node[0]);
+});
+
+Deno.test("Plugin - FunctionExpression", async (t) => {
+  let node = testLintNode("a = function () {}", "FunctionExpression");
+  await assertSnapshot(t, node[0]);
+
+  node = testLintNode("a = function foo() {}", "FunctionExpression");
+  await assertSnapshot(t, node[0]);
+
+  node = testLintNode(
+    "a = function (a?: number, ...b: any[]): any {}",
+    "FunctionExpression",
+  );
+  await assertSnapshot(t, node[0]);
+
+  node = testLintNode("a = async function* () {}", "FunctionExpression");
+  await assertSnapshot(t, node[0]);
+});
+
+Deno.test("Plugin - Identifier", async (t) => {
+  const node = testLintNode("a", "Identifier");
+  await assertSnapshot(t, node[0]);
+});
+
+Deno.test("Plugin - ImportExpression", async (t) => {
+  const node = testLintNode(
+    "import('foo', { with: { type: 'json' }}",
+    "ImportExpression",
+  );
+  await assertSnapshot(t, node[0]);
+});
+
+Deno.test("Plugin - LogicalExpression", async (t) => {
+  let node = testLintNode("a && b", "LogicalExpression");
+  await assertSnapshot(t, node[0]);
+
+  node = testLintNode("a || b", "LogicalExpression");
+  await assertSnapshot(t, node[0]);
+
+  node = testLintNode("a ?? b", "LogicalExpression");
+  await assertSnapshot(t, node[0]);
+});
+
+Deno.test("Plugin - MemberExpression", async (t) => {
+  let node = testLintNode("a.b", "MemberExpression");
+  await assertSnapshot(t, node[0]);
+
+  node = testLintNode("a['b']", "MemberExpression");
+  await assertSnapshot(t, node[0]);
+});
+
+Deno.test("Plugin - MetaProp", async (t) => {
+  const node = testLintNode("import.meta", "MetaProp");
+  await assertSnapshot(t, node[0]);
+});
+
+Deno.test("Plugin - NewExpression", async (t) => {
+  let node = testLintNode("new Foo()", "NewExpression");
+  await assertSnapshot(t, node[0]);
+
+  node = testLintNode("new Foo(a?: any, ...b: any[])", "NewExpression");
+  await assertSnapshot(t, node[0]);
+});
+
+Deno.test("Plugin - ObjectExpression", async (t) => {
+  let node = testLintNode("{}", "ObjectExpression");
+  await assertSnapshot(t, node[0]);
+
+  node = testLintNode("{ a, b: c, [c]: d }", "ObjectExpression");
+  await assertSnapshot(t, node[0]);
+});
+
+Deno.test("Plugin - PrivateIdentifier", async (t) => {
+  const node = testLintNode("class Foo { #foo = foo }", "PrivateIdentifier");
+  await assertSnapshot(t, node[0]);
+});
+
+Deno.test("Plugin - SequenceExpression", async (t) => {
+  const node = testLintNode("(a, b)", "SequenceExpression");
+  await assertSnapshot(t, node[0]);
+});
+
+Deno.test("Plugin - Super", async (t) => {
+  const node = testLintNode(
+    "class Foo extends Bar { constructor() { super(); } }",
+    "Super",
+  );
+  await assertSnapshot(t, node[0]);
+});
+
+Deno.test("Plugin - TaggedTemplateExpression", async (t) => {
+  const node = testLintNode(
+    "foo`foo ${bar} baz`",
+    "TaggedTemplateExpression",
+  );
+  await assertSnapshot(t, node[0]);
+});
+
+Deno.test("Plugin - TemplateLiteral", async (t) => {
+  const node = testLintNode(
+    "`foo ${bar} baz`",
+    "TemplateLiteral",
+  );
+  await assertSnapshot(t, node[0]);
+});
+
+Deno.test("Plugin - ThisExpression", async (t) => {
+  const node = testLintNode("this", "ThisExpression");
+  await assertSnapshot(t, node[0]);
+});
+
+Deno.test("Plugin - TSAsExpression", async (t) => {
+  let node = testLintNode("a as b", "TSAsExpression");
+  await assertSnapshot(t, node[0]);
+
+  node = testLintNode("a as const", "TSAsExpression");
+  await assertSnapshot(t, node[0]);
+});
+
+Deno.test("Plugin - TSNonNullExpression", async (t) => {
+  const node = testLintNode("a!", "TSNonNullExpression");
+  await assertSnapshot(t, node[0]);
+});
+
+Deno.test("Plugin - TSSatisfiesExpression", async (t) => {
+  const node = testLintNode("a satisfies b", "TSSatisfiesExpression");
+  await assertSnapshot(t, node[0]);
+});
+
+Deno.test("Plugin - UnaryExpression", async (t) => {
+  let node = testLintNode("typeof a", "UnaryExpression");
+  await assertSnapshot(t, node[0]);
+
+  node = testLintNode("void 0", "UnaryExpression");
+  await assertSnapshot(t, node[0]);
+
+  node = testLintNode("-a", "UnaryExpression");
+  await assertSnapshot(t, node[0]);
+
+  node = testLintNode("+a", "UnaryExpression");
+  await assertSnapshot(t, node[0]);
+});
+
+Deno.test("Plugin - UpdateExpression", async (t) => {
+  let node = testLintNode("a++", "UpdateExpression");
+  await assertSnapshot(t, node[0]);
+
+  node = testLintNode("++a", "UpdateExpression");
+  await assertSnapshot(t, node[0]);
+
+  node = testLintNode("a--", "UpdateExpression");
+  await assertSnapshot(t, node[0]);
+
+  node = testLintNode("--a", "UpdateExpression");
+  await assertSnapshot(t, node[0]);
+});
+
+Deno.test("Plugin - YieldExpression", async (t) => {
+  const node = testLintNode(
+    "function* foo() { yield bar; }",
+    "YieldExpression",
+  );
+  await assertSnapshot(t, node[0]);
+});
+
+Deno.test.only("Plugin - Literal", async (t) => {
+  let node = testLintNode("1", "Literal");
+  await assertSnapshot(t, node[0]);
+
+  node = testLintNode("'foo'", "Literal");
+  await assertSnapshot(t, node[0]);
+
+  node = testLintNode('"foo"', "Literal");
+  await assertSnapshot(t, node[0]);
+
+  node = testLintNode("true", "Literal");
+  await assertSnapshot(t, node[0]);
+
+  node = testLintNode("false", "Literal");
+  await assertSnapshot(t, node[0]);
+
+  node = testLintNode("null", "Literal");
+  await assertSnapshot(t, node[0]);
+
+  node = testLintNode("1n", "Literal");
+  await assertSnapshot(t, node[0]);
+
+  node = testLintNode("/foo/g", "Literal");
+  await assertSnapshot(t, node[0]);
 });

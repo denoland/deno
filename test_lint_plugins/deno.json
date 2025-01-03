@@ -4,7 +4,7 @@
     "rules": {
       "exclude": [
         "ban-ts-comment",
-        "prefix/whatever"
+        "test-plugin-local/first-rule"
       ]
     }
   }

@@ -1,0 +1,99 @@
+export const snapshot = {};
+
+snapshot[`Plugin - Literal 1`] = `
+{
+  range: [
+    1,
+    2,
+  ],
+  raw: "1",
+  type: "Literal",
+  value: 1,
+}
+`;
+
+snapshot[`Plugin - Literal 2`] = `
+{
+  range: [
+    1,
+    6,
+  ],
+  raw: "'foo'",
+  type: "Literal",
+  value: "foo",
+}
+`;
+
+snapshot[`Plugin - Literal 3`] = `
+{
+  range: [
+    1,
+    6,
+  ],
+  raw: '"foo"',
+  type: "Literal",
+  value: "foo",
+}
+`;
+
+snapshot[`Plugin - Literal 4`] = `
+{
+  range: [
+    1,
+    5,
+  ],
+  raw: "true",
+  type: "Literal",
+  value: true,
+}
+`;
+
+snapshot[`Plugin - Literal 5`] = `
+{
+  range: [
+    1,
+    6,
+  ],
+  raw: "false",
+  type: "Literal",
+  value: false,
+}
+`;
+
+snapshot[`Plugin - Literal 6`] = `
+{
+  range: [
+    1,
+    5,
+  ],
+  raw: "null",
+  type: "Literal",
+  value: null,
+}
+`;
+
+snapshot[`Plugin - Literal 7`] = `
+{
+  bigint: "1",
+  range: [
+    1,
+    3,
+  ],
+  raw: "1n",
+  type: "Literal",
+  value: "1",
+}
+`;
+
+snapshot[`Plugin - Literal 8`] = `
+{
+  flags: "g",
+  pattern: "foo",
+  range: [
+    1,
+    7,
+  ],
+  raw: "/foo/g",
+  type: "Literal",
+}
+`;
