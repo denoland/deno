@@ -1318,6 +1318,27 @@ declare namespace Deno {
     export {}; // only export exports
   }
 
+  export namespace lint {
+    interface LintFix {
+      range: [number, number];
+      text?: string;
+    }
+
+    interface LintDiagnostic {
+      id: string;
+      message: string;
+      hint?: string;
+      range: [number, number];
+      fix?: LintFix;
+    }
+
+    export function runPlugin(
+      plugin: LintPlugin,
+      fileName: string,
+      source: string,
+    ): LintDiagnostic[];
+  }
+
   export {}; // only export exports
 }
 

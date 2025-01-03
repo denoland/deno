@@ -575,11 +575,14 @@ const finalDenoNs = {
   internal: internalSymbol,
   [internalSymbol]: internals,
   ...denoNs,
-  // Deno.test and Deno.bench are noops here, but kept for compatibility; so
-  // that they don't cause errors when used outside of `deno test`/`deno bench`
+  // Deno.test, Deno.bench, Deno.lint are noops here, but kept for compatibility; so
+  // that they don't cause errors when used outside of `deno test`/`deno bench`/`deno lint`
   // contexts.
   test: () => {},
   bench: () => {},
+  lint: {
+    runPlugin: () => {},
+  },
 };
 
 ObjectDefineProperties(finalDenoNs, {

@@ -16,6 +16,8 @@ const {
   op_is_cancelled,
 } = core.ops;
 
+let doReport = op_lint_report;
+
 // Keep in sync with Rust
 // These types are expected to be present on every node. Note that this
 // isn't set in stone. We could revise this at a future point.
@@ -216,7 +218,7 @@ export class Context {
       fix.range[1]--;
     }
 
-    op_lint_report(
+    doReport(
       this.id,
       data.message,
       data.hint,
@@ -1270,8 +1272,11 @@ function _dump(ctx) {
   }
 }
 
-// TODO(bartlomieju): this is temporary, until we get plugins plumbed through
-// the CLI linter
+// These are captured by Rust and called when plugins need to be loaded
+// or run.
+internals.installPlugin = installPlugin;
+internals.runPluginsForFile = runPluginsForFile;
+
 /**
  * @param {LintPlugin} plugin
  * @param {string} fileName
@@ -1281,16 +1286,24 @@ function runLintPlugin(plugin, fileName, sourceText) {
   installPlugin(plugin, []);
   const serializedAst = op_lint_create_serialized_ast(fileName, sourceText);
 
+  const diagnostics = [];
+  doReport = (id, message, hint, start, end, fix) => {
+    diagnostics.push({
+      id,
+      message,
+      hint,
+      range: [start, end],
+      fix,
+    });
+  };
   try {
     runPluginsForFile(fileName, serializedAst);
   } finally {
     // During testing we don't want to keep plugins around
     state.installedPlugins.clear();
   }
+  doReport = op_lint_report;
+  return diagnostics;
 }
 
-// TODO(bartlomieju): this is temporary, until we get plugins plumbed through
-// the CLI linter
-internals.runLintPlugin = runLintPlugin;
-internals.installPlugin = installPlugin;
-internals.runPluginsForFile = runPluginsForFile;
+Deno.lint.runPlugin = runLintPlugin;

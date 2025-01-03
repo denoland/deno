@@ -28,19 +28,10 @@ interface LintPlugin {
   rules: Record<string, LintRule>;
 }
 
-function runLintPlugin(plugin: LintPlugin, fileName: string, source: string) {
-  // deno-lint-ignore no-explicit-any
-  return (Deno as any)[(Deno as any).internal].runLintPlugin(
-    plugin,
-    fileName,
-    source,
-  );
-}
-
 function testPlugin(
   source: string,
   rule: LintRule,
-) {
+): Deno.lint.LintDiagnostic[] {
   const plugin = {
     name: "test-plugin",
     rules: {
@@ -48,7 +39,11 @@ function testPlugin(
     },
   };
 
-  return runLintPlugin(plugin, "source.tsx", source);
+  return Deno.lint.runPlugin(
+    plugin,
+    "source.tsx",
+    source,
+  );
 }
 
 interface VisitResult {
