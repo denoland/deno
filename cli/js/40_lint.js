@@ -249,8 +249,10 @@ export function installPlugin(plugin, exclude) {
 
   // TODO(@marvinhagemeister): This should be done once instead of
   // for every plugin
-  for (let i = 0; i < exclude.length; i++) {
-    state.ignoredRules.add(exclude[i]);
+  if (Array.isArray(exclude)) {
+    for (let i = 0; i < exclude.length; i++) {
+      state.ignoredRules.add(exclude[i]);
+    }
   }
 
   return {
