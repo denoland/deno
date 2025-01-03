@@ -1115,7 +1115,6 @@ function traverse(ctx, visitors, offset, cancellationToken) {
     offset += 1;
 
     for (let i = 0; i < propCount; i++) {
-      if (cancellationToken.isCancellationRequested()) return;
       const kind = buf[offset + 1];
       offset += 2; // propId + propFlags
 
