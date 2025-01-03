@@ -1325,10 +1325,7 @@ impl OtelSpan {
         .unwrap()
     };
 
-    println!("self {:x}", self as *const OtelSpan as u64);
-    println!("self {:?}", self);
     let mut state = self.0.borrow_mut();
-    println!("state {:?}", state);
     if let OtelSpanState::Recording(span) = &mut **state {
       let span_context = span.span_context.clone();
       if let OtelSpanState::Recording(mut span) = *std::mem::replace(
