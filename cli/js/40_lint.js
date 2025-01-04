@@ -18,8 +18,8 @@ const {
 
 // Keep these in sync with Rust
 const AST_IDX_INVALID = 0;
-const AST_TYPE_REF_ARRAY = 1;
-const AST_NODE_SIZE = 1 + 4 + 4 + 4;
+const AST_GROUP_TYPE = 1;
+const NODE_SIZE = 1 + 4 + 4 + 4;
 
 // Keep in sync with Rust
 // These types are expected to be present on every node. Note that this
@@ -314,26 +314,11 @@ function findPropOffset(buf, offset, search) {
     if (skip === 0 && prop === search) return maybe;
     if (skip > 0) skip--;
 
-    if (kind === PropFlags.Ref) {
-      offset += 4;
-    } else if (kind === PropFlags.RefArr) {
+    if (kind === PropFlags.Obj) {
       const len = readU32(buf, offset);
-      offset += 4 + (len * 4);
-    } else if (kind === PropFlags.Obj) {
-      const len = readU32(buf, offset);
-      skip += len;
-      offset += 4;
-    } else if (
-      kind === PropFlags.String || kind === PropFlags.Number ||
-      kind === PropFlags.Regex
-    ) {
-      offset += 4;
-    } else if (kind === PropFlags.Bool) {
-      offset++;
-    } else if (kind === PropFlags.Null || kind === PropFlags.Undefined) {
-      // No value
+      offset += len * (1 + 1 + 4);
     } else {
-      offset++;
+      offset += 4;
     }
   }
 
@@ -341,7 +326,7 @@ function findPropOffset(buf, offset, search) {
 }
 
 const INTERNAL_CTX = Symbol("ctx");
-const INTERNAL_OFFSET = Symbol("offset");
+const INTERNAL_IDX = Symbol("offset");
 
 // This class is a facade for all materialized nodes. Instead of creating a
 // unique class per AST node, we have one class with getters for every
@@ -349,15 +334,15 @@ const INTERNAL_OFFSET = Symbol("offset");
 // only when they are needed.
 class FacadeNode {
   [INTERNAL_CTX];
-  [INTERNAL_OFFSET];
+  [INTERNAL_IDX];
 
   /**
    * @param {AstContext} ctx
-   * @param {number} offset
+   * @param {number} idx
    */
-  constructor(ctx, offset) {
+  constructor(ctx, idx) {
     this[INTERNAL_CTX] = ctx;
-    this[INTERNAL_OFFSET] = offset;
+    this[INTERNAL_IDX] = idx;
   }
 
   /**
@@ -373,12 +358,12 @@ class FacadeNode {
    * @returns {string}
    */
   [Symbol.for("Deno.customInspect")](_, options) {
-    const json = toJsValue(this[INTERNAL_CTX], this[INTERNAL_OFFSET]);
+    const json = toJsValue(this[INTERNAL_CTX], this[INTERNAL_IDX]);
     return Deno.inspect(json, options);
   }
 
   [Symbol.for("Deno.lint.toJsValue")]() {
-    return toJsValue(this[INTERNAL_CTX], this[INTERNAL_OFFSET]);
+    return toJsValue(this[INTERNAL_CTX], this[INTERNAL_IDX]);
   }
 }
 
@@ -401,7 +386,7 @@ function setNodeGetters(ctx) {
 
     Object.defineProperty(FacadeNode.prototype, name, {
       get() {
-        return readValue(this[INTERNAL_CTX], this[INTERNAL_OFFSET], i);
+        return readValue(this[INTERNAL_CTX], this[INTERNAL_IDX], i);
       },
     });
   }
@@ -410,16 +395,16 @@ function setNodeGetters(ctx) {
 /**
  * Serialize a node recursively to plain JSON
  * @param {AstContext} ctx
- * @param {number} offset
+ * @param {number} idx
  * @returns {*}
  */
-function toJsValue(ctx, offset) {
+function toJsValue(ctx, idx) {
   const { buf } = ctx;
 
   /** @type {Record<string, any>} */
   const node = {
-    type: readValue(ctx, offset, AST_PROP_TYPE),
-    range: readValue(ctx, offset, AST_PROP_RANGE),
+    type: readValue(ctx, idx, AST_PROP_TYPE),
+    range: readValue(ctx, idx, AST_PROP_RANGE),
   };
 
   /** @type {Record<string, any>} */
@@ -427,12 +412,12 @@ function toJsValue(ctx, offset) {
   let skip = 0;
 
   // type + parentId + SpanLo + SpanHi
-  offset += 1 + 4 + 4 + 4;
+  idx += 1 + 4 + 4 + 4;
 
-  const count = buf[offset++];
+  const count = buf[idx++];
   for (let i = 0; i < count; i++) {
-    const prop = buf[offset++];
-    const kind = buf[offset++];
+    const prop = buf[idx++];
+    const kind = buf[idx++];
     const name = getString(ctx.strTable, ctx.strByProp[prop]);
     if (skip > 0) {
       skip--;
@@ -443,34 +428,34 @@ function toJsValue(ctx, offset) {
     }
 
     if (kind === PropFlags.Ref) {
-      const v = readU32(buf, offset);
-      offset += 4;
+      const v = readU32(buf, idx);
+      idx += 4;
       out[name] = v === 0 ? null : toJsValue(ctx, v);
     } else if (kind === PropFlags.RefArr) {
-      const len = readU32(buf, offset);
-      offset += 4;
+      const len = readU32(buf, idx);
+      idx += 4;
       const nodes = new Array(len);
       for (let i = 0; i < len; i++) {
-        const v = readU32(buf, offset);
+        const v = readU32(buf, idx);
         if (v === 0) continue;
         nodes[i] = toJsValue(ctx, v);
-        offset += 4;
+        idx += 4;
       }
       out[name] = nodes;
     } else if (kind === PropFlags.Bool) {
-      const v = buf[offset++];
+      const v = buf[idx++];
       out[name] = v === 1;
     } else if (kind === PropFlags.String) {
-      const v = readU32(buf, offset);
-      offset += 4;
+      const v = readU32(buf, idx);
+      idx += 4;
       out[name] = getString(ctx.strTable, v);
     } else if (kind === PropFlags.Number) {
-      const v = readU32(buf, offset);
-      offset += 4;
+      const v = readU32(buf, idx);
+      idx += 4;
       out[name] = Number(getString(ctx.strTable, v));
     } else if (kind === PropFlags.Regex) {
-      const v = readU32(buf, offset);
-      offset += 4;
+      const v = readU32(buf, idx);
+      idx += 4;
 
       out[name] = readRegex(ctx.strTable, v);
     } else if (kind === PropFlags.Null) {
@@ -478,9 +463,9 @@ function toJsValue(ctx, offset) {
     } else if (kind === PropFlags.Undefined) {
       out[name] = undefined;
     } else if (kind === PropFlags.Obj) {
-      const v = readU32(buf, offset);
+      const v = readU32(buf, idx);
       skip += v;
-      offset += 4;
+      idx += 4;
       const obj = {};
       out = obj;
       out[name] = obj;
@@ -632,67 +617,6 @@ function getString(strTable, id) {
   return name;
 }
 
-/**
- * @param {AstContext["buf"]} buf
- * @param {number} child
- * @returns {null | [number, number]}
- */
-function findChildOffset(buf, child) {
-  let offset = readU32(buf, child + 1);
-
-  // type + parentId + SpanLo + SpanHi
-  offset += 1 + 4 + 4 + 4;
-
-  const propCount = buf[offset++];
-  for (let i = 0; i < propCount; i++) {
-    const _prop = buf[offset++];
-    const kind = buf[offset++];
-
-    switch (kind) {
-      case PropFlags.Ref: {
-        const start = offset;
-        const value = readU32(buf, offset);
-        offset += 4;
-        if (value === child) {
-          return [start, -1];
-        }
-        break;
-      }
-      case PropFlags.RefArr: {
-        const start = offset;
-
-        const len = readU32(buf, offset);
-        offset += 4;
-
-        for (let j = 0; j < len; j++) {
-          const value = readU32(buf, offset);
-          offset += 4;
-          if (value === child) {
-            return [start, j];
-          }
-        }
-
-        break;
-      }
-      case PropFlags.Number:
-      case PropFlags.String:
-      case PropFlags.Regex:
-        offset += 4;
-        break;
-      case PropFlags.Bool:
-        offset++;
-        break;
-      case PropFlags.Null:
-      case PropFlags.Undefined:
-        break;
-      case PropFlags.Obj:
-        break;
-    }
-  }
-
-  return null;
-}
-
 /** @implements {MatchContext} */
 class MatchCtx {
   /**
@@ -707,18 +631,21 @@ class MatchCtx {
   }
 
   /**
-   * @param {number} offset
+   * @param {number} idx
    * @returns {number}
    */
-  getParent(offset) {
-    return readU32(this.buf, offset + 1);
+  getParent(idx) {
+    let offset = idx * NODE_SIZE;
+    offset += 1 + 4 + 4;
+    return readU32(this.buf, offset);
   }
 
   /**
-   * @param {number} offset
+   * @param {number} idx
    * @returns {number}
    */
-  getType(offset) {
+  getType(idx) {
+    const offset = idx * NODE_SIZE;
     return this.buf[offset];
   }
 
@@ -835,133 +762,70 @@ class MatchCtx {
   }
 
   /**
-   * @param {number} offset
+   * @param {number} idx
    * @returns {number}
    */
-  getFirstChild(offset) {
-    const { buf } = this;
-
-    // type + parentId + SpanLo + SpanHi
-    offset += 1 + 4 + 4 + 4;
-
-    const count = buf[offset++];
-    for (let i = 0; i < count; i++) {
-      const _prop = buf[offset++];
-      const kind = buf[offset++];
-
-      switch (kind) {
-        case PropFlags.Ref: {
-          const v = readU32(buf, offset);
-          offset += 4;
-          return v;
-        }
-        case PropFlags.RefArr: {
-          const len = readU32(buf, offset);
-          offset += 4;
-          for (let j = 0; j < len; j++) {
-            const v = readU32(buf, offset);
-            offset += 4;
-            return v;
-          }
-
-          return len;
-        }
-
-        case PropFlags.Number:
-        case PropFlags.String:
-        case PropFlags.Regex:
-          offset += 4;
-          break;
-        case PropFlags.Bool:
-          offset++;
-          break;
-        case PropFlags.Null:
-        case PropFlags.Undefined:
-          break;
-      }
-    }
-
-    return -1;
+  getFirstChild(idx) {
+    let offset = idx * NODE_SIZE;
+    offset += 1;
+    return readU32(this.buf, offset);
   }
 
   /**
-   * @param {number} offset
+   * @param {number} idx
    * @returns {number}
    */
-  getLastChild(offset) {
-    const { buf } = this;
+  getLastChild(idx) {
+    let offset = idx * NODE_SIZE;
+    offset += 1;
 
-    // type + parentId + SpanLo + SpanHi
-    offset += 1 + 4 + 4 + 4;
+    let childId = readU32(this.buf, offset);
+    if (childId <= AST_IDX_INVALID) return -1;
 
-    let last = -1;
+    while (childId > AST_IDX_INVALID) {
+      let offset = childId * NODE_SIZE;
+      offset += 1 + 4;
 
-    const count = buf[offset++];
-    for (let i = 0; i < count; i++) {
-      const _prop = buf[offset++];
-      const kind = buf[offset++];
+      const nextId = readU32(this.buf, offset);
+      if (nextId <= AST_IDX_INVALID) break;
 
-      switch (kind) {
-        case PropFlags.Ref: {
-          const v = readU32(buf, offset);
-          offset += 4;
-          last = v;
-          break;
-        }
-        case PropFlags.RefArr: {
-          const len = readU32(buf, offset);
-          offset += 4;
-          for (let j = 0; j < len; j++) {
-            const v = readU32(buf, offset);
-            last = v;
-            offset += 4;
-          }
-
-          break;
-        }
-
-        case PropFlags.String:
-        case PropFlags.Number:
-        case PropFlags.Regex:
-          offset += 4;
-          break;
-        case PropFlags.Bool:
-          offset++;
-          break;
-        case PropFlags.Null:
-        case PropFlags.Undefined:
-          break;
-      }
+      childId = nextId;
     }
 
-    return last;
+    return childId;
   }
 
   /**
-   * @param {number} id
+   * @param {number} idx
    * @returns {number[]}
    */
-  getSiblings(id) {
+  getSiblings(idx) {
+    // TODO(@marvinhagemeister): We can rewrite this to not
+    // use array allocation now.
     const { buf } = this;
 
-    const result = findChildOffset(buf, id);
-    // Happens for program nodes
-    if (result === null) return [];
+    let offset = idx * NODE_SIZE;
+    offset += 1 + 4 + 4;
+    const parentIdx = readU32(buf, offset);
 
-    if (result[1] === -1) {
-      return [id];
-    }
-
-    let offset = result[0];
-    const count = readU32(buf, offset);
-    offset += 4;
+    const pOffset = parentIdx * NODE_SIZE;
+    const pType = buf[pOffset + 1];
 
     /** @type {number[]} */
     const out = [];
-    for (let i = 0; i < count; i++) {
-      const v = readU32(buf, offset);
-      offset += 4;
-      out.push(v);
+
+    if (pType !== AST_GROUP_TYPE) {
+      return out;
+    }
+
+    let childId = readU32(buf, pOffset + 1);
+    while (childId > AST_IDX_INVALID) {
+      out.push(childId);
+
+      const nextId = readU32(buf, pOffset + 1 + 4);
+      if (nextId <= AST_IDX_INVALID) break;
+
+      childId = nextId;
     }
 
     return out;
@@ -989,9 +853,7 @@ function createAstContext(buf) {
   const stringCount = readU32(buf, offset);
   offset += 4;
 
-  // TODO(@marvinhagemeister): We could lazily decode the strings on an as needed basis.
-  // Not sure if this matters much in practice though.
-  let id = 0;
+  let strId = 0;
   for (let i = 0; i < stringCount; i++) {
     const len = readU32(buf, offset);
     offset += 4;
@@ -999,8 +861,8 @@ function createAstContext(buf) {
     const strBytes = buf.slice(offset, offset + len);
     offset += len;
     const s = DECODER.decode(strBytes);
-    strTable.set(id, s);
-    id++;
+    strTable.set(strId, s);
+    strId++;
   }
 
   if (strTable.size !== stringCount) {
@@ -1206,14 +1068,14 @@ function traverse(ctx, visitors, idx, cancellationToken) {
 
   const { buf } = ctx;
 
-  let offset = idx * AST_NODE_SIZE;
+  let offset = idx * NODE_SIZE;
   const nodeType = buf[offset++];
 
   /** @type {VisitorFn[] | null} */
   let exits = null;
 
   // Only visit if it's an actual node
-  if (nodeType !== AST_TYPE_REF_ARRAY) {
+  if (nodeType !== AST_GROUP_TYPE) {
     // Loop over visitors and check if any selector matches
     for (let i = 0; i < visitors.length; i++) {
       const v = visitors[i];

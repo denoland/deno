@@ -357,15 +357,16 @@ impl SerializeCtx {
   }
 
   /// Allocate an undefined field
-  pub fn write_null<P>(&mut self, prop: P) -> usize
+  pub fn write_null<P>(&mut self, prop: P)
   where
     P: Into<u8> + Display + Clone,
   {
-    self.field_header(prop, PropFlags::Null)
+    self.field_header(prop, PropFlags::Null);
+    append_u32(&mut self.field_buf, 0);
   }
 
   /// Allocate a number field
-  pub fn write_num<P>(&mut self, prop: P, value: &str) -> usize
+  pub fn write_num<P>(&mut self, prop: P, value: &str)
   where
     P: Into<u8> + Display + Clone,
   {
@@ -395,7 +396,7 @@ impl SerializeCtx {
     self.field_header(prop, PropFlags::Bool);
 
     let n = if value { 1 } else { 0 };
-    self.field_buf.push(n);
+    append_u32(&mut self.field_buf, n);
   }
 
   /// Replace the placeholder of a reference field with the actual offset
