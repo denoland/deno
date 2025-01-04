@@ -975,7 +975,11 @@ class DOMMatrixReadOnly {
     const matrix = webidl.createBranded(DOMMatrix);
     matrix[_writable] = true;
     if (originX === 0 && originY === 0 && originZ === 0) {
-      matrix[_inner] = this[_inner].clone().scale(scale, scale, scale);
+      matrix[_inner] = this[_inner].clone().scaleWithoutOrigin(
+        scale,
+        scale,
+        scale,
+      );
     } else {
       matrix[_inner] = this[_inner].clone().scaleWithOrigin(
         scale,
