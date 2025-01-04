@@ -16,6 +16,11 @@ const {
   op_is_cancelled,
 } = core.ops;
 
+// Keep these in sync with Rust
+const AST_IDX_INVALID = 0;
+const AST_TYPE_REF_ARRAY = 1;
+const AST_NODE_SIZE = 1 + 4 + 4 + 4;
+
 // Keep in sync with Rust
 // These types are expected to be present on every node. Note that this
 // isn't set in stone. We could revise this at a future point.
@@ -51,7 +56,8 @@ const PropFlags = {
   /** An object */
   Obj: 7,
   Regex: 8,
-  BigInt: 8,
+  BigInt: 9,
+  Array: 10,
 };
 
 /** @typedef {import("./40_lint_types.d.ts").AstContext} AstContext */
@@ -271,16 +277,16 @@ export function installPlugin(plugin, exclude) {
 
 /**
  * @param {AstContext} ctx
- * @param {number} offset
+ * @param {number} idx
  * @returns
  */
-function getNode(ctx, offset) {
-  if (offset === 0) return null;
-  const cached = ctx.nodes.get(offset);
+function getNode(ctx, idx) {
+  if (idx === AST_IDX_INVALID) return null;
+  const cached = ctx.nodes.get(idx);
   if (cached !== undefined) return cached;
 
-  const node = new FacadeNode(ctx, offset);
-  ctx.nodes.set(offset, /** @type {*} */ (cached));
+  const node = new FacadeNode(ctx, idx);
+  ctx.nodes.set(idx, /** @type {*} */ (cached));
   return node;
 }
 
@@ -1191,81 +1197,61 @@ export function runPluginsForFile(fileName, serializedAst) {
 /**
  * @param {AstContext} ctx
  * @param {CompiledVisitor[]} visitors
- * @param {number} offset
+ * @param {number} idx
  * @param {CancellationToken} cancellationToken
  */
-function traverse(ctx, visitors, offset, cancellationToken) {
-  // The 0 offset is used to denote an empty/placeholder node
-  if (offset === 0) return;
+function traverse(ctx, visitors, idx, cancellationToken) {
+  if (idx === AST_IDX_INVALID) return;
   if (cancellationToken.isCancellationRequested()) return;
 
-  const originalOffset = offset;
-
   const { buf } = ctx;
+
+  let offset = idx * AST_NODE_SIZE;
+  const nodeType = buf[offset++];
 
   /** @type {VisitorFn[] | null} */
   let exits = null;
 
-  for (let i = 0; i < visitors.length; i++) {
-    const v = visitors[i];
-    if (v.matcher(ctx.matcher, offset)) {
-      if (cancellationToken.isCancellationRequested()) return;
-      if (v.info.exit !== NOOP) {
-        if (exits === null) {
-          exits = [v.info.exit];
-        } else {
-          exits.push(v.info.exit);
+  // Only visit if it's an actual node
+  if (nodeType !== AST_TYPE_REF_ARRAY) {
+    // Loop over visitors and check if any selector matches
+    for (let i = 0; i < visitors.length; i++) {
+      const v = visitors[i];
+      if (v.matcher(ctx.matcher, idx)) {
+        if (v.info.exit !== NOOP) {
+          if (exits === null) {
+            exits = [v.info.exit];
+          } else {
+            exits.push(v.info.exit);
+          }
         }
-      }
 
-      if (v.info.enter !== NOOP) {
-        const node = /** @type {*} */ (getNode(ctx, offset));
-        v.info.enter(node);
+        if (v.info.enter !== NOOP) {
+          const node = /** @type {*} */ (getNode(ctx, idx));
+          v.info.enter(node);
+        }
       }
     }
   }
 
-  // Search for node references in the properties of the current node. All
-  // other properties can be ignored.
   try {
-    // type + parentId + SpanLo + SpanHi
-    offset += 1 + 4 + 4 + 4;
+    const childIdx = readU32(buf, offset);
+    offset += 4;
 
-    const propCount = buf[offset];
-    offset += 1;
+    if (childIdx > AST_IDX_INVALID) {
+      traverse(ctx, visitors, childIdx, cancellationToken);
+    }
 
-    for (let i = 0; i < propCount; i++) {
-      const kind = buf[offset + 1];
-      offset += 2; // propId + propFlags
+    const nextIdx = readU32(buf, offset);
+    offset += 4;
 
-      if (kind === PropFlags.Ref) {
-        const next = readU32(buf, offset);
-        offset += 4;
-        traverse(ctx, visitors, next, cancellationToken);
-      } else if (kind === PropFlags.RefArr) {
-        const len = readU32(buf, offset);
-        offset += 4;
-
-        for (let j = 0; j < len; j++) {
-          const child = readU32(buf, offset);
-          offset += 4;
-          traverse(ctx, visitors, child, cancellationToken);
-        }
-      } else if (
-        kind === PropFlags.String || kind === PropFlags.Number ||
-        kind === PropFlags.Regex
-      ) {
-        offset += 4;
-      } else if (kind === PropFlags.Bool) {
-        offset += 1;
-      } else if (kind === PropFlags.Null || kind === PropFlags.Undefined) {
-        // No value
-      }
+    if (nextIdx > AST_IDX_INVALID) {
+      traverse(ctx, visitors, nextIdx, cancellationToken);
     }
   } finally {
     if (exits !== null) {
       for (let i = 0; i < exits.length; i++) {
-        const node = /** @type {*} */ (getNode(ctx, originalOffset));
+        const node = /** @type {*} */ (getNode(ctx, idx));
         exits[i](node);
       }
     }

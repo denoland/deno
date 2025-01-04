@@ -18,9 +18,10 @@ pub enum PropFlags {
   Bool,
   Null,
   Undefined,
-  Obj,
+  Object,
   Regex,
   BigInt,
+  Array,
 }
 
 impl From<PropFlags> for u8 {
@@ -41,8 +42,10 @@ impl TryFrom<u8> for PropFlags {
       4 => Ok(PropFlags::Bool),
       5 => Ok(PropFlags::Null),
       6 => Ok(PropFlags::Undefined),
-      7 => Ok(PropFlags::Obj),
+      7 => Ok(PropFlags::Object),
       8 => Ok(PropFlags::Regex),
+      9 => Ok(PropFlags::BigInt),
+      10 => Ok(PropFlags::Array),
       _ => Err("Unknown Prop flag"),
     }
   }
@@ -128,76 +131,7 @@ impl StringTable {
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct NodeRef(pub usize);
 
-/// Represents an offset to a node whose schema hasn't been committed yet
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub struct PendingNodeRef(pub NodeRef);
-
-#[derive(Debug)]
-pub struct BoolPos(pub usize);
-#[derive(Debug)]
-pub struct FieldPos(pub usize);
-#[derive(Debug)]
-pub struct FieldArrPos(pub usize);
-#[derive(Debug)]
-pub struct StrPos(pub usize);
-#[derive(Debug)]
-pub struct UndefPos(pub usize);
-#[derive(Debug)]
-pub struct NullPos(pub usize);
-#[derive(Debug)]
-pub struct NumPos(pub usize);
-#[derive(Debug)]
-pub struct ObjPos(pub usize);
-#[derive(Debug)]
-pub struct RegexPos(pub usize);
-
-pub struct AllocNode(pub usize, pub usize);
-
-#[derive(Debug)]
-pub enum NodePos {
-  Bool(BoolPos),
-  #[allow(dead_code)]
-  Field(FieldPos),
-  #[allow(dead_code)]
-  FieldArr(FieldArrPos),
-  Str(StrPos),
-  Undef(UndefPos),
-  #[allow(dead_code)]
-  Null(NullPos),
-  #[allow(dead_code)]
-  Num(NumPos),
-  #[allow(dead_code)]
-  Obj(ObjPos),
-  #[allow(dead_code)]
-  Regex(RegexPos),
-}
-
-pub trait AstBufSerializer<K, P>
-where
-  K: Into<u8> + Display,
-  P: Into<u8> + Display,
-{
-  fn header(&mut self, kind: K, parent: NodeRef, span: &Span)
-    -> PendingNodeRef;
-  fn ref_field(&mut self, prop: P) -> FieldPos;
-  fn ref_vec_field(&mut self, prop: P, len: usize) -> FieldArrPos;
-  fn obj_field(&mut self, prop: P, len: usize) -> ObjPos;
-  fn str_field(&mut self, prop: P) -> StrPos;
-  fn num_field(&mut self, prop: P) -> NumPos;
-  fn bool_field(&mut self, prop: P) -> BoolPos;
-  fn undefined_field(&mut self, prop: P) -> UndefPos;
-  fn null_field(&mut self, prop: P) -> NullPos;
-  fn regex_field(&mut self, prop: P) -> RegexPos;
-  fn commit_schema(&mut self, offset: PendingNodeRef) -> NodeRef;
-
-  fn write_ref(&mut self, pos: FieldPos, value: NodeRef);
-  fn write_maybe_ref(&mut self, pos: FieldPos, value: Option<NodeRef>);
-  fn write_refs(&mut self, pos: FieldArrPos, value: Vec<NodeRef>);
-  fn write_str(&mut self, pos: StrPos, value: &str);
-  fn write_bool(&mut self, pos: BoolPos, value: bool);
-  fn write_num(&mut self, pos: NumPos, value: &str);
-  fn write_regex(&mut self, pos: RegexPos, value: &str);
-
+pub trait AstBufSerializer {
   fn serialize(&mut self) -> Vec<u8>;
 }
 
@@ -266,25 +200,13 @@ impl SerializeCtx {
     ctx
   }
 
-  pub fn has_schema<N>(&self, kind: &N) -> bool
-  where
-    N: Into<u8> + Display + Clone,
-  {
-    let n: u8 = kind.clone().into();
-    self.schema_map.get(n).is_none()
-  }
-
   /// Allocate a node's header
-  fn field_header<P>(&mut self, prop: P, prop_flags: PropFlags) -> usize
+  fn field_header<P>(&mut self, prop: P, prop_flags: PropFlags)
   where
     P: Into<u8> + Display + Clone,
   {
-    self.field_count += 1;
-
-    let offset = self.buf.len();
-
+    let flags: u8 = prop_flags.into();
     let n: u8 = prop.clone().into();
-    self.buf.push(n);
 
     if let Some(v) = self.prop_name_map.get::<usize>(n.into()) {
       if *v == 0 {
@@ -293,10 +215,9 @@ impl SerializeCtx {
       }
     }
 
-    let flags: u8 = prop_flags.into();
-    self.buf.push(flags);
-
-    offset
+    self.field_count += 1;
+    self.field_buf.push(n);
+    self.field_buf.push(flags);
   }
 
   /// Allocate a property pointing to another node.
@@ -329,11 +250,9 @@ impl SerializeCtx {
 
   /// The node buffer contains enough information for traversal
   ///   <type u8>
-  ///   <prop offset u32>
-  ///   <span offset u32>
-  ///   <parent offset u32>
-  ///   <child offset u32>
-  ///   <next offset u32>
+  ///   <child idx u32>
+  ///   <next idx u32>
+  ///   <parent idx u32>
   pub fn append_node<N>(&mut self, kind: N, span: &Span) -> NodeRef
   where
     N: Into<u8> + Display + Clone,
@@ -344,29 +263,16 @@ impl SerializeCtx {
     let n = kind.clone().into();
     self.buf.push(n);
 
-    // Prop Offset
-    append_u32(&mut self.buf, 0);
+    // child idx + next idx + parent idx
+    append_usize(&mut self.buf, 0);
+    append_usize(&mut self.buf, 0);
+    append_usize(&mut self.buf, 0);
 
-    // Span offset
-    append_usize(&mut self.buf, self.spans.len());
     // write spans
     append_u32(&mut self.spans, span.lo.0);
     append_u32(&mut self.spans, span.hi.0);
 
-    // Parent node
-    append_usize(&mut self.buf, 0);
-
-    // Reserve child
-    append_usize(&mut self.buf, 0);
-
-    // Reserve next
-    append_usize(&mut self.buf, 0);
-
     offset
-  }
-
-  pub fn get_alloc_pos(&self) -> AllocNode {
-    AllocNode(self.buf.len(), self.field_buf.len())
   }
 
   pub fn begin_schema<N>(&mut self, kind: &N) -> usize
@@ -446,7 +352,7 @@ impl SerializeCtx {
   where
     P: Into<u8> + Display + Clone,
   {
-    let offset = self.field(prop, PropFlags::Obj);
+    let offset = self.field(prop, PropFlags::Object);
     append_usize(&mut self.buf, len);
 
     offset
@@ -560,6 +466,8 @@ impl SerializeCtx {
   where
     P: Into<u8> + Display + Clone,
   {
+    self.field_header(prop, PropFlags::String);
+
     let id = self.str_table.insert(value);
     append_usize(&mut self.field_buf, id);
   }
