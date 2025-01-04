@@ -37,6 +37,7 @@ use deno_ffi::ReprError;
 use deno_ffi::StaticError;
 use deno_fs::FsOpsError;
 use deno_fs::FsOpsErrorKind;
+use deno_geometry::GeometryError;
 use deno_http::HttpError;
 use deno_http::HttpNextError;
 use deno_http::WebSocketUpgradeError;
@@ -689,6 +690,12 @@ fn get_broadcast_channel_error(error: &BroadcastChannelError) -> &'static str {
     BroadcastChannelError::Other(err) => {
       get_error_class_name(err).unwrap_or("Error")
     }
+  }
+}
+
+fn get_geometry_error(error: &GeometryError) -> &'static str {
+  match error {
+    GeometryError::Inconsistent2DMatrix => "TypeError",
   }
 }
 
@@ -1768,6 +1775,7 @@ pub fn get_error_class_name(e: &AnyError) -> Option<&'static str> {
     .or_else(|| e.downcast_ref::<HttpStartError>().map(get_http_start_error))
     .or_else(|| e.downcast_ref::<ProcessError>().map(get_process_error))
     .or_else(|| e.downcast_ref::<OsError>().map(get_os_error))
+    .or_else(|| e.downcast_ref::<GeometryError>().map(get_geometry_error))
     .or_else(|| e.downcast_ref::<SyncFetchError>().map(get_sync_fetch_error))
     .or_else(|| {
       e.downcast_ref::<CompressionError>()

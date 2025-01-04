@@ -33,6 +33,12 @@ pub fn get_declaration() -> PathBuf {
   PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("lib.deno_geometry.d.ts")
 }
 
+#[derive(Debug, thiserror::Error)]
+pub enum GeometryError {
+  #[error("Inconsistent 2d matrix value")]
+  Inconsistent2DMatrix, // TypeError
+}
+
 #[derive(WebIDL)]
 #[webidl(dictionary)]
 pub struct DOMPointInit {
@@ -215,6 +221,57 @@ impl DOMRectInner {
   }
 }
 
+#[derive(WebIDL)]
+#[webidl(dictionary)]
+pub struct DOMMatrixInit {
+  #[webidl(default = None)]
+  a: Option<f64>,
+  #[webidl(default = None)]
+  b: Option<f64>,
+  #[webidl(default = None)]
+  c: Option<f64>,
+  #[webidl(default = None)]
+  d: Option<f64>,
+  #[webidl(default = None)]
+  e: Option<f64>,
+  #[webidl(default = None)]
+  f: Option<f64>,
+  #[webidl(default = None)]
+  m11: Option<f64>,
+  #[webidl(default = None)]
+  m12: Option<f64>,
+  #[webidl(default = 0.0)]
+  m13: f64,
+  #[webidl(default = 0.0)]
+  m14: f64,
+  #[webidl(default = None)]
+  m21: Option<f64>,
+  #[webidl(default = None)]
+  m22: Option<f64>,
+  #[webidl(default = 0.0)]
+  m23: f64,
+  #[webidl(default = 0.0)]
+  m24: f64,
+  #[webidl(default = 0.0)]
+  m31: f64,
+  #[webidl(default = 0.0)]
+  m32: f64,
+  #[webidl(default = 1.0)]
+  m33: f64,
+  #[webidl(default = 0.0)]
+  m34: f64,
+  #[webidl(default = None)]
+  m41: Option<f64>,
+  #[webidl(default = None)]
+  m42: Option<f64>,
+  #[webidl(default = 0.0)]
+  m43: f64,
+  #[webidl(default = 1.0)]
+  m44: f64,
+  #[webidl(default = None)]
+  is_2d: Option<bool>,
+}
+
 #[derive(Clone)]
 pub struct DOMMatrixInner {
   inner: RefCell<Matrix4<f64>>,
@@ -273,6 +330,95 @@ impl DOMMatrixInner {
     DOMMatrixInner {
       inner: RefCell::new(Matrix4::from_column_slice(buffer)),
       is_2d: Cell::new(is_2d),
+    }
+  }
+
+  #[static_method]
+  #[cppgc]
+  pub fn from_matrix(
+    #[webidl] init: DOMMatrixInit,
+  ) -> Result<DOMMatrixInner, GeometryError> {
+    macro_rules! fixup {
+      ($value3d:expr, $value2d:expr, $default:expr) => {{
+        if let Some(value3d) = $value3d {
+          if let Some(value2d) = $value2d {
+            if !(value3d == value2d || value3d.is_nan() && value2d.is_nan()) {
+              return Err(GeometryError::Inconsistent2DMatrix);
+            }
+          }
+          value3d
+        } else if let Some(value2d) = $value2d {
+          value2d
+        } else {
+          $default
+        }
+      }};
+    }
+
+    let m11 = fixup!(init.m11, init.a, 1.0);
+    let m12 = fixup!(init.m12, init.b, 0.0);
+    let m21 = fixup!(init.m21, init.c, 0.0);
+    let m22 = fixup!(init.m22, init.d, 1.0);
+    let m41 = fixup!(init.m41, init.e, 0.0);
+    let m42 = fixup!(init.m42, init.f, 0.0);
+
+    let is_2d = {
+      let is_2d_can_be_true = init.m13 == 0.0
+        && init.m14 == 0.0
+        && init.m23 == 0.0
+        && init.m24 == 0.0
+        && init.m31 == 0.0
+        && init.m32 == 0.0
+        && init.m33 == 1.0
+        && init.m34 == 0.0
+        && init.m43 == 0.0
+        && init.m44 == 1.0;
+      if let Some(is_2d) = init.is_2d {
+        if is_2d && !is_2d_can_be_true {
+          return Err(GeometryError::Inconsistent2DMatrix);
+        } else {
+          is_2d
+        }
+      } else {
+        is_2d_can_be_true
+      }
+    };
+
+    if is_2d {
+      Ok(DOMMatrixInner {
+        #[rustfmt::skip]
+        inner: RefCell::new(Matrix4::new(
+          m11, m21, 0.0, m41,
+          m12, m22, 0.0, m42,
+          0.0, 0.0, 1.0, 0.0,
+          0.0, 0.0, 0.0, 1.0,
+        )),
+        is_2d: Cell::new(true),
+      })
+    } else {
+      let DOMMatrixInit {
+        m13,
+        m14,
+        m23,
+        m24,
+        m31,
+        m32,
+        m33,
+        m34,
+        m43,
+        m44,
+        ..
+      } = init;
+      Ok(DOMMatrixInner {
+        #[rustfmt::skip]
+        inner: RefCell::new(Matrix4::new(
+          m11, m21, m31, m41,
+          m12, m22, m32, m42,
+          m13, m23, m33, m43,
+          m14, m24, m34, m44,
+        )),
+        is_2d: Cell::new(false),
+      })
     }
   }
 

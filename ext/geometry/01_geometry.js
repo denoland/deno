@@ -101,124 +101,6 @@ webidl.converters.DOMQuadInit = webidl.createDictionaryConverter(
   ],
 );
 
-/** @type {webidl.Dictionary} */
-const dictDOMMatrix2DInit = [
-  {
-    key: "a",
-    converter: webidl.converters["unrestricted double"],
-  },
-  {
-    key: "b",
-    converter: webidl.converters["unrestricted double"],
-  },
-  {
-    key: "c",
-    converter: webidl.converters["unrestricted double"],
-  },
-  {
-    key: "d",
-    converter: webidl.converters["unrestricted double"],
-  },
-  {
-    key: "e",
-    converter: webidl.converters["unrestricted double"],
-  },
-  {
-    key: "f",
-    converter: webidl.converters["unrestricted double"],
-  },
-  {
-    key: "m11",
-    converter: webidl.converters["unrestricted double"],
-  },
-  {
-    key: "m12",
-    converter: webidl.converters["unrestricted double"],
-  },
-  {
-    key: "m21",
-    converter: webidl.converters["unrestricted double"],
-  },
-  {
-    key: "m22",
-    converter: webidl.converters["unrestricted double"],
-  },
-  {
-    key: "m41",
-    converter: webidl.converters["unrestricted double"],
-  },
-  {
-    key: "m42",
-    converter: webidl.converters["unrestricted double"],
-  },
-];
-
-webidl.converters.DOMMatrix2DInit = webidl.createDictionaryConverter(
-  "DOMMatrix2DInit",
-  dictDOMMatrix2DInit,
-);
-
-webidl.converters.DOMMatrixInit = webidl.createDictionaryConverter(
-  "DOMMatrixInit",
-  dictDOMMatrix2DInit,
-  [
-    {
-      key: "m13",
-      converter: webidl.converters["unrestricted double"],
-      defaultValue: 0,
-    },
-    {
-      key: "m14",
-      converter: webidl.converters["unrestricted double"],
-      defaultValue: 0,
-    },
-    {
-      key: "m23",
-      converter: webidl.converters["unrestricted double"],
-      defaultValue: 0,
-    },
-    {
-      key: "m24",
-      converter: webidl.converters["unrestricted double"],
-      defaultValue: 0,
-    },
-    {
-      key: "m31",
-      converter: webidl.converters["unrestricted double"],
-      defaultValue: 0,
-    },
-    {
-      key: "m32",
-      converter: webidl.converters["unrestricted double"],
-      defaultValue: 0,
-    },
-    {
-      key: "m33",
-      converter: webidl.converters["unrestricted double"],
-      defaultValue: 1,
-    },
-    {
-      key: "m34",
-      converter: webidl.converters["unrestricted double"],
-      defaultValue: 0,
-    },
-    {
-      key: "m43",
-      converter: webidl.converters["unrestricted double"],
-      defaultValue: 0,
-    },
-    {
-      key: "m44",
-      converter: webidl.converters["unrestricted double"],
-      defaultValue: 1,
-    },
-    {
-      key: "is2D",
-      converter: webidl.converters["boolean"],
-    },
-  ],
-);
-
 const _inner = Symbol("[[inner]]");
 // Property to prevent writing values when an immutable instance is changed to
 // a mutable instance by Object.setPrototypeOf
@@ -269,23 +151,19 @@ class DOMPointReadOnly {
 
   matrixTransform(matrix = { __proto__: null }) {
     webidl.assertBranded(this, DOMPointReadOnlyPrototype);
-    const prefix = "Failed to execute 'matrixTransform' on 'DOMPointReadOnly'";
+    let matrixInner;
+    // fast path for DOMMatrix or DOMMatrixReadOnly
     if (
-      matrix === null ||
-      !ObjectPrototypeIsPrototypeOf(DOMMatrixReadOnlyPrototype, matrix)
+      matrix !== null &&
+      ObjectPrototypeIsPrototypeOf(DOMMatrixReadOnlyPrototype, matrix)
     ) {
-      const _matrix = webidl.converters.DOMMatrixInit(
-        matrix,
-        prefix,
-        "Argument 1",
-      );
-      validateAndFixupMatrixDictionary(_matrix, prefix);
-      matrix = { __proto__: null };
-      initMatrixFromDictonary(matrix, _matrix);
+      matrixInner = matrix[_inner];
+    } else {
+      matrixInner = DOMMatrixInner.fromMatrix(matrix);
     }
     const point = webidl.createBranded(DOMPoint);
     point[_writable] = true;
-    point[_inner] = this[_inner].matrixTransform(matrix[_inner]);
+    point[_inner] = this[_inner].matrixTransform(matrixInner);
     return point;
   }
 
@@ -748,7 +626,6 @@ class DOMMatrixReadOnly {
   }
 
   static fromMatrix(other = { __proto__: null }) {
-    const prefix = "Failed to execute 'DOMMatrixReadOnly.fromMatrix'";
     const matrix = webidl.createBranded(DOMMatrixReadOnly);
     matrix[_writable] = false;
     // fast path for DOMMatrix or DOMMatrixReadOnly
@@ -758,9 +635,7 @@ class DOMMatrixReadOnly {
     ) {
       matrix[_inner] = other[_inner].clone();
     } else {
-      other = webidl.converters.DOMMatrixInit(other, prefix, "Argument 1");
-      validateAndFixupMatrixDictionary(other, prefix);
-      initMatrixFromDictonary(matrix, other);
+      matrix[_inner] = DOMMatrixInner.fromMatrix(other);
     }
     return matrix;
   }
@@ -1067,23 +942,19 @@ class DOMMatrixReadOnly {
 
   multiply(other = { __proto__: null }) {
     webidl.assertBranded(this, DOMMatrixReadOnlyPrototype);
-    const prefix = "Failed to execute 'multiply' on 'DOMMatrixReadOnly'";
+    let otherInner;
+    // fast path for DOMMatrix or DOMMatrixReadOnly
     if (
-      other === null ||
-      !ObjectPrototypeIsPrototypeOf(DOMMatrixReadOnlyPrototype, other)
+      other !== null &&
+      ObjectPrototypeIsPrototypeOf(DOMMatrixReadOnlyPrototype, other)
     ) {
-      const _other = webidl.converters.DOMMatrixInit(
-        other,
-        prefix,
-        "Argument 1",
-      );
-      validateAndFixupMatrixDictionary(_other, prefix);
-      other = { __proto__: null };
-      initMatrixFromDictonary(other, _other);
+      otherInner = other[_inner];
+    } else {
+      otherInner = DOMMatrixInner.fromMatrix(other);
     }
     const matrix = webidl.createBranded(DOMMatrix);
     matrix[_writable] = true;
-    matrix[_inner] = this[_inner].multiply(other[_inner]);
+    matrix[_inner] = this[_inner].multiply(otherInner);
     return matrix;
   }
 
@@ -1113,27 +984,19 @@ class DOMMatrixReadOnly {
 
   transformPoint(point = { __proto__: null }) {
     webidl.assertBranded(this, DOMMatrixReadOnlyPrototype);
+    let pointInner;
+    // fast path for DOMPoint or DOMPointReadOnly
     if (
-      point === null ||
-      !ObjectPrototypeIsPrototypeOf(DOMPointReadOnlyPrototype, point)
+      point !== null &&
+      ObjectPrototypeIsPrototypeOf(DOMPointReadOnlyPrototype, point)
     ) {
-      const _point = webidl.converters.DOMPointInit(
-        point,
-        "Failed to execute 'transformPoint' on 'DOMMatrixReadOnly'",
-        "Argument 1",
-      );
-      point = {
-        [_inner]: new DOMPointInner(
-          _point.x,
-          _point.y,
-          _point.z,
-          _point.w,
-        ),
-      };
+      pointInner = point[_inner];
+    } else {
+      pointInner = DOMPointInner.fromPoint(point);
     }
     const result = webidl.createBranded(DOMPoint);
     result[_writable] = true;
-    result[_inner] = this[_inner].transformPoint(point[_inner]);
+    result[_inner] = this[_inner].transformPoint(pointInner);
     return result;
   }
 
@@ -1229,7 +1092,6 @@ class DOMMatrix extends DOMMatrixReadOnly {
   [_writable] = true;
 
   static fromMatrix(other = { __proto__: null }) {
-    const prefix = "Failed to execute 'DOMMatrix.fromMatrix'";
     const matrix = webidl.createBranded(DOMMatrix);
     matrix[_writable] = true;
     // fast path for DOMMatrix or DOMMatrixReadOnly
@@ -1239,9 +1101,7 @@ class DOMMatrix extends DOMMatrixReadOnly {
     ) {
       matrix[_inner] = other[_inner].clone();
     } else {
-      other = webidl.converters.DOMMatrixInit(other, prefix, "Argument 1");
-      validateAndFixupMatrixDictionary(other, prefix);
-      initMatrixFromDictonary(matrix, other);
+      matrix[_inner] = DOMMatrixInner.fromMatrix(other);
     }
     return matrix;
   }
@@ -1489,42 +1349,34 @@ class DOMMatrix extends DOMMatrixReadOnly {
   multiplySelf(other = { __proto__: null }) {
     webidl.assertBranded(this, DOMMatrixPrototype);
     assertWritable(this);
-    const prefix = "Failed to execute 'multiplySelf' on 'DOMMatrix'";
+    let otherInner;
+    // fast path for DOMMatrix or DOMMatrixReadOnly
     if (
-      other === null ||
-      !ObjectPrototypeIsPrototypeOf(DOMMatrixReadOnlyPrototype, other)
+      other !== null &&
+      ObjectPrototypeIsPrototypeOf(DOMMatrixReadOnlyPrototype, other)
     ) {
-      const _other = webidl.converters.DOMMatrixInit(
-        other,
-        prefix,
-        "Argument 1",
-      );
-      validateAndFixupMatrixDictionary(_other, prefix);
-      other = { __proto__: null };
-      initMatrixFromDictonary(other, _other);
+      otherInner = other[_inner];
+    } else {
+      otherInner = DOMMatrixInner.fromMatrix(other);
     }
-    this[_inner].multiplySelf(other[_inner]);
+    this[_inner].multiplySelf(otherInner);
     return this;
   }
 
   preMultiplySelf(other = { __proto__: null }) {
     webidl.assertBranded(this, DOMMatrixPrototype);
     assertWritable(this);
-    const prefix = "Failed to execute 'premultiplySelf' on 'DOMMatrix'";
+    let otherInner;
+    // fast path for DOMMatrix or DOMMatrixReadOnly
     if (
-      other === null ||
-      !ObjectPrototypeIsPrototypeOf(DOMMatrixReadOnlyPrototype, other)
+      other !== null &&
+      ObjectPrototypeIsPrototypeOf(DOMMatrixReadOnlyPrototype, other)
     ) {
-      const _other = webidl.converters.DOMMatrixInit(
-        other,
-        prefix,
-        "Argument 1",
-      );
-      validateAndFixupMatrixDictionary(_other, prefix);
-      other = { __proto__: null };
-      initMatrixFromDictonary(other, _other);
+      otherInner = other[_inner];
+    } else {
+      otherInner = DOMMatrixInner.fromMatrix(other);
     }
-    this[_inner].preMultiplySelf(other[_inner]);
+    this[_inner].preMultiplySelf(otherInner);
     return this;
   }
 
@@ -1712,84 +1564,6 @@ const DOMMatrixPrototype = DOMMatrix.prototype;
 function assertWritable(self) {
   if (self[_writable] !== true) {
     throw new TypeError("Illegal invocation");
-  }
-}
-
-/**
- * https://tc39.es/ecma262/#sec-samevaluezero
- * @param {number} x
- * @param {number} y
- */
-function sameValueZero(x, y) {
-  return x === y || ObjectIs(x, y);
-}
-
-/**
- * https://drafts.fxtf.org/geometry/#matrix-validate-and-fixup-2d
- * @param {object} dict
- * @param {string} prefix
- */
-function validateAndFixup2DMatrixDictionary(dict, prefix) {
-  if (
-    (
-      dict.a !== undefined && dict.m11 !== undefined &&
-      !sameValueZero(dict.a, dict.m11)
-    ) ||
-    (
-      dict.b !== undefined && dict.m12 !== undefined &&
-      !sameValueZero(dict.b, dict.m12)
-    ) ||
-    (
-      dict.c !== undefined && dict.m21 !== undefined &&
-      !sameValueZero(dict.c, dict.m21)
-    ) ||
-    (
-      dict.d !== undefined && dict.m22 !== undefined &&
-      !sameValueZero(dict.d, dict.m22)
-    ) ||
-    (
-      dict.e !== undefined && dict.m41 !== undefined &&
-      !sameValueZero(dict.e, dict.m41)
-    ) ||
-    (
-      dict.f !== undefined && dict.m42 !== undefined &&
-      !sameValueZero(dict.f, dict.m42)
-    )
-  ) {
-    throw new TypeError(`${prefix}: Inconsistent 2d matrix value`);
-  }
-  if (dict.m11 === undefined) dict.m11 = dict.a ?? 1;
-  if (dict.m12 === undefined) dict.m12 = dict.b ?? 0;
-  if (dict.m21 === undefined) dict.m21 = dict.c ?? 0;
-  if (dict.m22 === undefined) dict.m22 = dict.d ?? 1;
-  if (dict.m41 === undefined) dict.m41 = dict.e ?? 0;
-  if (dict.m42 === undefined) dict.m42 = dict.f ?? 0;
-}
-
-/**
- * https://drafts.fxtf.org/geometry/#matrix-validate-and-fixup
- * @param {object} dict
- * @param {string} prefix
- */
-function validateAndFixupMatrixDictionary(dict, prefix) {
-  validateAndFixup2DMatrixDictionary(dict, prefix);
-  const is2DCanBeTrue = dict.m13 === 0 &&
-    dict.m14 === 0 &&
-    dict.m23 === 0 &&
-    dict.m24 === 0 &&
-    dict.m31 === 0 &&
-    dict.m32 === 0 &&
-    dict.m33 === 1 &&
-    dict.m34 === 0 &&
-    dict.m43 === 0 &&
-    dict.m44 === 1;
-  if (dict.is2D === true && !is2DCanBeTrue) {
-    throw new TypeError(
-      `${prefix}: is2D property is true but the input matrix is a 3d matrix`,
-    );
-  }
-  if (dict.is2D === undefined) {
-    dict.is2D = is2DCanBeTrue;
   }
 }
 
