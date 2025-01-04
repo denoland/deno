@@ -1438,6 +1438,32 @@ impl TsEsTreeBuilder {
     offset
   }
 
+  pub fn alloc_chain_expr(&mut self, parent: NodeRef, span: &Span) -> NodeRef {
+    let kind = AstNode::ChainExpression;
+    let offset = self.ctx.append_node(&kind, parent, span);
+
+    if !self.ctx.has_schema(&kind) {
+      let offset = self.ctx.begin_schema(&kind);
+
+      self.ctx.ref_field(AstProp::Expression);
+
+      self.ctx.commit_schema(offset);
+    }
+
+    offset
+  }
+
+  pub fn write_chain_expr(
+    &mut self,
+    offset: NodeRef,
+    expr: NodeRef,
+  ) -> NodeRef {
+    self.ctx.begin_write(&offset);
+    self.ctx.write_ref(expr);
+
+    offset
+  }
+
   pub fn alloc_sequence_expr(
     &mut self,
     parent: NodeRef,
@@ -1715,6 +1741,70 @@ impl TsEsTreeBuilder {
     offset
   }
 
+  pub fn alloc_arr_pat(&mut self, parent: NodeRef, span: &Span) -> NodeRef {
+    let kind = AstNode::ArrayPattern;
+    let offset = self.ctx.append_node(&kind, parent, span);
+
+    if !self.ctx.has_schema(&kind) {
+      let offset = self.ctx.begin_schema(&kind);
+
+      self.ctx.bool_field(AstProp::Optional);
+      self.ctx.ref_field(AstProp::TypeAnnotation);
+      self.ctx.ref_vec_field(AstProp::Elements);
+
+      self.ctx.commit_schema(offset);
+    }
+
+    offset
+  }
+
+  pub fn write_arr_pat(
+    &mut self,
+    offset: NodeRef,
+    optional: bool,
+    type_ann: Option<NodeRef>,
+    elems: Vec<NodeRef>,
+  ) -> NodeRef {
+    self.ctx.begin_write(&offset);
+    self.ctx.write_bool(optional);
+    self.ctx.write_maybe_ref(type_ann);
+    self.ctx.write_ref_vec(elems);
+
+    offset
+  }
+
+  pub fn alloc_obj_pat(&mut self, parent: NodeRef, span: &Span) -> NodeRef {
+    let kind = AstNode::ObjectPattern;
+    let offset = self.ctx.append_node(&kind, parent, span);
+
+    if !self.ctx.has_schema(&kind) {
+      let offset = self.ctx.begin_schema(&kind);
+
+      self.ctx.bool_field(AstProp::Optional);
+      self.ctx.ref_field(AstProp::TypeAnnotation);
+      self.ctx.ref_vec_field(AstProp::Properties);
+
+      self.ctx.commit_schema(offset);
+    }
+
+    offset
+  }
+
+  pub fn write_obj_pat(
+    &mut self,
+    offset: NodeRef,
+    optional: bool,
+    type_ann: Option<NodeRef>,
+    props: Vec<NodeRef>,
+  ) -> NodeRef {
+    self.ctx.begin_write(&offset);
+    self.ctx.write_bool(optional);
+    self.ctx.write_maybe_ref(type_ann);
+    self.ctx.write_ref_vec(props);
+
+    offset
+  }
+
   pub fn alloc_rest_elem(&mut self, parent: NodeRef, span: &Span) -> NodeRef {
     let kind = AstNode::RestElement;
     let offset = self.ctx.append_node(&kind, parent, span);
@@ -1762,6 +1852,226 @@ impl TsEsTreeBuilder {
   pub fn write_spread(&mut self, offset: NodeRef, arg: NodeRef) -> NodeRef {
     self.ctx.begin_write(&offset);
     self.ctx.write_ref(arg);
+
+    offset
+  }
+
+  pub fn alloc_property(&mut self, parent: NodeRef, span: &Span) -> NodeRef {
+    let kind = AstNode::Property;
+    let offset = self.ctx.append_node(&kind, parent, span);
+
+    if !self.ctx.has_schema(&kind) {
+      let offset = self.ctx.begin_schema(&kind);
+
+      self.ctx.bool_field(AstProp::Shorthand);
+      self.ctx.bool_field(AstProp::Computed);
+      self.ctx.bool_field(AstProp::Method);
+      self.ctx.str_field(AstProp::Kind);
+      self.ctx.ref_field(AstProp::Key);
+      self.ctx.ref_field(AstProp::Value);
+
+      self.ctx.commit_schema(offset);
+    }
+
+    offset
+  }
+
+  pub fn write_property(
+    &mut self,
+    offset: NodeRef,
+    shorthand: bool,
+    computed: bool,
+    method: bool,
+    kind: &str,
+    key: NodeRef,
+    value: NodeRef,
+  ) -> NodeRef {
+    self.ctx.begin_write(&offset);
+    self.ctx.write_bool(shorthand);
+    self.ctx.write_bool(computed);
+    self.ctx.write_bool(method);
+    self.ctx.write_str(kind);
+    self.ctx.write_ref(key);
+    self.ctx.write_ref(value);
+
+    offset
+  }
+
+  pub fn alloc_str_lit(&mut self, parent: NodeRef, span: &Span) -> NodeRef {
+    let kind = AstNode::Literal;
+    let offset = self.ctx.append_node(&kind, parent, span);
+
+    if !self.ctx.has_schema(&kind) {
+      let offset = self.ctx.begin_schema(&kind);
+
+      self.ctx.str_field(AstProp::Value);
+      self.ctx.str_field(AstProp::Raw);
+
+      self.ctx.commit_schema(offset);
+    }
+
+    offset
+  }
+
+  pub fn write_str_lit(
+    &mut self,
+    offset: NodeRef,
+    value: &str,
+    raw: &str,
+  ) -> NodeRef {
+    self.ctx.begin_write(&offset);
+    self.ctx.write_str(value);
+    self.ctx.write_str(raw);
+
+    offset
+  }
+
+  pub fn alloc_bool_lit(&mut self, parent: NodeRef, span: &Span) -> NodeRef {
+    let kind = AstNode::Literal;
+    let offset = self.ctx.append_node(&kind, parent, span);
+
+    if !self.ctx.has_schema(&kind) {
+      let offset = self.ctx.begin_schema(&kind);
+
+      self.ctx.bool_field(AstProp::Value);
+      self.ctx.str_field(AstProp::Raw);
+
+      self.ctx.commit_schema(offset);
+    }
+
+    offset
+  }
+
+  pub fn write_bool_lit(
+    &mut self,
+    offset: NodeRef,
+    value: bool,
+    raw: &str,
+  ) -> NodeRef {
+    self.ctx.begin_write(&offset);
+    self.ctx.write_bool(value);
+    self.ctx.write_str(raw);
+
+    offset
+  }
+
+  pub fn alloc_null_lit(&mut self, parent: NodeRef, span: &Span) -> NodeRef {
+    let kind = AstNode::Literal;
+    let offset = self.ctx.append_node(&kind, parent, span);
+
+    if !self.ctx.has_schema(&kind) {
+      let offset = self.ctx.begin_schema(&kind);
+
+      self.ctx.null_field(AstProp::Value);
+      self.ctx.str_field(AstProp::Raw);
+
+      self.ctx.commit_schema(offset);
+    }
+
+    offset
+  }
+
+  pub fn write_null_lit(&mut self, offset: NodeRef) -> NodeRef {
+    self.ctx.begin_write(&offset);
+    self.ctx.write_str("null");
+
+    offset
+  }
+
+  pub fn alloc_num_lit(&mut self, parent: NodeRef, span: &Span) -> NodeRef {
+    let kind = AstNode::Literal;
+    let offset = self.ctx.append_node(&kind, parent, span);
+
+    if !self.ctx.has_schema(&kind) {
+      let offset = self.ctx.begin_schema(&kind);
+
+      self.ctx.num_field(AstProp::Value);
+      self.ctx.str_field(AstProp::Raw);
+
+      self.ctx.commit_schema(offset);
+    }
+
+    offset
+  }
+
+  pub fn write_num_lit(
+    &mut self,
+    offset: NodeRef,
+    value: &str,
+    raw: &str,
+  ) -> NodeRef {
+    self.ctx.begin_write(&offset);
+    self.ctx.write_str(value);
+    self.ctx.write_str(raw);
+
+    offset
+  }
+
+  pub fn alloc_bigint_lit(&mut self, parent: NodeRef, span: &Span) -> NodeRef {
+    let kind = AstNode::Literal;
+    let offset = self.ctx.append_node(&kind, parent, span);
+
+    if !self.ctx.has_schema(&kind) {
+      let offset = self.ctx.begin_schema(&kind);
+
+      self.ctx.num_field(AstProp::Value);
+      self.ctx.str_field(AstProp::Raw);
+      self.ctx.bigint_field(AstProp::BigInt);
+
+      self.ctx.commit_schema(offset);
+    }
+
+    offset
+  }
+
+  pub fn write_bigint_lit(
+    &mut self,
+    offset: NodeRef,
+    value: &str,
+    raw: &str,
+    bigint_value: &str,
+  ) -> NodeRef {
+    self.ctx.begin_write(&offset);
+    self.ctx.write_str(value);
+    self.ctx.write_str(raw);
+    self.ctx.write_str(bigint_value);
+
+    offset
+  }
+
+  pub fn alloc_regex_lit(&mut self, parent: NodeRef, span: &Span) -> NodeRef {
+    let kind = AstNode::Literal;
+    let offset = self.ctx.append_node(&kind, parent, span);
+
+    if !self.ctx.has_schema(&kind) {
+      let offset = self.ctx.begin_schema(&kind);
+
+      self.ctx.obj_field(AstProp::Regex, 2);
+      self.ctx.str_field(AstProp::Flags);
+      self.ctx.str_field(AstProp::Pattern);
+
+      self.ctx.regex_field(AstProp::Value);
+      self.ctx.str_field(AstProp::Raw);
+
+      self.ctx.commit_schema(offset);
+    }
+
+    offset
+  }
+
+  pub fn write_regex_lit(
+    &mut self,
+    offset: NodeRef,
+    pattern: &str,
+    flags: &str,
+    value: &str,
+    raw: &str,
+  ) -> NodeRef {
+    self.ctx.begin_write(&offset);
+
+    // TODO(@marvinhagemeister) objects
+    self.ctx.write_str(value);
+    self.ctx.write_str(raw);
 
     offset
   }
@@ -2196,6 +2506,727 @@ impl TsEsTreeBuilder {
 
     offset
   }
+
+  pub fn alloc_ts_satisfies_expr(
+    &mut self,
+    parent: NodeRef,
+    span: &Span,
+  ) -> NodeRef {
+    let kind = AstNode::TSSatisfiesExpression;
+    let offset = self.ctx.append_node(&kind, parent, span);
+
+    if !self.ctx.has_schema(&kind) {
+      let offset = self.ctx.begin_schema(&kind);
+
+      self.ctx.ref_field(AstProp::Expression);
+      self.ctx.ref_field(AstProp::TypeAnnotation);
+
+      self.ctx.commit_schema(offset);
+    }
+
+    offset
+  }
+
+  pub fn write_ts_satisfies_expr(
+    &mut self,
+    offset: NodeRef,
+    expr: NodeRef,
+    type_ann: NodeRef,
+  ) -> NodeRef {
+    self.ctx.begin_write(&offset);
+    self.ctx.write_ref(expr);
+    self.ctx.write_ref(type_ann);
+
+    offset
+  }
+
+  pub fn alloc_ts_as_expr(&mut self, parent: NodeRef, span: &Span) -> NodeRef {
+    let kind = AstNode::TSAsExpression;
+    let offset = self.ctx.append_node(&kind, parent, span);
+
+    if !self.ctx.has_schema(&kind) {
+      let offset = self.ctx.begin_schema(&kind);
+
+      self.ctx.ref_field(AstProp::Expression);
+      self.ctx.ref_field(AstProp::TypeAnnotation);
+
+      self.ctx.commit_schema(offset);
+    }
+
+    offset
+  }
+
+  pub fn write_ts_as_expr(
+    &mut self,
+    offset: NodeRef,
+    expr: NodeRef,
+    type_ann: NodeRef,
+  ) -> NodeRef {
+    self.ctx.begin_write(&offset);
+    self.ctx.write_ref(expr);
+    self.ctx.write_ref(type_ann);
+
+    offset
+  }
+
+  pub fn alloc_ts_non_null(&mut self, parent: NodeRef, span: &Span) -> NodeRef {
+    let kind = AstNode::TSNonNullExpression;
+    let offset = self.ctx.append_node(&kind, parent, span);
+
+    if !self.ctx.has_schema(&kind) {
+      let offset = self.ctx.begin_schema(&kind);
+
+      self.ctx.ref_field(AstProp::Expression);
+
+      self.ctx.commit_schema(offset);
+    }
+
+    offset
+  }
+
+  pub fn write_ts_non_null(
+    &mut self,
+    offset: NodeRef,
+    expr: NodeRef,
+  ) -> NodeRef {
+    self.ctx.begin_write(&offset);
+    self.ctx.write_ref(expr);
+
+    offset
+  }
+
+  pub fn alloc_ts_this_type(
+    &mut self,
+    parent: NodeRef,
+    span: &Span,
+  ) -> NodeRef {
+    let kind = AstNode::TSThisType;
+    let offset = self.ctx.append_node(&kind, parent, span);
+
+    if !self.ctx.has_schema(&kind) {
+      let offset = self.ctx.begin_schema(&kind);
+      self.ctx.commit_schema(offset);
+    }
+
+    offset
+  }
+
+  pub fn alloc_ts_interface(
+    &mut self,
+    parent: NodeRef,
+    span: &Span,
+  ) -> NodeRef {
+    let kind = AstNode::TSInterface;
+    let offset = self.ctx.append_node(&kind, parent, span);
+
+    if !self.ctx.has_schema(&kind) {
+      let offset = self.ctx.begin_schema(&kind);
+
+      self.ctx.bool_field(AstProp::Declare);
+      self.ctx.ref_field(AstProp::Id);
+      self.ctx.ref_vec_field(AstProp::Extends);
+      self.ctx.ref_field(AstProp::TypeParameters);
+      self.ctx.ref_field(AstProp::Body);
+
+      self.ctx.commit_schema(offset);
+    }
+
+    offset
+  }
+
+  pub fn write_ts_interface(
+    &mut self,
+    offset: NodeRef,
+    declare: bool,
+    id: NodeRef,
+    type_param: Option<NodeRef>,
+    extends: Vec<NodeRef>,
+    body: NodeRef,
+  ) -> NodeRef {
+    self.ctx.begin_write(&offset);
+    self.ctx.write_bool(declare);
+    self.ctx.write_ref(id);
+    self.ctx.write_maybe_ref(type_param);
+    self.ctx.write_ref_vec(extends);
+    self.ctx.write_ref(body);
+
+    offset
+  }
+
+  pub fn alloc_ts_interface_body(
+    &mut self,
+    parent: NodeRef,
+    span: &Span,
+  ) -> NodeRef {
+    let kind = AstNode::TSInterfaceBody;
+    let offset = self.ctx.append_node(&kind, parent, span);
+
+    if !self.ctx.has_schema(&kind) {
+      let offset = self.ctx.begin_schema(&kind);
+
+      self.ctx.ref_vec_field(AstProp::Body);
+
+      self.ctx.commit_schema(offset);
+    }
+
+    offset
+  }
+
+  pub fn write_ts_interface_body(
+    &mut self,
+    offset: NodeRef,
+    body: Vec<NodeRef>,
+  ) -> NodeRef {
+    self.ctx.begin_write(&offset);
+    self.ctx.write_ref_vec(body);
+
+    offset
+  }
+
+  pub fn alloc_ts_interface_heritage(
+    &mut self,
+    parent: NodeRef,
+    span: &Span,
+  ) -> NodeRef {
+    let kind = AstNode::TSInterfaceHeritage;
+    let offset = self.ctx.append_node(&kind, parent, span);
+
+    if !self.ctx.has_schema(&kind) {
+      let offset = self.ctx.begin_schema(&kind);
+
+      self.ctx.ref_field(AstProp::Expression);
+      self.ctx.ref_field(AstProp::TypeArguments);
+
+      self.ctx.commit_schema(offset);
+    }
+
+    offset
+  }
+
+  pub fn write_ts_interface_heritage(
+    &mut self,
+    offset: NodeRef,
+    expr: NodeRef,
+    type_args: Option<NodeRef>,
+  ) -> NodeRef {
+    self.ctx.begin_write(&offset);
+    self.ctx.write_ref(expr);
+    self.ctx.write_maybe_ref(type_args);
+
+    offset
+  }
+
+  pub fn alloc_ts_union_type(
+    &mut self,
+    parent: NodeRef,
+    span: &Span,
+  ) -> NodeRef {
+    let kind = AstNode::TSUnionType;
+    let offset = self.ctx.append_node(&kind, parent, span);
+
+    if !self.ctx.has_schema(&kind) {
+      let offset = self.ctx.begin_schema(&kind);
+
+      self.ctx.ref_vec_field(AstProp::Types);
+
+      self.ctx.commit_schema(offset);
+    }
+
+    offset
+  }
+
+  pub fn write_ts_union_type(
+    &mut self,
+    offset: NodeRef,
+    types: Vec<NodeRef>,
+  ) -> NodeRef {
+    self.ctx.begin_write(&offset);
+    self.ctx.write_ref_vec(types);
+
+    offset
+  }
+
+  pub fn alloc_ts_intersection_type(
+    &mut self,
+    parent: NodeRef,
+    span: &Span,
+  ) -> NodeRef {
+    let kind = AstNode::TSIntersectionType;
+    let offset = self.ctx.append_node(&kind, parent, span);
+
+    if !self.ctx.has_schema(&kind) {
+      let offset = self.ctx.begin_schema(&kind);
+
+      self.ctx.ref_vec_field(AstProp::Types);
+
+      self.ctx.commit_schema(offset);
+    }
+
+    offset
+  }
+
+  pub fn write_ts_intersection_type(
+    &mut self,
+    offset: NodeRef,
+    types: Vec<NodeRef>,
+  ) -> NodeRef {
+    self.ctx.begin_write(&offset);
+    self.ctx.write_ref_vec(types);
+
+    offset
+  }
+
+  pub fn alloc_ts_infer_type(
+    &mut self,
+    parent: NodeRef,
+    span: &Span,
+  ) -> NodeRef {
+    let kind = AstNode::TSInferType;
+    let offset = self.ctx.append_node(&kind, parent, span);
+
+    if !self.ctx.has_schema(&kind) {
+      let offset = self.ctx.begin_schema(&kind);
+
+      self.ctx.ref_field(AstProp::TypeParameter);
+
+      self.ctx.commit_schema(offset);
+    }
+
+    offset
+  }
+
+  pub fn write_ts_infer_type(
+    &mut self,
+    offset: NodeRef,
+    type_param: NodeRef,
+  ) -> NodeRef {
+    self.ctx.begin_write(&offset);
+    self.ctx.write_ref(type_param);
+
+    offset
+  }
+
+  pub fn alloc_ts_type_op(&mut self, parent: NodeRef, span: &Span) -> NodeRef {
+    let kind = AstNode::TSTypeOperator;
+    let offset = self.ctx.append_node(&kind, parent, span);
+
+    if !self.ctx.has_schema(&kind) {
+      let offset = self.ctx.begin_schema(&kind);
+
+      self.ctx.str_field(AstProp::Operator);
+      self.ctx.ref_field(AstProp::TypeAnnotation);
+
+      self.ctx.commit_schema(offset);
+    }
+
+    offset
+  }
+
+  pub fn write_ts_type_op(
+    &mut self,
+    offset: NodeRef,
+    op: &str,
+    type_ann: NodeRef,
+  ) -> NodeRef {
+    self.ctx.begin_write(&offset);
+    self.ctx.write_str(op);
+    self.ctx.write_ref(type_ann);
+
+    offset
+  }
+
+  pub fn alloc_ts_indexed_access_type(
+    &mut self,
+    parent: NodeRef,
+    span: &Span,
+  ) -> NodeRef {
+    let kind = AstNode::TSIndexedAccessType;
+    let offset = self.ctx.append_node(&kind, parent, span);
+
+    if !self.ctx.has_schema(&kind) {
+      let offset = self.ctx.begin_schema(&kind);
+
+      self.ctx.ref_field(AstProp::IndexType);
+      self.ctx.ref_field(AstProp::ObjectType);
+
+      self.ctx.commit_schema(offset);
+    }
+
+    offset
+  }
+
+  pub fn write_ts_indexed_access_type(
+    &mut self,
+    offset: NodeRef,
+    index: NodeRef,
+    obj: NodeRef,
+  ) -> NodeRef {
+    self.ctx.begin_write(&offset);
+    self.ctx.write_ref(index);
+    self.ctx.write_ref(obj);
+
+    offset
+  }
+
+  pub fn alloc_ts_keyword(
+    &mut self,
+    kind: TsKeywordKind,
+    parent: NodeRef,
+    span: &Span,
+  ) -> NodeRef {
+    let kind = match kind {
+      TsKeywordKind::Any => AstNode::TSAnyKeyword,
+      TsKeywordKind::Unknown => AstNode::TSUnknownKeyword,
+      TsKeywordKind::Number => AstNode::TSNumberKeyword,
+      TsKeywordKind::Object => AstNode::TSObjectKeyword,
+      TsKeywordKind::Boolean => AstNode::TSBooleanKeyword,
+      TsKeywordKind::BigInt => AstNode::TSBigIntKeyword,
+      TsKeywordKind::String => AstNode::TSStringKeyword,
+      TsKeywordKind::Symbol => AstNode::TSSymbolKeyword,
+      TsKeywordKind::Void => AstNode::TSVoidKeyword,
+      TsKeywordKind::Undefined => AstNode::TSUndefinedKeyword,
+      TsKeywordKind::Null => AstNode::TSNullKeyword,
+      TsKeywordKind::Never => AstNode::TSNeverKeyword,
+      TsKeywordKind::Intrinsic => AstNode::TSIntrinsicKeyword,
+    };
+    let offset = self.ctx.append_node(&kind, parent, span);
+
+    if !self.ctx.has_schema(&kind) {
+      let offset = self.ctx.begin_schema(&kind);
+      self.ctx.commit_schema(offset);
+    }
+
+    offset
+  }
+
+  pub fn alloc_ts_rest_type(
+    &mut self,
+    parent: NodeRef,
+    span: &Span,
+  ) -> NodeRef {
+    let kind = AstNode::TSRestType;
+    let offset = self.ctx.append_node(&kind, parent, span);
+
+    if !self.ctx.has_schema(&kind) {
+      let offset = self.ctx.begin_schema(&kind);
+
+      self.ctx.ref_field(AstProp::TypeAnnotation);
+
+      self.ctx.commit_schema(offset);
+    }
+
+    offset
+  }
+
+  pub fn write_ts_rest_type(
+    &mut self,
+    offset: NodeRef,
+    type_ann: NodeRef,
+  ) -> NodeRef {
+    self.ctx.begin_write(&offset);
+    self.ctx.write_ref(type_ann);
+
+    offset
+  }
+
+  pub fn alloc_ts_conditional_type(
+    &mut self,
+    parent: NodeRef,
+    span: &Span,
+  ) -> NodeRef {
+    let kind = AstNode::TSConditionalType;
+    let offset = self.ctx.append_node(&kind, parent, span);
+
+    if !self.ctx.has_schema(&kind) {
+      let offset = self.ctx.begin_schema(&kind);
+
+      self.ctx.ref_field(AstProp::CheckType);
+      self.ctx.ref_field(AstProp::ExtendsType);
+      self.ctx.ref_field(AstProp::TrueType);
+      self.ctx.ref_field(AstProp::FalseType);
+
+      self.ctx.commit_schema(offset);
+    }
+
+    offset
+  }
+
+  pub fn write_ts_conditional_type(
+    &mut self,
+    offset: NodeRef,
+    check: NodeRef,
+    extends: NodeRef,
+    true_type: NodeRef,
+    false_type: NodeRef,
+  ) -> NodeRef {
+    self.ctx.begin_write(&offset);
+    self.ctx.write_ref(check);
+    self.ctx.write_ref(extends);
+    self.ctx.write_ref(true_type);
+    self.ctx.write_ref(false_type);
+
+    offset
+  }
+
+  pub fn alloc_ts_mapped_type(
+    &mut self,
+    parent: NodeRef,
+    span: &Span,
+  ) -> NodeRef {
+    let kind = AstNode::TSMappedType;
+    let offset = self.ctx.append_node(&kind, parent, span);
+
+    if !self.ctx.has_schema(&kind) {
+      let offset = self.ctx.begin_schema(&kind);
+
+      self.ctx.ref_field(AstProp::NameType);
+      self.ctx.ref_field(AstProp::TypeAnnotation);
+      self.ctx.ref_field(AstProp::TypeParameter);
+
+      self.ctx.commit_schema(offset);
+    }
+
+    offset
+  }
+
+  pub fn write_ts_mapped_type(
+    &mut self,
+    offset: NodeRef,
+    name: Option<NodeRef>,
+    type_ann: Option<NodeRef>,
+    type_param: NodeRef,
+  ) -> NodeRef {
+    self.ctx.begin_write(&offset);
+    self.ctx.write_maybe_ref(name);
+    self.ctx.write_maybe_ref(type_ann);
+    self.ctx.write_ref(type_param);
+
+    offset
+  }
+
+  pub fn alloc_ts_lit_type(&mut self, parent: NodeRef, span: &Span) -> NodeRef {
+    let kind = AstNode::TSLiteralType;
+    let offset = self.ctx.append_node(&kind, parent, span);
+
+    if !self.ctx.has_schema(&kind) {
+      let offset = self.ctx.begin_schema(&kind);
+
+      self.ctx.ref_field(AstProp::Literal);
+
+      self.ctx.commit_schema(offset);
+    }
+
+    offset
+  }
+
+  pub fn write_ts_lit_type(
+    &mut self,
+    offset: NodeRef,
+    lit: NodeRef,
+  ) -> NodeRef {
+    self.ctx.begin_write(&offset);
+    self.ctx.write_ref(lit);
+
+    offset
+  }
+
+  pub fn alloc_ts_type_ann(&mut self, parent: NodeRef, span: &Span) -> NodeRef {
+    let kind = AstNode::TSTypeAnnotation;
+    let offset = self.ctx.append_node(&kind, parent, span);
+
+    if !self.ctx.has_schema(&kind) {
+      let offset = self.ctx.begin_schema(&kind);
+
+      self.ctx.ref_field(AstProp::TypeAnnotation);
+
+      self.ctx.commit_schema(offset);
+    }
+
+    offset
+  }
+
+  pub fn write_ts_type_ann(
+    &mut self,
+    offset: NodeRef,
+    type_ann: NodeRef,
+  ) -> NodeRef {
+    self.ctx.begin_write(&offset);
+    self.ctx.write_ref(type_ann);
+
+    offset
+  }
+
+  pub fn alloc_ts_array_type(
+    &mut self,
+    parent: NodeRef,
+    span: &Span,
+  ) -> NodeRef {
+    let kind = AstNode::TSArrayType;
+    let offset = self.ctx.append_node(&kind, parent, span);
+
+    if !self.ctx.has_schema(&kind) {
+      let offset = self.ctx.begin_schema(&kind);
+
+      self.ctx.ref_field(AstProp::ElementType);
+
+      self.ctx.commit_schema(offset);
+    }
+
+    offset
+  }
+
+  pub fn write_ts_array_type(
+    &mut self,
+    offset: NodeRef,
+    elem_type: NodeRef,
+  ) -> NodeRef {
+    self.ctx.begin_write(&offset);
+    self.ctx.write_ref(elem_type);
+
+    offset
+  }
+
+  pub fn alloc_ts_type_query(
+    &mut self,
+    parent: NodeRef,
+    span: &Span,
+  ) -> NodeRef {
+    let kind = AstNode::TSTypeQuery;
+    let offset = self.ctx.append_node(&kind, parent, span);
+
+    if !self.ctx.has_schema(&kind) {
+      let offset = self.ctx.begin_schema(&kind);
+
+      self.ctx.ref_field(AstProp::ExprName);
+      self.ctx.ref_field(AstProp::TypeArguments);
+
+      self.ctx.commit_schema(offset);
+    }
+
+    offset
+  }
+
+  pub fn write_ts_type_query(
+    &mut self,
+    offset: NodeRef,
+    expr_name: NodeRef,
+    type_arg: Option<NodeRef>,
+  ) -> NodeRef {
+    self.ctx.begin_write(&offset);
+    self.ctx.write_ref(expr_name);
+    self.ctx.write_maybe_ref(type_arg);
+
+    offset
+  }
+
+  pub fn alloc_ts_type_ref(&mut self, parent: NodeRef, span: &Span) -> NodeRef {
+    let kind = AstNode::TSTypeReference;
+    let offset = self.ctx.append_node(&kind, parent, span);
+
+    if !self.ctx.has_schema(&kind) {
+      let offset = self.ctx.begin_schema(&kind);
+
+      self.ctx.ref_field(AstProp::TypeName);
+      self.ctx.ref_field(AstProp::TypeArguments);
+
+      self.ctx.commit_schema(offset);
+    }
+
+    offset
+  }
+
+  pub fn write_ts_type_ref(
+    &mut self,
+    offset: NodeRef,
+    type_name: NodeRef,
+    type_arg: Option<NodeRef>,
+  ) -> NodeRef {
+    self.ctx.begin_write(&offset);
+    self.ctx.write_ref(type_name);
+    self.ctx.write_maybe_ref(type_arg);
+
+    offset
+  }
+
+  pub fn alloc_ts_tuple_type(
+    &mut self,
+    parent: NodeRef,
+    span: &Span,
+  ) -> NodeRef {
+    let kind = AstNode::TSTupleType;
+    let offset = self.ctx.append_node(&kind, parent, span);
+
+    if !self.ctx.has_schema(&kind) {
+      let offset = self.ctx.begin_schema(&kind);
+
+      self.ctx.ref_vec_field(AstProp::ElementTypes);
+
+      self.ctx.commit_schema(offset);
+    }
+
+    offset
+  }
+
+  pub fn write_ts_tuple_type(
+    &mut self,
+    offset: NodeRef,
+    elem_types: Vec<NodeRef>,
+  ) -> NodeRef {
+    self.ctx.begin_write(&offset);
+    self.ctx.write_ref_vec(elem_types);
+
+    offset
+  }
+
+  pub fn alloc_ts_named_tuple_member(
+    &mut self,
+    parent: NodeRef,
+    span: &Span,
+  ) -> NodeRef {
+    let kind = AstNode::TSNamedTupleMember;
+    let offset = self.ctx.append_node(&kind, parent, span);
+
+    if !self.ctx.has_schema(&kind) {
+      let offset = self.ctx.begin_schema(&kind);
+
+      self.ctx.ref_field(AstProp::Label);
+      self.ctx.ref_field(AstProp::ElementType);
+
+      self.ctx.commit_schema(offset);
+    }
+
+    offset
+  }
+
+  pub fn write_ts_named_tuple_member(
+    &mut self,
+    offset: NodeRef,
+    label: NodeRef,
+    elem_type: NodeRef,
+  ) -> NodeRef {
+    self.ctx.begin_write(&offset);
+    self.ctx.write_ref(label);
+    self.ctx.write_ref(elem_type);
+
+    offset
+  }
+}
+
+#[derive(Debug)]
+pub enum TsKeywordKind {
+  Any,
+  Unknown,
+  Number,
+  Object,
+  Boolean,
+  BigInt,
+  String,
+  Symbol,
+  Void,
+  Undefined,
+  Null,
+  Never,
+  Intrinsic,
 }
 
 impl AstBufSerializer<AstNode, AstProp> for TsEsTreeBuilder {

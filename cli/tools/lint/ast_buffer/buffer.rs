@@ -20,6 +20,7 @@ pub enum PropFlags {
   Undefined,
   Obj,
   Regex,
+  BigInt,
 }
 
 impl From<PropFlags> for u8 {
@@ -474,6 +475,14 @@ impl SerializeCtx {
     P: Into<u8> + Display + Clone,
   {
     self.field(prop, PropFlags::Regex)
+  }
+
+  // Allocate a bigint field. Bigints are internally represented as strings
+  pub fn bigint_field<P>(&mut self, prop: P) -> usize
+  where
+    P: Into<u8> + Display + Clone,
+  {
+    self.field(prop, PropFlags::BigInt)
   }
 
   /// Allocate a bool field

@@ -50,8 +50,8 @@ const PropFlags = {
   Undefined: 6,
   /** An object */
   Obj: 7,
-  /** A regex obj */
   Regex: 8,
+  BigInt: 8,
 };
 
 /** @typedef {import("./40_lint_types.d.ts").AstContext} AstContext */
