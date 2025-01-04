@@ -42,6 +42,7 @@ const {
   SafeSet,
   SafeWeakSet,
   SymbolFor,
+  TypeError,
 } = primordials;
 const { AsyncVariable, setAsyncContext } = core;
 
@@ -72,8 +73,6 @@ interface SpanContext {
   traceFlags: number;
   traceState?: TraceState;
 }
-
-type HrTime = [number, number];
 
 enum SpanStatusCode {
   UNSET = 0,
@@ -116,13 +115,6 @@ interface Link {
   droppedAttributesCount?: number;
 }
 
-interface TimedEvent {
-  time: HrTime;
-  name: string;
-  attributes?: SpanAttributes;
-  droppedAttributesCount?: number;
-}
-
 interface IArrayValue {
   values: IAnyValue[];
 }
@@ -144,12 +136,6 @@ interface IKeyValueList {
 interface IKeyValue {
   key: string;
   value: IAnyValue;
-}
-
-interface InstrumentationLibrary {
-  readonly name: string;
-  readonly version?: string;
-  readonly schemaUrl?: string;
 }
 
 function hrToSecs(hr: [number, number]): number {
@@ -209,7 +195,15 @@ interface TracerOptions {
 }
 
 class TracerProvider {
-  getTracer(name: string, version?: string, options?: TracerOptions): Tracer {
+  constructor() {
+    throw new TypeError("TracerProvider can not be constructed");
+  }
+
+  static getTracer(
+    name: string,
+    version?: string,
+    options?: TracerOptions,
+  ): Tracer {
     const tracer = new OtelTracer(name, version, options?.schemaUrl);
     return new Tracer(tracer);
   }
@@ -274,10 +268,10 @@ class Tracer {
   }
 
   startSpan(name: string, options?: SpanOptions, context?: Context): Span {
-    if (!context && !options?.root) {
-      context = CURRENT.get();
-    } else if (options?.root) {
+    if (options?.root) {
       context = undefined;
+    } else {
+      context = context ?? CURRENT.get();
     }
 
     let startTime = options?.startTime;
@@ -484,11 +478,15 @@ const ROOT_CONTEXT = new Context();
 
 // Context manager for opentelemetry js library
 class ContextManager {
-  active(): Context {
+  constructor() {
+    throw new TypeError("ContextManager can not be constructed");
+  }
+
+  static active(): Context {
     return CURRENT.get() ?? ROOT_CONTEXT;
   }
 
-  with<A extends unknown[], F extends (...args: A) => ReturnType<F>>(
+  static with<A extends unknown[], F extends (...args: A) => ReturnType<F>>(
     context: Context,
     fn: F,
     thisArg?: ThisParameterType<F>,
@@ -503,7 +501,10 @@ class ContextManager {
   }
 
   // deno-lint-ignore no-explicit-any
-  bind<T extends (...args: any[]) => any>(context: Context, target: T): T {
+  static bind<T extends (...args: any[]) => any>(
+    context: Context,
+    target: T,
+  ): T {
     return ((...args) => {
       const ctx = CURRENT.enter(context);
       try {
@@ -514,11 +515,11 @@ class ContextManager {
     }) as T;
   }
 
-  enable() {
+  static enable() {
     return this;
   }
 
-  disable() {
+  static disable() {
     return this;
   }
 }
@@ -585,7 +586,15 @@ interface OtelMeter {
 }
 
 class MeterProvider {
-  getMeter(name: string, version?: string, options?: MeterOptions): Meter {
+  constructor() {
+    throw new TypeError("MeterProvider can not be constructed");
+  }
+
+  static getMeter(
+    name: string,
+    version?: string,
+    options?: MeterOptions,
+  ): Meter {
     const meter = new OtelMeter(name, version, options?.schemaUrl);
     return new Meter(meter);
   }

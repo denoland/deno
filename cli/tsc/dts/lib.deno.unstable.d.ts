@@ -1305,7 +1305,8 @@ declare namespace Deno {
      * @category Telemetry
      * @experimental
      */
-    export class TracerProvider {}
+    // deno-lint-ignore no-explicit-any
+    export const TracerProvider: any;
 
     /**
      * A ContextManager compatible with OpenTelemetry.js
@@ -1313,7 +1314,8 @@ declare namespace Deno {
      * @category Telemetry
      * @experimental
      */
-    export class ContextManager {}
+    // deno-lint-ignore no-explicit-any
+    export const ContextManager: any;
 
     /**
      * A MeterProvider compatible with OpenTelemetry.js
@@ -1321,7 +1323,8 @@ declare namespace Deno {
      * @category Telemetry
      * @experimental
      */
-    export class MeterProvider {}
+    // deno-lint-ignore no-explicit-any
+    export const MeterProvider: any;
 
     export {}; // only export exports
   }
