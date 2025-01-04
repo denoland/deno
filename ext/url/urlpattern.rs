@@ -1,6 +1,7 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
 use std::borrow::Cow;
+use std::sync::atomic::AtomicBool;
 
 use deno_core::op2;
 use deno_core::v8;
@@ -8,7 +9,11 @@ use deno_core::webidl::WebIdlConverter;
 use deno_core::webidl::WebIdlError;
 use deno_core::GarbageCollected;
 use deno_core::WebIDL;
+use indexmap::IndexMap;
+use serde::Serialize;
 use urlpattern::quirks;
+
+pub static GROUP_STRING_FALLBACK: AtomicBool = AtomicBool::new(false);
 
 #[derive(Debug, thiserror::Error)]
 #[error(transparent)]
@@ -19,7 +24,7 @@ pub enum UrlPatternError {
   WebIDL(#[from] WebIdlError),
 }
 
-#[derive(WebIDL, Default)]
+#[derive(WebIDL, Default, Debug, Serialize)]
 #[webidl(dictionary)]
 struct URLPatternInit {
   protocol: Option<String>,
@@ -30,6 +35,7 @@ struct URLPatternInit {
   pathname: Option<String>,
   search: Option<String>,
   hash: Option<String>,
+  #[serde(rename = "baseURL")]
   #[webidl(rename = "baseURL")]
   base_url: Option<String>,
 }
@@ -49,7 +55,24 @@ impl From<URLPatternInit> for quirks::UrlPatternInit {
     }
   }
 }
+impl From<quirks::UrlPatternInit> for URLPatternInit {
+  fn from(value: quirks::UrlPatternInit) -> Self {
+    Self {
+      protocol: value.protocol,
+      username: value.username,
+      password: value.password,
+      hostname: value.hostname,
+      port: value.port,
+      pathname: value.pathname,
+      search: value.search,
+      hash: value.hash,
+      base_url: value.base_url,
+    }
+  }
+}
 
+#[derive(Debug, Serialize)]
+#[serde(untagged)]
 enum URLPatternInput {
   URLPatternInit(URLPatternInit),
   String(String),
@@ -98,8 +121,18 @@ impl From<URLPatternInput> for quirks::StringOrInit {
     }
   }
 }
+impl From<quirks::StringOrInit> for URLPatternInput {
+  fn from(value: quirks::StringOrInit) -> Self {
+    match value {
+      quirks::StringOrInit::Init(init) => {
+        URLPatternInput::URLPatternInit(init.into())
+      }
+      quirks::StringOrInit::String(s) => URLPatternInput::String(s),
+    }
+  }
+}
 
-#[derive(WebIDL, Clone)]
+#[derive(WebIDL, Clone, Debug)]
 #[webidl(dictionary)]
 struct URLPatternOptions {
   #[webidl(default = false)]
@@ -114,7 +147,7 @@ impl From<URLPatternOptions> for urlpattern::UrlPatternOptions {
   }
 }
 
-struct URLPattern {
+pub struct URLPattern {
   pattern: quirks::UrlPattern,
 
   protocol: v8::Global<v8::RegExp>,
@@ -195,8 +228,8 @@ impl URLPattern {
     let opts = options.clone();
     let pattern = quirks::parse_pattern(init, options.into())?;
 
-    fn create_regexp_global<'s>(
-      scope: &mut v8::HandleScope<'s>,
+    fn create_regexp_global(
+      scope: &mut v8::HandleScope,
       pattern: &str,
       options: &URLPatternOptions,
     ) -> Result<v8::Global<v8::RegExp>, UrlPatternError> {
@@ -249,60 +282,59 @@ impl URLPattern {
     })
   }
 
-  /*#[getter]
-    #[string]
-    fn protocol(&self) -> String {
-      self.pattern.protocol.pattern_string
-    }
+  #[getter]
+  #[string]
+  fn protocol(&self) -> String {
+    self.pattern.protocol.pattern_string.clone()
+  }
 
-    #[getter]
-    #[string]
-    fn username(&self) -> String {
-      self.pattern.username.pattern_string
-    }
+  #[getter]
+  #[string]
+  fn username(&self) -> String {
+    self.pattern.username.pattern_string.clone()
+  }
 
-    #[getter]
-    #[string]
-    fn password(&self) -> String {
-      self.pattern.password.pattern_string
-    }
+  #[getter]
+  #[string]
+  fn password(&self) -> String {
+    self.pattern.password.pattern_string.clone()
+  }
 
-    #[getter]
-    #[string]
-    fn hostname(&self) -> String {
-      self.pattern.hostname.pattern_string
-    }
+  #[getter]
+  #[string]
+  fn hostname(&self) -> String {
+    self.pattern.hostname.pattern_string.clone()
+  }
 
-    #[getter]
-    #[string]
-    fn port(&self) -> String {
-      self.pattern.port.pattern_string
-    }
+  #[getter]
+  #[string]
+  fn port(&self) -> String {
+    self.pattern.port.pattern_string.clone()
+  }
 
-    #[getter]
-    #[string]
-    fn pathname(&self) -> String {
-      self.pattern.pathname.pattern_string
-    }
+  #[getter]
+  #[string]
+  fn pathname(&self) -> String {
+    self.pattern.pathname.pattern_string.clone()
+  }
 
-    #[getter]
-    #[string]
-    fn search(&self) -> String {
-      self.pattern.search.pattern_string
-    }
+  #[getter]
+  #[string]
+  fn search(&self) -> String {
+    self.pattern.search.pattern_string.clone()
+  }
 
-    #[getter]
-    #[string]
-    fn hash(&self) -> String {
-      self.pattern.hash.pattern_string
-    }
+  #[getter]
+  #[string]
+  fn hash(&self) -> String {
+    self.pattern.hash.pattern_string.clone()
+  }
 
-    #[getter]
-    #[string]
-    fn hasRegExpGroups(&self) -> bool {
-      self.pattern.has_regexp_groups
-    }
-  */
+  #[getter]
+  fn hasRegExpGroups(&self) -> bool {
+    self.pattern.has_regexp_groups
+  }
+
   #[required(1)]
   fn test(
     &self,
@@ -331,7 +363,9 @@ impl URLPattern {
           "^(.*)$" => {}
           _ => {
             let subject = v8::String::new(scope, &input.$t).unwrap();
-            if self.$t.exec(scope, subject).is_none() {
+            let regexp = self.$t.open(scope);
+            // TODO: handle unwrap
+            if regexp.exec(scope, subject).unwrap().is_null() {
               return Ok(false);
             }
           }
@@ -350,4 +384,108 @@ impl URLPattern {
 
     Ok(true)
   }
+
+  #[required(1)]
+  #[serde]
+  fn exec(
+    &self,
+    scope: &mut v8::HandleScope,
+    #[webidl] input: URLPatternInput,
+    #[webidl] base_url: Option<String>,
+  ) -> Result<Option<URLPatternResult>, UrlPatternError> {
+    let res = quirks::process_match_input(input.into(), base_url.as_deref())?;
+
+    let Some((input, original_inputs)) = res else {
+      return Ok(None);
+    };
+
+    let Some(values) = quirks::parse_match_input(input) else {
+      return Ok(None);
+    };
+
+    macro_rules! handle_component {
+      ($t:tt) => {{
+        let component = &self.pattern.$t;
+        let mut result = UrlPatternComponentResult {
+          input: values.$t.clone(),
+          groups: Default::default(),
+        };
+        match component.regexp_string.as_str() {
+          "^$" => {
+            if values.$t != "" {
+              return Ok(None);
+            }
+          }
+          "^(.*)$" => {
+            result.groups.insert("0".to_string(), Some(values.$t));
+          }
+          _ => {
+            let subject = v8::String::new(scope, &values.$t).unwrap();
+            let regexp = self.$t.open(scope);
+            // TODO: handle unwrap
+            let exec_result = regexp.exec(scope, subject).unwrap();
+            if exec_result.is_null() {
+              return Ok(None);
+            }
+            for i in 0..component.group_name_list.len() {
+              // TODO(lucacasonato): this is vulnerable to override mistake
+              let res = exec_result
+                .get_index(scope, (i as u32) + 1)
+                .map(|res| res.to_rust_string_lossy(scope));
+              let res = if GROUP_STRING_FALLBACK
+                .load(std::sync::atomic::Ordering::Relaxed)
+              {
+                Some(res.unwrap_or_default())
+              } else {
+                res
+              };
+              result
+                .groups
+                .insert(component.group_name_list[i].clone(), res);
+            }
+          }
+        }
+        result
+      }};
+    }
+
+    let mut inputs = vec![original_inputs.0.into()];
+
+    if let Some(original_input) = original_inputs.1 {
+      inputs.push(URLPatternInput::String(original_input));
+    }
+
+    Ok(Some(URLPatternResult {
+      inputs,
+
+      protocol: handle_component!(protocol),
+      username: handle_component!(username),
+      password: handle_component!(password),
+      hostname: handle_component!(hostname),
+      port: handle_component!(port),
+      pathname: handle_component!(pathname),
+      search: handle_component!(search),
+      hash: handle_component!(hash),
+    }))
+  }
+}
+
+#[derive(Debug, Serialize)]
+struct URLPatternResult {
+  inputs: Vec<URLPatternInput>,
+
+  protocol: UrlPatternComponentResult,
+  username: UrlPatternComponentResult,
+  password: UrlPatternComponentResult,
+  hostname: UrlPatternComponentResult,
+  port: UrlPatternComponentResult,
+  pathname: UrlPatternComponentResult,
+  search: UrlPatternComponentResult,
+  hash: UrlPatternComponentResult,
+}
+
+#[derive(Debug, Serialize)]
+pub struct UrlPatternComponentResult {
+  pub input: String,
+  pub groups: IndexMap<String, Option<String>>,
 }
