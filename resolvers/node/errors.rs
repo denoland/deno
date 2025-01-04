@@ -479,7 +479,7 @@ impl NodeJsErrorCoded for FinalizeResolutionError {
   maybe_referrer.as_ref().map(|referrer| format!(" imported from '{}'", referrer)).unwrap_or_default()
 )]
 pub struct ModuleNotFoundError {
-  pub specifier: Url,
+  pub specifier: String,
   pub maybe_referrer: Option<Url>,
   pub typ: &'static str,
 }

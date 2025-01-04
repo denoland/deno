@@ -8,9 +8,7 @@ use deno_ast::MediaType;
 use deno_ast::ModuleSpecifier;
 use deno_core::error::AnyError;
 use deno_graph::Module;
-use deno_graph::ModuleError;
 use deno_graph::ModuleGraph;
-use deno_graph::ModuleLoadError;
 use deno_terminal::colors;
 use once_cell::sync::Lazy;
 use regex::Regex;
@@ -29,6 +27,8 @@ use crate::cache::FastInsecureHasher;
 use crate::cache::TypeCheckCache;
 use crate::factory::CliFactory;
 use crate::graph_util::maybe_additional_sloppy_imports_message;
+use crate::graph_util::module_error_for_tsc_diagnostic;
+use crate::graph_util::resolution_error_for_tsc_diagnostic;
 use crate::graph_util::BuildFastCheckGraphOptions;
 use crate::graph_util::ModuleGraphBuilder;
 use crate::node::CliNodeResolver;
@@ -469,36 +469,20 @@ fn get_tsc_roots(
     let module = match graph.try_get(specifier) {
       Ok(Some(module)) => module,
       Ok(None) => continue,
-      Err(ModuleError::Missing(specifier, maybe_range)) => {
+      Err(err) => {
         if !is_dynamic {
-          result
-            .missing_diagnostics
-            .push(tsc::Diagnostic::from_missing_error(
-              specifier,
-              maybe_range.as_ref(),
-              maybe_additional_sloppy_imports_message(sys, specifier),
-            ));
+          if let Some(err) = module_error_for_tsc_diagnostic(sys, err) {
+            result.missing_diagnostics.push(
+              tsc::Diagnostic::from_missing_error(
+                err.specifier.as_str(),
+                err.maybe_range,
+                maybe_additional_sloppy_imports_message(sys, err.specifier),
+              ),
+            );
+          }
         }
         continue;
       }
-      Err(ModuleError::LoadingErr(
-        specifier,
-        maybe_range,
-        ModuleLoadError::Loader(_),
-      )) => {
-        // these will be errors like attempting to load a directory
-        if !is_dynamic {
-          result
-            .missing_diagnostics
-            .push(tsc::Diagnostic::from_missing_error(
-              specifier,
-              maybe_range.as_ref(),
-              maybe_additional_sloppy_imports_message(sys, specifier),
-            ));
-        }
-        continue;
-      }
-      Err(_) => continue,
     };
     if is_dynamic && !seen.insert(specifier) {
       continue;
@@ -541,23 +525,40 @@ fn get_tsc_roots(
     if let Some(deps) = maybe_module_dependencies {
       for dep in deps.values() {
         // walk both the code and type dependencies
-        if let Some(specifier) = dep.get_code() {
-          handle_specifier(
-            graph,
-            &mut seen,
-            &mut pending,
-            specifier,
-            dep.is_dynamic,
-          );
-        }
-        if let Some(specifier) = dep.get_type() {
-          handle_specifier(
-            graph,
-            &mut seen,
-            &mut pending,
-            specifier,
-            dep.is_dynamic,
-          );
+        match &dep.maybe_type {
+          deno_graph::Resolution::None => {
+            if let Some(specifier) = dep.get_code() {
+              handle_specifier(
+                graph,
+                &mut seen,
+                &mut pending,
+                specifier,
+                dep.is_dynamic,
+              );
+            }
+          }
+          deno_graph::Resolution::Ok(resolution) => {
+            handle_specifier(
+              graph,
+              &mut seen,
+              &mut pending,
+              &resolution.specifier,
+              dep.is_dynamic,
+            );
+          }
+          deno_graph::Resolution::Err(resolution_error) => {
+            if let Some(err) =
+              resolution_error_for_tsc_diagnostic(resolution_error)
+            {
+              result.missing_diagnostics.push(
+                tsc::Diagnostic::from_missing_error(
+                  err.specifier,
+                  err.maybe_range,
+                  None,
+                ),
+              );
+            }
+          }
         }
       }
     }
