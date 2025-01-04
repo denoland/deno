@@ -65,7 +65,12 @@ impl GarbageCollected for DOMPointInner {}
 impl DOMPointInner {
   #[constructor]
   #[cppgc]
-  pub fn constructor(x: f64, y: f64, z: f64, w: f64) -> DOMPointInner {
+  pub fn constructor(
+    #[webidl] x: f64,
+    #[webidl] y: f64,
+    #[webidl] z: f64,
+    #[webidl] w: f64,
+  ) -> DOMPointInner {
     DOMPointInner {
       x: Cell::new(x),
       y: Cell::new(y),
@@ -91,9 +96,8 @@ impl DOMPointInner {
     self.x.get()
   }
 
-  #[fast]
   #[setter]
-  pub fn x(&self, value: f64) {
+  pub fn x(&self, #[webidl] value: f64) {
     self.x.set(value)
   }
 
@@ -103,9 +107,8 @@ impl DOMPointInner {
     self.y.get()
   }
 
-  #[fast]
   #[setter]
-  pub fn y(&self, value: f64) {
+  pub fn y(&self, #[webidl] value: f64) {
     self.y.set(value)
   }
 
@@ -115,9 +118,8 @@ impl DOMPointInner {
     self.z.get()
   }
 
-  #[fast]
   #[setter]
-  pub fn z(&self, value: f64) {
+  pub fn z(&self, #[webidl] value: f64) {
     self.z.set(value)
   }
 
@@ -127,9 +129,8 @@ impl DOMPointInner {
     self.w.get()
   }
 
-  #[fast]
   #[setter]
-  pub fn w(&self, value: f64) {
+  pub fn w(&self, #[webidl] value: f64) {
     self.w.set(value)
   }
 
@@ -434,9 +435,8 @@ impl DOMMatrixInner {
     unsafe { *self.inner.borrow().get_unchecked(INDEX_A) }
   }
 
-  #[fast]
   #[setter]
-  pub fn a(&self, value: f64) {
+  pub fn a(&self, #[webidl] value: f64) {
     // SAFETY: in-range access
     unsafe {
       *self.inner.borrow_mut().get_unchecked_mut(INDEX_A) = value;
@@ -450,9 +450,8 @@ impl DOMMatrixInner {
     unsafe { *self.inner.borrow().get_unchecked(INDEX_B) }
   }
 
-  #[fast]
   #[setter]
-  pub fn b(&self, value: f64) {
+  pub fn b(&self, #[webidl] value: f64) {
     // SAFETY: in-range access
     unsafe {
       *self.inner.borrow_mut().get_unchecked_mut(INDEX_B) = value;
@@ -466,9 +465,8 @@ impl DOMMatrixInner {
     unsafe { *self.inner.borrow().get_unchecked(INDEX_C) }
   }
 
-  #[fast]
   #[setter]
-  pub fn c(&self, value: f64) {
+  pub fn c(&self, #[webidl] value: f64) {
     // SAFETY: in-range access
     unsafe {
       *self.inner.borrow_mut().get_unchecked_mut(INDEX_C) = value;
@@ -482,9 +480,8 @@ impl DOMMatrixInner {
     unsafe { *self.inner.borrow().get_unchecked(INDEX_D) }
   }
 
-  #[fast]
   #[setter]
-  pub fn d(&self, value: f64) {
+  pub fn d(&self, #[webidl] value: f64) {
     // SAFETY: in-range access
     unsafe {
       *self.inner.borrow_mut().get_unchecked_mut(INDEX_D) = value;
@@ -498,9 +495,8 @@ impl DOMMatrixInner {
     unsafe { *self.inner.borrow().get_unchecked(INDEX_E) }
   }
 
-  #[fast]
   #[setter]
-  pub fn e(&self, value: f64) {
+  pub fn e(&self, #[webidl] value: f64) {
     // SAFETY: in-range access
     unsafe {
       *self.inner.borrow_mut().get_unchecked_mut(INDEX_E) = value;
@@ -514,9 +510,8 @@ impl DOMMatrixInner {
     unsafe { *self.inner.borrow().get_unchecked(INDEX_F) }
   }
 
-  #[fast]
   #[setter]
-  pub fn f(&self, value: f64) {
+  pub fn f(&self, #[webidl] value: f64) {
     // SAFETY: in-range access
     unsafe {
       *self.inner.borrow_mut().get_unchecked_mut(INDEX_F) = value;
@@ -530,9 +525,8 @@ impl DOMMatrixInner {
     unsafe { *self.inner.borrow().get_unchecked(INDEX_M11) }
   }
 
-  #[fast]
   #[setter]
-  pub fn m11(&self, value: f64) {
+  pub fn m11(&self, #[webidl] value: f64) {
     // SAFETY: in-range access
     unsafe {
       *self.inner.borrow_mut().get_unchecked_mut(INDEX_M11) = value;
@@ -546,9 +540,8 @@ impl DOMMatrixInner {
     unsafe { *self.inner.borrow().get_unchecked(INDEX_M12) }
   }
 
-  #[fast]
   #[setter]
-  pub fn m12(&self, value: f64) {
+  pub fn m12(&self, #[webidl] value: f64) {
     // SAFETY: in-range access
     unsafe {
       *self.inner.borrow_mut().get_unchecked_mut(INDEX_M12) = value;
@@ -562,9 +555,8 @@ impl DOMMatrixInner {
     unsafe { *self.inner.borrow().get_unchecked(INDEX_M13) }
   }
 
-  #[fast]
   #[setter]
-  pub fn m13(&self, value: f64) {
+  pub fn m13(&self, #[webidl] value: f64) {
     // SAFETY: in-range access
     unsafe {
       *self.inner.borrow_mut().get_unchecked_mut(INDEX_M13) = value;
@@ -581,9 +573,8 @@ impl DOMMatrixInner {
     unsafe { *self.inner.borrow().get_unchecked(INDEX_M14) }
   }
 
-  #[fast]
   #[setter]
-  pub fn m14(&self, value: f64) {
+  pub fn m14(&self, #[webidl] value: f64) {
     // SAFETY: in-range access
     unsafe {
       *self.inner.borrow_mut().get_unchecked_mut(INDEX_M14) = value;
@@ -600,9 +591,8 @@ impl DOMMatrixInner {
     unsafe { *self.inner.borrow().get_unchecked(INDEX_M21) }
   }
 
-  #[fast]
   #[setter]
-  pub fn m21(&self, value: f64) {
+  pub fn m21(&self, #[webidl] value: f64) {
     // SAFETY: in-range access
     unsafe {
       *self.inner.borrow_mut().get_unchecked_mut(INDEX_M21) = value;
@@ -616,9 +606,8 @@ impl DOMMatrixInner {
     unsafe { *self.inner.borrow().get_unchecked(INDEX_M22) }
   }
 
-  #[fast]
   #[setter]
-  pub fn m22(&self, value: f64) {
+  pub fn m22(&self, #[webidl] value: f64) {
     // SAFETY: in-range access
     unsafe {
       *self.inner.borrow_mut().get_unchecked_mut(INDEX_M22) = value;
@@ -632,9 +621,8 @@ impl DOMMatrixInner {
     unsafe { *self.inner.borrow().get_unchecked(INDEX_M23) }
   }
 
-  #[fast]
   #[setter]
-  pub fn m23(&self, value: f64) {
+  pub fn m23(&self, #[webidl] value: f64) {
     // SAFETY: in-range access
     unsafe {
       *self.inner.borrow_mut().get_unchecked_mut(INDEX_M23) = value;
@@ -651,9 +639,8 @@ impl DOMMatrixInner {
     unsafe { *self.inner.borrow().get_unchecked(INDEX_M24) }
   }
 
-  #[fast]
   #[setter]
-  pub fn m24(&self, value: f64) {
+  pub fn m24(&self, #[webidl] value: f64) {
     // SAFETY: in-range access
     unsafe {
       *self.inner.borrow_mut().get_unchecked_mut(INDEX_M24) = value;
@@ -670,9 +657,8 @@ impl DOMMatrixInner {
     unsafe { *self.inner.borrow().get_unchecked(INDEX_M31) }
   }
 
-  #[fast]
   #[setter]
-  pub fn m31(&self, value: f64) {
+  pub fn m31(&self, #[webidl] value: f64) {
     // SAFETY: in-range access
     unsafe {
       *self.inner.borrow_mut().get_unchecked_mut(INDEX_M31) = value;
@@ -689,9 +675,8 @@ impl DOMMatrixInner {
     unsafe { *self.inner.borrow().get_unchecked(INDEX_M32) }
   }
 
-  #[fast]
   #[setter]
-  pub fn m32(&self, value: f64) {
+  pub fn m32(&self, #[webidl] value: f64) {
     // SAFETY: in-range access
     unsafe {
       *self.inner.borrow_mut().get_unchecked_mut(INDEX_M32) = value;
@@ -708,9 +693,8 @@ impl DOMMatrixInner {
     unsafe { *self.inner.borrow().get_unchecked(INDEX_M33) }
   }
 
-  #[fast]
   #[setter]
-  pub fn m33(&self, value: f64) {
+  pub fn m33(&self, #[webidl] value: f64) {
     // SAFETY: in-range access
     unsafe {
       *self.inner.borrow_mut().get_unchecked_mut(INDEX_M33) = value;
@@ -727,9 +711,8 @@ impl DOMMatrixInner {
     unsafe { *self.inner.borrow().get_unchecked(INDEX_M34) }
   }
 
-  #[fast]
   #[setter]
-  pub fn m34(&self, value: f64) {
+  pub fn m34(&self, #[webidl] value: f64) {
     // SAFETY: in-range access
     unsafe {
       *self.inner.borrow_mut().get_unchecked_mut(INDEX_M34) = value;
@@ -746,9 +729,8 @@ impl DOMMatrixInner {
     unsafe { *self.inner.borrow().get_unchecked(INDEX_M41) }
   }
 
-  #[fast]
   #[setter]
-  pub fn m41(&self, value: f64) {
+  pub fn m41(&self, #[webidl] value: f64) {
     // SAFETY: in-range access
     unsafe {
       *self.inner.borrow_mut().get_unchecked_mut(INDEX_M41) = value;
@@ -762,9 +744,8 @@ impl DOMMatrixInner {
     unsafe { *self.inner.borrow().get_unchecked(INDEX_M42) }
   }
 
-  #[fast]
   #[setter]
-  pub fn m42(&self, value: f64) {
+  pub fn m42(&self, #[webidl] value: f64) {
     // SAFETY: in-range access
     unsafe {
       *self.inner.borrow_mut().get_unchecked_mut(INDEX_M42) = value;
@@ -778,9 +759,8 @@ impl DOMMatrixInner {
     unsafe { *self.inner.borrow().get_unchecked(INDEX_M43) }
   }
 
-  #[fast]
   #[setter]
-  pub fn m43(&self, value: f64) {
+  pub fn m43(&self, #[webidl] value: f64) {
     // SAFETY: in-range access
     unsafe {
       *self.inner.borrow_mut().get_unchecked_mut(INDEX_M43) = value;
@@ -797,9 +777,8 @@ impl DOMMatrixInner {
     unsafe { *self.inner.borrow().get_unchecked(INDEX_M44) }
   }
 
-  #[fast]
   #[setter]
-  pub fn m44(&self, value: f64) {
+  pub fn m44(&self, #[webidl] value: f64) {
     // SAFETY: in-range access
     unsafe {
       *self.inner.borrow_mut().get_unchecked_mut(INDEX_M44) = value;
@@ -863,58 +842,70 @@ impl DOMMatrixInner {
   }
 
   #[cppgc]
-  pub fn translate(&self, tx: f64, ty: f64, tz: f64) -> DOMMatrixInner {
+  pub fn translate(
+    &self,
+    #[webidl] tx: f64,
+    #[webidl] ty: f64,
+    #[webidl] tz: f64,
+  ) -> DOMMatrixInner {
     let out = self.clone();
     matrix_translate(&out, tx, ty, tz);
     out
   }
 
-  #[fast]
-  pub fn translate_self(&self, tx: f64, ty: f64, tz: f64) {
+  pub fn translate_self(
+    &self,
+    #[webidl] tx: f64,
+    #[webidl] ty: f64,
+    #[webidl] tz: f64,
+  ) {
     matrix_translate(self, tx, ty, tz);
   }
 
   #[cppgc]
   pub fn scale_without_origin(
     &self,
-    sx: f64,
-    sy: f64,
-    sz: f64,
+    #[webidl] sx: f64,
+    #[webidl] sy: f64,
+    #[webidl] sz: f64,
   ) -> DOMMatrixInner {
     let out = self.clone();
     matrix_scale(&out, sx, sy, sz);
     out
   }
 
-  #[fast]
-  pub fn scale_without_origin_self(&self, sx: f64, sy: f64, sz: f64) {
+  pub fn scale_without_origin_self(
+    &self,
+    #[webidl] sx: f64,
+    #[webidl] sy: f64,
+    #[webidl] sz: f64,
+  ) {
     matrix_scale(self, sx, sy, sz);
   }
 
   #[cppgc]
   pub fn scale_with_origin(
     &self,
-    sx: f64,
-    sy: f64,
-    sz: f64,
-    origin_x: f64,
-    origin_y: f64,
-    origin_z: f64,
+    #[webidl] sx: f64,
+    #[webidl] sy: f64,
+    #[webidl] sz: f64,
+    #[webidl] origin_x: f64,
+    #[webidl] origin_y: f64,
+    #[webidl] origin_z: f64,
   ) -> DOMMatrixInner {
     let out = self.clone();
     matrix_scale_with_origin(&out, sx, sy, sz, origin_x, origin_y, origin_z);
     out
   }
 
-  #[fast]
   pub fn scale_with_origin_self(
     &self,
-    sx: f64,
-    sy: f64,
-    sz: f64,
-    origin_x: f64,
-    origin_y: f64,
-    origin_z: f64,
+    #[webidl] sx: f64,
+    #[webidl] sy: f64,
+    #[webidl] sz: f64,
+    #[webidl] origin_x: f64,
+    #[webidl] origin_y: f64,
+    #[webidl] origin_z: f64,
   ) {
     matrix_scale_with_origin(self, sx, sy, sz, origin_x, origin_y, origin_z);
   }
@@ -922,71 +913,81 @@ impl DOMMatrixInner {
   #[cppgc]
   pub fn rotate(
     &self,
-    roll_deg: f64,
-    pitch_deg: f64,
-    yaw_deg: f64,
+    #[webidl] roll_deg: f64,
+    #[webidl] pitch_deg: f64,
+    #[webidl] yaw_deg: f64,
   ) -> DOMMatrixInner {
     let out = self.clone();
     matrix_rotate(&out, roll_deg, pitch_deg, yaw_deg);
     out
   }
 
-  #[fast]
-  pub fn rotate_self(&self, roll_deg: f64, pitch_deg: f64, yaw_deg: f64) {
+  pub fn rotate_self(
+    &self,
+    #[webidl] roll_deg: f64,
+    #[webidl] pitch_deg: f64,
+    #[webidl] yaw_deg: f64,
+  ) {
     matrix_rotate(self, roll_deg, pitch_deg, yaw_deg);
   }
 
   #[cppgc]
-  pub fn rotate_from_vector(&self, x: f64, y: f64) -> DOMMatrixInner {
+  pub fn rotate_from_vector(
+    &self,
+    #[webidl] x: f64,
+    #[webidl] y: f64,
+  ) -> DOMMatrixInner {
     let out = self.clone();
     matrix_rotate_from_vector(&out, x, y);
     out
   }
 
-  #[fast]
-  pub fn rotate_from_vector_self(&self, x: f64, y: f64) {
+  pub fn rotate_from_vector_self(&self, #[webidl] x: f64, #[webidl] y: f64) {
     matrix_rotate_from_vector(self, x, y);
   }
 
   #[cppgc]
   pub fn rotate_axis_angle(
     &self,
-    x: f64,
-    y: f64,
-    z: f64,
-    angle_deg: f64,
+    #[webidl] x: f64,
+    #[webidl] y: f64,
+    #[webidl] z: f64,
+    #[webidl] angle_deg: f64,
   ) -> DOMMatrixInner {
     let out = self.clone();
     matrix_rotate_axis_angle(&out, x, y, z, angle_deg);
     out
   }
 
-  #[fast]
-  pub fn rotate_axis_angle_self(&self, x: f64, y: f64, z: f64, angle_deg: f64) {
+  pub fn rotate_axis_angle_self(
+    &self,
+    #[webidl] x: f64,
+    #[webidl] y: f64,
+    #[webidl] z: f64,
+    #[webidl] angle_deg: f64,
+  ) {
     matrix_rotate_axis_angle(self, x, y, z, angle_deg);
   }
 
   #[cppgc]
-  pub fn skew_x(&self, x_deg: f64) -> DOMMatrixInner {
+  pub fn skew_x(&self, #[webidl] x_deg: f64) -> DOMMatrixInner {
     let out = self.clone();
     matrix_skew_x(&out, x_deg);
     out
   }
 
-  #[fast]
-  pub fn skew_x_self(&self, x_deg: f64) {
+  pub fn skew_x_self(&self, #[webidl] x_deg: f64) {
     matrix_skew_x(self, x_deg);
   }
 
   #[cppgc]
-  pub fn skew_y(&self, y_deg: f64) -> DOMMatrixInner {
+  pub fn skew_y(&self, #[webidl] y_deg: f64) -> DOMMatrixInner {
     let out = self.clone();
     matrix_skew_y(&out, y_deg);
     out
   }
 
-  #[fast]
-  pub fn skew_y_self(&self, y_deg: f64) {
+  pub fn skew_y_self(&self, #[webidl] y_deg: f64) {
     matrix_skew_y(self, y_deg);
   }
 
@@ -1178,6 +1179,9 @@ fn matrix_rotate_axis_angle(
   z: f64,
   angle_deg: f64,
 ) {
+  if x == 0.0 && y == 0.0 && z == 0.0 {
+    return;
+  }
   let mut inner = matrix.inner.borrow_mut();
   let is_2d = matrix.is_2d.get();
   let rotation = Rotation3::from_axis_angle(

@@ -14,7 +14,6 @@ const {
   MathMax,
   MathMin,
   ObjectDefineProperty,
-  ObjectIs,
   ObjectPrototypeIsPrototypeOf,
   Symbol,
   SymbolFor,
@@ -113,12 +112,7 @@ class DOMPointReadOnly {
   [_inner];
 
   constructor(x = 0, y = 0, z = 0, w = 1) {
-    this[_inner] = new DOMPointInner(
-      webidl.converters["unrestricted double"](x),
-      webidl.converters["unrestricted double"](y),
-      webidl.converters["unrestricted double"](z),
-      webidl.converters["unrestricted double"](w),
-    );
+    this[_inner] = new DOMPointInner(x, y, z, w);
     this[_brand] = _brand;
   }
 
@@ -215,7 +209,7 @@ class DOMPoint extends DOMPointReadOnly {
   set x(value) {
     webidl.assertBranded(this, DOMPointPrototype);
     assertWritable(this);
-    this[_inner].x = webidl.converters["unrestricted double"](value);
+    this[_inner].x = value;
   }
 
   get y() {
@@ -225,7 +219,7 @@ class DOMPoint extends DOMPointReadOnly {
   set y(value) {
     webidl.assertBranded(this, DOMPointPrototype);
     assertWritable(this);
-    this[_inner].y = webidl.converters["unrestricted double"](value);
+    this[_inner].y = value;
   }
 
   get z() {
@@ -235,7 +229,7 @@ class DOMPoint extends DOMPointReadOnly {
   set z(value) {
     webidl.assertBranded(this, DOMPointPrototype);
     assertWritable(this);
-    this[_inner].z = webidl.converters["unrestricted double"](value);
+    this[_inner].z = value;
   }
 
   get w() {
@@ -245,7 +239,7 @@ class DOMPoint extends DOMPointReadOnly {
   set w(value) {
     webidl.assertBranded(this, DOMPointPrototype);
     assertWritable(this);
-    this[_inner].x = webidl.converters["unrestricted double"](value);
+    this[_inner].x = value;
   }
 
   [SymbolFor("Deno.privateCustomInspect")](inspect, inspectOptions) {
@@ -782,9 +776,6 @@ class DOMMatrixReadOnly {
 
   translate(tx = 0, ty = 0, tz = 0) {
     webidl.assertBranded(this, DOMMatrixReadOnlyPrototype);
-    tx = webidl.converters["unrestricted double"](tx);
-    ty = webidl.converters["unrestricted double"](ty);
-    tz = webidl.converters["unrestricted double"](tz);
     const matrix = webidl.createBranded(DOMMatrix);
     matrix[_writable] = true;
     matrix[_inner] = this[_inner].clone().translate(tx, ty, tz);
@@ -800,12 +791,6 @@ class DOMMatrixReadOnly {
     originZ = 0,
   ) {
     webidl.assertBranded(this, DOMMatrixReadOnlyPrototype);
-    scaleX = webidl.converters["unrestricted double"](scaleX);
-    scaleY = webidl.converters["unrestricted double"](scaleY);
-    scaleZ = webidl.converters["unrestricted double"](scaleZ);
-    originX = webidl.converters["unrestricted double"](originX);
-    originY = webidl.converters["unrestricted double"](originY);
-    originZ = webidl.converters["unrestricted double"](originZ);
     const matrix = webidl.createBranded(DOMMatrix);
     matrix[_writable] = true;
     if (originX === 0 && originY === 0 && originZ === 0) {
@@ -829,8 +814,6 @@ class DOMMatrixReadOnly {
 
   scaleNonUniform(scaleX = 1, scaleY = 1) {
     webidl.assertBranded(this, DOMMatrixReadOnlyPrototype);
-    scaleX = webidl.converters["unrestricted double"](scaleX);
-    scaleY = webidl.converters["unrestricted double"](scaleY);
     const matrix = webidl.createBranded(DOMMatrix);
     matrix[_writable] = true;
     matrix[_inner] = this[_inner].clone().scaleWithoutOrigin(
@@ -843,10 +826,6 @@ class DOMMatrixReadOnly {
 
   scale3d(scale = 1, originX = 0, originY = 0, originZ = 0) {
     webidl.assertBranded(this, DOMMatrixReadOnlyPrototype);
-    scale = webidl.converters["unrestricted double"](scale);
-    originX = webidl.converters["unrestricted double"](originX);
-    originY = webidl.converters["unrestricted double"](originY);
-    originZ = webidl.converters["unrestricted double"](originZ);
     const matrix = webidl.createBranded(DOMMatrix);
     matrix[_writable] = true;
     if (originX === 0 && originY === 0 && originZ === 0) {
@@ -870,18 +849,13 @@ class DOMMatrixReadOnly {
 
   rotate(rotX = 0, rotY, rotZ) {
     webidl.assertBranded(this, DOMMatrixReadOnlyPrototype);
-    rotX = webidl.converters["unrestricted double"](rotX);
     if (rotY === undefined && rotZ === undefined) {
       rotZ = rotX;
       rotX = 0;
       rotY = 0;
     } else {
-      rotY = rotY !== undefined
-        ? webidl.converters["unrestricted double"](rotY)
-        : 0;
-      rotZ = rotZ !== undefined
-        ? webidl.converters["unrestricted double"](rotZ)
-        : 0;
+      rotY = rotY !== undefined ? rotY : 0;
+      rotZ = rotZ !== undefined ? rotZ : 0;
     }
     const matrix = webidl.createBranded(DOMMatrix);
     matrix[_writable] = true;
@@ -895,8 +869,6 @@ class DOMMatrixReadOnly {
 
   rotateFromVector(x = 0, y = 0) {
     webidl.assertBranded(this, DOMMatrixReadOnlyPrototype);
-    x = webidl.converters["unrestricted double"](x);
-    y = webidl.converters["unrestricted double"](y);
     const matrix = webidl.createBranded(DOMMatrix);
     matrix[_writable] = true;
     matrix[_inner] = this[_inner].clone().rotateFromVector(x, y);
@@ -905,26 +877,19 @@ class DOMMatrixReadOnly {
 
   rotateAxisAngle(x = 0, y = 0, z = 0, angle = 0) {
     webidl.assertBranded(this, DOMMatrixReadOnlyPrototype);
-    x = webidl.converters["unrestricted double"](x);
-    y = webidl.converters["unrestricted double"](y);
-    z = webidl.converters["unrestricted double"](z);
-    angle = webidl.converters["unrestricted double"](angle);
     const matrix = webidl.createBranded(DOMMatrix);
     matrix[_writable] = true;
-    if (x !== 0 || y !== 0 || z !== 0) {
-      matrix[_inner] = this[_inner].clone().rotateAxisAngle(
-        x,
-        y,
-        z,
-        angle,
-      );
-    }
+    matrix[_inner] = this[_inner].clone().rotateAxisAngle(
+      x,
+      y,
+      z,
+      angle,
+    );
     return matrix;
   }
 
   skewX(sx = 0) {
     webidl.assertBranded(this, DOMMatrixReadOnlyPrototype);
-    sx = webidl.converters["unrestricted double"](sx);
     const matrix = webidl.createBranded(DOMMatrix);
     matrix[_writable] = true;
     matrix[_inner] = this[_inner].clone().skewX(sx);
@@ -933,7 +898,6 @@ class DOMMatrixReadOnly {
 
   skewY(sy = 0) {
     webidl.assertBranded(this, DOMMatrixReadOnlyPrototype);
-    sy = webidl.converters["unrestricted double"](sy);
     const matrix = webidl.createBranded(DOMMatrix);
     matrix[_writable] = true;
     matrix[_inner] = this[_inner].clone().skewY(sy);
@@ -1133,7 +1097,7 @@ class DOMMatrix extends DOMMatrixReadOnly {
   set a(value) {
     webidl.assertBranded(this, DOMMatrixPrototype);
     assertWritable(this);
-    this[_inner].a = webidl.converters["unrestricted double"](value);
+    this[_inner].a = value;
   }
 
   get b() {
@@ -1143,7 +1107,7 @@ class DOMMatrix extends DOMMatrixReadOnly {
   set b(value) {
     webidl.assertBranded(this, DOMMatrixPrototype);
     assertWritable(this);
-    this[_inner].b = webidl.converters["unrestricted double"](value);
+    this[_inner].b = value;
   }
 
   get c() {
@@ -1153,7 +1117,7 @@ class DOMMatrix extends DOMMatrixReadOnly {
   set c(value) {
     webidl.assertBranded(this, DOMMatrixPrototype);
     assertWritable(this);
-    this[_inner].c = webidl.converters["unrestricted double"](value);
+    this[_inner].c = value;
   }
 
   get d() {
@@ -1163,7 +1127,7 @@ class DOMMatrix extends DOMMatrixReadOnly {
   set d(value) {
     webidl.assertBranded(this, DOMMatrixPrototype);
     assertWritable(this);
-    this[_inner].d = webidl.converters["unrestricted double"](value);
+    this[_inner].d = value;
   }
 
   get e() {
@@ -1173,7 +1137,7 @@ class DOMMatrix extends DOMMatrixReadOnly {
   set e(value) {
     webidl.assertBranded(this, DOMMatrixPrototype);
     assertWritable(this);
-    this[_inner].e = webidl.converters["unrestricted double"](value);
+    this[_inner].e = value;
   }
 
   get f() {
@@ -1183,7 +1147,7 @@ class DOMMatrix extends DOMMatrixReadOnly {
   set f(value) {
     webidl.assertBranded(this, DOMMatrixPrototype);
     assertWritable(this);
-    this[_inner].f = webidl.converters["unrestricted double"](value);
+    this[_inner].f = value;
   }
 
   get m11() {
@@ -1193,7 +1157,7 @@ class DOMMatrix extends DOMMatrixReadOnly {
   set m11(value) {
     webidl.assertBranded(this, DOMMatrixPrototype);
     assertWritable(this);
-    this[_inner].m11 = webidl.converters["unrestricted double"](value);
+    this[_inner].m11 = value;
   }
 
   get m12() {
@@ -1203,7 +1167,7 @@ class DOMMatrix extends DOMMatrixReadOnly {
   set m12(value) {
     webidl.assertBranded(this, DOMMatrixPrototype);
     assertWritable(this);
-    this[_inner].m12 = webidl.converters["unrestricted double"](value);
+    this[_inner].m12 = value;
   }
 
   get m13() {
@@ -1213,7 +1177,7 @@ class DOMMatrix extends DOMMatrixReadOnly {
   set m13(value) {
     webidl.assertBranded(this, DOMMatrixPrototype);
     assertWritable(this);
-    this[_inner].m13 = webidl.converters["unrestricted double"](value);
+    this[_inner].m13 = value;
   }
 
   get m14() {
@@ -1223,7 +1187,7 @@ class DOMMatrix extends DOMMatrixReadOnly {
   set m14(value) {
     webidl.assertBranded(this, DOMMatrixPrototype);
     assertWritable(this);
-    this[_inner].m14 = webidl.converters["unrestricted double"](value);
+    this[_inner].m14 = value;
   }
 
   get m21() {
@@ -1233,7 +1197,7 @@ class DOMMatrix extends DOMMatrixReadOnly {
   set m21(value) {
     webidl.assertBranded(this, DOMMatrixPrototype);
     assertWritable(this);
-    this[_inner].m21 = webidl.converters["unrestricted double"](value);
+    this[_inner].m21 = value;
   }
 
   get m22() {
@@ -1243,7 +1207,7 @@ class DOMMatrix extends DOMMatrixReadOnly {
   set m22(value) {
     webidl.assertBranded(this, DOMMatrixPrototype);
     assertWritable(this);
-    this[_inner].m22 = webidl.converters["unrestricted double"](value);
+    this[_inner].m22 = value;
   }
 
   get m23() {
@@ -1253,7 +1217,7 @@ class DOMMatrix extends DOMMatrixReadOnly {
   set m23(value) {
     webidl.assertBranded(this, DOMMatrixPrototype);
     assertWritable(this);
-    this[_inner].m23 = webidl.converters["unrestricted double"](value);
+    this[_inner].m23 = value;
   }
 
   get m24() {
@@ -1263,7 +1227,7 @@ class DOMMatrix extends DOMMatrixReadOnly {
   set m24(value) {
     webidl.assertBranded(this, DOMMatrixPrototype);
     assertWritable(this);
-    this[_inner].m24 = webidl.converters["unrestricted double"](value);
+    this[_inner].m24 = value;
   }
 
   get m31() {
@@ -1273,7 +1237,7 @@ class DOMMatrix extends DOMMatrixReadOnly {
   set m31(value) {
     webidl.assertBranded(this, DOMMatrixPrototype);
     assertWritable(this);
-    this[_inner].m31 = webidl.converters["unrestricted double"](value);
+    this[_inner].m31 = value;
   }
 
   get m32() {
@@ -1283,7 +1247,7 @@ class DOMMatrix extends DOMMatrixReadOnly {
   set m32(value) {
     webidl.assertBranded(this, DOMMatrixPrototype);
     assertWritable(this);
-    this[_inner].m32 = webidl.converters["unrestricted double"](value);
+    this[_inner].m32 = value;
   }
 
   get m33() {
@@ -1293,7 +1257,7 @@ class DOMMatrix extends DOMMatrixReadOnly {
   set m33(value) {
     webidl.assertBranded(this, DOMMatrixPrototype);
     assertWritable(this);
-    this[_inner].m33 = webidl.converters["unrestricted double"](value);
+    this[_inner].m33 = value;
   }
 
   get m34() {
@@ -1303,7 +1267,7 @@ class DOMMatrix extends DOMMatrixReadOnly {
   set m34(value) {
     webidl.assertBranded(this, DOMMatrixPrototype);
     assertWritable(this);
-    this[_inner].m34 = webidl.converters["unrestricted double"](value);
+    this[_inner].m34 = value;
   }
 
   get m41() {
@@ -1313,7 +1277,7 @@ class DOMMatrix extends DOMMatrixReadOnly {
   set m41(value) {
     webidl.assertBranded(this, DOMMatrixPrototype);
     assertWritable(this);
-    this[_inner].m41 = webidl.converters["unrestricted double"](value);
+    this[_inner].m41 = value;
   }
 
   get m42() {
@@ -1323,7 +1287,7 @@ class DOMMatrix extends DOMMatrixReadOnly {
   set m42(value) {
     webidl.assertBranded(this, DOMMatrixPrototype);
     assertWritable(this);
-    this[_inner].m42 = webidl.converters["unrestricted double"](value);
+    this[_inner].m42 = value;
   }
 
   get m43() {
@@ -1333,7 +1297,7 @@ class DOMMatrix extends DOMMatrixReadOnly {
   set m43(value) {
     webidl.assertBranded(this, DOMMatrixPrototype);
     assertWritable(this);
-    this[_inner].m43 = webidl.converters["unrestricted double"](value);
+    this[_inner].m43 = value;
   }
 
   get m44() {
@@ -1343,7 +1307,7 @@ class DOMMatrix extends DOMMatrixReadOnly {
   set m44(value) {
     webidl.assertBranded(this, DOMMatrixPrototype);
     assertWritable(this);
-    this[_inner].m44 = webidl.converters["unrestricted double"](value);
+    this[_inner].m44 = value;
   }
 
   multiplySelf(other = { __proto__: null }) {
@@ -1383,9 +1347,6 @@ class DOMMatrix extends DOMMatrixReadOnly {
   translateSelf(tx = 0, ty = 0, tz = 0) {
     webidl.assertBranded(this, DOMMatrixPrototype);
     assertWritable(this);
-    tx = webidl.converters["unrestricted double"](tx);
-    ty = webidl.converters["unrestricted double"](ty);
-    tz = webidl.converters["unrestricted double"](tz);
     this[_inner].translateSelf(tx, ty, tz);
     return this;
   }
@@ -1400,12 +1361,6 @@ class DOMMatrix extends DOMMatrixReadOnly {
   ) {
     webidl.assertBranded(this, DOMMatrixPrototype);
     assertWritable(this);
-    scaleX = webidl.converters["unrestricted double"](scaleX);
-    scaleY = webidl.converters["unrestricted double"](scaleY);
-    scaleZ = webidl.converters["unrestricted double"](scaleZ);
-    originX = webidl.converters["unrestricted double"](originX);
-    originY = webidl.converters["unrestricted double"](originY);
-    originZ = webidl.converters["unrestricted double"](originZ);
     if (originX === 0 && originY === 0 && originZ === 0) {
       this[_inner].scaleWithoutOriginSelf(scaleX, scaleY, scaleZ);
     } else {
@@ -1424,10 +1379,6 @@ class DOMMatrix extends DOMMatrixReadOnly {
   scale3dSelf(scale = 1, originX = 0, originY = 0, originZ = 0) {
     webidl.assertBranded(this, DOMMatrixPrototype);
     assertWritable(this);
-    scale = webidl.converters["unrestricted double"](scale);
-    originX = webidl.converters["unrestricted double"](originX);
-    originY = webidl.converters["unrestricted double"](originY);
-    originZ = webidl.converters["unrestricted double"](originZ);
     if (originX === 0 && originY === 0 && originZ === 0) {
       this[_inner].scaleWithoutOriginSelf(scale, scale, scale);
     } else {
@@ -1446,18 +1397,13 @@ class DOMMatrix extends DOMMatrixReadOnly {
   rotateSelf(rotX = 0, rotY, rotZ) {
     webidl.assertBranded(this, DOMMatrixPrototype);
     assertWritable(this);
-    rotX = webidl.converters["unrestricted double"](rotX);
     if (rotY === undefined && rotZ === undefined) {
       rotZ = rotX;
       rotX = 0;
       rotY = 0;
     } else {
-      rotY = rotY !== undefined
-        ? webidl.converters["unrestricted double"](rotY)
-        : 0;
-      rotZ = rotZ !== undefined
-        ? webidl.converters["unrestricted double"](rotZ)
-        : 0;
+      rotY = rotY !== undefined ? rotY : 0;
+      rotZ = rotZ !== undefined ? rotZ : 0;
     }
     this[_inner].rotateSelf(
       rotX,
@@ -1470,8 +1416,6 @@ class DOMMatrix extends DOMMatrixReadOnly {
   rotateFromVectorSelf(x = 0, y = 0) {
     webidl.assertBranded(this, DOMMatrixPrototype);
     assertWritable(this);
-    x = webidl.converters["unrestricted double"](x);
-    y = webidl.converters["unrestricted double"](y);
     this[_inner].rotateFromVectorSelf(x, y);
     return this;
   }
@@ -1479,25 +1423,18 @@ class DOMMatrix extends DOMMatrixReadOnly {
   rotateAxisAngleSelf(x = 0, y = 0, z = 0, angle = 0) {
     webidl.assertBranded(this, DOMMatrixPrototype);
     assertWritable(this);
-    x = webidl.converters["unrestricted double"](x);
-    y = webidl.converters["unrestricted double"](y);
-    z = webidl.converters["unrestricted double"](z);
-    angle = webidl.converters["unrestricted double"](angle);
-    if (x !== 0 || y !== 0 || z !== 0) {
-      this[_inner].rotateAxisAngleSelf(
-        x,
-        y,
-        z,
-        angle,
-      );
-    }
+    this[_inner].rotateAxisAngleSelf(
+      x,
+      y,
+      z,
+      angle,
+    );
     return this;
   }
 
   skewXSelf(sx = 0) {
     webidl.assertBranded(this, DOMMatrixPrototype);
     assertWritable(this);
-    sx = webidl.converters["unrestricted double"](sx);
     this[_inner].skewXSelf(sx);
     return this;
   }
@@ -1505,7 +1442,6 @@ class DOMMatrix extends DOMMatrixReadOnly {
   skewYSelf(sy = 0) {
     webidl.assertBranded(this, DOMMatrixPrototype);
     assertWritable(this);
-    sy = webidl.converters["unrestricted double"](sy);
     this[_inner].skewYSelf(sy);
     return this;
   }
@@ -1591,38 +1527,6 @@ function initMatrixFromSequence(target, seq, prefix) {
     throw new TypeError(
       `${prefix}: The sequence must contain 6 elements for a 2D matrix or 16 elements for a 3D matrix`,
     );
-  }
-}
-
-/**
- * @param {object} target
- * @param {object} dict
- */
-function initMatrixFromDictonary(target, dict) {
-  if (dict.is2D) {
-    const { m11, m12, m21, m22, m41, m42 } = dict;
-    // deno-fmt-ignore
-    target[_inner] = new DOMMatrixInner(new Float64Array([
-      m11, m12, 0, 0,
-      m21, m22, 0, 0,
-        0,   0, 1, 0,
-      m41, m42, 0, 1,
-    ]), /* is2D */ true);
-  } else {
-    // deno-fmt-ignore
-    const {
-      m11, m12, m13, m14,
-      m21, m22, m23, m24,
-      m31, m32, m33, m34,
-      m41, m42, m43, m44,
-    } = dict;
-    // deno-fmt-ignore
-    target[_inner] = new DOMMatrixInner(new Float64Array([
-      m11, m12, m13, m14,
-      m21, m22, m23, m24,
-      m31, m32, m33, m34,
-      m41, m42, m43, m44,
-    ]), /* is2D */ false);
   }
 }
 
