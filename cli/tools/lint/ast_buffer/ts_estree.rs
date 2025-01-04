@@ -469,12 +469,12 @@ impl TsEsTreeBuilder {
     source_kind: &str,
     body: Vec<NodeRef>,
   ) -> NodeRef {
-    let offset = self.ctx.append_node(AstNode::Program, span);
+    let id = self.ctx.append_node(AstNode::Program, span);
 
     self.ctx.write_str(AstProp::SourceType, source_kind);
-    self.ctx.write_ref_vec(AstProp::Body, &offset, body);
+    self.ctx.write_ref_vec(AstProp::Body, &id, body);
 
-    offset
+    self.ctx.commit_node(id)
   }
 
   pub fn write_import_decl(
@@ -484,17 +484,14 @@ impl TsEsTreeBuilder {
     source: &str,
     specifiers: Vec<NodeRef>,
   ) -> NodeRef {
-    let offset = self.ctx.append_node(AstNode::ImportDeclaration, span);
+    let id = self.ctx.append_node(AstNode::ImportDeclaration, span);
 
     let kind = if type_only { "type" } else { "value" };
     self.ctx.write_str(AstProp::ImportKind, kind);
     self.ctx.write_str(AstProp::Source, source);
+    self.ctx.write_ref_vec(AstProp::Specifiers, &id, specifiers);
 
-    self
-      .ctx
-      .write_ref_vec(AstProp::Specifiers, &offset, specifiers);
-
-    offset
+    self.ctx.commit_node(id)
   }
 
   pub fn write_import_spec(
@@ -504,17 +501,17 @@ impl TsEsTreeBuilder {
     local: NodeRef,
     imported: Option<NodeRef>,
   ) -> NodeRef {
-    let offset = self.ctx.append_node(AstNode::ImportSpecifier, span);
+    let id = self.ctx.append_node(AstNode::ImportSpecifier, span);
 
     let kind = if type_only { "type" } else { "value" };
     self.ctx.write_str(AstProp::ImportKind, kind);
 
     let actual = imported.unwrap_or(local.clone());
 
-    self.ctx.write_ref(AstProp::Imported, &offset, actual);
-    self.ctx.write_ref(AstProp::Local, &offset, local);
+    self.ctx.write_ref(AstProp::Imported, &id, actual);
+    self.ctx.write_ref(AstProp::Local, &id, local);
 
-    offset
+    self.ctx.commit_node(id)
   }
 
   pub fn write_import_default_spec(
@@ -522,11 +519,9 @@ impl TsEsTreeBuilder {
     span: &Span,
     local: NodeRef,
   ) -> NodeRef {
-    let offset = self.ctx.append_node(AstNode::ImportDefaultSpecifier, span);
-
-    self.ctx.write_ref(AstProp::Local, &offset, local);
-
-    offset
+    let id = self.ctx.append_node(AstNode::ImportDefaultSpecifier, span);
+    self.ctx.write_ref(AstProp::Local, &id, local);
+    self.ctx.commit_node(id)
   }
 
   pub fn write_import_ns_spec(
@@ -534,22 +529,18 @@ impl TsEsTreeBuilder {
     span: &Span,
     local: NodeRef,
   ) -> NodeRef {
-    let offset = self
+    let id = self
       .ctx
       .append_node(AstNode::ImportNamespaceSpecifier, span);
-
-    self.ctx.write_ref(AstProp::Local, &offset, local);
-
-    offset
+    self.ctx.write_ref(AstProp::Local, &id, local);
+    self.ctx.commit_node(id)
   }
 
   pub fn write_export_decl(&mut self, span: &Span, decl: NodeRef) -> NodeRef {
     // TSEstree mixes these types :/
-    let offset = self.ctx.append_node(AstNode::ExportNamedDeclaration, span);
-
-    self.ctx.write_ref(AstProp::Declaration, &offset, decl);
-
-    offset
+    let id = self.ctx.append_node(AstNode::ExportNamedDeclaration, span);
+    self.ctx.write_ref(AstProp::Declaration, &id, decl);
+    self.ctx.commit_node(id)
   }
 
   pub fn write_export_named_decl(
@@ -558,14 +549,12 @@ impl TsEsTreeBuilder {
     specifiers: Vec<NodeRef>,
     source: Option<NodeRef>,
   ) -> NodeRef {
-    let offset = self.ctx.append_node(AstNode::ExportNamedDeclaration, span);
+    let id = self.ctx.append_node(AstNode::ExportNamedDeclaration, span);
 
-    self
-      .ctx
-      .write_ref_vec(AstProp::Specifiers, &offset, specifiers);
-    self.ctx.write_maybe_ref(AstProp::Source, &offset, source);
+    self.ctx.write_ref_vec(AstProp::Specifiers, &id, specifiers);
+    self.ctx.write_maybe_ref(AstProp::Source, &id, source);
 
-    offset
+    self.ctx.commit_node(id)
   }
 
   pub fn write_export_spec(
@@ -575,16 +564,16 @@ impl TsEsTreeBuilder {
     local: NodeRef,
     exported: Option<NodeRef>,
   ) -> NodeRef {
-    let offset = self.ctx.append_node(AstNode::ExportSpecifier, span);
+    let id = self.ctx.append_node(AstNode::ExportSpecifier, span);
 
     let kind = if type_only { "type" } else { "value" };
     self.ctx.write_str(AstProp::ExportKind, kind);
 
     let actual = exported.unwrap_or(local.clone());
-    self.ctx.write_ref(AstProp::Exported, &offset, actual);
-    self.ctx.write_ref(AstProp::Local, &offset, local);
+    self.ctx.write_ref(AstProp::Exported, &id, actual);
+    self.ctx.write_ref(AstProp::Local, &id, local);
 
-    offset
+    self.ctx.commit_node(id)
   }
 
   pub fn write_var_decl(
@@ -594,29 +583,27 @@ impl TsEsTreeBuilder {
     kind: &str,
     decls: Vec<NodeRef>,
   ) -> NodeRef {
-    let offset = self.ctx.append_node(AstNode::VariableDeclaration, span);
+    let id = self.ctx.append_node(AstNode::VariableDeclaration, span);
 
     self.ctx.write_bool(AstProp::Declare, declare);
     self.ctx.write_str(AstProp::Kind, kind);
-    self
-      .ctx
-      .write_ref_vec(AstProp::Declarations, &offset, decls);
+    self.ctx.write_ref_vec(AstProp::Declarations, &id, decls);
 
-    offset
+    self.ctx.commit_node(id)
   }
 
   pub fn write_var_declarator(
     &mut self,
     span: &Span,
-    id: NodeRef,
+    ident: NodeRef,
     init: Option<NodeRef>,
   ) -> NodeRef {
-    let offset = self.ctx.append_node(AstNode::VariableDeclarator, span);
+    let id = self.ctx.append_node(AstNode::VariableDeclarator, span);
 
-    self.ctx.write_ref(AstProp::Id, &offset, id);
-    self.ctx.write_maybe_ref(AstProp::Init, &offset, init);
+    self.ctx.write_ref(AstProp::Id, &id, ident);
+    self.ctx.write_maybe_ref(AstProp::Init, &id, init);
 
-    offset
+    self.ctx.commit_node(id)
   }
 
   pub fn write_fn_decl(
@@ -625,28 +612,28 @@ impl TsEsTreeBuilder {
     is_declare: bool,
     is_async: bool,
     is_generator: bool,
-    id: NodeRef,
+    ident: NodeRef,
     type_param: Option<NodeRef>,
     return_type: Option<NodeRef>,
     body: Option<NodeRef>,
     params: Vec<NodeRef>,
   ) -> NodeRef {
-    let offset = self.ctx.append_node(AstNode::FunctionDeclaration, span);
+    let id = self.ctx.append_node(AstNode::FunctionDeclaration, span);
 
     self.ctx.write_bool(AstProp::Declare, is_declare);
     self.ctx.write_bool(AstProp::Async, is_async);
     self.ctx.write_bool(AstProp::Generator, is_generator);
-    self.ctx.write_ref(AstProp::Id, &offset, id);
+    self.ctx.write_ref(AstProp::Id, &id, ident);
     self
       .ctx
-      .write_maybe_ref(AstProp::TypeParameters, &offset, type_param);
+      .write_maybe_ref(AstProp::TypeParameters, &id, type_param);
     self
       .ctx
-      .write_maybe_ref(AstProp::ReturnType, &offset, return_type);
-    self.ctx.write_maybe_ref(AstProp::Body, &offset, body);
-    self.ctx.write_ref_vec(AstProp::Params, &offset, params);
+      .write_maybe_ref(AstProp::ReturnType, &id, return_type);
+    self.ctx.write_maybe_ref(AstProp::Body, &id, body);
+    self.ctx.write_ref_vec(AstProp::Params, &id, params);
 
-    offset
+    self.ctx.commit_node(id)
   }
 
   pub fn write_block_stmt(
@@ -654,15 +641,14 @@ impl TsEsTreeBuilder {
     span: &Span,
     body: Vec<NodeRef>,
   ) -> NodeRef {
-    let offset = self.ctx.append_node(AstNode::BlockStatement, span);
-
-    self.ctx.write_ref_vec(AstProp::Body, &offset, body);
-
-    offset
+    let id = self.ctx.append_node(AstNode::BlockStatement, span);
+    self.ctx.write_ref_vec(AstProp::Body, &id, body);
+    self.ctx.commit_node(id)
   }
 
   pub fn write_debugger_stmt(&mut self, span: &Span) -> NodeRef {
-    self.ctx.append_node(AstNode::DebuggerStatement, span)
+    let id = self.ctx.append_node(AstNode::DebuggerStatement, span);
+    self.ctx.commit_node(id)
   }
 
   pub fn write_with_stmt(
@@ -671,12 +657,12 @@ impl TsEsTreeBuilder {
     obj: NodeRef,
     body: NodeRef,
   ) -> NodeRef {
-    let offset = self.ctx.append_node(AstNode::WithStatement, span);
+    let id = self.ctx.append_node(AstNode::WithStatement, span);
 
-    self.ctx.write_ref(AstProp::Object, &offset, obj);
-    self.ctx.write_ref(AstProp::Body, &offset, body);
+    self.ctx.write_ref(AstProp::Object, &id, obj);
+    self.ctx.write_ref(AstProp::Body, &id, body);
 
-    offset
+    self.ctx.commit_node(id)
   }
 
   pub fn write_return_stmt(
@@ -684,11 +670,9 @@ impl TsEsTreeBuilder {
     span: &Span,
     arg: Option<NodeRef>,
   ) -> NodeRef {
-    let offset = self.ctx.append_node(AstNode::ReturnStatement, span);
-
-    self.ctx.write_maybe_ref(AstProp::Argument, &offset, arg);
-
-    offset
+    let id = self.ctx.append_node(AstNode::ReturnStatement, span);
+    self.ctx.write_maybe_ref(AstProp::Argument, &id, arg);
+    self.ctx.commit_node(id)
   }
 
   pub fn write_labeled_stmt(
@@ -697,12 +681,12 @@ impl TsEsTreeBuilder {
     label: NodeRef,
     body: NodeRef,
   ) -> NodeRef {
-    let offset = self.ctx.append_node(AstNode::LabeledStatement, span);
+    let id = self.ctx.append_node(AstNode::LabeledStatement, span);
 
-    self.ctx.write_ref(AstProp::Label, &offset, label);
-    self.ctx.write_ref(AstProp::Body, &offset, body);
+    self.ctx.write_ref(AstProp::Label, &id, label);
+    self.ctx.write_ref(AstProp::Body, &id, body);
 
-    offset
+    self.ctx.commit_node(id)
   }
 
   pub fn write_break_stmt(
@@ -710,11 +694,9 @@ impl TsEsTreeBuilder {
     span: &Span,
     label: Option<NodeRef>,
   ) -> NodeRef {
-    let offset = self.ctx.append_node(AstNode::LabeledStatement, span);
-
-    self.ctx.write_maybe_ref(AstProp::Label, &offset, label);
-
-    offset
+    let id = self.ctx.append_node(AstNode::LabeledStatement, span);
+    self.ctx.write_maybe_ref(AstProp::Label, &id, label);
+    self.ctx.commit_node(id)
   }
 
   pub fn write_continue_stmt(
@@ -722,11 +704,9 @@ impl TsEsTreeBuilder {
     span: &Span,
     label: Option<NodeRef>,
   ) -> NodeRef {
-    let offset = self.ctx.append_node(AstNode::ContinueStatement, span);
-
-    self.ctx.write_maybe_ref(AstProp::Label, &offset, label);
-
-    offset
+    let id = self.ctx.append_node(AstNode::ContinueStatement, span);
+    self.ctx.write_maybe_ref(AstProp::Label, &id, label);
+    self.ctx.commit_node(id)
   }
 
   pub fn write_if_stmt(
@@ -736,15 +716,13 @@ impl TsEsTreeBuilder {
     consequent: NodeRef,
     alternate: Option<NodeRef>,
   ) -> NodeRef {
-    let offset = self.ctx.append_node(AstNode::IfStatement, span);
+    let id = self.ctx.append_node(AstNode::IfStatement, span);
 
-    self.ctx.write_ref(AstProp::Test, &offset, test);
-    self.ctx.write_ref(AstProp::Consequent, &offset, consequent);
-    self
-      .ctx
-      .write_maybe_ref(AstProp::Alternate, &offset, alternate);
+    self.ctx.write_ref(AstProp::Test, &id, test);
+    self.ctx.write_ref(AstProp::Consequent, &id, consequent);
+    self.ctx.write_maybe_ref(AstProp::Alternate, &id, alternate);
 
-    offset
+    self.ctx.commit_node(id)
   }
 
   pub fn write_switch_stmt(
@@ -753,14 +731,12 @@ impl TsEsTreeBuilder {
     discriminant: NodeRef,
     cases: Vec<NodeRef>,
   ) -> NodeRef {
-    let offset = self.ctx.append_node(AstNode::SwitchStatement, span);
+    let id = self.ctx.append_node(AstNode::SwitchStatement, span);
 
-    self
-      .ctx
-      .write_ref(AstProp::Discriminant, &offset, discriminant);
-    self.ctx.write_ref_vec(AstProp::Cases, &offset, cases);
+    self.ctx.write_ref(AstProp::Discriminant, &id, discriminant);
+    self.ctx.write_ref_vec(AstProp::Cases, &id, cases);
 
-    offset
+    self.ctx.commit_node(id)
   }
 
   pub fn write_switch_case(
@@ -769,22 +745,18 @@ impl TsEsTreeBuilder {
     test: Option<NodeRef>,
     consequent: Vec<NodeRef>,
   ) -> NodeRef {
-    let offset = self.ctx.append_node(AstNode::SwitchCase, span);
+    let id = self.ctx.append_node(AstNode::SwitchCase, span);
 
-    self.ctx.write_maybe_ref(AstProp::Test, &offset, test);
-    self
-      .ctx
-      .write_ref_vec(AstProp::Consequent, &offset, consequent);
+    self.ctx.write_maybe_ref(AstProp::Test, &id, test);
+    self.ctx.write_ref_vec(AstProp::Consequent, &id, consequent);
 
-    offset
+    self.ctx.commit_node(id)
   }
 
   pub fn write_throw_stmt(&mut self, span: &Span, arg: NodeRef) -> NodeRef {
-    let offset = self.ctx.append_node(AstNode::ThrowStatement, span);
-
-    self.ctx.write_ref(AstProp::Argument, &offset, arg);
-
-    offset
+    let id = self.ctx.append_node(AstNode::ThrowStatement, span);
+    self.ctx.write_ref(AstProp::Argument, &id, arg);
+    self.ctx.commit_node(id)
   }
 
   pub fn write_while_stmt(
@@ -793,12 +765,12 @@ impl TsEsTreeBuilder {
     test: NodeRef,
     body: NodeRef,
   ) -> NodeRef {
-    let offset = self.ctx.append_node(AstNode::WhileStatement, span);
+    let id = self.ctx.append_node(AstNode::WhileStatement, span);
 
-    self.ctx.write_ref(AstProp::Test, &offset, test);
-    self.ctx.write_ref(AstProp::Body, &offset, body);
+    self.ctx.write_ref(AstProp::Test, &id, test);
+    self.ctx.write_ref(AstProp::Body, &id, body);
 
-    offset
+    self.ctx.commit_node(id)
   }
 
   pub fn write_do_while_stmt(
@@ -807,12 +779,12 @@ impl TsEsTreeBuilder {
     test: NodeRef,
     body: NodeRef,
   ) -> NodeRef {
-    let offset = self.ctx.append_node(AstNode::DoWhileStatement, span);
+    let id = self.ctx.append_node(AstNode::DoWhileStatement, span);
 
-    self.ctx.write_ref(AstProp::Test, &offset, test);
-    self.ctx.write_ref(AstProp::Body, &offset, body);
+    self.ctx.write_ref(AstProp::Test, &id, test);
+    self.ctx.write_ref(AstProp::Body, &id, body);
 
-    offset
+    self.ctx.commit_node(id)
   }
 
   pub fn write_for_stmt(
@@ -823,14 +795,14 @@ impl TsEsTreeBuilder {
     update: Option<NodeRef>,
     body: NodeRef,
   ) -> NodeRef {
-    let offset = self.ctx.append_node(AstNode::ForStatement, span);
+    let id = self.ctx.append_node(AstNode::ForStatement, span);
 
-    self.ctx.write_maybe_ref(AstProp::Init, &offset, init);
-    self.ctx.write_maybe_ref(AstProp::Test, &offset, test);
-    self.ctx.write_maybe_ref(AstProp::Update, &offset, update);
-    self.ctx.write_ref(AstProp::Body, &offset, body);
+    self.ctx.write_maybe_ref(AstProp::Init, &id, init);
+    self.ctx.write_maybe_ref(AstProp::Test, &id, test);
+    self.ctx.write_maybe_ref(AstProp::Update, &id, update);
+    self.ctx.write_ref(AstProp::Body, &id, body);
 
-    offset
+    self.ctx.commit_node(id)
   }
 
   pub fn write_for_in_stmt(
@@ -840,13 +812,13 @@ impl TsEsTreeBuilder {
     right: NodeRef,
     body: NodeRef,
   ) -> NodeRef {
-    let offset = self.ctx.append_node(AstNode::ForInStatement, span);
+    let id = self.ctx.append_node(AstNode::ForInStatement, span);
 
-    self.ctx.write_ref(AstProp::Left, &offset, left);
-    self.ctx.write_ref(AstProp::Right, &offset, right);
-    self.ctx.write_ref(AstProp::Body, &offset, body);
+    self.ctx.write_ref(AstProp::Left, &id, left);
+    self.ctx.write_ref(AstProp::Right, &id, right);
+    self.ctx.write_ref(AstProp::Body, &id, body);
 
-    offset
+    self.ctx.commit_node(id)
   }
 
   pub fn write_for_of_stmt(
@@ -857,22 +829,20 @@ impl TsEsTreeBuilder {
     right: NodeRef,
     body: NodeRef,
   ) -> NodeRef {
-    let offset = self.ctx.append_node(AstNode::ForOfStatement, span);
+    let id = self.ctx.append_node(AstNode::ForOfStatement, span);
 
     self.ctx.write_bool(AstProp::Await, is_await);
-    self.ctx.write_ref(AstProp::Left, &offset, left);
-    self.ctx.write_ref(AstProp::Right, &offset, right);
-    self.ctx.write_ref(AstProp::Body, &offset, body);
+    self.ctx.write_ref(AstProp::Left, &id, left);
+    self.ctx.write_ref(AstProp::Right, &id, right);
+    self.ctx.write_ref(AstProp::Body, &id, body);
 
-    offset
+    self.ctx.commit_node(id)
   }
 
   pub fn write_expr_stmt(&mut self, span: &Span, expr: NodeRef) -> NodeRef {
-    let offset = self.ctx.append_node(AstNode::ExpressionStatement, span);
-
-    self.ctx.write_ref(AstProp::Expression, &offset, expr);
-
-    offset
+    let id = self.ctx.append_node(AstNode::ExpressionStatement, span);
+    self.ctx.write_ref(AstProp::Expression, &id, expr);
+    self.ctx.commit_node(id)
   }
 
   pub fn write_try_stmt(
@@ -882,15 +852,13 @@ impl TsEsTreeBuilder {
     handler: Option<NodeRef>,
     finalizer: Option<NodeRef>,
   ) -> NodeRef {
-    let offset = self.ctx.append_node(AstNode::TryStatement, span);
+    let id = self.ctx.append_node(AstNode::TryStatement, span);
 
-    self.ctx.write_ref(AstProp::Block, &offset, block);
-    self.ctx.write_maybe_ref(AstProp::Handler, &offset, handler);
-    self
-      .ctx
-      .write_maybe_ref(AstProp::Finalizer, &offset, finalizer);
+    self.ctx.write_ref(AstProp::Block, &id, block);
+    self.ctx.write_maybe_ref(AstProp::Handler, &id, handler);
+    self.ctx.write_maybe_ref(AstProp::Finalizer, &id, finalizer);
 
-    offset
+    self.ctx.commit_node(id)
   }
 
   pub fn write_catch_clause(
@@ -899,12 +867,12 @@ impl TsEsTreeBuilder {
     param: Option<NodeRef>,
     body: NodeRef,
   ) -> NodeRef {
-    let offset = self.ctx.append_node(AstNode::CatchClause, span);
+    let id = self.ctx.append_node(AstNode::CatchClause, span);
 
-    self.ctx.write_maybe_ref(AstProp::Param, &offset, param);
-    self.ctx.write_ref(AstProp::Body, &offset, body);
+    self.ctx.write_maybe_ref(AstProp::Param, &id, param);
+    self.ctx.write_ref(AstProp::Body, &id, body);
 
-    offset
+    self.ctx.commit_node(id)
   }
 
   pub fn write_arr_expr(
@@ -912,11 +880,9 @@ impl TsEsTreeBuilder {
     span: &Span,
     elems: Vec<NodeRef>,
   ) -> NodeRef {
-    let offset = self.ctx.append_node(AstNode::ArrayExpression, span);
-
-    self.ctx.write_ref_vec(AstProp::Elements, &offset, elems);
-
-    offset
+    let id = self.ctx.append_node(AstNode::ArrayExpression, span);
+    self.ctx.write_ref_vec(AstProp::Elements, &id, elems);
+    self.ctx.commit_node(id)
   }
 
   pub fn write_obj_expr(
@@ -924,11 +890,9 @@ impl TsEsTreeBuilder {
     span: &Span,
     props: Vec<NodeRef>,
   ) -> NodeRef {
-    let offset = self.ctx.append_node(AstNode::ObjectExpression, span);
-
-    self.ctx.write_ref_vec(AstProp::Properties, &offset, props);
-
-    offset
+    let id = self.ctx.append_node(AstNode::ObjectExpression, span);
+    self.ctx.write_ref_vec(AstProp::Properties, &id, props);
+    self.ctx.commit_node(id)
   }
 
   pub fn write_bin_expr(
@@ -938,13 +902,13 @@ impl TsEsTreeBuilder {
     left: NodeRef,
     right: NodeRef,
   ) -> NodeRef {
-    let offset = self.ctx.append_node(AstNode::BinaryExpression, span);
+    let id = self.ctx.append_node(AstNode::BinaryExpression, span);
 
     self.ctx.write_str(AstProp::Operator, operator);
-    self.ctx.write_ref(AstProp::Left, &offset, left);
-    self.ctx.write_ref(AstProp::Right, &offset, right);
+    self.ctx.write_ref(AstProp::Left, &id, left);
+    self.ctx.write_ref(AstProp::Right, &id, right);
 
-    offset
+    self.ctx.commit_node(id)
   }
 
   pub fn write_logical_expr(
@@ -954,13 +918,13 @@ impl TsEsTreeBuilder {
     left: NodeRef,
     right: NodeRef,
   ) -> NodeRef {
-    let offset = self.ctx.append_node(AstNode::LogicalExpression, span);
+    let id = self.ctx.append_node(AstNode::LogicalExpression, span);
 
     self.ctx.write_str(AstProp::Operator, operator);
-    self.ctx.write_ref(AstProp::Left, &offset, left);
-    self.ctx.write_ref(AstProp::Right, &offset, right);
+    self.ctx.write_ref(AstProp::Left, &id, left);
+    self.ctx.write_ref(AstProp::Right, &id, right);
 
-    offset
+    self.ctx.commit_node(id)
   }
 
   pub fn write_fn_expr(
@@ -968,27 +932,27 @@ impl TsEsTreeBuilder {
     span: &Span,
     is_async: bool,
     is_generator: bool,
-    id: Option<NodeRef>,
+    ident: Option<NodeRef>,
     type_params: Option<NodeRef>,
     params: Vec<NodeRef>,
     return_type: Option<NodeRef>,
     body: Option<NodeRef>,
   ) -> NodeRef {
-    let offset = self.ctx.append_node(AstNode::FunctionExpression, span);
+    let id = self.ctx.append_node(AstNode::FunctionExpression, span);
 
     self.ctx.write_bool(AstProp::Async, is_async);
     self.ctx.write_bool(AstProp::Generator, is_generator);
-    self.ctx.write_maybe_ref(AstProp::Id, &offset, id);
+    self.ctx.write_maybe_ref(AstProp::Id, &id, ident);
     self
       .ctx
-      .write_maybe_ref(AstProp::TypeParameters, &offset, type_params);
-    self.ctx.write_ref_vec(AstProp::Params, &offset, params);
+      .write_maybe_ref(AstProp::TypeParameters, &id, type_params);
+    self.ctx.write_ref_vec(AstProp::Params, &id, params);
     self
       .ctx
-      .write_maybe_ref(AstProp::ReturnType, &offset, return_type);
-    self.ctx.write_maybe_ref(AstProp::Body, &offset, body);
+      .write_maybe_ref(AstProp::ReturnType, &id, return_type);
+    self.ctx.write_maybe_ref(AstProp::Body, &id, body);
 
-    offset
+    self.ctx.commit_node(id)
   }
 
   pub fn write_arrow_fn_expr(
@@ -1001,28 +965,30 @@ impl TsEsTreeBuilder {
     return_type: Option<NodeRef>,
     body: NodeRef,
   ) -> NodeRef {
-    let offset = self.ctx.append_node(AstNode::ArrowFunctionExpression, span);
+    let id = self.ctx.append_node(AstNode::ArrowFunctionExpression, span);
 
     self.ctx.write_bool(AstProp::Async, is_async);
     self.ctx.write_bool(AstProp::Generator, is_generator);
     self
       .ctx
-      .write_maybe_ref(AstProp::TypeParameters, &offset, type_params);
-    self.ctx.write_ref_vec(AstProp::Params, &offset, params);
+      .write_maybe_ref(AstProp::TypeParameters, &id, type_params);
+    self.ctx.write_ref_vec(AstProp::Params, &id, params);
     self
       .ctx
-      .write_maybe_ref(AstProp::ReturnType, &offset, return_type);
-    self.ctx.write_ref(AstProp::Body, &offset, body);
+      .write_maybe_ref(AstProp::ReturnType, &id, return_type);
+    self.ctx.write_ref(AstProp::Body, &id, body);
 
-    offset
+    self.ctx.commit_node(id)
   }
 
   pub fn write_this_expr(&mut self, span: &Span) -> NodeRef {
-    self.ctx.append_node(AstNode::ThisExpression, span)
+    let id = self.ctx.append_node(AstNode::ThisExpression, span);
+    self.ctx.commit_node(id)
   }
 
   pub fn write_super(&mut self, span: &Span) -> NodeRef {
-    self.ctx.append_node(AstNode::Super, span)
+    let id = self.ctx.append_node(AstNode::Super, span);
+    self.ctx.commit_node(id)
   }
 
   pub fn write_unary_expr(
@@ -1031,12 +997,12 @@ impl TsEsTreeBuilder {
     operator: &str,
     arg: NodeRef,
   ) -> NodeRef {
-    let offset = self.ctx.append_node(AstNode::UnaryExpression, span);
+    let id = self.ctx.append_node(AstNode::UnaryExpression, span);
 
     self.ctx.write_str(AstProp::Operator, operator);
-    self.ctx.write_ref(AstProp::Argument, &offset, arg);
+    self.ctx.write_ref(AstProp::Argument, &id, arg);
 
-    offset
+    self.ctx.commit_node(id)
   }
 
   pub fn write_new_expr(
@@ -1046,15 +1012,15 @@ impl TsEsTreeBuilder {
     type_args: Option<NodeRef>,
     args: Vec<NodeRef>,
   ) -> NodeRef {
-    let offset = self.ctx.append_node(AstNode::NewExpression, span);
+    let id = self.ctx.append_node(AstNode::NewExpression, span);
 
-    self.ctx.write_ref(AstProp::Callee, &offset, callee);
+    self.ctx.write_ref(AstProp::Callee, &id, callee);
     self
       .ctx
-      .write_maybe_ref(AstProp::TypeArguments, &offset, type_args);
-    self.ctx.write_ref_vec(AstProp::Arguments, &offset, args);
+      .write_maybe_ref(AstProp::TypeArguments, &id, type_args);
+    self.ctx.write_ref_vec(AstProp::Arguments, &id, args);
 
-    offset
+    self.ctx.commit_node(id)
   }
 
   pub fn write_import_expr(
@@ -1063,12 +1029,12 @@ impl TsEsTreeBuilder {
     source: NodeRef,
     options: NodeRef,
   ) -> NodeRef {
-    let offset = self.ctx.append_node(AstNode::ImportExpression, span);
+    let id = self.ctx.append_node(AstNode::ImportExpression, span);
 
-    self.ctx.write_ref(AstProp::Source, &offset, source);
-    self.ctx.write_ref(AstProp::Options, &offset, options);
+    self.ctx.write_ref(AstProp::Source, &id, source);
+    self.ctx.write_ref(AstProp::Options, &id, options);
 
-    offset
+    self.ctx.commit_node(id)
   }
 
   pub fn write_call_expr(
@@ -1079,16 +1045,16 @@ impl TsEsTreeBuilder {
     type_args: Option<NodeRef>,
     args: Vec<NodeRef>,
   ) -> NodeRef {
-    let offset = self.ctx.append_node(AstNode::CallExpression, span);
+    let id = self.ctx.append_node(AstNode::CallExpression, span);
 
     self.ctx.write_bool(AstProp::Optional, optional);
-    self.ctx.write_ref(AstProp::Callee, &offset, callee);
+    self.ctx.write_ref(AstProp::Callee, &id, callee);
     self
       .ctx
-      .write_maybe_ref(AstProp::TypeArguments, &offset, type_args);
-    self.ctx.write_ref_vec(AstProp::Arguments, &offset, args);
+      .write_maybe_ref(AstProp::TypeArguments, &id, type_args);
+    self.ctx.write_ref_vec(AstProp::Arguments, &id, args);
 
-    offset
+    self.ctx.commit_node(id)
   }
 
   pub fn write_update_expr(
@@ -1098,13 +1064,13 @@ impl TsEsTreeBuilder {
     operator: &str,
     arg: NodeRef,
   ) -> NodeRef {
-    let offset = self.ctx.append_node(AstNode::UpdateExpression, span);
+    let id = self.ctx.append_node(AstNode::UpdateExpression, span);
 
     self.ctx.write_bool(AstProp::Prefix, prefix);
     self.ctx.write_str(AstProp::Operator, operator);
-    self.ctx.write_ref(AstProp::Argument, &offset, arg);
+    self.ctx.write_ref(AstProp::Argument, &id, arg);
 
-    offset
+    self.ctx.commit_node(id)
   }
 
   pub fn write_assignment_expr(
@@ -1114,13 +1080,13 @@ impl TsEsTreeBuilder {
     left: NodeRef,
     right: NodeRef,
   ) -> NodeRef {
-    let offset = self.ctx.append_node(AstNode::AssignmentExpression, span);
+    let id = self.ctx.append_node(AstNode::AssignmentExpression, span);
 
     self.ctx.write_str(AstProp::Operator, operator);
-    self.ctx.write_ref(AstProp::Left, &offset, left);
-    self.ctx.write_ref(AstProp::Right, &offset, right);
+    self.ctx.write_ref(AstProp::Left, &id, left);
+    self.ctx.write_ref(AstProp::Right, &id, right);
 
-    offset
+    self.ctx.commit_node(id)
   }
 
   pub fn write_conditional_expr(
@@ -1130,13 +1096,13 @@ impl TsEsTreeBuilder {
     consequent: NodeRef,
     alternate: NodeRef,
   ) -> NodeRef {
-    let offset = self.ctx.append_node(AstNode::ConditionalExpression, span);
+    let id = self.ctx.append_node(AstNode::ConditionalExpression, span);
 
-    self.ctx.write_ref(AstProp::Test, &offset, test);
-    self.ctx.write_ref(AstProp::Consequent, &offset, consequent);
-    self.ctx.write_ref(AstProp::Alternate, &offset, alternate);
+    self.ctx.write_ref(AstProp::Test, &id, test);
+    self.ctx.write_ref(AstProp::Consequent, &id, consequent);
+    self.ctx.write_ref(AstProp::Alternate, &id, alternate);
 
-    offset
+    self.ctx.commit_node(id)
   }
 
   pub fn write_member_expr(
@@ -1147,22 +1113,20 @@ impl TsEsTreeBuilder {
     obj: NodeRef,
     prop: NodeRef,
   ) -> NodeRef {
-    let offset = self.ctx.append_node(AstNode::MemberExpression, span);
+    let id = self.ctx.append_node(AstNode::MemberExpression, span);
 
     self.ctx.write_bool(AstProp::Optional, optional);
     self.ctx.write_bool(AstProp::Computed, computed);
-    self.ctx.write_ref(AstProp::Object, &offset, obj);
-    self.ctx.write_ref(AstProp::Property, &offset, prop);
+    self.ctx.write_ref(AstProp::Object, &id, obj);
+    self.ctx.write_ref(AstProp::Property, &id, prop);
 
-    offset
+    self.ctx.commit_node(id)
   }
 
   pub fn write_chain_expr(&mut self, span: &Span, expr: NodeRef) -> NodeRef {
-    let offset = self.ctx.append_node(AstNode::ChainExpression, span);
-
-    self.ctx.write_ref(AstProp::Expression, &offset, expr);
-
-    offset
+    let id = self.ctx.append_node(AstNode::ChainExpression, span);
+    self.ctx.write_ref(AstProp::Expression, &id, expr);
+    self.ctx.commit_node(id)
   }
 
   pub fn write_sequence_expr(
@@ -1170,11 +1134,9 @@ impl TsEsTreeBuilder {
     span: &Span,
     exprs: Vec<NodeRef>,
   ) -> NodeRef {
-    let offset = self.ctx.append_node(AstNode::SequenceExpression, span);
-
-    self.ctx.write_ref_vec(AstProp::Expressions, &offset, exprs);
-
-    offset
+    let id = self.ctx.append_node(AstNode::SequenceExpression, span);
+    self.ctx.write_ref_vec(AstProp::Expressions, &id, exprs);
+    self.ctx.commit_node(id)
   }
 
   pub fn write_template_lit(
@@ -1183,12 +1145,12 @@ impl TsEsTreeBuilder {
     quasis: Vec<NodeRef>,
     exprs: Vec<NodeRef>,
   ) -> NodeRef {
-    let offset = self.ctx.append_node(AstNode::TemplateLiteral, span);
+    let id = self.ctx.append_node(AstNode::TemplateLiteral, span);
 
-    self.ctx.write_ref_vec(AstProp::Quasis, &offset, quasis);
-    self.ctx.write_ref_vec(AstProp::Expressions, &offset, exprs);
+    self.ctx.write_ref_vec(AstProp::Quasis, &id, quasis);
+    self.ctx.write_ref_vec(AstProp::Expressions, &id, exprs);
 
-    offset
+    self.ctx.commit_node(id)
   }
 
   pub fn write_template_elem(
@@ -1198,13 +1160,13 @@ impl TsEsTreeBuilder {
     raw: &str,
     cooked: &str,
   ) -> NodeRef {
-    let offset = self.ctx.append_node(AstNode::TemplateElement, span);
+    let id = self.ctx.append_node(AstNode::TemplateElement, span);
 
     self.ctx.write_bool(AstProp::Tail, tail);
     self.ctx.write_str(AstProp::Raw, raw);
     self.ctx.write_str(AstProp::Cooked, cooked);
 
-    offset
+    self.ctx.commit_node(id)
   }
 
   pub fn write_tagged_template_expr(
@@ -1214,17 +1176,17 @@ impl TsEsTreeBuilder {
     type_args: Option<NodeRef>,
     quasi: NodeRef,
   ) -> NodeRef {
-    let offset = self
+    let id = self
       .ctx
       .append_node(AstNode::TaggedTemplateExpression, span);
 
-    self.ctx.write_ref(AstProp::Tag, &offset, tag);
+    self.ctx.write_ref(AstProp::Tag, &id, tag);
     self
       .ctx
-      .write_maybe_ref(AstProp::TypeArguments, &offset, type_args);
-    self.ctx.write_ref(AstProp::Quasi, &offset, quasi);
+      .write_maybe_ref(AstProp::TypeArguments, &id, type_args);
+    self.ctx.write_ref(AstProp::Quasi, &id, quasi);
 
-    offset
+    self.ctx.commit_node(id)
   }
 
   pub fn write_yield_expr(
@@ -1233,20 +1195,18 @@ impl TsEsTreeBuilder {
     delegate: bool,
     arg: Option<NodeRef>,
   ) -> NodeRef {
-    let offset = self.ctx.append_node(AstNode::YieldExpression, span);
+    let id = self.ctx.append_node(AstNode::YieldExpression, span);
 
     self.ctx.write_bool(AstProp::Delegate, delegate);
-    self.ctx.write_maybe_ref(AstProp::Argument, &offset, arg);
+    self.ctx.write_maybe_ref(AstProp::Argument, &id, arg);
 
-    offset
+    self.ctx.commit_node(id)
   }
 
   pub fn write_await_expr(&mut self, span: &Span, arg: NodeRef) -> NodeRef {
-    let offset = self.ctx.append_node(AstNode::AwaitExpression, span);
-
-    self.ctx.write_ref(AstProp::Argument, &offset, arg);
-
-    offset
+    let id = self.ctx.append_node(AstNode::AwaitExpression, span);
+    self.ctx.write_ref(AstProp::Argument, &id, arg);
+    self.ctx.commit_node(id)
   }
 
   pub fn write_identifier(
@@ -1256,15 +1216,15 @@ impl TsEsTreeBuilder {
     optional: bool,
     type_annotation: Option<NodeRef>,
   ) -> NodeRef {
-    let offset = self.ctx.append_node(AstNode::Identifier, span);
+    let id = self.ctx.append_node(AstNode::Identifier, span);
 
     self.ctx.write_str(AstProp::Name, name);
     self.ctx.write_bool(AstProp::Optional, optional);
     self
       .ctx
-      .write_maybe_ref(AstProp::TypeAnnotation, &offset, type_annotation);
+      .write_maybe_ref(AstProp::TypeAnnotation, &id, type_annotation);
 
-    offset
+    self.ctx.commit_node(id)
   }
 
   pub fn write_private_identifier(
@@ -1272,11 +1232,9 @@ impl TsEsTreeBuilder {
     span: &Span,
     name: &str,
   ) -> NodeRef {
-    let offset = self.ctx.append_node(AstNode::PrivateIdentifier, span);
-
+    let id = self.ctx.append_node(AstNode::PrivateIdentifier, span);
     self.ctx.write_str(AstProp::Name, name);
-
-    offset
+    self.ctx.commit_node(id)
   }
 
   pub fn write_assign_pat(
@@ -1285,12 +1243,12 @@ impl TsEsTreeBuilder {
     left: NodeRef,
     right: NodeRef,
   ) -> NodeRef {
-    let offset = self.ctx.append_node(AstNode::AssignmentPattern, span);
+    let id = self.ctx.append_node(AstNode::AssignmentPattern, span);
 
-    self.ctx.write_ref(AstProp::Left, &offset, left);
-    self.ctx.write_ref(AstProp::Right, &offset, right);
+    self.ctx.write_ref(AstProp::Left, &id, left);
+    self.ctx.write_ref(AstProp::Right, &id, right);
 
-    offset
+    self.ctx.commit_node(id)
   }
 
   pub fn write_arr_pat(
@@ -1300,15 +1258,15 @@ impl TsEsTreeBuilder {
     type_ann: Option<NodeRef>,
     elems: Vec<NodeRef>,
   ) -> NodeRef {
-    let offset = self.ctx.append_node(AstNode::ArrayPattern, span);
+    let id = self.ctx.append_node(AstNode::ArrayPattern, span);
 
     self.ctx.write_bool(AstProp::Optional, optional);
     self
       .ctx
-      .write_maybe_ref(AstProp::TypeAnnotation, &offset, type_ann);
-    self.ctx.write_ref_vec(AstProp::Elements, &offset, elems);
+      .write_maybe_ref(AstProp::TypeAnnotation, &id, type_ann);
+    self.ctx.write_ref_vec(AstProp::Elements, &id, elems);
 
-    offset
+    self.ctx.commit_node(id)
   }
 
   pub fn write_obj_pat(
@@ -1318,15 +1276,15 @@ impl TsEsTreeBuilder {
     type_ann: Option<NodeRef>,
     props: Vec<NodeRef>,
   ) -> NodeRef {
-    let offset = self.ctx.append_node(AstNode::ObjectPattern, span);
+    let id = self.ctx.append_node(AstNode::ObjectPattern, span);
 
     self.ctx.write_bool(AstProp::Optional, optional);
     self
       .ctx
-      .write_maybe_ref(AstProp::TypeAnnotation, &offset, type_ann);
-    self.ctx.write_ref_vec(AstProp::Properties, &offset, props);
+      .write_maybe_ref(AstProp::TypeAnnotation, &id, type_ann);
+    self.ctx.write_ref_vec(AstProp::Properties, &id, props);
 
-    offset
+    self.ctx.commit_node(id)
   }
 
   pub fn write_rest_elem(
@@ -1335,22 +1293,20 @@ impl TsEsTreeBuilder {
     type_ann: Option<NodeRef>,
     arg: NodeRef,
   ) -> NodeRef {
-    let offset = self.ctx.append_node(AstNode::RestElement, span);
+    let id = self.ctx.append_node(AstNode::RestElement, span);
 
     self
       .ctx
-      .write_maybe_ref(AstProp::TypeAnnotation, &offset, type_ann);
-    self.ctx.write_ref(AstProp::Argument, &offset, arg);
+      .write_maybe_ref(AstProp::TypeAnnotation, &id, type_ann);
+    self.ctx.write_ref(AstProp::Argument, &id, arg);
 
-    offset
+    self.ctx.commit_node(id)
   }
 
   pub fn write_spread(&mut self, span: &Span, arg: NodeRef) -> NodeRef {
-    let offset = self.ctx.append_node(AstNode::SpreadElement, span);
-
-    self.ctx.write_ref(AstProp::Argument, &offset, arg);
-
-    offset
+    let id = self.ctx.append_node(AstNode::SpreadElement, span);
+    self.ctx.write_ref(AstProp::Argument, &id, arg);
+    self.ctx.commit_node(id)
   }
 
   pub fn write_property(
@@ -1363,16 +1319,16 @@ impl TsEsTreeBuilder {
     key: NodeRef,
     value: NodeRef,
   ) -> NodeRef {
-    let offset = self.ctx.append_node(AstNode::Property, span);
+    let id = self.ctx.append_node(AstNode::Property, span);
 
     self.ctx.write_bool(AstProp::Shorthand, shorthand);
     self.ctx.write_bool(AstProp::Computed, computed);
     self.ctx.write_bool(AstProp::Method, method);
     self.ctx.write_str(AstProp::Kind, kind);
-    self.ctx.write_ref(AstProp::Key, &offset, key);
-    self.ctx.write_ref(AstProp::Value, &offset, value);
+    self.ctx.write_ref(AstProp::Key, &id, key);
+    self.ctx.write_ref(AstProp::Value, &id, value);
 
-    offset
+    self.ctx.commit_node(id)
   }
 
   pub fn write_str_lit(
@@ -1381,32 +1337,31 @@ impl TsEsTreeBuilder {
     value: &str,
     raw: &str,
   ) -> NodeRef {
-    let offset = self.ctx.append_node(AstNode::Literal, span);
+    let id = self.ctx.append_node(AstNode::Literal, span);
 
     self.ctx.write_str(AstProp::Value, value);
     self.ctx.write_str(AstProp::Raw, raw);
 
-    offset
+    self.ctx.commit_node(id)
   }
 
   pub fn write_bool_lit(&mut self, span: &Span, value: bool) -> NodeRef {
-    let offset = self.ctx.append_node(AstNode::Literal, span);
+    let id = self.ctx.append_node(AstNode::Literal, span);
 
     let raw = &format!("{}", value);
-
-    self.ctx.write_bool(AstProp::Value, value);
     self.ctx.write_str(AstProp::Raw, raw);
+    self.ctx.write_bool(AstProp::Value, value);
 
-    offset
+    self.ctx.commit_node(id)
   }
 
   pub fn write_null_lit(&mut self, span: &Span) -> NodeRef {
-    let offset = self.ctx.append_node(AstNode::Literal, span);
+    let id = self.ctx.append_node(AstNode::Literal, span);
 
     self.ctx.write_null(AstProp::Value);
     self.ctx.write_str(AstProp::Raw, "null");
 
-    offset
+    self.ctx.commit_node(id)
   }
 
   pub fn write_num_lit(
@@ -1415,12 +1370,12 @@ impl TsEsTreeBuilder {
     value: &str,
     raw: &str,
   ) -> NodeRef {
-    let offset = self.ctx.append_node(AstNode::Literal, span);
+    let id = self.ctx.append_node(AstNode::Literal, span);
 
     self.ctx.write_num(AstProp::Value, value);
     self.ctx.write_str(AstProp::Raw, raw);
 
-    offset
+    self.ctx.commit_node(id)
   }
 
   pub fn write_bigint_lit(
@@ -1430,13 +1385,13 @@ impl TsEsTreeBuilder {
     raw: &str,
     bigint_value: &str,
   ) -> NodeRef {
-    let offset = self.ctx.append_node(AstNode::Literal, span);
+    let id = self.ctx.append_node(AstNode::Literal, span);
 
     self.ctx.write_bigint(AstProp::Value, value);
     self.ctx.write_str(AstProp::Raw, raw);
     self.ctx.write_str(AstProp::BigInt, bigint_value);
 
-    offset
+    self.ctx.commit_node(id)
   }
 
   pub fn write_regex_lit(
@@ -1447,24 +1402,21 @@ impl TsEsTreeBuilder {
     value: &str,
     raw: &str,
   ) -> NodeRef {
-    let offset = self.ctx.append_node(AstNode::Literal, span);
+    let id = self.ctx.append_node(AstNode::Literal, span);
 
     self.ctx.write_obj(AstProp::Regex, 2);
     self.ctx.write_str(AstProp::Flags, flags);
     self.ctx.write_str(AstProp::Pattern, pattern);
-
     self.ctx.write_regex(AstProp::Value, value);
     self.ctx.write_str(AstProp::Raw, raw);
 
-    offset
+    self.ctx.commit_node(id)
   }
 
   pub fn write_jsx_identifier(&mut self, span: &Span, name: &str) -> NodeRef {
-    let offset = self.ctx.append_node(AstNode::JSXIdentifier, span);
-
+    let id = self.ctx.append_node(AstNode::JSXIdentifier, span);
     self.ctx.write_str(AstProp::Name, name);
-
-    offset
+    self.ctx.commit_node(id)
   }
 
   pub fn write_jsx_namespaced_name(
@@ -1473,16 +1425,17 @@ impl TsEsTreeBuilder {
     namespace: NodeRef,
     name: NodeRef,
   ) -> NodeRef {
-    let offset = self.ctx.append_node(AstNode::JSXNamespacedName, span);
+    let id = self.ctx.append_node(AstNode::JSXNamespacedName, span);
 
-    self.ctx.write_ref(AstProp::Namespace, &offset, namespace);
-    self.ctx.write_ref(AstProp::Name, &offset, name);
+    self.ctx.write_ref(AstProp::Namespace, &id, namespace);
+    self.ctx.write_ref(AstProp::Name, &id, name);
 
-    offset
+    self.ctx.commit_node(id)
   }
 
   pub fn write_jsx_empty_expr(&mut self, span: &Span) -> NodeRef {
-    self.ctx.append_node(AstNode::JSXEmptyExpression, span)
+    let id = self.ctx.append_node(AstNode::JSXEmptyExpression, span);
+    self.ctx.commit_node(id)
   }
 
   pub fn write_jsx_elem(
@@ -1492,17 +1445,15 @@ impl TsEsTreeBuilder {
     closing: Option<NodeRef>,
     children: Vec<NodeRef>,
   ) -> NodeRef {
-    let offset = self.ctx.append_node(AstNode::JSXElement, span);
+    let id = self.ctx.append_node(AstNode::JSXElement, span);
 
+    self.ctx.write_ref(AstProp::OpeningElement, &id, opening);
     self
       .ctx
-      .write_ref(AstProp::OpeningElement, &offset, opening);
-    self
-      .ctx
-      .write_maybe_ref(AstProp::ClosingElement, &offset, closing);
-    self.ctx.write_ref_vec(AstProp::Children, &offset, children);
+      .write_maybe_ref(AstProp::ClosingElement, &id, closing);
+    self.ctx.write_ref_vec(AstProp::Children, &id, children);
 
-    offset
+    self.ctx.commit_node(id)
   }
 
   pub fn write_jsx_opening_elem(
@@ -1512,13 +1463,13 @@ impl TsEsTreeBuilder {
     name: NodeRef,
     attrs: Vec<NodeRef>,
   ) -> NodeRef {
-    let offset = self.ctx.append_node(AstNode::JSXOpeningElement, span);
+    let id = self.ctx.append_node(AstNode::JSXOpeningElement, span);
 
     self.ctx.write_bool(AstProp::SelfClosing, self_closing);
-    self.ctx.write_ref(AstProp::Name, &offset, name);
-    self.ctx.write_ref_vec(AstProp::Attributes, &offset, attrs);
+    self.ctx.write_ref(AstProp::Name, &id, name);
+    self.ctx.write_ref_vec(AstProp::Attributes, &id, attrs);
 
-    offset
+    self.ctx.commit_node(id)
   }
 
   pub fn write_jsx_attr(
@@ -1527,12 +1478,12 @@ impl TsEsTreeBuilder {
     name: NodeRef,
     value: Option<NodeRef>,
   ) -> NodeRef {
-    let offset = self.ctx.append_node(AstNode::JSXAttribute, span);
+    let id = self.ctx.append_node(AstNode::JSXAttribute, span);
 
-    self.ctx.write_ref(AstProp::Name, &offset, name);
-    self.ctx.write_maybe_ref(AstProp::Value, &offset, value);
+    self.ctx.write_ref(AstProp::Name, &id, name);
+    self.ctx.write_maybe_ref(AstProp::Value, &id, value);
 
-    offset
+    self.ctx.commit_node(id)
   }
 
   pub fn write_jsx_spread_attr(
@@ -1540,11 +1491,9 @@ impl TsEsTreeBuilder {
     span: &Span,
     arg: NodeRef,
   ) -> NodeRef {
-    let offset = self.ctx.append_node(AstNode::JSXSpreadAttribute, span);
-
-    self.ctx.write_ref(AstProp::Argument, &offset, arg);
-
-    offset
+    let id = self.ctx.append_node(AstNode::JSXSpreadAttribute, span);
+    self.ctx.write_ref(AstProp::Argument, &id, arg);
+    self.ctx.commit_node(id)
   }
 
   pub fn write_jsx_closing_elem(
@@ -1552,11 +1501,9 @@ impl TsEsTreeBuilder {
     span: &Span,
     name: NodeRef,
   ) -> NodeRef {
-    let offset = self.ctx.append_node(AstNode::JSXClosingElement, span);
-
-    self.ctx.write_ref(AstProp::Name, &offset, name);
-
-    offset
+    let id = self.ctx.append_node(AstNode::JSXClosingElement, span);
+    self.ctx.write_ref(AstProp::Name, &id, name);
+    self.ctx.commit_node(id)
   }
 
   pub fn write_jsx_frag(
@@ -1566,25 +1513,23 @@ impl TsEsTreeBuilder {
     closing: NodeRef,
     children: Vec<NodeRef>,
   ) -> NodeRef {
-    let offset = self.ctx.append_node(AstNode::JSXFragment, span);
+    let id = self.ctx.append_node(AstNode::JSXFragment, span);
 
-    self
-      .ctx
-      .write_ref(AstProp::OpeningFragment, &offset, opening);
-    self
-      .ctx
-      .write_ref(AstProp::ClosingFragment, &offset, closing);
-    self.ctx.write_ref_vec(AstProp::Children, &offset, children);
+    self.ctx.write_ref(AstProp::OpeningFragment, &id, opening);
+    self.ctx.write_ref(AstProp::ClosingFragment, &id, closing);
+    self.ctx.write_ref_vec(AstProp::Children, &id, children);
 
-    offset
+    self.ctx.commit_node(id)
   }
 
   pub fn write_jsx_opening_frag(&mut self, span: &Span) -> NodeRef {
-    self.ctx.append_node(AstNode::JSXOpeningFragment, span)
+    let id = self.ctx.append_node(AstNode::JSXOpeningFragment, span);
+    self.ctx.commit_node(id)
   }
 
   pub fn write_jsx_closing_frag(&mut self, span: &Span) -> NodeRef {
-    self.ctx.append_node(AstNode::JSXClosingFragment, span)
+    let id = self.ctx.append_node(AstNode::JSXClosingFragment, span);
+    self.ctx.commit_node(id)
   }
 
   pub fn write_jsx_expr_container(
@@ -1592,11 +1537,9 @@ impl TsEsTreeBuilder {
     span: &Span,
     expr: NodeRef,
   ) -> NodeRef {
-    let offset = self.ctx.append_node(AstNode::JSXExpressionContainer, span);
-
-    self.ctx.write_ref(AstProp::Expression, &offset, expr);
-
-    offset
+    let id = self.ctx.append_node(AstNode::JSXExpressionContainer, span);
+    self.ctx.write_ref(AstProp::Expression, &id, expr);
+    self.ctx.commit_node(id)
   }
 
   pub fn write_jsx_text(
@@ -1605,12 +1548,12 @@ impl TsEsTreeBuilder {
     raw: &str,
     value: &str,
   ) -> NodeRef {
-    let offset = self.ctx.append_node(AstNode::JSXText, span);
+    let id = self.ctx.append_node(AstNode::JSXText, span);
 
     self.ctx.write_str(AstProp::Raw, raw);
     self.ctx.write_str(AstProp::Value, value);
 
-    offset
+    self.ctx.commit_node(id)
   }
 
   pub fn write_jsx_member_expr(
@@ -1619,12 +1562,12 @@ impl TsEsTreeBuilder {
     obj: NodeRef,
     prop: NodeRef,
   ) -> NodeRef {
-    let offset = self.ctx.append_node(AstNode::JSXMemberExpression, span);
+    let id = self.ctx.append_node(AstNode::JSXMemberExpression, span);
 
-    self.ctx.write_ref(AstProp::Object, &offset, obj);
-    self.ctx.write_ref(AstProp::Property, &offset, prop);
+    self.ctx.write_ref(AstProp::Object, &id, obj);
+    self.ctx.write_ref(AstProp::Property, &id, prop);
 
-    offset
+    self.ctx.commit_node(id)
   }
 
   pub fn write_ts_class_implements(
@@ -1633,14 +1576,14 @@ impl TsEsTreeBuilder {
     expr: NodeRef,
     type_args: Option<NodeRef>,
   ) -> NodeRef {
-    let offset = self.ctx.append_node(AstNode::TSClassImplements, span);
+    let id = self.ctx.append_node(AstNode::TSClassImplements, span);
 
-    self.ctx.write_ref(AstProp::Expression, &offset, expr);
+    self.ctx.write_ref(AstProp::Expression, &id, expr);
     self
       .ctx
-      .write_maybe_ref(AstProp::TypeArguments, &offset, type_args);
+      .write_maybe_ref(AstProp::TypeArguments, &id, type_args);
 
-    offset
+    self.ctx.commit_node(id)
   }
 
   pub fn write_ts_call_sig_decl(
@@ -1650,19 +1593,19 @@ impl TsEsTreeBuilder {
     params: Vec<NodeRef>,
     return_type: Option<NodeRef>,
   ) -> NodeRef {
-    let offset = self
+    let id = self
       .ctx
       .append_node(AstNode::TsCallSignatureDeclaration, span);
 
     self
       .ctx
-      .write_maybe_ref(AstProp::TypeAnnotation, &offset, type_ann);
-    self.ctx.write_ref_vec(AstProp::Params, &offset, params);
+      .write_maybe_ref(AstProp::TypeAnnotation, &id, type_ann);
+    self.ctx.write_ref_vec(AstProp::Params, &id, params);
     self
       .ctx
-      .write_maybe_ref(AstProp::ReturnType, &offset, return_type);
+      .write_maybe_ref(AstProp::ReturnType, &id, return_type);
 
-    offset
+    self.ctx.commit_node(id)
   }
 
   pub fn write_ts_property_sig(
@@ -1674,7 +1617,7 @@ impl TsEsTreeBuilder {
     key: NodeRef,
     type_ann: Option<NodeRef>,
   ) -> NodeRef {
-    let offset = self.ctx.append_node(AstNode::TSPropertySignature, span);
+    let id = self.ctx.append_node(AstNode::TSPropertySignature, span);
 
     self.ctx.write_bool(AstProp::Computed, computed);
     self.ctx.write_bool(AstProp::Optional, optional);
@@ -1682,12 +1625,12 @@ impl TsEsTreeBuilder {
     // TODO(@marvinhagemeister) not sure where this is coming from
     self.ctx.write_bool(AstProp::Static, false);
 
-    self.ctx.write_ref(AstProp::Key, &offset, key);
+    self.ctx.write_ref(AstProp::Key, &id, key);
     self
       .ctx
-      .write_maybe_ref(AstProp::TypeAnnotation, &offset, type_ann);
+      .write_maybe_ref(AstProp::TypeAnnotation, &id, type_ann);
 
-    offset
+    self.ctx.commit_node(id)
   }
 
   pub fn write_ts_enum(
@@ -1695,17 +1638,17 @@ impl TsEsTreeBuilder {
     span: &Span,
     declare: bool,
     is_const: bool,
-    id: NodeRef,
+    ident: NodeRef,
     body: NodeRef,
   ) -> NodeRef {
-    let offset = self.ctx.append_node(AstNode::TSEnumDeclaration, span);
+    let id = self.ctx.append_node(AstNode::TSEnumDeclaration, span);
 
     self.ctx.write_bool(AstProp::Declare, declare);
     self.ctx.write_bool(AstProp::Const, is_const);
-    self.ctx.write_ref(AstProp::Id, &offset, id);
-    self.ctx.write_ref(AstProp::Body, &offset, body);
+    self.ctx.write_ref(AstProp::Id, &id, ident);
+    self.ctx.write_ref(AstProp::Body, &id, body);
 
-    offset
+    self.ctx.commit_node(id)
   }
 
   pub fn write_ts_enum_body(
@@ -1713,27 +1656,23 @@ impl TsEsTreeBuilder {
     span: &Span,
     members: Vec<NodeRef>,
   ) -> NodeRef {
-    let offset = self.ctx.append_node(AstNode::TSEnumBody, span);
-
-    self.ctx.write_ref_vec(AstProp::Members, &offset, members);
-
-    offset
+    let id = self.ctx.append_node(AstNode::TSEnumBody, span);
+    self.ctx.write_ref_vec(AstProp::Members, &id, members);
+    self.ctx.commit_node(id)
   }
 
   pub fn write_ts_enum_member(
     &mut self,
     span: &Span,
-    id: NodeRef,
+    ident: NodeRef,
     init: Option<NodeRef>,
   ) -> NodeRef {
-    let offset = self.ctx.append_node(AstNode::TSEnumMember, span);
+    let id = self.ctx.append_node(AstNode::TSEnumMember, span);
 
-    self.ctx.write_ref(AstProp::Id, &offset, id);
-    self
-      .ctx
-      .write_maybe_ref(AstProp::Initializer, &offset, init);
+    self.ctx.write_ref(AstProp::Id, &id, ident);
+    self.ctx.write_maybe_ref(AstProp::Initializer, &id, init);
 
-    offset
+    self.ctx.commit_node(id)
   }
 
   pub fn write_ts_type_assertion(
@@ -1742,14 +1681,12 @@ impl TsEsTreeBuilder {
     expr: NodeRef,
     type_ann: NodeRef,
   ) -> NodeRef {
-    let offset = self.ctx.append_node(AstNode::TSTypeAssertion, span);
+    let id = self.ctx.append_node(AstNode::TSTypeAssertion, span);
 
-    self.ctx.write_ref(AstProp::Expression, &offset, expr);
-    self
-      .ctx
-      .write_ref(AstProp::TypeAnnotation, &offset, type_ann);
+    self.ctx.write_ref(AstProp::Expression, &id, expr);
+    self.ctx.write_ref(AstProp::TypeAnnotation, &id, type_ann);
 
-    offset
+    self.ctx.commit_node(id)
   }
 
   pub fn write_ts_type_param_inst(
@@ -1757,35 +1694,33 @@ impl TsEsTreeBuilder {
     span: &Span,
     params: Vec<NodeRef>,
   ) -> NodeRef {
-    let offset = self
+    let id = self
       .ctx
       .append_node(AstNode::TSTypeParameterInstantiation, span);
 
-    self.ctx.write_ref_vec(AstProp::Params, &offset, params);
+    self.ctx.write_ref_vec(AstProp::Params, &id, params);
 
-    offset
+    self.ctx.commit_node(id)
   }
 
   pub fn write_ts_type_alias(
     &mut self,
     span: &Span,
     declare: bool,
-    id: NodeRef,
+    ident: NodeRef,
     type_param: Option<NodeRef>,
     type_ann: NodeRef,
   ) -> NodeRef {
-    let offset = self.ctx.append_node(AstNode::TSTypeAliasDeclaration, span);
+    let id = self.ctx.append_node(AstNode::TSTypeAliasDeclaration, span);
 
     self.ctx.write_bool(AstProp::Declare, declare);
-    self.ctx.write_ref(AstProp::Id, &offset, id);
+    self.ctx.write_ref(AstProp::Id, &id, ident);
     self
       .ctx
-      .write_maybe_ref(AstProp::TypeParameters, &offset, type_param);
-    self
-      .ctx
-      .write_ref(AstProp::TypeAnnotation, &offset, type_ann);
+      .write_maybe_ref(AstProp::TypeParameters, &id, type_param);
+    self.ctx.write_ref(AstProp::TypeAnnotation, &id, type_ann);
 
-    offset
+    self.ctx.commit_node(id)
   }
 
   pub fn write_ts_satisfies_expr(
@@ -1794,14 +1729,12 @@ impl TsEsTreeBuilder {
     expr: NodeRef,
     type_ann: NodeRef,
   ) -> NodeRef {
-    let offset = self.ctx.append_node(AstNode::TSSatisfiesExpression, span);
+    let id = self.ctx.append_node(AstNode::TSSatisfiesExpression, span);
 
-    self.ctx.write_ref(AstProp::Expression, &offset, expr);
-    self
-      .ctx
-      .write_ref(AstProp::TypeAnnotation, &offset, type_ann);
+    self.ctx.write_ref(AstProp::Expression, &id, expr);
+    self.ctx.write_ref(AstProp::TypeAnnotation, &id, type_ann);
 
-    offset
+    self.ctx.commit_node(id)
   }
 
   pub fn write_ts_as_expr(
@@ -1810,50 +1743,45 @@ impl TsEsTreeBuilder {
     expr: NodeRef,
     type_ann: NodeRef,
   ) -> NodeRef {
-    let offset = self.ctx.append_node(AstNode::TSAsExpression, span);
+    let id = self.ctx.append_node(AstNode::TSAsExpression, span);
 
-    self.ctx.write_ref(AstProp::Expression, &offset, expr);
-    self
-      .ctx
-      .write_ref(AstProp::TypeAnnotation, &offset, type_ann);
+    self.ctx.write_ref(AstProp::Expression, &id, expr);
+    self.ctx.write_ref(AstProp::TypeAnnotation, &id, type_ann);
 
-    offset
+    self.ctx.commit_node(id)
   }
 
   pub fn write_ts_non_null(&mut self, span: &Span, expr: NodeRef) -> NodeRef {
-    let offset = self.ctx.append_node(AstNode::TSNonNullExpression, span);
-
-    self.ctx.write_ref(AstProp::Expression, &offset, expr);
-
-    offset
+    let id = self.ctx.append_node(AstNode::TSNonNullExpression, span);
+    self.ctx.write_ref(AstProp::Expression, &id, expr);
+    self.ctx.commit_node(id)
   }
 
   pub fn write_ts_this_type(&mut self, span: &Span) -> NodeRef {
-    self.ctx.append_node(AstNode::TSThisType, span)
+    let id = self.ctx.append_node(AstNode::TSThisType, span);
+    self.ctx.commit_node(id)
   }
 
   pub fn write_ts_interface(
     &mut self,
     span: &Span,
     declare: bool,
-    id: NodeRef,
+    ident: NodeRef,
     type_param: Option<NodeRef>,
     extends: Vec<NodeRef>,
     body: NodeRef,
   ) -> NodeRef {
-    let offset = self.ctx.append_node(AstNode::TSInterface, span);
+    let id = self.ctx.append_node(AstNode::TSInterface, span);
 
     self.ctx.write_bool(AstProp::Declare, declare);
-    self.ctx.write_ref(AstProp::Id, &offset, id);
+    self.ctx.write_ref(AstProp::Id, &id, ident);
+    self.ctx.write_maybe_ref(AstProp::Extends, &id, type_param);
     self
       .ctx
-      .write_maybe_ref(AstProp::Extends, &offset, type_param);
-    self
-      .ctx
-      .write_ref_vec(AstProp::TypeParameters, &offset, extends);
-    self.ctx.write_ref(AstProp::Body, &offset, body);
+      .write_ref_vec(AstProp::TypeParameters, &id, extends);
+    self.ctx.write_ref(AstProp::Body, &id, body);
 
-    offset
+    self.ctx.commit_node(id)
   }
 
   pub fn write_ts_interface_body(
@@ -1861,11 +1789,9 @@ impl TsEsTreeBuilder {
     span: &Span,
     body: Vec<NodeRef>,
   ) -> NodeRef {
-    let offset = self.ctx.append_node(AstNode::TSInterfaceBody, span);
-
-    self.ctx.write_ref_vec(AstProp::Body, &offset, body);
-
-    offset
+    let id = self.ctx.append_node(AstNode::TSInterfaceBody, span);
+    self.ctx.write_ref_vec(AstProp::Body, &id, body);
+    self.ctx.commit_node(id)
   }
 
   pub fn write_ts_getter_sig(
@@ -1874,19 +1800,19 @@ impl TsEsTreeBuilder {
     key: NodeRef,
     return_type: Option<NodeRef>,
   ) -> NodeRef {
-    let offset = self.ctx.append_node(AstNode::TSMethodSignature, span);
+    let id = self.ctx.append_node(AstNode::TSMethodSignature, span);
 
     self.ctx.write_bool(AstProp::Computed, false);
     self.ctx.write_bool(AstProp::Optional, false);
     self.ctx.write_bool(AstProp::Readonly, false);
     self.ctx.write_bool(AstProp::Static, false);
     self.ctx.write_str(AstProp::Kind, "getter");
-    self.ctx.write_ref(AstProp::Key, &offset, key);
+    self.ctx.write_ref(AstProp::Key, &id, key);
     self
       .ctx
-      .write_maybe_ref(AstProp::ReturnType, &offset, return_type);
+      .write_maybe_ref(AstProp::ReturnType, &id, return_type);
 
-    offset
+    self.ctx.commit_node(id)
   }
 
   pub fn write_ts_setter_sig(
@@ -1895,19 +1821,17 @@ impl TsEsTreeBuilder {
     key: NodeRef,
     param: NodeRef,
   ) -> NodeRef {
-    let offset = self.ctx.append_node(AstNode::TSMethodSignature, span);
+    let id = self.ctx.append_node(AstNode::TSMethodSignature, span);
 
     self.ctx.write_bool(AstProp::Computed, false);
     self.ctx.write_bool(AstProp::Optional, false);
     self.ctx.write_bool(AstProp::Readonly, false);
     self.ctx.write_bool(AstProp::Static, false);
     self.ctx.write_str(AstProp::Kind, "setter");
-    self.ctx.write_ref(AstProp::Key, &offset, key);
-    self
-      .ctx
-      .write_ref_vec(AstProp::Params, &offset, vec![param]);
+    self.ctx.write_ref(AstProp::Key, &id, key);
+    self.ctx.write_ref_vec(AstProp::Params, &id, vec![param]);
 
-    offset
+    self.ctx.commit_node(id)
   }
 
   pub fn write_ts_interface_heritage(
@@ -1916,14 +1840,14 @@ impl TsEsTreeBuilder {
     expr: NodeRef,
     type_args: Option<NodeRef>,
   ) -> NodeRef {
-    let offset = self.ctx.append_node(AstNode::TSInterfaceHeritage, span);
+    let id = self.ctx.append_node(AstNode::TSInterfaceHeritage, span);
 
-    self.ctx.write_ref(AstProp::Expression, &offset, expr);
+    self.ctx.write_ref(AstProp::Expression, &id, expr);
     self
       .ctx
-      .write_maybe_ref(AstProp::TypeArguments, &offset, type_args);
+      .write_maybe_ref(AstProp::TypeArguments, &id, type_args);
 
-    offset
+    self.ctx.commit_node(id)
   }
 
   pub fn write_ts_union_type(
@@ -1931,10 +1855,9 @@ impl TsEsTreeBuilder {
     span: &Span,
     types: Vec<NodeRef>,
   ) -> NodeRef {
-    let offset = self.ctx.append_node(AstNode::TSUnionType, span);
-    self.ctx.write_ref_vec(AstProp::Types, &offset, types);
-
-    offset
+    let id = self.ctx.append_node(AstNode::TSUnionType, span);
+    self.ctx.write_ref_vec(AstProp::Types, &id, types);
+    self.ctx.commit_node(id)
   }
 
   pub fn write_ts_intersection_type(
@@ -1942,11 +1865,9 @@ impl TsEsTreeBuilder {
     span: &Span,
     types: Vec<NodeRef>,
   ) -> NodeRef {
-    let offset = self.ctx.append_node(AstNode::TSIntersectionType, span);
-
-    self.ctx.write_ref_vec(AstProp::Types, &offset, types);
-
-    offset
+    let id = self.ctx.append_node(AstNode::TSIntersectionType, span);
+    self.ctx.write_ref_vec(AstProp::Types, &id, types);
+    self.ctx.commit_node(id)
   }
 
   pub fn write_ts_infer_type(
@@ -1954,13 +1875,9 @@ impl TsEsTreeBuilder {
     span: &Span,
     type_param: NodeRef,
   ) -> NodeRef {
-    let offset = self.ctx.append_node(AstNode::TSInferType, span);
-
-    self
-      .ctx
-      .write_ref(AstProp::TypeParameter, &offset, type_param);
-
-    offset
+    let id = self.ctx.append_node(AstNode::TSInferType, span);
+    self.ctx.write_ref(AstProp::TypeParameter, &id, type_param);
+    self.ctx.commit_node(id)
   }
 
   pub fn write_ts_type_op(
@@ -1969,14 +1886,12 @@ impl TsEsTreeBuilder {
     op: &str,
     type_ann: NodeRef,
   ) -> NodeRef {
-    let offset = self.ctx.append_node(AstNode::TSTypeOperator, span);
+    let id = self.ctx.append_node(AstNode::TSTypeOperator, span);
 
     self.ctx.write_str(AstProp::Operator, op);
-    self
-      .ctx
-      .write_ref(AstProp::TypeAnnotation, &offset, type_ann);
+    self.ctx.write_ref(AstProp::TypeAnnotation, &id, type_ann);
 
-    offset
+    self.ctx.commit_node(id)
   }
 
   pub fn write_ts_indexed_access_type(
@@ -1985,12 +1900,12 @@ impl TsEsTreeBuilder {
     index: NodeRef,
     obj: NodeRef,
   ) -> NodeRef {
-    let offset = self.ctx.append_node(AstNode::TSIndexedAccessType, span);
+    let id = self.ctx.append_node(AstNode::TSIndexedAccessType, span);
 
-    self.ctx.write_ref(AstProp::IndexType, &offset, index);
-    self.ctx.write_ref(AstProp::ObjectType, &offset, obj);
+    self.ctx.write_ref(AstProp::IndexType, &id, index);
+    self.ctx.write_ref(AstProp::ObjectType, &id, obj);
 
-    offset
+    self.ctx.commit_node(id)
   }
 
   pub fn write_ts_keyword(
@@ -2014,7 +1929,8 @@ impl TsEsTreeBuilder {
       TsKeywordKind::Intrinsic => AstNode::TSIntrinsicKeyword,
     };
 
-    self.ctx.append_node(kind, span)
+    let id = self.ctx.append_node(kind, span);
+    self.ctx.commit_node(id)
   }
 
   pub fn write_ts_rest_type(
@@ -2022,13 +1938,9 @@ impl TsEsTreeBuilder {
     span: &Span,
     type_ann: NodeRef,
   ) -> NodeRef {
-    let offset = self.ctx.append_node(AstNode::TSRestType, span);
-
-    self
-      .ctx
-      .write_ref(AstProp::TypeAnnotation, &offset, type_ann);
-
-    offset
+    let id = self.ctx.append_node(AstNode::TSRestType, span);
+    self.ctx.write_ref(AstProp::TypeAnnotation, &id, type_ann);
+    self.ctx.commit_node(id)
   }
 
   pub fn write_ts_conditional_type(
@@ -2039,14 +1951,14 @@ impl TsEsTreeBuilder {
     true_type: NodeRef,
     false_type: NodeRef,
   ) -> NodeRef {
-    let offset = self.ctx.append_node(AstNode::TSConditionalType, span);
+    let id = self.ctx.append_node(AstNode::TSConditionalType, span);
 
-    self.ctx.write_ref(AstProp::CheckType, &offset, check);
-    self.ctx.write_ref(AstProp::ExtendsType, &offset, extends);
-    self.ctx.write_ref(AstProp::TrueType, &offset, true_type);
-    self.ctx.write_ref(AstProp::FalseType, &offset, false_type);
+    self.ctx.write_ref(AstProp::CheckType, &id, check);
+    self.ctx.write_ref(AstProp::ExtendsType, &id, extends);
+    self.ctx.write_ref(AstProp::TrueType, &id, true_type);
+    self.ctx.write_ref(AstProp::FalseType, &id, false_type);
 
-    offset
+    self.ctx.commit_node(id)
   }
 
   pub fn write_ts_mapped_type(
@@ -2056,25 +1968,21 @@ impl TsEsTreeBuilder {
     type_ann: Option<NodeRef>,
     type_param: NodeRef,
   ) -> NodeRef {
-    let offset = self.ctx.append_node(AstNode::TSMappedType, span);
+    let id = self.ctx.append_node(AstNode::TSMappedType, span);
 
-    self.ctx.write_maybe_ref(AstProp::NameType, &offset, name);
+    self.ctx.write_maybe_ref(AstProp::NameType, &id, name);
     self
       .ctx
-      .write_maybe_ref(AstProp::TypeAnnotation, &offset, type_ann);
-    self
-      .ctx
-      .write_ref(AstProp::TypeParameter, &offset, type_param);
+      .write_maybe_ref(AstProp::TypeAnnotation, &id, type_ann);
+    self.ctx.write_ref(AstProp::TypeParameter, &id, type_param);
 
-    offset
+    self.ctx.commit_node(id)
   }
 
   pub fn write_ts_lit_type(&mut self, span: &Span, lit: NodeRef) -> NodeRef {
-    let offset = self.ctx.append_node(AstNode::TSLiteralType, span);
-
-    self.ctx.write_ref(AstProp::Literal, &offset, lit);
-
-    offset
+    let id = self.ctx.append_node(AstNode::TSLiteralType, span);
+    self.ctx.write_ref(AstProp::Literal, &id, lit);
+    self.ctx.commit_node(id)
   }
 
   pub fn write_ts_type_ann(
@@ -2082,13 +1990,9 @@ impl TsEsTreeBuilder {
     span: &Span,
     type_ann: NodeRef,
   ) -> NodeRef {
-    let offset = self.ctx.append_node(AstNode::TSTypeAnnotation, span);
-
-    self
-      .ctx
-      .write_ref(AstProp::TypeAnnotation, &offset, type_ann);
-
-    offset
+    let id = self.ctx.append_node(AstNode::TSTypeAnnotation, span);
+    self.ctx.write_ref(AstProp::TypeAnnotation, &id, type_ann);
+    self.ctx.commit_node(id)
   }
 
   pub fn write_ts_array_type(
@@ -2096,11 +2000,9 @@ impl TsEsTreeBuilder {
     span: &Span,
     elem_type: NodeRef,
   ) -> NodeRef {
-    let offset = self.ctx.append_node(AstNode::TSArrayType, span);
-
-    self.ctx.write_ref(AstProp::ElementType, &offset, elem_type);
-
-    offset
+    let id = self.ctx.append_node(AstNode::TSArrayType, span);
+    self.ctx.write_ref(AstProp::ElementType, &id, elem_type);
+    self.ctx.commit_node(id)
   }
 
   pub fn write_ts_type_query(
@@ -2109,14 +2011,14 @@ impl TsEsTreeBuilder {
     expr_name: NodeRef,
     type_arg: Option<NodeRef>,
   ) -> NodeRef {
-    let offset = self.ctx.append_node(AstNode::TSTypeQuery, span);
+    let id = self.ctx.append_node(AstNode::TSTypeQuery, span);
 
-    self.ctx.write_ref(AstProp::ExprName, &offset, expr_name);
+    self.ctx.write_ref(AstProp::ExprName, &id, expr_name);
     self
       .ctx
-      .write_maybe_ref(AstProp::TypeArguments, &offset, type_arg);
+      .write_maybe_ref(AstProp::TypeArguments, &id, type_arg);
 
-    offset
+    self.ctx.commit_node(id)
   }
 
   pub fn write_ts_type_ref(
@@ -2125,14 +2027,14 @@ impl TsEsTreeBuilder {
     type_name: NodeRef,
     type_arg: Option<NodeRef>,
   ) -> NodeRef {
-    let offset = self.ctx.append_node(AstNode::TSTypeReference, span);
+    let id = self.ctx.append_node(AstNode::TSTypeReference, span);
 
-    self.ctx.write_ref(AstProp::TypeName, &offset, type_name);
+    self.ctx.write_ref(AstProp::TypeName, &id, type_name);
     self
       .ctx
-      .write_maybe_ref(AstProp::TypeArguments, &offset, type_arg);
+      .write_maybe_ref(AstProp::TypeArguments, &id, type_arg);
 
-    offset
+    self.ctx.commit_node(id)
   }
 
   pub fn write_ts_type_predicate(
@@ -2142,17 +2044,15 @@ impl TsEsTreeBuilder {
     param_name: NodeRef,
     type_ann: Option<NodeRef>,
   ) -> NodeRef {
-    let offset = self.ctx.append_node(AstNode::TSTypePredicate, span);
+    let id = self.ctx.append_node(AstNode::TSTypePredicate, span);
 
     self.ctx.write_bool(AstProp::Asserts, asserts);
+    self.ctx.write_ref(AstProp::ParameterName, &id, param_name);
     self
       .ctx
-      .write_ref(AstProp::ParameterName, &offset, param_name);
-    self
-      .ctx
-      .write_maybe_ref(AstProp::TypeAnnotation, &offset, type_ann);
+      .write_maybe_ref(AstProp::TypeAnnotation, &id, type_ann);
 
-    offset
+    self.ctx.commit_node(id)
   }
 
   pub fn write_ts_tuple_type(
@@ -2160,13 +2060,13 @@ impl TsEsTreeBuilder {
     span: &Span,
     elem_types: Vec<NodeRef>,
   ) -> NodeRef {
-    let offset = self.ctx.append_node(AstNode::TSTupleType, span);
+    let id = self.ctx.append_node(AstNode::TSTupleType, span);
 
     self
       .ctx
-      .write_ref_vec(AstProp::ElementTypes, &offset, elem_types);
+      .write_ref_vec(AstProp::ElementTypes, &id, elem_types);
 
-    offset
+    self.ctx.commit_node(id)
   }
 
   pub fn write_ts_named_tuple_member(
@@ -2175,12 +2075,12 @@ impl TsEsTreeBuilder {
     label: NodeRef,
     elem_type: NodeRef,
   ) -> NodeRef {
-    let offset = self.ctx.append_node(AstNode::TSNamedTupleMember, span);
+    let id = self.ctx.append_node(AstNode::TSNamedTupleMember, span);
 
-    self.ctx.write_ref(AstProp::Label, &offset, label);
-    self.ctx.write_ref(AstProp::ElementType, &offset, elem_type);
+    self.ctx.write_ref(AstProp::Label, &id, label);
+    self.ctx.write_ref(AstProp::ElementType, &id, elem_type);
 
-    offset
+    self.ctx.commit_node(id)
   }
 
   pub fn write_ts_type_param_decl(
@@ -2188,37 +2088,37 @@ impl TsEsTreeBuilder {
     span: &Span,
     params: Vec<NodeRef>,
   ) -> NodeRef {
-    let offset = self
+    let id = self
       .ctx
       .append_node(AstNode::TSTypeParameterDeclaration, span);
 
-    self.ctx.write_ref_vec(AstProp::Params, &offset, params);
+    self.ctx.write_ref_vec(AstProp::Params, &id, params);
 
-    offset
+    self.ctx.commit_node(id)
   }
 
   pub fn write_ts_type_param(
     &mut self,
     span: &Span,
-    in_v: bool,
-    out: bool,
-    const_v: bool,
+    is_in: bool,
+    is_out: bool,
+    is_const: bool,
     name: NodeRef,
     constraint: Option<NodeRef>,
     default: Option<NodeRef>,
   ) -> NodeRef {
-    let offset = self.ctx.append_node(AstNode::TSTypeParameter, span);
+    let id = self.ctx.append_node(AstNode::TSTypeParameter, span);
 
-    self.ctx.write_bool(AstProp::In, in_v);
-    self.ctx.write_bool(AstProp::Out, out);
-    self.ctx.write_bool(AstProp::Const, const_v);
-    self.ctx.write_ref(AstProp::Name, &offset, name);
+    self.ctx.write_bool(AstProp::In, is_in);
+    self.ctx.write_bool(AstProp::Out, is_out);
+    self.ctx.write_bool(AstProp::Const, is_const);
+    self.ctx.write_ref(AstProp::Name, &id, name);
     self
       .ctx
-      .write_maybe_ref(AstProp::Constraint, &offset, constraint);
-    self.ctx.write_maybe_ref(AstProp::Default, &offset, default);
+      .write_maybe_ref(AstProp::Constraint, &id, constraint);
+    self.ctx.write_maybe_ref(AstProp::Default, &id, default);
 
-    offset
+    self.ctx.commit_node(id)
   }
 
   pub fn write_ts_import_type(
@@ -2228,17 +2128,15 @@ impl TsEsTreeBuilder {
     qualifier: Option<NodeRef>,
     type_args: Option<NodeRef>,
   ) -> NodeRef {
-    let offset = self.ctx.append_node(AstNode::TSImportType, span);
+    let id = self.ctx.append_node(AstNode::TSImportType, span);
 
-    self.ctx.write_ref(AstProp::Argument, &offset, arg);
+    self.ctx.write_ref(AstProp::Argument, &id, arg);
+    self.ctx.write_maybe_ref(AstProp::Qualifier, &id, qualifier);
     self
       .ctx
-      .write_maybe_ref(AstProp::Qualifier, &offset, qualifier);
-    self
-      .ctx
-      .write_maybe_ref(AstProp::TypeArguments, &offset, type_args);
+      .write_maybe_ref(AstProp::TypeArguments, &id, type_args);
 
-    offset
+    self.ctx.commit_node(id)
   }
 
   pub fn write_ts_fn_type(
@@ -2246,11 +2144,9 @@ impl TsEsTreeBuilder {
     span: &Span,
     params: Vec<NodeRef>,
   ) -> NodeRef {
-    let offset = self.ctx.append_node(AstNode::TSFunctionType, span);
-
-    self.ctx.write_ref_vec(AstProp::Params, &offset, params);
-
-    offset
+    let id = self.ctx.append_node(AstNode::TSFunctionType, span);
+    self.ctx.write_ref_vec(AstProp::Params, &id, params);
+    self.ctx.commit_node(id)
   }
 }
 
