@@ -241,19 +241,9 @@ class DOMPointReadOnly {
   }
 
   static fromPoint(other = { __proto__: null }) {
-    other = webidl.converters.DOMPointInit(
-      other,
-      "Failed to execute 'DOMPointReadOnly.fromPoint'",
-      "Argument 1",
-    );
     const point = webidl.createBranded(DOMPointReadOnly);
     point[_writable] = false;
-    point[_inner] = new DOMPointInner(
-      other.x,
-      other.y,
-      other.z,
-      other.w,
-    );
+    point[_inner] = DOMPointInner.fromPoint(other);
     return point;
   }
 
@@ -334,19 +324,9 @@ class DOMPoint extends DOMPointReadOnly {
   [_writable] = true;
 
   static fromPoint(other = { __proto__: null }) {
-    other = webidl.converters.DOMPointInit(
-      other,
-      "Failed to execute 'DOMPoint.fromPoint'",
-      "Argument 1",
-    );
     const point = webidl.createBranded(DOMPoint);
     point[_writable] = true;
-    point[_inner] = new DOMPointInner(
-      other.x,
-      other.y,
-      other.z,
-      other.w,
-    );
+    point[_inner] = DOMPointInner.fromPoint(other);
     return point;
   }
 

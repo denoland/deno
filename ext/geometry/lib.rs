@@ -10,6 +10,7 @@ use deno_core::cppgc;
 use deno_core::op2;
 use deno_core::v8;
 use deno_core::GarbageCollected;
+use deno_core::WebIDL;
 use nalgebra::Matrix3;
 use nalgebra::Matrix4;
 use nalgebra::Matrix4x2;
@@ -32,6 +33,19 @@ pub fn get_declaration() -> PathBuf {
   PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("lib.deno_geometry.d.ts")
 }
 
+#[derive(WebIDL)]
+#[webidl(dictionary)]
+pub struct DOMPointInit {
+  #[webidl(default = 0.0)]
+  x: f64,
+  #[webidl(default = 0.0)]
+  y: f64,
+  #[webidl(default = 0.0)]
+  z: f64,
+  #[webidl(default = 1.0)]
+  w: f64,
+}
+
 pub struct DOMPointInner {
   x: Cell<f64>,
   y: Cell<f64>,
@@ -51,6 +65,17 @@ impl DOMPointInner {
       y: Cell::new(y),
       z: Cell::new(z),
       w: Cell::new(w),
+    }
+  }
+
+  #[static_method]
+  #[cppgc]
+  pub fn from_point(#[webidl] init: DOMPointInit) -> DOMPointInner {
+    DOMPointInner {
+      x: Cell::new(init.x),
+      y: Cell::new(init.y),
+      z: Cell::new(init.z),
+      w: Cell::new(init.w),
     }
   }
 
