@@ -329,38 +329,38 @@ impl SerializeCtx {
 
   /// The node buffer contains enough information for traversal
   ///   <type u8>
-  ///   <id u32>
+  ///   <prop offset u32>
+  ///   <span offset u32>
   ///   <parent offset u32>
   ///   <child offset u32>
   ///   <next offset u32>
-  pub fn append_node<N>(
-    &mut self,
-    kind: &N,
-    parent: NodeRef,
-    span: &Span,
-  ) -> NodeRef
+  pub fn append_node<N>(&mut self, kind: N, span: &Span) -> NodeRef
   where
     N: Into<u8> + Display + Clone,
   {
     let offset = NodeRef(self.buf.len());
+
+    // type
     let n = kind.clone().into();
     self.buf.push(n);
 
-    let id = self.get_id();
-    append_u32(&mut self.buf, id);
+    // Prop Offset
+    append_u32(&mut self.buf, 0);
 
-    // Offset to the parent node. Will be 0 if none exists
-    append_usize(&mut self.buf, parent.0);
+    // Span offset
+    append_usize(&mut self.buf, self.spans.len());
+    // write spans
+    append_u32(&mut self.spans, span.lo.0);
+    append_u32(&mut self.spans, span.hi.0);
+
+    // Parent node
+    append_usize(&mut self.buf, 0);
 
     // Reserve child
     append_usize(&mut self.buf, 0);
 
     // Reserve next
     append_usize(&mut self.buf, 0);
-
-    // Append span
-    append_u32(&mut self.spans, span.lo.0);
-    append_u32(&mut self.spans, span.hi.0);
 
     offset
   }
@@ -442,7 +442,7 @@ impl SerializeCtx {
   }
 
   // Allocate a number field. Numbers are internally represented as strings
-  pub fn obj_field<P>(&mut self, prop: P, len: usize) -> usize
+  pub fn write_obj<P>(&mut self, prop: P, len: usize) -> usize
   where
     P: Into<u8> + Display + Clone,
   {
@@ -505,32 +505,45 @@ impl SerializeCtx {
 
   /// Allocate an undefined field
   #[allow(dead_code)]
-  pub fn null_field<P>(&mut self, prop: P) -> usize
+  pub fn write_null<P>(&mut self, prop: P) -> usize
   where
     P: Into<u8> + Display + Clone,
   {
     self.field_header(prop, PropFlags::Null)
   }
 
-  pub fn begin_write(&mut self, offset: &NodeRef) {
-    //
-  }
-
   /// Replace the placeholder of a reference field with the actual offset
   /// to the node we want to point to.
-  pub fn write_ref(&mut self, value: NodeRef) {
+  pub fn write_ref<P>(&mut self, prop: P, parent: &NodeRef, value: NodeRef)
+  where
+    P: Into<u8> + Display + Clone,
+  {
     append_usize(&mut self.buf, value.0);
   }
 
   /// Helper for writing optional node offsets
-  pub fn write_maybe_ref(&mut self, value: Option<NodeRef>) {
+  pub fn write_maybe_ref<P>(
+    &mut self,
+    prop: P,
+    parent: &NodeRef,
+    value: Option<NodeRef>,
+  ) where
+    P: Into<u8> + Display + Clone,
+  {
     let ref_value = if let Some(v) = value { v } else { NodeRef(0) };
     append_usize(&mut self.buf, ref_value.0);
   }
 
   /// Write a vec of node offsets into the property. The necessary space
   /// has been reserved earlier.
-  pub fn write_ref_vec(&mut self, value: Vec<NodeRef>) {
+  pub fn write_ref_vec<P>(
+    &mut self,
+    prop: P,
+    parent: &NodeRef,
+    value: Vec<NodeRef>,
+  ) where
+    P: Into<u8> + Display + Clone,
+  {
     let mut offset = field_offset + 2;
     write_usize(&mut self.buf, value.len(), offset);
     offset += 4;
@@ -543,13 +556,19 @@ impl SerializeCtx {
 
   /// Store the string in our string table and save the id of the string
   /// in the current field.
-  pub fn write_str(&mut self, value: &str) {
+  pub fn write_str<P>(&mut self, prop: P, value: &str)
+  where
+    P: Into<u8> + Display + Clone,
+  {
     let id = self.str_table.insert(value);
     append_usize(&mut self.field_buf, id);
   }
 
   /// Write a bool to a field.
-  pub fn write_bool(&mut self, value: bool) {
+  pub fn write_bool<P>(&mut self, prop: P, value: bool)
+  where
+    P: Into<u8> + Display + Clone,
+  {
     let n = if value { 1 } else { 0 };
     self.field_buf.push(n);
   }
