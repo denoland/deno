@@ -778,7 +778,7 @@ class DOMMatrixReadOnly {
     webidl.assertBranded(this, DOMMatrixReadOnlyPrototype);
     const matrix = webidl.createBranded(DOMMatrix);
     matrix[_writable] = true;
-    matrix[_inner] = this[_inner].clone().translate(tx, ty, tz);
+    matrix[_inner] = this[_inner].translate(tx, ty, tz);
     return matrix;
   }
 
@@ -794,13 +794,13 @@ class DOMMatrixReadOnly {
     const matrix = webidl.createBranded(DOMMatrix);
     matrix[_writable] = true;
     if (originX === 0 && originY === 0 && originZ === 0) {
-      matrix[_inner] = this[_inner].clone().scaleWithoutOrigin(
+      matrix[_inner] = this[_inner].scaleWithoutOrigin(
         scaleX,
         scaleY,
         scaleZ,
       );
     } else {
-      matrix[_inner] = this[_inner].clone().scaleWithOrigin(
+      matrix[_inner] = this[_inner].scaleWithOrigin(
         scaleX,
         scaleY,
         scaleZ,
@@ -816,7 +816,7 @@ class DOMMatrixReadOnly {
     webidl.assertBranded(this, DOMMatrixReadOnlyPrototype);
     const matrix = webidl.createBranded(DOMMatrix);
     matrix[_writable] = true;
-    matrix[_inner] = this[_inner].clone().scaleWithoutOrigin(
+    matrix[_inner] = this[_inner].scaleWithoutOrigin(
       scaleX,
       scaleY,
       1,
@@ -829,13 +829,13 @@ class DOMMatrixReadOnly {
     const matrix = webidl.createBranded(DOMMatrix);
     matrix[_writable] = true;
     if (originX === 0 && originY === 0 && originZ === 0) {
-      matrix[_inner] = this[_inner].clone().scaleWithoutOrigin(
+      matrix[_inner] = this[_inner].scaleWithoutOrigin(
         scale,
         scale,
         scale,
       );
     } else {
-      matrix[_inner] = this[_inner].clone().scaleWithOrigin(
+      matrix[_inner] = this[_inner].scaleWithOrigin(
         scale,
         scale,
         scale,
@@ -859,7 +859,7 @@ class DOMMatrixReadOnly {
     }
     const matrix = webidl.createBranded(DOMMatrix);
     matrix[_writable] = true;
-    matrix[_inner] = this[_inner].clone().rotate(
+    matrix[_inner] = this[_inner].rotate(
       rotX,
       rotY,
       rotZ,
@@ -871,7 +871,7 @@ class DOMMatrixReadOnly {
     webidl.assertBranded(this, DOMMatrixReadOnlyPrototype);
     const matrix = webidl.createBranded(DOMMatrix);
     matrix[_writable] = true;
-    matrix[_inner] = this[_inner].clone().rotateFromVector(x, y);
+    matrix[_inner] = this[_inner].rotateFromVector(x, y);
     return matrix;
   }
 
@@ -879,7 +879,7 @@ class DOMMatrixReadOnly {
     webidl.assertBranded(this, DOMMatrixReadOnlyPrototype);
     const matrix = webidl.createBranded(DOMMatrix);
     matrix[_writable] = true;
-    matrix[_inner] = this[_inner].clone().rotateAxisAngle(
+    matrix[_inner] = this[_inner].rotateAxisAngle(
       x,
       y,
       z,
@@ -892,7 +892,7 @@ class DOMMatrixReadOnly {
     webidl.assertBranded(this, DOMMatrixReadOnlyPrototype);
     const matrix = webidl.createBranded(DOMMatrix);
     matrix[_writable] = true;
-    matrix[_inner] = this[_inner].clone().skewX(sx);
+    matrix[_inner] = this[_inner].skewX(sx);
     return matrix;
   }
 
@@ -900,7 +900,7 @@ class DOMMatrixReadOnly {
     webidl.assertBranded(this, DOMMatrixReadOnlyPrototype);
     const matrix = webidl.createBranded(DOMMatrix);
     matrix[_writable] = true;
-    matrix[_inner] = this[_inner].clone().skewY(sy);
+    matrix[_inner] = this[_inner].skewY(sy);
     return matrix;
   }
 
@@ -926,7 +926,7 @@ class DOMMatrixReadOnly {
     webidl.assertBranded(this, DOMMatrixReadOnlyPrototype);
     const matrix = webidl.createBranded(DOMMatrix);
     matrix[_writable] = true;
-    matrix[_inner] = this[_inner].clone().flipX();
+    matrix[_inner] = this[_inner].flipX();
     return matrix;
   }
 
@@ -934,7 +934,7 @@ class DOMMatrixReadOnly {
     webidl.assertBranded(this, DOMMatrixReadOnlyPrototype);
     const matrix = webidl.createBranded(DOMMatrix);
     matrix[_writable] = true;
-    matrix[_inner] = this[_inner].clone().flipY();
+    matrix[_inner] = this[_inner].flipY();
     return matrix;
   }
 
@@ -942,7 +942,7 @@ class DOMMatrixReadOnly {
     webidl.assertBranded(this, DOMMatrixReadOnlyPrototype);
     const matrix = webidl.createBranded(DOMMatrix);
     matrix[_writable] = true;
-    matrix[_inner] = this[_inner].clone().inverse();
+    matrix[_inner] = this[_inner].inverse();
     return matrix;
   }
 
