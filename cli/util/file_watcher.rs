@@ -254,6 +254,7 @@ where
   F: Future<Output = Result<(), AnyError>>,
 {
   let exclude_set = flags.resolve_watch_exclude_set()?;
+  let exclude_set_cloned = exclude_set.clone();
   let (paths_to_watch_tx, mut paths_to_watch_rx) =
     tokio::sync::mpsc::unbounded_channel();
   let (restart_tx, mut restart_rx) = tokio::sync::mpsc::unbounded_channel();
@@ -287,15 +288,35 @@ where
       changed_paths_
         .borrow_mut()
         .clone_from(&received_changed_paths);
-
-      match *watcher_.restart_mode.lock() {
-        WatcherRestartMode::Automatic => {
-          let _ = restart_tx.send(());
+      let excluded_paths = &exclude_set_cloned;
+      let received_changed_paths_cloned = received_changed_paths.clone();
+      let is_excluded_file_changed = received_changed_paths_cloned
+        .clone()
+        .unwrap()
+        .iter()
+        .any(|path| {
+          excluded_paths.matches_path(path)
+            || excluded_paths.inner().iter().any(|excluded_path| {
+              excluded_path.base_path().unwrap().is_dir()
+                && path.starts_with(excluded_path.base_path().unwrap())
+            })
+        });
+      // skip restart when the changed path is from the excluded set
+      if !is_excluded_file_changed {
+        match *watcher_.restart_mode.lock() {
+          WatcherRestartMode::Automatic => {
+            let _ = restart_tx.send(());
+          }
+          WatcherRestartMode::Manual => {
+            // TODO(bartlomieju): should we fail on sending changed paths?
+            let _ = changed_paths_tx.send(received_changed_paths);
+          }
         }
-        WatcherRestartMode::Manual => {
-          // TODO(bartlomieju): should we fail on sending changed paths?
-          let _ = changed_paths_tx.send(received_changed_paths);
-        }
+      } else {
+        log::debug!(
+          "Following file content changed, but excluded from watch: {:?}",
+          received_changed_paths_cloned.unwrap()[0]
+        );
       }
     }
   });
