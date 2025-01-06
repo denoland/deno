@@ -943,7 +943,7 @@ fn serialize_member_expr(
   ctx.write_member_expr(&node.span, optional, computed, obj, prop)
 }
 
-fn serialize_class_member(
+fn _serialize_class_member(
   ctx: &mut TsEsTreeBuilder,
   member: &ClassMember,
 ) -> NodeRef {
@@ -1314,7 +1314,7 @@ fn serialize_ts_index_sig(
   // pos
 }
 
-fn accessibility_to_str(accessibility: Accessibility) -> String {
+fn _accessibility_to_str(accessibility: Accessibility) -> String {
   match accessibility {
     Accessibility::Public => "public".to_string(),
     Accessibility::Protected => "protected".to_string(),

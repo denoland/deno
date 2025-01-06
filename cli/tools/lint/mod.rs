@@ -304,9 +304,9 @@ impl WorkspaceLinter {
 
     fn logger_printer(msg: &str, is_err: bool) {
       if is_err {
-        eprintln!("{}", msg);
+        eprintln!("{}", msg.trim_end());
       } else {
-        println!("{}", msg);
+        println!("{}", msg.trim_end());
       }
     }
 

@@ -25,6 +25,10 @@ const AST_GROUP_TYPE = 1;
 /// <next idx u32>
 /// <parent idx u32>
 const NODE_SIZE = 1 + 4 + 4 + 4 + 4;
+const PROP_OFFSET = 1;
+const CHILD_OFFSET = 1 + 4;
+const NEXT_OFFSET = 1 + 4 + 4;
+const PARENT_OFFSET = 1 + 4 + 4 + 4;
 // Span size in buffer: u32 + u32
 const SPAN_SIZE = 4 + 4;
 
@@ -285,16 +289,16 @@ export function installPlugin(plugin, exclude) {
 /**
  * @param {AstContext} ctx
  * @param {number} idx
- * @returns
+ * @returns {FacadeNode | null}
  */
 function getNode(ctx, idx) {
   if (idx === AST_IDX_INVALID) return null;
   const cached = ctx.nodes.get(idx);
-  if (cached !== undefined) return cached;
+  if (cached !== undefined) return /** @type {*} */ (cached);
 
   const node = new FacadeNode(ctx, idx);
-  ctx.nodes.set(idx, /** @type {*} */ (cached));
-  return node;
+  ctx.nodes.set(idx, /** @type {*} */ (node));
+  return /** @type {*} */ (node);
 }
 
 /**
@@ -483,6 +487,15 @@ function toJsValue(ctx, idx) {
 }
 
 /**
+ * @param {AstContext["buf"]} buf
+ * @param {number} idx
+ * @returns {number}
+ */
+function readType(buf, idx) {
+  return buf[idx * NODE_SIZE];
+}
+
+/**
  * @param {AstContext} ctx
  * @param {number} idx
  * @returns {Node["range"]}
@@ -501,10 +514,8 @@ function readSpan(ctx, idx) {
  * @param {number} idx
  * @returns {number}
  */
-function readParent(buf, idx) {
-  let offset = idx * NODE_SIZE;
-  // type + prop offset + child + next
-  offset += 1 + 4 + 4 + 4;
+function readPropOffset(buf, idx) {
+  const offset = (idx * NODE_SIZE) + PROP_OFFSET;
   return readU32(buf, offset);
 }
 
@@ -513,10 +524,27 @@ function readParent(buf, idx) {
  * @param {number} idx
  * @returns {number}
  */
-function readPropOffset(buf, idx) {
-  let offset = idx * NODE_SIZE;
-  // type + prop offset + child + next
-  offset += 1;
+function readChild(buf, idx) {
+  const offset = (idx * NODE_SIZE) * CHILD_OFFSET;
+  return readU32(buf, offset);
+}
+/**
+ * @param {AstContext["buf"]} buf
+ * @param {number} idx
+ * @returns {number}
+ */
+function readNext(buf, idx) {
+  const offset = (idx * NODE_SIZE) * NEXT_OFFSET;
+  return readU32(buf, offset);
+}
+
+/**
+ * @param {AstContext["buf"]} buf
+ * @param {number} idx
+ * @returns {number}
+ */
+function readParent(buf, idx) {
+  const offset = (idx * NODE_SIZE) * PARENT_OFFSET;
   return readU32(buf, offset);
 }
 
@@ -576,6 +604,7 @@ function readProperty(ctx, offset) {
     const value = readU32(buf, offset);
     return getNode(ctx, value);
   } else if (kind === PropFlags.RefArr) {
+    // FIXME: This is broken atm
     const len = readU32(buf, offset);
     offset += 4;
 
@@ -618,9 +647,8 @@ function readProperty(ctx, offset) {
 function readValue(ctx, idx, search) {
   const { buf } = ctx;
 
-  const type = buf[idx * NODE_SIZE];
-
   if (search === AST_PROP_TYPE) {
+    const type = readType(buf, idx);
     return getString(ctx.strTable, ctx.strByType[type]);
   } else if (search === AST_PROP_RANGE) {
     return readSpan(ctx, idx);
@@ -814,9 +842,8 @@ class MatchCtx {
    * @returns {number}
    */
   getFirstChild(idx) {
-    let offset = idx * NODE_SIZE;
-    offset += 1;
-    return readU32(this.buf, offset);
+    const siblings = this.getSiblings(idx);
+    return siblings[0] ?? -1;
   }
 
   /**
@@ -824,23 +851,8 @@ class MatchCtx {
    * @returns {number}
    */
   getLastChild(idx) {
-    let offset = idx * NODE_SIZE;
-    offset += 1;
-
-    let childId = readU32(this.buf, offset);
-    if (childId <= AST_IDX_INVALID) return -1;
-
-    while (childId > AST_IDX_INVALID) {
-      let offset = childId * NODE_SIZE;
-      offset += 1 + 4;
-
-      const nextId = readU32(this.buf, offset);
-      if (nextId <= AST_IDX_INVALID) break;
-
-      childId = nextId;
-    }
-
-    return childId;
+    const siblings = this.getSiblings(idx);
+    return siblings.at(-1) ?? -1;
   }
 
   /**
@@ -848,32 +860,22 @@ class MatchCtx {
    * @returns {number[]}
    */
   getSiblings(idx) {
-    // TODO(@marvinhagemeister): We can rewrite this to not
-    // use array allocation now.
     const { buf } = this;
+    const parent = readParent(buf, idx);
 
-    let offset = idx * NODE_SIZE;
-    offset += 1 + 4 + 4;
-    const parentIdx = readU32(buf, offset);
-
-    const pOffset = parentIdx * NODE_SIZE;
-    const pType = buf[pOffset + 1];
-
-    /** @type {number[]} */
-    const out = [];
-
-    if (pType !== AST_GROUP_TYPE) {
-      return out;
+    // Only RefArrays have siblings
+    const parentType = readType(buf, parent);
+    if (parentType !== AST_GROUP_TYPE) {
+      return [];
     }
 
-    let childId = readU32(buf, pOffset + 1);
-    while (childId > AST_IDX_INVALID) {
-      out.push(childId);
+    const child = readChild(buf, parent);
+    const out = [child];
 
-      const nextId = readU32(buf, pOffset + 1 + 4);
-      if (nextId <= AST_IDX_INVALID) break;
-
-      childId = nextId;
+    let next = readNext(buf, child);
+    while (next > AST_IDX_INVALID) {
+      out.push(next);
+      next = readNext(buf, next);
     }
 
     return out;
@@ -964,8 +966,6 @@ function createAstContext(buf) {
   };
 
   setNodeGetters(ctx);
-
-  console.log(ctx);
 
   // DEV ONLY: Enable this to inspect the buffer message
   _dump(ctx);
@@ -1119,9 +1119,7 @@ function traverse(ctx, visitors, idx, cancellationToken) {
   if (cancellationToken.isCancellationRequested()) return;
 
   const { buf } = ctx;
-
-  let offset = idx * NODE_SIZE;
-  const nodeType = buf[offset++];
+  const nodeType = readType(ctx.buf, idx);
 
   /** @type {VisitorFn[] | null} */
   let exits = null;
@@ -1149,16 +1147,12 @@ function traverse(ctx, visitors, idx, cancellationToken) {
   }
 
   try {
-    const childIdx = readU32(buf, offset);
-    offset += 4;
-
+    const childIdx = readChild(buf, idx);
     if (childIdx > AST_IDX_INVALID) {
       traverse(ctx, visitors, childIdx, cancellationToken);
     }
 
-    const nextIdx = readU32(buf, offset);
-    offset += 4;
-
+    const nextIdx = readNext(buf, idx);
     if (nextIdx > AST_IDX_INVALID) {
       traverse(ctx, visitors, nextIdx, cancellationToken);
     }
@@ -1204,23 +1198,27 @@ function _dump(ctx) {
 
   let idx = 0;
   while (idx < (strTableOffset / NODE_SIZE)) {
-    const offset = idx * NODE_SIZE;
-
-    const type = buf[offset];
-    const name = getString(ctx.strTable, ctx.strByType[type]);
-    // @ts-ignore dump fn
-    // deno-lint-ignore no-console
-    console.log(`${name}, idx: ${idx}, offset: ${offset}, type: ${type}`);
-
+    const type = readType(buf, idx);
+    const child = readChild(buf, idx);
+    const next = readNext(buf, idx);
     const parent = readParent(buf, idx);
-    // @ts-ignore dump fn
-    // deno-lint-ignore no-console
-    console.log(`  parent: ${parent}`);
-
     const range = readSpan(ctx, idx);
+
+    const name = type === AST_IDX_INVALID
+      ? "<invalid>"
+      : type === AST_GROUP_TYPE
+      ? "<group>"
+      : getString(ctx.strTable, ctx.strByType[type]);
     // @ts-ignore dump fn
     // deno-lint-ignore no-console
-    console.log(`  range: ${JSON.stringify(range)}`);
+    console.log(`${name}, idx: ${idx}, type: ${type}`);
+
+    // @ts-ignore dump fn
+    // deno-lint-ignore no-console
+    console.log(`  child: ${child}, next: ${next}, parent: ${parent}`);
+    // @ts-ignore dump fn
+    // deno-lint-ignore no-console
+    console.log(`  range: ${range[0]}, ${range[1]}`);
 
     let propOffset = readPropOffset(buf, idx);
     const count = buf[propOffset++];
@@ -1241,7 +1239,7 @@ function _dump(ctx) {
         }
       }
 
-      const v = readU32(buf, offset);
+      const v = readU32(buf, propOffset);
       propOffset += 4;
 
       if (kind === PropFlags.Ref) {
