@@ -35,9 +35,16 @@ use crate::tools::lint::serialize_ast_to_buffer;
 
 #[derive(Debug)]
 pub enum PluginHostRequest {
-  // TODO: write to structs
-  LoadPlugins(Vec<ModuleSpecifier>, Option<Vec<String>>),
-  Run(Vec<u8>, PathBuf, SourceTextInfo, Option<CancellationToken>),
+  LoadPlugins {
+    specifiers: Vec<ModuleSpecifier>,
+    exclude_rules: Option<Vec<String>>,
+  },
+  Run {
+    serialized_ast: Vec<u8>,
+    file_path: PathBuf,
+    source_text_info: SourceTextInfo,
+    maybe_token: Option<CancellationToken>,
+  },
 }
 
 pub enum PluginHostResponse {
@@ -275,20 +282,23 @@ impl PluginHost {
     while let Some(req) = self.rx.recv().await {
       self.logger.log("received message");
       match req {
-        PluginHostRequest::LoadPlugins(specifiers, exclude) => {
-          let r = self.load_plugins(specifiers, exclude).await;
+        PluginHostRequest::LoadPlugins {
+          specifiers,
+          exclude_rules,
+        } => {
+          let r = self.load_plugins(specifiers, exclude_rules).await;
           let _ = self.tx.send(PluginHostResponse::LoadPlugin(r)).await;
         }
-        PluginHostRequest::Run(
+        PluginHostRequest::Run {
           serialized_ast,
-          specifier,
+          file_path,
           source_text_info,
           maybe_token,
-        ) => {
+        } => {
           let start = std::time::Instant::now();
           let r = match self
             .run_plugins(
-              &specifier,
+              &file_path,
               serialized_ast,
               source_text_info,
               maybe_token,
@@ -319,7 +329,7 @@ impl PluginHost {
 
   async fn run_plugins(
     &mut self,
-    specifier: &Path,
+    file_path: &Path,
     serialized_ast: Vec<u8>,
     source_text_info: SourceTextInfo,
     maybe_token: Option<CancellationToken>,
@@ -329,7 +339,7 @@ impl PluginHost {
       let mut state = state.borrow_mut();
       let container = state.borrow_mut::<LintPluginContainer>();
       container.set_info_for_file(
-        ModuleSpecifier::from_file_path(specifier).unwrap(),
+        ModuleSpecifier::from_file_path(file_path).unwrap(),
         source_text_info,
       );
       container.set_cancellation_token(maybe_token);
@@ -338,7 +348,7 @@ impl PluginHost {
     let (file_name_v8, ast_uint8arr_v8) = {
       let scope = &mut self.worker.js_runtime.handle_scope();
       let file_name_v8: v8::Local<v8::Value> =
-        v8::String::new(scope, &specifier.display().to_string())
+        v8::String::new(scope, &file_path.display().to_string())
           .unwrap()
           .into();
 
@@ -440,12 +450,15 @@ impl PluginHost {
 impl PluginHostProxy {
   pub async fn load_plugins(
     &self,
-    plugin_specifiers: Vec<ModuleSpecifier>,
-    exclude: Option<Vec<String>>,
+    specifiers: Vec<ModuleSpecifier>,
+    exclude_rules: Option<Vec<String>>,
   ) -> Result<(), AnyError> {
     self
       .tx
-      .send(PluginHostRequest::LoadPlugins(plugin_specifiers, exclude))
+      .send(PluginHostRequest::LoadPlugins {
+        specifiers,
+        exclude_rules,
+      })
       .await?;
     let mut rx = self.rx.lock().await;
     self.logger.log("receiving load plugins");
@@ -472,12 +485,12 @@ impl PluginHostProxy {
   ) -> Result<Vec<LintDiagnostic>, AnyError> {
     self
       .tx
-      .send(PluginHostRequest::Run(
+      .send(PluginHostRequest::Run {
         serialized_ast,
-        specifier.to_path_buf(),
+        file_path: specifier.to_path_buf(),
         source_text_info,
         maybe_token,
-      ))
+      })
       .await?;
     let mut rx = self.rx.lock().await;
     self.logger.log("receiving diagnostics");
