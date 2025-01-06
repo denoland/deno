@@ -40,7 +40,12 @@ impl IncrementalCache {
     state: &TState,
     initial_file_paths: &[PathBuf],
   ) -> Self {
-    IncrementalCache(IncrementalCacheInner::new(db, state, initial_file_paths))
+    let state_hash = CacheDBHash::from_source(state);
+    IncrementalCache(IncrementalCacheInner::new(
+      db,
+      state_hash,
+      initial_file_paths,
+    ))
   }
 
   #[allow(unused)]
@@ -49,10 +54,11 @@ impl IncrementalCache {
     initial_file_paths: &[PathBuf],
     state_cb: impl FnOnce(&mut FastInsecureHasher) -> TState,
   ) -> Self {
-    IncrementalCache(IncrementalCacheInner::new_with_state_cb(
+    let state_hash = CacheDBHash::from_callback(state_cb);
+    IncrementalCache(IncrementalCacheInner::new(
       db,
+      state_hash,
       initial_file_paths,
-      state_cb,
     ))
   }
 
@@ -81,22 +87,11 @@ struct IncrementalCacheInner {
 }
 
 impl IncrementalCacheInner {
-  pub fn new<TState: std::hash::Hash>(
+  pub fn new(
     db: CacheDB,
-    state: &TState,
+    state_hash: CacheDBHash,
     initial_file_paths: &[PathBuf],
   ) -> Self {
-    let state_hash = CacheDBHash::from_source(state);
-    let sql_cache = SqlIncrementalCache::new(db, state_hash);
-    Self::from_sql_incremental_cache(sql_cache, initial_file_paths)
-  }
-
-  fn new_with_state_cb<TState: std::hash::Hash>(
-    db: CacheDB,
-    initial_file_paths: &[PathBuf],
-    state_cb: impl FnOnce(&mut FastInsecureHasher) -> TState,
-  ) -> Self {
-    let state_hash = CacheDBHash::from_callback(state_cb);
     let sql_cache = SqlIncrementalCache::new(db, state_hash);
     Self::from_sql_incremental_cache(sql_cache, initial_file_paths)
   }

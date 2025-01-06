@@ -35,8 +35,8 @@ impl CacheDBHash {
     )
   }
 
-  pub fn from_callback<TState: std::hash::Hash>(
-    state_cb: impl FnOnce(&mut FastInsecureHasher) -> TState,
+  pub fn from_callback<Hash: std::hash::Hash>(
+    state_cb: impl FnOnce(&mut FastInsecureHasher) -> Hash,
   ) -> Self {
     // always write in the deno version just in case
     // the clearing on deno version change doesn't work
