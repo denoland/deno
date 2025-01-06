@@ -150,7 +150,7 @@ async fn create_plugin_runner_inner(
   let perm_parser = factory.permission_desc_parser()?;
   let permissions = Permissions::from_options(
     perm_parser.as_ref(),
-    &flags.permissions.to_options(&[]),
+    &cli_options.permissions_options(),
   )?;
   let permissions = PermissionsContainer::new(perm_parser.clone(), permissions);
   // let npm_resolver = factory.npm_resolver().await?.clone();
