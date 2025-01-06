@@ -1301,20 +1301,43 @@ declare namespace Deno {
    */
   export namespace telemetry {
     /**
-     * A SpanExporter compatible with OpenTelemetry.js
-     * https://open-telemetry.github.io/opentelemetry-js/interfaces/_opentelemetry_sdk_trace_base.SpanExporter.html
+     * A TracerProvider compatible with OpenTelemetry.js
+     * https://open-telemetry.github.io/opentelemetry-js/interfaces/_opentelemetry_api.TracerProvider.html
+     *
+     * This is a singleton object that implements the OpenTelemetry
+     * TracerProvider interface.
+     *
      * @category Telemetry
      * @experimental
      */
-    export class SpanExporter {}
+    // deno-lint-ignore no-explicit-any
+    export const tracerProvider: any;
 
     /**
      * A ContextManager compatible with OpenTelemetry.js
      * https://open-telemetry.github.io/opentelemetry-js/interfaces/_opentelemetry_api.ContextManager.html
+     *
+     * This is a singleton object that implements the OpenTelemetry
+     * ContextManager interface.
+     *
      * @category Telemetry
      * @experimental
      */
-    export class ContextManager {}
+    // deno-lint-ignore no-explicit-any
+    export const contextManager: any;
+
+    /**
+     * A MeterProvider compatible with OpenTelemetry.js
+     * https://open-telemetry.github.io/opentelemetry-js/interfaces/_opentelemetry_api.MeterProvider.html
+     *
+     * This is a singleton object that implements the OpenTelemetry
+     * MeterProvider interface.
+     *
+     * @category Telemetry
+     * @experimental
+     */
+    // deno-lint-ignore no-explicit-any
+    export const meterProvider: any;
 
     export {}; // only export exports
   }
