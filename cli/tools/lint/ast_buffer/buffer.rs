@@ -321,6 +321,7 @@ impl SerializeCtx {
   }
 
   pub fn commit_node(&mut self, id: PendingRef) -> NodeRef {
+    eprintln!("COMMIT {} id: {}", self.field_count, id.0);
     self.field_buf[self.field_offset] = self.field_count;
     self.field_count = 0;
     self.prev_sibling_node = None;
@@ -484,6 +485,7 @@ impl SerializeCtx {
   pub fn serialize(&mut self) -> Vec<u8> {
     let mut buf: Vec<u8> = vec![];
 
+    eprintln!("SPANS {:#?}", self.spans);
     eprintln!("BUFFER {:#?}", self.nodes);
 
     // The buffer starts with the serialized AST first, because that
@@ -530,7 +532,6 @@ impl SerializeCtx {
     // Spans are rarely needed, so they're stored in a separate array.
     // They're indexed by the node id.
     let offset_spans = buf.len();
-    append_usize(&mut buf, self.spans.len());
     for v in &self.spans {
       append_u32(&mut buf, *v);
     }

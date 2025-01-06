@@ -422,13 +422,12 @@ function toJsValue(ctx, idx) {
   let out = node;
   let skip = 0;
 
-  // type + parentId + SpanLo + SpanHi
-  idx += 1 + 4 + 4 + 4;
+  let offset = readPropOffset(buf, idx);
 
-  const count = buf[idx++];
+  const count = buf[offset++];
   for (let i = 0; i < count; i++) {
-    const prop = buf[idx++];
-    const kind = buf[idx++];
+    const prop = buf[offset++];
+    const kind = buf[offset++];
     const name = getString(ctx.strTable, ctx.strByProp[prop]);
     if (skip > 0) {
       skip--;
@@ -439,34 +438,34 @@ function toJsValue(ctx, idx) {
     }
 
     if (kind === PropFlags.Ref) {
-      const v = readU32(buf, idx);
-      idx += 4;
+      const v = readU32(buf, offset);
+      offset += 4;
       out[name] = v === 0 ? null : toJsValue(ctx, v);
     } else if (kind === PropFlags.RefArr) {
-      const len = readU32(buf, idx);
-      idx += 4;
+      const len = readU32(buf, offset);
+      offset += 4;
       const nodes = new Array(len);
       for (let i = 0; i < len; i++) {
-        const v = readU32(buf, idx);
+        const v = readU32(buf, offset);
         if (v === 0) continue;
         nodes[i] = toJsValue(ctx, v);
-        idx += 4;
+        offset += 4;
       }
       out[name] = nodes;
     } else if (kind === PropFlags.Bool) {
-      const v = buf[idx++];
+      const v = buf[offset++];
       out[name] = v === 1;
     } else if (kind === PropFlags.String) {
-      const v = readU32(buf, idx);
-      idx += 4;
+      const v = readU32(buf, offset);
+      offset += 4;
       out[name] = getString(ctx.strTable, v);
     } else if (kind === PropFlags.Number) {
-      const v = readU32(buf, idx);
-      idx += 4;
+      const v = readU32(buf, offset);
+      offset += 4;
       out[name] = Number(getString(ctx.strTable, v));
     } else if (kind === PropFlags.Regex) {
-      const v = readU32(buf, idx);
-      idx += 4;
+      const v = readU32(buf, offset);
+      offset += 4;
 
       out[name] = readRegex(ctx.strTable, v);
     } else if (kind === PropFlags.Null) {
@@ -474,9 +473,9 @@ function toJsValue(ctx, idx) {
     } else if (kind === PropFlags.Undefined) {
       out[name] = undefined;
     } else if (kind === PropFlags.Obj) {
-      const v = readU32(buf, idx);
+      const v = readU32(buf, offset);
       skip += v;
-      idx += 4;
+      offset += 4;
       const obj = {};
       out = obj;
       out[name] = obj;
