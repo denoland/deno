@@ -5,7 +5,7 @@
 
 import { EventEmitter } from "node:events";
 import { Buffer } from "node:buffer";
-import { promises, read, write } from "node:fs";
+import { Mode, promises, read, write } from "node:fs";
 export type { BigIntStats, Stats } from "ext:deno_node/_fs/_fs_stat.ts";
 import {
   BinaryOptionsArgument,
@@ -148,7 +148,7 @@ export class FileHandle extends EventEmitter {
   stat(options?: { bigint: boolean }): Promise<Stats | BigIntStats> {
     return fsCall(promises.fstat, this, options);
   }
-  chmod(mode: number): Promise<void> {
+  chmod(mode: Mode): Promise<void> {
     assertNotClosed(this, promises.chmod.name);
     return promises.chmod(this.#path, mode);
   }
