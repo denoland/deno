@@ -2042,9 +2042,12 @@ dependencies = [
  "quinn",
  "rustls-tokio-stream",
  "serde",
+ "sha2",
  "socket2",
  "thiserror 2.0.3",
  "tokio",
+ "url",
+ "web-transport-proto",
 ]
 
 [[package]]
@@ -8906,6 +8909,18 @@ checksum = "5a6580f308b1fad9207618087a65c04e7a10bc77e02c8e84e9b00dd4b12fa0bb"
 dependencies = [
  "js-sys",
  "wasm-bindgen",
+]
+
+[[package]]
+name = "web-transport-proto"
+version = "0.2.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6a3806ea43df5817f0d90618c842d28db5946bc18a5db0659b2275c2be48d472"
+dependencies = [
+ "bytes",
+ "http 1.1.0",
+ "thiserror 1.0.64",
+ "url",
 ]
 
 [[package]]
