@@ -409,8 +409,6 @@ impl SerializeCtx {
   where
     P: Into<u8> + Display + Clone,
   {
-    eprintln!("prop: {} set parent {} for {:#?}", prop, parent.0, value);
-
     self.field_header(prop, PropFlags::Ref);
     append_u32(&mut self.field_buf, value.0);
 
