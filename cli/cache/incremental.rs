@@ -14,6 +14,7 @@ use super::cache_db::CacheDB;
 use super::cache_db::CacheDBConfiguration;
 use super::cache_db::CacheDBHash;
 use super::cache_db::CacheFailure;
+use super::FastInsecureHasher;
 
 pub static INCREMENTAL_CACHE_DB: CacheDBConfiguration = CacheDBConfiguration {
   table_initializer: concat!(
@@ -40,6 +41,19 @@ impl IncrementalCache {
     initial_file_paths: &[PathBuf],
   ) -> Self {
     IncrementalCache(IncrementalCacheInner::new(db, state, initial_file_paths))
+  }
+
+  #[allow(unused)]
+  pub fn new_with_state_cb<TState: std::hash::Hash>(
+    db: CacheDB,
+    initial_file_paths: &[PathBuf],
+    state_cb: impl FnOnce(&mut FastInsecureHasher) -> TState,
+  ) -> Self {
+    IncrementalCache(IncrementalCacheInner::new_with_state_cb(
+      db,
+      initial_file_paths,
+      state_cb,
+    ))
   }
 
   pub fn is_file_same(&self, file_path: &Path, file_text: &str) -> bool {
@@ -73,6 +87,16 @@ impl IncrementalCacheInner {
     initial_file_paths: &[PathBuf],
   ) -> Self {
     let state_hash = CacheDBHash::from_source(state);
+    let sql_cache = SqlIncrementalCache::new(db, state_hash);
+    Self::from_sql_incremental_cache(sql_cache, initial_file_paths)
+  }
+
+  fn new_with_state_cb<TState: std::hash::Hash>(
+    db: CacheDB,
+    initial_file_paths: &[PathBuf],
+    state_cb: impl FnOnce(&mut FastInsecureHasher) -> TState,
+  ) -> Self {
+    let state_hash = CacheDBHash::from_callback(state_cb);
     let sql_cache = SqlIncrementalCache::new(db, state_hash);
     Self::from_sql_incremental_cache(sql_cache, initial_file_paths)
   }

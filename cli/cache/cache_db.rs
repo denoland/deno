@@ -34,6 +34,17 @@ impl CacheDBHash {
         .finish(),
     )
   }
+
+  pub fn from_callback<TState: std::hash::Hash>(
+    state_cb: impl FnOnce(&mut FastInsecureHasher) -> TState,
+  ) -> Self {
+    // always write in the deno version just in case
+    // the clearing on deno version change doesn't work
+    let mut hasher = FastInsecureHasher::new_deno_versioned();
+    state_cb(&mut hasher);
+
+    Self::new(hasher.finish())
+  }
 }
 
 impl rusqlite::types::ToSql for CacheDBHash {
