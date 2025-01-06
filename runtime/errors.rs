@@ -47,6 +47,7 @@ use deno_kv::KvErrorKind;
 use deno_kv::KvMutationError;
 use deno_napi::NApiError;
 use deno_net::ops::NetError;
+use deno_net::QuicError;
 use deno_permissions::ChildPermissionError;
 use deno_permissions::NetDescriptorFromUrlParseError;
 use deno_permissions::PathResolveError;
@@ -1589,6 +1590,27 @@ fn get_sync_fetch_error(error: &SyncFetchError) -> &'static str {
   }
 }
 
+fn get_quic_error_class(error: &QuicError) -> &'static str {
+  match error {
+    QuicError::CannotListen => "Error",
+    QuicError::MissingTlsKey => "TypeError",
+    QuicError::InvalidDuration => "TypeError",
+    QuicError::UnableToResolve => "Error",
+    QuicError::StdIo(e) => get_io_error_class(e),
+    QuicError::PermissionCheck(e) => get_permission_check_error_class(e),
+    QuicError::VarIntBoundsExceeded(_) => "RangeError",
+    QuicError::Rustls(_) => "Error",
+    QuicError::Tls(e) => get_tls_error_class(e),
+    QuicError::ConnectionError(_) => "Error",
+    QuicError::ConnectError(_) => "Error",
+    QuicError::SendDatagramError(_) => "Error",
+    QuicError::ClosedStream(_) => "BadResource",
+    QuicError::BadResource(_) => "BadResource",
+    QuicError::MaxStreams(_) => "RangeError",
+    QuicError::Core(e) => get_error_class_name(e).unwrap_or("Error"),
+  }
+}
+
 pub fn get_error_class_name(e: &AnyError) -> Option<&'static str> {
   deno_core::error::get_custom_error_class(e)
     .or_else(|| {
@@ -1824,6 +1846,7 @@ pub fn get_error_class_name(e: &AnyError) -> Option<&'static str> {
       e.downcast_ref::<deno_net::io::MapError>()
         .map(get_net_map_error)
     })
+    .or_else(|| e.downcast_ref::<QuicError>().map(get_quic_error_class))
     .or_else(|| {
       e.downcast_ref::<BroadcastChannelError>()
         .map(get_broadcast_channel_error)
