@@ -48,6 +48,7 @@ use crate::cache::ModuleInfoCache;
 use crate::cache::ParsedSourceCache;
 use crate::colors;
 use crate::errors::get_error_class_name;
+use crate::errors::get_module_graph_error_class;
 use crate::file_fetcher::CliFileFetcher;
 use crate::npm::CliNpmResolver;
 use crate::resolver::CjsTracker;
@@ -161,29 +162,15 @@ pub fn graph_walk_errors<'a>(
           roots.contains(error.specifier())
         }
       };
-      let mut message = match &error {
-        ModuleGraphError::ResolutionError(resolution_error) => {
-          enhanced_resolution_error_message(resolution_error)
-        }
-        ModuleGraphError::TypesResolutionError(resolution_error) => {
-          format!(
-            "Failed resolving types. {}",
-            enhanced_resolution_error_message(resolution_error)
-          )
-        }
-        ModuleGraphError::ModuleError(error) => {
-          enhanced_integrity_error_message(error)
-            .or_else(|| enhanced_sloppy_imports_error_message(sys, error))
-            .unwrap_or_else(|| format_deno_graph_error(error))
-        }
-      };
-
-      if let Some(range) = error.maybe_range() {
-        if !is_root && !range.specifier.as_str().contains("/$deno$eval") {
-          message.push_str("\n    at ");
-          message.push_str(&format_range_with_colors(range));
-        }
-      }
+      let message = enhance_graph_error(
+        sys,
+        &error,
+        if is_root {
+          EnhanceGraphErrorMode::HideRange
+        } else {
+          EnhanceGraphErrorMode::ShowRange
+        },
+      );
 
       if graph.graph_kind() == GraphKind::TypesOnly
         && matches!(
@@ -195,8 +182,59 @@ pub fn graph_walk_errors<'a>(
         return None;
       }
 
-      Some(custom_error(get_error_class_name(&error.into()), message))
+      if graph.graph_kind().include_types()
+        && (message.contains(RUN_WITH_SLOPPY_IMPORTS_MSG)
+          || matches!(
+            error,
+            ModuleGraphError::ModuleError(ModuleError::Missing(..))
+          ))
+      {
+        // ignore and let typescript surface this as a diagnostic instead
+        log::debug!("Ignoring: {}", message);
+        return None;
+      }
+
+      Some(custom_error(get_module_graph_error_class(&error), message))
     })
+}
+
+#[derive(Debug, PartialEq, Eq)]
+pub enum EnhanceGraphErrorMode {
+  ShowRange,
+  HideRange,
+}
+
+pub fn enhance_graph_error(
+  sys: &CliSys,
+  error: &ModuleGraphError,
+  mode: EnhanceGraphErrorMode,
+) -> String {
+  let mut message = match &error {
+    ModuleGraphError::ResolutionError(resolution_error) => {
+      enhanced_resolution_error_message(resolution_error)
+    }
+    ModuleGraphError::TypesResolutionError(resolution_error) => {
+      format!(
+        "Failed resolving types. {}",
+        enhanced_resolution_error_message(resolution_error)
+      )
+    }
+    ModuleGraphError::ModuleError(error) => {
+      enhanced_integrity_error_message(error)
+        .or_else(|| enhanced_sloppy_imports_error_message(sys, error))
+        .unwrap_or_else(|| format_deno_graph_error(error))
+    }
+  };
+
+  if let Some(range) = error.maybe_range() {
+    if mode == EnhanceGraphErrorMode::ShowRange
+      && !range.specifier.as_str().contains("/$deno$eval")
+    {
+      message.push_str("\n    at ");
+      message.push_str(&format_range_with_colors(range));
+    }
+  }
+  message
 }
 
 pub fn graph_exit_integrity_errors(graph: &ModuleGraph) {
@@ -833,6 +871,9 @@ pub fn enhanced_resolution_error_message(error: &ResolutionError) -> String {
   message
 }
 
+static RUN_WITH_SLOPPY_IMPORTS_MSG: &str =
+  "or run with --unstable-sloppy-imports";
+
 fn enhanced_sloppy_imports_error_message(
   sys: &CliSys,
   error: &ModuleError,
@@ -840,17 +881,28 @@ fn enhanced_sloppy_imports_error_message(
   match error {
     ModuleError::LoadingErr(specifier, _, ModuleLoadError::Loader(_)) // ex. "Is a directory" error
     | ModuleError::Missing(specifier, _) => {
-      let additional_message = CliSloppyImportsResolver::new(SloppyImportsCachedFs::new(sys.clone()))
-        .resolve(specifier, SloppyImportsResolutionKind::Execution)?
-        .as_suggestion_message();
+      let additional_message = maybe_additional_sloppy_imports_message(sys, specifier)?;
       Some(format!(
-        "{} {} or run with --unstable-sloppy-imports",
+        "{} {}",
         error,
         additional_message,
       ))
     }
     _ => None,
   }
+}
+
+pub fn maybe_additional_sloppy_imports_message(
+  sys: &CliSys,
+  specifier: &ModuleSpecifier,
+) -> Option<String> {
+  Some(format!(
+    "{} {}",
+    CliSloppyImportsResolver::new(SloppyImportsCachedFs::new(sys.clone()))
+      .resolve(specifier, SloppyImportsResolutionKind::Execution)?
+      .as_suggestion_message(),
+    RUN_WITH_SLOPPY_IMPORTS_MSG
+  ))
 }
 
 fn enhanced_integrity_error_message(err: &ModuleError) -> Option<String> {

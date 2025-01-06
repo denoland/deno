@@ -36,6 +36,7 @@ use deno_graph::JsModule;
 use deno_graph::JsonModule;
 use deno_graph::Module;
 use deno_graph::ModuleGraph;
+use deno_graph::ModuleGraphError;
 use deno_graph::Resolution;
 use deno_graph::WasmModule;
 use deno_runtime::code_cache;
@@ -58,14 +59,18 @@ use crate::cache::CodeCache;
 use crate::cache::FastInsecureHasher;
 use crate::cache::ParsedSourceCache;
 use crate::emit::Emitter;
+use crate::errors::get_module_error_class;
 use crate::graph_container::MainModuleGraphContainer;
 use crate::graph_container::ModuleGraphContainer;
 use crate::graph_container::ModuleGraphUpdatePermit;
+use crate::graph_util::enhance_graph_error;
 use crate::graph_util::CreateGraphOptions;
+use crate::graph_util::EnhanceGraphErrorMode;
 use crate::graph_util::ModuleGraphBuilder;
 use crate::node::CliNodeCodeTranslator;
 use crate::node::CliNodeResolver;
 use crate::npm::CliNpmResolver;
+use crate::npm::NpmRegistryReadPermissionChecker;
 use crate::resolver::CjsTracker;
 use crate::resolver::CliNpmReqResolver;
 use crate::resolver::CliResolver;
@@ -222,9 +227,10 @@ struct SharedCliModuleLoaderState {
   module_load_preparer: Arc<ModuleLoadPreparer>,
   node_code_translator: Arc<CliNodeCodeTranslator>,
   node_resolver: Arc<CliNodeResolver>,
+  npm_module_loader: NpmModuleLoader,
+  npm_registry_permission_checker: Arc<NpmRegistryReadPermissionChecker>,
   npm_req_resolver: Arc<CliNpmReqResolver>,
   npm_resolver: Arc<dyn CliNpmResolver>,
-  npm_module_loader: NpmModuleLoader,
   parsed_source_cache: Arc<ParsedSourceCache>,
   resolver: Arc<CliResolver>,
   sys: CliSys,
@@ -282,9 +288,10 @@ impl CliModuleLoaderFactory {
     module_load_preparer: Arc<ModuleLoadPreparer>,
     node_code_translator: Arc<CliNodeCodeTranslator>,
     node_resolver: Arc<CliNodeResolver>,
+    npm_module_loader: NpmModuleLoader,
+    npm_registry_permission_checker: Arc<NpmRegistryReadPermissionChecker>,
     npm_req_resolver: Arc<CliNpmReqResolver>,
     npm_resolver: Arc<dyn CliNpmResolver>,
-    npm_module_loader: NpmModuleLoader,
     parsed_source_cache: Arc<ParsedSourceCache>,
     resolver: Arc<CliResolver>,
     sys: CliSys,
@@ -308,9 +315,10 @@ impl CliModuleLoaderFactory {
         module_load_preparer,
         node_code_translator,
         node_resolver,
+        npm_module_loader,
+        npm_registry_permission_checker,
         npm_req_resolver,
         npm_resolver,
-        npm_module_loader,
         parsed_source_cache,
         resolver,
         sys,
@@ -349,7 +357,10 @@ impl CliModuleLoaderFactory {
       sys: self.shared.sys.clone(),
       graph_container,
       in_npm_pkg_checker: self.shared.in_npm_pkg_checker.clone(),
-      npm_resolver: self.shared.npm_resolver.clone(),
+      npm_registry_permission_checker: self
+        .shared
+        .npm_registry_permission_checker
+        .clone(),
     });
     CreateModuleLoaderResult {
       module_loader,
@@ -697,7 +708,21 @@ impl<TGraphContainer: ModuleGraphContainer>
       unreachable!("Deno bug. {} was misconfigured internally.", specifier);
     }
 
-    match graph.get(specifier) {
+    let maybe_module = match graph.try_get(specifier) {
+      Ok(module) => module,
+      Err(err) => {
+        return Err(custom_error(
+          get_module_error_class(err),
+          enhance_graph_error(
+            &self.shared.sys,
+            &ModuleGraphError::ModuleError(err.clone()),
+            EnhanceGraphErrorMode::ShowRange,
+          ),
+        ))
+      }
+    };
+
+    match maybe_module {
       Some(deno_graph::Module::Json(JsonModule {
         source,
         media_type,
@@ -1096,7 +1121,7 @@ struct CliNodeRequireLoader<TGraphContainer: ModuleGraphContainer> {
   sys: CliSys,
   graph_container: TGraphContainer,
   in_npm_pkg_checker: Arc<dyn InNpmPackageChecker>,
-  npm_resolver: Arc<dyn CliNpmResolver>,
+  npm_registry_permission_checker: Arc<NpmRegistryReadPermissionChecker>,
 }
 
 impl<TGraphContainer: ModuleGraphContainer> NodeRequireLoader
@@ -1113,7 +1138,9 @@ impl<TGraphContainer: ModuleGraphContainer> NodeRequireLoader
         return Ok(std::borrow::Cow::Borrowed(path));
       }
     }
-    self.npm_resolver.ensure_read_permission(permissions, path)
+    self
+      .npm_registry_permission_checker
+      .ensure_read_permission(permissions, path)
   }
 
   fn load_text_file_lossy(

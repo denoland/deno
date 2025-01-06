@@ -33,7 +33,6 @@ use deno_npm::NpmSystemInfo;
 use deno_path_util::fs::atomic_write_file_with_retries;
 use deno_path_util::fs::canonicalize_path_maybe_not_exists;
 use deno_resolver::npm::normalize_pkg_name_for_node_modules_deno_folder;
-use deno_runtime::deno_node::NodePermissions;
 use deno_semver::package::PackageNv;
 use deno_semver::StackString;
 use node_resolver::errors::PackageFolderResolveError;
@@ -47,7 +46,6 @@ use sys_traits::FsMetadata;
 use super::super::resolution::NpmResolution;
 use super::common::bin_entries;
 use super::common::NpmPackageFsResolver;
-use super::common::RegistryReadPermissionChecker;
 use crate::args::LifecycleScriptsConfig;
 use crate::args::NpmInstallDepsProvider;
 use crate::cache::CACHE_PERM;
@@ -75,7 +73,6 @@ pub struct LocalNpmPackageResolver {
   root_node_modules_path: PathBuf,
   root_node_modules_url: Url,
   system_info: NpmSystemInfo,
-  registry_read_permission_checker: RegistryReadPermissionChecker,
   lifecycle_scripts: LifecycleScriptsConfig,
 }
 
@@ -98,10 +95,6 @@ impl LocalNpmPackageResolver {
       progress_bar,
       resolution,
       tarball_cache,
-      registry_read_permission_checker: RegistryReadPermissionChecker::new(
-        sys.clone(),
-        node_modules_folder.clone(),
-      ),
       sys,
       root_node_modules_url: Url::from_directory_path(&node_modules_folder)
         .unwrap(),
@@ -275,16 +268,6 @@ impl NpmPackageFsResolver for LocalNpmPackageResolver {
     )
     .await
   }
-
-  fn ensure_read_permission<'a>(
-    &self,
-    permissions: &mut dyn NodePermissions,
-    path: &'a Path,
-  ) -> Result<Cow<'a, Path>, AnyError> {
-    self
-      .registry_read_permission_checker
-      .ensure_registry_read_permission(permissions, path)
-  }
 }
 
 /// `node_modules/.deno/<package>/node_modules/<package_name>`
@@ -450,7 +433,11 @@ async fn sync_resolution_with_fs(
         deno_core::unsync::spawn_blocking({
           let package_path = package_path.clone();
           move || {
-            clone_dir_recursive(&cache_folder, &package_path)?;
+            clone_dir_recursive(
+              &crate::sys::CliSys::default(),
+              &cache_folder,
+              &package_path,
+            )?;
             // write out a file that indicates this folder has been initialized
             fs::write(initialized_file, tags)?;
 
@@ -507,7 +494,11 @@ async fn sync_resolution_with_fs(
         &package.id.nv.name,
       );
 
-      clone_dir_recursive(&source_path, &package_path)?;
+      clone_dir_recursive(
+        &crate::sys::CliSys::default(),
+        &source_path,
+        &package_path,
+      )?;
       // write out a file that indicates this folder has been initialized
       fs::write(initialized_file, "")?;
     }
@@ -1074,7 +1065,8 @@ fn symlink_package_dir(
   }
   #[cfg(not(windows))]
   {
-    symlink_dir(&old_path_relative, new_path).map_err(Into::into)
+    symlink_dir(&crate::sys::CliSys::default(), &old_path_relative, new_path)
+      .map_err(Into::into)
   }
 }
 
@@ -1096,7 +1088,8 @@ fn junction_or_symlink_dir(
       .context("Failed creating junction in node_modules folder");
   }
 
-  match symlink_dir(old_path_relative, new_path) {
+  match symlink_dir(&crate::sys::CliSys::default(), old_path_relative, new_path)
+  {
     Ok(()) => Ok(()),
     Err(symlink_err)
       if symlink_err.kind() == std::io::ErrorKind::PermissionDenied =>
