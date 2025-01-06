@@ -25,6 +25,7 @@ use deno_core::RcRef;
 use deno_core::Resource;
 use deno_core::ResourceId;
 use deno_core::ToJsBuffer;
+use deno_error::JsErrorBox;
 use deno_io::fs::FileResource;
 use deno_io::ChildStderrResource;
 use deno_io::ChildStdinResource;
@@ -108,7 +109,7 @@ impl StdioOrRid {
       StdioOrRid::Stdio(val) => Ok(val.as_stdio()),
       StdioOrRid::Rid(rid) => {
         Ok(FileResource::with_file(state, *rid, |file| {
-          file.as_stdio().map_err(JsErrorBox::from_err)
+          file.as_stdio().map_err(deno_error::JsErrorBox::from_err)
         })?)
       }
     }

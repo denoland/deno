@@ -1,15 +1,20 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
-use crate::NodePermissions;
-use crate::NodeRequireLoaderRc;
+use std::borrow::Cow;
+use std::path::Path;
+use std::path::PathBuf;
+
 use deno_core::op2;
 use deno_core::url::Url;
 use deno_core::OpState;
 use deno_error::JsErrorBox;
-use deno_fs::FileSystemRc;
-use std::borrow::Cow;
-use std::path::Path;
-use std::path::PathBuf;
+
+use sys_traits::FsCanonicalize;
+use sys_traits::FsMetadata;
+
+use crate::ExtNodeSys;
+use crate::NodePermissions;
+use crate::NodeRequireLoaderRc;
 
 #[must_use = "the resolved return value to mitigate time-of-check to time-of-use issues"]
 fn ensure_read_permission<'a, P>(
@@ -57,6 +62,13 @@ pub enum WorkerThreadsFilenameError {
     #[from]
     #[inherit]
     deno_io::fs::FsError,
+  ),
+  #[class(inherit)]
+  #[error(transparent)]
+  Io(
+    #[from]
+    #[inherit]
+    std::io::Error,
   ),
 }
 

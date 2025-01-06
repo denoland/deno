@@ -13,6 +13,15 @@ use deno_npm::registry::NpmPackageVersionDistInfo;
 use deno_semver::package::PackageNv;
 use deno_unsync::sync::MultiRuntimeAsyncValueCreator;
 use http::StatusCode;
+use sys_traits::FsCreateDirAll;
+use sys_traits::FsHardLink;
+use sys_traits::FsMetadata;
+use sys_traits::FsOpen;
+use sys_traits::FsReadDir;
+use sys_traits::FsRemoveFile;
+use sys_traits::FsRename;
+use sys_traits::SystemRandom;
+use sys_traits::ThreadSleep;
 
 use crate::remote::maybe_auth_header_for_npm_registry;
 use crate::tarball_extract::verify_and_extract_tarball;

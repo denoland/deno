@@ -5,9 +5,9 @@ use std::io::Cursor;
 use std::net::IpAddr;
 use std::sync::Arc;
 
+use deno_error::JsErrorBox;
 pub use deno_native_certs;
 pub use rustls;
-use deno_error::JsErrorBox;
 use rustls::client::danger::HandshakeSignatureValid;
 use rustls::client::danger::ServerCertVerified;
 use rustls::client::danger::ServerCertVerifier;

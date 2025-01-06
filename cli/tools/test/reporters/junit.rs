@@ -1,10 +1,12 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
-use super::fmt::to_relative_path_or_remote_url;
-use super::*;
-use deno_core::anyhow::Context;
 use std::collections::VecDeque;
 use std::path::PathBuf;
+
+use deno_core::anyhow::Context;
+
+use super::fmt::to_relative_path_or_remote_url;
+use super::*;
 
 pub struct JunitTestReporter {
   cwd: Url,

@@ -31,6 +31,9 @@ mod impl_ {
   use deno_core::ResourceId;
   use deno_core::ToV8;
   use deno_error::JsErrorBox;
+  use deno_io::BiPipe;
+  use deno_io::BiPipeRead;
+  use deno_io::BiPipeWrite;
   use memchr::memchr;
   use pin_project_lite::pin_project;
   use serde::Serialize;

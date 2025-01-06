@@ -1190,7 +1190,8 @@ pub enum AsymmetricPrivateKeyJwkError {
   JwkExportNotImplementedForKeyType,
 }
 
-#[derive(Debug, thiserror::Error)]
+#[derive(Debug, thiserror::Error, deno_error::JsError)]
+#[class(type)]
 pub enum AsymmetricPublicKeyJwkError {
   #[error("key is not an asymmetric public key")]
   KeyIsNotAsymmetricPublicKey,
@@ -2494,12 +2495,15 @@ pub fn op_node_export_private_key_pem(
   Ok(String::from_utf8(out).expect("invalid pem is not possible"))
 }
 
-#[derive(Debug, thiserror::Error)]
+#[derive(Debug, thiserror::Error, deno_error::JsError)]
 pub enum ExportPrivateKeyJwkError {
+  #[class(inherit)]
   #[error(transparent)]
   AsymmetricPublicKeyJwk(#[from] AsymmetricPrivateKeyJwkError),
+  #[class(type)]
   #[error("very large data")]
   VeryLargeData,
+  #[class(generic)]
   #[error(transparent)]
   Der(#[from] der::Error),
 }

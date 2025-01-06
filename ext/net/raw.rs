@@ -1,5 +1,8 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
+use std::borrow::Cow;
+use std::rc::Rc;
+
 use deno_core::error::ResourceError;
 use deno_core::AsyncRefCell;
 use deno_core::CancelHandle;
@@ -7,8 +10,6 @@ use deno_core::Resource;
 use deno_core::ResourceId;
 use deno_core::ResourceTable;
 use deno_error::JsErrorBox;
-use std::borrow::Cow;
-use std::rc::Rc;
 
 use crate::io::TcpStreamResource;
 use crate::ops_tls::TlsStreamResource;

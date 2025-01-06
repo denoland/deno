@@ -13,6 +13,7 @@ use deno_core::v8;
 use deno_core::FastString;
 use deno_core::JsRuntimeInspector;
 use deno_core::OpState;
+use deno_error::JsErrorBox;
 use deno_package_json::PackageJsonRc;
 use deno_path_util::normalize_path;
 use deno_path_util::url_from_file_path;
@@ -91,6 +92,13 @@ pub enum RequireErrorKind {
   ),
   #[class(inherit)]
   #[error(transparent)]
+  Io(
+    #[from]
+    #[inherit]
+    std::io::Error,
+  ),
+  #[class(inherit)]
+  #[error(transparent)]
   ReadModule(
     #[from]
     #[inherit]
@@ -98,7 +106,7 @@ pub enum RequireErrorKind {
   ),
   #[class(inherit)]
   #[error("Unable to get CWD: {0}")]
-  UnableToGetCwd(#[inherit] deno_io::fs::FsError),
+  UnableToGetCwd(#[inherit] std::io::Error),
 }
 
 #[op2]
@@ -361,7 +369,7 @@ pub fn op_require_real_path<
     .map_err(RequireErrorKind::Permission)?;
   let sys = state.borrow::<TSys>();
   let canonicalized_path =
-    deno_path_util::strip_unc_prefix(sys.fs_canonicalize(&path)?);
+    deno_path_util::strip_unc_prefix(sys.fs_canonicalize(&path).map_err(RequireErrorKind::Io)?);
   Ok(canonicalized_path.to_string_lossy().into_owned())
 }
 

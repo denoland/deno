@@ -1194,10 +1194,10 @@ impl Client {
 pub enum ReqBody {
   Full(http_body_util::Full<Bytes>),
   Empty(http_body_util::Empty<Bytes>),
-  Streaming(BoxBody<Bytes, deno_core::error::AnyError>),
+  Streaming(BoxBody<Bytes, JsErrorBox>),
 }
 
-pub type ResBody = BoxBody<Bytes, deno_core::error::AnyError>;
+pub type ResBody = BoxBody<Bytes, JsErrorBox>;
 
 impl ReqBody {
   pub fn full(bytes: Bytes) -> Self {
@@ -1210,7 +1210,7 @@ impl ReqBody {
 
   pub fn streaming<B>(body: B) -> Self
   where
-    B: hyper::body::Body<Data = Bytes, Error = deno_core::error::AnyError>
+    B: hyper::body::Body<Data = Bytes, Error = JsErrorBox>
       + Send
       + Sync
       + 'static,
@@ -1221,7 +1221,7 @@ impl ReqBody {
 
 impl hyper::body::Body for ReqBody {
   type Data = Bytes;
-  type Error = deno_core::error::AnyError;
+  type Error = JsErrorBox;
 
   fn poll_frame(
     mut self: Pin<&mut Self>,

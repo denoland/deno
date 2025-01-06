@@ -12,7 +12,6 @@ use deno_core::ModuleCodeString;
 use deno_core::ModuleName;
 use deno_core::SourceMapData;
 use deno_error::JsErrorBox;
-use std::path::Path;
 
 extension!(runtime,
   deps = [

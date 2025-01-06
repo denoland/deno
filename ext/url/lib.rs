@@ -2,6 +2,8 @@
 
 mod urlpattern;
 
+use std::path::PathBuf;
+
 use deno_core::op2;
 use deno_core::url::form_urlencoded;
 use deno_core::url::quirks;
@@ -9,7 +11,6 @@ use deno_core::url::Url;
 use deno_core::JsBuffer;
 use deno_core::OpState;
 use deno_error::JsErrorBox;
-use std::path::PathBuf;
 
 use crate::urlpattern::op_urlpattern_parse;
 use crate::urlpattern::op_urlpattern_process_match_input;

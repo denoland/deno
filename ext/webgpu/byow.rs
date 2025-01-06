@@ -1,9 +1,5 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
-use crate::surface::WebGpuSurface;
-use deno_core::op2;
-use deno_core::OpState;
-use deno_core::ResourceId;
 use std::ffi::c_void;
 #[cfg(any(
   target_os = "linux",
@@ -12,6 +8,12 @@ use std::ffi::c_void;
   target_os = "openbsd"
 ))]
 use std::ptr::NonNull;
+
+use deno_core::op2;
+use deno_core::OpState;
+use deno_core::ResourceId;
+
+use crate::surface::WebGpuSurface;
 
 #[derive(Debug, thiserror::Error, deno_error::JsError)]
 pub enum ByowError {

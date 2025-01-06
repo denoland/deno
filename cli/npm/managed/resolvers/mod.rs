@@ -9,7 +9,9 @@ use std::sync::Arc;
 
 use deno_npm::NpmSystemInfo;
 
+pub use self::common::EnsureRegistryReadPermissionError;
 pub use self::common::NpmPackageFsResolver;
+pub use self::common::NpmPackageFsResolverPackageFolderError;
 use self::global::GlobalNpmPackageResolver;
 use self::local::LocalNpmPackageResolver;
 use super::resolution::NpmResolution;
@@ -19,15 +21,6 @@ use crate::npm::CliNpmCache;
 use crate::npm::CliNpmTarballCache;
 use crate::sys::CliSys;
 use crate::util::progress_bar::ProgressBar;
-
-pub use self::common::EnsureRegistryReadPermissionError;
-pub use self::common::NpmPackageFsResolver;
-pub use self::common::NpmPackageFsResolverPackageFolderError;
-
-use self::global::GlobalNpmPackageResolver;
-use self::local::LocalNpmPackageResolver;
-
-use super::resolution::NpmResolution;
 
 #[allow(clippy::too_many_arguments)]
 pub fn create_npm_fs_resolver(

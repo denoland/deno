@@ -10,15 +10,12 @@ use deno_resolver::npm::CliNpmReqResolver;
 use deno_runtime::ops::process::NpmProcessStateProvider;
 use node_resolver::NpmPackageFolderResolver;
 
+use super::managed;
 use super::CliNpmResolver;
 use super::InnerCliNpmResolverRef;
 use crate::args::NpmProcessState;
 use crate::args::NpmProcessStateKind;
 use crate::sys::CliSys;
-
-use super::managed;
-use super::CliNpmResolver;
-use super::InnerCliNpmResolverRef;
 
 pub type CliByonmNpmResolverCreateOptions =
   ByonmNpmResolverCreateOptions<CliSys>;

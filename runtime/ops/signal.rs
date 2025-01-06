@@ -1,5 +1,4 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
-use deno_core::error::ResourceError;
 use std::borrow::Cow;
 use std::cell::RefCell;
 #[cfg(unix)]
@@ -9,6 +8,8 @@ use std::rc::Rc;
 use std::sync::atomic::AtomicBool;
 #[cfg(unix)]
 use std::sync::Arc;
+
+use deno_core::error::ResourceError;
 use deno_core::op2;
 use deno_core::AsyncRefCell;
 use deno_core::CancelFuture;

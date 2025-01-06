@@ -28,7 +28,7 @@ use deno_core::CancelFuture;
 use deno_core::CancelHandle;
 use deno_core::CancelTryFuture;
 use deno_core::Canceled;
-use deno_core::JsError;
+use deno_error::JsError;
 use deno_core::OpState;
 use deno_core::RcRef;
 use deno_core::Resource;

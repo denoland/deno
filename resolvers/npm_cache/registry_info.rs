@@ -1,5 +1,6 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
+use std::any::Any;
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::sync::Arc;
@@ -17,6 +18,16 @@ use deno_npm::registry::NpmRegistryApi;
 use deno_npm::registry::NpmRegistryPackageInfoLoadError;
 use deno_unsync::sync::AtomicFlag;
 use deno_unsync::sync::MultiRuntimeAsyncValueCreator;
+use sys_traits::FsCreateDirAll;
+use sys_traits::FsHardLink;
+use sys_traits::FsMetadata;
+use sys_traits::FsOpen;
+use sys_traits::FsReadDir;
+use sys_traits::FsRemoveFile;
+use sys_traits::FsRename;
+use sys_traits::SystemRandom;
+use sys_traits::ThreadSleep;
+use thiserror::Error;
 
 use crate::remote::maybe_auth_header_for_npm_registry;
 use crate::NpmCache;
@@ -28,7 +39,7 @@ type LoadFuture = LocalBoxFuture<'static, LoadResult>;
 
 #[derive(Debug, Error)]
 #[error(transparent)]
-pub struct AnyhowJsError(pub AnyError);
+pub struct AnyhowJsError(pub deno_core::error::AnyError);
 
 impl deno_error::JsErrorClass for AnyhowJsError {
   fn get_class(&self) -> &'static str {
@@ -41,13 +52,15 @@ impl deno_error::JsErrorClass for AnyhowJsError {
 
   fn get_additional_properties(
     &self,
-  ) -> Option<
-    Vec<(
-      std::borrow::Cow<'static, str>,
-      std::borrow::Cow<'static, str>,
-    )>,
-  > {
-    None
+  ) -> Vec<(
+    std::borrow::Cow<'static, str>,
+    std::borrow::Cow<'static, str>,
+  )> {
+    vec![]
+  }
+
+  fn as_any(&self) -> &dyn Any {
+    self
   }
 }
 

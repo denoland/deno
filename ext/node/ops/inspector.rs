@@ -12,8 +12,6 @@ use deno_core::InspectorSessionOptions;
 use deno_core::JsRuntimeInspector;
 use deno_core::OpState;
 use deno_error::JsErrorBox;
-use std::cell::RefCell;
-use std::rc::Rc;
 
 use crate::NodePermissions;
 

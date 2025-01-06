@@ -8,7 +8,6 @@ use deno_core::error::CoreError;
 use deno_core::serde_json;
 use deno_core::serde_json::Value;
 use deno_error::JsErrorBox;
-use std::cell::RefCell;
 use tokio::sync::mpsc::channel;
 use tokio::sync::mpsc::unbounded_channel;
 use tokio::sync::mpsc::Receiver;

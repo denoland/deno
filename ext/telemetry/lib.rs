@@ -18,8 +18,6 @@ use std::thread;
 use std::time::Duration;
 use std::time::SystemTime;
 
-use deno_core::anyhow;
-use deno_core::anyhow::anyhow;
 use deno_core::futures::channel::mpsc;
 use deno_core::futures::channel::mpsc::UnboundedSender;
 use deno_core::futures::future::BoxFuture;
@@ -29,9 +27,11 @@ use deno_core::futures::Stream;
 use deno_core::futures::StreamExt;
 use deno_core::op2;
 use deno_core::v8;
+use deno_core::v8::DataError;
 use deno_core::GarbageCollected;
 use deno_core::OpState;
 use deno_error::JsError;
+use deno_error::JsErrorBox;
 use once_cell::sync::Lazy;
 use once_cell::sync::OnceCell;
 use opentelemetry::logs::AnyValue;
@@ -563,7 +563,7 @@ static OTEL_GLOBALS: OnceCell<OtelGlobals> = OnceCell::new();
 pub fn init(
   rt_config: OtelRuntimeConfig,
   config: &OtelConfig,
-) -> anyhow::Result<()> {
+) -> deno_core::anyhow::Result<()> {
   // Parse the `OTEL_EXPORTER_OTLP_PROTOCOL` variable. The opentelemetry_*
   // crates don't do this automatically.
   // TODO(piscisaureus): enable GRPC support.
@@ -572,13 +572,13 @@ pub fn init(
     Ok("http/json") => Protocol::HttpJson,
     Ok("") | Err(env::VarError::NotPresent) => Protocol::HttpBinary,
     Ok(protocol) => {
-      return Err(anyhow!(
+      return Err(deno_core::anyhow::anyhow!(
         "Env var OTEL_EXPORTER_OTLP_PROTOCOL specifies an unsupported protocol: {}",
         protocol
       ));
     }
     Err(err) => {
-      return Err(anyhow!(
+      return Err(deno_core::anyhow::anyhow!(
         "Failed to read env var OTEL_EXPORTER_OTLP_PROTOCOL: {}",
         err
       ));
@@ -645,7 +645,7 @@ pub fn init(
     Some("delta") => Temporality::Delta,
     Some("lowmemory") => Temporality::LowMemory,
     Some(other) => {
-      return Err(anyhow!(
+      return Err(deno_core::anyhow::anyhow!(
         "Invalid value for OTEL_EXPORTER_OTLP_METRICS_TEMPORALITY_PREFERENCE: {}",
         other
       ));
@@ -688,7 +688,7 @@ pub fn init(
       meter_provider,
       builtin_instrumentation_scope,
     })
-    .map_err(|_| anyhow!("failed to set otel globals"))?;
+    .map_err(|_| deno_core::anyhow::anyhow!("failed to set otel globals"))?;
 
   Ok(())
 }
@@ -1100,7 +1100,7 @@ impl OtelTracer {
     #[smi] span_kind: u8,
     start_time: Option<f64>,
     #[smi] attribute_count: usize,
-  ) -> Result<OtelSpan, anyhow::Error> {
+  ) -> Result<OtelSpan, JsErrorBox> {
     let OtelGlobals { id_generator, .. } = OTEL_GLOBALS.get().unwrap();
     let span_context;
     let parent_span_id;
@@ -1131,20 +1131,25 @@ impl OtelTracer {
         parent_span_id = SpanId::INVALID;
       }
     }
-    let name = owned_string(scope, name.try_cast()?);
+    let name = owned_string(
+      scope,
+      name
+        .try_cast()
+        .map_err(|e: DataError| JsErrorBox::generic(e.to_string()))?,
+    );
     let span_kind = match span_kind {
       0 => SpanKind::Internal,
       1 => SpanKind::Server,
       2 => SpanKind::Client,
       3 => SpanKind::Producer,
       4 => SpanKind::Consumer,
-      _ => return Err(anyhow!("invalid span kind")),
+      _ => return Err(JsErrorBox::generic("invalid span kind")),
     };
     let start_time = start_time
       .map(|start_time| {
         SystemTime::UNIX_EPOCH
           .checked_add(std::time::Duration::from_secs_f64(start_time))
-          .ok_or_else(|| anyhow!("invalid start time"))
+          .ok_or_else(|| JsErrorBox::generic("invalid start time"))
       })
       .unwrap_or_else(|| Ok(SystemTime::now()))?;
     let span_data = SpanData {
@@ -1176,14 +1181,14 @@ impl OtelTracer {
     #[smi] span_kind: u8,
     start_time: Option<f64>,
     #[smi] attribute_count: usize,
-  ) -> Result<OtelSpan, anyhow::Error> {
+  ) -> Result<OtelSpan, JsErrorBox> {
     let parent_trace_id = parse_trace_id(scope, parent_trace_id);
     if parent_trace_id == TraceId::INVALID {
-      return Err(anyhow!("invalid trace id"));
+      return Err(JsErrorBox::generic("invalid trace id"));
     };
     let parent_span_id = parse_span_id(scope, parent_span_id);
     if parent_span_id == SpanId::INVALID {
-      return Err(anyhow!("invalid span id"));
+      return Err(JsErrorBox::generic("invalid span id"));
     };
     let OtelGlobals { id_generator, .. } = OTEL_GLOBALS.get().unwrap();
     let span_context = SpanContext::new(
@@ -1193,20 +1198,25 @@ impl OtelTracer {
       false,
       TraceState::NONE,
     );
-    let name = owned_string(scope, name.try_cast()?);
+    let name = owned_string(
+      scope,
+      name
+        .try_cast()
+        .map_err(|e: DataError| JsErrorBox::generic(e.to_string()))?,
+    );
     let span_kind = match span_kind {
       0 => SpanKind::Internal,
       1 => SpanKind::Server,
       2 => SpanKind::Client,
       3 => SpanKind::Producer,
       4 => SpanKind::Consumer,
-      _ => return Err(anyhow!("invalid span kind")),
+      _ => return Err(JsErrorBox::generic("invalid span kind")),
     };
     let start_time = start_time
       .map(|start_time| {
         SystemTime::UNIX_EPOCH
           .checked_add(std::time::Duration::from_secs_f64(start_time))
-          .ok_or_else(|| anyhow!("invalid start time"))
+          .ok_or_else(|| JsErrorBox::generic("invalid start time"))
       })
       .unwrap_or_else(|| Ok(SystemTime::now()))?;
     let span_data = SpanData {
@@ -1474,7 +1484,7 @@ impl OtelMeter {
     name: v8::Local<'s, v8::Value>,
     description: v8::Local<'s, v8::Value>,
     unit: v8::Local<'s, v8::Value>,
-  ) -> Result<Instrument, anyhow::Error> {
+  ) -> Result<Instrument, JsErrorBox> {
     create_instrument(
       |name| self.0.f64_counter(name),
       |i| Instrument::Counter(i.build()),
@@ -1483,6 +1493,7 @@ impl OtelMeter {
       description,
       unit,
     )
+    .map_err(|e| JsErrorBox::generic(e.to_string()))
   }
 
   #[cppgc]
@@ -1492,7 +1503,7 @@ impl OtelMeter {
     name: v8::Local<'s, v8::Value>,
     description: v8::Local<'s, v8::Value>,
     unit: v8::Local<'s, v8::Value>,
-  ) -> Result<Instrument, anyhow::Error> {
+  ) -> Result<Instrument, JsErrorBox> {
     create_instrument(
       |name| self.0.f64_up_down_counter(name),
       |i| Instrument::UpDownCounter(i.build()),
@@ -1501,6 +1512,7 @@ impl OtelMeter {
       description,
       unit,
     )
+    .map_err(|e| JsErrorBox::generic(e.to_string()))
   }
 
   #[cppgc]
@@ -1510,7 +1522,7 @@ impl OtelMeter {
     name: v8::Local<'s, v8::Value>,
     description: v8::Local<'s, v8::Value>,
     unit: v8::Local<'s, v8::Value>,
-  ) -> Result<Instrument, anyhow::Error> {
+  ) -> Result<Instrument, JsErrorBox> {
     create_instrument(
       |name| self.0.f64_gauge(name),
       |i| Instrument::Gauge(i.build()),
@@ -1519,6 +1531,7 @@ impl OtelMeter {
       description,
       unit,
     )
+    .map_err(|e| JsErrorBox::generic(e.to_string()))
   }
 
   #[cppgc]
@@ -1529,15 +1542,30 @@ impl OtelMeter {
     description: v8::Local<'s, v8::Value>,
     unit: v8::Local<'s, v8::Value>,
     #[serde] boundaries: Option<Vec<f64>>,
-  ) -> Result<Instrument, anyhow::Error> {
-    let name = owned_string(scope, name.try_cast()?);
+  ) -> Result<Instrument, JsErrorBox> {
+    let name = owned_string(
+      scope,
+      name
+        .try_cast()
+        .map_err(|e: DataError| JsErrorBox::generic(e.to_string()))?,
+    );
     let mut builder = self.0.f64_histogram(name);
     if !description.is_null_or_undefined() {
-      let description = owned_string(scope, description.try_cast()?);
+      let description = owned_string(
+        scope,
+        description
+          .try_cast()
+          .map_err(|e: DataError| JsErrorBox::generic(e.to_string()))?,
+      );
       builder = builder.with_description(description);
     };
     if !unit.is_null_or_undefined() {
-      let unit = owned_string(scope, unit.try_cast()?);
+      let unit = owned_string(
+        scope,
+        unit
+          .try_cast()
+          .map_err(|e: DataError| JsErrorBox::generic(e.to_string()))?,
+      );
       builder = builder.with_unit(unit);
     };
     if let Some(boundaries) = boundaries {
@@ -1554,7 +1582,7 @@ impl OtelMeter {
     name: v8::Local<'s, v8::Value>,
     description: v8::Local<'s, v8::Value>,
     unit: v8::Local<'s, v8::Value>,
-  ) -> Result<Instrument, anyhow::Error> {
+  ) -> Result<Instrument, JsErrorBox> {
     create_async_instrument(
       |name| self.0.f64_observable_counter(name),
       |i| {
@@ -1565,6 +1593,7 @@ impl OtelMeter {
       description,
       unit,
     )
+    .map_err(|e| JsErrorBox::generic(e.to_string()))
   }
 
   #[cppgc]
@@ -1574,7 +1603,7 @@ impl OtelMeter {
     name: v8::Local<'s, v8::Value>,
     description: v8::Local<'s, v8::Value>,
     unit: v8::Local<'s, v8::Value>,
-  ) -> Result<Instrument, anyhow::Error> {
+  ) -> Result<Instrument, JsErrorBox> {
     create_async_instrument(
       |name| self.0.f64_observable_up_down_counter(name),
       |i| {
@@ -1585,6 +1614,7 @@ impl OtelMeter {
       description,
       unit,
     )
+    .map_err(|e| JsErrorBox::generic(e.to_string()))
   }
 
   #[cppgc]
@@ -1594,7 +1624,7 @@ impl OtelMeter {
     name: v8::Local<'s, v8::Value>,
     description: v8::Local<'s, v8::Value>,
     unit: v8::Local<'s, v8::Value>,
-  ) -> Result<Instrument, anyhow::Error> {
+  ) -> Result<Instrument, JsErrorBox> {
     create_async_instrument(
       |name| self.0.f64_observable_gauge(name),
       |i| {
@@ -1605,6 +1635,7 @@ impl OtelMeter {
       description,
       unit,
     )
+    .map_err(|e| JsErrorBox::generic(e.to_string()))
   }
 }
 
@@ -1625,7 +1656,7 @@ fn create_instrument<'a, 'b, T>(
   name: v8::Local<'a, v8::Value>,
   description: v8::Local<'a, v8::Value>,
   unit: v8::Local<'a, v8::Value>,
-) -> Result<Instrument, anyhow::Error> {
+) -> Result<Instrument, v8::DataError> {
   let name = owned_string(scope, name.try_cast()?);
   let mut builder = cb(name);
   if !description.is_null_or_undefined() {
@@ -1647,7 +1678,7 @@ fn create_async_instrument<'a, 'b, T>(
   name: v8::Local<'a, v8::Value>,
   description: v8::Local<'a, v8::Value>,
   unit: v8::Local<'a, v8::Value>,
-) -> Result<Instrument, anyhow::Error> {
+) -> Result<Instrument, DataError> {
   let name = owned_string(scope, name.try_cast()?);
   let mut builder = cb(name);
   if !description.is_null_or_undefined() {

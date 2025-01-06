@@ -11,7 +11,6 @@ use deno_core::OpState;
 
 use crate::FfiPermissions;
 
-
 #[derive(Debug, thiserror::Error, deno_error::JsError)]
 #[class(type)]
 pub enum ReprError {

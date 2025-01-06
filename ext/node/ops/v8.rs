@@ -8,7 +8,6 @@ use deno_core::FastString;
 use deno_core::GarbageCollected;
 use deno_core::ToJsBuffer;
 use deno_error::JsErrorBox;
-use std::ptr::NonNull;
 use v8::ValueDeserializerHelper;
 use v8::ValueSerializerHelper;
 

@@ -14,6 +14,9 @@ use deno_core::parking_lot::Mutex;
 use deno_core::OpState;
 #[cfg(unix)]
 use deno_core::ResourceId;
+use deno_error::builtin_classes::GENERIC_ERROR;
+use deno_error::JsErrorBox;
+use deno_error::JsErrorClass;
 #[cfg(windows)]
 use deno_io::WinTtyState;
 #[cfg(unix)]
@@ -25,18 +28,6 @@ use rustyline::Editor;
 use rustyline::KeyCode;
 use rustyline::KeyEvent;
 use rustyline::Modifiers;
-
-#[cfg(unix)]
-use deno_core::ResourceId;
-use deno_error::builtin_classes::GENERIC_ERROR;
-use deno_error::JsErrorBox;
-use deno_error::JsErrorClass;
-#[cfg(unix)]
-use nix::sys::termios;
-#[cfg(unix)]
-use std::cell::RefCell;
-#[cfg(unix)]
-use std::collections::HashMap;
 
 #[cfg(unix)]
 #[derive(Default, Clone)]
@@ -59,11 +50,12 @@ impl TtyModeStore {
   }
 }
 
-use crate::ops::process::JsNixError;
 #[cfg(windows)]
 use winapi::shared::minwindef::DWORD;
 #[cfg(windows)]
 use winapi::um::wincon;
+
+use crate::ops::process::JsNixError;
 
 deno_core::extension!(
   deno_tty,
