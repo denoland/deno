@@ -1207,7 +1207,11 @@ mod tests {
             content: c.into(),
           })
         })
-        .map_err(|e| Arc::new(JsErrorBox::generic(e.to_string())).into());
+        .map_err(|e| {
+          deno_graph::source::LoadError::Other(Arc::new(JsErrorBox::generic(
+            e.to_string(),
+          )))
+        });
       Box::pin(future::ready(response))
     }
   }

@@ -906,7 +906,7 @@ pub fn maybe_additional_sloppy_imports_message(
 }
 
 fn enhanced_integrity_error_message(err: &ModuleError) -> Option<String> {
-  match dbg!(err) {
+  match err {
     ModuleError::LoadingErr(
       specifier,
       _,

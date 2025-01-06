@@ -194,9 +194,9 @@ impl Loader for FetchCacher {
         LoaderCacheSetting::Use => None,
         LoaderCacheSetting::Reload => {
           if matches!(file_fetcher.cache_setting(), CacheSetting::Only) {
-            return Err(Arc::new(JsErrorBox::generic(
+            return Err(deno_graph::source::LoadError::Other(Arc::new(JsErrorBox::generic(
               "Could not resolve version constraint using only cached data. Try running again without --cached-only"
-            )).into());
+            ))));
           }
           Some(CacheSetting::ReloadAll)
         }
@@ -262,19 +262,19 @@ impl Loader for FetchCacher {
                 FetchNoFollowErrorKind::CacheSave  { .. } |
                 FetchNoFollowErrorKind::UnsupportedScheme  { .. } |
                 FetchNoFollowErrorKind::RedirectHeaderParse { .. } |
-                FetchNoFollowErrorKind::InvalidHeader { .. } => Err(JsErrorBox::from_err(err)),
+                FetchNoFollowErrorKind::InvalidHeader { .. } => Err(deno_graph::source::LoadError::Other(Arc::new(JsErrorBox::from_err(err)))),
                 FetchNoFollowErrorKind::NotCached { .. } => {
                   if options.cache_setting == LoaderCacheSetting::Only {
                     Ok(None)
                   } else {
-                    Err(JsErrorBox::from_err(err))
+                    Err(deno_graph::source::LoadError::Other(Arc::new(JsErrorBox::from_err(err))))
                   }
                 },
                 FetchNoFollowErrorKind::ChecksumIntegrity(err) => {
                   // convert to the equivalent deno_graph error so that it
                   // enhances it if this is passed to deno_graph
                   Err(
-                    JsErrorBox::from_err( deno_graph::source::ChecksumIntegrityError {
+                    deno_graph::source::LoadError::ChecksumIntegrity(deno_graph::source::ChecksumIntegrityError {
                       actual: err.actual,
                       expected: err.expected,
                     }),
@@ -282,9 +282,9 @@ impl Loader for FetchCacher {
                 }
               }
             },
-            CliFetchNoFollowErrorKind::PermissionCheck(permission_check_error) => Err(JsErrorBox::from_err(permission_check_error)),
+            CliFetchNoFollowErrorKind::PermissionCheck(permission_check_error) => Err(deno_graph::source::LoadError::Other(Arc::new(JsErrorBox::from_err(permission_check_error)))),
           }
-        }).map_err(|e| Arc::new(e).into())
+        })
     }
     .boxed_local()
   }
