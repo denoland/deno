@@ -447,8 +447,9 @@ fn resolve_flags_and_init(
     }
   };
 
-  deno_telemetry::init(crate::args::otel_runtime_config())?;
-  util::logger::init(flags.log_level, Some(flags.otel_config()));
+  let otel_config = flags.otel_config();
+  deno_telemetry::init(crate::args::otel_runtime_config(), &otel_config)?;
+  util::logger::init(flags.log_level, Some(otel_config));
 
   // TODO(bartlomieju): remove in Deno v2.5 and hard error then.
   if flags.unstable_config.legacy_flag_enabled {

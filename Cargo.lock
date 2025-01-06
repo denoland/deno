@@ -1355,7 +1355,7 @@ dependencies = [
  "typed-arena",
  "uuid",
  "walkdir",
- "which 4.4.2",
+ "which",
  "winapi",
  "winres",
  "zeromq",
@@ -1749,9 +1749,9 @@ dependencies = [
 
 [[package]]
 name = "deno_graph"
-version = "0.86.6"
+version = "0.86.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "83af194ca492ea7b624d21055f933676d3f3d27586de93be31c8f1babcc73510"
+checksum = "ace3acf321fac446636ae605b01723f2120b40ab3d32c6836aeb7d603a8e08f9"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -1903,9 +1903,9 @@ dependencies = [
 
 [[package]]
 name = "deno_media_type"
-version = "0.2.2"
+version = "0.2.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "eaa135b8a9febc9a51c16258e294e268a1276750780d69e46edb31cced2826e4"
+checksum = "a417f8bd3f1074185c4c8ccb6ea6261ae173781596cc358e68ad07aaac11009d"
 dependencies = [
  "data-url",
  "serde",
@@ -1994,7 +1994,6 @@ dependencies = [
  "faster-hex",
  "h2 0.4.4",
  "hkdf",
- "home",
  "http 1.1.0",
  "http-body-util",
  "hyper 1.4.1",
@@ -2177,7 +2176,7 @@ dependencies = [
  "percent-encoding",
  "serde",
  "thiserror 2.0.3",
- "which 4.4.2",
+ "which",
  "winapi",
 ]
 
@@ -2266,7 +2265,7 @@ dependencies = [
  "tokio-metrics",
  "twox-hash",
  "uuid",
- "which 4.4.2",
+ "which",
  "winapi",
  "windows-sys 0.59.0",
 ]
@@ -4517,12 +4516,12 @@ dependencies = [
 
 [[package]]
 name = "junction"
-version = "0.2.0"
+version = "1.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "be39922b087cecaba4e2d5592dedfc8bda5d4a5a1231f143337cca207950b61d"
+checksum = "72bbdfd737a243da3dfc1f99ee8d6e166480f17ab4ac84d7c34aacd73fc7bd16"
 dependencies = [
  "scopeguard",
- "winapi",
+ "windows-sys 0.52.0",
 ]
 
 [[package]]
@@ -7678,9 +7677,9 @@ dependencies = [
 
 [[package]]
 name = "sys_traits"
-version = "0.1.4"
+version = "0.1.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6683465f4e1d8fd75069cbc36c646258c05b7d8d6676bcb5d71968b99b7d5ae2"
+checksum = "b1c12873696bde6de3aea3cd27de8e52897177c5b368a6a30987fd4926e30f85"
 dependencies = [
  "filetime",
  "getrandom",
@@ -8430,7 +8429,7 @@ dependencies = [
  "miniz_oxide",
  "once_cell",
  "paste",
- "which 6.0.1",
+ "which",
 ]
 
 [[package]]
@@ -8738,18 +8737,6 @@ dependencies = [
  "js-sys",
  "serde",
  "web-sys",
-]
-
-[[package]]
-name = "which"
-version = "4.4.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "87ba24419a2078cd2b0f2ede2691b6c66d8e47836da3b6db8265ebad47afbfc7"
-dependencies = [
- "either",
- "home",
- "once_cell",
- "rustix",
 ]
 
 [[package]]

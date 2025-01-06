@@ -1510,11 +1510,10 @@ impl AllowRunDescriptor {
       match which::which_in(text, std::env::var_os("PATH"), cwd) {
         Ok(path) => path,
         Err(err) => match err {
-          which::Error::BadAbsolutePath | which::Error::BadRelativePath => {
+          which::Error::CannotGetCurrentDirAndPathListEmpty => {
             return Err(err);
           }
           which::Error::CannotFindBinaryPath
-          | which::Error::CannotGetCurrentDir
           | which::Error::CannotCanonicalize => {
             return Ok(AllowRunDescriptorParseResult::Unresolved(Box::new(err)))
           }

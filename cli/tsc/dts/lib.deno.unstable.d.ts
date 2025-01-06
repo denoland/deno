@@ -293,7 +293,8 @@ declare namespace Deno {
    * executions. Each element in the array represents the number of milliseconds
    * to wait before retrying the execution. For example, `[1000, 5000, 10000]`
    * means that a failed execution will be retried at most 3 times, with 1
-   * second, 5 seconds, and 10 seconds delay between each retry.
+   * second, 5 seconds, and 10 seconds delay between each retry. There is a
+   * limit of 5 retries and a maximum interval of 1 hour (3600000 milliseconds).
    *
    * @category Cloud
    * @experimental
@@ -1267,16 +1268,15 @@ declare namespace Deno {
    * OpenTelemetry API. This is done using the official OpenTelemetry package
    * for JavaScript:
    * [`npm:@opentelemetry/api`](https://opentelemetry.io/docs/languages/js/).
-   * Deno integrates with this package to provide trace context propagation
-   * between native Deno APIs (like `Deno.serve` or `fetch`) and custom user
-   * code. Deno also provides APIs that allow exporting custom telemetry data
-   * via the same OTLP channel used by the Deno runtime. This is done using the
-   * [`jsr:@deno/otel`](https://jsr.io/@deno/otel) package.
+   * Deno integrates with this package to provide tracing, metrics, and trace
+   * context propagation between native Deno APIs (like `Deno.serve` or `fetch`)
+   * and custom user code. Deno automatically registers the providers with the
+   * OpenTelemetry API, so users can start creating custom traces, metrics, and
+   * logs without any additional setup.
    *
    * @example Using OpenTelemetry API to create custom traces
    * ```ts,ignore
    * import { trace } from "npm:@opentelemetry/api@1";
-   * import "jsr:@deno/otel@0.0.2/register";
    *
    * const tracer = trace.getTracer("example-tracer");
    *
@@ -1300,20 +1300,43 @@ declare namespace Deno {
    */
   export namespace telemetry {
     /**
-     * A SpanExporter compatible with OpenTelemetry.js
-     * https://open-telemetry.github.io/opentelemetry-js/interfaces/_opentelemetry_sdk_trace_base.SpanExporter.html
+     * A TracerProvider compatible with OpenTelemetry.js
+     * https://open-telemetry.github.io/opentelemetry-js/interfaces/_opentelemetry_api.TracerProvider.html
+     *
+     * This is a singleton object that implements the OpenTelemetry
+     * TracerProvider interface.
+     *
      * @category Telemetry
      * @experimental
      */
-    export class SpanExporter {}
+    // deno-lint-ignore no-explicit-any
+    export const tracerProvider: any;
 
     /**
      * A ContextManager compatible with OpenTelemetry.js
      * https://open-telemetry.github.io/opentelemetry-js/interfaces/_opentelemetry_api.ContextManager.html
+     *
+     * This is a singleton object that implements the OpenTelemetry
+     * ContextManager interface.
+     *
      * @category Telemetry
      * @experimental
      */
-    export class ContextManager {}
+    // deno-lint-ignore no-explicit-any
+    export const contextManager: any;
+
+    /**
+     * A MeterProvider compatible with OpenTelemetry.js
+     * https://open-telemetry.github.io/opentelemetry-js/interfaces/_opentelemetry_api.MeterProvider.html
+     *
+     * This is a singleton object that implements the OpenTelemetry
+     * MeterProvider interface.
+     *
+     * @category Telemetry
+     * @experimental
+     */
+    // deno-lint-ignore no-explicit-any
+    export const meterProvider: any;
 
     export {}; // only export exports
   }

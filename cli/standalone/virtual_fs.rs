@@ -1685,6 +1685,7 @@ mod test {
     temp_dir.write("src/a.txt", "data");
     temp_dir.write("src/b.txt", "data");
     util::fs::symlink_dir(
+      &crate::sys::CliSys::default(),
       temp_dir_path.join("src/nested/sub_dir").as_path(),
       temp_dir_path.join("src/sub_dir_link").as_path(),
     )
