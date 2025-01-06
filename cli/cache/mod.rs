@@ -298,7 +298,7 @@ impl Loader for FetchCacher {
     module_info: &deno_graph::ModuleInfo,
   ) {
     log::debug!("Caching module info for {}", specifier);
-    let source_hash = CacheDBHash::from_source(source);
+    let source_hash = CacheDBHash::from_hashable(source);
     let result = self.module_info_cache.set_module_info(
       specifier,
       media_type,
