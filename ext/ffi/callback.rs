@@ -1,19 +1,5 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
-use crate::symbol::NativeType;
-use crate::FfiPermissions;
-use crate::ForeignFunction;
-use deno_core::op2;
-use deno_core::v8;
-use deno_core::v8::TryCatch;
-use deno_core::CancelFuture;
-use deno_core::CancelHandle;
-use deno_core::OpState;
-use deno_core::Resource;
-use deno_core::ResourceId;
-use deno_core::V8CrossThreadTaskSpawner;
-use libffi::middle::Cif;
-use serde::Deserialize;
 use std::borrow::Cow;
 use std::cell::RefCell;
 use std::ffi::c_void;
@@ -26,6 +12,22 @@ use std::rc::Rc;
 use std::sync::atomic;
 use std::sync::atomic::AtomicU32;
 use std::task::Poll;
+
+use deno_core::op2;
+use deno_core::v8;
+use deno_core::v8::TryCatch;
+use deno_core::CancelFuture;
+use deno_core::CancelHandle;
+use deno_core::OpState;
+use deno_core::Resource;
+use deno_core::ResourceId;
+use deno_core::V8CrossThreadTaskSpawner;
+use libffi::middle::Cif;
+use serde::Deserialize;
+
+use crate::symbol::NativeType;
+use crate::FfiPermissions;
+use crate::ForeignFunction;
 
 static THREAD_ID_COUNTER: AtomicU32 = AtomicU32::new(1);
 

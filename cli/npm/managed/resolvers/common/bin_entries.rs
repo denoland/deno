@@ -1,4 +1,4 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
 use crate::npm::managed::NpmResolutionPackage;
 use deno_npm::resolution::NpmResolutionSnapshot;
@@ -8,6 +8,13 @@ use std::collections::HashSet;
 use std::collections::VecDeque;
 use std::path::Path;
 use std::path::PathBuf;
+
+use deno_core::anyhow::Context;
+use deno_core::error::AnyError;
+use deno_npm::resolution::NpmResolutionSnapshot;
+use deno_npm::NpmPackageId;
+
+use crate::npm::managed::NpmResolutionPackage;
 
 #[derive(Default)]
 pub struct BinEntries<'a> {
@@ -26,8 +33,10 @@ fn default_bin_name(package: &NpmResolutionPackage) -> &str {
     .id
     .nv
     .name
+    .as_str()
     .rsplit_once('/')
-    .map_or(package.id.nv.name.as_str(), |(_, name)| name)
+    .map(|(_, name)| name)
+    .unwrap_or(package.id.nv.name.as_str())
 }
 
 pub fn warn_missing_entrypoint(

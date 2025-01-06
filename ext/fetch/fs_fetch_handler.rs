@@ -1,8 +1,6 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
-use crate::CancelHandle;
-use crate::CancelableResponseFuture;
-use crate::FetchHandler;
+use std::rc::Rc;
 
 use deno_core::futures::FutureExt;
 use deno_core::futures::TryFutureExt;
@@ -13,8 +11,11 @@ use deno_core::OpState;
 use deno_error::JsErrorBox;
 use http::StatusCode;
 use http_body_util::BodyExt;
-use std::rc::Rc;
 use tokio_util::io::ReaderStream;
+
+use crate::CancelHandle;
+use crate::CancelableResponseFuture;
+use crate::FetchHandler;
 
 /// An implementation which tries to read file URLs from the file system via
 /// tokio::fs.

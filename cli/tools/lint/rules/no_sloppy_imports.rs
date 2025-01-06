@@ -1,4 +1,4 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
 use std::borrow::Cow;
 use std::cell::RefCell;
@@ -20,10 +20,9 @@ use deno_resolver::sloppy_imports::SloppyImportsResolution;
 use deno_resolver::sloppy_imports::SloppyImportsResolutionKind;
 use text_lines::LineAndColumnIndex;
 
+use super::ExtendedLintRule;
 use crate::graph_util::CliJsrUrlProvider;
 use crate::resolver::CliSloppyImportsResolver;
-
-use super::ExtendedLintRule;
 
 #[derive(Debug)]
 pub struct NoSloppyImportsRule {

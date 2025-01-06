@@ -1,11 +1,11 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
-use crate::ir::out_buffer_as_ptr;
-use crate::symbol::NativeType;
-use crate::symbol::Symbol;
-use crate::turbocall;
-use crate::turbocall::Turbocall;
-use crate::FfiPermissions;
+use std::borrow::Cow;
+use std::cell::RefCell;
+use std::collections::HashMap;
+use std::ffi::c_void;
+use std::rc::Rc;
+
 use deno_core::op2;
 use deno_core::v8;
 use deno_core::GarbageCollected;
@@ -16,11 +16,13 @@ use deno_error::JsErrorClass;
 use dlopen2::raw::Library;
 use serde::Deserialize;
 use serde_value::ValueDeserializer;
-use std::borrow::Cow;
-use std::cell::RefCell;
-use std::collections::HashMap;
-use std::ffi::c_void;
-use std::rc::Rc;
+
+use crate::ir::out_buffer_as_ptr;
+use crate::symbol::NativeType;
+use crate::symbol::Symbol;
+use crate::turbocall;
+use crate::turbocall::Turbocall;
+use crate::FfiPermissions;
 
 deno_error::js_error_wrapper!(dlopen2::Error, JsDlopen2Error, |err| {
   match err {
@@ -333,6 +335,7 @@ pub(crate) fn format_error(
     // https://github.com/denoland/deno/issues/11632
     dlopen2::Error::OpeningLibraryError(e) => {
       use std::os::windows::ffi::OsStrExt;
+
       use winapi::shared::minwindef::DWORD;
       use winapi::shared::winerror::ERROR_INSUFFICIENT_BUFFER;
       use winapi::um::errhandlingapi::GetLastError;
@@ -401,10 +404,11 @@ pub(crate) fn format_error(
 
 #[cfg(test)]
 mod tests {
+  use serde_json::json;
+
   use super::ForeignFunction;
   use super::ForeignSymbol;
   use crate::symbol::NativeType;
-  use serde_json::json;
 
   #[cfg(target_os = "windows")]
   #[test]

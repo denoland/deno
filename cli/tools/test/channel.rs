@@ -1,15 +1,5 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
-use super::TestEvent;
-use deno_core::futures::future::poll_fn;
-use deno_core::parking_lot;
-use deno_core::parking_lot::lock_api::RawMutex;
-use deno_core::parking_lot::lock_api::RawMutexTimed;
-use deno_runtime::deno_io::pipe;
-use deno_runtime::deno_io::AsyncPipeRead;
-use deno_runtime::deno_io::PipeRead;
-use deno_runtime::deno_io::PipeWrite;
-use memmem::Searcher;
 use std::fmt::Display;
 use std::future::Future;
 use std::io::Write;
@@ -19,6 +9,16 @@ use std::sync::atomic::Ordering;
 use std::task::ready;
 use std::task::Poll;
 use std::time::Duration;
+
+use deno_core::futures::future::poll_fn;
+use deno_core::parking_lot;
+use deno_core::parking_lot::lock_api::RawMutex;
+use deno_core::parking_lot::lock_api::RawMutexTimed;
+use deno_runtime::deno_io::pipe;
+use deno_runtime::deno_io::AsyncPipeRead;
+use deno_runtime::deno_io::PipeRead;
+use deno_runtime::deno_io::PipeWrite;
+use memmem::Searcher;
 use tokio::io::AsyncRead;
 use tokio::io::AsyncReadExt;
 use tokio::io::ReadBuf;
@@ -26,6 +26,8 @@ use tokio::sync::mpsc::error::SendError;
 use tokio::sync::mpsc::UnboundedReceiver;
 use tokio::sync::mpsc::UnboundedSender;
 use tokio::sync::mpsc::WeakUnboundedSender;
+
+use super::TestEvent;
 
 /// 8-byte sync marker that is unlikely to appear in normal output. Equivalent
 /// to the string `"\u{200B}\0\u{200B}\0"`.
@@ -437,10 +439,11 @@ impl TestEventSender {
 #[allow(clippy::print_stderr)]
 #[cfg(test)]
 mod tests {
-  use super::*;
-  use crate::tools::test::TestResult;
   use deno_core::unsync::spawn;
   use deno_core::unsync::spawn_blocking;
+
+  use super::*;
+  use crate::tools::test::TestResult;
 
   /// Test that output is correctly interleaved with messages.
   #[tokio::test]

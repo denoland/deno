@@ -1,6 +1,8 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
-use crate::NodePermissions;
+use std::cell::RefCell;
+use std::rc::Rc;
+
 use deno_core::futures::channel::mpsc;
 use deno_core::op2;
 use deno_core::v8;
@@ -12,6 +14,8 @@ use deno_core::OpState;
 use deno_error::JsErrorBox;
 use std::cell::RefCell;
 use std::rc::Rc;
+
+use crate::NodePermissions;
 
 #[op2(fast)]
 pub fn op_inspector_enabled() -> bool {

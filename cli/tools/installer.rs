@@ -1,4 +1,28 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
+
+use std::env;
+use std::fs;
+use std::fs::File;
+use std::io;
+use std::io::Write;
+#[cfg(not(windows))]
+use std::os::unix::fs::PermissionsExt;
+use std::path::Path;
+use std::path::PathBuf;
+use std::sync::Arc;
+
+use deno_cache_dir::file_fetcher::CacheSetting;
+use deno_core::anyhow::bail;
+use deno_core::anyhow::Context;
+use deno_core::error::generic_error;
+use deno_core::error::AnyError;
+use deno_core::resolve_url_or_path;
+use deno_core::url::Url;
+use deno_semver::npm::NpmPackageReqReference;
+use log::Level;
+use once_cell::sync::Lazy;
+use regex::Regex;
+use regex::RegexBuilder;
 
 use crate::args::resolve_no_prompt;
 use crate::args::AddFlags;
@@ -159,11 +183,11 @@ pub async fn infer_name_from_url(
     let npm_ref = npm_ref.into_inner();
     if let Some(sub_path) = npm_ref.sub_path {
       if !sub_path.contains('/') {
-        return Some(sub_path);
+        return Some(sub_path.to_string());
       }
     }
     if !npm_ref.req.name.contains('/') {
-      return Some(npm_ref.req.name);
+      return Some(npm_ref.req.name.into_string());
     }
     return None;
   }
@@ -362,6 +386,7 @@ async fn install_global(
   let deps_file_fetcher = CliFileFetcher::new(
     deps_http_cache.clone(),
     http_client.clone(),
+    factory.sys(),
     Default::default(),
     None,
     true,
@@ -654,16 +679,17 @@ fn is_in_path(dir: &Path) -> bool {
 
 #[cfg(test)]
 mod tests {
-  use super::*;
+  use std::process::Command;
 
+  use test_util::testdata_path;
+  use test_util::TempDir;
+
+  use super::*;
   use crate::args::ConfigFlag;
   use crate::args::PermissionFlags;
   use crate::args::UninstallFlagsGlobal;
   use crate::args::UnstableConfig;
   use crate::util::fs::canonicalize_path;
-  use std::process::Command;
-  use test_util::testdata_path;
-  use test_util::TempDir;
 
   #[tokio::test]
   async fn install_infer_name_from_url() {

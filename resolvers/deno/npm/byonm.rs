@@ -1,4 +1,4 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
 use std::borrow::Cow;
 use std::path::Path;
@@ -9,8 +9,8 @@ use deno_package_json::PackageJsonDepValue;
 use deno_package_json::PackageJsonRc;
 use deno_path_util::url_to_file_path;
 use deno_semver::package::PackageReq;
+use deno_semver::StackString;
 use deno_semver::Version;
-use node_resolver::env::NodeResolverEnv;
 use node_resolver::errors::PackageFolderResolveError;
 use node_resolver::errors::PackageFolderResolveIoError;
 use node_resolver::errors::PackageJsonLoadError;
@@ -18,10 +18,13 @@ use node_resolver::errors::PackageNotFoundError;
 use node_resolver::InNpmPackageChecker;
 use node_resolver::NpmPackageFolderResolver;
 use node_resolver::PackageJsonResolverRc;
+use sys_traits::FsCanonicalize;
+use sys_traits::FsDirEntry;
+use sys_traits::FsMetadata;
+use sys_traits::FsRead;
+use sys_traits::FsReadDir;
 use thiserror::Error;
 use url::Url;
-
-use crate::fs::DenoResolverFs;
 
 use super::local::normalize_pkg_name_for_node_modules_deno_folder;
 use super::CliNpmReqResolver;
@@ -31,7 +34,7 @@ use super::ResolvePkgFolderFromDenoReqError;
 pub enum ByonmResolvePkgFolderFromDenoReqError {
   #[class(generic)]
   #[error("Could not find \"{}\" in a node_modules folder. Deno expects the node_modules/ directory to be up to date. Did you forget to run `deno install`?", .0)]
-  MissingAlias(String),
+  MissingAlias(StackString),
   #[class(inherit)]
   #[error(transparent)]
   PackageJson(#[from] PackageJsonLoadError),
@@ -43,44 +46,45 @@ pub enum ByonmResolvePkgFolderFromDenoReqError {
   Io(#[from] std::io::Error),
 }
 
-pub struct ByonmNpmResolverCreateOptions<
-  Fs: DenoResolverFs,
-  TEnv: NodeResolverEnv,
-> {
+pub struct ByonmNpmResolverCreateOptions<TSys: FsRead> {
   // todo(dsherret): investigate removing this
   pub root_node_modules_dir: Option<PathBuf>,
-  pub fs: Fs,
-  pub pkg_json_resolver: PackageJsonResolverRc<TEnv>,
+  pub sys: TSys,
+  pub pkg_json_resolver: PackageJsonResolverRc<TSys>,
 }
 
 #[allow(clippy::disallowed_types)]
-pub type ByonmNpmResolverRc<Fs, TEnv> =
-  crate::sync::MaybeArc<ByonmNpmResolver<Fs, TEnv>>;
+pub type ByonmNpmResolverRc<TSys> =
+  crate::sync::MaybeArc<ByonmNpmResolver<TSys>>;
 
 #[derive(Debug)]
-pub struct ByonmNpmResolver<Fs: DenoResolverFs, TEnv: NodeResolverEnv> {
-  fs: Fs,
-  pkg_json_resolver: PackageJsonResolverRc<TEnv>,
+pub struct ByonmNpmResolver<
+  TSys: FsCanonicalize + FsRead + FsMetadata + FsReadDir,
+> {
+  sys: TSys,
+  pkg_json_resolver: PackageJsonResolverRc<TSys>,
   root_node_modules_dir: Option<PathBuf>,
 }
 
-impl<Fs: DenoResolverFs + Clone, TEnv: NodeResolverEnv> Clone
-  for ByonmNpmResolver<Fs, TEnv>
+impl<TSys: Clone + FsCanonicalize + FsRead + FsMetadata + FsReadDir> Clone
+  for ByonmNpmResolver<TSys>
 {
   fn clone(&self) -> Self {
     Self {
-      fs: self.fs.clone(),
+      sys: self.sys.clone(),
       pkg_json_resolver: self.pkg_json_resolver.clone(),
       root_node_modules_dir: self.root_node_modules_dir.clone(),
     }
   }
 }
 
-impl<Fs: DenoResolverFs, TEnv: NodeResolverEnv> ByonmNpmResolver<Fs, TEnv> {
-  pub fn new(options: ByonmNpmResolverCreateOptions<Fs, TEnv>) -> Self {
+impl<TSys: FsCanonicalize + FsRead + FsMetadata + FsReadDir>
+  ByonmNpmResolver<TSys>
+{
+  pub fn new(options: ByonmNpmResolverCreateOptions<TSys>) -> Self {
     Self {
       root_node_modules_dir: options.root_node_modules_dir,
-      fs: options.fs,
+      sys: options.sys,
       pkg_json_resolver: options.pkg_json_resolver,
     }
   }
@@ -132,19 +136,20 @@ impl<Fs: DenoResolverFs, TEnv: NodeResolverEnv> ByonmNpmResolver<Fs, TEnv> {
     req: &PackageReq,
     referrer: &Url,
   ) -> Result<PathBuf, ByonmResolvePkgFolderFromDenoReqError> {
-    fn node_resolve_dir<Fs: DenoResolverFs>(
-      fs: &Fs,
+    fn node_resolve_dir<TSys: FsCanonicalize + FsMetadata>(
+      sys: &TSys,
       alias: &str,
       start_dir: &Path,
     ) -> std::io::Result<Option<PathBuf>> {
       for ancestor in start_dir.ancestors() {
         let node_modules_folder = ancestor.join("node_modules");
         let sub_dir = join_package_name(&node_modules_folder, alias);
-        if fs.is_dir_sync(&sub_dir) {
-          return Ok(Some(deno_path_util::canonicalize_path_maybe_not_exists(
-            &sub_dir,
-            &|path| fs.realpath_sync(path),
-          )?));
+        if sys.fs_is_dir_no_err(&sub_dir) {
+          return Ok(Some(
+            deno_path_util::fs::canonicalize_path_maybe_not_exists(
+              sys, &sub_dir,
+            )?,
+          ));
         }
       }
       Ok(None)
@@ -157,7 +162,7 @@ impl<Fs: DenoResolverFs, TEnv: NodeResolverEnv> ByonmNpmResolver<Fs, TEnv> {
       Some((pkg_json, alias)) => {
         // now try node resolution
         if let Some(resolved) =
-          node_resolve_dir(&self.fs, &alias, pkg_json.dir_path())?
+          node_resolve_dir(&self.sys, &alias, pkg_json.dir_path())?
         {
           return Ok(resolved);
         }
@@ -181,16 +186,14 @@ impl<Fs: DenoResolverFs, TEnv: NodeResolverEnv> ByonmNpmResolver<Fs, TEnv> {
     &self,
     req: &PackageReq,
     referrer: &Url,
-  ) -> Result<Option<(PackageJsonRc, String)>, PackageJsonLoadError> {
+  ) -> Result<Option<(PackageJsonRc, StackString)>, PackageJsonLoadError> {
     fn resolve_alias_from_pkg_json(
       req: &PackageReq,
       pkg_json: &PackageJson,
-    ) -> Option<String> {
+    ) -> Option<StackString> {
       let deps = pkg_json.resolve_local_package_json_deps();
-      for (key, value) in deps
-        .dependencies
-        .into_iter()
-        .chain(deps.dev_dependencies.into_iter())
+      for (key, value) in
+        deps.dependencies.iter().chain(deps.dev_dependencies.iter())
       {
         if let Ok(value) = value {
           match value {
@@ -198,12 +201,14 @@ impl<Fs: DenoResolverFs, TEnv: NodeResolverEnv> ByonmNpmResolver<Fs, TEnv> {
               if dep_req.name == req.name
                 && dep_req.version_req.intersects(&req.version_req)
               {
-                return Some(key);
+                return Some(key.clone());
               }
             }
             PackageJsonDepValue::Workspace(_workspace) => {
-              if key == req.name && req.version_req.tag() == Some("workspace") {
-                return Some(key);
+              if key.as_str() == req.name
+                && req.version_req.tag() == Some("workspace")
+              {
+                return Some(key.clone());
               }
             }
           }
@@ -250,7 +255,7 @@ impl<Fs: DenoResolverFs, TEnv: NodeResolverEnv> ByonmNpmResolver<Fs, TEnv> {
       if let Ok(Some(dep_pkg_json)) =
         self.load_pkg_json(&pkg_folder.join("package.json"))
       {
-        if dep_pkg_json.name.as_ref() == Some(&req.name) {
+        if dep_pkg_json.name.as_deref() == Some(req.name.as_str()) {
           let matches_req = dep_pkg_json
             .version
             .as_ref()
@@ -301,7 +306,7 @@ impl<Fs: DenoResolverFs, TEnv: NodeResolverEnv> ByonmNpmResolver<Fs, TEnv> {
     // now check if node_modules/.deno/ matches this constraint
     let root_node_modules_dir = self.root_node_modules_dir.as_ref()?;
     let node_modules_deno_dir = root_node_modules_dir.join(".deno");
-    let Ok(entries) = self.fs.read_dir_sync(&node_modules_deno_dir) else {
+    let Ok(entries) = self.sys.fs_read_dir(&node_modules_deno_dir) else {
       return None;
     };
     let search_prefix = format!(
@@ -314,10 +319,17 @@ impl<Fs: DenoResolverFs, TEnv: NodeResolverEnv> ByonmNpmResolver<Fs, TEnv> {
     // - @denotest+add@1.0.0
     // - @denotest+add@1.0.0_1
     for entry in entries {
-      if !entry.is_directory {
+      let Ok(entry) = entry else {
+        continue;
+      };
+      let Ok(file_type) = entry.file_type() else {
+        continue;
+      };
+      if !file_type.is_dir() {
         continue;
       }
-      let Some(version_and_copy_idx) = entry.name.strip_prefix(&search_prefix)
+      let entry_name = entry.file_name().to_string_lossy().into_owned();
+      let Some(version_and_copy_idx) = entry_name.strip_prefix(&search_prefix)
       else {
         continue;
       };
@@ -330,8 +342,8 @@ impl<Fs: DenoResolverFs, TEnv: NodeResolverEnv> ByonmNpmResolver<Fs, TEnv> {
       };
       if let Some(tag) = req.version_req.tag() {
         let initialized_file =
-          node_modules_deno_dir.join(&entry.name).join(".initialized");
-        let Ok(contents) = self.fs.read_to_string_lossy(&initialized_file)
+          node_modules_deno_dir.join(&entry_name).join(".initialized");
+        let Ok(contents) = self.sys.fs_read_to_string_lossy(&initialized_file)
         else {
           continue;
         };
@@ -339,19 +351,19 @@ impl<Fs: DenoResolverFs, TEnv: NodeResolverEnv> ByonmNpmResolver<Fs, TEnv> {
         if tags.any(|t| t == tag) {
           if let Some((best_version_version, _)) = &best_version {
             if version > *best_version_version {
-              best_version = Some((version, entry.name));
+              best_version = Some((version, entry_name));
             }
           } else {
-            best_version = Some((version, entry.name));
+            best_version = Some((version, entry_name));
           }
         }
       } else if req.version_req.matches(&version) {
         if let Some((best_version_version, _)) = &best_version {
           if version > *best_version_version {
-            best_version = Some((version, entry.name));
+            best_version = Some((version, entry_name));
           }
         } else {
-          best_version = Some((version, entry.name));
+          best_version = Some((version, entry_name));
         }
       }
     }
@@ -366,9 +378,14 @@ impl<Fs: DenoResolverFs, TEnv: NodeResolverEnv> ByonmNpmResolver<Fs, TEnv> {
 }
 
 impl<
-    Fs: DenoResolverFs + Send + Sync + std::fmt::Debug,
-    TEnv: NodeResolverEnv,
-  > CliNpmReqResolver for ByonmNpmResolver<Fs, TEnv>
+    Sys: FsCanonicalize
+      + FsMetadata
+      + FsRead
+      + FsReadDir
+      + Send
+      + Sync
+      + std::fmt::Debug,
+  > CliNpmReqResolver for ByonmNpmResolver<Sys>
 {
   fn resolve_pkg_folder_from_deno_module_req(
     &self,
@@ -383,17 +400,22 @@ impl<
 }
 
 impl<
-    Fs: DenoResolverFs + Send + Sync + std::fmt::Debug,
-    TEnv: NodeResolverEnv,
-  > NpmPackageFolderResolver for ByonmNpmResolver<Fs, TEnv>
+    Sys: FsCanonicalize
+      + FsMetadata
+      + FsRead
+      + FsReadDir
+      + Send
+      + Sync
+      + std::fmt::Debug,
+  > NpmPackageFolderResolver for ByonmNpmResolver<Sys>
 {
   fn resolve_package_folder_from_package(
     &self,
     name: &str,
     referrer: &Url,
   ) -> Result<PathBuf, PackageFolderResolveError> {
-    fn inner<Fs: DenoResolverFs>(
-      fs: &Fs,
+    fn inner<TSys: FsMetadata>(
+      sys: &TSys,
       name: &str,
       referrer: &Url,
     ) -> Result<PathBuf, PackageFolderResolveError> {
@@ -410,7 +432,7 @@ impl<
           };
 
           let sub_dir = join_package_name(&node_modules_folder, name);
-          if fs.is_dir_sync(&sub_dir) {
+          if sys.fs_is_dir_no_err(&sub_dir) {
             return Ok(sub_dir);
           }
         }
@@ -426,8 +448,8 @@ impl<
       )
     }
 
-    let path = inner(&self.fs, name, referrer)?;
-    self.fs.realpath_sync(&path).map_err(|err| {
+    let path = inner(&self.sys, name, referrer)?;
+    self.sys.fs_canonicalize(&path).map_err(|err| {
       PackageFolderResolveIoError {
         package_name: name.to_string(),
         referrer: referrer.clone(),

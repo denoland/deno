@@ -1,21 +1,14 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
 pub mod bin_entries;
 pub mod lifecycle_scripts;
 
-use std::borrow::Cow;
-use std::collections::HashMap;
-use std::io::ErrorKind;
 use std::path::Path;
 use std::path::PathBuf;
-use std::sync::Arc;
-use std::sync::Mutex;
 
-use super::super::PackageCaching;
 use async_trait::async_trait;
 use deno_ast::ModuleSpecifier;
-use deno_core::futures;
-use deno_core::futures::StreamExt;
+use deno_core::error::AnyError;
 use deno_error::JsErrorBox;
 use deno_npm::NpmPackageCacheFolderId;
 use deno_npm::NpmPackageId;
@@ -25,7 +18,7 @@ use deno_runtime::deno_io::fs::FsError;
 use deno_runtime::deno_node::NodePermissions;
 use node_resolver::errors::PackageFolderResolveError;
 
-use crate::npm::CliNpmTarballCache;
+use super::super::PackageCaching;
 
 #[derive(Debug, thiserror::Error, deno_error::JsError)]
 #[class(generic)]
@@ -64,119 +57,4 @@ pub trait NpmPackageFsResolver: Send + Sync {
     &self,
     caching: PackageCaching<'a>,
   ) -> Result<(), JsErrorBox>;
-
-  #[must_use = "the resolved return value to mitigate time-of-check to time-of-use issues"]
-  fn ensure_read_permission<'a>(
-    &self,
-    permissions: &mut dyn NodePermissions,
-    path: &'a Path,
-  ) -> Result<Cow<'a, Path>, EnsureRegistryReadPermissionError>;
-}
-
-#[derive(Debug, thiserror::Error, deno_error::JsError)]
-pub enum EnsureRegistryReadPermissionError {
-  #[class(inherit)]
-  #[error("failed canonicalizing '{path}'")]
-  Canonicalize {
-    path: PathBuf,
-    #[source]
-    #[inherit]
-    source: FsError,
-  },
-  #[class(inherit)]
-  #[error(transparent)]
-  PermissionCheck(#[from] deno_runtime::deno_permissions::PermissionCheckError),
-}
-
-#[derive(Debug)]
-pub struct RegistryReadPermissionChecker {
-  fs: Arc<dyn FileSystem>,
-  cache: Mutex<HashMap<PathBuf, PathBuf>>,
-  registry_path: PathBuf,
-}
-
-impl RegistryReadPermissionChecker {
-  pub fn new(fs: Arc<dyn FileSystem>, registry_path: PathBuf) -> Self {
-    Self {
-      fs,
-      registry_path,
-      cache: Default::default(),
-    }
-  }
-
-  pub fn ensure_registry_read_permission<'a>(
-    &self,
-    permissions: &mut dyn NodePermissions,
-    path: &'a Path,
-  ) -> Result<Cow<'a, Path>, EnsureRegistryReadPermissionError> {
-    if permissions.query_read_all() {
-      return Ok(Cow::Borrowed(path)); // skip permissions checks below
-    }
-
-    // allow reading if it's in the node_modules
-    let is_path_in_node_modules = path.starts_with(&self.registry_path)
-      && path
-        .components()
-        .all(|c| !matches!(c, std::path::Component::ParentDir));
-
-    if is_path_in_node_modules {
-      let mut cache = self.cache.lock().unwrap();
-      let mut canonicalize = |path: &Path| -> Result<
-        Option<PathBuf>,
-        EnsureRegistryReadPermissionError,
-      > {
-        match cache.get(path) {
-          Some(canon) => Ok(Some(canon.clone())),
-          None => match self.fs.realpath_sync(path) {
-            Ok(canon) => {
-              cache.insert(path.to_path_buf(), canon.clone());
-              Ok(Some(canon))
-            }
-            Err(e) => {
-              if e.kind() == ErrorKind::NotFound {
-                return Ok(None);
-              }
-              Err(EnsureRegistryReadPermissionError::Canonicalize {
-                path: path.to_path_buf(),
-                source: e,
-              })
-            }
-          },
-        }
-      };
-      if let Some(registry_path_canon) = canonicalize(&self.registry_path)? {
-        if let Some(path_canon) = canonicalize(path)? {
-          if path_canon.starts_with(registry_path_canon) {
-            return Ok(Cow::Owned(path_canon));
-          }
-        } else if path.starts_with(registry_path_canon)
-          || path.starts_with(&self.registry_path)
-        {
-          return Ok(Cow::Borrowed(path));
-        }
-      }
-    }
-
-    permissions.check_read_path(path).map_err(Into::into)
-  }
-}
-
-/// Caches all the packages in parallel.
-pub async fn cache_packages(
-  packages: &[NpmResolutionPackage],
-  tarball_cache: &Arc<CliNpmTarballCache>,
-) -> Result<(), JsErrorBox> {
-  let mut futures_unordered = futures::stream::FuturesUnordered::new();
-  for package in packages {
-    futures_unordered.push(async move {
-      tarball_cache
-        .ensure_package(&package.id.nv, &package.dist)
-        .await
-    });
-  }
-  while let Some(result) = futures_unordered.next().await {
-    // surface the first error
-    result.map_err(JsErrorBox::from_err)?;
-  }
-  Ok(())
 }

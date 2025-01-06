@@ -1,5 +1,14 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
+use std::borrow::Cow;
+use std::cell::RefCell;
+use std::convert::From;
+use std::path::Path;
+use std::path::PathBuf;
+use std::rc::Rc;
+use std::sync::Arc;
+
+use deno_core::op2;
 use deno_core::parking_lot::Mutex;
 use deno_core::AsyncRefCell;
 use deno_core::CancelFuture;
@@ -8,9 +17,6 @@ use deno_core::OpState;
 use deno_core::RcRef;
 use deno_core::Resource;
 use deno_core::ResourceId;
-
-use deno_core::op2;
-
 use deno_error::builtin_classes::GENERIC_ERROR;
 use deno_error::JsErrorClass;
 use deno_permissions::PermissionsContainer;
@@ -22,13 +28,6 @@ use notify::RecommendedWatcher;
 use notify::RecursiveMode;
 use notify::Watcher;
 use serde::Serialize;
-use std::borrow::Cow;
-use std::cell::RefCell;
-use std::convert::From;
-use std::path::Path;
-use std::path::PathBuf;
-use std::rc::Rc;
-use std::sync::Arc;
 use tokio::sync::mpsc;
 
 deno_core::extension!(

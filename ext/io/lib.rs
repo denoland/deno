@@ -1,5 +1,23 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
+use std::borrow::Cow;
+use std::cell::RefCell;
+use std::fs::File as StdFile;
+use std::future::Future;
+use std::io;
+use std::io::ErrorKind;
+use std::io::Read;
+use std::io::Seek;
+use std::io::Write;
+#[cfg(unix)]
+use std::os::unix::io::FromRawFd;
+#[cfg(windows)]
+use std::os::windows::io::FromRawHandle;
+use std::rc::Rc;
+#[cfg(windows)]
+use std::sync::Arc;
+
+use deno_core::futures::TryFutureExt;
 use deno_core::op2;
 use deno_core::unsync::spawn_blocking;
 use deno_core::unsync::TaskQueue;
@@ -21,40 +39,19 @@ use fs::FsResult;
 use fs::FsStat;
 use fs3::FileExt;
 use once_cell::sync::Lazy;
-use std::borrow::Cow;
-use std::cell::RefCell;
-use std::fs::File as StdFile;
-use std::future::Future;
-use std::io;
-use std::io::ErrorKind;
-use std::io::Read;
-use std::io::Seek;
-use std::io::Write;
-use std::rc::Rc;
+#[cfg(windows)]
+use parking_lot::Condvar;
+#[cfg(windows)]
+use parking_lot::Mutex;
 use tokio::io::AsyncRead;
 use tokio::io::AsyncReadExt;
 use tokio::io::AsyncWrite;
 use tokio::io::AsyncWriteExt;
 use tokio::process;
-
-#[cfg(unix)]
-use std::os::unix::io::FromRawFd;
-
-#[cfg(windows)]
-use std::os::windows::io::FromRawHandle;
 #[cfg(windows)]
 use winapi::um::processenv::GetStdHandle;
 #[cfg(windows)]
 use winapi::um::winbase;
-
-use deno_core::futures::TryFutureExt;
-use deno_error::JsErrorBox;
-#[cfg(windows)]
-use parking_lot::Condvar;
-#[cfg(windows)]
-use parking_lot::Mutex;
-#[cfg(windows)]
-use std::sync::Arc;
 
 pub mod fs;
 mod pipe;
@@ -63,19 +60,18 @@ mod winpipe;
 
 mod bi_pipe;
 
-pub use pipe::pipe;
-pub use pipe::AsyncPipeRead;
-pub use pipe::AsyncPipeWrite;
-pub use pipe::PipeRead;
-pub use pipe::PipeWrite;
-pub use pipe::RawPipeHandle;
-
 pub use bi_pipe::bi_pipe_pair_raw;
 pub use bi_pipe::BiPipe;
 pub use bi_pipe::BiPipeRead;
 pub use bi_pipe::BiPipeResource;
 pub use bi_pipe::BiPipeWrite;
 pub use bi_pipe::RawBiPipeHandle;
+pub use pipe::pipe;
+pub use pipe::AsyncPipeRead;
+pub use pipe::AsyncPipeWrite;
+pub use pipe::PipeRead;
+pub use pipe::PipeWrite;
+pub use pipe::RawPipeHandle;
 
 /// Abstraction over `AsRawFd` (unix) and `AsRawHandle` (windows)
 pub trait AsRawIoHandle {

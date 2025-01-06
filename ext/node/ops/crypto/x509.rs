@@ -1,7 +1,9 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
+
+use std::ops::Deref;
 
 use deno_core::op2;
-
+use digest::Digest;
 use x509_parser::der_parser::asn1_rs::Any;
 use x509_parser::der_parser::asn1_rs::Tag;
 use x509_parser::der_parser::oid::Oid;
@@ -9,14 +11,10 @@ pub use x509_parser::error::X509Error;
 use x509_parser::extensions;
 use x509_parser::pem;
 use x509_parser::prelude::*;
-
-use super::KeyObjectHandle;
-
-use std::ops::Deref;
 use yoke::Yoke;
 use yoke::Yokeable;
 
-use digest::Digest;
+use super::KeyObjectHandle;
 
 enum CertificateSources {
   Der(Box<[u8]>),

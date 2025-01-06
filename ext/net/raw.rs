@@ -1,6 +1,7 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
-use crate::io::TcpStreamResource;
-use crate::ops_tls::TlsStreamResource;
+// Copyright 2018-2025 the Deno authors. MIT license.
+use std::borrow::Cow;
+use std::rc::Rc;
+
 use deno_core::error::ResourceError;
 use deno_core::AsyncRefCell;
 use deno_core::CancelHandle;
@@ -10,6 +11,9 @@ use deno_core::ResourceTable;
 use deno_error::JsErrorBox;
 use std::borrow::Cow;
 use std::rc::Rc;
+
+use crate::io::TcpStreamResource;
+use crate::ops_tls::TlsStreamResource;
 
 pub trait NetworkStreamTrait: Into<NetworkStream> {
   type Resource;

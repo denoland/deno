@@ -1,28 +1,17 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
-use super::analysis::CodeActionData;
-use super::code_lens;
-use super::config;
-use super::config::LspTsConfig;
-use super::documents::AssetOrDocument;
-use super::documents::Document;
-use super::documents::DocumentsFilter;
-use super::language_server;
-use super::language_server::StateSnapshot;
-use super::performance::Performance;
-use super::performance::PerformanceMark;
-use super::refactor::RefactorCodeActionData;
-use super::refactor::ALL_KNOWN_REFACTOR_ACTION_KINDS;
-use super::refactor::EXTRACT_CONSTANT;
-use super::refactor::EXTRACT_INTERFACE;
-use super::refactor::EXTRACT_TYPE;
-use super::semantic_tokens;
-use super::semantic_tokens::SemanticTokensBuilder;
-use super::text::LineIndex;
-use super::urls::uri_to_url;
-use super::urls::url_to_uri;
-use super::urls::INVALID_SPECIFIER;
-use super::urls::INVALID_URI;
+use std::cell::RefCell;
+use std::cmp;
+use std::collections::BTreeMap;
+use std::collections::HashMap;
+use std::collections::HashSet;
+use std::convert::Infallible;
+use std::net::SocketAddr;
+use std::ops::Range;
+use std::path::Path;
+use std::rc::Rc;
+use std::sync::Arc;
+use std::thread;
 
 use crate::args::jsr_url;
 use crate::args::FmtOptionsConfig;
@@ -44,8 +33,13 @@ use dashmap::DashMap;
 use deno_ast::MediaType;
 use deno_core::anyhow::anyhow;
 use deno_core::anyhow::Context as _;
+use deno_core::convert::Smi;
+use deno_core::convert::ToV8;
 use deno_core::error::AnyError;
+use deno_core::error::StdAnyError;
+use deno_core::futures::stream::FuturesOrdered;
 use deno_core::futures::FutureExt;
+use deno_core::futures::StreamExt;
 use deno_core::op2;
 use deno_core::parking_lot::Mutex;
 use deno_core::resolve_url;
@@ -76,18 +70,6 @@ use regex::Captures;
 use regex::Regex;
 use serde_repr::Deserialize_repr;
 use serde_repr::Serialize_repr;
-use std::cell::RefCell;
-use std::cmp;
-use std::collections::BTreeMap;
-use std::collections::HashMap;
-use std::collections::HashSet;
-use std::convert::Infallible;
-use std::net::SocketAddr;
-use std::ops::Range;
-use std::path::Path;
-use std::rc::Rc;
-use std::sync::Arc;
-use std::thread;
 use text_size::TextRange;
 use text_size::TextSize;
 use tokio::sync::mpsc;
@@ -97,6 +79,41 @@ use tokio_util::sync::CancellationToken;
 use tower_lsp::jsonrpc::Error as LspError;
 use tower_lsp::jsonrpc::Result as LspResult;
 use tower_lsp::lsp_types as lsp;
+
+use super::analysis::CodeActionData;
+use super::code_lens;
+use super::config;
+use super::config::LspTsConfig;
+use super::documents::AssetOrDocument;
+use super::documents::Document;
+use super::documents::DocumentsFilter;
+use super::language_server;
+use super::language_server::StateSnapshot;
+use super::performance::Performance;
+use super::performance::PerformanceMark;
+use super::refactor::RefactorCodeActionData;
+use super::refactor::ALL_KNOWN_REFACTOR_ACTION_KINDS;
+use super::refactor::EXTRACT_CONSTANT;
+use super::refactor::EXTRACT_INTERFACE;
+use super::refactor::EXTRACT_TYPE;
+use super::semantic_tokens;
+use super::semantic_tokens::SemanticTokensBuilder;
+use super::text::LineIndex;
+use super::urls::uri_to_url;
+use super::urls::url_to_uri;
+use super::urls::INVALID_SPECIFIER;
+use super::urls::INVALID_URI;
+use crate::args::jsr_url;
+use crate::args::FmtOptionsConfig;
+use crate::lsp::logging::lsp_warn;
+use crate::tsc;
+use crate::tsc::ResolveArgs;
+use crate::tsc::MISSING_DEPENDENCY_SPECIFIER;
+use crate::util::path::relative_specifier;
+use crate::util::path::to_percent_decoded_str;
+use crate::util::result::InfallibleResultExt;
+use crate::util::v8::convert;
+use crate::worker::create_isolate_create_params;
 
 static BRACKET_ACCESSOR_RE: Lazy<Regex> =
   lazy_regex!(r#"^\[['"](.+)[\['"]\]$"#);
@@ -5549,6 +5566,9 @@ impl TscRequest {
 
 #[cfg(test)]
 mod tests {
+  use pretty_assertions::assert_eq;
+  use test_util::TempDir;
+
   use super::*;
   use crate::cache::HttpCache;
   use crate::lsp::cache::LspCache;
@@ -5558,8 +5578,6 @@ mod tests {
   use crate::lsp::documents::LanguageId;
   use crate::lsp::resolver::LspResolver;
   use crate::lsp::text::LineIndex;
-  use pretty_assertions::assert_eq;
-  use test_util::TempDir;
 
   async fn setup(
     ts_config: Value,

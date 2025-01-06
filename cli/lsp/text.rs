@@ -1,10 +1,11 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
+
+use std::collections::HashMap;
 
 use deno_core::error::AnyError;
 use deno_error::JsErrorBox;
 use dissimilar::diff;
 use dissimilar::Chunk;
-use std::collections::HashMap;
 use text_size::TextRange;
 use text_size::TextSize;
 use tower_lsp::jsonrpc;

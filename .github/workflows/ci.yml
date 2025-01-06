@@ -184,8 +184,8 @@ jobs:
             ~/.cargo/registry/index
             ~/.cargo/registry/cache
             ~/.cargo/git/db
-          key: '31-cargo-home-${{ matrix.os }}-${{ matrix.arch }}-${{ hashFiles(''Cargo.lock'') }}'
-          restore-keys: '31-cargo-home-${{ matrix.os }}-${{ matrix.arch }}-'
+          key: '32-cargo-home-${{ matrix.os }}-${{ matrix.arch }}-${{ hashFiles(''Cargo.lock'') }}'
+          restore-keys: '32-cargo-home-${{ matrix.os }}-${{ matrix.arch }}-'
         if: '!(matrix.skip)'
       - uses: dsherret/rust-toolchain-file@v1
         if: '!(matrix.skip)'
@@ -379,7 +379,7 @@ jobs:
             !./target/*/*.zip
             !./target/*/*.tar.gz
           key: never_saved
-          restore-keys: '31-cargo-target-${{ matrix.os }}-${{ matrix.arch }}-${{ matrix.profile }}-${{ matrix.job }}-'
+          restore-keys: '32-cargo-target-${{ matrix.os }}-${{ matrix.arch }}-${{ matrix.profile }}-${{ matrix.job }}-'
       - name: Apply and update mtime cache
         if: '!(matrix.skip) && (!startsWith(github.ref, ''refs/tags/''))'
         uses: ./.github/mtime_cache
@@ -419,6 +419,15 @@ jobs:
           df -h
           cargo build --release --locked --all-targets
           df -h
+      - name: Build denort release
+        if: |-
+          !(matrix.skip) && (matrix.job == 'test' &&
+          matrix.profile == 'release' &&
+          github.repository == 'denoland/deno')
+        run: |-
+          df -h
+          cargo build --profile=release-slim --locked --bin denort
+          df -h
       - name: Check deno binary
         if: '!(matrix.skip) && (matrix.job == ''test'')'
         run: 'target/${{ matrix.profile }}/deno eval "console.log(1+2)" | grep 3'
@@ -448,10 +457,11 @@ jobs:
           cd target/release
           zip -r deno-${{ matrix.arch }}-unknown-linux-gnu.zip deno
           shasum -a 256 deno-${{ matrix.arch }}-unknown-linux-gnu.zip > deno-${{ matrix.arch }}-unknown-linux-gnu.zip.sha256sum
-          strip denort
-          zip -r denort-${{ matrix.arch }}-unknown-linux-gnu.zip denort
-          shasum -a 256 denort-${{ matrix.arch }}-unknown-linux-gnu.zip > denort-${{ matrix.arch }}-unknown-linux-gnu.zip.sha256sum
           ./deno types > lib.deno.d.ts
+          cd ../release-slim
+          zip -r ../release/denort-${{ matrix.arch }}-unknown-linux-gnu.zip denort
+          cd ../release
+          shasum -a 256 denort-${{ matrix.arch }}-unknown-linux-gnu.zip > denort-${{ matrix.arch }}-unknown-linux-gnu.zip.sha256sum
       - name: Pre-release (mac)
         if: |-
           !(matrix.skip) && (matrix.os == 'macos' &&
@@ -467,8 +477,9 @@ jobs:
           cd target/release
           zip -r deno-${{ matrix.arch }}-apple-darwin.zip deno
           shasum -a 256 deno-${{ matrix.arch }}-apple-darwin.zip > deno-${{ matrix.arch }}-apple-darwin.zip.sha256sum
-          strip denort
-          zip -r denort-${{ matrix.arch }}-apple-darwin.zip denort
+          cd ../release-slim
+          zip -r ../release/denort-${{ matrix.arch }}-apple-darwin.zip denort
+          cd ../release
           shasum -a 256 denort-${{ matrix.arch }}-apple-darwin.zip > denort-${{ matrix.arch }}-apple-darwin.zip.sha256sum
       - name: Pre-release (windows)
         if: |-
@@ -480,7 +491,7 @@ jobs:
         run: |-
           Compress-Archive -CompressionLevel Optimal -Force -Path target/release/deno.exe -DestinationPath target/release/deno-${{ matrix.arch }}-pc-windows-msvc.zip
           Get-FileHash target/release/deno-${{ matrix.arch }}-pc-windows-msvc.zip -Algorithm SHA256 | Format-List > target/release/deno-${{ matrix.arch }}-pc-windows-msvc.zip.sha256sum
-          Compress-Archive -CompressionLevel Optimal -Force -Path target/release/denort.exe -DestinationPath target/release/denort-${{ matrix.arch }}-pc-windows-msvc.zip
+          Compress-Archive -CompressionLevel Optimal -Force -Path target/release-slim/denort.exe -DestinationPath target/release/denort-${{ matrix.arch }}-pc-windows-msvc.zip
           Get-FileHash target/release/denort-${{ matrix.arch }}-pc-windows-msvc.zip -Algorithm SHA256 | Format-List > target/release/denort-${{ matrix.arch }}-pc-windows-msvc.zip.sha256sum
       - name: Upload canary to dl.deno.land
         if: |-
@@ -689,7 +700,7 @@ jobs:
             !./target/*/gn_root
             !./target/*/*.zip
             !./target/*/*.tar.gz
-          key: '31-cargo-target-${{ matrix.os }}-${{ matrix.arch }}-${{ matrix.profile }}-${{ matrix.job }}-${{ github.sha }}'
+          key: '32-cargo-target-${{ matrix.os }}-${{ matrix.arch }}-${{ matrix.profile }}-${{ matrix.job }}-${{ github.sha }}'
   publish-canary:
     name: publish canary
     runs-on: ubuntu-24.04

@@ -1,4 +1,4 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
 /// <reference no-default-lib="true" />
 /// <reference lib="deno.ns" />
@@ -293,7 +293,8 @@ declare namespace Deno {
    * executions. Each element in the array represents the number of milliseconds
    * to wait before retrying the execution. For example, `[1000, 5000, 10000]`
    * means that a failed execution will be retried at most 3 times, with 1
-   * second, 5 seconds, and 10 seconds delay between each retry.
+   * second, 5 seconds, and 10 seconds delay between each retry. There is a
+   * limit of 5 retries and a maximum interval of 1 hour (3600000 milliseconds).
    *
    * @category Cloud
    * @experimental
@@ -1300,20 +1301,43 @@ declare namespace Deno {
    */
   export namespace telemetry {
     /**
-     * A SpanExporter compatible with OpenTelemetry.js
-     * https://open-telemetry.github.io/opentelemetry-js/interfaces/_opentelemetry_sdk_trace_base.SpanExporter.html
+     * A TracerProvider compatible with OpenTelemetry.js
+     * https://open-telemetry.github.io/opentelemetry-js/interfaces/_opentelemetry_api.TracerProvider.html
+     *
+     * This is a singleton object that implements the OpenTelemetry
+     * TracerProvider interface.
+     *
      * @category Telemetry
      * @experimental
      */
-    export class SpanExporter {}
+    // deno-lint-ignore no-explicit-any
+    export const tracerProvider: any;
 
     /**
      * A ContextManager compatible with OpenTelemetry.js
      * https://open-telemetry.github.io/opentelemetry-js/interfaces/_opentelemetry_api.ContextManager.html
+     *
+     * This is a singleton object that implements the OpenTelemetry
+     * ContextManager interface.
+     *
      * @category Telemetry
      * @experimental
      */
-    export class ContextManager {}
+    // deno-lint-ignore no-explicit-any
+    export const contextManager: any;
+
+    /**
+     * A MeterProvider compatible with OpenTelemetry.js
+     * https://open-telemetry.github.io/opentelemetry-js/interfaces/_opentelemetry_api.MeterProvider.html
+     *
+     * This is a singleton object that implements the OpenTelemetry
+     * MeterProvider interface.
+     *
+     * @category Telemetry
+     * @experimental
+     */
+    // deno-lint-ignore no-explicit-any
+    export const meterProvider: any;
 
     export {}; // only export exports
   }

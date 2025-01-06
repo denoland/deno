@@ -1,4 +1,4 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
 use std::borrow::Cow;
 use std::collections::HashSet;
@@ -281,7 +281,7 @@ mod test {
   #[test]
   pub fn test_verify_tarball() {
     let package = PackageNv {
-      name: "package".to_string(),
+      name: "package".into(),
       version: Version::parse_from_npm("1.0.0").unwrap(),
     };
     let actual_checksum =

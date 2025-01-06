@@ -1,4 +1,4 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
 use std::collections::HashMap;
 use std::collections::HashSet;
@@ -20,11 +20,36 @@ use deno_unsync::sync::MultiRuntimeAsyncValueCreator;
 
 use crate::remote::maybe_auth_header_for_npm_registry;
 use crate::NpmCache;
-use crate::NpmCacheEnv;
+use crate::NpmCacheHttpClient;
 use crate::NpmCacheSetting;
 
 type LoadResult = Result<FutureResult, Arc<JsErrorBox>>;
 type LoadFuture = LocalBoxFuture<'static, LoadResult>;
+
+#[derive(Debug, Error)]
+#[error(transparent)]
+pub struct AnyhowJsError(pub AnyError);
+
+impl deno_error::JsErrorClass for AnyhowJsError {
+  fn get_class(&self) -> &'static str {
+    "generic"
+  }
+
+  fn get_message(&self) -> std::borrow::Cow<'static, str> {
+    self.0.to_string().into()
+  }
+
+  fn get_additional_properties(
+    &self,
+  ) -> Option<
+    Vec<(
+      std::borrow::Cow<'static, str>,
+      std::borrow::Cow<'static, str>,
+    )>,
+  > {
+    None
+  }
+}
 
 #[derive(Debug, Clone)]
 enum FutureResult {
@@ -126,25 +151,54 @@ pub enum LoadPackageInfoInnerError {
 ///
 /// This is shared amongst all the workers.
 #[derive(Debug)]
-pub struct RegistryInfoProvider<TEnv: NpmCacheEnv> {
+pub struct RegistryInfoProvider<
+  THttpClient: NpmCacheHttpClient,
+  TSys: FsCreateDirAll
+    + FsHardLink
+    + FsMetadata
+    + FsOpen
+    + FsReadDir
+    + FsRemoveFile
+    + FsRename
+    + ThreadSleep
+    + SystemRandom
+    + Send
+    + Sync
+    + 'static,
+> {
   // todo(#27198): remove this
-  cache: Arc<NpmCache<TEnv>>,
-  env: Arc<TEnv>,
+  cache: Arc<NpmCache<TSys>>,
+  http_client: Arc<THttpClient>,
   npmrc: Arc<ResolvedNpmRc>,
   force_reload_flag: AtomicFlag,
   memory_cache: Mutex<MemoryCache>,
   previously_loaded_packages: Mutex<HashSet<String>>,
 }
 
-impl<TEnv: NpmCacheEnv> RegistryInfoProvider<TEnv> {
+impl<
+    THttpClient: NpmCacheHttpClient,
+    TSys: FsCreateDirAll
+      + FsHardLink
+      + FsMetadata
+      + FsOpen
+      + FsReadDir
+      + FsRemoveFile
+      + FsRename
+      + ThreadSleep
+      + SystemRandom
+      + Send
+      + Sync
+      + 'static,
+  > RegistryInfoProvider<THttpClient, TSys>
+{
   pub fn new(
-    cache: Arc<NpmCache<TEnv>>,
-    env: Arc<TEnv>,
+    cache: Arc<NpmCache<TSys>>,
+    http_client: Arc<THttpClient>,
     npmrc: Arc<ResolvedNpmRc>,
   ) -> Self {
     Self {
       cache,
-      env,
+      http_client,
       npmrc,
       force_reload_flag: AtomicFlag::lowered(),
       memory_cache: Default::default(),
@@ -174,7 +228,9 @@ impl<TEnv: NpmCacheEnv> RegistryInfoProvider<TEnv> {
     }
   }
 
-  pub fn as_npm_registry_api(self: &Arc<Self>) -> NpmRegistryApiAdapter<TEnv> {
+  pub fn as_npm_registry_api(
+    self: &Arc<Self>,
+  ) -> NpmRegistryApiAdapter<THttpClient, TSys> {
     NpmRegistryApiAdapter(self.clone())
   }
 
@@ -345,7 +401,7 @@ impl<TEnv: NpmCacheEnv> RegistryInfoProvider<TEnv> {
       downloader.previously_loaded_packages.lock().insert(name.to_string());
 
       let maybe_bytes = downloader
-        .env
+        .http_client
         .download_with_retries_on_any_tokio_runtime(
           package_url,
           maybe_auth_header,
@@ -383,12 +439,39 @@ impl<TEnv: NpmCacheEnv> RegistryInfoProvider<TEnv> {
   }
 }
 
-pub struct NpmRegistryApiAdapter<TEnv: NpmCacheEnv>(
-  Arc<RegistryInfoProvider<TEnv>>,
-);
+pub struct NpmRegistryApiAdapter<
+  THttpClient: NpmCacheHttpClient,
+  TSys: FsCreateDirAll
+    + FsHardLink
+    + FsMetadata
+    + FsOpen
+    + FsReadDir
+    + FsRemoveFile
+    + FsRename
+    + ThreadSleep
+    + SystemRandom
+    + Send
+    + Sync
+    + 'static,
+>(Arc<RegistryInfoProvider<THttpClient, TSys>>);
 
 #[async_trait(?Send)]
-impl<TEnv: NpmCacheEnv> NpmRegistryApi for NpmRegistryApiAdapter<TEnv> {
+impl<
+    THttpClient: NpmCacheHttpClient,
+    TSys: FsCreateDirAll
+      + FsHardLink
+      + FsMetadata
+      + FsOpen
+      + FsReadDir
+      + FsRemoveFile
+      + FsRename
+      + ThreadSleep
+      + SystemRandom
+      + Send
+      + Sync
+      + 'static,
+  > NpmRegistryApi for NpmRegistryApiAdapter<THttpClient, TSys>
+{
   async fn package_info(
     &self,
     name: &str,

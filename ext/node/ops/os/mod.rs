@@ -1,11 +1,13 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
 use std::mem::MaybeUninit;
 
-use crate::NodePermissions;
 use deno_core::op2;
 use deno_core::OpState;
 use deno_permissions::PermissionCheckError;
+use sys_traits::EnvHomeDir;
+
+use crate::NodePermissions;
 
 mod cpus;
 pub mod priority;
@@ -290,5 +292,9 @@ where
     permissions.check_sys("homedir", "node:os.homedir()")?;
   }
 
-  Ok(home::home_dir().map(|path| path.to_string_lossy().to_string()))
+  Ok(
+    sys_traits::impls::RealSys
+      .env_home_dir()
+      .map(|path| path.to_string_lossy().to_string()),
+  )
 }

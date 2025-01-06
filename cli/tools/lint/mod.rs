@@ -1,7 +1,15 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
 //! This module provides file linting utilities using
 //! [`deno_lint`](https://github.com/denoland/deno_lint).
+
+use std::collections::HashSet;
+use std::fs;
+use std::io::stdin;
+use std::io::Read;
+use std::path::PathBuf;
+use std::rc::Rc;
+use std::sync::Arc;
 
 use deno_ast::ModuleSpecifier;
 use deno_ast::ParsedSource;
@@ -24,13 +32,6 @@ use log::debug;
 use reporters::create_reporter;
 use reporters::LintReporter;
 use serde::Serialize;
-use std::collections::HashSet;
-use std::fs;
-use std::io::stdin;
-use std::io::Read;
-use std::path::PathBuf;
-use std::rc::Rc;
-use std::sync::Arc;
 
 use crate::args::CliOptions;
 use crate::args::Flags;
@@ -42,6 +43,7 @@ use crate::cache::IncrementalCache;
 use crate::colors;
 use crate::factory::CliFactory;
 use crate::graph_util::ModuleGraphCreator;
+use crate::sys::CliSys;
 use crate::tools::fmt::run_parallelized;
 use crate::util::display;
 use crate::util::file_watcher;
@@ -50,10 +52,13 @@ use crate::util::fs::canonicalize_path;
 use crate::util::path::is_script_ext;
 use crate::util::sync::AtomicFlag;
 
+mod ast_buffer;
 mod linter;
 mod reporters;
 mod rules;
 
+// TODO(bartlomieju): remove once we wire plugins through the CLI linter
+pub use ast_buffer::serialize_ast_to_buffer;
 pub use linter::CliLinter;
 pub use linter::CliLinterOptions;
 pub use rules::collect_no_slow_type_diagnostics;
@@ -446,7 +451,7 @@ fn collect_lint_files(
   .ignore_node_modules()
   .use_gitignore()
   .set_vendor_folder(cli_options.vendor_dir_path().map(ToOwned::to_owned))
-  .collect_file_patterns(&deno_config::fs::RealDenoConfigFs, files)
+  .collect_file_patterns(&CliSys::default(), files)
 }
 
 #[allow(clippy::print_stdout)]
@@ -589,10 +594,11 @@ struct LintError {
 
 #[cfg(test)]
 mod tests {
-  use super::*;
   use pretty_assertions::assert_eq;
   use serde::Deserialize;
   use test_util as util;
+
+  use super::*;
 
   #[derive(Serialize, Deserialize)]
   struct RulesSchema {

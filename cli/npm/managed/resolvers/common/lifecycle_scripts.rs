@@ -1,23 +1,23 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
+
+use std::borrow::Cow;
+use std::collections::HashSet;
+use std::path::Path;
+use std::path::PathBuf;
+use std::rc::Rc;
+
+use deno_core::error::AnyError;
+use deno_npm::resolution::NpmResolutionSnapshot;
+use deno_npm::NpmResolutionPackage;
+use deno_runtime::deno_io::FromRawIoHandle;
+use deno_semver::package::PackageNv;
+use deno_semver::Version;
+use deno_task_shell::KillSignal;
 
 use super::bin_entries::BinEntries;
 use crate::args::LifecycleScriptsConfig;
 use crate::task_runner::TaskStdio;
 use crate::util::progress_bar::ProgressBar;
-use deno_npm::resolution::NpmResolutionSnapshot;
-use deno_runtime::deno_io::FromRawIoHandle;
-use deno_semver::package::PackageNv;
-use deno_semver::Version;
-use deno_task_shell::KillSignal;
-use std::borrow::Cow;
-use std::collections::HashSet;
-use std::rc::Rc;
-
-use std::path::Path;
-use std::path::PathBuf;
-
-use deno_core::error::AnyError;
-use deno_npm::NpmResolutionPackage;
 
 pub trait LifecycleScriptsStrategy {
   fn can_run_scripts(&self) -> bool {

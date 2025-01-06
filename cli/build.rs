@@ -1,4 +1,4 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
 use std::env;
 use std::path::PathBuf;
@@ -8,15 +8,17 @@ use deno_runtime::*;
 mod shared;
 
 mod ts {
-  use super::*;
-  use deno_core::op2;
-  use deno_core::OpState;
-  use deno_error::JsErrorBox;
-  use serde::Serialize;
   use std::collections::HashMap;
   use std::io::Write;
   use std::path::Path;
   use std::path::PathBuf;
+
+  use deno_core::op2;
+  use deno_core::OpState;
+  use deno_error::JsErrorBox;
+  use serde::Serialize;
+
+  use super::*;
 
   #[derive(Debug, Serialize)]
   #[serde(rename_all = "camelCase")]

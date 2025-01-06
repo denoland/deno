@@ -1,16 +1,17 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
 use std::borrow::Cow;
 use std::sync::Arc;
+
+use deno_core::error::AnyError;
+use deno_core::futures::stream::FuturesUnordered;
+use deno_core::futures::StreamExt;
+use deno_semver::jsr::JsrPackageReqReference;
 
 use crate::factory::CliFactory;
 use crate::graph_container::ModuleGraphContainer;
 use crate::graph_container::ModuleGraphUpdatePermit;
 use crate::graph_util::CreateGraphOptions;
-use deno_core::error::AnyError;
-use deno_core::futures::stream::FuturesUnordered;
-use deno_core::futures::StreamExt;
-use deno_semver::jsr::JsrPackageReqReference;
 
 pub async fn cache_top_level_deps(
   // todo(dsherret): don't pass the factory into this function. Instead use ctor deps

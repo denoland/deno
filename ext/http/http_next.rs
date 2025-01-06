@@ -1,24 +1,13 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
-use crate::compressible::is_content_compressible;
-use crate::extract_network_stream;
-use crate::network_buffered_stream::NetworkStreamPrefixCheck;
-use crate::request_body::HttpRequestBody;
-use crate::request_properties::HttpConnectionProperties;
-use crate::request_properties::HttpListenProperties;
-use crate::request_properties::HttpPropertyExtractor;
-use crate::response_body::Compression;
-use crate::response_body::ResponseBytesInner;
-use crate::service::handle_request;
-use crate::service::http_general_trace;
-use crate::service::http_trace;
-use crate::service::HttpRecord;
-use crate::service::HttpRecordResponse;
-use crate::service::HttpRequestBodyAutocloser;
-use crate::service::HttpServerState;
-use crate::service::SignallingRc;
-use crate::websocket_upgrade::WebSocketUpgrade;
-use crate::LocalExecutor;
-use crate::Options;
+// Copyright 2018-2025 the Deno authors. MIT license.
+use std::borrow::Cow;
+use std::cell::RefCell;
+use std::ffi::c_void;
+use std::future::Future;
+use std::io;
+use std::pin::Pin;
+use std::ptr::null;
+use std::rc::Rc;
+
 use cache_control::CacheControl;
 use deno_core::external;
 use deno_core::futures::future::poll_fn;
@@ -44,6 +33,7 @@ use deno_core::ResourceId;
 use deno_net::ops_tls::TlsStream;
 use deno_net::raw::NetworkStream;
 use deno_websocket::ws_create_server_stream;
+use fly_accept_encoding::Encoding;
 use hyper::body::Incoming;
 use hyper::header::HeaderMap;
 use hyper::header::ACCEPT_ENCODING;
@@ -63,20 +53,30 @@ use hyper::StatusCode;
 use hyper_util::rt::TokioIo;
 use once_cell::sync::Lazy;
 use smallvec::SmallVec;
-use std::borrow::Cow;
-use std::cell::RefCell;
-use std::ffi::c_void;
-use std::future::Future;
-use std::io;
-use std::pin::Pin;
-use std::ptr::null;
-use std::rc::Rc;
-
-use super::fly_accept_encoding;
-use fly_accept_encoding::Encoding;
-
 use tokio::io::AsyncReadExt;
 use tokio::io::AsyncWriteExt;
+
+use super::fly_accept_encoding;
+use crate::compressible::is_content_compressible;
+use crate::extract_network_stream;
+use crate::network_buffered_stream::NetworkStreamPrefixCheck;
+use crate::request_body::HttpRequestBody;
+use crate::request_properties::HttpConnectionProperties;
+use crate::request_properties::HttpListenProperties;
+use crate::request_properties::HttpPropertyExtractor;
+use crate::response_body::Compression;
+use crate::response_body::ResponseBytesInner;
+use crate::service::handle_request;
+use crate::service::http_general_trace;
+use crate::service::http_trace;
+use crate::service::HttpRecord;
+use crate::service::HttpRecordResponse;
+use crate::service::HttpRequestBodyAutocloser;
+use crate::service::HttpServerState;
+use crate::service::SignallingRc;
+use crate::websocket_upgrade::WebSocketUpgrade;
+use crate::LocalExecutor;
+use crate::Options;
 
 type Request = hyper::Request<Incoming>;
 

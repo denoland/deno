@@ -1,6 +1,5 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
-use std::borrow::Cow;
 use std::path::Path;
 use std::sync::Arc;
 
@@ -8,23 +7,22 @@ use deno_core::serde_json;
 use deno_resolver::npm::ByonmNpmResolver;
 use deno_resolver::npm::ByonmNpmResolverCreateOptions;
 use deno_resolver::npm::CliNpmReqResolver;
-use deno_runtime::deno_node::DenoFsNodeResolverEnv;
-use deno_runtime::deno_node::NodePermissions;
 use deno_runtime::ops::process::NpmProcessStateProvider;
 use node_resolver::NpmPackageFolderResolver;
 
+use super::CliNpmResolver;
+use super::InnerCliNpmResolverRef;
 use crate::args::NpmProcessState;
 use crate::args::NpmProcessStateKind;
-use crate::resolver::CliDenoResolverFs;
+use crate::sys::CliSys;
 
 use super::managed;
 use super::CliNpmResolver;
 use super::InnerCliNpmResolverRef;
 
 pub type CliByonmNpmResolverCreateOptions =
-  ByonmNpmResolverCreateOptions<CliDenoResolverFs, DenoFsNodeResolverEnv>;
-pub type CliByonmNpmResolver =
-  ByonmNpmResolver<CliDenoResolverFs, DenoFsNodeResolverEnv>;
+  ByonmNpmResolverCreateOptions<CliSys>;
+pub type CliByonmNpmResolver = ByonmNpmResolver<CliSys>;
 
 // todo(dsherret): the services hanging off `CliNpmResolver` doesn't seem ideal. We should probably decouple.
 #[derive(Debug)]
@@ -74,21 +72,6 @@ impl CliNpmResolver for CliByonmNpmResolver {
 
   fn root_node_modules_path(&self) -> Option<&Path> {
     self.root_node_modules_dir()
-  }
-
-  fn ensure_read_permission<'a>(
-    &self,
-    permissions: &mut dyn NodePermissions,
-    path: &'a Path,
-  ) -> Result<Cow<'a, Path>, managed::EnsureRegistryReadPermissionError> {
-    if !path
-      .components()
-      .any(|c| c.as_os_str().to_ascii_lowercase() == "node_modules")
-    {
-      permissions.check_read_path(path).map_err(Into::into)
-    } else {
-      Ok(Cow::Borrowed(path))
-    }
   }
 
   fn check_state_hash(&self) -> Option<u64> {

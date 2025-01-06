@@ -1,4 +1,4 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
 use std::borrow::Cow;
 use std::fmt::Write;
@@ -342,7 +342,6 @@ impl NodeJsErrorCoded for PackageJsonLoadError {
 impl NodeJsErrorCoded for ClosestPkgJsonError {
   fn code(&self) -> NodeJsErrorCode {
     match self.as_kind() {
-      ClosestPkgJsonErrorKind::CanonicalizingDir(e) => e.code(),
       ClosestPkgJsonErrorKind::Load(e) => e.code(),
     }
   }
@@ -355,26 +354,9 @@ pub struct ClosestPkgJsonError(pub Box<ClosestPkgJsonErrorKind>);
 pub enum ClosestPkgJsonErrorKind {
   #[class(inherit)]
   #[error(transparent)]
-  CanonicalizingDir(#[from] CanonicalizingPkgJsonDirError),
   #[class(inherit)]
   #[error(transparent)]
   Load(#[from] PackageJsonLoadError),
-}
-
-#[derive(Debug, Error, JsError)]
-#[class(inherit)]
-#[error("[{}] Failed canonicalizing package.json directory '{}'.", self.code(), dir_path.display())]
-pub struct CanonicalizingPkgJsonDirError {
-  pub dir_path: PathBuf,
-  #[source]
-  #[inherit]
-  pub source: std::io::Error,
-}
-
-impl NodeJsErrorCoded for CanonicalizingPkgJsonDirError {
-  fn code(&self) -> NodeJsErrorCode {
-    NodeJsErrorCode::ERR_MODULE_NOT_FOUND
-  }
 }
 
 #[derive(Debug, Error, JsError)]

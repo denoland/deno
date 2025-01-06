@@ -1,4 +1,20 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
+
+use std::borrow::Cow;
+use std::cell::RefCell;
+use std::cmp::min;
+use std::error::Error;
+use std::future::Future;
+use std::io;
+use std::io::Write;
+use std::mem::replace;
+use std::mem::take;
+use std::pin::pin;
+use std::pin::Pin;
+use std::rc::Rc;
+use std::sync::Arc;
+use std::task::Context;
+use std::task::Poll;
 
 use async_compression::tokio::write::BrotliEncoder;
 use async_compression::tokio::write::GzipEncoder;
@@ -55,21 +71,6 @@ use hyper_v014::HeaderMap;
 use hyper_v014::Request;
 use hyper_v014::Response;
 use serde::Serialize;
-use std::borrow::Cow;
-use std::cell::RefCell;
-use std::cmp::min;
-use std::error::Error;
-use std::future::Future;
-use std::io;
-use std::io::Write;
-use std::mem::replace;
-use std::mem::take;
-use std::pin::pin;
-use std::pin::Pin;
-use std::rc::Rc;
-use std::sync::Arc;
-use std::task::Context;
-use std::task::Poll;
 use tokio::io::AsyncRead;
 use tokio::io::AsyncWrite;
 use tokio::io::AsyncWriteExt;

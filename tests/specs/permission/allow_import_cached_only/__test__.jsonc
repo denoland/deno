@@ -1,0 +1,22 @@
+{
+  "tempDir": true,
+  "tests": {
+    "no_flag": {
+      // ensure what we're testing will fail without the flags
+      "args": "run main.ts",
+      "output": "fail.out",
+      "exitCode": 1
+    },
+    "with_flags": {
+      "steps": [{
+        "args": "cache --allow-import main.ts",
+        "output": "[WILDLINE]",
+        "exitCode": 0
+      }, {
+        "args": "run --cached-only main.ts",
+        "output": "success.out",
+        "exitCode": 0
+      }]
+    }
+  }
+}

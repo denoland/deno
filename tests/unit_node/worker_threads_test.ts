@@ -1,4 +1,4 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
 import {
   assert,
@@ -840,4 +840,27 @@ Deno.test({
     const result = await done.promise;
     assertEquals(result, true);
   },
+});
+
+Deno.test("[node/worker_threads] Worker runs async ops correctly", async () => {
+  const recvMessage = Promise.withResolvers<void>();
+  const timer = setTimeout(() => recvMessage.reject(), 1000);
+  const worker = new workerThreads.Worker(
+    `
+    import { parentPort } from "node:worker_threads";
+    setTimeout(() => {
+      parentPort.postMessage("Hello from worker");
+    }, 10);
+    `,
+    { eval: true },
+  );
+
+  worker.on("message", (msg) => {
+    assertEquals(msg, "Hello from worker");
+    worker.terminate();
+    recvMessage.resolve();
+    clearTimeout(timer);
+  });
+
+  await recvMessage.promise;
 });

@@ -1,4 +1,4 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
 pub use impl_::*;
 
@@ -37,10 +37,6 @@ mod impl_ {
   use tokio::io::AsyncRead;
   use tokio::io::AsyncWriteExt;
   use tokio::io::ReadBuf;
-
-  use deno_io::BiPipe;
-  use deno_io::BiPipeRead;
-  use deno_io::BiPipeWrite;
 
   /// Wrapper around v8 value that implements Serialize.
   struct SerializeWrapper<'a, 'b>(
@@ -629,13 +625,15 @@ mod impl_ {
 
   #[cfg(test)]
   mod tests {
-    use super::IpcJsonStreamResource;
+    use std::rc::Rc;
+
     use deno_core::serde_json::json;
     use deno_core::v8;
     use deno_core::JsRuntime;
     use deno_core::RcRef;
     use deno_core::RuntimeOptions;
-    use std::rc::Rc;
+
+    use super::IpcJsonStreamResource;
 
     #[allow(clippy::unused_async)]
     #[cfg(unix)]

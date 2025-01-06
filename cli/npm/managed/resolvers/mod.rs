@@ -1,4 +1,4 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
 mod common;
 mod global;
@@ -8,12 +8,16 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use deno_npm::NpmSystemInfo;
-use deno_runtime::deno_fs::FileSystem;
 
+pub use self::common::NpmPackageFsResolver;
+use self::global::GlobalNpmPackageResolver;
+use self::local::LocalNpmPackageResolver;
+use super::resolution::NpmResolution;
 use crate::args::LifecycleScriptsConfig;
 use crate::args::NpmInstallDepsProvider;
 use crate::npm::CliNpmCache;
 use crate::npm::CliNpmTarballCache;
+use crate::sys::CliSys;
 use crate::util::progress_bar::ProgressBar;
 
 pub use self::common::EnsureRegistryReadPermissionError;
@@ -27,11 +31,11 @@ use super::resolution::NpmResolution;
 
 #[allow(clippy::too_many_arguments)]
 pub fn create_npm_fs_resolver(
-  fs: Arc<dyn FileSystem>,
   npm_cache: Arc<CliNpmCache>,
   npm_install_deps_provider: &Arc<NpmInstallDepsProvider>,
   progress_bar: &ProgressBar,
   resolution: Arc<NpmResolution>,
+  sys: CliSys,
   tarball_cache: Arc<CliNpmTarballCache>,
   maybe_node_modules_path: Option<PathBuf>,
   system_info: NpmSystemInfo,
@@ -40,10 +44,10 @@ pub fn create_npm_fs_resolver(
   match maybe_node_modules_path {
     Some(node_modules_folder) => Arc::new(LocalNpmPackageResolver::new(
       npm_cache,
-      fs,
       npm_install_deps_provider.clone(),
       progress_bar.clone(),
       resolution,
+      sys,
       tarball_cache,
       node_modules_folder,
       system_info,
@@ -51,7 +55,6 @@ pub fn create_npm_fs_resolver(
     )),
     None => Arc::new(GlobalNpmPackageResolver::new(
       npm_cache,
-      fs,
       tarball_cache,
       resolution,
       system_info,

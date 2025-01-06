@@ -1,12 +1,17 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
-mod in_memory_fs;
 mod interface;
 mod ops;
 mod std_fs;
 pub mod sync;
 
-pub use crate::in_memory_fs::InMemoryFs;
+use std::borrow::Cow;
+use std::path::Path;
+use std::path::PathBuf;
+
+use deno_io::fs::FsError;
+use deno_permissions::PermissionCheckError;
+
 pub use crate::interface::AccessCheckCb;
 pub use crate::interface::AccessCheckFn;
 pub use crate::interface::FileSystem;
@@ -17,18 +22,10 @@ pub use crate::interface::OpenOptions;
 pub use crate::ops::FsOpsError;
 pub use crate::ops::FsOpsErrorKind;
 pub use crate::ops::OperationError;
-pub use crate::ops::V8MaybeStaticStr;
+use crate::ops::*;
 pub use crate::std_fs::RealFs;
 pub use crate::sync::MaybeSend;
 pub use crate::sync::MaybeSync;
-
-use crate::ops::*;
-
-use deno_io::fs::FsError;
-use deno_permissions::PermissionCheckError;
-use std::borrow::Cow;
-use std::path::Path;
-use std::path::PathBuf;
 
 pub trait FsPermissions {
   fn check_open<'a>(

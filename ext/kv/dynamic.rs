@@ -1,7 +1,15 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
 use std::cell::RefCell;
 use std::rc::Rc;
+
+use async_trait::async_trait;
+use deno_core::error::type_error;
+use deno_core::error::AnyError;
+use deno_core::OpState;
+use denokv_proto::CommitResult;
+use denokv_proto::ReadRangeOutput;
+use denokv_proto::WatchStream;
 
 use crate::remote::RemoteDbHandlerPermissions;
 use crate::sqlite::SqliteDbHandler;
@@ -12,12 +20,6 @@ use crate::DatabaseHandler;
 use crate::QueueMessageHandle;
 use crate::ReadRange;
 use crate::SnapshotReadOptions;
-use async_trait::async_trait;
-use deno_core::OpState;
-use deno_error::JsErrorBox;
-use denokv_proto::CommitResult;
-use denokv_proto::ReadRangeOutput;
-use denokv_proto::WatchStream;
 
 pub struct MultiBackendDbHandler {
   backends: Vec<(&'static [&'static str], Box<dyn DynamicDbHandler>)>,

@@ -1,10 +1,11 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
+
+use std::borrow::Cow;
+use std::cell::RefCell;
 
 use deno_core::op2;
 use deno_error::JsErrorBox;
 use libc::c_ulong;
-use std::borrow::Cow;
-use std::cell::RefCell;
 use zlib::*;
 
 mod alloc;

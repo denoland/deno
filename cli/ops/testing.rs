@@ -1,4 +1,16 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
+
+use std::sync::atomic::AtomicUsize;
+use std::sync::atomic::Ordering;
+
+use deno_core::op2;
+use deno_core::v8;
+use deno_core::ModuleSpecifier;
+use deno_core::OpState;
+use deno_error::JsErrorBox;
+use deno_runtime::deno_permissions::ChildPermissionsArg;
+use deno_runtime::deno_permissions::PermissionsContainer;
+use uuid::Uuid;
 
 use crate::tools::test::TestContainer;
 use crate::tools::test::TestDescription;
@@ -8,17 +20,6 @@ use crate::tools::test::TestFailure;
 use crate::tools::test::TestLocation;
 use crate::tools::test::TestStepDescription;
 use crate::tools::test::TestStepResult;
-
-use deno_core::op2;
-use deno_core::v8;
-use deno_core::ModuleSpecifier;
-use deno_core::OpState;
-use deno_error::JsErrorBox;
-use deno_runtime::deno_permissions::ChildPermissionsArg;
-use deno_runtime::deno_permissions::PermissionsContainer;
-use std::sync::atomic::AtomicUsize;
-use std::sync::atomic::Ordering;
-use uuid::Uuid;
 
 deno_core::extension!(deno_test,
   ops = [

@@ -1,4 +1,8 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
+
+use std::borrow::Cow;
+use std::cell::RefCell;
+use std::rc::Rc;
 
 use deno_core::error::ResourceError;
 use deno_core::op2;
@@ -6,9 +10,6 @@ use deno_core::OpState;
 use deno_core::Resource;
 use deno_core::ResourceId;
 use serde::Deserialize;
-use std::borrow::Cow;
-use std::cell::RefCell;
-use std::rc::Rc;
 
 use super::error::WebGpuResult;
 
