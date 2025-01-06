@@ -155,7 +155,9 @@ impl NpmPackageFsResolver for GlobalNpmPackageResolver {
         .subset(&reqs)
         .all_system_packages_partitioned(&self.system_info),
     };
-    cache_packages(&package_partitions.packages, &self.tarball_cache).await?;
+    cache_packages(&package_partitions.packages, &self.tarball_cache)
+      .await
+      .map_err(JsErrorBox::from_err)?;
 
     // create the copy package folders
     for copy in package_partitions.copy_packages {
@@ -186,7 +188,7 @@ impl NpmPackageFsResolver for GlobalNpmPackageResolver {
 async fn cache_packages(
   packages: &[NpmResolutionPackage],
   tarball_cache: &Arc<CliNpmTarballCache>,
-) -> Result<(), AnyError> {
+) -> Result<(), deno_npm_cache::EnsurePackageError> {
   let mut futures_unordered = FuturesUnordered::new();
   for package in packages {
     futures_unordered.push(async move {

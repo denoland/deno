@@ -12,7 +12,7 @@ use deno_core::parking_lot::Mutex;
 use deno_core::serde;
 use deno_core::serde_json;
 use deno_core::url::Url;
-use deno_core::JsError;
+use deno_error::JsError;
 use deno_error::JsErrorBox;
 use deno_runtime::deno_fetch;
 use deno_runtime::deno_fetch::create_http_client;

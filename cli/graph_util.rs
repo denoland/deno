@@ -2,17 +2,17 @@
 
 use std::collections::HashSet;
 use std::error::Error;
-use std::ops::Deref;
 use std::path::PathBuf;
 use std::sync::Arc;
 
 use deno_config::deno_json::JsxImportSourceConfig;
 use deno_config::workspace::JsrPackageConfig;
 use deno_core::anyhow::bail;
-use deno_core::error::custom_error;
 use deno_core::error::AnyError;
 use deno_core::parking_lot::Mutex;
 use deno_core::ModuleSpecifier;
+use deno_error::JsErrorBox;
+use deno_error::JsErrorClass;
 use deno_graph::source::Loader;
 use deno_graph::source::LoaderChecksum;
 use deno_graph::source::ResolutionKind;
@@ -49,7 +49,6 @@ use crate::cache::GlobalHttpCache;
 use crate::cache::ModuleInfoCache;
 use crate::cache::ParsedSourceCache;
 use crate::colors;
-use crate::errors::get_module_graph_error_class;
 use crate::file_fetcher::CliFileFetcher;
 use crate::npm::CliNpmResolver;
 use crate::resolver::CjsTracker;
@@ -196,7 +195,7 @@ pub fn graph_walk_errors<'a>(
         return None;
       }
 
-      Some(custom_error(get_module_graph_error_class(&error), message))
+      Some(JsErrorBox::new(error.get_class(), message))
     })
 }
 

@@ -15,7 +15,6 @@ use deno_cache_dir::file_fetcher::CacheSetting;
 use deno_core::anyhow::anyhow;
 use deno_core::anyhow::bail;
 use deno_core::anyhow::Context;
-use deno_core::error::generic_error;
 use deno_core::error::AnyError;
 use deno_core::resolve_url_or_path;
 use deno_core::url::Url;

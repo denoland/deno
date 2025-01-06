@@ -10,6 +10,7 @@ use deno_config::workspace::WorkspaceResolver;
 use deno_core::error::AnyError;
 use deno_core::futures::FutureExt;
 use deno_core::FeatureChecker;
+use deno_error::JsErrorBox;
 use deno_resolver::cjs::IsCjsResolutionMode;
 use deno_resolver::npm::NpmReqResolverOptions;
 use deno_resolver::DenoResolverOptions;

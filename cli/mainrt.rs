@@ -23,6 +23,12 @@ mod util;
 mod version;
 mod worker;
 
+use std::borrow::Cow;
+use std::collections::HashMap;
+use std::env;
+use std::env::current_exe;
+use std::sync::Arc;
+
 use deno_core::error::AnyError;
 use deno_core::error::CoreError;
 use deno_core::error::JsError;

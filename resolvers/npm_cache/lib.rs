@@ -44,6 +44,7 @@ pub use fs_util::hard_link_dir_recursive;
 pub use registry_info::get_package_url;
 pub use registry_info::RegistryInfoProvider;
 pub use remote::maybe_auth_header_for_npm_registry;
+pub use tarball::EnsurePackageError;
 pub use tarball::TarballCache;
 
 #[derive(Debug, deno_error::JsError)]
@@ -237,6 +238,7 @@ impl<
         &original_package_folder,
         &package_folder,
       )
+      .map_err(JsErrorBox::from_err)
     })?;
     Ok(())
   }

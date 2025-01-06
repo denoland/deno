@@ -10,7 +10,6 @@ use deno_resolver::npm::CliNpmReqResolver;
 use deno_runtime::ops::process::NpmProcessStateProvider;
 use node_resolver::NpmPackageFolderResolver;
 
-use super::managed;
 use super::CliNpmResolver;
 use super::InnerCliNpmResolverRef;
 use crate::args::NpmProcessState;

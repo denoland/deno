@@ -8,14 +8,9 @@ use std::path::PathBuf;
 
 use async_trait::async_trait;
 use deno_ast::ModuleSpecifier;
-use deno_core::error::AnyError;
 use deno_error::JsErrorBox;
 use deno_npm::NpmPackageCacheFolderId;
 use deno_npm::NpmPackageId;
-use deno_npm::NpmResolutionPackage;
-use deno_runtime::deno_fs::FileSystem;
-use deno_runtime::deno_io::fs::FsError;
-use deno_runtime::deno_node::NodePermissions;
 use node_resolver::errors::PackageFolderResolveError;
 
 use super::super::PackageCaching;
@@ -23,7 +18,7 @@ use super::super::PackageCaching;
 #[derive(Debug, thiserror::Error, deno_error::JsError)]
 #[class(generic)]
 #[error("Package folder not found for '{0}'")]
-pub struct NpmPackageFsResolverPackageFolderError(String);
+pub struct NpmPackageFsResolverPackageFolderError(deno_semver::StackString);
 
 /// Part of the resolution that interacts with the file system.
 #[async_trait(?Send)]

@@ -58,8 +58,6 @@ use crate::util::sync::AtomicFlag;
 mod resolution;
 mod resolvers;
 
-pub use resolvers::EnsureRegistryReadPermissionError;
-
 pub enum CliNpmResolverManagedSnapshotOption {
   ResolveFromLockfile(Arc<CliLockfile>),
   Specified(Option<ValidSerializedNpmResolutionSnapshot>),

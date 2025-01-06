@@ -4,8 +4,8 @@ use std::cell::RefCell;
 use std::rc::Rc;
 
 use async_trait::async_trait;
-use deno_error::JsErrorBox;
 use deno_core::OpState;
+use deno_error::JsErrorBox;
 use denokv_proto::CommitResult;
 use denokv_proto::ReadRangeOutput;
 use denokv_proto::WatchStream;

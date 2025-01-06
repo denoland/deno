@@ -30,6 +30,7 @@ use deno_core::ModuleType;
 use deno_core::RequestedModuleType;
 use deno_core::SourceCodeCacheInfo;
 use deno_error::JsErrorBox;
+use deno_error::JsErrorClass;
 use deno_graph::GraphKind;
 use deno_graph::JsModule;
 use deno_graph::JsonModule;
@@ -58,7 +59,6 @@ use crate::cache::CodeCache;
 use crate::cache::FastInsecureHasher;
 use crate::cache::ParsedSourceCache;
 use crate::emit::Emitter;
-use crate::errors::get_module_error_class;
 use crate::graph_container::MainModuleGraphContainer;
 use crate::graph_container::ModuleGraphContainer;
 use crate::graph_container::ModuleGraphUpdatePermit;
@@ -707,7 +707,7 @@ impl<TGraphContainer: ModuleGraphContainer>
     &self,
     graph: &'graph ModuleGraph,
     specifier: &ModuleSpecifier,
-  ) -> Result<Option<CodeOrDeferredEmit<'graph>>, AnyError> {
+  ) -> Result<Option<CodeOrDeferredEmit<'graph>>, JsErrorBox> {
     if specifier.scheme() == "node" {
       // Node built-in modules should be handled internally.
       unreachable!("Deno bug. {} was misconfigured internally.", specifier);
@@ -716,8 +716,8 @@ impl<TGraphContainer: ModuleGraphContainer>
     let maybe_module = match graph.try_get(specifier) {
       Ok(module) => module,
       Err(err) => {
-        return Err(custom_error(
-          get_module_error_class(err),
+        return Err(JsErrorBox::new(
+          err.get_class(),
           enhance_graph_error(
             &self.shared.sys,
             &ModuleGraphError::ModuleError(err.clone()),
@@ -745,11 +745,12 @@ impl<TGraphContainer: ModuleGraphContainer>
         is_script,
         ..
       })) => {
-        if self.shared.cjs_tracker.is_cjs_with_known_is_script(
-          specifier,
-          *media_type,
-          *is_script,
-        )? {
+        if self
+          .shared
+          .cjs_tracker
+          .is_cjs_with_known_is_script(specifier, *media_type, *is_script)
+          .map_err(JsErrorBox::from_err)?
+        {
           return Ok(Some(CodeOrDeferredEmit::Cjs {
             specifier,
             media_type: *media_type,

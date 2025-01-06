@@ -10,7 +10,6 @@ use deno_ast::SourceRange;
 use deno_ast::SourceRangedForSpanned;
 use deno_ast::SourceTextInfo;
 use deno_config::workspace::MappedResolution;
-use deno_core::error::custom_error;
 use deno_core::error::AnyError;
 use deno_core::serde::Deserialize;
 use deno_core::serde::Serialize;

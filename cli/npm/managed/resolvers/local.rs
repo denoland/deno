@@ -44,9 +44,7 @@ use sys_traits::FsMetadata;
 
 use super::super::resolution::NpmResolution;
 use super::common::bin_entries;
-use super::common::EnsureRegistryReadPermissionError;
 use super::common::NpmPackageFsResolver;
-use super::common::RegistryReadPermissionChecker;
 use crate::args::LifecycleScriptsConfig;
 use crate::args::NpmInstallDepsProvider;
 use crate::cache::CACHE_PERM;
